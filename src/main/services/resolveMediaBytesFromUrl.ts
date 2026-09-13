@@ -2,11 +2,7 @@ import axios from 'axios'
 import { fail, defErr, defErrSimple } from '@shared/errors/appError'
 
 // ── 媒体字节解析个性错误（axios / HTTP 原生报错作为 detail 透传）──
-const E_MEDIA_EMPTY_URL = defErrSimple(
-  'media.emptyUrl',
-  '空的媒体 URL',
-  'Media URL is empty'
-)
+const E_MEDIA_EMPTY_URL = defErrSimple('media.emptyUrl', '空的媒体 URL', 'Media URL is empty')
 const E_MEDIA_INVALID_URL = defErrSimple(
   'media.invalidUrl',
   '无效的媒体 URL（需要 data: 或 http(s)）',

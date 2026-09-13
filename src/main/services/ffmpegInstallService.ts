@@ -49,7 +49,8 @@ let lastProgressAt = 0
 
 /** 应用私有的 ffmpeg 安装根目录（win: %LOCALAPPDATA%/ai-art-engine/ffmpeg，其它: ~/ai-art-engine/ffmpeg） */
 export function ffmpegPrivateDir(): string {
-  const base = process.env.LOCALAPPDATA?.trim() || (process.platform === 'darwin' ? process.env.HOME : '')
+  const base =
+    process.env.LOCALAPPDATA?.trim() || (process.platform === 'darwin' ? process.env.HOME : '')
   return join(base || tmpdir(), 'ai-art-engine', 'ffmpeg')
 }
 
@@ -330,12 +331,20 @@ async function installFfmpegWin(): Promise<VideoBeatInstallResult> {
       if (existsSync(src)) await copyFile(src, join(binDir, exeName(name)))
     }
     if (!(await binWorks(join(binDir, exeName('ffprobe'))))) {
-      return { ok: false, message: 'ffmpeg 已下载但校验失败，请稍后重试；或打开下载页手动安装。', downloadUrl: manualPageUrl() } // cjk-ok 直接透传 UI
+      return {
+        ok: false,
+        message: 'ffmpeg 已下载但校验失败，请稍后重试；或打开下载页手动安装。',
+        downloadUrl: manualPageUrl()
+      } // cjk-ok 直接透传 UI
     }
     broadcastInstallProgress({ phase: 'done' })
     return { ok: true, message: 'ffmpeg/ffprobe 下载安装完成，可直接使用视频功能。' } // cjk-ok 直接透传 UI
   } catch (err) {
-    return { ok: false, message: `ffmpeg 安装失败：${errDetail(err)}`, downloadUrl: manualPageUrl() } // cjk-ok 直接透传 UI
+    return {
+      ok: false,
+      message: `ffmpeg 安装失败：${errDetail(err)}`,
+      downloadUrl: manualPageUrl()
+    } // cjk-ok 直接透传 UI
   } finally {
     // 无论成败都清理缓存，避免残留超大 zip / 解压目录
     await rm(zipAbs, { force: true }).catch(() => undefined)
@@ -354,7 +363,8 @@ export async function installFfmpeg(): Promise<VideoBeatInstallResult> {
   if (process.platform !== 'win32') {
     return {
       ok: false,
-      message: '当前系统暂不支持自动安装：请在终端按上方命令安装 ffmpeg，或打开下载页手动下载后重试。', // cjk-ok 直接透传 UI
+      message:
+        '当前系统暂不支持自动安装：请在终端按上方命令安装 ffmpeg，或打开下载页手动下载后重试。', // cjk-ok 直接透传 UI
       downloadUrl: manualPageUrl()
     }
   }

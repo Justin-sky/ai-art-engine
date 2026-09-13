@@ -4,13 +4,7 @@
  */
 
 export type PresetShotSize =
-  | 'extremeWide'
-  | 'wide'
-  | 'full'
-  | 'medium'
-  | 'mediumClose'
-  | 'close'
-  | 'extremeClose'
+  'extremeWide' | 'wide' | 'full' | 'medium' | 'mediumClose' | 'close' | 'extremeClose'
 
 export type PresetCameraMotion =
   | 'dolly'
@@ -24,40 +18,15 @@ export type PresetCameraMotion =
   | 'handheld'
   | 'combo'
 
-export type PresetFacing =
-  | 'front'
-  | 'threeQuarter'
-  | 'profile'
-  | 'backThreeQuarter'
-  | 'back'
+export type PresetFacing = 'front' | 'threeQuarter' | 'profile' | 'backThreeQuarter' | 'back'
 
-export type PresetLighting =
-  | 'top'
-  | 'side'
-  | 'rembrandt'
-  | 'volumetric'
-  | 'backlight'
-  | 'practical'
+export type PresetLighting = 'top' | 'side' | 'rembrandt' | 'volumetric' | 'backlight' | 'practical'
 
 export type PresetMood =
-  | 'anger'
-  | 'dazed'
-  | 'manic'
-  | 'relief'
-  | 'anxiety'
-  | 'grief'
-  | 'confidence'
-  | 'surprise'
+  'anger' | 'dazed' | 'manic' | 'relief' | 'anxiety' | 'grief' | 'confidence' | 'surprise'
 
 export type PresetVisualKind =
-  | 'shotSize'
-  | 'camera'
-  | 'facing'
-  | 'lighting'
-  | 'mood'
-  | 'grid'
-  | 'chips'
-  | 'icon'
+  'shotSize' | 'camera' | 'facing' | 'lighting' | 'mood' | 'grid' | 'chips' | 'icon'
 
 export interface PresetVisual {
   kind: PresetVisualKind
@@ -129,20 +98,19 @@ export function resolveShotStagingVisual(input: {
     }
   }
 
-  const camera: PresetCameraMotion =
-    id.includes('dutch')
-      ? 'dutch'
-      : id.includes('overShoulder') || id.includes('twoShot')
-        ? 'static'
-        : id.includes('highEmotion')
-          ? 'crane'
-          : id.includes('backEmotion')
-            ? 'follow'
-            : id.includes('mysterious')
-              ? 'handheld'
-              : id.includes('hero')
-                ? 'tilt'
-                : 'dolly'
+  const camera: PresetCameraMotion = id.includes('dutch')
+    ? 'dutch'
+    : id.includes('overShoulder') || id.includes('twoShot')
+      ? 'static'
+      : id.includes('highEmotion')
+        ? 'crane'
+        : id.includes('backEmotion')
+          ? 'follow'
+          : id.includes('mysterious')
+            ? 'handheld'
+            : id.includes('hero')
+              ? 'tilt'
+              : 'dolly'
 
   return {
     kind: 'shotSize',
@@ -173,7 +141,8 @@ export function resolveInstructionVisual(input: {
   if (id.includes('physics')) return { kind: 'icon', icon: '⏱' }
   if (id.includes('shotDetail')) return { kind: 'shotSize', shotSize: 'extremeClose' }
   if (id.includes('shotEstablish')) return { kind: 'shotSize', shotSize: 'wide' }
-  if (id.includes('shotConfrontation')) return { kind: 'shotSize', shotSize: 'full', camera: 'static' }
+  if (id.includes('shotConfrontation'))
+    return { kind: 'shotSize', shotSize: 'full', camera: 'static' }
 
   if (id.includes('firstLastFrame')) return { kind: 'chips', chips: ['首', '尾'] }
   if (id.includes('cameraDolly')) return { kind: 'camera', camera: 'dolly' }
@@ -184,11 +153,14 @@ export function resolveInstructionVisual(input: {
   if (id.includes('cameraCombo')) return { kind: 'camera', camera: 'combo' }
   if (id.includes('textToVideo')) return { kind: 'icon', icon: '✦' }
   if (id.includes('multimodal')) return { kind: 'icon', icon: '⧉' }
-  if (id.includes('poseStandingFront')) return { kind: 'facing', facing: 'front', shotSize: 'mediumClose' }
-  if (id.includes('poseThreeQuarter')) return { kind: 'facing', facing: 'threeQuarter', shotSize: 'mediumClose' }
+  if (id.includes('poseStandingFront'))
+    return { kind: 'facing', facing: 'front', shotSize: 'mediumClose' }
+  if (id.includes('poseThreeQuarter'))
+    return { kind: 'facing', facing: 'threeQuarter', shotSize: 'mediumClose' }
   if (id.includes('poseProfile')) return { kind: 'facing', facing: 'profile', shotSize: 'close' }
   if (id.includes('poseBack')) return { kind: 'facing', facing: 'back', shotSize: 'medium' }
-  if (id.includes('poseLookBack')) return { kind: 'facing', facing: 'backThreeQuarter', shotSize: 'mediumClose' }
+  if (id.includes('poseLookBack'))
+    return { kind: 'facing', facing: 'backThreeQuarter', shotSize: 'mediumClose' }
   if (id.includes('poseWalk') || id.includes('poseRun')) {
     return { kind: 'camera', camera: 'follow', shotSize: 'medium' }
   }

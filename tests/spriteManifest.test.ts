@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  buildSpriteManifest,
-  SPRITE_MANIFEST_VERSION
-} from '../src/shared/gameAssets'
+import { buildSpriteManifest, SPRITE_MANIFEST_VERSION } from '../src/shared/gameAssets'
 
 describe('buildSpriteManifest：对齐产物清单构建', () => {
   it('基础字段与条目保序、保留逐条锚点', () => {
@@ -13,8 +10,22 @@ describe('buildSpriteManifest：对齐产物清单构建', () => {
       canvasHeight: 512,
       anchor: 'ground',
       sprites: [
-        { name: 'idle-0', fileName: 'idle-0.png', width: 512, height: 512, anchorX: 256, anchorY: 480 },
-        { name: 'idle-1', fileName: 'idle-1.png', width: 512, height: 512, anchorX: 256, anchorY: 480 }
+        {
+          name: 'idle-0',
+          fileName: 'idle-0.png',
+          width: 512,
+          height: 512,
+          anchorX: 256,
+          anchorY: 480
+        },
+        {
+          name: 'idle-1',
+          fileName: 'idle-1.png',
+          width: 512,
+          height: 512,
+          anchorX: 256,
+          anchorY: 480
+        }
       ]
     })
     expect(m.version).toBe(SPRITE_MANIFEST_VERSION)

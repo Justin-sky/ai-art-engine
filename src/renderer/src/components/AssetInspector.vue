@@ -1,8 +1,5 @@
 <template>
-  <div
-    v-if="asset"
-    class="inspector"
-  >
+  <div v-if="asset" class="inspector">
     <div class="head">
       <div>
         <div class="type">
@@ -10,29 +7,17 @@
         </div>
         <h2>{{ t('asset.inspector.title') }}</h2>
       </div>
-      <span
-        class="icon"
-        :title="typeLabel"
-      ><WorkspaceItemIcon
-        :icon="typeIcon"
-        :size="20"
-      /></span>
+      <span class="icon" :title="typeLabel"><WorkspaceItemIcon :icon="typeIcon" :size="20" /></span>
     </div>
 
     <label>
       {{ t('asset.field.name') }}
-      <input
-        v-model="local.name"
-        @change="persist"
-      >
+      <input v-model="local.name" @change="persist" />
     </label>
 
     <label v-if="!showHostInterface">
       {{ t('asset.field.type') }}
-      <input
-        :value="typeLabel"
-        disabled
-      >
+      <input :value="typeLabel" disabled />
     </label>
 
     <GraphNodeOutputPreview
@@ -40,16 +25,9 @@
       :node="graphPreviewNode"
       :host-id="graphPreviewHostId"
     />
-    <AssetMediaPreview
-      v-else-if="asset"
-      :key="asset.id"
-      :asset="asset"
-    />
+    <AssetMediaPreview v-else-if="asset" :key="asset.id" :asset="asset" />
 
-    <section
-      v-if="asset.visionTags"
-      class="vision-section"
-    >
+    <section v-if="asset.visionTags" class="vision-section">
       <div class="section-label">
         {{ t('asset.inspector.vision.title') }}
       </div>
@@ -65,40 +43,23 @@
           :title="visionTagTitle(tag)"
         >
           <span>{{ visionTagLabel(tag) }}</span>
-          <span
-            v-if="tag.count > 1"
-            class="vision-tag-count"
-          >×{{ tag.count }}</span>
+          <span v-if="tag.count > 1" class="vision-tag-count">×{{ tag.count }}</span>
           <span class="vision-tag-conf">{{ Math.round(tag.maxConfidence * 100) }}%</span>
         </li>
       </ul>
-      <p
-        v-else-if="asset.visionTags.status === 'ok'"
-        class="hint"
-      >
+      <p v-else-if="asset.visionTags.status === 'ok'" class="hint">
         {{ t('asset.inspector.vision.empty') }}
       </p>
-      <p
-        v-else
-        class="hint"
-      >
+      <p v-else class="hint">
         {{ asset.visionTags.error || t('asset.inspector.vision.pending') }}
       </p>
     </section>
 
-    <section
-      v-if="cutoutSourcePath"
-      class="cutout-section"
-    >
+    <section v-if="cutoutSourcePath" class="cutout-section">
       <div class="section-label">
         {{ t('asset.inspector.cutout.title') }}
       </div>
-      <button
-        type="button"
-        class="cutout-btn"
-        :disabled="!cutoutUrl"
-        @click="openCutout"
-      >
+      <button type="button" class="cutout-btn" :disabled="!cutoutUrl" @click="openCutout">
         {{ t('asset.inspector.cutout.open') }}
       </button>
       <p class="hint">
@@ -106,19 +67,11 @@
       </p>
     </section>
 
-    <section
-      v-if="cutoutSourcePath"
-      class="cutout-section"
-    >
+    <section v-if="cutoutSourcePath" class="cutout-section">
       <div class="section-label">
         {{ t('asset.inspector.compose.title') }}
       </div>
-      <button
-        type="button"
-        class="cutout-btn"
-        :disabled="!cutoutUrl"
-        @click="openComposer"
-      >
+      <button type="button" class="cutout-btn" :disabled="!cutoutUrl" @click="openComposer">
         {{ t('asset.inspector.compose.open') }}
       </button>
       <p class="hint">
@@ -126,19 +79,11 @@
       </p>
     </section>
 
-    <section
-      v-if="cutoutSourcePath"
-      class="cutout-section"
-    >
+    <section v-if="cutoutSourcePath" class="cutout-section">
       <div class="section-label">
         {{ t('uiKitExtract.title') }}
       </div>
-      <button
-        type="button"
-        class="cutout-btn"
-        :disabled="!cutoutUrl"
-        @click="openUiKitExtract"
-      >
+      <button type="button" class="cutout-btn" :disabled="!cutoutUrl" @click="openUiKitExtract">
         {{ t('uiKitExtract.action') }}
       </button>
       <p class="hint">
@@ -149,24 +94,18 @@
     <template v-if="asset && isDirectorDeck(asset.type)">
       <label>
         {{ t('asset.inspector.linkedPanorama') }}
-        <input
-          :value="linkedPanoramaName"
-          disabled
-        >
+        <input :value="linkedPanoramaName" disabled />
       </label>
       <label>
         {{ t('asset.inspector.stageObjects') }}
         <input
           :value="t('asset.inspector.shotCountValue', { n: directorStage.objects.length })"
           disabled
-        >
+        />
       </label>
       <label>
         {{ t('asset.inspector.transformMode') }}
-        <input
-          :value="directorModeLabel"
-          disabled
-        >
+        <input :value="directorModeLabel" disabled />
       </label>
     </template>
 
@@ -178,21 +117,12 @@
         <div class="section-label">
           {{ t('asset.inspector.pose.bones', { n: poseAssetBoneNames.length }) }}
         </div>
-        <ul
-          v-if="poseAssetBoneNames.length"
-          class="bone-list"
-        >
-          <li
-            v-for="bone in poseAssetBoneNames"
-            :key="bone"
-          >
+        <ul v-if="poseAssetBoneNames.length" class="bone-list">
+          <li v-for="bone in poseAssetBoneNames" :key="bone">
             {{ bone }}
           </li>
         </ul>
-        <p
-          v-else
-          class="hint"
-        >
+        <p v-else class="hint">
           {{ t('asset.inspector.pose.empty') }}
         </p>
       </div>
@@ -200,11 +130,7 @@
 
     <template v-else-if="asset && asset.type === 'model'">
       <div class="model-layout">
-        <div
-          v-if="!isAnimationOnlyModel"
-          class="model-tabs"
-          role="tablist"
-        >
+        <div v-if="!isAnimationOnlyModel" class="model-tabs" role="tablist">
           <button
             type="button"
             role="tab"
@@ -253,10 +179,7 @@
           @scene-defaults="onModelSceneDefaults"
         />
 
-        <div
-          class="model-panel"
-          :class="{ fill: modelTab === 'skeleton' }"
-        >
+        <div class="model-panel" :class="{ fill: modelTab === 'skeleton' }">
           <template v-if="modelTab === 'preview' && !isAnimationOnlyModel">
             <div class="section-label">
               {{ t('asset.inspector.transform.position') }}
@@ -264,30 +187,15 @@
             <div class="vec-row">
               <label>
                 X
-                <input
-                  type="number"
-                  step="0.01"
-                  :value="local.position.x"
-                  disabled
-                >
+                <input type="number" step="0.01" :value="local.position.x" disabled />
               </label>
               <label>
                 Y
-                <input
-                  type="number"
-                  step="0.01"
-                  :value="local.position.y"
-                  disabled
-                >
+                <input type="number" step="0.01" :value="local.position.y" disabled />
               </label>
               <label>
                 Z
-                <input
-                  type="number"
-                  step="0.01"
-                  :value="local.position.z"
-                  disabled
-                >
+                <input type="number" step="0.01" :value="local.position.z" disabled />
               </label>
             </div>
 
@@ -297,30 +205,15 @@
             <div class="vec-row">
               <label>
                 X
-                <input
-                  type="number"
-                  step="0.1"
-                  :value="local.rotationDeg.x"
-                  disabled
-                >
+                <input type="number" step="0.1" :value="local.rotationDeg.x" disabled />
               </label>
               <label>
                 Y
-                <input
-                  type="number"
-                  step="0.1"
-                  :value="local.rotationDeg.y"
-                  disabled
-                >
+                <input type="number" step="0.1" :value="local.rotationDeg.y" disabled />
               </label>
               <label>
                 Z
-                <input
-                  type="number"
-                  step="0.1"
-                  :value="local.rotationDeg.z"
-                  disabled
-                >
+                <input type="number" step="0.1" :value="local.rotationDeg.z" disabled />
               </label>
             </div>
 
@@ -330,49 +223,23 @@
             <div class="vec-row">
               <label>
                 X
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0.001"
-                  :value="local.scale.x"
-                  disabled
-                >
+                <input type="number" step="0.01" min="0.001" :value="local.scale.x" disabled />
               </label>
               <label>
                 Y
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0.001"
-                  :value="local.scale.y"
-                  disabled
-                >
+                <input type="number" step="0.01" min="0.001" :value="local.scale.y" disabled />
               </label>
               <label>
                 Z
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0.001"
-                  :value="local.scale.z"
-                  disabled
-                >
+                <input type="number" step="0.01" min="0.001" :value="local.scale.z" disabled />
               </label>
             </div>
 
             <label class="color-row">
               {{ t('director.stage.color') }}
               <span class="color-control">
-                <input
-                  :value="local.color"
-                  type="color"
-                  disabled
-                >
-                <input
-                  :value="local.color"
-                  type="text"
-                  disabled
-                >
+                <input :value="local.color" type="color" disabled />
+                <input :value="local.color" type="text" disabled />
               </span>
             </label>
           </template>
@@ -381,16 +248,9 @@
             <template v-if="modelClips.length">
               <label>
                 {{ t('asset.inspector.animation.clip') }}
-                <select
-                  :value="previewClip ?? ''"
-                  @change="onPreviewClipChange"
-                >
+                <select :value="previewClip ?? ''" @change="onPreviewClipChange">
                   <option value="">{{ t('asset.inspector.animation.none') }}</option>
-                  <option
-                    v-for="clip in modelClips"
-                    :key="clip"
-                    :value="clip"
-                  >{{ clip }}</option>
+                  <option v-for="clip in modelClips" :key="clip" :value="clip">{{ clip }}</option>
                 </select>
               </label>
               <div class="anim-controls">
@@ -415,7 +275,7 @@
                     step="0.25"
                     :value="previewSpeed"
                     @change="onPreviewSpeedChange"
-                  >
+                  />
                 </label>
               </div>
               <div class="section-label">
@@ -432,10 +292,7 @@
                 </li>
               </ul>
             </template>
-            <p
-              v-else
-              class="hint"
-            >
+            <p v-else class="hint">
               {{ t('asset.inspector.animation.empty') }}
             </p>
           </template>
@@ -447,10 +304,7 @@
             <div class="section-label">
               {{ t('asset.inspector.skeleton.bones', { n: modelBones.length }) }}
             </div>
-            <ul
-              v-if="modelBones.length"
-              class="bone-list"
-            >
+            <ul v-if="modelBones.length" class="bone-list">
               <li
                 v-for="bone in modelBones"
                 :key="bone"
@@ -460,10 +314,7 @@
                 {{ bone }}
               </li>
             </ul>
-            <p
-              v-else
-              class="hint"
-            >
+            <p v-else class="hint">
               {{ t('asset.inspector.skeleton.empty') }}
             </p>
           </template>
@@ -484,10 +335,7 @@
 
       <label v-if="showMediaPath">
         {{ t('asset.field.file') }}
-        <input
-          :value="asset.relativePath || t('asset.inspector.unlinked')"
-          disabled
-        >
+        <input :value="asset.relativePath || t('asset.inspector.unlinked')" disabled />
       </label>
     </template>
 
@@ -501,25 +349,14 @@
       />
     </label>
 
-    <AssetHostInterfacePanel
-      v-if="showHostInterface"
-      :asset="asset"
-    />
+    <AssetHostInterfacePanel v-if="showHostInterface" :asset="asset" />
 
-    <p
-      v-if="error"
-      class="err"
-    >
+    <p v-if="error" class="err">
       {{ error }}
     </p>
-    <p class="meta">
-      ID {{ asset.id.slice(0, 8) }} · v{{ asset.version }}
-    </p>
+    <p class="meta">ID {{ asset.id.slice(0, 8) }} · v{{ asset.version }}</p>
   </div>
-  <div
-    v-else
-    class="inspector empty"
-  >
+  <div v-else class="inspector empty">
     {{ t('asset.inspector.empty') }}
   </div>
 </template>
@@ -664,9 +501,7 @@ function graphValueHasPreview(value: GraphValue | undefined): boolean {
     return !!value.dataUrl?.trim() || !!value.relativePath?.trim()
   }
   if (value.kind === 'images') {
-    return value.items.some(
-      (item) => !!item.dataUrl?.trim() || !!item.relativePath?.trim()
-    )
+    return value.items.some((item) => !!item.dataUrl?.trim() || !!item.relativePath?.trim())
   }
   if (value.kind === 'text') return !!value.text.trim()
   if (value.kind === 'asset') {
@@ -674,23 +509,14 @@ function graphValueHasPreview(value: GraphValue | undefined): boolean {
     if (type === 'screenplay') {
       return true
     }
-    if (
-      type === 'image' ||
-      type === 'video' ||
-      type === 'voice' ||
-      type === 'canvas'
-    ) {
+    if (type === 'image' || type === 'video' || type === 'voice' || type === 'canvas') {
       return hasAssetFilePreview(assetById(value.assetId))
     }
     return false
   }
   if (value.kind === 'output') {
     if (value.items.some((item) => graphValueHasPreview(item))) return true
-    if (
-      value.images?.some(
-        (item) => !!item.dataUrl?.trim() || !!item.relativePath?.trim()
-      )
-    ) {
+    if (value.images?.some((item) => !!item.dataUrl?.trim() || !!item.relativePath?.trim())) {
       return true
     }
     if (value.notes.some((note) => !!note.text.trim())) return true
@@ -704,13 +530,14 @@ function nodeHasGraphPreview(hostId: string, node: GraphNode): boolean {
   if (typeof node.params.previewDataUrl === 'string' && node.params.previewDataUrl.trim()) {
     return true
   }
-  if (typeof node.params.previewRelativePath === 'string' && node.params.previewRelativePath.trim()) {
+  if (
+    typeof node.params.previewRelativePath === 'string' &&
+    node.params.previewRelativePath.trim()
+  ) {
     return true
   }
   if (
-    node.params.cameraShots?.some(
-      (shot) => !!shot.dataUrl?.trim() || !!shot.relativePath?.trim()
-    )
+    node.params.cameraShots?.some((shot) => !!shot.dataUrl?.trim() || !!shot.relativePath?.trim())
   ) {
     return true
   }
@@ -753,20 +580,16 @@ function upstreamHasPreview(hostId: string, nodeId: string, visited: Set<string>
  * 库选中且尚无媒体文件时：复用打开的资产图输出节点预览
  *（执行结果只活在 runStates 里，不会写入 relativePath）。
  */
-function resolveLibraryGraphPreview(
-  a: AssetInfo
-): { hostId: string; node: GraphNode } | null {
+function resolveLibraryGraphPreview(a: AssetInfo): { hostId: string; node: GraphNode } | null {
   const hostId = `asset:${a.id}`
   void graphEditorHosts.revision.value
   // 订阅 runStates，执行写回后触发预览切换
   void graphRunHosts.get(hostId)?.runStates
-  const output =
-    graphEditorHosts.findNode(hostId, (n) => n.category === 'output') ?? null
+  const output = graphEditorHosts.findNode(hostId, (n) => n.category === 'output') ?? null
   if (output && nodeHasGraphPreview(hostId, output)) {
     return { hostId, node: output }
   }
-  const bound =
-    graphEditorHosts.findNode(hostId, (n) => n.assetId === a.id) ?? null
+  const bound = graphEditorHosts.findNode(hostId, (n) => n.assetId === a.id) ?? null
   if (bound && nodeHasGraphPreview(hostId, bound)) {
     return { hostId, node: bound }
   }
@@ -839,7 +662,8 @@ const poseAssetBoneNames = computed(() => {
 })
 const typeIcon = computed(() => {
   if (!asset.value) return ''
-  if (modelMeta.value?.animationOnly) return assetDisplayIcon({ type: 'model', genParams: { modelKind: 'animation' } })
+  if (modelMeta.value?.animationOnly)
+    return assetDisplayIcon({ type: 'model', genParams: { modelKind: 'animation' } })
   return assetDisplayIcon(asset.value)
 })
 const isAnimationOnlyModel = computed(
@@ -847,8 +671,7 @@ const isAnimationOnlyModel = computed(
 )
 const showSkeletonOverlay = computed(
   () =>
-    modelTab.value === 'skeleton' ||
-    (isAnimationOnlyModel.value && modelTab.value === 'animation')
+    modelTab.value === 'skeleton' || (isAnimationOnlyModel.value && modelTab.value === 'animation')
 )
 /** 宿主资产才编辑端口；导入引用（mediaRole=reference）只作图中引用，不暴露接口编辑 */
 const showHostInterface = computed(
@@ -954,7 +777,8 @@ function visionTagTitle(tag: VisionObjectTag): string {
 const cutoutSourcePath = computed(() => {
   const a = asset.value
   if (!a || a.type !== 'image') return ''
-  const rel = a.relativePath?.trim() || resolveAssetPreviewMediaPath(a, project.assets)?.trim() || ''
+  const rel =
+    a.relativePath?.trim() || resolveAssetPreviewMediaPath(a, project.assets)?.trim() || ''
   // PSD 等分层源文件：像素要经合成解码才有，且这些能力按原图文件取像素，
   // 抠图 / 智能构图 / UI 部件提取一律不开放
   if (rel && isLayeredSourceImageFilePath(rel)) return ''
@@ -1020,7 +844,11 @@ function readGenString(gen: Record<string, unknown> | undefined, key: string): s
   return typeof v === 'string' ? v : ''
 }
 
-function readGenNumber(gen: Record<string, unknown> | undefined, key: string, fallback: number): number {
+function readGenNumber(
+  gen: Record<string, unknown> | undefined,
+  key: string,
+  fallback: number
+): number {
   const v = gen?.[key]
   return typeof v === 'number' && Number.isFinite(v) ? v : fallback
 }
@@ -1102,7 +930,12 @@ async function onModelSceneDefaults(defaults: ModelSceneDefaults): Promise<void>
     prevTransform.scale.x === defaults.transform.scale.x &&
     prevTransform.scale.y === defaults.transform.scale.y &&
     prevTransform.scale.z === defaults.transform.scale.z
-  if (sameTransform && prevColor === defaults.color && prev.transform != null && prevColor != null) {
+  if (
+    sameTransform &&
+    prevColor === defaults.color &&
+    prev.transform != null &&
+    prevColor != null
+  ) {
     return
   }
 

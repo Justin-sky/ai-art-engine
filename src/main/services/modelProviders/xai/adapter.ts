@@ -191,9 +191,7 @@ export const xaiAdapter: ModelProviderAdapter = {
   ): Promise<VideoPollResult> {
     const client = createProviderHttpClient(provider)
     try {
-      const path = job.pollingUrl.startsWith('http')
-        ? job.pollingUrl
-        : `/videos/${job.jobId}`
+      const path = job.pollingUrl.startsWith('http') ? job.pollingUrl : `/videos/${job.jobId}`
       const { data } = await client.get<{
         status?: string
         video?: { url?: string }

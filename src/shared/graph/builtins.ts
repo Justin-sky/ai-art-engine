@@ -9,10 +9,7 @@ const FRAME_ANIM_GEN_ASSET_ICON = 'frame-anim-gen'
 
 import { DEFAULT_SVG_ANIM_STATE, SVG_ANIM_GIF_OUT_PORT_ID } from './svgAnim'
 import { DEFAULT_SVG_GEN_STATE } from './svgGen'
-import {
-  bindEnsureBuiltinNodeTypes,
-  builtinRegistrationState
-} from './builtinState'
+import { bindEnsureBuiltinNodeTypes, builtinRegistrationState } from './builtinState'
 import { registerNodeType, type NodeTypeDefinition } from './registry'
 import {
   GRAPH_OUTPUT_NODE_IDS,
@@ -92,8 +89,14 @@ import {
   executeSvgAnimNode,
   executeSvgGenNode
 } from './execute'
-import { DEFAULT_GAME_SYSTEM_SYSTEM_PROMPT_ZH, DEFAULT_UI_SPLIT_SYSTEM_PROMPT_ZH } from './systemPromptSchemes'
-import { DEFAULT_GAME_SYSTEM_USER_PROMPT_ZH, DEFAULT_UI_SPLIT_USER_PROMPT_ZH } from './userPromptSchemes'
+import {
+  DEFAULT_GAME_SYSTEM_SYSTEM_PROMPT_ZH,
+  DEFAULT_UI_SPLIT_SYSTEM_PROMPT_ZH
+} from './systemPromptSchemes'
+import {
+  DEFAULT_GAME_SYSTEM_USER_PROMPT_ZH,
+  DEFAULT_UI_SPLIT_USER_PROMPT_ZH
+} from './userPromptSchemes'
 import { UI_SPLIT_INNER_GRAPH_VERSION } from './uiSplitParse'
 import {
   ANIM2D_GIF_FPS_DEFAULT,
@@ -293,7 +296,13 @@ function galleryOutPorts(dataType: GraphPortDataType): GraphPortDef[] {
 function imageProcessingPorts(): GraphPortDef[] {
   return [
     { id: 'in-text', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'Text' },
-    { id: 'in-image', direction: 'in', dataType: GraphPortType.image, multiple: true, label: 'Image' },
+    {
+      id: 'in-image',
+      direction: 'in',
+      dataType: GraphPortType.image,
+      multiple: true,
+      label: 'Image'
+    },
     ...galleryOutPorts(GraphPortType.image)
   ]
 }
@@ -302,9 +311,27 @@ function imageProcessingPorts(): GraphPortDef[] {
 function videoProcessingPorts(): GraphPortDef[] {
   return [
     { id: 'in-text', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'Text' },
-    { id: 'in-image', direction: 'in', dataType: GraphPortType.image, multiple: true, label: 'Image' },
-    { id: 'in-video', direction: 'in', dataType: GraphPortType.video, multiple: true, label: 'Video' },
-    { id: 'in-voice', direction: 'in', dataType: GraphPortType.voice, multiple: true, label: 'Audio' },
+    {
+      id: 'in-image',
+      direction: 'in',
+      dataType: GraphPortType.image,
+      multiple: true,
+      label: 'Image'
+    },
+    {
+      id: 'in-video',
+      direction: 'in',
+      dataType: GraphPortType.video,
+      multiple: true,
+      label: 'Video'
+    },
+    {
+      id: 'in-voice',
+      direction: 'in',
+      dataType: GraphPortType.voice,
+      multiple: true,
+      label: 'Audio'
+    },
     ...galleryOutPorts(GraphPortType.video)
   ]
 }
@@ -313,7 +340,13 @@ function videoProcessingPorts(): GraphPortDef[] {
 function voiceProcessingPorts(): GraphPortDef[] {
   return [
     { id: 'in-text', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'Text' },
-    { id: 'in-image', direction: 'in', dataType: GraphPortType.image, multiple: true, label: 'Image' },
+    {
+      id: 'in-image',
+      direction: 'in',
+      dataType: GraphPortType.image,
+      multiple: true,
+      label: 'Image'
+    },
     ...galleryOutPorts(GraphPortType.voice)
   ]
 }
@@ -322,7 +355,13 @@ function voiceProcessingPorts(): GraphPortDef[] {
 function model3dProcessingPorts(): GraphPortDef[] {
   return [
     { id: 'in-text', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'Text' },
-    { id: 'in-image', direction: 'in', dataType: GraphPortType.image, multiple: true, label: 'Image' },
+    {
+      id: 'in-image',
+      direction: 'in',
+      dataType: GraphPortType.image,
+      multiple: true,
+      label: 'Image'
+    },
     ...galleryOutPorts(GraphPortType.model)
   ]
 }
@@ -386,13 +425,13 @@ function assetDef(meta: (typeof ASSET_META)[number]): NodeTypeDefinition {
               : meta.type === 'model3d'
                 ? model3dProcessingPorts()
                 : meta.type === 'world'
-                ? worldHostPorts()
-                : meta.type === 'beat'
-                  ? beatHostPorts()
-                  : [
-                      ...(meta.processingIn
-                        ? [
-                            {
+                  ? worldHostPorts()
+                  : meta.type === 'beat'
+                    ? beatHostPorts()
+                    : [
+                        ...(meta.processingIn
+                          ? [
+                              {
                                 id: 'in',
                                 direction: 'in' as const,
                                 dataType: meta.processingIn,
@@ -501,9 +540,7 @@ function assetDef(meta: (typeof ASSET_META)[number]): NodeTypeDefinition {
     execute:
       meta.type === 'motion'
         ? (ctx: NodeExecuteContext) =>
-            isAssetRefNode(ctx.node)
-              ? executeMotionAssetRefNode(ctx)
-              : executeCamera3dNode(ctx)
+            isAssetRefNode(ctx.node) ? executeMotionAssetRefNode(ctx) : executeCamera3dNode(ctx)
         : meta.type === 'screenplay'
           ? executeScreenplayGenerateNode
           : meta.type === 'gameSystem'
@@ -564,11 +601,7 @@ function outputDef(kind: GraphOutputKind, label: string, icon: string): NodeType
 /** 导演台 / 成片时间线 / 叙事 / 世界元素资产编辑窗口的专用输出（仅输入口，无输出端口） */
 function specializedOutputDef(
   typeId:
-    | 'output.director'
-    | 'output.timeline'
-    | 'output.beat'
-    | 'output.beatUnit'
-    | 'output.world',
+    'output.director' | 'output.timeline' | 'output.beat' | 'output.beatUnit' | 'output.world',
   label: string,
   icon: string,
   defaultTitle: string,
@@ -765,7 +798,9 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     defaultTitle: 'Text',
     defaultSize: { ...NOTE_SIZE },
     sizeLimits: { ...NOTE_LIMITS },
-    ports: [{ id: 'out', direction: 'out', dataType: GraphPortType.text, multiple: true, label: 'Out' }],
+    ports: [
+      { id: 'out', direction: 'out', dataType: GraphPortType.text, multiple: true, label: 'Out' }
+    ],
     defaultParams: () => ({ text: '…' }),
     addable: true,
     deletable: true,
@@ -1773,8 +1808,20 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
-      { id: 'in-image', direction: 'in', dataType: GraphPortType.image, multiple: true, label: 'Image' },
-      { id: 'in-video', direction: 'in', dataType: GraphPortType.video, multiple: true, label: 'Video' },
+      {
+        id: 'in-image',
+        direction: 'in',
+        dataType: GraphPortType.image,
+        multiple: true,
+        label: 'Image'
+      },
+      {
+        id: 'in-video',
+        direction: 'in',
+        dataType: GraphPortType.video,
+        multiple: true,
+        label: 'Video'
+      },
       ...galleryOutPorts(GraphPortType.text)
     ],
     defaultParams: () => ({
@@ -1909,7 +1956,13 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
-      { id: 'in', direction: 'in', dataType: GraphPortType.texts, multiple: true, label: 'UI Screens' },
+      {
+        id: 'in',
+        direction: 'in',
+        dataType: GraphPortType.texts,
+        multiple: true,
+        label: 'UI Screens'
+      },
       {
         id: 'out',
         direction: 'out',
@@ -2046,7 +2099,13 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
       { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'In' },
-      { id: 'in-image', direction: 'in', dataType: GraphPortType.image, multiple: true, label: 'Image' },
+      {
+        id: 'in-image',
+        direction: 'in',
+        dataType: GraphPortType.image,
+        multiple: true,
+        label: 'Image'
+      },
       ...galleryOutPorts(GraphPortType.svg)
     ],
     defaultParams: () => ({
@@ -2333,7 +2392,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     contributeToGeneration: false,
     /** 同步目录后收集实体；批跑元素子图由 cookBatchSubgraphs / Cook 子图控制 */
     execute: executeWorldGenNode
-  },
+  }
 ]
 
 export function ensureBuiltinNodeTypes(): void {

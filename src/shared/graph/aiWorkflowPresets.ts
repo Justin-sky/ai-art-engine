@@ -17,19 +17,13 @@ function directorReviewTitle(target: keyof typeof EPISODE_AGENT_STOCK_TITLES): s
 }
 
 /** 短剧分镜（Agent 流水线）：剧本 → 节拍拆解 → 9宫格 → 9 锚点图 → 4宫格(36) → 动态提示词(36) → 36 视频，4 级导演审核；grid9 为 9宫格直出 9 条视频 */
-function buildEpisodePipelinePlan(
-  variant: 'grid4' | 'grid9' = 'grid4'
-): GraphPlan {
+function buildEpisodePipelinePlan(variant: 'grid4' | 'grid9' = 'grid4'): GraphPlan {
   const nodes: GraphPlan['nodes'] = []
   const edges: GraphPlan['edges'] = []
   const add = (node: GraphPlan['nodes'][number]): void => {
     nodes.push(node)
   }
-  const link = (
-    from: string,
-    to: string,
-    ports?: { fromPort?: string; toPort?: string }
-  ): void => {
+  const link = (from: string, to: string, ports?: { fromPort?: string; toPort?: string }): void => {
     edges.push({ from, to, ...ports })
   }
   const scope = { episodeScopeKey: EPISODE_SCOPE_KEY }
@@ -96,9 +90,9 @@ function buildEpisodePipelinePlan(
     typeId: 'asset.image',
     title: '9宫格拼图·锚点画布',
     params: {
-        ...scope,
-        episodeStep: 'beatboard',
-        ...applyGraphSkill('episode.image.grid9')
+      ...scope,
+      episodeStep: 'beatboard',
+      ...applyGraphSkill('episode.image.grid9')
     }
   })
   link('beatboard', 'img9grid', { fromPort: 'out', toPort: 'in-text' })
@@ -559,8 +553,7 @@ const PRESET_PLANS: Record<Exclude<AiWorkflowPresetId, 'custom'>, GraphPlan> = {
         typeId: 'play.script',
         title: '画风主题',
         params: {
-          text:
-            '画风主题（示例）：暖色 2D 卡通、浅色卡片底、描边统一——可按需改写主题句，正式风格以「风格参考图 → UI/图标」为准。'
+          text: '画风主题（示例）：暖色 2D 卡通、浅色卡片底、描边统一——可按需改写主题句，正式风格以「风格参考图 → UI/图标」为准。'
         }
       },
       {
@@ -568,8 +561,7 @@ const PRESET_PLANS: Record<Exclude<AiWorkflowPresetId, 'custom'>, GraphPlan> = {
         typeId: 'play.script',
         title: '技能图标名单',
         params: {
-          text:
-            '火焰斩\n冰霜护盾\n雷击\n冲刺\n治疗术\n狂暴\n破甲\n圣光祝福'
+          text: '火焰斩\n冰霜护盾\n雷击\n冲刺\n治疗术\n狂暴\n破甲\n圣光祝福'
         }
       },
       {
@@ -713,8 +705,7 @@ const PRESET_PLANS: Record<Exclude<AiWorkflowPresetId, 'custom'>, GraphPlan> = {
         typeId: 'note.text',
         title: '使用说明',
         params: {
-          text:
-            '使用流程：1) 在「画风主题」填主题句；在「技能/道具/状态图标名单」各填一枚一行的名单（每类 ≤9 枚，名单顺序即整版表逐行格位，如 1-1 = 第 1 枚；改名单后对应「·整版」需重跑）；2) 为工程选择「UI / 图标」风格参考图，保证三类同一画风；3) 运行各「·整版」节点生成 3×3 方形卡片整版表；4) 运行各「·打包」节点：从整版逐格裁切 → 采样纯色底键控透明 → 修剪并统一画布中心对齐 → 按名单命名 PNG 落盘 Assets/IconPacks/…，并同目录写 icons.txt 清单（含 cellKey↔名单映射、文件名、锚点）；5) 「·切格」节点仅用于单枚检查/精修（逐枚 dive 后续再做）。打包前建议先跑一次「·切格」目检格位；若名单占满 9 枚无空白格，键控自动退回版面外框采样。'
+          text: '使用流程：1) 在「画风主题」填主题句；在「技能/道具/状态图标名单」各填一枚一行的名单（每类 ≤9 枚，名单顺序即整版表逐行格位，如 1-1 = 第 1 枚；改名单后对应「·整版」需重跑）；2) 为工程选择「UI / 图标」风格参考图，保证三类同一画风；3) 运行各「·整版」节点生成 3×3 方形卡片整版表；4) 运行各「·打包」节点：从整版逐格裁切 → 采样纯色底键控透明 → 修剪并统一画布中心对齐 → 按名单命名 PNG 落盘 Assets/IconPacks/…，并同目录写 icons.txt 清单（含 cellKey↔名单映射、文件名、锚点）；5) 「·切格」节点仅用于单枚检查/精修（逐枚 dive 后续再做）。打包前建议先跑一次「·切格」目检格位；若名单占满 9 枚无空白格，键控自动退回版面外框采样。'
         }
       }
     ],
@@ -763,8 +754,7 @@ const PRESET_PLANS: Record<Exclude<AiWorkflowPresetId, 'custom'>, GraphPlan> = {
         typeId: 'media.rework',
         title: '媒体返工',
         params: {
-          generateInstruction:
-            '保持产品形态与卖点信息一致，优化构图、清晰度与画面合规性'
+          generateInstruction: '保持产品形态与卖点信息一致，优化构图、清晰度与画面合规性'
         }
       },
       {

@@ -31,16 +31,16 @@ export const EPISODE_AGENT_TITLE_I18N: Record<string, string> = {
   [EPISODE_AGENT_STOCK_TITLES.directorReview]: EPISODE_DIRECTOR_REVIEW_KEY,
   // 旧版中文标题：手动菜单 / 一键工作流 / graphSkills 各代变体，读取时仍需识别
   '分镜师·节拍拆解表': 'graph.episodeAgent.title.beatBreakdown', // cjk-ok 旧版持久化标题
-  '节拍拆解表': 'graph.episodeAgent.title.beatBreakdown', // cjk-ok 旧版持久化标题
+  节拍拆解表: 'graph.episodeAgent.title.beatBreakdown', // cjk-ok 旧版持久化标题
   '分镜师·9宫格分镜表': 'graph.episodeAgent.title.grid9Storyboard', // cjk-ok 旧版持久化标题
   '9宫格分镜表': 'graph.episodeAgent.title.grid9Storyboard', // cjk-ok 旧版持久化标题
   '分镜师·4宫格动态分镜表': 'graph.episodeAgent.title.grid4Motion', // cjk-ok 旧版持久化标题
   '4宫格动态分镜表': 'graph.episodeAgent.title.grid4Motion', // cjk-ok 旧版持久化标题
   '动画师·动态提示词表': 'graph.episodeAgent.title.motionPrompt', // cjk-ok 旧版持久化标题
   '动画师·9宫格动态提示词表': 'graph.episodeAgent.title.motionPrompt', // cjk-ok 旧版持久化标题
-  '动态提示词表': 'graph.episodeAgent.title.motionPrompt', // cjk-ok 旧版持久化标题
+  动态提示词表: 'graph.episodeAgent.title.motionPrompt', // cjk-ok 旧版持久化标题
   '9宫格动态提示词表': 'graph.episodeAgent.title.motionPrompt', // cjk-ok 旧版持久化标题
-  '导演审核': EPISODE_DIRECTOR_REVIEW_KEY // cjk-ok 旧版持久化标题
+  导演审核: EPISODE_DIRECTOR_REVIEW_KEY // cjk-ok 旧版持久化标题
 }
 
 /** 审核复合标题的前缀形态（新英文 / 旧中文），如「导演审核·节拍拆解表」 */
@@ -62,7 +62,10 @@ export function resolveEpisodeAgentStageTitle(
   if (direct) return t(direct)
   for (const prefix of EPISODE_AGENT_REVIEW_PREFIXES) {
     if (!custom.startsWith(prefix)) continue
-    const rest = custom.slice(prefix.length).replace(/^[\s·•\-—]+/, '').trim()
+    const rest = custom
+      .slice(prefix.length)
+      .replace(/^[\s·•\-—]+/, '')
+      .trim()
     const stageKey = rest ? EPISODE_AGENT_TITLE_I18N[rest] : undefined
     if (stageKey && stageKey !== EPISODE_DIRECTOR_REVIEW_KEY) {
       return `${t(EPISODE_DIRECTOR_REVIEW_KEY)} · ${t(stageKey)}`
@@ -113,7 +116,8 @@ export function resolveGraphNodeDisplayTitle(
   if (node.category === 'output') {
     const scopeDef = options.scope ? getGraphScopeDefinition(options.scope) : undefined
     const stock = scopeDef?.output.title?.trim()
-    const isStock = !custom || (stock != null && custom === stock) || !!STOCK_OUTPUT_TITLE_I18N[custom]
+    const isStock =
+      !custom || (stock != null && custom === stock) || !!STOCK_OUTPUT_TITLE_I18N[custom]
     if (isStock) {
       if (
         scopeDef?.outputTitleI18nKey &&
@@ -145,7 +149,10 @@ export function resolveGraphNodeDisplayTitle(
 }
 
 /** 标题是否为 scope / 内置输出节点或剧集 Agent 阶段节点的库存默认值（应走 i18n，不当作用户自定义） */
-export function isStockGraphOutputTitle(title: string | undefined | null, scope?: GraphAddScope): boolean {
+export function isStockGraphOutputTitle(
+  title: string | undefined | null,
+  scope?: GraphAddScope
+): boolean {
   const custom = title?.trim() ?? ''
   if (!custom) return true
   if (STOCK_OUTPUT_TITLE_I18N[custom]) return true

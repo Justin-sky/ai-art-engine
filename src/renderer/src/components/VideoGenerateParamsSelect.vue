@@ -1,10 +1,5 @@
 <template>
-  <div
-    v-if="visible"
-    class="video-params"
-    @pointerdown.stop
-    @dblclick.stop
-  >
+  <div v-if="visible" class="video-params" @pointerdown.stop @dblclick.stop>
     <button
       ref="triggerEl"
       type="button"
@@ -15,10 +10,7 @@
       @click.stop="toggleMenu"
     >
       <span class="summary-text">{{ summaryText }}</span>
-      <span
-        class="chevron"
-        aria-hidden="true"
-      />
+      <span class="chevron" aria-hidden="true" />
     </button>
 
     <Teleport to="body">
@@ -33,24 +25,15 @@
         @click.stop
         @pointerdown.stop
       >
-        <p
-          v-if="loading"
-          class="menu-status"
-        >
+        <p v-if="loading" class="menu-status">
           {{ t('graph.inspector.generate.videoParams.loading') }}
         </p>
         <template v-else>
-          <p
-            v-if="!hasSections"
-            class="menu-status"
-          >
+          <p v-if="!hasSections" class="menu-status">
             {{ t('graph.inspector.generate.videoParams.empty') }}
           </p>
           <template v-else>
-            <section
-              v-if="caps.durations.length"
-              class="section"
-            >
+            <section v-if="caps.durations.length" class="section">
               <div class="section-title">
                 {{ t('graph.inspector.generate.videoParams.duration') }}
               </div>
@@ -68,10 +51,7 @@
               </div>
             </section>
 
-            <section
-              v-if="caps.resolutions.length"
-              class="section"
-            >
+            <section v-if="caps.resolutions.length" class="section">
               <div class="section-title">
                 {{ t('graph.inspector.generate.videoParams.resolution') }}
               </div>
@@ -89,10 +69,7 @@
               </div>
             </section>
 
-            <section
-              v-if="caps.aspectRatios.length"
-              class="section"
-            >
+            <section v-if="caps.aspectRatios.length" class="section">
               <div class="section-title">
                 {{ t('graph.inspector.generate.videoParams.aspectRatio') }}
               </div>
@@ -105,19 +82,13 @@
                   :class="{ active: local.aspectRatio === ratio }"
                   @click="pickAspectRatio(ratio)"
                 >
-                  <span
-                    class="ratio-icon"
-                    v-html="ratioIcon(ratio)"
-                  />
+                  <span class="ratio-icon" v-html="ratioIcon(ratio)" />
                   <span class="ratio-label">{{ ratio }}</span>
                 </button>
               </div>
             </section>
 
-            <section
-              v-if="caps.supportsGenerateAudio"
-              class="section"
-            >
+            <section v-if="caps.supportsGenerateAudio" class="section">
               <div class="section-title">
                 {{ t('graph.inspector.generate.videoParams.generateAudio') }}
               </div>
@@ -141,10 +112,7 @@
               </div>
             </section>
 
-            <section
-              v-if="!hideFrameMode && frameModeOptions.length > 1"
-              class="section"
-            >
+            <section v-if="!hideFrameMode && frameModeOptions.length > 1" class="section">
               <div class="section-title">
                 {{ t('graph.inspector.generate.videoParams.frameMode') }}
               </div>
@@ -172,7 +140,7 @@
                 type="checkbox"
                 :checked="local.seedUseGlobal !== false"
                 @change="toggleSeedUseGlobal"
-              >
+              />
               <span>{{ t('graph.inspector.generate.videoParams.seedUseGlobal') }}</span>
             </label>
             <div class="seed-row">
@@ -186,7 +154,7 @@
                 :disabled="local.seedUseGlobal !== false"
                 :placeholder="t('graph.inspector.generate.videoParams.seedPlaceholder')"
                 @input="pickSeed(($event.target as HTMLInputElement).value)"
-              >
+              />
               <button
                 type="button"
                 class="chip"
@@ -257,7 +225,9 @@ const frameModeOptions = computed(() => availableVideoFrameModes(caps.value.supp
 const summaryText = computed(() => {
   const parts: string[] = []
   if (caps.value.durations.length && local.value.duration != null) {
-    parts.push(t('graph.inspector.generate.videoParams.durationOption', { n: local.value.duration }))
+    parts.push(
+      t('graph.inspector.generate.videoParams.durationOption', { n: local.value.duration })
+    )
   }
   if (caps.value.aspectRatios.length && local.value.aspectRatio) {
     parts.push(local.value.aspectRatio)

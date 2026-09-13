@@ -45,9 +45,7 @@ function clampInt(n: number, min: number, max: number): number {
   return Math.round(clamp(v, min, max))
 }
 
-export function normalizeImageAlign(
-  raw?: Partial<ImageAlignState> | null
-): ImageAlignState {
+export function normalizeImageAlign(raw?: Partial<ImageAlignState> | null): ImageAlignState {
   const base = { ...DEFAULT_IMAGE_ALIGN, ...(raw ?? {}) }
   return {
     canvasWidth: clampInt(base.canvasWidth, MIN_CANVAS, MAX_CANVAS),

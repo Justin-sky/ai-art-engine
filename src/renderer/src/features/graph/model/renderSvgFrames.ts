@@ -232,9 +232,7 @@ async function rasterizeFrame(
 /**
  * 逐帧烘焙 SVG 动效。静态 SVG（无可求值动画）只返回一帧，调用方据此不产出 GIF。
  */
-export async function renderSvgFrames(
-  input: SvgFrameRenderInput
-): Promise<SvgFrameRenderResult> {
+export async function renderSvgFrames(input: SvgFrameRenderInput): Promise<SvgFrameRenderResult> {
   const state = normalizeSvgAnimState(input.state)
   const svgText = input.svgText?.trim()
   if (!svgText) throw new Error('renderSvgFrames: empty svg text')

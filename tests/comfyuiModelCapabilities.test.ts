@@ -40,11 +40,14 @@ describe('comfyui modelCapabilities', () => {
 
   it('infers modality from node class types and ignores the filename', () => {
     expect(
-      inferComfyUiWorkflowModality('my-flow', undefined, ['EmptyHunyuanLatentVideo', 'VHS_VideoCombine'])
+      inferComfyUiWorkflowModality('my-flow', undefined, [
+        'EmptyHunyuanLatentVideo',
+        'VHS_VideoCombine'
+      ])
     ).toBe('video')
-    expect(inferComfyUiWorkflowModality('my-flow', undefined, ['EmptyLatentImage', 'SaveImage'])).toBe(
-      'image'
-    )
+    expect(
+      inferComfyUiWorkflowModality('my-flow', undefined, ['EmptyLatentImage', 'SaveImage'])
+    ).toBe('image')
     expect(inferComfyUiWorkflowModality('my-flow', undefined, ['SaveAudio'])).toBe('audio')
     expect(
       inferComfyUiWorkflowModality('wan22文生视频', undefined, ['EmptyLatentImage', 'SaveImage'])
@@ -99,7 +102,10 @@ describe('inferComfyUiMediaInputs', () => {
 
   it('returns all zeros for a pure text-to-video node with no media socket', () => {
     const graph = {
-      '1': { class_type: 'EmptyHunyuanLatentVideo', inputs: { width: 1280, height: 720, length: 73 } }
+      '1': {
+        class_type: 'EmptyHunyuanLatentVideo',
+        inputs: { width: 1280, height: 720, length: 73 }
+      }
     }
     expect(inferComfyUiMediaInputs(graph)).toEqual({
       maxImages: 0,

@@ -1,12 +1,6 @@
 <template>
-  <div
-    class="shell"
-    :class="{ 'window-chrome': windowChrome }"
-  >
-    <header
-      class="titlebar"
-      :class="{ drag: windowChrome }"
-    >
+  <div class="shell" :class="{ 'window-chrome': windowChrome }">
+    <header class="titlebar" :class="{ drag: windowChrome }">
       <div class="title-block">
         <span class="app-mark">{{ t('director.title') }}</span>
         <h2 class="title">
@@ -23,12 +17,7 @@
             >
               {{ t('director.stage.viewMenu') }}
             </button>
-            <div
-              v-if="viewMenuOpen"
-              ref="viewMenuEl"
-              class="menu-dropdown"
-              role="menu"
-            >
+            <div v-if="viewMenuOpen" ref="viewMenuEl" class="menu-dropdown" role="menu">
               <button
                 type="button"
                 class="menu-item"
@@ -99,12 +88,7 @@
             >
               {{ t('director.stage.cameraPreset.title') }}
             </button>
-            <div
-              v-if="presetMenuOpen"
-              ref="presetMenuEl"
-              class="preset-dropdown"
-              role="menu"
-            >
+            <div v-if="presetMenuOpen" ref="presetMenuEl" class="preset-dropdown" role="menu">
               <button
                 v-for="group in presetGroups"
                 :key="group.id"
@@ -120,11 +104,7 @@
                 <span>{{ t(group.labelKey) }}</span>
                 <span class="preset-sub-arrow">›</span>
               </button>
-              <div
-                v-if="presetSubmenu"
-                class="preset-submenu"
-                role="menu"
-              >
+              <div v-if="presetSubmenu" class="preset-submenu" role="menu">
                 <button
                   v-for="preset in presetSubmenuItems"
                   :key="preset.id"
@@ -132,16 +112,13 @@
                   class="preset-item"
                   :class="{
                     disabled:
-                      presetSubmenu === 'combination' &&
-                      !scene.canApplyComboPreset(preset.id)
+                      presetSubmenu === 'combination' && !scene.canApplyComboPreset(preset.id)
                   }"
                   :disabled="
-                    presetSubmenu === 'combination' &&
-                      !scene.canApplyComboPreset(preset.id)
+                    presetSubmenu === 'combination' && !scene.canApplyComboPreset(preset.id)
                   "
                   :title="
-                    presetSubmenu === 'combination' &&
-                      !scene.canApplyComboPreset(preset.id)
+                    presetSubmenu === 'combination' && !scene.canApplyComboPreset(preset.id)
                       ? t('director.stage.cameraPreset.comboNeedModels')
                       : ''
                   "
@@ -165,10 +142,7 @@
             :title="t('director.stage.shadingMode')"
             @click.stop="toggleShadingMenu"
           >
-            <span
-              class="shots-trigger-icon"
-              v-html="SHADING_ICON"
-            />
+            <span class="shots-trigger-icon" v-html="SHADING_ICON" />
           </button>
           <div
             v-if="shadingMenuOpen"
@@ -193,12 +167,9 @@
                 v-if="scene.shadingMode.value === option.id"
                 class="shading-check"
                 aria-hidden="true"
-              >✓</span>
-              <span
-                v-else
-                class="shading-check spacer"
-                aria-hidden="true"
-              />
+                >✓</span
+              >
+              <span v-else class="shading-check spacer" aria-hidden="true" />
               <span>{{ t(option.labelKey) }}</span>
             </button>
           </div>
@@ -212,16 +183,9 @@
             :title="t('director.stage.gizmos.title')"
             @click.stop="toggleGizmosMenu"
           >
-            <span
-              class="shots-trigger-icon"
-              v-html="GIZMOS_ICON"
-            />
+            <span class="shots-trigger-icon" v-html="GIZMOS_ICON" />
           </button>
-          <div
-            v-if="gizmosMenuOpen"
-            ref="gizmosMenuEl"
-            class="gizmos-menu"
-          >
+          <div v-if="gizmosMenuOpen" ref="gizmosMenuEl" class="gizmos-menu">
             <div class="gizmos-title">
               {{ t('director.stage.gizmos.title') }}
             </div>
@@ -234,7 +198,7 @@
                 step="0.05"
                 :value="scene.gizmoSize.value"
                 @input="onGizmoSizeInput"
-              >
+              />
               <span class="gizmos-val">{{ scene.gizmoSize.value.toFixed(2) }}</span>
             </label>
             <label class="gizmos-row check">
@@ -242,7 +206,7 @@
                 type="checkbox"
                 :checked="scene.sceneLabelsVisible.value"
                 @change="onGizmoToggle('labels', $event)"
-              >
+              />
               <span>{{ t('director.stage.gizmos.labels') }}</span>
             </label>
             <label class="gizmos-row check">
@@ -250,7 +214,7 @@
                 type="checkbox"
                 :checked="scene.cameraGizmosVisible.value"
                 @change="onGizmoToggle('cameras', $event)"
-              >
+              />
               <span>{{ t('director.stage.gizmos.cameras') }}</span>
             </label>
             <label class="gizmos-row check">
@@ -258,7 +222,7 @@
                 type="checkbox"
                 :checked="scene.gridGizmoVisible.value"
                 @change="onGizmoToggle('grid', $event)"
-              >
+              />
               <span>{{ t('director.stage.gizmos.grid') }}</span>
             </label>
             <label class="gizmos-row check">
@@ -266,7 +230,7 @@
                 type="checkbox"
                 :checked="scene.selectionBoundsVisible.value"
                 @change="onGizmoToggle('bounds', $event)"
-              >
+              />
               <span>{{ t('director.stage.gizmos.selectionBounds') }}</span>
             </label>
             <label class="gizmos-row check">
@@ -274,7 +238,7 @@
                 type="checkbox"
                 :checked="scene.captureLabelsVisible.value"
                 @change="onGizmoToggle('captureLabels', $event)"
-              >
+              />
               <span>{{ t('director.stage.gizmos.captureLabels') }}</span>
             </label>
             <label class="gizmos-row check">
@@ -282,7 +246,7 @@
                 type="checkbox"
                 :checked="scene.captureCameraLabelsVisible.value"
                 @change="onGizmoToggle('captureCameraLabels', $event)"
-              >
+              />
               <span>{{ t('director.stage.gizmos.captureCameraLabels') }}</span>
             </label>
           </div>
@@ -296,24 +260,12 @@
             :title="t('director.stage.tabShots')"
             @click.stop="toggleShotsPanel"
           >
-            <span
-              class="shots-trigger-icon"
-              v-html="CAMERA_ICON"
-            />
+            <span class="shots-trigger-icon" v-html="CAMERA_ICON" />
             <span>{{ t('director.stage.tabShots') }}</span>
-            <span
-              v-if="shotCount"
-              class="shots-count"
-            >{{ shotCount }}</span>
+            <span v-if="shotCount" class="shots-count">{{ shotCount }}</span>
           </button>
-          <div
-            v-if="shotsPanelOpen"
-            class="shots-dropdown"
-          >
-            <DirectorCameraShotsPanel
-              :initial-tab="shotsPanelTab"
-              @close="closeShotsPanel"
-            />
+          <div v-if="shotsPanelOpen" class="shots-dropdown">
+            <DirectorCameraShotsPanel :initial-tab="shotsPanelTab" @close="closeShotsPanel" />
           </div>
         </div>
         <button
@@ -375,10 +327,7 @@
 
     <footer class="statusbar">
       <span>{{ t('director.hint.stage') }}</span>
-      <span
-        v-if="scene.error.value"
-        class="status-error"
-      >{{ scene.error.value }}</span>
+      <span v-if="scene.error.value" class="status-error">{{ scene.error.value }}</span>
     </footer>
   </div>
 </template>
@@ -457,8 +406,7 @@ const hasSelection = computed(
     (scene.selectionKind.value === 'camera' && !!scene.selectedCameraId.value)
 )
 const shotCount = computed(
-  () =>
-    (scene.stage.value.cameraShots?.length ?? 0) + (scene.stage.value.cameraVideos?.length ?? 0)
+  () => (scene.stage.value.cameraShots?.length ?? 0) + (scene.stage.value.cameraVideos?.length ?? 0)
 )
 
 const presetGroups = [
@@ -566,13 +514,7 @@ function onGizmoSizeInput(event: Event): void {
 }
 
 function onGizmoToggle(
-  kind:
-    | 'labels'
-    | 'cameras'
-    | 'grid'
-    | 'bounds'
-    | 'captureLabels'
-    | 'captureCameraLabels',
+  kind: 'labels' | 'cameras' | 'grid' | 'bounds' | 'captureLabels' | 'captureCameraLabels',
   event: Event
 ): void {
   const checked = (event.target as HTMLInputElement).checked

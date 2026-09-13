@@ -165,7 +165,9 @@ export function summarizeMediaUrlForLog(url: string): string {
     const head = comma > 0 ? trimmed.slice(0, Math.min(comma, 80)) : 'data:'
     return `${head},${trimmed.length}B`
   }
-  return trimmed.length > URL_PREVIEW_MAX ? `${trimmed.slice(0, URL_PREVIEW_MAX)}…(${trimmed.length})` : trimmed
+  return trimmed.length > URL_PREVIEW_MAX
+    ? `${trimmed.slice(0, URL_PREVIEW_MAX)}…(${trimmed.length})`
+    : trimmed
 }
 
 /** 日志用参考列表摘要：string 或 {kind,url} 统一转成 {kind,url 摘要} */

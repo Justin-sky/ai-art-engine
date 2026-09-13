@@ -15,10 +15,7 @@
       :aria-pressed="isActive(item)"
       @click="onToggle(item.id)"
     >
-      <span
-        class="rail-icon"
-        aria-hidden="true"
-      >{{ item.icon }}</span>
+      <span class="rail-icon" aria-hidden="true">{{ item.icon }}</span>
       <span class="rail-label">{{ item.label }}</span>
     </button>
   </aside>
@@ -113,8 +110,7 @@ function toggleChat(): void {
       component: 'chat',
       title: t('studio.panel.chat'),
       position: {
-        referencePanel:
-          api.getPanel('inspector')?.id ?? api.getPanel('assets')?.id ?? 'workspace',
+        referencePanel: api.getPanel('inspector')?.id ?? api.getPanel('assets')?.id ?? 'workspace',
         direction: 'right'
       },
       initialWidth: CHAT_PANEL_WIDTH,

@@ -92,10 +92,7 @@ function modeFromResolution(resolution: string | undefined): string {
   return 'std'
 }
 
-async function pollImageTask(
-  provider: ModelProviderInstance,
-  taskId: string
-): Promise<string[]> {
+async function pollImageTask(provider: ModelProviderInstance, taskId: string): Promise<string[]> {
   const client = createKlingLongClient(provider)
   for (let i = 0; i < IMAGE_POLL_MAX_ATTEMPTS; i++) {
     const { data: envelope } = await client.get<KlingApiEnvelope<KlingTaskData>>(

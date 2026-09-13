@@ -11,39 +11,22 @@
     @close="onClose"
   >
     <div class="editor-root">
-      <div
-        ref="stageEl"
-        class="stage"
-        @pointerdown="onStagePointerDown"
-      >
-        <div
-          v-if="sourceLoading"
-          class="stage-empty"
-        >
+      <div ref="stageEl" class="stage" @pointerdown="onStagePointerDown">
+        <div v-if="sourceLoading" class="stage-empty">
           {{ t('graph.editor.loadingSource') }}
         </div>
-        <div
-          v-else-if="!sourceUrl"
-          class="stage-empty"
-        >
+        <div v-else-if="!sourceUrl" class="stage-empty">
           {{ t('graph.expand.noSource') }}
         </div>
-        <div
-          v-else
-          class="canvas-frame"
-          :style="canvasFrameStyle"
-        >
-          <div
-            class="grid-overlay"
-            aria-hidden="true"
-          />
+        <div v-else class="canvas-frame" :style="canvasFrameStyle">
+          <div class="grid-overlay" aria-hidden="true" />
           <img
             class="source-img"
             :src="sourceUrl"
             alt=""
             decoding="async"
             :style="sourceImgStyle"
-          >
+          />
           <button
             v-for="h in handles"
             :key="h.id"
@@ -59,78 +42,39 @@
       <div class="toolbar">
         <label class="tool tool-model">
           <span class="tool-label">{{ t('graph.inspector.generate.imageModel') }}</span>
-          <select
-            v-model="selectionKey"
-            class="select"
-            @change="onModelChange"
-          >
-            <option
-              v-for="opt in modelOptions"
-              :key="opt.key"
-              :value="opt.key"
-            >
+          <select v-model="selectionKey" class="select" @change="onModelChange">
+            <option v-for="opt in modelOptions" :key="opt.key" :value="opt.key">
               {{ opt.label }}
             </option>
-            <option
-              v-if="modelOptions.length === 0"
-              value=""
-            >
+            <option v-if="modelOptions.length === 0" value="">
               {{ t('graph.inspector.generate.noModels') }}
             </option>
           </select>
         </label>
         <label class="tool">
           <span class="tool-label">{{ t('graph.expand.aspect') }}</span>
-          <select
-            v-model="draft.aspectId"
-            class="select"
-            @change="markDirty"
-          >
+          <select v-model="draft.aspectId" class="select" @change="markDirty">
             <option value="original">{{ t('graph.expand.aspects.original') }}</option>
-            <option
-              v-for="ratio in aspectOptions"
-              :key="ratio"
-              :value="ratio"
-            >
+            <option v-for="ratio in aspectOptions" :key="ratio" :value="ratio">
               {{ ratio }}
             </option>
           </select>
         </label>
         <label class="tool">
           <span class="tool-label">{{ t('graph.expand.resolution') }}</span>
-          <select
-            v-model="draft.resolution"
-            class="select"
-            @change="markDirty"
-          >
-            <option
-              v-for="r in resolutionOptions"
-              :key="r"
-              :value="r"
-            >{{ r }}</option>
+          <select v-model="draft.resolution" class="select" @change="markDirty">
+            <option v-for="r in resolutionOptions" :key="r" :value="r">{{ r }}</option>
           </select>
         </label>
         <label class="tool">
           <span class="tool-label">{{ t('graph.expand.count') }}</span>
-          <select
-            v-model.number="draft.count"
-            class="select"
-            @change="markDirty"
-          >
-            <option
-              v-for="c in countOptions"
-              :key="c"
-              :value="c"
-            >
+          <select v-model.number="draft.count" class="select" @change="markDirty">
+            <option v-for="c in countOptions" :key="c" :value="c">
               {{ t('graph.expand.countOption', { n: c }) }}
             </option>
           </select>
         </label>
-        <button
-          type="button"
-          class="reset-btn"
-          @click="resetParams"
-        >
+        <button type="button" class="reset-btn" @click="resetParams">
           {{ t('graph.expand.resetParams') }}
         </button>
       </div>
@@ -201,10 +145,7 @@ const dirty = computed(() => {
   const a = normalizeImageExpand(props.setup)
   const b = normalizeImageExpand(draft)
   const setupKey = preferredModelKey(props.generateProviderInstanceId, props.generateModel)
-  return (
-    selectionKey.value !== setupKey ||
-    JSON.stringify(a) !== JSON.stringify(b)
-  )
+  return selectionKey.value !== setupKey || JSON.stringify(a) !== JSON.stringify(b)
 })
 
 const totalW = computed(() => 1 + draft.expandLeft + draft.expandRight)
@@ -347,8 +288,7 @@ async function refreshCapabilities(): Promise<void> {
   aspectOptions.value = [...caps.aspectRatios]
   resolutionOptions.value =
     caps.resolutions.length > 0 ? [...caps.resolutions] : [...EXPAND_FALLBACK_RESOLUTIONS]
-  countOptions.value =
-    caps.counts.length > 0 ? [...caps.counts] : [...EXPAND_FALLBACK_COUNTS]
+  countOptions.value = caps.counts.length > 0 ? [...caps.counts] : [...EXPAND_FALLBACK_COUNTS]
   Object.assign(
     draft,
     clampExpandParamsToCapabilities(draft, {

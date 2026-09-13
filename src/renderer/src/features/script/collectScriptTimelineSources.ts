@@ -170,10 +170,7 @@ function collectFromVideoNodes(doc: GraphDocument, hostId: string): ScriptTimeli
     sources.push(src)
   }
   for (const node of doc.nodes) {
-    if (
-      node.typeId !== 'asset.video' &&
-      !Array.isArray(node.params?.generatedVideos)
-    ) {
+    if (node.typeId !== 'asset.video' && !Array.isArray(node.params?.generatedVideos)) {
       continue
     }
     const title = node.title?.trim()
@@ -216,10 +213,7 @@ function collectFromVoiceNodes(doc: GraphDocument, hostId: string): ScriptTimeli
     sources.push(src)
   }
   for (const node of doc.nodes) {
-    if (
-      node.typeId !== 'asset.voice' &&
-      !Array.isArray(node.params?.generatedVoices)
-    ) {
+    if (node.typeId !== 'asset.voice' && !Array.isArray(node.params?.generatedVoices)) {
       continue
     }
     const title = node.title?.trim()

@@ -25,12 +25,7 @@
       :aria-expanded="expanded"
       @click="toggleExpanded"
     >
-      <svg
-        viewBox="0 0 16 16"
-        width="14"
-        height="14"
-        aria-hidden="true"
-      >
+      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
         <path
           fill="none"
           stroke="currentColor"
@@ -50,23 +45,14 @@
       :aria-pressed="minimapVisible"
       @click="emit('update:minimapVisible', !minimapVisible)"
     >
-      <svg
-        viewBox="0 0 16 16"
-        width="14"
-        height="14"
-        aria-hidden="true"
-      >
+      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
         <path
           fill="none"
           stroke="currentColor"
           stroke-width="1.25"
           d="M2.5 2.5h11v11h-11zM9.5 9.5h3.5v3.5H9.5z"
         />
-        <path
-          fill="currentColor"
-          opacity="0.45"
-          d="M3.2 4.2h2.2v1.6H3.2zm3.4 2.4h1.8v2.2H6.6z"
-        />
+        <path fill="currentColor" opacity="0.45" d="M3.2 4.2h2.2v1.6H3.2zm3.4 2.4h1.8v2.2H6.6z" />
       </svg>
     </button>
 
@@ -79,12 +65,7 @@
         :aria-label="t('graph.layout.grid')"
         @click="emit('update:gridVisible', !gridVisible)"
       >
-        <svg
-          viewBox="0 0 16 16"
-          width="14"
-          height="14"
-          aria-hidden="true"
-        >
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
           <path
             fill="none"
             stroke="currentColor"
@@ -102,12 +83,7 @@
         @click="emit('collapse-all-previews')"
       >
         <!-- 折叠全部：双上折箭头 -->
-        <svg
-          viewBox="0 0 16 16"
-          width="14"
-          height="14"
-          aria-hidden="true"
-        >
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
           <path
             fill="none"
             stroke="currentColor"
@@ -127,12 +103,7 @@
         @click="emit('expand-all-previews')"
       >
         <!-- 展开全部：双下折箭头 -->
-        <svg
-          viewBox="0 0 16 16"
-          width="14"
-          height="14"
-          aria-hidden="true"
-        >
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
           <path
             fill="none"
             stroke="currentColor"
@@ -153,10 +124,7 @@
         {{ t('graph.layout.snapShort') }}
       </button>
 
-      <span
-        class="sep"
-        aria-hidden="true"
-      />
+      <span class="sep" aria-hidden="true" />
 
       <button
         type="button"
@@ -207,10 +175,7 @@
         ↧
       </button>
 
-      <span
-        class="sep"
-        aria-hidden="true"
-      />
+      <span class="sep" aria-hidden="true" />
 
       <button
         type="button"

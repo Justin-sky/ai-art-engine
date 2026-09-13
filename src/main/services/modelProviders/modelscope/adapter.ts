@@ -14,10 +14,7 @@ import type {
   ModelModality,
   ModelProviderInstance
 } from '@shared/modelProvider'
-import {
-  classifyModelScopeModelModality,
-  MODELSCOPE_DEFAULT_BASE_URL
-} from '@shared/modelProvider'
+import { classifyModelScopeModelModality, MODELSCOPE_DEFAULT_BASE_URL } from '@shared/modelProvider'
 import {
   listModelScopeCatalogModels,
   resolveModelScopeModelCapabilities
@@ -149,10 +146,7 @@ function taskErrorMessage(body: Record<string, unknown>): string | undefined {
   return undefined
 }
 
-async function pollImageTask(
-  provider: ModelProviderInstance,
-  taskId: string
-): Promise<string[]> {
+async function pollImageTask(provider: ModelProviderInstance, taskId: string): Promise<string[]> {
   const client = providerClient(provider, LONG_GENERATE_TIMEOUT_MS)
   for (let i = 0; i < IMAGE_POLL_MAX_ATTEMPTS; i++) {
     const { data } = await client.get<Record<string, unknown>>(`/tasks/${taskId}`, {
@@ -212,10 +206,8 @@ export const modelScopeAdapter: ModelProviderAdapter = {
           const name = (m.name && String(m.name)) || id
           const modelModality = classifyModelScopeModelModality({ id, name })
           const capabilities =
-            resolveModelScopeModelCapabilities(
-              id,
-              modelModality === 'image' ? 'image' : 'text'
-            ) ?? undefined
+            resolveModelScopeModelCapabilities(id, modelModality === 'image' ? 'image' : 'text') ??
+            undefined
           return {
             id,
             name,
@@ -248,9 +240,7 @@ export const modelScopeAdapter: ModelProviderAdapter = {
     const client = providerClient(provider, LONG_GENERATE_TIMEOUT_MS)
     const size =
       (input.resolution?.includes('x') ? input.resolution.trim() : undefined) ||
-      (input.aspectRatio?.trim()
-        ? ASPECT_TO_SIZE[input.aspectRatio.trim()]
-        : undefined) ||
+      (input.aspectRatio?.trim() ? ASPECT_TO_SIZE[input.aspectRatio.trim()] : undefined) ||
       '1024x1024'
 
     const body: Record<string, unknown> = {

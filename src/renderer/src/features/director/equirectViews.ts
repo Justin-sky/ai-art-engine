@@ -1,7 +1,4 @@
-import {
-  isLikelyEquirectangularSize,
-  type BlockoutLayoutMode
-} from './aiSceneBlockout'
+import { isLikelyEquirectangularSize, type BlockoutLayoutMode } from './aiSceneBlockout'
 
 const VIEW_SIZE = 512
 const VIEW_FOV_DEG = 90
@@ -34,7 +31,11 @@ function sampleBilinear(
   const i11 = idx(x1, y1)
   const out: [number, number, number, number] = [0, 0, 0, 255]
   for (let c = 0; c < 4; c += 1) {
-    out[c] = mix(mix(data[i00 + c]!, data[i10 + c]!, tx), mix(data[i01 + c]!, data[i11 + c]!, tx), ty)
+    out[c] = mix(
+      mix(data[i00 + c]!, data[i10 + c]!, tx),
+      mix(data[i01 + c]!, data[i11 + c]!, tx),
+      ty
+    )
   }
   return out
 }
@@ -123,7 +124,10 @@ export async function prepareBlockoutReferenceImages(
   unwrapped: boolean
   detectedMode: BlockoutLayoutMode
 }> {
-  const list = images.map((url) => url.trim()).filter(Boolean).slice(0, 3)
+  const list = images
+    .map((url) => url.trim())
+    .filter(Boolean)
+    .slice(0, 3)
   if (!list.length || typeof document === 'undefined') {
     return { images: list, unwrapped: false, detectedMode: mode }
   }

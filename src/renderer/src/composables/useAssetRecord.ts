@@ -1,10 +1,6 @@
 import { computed, type ComputedRef } from 'vue'
 import { isDraftAssetId, type AssetInfo } from '@shared/domain'
-import {
-  draftToAssetInfo,
-  useDraftStore,
-  type DraftAssetRecord
-} from '../stores/drafts'
+import { draftToAssetInfo, useDraftStore, type DraftAssetRecord } from '../stores/drafts'
 import { useProjectStore } from '../stores/project'
 import { toPlain } from '../utils/toPlain'
 
@@ -30,7 +26,10 @@ export function useAssetRecord(assetId: string): {
 export async function persistAssetRecord(
   assetId: string,
   patch: Partial<
-    Pick<AssetInfo, 'name' | 'prompt' | 'notes' | 'genParams' | 'relativePath' | 'thumbnailPath' | 'folderId'>
+    Pick<
+      AssetInfo,
+      'name' | 'prompt' | 'notes' | 'genParams' | 'relativePath' | 'thumbnailPath' | 'folderId'
+    >
   > & { pendingFilePath?: string },
   options?: { recordCommand?: boolean; label?: string }
 ): Promise<AssetInfo | null> {
@@ -43,8 +42,7 @@ export async function persistAssetRecord(
       name: patch.name ?? currentDraft.name,
       prompt: patch.prompt ?? currentDraft.prompt,
       notes: patch.notes ?? currentDraft.notes,
-      genParams:
-        patch.genParams !== undefined ? toPlain(patch.genParams) : currentDraft.genParams,
+      genParams: patch.genParams !== undefined ? toPlain(patch.genParams) : currentDraft.genParams,
       relativePath: patch.relativePath ?? currentDraft.relativePath,
       thumbnailPath: patch.thumbnailPath ?? currentDraft.thumbnailPath,
       folderId: patch.folderId ?? currentDraft.folderId,
@@ -69,4 +67,3 @@ export async function persistAssetRecord(
   if (idx >= 0) project.assets[idx] = updated
   return updated
 }
-

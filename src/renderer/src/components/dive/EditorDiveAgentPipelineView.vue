@@ -6,52 +6,43 @@
         <span class="stage-chip">{{ t('divePipeline.agent.title') }}</span>
       </div>
       <div class="header-actions">
-        <span
-          class="summary-chip pending"
-          :title="t('divePipeline.agent.summary.pendingTitle')"
-        >{{ t('divePipeline.agent.summary.pending', { n: overview.pendingCount }) }}</span>
-        <span
-          class="summary-chip fail"
-          :title="t('divePipeline.agent.summary.failTitle')"
-        >{{ t('divePipeline.agent.summary.fail', { n: overview.failCount }) }}</span>
+        <span class="summary-chip pending" :title="t('divePipeline.agent.summary.pendingTitle')">{{
+          t('divePipeline.agent.summary.pending', { n: overview.pendingCount })
+        }}</span>
+        <span class="summary-chip fail" :title="t('divePipeline.agent.summary.failTitle')">{{
+          t('divePipeline.agent.summary.fail', { n: overview.failCount })
+        }}</span>
         <span
           class="summary-chip exhausted"
           :title="t('divePipeline.agent.summary.exhaustedTitle')"
-        >{{ t('divePipeline.agent.summary.exhausted', { n: overview.exhaustedCount }) }}</span>
+          >{{ t('divePipeline.agent.summary.exhausted', { n: overview.exhaustedCount }) }}</span
+        >
         <span
           v-if="overview.errorCount"
           class="summary-chip fail"
           :title="t('divePipeline.agent.summary.errorTitle')"
-        >{{ t('divePipeline.agent.summary.error', { n: overview.errorCount }) }}</span>
+          >{{ t('divePipeline.agent.summary.error', { n: overview.errorCount }) }}</span
+        >
         <span
           v-if="overview.degradedCount"
           class="summary-chip degraded"
           :title="t('divePipeline.agent.summary.degradedTitle')"
-        >{{ t('divePipeline.agent.summary.degraded', { n: overview.degradedCount }) }}</span>
+          >{{ t('divePipeline.agent.summary.degraded', { n: overview.degradedCount }) }}</span
+        >
       </div>
     </div>
 
-    <div
-      v-if="overview.lastFailReason"
-      class="fail-row"
-    >
-      <span
-        class="fail-chip"
-        :title="t('divePipeline.agent.fail.latestTitle')"
-      >{{ t('divePipeline.agent.fail.latestPrefix') }}{{ overview.lastFailReason }}</span>
+    <div v-if="overview.lastFailReason" class="fail-row">
+      <span class="fail-chip" :title="t('divePipeline.agent.fail.latestTitle')"
+        >{{ t('divePipeline.agent.fail.latestPrefix') }}{{ overview.lastFailReason }}</span
+      >
     </div>
 
-    <div
-      v-if="!overview.hasPipeline"
-      class="empty-hint"
-    >
+    <div v-if="!overview.hasPipeline" class="empty-hint">
       {{ t('divePipeline.agent.empty.noNodes') }}
     </div>
 
-    <div
-      v-else
-      class="pipeline-body"
-    >
+    <div v-else class="pipeline-body">
       <!-- 质检节点 -->
       <section class="panel">
         <div class="panel-head">
@@ -70,19 +61,12 @@
             @click="selectNode(row.nodeId)"
           >
             <span class="row-title">{{ row.title }}</span>
-            <span
-              class="status-badge"
-              :class="row.status"
-            >{{ reviewStatusLabel(row.status) }}</span>
-            <span
-              v-if="row.reason"
-              class="reason"
-            >{{ row.reason }}</span>
+            <span class="status-badge" :class="row.status">{{
+              reviewStatusLabel(row.status)
+            }}</span>
+            <span v-if="row.reason" class="reason">{{ row.reason }}</span>
           </li>
-          <li
-            v-if="!overview.reviewRows.length"
-            class="empty-row"
-          >
+          <li v-if="!overview.reviewRows.length" class="empty-row">
             {{ t('divePipeline.agent.panel.noReview') }}
           </li>
         </ul>
@@ -106,20 +90,18 @@
             @click="selectNode(row.nodeId)"
           >
             <span class="row-title">{{ row.title }}</span>
-            <span
-              class="status-badge"
-              :class="row.status"
-            >{{ reworkStatusLabel(row.status) }}</span>
-            <span class="attempt">{{ t('divePipeline.agent.row.attempt', { attempt: row.attempt, maxAttempts: row.maxAttempts }) }}</span>
-            <span
-              v-if="row.lastReason"
-              class="reason"
-            >{{ row.lastReason }}</span>
+            <span class="status-badge" :class="row.status">{{
+              reworkStatusLabel(row.status)
+            }}</span>
+            <span class="attempt">{{
+              t('divePipeline.agent.row.attempt', {
+                attempt: row.attempt,
+                maxAttempts: row.maxAttempts
+              })
+            }}</span>
+            <span v-if="row.lastReason" class="reason">{{ row.lastReason }}</span>
           </li>
-          <li
-            v-if="!overview.reworkRows.length"
-            class="empty-row"
-          >
+          <li v-if="!overview.reworkRows.length" class="empty-row">
             {{ t('divePipeline.agent.panel.noRework') }}
           </li>
         </ul>
@@ -143,19 +125,10 @@
             @click="selectNode(row.nodeId)"
           >
             <span class="row-title">{{ row.title }}</span>
-            <span
-              class="status-badge"
-              :class="row.status"
-            >{{ errorStatusLabel(row.status) }}</span>
-            <span
-              v-if="row.reason"
-              class="reason"
-            >{{ row.reason }}</span>
+            <span class="status-badge" :class="row.status">{{ errorStatusLabel(row.status) }}</span>
+            <span v-if="row.reason" class="reason">{{ row.reason }}</span>
           </li>
-          <li
-            v-if="!overview.errorRows.length"
-            class="empty-row"
-          >
+          <li v-if="!overview.errorRows.length" class="empty-row">
             {{ t('divePipeline.agent.panel.noErrors') }}
           </li>
         </ul>
@@ -186,7 +159,9 @@ const workspace = useWorkspaceStore()
 const { t } = useStudioI18n()
 
 const asset = computed(() => project.assets.find((item) => item.id === props.hostAssetId) ?? null)
-const assetTitle = computed(() => asset.value?.name?.trim() || String(t('divePipeline.agent.title')))
+const assetTitle = computed(
+  () => asset.value?.name?.trim() || String(t('divePipeline.agent.title'))
+)
 
 /** 优先取当前打开画布的实时文档（含未落盘的连线与运行结果） */
 const graphDoc = computed<GraphDocument | null>(() => {

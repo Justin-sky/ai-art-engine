@@ -1,8 +1,5 @@
 <template>
-  <label
-    class="model3d-style"
-    :title="title"
-  >
+  <label class="model3d-style" :title="title">
     <svg
       class="style-icon"
       xmlns="http://www.w3.org/2000/svg"
@@ -12,49 +9,14 @@
       aria-hidden="true"
       focusable="false"
     >
-      <circle
-        cx="8"
-        cy="8"
-        r="6.25"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.5"
-      />
-      <circle
-        cx="5.5"
-        cy="6.6"
-        r="1"
-        fill="currentColor"
-      />
-      <circle
-        cx="8"
-        cy="5.3"
-        r="1"
-        fill="currentColor"
-      />
-      <circle
-        cx="10.5"
-        cy="6.6"
-        r="1"
-        fill="currentColor"
-      />
-      <circle
-        cx="8"
-        cy="10.7"
-        r="1"
-        fill="currentColor"
-      />
+      <circle cx="8" cy="8" r="6.25" fill="none" stroke="currentColor" stroke-width="1.5" />
+      <circle cx="5.5" cy="6.6" r="1" fill="currentColor" />
+      <circle cx="8" cy="5.3" r="1" fill="currentColor" />
+      <circle cx="10.5" cy="6.6" r="1" fill="currentColor" />
+      <circle cx="8" cy="10.7" r="1" fill="currentColor" />
     </svg>
-    <select
-      :value="modelValue"
-      :aria-label="title"
-      @change="onChange"
-    >
-      <option
-        v-for="opt in styleOptions"
-        :key="opt.value"
-        :value="opt.value"
-      >
+    <select :value="modelValue" :aria-label="title" @change="onChange">
+      <option v-for="opt in styleOptions" :key="opt.value" :value="opt.value">
         {{ opt.value === modelValue ? '✓ ' : '' }}{{ opt.label }}
       </option>
     </select>

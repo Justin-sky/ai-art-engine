@@ -91,20 +91,14 @@ function findNode(doc: GraphDocument, nodeId: string): GraphNode | undefined {
 /** 连入某节点的入边（target 为该节点；targetPort 缺省视为 in） */
 function incomingEdgesTo(doc: GraphDocument, nodeId: string, port?: string): GraphEdge[] {
   return doc.edges.filter(
-    (e) =>
-      e.target === nodeId &&
-      ((e.targetPort ?? 'in') === port || port === undefined)
+    (e) => e.target === nodeId && ((e.targetPort ?? 'in') === port || port === undefined)
   )
 }
 
 /** 某节点出边的目标节点 id 集合（按端口过滤可选） */
 function outgoingTargetIds(doc: GraphDocument, nodeId: string, port?: string): string[] {
   return doc.edges
-    .filter(
-      (e) =>
-        e.source === nodeId &&
-        ((e.sourcePort ?? 'out') === port || port === undefined)
-    )
+    .filter((e) => e.source === nodeId && ((e.sourcePort ?? 'out') === port || port === undefined))
     .map((e) => e.target)
 }
 
@@ -155,8 +149,9 @@ export function resolveIconRefineContext(
   for (const packId of packIds) {
     const packNode = findNode(doc, packId)
     if (!packNode || packNode.typeId !== 'image.iconPack') continue
-    const names = incomingEdgesTo(doc, packId, 'in-text')
-      .flatMap((edge) => textLinesOf(findNode(doc, edge.source)))
+    const names = incomingEdgesTo(doc, packId, 'in-text').flatMap((edge) =>
+      textLinesOf(findNode(doc, edge.source))
+    )
     if (!names.length) continue
     const packState = readIconPackFromNode(packNode.params)
     const pRows = packState.rows || rows
@@ -175,17 +170,13 @@ export function resolveIconRefineContext(
   }
 
   // 3) 画风主题句：喂给整版节点但未喂给打包节点的文本（名单整块被排除）
-  const packNodeIds = new Set(
-    doc.edges.filter((e) => e.source === sheet?.id).map((e) => e.target)
-  )
+  const packNodeIds = new Set(doc.edges.filter((e) => e.source === sheet?.id).map((e) => e.target))
   const themeTexts: string[] = []
   if (sheet) {
     for (const edge of incomingEdgesTo(doc, sheet.id)) {
       const source = findNode(doc, edge.source)
       if (!isTextProvider(source)) continue
-      const feedsPack = doc.edges.some(
-        (e) => e.source === source.id && packNodeIds.has(e.target)
-      )
+      const feedsPack = doc.edges.some((e) => e.source === source.id && packNodeIds.has(e.target))
       if (feedsPack) continue
       themeTexts.push(...textLinesOf(source))
     }
@@ -226,7 +217,8 @@ export function withIconPackCellRefine(
 ): GraphDocument {
   const packNode = findNode(doc, input.packNodeId)
   const dataUrl = input.dataUrl?.trim() ?? ''
-  if (!packNode || !parseIconCellKey(input.cellKey) || !dataUrl.startsWith('data:image/')) return doc
+  if (!packNode || !parseIconCellKey(input.cellKey) || !dataUrl.startsWith('data:image/'))
+    return doc
 
   const next: IconPackCellRefines = normalizeIconPackCellRefines({
     ...readIconPackRefinesFromNode(packNode.params),

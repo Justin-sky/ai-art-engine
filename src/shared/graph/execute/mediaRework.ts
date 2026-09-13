@@ -53,7 +53,11 @@ import { newestImageSelectedId, dualImageGalleryOutputs } from './gallery'
 import { describeAspectRatio, readImageDimensions } from './imageDimensions'
 import { autoIncomingTextForInstruction, selectIncomingValuesForInstruction } from './incoming'
 import { collectImageGenerateSourceItems } from './mediaInputs'
-import { commitGeneratedImages, materializeGeneratedBatch, mergeGeneratedImages } from './materialize'
+import {
+  commitGeneratedImages,
+  materializeGeneratedBatch,
+  mergeGeneratedImages
+} from './materialize'
 import type { GraphImageItem, GraphValue, NodeExecuteContext } from './types'
 import { fail } from '@shared/errors/appError'
 import { SHARED_ERRORS } from '../../errors/catalog'
@@ -101,7 +105,10 @@ export async function executeMediaReworkNode(
     node.params.mediaReviewPending === false &&
     (node.params.generatedImages ?? []).length
   ) {
-    return dualImageGalleryOutputs(node.params.generatedImages ?? [], node.params.selectedImageId ?? '')
+    return dualImageGalleryOutputs(
+      node.params.generatedImages ?? [],
+      node.params.selectedImageId ?? ''
+    )
   }
 
   // 首轮人工确认：已出图并等待用户决定，此期间不继续消耗调用
@@ -110,7 +117,10 @@ export async function executeMediaReworkNode(
     node.params.mediaReworkAwaitingConfirm === true &&
     (node.params.generatedImages ?? []).length
   ) {
-    return dualImageGalleryOutputs(node.params.generatedImages ?? [], node.params.selectedImageId ?? '')
+    return dualImageGalleryOutputs(
+      node.params.generatedImages ?? [],
+      node.params.selectedImageId ?? ''
+    )
   }
 
   const generateImageFn = ctx.generateImage
@@ -267,7 +277,8 @@ export async function executeMediaReworkNode(
       throw new DOMException('Aborted', 'AbortError')
     }
     finalReviewText = review.text.trim()
-    if (!finalReviewText) throw fail(SHARED_ERRORS.resultMissing, { what: { zh: '质检结果', en: 'QC verdict' } })  // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
+    if (!finalReviewText)
+      throw fail(SHARED_ERRORS.resultMissing, { what: { zh: '质检结果', en: 'QC verdict' } }) // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
 
     const verdict = parseMediaReviewVerdict(finalReviewText)
     const scores = parseMediaReviewScores(finalReviewText)
@@ -287,9 +298,7 @@ export async function executeMediaReworkNode(
     const resultKind: MediaReworkIterationResult = objectiveFailed
       ? 'FAIL'
       : (verdict?.result ?? 'UNDECIDED')
-    const reason = objectiveFailed
-      ? lastObjectiveTexts.join('; ')
-      : (verdict?.reason ?? '')
+    const reason = objectiveFailed ? lastObjectiveTexts.join('; ') : (verdict?.reason ?? '')
 
     state = applyMediaReworkReview(state, resultKind, reason, {
       ...(seed !== undefined ? { seed } : {}),
@@ -341,16 +350,13 @@ export async function executeMediaReworkNode(
   const best = selectBestIteration(state)
   const bestId = best?.imageIds?.[0]
   const selectedId =
-    bestId && merged.some((item) => item.id === bestId)
-      ? bestId
-      : newestImageSelectedId(merged)
+    bestId && merged.some((item) => item.id === bestId) ? bestId : newestImageSelectedId(merged)
 
   const galleryPatch = {
     ...reworkParams,
     generatedImages: merged,
     selectedImageId: selectedId,
-    previewRelativePath:
-      merged.find((item) => item.id === selectedId)?.relativePath?.trim() || ''
+    previewRelativePath: merged.find((item) => item.id === selectedId)?.relativePath?.trim() || ''
   }
   node.params = { ...node.params, ...galleryPatch }
   ctx.patchNode?.({ params: galleryPatch })

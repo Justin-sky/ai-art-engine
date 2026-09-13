@@ -140,9 +140,7 @@ describe('beatParse', () => {
     expect(text).toContain('空间与地点：城市巷口')
     expect(text).toContain('地点绑定：巷口')
     expect(text).toContain('核心动作：林晓走进巷口')
-    expect(beatRowsToTextItems([source])).toEqual([
-      { id: source.id, title: source.title, text }
-    ])
+    expect(beatRowsToTextItems([source])).toEqual([{ id: source.id, title: source.title, text }])
   })
 
   it('merges while preserving reviewed rows (canonical and legacy Chinese statuses)', () => {

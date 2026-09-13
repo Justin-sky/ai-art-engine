@@ -1,51 +1,34 @@
 <template>
-  <div
-    class="port-schema-editor"
-    :class="{ collapsed }"
-  >
+  <div class="port-schema-editor" :class="{ collapsed }">
     <div class="head-row">
       <button
         type="button"
         class="collapse-tri-btn"
         :class="{ collapsed }"
-        :title="collapsed ? t('graph.hostInterface.expandPorts') : t('graph.hostInterface.collapsePorts')"
+        :title="
+          collapsed ? t('graph.hostInterface.expandPorts') : t('graph.hostInterface.collapsePorts')
+        "
         :aria-expanded="!collapsed"
-        :aria-label="collapsed ? t('graph.hostInterface.expandPorts') : t('graph.hostInterface.collapsePorts')"
+        :aria-label="
+          collapsed ? t('graph.hostInterface.expandPorts') : t('graph.hostInterface.collapsePorts')
+        "
         @click="collapsed = !collapsed"
       >
-        <span
-          class="collapse-tri"
-          aria-hidden="true"
-        />
+        <span class="collapse-tri" aria-hidden="true" />
       </button>
-      <button
-        type="button"
-        class="title-btn"
-        @click="collapsed = !collapsed"
-      >
+      <button type="button" class="title-btn" @click="collapsed = !collapsed">
         <h3>{{ title }}</h3>
         <span class="count">{{ modelValue.length }}</span>
       </button>
-      <button
-        v-if="!collapsed"
-        type="button"
-        class="add-btn"
-        @click="addPort"
-      >
+      <button v-if="!collapsed" type="button" class="add-btn" @click="addPort">
         {{ t('graph.hostInterface.addPort') }}
       </button>
     </div>
     <template v-if="!collapsed">
-      <p
-        v-if="modelValue.length > 1"
-        class="reorder-hint"
-      >
+      <p v-if="modelValue.length > 1" class="reorder-hint">
         {{ t('graph.hostInterface.reorderHint') }}
       </p>
-      <div
-        v-if="!modelValue.length"
-        class="empty"
-      >
+      <div v-if="!modelValue.length" class="empty">
         {{ t('graph.hostInterface.emptyPorts') }}
       </div>
       <div
@@ -82,11 +65,7 @@
                 })
               "
             >
-              <option
-                v-for="dt in dataTypes"
-                :key="dt"
-                :value="dt"
-              >
+              <option v-for="dt in dataTypes" :key="dt" :value="dt">
                 {{ t(`graph.port.types.${dt}`) }}
               </option>
             </select>
@@ -95,8 +74,10 @@
             {{ t('graph.hostInterface.portLabel') }}
             <input
               :value="port.label"
-              @change="patch(index, { label: ($event.target as HTMLInputElement).value.trim() || port.id })"
-            >
+              @change="
+                patch(index, { label: ($event.target as HTMLInputElement).value.trim() || port.id })
+              "
+            />
           </label>
           <button
             type="button"
@@ -106,12 +87,7 @@
             @pointerdown.stop
             @click.stop="remove(index)"
           >
-            <svg
-              viewBox="0 0 24 24"
-              width="14"
-              height="14"
-              aria-hidden="true"
-            >
+            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
               <path
                 fill="currentColor"
                 d="M9 3h6l1 2h4v2H4V5h4l1-2Zm-2 6h10l-1 11H8L7 9Zm3 2v7h2v-7h-2Zm4 0v7h2v-7h-2Z"
@@ -362,7 +338,9 @@ function onDragEnd(): void {
   padding: 8px;
   border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
   border-radius: 6px;
-  transition: border-color 0.12s ease, opacity 0.12s ease;
+  transition:
+    border-color 0.12s ease,
+    opacity 0.12s ease;
 }
 .port-row.dragging {
   opacity: 0.55;

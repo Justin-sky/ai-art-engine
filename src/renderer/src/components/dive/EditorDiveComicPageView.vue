@@ -1,53 +1,26 @@
 <template>
   <div class="dive-view comic-page-dive">
     <header class="toolbar">
-      <button
-        type="button"
-        :disabled="showGlobal"
-        @click="showGlobalProps"
-      >
+      <button type="button" :disabled="showGlobal" @click="showGlobalProps">
         {{ t('graph.inspector.comicPage.globalSection') }}
       </button>
-      <button
-        type="button"
-        @click="addEmptyPanel"
-      >
+      <button type="button" @click="addEmptyPanel">
         {{ t('graph.inspector.comicPage.addPanel') }}
       </button>
-      <button
-        type="button"
-        :disabled="!selectedPanel"
-        @click="removeSelectedPanel"
-      >
+      <button type="button" :disabled="!selectedPanel" @click="removeSelectedPanel">
         {{ t('graph.inspector.comicPage.removePanel') }}
       </button>
-      <button
-        type="button"
-        :disabled="!selectedPanel"
-        @click="addBubbleToSelected"
-      >
+      <button type="button" :disabled="!selectedPanel" @click="addBubbleToSelected">
         {{ t('graph.inspector.comicPage.addBubble') }}
       </button>
-      <button
-        type="button"
-        :disabled="!selectedBubble"
-        @click="removeSelectedBubble"
-      >
+      <button type="button" :disabled="!selectedBubble" @click="removeSelectedBubble">
         {{ t('graph.inspector.comicPage.removeBubble') }}
       </button>
       <span class="spacer" />
-      <button
-        type="button"
-        :disabled="page.panels.length === 0"
-        @click="canvasRef?.exportPng()"
-      >
+      <button type="button" :disabled="page.panels.length === 0" @click="canvasRef?.exportPng()">
         {{ t('graph.inspector.comicPage.exportPng') }}
       </button>
-      <button
-        type="button"
-        class="done"
-        @click="onClose"
-      >
+      <button type="button" class="done" @click="onClose">
         {{ t('graph.inspector.comicPage.done') }}
       </button>
     </header>
@@ -80,7 +53,7 @@
             <input
               :value="page.title ?? ''"
               @change="onPageTitle(($event.target as HTMLInputElement).value)"
-            >
+            />
           </label>
           <div class="row">
             <label>
@@ -91,7 +64,7 @@
                 max="12"
                 :value="page.columns"
                 @change="onMetaNumber('columns', $event)"
-              >
+              />
             </label>
             <label>
               {{ t('graph.inspector.comicPage.rows') }}
@@ -101,7 +74,7 @@
                 max="12"
                 :value="page.rows"
                 @change="onMetaNumber('rows', $event)"
-              >
+              />
             </label>
           </div>
           <label>
@@ -111,7 +84,7 @@
               min="0"
               :value="page.gutter"
               @change="onMetaNumber('gutter', $event)"
-            >
+            />
           </label>
           <div class="row">
             <label>
@@ -121,7 +94,7 @@
                 min="1"
                 :value="page.width"
                 @change="onMetaNumber('width', $event)"
-              >
+              />
             </label>
             <label>
               {{ t('graph.inspector.comicPage.height') }}
@@ -130,7 +103,7 @@
                 min="1"
                 :value="page.height"
                 @change="onMetaNumber('height', $event)"
-              >
+              />
             </label>
           </div>
           <label>
@@ -142,7 +115,7 @@
               :value="pageBgHex"
               @input="onBackgroundColor(($event.target as HTMLInputElement).value, false)"
               @change="onBackgroundColor(($event.target as HTMLInputElement).value, true)"
-            >
+            />
           </label>
           <div class="row">
             <button
@@ -163,7 +136,7 @@
             <input
               :value="selectedPanel.title ?? ''"
               @change="patchSelectedPanel({ title: ($event.target as HTMLInputElement).value })"
-            >
+            />
           </label>
           <div class="row">
             <label>
@@ -173,7 +146,7 @@
                 min="1"
                 :value="selectedPanel.colSpan"
                 @change="onSpan('colSpan', $event)"
-              >
+              />
             </label>
             <label>
               rowSpan
@@ -182,7 +155,7 @@
                 min="1"
                 :value="selectedPanel.rowSpan"
                 @change="onSpan('rowSpan', $event)"
-              >
+              />
             </label>
           </div>
           <label>
@@ -190,19 +163,13 @@
             <input
               :value="selectedPanel.imageUrl ?? ''"
               @change="patchSelectedPanel({ imageUrl: ($event.target as HTMLInputElement).value })"
-            >
+            />
           </label>
           <div class="row">
-            <button
-              type="button"
-              @click="pickLocalImage"
-            >
+            <button type="button" @click="pickLocalImage">
               {{ t('graph.inspector.comicPage.pickImage') }}
             </button>
-            <button
-              type="button"
-              @click="patchSelectedPanel({ imageUrl: '' })"
-            >
+            <button type="button" @click="patchSelectedPanel({ imageUrl: '' })">
               {{ t('graph.inspector.comicPage.clearImage') }}
             </button>
           </div>
@@ -218,7 +185,7 @@
               :value="panelBgHex"
               @input="onPanelBackgroundColor(($event.target as HTMLInputElement).value, false)"
               @change="onPanelBackgroundColor(($event.target as HTMLInputElement).value, true)"
-            >
+            />
           </label>
           <div class="row">
             <button
@@ -229,10 +196,7 @@
               {{ t('graph.inspector.comicPage.bgTransparent') }}
             </button>
           </div>
-          <div
-            v-if="incomingImages.length"
-            class="incoming"
-          >
+          <div v-if="incomingImages.length" class="incoming">
             <span class="field-label">{{ t('graph.inspector.comicPage.pickIncoming') }}</span>
             <button
               v-for="item in incomingImages"
@@ -261,13 +225,17 @@
             <input
               :value="selectedBubble.speaker ?? ''"
               @change="patchSelectedBubble({ speaker: ($event.target as HTMLInputElement).value })"
-            >
+            />
           </label>
           <label>
             {{ t('graph.inspector.comicPage.tail') }}
             <select
               :value="selectedBubble.tail"
-              @change="patchSelectedBubble({ tail: ($event.target as HTMLSelectElement).value as ComicBubbleTail })"
+              @change="
+                patchSelectedBubble({
+                  tail: ($event.target as HTMLSelectElement).value as ComicBubbleTail
+                })
+              "
             >
               <option value="tl">tl</option>
               <option value="tr">tr</option>
@@ -430,10 +398,7 @@ function onPanelBackgroundColor(value: string, persistNow: boolean): void {
   patchSelectedPanel({ backgroundColor: value }, { persist: persistNow })
 }
 
-function onMetaNumber(
-  key: 'columns' | 'rows' | 'gutter' | 'width' | 'height',
-  event: Event
-): void {
+function onMetaNumber(key: 'columns' | 'rows' | 'gutter' | 'width' | 'height', event: Event): void {
   const n = Number((event.target as HTMLInputElement).value)
   if (!Number.isFinite(n)) return
   commit(withComicPageLayout(page.value, { [key]: n }))
@@ -520,7 +485,9 @@ function onSpan(key: 'colSpan' | 'rowSpan', event: Event): void {
   patchSelectedPanel({ [key]: n })
 }
 
-function patchSelectedBubble(patch: Partial<{ text: string; speaker: string; tail: ComicBubbleTail }>): void {
+function patchSelectedBubble(
+  patch: Partial<{ text: string; speaker: string; tail: ComicBubbleTail }>
+): void {
   if (!selectedPanelId.value || !selectedBubbleId.value) return
   commit(updateComicBubble(page.value, selectedPanelId.value, selectedBubbleId.value, patch))
 }

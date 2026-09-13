@@ -50,9 +50,13 @@ describe('text.select node', () => {
   })
 
   it('execute outputs the selected single text and hydrates relativePath', async () => {
-    const node = createNodeFromType('text.select', { x: 0, y: 0 }, {
-      params: { selectedTextId: 'b' }
-    })
+    const node = createNodeFromType(
+      'text.select',
+      { x: 0, y: 0 },
+      {
+        params: { selectedTextId: 'b' }
+      }
+    )
     const patched: Record<string, unknown>[] = []
     const ctx: NodeExecuteContext = {
       node,

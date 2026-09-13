@@ -82,7 +82,8 @@ const E_NO_SPEECH_FILE = defErrSimple(
 )
 const E_NO_VOICE_PROFILE = defErr<{ character: string }>(
   'provider.facade.voice-profile-not-found',
-  ({ character }) => `角色音色档案中不存在「${character}」；请先为该角色建档（voice_profile_upsert：角色名 + 音色 id 或克隆参考音频）`,
+  ({ character }) =>
+    `角色音色档案中不存在「${character}」；请先为该角色建档（voice_profile_upsert：角色名 + 音色 id 或克隆参考音频）`,
   ({ character }) =>
     `No voice profile for character "${character}"; create one first (voice_profile_upsert: character + voice id or clone reference audio)`
 )
@@ -127,9 +128,10 @@ const LUX3D_BUSY_RETRY = { maxAttempts: 12, baseDelayMs: 10_000, maxDelayMs: 5 *
 /** 仅当 Lux3D 提交因「已有进行中的生成任务」被拒时返回 true */
 function isLux3dBusyError(err: unknown): boolean {
   if (!isAppError(err) || err.code !== E_LUX3D_SUBMIT_3D_FAILED_CODE) return false
-  const detail = typeof (err.params as { detail?: unknown } | undefined)?.detail === 'string'
-    ? (err.params as { detail: string }).detail
-    : ''
+  const detail =
+    typeof (err.params as { detail?: unknown } | undefined)?.detail === 'string'
+      ? (err.params as { detail: string }).detail
+      : ''
   const lower = detail.toLowerCase()
   return LUX3D_BUSY_MARKERS.some((marker) => lower.includes(marker))
 }
@@ -281,9 +283,7 @@ class ModelProviderFacade {
    * 图节点视频生成：参考视频先上传对象存储 → 提交 → 持久化 job → 轮询 → 下载 → 登记资产。
    * 结束后删除临时对象。关软件后可由 videoJobService.resumePending 续取结果。
    */
-  async generateVideo(
-    input: GenerateVideoInput
-  ): Promise<GenerateVideoResult> {
+  async generateVideo(input: GenerateVideoInput): Promise<GenerateVideoResult> {
     // 图节点绑定只用于任务服务回写，不进入供应商提交载荷
     const { graphBinding, ...genInput } = input
     if (!projectService.isOpen()) throw fail(E_NO_PROJECT)
@@ -294,7 +294,11 @@ class ModelProviderFacade {
       const prepared = await prepareVideoInputReferencesForApi(genInput)
       uploads = prepared.uploads
       const job = await this.submitVideo(prepared.input)
-      const { provider } = resolveActiveProvider('video', genInput.providerInstanceId, genInput.model)
+      const { provider } = resolveActiveProvider(
+        'video',
+        genInput.providerInstanceId,
+        genInput.model
+      )
 
       const persisted = videoJobService.create({
         kind: 'video',
@@ -427,7 +431,11 @@ class ModelProviderFacade {
     try {
       const prepared = await this.prepareModel3dInputReferencesForApi(genInput)
       uploads = prepared.uploads
-      const { provider } = resolveActiveProvider('model3d', genInput.providerInstanceId, genInput.model)
+      const { provider } = resolveActiveProvider(
+        'model3d',
+        genInput.providerInstanceId,
+        genInput.model
+      )
       const run = (): Promise<GenerateModel3dResult> =>
         this.submitModel3dAndSettle(provider, prepared.input, genInput, graphBinding, uploads)
       // Lux3D 单并发：冲突时退避自动重试，其余失败原样抛出
@@ -542,9 +550,7 @@ class ModelProviderFacade {
   }
 
   /** 按角色音色档案解析语音参数：角色已建档 → 未显式传的 voice / referenceAudio 取自档案 */
-  private async applyVoiceProfile(
-    input: GenerateSpeechInput
-  ): Promise<GenerateSpeechInput> {
+  private async applyVoiceProfile(input: GenerateSpeechInput): Promise<GenerateSpeechInput> {
     const character = input.voiceProfile?.trim()
     if (!character) return input
     if (!projectService.isOpen()) throw fail(E_NO_PROJECT)
@@ -644,9 +650,9 @@ class ModelProviderFacade {
   } {
     const providers = settingsService.get().models.providers
     const usable = (p: ModelProviderInstance): boolean =>
-      p.enabled && (p.apiKey.trim().length > 0 || allowsEmptyApiKey(p)) && Boolean(
-        getProviderAdapter(p.providerKind).transcribeAudio
-      )
+      p.enabled &&
+      (p.apiKey.trim().length > 0 || allowsEmptyApiKey(p)) &&
+      Boolean(getProviderAdapter(p.providerKind).transcribeAudio)
 
     let provider: ModelProviderInstance | undefined
     const preferredId = input.providerInstanceId?.trim()

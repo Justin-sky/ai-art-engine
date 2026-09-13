@@ -1,21 +1,12 @@
 <template>
-  <div
-    ref="rootRef"
-    class="beat-table"
-  >
+  <div ref="rootRef" class="beat-table">
     <div class="table-toolbar">
       <span class="count">{{ rows.length }}</span>
-      <button
-        type="button"
-        @click="onAdd"
-      >
+      <button type="button" @click="onAdd">
         {{ t('beat.table.new') }}
       </button>
     </div>
-    <p
-      v-if="error"
-      class="table-error"
-    >
+    <p v-if="error" class="table-error">
       {{ error }}
     </p>
     <div class="table-scroll">
@@ -68,50 +59,29 @@
           </tr>
         </thead>
         <tbody>
-          <tr
-            v-for="row in rows"
-            :key="row.id"
-          >
-            <td
-              class="col-order"
-              @click.stop
-            >
+          <tr v-for="row in rows" :key="row.id">
+            <td class="col-order" @click.stop>
               <input
                 type="number"
                 min="1"
                 :value="row.order"
                 @change="onOrderChange(row.id, ($event.target as HTMLInputElement).value)"
-              >
+              />
             </td>
-            <td
-              class="col-title"
-              @click.stop
-            >
+            <td class="col-title" @click.stop>
               <input
                 :value="row.title"
                 @change="onTitleChange(row.id, ($event.target as HTMLInputElement).value)"
-              >
+              />
             </td>
-            <td
-              v-for="field in LEAD_TEXT_FIELDS"
-              :key="field"
-              class="col-text"
-              @click.stop
-            >
+            <td v-for="field in LEAD_TEXT_FIELDS" :key="field" class="col-text" @click.stop>
               <textarea
                 rows="2"
                 :value="row[field]"
-                @change="
-                  onTextChange(row.id, field, ($event.target as HTMLTextAreaElement).value)
-                "
+                @change="onTextChange(row.id, field, ($event.target as HTMLTextAreaElement).value)"
               />
             </td>
-            <td
-              v-for="field in REF_FIELDS.slice(0, 2)"
-              :key="field"
-              class="col-refs"
-              @click.stop
-            >
+            <td v-for="field in REF_FIELDS.slice(0, 2)" :key="field" class="col-refs" @click.stop>
               <div class="ref-list">
                 <div
                   v-for="(refItem, index) in row[field]"
@@ -130,7 +100,7 @@
                         ($event.target as HTMLInputElement).value
                       )
                     "
-                  >
+                  />
                   <button
                     type="button"
                     class="ref-remove"
@@ -150,26 +120,14 @@
                 </button>
               </div>
             </td>
-            <td
-              v-for="field in CORE_TEXT_FIELDS"
-              :key="field"
-              class="col-long"
-              @click.stop
-            >
+            <td v-for="field in CORE_TEXT_FIELDS" :key="field" class="col-long" @click.stop>
               <textarea
                 rows="2"
                 :value="row[field]"
-                @change="
-                  onTextChange(row.id, field, ($event.target as HTMLTextAreaElement).value)
-                "
+                @change="onTextChange(row.id, field, ($event.target as HTMLTextAreaElement).value)"
               />
             </td>
-            <td
-              v-for="field in REF_FIELDS.slice(2)"
-              :key="field"
-              class="col-refs"
-              @click.stop
-            >
+            <td v-for="field in REF_FIELDS.slice(2)" :key="field" class="col-refs" @click.stop>
               <div class="ref-list">
                 <div
                   v-for="(refItem, index) in row[field]"
@@ -188,7 +146,7 @@
                         ($event.target as HTMLInputElement).value
                       )
                     "
-                  >
+                  />
                   <button
                     type="button"
                     class="ref-remove"
@@ -208,10 +166,7 @@
                 </button>
               </div>
             </td>
-            <td
-              class="col-long"
-              @click.stop
-            >
+            <td class="col-long" @click.stop>
               <textarea
                 rows="2"
                 :value="row.sourceExcerpt"
@@ -224,29 +179,19 @@
                 "
               />
             </td>
-            <td
-              class="col-status"
-              @click.stop
-            >
+            <td class="col-status" @click.stop>
               <select
                 class="review-status"
                 :data-status="row.status"
                 :value="row.status"
                 @change="onStatusChange(row.id, ($event.target as HTMLSelectElement).value)"
               >
-                <option
-                  v-for="opt in REVIEW_STATUS_OPTIONS"
-                  :key="opt"
-                  :value="opt"
-                >
+                <option v-for="opt in REVIEW_STATUS_OPTIONS" :key="opt" :value="opt">
                   {{ t(`review.${opt}`) }}
                 </option>
               </select>
             </td>
-            <td
-              class="col-actions"
-              @click.stop
-            >
+            <td class="col-actions" @click.stop>
               <button
                 type="button"
                 class="del"
@@ -259,10 +204,7 @@
           </tr>
         </tbody>
       </table>
-      <p
-        v-if="!rows.length"
-        class="empty"
-      >
+      <p v-if="!rows.length" class="empty">
         {{ t('beat.table.empty') }}
       </p>
     </div>
@@ -271,30 +213,17 @@
 
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
-import {
-  DEFAULT_REVIEW_STATUS,
-  normalizeReviewStatus,
-  REVIEW_STATUS_OPTIONS
-} from '@shared/graph'
-import {
-  stableBeatId,
-  type BeatRow,
-  type BeatWorldRef
-} from '@shared/graph'
+import { DEFAULT_REVIEW_STATUS, normalizeReviewStatus, REVIEW_STATUS_OPTIONS } from '@shared/graph'
+import { stableBeatId, type BeatRow, type BeatWorldRef } from '@shared/graph'
 import { useStudioI18n } from '../composables/useStudioI18n'
-import {
-  loadBeatCatalog,
-  saveBeatCatalog
-} from '../features/beat/applyBeatCatalogOnOpen'
+import { loadBeatCatalog, saveBeatCatalog } from '../features/beat/applyBeatCatalogOnOpen'
 
 const LEAD_TEXT_FIELDS = ['time', 'durationHint', 'location'] as const
 const CORE_TEXT_FIELDS = ['action', 'conflict', 'atmosphere'] as const
 const REF_FIELDS = ['locations', 'characters', 'props', 'weapons'] as const
 type RefField = (typeof REF_FIELDS)[number]
 type TextField =
-  | (typeof LEAD_TEXT_FIELDS)[number]
-  | (typeof CORE_TEXT_FIELDS)[number]
-  | 'sourceExcerpt'
+  (typeof LEAD_TEXT_FIELDS)[number] | (typeof CORE_TEXT_FIELDS)[number] | 'sourceExcerpt'
 
 /** 引用字段 → 世界元素规范 kind（持久化英文 id；旧文档中的中文值读取时归一化） */
 const FIELD_TYPE: Record<RefField, BeatWorldRef['type']> = {
@@ -344,7 +273,12 @@ async function persistNow(): Promise<void> {
   dirty = false
   error.value = ''
   try {
-    await trackWrite(saveBeatCatalog(props.beatAssetId, rows.value.map((r) => ({ ...r }))))
+    await trackWrite(
+      saveBeatCatalog(
+        props.beatAssetId,
+        rows.value.map((r) => ({ ...r }))
+      )
+    )
   } catch (e) {
     dirty = true
     error.value = e instanceof Error ? e.message : String(e)
@@ -442,7 +376,7 @@ function onAdd(): void {
     props: [],
     weapons: [],
     sourceExcerpt: '',
-  status: DEFAULT_REVIEW_STATUS
+    status: DEFAULT_REVIEW_STATUS
   })
   schedulePersist()
 }
@@ -640,7 +574,8 @@ textarea {
 
 /* 规范英文 id 与旧文档残留的中文值都要命中 */
 .review-status[data-status='reviewed'],
-.review-status[data-status='已审核'] { /* cjk-ok 后半段选择器兼容旧文档残留的中文 data-status */
+.review-status[data-status='已审核'] {
+  /* cjk-ok 后半段选择器兼容旧文档残留的中文 data-status */
   color: var(--success, #3d9a6a);
 }
 </style>

@@ -79,7 +79,8 @@ const E_TOS_UPSTREAM_DENIED = defErrSimple(
 const E_TEXT_REQUEST_TIMEOUT = defErr<{ sec: number }>(
   'provider.openai-compat.text-request-timeout',
   ({ sec }) => `请求超时（已等待 ${sec} 秒）。长输出可再试一次，或改用更快的文本模型`,
-  ({ sec }) => `Request timed out after ${sec}s. Retry for long outputs, or switch to a faster text model`
+  ({ sec }) =>
+    `Request timed out after ${sec}s. Retry for long outputs, or switch to a faster text model`
 )
 
 const E_TEXT_REQUEST_ABORTED = defErrSimple(
@@ -222,10 +223,8 @@ function isRetryableTextError(err: unknown): boolean {
   const status = axiosErr.response?.status
   if (status === 500 || status === 502 || status === 503 || status === 529) return true
   const raw = axiosErr.response?.data as
-    | { error?: { code?: string; message?: string } | string; message?: string }
-    | undefined
-  const code =
-    raw?.error && typeof raw.error === 'object' ? String(raw.error.code ?? '') : ''
+    { error?: { code?: string; message?: string } | string; message?: string } | undefined
+  const code = raw?.error && typeof raw.error === 'object' ? String(raw.error.code ?? '') : ''
   const respMessage =
     (raw?.error && typeof raw.error === 'object' ? raw.error.message : undefined) ||
     (typeof raw?.error === 'string' ? raw.error : undefined) ||
@@ -326,11 +325,9 @@ export async function generateOpenAiCompatibleText(
     }
 
     try {
-      const { data } = await client.post<ChatCompletionResponse>(
-        '/chat/completions',
-        body,
-        { headers: authHeaders(provider.apiKey) }
-      )
+      const { data } = await client.post<ChatCompletionResponse>('/chat/completions', body, {
+        headers: authHeaders(provider.apiKey)
+      })
       const text = extractChatCompletionText(data)
       if (!text) throw fail(E_EMPTY_CHAT_TEXT)
       return { text, model: data.model ?? modelId }
@@ -479,7 +476,8 @@ export async function generateOpenAiCompatibleImage(
   modelId: string,
   input: GenerateImageInput
 ): Promise<GenerateImageResult> {
-  const quality = input.quality?.trim().toLowerCase() === 'standard' ? 'medium' : input.quality?.trim()
+  const quality =
+    input.quality?.trim().toLowerCase() === 'standard' ? 'medium' : input.quality?.trim()
   const size = resolveOpenAiImageSize(input.resolution, input.aspectRatio)
 
   try {

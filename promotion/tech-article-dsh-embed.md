@@ -86,15 +86,15 @@ dsh 自带 `@deepseek-ai/dsh-mcp-client` 插件，天然认识 MCP Server。我�
 ```yaml
 # cordis.patch.yml —— 注册 mcp-client 插件，指向本应用 MCP 工具服务
 - insert:
-  - id: mcp-studio
-    name: '@deepseek-ai/dsh-mcp-client'
-    config:
-      serverName: studio
-      transport: streamable-http
-      url: http://127.0.0.1:<port>/mcp
-      toolCallTimeoutMs: 7200000   # 见踩坑 #1
-      headers:
-        Authorization: !!js "`Bearer ${process.env.STUDIO_MCP_TOKEN}`"
+    - id: mcp-studio
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: studio
+        transport: streamable-http
+        url: http://127.0.0.1:<port>/mcp
+        toolCallTimeoutMs: 7200000 # 见踩坑 #1
+        headers:
+          Authorization: !!js '`Bearer ${process.env.STUDIO_MCP_TOKEN}`'
 ```
 
 这里有个 YAML 的坑值得记录：dsh 的 patch 文件用 `!!js` 标签让 Cordis loader 对配置做 JS 求值，**裸字符串不是合法 JS 表达式**，必须写成 `!!js "`Bearer ${...}`"`（JS 模板字符串包进 YAML 引号），token 才能从环境变量注入——token 不进命令行、不落盘。
@@ -115,8 +115,8 @@ dsh 是通用 Agent，它默认在任意目录都能跑。但我们希望它"在
 1. **BFS 收集依赖闭包**：从 `@deepseek-ai/dsh` 出发，沿 `dependencies` + `optionalDependencies` + `peerDependencies` 做 BFS，复用主项目 `node_modules` 里 npm 已经解析好的包，形成扁平、自包含的依赖树——不在干净环境重新 install（CI 上那要几分钟还会 OOM）；
 2. **裁剪非运行文件**：剔除 sourcemap、`*.d.ts`、test/docs/examples 目录、Markdown、工具配置类点文件。效果：文件数 -55%（29899 → 13517）、体积 -36%（204.5MB → 130.6MB），安装包小了一圈，NSIS 逐文件解压也明显变快；
 3. **两道校验兜底，防止"裁出事故"**：
-   - *完整性校验*：产物里每个包声明的 dependencies / peerDependencies 必须存在；
-   - *引用可达性校验*：扫描产物内所有 JS 的相对 `require` / `import`，对照源包区分"裁剪误删"和"可选引用"，**误删即中止构建**。
+   - _完整性校验_：产物里每个包声明的 dependencies / peerDependencies 必须存在；
+   - _引用可达性校验_：扫描产物内所有 JS 的相对 `require` / `import`，对照源包区分"裁剪误删"和"可选引用"，**误删即中止构建**。
 
 为什么校验这么严格？因为踩过坑：`yaml` 包的运行时代码放在 `dist/doc/directives.js` 这种"看似文档"的路径里，一刀切过滤目录名就会删掉运行文件——只过滤扩展名，`dist/` 内的路径一律不按目录名过滤，才躲过一劫。
 
@@ -133,7 +133,7 @@ function resolveNodeCommand(): { command: string; env: NodeJS.ProcessEnv } {
   if (isNodeVersionOk(embeddedNodeVersion())) {
     return { command: process.execPath, env: { ELECTRON_RUN_AS_NODE: '1' } }
   }
-  return { command: 'node', env: {} }  // 仅在内置版本不满足时回退系统 node
+  return { command: 'node', env: {} } // 仅在内置版本不满足时回退系统 node
 }
 ```
 
@@ -147,9 +147,9 @@ function resolveNodeCommand(): { command: string; env: NodeJS.ProcessEnv } {
 # settings.yaml（每次任务前生成）
 agent-default-model:
   provider: deepseek-official
-  model: "<面板选中的模型 id>"
+  model: '<面板选中的模型 id>'
 llm-deepseek:
-  baseURL: "<面板选中的端点，OpenAI 兼容>"
+  baseURL: '<面板选中的端点，OpenAI 兼容>'
 ```
 
 **注入二：技能。** dsh 的 `skill-filesystem` 插件会扫描 `$DSH_HOME/skills` 下的 `*.md`（SKILL.md 格式，frontmatter + 正文）作为 Agent 的职业手册。我们把应用内置的创作技能（分镜 / 9 宫格分镜表 / 节拍拆解 / 导演审核 / 图生提示词……）快照成 SKILL.md 写进去，Agent 对话时按需加载——**一个懂美术、会走专业流程的 Agent 就诞生了**。快照带指纹，没变化就不重写，省 IO。
@@ -157,7 +157,11 @@ llm-deepseek:
 ```ts
 // GraphSkill → dsh SKILL.md 的 name（kebab-case，dsh 校验格式）
 function toDshSkillName(id: string): string {
-  const kebab = id.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+  const kebab = id
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
   return kebab
 }
 ```
@@ -178,12 +182,12 @@ if (exists) {
 
 dsh 自带的 headless-runner 只会"跑完打印最终结果"，这对一个产品级对话面板是不够的。我们写了一个自定义 runner（ESM 模板，从 dsh 内部包导入 `@deepseek-ai/dsh-agent` / `@deepseek-ai/dsh-session` / `@deepseek-ai/dsh-tools`），通过 stdout 的 marker 协议把内部事件流式转发给主进程，再广播到渲染层：
 
-| Marker | 作用 |
-|--------|------|
-| `===BEGIN_REASONING=== / END` | 思考过程折叠展示 |
-| `===BEGIN_TOOL=== / END` | 工具调用实时进度卡片（正在调用哪个能力、进度如何） |
-| `===BEGIN_CONTEXT===` | 上下文用量上报 → UI 显示真实 inputTokens 环形进度 |
-| `===BEGIN_ASK_USER===` | Agent 提问 → 渲染层弹窗选择 → 主进程写 answerFile → runner 轮询返回 |
+| Marker                        | 作用                                                                |
+| ----------------------------- | ------------------------------------------------------------------- |
+| `===BEGIN_REASONING=== / END` | 思考过程折叠展示                                                    |
+| `===BEGIN_TOOL=== / END`      | 工具调用实时进度卡片（正在调用哪个能力、进度如何）                  |
+| `===BEGIN_CONTEXT===`         | 上下文用量上报 → UI 显示真实 inputTokens 环形进度                   |
+| `===BEGIN_ASK_USER===`        | Agent 提问 → 渲染层弹窗选择 → 主进程写 answerFile → runner 轮询返回 |
 
 其中"提问"这一环在 headless 下尤其麻烦：Agent 中途需要确认（"用可灵还是用 MiniMax？"）时，headless profile 没有 UI provider，我们就自己注册 `ask_user_question` 工具 + 一个 UI provider，把问题经 marker 转发出去，用户选完再喂回给 Agent——**Agent 从"闷头干"变成"会先问"**。甚至还有一个 Plan 模式：Agent 先给计划、问用户确认、才允许动工具。
 

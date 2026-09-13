@@ -43,14 +43,23 @@ describe('normalizeStage2dScene：场景归一化', () => {
       canvasHeight: 256,
       anchor: 'center',
       layers: [
-        { id: 'a', name: 'A', sourceUrl: 'sprites/a.png', align: { contentHeightRatio: 3, groundRatio: -1 } },
+        {
+          id: 'a',
+          name: 'A',
+          sourceUrl: 'sprites/a.png',
+          align: { contentHeightRatio: 3, groundRatio: -1 }
+        },
         { sourceUrl: '', name: 'empty' },
         { id: 'c', sourceUrl: 'sprites/c.png', visible: false }
       ]
     })
     expect(s.layers.length).toBe(2)
     expect(s.layers[0]).toMatchObject({ id: 'a', name: 'A', visible: true })
-    expect(s.layers[0]!.align).toMatchObject({ anchor: 'ground', contentHeightRatio: 1, groundRatio: 0 })
+    expect(s.layers[0]!.align).toMatchObject({
+      anchor: 'ground',
+      contentHeightRatio: 1,
+      groundRatio: 0
+    })
     expect(s.layers[1]).toMatchObject({ visible: false })
     expect(typeof s.layers[1]!.id).toBe('string')
     expect(typeof s.layers[1]!.name).toBe('string')
@@ -101,8 +110,30 @@ describe('computeStage2dLayerPlacements：逐层锚点落位', () => {
       canvasHeight: 400,
       groundRatio: 0.1,
       layers: [
-        { id: 'a', name: 'A', sourceUrl: 'sprites/a.png', align: { anchor: 'ground', contentHeightRatio: 0.8, groundRatio: 0.1, fitWithinWidth: true }, visible: true },
-        { id: 'b', name: 'B', sourceUrl: 'sprites/b.png', align: { anchor: 'ground', contentHeightRatio: 0.8, groundRatio: 0.1, fitWithinWidth: true }, visible: true }
+        {
+          id: 'a',
+          name: 'A',
+          sourceUrl: 'sprites/a.png',
+          align: {
+            anchor: 'ground',
+            contentHeightRatio: 0.8,
+            groundRatio: 0.1,
+            fitWithinWidth: true
+          },
+          visible: true
+        },
+        {
+          id: 'b',
+          name: 'B',
+          sourceUrl: 'sprites/b.png',
+          align: {
+            anchor: 'ground',
+            contentHeightRatio: 0.8,
+            groundRatio: 0.1,
+            fitWithinWidth: true
+          },
+          visible: true
+        }
       ]
     })
     const p = computeStage2dLayerPlacements(layered, [sourceA, sourceB])
@@ -122,7 +153,18 @@ describe('computeStage2dLayerPlacements：逐层锚点落位', () => {
       canvasHeight: 500,
       anchor: 'center',
       layers: [
-        { id: 'a', name: 'A', sourceUrl: 'sprites/a.png', align: { anchor: 'center', contentHeightRatio: 0.5, groundRatio: 0.06, fitWithinWidth: true }, visible: true }
+        {
+          id: 'a',
+          name: 'A',
+          sourceUrl: 'sprites/a.png',
+          align: {
+            anchor: 'center',
+            contentHeightRatio: 0.5,
+            groundRatio: 0.06,
+            fitWithinWidth: true
+          },
+          visible: true
+        }
       ]
     })
     const p = computeStage2dLayerPlacements(scene, [sourceA])
@@ -147,7 +189,11 @@ describe('computeStage2dLayerPlacements：逐层锚点落位', () => {
       [sourceA]
     )[0]!.plan!
     const moved = computeStage2dLayerPlacements(
-      makeScene({ canvasHeight: 400, groundRatio: 0.1, layers: [{ ...layer, offset: { x: 24, y: -16 } }] }),
+      makeScene({
+        canvasHeight: 400,
+        groundRatio: 0.1,
+        layers: [{ ...layer, offset: { x: 24, y: -16 } }]
+      }),
       [sourceA]
     )[0]!.plan!
     expect(moved.dstX).toBe(base.dstX + 24)
@@ -159,10 +205,23 @@ describe('computeStage2dLayerPlacements：逐层锚点落位', () => {
   it('空 bounds 的源返回 plan=null（不崩溃）', () => {
     const scene = makeScene({
       layers: [
-        { id: 'a', name: 'A', sourceUrl: 'sprites/a.png', align: { anchor: 'ground', contentHeightRatio: 0.8, groundRatio: 0.06, fitWithinWidth: true }, visible: true }
+        {
+          id: 'a',
+          name: 'A',
+          sourceUrl: 'sprites/a.png',
+          align: {
+            anchor: 'ground',
+            contentHeightRatio: 0.8,
+            groundRatio: 0.06,
+            fitWithinWidth: true
+          },
+          visible: true
+        }
       ]
     })
-    const p = computeStage2dLayerPlacements(scene, [{ srcWidth: 100, srcHeight: 100, bounds: null }])
+    const p = computeStage2dLayerPlacements(scene, [
+      { srcWidth: 100, srcHeight: 100, bounds: null }
+    ])
     expect(p.length).toBe(1)
     expect(p[0]!.plan).toBeNull()
     expect(p[0]!.bounds).toBeNull()
@@ -188,7 +247,12 @@ describe('部件层 frame：共享整图层放置几何（拆件/换装差分地
           id: 'head',
           name: '头',
           sourceUrl: 'sprites/head.png',
-          align: { anchor: 'ground', contentHeightRatio: 0.8, groundRatio: 0.1, fitWithinWidth: true },
+          align: {
+            anchor: 'ground',
+            contentHeightRatio: 0.8,
+            groundRatio: 0.1,
+            fitWithinWidth: true
+          },
           visible: true,
           frame: { layerId: 'whole', crop: { x: 20, y: 10, width: 40, height: 50 } },
           pivot: { x: 20, y: 50 }
@@ -231,7 +295,12 @@ describe('部件层 frame：共享整图层放置几何（拆件/换装差分地
           id: 'head',
           name: '头',
           sourceUrl: 'sprites/head.png',
-          align: { anchor: 'ground', contentHeightRatio: 0.8, groundRatio: 0.1, fitWithinWidth: true },
+          align: {
+            anchor: 'ground',
+            contentHeightRatio: 0.8,
+            groundRatio: 0.1,
+            fitWithinWidth: true
+          },
           visible: true,
           frame: { layerId: 'whole', crop: { x: 0, y: 0, width: 200, height: 300 } },
           pivot: { x: 100, y: 300 }

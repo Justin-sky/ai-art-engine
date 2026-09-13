@@ -15,10 +15,7 @@ function imageItemRef(item: GraphImageItem): string {
   return item.relativePath?.trim() || item.dataUrl?.trim() || ''
 }
 
-async function resolveComicImageSrc(
-  ctx: NodeExecuteContext,
-  imageUrl: string
-): Promise<string> {
+async function resolveComicImageSrc(ctx: NodeExecuteContext, imageUrl: string): Promise<string> {
   const url = imageUrl.trim()
   if (!url) return ''
   if (isCanvasSafeImageSrc(url)) return url
@@ -38,8 +35,7 @@ export async function executeComicPageNode(
   if (ctx.signal?.aborted) {
     throw new DOMException('Aborted', 'AbortError')
   }
-  const page =
-    readComicPageFromGenParams(ctx.node.params) ?? createComicPage()
+  const page = readComicPageFromGenParams(ctx.node.params) ?? createComicPage()
   const incoming = await collectIncomingImageItems(ctx)
   const urls = incoming.map(imageItemRef).filter(Boolean)
   const filled = fillComicPageFromImageUrls(page, urls)
@@ -65,11 +61,7 @@ export async function executeComicPageNode(
       createdAt: new Date().toISOString()
     }
   ]
-  const materialized = await materializeGeneratedBatch(
-    ctx,
-    batch,
-    `comicPage:${ctx.node.id}`
-  )
+  const materialized = await materializeGeneratedBatch(ctx, batch, `comicPage:${ctx.node.id}`)
   if (!materialized.length) throw fail(SHARED_ERRORS.persistImageFailed, { detail: '' })
   const previewPath = materialized[0]?.relativePath?.trim()
   return commitGeneratedImages(ctx, materialized, previewPath, {

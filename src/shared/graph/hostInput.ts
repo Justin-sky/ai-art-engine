@@ -1,9 +1,6 @@
 import type { AssetType } from '../domain'
 import { isAssetHostNode, isAssetRefInputHostType } from './nodeRole'
-import {
-  collectScreenplayTextRelativePaths,
-  resolveAssetTextFromGenParams
-} from './assetText'
+import { collectScreenplayTextRelativePaths, resolveAssetTextFromGenParams } from './assetText'
 import { getNodePorts } from './ports'
 import type { GraphAddScope } from './scopes'
 import { resolveNodeTextContent } from './textOutput'
@@ -23,7 +20,12 @@ import type {
   GraphPersistedRunState,
   GraphPortDataType
 } from './types'
-import { GraphPortType, isGraphCatalogKind, isGraphPortDataType, isPluralGraphPortDataType } from './types'
+import {
+  GraphPortType,
+  isGraphCatalogKind,
+  isGraphPortDataType,
+  isPluralGraphPortDataType
+} from './types'
 import type { GraphValue } from './execute/types'
 import {
   boundaryInputNodeId,
@@ -180,9 +182,7 @@ export function isHostInputSlotEditorScope(_scope: GraphAddScope): boolean {
 }
 
 /** 通用保底：每个宿主入端口至少 1 个空槽（index=0） */
-export function defaultHostInputSlots(
-  assetType: string | null | undefined
-): HostInputSlotSpec[] {
+export function defaultHostInputSlots(assetType: string | null | undefined): HostInputSlotSpec[] {
   if (!isAssetRefInputHostType(assetType)) return []
   return listHostInputPortDefs(assetType).map((port) => ({
     portId: port.id,
@@ -349,11 +349,7 @@ function slotPreviewFromValue(
       }
     }
   }
-  if (
-    value.kind === 'world' ||
-    value.kind === 'worldEntities' ||
-    value.kind === 'beat'
-  ) {
+  if (value.kind === 'world' || value.kind === 'worldEntities' || value.kind === 'beat') {
     return { text: value.text }
   }
   if (value.kind === 'asset') {
@@ -367,11 +363,7 @@ export function graphValueHasPayload(value: GraphValue | undefined): value is Gr
   if (value.kind === 'text') {
     return !!value.text.trim() || !!value.relativePath?.trim()
   }
-  if (
-    value.kind === 'world' ||
-    value.kind === 'worldEntities' ||
-    value.kind === 'beat'
-  ) {
+  if (value.kind === 'world' || value.kind === 'worldEntities' || value.kind === 'beat') {
     return !!value.text.trim() || !!value.relativePath?.trim()
   }
   if (value.kind === 'texts') return value.items.some((i) => !!i.text?.trim() || !!i.relativePath)
@@ -412,8 +404,7 @@ export function softResolveBoundaryOutputValue(
   const node =
     doc.nodes.find((n) => n.id === boundaryNodeId) ??
     doc.nodes.find(
-      (n) =>
-        isBoundaryOutputNode(n) && n.params.hostBoundaryPort?.portId === boundaryNodeId
+      (n) => isBoundaryOutputNode(n) && n.params.hostBoundaryPort?.portId === boundaryNodeId
     )
   if (!node || !isBoundaryOutputNode(node)) return undefined
 
@@ -427,12 +418,7 @@ export function softResolveBoundaryOutputValue(
   const incoming = doc.edges.filter((edge) => edge.target === node.id)
   if (!aggregate) {
     for (const edge of incoming) {
-      const value = softResolveSourceOutput(
-        doc,
-        edge.source,
-        edge.sourcePort ?? 'out',
-        options
-      )
+      const value = softResolveSourceOutput(doc, edge.source, edge.sourcePort ?? 'out', options)
       if (graphValueMatchesBoundaryPort(value, portType)) return value
     }
     return undefined
@@ -440,12 +426,7 @@ export function softResolveBoundaryOutputValue(
 
   const collected: GraphValue[] = []
   for (const edge of incoming) {
-    const value = softResolveSourceOutput(
-      doc,
-      edge.source,
-      edge.sourcePort ?? 'out',
-      options
-    )
+    const value = softResolveSourceOutput(doc, edge.source, edge.sourcePort ?? 'out', options)
     if (graphValueMatchesBoundaryPort(value, portType)) collected.push(value!)
   }
   if (!collected.length) return undefined
@@ -457,10 +438,7 @@ export function mergeBoundarySoftValues(
   portType: GraphPortDataType | undefined
 ): GraphValue | undefined {
   if (!values.length) return undefined
-  if (
-    portType === GraphPortType.image ||
-    portType === GraphPortType.images
-  ) {
+  if (portType === GraphPortType.image || portType === GraphPortType.images) {
     const items = values.flatMap((v) => {
       if (v.kind === 'images') return v.items
       if (v.kind === 'image') {
@@ -478,10 +456,7 @@ export function mergeBoundarySoftValues(
     })
     return items.length ? { kind: 'images', items } : undefined
   }
-  if (
-    portType === GraphPortType.video ||
-    portType === GraphPortType.videos
-  ) {
+  if (portType === GraphPortType.video || portType === GraphPortType.videos) {
     const items = values.flatMap((v) => {
       if (v.kind === 'videos') return v.items
       if (v.kind === 'video') {
@@ -499,10 +474,7 @@ export function mergeBoundarySoftValues(
     })
     return items.length ? { kind: 'videos', items } : undefined
   }
-  if (
-    portType === GraphPortType.voice ||
-    portType === GraphPortType.voices
-  ) {
+  if (portType === GraphPortType.voice || portType === GraphPortType.voices) {
     const items = values.flatMap((v) => {
       if (v.kind === 'voices') return v.items
       if (v.kind === 'voice') {
@@ -657,8 +629,7 @@ export function softResolveHostBoundaryOutput(
   const iface = resolveNodeHostInterface(node)
   const portId = sourcePort?.trim() || 'out'
   const port =
-    iface.outputs.find((p) => p.id === portId) ??
-    (portId === 'out' ? iface.outputs[0] : undefined)
+    iface.outputs.find((p) => p.id === portId) ?? (portId === 'out' ? iface.outputs[0] : undefined)
   if (!port) return undefined
 
   const liveDoc = options?.resolveLiveAssetGraph?.(node.assetId)
@@ -1022,10 +993,7 @@ export function softResolveSourceOutput(
     const isVideoNode = node.assetType === 'video' || typeId.includes('video')
     if (isVideoNode) {
       // 首帧/参考图常写在 previewRelativePath，不得当成已生成视频
-      if (
-        looksLikeVideoRelativePath(previewPath) ||
-        !!previewUrl?.startsWith('data:video')
-      ) {
+      if (looksLikeVideoRelativePath(previewPath) || !!previewUrl?.startsWith('data:video')) {
         return {
           kind: 'video',
           dataUrl: previewUrl,
@@ -1142,15 +1110,12 @@ function textFromWorldEntitiesInGraph(graphJson: unknown): string {
       ? (node.params.worldElementOutputs as WorldElementGenResult[])
       : []
     if (!outputs.length) continue
-    const text = stringifyWorldElementGenResults(
-      outputs.filter((item) => item?.type && item?.name)
-    )
+    const text = stringifyWorldElementGenResults(outputs.filter((item) => item?.type && item?.name))
     if (text.trim()) return text
   }
   for (const node of nodes) {
     if (node.typeId !== 'world.gen' && node.typeId !== 'output.world') continue
-    const text =
-      worldEntitiesText(node.params.text) || worldEntitiesText(node.params.resultText)
+    const text = worldEntitiesText(node.params.text) || worldEntitiesText(node.params.resultText)
     if (text) return text
   }
   return ''
@@ -1219,9 +1184,7 @@ export function resolveHostInputSlotsFromParentGraph(
 
   for (const port of inPorts) {
     const edges = parent.edges
-      .filter(
-        (edge) => edge.target === hostNode.id && (edge.targetPort ?? 'in') === port.id
-      )
+      .filter((edge) => edge.target === hostNode.id && (edge.targetPort ?? 'in') === port.id)
       .slice()
       // 保持 edges 数组相对顺序（文档序）
       .sort((a, b) => parent.edges.indexOf(a) - parent.edges.indexOf(b))
@@ -1439,10 +1402,7 @@ export function ensureHostInputSlotNodes(
 }
 
 /** 同一入端口的多条入边合并成一个值（按端口数据类型聚合） */
-export function mergeHostInputValues(
-  values: GraphValue[],
-  dataType: string
-): GraphValue | null {
+export function mergeHostInputValues(values: GraphValue[], dataType: string): GraphValue | null {
   if (!values.length) return null
   if (values.length === 1) return values[0]!
   if (dataType === GraphPortType.text || dataType === GraphPortType.texts) {
@@ -1467,11 +1427,13 @@ export function mergeHostInputValues(
     const items = values.flatMap((value) => {
       if (value.kind === 'videos') return value.items
       if (value.kind === 'video') {
-        return [{
-          dataUrl: value.dataUrl ?? '',
-          relativePath: value.relativePath,
-          id: value.id
-        }]
+        return [
+          {
+            dataUrl: value.dataUrl ?? '',
+            relativePath: value.relativePath,
+            id: value.id
+          }
+        ]
       }
       return []
     })
@@ -1481,11 +1443,13 @@ export function mergeHostInputValues(
     const items = values.flatMap((value) => {
       if (value.kind === 'voices') return value.items
       if (value.kind === 'voice') {
-        return [{
-          relativePath: value.relativePath,
-          id: value.id,
-          createdAt: value.createdAt
-        }]
+        return [
+          {
+            relativePath: value.relativePath,
+            id: value.id,
+            createdAt: value.createdAt
+          }
+        ]
       }
       return []
     })
@@ -1533,7 +1497,9 @@ export function resolveBoundaryInputValuesFromParentGraph(
       .sort((a, b) => parent.edges.indexOf(a) - parent.edges.indexOf(b))
     if (!edges.length) continue
     const values = edges
-      .map((edge) => softResolveSourceOutput(parent, edge.source, edge.sourcePort ?? 'out', options))
+      .map((edge) =>
+        softResolveSourceOutput(parent, edge.source, edge.sourcePort ?? 'out', options)
+      )
       .filter((value): value is GraphValue => graphValueHasPayload(value))
     const merged = mergeHostInputValues(values, port.dataType)
     if (merged) result[port.id] = merged
@@ -1570,9 +1536,7 @@ export function applyBoundaryInputValues(
     const id = boundaryInputNodeId(portId)
     const node =
       nodes.find((n) => n.id === id) ??
-      nodes.find(
-        (n) => isBoundaryInputNode(n) && n.params.hostBoundaryPort?.portId === portId
-      )
+      nodes.find((n) => isBoundaryInputNode(n) && n.params.hostBoundaryPort?.portId === portId)
     if (!node) continue
     const dataType =
       node.params.hostBoundaryPort?.dataType ??
@@ -1619,7 +1583,10 @@ export function applyBoundaryInputValues(
 function textFromBoundaryValue(value: GraphValue): string {
   if (value.kind === 'text') return value.text
   if (value.kind === 'texts') {
-    return value.items.map((item) => item.text ?? '').filter(Boolean).join('\n')
+    return value.items
+      .map((item) => item.text ?? '')
+      .filter(Boolean)
+      .join('\n')
   }
   if (value.kind === 'beat') {
     return value.text
@@ -1698,7 +1665,12 @@ export function buildHostInputSlotSeedOutputs(
         } else if (value.kind === 'voices') {
           const item = value.items[i]
           out = item
-            ? { kind: 'voice', id: item.id, relativePath: item.relativePath, createdAt: item.createdAt }
+            ? {
+                kind: 'voice',
+                id: item.id,
+                relativePath: item.relativePath,
+                createdAt: item.createdAt
+              }
             : { kind: 'voice' }
         } else if (value.kind === 'voice') {
           out = value
@@ -1747,4 +1719,3 @@ export async function hydrateHostInputSlotSpecs(
     })
   )
 }
-

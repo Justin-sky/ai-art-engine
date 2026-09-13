@@ -11,9 +11,7 @@ function findAllScreenplayProcessingNodes(graphJson: unknown): GraphNode[] {
   if (!graphJson || typeof graphJson !== 'object') return []
   const nodes = (graphJson as GraphDocument).nodes
   if (!Array.isArray(nodes)) return []
-  return nodes.filter(
-    (node) => isProcessingAssetNode(node) && node.assetType === 'screenplay'
-  )
+  return nodes.filter((node) => isProcessingAssetNode(node) && node.assetType === 'screenplay')
 }
 
 function isTextOutputNode(node: GraphNode): boolean {

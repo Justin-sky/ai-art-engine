@@ -8,14 +8,22 @@ import { useGraphRunLogsStore } from '../src/renderer/src/stores/graphRunLogs'
 const IMAGE_OUTPUT_ID = graphOutputNodeId('image')
 
 function sampleGraph(): GraphDocument {
-  const text = createNodeFromType('play.script', { x: 0, y: 0 }, {
-    id: 'n-text',
-    params: { text: 'hello' }
-  })
-  const output = createOutputGraphNode('image', { x: 200, y: 0 }, {
-    id: IMAGE_OUTPUT_ID,
-    params: { outputKind: 'image', inputDataType: 'text' }
-  })
+  const text = createNodeFromType(
+    'play.script',
+    { x: 0, y: 0 },
+    {
+      id: 'n-text',
+      params: { text: 'hello' }
+    }
+  )
+  const output = createOutputGraphNode(
+    'image',
+    { x: 200, y: 0 },
+    {
+      id: IMAGE_OUTPUT_ID,
+      params: { outputKind: 'image', inputDataType: 'text' }
+    }
+  )
   return {
     nodes: [text, output],
     edges: [
@@ -109,11 +117,14 @@ describe('graphRunLogBridge', () => {
     expect(doneEvent?.durationMs).toBeTypeOf('number')
     expect(doneEvent?.durationMs ?? -1).toBeGreaterThanOrEqual(0)
 
-    bridge.endFromResult({
-      ok: true,
-      order: ['n-text', IMAGE_OUTPUT_ID],
-      states: {}
-    }, { message: 'ok' })
+    bridge.endFromResult(
+      {
+        ok: true,
+        order: ['n-text', IMAGE_OUTPUT_ID],
+        states: {}
+      },
+      { message: 'ok' }
+    )
 
     expect(store.sessions[0]?.status).toBe('done')
     expect(store.sessions[0]?.events.some((e) => e.kind === 'run_end')).toBe(true)
@@ -121,11 +132,15 @@ describe('graphRunLogBridge', () => {
   })
 
   it('uses target node title in run_start', () => {
-    const ref = createNodeFromType('asset.voice', { x: 0, y: 0 }, {
-      id: 'node-abc',
-      title: '梁咏琪',
-      params: { assetRef: true }
-    })
+    const ref = createNodeFromType(
+      'asset.voice',
+      { x: 0, y: 0 },
+      {
+        id: 'node-abc',
+        title: '梁咏琪',
+        params: { assetRef: true }
+      }
+    )
     const graph: GraphDocument = {
       nodes: [ref],
       edges: [],
@@ -176,10 +191,14 @@ describe('graphRunLogBridge', () => {
   })
 
   it('attaches skillId and promptHash on API calls', () => {
-    const text = createNodeFromType('prompt.optimize', { x: 0, y: 0 }, {
-      id: 'n-opt',
-      params: { skillId: 'episode.breakdown', generateInstruction: 'x' }
-    })
+    const text = createNodeFromType(
+      'prompt.optimize',
+      { x: 0, y: 0 },
+      {
+        id: 'n-opt',
+        params: { skillId: 'episode.breakdown', generateInstruction: 'x' }
+      }
+    )
     const graph: GraphDocument = {
       nodes: [text],
       edges: [],

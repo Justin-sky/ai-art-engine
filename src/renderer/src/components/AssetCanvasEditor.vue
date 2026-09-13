@@ -1,9 +1,6 @@
 <template>
   <div class="asset-canvas-editor">
-    <div
-      v-if="showDiveShellBar && diveContext"
-      class="dive-shell-bar"
-    >
+    <div v-if="showDiveShellBar && diveContext" class="dive-shell-bar">
       <EditorDiveBar
         :root-title="diveContext.rootTitle"
         :frames="diveContext.frames"
@@ -11,10 +8,7 @@
       />
     </div>
 
-    <div
-      v-if="!diving"
-      class="toolbar"
-    >
+    <div v-if="!diving" class="toolbar">
       <span>{{ t('studio.editor.canvas') }}</span>
       <span class="spacer" />
       <span class="hint">{{ t('canvas.asset.hint') }}</span>
@@ -29,10 +23,7 @@
       :hide-toolbar="toolbarCollapsed"
     />
 
-    <EditorDiveChildHost
-      :frame="diving ? diveTop : null"
-      :frames="diveFrames"
-    />
+    <EditorDiveChildHost :frame="diving ? diveTop : null" :frames="diveFrames" />
   </div>
 </template>
 
@@ -57,9 +48,7 @@ const workspace = useWorkspaceStore()
 const toolbarCollapsed = ref(false)
 const { asset: canvasAsset } = useAssetRecord(props.canvasAssetId)
 
-const rootTitle = computed(
-  () => canvasAsset.value?.name?.trim() || t('studio.dive.root')
-)
+const rootTitle = computed(() => canvasAsset.value?.name?.trim() || t('studio.dive.root'))
 
 const { diving, diveTop, diveFrames, diveContext } = useEditorDiveHost({
   kind: 'canvas',
@@ -68,9 +57,7 @@ const { diving, diveTop, diveFrames, diveContext } = useEditorDiveHost({
 })
 
 /** 视图帧（表格/预览/工具）由壳层显示面包屑；资产帧放在子图工具栏 */
-const showDiveShellBar = computed(
-  () => diving.value && isEditorDiveViewFrame(diveTop.value)
-)
+const showDiveShellBar = computed(() => diving.value && isEditorDiveViewFrame(diveTop.value))
 
 onBeforeUnmount(() => {
   workspace.consumeCanvasEditor(props.canvasAssetId)

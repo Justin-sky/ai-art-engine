@@ -158,10 +158,7 @@ export function defaultGameSystemSystemPrompt(locale?: string): string {
   )
 }
 
-export function resolveGameSystemSystemPrompt(
-  raw: string | undefined,
-  locale?: string
-): string {
+export function resolveGameSystemSystemPrompt(raw: string | undefined, locale?: string): string {
   return resolveOrDefault(raw, locale, defaultGameSystemSystemPrompt)
 }
 
@@ -330,7 +327,11 @@ export const DEFAULT_TO_PROMPT_SYSTEM_PROMPT_ZH =
   '你是一名视觉描述专家。请将图片转写为可用于生成的精确提示词：主体、构图、光照、风格与关键细节。'
 
 export function defaultToPromptSystemPrompt(locale?: string): string {
-  return pickByLocale(locale, DEFAULT_TO_PROMPT_SYSTEM_PROMPT_EN, DEFAULT_TO_PROMPT_SYSTEM_PROMPT_ZH)
+  return pickByLocale(
+    locale,
+    DEFAULT_TO_PROMPT_SYSTEM_PROMPT_EN,
+    DEFAULT_TO_PROMPT_SYSTEM_PROMPT_ZH
+  )
 }
 
 export function resolveToPromptSystemPrompt(raw: string | undefined, locale?: string): string {
@@ -458,11 +459,7 @@ export const DEFAULT_LIGHTING_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的专业�
 禁止简单叠色滤镜或平面贴光；追求物理可信的光影传递，不要改写场景叙事内容、道具或背景。`
 
 export function defaultLightingSystemPrompt(locale?: string): string {
-  return pickByLocale(
-    locale,
-    DEFAULT_LIGHTING_SYSTEM_PROMPT_EN,
-    DEFAULT_LIGHTING_SYSTEM_PROMPT_ZH
-  )
+  return pickByLocale(locale, DEFAULT_LIGHTING_SYSTEM_PROMPT_EN, DEFAULT_LIGHTING_SYSTEM_PROMPT_ZH)
 }
 
 export function resolveLightingSystemPrompt(raw: string | undefined, locale?: string): string {
@@ -491,10 +488,7 @@ export function defaultAdVariantSystemPrompt(locale?: string): string {
   )
 }
 
-export function resolveAdVariantSystemPrompt(
-  raw: string | undefined,
-  locale?: string
-): string {
+export function resolveAdVariantSystemPrompt(raw: string | undefined, locale?: string): string {
   return resolveOrDefault(raw, locale, defaultAdVariantSystemPrompt)
 }
 
@@ -950,10 +944,7 @@ export function defaultBeatSplitSystemPrompt(locale?: string): string {
   )
 }
 
-export function resolveBeatSplitSystemPrompt(
-  raw: string | undefined,
-  locale?: string
-): string {
+export function resolveBeatSplitSystemPrompt(raw: string | undefined, locale?: string): string {
   return resolveOrDefault(raw, locale, defaultBeatSplitSystemPrompt)
 }
 
@@ -977,10 +968,7 @@ export function defaultBeatUnitGenSystemPrompt(locale?: string): string {
   )
 }
 
-export function resolveBeatUnitGenSystemPrompt(
-  raw: string | undefined,
-  locale?: string
-): string {
+export function resolveBeatUnitGenSystemPrompt(raw: string | undefined, locale?: string): string {
   return resolveOrDefault(raw, locale, defaultBeatUnitGenSystemPrompt)
 }
 
@@ -1067,11 +1055,7 @@ export const DEFAULT_MODEL3D_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的资深 3D
 不要输出任何代码、JSON 或坐标数据。保持 1–4 句自然语言描述，不加入与参考图冲突的镜头、光照或渲染设置。`
 
 export function defaultModel3dSystemPrompt(locale?: string): string {
-  return pickByLocale(
-    locale,
-    DEFAULT_MODEL3D_SYSTEM_PROMPT_EN,
-    DEFAULT_MODEL3D_SYSTEM_PROMPT_ZH
-  )
+  return pickByLocale(locale, DEFAULT_MODEL3D_SYSTEM_PROMPT_EN, DEFAULT_MODEL3D_SYSTEM_PROMPT_ZH)
 }
 
 export function resolveModel3dSystemPrompt(raw: string | undefined, locale?: string): string {

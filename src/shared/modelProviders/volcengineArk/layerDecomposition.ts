@@ -27,9 +27,10 @@ export function rowImageUrl(row: VolcengineArkImageRow): string {
   return ''
 }
 
-export function parseVolcengineArkImageLayers(
-  rows: VolcengineArkImageRow[] | undefined
-): { images: string[]; layers: GenerateImageLayer[] } {
+export function parseVolcengineArkImageLayers(rows: VolcengineArkImageRow[] | undefined): {
+  images: string[]
+  layers: GenerateImageLayer[]
+} {
   const images: string[] = []
   const layers: GenerateImageLayer[] = []
   for (const [index, row] of (rows ?? []).entries()) {

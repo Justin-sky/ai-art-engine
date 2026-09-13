@@ -5,7 +5,15 @@
  * - 把渲染层的相对路径输入解析为绝对路径后再下发 worker。
  */
 import { app, shell, utilityProcess, type UtilityProcess } from 'electron'
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs'
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync
+} from 'fs'
 import { mkdir } from 'fs/promises'
 import { isAbsolute, join } from 'path'
 import {
@@ -133,9 +141,10 @@ class YoloService {
       )
     }
     const kindMatch = models.filter((m) => m.kind === kind)
-    const chosen = kindMatch.length > 0
-      ? kindMatch.sort((a, b) => b.sizeMb - a.sizeMb)[0]
-      : models.find((m) => m.kind === 'detect')
+    const chosen =
+      kindMatch.length > 0
+        ? kindMatch.sort((a, b) => b.sizeMb - a.sizeMb)[0]
+        : models.find((m) => m.kind === 'detect')
     if (!chosen) {
       throw new Error(
         `YOLO: no model suitable for "${kind}"; available: ${models.map((m) => m.id).join(', ')}`
@@ -217,7 +226,11 @@ class YoloService {
     else entry.reject(new Error(res.error))
   }
 
-  private call(method: YoloWorkerRequest['method'], params: unknown, timeoutMs: number): Promise<unknown> {
+  private call(
+    method: YoloWorkerRequest['method'],
+    params: unknown,
+    timeoutMs: number
+  ): Promise<unknown> {
     if (!this.child) return Promise.reject(new Error('YOLO: inference process is not running'))
     return new Promise((resolve, reject) => {
       const id = this.nextId++

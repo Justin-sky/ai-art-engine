@@ -12,10 +12,7 @@ function trimPath(value: string | null | undefined): string | null {
   return t || null
 }
 
-function pathFromImageLike(item: {
-  dataUrl?: string
-  relativePath?: string
-}): string | null {
+function pathFromImageLike(item: { dataUrl?: string; relativePath?: string }): string | null {
   return trimPath(item.relativePath)
 }
 
@@ -136,8 +133,7 @@ function pathFromGraphAssetRefs(
   for (const state of Object.values(graph.runStates ?? {})) {
     const out = state.outputs?.out
     if (!out) continue
-    const items =
-      out.kind === 'output' ? out.items : out.kind === 'asset' ? [out] : []
+    const items = out.kind === 'output' ? out.items : out.kind === 'asset' ? [out] : []
     for (const item of items) {
       if (item.kind !== 'asset' || item.assetId === selfId) continue
       const other = byId.get(item.assetId)

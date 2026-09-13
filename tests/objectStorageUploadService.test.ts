@@ -9,9 +9,7 @@ const tosMocks = vi.hoisted(() => ({
   putObjectFromFile: vi.fn().mockResolvedValue(undefined),
   putObject: vi.fn().mockResolvedValue(undefined),
   deleteObject: vi.fn().mockResolvedValue(undefined),
-  getPreSignedUrl: vi
-    .fn()
-    .mockReturnValue('https://signed.example/aiartengine/media-refs/obj.mp4'),
+  getPreSignedUrl: vi.fn().mockReturnValue('https://signed.example/aiartengine/media-refs/obj.mp4'),
   ctorArgs: [] as Array<Record<string, unknown>>
 }))
 
@@ -120,9 +118,7 @@ describe('objectStorageUploadService', () => {
 
   describe('uploadLocalFile', () => {
     it('throws when file is missing', async () => {
-      await expect(uploadLocalFile(join(tmpDir, 'missing.mp4'))).rejects.toThrow(
-        /待上传文件不存在/
-      )
+      await expect(uploadLocalFile(join(tmpDir, 'missing.mp4'))).rejects.toThrow(/待上传文件不存在/)
       expect(tosMocks.putObjectFromFile).not.toHaveBeenCalled()
     })
 
@@ -301,12 +297,12 @@ describe('objectStorageUploadService', () => {
       ])
 
       expect(tosMocks.deleteObject).toHaveBeenCalledTimes(2)
-      expect(
-        logs.some((l) => l.level === 'warn' && /删除临时参考媒体失败/.test(l.message))
-      ).toBe(true)
-      expect(
-        logs.some((l) => l.level === 'info' && /已删除临时参考媒体：ok/.test(l.message))
-      ).toBe(true)
+      expect(logs.some((l) => l.level === 'warn' && /删除临时参考媒体失败/.test(l.message))).toBe(
+        true
+      )
+      expect(logs.some((l) => l.level === 'info' && /已删除临时参考媒体：ok/.test(l.message))).toBe(
+        true
+      )
     })
 
     it('skips entries with empty objectKey', async () => {

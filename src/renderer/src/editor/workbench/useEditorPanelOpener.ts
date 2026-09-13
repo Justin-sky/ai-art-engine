@@ -1,9 +1,6 @@
 import { onScopeDispose, watch, type ShallowRef } from 'vue'
 import type { DockviewApi } from 'dockview-vue'
-import {
-  useWorkspaceStore,
-  type CloseEditorsForAssetsResult
-} from '../../stores/workspace'
+import { useWorkspaceStore, type CloseEditorsForAssetsResult } from '../../stores/workspace'
 import { isEditorPanelGraphRunning } from './canCloseEditorPanel'
 import { editorPanelIdsForAsset, parseEditorPanelId } from './editorPanelIcon'
 import type { EditorPanelKind } from './usePanelTitles'
@@ -90,30 +87,48 @@ export function useEditorPanelOpener(options: EditorPanelOpenerOptions) {
     }
   }
 
-  watch(() => workspace.openAssetEditorIds.slice(), (ids) => {
-    const id = ids.at(-1)
-    if (id) open('asset', id)
-  })
-  watch(() => workspace.openScreenplayEditorIds.slice(), (ids) => {
-    const id = ids.at(-1)
-    if (id) open('screenplay', id)
-  })
-  watch(() => workspace.openCanvasEditorIds.slice(), (ids) => {
-    const id = ids.at(-1)
-    if (id) open('canvas', id)
-  })
-  watch(() => workspace.openWorldEditorIds.slice(), (ids) => {
-    const id = ids.at(-1)
-    if (id) open('world', id)
-  })
-  watch(() => workspace.openBeatEditorIds.slice(), (ids) => {
-    const id = ids.at(-1)
-    if (id) open('beat', id)
-  })
-  watch(() => workspace.openDirectorEditorIds.slice(), (ids) => {
-    const id = ids.at(-1)
-    if (id) open('director', id)
-  })
+  watch(
+    () => workspace.openAssetEditorIds.slice(),
+    (ids) => {
+      const id = ids.at(-1)
+      if (id) open('asset', id)
+    }
+  )
+  watch(
+    () => workspace.openScreenplayEditorIds.slice(),
+    (ids) => {
+      const id = ids.at(-1)
+      if (id) open('screenplay', id)
+    }
+  )
+  watch(
+    () => workspace.openCanvasEditorIds.slice(),
+    (ids) => {
+      const id = ids.at(-1)
+      if (id) open('canvas', id)
+    }
+  )
+  watch(
+    () => workspace.openWorldEditorIds.slice(),
+    (ids) => {
+      const id = ids.at(-1)
+      if (id) open('world', id)
+    }
+  )
+  watch(
+    () => workspace.openBeatEditorIds.slice(),
+    (ids) => {
+      const id = ids.at(-1)
+      if (id) open('beat', id)
+    }
+  )
+  watch(
+    () => workspace.openDirectorEditorIds.slice(),
+    (ids) => {
+      const id = ids.at(-1)
+      if (id) open('director', id)
+    }
+  )
 
   function closeEditorsForAssetIds(assetIds: string[]): CloseEditorsForAssetsResult {
     const api = options.dockApi.value

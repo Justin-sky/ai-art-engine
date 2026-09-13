@@ -53,7 +53,25 @@ const CJK_RE = /[㐀-鿿豈-﫿]/
 const SUPPRESS_RE = /\bcjk-ok\b/
 /** code 态里 / 之后允许正则字面量启动的前导字符（运算符/开括号等；标识符与 ) ] 引号后视为除法或调用） */
 const REGEX_PRECEDERS = new Set([
-  '(', '[', '{', ',', ';', ':', '!', '?', '&', '|', '+', '-', '*', '%', '^', '~', '<', '>', '='
+  '(',
+  '[',
+  '{',
+  ',',
+  ';',
+  ':',
+  '!',
+  '?',
+  '&',
+  '|',
+  '+',
+  '-',
+  '*',
+  '%',
+  '^',
+  '~',
+  '<',
+  '>',
+  '='
 ])
 const REGEX_KEYWORD_RE =
   /\b(?:return|typeof|instanceof|case|do|else|new|delete|void|in|of|yield|await|throw)$/
@@ -253,9 +271,27 @@ export function stripCommentsPerLine(text) {
         continue
       }
     }
-    if (ch === "'" ) { stack.push({ kind: 's' }); seeCodeChar(ch); cur += ch; i++; continue }
-    if (ch === '"' ) { stack.push({ kind: 'd' }); seeCodeChar(ch); cur += ch; i++; continue }
-    if (ch === '`' ) { stack.push({ kind: 't' }); seeCodeChar(ch); cur += ch; i++; continue }
+    if (ch === "'") {
+      stack.push({ kind: 's' })
+      seeCodeChar(ch)
+      cur += ch
+      i++
+      continue
+    }
+    if (ch === '"') {
+      stack.push({ kind: 'd' })
+      seeCodeChar(ch)
+      cur += ch
+      i++
+      continue
+    }
+    if (ch === '`') {
+      stack.push({ kind: 't' })
+      seeCodeChar(ch)
+      cur += ch
+      i++
+      continue
+    }
     if (ch === '{') {
       frame.braces++
       seeCodeChar(ch)
@@ -300,7 +336,7 @@ export function bilingualDefLineIndexes(stripped) {
     return [s, offset - 1]
   })
   const full = stripped.join('\n')
-  for (let i = 0; i < full.length; ) {
+  for (let i = 0; i < full.length;) {
     DEF_OPEN_RE.lastIndex = 0
     const m = DEF_OPEN_RE.exec(full.slice(i))
     if (!m || m.index === undefined) break
@@ -351,7 +387,11 @@ export function collectSources() {
   return files.filter((f) => {
     const r = rel(f)
     if (EXEMPT_FILES.has(r)) return false
-    if (EXEMPT_DIR_PARTS.some((parts) => r.split('/').slice(0, parts.length).join('/') === parts.join('/')))
+    if (
+      EXEMPT_DIR_PARTS.some(
+        (parts) => r.split('/').slice(0, parts.length).join('/') === parts.join('/')
+      )
+    )
       return false
     return true
   })
@@ -377,7 +417,7 @@ export function run({ json = false } = {}) {
 
   for (const f of collectSources()) {
     const r = rel(f)
-    const allowed = (cfg.files?.[r] ?? [])
+    const allowed = cfg.files?.[r] ?? []
     let text
     try {
       text = fs.readFileSync(f, 'utf8')

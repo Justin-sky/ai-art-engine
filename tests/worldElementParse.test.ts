@@ -167,8 +167,8 @@ describe('worldElementParse', () => {
       { type: '角色', name: 'Ada', imageUrl: 'Assets/a.png' },
       { type: '武器', name: '剑', imageUrl: 'Assets/w.png' }
     ])
-    expect(parseWorldElementGenResults(`[{"type":"character","name":"X","imageUrl":"p.png"}]`)).toEqual([
-      { type: '角色', name: 'X', imageUrl: 'p.png' }
-    ])
+    expect(
+      parseWorldElementGenResults(`[{"type":"character","name":"X","imageUrl":"p.png"}]`)
+    ).toEqual([{ type: '角色', name: 'X', imageUrl: 'p.png' }])
   })
 })

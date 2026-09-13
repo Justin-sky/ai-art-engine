@@ -44,7 +44,10 @@ export function assertSafePackagePathname(pathname: string): string {
   if (!normalized.startsWith('Assets/')) {
     throw fail(SHARED_ERRORS.packagePathPrefix, { path: pathname })
   }
-  if (normalized.includes('\0') || normalized.split('/').some((p) => p === '' || p === '.' || p === '..')) {
+  if (
+    normalized.includes('\0') ||
+    normalized.split('/').some((p) => p === '' || p === '.' || p === '..')
+  ) {
     throw fail(SHARED_ERRORS.packagePathInvalid, { path: pathname })
   }
   if (/^[a-zA-Z]:/.test(normalized) || normalized.startsWith('/')) {
@@ -74,7 +77,9 @@ export function folderPathname(
   return assertSafePackagePathname(['Assets', ...parts].join('/'))
 }
 
-export function assetLeafName(asset: Pick<AssetInfo, 'id' | 'name' | 'type' | 'relativePath'>): string {
+export function assetLeafName(
+  asset: Pick<AssetInfo, 'id' | 'name' | 'type' | 'relativePath'>
+): string {
   const base = normalizePathSegment(asset.name || asset.type)
   if (asset.relativePath) {
     const ext = asset.relativePath.includes('.')

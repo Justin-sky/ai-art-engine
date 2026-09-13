@@ -1,5 +1,1 @@
-export {
-  getProviderAdapter,
-  listRegisteredProviderKinds,
-  loadProviderAdapter
-} from '../../runtime'
+export { getProviderAdapter, listRegisteredProviderKinds, loadProviderAdapter } from '../../runtime'

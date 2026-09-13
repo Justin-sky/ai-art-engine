@@ -22,15 +22,12 @@ function assertNotAborted(signal?: AbortSignal): void {
   }
 }
 
-function readBeatGenParams(
-  beatAssetId: string
-): Record<string, unknown> | undefined {
+function readBeatGenParams(beatAssetId: string): Record<string, unknown> | undefined {
   if (isDraftAssetId(beatAssetId)) {
     return useDraftStore().getDraft(beatAssetId)?.genParams
   }
   return useProjectStore().assets.find((item) => item.id === beatAssetId)?.genParams as
-    | Record<string, unknown>
-    | undefined
+    Record<string, unknown> | undefined
 }
 
 async function hydrateTextItem(item: GraphTextItem): Promise<GraphTextItem> {

@@ -35,7 +35,15 @@ describe('image.iconPack 执行产物契约', () => {
       {
         id: 'pack',
         params: {
-          iconPack: { rows: 3, cols: 3, edgeInset: 'auto', keyColor: 'auto', distance: 40, feather: 34, canvasSize: 0 },
+          iconPack: {
+            rows: 3,
+            cols: 3,
+            edgeInset: 'auto',
+            keyColor: 'auto',
+            distance: 40,
+            feather: 34,
+            canvasSize: 0
+          },
           mediaOutputDir: 'Assets/IconPacks/skill'
         }
       }
@@ -46,7 +54,11 @@ describe('image.iconPack 执行产物契约', () => {
   function buildRunOptions() {
     const savedMedia: Array<{ key: string; dataUrl: string; outputDir?: string }> = []
     const texts: Array<{ content: string; key: string; outputDir?: string }> = []
-    const composeCalls: Array<{ url: string; names: string[]; cellOverrides?: Record<string, string> }> = []
+    const composeCalls: Array<{
+      url: string
+      names: string[]
+      cellOverrides?: Record<string, string>
+    }> = []
     const stub = {
       stepDelayMs: 1,
       resolveImageUrls: async (items: Array<{ dataUrl?: string }>) =>
@@ -56,7 +68,11 @@ describe('image.iconPack 执行产物契约', () => {
         names: string[]
         cellOverrides?: Record<string, string>
       }) => {
-        composeCalls.push({ url: arg.sourceDataUrl, names: arg.names, cellOverrides: arg.cellOverrides })
+        composeCalls.push({
+          url: arg.sourceDataUrl,
+          names: arg.names,
+          cellOverrides: arg.cellOverrides
+        })
         return {
           items: arg.names.map((name, index) => ({
             cellKey: `${Math.floor(index / 3) + 1}-${(index % 3) + 1}`,
@@ -133,7 +149,15 @@ describe('image.iconPack 执行产物契约', () => {
       canvasSize: number
       background: { r: number; g: number; b: number }
       grid: { rows: number; cols: number }
-      icons: Array<{ name: string; fileName: string; cellKey: string; width: number; height: number; anchorX: number; anchorY: number }>
+      icons: Array<{
+        name: string
+        fileName: string
+        cellKey: string
+        width: number
+        height: number
+        anchorX: number
+        anchorY: number
+      }>
     }
     expect(manifest.kind).toBe('icon-pack')
     expect(manifest.version).toBe(1)
@@ -267,11 +291,17 @@ describe('image.iconPack 执行产物契约', () => {
       })
     ).toEqual({
       '1-2': { cellKey: '1-2', dataUrl: 'data:image/png;base64,AAA', updatedAt: undefined },
-      '2-1': { cellKey: '2-1', dataUrl: 'data:image/png;base64,BBB', updatedAt: '2026-09-09T00:00:00.000Z' }
+      '2-1': {
+        cellKey: '2-1',
+        dataUrl: 'data:image/png;base64,BBB',
+        updatedAt: '2026-09-09T00:00:00.000Z'
+      }
     })
     expect(
       iconPackCellRefinesToOverrides(
-        readIconPackRefinesFromNode({ iconPackCellRefines: { '1-2': { dataUrl: 'data:image/png;base64,AAA' } } })
+        readIconPackRefinesFromNode({
+          iconPackCellRefines: { '1-2': { dataUrl: 'data:image/png;base64,AAA' } }
+        })
       )
     ).toEqual({ '1-2': 'data:image/png;base64,AAA' })
     expect(iconPackCellRefinesToOverrides({ '1-2': { cellKey: '1-2', dataUrl: '' } })).toEqual({})

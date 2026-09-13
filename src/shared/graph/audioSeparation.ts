@@ -29,12 +29,14 @@ export interface ThirdPartySeparationBody {
   instrumental?: string
 }
 
-export function parseThirdPartySeparationResponse(
-  body: unknown
-): { vocal?: string; instrumental?: string } {
+export function parseThirdPartySeparationResponse(body: unknown): {
+  vocal?: string
+  instrumental?: string
+} {
   if (!body || typeof body !== 'object') return {}
   const record = body as Record<string, unknown>
-  const vocal = typeof record.vocal === 'string' && record.vocal.trim() ? record.vocal.trim() : undefined
+  const vocal =
+    typeof record.vocal === 'string' && record.vocal.trim() ? record.vocal.trim() : undefined
   const instrumental =
     typeof record.instrumental === 'string' && record.instrumental.trim()
       ? record.instrumental.trim()

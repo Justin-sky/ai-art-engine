@@ -13,30 +13,127 @@ export interface StagePrimitiveSpec {
 }
 
 export const STAGE_PRIMITIVE_CATALOG: StagePrimitiveSpec[] = [
-  { primitive: 'box', label: 'Box', baseSize: '1 x 1 x 1', hint: '家具/建筑/墙体等方体，用 scale 缩放' },
-  { primitive: 'sphere', label: 'Sphere', baseSize: 'diameter 1', hint: '球形物体（灯罩、石头、树冠）' },
-  { primitive: 'capsule', label: 'Capsule', baseSize: 'radius 0.5 + height 1 ≈ 2m', hint: '人形、栏杆；成人约 scale.y=0.85' },
-  { primitive: 'cone', label: 'Cone', baseSize: '底直径 1, 高 1, 尖顶 +Y, 几何中心为原点', hint: '圆锥塔尖/锥形屋顶/尖顶；scale.x 必须等于 scale.z；rotation 通常为 0' },
-  { primitive: 'pyramid', label: 'Pyramid', baseSize: 'square base 1, height 1, tip +Y', hint: '方锥屋顶、山花' },
-  { primitive: 'cylinder', label: 'Cylinder', baseSize: '直径 1, 高 1, 轴向 +Y', hint: '圆形塔身、立柱；圆的用这个，不要用 prism' },
-  { primitive: 'tube', label: 'Tube', baseSize: 'outer 0.5, inner 0.32, height 1', hint: '空心管、烟囱、井口、管道' },
-  { primitive: 'prism', label: 'Prism', baseSize: 'hex, radius 0.5, height 1', hint: '仅当照片能数出六/八个平面时用；圆塔禁用' },
-  { primitive: 'hemisphere', label: 'Hemisphere', baseSize: 'diameter 1, dome +Y', hint: '穹顶、拱顶、半球罩' },
-  { primitive: 'torus', label: 'Torus', baseSize: 'major 0.35, tube 0.12, 竖立于 XY', hint: '完整圆环、轮、花环；不要拿它当城门拱' },
-  { primitive: 'arch', label: 'Arch', baseSize: '跨度 1, 矢高 0.5, 进深约 0.3, 开口朝 ±Z', hint: '半圆券/拱门/拱桥肋；rotation 通常为 0，不要再转 90°' },
-  { primitive: 'pointedArch', label: 'Pointed Arch', baseSize: '跨度 1, 矢高约 0.87, 进深约 0.3, 开口朝 ±Z', hint: '哥特尖拱/尖券（教堂门窗）；不要拿半圆 arch 代替尖拱' },
-  { primitive: 'cross', label: 'Cross', baseSize: '高 1, 横臂 0.5, 厚 0.18, 正面朝 ±Z', hint: '拉丁十字架/教堂十字；竖直杆 + 上段横臂，立于塔尖/屋顶' },
-  { primitive: 'tetrahedron', label: 'Tetrahedron', baseSize: 'radius 0.6', hint: '四面体（岩石、晶体碎块）' },
-  { primitive: 'octahedron', label: 'Octahedron', baseSize: 'radius 0.5', hint: '八面体（宝石、装饰）' },
-  { primitive: 'icosphere', label: 'Icosphere', baseSize: 'diameter 1, subdiv 1', hint: '低模圆石、树冠、不规则球体' },
-  { primitive: 'wedge', label: 'Wedge', baseSize: '1 x 1 x 1 直角楔', hint: '坡道、台阶、斜屋顶、三角楣' },
+  {
+    primitive: 'box',
+    label: 'Box',
+    baseSize: '1 x 1 x 1',
+    hint: '家具/建筑/墙体等方体，用 scale 缩放'
+  },
+  {
+    primitive: 'sphere',
+    label: 'Sphere',
+    baseSize: 'diameter 1',
+    hint: '球形物体（灯罩、石头、树冠）'
+  },
+  {
+    primitive: 'capsule',
+    label: 'Capsule',
+    baseSize: 'radius 0.5 + height 1 ≈ 2m',
+    hint: '人形、栏杆；成人约 scale.y=0.85'
+  },
+  {
+    primitive: 'cone',
+    label: 'Cone',
+    baseSize: '底直径 1, 高 1, 尖顶 +Y, 几何中心为原点',
+    hint: '圆锥塔尖/锥形屋顶/尖顶；scale.x 必须等于 scale.z；rotation 通常为 0'
+  },
+  {
+    primitive: 'pyramid',
+    label: 'Pyramid',
+    baseSize: 'square base 1, height 1, tip +Y',
+    hint: '方锥屋顶、山花'
+  },
+  {
+    primitive: 'cylinder',
+    label: 'Cylinder',
+    baseSize: '直径 1, 高 1, 轴向 +Y',
+    hint: '圆形塔身、立柱；圆的用这个，不要用 prism'
+  },
+  {
+    primitive: 'tube',
+    label: 'Tube',
+    baseSize: 'outer 0.5, inner 0.32, height 1',
+    hint: '空心管、烟囱、井口、管道'
+  },
+  {
+    primitive: 'prism',
+    label: 'Prism',
+    baseSize: 'hex, radius 0.5, height 1',
+    hint: '仅当照片能数出六/八个平面时用；圆塔禁用'
+  },
+  {
+    primitive: 'hemisphere',
+    label: 'Hemisphere',
+    baseSize: 'diameter 1, dome +Y',
+    hint: '穹顶、拱顶、半球罩'
+  },
+  {
+    primitive: 'torus',
+    label: 'Torus',
+    baseSize: 'major 0.35, tube 0.12, 竖立于 XY',
+    hint: '完整圆环、轮、花环；不要拿它当城门拱'
+  },
+  {
+    primitive: 'arch',
+    label: 'Arch',
+    baseSize: '跨度 1, 矢高 0.5, 进深约 0.3, 开口朝 ±Z',
+    hint: '半圆券/拱门/拱桥肋；rotation 通常为 0，不要再转 90°'
+  },
+  {
+    primitive: 'pointedArch',
+    label: 'Pointed Arch',
+    baseSize: '跨度 1, 矢高约 0.87, 进深约 0.3, 开口朝 ±Z',
+    hint: '哥特尖拱/尖券（教堂门窗）；不要拿半圆 arch 代替尖拱'
+  },
+  {
+    primitive: 'cross',
+    label: 'Cross',
+    baseSize: '高 1, 横臂 0.5, 厚 0.18, 正面朝 ±Z',
+    hint: '拉丁十字架/教堂十字；竖直杆 + 上段横臂，立于塔尖/屋顶'
+  },
+  {
+    primitive: 'tetrahedron',
+    label: 'Tetrahedron',
+    baseSize: 'radius 0.6',
+    hint: '四面体（岩石、晶体碎块）'
+  },
+  {
+    primitive: 'octahedron',
+    label: 'Octahedron',
+    baseSize: 'radius 0.5',
+    hint: '八面体（宝石、装饰）'
+  },
+  {
+    primitive: 'icosphere',
+    label: 'Icosphere',
+    baseSize: 'diameter 1, subdiv 1',
+    hint: '低模圆石、树冠、不规则球体'
+  },
+  {
+    primitive: 'wedge',
+    label: 'Wedge',
+    baseSize: '1 x 1 x 1 直角楔',
+    hint: '坡道、台阶、斜屋顶、三角楣'
+  },
   { primitive: 'disc', label: 'Disc', baseSize: 'diameter 1, 水平', hint: '圆台、水池、地面圆垫' },
-  { primitive: 'ring', label: 'Ring', baseSize: 'outer 1, inner 0.56, 水平', hint: '花坛、圆窗框、地面环' },
-  { primitive: 'plane', label: 'Plane', baseSize: '10 x 10', hint: '默认绕 X 轴 -90° 水平放置，适合地面' },
+  {
+    primitive: 'ring',
+    label: 'Ring',
+    baseSize: 'outer 1, inner 0.56, 水平',
+    hint: '花坛、圆窗框、地面环'
+  },
+  {
+    primitive: 'plane',
+    label: 'Plane',
+    baseSize: '10 x 10',
+    hint: '默认绕 X 轴 -90° 水平放置，适合地面'
+  },
   { primitive: 'quad', label: 'Quad', baseSize: '1 x 1', hint: '单面薄片（标牌、屏幕）' }
 ]
 
-const ALLOWED_PRIMITIVES = new Set<StagePrimitive>(STAGE_PRIMITIVE_CATALOG.map((item) => item.primitive))
+const ALLOWED_PRIMITIVES = new Set<StagePrimitive>(
+  STAGE_PRIMITIVE_CATALOG.map((item) => item.primitive)
+)
 
 function isStagePrimitive(value: string): value is StagePrimitive {
   return ALLOWED_PRIMITIVES.has(value as StagePrimitive)
@@ -123,9 +220,7 @@ function readObjects(raw: unknown): AiSceneBlockoutObject[] {
     const primitive = typeof row.primitive === 'string' ? row.primitive.trim() : ''
     if (!isStagePrimitive(primitive)) continue
     const name =
-      typeof row.name === 'string' && row.name.trim()
-        ? row.name.trim().slice(0, 40)
-        : primitive
+      typeof row.name === 'string' && row.name.trim() ? row.name.trim().slice(0, 40) : primitive
     const azimuthDeg = Number(row.azimuthDeg)
     const elevationDeg = Number(row.elevationDeg)
     const distance = Number(row.distance)
@@ -151,7 +246,9 @@ function readObjects(raw: unknown): AiSceneBlockoutObject[] {
  * - `{ "objects":[...] }`
  * - OpenAI 风格 `{ "tool_calls":[{ "function":{ "name","arguments": "..." }}] }`
  */
-export function parseAiSceneBlockoutCall(raw: string | null | undefined): AiSceneBlockoutCall | null {
+export function parseAiSceneBlockoutCall(
+  raw: string | null | undefined
+): AiSceneBlockoutCall | null {
   if (!raw?.trim()) return null
   const text = stripJsonCodeFence(raw)
   let parsed: unknown
@@ -328,10 +425,7 @@ export function blockoutGroundedCenterY(spec: AiSceneBlockoutObject): number | n
  * 把它抬到「底面刚好落在 y=0」的高度；明显悬空的高 y 不动。
  * 返回新的 y 或 null（无需调整）。
  */
-export function snapBlockoutToGround(
-  spec: AiSceneBlockoutObject,
-  y: number
-): number | null {
+export function snapBlockoutToGround(spec: AiSceneBlockoutObject, y: number): number | null {
   const groundedY = blockoutGroundedCenterY(spec)
   if (groundedY == null) return null
   if (y <= groundedY + 0.05) return groundedY
@@ -599,7 +693,9 @@ export function buildSceneBlockoutUserPrompt(input: {
   const aspect = Number.isFinite(input.aspectRatio) ? Number(input.aspectRatio) : 16 / 9
   const eye = Number.isFinite(input.eyeHeight) ? Number(input.eyeHeight) : 1.6
   if (input.depthDescription) {
-    lines.push(`Depth analysis: ${input.depthDescription}. Use this to calibrate the Z placement of each object.`)
+    lines.push(
+      `Depth analysis: ${input.depthDescription}. Use this to calibrate the Z placement of each object.`
+    )
   }
   if (mode === 'panorama') {
     const radius = Number.isFinite(input.panoramaRadius) ? Number(input.panoramaRadius) : 500
@@ -634,7 +730,9 @@ export function perspectiveConsistencyCheck(
   camera: BlockoutCameraContext
 ): { valid: boolean; warnings: string[] } {
   const warnings: string[] = []
-  const fovDeg = Number.isFinite(camera.fovDeg) ? Number(camera.fovDeg) : DEFAULT_DIRECTOR_CAMERA_FOV
+  const fovDeg = Number.isFinite(camera.fovDeg)
+    ? Number(camera.fovDeg)
+    : DEFAULT_DIRECTOR_CAMERA_FOV
   const fovRad = (fovDeg * Math.PI) / 180
   const aspect = Number.isFinite(camera.aspectRatio) ? Number(camera.aspectRatio) : 16 / 9
   const eye = Number.isFinite(camera.eyeHeight) ? Number(camera.eyeHeight) : 1.6
@@ -643,7 +741,9 @@ export function perspectiveConsistencyCheck(
   const tanHalfH = tanHalfV * aspect
 
   // 已知标定物：capsule scale.y ≈ 0.85 对应 1.7m 成人
-  const calibrationObj = objects.find((o) => o.primitive === 'capsule' && o.scale.y >= 0.6 && o.scale.y <= 1.2)
+  const calibrationObj = objects.find(
+    (o) => o.primitive === 'capsule' && o.scale.y >= 0.6 && o.scale.y <= 1.2
+  )
   if (!calibrationObj) {
     warnings.push('缺少人物 capsule 作为尺度标定，建议至少添加一个 ~1.7m 高的人物')
   }
@@ -660,16 +760,22 @@ export function perspectiveConsistencyCheck(
       const halfW = depth * tanHalfH
       const halfH = depth * tanHalfV
       if (Math.abs(obj.position.x) > halfW) {
-        warnings.push(`${obj.name} 横向超出画面：x=${obj.position.x.toFixed(1)}m，画面半宽约 ${halfW.toFixed(1)}m`)
+        warnings.push(
+          `${obj.name} 横向超出画面：x=${obj.position.x.toFixed(1)}m，画面半宽约 ${halfW.toFixed(1)}m`
+        )
       }
       if (Math.abs(obj.position.y - eye) > halfH) {
-        warnings.push(`${obj.name} 纵向超出画面：相对视平线偏移 ${(obj.position.y - eye).toFixed(1)}m，画面半高约 ${halfH.toFixed(1)}m`)
+        warnings.push(
+          `${obj.name} 纵向超出画面：相对视平线偏移 ${(obj.position.y - eye).toFixed(1)}m，画面半高约 ${halfH.toFixed(1)}m`
+        )
       }
     }
     // 检查物体是否埋入地面或浮空过高
     const groundedY = blockoutGroundedCenterY(obj)
     if (groundedY != null && obj.position.y < 0) {
-      warnings.push(`${obj.name} 埋入地面 (y=${obj.position.y.toFixed(2)})，应调整到 y=${groundedY.toFixed(2)}`)
+      warnings.push(
+        `${obj.name} 埋入地面 (y=${obj.position.y.toFixed(2)})，应调整到 y=${groundedY.toFixed(2)}`
+      )
     }
   }
 
@@ -680,7 +786,9 @@ export function perspectiveConsistencyCheck(
  * 后处理修复：自动纠正常见的 LLM 几何体错误匹配。
  * 当 LLM 把弧形/锥形物体误识别为 box 时，根据名称和尺寸特征自动修正。
  */
-export function fixCommonBlockoutMistakes(objects: AiSceneBlockoutObject[]): AiSceneBlockoutObject[] {
+export function fixCommonBlockoutMistakes(
+  objects: AiSceneBlockoutObject[]
+): AiSceneBlockoutObject[] {
   return objects.map((obj) => {
     const name = obj.name.toLowerCase()
     const fixed = { ...obj }
@@ -689,8 +797,12 @@ export function fixCommonBlockoutMistakes(objects: AiSceneBlockoutObject[]): AiS
     // 拱门/券洞：LLM 常用 box 代替 arch
     if (
       fixed.primitive === 'box' &&
-      (name.includes('拱') || name.includes('券') || name.includes('门洞') ||
-       name.includes('arch') || name.includes('gate') || name.includes('arc'))
+      (name.includes('拱') ||
+        name.includes('券') ||
+        name.includes('门洞') ||
+        name.includes('arch') ||
+        name.includes('gate') ||
+        name.includes('arc'))
     ) {
       fixed.primitive = 'arch'
       fixed.rotation = { x: 0, y: 0, z: 0 }
@@ -700,9 +812,14 @@ export function fixCommonBlockoutMistakes(objects: AiSceneBlockoutObject[]): AiS
     // 尖顶/塔尖：LLM 常用 box 或 pyramid 代替 cone
     if (
       (fixed.primitive === 'box' || fixed.primitive === 'pyramid') &&
-      (name.includes('尖') || name.includes('塔尖') || name.includes('锥') ||
-       name.includes('spire') || name.includes('steeple') || name.includes('cone') ||
-       name.includes('尖顶') || name.includes('锥顶'))
+      (name.includes('尖') ||
+        name.includes('塔尖') ||
+        name.includes('锥') ||
+        name.includes('spire') ||
+        name.includes('steeple') ||
+        name.includes('cone') ||
+        name.includes('尖顶') ||
+        name.includes('锥顶'))
     ) {
       fixed.primitive = 'cone'
       fixed.rotation = { x: 0, y: 0, z: 0 }
@@ -713,9 +830,14 @@ export function fixCommonBlockoutMistakes(objects: AiSceneBlockoutObject[]): AiS
 
     // 圆顶/穹顶：LLM 常用 box/sphere 代替 hemisphere
     if (
-      (fixed.primitive === 'box' || fixed.primitive === 'sphere' || fixed.primitive === 'cylinder') &&
-      (name.includes('穹顶') || name.includes('圆顶') || name.includes('dome') ||
-       name.includes('半球') || name.includes('cupola'))
+      (fixed.primitive === 'box' ||
+        fixed.primitive === 'sphere' ||
+        fixed.primitive === 'cylinder') &&
+      (name.includes('穹顶') ||
+        name.includes('圆顶') ||
+        name.includes('dome') ||
+        name.includes('半球') ||
+        name.includes('cupola'))
     ) {
       fixed.primitive = 'hemisphere'
       fixed.rotation = { x: 0, y: 0, z: 0 }
@@ -724,9 +846,14 @@ export function fixCommonBlockoutMistakes(objects: AiSceneBlockoutObject[]): AiS
     // 圆塔/圆柱：LLM 常用 prism 或 box 代替 cylinder
     if (
       (fixed.primitive === 'box' || fixed.primitive === 'prism') &&
-      (name.includes('圆柱') || name.includes('圆塔') || name.includes('column') ||
-       name.includes('pillar') || name.includes('round tower') || name.includes('circular') ||
-       name.includes('圆筒') || name.includes('圆墩'))
+      (name.includes('圆柱') ||
+        name.includes('圆塔') ||
+        name.includes('column') ||
+        name.includes('pillar') ||
+        name.includes('round tower') ||
+        name.includes('circular') ||
+        name.includes('圆筒') ||
+        name.includes('圆墩'))
     ) {
       fixed.primitive = 'cylinder'
       const avgH = (fixed.scale.x + fixed.scale.z) / 2
@@ -735,10 +862,7 @@ export function fixCommonBlockoutMistakes(objects: AiSceneBlockoutObject[]): AiS
     }
 
     // 十字架
-    if (
-      fixed.primitive === 'box' &&
-      (name.includes('十字') || name.includes('cross'))
-    ) {
+    if (fixed.primitive === 'box' && (name.includes('十字') || name.includes('cross'))) {
       fixed.primitive = 'cross'
       fixed.rotation = { x: 0, y: 0, z: 0 }
     }
@@ -746,9 +870,13 @@ export function fixCommonBlockoutMistakes(objects: AiSceneBlockoutObject[]): AiS
     // 方锥屋顶：LLM 常用 box 代替 pyramid
     if (
       fixed.primitive === 'box' &&
-      (name.includes('屋顶') || name.includes('房顶') || name.includes('roof') ||
-       name.includes('坡顶') || name.includes('山花') || name.includes('gable') ||
-       name.includes('pediment'))
+      (name.includes('屋顶') ||
+        name.includes('房顶') ||
+        name.includes('roof') ||
+        name.includes('坡顶') ||
+        name.includes('山花') ||
+        name.includes('gable') ||
+        name.includes('pediment'))
     ) {
       fixed.primitive = 'pyramid'
       fixed.rotation = { x: 0, y: 0, z: 0 }
@@ -780,7 +908,10 @@ export async function tryEnrichWithDepthMap(input: {
   model: string
   locale: string
 }): Promise<{ depthMapUrl: string | null; depthDescription: string | null }> {
-  const images = (input.images ?? []).map((u) => u.trim()).filter(Boolean).slice(0, 3)
+  const images = (input.images ?? [])
+    .map((u) => u.trim())
+    .filter(Boolean)
+    .slice(0, 3)
   if (!images.length || !input.providerInstanceId || !input.model) {
     return { depthMapUrl: null, depthDescription: null }
   }

@@ -1,8 +1,5 @@
 <template>
-  <div
-    class="tabs"
-    role="tablist"
-  >
+  <div class="tabs" role="tablist">
     <button
       v-for="tab in tabs"
       :key="tab.id"

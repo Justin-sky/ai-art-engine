@@ -52,8 +52,7 @@ function readWorldGenParams(worldAssetId: string): Record<string, unknown> | und
     return useDraftStore().getDraft(worldAssetId)?.genParams
   }
   return useProjectStore().assets.find((item) => item.id === worldAssetId)?.genParams as
-    | Record<string, unknown>
-    | undefined
+    Record<string, unknown> | undefined
 }
 
 function graphTopologyKey(doc: GraphDocument | null | undefined): string {
@@ -84,18 +83,20 @@ export function catalogFromWorldGenParams(
   nodeId?: string
 ): WorldElementCatalog {
   const catalog = emptyWorldElementCatalog()
-  catalog.style = typeof genParams?.[WORLD_CATALOG_STYLE_KEY] === 'string'
-    ? (genParams[WORLD_CATALOG_STYLE_KEY] as string)
-    : ''
-  catalog.worldview = typeof genParams?.[WORLD_CATALOG_WORLDVIEW_KEY] === 'string'
-    ? (genParams[WORLD_CATALOG_WORLDVIEW_KEY] as string)
-    : ''
+  catalog.style =
+    typeof genParams?.[WORLD_CATALOG_STYLE_KEY] === 'string'
+      ? (genParams[WORLD_CATALOG_STYLE_KEY] as string)
+      : ''
+  catalog.worldview =
+    typeof genParams?.[WORLD_CATALOG_WORLDVIEW_KEY] === 'string'
+      ? (genParams[WORLD_CATALOG_WORLDVIEW_KEY] as string)
+      : ''
   for (const kind of WORLD_ELEMENT_KINDS) {
     const doc = readWorldElementGraphForNode(genParams, catalogOwnerNodeId(nodeId), kind)
     if (!doc?.nodes?.length) continue
     const byId = new Map<
       string,
-  { id: string; name: string; prompt: string; status: ReturnType<typeof normalizeReviewStatus> }
+      { id: string; name: string; prompt: string; status: ReturnType<typeof normalizeReviewStatus> }
     >()
     for (const node of doc.nodes) {
       const id = readWorldElementIdFromNodeParams(node.params)
@@ -104,14 +105,14 @@ export function catalogFromWorldGenParams(
         id,
         name: id,
         prompt: '',
-  status: normalizeReviewStatus(undefined)
+        status: normalizeReviewStatus(undefined)
       }
       if (node.typeId === 'play.script') {
         prev.prompt = node.params.text?.trim() || ''
         if (node.title?.trim()) prev.name = node.title.trim()
       } else if (node.typeId === 'asset.image') {
         if (node.title?.trim()) prev.name = node.title.trim()
-  prev.status = normalizeReviewStatus(node.params.reviewStatus)
+        prev.status = normalizeReviewStatus(node.params.reviewStatus)
       } else if (node.typeId === 'output.image') {
         if (!prev.name || prev.name === id) {
           const title = node.title?.trim()
@@ -185,7 +186,12 @@ async function persistCatalog(
       worldview: catalog.worldview
     })
     if (graphTopologyKey(prev) !== graphTopologyKey(next)) {
-      genParams = withWorldElementGraphForNode(genParams, owner, kind, toPlain(next) as GraphDocument)
+      genParams = withWorldElementGraphForNode(
+        genParams,
+        owner,
+        kind,
+        toPlain(next) as GraphDocument
+      )
       changed = true
     }
   }
@@ -265,8 +271,7 @@ export async function applyWorldCatalog(
   if (!parsed) return 0
 
   const existing = catalogFromWorldGenParams(readWorldGenParams(worldAssetId), owner)
-  const catalog =
-    mergeWorldCatalogPreservingReviewed(existing, parsed) ?? parsed
+  const catalog = mergeWorldCatalogPreservingReviewed(existing, parsed) ?? parsed
 
   const fingerprint = stringifyWorldElementCatalog(catalog)
   return persistCatalog(worldAssetId, catalog, fingerprint, owner)

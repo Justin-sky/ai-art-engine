@@ -131,9 +131,10 @@ describe('director skeleton animation', () => {
   })
 
   it('skeletonSegmentLocalTime loops and applies speed', () => {
-    expect(
-      skeletonSegmentLocalTime(3, { start: 1, end: 10, speed: 2, loop: true }, 1.5)
-    ).toEqual({ active: true, time: 1 })
+    expect(skeletonSegmentLocalTime(3, { start: 1, end: 10, speed: 2, loop: true }, 1.5)).toEqual({
+      active: true,
+      time: 1
+    })
   })
 
   it('skeletonClipLabel shortens Mixamo pipe paths', () => {

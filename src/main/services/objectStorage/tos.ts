@@ -11,7 +11,10 @@ const E_TOS_INVALID_ENDPOINT = defErrSimple(
 
 /** TOS SDK 的 endpoint 必须是主机名；带 https:// 时预签名会变成 bucket.https://… */
 function tosEndpointHost(endpoint: string): string {
-  return endpoint.trim().replace(/^https?:\/\//i, '').replace(/\/$/, '')
+  return endpoint
+    .trim()
+    .replace(/^https?:\/\//i, '')
+    .replace(/\/$/, '')
 }
 
 /** 识别因 endpoint 带协议而产生的非法主机名（如 aae-test.https） */

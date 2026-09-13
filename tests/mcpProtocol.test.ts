@@ -119,9 +119,12 @@ describe('MCP 协议消息处理（shared）', () => {
 
   it('未知方法 -32601，缺 name 的 tools/call -32602', async () => {
     const handle = makeHandler()
-    expect(((await handle({ jsonrpc: '2.0', id: 7, method: 'nope' }))?.error as { code: number }).code).toBe(-32601)
     expect(
-      ((await handle({ jsonrpc: '2.0', id: 8, method: 'tools/call' }))?.error as { code: number }).code
+      ((await handle({ jsonrpc: '2.0', id: 7, method: 'nope' }))?.error as { code: number }).code
+    ).toBe(-32601)
+    expect(
+      ((await handle({ jsonrpc: '2.0', id: 8, method: 'tools/call' }))?.error as { code: number })
+        .code
     ).toBe(-32602)
   })
 
@@ -132,16 +135,25 @@ describe('MCP 协议消息处理（shared）', () => {
       listTools: () => [],
       callTool: async (_name, _args, ctx) => {
         await new Promise<void>((resolve) => {
-          ctx?.signal?.addEventListener('abort', () => {
-            aborted = true
-            resolve()
-          }, { once: true })
+          ctx?.signal?.addEventListener(
+            'abort',
+            () => {
+              aborted = true
+              resolve()
+            },
+            { once: true }
+          )
         })
         return { error: aborted ? 'aborted' : 'finished' }
       }
     })
     // controller 在 callTool 被调用前即已登记（tools/call 分支同步注册）
-    const callPromise = handle({ jsonrpc: '2.0', id: 100, method: 'tools/call', params: { name: 'slow' } })
+    const callPromise = handle({
+      jsonrpc: '2.0',
+      id: 100,
+      method: 'tools/call',
+      params: { name: 'slow' }
+    })
     await handle({
       jsonrpc: '2.0',
       method: 'notifications/cancelled',
@@ -159,10 +171,14 @@ describe('MCP 协议消息处理（shared）', () => {
       listTools: () => [],
       callTool: async (_name, _args, ctx) => {
         await new Promise<void>((resolve) => {
-          ctx?.signal?.addEventListener('abort', () => {
-            aborted = true
-            resolve()
-          }, { once: true })
+          ctx?.signal?.addEventListener(
+            'abort',
+            () => {
+              aborted = true
+              resolve()
+            },
+            { once: true }
+          )
         })
         return { result: { aborted } }
       }

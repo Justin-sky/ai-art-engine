@@ -1,21 +1,10 @@
 <template>
   <div class="ui-split-dive">
-    <div
-      v-if="loading"
-      class="hint"
-    >
+    <div v-if="loading" class="hint">
       {{ t('divePipeline.uiSplit.loading') }}
     </div>
-    <AssetEditor
-      v-else-if="innerAssetId"
-      :key="innerAssetId"
-      :asset-id="innerAssetId"
-      embedded
-    />
-    <div
-      v-else
-      class="hint"
-    >
+    <AssetEditor v-else-if="innerAssetId" :key="innerAssetId" :asset-id="innerAssetId" embedded />
+    <div v-else class="hint">
       {{ errorText }}
     </div>
   </div>

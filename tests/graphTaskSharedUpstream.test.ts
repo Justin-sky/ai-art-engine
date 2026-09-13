@@ -23,15 +23,9 @@ describe('graph task shared upstream reuse helpers', () => {
   })
 
   it('isOlderGraphTaskPeer prefers earlier createdAt then smaller id', () => {
-    expect(
-      isOlderGraphTaskPeer({ id: 'b', createdAt: 2 }, { id: 'a', createdAt: 1 })
-    ).toBe(true)
-    expect(
-      isOlderGraphTaskPeer({ id: 'b', createdAt: 1 }, { id: 'a', createdAt: 1 })
-    ).toBe(true)
-    expect(
-      isOlderGraphTaskPeer({ id: 'a', createdAt: 1 }, { id: 'b', createdAt: 1 })
-    ).toBe(false)
+    expect(isOlderGraphTaskPeer({ id: 'b', createdAt: 2 }, { id: 'a', createdAt: 1 })).toBe(true)
+    expect(isOlderGraphTaskPeer({ id: 'b', createdAt: 1 }, { id: 'a', createdAt: 1 })).toBe(true)
+    expect(isOlderGraphTaskPeer({ id: 'a', createdAt: 1 }, { id: 'b', createdAt: 1 })).toBe(false)
   })
 
   it('listSharedNodeIds returns intersection preserving b order', () => {

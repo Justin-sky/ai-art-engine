@@ -4,11 +4,7 @@
  * 无边界输入；结果从边界输出 runStates 汇集为世界元素实体。
  */
 import { createNodeFromType } from './create'
-import {
-  boundaryOutputNodeId,
-  isBoundaryInputNode,
-  isBoundaryOutputNode
-} from './hostInterface'
+import { boundaryOutputNodeId, isBoundaryInputNode, isBoundaryOutputNode } from './hostInterface'
 import { normalizeScopedGraph } from './normalize'
 import type { GraphDocument, GraphEdge, GraphNode } from './types'
 import { GraphPortType } from './types'
@@ -112,9 +108,7 @@ function upsertManagedNode(
 function isManagedWorldElementNode(node: GraphNode): boolean {
   if (readWorldElementIdFromNodeParams(node.params)) {
     return (
-      node.typeId === 'play.script' ||
-      node.typeId === 'asset.image' ||
-      isBoundaryOutputNode(node)
+      node.typeId === 'play.script' || node.typeId === 'asset.image' || isBoundaryOutputNode(node)
     )
   }
   return isBoundaryInputNode(node) || node.typeId === 'output.image' || node.category === 'output'
@@ -126,7 +120,10 @@ function graphEdgeKey(edge: GraphEdge): string {
 
 /** 生成节点是否已有可用图片（落盘预览或图库条目），用于区分空壳托管节点 */
 function hasUsableGeneratedImage(node: GraphNode): boolean {
-  if (typeof node.params.previewRelativePath === 'string' && node.params.previewRelativePath.trim()) {
+  if (
+    typeof node.params.previewRelativePath === 'string' &&
+    node.params.previewRelativePath.trim()
+  ) {
     return true
   }
   const images = node.params.generatedImages
@@ -188,9 +185,7 @@ function collectElementChains(
     const node = nodeById.get(currentId)
     if (!node) return
     const traversable =
-      node.typeId === 'play.script' ||
-      node.typeId === 'asset.image' ||
-      isBoundaryOutputNode(node)
+      node.typeId === 'play.script' || node.typeId === 'asset.image' || isBoundaryOutputNode(node)
     if (!traversable) return
     // 不跨元素：已带其它 worldElementId 的节点不并入本链
     const wid = readWorldElementIdFromNodeParams(node.params)
@@ -315,22 +310,22 @@ export function syncWorldElementKindGraph(
       () =>
         createNodeFromType('asset.image', pos.gen, {
           title: item.name,
-           params: {
-             worldElementId: item.id,
-             generateInstruction: buildWorldElementBriefInstruction(brief),
-  reviewStatus: normalizeReviewStatus(item.status)
-           }
+          params: {
+            worldElementId: item.id,
+            generateInstruction: buildWorldElementBriefInstruction(brief),
+            reviewStatus: normalizeReviewStatus(item.status)
+          }
         }),
       (node) => ({
         ...node,
         title: item.name,
         position: pos.gen,
         params: {
-           ...node.params,
-           worldElementId: item.id,
-           generateInstruction: buildWorldElementBriefInstruction(brief),
-  reviewStatus: normalizeReviewStatus(item.status)
-         }
+          ...node.params,
+          worldElementId: item.id,
+          generateInstruction: buildWorldElementBriefInstruction(brief),
+          reviewStatus: normalizeReviewStatus(item.status)
+        }
       })
     )
 
@@ -431,14 +426,10 @@ export function syncWorldElementKindGraph(
 
   for (const item of items) {
     const script = alignedNodes.find(
-      (n) =>
-        n.typeId === 'play.script' &&
-        readWorldElementIdFromNodeParams(n.params) === item.id
+      (n) => n.typeId === 'play.script' && readWorldElementIdFromNodeParams(n.params) === item.id
     )
     const gen = alignedNodes.find(
-      (n) =>
-        n.typeId === 'asset.image' &&
-        readWorldElementIdFromNodeParams(n.params) === item.id
+      (n) => n.typeId === 'asset.image' && readWorldElementIdFromNodeParams(n.params) === item.id
     )
     const boundary = alignedNodes.find(
       (n) => n.id === boundaryOutputNodeId(worldElementBoundaryPortId(item.id))

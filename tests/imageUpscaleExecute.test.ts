@@ -43,9 +43,7 @@ describe('executeUpscaleNode input', () => {
     }
     const out = await executeUpscaleNode(ctx)
     expect(generateImage).toHaveBeenCalled()
-    expect(generateImage.mock.calls[0]?.[0]?.inputReferences).toEqual([
-      'data:image/png;base64,src'
-    ])
+    expect(generateImage.mock.calls[0]?.[0]?.inputReferences).toEqual(['data:image/png;base64,src'])
     expect(out.out?.kind).toBe('image')
     expect(out['out-all']?.kind).toBe('images')
   })
@@ -69,9 +67,7 @@ describe('executeUpscaleNode input', () => {
       generateImage
     }
     await executeUpscaleNode(ctx)
-    expect(generateImage.mock.calls[0]?.[0]?.inputReferences).toEqual([
-      'data:image/png;base64,src'
-    ])
+    expect(generateImage.mock.calls[0]?.[0]?.inputReferences).toEqual(['data:image/png;base64,src'])
   })
 
   it('uses instruction, resolution and aspect ratio from node params', async () => {

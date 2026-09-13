@@ -21,12 +21,12 @@
 
 ## API
 
-| 函数 | 作用 |
-|------|------|
-| `tagAssetRef` / `readAssetGuid` | 构造与读取 |
-| `collectAssetGuids` | 收集值树中全部资产 GUID |
-| `remapAssetGuids` | 按映射表重写引用 |
-| `syncNodeAssetRefFields` | Graph 节点 `assetId` ↔ `assetRef` 同步 |
+| 函数                            | 作用                                   |
+| ------------------------------- | -------------------------------------- |
+| `tagAssetRef` / `readAssetGuid` | 构造与读取                             |
+| `collectAssetGuids`             | 收集值树中全部资产 GUID                |
+| `remapAssetGuids`               | 按映射表重写引用                       |
+| `syncNodeAssetRefFields`        | Graph 节点 `assetId` ↔ `assetRef` 同步 |
 
 ## Graph
 

@@ -1,9 +1,7 @@
 {
   "meta": {
     "console": "https://www.magicrouter.ai",
-    "docs": [
-      "https://www.magicrouter.ai/docs/api"
-    ],
+    "docs": ["https://www.magicrouter.ai/docs/api"],
     "note": "OpenAI 兼容聚合网关。Base URL: https://api.magicrouter.ai/v1。文本: /chat/completions。图片: /images/generations（image/images 走编辑）。视频: /videos/generations 提交 + /videos/generations/{id} 轮询。模型目录: /models/live 返回 chat/image/video 分类列表。"
   },
   "models": [

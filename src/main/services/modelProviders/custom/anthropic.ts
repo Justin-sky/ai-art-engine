@@ -87,19 +87,25 @@ export async function assertAnthropicAuth(provider: ModelProviderInstance): Prom
     if (status === 404) return
     const raw = await readHttpError(err)
     if (isAuthFailure(status, raw)) {
-      throw fail(PROVIDER_ERRORS.invalidApiKeyListModels, { detail: formatAuthError(raw, provider) })
+      throw fail(PROVIDER_ERRORS.invalidApiKeyListModels, {
+        detail: formatAuthError(raw, provider)
+      })
     }
     throw fail(PROVIDER_ERRORS.connectionTestFailed, { detail: formatAuthError(raw, provider) })
   }
 }
 
 /** 模型目录：GET /v1/models；接口不可用（404）时返回空列表，允许手动填写模型 id */
-export async function listAnthropicModels(provider: ModelProviderInstance): Promise<CatalogModel[]> {
+export async function listAnthropicModels(
+  provider: ModelProviderInstance
+): Promise<CatalogModel[]> {
   const client = createProviderHttpClient(provider)
   try {
     const { data } = await client.get<{ data?: Array<{ id?: string }> }>(
       anthropicApiUrl(provider.baseUrl, '/v1/models'),
-      { headers: { 'x-api-key': provider.apiKey.trim(), 'anthropic-version': ANTHROPIC_API_VERSION } }
+      {
+        headers: { 'x-api-key': provider.apiKey.trim(), 'anthropic-version': ANTHROPIC_API_VERSION }
+      }
     )
     return (data.data ?? [])
       .map((m) => String(m.id ?? '').trim())

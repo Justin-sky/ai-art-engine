@@ -31,10 +31,11 @@ describe('YOLO 官方可下载目录（yoloCatalog）', () => {
       expect(idFromFile).toBe(m.id)
       // 与主进程 kindOfModelId 规则保持一致：
       // 含 seg → segment；含 pose → pose；否则 detect
-      const inferred =
-        idFromFile.toLowerCase().includes('seg') ? 'segment'
-        : idFromFile.toLowerCase().includes('pose') ? 'pose'
-        : 'detect'
+      const inferred = idFromFile.toLowerCase().includes('seg')
+        ? 'segment'
+        : idFromFile.toLowerCase().includes('pose')
+          ? 'pose'
+          : 'detect'
       expect(inferred).toBe(m.kind)
     }
   })

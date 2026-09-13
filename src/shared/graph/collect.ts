@@ -27,7 +27,8 @@ function applyProcessingParams(
   node: GraphNode,
   incomingText: string
 ): GraphAssetValue {
-  const notes = [node.params.notes, value.notes, incomingText].filter(Boolean).join('\n') || undefined
+  const notes =
+    [node.params.notes, value.notes, incomingText].filter(Boolean).join('\n') || undefined
   return {
     ...value,
     label: node.params.label ?? value.label,

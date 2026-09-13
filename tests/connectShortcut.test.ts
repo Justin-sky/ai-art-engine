@@ -18,11 +18,7 @@ function edge(
 
 describe('nodeCanReach', () => {
   it('detects multi-hop reachability', () => {
-    const edges = [
-      edge('e1', 'A', 'B'),
-      edge('e2', 'B', 'C'),
-      edge('e3', 'C', 'D')
-    ]
+    const edges = [edge('e1', 'A', 'B'), edge('e2', 'B', 'C'), edge('e3', 'C', 'D')]
     expect(nodeCanReach(edges, 'A', 'D')).toBe(true)
     expect(nodeCanReach(edges, 'B', 'D')).toBe(true)
     expect(nodeCanReach(edges, 'D', 'A')).toBe(false)
@@ -52,11 +48,7 @@ describe('connectEdgesWithShortcutPrune', () => {
   })
 
   it('does not remove redundant direct edges when a path already exists', () => {
-    const edges = [
-      edge('e1', 'A', 'B'),
-      edge('e2', 'B', 'C'),
-      edge('e3', 'C', 'D')
-    ]
+    const edges = [edge('e1', 'A', 'B'), edge('e2', 'B', 'C'), edge('e3', 'C', 'D')]
     const next = connectEdgesWithShortcutPrune(edges, {
       sourceId: 'A',
       targetId: 'D',
@@ -68,11 +60,7 @@ describe('connectEdgesWithShortcutPrune', () => {
   })
 
   it('allows multiple outputs to connect into one input port', () => {
-    const edges = [
-      edge('e-ad', 'A', 'D'),
-      edge('e1', 'A', 'B'),
-      edge('e2', 'B', 'C')
-    ]
+    const edges = [edge('e-ad', 'A', 'D'), edge('e1', 'A', 'B'), edge('e2', 'B', 'C')]
     const next = connectEdgesWithShortcutPrune(edges, {
       sourceId: 'C',
       targetId: 'D',

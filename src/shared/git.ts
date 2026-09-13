@@ -12,13 +12,7 @@
 
 /** 单个文件的变更类型（与 git status 的 XY 两位归类结果一致） */
 export type GitFileStatus =
-  | 'added'
-  | 'modified'
-  | 'deleted'
-  | 'renamed'
-  | 'copied'
-  | 'untracked'
-  | 'conflicted'
+  'added' | 'modified' | 'deleted' | 'renamed' | 'copied' | 'untracked' | 'conflicted'
 
 /** `git status` 单条记录（-z 格式解析结果） */
 export interface GitStatusEntry {
@@ -151,7 +145,10 @@ export function parseGitNumstat(stdout: string): Map<string, GitNumstat> {
     if (parts.length < 3) continue
     const addRaw = parts[0]!
     const delRaw = parts[1]!
-    const pathRaw = parts.slice(2).join('\t').replace(/^"(.*)"$/, '$1')
+    const pathRaw = parts
+      .slice(2)
+      .join('\t')
+      .replace(/^"(.*)"$/, '$1')
     const binary = addRaw === '-' || delRaw === '-'
     map.set(normalizeNumstatPath(pathRaw), {
       additions: binary ? 0 : Number.parseInt(addRaw, 10) || 0,

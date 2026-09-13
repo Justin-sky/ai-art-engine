@@ -94,7 +94,9 @@ describe('planPreviewTimestamps', () => {
       atSec: [10, 20, 30, 40, 50, 60, 70, 80]
     })
     expect(plan.timestamps).toEqual([10, 20, 30, 40, 50, 60])
-    expect(plan.notes).toEqual([{ code: 'timestamps-truncated', limit: MAX_PREVIEW_FRAMES, requested: 8 }])
+    expect(plan.notes).toEqual([
+      { code: 'timestamps-truncated', limit: MAX_PREVIEW_FRAMES, requested: 8 }
+    ])
   })
 
   it('时长为 0 / 非法时不给时间点', () => {

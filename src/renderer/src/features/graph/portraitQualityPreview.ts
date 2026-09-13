@@ -108,13 +108,19 @@ function unsharp(base: ImageData, blurred: ImageData, amount: number): ImageData
   return new ImageData(out, base.width, base.height)
 }
 
-function adjustColor(data: ImageData, temp: number, saturation: number, contrast: number, skinTone: number): void {
+function adjustColor(
+  data: ImageData,
+  temp: number,
+  saturation: number,
+  contrast: number,
+  skinTone: number
+): void {
   const sat = 1 + Math.max(-1, Math.min(1, saturation / 100))
   const con = 1 + Math.max(-1, Math.min(1, contrast / 100))
-  const tempR = temp / 100 * 24
-  const tempB = -temp / 100 * 24
-  const toneR = skinTone / 100 * 12
-  const toneB = -skinTone / 100 * 10
+  const tempR = (temp / 100) * 24
+  const tempB = (-temp / 100) * 24
+  const toneR = (skinTone / 100) * 12
+  const toneB = (-skinTone / 100) * 10
 
   for (let i = 0; i < data.data.length; i += 4) {
     let r = data.data[i] + tempR + toneR
@@ -168,7 +174,7 @@ function applyVignette(data: ImageData, amount: number): void {
 function skinSmoothing(base: ImageData, state: PortraitQualityState): ImageData {
   const amount = state.skinSmoothing / 100
   if (amount <= 0.01) return base
-  const radius = 1 + state.skinSmoothing / 100 * 7
+  const radius = 1 + (state.skinSmoothing / 100) * 7
   const blurred = boxBlur(base, radius)
   return blend(base, blurred, amount * 0.9)
 }
@@ -208,12 +214,12 @@ export async function renderPortraitQualityPreview(
 
   if (state.clarity > 0) {
     const blurred = boxBlur(current, 8)
-    current = blend(current, unsharp(current, blurred, state.clarity / 100 * 1.1), 0.7)
+    current = blend(current, unsharp(current, blurred, (state.clarity / 100) * 1.1), 0.7)
   }
 
   if (state.sharpness > 0) {
     const blurred = boxBlur(current, 1.5)
-    current = unsharp(current, blurred, state.sharpness / 100 * 1.4)
+    current = unsharp(current, blurred, (state.sharpness / 100) * 1.4)
   }
 
   addGrain(current, state.grain)

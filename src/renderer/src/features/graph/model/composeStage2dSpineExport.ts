@@ -20,9 +20,7 @@ import { loadImageElement } from '../../yolo/cutout'
  * y-up 后视觉一致）；几何换算全部交给共享纯函数，这里只做像素搬运。
  */
 
-async function probeStageSprite(
-  url: string
-): Promise<{
+async function probeStageSprite(url: string): Promise<{
   image: HTMLImageElement
   srcWidth: number
   srcHeight: number
@@ -41,13 +39,12 @@ async function probeStageSprite(
     if (!probeCtx) throw new Error('STAGE_CANVAS_UNAVAILABLE')
     probeCtx.drawImage(img, 0, 0)
     const rgba = probeCtx.getImageData(0, 0, sw, sh)
-    const bounds =
-      extractAlphaBounds(rgba.data, sw, sh, { alphaMin: 8 }) ?? {
-        x: 0,
-        y: 0,
-        width: sw,
-        height: sh
-      }
+    const bounds = extractAlphaBounds(rgba.data, sw, sh, { alphaMin: 8 }) ?? {
+      x: 0,
+      y: 0,
+      width: sw,
+      height: sh
+    }
     return { image: img, srcWidth: sw, srcHeight: sh, bounds }
   } catch {
     return null
@@ -103,7 +100,10 @@ export async function composeStage2dSpineExport(input: {
 
   // 只收集「有挂点 + 可见 + 放置计划可用」的层作为部件
   const parts: Array<Parameters<typeof buildStage2dSpineData>[0]['parts'][number]> = []
-  const crops: Array<{ image: HTMLImageElement; plan: NonNullable<(typeof placements)[number]['plan']> }> = []
+  const crops: Array<{
+    image: HTMLImageElement
+    plan: NonNullable<(typeof placements)[number]['plan']>
+  }> = []
   for (const attachment of rig.attachments) {
     const layerIndex = scene.layers.findIndex((layer) => layer.id === attachment.layerId)
     if (layerIndex < 0) continue

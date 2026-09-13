@@ -61,12 +61,7 @@ function nextSelectedId(
   return list[list.length - 1]?.id ?? ''
 }
 
-function commitImages(
-  hostId: string,
-  node: GraphNode,
-  list: ImageList,
-  selectedId: string
-): void {
+function commitImages(hostId: string, node: GraphNode, list: ImageList, selectedId: string): void {
   const picked = pickEntry(list, selectedId)
   if (picked?.id) {
     writeRunOutputs(
@@ -92,12 +87,7 @@ function commitImages(
   })
 }
 
-function commitVideos(
-  hostId: string,
-  node: GraphNode,
-  list: VideoList,
-  selectedId: string
-): void {
+function commitVideos(hostId: string, node: GraphNode, list: VideoList, selectedId: string): void {
   const picked = pickEntry(list, selectedId)
   if (picked?.id) {
     writeRunOutputs(
@@ -123,12 +113,7 @@ function commitVideos(
   })
 }
 
-function commitVoices(
-  hostId: string,
-  node: GraphNode,
-  list: VoiceList,
-  selectedId: string
-): void {
+function commitVoices(hostId: string, node: GraphNode, list: VoiceList, selectedId: string): void {
   const picked = pickEntry(list, selectedId)
   if (picked?.id) {
     writeRunOutputs(

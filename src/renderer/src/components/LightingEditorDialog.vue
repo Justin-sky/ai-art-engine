@@ -31,10 +31,7 @@
               {{ t('graph.lighting.frontal') }}
             </button>
           </div>
-          <div
-            ref="spherePaneEl"
-            class="sphere-pane"
-          >
+          <div ref="spherePaneEl" class="sphere-pane">
             <canvas
               ref="canvasEl"
               class="sphere-canvas"
@@ -73,18 +70,13 @@
               :value="draft.brightness"
               :style="{ '--range-pct': rangePct(draft.brightness, 0, 100) }"
               @input="onBrightnessInput"
-            >
+            />
             <span class="slider-value">{{ draft.brightness }}%</span>
           </label>
 
           <label class="color-row">
             <span class="slider-label">{{ t('graph.lighting.color') }}</span>
-            <input
-              type="color"
-              class="color-input"
-              :value="draft.color"
-              @input="onColorInput"
-            >
+            <input type="color" class="color-input" :value="draft.color" @input="onColorInput" />
           </label>
 
           <div class="section-head spaced">
@@ -164,11 +156,7 @@
           :generate-provider-instance-id="generateProviderInstanceId"
           @change="onModelChange"
         />
-        <button
-          type="button"
-          class="reset-btn"
-          @click="resetParams"
-        >
+        <button type="button" class="reset-btn" @click="resetParams">
           {{ t('graph.lighting.resetParams') }}
         </button>
       </div>
@@ -569,11 +557,7 @@ function projectWorld(
 type GridPoint = ReturnType<typeof projectWorld>
 
 /** 按视深拆线，在球体轮廓处插值衔接正背面。 */
-function strokeGridSide(
-  ctx: CanvasRenderingContext2D,
-  points: GridPoint[],
-  front: boolean
-): void {
+function strokeGridSide(ctx: CanvasRenderingContext2D, points: GridPoint[], front: boolean): void {
   if (points.length < 2) return
   ctx.beginPath()
   for (let i = 1; i < points.length; i++) {

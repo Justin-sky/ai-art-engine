@@ -40,8 +40,7 @@ export async function composeImageRedrawCanvas(input: {
   const punch = input.punch ?? 'white'
   const img = await loadImage(input.sourceDataUrl)
   const sourceAspect = img.naturalWidth / Math.max(1, img.naturalHeight)
-  const targetAspect =
-    redrawAspectRatioValue(state.aspectId, sourceAspect) ?? sourceAspect
+  const targetAspect = redrawAspectRatioValue(state.aspectId, sourceAspect) ?? sourceAspect
   const { width, height } = expandCanvasPixelSize(targetAspect, state.resolution)
 
   const canvas = document.createElement('canvas')

@@ -41,11 +41,7 @@ export function resolveAppErrorLocale(): AppLanguage {
 }
 
 /** 定义一个可复用的双语错误条目（P 从 zh 闭包的参数标注推导） */
-export function defErr<P>(
-  code: string,
-  zh: LangFormatter<P>,
-  en: LangFormatter<P>
-): BiDef<P> {
+export function defErr<P>(code: string, zh: LangFormatter<P>, en: LangFormatter<P>): BiDef<P> {
   return { code, zh, en }
 }
 

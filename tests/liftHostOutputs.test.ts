@@ -217,9 +217,9 @@ describe('liftHostOutputs', () => {
     const lifts = collectHostOutputLifts(HOST_ASSET_ID, inner, {}, parent)
     const next = withHostOutputLifts(parent, lifts)
     const liftedHost = next.nodes.find((n) => n.id === 'host-node')
-    expect((liftedHost?.params.generatedVideos as Array<{ id?: string }>)?.map((i) => i.id)).toEqual(
-      ['vid-1']
-    )
+    expect(
+      (liftedHost?.params.generatedVideos as Array<{ id?: string }>)?.map((i) => i.id)
+    ).toEqual(['vid-1'])
     expect(liftedHost?.params.selectedVideoId).toBe('vid-1')
     expect(next.runStates?.['host-node']?.status).toBe('done')
   })
@@ -268,9 +268,7 @@ describe('liftHostOutputs', () => {
   it('ignores unrelated parent host nodes', () => {
     const parent = parentDocument()
     parent.nodes = parent.nodes.map((node) =>
-      node.id === 'host-node'
-        ? { ...node, assetId: '00000000-0000-4000-8000-0000000003a2' }
-        : node
+      node.id === 'host-node' ? { ...node, assetId: '00000000-0000-4000-8000-0000000003a2' } : node
     )
     const lifts = collectHostOutputLifts(
       HOST_ASSET_ID,

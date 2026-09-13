@@ -16,7 +16,7 @@ class DialogService {
     const result = await dialog.showOpenDialog({
       properties: ['openDirectory', 'createDirectory']
     })
-    return result.canceled ? null : result.filePaths[0] ?? null
+    return result.canceled ? null : (result.filePaths[0] ?? null)
   }
 
   async selectProject(): Promise<string | null> {
@@ -32,9 +32,7 @@ class DialogService {
     return path
   }
 
-  async selectFiles(
-    filters?: { name: string; extensions: string[] }[]
-  ): Promise<string[]> {
+  async selectFiles(filters?: { name: string; extensions: string[] }[]): Promise<string[]> {
     const result = await dialog.showOpenDialog({
       properties: ['openFile', 'multiSelections'],
       filters: filters ?? importFileFilter()
@@ -86,9 +84,7 @@ class DialogService {
   }): Promise<string | null> {
     const filters = input.filters?.length
       ? input.filters
-      : [
-          { name: 'All Files', extensions: ['*'] }
-        ]
+      : [{ name: 'All Files', extensions: ['*'] }]
     const result = await dialog.showSaveDialog({
       title: 'Save File',
       defaultPath: input.defaultPath,
@@ -139,9 +135,7 @@ class DialogService {
       if (destDir !== root && !destDir.startsWith(root + sep)) continue
       if (!existsSync(destDir)) mkdirSync(destDir, { recursive: true })
 
-      const safeBase = filePart
-        .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_')
-        .replace(/\.+$/g, '')
+      const safeBase = filePart.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').replace(/\.+$/g, '')
       const ext = extname(safeBase)
       const stem = ext ? safeBase.slice(0, -ext.length) : safeBase
       const suffix = ext || '.png'
@@ -153,9 +147,7 @@ class DialogService {
       }
       const buf = Buffer.isBuffer(file.data)
         ? file.data
-        : Buffer.from(
-            file.data instanceof ArrayBuffer ? new Uint8Array(file.data) : file.data
-          )
+        : Buffer.from(file.data instanceof ArrayBuffer ? new Uint8Array(file.data) : file.data)
       writeFileSync(dest, buf)
       written += 1
     }

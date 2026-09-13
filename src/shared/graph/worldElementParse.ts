@@ -69,11 +69,7 @@ export function stripWorldJsonCodeFence(raw: string): string {
 }
 
 /** 稳定 id：优先用模型给的 id，否则 hash(kind+name) */
-export function stableWorldElementId(
-  kind: WorldElementKind,
-  name: string,
-  rawId?: string
-): string {
+export function stableWorldElementId(kind: WorldElementKind, name: string, rawId?: string): string {
   const fromModel = rawId?.trim()
   if (fromModel) return fromModel
   const key = `${kind}:${name.trim().toLowerCase()}`
@@ -189,13 +185,13 @@ export function mergeWorldCatalogPreservingReviewed(
   if (!previous) {
     return mapCatalogItems(next, (item) => ({
       ...item,
-  status: normalizeReviewStatus(item.status)
+      status: normalizeReviewStatus(item.status)
     }))
   }
 
   const result = emptyWorldElementCatalog()
-  result.style = next.style?.trim() ? next.style : previous.style ?? ''
-  result.worldview = next.worldview?.trim() ? next.worldview : previous.worldview ?? ''
+  result.style = next.style?.trim() ? next.style : (previous.style ?? '')
+  result.worldview = next.worldview?.trim() ? next.worldview : (previous.worldview ?? '')
   for (const kind of WORLD_ELEMENT_KINDS) {
     const prevById = new Map(previous[kind].map((item) => [item.id, item]))
     const used = new Set<string>()
@@ -209,7 +205,7 @@ export function mergeWorldCatalogPreservingReviewed(
       }
       result[kind].push({
         ...row,
-  status: normalizeReviewStatus(row.status) || DEFAULT_REVIEW_STATUS
+        status: normalizeReviewStatus(row.status) || DEFAULT_REVIEW_STATUS
       })
       used.add(row.id)
     }
@@ -241,15 +237,14 @@ export function stringifyWorldElementCatalog(catalog: WorldElementCatalog): stri
     worldview: catalog.worldview?.trim() ?? ''
   } as Record<
     WorldElementKind | 'style' | 'worldview',
-    | string
-    | Array<Pick<WorldElementItem, 'id' | 'name' | 'prompt' | 'status'>>
+    string | Array<Pick<WorldElementItem, 'id' | 'name' | 'prompt' | 'status'>>
   >
   for (const kind of WORLD_ELEMENT_KINDS) {
     payload[kind] = catalog[kind].map((item) => ({
       id: item.id,
       name: item.name,
       prompt: item.prompt,
-  status: normalizeReviewStatus(item.status)
+      status: normalizeReviewStatus(item.status)
     }))
   }
   return JSON.stringify(payload, null, 2)
@@ -297,9 +292,7 @@ export function worldGenImageOutPortIdForType(
   type: WorldElementOutputType
 ): WorldGenImageOutPortId {
   const kind = WORLD_ELEMENT_TYPE_TO_KIND[type]
-  return (
-    WORLD_GEN_IMAGE_OUT_PORTS.find((port) => port.kind === kind)?.id ?? 'out-characters'
-  )
+  return WORLD_GEN_IMAGE_OUT_PORTS.find((port) => port.kind === kind)?.id ?? 'out-characters'
 }
 
 export interface WorldElementGenResult {
@@ -341,7 +334,9 @@ export function stringifyWorldElementGenResults(results: WorldElementGenResult[]
   return JSON.stringify(results, null, 2)
 }
 
-export function parseWorldElementGenResults(raw: string | undefined | null): WorldElementGenResult[] {
+export function parseWorldElementGenResults(
+  raw: string | undefined | null
+): WorldElementGenResult[] {
   if (!raw?.trim()) return []
   try {
     const parsed = JSON.parse(stripWorldJsonCodeFence(raw)) as unknown

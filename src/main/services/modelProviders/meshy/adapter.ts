@@ -61,7 +61,8 @@ function mapTaskStatus(raw: string | undefined): VideoPollResult['status'] {
   const s = (raw ?? '').toLowerCase()
   if (s === 'success' || s === 'succeeded' || s === 'completed' || s === 'done') return 'completed'
   if (s === 'failed' || s === 'error' || s === 'cancelled') return 'failed'
-  if (s === 'running' || s === 'processing' || s === 'in_progress' || s === 'inprogress') return 'in_progress'
+  if (s === 'running' || s === 'processing' || s === 'in_progress' || s === 'inprogress')
+    return 'in_progress'
   return 'pending'
 }
 
@@ -159,10 +160,9 @@ export const meshyAdapter: ModelProviderAdapter = {
     try {
       if (hasImages && refs.length > 1) {
         // 多图生3D
-        const { data } = await client.post<{ result?: { id?: string } }>(
-          '/v2/multi-image-to-3d',
-          { images: refs }
-        )
+        const { data } = await client.post<{ result?: { id?: string } }>('/v2/multi-image-to-3d', {
+          images: refs
+        })
         const taskId = data?.result?.id
         if (!taskId) throw fail(E_MESHY_NO_TASK_ID)
         return {
@@ -175,13 +175,10 @@ export const meshyAdapter: ModelProviderAdapter = {
 
       if (hasImages) {
         // 图生3D
-        const { data } = await client.post<{ result?: { id?: string } }>(
-          '/v2/image-to-3d',
-          {
-            image_url: refs[0],
-            prompt: input.prompt?.trim() || undefined
-          }
-        )
+        const { data } = await client.post<{ result?: { id?: string } }>('/v2/image-to-3d', {
+          image_url: refs[0],
+          prompt: input.prompt?.trim() || undefined
+        })
         const taskId = data?.result?.id
         if (!taskId) throw fail(E_MESHY_NO_TASK_ID)
         return {
@@ -193,13 +190,10 @@ export const meshyAdapter: ModelProviderAdapter = {
       }
 
       // 文生3D
-      const { data } = await client.post<{ result?: { id?: string } }>(
-        '/v2/text-to-3d',
-        {
-          prompt: input.prompt?.trim() || '',
-          ...(input.name ? { name: input.name } : {})
-        }
-      )
+      const { data } = await client.post<{ result?: { id?: string } }>('/v2/text-to-3d', {
+        prompt: input.prompt?.trim() || '',
+        ...(input.name ? { name: input.name } : {})
+      })
       const taskId = data?.result?.id
       if (!taskId) throw fail(E_MESHY_NO_TASK_ID)
       return {

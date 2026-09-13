@@ -195,11 +195,7 @@ export function createMcpProtocolHandler(options: McpProtocolHandlerOptions) {
       }
     } catch (err) {
       if (isNotification) return null
-      return rpcError(
-        msg.id,
-        -32603,
-        err instanceof Error ? err.message : String(err)
-      )
+      return rpcError(msg.id, -32603, err instanceof Error ? err.message : String(err))
     }
   }
 

@@ -72,19 +72,19 @@ describe('catalog port types', () => {
     expect(canConnectNodes(beatTable, beatSelect)).toBe(true)
 
     // 历史口 out-all 为 texts，不可直接进 world.table / beat.table
-    expect(
-      canConnectNodes(extract, worldTable, { sourcePort: 'out-all', targetPort: 'in' })
-    ).toBe(false)
-    expect(
-      canConnectNodes(split, beatTable, { sourcePort: 'out-all', targetPort: 'in' })
-    ).toBe(false)
+    expect(canConnectNodes(extract, worldTable, { sourcePort: 'out-all', targetPort: 'in' })).toBe(
+      false
+    )
+    expect(canConnectNodes(split, beatTable, { sourcePort: 'out-all', targetPort: 'in' })).toBe(
+      false
+    )
     const textSelect = createNodeFromType('text.select', { x: 300, y: 0 })
-    expect(
-      canConnectNodes(extract, textSelect, { sourcePort: 'out-all', targetPort: 'in' })
-    ).toBe(true)
-    expect(
-      canConnectNodes(split, textSelect, { sourcePort: 'out-all', targetPort: 'in' })
-    ).toBe(true)
+    expect(canConnectNodes(extract, textSelect, { sourcePort: 'out-all', targetPort: 'in' })).toBe(
+      true
+    )
+    expect(canConnectNodes(split, textSelect, { sourcePort: 'out-all', targetPort: 'in' })).toBe(
+      true
+    )
 
     expect(canConnectNodes(extract, beatTable)).toBe(false)
     expect(canConnectNodes(split, worldTable)).toBe(false)
@@ -92,7 +92,6 @@ describe('catalog port types', () => {
     expect(canConnectNodes(worldTable, screenplay)).toBe(false)
     expect(canConnectNodes(screenplay, worldTable)).toBe(false)
     expect(canConnectNodes(screenplay, extract)).toBe(true)
-
   })
 })
 
@@ -201,10 +200,9 @@ describe('port type matching', () => {
   it('timeline output exposes a square videos input besides single video in', () => {
     const timeline = createNodeFromType('output.timeline', { x: 0, y: 0 })
     const ports = getNodePorts(timeline)
-    expect(ports.map((p) => `${p.id}:${p.dataType}:${p.direction}:${p.multiple ?? false}`)).toEqual([
-      'in:video:in:true',
-      'in-videos:videos:in:true'
-    ])
+    expect(ports.map((p) => `${p.id}:${p.dataType}:${p.direction}:${p.multiple ?? false}`)).toEqual(
+      ['in:video:in:true', 'in-videos:videos:in:true']
+    )
     // 批量 videos（导演台 out-actions）接方形口；单条 video 只能走默认 in
     const videoSelect = createNodeFromType('video.select', { x: 100, y: 0 })
     const motion = createNodeFromType('asset.motion', { x: 100, y: 80 })
@@ -233,24 +231,18 @@ describe('port type matching', () => {
   })
 
   it('rejects a single media ref into the matching select node', () => {
-    const imageRef = createAssetGraphNode(
-      '00000000-0000-4000-8000-000000000041',
-      'image',
-      'Img',
-      { x: 0, y: 0 }
-    )
-    const videoRef = createAssetGraphNode(
-      '00000000-0000-4000-8000-000000000042',
-      'video',
-      'Vid',
-      { x: 0, y: 80 }
-    )
-    const voiceRef = createAssetGraphNode(
-      '00000000-0000-4000-8000-000000000043',
-      'voice',
-      'Voc',
-      { x: 0, y: 160 }
-    )
+    const imageRef = createAssetGraphNode('00000000-0000-4000-8000-000000000041', 'image', 'Img', {
+      x: 0,
+      y: 0
+    })
+    const videoRef = createAssetGraphNode('00000000-0000-4000-8000-000000000042', 'video', 'Vid', {
+      x: 0,
+      y: 80
+    })
+    const voiceRef = createAssetGraphNode('00000000-0000-4000-8000-000000000043', 'voice', 'Voc', {
+      x: 0,
+      y: 160
+    })
     expect(canConnectNodes(imageRef, createNodeFromType('image.select', { x: 200, y: 0 }))).toBe(
       false
     )
@@ -264,12 +256,10 @@ describe('port type matching', () => {
 
   it('connects image ref to audio processing image input', () => {
     const processing = createNodeFromType('asset.voice', { x: 100, y: 0 })
-    const imageRef = createAssetGraphNode(
-      '00000000-0000-4000-8000-000000000031',
-      'image',
-      'Img',
-      { x: 0, y: 0 }
-    )
+    const imageRef = createAssetGraphNode('00000000-0000-4000-8000-000000000031', 'image', 'Img', {
+      x: 0,
+      y: 0
+    })
     expect(canConnectNodes(imageRef, processing)).toBe(true)
     expect(canConnectNodes(imageRef, processing, { targetPort: 'in-image' })).toBe(true)
   })
@@ -288,18 +278,14 @@ describe('port type matching', () => {
 
   it('connects image, video and audio refs to video generate inputs', () => {
     const video = createNodeFromType('asset.video', { x: 100, y: 0 })
-    const imageRef = createAssetGraphNode(
-      '00000000-0000-4000-8000-000000000021',
-      'image',
-      'Img',
-      { x: 0, y: 0 }
-    )
-    const videoRef = createAssetGraphNode(
-      '00000000-0000-4000-8000-000000000022',
-      'video',
-      'Vid',
-      { x: 0, y: 40 }
-    )
+    const imageRef = createAssetGraphNode('00000000-0000-4000-8000-000000000021', 'image', 'Img', {
+      x: 0,
+      y: 0
+    })
+    const videoRef = createAssetGraphNode('00000000-0000-4000-8000-000000000022', 'video', 'Vid', {
+      x: 0,
+      y: 40
+    })
     const timbreRef = createAssetGraphNode(
       '00000000-0000-4000-8000-000000000023',
       'voice',

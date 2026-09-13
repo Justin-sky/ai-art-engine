@@ -97,14 +97,18 @@ describe('executeBeatSplitNode', () => {
 
   it('without generateText outputs local catalog, not upstream screenplay', async () => {
     const catalog = '[{"id":"beat-1","title":"本地","order":1,"status":"未审核"}]'
-    const node = createNodeFromType('beat.split', { x: 0, y: 0 }, {
-      params: {
-        text: catalog,
-        generatedTexts: [{ id: 'local', text: catalog }],
-        selectedTextId: 'local',
-        generateInstruction: '拆解指令'
+    const node = createNodeFromType(
+      'beat.split',
+      { x: 0, y: 0 },
+      {
+        params: {
+          text: catalog,
+          generatedTexts: [{ id: 'local', text: catalog }],
+          selectedTextId: 'local',
+          generateInstruction: '拆解指令'
+        }
       }
-    })
+    )
     const result = await executeBeatSplitNode(
       baseCtx({
         node,

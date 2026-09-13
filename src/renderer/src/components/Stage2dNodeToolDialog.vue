@@ -10,10 +10,7 @@
     body-class="pad-none stage2d-body"
     @close="emit('close')"
   >
-    <div
-      v-if="open"
-      class="stage2d"
-    >
+    <div v-if="open" class="stage2d">
       <section class="pane layers-col">
         <div class="section-label">
           {{ t('stage2d.layers') }}
@@ -26,19 +23,9 @@
             :class="{ active: layer.id === selectedId, hidden: !layer.visible }"
             @click="selectedId = layer.id"
           >
-            <img
-              v-if="thumbUrls[layer.id]"
-              :src="thumbUrls[layer.id]"
-              alt=""
-            >
-            <span
-              v-else
-              class="thumb-fallback"
-            >🖼</span>
-            <span
-              class="name"
-              :title="layer.sourceUrl"
-            >{{ layer.name }}</span>
+            <img v-if="thumbUrls[layer.id]" :src="thumbUrls[layer.id]" alt="" />
+            <span v-else class="thumb-fallback">🖼</span>
+            <span class="name" :title="layer.sourceUrl">{{ layer.name }}</span>
             <button
               type="button"
               class="icon"
@@ -75,19 +62,12 @@
             </button>
           </li>
         </ul>
-        <p
-          v-if="!layers.length"
-          class="hint"
-        >
+        <p v-if="!layers.length" class="hint">
           {{ t('stage2d.noLayer') }}
         </p>
 
         <div class="tool-ops">
-          <button
-            type="button"
-            class="primary"
-            @click="pickerOpen = true"
-          >
+          <button type="button" class="primary" @click="pickerOpen = true">
             {{ t('stage2d.addLayer') }}
           </button>
           <button
@@ -120,7 +100,7 @@
               step="16"
               :value="scene.canvasWidth"
               @change="patchCanvas('canvasWidth', $event)"
-            >
+            />
           </label>
           <label class="field">
             <span>{{ t('graph.align.canvasHeight') }}</span>
@@ -131,16 +111,13 @@
               step="16"
               :value="scene.canvasHeight"
               @change="patchCanvas('canvasHeight', $event)"
-            >
+            />
           </label>
         </div>
 
         <label class="field">
           <span>{{ t('stage2d.anchor') }}</span>
-          <select
-            :value="scene.anchor"
-            @change="patchSceneAnchor($event)"
-          >
+          <select :value="scene.anchor" @change="patchSceneAnchor($event)">
             <option value="ground">
               {{ t('stage2d.anchorGround') }}
             </option>
@@ -150,10 +127,7 @@
           </select>
         </label>
 
-        <label
-          v-if="scene.anchor === 'ground'"
-          class="slider"
-        >
+        <label v-if="scene.anchor === 'ground'" class="slider">
           <span>
             {{ t('stage2d.groundGap') }}<b>{{ Math.round(scene.groundRatio * 100) }}%</b>
           </span>
@@ -164,7 +138,7 @@
             step="0.01"
             :value="scene.groundRatio"
             @input="patchSceneGroundRatio($event)"
-          >
+          />
         </label>
 
         <template v-if="selected">
@@ -173,18 +147,11 @@
           </div>
           <label class="field">
             <span>{{ t('stage2d.layerName') }}</span>
-            <input
-              type="text"
-              :value="selected.name"
-              @change="patchLayerName($event)"
-            >
+            <input type="text" :value="selected.name" @change="patchLayerName($event)" />
           </label>
           <label class="field">
             <span>{{ t('stage2d.anchor') }}</span>
-            <select
-              :value="selected.align.anchor"
-              @change="patchLayerAnchor($event)"
-            >
+            <select :value="selected.align.anchor" @change="patchLayerAnchor($event)">
               <option value="ground">
                 {{ t('stage2d.anchorGround') }}
               </option>
@@ -205,15 +172,11 @@
               step="0.05"
               :value="selected.align.contentHeightRatio"
               @input="patchLayerRatio('contentHeightRatio', $event)"
-            >
+            />
           </label>
-          <label
-            v-if="selected.align.anchor === 'ground'"
-            class="slider"
-          >
+          <label v-if="selected.align.anchor === 'ground'" class="slider">
             <span>
-              {{ t('stage2d.groundGap')
-              }}<b>{{ Math.round(selected.align.groundRatio * 100) }}%</b>
+              {{ t('stage2d.groundGap') }}<b>{{ Math.round(selected.align.groundRatio * 100) }}%</b>
             </span>
             <input
               type="range"
@@ -222,14 +185,14 @@
               step="0.01"
               :value="selected.align.groundRatio"
               @input="patchLayerRatio('groundRatio', $event)"
-            >
+            />
           </label>
           <label class="check">
             <input
               type="checkbox"
               :checked="selected.align.fitWithinWidth"
               @change="patchLayerFit($event)"
-            >
+            />
             <span>{{ t('stage2d.fitWidth') }}</span>
           </label>
           <div class="grid2">
@@ -240,7 +203,7 @@
                 step="1"
                 :value="selected.offset.x"
                 @change="patchLayerOffset('x', $event)"
-              >
+              />
             </label>
             <label class="field">
               <span>{{ t('stage2d.offsetY') }}</span>
@@ -249,7 +212,7 @@
                 step="1"
                 :value="selected.offset.y"
                 @change="patchLayerOffset('y', $event)"
-              >
+              />
             </label>
           </div>
           <button
@@ -293,11 +256,7 @@
             >
               {{ t('stage2d.guides') }}
             </button>
-            <button
-              type="button"
-              class="icon"
-              @click="fitView"
-            >
+            <button type="button" class="icon" @click="fitView">
               {{ t('stage2d.resetView') }}
             </button>
             <button
@@ -328,16 +287,8 @@
               transform: `translate(-50%, -50%) translate(${panX}px, ${panY}px) scale(${zoom})`
             }"
           >
-            <img
-              v-if="previewUrl"
-              :src="previewUrl"
-              alt=""
-              draggable="false"
-            >
-            <div
-              v-if="showGuides"
-              class="guides"
-            >
+            <img v-if="previewUrl" :src="previewUrl" alt="" draggable="false" />
+            <div v-if="showGuides" class="guides">
               <div
                 v-if="scene.anchor === 'ground'"
                 class="line ground"
@@ -385,30 +336,20 @@
               </g>
             </svg>
           </div>
-          <p
-            v-if="!layers.length"
-            class="hint empty-hint"
-          >
+          <p v-if="!layers.length" class="hint empty-hint">
             {{ t('stage2d.resultEmpty') }}
           </p>
         </div>
         <p class="apply-hint">
           {{ scene.canvasWidth }}×{{ scene.canvasHeight }} ·
           {{
-            panel === 'rig' && rig.joints.length
-              ? t('stage2d.rigStageHint')
-              : t('stage2d.dragHint')
+            panel === 'rig' && rig.joints.length ? t('stage2d.rigStageHint') : t('stage2d.dragHint')
           }}
         </p>
       </section>
       <section class="pane tools-pane">
         <div class="tabs">
-          <button
-            type="button"
-            class="tab"
-            :class="{ on: panel === 'rig' }"
-            @click="panel = 'rig'"
-          >
+          <button type="button" class="tab" :class="{ on: panel === 'rig' }" @click="panel = 'rig'">
             {{ t('stage2d.tabRig') }}
           </button>
           <button
@@ -467,9 +408,7 @@
               </div>
               <p class="hint rig-tool-hint">
                 {{
-                  rigTool === 'move'
-                    ? t('stage2d.rigToolMoveHint')
-                    : t('stage2d.rigToolRotateHint')
+                  rigTool === 'move' ? t('stage2d.rigToolMoveHint') : t('stage2d.rigToolRotateHint')
                 }}
               </p>
             </template>
@@ -485,10 +424,7 @@
                 @click="selectedJointId = joint.id"
               >
                 <span class="thumb-fallback">●</span>
-                <span
-                  class="name"
-                  :title="joint.id"
-                >
+                <span class="name" :title="joint.id">
                   {{ joint.name }}
                   <small v-if="joint.parentId">→ {{ jointName(joint.parentId) }}</small>
                 </span>
@@ -502,17 +438,10 @@
                 </button>
               </li>
             </ul>
-            <p
-              v-if="!rig.joints.length"
-              class="hint"
-            >
+            <p v-if="!rig.joints.length" class="hint">
               {{ t('stage2d.noJoint') }}
             </p>
-            <button
-              type="button"
-              class="primary"
-              @click="addJoint"
-            >
+            <button type="button" class="primary" @click="addJoint">
               ＋ {{ t('stage2d.addJoint') }}
             </button>
             <template v-if="selectedJoint">
@@ -521,18 +450,11 @@
               </div>
               <label class="field">
                 <span>{{ t('stage2d.jointName') }}</span>
-                <input
-                  type="text"
-                  :value="selectedJoint.name"
-                  @change="patchJointName($event)"
-                >
+                <input type="text" :value="selectedJoint.name" @change="patchJointName($event)" />
               </label>
               <label class="field">
                 <span>{{ t('stage2d.parentJoint') }}</span>
-                <select
-                  :value="selectedJoint.parentId ?? ''"
-                  @change="patchJointParent($event)"
-                >
+                <select :value="selectedJoint.parentId ?? ''" @change="patchJointParent($event)">
                   <option value="">
                     {{ t('stage2d.parentNone') }}
                   </option>
@@ -553,7 +475,7 @@
                     step="1"
                     :value="selectedJoint.x"
                     @change="patchJointBind('x', $event)"
-                  >
+                  />
                 </label>
                 <label class="field">
                   <span>Y</span>
@@ -562,7 +484,7 @@
                     step="1"
                     :value="selectedJoint.y"
                     @change="patchJointBind('y', $event)"
-                  >
+                  />
                 </label>
               </div>
               <label class="slider">
@@ -576,7 +498,7 @@
                   step="1"
                   :value="poseValue"
                   @input="setJointPose($event)"
-                >
+                />
               </label>
               <div class="row">
                 <button
@@ -601,27 +523,17 @@
             <div class="section-label">
               {{ t('stage2d.attachments') }}
             </div>
-            <div
-              v-if="!rig.attachments.length"
-              class="hint"
-            >
+            <div v-if="!rig.attachments.length" class="hint">
               {{ t('stage2d.noAttach') }}
             </div>
             <ul class="attach-list">
-              <li
-                v-for="attach in rig.attachments"
-                :key="attach.layerId"
-              >
+              <li v-for="attach in rig.attachments" :key="attach.layerId">
                 <select
                   :title="t('stage2d.bindLayer')"
                   :value="attach.layerId"
                   @change="patchAttachLayer(attach.layerId, $event)"
                 >
-                  <option
-                    v-for="layer in layers"
-                    :key="layer.id"
-                    :value="layer.id"
-                  >
+                  <option v-for="layer in layers" :key="layer.id" :value="layer.id">
                     {{ layer.name }}
                   </option>
                 </select>
@@ -630,11 +542,7 @@
                   :value="attach.jointId"
                   @change="patchAttachJoint(attach.layerId, $event)"
                 >
-                  <option
-                    v-for="joint in rig.joints"
-                    :key="joint.id"
-                    :value="joint.id"
-                  >
+                  <option v-for="joint in rig.joints" :key="joint.id" :value="joint.id">
                     {{ joint.name }}
                   </option>
                 </select>
@@ -653,14 +561,14 @@
                     :value="attach.offsetX"
                     :title="`${t('stage2d.offsetX')}`"
                     @change="patchAttachOffset(attach.layerId, 'offsetX', $event)"
-                  >
+                  />
                   <input
                     type="number"
                     step="1"
                     :value="attach.offsetY"
                     :title="`${t('stage2d.offsetY')}`"
                     @change="patchAttachOffset(attach.layerId, 'offsetY', $event)"
-                  >
+                  />
                 </span>
               </li>
             </ul>
@@ -670,36 +578,20 @@
             <div class="section-label">
               {{ t('stage2d.actionTitle') }}
             </div>
-            <p
-              v-if="!rig.joints.length"
-              class="hint"
-            >
+            <p v-if="!rig.joints.length" class="hint">
               {{ t('stage2d.actionNoRig') }}
             </p>
-            <div
-              v-else
-              class="action-player"
-            >
+            <div v-else class="action-player">
               <label class="field">
                 <span>{{ t('stage2d.actionPick') }}</span>
-                <select
-                  :value="actionId"
-                  @change="onActionPick($event)"
-                >
+                <select :value="actionId" @change="onActionPick($event)">
                   <option value="">
                     {{ t('stage2d.actionNone') }}
                   </option>
-                  <option
-                    v-if="customAction"
-                    :value="CUSTOM_ACTION_ID"
-                  >
+                  <option v-if="customAction" :value="CUSTOM_ACTION_ID">
                     {{ actionLabel(CUSTOM_ACTION_ID) }}
                   </option>
-                  <option
-                    v-for="item in actionPresets"
-                    :key="item.id"
-                    :value="item.id"
-                  >
+                  <option v-for="item in actionPresets" :key="item.id" :value="item.id">
                     {{ actionLabel(item.id) }}
                   </option>
                 </select>
@@ -712,9 +604,7 @@
                   @click="toggleActionPlay"
                 >
                   {{
-                    actionMode === 'playing'
-                      ? t('stage2d.actionPause')
-                      : t('stage2d.actionPlay')
+                    actionMode === 'playing' ? t('stage2d.actionPause') : t('stage2d.actionPlay')
                   }}
                 </button>
                 <button
@@ -736,11 +626,7 @@
                   {{ t('stage2d.actionFreeze') }}
                 </button>
               </div>
-              <button
-                type="button"
-                class="action-video-btn"
-                @click="openVideoActionDialog"
-              >
+              <button type="button" class="action-video-btn" @click="openVideoActionDialog">
                 🎬 {{ t('stage2dVideo.actionFromVideo') }}
               </button>
               <div class="row asset-action-row">
@@ -776,18 +662,11 @@
                       : t('stage2d.actionLoadEmpty')
                   }}
                 </option>
-                <option
-                  v-for="item in motionAssets"
-                  :key="item.id"
-                  :value="item.id"
-                >
+                <option v-for="item in motionAssets" :key="item.id" :value="item.id">
                   {{ item.name }}
                 </option>
               </select>
-              <div
-                v-if="assetActionSavingOpen"
-                class="row asset-save-row"
-              >
+              <div v-if="assetActionSavingOpen" class="row asset-save-row">
                 <label class="field">
                   <span>{{ t('stage2d.actionAssetName') }}</span>
                   <input
@@ -795,7 +674,7 @@
                     type="text"
                     :disabled="assetActionBusy"
                     @keydown.enter="confirmSaveActionAsset"
-                  >
+                  />
                 </label>
                 <button
                   type="button"
@@ -813,10 +692,7 @@
               >
                 {{ assetActionMsg }}
               </p>
-              <p
-                v-if="actionMode !== 'off' && actionCurrent"
-                class="action-status"
-              >
+              <p v-if="actionMode !== 'off' && actionCurrent" class="action-status">
                 {{ actionLabel(actionCurrent.id) }} ·
                 {{
                   t('stage2d.actionStatus', {
@@ -824,9 +700,7 @@
                     total: formatActionTime(actionCurrent.duration ?? 0)
                   })
                 }}
-                <span v-if="actionMode === 'paused'">
-                  · {{ t('stage2d.actionPaused') }}
-                </span>
+                <span v-if="actionMode === 'paused'"> · {{ t('stage2d.actionPaused') }} </span>
               </p>
             </div>
           </template>
@@ -835,16 +709,10 @@
             <div class="section-label">
               {{ t('stage2d.spineExportTitle') }}
             </div>
-            <p
-              v-if="!rig.joints.length"
-              class="hint"
-            >
+            <p v-if="!rig.joints.length" class="hint">
               {{ t('stage2d.actionNoRig') }}
             </p>
-            <p
-              v-else-if="!attachLayers.length"
-              class="hint"
-            >
+            <p v-else-if="!attachLayers.length" class="hint">
               {{ t('stage2d.spineNoAttach') }}
             </p>
             <template v-else>
@@ -856,7 +724,7 @@
                     type="text"
                     :disabled="spineBusy"
                     @keydown.enter="exportSpineSkeleton"
-                  >
+                  />
                 </label>
                 <button
                   type="button"
@@ -870,38 +738,23 @@
               <p class="hint">
                 {{ t('stage2d.spineExportNote') }}
               </p>
-              <p
-                v-if="spineBusy"
-                class="export-status"
-              >
+              <p v-if="spineBusy" class="export-status">
                 {{ t('stage2d.spineExporting') }}
               </p>
-              <p
-                v-else-if="spineError"
-                class="export-status error"
-              >
+              <p v-else-if="spineError" class="export-status error">
                 {{ spineError }}
               </p>
-              <p
-                v-else-if="spineMsg"
-                class="export-status ok"
-              >
+              <p v-else-if="spineMsg" class="export-status ok">
                 {{ spineMsg }}
               </p>
             </template>
             <div class="section-label">
               {{ t('stage2d.exportTitle') }}
             </div>
-            <p
-              v-if="!rig.joints.length"
-              class="hint"
-            >
+            <p v-if="!rig.joints.length" class="hint">
               {{ t('stage2d.actionNoRig') }}
             </p>
-            <p
-              v-else-if="!actionCurrent"
-              class="hint"
-            >
+            <p v-else-if="!actionCurrent" class="hint">
               {{ t('stage2d.exportNeedAction') }}
             </p>
             <template v-else>
@@ -909,11 +762,7 @@
                 <label class="field">
                   <span>{{ t('stage2d.exportFps') }}</span>
                   <select v-model.number="exportFps">
-                    <option
-                      v-for="fps in fpsOptions"
-                      :key="fps"
-                      :value="fps"
-                    >
+                    <option v-for="fps in fpsOptions" :key="fps" :value="fps">
                       {{ fps }}
                     </option>
                   </select>
@@ -940,10 +789,7 @@
                 {{ t('stage2d.exportNodeHint') }}
               </p>
               <!-- 节点产物回显：运行节点（含 AI / 工作流）产出后，这里直接能看到帧数与 sheet 落点 -->
-              <p
-                v-if="(setupAnimFrameCount ?? 0) > 0"
-                class="hint"
-              >
+              <p v-if="(setupAnimFrameCount ?? 0) > 0" class="hint">
                 {{
                   t('stage2d.exportNodeOutput', {
                     count: setupAnimFrameCount ?? 0,
@@ -951,32 +797,20 @@
                   })
                 }}
               </p>
-              <p
-                v-if="exportBusy"
-                class="export-status"
-              >
+              <p v-if="exportBusy" class="export-status">
                 {{ t('stage2d.exporting', { done: exportProgress, total: exportFrameCount }) }}
               </p>
-              <p
-                v-else-if="exportError"
-                class="export-status error"
-              >
+              <p v-else-if="exportError" class="export-status error">
                 {{ exportError }}
               </p>
-              <p
-                v-else-if="exportDone"
-                class="export-status ok"
-              >
+              <p v-else-if="exportDone" class="export-status ok">
                 {{ t('stage2d.exportDone', { count: exportFrameCount }) }}
               </p>
             </template>
           </template>
         </div>
 
-        <p
-          v-if="error"
-          class="hint error"
-        >
+        <p v-if="error" class="hint error">
           {{ error }}
         </p>
         <p class="apply-hint">
@@ -1106,9 +940,7 @@ let thumbToken = 0
 let renderTimer: ReturnType<typeof setTimeout> | null = null
 
 const layers = computed(() => scene.value.layers)
-const selected = computed(
-  () => layers.value.find((layer) => layer.id === selectedId.value) ?? null
-)
+const selected = computed(() => layers.value.find((layer) => layer.id === selectedId.value) ?? null)
 /** 舞台 ground 基线（视口参考线，随画布 / 地面比例变化） */
 const groundY = computed(() => {
   const y = stage2dGroundY(scene.value)
@@ -1326,7 +1158,8 @@ function useHumanoidTemplate(): void {
   })
   rig.value = next
   pose.value = {}
-  selectedJointId.value = next.joints.find((joint) => joint.id === 'pelvis')?.id ?? next.joints[0]?.id ?? ''
+  selectedJointId.value =
+    next.joints.find((joint) => joint.id === 'pelvis')?.id ?? next.joints[0]?.id ?? ''
   panel.value = 'rig'
   render()
 }
@@ -1952,9 +1785,7 @@ function commitJointPatch(
 ): void {
   commitRig({
     ...rig.value,
-    joints: rig.value.joints.map((item) =>
-      item.id === jointId ? { ...item, ...patch } : item
-    )
+    joints: rig.value.joints.map((item) => (item.id === jointId ? { ...item, ...patch } : item))
   })
 }
 

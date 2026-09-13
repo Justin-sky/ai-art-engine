@@ -76,7 +76,9 @@ describe('aiSceneBlockout', () => {
     expect(parseAiSceneBlockoutCall('')).toBeNull()
     expect(parseAiSceneBlockoutCall('not json at all')).toBeNull()
     expect(
-      parseAiSceneBlockoutCall(JSON.stringify({ name: 'other_fn', arguments: { objects: [validObject] } }))
+      parseAiSceneBlockoutCall(
+        JSON.stringify({ name: 'other_fn', arguments: { objects: [validObject] } })
+      )
     ).toBeNull()
     expect(parseAiSceneBlockoutCall(JSON.stringify({ objects: [] }))).toBeNull()
   })

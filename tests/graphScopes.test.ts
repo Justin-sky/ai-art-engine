@@ -32,9 +32,7 @@ describe('graph scopes', () => {
   })
 
   it('director / world / beat scopes resolve default graph templates', () => {
-    expect(resolveDefaultGraphTemplate('directorAsset')?.nodes.map((n) => n.key)).toEqual([
-      'gen'
-    ])
+    expect(resolveDefaultGraphTemplate('directorAsset')?.nodes.map((n) => n.key)).toEqual(['gen'])
     expect(getGraphScopeDefinition('worldAsset').ensureOutput).toBe(false)
     expect(resolveDefaultGraphTemplate('worldAsset')?.nodes.map((n) => n.typeId)).toEqual([
       'world.extract',
@@ -42,9 +40,10 @@ describe('graph scopes', () => {
       'world.gen'
     ])
     expect(getGraphScopeDefinition('beatAsset').ensureOutput).toBe(false)
-    expect(
-      resolveDefaultGraphTemplate('beatAsset')?.nodes.map((n) => n.typeId)
-    ).toEqual(['beat.split', 'beat.table'])
+    expect(resolveDefaultGraphTemplate('beatAsset')?.nodes.map((n) => n.typeId)).toEqual([
+      'beat.split',
+      'beat.table'
+    ])
   })
 
   it('allows registering custom graph scopes', () => {

@@ -53,21 +53,11 @@ import type { GraphNodeParams } from './types'
 import { resolveFrameAnimGenSystemPrompt } from './anim2d'
 
 export type GraphSkillKind =
-  | 'episode'
-  | 'episode-review'
-  | 'episode-image'
-  | 'episode-video'
-  | 'anim2d'
-  | 'svg'
-  | 'system'
+  'episode' | 'episode-review' | 'episode-image' | 'episode-video' | 'anim2d' | 'svg' | 'system'
 
 /** 解析入口指针；实现仍在 episodeBoardParse 等文件，此处不搬家 */
 export type GraphSkillParseKind =
-  | 'beatBreakdown'
-  | 'beatBoard'
-  | 'sequenceBoard'
-  | 'motionPrompts'
-  | 'directorVerdict'
+  'beatBreakdown' | 'beatBoard' | 'sequenceBoard' | 'motionPrompts' | 'directorVerdict'
 
 export interface GraphSkill {
   id: string
@@ -108,7 +98,7 @@ const GRID9_IMAGE_EN = `From the upstream 9-grid storyboard table, generate a si
 const GRID4_IMAGE_EN = `From the upstream 4-grid dynamic storyboard table, generate the 2×2 four-grid collage for group {group}: top-left establish, top-right introduce, bottom-left conflict, bottom-right resolve, keeping character outfits, key-light direction, and scene consistent with the reference first frame; ${GRID_FILL_EN}`
 
 const VIDEO_GRID4_EN =
-  'From the upstream reference image and this dynamic cell\'s image-to-video instruction, generate the dynamic video for cell {group}-{cell}. The reference image only provides style and content reference; strictly follow the camera movement, subject action, environment interaction, and duration in the instruction.'
+  "From the upstream reference image and this dynamic cell's image-to-video instruction, generate the dynamic video for cell {group}-{cell}. The reference image only provides style and content reference; strictly follow the camera movement, subject action, environment interaction, and duration in the instruction."
 
 const VIDEO_GRID9_EN =
   'From the reference first-frame image and the upstream motion prompts, generate an image-to-video clip: preserve the character identity, outfit, hairstyle, scene, key-light direction, and composition tone from the reference image; strictly follow the timeline, camera movement, subject action, full dialogue, and ambient sound in the motion prompt.'
@@ -321,8 +311,18 @@ const BUILTIN_SKILLS: GraphSkill[] = [
   fromSystemDefault('system.image', '图片生成', 'Image', defaultImageSystemPrompt),
   fromSystemDefault('system.uiImage', '界面图', 'UI image', defaultUiImageSystemPrompt),
   fromSystemDefault('system.video', '视频生成', 'Video', defaultVideoSystemPrompt),
-  fromSystemDefault('system.optimize', '提示词优化', 'Prompt optimize', defaultOptimizeSystemPrompt),
-  fromSystemDefault('system.toPrompt', '图生提示词', 'Image to prompt', defaultToPromptSystemPrompt),
+  fromSystemDefault(
+    'system.optimize',
+    '提示词优化',
+    'Prompt optimize',
+    defaultOptimizeSystemPrompt
+  ),
+  fromSystemDefault(
+    'system.toPrompt',
+    '图生提示词',
+    'Image to prompt',
+    defaultToPromptSystemPrompt
+  ),
   fromSystemDefault('system.voice', '声音', 'Voice', defaultTimbreSystemPrompt),
   fromSystemDefault(
     'system.worldExtract',
@@ -343,12 +343,7 @@ const BUILTIN_SKILLS: GraphSkill[] = [
   fromSystemDefault('system.redraw', '重绘', 'Redraw', defaultRedrawSystemPrompt),
   fromSystemDefault('system.erase', '擦除', 'Erase', defaultEraseSystemPrompt),
   fromSystemDefault('system.matte', '抠图', 'Matte', defaultMatteSystemPrompt),
-  fromSystemDefault(
-    'system.multiAngle',
-    '多角度',
-    'Multi-angle',
-    defaultMultiAngleSystemPrompt
-  ),
+  fromSystemDefault('system.multiAngle', '多角度', 'Multi-angle', defaultMultiAngleSystemPrompt),
   fromSystemDefault('system.lighting', '灯光', 'Lighting', defaultLightingSystemPrompt),
   fromSystemDefault(
     'system.portraitTexture',

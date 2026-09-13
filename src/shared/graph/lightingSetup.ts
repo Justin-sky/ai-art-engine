@@ -4,8 +4,7 @@
 
 export type LightingViewMode = 'perspective' | 'frontal'
 
-export type LightingDirection =
-  'left' | 'top' | 'right' | 'front' | 'bottom' | 'back'
+export type LightingDirection = 'left' | 'top' | 'right' | 'front' | 'bottom' | 'back'
 
 export type LightingPresetId =
   | 'custom'
@@ -64,10 +63,7 @@ export const LIGHTING_DIRECTIONS: readonly LightingDirection[] = [
 ] as const
 
 /** 六向快捷方位 */
-export const LIGHTING_DIRECTION_POSE: Record<
-  LightingDirection,
-  { yaw: number; pitch: number }
-> = {
+export const LIGHTING_DIRECTION_POSE: Record<LightingDirection, { yaw: number; pitch: number }> = {
   front: { yaw: 0, pitch: 0 },
   back: { yaw: 180, pitch: 0 },
   left: { yaw: -90, pitch: 0 },
@@ -201,10 +197,7 @@ export function clampLightingYaw(yaw: number): number {
 
 export function clampLightingPitch(pitch: number): number {
   if (!Number.isFinite(pitch)) return 0
-  return Math.max(
-    LIGHTING_PITCH_MIN,
-    Math.min(LIGHTING_PITCH_MAX, Math.round(pitch))
-  )
+  return Math.max(LIGHTING_PITCH_MIN, Math.min(LIGHTING_PITCH_MAX, Math.round(pitch)))
 }
 
 export function clampLightingBrightness(value: number): number {
@@ -228,14 +221,11 @@ export function normalizeLightingSetup(
   raw?: Partial<LightingSetupState> | null
 ): LightingSetupState {
   const base = { ...DEFAULT_LIGHTING_SETUP, ...(raw ?? {}) }
-  const presetId = LIGHTING_PRESETS.some((p) => p.id === base.presetId)
-    ? base.presetId
-    : 'custom'
+  const presetId = LIGHTING_PRESETS.some((p) => p.id === base.presetId) ? base.presetId : 'custom'
   const mainDirection = LIGHTING_DIRECTIONS.includes(base.mainDirection)
     ? base.mainDirection
     : 'front'
-  const viewMode: LightingViewMode =
-    base.viewMode === 'frontal' ? 'frontal' : 'perspective'
+  const viewMode: LightingViewMode = base.viewMode === 'frontal' ? 'frontal' : 'perspective'
   return {
     presetId,
     viewMode,
@@ -251,8 +241,7 @@ export function normalizeLightingSetup(
 }
 
 export function applyLightingPreset(id: LightingPresetId): LightingSetupState {
-  const preset =
-    LIGHTING_PRESETS.find((p) => p.id === id) ?? LIGHTING_PRESETS[0]!
+  const preset = LIGHTING_PRESETS.find((p) => p.id === id) ?? LIGHTING_PRESETS[0]!
   return normalizeLightingSetup({
     presetId: preset.id,
     yaw: preset.yaw,
@@ -280,17 +269,12 @@ export function applyLightingDirection(
   })
 }
 
-export function markLightingCustom(
-  state: LightingSetupState
-): LightingSetupState {
+export function markLightingCustom(state: LightingSetupState): LightingSetupState {
   return { ...state, presetId: 'custom' }
 }
 
 /** 根据 yaw/pitch 推断最接近的六向（用于拖拽后回写方向按钮） */
-export function nearestLightingDirection(
-  yaw: number,
-  pitch: number
-): LightingDirection {
+export function nearestLightingDirection(yaw: number, pitch: number): LightingDirection {
   const y = clampLightingYaw(yaw)
   const p = clampLightingPitch(pitch)
   let best: LightingDirection = 'front'
@@ -369,10 +353,7 @@ export function buildLightingManualPrompt(state: LightingSetupState): string {
 /**
  * 最终输出：手动句；智能模式开启且有文案时再拼接。
  */
-export function resolveLightingOutputPrompt(
-  state: LightingSetupState,
-  extraText = ''
-): string {
+export function resolveLightingOutputPrompt(state: LightingSetupState, extraText = ''): string {
   const s = normalizeLightingSetup(state)
   const manual = buildLightingManualPrompt(s).trim()
   const smart = s.smartPrompt.trim()

@@ -896,9 +896,7 @@ export async function executeImageGenerateNode(
   // 保证远端生成 API 可直接使用；无解析器时退回 data:/http(s) 白名单。
   const charRefs = ctx.resolveImageUrls
     ? (
-        await ctx.resolveImageUrls(
-          charRefUrls.map((url) => ({ dataUrl: url, relativePath: url }))
-        )
+        await ctx.resolveImageUrls(charRefUrls.map((url) => ({ dataUrl: url, relativePath: url })))
       ).filter(Boolean)
     : charRefUrls.filter((url) => url.startsWith('data:') || /^https?:\/\//i.test(url))
   const inputReferences = [...styleRefs, ...portRefs, ...charRefs]

@@ -53,8 +53,7 @@ export const IMPORTABLE_EXTENSIONS = [
   'md'
 ] as const
 
-export const IMPORTABLE_EXTENSION_LABEL =
-  'Images · Videos · Audio · Models · Screenplays'
+export const IMPORTABLE_EXTENSION_LABEL = 'Images · Videos · Audio · Models · Screenplays'
 
 function fileExt(filePath: string): string {
   return filePath.includes('.') ? `.${filePath.split('.').pop()!.toLowerCase()}` : ''
@@ -103,9 +102,7 @@ export function isTextFilePath(filePath: string): boolean {
 }
 
 export function detectImportAssetType(filePath: string): AssetType {
-  const ext = filePath.includes('.')
-    ? `.${filePath.split('.').pop()!.toLowerCase()}`
-    : ''
+  const ext = filePath.includes('.') ? `.${filePath.split('.').pop()!.toLowerCase()}` : ''
   if (IMAGE_EXT.has(ext)) return 'image'
   if (VIDEO_EXT.has(ext)) return 'video'
   if (AUDIO_EXT.has(ext)) return 'voice'
@@ -141,8 +138,6 @@ export function isAttachCompatible(
     detectedType === assetType ||
     (assetType === 'voice' && detectedType === 'voice') ||
     (assetType === 'motion' &&
-      (detectedType === 'video' ||
-        detectedType === 'model' ||
-        detectedType === 'image'))
+      (detectedType === 'video' || detectedType === 'model' || detectedType === 'image'))
   )
 }

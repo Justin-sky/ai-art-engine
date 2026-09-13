@@ -30,9 +30,6 @@ describe('asset package generated outputs', () => {
         }
       }
     })
-    expect([...paths].sort()).toEqual([
-      'Cache/Images/out.png',
-      'Cache/Videos/preview.mp4'
-    ])
+    expect([...paths].sort()).toEqual(['Cache/Images/out.png', 'Cache/Videos/preview.mp4'])
   })
 })

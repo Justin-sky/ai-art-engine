@@ -14,12 +14,7 @@ function box(label: string, confidence: number): YoloBox {
   return { label, confidence, x: 0, y: 0, width: 10, height: 10 }
 }
 
-function detect(
-  boxes: YoloBox[],
-  width = 640,
-  height = 640,
-  inferenceMs = 12
-): YoloDetectResult {
+function detect(boxes: YoloBox[], width = 640, height = 640, inferenceMs = 12): YoloDetectResult {
   return { width, height, boxes, inferenceMs }
 }
 

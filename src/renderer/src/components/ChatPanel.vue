@@ -1,5 +1,14 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch, type Directive } from 'vue'
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  reactive,
+  ref,
+  watch,
+  type Directive
+} from 'vue'
 import type { AssetInfo, AssetType } from '@shared/domain'
 import type {
   AskUserQuestion,
@@ -57,7 +66,6 @@ interface MentionAsset {
 const referenced = ref<MentionAsset[]>([])
 const project = useProjectStore()
 let historyTimer: number | null = null
-
 
 /** 从当前激活会话恢复消息 */
 function loadActiveMessages(): void {
@@ -530,9 +538,7 @@ const vChatImg: Directive = {
  * 时，按正则切分会把整段误判为路径导致“看似未引用”而重复追加，子串判断可避免。
  */
 function buildTask(text: string): string {
-  const extra = referenced.value
-    .map((r) => r.path)
-    .filter((p) => !text.includes(`@${p}`))
+  const extra = referenced.value.map((r) => r.path).filter((p) => !text.includes(`@${p}`))
   if (!extra.length) return text
   return text + '\n\n' + extra.map((p) => `@${p}`).join('\n')
 }
@@ -546,13 +552,11 @@ const mode = ref<ChatMode>(savedMode && CHAT_MODES.includes(savedMode) ? savedMo
 watch(mode, (value) => {
   localStorage.setItem(CHAT_MODE_KEY, value)
 })
-const modeOptions = computed(() =>
-  [
-    { value: 'craft' as ChatMode, label: t('studio.chat.modeCraft') },
-    { value: 'ask' as ChatMode, label: t('studio.chat.modeAsk') },
-    { value: 'plan' as ChatMode, label: t('studio.chat.modePlan') }
-  ]
-)
+const modeOptions = computed(() => [
+  { value: 'craft' as ChatMode, label: t('studio.chat.modeCraft') },
+  { value: 'ask' as ChatMode, label: t('studio.chat.modeAsk') },
+  { value: 'plan' as ChatMode, label: t('studio.chat.modePlan') }
+])
 /** 模式选择下拉的开合状态 */
 const modeOpen = ref(false)
 const modeDropdownRef = ref<HTMLElement | null>(null)
@@ -762,9 +766,7 @@ async function loadModels(): Promise<void> {
       return
     }
     // 回退：DeepSeek 官方默认 → 该 provider 首个模型 → 全局首个模型
-    const ds = providers.find(
-      (p) => p.providerKind === 'deepseek' && p.enabled && p.apiKey?.trim()
-    )
+    const ds = providers.find((p) => p.providerKind === 'deepseek' && p.enabled && p.apiKey?.trim())
     if (ds) {
       const def = modalityConfig(ds, 'text').defaultModelId?.trim()
       if (def && options.some((o) => o.providerId === ds.id && o.id === def)) {
@@ -830,8 +832,8 @@ const MODEL_CONTEXT_FALLBACK: Record<string, number> = {
   'gpt-4o-mini': 128000,
   'gpt-4.1': 1048576,
   'gpt-4.1-mini': 1048576,
-  'o1': 200000,
-  'o3': 200000,
+  o1: 200000,
+  o3: 200000,
   'claude-sonnet-4': 200000,
   'claude-sonnet-4-5': 200000,
   'claude-opus-4': 200000,
@@ -946,10 +948,7 @@ function findToolByKey(key: string): (ChatMsg & { kind: 'tool' }) | undefined {
 }
 
 const ready = computed(
-  () =>
-    !!status.value?.nodeOk &&
-    !!status.value?.mcpRunning &&
-    !!status.value?.hasDeepseekKey
+  () => !!status.value?.nodeOk && !!status.value?.mcpRunning && !!status.value?.hasDeepseekKey
 )
 const statusText = computed(() => {
   const s = status.value
@@ -1082,7 +1081,6 @@ function onHarnessEvent(event: HarnessEvent): void {
       pushStatus(event.message)
       running.value = false
       break
-
   }
 }
 
@@ -1252,9 +1250,10 @@ function hasAssetCard(toolKey: string): boolean {
 const saveDialogOpen = ref(false)
 const saveDialogDefaultName = ref('')
 const saveDialogDefaultFolderId = ref<string | null>(null)
-const saveDialogRef = ref<{ setSaving: (v: boolean) => void; setError: (m: string) => void } | null>(
-  null
-)
+const saveDialogRef = ref<{
+  setSaving: (v: boolean) => void
+  setError: (m: string) => void
+} | null>(null)
 const savingAssetKey = ref('')
 /** 本次会话已成功保存到资产库的资产卡 key（`asset:<id>`），按钮置为「已保存」并禁用 */
 const savedAssetKeys = ref<Set<string>>(new Set())
@@ -1266,7 +1265,12 @@ function isAssetSaved(key: string): boolean {
 
 /** 资产卡默认名称：取文件名 stem（去扩展名） */
 function assetDefaultName(relativePath: string): string {
-  return relativePath.split('/').pop()?.replace(/\.[^.]+$/, '') || 'asset'
+  return (
+    relativePath
+      .split('/')
+      .pop()
+      ?.replace(/\.[^.]+$/, '') || 'asset'
+  )
 }
 
 function openSaveAsset(msg: ChatMsg & { kind: 'asset' }): void {
@@ -1283,7 +1287,10 @@ function closeSaveAssetDialog(): void {
 }
 
 /** 弹窗确认：把 Cache 产物复制到资产库目标文件夹并登记，成功后刷新资产浏览器 */
-async function onSaveAssetConfirm(payload: { name: string; folderId: string | null }): Promise<void> {
+async function onSaveAssetConfirm(payload: {
+  name: string
+  folderId: string | null
+}): Promise<void> {
   const target = messages.value.find((m) => m.kind === 'asset' && m.key === pendingSaveAssetKey)
   if (!target || target.kind !== 'asset' || savingAssetKey.value) return
   savingAssetKey.value = target.key
@@ -1418,49 +1425,25 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="chat-panel">
-    <div
-      class="chat-status"
-      :class="{ warn: statusWarn }"
-    >
+    <div class="chat-status" :class="{ warn: statusWarn }">
       <span class="dot" />
       <span class="status-text">{{ statusText }}</span>
-      <span
-        v-if="workspace"
-        class="chat-workspace"
-        :title="workspace"
-      >{{ workspaceLabel }}</span>
+      <span v-if="workspace" class="chat-workspace" :title="workspace">{{ workspaceLabel }}</span>
     </div>
 
     <div class="chat-messages-wrap">
-      <div
-        ref="listRef"
-        class="chat-messages"
-        @scroll="onChatScroll"
-      >
-        <div
-          v-if="!messages.length"
-          class="chat-empty"
-        >
+      <div ref="listRef" class="chat-messages" @scroll="onChatScroll">
+        <div v-if="!messages.length" class="chat-empty">
           {{ t('studio.chat.empty') }}
-          <div
-            v-if="statusWarn && status?.message"
-            class="chat-empty-hint"
-          >
+          <div v-if="statusWarn && status?.message" class="chat-empty-hint">
             {{ status.message }}
           </div>
         </div>
-        <template
-          v-for="(msg, i) in messages"
-          :key="i"
-        >
+        <template v-for="(msg, i) in messages" :key="i">
           <template v-if="msg.kind === 'user'">
             <div class="msg-row user">
               <div class="bubble user">
-                <div
-                  class="bubble-text"
-                  v-chat-img
-                  v-html="renderInlineChatRefs(msg.text)"
-                />
+                <div class="bubble-text" v-chat-img v-html="renderInlineChatRefs(msg.text)" />
                 <button
                   class="copy-btn"
                   :class="{ copied: copiedIndex === i }"
@@ -1472,10 +1455,7 @@ onBeforeUnmount(() => {
               </div>
             </div>
             <!-- 任务清单：跟随任务消息内嵌展示（agent 风格），状态实时更新 -->
-            <div
-              v-if="taskToolsAt(i).length"
-              class="task-list-card"
-            >
+            <div v-if="taskToolsAt(i).length" class="task-list-card">
               <div class="task-list-title">{{ t('studio.chat.taskList') }}</div>
               <ul class="task-list">
                 <li
@@ -1488,7 +1468,13 @@ onBeforeUnmount(() => {
                   <span class="task-dot" />
                   <span class="task-name">{{ tm.name }}</span>
                   <span class="task-state">
-                    {{ tm.state === 'start' ? t('studio.chat.toolRunning') : tm.state === 'done' ? t('studio.chat.toolDone') : t('studio.chat.toolFailed') }}
+                    {{
+                      tm.state === 'start'
+                        ? t('studio.chat.toolRunning')
+                        : tm.state === 'done'
+                          ? t('studio.chat.toolDone')
+                          : t('studio.chat.toolFailed')
+                    }}
                   </span>
                   <!-- 详细参数/摘要：执行中自动展开，命令完成后折叠为一行摘要，可手动点开展开 -->
                   <details
@@ -1499,10 +1485,7 @@ onBeforeUnmount(() => {
                     <summary class="task-params-summary">
                       {{ tm.detail || t('studio.chat.toolParams') }}
                     </summary>
-                    <div
-                      v-if="toolArgs(tm).length"
-                      class="task-param-list"
-                    >
+                    <div v-if="toolArgs(tm).length" class="task-param-list">
                       <span
                         v-for="p in toolArgs(tm)"
                         :key="p.key"
@@ -1513,11 +1496,7 @@ onBeforeUnmount(() => {
                         <span class="task-param-value">{{ p.value }}</span>
                       </span>
                     </div>
-                    <div
-                      v-else-if="tm.detail"
-                      class="task-detail"
-                      :title="tm.detail"
-                    >
+                    <div v-else-if="tm.detail" class="task-detail" :title="tm.detail">
                       {{ tm.detail }}
                     </div>
                   </details>
@@ -1530,15 +1509,9 @@ onBeforeUnmount(() => {
               </ul>
             </div>
           </template>
-          <div
-            v-else-if="msg.kind === 'assistant'"
-            class="msg-row assistant"
-          >
+          <div v-else-if="msg.kind === 'assistant'" class="msg-row assistant">
             <div class="bubble assistant">
-              <details
-                v-if="msg.reasoning"
-                class="reasoning"
-              >
+              <details v-if="msg.reasoning" class="reasoning">
                 <summary>{{ t('studio.chat.thinking') }}</summary>
                 <pre>{{ msg.reasoning }}</pre>
               </details>
@@ -1559,10 +1532,7 @@ onBeforeUnmount(() => {
             </div>
           </div>
           <!-- 独立资产预览卡：生成完成（图片/视频/音频/3D）时追加到对话末尾，与任务清单的状态卡分离 -->
-          <div
-            v-else-if="msg.kind === 'asset'"
-            class="msg-row asset"
-          >
+          <div v-else-if="msg.kind === 'asset'" class="msg-row asset">
             <div class="asset-card">
               <ChatAssetPreview :relative-path="msg.relativePath" />
               <!-- 生成产物默认落 Cache/ 不进资产库：提供手动保存登记入口 -->
@@ -1586,10 +1556,7 @@ onBeforeUnmount(() => {
             </div>
           </div>
           <!-- Git 变更预览卡：一轮运行结束且确有改动时追加，展示 agent 改了哪些文件 -->
-          <div
-            v-else-if="msg.kind === 'changes'"
-            class="msg-row changes"
-          >
+          <div v-else-if="msg.kind === 'changes'" class="msg-row changes">
             <ChatChangesCard
               :files="msg.files"
               :at="msg.at"
@@ -1597,15 +1564,8 @@ onBeforeUnmount(() => {
               @refresh="refreshGitChanges(msg)"
             />
           </div>
-          <div
-            v-else-if="msg.kind === 'status'"
-            class="msg-status"
-          >
-            <div
-              class="bubble-text"
-              v-chat-img
-              v-html="renderInlineChatRefs(msg.text)"
-            />
+          <div v-else-if="msg.kind === 'status'" class="msg-status">
+            <div class="bubble-text" v-chat-img v-html="renderInlineChatRefs(msg.text)" />
             <button
               class="copy-btn"
               :class="{ copied: copiedIndex === i }"
@@ -1615,15 +1575,8 @@ onBeforeUnmount(() => {
               {{ copiedIndex === i ? t('studio.chat.copied') : t('studio.chat.copy') }}
             </button>
           </div>
-          <div
-            v-else-if="msg.kind === 'prompt'"
-            class="msg-prompt"
-          >
-            <div
-              class="prompt-question"
-              v-chat-img
-              v-html="renderInlineChatRefs(msg.question)"
-            />
+          <div v-else-if="msg.kind === 'prompt'" class="msg-prompt">
+            <div class="prompt-question" v-chat-img v-html="renderInlineChatRefs(msg.question)" />
             <div
               v-if="msg.hint"
               class="prompt-hint"
@@ -1642,18 +1595,12 @@ onBeforeUnmount(() => {
                 {{ opt }}
               </button>
             </div>
-            <div
-              v-if="msg.answered !== null && msg.answered !== undefined"
-              class="prompt-answered"
-            >
+            <div v-if="msg.answered !== null && msg.answered !== undefined" class="prompt-answered">
               {{ t('studio.chat.promptAnswered', { answer: msg.answered }) }}
             </div>
           </div>
         </template>
-        <div
-          v-if="running"
-          class="msg-status running"
-        >
+        <div v-if="running" class="msg-status running">
           <span class="dots"><i /><i /><i /></span>
         </div>
       </div>
@@ -1682,11 +1629,7 @@ onBeforeUnmount(() => {
     <div class="chat-input">
       <div class="chat-toolbar">
         <!-- 技能调试视图：展示会话可用技能清单与已加载命中次数 -->
-        <div
-          ref="skillsDropdownRef"
-          class="skills-dropdown"
-          :class="{ open: skillsOpen }"
-        >
+        <div ref="skillsDropdownRef" class="skills-dropdown" :class="{ open: skillsOpen }">
           <button
             type="button"
             class="skills-trigger"
@@ -1711,34 +1654,24 @@ onBeforeUnmount(() => {
               <path d="M3 21l3-3" />
             </svg>
             <span class="skills-label">{{ t('studio.chat.skills') }}</span>
-            <span
-              v-if="loadedSkillCount > 0"
-              class="skills-badge"
-            >{{ loadedSkillTotal }}</span>
+            <span v-if="loadedSkillCount > 0" class="skills-badge">{{ loadedSkillTotal }}</span>
           </button>
-          <div
-            v-show="skillsOpen"
-            class="skills-menu"
-          >
+          <div v-show="skillsOpen" class="skills-menu">
             <div class="skills-menu-head">
               <span>{{ t('studio.chat.skillsTitle') }}</span>
-              <span
-                v-if="sessionSkills.length"
-                class="skills-menu-meta"
-              >
-                {{ t('studio.chat.skillsMeta', { loaded: loadedSkillCount, total: sessionSkills.length }) }}
+              <span v-if="sessionSkills.length" class="skills-menu-meta">
+                {{
+                  t('studio.chat.skillsMeta', {
+                    loaded: loadedSkillCount,
+                    total: sessionSkills.length
+                  })
+                }}
               </span>
             </div>
-            <p
-              v-if="sessionSkills.length === 0"
-              class="skills-empty"
-            >
+            <p v-if="sessionSkills.length === 0" class="skills-empty">
               {{ t('studio.chat.skillsEmpty') }}
             </p>
-            <ul
-              v-else
-              class="skills-list"
-            >
+            <ul v-else class="skills-list">
               <li
                 v-for="skill in sessionSkills"
                 :key="skill.name"
@@ -1755,10 +1688,7 @@ onBeforeUnmount(() => {
                   </span>
                   <span class="skill-item-desc">{{ skill.description }}</span>
                 </span>
-                <span
-                  v-if="(loadedSkills[skill.name] ?? 0) > 0"
-                  class="skill-hit-count"
-                >
+                <span v-if="(loadedSkills[skill.name] ?? 0) > 0" class="skill-hit-count">
                   ×{{ loadedSkills[skill.name] }}
                 </span>
               </li>
@@ -1778,10 +1708,7 @@ onBeforeUnmount(() => {
             :disabled="running"
             @click.stop="modeOpen = !modeOpen"
           >
-            <span
-              class="mode-icon-box"
-              :class="`mode-icon-${mode}`"
-            >
+            <span class="mode-icon-box" :class="`mode-icon-${mode}`">
               <svg
                 v-if="mode === 'craft'"
                 viewBox="0 0 24 24"
@@ -1795,7 +1722,9 @@ onBeforeUnmount(() => {
                 <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
                 <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
                 <circle cx="6.5" cy="12.5" r=".5" fill="currentColor" />
-                <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z" />
+                <path
+                  d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"
+                />
               </svg>
               <svg
                 v-else-if="mode === 'ask'"
@@ -1817,15 +1746,10 @@ onBeforeUnmount(() => {
                 stroke-linecap="round"
                 stroke-linejoin="round"
               >
-                <rect
-                  width="8"
-                  height="4"
-                  x="8"
-                  y="2"
-                  rx="1"
-                  ry="1"
+                <rect width="8" height="4" x="8" y="2" rx="1" ry="1" />
+                <path
+                  d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"
                 />
-                <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
                 <path d="m9 14 2 2 4-4" />
               </svg>
             </span>
@@ -1843,24 +1767,15 @@ onBeforeUnmount(() => {
               <path d="m6 9 6 6 6-6" />
             </svg>
           </button>
-          <ul
-            v-show="modeOpen"
-            class="mode-menu"
-          >
-            <li
-              v-for="m in modeOptions"
-              :key="m.value"
-            >
+          <ul v-show="modeOpen" class="mode-menu">
+            <li v-for="m in modeOptions" :key="m.value">
               <button
                 type="button"
                 class="mode-item"
                 :class="{ active: mode === m.value }"
                 @click.stop="selectMode(m.value)"
               >
-                <span
-                  class="mode-icon-box"
-                  :class="`mode-icon-${m.value}`"
-                >
+                <span class="mode-icon-box" :class="`mode-icon-${m.value}`">
                   <svg
                     v-if="m.value === 'craft'"
                     viewBox="0 0 24 24"
@@ -1874,7 +1789,9 @@ onBeforeUnmount(() => {
                     <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
                     <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
                     <circle cx="6.5" cy="12.5" r=".5" fill="currentColor" />
-                    <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z" />
+                    <path
+                      d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"
+                    />
                   </svg>
                   <svg
                     v-else-if="m.value === 'ask'"
@@ -1896,15 +1813,10 @@ onBeforeUnmount(() => {
                     stroke-linecap="round"
                     stroke-linejoin="round"
                   >
-                    <rect
-                      width="8"
-                      height="4"
-                      x="8"
-                      y="2"
-                      rx="1"
-                      ry="1"
+                    <rect width="8" height="4" x="8" y="2" rx="1" ry="1" />
+                    <path
+                      d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"
                     />
-                    <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
                     <path d="m9 14 2 2 4-4" />
                   </svg>
                 </span>
@@ -1949,7 +1861,9 @@ onBeforeUnmount(() => {
               stroke-width="2"
               stroke-linecap="round"
               stroke-linejoin="round"
-            ><path d="m6 9 6 6 6-6" /></svg>
+            >
+              <path d="m6 9 6 6 6-6" />
+            </svg>
           </button>
           <ul v-show="sessionOpen" class="session-menu">
             <li v-for="s in sessions" :key="s.id">
@@ -1969,7 +1883,9 @@ onBeforeUnmount(() => {
                   stroke-width="2.5"
                   stroke-linecap="round"
                   stroke-linejoin="round"
-                ><path d="M20 6 9 17l-5-5" /></svg>
+                >
+                  <path d="M20 6 9 17l-5-5" />
+                </svg>
               </button>
             </li>
           </ul>
@@ -2001,36 +1917,19 @@ onBeforeUnmount(() => {
           {{ t('studio.chat.mentionButton') }}
         </button>
       </div>
-      <div
-        v-if="referenced.length"
-        class="mention-chips"
-      >
-        <span
-          v-for="item in referenced"
-          :key="item.path"
-          class="mention-chip"
-          :title="item.path"
-        >
-          <img
-            v-if="item.thumbUrl"
-            class="chip-thumb"
-            :src="item.thumbUrl"
-            alt=""
-          >
-          <span
-            v-else-if="item.type === 'voice'"
-            class="chip-icon"
-          >🎵</span>
-          <span
-            v-else
-            class="chip-icon"
-          >📄</span>
+      <div v-if="referenced.length" class="mention-chips">
+        <span v-for="item in referenced" :key="item.path" class="mention-chip" :title="item.path">
+          <img v-if="item.thumbUrl" class="chip-thumb" :src="item.thumbUrl" alt="" />
+          <span v-else-if="item.type === 'voice'" class="chip-icon">🎵</span>
+          <span v-else class="chip-icon">📄</span>
           <span class="chip-name">{{ item.name }}</span>
           <button
             class="chip-remove"
             :title="t('studio.chat.removeMention')"
             @click="removeMention(item.path)"
-          >×</button>
+          >
+            ×
+          </button>
         </span>
       </div>
       <div class="composer">
@@ -2068,7 +1967,11 @@ onBeforeUnmount(() => {
               @focus="loadModels"
             >
               <span class="model-trigger-label">
-                {{ currentModel ? `${currentModel.providerLabel} · ${currentModel.label}` : t('studio.chat.noModel') }}
+                {{
+                  currentModel
+                    ? `${currentModel.providerLabel} · ${currentModel.label}`
+                    : t('studio.chat.noModel')
+                }}
               </span>
               <svg
                 class="model-chevron"
@@ -2079,7 +1982,9 @@ onBeforeUnmount(() => {
                 stroke-width="2"
                 stroke-linecap="round"
                 stroke-linejoin="round"
-              ><path d="m6 9 6 6 6-6" /></svg>
+              >
+                <path d="m6 9 6 6 6-6" />
+              </svg>
             </button>
             <ul v-show="modelOpen" class="model-menu">
               <li v-for="m in modelOptions" :key="modelKey(m.providerId, m.id)">
@@ -2099,15 +2004,16 @@ onBeforeUnmount(() => {
                     stroke-width="2.5"
                     stroke-linecap="round"
                     stroke-linejoin="round"
-                  ><path d="M20 6 9 17l-5-5" /></svg>
+                  >
+                    <path d="M20 6 9 17l-5-5" />
+                  </svg>
                 </button>
               </li>
             </ul>
           </div>
-          <span
-            v-if="!modelOptions.length"
-            class="model-empty"
-          >{{ t('studio.chat.noModel') }}</span>
+          <span v-if="!modelOptions.length" class="model-empty">{{
+            t('studio.chat.noModel')
+          }}</span>
         </div>
         <div
           v-if="contextUsageText"
@@ -2115,11 +2021,7 @@ onBeforeUnmount(() => {
           :class="{ warn: usageRatio >= 0.85, active: running }"
           :title="contextUsageText"
         >
-          <div
-            class="ctx-ring"
-            :style="{ '--ctx-pct': ringPct }"
-            aria-hidden="true"
-          />
+          <div class="ctx-ring" :style="{ '--ctx-pct': ringPct }" aria-hidden="true" />
         </div>
         <button
           v-if="running"
@@ -2138,7 +2040,17 @@ onBeforeUnmount(() => {
           :title="t('studio.chat.send')"
           @click="onSend"
         >
-          <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <svg
+            viewBox="0 0 16 16"
+            width="14"
+            height="14"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.6"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
             <path d="M8 12 V4" />
             <path d="M4.5 7.5 L8 4 L11.5 7.5" />
           </svg>
@@ -2404,7 +2316,10 @@ onBeforeUnmount(() => {
   color: var(--text-muted);
   cursor: pointer;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
-  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  transition:
+    color 0.15s,
+    border-color 0.15s,
+    background 0.15s;
 }
 
 .chat-scroll-bottom:hover {
@@ -3483,7 +3398,7 @@ onBeforeUnmount(() => {
   border-radius: 50%;
   background: conic-gradient(var(--accent) var(--ctx-pct), var(--accent-12) 0);
   -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 5px));
-          mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 5px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 5px));
 }
 
 .context-usage.warn {

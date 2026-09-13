@@ -5,14 +5,7 @@
 
 import { parseAspectRatioString } from './imageExpand'
 
-export type CropAspectId =
-  | 'original'
-  | 'custom'
-  | '1:1'
-  | '4:3'
-  | '3:4'
-  | '16:9'
-  | '9:16'
+export type CropAspectId = 'original' | 'custom' | '1:1' | '4:3' | '3:4' | '16:9' | '9:16'
 
 export interface ImageCropState {
   cropX: number
@@ -69,9 +62,7 @@ export function normalizeCropRect(
   }
 }
 
-export function normalizeImageCrop(
-  raw?: Partial<ImageCropState> | null
-): ImageCropState {
+export function normalizeImageCrop(raw?: Partial<ImageCropState> | null): ImageCropState {
   const base = { ...DEFAULT_IMAGE_CROP, ...(raw ?? {}) }
   return {
     ...normalizeCropRect(base),
@@ -80,10 +71,7 @@ export function normalizeImageCrop(
 }
 
 /** 目标裁切框相对原图的宽高比（像素空间） */
-export function cropTargetAspect(
-  aspectId: string,
-  sourceAspect: number
-): number | undefined {
+export function cropTargetAspect(aspectId: string, sourceAspect: number): number | undefined {
   if (!aspectId || aspectId === 'custom') return undefined
   if (aspectId === 'original') return sourceAspect > 0 ? sourceAspect : 1
   return parseAspectRatioString(aspectId)

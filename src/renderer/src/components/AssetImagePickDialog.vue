@@ -11,24 +11,16 @@
     @close="emit('cancel')"
   >
     <div class="toolbar">
-      <input
-        v-model="query"
-        class="search"
-        type="search"
-        :placeholder="t('common.search')"
-      >
+      <input v-model="query" class="search" type="search" :placeholder="t('common.search')" />
     </div>
-    <div
-      v-if="!visibleAssets.length"
-      class="empty"
-    >
-      {{ query.trim() ? t('director.stage.blockoutLibraryNoMatch') : t('director.stage.blockoutLibraryEmpty') }}
+    <div v-if="!visibleAssets.length" class="empty">
+      {{
+        query.trim()
+          ? t('director.stage.blockoutLibraryNoMatch')
+          : t('director.stage.blockoutLibraryEmpty')
+      }}
     </div>
-    <div
-      v-else
-      class="library"
-      role="listbox"
-    >
+    <div v-else class="library" role="listbox">
       <button
         v-for="asset in visibleAssets"
         :key="asset.id"
@@ -46,23 +38,12 @@
         @click="toggle(asset.id)"
         @dblclick="pickOne(asset.id)"
       >
-        <img
-          v-if="thumbUrls[asset.id]"
-          :src="thumbUrls[asset.id]"
-          :alt="asset.name"
-        >
-        <span
-          v-else
-          class="thumb-fallback"
-        >🖼</span>
-        <span
-          class="caption"
-          :title="asset.name"
-        >{{ asset.name }}</span>
-        <span
-          v-if="isLocked(asset.id)"
-          class="badge"
-        >{{ t('director.stage.blockoutLibraryAdded') }}</span>
+        <img v-if="thumbUrls[asset.id]" :src="thumbUrls[asset.id]" :alt="asset.name" />
+        <span v-else class="thumb-fallback">🖼</span>
+        <span class="caption" :title="asset.name">{{ asset.name }}</span>
+        <span v-if="isLocked(asset.id)" class="badge">{{
+          t('director.stage.blockoutLibraryAdded')
+        }}</span>
       </button>
     </div>
 
@@ -70,18 +51,10 @@
       <span class="footer-hint">
         {{ t('director.stage.blockoutLibraryPicked', { n: pending.size, max: remaining }) }}
       </span>
-      <button
-        type="button"
-        @click="emit('cancel')"
-      >
+      <button type="button" @click="emit('cancel')">
         {{ t('common.cancel') }}
       </button>
-      <button
-        type="button"
-        class="primary"
-        :disabled="!pending.size"
-        @click="confirm"
-      >
+      <button type="button" class="primary" :disabled="!pending.size" @click="confirm">
         {{ t('common.confirm') }}
       </button>
     </template>

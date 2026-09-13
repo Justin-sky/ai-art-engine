@@ -28,10 +28,7 @@ import {
   readHttpError,
   trimBaseUrl
 } from '../http'
-import {
-  generateOpenAiCompatibleSpeech,
-  generateOpenAiCompatibleText
-} from '../openaiCompat'
+import { generateOpenAiCompatibleSpeech, generateOpenAiCompatibleText } from '../openaiCompat'
 
 /** OpenRouter 目录接口偶发返回裸数组或 { data / models }，统一拆成行列表 */
 function asCatalogRows<T extends { id?: string }>(body: unknown): T[] {

@@ -32,9 +32,7 @@ function readStoredWidth(id: SidePanelId): number {
 function writeStoredWidth(id: SidePanelId, width: number): void {
   if (!(width > 16)) return
   const opts = resolveSidePanelSizeOptions(id)
-  const rounded = Math.round(
-    Math.min(maxRememberedSideWidth(opts), Math.max(opts.minSide, width))
-  )
+  const rounded = Math.round(Math.min(maxRememberedSideWidth(opts), Math.max(opts.minSide, width)))
   lastExpandedWidth[id] = rounded
   try {
     localStorage.setItem(`${WIDTH_STORAGE_PREFIX}${id}`, String(rounded))
@@ -89,8 +87,7 @@ export function registerSidePanelDockApi(api: DockviewApi | null): void {
 
 export function resolveSidePanelSizeOptions(id: SidePanelId): SidePanelSizeOptions {
   if (sizeOptionsProvider) return sizeOptionsProvider(id)
-  const total =
-    typeof window !== 'undefined' && window.innerWidth > 0 ? window.innerWidth : 1600
+  const total = typeof window !== 'undefined' && window.innerWidth > 0 ? window.innerWidth : 1600
   const side = Math.round(Math.min(480, Math.max(300, total * 0.25)))
   return { minSide: 300, maxSide: 480, defaultWidth: side }
 }
@@ -111,17 +108,14 @@ function writeSideCollapsedPreference(id: SidePanelId, collapsed: boolean): void
 
 /** 记忆宽度上限：可略宽于默认 maxSide，但不让单侧吃掉大半窗口（否则工作区被压没）。 */
 function maxRememberedSideWidth(opts: SidePanelSizeOptions): number {
-  const viewport =
-    typeof window !== 'undefined' && window.innerWidth > 0 ? window.innerWidth : 1600
+  const viewport = typeof window !== 'undefined' && window.innerWidth > 0 ? window.innerWidth : 1600
   return Math.max(opts.maxSide, Math.round(viewport * 0.35))
 }
 
 function resolveExpandedWidth(id: SidePanelId, opts: SidePanelSizeOptions): number {
   const remembered = lastExpandedWidth[id] || readStoredWidth(id)
   if (remembered > 16) {
-    return Math.round(
-      Math.min(maxRememberedSideWidth(opts), Math.max(opts.minSide, remembered))
-    )
+    return Math.round(Math.min(maxRememberedSideWidth(opts), Math.max(opts.minSide, remembered)))
   }
   return Math.round(Math.min(opts.maxSide, Math.max(opts.minSide, opts.defaultWidth)))
 }
@@ -271,7 +265,10 @@ function scheduleStackedColumnNormalize(dock: DockviewApi, preferredWidth?: numb
     const column =
       pendingStackColumnWidth > 16
         ? pendingStackColumnWidth
-        : Math.min(readSoloWidth('assets') || Number.POSITIVE_INFINITY, readSoloWidth('inspector') || Number.POSITIVE_INFINITY)
+        : Math.min(
+            readSoloWidth('assets') || Number.POSITIVE_INFINITY,
+            readSoloWidth('inspector') || Number.POSITIVE_INFINITY
+          )
     if (!(column > 16) || !Number.isFinite(column)) return
     if (forceStackedColumnWidth(dock, column)) {
       pendingStackColumnWidth = column
@@ -349,9 +346,7 @@ export function noteSidePanelWillStackDrop(
   armStackNormalizeWindow()
 }
 
-function groupHasSidePanel(
-  group: { panels?: ReadonlyArray<{ id: string }> } | undefined
-): boolean {
+function groupHasSidePanel(group: { panels?: ReadonlyArray<{ id: string }> } | undefined): boolean {
   return !!group?.panels?.some((panel) => isSidePanelId(panel.id))
 }
 
@@ -409,9 +404,7 @@ type DropTargetLike = {
   }) => void
 }
 
-function groupContentDropTargets(group: {
-  model?: unknown
-}): DropTargetLike[] {
+function groupContentDropTargets(group: { model?: unknown }): DropTargetLike[] {
   const model = group.model as
     | {
         contentDropTarget?: DropTargetLike
@@ -486,9 +479,7 @@ export function handleSidePanelMoved(dock: DockviewApi, movedId: string): void {
 
   const targetId = otherSidePanelId(movedId)
   const columnWidth =
-    pendingStackColumnWidth > 16
-      ? pendingStackColumnWidth
-      : readSoloWidth(targetId)
+    pendingStackColumnWidth > 16 ? pendingStackColumnWidth : readSoloWidth(targetId)
   armStackNormalizeWindow()
   scheduleStackedColumnNormalize(dock, columnWidth)
   // 叠放后偶发留下窄列灰洞；下一帧再压一次列宽并清 overlay
@@ -832,10 +823,7 @@ export function syncSidePanelCollapseState(
 }
 
 /** 展开宽度记忆（忽略当前是否收起），供布局 JSON 清洗 fallback */
-export function rememberedExpandedSideWidth(
-  id: SidePanelId,
-  opts?: SidePanelSizeOptions
-): number {
+export function rememberedExpandedSideWidth(id: SidePanelId, opts?: SidePanelSizeOptions): number {
   return resolveExpandedWidth(id, opts ?? resolveSidePanelSizeOptions(id))
 }
 
@@ -868,9 +856,7 @@ export function sidePanelInitialWidth(
     ...(options?.maxSide != null ? { maxSide: options.maxSide } : {})
   }
   return {
-    initialWidth: Math.round(
-      Math.min(maxRememberedSideWidth(opts), Math.max(minSide, remembered))
-    ),
+    initialWidth: Math.round(Math.min(maxRememberedSideWidth(opts), Math.max(minSide, remembered))),
     minimumWidth: minSide
   }
 }

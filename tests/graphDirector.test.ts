@@ -27,7 +27,9 @@ describe('director asset graph', () => {
 
   it('normalizes empty graph with processing node only', () => {
     const doc = normalizeScopedGraph('directorAsset', null, { assetType: 'motion' })
-    expect(doc.nodes.some((n) => n.typeId === 'asset.motion' && isProcessingAssetNode(n))).toBe(true)
+    expect(doc.nodes.some((n) => n.typeId === 'asset.motion' && isProcessingAssetNode(n))).toBe(
+      true
+    )
     expect(doc.nodes.some((n) => n.category === 'output')).toBe(false)
     expect(doc.edges).toHaveLength(0)
   })

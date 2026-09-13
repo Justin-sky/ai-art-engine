@@ -179,7 +179,8 @@ export async function executePromptOptimizeNode(
     throw new DOMException('Aborted', 'AbortError')
   }
   const text = result.text.trim()
-  if (!text) throw fail(SHARED_ERRORS.resultMissing, { what: { zh: '优化结果', en: 'optimization result' } })  // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
+  if (!text)
+    throw fail(SHARED_ERRORS.resultMissing, { what: { zh: '优化结果', en: 'optimization result' } }) // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
 
   // 第二档闭环：导演审核节点解析 PASS/FAIL 并落盘 agent-state.json
   if (episodeReviewTarget && ctx.readEpisodeAgentState && ctx.writeEpisodeAgentState) {
@@ -575,7 +576,10 @@ export async function executeWorldExtractNode(
     throw new DOMException('Aborted', 'AbortError')
   }
   let text = result.text.trim()
-  if (!text) throw fail(SHARED_ERRORS.resultMissing, { what: { zh: '世界元素提取结果', en: 'world element extraction result' } })  // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
+  if (!text)
+    throw fail(SHARED_ERRORS.resultMissing, {
+      what: { zh: '世界元素提取结果', en: 'world element extraction result' }
+    }) // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
 
   const nextCatalog = parseWorldElementCatalog(text)
   const merged = mergeWorldCatalogPreservingReviewed(previousCatalog, nextCatalog)
@@ -667,7 +671,10 @@ export async function executeBeatUnitGenNode(
     throw new DOMException('Aborted', 'AbortError')
   }
   const text = result.text.trim()
-  if (!text) throw fail(SHARED_ERRORS.resultMissing, { what: { zh: '叙事细化结果', en: 'narrative refinement result' } })  // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
+  if (!text)
+    throw fail(SHARED_ERRORS.resultMissing, {
+      what: { zh: '叙事细化结果', en: 'narrative refinement result' }
+    }) // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
 
   return persistScreenplayGeneration(ctx, text)
 }
@@ -739,7 +746,10 @@ export async function executeBeatSplitNode(
     throw new DOMException('Aborted', 'AbortError')
   }
   let text = result.text.trim()
-  if (!text) throw fail(SHARED_ERRORS.resultMissing, { what: { zh: '场拆解结果', en: 'scene breakdown result' } })  // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
+  if (!text)
+    throw fail(SHARED_ERRORS.resultMissing, {
+      what: { zh: '场拆解结果', en: 'scene breakdown result' }
+    }) // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
 
   const nextRows = parseBeatJson(text)
   const merged = mergeBeatRowsPreservingReviewed(previousRows, nextRows)
@@ -799,12 +809,18 @@ export async function executeUiSplitNode(
     throw new DOMException('Aborted', 'AbortError')
   }
   const text = result.text.trim()
-  if (!text) throw fail(SHARED_ERRORS.resultMissing, { what: { zh: 'UI 界面拆分结果', en: 'UI split result' } })  // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
+  if (!text)
+    throw fail(SHARED_ERRORS.resultMissing, {
+      what: { zh: 'UI 界面拆分结果', en: 'UI split result' }
+    }) // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
 
   const screens = parseUiScreenPrompts(text)
   if (!screens.length) {
     throw fail(SHARED_ERRORS.resultMissing, {
-      what: { zh: '可解析的界面列表（需要 JSON 数组，含 title/prompt）', en: 'parseable screen list (expects a JSON array with title/prompt)' }  // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
+      what: {
+        zh: '可解析的界面列表（需要 JSON 数组，含 title/prompt）',
+        en: 'parseable screen list (expects a JSON array with title/prompt)'
+      } // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
     })
   }
 

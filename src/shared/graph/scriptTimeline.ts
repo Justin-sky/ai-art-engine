@@ -280,7 +280,11 @@ export type TimelineTransitionPreviewInput = {
 }
 
 export type TimelineTransitionPreviewResult =
-  | { ok: true; /** studio-media 可播放 URL */ url: string; /** 覆盖窗口时长（秒）= overlap */ durationSec: number }
+  | {
+      ok: true
+      /** studio-media 可播放 URL */ url: string
+      /** 覆盖窗口时长（秒）= overlap */ durationSec: number
+    }
   | { ok: false; /** 无转场 / ffmpeg 缺失 / 渲染失败 */ error: string }
 
 export const SCRIPT_TIMELINE_PARAM_KEY = 'scriptTimeline'
@@ -288,7 +292,9 @@ export const SCRIPT_TIMELINE_NODE_PREFIX = 'scriptTimeline:'
 
 function timelineParamKeyForNode(nodeId?: string): string {
   const id = nodeId?.trim()
-  return id && id !== 'timeline-output' ? `${SCRIPT_TIMELINE_NODE_PREFIX}${id}` : SCRIPT_TIMELINE_PARAM_KEY
+  return id && id !== 'timeline-output'
+    ? `${SCRIPT_TIMELINE_NODE_PREFIX}${id}`
+    : SCRIPT_TIMELINE_PARAM_KEY
 }
 
 const PLAYBACK_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2] as const
@@ -335,15 +341,9 @@ export function readScriptTimelineFromGenParams(
           .map((item) => normalizeScriptTimelineSourceGroup(item))
           .filter((item): item is ScriptTimelineSourceGroup => !!item)
       : [],
-    hiddenTracks: Array.isArray(doc.hiddenTracks)
-      ? doc.hiddenTracks.filter(isTrackKind)
-      : [],
-    mutedTracks: Array.isArray(doc.mutedTracks)
-      ? doc.mutedTracks.filter(isTrackKind)
-      : [],
-    lockedTracks: Array.isArray(doc.lockedTracks)
-      ? doc.lockedTracks.filter(isTrackKind)
-      : [],
+    hiddenTracks: Array.isArray(doc.hiddenTracks) ? doc.hiddenTracks.filter(isTrackKind) : [],
+    mutedTracks: Array.isArray(doc.mutedTracks) ? doc.mutedTracks.filter(isTrackKind) : [],
+    lockedTracks: Array.isArray(doc.lockedTracks) ? doc.lockedTracks.filter(isTrackKind) : [],
     collapsedTracks: Array.isArray(doc.collapsedTracks)
       ? doc.collapsedTracks.filter(isTrackKind)
       : [],
@@ -379,7 +379,11 @@ function sanitizeSettings(raw: unknown): ScriptTimelineSettings | undefined {
   if (!raw || typeof raw !== 'object') return undefined
   const row = raw as ScriptTimelineSettings
   const next: ScriptTimelineSettings = {}
-  if (typeof row.durationSec === 'number' && Number.isFinite(row.durationSec) && row.durationSec > 0) {
+  if (
+    typeof row.durationSec === 'number' &&
+    Number.isFinite(row.durationSec) &&
+    row.durationSec > 0
+  ) {
     next.durationSec = Math.min(3600, Math.max(1, row.durationSec))
   }
   if (row.playbackRate != null) {
@@ -395,7 +399,10 @@ function sanitizeSettings(raw: unknown): ScriptTimelineSettings | undefined {
   if (typeof row.exportFps === 'number' && Number.isFinite(row.exportFps)) {
     next.exportFps = Math.min(60, Math.max(1, Math.round(row.exportFps)))
   }
-  if (typeof row.exportVideoBitrateKbps === 'number' && Number.isFinite(row.exportVideoBitrateKbps)) {
+  if (
+    typeof row.exportVideoBitrateKbps === 'number' &&
+    Number.isFinite(row.exportVideoBitrateKbps)
+  ) {
     next.exportVideoBitrateKbps = Math.min(
       200000,
       Math.max(500, Math.round(row.exportVideoBitrateKbps))
@@ -412,15 +419,7 @@ function sanitizeSettings(raw: unknown): ScriptTimelineSettings | undefined {
   }
   if (
     typeof row.previewFrameRatio === 'string' &&
-    [
-      'video',
-      'export',
-      '16:9',
-      '9:16',
-      '1:1',
-      '4:3',
-      '3:4'
-    ].includes(row.previewFrameRatio.trim())
+    ['video', 'export', '16:9', '9:16', '1:1', '4:3', '3:4'].includes(row.previewFrameRatio.trim())
   ) {
     next.previewFrameRatio = row.previewFrameRatio.trim()
   }
@@ -481,10 +480,8 @@ export function normalizeScriptTimelineSource(
   raw: Partial<ScriptTimelineSource> | null | undefined
 ): ScriptTimelineSource | null {
   if (!raw || typeof raw.id !== 'string' || typeof raw.title !== 'string') return null
-  const origin: ScriptTimelineSourceOrigin =
-    raw.origin === 'imported' ? 'imported' : 'input'
-  const mediaKind: ScriptTimelineSourceMediaKind =
-    raw.mediaKind === 'voice' ? 'voice' : 'video'
+  const origin: ScriptTimelineSourceOrigin = raw.origin === 'imported' ? 'imported' : 'input'
+  const mediaKind: ScriptTimelineSourceMediaKind = raw.mediaKind === 'voice' ? 'voice' : 'video'
   const next: ScriptTimelineSource = {
     id: raw.id,
     title: raw.title,
@@ -497,7 +494,11 @@ export function normalizeScriptTimelineSource(
   if (typeof raw.assetId === 'string' && raw.assetId.trim()) {
     next.assetId = raw.assetId.trim()
   }
-  if (typeof raw.durationSec === 'number' && Number.isFinite(raw.durationSec) && raw.durationSec > 0) {
+  if (
+    typeof raw.durationSec === 'number' &&
+    Number.isFinite(raw.durationSec) &&
+    raw.durationSec > 0
+  ) {
     next.durationSec = raw.durationSec
   }
   if (origin === 'input') {

@@ -83,12 +83,7 @@ export function graphOutputNodeIdForType(
   if (typeId === 'output.world') return GRAPH_OUTPUT_NODE_IDS.world
   if (typeId?.startsWith('output.')) {
     const suffix = typeId.slice('output.'.length)
-    if (
-      suffix === 'image' ||
-      suffix === 'video' ||
-      suffix === 'voice' ||
-      suffix === 'text'
-    ) {
+    if (suffix === 'image' || suffix === 'video' || suffix === 'voice' || suffix === 'text') {
       return GRAPH_OUTPUT_NODE_IDS[suffix]
     }
   }
@@ -131,9 +126,7 @@ export const GraphPortType = {
 
 /** 目录 JSON 端口 / 运行时 kind（与 GraphPortType 同名） */
 export type GraphCatalogKind =
-  | typeof GraphPortType.world
-  | typeof GraphPortType.worldEntities
-  | typeof GraphPortType.beat
+  typeof GraphPortType.world | typeof GraphPortType.worldEntities | typeof GraphPortType.beat
 
 export const GRAPH_CATALOG_KINDS: readonly GraphCatalogKind[] = [
   GraphPortType.world,
@@ -142,10 +135,7 @@ export const GRAPH_CATALOG_KINDS: readonly GraphCatalogKind[] = [
 ]
 
 export function isGraphCatalogKind(value: unknown): value is GraphCatalogKind {
-  return (
-    typeof value === 'string' &&
-    (GRAPH_CATALOG_KINDS as readonly string[]).includes(value)
-  )
+  return typeof value === 'string' && (GRAPH_CATALOG_KINDS as readonly string[]).includes(value)
 }
 
 export type GraphPortDataType = (typeof GraphPortType)[keyof typeof GraphPortType]
@@ -382,7 +372,7 @@ export interface GraphNodeParams {
   volume?: number
   muted?: boolean
   loop?: boolean
-/** 输出节点输入端口类型覆盖 */
+  /** 输出节点输入端口类型覆盖 */
   inputDataType?: GraphPortDataType
   /**
    * 束结（media.bundle）锁定的单数端口类型；空/未设表示未锁定，可接首条任意可接受类型。

@@ -1,18 +1,11 @@
 <template>
-  <div
-    v-if="node"
-    class="camera-inspector"
-  >
+  <div v-if="node" class="camera-inspector">
     <div class="head">
       <span class="type">{{ t('graph.types.asset.motion') }}</span>
       <h2>{{ displayTitle }}</h2>
     </div>
 
-    <button
-      type="button"
-      class="link-btn"
-      @click="openStage"
-    >
+    <button type="button" class="link-btn" @click="openStage">
       {{ t('graph.inspector.camera.openStage') }}
     </button>
     <p class="subhint">
@@ -21,38 +14,23 @@
 
     <label>
       {{ t('graph.inspector.displayName') }}
-      <input
-        v-model="localTitle"
-        @change="persist"
-      >
+      <input v-model="localTitle" @change="persist" />
     </label>
 
-    <section
-      class="out-images"
-      :aria-label="t('graph.inspector.camera.outImages')"
-    >
+    <section class="out-images" :aria-label="t('graph.inspector.camera.outImages')">
       <div class="section-head">
         <span class="section-title">{{ t('graph.inspector.camera.outImages') }}</span>
-        <span
-          v-if="outImages.length"
-          class="section-count"
-        >
+        <span v-if="outImages.length" class="section-count">
           {{ t('graph.inspector.camera.outImagesCount', { n: outImages.length }) }}
         </span>
       </div>
       <p class="section-hint">
         {{ t('graph.inspector.camera.outImagesHint') }}
       </p>
-      <div
-        v-if="!outImages.length"
-        class="empty-shots"
-      >
+      <div v-if="!outImages.length" class="empty-shots">
         {{ t('graph.inspector.camera.outImagesEmpty') }}
       </div>
-      <div
-        v-else
-        class="shot-grid"
-      >
+      <div v-else class="shot-grid">
         <button
           v-for="(shot, index) in outImages"
           :key="shot.id || `index:${index}`"
@@ -66,38 +44,26 @@
             alt=""
             loading="lazy"
             decoding="async"
-          >
+          />
           <span class="shot-index">{{ index + 1 }}</span>
         </button>
       </div>
     </section>
 
-    <section
-      class="out-images"
-      :aria-label="t('graph.inspector.camera.outActions')"
-    >
+    <section class="out-images" :aria-label="t('graph.inspector.camera.outActions')">
       <div class="section-head">
         <span class="section-title">{{ t('graph.inspector.camera.outActions') }}</span>
-        <span
-          v-if="outActions.length"
-          class="section-count"
-        >
+        <span v-if="outActions.length" class="section-count">
           {{ t('graph.inspector.camera.outActionsCount', { n: outActions.length }) }}
         </span>
       </div>
       <p class="section-hint">
         {{ t('graph.inspector.camera.outActionsHint') }}
       </p>
-      <div
-        v-if="!outActions.length"
-        class="empty-shots"
-      >
+      <div v-if="!outActions.length" class="empty-shots">
         {{ t('graph.inspector.camera.outActionsEmpty') }}
       </div>
-      <div
-        v-else
-        class="shot-grid"
-      >
+      <div v-else class="shot-grid">
         <button
           v-for="(clip, index) in outActions"
           :key="clip.id || `action:${index}`"
@@ -118,10 +84,7 @@
       </div>
     </section>
   </div>
-  <div
-    v-else
-    class="camera-inspector empty"
-  >
+  <div v-else class="camera-inspector empty">
     {{ t('graph.inspector.camera.empty') }}
   </div>
 </template>
@@ -160,7 +123,10 @@ const node = computed(() => {
   if (!n || resolveNodeType(n)?.inspector !== 'camera') return null
   return n
 })
-const displayTitle = useNodeDisplayTitle(node, computed(() => t('graph.types.asset.motion')))
+const displayTitle = useNodeDisplayTitle(
+  node,
+  computed(() => t('graph.types.asset.motion'))
+)
 
 /** 输出端口 out-shots：优先运行态，其次节点上的站位图 / 预览图 */
 const outImages = computed<GraphImageItem[]>(() => {
@@ -172,9 +138,7 @@ const outImages = computed<GraphImageItem[]>(() => {
     graphRunHosts.get(selection.hostId)?.runStates[current.id]?.outputs?.['out-shots'] ??
     graphRunHosts.get(selection.hostId)?.runStates[current.id]?.outputs?.['out-all']
   if (runOut?.kind === 'images') {
-    const live = runOut.items.filter(
-      (item) => item.dataUrl?.trim() || item.relativePath?.trim()
-    )
+    const live = runOut.items.filter((item) => item.dataUrl?.trim() || item.relativePath?.trim())
     if (live.length) return live
   }
 
@@ -202,12 +166,11 @@ const outActions = computed<GraphVideoItem[]>(() => {
   const selection = graphSelection.value
   if (!current || !selection) return []
 
-  const runOut =
-    graphRunHosts.get(selection.hostId)?.runStates[current.id]?.outputs?.['out-actions']
+  const runOut = graphRunHosts.get(selection.hostId)?.runStates[current.id]?.outputs?.[
+    'out-actions'
+  ]
   if (runOut?.kind === 'videos') {
-    const live = runOut.items.filter(
-      (item) => item.dataUrl?.trim() || item.relativePath?.trim()
-    )
+    const live = runOut.items.filter((item) => item.dataUrl?.trim() || item.relativePath?.trim())
     if (live.length) return live
   }
 

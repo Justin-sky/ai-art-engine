@@ -21,18 +21,14 @@ export function useEditorDocumentSession(options: EditorDocumentSessionOptions) 
       id: options.id(),
       parentId: options.parentId?.(),
       save: options.save,
-      autoSaveEnabled:
-        options.autoSaveEnabled ?? (() => editorPreferences.autoSaveEnabled.value),
+      autoSaveEnabled: options.autoSaveEnabled ?? (() => editorPreferences.autoSaveEnabled.value),
       autoSaveDelayMs:
         options.autoSaveDelayMs ?? (() => editorPreferences.autoSaveIntervalSec.value * 1000)
     })
   })
 
   onBeforeUnmount(() => {
-    if (
-      options.saveOnUnmount !== false &&
-      editorPreferences.autoSaveEnabled.value
-    ) {
+    if (options.saveOnUnmount !== false && editorPreferences.autoSaveEnabled.value) {
       void editor.documents.save(options.id()).catch((error) => {
         console.error(`[editor] document unmount save failed: ${options.id()}`, error)
       })

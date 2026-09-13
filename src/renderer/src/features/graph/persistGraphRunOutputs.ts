@@ -71,12 +71,7 @@ export async function syncHostMediaFromGraphOutput(input: {
   if (!asset || !isMediaFileAsset(asset.type)) return
   if (asset.relativePath?.trim()) return
 
-  const source = resolveHostMediaSyncSource(
-    input.graph,
-    input.runStates,
-    asset.id,
-    asset.type
-  )
+  const source = resolveHostMediaSyncSource(input.graph, input.runStates, asset.id, asset.type)
   if (!source) return
 
   try {

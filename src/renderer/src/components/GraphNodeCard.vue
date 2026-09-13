@@ -40,13 +40,10 @@
         @blur="commitTitleEdit"
         @keydown.enter.prevent="commitTitleEdit"
         @keydown.esc.prevent="cancelTitleEdit"
-      >
-      <span
-        v-else
-        class="title"
-        :title="displayTitle"
-        @dblclick.stop="startTitleEdit"
-      >{{ displayTitle }}</span>
+      />
+      <span v-else class="title" :title="displayTitle" @dblclick.stop="startTitleEdit">{{
+        displayTitle
+      }}</span>
     </div>
 
     <div class="node-head">
@@ -56,14 +53,13 @@
         :class="{ collapsed: previewCollapsed }"
         :title="previewCollapsed ? t('graph.node.expandPreview') : t('graph.node.collapsePreview')"
         :aria-expanded="!previewCollapsed"
-        :aria-label="previewCollapsed ? t('graph.node.expandPreview') : t('graph.node.collapsePreview')"
+        :aria-label="
+          previewCollapsed ? t('graph.node.expandPreview') : t('graph.node.collapsePreview')
+        "
         @pointerdown.stop
         @click.stop="togglePreviewCollapsed"
       >
-        <span
-          class="collapse-tri"
-          aria-hidden="true"
-        />
+        <span class="collapse-tri" aria-hidden="true" />
       </button>
       <div class="head-actions">
         <button
@@ -77,10 +73,7 @@
           @pointerdown.stop
           @click.stop="toggleLock"
         >
-          <LockIcon
-            :locked="isLocked"
-            :size="12"
-          />
+          <LockIcon :locked="isLocked" :size="12" />
         </button>
         <span
           v-if="runStatus && runStatus !== 'idle' && runStatus !== 'skipped'"
@@ -96,9 +89,9 @@
           :class="reviewStatus === 'FAIL' ? 'error' : 'done'"
           :title="
             reviewReason ||
-              (reviewStatus === 'FAIL'
-                ? t('graph.node.directorReviewFail')
-                : t('graph.node.directorReviewPass'))
+            (reviewStatus === 'FAIL'
+              ? t('graph.node.directorReviewFail')
+              : t('graph.node.directorReviewPass'))
           "
         >
           {{ reviewStatus === 'FAIL' ? 'FAIL' : 'PASS' }}
@@ -128,16 +121,17 @@
         class="media-fallback preview-icon-fallback"
         :title="scriptNodePreviewTitle"
       >
-        <span class="icon"><WorkspaceItemIcon
-          :icon="typeIcon"
-          :size="18"
-        /></span>
+        <span class="icon"><WorkspaceItemIcon :icon="typeIcon" :size="18" /></span>
         <span class="hint">{{ scriptNodePreviewTitle }}</span>
       </div>
 
       <template v-else>
         <img
-          v-if="(isDirectorGenerateNode || isDirectorOutputNode) && directorLivePreview && cardImageGridSrcs.length <= 1"
+          v-if="
+            (isDirectorGenerateNode || isDirectorOutputNode) &&
+            directorLivePreview &&
+            cardImageGridSrcs.length <= 1
+          "
           :src="directorLivePreview"
           alt=""
           class="camera-live-preview"
@@ -145,7 +139,7 @@
           decoding="async"
           draggable="false"
           @load="onPreviewImageLoad"
-        >
+        />
 
         <div
           v-else-if="isCardAnimNode && cardAnimFrames.length > 1"
@@ -159,7 +153,7 @@
             decoding="async"
             draggable="false"
             @load="onPreviewImageLoad"
-          >
+          />
         </div>
 
         <div
@@ -183,7 +177,7 @@
               decoding="async"
               draggable="false"
               @load="onCardGridImageLoad(index, $event)"
-            >
+            />
           </template>
           <template v-else>
             <img
@@ -196,8 +190,10 @@
               loading="lazy"
               decoding="async"
               draggable="false"
-              @load="index === cardImageStackSrcs.length - 1 ? onPreviewImageLoad($event) : undefined"
-            >
+              @load="
+                index === cardImageStackSrcs.length - 1 ? onPreviewImageLoad($event) : undefined
+              "
+            />
           </template>
           <button
             type="button"
@@ -226,14 +222,35 @@
         </div>
 
         <img
-          v-else-if="(isFrameAnimGenNode || isSelectImageNode(node) || isMultiAngleEditorNode(node) || isLightingEditorNode(node) || isPortraitTextureEditorNode(node) || isEmotionEditorNode(node) || isUpscaleEditorNode(node) || isExpandEditorNode(node) || isRedrawEditorNode(node) || isEraseEditorNode(node) || isMatteEditorNode(node) || isCropEditorNode(node) || isGridSplitEditorNode(node) || isIconPackEditorNode(node) || isLayerSplitEditorNode(node) || isCutoutNode(node) || isComposeNode(node) || isFramePullNode(node) || isComicPageNode(node)) && selectImagePreview"
+          v-else-if="
+            (isFrameAnimGenNode ||
+              isSelectImageNode(node) ||
+              isMultiAngleEditorNode(node) ||
+              isLightingEditorNode(node) ||
+              isPortraitTextureEditorNode(node) ||
+              isEmotionEditorNode(node) ||
+              isUpscaleEditorNode(node) ||
+              isExpandEditorNode(node) ||
+              isRedrawEditorNode(node) ||
+              isEraseEditorNode(node) ||
+              isMatteEditorNode(node) ||
+              isCropEditorNode(node) ||
+              isGridSplitEditorNode(node) ||
+              isIconPackEditorNode(node) ||
+              isLayerSplitEditorNode(node) ||
+              isCutoutNode(node) ||
+              isComposeNode(node) ||
+              isFramePullNode(node) ||
+              isComicPageNode(node)) &&
+            selectImagePreview
+          "
           :src="selectImagePreview"
           alt=""
           loading="lazy"
           decoding="async"
           draggable="false"
           @load="onPreviewImageLoad"
-        >
+        />
 
         <div
           v-else-if="cardTextGridItems.length > 1"
@@ -244,14 +261,10 @@
             v-for="(item, index) in cardTextGridItems"
             :key="`grid-text-${index}`"
             class="card-text-grid-item"
-          >{{ item }}</pre>
+            >{{ item }}</pre>
         </div>
 
-        <div
-          v-else-if="textPreview"
-          class="text-preview"
-          :title="previewOpenHint"
-        >
+        <div v-else-if="textPreview" class="text-preview" :title="previewOpenHint">
           <pre class="text-preview-body">{{ textPreview }}</pre>
           <span class="text-preview-hint">{{ previewOpenHint }}</span>
         </div>
@@ -264,7 +277,7 @@
           decoding="async"
           draggable="false"
           @load="onPreviewImageLoad"
-        >
+        />
 
         <video
           v-else-if="previewKind === 'video' && previewUrl"
@@ -286,18 +299,9 @@
           @error="onVideoError"
         />
 
-        <div
-          v-else-if="previewKind === 'voice'"
-          class="media-fallback audio"
-        >
-          <span class="icon"><WorkspaceItemIcon
-            :icon="typeIcon"
-            :size="18"
-          /></span>
-          <span
-            v-if="!showMediaTransport || !previewUrl || mediaError"
-            class="hint"
-          >{{
+        <div v-else-if="previewKind === 'voice'" class="media-fallback audio">
+          <span class="icon"><WorkspaceItemIcon :icon="typeIcon" :size="18" /></span>
+          <span v-if="!showMediaTransport || !previewUrl || mediaError" class="hint">{{
             previewHint
           }}</span>
           <audio
@@ -317,25 +321,13 @@
           />
         </div>
 
-        <div
-          v-else-if="isFramePullNode(node)"
-          class="media-fallback frame-pull-hint"
-        >
-          <span class="icon"><WorkspaceItemIcon
-            :icon="typeIcon"
-            :size="18"
-          /></span>
+        <div v-else-if="isFramePullNode(node)" class="media-fallback frame-pull-hint">
+          <span class="icon"><WorkspaceItemIcon :icon="typeIcon" :size="18" /></span>
           <span class="hint">{{ t('graph.inspector.framePull.openHint') }}</span>
         </div>
 
-        <div
-          v-else
-          class="media-fallback"
-        >
-          <span class="icon"><WorkspaceItemIcon
-            :icon="typeIcon"
-            :size="18"
-          /></span>
+        <div v-else class="media-fallback">
+          <span class="icon"><WorkspaceItemIcon :icon="typeIcon" :size="18" /></span>
           <span class="hint">{{ previewHint }}</span>
         </div>
 
@@ -371,7 +363,7 @@
                 :value="progressValue"
                 @input="onSeekInput"
                 @change="onSeekChange"
-              >
+              />
             </div>
             <button
               type="button"
@@ -384,10 +376,7 @@
           </div>
         </div>
 
-        <span
-          v-if="mediaError"
-          class="media-error"
-        >{{ mediaErrorText }}</span>
+        <span v-if="mediaError" class="media-error">{{ mediaErrorText }}</span>
       </template>
     </div>
 
@@ -475,10 +464,9 @@
         :title="inPortTitle(port)"
         @pointerdown.stop.prevent="onInPortDown(port.id, $event)"
       />
-      <span
-        v-if="shouldShowPortLimitBadge(port)"
-        class="port-limit"
-      >{{ portLimitBadge(port) }}</span>
+      <span v-if="shouldShowPortLimitBadge(port)" class="port-limit">{{
+        portLimitBadge(port)
+      }}</span>
     </div>
     <div
       v-for="(port, index) in outPorts"
@@ -504,19 +492,14 @@
       <span class="port-type">{{ outPortTypeLabel(port) }}</span>
     </div>
 
-    <GraphNodeResizeHandle
-      v-if="!previewCollapsed"
-      @resize-start="onResizeStart"
-    />
+    <GraphNodeResizeHandle v-if="!previewCollapsed" @resize-start="onResizeStart" />
 
     <span
       v-if="!previewCollapsed"
       class="type-badge"
       :class="typeBadgeClass"
       :title="typeBadgeTitle"
-    ><WorkspaceItemIcon
-      :icon="typeBadgeIcon"
-      :size="14"
+      ><WorkspaceItemIcon :icon="typeBadgeIcon" :size="14"
     /></span>
   </div>
 </template>
@@ -641,10 +624,7 @@ import { useStudioI18n } from '../composables/useStudioI18n'
 import { useGraphScope } from '../composables/useGraphScope'
 import { isAudioFilePath, isVideoFilePath } from '@shared/import'
 import { parseGraphHostContext } from '@shared/editorGlobals'
-import {
-  resolveAssetFileUrl,
-  resolveAssetPreviewUrl
-} from '../features/media/assetUrlCache'
+import { resolveAssetFileUrl, resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
 import { graphPreviewLoadScheduler } from '../features/media/previewLoadScheduler'
 import { graphPreviewVisibilityKey } from '../features/media/graphPreviewVisibility'
 import { openFullImagePreview } from '../features/media/openFullImagePreview'
@@ -1282,10 +1262,7 @@ const directorLivePreviewRaw = computed(() => {
     return { dataUrl: '', relativePath: '' }
   }
   return {
-    dataUrl:
-      props.node.params.previewDataUrl ||
-      props.node.params.cameraShots?.[0]?.dataUrl ||
-      '',
+    dataUrl: props.node.params.previewDataUrl || props.node.params.cameraShots?.[0]?.dataUrl || '',
     relativePath:
       props.node.params.previewRelativePath ||
       props.node.params.cameraShots?.[0]?.relativePath ||
@@ -1294,8 +1271,7 @@ const directorLivePreviewRaw = computed(() => {
 })
 const directorLivePreview = ref('')
 watch(
-  () =>
-    [directorLivePreviewRaw.value, previewInViewport.value, previewPriority.value] as const,
+  () => [directorLivePreviewRaw.value, previewInViewport.value, previewPriority.value] as const,
   async ([raw, visible, priority]) => {
     directorPreviewCancel?.()
     directorPreviewCancel = null
@@ -1381,9 +1357,7 @@ watch(
     }
     const worldUrl = worldImageUrl?.trim() || ''
     const resolvedData =
-      dataUrl?.trim() ||
-      genDataUrl?.trim() ||
-      (worldUrl.startsWith('data:') ? worldUrl : '')
+      dataUrl?.trim() || genDataUrl?.trim() || (worldUrl.startsWith('data:') ? worldUrl : '')
     if (resolvedData) {
       selectImagePreview.value = resolvedData
       return
@@ -1441,10 +1415,7 @@ const cardImageGridSources = computed((): CardImageGridSource[] => {
     }))
   }
   const shots = props.node.params.cameraShots ?? []
-  if (
-    shots.length > 1 &&
-    (isDirectorGenerateNode.value || isDirectorOutputNode.value)
-  ) {
+  if (shots.length > 1 && (isDirectorGenerateNode.value || isDirectorOutputNode.value)) {
     return shots.map((item, index) => ({
       key: item.id?.trim() || `shot:${index}`,
       dataUrl: item.dataUrl?.trim() || undefined,
@@ -1456,8 +1427,7 @@ const cardImageGridSources = computed((): CardImageGridSource[] => {
 
 const cardImageGridSrcs = ref<string[]>([])
 watch(
-  () =>
-    [cardImageGridSources.value, previewInViewport.value, previewPriority.value] as const,
+  () => [cardImageGridSources.value, previewInViewport.value, previewPriority.value] as const,
   async ([sources, visible, priority]) => {
     cardImageGridCancel?.()
     cardImageGridCancel = null
@@ -1551,10 +1521,7 @@ const hideCardPreview = computed(
 )
 
 const scriptNodePreviewTitle = computed(() => {
-  if (
-    isWorldExtractNode(props.node) ||
-    isBeatSplitNode(props.node)
-  ) {
+  if (isWorldExtractNode(props.node) || isBeatSplitNode(props.node)) {
     return t('graph.generateNode.instructionHint')
   }
   if (isWorldTableNode(props.node)) return t('graph.worldTableNode.hint')
@@ -1578,9 +1545,7 @@ const textPreview = computed(() => {
 
 const previewHint = computed(() => {
   if (isDirectorGenerateNode.value) {
-    return directorLivePreview.value
-      ? t('graph.directorNode.live')
-      : t('graph.directorNode.hint')
+    return directorLivePreview.value ? t('graph.directorNode.live') : t('graph.directorNode.hint')
   }
   if (isTimelineOutputNode(props.node)) {
     return t('graph.timelineOutputNode.hint')
@@ -1633,11 +1598,7 @@ const previewOpenHint = computed(() => {
   if (isSelectTextNode(props.node)) return t('graph.selectText.hint')
   if (isSelectBeatNode(props.node)) return t('graph.selectBeat.hint')
   // 预览区已有正文时，双击优先打开记事本
-  if (
-    textPreview.value &&
-    !isAssetRef.value &&
-    isNodeTextCapable(props.node)
-  ) {
+  if (textPreview.value && !isAssetRef.value && isNodeTextCapable(props.node)) {
     return t('graph.notepad.openHint')
   }
   if (instructionKind.value) return t('graph.generateNode.instructionHint')
@@ -1713,9 +1674,7 @@ function syncMediaClock(el?: HTMLMediaElement | null): void {
   }
   // Chromium 对受控 range 有时不刷新滑块，直接写 DOM value
   if (progressInput.value && duration.value > 0 && !seeking.value) {
-    progressInput.value.value = String(
-      Math.round((currentTime.value / duration.value) * 1000)
-    )
+    progressInput.value.value = String(Math.round((currentTime.value / duration.value) * 1000))
   }
 }
 
@@ -1898,8 +1857,7 @@ function resolvedNodeInstruction(): string {
 watch(
   () => props.node.params.generateInstruction,
   (value) => {
-    const next =
-      typeof value === 'string' && value.trim() ? value : resolvedNodeInstruction()
+    const next = typeof value === 'string' && value.trim() ? value : resolvedNodeInstruction()
     if (next !== instruction.value) instruction.value = next
   },
   { immediate: true }
@@ -1926,11 +1884,7 @@ function openInstructionDialog(): void {
 }
 
 watch(
-  () =>
-    [
-      props.node.params.generateProviderInstanceId,
-      props.node.params.generateModel
-    ] as const,
+  () => [props.node.params.generateProviderInstanceId, props.node.params.generateModel] as const,
   ([providerInstanceId, model]) => {
     const key = preferredModelKey(providerInstanceId, model)
     if (key && key !== selectedModelKey.value && modelOptions.value.some((o) => o.key === key)) {
@@ -2141,10 +2095,7 @@ async function diveNodeTool(
   // 子图宿主在 dive 后可能被工具视图替换卸载；先在宿主仍挂载时打开工具状态，
   // 再进入 dive，工具视图挂载后直接读取已打开的状态。
   await graphEditorNodeTools.open(hostId, viewId, props.node.id, mode)
-  return diveView(
-    { viewId, hostId, nodeId: props.node.id, ...(mode ? { mode } : {}) },
-    title
-  )
+  return diveView({ viewId, hostId, nodeId: props.node.id, ...(mode ? { mode } : {}) }, title)
 }
 
 function onPreviewDblClick(): void {
@@ -2301,10 +2252,7 @@ function onPreviewDblClick(): void {
       return
     }
     if (isWorldGenNode(props.node) && worldAssetId) {
-      await diveView(
-        { viewId: 'world.editor', worldAssetId, worldGenNodeId: props.node.id },
-        title
-      )
+      await diveView({ viewId: 'world.editor', worldAssetId, worldGenNodeId: props.node.id }, title)
       return
     }
 
@@ -2545,7 +2493,11 @@ function tryAutoFitPreviewMedia(mediaW: number, mediaH: number, mediaKey?: strin
 function onPreviewImageLoad(e: Event): void {
   const img = e.currentTarget as HTMLImageElement
   const src = img.currentSrc || img.src || ''
-  tryAutoFitPreviewMedia(img.naturalWidth, img.naturalHeight, `${src}|${img.naturalWidth}x${img.naturalHeight}`)
+  tryAutoFitPreviewMedia(
+    img.naturalWidth,
+    img.naturalHeight,
+    `${src}|${img.naturalWidth}x${img.naturalHeight}`
+  )
 }
 
 function loadImageNaturalSize(src: string): Promise<{ width: number; height: number }> {
@@ -2692,8 +2644,7 @@ async function loadCardAnimFramesFromSequence(): Promise<void> {
   const s = readAnim2dFromNode(props.node.params)
   if (anim2dCellKeys(s.rows, s.cols).length <= 1) return
   const grid = props.node.params?.animGridImage as
-    | { dataUrl?: string; relativePath?: string }
-    | undefined
+    { dataUrl?: string; relativePath?: string } | undefined
   let sourceUrl = grid?.dataUrl?.trim() || ''
   if (!sourceUrl && grid?.relativePath?.trim()) {
     try {
@@ -2804,11 +2755,7 @@ function formatTime(sec: number): string {
 }
 
 .graph-node.output {
-  background: linear-gradient(
-    160deg,
-    var(--graph-node-output-from) 0%,
-    var(--graph-node-bg) 55%
-  );
+  background: linear-gradient(160deg, var(--graph-node-output-from) 0%, var(--graph-node-bg) 55%);
   border-color: color-mix(in srgb, #3d6ea8 78%, transparent);
   z-index: 12;
 }
@@ -2891,7 +2838,6 @@ function formatTime(sec: number): string {
   color: #7dcea0;
 }
 
-
 .graph-node.run-error {
   border-color: #c45c5c;
 }
@@ -2908,7 +2854,9 @@ function formatTime(sec: number): string {
 
 .graph-node.selected {
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent), 0 6px 20px var(--accent-22);
+  box-shadow:
+    0 0 0 1px var(--accent),
+    0 6px 20px var(--accent-22);
 }
 
 .node-title {

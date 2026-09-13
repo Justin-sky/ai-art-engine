@@ -47,12 +47,10 @@ describe('multiAngleCamera', () => {
     expect(buildMultiAnglePrompt(applyMultiAnglePreset('dutch', true))).toBe(
       '中景镜头，右侧约45°，仰拍'
     )
-    expect(buildMultiAnglePrompt(applyMultiAnglePreset('back', true))).toBe(
-      '中景镜头，背面，平视'
+    expect(buildMultiAnglePrompt(applyMultiAnglePreset('back', true))).toBe('中景镜头，背面，平视')
+    expect(buildMultiAnglePrompt(applyMultiAnglePreset('frontHigh', false))).toBe(
+      '中景镜头，正面，强俯拍'
     )
-    expect(
-      buildMultiAnglePrompt(applyMultiAnglePreset('frontHigh', false))
-    ).toBe('中景镜头，正面，强俯拍')
   })
 
   it('splices panel prompt only when promptEnabled', () => {
@@ -66,9 +64,7 @@ describe('multiAngleCamera', () => {
     const on = { ...off, promptEnabled: true }
     const cameraOnly = buildMultiAnglePrompt(off)
     expect(resolveMultiAngleOutputPrompt(off, '面板主体描述')).toBe(cameraOnly)
-    expect(resolveMultiAngleOutputPrompt(on, '面板主体描述')).toBe(
-      `面板主体描述\n${cameraOnly}`
-    )
+    expect(resolveMultiAngleOutputPrompt(on, '面板主体描述')).toBe(`面板主体描述\n${cameraOnly}`)
   })
 
   it('marks custom when sliders change', () => {
@@ -105,9 +101,7 @@ describe('multiAngleCamera', () => {
     expect(resolveMultiAnglePresetPanelPrompt('custom')).toBe('')
     expect(resolveMultiAnglePresetPanelPrompt('frontHigh')).toContain('俯拍')
     expect(resolveMultiAnglePresetPanelPrompt('frontLow')).toContain('仰拍')
-    expect(resolveMultiAnglePresetPanelPrompt('panoramaHigh')).toContain(
-      '空间关系'
-    )
+    expect(resolveMultiAnglePresetPanelPrompt('panoramaHigh')).toContain('空间关系')
     expect(resolveMultiAnglePresetPanelPrompt('back')).toContain('背面')
     expect(resolveMultiAnglePresetPanelPrompt('fisheye')).toBe(
       '极度特写镜头，广角镜头，边缘带有鱼眼畸变效果'

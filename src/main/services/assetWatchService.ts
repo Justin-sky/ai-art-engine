@@ -40,7 +40,7 @@ export class AssetWatchService {
 
     this.watcher = watch(assetsRoot, {
       ignored: (filePath, stats) =>
-        isIgnoredPath(filePath) || (stats?.isDirectory() ?? false) && isIgnoredPath(filePath),
+        isIgnoredPath(filePath) || ((stats?.isDirectory() ?? false) && isIgnoredPath(filePath)),
       ignoreInitial: true,
       persistent: true,
       followSymlinks: false,

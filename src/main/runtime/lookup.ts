@@ -4,7 +4,9 @@ import type { ModelProviderAdapter } from '../services/modelProviders/types'
 import type { ObjectStorageAdapter } from '../services/objectStorage/types'
 import { useMainContext } from './start'
 
-export function getProviderAdapter(kind: ModelProviderKind | undefined | null): ModelProviderAdapter {
+export function getProviderAdapter(
+  kind: ModelProviderKind | undefined | null
+): ModelProviderAdapter {
   return useMainContext().providers.get(kind)
 }
 

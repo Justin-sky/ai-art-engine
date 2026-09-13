@@ -85,7 +85,7 @@ export async function materializeGeneratedBatch(
     const detail = lastError instanceof Error ? lastError.message : String(lastError)
     // 已是落盘失败包装（可能来自嵌套调用 / 其他语言环境）则原样透传，避免双重前缀
     const isPersistError =
-      detail.includes('图片落盘失败') || detail.includes('Failed to save image to disk')  // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
+      detail.includes('图片落盘失败') || detail.includes('Failed to save image to disk') // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
     throw isPersistError ? new Error(detail) : fail(SHARED_ERRORS.persistImageFailed, { detail })
   }
   return next
@@ -125,10 +125,7 @@ export function extractScreenplayTitleFromText(text: string): string | undefined
 }
 
 /** 剧本生成落盘名：{宿主/剧本名}_{节点名}_{时间戳} */
-export function resolveScreenplayGenerationFileKey(
-  ctx: NodeExecuteContext,
-  text?: string
-): string {
+export function resolveScreenplayGenerationFileKey(ctx: NodeExecuteContext, text?: string): string {
   const fromText = text ? extractScreenplayTitleFromText(text) : undefined
   const host = ctx.resolveHostAssetName?.()?.trim()
   const boundId = ctx.node.assetId?.trim()
@@ -364,10 +361,7 @@ export async function persistCatalogTextGeneration(
   options: {
     idPrefix: string
     fileKeyPrefix: string
-    dualOutputs: (
-      items: GraphTextItem[],
-      selectedTextId: string
-    ) => Record<string, GraphValue>
+    dualOutputs: (items: GraphTextItem[], selectedTextId: string) => Record<string, GraphValue>
   }
 ): Promise<Record<string, GraphValue>> {
   const createdAt = new Date().toISOString()

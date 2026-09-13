@@ -10,68 +10,43 @@
     body-class="pad-none cutout-body"
     @close="closeCutoutDialog"
   >
-    <div
-      v-if="state.open"
-      class="cutout"
-    >
+    <div v-if="state.open" class="cutout">
       <section class="pane">
         <div class="section-label">
           {{ t('cutout.source') }}
         </div>
         <div class="stage">
-          <img
-            v-if="state.url"
-            :src="state.url"
-            alt=""
-          >
-          <p
-            v-else
-            class="hint"
-          >
+          <img v-if="state.url" :src="state.url" alt="" />
+          <p v-else class="hint">
             {{ t('cutout.noSource') }}
           </p>
         </div>
         <div class="row">
-          <button
-            type="button"
-            class="primary"
-            :disabled="busy || !state.url"
-            @click="analyze"
-          >
+          <button type="button" class="primary" :disabled="busy || !state.url" @click="analyze">
             {{ busy ? t('cutout.analyzing') : analysis ? t('cutout.rerun') : t('cutout.analyze') }}
           </button>
-          <span
-            v-if="analysis"
-            class="hint"
-          >{{ t('cutout.inferenceMs', { ms: analysis.inferenceMs }) }}</span>
+          <span v-if="analysis" class="hint">{{
+            t('cutout.inferenceMs', { ms: analysis.inferenceMs })
+          }}</span>
         </div>
 
         <div class="section-label">
           {{ t('cutout.subjects', { n: instances.length }) }}
         </div>
-        <ul
-          v-if="instances.length"
-          class="instances"
-        >
-          <li
-            v-for="it in instances"
-            :key="it.index"
-          >
+        <ul v-if="instances.length" class="instances">
+          <li v-for="it in instances" :key="it.index">
             <label>
               <input
                 type="checkbox"
                 :checked="selected.includes(it.index)"
                 @change="toggle(it.index)"
-              >
+              />
               <span>{{ it.labelZh }}</span>
               <span class="conf">{{ Math.round(it.confidence * 100) }}%</span>
             </label>
           </li>
         </ul>
-        <p
-          v-else
-          class="hint"
-        >
+        <p v-else class="hint">
           {{ analysis ? t('cutout.empty') : t('cutout.notAnalyzed') }}
         </p>
       </section>
@@ -81,7 +56,9 @@
           {{ t('cutout.params') }}
         </div>
         <label class="slider">
-          <span>{{ t('cutout.detectConf') }}<b>{{ Math.round(detectConf * 100) }}%</b></span>
+          <span
+            >{{ t('cutout.detectConf') }}<b>{{ Math.round(detectConf * 100) }}%</b></span
+          >
           <input
             v-model.number="detectConf"
             type="range"
@@ -89,33 +66,22 @@
             max="0.9"
             step="0.05"
             @change="analyze"
-          >
+          />
         </label>
         <label class="slider">
-          <span>{{ t('cutout.threshold') }}<b>{{ Math.round(threshold * 100) }}%</b></span>
-          <input
-            v-model.number="threshold"
-            type="range"
-            min="0.1"
-            max="1"
-            step="0.05"
+          <span
+            >{{ t('cutout.threshold') }}<b>{{ Math.round(threshold * 100) }}%</b></span
           >
+          <input v-model.number="threshold" type="range" min="0.1" max="1" step="0.05" />
         </label>
         <label class="slider">
-          <span>{{ t('cutout.feather') }}<b>{{ feather }}px</b></span>
-          <input
-            v-model.number="feather"
-            type="range"
-            min="0"
-            max="12"
-            step="1"
+          <span
+            >{{ t('cutout.feather') }}<b>{{ feather }}px</b></span
           >
+          <input v-model.number="feather" type="range" min="0" max="12" step="1" />
         </label>
         <label class="check">
-          <input
-            v-model="cropToSubject"
-            type="checkbox"
-          >
+          <input v-model="cropToSubject" type="checkbox" />
           <span>{{ t('cutout.crop') }}</span>
         </label>
 
@@ -123,36 +89,18 @@
           {{ t('cutout.result') }}
         </div>
         <div class="stage checker">
-          <img
-            v-if="resultUrl"
-            :src="resultUrl"
-            alt=""
-          >
-          <p
-            v-else
-            class="hint"
-          >
+          <img v-if="resultUrl" :src="resultUrl" alt="" />
+          <p v-else class="hint">
             {{ t('cutout.resultEmpty') }}
           </p>
         </div>
         <div class="row">
-          <span
-            v-if="resultUrl"
-            class="hint"
-          >{{ resultWidth }}×{{ resultHeight }}</span>
-          <button
-            type="button"
-            class="primary"
-            :disabled="!resultUrl || saving"
-            @click="save"
-          >
+          <span v-if="resultUrl" class="hint">{{ resultWidth }}×{{ resultHeight }}</span>
+          <button type="button" class="primary" :disabled="!resultUrl || saving" @click="save">
             {{ saving ? t('cutout.saving') : t('cutout.save') }}
           </button>
         </div>
-        <p
-          v-if="error"
-          class="error"
-        >
+        <p v-if="error" class="error">
           {{ error }}
         </p>
       </section>
@@ -176,11 +124,7 @@ import { computed, ref, watch } from 'vue'
 import { resolveCacheOutputRoot } from '@shared/domain'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { closeCutoutDialog, cutoutDialogState } from '../features/yolo/cutoutDialog'
-import {
-  analyzeCutout,
-  renderCutoutPng,
-  type CutoutAnalysis
-} from '../features/yolo/cutout'
+import { analyzeCutout, renderCutoutPng, type CutoutAnalysis } from '../features/yolo/cutout'
 import { useProjectStore } from '../stores/project'
 import SaveAssetDialog from './SaveAssetDialog.vue'
 import StudioFloatingWindow from './StudioFloatingWindow.vue'
@@ -327,10 +271,7 @@ async function onSaveToLibraryConfirm(payload: {
  * 渲染画布仍持有则直接编码（快）；个别场景画布引用可能已丢失
  * （异步渲染竞态等），此时从结果 blob 读回字节，保证保存可用。
  */
-async function resultToDataUrl(
-  canvas: HTMLCanvasElement | null,
-  url: string
-): Promise<string> {
+async function resultToDataUrl(canvas: HTMLCanvasElement | null, url: string): Promise<string> {
   if (canvas) return canvas.toDataURL('image/png')
   const res = await fetch(url)
   if (!res.ok) throw new Error('YOLO: failed to read result image')
@@ -431,10 +372,18 @@ watch([threshold, feather, cropToSubject, selected], () => {
 .checker {
   background-color: var(--bg-input);
   background-image:
-    linear-gradient(45deg, var(--wash-16) 25%, transparent 25%, transparent 75%, var(--wash-16) 75%),
+    linear-gradient(
+      45deg,
+      var(--wash-16) 25%,
+      transparent 25%,
+      transparent 75%,
+      var(--wash-16) 75%
+    ),
     linear-gradient(45deg, var(--wash-16) 25%, transparent 25%, transparent 75%, var(--wash-16) 75%);
   background-size: 16px 16px;
-  background-position: 0 0, 8px 8px;
+  background-position:
+    0 0,
+    8px 8px;
 }
 
 .instances {

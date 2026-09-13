@@ -4,10 +4,7 @@ import {
   type ModelProviderKind,
   type ModelProviderKindMeta
 } from '@shared/modelProvider'
-import type {
-  ObjectStorageKindMeta,
-  ObjectStorageProviderKind
-} from '@shared/objectStorage'
+import type { ObjectStorageKindMeta, ObjectStorageProviderKind } from '@shared/objectStorage'
 import type { ModelProviderAdapter } from '../services/modelProviders/types'
 import type { ObjectStorageAdapter } from '../services/objectStorage/types'
 
@@ -33,8 +30,7 @@ export class ProvidersHub extends Service {
   }
 
   register(adapter: ModelProviderAdapter, meta?: ModelProviderKindMeta): () => void {
-    const resolved =
-      meta ?? MODEL_PROVIDER_KINDS.find((item) => item.id === adapter.kind)
+    const resolved = meta ?? MODEL_PROVIDER_KINDS.find((item) => item.id === adapter.kind)
     if (!resolved) {
       throw new Error(
         `Unknown model provider kind: ${adapter.kind}. Add it to MODEL_PROVIDER_KINDS or pass meta.`

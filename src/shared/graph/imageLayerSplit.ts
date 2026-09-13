@@ -127,7 +127,9 @@ function clampInt(n: unknown, fallback: number, min = 0, max = 1_000_000): numbe
   return Math.min(max, Math.max(min, v))
 }
 
-export function parseImageSizeField(size: string | undefined): { width: number; height: number } | null {
+export function parseImageSizeField(
+  size: string | undefined
+): { width: number; height: number } | null {
   const m = /^(\d+)\s*[xX×]\s*(\d+)$/.exec(String(size ?? '').trim())
   if (!m) return null
   const width = Number(m[1])
@@ -186,10 +188,21 @@ export function rectFromApiBoxes(
   if (abs) return absoluteToRect(abs)
   const norm = tuple4(boundingBox?.normalized)
   if (norm) return normalizedToRect(norm, canvasWidth, canvasHeight)
-  return fallback ?? { left: 0, top: 0, width: Math.max(1, canvasWidth), height: Math.max(1, canvasHeight) }
+  return (
+    fallback ?? {
+      left: 0,
+      top: 0,
+      width: Math.max(1, canvasWidth),
+      height: Math.max(1, canvasHeight)
+    }
+  )
 }
 
-export function layerSplitFingerprint(sourceUrl: string, prompt: string, resolution: string): string {
+export function layerSplitFingerprint(
+  sourceUrl: string,
+  prompt: string,
+  resolution: string
+): string {
   const src = sourceUrl.trim()
   const head = src.slice(0, 64)
   const tail = src.length > 80 ? src.slice(-24) : ''
@@ -210,8 +223,7 @@ function normalizeLayer(raw: unknown, index: number): ImageLayerSplitLayer | nul
   if (!raw || typeof raw !== 'object') return null
   const row = raw as Partial<ImageLayerSplitLayer>
   const id = typeof row.id === 'string' && row.id.trim() ? row.id.trim() : `layer:${index}`
-  const imageId =
-    typeof row.imageId === 'string' && row.imageId.trim() ? row.imageId.trim() : id
+  const imageId = typeof row.imageId === 'string' && row.imageId.trim() ? row.imageId.trim() : id
   const zIndex = clampInt(row.zIndex, index, 0, LAYER_SPLIT_Z_MAX)
   const width = clampInt(row.width, 1, 1)
   const height = clampInt(row.height, 1, 1)
@@ -317,9 +329,7 @@ export function imageLayerSplitToNodePatch(state: ImageLayerSplitState): {
   return { imageLayerSplit: normalizeImageLayerSplit(state) }
 }
 
-export function sortLayersForCompose(
-  layers: ImageLayerSplitLayer[]
-): ImageLayerSplitLayer[] {
+export function sortLayersForCompose(layers: ImageLayerSplitLayer[]): ImageLayerSplitLayer[] {
   return [...layers].sort((a, b) => a.zIndex - b.zIndex || a.id.localeCompare(b.id))
 }
 
@@ -362,7 +372,11 @@ export function reorderLayerSplit(
   })
 }
 
-export function resetLayerSplitRect(layer: ImageLayerSplitLayer, canvasWidth: number, canvasHeight: number): ImageLayerSplitLayer {
+export function resetLayerSplitRect(
+  layer: ImageLayerSplitLayer,
+  canvasWidth: number,
+  canvasHeight: number
+): ImageLayerSplitLayer {
   const rect = rectFromApiBoxes(
     {
       absolute: layer.originalAbsolute,
@@ -503,9 +517,7 @@ function collectLayerSplitList(
   const units: Unit[] = []
   for (const group of state.groups) {
     if ((group.parentGroupId ?? '') !== parentGroupId) continue
-    const rows: LayerSplitListRow[] = [
-      { kind: 'group', id: group.id, group, depth }
-    ]
+    const rows: LayerSplitListRow[] = [{ kind: 'group', id: group.id, group, depth }]
     if (!group.collapsed) {
       rows.push(...collectLayerSplitList(state, group.id, depth + 1))
     }
@@ -690,9 +702,7 @@ export function mapDecompositionToLayers(input: {
   return { layers, items, canvasWidth, canvasHeight }
 }
 
-function rectToAbsolute(
-  rect: ImageLayerSplitRect
-): [number, number, number, number] {
+function rectToAbsolute(rect: ImageLayerSplitRect): [number, number, number, number] {
   return [rect.left, rect.top, rect.left + rect.width, rect.top + rect.height]
 }
 

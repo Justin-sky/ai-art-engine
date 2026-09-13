@@ -227,7 +227,7 @@ describe('dsh 隐藏子进程窗口 hook', () => {
     const probe = [
       "const cp = require('node:child_process')",
       "const MARK = Symbol.for('aiart.hideChildWindows.patched')",
-      "process.stdout.write(JSON.stringify({ patched: cp.spawn[MARK] === true, exec: cp.exec[MARK] === true }))"
+      'process.stdout.write(JSON.stringify({ patched: cp.spawn[MARK] === true, exec: cp.exec[MARK] === true }))'
     ].join(';')
 
     try {

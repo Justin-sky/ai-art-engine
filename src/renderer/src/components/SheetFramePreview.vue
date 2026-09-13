@@ -1,30 +1,15 @@
 <template>
   <div class="sfp">
     <div class="sfp-main">
-      <div
-        ref="stageEl"
-        class="sfp-stage checker"
-      >
-        <canvas
-          ref="frameCanvasEl"
-          class="sfp-canvas"
-        />
-        <div
-          v-if="imageLoading"
-          class="sfp-overlay"
-        >
+      <div ref="stageEl" class="sfp-stage checker">
+        <canvas ref="frameCanvasEl" class="sfp-canvas" />
+        <div v-if="imageLoading" class="sfp-overlay">
           {{ t('sheetPreview.loading') }}
         </div>
-        <div
-          v-else-if="imageError"
-          class="sfp-overlay error"
-        >
+        <div v-else-if="imageError" class="sfp-overlay error">
           {{ imageError }}
         </div>
-        <div
-          v-else-if="totalFrames <= 1"
-          class="sfp-overlay hint"
-        >
+        <div v-else-if="totalFrames <= 1" class="sfp-overlay hint">
           {{ t('sheetPreview.singleFrameHint') }}
         </div>
       </div>
@@ -39,7 +24,7 @@
               max="64"
               :value="rows"
               @change="onGridInput('rows', $event)"
-            >
+            />
           </label>
           <label class="sfp-field">
             <span>{{ t('sheetPreview.cols') }}</span>
@@ -49,19 +34,12 @@
               max="64"
               :value="cols"
               @change="onGridInput('cols', $event)"
-            >
+            />
           </label>
           <label class="sfp-field">
             <span>{{ t('sheetPreview.fps') }}</span>
-            <select
-              :value="fps"
-              @change="fps = Number(($event.target as HTMLSelectElement).value)"
-            >
-              <option
-                v-for="item in fpsOptions"
-                :key="item"
-                :value="item"
-              >
+            <select :value="fps" @change="fps = Number(($event.target as HTMLSelectElement).value)">
+              <option v-for="item in fpsOptions" :key="item" :value="item">
                 {{ item }}
               </option>
             </select>
@@ -69,45 +47,28 @@
         </div>
 
         <div class="sfp-transport">
-          <button
-            type="button"
-            class="sfp-play"
-            :disabled="totalFrames <= 1"
-            @click="togglePlay"
-          >
-            {{
-              playing
-                ? t('sheetPreview.pause')
-                : t('sheetPreview.play')
-            }}
+          <button type="button" class="sfp-play" :disabled="totalFrames <= 1" @click="togglePlay">
+            {{ playing ? t('sheetPreview.pause') : t('sheetPreview.play') }}
           </button>
-          <button
-            type="button"
-            :disabled="totalFrames <= 1"
-            title="⏮"
-            @click="stepFrame(-1)"
-          >
+          <button type="button" :disabled="totalFrames <= 1" title="⏮" @click="stepFrame(-1)">
             ⏮
           </button>
-          <button
-            type="button"
-            :disabled="totalFrames <= 1"
-            title="⏭"
-            @click="stepFrame(1)"
-          >
+          <button type="button" :disabled="totalFrames <= 1" title="⏭" @click="stepFrame(1)">
             ⏭
           </button>
           <label class="sfp-loop">
-            <input
-              v-model="loop"
-              type="checkbox"
-            >
+            <input v-model="loop" type="checkbox" />
             {{ t('sheetPreview.loop') }}
           </label>
         </div>
 
         <p class="sfp-frame">
-          {{ t('sheetPreview.frame', { current: Math.min(frameIndex + 1, totalFrames), total: totalFrames }) }}
+          {{
+            t('sheetPreview.frame', {
+              current: Math.min(frameIndex + 1, totalFrames),
+              total: totalFrames
+            })
+          }}
         </p>
         <p class="sfp-tip">
           {{ t('sheetPreview.gridTip') }}
@@ -116,10 +77,7 @@
         <div class="sfp-overview-label">
           {{ t('sheetPreview.overview') }}
         </div>
-        <div
-          ref="overviewWrapEl"
-          class="sfp-overview checker"
-        >
+        <div ref="overviewWrapEl" class="sfp-overview checker">
           <canvas
             ref="overviewCanvasEl"
             class="sfp-overview-canvas"
@@ -459,10 +417,18 @@ onBeforeUnmount(() => {
 .checker {
   background-color: var(--bg-input);
   background-image:
-    linear-gradient(45deg, var(--wash-16) 25%, transparent 25%, transparent 75%, var(--wash-16) 75%),
+    linear-gradient(
+      45deg,
+      var(--wash-16) 25%,
+      transparent 25%,
+      transparent 75%,
+      var(--wash-16) 75%
+    ),
     linear-gradient(45deg, var(--wash-16) 25%, transparent 25%, transparent 75%, var(--wash-16) 75%);
   background-size: 16px 16px;
-  background-position: 0 0, 8px 8px;
+  background-position:
+    0 0,
+    8px 8px;
 }
 
 .sfp-canvas {

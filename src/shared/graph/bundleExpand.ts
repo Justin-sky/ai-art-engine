@@ -106,10 +106,7 @@ export function lockBundleDataType(
 }
 
 /** 入边清空时解锁；仍有入边则保持锁定 */
-export function syncBundleDataTypeAfterEdgeChange(
-  graph: GraphDocument,
-  nodeId: string
-): void {
+export function syncBundleDataTypeAfterEdgeChange(graph: GraphDocument, nodeId: string): void {
   const node = graph.nodes.find((item) => item.id === nodeId)
   if (!node || !isBundleNode(node)) return
   const incoming = incomingNonFrameEdges(graph, nodeId)

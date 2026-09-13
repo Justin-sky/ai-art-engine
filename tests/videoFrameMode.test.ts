@@ -48,10 +48,7 @@ describe('video frame mode clamp', () => {
       supported_frame_images: ['first_frame', 'last_frame'],
       supported_resolutions: ['720p']
     })
-    const clamped = clampVideoGenerateParams(
-      { frameMode: 'first_last', resolution: '720p' },
-      caps
-    )
+    const clamped = clampVideoGenerateParams({ frameMode: 'first_last', resolution: '720p' }, caps)
     expect(clamped.frameMode).toBe('first_last')
     const patch = videoGenerateParamsToNodePatch(clamped)
     expect(patch.generateFrameMode).toBe('first_last')
@@ -265,12 +262,8 @@ describe('executeVideoGenerateNode frame mapping', () => {
         }
       },
       inputs: {
-        [VIDEO_FIRST_FRAME_PORT_ID]: [
-          { kind: 'image', dataUrl: 'data:image/png;base64,first' }
-        ],
-        [VIDEO_LAST_FRAME_PORT_ID]: [
-          { kind: 'image', dataUrl: 'data:image/png;base64,last' }
-        ],
+        [VIDEO_FIRST_FRAME_PORT_ID]: [{ kind: 'image', dataUrl: 'data:image/png;base64,first' }],
+        [VIDEO_LAST_FRAME_PORT_ID]: [{ kind: 'image', dataUrl: 'data:image/png;base64,last' }],
         'in-image': [{ kind: 'image', dataUrl: 'data:image/png;base64,ref' }]
       },
       incomingByIndex: [
@@ -278,7 +271,7 @@ describe('executeVideoGenerateNode frame mapping', () => {
       ],
       generateVideo,
       resolveImageUrls: async (items) =>
-        items.map((item) => ('dataUrl' in item ? item.dataUrl ?? '' : '')).filter(Boolean)
+        items.map((item) => ('dataUrl' in item ? (item.dataUrl ?? '') : '')).filter(Boolean)
     }
 
     await executeVideoGenerateNode(ctx)
@@ -311,9 +304,7 @@ describe('executeVideoGenerateNode frame mapping', () => {
         }
       },
       inputs: {
-        [VIDEO_FIRST_FRAME_PORT_ID]: [
-          { kind: 'image', dataUrl: 'data:image/png;base64,first' }
-        ],
+        [VIDEO_FIRST_FRAME_PORT_ID]: [{ kind: 'image', dataUrl: 'data:image/png;base64,first' }],
         'in-image': [{ kind: 'image', dataUrl: 'data:image/png;base64,ref' }]
       },
       incomingByIndex: [
@@ -321,7 +312,7 @@ describe('executeVideoGenerateNode frame mapping', () => {
       ],
       generateVideo,
       resolveImageUrls: async (items) =>
-        items.map((item) => ('dataUrl' in item ? item.dataUrl ?? '' : '')).filter(Boolean)
+        items.map((item) => ('dataUrl' in item ? (item.dataUrl ?? '') : '')).filter(Boolean)
     }
 
     await executeVideoGenerateNode(ctx)

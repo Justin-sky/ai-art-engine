@@ -13,7 +13,9 @@ describe('thumbnailPath', () => {
 
   it('detects legacy fake thumbs', () => {
     expect(isRealThumbnailPath('Assets/foo.png', 'Assets/foo.png')).toBe(false)
-    expect(isRealThumbnailPath('.aiartengine/thumbs/Assets/foo.png.png', 'Assets/foo.png')).toBe(true)
+    expect(isRealThumbnailPath('.aiartengine/thumbs/Assets/foo.png.png', 'Assets/foo.png')).toBe(
+      true
+    )
   })
 
   it('prefers real thumb for preview, original for full', () => {

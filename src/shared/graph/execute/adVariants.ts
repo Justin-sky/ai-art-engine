@@ -86,7 +86,7 @@ export async function executeAdVariantsNode(
   }
 
   if (!batch.length) {
-    throw fail(SHARED_ERRORS.resultMissing, { what: { zh: '变体图片', en: 'variant images' } })  // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
+    throw fail(SHARED_ERRORS.resultMissing, { what: { zh: '变体图片', en: 'variant images' } }) // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
   }
 
   const stampKey = `adVariant:${node.id}:${stamp}`
@@ -99,10 +99,7 @@ export async function executeAdVariantsNode(
   const relativePaths = materializedBatch.map((item) => item.relativePath?.trim() ?? '')
   const updatedCells = applyAdVariantOutputRefs(cells, batchCellIds, relativePaths)
 
-  return commitGeneratedImages(
-    ctx,
-    generatedImages,
-    materializedBatch[0]?.relativePath?.trim(),
-    { adVariantMatrix: { ...matrix, cells: updatedCells } }
-  )
+  return commitGeneratedImages(ctx, generatedImages, materializedBatch[0]?.relativePath?.trim(), {
+    adVariantMatrix: { ...matrix, cells: updatedCells }
+  })
 }

@@ -37,7 +37,10 @@ async function resolveSvgGenReferenceUrls(ctx: NodeExecuteContext): Promise<stri
   const urls = ctx.resolveImageUrls
     ? await ctx.resolveImageUrls(items)
     : items.map((item) => item.dataUrl?.trim() ?? '')
-  return urls.map((url) => url.trim()).filter(Boolean).slice(0, SVG_GEN_REFERENCE_MAX)
+  return urls
+    .map((url) => url.trim())
+    .filter(Boolean)
+    .slice(0, SVG_GEN_REFERENCE_MAX)
 }
 
 export async function executeSvgGenNode(

@@ -104,10 +104,9 @@ describe('run state persist', () => {
   })
 
   it('sanitize keeps only known node ids', () => {
-    const cleaned = sanitizePersistedRunStates(
-      { a: { status: 'done' }, b: { status: 'done' } },
-      ['a']
-    )
+    const cleaned = sanitizePersistedRunStates({ a: { status: 'done' }, b: { status: 'done' } }, [
+      'a'
+    ])
     expect(cleaned).toEqual({ a: { status: 'done' } })
   })
 })

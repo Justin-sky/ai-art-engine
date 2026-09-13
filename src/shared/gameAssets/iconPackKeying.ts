@@ -30,10 +30,16 @@ function clampByte(n: number): number {
 }
 
 export function normalizeIconKeyOptions(options?: IconKeyOptions | null): Required<IconKeyOptions> {
-  const distance = Math.max(0, Math.min(255, Math.round(Number(options?.distance ?? DEFAULT_ICON_KEY_DISTANCE))))
+  const distance = Math.max(
+    0,
+    Math.min(255, Math.round(Number(options?.distance ?? DEFAULT_ICON_KEY_DISTANCE)))
+  )
   return {
     distance,
-    feather: Math.max(0, Math.min(255, Math.round(Number(options?.feather ?? DEFAULT_ICON_KEY_FEATHER)))),
+    feather: Math.max(
+      0,
+      Math.min(255, Math.round(Number(options?.feather ?? DEFAULT_ICON_KEY_FEATHER)))
+    ),
     soft: options?.soft !== false
   }
 }

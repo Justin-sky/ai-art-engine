@@ -38,8 +38,7 @@ export const ASSET_GUID_FIELD_KEYS = new Set([
   'folderGuid'
 ])
 
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /** 正式 UUID，或内存草稿 `draft:<uuid>` */
 export function isAssetGuid(value: unknown): value is string {

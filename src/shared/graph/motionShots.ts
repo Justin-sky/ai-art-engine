@@ -1,8 +1,4 @@
-import {
-  readDirectorStage,
-  type DirectorCameraShot,
-  type DirectorCameraVideo
-} from '../domain'
+import { readDirectorStage, type DirectorCameraShot, type DirectorCameraVideo } from '../domain'
 import { isDirectorProcessingNode } from './nodeRole'
 import type { GraphImageItem, GraphVideoItem } from './execute/types'
 import type { GraphDocument, GraphNodeParams } from './types'
@@ -74,7 +70,7 @@ export function resolveMotionImageItems(
   const nodeId = processingNodeId ?? processing?.id ?? null
   const stageRaw = readStageRawForNode(genParams, nodeId)
   const fromStage = shotsToImageItems(
-    stageRaw ? readDirectorStage({ stage: stageRaw }).cameraShots ?? [] : []
+    stageRaw ? (readDirectorStage({ stage: stageRaw }).cameraShots ?? []) : []
   )
   if (fromStage.length) return fromStage
 
@@ -103,7 +99,7 @@ export function resolveMotionVideoItems(
   const nodeId = processingNodeId ?? processing?.id ?? null
   const stageRaw = readStageRawForNode(genParams, nodeId)
   const fromStage = videosToVideoItems(
-    stageRaw ? readDirectorStage({ stage: stageRaw }).cameraVideos ?? [] : []
+    stageRaw ? (readDirectorStage({ stage: stageRaw }).cameraVideos ?? []) : []
   )
   if (fromStage.length) return fromStage
 

@@ -39,10 +39,7 @@ export function stage2dRigToNodePatch(rig: Stage2dRig): {
  * 摆姿归一化：只保留 rig 中存在的关节，且角度为有限数。
  * pose 是「关节局部旋转覆盖值」，不改写 rig 的绑定旋转。
  */
-export function normalizeStage2dPose(
-  rig: Stage2dRig,
-  pose?: Stage2dPose | null
-): Stage2dPose {
+export function normalizeStage2dPose(rig: Stage2dRig, pose?: Stage2dPose | null): Stage2dPose {
   const normalized = normalizeStage2dRig(rig)
   const jointIds = new Set(normalized.joints.map((joint) => joint.id))
   const next: Stage2dPose = {}

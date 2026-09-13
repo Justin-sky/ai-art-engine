@@ -18,9 +18,9 @@ describe('resolveMediaOutputDir (cache redesign)', () => {
   })
 
   it('uses project cacheOutputDir root when set', () => {
-    expect(
-      resolveMediaOutputDir({ kind: 'image', cacheOutputDir: 'Temp/Cache' })
-    ).toBe('Temp/Cache/Images')
+    expect(resolveMediaOutputDir({ kind: 'image', cacheOutputDir: 'Temp/Cache' })).toBe(
+      'Temp/Cache/Images'
+    )
   })
 
   it('keeps explicit mediaOutputDir', () => {
@@ -39,8 +39,7 @@ describe('cache registration gates', () => {
     expect(isUnderAssetLibraryDir('Cache/Images')).toBe(false)
     // saveGraphRunMedia registers only when under Assets && !under Cache
     const outDir = 'Cache/Images'
-    const shouldRegister =
-      isUnderAssetLibraryDir(outDir) && !isUnderCacheOutputDir(outDir)
+    const shouldRegister = isUnderAssetLibraryDir(outDir) && !isUnderCacheOutputDir(outDir)
     expect(shouldRegister).toBe(false)
   })
 
@@ -48,9 +47,7 @@ describe('cache registration gates', () => {
     const outDir = 'Assets/Hero/Images'
     expect(isUnderAssetLibraryDir(outDir)).toBe(true)
     expect(isUnderCacheOutputDir(outDir)).toBe(false)
-    expect(isUnderAssetLibraryDir(outDir) && !isUnderCacheOutputDir(outDir)).toBe(
-      true
-    )
+    expect(isUnderAssetLibraryDir(outDir) && !isUnderCacheOutputDir(outDir)).toBe(true)
   })
 
   it('respects custom cache root', () => {

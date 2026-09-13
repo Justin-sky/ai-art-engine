@@ -66,10 +66,7 @@ function collectGeneratedImagesParam(node: GraphNode | null): GraphImageItem[] {
   )
 }
 
-function collectImagesFromOutputNodeLoose(
-  doc: GraphDocument,
-  output: GraphNode
-): GraphImageItem[] {
+function collectImagesFromOutputNodeLoose(doc: GraphDocument, output: GraphNode): GraphImageItem[] {
   const fromRun = doc.runStates?.[output.id]?.outputs?.out
   const fromValue = fromRun ? flattenImagesValues([fromRun]) : []
   if (fromValue.length) {
@@ -93,9 +90,7 @@ function collectImagesFromOutputNodeLoose(
     if (graphValueHasPayload(soft) && soft) {
       const fromSoft = flattenImagesValues([soft])
       if (fromSoft.length) {
-        return dedupeImageItems(
-          fromSoft.filter((item) => item.relativePath || item.dataUrl)
-        )
+        return dedupeImageItems(fromSoft.filter((item) => item.relativePath || item.dataUrl))
       }
     }
   }
@@ -118,10 +113,7 @@ function collectImagesFromOutputNodeLoose(
 }
 
 /** 输出节点是否已跑完，或边界输出已有可 soft-resolve 的图像载荷 */
-export function isVisualOutputNodeComplete(
-  doc: GraphDocument,
-  outputNodeId: string
-): boolean {
+export function isVisualOutputNodeComplete(doc: GraphDocument, outputNodeId: string): boolean {
   if (doc.runStates?.[outputNodeId]?.status === 'done') return true
   const node = doc.nodes.find((n) => n.id === outputNodeId)
   if (!node || !isBoundaryOutputNode(node)) return false
@@ -146,10 +138,7 @@ export function listVisualOutputNodes(doc: GraphDocument): GraphNode[] {
 }
 
 /** 边界出口的直接图片上游（elementWorkflow: asset.image → boundary.output） */
-function resolveDirectImageGenUpstream(
-  doc: GraphDocument,
-  output: GraphNode
-): GraphNode | null {
+function resolveDirectImageGenUpstream(doc: GraphDocument, output: GraphNode): GraphNode | null {
   for (const edge of doc.edges) {
     if (edge.target !== output.id) continue
     const source = doc.nodes.find((node) => node.id === edge.source)

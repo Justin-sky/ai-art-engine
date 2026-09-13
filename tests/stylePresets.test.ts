@@ -29,9 +29,7 @@ describe('normalizeProjectStyleImages', () => {
   })
 
   it('defaults missing weight', () => {
-    const input = [
-      { id: 'a', name: '电影感', libraryId: 'cinematic' }
-    ] as ProjectStyleImage[]
+    const input = [{ id: 'a', name: '电影感', libraryId: 'cinematic' }] as ProjectStyleImage[]
     expect(normalizeProjectStyleImages(input)[0]?.weight).toBe(DEFAULT_STYLE_IMAGE_WEIGHT)
   })
 
@@ -153,13 +151,10 @@ describe('appendStyleImagesReferencePrompt', () => {
 describe('resolveStyleMentionReserveCount / portMentionIndex', () => {
   it('counts style slots for @n offset', () => {
     expect(
-      resolveStyleMentionReserveCount(
-        { styleImagesUseGlobal: true },
-        [
-          { id: '1', name: 'a', libraryId: 'a', weight: 0.75 },
-          { id: '2', name: 'b', libraryId: 'b', weight: 0.5 }
-        ]
-      )
+      resolveStyleMentionReserveCount({ styleImagesUseGlobal: true }, [
+        { id: '1', name: 'a', libraryId: 'a', weight: 0.75 },
+        { id: '2', name: 'b', libraryId: 'b', weight: 0.5 }
+      ])
     ).toBe(2)
     expect(portMentionIndex(0, 2)).toBe(3)
   })
@@ -176,7 +171,10 @@ describe('resolveGenerateStyleImages', () => {
   it('defaults to global styles', () => {
     expect(resolveGenerateStyleImages({}, globalStyles)).toEqual(globalStyles)
     expect(
-      resolveGenerateStyleImages({ styleImagesUseGlobal: true, styleImages: localStyles }, globalStyles)
+      resolveGenerateStyleImages(
+        { styleImagesUseGlobal: true, styleImages: localStyles },
+        globalStyles
+      )
     ).toEqual(globalStyles)
   })
 

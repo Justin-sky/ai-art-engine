@@ -5,14 +5,8 @@
     </p>
 
     <div class="toolbar">
-      <span
-        class="badge"
-        :class="badgeClass"
-      >{{ statusText }}</span>
-      <span
-        v-if="status?.available"
-        class="source-tag"
-      >{{ sourceText }}</span>
+      <span class="badge" :class="badgeClass">{{ statusText }}</span>
+      <span v-if="status?.available" class="source-tag">{{ sourceText }}</span>
       <button
         v-if="status && !installing"
         type="button"
@@ -33,31 +27,19 @@
         <span class="row-label">ffprobe</span>
         <code class="path">{{ status.ffprobePath }}</code>
       </div>
-      <div
-        v-if="status.ffmpegVersion || status.ffprobeVersion"
-        class="row"
-      >
+      <div v-if="status.ffmpegVersion || status.ffprobeVersion" class="row">
         <span class="row-label">version</span>
         <code class="versions">{{ versionText }}</code>
       </div>
     </template>
 
-    <div
-      v-else-if="installing"
-      class="install-progress"
-    >
+    <div v-else-if="installing" class="install-progress">
       <div class="progress-track">
-        <div
-          class="progress-fill"
-          :style="{ width: `${installPercent}%` }"
-        />
+        <div class="progress-fill" :style="{ width: `${installPercent}%` }" />
       </div>
       <p class="hint">
         {{ installingLabel
-        }}<span
-          v-if="progressBytesLabel"
-          class="muted"
-        > · {{ progressBytesLabel }}</span>
+        }}<span v-if="progressBytesLabel" class="muted"> · {{ progressBytesLabel }}</span>
       </p>
     </div>
 
@@ -88,21 +70,12 @@
         </p>
         <div class="row cmd-row">
           <code class="cmd">{{ status.command }}</code>
-          <button
-            type="button"
-            class="btn"
-            :disabled="busy"
-            @click="copyCommand"
-          >
+          <button type="button" class="btn" :disabled="busy" @click="copyCommand">
             {{ t('settings.ffmpeg.copyCommand') }}
           </button>
         </div>
         <div class="toolbar">
-          <button
-            type="button"
-            class="btn"
-            @click="openDownloadPage"
-          >
+          <button type="button" class="btn" @click="openDownloadPage">
             {{ t('settings.ffmpeg.openDownloadPage') }}
           </button>
         </div>
@@ -114,11 +87,7 @@
       </div>
     </template>
 
-    <p
-      v-if="noticeMessage"
-      class="notice"
-      :class="{ error: noticeError }"
-    >
+    <p v-if="noticeMessage" class="notice" :class="{ error: noticeError }">
       {{ noticeMessage }}
     </p>
   </div>

@@ -18,10 +18,7 @@ async function resolveRel(relativePath?: string | null): Promise<string> {
   }
 }
 
-function pickFromRunOut(
-  runOut: GraphValue | undefined,
-  assets: AssetInfo[]
-): Promise<string> {
+function pickFromRunOut(runOut: GraphValue | undefined, assets: AssetInfo[]): Promise<string> {
   return (async () => {
     if (!runOut) return ''
     for (const item of flattenImagesValues([runOut])) {

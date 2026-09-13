@@ -1,8 +1,6 @@
 import type { GraphValue } from '../types'
 import type { NodeExecuteContext } from './types'
-import {
-  expandInstructionMentions
-} from '../instructionMentions'
+import { expandInstructionMentions } from '../instructionMentions'
 import { resolveMentionSources } from './context'
 import { autoIncomingTextForInstruction } from './incoming'
 import { selectIncomingValuesForInstruction } from './incoming'
@@ -67,7 +65,8 @@ export async function executeModel3dGenerateNode(
       return {
         out: {
           kind: 'text',
-          text: [localNotes, incomingText].filter(Boolean).join('\n').trim() || instructionRaw.trim()
+          text:
+            [localNotes, incomingText].filter(Boolean).join('\n').trim() || instructionRaw.trim()
         }
       }
     }

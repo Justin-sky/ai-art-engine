@@ -11,17 +11,11 @@
         scope="beatUnit"
         :hide-toolbar="hideGraphToolbar"
       />
-      <p
-        v-else
-        class="empty"
-      >
+      <p v-else class="empty">
         {{ t('beat.strip.empty') }}
       </p>
     </div>
-    <div
-      class="units-section"
-      :class="{ collapsed: !unitsExpanded }"
-    >
+    <div class="units-section" :class="{ collapsed: !unitsExpanded }">
       <button
         type="button"
         class="units-collapse-btn"
@@ -30,27 +24,15 @@
         :aria-expanded="unitsExpanded"
         @click="unitsExpanded = !unitsExpanded"
       >
-        <svg
-          viewBox="0 0 16 16"
-          width="12"
-          height="12"
-          aria-hidden="true"
-        >
+        <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
           <path
             v-if="unitsExpanded"
             fill="currentColor"
             d="M3.2 9.8 8 5l4.8 4.8-.9.9L8 6.8 4.1 10.7z"
           />
-          <path
-            v-else
-            fill="currentColor"
-            d="M3.2 6.2 8 11l4.8-4.8-.9-.9L8 9.2 4.1 5.3z"
-          />
+          <path v-else fill="currentColor" d="M3.2 6.2 8 11l4.8-4.8-.9-.9L8 9.2 4.1 5.3z" />
         </svg>
-        <span
-          v-if="!unitsExpanded"
-          class="units-collapse-label"
-        >{{ t('beat.strip.title') }}</span>
+        <span v-if="!unitsExpanded" class="units-collapse-label">{{ t('beat.strip.title') }}</span>
       </button>
       <BeatStrip
         v-show="unitsExpanded"

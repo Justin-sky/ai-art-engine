@@ -1,8 +1,5 @@
 <template>
-  <div
-    v-if="node"
-    class="node-inspector"
-  >
+  <div v-if="node" class="node-inspector">
     <div class="head">
       <h2>{{ displayTitle }}</h2>
     </div>
@@ -28,7 +25,7 @@
           step="1"
           :value="state.rows"
           @change="onRowsChange"
-        >
+        />
       </label>
       <label class="field">
         <span>{{ t('graph.anim2d.cols') }}</span>
@@ -39,16 +36,13 @@
           step="1"
           :value="state.cols"
           @change="onColsChange"
-        >
+        />
       </label>
     </div>
 
     <label class="field">
       <span>{{ t('graph.anim2d.bgKey') }}</span>
-      <select
-        :value="keyColor"
-        @change="onKeyColorChange"
-      >
+      <select :value="keyColor" @change="onKeyColorChange">
         <option value="">
           {{ t('graph.anim2d.bgKeyNone') }}
         </option>
@@ -81,10 +75,7 @@
       @clear-output="onClearOutput"
     />
   </div>
-  <div
-    v-else
-    class="node-inspector empty"
-  >
+  <div v-else class="node-inspector empty">
     {{ t('graph.inspector.node.empty') }}
   </div>
 </template>
@@ -120,7 +111,7 @@ const node = computed(() => {
 
 const hostId = computed(() => {
   const selection = editor.selection.current.value
-  return selection.kind === 'graph.node' ? selection.hostId ?? '' : ''
+  return selection.kind === 'graph.node' ? (selection.hostId ?? '') : ''
 })
 
 const { hasInPort, runStatus, isGraphRunning, blocked, toggleRun } = useGraphNodeRun(node)
@@ -130,9 +121,7 @@ const displayTitle = useNodeDisplayTitle(node, typeLabel)
 const state = computed(() =>
   node.value ? readAnim2dFromNode(node.value.params) : { rows: 1, cols: 4 }
 )
-const keyColor = computed(() =>
-  node.value ? readAnimKeyColorFromNode(node.value.params) : ''
-)
+const keyColor = computed(() => (node.value ? readAnimKeyColorFromNode(node.value.params) : ''))
 const systemPrompt = ref('')
 
 watch(

@@ -16,23 +16,11 @@
           <div class="preview-stack">
             <div class="preview-half">
               <span class="half-label">{{ t('graph.portraitQuality.before') }}</span>
-              <img
-                v-if="sourceUrl"
-                :src="sourceUrl"
-                alt=""
-                class="preview-img"
-                draggable="false"
-              >
-              <div
-                v-else-if="sourceLoading"
-                class="preview-empty"
-              >
+              <img v-if="sourceUrl" :src="sourceUrl" alt="" class="preview-img" draggable="false" />
+              <div v-else-if="sourceLoading" class="preview-empty">
                 {{ t('graph.editor.loadingSource') }}
               </div>
-              <div
-                v-else
-                class="preview-empty"
-              >
+              <div v-else class="preview-empty">
                 {{ t('graph.portraitQuality.previewEmpty') }}
               </div>
             </div>
@@ -45,11 +33,8 @@
                 alt=""
                 class="preview-img"
                 draggable="false"
-              >
-              <div
-                v-else
-                class="preview-empty"
-              >
+              />
+              <div v-else class="preview-empty">
                 {{ t('graph.portraitQuality.previewEmpty') }}
               </div>
             </div>
@@ -70,21 +55,15 @@
             </button>
           </div>
 
-          <div
-            v-for="group in groupedParams"
-            :key="group.id"
-            class="param-group"
-          >
+          <div v-for="group in groupedParams" :key="group.id" class="param-group">
             <div class="group-title">
               {{ t(`graph.portraitQuality.groups.${group.id}`) }}
             </div>
             <div class="slider-list">
-              <label
-                v-for="spec in group.specs"
-                :key="spec.key"
-                class="slider-row"
-              >
-                <span class="slider-label">{{ t(`graph.portraitQuality.fields.${spec.labelKey}`) }}</span>
+              <label v-for="spec in group.specs" :key="spec.key" class="slider-row">
+                <span class="slider-label">{{
+                  t(`graph.portraitQuality.fields.${spec.labelKey}`)
+                }}</span>
                 <input
                   type="range"
                   :min="spec.min"
@@ -92,7 +71,7 @@
                   :step="spec.step"
                   :value="draft[spec.key]"
                   @input="setParam(spec, ($event.target as HTMLInputElement).value)"
-                >
+                />
                 <span class="slider-value">{{ displayValue(spec, draft[spec.key]) }}</span>
               </label>
             </div>
@@ -108,11 +87,7 @@
           :generate-provider-instance-id="generateProviderInstanceId"
           @change="onModelChange"
         />
-        <button
-          type="button"
-          class="reset-btn"
-          @click="resetParams"
-        >
+        <button type="button" class="reset-btn" @click="resetParams">
           {{ t('graph.portraitQuality.reset') }}
         </button>
       </div>
@@ -237,7 +212,10 @@ function applyPreset(preset: PortraitQualityPreset): void {
 }
 
 function isPresetActive(preset: PortraitQualityPreset): boolean {
-  return JSON.stringify(normalizePortraitQuality(preset.state)) === JSON.stringify(normalizePortraitQuality(draft))
+  return (
+    JSON.stringify(normalizePortraitQuality(preset.state)) ===
+    JSON.stringify(normalizePortraitQuality(draft))
+  )
 }
 
 function resetParams(): void {
@@ -260,10 +238,7 @@ async function refreshPreview(): Promise<void> {
     return
   }
   try {
-    const url = await renderPortraitQualityPreview(
-      props.sourceUrl,
-      normalizePortraitQuality(draft)
-    )
+    const url = await renderPortraitQualityPreview(props.sourceUrl, normalizePortraitQuality(draft))
     if (token === previewToken) previewUrl.value = url
   } catch {
     if (token === previewToken) previewUrl.value = props.sourceUrl
@@ -287,14 +262,18 @@ watch(
   { immediate: true }
 )
 
-watch(draft, () => {
-  emitPreview()
-  if (previewTimer) clearTimeout(previewTimer)
-  previewTimer = setTimeout(() => {
-    previewTimer = null
-    void refreshPreview()
-  }, 120)
-}, { deep: true })
+watch(
+  draft,
+  () => {
+    emitPreview()
+    if (previewTimer) clearTimeout(previewTimer)
+    previewTimer = setTimeout(() => {
+      previewTimer = null
+      void refreshPreview()
+    }, 120)
+  },
+  { deep: true }
+)
 
 watch(
   () => props.sourceUrl,

@@ -24,7 +24,7 @@
           @focus="searchFocused = true"
           @blur="searchFocused = false"
           @keydown.escape.stop="clearSearch"
-        >
+        />
         <button
           v-if="query.trim()"
           type="button"
@@ -45,27 +45,13 @@
           aria-haspopup="listbox"
           @click.stop="toggleTypeFilterMenu"
         >
-          <span
-            class="type-filter-icon"
-            aria-hidden="true"
-          >
-            <WorkspaceItemIcon
-              :icon="typeFilterIcon"
-              :size="14"
-            />
+          <span class="type-filter-icon" aria-hidden="true">
+            <WorkspaceItemIcon :icon="typeFilterIcon" :size="14" />
           </span>
           <span class="type-filter-label">{{ typeFilterShortLabel }}</span>
-          <span
-            class="type-filter-caret"
-            aria-hidden="true"
-          >▾</span>
+          <span class="type-filter-caret" aria-hidden="true">▾</span>
         </button>
-        <div
-          v-if="typeFilterOpen"
-          class="type-filter-menu"
-          role="listbox"
-          @mousedown.prevent
-        >
+        <div v-if="typeFilterOpen" class="type-filter-menu" role="listbox" @mousedown.prevent>
           <button
             type="button"
             role="option"
@@ -73,10 +59,7 @@
             :class="{ selected: typeFilter === 'all' }"
             @click="selectTypeFilter('all')"
           >
-            <span
-              class="type-filter-item-icon"
-              aria-hidden="true"
-            >🔍</span>
+            <span class="type-filter-item-icon" aria-hidden="true">🔍</span>
             <span>{{ t('common.all') }}</span>
           </button>
           <button
@@ -88,14 +71,8 @@
             :class="{ selected: typeFilter === type }"
             @click="selectTypeFilter(type)"
           >
-            <span
-              class="type-filter-item-icon"
-              aria-hidden="true"
-            >
-              <WorkspaceItemIcon
-                :icon="ASSET_TYPE_ICONS[type]"
-                :size="14"
-              />
+            <span class="type-filter-item-icon" aria-hidden="true">
+              <WorkspaceItemIcon :icon="ASSET_TYPE_ICONS[type]" :size="14" />
             </span>
             <span>{{ assetTypeLabel(type) }}</span>
           </button>
@@ -110,17 +87,11 @@
         :aria-label="t('asset.browser.refresh')"
         @click="onRefresh"
       >
-        <RefreshIcon
-          :size="14"
-          :spinning="refreshing"
-        />
+        <RefreshIcon :size="14" :spinning="refreshing" />
       </button>
     </div>
 
-    <div
-      ref="splitEl"
-      class="split"
-    >
+    <div ref="splitEl" class="split">
       <aside
         class="tree-pane"
         :style="{ width: `${treePaneWidth}px` }"
@@ -168,26 +139,12 @@
       >
         <div class="crumbs">
           <div class="crumb-trail">
-            <button
-              type="button"
-              class="crumb"
-              @click="selectFolder(null)"
-            >
+            <button type="button" class="crumb" @click="selectFolder(null)">
               {{ t('asset.browser.assetsRoot') }}
             </button>
-            <template
-              v-for="crumb in breadcrumbs"
-              :key="crumb.id"
-            >
-              <span
-                class="sep"
-                aria-hidden="true"
-              >&gt;</span>
-              <button
-                type="button"
-                class="crumb"
-                @click="selectFolder(crumb.id)"
-              >
+            <template v-for="crumb in breadcrumbs" :key="crumb.id">
+              <span class="sep" aria-hidden="true">&gt;</span>
+              <button type="button" class="crumb" @click="selectFolder(crumb.id)">
                 {{ crumb.name }}
               </button>
             </template>
@@ -197,7 +154,11 @@
         <div
           ref="gridEl"
           class="grid"
-          :class="{ list: !showThumbs, 'drop-over': dropTargetId === CURRENT_DROP, selecting: !!selectionBox }"
+          :class="{
+            list: !showThumbs,
+            'drop-over': dropTargetId === CURRENT_DROP,
+            selecting: !!selectionBox
+          }"
           :style="gridStyle"
           @pointerdown="onGridPointerDown"
           @dragover.prevent="onCurrentFolderDragOver"
@@ -231,16 +192,10 @@
             @dragleave.stop="onFolderDragLeave(folder.id)"
             @drop.prevent.stop="onDropToFolder($event, folder.id)"
           >
-            <div
-              v-if="showThumbs"
-              class="thumb folder-thumb"
-            >
+            <div v-if="showThumbs" class="thumb folder-thumb">
               <FolderTreeIcon :open="false" />
             </div>
-            <span
-              v-else
-              class="list-row-icon"
-            ><FolderTreeIcon :open="false" /></span>
+            <span v-else class="list-row-icon"><FolderTreeIcon :open="false" /></span>
             <div class="name">
               {{ folder.name }}
             </div>
@@ -263,50 +218,32 @@
             @dblclick="onAssetDblClick(asset.id)"
             @contextmenu.prevent.stop="onAssetContextMenu($event, asset.id)"
           >
-            <div
-              v-if="showThumbs"
-              class="thumb"
-            >
-              <img
-                v-if="thumbUrls[asset.id]"
-                :src="thumbUrls[asset.id]"
-                alt=""
-              >
-              <span
-                v-else
-                class="badge"
-              >{{ assetLabel(asset) }}</span>
+            <div v-if="showThumbs" class="thumb">
+              <img v-if="thumbUrls[asset.id]" :src="thumbUrls[asset.id]" alt="" />
+              <span v-else class="badge">{{ assetLabel(asset) }}</span>
               <span
                 v-if="isImportedMediaRefAsset(asset)"
                 class="ref-mark"
                 :title="assetLabel(asset)"
-              >{{ t('asset.browser.refMark') }}</span>
+                >{{ t('asset.browser.refMark') }}</span
+              >
               <span
                 v-if="cardBadge(asset)"
                 class="beat-mark"
                 :class="cardBadge(asset)!.tone"
                 :title="cardBadge(asset)!.title"
-              >{{ cardBadge(asset)!.text }}</span>
+                >{{ cardBadge(asset)!.text }}</span
+              >
             </div>
             <span
               v-else-if="thumbUrls[asset.id]"
               class="list-icon list-thumb"
               :title="assetLabel(asset)"
             >
-              <img
-                :src="thumbUrls[asset.id]"
-                alt=""
-              >
+              <img :src="thumbUrls[asset.id]" alt="" />
             </span>
-            <span
-              v-else
-              class="list-icon"
-              :title="assetLabel(asset)"
-            >
-              <WorkspaceItemIcon
-                :icon="assetIcon(asset)"
-                :size="16"
-              />
+            <span v-else class="list-icon" :title="assetLabel(asset)">
+              <WorkspaceItemIcon :icon="assetIcon(asset)" :size="16" />
             </span>
             <span
               v-if="!showThumbs && mcpActivityBadge(asset)"
@@ -326,11 +263,11 @@
                 :key="chip.key"
                 class="vision-tag"
                 :class="{ weak: chip.weak }"
-              >{{ chip.text }}</span>
-              <span
-                v-if="assetVisionExtra(asset) > 0"
-                class="vision-tag more"
-              >+{{ assetVisionExtra(asset) }}</span>
+                >{{ chip.text }}</span
+              >
+              <span v-if="assetVisionExtra(asset) > 0" class="vision-tag more"
+                >+{{ assetVisionExtra(asset) }}</span
+              >
             </div>
             <button
               type="button"
@@ -342,52 +279,28 @@
             </button>
           </div>
 
-          <p
-            v-if="!visibleFolders.length && !visibleAssets.length"
-            class="empty"
-          >
+          <p v-if="!visibleFolders.length && !visibleAssets.length" class="empty">
             {{ isSearching ? t('asset.browser.searchEmpty') : t('asset.browser.dropHint') }}
           </p>
         </div>
       </section>
     </div>
 
-    <footer
-      class="bottom-bar"
-      :class="{ compact: embedded }"
-    >
-      <div
-        v-if="!embedded"
-        class="status-bar"
-        :title="footerStatusTitle"
-      >
+    <footer class="bottom-bar" :class="{ compact: embedded }">
+      <div v-if="!embedded" class="status-bar" :title="footerStatusTitle">
         {{ footerStatusText }}
       </div>
-      <label
-        class="view-size"
-        :title="t('asset.browser.viewSizeHint')"
-      >
-        <span class="view-size-label">{{ viewSize === 0 ? t('asset.browser.viewList') : t('asset.browser.viewIcon') }}</span>
-        <input
-          :value="viewSize"
-          type="range"
-          min="0"
-          max="120"
-          step="1"
-          @input="onViewSizeInput"
-        >
+      <label class="view-size" :title="t('asset.browser.viewSizeHint')">
+        <span class="view-size-label">{{
+          viewSize === 0 ? t('asset.browser.viewList') : t('asset.browser.viewIcon')
+        }}</span>
+        <input :value="viewSize" type="range" min="0" max="120" step="1" @input="onViewSizeInput" />
       </label>
     </footer>
 
-    <div
-      v-if="externalImportHover"
-      class="import-overlay"
-      aria-hidden="true"
-    >
+    <div v-if="externalImportHover" class="import-overlay" aria-hidden="true">
       <div class="import-panel">
-        <div class="import-icon">
-          ⬇
-        </div>
+        <div class="import-icon">⬇</div>
         <div class="import-title">
           {{ t('asset.browser.dropRelease') }}
         </div>
@@ -409,44 +322,27 @@
         @mousedown.stop
         @click.stop
       >
-        <template v-if="menu.kind === 'blank' || menu.kind === 'folder' || menu.kind === 'tree-root'">
+        <template
+          v-if="menu.kind === 'blank' || menu.kind === 'folder' || menu.kind === 'tree-root'"
+        >
           <button
             v-for="item in toolbarCreateItems"
             :key="item.id"
             type="button"
             @click="createToolbarItemHere(item)"
           >
-            <span
-              class="ctx-icon"
-              aria-hidden="true"
-            >
-              <WorkspaceItemIcon
-                :icon="item.icon"
-                :item-id="item.id"
-                :size="14"
-              />
+            <span class="ctx-icon" aria-hidden="true">
+              <WorkspaceItemIcon :icon="item.icon" :item-id="item.id" :size="14" />
             </span>
             <span class="ctx-label">{{ toolbarCreateLabel(item.id, item.assetType) }}</span>
           </button>
           <div class="ctx-sep" />
-          <button
-            type="button"
-            @click="startCreateFolder"
-          >
-            <span
-              class="ctx-icon"
-              aria-hidden="true"
-            >📁</span>
+          <button type="button" @click="startCreateFolder">
+            <span class="ctx-icon" aria-hidden="true">📁</span>
             <span class="ctx-label">{{ t('asset.folder.new') }}</span>
           </button>
-          <button
-            type="button"
-            @click="onImportPackageMenu"
-          >
-            <span
-              class="ctx-icon"
-              aria-hidden="true"
-            >⬇️</span>
+          <button type="button" @click="onImportPackageMenu">
+            <span class="ctx-icon" aria-hidden="true">⬇️</span>
             <span class="ctx-label">{{ t('asset.browser.importPackage') }}</span>
           </button>
           <template v-if="menu.kind === 'folder'">
@@ -456,76 +352,34 @@
               :disabled="contextMenuFolderCount > 1"
               @click="showContextFolderInFolder"
             >
-              <span
-                class="ctx-icon"
-                aria-hidden="true"
-              >📂</span>
+              <span class="ctx-icon" aria-hidden="true">📂</span>
               <span class="ctx-label">{{ t('asset.browser.context.showInFolder') }}</span>
             </button>
-            <button
-              type="button"
-              @click="onReimportFolder"
-            >
-              <span
-                class="ctx-icon"
-                aria-hidden="true"
-              >🔄</span>
+            <button type="button" @click="onReimportFolder">
+              <span class="ctx-icon" aria-hidden="true">🔄</span>
               <span class="ctx-label">{{ t('asset.browser.context.reimport') }}</span>
             </button>
-            <button
-              type="button"
-              @click="onExportFolderPackage"
-            >
-              <span
-                class="ctx-icon"
-                aria-hidden="true"
-              >⬆️</span>
+            <button type="button" @click="onExportFolderPackage">
+              <span class="ctx-icon" aria-hidden="true">⬆️</span>
               <span class="ctx-label">{{ t('asset.browser.exportPackage') }}</span>
             </button>
-            <button
-              type="button"
-              :disabled="contextMenuFolderCount > 1"
-              @click="startRenameFolder"
-            >
-              <span
-                class="ctx-icon"
-                aria-hidden="true"
-              >✏️</span>
+            <button type="button" :disabled="contextMenuFolderCount > 1" @click="startRenameFolder">
+              <span class="ctx-icon" aria-hidden="true">✏️</span>
               <span class="ctx-label">{{ t('asset.folder.rename') }}</span>
             </button>
-            <button
-              type="button"
-              class="danger"
-              @click="deleteFolderTarget('hoist')"
-            >
-              <span
-                class="ctx-icon"
-                aria-hidden="true"
-              >🗑️</span>
+            <button type="button" class="danger" @click="deleteFolderTarget('hoist')">
+              <span class="ctx-icon" aria-hidden="true">🗑️</span>
               <span class="ctx-label">{{ t('asset.folder.delete') }}</span>
             </button>
-            <button
-              type="button"
-              class="danger"
-              @click="deleteFolderTarget('deleteContents')"
-            >
-              <span
-                class="ctx-icon"
-                aria-hidden="true"
-              >💥</span>
+            <button type="button" class="danger" @click="deleteFolderTarget('deleteContents')">
+              <span class="ctx-icon" aria-hidden="true">💥</span>
               <span class="ctx-label">{{ t('asset.folder.deleteWithContents') }}</span>
             </button>
           </template>
           <template v-else-if="menu.kind === 'blank' || menu.kind === 'tree-root'">
             <div class="ctx-sep" />
-            <button
-              type="button"
-              @click="onExportLibraryPackage"
-            >
-              <span
-                class="ctx-icon"
-                aria-hidden="true"
-              >⬆️</span>
+            <button type="button" @click="onExportLibraryPackage">
+              <span class="ctx-icon" aria-hidden="true">⬆️</span>
               <span class="ctx-label">{{ t('asset.browser.exportPackage') }}</span>
             </button>
           </template>
@@ -536,10 +390,7 @@
             type="button"
             @click="openEditor(menu.targetId!)"
           >
-            <span
-              class="ctx-icon"
-              aria-hidden="true"
-            >📝</span>
+            <span class="ctx-icon" aria-hidden="true">📝</span>
             <span class="ctx-label">{{ t('asset.browser.context.openEditor') }}</span>
           </button>
           <button
@@ -547,10 +398,7 @@
             type="button"
             @click="showContextAssetInFolder"
           >
-            <span
-              class="ctx-icon"
-              aria-hidden="true"
-            >📂</span>
+            <span class="ctx-icon" aria-hidden="true">📂</span>
             <span class="ctx-label">{{ t('asset.browser.context.showInFolder') }}</span>
           </button>
           <button
@@ -558,51 +406,23 @@
             type="button"
             @click="openContextAssetWithDefaultApp"
           >
-            <span
-              class="ctx-icon"
-              aria-hidden="true"
-            >🖌️</span>
+            <span class="ctx-icon" aria-hidden="true">🖌️</span>
             <span class="ctx-label">{{ t('asset.browser.context.openWithPhotoshop') }}</span>
           </button>
-          <button
-            type="button"
-            @click="copyContextMenuOriginalFiles"
-          >
-            <span
-              class="ctx-icon"
-              aria-hidden="true"
-            >📄</span>
+          <button type="button" @click="copyContextMenuOriginalFiles">
+            <span class="ctx-icon" aria-hidden="true">📄</span>
             <span class="ctx-label">{{ t('asset.browser.context.copyOriginal') }}</span>
           </button>
-          <button
-            type="button"
-            @click="onReimportSelectedAssets"
-          >
-            <span
-              class="ctx-icon"
-              aria-hidden="true"
-            >🔄</span>
+          <button type="button" @click="onReimportSelectedAssets">
+            <span class="ctx-icon" aria-hidden="true">🔄</span>
             <span class="ctx-label">{{ t('asset.browser.context.reimport') }}</span>
           </button>
-          <button
-            type="button"
-            @click="onExportSelectedPackage"
-          >
-            <span
-              class="ctx-icon"
-              aria-hidden="true"
-            >⬆️</span>
+          <button type="button" @click="onExportSelectedPackage">
+            <span class="ctx-icon" aria-hidden="true">⬆️</span>
             <span class="ctx-label">{{ t('asset.browser.exportPackage') }}</span>
           </button>
-          <button
-            v-if="contextMenuAssetCount === 1"
-            type="button"
-            @click="startRenameAsset"
-          >
-            <span
-              class="ctx-icon"
-              aria-hidden="true"
-            >✏️</span>
+          <button v-if="contextMenuAssetCount === 1" type="button" @click="startRenameAsset">
+            <span class="ctx-icon" aria-hidden="true">✏️</span>
             <span class="ctx-label">{{ t('asset.browser.context.rename') }}</span>
           </button>
           <button
@@ -611,10 +431,7 @@
             :disabled="contextMenuVideoBeatBusy"
             @click="analyzeContextMenuVideoBeats"
           >
-            <span
-              class="ctx-icon"
-              aria-hidden="true"
-            >🎬</span>
+            <span class="ctx-icon" aria-hidden="true">🎬</span>
             <span class="ctx-label">{{ contextMenuVideoBeatLabel }}</span>
           </button>
           <button
@@ -622,10 +439,7 @@
             type="button"
             @click="openSheetPlayForContextAsset"
           >
-            <span
-              class="ctx-icon"
-              aria-hidden="true"
-            >🎞️</span>
+            <span class="ctx-icon" aria-hidden="true">🎞️</span>
             <span class="ctx-label">{{ t('asset.browser.context.sheetPlay') }}</span>
           </button>
           <button
@@ -633,10 +447,7 @@
             type="button"
             @click="openUiKitExtractForContextAsset"
           >
-            <span
-              class="ctx-icon"
-              aria-hidden="true"
-            >🧩</span>
+            <span class="ctx-icon" aria-hidden="true">🧩</span>
             <span class="ctx-label">{{ t('uiKitExtract.action') }}</span>
           </button>
           <button
@@ -644,31 +455,15 @@
             type="button"
             @click="openMotion2dPlayForContextAsset"
           >
-            <span
-              class="ctx-icon"
-              aria-hidden="true"
-            >🏃</span>
+            <span class="ctx-icon" aria-hidden="true">🏃</span>
             <span class="ctx-label">{{ t('asset.browser.context.motion2dPlay') }}</span>
           </button>
-          <button
-            type="button"
-            @click="findContextMenuReferences"
-          >
-            <span
-              class="ctx-icon"
-              aria-hidden="true"
-            >🔗</span>
+          <button type="button" @click="findContextMenuReferences">
+            <span class="ctx-icon" aria-hidden="true">🔗</span>
             <span class="ctx-label">{{ t('asset.browser.context.findReferences') }}</span>
           </button>
-          <button
-            type="button"
-            class="danger"
-            @click="deleteContextMenuAssets"
-          >
-            <span
-              class="ctx-icon"
-              aria-hidden="true"
-            >🗑️</span>
+          <button type="button" class="danger" @click="deleteContextMenuAssets">
+            <span class="ctx-icon" aria-hidden="true">🗑️</span>
             <span class="ctx-label">{{
               contextMenuAssetCount > 1
                 ? t('asset.browser.context.deleteSelected', { count: contextMenuAssetCount })
@@ -693,17 +488,11 @@
         v-model="nameDialog.value"
         @keydown.enter.prevent="confirmNameDialog"
         @keydown.esc.prevent="closeNameDialog"
-      >
-      <p
-        v-if="nameDialog?.message"
-        class="msg"
-      >
+      />
+      <p v-if="nameDialog?.message" class="msg">
         {{ nameDialog.message }}
       </p>
-      <p
-        v-if="nameDialog?.error"
-        class="err"
-      >
+      <p v-if="nameDialog?.error" class="err">
         {{ nameDialog.error }}
       </p>
 
@@ -715,11 +504,7 @@
         >
           {{ t('common.cancel') }}
         </button>
-        <button
-          type="button"
-          class="primary"
-          @click="confirmNameDialog"
-        >
+        <button type="button" class="primary" @click="confirmNameDialog">
           {{ nameDialog?.mode === 'alert' ? t('common.gotIt') : t('common.confirm') }}
         </button>
       </template>
@@ -777,19 +562,18 @@ import {
 } from '@shared/folderTree'
 import type { ResolvedWorkspaceToolbarItem } from '@shared/workspaceToolbar'
 import { useAssetCreation } from '../composables/useAssetCreation'
-import {
-  listRegisteredToolbarItems
-} from '../editor/extensions'
+import { listRegisteredToolbarItems } from '../editor/extensions'
 import { useEditorKernel } from '../editor/kernel'
 import { useProjectStore } from '../stores/project'
 import { useMcpActivitiesStore } from '../stores/mcpActivities'
-import { useWorkspaceStore, STUDIO_ASSET_DRAG_MIME, STUDIO_ASSET_ID_DRAG_MIME, STUDIO_ASSET_IDS_DRAG_MIME } from '../stores/workspace'
-import { useStudioI18n } from '../composables/useStudioI18n'
 import {
-  promptAlert,
-  promptConfirm,
-  promptText
-} from '../composables/useStudioPrompt'
+  useWorkspaceStore,
+  STUDIO_ASSET_DRAG_MIME,
+  STUDIO_ASSET_ID_DRAG_MIME,
+  STUDIO_ASSET_IDS_DRAG_MIME
+} from '../stores/workspace'
+import { useStudioI18n } from '../composables/useStudioI18n'
+import { promptAlert, promptConfirm, promptText } from '../composables/useStudioPrompt'
 import { useSettingsPanelNavigator } from '../composables/useSettingsPanelNavigator'
 import { toPlain } from '../utils/toPlain'
 import { placeFixedMenu } from '../utils/clampFixedMenuPosition'
@@ -892,9 +676,11 @@ const { openSettingsPanel } = useSettingsPanelNavigator()
 
 /** 右键新建项：按显示名 Unity NaturalCompare（与资产目录一致） */
 const toolbarCreateItems = computed(() =>
-  listRegisteredToolbarItems({ assetMenu: true }).slice().sort((a, b) =>
-    compareNames(toolbarCreateLabel(a.id, a.assetType), toolbarCreateLabel(b.id, b.assetType))
-  )
+  listRegisteredToolbarItems({ assetMenu: true })
+    .slice()
+    .sort((a, b) =>
+      compareNames(toolbarCreateLabel(a.id, a.assetType), toolbarCreateLabel(b.id, b.assetType))
+    )
 )
 
 function assetIcon(asset: AssetInfo): string {
@@ -923,7 +709,9 @@ function assetLabel(asset: AssetInfo): string {
 /** 素材卡最多展示的标签 chip 数 */
 const VISION_TAG_MAX_CHIPS = 3
 
-function assetVisionOkTags(asset: AssetInfo): { labelZh: string; count: number; maxConfidence: number }[] {
+function assetVisionOkTags(
+  asset: AssetInfo
+): { labelZh: string; count: number; maxConfidence: number }[] {
   return asset.visionTags?.status === 'ok' ? (asset.visionTags.summary ?? []) : []
 }
 
@@ -1276,11 +1064,7 @@ function clearSearch(): void {
 const normalizedFolders = computed(() => normalizeFolders(project.folders))
 
 const visibleTreeRows = computed(() =>
-  buildVisibleFlatFolderTree(
-    project.folders,
-    (id) => isExpanded(id),
-    t('asset.browser.assetsRoot')
-  )
+  buildVisibleFlatFolderTree(project.folders, (id) => isExpanded(id), t('asset.browser.assetsRoot'))
 )
 
 const breadcrumbs = computed(() => {
@@ -1375,7 +1159,8 @@ function beatsMatchSearchQuery(
   const includes = (...words: string[]): boolean => words.some((w) => q.includes(w))
   const is = (...words: string[]): boolean => words.includes(q)
   // 空镜段
-  if ((includes('空镜', '空镜头', '无人', '没人') || is('empty')) && kinds.has('empty')) // cjk-ok：镜头段检索自然语言词
+  if ((includes('空镜', '空镜头', '无人', '没人') || is('empty')) && kinds.has('empty'))
+    // cjk-ok：镜头段检索自然语言词
     return true
   // 群像段
   if (
@@ -1414,8 +1199,7 @@ function assetMatchesSearch(asset: AssetInfo, q: string): boolean {
   if (asset.name.toLowerCase().includes(q)) return true
   const hit = (summary: Array<{ label: string; labelZh?: string }> | undefined): boolean =>
     (summary ?? []).some(
-      (tag) =>
-        tag.label.toLowerCase().includes(q) || (tag.labelZh ?? '').toLowerCase().includes(q)
+      (tag) => tag.label.toLowerCase().includes(q) || (tag.labelZh ?? '').toLowerCase().includes(q)
     )
   return (
     hit(asset.visionTags?.summary) ||
@@ -1858,9 +1642,7 @@ function onTreeRowClick(rowId: string, e: MouseEvent): void {
     const end = list.indexOf(rowId)
     if (start >= 0 && end >= 0) {
       const [lo, hi] = start < end ? [start, end] : [end, start]
-      const range = list
-        .slice(lo, hi + 1)
-        .filter((id) => id !== ASSETS_ROOT_TREE_KEY)
+      const range = list.slice(lo, hi + 1).filter((id) => id !== ASSETS_ROOT_TREE_KEY)
       clearAssetSelectionLocal()
       if (e.ctrlKey || e.metaKey) {
         const next = new Set(selectedFolderIds.value)
@@ -2633,9 +2415,7 @@ async function onExportFolderPackage(): Promise<void> {
   closeMenu()
   if (!ids.length) return
   const rows = buildProjectPackageTree(project.folders, project.assets)
-  const initial = [
-    ...new Set(ids.flatMap((id) => [id, ...collectDescendantGuids(rows, id)]))
-  ]
+  const initial = [...new Set(ids.flatMap((id) => [id, ...collectDescendantGuids(rows, id)]))]
   openExportPackageDialog(initial)
 }
 
@@ -2846,17 +2626,13 @@ async function importFilePaths(filePaths: string[], folderId: string | null): Pr
     project.patchAssets(result.imported)
 
     if (!result.imported.length && result.skipped.length) {
-      const detail = result.skipped
-        .map((s) => `${fileBaseName(s.path)}：${s.reason}`)
-        .join('\n')
+      const detail = result.skipped.map((s) => `${fileBaseName(s.path)}：${s.reason}`).join('\n')
       await showImportAlert(`${t('asset.import.noneImported')}\n\n${detail}`)
       return
     }
 
     if (result.skipped.length) {
-      const detail = result.skipped
-        .map((s) => `${fileBaseName(s.path)}：${s.reason}`)
-        .join('\n')
+      const detail = result.skipped.map((s) => `${fileBaseName(s.path)}：${s.reason}`).join('\n')
       await showImportAlert(
         `${t('asset.import.partial', { ok: result.imported.length, skip: result.skipped.length })}\n\n${detail}`
       )

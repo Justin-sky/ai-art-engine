@@ -1,14 +1,8 @@
 import { createHash, randomUUID } from 'crypto'
 import { readFileSync, writeFileSync } from 'fs'
 import JSZip from 'jszip'
-import type {
-  AssetPackageManifest,
-  AssetPackageMeta
-} from '@shared/assetPackage/types'
-import {
-  AIPACKAGE_FORMAT,
-  AIPACKAGE_FORMAT_VERSION
-} from '@shared/assetPackage/types'
+import type { AssetPackageManifest, AssetPackageMeta } from '@shared/assetPackage/types'
+import { AIPACKAGE_FORMAT, AIPACKAGE_FORMAT_VERSION } from '@shared/assetPackage/types'
 import { fail, defErr, defErrSimple } from '@shared/errors/appError'
 import { MAIN_ERRORS } from '../errors/messages'
 

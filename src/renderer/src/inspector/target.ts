@@ -87,10 +87,8 @@ export function useInspectorTarget(): ComputedRef<InspectorTarget> {
       }
     }
 
-    const nodeId = selection.kind === 'graph.node' ? selection.id ?? null : null
-    const node = nodeId
-      ? graphEditorHosts.getNode(selection.hostId, nodeId)
-      : null
+    const nodeId = selection.kind === 'graph.node' ? (selection.id ?? null) : null
+    const node = nodeId ? graphEditorHosts.getNode(selection.hostId, nodeId) : null
     if (node) {
       return {
         kind: 'graph.node',
@@ -102,9 +100,7 @@ export function useInspectorTarget(): ComputedRef<InspectorTarget> {
 
     if (selection.kind === 'graph.group') {
       const groupId = selection.id ?? null
-      const group = groupId
-        ? graphEditorHosts.getGroup(selection.hostId, groupId)
-        : null
+      const group = groupId ? graphEditorHosts.getGroup(selection.hostId, groupId) : null
       if (group) {
         const memberCount = graphEditorHosts.getGroupMemberIds(selection.hostId, groupId!).length
         return {
@@ -121,7 +117,7 @@ export function useInspectorTarget(): ComputedRef<InspectorTarget> {
       const assetId = workspace.activeBeatAssetId
       const unit =
         beatId && assetId
-          ? loadBeatCatalog(assetId).find((row) => row.id === beatId) ?? null
+          ? (loadBeatCatalog(assetId).find((row) => row.id === beatId) ?? null)
           : null
       return {
         kind: 'beatUnit',

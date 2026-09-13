@@ -52,11 +52,7 @@ describe('graph groups', () => {
     const groupA = 'group-a'
     const groupB = 'group-b'
     const doc = document(
-      [
-        noteNode('in-a', 0, 0, groupA),
-        noteNode('in-b', 500, 0, groupB),
-        noteNode('free', 520, 10)
-      ],
+      [noteNode('in-a', 0, 0, groupA), noteNode('in-b', 500, 0, groupB), noteNode('free', 520, 10)],
       [
         { id: groupA, title: 'A' },
         { id: groupB, title: 'B' }

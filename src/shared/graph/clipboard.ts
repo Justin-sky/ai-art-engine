@@ -112,9 +112,7 @@ export function buildGraphClipboardPayload(
       delete node.groupId
     }
   }
-  const groups = (doc.groups ?? [])
-    .filter((g) => intactGroupIds.has(g.id))
-    .map((g) => ({ ...g }))
+  const groups = (doc.groups ?? []).filter((g) => intactGroupIds.has(g.id)).map((g) => ({ ...g }))
 
   return {
     payload: {
@@ -167,9 +165,7 @@ export function applyGraphClipboardPayload(
   const offsetY = options.offset?.y ?? GRAPH_CLIPBOARD_PASTE_OFFSET
 
   const existingHostAssetIds = new Set(
-    doc.nodes
-      .filter((n) => isAssetHostNode(n) && !!n.assetId)
-      .map((n) => n.assetId as string)
+    doc.nodes.filter((n) => isAssetHostNode(n) && !!n.assetId).map((n) => n.assetId as string)
   )
   const pastedHostAssetIds = new Set<string>()
 

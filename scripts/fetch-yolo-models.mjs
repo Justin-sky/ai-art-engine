@@ -25,7 +25,9 @@ async function download(file) {
   const buf = Buffer.from(await res.arrayBuffer())
   if (buf.length < MIN_SIZE) throw new Error(`${file} looks truncated (${buf.length} bytes)`)
   await writeFile(join(OUT_DIR, file), buf)
-  console.log(`  + ${file.padEnd(20)} ${(buf.length / 1024 / 1024).toFixed(1)} MB (${MODELS.find((m) => m.file === file).kind})`)
+  console.log(
+    `  + ${file.padEnd(20)} ${(buf.length / 1024 / 1024).toFixed(1)} MB (${MODELS.find((m) => m.file === file).kind})`
+  )
 }
 
 const main = async () => {

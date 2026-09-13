@@ -74,8 +74,7 @@ export function comfyUiUserdataOrigins(provider: ModelProviderInstance): string[
 export async function readComfyUiError(err: unknown): Promise<string> {
   if (axios.isAxiosError(err)) {
     const data = err.response?.data as
-      | { error?: { code?: string; message?: string } | string; message?: string }
-      | undefined
+      { error?: { code?: string; message?: string } | string; message?: string } | undefined
     if (data?.error && typeof data.error === 'object') {
       const code = data.error.code ? `[${data.error.code}] ` : ''
       if (data.error.message) return `${code}${data.error.message}`

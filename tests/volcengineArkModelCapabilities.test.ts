@@ -28,9 +28,9 @@ describe('volcengineArk modelCapabilities', () => {
     expect(resolveVolcengineArkCapabilityProfileId('doubao-seedance-1-5-pro-251215')).toBe(
       'seedance-1.5'
     )
-    expect(
-      resolveVolcengineArkCapabilityProfileId('doubao-seedance-1-0-lite-i2v-250428')
-    ).toBe('seedance-1-lite-i2v')
+    expect(resolveVolcengineArkCapabilityProfileId('doubao-seedance-1-0-lite-i2v-250428')).toBe(
+      'seedance-1-lite-i2v'
+    )
     expect(resolveVolcengineArkCapabilityProfileId('doubao-seedance-1-0-pro-250528')).toBe(
       'seedance-1'
     )

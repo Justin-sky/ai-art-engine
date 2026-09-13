@@ -13,13 +13,21 @@ const IMAGE_OUTPUT_ID = graphOutputNodeId('image')
 
 describe('graph run', () => {
   it('merges play.script text through screenplay processing into output notes', async () => {
-    const text = createNodeFromType('play.script', { x: 0, y: 0 }, {
-      params: { text: '开场独白' }
-    })
+    const text = createNodeFromType(
+      'play.script',
+      { x: 0, y: 0 },
+      {
+        params: { text: '开场独白' }
+      }
+    )
     const screenplay = createNodeFromType('asset.screenplay', { x: 200, y: 0 })
-    const output = createOutputGraphNode('text', { x: 400, y: 0 }, {
-      id: TEXT_OUTPUT_ID
-    })
+    const output = createOutputGraphNode(
+      'text',
+      { x: 400, y: 0 },
+      {
+        id: TEXT_OUTPUT_ID
+      }
+    )
 
     const result = await runGraph(
       {
@@ -51,10 +59,14 @@ describe('graph run', () => {
   })
 
   it('preserves outside nodes when running to a target with preserveOutsideSubset', async () => {
-    const a = createNodeFromType('play.script', { x: 0, y: 0 }, {
-      id: 'a',
-      params: { text: 'A' }
-    })
+    const a = createNodeFromType(
+      'play.script',
+      { x: 0, y: 0 },
+      {
+        id: 'a',
+        params: { text: 'A' }
+      }
+    )
     const b = createNodeFromType('asset.screenplay', { x: 120, y: 0 }, { id: 'b' })
     const c = createNodeFromType('asset.screenplay', { x: 240, y: 80 }, { id: 'c' })
     const updates: Array<{ id: string; status: string }> = []
@@ -88,13 +100,21 @@ describe('graph run', () => {
   })
 
   it('generates screenplay text via generateText service and patches node', async () => {
-    const text = createNodeFromType('play.script', { x: 0, y: 0 }, {
-      params: { text: '草稿' }
-    })
-    const screenplay = createNodeFromType('asset.screenplay', { x: 200, y: 0 }, {
-      id: 'sp-1',
-      params: { text: '…', generateInstruction: '写成完整剧本' }
-    })
+    const text = createNodeFromType(
+      'play.script',
+      { x: 0, y: 0 },
+      {
+        params: { text: '草稿' }
+      }
+    )
+    const screenplay = createNodeFromType(
+      'asset.screenplay',
+      { x: 200, y: 0 },
+      {
+        id: 'sp-1',
+        params: { text: '…', generateInstruction: '写成完整剧本' }
+      }
+    )
     const patches: Array<{ id: string; text?: string; generatedCount?: number }> = []
 
     const result = await runGraph(
@@ -127,9 +147,7 @@ describe('graph run', () => {
     )
 
     expect(result.ok, result.error).toBe(true)
-    expect(patches).toEqual([
-      { id: 'sp-1', text: '完整故事剧本正文', generatedCount: 1 }
-    ])
+    expect(patches).toEqual([{ id: 'sp-1', text: '完整故事剧本正文', generatedCount: 1 }])
     expect(result.states['sp-1']?.outputs?.out).toMatchObject({
       kind: 'text',
       text: '完整故事剧本正文'
@@ -141,14 +159,22 @@ describe('graph run', () => {
   })
 
   it('onlyTargetNode executes a single node without re-running upstream generateText', async () => {
-    const text = createNodeFromType('play.script', { x: 0, y: 0 }, {
-      id: 't1',
-      params: { text: '草稿' }
-    })
-    const screenplay = createNodeFromType('asset.screenplay', { x: 200, y: 0 }, {
-      id: 'sp',
-      params: { text: '旧文本', generateInstruction: '扩写' }
-    })
+    const text = createNodeFromType(
+      'play.script',
+      { x: 0, y: 0 },
+      {
+        id: 't1',
+        params: { text: '草稿' }
+      }
+    )
+    const screenplay = createNodeFromType(
+      'asset.screenplay',
+      { x: 200, y: 0 },
+      {
+        id: 'sp',
+        params: { text: '旧文本', generateInstruction: '扩写' }
+      }
+    )
     let calls = 0
 
     const result = await runGraph(
@@ -192,23 +218,31 @@ describe('graph run', () => {
 
   it('onlyTargetNode soft-passthroughs boundary.output from upstream gallery without generateImage', async () => {
     const boutId = boundaryOutputNodeId('out')
-    const gen = createNodeFromType('asset.image', { x: 0, y: 0 }, {
-      id: 'gen',
-      params: {
-        generatedImages: [
-          {
-            id: 'pick',
-            dataUrl: 'data:image/png;base64,PICK',
-            relativePath: 'Cache/Images/pick.png'
-          }
-        ],
-        selectedImageId: 'pick'
+    const gen = createNodeFromType(
+      'asset.image',
+      { x: 0, y: 0 },
+      {
+        id: 'gen',
+        params: {
+          generatedImages: [
+            {
+              id: 'pick',
+              dataUrl: 'data:image/png;base64,PICK',
+              relativePath: 'Cache/Images/pick.png'
+            }
+          ],
+          selectedImageId: 'pick'
+        }
       }
-    })
-    const boundary = createNodeFromType('graph.boundary.output', { x: 200, y: 0 }, {
-      id: boutId,
-      params: { hostBoundaryPort: { portId: 'out', dataType: 'image' } }
-    })
+    )
+    const boundary = createNodeFromType(
+      'graph.boundary.output',
+      { x: 200, y: 0 },
+      {
+        id: boutId,
+        params: { hostBoundaryPort: { portId: 'out', dataType: 'image' } }
+      }
+    )
     const generateImage = vi.fn(async () => ({
       images: ['data:image/png;base64,SHOULD_NOT'],
       model: 'm'
@@ -252,15 +286,23 @@ describe('graph run', () => {
 
   it('onlyTargetNode ignores empty prior text and re-resolves screenplay ref', async () => {
     const assetId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
-    const ref = createNodeFromType('asset.screenplay', { x: 0, y: 0 }, {
-      id: 'ref',
-      assetId,
-      assetType: 'screenplay',
-      params: { assetRef: true }
-    })
-    const split = createNodeFromType('beat.split', { x: 200, y: 0 }, {
-      id: 'split'
-    })
+    const ref = createNodeFromType(
+      'asset.screenplay',
+      { x: 0, y: 0 },
+      {
+        id: 'ref',
+        assetId,
+        assetType: 'screenplay',
+        params: { assetRef: true }
+      }
+    )
+    const split = createNodeFromType(
+      'beat.split',
+      { x: 200, y: 0 },
+      {
+        id: 'split'
+      }
+    )
     let promptSeen = ''
 
     const result = await runGraph(
@@ -321,15 +363,23 @@ describe('graph run', () => {
 
   it('onlyTargetNode soft-snapshots screenplay asset ref text into beat.split', async () => {
     const assetId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
-    const ref = createNodeFromType('asset.screenplay', { x: 0, y: 0 }, {
-      id: 'ref',
-      assetId,
-      assetType: 'screenplay',
-      params: { assetRef: true }
-    })
-    const split = createNodeFromType('beat.split', { x: 200, y: 0 }, {
-      id: 'split'
-    })
+    const ref = createNodeFromType(
+      'asset.screenplay',
+      { x: 0, y: 0 },
+      {
+        id: 'ref',
+        assetId,
+        assetType: 'screenplay',
+        params: { assetRef: true }
+      }
+    )
+    const split = createNodeFromType(
+      'beat.split',
+      { x: 200, y: 0 },
+      {
+        id: 'split'
+      }
+    )
     let promptSeen = ''
 
     const result = await runGraph(
@@ -386,18 +436,30 @@ describe('graph run', () => {
   })
 
   it('skipCompletedNodes never skips any multi-target sink', async () => {
-    const shared = createNodeFromType('play.script', { x: 0, y: 0 }, {
-      id: 'shared',
-      params: { text: '共同上游' }
-    })
-    const outA = createNodeFromType('asset.screenplay', { x: 200, y: 0 }, {
-      id: 'out-a',
-      params: { text: '', generateInstruction: 'A' }
-    })
-    const outB = createNodeFromType('asset.screenplay', { x: 200, y: 80 }, {
-      id: 'out-b',
-      params: { text: '', generateInstruction: 'B' }
-    })
+    const shared = createNodeFromType(
+      'play.script',
+      { x: 0, y: 0 },
+      {
+        id: 'shared',
+        params: { text: '共同上游' }
+      }
+    )
+    const outA = createNodeFromType(
+      'asset.screenplay',
+      { x: 200, y: 0 },
+      {
+        id: 'out-a',
+        params: { text: '', generateInstruction: 'A' }
+      }
+    )
+    const outB = createNodeFromType(
+      'asset.screenplay',
+      { x: 200, y: 80 },
+      {
+        id: 'out-b',
+        params: { text: '', generateInstruction: 'B' }
+      }
+    )
     const called: string[] = []
     const result = await runGraph(
       {
@@ -452,14 +514,22 @@ describe('graph run', () => {
   })
 
   it('skipCompletedNodes reuses done upstream and still runs the target', async () => {
-    const mid = createNodeFromType('play.script', { x: 120, y: 0 }, {
-      id: 'mid',
-      params: { text: '已缓存中游' }
-    })
-    const target = createNodeFromType('asset.screenplay', { x: 240, y: 0 }, {
-      id: 'sp',
-      params: { text: '旧目标', generateInstruction: '扩写目标' }
-    })
+    const mid = createNodeFromType(
+      'play.script',
+      { x: 120, y: 0 },
+      {
+        id: 'mid',
+        params: { text: '已缓存中游' }
+      }
+    )
+    const target = createNodeFromType(
+      'asset.screenplay',
+      { x: 240, y: 0 },
+      {
+        id: 'sp',
+        params: { text: '旧目标', generateInstruction: '扩写目标' }
+      }
+    )
     const called: string[] = []
 
     const result = await runGraph(
@@ -508,14 +578,22 @@ describe('graph run', () => {
   })
 
   it('screenplay output node passes text through without calling generateText twice', async () => {
-    const screenplay = createNodeFromType('asset.screenplay', { x: 0, y: 0 }, {
-      id: 'sp',
-      params: { text: '已有剧本' }
-    })
-    const output = createOutputGraphNode('text', { x: 200, y: 0 }, {
-      id: TEXT_OUTPUT_ID,
-      title: 'Screenplay output'
-    })
+    const screenplay = createNodeFromType(
+      'asset.screenplay',
+      { x: 0, y: 0 },
+      {
+        id: 'sp',
+        params: { text: '已有剧本' }
+      }
+    )
+    const output = createOutputGraphNode(
+      'text',
+      { x: 200, y: 0 },
+      {
+        id: TEXT_OUTPUT_ID,
+        title: 'Screenplay output'
+      }
+    )
     let generateCalls = 0
 
     const result = await runGraph(
@@ -553,14 +631,22 @@ describe('graph run', () => {
   })
 
   it('screenplay generate with saveRunText transmits relativePath without inline text', async () => {
-    const screenplay = createNodeFromType('asset.screenplay', { x: 0, y: 0 }, {
-      id: 'sp',
-      title: '雨夜',
-      params: { generateInstruction: '写剧本' }
-    })
-    const output = createOutputGraphNode('text', { x: 200, y: 0 }, {
-      id: TEXT_OUTPUT_ID
-    })
+    const screenplay = createNodeFromType(
+      'asset.screenplay',
+      { x: 0, y: 0 },
+      {
+        id: 'sp',
+        title: '雨夜',
+        params: { generateInstruction: '写剧本' }
+      }
+    )
+    const output = createOutputGraphNode(
+      'text',
+      { x: 200, y: 0 },
+      {
+        id: TEXT_OUTPUT_ID
+      }
+    )
     const files = new Map<string, string>()
     const keys: string[] = []
     const result = await runGraph(
@@ -619,16 +705,25 @@ describe('graph run', () => {
   })
 
   it('screenplay generate file key falls back to host name when title line missing', async () => {
-    const screenplay = createNodeFromType('asset.screenplay', { x: 0, y: 0 }, {
-      id: 'sp',
-      title: '节点标题',
-      params: {
-        generateInstruction: '写剧本',
-        generatedTexts: [
-          { id: 't1', text: '', createdAt: '2026-01-01T00:00:00.000Z', relativePath: 'Texts/a.txt' }
-        ]
+    const screenplay = createNodeFromType(
+      'asset.screenplay',
+      { x: 0, y: 0 },
+      {
+        id: 'sp',
+        title: '节点标题',
+        params: {
+          generateInstruction: '写剧本',
+          generatedTexts: [
+            {
+              id: 't1',
+              text: '',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              relativePath: 'Texts/a.txt'
+            }
+          ]
+        }
       }
-    })
+    )
     const keys: string[] = []
     const result = await runGraph(
       {
@@ -654,11 +749,15 @@ describe('graph run', () => {
   })
 
   it('screenplay generate file key prefers title line from generated text', async () => {
-    const screenplay = createNodeFromType('asset.screenplay', { x: 0, y: 0 }, {
-      id: 'sp',
-      title: '节点标题',
-      params: { generateInstruction: '写剧本' }
-    })
+    const screenplay = createNodeFromType(
+      'asset.screenplay',
+      { x: 0, y: 0 },
+      {
+        id: 'sp',
+        title: '节点标题',
+        params: { generateInstruction: '写剧本' }
+      }
+    )
     const keys: string[] = []
     const result = await runGraph(
       {
@@ -687,13 +786,21 @@ describe('graph run', () => {
   })
 
   it('screenplay output receives accumulated generatedTexts after multiple runs', async () => {
-    const screenplay = createNodeFromType('asset.screenplay', { x: 0, y: 0 }, {
-      id: 'sp',
-      params: { generateInstruction: '写剧本' }
-    })
-    const output = createOutputGraphNode('text', { x: 200, y: 0 }, {
-      id: TEXT_OUTPUT_ID
-    })
+    const screenplay = createNodeFromType(
+      'asset.screenplay',
+      { x: 0, y: 0 },
+      {
+        id: 'sp',
+        params: { generateInstruction: '写剧本' }
+      }
+    )
+    const output = createOutputGraphNode(
+      'text',
+      { x: 200, y: 0 },
+      {
+        id: TEXT_OUTPUT_ID
+      }
+    )
     const doc = {
       nodes: [screenplay, output],
       edges: [
@@ -759,24 +866,32 @@ describe('graph run', () => {
   })
 
   it('merges director deck images into output.images (not genRefs)', async () => {
-    const motion = createNodeFromType('asset.motion', { x: 0, y: 0 }, {
-      id: 'motion',
-      params: {
-        cameraShots: [
-          {
-            id: 'shot:0',
-            dataUrl: 'data:image/png;base64,dir',
-            createdAt: '2026-01-01T00:00:00.000Z'
-          }
-        ]
+    const motion = createNodeFromType(
+      'asset.motion',
+      { x: 0, y: 0 },
+      {
+        id: 'motion',
+        params: {
+          cameraShots: [
+            {
+              id: 'shot:0',
+              dataUrl: 'data:image/png;base64,dir',
+              createdAt: '2026-01-01T00:00:00.000Z'
+            }
+          ]
+        }
       }
-    })
+    )
     const select = createNodeFromType('image.select', { x: 120, y: 0 }, { id: 'pick' })
-    const output = createOutputGraphNode('image', { x: 240, y: 0 }, {
-      id: IMAGE_OUTPUT_ID,
-      title: 'Director deck output',
-      params: { outputKind: 'image', inputDataType: 'image' }
-    })
+    const output = createOutputGraphNode(
+      'image',
+      { x: 240, y: 0 },
+      {
+        id: IMAGE_OUTPUT_ID,
+        title: 'Director deck output',
+        params: { outputKind: 'image', inputDataType: 'image' }
+      }
+    )
 
     const result = await runGraph(
       {
@@ -810,17 +925,29 @@ describe('graph run', () => {
   })
 
   it('runs independent fan-in sources in parallel then skips only downstream on failure', async () => {
-    const a = createNodeFromType('asset.screenplay', { x: 0, y: 0 }, {
-      id: 'a',
-      params: { generateInstruction: '写 A' }
-    })
-    const b = createNodeFromType('asset.screenplay', { x: 0, y: 80 }, {
-      id: 'b',
-      params: { generateInstruction: '写 B' }
-    })
-    const output = createOutputGraphNode('text', { x: 240, y: 40 }, {
-      id: TEXT_OUTPUT_ID
-    })
+    const a = createNodeFromType(
+      'asset.screenplay',
+      { x: 0, y: 0 },
+      {
+        id: 'a',
+        params: { generateInstruction: '写 A' }
+      }
+    )
+    const b = createNodeFromType(
+      'asset.screenplay',
+      { x: 0, y: 80 },
+      {
+        id: 'b',
+        params: { generateInstruction: '写 B' }
+      }
+    )
+    const output = createOutputGraphNode(
+      'text',
+      { x: 240, y: 40 },
+      {
+        id: TEXT_OUTPUT_ID
+      }
+    )
     let inflight = 0
     let maxInflight = 0
     const result = await runGraph(
@@ -937,10 +1064,7 @@ describe('graph run', () => {
     const worldGen = worldDoc.nodes.find((node) => node.typeId === 'world.gen')
     expect(worldGen).toBeTruthy()
     const worldCalls: Array<boolean | undefined> = []
-    const worldCollect = async (
-      _signal?: AbortSignal,
-      options?: { cookBatch?: boolean }
-    ) => {
+    const worldCollect = async (_signal?: AbortSignal, options?: { cookBatch?: boolean }) => {
       worldCalls.push(options?.cookBatch)
       return { items: [] }
     }
@@ -968,24 +1092,35 @@ describe('graph run', () => {
       collectWorldElementOutputs: worldCollect
     })
     expect(worldCalls.at(-1)).toBe(true)
-
   })
 
   it('strict mode fails the chain while continueOnError degrades and keeps running', async () => {
     const graph = {
       nodes: [
-        createNodeFromType('play.script', { x: 0, y: 0 }, {
-          id: 'a',
-          params: { text: 'A' }
-        }),
-        createNodeFromType('asset.screenplay', { x: 120, y: 0 }, {
-          id: 'b',
-          params: { generateInstruction: '写成完整剧本' }
-        }),
-        createNodeFromType('asset.screenplay', { x: 240, y: 0 }, {
-          id: 'c',
-          params: { generateInstruction: '写成完整剧本' }
-        })
+        createNodeFromType(
+          'play.script',
+          { x: 0, y: 0 },
+          {
+            id: 'a',
+            params: { text: 'A' }
+          }
+        ),
+        createNodeFromType(
+          'asset.screenplay',
+          { x: 120, y: 0 },
+          {
+            id: 'b',
+            params: { generateInstruction: '写成完整剧本' }
+          }
+        ),
+        createNodeFromType(
+          'asset.screenplay',
+          { x: 240, y: 0 },
+          {
+            id: 'c',
+            params: { generateInstruction: '写成完整剧本' }
+          }
+        )
       ],
       edges: [
         { id: 'e1', source: 'a', target: 'b', sourcePort: 'out', targetPort: 'in' },
@@ -1027,10 +1162,14 @@ describe('graph run', () => {
   it('continueOnError falls back to cached outputs when available', async () => {
     const graph = {
       nodes: [
-        createNodeFromType('asset.screenplay', { x: 0, y: 0 }, {
-          id: 'b',
-          params: { generateInstruction: '写成完整剧本' }
-        })
+        createNodeFromType(
+          'asset.screenplay',
+          { x: 0, y: 0 },
+          {
+            id: 'b',
+            params: { generateInstruction: '写成完整剧本' }
+          }
+        )
       ],
       edges: [],
       viewport: { x: 0, y: 0, zoom: 1 }

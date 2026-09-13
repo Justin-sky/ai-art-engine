@@ -22,15 +22,13 @@ export const GOOGLE_DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.co
 /** 火山方舟（Ark）OpenAI 兼容端点 */
 export const VOLCENGINE_ARK_DEFAULT_BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3'
 /** 豆包语音控制台（声音设计 API Key / speaker_id；与方舟 Ark Key 可能不同） */
-export const VOLCENGINE_OPENSPEECH_CREDENTIALS_URL =
-  'https://console.volcengine.com/speech/app'
+export const VOLCENGINE_OPENSPEECH_CREDENTIALS_URL = 'https://console.volcengine.com/speech/app'
 /** 可灵（Kling）国内开放平台 */
 export const KLING_DEFAULT_BASE_URL = 'https://api-beijing.klingai.com'
 /** MiniMax（原海螺 AI）国内开放平台 */
 export const MINIMAX_DEFAULT_BASE_URL = 'https://api.minimaxi.com'
 /** 通义千问 / 万相（阿里云百炼 DashScope OpenAI 兼容） */
-export const DASHSCOPE_DEFAULT_BASE_URL =
-  'https://dashscope.aliyuncs.com/compatible-mode/v1'
+export const DASHSCOPE_DEFAULT_BASE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1'
 /** 魔塔 / 魔搭 ModelScope API-Inference（OpenAI 兼容） */
 export const MODELSCOPE_DEFAULT_BASE_URL = 'https://api-inference.modelscope.cn/v1'
 /** ComfyUI API 2（本机 comfy-api-proxy 默认 8189；云端填 https://cloud.comfy.org） */
@@ -185,8 +183,7 @@ export const MODEL_PROVIDER_KINDS: readonly ModelProviderKindMeta[] = [
     id: 'minimax',
     label: 'MiniMax',
     defaultBaseUrl: MINIMAX_DEFAULT_BASE_URL,
-    credentialsUrl:
-      'https://platform.minimaxi.com/user-center/basic-information/interface-key'
+    credentialsUrl: 'https://platform.minimaxi.com/user-center/basic-information/interface-key'
   },
   {
     id: 'dashscope',
@@ -441,7 +438,11 @@ export function isMagicRouterProvider(
 /** 支持 3D 模型生成（model3d）的提供商 kind */
 export function isModel3dProviderKind(kind: ModelProviderKind): boolean {
   return (
-    kind === 'meshy' || kind === 'tripo' || kind === 'hyper3d' || kind === 'luma' || kind === 'lux3d'
+    kind === 'meshy' ||
+    kind === 'tripo' ||
+    kind === 'hyper3d' ||
+    kind === 'luma' ||
+    kind === 'lux3d'
   )
 }
 
@@ -517,9 +518,10 @@ export function classifyDashScopeModelModality(model: {
  * 方舟 /models 无 OpenRouter 式模态目录，按接入点 id/名称启发式归类。
  * 未命中图片/视频/音频规则的默认归入文本。
  */
-export function classifyVolcengineArkModelModality(
-  model: { id?: string; name?: string }
-): ModelModality {
+export function classifyVolcengineArkModelModality(model: {
+  id?: string
+  name?: string
+}): ModelModality {
   const text = `${model.id ?? ''} ${model.name ?? ''}`.toLowerCase()
   if (/seedream|seededit|img2img|\bt2i\b|\bi2i\b|image-generation/.test(text)) {
     return 'image'
@@ -1181,9 +1183,7 @@ function resolveProviderDisplayLabel(
   if (!label) return metaLabel
   if (
     kind === 'minimax' &&
-    /^(海螺\s*AI|Hailuo(\s*AI)?(\s*\/\s*MiniMax)?|Hailuo\s*\(\s*MiniMax\s*\)|MinMax)$/i.test(
-      label
-    )
+    /^(海螺\s*AI|Hailuo(\s*AI)?(\s*\/\s*MiniMax)?|Hailuo\s*\(\s*MiniMax\s*\)|MinMax)$/i.test(label)
   ) {
     return metaLabel
   }

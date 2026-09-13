@@ -245,7 +245,8 @@ export function buildVideoBeatSegments(
     boundaries.push(round2((left + right) / 2))
   }
 
-  const duration = Number.isFinite(Number(durationSec)) && Number(durationSec) >= 0 ? Number(durationSec) : 0
+  const duration =
+    Number.isFinite(Number(durationSec)) && Number(durationSec) >= 0 ? Number(durationSec) : 0
   return groups.map((group, index) => {
     const labels: string[] = []
     for (const sample of group.samples) {
@@ -263,10 +264,11 @@ export function buildVideoBeatSegments(
 }
 
 /** 样本序列 → 对象标签时间线摘要（frames 降序、firstSec 升序） */
-export function summarizeVideoBeatSamples(
-  samples: VideoBeatSample[]
-): VideoBeatSummaryItem[] {
-  const byLabel = new Map<string, { frames: number; firstSec: number; lastSec: number; labelZh: string }>()
+export function summarizeVideoBeatSamples(samples: VideoBeatSample[]): VideoBeatSummaryItem[] {
+  const byLabel = new Map<
+    string,
+    { frames: number; firstSec: number; lastSec: number; labelZh: string }
+  >()
   for (const sample of samples) {
     for (let i = 0; i < sample.labels.length; i += 1) {
       const label = sample.labels[i]

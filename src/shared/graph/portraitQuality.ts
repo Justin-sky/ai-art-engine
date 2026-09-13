@@ -77,26 +77,213 @@ function bipolar(value: number, neg: string, pos: string): string {
 }
 
 export const PORTRAIT_QUALITY_PARAMS: readonly PortraitQualityParamSpec[] = [
-  { key: 'skinSmoothing', group: 'skin', labelKey: 'skinSmoothing', min: 0, max: 100, step: 1, default: 20, executor: 'local' },
-  { key: 'skinPore', group: 'skin', labelKey: 'skinPore', min: 0, max: 100, step: 1, default: 60, executor: 'local' },
-  { key: 'skinEvenness', group: 'skin', labelKey: 'skinEvenness', min: 0, max: 100, step: 1, default: 25, executor: 'local' },
-  { key: 'blemishRemoval', group: 'skin', labelKey: 'blemishRemoval', min: 0, max: 100, step: 1, default: 20, executor: 'local' },
-  { key: 'lightRatio', group: 'light', labelKey: 'lightRatio', min: 0, max: 100, step: 1, default: 50, executor: 'generative', promptTemplate: (v) => (v <= 34 ? '柔光比' : v >= 66 ? '强光比' : '自然光比') },
-  { key: 'fillLight', group: 'light', labelKey: 'fillLight', min: 0, max: 100, step: 1, default: 40, executor: 'generative', promptTemplate: (v) => (v >= 55 ? `${level(v)}补光` : '') },
-  { key: 'rimLight', group: 'light', labelKey: 'rimLight', min: 0, max: 100, step: 1, default: 25, executor: 'generative', promptTemplate: (v) => (v >= 20 ? `${level(v)}轮廓光` : '') },
-  { key: 'catchlight', group: 'light', labelKey: 'catchlight', min: 0, max: 100, step: 1, default: 30, executor: 'generative', promptTemplate: (v) => (v >= 20 ? `${level(v)}眼神光` : '') },
-  { key: 'atmosphere', group: 'light', labelKey: 'atmosphere', min: 0, max: 100, step: 1, default: 20, executor: 'generative', promptTemplate: (v) => (v >= 15 ? `${level(v)}氛围感` : '') },
-  { key: 'personSceneBlend', group: 'blend', labelKey: 'personSceneBlend', min: 0, max: 100, step: 1, default: 50, executor: 'generative', promptTemplate: (v) => (v <= 30 ? '人景轻度融合' : v >= 70 ? '人景深度融合' : '人景自然融合') },
-  { key: 'edgeTransition', group: 'blend', labelKey: 'edgeTransition', min: 0, max: 100, step: 1, default: 50, executor: 'generative', promptTemplate: (v) => (v <= 34 ? '边缘清晰过渡' : v >= 66 ? '边缘柔和过渡' : '边缘自然过渡') },
-  { key: 'colorTemp', group: 'color', labelKey: 'colorTemp', min: -100, max: 100, step: 1, default: 0, executor: 'local' },
-  { key: 'saturation', group: 'color', labelKey: 'saturation', min: -100, max: 100, step: 1, default: 0, executor: 'local' },
-  { key: 'contrast', group: 'color', labelKey: 'contrast', min: -100, max: 100, step: 1, default: 0, executor: 'local' },
-  { key: 'skinTone', group: 'color', labelKey: 'skinTone', min: -100, max: 100, step: 1, default: 0, executor: 'local' },
-  { key: 'sharpness', group: 'detail', labelKey: 'sharpness', min: 0, max: 100, step: 1, default: 40, executor: 'local' },
-  { key: 'grain', group: 'detail', labelKey: 'grain', min: 0, max: 100, step: 1, default: 0, executor: 'local' },
-  { key: 'softFocus', group: 'detail', labelKey: 'softFocus', min: 0, max: 100, step: 1, default: 0, executor: 'local' },
-  { key: 'clarity', group: 'detail', labelKey: 'clarity', min: 0, max: 100, step: 1, default: 15, executor: 'local' },
-  { key: 'vignette', group: 'detail', labelKey: 'vignette', min: 0, max: 100, step: 1, default: 0, executor: 'local' }
+  {
+    key: 'skinSmoothing',
+    group: 'skin',
+    labelKey: 'skinSmoothing',
+    min: 0,
+    max: 100,
+    step: 1,
+    default: 20,
+    executor: 'local'
+  },
+  {
+    key: 'skinPore',
+    group: 'skin',
+    labelKey: 'skinPore',
+    min: 0,
+    max: 100,
+    step: 1,
+    default: 60,
+    executor: 'local'
+  },
+  {
+    key: 'skinEvenness',
+    group: 'skin',
+    labelKey: 'skinEvenness',
+    min: 0,
+    max: 100,
+    step: 1,
+    default: 25,
+    executor: 'local'
+  },
+  {
+    key: 'blemishRemoval',
+    group: 'skin',
+    labelKey: 'blemishRemoval',
+    min: 0,
+    max: 100,
+    step: 1,
+    default: 20,
+    executor: 'local'
+  },
+  {
+    key: 'lightRatio',
+    group: 'light',
+    labelKey: 'lightRatio',
+    min: 0,
+    max: 100,
+    step: 1,
+    default: 50,
+    executor: 'generative',
+    promptTemplate: (v) => (v <= 34 ? '柔光比' : v >= 66 ? '强光比' : '自然光比')
+  },
+  {
+    key: 'fillLight',
+    group: 'light',
+    labelKey: 'fillLight',
+    min: 0,
+    max: 100,
+    step: 1,
+    default: 40,
+    executor: 'generative',
+    promptTemplate: (v) => (v >= 55 ? `${level(v)}补光` : '')
+  },
+  {
+    key: 'rimLight',
+    group: 'light',
+    labelKey: 'rimLight',
+    min: 0,
+    max: 100,
+    step: 1,
+    default: 25,
+    executor: 'generative',
+    promptTemplate: (v) => (v >= 20 ? `${level(v)}轮廓光` : '')
+  },
+  {
+    key: 'catchlight',
+    group: 'light',
+    labelKey: 'catchlight',
+    min: 0,
+    max: 100,
+    step: 1,
+    default: 30,
+    executor: 'generative',
+    promptTemplate: (v) => (v >= 20 ? `${level(v)}眼神光` : '')
+  },
+  {
+    key: 'atmosphere',
+    group: 'light',
+    labelKey: 'atmosphere',
+    min: 0,
+    max: 100,
+    step: 1,
+    default: 20,
+    executor: 'generative',
+    promptTemplate: (v) => (v >= 15 ? `${level(v)}氛围感` : '')
+  },
+  {
+    key: 'personSceneBlend',
+    group: 'blend',
+    labelKey: 'personSceneBlend',
+    min: 0,
+    max: 100,
+    step: 1,
+    default: 50,
+    executor: 'generative',
+    promptTemplate: (v) => (v <= 30 ? '人景轻度融合' : v >= 70 ? '人景深度融合' : '人景自然融合')
+  },
+  {
+    key: 'edgeTransition',
+    group: 'blend',
+    labelKey: 'edgeTransition',
+    min: 0,
+    max: 100,
+    step: 1,
+    default: 50,
+    executor: 'generative',
+    promptTemplate: (v) => (v <= 34 ? '边缘清晰过渡' : v >= 66 ? '边缘柔和过渡' : '边缘自然过渡')
+  },
+  {
+    key: 'colorTemp',
+    group: 'color',
+    labelKey: 'colorTemp',
+    min: -100,
+    max: 100,
+    step: 1,
+    default: 0,
+    executor: 'local'
+  },
+  {
+    key: 'saturation',
+    group: 'color',
+    labelKey: 'saturation',
+    min: -100,
+    max: 100,
+    step: 1,
+    default: 0,
+    executor: 'local'
+  },
+  {
+    key: 'contrast',
+    group: 'color',
+    labelKey: 'contrast',
+    min: -100,
+    max: 100,
+    step: 1,
+    default: 0,
+    executor: 'local'
+  },
+  {
+    key: 'skinTone',
+    group: 'color',
+    labelKey: 'skinTone',
+    min: -100,
+    max: 100,
+    step: 1,
+    default: 0,
+    executor: 'local'
+  },
+  {
+    key: 'sharpness',
+    group: 'detail',
+    labelKey: 'sharpness',
+    min: 0,
+    max: 100,
+    step: 1,
+    default: 40,
+    executor: 'local'
+  },
+  {
+    key: 'grain',
+    group: 'detail',
+    labelKey: 'grain',
+    min: 0,
+    max: 100,
+    step: 1,
+    default: 0,
+    executor: 'local'
+  },
+  {
+    key: 'softFocus',
+    group: 'detail',
+    labelKey: 'softFocus',
+    min: 0,
+    max: 100,
+    step: 1,
+    default: 0,
+    executor: 'local'
+  },
+  {
+    key: 'clarity',
+    group: 'detail',
+    labelKey: 'clarity',
+    min: 0,
+    max: 100,
+    step: 1,
+    default: 15,
+    executor: 'local'
+  },
+  {
+    key: 'vignette',
+    group: 'detail',
+    labelKey: 'vignette',
+    min: 0,
+    max: 100,
+    step: 1,
+    default: 0,
+    executor: 'local'
+  }
 ]
 
 export const DEFAULT_PORTRAIT_QUALITY: PortraitQualityState = Object.fromEntries(
@@ -179,9 +366,7 @@ export function normalizePortraitQuality(
   const out: Partial<Record<PortraitQualityParamKey, number>> = {}
   for (const p of PORTRAIT_QUALITY_PARAMS) {
     const value = Number(base[p.key])
-    out[p.key] = Number.isFinite(value)
-      ? Math.min(p.max, Math.max(p.min, value))
-      : p.default
+    out[p.key] = Number.isFinite(value) ? Math.min(p.max, Math.max(p.min, value)) : p.default
   }
   return out as PortraitQualityState
 }
@@ -250,7 +435,8 @@ function portraitQualityFromLegacy(raw?: object): PortraitQualityState {
   const state = { ...DEFAULT_PORTRAIT_QUALITY }
   state.personSceneBlend =
     legacy.personScene === 'light' ? 25 : legacy.personScene === 'deep' ? 75 : 50
-  state.fillLight = legacy.lightShadow === 'softFill' ? 70 : legacy.lightShadow === 'atmosphere' ? 30 : 40
+  state.fillLight =
+    legacy.lightShadow === 'softFill' ? 70 : legacy.lightShadow === 'atmosphere' ? 30 : 40
   state.atmosphere = legacy.lightShadow === 'atmosphere' ? 60 : 20
   state.skinSmoothing = legacy.skin === 'clear' ? 55 : legacy.skin === 'real' ? 8 : 20
   state.skinEvenness = legacy.skin === 'clear' ? 60 : 25

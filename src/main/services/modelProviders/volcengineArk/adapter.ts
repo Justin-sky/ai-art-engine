@@ -47,9 +47,7 @@ const E_ARK_LIST_MODELS_FAILED = defErr<{ detail: string }>(
   ({ detail }) => `拉取火山方舟模型列表失败: ${detail}`,
   ({ detail }) => `Failed to fetch Volcengine Ark model list: ${detail}`
 )
-import {
-  generateOpenAiCompatibleText
-} from '../openaiCompat'
+import { generateOpenAiCompatibleText } from '../openaiCompat'
 import { generateVolcengineOpenspeechSpeech } from './openspeech'
 
 /** 组装方舟视频 content：图片/视频/音频项必须带 role */

@@ -3,11 +3,7 @@ import type { AssetInfo } from '@shared/domain'
 import { normalizeAssetType } from '@shared/domain'
 import { fail } from '@shared/errors/appError'
 import { MAIN_ERRORS } from '../errors/messages'
-import {
-  removeAssetFromTree,
-  scanAssetTree,
-  writeAssetToTree
-} from './assetTreeStore'
+import { removeAssetFromTree, scanAssetTree, writeAssetToTree } from './assetTreeStore'
 
 export class AssetRepository {
   list(root: string): AssetInfo[] {

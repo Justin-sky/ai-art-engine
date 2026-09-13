@@ -1,19 +1,8 @@
 <template>
-  <div
-    ref="rootEl"
-    class="instruction-box"
-    :class="variant"
-  >
+  <div ref="rootEl" class="instruction-box" :class="variant">
     <div class="toolbar">
-      <div
-        v-if="styleChips.length || frameChips.length || mentionChips.length"
-        class="ref-strip"
-      >
-        <div
-          v-for="chip in styleChips"
-          :key="chip.id"
-          class="ref-chip style-chip"
-        >
+      <div v-if="styleChips.length || frameChips.length || mentionChips.length" class="ref-strip">
+        <div v-for="chip in styleChips" :key="chip.id" class="ref-chip style-chip">
           <button
             type="button"
             class="ref-thumb"
@@ -23,41 +12,20 @@
           >
             <span class="ref-role">{{ chip.roleLabel }}</span>
             <span class="ref-index">{{ chip.index }}</span>
-            <img
-              v-if="chip.thumbUrl"
-              :src="chip.thumbUrl"
-              alt=""
-              draggable="false"
-            >
-            <span
-              v-else
-              class="ref-fallback"
-            >🎨</span>
+            <img v-if="chip.thumbUrl" :src="chip.thumbUrl" alt="" draggable="false" />
+            <span v-else class="ref-fallback">🎨</span>
           </button>
         </div>
-        <div
-          v-for="chip in frameChips"
-          :key="chip.edgeId"
-          class="ref-chip frame-chip"
-        >
+        <div v-for="chip in frameChips" :key="chip.edgeId" class="ref-chip frame-chip">
           <div
             class="ref-thumb"
             @pointerenter="showRefPreview('frame', chip, $event)"
             @pointerleave="hideRefPreview"
           >
             <span class="ref-role">{{ chip.roleLabel }}</span>
-            <img
-              v-if="chip.thumbUrl"
-              :src="chip.thumbUrl"
-              alt=""
-              draggable="false"
-            >
-            <span
-              v-else
-              class="ref-fallback"
-            ><WorkspaceItemIcon
-              :icon="chip.icon"
-              :size="16"
+            <img v-if="chip.thumbUrl" :src="chip.thumbUrl" alt="" draggable="false" />
+            <span v-else class="ref-fallback"
+              ><WorkspaceItemIcon :icon="chip.icon" :size="16"
             /></span>
           </div>
           <button
@@ -67,13 +35,7 @@
             @pointerdown.stop
             @click.stop="disconnect(chip.edgeId)"
           >
-            <svg
-              class="ref-close-icon"
-              width="8"
-              height="8"
-              viewBox="0 0 28 28"
-              aria-hidden="true"
-            >
+            <svg class="ref-close-icon" width="8" height="8" viewBox="0 0 28 28" aria-hidden="true">
               <path
                 d="M2.1 27.3L0 25.2L11.55 13.65L0 2.1L2.1 0L13.65 11.55L25.2 0L27.3 2.1L15.75 13.65L27.3 25.2L25.2 27.3L13.65 15.75L2.1 27.3Z"
               />
@@ -103,18 +65,9 @@
             @pointerleave="hideRefPreview"
           >
             <span class="ref-index">{{ chip.index }}</span>
-            <img
-              v-if="chip.thumbUrl"
-              :src="chip.thumbUrl"
-              alt=""
-              draggable="false"
-            >
-            <span
-              v-else
-              class="ref-fallback"
-            ><WorkspaceItemIcon
-              :icon="chip.icon"
-              :size="16"
+            <img v-if="chip.thumbUrl" :src="chip.thumbUrl" alt="" draggable="false" />
+            <span v-else class="ref-fallback"
+              ><WorkspaceItemIcon :icon="chip.icon" :size="16"
             /></span>
           </button>
           <button
@@ -124,13 +77,7 @@
             @pointerdown.stop
             @click.stop="disconnect(chip.edgeId)"
           >
-            <svg
-              class="ref-close-icon"
-              width="8"
-              height="8"
-              viewBox="0 0 28 28"
-              aria-hidden="true"
-            >
+            <svg class="ref-close-icon" width="8" height="8" viewBox="0 0 28 28" aria-hidden="true">
               <path
                 d="M2.1 27.3L0 25.2L11.55 13.65L0 2.1L2.1 0L13.65 11.55L25.2 0L27.3 2.1L15.75 13.65L27.3 25.2L25.2 27.3L13.65 15.75L2.1 27.3Z"
               />
@@ -138,10 +85,7 @@
           </button>
         </div>
       </div>
-      <div
-        v-else
-        class="toolbar-spacer"
-      />
+      <div v-else class="toolbar-spacer" />
 
       <div class="toolbar-actions">
         <button
@@ -153,10 +97,7 @@
           :aria-expanded="menuOpen"
           @click.stop="toggleMenu"
         >
-          <span
-            class="preset-icon"
-            aria-hidden="true"
-          />
+          <span class="preset-icon" aria-hidden="true" />
         </button>
         <button
           type="button"
@@ -164,10 +105,7 @@
           :title="t('graph.inspector.generate.instructionPreview')"
           @click.stop.prevent="openPromptPreview"
         >
-          <span
-            class="preview-icon"
-            aria-hidden="true"
-          />
+          <span class="preview-icon" aria-hidden="true" />
         </button>
         <button
           v-if="variant === 'inline'"
@@ -195,11 +133,7 @@
         <div class="preset-menu-title">
           {{ presetMenuTitle }}
         </div>
-        <div
-          v-if="presetTabs.length > 1"
-          class="preset-tabs"
-          role="tablist"
-        >
+        <div v-if="presetTabs.length > 1" class="preset-tabs" role="tablist">
           <button
             v-for="tab in presetTabs"
             :key="tab"
@@ -222,10 +156,7 @@
             :title="t(item.titleKey)"
             @click="applyPreset(item)"
           >
-            <PresetVisualGlyph
-              class="preset-glyph"
-              :visual="visualForPreset(item)"
-            />
+            <PresetVisualGlyph class="preset-glyph" :visual="visualForPreset(item)" />
             <span class="preset-card-title">{{ t(item.titleKey) }}</span>
           </button>
         </div>
@@ -240,18 +171,9 @@
         aria-hidden="true"
       >
         <span class="ref-index">{{ dragGhost.index }}</span>
-        <img
-          v-if="dragGhost.thumbUrl"
-          :src="dragGhost.thumbUrl"
-          alt=""
-          draggable="false"
-        >
-        <span
-          v-else
-          class="ref-fallback"
-        ><WorkspaceItemIcon
-          :icon="dragGhost.icon"
-          :size="16"
+        <img v-if="dragGhost.thumbUrl" :src="dragGhost.thumbUrl" alt="" draggable="false" />
+        <span v-else class="ref-fallback"
+          ><WorkspaceItemIcon :icon="dragGhost.icon" :size="16"
         /></span>
       </div>
     </Teleport>
@@ -267,26 +189,14 @@
         <div class="ref-preview-title">
           {{ refPreview.title }}
         </div>
-        <img
-          v-if="refPreview.thumbUrl"
-          :src="refPreview.thumbUrl"
-          alt=""
-          draggable="false"
-        >
-        <div
-          v-if="refPreview.text"
-          class="ref-preview-text"
-        >
+        <img v-if="refPreview.thumbUrl" :src="refPreview.thumbUrl" alt="" draggable="false" />
+        <div v-if="refPreview.text" class="ref-preview-text">
           {{ refPreview.text }}
         </div>
       </div>
     </Teleport>
 
-    <div
-      class="editor-area"
-      @mousedown="onEditorMouseDown"
-      @dblclick.stop="onEditorDblClick"
-    >
+    <div class="editor-area" @mousedown="onEditorMouseDown" @dblclick.stop="onEditorDblClick">
       <RefMentionTextarea
         ref="editorRef"
         class="instruction-input"
@@ -300,12 +210,7 @@
       />
     </div>
 
-    <div
-      v-if="$slots.footer"
-      class="footer-toolbar"
-      @pointerdown.stop
-      @dblclick.stop
-    >
+    <div v-if="$slots.footer" class="footer-toolbar" @pointerdown.stop @dblclick.stop>
       <slot name="footer" />
     </div>
 
@@ -359,9 +264,7 @@ import type {
 import ExpandArrowsIcon from './icons/ExpandArrowsIcon.vue'
 import WorkspaceItemIcon from './WorkspaceItemIcon.vue'
 import PresetVisualGlyph from './PresetVisualGlyph.vue'
-import GraphTextNotepadDialog, {
-  type NotepadPreviewImage
-} from './GraphTextNotepadDialog.vue'
+import GraphTextNotepadDialog, { type NotepadPreviewImage } from './GraphTextNotepadDialog.vue'
 import RefMentionTextarea from './RefMentionTextarea.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useProjectStore } from '../stores/project'
@@ -547,10 +450,7 @@ function showRefPreview(
   const source =
     kind === 'style'
       ? null
-      : graphEditorHosts.getNode(
-          props.hostId,
-          (chip as RefChip | FrameChip).sourceNodeId
-        )
+      : graphEditorHosts.getNode(props.hostId, (chip as RefChip | FrameChip).sourceNodeId)
   const text = source ? sourcePreviewText(source) : ''
   refPreview.value = { title: chip.title, thumbUrl: chip.thumbUrl, text }
   void nextTick(() => positionRefPreview(anchor))
@@ -626,10 +526,12 @@ const visiblePresets = computed(() => {
 })
 
 const presetMenuTitle = computed(() => {
-  if (props.presetKind === 'screenplay') return t('graph.inspector.generate.presets.titleScreenplay')
+  if (props.presetKind === 'screenplay')
+    return t('graph.inspector.generate.presets.titleScreenplay')
   if (props.presetKind === 'optimize') return t('graph.inspector.generate.presets.titleOptimize')
   if (props.presetKind === 'toPrompt') return t('graph.inspector.generate.presets.titleToPrompt')
-  if (props.presetKind === 'worldExtract') return t('graph.inspector.generate.presets.titleWorldExtract')
+  if (props.presetKind === 'worldExtract')
+    return t('graph.inspector.generate.presets.titleWorldExtract')
   if (props.presetKind === 'beatSplit') {
     return t('graph.inspector.generate.presets.titleBeatSplit')
   }
@@ -704,10 +606,7 @@ function resolveHostBeatAssetId(hostId: string): string | null {
 function sourceSnippet(node: GraphNode): string {
   // 芯片摘要用轻量字段，避免打开指令面板时做全量拼装
   const quick =
-    node.params.text?.trim() ||
-    node.params.resultText?.trim() ||
-    node.params.notes?.trim() ||
-    ''
+    node.params.text?.trim() || node.params.resultText?.trim() || node.params.notes?.trim() || ''
   if (quick) return quick.slice(0, 80)
   return ''
 }
@@ -747,11 +646,7 @@ function resolveSourcePreviewPath(source: GraphNode): string {
   const previewRel = source.params.previewRelativePath?.trim().replace(/\\/g, '/')
   if (previewRel) {
     // 文本类节点的 previewRelativePath 是正文旁挂路径（txt/md 等），不能当缩略图
-    if (
-      isImageFilePath(previewRel) ||
-      isVideoFilePath(previewRel) ||
-      isAudioFilePath(previewRel)
-    ) {
+    if (isImageFilePath(previewRel) || isVideoFilePath(previewRel) || isAudioFilePath(previewRel)) {
       return previewRel
     }
     return ''
@@ -785,7 +680,7 @@ function lookupThumbUrl(source: GraphNode | null): string {
   const dataUrl = resolveSourcePreviewDataUrl(source)
   if (dataUrl) return dataUrl
   const key = sourceThumbCacheKey(source)
-  return key ? thumbUrls.value[key] ?? '' : ''
+  return key ? (thumbUrls.value[key] ?? '') : ''
 }
 
 function toRefChip(
@@ -1164,8 +1059,7 @@ function onEditorDblClick(): void {
 function updatePresetMenuPosition(): void {
   // 锚在工具栏右侧操作区（与原先 absolute right 视觉一致）
   const anchor =
-    (rootEl.value?.querySelector('.toolbar-actions') as HTMLElement | null) ??
-    presetBtnEl.value
+    (rootEl.value?.querySelector('.toolbar-actions') as HTMLElement | null) ?? presetBtnEl.value
   const menu = presetMenuEl.value
   if (!anchor) return
 
@@ -1334,8 +1228,7 @@ function openPromptPreview(): void {
           }
         : undefined
   })
-  previewImages.value =
-    kind === 'image' || kind === 'video' ? buildPreviewImages(styleImages) : []
+  previewImages.value = kind === 'image' || kind === 'video' ? buildPreviewImages(styleImages) : []
   previewOpen.value = true
 }
 
@@ -1354,7 +1247,8 @@ function onWindowPointerDown(e: PointerEvent): void {
     return
   }
   const el = target instanceof Element ? target : target.parentElement
-  if (el?.closest('.preset-btn') || el?.closest('.preset-menu') || el?.closest('.preview-btn')) return
+  if (el?.closest('.preset-btn') || el?.closest('.preset-menu') || el?.closest('.preview-btn'))
+    return
   closeMenu()
 }
 
@@ -1972,5 +1866,4 @@ onBeforeUnmount(() => {
 .expand-btn:hover {
   color: var(--accent);
 }
-
 </style>

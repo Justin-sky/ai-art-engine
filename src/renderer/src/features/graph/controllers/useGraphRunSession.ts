@@ -1,7 +1,5 @@
 import { nextTick, reactive, ref } from 'vue'
-import type {
-  ProjectStyleImage
-} from '@shared/domain'
+import type { ProjectStyleImage } from '@shared/domain'
 import type { GraphImageReferenceMeta } from '@shared/modelProvider'
 import {
   applyEpisodeReviewMarks,
@@ -24,10 +22,7 @@ import { createGraphRunLogBridge } from '../model/graphRunLogBridge'
 import { formatProviderErrorForLog } from '../model/formatProviderErrorForLog'
 import { resolveImageGenerateCapabilitiesForRun } from '../model/imageGenerateCapabilities'
 import { resolveVideoGenerateCapabilitiesForRun } from '../model/videoGenerateCapabilities'
-import {
-  readEpisodeAgentState,
-  writeEpisodeAgentState
-} from '../episodeAgentStateIO'
+import { readEpisodeAgentState, writeEpisodeAgentState } from '../episodeAgentStateIO'
 import {
   resolveAssetImageUrl,
   resolveAssetMediaDataUrl,
@@ -92,12 +87,15 @@ export interface GraphRunSessionOptions {
     resolution?: string
     aspectRatio?: string
     generateAudio?: boolean
-    inputReferences?: Array<
-      | string
-      | { kind: 'image_url' | 'video_url' | 'audio_url'; url: string }
-    >
+    inputReferences?: Array<string | { kind: 'image_url' | 'video_url' | 'audio_url'; url: string }>
     outputDir?: string
-    graphBinding?: { hostId?: string; nodeId?: string; assetId?: string; shotId?: string; canvasField?: string }
+    graphBinding?: {
+      hostId?: string
+      nodeId?: string
+      assetId?: string
+      shotId?: string
+      canvasField?: string
+    }
   }) => Promise<{
     assetId: string
     relativePath: string
@@ -132,7 +130,13 @@ export interface GraphRunSessionOptions {
     inputReferences?: Array<{ kind: 'image_url' | 'video_url' | 'audio_url'; url: string }>
     outputDir?: string
     name?: string
-    graphBinding?: { hostId?: string; nodeId?: string; assetId?: string; shotId?: string; canvasField?: string }
+    graphBinding?: {
+      hostId?: string
+      nodeId?: string
+      assetId?: string
+      shotId?: string
+      canvasField?: string
+    }
   }) => Promise<{
     assetId: string
     relativePath: string
@@ -186,9 +190,7 @@ export interface GraphRunSessionOptions {
   resolveHostAssetId?: () => string | undefined
   resolveAssetText?: (assetId: string) => Promise<string | undefined>
   /** 场参考节点：按 boundBeatId 解析目录行 */
-  resolveBeatUnit?: (
-    beatId: string
-  ) => import('@shared/graph').BeatRow | null
+  resolveBeatUnit?: (beatId: string) => import('@shared/graph').BeatRow | null
   /** 工程全局画面风格（生成节点「使用全局风格」时读取） */
   resolveProjectStyleImages?: () => ProjectStyleImage[]
   /** 工程全局随机种子（生成节点「使用全局种子」时读取） */
@@ -211,10 +213,7 @@ export interface GraphRunSessionOptions {
   /** 世界元素表格节点：输出当前目录 JSON */
   resolveWorldCatalogJson?: () => string | null
   /** 世界元素表格 / 编辑节点执行时：导入上游提取 JSON 到元素子图 */
-  importWorldCatalogJson?: (
-    jsonText: string,
-    sourceNodeId?: string
-  ) => void | Promise<void>
+  importWorldCatalogJson?: (jsonText: string, sourceNodeId?: string) => void | Promise<void>
   /** 场表格节点：输出当前目录 JSON */
   resolveBeatCatalogJson?: () => string | null
   /** 场表格 / 编辑节点执行时：导入上游拆解 JSON */
@@ -473,10 +472,15 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       firstFrameImageUrl?: string
       lastFrameImageUrl?: string
       inputReferences?: Array<
-        | string
-        | { kind: 'image_url' | 'video_url' | 'audio_url'; url: string }
+        string | { kind: 'image_url' | 'video_url' | 'audio_url'; url: string }
       >
-      graphBinding?: { hostId?: string; nodeId?: string; assetId?: string; shotId?: string; canvasField?: string }
+      graphBinding?: {
+        hostId?: string
+        nodeId?: string
+        assetId?: string
+        shotId?: string
+        canvasField?: string
+      }
     }) => {
       if (token !== runToken || signal.aborted) {
         throw new DOMException('Aborted', 'AbortError')
@@ -622,7 +626,13 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       inputReferences?: Array<{ kind: 'image_url' | 'video_url' | 'audio_url'; url: string }>
       outputDir?: string
       name?: string
-      graphBinding?: { hostId?: string; nodeId?: string; assetId?: string; shotId?: string; canvasField?: string }
+      graphBinding?: {
+        hostId?: string
+        nodeId?: string
+        assetId?: string
+        shotId?: string
+        canvasField?: string
+      }
     }) => {
       if (token !== runToken || signal.aborted) {
         throw new DOMException('Aborted', 'AbortError')

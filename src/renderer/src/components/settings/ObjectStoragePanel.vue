@@ -11,26 +11,15 @@
       <label class="add-provider">
         <span>{{ t('settings.objectStorage.addProvider') }}</span>
         <select v-model="pendingProviderKind">
-          <option
-            v-for="p in providerKinds"
-            :key="p.id"
-            :value="p.id"
-          >{{ p.label }}</option>
+          <option v-for="p in providerKinds" :key="p.id" :value="p.id">{{ p.label }}</option>
         </select>
       </label>
-      <button
-        type="button"
-        class="primary-btn"
-        @click="addProvider"
-      >
+      <button type="button" class="primary-btn" @click="addProvider">
         {{ t('settings.objectStorage.add') }}
       </button>
     </div>
 
-    <p
-      v-if="providers.length === 0"
-      class="empty"
-    >
+    <p v-if="providers.length === 0" class="empty">
       {{ t('settings.objectStorage.emptyProviders') }}
     </p>
 
@@ -57,42 +46,29 @@
           "
           @click="toggleProviderCollapsed(provider.id)"
         >
-          <span
-            class="chevron"
-            aria-hidden="true"
-          >▾</span>
+          <span class="chevron" aria-hidden="true">▾</span>
           <strong>{{ provider.label }}</strong>
           <span class="badge">{{ provider.providerKind }}</span>
         </button>
         <div class="head-actions">
-          <label
-            class="check"
-            @click.stop
-          >
+          <label class="check" @click.stop>
             <input
               type="checkbox"
               :checked="provider.enabled"
               @change="onEnabledChange(provider.id, ($event.target as HTMLInputElement).checked)"
-            >
+            />
             {{ t('settings.objectStorage.enabled') }}
           </label>
-          <button
-            type="button"
-            class="danger"
-            @click="removeProvider(provider.id)"
-          >
+          <button type="button" class="danger" @click="removeProvider(provider.id)">
             {{ t('settings.objectStorage.remove') }}
           </button>
         </div>
       </header>
 
-      <div
-        v-show="!isProviderCollapsed(provider.id)"
-        class="provider-body"
-      >
+      <div v-show="!isProviderCollapsed(provider.id)" class="provider-body">
         <label>
           {{ t('settings.objectStorage.label') }}
-          <input v-model="provider.label">
+          <input v-model="provider.label" />
         </label>
 
         <template v-if="provider.providerKind === 'volcengine-tos'">
@@ -113,10 +89,7 @@
               >
                 {{ preset.label }} ({{ preset.region }})
               </option>
-              <option
-                v-if="!isKnownTosRegion(provider.tos.region)"
-                :value="provider.tos.region"
-              >
+              <option v-if="!isKnownTosRegion(provider.tos.region)" :value="provider.tos.region">
                 {{ t('settings.objectStorage.tos.customRegion') }} ({{ provider.tos.region }})
               </option>
             </select>
@@ -128,16 +101,12 @@
               v-model="provider.tos.endpoint"
               spellcheck="false"
               placeholder="https://tos-cn-beijing.volces.com"
-            >
+            />
           </label>
 
           <label>
             Access Key ID
-            <input
-              v-model="provider.tos.accessKeyId"
-              autocomplete="off"
-              spellcheck="false"
-            >
+            <input v-model="provider.tos.accessKeyId" autocomplete="off" spellcheck="false" />
           </label>
 
           <label>
@@ -148,7 +117,7 @@
                 :type="revealedSecrets[provider.id] ? 'text' : 'password'"
                 autocomplete="off"
                 spellcheck="false"
-              >
+              />
               <button
                 type="button"
                 class="reveal-btn"
@@ -171,13 +140,7 @@
                     d="M12 5c-5 0-9.27 3.11-11 7 1.73 3.89 6 7 11 7s9.27-3.11 11-7c-1.73-3.89-6-7-11-7zm0 12a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 .001 6.001A3 3 0 0 0 12 9z"
                   />
                 </svg>
-                <svg
-                  v-else
-                  viewBox="0 0 24 24"
-                  width="16"
-                  height="16"
-                  aria-hidden="true"
-                >
+                <svg v-else viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
                   <path
                     fill="currentColor"
                     d="M2.1 3.51 3.5 2.1l18.4 18.4-1.41 1.41-3.17-3.17A12.3 12.3 0 0 1 12 19c-5 0-9.27-3.11-11-7a13.4 13.4 0 0 1 4.68-5.41L2.1 3.51zM12 7a5 5 0 0 1 4.9 4.03l-1.56-1.56A3 3 0 0 0 12 9c-.4 0-.78.08-1.13.23L9.3 7.66A4.9 4.9 0 0 1 12 7zm9.9 4.49A13.4 13.4 0 0 0 17.4 7.4l-1.5 1.5c.9.7 1.67 1.55 2.27 2.51-.9 1.72-2.4 3.2-4.3 4.2l1.55 1.55c2.2-1.2 4.02-3.05 5.18-5.27a.75.75 0 0 0 0-.4z"
@@ -200,10 +163,7 @@
 
           <label>
             {{ t('settings.objectStorage.tos.bucket') }}
-            <input
-              v-model="provider.tos.bucket"
-              spellcheck="false"
-            >
+            <input v-model="provider.tos.bucket" spellcheck="false" />
           </label>
 
           <label>
@@ -212,7 +172,7 @@
               v-model="provider.tos.publicBaseUrl"
               spellcheck="false"
               :placeholder="t('settings.objectStorage.tos.publicBaseUrlPlaceholder')"
-            >
+            />
           </label>
         </template>
 
@@ -234,10 +194,7 @@
               >
                 {{ preset.label }} ({{ preset.region }})
               </option>
-              <option
-                v-if="!isKnownOssRegion(provider.oss.region)"
-                :value="provider.oss.region"
-              >
+              <option v-if="!isKnownOssRegion(provider.oss.region)" :value="provider.oss.region">
                 {{ t('settings.objectStorage.oss.customRegion') }} ({{ provider.oss.region }})
               </option>
             </select>
@@ -249,16 +206,12 @@
               v-model="provider.oss.endpoint"
               spellcheck="false"
               placeholder="https://oss-cn-hangzhou.aliyuncs.com"
-            >
+            />
           </label>
 
           <label>
             AccessKey ID
-            <input
-              v-model="provider.oss.accessKeyId"
-              autocomplete="off"
-              spellcheck="false"
-            >
+            <input v-model="provider.oss.accessKeyId" autocomplete="off" spellcheck="false" />
           </label>
 
           <label>
@@ -269,7 +222,7 @@
                 :type="revealedSecrets[provider.id] ? 'text' : 'password'"
                 autocomplete="off"
                 spellcheck="false"
-              >
+              />
               <button
                 type="button"
                 class="reveal-btn"
@@ -292,13 +245,7 @@
                     d="M12 5c-5 0-9.27 3.11-11 7 1.73 3.89 6 7 11 7s9.27-3.11 11-7c-1.73-3.89-6-7-11-7zm0 12a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 .001 6.001A3 3 0 0 0 12 9z"
                   />
                 </svg>
-                <svg
-                  v-else
-                  viewBox="0 0 24 24"
-                  width="16"
-                  height="16"
-                  aria-hidden="true"
-                >
+                <svg v-else viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
                   <path
                     fill="currentColor"
                     d="M2.1 3.51 3.5 2.1l18.4 18.4-1.41 1.41-3.17-3.17A12.3 12.3 0 0 1 12 19c-5 0-9.27-3.11-11-7a13.4 13.4 0 0 1 4.68-5.41L2.1 3.51zM12 7a5 5 0 0 1 4.9 4.03l-1.56-1.56A3 3 0 0 0 12 9c-.4 0-.78.08-1.13.23L9.3 7.66A4.9 4.9 0 0 1 12 7zm9.9 4.49A13.4 13.4 0 0 0 17.4 7.4l-1.5 1.5c.9.7 1.67 1.55 2.27 2.51-.9 1.72-2.4 3.2-4.3 4.2l1.55 1.55c2.2-1.2 4.02-3.05 5.18-5.27a.75.75 0 0 0 0-.4z"
@@ -321,10 +268,7 @@
 
           <label>
             {{ t('settings.objectStorage.oss.bucket') }}
-            <input
-              v-model="provider.oss.bucket"
-              spellcheck="false"
-            >
+            <input v-model="provider.oss.bucket" spellcheck="false" />
           </label>
 
           <label>
@@ -333,7 +277,7 @@
               v-model="provider.oss.publicBaseUrl"
               spellcheck="false"
               :placeholder="t('settings.objectStorage.oss.publicBaseUrlPlaceholder')"
-            >
+            />
           </label>
         </template>
 
@@ -355,10 +299,7 @@
               >
                 {{ preset.label }} ({{ preset.region }})
               </option>
-              <option
-                v-if="!isKnownCosRegion(provider.cos.region)"
-                :value="provider.cos.region"
-              >
+              <option v-if="!isKnownCosRegion(provider.cos.region)" :value="provider.cos.region">
                 {{ t('settings.objectStorage.cos.customRegion') }} ({{ provider.cos.region }})
               </option>
             </select>
@@ -366,11 +307,7 @@
 
           <label>
             SecretId
-            <input
-              v-model="provider.cos.secretId"
-              autocomplete="off"
-              spellcheck="false"
-            >
+            <input v-model="provider.cos.secretId" autocomplete="off" spellcheck="false" />
           </label>
 
           <label>
@@ -381,7 +318,7 @@
                 :type="revealedSecrets[provider.id] ? 'text' : 'password'"
                 autocomplete="off"
                 spellcheck="false"
-              >
+              />
               <button
                 type="button"
                 class="reveal-btn"
@@ -404,13 +341,7 @@
                     d="M12 5c-5 0-9.27 3.11-11 7 1.73 3.89 6 7 11 7s9.27-3.11 11-7c-1.73-3.89-6-7-11-7zm0 12a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 .001 6.001A3 3 0 0 0 12 9z"
                   />
                 </svg>
-                <svg
-                  v-else
-                  viewBox="0 0 24 24"
-                  width="16"
-                  height="16"
-                  aria-hidden="true"
-                >
+                <svg v-else viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
                   <path
                     fill="currentColor"
                     d="M2.1 3.51 3.5 2.1l18.4 18.4-1.41 1.41-3.17-3.17A12.3 12.3 0 0 1 12 19c-5 0-9.27-3.11-11-7a13.4 13.4 0 0 1 4.68-5.41L2.1 3.51zM12 7a5 5 0 0 1 4.9 4.03l-1.56-1.56A3 3 0 0 0 12 9c-.4 0-.78.08-1.13.23L9.3 7.66A4.9 4.9 0 0 1 12 7zm9.9 4.49A13.4 13.4 0 0 0 17.4 7.4l-1.5 1.5c.9.7 1.67 1.55 2.27 2.51-.9 1.72-2.4 3.2-4.3 4.2l1.55 1.55c2.2-1.2 4.02-3.05 5.18-5.27a.75.75 0 0 0 0-.4z"
@@ -437,7 +368,7 @@
               v-model="provider.cos.bucket"
               spellcheck="false"
               :placeholder="t('settings.objectStorage.cos.bucketPlaceholder')"
-            >
+            />
           </label>
 
           <label>
@@ -446,7 +377,7 @@
               v-model="provider.cos.publicBaseUrl"
               spellcheck="false"
               :placeholder="t('settings.objectStorage.cos.publicBaseUrlPlaceholder')"
-            >
+            />
           </label>
         </template>
       </div>

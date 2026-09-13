@@ -123,9 +123,7 @@ export interface CommitAiWorkflowResult {
 function catalogPromptBlock(): string {
   const catalog = buildGraphPlanCatalog('subgraphAsset')
   const lines = catalog.map((entry) => {
-    const ports = entry.ports
-      .map((p) => `${p.direction}:${p.id}:${p.dataType}`)
-      .join(', ')
+    const ports = entry.ports.map((p) => `${p.direction}:${p.id}:${p.dataType}`).join(', ')
     return `- ${entry.typeId} (${entry.label}) [${ports}]`
   })
   return lines.join('\n')
@@ -186,7 +184,9 @@ function needsRepair(
 ): boolean {
   if (!materialized.ok || !materialized.document) return true
   const unknown = materialized.warnings.some((w) => w.includes('未知或不可添加类型'))
-  const badEdge = materialized.warnings.some((w) => w.includes('端口不兼容') || w.includes('不存在的节点'))
+  const badEdge = materialized.warnings.some(
+    (w) => w.includes('端口不兼容') || w.includes('不存在的节点')
+  )
   const noEdges = plan.nodes.length >= 2 && plan.edges.length === 0
   return unknown || badEdge || noEdges
 }
@@ -262,7 +262,12 @@ export async function planAiWorkflow(
 
   if (input.useSeedOnly) {
     if (!seed) {
-      return { ok: false, warnings: [], error: fail(E_GRAPHPLAN_PRESET_NO_TEMPLATE).message, apiCalls }
+      return {
+        ok: false,
+        warnings: [],
+        error: fail(E_GRAPHPLAN_PRESET_NO_TEMPLATE).message,
+        apiCalls
+      }
     }
     const plan = withMediaDefaults(seed, input)
     const materialized = tryMaterialize(plan)
@@ -290,8 +295,7 @@ export async function planAiWorkflow(
 
   const system = buildSystemPrompt(seed)
   const userPrompt =
-    prompt ||
-    '请基于种子 GraphPlan 输出完整计划（可按常见业务略作润色 title 与 params）。'
+    prompt || '请基于种子 GraphPlan 输出完整计划（可按常见业务略作润色 title 与 params）。'
 
   let planText = ''
   try {
@@ -398,9 +402,7 @@ export async function commitAiWorkflow(
   }
 
   const title =
-    (typeof input.name === 'string' && input.name.trim()) ||
-    materialized.title ||
-    'AI Workflow'
+    (typeof input.name === 'string' && input.name.trim()) || materialized.title || 'AI Workflow'
   const hostInterface = inferHostInterfaceFromGraph(materialized.document)
   let asset: AssetInfo
   try {

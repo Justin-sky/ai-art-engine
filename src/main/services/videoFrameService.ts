@@ -164,7 +164,12 @@ async function grabFrameAt(
     if (stdout?.length) {
       return `data:image/png;base64,${stdout.toString('base64')}`
     }
-    console.warn('[video-frames] empty frame output:', tsSec ?? 'first', fileAbs, errSummary({ stderr: stderr?.toString() }))
+    console.warn(
+      '[video-frames] empty frame output:',
+      tsSec ?? 'first',
+      fileAbs,
+      errSummary({ stderr: stderr?.toString() })
+    )
   } catch (err) {
     console.warn('[video-frames] frame grab failed:', tsSec ?? 'first', fileAbs, errSummary(err))
   }

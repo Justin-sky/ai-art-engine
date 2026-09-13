@@ -27,10 +27,7 @@ export interface MinimapTransform {
 const EMPTY_WORLD: MinimapWorldBounds = { x: 0, y: 0, w: 1600, h: 1200 }
 
 /** 节点世界包围盒；空图回退固定范围 */
-export function resolveMinimapWorldBounds(
-  nodes: GraphNode[],
-  padding = 120
-): MinimapWorldBounds {
+export function resolveMinimapWorldBounds(nodes: GraphNode[], padding = 120): MinimapWorldBounds {
   const bounds = getNodesBounds(nodes, padding)
   if (!bounds || bounds.w <= 0 || bounds.h <= 0) return { ...EMPTY_WORLD }
   // 保证最小可视范围，避免单节点时视口框盖满小地图

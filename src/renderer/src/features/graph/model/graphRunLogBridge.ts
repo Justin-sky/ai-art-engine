@@ -12,10 +12,7 @@ import {
 } from '@shared/graph'
 import { useGraphRunLogsStore } from '../../../stores/graphRunLogs'
 import i18n from '../../../i18n'
-import {
-  resolveGraphNodeDisplayTitle,
-  resolveGraphTypeLabel
-} from './graphNodeDisplayTitle'
+import { resolveGraphNodeDisplayTitle, resolveGraphTypeLabel } from './graphNodeDisplayTitle'
 
 function defaultNodeTitle(node: GraphNode | undefined, fallbackId: string): string {
   if (!node) return fallbackId
@@ -110,9 +107,7 @@ export function createGraphRunLogBridge(options: GraphRunLogBridgeOptions): Grap
     let durationMs: number | undefined
     // 运行中只记输入（含空端口）；完成/失败只记输出（不把输入再挂到完成行）
     const inputs =
-      state.status === 'running'
-        ? (summarizeInputPortsForLog(state.inputs ?? {}) ?? {})
-        : undefined
+      state.status === 'running' ? (summarizeInputPortsForLog(state.inputs ?? {}) ?? {}) : undefined
     const outputs =
       state.status === 'done' || state.status === 'error' || state.status === 'degraded'
         ? summarizeOutputPortsForLog(state.outputs)
@@ -225,7 +220,11 @@ export function createGraphRunLogBridge(options: GraphRunLogBridgeOptions): Grap
     opts?: { aborted?: boolean; message?: string }
   ): void {
     if (opts?.aborted || result?.error === 'GRAPH_CANCELLED') {
-      finalizeOpenNodes('error', opts?.message ?? resolveMessage('GRAPH_CANCELLED'), 'GRAPH_CANCELLED')
+      finalizeOpenNodes(
+        'error',
+        opts?.message ?? resolveMessage('GRAPH_CANCELLED'),
+        'GRAPH_CANCELLED'
+      )
       store.endRun({
         runId: options.runId,
         status: 'stopped',
@@ -252,11 +251,7 @@ export function createGraphRunLogBridge(options: GraphRunLogBridgeOptions): Grap
       })
       return
     }
-    finalizeOpenNodes(
-      'error',
-      opts?.message ?? resolveMessage(result.error),
-      result.error
-    )
+    finalizeOpenNodes('error', opts?.message ?? resolveMessage(result.error), result.error)
     store.endRun({
       runId: options.runId,
       status: 'error',

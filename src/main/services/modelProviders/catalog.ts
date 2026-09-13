@@ -24,7 +24,8 @@ export const PROVIDER_ERRORS = {
   ),
   noActiveProvider: defErr<{ modality: string }>(
     'provider.noActiveProvider',
-    ({ modality }) => `未配置可用的 ${modality} 模型提供商（需 API Key 或本地服务，并勾选至少一个模型）`,
+    ({ modality }) =>
+      `未配置可用的 ${modality} 模型提供商（需 API Key 或本地服务，并勾选至少一个模型）`,
     ({ modality }) =>
       `No available ${modality} provider configured (needs an API key or a local service with at least one model enabled)`
   ),
@@ -38,8 +39,16 @@ export const PROVIDER_ERRORS = {
     ({ action, detail }) => `${ACTION_ZH[action]}失败: ${detail}`,
     ({ action, detail }) => `${ACTION_EN[action]} failed: ${detail}`
   ),
-  noVideoTaskId: defErrSimple('provider.noVideoTaskId', '未返回视频任务 id', 'No video task id returned'),
-  noImageTaskId: defErrSimple('provider.noImageTaskId', '未返回图片任务 id', 'No image task id returned'),
+  noVideoTaskId: defErrSimple(
+    'provider.noVideoTaskId',
+    '未返回视频任务 id',
+    'No video task id returned'
+  ),
+  noImageTaskId: defErrSimple(
+    'provider.noImageTaskId',
+    '未返回图片任务 id',
+    'No image task id returned'
+  ),
   imageTimeout: defErrSimple(
     'provider.imageTimeout',
     '图片生成超时：任务仍未完成',
@@ -55,7 +64,11 @@ export const PROVIDER_ERRORS = {
     '图片任务已完成但未返回 URL',
     'Image task finished but returned no URL'
   ),
-  noImageResult: defErrSimple('provider.noImageResult', '模型未返回图片', 'The model returned no image'),
+  noImageResult: defErrSimple(
+    'provider.noImageResult',
+    '模型未返回图片',
+    'The model returned no image'
+  ),
   noAudioResult: defErrSimple(
     'provider.noAudioResult',
     '模型未返回音频数据',

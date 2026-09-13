@@ -5,10 +5,7 @@
 import type { ScriptTimelineClip } from '@shared/graph'
 import i18n from '../../i18n'
 
-type ResolveSrc = (clip: {
-  relativePath?: string
-  assetId?: string
-}) => Promise<string>
+type ResolveSrc = (clip: { relativePath?: string; assetId?: string }) => Promise<string>
 
 /** 运行时按当前界面语言取 timeline 文案（本模块在组件 setup 之外执行） */
 function tl(key: string): string {
@@ -32,11 +29,7 @@ export type TimelineRecorderExportResult =
   | { ok: false; canceled?: boolean; error: string }
 
 function pickMime(): string {
-  const candidates = [
-    'video/webm;codecs=vp9,opus',
-    'video/webm;codecs=vp8,opus',
-    'video/webm'
-  ]
+  const candidates = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
   if (typeof MediaRecorder === 'undefined') return ''
   return candidates.find((t) => MediaRecorder.isTypeSupported(t)) ?? ''
 }
@@ -53,10 +46,7 @@ function clipAt(
   return null
 }
 
-function topVideoClipAt(
-  clips: ScriptTimelineClip[],
-  t: number
-): ScriptTimelineClip | null {
+function topVideoClipAt(clips: ScriptTimelineClip[], t: number): ScriptTimelineClip | null {
   let found: ScriptTimelineClip | null = null
   for (const clip of clips) {
     if (clip.track !== 'video') continue
@@ -171,10 +161,7 @@ export async function exportTimelineViaRecorder(
   osc.start()
 
   const canvasStream = canvas.captureStream(30)
-  const mixed = new MediaStream([
-    ...canvasStream.getVideoTracks(),
-    ...dest.stream.getAudioTracks()
-  ])
+  const mixed = new MediaStream([...canvasStream.getVideoTracks(), ...dest.stream.getAudioTracks()])
 
   const chunks: BlobPart[] = []
   const recorder = new MediaRecorder(mixed, { mimeType: mime, videoBitsPerSecond: 4_000_000 })

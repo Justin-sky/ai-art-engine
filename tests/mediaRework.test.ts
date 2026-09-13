@@ -43,7 +43,9 @@ describe('createMediaReworkState / shouldMediaReworkContinue', () => {
   })
 
   it('stops when passed or at max attempts', () => {
-    expect(shouldMediaReworkContinue({ ...createMediaReworkState(2), status: 'passed' })).toBe(false)
+    expect(shouldMediaReworkContinue({ ...createMediaReworkState(2), status: 'passed' })).toBe(
+      false
+    )
     expect(
       shouldMediaReworkContinue({ ...createMediaReworkState(2), attempt: 2, status: 'running' })
     ).toBe(false)
@@ -123,9 +125,13 @@ describe('executeMediaReworkNode', () => {
   }
 
   it('passes on first attempt and writes gallery', async () => {
-    const node = createNodeFromType('media.rework', { x: 0, y: 0 }, {
-      params: { generateInstruction: '一只猫' }
-    })
+    const node = createNodeFromType(
+      'media.rework',
+      { x: 0, y: 0 },
+      {
+        params: { generateInstruction: '一只猫' }
+      }
+    )
     const generateImage = genImage()
     const generateText = vi.fn(async () => ({ text: '## 结论: PASS', model: 'mock' }))
     const patchNode = vi.fn()
@@ -142,9 +148,13 @@ describe('executeMediaReworkNode', () => {
   })
 
   it('FAIL then PASS: retries with injected reason and converges', async () => {
-    const node = createNodeFromType('media.rework', { x: 0, y: 0 }, {
-      params: { generateInstruction: '一只猫' }
-    })
+    const node = createNodeFromType(
+      'media.rework',
+      { x: 0, y: 0 },
+      {
+        params: { generateInstruction: '一只猫' }
+      }
+    )
     const generateImage = genImage()
     let textCalls = 0
     const generateText = vi.fn(async () => {
@@ -165,9 +175,13 @@ describe('executeMediaReworkNode', () => {
   })
 
   it('exhausts at max attempts and marks FAIL', async () => {
-    const node = createNodeFromType('media.rework', { x: 0, y: 0 }, {
-      params: { generateInstruction: '一只猫', mediaReworkMaxAttempts: 2 }
-    })
+    const node = createNodeFromType(
+      'media.rework',
+      { x: 0, y: 0 },
+      {
+        params: { generateInstruction: '一只猫', mediaReworkMaxAttempts: 2 }
+      }
+    )
     const generateImage = genImage()
     const generateText = vi.fn(async () => ({
       text: '## 结论: FAIL (原因: 风格漂移)',
@@ -184,22 +198,30 @@ describe('executeMediaReworkNode', () => {
   })
 
   it('without model returns empty images', async () => {
-    const node = createNodeFromType('media.rework', { x: 0, y: 0 }, {
-      params: { generateInstruction: '一只猫' }
-    })
+    const node = createNodeFromType(
+      'media.rework',
+      { x: 0, y: 0 },
+      {
+        params: { generateInstruction: '一只猫' }
+      }
+    )
     const result = await executeMediaReworkNode(baseCtx({ node }))
     expect(result.out.kind).toBe('images')
   })
 
   it('falls back to an alternate image model when the primary call fails', async () => {
-    const node = createNodeFromType('media.rework', { x: 0, y: 0 }, {
-      params: {
-        generateInstruction: '一只猫',
-        generateModel: 'primary-model',
-        generateProviderInstanceId: 'provider-a',
-        generateModelFallbacks: ['provider-b::backup-model']
+    const node = createNodeFromType(
+      'media.rework',
+      { x: 0, y: 0 },
+      {
+        params: {
+          generateInstruction: '一只猫',
+          generateModel: 'primary-model',
+          generateProviderInstanceId: 'provider-a',
+          generateModelFallbacks: ['provider-b::backup-model']
+        }
       }
-    })
+    )
     const generateImage = vi.fn(async (args: { model?: string }) => {
       if (args.model === 'primary-model') throw new Error('rate limited')
       return { images: ['data:image/png;base64,BBBB'], model: 'backup-model' }
@@ -220,14 +242,18 @@ describe('executeMediaReworkNode', () => {
   })
 
   it('falls back to an alternate review model when the primary QC call fails', async () => {
-    const node = createNodeFromType('media.rework', { x: 0, y: 0 }, {
-      params: {
-        generateInstruction: '一只猫',
-        reviewModel: 'qc-a',
-        reviewProviderInstanceId: 'provider-a',
-        reviewModelFallbacks: ['provider-b::qc-b']
+    const node = createNodeFromType(
+      'media.rework',
+      { x: 0, y: 0 },
+      {
+        params: {
+          generateInstruction: '一只猫',
+          reviewModel: 'qc-a',
+          reviewProviderInstanceId: 'provider-a',
+          reviewModelFallbacks: ['provider-b::qc-b']
+        }
       }
-    })
+    )
     const generateImage = genImage()
     const generateText = vi.fn(async (args: { model?: string }) => {
       if (args.model === 'qc-a') throw new Error('model overloaded')

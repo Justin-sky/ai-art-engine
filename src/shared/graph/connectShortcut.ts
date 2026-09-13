@@ -30,11 +30,7 @@ function buildRevAdj(edges: GraphEdge[]): Map<string, string[]> {
 }
 
 /** 有向图：source 是否已能到达 target */
-export function nodeCanReach(
-  edges: GraphEdge[],
-  sourceId: string,
-  targetId: string
-): boolean {
+export function nodeCanReach(edges: GraphEdge[], sourceId: string, targetId: string): boolean {
   if (sourceId === targetId) return true
   const adj = buildAdj(edges)
   const seen = new Set<string>([sourceId])
@@ -54,10 +50,7 @@ export function nodeCanReach(
 }
 
 /** 能到达 nodeId 的所有祖先（不含自身） */
-export function nodesReaching(
-  edges: GraphEdge[],
-  nodeId: string
-): Set<string> {
+export function nodesReaching(edges: GraphEdge[], nodeId: string): Set<string> {
   const rev = buildRevAdj(edges)
   const seen = new Set<string>()
   const stack = [nodeId]
@@ -75,11 +68,7 @@ export function nodesReaching(
 }
 
 /** 两节点是否共享上游，或彼此可达（同属一条馈入族） */
-export function nodesShareUpstream(
-  edges: GraphEdge[],
-  a: string,
-  b: string
-): boolean {
+export function nodesShareUpstream(edges: GraphEdge[], a: string, b: string): boolean {
   if (a === b) return true
   if (nodeCanReach(edges, a, b) || nodeCanReach(edges, b, a)) return true
   const ancA = nodesReaching(edges, a)

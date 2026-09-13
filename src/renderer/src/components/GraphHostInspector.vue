@@ -1,8 +1,5 @@
 <template>
-  <div
-    v-if="node"
-    class="node-inspector"
-  >
+  <div v-if="node" class="node-inspector">
     <div class="head">
       <h2>{{ displayTitle }}</h2>
     </div>
@@ -12,11 +9,7 @@
 
     <label>
       {{ t('graph.inspector.displayName') }}
-      <input
-        v-model="displayName"
-        type="text"
-        @change="persistTitle"
-      >
+      <input v-model="displayName" type="text" @change="persistTitle" />
     </label>
 
     <GraphNodeRunControl
@@ -38,34 +31,19 @@
       direction="out"
     />
 
-    <button
-      type="button"
-      class="apply-btn"
-      :disabled="saving"
-      @click="applyInterface"
-    >
+    <button type="button" class="apply-btn" :disabled="saving" @click="applyInterface">
       {{ saving ? t('graph.hostInterface.saving') : t('graph.hostInterface.apply') }}
     </button>
-    <p
-      v-if="error"
-      class="err"
-    >
+    <p v-if="error" class="err">
       {{ error }}
     </p>
 
     <section class="output-section">
       <h3>{{ t('graph.inspector.outputPreview') }}</h3>
-      <GraphNodeOutputPreview
-        v-if="hostId"
-        :node="node"
-        :host-id="hostId"
-      />
+      <GraphNodeOutputPreview v-if="hostId" :node="node" :host-id="hostId" />
     </section>
   </div>
-  <div
-    v-else
-    class="node-inspector empty"
-  >
+  <div v-else class="node-inspector empty">
     {{ t('graph.inspector.node.empty') }}
   </div>
 </template>
@@ -114,14 +92,12 @@ const node = computed((): GraphNode | null => {
 
 const hostId = computed(() => {
   const selection = editor.selection.current.value
-  return selection.kind === 'graph.node' ? selection.hostId ?? '' : ''
+  return selection.kind === 'graph.node' ? (selection.hostId ?? '') : ''
 })
 
 const { hasInPort, runStatus, isGraphRunning, blocked, toggleRun } = useGraphNodeRun(node)
 
-const typeLabel = computed(() =>
-  node.value?.typeId ? graphTypeLabel(node.value.typeId) : ''
-)
+const typeLabel = computed(() => (node.value?.typeId ? graphTypeLabel(node.value.typeId) : ''))
 const displayTitle = useNodeDisplayTitle(node, typeLabel)
 
 const displayName = ref('')
@@ -139,10 +115,7 @@ function buildDraftInterface(): HostInterfaceDocument {
   })
 }
 
-function hostPortIdsRemoved(
-  previous: HostInterfaceDocument,
-  next: HostInterfaceDocument
-): boolean {
+function hostPortIdsRemoved(previous: HostInterfaceDocument, next: HostInterfaceDocument): boolean {
   const nextIn = new Set(next.inputs.map((p) => p.id))
   const nextOut = new Set(next.outputs.map((p) => p.id))
   if (previous.inputs.some((p) => !nextIn.has(p.id))) return true
@@ -179,10 +152,7 @@ async function commitHostInterface(iface: HostInterfaceDocument): Promise<void> 
     const baseInner = liveInner ?? storedInner
     const nextInner = baseInner
       ? ensureBoundaryProxyNodes(cloneGraphDocument(baseInner), iface)
-      : ensureBoundaryProxyNodes(
-          { nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } },
-          iface
-        )
+      : ensureBoundaryProxyNodes({ nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } }, iface)
     await persistAssetRecord(current.assetId, {
       genParams: {
         ...prevGen,
@@ -281,12 +251,7 @@ function persistTitle(): void {
     return
   }
   // 仅改画布节点显示名，不改资产库原名；清空则回退显示资产名
-  graphEditorHosts.updateNode(
-    hid,
-    current.id,
-    {},
-    !trimmed || trimmed === assetName ? '' : trimmed
-  )
+  graphEditorHosts.updateNode(hid, current.id, {}, !trimmed || trimmed === assetName ? '' : trimmed)
   displayName.value = trimmed || assetName
 }
 

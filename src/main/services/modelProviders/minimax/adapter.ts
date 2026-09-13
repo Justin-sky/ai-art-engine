@@ -21,12 +21,7 @@ import {
   listMiniMaxCatalogModels,
   resolveMiniMaxModelCapabilities
 } from '@shared/modelProviders/minimax/modelCapabilities'
-import {
-  isAppError,
-  resolveAppErrorLocale,
-  fail,
-  defErrSimple
-} from '@shared/errors/appError'
+import { isAppError, resolveAppErrorLocale, fail, defErrSimple } from '@shared/errors/appError'
 import { PROVIDER_ERRORS } from '../catalog'
 import type { ModelProviderAdapter, VideoPollResult } from '../types'
 import { trimBaseUrl } from '../http'
@@ -236,7 +231,8 @@ export function buildMiniMaxV2VideoContent(input: GenerateVideoInput): {
   const refVideos = refs.filter((r) => r.kind === 'video_url').map((r) => r.url.trim())
   const refAudios = refs.filter((r) => r.kind === 'audio_url').map((r) => r.url.trim())
   const hasFrames = Boolean(firstFrame || lastFrame)
-  const hasMultimodalRefs = refVideos.length > 0 || refAudios.length > 0 || (!hasFrames && refImages.length > 0)
+  const hasMultimodalRefs =
+    refVideos.length > 0 || refAudios.length > 0 || (!hasFrames && refImages.length > 0)
 
   if (hasFrames && (refVideos.length > 0 || refAudios.length > 0)) {
     throw fail(E_MM_H3_FRAME_REF_MIXED)
@@ -390,9 +386,7 @@ export const miniMaxAdapter: ModelProviderAdapter = {
       const b64 = (data.data?.image_base64 ?? [])
         .map((raw) => raw.trim())
         .filter(Boolean)
-        .map((raw) =>
-          raw.startsWith('data:') ? raw : `data:image/jpeg;base64,${raw}`
-        )
+        .map((raw) => (raw.startsWith('data:') ? raw : `data:image/jpeg;base64,${raw}`))
       const images = urls.length ? urls : b64
       if (!images.length) throw fail(PROVIDER_ERRORS.noImageResult)
       return { images, model: modelId }
@@ -537,8 +531,7 @@ export const miniMaxAdapter: ModelProviderAdapter = {
         const status = mapTaskStatus(task?.status)
         const error =
           status === 'failed'
-            ? task?.error?.message?.trim() ||
-              pickMmBi('视频生成失败', 'Video generation failed')
+            ? task?.error?.message?.trim() || pickMmBi('视频生成失败', 'Video generation failed')
             : undefined
 
         let progress = 15
@@ -555,10 +548,7 @@ export const miniMaxAdapter: ModelProviderAdapter = {
         return { status, progress, error, downloadUrl }
       } catch (err) {
         if (isAppError(err) && err.code === PROVIDER_ERRORS.videoResultNoUrl.code) throw err
-        if (
-          err instanceof Error &&
-          /下载地址|download url/i.test(err.message)
-        ) {
+        if (err instanceof Error && /下载地址|download url/i.test(err.message)) {
           throw err
         }
         throw fail(PROVIDER_ERRORS.actionFailed, {
@@ -576,8 +566,7 @@ export const miniMaxAdapter: ModelProviderAdapter = {
       const status = mapTaskStatus(data.status)
       const error =
         status === 'failed'
-          ? data.base_resp?.status_msg ||
-            pickMmBi('视频生成失败', 'Video generation failed')
+          ? data.base_resp?.status_msg || pickMmBi('视频生成失败', 'Video generation failed')
           : undefined
 
       let progress = 15

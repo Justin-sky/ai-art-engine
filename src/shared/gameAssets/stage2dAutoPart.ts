@@ -88,7 +88,14 @@ export interface Stage2dAutoPartResult {
 }
 
 /** 像素到线段的平方距离（垂足落在线段外时取近端点到端点的距离） */
-function distSqToSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+function distSqToSegment(
+  px: number,
+  py: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number
+): number {
   const abx = bx - ax
   const aby = by - ay
   const lenSq = abx * abx + aby * aby
@@ -221,7 +228,10 @@ export function partitionStage2dAutoPart(input: Stage2dAutoPartInput): Stage2dAu
     if (bestSlot >= 0) assignment[i] = bestSlot
   }
 
-  return { assignment, pieces: recomputeStage2dAutoPieces({ width, height, assignment, slots }).pieces }
+  return {
+    assignment,
+    pieces: recomputeStage2dAutoPieces({ width, height, assignment, slots }).pieces
+  }
 }
 
 /**
@@ -287,7 +297,11 @@ export function eraseStage2dAutoPartSlot(input: {
 }
 
 /** 内容 alpha 平面提取（RGBA → 单通道 alpha），宽高校验失败返回 null */
-export function extractAlphaPlane(data: ArrayLike<number>, width: number, height: number): Uint8Array | null {
+export function extractAlphaPlane(
+  data: ArrayLike<number>,
+  width: number,
+  height: number
+): Uint8Array | null {
   if (width <= 0 || height <= 0) return null
   const total = width * height
   if (!data || total * 4 > data.length) return null

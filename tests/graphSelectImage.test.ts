@@ -32,11 +32,19 @@ describe('image.select node', () => {
   })
 
   it('rejects a singular image boundary into images in', () => {
-    const boundary = createNodeFromType('graph.boundary.input', { x: 0, y: 0 }, {
-      params: {
-        hostBoundaryPort: { portId: 'bound-img-x', dataType: GraphPortType.image, multiple: false }
+    const boundary = createNodeFromType(
+      'graph.boundary.input',
+      { x: 0, y: 0 },
+      {
+        params: {
+          hostBoundaryPort: {
+            portId: 'bound-img-x',
+            dataType: GraphPortType.image,
+            multiple: false
+          }
+        }
       }
-    })
+    )
     const select = createNodeFromType('image.select', { x: 120, y: 0 })
     expect(canConnectNodes(boundary, select)).toBe(false)
   })
@@ -51,9 +59,13 @@ describe('image.select node', () => {
   })
 
   it('execute outputs the selected single image', () => {
-    const node = createNodeFromType('image.select', { x: 0, y: 0 }, {
-      params: { selectedImageId: 'b' }
-    })
+    const node = createNodeFromType(
+      'image.select',
+      { x: 0, y: 0 },
+      {
+        params: { selectedImageId: 'b' }
+      }
+    )
     const patched: Record<string, unknown>[] = []
     const ctx: NodeExecuteContext = {
       node,

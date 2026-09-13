@@ -24,13 +24,10 @@
         @blur="commitTitleEdit"
         @keydown.enter.prevent="commitTitleEdit"
         @keydown.esc.prevent="cancelTitleEdit"
-      >
-      <span
-        v-else
-        class="title"
-        :title="displayTitle"
-        @dblclick.stop="startTitleEdit"
-      >{{ displayTitle }}</span>
+      />
+      <span v-else class="title" :title="displayTitle" @dblclick.stop="startTitleEdit">{{
+        displayTitle
+      }}</span>
     </div>
 
     <div class="demo-content">
@@ -44,18 +41,12 @@
         @keydown.esc.prevent="cancelEdit"
         @keydown.enter.ctrl.prevent="commitEdit"
       />
-      <div
-        v-else
-        class="demo-body"
-      >
+      <div v-else class="demo-body">
         {{ displayText }}
       </div>
     </div>
 
-    <GraphNodeResizeHandle
-      v-if="!editing"
-      @resize-start="onResizeStart"
-    />
+    <GraphNodeResizeHandle v-if="!editing" @resize-start="onResizeStart" />
 
     <button
       v-for="(port, index) in outPorts"
@@ -210,7 +201,9 @@ function cancelEdit(): void {
 
 .graph-demo-card.selected {
   border-color: #6ec8ff;
-  box-shadow: 0 0 0 1px #6ec8ff88, 0 6px 18px rgba(110, 200, 255, 0.18);
+  box-shadow:
+    0 0 0 1px #6ec8ff88,
+    0 6px 18px rgba(110, 200, 255, 0.18);
   z-index: 18;
 }
 

@@ -25,6 +25,8 @@ describe('graph executor overlay registry', () => {
     expect(resolveNodeExecutor({ typeId }, { execute: executePassthrough })).toBe(overlay)
     dispose()
     expect(getExecutor(typeId)).toBeUndefined()
-    expect(resolveNodeExecutor({ typeId }, { execute: executePassthrough })).toBe(executePassthrough)
+    expect(resolveNodeExecutor({ typeId }, { execute: executePassthrough })).toBe(
+      executePassthrough
+    )
   })
 })

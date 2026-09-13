@@ -12,11 +12,15 @@ import {
 
 describe('resolveGraphNodeDisplayTitle', () => {
   it('maps timeline stock output title to i18n 成片时间线', () => {
-    const node = createOutputGraphNode('image', { x: 0, y: 0 }, {
-      id: graphOutputNodeId('timeline'),
-      title: ASSET_TIMELINE_OUTPUT_TITLE,
-      params: { outputKind: 'video' }
-    })
+    const node = createOutputGraphNode(
+      'image',
+      { x: 0, y: 0 },
+      {
+        id: graphOutputNodeId('timeline'),
+        title: ASSET_TIMELINE_OUTPUT_TITLE,
+        params: { outputKind: 'video' }
+      }
+    )
     const title = resolveGraphNodeDisplayTitle(node, {
       scope: 'canvasAsset',
       t: (key) => (key === 'graph.titles.timelineOutput' ? '成片时间线' : key),
@@ -27,11 +31,15 @@ describe('resolveGraphNodeDisplayTitle', () => {
   })
 
   it('keeps user-customized output titles', () => {
-    const node = createOutputGraphNode('image', { x: 0, y: 0 }, {
-      id: graphOutputNodeId('image'),
-      title: '我的输出',
-      params: { outputKind: 'image' }
-    })
+    const node = createOutputGraphNode(
+      'image',
+      { x: 0, y: 0 },
+      {
+        id: graphOutputNodeId('image'),
+        title: '我的输出',
+        params: { outputKind: 'image' }
+      }
+    )
     const title = resolveGraphNodeDisplayTitle(node, {
       scope: 'canvasAsset',
       t: (key) => key,
@@ -85,9 +93,9 @@ describe('resolveGraphNodeDisplayTitle', () => {
         fallbackId: 'n3'
       })
     // 新一代复合标题
-    expect(resolve(`${EPISODE_AGENT_STOCK_TITLES.directorReview} · ${EPISODE_AGENT_STOCK_TITLES.motion}`)).toBe(
-      'graph.episodeAgent.title.directorReview · graph.episodeAgent.title.motionPrompt'
-    )
+    expect(
+      resolve(`${EPISODE_AGENT_STOCK_TITLES.directorReview} · ${EPISODE_AGENT_STOCK_TITLES.motion}`)
+    ).toBe('graph.episodeAgent.title.directorReview · graph.episodeAgent.title.motionPrompt')
     // 旧版中文复合标题
     expect(resolve('导演审核·节拍拆解表')).toBe(
       'graph.episodeAgent.title.directorReview · graph.episodeAgent.title.beatBreakdown'

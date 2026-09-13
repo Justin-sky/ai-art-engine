@@ -95,7 +95,9 @@ describe('text asset ref (screenplay / script)', () => {
             params: { outputKind: 'text', resultText: 'from output' }
           }
         ],
-        edges: [{ id: 'e1', source: 'sp', target: 'text-output', sourcePort: 'out', targetPort: 'in' }]
+        edges: [
+          { id: 'e1', source: 'sp', target: 'text-output', sourcePort: 'out', targetPort: 'in' }
+        ]
       }
     })
     expect(text).toBe('from output')
@@ -123,7 +125,9 @@ describe('text asset ref (screenplay / script)', () => {
           params: { outputKind: 'text' }
         }
       ],
-      edges: [{ id: 'e1', source: 'sp', target: 'text-output', sourcePort: 'out', targetPort: 'in' }],
+      edges: [
+        { id: 'e1', source: 'sp', target: 'text-output', sourcePort: 'out', targetPort: 'in' }
+      ],
       runStates: {
         'text-output': {
           status: 'done',
@@ -151,8 +155,7 @@ describe('text asset ref (screenplay / script)', () => {
         params: { assetRef: true }
       },
       inputs: {},
-      resolveAssetText: async (assetId) =>
-        assetId === 'sp-1' ? 'From file via URL' : undefined,
+      resolveAssetText: async (assetId) => (assetId === 'sp-1' ? 'From file via URL' : undefined),
       resolveAssetGenParams: () => ({
         graphJson: {
           version: 1,
@@ -206,5 +209,4 @@ describe('text asset ref (screenplay / script)', () => {
     const result = await executeTextAssetRefNode(ctx)
     expect(result.out).toEqual({ kind: 'text', text: 'from graph' })
   })
-
 })

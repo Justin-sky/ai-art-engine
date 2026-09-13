@@ -4,10 +4,7 @@
  * analyzeCutout 完成 YOLO 分割并解码原图，renderCutoutPng 完成
  * 软边 alpha + 羽化 + 去光晕合成，产物即透明通道 PNG 的 dataUrl。
  */
-import {
-  normalizeImageCutout,
-  type ImageCutoutState
-} from '@shared/graph'
+import { normalizeImageCutout, type ImageCutoutState } from '@shared/graph'
 import { analyzeCutout, renderCutoutPng } from '../../yolo/cutout'
 
 export async function composeImageCutoutCanvas(input: {
@@ -15,21 +12,17 @@ export async function composeImageCutoutCanvas(input: {
   state: ImageCutoutState
 }): Promise<{ dataUrl: string; width: number; height: number }> {
   const state = normalizeImageCutout(input.state)
-  const { analysis, image } = await analyzeCutout(
-    { url: input.sourceDataUrl },
-    state.confThreshold
-  )
+  const { analysis, image } = await analyzeCutout({ url: input.sourceDataUrl }, state.confThreshold)
 
   // 优先使用抠图工具里用户勾选的实例；勾选失效（检测结果漂移）时回退默认规则
-  const picked = (state.selected ?? [])
-    .filter((index) => analysis.instances.some((it) => it.index === index))
+  const picked = (state.selected ?? []).filter((index) =>
+    analysis.instances.some((it) => it.index === index)
+  )
   let selected: number[]
   if (picked.length) {
     selected = picked
   } else if (state.personOnly) {
-    selected = analysis.instances
-      .filter((it) => it.label === 'person')
-      .map((it) => it.index)
+    selected = analysis.instances.filter((it) => it.label === 'person').map((it) => it.index)
   } else {
     selected = analysis.instances.map((it) => it.index)
   }

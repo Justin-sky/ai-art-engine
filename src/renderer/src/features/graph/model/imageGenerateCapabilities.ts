@@ -36,9 +36,7 @@ const cache = new Map<string, ImageGenerateParamCapabilities>()
 function mergeImageGenerateCapabilities(
   parsed: ImageGenerateParamCapabilities
 ): ImageGenerateParamCapabilities {
-  const base = hasAnyImageGenerateCapability(parsed)
-    ? parsed
-    : DEFAULT_IMAGE_GENERATE_CAPABILITIES
+  const base = hasAnyImageGenerateCapability(parsed) ? parsed : DEFAULT_IMAGE_GENERATE_CAPABILITIES
   return {
     ...base,
     // 未声明时保留 undefined，端口角标显示 *；执行侧仍会回退默认上限
@@ -193,10 +191,7 @@ export async function loadImageGenerateCapabilities(
   const cached = cache.get(key)
   if (cached) return cached
 
-  const supported = await resolveSupportedParameters(
-    parsedKey.providerInstanceId,
-    parsedKey.model
-  )
+  const supported = await resolveSupportedParameters(parsedKey.providerInstanceId, parsedKey.model)
   const caps = parseImageGenerateCapabilities(supported)
   const resolved = mergeImageGenerateCapabilities(caps)
   cache.set(key, resolved)

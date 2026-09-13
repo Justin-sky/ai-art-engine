@@ -1,8 +1,5 @@
 <template>
-  <div
-    v-if="node"
-    class="node-inspector"
-  >
+  <div v-if="node" class="node-inspector">
     <div class="head">
       <span class="type">{{ typeLabel }}</span>
       <h2>{{ displayTitle }}</h2>
@@ -19,10 +16,7 @@
       @toggle="toggleRun"
     />
 
-    <div
-      v-if="node && hostId"
-      class="before-after"
-    >
+    <div v-if="node && hostId" class="before-after">
       <div
         ref="compareEl"
         class="compare-pane"
@@ -31,19 +25,14 @@
         @pointercancel="onCompareUp"
       >
         <template v-if="beforeUrl && afterUrl">
-          <img
-            :src="afterUrl"
-            alt=""
-            class="compare-img"
-            draggable="false"
-          >
+          <img :src="afterUrl" alt="" class="compare-img" draggable="false" />
           <img
             :src="beforeUrl"
             alt=""
             class="compare-img before"
             :style="{ clipPath: `inset(0 ${100 - splitPos}% 0 0)` }"
             draggable="false"
-          >
+          />
           <div
             class="compare-divider"
             :style="{ left: `${splitPos}%` }"
@@ -54,34 +43,15 @@
           <span class="compare-tag before">{{ t('graph.portraitQuality.before') }}</span>
           <span class="compare-tag after">{{ t('graph.portraitQuality.generated') }}</span>
         </template>
-        <img
-          v-else-if="beforeUrl"
-          :src="beforeUrl"
-          alt=""
-          class="compare-img"
-          draggable="false"
-        >
-        <img
-          v-else-if="afterUrl"
-          :src="afterUrl"
-          alt=""
-          class="compare-img"
-          draggable="false"
-        >
-        <div
-          v-else
-          class="compare-empty"
-        >
+        <img v-else-if="beforeUrl" :src="beforeUrl" alt="" class="compare-img" draggable="false" />
+        <img v-else-if="afterUrl" :src="afterUrl" alt="" class="compare-img" draggable="false" />
+        <div v-else class="compare-empty">
           {{ t('graph.portraitQuality.previewEmpty') }}
         </div>
       </div>
     </div>
 
-    <GraphNodeOutputPreview
-      v-if="node && hostId"
-      :node="node"
-      :host-id="hostId"
-    />
+    <GraphNodeOutputPreview v-if="node && hostId" :node="node" :host-id="hostId" />
 
     <label>
       {{ t('graph.inspector.generate.systemPrompt') }}
@@ -97,18 +67,10 @@
 
     <label>
       {{ t('graph.portraitTexture.outputPrompt') }}
-      <textarea
-        class="prompt-view"
-        :value="outputPrompt || emptyPrompt"
-        rows="6"
-        readonly
-      />
+      <textarea class="prompt-view" :value="outputPrompt || emptyPrompt" rows="6" readonly />
     </label>
   </div>
-  <div
-    v-else
-    class="node-inspector empty"
-  >
+  <div v-else class="node-inspector empty">
     {{ t('graph.inspector.node.empty') }}
   </div>
 </template>
@@ -151,7 +113,7 @@ const node = computed(() => {
 
 const hostId = computed(() => {
   const selection = editor.selection.current.value
-  return selection.kind === 'graph.node' ? selection.hostId ?? '' : ''
+  return selection.kind === 'graph.node' ? (selection.hostId ?? '') : ''
 })
 
 const { hasInPort, runStatus, isGraphRunning, blocked, toggleRun } = useGraphNodeRun(node)
@@ -275,10 +237,14 @@ async function resolveCompare(): Promise<void> {
   afterUrl.value = after
 }
 
-watch([node, hostId, runOutput], () => {
-  splitPos.value = 50
-  void resolveCompare()
-}, { immediate: true })
+watch(
+  [node, hostId, runOutput],
+  () => {
+    splitPos.value = 50
+    void resolveCompare()
+  },
+  { immediate: true }
+)
 
 function setSplitFromClientX(clientX: number): void {
   const el = compareEl.value

@@ -271,9 +271,7 @@ export const dashscopeAdapter: ModelProviderAdapter = {
     const client = createNativeClient(provider, LONG_GENERATE_TIMEOUT_MS)
     const size =
       (input.resolution?.includes('*') ? input.resolution.trim() : undefined) ||
-      (input.aspectRatio?.trim()
-        ? ASPECT_TO_SIZE[input.aspectRatio.trim()]
-        : undefined) ||
+      (input.aspectRatio?.trim() ? ASPECT_TO_SIZE[input.aspectRatio.trim()] : undefined) ||
       '1024*1024'
 
     const bodyInput: Record<string, unknown> = { prompt: input.prompt }
@@ -302,9 +300,7 @@ export const dashscopeAdapter: ModelProviderAdapter = {
         // 上游任务失败：message / code 原样透出，由外层统一句式包装
         throw new Error(output.message || output.code || '')
       }
-      const images = (output.results ?? [])
-        .map((r) => r.url?.trim() ?? '')
-        .filter(Boolean)
+      const images = (output.results ?? []).map((r) => r.url?.trim() ?? '').filter(Boolean)
       if (!images.length) throw fail(PROVIDER_ERRORS.imageResultNoUrl)
       return { images, model: modelId }
     } catch (err) {
@@ -353,9 +349,7 @@ export const dashscopeAdapter: ModelProviderAdapter = {
       if (!videoRefs.length) {
         throw fail(E_HAPPYHORSE_EDIT_NEEDS_VIDEO)
       }
-      const media: Array<{ type: string; url: string }> = [
-        { type: 'video', url: videoRefs[0]! }
-      ]
+      const media: Array<{ type: string; url: string }> = [{ type: 'video', url: videoRefs[0]! }]
       for (const url of imageRefs.slice(0, 5)) {
         media.push({ type: 'reference_image', url })
       }
@@ -434,9 +428,7 @@ export const dashscopeAdapter: ModelProviderAdapter = {
   ): Promise<VideoPollResult> {
     const client = createNativeClient(provider)
     try {
-      const path = job.pollingUrl.startsWith('http')
-        ? job.pollingUrl
-        : `/tasks/${job.jobId}`
+      const path = job.pollingUrl.startsWith('http') ? job.pollingUrl : `/tasks/${job.jobId}`
       const { data } = await client.get<DashScopeTaskEnvelope>(path)
       if (data.code && !data.output) {
         throw new Error(data.message || data.code)
@@ -517,7 +509,9 @@ export const dashscopeAdapter: ModelProviderAdapter = {
       if (isAppError(err) && err.code === PROVIDER_ERRORS.noMusicResult.code) throw err
       if (
         err instanceof Error &&
-        /音乐模型|音乐描述|音乐生成失败|music model|music generation failed|开通|邀测|invite/i.test(err.message)
+        /音乐模型|音乐描述|音乐生成失败|music model|music generation failed|开通|邀测|invite/i.test(
+          err.message
+        )
       ) {
         throw err
       }

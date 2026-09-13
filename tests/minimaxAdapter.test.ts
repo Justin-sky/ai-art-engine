@@ -175,9 +175,8 @@ describe('miniMaxAdapter', () => {
   })
 
   it('generateText uses openai compat under /v1', async () => {
-    const { generateOpenAiCompatibleText } = await import(
-      '../src/main/services/modelProviders/openaiCompat'
-    )
+    const { generateOpenAiCompatibleText } =
+      await import('../src/main/services/modelProviders/openaiCompat')
     // delegated via real import — assert through post path by mocking axios create base
     postMock.mockResolvedValueOnce({
       data: { model: 'MiniMax-M3', choices: [{ message: { content: 'hello' } }] }

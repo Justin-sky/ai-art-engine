@@ -4,16 +4,16 @@
 
 相关代码：
 
-| 模块 | 路径 |
-|------|------|
-| 节点类型注册 | `src/shared/graph/registry.ts` |
-| GraphSkill 目录 | `src/shared/graph/graphSkills.ts` |
-| 画布 Scope | `src/shared/graph/scopes.ts` |
-| 图策略（可添加节点 + 连线） | `src/shared/graph/policy/`、`default.graph-policy.json` |
-| 图规范化 | `src/shared/graph/normalize.ts` |
-| 卡片注册 | `src/renderer/src/graph/cards/registry.ts` |
-| 检查器注册 | `src/renderer/src/inspector/registry.ts` |
-| 扩展入口 | `src/renderer/src/editor/runtime/`（Cordis `Context` + `EditorHub`） |
+| 模块                        | 路径                                                                 |
+| --------------------------- | -------------------------------------------------------------------- |
+| 节点类型注册                | `src/shared/graph/registry.ts`                                       |
+| GraphSkill 目录             | `src/shared/graph/graphSkills.ts`                                    |
+| 画布 Scope                  | `src/shared/graph/scopes.ts`                                         |
+| 图策略（可添加节点 + 连线） | `src/shared/graph/policy/`、`default.graph-policy.json`              |
+| 图规范化                    | `src/shared/graph/normalize.ts`                                      |
+| 卡片注册                    | `src/renderer/src/graph/cards/registry.ts`                           |
+| 检查器注册                  | `src/renderer/src/inspector/registry.ts`                             |
+| 扩展入口                    | `src/renderer/src/editor/runtime/`（Cordis `Context` + `EditorHub`） |
 
 ## 概念
 
@@ -21,9 +21,9 @@
 
 统一使用 `asset.*` 类型：
 
-| 角色 | 标记 | 说明 |
-|------|------|------|
-| 资产引用 | `params.assetRef === true` | 从资产库拖入，仅输出 |
+| 角色     | 标记                        | 说明                      |
+| -------- | --------------------------- | ------------------------- |
+| 资产引用 | `params.assetRef === true`  | 从资产库拖入，仅输出      |
 | 加工节点 | 无 `assetId`、无 `assetRef` | 右键菜单添加，有输入/输出 |
 
 ### 画布 Scope
@@ -65,11 +65,11 @@ Scope 配置项（`GraphScopeDefinition`）：
 
 节点图是唯一执行引擎。一种生成能力只在一处实现，节点只消费：
 
-| 层 | 含义 | 代码 |
-|---|---|---|
-| 定义 | `typeId` + `ports` + `execute` | `registerNodeType` / `NodeTypeDefinition` |
-| 提供商 | 文本 / 图 / 视频 / 语音生成 | `NodeExecuteContext.generateText` / `generateImage` / `generateVideo` |
-| 消费 | 边两端 `dataType` 相同（单数与复数不互通） | `portsCompatible` |
+| 层     | 含义                                       | 代码                                                                  |
+| ------ | ------------------------------------------ | --------------------------------------------------------------------- |
+| 定义   | `typeId` + `ports` + `execute`             | `registerNodeType` / `NodeTypeDefinition`                             |
+| 提供商 | 文本 / 图 / 视频 / 语音生成                | `NodeExecuteContext.generateText` / `generateImage` / `generateVideo` |
+| 消费   | 边两端 `dataType` 相同（单数与复数不互通） | `portsCompatible`                                                     |
 
 新节点继续 `registerNodeType`。`execute` **必须**走已注入的 `generate*` 适配器，禁止在 execute 里直连 HTTP。
 
@@ -154,14 +154,14 @@ export function apply(ctx: Context): void {
 
 ## 节点类型字段
 
-| 字段 | 说明 |
-|------|------|
-| `typeId` | 唯一 id，建议 `plugin.*` 前缀 |
-| `addable` | 全局是否可添加；具体出现在哪些画布由 `graphPolicy.addableNodeTypes` 决定 |
-| `inspector` / `inspectorId` | 检查器种类或显式绑定 |
-| `card` / `cardId` | 卡片种类（`note`/`media`）或显式绑定 |
-| `presentation` | 备注类卡片 i18n 键（`badgeKey` 等） |
-| `execute` | 节点执行器；缺省透传。可另用 `ctx.editor.executor(typeId, fn)` 覆盖 |
+| 字段                        | 说明                                                                     |
+| --------------------------- | ------------------------------------------------------------------------ |
+| `typeId`                    | 唯一 id，建议 `plugin.*` 前缀                                            |
+| `addable`                   | 全局是否可添加；具体出现在哪些画布由 `graphPolicy.addableNodeTypes` 决定 |
+| `inspector` / `inspectorId` | 检查器种类或显式绑定                                                     |
+| `card` / `cardId`           | 卡片种类（`note`/`media`）或显式绑定                                     |
+| `presentation`              | 备注类卡片 i18n 键（`badgeKey` 等）                                      |
+| `execute`                   | 节点执行器；缺省透传。可另用 `ctx.editor.executor(typeId, fn)` 覆盖      |
 
 默认检查器解析见 `src/renderer/src/inspector/defaults.ts`。  
 默认卡片 id：`studio.graph.note` / `studio.graph.media`。
@@ -183,8 +183,8 @@ dragAssets: {
 
 内置规则：
 
-| Scope | 拖入 |
-|-------|------|
+| Scope          | 拖入                                                     |
+| -------------- | -------------------------------------------------------- |
 | 所有内置 Scope | 允许全部资产；资产编辑器仍拒绝拖入当前正在编辑的资产自身 |
 
 ## 连线

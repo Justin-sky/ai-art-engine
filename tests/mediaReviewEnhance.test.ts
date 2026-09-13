@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createNodeFromType } from '../src/shared/graph'
+import { executeMediaReviewNode, executeMediaReworkNode } from '../src/shared/graph/execute'
 import {
-  executeMediaReviewNode,
-  executeMediaReworkNode
-} from '../src/shared/graph/execute'
-import { describeAspectRatio, readImageDimensions } from '../src/shared/graph/execute/imageDimensions'
+  describeAspectRatio,
+  readImageDimensions
+} from '../src/shared/graph/execute/imageDimensions'
 import type { NodeExecuteContext } from '../src/shared/graph/execute/types'
 import {
   checkMediaObjective,
@@ -105,7 +105,13 @@ describe('parseMediaReviewScores', () => {
   })
 
   it('parses the english checklist form', () => {
-    const text = ['## Review Checklist', '- Completeness: 4/5 — ok', '- Consistency: 3/5 — drift', '', '## 结论: FAIL'].join('\n')
+    const text = [
+      '## Review Checklist',
+      '- Completeness: 4/5 — ok',
+      '- Consistency: 3/5 — drift',
+      '',
+      '## 结论: FAIL'
+    ].join('\n')
     expect(parseMediaReviewScores(text)?.items).toHaveLength(2)
   })
 
@@ -127,8 +133,12 @@ describe('checkMediaObjective', () => {
   })
 
   it('compares aspect ratios with tolerance', () => {
-    expect(checkMediaObjective({ expectedAspectRatio: '16:9', actualAspectRatio: '1:1' })).toHaveLength(1)
-    expect(checkMediaObjective({ expectedAspectRatio: '16:9', actualAspectRatio: '16:9' })).toEqual([])
+    expect(
+      checkMediaObjective({ expectedAspectRatio: '16:9', actualAspectRatio: '1:1' })
+    ).toHaveLength(1)
+    expect(checkMediaObjective({ expectedAspectRatio: '16:9', actualAspectRatio: '16:9' })).toEqual(
+      []
+    )
     expect(checkMediaObjective({ expectedAspectRatio: '16:9' })).toEqual([])
   })
 
@@ -136,9 +146,7 @@ describe('checkMediaObjective', () => {
     expect(
       checkMediaObjective({ minEdge: 1000, actualWidth: 800, actualHeight: 600 })
     ).toHaveLength(1)
-    expect(
-      checkMediaObjective({ minEdge: 500, actualWidth: 800, actualHeight: 600 })
-    ).toEqual([])
+    expect(checkMediaObjective({ minEdge: 500, actualWidth: 800, actualHeight: 600 })).toEqual([])
   })
 })
 
@@ -167,39 +175,122 @@ describe('readImageDimensions', () => {
 
 function makePng(width: number, height: number): string {
   const bytes = Buffer.from([
-    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
-    0x00, 0x00, 0x00, 0x0d,
-    0x49, 0x48, 0x44, 0x52,
-    (width >>> 24) & 0xff, (width >>> 16) & 0xff, (width >>> 8) & 0xff, width & 0xff,
-    (height >>> 24) & 0xff, (height >>> 16) & 0xff, (height >>> 8) & 0xff, height & 0xff,
-    0x08, 0x02, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00
+    0x89,
+    0x50,
+    0x4e,
+    0x47,
+    0x0d,
+    0x0a,
+    0x1a,
+    0x0a,
+    0x00,
+    0x00,
+    0x00,
+    0x0d,
+    0x49,
+    0x48,
+    0x44,
+    0x52,
+    (width >>> 24) & 0xff,
+    (width >>> 16) & 0xff,
+    (width >>> 8) & 0xff,
+    width & 0xff,
+    (height >>> 24) & 0xff,
+    (height >>> 16) & 0xff,
+    (height >>> 8) & 0xff,
+    height & 0xff,
+    0x08,
+    0x02,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00
   ])
   return `data:image/png;base64,${bytes.toString('base64')}`
 }
 
 function makeJpeg(width: number, height: number): string {
   const bytes = Buffer.from([
-    0xff, 0xd8,
-    0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00,
-    0xff, 0xc0, 0x00, 0x11, 0x08,
-    (height >>> 8) & 0xff, height & 0xff,
-    (width >>> 8) & 0xff, width & 0xff,
-    0x03, 0x01, 0x11, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01,
-    0xff, 0xd9
+    0xff,
+    0xd8,
+    0xff,
+    0xe0,
+    0x00,
+    0x10,
+    0x4a,
+    0x46,
+    0x49,
+    0x46,
+    0x00,
+    0x01,
+    0x01,
+    0x00,
+    0x00,
+    0x01,
+    0x00,
+    0x01,
+    0x00,
+    0x00,
+    0xff,
+    0xc0,
+    0x00,
+    0x11,
+    0x08,
+    (height >>> 8) & 0xff,
+    height & 0xff,
+    (width >>> 8) & 0xff,
+    width & 0xff,
+    0x03,
+    0x01,
+    0x11,
+    0x00,
+    0x02,
+    0x11,
+    0x01,
+    0x03,
+    0x11,
+    0x01,
+    0xff,
+    0xd9
   ])
   return `data:image/jpeg;base64,${bytes.toString('base64')}`
 }
 
 function makeWebpVp8x(width: number, height: number): string {
   const bytes = Buffer.from([
-    0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00,
-    0x57, 0x45, 0x42, 0x50,
-    0x56, 0x50, 0x38, 0x58,
-    0x0a, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00,
-    (width - 1) & 0xff, ((width - 1) >>> 8) & 0xff, ((width - 1) >>> 16) & 0xff,
-    (height - 1) & 0xff, ((height - 1) >>> 8) & 0xff, ((height - 1) >>> 16) & 0xff
+    0x52,
+    0x49,
+    0x46,
+    0x46,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x57,
+    0x45,
+    0x42,
+    0x50,
+    0x56,
+    0x50,
+    0x38,
+    0x58,
+    0x0a,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    (width - 1) & 0xff,
+    ((width - 1) >>> 8) & 0xff,
+    ((width - 1) >>> 16) & 0xff,
+    (height - 1) & 0xff,
+    ((height - 1) >>> 8) & 0xff,
+    ((height - 1) >>> 16) & 0xff
   ])
   return `data:image/webp;base64,${bytes.toString('base64')}`
 }
@@ -278,13 +369,17 @@ describe('executeMediaReworkNode (reworked)', () => {
   }
 
   it('sends QC to the review model and generation to the image model', async () => {
-    const node = createNodeFromType('media.rework', { x: 0, y: 0 }, {
-      params: {
-        generateInstruction: '一只猫',
-        generateModel: 'img-model',
-        reviewModel: 'vlm-model'
+    const node = createNodeFromType(
+      'media.rework',
+      { x: 0, y: 0 },
+      {
+        params: {
+          generateInstruction: '一只猫',
+          generateModel: 'img-model',
+          reviewModel: 'vlm-model'
+        }
       }
-    })
+    )
     const generateImage = genImage()
     const generateText = vi.fn(async () => ({ text: '## 结论: PASS', model: 'vlm' }))
 
@@ -295,9 +390,13 @@ describe('executeMediaReworkNode (reworked)', () => {
   })
 
   it('keeps every attempt in the gallery instead of only the last', async () => {
-    const node = createNodeFromType('media.rework', { x: 0, y: 0 }, {
-      params: { generateInstruction: '一只猫', mediaReworkMaxAttempts: 3 }
-    })
+    const node = createNodeFromType(
+      'media.rework',
+      { x: 0, y: 0 },
+      {
+        params: { generateInstruction: '一只猫', mediaReworkMaxAttempts: 3 }
+      }
+    )
     const generateImage = genImage()
     let calls = 0
     const generateText = vi.fn(async () => {
@@ -314,13 +413,17 @@ describe('executeMediaReworkNode (reworked)', () => {
   })
 
   it('pauses after the first attempt when confirm-first is on', async () => {
-    const node = createNodeFromType('media.rework', { x: 0, y: 0 }, {
-      params: {
-        generateInstruction: '一只猫',
-        mediaReworkMaxAttempts: 3,
-        mediaReworkConfirmFirst: true
+    const node = createNodeFromType(
+      'media.rework',
+      { x: 0, y: 0 },
+      {
+        params: {
+          generateInstruction: '一只猫',
+          mediaReworkMaxAttempts: 3,
+          mediaReworkConfirmFirst: true
+        }
       }
-    })
+    )
     const generateImage = genImage()
     const generateText = vi.fn(async () => ({ text: '## 结论: FAIL (原因: 糊脸)', model: 'vlm' }))
 
@@ -331,9 +434,13 @@ describe('executeMediaReworkNode (reworked)', () => {
   })
 
   it('does not burn an attempt when the verdict format is missing', async () => {
-    const node = createNodeFromType('media.rework', { x: 0, y: 0 }, {
-      params: { generateInstruction: '一只猫', mediaReworkMaxAttempts: 3 }
-    })
+    const node = createNodeFromType(
+      'media.rework',
+      { x: 0, y: 0 },
+      {
+        params: { generateInstruction: '一只猫', mediaReworkMaxAttempts: 3 }
+      }
+    )
     const generateImage = genImage()
     const generateText = vi.fn(async () => ({ text: '这张图整体还不错。', model: 'vlm' }))
 
@@ -345,12 +452,18 @@ describe('executeMediaReworkNode (reworked)', () => {
   })
 
   it('records per-round cost and the QC score', async () => {
-    const node = createNodeFromType('media.rework', { x: 0, y: 0 }, {
-      params: { generateInstruction: '一只猫' }
-    })
+    const node = createNodeFromType(
+      'media.rework',
+      { x: 0, y: 0 },
+      {
+        params: { generateInstruction: '一只猫' }
+      }
+    )
     const generateImage = genImage()
     const generateText = vi.fn(async () => ({
-      text: ['## 审核清单', '1. 完整性：4 — ok', '2. 一致性：4 — ok', '', '## 结论: PASS'].join('\n'),
+      text: ['## 审核清单', '1. 完整性：4 — ok', '2. 一致性：4 — ok', '', '## 结论: PASS'].join(
+        '\n'
+      ),
       model: 'vlm'
     }))
 
@@ -365,9 +478,13 @@ describe('executeMediaReworkNode (reworked)', () => {
 
 describe('executeMediaReviewNode (reworked)', () => {
   it('uses the dedicated review model', async () => {
-    const node = createNodeFromType('media.review', { x: 0, y: 0 }, {
-      params: { generateModel: 'img-model', reviewModel: 'vlm-model' }
-    })
+    const node = createNodeFromType(
+      'media.review',
+      { x: 0, y: 0 },
+      {
+        params: { generateModel: 'img-model', reviewModel: 'vlm-model' }
+      }
+    )
     const generateText = vi.fn(async () => ({ text: '## 结论: PASS', model: 'vlm' }))
 
     await executeMediaReviewNode(
@@ -406,7 +523,9 @@ describe('executeMediaReviewNode (reworked)', () => {
   it('stores the parsed scores alongside the verdict', async () => {
     const node = createNodeFromType('media.review', { x: 0, y: 0 })
     const generateText = vi.fn(async () => ({
-      text: ['## 审核清单', '1. 完整性：5 — ok', '2. 一致性：3 — drift', '', '## 结论: PASS'].join('\n'),
+      text: ['## 审核清单', '1. 完整性：5 — ok', '2. 一致性：3 — drift', '', '## 结论: PASS'].join(
+        '\n'
+      ),
       model: 'vlm'
     }))
 

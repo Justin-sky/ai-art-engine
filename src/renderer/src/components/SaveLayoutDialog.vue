@@ -17,28 +17,18 @@
         :placeholder="t('studio.layout.namePlaceholder')"
         @keydown.enter.prevent="onConfirm"
         @keydown.esc.prevent="onCancel"
-      >
+      />
     </label>
 
-    <p
-      v-if="error"
-      class="err"
-    >
+    <p v-if="error" class="err">
       {{ error }}
     </p>
 
     <template #footer>
-      <button
-        type="button"
-        @click="onCancel"
-      >
+      <button type="button" @click="onCancel">
         {{ t('common.cancel') }}
       </button>
-      <button
-        type="button"
-        class="primary"
-        @click="onConfirm"
-      >
+      <button type="button" class="primary" @click="onConfirm">
         {{ t('common.save') }}
       </button>
     </template>

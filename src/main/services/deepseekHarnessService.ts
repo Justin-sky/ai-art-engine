@@ -21,21 +21,14 @@ import {
   type SkillTemplate
 } from '@shared/ipc'
 import { listGraphSkills, registerGraphSkill, type GraphSkill } from '@shared/graph/graphSkills'
-import {
-  accessHeaders,
-  isCancelAnswer,
-  normalizeChatMode
-} from '@shared/mcpModeAccess'
+import { accessHeaders, isCancelAnswer, normalizeChatMode } from '@shared/mcpModeAccess'
 import {
   isCustomProvider,
   modalityConfig,
   resolveCustomApiStyle,
   type ModelProviderInstance
 } from '@shared/modelProvider'
-import {
-  PROJECT_MEMORY_INJECT_LIMIT,
-  PROJECT_MEMORY_RELATIVE_PATH
-} from '@shared/projectMemory'
+import { PROJECT_MEMORY_INJECT_LIMIT, PROJECT_MEMORY_RELATIVE_PATH } from '@shared/projectMemory'
 import { broadcastToAllWindows } from '../broadcast'
 import {
   appendNodeRequireOption,
@@ -93,7 +86,10 @@ let workspaceNotified = ''
  * 渲染层选择经 MCP_ASK_USER_RESPONSE 回传 → handleAskUserResponse 写 answerFile，
  * runner 侧 provider 轮询读到后 resolve 给 agent。
  */
-const harnessAskUserRequests = new Map<string, { runId: string; answerFile: string; questionId: string }>()
+const harnessAskUserRequests = new Map<
+  string,
+  { runId: string; answerFile: string; questionId: string }
+>()
 
 function emit(event: HarnessEvent): void {
   broadcastToAllWindows(IpcChannels.HARNESS_EVENT, event)
@@ -157,7 +153,11 @@ function resolveTextProvider(providerId?: string): {
   if (providerId) {
     const candidate = providers.find(
       (p) =>
-        p.id === providerId && p.enabled && p.apiKey?.trim() && hasTextModels(p) && isDshCompatible(p)
+        p.id === providerId &&
+        p.enabled &&
+        p.apiKey?.trim() &&
+        hasTextModels(p) &&
+        isDshCompatible(p)
     )
     return candidate ? pick(candidate) : null
   }
@@ -232,12 +232,11 @@ function detectDshCached(): boolean {
   return existsSync(join(npxDir, 'node_modules', DSH_PACKAGE))
 }
 
-
-
 /** dsh 包根目录的候选位置：安装包内置 resources/dsh → 工程本地 node_modules（开发模式） */
 function dshPackageRoots(): string[] {
   const roots: string[] = []
-  if (process.resourcesPath) roots.push(join(process.resourcesPath, 'dsh', 'node_modules', DSH_PACKAGE))
+  if (process.resourcesPath)
+    roots.push(join(process.resourcesPath, 'dsh', 'node_modules', DSH_PACKAGE))
   roots.push(join(app.getAppPath(), 'node_modules', DSH_PACKAGE))
   return roots
 }
@@ -1342,9 +1341,13 @@ function buildPersona(mode: ChatMode, projectMemory?: string | null): string[] {
   const memoryBlock = memory
     ? [
         '=== Project memory ===',
-        'The following is this project\'s persisted memory (style / camera / character / other preferences).',
+        "The following is this project's persisted memory (style / camera / character / other preferences).",
         'Always follow these preferences when generating content for this project.',
-        memory.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).join(' | ')
+        memory
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .filter(Boolean)
+          .join(' | ')
       ]
     : []
   const base = [
@@ -1365,7 +1368,7 @@ function buildPersona(mode: ChatMode, projectMemory?: string | null): string[] {
     // 实测 Ask 轮说过「我在 Ask 模式」后，同一会话切到 Plan 的下一轮它仍照抄这句话（即使这一轮的
     // system prompt 已是 Plan、工具面也已换成只读）。这里明确「以本轮说法为准」，并禁止复述旧结论。
     'The mode stated for the current turn is authoritative: the user may switch modes between turns of this same session.',
-    'Never carry over a previous turn\'s mode name, and never repeat an earlier claim that tools are unavailable unless this turn says so.'
+    "Never carry over a previous turn's mode name, and never repeat an earlier claim that tools are unavailable unless this turn says so."
   ]
   if (mode === 'ask') {
     return [
@@ -1413,7 +1416,10 @@ function writeAiartHarness(
     const runnerPath = join(home, 'aiart-headless-runner.mjs')
     writeFileSync(
       runnerPath,
-      AIART_RUNNER_TEMPLATE.replace('__DSH_NODE_MODULES_JSON__', JSON.stringify(resolve(dshNodeModules))),
+      AIART_RUNNER_TEMPLATE.replace(
+        '__DSH_NODE_MODULES_JSON__',
+        JSON.stringify(resolve(dshNodeModules))
+      ),
       'utf8'
     )
     const runnerUrl = pathToFileURL(runnerPath).href
@@ -1456,7 +1462,8 @@ function writeHideChildWindowsHook(): string | null {
     const home = dshHome()
     mkdirSync(home, { recursive: true })
     const hookPath = join(home, HIDE_CHILD_WINDOWS_HOOK_FILENAME)
-    const exists = existsSync(hookPath) && readFileSync(hookPath, 'utf8') === HIDE_CHILD_WINDOWS_HOOK_SOURCE
+    const exists =
+      existsSync(hookPath) && readFileSync(hookPath, 'utf8') === HIDE_CHILD_WINDOWS_HOOK_SOURCE
     if (!exists) writeFileSync(hookPath, HIDE_CHILD_WINDOWS_HOOK_SOURCE, 'utf8')
     return hookPath
   } catch {
@@ -1600,9 +1607,13 @@ function launchDsh(opts: {
       const parsed = JSON.parse(payload)
       if (typeof parsed.inputTokens !== 'number' || parsed.inputTokens < 0) return
       const cacheRead =
-        typeof parsed.cacheReadTokens === 'number' && parsed.cacheReadTokens > 0 ? parsed.cacheReadTokens : 0
+        typeof parsed.cacheReadTokens === 'number' && parsed.cacheReadTokens > 0
+          ? parsed.cacheReadTokens
+          : 0
       const cacheWrite =
-        typeof parsed.cacheWriteTokens === 'number' && parsed.cacheWriteTokens > 0 ? parsed.cacheWriteTokens : 0
+        typeof parsed.cacheWriteTokens === 'number' && parsed.cacheWriteTokens > 0
+          ? parsed.cacheWriteTokens
+          : 0
       emit({ type: 'context', used: Math.round(parsed.inputTokens + cacheRead + cacheWrite) })
       sawOutput = true
     } catch {
@@ -1705,9 +1716,7 @@ function launchDsh(opts: {
     const failed = code !== 0 && finalText === ''
     emit({ type: 'tool', name: 'dsh-agent', state: 'done' })
     if (failed) {
-      const hint = dshEntry
-        ? '请重试或查看上方状态信息'
-        : '若为首次运行，请等待包下载完成后重试'
+      const hint = dshEntry ? '请重试或查看上方状态信息' : '若为首次运行，请等待包下载完成后重试'
       // 有工具事件却没文本，是「面板看起来什么都没发生」的典型成因，说清楚免得误判为卡死
       const onlyTools = sawOutput ? '，本轮只产生了工具调用、没有文本' : ''
       emit({ type: 'error', message: `dsh 异常退出（code ${code}）${onlyTools}。${hint}。` })
@@ -1775,9 +1784,7 @@ export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRun
   lastStatusText = ''
   const dshEntry = resolveDshEntry()
   emitStatus(
-    dshEntry
-      ? '正在启动 DeepSeek Harness…'
-      : '首次运行：正在准备 dsh 运行体（需联网，约 1–2 分钟）'
+    dshEntry ? '正在启动 DeepSeek Harness…' : '首次运行：正在准备 dsh 运行体（需联网，约 1–2 分钟）'
   )
   // 工作区只在切换时提示一次，避免每条消息都重复输出同一行
   if (workspaceNotified !== workspace) {
@@ -1805,9 +1812,7 @@ export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRun
       projectMemory = null
     }
   }
-  const patchPath = dshModules
-    ? writeAiartHarness(dshModules, mode, projectMemory)
-    : null
+  const patchPath = dshModules ? writeAiartHarness(dshModules, mode, projectMemory) : null
   // 隐藏 dsh 子进程的控制台窗口：非沙箱命令走预载 hook（dshHideChildWindowsHook），
   // 沙箱内命令走运行体补丁（dshSandboxConsolePatch）。两条都必须在下拉 dsh 之前就位。
   if (dshModules) applyAclConsolePatch(dshModules)
@@ -1895,9 +1900,7 @@ export function handleAskUserResponse(payload: AskUserAnswer): void {
           {
             id: entry.questionId,
             selected:
-              typeof payload.answer === 'string' && payload.answer !== ''
-                ? [payload.answer]
-                : []
+              typeof payload.answer === 'string' && payload.answer !== '' ? [payload.answer] : []
           }
         ]
       }),

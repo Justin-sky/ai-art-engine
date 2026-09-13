@@ -16,10 +16,7 @@
       </div>
     </template>
 
-    <div
-      class="task-tabs"
-      role="tablist"
-    >
+    <div class="task-tabs" role="tablist">
       <button
         type="button"
         class="task-tab"
@@ -29,10 +26,7 @@
         @click="activeTab = 'active'"
       >
         {{ t('graph.tasks.tabActive') }}
-        <span
-          v-if="activeCount > 0"
-          class="tab-count"
-        >{{ activeCount }}</span>
+        <span v-if="activeCount > 0" class="tab-count">{{ activeCount }}</span>
       </button>
       <button
         type="button"
@@ -43,39 +37,25 @@
         @click="activeTab = 'completed'"
       >
         {{ t('graph.tasks.tabCompleted') }}
-        <span
-          v-if="completedCount > 0"
-          class="tab-count"
-        >{{ completedCount }}</span>
+        <span v-if="completedCount > 0" class="tab-count">{{ completedCount }}</span>
       </button>
     </div>
 
     <div class="task-body">
       <template v-if="activeTab === 'active'">
-        <section
-          v-if="activeVideoJobs.length"
-          class="section"
-        >
+        <section v-if="activeVideoJobs.length" class="section">
           <h3 class="section-title">
             {{ t('graph.tasks.generationSection') }}
           </h3>
           <ul class="task-list">
-            <li
-              v-for="job in activeVideoJobs"
-              :key="job.localJobId"
-              class="task-row"
-            >
+            <li v-for="job in activeVideoJobs" :key="job.localJobId" class="task-row">
               <div class="task-row-main">
                 <div class="task-meta">
-                  <span
-                    class="task-kind"
-                    :data-kind="job.kind ?? 'video'"
-                  >{{ jobKindLabel(job) }}</span>
+                  <span class="task-kind" :data-kind="job.kind ?? 'video'">{{
+                    jobKindLabel(job)
+                  }}</span>
                   <span class="task-title">{{ videoJobTitle(job) }}</span>
-                  <span
-                    class="task-status"
-                    :data-status="job.status"
-                  >
+                  <span class="task-status" :data-status="job.status">
                     {{ videoStatusLabel(job.status) }}
                     <template v-if="job.progress > 0"> · {{ job.progress }}%</template>
                   </span>
@@ -85,11 +65,7 @@
                 </p>
               </div>
               <div class="task-actions">
-                <button
-                  type="button"
-                  class="danger-lite"
-                  @click="onCancelVideo(job.localJobId)"
-                >
+                <button type="button" class="danger-lite" @click="onCancelVideo(job.localJobId)">
                   {{ t('graph.tasks.stop') }}
                 </button>
               </div>
@@ -97,39 +73,24 @@
           </ul>
         </section>
 
-        <section
-          v-if="mcpActive.length"
-          class="section"
-        >
+        <section v-if="mcpActive.length" class="section">
           <h3 class="section-title">
             {{ t('graph.tasks.mcpSection') }}
           </h3>
           <ul class="task-list">
-            <li
-              v-for="activity in mcpActive"
-              :key="activity.id"
-              class="task-row"
-            >
+            <li v-for="activity in mcpActive" :key="activity.id" class="task-row">
               <div class="task-row-main">
                 <div class="task-meta">
-                  <span
-                    class="task-kind"
-                    :data-kind="activity.tool"
-                  >{{ mcpKindLabel(activity.tool) }}</span>
+                  <span class="task-kind" :data-kind="activity.tool">{{
+                    mcpKindLabel(activity.tool)
+                  }}</span>
                   <span class="task-title">{{ activity.title }}</span>
-                  <span
-                    class="task-status"
-                    :data-status="activity.status"
-                  >
+                  <span class="task-status" :data-status="activity.status">
                     {{ mcpStatusLabel(activity.status) }}
                   </span>
                 </div>
                 <p class="task-sub">
-                  {{
-                    activity.detail ??
-                      activity.model ??
-                      t('graph.tasks.mcpDefaultModel')
-                  }}
+                  {{ activity.detail ?? activity.model ?? t('graph.tasks.mcpDefaultModel') }}
                 </p>
               </div>
             </li>
@@ -137,65 +98,36 @@
         </section>
 
         <section class="section">
-          <h3
-            v-if="activeVideoJobs.length || mcpActive.length"
-            class="section-title"
-          >
+          <h3 v-if="activeVideoJobs.length || mcpActive.length" class="section-title">
             {{ t('graph.tasks.workflowSection') }}
           </h3>
-          <p
-            v-if="!tasks.length"
-            class="empty"
-          >
+          <p v-if="!tasks.length" class="empty">
             {{
               activeVideoJobs.length || mcpActive.length
                 ? t('graph.tasks.emptyWorkflowActive')
                 : t('graph.tasks.emptyActive')
             }}
           </p>
-          <ul
-            v-else
-            class="task-list"
-          >
-            <li
-              v-for="task in tasks"
-              :key="task.id"
-              class="task-row"
-            >
+          <ul v-else class="task-list">
+            <li v-for="task in tasks" :key="task.id" class="task-row">
               <div class="task-row-main">
                 <div class="task-meta">
                   <span class="task-title">{{ task.title }}</span>
-                  <span
-                    class="task-status"
-                    :data-status="task.status"
-                  >
+                  <span class="task-status" :data-status="task.status">
                     {{ statusLabel(task.status) }}
                   </span>
                 </div>
-                <div
-                  class="flow"
-                  :title="flowTitle(task)"
-                >
-                  <template
-                    v-for="(node, index) in task.nodes"
-                    :key="node.nodeId"
-                  >
+                <div class="flow" :title="flowTitle(task)">
+                  <template v-for="(node, index) in task.nodes" :key="node.nodeId">
                     <span
                       class="flow-node"
                       :data-status="node.status"
                       :title="`${node.title} · ${nodeStatusLabel(node.status)}`"
                     >
-                      <span
-                        class="flow-icon"
-                        aria-hidden="true"
-                      ><WorkspaceItemIcon
-                        :icon="node.icon"
-                        :size="14"
+                      <span class="flow-icon" aria-hidden="true"
+                        ><WorkspaceItemIcon :icon="node.icon" :size="14"
                       /></span>
-                      <span
-                        class="flow-dot"
-                        aria-hidden="true"
-                      />
+                      <span class="flow-dot" aria-hidden="true" />
                     </span>
                     <span
                       v-if="index < task.nodes.length - 1"
@@ -208,11 +140,7 @@
                 </div>
               </div>
               <div class="task-actions">
-                <button
-                  type="button"
-                  class="danger-lite"
-                  @click="onStop(task.id)"
-                >
+                <button type="button" class="danger-lite" @click="onStop(task.id)">
                   {{ t('graph.tasks.stop') }}
                 </button>
               </div>
@@ -222,43 +150,26 @@
       </template>
 
       <template v-else>
-        <section
-          v-if="recentTerminalVideoJobs.length"
-          class="section"
-        >
+        <section v-if="recentTerminalVideoJobs.length" class="section">
           <h3 class="section-title">
             {{ t('graph.tasks.generationSection') }}
           </h3>
           <ul class="task-list">
-            <li
-              v-for="job in recentTerminalVideoJobs"
-              :key="job.localJobId"
-              class="task-row"
-            >
+            <li v-for="job in recentTerminalVideoJobs" :key="job.localJobId" class="task-row">
               <div class="task-row-main">
                 <div class="task-meta">
-                  <span
-                    class="task-kind"
-                    :data-kind="job.kind ?? 'video'"
-                  >{{ jobKindLabel(job) }}</span>
+                  <span class="task-kind" :data-kind="job.kind ?? 'video'">{{
+                    jobKindLabel(job)
+                  }}</span>
                   <span class="task-title">{{ videoJobTitle(job) }}</span>
-                  <span
-                    class="task-status"
-                    :data-status="job.status"
-                  >
+                  <span class="task-status" :data-status="job.status">
                     {{ videoStatusLabel(job.status) }}
                   </span>
                 </div>
-                <p
-                  v-if="job.error"
-                  class="task-sub error"
-                >
+                <p v-if="job.error" class="task-sub error">
                   {{ job.error }}
                 </p>
-                <p
-                  v-else-if="job.relativePath"
-                  class="task-sub"
-                >
+                <p v-else-if="job.relativePath" class="task-sub">
                   {{ job.relativePath }}
                 </p>
               </div>
@@ -266,49 +177,29 @@
           </ul>
         </section>
 
-        <section
-          v-if="mcpRecent.length"
-          class="section"
-        >
+        <section v-if="mcpRecent.length" class="section">
           <h3 class="section-title">
             {{ t('graph.tasks.mcpSection') }}
           </h3>
           <ul class="task-list">
-            <li
-              v-for="activity in mcpRecent"
-              :key="activity.id"
-              class="task-row"
-            >
+            <li v-for="activity in mcpRecent" :key="activity.id" class="task-row">
               <div class="task-row-main">
                 <div class="task-meta">
-                  <span
-                    class="task-kind"
-                    :data-kind="activity.tool"
-                  >{{ mcpKindLabel(activity.tool) }}</span>
+                  <span class="task-kind" :data-kind="activity.tool">{{
+                    mcpKindLabel(activity.tool)
+                  }}</span>
                   <span class="task-title">{{ activity.title }}</span>
-                  <span
-                    class="task-status"
-                    :data-status="activity.status"
-                  >
+                  <span class="task-status" :data-status="activity.status">
                     {{ mcpStatusLabel(activity.status) }}
                   </span>
                 </div>
-                <p
-                  v-if="activity.error"
-                  class="task-sub error"
-                >
+                <p v-if="activity.error" class="task-sub error">
                   {{ activity.error }}
                 </p>
-                <p
-                  v-else-if="activity.relativePath"
-                  class="task-sub"
-                >
+                <p v-else-if="activity.relativePath" class="task-sub">
                   {{ activity.relativePath }}
                 </p>
-                <p
-                  v-else
-                  class="task-sub"
-                >
+                <p v-else class="task-sub">
                   {{ activity.model ?? t('graph.tasks.mcpDefaultModel') }}
                 </p>
               </div>
@@ -317,65 +208,36 @@
         </section>
 
         <section class="section">
-          <h3
-            v-if="recentTerminalVideoJobs.length || mcpRecent.length"
-            class="section-title"
-          >
+          <h3 v-if="recentTerminalVideoJobs.length || mcpRecent.length" class="section-title">
             {{ t('graph.tasks.workflowSection') }}
           </h3>
-          <p
-            v-if="!completed.length"
-            class="empty"
-          >
+          <p v-if="!completed.length" class="empty">
             {{
               recentTerminalVideoJobs.length || mcpRecent.length
                 ? t('graph.tasks.emptyWorkflowCompleted')
                 : t('graph.tasks.emptyCompleted')
             }}
           </p>
-          <ul
-            v-else
-            class="task-list"
-          >
-            <li
-              v-for="task in completed"
-              :key="task.id"
-              class="task-row"
-            >
+          <ul v-else class="task-list">
+            <li v-for="task in completed" :key="task.id" class="task-row">
               <div class="task-row-main">
                 <div class="task-meta">
                   <span class="task-title">{{ task.title }}</span>
-                  <span
-                    class="task-status"
-                    :data-status="task.status"
-                  >
+                  <span class="task-status" :data-status="task.status">
                     {{ statusLabel(task.status) }}
                   </span>
                 </div>
-                <div
-                  class="flow"
-                  :title="flowTitle(task)"
-                >
-                  <template
-                    v-for="(node, index) in task.nodes"
-                    :key="node.nodeId"
-                  >
+                <div class="flow" :title="flowTitle(task)">
+                  <template v-for="(node, index) in task.nodes" :key="node.nodeId">
                     <span
                       class="flow-node"
                       :data-status="node.status"
                       :title="`${node.title} · ${nodeStatusLabel(node.status)}`"
                     >
-                      <span
-                        class="flow-icon"
-                        aria-hidden="true"
-                      ><WorkspaceItemIcon
-                        :icon="node.icon"
-                        :size="14"
+                      <span class="flow-icon" aria-hidden="true"
+                        ><WorkspaceItemIcon :icon="node.icon" :size="14"
                       /></span>
-                      <span
-                        class="flow-dot"
-                        aria-hidden="true"
-                      />
+                      <span class="flow-dot" aria-hidden="true" />
                     </span>
                     <span
                       v-if="index < task.nodes.length - 1"
@@ -388,10 +250,7 @@
                 </div>
               </div>
               <div class="task-actions">
-                <button
-                  type="button"
-                  @click="onRemove(task.id)"
-                >
+                <button type="button" @click="onRemove(task.id)">
                   {{ t('graph.tasks.remove') }}
                 </button>
               </div>
@@ -432,9 +291,7 @@ const activeVideoJobs = computed(() => videoJobs.value.filter((j) => isVideoJobA
 const recentTerminalVideoJobs = computed(() =>
   videoJobs.value.filter((j) => !isVideoJobActive(j.status)).slice(0, 20)
 )
-const mcpActive = computed(() =>
-  mcpActivities.activities.filter((a) => a.status === 'running')
-)
+const mcpActive = computed(() => mcpActivities.activities.filter((a) => a.status === 'running'))
 const mcpRecent = computed(() =>
   mcpActivities.activities.filter((a) => a.status !== 'running').slice(0, 20)
 )
@@ -487,11 +344,7 @@ if (typeof window.studio?.onVideoJobUpdated === 'function') {
   stopVideoJobUpdated = window.studio.onVideoJobUpdated((job) => {
     const idx = videoJobs.value.findIndex((j) => j.localJobId === job.localJobId)
     if (idx >= 0) {
-      videoJobs.value = [
-        ...videoJobs.value.slice(0, idx),
-        job,
-        ...videoJobs.value.slice(idx + 1)
-      ]
+      videoJobs.value = [...videoJobs.value.slice(0, idx), job, ...videoJobs.value.slice(idx + 1)]
     } else {
       videoJobs.value = [job, ...videoJobs.value]
     }

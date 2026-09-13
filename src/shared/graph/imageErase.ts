@@ -24,9 +24,7 @@ export const ERASE_FALLBACK_COUNTS = REDRAW_FALLBACK_COUNTS
 
 export const normalizeEraseBrushSize = normalizeRedrawBrushSize
 
-export function normalizeImageErase(
-  raw?: Partial<ImageEraseState> | null
-): ImageEraseState {
+export function normalizeImageErase(raw?: Partial<ImageEraseState> | null): ImageEraseState {
   return normalizeImageRedraw(raw)
 }
 

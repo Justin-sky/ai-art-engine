@@ -3,11 +3,7 @@
     <div class="head">
       <span class="title">{{ t('characterRefs.title') }}</span>
       <span class="count">{{ refs.length }}/{{ cap }}</span>
-      <button
-        type="button"
-        class="import-btn"
-        @click="togglePicker"
-      >
+      <button type="button" class="import-btn" @click="togglePicker">
         {{ pickerOpen ? t('characterRefs.collapse') : t('characterRefs.importFromCatalog') }}
       </button>
     </div>
@@ -15,25 +11,15 @@
       {{ t('characterRefs.hint') }}
     </p>
 
-    <div
-      v-if="refs.length"
-      class="bound-list"
-    >
-      <div
-        v-for="(ref, index) in refs"
-        :key="`${ref.name}:${index}`"
-        class="bound-item"
-      >
+    <div v-if="refs.length" class="bound-list">
+      <div v-for="(ref, index) in refs" :key="`${ref.name}:${index}`" class="bound-item">
         <img
           v-if="thumbs[ref.imageUrl ?? '']"
           :src="thumbs[ref.imageUrl ?? '']"
           class="thumb"
           alt=""
-        >
-        <span
-          v-else
-          class="thumb placeholder"
         />
+        <span v-else class="thumb placeholder" />
         <span class="name">{{ ref.name }}</span>
         <button
           type="button"
@@ -45,33 +31,18 @@
         </button>
       </div>
     </div>
-    <p
-      v-else
-      class="empty"
-    >
+    <p v-else class="empty">
       {{ t('characterRefs.empty') }}
     </p>
 
-    <div
-      v-if="pickerOpen"
-      class="picker"
-    >
-      <p
-        v-if="loading"
-        class="picker-hint"
-      >
+    <div v-if="pickerOpen" class="picker">
+      <p v-if="loading" class="picker-hint">
         {{ t('characterRefs.loadingCatalog') }}
       </p>
-      <p
-        v-else-if="available.length === 0"
-        class="picker-hint"
-      >
+      <p v-else-if="available.length === 0" class="picker-hint">
         {{ t('characterRefs.catalogEmpty') }}
       </p>
-      <div
-        v-else
-        class="catalog-list"
-      >
+      <div v-else class="catalog-list">
         <button
           v-for="item in available"
           :key="item.name"
@@ -80,16 +51,8 @@
           :disabled="!canAdd"
           @click="addRef(item)"
         >
-          <img
-            v-if="thumbs[item.imageUrl]"
-            :src="thumbs[item.imageUrl]"
-            class="thumb"
-            alt=""
-          >
-          <span
-            v-else
-            class="thumb placeholder"
-          />
+          <img v-if="thumbs[item.imageUrl]" :src="thumbs[item.imageUrl]" class="thumb" alt="" />
+          <span v-else class="thumb placeholder" />
           <span class="name">{{ item.name }}</span>
         </button>
       </div>
@@ -101,10 +64,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { WorldEntityRef } from '@shared/domain'
-import {
-  DEFAULT_MAX_INPUT_REFERENCES,
-  type CharacterReferenceImage
-} from '@shared/graph'
+import { DEFAULT_MAX_INPUT_REFERENCES, type CharacterReferenceImage } from '@shared/graph'
 import { loadWorldCharacterImages } from '../features/world/characterImageSource'
 import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
 
@@ -119,9 +79,7 @@ const emit = defineEmits<{
   'update:modelValue': [value: WorldEntityRef[]]
 }>()
 
-const cap = computed(() =>
-  Math.max(0, Math.floor(props.max ?? DEFAULT_MAX_INPUT_REFERENCES))
-)
+const cap = computed(() => Math.max(0, Math.floor(props.max ?? DEFAULT_MAX_INPUT_REFERENCES)))
 const refs = computed<WorldEntityRef[]>(() => props.modelValue ?? [])
 
 const pickerOpen = ref(false)
@@ -129,9 +87,7 @@ const loading = ref(false)
 const catalog = ref<CharacterReferenceImage[]>([])
 const thumbs = ref<Record<string, string>>({})
 
-const boundNames = computed(
-  () => new Set(refs.value.map((ref) => ref.name.trim()).filter(Boolean))
-)
+const boundNames = computed(() => new Set(refs.value.map((ref) => ref.name.trim()).filter(Boolean)))
 const available = computed(() =>
   catalog.value.filter((item) => !boundNames.value.has(item.name.trim()))
 )
@@ -174,10 +130,7 @@ async function togglePicker(): Promise<void> {
 function addRef(item: CharacterReferenceImage): void {
   if (!canAdd.value) return
   if (boundNames.value.has(item.name.trim())) return
-  emit('update:modelValue', [
-    ...refs.value,
-    { name: item.name, imageUrl: item.imageUrl }
-  ])
+  emit('update:modelValue', [...refs.value, { name: item.name, imageUrl: item.imageUrl }])
 }
 
 function removeRef(index: number): void {

@@ -109,9 +109,9 @@ describe('zhipuAdapter', () => {
   })
 
   it('rejects video and speech with a clear message', async () => {
-    await expect(
-      zhipuAdapter.generateSpeech(provider(), 'tts-1', { input: 'hi' })
-    ).rejects.toThrow(/仅支持文本与图片/)
+    await expect(zhipuAdapter.generateSpeech(provider(), 'tts-1', { input: 'hi' })).rejects.toThrow(
+      /仅支持文本与图片/
+    )
     await expect(
       zhipuAdapter.submitVideo(provider(), 'cogvideox', { prompt: 'x' })
     ).rejects.toThrow(/仅支持文本与图片/)

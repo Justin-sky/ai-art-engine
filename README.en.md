@@ -45,11 +45,11 @@
 
 ## Download
 
-| Platform | Package | Get it |
-|----------|---------|--------|
-| **Windows** | `.exe` | [GitHub Releases](https://github.com/Justin-sky/ai-art-engine/releases) |
-| **macOS** | `.dmg` | [GitHub Releases](https://github.com/Justin-sky/ai-art-engine/releases) (Mac / CI build; allow in Privacy & Security if unsigned) |
-| **Linux** | `.AppImage` | [GitHub Releases](https://github.com/Justin-sky/ai-art-engine/releases) (`chmod +x` then run) |
+| Platform    | Package     | Get it                                                                                                                            |
+| ----------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Windows** | `.exe`      | [GitHub Releases](https://github.com/Justin-sky/ai-art-engine/releases)                                                           |
+| **macOS**   | `.dmg`      | [GitHub Releases](https://github.com/Justin-sky/ai-art-engine/releases) (Mac / CI build; allow in Privacy & Security if unsigned) |
+| **Linux**   | `.AppImage` | [GitHub Releases](https://github.com/Justin-sky/ai-art-engine/releases) (`chmod +x` then run)                                     |
 
 Push a `v*` tag to trigger GitHub Actions multi-platform builds, or package locally:
 
@@ -69,50 +69,50 @@ npm run dist:win | dist:mac | dist:linux
 
 > Drive every generation and orchestration capability from an in-app conversation — or let external AI agents such as Claude Code / Codex connect straight to your project.
 
-- **AI chat panel** — in-app AI assistant (DeepSeek Harness runtime): `@`-reference project assets in conversation and let the agent call MCP tools directly — generate image / video / 3D / speech, edit node graphs, run workflows and track status; multi-session history; model picker over any configured text provider  
-- **MCP tool server** — built-in MCP Server so external agents like Claude Code / Codex can drive your project over stdio bridge or direct HTTP (plan & commit workflows, run generation, read/write assets and graphs); stable token across restarts, audit log, concurrency gate  
+- **AI chat panel** — in-app AI assistant (DeepSeek Harness runtime): `@`-reference project assets in conversation and let the agent call MCP tools directly — generate image / video / 3D / speech, edit node graphs, run workflows and track status; multi-session history; model picker over any configured text provider
+- **MCP tool server** — built-in MCP Server so external agents like Claude Code / Codex can drive your project over stdio bridge or direct HTTP (plan & commit workflows, run generation, read/write assets and graphs); stable token across restarts, audit log, concurrency gate
 
 ### Full capabilities
 
-- **Local projects** — create / open / recent; JSON + media on disk  
-- **One-click workflow** — presets (short-drama storyboard, game UI, game UA, product ad, e-commerce, game 3D assets, comic publishing, knowledge voice-over, 3D blockout…) or AI-planned topology → reusable host asset (boundary I/O + Dive)  
-- **Assets** — image / video / audio / 3D model; AssetRef GUIDs; `.aipackage`  
-- **Shots & canvas** — params, Fabric composition, dockable layout  
-- **Node graph** — text / image / video / audio / 3D model generation nodes with instruction panel & model params; generation lock, dual gallery outputs; ports must match (singular cannot connect to plural; select nodes accept list ports only); edge styles / minimap; task queue reuses shared upstream, fault-tolerant run mode (failed nodes degrade without aborting the chain); comic page (panel grid + speech bubbles, transparent-PNG export), ad variant matrix, media QA / rework loop (dedicated QA model with five-dimension scoring → auto-retry with FAIL reason injected), 2D frame animation & frame-anim sheet generation, layer separation (export PSD)  
-- **Host assets** — boundary ports outside, full graph inside via Dive  
-- **Director stage** — 3D pose shots & action recording (`Cache/Videos`); square ports `out-shots` / `out-actions`; 3D model input port auto-instantiates on dive; panorama input auto-set as background; AI scene blockout, 20+ primitives, material texture override (base / normal maps), shading & wireframe modes  
-- **Timeline** — import/group clips, scrub tracks; picture-in-picture overlay (position / size / opacity / volume) & video-track transitions; preview selection vs full-timeline play; export  
+- **Local projects** — create / open / recent; JSON + media on disk
+- **One-click workflow** — presets (short-drama storyboard, game UI, game UA, product ad, e-commerce, game 3D assets, comic publishing, knowledge voice-over, 3D blockout…) or AI-planned topology → reusable host asset (boundary I/O + Dive)
+- **Assets** — image / video / audio / 3D model; AssetRef GUIDs; `.aipackage`
+- **Shots & canvas** — params, Fabric composition, dockable layout
+- **Node graph** — text / image / video / audio / 3D model generation nodes with instruction panel & model params; generation lock, dual gallery outputs; ports must match (singular cannot connect to plural; select nodes accept list ports only); edge styles / minimap; task queue reuses shared upstream, fault-tolerant run mode (failed nodes degrade without aborting the chain); comic page (panel grid + speech bubbles, transparent-PNG export), ad variant matrix, media QA / rework loop (dedicated QA model with five-dimension scoring → auto-retry with FAIL reason injected), 2D frame animation & frame-anim sheet generation, layer separation (export PSD)
+- **Host assets** — boundary ports outside, full graph inside via Dive
+- **Director stage** — 3D pose shots & action recording (`Cache/Videos`); square ports `out-shots` / `out-actions`; 3D model input port auto-instantiates on dive; panorama input auto-set as background; AI scene blockout, 20+ primitives, material texture override (base / normal maps), shading & wireframe modes
+- **Timeline** — import/group clips, scrub tracks; picture-in-picture overlay (position / size / opacity / volume) & video-track transitions; preview selection vs full-timeline play; export
 - **Model providers** — OpenRouter, OpenAI (GPT text / gpt-image), DeepSeek (text), Zhipu (GLM text / CogView image), Kimi / Moonshot (text), xAI / Grok (text / image / video), Google / Gemini (text / image / video), local vLLM (text / Wan video), Ollama / LM Studio (text, OpenAI-compatible, no API key), Volcengine Ark (Seedream / Seedance / voice), Kling, MiniMax, Tongyi Qianwen (DashScope), ModelScope, ComfyUI (API v2: image / video / audio, local or cloud Base URL), MagicRouter (OpenAI-compatible aggregator: text / image / video), Meshy / Tripo / Rodin (Hyper3D) / Luma AI / Lux3D (3D model generation, text-to-3D / image-to-3D), custom provider (pick an endpoint type: OpenAI-compatible / Anthropic / Gemini, enter Base URL and API key, fetch text models)
-- **Object storage** — Volcengine TOS, Alibaba Cloud OSS, Tencent Cloud COS (only one enabled at a time; for public reference media URLs)  
-- **Extensible** — Editor Kernel + Cordis internal plugins (windows / Inspector / nodes / skills / executors) + declarative external plugin list  
+- **Object storage** — Volcengine TOS, Alibaba Cloud OSS, Tencent Cloud COS (only one enabled at a time; for public reference media URLs)
+- **Extensible** — Editor Kernel + Cordis internal plugins (windows / Inspector / nodes / skills / executors) + declarative external plugin list
 
 ### Providers at a glance
 
-| Kind | Provider | Capabilities |
-|------|----------|--------------|
-| Model | OpenRouter | Text / image / video (aggregated catalog) |
-| Model | OpenAI | Text / image (requires network access to api.openai.com) |
-| Model | DeepSeek | Text (deepseek-chat / deepseek-reasoner) |
-| Model | Zhipu | GLM text / CogView text-to-image |
-| Model | Kimi (Moonshot) | Text (kimi-k2 family / moonshot-v1 family) |
-| Model | xAI (Grok) | Text / Grok Imagine image / Grok Imagine Video (async polling) |
-| Model | Google (Gemini) | Text / Nano Banana image / Veo 3.1 video (async polling, official OpenAI-compatible layer) |
-| Model | vLLM | Local text / video (Wan T2V / I2V, OpenAI-compatible, no API key) |
-| Model | Ollama / LM Studio | Local text (OpenAI-compatible, no API key) |
-| Model | Volcengine Ark | Text / Seedream / Seedance / voice design |
-| Model | Kling | Image / video (API Key) |
-| Model | MiniMax | Text / image / video / voice design |
-| Model | Tongyi Qianwen | Text (compatible mode) / Wanxiang image & video (incl. HappyHorse) |
-| Model | ModelScope | Text / text-to-image (access token) |
-| Model | ComfyUI | Image / video / audio (API v2; local :8189 or cloud Base URL) |
-| Model | MagicRouter | Text / image / video (OpenAI-compatible aggregator, async video polling) |
-| Model | Meshy | Text-to-3D / image-to-3D (incl. multi-image, API key) |
-| Model | Tripo | Text-to-3D / image-to-3D (API key) |
-| Model | Rodin (Hyper3D) | Text-to-3D / image-to-3D (API key) |
-| Model | Luma AI | Text-to-3D / image-to-3D (API key) |
-| Model | Lux3D | Text-to-3D / image-to-3D (incl. multi-image, G1 / G1-Turbo, API key) |
-| Model | Custom | Text (pick endpoint type: OpenAI-compatible / Anthropic / Gemini, enter Base URL and API key) |
-| Object storage | TOS / OSS / COS | Upload + signed URLs; mutually exclusive enable |
+| Kind           | Provider           | Capabilities                                                                                  |
+| -------------- | ------------------ | --------------------------------------------------------------------------------------------- |
+| Model          | OpenRouter         | Text / image / video (aggregated catalog)                                                     |
+| Model          | OpenAI             | Text / image (requires network access to api.openai.com)                                      |
+| Model          | DeepSeek           | Text (deepseek-chat / deepseek-reasoner)                                                      |
+| Model          | Zhipu              | GLM text / CogView text-to-image                                                              |
+| Model          | Kimi (Moonshot)    | Text (kimi-k2 family / moonshot-v1 family)                                                    |
+| Model          | xAI (Grok)         | Text / Grok Imagine image / Grok Imagine Video (async polling)                                |
+| Model          | Google (Gemini)    | Text / Nano Banana image / Veo 3.1 video (async polling, official OpenAI-compatible layer)    |
+| Model          | vLLM               | Local text / video (Wan T2V / I2V, OpenAI-compatible, no API key)                             |
+| Model          | Ollama / LM Studio | Local text (OpenAI-compatible, no API key)                                                    |
+| Model          | Volcengine Ark     | Text / Seedream / Seedance / voice design                                                     |
+| Model          | Kling              | Image / video (API Key)                                                                       |
+| Model          | MiniMax            | Text / image / video / voice design                                                           |
+| Model          | Tongyi Qianwen     | Text (compatible mode) / Wanxiang image & video (incl. HappyHorse)                            |
+| Model          | ModelScope         | Text / text-to-image (access token)                                                           |
+| Model          | ComfyUI            | Image / video / audio (API v2; local :8189 or cloud Base URL)                                 |
+| Model          | MagicRouter        | Text / image / video (OpenAI-compatible aggregator, async video polling)                      |
+| Model          | Meshy              | Text-to-3D / image-to-3D (incl. multi-image, API key)                                         |
+| Model          | Tripo              | Text-to-3D / image-to-3D (API key)                                                            |
+| Model          | Rodin (Hyper3D)    | Text-to-3D / image-to-3D (API key)                                                            |
+| Model          | Luma AI            | Text-to-3D / image-to-3D (API key)                                                            |
+| Model          | Lux3D              | Text-to-3D / image-to-3D (incl. multi-image, G1 / G1-Turbo, API key)                          |
+| Model          | Custom             | Text (pick endpoint type: OpenAI-compatible / Anthropic / Gemini, enter Base URL and API key) |
+| Object storage | TOS / OSS / COS    | Upload + signed URLs; mutually exclusive enable                                               |
 
 Configure under **Settings → Models** / **Settings → Object storage**. Local ComfyUI needs [comfy-api-proxy](https://justin-sky.github.io/ai-art-engine/guide-comfyui.en.html) on port 8189 — do not point Base URL at 8188.
 
@@ -124,11 +124,11 @@ Configure under **Settings → Models** / **Settings → Object storage**. Local
 
 **Installers**
 
-1. Grab a build from [Releases](https://github.com/Justin-sky/ai-art-engine/releases)  
-2. Install → create a project  
-3. Add model providers (and optional object storage) in Settings  
-4. Use toolbar **One-click workflow**, or build chains in shots / node graph  
-5. Open the **◈ AI chat** panel in the left rail, `@`-reference assets and let the assistant generate; or follow the [MCP guide](https://justin-sky.github.io/ai-art-engine/guide-mcp.en.html) to connect Claude Code and other external agents  
+1. Grab a build from [Releases](https://github.com/Justin-sky/ai-art-engine/releases)
+2. Install → create a project
+3. Add model providers (and optional object storage) in Settings
+4. Use toolbar **One-click workflow**, or build chains in shots / node graph
+5. Open the **◈ AI chat** panel in the left rail, `@`-reference assets and let the assistant generate; or follow the [MCP guide](https://justin-sky.github.io/ai-art-engine/guide-mcp.en.html) to connect Claude Code and other external agents
 
 Full guide: [Manual](https://justin-sky.github.io/ai-art-engine/manual.en.html) (source: `website/manual.en.html`). Local ComfyUI needs [comfy-api-proxy](https://justin-sky.github.io/ai-art-engine/guide-comfyui.en.html) on port 8189 — do not point Base URL at 8188.
 
@@ -168,7 +168,8 @@ git tag v5.0.0
 git push origin v5.0.0
 ```
 
-  CI verifies the tag (without `v`) matches `package.json`, then builds and publishes a [GitHub Release](https://github.com/Justin-sky/ai-art-engine/releases) (including `latest.yml` for auto-update).
+CI verifies the tag (without `v`) matches `package.json`, then builds and publishes a [GitHub Release](https://github.com/Justin-sky/ai-art-engine/releases) (including `latest.yml` for auto-update).
+
 - **In-app updates**: packaged builds check Releases on startup; use **Settings → General → About & updates** to check manually, then restart to install. Dev mode (`npm run dev`) skips update checks.
 
 ---

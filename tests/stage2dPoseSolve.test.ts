@@ -41,7 +41,9 @@ const order = [
   'right_ankle'
 ] as const
 
-function skeleton(over: Partial<Record<(typeof order)[number], YoloSkeletonPoint>>): YoloSkeletonPoint[] {
+function skeleton(
+  over: Partial<Record<(typeof order)[number], YoloSkeletonPoint>>
+): YoloSkeletonPoint[] {
   const list: YoloSkeletonPoint[] = order.map(() => EMPTY)
   for (const [name, pt] of Object.entries(over)) {
     const i = order.indexOf(name as (typeof order)[number])
@@ -70,7 +72,12 @@ function neutralPose(): Partial<Record<(typeof order)[number], YoloSkeletonPoint
 }
 
 /** 取关节方向角（子→孙），用于断言解算结果 */
-function segmentDeg(skel: Stage2dPoseSolveResult['pose'], r: Stage2dRig, from: string, to: string): number {
+function segmentDeg(
+  skel: Stage2dPoseSolveResult['pose'],
+  r: Stage2dRig,
+  from: string,
+  to: string
+): number {
   const map = new Map(computeStage2dRigTransforms(r, skel).map((t) => [t.jointId, t]))
   const a = map.get(from)!
   const b = map.get(to)!
@@ -182,7 +189,11 @@ describe('solveStage2dPoseFromSkeleton', () => {
 
   it('flip 对左右对称的中性站姿不引入多余 pose（水平方向随镜像反射抵消）', () => {
     const r = rig()
-    const result = solveStage2dPoseFromSkeleton({ rig: r, skeleton: skeleton(neutralPose()), flip: true })
+    const result = solveStage2dPoseFromSkeleton({
+      rig: r,
+      skeleton: skeleton(neutralPose()),
+      flip: true
+    })
     expect(result.driven).toEqual([])
     expect(result.pose).toEqual({})
   })

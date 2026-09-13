@@ -8,13 +8,8 @@ export const DEFAULT_GRAPH_INSPECTOR_IDS: Partial<Record<GraphInspectorKind, str
   camera: 'studio.graph.camera'
 }
 
-function isHostableHostNode(
-  node: Pick<GraphNode, 'assetType' | 'params'>
-): boolean {
-  return (
-    node.params?.assetHost === true &&
-    isAssetRefInputHostType(node.assetType)
-  )
+function isHostableHostNode(node: Pick<GraphNode, 'assetType' | 'params'>): boolean {
+  return node.params?.assetHost === true && isAssetRefInputHostType(node.assetType)
 }
 
 export function resolveGraphInspectorId(

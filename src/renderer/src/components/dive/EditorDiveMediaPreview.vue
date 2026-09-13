@@ -1,15 +1,6 @@
 <template>
-  <div
-    ref="rootEl"
-    class="media-preview"
-    tabindex="0"
-    @wheel.prevent="onWheel"
-  >
-    <div
-      class="viewport"
-      :class="{ text: mediaKind === 'text' }"
-      @click="onBackdropClick"
-    >
+  <div ref="rootEl" class="media-preview" tabindex="0" @wheel.prevent="onWheel">
+    <div class="viewport" :class="{ text: mediaKind === 'text' }" @click="onBackdropClick">
       <textarea
         v-if="mediaKind === 'text'"
         class="text-view"
@@ -18,10 +9,7 @@
         :value="textContent"
         @click.stop
       />
-      <p
-        v-else-if="!resolvedUrl"
-        class="empty"
-      >
+      <p v-else-if="!resolvedUrl" class="empty">
         {{ emptyText }}
       </p>
       <img
@@ -37,7 +25,7 @@
         @pointerup="onPanEnd"
         @pointercancel="onPanEnd"
         @click.stop
-      >
+      />
       <video
         v-else-if="mediaKind === 'video'"
         :src="resolvedUrl"
@@ -46,14 +34,7 @@
         autoplay
         @click.stop
       />
-      <audio
-        v-else
-        :src="resolvedUrl"
-        class="av-player audio"
-        controls
-        autoplay
-        @click.stop
-      />
+      <audio v-else :src="resolvedUrl" class="av-player audio" controls autoplay @click.stop />
     </div>
   </div>
 </template>

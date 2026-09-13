@@ -16,12 +16,7 @@ import {
 import type { ModelProviderAdapter, VideoPollResult } from '../types'
 import { PROVIDER_ERRORS } from '../catalog'
 import { fail, defErr } from '@shared/errors/appError'
-import {
-  createProviderHttpClient,
-  formatAuthError,
-  isAuthFailure,
-  readHttpError
-} from '../http'
+import { createProviderHttpClient, formatAuthError, isAuthFailure, readHttpError } from '../http'
 import { generateOpenAiCompatibleText } from '../openaiCompat'
 
 // ── 本文件错误条目（catalog 未覆盖的个性文案）──

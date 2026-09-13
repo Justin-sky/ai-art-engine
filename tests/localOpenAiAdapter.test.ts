@@ -60,11 +60,7 @@ describe('localOpenAiAdapter', () => {
   it('fetches text catalog from /models without vendor filtering', async () => {
     getMock.mockResolvedValueOnce({
       data: {
-        data: [
-          { id: 'Qwen2.5-72B-Instruct' },
-          { id: 'llama3.1-8b' },
-          { id: 'deepseek-r1' }
-        ]
+        data: [{ id: 'Qwen2.5-72B-Instruct' }, { id: 'llama3.1-8b' }, { id: 'deepseek-r1' }]
       }
     })
     const models = await vllmAdapter.fetchCatalog(provider(), 'text')
@@ -191,9 +187,9 @@ describe('localOpenAiAdapter', () => {
   })
 
   it('rejects image, video and speech with a clear message', async () => {
-    await expect(
-      vllmAdapter.generateImage(provider(), 'flux', { prompt: 'x' })
-    ).rejects.toThrow(/仅支持文本/)
+    await expect(vllmAdapter.generateImage(provider(), 'flux', { prompt: 'x' })).rejects.toThrow(
+      /仅支持文本/
+    )
     await expect(
       ollamaAdapter.generateSpeech(provider({ providerKind: 'ollama' }), 'tts-1', {
         input: 'hi'

@@ -28,8 +28,7 @@ export const EMOTION_GRID: readonly (readonly EmotionCellDef[])[] = [
   [
     {
       label: '温柔安详',
-      prompt:
-        '温暖注视，眼睑放松，唇角轻扬，呼吸平稳，肩膀自然下沉；gentle serene expression'
+      prompt: '温暖注视，眼睑放松，唇角轻扬，呼吸平稳，肩膀自然下沉；gentle serene expression'
     },
     {
       label: '平静柔和',
@@ -41,13 +40,11 @@ export const EMOTION_GRID: readonly (readonly EmotionCellDef[])[] = [
     },
     {
       label: '淡然疏离',
-      prompt:
-        '视线越过主体看向远处，唇角平直，头部轻微侧开；detached distant gaze'
+      prompt: '视线越过主体看向远处，唇角平直，头部轻微侧开；detached distant gaze'
     },
     {
       label: '冷漠平静',
-      prompt:
-        '眨眼缓慢，目光缺少回应，下颌稳定，身体保持距离；cold indifferent stare'
+      prompt: '眨眼缓慢，目光缺少回应，下颌稳定，身体保持距离；cold indifferent stare'
     }
   ],
   // y=1
@@ -77,8 +74,7 @@ export const EMOTION_GRID: readonly (readonly EmotionCellDef[])[] = [
   [
     {
       label: '亲近友善',
-      prompt:
-        '温暖眼神接触，眉毛轻抬，身体自然朝向对方；friendly warm eye contact'
+      prompt: '温暖眼神接触，眉毛轻抬，身体自然朝向对方；friendly warm eye contact'
     },
     {
       label: '自然亲和',
@@ -86,8 +82,7 @@ export const EMOTION_GRID: readonly (readonly EmotionCellDef[])[] = [
     },
     {
       label: '情绪中性',
-      prompt:
-        '五官与身体处于自然基线，稳定呼吸，无刻意表情；neutral baseline emotion'
+      prompt: '五官与身体处于自然基线，稳定呼吸，无刻意表情；neutral baseline emotion'
     },
     {
       label: '疏远戒备',
@@ -95,31 +90,26 @@ export const EMOTION_GRID: readonly (readonly EmotionCellDef[])[] = [
     },
     {
       label: '隐忍愠怒',
-      prompt:
-        '唇角紧抿，眉头微皱，鼻翼翕张，下颌绷紧，压住怒意；suppressed anger'
+      prompt: '唇角紧抿，眉头微皱，鼻翼翕张，下颌绷紧，压住怒意；suppressed anger'
     }
   ],
   // y=3
   [
     {
       label: '热情亲近',
-      prompt:
-        '眼睛明亮，笑容展开，身体主动前倾，手势有活力；enthusiastic warm expression'
+      prompt: '眼睛明亮，笑容展开，身体主动前倾，手势有活力；enthusiastic warm expression'
     },
     {
       label: '兴奋愉悦',
-      prompt:
-        '眉毛上扬，笑肌抬起，呼吸加快，身体轻微弹动；excited joyful expression'
+      prompt: '眉毛上扬，笑肌抬起，呼吸加快，身体轻微弹动；excited joyful expression'
     },
     {
       label: '激动振奋',
-      prompt:
-        '眼神强烈，嘴唇微张，胸腔起伏明显，拳头轻握；intense energized expression'
+      prompt: '眼神强烈，嘴唇微张，胸腔起伏明显，拳头轻握；intense energized expression'
     },
     {
       label: '焦躁疏离',
-      prompt:
-        '快速眨眼，眉间收紧，手指反复动作，重心不断转换；agitated uneasy look'
+      prompt: '快速眨眼，眉间收紧，手指反复动作，重心不断转换；agitated uneasy look'
     },
     {
       label: '愤怒疏离',
@@ -130,8 +120,7 @@ export const EMOTION_GRID: readonly (readonly EmotionCellDef[])[] = [
   [
     {
       label: '狂热亲近',
-      prompt:
-        '持续强烈注视，瞳孔放大，呼吸急促，身体明显靠近；fervent passionate gaze'
+      prompt: '持续强烈注视，瞳孔放大，呼吸急促，身体明显靠近；fervent passionate gaze'
     },
     {
       label: '狂喜激动',
@@ -139,8 +128,7 @@ export const EMOTION_GRID: readonly (readonly EmotionCellDef[])[] = [
     },
     {
       label: '极度激动',
-      prompt:
-        '快速呼吸，眼神跳动，面部与手部动作幅度增大但保持生理自然；high arousal'
+      prompt: '快速呼吸，眼神跳动，面部与手部动作幅度增大但保持生理自然；high arousal'
     },
     {
       label: '激动排斥',
@@ -148,8 +136,7 @@ export const EMOTION_GRID: readonly (readonly EmotionCellDef[])[] = [
     },
     {
       label: '暴怒疏离',
-      prompt:
-        '眉头强烈下压，鼻翼扩张，牙关与下颌绷紧，拳头握紧，死死盯视；furious rage'
+      prompt: '眉头强烈下压，鼻翼扩张，牙关与下颌绷紧，拳头握紧，死死盯视；furious rage'
     }
   ]
 ] as const
@@ -165,9 +152,7 @@ export function clampEmotionIndex(value: number): EmotionGridIndex {
   return v as EmotionGridIndex
 }
 
-export function normalizeEmotionPad(
-  raw?: Partial<EmotionPadState> | null
-): EmotionPadState {
+export function normalizeEmotionPad(raw?: Partial<EmotionPadState> | null): EmotionPadState {
   const base = { ...DEFAULT_EMOTION_PAD, ...(raw ?? {}) }
   return {
     gridX: clampEmotionIndex(base.gridX),

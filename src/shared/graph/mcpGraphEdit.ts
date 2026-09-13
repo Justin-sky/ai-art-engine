@@ -110,13 +110,17 @@ function applyOp(
         }
         return `更新节点 ${existing.id}`
       }
-      const node = createNodeFromType(op.typeId as GraphNodeTypeId, {
-        x: op.x ?? 0,
-        y: op.y ?? 0
-      }, {
-        title: op.title?.trim() || undefined,
-        params: op.params && typeof op.params === 'object' ? op.params : undefined
-      })
+      const node = createNodeFromType(
+        op.typeId as GraphNodeTypeId,
+        {
+          x: op.x ?? 0,
+          y: op.y ?? 0
+        },
+        {
+          title: op.title?.trim() || undefined,
+          params: op.params && typeof op.params === 'object' ? op.params : undefined
+        }
+      )
       if (op.nodeId) node.id = op.nodeId
       if (findNode(graph, node.id)) {
         warnings.push(`节点 id「${node.id}」已存在，已跳过新建`)
@@ -198,18 +202,13 @@ function applyOp(
   }
 }
 
-export function applyGraphEditOps(
-  graph: GraphDocument,
-  ops: McpGraphEditOp[]
-): McpGraphEditResult {
+export function applyGraphEditOps(graph: GraphDocument, ops: McpGraphEditOp[]): McpGraphEditResult {
   const next: GraphDocument = {
     ...graph,
     nodes: [...graph.nodes],
     edges: [...graph.edges]
   }
-  const addable = new Set(
-    listAddableNodeTypes(MCP_GRAPH_EDIT_SCOPE).map((def) => def.typeId)
-  )
+  const addable = new Set(listAddableNodeTypes(MCP_GRAPH_EDIT_SCOPE).map((def) => def.typeId))
   const applied: string[] = []
   const warnings: string[] = []
   for (const op of ops) {

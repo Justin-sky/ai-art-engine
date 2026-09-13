@@ -3,11 +3,7 @@
  * 复用通用 Agent 质检层（agentPrompts.ts）的框架 / 通过标准 / 结论解析；本文件只补「媒体域」
  * 的硬性检查清单与参数回标辅助。保持纯函数、无渲染环境依赖，结论回标存 GraphNodeParams。
  */
-import {
-  buildAgentReviewPack,
-  parseAgentVerdict,
-  type AgentPromptPack
-} from './agentPrompts'
+import { buildAgentReviewPack, parseAgentVerdict, type AgentPromptPack } from './agentPrompts'
 
 /** 媒体质检结论（与通用 parseAgentVerdict 同构，语义化命名） */
 export interface MediaReviewVerdict {
@@ -130,10 +126,7 @@ export type MediaReviewRole = 'reference' | 'artifact'
  * 改造前所有上游图片被拉平后一股脑塞给模型，模型无从知道该拿谁跟谁比，
  * 「与参考图一致」这条硬性检查实际无法执行。此处显式区分并在提示词中标注。
  */
-export function resolveMediaReviewRoles(
-  count: number,
-  referenceCount?: number
-): MediaReviewRole[] {
+export function resolveMediaReviewRoles(count: number, referenceCount?: number): MediaReviewRole[] {
   if (!Number.isFinite(count) || count <= 0) return []
   const total = Math.floor(count)
   let refs: number
@@ -200,7 +193,9 @@ export function serializeMediaReviewScores(scores: MediaReviewScores): string {
   return `${JSON.stringify(scores, null, 2)}\n`
 }
 
-export function parseMediaReviewScoresParam(raw: string | null | undefined): MediaReviewScores | null {
+export function parseMediaReviewScoresParam(
+  raw: string | null | undefined
+): MediaReviewScores | null {
   if (!raw?.trim()) return null
   try {
     const parsed = JSON.parse(raw) as Partial<MediaReviewScores>
@@ -219,9 +214,7 @@ export function parseMediaReviewScoresParam(raw: string | null | undefined): Med
 /* ────────────────────────────── 客观校验 ────────────────────────────── */
 
 export type MediaObjectiveIssueCode =
-  | 'count-mismatch'
-  | 'aspect-ratio-mismatch'
-  | 'resolution-too-low'
+  'count-mismatch' | 'aspect-ratio-mismatch' | 'resolution-too-low'
 
 export interface MediaObjectiveIssue {
   code: MediaObjectiveIssueCode
@@ -306,9 +299,7 @@ export function serializeMediaObjectiveIssues(issues: readonly MediaObjectiveIss
   return `${JSON.stringify(issues, null, 2)}\n`
 }
 
-export function parseMediaObjectiveIssues(
-  raw: string | null | undefined
-): MediaObjectiveIssue[] {
+export function parseMediaObjectiveIssues(raw: string | null | undefined): MediaObjectiveIssue[] {
   if (!raw?.trim()) return []
   try {
     const parsed = JSON.parse(raw) as unknown

@@ -75,11 +75,8 @@ function mediaDataUrlToBlob(ref: string): { blob: Blob; filename: string } {
   const buf = m[2]
     ? Buffer.from(payload, 'base64')
     : Buffer.from(decodeURIComponent(payload), 'utf8')
-  const ext = mime.includes('jpeg') || mime.includes('jpg')
-    ? 'jpg'
-    : mime.includes('video')
-      ? 'mp4'
-      : 'png'
+  const ext =
+    mime.includes('jpeg') || mime.includes('jpg') ? 'jpg' : mime.includes('video') ? 'mp4' : 'png'
   return {
     blob: new Blob([new Uint8Array(buf)], { type: mime }),
     filename: `reference-${Date.now()}.${ext}`
@@ -200,7 +197,8 @@ export function createLocalOpenAiAdapter(
       modelId: string,
       input: GenerateVideoInput
     ): Promise<GenerateVideoJob> {
-      if (!videoEnabled) return notSupported(displayName, { zh: '视频生成', en: 'video generation' })
+      if (!videoEnabled)
+        return notSupported(displayName, { zh: '视频生成', en: 'video generation' })
       const client = createProviderHttpClient(provider, LONG_GENERATE_TIMEOUT_MS)
       const form = new FormData()
       form.append('prompt', input.prompt)
@@ -254,7 +252,8 @@ export function createLocalOpenAiAdapter(
       provider: ModelProviderInstance,
       job: { jobId: string; pollingUrl: string }
     ): Promise<VideoPollResult> {
-      if (!videoEnabled) return notSupported(displayName, { zh: '视频生成', en: 'video generation' })
+      if (!videoEnabled)
+        return notSupported(displayName, { zh: '视频生成', en: 'video generation' })
       const client = createProviderHttpClient(provider)
       try {
         const { data } = await client.get<{

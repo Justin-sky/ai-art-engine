@@ -100,9 +100,7 @@ export function wireDanglingOutsToBoundaryOutputs(
         return !!out && portsCompatible(out.dataType, singularType)
       }
       const sourcePort = preferredSourcePort(node, aggregate)
-      const hasOut = getNodePorts(node).some(
-        (p) => p.direction === 'out' && p.id === sourcePort
-      )
+      const hasOut = getNodePorts(node).some((p) => p.direction === 'out' && p.id === sourcePort)
       if (!hasOut) return false
       return canConnectNodes(node, bout!, { sourcePort, targetPort: 'in' })
     }
@@ -126,9 +124,7 @@ export function wireDanglingOutsToBoundaryOutputs(
     const dangling = nodes
       .filter(
         (node) =>
-          connectable(node) &&
-          !usedSources.has(node.id) &&
-          !hasOutEdgeIgnoringBoundary(node)
+          connectable(node) && !usedSources.has(node.id) && !hasOutEdgeIgnoringBoundary(node)
       )
       .sort(byTopThenRight)
 
@@ -337,7 +333,7 @@ export function ensureBoundaryProxyNodes(
     autoLinkHeadTypeIds?: string[]
     /**
      * 为 true 时只补齐/更新 iface 中的 boundary，不删除图上其它 boundary
- *（绑定实体会动态建 boundary.input，不能按空 inputs 剪掉）。
+     *（绑定实体会动态建 boundary.input，不能按空 inputs 剪掉）。
      */
     preserveUnlistedBoundaryNodes?: boolean
   }
@@ -482,10 +478,7 @@ export function ensureBoundaryProxyNodes(
   const inPortIds = new Set(iface.inputs.map((p) => p.id))
   const outPortById = new Map(iface.outputs.map((p) => [p.id, p]))
   const nextNodes = nodes.filter((n) => {
-    if (
-      n.typeId !== GRAPH_BOUNDARY_INPUT_TYPE_ID &&
-      n.typeId !== GRAPH_BOUNDARY_OUTPUT_TYPE_ID
-    ) {
+    if (n.typeId !== GRAPH_BOUNDARY_INPUT_TYPE_ID && n.typeId !== GRAPH_BOUNDARY_OUTPUT_TYPE_ID) {
       return true
     }
     if (options?.preserveUnlistedBoundaryNodes) return true
@@ -507,9 +500,7 @@ export function ensureBoundaryProxyNodes(
     if (splittable) {
       if (slotSourceId) {
         // 槽节点：槽源节点必须仍存在于图中
-        return nodes.some(
-          (m) => m.id === slotSourceId && !isBoundaryProxyNode(m)
-        )
+        return nodes.some((m) => m.id === slotSourceId && !isBoundaryProxyNode(m))
       }
       // 主节点兜底：仅当该复数口没有任何槽节点时保留
       return !nodes.some(

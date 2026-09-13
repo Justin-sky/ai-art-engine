@@ -40,7 +40,14 @@ function person(centerX: number, scale: number): YoloSkeletonPoint[] {
 }
 
 function box(centerX: number, scale: number, confidence = 1): YoloBox {
-  return { label: 'person', confidence, x: centerX - 20 * scale, y: 10 * scale, width: 40 * scale, height: 200 * scale }
+  return {
+    label: 'person',
+    confidence,
+    x: centerX - 20 * scale,
+    y: 10 * scale,
+    width: 40 * scale,
+    height: 200 * scale
+  }
 }
 
 describe('poseQuality：模型档位与默认选择', () => {

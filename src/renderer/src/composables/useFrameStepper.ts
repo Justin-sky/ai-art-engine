@@ -123,8 +123,7 @@ export function useFrameStepper(
       v.pause()
       v.muted = true
       // 从靠近开头处播放，避开首帧解码/加载抖动；太短则从 0 开始
-      const startTime =
-        v.duration > 1.5 ? Math.min(0.2 * v.duration, v.duration - 0.5) : 0
+      const startTime = v.duration > 1.5 ? Math.min(0.2 * v.duration, v.duration - 0.5) : 0
       v.currentTime = startTime
       window.setTimeout(finish, 3000)
       handle = v.requestVideoFrameCallback(callback)

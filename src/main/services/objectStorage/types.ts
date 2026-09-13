@@ -19,9 +19,5 @@ export interface ObjectStorageAdapter {
     buffer: Buffer,
     objectKey: string
   ): Promise<string>
-  deleteObject(
-    provider: ObjectStorageProviderInstance,
-    bucket: string,
-    key: string
-  ): Promise<void>
+  deleteObject(provider: ObjectStorageProviderInstance, bucket: string, key: string): Promise<void>
 }

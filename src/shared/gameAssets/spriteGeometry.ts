@@ -249,7 +249,12 @@ interface LumaBuffer {
   mask: Uint8Array
 }
 
-function toLuma(data: Uint8Array | Uint8ClampedArray, width: number, height: number, alphaMin: number): LumaBuffer {
+function toLuma(
+  data: Uint8Array | Uint8ClampedArray,
+  width: number,
+  height: number,
+  alphaMin: number
+): LumaBuffer {
   const n = width * height
   const luma = new Float32Array(n)
   const mask = new Uint8Array(n)

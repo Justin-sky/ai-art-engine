@@ -98,9 +98,7 @@ export function beatCutWindowForDuration(
   // 源总时长（优先打点记录时长，缺失时用最末段边界兜底）
   const recorded = Number(beats.durationSec)
   const sourceEnd =
-    Number.isFinite(recorded) && recorded > 0
-      ? recorded
-      : Math.max(0, ...segs.map((s) => s.toSec))
+    Number.isFinite(recorded) && recorded > 0 ? recorded : Math.max(0, ...segs.map((s) => s.toSec))
 
   // 相邻内容段合并成连续窗口（人物段与有物段相邻算同一可用区间）
   const windows: Array<{ from: number; to: number }> = []
@@ -140,11 +138,7 @@ export function beatCutWindowForDuration(
 
 function isContentBeatSegment(seg: VideoBeatSegment): boolean {
   if (!seg || seg.kind === BEAT_EMPTY_KIND) return false
-  return (
-    Number.isFinite(seg.fromSec) &&
-    Number.isFinite(seg.toSec) &&
-    seg.toSec > seg.fromSec
-  )
+  return Number.isFinite(seg.fromSec) && Number.isFinite(seg.toSec) && seg.toSec > seg.fromSec
 }
 
 export interface SmartCutPlan {
@@ -181,12 +175,18 @@ export function buildSmartCutPrompt(input: SmartCutPromptInput): string {
   const max = Math.max(1, Math.min(SMART_CUT_MAX_ITEMS, input.maxItems ?? SMART_CUT_MAX_ITEMS))
   const sources = input.sources.slice(0, max)
   const lines = sources.map((s, i) => {
-    const dur = typeof s.durationSec === 'number' && Number.isFinite(s.durationSec) ? `${s.durationSec}s` : '未知'
+    const dur =
+      typeof s.durationSec === 'number' && Number.isFinite(s.durationSec)
+        ? `${s.durationSec}s`
+        : '未知'
     const shot = s.nodeTitle?.trim() ? `（分镜：${s.nodeTitle.trim()}）` : ''
     return `${i + 1}. 素材ID:${s.id} | 标题:${s.title}${shot} | 素材时长:${dur}`
   })
   const current = (input.currentClips ?? [])
-    .map((c, i) => `${i + 1}. ${c.title} (${c.sourceId}) ${c.startSec.toFixed(1)}-${(c.startSec + c.durationSec).toFixed(1)}s`)
+    .map(
+      (c, i) =>
+        `${i + 1}. ${c.title} (${c.sourceId}) ${c.startSec.toFixed(1)}-${(c.startSec + c.durationSec).toFixed(1)}s`
+    )
     .join('\n')
 
   if (zh) {
@@ -339,10 +339,7 @@ export function applySmartCutPlan(input: ApplySmartCutInput): ApplySmartCutResul
     index += 1
   }
 
-  const next = [
-    ...input.clips.filter((c) => c.track !== 'video'),
-    ...videoClips
-  ]
+  const next = [...input.clips.filter((c) => c.track !== 'video'), ...videoClips]
   return {
     clips: next,
     totalDurationSec: Math.round(cursor * 10) / 10

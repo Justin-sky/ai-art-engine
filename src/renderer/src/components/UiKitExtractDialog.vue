@@ -10,10 +10,7 @@
     body-class="pad-none ui-kit-extract-body"
     @close="closeUiKitExtractDialog"
   >
-    <div
-      v-if="state.open"
-      class="extract"
-    >
+    <div v-if="state.open" class="extract">
       <!-- 左侧：部件清单 + 导出 -->
       <aside class="side-pane">
         <div class="pane-title">
@@ -40,10 +37,7 @@
             {{ t('uiKitExtract.toolSelect') }}
           </button>
         </div>
-        <ul
-          v-if="parts.length"
-          class="part-list"
-        >
+        <ul v-if="parts.length" class="part-list">
           <li
             v-for="(p, index) in parts"
             :key="p.id"
@@ -51,17 +45,11 @@
             @click="selectPart(p.id)"
           >
             <span class="part-no">{{ index + 1 }}</span>
-            <span
-              class="part-name"
-              :title="uiKitPartFileName(p)"
-            >{{ p.name }}</span>
+            <span class="part-name" :title="uiKitPartFileName(p)">{{ p.name }}</span>
             <span class="part-kind">{{ t(`uiKitExtract.kind.${p.kind}`) }}</span>
           </li>
         </ul>
-        <p
-          v-else
-          class="hint empty"
-        >
+        <p v-else class="hint empty">
           {{ t('uiKitExtract.emptyParts') }}
         </p>
         <div class="side-footer">
@@ -73,10 +61,7 @@
           >
             {{ busy ? t('uiKitExtract.exporting') : t('uiKitExtract.export') }}
           </button>
-          <p
-            v-if="exportMsg"
-            class="msg"
-          >
+          <p v-if="exportMsg" class="msg">
             {{ exportMsg }}
           </p>
         </div>
@@ -89,29 +74,12 @@
             {{ sourceLabel }}
           </div>
           <div class="zoom-row">
-            <button
-              type="button"
-              class="zoom-btn"
-              title="−"
-              @click="zoomBy(0.8)"
-            >
-              −
-            </button>
+            <button type="button" class="zoom-btn" title="−" @click="zoomBy(0.8)">−</button>
             <span class="zoom-val">{{ Math.round(zoom * 100) }}%</span>
-            <button
-              type="button"
-              class="zoom-btn"
-              title="+"
-              @click="zoomBy(1.25)"
-            >
-              +
-            </button>
+            <button type="button" class="zoom-btn" title="+" @click="zoomBy(1.25)">+</button>
           </div>
         </div>
-        <div
-          ref="scrollEl"
-          class="stage-scroll"
-        >
+        <div ref="scrollEl" class="stage-scroll">
           <div
             v-if="naturalW > 0"
             ref="stageEl"
@@ -122,13 +90,7 @@
             @pointerup.prevent="onStagePointerUp"
             @pointercancel="cancelDrawing"
           >
-            <img
-              :src="state.url"
-              :width="displayW"
-              :height="displayH"
-              draggable="false"
-              alt=""
-            >
+            <img :src="state.url" :width="displayW" :height="displayH" draggable="false" alt="" />
             <div
               v-for="p in parts"
               :key="p.id"
@@ -136,28 +98,15 @@
               :class="{ active: p.id === selectedId }"
               :style="boxStyle(p.rect)"
             >
-              <span
-                v-if="p.id === selectedId"
-                class="box-tag"
-              >{{ uiKitPartFileName(p) }}</span>
+              <span v-if="p.id === selectedId" class="box-tag">{{ uiKitPartFileName(p) }}</span>
             </div>
-            <div
-              v-if="draft"
-              class="box draft"
-              :style="boxStyle(draft)"
-            />
+            <div v-if="draft" class="box draft" :style="boxStyle(draft)" />
           </div>
-          <p
-            v-else
-            class="hint stage-hint"
-          >
+          <p v-else class="hint stage-hint">
             {{ imageError || t('uiKitExtract.loading') }}
           </p>
         </div>
-        <p
-          v-if="naturalW > 0"
-          class="hint stage-footer"
-        >
+        <p v-if="naturalW > 0" class="hint stage-footer">
           {{ t('uiKitExtract.stageHint') }}
         </p>
       </section>
@@ -170,23 +119,15 @@
           </div>
           <label class="field">
             <span>{{ t('uiKitExtract.fields.kind') }}</span>
-            <select
-              :value="selected.kind"
-              @change="onKindChange(inputVal($event.target))"
-            >
-              <option
-                v-for="kind in UI_KIT_PART_KINDS"
-                :key="kind"
-                :value="kind"
-              >{{ t(`uiKitExtract.kind.${kind}`) }}</option>
+            <select :value="selected.kind" @change="onKindChange(inputVal($event.target))">
+              <option v-for="kind in UI_KIT_PART_KINDS" :key="kind" :value="kind">
+                {{ t(`uiKitExtract.kind.${kind}`) }}
+              </option>
             </select>
           </label>
           <label class="field">
             <span>{{ t('uiKitExtract.fields.name') }}</span>
-            <input
-              :value="selected.name"
-              @change="onNameChange(inputVal($event.target))"
-            >
+            <input :value="selected.name" @change="onNameChange(inputVal($event.target))" />
           </label>
           <code class="file-name">{{ uiKitPartFileName(selected) }}</code>
 
@@ -200,7 +141,7 @@
                   min="0"
                   :value="selected.rect.x"
                   @change="onRectChange('x', toNum($event.target))"
-                >
+                />
               </label>
               <label>
                 <span>{{ t('uiKitExtract.fields.y') }}</span>
@@ -209,7 +150,7 @@
                   min="0"
                   :value="selected.rect.y"
                   @change="onRectChange('y', toNum($event.target))"
-                >
+                />
               </label>
               <label>
                 <span>{{ t('uiKitExtract.fields.width') }}</span>
@@ -218,7 +159,7 @@
                   min="1"
                   :value="selected.rect.width"
                   @change="onRectChange('width', toNum($event.target))"
-                >
+                />
               </label>
               <label>
                 <span>{{ t('uiKitExtract.fields.height') }}</span>
@@ -227,27 +168,21 @@
                   min="1"
                   :value="selected.rect.height"
                   @change="onRectChange('height', toNum($event.target))"
-                >
+                />
               </label>
             </div>
           </div>
 
           <div class="field-group">
             <span class="group-label">{{ t('uiKitExtract.fields.border') }}</span>
-            <InsetEditor
-              :value="selected.border"
-              @change="onBorderChange"
-            />
+            <InsetEditor :value="selected.border" @change="onBorderChange" />
             <p class="hint">
               {{ t('uiKitExtract.fields.borderHint') }}
             </p>
           </div>
           <div class="field-group">
             <span class="group-label">{{ t('uiKitExtract.fields.safe') }}</span>
-            <InsetEditor
-              :value="selected.safe"
-              @change="onSafeChange"
-            />
+            <InsetEditor :value="selected.safe" @change="onSafeChange" />
             <p class="hint">
               {{ t('uiKitExtract.fields.safeHint') }}
             </p>
@@ -264,44 +199,31 @@
               <option :value="3">3×</option>
             </select>
           </label>
-          <div
-            v-if="cropDataUrl"
-            class="preview-crop"
-          >
+          <div v-if="cropDataUrl" class="preview-crop">
             <span class="group-label">{{ t('uiKitExtract.preview.crop') }}</span>
             <div class="checker img-frame">
-              <img
-                :src="cropDataUrl"
-                alt=""
-              >
+              <img :src="cropDataUrl" alt="" />
             </div>
-            <span class="group-label dims">{{ selected.rect.width }}×{{ selected.rect.height }}px</span>
+            <span class="group-label dims"
+              >{{ selected.rect.width }}×{{ selected.rect.height }}px</span
+            >
           </div>
           <div class="preview-stretch">
-            <span class="group-label">{{ t('uiKitExtract.preview.wide', { n: previewFactor }) }}</span>
-            <canvas
-              ref="wideCanvas"
-              class="checker prev-canvas"
-            />
-            <span class="group-label">{{ t('uiKitExtract.preview.tall', { n: previewFactor }) }}</span>
-            <canvas
-              ref="tallCanvas"
-              class="checker prev-canvas"
-            />
+            <span class="group-label">{{
+              t('uiKitExtract.preview.wide', { n: previewFactor })
+            }}</span>
+            <canvas ref="wideCanvas" class="checker prev-canvas" />
+            <span class="group-label">{{
+              t('uiKitExtract.preview.tall', { n: previewFactor })
+            }}</span>
+            <canvas ref="tallCanvas" class="checker prev-canvas" />
           </div>
 
-          <button
-            type="button"
-            class="danger"
-            @click="removeSelected"
-          >
+          <button type="button" class="danger" @click="removeSelected">
             {{ t('uiKitExtract.delete') }}
           </button>
         </template>
-        <div
-          v-else
-          class="pane-placeholder"
-        >
+        <div v-else class="pane-placeholder">
           <p class="hint">
             {{ t('uiKitExtract.noSelection') }}
           </p>
@@ -541,12 +463,7 @@ function setTool(next: 'box' | 'select'): void {
 }
 
 function pointInRect(pos: { x: number; y: number }, r: RawRect): boolean {
-  return (
-    pos.x >= r.x &&
-    pos.x <= r.x + r.width &&
-    pos.y >= r.y &&
-    pos.y <= r.y + r.height
-  )
+  return pos.x >= r.x && pos.x <= r.x + r.width && pos.y >= r.y && pos.y <= r.y + r.height
 }
 
 function dedupeNames(): void {
@@ -639,20 +556,8 @@ async function renderSelectedPreview(): Promise<void> {
   try {
     cropDataUrl.value = cropUiKitPartPng(img, p)
     const f = previewFactor.value
-    paintUiKitNineSlice(
-      wideCanvas.value,
-      img,
-      p,
-      p.rect.width * f,
-      p.rect.height
-    )
-    paintUiKitNineSlice(
-      tallCanvas.value,
-      img,
-      p,
-      p.rect.width,
-      p.rect.height * f
-    )
+    paintUiKitNineSlice(wideCanvas.value, img, p, p.rect.width * f, p.rect.height)
+    paintUiKitNineSlice(tallCanvas.value, img, p, p.rect.width, p.rect.height * f)
   } catch (err) {
     cropDataUrl.value = ''
     console.warn('[uiKit] preview failed', err)
@@ -792,9 +697,12 @@ watch([() => state.open, naturalW, naturalH], () => {
 })
 
 watch(previewFactor, () => schedulePreview())
-watch(() => image.value, () => {
-  if (state.open) schedulePreview()
-})
+watch(
+  () => image.value,
+  () => {
+    if (state.open) schedulePreview()
+  }
+)
 
 const onWindowResize = (): void => {
   if (state.open) scheduleLayout()
@@ -1189,9 +1097,17 @@ button:disabled {
 .checker {
   background-color: var(--bg-input);
   background-image:
-    linear-gradient(45deg, var(--wash-16) 25%, transparent 25%, transparent 75%, var(--wash-16) 75%),
+    linear-gradient(
+      45deg,
+      var(--wash-16) 25%,
+      transparent 25%,
+      transparent 75%,
+      var(--wash-16) 75%
+    ),
     linear-gradient(45deg, var(--wash-16) 25%, transparent 25%, transparent 75%, var(--wash-16) 75%);
-  background-position: 0 0, 7px 7px;
+  background-position:
+    0 0,
+    7px 7px;
 }
 
 .pane-placeholder {

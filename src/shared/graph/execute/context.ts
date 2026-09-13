@@ -99,15 +99,12 @@ export function resolveInstructionFinalPreviewKind(
   if (typeId === 'video.reshoot' || presetKind === 'reshoot') return 'reshoot'
 
   const assetType = node?.assetType
-  if (typeId === 'asset.model3d' || assetType === 'model3d' || presetKind === 'model3d') return 'model3d'
+  if (typeId === 'asset.model3d' || assetType === 'model3d' || presetKind === 'model3d')
+    return 'model3d'
   if (typeId === 'asset.video' || assetType === 'video' || presetKind === 'video') return 'video'
   if (typeId === 'asset.voice' || assetType === 'voice' || presetKind === 'voice') return 'voice'
   if (typeId === 'asset.image' || assetType === 'image' || presetKind === 'image') return 'image'
-  if (
-    typeId === 'asset.screenplay' ||
-    assetType === 'screenplay' ||
-    presetKind === 'screenplay'
-  ) {
+  if (typeId === 'asset.screenplay' || assetType === 'screenplay' || presetKind === 'screenplay') {
     return 'screenplay'
   }
   return 'screenplay'
@@ -300,10 +297,7 @@ function graphValueToMentionSource(value: GraphValue, index: number): Instructio
 function fallbackMentionTextFromNode(node: GraphNode | undefined): string {
   if (!node) return ''
   return (
-    node.params.text?.trim() ||
-    node.params.resultText?.trim() ||
-    node.params.notes?.trim() ||
-    ''
+    node.params.text?.trim() || node.params.resultText?.trim() || node.params.notes?.trim() || ''
   )
 }
 

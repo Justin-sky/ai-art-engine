@@ -21,10 +21,14 @@ describe('generate node lock', () => {
     const beatSplit = createNodeFromType('beat.split', { x: 0, y: 0 })
     const beatGen = createNodeFromType('beat.gen', { x: 0, y: 0 })
     const note = createNodeFromType('note.text', { x: 0, y: 0 })
-    const host = createNodeFromType('asset.image', { x: 0, y: 0 }, {
-      assetId: '00000000-0000-4000-8000-0000000000a1',
-      params: { assetRef: true, assetHost: true, assetType: 'image' }
-    })
+    const host = createNodeFromType(
+      'asset.image',
+      { x: 0, y: 0 },
+      {
+        assetId: '00000000-0000-4000-8000-0000000000a1',
+        params: { assetRef: true, assetHost: true, assetType: 'image' }
+      }
+    )
     const output = createOutputGraphNode('image', { x: 0, y: 0 })
     const boundaryIn = createNodeFromType('graph.boundary.input', { x: 0, y: 0 })
     const boundaryOut = createNodeFromType('graph.boundary.output', { x: 0, y: 0 })
@@ -57,10 +61,14 @@ describe('generate node lock', () => {
   })
 
   it('legacy locked world.table still passes the catalog through', async () => {
-    const table = createNodeFromType('world.table', { x: 0, y: 0 }, {
-      id: 'table',
-      params: { locked: true, text: '{"characters":[{"name":"A"}]}' }
-    })
+    const table = createNodeFromType(
+      'world.table',
+      { x: 0, y: 0 },
+      {
+        id: 'table',
+        params: { locked: true, text: '{"characters":[{"name":"A"}]}' }
+      }
+    )
 
     const result = await runGraph(
       {
@@ -83,18 +91,22 @@ describe('generate node lock', () => {
   })
 
   it('beat.split lock reuses catalog gallery without calling generateText', async () => {
-    const split = createNodeFromType('beat.split', { x: 0, y: 0 }, {
-      id: 'split',
-      params: {
-        locked: true,
-        text: '[{"id":"nu-1","title":"A"}]',
-        generatedTexts: [
-          { id: 'old', text: '[]' },
-          { id: 'pick', text: '[{"id":"nu-1","title":"A"}]' }
-        ],
-        selectedTextId: 'pick'
+    const split = createNodeFromType(
+      'beat.split',
+      { x: 0, y: 0 },
+      {
+        id: 'split',
+        params: {
+          locked: true,
+          text: '[{"id":"nu-1","title":"A"}]',
+          generatedTexts: [
+            { id: 'old', text: '[]' },
+            { id: 'pick', text: '[{"id":"nu-1","title":"A"}]' }
+          ],
+          selectedTextId: 'pick'
+        }
       }
-    })
+    )
     let generateCalls = 0
 
     const result = await runGraph(
@@ -124,17 +136,21 @@ describe('generate node lock', () => {
   })
 
   it('beat.gen lock reuses generatedTexts without collecting', async () => {
-    const gen = createNodeFromType('beat.gen', { x: 0, y: 0 }, {
-      id: 'gen',
-      params: {
-        locked: true,
-        generatedTexts: [
-          { id: 'a', text: '单元A', title: 'A' },
-          { id: 'b', text: '单元B', title: 'B' }
-        ],
-        selectedTextId: 'b'
+    const gen = createNodeFromType(
+      'beat.gen',
+      { x: 0, y: 0 },
+      {
+        id: 'gen',
+        params: {
+          locked: true,
+          generatedTexts: [
+            { id: 'a', text: '单元A', title: 'A' },
+            { id: 'b', text: '单元B', title: 'B' }
+          ],
+          selectedTextId: 'b'
+        }
       }
-    })
+    )
     let collectCalls = 0
 
     const result = await runGraph(
@@ -165,18 +181,22 @@ describe('generate node lock', () => {
   })
 
   it('world.extract lock reuses catalog gallery without calling generateText', async () => {
-    const extract = createNodeFromType('world.extract', { x: 0, y: 0 }, {
-      id: 'extract',
-      params: {
-        locked: true,
-        text: '{"characters":[{"name":"A"}]}',
-        generatedTexts: [
-          { id: 'old', text: '{"characters":[]}' },
-          { id: 'pick', text: '{"characters":[{"name":"A"}]}' }
-        ],
-        selectedTextId: 'pick'
+    const extract = createNodeFromType(
+      'world.extract',
+      { x: 0, y: 0 },
+      {
+        id: 'extract',
+        params: {
+          locked: true,
+          text: '{"characters":[{"name":"A"}]}',
+          generatedTexts: [
+            { id: 'old', text: '{"characters":[]}' },
+            { id: 'pick', text: '{"characters":[{"name":"A"}]}' }
+          ],
+          selectedTextId: 'pick'
+        }
       }
-    })
+    )
     let generateCalls = 0
 
     const result = await runGraph(
@@ -206,16 +226,20 @@ describe('generate node lock', () => {
   })
 
   it('world.gen lock reuses image groups without collecting', async () => {
-    const gen = createNodeFromType('world.gen', { x: 0, y: 0 }, {
-      id: 'gen',
-      params: {
-        locked: true,
-        worldElementOutputs: [
-          { type: '角色', name: 'A', imageUrl: 'data:a' },
-          { type: '场景', name: 'B', imageUrl: 'data:b' }
-        ]
+    const gen = createNodeFromType(
+      'world.gen',
+      { x: 0, y: 0 },
+      {
+        id: 'gen',
+        params: {
+          locked: true,
+          worldElementOutputs: [
+            { type: '角色', name: 'A', imageUrl: 'data:a' },
+            { type: '场景', name: 'B', imageUrl: 'data:b' }
+          ]
+        }
       }
-    })
+    )
     let collectCalls = 0
 
     const result = await runGraph(
@@ -251,20 +275,28 @@ describe('generate node lock', () => {
   })
 
   it('lock reuses gallery without calling generateImage', async () => {
-    const image = createNodeFromType('asset.image', { x: 0, y: 0 }, {
-      id: 'img',
-      params: {
-        locked: true,
-        generatedImages: [
-          { id: 'a', dataUrl: 'data:a' },
-          { id: 'b', dataUrl: 'data:b' }
-        ],
-        selectedImageId: 'a'
+    const image = createNodeFromType(
+      'asset.image',
+      { x: 0, y: 0 },
+      {
+        id: 'img',
+        params: {
+          locked: true,
+          generatedImages: [
+            { id: 'a', dataUrl: 'data:a' },
+            { id: 'b', dataUrl: 'data:b' }
+          ],
+          selectedImageId: 'a'
+        }
       }
-    })
-    const output = createOutputGraphNode('image', { x: 200, y: 0 }, {
-      id: IMAGE_OUTPUT_ID
-    })
+    )
+    const output = createOutputGraphNode(
+      'image',
+      { x: 200, y: 0 },
+      {
+        id: IMAGE_OUTPUT_ID
+      }
+    )
     let generateCalls = 0
 
     const result = await runGraph(
@@ -301,21 +333,33 @@ describe('generate node lock', () => {
   })
 
   it('locked play.script reuses params.text without GRAPH_LOCK_NO_CACHE', async () => {
-    const script = createNodeFromType('play.script', { x: 0, y: 0 }, {
-      id: 'script',
-      params: { locked: true, text: 'a locked prompt' }
-    })
-    const image = createNodeFromType('asset.image', { x: 200, y: 0 }, {
-      id: 'img',
-      params: {
-        locked: true,
-        generatedImages: [{ id: 'a', dataUrl: 'data:a', relativePath: 'Cache/Images/a.png' }],
-        selectedImageId: 'a'
+    const script = createNodeFromType(
+      'play.script',
+      { x: 0, y: 0 },
+      {
+        id: 'script',
+        params: { locked: true, text: 'a locked prompt' }
       }
-    })
-    const output = createOutputGraphNode('image', { x: 400, y: 0 }, {
-      id: IMAGE_OUTPUT_ID
-    })
+    )
+    const image = createNodeFromType(
+      'asset.image',
+      { x: 200, y: 0 },
+      {
+        id: 'img',
+        params: {
+          locked: true,
+          generatedImages: [{ id: 'a', dataUrl: 'data:a', relativePath: 'Cache/Images/a.png' }],
+          selectedImageId: 'a'
+        }
+      }
+    )
+    const output = createOutputGraphNode(
+      'image',
+      { x: 400, y: 0 },
+      {
+        id: IMAGE_OUTPUT_ID
+      }
+    )
     let generateCalls = 0
 
     const result = await runGraph(
@@ -363,13 +407,21 @@ describe('generate node lock', () => {
   })
 
   it('lock without cache fails with GRAPH_LOCK_NO_CACHE', async () => {
-    const image = createNodeFromType('asset.image', { x: 0, y: 0 }, {
-      id: 'img',
-      params: { locked: true }
-    })
-    const output = createOutputGraphNode('image', { x: 200, y: 0 }, {
-      id: IMAGE_OUTPUT_ID
-    })
+    const image = createNodeFromType(
+      'asset.image',
+      { x: 0, y: 0 },
+      {
+        id: 'img',
+        params: { locked: true }
+      }
+    )
+    const output = createOutputGraphNode(
+      'image',
+      { x: 200, y: 0 },
+      {
+        id: IMAGE_OUTPUT_ID
+      }
+    )
     let generateCalls = 0
 
     const result = await runGraph(
@@ -403,13 +455,21 @@ describe('generate node lock', () => {
   })
 
   it('lock can reuse prior runStates when gallery is empty', async () => {
-    const image = createNodeFromType('asset.image', { x: 0, y: 0 }, {
-      id: 'img',
-      params: { locked: true }
-    })
-    const output = createOutputGraphNode('image', { x: 200, y: 0 }, {
-      id: IMAGE_OUTPUT_ID
-    })
+    const image = createNodeFromType(
+      'asset.image',
+      { x: 0, y: 0 },
+      {
+        id: 'img',
+        params: { locked: true }
+      }
+    )
+    const output = createOutputGraphNode(
+      'image',
+      { x: 200, y: 0 },
+      {
+        id: IMAGE_OUTPUT_ID
+      }
+    )
     let generateCalls = 0
 
     const result = await runGraph(

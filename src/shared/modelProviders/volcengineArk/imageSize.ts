@@ -169,7 +169,8 @@ export function resolveSeedreamImageSize(
         }
         return `${size.width}x${size.height}`
       }
-      if (ratioPair) return enforceSizeString(genericSize(base, ratioPair[0], ratioPair[1]), minPixels)
+      if (ratioPair)
+        return enforceSizeString(genericSize(base, ratioPair[0], ratioPair[1]), minPixels)
     }
     // 只有分辨率：保留关键字写法，由模型按提示词定比例
     return res ?? undefined
@@ -179,7 +180,8 @@ export function resolveSeedreamImageSize(
   if (ratio) {
     const preset = SEEDREAM_2K_PRESETS[ratio]
     if (preset) return enforceSizeString(`${preset.width}x${preset.height}`, minPixels)
-    if (ratioPair) return enforceSizeString(genericSize(2048, ratioPair[0], ratioPair[1]), minPixels)
+    if (ratioPair)
+      return enforceSizeString(genericSize(2048, ratioPair[0], ratioPair[1]), minPixels)
   }
 
   // 分辨率未识别且无宽高比：保留原值（由上层决定是否下发）

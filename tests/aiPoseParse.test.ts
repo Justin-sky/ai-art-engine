@@ -33,10 +33,10 @@ describe('aiPoseParse', () => {
   })
 
   it('maps normalized bone names and converts degrees to radians', () => {
-    const mapped = mapAiPoseDegreesToBonePose(
-      { LeftArm: { x: 90, y: 0, z: 0 } },
-      ['mixamorig:LeftArm', 'mixamorig:RightArm']
-    )
+    const mapped = mapAiPoseDegreesToBonePose({ LeftArm: { x: 90, y: 0, z: 0 } }, [
+      'mixamorig:LeftArm',
+      'mixamorig:RightArm'
+    ])
     expect(mapped.matched).toBe(1)
     expect(mapped.bonePose['mixamorig:LeftArm']?.x).toBeCloseTo(Math.PI / 2, 5)
   })
@@ -66,7 +66,11 @@ describe('aiPoseParse', () => {
       instruction: '走路',
       bones: [
         { name: 'mixamorig:Hips', parent: null, rotationDeg: { x: 0, y: 0, z: 0 } },
-        { name: 'mixamorig:LeftArm', parent: 'mixamorig:LeftShoulder', rotationDeg: { x: 0, y: 0, z: 0 } }
+        {
+          name: 'mixamorig:LeftArm',
+          parent: 'mixamorig:LeftShoulder',
+          rotationDeg: { x: 0, y: 0, z: 0 }
+        }
       ]
     })
     expect(prompt).toContain('"role": "hips"')

@@ -1,11 +1,7 @@
 import type { AssetType } from '../domain'
 import { isMediaFileAsset, normalizeAssetType } from '../domain'
 import { tagAssetRef } from '../assetRef'
-import {
-  assetTypeToGraphNodeTitle,
-  createAssetGraphNode,
-  createNodeFromType
-} from './create'
+import { assetTypeToGraphNodeTitle, createAssetGraphNode, createNodeFromType } from './create'
 import { getNodeTypeOrThrow } from './registry'
 import { isProcessingAssetNode } from './nodeRole'
 import type {
@@ -70,7 +66,9 @@ export interface MaterializeDefaultGraphContext {
   hasMediaFile?: boolean
 }
 
-function mediaProcessingTemplate(assetType: string | null | undefined): DefaultGraphTemplate | null {
+function mediaProcessingTemplate(
+  assetType: string | null | undefined
+): DefaultGraphTemplate | null {
   const type = assetType ? normalizeAssetType(assetType) : null
   if (!type || !isMediaFileAsset(type)) return null
   return {
@@ -264,8 +262,7 @@ export function ensureDefaultGraphFromTemplate(
     const typeId = resolveNodeTypeId(spec, ctx)
     if (!typeId || typeId.startsWith('output.')) continue
     let node = nodes.find(
-      (n) =>
-        n.typeId === typeId && (spec.role !== 'processing' || isProcessingAssetNode(n))
+      (n) => n.typeId === typeId && (spec.role !== 'processing' || isProcessingAssetNode(n))
     )
     if (!node) {
       node = createTemplateNode(spec, typeId, ctx)
@@ -319,9 +316,7 @@ export function resolveInputLinkHeadTypeIds(
 ): string[] {
   const template = resolveDefaultGraphTemplate(scope, assetType)
   if (!template?.inputLinkTo) return []
-  const keys = Array.isArray(template.inputLinkTo)
-    ? template.inputLinkTo
-    : [template.inputLinkTo]
+  const keys = Array.isArray(template.inputLinkTo) ? template.inputLinkTo : [template.inputLinkTo]
   const typeIds: string[] = []
   for (const key of keys) {
     const spec = template.nodes.find((n) => n.key === key)

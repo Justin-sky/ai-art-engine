@@ -21,10 +21,7 @@ export function collectUpstreamNodeIds(graph: GraphDocument, targetId: string): 
 }
 
 /** 收集自 source 出发沿出边可达的全部下游节点（含 source） */
-export function collectDownstreamNodeIds(
-  graph: GraphDocument,
-  sourceId: string
-): Set<string> {
+export function collectDownstreamNodeIds(graph: GraphDocument, sourceId: string): Set<string> {
   const outgoing = new Map<string, string[]>()
   for (const edge of graph.edges) {
     const list = outgoing.get(edge.source) ?? []
@@ -47,10 +44,7 @@ export function collectDownstreamNodeIds(
  * Kahn 拓扑排序。若有环返回 null。
  * 仅对 `subset` 内节点排序；边只考虑两端都在 subset 中的。
  */
-export function topologicalSort(
-  nodeIds: Iterable<string>,
-  edges: GraphEdge[]
-): string[] | null {
+export function topologicalSort(nodeIds: Iterable<string>, edges: GraphEdge[]): string[] | null {
   const waves = topologicalWaves(nodeIds, edges)
   return waves ? waves.flat() : null
 }
@@ -58,10 +52,7 @@ export function topologicalSort(
 /**
  * Kahn 分层：同一层内节点互不依赖，可并行执行。若有环返回 null。
  */
-export function topologicalWaves(
-  nodeIds: Iterable<string>,
-  edges: GraphEdge[]
-): string[][] | null {
+export function topologicalWaves(nodeIds: Iterable<string>, edges: GraphEdge[]): string[][] | null {
   const ids = new Set(nodeIds)
   const indegree = new Map<string, number>()
   const outgoing = new Map<string, string[]>()

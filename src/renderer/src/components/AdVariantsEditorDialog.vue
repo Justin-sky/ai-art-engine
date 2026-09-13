@@ -25,11 +25,7 @@
         </div>
 
         <div class="presets">
-          <div
-            v-for="group in presetGroups"
-            :key="group.id"
-            class="preset-group"
-          >
+          <div v-for="group in presetGroups" :key="group.id" class="preset-group">
             <span class="preset-group-label">
               {{ t(`graph.adVariants.presetGroups.${group.labelKey}`) }}
             </span>
@@ -56,11 +52,7 @@
                 <h3 class="card-title">
                   {{ t('graph.adVariants.dimensions') }}
                 </h3>
-                <button
-                  type="button"
-                  class="add-dim"
-                  @click="addDimension"
-                >
+                <button type="button" class="add-dim" @click="addDimension">
                   + {{ t('graph.adVariants.addDimension') }}
                 </button>
               </header>
@@ -68,18 +60,14 @@
                 {{ t('graph.adVariants.dimensionHint') }}
               </p>
               <div class="card-body dim-list">
-                <div
-                  v-for="(dim, index) in draft.dimensions"
-                  :key="dim.id"
-                  class="dim-row"
-                >
+                <div v-for="(dim, index) in draft.dimensions" :key="dim.id" class="dim-row">
                   <span class="dim-index">{{ index + 1 }}</span>
                   <input
                     v-model="dim.label"
                     class="input dim-label"
                     type="text"
                     :placeholder="t('graph.adVariants.dimensionLabelPlaceholder')"
-                  >
+                  />
                   <textarea
                     v-model="dim.valuesText"
                     class="input textarea dim-values"
@@ -95,10 +83,7 @@
                     ×
                   </button>
                 </div>
-                <p
-                  v-if="!draft.dimensions.length"
-                  class="card-empty"
-                >
+                <p v-if="!draft.dimensions.length" class="card-empty">
                   {{ t('graph.adVariants.dimensionEmpty') }}
                 </p>
               </div>
@@ -112,34 +97,24 @@
                 <h3 class="card-title">
                   {{ t('graph.adVariants.preview') }}
                 </h3>
-                <span class="count-chip">{{ t('graph.adVariants.cellCount', { n: previewCells.length }) }}</span>
+                <span class="count-chip">{{
+                  t('graph.adVariants.cellCount', { n: previewCells.length })
+                }}</span>
               </header>
               <div class="card-body">
-                <div
-                  v-if="previewCells.length"
-                  class="cells-preview"
-                >
-                  <div
-                    v-for="cell in previewCells"
-                    :key="cell.id"
-                    class="cell"
-                  >
+                <div v-if="previewCells.length" class="cells-preview">
+                  <div v-for="cell in previewCells" :key="cell.id" class="cell">
                     <div class="cell-tags">
-                      <span
-                        v-for="(value, dimId) in cell.combo"
-                        :key="dimId"
-                        class="tag"
-                      >{{ value }}</span>
+                      <span v-for="(value, dimId) in cell.combo" :key="dimId" class="tag">{{
+                        value
+                      }}</span>
                     </div>
                     <p class="cell-prompt">
                       {{ cell.prompt }}
                     </p>
                   </div>
                 </div>
-                <p
-                  v-else
-                  class="card-empty"
-                >
+                <p v-else class="card-empty">
                   {{ t('graph.adVariants.previewEmpty') }}
                 </p>
               </div>
@@ -152,7 +127,9 @@
                   {{ t('graph.adVariants.compare') }}
                 </h3>
                 <div class="card-head-actions">
-                  <span class="count-chip">{{ t('graph.adVariants.selectedCount', { n: selectedCells.length }) }}</span>
+                  <span class="count-chip">{{
+                    t('graph.adVariants.selectedCount', { n: selectedCells.length })
+                  }}</span>
                   <button
                     type="button"
                     class="clear-all"
@@ -167,27 +144,22 @@
                     :disabled="selectedCells.length === 0 || exporting"
                     @click="exportSelected"
                   >
-                    {{ exporting ? t('graph.adVariants.exporting') : t('graph.adVariants.exportSelected') }}
+                    {{
+                      exporting
+                        ? t('graph.adVariants.exporting')
+                        : t('graph.adVariants.exportSelected')
+                    }}
                   </button>
                 </div>
               </header>
-              <p
-                v-if="exportStatus"
-                class="export-status"
-              >
+              <p v-if="exportStatus" class="export-status">
                 {{ exportStatus }}
               </p>
               <div class="card-body">
-                <p
-                  v-if="generatedCells.length === 0"
-                  class="card-empty"
-                >
+                <p v-if="generatedCells.length === 0" class="card-empty">
                   {{ t('graph.adVariants.compareEmptyHint') }}
                 </p>
-                <div
-                  v-else
-                  class="compare-grid"
-                >
+                <div v-else class="compare-grid">
                   <div
                     v-for="cell in generatedCells"
                     :key="cell.id"
@@ -200,28 +172,23 @@
                         :src="resolvedUrls[cell.id]"
                         class="compare-img"
                         alt=""
-                      >
-                      <div
-                        v-else
-                        class="compare-img placeholder"
-                      >
+                      />
+                      <div v-else class="compare-img placeholder">
                         {{ t('graph.adVariants.loading') }}
                       </div>
-                      <span
-                        v-if="verdicts[cell.id] === 'selected'"
-                        class="verdict-badge selected"
-                      >✓</span>
+                      <span v-if="verdicts[cell.id] === 'selected'" class="verdict-badge selected"
+                        >✓</span
+                      >
                       <span
                         v-else-if="verdicts[cell.id] === 'rejected'"
                         class="verdict-badge rejected"
-                      >×</span>
+                        >×</span
+                      >
                     </div>
                     <div class="cell-tags">
-                      <span
-                        v-for="(value, dimId) in cell.combo"
-                        :key="dimId"
-                        class="tag"
-                      >{{ value }}</span>
+                      <span v-for="(value, dimId) in cell.combo" :key="dimId" class="tag">{{
+                        value
+                      }}</span>
                     </div>
                     <div class="verdict-row">
                       <button
@@ -319,7 +286,9 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: []
-  save: [payload: { matrix: AdVariantMatrix; generateModel: string; generateProviderInstanceId: string }]
+  save: [
+    payload: { matrix: AdVariantMatrix; generateModel: string; generateProviderInstanceId: string }
+  ]
 }>()
 
 const draft = reactive({
@@ -634,7 +603,10 @@ watch(
   border-radius: 999px;
   cursor: pointer;
   white-space: nowrap;
-  transition: border-color 0.12s ease, color 0.12s ease, background 0.12s ease;
+  transition:
+    border-color 0.12s ease,
+    color 0.12s ease,
+    background 0.12s ease;
 }
 .preset-btn:hover {
   color: var(--text);
@@ -882,7 +854,9 @@ watch(
   background: var(--bg-input);
   border: 1px solid var(--border);
   border-radius: 9px;
-  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+  transition:
+    border-color 0.12s ease,
+    box-shadow 0.12s ease;
 }
 .compare-card.is-selected {
   border-color: var(--success, #16a34a);

@@ -31,10 +31,7 @@
         </li>
       </ul>
     </Teleport>
-    <p
-      v-if="options.length && hintText"
-      class="mention-hint"
-    >
+    <p v-if="options.length && hintText" class="mention-hint">
       {{ hintText }}
     </p>
   </div>

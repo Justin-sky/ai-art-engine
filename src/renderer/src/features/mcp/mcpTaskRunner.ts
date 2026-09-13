@@ -40,9 +40,7 @@ async function collectFinishedTaskMediaPaths(
 ): Promise<string[]> {
   await Promise.race([
     taskStore.waitForTaskIds([taskId]),
-    new Promise<void>((resolve) =>
-      window.setTimeout(resolve, MEDIA_COLLECT_WRITE_BACK_TIMEOUT_MS)
-    )
+    new Promise<void>((resolve) => window.setTimeout(resolve, MEDIA_COLLECT_WRITE_BACK_TIMEOUT_MS))
   ])
   const snapshot = taskStore.getTaskRunSnapshot(taskId)
   if (!snapshot) return []
@@ -54,8 +52,7 @@ async function handleTaskRun(payload: { mcpTaskId: string; assetId: string }): P
   const taskStore = useGraphTaskStore()
   const asset = project.assets.find((item) => item.id === payload.assetId)
   const graphJson = (asset?.genParams as Record<string, unknown> | undefined)?.graphJson as
-    | GraphDocument
-    | undefined
+    GraphDocument | undefined
 
   if (!asset || !graphJson || !Array.isArray(graphJson.nodes)) {
     report(payload.mcpTaskId, 'failed', {
@@ -107,15 +104,17 @@ async function handleTaskRun(payload: { mcpTaskId: string; assetId: string }): P
 
 /** 图编辑操作批：读取落盘图 → 应用 ops → 持久化 + 同步界面 */
 async function handleGraphEdit(payload: McpGraphEditPayload): Promise<void> {
-  const reply = (ok: boolean, extra: { applied?: string[]; warnings?: string[]; error?: string } = {}): void => {
+  const reply = (
+    ok: boolean,
+    extra: { applied?: string[]; warnings?: string[]; error?: string } = {}
+  ): void => {
     void window.studio?.reportMcpGraphEdit?.({ requestId: payload.requestId, ok, ...extra })
   }
   try {
     const project = useProjectStore()
     const asset = project.assets.find((item) => item.id === payload.assetId)
     const graphJson = (asset?.genParams as Record<string, unknown> | undefined)?.graphJson as
-      | GraphDocument
-      | undefined
+      GraphDocument | undefined
     if (!asset || !graphJson || !Array.isArray(graphJson.nodes)) {
       reply(false, { error: '资产不存在或不含图文档（graph_edit 仅支持宿主资产子图）' })
       return
@@ -177,7 +176,8 @@ function waitForTaskEnd(
 
 /** 精修失败原因码 → 给外部 Agent 的提示（与弹窗文案各自维护措辞） */
 const ICON_REFINE_FAILURE_TEXT: Record<string, string> = {
-  unresolved: '未定位到该切分节点与格位：splitNodeId 需为 image.gridSplit 节点、cellKey 形如 1-1（graph_read 可核对）',
+  unresolved:
+    '未定位到该切分节点与格位：splitNodeId 需为 image.gridSplit 节点、cellKey 形如 1-1（graph_read 可核对）',
   'no-pack': '未找到与本格同源打包节点：需图标包节点与整版图同源连接后才能回炉写回',
   'no-source': '未解析到整版源图：请先运行整版图片节点生成 / 落盘整版图再精修',
   'no-result': '生图未返回本地图片'
@@ -211,8 +211,7 @@ async function handleGraphIconRefine(payload: McpGraphIconRefinePayload): Promis
     const project = useProjectStore()
     const asset = project.assets.find((item) => item.id === payload.assetId)
     const graphJson = (asset?.genParams as Record<string, unknown> | undefined)?.graphJson as
-      | GraphDocument
-      | undefined
+      GraphDocument | undefined
     if (!asset || !graphJson || !Array.isArray(graphJson.nodes)) {
       reply(false, { error: '资产不存在或不含图文档（graph_icon_refine 仅支持宿主资产子图）' })
       return
@@ -249,7 +248,11 @@ async function handleGraphIconRefine(payload: McpGraphIconRefinePayload): Promis
       prompt: result.prompt
     }
     if (payload.repack === false) {
-      reply(true, { ...done, repacked: false, warning: '已写入精修结果，按请求未重跑打包节点（repack=false）' })
+      reply(true, {
+        ...done,
+        repacked: false,
+        warning: '已写入精修结果，按请求未重跑打包节点（repack=false）'
+      })
       return
     }
 
@@ -278,7 +281,9 @@ async function handleGraphIconRefine(payload: McpGraphIconRefinePayload): Promis
       repacked: status === 'done',
       ...(status === 'done'
         ? {}
-        : { warning: `精修结果已写入，重跑打包未在本轮完成（${status}），可在应用任务列表查看进度` })
+        : {
+            warning: `精修结果已写入，重跑打包未在本轮完成（${status}），可在应用任务列表查看进度`
+          })
     })
   } catch (err) {
     reply(false, { error: iconRefineErrorText(err) })

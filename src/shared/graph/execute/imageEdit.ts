@@ -188,7 +188,7 @@ export async function executeMultiAngleNode(
     userPrompt: patch.multiAnglePrompt,
     systemPrompt: resolveMultiAngleSystemPrompt(ctx.node.params.generateSystemPrompt, ctx.locale),
     extraParams: patch,
-    emptyResultError: { zh: '多角度图片', en: 'multi-angle images' }  // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
+    emptyResultError: { zh: '多角度图片', en: 'multi-angle images' } // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
   })
 }
 
@@ -209,7 +209,7 @@ export async function executeLightingNode(
     userPrompt: lightingPrompt,
     systemPrompt: resolveLightingSystemPrompt(ctx.node.params.generateSystemPrompt, ctx.locale),
     extraParams: patch,
-    emptyResultError: { zh: '打光图片', en: 'lighting setup image' }  // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
+    emptyResultError: { zh: '打光图片', en: 'lighting setup image' } // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
   })
 }
 
@@ -232,7 +232,7 @@ export async function executePortraitTextureNode(
       ctx.locale
     ),
     extraParams: patch,
-    emptyResultError: { zh: '人像质感图片', en: 'portrait texture image' }  // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
+    emptyResultError: { zh: '人像质感图片', en: 'portrait texture image' } // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
   })
 }
 
@@ -248,7 +248,7 @@ export async function executeEmotionNode(
     userPrompt: patch.emotionPrompt,
     systemPrompt: resolveEmotionSystemPrompt(ctx.node.params.generateSystemPrompt, ctx.locale),
     extraParams: patch,
-    emptyResultError: { zh: '情绪图片', en: 'emotion sheet image' }  // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
+    emptyResultError: { zh: '情绪图片', en: 'emotion sheet image' } // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
   })
 }
 
@@ -361,7 +361,7 @@ export async function executeUpscaleNode(
     })
   }
   if (!batch.length) {
-    throw fail(SHARED_ERRORS.resultMissing, { what: { zh: '放大图片', en: 'upscaled image' } })  // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
+    throw fail(SHARED_ERRORS.resultMissing, { what: { zh: '放大图片', en: 'upscaled image' } }) // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
   }
 
   const stampKey = `upscale:${ctx.node.id}:${stamp}`
@@ -491,7 +491,7 @@ export async function executeExpandNode(
     })
   }
   if (!batch.length) {
-    throw fail(SHARED_ERRORS.resultMissing, { what: { zh: '扩图结果', en: 'outpaint result' } })  // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
+    throw fail(SHARED_ERRORS.resultMissing, { what: { zh: '扩图结果', en: 'outpaint result' } }) // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
   }
 
   const stampKey = `expand:${ctx.node.id}:${stamp}`
@@ -629,7 +629,7 @@ export async function executeRedrawNode(
     })
   }
   if (!batch.length) {
-    throw fail(SHARED_ERRORS.resultMissing, { what: { zh: '重绘结果', en: 'redraw result' } })  // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
+    throw fail(SHARED_ERRORS.resultMissing, { what: { zh: '重绘结果', en: 'redraw result' } }) // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
   }
 
   const stampKey = `redraw:${ctx.node.id}:${stamp}`
@@ -766,7 +766,7 @@ export async function executeEraseNode(
     })
   }
   if (!batch.length) {
-    throw fail(SHARED_ERRORS.resultMissing, { what: { zh: '擦除结果', en: 'erase result' } })  // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
+    throw fail(SHARED_ERRORS.resultMissing, { what: { zh: '擦除结果', en: 'erase result' } }) // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
   }
 
   const stampKey = `erase:${ctx.node.id}:${stamp}`
@@ -900,7 +900,7 @@ export async function executeMatteNode(
     })
   }
   if (!batch.length) {
-    throw fail(SHARED_ERRORS.resultMissing, { what: { zh: '抠图结果', en: 'matte result' } })  // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
+    throw fail(SHARED_ERRORS.resultMissing, { what: { zh: '抠图结果', en: 'matte result' } }) // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
   }
 
   const stampKey = `matte:${ctx.node.id}:${stamp}`
@@ -1141,7 +1141,12 @@ function layersFromApiResult(
     layers?: GenerateImageLayer[]
   },
   canvasHint: { width: number; height: number }
-): { layers: ImageLayerSplitLayer[]; batch: GraphImageItem[]; canvasWidth: number; canvasHeight: number } {
+): {
+  layers: ImageLayerSplitLayer[]
+  batch: GraphImageItem[]
+  canvasWidth: number
+  canvasHeight: number
+} {
   const mapped = mapDecompositionToLayers({
     idPrefix: `layerSplit:${ctx.node.id}:${stamp}`,
     apiLayers: result.layers,
@@ -1311,7 +1316,6 @@ export async function executeLayerSplitNode(
   }
 
   const generatedImages = [...materializedLayers, ...extra]
-  const previewPath =
-    extra[0]?.relativePath?.trim() || materializedLayers[0]?.relativePath?.trim()
+  const previewPath = extra[0]?.relativePath?.trim() || materializedLayers[0]?.relativePath?.trim()
   return commitGeneratedImages(ctx, generatedImages, previewPath, imageLayerSplitToNodePatch(state))
 }

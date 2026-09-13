@@ -41,9 +41,7 @@ describe('adVariantMatrix', () => {
 
   it('returns no cells when no dimensions have values', () => {
     expect(expandAdVariantMatrix('产品', [])).toHaveLength(0)
-    expect(
-      expandAdVariantMatrix('产品', [{ id: 'a', label: 'A', values: [] }])
-    ).toHaveLength(0)
+    expect(expandAdVariantMatrix('产品', [{ id: 'a', label: 'A', values: [] }])).toHaveLength(0)
   })
 
   it('generates stable cell ids from combos', () => {
@@ -93,9 +91,7 @@ describe('adVariantMatrix', () => {
   })
 
   it('builds prompt without label when label is empty', () => {
-    expect(buildAdVariantCellPrompt('产品', [{ label: '', value: '特写' }])).toBe(
-      '产品\n特写'
-    )
+    expect(buildAdVariantCellPrompt('产品', [{ label: '', value: '特写' }])).toBe('产品\n特写')
   })
 
   it('reads matrix from node params and tolerates missing', () => {

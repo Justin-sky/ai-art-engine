@@ -1,13 +1,7 @@
 /** Shared domain models for AIArtEngine P0 */
 
-import {
-  createEmptyModelsSettings,
-  type ModelsSettings
-} from './modelProvider'
-import {
-  createEmptyObjectStorageSettings,
-  type ObjectStorageSettings
-} from './objectStorage'
+import { createEmptyModelsSettings, type ModelsSettings } from './modelProvider'
+import { createEmptyObjectStorageSettings, type ObjectStorageSettings } from './objectStorage'
 import type { ProjectStyleImage } from './stylePresets'
 import type { VideoBeatTags } from './videoBeats'
 import type { VisionAssetTags } from './visionTags'
@@ -30,7 +24,12 @@ export {
   resolveStylePresetCategory
 } from './stylePresets'
 
-export type { ModelsSettings, ModelModality, ModelProviderInstance, ModelProviderKind } from './modelProvider'
+export type {
+  ModelsSettings,
+  ModelModality,
+  ModelProviderInstance,
+  ModelProviderKind
+} from './modelProvider'
 export type {
   ObjectStorageSettings,
   ObjectStorageProviderInstance,
@@ -90,9 +89,7 @@ export function isMediaFileAsset(type: AssetType | string | null | undefined): b
  * 可导入为旁挂文件的引用型资产类型（图/声/视/剧本 txt）。
  * 与 isMediaFileAsset 不同：剧本不参与媒体宿主同步等图/声/视专用逻辑。
  */
-export function isImportableFileRefAssetType(
-  type: AssetType | string | null | undefined
-): boolean {
+export function isImportableFileRefAssetType(type: AssetType | string | null | undefined): boolean {
   if (!type) return false
   const t = normalizeAssetType(type)
   return isMediaFileAsset(t) || t === 'screenplay'
@@ -162,7 +159,6 @@ export function normalizeWorldEntityKind(value: unknown): WorldEntityKind | unde
   }
 }
 
-
 function asWorldEntityString(value: unknown): string {
   if (typeof value === 'string') return value
   if (typeof value === 'number' && Number.isFinite(value)) return String(value)
@@ -176,8 +172,7 @@ function normalizeWorldEntityRef(item: unknown): WorldEntityRef | null {
   }
   if (!item || typeof item !== 'object') return null
   const row = item as Record<string, unknown>
-  const name =
-    asWorldEntityString(row.name).trim() || asWorldEntityString(row['名称']).trim()
+  const name = asWorldEntityString(row.name).trim() || asWorldEntityString(row['名称']).trim()
   if (!name) return null
   const imageUrl =
     asWorldEntityString(row.imageUrl).trim() ||
@@ -211,7 +206,6 @@ export function asWorldRefList(value: unknown): WorldEntityRef[] {
     .filter(Boolean)
     .map((name) => ({ name }))
 }
-
 
 export interface Resolution {
   w: number
@@ -396,11 +390,7 @@ export function resolveMediaOutputDir(input: {
  * 不依赖 Node path，便于渲染进程使用。
  */
 export function toProjectRelativeDir(absolutePath: string, projectRoot: string): string | null {
-  const norm = (p: string) =>
-    p
-      .trim()
-      .replace(/\\/g, '/')
-      .replace(/\/+$/, '')
+  const norm = (p: string) => p.trim().replace(/\\/g, '/').replace(/\/+$/, '')
   const abs = norm(absolutePath)
   const root = norm(projectRoot)
   if (!abs || !root) return null
@@ -576,9 +566,7 @@ export const FREE_CANVAS_ICON = 'free-canvas'
 /** 画布资产子类：自由节点画布 / 剧集起步画布 */
 export type CanvasAssetKind = 'free' | 'series'
 
-export function readCanvasAssetKind(
-  gen?: Record<string, unknown> | null
-): CanvasAssetKind | null {
+export function readCanvasAssetKind(gen?: Record<string, unknown> | null): CanvasAssetKind | null {
   if (gen?.canvasKind === 'free' || gen?.canvasKind === 'series') return gen.canvasKind
   return null
 }
@@ -676,8 +664,7 @@ export function readPoseAssetData(gen?: Record<string, unknown>): PoseAssetData 
   return {
     schemaVersion: 1,
     bones,
-    sourceModelAssetId:
-      typeof o.sourceModelAssetId === 'string' ? o.sourceModelAssetId : null
+    sourceModelAssetId: typeof o.sourceModelAssetId === 'string' ? o.sourceModelAssetId : null
   }
 }
 
@@ -702,13 +689,7 @@ export function assetDisplayIcon(
   return ASSET_TYPE_ICONS[asset.type] ?? '•'
 }
 
-export const CREATABLE_ASSET_TYPES: AssetType[] = [
-  'canvas',
-  'image',
-  'video',
-  'voice',
-  'motion'
-]
+export const CREATABLE_ASSET_TYPES: AssetType[] = ['canvas', 'image', 'video', 'voice', 'motion']
 
 export function isCanvasAsset(type: AssetType): boolean {
   return type === 'canvas'
@@ -996,14 +977,7 @@ export interface DirectorStageState {
   objects: StageObjectState[]
 }
 
-export type DirectorAspectRatio =
-  | 'auto'
-  | '21:9'
-  | '16:9'
-  | '4:3'
-  | '1:1'
-  | '3:4'
-  | '9:16'
+export type DirectorAspectRatio = 'auto' | '21:9' | '16:9' | '4:3' | '1:1' | '3:4' | '9:16'
 
 export const DIRECTOR_ASPECT_RATIOS: readonly DirectorAspectRatio[] = [
   'auto',
@@ -1173,14 +1147,7 @@ export interface DirectorAnimKeyframe {
   scale?: StageVec3
 }
 
-export const DIRECTOR_PATH_FORWARD_AXES = [
-  '+x',
-  '-x',
-  '+y',
-  '-y',
-  '+z',
-  '-z'
-] as const
+export const DIRECTOR_PATH_FORWARD_AXES = ['+x', '-x', '+y', '-y', '+z', '-z'] as const
 
 export type DirectorPathForwardAxis = (typeof DIRECTOR_PATH_FORWARD_AXES)[number]
 
@@ -1323,9 +1290,7 @@ function normalizeDirectorAnimKeyframe(raw: unknown): DirectorAnimKeyframe | nul
   }
 }
 
-function normalizeDirectorSkeletonClipSegment(
-  raw: unknown
-): DirectorSkeletonClipSegment | null {
+function normalizeDirectorSkeletonClipSegment(raw: unknown): DirectorSkeletonClipSegment | null {
   if (!raw || typeof raw !== 'object') return null
   const o = raw as Record<string, unknown>
   if (typeof o.id !== 'string' || !o.id.trim()) return null
@@ -1523,10 +1488,7 @@ export function directorViewerForwardFromRotation(rotation: StageVec3): StageVec
   }
 }
 
-export function directorViewerRotationFromLook(
-  position: StageVec3,
-  target: StageVec3
-): StageVec3 {
+export function directorViewerRotationFromLook(position: StageVec3, target: StageVec3): StageVec3 {
   const dx = target.x - position.x
   const dy = target.y - position.y
   const dz = target.z - position.z
@@ -1604,14 +1566,11 @@ function normalizeDirectorCamera(raw: unknown, index: number): DirectorCameraSta
       : index === 0
         ? DIRECTOR_CAMERA_HIERARCHY_ID
         : `camera:${index + 1}`
-  const name =
-    typeof o.name === 'string' && o.name.trim() ? o.name.trim() : `Camera ${index + 1}`
+  const name = typeof o.name === 'string' && o.name.trim() ? o.name.trim() : `Camera ${index + 1}`
   return {
     id,
     name,
-    ...(typeof o.parentId === 'string' && o.parentId.trim()
-      ? { parentId: o.parentId.trim() }
-      : {}),
+    ...(typeof o.parentId === 'string' && o.parentId.trim() ? { parentId: o.parentId.trim() } : {}),
     visible: o.visible === false ? false : true,
     locked: o.locked === true,
     viewer: readDirectorViewer(o.viewer)
@@ -1626,17 +1585,15 @@ function normalizeDirectorCameraGroup(raw: unknown): DirectorCameraGroup | null 
   return {
     id,
     name: typeof o.name === 'string' && o.name.trim() ? o.name.trim() : '机位组',
-    ...(typeof o.parentId === 'string' && o.parentId.trim()
-      ? { parentId: o.parentId.trim() }
-      : {})
+    ...(typeof o.parentId === 'string' && o.parentId.trim() ? { parentId: o.parentId.trim() } : {})
   }
 }
 
 /** 从 cameras[] 解析机位列表与活动 id；缺省则默认单机位 */
-export function resolveDirectorCameras(stage: {
-  cameras?: unknown
-  activeCameraId?: unknown
-}): { cameras: DirectorCameraState[]; activeCameraId: string } {
+export function resolveDirectorCameras(stage: { cameras?: unknown; activeCameraId?: unknown }): {
+  cameras: DirectorCameraState[]
+  activeCameraId: string
+} {
   const fromArray = Array.isArray(stage.cameras)
     ? stage.cameras
         .map((item, index) => normalizeDirectorCamera(item, index))
@@ -1644,8 +1601,7 @@ export function resolveDirectorCameras(stage: {
     : []
   const cameras = fromArray.length > 0 ? fromArray : [createDefaultDirectorCamera()]
   const activeCameraId =
-    typeof stage.activeCameraId === 'string' &&
-    cameras.some((c) => c.id === stage.activeCameraId)
+    typeof stage.activeCameraId === 'string' && cameras.some((c) => c.id === stage.activeCameraId)
       ? stage.activeCameraId
       : cameras[0].id
   return { cameras, activeCameraId }
@@ -1662,9 +1618,7 @@ export function readDirectorStage(gen?: Record<string, unknown>): DirectorStageS
   if (!raw || typeof raw !== 'object') return base
   const s = raw as Record<string, unknown>
   const objects = Array.isArray(s.objects)
-    ? s.objects
-        .map((o) => normalizeStageObject(o))
-        .filter((o): o is StageObjectState => !!o)
+    ? s.objects.map((o) => normalizeStageObject(o)).filter((o): o is StageObjectState => !!o)
     : []
   const { cameras, activeCameraId } = resolveDirectorCameras(s)
   return {
@@ -1708,7 +1662,8 @@ export function readDirectorStage(gen?: Record<string, unknown>): DirectorStageS
     world: readDirectorSceneWorld(s.world),
     skyColor: normalizeDirectorSkyColor(s.skyColor),
     panoramaVisible: s.panoramaVisible === false ? false : true,
-    panoramaYaw: typeof s.panoramaYaw === 'number' && Number.isFinite(s.panoramaYaw) ? s.panoramaYaw : 0,
+    panoramaYaw:
+      typeof s.panoramaYaw === 'number' && Number.isFinite(s.panoramaYaw) ? s.panoramaYaw : 0,
     panoramaRadius: clampDirectorPanoramaRadius(
       typeof s.panoramaRadius === 'number' ? s.panoramaRadius : DEFAULT_DIRECTOR_PANORAMA_RADIUS
     ),
@@ -1729,9 +1684,7 @@ function normalizeCameraShot(raw: unknown): DirectorCameraShot | null {
   if (typeof o.id !== 'string' || !o.id.trim()) return null
   const dataUrl = typeof o.dataUrl === 'string' ? o.dataUrl : ''
   const relativePath =
-    typeof o.relativePath === 'string' && o.relativePath.trim()
-      ? o.relativePath.trim()
-      : undefined
+    typeof o.relativePath === 'string' && o.relativePath.trim() ? o.relativePath.trim() : undefined
   if (!dataUrl && !relativePath) return null
   return {
     id: o.id.trim(),
@@ -1747,9 +1700,7 @@ function normalizeCameraVideo(raw: unknown): DirectorCameraVideo | null {
   if (typeof o.id !== 'string' || !o.id.trim()) return null
   const dataUrl = typeof o.dataUrl === 'string' && o.dataUrl.trim() ? o.dataUrl : undefined
   const relativePath =
-    typeof o.relativePath === 'string' && o.relativePath.trim()
-      ? o.relativePath.trim()
-      : undefined
+    typeof o.relativePath === 'string' && o.relativePath.trim() ? o.relativePath.trim() : undefined
   if (!dataUrl && !relativePath) return null
   return {
     id: o.id.trim(),
@@ -1802,8 +1753,7 @@ function normalizeStageObject(raw: unknown): StageObjectState | null {
   ) {
     return null
   }
-  const parentId =
-    typeof o.parentId === 'string' && o.parentId.trim() ? o.parentId : null
+  const parentId = typeof o.parentId === 'string' && o.parentId.trim() ? o.parentId : null
   return {
     id: o.id,
     name: o.name,
@@ -1824,8 +1774,7 @@ function normalizeStageObject(raw: unknown): StageObjectState | null {
     parentId,
     visible: o.visible === false ? false : true,
     locked: o.locked === true,
-    nameVisible:
-      o.nameVisible === false ? false : o.nameVisible === true ? true : kind !== 'empty',
+    nameVisible: o.nameVisible === false ? false : o.nameVisible === true ? true : kind !== 'empty',
     position: readVec3(o.position, { x: 0, y: 0, z: 0 }),
     rotation: readVec3(o.rotation, { x: 0, y: 0, z: 0 }),
     scale: readVec3(o.scale, { x: 1, y: 1, z: 1 }),
@@ -1908,9 +1857,7 @@ function readIkChains(raw: unknown): DirectorIkChainSpec[] | undefined {
     if (!effector) continue
     let links: string[] | undefined
     if (Array.isArray(o.links)) {
-      links = o.links
-        .map((v) => (typeof v === 'string' ? v.trim() : ''))
-        .filter(Boolean)
+      links = o.links.map((v) => (typeof v === 'string' ? v.trim() : '')).filter(Boolean)
       if (!links.length) links = undefined
     }
     seen.add(id)
@@ -2000,4 +1947,3 @@ export const DEFAULT_SETTINGS: AppSettings = {
     iouThreshold: 0.45
   }
 }
-

@@ -98,9 +98,7 @@ function sanitizeGraphValue(value: GraphValue): GraphValue | undefined {
       return { kind: 'svg', ...item }
     }
     case 'svgs': {
-      const items = value.items
-        .map(sanitizeSvgItem)
-        .filter((item): item is GraphSvgItem => !!item)
+      const items = value.items.map(sanitizeSvgItem).filter((item): item is GraphSvgItem => !!item)
       if (!items.length) return undefined
       return { kind: 'svgs', items }
     }
@@ -182,7 +180,10 @@ function sanitizeGraphValue(value: GraphValue): GraphValue | undefined {
       if (params.cameraShots?.length) {
         params.cameraShots = params.cameraShots.map((shot) => {
           if (shot.relativePath?.trim()) {
-            return { ...shot, dataUrl: shot.dataUrl && !isDataUrl(shot.dataUrl) ? shot.dataUrl : '' }
+            return {
+              ...shot,
+              dataUrl: shot.dataUrl && !isDataUrl(shot.dataUrl) ? shot.dataUrl : ''
+            }
           }
           if (isDataUrl(shot.dataUrl)) {
             return { ...shot, dataUrl: '' }

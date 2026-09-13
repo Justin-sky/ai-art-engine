@@ -1,8 +1,5 @@
 <template>
-  <div
-    class="media-preview-player"
-    :class="kind"
-  >
+  <div class="media-preview-player" :class="kind">
     <video
       v-if="kind === 'video'"
       ref="mediaEl"
@@ -18,14 +15,8 @@
       @durationchange="onLoaded"
       @error="onError"
     />
-    <div
-      v-else
-      class="audio-stage"
-    >
-      <span
-        class="audio-glyph"
-        aria-hidden="true"
-      >♪</span>
+    <div v-else class="audio-stage">
+      <span class="audio-glyph" aria-hidden="true">♪</span>
       <audio
         ref="mediaEl"
         class="media-el"
@@ -41,12 +32,7 @@
       />
     </div>
 
-    <div
-      v-if="!mediaError"
-      class="transport"
-      @pointerdown.stop
-      @wheel.stop
-    >
+    <div v-if="!mediaError" class="transport" @pointerdown.stop @wheel.stop>
       <div class="transport-actions">
         <button
           type="button"
@@ -80,14 +66,11 @@
           :value="progressValue"
           @input="onSeekInput"
           @change="onSeekChange"
-        >
+        />
       </div>
     </div>
 
-    <p
-      v-else
-      class="media-error"
-    >
+    <p v-else class="media-error">
       {{ kind === 'voice' ? t('graph.preview.audioError') : t('graph.preview.videoError') }}
     </p>
   </div>

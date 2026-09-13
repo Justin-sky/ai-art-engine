@@ -13,9 +13,7 @@ import { loadImageElement } from '../../yolo/cutout'
  * 逐层载入精灵并读透明通道主体外接框（对齐 align 的几何口径）。
  * 不可绘源 / 解码失败返回 null（该层跳过，不阻断其余层）。
  */
-async function probeStageSprite(
-  url: string
-): Promise<{
+async function probeStageSprite(url: string): Promise<{
   image: HTMLImageElement
   srcWidth: number
   srcHeight: number
@@ -34,13 +32,12 @@ async function probeStageSprite(
     if (!probeCtx) throw new Error('STAGE_CANVAS_UNAVAILABLE')
     probeCtx.drawImage(img, 0, 0)
     const rgba = probeCtx.getImageData(0, 0, sw, sh)
-    const bounds =
-      extractAlphaBounds(rgba.data, sw, sh, { alphaMin: 8 }) ?? {
-        x: 0,
-        y: 0,
-        width: sw,
-        height: sh
-      }
+    const bounds = extractAlphaBounds(rgba.data, sw, sh, { alphaMin: 8 }) ?? {
+      x: 0,
+      y: 0,
+      width: sw,
+      height: sh
+    }
     return { image: img, srcWidth: sw, srcHeight: sh, bounds }
   } catch {
     return null

@@ -57,9 +57,7 @@ export function distributeNodes(nodes: GraphNode[], mode: DistributeMode): void 
     const lastW = getNodeSize(last).w
     const start = first.position.x
     const end = last.position.x + lastW
-    const middleWidth = sorted
-      .slice(1, -1)
-      .reduce((sum, node) => sum + getNodeSize(node).w, 0)
+    const middleWidth = sorted.slice(1, -1).reduce((sum, node) => sum + getNodeSize(node).w, 0)
     const free = end - start - firstW - middleWidth - lastW
     const gap = free / (sorted.length - 1)
     let x = start + firstW + gap
@@ -78,9 +76,7 @@ export function distributeNodes(nodes: GraphNode[], mode: DistributeMode): void 
   const lastH = getNodeSize(last).h
   const start = first.position.y
   const end = last.position.y + lastH
-  const middleHeight = sorted
-    .slice(1, -1)
-    .reduce((sum, node) => sum + getNodeSize(node).h, 0)
+  const middleHeight = sorted.slice(1, -1).reduce((sum, node) => sum + getNodeSize(node).h, 0)
   const free = end - start - firstH - middleHeight - lastH
   const gap = free / (sorted.length - 1)
   let y = start + firstH + gap

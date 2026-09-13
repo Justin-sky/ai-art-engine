@@ -10,12 +10,7 @@ import {
   resolveNodeType
 } from './registry'
 import { getNodePorts } from './ports'
-import type {
-  GraphNode,
-  GraphNodeCategory,
-  GraphNodeTypeId,
-  GraphOutputKind
-} from './types'
+import type { GraphNode, GraphNodeCategory, GraphNodeTypeId, GraphOutputKind } from './types'
 import { graphOutputNodeId, graphOutputNodeIdForType, isCanonicalGraphOutputNodeId } from './types'
 
 const ASSET_NODE_TITLES: Record<AssetType, string> = {
@@ -65,10 +60,7 @@ export const GRAPH_NODE_HEAD_HEIGHT_PX = 30
 export const GRAPH_NODE_COLLAPSED_HEIGHT_PX = 34
 
 function isImageBoundaryNode(node: GraphNode): boolean {
-  if (
-    node.typeId !== 'graph.boundary.input' &&
-    node.typeId !== 'graph.boundary.output'
-  ) {
+  if (node.typeId !== 'graph.boundary.input' && node.typeId !== 'graph.boundary.output') {
     return false
   }
   const dataType = node.params?.hostBoundaryPort?.dataType
@@ -76,10 +68,7 @@ function isImageBoundaryNode(node: GraphNode): boolean {
 }
 
 function hasBoundaryLocalMediaPreview(node: GraphNode): boolean {
-  return (
-    !!node.params?.previewRelativePath?.trim() ||
-    !!node.params?.previewDataUrl?.trim()
-  )
+  return !!node.params?.previewRelativePath?.trim() || !!node.params?.previewDataUrl?.trim()
 }
 
 export function getNodeSize(node: GraphNode): { w: number; h: number } {
@@ -93,9 +82,7 @@ export function getNodeSize(node: GraphNode): { w: number; h: number } {
   // 其它输入接口 / boundary：默认折叠（仅 previewCollapsed === false 时展开）
   let collapsed: boolean
   if (isImageBoundaryNode(node)) {
-    collapsed = !hasBoundaryLocalMediaPreview(node)
-      ? true
-      : node.params?.previewCollapsed === true
+    collapsed = !hasBoundaryLocalMediaPreview(node) ? true : node.params?.previewCollapsed === true
   } else if (
     node.typeId === 'graph.input.slot' ||
     node.typeId === 'graph.boundary.input' ||
@@ -278,11 +265,7 @@ export function createOutputGraphNode(
  * 与 GraphNodeCard `portWrapStyle` 使用同一公式，保证连线锚点对齐。
  * 收起（高度接近标题栏）时在整卡高度内额外留边。
  */
-export function nodePortYRatio(
-  portIndex: number,
-  portCount: number,
-  nodeHeight: number
-): number {
+export function nodePortYRatio(portIndex: number, portCount: number, nodeHeight: number): number {
   if (portCount <= 0) return 0.5
   const h = Math.max(1, nodeHeight)
   const frac = (portIndex + 1) / (portCount + 1)
@@ -325,7 +308,10 @@ export function isNodeDeletable(node: GraphNode): boolean {
     node.typeId,
     node.params.outputKind ?? def?.defaultParams().outputKind ?? 'video'
   )
-  if (node.id === canonicalId || (isCanonicalGraphOutputNodeId(node.id) && node.category === 'output')) {
+  if (
+    node.id === canonicalId ||
+    (isCanonicalGraphOutputNodeId(node.id) && node.category === 'output')
+  ) {
     return false
   }
   if (def?.singletonId != null && node.id === def.singletonId) {

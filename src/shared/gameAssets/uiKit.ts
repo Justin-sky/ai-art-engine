@@ -141,11 +141,7 @@ export function clampInsetToSize(inset: UiKitInset, width: number, height: numbe
 }
 
 /** 把矩形夹取进源图并取整；全空 / 越界过大时兜底为全图 */
-export function clampUiKitRect(
-  raw: unknown,
-  sourceWidth: number,
-  sourceHeight: number
-): UiKitRect {
+export function clampUiKitRect(raw: unknown, sourceWidth: number, sourceHeight: number): UiKitRect {
   const w = Math.max(1, sourceWidth)
   const h = Math.max(1, sourceHeight)
   if (!raw || typeof raw !== 'object') return { x: 0, y: 0, width: w, height: h }
@@ -217,8 +213,14 @@ export function normalizeUiKitDocument(
   raw: unknown,
   source: { name?: string; width?: number; height?: number }
 ): UiKitDocument {
-  const sourceWidth = Math.max(1, toFiniteInt(source.width ?? (raw as Record<string, unknown>)?.sourceWidth, 1))
-  const sourceHeight = Math.max(1, toFiniteInt(source.height ?? (raw as Record<string, unknown>)?.sourceHeight, 1))
+  const sourceWidth = Math.max(
+    1,
+    toFiniteInt(source.width ?? (raw as Record<string, unknown>)?.sourceWidth, 1)
+  )
+  const sourceHeight = Math.max(
+    1,
+    toFiniteInt(source.height ?? (raw as Record<string, unknown>)?.sourceHeight, 1)
+  )
   const fallbackParts: unknown[] = []
   let rawParts: unknown[] = fallbackParts
   if (raw && typeof raw === 'object') {
@@ -229,7 +231,12 @@ export function normalizeUiKitDocument(
   const usedNames = new Set<string>()
   const parts: UiKitPart[] = []
   for (let i = 0; i < rawParts.length; i += 1) {
-    const part = normalizeUiKitPart(rawParts[i], i, { width: sourceWidth, height: sourceHeight }, usedNames)
+    const part = normalizeUiKitPart(
+      rawParts[i],
+      i,
+      { width: sourceWidth, height: sourceHeight },
+      usedNames
+    )
     if (part) parts.push(part)
   }
   const sourceName = sanitizeUiKitPartName(
@@ -285,11 +292,7 @@ function splitColumns(
   return [left, center, right]
 }
 
-function splitRows(
-  total: number,
-  topInset: number,
-  bottomInset: number
-): [number, number, number] {
+function splitRows(total: number, topInset: number, bottomInset: number): [number, number, number] {
   const t = Math.max(1, total)
   const half = Math.floor(t / 2)
   const top = Math.min(Math.max(0, topInset), half)
@@ -333,7 +336,10 @@ export function computeNineSliceCells(
     dy: number,
     dw: number,
     dh: number
-  ): UiKitNineSliceCell => ({ src: { x: sx, y: sy, width: sw, height: sh }, dst: { x: dx, y: dy, width: dw, height: dh } })
+  ): UiKitNineSliceCell => ({
+    src: { x: sx, y: sy, width: sw, height: sh },
+    dst: { x: dx, y: dy, width: dw, height: dh }
+  })
 
   return [
     // top row

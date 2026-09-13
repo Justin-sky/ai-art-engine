@@ -1,8 +1,5 @@
 ﻿import { describe, expect, it } from 'vitest'
-import {
-  pickGraphRunSuccessMessageKey,
-  summarizeGraphRunOutput
-} from '../src/shared/graph'
+import { pickGraphRunSuccessMessageKey, summarizeGraphRunOutput } from '../src/shared/graph'
 
 describe('graph run success summary', () => {
   it('counts asset refs for generation workflows', () => {
@@ -76,7 +73,10 @@ describe('graph run success summary', () => {
         kind: 'output',
         outputKind: 'image',
         items: [],
-        notes: [{ kind: 'text', text: '独白' }, { kind: 'text', text: '  ' }],
+        notes: [
+          { kind: 'text', text: '独白' },
+          { kind: 'text', text: '  ' }
+        ],
         params: {}
       }
     })

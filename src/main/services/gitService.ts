@@ -56,7 +56,11 @@ async function ensureGitBin(): Promise<string | null> {
     process.env.GIT_PATH?.trim() ?? '',
     'git',
     ...(process.platform === 'win32'
-      ? ['git.exe', 'C:\\Program Files\\Git\\cmd\\git.exe', 'C:\\Program Files (x86)\\Git\\cmd\\git.exe']
+      ? [
+          'git.exe',
+          'C:\\Program Files\\Git\\cmd\\git.exe',
+          'C:\\Program Files (x86)\\Git\\cmd\\git.exe'
+        ]
       : [])
   ].filter(Boolean)
   for (const bin of candidates) {

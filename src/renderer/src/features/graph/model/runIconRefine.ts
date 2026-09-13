@@ -103,7 +103,10 @@ async function resolveReference(input: IconRefineRunInput): Promise<string> {
 }
 
 /** 从上游整版节点克隆生成模型 / 服务实例（与整版画风一致） */
-function resolveModelClone(document: GraphDocument, sheetNodeId?: string): {
+function resolveModelClone(
+  document: GraphDocument,
+  sheetNodeId?: string
+): {
   model?: string
   providerInstanceId?: string
 } {

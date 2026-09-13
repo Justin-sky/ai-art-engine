@@ -65,10 +65,7 @@ import type {
   SaveProjectAssetInput,
   WriteAssetTextInput
 } from '@shared/ipc'
-import {
-  buildInitialMemoryContent,
-  PROJECT_MEMORY_RELATIVE_PATH
-} from '@shared/projectMemory'
+import { buildInitialMemoryContent, PROJECT_MEMORY_RELATIVE_PATH } from '@shared/projectMemory'
 import { renameReplaceSync } from '../persistence/atomicRename'
 import { fail, defErr, defErrSimple } from '@shared/errors/appError'
 import { MAIN_ERRORS } from '../errors/messages'
@@ -239,7 +236,11 @@ function finalizeHostableAssetGenParams(
     iface = defaultHostInterfaceForAssetType(type)
   }
   const graphJson = base.graphJson
-  if (graphJson && typeof graphJson === 'object' && Array.isArray((graphJson as GraphDocument).nodes)) {
+  if (
+    graphJson &&
+    typeof graphJson === 'object' &&
+    Array.isArray((graphJson as GraphDocument).nodes)
+  ) {
     const scope = assetTypeToGraphScope(type)
     base.graphJson = ensureBoundaryProxyNodes(graphJson as GraphDocument, iface, {
       autoLinkHeadTypeIds: resolveInputLinkHeadTypeIds(
@@ -301,9 +302,7 @@ class ProjectService {
     return dialogService.selectProject()
   }
 
-  async selectFiles(
-    filters?: { name: string; extensions: string[] }[]
-  ): Promise<string[]> {
+  async selectFiles(filters?: { name: string; extensions: string[] }[]): Promise<string[]> {
     return dialogService.selectFiles(filters)
   }
 
@@ -503,7 +502,8 @@ class ProjectService {
     const ext = extname(srcAbs).toLowerCase()
     // 资产名：优先用户输入（去掉多余的扩展名），否则取源文件名 stem
     const rawStem = input.name?.trim() || basename(srcAbs, ext) || type
-    const stem = ext && rawStem.toLowerCase().endsWith(ext) ? rawStem.slice(0, -ext.length) : rawStem
+    const stem =
+      ext && rawStem.toLowerCase().endsWith(ext) ? rawStem.slice(0, -ext.length) : rawStem
     const fileName = uniqueFileName(dirAbs, `${normalizePathSegment(stem)}${ext}`)
     const dest = join(dirAbs, fileName)
     const ts = nowIso()
@@ -601,7 +601,8 @@ class ProjectService {
 
     const id = randomUUID()
     const ts = nowIso()
-    const baseName = input.name?.trim() || defaultAssetName(input.type, settingsService.get().language)
+    const baseName =
+      input.name?.trim() || defaultAssetName(input.type, settingsService.get().language)
     const siblingNames = this.listAssets()
       .filter((a) => (a.folderId ?? null) === folderId)
       .map((a) => a.name)
@@ -812,7 +813,11 @@ class ProjectService {
       seen.add(assetId)
       const asset = scan.assets.find((item) => item.id === assetId)
       if (!asset) {
-        skipped.push({ id: assetId, name: assetId, reason: fail(MAIN_ERRORS.assetNotFound).message })
+        skipped.push({
+          id: assetId,
+          name: assetId,
+          reason: fail(MAIN_ERRORS.assetNotFound).message
+        })
         continue
       }
       try {
@@ -1347,9 +1352,7 @@ class ProjectService {
   }
 
   /** 人声 / 伴奏分离（内置 ffmpeg 中置声道，或配置第三方服务）；产物落 Cache/Separated */
-  async separateAudio(
-    relativePath: string
-  ): Promise<import('@shared/ipc').SeparateAudioResult> {
+  async separateAudio(relativePath: string): Promise<import('@shared/ipc').SeparateAudioResult> {
     const root = this.getRoot()
     if (!relativePath?.trim()) {
       throw fail(MAIN_ERRORS.fileNotFound)
@@ -1361,7 +1364,9 @@ class ProjectService {
    * 将选中资产的原始媒体文件复制到系统剪贴板（非缩略图）。
    * 可粘贴到资源管理器等支持文件粘贴的目标。
    */
-  async copyAssetOriginalFiles(assetIds: string[]): Promise<{ copied: number; mode: 'files' | 'text' }> {
+  async copyAssetOriginalFiles(
+    assetIds: string[]
+  ): Promise<{ copied: number; mode: 'files' | 'text' }> {
     const ids = [...new Set(assetIds.map((id) => id?.trim()).filter(Boolean))]
     if (!ids.length) throw fail(E_NO_ASSETS_SELECTED)
 
@@ -1471,8 +1476,7 @@ class ProjectService {
     const safeStem = normalizePathSegment(input.key || 'generate')
     const cacheRoot = resolveCacheOutputRoot(this.config?.cacheOutputDir)
     const outDir =
-      normalizeProjectRelativeDir(input.outputDir) ||
-      `${cacheRoot}/${ASSET_IMAGE_OUTPUT_KIND_DIR}`
+      normalizeProjectRelativeDir(input.outputDir) || `${cacheRoot}/${ASSET_IMAGE_OUTPUT_KIND_DIR}`
     const dirAbs = assertInsideProject(root, join(root, outDir))
     mkdirSync(dirAbs, { recursive: true })
     // 入库判定与实际写入目录同源：outDir 来自节点参数 / Agent，写法差异（前导斜杠等）
@@ -1516,10 +1520,7 @@ class ProjectService {
   }
 
   /** 写入工程内相对路径文本文件；路径越界返回 false */
-  async writeProjectFile(input: {
-    relativePath: string
-    content: string
-  }): Promise<boolean> {
+  async writeProjectFile(input: { relativePath: string; content: string }): Promise<boolean> {
     try {
       const root = this.getRoot()
       const clean = String(input?.relativePath ?? '')
@@ -1547,8 +1548,7 @@ class ProjectService {
     const safeStem = normalizePathSegment(input.key || 'screenplay')
     const cacheRoot = resolveCacheOutputRoot(this.config?.cacheOutputDir)
     const outDir =
-      normalizeProjectRelativeDir(input.outputDir) ||
-      `${cacheRoot}/${ASSET_TEXT_OUTPUT_KIND_DIR}`
+      normalizeProjectRelativeDir(input.outputDir) || `${cacheRoot}/${ASSET_TEXT_OUTPUT_KIND_DIR}`
     const dirAbs = assertInsideProject(root, join(root, outDir))
     mkdirSync(dirAbs, { recursive: true })
     // 与 saveGraphRunMedia 同一口径：按实际写入目录判定是否入库
@@ -1615,7 +1615,11 @@ class ProjectService {
     try {
       assetRepository.write(root, asset)
     } catch (err) {
-      console.warn('[asset] registerExistingMediaAsAsset writeAssetToTree failed; sidecar kept', metaAbs, err)
+      console.warn(
+        '[asset] registerExistingMediaAsAsset writeAssetToTree failed; sidecar kept',
+        metaAbs,
+        err
+      )
     }
     if (!existsSync(metaAbs)) {
       throw fail(E_META_WRITE_FAILED, { name: metaFileNameForMedia(mediaName) })
@@ -1705,10 +1709,7 @@ class ProjectService {
       ensureAssetRelativeFolderChain(root, dirRel)
     }
 
-    const fileName = uniqueFileName(
-      dirAbs,
-      `${normalizePathSegment(params.name)}${ext}`
-    )
+    const fileName = uniqueFileName(dirAbs, `${normalizePathSegment(params.name)}${ext}`)
     const destAbs = join(dirAbs, fileName)
     copyFileSync(params.sourceFilePath, destAbs)
     const relativePath = toPosix(relative(root, destAbs))

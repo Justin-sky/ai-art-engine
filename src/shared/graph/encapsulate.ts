@@ -20,12 +20,7 @@ import {
   type HostBoundaryPort,
   type HostInterfaceDocument
 } from './hostInterface'
-import type {
-  GraphDocument,
-  GraphEdge,
-  GraphNode,
-  GraphPortDataType
-} from './types'
+import type { GraphDocument, GraphEdge, GraphNode, GraphPortDataType } from './types'
 import { GraphPortType } from './types'
 
 export interface EncapsulateSelectionInput {
@@ -67,10 +62,7 @@ function nodeById(nodes: GraphNode[], id: string): GraphNode | undefined {
   return nodes.find((n) => n.id === id)
 }
 
-function resolveEdgeDataType(
-  nodes: GraphNode[],
-  edge: GraphEdge
-): GraphPortDataType {
+function resolveEdgeDataType(nodes: GraphNode[], edge: GraphEdge): GraphPortDataType {
   const source = nodeById(nodes, edge.source)
   if (!source) return GraphPortType.text
   const out = findOutPort(source, edge.sourcePort ?? 'out')
@@ -237,18 +229,14 @@ export function encapsulateSelection(
   input: EncapsulateSelectionInput
 ): EncapsulateSelectionResult {
   const selectedIds = [
-    ...new Set(
-      input.selectedNodeIds.map((id) => id?.trim()).filter((id): id is string => !!id)
-    )
+    ...new Set(input.selectedNodeIds.map((id) => id?.trim()).filter((id): id is string => !!id))
   ]
   if (!selectedIds.length) {
     throw new Error('GRAPH_ENCAPSULATE_EMPTY_SELECTION')
   }
 
   const selectedSet = new Set(selectedIds)
-  const selectedNodes = sortNodesStable(
-    document.nodes.filter((n) => selectedSet.has(n.id))
-  )
+  const selectedNodes = sortNodesStable(document.nodes.filter((n) => selectedSet.has(n.id)))
   if (selectedNodes.length !== selectedIds.length) {
     throw new Error('GRAPH_ENCAPSULATE_MISSING_NODES')
   }
@@ -270,18 +258,16 @@ export function encapsulateSelection(
       incoming.push({
         edge,
         dataType: resolveEdgeDataType(document.nodes, edge),
-        multiple:
-          target
-            ? getNodePorts(target).find(
-                (port) => port.direction === 'in' && port.id === targetPort
-              )?.multiple === true
-            : false,
+        multiple: target
+          ? getNodePorts(target).find((port) => port.direction === 'in' && port.id === targetPort)
+              ?.multiple === true
+          : false,
         targetPort,
         targetNodeId: edge.target,
         label: target
-          ? getNodePorts(target).find(
-              (port) => port.direction === 'in' && port.id === targetPort
-            )?.label?.trim()
+          ? getNodePorts(target)
+              .find((port) => port.direction === 'in' && port.id === targetPort)
+              ?.label?.trim()
           : undefined
       })
       continue
@@ -290,7 +276,7 @@ export function encapsulateSelection(
       const source = nodeById(document.nodes, edge.source)
       const sourcePort = edge.sourcePort ?? 'out'
       const dataType = source
-        ? findOutPort(source, sourcePort)?.dataType ?? GraphPortType.text
+        ? (findOutPort(source, sourcePort)?.dataType ?? GraphPortType.text)
         : GraphPortType.text
       outgoing.push({
         edge,

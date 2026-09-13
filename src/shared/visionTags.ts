@@ -45,7 +45,11 @@ export const VISION_TAG_WEAK_CONF_MAX = 0.6
 
 /** 置信度是否视为「疑似 / 弱」（素材卡 chip 与 Inspector 据此弱化展示） */
 export function isWeakVisionTag(confidence: number): boolean {
-  return typeof confidence === 'number' && Number.isFinite(confidence) && confidence < VISION_TAG_WEAK_CONF_MAX
+  return (
+    typeof confidence === 'number' &&
+    Number.isFinite(confidence) &&
+    confidence < VISION_TAG_WEAK_CONF_MAX
+  )
 }
 
 export interface VisionAssetTags {

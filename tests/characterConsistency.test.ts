@@ -40,9 +40,7 @@ describe('resolveCharacterReferenceUrls', () => {
   const images = [{ name: '小明', imageUrl: 'https://x/ming.png' }]
 
   it('prefers the ref own imageUrl over name match', () => {
-    const refs: WorldEntityRef[] = [
-      { name: '小明', imageUrl: 'https://x/own.png' }
-    ]
+    const refs: WorldEntityRef[] = [{ name: '小明', imageUrl: 'https://x/own.png' }]
     expect(resolveCharacterReferenceUrls(refs, images)).toEqual(['https://x/own.png'])
   })
 

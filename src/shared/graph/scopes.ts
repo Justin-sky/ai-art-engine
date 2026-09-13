@@ -8,10 +8,7 @@ import {
 } from './defaultGraph'
 import { getNodeTypeOrThrow } from './registry'
 import { ensureBoundaryProxyNodes } from './ensureBoundary'
-import {
-  defaultHostInterfaceForAssetType,
-  HOST_INTERFACE_FORMAT_VERSION
-} from './hostInterface'
+import { defaultHostInterfaceForAssetType, HOST_INTERFACE_FORMAT_VERSION } from './hostInterface'
 import { isAssetRefInputHostType } from './nodeRole'
 import type {
   GraphDocument,
@@ -289,9 +286,7 @@ function resolveScopeFromHosts(options: {
   assetType?: string | null
 }): GraphAddScope | undefined {
   const bindings = listGraphScopeHosts()
-    .filter(
-      (binding) => !!options.assetId && options.assetType === binding.assetType
-    )
+    .filter((binding) => !!options.assetId && options.assetType === binding.assetType)
     .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0))
   return bindings[0]?.scope
 }
@@ -333,10 +328,7 @@ export function createParamsForScope(
 }
 
 /** 当前画布作用域是否允许拖入该类型资产 */
-export function canScopeAcceptDraggedAsset(
-  scope: GraphAddScope,
-  assetType: string
-): boolean {
+export function canScopeAcceptDraggedAsset(scope: GraphAddScope, assetType: string): boolean {
   const drag = getGraphScopeDefinition(scope).dragAssets ?? DEFAULT_SCOPE_DRAG_ASSETS
   if (drag.enabled === false) return false
   const type = normalizeAssetType(assetType)

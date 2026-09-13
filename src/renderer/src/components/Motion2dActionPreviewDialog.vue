@@ -10,15 +10,9 @@
     body-class="pad-none motion2d-action-preview-body"
     @close="closeMotion2dActionPreviewDialog"
   >
-    <div
-      v-if="state.open"
-      class="m2d-action-preview"
-    >
+    <div v-if="state.open" class="m2d-action-preview">
       <!-- 资产包/装配缺失：给引导，不出骨架 -->
-      <div
-        v-if="noPreviewableRig"
-        class="m2d-empty"
-      >
+      <div v-if="noPreviewableRig" class="m2d-empty">
         <p class="m2d-empty-title">
           {{
             noPreviewableRig === 'noPack'
@@ -61,7 +55,7 @@
             step="0.01"
             :disabled="!playable"
             @input="onScrub"
-          >
+          />
           <span class="time-label">{{ formatTime(time) }} / {{ formatTime(duration) }}</span>
           <span class="loop-chip">{{
             t(looping ? 'stage2d.actionPreviewLoop' : 'stage2d.actionPreviewOnce')
@@ -94,22 +88,13 @@
           </svg>
         </div>
 
-        <p
-          v-if="noKeyframes"
-          class="m2d-banner"
-        >
+        <p v-if="noKeyframes" class="m2d-banner">
           {{ t('stage2d.actionPreviewNoFrames') }}
         </p>
-        <p
-          v-else-if="playable"
-          class="m2d-hint"
-        >
+        <p v-else-if="playable" class="m2d-hint">
           {{ t('stage2d.actionPreviewHint') }}
         </p>
-        <p
-          v-else
-          class="m2d-banner"
-        >
+        <p v-else class="m2d-banner">
           {{ t('stage2d.actionPreviewSingleFrame') }}
         </p>
       </template>

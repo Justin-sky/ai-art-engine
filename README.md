@@ -57,11 +57,11 @@
 
 ## Download
 
-| Platform | Package | Get it |
-|----------|---------|--------|
-| **Windows** | `.exe` | [GitHub Releases](https://github.com/Justin-sky/ai-art-engine/releases) |
-| **macOS** | `.dmg`（`x64` / `arm64`） | [GitHub Releases](https://github.com/Justin-sky/ai-art-engine/releases)：Intel 选 **x64**，Apple Silicon 选 **arm64**（仅 arm64 时 Intel Mac 会提示不支持） |
-| **Linux** | `.AppImage` | [GitHub Releases](https://github.com/Justin-sky/ai-art-engine/releases)（`chmod +x` 后运行） |
+| Platform    | Package                   | Get it                                                                                                                                                      |
+| ----------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Windows** | `.exe`                    | [GitHub Releases](https://github.com/Justin-sky/ai-art-engine/releases)                                                                                     |
+| **macOS**   | `.dmg`（`x64` / `arm64`） | [GitHub Releases](https://github.com/Justin-sky/ai-art-engine/releases)：Intel 选 **x64**，Apple Silicon 选 **arm64**（仅 arm64 时 Intel Mac 会提示不支持） |
+| **Linux**   | `.AppImage`               | [GitHub Releases](https://github.com/Justin-sky/ai-art-engine/releases)（`chmod +x` 后运行）                                                                |
 
 推送 `v*` tag 可由 GitHub Actions 自动构建并发布多平台安装包。也可自行打包：
 
@@ -110,31 +110,31 @@ npm run dist:linux  # Linux
 
 ### 模型与对象存储一览
 
-| 类型 | 提供商 | 能力概要 |
-|------|--------|----------|
-| 模型 | OpenRouter | 文本 / 图片 / 视频（聚合目录） |
-| 模型 | OpenAI | 文本 / 图片（需可访问 api.openai.com 的网络与账号） |
-| 模型 | DeepSeek | 文本（deepseek-chat / deepseek-reasoner） |
-| 模型 | 智谱 | GLM 文本 / CogView 文生图 |
-| 模型 | Kimi（月之暗面） | 文本（kimi-k2 系列 / moonshot-v1 系列） |
-| 模型 | xAI（Grok） | 文本 / Grok Imagine 图片 / Grok Imagine Video（异步轮询） |
-| 模型 | Google（Gemini） | 文本 / Nano Banana 图片 / Veo 3.1 视频（异步轮询，官方 OpenAI 兼容层） |
-| 模型 | vLLM | 本地文本 / 视频（Wan T2V / I2V，OpenAI 兼容，无需 API Key） |
-| 模型 | Ollama / LM Studio | 本地文本（OpenAI 兼容，无需 API Key） |
-| 模型 | 火山方舟 | 文本 / Seedream 图 / Seedance 视频 / 声音设计 |
-| 模型 | 可灵 | 图片 / 视频（API Key） |
-| 模型 | MiniMax | 文本 / 图片 / 视频 / 音色设计 |
-| 模型 | 通义千问 | 文本（兼容模式）/ 万相图 / 万相视频（含 HappyHorse 等） |
-| 模型 | 魔塔 | 文本 / 文生图（访问令牌） |
-| 模型 | ComfyUI | 图片 / 视频 / 声音（API 2；本机 8189 或云端 Base URL） |
-| 模型 | MagicRouter | 文本 / 图片 / 视频（OpenAI 兼容聚合网关，视频异步轮询） |
-| 模型 | Meshy | 文生 3D / 图生 3D（含多图生 3D，API Key） |
-| 模型 | Tripo | 文生 3D / 图生 3D（API Key） |
-| 模型 | Rodin（Hyper3D） | 文生 3D / 图生 3D（API Key） |
-| 模型 | Luma AI | 文生 3D / 图生 3D（API Key） |
-| 模型 | 自定义 | 文本（自选端点类型：OpenAI 兼容 / Anthropic / Gemini，填 Base URL 与 API Key） |
-| 模型 | Lux3D | 文生 3D / 图生 3D（含多图生 3D，G1 / G1-Turbo，API Key） |
-| 对象存储 | 火山 TOS / 阿里云 OSS / 腾讯云 COS | 参考媒体上传与签名 URL；设置中互斥启用 |
+| 类型     | 提供商                             | 能力概要                                                                       |
+| -------- | ---------------------------------- | ------------------------------------------------------------------------------ |
+| 模型     | OpenRouter                         | 文本 / 图片 / 视频（聚合目录）                                                 |
+| 模型     | OpenAI                             | 文本 / 图片（需可访问 api.openai.com 的网络与账号）                            |
+| 模型     | DeepSeek                           | 文本（deepseek-chat / deepseek-reasoner）                                      |
+| 模型     | 智谱                               | GLM 文本 / CogView 文生图                                                      |
+| 模型     | Kimi（月之暗面）                   | 文本（kimi-k2 系列 / moonshot-v1 系列）                                        |
+| 模型     | xAI（Grok）                        | 文本 / Grok Imagine 图片 / Grok Imagine Video（异步轮询）                      |
+| 模型     | Google（Gemini）                   | 文本 / Nano Banana 图片 / Veo 3.1 视频（异步轮询，官方 OpenAI 兼容层）         |
+| 模型     | vLLM                               | 本地文本 / 视频（Wan T2V / I2V，OpenAI 兼容，无需 API Key）                    |
+| 模型     | Ollama / LM Studio                 | 本地文本（OpenAI 兼容，无需 API Key）                                          |
+| 模型     | 火山方舟                           | 文本 / Seedream 图 / Seedance 视频 / 声音设计                                  |
+| 模型     | 可灵                               | 图片 / 视频（API Key）                                                         |
+| 模型     | MiniMax                            | 文本 / 图片 / 视频 / 音色设计                                                  |
+| 模型     | 通义千问                           | 文本（兼容模式）/ 万相图 / 万相视频（含 HappyHorse 等）                        |
+| 模型     | 魔塔                               | 文本 / 文生图（访问令牌）                                                      |
+| 模型     | ComfyUI                            | 图片 / 视频 / 声音（API 2；本机 8189 或云端 Base URL）                         |
+| 模型     | MagicRouter                        | 文本 / 图片 / 视频（OpenAI 兼容聚合网关，视频异步轮询）                        |
+| 模型     | Meshy                              | 文生 3D / 图生 3D（含多图生 3D，API Key）                                      |
+| 模型     | Tripo                              | 文生 3D / 图生 3D（API Key）                                                   |
+| 模型     | Rodin（Hyper3D）                   | 文生 3D / 图生 3D（API Key）                                                   |
+| 模型     | Luma AI                            | 文生 3D / 图生 3D（API Key）                                                   |
+| 模型     | 自定义                             | 文本（自选端点类型：OpenAI 兼容 / Anthropic / Gemini，填 Base URL 与 API Key） |
+| 模型     | Lux3D                              | 文生 3D / 图生 3D（含多图生 3D，G1 / G1-Turbo，API Key）                       |
+| 对象存储 | 火山 TOS / 阿里云 OSS / 腾讯云 COS | 参考媒体上传与签名 URL；设置中互斥启用                                         |
 
 配置入口：**设置 → 模型** / **设置 → 对象存储**。本机 ComfyUI 需先装 [comfy-api-proxy](https://justin-sky.github.io/ai-art-engine/guide-comfyui.html)（默认 8189），不要直连 8188。
 
@@ -146,11 +146,11 @@ npm run dist:linux  # Linux
 
 **用安装包**
 
-1. 从 [Releases](https://github.com/Justin-sky/ai-art-engine/releases) 下载对应平台包  
-2. 安装启动 → 新建工程  
-3. 设置里添加模型提供商并填写密钥；可选配置对象存储  
-4. 顶栏「一键工作流」快速出宿主资产，或在分镜 / 节点图中手搭链路  
-5. 点左侧窄栏「◈」打开 AI 对话，`@` 引用资产让助手直接生成；或按 [MCP 接入教程](https://justin-sky.github.io/ai-art-engine/guide-mcp.html) 接入 Claude Code 等外部 Agent  
+1. 从 [Releases](https://github.com/Justin-sky/ai-art-engine/releases) 下载对应平台包
+2. 安装启动 → 新建工程
+3. 设置里添加模型提供商并填写密钥；可选配置对象存储
+4. 顶栏「一键工作流」快速出宿主资产，或在分镜 / 节点图中手搭链路
+5. 点左侧窄栏「◈」打开 AI 对话，`@` 引用资产让助手直接生成；或按 [MCP 接入教程](https://justin-sky.github.io/ai-art-engine/guide-mcp.html) 接入 Claude Code 等外部 Agent
 
 完整操作说明见 [使用手册](https://justin-sky.github.io/ai-art-engine/manual.html)（源码在 `website/manual.html`）。本机 ComfyUI 需先装 [comfy-api-proxy](https://justin-sky.github.io/ai-art-engine/guide-comfyui.html)（默认 8189），不要直连 8188。
 
@@ -201,7 +201,8 @@ git tag v5.0.0
 git push origin v5.0.0
 ```
 
-  CI 会校验 tag（去掉 `v`）与 `package.json` 一致，再构建并发布 [GitHub Release](https://github.com/Justin-sky/ai-art-engine/releases)（含 `latest.yml` 等更新元数据）。
+CI 会校验 tag（去掉 `v`）与 `package.json` 一致，再构建并发布 [GitHub Release](https://github.com/Justin-sky/ai-art-engine/releases)（含 `latest.yml` 等更新元数据）。
+
 - **客户端更新**：安装包启动后会检查 Releases；也可在 **设置 → 通用 → 关于与更新** 中手动检查，下载完成后重启安装。开发模式（`npm run dev`）不检查更新。
 
 ---

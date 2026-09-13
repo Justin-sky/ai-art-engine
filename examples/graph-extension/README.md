@@ -17,19 +17,19 @@
 
 演示扩展注册内容：
 
-| 贡献 | id |
-|------|-----|
-| 节点类型 | `plugin.example.node` |
-| 画布 Scope | `plugin.exampleCanvas` |
-| Scope 宿主 | `assetType: model` → 上述 Scope |
-| 图策略 | `graphPolicy`（示例 scope + workflow / shotWorkflow） |
-| 卡片 | `plugin.example.card` |
-| 检查器 | `plugin.example.inspector` |
+| 贡献       | id                                                    |
+| ---------- | ----------------------------------------------------- |
+| 节点类型   | `plugin.example.node`                                 |
+| 画布 Scope | `plugin.exampleCanvas`                                |
+| Scope 宿主 | `assetType: model` → 上述 Scope                       |
+| 图策略     | `graphPolicy`（示例 scope + workflow / shotWorkflow） |
+| 卡片       | `plugin.example.card`                                 |
+| 检查器     | `plugin.example.inspector`                            |
 
 ## 本目录文件
 
-| 文件 | 说明 |
-|------|------|
+| 文件                  | 说明                                         |
+| --------------------- | -------------------------------------------- |
 | `manifest.example.ts` | 与内置演示等价的 manifest 骨架（供复制参考） |
 
 完整文档：[docs/GRAPH_PLUGINS.md](../../docs/GRAPH_PLUGINS.md)

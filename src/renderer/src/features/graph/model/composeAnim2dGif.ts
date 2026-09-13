@@ -61,17 +61,7 @@ export async function composeAnim2dGif(input: {
   const pixels: Uint8ClampedArray[] = []
   for (const image of images) {
     ctx.clearRect(0, 0, width, height)
-    ctx.drawImage(
-      image,
-      0,
-      0,
-      image.naturalWidth,
-      image.naturalHeight,
-      0,
-      0,
-      width,
-      height
-    )
+    ctx.drawImage(image, 0, 0, image.naturalWidth, image.naturalHeight, 0, 0, width, height)
     pixels.push(ctx.getImageData(0, 0, width, height).data)
   }
 

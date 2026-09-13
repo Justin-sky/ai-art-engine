@@ -74,10 +74,10 @@ export function isAuthFailure(status: number | undefined, message: string): bool
 export async function readHttpError(err: unknown): Promise<string> {
   if (axios.isAxiosError(err)) {
     const data = err.response?.data as
-      | { error?: { message?: string } | string; message?: string }
-      | undefined
+      { error?: { message?: string } | string; message?: string } | undefined
     if (typeof data?.error === 'string') return data.error
-    if (data?.error && typeof data.error === 'object' && data.error.message) return data.error.message
+    if (data?.error && typeof data.error === 'object' && data.error.message)
+      return data.error.message
     if (data?.message) return data.message
     return err.message
   }

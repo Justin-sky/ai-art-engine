@@ -31,11 +31,7 @@ const E_VIDEOJOB_GENERATE_FAILED = defErrSimple(
   '视频生成失败',
   'Video generation failed'
 )
-const E_VIDEOJOB_CANCELLED = defErrSimple(
-  'videoJob.cancelled',
-  '已取消',
-  'Cancelled'
-)
+const E_VIDEOJOB_CANCELLED = defErrSimple('videoJob.cancelled', '已取消', 'Cancelled')
 const E_VIDEOJOB_PROVIDER_REMOVED = defErrSimple(
   'videoJob.providerRemoved',
   '视频提供商已移除',
@@ -87,9 +83,7 @@ type Waiter = {
 function resolveJobOutputDir(job: VideoJobRecord): string {
   return resolveMediaOutputDir({
     mediaOutputDir: job.outputDir,
-    cacheOutputDir: projectService.isOpen()
-      ? projectService.getConfig().cacheOutputDir
-      : undefined,
+    cacheOutputDir: projectService.isOpen() ? projectService.getConfig().cacheOutputDir : undefined,
     kind: jobKind(job) === 'model3d' ? 'model' : 'video'
   })
 }
@@ -158,7 +152,9 @@ class VideoJobService {
       if (again && !isVideoJobActive(again.status)) {
         this.finishWaiters(
           again,
-          again.status === 'succeeded' ? undefined : new Error(again.error ?? msg(E_VIDEOJOB_GENERATE_FAILED))
+          again.status === 'succeeded'
+            ? undefined
+            : new Error(again.error ?? msg(E_VIDEOJOB_GENERATE_FAILED))
         )
         return
       }
@@ -323,9 +319,11 @@ class VideoJobService {
     const asset = projectService.attachExternalGeneratedFile({
       type: isModel3d ? 'model' : 'video',
       sourceFilePath: dest,
-      name: job.name ?? (isModel3d
-        ? `生成 3D 模型 ${new Date().toLocaleString()}`
-        : `生成视频 ${new Date().toLocaleString()}`),
+      name:
+        job.name ??
+        (isModel3d
+          ? `生成 3D 模型 ${new Date().toLocaleString()}`
+          : `生成视频 ${new Date().toLocaleString()}`),
       prompt: job.prompt,
       outputDir
     })
@@ -344,12 +342,7 @@ class VideoJobService {
     this.finishWaiters(next)
     this.emitUpdated(next)
     // 只有真的登记进资产库的产物才广播（Cache/ 与库外目录只返回内存 AssetInfo）
-    if (
-      shouldRegisterOutputInAssetLibrary(
-        outputDir,
-        projectService.getConfig().cacheOutputDir
-      )
-    ) {
+    if (shouldRegisterOutputInAssetLibrary(outputDir, projectService.getConfig().cacheOutputDir)) {
       broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
     }
     videoJobRepository.pruneTerminal(root)
@@ -361,8 +354,7 @@ class VideoJobService {
     try {
       const host = projectService.listAssets().find((a) => a.id === binding.assetId)
       const graphJson = host?.genParams?.graphJson as
-        | { nodes?: Array<{ id: string; params?: Record<string, unknown> }> }
-        | undefined
+        { nodes?: Array<{ id: string; params?: Record<string, unknown> }> } | undefined
       if (!graphJson?.nodes) return
       const node = graphJson.nodes.find((n) => n.id === binding.nodeId)
       if (!node) return

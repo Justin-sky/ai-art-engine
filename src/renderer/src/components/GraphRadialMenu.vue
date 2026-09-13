@@ -94,14 +94,7 @@ const wedges = computed(() => {
   })
 })
 
-function donutSlice(
-  x: number,
-  y: number,
-  r0: number,
-  r1: number,
-  a0: number,
-  a1: number
-): string {
+function donutSlice(x: number, y: number, r0: number, r1: number, a0: number, a1: number): string {
   const large = a1 - a0 > Math.PI ? 1 : 0
   const p = (r: number, a: number) => [x + Math.cos(a) * r, y + Math.sin(a) * r] as const
   const [x0, y0] = p(r1, a0)
@@ -183,11 +176,7 @@ defineExpose({
 
 <template>
   <Teleport to="body">
-    <svg
-      v-if="linkGeometry"
-      class="radial-link-layer"
-      aria-hidden="true"
-    >
+    <svg v-if="linkGeometry" class="radial-link-layer" aria-hidden="true">
       <line
         class="radial-link-line"
         :x1="linkGeometry.x1"
@@ -195,12 +184,7 @@ defineExpose({
         :x2="linkGeometry.x2"
         :y2="linkGeometry.y2"
       />
-      <circle
-        class="radial-link-dot"
-        :cx="linkGeometry.x2"
-        :cy="linkGeometry.y2"
-        r="4.5"
-      />
+      <circle class="radial-link-dot" :cx="linkGeometry.x2" :cy="linkGeometry.y2" r="4.5" />
     </svg>
   </Teleport>
 
@@ -216,18 +200,8 @@ defineExpose({
     role="menu"
     @pointerdown="onPointerDown"
   >
-    <svg
-      class="radial-svg"
-      :width="size"
-      :height="size"
-      aria-hidden="true"
-    >
-      <circle
-        class="radial-dead"
-        :cx="cx"
-        :cy="cy"
-        :r="innerRadius - 2"
-      />
+    <svg class="radial-svg" :width="size" :height="size" aria-hidden="true">
+      <circle class="radial-dead" :cx="cx" :cy="cy" :r="innerRadius - 2" />
       <path
         v-for="w in wedges"
         :key="w.item.id"
@@ -251,21 +225,12 @@ defineExpose({
         width: `${contentMaxWidth}px`
       }"
     >
-      <MediaRunIcon
-        :kind="w.item.icon"
-        :size="16"
-      />
+      <MediaRunIcon :kind="w.item.icon" :size="16" />
       <span class="radial-label">{{ w.item.label }}</span>
     </div>
 
-    <div
-      class="radial-center"
-      aria-hidden="true"
-    >
-      <span
-        v-if="hint"
-        class="radial-hint"
-      >{{ hint }}</span>
+    <div class="radial-center" aria-hidden="true">
+      <span v-if="hint" class="radial-hint">{{ hint }}</span>
     </div>
   </div>
 </template>

@@ -27,9 +27,7 @@ function imageNode(instruction: string): GraphNode {
   }
 }
 
-function baseCtx(
-  partial: Partial<NodeExecuteContext> & { node: GraphNode }
-): NodeExecuteContext {
+function baseCtx(partial: Partial<NodeExecuteContext> & { node: GraphNode }): NodeExecuteContext {
   return {
     inputs: {},
     ...partial
@@ -107,9 +105,7 @@ describe('generation input auto-include vs @ filter', () => {
       generateImage
     })
     await executeImageGenerateNode(ctx)
-    expect(generateImage.mock.calls[0]![0].inputReferences).toEqual([
-      'data:image/png;base64,two'
-    ])
+    expect(generateImage.mock.calls[0]![0].inputReferences).toEqual(['data:image/png;base64,two'])
   })
 
   it('image generate allows instruction-only without connected inputs', async () => {
@@ -185,9 +181,7 @@ describe('generation input auto-include vs @ filter', () => {
     await executeImageGenerateNode(ctx)
     const prompt = generateImage.mock.calls[0]![0].prompt as string
     expect(prompt).toContain('赛博朋克街道，霓虹灯')
-    expect(generateImage.mock.calls[0]![0].inputReferences).toEqual([
-      'data:image/png;base64,ref'
-    ])
+    expect(generateImage.mock.calls[0]![0].inputReferences).toEqual(['data:image/png;base64,ref'])
   })
 
   it('image generate prepends style refs and appends style prompt with @n', async () => {
@@ -257,9 +251,7 @@ describe('generation input auto-include vs @ filter', () => {
     await executeImageGenerateNode(ctx)
     const prompt = generateImage.mock.calls[0]![0].prompt as string
     expect(prompt).not.toContain('不要拼这段')
-    expect(generateImage.mock.calls[0]![0].inputReferences).toEqual([
-      'data:image/png;base64,ref'
-    ])
+    expect(generateImage.mock.calls[0]![0].inputReferences).toEqual(['data:image/png;base64,ref'])
   })
 
   it('world extract without @ auto-appends input interface text', async () => {

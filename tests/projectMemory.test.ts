@@ -29,7 +29,11 @@ describe('projectMemory', () => {
 
   it('buildInitialMemoryContent 包含标题、项目信息与四个分类', () => {
     const content = buildInitialMemoryContent(
-      makeConfig({ stylePreset: '电影感', generateSeed: 42, styleImages: [{ id: 's1', name: 'ref', weight: 1 }] })
+      makeConfig({
+        stylePreset: '电影感',
+        generateSeed: 42,
+        styleImages: [{ id: 's1', name: 'ref', weight: 1 }]
+      })
     )
     expect(content).toContain('# 项目记忆')
     expect(content).toContain('项目名称 / Project name: Demo')

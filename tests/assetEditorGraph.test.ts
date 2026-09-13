@@ -30,9 +30,7 @@ describe('asset editor graph', () => {
     expect(doc.nodes.some((node) => node.category === 'output')).toBe(false)
     expect(doc.nodes.some((node) => node.id === BOUNDARY_OUTPUT_ID)).toBe(true)
     expect(
-      doc.edges.some(
-        (edge) => edge.source === processing?.id && edge.target === BOUNDARY_OUTPUT_ID
-      )
+      doc.edges.some((edge) => edge.source === processing?.id && edge.target === BOUNDARY_OUTPUT_ID)
     ).toBe(true)
   })
 
@@ -52,9 +50,9 @@ describe('asset editor graph', () => {
       expect(host?.assetId).toBe(hosts[type])
       expect(getNodePorts(host!).some((port) => port.direction === 'in')).toBe(false)
       expect(doc.nodes.some((node) => node.category === 'output')).toBe(false)
-      expect(doc.edges.some((edge) => edge.source === host?.id && edge.target === BOUNDARY_OUTPUT_ID)).toBe(
-        true
-      )
+      expect(
+        doc.edges.some((edge) => edge.source === host?.id && edge.target === BOUNDARY_OUTPUT_ID)
+      ).toBe(true)
       expect(
         doc.nodes.some((node) => node.typeId === `asset.${type}` && isProcessingAssetNode(node))
       ).toBe(false)
@@ -64,10 +62,14 @@ describe('asset editor graph', () => {
   it('converts legacy processing node to host media ref on normalize', () => {
     const hostId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
     const processing = createNodeFromType('asset.voice', { x: 200, y: 0 }, { id: 'audio-edit-1' })
-    const output = createOutputGraphNode('voice', { x: 400, y: 0 }, {
-      id: VOICE_OUTPUT_ID,
-      params: { outputKind: 'voice' }
-    })
+    const output = createOutputGraphNode(
+      'voice',
+      { x: 400, y: 0 },
+      {
+        id: VOICE_OUTPUT_ID,
+        params: { outputKind: 'voice' }
+      }
+    )
     const reloaded = normalizeAssetGraph(
       {
         nodes: [processing, output],
@@ -99,9 +101,7 @@ describe('asset editor graph', () => {
     expect(doc.nodes.some((node) => node.category === 'output')).toBe(false)
     expect(doc.nodes.some((node) => node.id === BOUNDARY_OUTPUT_ID)).toBe(true)
     expect(
-      doc.edges.some(
-        (edge) => edge.source === processing?.id && edge.target === BOUNDARY_OUTPUT_ID
-      )
+      doc.edges.some((edge) => edge.source === processing?.id && edge.target === BOUNDARY_OUTPUT_ID)
     ).toBe(true)
   })
 
@@ -117,21 +117,17 @@ describe('asset editor graph', () => {
     const doc = createDefaultScopedGraph('screenplayAsset', 'screenplay')
     const processing = doc.nodes.find((node) => node.typeId === 'asset.screenplay')
     const select = doc.nodes.find((node) => node.typeId === 'text.select')
-    const beat = doc.nodes.find(
-      (node) => node.typeId === 'beat.split'
-    )
+    const beat = doc.nodes.find((node) => node.typeId === 'beat.split')
     const output = doc.nodes.find((node) => node.id === BOUNDARY_OUTPUT_ID)
     expect(processing && isProcessingAssetNode(processing)).toBe(true)
     expect(select).toBeUndefined()
     expect(beat).toBeUndefined()
     expect(output?.typeId).toBe('graph.boundary.output')
     expect(doc.nodes.some((node) => node.category === 'output')).toBe(false)
-    expect(getNodePorts(output!).map((p) => [p.direction, p.dataType])).toEqual([
-      ['in', 'text']
-    ])
-    expect(doc.edges.some((edge) => edge.source === processing?.id && edge.target === output?.id)).toBe(
-      true
-    )
+    expect(getNodePorts(output!).map((p) => [p.direction, p.dataType])).toEqual([['in', 'text']])
+    expect(
+      doc.edges.some((edge) => edge.source === processing?.id && edge.target === output?.id)
+    ).toBe(true)
   })
 
   it('normalize screenplay asset creates boundary input (HDA)', () => {
@@ -201,7 +197,10 @@ describe('asset editor graph', () => {
     const videoGen = video.nodes.find((n) => n.typeId === 'asset.video')
     expect(videoGen).toBeTruthy()
     for (const port of ['in-text', 'in-image', 'in-video', 'in-voice'] as const) {
-      expect(video.nodes.some((n) => n.id === boundaryInputNodeId(port)), port).toBe(true)
+      expect(
+        video.nodes.some((n) => n.id === boundaryInputNodeId(port)),
+        port
+      ).toBe(true)
     }
 
     const world = normalizeScopedGraph('worldAsset', null, {
@@ -236,18 +235,16 @@ describe('asset editor graph', () => {
       ['in', 'beat'],
       ['out', 'beat']
     ])
-    expect(getNodePorts(output!).map((p) => [p.direction, p.dataType])).toEqual([
-      ['in', 'beat']
-    ])
-    expect(
-      doc.edges.some((edge) => edge.source === split?.id && edge.target === table?.id)
-    ).toBe(true)
-    expect(
-      doc.edges.some((edge) => edge.source === table?.id && edge.target === output?.id)
-    ).toBe(true)
-    expect(
-      doc.edges.some((edge) => edge.source === table?.id && edge.target === editor?.id)
-    ).toBe(false)
+    expect(getNodePorts(output!).map((p) => [p.direction, p.dataType])).toEqual([['in', 'beat']])
+    expect(doc.edges.some((edge) => edge.source === split?.id && edge.target === table?.id)).toBe(
+      true
+    )
+    expect(doc.edges.some((edge) => edge.source === table?.id && edge.target === output?.id)).toBe(
+      true
+    )
+    expect(doc.edges.some((edge) => edge.source === table?.id && edge.target === editor?.id)).toBe(
+      false
+    )
     expect(canConnectNodes(split!, table!)).toBe(true)
     expect(canConnectNodes(table!, output!)).toBe(true)
     expect(isNodeDeletable(split!)).toBe(true)
@@ -272,22 +269,24 @@ describe('asset editor graph', () => {
   it('drops beat.gen → text.select edge on incompatible out port', () => {
     const gen = createNodeFromType('beat.gen', { x: 0, y: 0 }, { id: 'gen' })
     const select = createNodeFromType('text.select', { x: 200, y: 0 }, { id: 'select' })
-    const doc = normalizeScopedGraph('beatAsset', {
-      nodes: [gen, select],
-      edges: [
-        {
-          id: 'e1',
-          source: 'gen',
-          target: 'select',
-          sourcePort: 'out',
-          targetPort: 'in'
-        }
-      ],
-      viewport: { x: 0, y: 0, zoom: 1 }
-    }, { assetType: 'beat' })
-    expect(
-      doc.edges.some((edge) => edge.source === 'gen' && edge.target === 'select')
-    ).toBe(false)
+    const doc = normalizeScopedGraph(
+      'beatAsset',
+      {
+        nodes: [gen, select],
+        edges: [
+          {
+            id: 'e1',
+            source: 'gen',
+            target: 'select',
+            sourcePort: 'out',
+            targetPort: 'in'
+          }
+        ],
+        viewport: { x: 0, y: 0, zoom: 1 }
+      },
+      { assetType: 'beat' }
+    )
+    expect(doc.edges.some((edge) => edge.source === 'gen' && edge.target === 'select')).toBe(false)
   })
 
   it('creates default world asset graph with extract → table → editor → boundary chain', () => {
@@ -321,16 +320,16 @@ describe('asset editor graph', () => {
     expect(getNodePorts(output!).map((p) => [p.direction, p.dataType])).toEqual([
       ['in', 'worldEntities']
     ])
-    expect(
-      doc.edges.some((edge) => edge.source === extract?.id && edge.target === table?.id)
-    ).toBe(true)
-    expect(
-      doc.edges.some((edge) => edge.source === table?.id && edge.target === editor?.id)
-    ).toBe(true)
+    expect(doc.edges.some((edge) => edge.source === extract?.id && edge.target === table?.id)).toBe(
+      true
+    )
+    expect(doc.edges.some((edge) => edge.source === table?.id && edge.target === editor?.id)).toBe(
+      true
+    )
     // 生成节点改为四类图片组出口，不再直接接到 worldEntities 边界
-    expect(
-      doc.edges.some((edge) => edge.source === editor?.id && edge.target === output?.id)
-    ).toBe(false)
+    expect(doc.edges.some((edge) => edge.source === editor?.id && edge.target === output?.id)).toBe(
+      false
+    )
     expect(canConnectNodes(editor!, output!)).toBe(false)
     expect(
       canConnectNodes(editor!, createNodeFromType('image.select', { x: 400, y: 0 }), {
@@ -344,9 +343,13 @@ describe('asset editor graph', () => {
   it('keeps screenplay processing node id and play.script edges across normalize reload', () => {
     const play = createNodeFromType('play.script', { x: 0, y: 0 }, { id: 'play-1' })
     const processing = createNodeFromType('asset.screenplay', { x: 200, y: 0 }, { id: 'sp-edit-1' })
-    const output = createOutputGraphNode('text', { x: 400, y: 0 }, {
-      id: TEXT_OUTPUT_ID
-    })
+    const output = createOutputGraphNode(
+      'text',
+      { x: 400, y: 0 },
+      {
+        id: TEXT_OUTPUT_ID
+      }
+    )
     const saved = {
       nodes: [play, processing, output],
       edges: [
@@ -393,10 +396,14 @@ describe('asset editor graph', () => {
   })
 
   it('allows image processing and image refs to connect to image output', () => {
-    const output = createOutputGraphNode('image', { x: 400, y: 0 }, {
-      id: IMAGE_OUTPUT_ID,
-      params: { outputKind: 'image' }
-    })
+    const output = createOutputGraphNode(
+      'image',
+      { x: 400, y: 0 },
+      {
+        id: IMAGE_OUTPUT_ID,
+        params: { outputKind: 'image' }
+      }
+    )
     const ref = createAssetGraphNode('00000000-0000-4000-8000-000000000301', 'image', 'Ref', {
       x: 0,
       y: 0
@@ -413,19 +420,23 @@ describe('asset editor graph', () => {
       y: 0
     })
     const processing = createNodeFromType('asset.image', { x: 200, y: 0 }, { id: 'img-gen' })
-    const doc = normalizeScopedGraph('workflow', {
-      nodes: [ref, processing],
-      edges: [
-        {
-          id: 'e1',
-          source: ref.id,
-          target: processing.id,
-          sourcePort: 'out',
-          targetPort: 'in'
-        }
-      ],
-      viewport: { x: 0, y: 0, zoom: 1 }
-    }, { assetType: 'image' })
+    const doc = normalizeScopedGraph(
+      'workflow',
+      {
+        nodes: [ref, processing],
+        edges: [
+          {
+            id: 'e1',
+            source: ref.id,
+            target: processing.id,
+            sourcePort: 'out',
+            targetPort: 'in'
+          }
+        ],
+        viewport: { x: 0, y: 0, zoom: 1 }
+      },
+      { assetType: 'image' }
+    )
     // 不再把 in 迁成 in-image；非法口边被丢弃（合法 in-image 边需显式写出）
     expect(
       doc.edges.some(
@@ -440,7 +451,10 @@ describe('asset editor graph', () => {
   it('strips classic video output while preserving refs and video processing', () => {
     const doc = normalizeScopedGraph('workflow', {
       nodes: [
-        createAssetGraphNode('00000000-0000-4000-8000-000000000011', 'image', 'Ref', { x: 0, y: 0 }),
+        createAssetGraphNode('00000000-0000-4000-8000-000000000011', 'image', 'Ref', {
+          x: 0,
+          y: 0
+        }),
         createAssetGraphNode('00000000-0000-4000-8000-000000000012', 'video', 'Vid', {
           x: 0,
           y: 80
@@ -451,11 +465,13 @@ describe('asset editor graph', () => {
       edges: [],
       viewport: { x: 0, y: 0, zoom: 1 }
     })
-    const imageRef = doc.nodes.find((node) => node.assetId === '00000000-0000-4000-8000-000000000011')
-    const videoRef = doc.nodes.find((node) => node.assetId === '00000000-0000-4000-8000-000000000012')
-    const processing = doc.nodes.find(
-      (node) => node.typeId === 'asset.video' && !node.assetId
+    const imageRef = doc.nodes.find(
+      (node) => node.assetId === '00000000-0000-4000-8000-000000000011'
     )
+    const videoRef = doc.nodes.find(
+      (node) => node.assetId === '00000000-0000-4000-8000-000000000012'
+    )
+    const processing = doc.nodes.find((node) => node.typeId === 'asset.video' && !node.assetId)
     expect(imageRef).toBeTruthy()
     expect(videoRef).toBeTruthy()
     expect(doc.nodes.some((node) => node.typeId.startsWith('output.'))).toBe(false)

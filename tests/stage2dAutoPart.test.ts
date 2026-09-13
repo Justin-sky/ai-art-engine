@@ -8,7 +8,11 @@ import {
   type Stage2dAutoPartSlot
 } from '../src/shared/gameAssets'
 
-function filledAlpha(width: number, height: number, rects: Array<[number, number, number, number]>): Uint8Array {
+function filledAlpha(
+  width: number,
+  height: number,
+  rects: Array<[number, number, number, number]>
+): Uint8Array {
   const alpha = new Uint8Array(width * height)
   for (const [x0, y0, x1, y1] of rects) {
     for (let y = y0; y < y1; y += 1) {
@@ -71,8 +75,24 @@ describe('partitionStage2dAutoPart：最近骨段像素归属切分', () => {
       [21, 0, 40, 30]
     ])
     const slots: Stage2dAutoPartSlot[] = [
-      { id: 'armL', name: '左臂', jointId: 'shoulderL', polyline: [{ x: 10, y: 15 }, { x: 10, y: 29 }] },
-      { id: 'armR', name: '右臂', jointId: 'shoulderR', polyline: [{ x: 30, y: 15 }, { x: 30, y: 29 }] }
+      {
+        id: 'armL',
+        name: '左臂',
+        jointId: 'shoulderL',
+        polyline: [
+          { x: 10, y: 15 },
+          { x: 10, y: 29 }
+        ]
+      },
+      {
+        id: 'armR',
+        name: '右臂',
+        jointId: 'shoulderR',
+        polyline: [
+          { x: 30, y: 15 },
+          { x: 30, y: 29 }
+        ]
+      }
     ]
     const r = partitionStage2dAutoPart({ width, height, alpha, slots })
     expect(r.pieces.length).toBe(2)
@@ -131,7 +151,15 @@ describe('partitionStage2dAutoPart：最近骨段像素归属切分', () => {
       alpha,
       alphaMin: 8,
       slots: [
-        { id: 'torso', name: '躯干', jointId: 'pelvis', polyline: [{ x: 6, y: 6 }, { x: 6, y: 10 }] }
+        {
+          id: 'torso',
+          name: '躯干',
+          jointId: 'pelvis',
+          polyline: [
+            { x: 6, y: 6 },
+            { x: 6, y: 10 }
+          ]
+        }
       ]
     })
     expect(r.pieces.length).toBe(1)
@@ -233,8 +261,24 @@ describe('eraseStage2dAutoPartSlot：整槽擦除', () => {
 
 describe('recomputeStage2dAutoPieces：编辑后重算部件清单', () => {
   const slots: Stage2dAutoPartSlot[] = [
-    { id: 'head', name: '头', jointId: 'neck', polyline: [{ x: 10, y: 4 }, { x: 10, y: 2 }] },
-    { id: 'torso', name: '躯干', jointId: 'pelvis', polyline: [{ x: 10, y: 10 }, { x: 10, y: 6 }] }
+    {
+      id: 'head',
+      name: '头',
+      jointId: 'neck',
+      polyline: [
+        { x: 10, y: 4 },
+        { x: 10, y: 2 }
+      ]
+    },
+    {
+      id: 'torso',
+      name: '躯干',
+      jointId: 'pelvis',
+      polyline: [
+        { x: 10, y: 10 },
+        { x: 10, y: 6 }
+      ]
+    }
   ]
 
   it('按最新 assignment 收敛裁剪框与像素数，并携带 slotIndex', () => {

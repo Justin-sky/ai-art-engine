@@ -42,9 +42,7 @@ describe('lightingSetup', () => {
     const on = { ...off, smartMode: true }
     const manual = buildLightingManualPrompt(off)
     expect(resolveLightingOutputPrompt(off)).toBe(manual)
-    expect(resolveLightingOutputPrompt(on)).toBe(
-      `让画面光影变成'黄金时刻'\n${manual}`
-    )
+    expect(resolveLightingOutputPrompt(on)).toBe(`让画面光影变成'黄金时刻'\n${manual}`)
   })
 
   it('applies direction shortcuts', () => {

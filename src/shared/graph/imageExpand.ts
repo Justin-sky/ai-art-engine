@@ -65,10 +65,7 @@ export function normalizeExpandMargin(value: unknown): number {
 
 /** 扩展边距 → 画布归一化锚点（供预览百分比布局） */
 export function expandMarginsToAnchors(
-  state: Pick<
-    ImageExpandState,
-    'expandLeft' | 'expandRight' | 'expandTop' | 'expandBottom'
-  >
+  state: Pick<ImageExpandState, 'expandLeft' | 'expandRight' | 'expandTop' | 'expandBottom'>
 ): { anchorX: number; anchorY: number; anchorW: number; anchorH: number } {
   const left = normalizeExpandMargin(state.expandLeft)
   const right = normalizeExpandMargin(state.expandRight)
@@ -85,9 +82,7 @@ export function expandMarginsToAnchors(
 }
 
 export function normalizeExpandMargins(
-  raw: Partial<
-    Pick<ImageExpandState, 'expandLeft' | 'expandRight' | 'expandTop' | 'expandBottom'>
-  >
+  raw: Partial<Pick<ImageExpandState, 'expandLeft' | 'expandRight' | 'expandTop' | 'expandBottom'>>
 ): Pick<ImageExpandState, 'expandLeft' | 'expandRight' | 'expandTop' | 'expandBottom'> {
   return {
     expandLeft: normalizeExpandMargin(raw.expandLeft),
@@ -142,10 +137,7 @@ export function expandAspectRatioValue(
 }
 
 /** 由扩展边距得到内容画布宽高比（原图宽高比 × 边距） */
-export function contentAspectFromExpand(
-  state: ImageExpandState,
-  sourceAspect: number
-): number {
+export function contentAspectFromExpand(state: ImageExpandState, sourceAspect: number): number {
   const s = normalizeImageExpand(state)
   const totalW = 1 + s.expandLeft + s.expandRight
   const totalH = 1 + s.expandTop + s.expandBottom
@@ -158,8 +150,7 @@ export function expandCanvasPixelSize(
   aspectRatio: number,
   resolution: string
 ): { width: number; height: number } {
-  const long =
-    resolution === '4K' ? 4096 : resolution === '1K' ? 1024 : 2048
+  const long = resolution === '4K' ? 4096 : resolution === '1K' ? 1024 : 2048
   const ar = aspectRatio > 0 ? aspectRatio : 1
   if (ar >= 1) {
     return { width: long, height: Math.max(1, Math.round(long / ar)) }

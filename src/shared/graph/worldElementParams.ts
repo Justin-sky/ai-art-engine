@@ -187,9 +187,7 @@ export function pickWorldElementStateForMigration(
   worldGenNodeIds: string[]
 ): Record<string, unknown> {
   const ids = [
-    ...new Set(
-      worldGenNodeIds.map((id) => id?.trim()).filter((id): id is string => !!id)
-    )
+    ...new Set(worldGenNodeIds.map((id) => id?.trim()).filter((id): id is string => !!id))
   ]
   if (!ids.length) return {}
   const out: Record<string, unknown> = {}

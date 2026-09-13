@@ -8,25 +8,16 @@
       <label class="add-provider">
         <span>{{ t('settings.models.addProvider') }}</span>
         <select v-model="pendingProviderKind">
-          <option
-            v-for="p in providerKinds"
-            :key="p.id"
-            :value="p.id"
-          >{{ p.labelKey ? t(p.labelKey) : p.label }}</option>
+          <option v-for="p in providerKinds" :key="p.id" :value="p.id">
+            {{ p.labelKey ? t(p.labelKey) : p.label }}
+          </option>
         </select>
       </label>
-      <button
-        type="button"
-        class="primary-btn"
-        @click="addProvider"
-      >
+      <button type="button" class="primary-btn" @click="addProvider">
         {{ t('settings.models.add') }}
       </button>
     </div>
-    <p
-      v-if="addFeedback"
-      class="add-feedback"
-    >
+    <p v-if="addFeedback" class="add-feedback">
       {{ addFeedback }}
     </p>
     <p class="meta credentials-hint">
@@ -42,10 +33,7 @@
       </a>
     </p>
 
-    <p
-      v-if="providers.length === 0"
-      class="empty"
-    >
+    <p v-if="providers.length === 0" class="empty">
       {{ t('settings.models.emptyProviders') }}
     </p>
 
@@ -73,70 +61,50 @@
           "
           @click="toggleProviderCollapsed(provider.id)"
         >
-          <span
-            class="chevron"
-            aria-hidden="true"
-          >▾</span>
+          <span class="chevron" aria-hidden="true">▾</span>
           <strong>{{ provider.label }}</strong>
           <span class="badge">{{ provider.providerKind }}</span>
         </button>
         <div class="head-actions">
-          <label
-            class="check"
-            @click.stop
-          >
-            <input
-              v-model="provider.enabled"
-              type="checkbox"
-            >
+          <label class="check" @click.stop>
+            <input v-model="provider.enabled" type="checkbox" />
             {{ t('settings.models.enabled') }}
           </label>
-          <button
-            type="button"
-            class="danger"
-            @click="removeProvider(provider.id)"
-          >
+          <button type="button" class="danger" @click="removeProvider(provider.id)">
             {{ t('settings.models.remove') }}
           </button>
         </div>
       </header>
 
-      <div
-        v-show="!isProviderCollapsed(provider.id)"
-        class="provider-body"
-      >
+      <div v-show="!isProviderCollapsed(provider.id)" class="provider-body">
         <label>
           {{ t('settings.models.label') }}
-          <input v-model="provider.label">
+          <input v-model="provider.label" />
         </label>
         <label v-if="isCustomProvider(provider)">
           {{ t('settings.models.customApiStyle') }}
-          <select
-            v-model="provider.apiStyle"
-            class="api-style-select"
-          >
-            <option
-              v-for="style in CUSTOM_API_STYLES"
-              :key="style.value"
-              :value="style.value"
-            >
+          <select v-model="provider.apiStyle" class="api-style-select">
+            <option v-for="style in CUSTOM_API_STYLES" :key="style.value" :value="style.value">
               {{ t(`settings.models.customApiStyleOptions.${style.value}`) }}
             </option>
           </select>
         </label>
-        <p
-          v-if="isCustomProvider(provider)"
-          class="meta"
-        >
-          {{ t('settings.models.customApiStyleHint', { style: t(`settings.models.customApiStyleOptions.${provider.apiStyle ?? 'openai'}`) }) }}
+        <p v-if="isCustomProvider(provider)" class="meta">
+          {{
+            t('settings.models.customApiStyleHint', {
+              style: t(`settings.models.customApiStyleOptions.${provider.apiStyle ?? 'openai'}`)
+            })
+          }}
         </p>
         <label>
           {{ t('settings.models.baseUrl') }}
           <input
             v-model="provider.baseUrl"
-            :placeholder="isCustomProvider(provider) ? t('settings.models.customBaseUrlPlaceholder') : undefined"
+            :placeholder="
+              isCustomProvider(provider) ? t('settings.models.customBaseUrlPlaceholder') : undefined
+            "
             spellcheck="false"
-          >
+          />
         </label>
         <label v-if="provider.providerKind === 'comfyui'">
           {{ t('settings.models.nativeBaseUrl') }}
@@ -144,12 +112,9 @@
             v-model="provider.nativeBaseUrl"
             :placeholder="t('settings.models.nativeBaseUrlPlaceholder')"
             spellcheck="false"
-          >
+          />
         </label>
-        <p
-          v-if="provider.providerKind === 'comfyui'"
-          class="meta"
-        >
+        <p v-if="provider.providerKind === 'comfyui'" class="meta">
           {{ t('settings.models.nativeBaseUrlHint') }}
         </p>
         <label>
@@ -160,7 +125,7 @@
               :type="revealedKeys[provider.id] ? 'text' : 'password'"
               autocomplete="off"
               spellcheck="false"
-            >
+            />
             <button
               type="button"
               class="reveal-btn"
@@ -188,13 +153,7 @@
                   d="M12 5c-5 0-9.27 3.11-11 7 1.73 3.89 6 7 11 7s9.27-3.11 11-7c-1.73-3.89-6-7-11-7zm0 12a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 .001 6.001A3 3 0 0 0 12 9z"
                 />
               </svg>
-              <svg
-                v-else
-                viewBox="0 0 24 24"
-                width="16"
-                height="16"
-                aria-hidden="true"
-              >
+              <svg v-else viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
                 <path
                   fill="currentColor"
                   d="M2.1 3.51 3.5 2.1l18.4 18.4-1.41 1.41-3.17-3.17A12.3 12.3 0 0 1 12 19c-5 0-9.27-3.11-11-7a13.4 13.4 0 0 1 4.68-5.41L2.1 3.51zM12 7a5 5 0 0 1 4.9 4.03l-1.56-1.56A3 3 0 0 0 12 9c-.4 0-.78.08-1.13.23L9.3 7.66A4.9 4.9 0 0 1 12 7zm9.9 4.49A13.4 13.4 0 0 0 17.4 7.4l-1.5 1.5c.9.7 1.67 1.55 2.27 2.51-.9 1.72-2.4 3.2-4.3 4.2l1.55 1.55c2.2-1.2 4.02-3.05 5.18-5.27a.75.75 0 0 0 0-.4z"
@@ -216,10 +175,7 @@
           </a>
         </p>
 
-        <div
-          class="modality-tabs"
-          role="tablist"
-        >
+        <div class="modality-tabs" role="tablist">
           <button
             v-for="mod in settingsModalitiesFor(provider)"
             :key="mod"
@@ -231,10 +187,7 @@
             @click="activeModality[provider.id] = mod"
           >
             {{ modalityTabLabel(provider, mod) }}
-            <span
-              v-if="modalityConfig(provider, mod).selectedModelIds.length"
-              class="mod-count"
-            >
+            <span v-if="modalityConfig(provider, mod).selectedModelIds.length" class="mod-count">
               {{ modalityConfig(provider, mod).selectedModelIds.length }}
             </span>
           </button>
@@ -258,15 +211,12 @@
           </a>
         </p>
 
-        <div
-          v-if="!isArkVoiceModality(provider)"
-          class="catalog-toolbar"
-        >
+        <div v-if="!isArkVoiceModality(provider)" class="catalog-toolbar">
           <button
             type="button"
             :disabled="
               loadingKey === catalogKey(provider.id, currentModality(provider)) ||
-                !canFetchCatalog(provider)
+              !canFetchCatalog(provider)
             "
             @click="refreshModels(provider, currentModality(provider))"
           >
@@ -304,14 +254,9 @@
                 ? t('settings.models.manualSpeakerPlaceholder')
                 : t('settings.models.manualModelPlaceholder')
             "
-            @keydown.enter.prevent="
-              addManualModel(provider, currentModality(provider))
-            "
-          >
-          <button
-            type="button"
-            @click="addManualModel(provider, currentModality(provider))"
-          >
+            @keydown.enter.prevent="addManualModel(provider, currentModality(provider))"
+          />
+          <button type="button" @click="addManualModel(provider, currentModality(provider))">
             {{
               isArkVoiceModality(provider)
                 ? t('settings.models.manualSpeakerAdd')
@@ -323,9 +268,9 @@
         <p
           v-if="
             !isArkVoiceModality(provider) &&
-              catalogs[catalogKey(provider.id, currentModality(provider))] &&
-              !catalogSize(provider) &&
-              !catalogErrors[catalogKey(provider.id, currentModality(provider))]
+            catalogs[catalogKey(provider.id, currentModality(provider))] &&
+            !catalogSize(provider) &&
+            !catalogErrors[catalogKey(provider.id, currentModality(provider))]
           "
           class="meta empty-catalog"
         >
@@ -335,7 +280,7 @@
         <p
           v-else-if="
             isArkVoiceModality(provider) &&
-              !modalityConfig(provider, 'audio').selectedModelIds.length
+            !modalityConfig(provider, 'audio').selectedModelIds.length
           "
           class="meta empty-catalog"
         >
@@ -343,10 +288,7 @@
         </p>
 
         <!-- 用未筛选数量决定是否展示，避免筛选无匹配时连筛选框一起消失 -->
-        <div
-          v-if="catalogSize(provider) > 0"
-          class="model-list-wrap"
-        >
+        <div v-if="catalogSize(provider) > 0" class="model-list-wrap">
           <div class="list-actions">
             <button
               v-if="!isArkVoiceModality(provider)"
@@ -355,10 +297,7 @@
             >
               {{ t('settings.models.selectAll') }}
             </button>
-            <button
-              type="button"
-              @click="clearSelection(provider, currentModality(provider))"
-            >
+            <button type="button" @click="clearSelection(provider, currentModality(provider))">
               {{ t('settings.models.clearSelection') }}
             </button>
             <input
@@ -371,7 +310,7 @@
                   ? t('settings.models.filterSpeakerPlaceholder')
                   : t('settings.models.filterPlaceholder')
               "
-            >
+            />
             <button
               v-if="(filters[catalogKey(provider.id, currentModality(provider))] ?? '').trim()"
               type="button"
@@ -380,20 +319,11 @@
               {{ t('settings.models.clearFilter') }}
             </button>
           </div>
-          <p
-            v-if="!modalityCatalog(provider).length"
-            class="meta empty-catalog"
-          >
+          <p v-if="!modalityCatalog(provider).length" class="meta empty-catalog">
             {{ t('settings.models.filterNoMatch') }}
           </p>
-          <ul
-            v-else
-            class="model-list"
-          >
-            <li
-              v-for="model in modalityCatalog(provider)"
-              :key="model.id || model.name"
-            >
+          <ul v-else class="model-list">
+            <li v-for="model in modalityCatalog(provider)" :key="model.id || model.name">
               <label class="check model-row">
                 <input
                   type="checkbox"
@@ -410,14 +340,11 @@
                       ($event.target as HTMLInputElement).checked
                     )
                   "
-                >
+                />
                 <span class="model-text">
                   <span class="model-name">{{ model.name }}</span>
                   <span class="model-id">{{ model.id }}</span>
-                  <span
-                    v-if="capabilitySummary(model)"
-                    class="model-caps"
-                  >{{
+                  <span v-if="capabilitySummary(model)" class="model-caps">{{
                     capabilitySummary(model)
                   }}</span>
                 </span>
@@ -426,9 +353,7 @@
           </ul>
         </div>
 
-        <label
-          v-if="modalityConfig(provider, currentModality(provider)).selectedModelIds.length"
-        >
+        <label v-if="modalityConfig(provider, currentModality(provider)).selectedModelIds.length">
           {{
             isArkVoiceModality(provider)
               ? t('settings.models.defaultSpeaker')
@@ -667,10 +592,7 @@ function currentModality(provider: ModelProviderInstance): ModelModality {
 }
 
 /** 默认生成模型下拉：优先展示目录快照里的 name（如 DeepSeek V4.1 Flash），否则回退 id */
-function defaultModelDisplayName(
-  provider: ModelProviderInstance,
-  modelId: string
-): string {
+function defaultModelDisplayName(provider: ModelProviderInstance, modelId: string): string {
   const cfg = modalityConfig(provider, currentModality(provider))
   return cfg.catalog?.[modelId]?.name?.trim() || modelId
 }
@@ -868,9 +790,15 @@ function addManualModel(provider: ModelProviderInstance, modality: ModelModality
   if (!list.some((m) => m.id === id)) {
     // 方舟 / 可灵：手填模型时附带静态能力，便于一并写入设置快照
     let capabilities: Record<string, unknown> | undefined
-    if (provider.providerKind === 'volcengine-ark' && (modality === 'video' || modality === 'image')) {
+    if (
+      provider.providerKind === 'volcengine-ark' &&
+      (modality === 'video' || modality === 'image')
+    ) {
       capabilities = resolveVolcengineArkModelCapabilities(id, id, modality) ?? undefined
-    } else if (provider.providerKind === 'kling' && (modality === 'video' || modality === 'image')) {
+    } else if (
+      provider.providerKind === 'kling' &&
+      (modality === 'video' || modality === 'image')
+    ) {
       capabilities = resolveKlingModelCapabilities(id, modality) ?? undefined
     } else if (
       provider.providerKind === 'minimax' &&
@@ -887,10 +815,7 @@ function addManualModel(provider: ModelProviderInstance, modality: ModelModality
       (modality === 'image' || modality === 'text')
     ) {
       capabilities = resolveModelScopeModelCapabilities(id, modality) ?? undefined
-    } else if (
-      provider.providerKind === 'xai' &&
-      (modality === 'image' || modality === 'video')
-    ) {
+    } else if (provider.providerKind === 'xai' && (modality === 'image' || modality === 'video')) {
       capabilities = resolveXaiModelCapabilities(id, modality) ?? undefined
     } else if (
       provider.providerKind === 'google' &&
@@ -919,9 +844,7 @@ function filteredCatalog(providerId: string, modality: ModelModality): CatalogMo
   const q = (filters[key] ?? '').trim().toLowerCase()
   const list = catalogs[key] ?? []
   if (!q) return list
-  return list.filter(
-    (m) => m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q)
-  )
+  return list.filter((m) => m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q))
 }
 
 function toggleModel(
@@ -934,7 +857,9 @@ function toggleModel(
   if (checked) {
     if (!sel.selectedModelIds.includes(modelId)) sel.selectedModelIds.push(modelId)
     if (!sel.defaultModelId) sel.defaultModelId = modelId
-    const fromList = (catalogs[catalogKey(provider.id, modality)] ?? []).find((m) => m.id === modelId)
+    const fromList = (catalogs[catalogKey(provider.id, modality)] ?? []).find(
+      (m) => m.id === modelId
+    )
     if (fromList) {
       sel.catalog = { ...(sel.catalog ?? {}), [modelId]: catalogEntryFromModel(fromList) }
     }

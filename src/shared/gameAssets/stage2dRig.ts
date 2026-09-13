@@ -113,7 +113,7 @@ function clampCoord(raw: unknown): number {
 function normalizeAngle(raw: unknown): number {
   const deg = num(raw)
   if (!Number.isFinite(deg)) return 0
-  const wrapped = (((deg + 180) % 360) + 360) % 360 - 180
+  const wrapped = ((((deg + 180) % 360) + 360) % 360) - 180
   return wrapped === -180 ? 180 : wrapped
 }
 
@@ -208,9 +208,7 @@ export function computeStage2dRigTransforms(
   const resolve = (joint: Stage2dJoint): Stage2dJointTransform => {
     const cached = transforms.get(joint.id)
     if (cached) return cached
-    const parent = joint.parentId
-      ? s.joints.find((item) => item.id === joint.parentId)
-      : undefined
+    const parent = joint.parentId ? s.joints.find((item) => item.id === joint.parentId) : undefined
     const base: Stage2dJointTransform = parent
       ? resolve(parent)
       : { jointId: '', x: s.root.x, y: s.root.y, rotation: 0 }

@@ -9,16 +9,7 @@
  * 对外门面：`modelProviderFacade`。
  */
 export type { ModelProviderAdapter, VideoPollResult } from './types'
-export {
-  getProviderAdapter,
-  listRegisteredProviderKinds,
-  loadProviderAdapter
-} from './registry'
+export { getProviderAdapter, listRegisteredProviderKinds, loadProviderAdapter } from './registry'
 export { modelProviderFacade } from './facade'
-export {
-  toMediaUrl,
-  toImageUrl,
-  toVideoUrl,
-  toAudioUrl
-} from './mediaUrl'
+export { toMediaUrl, toImageUrl, toVideoUrl, toAudioUrl } from './mediaUrl'
 export { prepareVideoInputReferencesForApi } from './videoRefs'

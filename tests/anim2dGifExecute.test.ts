@@ -1,9 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import {
-  createNodeFromType,
-  executeAnim2dNode,
-  type NodeExecuteContext
-} from '../src/shared/graph'
+import { createNodeFromType, executeAnim2dNode, type NodeExecuteContext } from '../src/shared/graph'
 
 /**
  * 2D帧动画的 GIF 输出（animGifFps）：帧率 > 0 时合成动图并落盘，

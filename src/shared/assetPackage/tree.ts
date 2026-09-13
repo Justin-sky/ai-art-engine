@@ -22,10 +22,7 @@ export interface AssetPackageTreeRow {
   hasChildren: boolean
 }
 
-function childrenFolders(
-  folders: AssetFolder[],
-  parentId: string | null
-): AssetFolder[] {
+function childrenFolders(folders: AssetFolder[], parentId: string | null): AssetFolder[] {
   return folders
     .filter((f) => (f.parentId ?? null) === parentId)
     .sort((a, b) => compareNames(a.name, b.name))

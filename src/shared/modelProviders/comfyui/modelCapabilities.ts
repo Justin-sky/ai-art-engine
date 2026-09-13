@@ -86,12 +86,7 @@ const VIDEO_GENERATE_PATTERNS = [
   /minimax/
 ]
 
-const IMAGE_NODE_PATTERNS = [
-  /saveimage/,
-  /previewimage/,
-  /emptylatentimage/,
-  /emptysd3latentimage/
-]
+const IMAGE_NODE_PATTERNS = [/saveimage/, /previewimage/, /emptylatentimage/, /emptysd3latentimage/]
 
 export function inferComfyUiWorkflowModalityFromClassTypes(
   classTypes?: string[]
@@ -161,7 +156,9 @@ export function inferComfyUiMediaInputs(graph: ComfyApiWorkflow | null): {
   let anyMediaSignal = false
   for (const node of Object.values(graph)) {
     if (!node || typeof node !== 'object') continue
-    const cls = String((node as ComfyApiNode).class_type ?? '').trim().toLowerCase()
+    const cls = String((node as ComfyApiNode).class_type ?? '')
+      .trim()
+      .toLowerCase()
     if (!cls) continue
 
     // 负载节点：注入端实际写文件的目标，优先级最高
@@ -209,9 +206,10 @@ export function resolveComfyUiModelCapabilities(
 ): Record<string, unknown> | null {
   const id = modelId.trim()
 
-  const inferred = modality === 'video' || modality === 'audio' || modality === 'image'
-    ? modality
-    : inferComfyUiWorkflowModality(id)
+  const inferred =
+    modality === 'video' || modality === 'audio' || modality === 'image'
+      ? modality
+      : inferComfyUiWorkflowModality(id)
   if (inferred === 'audio') return profileCapabilities('audio-base')
   if (inferred === 'video') {
     // r2v（参考生视频）接受图片/视频/音频三类参考，i2v 只接受图片，先命中更具体的一支

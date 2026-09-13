@@ -118,14 +118,10 @@ describe('googleAdapter', () => {
     postMock.mockResolvedValueOnce({
       data: { data: [{ url: 'https://example.com/out.png' }] }
     })
-    const result = await googleAdapter.generateImage(
-      provider(),
-      'gemini-3-pro-image-preview',
-      {
-        prompt: 'add a hat',
-        inputReferences: ['data:image/png;base64,cmVmMQ==', 'data:image/png;base64,cmVmMg==']
-      }
-    )
+    const result = await googleAdapter.generateImage(provider(), 'gemini-3-pro-image-preview', {
+      prompt: 'add a hat',
+      inputReferences: ['data:image/png;base64,cmVmMQ==', 'data:image/png;base64,cmVmMg==']
+    })
     expect(postMock).toHaveBeenCalledWith('/images/generations', {
       model: 'gemini-3-pro-image-preview',
       prompt: 'add a hat',

@@ -173,7 +173,11 @@ export function buildStage2dSpineData(input: Stage2dSpineBuildInput): Stage2dSpi
   const parts = (input.parts ?? [])
     .filter((part) => !!part && jointsById.has(part.jointId))
     .filter(
-      (part) => Number.isFinite(part.dstWidth) && Number.isFinite(part.dstHeight) && part.dstWidth > 0 && part.dstHeight > 0
+      (part) =>
+        Number.isFinite(part.dstWidth) &&
+        Number.isFinite(part.dstHeight) &&
+        part.dstWidth > 0 &&
+        part.dstHeight > 0
     )
   const usedSlot = new Set<string>()
   const slots: SpineJson[] = []

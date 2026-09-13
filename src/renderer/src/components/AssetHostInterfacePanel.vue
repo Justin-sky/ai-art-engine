@@ -1,8 +1,5 @@
 <template>
-  <section
-    v-if="asset"
-    class="host-iface-panel"
-  >
+  <section v-if="asset" class="host-iface-panel">
     <p class="hint">
       {{ t('graph.hostInterface.assetInspectorHint') }}
     </p>
@@ -18,18 +15,10 @@
       direction="out"
       :default-collapsed="false"
     />
-    <button
-      type="button"
-      class="apply-btn"
-      :disabled="saving || !dirty"
-      @click="applyInterface"
-    >
+    <button type="button" class="apply-btn" :disabled="saving || !dirty" @click="applyInterface">
       {{ saving ? t('graph.hostInterface.saving') : t('graph.hostInterface.apply') }}
     </button>
-    <p
-      v-if="error"
-      class="err"
-    >
+    <p v-if="error" class="err">
       {{ error }}
     </p>
   </section>
@@ -129,10 +118,7 @@ async function applyInterface(): Promise<void> {
     const baseInner = liveInner ?? storedInner
     const nextInner = baseInner
       ? ensureBoundaryProxyNodes(cloneGraphDocument(baseInner), iface)
-      : ensureBoundaryProxyNodes(
-          { nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } },
-          iface
-        )
+      : ensureBoundaryProxyNodes({ nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } }, iface)
     await persistAssetRecord(asset.id, {
       genParams: toPlain({
         ...prevGen,

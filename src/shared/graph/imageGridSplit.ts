@@ -45,11 +45,7 @@ export function parseCellKey(key: string): { row: number; col: number } | null {
   return { row, col }
 }
 
-export function normalizeGridSelected(
-  raw: unknown,
-  rows: number,
-  cols: number
-): string[] {
+export function normalizeGridSelected(raw: unknown, rows: number, cols: number): string[] {
   if (!Array.isArray(raw)) return []
   const out: string[] = []
   const seen = new Set<string>()

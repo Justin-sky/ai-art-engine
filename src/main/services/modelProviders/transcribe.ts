@@ -50,7 +50,10 @@ function audioMimeForPath(path: string): string {
   }
 }
 
-function parseVerboseResult(data: VerboseJsonTranscription, durationSec?: number): TranscribeAudioSegment[] {
+function parseVerboseResult(
+  data: VerboseJsonTranscription,
+  durationSec?: number
+): TranscribeAudioSegment[] {
   const segments = (data.segments ?? [])
     .map((row) => {
       const start = Number.isFinite(row.start) ? Math.max(0, row.start!) : 0
@@ -104,7 +107,10 @@ export async function transcribeAudioViaOpenAiCompatible(
     try {
       const { data: verbose } = await post(buildForm('verbose_json'))
       data = verbose as VerboseJsonTranscription
-      if (typeof data.text !== 'string' && typeof (verbose as { text?: string }).text === 'string') {
+      if (
+        typeof data.text !== 'string' &&
+        typeof (verbose as { text?: string }).text === 'string'
+      ) {
         data.text = (verbose as { text?: string }).text
       }
     } catch {

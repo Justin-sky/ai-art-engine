@@ -19,10 +19,7 @@
           :class="{ active: aspectRatio === option.id }"
           @click="onPickRatio(option.id)"
         >
-          <span
-            class="ratio-icon"
-            v-html="option.icon"
-          />
+          <span class="ratio-icon" v-html="option.icon" />
           <span class="ratio-label">{{ ratioLabel(option.id) }}</span>
         </button>
       </div>
@@ -37,10 +34,7 @@
         :aria-label="t('director.stage.modeScene')"
         @click="onSetStageMode('scene')"
       >
-        <span
-          class="tool-icon"
-          v-html="SCENE_MODE_ICON"
-        />
+        <span class="tool-icon" v-html="SCENE_MODE_ICON" />
       </button>
       <button
         type="button"
@@ -50,10 +44,7 @@
         :aria-label="t('director.stage.modeAnimation')"
         @click="onSetStageMode('animation')"
       >
-        <span
-          class="tool-icon"
-          v-html="ANIM_MODE_ICON"
-        />
+        <span class="tool-icon" v-html="ANIM_MODE_ICON" />
       </button>
       <span class="sep" />
       <button
@@ -66,10 +57,7 @@
         :aria-label="t(tool.labelKey)"
         @click="onSetMode(tool.mode)"
       >
-        <span
-          class="tool-icon"
-          v-html="tool.icon"
-        />
+        <span class="tool-icon" v-html="tool.icon" />
       </button>
       <span class="sep" />
       <button
@@ -81,10 +69,7 @@
         :aria-expanded="ratioMenuOpen"
         @click.stop="toggleRatioMenu"
       >
-        <span
-          class="tool-icon"
-          v-html="activeRatioIcon"
-        />
+        <span class="tool-icon" v-html="activeRatioIcon" />
       </button>
       <button
         type="button"
@@ -103,10 +88,7 @@
         :aria-pressed="selectionBoundsVisible"
         @click="onToggleSelectionBounds"
       >
-        <span
-          class="tool-icon"
-          v-html="BOUNDS_ICON"
-        />
+        <span class="tool-icon" v-html="BOUNDS_ICON" />
       </button>
       <button
         type="button"
@@ -115,10 +97,7 @@
         :aria-label="t('director.stage.captureShot')"
         @click="onCapture"
       >
-        <span
-          class="tool-icon"
-          v-html="CAMERA_ICON"
-        />
+        <span class="tool-icon" v-html="CAMERA_ICON" />
       </button>
     </div>
   </div>
@@ -163,9 +142,7 @@ const ANIM_MODE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColo
 const BOUNDS_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V6a2 2 0 0 1 2-2h2"/><path d="M16 4h2a2 2 0 0 1 2 2v2"/><path d="M20 16v2a2 2 0 0 1-2 2h-2"/><path d="M8 20H6a2 2 0 0 1-2-2v-2"/><rect x="8" y="8" width="8" height="8" rx="1"/></svg>`
 
 const activeRatioIcon = computed(
-  () =>
-    ratioOptions.find((option) => option.id === props.aspectRatio)?.icon ??
-    ratioOptions[0].icon
+  () => ratioOptions.find((option) => option.id === props.aspectRatio)?.icon ?? ratioOptions[0].icon
 )
 
 function ratioLabel(id: DirectorAspectRatio): string {

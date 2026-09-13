@@ -133,7 +133,9 @@ async function toggleDiff(file: GitChangeFile): Promise<void> {
   <div class="changes-card">
     <div class="changes-head">
       <span class="changes-title">{{ t('studio.chat.gitChangesTitle') }}</span>
-      <span class="changes-count">{{ t('studio.chat.gitChangesCount', { count: files.length }) }}</span>
+      <span class="changes-count">{{
+        t('studio.chat.gitChangesCount', { count: files.length })
+      }}</span>
       <span class="changes-delta add">+{{ totalAdditions }}</span>
       <span class="changes-delta del">-{{ totalDeletions }}</span>
       <button
@@ -147,58 +149,37 @@ async function toggleDiff(file: GitChangeFile): Promise<void> {
     </div>
     <div class="changes-sub">
       <span v-if="branch">{{ branch }}</span>
-      <span class="changes-time">{{ t('studio.chat.gitChangesUpdated', { time: updatedTime }) }}</span>
+      <span class="changes-time">{{
+        t('studio.chat.gitChangesUpdated', { time: updatedTime })
+      }}</span>
     </div>
     <ul class="changes-list">
-      <li
-        v-for="file in files"
-        :key="file.path"
-        class="change-item"
-      >
+      <li v-for="file in files" :key="file.path" class="change-item">
         <button
           type="button"
           class="change-row"
           :title="file.oldPath ? `${file.oldPath} → ${file.path}` : file.path"
           @click="toggleDiff(file)"
         >
-          <span
-            class="change-badge"
-            :class="file.status"
-          >{{ statusLabel(file.status) }}</span>
+          <span class="change-badge" :class="file.status">{{ statusLabel(file.status) }}</span>
           <span class="change-path">{{ file.path }}</span>
-          <span
-            v-if="file.binary"
-            class="change-note"
-          >{{ t('studio.chat.gitChangesBinary') }}</span>
-          <span
-            v-else
-            class="change-delta-inline"
-          >
+          <span v-if="file.binary" class="change-note">{{
+            t('studio.chat.gitChangesBinary')
+          }}</span>
+          <span v-else class="change-delta-inline">
             <i class="add">+{{ file.additions }}</i>
             <i class="del">-{{ file.deletions }}</i>
           </span>
           <span class="change-caret">{{ isOpen(file.path) ? '▾' : '▸' }}</span>
         </button>
-        <div
-          v-if="isOpen(file.path)"
-          class="change-diff"
-        >
-          <div
-            v-if="diffs[file.path]?.loading"
-            class="diff-hint"
-          >
+        <div v-if="isOpen(file.path)" class="change-diff">
+          <div v-if="diffs[file.path]?.loading" class="diff-hint">
             {{ t('studio.chat.gitChangesDiffLoading') }}
           </div>
-          <div
-            v-else-if="diffs[file.path]?.binary"
-            class="diff-hint"
-          >
+          <div v-else-if="diffs[file.path]?.binary" class="diff-hint">
             {{ t('studio.chat.gitChangesBinary') }}
           </div>
-          <div
-            v-else-if="diffs[file.path]?.error"
-            class="diff-hint"
-          >
+          <div v-else-if="diffs[file.path]?.error" class="diff-hint">
             {{ diffs[file.path]?.error }}
           </div>
           <template v-else>
@@ -212,10 +193,7 @@ async function toggleDiff(file: GitChangeFile): Promise<void> {
                 v-text="line.text || ' '"
               />
             </div>
-            <div
-              v-if="diffs[file.path]?.truncated"
-              class="diff-hint"
-            >
+            <div v-if="diffs[file.path]?.truncated" class="diff-hint">
               {{ t('studio.chat.gitChangesTruncated') }}
             </div>
           </template>

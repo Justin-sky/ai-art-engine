@@ -67,7 +67,12 @@ const FIXTURE = [
  * 真实沙箱产物：dsh 0.1.5 起 STARTUPINFO 编码（含带 hash 的文件名）都在
  * `@deepseek-ai/dsh-win32-process/lib/index.js`，没装依赖时为 undefined。
  */
-const win32ProcessLibDir = join(process.cwd(), 'node_modules', ...WIN32_PROCESS_PACKAGE.split('/'), 'lib')
+const win32ProcessLibDir = join(
+  process.cwd(),
+  'node_modules',
+  ...WIN32_PROCESS_PACKAGE.split('/'),
+  'lib'
+)
 const win32ProcessSourcePath = existsSync(win32ProcessLibDir)
   ? (() => {
       const name = readdirSync(win32ProcessLibDir).find((entry) => /\.js$/.test(entry))
@@ -156,21 +161,24 @@ describe('ACL 沙箱控制台补丁（依赖树落盘）', () => {
     }
   })
 
-  it.skipIf(process.platform !== 'win32')('dsh 0.1.5 的新位置（dsh-win32-process）同样命中写盘', () => {
-    const { modulesDir, file, cleanup } = makeTempModulesDir(FIXTURE, WIN32_PROCESS_PACKAGE)
-    try {
-      expect(patchAclSandboxConsole(modulesDir)).toEqual({
-        present: true,
-        patchedFiles: 1,
-        patchedSites: 2,
-        alreadyFiles: 0,
-        failedFiles: 0
-      })
-      expect(readFileSync(file, 'utf8')).toContain('dwFlags: 257,')
-    } finally {
-      cleanup()
+  it.skipIf(process.platform !== 'win32')(
+    'dsh 0.1.5 的新位置（dsh-win32-process）同样命中写盘',
+    () => {
+      const { modulesDir, file, cleanup } = makeTempModulesDir(FIXTURE, WIN32_PROCESS_PACKAGE)
+      try {
+        expect(patchAclSandboxConsole(modulesDir)).toEqual({
+          present: true,
+          patchedFiles: 1,
+          patchedSites: 2,
+          alreadyFiles: 0,
+          failedFiles: 0
+        })
+        expect(readFileSync(file, 'utf8')).toContain('dwFlags: 257,')
+      } finally {
+        cleanup()
+      }
     }
-  })
+  )
 
   it.skipIf(process.platform !== 'win32')('新旧两个包同在一棵树时都扫，各自计数', () => {
     const { modulesDir, file, cleanup } = makeTempModulesDir(FIXTURE)

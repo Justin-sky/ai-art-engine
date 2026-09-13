@@ -41,9 +41,13 @@ describe('voice.select node', () => {
   })
 
   it('execute outputs the selected single voice', () => {
-    const node = createNodeFromType('voice.select', { x: 0, y: 0 }, {
-      params: { selectedVoiceId: 'b' }
-    })
+    const node = createNodeFromType(
+      'voice.select',
+      { x: 0, y: 0 },
+      {
+        params: { selectedVoiceId: 'b' }
+      }
+    )
     const patched: Record<string, unknown>[] = []
     const ctx: NodeExecuteContext = {
       node,

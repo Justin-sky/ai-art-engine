@@ -24,11 +24,7 @@ const makePart = (over: Partial<UiKitPart> = {}): UiKitPart => ({
 
 describe('uiKit 部件矩形归一化（框选坐标夹取）', () => {
   it('越界坐标与越界尺寸夹取回源图内', () => {
-    const rect = clampUiKitRect(
-      { x: -5, y: 300, width: 9999, height: 40 },
-      200,
-      400
-    )
+    const rect = clampUiKitRect({ x: -5, y: 300, width: 9999, height: 40 }, 200, 400)
     expect(rect.x).toBe(0)
     expect(rect.y).toBe(300)
     expect(rect.width).toBe(200)
@@ -169,11 +165,7 @@ describe('uiKit 文档归一化与 manifest', () => {
   it('缺失条目被剔除，重名自动去重，源尺寸兜底', () => {
     const doc = normalizeUiKitDocument(
       {
-        parts: [
-          makePart({ name: 'ok', kind: 'panel' }),
-          null,
-          makePart({ name: 'ok' })
-        ]
+        parts: [makePart({ name: 'ok', kind: 'panel' }), null, makePart({ name: 'ok' })]
       },
       { width: 640, height: 960 }
     )
@@ -186,7 +178,12 @@ describe('uiKit 文档归一化与 manifest', () => {
 
   it('manifest 条目保序，rect/border/safe 与部件一致，fileName 走命名规范', () => {
     const a = makePart({ id: 'pa', kind: 'panel', name: 'BasePanel' })
-    const b = makePart({ id: 'pb', kind: 'button', name: 'Close', rect: { x: 5, y: 5, width: 40, height: 20 } })
+    const b = makePart({
+      id: 'pb',
+      kind: 'button',
+      name: 'Close',
+      rect: { x: 5, y: 5, width: 40, height: 20 }
+    })
     const manifest = buildUiKitManifest({
       sourceName: 'ShopScreen',
       sourceWidth: 640,

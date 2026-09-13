@@ -47,8 +47,16 @@ describe('skeleton retarget helpers', () => {
 
   it('remapClipTracksByBoneNames rewrites track targets', () => {
     const clip = new THREE.AnimationClip('Walk', 1, [
-      new THREE.QuaternionKeyframeTrack('mixamorig:Hips.quaternion', [0, 1], [0, 0, 0, 1, 0, 0, 0, 1]),
-      new THREE.QuaternionKeyframeTrack('mixamorig:Spine.quaternion', [0, 1], [0, 0, 0, 1, 0, 0, 0, 1])
+      new THREE.QuaternionKeyframeTrack(
+        'mixamorig:Hips.quaternion',
+        [0, 1],
+        [0, 0, 0, 1, 0, 0, 0, 1]
+      ),
+      new THREE.QuaternionKeyframeTrack(
+        'mixamorig:Spine.quaternion',
+        [0, 1],
+        [0, 0, 0, 1, 0, 0, 0, 1]
+      )
     ])
     const remapped = remapClipTracksByBoneNames(clip, ['mixamorigHips', 'mixamorigSpine'])
     expect(remapped).not.toBeNull()
@@ -82,7 +90,10 @@ describe('skeleton retarget helpers', () => {
     orphanFoot.name = 'LeftFoot'
     root.add(orphanFoot)
 
-    const mesh = new THREE.SkinnedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial())
+    const mesh = new THREE.SkinnedMesh(
+      new THREE.BoxGeometry(1, 1, 1),
+      new THREE.MeshBasicMaterial()
+    )
     mesh.bind(new THREE.Skeleton([hips, leg, foot]))
     root.add(mesh)
 
@@ -113,7 +124,10 @@ describe('skeleton retarget helpers', () => {
     arm.add(roll)
     root.add(arm)
 
-    const mesh = new THREE.SkinnedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial())
+    const mesh = new THREE.SkinnedMesh(
+      new THREE.BoxGeometry(1, 1, 1),
+      new THREE.MeshBasicMaterial()
+    )
     mesh.bind(new THREE.Skeleton([arm, hand, roll]))
     root.add(mesh)
 

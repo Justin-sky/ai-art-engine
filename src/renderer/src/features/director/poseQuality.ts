@@ -86,18 +86,14 @@ export function poseSubjectScore(
   box?: Pick<YoloBox, 'x' | 'y' | 'width' | 'height' | 'confidence'>,
   minConf = POSE_KEYPOINT_MIN_CONF
 ): number {
-  const boxDiag =
-    box && box.width > 0 && box.height > 0 ? Math.hypot(box.width, box.height) : 0
+  const boxDiag = box && box.width > 0 && box.height > 0 ? Math.hypot(box.width, box.height) : 0
   const skelDiag = (() => {
     const b = skeletonBounds(skeleton, minConf)
     return b ? boundsDiag(b) : 0
   })()
   const diag = boxDiag > 0 ? boxDiag : skelDiag
   if (diag <= 0) return 0
-  const conf =
-    box && Number.isFinite(box.confidence)
-      ? Math.min(1, Math.max(0, box.confidence))
-      : 1
+  const conf = box && Number.isFinite(box.confidence) ? Math.min(1, Math.max(0, box.confidence)) : 1
   return diag * (0.6 + 0.4 * conf)
 }
 
@@ -123,7 +119,8 @@ export function sortPosePeople(
   const count = skeletons.length
   const order = Array.from({ length: count }, (_, i) => i)
   order.sort((a, b) => {
-    const scoreDiff = poseSubjectScore(skeletons[b], boxes[b]) - poseSubjectScore(skeletons[a], boxes[a])
+    const scoreDiff =
+      poseSubjectScore(skeletons[b], boxes[b]) - poseSubjectScore(skeletons[a], boxes[a])
     if (scoreDiff !== 0) return scoreDiff
     return leftEdgeOf(skeletons[a], boxes[a]) - leftEdgeOf(skeletons[b], boxes[b])
   })

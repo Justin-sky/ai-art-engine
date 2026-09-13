@@ -1,6 +1,10 @@
 import type { GenerateVideoInput } from '@shared/modelProvider'
 import { normalizeVideoInputReference } from '@shared/modelProvider'
-import { ensureRemoteMediaUrl, deleteUploads, type ObjectStorageUploadResult } from '../objectStorageUploadService'
+import {
+  ensureRemoteMediaUrl,
+  deleteUploads,
+  type ObjectStorageUploadResult
+} from '../objectStorageUploadService'
 import { projectService } from '../projectService'
 
 /** 参考视频：本地/data URL → 对象存储远程 URL；图片/音频保持原样（或已是 http） */

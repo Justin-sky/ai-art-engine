@@ -1,25 +1,13 @@
 <template>
   <div class="model-preview">
-    <div
-      ref="viewportEl"
-      class="viewport"
-    />
-    <div
-      v-if="status === 'loading'"
-      class="overlay"
-    >
+    <div ref="viewportEl" class="viewport" />
+    <div v-if="status === 'loading'" class="overlay">
       {{ t('asset.inspector.modelPreviewLoading') }}
     </div>
-    <div
-      v-else-if="status === 'empty'"
-      class="overlay"
-    >
+    <div v-else-if="status === 'empty'" class="overlay">
       {{ t('asset.inspector.unlinked') }}
     </div>
-    <div
-      v-else-if="status === 'error'"
-      class="overlay error"
-    >
+    <div v-else-if="status === 'error'" class="overlay error">
       {{ errorMessage }}
     </div>
   </div>
@@ -223,16 +211,50 @@ function createBoneSegmentGeometry(): THREE.BufferGeometry {
   const w = 0.22
   const mid = 0.2
   const positions = new Float32Array([
-    0, 0, 0, // 0 parent tip
-    w, mid, 0, // 1
-    0, mid, w, // 2
-    -w, mid, 0, // 3
-    0, mid, -w, // 4
-    0, 1, 0 // 5 child tip
+    0,
+    0,
+    0, // 0 parent tip
+    w,
+    mid,
+    0, // 1
+    0,
+    mid,
+    w, // 2
+    -w,
+    mid,
+    0, // 3
+    0,
+    mid,
+    -w, // 4
+    0,
+    1,
+    0 // 5 child tip
   ])
   const indices = [
-    0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 1, // parent cone
-    5, 2, 1, 5, 3, 2, 5, 4, 3, 5, 1, 4 // child cone
+    0,
+    1,
+    2,
+    0,
+    2,
+    3,
+    0,
+    3,
+    4,
+    0,
+    4,
+    1, // parent cone
+    5,
+    2,
+    1,
+    5,
+    3,
+    2,
+    5,
+    4,
+    3,
+    5,
+    1,
+    4 // child cone
   ]
   const geom = new THREE.BufferGeometry()
   geom.setAttribute('position', new THREE.BufferAttribute(positions, 3))
@@ -496,7 +518,11 @@ function fitCameraToBones(object: THREE.Object3D): boolean {
   const distance = maxDim * 2.6
   camera.near = Math.max(distance / 100, 0.01)
   camera.far = Math.max(distance * 20, 100)
-  camera.position.set(center.x + distance * 0.7, center.y + distance * 0.45, center.z + distance * 0.9)
+  camera.position.set(
+    center.x + distance * 0.7,
+    center.y + distance * 0.45,
+    center.z + distance * 0.9
+  )
   camera.lookAt(center)
   camera.updateProjectionMatrix()
   controls.target.copy(center)
@@ -515,7 +541,11 @@ function fitCameraToObject(object: THREE.Object3D, preferBones = false): void {
   const distance = maxDim * 2.2
   camera.near = Math.max(distance / 100, 0.01)
   camera.far = Math.max(distance * 20, 100)
-  camera.position.set(center.x + distance * 0.7, center.y + distance * 0.45, center.z + distance * 0.9)
+  camera.position.set(
+    center.x + distance * 0.7,
+    center.y + distance * 0.45,
+    center.z + distance * 0.9
+  )
   camera.lookAt(center)
   camera.updateProjectionMatrix()
   controls.target.copy(center)
@@ -549,10 +579,7 @@ function onPointerDown(event: PointerEvent): void {
   pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
   pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
   raycaster.setFromCamera(pointer, camera)
-  const pickables = [
-    ...boneEntries.map((e) => e.joint),
-    ...boneLinks.map((l) => l.mesh)
-  ]
+  const pickables = [...boneEntries.map((e) => e.joint), ...boneLinks.map((l) => l.mesh)]
   const hits = raycaster.intersectObjects(pickables, false)
   if (!hits.length) return
   const name = hits[0]?.object.userData.boneName

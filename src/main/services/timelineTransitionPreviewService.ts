@@ -254,7 +254,10 @@ export async function renderTimelineTransitionPreview(
         `[a][b]xfade=transition=${xfadeName}:duration=${d.toFixed(3)}:offset=0,format=yuv420p[vout]`
 
       initPreviewDir()
-      const outPath = join(previewDir(), `tp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`)
+      const outPath = join(
+        previewDir(),
+        `tp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`
+      )
       const args: string[] = [
         '-y',
         '-hide_banner',

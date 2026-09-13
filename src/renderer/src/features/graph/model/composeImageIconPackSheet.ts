@@ -49,9 +49,7 @@ export async function composeImageIconPackSheet(input: {
   background: IconKeyColor | null
 }> {
   const state = normalizeIconPackState(input.state)
-  const names = (input.names ?? [])
-    .map((raw) => String(raw ?? '').trim())
-    .filter(Boolean)
+  const names = (input.names ?? []).map((raw) => String(raw ?? '').trim()).filter(Boolean)
   const rows = Math.max(1, Math.floor(state.rows))
   const cols = Math.max(1, Math.floor(state.cols))
   const capacity = rows * cols
@@ -98,8 +96,18 @@ export async function composeImageIconPackSheet(input: {
       background =
         averageRegionColor(wholeRgba.data, sw, { x: 0, y: 0, width: sw, height: frame }) ??
         averageRegionColor(wholeRgba.data, sw, { x: 0, y: sh - frame, width: sw, height: frame }) ??
-        averageRegionColor(wholeRgba.data, sw, { x: 0, y: frame, width: frame, height: sh - frame * 2 }) ??
-        averageRegionColor(wholeRgba.data, sw, { x: sw - frame, y: frame, width: frame, height: sh - frame * 2 })
+        averageRegionColor(wholeRgba.data, sw, {
+          x: 0,
+          y: frame,
+          width: frame,
+          height: sh - frame * 2
+        }) ??
+        averageRegionColor(wholeRgba.data, sw, {
+          x: sw - frame,
+          y: frame,
+          width: frame,
+          height: sh - frame * 2
+        })
     }
   }
   const keyEnabled = background !== null
@@ -154,7 +162,17 @@ export async function composeImageIconPackSheet(input: {
     const cellCtx = cellCanvas.getContext('2d')
     if (!cellCtx) throw new Error('ICON_PACK_CANVAS_UNAVAILABLE')
     cellCtx.imageSmoothingEnabled = false
-    cellCtx.drawImage(drawImg, rect.sx, rect.sy, rect.width, rect.height, 0, 0, rect.width, rect.height)
+    cellCtx.drawImage(
+      drawImg,
+      rect.sx,
+      rect.sy,
+      rect.width,
+      rect.height,
+      0,
+      0,
+      rect.width,
+      rect.height
+    )
 
     if (keyEnabled) {
       const data = cellCtx.getImageData(0, 0, rect.width, rect.height)
@@ -167,13 +185,12 @@ export async function composeImageIconPackSheet(input: {
     }
 
     const data = cellCtx.getImageData(0, 0, rect.width, rect.height)
-    const subject =
-      extractAlphaBounds(data.data, rect.width, rect.height, { alphaMin: 8 }) ?? {
-        x: 0,
-        y: 0,
-        width: rect.width,
-        height: rect.height
-      }
+    const subject = extractAlphaBounds(data.data, rect.width, rect.height, { alphaMin: 8 }) ?? {
+      x: 0,
+      y: 0,
+      width: rect.width,
+      height: rect.height
+    }
 
     const trimCanvas = document.createElement('canvas')
     trimCanvas.width = Math.max(1, Math.round(subject.width))
@@ -229,7 +246,13 @@ export async function composeImageIconPackSheet(input: {
     const dw = Math.max(1, Math.round(entry.width * fitScale))
     const dh = Math.max(1, Math.round(entry.height * fitScale))
     octx.imageSmoothingEnabled = fitScale < 1
-    octx.drawImage(entry.canvas, Math.floor((target - dw) / 2), Math.floor((target - dh) / 2), dw, dh)
+    octx.drawImage(
+      entry.canvas,
+      Math.floor((target - dw) / 2),
+      Math.floor((target - dh) / 2),
+      dw,
+      dh
+    )
     items.push({
       cellKey: entry.cellKey,
       name: entry.name,

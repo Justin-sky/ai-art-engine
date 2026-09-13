@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  cropTargetAspect,
-  fitCropRectToAspect,
-  normalizeImageCrop
-} from '../src/shared/graph'
+import { cropTargetAspect, fitCropRectToAspect, normalizeImageCrop } from '../src/shared/graph'
 
 describe('imageCrop', () => {
   it('normalizes defaults', () => {

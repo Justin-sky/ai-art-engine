@@ -107,12 +107,19 @@ function runFfmpeg(bin: string, args: string[], onTime?: (sec: number) => void):
     })
     child.on('error', (err) => {
       // 保留原生 spawn 错误（ENOENT 等）作为 cause，文案保留 FFmpeg 关键字供渲染端兜底匹配
-      reject(Object.assign(fail(E_TIMELINE_FFMPEG_LAUNCH_FAILED, { detail: err.message }), { cause: err }))
+      reject(
+        Object.assign(fail(E_TIMELINE_FFMPEG_LAUNCH_FAILED, { detail: err.message }), {
+          cause: err
+        })
+      )
     })
     child.on('close', (code) => {
       // stderr 为 ffmpeg 原生输出，原样透传
       if (code === 0) resolve()
-      else reject(fail(E_TIMELINE_FFMPEG_EXITED, { stderr: stderr.trim().slice(-900), exitCode: code }))
+      else
+        reject(
+          fail(E_TIMELINE_FFMPEG_EXITED, { stderr: stderr.trim().slice(-900), exitCode: code })
+        )
     })
   })
 }
@@ -173,12 +180,9 @@ function buildFilterGraph(
   // 片段时间线转场语义（与预览一致）：相邻片段 A(前) / B(后) 有重叠窗口
   // overlap = A.end − B.start（>0 才可能有转场）。B.transitionInSec 记录生效转场时长，
   // 预览在窗口内把 B 按 progress 叠加在 A 之上。导出同样在该窗口用 xfade 合成。
-  const orderedMainVideos = [...mainVideos].sort(
-    (a, b) => a.startSec - b.startSec
-  )
+  const orderedMainVideos = [...mainVideos].sort((a, b) => a.startSec - b.startSec)
   let lastVideo = 'base'
-  const mainClipEnd = (c: TimelineExportClip): number =>
-    c.startSec + Math.max(0.05, c.durationSec)
+  const mainClipEnd = (c: TimelineExportClip): number => c.startSec + Math.max(0.05, c.durationSec)
 
   if (orderedMainVideos.length) {
     const count = orderedMainVideos.length
@@ -214,9 +218,7 @@ function buildFilterGraph(
       overlapAfter.push(overlap)
       const inSec = Math.max(0, right.transitionInSec ?? 0)
       const supported =
-        overlap > 0.001 &&
-        inSec > 0.001 &&
-        xfadeTransitionName(right.transitionType) !== null
+        overlap > 0.001 && inSec > 0.001 && xfadeTransitionName(right.transitionType) !== null
       transDur.push(
         supported
           ? Math.min(
@@ -249,15 +251,8 @@ function buildFilterGraph(
       }
       // 主体（独白部分）：跳过被前转场占用的头部与后转场占用的尾部
       const bodyStart =
-        i === 0
-          ? 0
-          : overlapPrev > 0.001
-            ? dPrev > 0.001
-              ? dPrev
-              : overlapPrev
-            : 0
-      const bodyEnd =
-        dNext > 0.001 ? Math.max(0, dur - Math.min(overlapNext, dur)) : dur
+        i === 0 ? 0 : overlapPrev > 0.001 ? (dPrev > 0.001 ? dPrev : overlapPrev) : 0
+      const bodyEnd = dNext > 0.001 ? Math.max(0, dur - Math.min(overlapNext, dur)) : dur
       if (bodyEnd - bodyStart > 0.001) {
         wins.push({ kind: 'body', start: bodyStart, dur: bodyEnd - bodyStart, port: '' })
       }
@@ -385,9 +380,7 @@ function buildFilterGraph(
       // concat 链从 0 起，整体平移到时间线真实起点后再叠到黑色底上
       const firstStart = Math.max(0, orderedMainVideos[0]!.startSec)
       const shiftedMain = 'mainshifted'
-      filterParts.push(
-        `[${chainLabel}]setpts=PTS+${firstStart.toFixed(3)}/TB[${shiftedMain}]`
-      )
+      filterParts.push(`[${chainLabel}]setpts=PTS+${firstStart.toFixed(3)}/TB[${shiftedMain}]`)
       filterParts.push(`[base][${shiftedMain}]overlay=0:0[mainbase]`)
       lastVideo = 'mainbase'
     }
@@ -396,15 +389,9 @@ function buildFilterGraph(
   for (const clip of overlays) {
     const start = Math.max(0, clip.startSec)
     const dur = Math.max(0.05, clip.durationSec)
-    const opacity = Number.isFinite(clip.opacity)
-      ? Math.min(1, Math.max(0, clip.opacity!))
-      : 1
-    const relX = Number.isFinite(clip.overlayX)
-      ? Math.min(1, Math.max(0, clip.overlayX!))
-      : 0.12
-    const relY = Number.isFinite(clip.overlayY)
-      ? Math.min(1, Math.max(0, clip.overlayY!))
-      : 0.12
+    const opacity = Number.isFinite(clip.opacity) ? Math.min(1, Math.max(0, clip.opacity!)) : 1
+    const relX = Number.isFinite(clip.overlayX) ? Math.min(1, Math.max(0, clip.overlayX!)) : 0.12
+    const relY = Number.isFinite(clip.overlayY) ? Math.min(1, Math.max(0, clip.overlayY!)) : 0.12
     const relW = Number.isFinite(clip.overlayWidth)
       ? Math.min(1, Math.max(0.05, clip.overlayWidth!))
       : 0.36
@@ -444,10 +431,7 @@ function buildFilterGraph(
   }
 
   if (watermark) {
-    const targetW = Math.max(
-      24,
-      Math.round(width * Math.min(0.5, Math.max(0.05, watermark.scale)))
-    )
+    const targetW = Math.max(24, Math.round(width * Math.min(0.5, Math.max(0.05, watermark.scale))))
     const wmLabel = 'wm'
     const wmOvLabel = 'wmoverlay'
     const opacity = Math.min(1, Math.max(0.05, watermark.opacity))
@@ -476,12 +460,8 @@ function buildFilterGraph(
       ? Math.min(2, Math.max(0, mix!.mixGains![clip.track]!))
       : 1
     // 轨道静音优先级最高：高于片段音量与混音器轨道增益
-    const volume = mix?.mutedTracks?.includes(clip.track)
-      ? 0
-      : Math.min(2, clipVolume * trackGain)
-    const fadeIn = Number.isFinite(clip.fadeInSec)
-      ? Math.min(dur, Math.max(0, clip.fadeInSec!))
-      : 0
+    const volume = mix?.mutedTracks?.includes(clip.track) ? 0 : Math.min(2, clipVolume * trackGain)
+    const fadeIn = Number.isFinite(clip.fadeInSec) ? Math.min(dur, Math.max(0, clip.fadeInSec!)) : 0
     const fadeOut = Number.isFinite(clip.fadeOutSec)
       ? Math.min(dur, Math.max(0, clip.fadeOutSec!))
       : 0
@@ -491,7 +471,9 @@ function buildFilterGraph(
       'asetpts=PTS-STARTPTS',
       Math.abs(volume - 1) > 0.001 ? `volume=${volume.toFixed(3)}` : '',
       fadeIn > 0 ? `afade=t=in:st=0:d=${fadeIn.toFixed(3)}` : '',
-      fadeOut > 0 ? `afade=t=out:st=${Math.max(0, dur - fadeOut).toFixed(3)}:d=${fadeOut.toFixed(3)}` : '',
+      fadeOut > 0
+        ? `afade=t=out:st=${Math.max(0, dur - fadeOut).toFixed(3)}:d=${fadeOut.toFixed(3)}`
+        : '',
       `adelay=${startMs}|${startMs}`
     ]
       .filter(Boolean)
@@ -571,14 +553,8 @@ function prepareTimelinePipeline(input: TimelineExportInput): {
     200000,
     Math.max(500, Math.round(input.videoBitrateKbps ?? 5000))
   )
-  const subtitleFontSize = Math.min(
-    200,
-    Math.max(12, Math.round(input.subtitleFontSize ?? 36))
-  )
-  const subtitleYOffset = Math.min(
-    1000,
-    Math.max(0, Math.round(input.subtitleYOffset ?? 80))
-  )
+  const subtitleFontSize = Math.min(200, Math.max(12, Math.round(input.subtitleFontSize ?? 36)))
+  const subtitleYOffset = Math.min(1000, Math.max(0, Math.round(input.subtitleYOffset ?? 80)))
   const subtitleColor =
     input.subtitleColor && /^#[0-9a-fA-F]{6}$/.test(input.subtitleColor.trim())
       ? input.subtitleColor.trim()
@@ -589,17 +565,14 @@ function prepareTimelinePipeline(input: TimelineExportInput): {
   const voiceMusicClips = input.clips.filter(
     (c) => c.track === 'voice' || c.track === 'music' || c.track === 'sfx'
   )
-  const subs = input.clips.filter((c) => c.track === 'subtitle' && (c.text?.trim() || c.title.trim()))
+  const subs = input.clips.filter(
+    (c) => c.track === 'subtitle' && (c.text?.trim() || c.title.trim())
+  )
 
   const args: string[] = ['-y', '-hide_banner', '-loglevel', 'error']
   let inputIndex = 0
 
-  args.push(
-    '-f',
-    'lavfi',
-    '-i',
-    `color=c=black:s=${width}x${height}:d=${duration}:r=${fps}`
-  )
+  args.push('-f', 'lavfi', '-i', `color=c=black:s=${width}x${height}:d=${duration}:r=${fps}`)
   const baseVideoIndex = inputIndex++
   args.push('-f', 'lavfi', '-i', `anullsrc=channel_layout=stereo:sample_rate=44100:d=${duration}`)
   const baseAudioIndex = inputIndex++
@@ -742,8 +715,7 @@ function probeFfmpeg(bin: string): Promise<boolean> {
 export type TimelinePreviewFrame = { timeSec: number; dataUrl: string }
 
 export type TimelinePreviewResult =
-  | { ok: true; frames: TimelinePreviewFrame[]; width: number }
-  | { ok: false; error: string }
+  { ok: true; frames: TimelinePreviewFrame[]; width: number } | { ok: false; error: string }
 
 /**
  * 抽帧预览：用导出同一条滤镜图，在指定时间点各取一帧（JPEG）。
@@ -809,7 +781,15 @@ export async function renderTimelineFrames(
       })
       // 滤镜图里的音频链末端 pad 必须有人接：未连接的 filter 输出会让 ffmpeg 直接报错。
       // 接到 null muxer 并用 -t 收在最晚的抽帧点上——音频只解码到那一刻，不拖慢抽帧。
-      args.push('-map', pipeline.mapAudio, '-t', Math.max(...timestamps).toFixed(3), '-f', 'null', '-')
+      args.push(
+        '-map',
+        pipeline.mapAudio,
+        '-t',
+        Math.max(...timestamps).toFixed(3),
+        '-f',
+        'null',
+        '-'
+      )
 
       await runFfmpeg(bin, args)
 

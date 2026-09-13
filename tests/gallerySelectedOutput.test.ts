@@ -89,18 +89,26 @@ describe('gallery selected output', () => {
   })
 
   it('onlyTarget soft-snapshot overlays selected over stale prior out', async () => {
-    const imageGen = createNodeFromType('asset.image', { x: 0, y: 0 }, {
-      params: {
-        generatedImages: [
-          { id: 'old', dataUrl: 'data:old' },
-          { id: 'pick', dataUrl: 'data:pick' }
-        ],
-        selectedImageId: 'pick'
+    const imageGen = createNodeFromType(
+      'asset.image',
+      { x: 0, y: 0 },
+      {
+        params: {
+          generatedImages: [
+            { id: 'old', dataUrl: 'data:old' },
+            { id: 'pick', dataUrl: 'data:pick' }
+          ],
+          selectedImageId: 'pick'
+        }
       }
-    })
-    const out = createNodeFromType('output.image', { x: 200, y: 0 }, {
-      params: { outputKind: 'image', inputDataType: 'image' }
-    })
+    )
+    const out = createNodeFromType(
+      'output.image',
+      { x: 200, y: 0 },
+      {
+        params: { outputKind: 'image', inputDataType: 'image' }
+      }
+    )
     const doc: GraphDocument = {
       nodes: [imageGen, out],
       edges: [
@@ -142,9 +150,7 @@ describe('gallery selected output', () => {
     expect(outValue?.kind).toBe('output')
     if (outValue?.kind === 'output') {
       expect(outValue.images).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ id: 'pick', dataUrl: 'data:pick' })
-        ])
+        expect.arrayContaining([expect.objectContaining({ id: 'pick', dataUrl: 'data:pick' })])
       )
       expect(outValue.images?.some((img) => img.id === 'old')).toBe(false)
     }

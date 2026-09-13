@@ -45,9 +45,39 @@ describe('imageLayerSplit', () => {
   it('reorders element layers without moving the base', () => {
     const layers = normalizeImageLayerSplit({
       layers: [
-        { id: 'base', imageId: 'base', zIndex: 0, name: 'Base', visible: true, left: 0, top: 0, width: 10, height: 10 },
-        { id: 'a', imageId: 'a', zIndex: 1, name: 'A', visible: true, left: 0, top: 0, width: 10, height: 10 },
-        { id: 'b', imageId: 'b', zIndex: 2, name: 'B', visible: true, left: 0, top: 0, width: 10, height: 10 }
+        {
+          id: 'base',
+          imageId: 'base',
+          zIndex: 0,
+          name: 'Base',
+          visible: true,
+          left: 0,
+          top: 0,
+          width: 10,
+          height: 10
+        },
+        {
+          id: 'a',
+          imageId: 'a',
+          zIndex: 1,
+          name: 'A',
+          visible: true,
+          left: 0,
+          top: 0,
+          width: 10,
+          height: 10
+        },
+        {
+          id: 'b',
+          imageId: 'b',
+          zIndex: 2,
+          name: 'B',
+          visible: true,
+          left: 0,
+          top: 0,
+          width: 10,
+          height: 10
+        }
       ]
     }).layers
     const up = reorderLayerSplit(layers, 'a', 'up')
@@ -108,17 +138,69 @@ describe('imageLayerSplit', () => {
       canvasWidth: 1000,
       canvasHeight: 1000,
       layers: [
-        { id: 'base', imageId: 'base', zIndex: 0, name: 'Base', visible: true, left: 0, top: 0, width: 1000, height: 1000 },
-        { id: 'a', imageId: 'a', zIndex: 1, name: 'A', visible: true, left: 0, top: 0, width: 10, height: 10 },
+        {
+          id: 'base',
+          imageId: 'base',
+          zIndex: 0,
+          name: 'Base',
+          visible: true,
+          left: 0,
+          top: 0,
+          width: 1000,
+          height: 1000
+        },
+        {
+          id: 'a',
+          imageId: 'a',
+          zIndex: 1,
+          name: 'A',
+          visible: true,
+          left: 0,
+          top: 0,
+          width: 10,
+          height: 10
+        },
         parent,
-        { id: 'b', imageId: 'b', zIndex: 3, name: 'B', visible: true, left: 0, top: 0, width: 10, height: 10 }
+        {
+          id: 'b',
+          imageId: 'b',
+          zIndex: 3,
+          name: 'B',
+          visible: true,
+          left: 0,
+          top: 0,
+          width: 10,
+          height: 10
+        }
       ]
     })
     const nested = placeLayersInParentRect(
       parent,
       [
-        { id: 'p-base', imageId: 'p-base', zIndex: 0, name: 'Base', description: '', visible: true, left: 0, top: 0, width: 400, height: 200 },
-        { id: 'hat', imageId: 'hat', zIndex: 1, name: 'Hat', description: '', visible: true, left: 40, top: 20, width: 80, height: 40 }
+        {
+          id: 'p-base',
+          imageId: 'p-base',
+          zIndex: 0,
+          name: 'Base',
+          description: '',
+          visible: true,
+          left: 0,
+          top: 0,
+          width: 400,
+          height: 200
+        },
+        {
+          id: 'hat',
+          imageId: 'hat',
+          zIndex: 1,
+          name: 'Hat',
+          description: '',
+          visible: true,
+          left: 40,
+          top: 20,
+          width: 80,
+          height: 40
+        }
       ],
       { width: 400, height: 200 }
     )
@@ -150,7 +232,11 @@ describe('imageLayerSplit', () => {
     expect(next.layers.find((l) => l.id === 'b')?.zIndex).toBe(5)
 
     const rows = buildLayerSplitList(next)
-    expect(rows.map((row) => (row.kind === 'group' ? `group:${row.group.name}` : `layer:${row.layer.id}`))).toEqual([
+    expect(
+      rows.map((row) =>
+        row.kind === 'group' ? `group:${row.group.name}` : `layer:${row.layer.id}`
+      )
+    ).toEqual([
       'layer:b',
       'group:Person 拆分',
       'layer:hat',
@@ -159,25 +245,40 @@ describe('imageLayerSplit', () => {
       'layer:a',
       'layer:base'
     ])
-    expect(isLayerSplitLayerDrawable(next, next.layers.find((l) => l.id === 'hat')!)).toBe(true)
+    expect(
+      isLayerSplitLayerDrawable(
+        next,
+        next.layers.find((l) => l.id === 'hat')!
+      )
+    ).toBe(true)
     expect(collectLayerSplitGroupLayers(next, next.groups[0]!.id).map((l) => l.id)).toEqual([
       'person',
       'p-base',
       'hat'
     ])
-    expect(layerSplitExportFolderSegments(next, next.layers.find((l) => l.id === 'hat')?.groupId)).toEqual([
-      'Person 拆分'
-    ])
-    expect(layerSplitExportFolderSegments(next, next.layers.find((l) => l.id === 'a')?.groupId)).toEqual(
-      []
-    )
+    expect(
+      layerSplitExportFolderSegments(next, next.layers.find((l) => l.id === 'hat')?.groupId)
+    ).toEqual(['Person 拆分'])
+    expect(
+      layerSplitExportFolderSegments(next, next.layers.find((l) => l.id === 'a')?.groupId)
+    ).toEqual([])
 
     const hidden = {
       ...next,
       groups: next.groups.map((g) => ({ ...g, visible: false }))
     }
-    expect(isLayerSplitLayerDrawable(hidden, hidden.layers.find((l) => l.id === 'hat')!)).toBe(false)
-    expect(isLayerSplitLayerDrawable(hidden, hidden.layers.find((l) => l.id === 'base')!)).toBe(true)
+    expect(
+      isLayerSplitLayerDrawable(
+        hidden,
+        hidden.layers.find((l) => l.id === 'hat')!
+      )
+    ).toBe(false)
+    expect(
+      isLayerSplitLayerDrawable(
+        hidden,
+        hidden.layers.find((l) => l.id === 'base')!
+      )
+    ).toBe(true)
   })
 
   it('orders the psd tree bottom -> top so ag-psd children match the layer panel', () => {
@@ -187,16 +288,78 @@ describe('imageLayerSplit', () => {
         canvasWidth: 1000,
         canvasHeight: 1000,
         layers: [
-          { id: 'base', imageId: 'base', zIndex: 0, name: 'Base', visible: true, left: 0, top: 0, width: 1000, height: 1000 },
-          { id: 'a', imageId: 'a', zIndex: 1, name: 'A', visible: true, left: 0, top: 0, width: 10, height: 10 },
-          { id: 'person', imageId: 'person', zIndex: 2, name: 'Person', visible: true, left: 100, top: 50, width: 200, height: 100 },
-          { id: 'b', imageId: 'b', zIndex: 3, name: 'B', visible: true, left: 0, top: 0, width: 10, height: 10 }
+          {
+            id: 'base',
+            imageId: 'base',
+            zIndex: 0,
+            name: 'Base',
+            visible: true,
+            left: 0,
+            top: 0,
+            width: 1000,
+            height: 1000
+          },
+          {
+            id: 'a',
+            imageId: 'a',
+            zIndex: 1,
+            name: 'A',
+            visible: true,
+            left: 0,
+            top: 0,
+            width: 10,
+            height: 10
+          },
+          {
+            id: 'person',
+            imageId: 'person',
+            zIndex: 2,
+            name: 'Person',
+            visible: true,
+            left: 100,
+            top: 50,
+            width: 200,
+            height: 100
+          },
+          {
+            id: 'b',
+            imageId: 'b',
+            zIndex: 3,
+            name: 'B',
+            visible: true,
+            left: 0,
+            top: 0,
+            width: 10,
+            height: 10
+          }
         ]
       }),
       parentId: 'person',
       nestedLayers: [
-        { id: 'p-base', imageId: 'p-base', zIndex: 0, name: 'Base', description: '', visible: true, left: 0, top: 0, width: 200, height: 100 },
-        { id: 'hat', imageId: 'hat', zIndex: 1, name: 'Hat', description: '', visible: true, left: 40, top: 20, width: 80, height: 40 }
+        {
+          id: 'p-base',
+          imageId: 'p-base',
+          zIndex: 0,
+          name: 'Base',
+          description: '',
+          visible: true,
+          left: 0,
+          top: 0,
+          width: 200,
+          height: 100
+        },
+        {
+          id: 'hat',
+          imageId: 'hat',
+          zIndex: 1,
+          name: 'Hat',
+          description: '',
+          visible: true,
+          left: 40,
+          top: 20,
+          width: 80,
+          height: 40
+        }
       ],
       groupName: 'Person 拆分',
       stamp: 1
@@ -232,11 +395,44 @@ describe('imageLayerSplit', () => {
       canvasWidth: 100,
       canvasHeight: 100,
       layers: [
-        { id: 'base', imageId: 'base', zIndex: 0, name: 'Base', visible: true, left: 0, top: 0, width: 100, height: 100 },
-        { id: 'skip', imageId: 'skip', zIndex: 1, name: 'Skip', visible: true, left: 0, top: 0, width: 10, height: 10, groupId: 'g-empty' },
-        { id: 'top', imageId: 'top', zIndex: 2, name: 'Top', visible: true, left: 0, top: 0, width: 10, height: 10 }
+        {
+          id: 'base',
+          imageId: 'base',
+          zIndex: 0,
+          name: 'Base',
+          visible: true,
+          left: 0,
+          top: 0,
+          width: 100,
+          height: 100
+        },
+        {
+          id: 'skip',
+          imageId: 'skip',
+          zIndex: 1,
+          name: 'Skip',
+          visible: true,
+          left: 0,
+          top: 0,
+          width: 10,
+          height: 10,
+          groupId: 'g-empty'
+        },
+        {
+          id: 'top',
+          imageId: 'top',
+          zIndex: 2,
+          name: 'Top',
+          visible: true,
+          left: 0,
+          top: 0,
+          width: 10,
+          height: 10
+        }
       ],
-      groups: [{ id: 'g-empty', name: 'Empty', collapsed: false, visible: true, sourceLayerId: 'base' }]
+      groups: [
+        { id: 'g-empty', name: 'Empty', collapsed: false, visible: true, sourceLayerId: 'base' }
+      ]
     })
     // 'skip' 没有栅格像素（layer 回调返回 null），其所在分组因此变空要被剔除。
     const ordered = orderLayerSplitTreeForPsd<{ id: string }>(buildLayerSplitTree(state), {
@@ -248,7 +444,19 @@ describe('imageLayerSplit', () => {
 
   it('allows z-index beyond a single API split', () => {
     const layer = normalizeImageLayerSplit({
-      layers: [{ id: 'x', imageId: 'x', zIndex: 40, name: 'X', visible: true, left: 0, top: 0, width: 1, height: 1 }]
+      layers: [
+        {
+          id: 'x',
+          imageId: 'x',
+          zIndex: 40,
+          name: 'X',
+          visible: true,
+          left: 0,
+          top: 0,
+          width: 1,
+          height: 1
+        }
+      ]
     }).layers[0]
     expect(layer?.zIndex).toBe(40)
   })

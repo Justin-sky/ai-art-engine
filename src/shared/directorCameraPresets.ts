@@ -56,24 +56,153 @@ export interface DirectorComboCameraPreset {
 
 export const DIRECTOR_SHOT_CAMERA_PRESETS: readonly DirectorShotCameraPreset[] = [
   // 景别（frameFactor 越大画面越远）
-  { id: 'shot.extreme-wide', labelKey: 'director.stage.cameraPreset.extremeWide', group: 'shotSize', frameFactor: 6, frameBias: 0.45, azimuthDeg: 0 },
-  { id: 'shot.long', labelKey: 'director.stage.cameraPreset.long', group: 'shotSize', frameFactor: 4, frameBias: 0.5, azimuthDeg: 0 },
-  { id: 'shot.full', labelKey: 'director.stage.cameraPreset.full', group: 'shotSize', frameFactor: 2.2, frameBias: 0.55, azimuthDeg: 0 },
-  { id: 'shot.medium', labelKey: 'director.stage.cameraPreset.medium', group: 'shotSize', frameFactor: 1.4, frameBias: 0.6, azimuthDeg: 0 },
-  { id: 'shot.medium-close', labelKey: 'director.stage.cameraPreset.mediumClose', group: 'shotSize', frameFactor: 1.0, frameBias: 0.65, azimuthDeg: 0 },
-  { id: 'shot.close', labelKey: 'director.stage.cameraPreset.close', group: 'shotSize', frameFactor: 0.7, frameBias: 0.7, azimuthDeg: 0 },
-  { id: 'shot.close-up', labelKey: 'director.stage.cameraPreset.closeUp', group: 'shotSize', frameFactor: 0.4, frameBias: 0.78, azimuthDeg: 0 },
-  { id: 'shot.extreme-close-up', labelKey: 'director.stage.cameraPreset.extremeCloseUp', group: 'shotSize', frameFactor: 0.22, frameBias: 0.8, azimuthDeg: 0 },
+  {
+    id: 'shot.extreme-wide',
+    labelKey: 'director.stage.cameraPreset.extremeWide',
+    group: 'shotSize',
+    frameFactor: 6,
+    frameBias: 0.45,
+    azimuthDeg: 0
+  },
+  {
+    id: 'shot.long',
+    labelKey: 'director.stage.cameraPreset.long',
+    group: 'shotSize',
+    frameFactor: 4,
+    frameBias: 0.5,
+    azimuthDeg: 0
+  },
+  {
+    id: 'shot.full',
+    labelKey: 'director.stage.cameraPreset.full',
+    group: 'shotSize',
+    frameFactor: 2.2,
+    frameBias: 0.55,
+    azimuthDeg: 0
+  },
+  {
+    id: 'shot.medium',
+    labelKey: 'director.stage.cameraPreset.medium',
+    group: 'shotSize',
+    frameFactor: 1.4,
+    frameBias: 0.6,
+    azimuthDeg: 0
+  },
+  {
+    id: 'shot.medium-close',
+    labelKey: 'director.stage.cameraPreset.mediumClose',
+    group: 'shotSize',
+    frameFactor: 1.0,
+    frameBias: 0.65,
+    azimuthDeg: 0
+  },
+  {
+    id: 'shot.close',
+    labelKey: 'director.stage.cameraPreset.close',
+    group: 'shotSize',
+    frameFactor: 0.7,
+    frameBias: 0.7,
+    azimuthDeg: 0
+  },
+  {
+    id: 'shot.close-up',
+    labelKey: 'director.stage.cameraPreset.closeUp',
+    group: 'shotSize',
+    frameFactor: 0.4,
+    frameBias: 0.78,
+    azimuthDeg: 0
+  },
+  {
+    id: 'shot.extreme-close-up',
+    labelKey: 'director.stage.cameraPreset.extremeCloseUp',
+    group: 'shotSize',
+    frameFactor: 0.22,
+    frameBias: 0.8,
+    azimuthDeg: 0
+  },
   // 角度（默认中景取景，强调机位高度/方位）
-  { id: 'angle.eye-level', labelKey: 'director.stage.cameraPreset.eyeLevel', group: 'angle', frameFactor: 1.4, frameBias: 0.6, cameraHeightBias: 0, azimuthDeg: 0 },
-  { id: 'angle.low', labelKey: 'director.stage.cameraPreset.low', group: 'angle', frameFactor: 1.2, frameBias: 0.6, cameraHeightBias: -0.5, azimuthDeg: 0 },
-  { id: 'angle.high', labelKey: 'director.stage.cameraPreset.high', group: 'angle', frameFactor: 1.5, frameBias: 0.6, cameraHeightBias: 0.6, azimuthDeg: 0 },
-  { id: 'angle.bird', labelKey: 'director.stage.cameraPreset.bird', group: 'angle', frameFactor: 2.2, frameBias: 0.5, cameraHeightBias: 2.2, azimuthDeg: 0 },
-  { id: 'angle.dutch', labelKey: 'director.stage.cameraPreset.dutch', group: 'angle', frameFactor: 1.3, frameBias: 0.6, cameraHeightBias: 0, azimuthDeg: 0, rollDeg: 12 },
-  { id: 'angle.over-shoulder', labelKey: 'director.stage.cameraPreset.overShoulder', group: 'angle', frameFactor: 1.0, frameBias: 0.65, cameraHeightBias: 0, azimuthDeg: 25 },
-  { id: 'angle.three-quarter', labelKey: 'director.stage.cameraPreset.threeQuarter', group: 'angle', frameFactor: 1.3, frameBias: 0.6, cameraHeightBias: 0, azimuthDeg: 45 },
-  { id: 'angle.profile', labelKey: 'director.stage.cameraPreset.profile', group: 'angle', frameFactor: 1.3, frameBias: 0.6, cameraHeightBias: 0, azimuthDeg: 90 },
-  { id: 'angle.back', labelKey: 'director.stage.cameraPreset.back', group: 'angle', frameFactor: 1.3, frameBias: 0.6, cameraHeightBias: 0, azimuthDeg: 180 }
+  {
+    id: 'angle.eye-level',
+    labelKey: 'director.stage.cameraPreset.eyeLevel',
+    group: 'angle',
+    frameFactor: 1.4,
+    frameBias: 0.6,
+    cameraHeightBias: 0,
+    azimuthDeg: 0
+  },
+  {
+    id: 'angle.low',
+    labelKey: 'director.stage.cameraPreset.low',
+    group: 'angle',
+    frameFactor: 1.2,
+    frameBias: 0.6,
+    cameraHeightBias: -0.5,
+    azimuthDeg: 0
+  },
+  {
+    id: 'angle.high',
+    labelKey: 'director.stage.cameraPreset.high',
+    group: 'angle',
+    frameFactor: 1.5,
+    frameBias: 0.6,
+    cameraHeightBias: 0.6,
+    azimuthDeg: 0
+  },
+  {
+    id: 'angle.bird',
+    labelKey: 'director.stage.cameraPreset.bird',
+    group: 'angle',
+    frameFactor: 2.2,
+    frameBias: 0.5,
+    cameraHeightBias: 2.2,
+    azimuthDeg: 0
+  },
+  {
+    id: 'angle.dutch',
+    labelKey: 'director.stage.cameraPreset.dutch',
+    group: 'angle',
+    frameFactor: 1.3,
+    frameBias: 0.6,
+    cameraHeightBias: 0,
+    azimuthDeg: 0,
+    rollDeg: 12
+  },
+  {
+    id: 'angle.over-shoulder',
+    labelKey: 'director.stage.cameraPreset.overShoulder',
+    group: 'angle',
+    frameFactor: 1.0,
+    frameBias: 0.65,
+    cameraHeightBias: 0,
+    azimuthDeg: 25
+  },
+  {
+    id: 'angle.three-quarter',
+    labelKey: 'director.stage.cameraPreset.threeQuarter',
+    group: 'angle',
+    frameFactor: 1.3,
+    frameBias: 0.6,
+    cameraHeightBias: 0,
+    azimuthDeg: 45
+  },
+  {
+    id: 'angle.profile',
+    labelKey: 'director.stage.cameraPreset.profile',
+    group: 'angle',
+    frameFactor: 1.3,
+    frameBias: 0.6,
+    cameraHeightBias: 0,
+    azimuthDeg: 90
+  },
+  {
+    id: 'angle.back',
+    labelKey: 'director.stage.cameraPreset.back',
+    group: 'angle',
+    frameFactor: 1.3,
+    frameBias: 0.6,
+    cameraHeightBias: 0,
+    azimuthDeg: 180
+  }
 ]
 
 /**
@@ -417,14 +546,10 @@ export const DIRECTOR_COMBO_CAMERA_PRESETS: readonly DirectorComboCameraPreset[]
   }
 ]
 
-export function findDirectorShotCameraPreset(
-  id: string
-): DirectorShotCameraPreset | undefined {
+export function findDirectorShotCameraPreset(id: string): DirectorShotCameraPreset | undefined {
   return DIRECTOR_SHOT_CAMERA_PRESETS.find((p) => p.id === id)
 }
 
-export function findDirectorComboCameraPreset(
-  id: string
-): DirectorComboCameraPreset | undefined {
+export function findDirectorComboCameraPreset(id: string): DirectorComboCameraPreset | undefined {
   return DIRECTOR_COMBO_CAMERA_PRESETS.find((p) => p.id === id)
 }

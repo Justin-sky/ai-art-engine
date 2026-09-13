@@ -1,8 +1,5 @@
 <template>
-  <div
-    v-if="api"
-    class="dive-node-tool"
-  >
+  <div v-if="api" class="dive-node-tool">
     <GraphTextNotepadDialog
       v-if="viewId === 'node.notepad' && api.notepad.open"
       :open="true"
@@ -289,27 +286,18 @@
       @split-selected="api.splitSelectedLayerSplit as never"
     />
 
-    <p
-      v-else-if="ready"
-      class="missing"
-    >
+    <p v-else-if="ready" class="missing">
       {{ t('studio.dive.toolMissing') }}
     </p>
   </div>
-  <p
-    v-else-if="ready"
-    class="missing"
-  >
+  <p v-else-if="ready" class="missing">
     {{ t('studio.dive.toolMissing') }}
   </p>
 </template>
 
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
-import {
-  editorDiveKey,
-  type EditorDiveNodeToolViewId
-} from '../../features/graph/model/editorDive'
+import { editorDiveKey, type EditorDiveNodeToolViewId } from '../../features/graph/model/editorDive'
 import { editorDiveEmbeddedKey } from '../../features/graph/ui/editorDiveEmbeddedKey'
 import { graphEditorNodeTools } from '../../features/graph/ui/graphEditorNodeTools'
 import { useEditorDiveFrameFlush } from '../../composables/useEditorDiveFrameFlush'

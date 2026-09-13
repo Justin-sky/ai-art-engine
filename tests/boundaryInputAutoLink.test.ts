@@ -7,7 +7,9 @@ import {
 } from '../src/shared/graph'
 
 function hasEdge(
-  graph: { edges: Array<{ source: string; target: string; sourcePort?: string; targetPort?: string }> },
+  graph: {
+    edges: Array<{ source: string; target: string; sourcePort?: string; targetPort?: string }>
+  },
   source: string,
   target: string,
   targetPort = 'in'
@@ -47,5 +49,4 @@ describe('createDefaultScopedGraph boundary input wiring', () => {
     const split = graph.nodes.find((n) => n.typeId === 'beat.split')!
     expect(hasEdge(graph, bin, split.id, 'in')).toBe(true)
   })
-
 })

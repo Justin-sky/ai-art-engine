@@ -213,7 +213,12 @@ export function normalizeStage2dScene(raw?: Stage2dSceneInput | null): Stage2dSc
     return { ...layer, frame: null }
   })
   return {
-    canvasWidth: clampInt(base.canvasWidth, MIN_CANVAS, MAX_CANVAS, DEFAULT_STAGE2D_SCENE.canvasWidth),
+    canvasWidth: clampInt(
+      base.canvasWidth,
+      MIN_CANVAS,
+      MAX_CANVAS,
+      DEFAULT_STAGE2D_SCENE.canvasWidth
+    ),
     canvasHeight: clampInt(
       base.canvasHeight,
       MIN_CANVAS,
@@ -261,7 +266,9 @@ export function stage2dLayerAlignFromRaw(
 export function stage2dGroundY(scene: Stage2dSceneState): number {
   const s = normalizeStage2dScene(scene)
   if (s.anchor === 'center') return -1
-  return Math.round(s.canvasHeight - (Number.isFinite(s.groundRatio) ? s.groundRatio : 0) * s.canvasHeight)
+  return Math.round(
+    s.canvasHeight - (Number.isFinite(s.groundRatio) ? s.groundRatio : 0) * s.canvasHeight
+  )
 }
 
 export interface Stage2dLayerPlacement {
@@ -348,6 +355,10 @@ export function computeStage2dLayerPlacements(
       srcWidth: Math.round(src?.srcWidth ?? crop.width),
       srcHeight: Math.round(src?.srcHeight ?? crop.height)
     }
-    return { layer, plan, bounds: src?.bounds ?? { x: 0, y: 0, width: crop.width, height: crop.height } }
+    return {
+      layer,
+      plan,
+      bounds: src?.bounds ?? { x: 0, y: 0, width: crop.width, height: crop.height }
+    }
   })
 }

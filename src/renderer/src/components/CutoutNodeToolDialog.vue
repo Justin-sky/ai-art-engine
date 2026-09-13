@@ -10,68 +10,43 @@
     body-class="pad-none cutout-body"
     @close="emit('close')"
   >
-    <div
-      v-if="open"
-      class="cutout"
-    >
+    <div v-if="open" class="cutout">
       <section class="pane">
         <div class="section-label">
           {{ t('cutout.source') }}
         </div>
         <div class="stage">
-          <img
-            v-if="ready && sourceUrl"
-            :src="sourceUrl"
-            alt=""
-          >
-          <p
-            v-else-if="sourceLoading || !sourceUrl"
-            class="hint"
-          >
+          <img v-if="ready && sourceUrl" :src="sourceUrl" alt="" />
+          <p v-else-if="sourceLoading || !sourceUrl" class="hint">
             {{ sourceLoading ? t('cutout.loadingSource') : t('cutout.noSource') }}
           </p>
         </div>
         <div class="row">
-          <button
-            type="button"
-            class="primary"
-            :disabled="busy || !sourceUrl"
-            @click="analyze"
-          >
+          <button type="button" class="primary" :disabled="busy || !sourceUrl" @click="analyze">
             {{ busy ? t('cutout.analyzing') : analysis ? t('cutout.rerun') : t('cutout.analyze') }}
           </button>
-          <span
-            v-if="analysis"
-            class="hint"
-          >{{ t('cutout.inferenceMs', { ms: analysis.inferenceMs }) }}</span>
+          <span v-if="analysis" class="hint">{{
+            t('cutout.inferenceMs', { ms: analysis.inferenceMs })
+          }}</span>
         </div>
 
         <div class="section-label">
           {{ t('cutout.subjects', { n: instances.length }) }}
         </div>
-        <ul
-          v-if="instances.length"
-          class="instances"
-        >
-          <li
-            v-for="it in instances"
-            :key="it.index"
-          >
+        <ul v-if="instances.length" class="instances">
+          <li v-for="it in instances" :key="it.index">
             <label>
               <input
                 type="checkbox"
                 :checked="selected.includes(it.index)"
                 @change="toggle(it.index)"
-              >
+              />
               <span>{{ it.labelZh }}</span>
               <span class="conf">{{ Math.round(it.confidence * 100) }}%</span>
             </label>
           </li>
         </ul>
-        <p
-          v-else
-          class="hint"
-        >
+        <p v-else class="hint">
           {{ analysis ? t('cutout.empty') : t('cutout.notAnalyzed') }}
         </p>
       </section>
@@ -81,7 +56,9 @@
           {{ t('cutout.params') }}
         </div>
         <label class="slider">
-          <span>{{ t('cutout.detectConf') }}<b>{{ Math.round(detectConf * 100) }}%</b></span>
+          <span
+            >{{ t('cutout.detectConf') }}<b>{{ Math.round(detectConf * 100) }}%</b></span
+          >
           <input
             v-model.number="detectConf"
             type="range"
@@ -89,33 +66,22 @@
             max="0.9"
             step="0.05"
             @change="analyze"
-          >
+          />
         </label>
         <label class="slider">
-          <span>{{ t('cutout.threshold') }}<b>{{ Math.round(threshold * 100) }}%</b></span>
-          <input
-            v-model.number="threshold"
-            type="range"
-            min="0.1"
-            max="1"
-            step="0.05"
+          <span
+            >{{ t('cutout.threshold') }}<b>{{ Math.round(threshold * 100) }}%</b></span
           >
+          <input v-model.number="threshold" type="range" min="0.1" max="1" step="0.05" />
         </label>
         <label class="slider">
-          <span>{{ t('cutout.feather') }}<b>{{ feather }}px</b></span>
-          <input
-            v-model.number="feather"
-            type="range"
-            min="0"
-            max="12"
-            step="1"
+          <span
+            >{{ t('cutout.feather') }}<b>{{ feather }}px</b></span
           >
+          <input v-model.number="feather" type="range" min="0" max="12" step="1" />
         </label>
         <label class="check">
-          <input
-            v-model="cropToSubject"
-            type="checkbox"
-          >
+          <input v-model="cropToSubject" type="checkbox" />
           <span>{{ t('cutout.crop') }}</span>
         </label>
 
@@ -123,36 +89,18 @@
           {{ t('cutout.result') }}
         </div>
         <div class="stage checker">
-          <img
-            v-if="resultUrl"
-            :src="resultUrl"
-            alt=""
-          >
-          <p
-            v-else
-            class="hint"
-          >
+          <img v-if="resultUrl" :src="resultUrl" alt="" />
+          <p v-else class="hint">
             {{ t('cutout.resultEmpty') }}
           </p>
         </div>
         <div class="row">
-          <span
-            v-if="resultUrl"
-            class="hint"
-          >{{ resultWidth }}×{{ resultHeight }}</span>
-          <button
-            type="button"
-            class="primary"
-            :disabled="!resultUrl"
-            @click="save"
-          >
+          <span v-if="resultUrl" class="hint">{{ resultWidth }}×{{ resultHeight }}</span>
+          <button type="button" class="primary" :disabled="!resultUrl" @click="save">
             {{ t('cutout.apply') }}
           </button>
         </div>
-        <p
-          v-if="error"
-          class="error"
-        >
+        <p v-if="error" class="error">
           {{ error }}
         </p>
         <p class="apply-hint">
@@ -167,11 +115,7 @@
 import { computed, ref, watch } from 'vue'
 import { normalizeImageCutout, type ImageCutoutState } from '@shared/graph'
 import { useStudioI18n } from '../composables/useStudioI18n'
-import {
-  analyzeCutout,
-  renderCutoutPng,
-  type CutoutAnalysis
-} from '../features/yolo/cutout'
+import { analyzeCutout, renderCutoutPng, type CutoutAnalysis } from '../features/yolo/cutout'
 import StudioFloatingWindow from './StudioFloatingWindow.vue'
 
 const props = defineProps<{
@@ -189,9 +133,7 @@ const emit = defineEmits<{
 const { t } = useStudioI18n()
 
 /** 源图与节点参数就绪后自动开始识别 */
-const ready = computed(
-  () => props.open && !!props.sourceUrl && !props.sourceLoading
-)
+const ready = computed(() => props.open && !!props.sourceUrl && !props.sourceLoading)
 
 const analysis = ref<CutoutAnalysis | null>(null)
 const image = ref<HTMLImageElement | null>(null)
@@ -273,13 +215,9 @@ async function analyze(): Promise<void> {
     const picked = props.setup?.selected ?? []
     const next = res.analysis.instances
     if (picked.length) {
-      selected.value = next
-        .filter((it) => picked.includes(it.index))
-        .map((it) => it.index)
+      selected.value = next.filter((it) => picked.includes(it.index)).map((it) => it.index)
     } else if (props.setup?.personOnly) {
-      selected.value = next
-        .filter((it) => it.label === 'person')
-        .map((it) => it.index)
+      selected.value = next.filter((it) => it.label === 'person').map((it) => it.index)
     } else {
       selected.value = next.map((it) => it.index)
     }
@@ -329,18 +267,15 @@ function reset(): void {
   error.value = ''
 }
 
-watch(
-  ready,
-  (ok) => {
-    if (!props.open) {
-      reset()
-      return
-    }
-    if (!ok) return
-    applySetup()
-    void analyze()
+watch(ready, (ok) => {
+  if (!props.open) {
+    reset()
+    return
   }
-)
+  if (!ok) return
+  applySetup()
+  void analyze()
+})
 
 // 参数（阈值/羽化/裁剪/选区）连续变化时合并为一次渲染：
 // 全量合成是逐像素 + PNG 编码的重活，无防抖会导致滑块拖动时主线程被反复阻塞。
@@ -401,10 +336,18 @@ watch([threshold, feather, cropToSubject, selected], () => {
 .checker {
   background-color: var(--bg-input);
   background-image:
-    linear-gradient(45deg, var(--wash-16) 25%, transparent 25%, transparent 75%, var(--wash-16) 75%),
+    linear-gradient(
+      45deg,
+      var(--wash-16) 25%,
+      transparent 25%,
+      transparent 75%,
+      var(--wash-16) 75%
+    ),
     linear-gradient(45deg, var(--wash-16) 25%, transparent 25%, transparent 75%, var(--wash-16) 75%);
   background-size: 16px 16px;
-  background-position: 0 0, 8px 8px;
+  background-position:
+    0 0,
+    8px 8px;
 }
 
 .instances {

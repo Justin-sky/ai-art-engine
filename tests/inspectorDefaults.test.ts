@@ -15,9 +15,9 @@ describe('graph inspector defaults', () => {
         { category: 'asset', assetId: 'a1', params: {} }
       )
     ).toBe('studio.graph.assetRef')
-    expect(
-      resolveGraphInspectorId({ inspector: 'asset' }, { category: 'asset', params: {} })
-    ).toBe('studio.graph.asset')
+    expect(resolveGraphInspectorId({ inspector: 'asset' }, { category: 'asset', params: {} })).toBe(
+      'studio.graph.asset'
+    )
   })
 
   it('prefers explicit inspectorId on node type', () => {

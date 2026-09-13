@@ -114,7 +114,10 @@ export const STAGE2D_ACTION_PRESETS: readonly Stage2dActionPreset[] = [
   // 原地蹦跳：起跳瞬间双臂上举、双腿微张，落下时手臂回落（约 1.5s）
   preset('jump', [
     { time: 0, pose: {} },
-    { time: 0.5, pose: { hipL: 28, hipR: -28, kneeL: 12, kneeR: -12, shoulderL: 80, shoulderR: -80, chest: 2 } },
+    {
+      time: 0.5,
+      pose: { hipL: 28, hipR: -28, kneeL: 12, kneeR: -12, shoulderL: 80, shoulderR: -80, chest: 2 }
+    },
     { time: 1.0, pose: { hipL: -8, hipR: 8, shoulderL: -30, shoulderR: 30 } },
     { time: 1.5, pose: {} }
   ]),
@@ -145,7 +148,10 @@ export const STAGE2D_ACTION_PRESETS: readonly Stage2dActionPreset[] = [
     { time: 0, pose: {} },
     { time: 0.55, pose: { hipL: 18, hipR: -18, chest: -6, shoulderL: 35, shoulderR: -35 } },
     { time: 1.1, pose: { hipL: -14, hipR: 14, chest: 5, shoulderL: 80, shoulderR: -80, head: 6 } },
-    { time: 1.65, pose: { hipL: 14, hipR: -14, chest: -5, shoulderL: -15, shoulderR: 15, head: -4 } },
+    {
+      time: 1.65,
+      pose: { hipL: 14, hipR: -14, chest: -5, shoulderL: -15, shoulderR: 15, head: -4 }
+    },
     { time: 2.2, pose: {} }
   ]),
   // 大笑：双臂小幅抖动 + 头胸快速起伏（约 1.3s）

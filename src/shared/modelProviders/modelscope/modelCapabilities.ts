@@ -46,8 +46,7 @@ export function resolveModelScopeModelCapabilities(
   if (entry) return profileCapabilities(entry.profile)
 
   const mod =
-    modality ??
-    (/flux|sdxl|stable.?diffusion|majic|t2i|lora|kolors/i.test(id) ? 'image' : 'text')
+    modality ?? (/flux|sdxl|stable.?diffusion|majic|t2i|lora|kolors/i.test(id) ? 'image' : 'text')
   if (mod === 'image') return profileCapabilities('image-base')
   return profileCapabilities('text-base')
 }

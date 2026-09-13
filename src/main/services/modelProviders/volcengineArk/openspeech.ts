@@ -8,7 +8,13 @@ import type {
   ModelProviderInstance
 } from '@shared/modelProvider'
 import { VOLCENGINE_OPENSPEECH_CREDENTIALS_URL } from '@shared/modelProvider'
-import { AppError, resolveAppErrorLocale, fail, defErr, defErrSimple } from '@shared/errors/appError'
+import {
+  AppError,
+  resolveAppErrorLocale,
+  fail,
+  defErr,
+  defErrSimple
+} from '@shared/errors/appError'
 import { PROVIDER_ERRORS } from '../catalog'
 import { projectService } from '../../projectService'
 import { formatAuthError, readHttpError } from '../http'
@@ -221,8 +227,7 @@ export async function generateOpenspeechVoiceDesign(
     return persistSpeechBuffer(buf, input, speakerId)
   } catch (err) {
     if (
-      (err instanceof AppError &&
-        err.code.startsWith('provider.volcengine.voiceDesign.')) ||
+      (err instanceof AppError && err.code.startsWith('provider.volcengine.voiceDesign.')) ||
       (err instanceof Error && err.message.startsWith('声音设计'))
     ) {
       throw err
@@ -260,9 +265,9 @@ const E_OS_CLONE_EMPTY_RESULT = defErrSimple(
   'Voice clone returned no usable result'
 )
 
-function resolveCloneAudioSource(referenceAudio: string):
-  | { kind: 'base64'; data: string; ext?: string }
-  | { kind: 'url'; url: string } {
+function resolveCloneAudioSource(
+  referenceAudio: string
+): { kind: 'base64'; data: string; ext?: string } | { kind: 'url'; url: string } {
   const src = referenceAudio.trim()
   if (src.startsWith('data:audio/')) {
     return { kind: 'base64', data: src.slice(src.indexOf(',') + 1) }

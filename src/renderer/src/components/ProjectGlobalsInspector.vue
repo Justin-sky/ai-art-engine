@@ -1,8 +1,5 @@
 <template>
-  <div
-    v-if="config"
-    class="inspector"
-  >
+  <div v-if="config" class="inspector">
     <div class="head">
       <h2>{{ t('project.globals.title') }}</h2>
     </div>
@@ -25,12 +22,8 @@
           step="1"
           :placeholder="t('project.globals.generateSeedPlaceholder')"
           @change="onSeedChange"
-        >
-        <button
-          type="button"
-          class="seed-clear"
-          @click="clearSeed"
-        >
+        />
+        <button type="button" class="seed-clear" @click="clearSeed">
           {{ t('project.globals.generateSeedRandom') }}
         </button>
       </span>
@@ -39,18 +32,11 @@
 
     <label class="cache-field">
       {{ t('project.globals.cacheOutputDir') }}
-      <input
-        v-model="localCacheDir"
-        :placeholder="defaultCacheDir"
-        @change="onCacheDirChange"
-      >
+      <input v-model="localCacheDir" :placeholder="defaultCacheDir" @change="onCacheDirChange" />
       <span class="field-hint">{{ t('project.globals.cacheOutputDirHint') }}</span>
     </label>
   </div>
-  <div
-    v-else
-    class="inspector empty"
-  >
+  <div v-else class="inspector empty">
     {{ t('project.globals.empty') }}
   </div>
 </template>

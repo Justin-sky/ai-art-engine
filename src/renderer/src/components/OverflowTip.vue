@@ -8,10 +8,7 @@
     @mouseleave="hide"
   >
     <slot />
-    <Teleport
-      :to="bodyTarget"
-      :disabled="!bodyTarget"
-    >
+    <Teleport :to="bodyTarget" :disabled="!bodyTarget">
       <span
         v-if="visible && text"
         ref="popEl"
@@ -37,7 +34,13 @@ const props = defineProps<{
 const el = ref<HTMLElement | null>(null)
 const popEl = ref<HTMLElement | null>(null)
 const visible = ref(false)
-const pop = reactive({ left: 0, top: 0, maxWidth: 360, arrowLeft: 16, placement: 'top' as 'top' | 'bottom' })
+const pop = reactive({
+  left: 0,
+  top: 0,
+  maxWidth: 360,
+  arrowLeft: 16,
+  placement: 'top' as 'top' | 'bottom'
+})
 let lastMouseY = 0
 
 /**

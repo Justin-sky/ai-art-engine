@@ -341,9 +341,7 @@ export function useAiCreateWorkflow() {
     }
     error.value = ''
     saveDefaultName.value =
-      preview.value?.title?.trim() ||
-      pendingPlan.value.title?.trim() ||
-      t('aiWorkflow.defaultName')
+      preview.value?.title?.trim() || pendingPlan.value.title?.trim() || t('aiWorkflow.defaultName')
     saveDefaultFolderId.value = null
     saveDialogOpen.value = true
     return true

@@ -28,11 +28,7 @@ describe('smartCut.beatCutWindowForDuration', () => {
   })
 
   it('需求时长能放进内容窗口时，取最早窗口并跳过片头空镜', () => {
-    const beats = beatsWith([
-      seg('empty', 0, 4),
-      seg('person-solo', 4, 20),
-      seg('empty', 20, 30)
-    ])
+    const beats = beatsWith([seg('empty', 0, 4), seg('person-solo', 4, 20), seg('empty', 20, 30)])
     expect(beatCutWindowForDuration(beats, 8)).toEqual({
       offsetSec: 4,
       durationSec: 8,
@@ -41,10 +37,7 @@ describe('smartCut.beatCutWindowForDuration', () => {
   })
 
   it('内容从 0 秒开始则偏移为 0', () => {
-    const beats = beatsWith([
-      seg('person-group', 0, 12),
-      seg('empty', 12, 20)
-    ])
+    const beats = beatsWith([seg('person-group', 0, 12), seg('empty', 12, 20)])
     expect(beatCutWindowForDuration(beats, 6)).toEqual({
       offsetSec: 0,
       durationSec: 6,
@@ -70,11 +63,7 @@ describe('smartCut.beatCutWindowForDuration', () => {
   })
 
   it('全部内容窗口都放不下时，取最长窗口并收敛时长', () => {
-    const beats = beatsWith([
-      seg('empty', 0, 5),
-      seg('person-solo', 5, 9),
-      seg('empty', 9, 30)
-    ])
+    const beats = beatsWith([seg('empty', 0, 5), seg('person-solo', 5, 9), seg('empty', 9, 30)])
     const win = beatCutWindowForDuration(beats, 10)
     expect(win).toEqual({
       offsetSec: 5,
@@ -89,10 +78,7 @@ describe('smartCut.beatCutWindowForDuration', () => {
   })
 
   it('时长以打点记录总长为上限', () => {
-    const beats = beatsWith([
-      seg('person-solo', 0, 8),
-      seg('empty', 8, 12)
-    ], 12)
+    const beats = beatsWith([seg('person-solo', 0, 8), seg('empty', 8, 12)], 12)
     // 需求 20 > 可用 8 → 收敛到 8
     expect(beatCutWindowForDuration(beats, 20)).toEqual({
       offsetSec: 0,

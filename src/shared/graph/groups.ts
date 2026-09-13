@@ -131,9 +131,7 @@ export function resolveNodeGroupAfterMove(
   let smallestArea = Infinity
   for (const group of document.groups ?? []) {
     if (group.id === previous) continue
-    const members = document.nodes.filter(
-      (item) => item.groupId === group.id && item.id !== nodeId
-    )
+    const members = document.nodes.filter((item) => item.groupId === group.id && item.id !== nodeId)
     if (members.length === 0) continue
     const bounds = getNodesBounds(members, GRAPH_GROUP_PADDING)
     if (!bounds) continue

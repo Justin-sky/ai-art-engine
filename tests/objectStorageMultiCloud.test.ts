@@ -16,9 +16,7 @@ const ossMocks = vi.hoisted(() => ({
 }))
 
 const cosMocks = vi.hoisted(() => ({
-  putObject: vi.fn((_p: unknown, cb: (err: Error | null, data?: unknown) => void) =>
-    cb(null, {})
-  ),
+  putObject: vi.fn((_p: unknown, cb: (err: Error | null, data?: unknown) => void) => cb(null, {})),
   deleteObject: vi.fn((_p: unknown, cb: (err: Error | null, data?: unknown) => void) =>
     cb(null, {})
   ),

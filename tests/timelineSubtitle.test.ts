@@ -85,7 +85,11 @@ describe('timelineSubtitle: 转写 → 字幕片段', () => {
 
   it('没有分段时返回空数组', () => {
     expect(
-      buildSubtitleClipsFromTranscription({ startSec: 0, durationSec: 6, sourceOffsetSec: 0 }, [], makeId)
+      buildSubtitleClipsFromTranscription(
+        { startSec: 0, durationSec: 6, sourceOffsetSec: 0 },
+        [],
+        makeId
+      )
     ).toEqual([])
   })
 

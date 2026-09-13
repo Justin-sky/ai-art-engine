@@ -120,7 +120,8 @@ function parseGif(bytes: Uint8Array): ParsedGif {
         const size = u8()
         if (!size) break
         const block = bytes.subarray(p, p + size)
-        if (label === 0xff && blockIndex === 0) expect(String.fromCharCode(...block)).toBe('NETSCAPE2.0')
+        if (label === 0xff && blockIndex === 0)
+          expect(String.fromCharCode(...block)).toBe('NETSCAPE2.0')
         if (label === 0xff && blockIndex === 1 && block[0] === 1) {
           loopCount = block[1] | (block[2] << 8)
         }
@@ -279,9 +280,7 @@ describe('encodeGif LZW 往返', () => {
       indices: Uint8Array.from({ length: width * height }, (_, i) => (i + offset) % 4)
     }))
     const parsed = parseGif(encodeGif({ width, height, palette, frames }))
-    expect(parsed.frames.map((f) => f.indices)).toEqual(
-      frames.map((f) => Array.from(f.indices))
-    )
+    expect(parsed.frames.map((f) => f.indices)).toEqual(frames.map((f) => Array.from(f.indices)))
   })
 })
 
@@ -312,7 +311,12 @@ describe('quantizeGifFrames', () => {
   }
 
   it('全透明帧落到透明索引且调色板仍有兜底色', () => {
-    const result = quantizeGifFrames([rgba([[0, 0, 0, 0], [255, 255, 255, 0]])])
+    const result = quantizeGifFrames([
+      rgba([
+        [0, 0, 0, 0],
+        [255, 255, 255, 0]
+      ])
+    ])
     expect(result.transparentIndex).toBe(0)
     expect(result.palette.length).toBeGreaterThanOrEqual(1)
     expect(Array.from(result.frames[0])).toEqual([0, 0])

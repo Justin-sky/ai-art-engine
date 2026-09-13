@@ -69,7 +69,10 @@ describe('VideoJobRepository', () => {
     }
     repo.write(root, sampleJob({ localJobId: 'still-running', status: 'running' }))
     repo.pruneTerminal(root, 2)
-    const ids = repo.list(root).map((j) => j.localJobId).sort()
+    const ids = repo
+      .list(root)
+      .map((j) => j.localJobId)
+      .sort()
     expect(ids).toContain('still-running')
     expect(repo.list(root).filter((j) => j.status === 'succeeded')).toHaveLength(2)
     expect(existsSync(join(root, '.aiartengine', 'video-jobs', 'still-running.json'))).toBe(true)

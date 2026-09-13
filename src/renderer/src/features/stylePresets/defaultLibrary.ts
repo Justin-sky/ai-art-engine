@@ -45,9 +45,7 @@ export function getDefaultStylePreset(id: string): ResolvedStylePreset | undefin
   return byId.get(id)
 }
 
-export function listStylePresetsByCategory(
-  category: StylePresetCategory
-): ResolvedStylePreset[] {
+export function listStylePresetsByCategory(category: StylePresetCategory): ResolvedStylePreset[] {
   return DEFAULT_STYLE_PRESET_LIBRARY.filter((item) => item.category === category).sort(
     (a, b) => a.index - b.index
   )

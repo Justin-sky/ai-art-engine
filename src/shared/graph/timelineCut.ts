@@ -147,7 +147,9 @@ function mergeRanges(ranges: TimelineTimeRange[]): TimelineTimeRange[] {
  * 片段取段窗口之外的语音一律忽略（多段配音共用同一份转写时不会串味）。
  */
 export function buildKeepRangesFromSpeech(
-  voiceClips: Array<Pick<ScriptTimelineClip, 'id' | 'startSec' | 'durationSec' | 'sourceOffsetSec'>>,
+  voiceClips: Array<
+    Pick<ScriptTimelineClip, 'id' | 'startSec' | 'durationSec' | 'sourceOffsetSec'>
+  >,
   segments: TimelineTimeRange[],
   options?: TimelineRoughCutOptions
 ): TimelineSpeechPlan {
@@ -327,9 +329,7 @@ export function planRippleCut(
     const clipStart = clip.startSec
     const clipEnd = clip.startSec + clip.durationSec
     const keepParts =
-      clip.durationSec <= 0
-        ? []
-        : subtractRanges([{ startSec: clipStart, endSec: clipEnd }], cuts)
+      clip.durationSec <= 0 ? [] : subtractRanges([{ startSec: clipStart, endSec: clipEnd }], cuts)
 
     if (!keepParts.length) {
       droppedCount += 1

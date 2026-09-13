@@ -1,8 +1,5 @@
 import type { Context } from '@cordisjs/core'
-import {
-  OBJECT_STORAGE_PROVIDER_KINDS,
-  type ObjectStorageKindMeta
-} from '@shared/objectStorage'
+import { OBJECT_STORAGE_PROVIDER_KINDS, type ObjectStorageKindMeta } from '@shared/objectStorage'
 import type { ObjectStorageAdapter } from '../services/objectStorage/types'
 import { tosAdapter } from '../services/objectStorage/tos'
 import { ossAdapter } from '../services/objectStorage/oss'

@@ -32,9 +32,7 @@ export function mediaReviewSpecBlock(spec: string, locale?: string): string {
   const text = (spec ?? '').trim()
   if (!text) return ''
   const english = (locale ?? '').toLowerCase().startsWith('en')
-  return english
-    ? `\n\n[Generation instruction] ${text}`
-    : `\n\n【生成指令】${text}`
+  return english ? `\n\n[Generation instruction] ${text}` : `\n\n【生成指令】${text}`
 }
 
 /** 输入身份块：逐张标注 @n 是参考图还是待审产物，并附比对说明 */
@@ -109,8 +107,10 @@ export const MEDIA_REWORK_STRATEGY_HINT_ZH: Record<'guidance' | 'reseed' | 'stro
 
 export const MEDIA_REWORK_STRATEGY_HINT_EN: Record<'guidance' | 'reseed' | 'stronger', string> = {
   guidance: 'Fix the issues raised last round; keep everything else as close as possible.',
-  reseed: 'Re-stage with a different composition and camera angle, while still satisfying the fixes raised last round.',
-  stronger: 'Re-read the original intent; prioritize correctness of subject, structure and composition before style detail.'
+  reseed:
+    'Re-stage with a different composition and camera angle, while still satisfying the fixes raised last round.',
+  stronger:
+    'Re-read the original intent; prioritize correctness of subject, structure and composition before style detail.'
 }
 
 /** 按界面语言取策略提示 */

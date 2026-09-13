@@ -30,11 +30,7 @@ import {
   type AssetQcIssue,
   type AssetQcMetrics
 } from '@shared/gameAssets'
-import {
-  isUnderAssetLibraryDir,
-  normalizeProjectRelativeDir,
-  type AssetInfo
-} from '@shared/domain'
+import { isUnderAssetLibraryDir, normalizeProjectRelativeDir, type AssetInfo } from '@shared/domain'
 import type { McpRenderJobKind, McpRenderJobPayload } from '@shared/ipc'
 import { persistAssetRecord } from '../../composables/useAssetRecord'
 import { useProjectStore } from '../../stores/project'
@@ -119,8 +115,7 @@ async function handleStage2dSpineExport(args: Record<string, unknown>): Promise<
   const asset = project.assets.find((item) => item.id === assetId)
   if (!asset) throw new Error(`资产不存在：${assetId}`)
   const graphJson = (asset.genParams as Record<string, unknown> | undefined)?.graphJson as
-    | GraphDocument
-    | undefined
+    GraphDocument | undefined
   if (!graphJson || !Array.isArray(graphJson.nodes)) {
     throw new Error('资产不含图文档（stage2d_spine_export 仅支持宿主资产子图）')
   }
@@ -159,10 +154,7 @@ async function handleStage2dSpineExport(args: Record<string, unknown>): Promise<
     throw new Error('没有可导出的部件：需要把可见部件层挂到关节上（挂点层），平面几何才成立')
   }
 
-  const dir = resolveLibraryOutDir(
-    `Assets/2D/Spine/${result.skeletonName}`,
-    'Assets/2D/Spine'
-  )
+  const dir = resolveLibraryOutDir(`Assets/2D/Spine/${result.skeletonName}`, 'Assets/2D/Spine')
   const files: string[] = []
   for (const file of result.files) {
     const saved = await window.studio.saveGraphRunMedia({
@@ -221,10 +213,7 @@ async function handleUiKitExtract(args: Record<string, unknown>): Promise<unknow
     )
   }
 
-  const outDir = resolveLibraryOutDir(
-    readString(args.outputDir),
-    `Assets/UIKits/${doc.sourceName}`
-  )
+  const outDir = resolveLibraryOutDir(readString(args.outputDir), `Assets/UIKits/${doc.sourceName}`)
 
   const saved: string[] = []
   for (const part of doc.parts) {

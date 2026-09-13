@@ -16,9 +16,7 @@ function makeRig(overrides?: Partial<Stage2dRig>): Stage2dRig {
       { id: 'chest', name: '胸', parentId: 'hip', x: 0, y: -100, rotation: 0 },
       { id: 'armL', name: '左臂', parentId: 'chest', x: 50, y: 0, rotation: 0 }
     ],
-    attachments: [
-      { layerId: 'leg', jointId: 'chest', offsetX: 10, offsetY: 0, rotation: 0 }
-    ],
+    attachments: [{ layerId: 'leg', jointId: 'chest', offsetX: 10, offsetY: 0, rotation: 0 }],
     ...overrides
   })
 }

@@ -53,11 +53,7 @@ function incomingKey(targetId: string, targetPort: string): string {
   return `${targetId}>${targetPort}`
 }
 
-function boundsOverlap(
-  a: GraphNode,
-  b: GraphNode,
-  pad: number
-): boolean {
+function boundsOverlap(a: GraphNode, b: GraphNode, pad: number): boolean {
   const sa = getNodeSize(a)
   const sb = getNodeSize(b)
   const aL = a.position.x - pad
@@ -161,9 +157,7 @@ export function resolveSnapDragPreview(options: ResolveSnapConnectOptions): Snap
   if (dragged.size === 0) return empty
 
   const byId = new Map(options.nodes.map((n) => [n.id, n]))
-  const draggedNodes = [...dragged]
-    .map((id) => byId.get(id))
-    .filter((n): n is GraphNode => !!n)
+  const draggedNodes = [...dragged].map((id) => byId.get(id)).filter((n): n is GraphNode => !!n)
   const others = options.nodes.filter((n) => !dragged.has(n.id))
   if (draggedNodes.length === 0 || others.length === 0) return empty
 
@@ -200,9 +194,7 @@ export function resolveSnapConnectEdges(
   if (dragged.size === 0) return []
 
   const byId = new Map(options.nodes.map((n) => [n.id, n]))
-  const draggedNodes = [...dragged]
-    .map((id) => byId.get(id))
-    .filter((n): n is GraphNode => !!n)
+  const draggedNodes = [...dragged].map((id) => byId.get(id)).filter((n): n is GraphNode => !!n)
   const others = options.nodes.filter((n) => !dragged.has(n.id))
   if (draggedNodes.length === 0 || others.length === 0) return []
 
@@ -248,6 +240,9 @@ export function resolveSnapConnectEdges(
 }
 
 /** 将屏幕阈值换算为 world 阈值 */
-export function snapConnectThresholdWorld(zoom: number, screenPx = SNAP_CONNECT_THRESHOLD_SCREEN_PX): number {
+export function snapConnectThresholdWorld(
+  zoom: number,
+  screenPx = SNAP_CONNECT_THRESHOLD_SCREEN_PX
+): number {
   return screenPx / Math.max(0.001, zoom)
 }

@@ -19,7 +19,7 @@
             :alt="currentLabel"
             :title="currentLabel"
             draggable="false"
-          >
+          />
         </div>
 
         <div class="pad-pane">
@@ -27,11 +27,7 @@
             <span class="axis-y-max">{{ t('graph.emotion.axis.excited') }}</span>
             <div class="pad-mid">
               <span class="axis-x-min">{{ t('graph.emotion.axis.close') }}</span>
-              <div
-                class="pad-grid"
-                @pointerdown="onPadPointer"
-                @pointermove="onPadPointer"
-              >
+              <div class="pad-grid" @pointerdown="onPadPointer" @pointermove="onPadPointer">
                 <button
                   v-for="cell in cells"
                   :key="`${cell.x}-${cell.y}`"
@@ -39,8 +35,7 @@
                   class="pad-dot"
                   :class="{
                     active: cell.x === draft.gridX && cell.y === draft.gridY,
-                    cross:
-                      cell.x === draft.gridX || cell.y === draft.gridY,
+                    cross: cell.x === draft.gridX || cell.y === draft.gridY,
                     center: cell.x === 2 && cell.y === 2
                   }"
                   :style="{ gridColumn: cell.x + 1, gridRow: 5 - cell.y }"
@@ -67,11 +62,7 @@
           :generate-provider-instance-id="generateProviderInstanceId"
           @change="onModelChange"
         />
-        <button
-          type="button"
-          class="reset-btn"
-          @click="resetParams"
-        >
+        <button type="button" class="reset-btn" @click="resetParams">
           {{ t('graph.emotion.resetParams') }}
         </button>
       </div>
@@ -104,7 +95,10 @@ const emotionCellModules = import.meta.glob('../assets/emotion-pad/cells/*.png',
 
 const emotionCellUrls: Record<string, string> = {}
 for (const [path, url] of Object.entries(emotionCellModules)) {
-  const name = path.split('/').pop()?.replace(/\.png$/i, '')
+  const name = path
+    .split('/')
+    .pop()
+    ?.replace(/\.png$/i, '')
   if (name) emotionCellUrls[name] = url
 }
 
@@ -348,7 +342,10 @@ function onClose(): void {
   padding: 0;
   background: color-mix(in srgb, var(--text-muted) 55%, transparent);
   cursor: pointer;
-  transition: transform 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
+  transition:
+    transform 0.12s ease,
+    background 0.12s ease,
+    box-shadow 0.12s ease;
 }
 
 .pad-dot.cross {

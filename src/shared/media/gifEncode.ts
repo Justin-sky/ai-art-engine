@@ -363,9 +363,7 @@ export function quantizeGifFrames(
     if (pick < 0) break
     const box = boxes[pick]
     const channel = box.channel
-    box.items.sort(
-      (a, b) => samples[a * 3 + channel] - samples[b * 3 + channel]
-    )
+    box.items.sort((a, b) => samples[a * 3 + channel] - samples[b * 3 + channel])
     const mid = box.items.length >> 1
     boxes.splice(pick, 1, makeBox(box.items.slice(0, mid)), makeBox(box.items.slice(mid)))
   }
@@ -388,9 +386,7 @@ export function quantizeGifFrames(
 
   const transparentIndex = hasTransparent ? 0 : null
   const offset = hasTransparent ? 1 : 0
-  const palette: Array<[number, number, number]> = hasTransparent
-    ? [[0, 0, 0], ...colors]
-    : colors
+  const palette: Array<[number, number, number]> = hasTransparent ? [[0, 0, 0], ...colors] : colors
 
   // 最近色查找带 5 位/通道的缓存表：量化后像素远少于 32768 种组合
   const cache = new Int16Array(32768).fill(-1)

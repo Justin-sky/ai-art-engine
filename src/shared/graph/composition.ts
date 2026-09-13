@@ -140,19 +140,18 @@ export function composeSubjectCrop(params: {
     cropH: bh
   }
 
-  const subjectFullyVisible =
-    s.x >= x0 &&
-    s.x + s.w <= x0 + bw &&
-    s.y >= y0 &&
-    s.y + s.h <= y0 + bh
+  const subjectFullyVisible = s.x >= x0 && s.x + s.w <= x0 + bw && s.y >= y0 && s.y + s.h <= y0 + bh
 
   return { crop, subjectFullyVisible, targetAspect: ta }
 }
 
 /** 目标画幅内的安全区矩形（归一化，相对 crop 框内坐标系，供参考线可视化） */
-export function composeSafeRect(
-  ratio: number
-): { top: number; bottom: number; left: number; right: number } {
+export function composeSafeRect(ratio: number): {
+  top: number
+  bottom: number
+  left: number
+  right: number
+} {
   const r = clamp(ratio, 0, 0.5)
   return { top: r, bottom: r, left: r, right: r }
 }

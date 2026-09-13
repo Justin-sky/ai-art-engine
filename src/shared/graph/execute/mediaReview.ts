@@ -93,7 +93,9 @@ async function collectMediaReviewImages(
   const frameUrls: string[] = []
   if (videoItems.length) {
     if (ctx.resolveVideoFrameImageUrls) {
-      frameUrls.push(...(await ctx.resolveVideoFrameImageUrls(videoItems, VIDEO_REVIEW_FRAME_COUNT)))
+      frameUrls.push(
+        ...(await ctx.resolveVideoFrameImageUrls(videoItems, VIDEO_REVIEW_FRAME_COUNT))
+      )
     } else if (ctx.resolveVideoFirstFrameImageUrls) {
       frameUrls.push(...(await ctx.resolveVideoFirstFrameImageUrls(videoItems)))
     }
@@ -127,7 +129,8 @@ export async function executeMediaReviewNode(
 
   // 已审核过且未标记重新审核：复用上次结论，不重复调用模型
   if (!pending && (status === 'PASS' || status === 'FAIL')) {
-    const cachedText = node.params.text?.trim() || mediaReviewCachedText(status, node.params.mediaReviewReason ?? '')
+    const cachedText =
+      node.params.text?.trim() || mediaReviewCachedText(status, node.params.mediaReviewReason ?? '')
     return { out: { kind: 'text', text: cachedText } }
   }
 
@@ -152,7 +155,7 @@ export async function executeMediaReviewNode(
   const instructionRaw = node.params.generateInstruction?.trim() ?? ''
   const spec = instructionRaw
     ? expandInstructionMentions(instructionRaw, mentionSources)
-    : node.params.text?.trim() ?? ''
+    : (node.params.text?.trim() ?? '')
 
   // 客观校验先行：程序能判定的不劳烦视觉模型
   const artifactCount = images.filter((item) => item.role === 'artifact').length
@@ -179,7 +182,13 @@ export async function executeMediaReviewNode(
     frameCount > 1
       ? `${buildVideoReviewFrameCaption(ctx.locale)}：${buildVideoReviewFrameBlock(ctx.locale)}`
       : ''
-  const prompt = [instruction, mediaReviewSpecBlock(spec, ctx.locale), identity, objective, frameBlock]
+  const prompt = [
+    instruction,
+    mediaReviewSpecBlock(spec, ctx.locale),
+    identity,
+    objective,
+    frameBlock
+  ]
     .filter(Boolean)
     .join('\n\n')
 
@@ -212,7 +221,7 @@ export async function executeMediaReviewNode(
     throw new DOMException('Aborted', 'AbortError')
   }
   const text = result.text.trim()
-  if (!text) throw fail(SHARED_ERRORS.resultMissing, { what: { zh: '质检结果', en: 'QC verdict' } })  // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
+  if (!text) throw fail(SHARED_ERRORS.resultMissing, { what: { zh: '质检结果', en: 'QC verdict' } }) // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
 
   const verdict = parseMediaReviewVerdict(text)
   const scores = parseMediaReviewScores(text)

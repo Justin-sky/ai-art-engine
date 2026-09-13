@@ -58,9 +58,7 @@ describe('outputsToHostGalleryParams', () => {
   })
 })
 
-function parentWithHostEdges(opts?: {
-  textsItems?: number
-}): GraphDocument {
+function parentWithHostEdges(opts?: { textsItems?: number }): GraphDocument {
   const host: GraphNode = {
     id: 'host-node',
     typeId: 'asset.screenplay',
@@ -180,9 +178,7 @@ describe('host input slots', () => {
     }
     const parent: GraphDocument = {
       nodes: [gen, host],
-      edges: [
-        { id: 'e1', source: 'gen', target: host.id, sourcePort: 'out', targetPort: 'in' }
-      ],
+      edges: [{ id: 'e1', source: 'gen', target: host.id, sourcePort: 'out', targetPort: 'in' }],
       viewport: { x: 0, y: 0, zoom: 1 },
       runStates: {
         gen: {
@@ -214,10 +210,7 @@ describe('host input slots', () => {
     ]
     ensureHostInputSlotNodes(nodes, edges, slots)
     const ids1 = nodes.filter((n) => n.typeId === GRAPH_INPUT_SLOT_TYPE_ID).map((n) => n.id)
-    expect(ids1).toEqual([
-      hostInputSlotNodeId('in', 0),
-      hostInputSlotNodeId('in', 1)
-    ])
+    expect(ids1).toEqual([hostInputSlotNodeId('in', 0), hostInputSlotNodeId('in', 1)])
     ensureHostInputSlotNodes(nodes, edges, slots)
     const ids2 = nodes.filter((n) => n.typeId === GRAPH_INPUT_SLOT_TYPE_ID).map((n) => n.id)
     expect(ids2).toEqual(ids1)
@@ -229,9 +222,7 @@ describe('host input slots', () => {
 
   it('opens beat host with text slot only', () => {
     const slots = resolveHostInputSlotsForHostOpen('beat', [], HOST_ID)
-    expect(slots.map((s) => `${s.portId}:${s.index}:${s.dataType}`)).toEqual([
-      'in:0:text'
-    ])
+    expect(slots.map((s) => `${s.portId}:${s.index}:${s.dataType}`)).toEqual(['in:0:text'])
   })
 
   it('normalizeScopedGraph creates boundary inputs for host open (HDA, no slots)', () => {
@@ -278,10 +269,9 @@ describe('host input slots', () => {
         }
       ]
     })
-    expect(Object.keys(seeds).sort()).toEqual([
-      hostInputSlotNodeId('in', 0),
-      hostInputSlotNodeId('in', 1)
-    ].sort())
+    expect(Object.keys(seeds).sort()).toEqual(
+      [hostInputSlotNodeId('in', 0), hostInputSlotNodeId('in', 1)].sort()
+    )
     expect(seeds[hostInputSlotNodeId('in', 1)]?.out).toEqual({ kind: 'text', text: 'b' })
   })
 
@@ -307,9 +297,7 @@ describe('host input slots', () => {
     }
     const parent: GraphDocument = {
       nodes: [gen, host],
-      edges: [
-        { id: 'e1', source: 'gen', target: host.id, sourcePort: 'out', targetPort: 'in' }
-      ],
+      edges: [{ id: 'e1', source: 'gen', target: host.id, sourcePort: 'out', targetPort: 'in' }],
       viewport: { x: 0, y: 0, zoom: 1 }
     }
     const slots = resolveHostInputSlotsFromParentGraph(parent, HOST_ID)
@@ -385,9 +373,7 @@ describe('host input slots', () => {
     }
     const parent: GraphDocument = {
       nodes: [screenplay, world],
-      edges: [
-        { id: 'e1', source: 'sp', target: 'wd', sourcePort: 'out', targetPort: 'in' }
-      ],
+      edges: [{ id: 'e1', source: 'sp', target: 'wd', sourcePort: 'out', targetPort: 'in' }],
       viewport: { x: 0, y: 0, zoom: 1 }
     }
     const liveScreenplay: GraphDocument = {
@@ -416,9 +402,7 @@ describe('host input slots', () => {
     ensureHostInputSlotNodes(nodes, edges, [
       { portId: 'in', index: 0, dataType: 'text', text: '已有正文' }
     ])
-    ensureHostInputSlotNodes(nodes, edges, [
-      { portId: 'in', index: 0, dataType: 'text', text: '' }
-    ])
+    ensureHostInputSlotNodes(nodes, edges, [{ portId: 'in', index: 0, dataType: 'text', text: '' }])
     expect(nodes[0]?.params.text).toBe('已有正文')
   })
 
@@ -445,9 +429,7 @@ describe('host input slots', () => {
     }
     const parent: GraphDocument = {
       nodes: [screenplay, beat],
-      edges: [
-        { id: 'e1', source: 'sp', target: 'nv', sourcePort: 'out', targetPort: 'in' }
-      ],
+      edges: [{ id: 'e1', source: 'sp', target: 'nv', sourcePort: 'out', targetPort: 'in' }],
       viewport: { x: 0, y: 0, zoom: 1 }
     }
     const slots = resolveHostInputSlotsFromParentGraph(parent, NV, {
@@ -500,9 +482,7 @@ describe('host input slots', () => {
     }
     const parent: GraphDocument = {
       nodes: [screenplay, beat],
-      edges: [
-        { id: 'e1', source: 'sp', target: 'nv', sourcePort: 'out', targetPort: 'in' }
-      ],
+      edges: [{ id: 'e1', source: 'sp', target: 'nv', sourcePort: 'out', targetPort: 'in' }],
       viewport: { x: 0, y: 0, zoom: 1 }
     }
     const slots = resolveHostInputSlotsFromParentGraph(parent, NV, {
@@ -517,9 +497,7 @@ describe('host input slots', () => {
                     category: 'asset',
                     position: { x: 0, y: 0 },
                     params: {
-                      generatedTexts: [
-                        { id: 't1', text: '', relativePath: 'runs/sp/body.txt' }
-                      ],
+                      generatedTexts: [{ id: 't1', text: '', relativePath: 'runs/sp/body.txt' }],
                       selectedTextId: 't1'
                     }
                   },
@@ -588,7 +566,9 @@ describe('boundary input injection from parent graph', () => {
           category: 'asset',
           position: { x: 0, y: 160 },
           params: {
-            generatedImages: [{ dataUrl: 'data:image/png;base64,AAA', relativePath: 'Cache/Images/a.png' }]
+            generatedImages: [
+              { dataUrl: 'data:image/png;base64,AAA', relativePath: 'Cache/Images/a.png' }
+            ]
           }
         },
         host
@@ -716,8 +696,16 @@ describe('boundary output soft-resolve', () => {
           position: { x: 0, y: 0 },
           params: {
             generatedImages: [
-              { id: 'img-old', dataUrl: 'data:image/png;base64,OLD', relativePath: 'Cache/Images/old.png' },
-              { id: 'img-new', dataUrl: 'data:image/png;base64,NEW', relativePath: 'Cache/Images/new.png' }
+              {
+                id: 'img-old',
+                dataUrl: 'data:image/png;base64,OLD',
+                relativePath: 'Cache/Images/old.png'
+              },
+              {
+                id: 'img-new',
+                dataUrl: 'data:image/png;base64,NEW',
+                relativePath: 'Cache/Images/new.png'
+              }
             ],
             selectedImageId: 'img-new'
           }
@@ -730,9 +718,7 @@ describe('boundary output soft-resolve', () => {
           params: { hostBoundaryPort: { portId: 'out', dataType: 'image' } }
         }
       ],
-      edges: [
-        { id: 'e1', source: 'gen', target: boutId, sourcePort: 'out', targetPort: 'in' }
-      ],
+      edges: [{ id: 'e1', source: 'gen', target: boutId, sourcePort: 'out', targetPort: 'in' }],
       viewport: { x: 0, y: 0, zoom: 1 }
     }
     const value = softResolveBoundaryOutputValue(doc, boutId)
@@ -756,7 +742,11 @@ describe('boundary output soft-resolve', () => {
           position: { x: 0, y: 0 },
           params: {
             generatedImages: [
-              { id: 'inner-img', dataUrl: 'data:image/png;base64,IN', relativePath: 'Cache/Images/inner.png' }
+              {
+                id: 'inner-img',
+                dataUrl: 'data:image/png;base64,IN',
+                relativePath: 'Cache/Images/inner.png'
+              }
             ],
             selectedImageId: 'inner-img'
           }
@@ -769,9 +759,7 @@ describe('boundary output soft-resolve', () => {
           params: { hostBoundaryPort: { portId: 'out', dataType: 'image' } }
         }
       ],
-      edges: [
-        { id: 'e1', source: 'gen', target: boutId, sourcePort: 'out', targetPort: 'in' }
-      ],
+      edges: [{ id: 'e1', source: 'gen', target: boutId, sourcePort: 'out', targetPort: 'in' }],
       viewport: { x: 0, y: 0, zoom: 1 }
     }
     const parent: GraphDocument = {

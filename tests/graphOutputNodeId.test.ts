@@ -62,7 +62,11 @@ describe('graph output node ids', () => {
 
   it('treats boundary output as an execution terminal, boundary input as not', () => {
     expect(
-      isGraphOutputTerminalNode({ id: 'out-text', typeId: 'graph.boundary.output', category: 'note' })
+      isGraphOutputTerminalNode({
+        id: 'out-text',
+        typeId: 'graph.boundary.output',
+        category: 'note'
+      })
     ).toBe(true)
     expect(
       isGraphOutputTerminalNode({ id: 'in-text', typeId: 'graph.boundary.input', category: 'note' })
@@ -70,9 +74,9 @@ describe('graph output node ids', () => {
     expect(
       isGraphOutputTerminalNode({ id: 'image-output', typeId: 'output.image', category: 'output' })
     ).toBe(true)
-    expect(
-      isGraphOutputTerminalNode({ id: 'a1', typeId: 'asset.image', category: 'asset' })
-    ).toBe(false)
+    expect(isGraphOutputTerminalNode({ id: 'a1', typeId: 'asset.image', category: 'asset' })).toBe(
+      false
+    )
   })
 
   it('terminal predicate agrees with findAllOutputNodes on a boundary-only graph', () => {

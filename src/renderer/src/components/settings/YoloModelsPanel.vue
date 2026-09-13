@@ -6,42 +6,24 @@
 
     <!-- 推理运行时状态 -->
     <div class="status-line">
-      <span
-        class="pill"
-        :class="{ ok: statusReady }"
-      >{{ statusReady
-        ? t('settings.yoloModels.statusReady')
-        : t('settings.yoloModels.statusBusy') }}</span>
-      <code
-        v-if="statusReady && yoloStatus?.ortVersion"
-        class="meta"
-      >onnxruntime {{ yoloStatus.ortVersion }}</code>
-      <span
-        v-if="statusReady && yoloStatus?.backend"
-        class="meta"
-      >· {{ yoloStatus.backend }}</span>
-      <span class="spacer" />
-      <button
-        type="button"
-        class="ghost-btn"
-        :disabled="loading"
-        @click="refreshAll"
+      <span class="pill" :class="{ ok: statusReady }">{{
+        statusReady ? t('settings.yoloModels.statusReady') : t('settings.yoloModels.statusBusy')
+      }}</span>
+      <code v-if="statusReady && yoloStatus?.ortVersion" class="meta"
+        >onnxruntime {{ yoloStatus.ortVersion }}</code
       >
+      <span v-if="statusReady && yoloStatus?.backend" class="meta">· {{ yoloStatus.backend }}</span>
+      <span class="spacer" />
+      <button type="button" class="ghost-btn" :disabled="loading" @click="refreshAll">
         {{ t('settings.yoloModels.refresh') }}
       </button>
     </div>
-    <p
-      v-if="yoloStatus?.error && !yoloStatus.ready"
-      class="err"
-    >
+    <p v-if="yoloStatus?.error && !yoloStatus.ready" class="err">
       {{ yoloStatus.error }}
     </p>
 
     <label class="check">
-      <input
-        v-model="yolo.enabled"
-        type="checkbox"
-      >
+      <input v-model="yolo.enabled" type="checkbox" />
       {{ t('settings.yoloModels.enabled') }}
     </label>
 
@@ -58,33 +40,19 @@
         spellcheck="false"
         class="dir-input"
         @change="commitDir"
-      >
+      />
     </label>
     <div class="btn-row">
-      <button
-        type="button"
-        :disabled="loading || dirInput !== yolo.modelDir"
-        @click="commitDir"
-      >
+      <button type="button" :disabled="loading || dirInput !== yolo.modelDir" @click="commitDir">
         {{ t('settings.yoloModels.applyDir') }}
       </button>
-      <button
-        type="button"
-        @click="browseDir"
-      >
+      <button type="button" @click="browseDir">
         {{ t('settings.yoloModels.chooseDir') }}
       </button>
-      <button
-        type="button"
-        @click="openDir"
-      >
+      <button type="button" @click="openDir">
         {{ t('settings.yoloModels.openDir') }}
       </button>
-      <button
-        v-if="hasCustomDir"
-        type="button"
-        @click="resetDir"
-      >
+      <button v-if="hasCustomDir" type="button" @click="resetDir">
         {{ t('settings.yoloModels.resetDir') }}
       </button>
     </div>
@@ -99,7 +67,7 @@
             min="0.05"
             max="0.95"
             step="0.05"
-          >
+          />
           <span class="meta">0–1</span>
         </div>
       </label>
@@ -112,7 +80,7 @@
             min="0.05"
             max="0.95"
             step="0.05"
-          >
+          />
           <span class="meta">0–1</span>
         </div>
       </label>
@@ -126,20 +94,11 @@
     <p class="hint">
       {{ t('settings.yoloModels.defaultPickHint') }}
     </p>
-    <p
-      v-if="installedModels.length === 0"
-      class="meta empty"
-    >
+    <p v-if="installedModels.length === 0" class="meta empty">
       {{ t('settings.yoloModels.installedEmpty') }}
     </p>
-    <ul
-      v-else
-      class="model-list"
-    >
-      <li
-        v-for="m in installedModels"
-        :key="m.id"
-      >
+    <ul v-else class="model-list">
+      <li v-for="m in installedModels" :key="m.id">
         <span class="model-id">{{ m.id }}</span>
         <span class="kind-chip">{{ kindLabel(m.kind) }}</span>
         <span class="meta">{{ m.sizeMb }} MB</span>
@@ -147,16 +106,14 @@
           v-if="isAutoPick(m)"
           class="auto-chip"
           :title="t('settings.yoloModels.autoPickTitle')"
-        >{{ t('settings.yoloModels.autoPick') }}</span>
-        <button
-          type="button"
-          class="danger-btn"
-          :disabled="loading"
-          @click="toggleDelete(m.id)"
+          >{{ t('settings.yoloModels.autoPick') }}</span
         >
-          {{ confirmingDelete === m.id
-            ? t('settings.yoloModels.deleteConfirm')
-            : t('settings.yoloModels.delete') }}
+        <button type="button" class="danger-btn" :disabled="loading" @click="toggleDelete(m.id)">
+          {{
+            confirmingDelete === m.id
+              ? t('settings.yoloModels.deleteConfirm')
+              : t('settings.yoloModels.delete')
+          }}
         </button>
       </li>
     </ul>
@@ -171,57 +128,35 @@
     </p>
 
     <!-- 全局下载进度 -->
-    <div
-      v-if="activeProgress"
-      class="progress-card"
-    >
+    <div v-if="activeProgress" class="progress-card">
       <div class="progress-head">
         <code class="model-id">{{ activeProgress.modelId }}</code>
         <span class="meta">{{ progressStageLabel }}</span>
         <span class="meta progress-pct">{{ progressPercentLabel }}</span>
         <span class="spacer" />
-        <button
-          type="button"
-          class="ghost-btn"
-          @click="cancelDownload"
-        >
+        <button type="button" class="ghost-btn" @click="cancelDownload">
           {{ t('settings.yoloModels.cancelDownload') }}
         </button>
       </div>
-      <div
-        v-if="activeProgress.phase === 'downloading'"
-        class="track"
-      >
-        <div
-          class="fill"
-          :style="{ width: `${progressPercent}%` }"
-        />
+      <div v-if="activeProgress.phase === 'downloading'" class="track">
+        <div class="fill" :style="{ width: `${progressPercent}%` }" />
       </div>
     </div>
 
-    <div
-      v-for="kind in YOLO_KIND_ORDER"
-      :key="kind"
-      class="cat-group"
-    >
+    <div v-for="kind in YOLO_KIND_ORDER" :key="kind" class="cat-group">
       <h3>{{ kindLabel(kind) }}</h3>
       <ul class="model-list catalog-list">
-        <li
-          v-for="model in catalogByKind(kind)"
-          :key="model.id"
-        >
+        <li v-for="model in catalogByKind(kind)" :key="model.id">
           <span class="model-id">{{ model.id }}</span>
           <span class="meta size">≈ {{ model.sizeMb }} MB</span>
-          <span
-            v-if="isInstalled(model.id)"
-            class="ok-chip"
-          >{{ t('settings.yoloModels.installedTag') }}</span>
-          <span
-            v-else-if="downloadingId === model.id"
-            class="ok-chip busy"
-          >{{ activeProgress?.phase === 'verifying'
-            ? t('settings.yoloModels.verifyingTag')
-            : t('settings.yoloModels.downloadingTag') }}</span>
+          <span v-if="isInstalled(model.id)" class="ok-chip">{{
+            t('settings.yoloModels.installedTag')
+          }}</span>
+          <span v-else-if="downloadingId === model.id" class="ok-chip busy">{{
+            activeProgress?.phase === 'verifying'
+              ? t('settings.yoloModels.verifyingTag')
+              : t('settings.yoloModels.downloadingTag')
+          }}</span>
           <button
             v-else
             type="button"
@@ -235,11 +170,7 @@
       </ul>
     </div>
 
-    <p
-      v-if="feedback"
-      class="msg"
-      :class="{ error: feedbackError }"
-    >
+    <p v-if="feedback" class="msg" :class="{ error: feedbackError }">
       {{ feedback }}
     </p>
   </div>
@@ -288,8 +219,7 @@ const downloadingId = computed(() =>
     : ''
 )
 const activeProgress = computed(() =>
-  progress.value &&
-  (progress.value.phase === 'downloading' || progress.value.phase === 'verifying')
+  progress.value && (progress.value.phase === 'downloading' || progress.value.phase === 'verifying')
     ? progress.value
     : null
 )
@@ -298,9 +228,7 @@ const progressPercent = computed(() => {
   if (!p) return 0
   if (p.phase === 'verifying') return 100
   const byBytes =
-    p.totalBytes && p.totalBytes > 0
-      ? Math.round(((p.loadedBytes ?? 0) / p.totalBytes) * 100)
-      : 0
+    p.totalBytes && p.totalBytes > 0 ? Math.round(((p.loadedBytes ?? 0) / p.totalBytes) * 100) : 0
   return Math.max(0, Math.min(100, byBytes || p.percent || 0))
 })
 const progressPercentLabel = computed(() =>
@@ -389,7 +317,10 @@ async function commitDir(): Promise<void> {
   const value = dirInput.value.trim()
   if (value !== yolo.value.modelDir) {
     patchDir(value)
-    setFeedback(value ? t('settings.yoloModels.dirApplied') : t('settings.yoloModels.dirResetDefault'), false)
+    setFeedback(
+      value ? t('settings.yoloModels.dirApplied') : t('settings.yoloModels.dirResetDefault'),
+      false
+    )
   }
   // 先落盘到主进程设置，再扫描：目录是单机状态，必须立即生效而不是等 500ms debounce
   await window.studio.setYoloModelDir(yolo.value.modelDir ?? '')

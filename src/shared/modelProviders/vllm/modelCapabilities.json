@@ -12,7 +12,17 @@
       "modality": "video",
       "label": "vLLM-Omni 视频（Wan 等扩散模型）",
       "capabilities": {
-        "supported_aspect_ratios": ["16:9", "9:16", "1:1", "4:3", "3:4", "3:2", "2:3", "21:9", "9:21"],
+        "supported_aspect_ratios": [
+          "16:9",
+          "9:16",
+          "1:1",
+          "4:3",
+          "3:4",
+          "3:2",
+          "2:3",
+          "21:9",
+          "9:21"
+        ],
         "supported_resolutions": ["480p", "720p", "1080p"],
         "supported_durations": [4, 5, 6, 8, 10, 12, 15, 20],
         "generate_audio": false,

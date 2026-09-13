@@ -17,7 +17,7 @@
           v-model="name"
           @keydown.enter.prevent="onConfirm"
           @keydown.esc.prevent="onCancel"
-        >
+        />
       </label>
 
       <div class="field">
@@ -45,27 +45,16 @@
         </div>
       </div>
 
-      <p
-        v-if="error"
-        class="err"
-      >
+      <p v-if="error" class="err">
         {{ error }}
       </p>
     </div>
 
     <template #footer>
-      <button
-        type="button"
-        @click="onCancel"
-      >
+      <button type="button" @click="onCancel">
         {{ t('common.cancel') }}
       </button>
-      <button
-        type="button"
-        class="primary"
-        :disabled="saving"
-        @click="onConfirm"
-      >
+      <button type="button" class="primary" :disabled="saving" @click="onConfirm">
         {{ saving ? t('common.saving') : t('common.save') }}
       </button>
     </template>

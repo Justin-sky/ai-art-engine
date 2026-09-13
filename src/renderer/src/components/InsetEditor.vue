@@ -1,16 +1,13 @@
 <template>
   <div class="inset-editor">
-    <label
-      v-for="side in sides"
-      :key="side"
-    >
+    <label v-for="side in sides" :key="side">
       <span>{{ sideLabel(side) }}</span>
       <input
         type="number"
         min="0"
         :value="props.value[side]"
         @change="emitChange(side, toNum($event.target))"
-      >
+      />
     </label>
   </div>
 </template>

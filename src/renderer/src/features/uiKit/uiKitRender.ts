@@ -2,11 +2,7 @@
  * 渲染层「UI 部件提取」的纯 canvas 帮手：源图加载、按部件裁剪透明 PNG、
  * 九宫格拉伸预览绘制。数据模型 / 命名 / 网格几何均来自 @shared/gameAssets。
  */
-import {
-  clampUiKitRect,
-  computeNineSliceCells,
-  type UiKitPart
-} from '@shared/gameAssets'
+import { clampUiKitRect, computeNineSliceCells, type UiKitPart } from '@shared/gameAssets'
 
 /** 以 CORS 模式加载源图（studio-media:// 带 ACAO:*，可读像素） */
 export function loadUiKitSourceImage(url: string): Promise<HTMLImageElement> {
@@ -20,10 +16,7 @@ export function loadUiKitSourceImage(url: string): Promise<HTMLImageElement> {
 }
 
 /** 裁剪部件源图像素区域到离屏 canvas（坐标即自然像素） */
-function cropPartCanvas(
-  img: HTMLImageElement,
-  part: UiKitPart
-): HTMLCanvasElement | null {
+function cropPartCanvas(img: HTMLImageElement, part: UiKitPart): HTMLCanvasElement | null {
   const natW = img.naturalWidth || img.width
   const natH = img.naturalHeight || img.height
   const rect = clampUiKitRect(part.rect, natW, natH)
@@ -32,25 +25,12 @@ function cropPartCanvas(
   canvas.height = Math.max(1, rect.height)
   const ctx = canvas.getContext('2d')
   if (!ctx) return null
-  ctx.drawImage(
-    img,
-    rect.x,
-    rect.y,
-    rect.width,
-    rect.height,
-    0,
-    0,
-    rect.width,
-    rect.height
-  )
+  ctx.drawImage(img, rect.x, rect.y, rect.width, rect.height, 0, 0, rect.width, rect.height)
   return canvas
 }
 
 /** 裁剪部件为透明 PNG data URL */
-export function cropUiKitPartPng(
-  img: HTMLImageElement,
-  part: UiKitPart
-): string {
+export function cropUiKitPartPng(img: HTMLImageElement, part: UiKitPart): string {
   const canvas = cropPartCanvas(img, part)
   if (!canvas) throw new Error('UIKIT: canvas 2d context unavailable')
   return canvas.toDataURL('image/png')

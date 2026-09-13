@@ -60,9 +60,10 @@ describe('MCP 资产写入：导入路径归一化', () => {
   })
 
   it('裁剪首尾空白并保序去重', () => {
-    expect(
-      normalizeImportFilePaths([' C:/b.png ', 'C:/a.png', 'C:/b.png', ' C:/b.png'])
-    ).toEqual(['C:/b.png', 'C:/a.png'])
+    expect(normalizeImportFilePaths([' C:/b.png ', 'C:/a.png', 'C:/b.png', ' C:/b.png'])).toEqual([
+      'C:/b.png',
+      'C:/a.png'
+    ])
   })
 
   it('保留原始顺序', () => {

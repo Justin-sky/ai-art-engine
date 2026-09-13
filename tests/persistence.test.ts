@@ -9,12 +9,18 @@ describe('persistence transaction', () => {
       runTransactionSync([
         {
           label: 'first',
-          forward: () => { state.push('first') },
-          rollback: () => { state.push('undo-first') }
+          forward: () => {
+            state.push('first')
+          },
+          rollback: () => {
+            state.push('undo-first')
+          }
         },
         {
           label: 'second',
-          forward: () => { throw new Error('failed') },
+          forward: () => {
+            throw new Error('failed')
+          },
           rollback: vi.fn()
         }
       ])

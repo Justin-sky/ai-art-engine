@@ -16,9 +16,7 @@ function makeRig(overrides?: Partial<Stage2dRig>): Stage2dRig {
       { id: 'chest', name: 'chest', parentId: 'hip', x: 0, y: -100, rotation: 0 },
       { id: 'armL', name: 'armL', parentId: 'chest', x: 50, y: 0, rotation: 0 }
     ],
-    attachments: [
-      { layerId: 'leg', jointId: 'chest', offsetX: 10, offsetY: 0, rotation: 0 }
-    ],
+    attachments: [{ layerId: 'leg', jointId: 'chest', offsetX: 10, offsetY: 0, rotation: 0 }],
     ...overrides
   })
 }
@@ -69,8 +67,8 @@ describe('buildStage2dSpineData：关节与坐标翻转换算', () => {
       pose: { chest: 30, elbow: -10 },
       parts: []
     })
-    expect((boneByName(skeleton, 'chest').rotation as number)).toBe(-120)
-    expect((boneByName(skeleton, 'elbow').rotation as number)).toBe(30)
+    expect(boneByName(skeleton, 'chest').rotation as number).toBe(-120)
+    expect(boneByName(skeleton, 'elbow').rotation as number).toBe(30)
   })
 
   it('绑定姿势为 0 时省略 rotation 字段', () => {

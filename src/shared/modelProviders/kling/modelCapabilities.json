@@ -58,22 +58,10 @@
       "capabilities": {
         "supported_parameters": {
           "aspect_ratio": {
-            "values": [
-              "16:9",
-              "9:16",
-              "1:1",
-              "4:3",
-              "3:4",
-              "3:2",
-              "2:3",
-              "21:9"
-            ]
+            "values": ["16:9", "9:16", "1:1", "4:3", "3:4", "3:2", "2:3", "21:9"]
           },
           "resolution": {
-            "values": [
-              "1k",
-              "2k"
-            ]
+            "values": ["1k", "2k"]
           },
           "n": {
             "min": 1,
@@ -89,23 +77,10 @@
       "modality": "video",
       "label": "Kling Video",
       "capabilities": {
-        "supported_resolutions": [
-          "720p",
-          "1080p"
-        ],
-        "supported_aspect_ratios": [
-          "16:9",
-          "9:16",
-          "1:1"
-        ],
-        "supported_durations": [
-          5,
-          10
-        ],
-        "supported_frame_images": [
-          "first_frame",
-          "last_frame"
-        ],
+        "supported_resolutions": ["720p", "1080p"],
+        "supported_aspect_ratios": ["16:9", "9:16", "1:1"],
+        "supported_durations": [5, 10],
+        "supported_frame_images": ["first_frame", "last_frame"],
         "generate_audio": false,
         "max_input_images": 2,
         "max_input_videos": 0,
@@ -127,23 +102,10 @@
       "modality": "video",
       "label": "Kling Video (audio)",
       "capabilities": {
-        "supported_resolutions": [
-          "720p",
-          "1080p"
-        ],
-        "supported_aspect_ratios": [
-          "16:9",
-          "9:16",
-          "1:1"
-        ],
-        "supported_durations": [
-          5,
-          10
-        ],
-        "supported_frame_images": [
-          "first_frame",
-          "last_frame"
-        ],
+        "supported_resolutions": ["720p", "1080p"],
+        "supported_aspect_ratios": ["16:9", "9:16", "1:1"],
+        "supported_durations": [5, 10],
+        "supported_frame_images": ["first_frame", "last_frame"],
         "generate_audio": true,
         "max_input_images": 2,
         "max_input_videos": 0,

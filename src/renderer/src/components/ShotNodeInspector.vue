@@ -1,8 +1,5 @@
 <template>
-  <div
-    v-if="node"
-    class="node-inspector"
-  >
+  <div v-if="node" class="node-inspector">
     <div class="head">
       <span class="role">{{ t('graph.nodeRole.generate') }}</span>
       <span class="type">{{ typeLabel }}</span>
@@ -22,10 +19,7 @@
 
     <label>
       {{ t('graph.inspector.displayName') }}
-      <input
-        v-model="localTitle"
-        @change="persist"
-      >
+      <input v-model="localTitle" @change="persist" />
     </label>
 
     <div class="lock-field">
@@ -34,7 +28,7 @@
           type="checkbox"
           :checked="locked"
           @change="onLockChange(($event.target as HTMLInputElement).checked)"
-        >
+        />
         <span>
           <span class="lock-option-title">{{ t('graph.inspector.generate.lock') }}</span>
           <span class="field-hint">{{ t('graph.inspector.generate.lockHint') }}</span>
@@ -42,10 +36,7 @@
       </label>
     </div>
 
-    <section
-      v-if="isImage || isVideo"
-      class="style-section"
-    >
+    <section v-if="isImage || isVideo" class="style-section">
       <div class="style-toolbar-heading">
         <span class="style-toolbar-title">{{ t('project.globals.stylePreset') }}</span>
         <span class="style-toolbar-count">
@@ -57,13 +48,11 @@
           type="checkbox"
           :checked="useGlobalStyle"
           @change="onUseGlobalStyleChange(($event.target as HTMLInputElement).checked)"
-        >
+        />
         <span>{{ t('stylePicker.useGlobal') }}</span>
       </label>
       <p class="style-toolbar-hint">
-        {{
-          useGlobalStyle ? t('stylePicker.readonlyHint') : t('project.globals.styleImagesHint')
-        }}
+        {{ useGlobalStyle ? t('stylePicker.readonlyHint') : t('project.globals.styleImagesHint') }}
       </p>
       <StyleImagePicker
         :model-value="displayedStyleImages"
@@ -74,10 +63,7 @@
       />
     </section>
 
-    <section
-      v-if="isImage"
-      class="character-refs-section"
-    >
+    <section v-if="isImage" class="character-refs-section">
       <CharacterRefsEditor
         :model-value="characterRefs"
         @update:model-value="onCharacterRefsChange"
@@ -113,16 +99,10 @@
             @change="persistImageGenerateParams"
           />
         </div>
-        <div
-          v-if="isVoice"
-          class="voice-profile-row"
-        >
+        <div v-if="isVoice" class="voice-profile-row">
           <label class="voice-profile-label">
             {{ t('graph.inspector.generate.voiceProfile') }}
-            <select
-              :value="generateSpeechCharacter || ''"
-              @change="onVoiceCharacterChange"
-            >
+            <select :value="generateSpeechCharacter || ''" @change="onVoiceCharacterChange">
               <option value="">
                 {{ t('graph.inspector.generate.voiceProfileNone') }}
               </option>
@@ -135,18 +115,11 @@
               </option>
             </select>
           </label>
-          <button
-            type="button"
-            class="mini-btn"
-            @click="openVoiceProfileDialog"
-          >
+          <button type="button" class="mini-btn" @click="openVoiceProfileDialog">
             {{ t('graph.inspector.generate.voiceProfileManage') }}
           </button>
         </div>
-        <p
-          v-if="modelOptions.length === 0"
-          class="hint"
-        >
+        <p v-if="modelOptions.length === 0" class="hint">
           {{ modelsHint }}
         </p>
       </section>
@@ -160,14 +133,8 @@
       <div class="section-head">
         <span class="section-title">{{ t('graph.inspector.generate.modelPreview') }}</span>
       </div>
-      <ModelPreview
-        v-if="modelPreviewPath"
-        :relative-path="modelPreviewPath"
-      />
-      <p
-        v-else
-        class="section-hint"
-      >
+      <ModelPreview v-if="modelPreviewPath" :relative-path="modelPreviewPath" />
+      <p v-else class="section-hint">
         {{ t('graph.inspector.generate.modelPreviewEmpty') }}
       </p>
     </section>
@@ -185,26 +152,17 @@
     >
       <div class="section-head">
         <span class="section-title">{{ t('graph.inspector.generate.generatedImages') }}</span>
-        <span
-          v-if="generatedImages.length"
-          class="section-count"
-        >
+        <span v-if="generatedImages.length" class="section-count">
           {{ t('graph.inspector.generate.generatedImagesCount', { n: generatedImages.length }) }}
         </span>
       </div>
       <p class="section-hint">
         {{ t('graph.inspector.generate.generatedImagesHint') }}
       </p>
-      <div
-        v-if="!generatedImages.length"
-        class="empty-shots"
-      >
+      <div v-if="!generatedImages.length" class="empty-shots">
         {{ t('graph.inspector.generate.generatedImagesEmpty') }}
       </div>
-      <div
-        v-else
-        class="shot-grid"
-      >
+      <div v-else class="shot-grid">
         <div
           v-for="(shot, index) in generatedImages"
           :key="shot.id || `index:${index}`"
@@ -224,11 +182,8 @@
               alt=""
               loading="lazy"
               decoding="async"
-            >
-            <span
-              v-else
-              class="shot-loading"
-            >…</span>
+            />
+            <span v-else class="shot-loading">…</span>
             <span class="shot-index">{{ index + 1 }}</span>
           </button>
           <button
@@ -250,26 +205,17 @@
     >
       <div class="section-head">
         <span class="section-title">{{ t('graph.inspector.generate.generatedTexts') }}</span>
-        <span
-          v-if="generatedTexts.length"
-          class="section-count"
-        >
+        <span v-if="generatedTexts.length" class="section-count">
           {{ t('graph.inspector.generate.generatedTextsCount', { n: generatedTexts.length }) }}
         </span>
       </div>
       <p class="section-hint">
         {{ t('graph.inspector.generate.generatedTextsHint') }}
       </p>
-      <div
-        v-if="!generatedTexts.length"
-        class="empty-shots"
-      >
+      <div v-if="!generatedTexts.length" class="empty-shots">
         {{ t('graph.inspector.generate.generatedTextsEmpty') }}
       </div>
-      <div
-        v-else
-        class="text-grid"
-      >
+      <div v-else class="text-grid">
         <div
           v-for="(item, index) in generatedTexts"
           :key="item.id || `index:${index}`"
@@ -283,7 +229,9 @@
             @click="selectGeneratedText(item.id || `index:${index}`)"
             @dblclick="openGeneratedText(item.id || `index:${index}`)"
           >
-            <pre class="text-snippet">{{ resolvedGeneratedText[item.id || `index:${index}`] || '…' }}</pre>
+            <pre class="text-snippet">{{
+              resolvedGeneratedText[item.id || `index:${index}`] || '…'
+            }}</pre>
             <span class="shot-index">{{ index + 1 }}</span>
           </button>
           <button
@@ -305,26 +253,17 @@
     >
       <div class="section-head">
         <span class="section-title">{{ t('graph.inspector.generate.generatedVoices') }}</span>
-        <span
-          v-if="generatedVoices.length"
-          class="section-count"
-        >
+        <span v-if="generatedVoices.length" class="section-count">
           {{ t('graph.inspector.generate.generatedVoicesCount', { n: generatedVoices.length }) }}
         </span>
       </div>
       <p class="section-hint">
         {{ t('graph.inspector.generate.generatedVoicesHint') }}
       </p>
-      <div
-        v-if="!generatedVoices.length"
-        class="empty-shots"
-      >
+      <div v-if="!generatedVoices.length" class="empty-shots">
         {{ t('graph.inspector.generate.generatedVoicesEmpty') }}
       </div>
-      <div
-        v-else
-        class="shot-grid"
-      >
+      <div v-else class="shot-grid">
         <div
           v-for="(item, index) in generatedVoices"
           :key="item.id || `index:${index}`"
@@ -344,10 +283,7 @@
               preload="metadata"
               @click.stop
             />
-            <span
-              v-else
-              class="shot-loading"
-            >…</span>
+            <span v-else class="shot-loading">…</span>
             <span class="shot-index">{{ index + 1 }}</span>
           </button>
           <button
@@ -369,26 +305,17 @@
     >
       <div class="section-head">
         <span class="section-title">{{ t('graph.inspector.generate.generatedVideos') }}</span>
-        <span
-          v-if="generatedVideos.length"
-          class="section-count"
-        >
+        <span v-if="generatedVideos.length" class="section-count">
           {{ t('graph.inspector.generate.generatedVideosCount', { n: generatedVideos.length }) }}
         </span>
       </div>
       <p class="section-hint">
         {{ t('graph.inspector.generate.generatedVideosHint') }}
       </p>
-      <div
-        v-if="!generatedVideos.length"
-        class="empty-shots"
-      >
+      <div v-if="!generatedVideos.length" class="empty-shots">
         {{ t('graph.inspector.generate.generatedVideosEmpty') }}
       </div>
-      <div
-        v-else
-        class="shot-grid"
-      >
+      <div v-else class="shot-grid">
         <div
           v-for="(item, index) in generatedVideos"
           :key="item.id || `index:${index}`"
@@ -411,10 +338,7 @@
               :title="t('graph.selectVideo.previewHint')"
               @dblclick.stop="openGeneratedVideoPreview(item.id || `index:${index}`)"
             />
-            <span
-              v-else
-              class="shot-loading"
-            >…</span>
+            <span v-else class="shot-loading">…</span>
             <span class="shot-index">{{ index + 1 }}</span>
           </button>
           <button
@@ -445,15 +369,8 @@
         <div class="voice-profile-dialog-title">
           {{ t('graph.inspector.generate.voiceProfileManage') }}
         </div>
-        <div
-          v-if="voiceProfiles.length"
-          class="voice-profile-list"
-        >
-          <div
-            v-for="profile in voiceProfiles"
-            :key="profile.character"
-            class="voice-profile-item"
-          >
+        <div v-if="voiceProfiles.length" class="voice-profile-list">
+          <div v-for="profile in voiceProfiles" :key="profile.character" class="voice-profile-item">
             <div class="voice-profile-item-main">
               <div class="voice-profile-item-name">
                 {{ profile.character }}
@@ -470,38 +387,31 @@
                 </span>
               </div>
             </div>
-            <button
-              type="button"
-              class="ghost-btn"
-              @click="removeVoiceProfile(profile.character)"
-            >
+            <button type="button" class="ghost-btn" @click="removeVoiceProfile(profile.character)">
               {{ t('graph.inspector.generate.voiceProfileDelete') }}
             </button>
           </div>
         </div>
-        <p
-          v-else
-          class="voice-profile-empty"
-        >
+        <p v-else class="voice-profile-empty">
           {{ t('graph.inspector.generate.voiceProfileEmpty') }}
         </p>
         <div class="voice-profile-form">
           <input
             v-model="voiceProfileForm.character"
             :placeholder="t('graph.inspector.generate.voiceProfileCharacter')"
-          >
+          />
           <input
             v-model="voiceProfileForm.voice"
             :placeholder="t('graph.inspector.generate.voiceProfileVoice')"
-          >
+          />
           <input
             v-model="voiceProfileForm.referenceAudio"
             :placeholder="t('graph.inspector.generate.voiceProfileReferenceAudio')"
-          >
+          />
           <input
             v-model="voiceProfileForm.description"
             :placeholder="t('graph.inspector.generate.voiceProfileDescription')"
-          >
+          />
           <button
             type="button"
             class="ghost-btn"
@@ -512,21 +422,14 @@
           </button>
         </div>
         <div class="voice-profile-dialog-actions">
-          <button
-            type="button"
-            class="ghost-btn"
-            @click="voiceProfileDialogOpen = false"
-          >
+          <button type="button" class="ghost-btn" @click="voiceProfileDialogOpen = false">
             {{ t('common.done') }}
           </button>
         </div>
       </div>
     </div>
   </div>
-  <div
-    v-else
-    class="node-inspector empty"
-  >
+  <div v-else class="node-inspector empty">
     {{ t('graph.inspector.node.empty') }}
   </div>
 </template>
@@ -640,7 +543,11 @@ const node = computed(() => {
   const id = selection.kind === 'graph.node' ? selection.id : null
   if (!id) return null
   const current = graphEditorHosts.getNode(selection.hostId, id)
-  if (!current || resolveNodeType(current)?.inspector !== 'asset' || !isProcessingAssetNode(current)) {
+  if (
+    !current ||
+    resolveNodeType(current)?.inspector !== 'asset' ||
+    !isProcessingAssetNode(current)
+  ) {
     return null
   }
   return current
@@ -648,7 +555,7 @@ const node = computed(() => {
 
 const hostId = computed(() => {
   const selection = editor.selection.current.value
-  return selection.kind === 'graph.node' ? selection.hostId ?? '' : ''
+  return selection.kind === 'graph.node' ? (selection.hostId ?? '') : ''
 })
 
 const { hasInPort, runStatus, isGraphRunning, blocked, toggleRun } = useGraphNodeRun(node)
@@ -677,9 +584,7 @@ const loadedHostId = ref<string | null>(null)
 const project = useProjectStore()
 
 const styleImageMax = MAX_STYLE_IMAGES
-const globalStyleImages = computed(() =>
-  normalizeProjectStyleImages(project.config?.styleImages)
-)
+const globalStyleImages = computed(() => normalizeProjectStyleImages(project.config?.styleImages))
 const displayedStyleImages = computed(() =>
   useGlobalStyle.value ? globalStyleImages.value : localStyleImages.value
 )
@@ -744,12 +649,7 @@ const generateModelTitle = computed(() => {
   return t('graph.inspector.generate.model')
 })
 const hasGenerateConfig = computed(
-  () =>
-    isImage.value ||
-    isScreenplay.value ||
-    isVoice.value ||
-    isVideo.value ||
-    isGameSystem.value
+  () => isImage.value || isScreenplay.value || isVoice.value || isVideo.value || isGameSystem.value
 )
 const locked = computed(() => node.value?.params.locked === true)
 
@@ -806,7 +706,10 @@ function isSelectedImage(key: string): boolean {
   const current = node.value
   if (!current) return false
   const selected = current.params.selectedImageId?.trim()
-  if (selected) return selected === key || selected === current.params.generatedImages?.find((i) => i.id === key)?.id
+  if (selected)
+    return (
+      selected === key || selected === current.params.generatedImages?.find((i) => i.id === key)?.id
+    )
   const list = generatedImages.value
   const last = list[list.length - 1]
   return Boolean(last && (last.id || '') === key)
@@ -845,8 +748,7 @@ function syncRunOutputsAfterGeneratedChange(
     current.params.selectedImageId?.trim() ||
     items[items.length - 1]?.id ||
     ''
-  const picked =
-    items.find((item) => item.id === selectedId) || items[items.length - 1]
+  const picked = items.find((item) => item.id === selectedId) || items[items.length - 1]
   host.runStates[current.id] = {
     ...prev,
     status: prev.status === 'idle' ? 'done' : prev.status,
@@ -1054,11 +956,7 @@ function removeGeneratedText(textId: string | undefined): void {
   graphEditorHosts.updateNode(hid, current.id, {
     generatedTexts: next,
     selectedTextId: nextSelected,
-    text: latest?.text?.trim()
-      ? latest.text
-      : next.length
-        ? current.params.text
-        : ''
+    text: latest?.text?.trim() ? latest.text : next.length ? current.params.text : ''
   })
   graphEditorHosts.bumpRevision()
 
@@ -1379,10 +1277,7 @@ const modelsHint = computed(() => {
   return t('graph.inspector.generate.configureModelsHint')
 })
 
-async function loadModels(
-  modality: GenerateModelModality,
-  preferredKey?: string
-): Promise<void> {
+async function loadModels(modality: GenerateModelModality, preferredKey?: string): Promise<void> {
   const { options, selectedKey } = await loadGenerateModelOptions(
     modality,
     preferredKey,
@@ -1397,9 +1292,7 @@ function loadGenerateConfig(current: NonNullable<typeof node.value>): void {
   loadedHostId.value = hostId.value
   instruction.value =
     current.params.generateInstruction ??
-    (current.assetType === 'gameSystem'
-      ? defaultGameSystemUserPrompt(String(locale.value))
-      : '')
+    (current.assetType === 'gameSystem' ? defaultGameSystemUserPrompt(String(locale.value)) : '')
   if (current.assetType === 'image' || current.assetType === 'video') {
     localStyleImages.value = normalizeProjectStyleImages(current.params.styleImages)
     useGlobalStyle.value = current.params.styleImagesUseGlobal !== false
@@ -1476,8 +1369,7 @@ watch(
     durationSec.value = current.params.durationSec ?? 5
     playbackRate.value = current.params.playbackRate ?? 1
 
-    const sameNode =
-      current.id === loadedNodeId.value && hostId.value === loadedHostId.value
+    const sameNode = current.id === loadedNodeId.value && hostId.value === loadedHostId.value
     const hasGen =
       current.assetType === 'image' ||
       current.assetType === 'screenplay' ||
@@ -1536,11 +1428,7 @@ watch(
 )
 
 watch(
-  () =>
-    [
-      node.value?.params.generateProviderInstanceId,
-      node.value?.params.generateModel
-    ] as const,
+  () => [node.value?.params.generateProviderInstanceId, node.value?.params.generateModel] as const,
   ([providerInstanceId, model]) => {
     if (!hasGenerateConfig.value) return
     const key = preferredModelKey(providerInstanceId, model)
@@ -1573,11 +1461,7 @@ watch(isVideo, (yes) => {
 watch(locale, (next) => {
   const cur = systemPrompt.value.trim()
   if (isImage.value) {
-    if (
-      !cur ||
-      cur === DEFAULT_IMAGE_SYSTEM_PROMPT_EN ||
-      cur === DEFAULT_IMAGE_SYSTEM_PROMPT_ZH
-    ) {
+    if (!cur || cur === DEFAULT_IMAGE_SYSTEM_PROMPT_EN || cur === DEFAULT_IMAGE_SYSTEM_PROMPT_ZH) {
       systemPrompt.value = defaultImageSystemPrompt(String(next))
     }
     return
@@ -1611,21 +1495,13 @@ watch(locale, (next) => {
     return
   }
   if (isVoice.value) {
-    if (
-      !cur ||
-      cur === DEFAULT_VOICE_SYSTEM_PROMPT_EN ||
-      cur === DEFAULT_VOICE_SYSTEM_PROMPT_ZH
-    ) {
+    if (!cur || cur === DEFAULT_VOICE_SYSTEM_PROMPT_EN || cur === DEFAULT_VOICE_SYSTEM_PROMPT_ZH) {
       systemPrompt.value = defaultTimbreSystemPrompt(String(next))
     }
     return
   }
   if (isVideo.value) {
-    if (
-      !cur ||
-      cur === DEFAULT_VIDEO_SYSTEM_PROMPT_EN ||
-      cur === DEFAULT_VIDEO_SYSTEM_PROMPT_ZH
-    ) {
+    if (!cur || cur === DEFAULT_VIDEO_SYSTEM_PROMPT_EN || cur === DEFAULT_VIDEO_SYSTEM_PROMPT_ZH) {
       systemPrompt.value = defaultVideoSystemPrompt(String(next))
     }
   }
@@ -1756,7 +1632,7 @@ function persistGenerateConfig(): void {
     generateInstruction: instruction.value,
     generateModel: parsed?.model ?? '',
     generateProviderInstanceId: parsed?.providerInstanceId ?? '',
-    ...((isImage.value || isVideo.value)
+    ...(isImage.value || isVideo.value
       ? {
           styleImagesUseGlobal: useGlobalStyle.value,
           styleImages: normalizeProjectStyleImages(localStyleImages.value)
@@ -2354,5 +2230,4 @@ textarea,
   background: rgba(180, 60, 60, 0.9);
   color: #fff;
 }
-
 </style>

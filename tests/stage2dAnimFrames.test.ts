@@ -189,7 +189,9 @@ describe('stage.2d 动作帧序列节点产物（执行器）', () => {
     expect(frames.items).toHaveLength(FPS)
     // 逐帧 PNG 按动作名 + 序号落盘
     expect(frames.items[0]!.relativePath).toContain('-anim-wave-001')
-    expect(frames.items[FPS - 1]!.relativePath).toContain(`-anim-wave-${String(FPS).padStart(3, '0')}`)
+    expect(frames.items[FPS - 1]!.relativePath).toContain(
+      `-anim-wave-${String(FPS).padStart(3, '0')}`
+    )
 
     // sheet 走单值端口，与帧序列分开
     const sheet = outputs[STAGE2D_SHEET_OUT_PORT_ID] as { kind: string; relativePath?: string }

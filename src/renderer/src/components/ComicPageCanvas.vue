@@ -1,22 +1,19 @@
 <template>
   <div class="comic-page-wrap">
-    <div
-      v-if="exportable"
-      class="head"
-    >
+    <div v-if="exportable" class="head">
       <button
         type="button"
         class="export-btn"
         :disabled="exporting || norm.panels.length === 0"
         @click="exportPng"
       >
-        {{ exporting ? t('graph.inspector.comicPage.exporting') : t('graph.inspector.comicPage.exportPng') }}
+        {{
+          exporting
+            ? t('graph.inspector.comicPage.exporting')
+            : t('graph.inspector.comicPage.exportPng')
+        }}
       </button>
-      <span
-        v-if="exportMessage"
-        class="export-msg"
-        :class="{ 'export-msg--error': exportFailed }"
-      >
+      <span v-if="exportMessage" class="export-msg" :class="{ 'export-msg--error': exportFailed }">
         {{ exportMessage }}
       </span>
     </div>
@@ -41,10 +38,7 @@
       @dragleave="onPageDragLeave"
       @drop="onPageDrop"
     >
-      <div
-        v-if="norm.title"
-        class="page-title"
-      >
+      <div v-if="norm.title" class="page-title">
         {{ norm.title }}
       </div>
 
@@ -80,17 +74,11 @@
             class="panel-img"
             alt=""
             draggable="false"
-          >
-          <span
-            v-else
-            class="panel-placeholder"
-          >
+          />
+          <span v-else class="panel-placeholder">
             {{ panel.title || t('graph.inspector.comicPage.panelFallback') }}
           </span>
-          <span
-            v-if="panel.title && thumbs[panel.imageUrl ?? '']"
-            class="panel-title"
-          >
+          <span v-if="panel.title && thumbs[panel.imageUrl ?? '']" class="panel-title">
             {{ panel.title }}
           </span>
           <button
@@ -100,7 +88,9 @@
             :title="t('graph.inspector.comicPage.clearImage')"
             @pointerdown.stop
             @click.stop="emit('remove-image', panel.id)"
-          >×</button>
+          >
+            ×
+          </button>
           <!-- 调整大小手柄：右缘改列跨、下缘改行跨、右下角两者联动（跨格数随拖动吸附） -->
           <template v-if="editable && selectedPanelId === panel.id && !selectedBubbleId">
             <span
@@ -118,10 +108,7 @@
           </template>
         </div>
       </template>
-      <span
-        v-else-if="!editable"
-        class="empty-hint"
-      >
+      <span v-else-if="!editable" class="empty-hint">
         {{ t('graph.inspector.comicPage.emptyPanels') }}
       </span>
 
@@ -135,10 +122,7 @@
         ]"
         :style="bubbleStyle(bubbleHit.panel, bubbleHit.bubble)"
       >
-        <span
-          v-if="bubbleHit.bubble.speaker"
-          class="speaker"
-        >
+        <span v-if="bubbleHit.bubble.speaker" class="speaker">
           {{ bubbleHit.bubble.speaker }}
         </span>
         <span class="text">{{ bubbleHit.bubble.text }}</span>
@@ -431,19 +415,13 @@ function onPagePointerMove(e: PointerEvent): void {
     if (st.axis !== 'y') {
       colSpan = Math.min(
         n.columns - st.col0,
-        Math.max(
-          1,
-          Math.round((st.rect.width + (pt.x - st.startX) + n.gutter) / pitchW)
-        )
+        Math.max(1, Math.round((st.rect.width + (pt.x - st.startX) + n.gutter) / pitchW))
       )
     }
     if (st.axis !== 'x') {
       rowSpan = Math.min(
         n.rows - st.row0,
-        Math.max(
-          1,
-          Math.round((st.rect.height + (pt.y - st.startY) + n.gutter) / pitchH)
-        )
+        Math.max(1, Math.round((st.rect.height + (pt.y - st.startY) + n.gutter) / pitchH))
       )
     }
     if (colSpan !== st.lastColSpan || rowSpan !== st.lastRowSpan) {
@@ -496,11 +474,7 @@ function onPanelResizeDown(e: PointerEvent, panel: ComicPanel, axis: 'x' | 'y' |
 }
 
 /** 气泡缩放：按距锚点距离等比缩放 */
-function onBubbleScaleDown(
-  e: PointerEvent,
-  panel: ComicPanel,
-  bubble: ComicSpeechBubble
-): void {
+function onBubbleScaleDown(e: PointerEvent, panel: ComicPanel, bubble: ComicSpeechBubble): void {
   const anchor = comicBubblePagePoint(norm.value, panel.id, bubble.id)
   const pt = clientToPage(e)
   if (!anchor || !pt) return
@@ -608,7 +582,10 @@ function dataUrlToBytes(url: string): Uint8Array {
 }
 
 function safeFileBase(name: string): string {
-  const base = name.replace(/[\\/:*?"<>|]+/g, '-').replace(/\.+$/, '').trim()
+  const base = name
+    .replace(/[\\/:*?"<>|]+/g, '-')
+    .replace(/\.+$/, '')
+    .trim()
   return base || 'comic-page'
 }
 

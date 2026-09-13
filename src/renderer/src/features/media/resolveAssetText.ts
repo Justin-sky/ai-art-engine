@@ -1,8 +1,5 @@
 import { isDraftAssetId } from '@shared/domain'
-import {
-  collectScreenplayTextRelativePaths,
-  resolveAssetTextFromGenParams
-} from '@shared/graph'
+import { collectScreenplayTextRelativePaths, resolveAssetTextFromGenParams } from '@shared/graph'
 import { isTextFilePath } from '@shared/import'
 import { useDraftStore } from '../../stores/drafts'
 import { useProjectStore } from '../../stores/project'

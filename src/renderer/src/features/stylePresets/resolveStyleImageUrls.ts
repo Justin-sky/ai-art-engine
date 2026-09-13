@@ -1,7 +1,4 @@
-import {
-  normalizeProjectStyleImages,
-  type ProjectStyleImage
-} from '@shared/domain'
+import { normalizeProjectStyleImages, type ProjectStyleImage } from '@shared/domain'
 import { defErr, fail } from '@shared/errors/appError'
 import { getDefaultStylePreset } from './defaultLibrary'
 

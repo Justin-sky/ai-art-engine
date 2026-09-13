@@ -41,7 +41,9 @@ export interface ResolvedWorkspaceToolbarItem extends WorkspaceToolbarItem {
   tooltip: string
 }
 
-export function resolveWorkspaceToolbarItem(item: WorkspaceToolbarItem): ResolvedWorkspaceToolbarItem {
+export function resolveWorkspaceToolbarItem(
+  item: WorkspaceToolbarItem
+): ResolvedWorkspaceToolbarItem {
   const label = item.label ?? ASSET_TYPE_LABELS[item.assetType] ?? item.assetType
   return {
     ...item,

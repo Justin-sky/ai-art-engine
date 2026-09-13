@@ -1,8 +1,5 @@
 <template>
-  <div
-    class="anim-panel"
-    :class="{ collapsed }"
-  >
+  <div class="anim-panel" :class="{ collapsed }">
     <div class="anim-toolbar">
       <div class="toolbar-side">
         <div class="playback">
@@ -12,14 +9,8 @@
             :title="playing ? t('director.stage.anim.pause') : t('director.stage.anim.play')"
             @click="togglePlay"
           >
-            <span
-              v-if="playing"
-              v-html="ICON_PAUSE"
-            />
-            <span
-              v-else
-              v-html="ICON_PLAY"
-            />
+            <span v-if="playing" v-html="ICON_PAUSE" />
+            <span v-else v-html="ICON_PLAY" />
           </button>
           <button
             type="button"
@@ -48,7 +39,7 @@
             step="0.01"
             :value="currentTime.toFixed(2)"
             @change="onSeek"
-          >
+          />
           <input
             class="time-input"
             type="number"
@@ -56,27 +47,16 @@
             step="0.1"
             :value="duration.toFixed(2)"
             @change="onDuration"
-          >
+          />
           <span class="unit">s</span>
         </div>
 
-        <div
-          v-show="!collapsed"
-          class="add-wrap"
-        >
-          <button
-            type="button"
-            class="add-btn"
-            @click.stop="toggleAddMenu"
-          >
+        <div v-show="!collapsed" class="add-wrap">
+          <button type="button" class="add-btn" @click.stop="toggleAddMenu">
             <span>+</span>
             <span>{{ t('director.stage.anim.addTrack') }}</span>
           </button>
-          <div
-            v-if="addMenuOpen"
-            class="menu add-menu"
-            @click.stop
-          >
+          <div v-if="addMenuOpen" class="menu add-menu" @click.stop>
             <button
               v-for="item in addCandidates"
               :key="`${item.kind}:${item.id}`"
@@ -91,10 +71,7 @@
                   : t('director.stage.anim.objectTag')
               }}</span>
             </button>
-            <div
-              v-if="!addCandidates.length"
-              class="menu-empty"
-            >
+            <div v-if="!addCandidates.length" class="menu-empty">
               {{ t('director.stage.anim.noTargets') }}
             </div>
           </div>
@@ -107,10 +84,7 @@
         @scroll="onRulerScroll"
         @pointerdown="onRulerPointerDown"
       >
-        <div
-          class="ruler"
-          :style="{ width: `${rulerWidth}px` }"
-        >
+        <div class="ruler" :style="{ width: `${rulerWidth}px` }">
           <span
             v-for="mark in rulerMarks"
             :key="`${mark.major ? 'M' : 'm'}-${mark.t}`"
@@ -124,10 +98,7 @@
             :style="{ left: `${mark.x}px` }"
           >
             <i class="tick" />
-            <span
-              v-if="mark.label"
-              class="tick-label"
-            >{{ mark.label }}</span>
+            <span v-if="mark.label" class="tick-label">{{ mark.label }}</span>
           </span>
           <div
             class="playhead playhead-ruler"
@@ -142,10 +113,7 @@
       </div>
 
       <div class="ruler-tools">
-        <label
-          class="speed-field"
-          :title="t('director.stage.anim.playbackRate')"
-        >
+        <label class="speed-field" :title="t('director.stage.anim.playbackRate')">
           <span class="speed-label">{{ t('director.stage.anim.playbackRateShort') }}</span>
           <input
             class="speed-input"
@@ -156,7 +124,7 @@
             :value="playbackRate"
             :disabled="exporting"
             @change="onPlaybackRate"
-          >
+          />
         </label>
         <input
           class="zoom-slider"
@@ -169,7 +137,7 @@
           :title="t('director.stage.anim.zoom')"
           :aria-label="t('director.stage.anim.zoom')"
           @input="onZoomInput"
-        >
+        />
         <button
           type="button"
           class="icon-btn export-btn"
@@ -195,15 +163,9 @@
       </div>
     </div>
 
-    <div
-      v-show="!collapsed"
-      class="anim-body"
-    >
+    <div v-show="!collapsed" class="anim-body">
       <div class="track-list">
-        <div
-          v-if="!tracks.length"
-          class="empty"
-        >
+        <div v-if="!tracks.length" class="empty">
           {{ t('director.stage.anim.empty') }}
         </div>
         <div
@@ -220,22 +182,13 @@
           @drop.prevent="onTrackDrop(track, $event)"
           @click="scene.selectAnimTrack(track.id)"
         >
-          <div
-            class="track-row"
-            @click="scene.selectAnimTrack(track.id)"
-          >
+          <div class="track-row" @click="scene.selectAnimTrack(track.id)">
             <span class="track-name">
               {{ track.name }}
-              <span
-                v-if="skeletonSegments(track).length"
-                class="skel-badge"
-              >{{
+              <span v-if="skeletonSegments(track).length" class="skel-badge">{{
                 t('director.stage.anim.skeletonBadge')
               }}</span>
-              <span
-                v-if="track.cameraCut"
-                class="skel-badge cut-badge"
-              >{{
+              <span v-if="track.cameraCut" class="skel-badge cut-badge">{{
                 t('director.stage.anim.cameraCutTag')
               }}</span>
             </span>
@@ -248,10 +201,7 @@
                 :aria-pressed="track.orientToPath === true"
                 @click.stop="toggleOrientToPath(track)"
               >
-                <span
-                  class="orient-icon"
-                  v-html="ICON_ORIENT"
-                />
+                <span class="orient-icon" v-html="ICON_ORIENT" />
               </button>
               <div class="axis-wrap">
                 <button
@@ -262,17 +212,17 @@
                 >
                   {{ track.pathForwardAxis ?? (track.targetKind === 'camera' ? '-z' : '-x') }}
                 </button>
-                <div
-                  v-if="axisMenuTrackId === track.id"
-                  class="menu axis-menu"
-                  @click.stop
-                >
+                <div v-if="axisMenuTrackId === track.id" class="menu axis-menu" @click.stop>
                   <button
                     v-for="axis in forwardAxes"
                     :key="axis"
                     type="button"
                     class="menu-item axis-item"
-                    :class="{ active: axis === (track.pathForwardAxis ?? (track.targetKind === 'camera' ? '-z' : '-x')) }"
+                    :class="{
+                      active:
+                        axis ===
+                        (track.pathForwardAxis ?? (track.targetKind === 'camera' ? '-z' : '-x'))
+                    }"
                     @click="onForwardAxisPick(track, axis)"
                   >
                     {{ axis }}
@@ -286,17 +236,10 @@
                   :class="{ active: pathDrawMode?.trackId === track.id }"
                   @click.stop="toggleDrawMenu(track.id)"
                 >
-                  <span
-                    class="draw-icon"
-                    v-html="ICON_PATH"
-                  />
+                  <span class="draw-icon" v-html="ICON_PATH" />
                   <span>{{ t('director.stage.anim.drawPath') }}</span>
                 </button>
-                <div
-                  v-if="drawMenuTrackId === track.id"
-                  class="menu draw-menu"
-                  @click.stop
-                >
+                <div v-if="drawMenuTrackId === track.id" class="menu draw-menu" @click.stop>
                   <button
                     v-for="kind in pathKinds"
                     :key="kind"
@@ -304,10 +247,7 @@
                     class="menu-item"
                     @click="startDraw(track.id, kind)"
                   >
-                    <span
-                      class="kind-icon"
-                      v-html="pathIcons[kind]"
-                    />
+                    <span class="kind-icon" v-html="pathIcons[kind]" />
                     <span>{{ t(`director.stage.anim.path.${kind}`) }}</span>
                   </button>
                 </div>
@@ -345,10 +285,7 @@
             v-if="!track.cameraCut && (hasKeyframes(track) || track.id === selectedTrackId)"
             class="sub-row"
           >
-            <span
-              class="kf"
-              v-html="ICON_KEY"
-            />
+            <span class="kf" v-html="ICON_KEY" />
             <span>{{ t('director.stage.position') }}</span>
             <button
               type="button"
@@ -369,14 +306,10 @@
               t('director.stage.anim.skeletonClipCount', { n: skeletonSegments(track).length })
             }}</span>
             <template v-if="selectedSkeletonSegment(track)">
-              <span
-                class="skel-clip-name"
-                :title="selectedSkeletonSegment(track)?.clip"
-              >{{ skeletonSegLabel(selectedSkeletonSegment(track)!) }}</span>
-              <label
-                class="skel-speed"
-                :title="t('director.stage.anim.skeletonSpeed')"
-              >
+              <span class="skel-clip-name" :title="selectedSkeletonSegment(track)?.clip">{{
+                skeletonSegLabel(selectedSkeletonSegment(track)!)
+              }}</span>
+              <label class="skel-speed" :title="t('director.stage.anim.skeletonSpeed')">
                 <span>×</span>
                 <input
                   type="number"
@@ -386,7 +319,7 @@
                   :value="selectedSkeletonSegment(track)?.speed ?? 1"
                   @click.stop
                   @change="onSelectedSegmentSpeedInput(track, $event)"
-                >
+                />
               </label>
               <button
                 type="button"
@@ -407,10 +340,7 @@
                 ×
               </button>
             </template>
-            <span
-              v-else
-              class="skel-empty"
-            >{{ t('director.stage.anim.skeletonDropHint') }}</span>
+            <span v-else class="skel-empty">{{ t('director.stage.anim.skeletonDropHint') }}</span>
           </div>
         </div>
       </div>
@@ -422,10 +352,7 @@
         @wheel.prevent="onTimelineWheel"
         @scroll="onTimelineScroll"
       >
-        <div
-          class="timeline-inner"
-          :style="{ width: `${rulerWidth}px` }"
-        >
+        <div class="timeline-inner" :style="{ width: `${rulerWidth}px` }">
           <div
             v-for="track in tracks"
             :key="`bar-${track.id}`"
@@ -447,11 +374,7 @@
               v-if="!track.cameraCut && (hasKeyframes(track) || track.id === selectedTrackId)"
               class="timeline-row kf-row"
             >
-              <div
-                v-if="track.keyframes.length >= 2"
-                class="kf-line"
-                :style="kfLineStyle(track)"
-              />
+              <div v-if="track.keyframes.length >= 2" class="kf-line" :style="kfLineStyle(track)" />
               <button
                 v-for="kf in track.keyframes"
                 :key="kf.id"
@@ -494,10 +417,7 @@
                   @pointerdown.stop="onSkeletonSegPointerDown($event, track.id, seg.id, 'right')"
                 />
               </div>
-              <div
-                v-if="!skeletonSegments(track).length"
-                class="skel-lane-hint"
-              >
+              <div v-if="!skeletonSegments(track).length" class="skel-lane-hint">
                 {{ t('director.stage.anim.skeletonDropHint') }}
               </div>
             </div>
@@ -534,26 +454,17 @@
                   @pointerdown.stop="onCameraCutSegPointerDown($event, track.id, seg.id, 'right')"
                 />
               </div>
-              <div
-                v-if="!cameraCutSegments(track).length"
-                class="skel-lane-hint"
-              >
+              <div v-if="!cameraCutSegments(track).length" class="skel-lane-hint">
                 {{ t('director.stage.anim.cameraCutDropHint') }}
               </div>
             </div>
           </div>
-          <div
-            class="playhead playhead-track"
-            :style="{ left: `${timeToX(currentTime)}px` }"
-          />
+          <div class="playhead playhead-track" :style="{ left: `${timeToX(currentTime)}px` }" />
         </div>
       </div>
     </div>
 
-    <div
-      v-if="pathDrawMode"
-      class="draw-hint"
-    >
+    <div v-if="pathDrawMode" class="draw-hint">
       {{ drawHint }}
     </div>
   </div>
@@ -687,14 +598,16 @@ const addCandidates = computed(() => {
 const TIME_ORIGIN_PAD = 10
 
 /** 轨迹/刻度内容宽度：终点刻度线刚好落在右边缘 */
-const rulerWidth = computed(
-  () => TIME_ORIGIN_PAD + Math.max(1, duration.value * pxPerSecond.value)
-)
+const rulerWidth = computed(() => TIME_ORIGIN_PAD + Math.max(1, duration.value * pxPerSecond.value))
 
 const rulerMarks = computed(() => {
   const marks: { t: number; x: number; label?: string; major: boolean }[] = []
   const majorStep =
-    duration.value <= 20 ? 1 : duration.value <= 60 ? 2 : Math.max(5, Math.round(duration.value / 10))
+    duration.value <= 20
+      ? 1
+      : duration.value <= 60
+        ? 2
+        : Math.max(5, Math.round(duration.value / 10))
   const end = duration.value
   const minorStep = majorStep / 10
   const totalMinors = Math.ceil(end / minorStep - 1e-9)
@@ -717,9 +630,7 @@ const rulerMarks = computed(() => {
   const lastMajor = [...marks].reverse().find((m) => m.major)
   if (!lastMajor || Math.abs(lastMajor.t - end) > 1e-6) {
     const label =
-      Math.abs(end - Math.round(end)) < 1e-6
-        ? `${Math.round(end)}s`
-        : `${Number(end.toFixed(2))}s`
+      Math.abs(end - Math.round(end)) < 1e-6 ? `${Math.round(end)}s` : `${Number(end.toFixed(2))}s`
     marks.push({ t: end, x: timeToX(end), label, major: true })
   }
   return marks
@@ -916,7 +827,12 @@ function onCameraCutSegPointerMove(e: PointerEvent): void {
     duration.value,
     Math.max(cutSegDrag.originStart + 0.05, cutSegDrag.originEnd + dt)
   )
-  scene.setCameraCutSegmentRange(cutSegDrag.trackId, cutSegDrag.segmentId, cutSegDrag.originStart, end)
+  scene.setCameraCutSegmentRange(
+    cutSegDrag.trackId,
+    cutSegDrag.segmentId,
+    cutSegDrag.originStart,
+    end
+  )
 }
 
 function onCameraCutSegPointerUp(): void {
@@ -1021,7 +937,11 @@ function formatKeyframeHint(track: DirectorAnimTrack): string {
   if (!kfs.length) return ''
   const atPlay =
     kfs.find((kf) => Math.abs(kf.time - currentTime.value) < 0.06) ??
-    kfs.slice().sort((a, b) => Math.abs(a.time - currentTime.value) - Math.abs(b.time - currentTime.value))[0]
+    kfs
+      .slice()
+      .sort(
+        (a, b) => Math.abs(a.time - currentTime.value) - Math.abs(b.time - currentTime.value)
+      )[0]
   const p = atPlay?.position
   if (!p) return ''
   return `${p.x.toFixed(2)}, ${p.y.toFixed(2)}, ${p.z.toFixed(2)}`
@@ -1133,8 +1053,12 @@ function onRulerScroll(): void {
 
 let clipDrag: { trackId: string; startX: number; originStart: number; originEnd: number } | null =
   null
-let keyframeDrag: { trackId: string; keyframeId: string; startX: number; originTime: number } | null =
-  null
+let keyframeDrag: {
+  trackId: string
+  keyframeId: string
+  startX: number
+  originTime: number
+} | null = null
 let playheadDragging = false
 
 function clientXToTime(clientX: number): number {

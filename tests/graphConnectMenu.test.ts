@@ -40,11 +40,15 @@ describe('connect menu type filter', () => {
   })
 
   it('from image out lists image-to-prompt among image-accepting types', () => {
-    const source = createNodeFromType('asset.image', { x: 0, y: 0 }, {
-      assetId: '00000000-0000-4000-8000-000000000031',
-      assetType: 'image',
-      params: { assetRef: true }
-    })
+    const source = createNodeFromType(
+      'asset.image',
+      { x: 0, y: 0 },
+      {
+        assetId: '00000000-0000-4000-8000-000000000031',
+        assetType: 'image',
+        params: { assetRef: true }
+      }
+    )
     const addable = listAddableNodeTypes('directorAsset')
     const allowed = addable.filter((def) =>
       canConnectToNodeType(source, def, {
@@ -71,22 +75,30 @@ describe('connect menu type filter', () => {
       ['in-video', GraphPortType.video],
       ['in-voice', GraphPortType.voice]
     ])
-    expect(typeDefAcceptsDataType(
-      listAddableNodeTypes('directorAsset').find((d) => d.typeId === 'asset.video')!,
-      GraphPortType.text
-    )).toBe(true)
-    expect(typeDefAcceptsDataType(
-      listAddableNodeTypes('directorAsset').find((d) => d.typeId === 'asset.video')!,
-      GraphPortType.image
-    )).toBe(true)
-    expect(typeDefAcceptsDataType(
-      listAddableNodeTypes('directorAsset').find((d) => d.typeId === 'asset.video')!,
-      GraphPortType.video
-    )).toBe(true)
-    expect(typeDefAcceptsDataType(
-      listAddableNodeTypes('directorAsset').find((d) => d.typeId === 'asset.video')!,
-      GraphPortType.voice
-    )).toBe(true)
+    expect(
+      typeDefAcceptsDataType(
+        listAddableNodeTypes('directorAsset').find((d) => d.typeId === 'asset.video')!,
+        GraphPortType.text
+      )
+    ).toBe(true)
+    expect(
+      typeDefAcceptsDataType(
+        listAddableNodeTypes('directorAsset').find((d) => d.typeId === 'asset.video')!,
+        GraphPortType.image
+      )
+    ).toBe(true)
+    expect(
+      typeDefAcceptsDataType(
+        listAddableNodeTypes('directorAsset').find((d) => d.typeId === 'asset.video')!,
+        GraphPortType.video
+      )
+    ).toBe(true)
+    expect(
+      typeDefAcceptsDataType(
+        listAddableNodeTypes('directorAsset').find((d) => d.typeId === 'asset.video')!,
+        GraphPortType.voice
+      )
+    ).toBe(true)
   })
 
   it('image generate node accepts text and image inputs', () => {
@@ -96,14 +108,18 @@ describe('connect menu type filter', () => {
       ['in-text', GraphPortType.text],
       ['in-image', GraphPortType.image]
     ])
-    expect(typeDefAcceptsDataType(
-      listAddableNodeTypes('directorAsset').find((d) => d.typeId === 'asset.image')!,
-      GraphPortType.text
-    )).toBe(true)
-    expect(typeDefAcceptsDataType(
-      listAddableNodeTypes('directorAsset').find((d) => d.typeId === 'asset.image')!,
-      GraphPortType.image
-    )).toBe(true)
+    expect(
+      typeDefAcceptsDataType(
+        listAddableNodeTypes('directorAsset').find((d) => d.typeId === 'asset.image')!,
+        GraphPortType.text
+      )
+    ).toBe(true)
+    expect(
+      typeDefAcceptsDataType(
+        listAddableNodeTypes('directorAsset').find((d) => d.typeId === 'asset.image')!,
+        GraphPortType.image
+      )
+    ).toBe(true)
   })
 
   it('director motion node only accepts panorama image and model inputs', () => {

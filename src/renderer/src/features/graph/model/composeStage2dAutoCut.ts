@@ -33,7 +33,9 @@ import { loadImageElement } from '../../yolo/cutout'
  */
 
 /** 人形槽位定义：折线端点 = 关节 id 序列，首点为挂点关节 */
-const HUMAN_SLOTS: Array<Pick<Stage2dAutoPartSlot, 'id' | 'name' | 'jointId'> & { pointIds: string[] }> = [
+const HUMAN_SLOTS: Array<
+  Pick<Stage2dAutoPartSlot, 'id' | 'name' | 'jointId'> & { pointIds: string[] }
+> = [
   { id: 'head', name: '头', jointId: 'neck', pointIds: ['neck', 'head'] },
   { id: 'torso', name: '躯干', jointId: 'pelvis', pointIds: ['pelvis', 'chest', 'neck'] },
   { id: 'upperarmL', name: '上臂L', jointId: 'shoulderL', pointIds: ['shoulderL', 'elbowL'] },
@@ -81,9 +83,12 @@ export interface Stage2dAutoCutSession {
 }
 
 /** 把一张「已解码图像」的 alpha 外接框内容拷到独立 RGBA 缓冲 */
-function extractContentRgba(
-  image: HTMLImageElement
-): { rgba: Uint8ClampedArray; contentWidth: number; contentHeight: number; bounds: NonNullable<ReturnType<typeof extractAlphaBounds>> } | null {
+function extractContentRgba(image: HTMLImageElement): {
+  rgba: Uint8ClampedArray
+  contentWidth: number
+  contentHeight: number
+  bounds: NonNullable<ReturnType<typeof extractAlphaBounds>>
+} | null {
   const sw = image.naturalWidth || 1
   const sh = image.naturalHeight || 1
   const probe = document.createElement('canvas')
@@ -93,13 +98,12 @@ function extractContentRgba(
   if (!probeCtx) throw new Error('STAGE_CANVAS_UNAVAILABLE')
   probeCtx.drawImage(image, 0, 0)
   const full = probeCtx.getImageData(0, 0, sw, sh)
-  const bounds =
-    extractAlphaBounds(full.data, sw, sh, { alphaMin: 8 }) ?? {
-      x: 0,
-      y: 0,
-      width: sw,
-      height: sh
-    }
+  const bounds = extractAlphaBounds(full.data, sw, sh, { alphaMin: 8 }) ?? {
+    x: 0,
+    y: 0,
+    width: sw,
+    height: sh
+  }
   const contentWidth = bounds.width
   const contentHeight = bounds.height
   const rgba = new Uint8ClampedArray(contentWidth * contentHeight * 4)
@@ -273,8 +277,21 @@ export async function prepareStage2dAutoCutSession(input: {
  * 落层提交：把「编辑后的 assignment」烧成部件层 + 附件挂点。
  * 同步执行（像素已在内存），不触碰 session 输入。
  */
-export function commitStage2dAutoCutSession(session: Stage2dAutoCutSession, assignment: Int32Array): Stage2dAutoCutResult {
-  const { scene, rig, frameLayerId, contentRgba, contentWidth, contentHeight, slots, frame, jointWorld } = session
+export function commitStage2dAutoCutSession(
+  session: Stage2dAutoCutSession,
+  assignment: Int32Array
+): Stage2dAutoCutResult {
+  const {
+    scene,
+    rig,
+    frameLayerId,
+    contentRgba,
+    contentWidth,
+    contentHeight,
+    slots,
+    frame,
+    jointWorld
+  } = session
   const { pieces } = recomputeStage2dAutoPieces({
     width: contentWidth,
     height: contentHeight,
@@ -295,7 +312,13 @@ export function commitStage2dAutoCutSession(session: Stage2dAutoCutSession, assi
   )
   for (const piece of pieces) {
     const layerId = uniqueLayerId(layers, `part-${piece.id}`)
-    const dataUrl = buildAutoPartDataUrl(contentRgba, contentWidth, assignment, piece.slotIndex, piece.crop)
+    const dataUrl = buildAutoPartDataUrl(
+      contentRgba,
+      contentWidth,
+      assignment,
+      piece.slotIndex,
+      piece.crop
+    )
     const pivotContent = piece.pivot
     const pivotWorld = {
       x: frame.dstX + pivotContent.x * frame.scale,

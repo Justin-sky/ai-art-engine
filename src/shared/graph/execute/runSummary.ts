@@ -10,21 +10,15 @@ export interface GraphRunOutputSummary {
 }
 
 export type GraphRunSuccessMessageKey =
-  | 'complete'
-  | 'completeImages'
-  | 'completeText'
-  | 'completeOk'
-  | 'noRefs'
+  'complete' | 'completeImages' | 'completeText' | 'completeOk' | 'noRefs'
 
 /** 统计输出节点上的有效内容，供运行完成提示使用 */
 export function summarizeGraphRunOutput(
   result: Pick<GraphRunResult, 'output' | 'contribution'>
 ): GraphRunOutputSummary {
   const visual = result.contribution?.genRefs.length ?? 0
-  const voice =
-    result.contribution?.audioRefs.filter((item) => item.assetId).length ?? 0
-  const text =
-    result.output?.notes.filter((item) => item.text.trim()).length ?? 0
+  const voice = result.contribution?.audioRefs.filter((item) => item.assetId).length ?? 0
+  const text = result.output?.notes.filter((item) => item.text.trim()).length ?? 0
   const imageItems =
     result.output?.images ??
     result.output?.params.cameraShots?.map((shot) => ({

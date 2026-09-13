@@ -10,11 +10,7 @@
       :aria-label="t('app.menu.openAria')"
       @click="toggleMenu"
     >
-      <img
-        class="brand-logo"
-        :src="logoUrl"
-        alt=""
-      >
+      <img class="brand-logo" :src="logoUrl" alt="" />
       <span class="brand-name">AI Art Engine</span>
     </button>
 
@@ -28,43 +24,21 @@
         @mousedown.stop
         @click.stop
       >
-        <button
-          type="button"
-          class="menu-item"
-          role="menuitem"
-          :disabled="busy"
-          @click="onNew"
-        >
+        <button type="button" class="menu-item" role="menuitem" :disabled="busy" @click="onNew">
           {{ t('home.createProject') }}
         </button>
-        <button
-          type="button"
-          class="menu-item"
-          role="menuitem"
-          :disabled="busy"
-          @click="onOpen"
-        >
+        <button type="button" class="menu-item" role="menuitem" :disabled="busy" @click="onOpen">
           {{ t('home.openProject') }}…
         </button>
 
-        <div
-          class="menu-sep"
-          role="separator"
-        />
+        <div class="menu-sep" role="separator" />
         <div class="menu-section-label">
           {{ t('home.recentProjects') }}
         </div>
-        <p
-          v-if="!recent.length"
-          class="menu-empty"
-        >
+        <p v-if="!recent.length" class="menu-empty">
           {{ t('app.menu.recentEmpty') }}
         </p>
-        <div
-          v-for="path in recent"
-          :key="path"
-          class="recent-row"
-        >
+        <div v-for="path in recent" :key="path" class="recent-row">
           <button
             type="button"
             class="menu-item recent-open"
@@ -89,16 +63,8 @@
         </div>
 
         <template v-if="project.isOpen">
-          <div
-            class="menu-sep"
-            role="separator"
-          />
-          <button
-            type="button"
-            class="menu-item"
-            role="menuitem"
-            @click="onGoHome"
-          >
+          <div class="menu-sep" role="separator" />
+          <button type="button" class="menu-item" role="menuitem" @click="onGoHome">
             {{ t('studio.backHome') }}
           </button>
           <button
@@ -112,16 +78,10 @@
           </button>
         </template>
 
-        <p
-          v-if="error && error !== 'api-unavailable'"
-          class="menu-error"
-        >
+        <p v-if="error && error !== 'api-unavailable'" class="menu-error">
           {{ error }}
         </p>
-        <p
-          v-else-if="error === 'api-unavailable'"
-          class="menu-error"
-        >
+        <p v-else-if="error === 'api-unavailable'" class="menu-error">
           {{ t('home.apiUnavailable') }}
         </p>
       </div>
@@ -137,10 +97,7 @@
       :min-height="240"
       @close="closeCreateDialog"
     >
-      <form
-        class="create-form"
-        @submit.prevent="onConfirmCreate"
-      >
+      <form class="create-form" @submit.prevent="onConfirmCreate">
         <label>
           {{ t('home.dialog.projectName') }}
           <input
@@ -149,7 +106,7 @@
             required
             placeholder="MyShortFilm"
             @keydown.esc.prevent="closeCreateDialog"
-          >
+          />
         </label>
         <label>
           {{ t('home.dialog.storageDir') }}
@@ -158,26 +115,17 @@
               v-model="parentDir"
               readonly
               :placeholder="t('home.dialog.selectDirPlaceholder')"
-            >
-            <button
-              type="button"
-              @click="pickCreateDir"
-            >{{ t('common.browse') }}</button>
+            />
+            <button type="button" @click="pickCreateDir">{{ t('common.browse') }}</button>
           </div>
         </label>
-        <p
-          v-if="createError"
-          class="form-error"
-        >
+        <p v-if="createError" class="form-error">
           {{ createError }}
         </p>
       </form>
 
       <template #footer>
-        <button
-          type="button"
-          @click="closeCreateDialog"
-        >
+        <button type="button" @click="closeCreateDialog">
           {{ t('common.cancel') }}
         </button>
         <button
@@ -198,10 +146,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import StudioFloatingWindow from './StudioFloatingWindow.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
-import {
-  projectRecentLabel,
-  useProjectLifecycle
-} from '../composables/useProjectLifecycle'
+import { projectRecentLabel, useProjectLifecycle } from '../composables/useProjectLifecycle'
 import { useProjectStore } from '../stores/project'
 import { placeFixedMenu } from '../utils/clampFixedMenuPosition'
 import logoUrl from '../assets/logo-mark.png'

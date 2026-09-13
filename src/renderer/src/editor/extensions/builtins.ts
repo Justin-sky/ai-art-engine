@@ -17,14 +17,13 @@ import WorkspaceToolbar from '../../components/WorkspaceToolbar.vue'
  */
 const AssetEditor = defineAsyncComponent(() => import('../../components/AssetEditor.vue'))
 const DirectorEditor = defineAsyncComponent(() => import('../../components/DirectorEditor.vue'))
-const WorldElementEditor = defineAsyncComponent(() => import('../../components/WorldElementEditor.vue'))
+const WorldElementEditor = defineAsyncComponent(
+  () => import('../../components/WorldElementEditor.vue')
+)
 const BeatAssetEditor = defineAsyncComponent(() => import('../../components/BeatAssetEditor.vue'))
 import { BUILTIN_INSPECTORS } from '../../inspector/builtins'
 import type { EditorWindowDefinition } from './types'
-import type {
-  AssetImporterDefinition,
-  EditorCommandContribution
-} from './contributions'
+import type { AssetImporterDefinition, EditorCommandContribution } from './contributions'
 
 function panel(
   name: string,
@@ -38,7 +37,8 @@ function panel(
         params: { type: Object, required: false, default: () => ({}) }
       },
       setup(props) {
-        return () => h('div', { class: className }, [render(props.params as Record<string, unknown>)])
+        return () =>
+          h('div', { class: className }, [render(props.params as Record<string, unknown>)])
       }
     })
   ) as unknown as VueComponent
@@ -60,11 +60,7 @@ export const BUILTIN_WINDOWS: EditorWindowDefinition[] = [
   {
     id: 'workspaceToolbar',
     createComponent: () =>
-      panel(
-        'DockWorkspaceToolbar',
-        () => h(WorkspaceToolbar),
-        'panel-fill workspace-tools-shell'
-      )
+      panel('DockWorkspaceToolbar', () => h(WorkspaceToolbar), 'panel-fill workspace-tools-shell')
   },
   {
     id: 'assets',
@@ -140,16 +136,23 @@ export const BUILTIN_COMMANDS: EditorCommandContribution[] = [
 ]
 
 export const BUILTIN_IMPORTERS: AssetImporterDefinition[] = [
-  { id: 'core.image', assetType: 'image', label: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] },
+  {
+    id: 'core.image',
+    assetType: 'image',
+    label: 'Images',
+    extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif']
+  },
   { id: 'core.video', assetType: 'video', label: 'Videos', extensions: ['mp4', 'mov', 'webm'] },
-  { id: 'core.audio', assetType: 'voice', label: 'voice', extensions: ['mp3', 'wav', 'ogg', 'm4a'] },
+  {
+    id: 'core.audio',
+    assetType: 'voice',
+    label: 'voice',
+    extensions: ['mp3', 'wav', 'ogg', 'm4a']
+  },
   { id: 'core.model', assetType: 'model', label: 'Models', extensions: ['glb', 'gltf', 'fbx'] }
 ]
 
 export const CORE_EDITOR_PLUGIN_ID = 'aiartengine.core'
 export const CORE_EDITOR_EXTENSION_ID = CORE_EDITOR_PLUGIN_ID
 
-export {
-  BUILTIN_INSPECTORS,
-  WORKSPACE_TOOLBAR_ITEMS
-}
+export { BUILTIN_INSPECTORS, WORKSPACE_TOOLBAR_ITEMS }

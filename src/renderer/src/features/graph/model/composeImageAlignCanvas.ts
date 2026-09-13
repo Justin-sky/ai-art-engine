@@ -1,11 +1,5 @@
-import {
-  normalizeImageAlign,
-  type ImageAlignState
-} from '@shared/graph'
-import {
-  computeSpriteAlignPlan,
-  extractAlphaBounds
-} from '@shared/gameAssets'
+import { normalizeImageAlign, type ImageAlignState } from '@shared/graph'
+import { computeSpriteAlignPlan, extractAlphaBounds } from '@shared/gameAssets'
 import { loadImageElement } from '../../yolo/cutout'
 
 /**
@@ -30,13 +24,12 @@ export async function composeImageAlignCanvas(input: {
   if (!probeCtx) throw new Error('ALIGN_CANVAS_UNAVAILABLE')
   probeCtx.drawImage(img, 0, 0)
   const rgba = probeCtx.getImageData(0, 0, sw, sh)
-  const subject =
-    extractAlphaBounds(rgba.data, sw, sh, { alphaMin: 8 }) ?? {
-      x: 0,
-      y: 0,
-      width: sw,
-      height: sh
-    }
+  const subject = extractAlphaBounds(rgba.data, sw, sh, { alphaMin: 8 }) ?? {
+    x: 0,
+    y: 0,
+    width: sw,
+    height: sh
+  }
 
   const plan = computeSpriteAlignPlan(
     { srcWidth: sw, srcHeight: sh, bounds: subject },
@@ -69,5 +62,9 @@ export async function composeImageAlignCanvas(input: {
     plan.dstW,
     plan.dstH
   )
-  return { dataUrl: canvas.toDataURL('image/png'), width: plan.canvasWidth, height: plan.canvasHeight }
+  return {
+    dataUrl: canvas.toDataURL('image/png'),
+    width: plan.canvasWidth,
+    height: plan.canvasHeight
+  }
 }

@@ -82,11 +82,14 @@ describe('readScriptTimelineFromGenParams / withScriptTimeline 往返', () => {
   })
 
   it('旧数据（无来源节点字段）兼容读取', () => {
-    const written = withScriptTimeline({}, {
-      clips: [
-        { id: 'c3', track: 'video', sourceId: 'v9', title: '旧片段', startSec: 0, durationSec: 2 }
-      ]
-    })
+    const written = withScriptTimeline(
+      {},
+      {
+        clips: [
+          { id: 'c3', track: 'video', sourceId: 'v9', title: '旧片段', startSec: 0, durationSec: 2 }
+        ]
+      }
+    )
     const read = readScriptTimelineFromGenParams(written)
     expect(read.clips[0].nodeId).toBeUndefined()
   })
@@ -157,10 +160,7 @@ describe('sfx 轨 + 混音设置', () => {
   })
 
   it('exportPlatformId 持久化', () => {
-    const written = withScriptTimeline(
-      {},
-      { clips: [], settings: { exportPlatformId: 'douyin' } }
-    )
+    const written = withScriptTimeline({}, { clips: [], settings: { exportPlatformId: 'douyin' } })
     expect(readScriptTimelineFromGenParams(written).settings?.exportPlatformId).toBe('douyin')
   })
 })

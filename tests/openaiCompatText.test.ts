@@ -74,6 +74,8 @@ describe('explainProviderTosDenial', () => {
   })
 
   it('returns null for unrelated errors', () => {
-    expect(explainProviderTosDenial('rate limit exceeded', 'https://openrouter.ai/api/v1')).toBeNull()
+    expect(
+      explainProviderTosDenial('rate limit exceeded', 'https://openrouter.ai/api/v1')
+    ).toBeNull()
   })
 })

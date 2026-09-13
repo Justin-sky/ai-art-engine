@@ -7,7 +7,9 @@ import type { GraphDocument, GraphNodeRunState } from '../src/shared/graph'
 
 describe('run output persist', () => {
   it('materializes image dataUrl to relativePath', async () => {
-    const saveMedia = vi.fn(async ({ key }: { key: string }) => `.aiartengine/graph-outputs/${key}.png`)
+    const saveMedia = vi.fn(
+      async ({ key }: { key: string }) => `.aiartengine/graph-outputs/${key}.png`
+    )
     const next = await materializeRunStateOutputs(
       {
         n1: {
@@ -30,7 +32,15 @@ describe('run output persist', () => {
 
   it('resolveHostMediaSyncSource prefers output images then other assets', () => {
     const graph = {
-      nodes: [{ id: 'image-output', category: 'output', typeId: 'output.image', position: { x: 0, y: 0 }, params: {} }],
+      nodes: [
+        {
+          id: 'image-output',
+          category: 'output',
+          typeId: 'output.image',
+          position: { x: 0, y: 0 },
+          params: {}
+        }
+      ],
       edges: [],
       viewport: { x: 0, y: 0, zoom: 1 }
     } as GraphDocument

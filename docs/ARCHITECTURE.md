@@ -72,9 +72,7 @@ export function apply(ctx) {
   "displayName": "Example Assets",
   "permissions": ["workspace.write"],
   "contributions": {
-    "toolbarItems": [
-      { "id": "example-image", "assetType": "image", "openOnCreate": true }
-    ]
+    "toolbarItems": [{ "id": "example-image", "assetType": "image", "openOnCreate": true }]
   }
 }
 ```

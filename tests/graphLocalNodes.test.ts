@@ -32,9 +32,10 @@ describe('normalizeImageCutout', () => {
   it('boolean 默认开，仅显式 false 关闭', () => {
     expect(normalizeImageCutout({}).cropToSubject).toBe(true)
     expect(normalizeImageCutout({}).personOnly).toBe(true)
-    expect(
-      normalizeImageCutout({ cropToSubject: false, personOnly: false })
-    ).toMatchObject({ cropToSubject: false, personOnly: false })
+    expect(normalizeImageCutout({ cropToSubject: false, personOnly: false })).toMatchObject({
+      cropToSubject: false,
+      personOnly: false
+    })
   })
 
   it('readImageCutoutFromNode 从节点 params 读取', () => {
@@ -93,8 +94,7 @@ describe('normalizeImageCompose', () => {
 
     // 无源尺寸时清空主体框
     expect(
-      normalizeImageCompose({ subjectBox: box, detectedWidth: 0, detectedHeight: 0 })
-        .subjectBox
+      normalizeImageCompose({ subjectBox: box, detectedWidth: 0, detectedHeight: 0 }).subjectBox
     ).toBeNull()
     // 尺寸为负时清空
     expect(

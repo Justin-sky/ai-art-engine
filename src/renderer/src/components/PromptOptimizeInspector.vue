@@ -1,8 +1,5 @@
 <template>
-  <div
-    v-if="node"
-    class="node-inspector"
-  >
+  <div v-if="node" class="node-inspector">
     <div class="head">
       <span class="type">{{ typeLabel }}</span>
       <h2>{{ displayTitle }}</h2>
@@ -21,10 +18,7 @@
 
     <label>
       {{ t('graph.inspector.displayName') }}
-      <input
-        v-model="localTitle"
-        @change="persist"
-      >
+      <input v-model="localTitle" @change="persist" />
     </label>
 
     <section class="gen-config">
@@ -39,24 +33,14 @@
           @change="persistGenerateConfig"
         />
       </label>
-      <p
-        v-if="modelOptions.length === 0"
-        class="hint"
-      >
+      <p v-if="modelOptions.length === 0" class="hint">
         {{ modelsHint }}
       </p>
     </section>
 
-    <GraphNodeOutputPreview
-      v-if="node && hostId"
-      :node="node"
-      :host-id="hostId"
-    />
+    <GraphNodeOutputPreview v-if="node && hostId" :node="node" :host-id="hostId" />
   </div>
-  <div
-    v-else
-    class="node-inspector empty"
-  >
+  <div v-else class="node-inspector empty">
     {{ t('graph.inspector.node.empty') }}
   </div>
 </template>
@@ -130,7 +114,7 @@ const node = computed(() => {
 
 const hostId = computed(() => {
   const selection = editor.selection.current.value
-  return selection.kind === 'graph.node' ? selection.hostId ?? '' : ''
+  return selection.kind === 'graph.node' ? (selection.hostId ?? '') : ''
 })
 
 const { hasInPort, runStatus, isGraphRunning, blocked, toggleRun } = useGraphNodeRun(node)
@@ -234,8 +218,7 @@ function isDefaultSystemPrompt(value: string): boolean {
   }
   if (isBeatSplit.value) {
     return (
-      value === DEFAULT_BEAT_SPLIT_SYSTEM_PROMPT_EN ||
-      value === DEFAULT_BEAT_SPLIT_SYSTEM_PROMPT_ZH
+      value === DEFAULT_BEAT_SPLIT_SYSTEM_PROMPT_EN || value === DEFAULT_BEAT_SPLIT_SYSTEM_PROMPT_ZH
     )
   }
   if (isBeatUnitGen.value) {
@@ -255,7 +238,10 @@ function isDefaultSystemPrompt(value: string): boolean {
 function loadGenerateConfig(current: NonNullable<typeof node.value>): void {
   loadedNodeId.value = current.id
   loadedHostId.value = hostId.value
-  systemPrompt.value = resolveSystemPrompt(current.params.generateSystemPrompt, String(locale.value))
+  systemPrompt.value = resolveSystemPrompt(
+    current.params.generateSystemPrompt,
+    String(locale.value)
+  )
   const preferred = preferredModelKey(
     current.params.generateProviderInstanceId,
     current.params.generateModel
@@ -276,8 +262,7 @@ watch(
       return
     }
     localTitle.value = current.title ?? typeLabel.value
-    const sameNode =
-      current.id === loadedNodeId.value && hostId.value === loadedHostId.value
+    const sameNode = current.id === loadedNodeId.value && hostId.value === loadedHostId.value
     if (!sameNode) loadGenerateConfig(current)
   },
   { immediate: true }
@@ -292,11 +277,7 @@ watch(
 )
 
 watch(
-  () =>
-    [
-      node.value?.params.generateProviderInstanceId,
-      node.value?.params.generateModel
-    ] as const,
+  () => [node.value?.params.generateProviderInstanceId, node.value?.params.generateModel] as const,
   ([providerInstanceId, model]) => {
     const key = preferredModelKey(providerInstanceId, model)
     if (key && key !== selectedModelKey.value && modelOptions.value.some((o) => o.key === key)) {

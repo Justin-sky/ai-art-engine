@@ -87,15 +87,11 @@ async function loadConfig() {
 
   return {
     accessKeyId: String(process.env.OSS_ACCESS_KEY_ID || file.accessKeyId || '').trim(),
-    accessKeySecret: String(
-      process.env.OSS_ACCESS_KEY_SECRET || file.accessKeySecret || ''
-    ).trim(),
+    accessKeySecret: String(process.env.OSS_ACCESS_KEY_SECRET || file.accessKeySecret || '').trim(),
     region,
     endpoint,
     bucket: String(process.env.OSS_BUCKET || file.bucket || '').trim(),
-    publicBaseUrl: String(
-      process.env.OSS_PUBLIC_BASE_URL || file.publicBaseUrl || ''
-    )
+    publicBaseUrl: String(process.env.OSS_PUBLIC_BASE_URL || file.publicBaseUrl || '')
       .trim()
       .replace(/\/$/, ''),
     prefix: normalizePrefix(process.env.OSS_PREFIX || file.prefix || ''),

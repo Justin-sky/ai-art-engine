@@ -31,9 +31,7 @@ function defaultConfigPaths() {
   const appData = process.env.APPDATA
   if (appData) return names.map((name) => join(appData, name, 'mcp.json'))
   if (process.platform === 'darwin') {
-    return names.map((name) =>
-      join(homedir(), 'Library', 'Application Support', name, 'mcp.json')
-    )
+    return names.map((name) => join(homedir(), 'Library', 'Application Support', name, 'mcp.json'))
   }
   return names.map((name) => join(homedir(), '.config', name, 'mcp.json'))
 }

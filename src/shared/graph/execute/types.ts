@@ -1,8 +1,4 @@
-import type {
-  AssetType,
-  DirectorViewerState,
-  ProjectStyleImage
-} from '../../domain'
+import type { AssetType, DirectorViewerState, ProjectStyleImage } from '../../domain'
 import type { InstructionMentionSource } from '../instructionMentions'
 import type { WorldElementGenResult } from '../worldElementParse'
 import type { ImageGenerateParamCapabilities } from '../imageGenerateParams'
@@ -18,13 +14,7 @@ import type {
 import type { GraphImageReferenceMeta } from '../../modelProvider'
 
 export type GraphNodeRunStatus =
-  | 'idle'
-  | 'pending'
-  | 'running'
-  | 'done'
-  | 'error'
-  | 'degraded'
-  | 'skipped'
+  'idle' | 'pending' | 'running' | 'done' | 'error' | 'degraded' | 'skipped'
 
 export interface GraphAssetValue {
   kind: 'asset'
@@ -308,16 +298,19 @@ export interface NodeExecuteContext {
     generateAudio?: boolean
     firstFrameImageUrl?: string
     lastFrameImageUrl?: string
-    inputReferences?: Array<
-      | string
-      | { kind: 'image_url' | 'video_url' | 'audio_url'; url: string }
-    >
+    inputReferences?: Array<string | { kind: 'image_url' | 'video_url' | 'audio_url'; url: string }>
     /** 视频副本输出目录（相对工程根） */
     outputDir?: string
     /** 落盘文件名 stem */
     name?: string
     /** 图节点回写绑定 */
-    graphBinding?: { hostId?: string; nodeId?: string; assetId?: string; shotId?: string; canvasField?: string }
+    graphBinding?: {
+      hostId?: string
+      nodeId?: string
+      assetId?: string
+      shotId?: string
+      canvasField?: string
+    }
   }) => Promise<{ assetId: string; relativePath: string; model: string }>
   /**
    * 可选：调用设置中的 3D 模型生成；未注入时退回上游透传。
@@ -332,7 +325,13 @@ export interface NodeExecuteContext {
     outputDir?: string
     name?: string
     /** 图节点回写绑定 */
-    graphBinding?: { hostId?: string; nodeId?: string; assetId?: string; shotId?: string; canvasField?: string }
+    graphBinding?: {
+      hostId?: string
+      nodeId?: string
+      assetId?: string
+      shotId?: string
+      canvasField?: string
+    }
   }) => Promise<{ assetId: string; relativePath: string; model: string }>
   /**
    * 可选：调用设置中的语音合成；未注入时声音节点退回上游透传 / 文本。
@@ -493,9 +492,7 @@ export interface NodeExecuteContext {
    * 2D 骨骼动作帧序列 → sheet：把逐帧图片按自适应列数拼成一张拼版 PNG。
    * 未注入时动作帧序列仍会逐帧落盘，只是不额外产出 sheet。
    */
-  composeStage2dFrameSheet?: (input: {
-    frameUrls: string[]
-  }) => Promise<{
+  composeStage2dFrameSheet?: (input: { frameUrls: string[] }) => Promise<{
     dataUrl: string
     frameWidth: number
     frameHeight: number
@@ -582,10 +579,7 @@ export interface NodeExecuteContext {
     resolveImage?: (imageUrl: string) => Promise<string>
   }) => Promise<{ dataUrl: string; width: number; height: number }>
   /** 图片生成后按目标宽高比居中裁正（宫格画布保证每格比例） */
-  normalizeImageAspectRatio?: (input: {
-    dataUrl: string
-    aspectRatio: string
-  }) => Promise<string>
+  normalizeImageAspectRatio?: (input: { dataUrl: string; aspectRatio: string }) => Promise<string>
   /** 场参考节点：按 boundBeatId 解析目录行 */
   resolveBeatUnit?: (beatId: string) => import('../beatParse').BeatRow | null
   /**
@@ -614,10 +608,7 @@ export interface NodeExecuteContext {
    * 世界元素目录导入：sourceNodeId 为执行节点 id。
    * world.gen → 导入到该节点独立子图；world.extract/table → 导入到其下游 world.gen 节点。
    */
-  importWorldCatalogJson?: (
-    jsonText: string,
-    sourceNodeId?: string
-  ) => void | Promise<void>
+  importWorldCatalogJson?: (jsonText: string, sourceNodeId?: string) => void | Promise<void>
   /**
    * 场表格节点：把当前目录序列化为拆解 JSON。
    */

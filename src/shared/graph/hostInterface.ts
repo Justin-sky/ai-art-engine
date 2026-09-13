@@ -68,15 +68,11 @@ export function sanitizeHostBoundaryPort(
   const dataType = isGraphPortDataType(obj.dataType) ? obj.dataType : null
   if (!dataType) return null
   const label = sanitizeLabel(obj.label, direction === 'in' ? 'In' : 'Out')
-  const multiple =
-    typeof obj.multiple === 'boolean' ? obj.multiple : direction === 'in'
-  const description =
-    typeof obj.description === 'string' ? obj.description.trim() : ''
+  const multiple = typeof obj.multiple === 'boolean' ? obj.multiple : direction === 'in'
+  const description = typeof obj.description === 'string' ? obj.description.trim() : ''
   const notes = typeof obj.notes === 'string' ? obj.notes.trim() : ''
   const fileRelativePath =
-    typeof obj.fileRelativePath === 'string'
-      ? obj.fileRelativePath.trim().replace(/\\/g, '/')
-      : ''
+    typeof obj.fileRelativePath === 'string' ? obj.fileRelativePath.trim().replace(/\\/g, '/') : ''
   const port: HostBoundaryPort = { id, label, dataType, multiple }
   if (typeof obj.slotIndex === 'number' && Number.isFinite(obj.slotIndex)) {
     port.slotIndex = Math.max(0, Math.floor(obj.slotIndex))
@@ -175,19 +171,13 @@ export function defaultHostInterfaceForAssetType(
     case 'screenplay':
       return {
         version: HOST_INTERFACE_FORMAT_VERSION,
-        inputs: [
-          { id: 'in', label: 'In', dataType: GraphPortType.text, multiple: true }
-        ],
-        outputs: [
-          { id: 'out', label: 'Out', dataType: GraphPortType.text, multiple: false }
-        ]
+        inputs: [{ id: 'in', label: 'In', dataType: GraphPortType.text, multiple: true }],
+        outputs: [{ id: 'out', label: 'Out', dataType: GraphPortType.text, multiple: false }]
       }
     case 'world':
       return {
         version: HOST_INTERFACE_FORMAT_VERSION,
-        inputs: [
-          { id: 'in', label: 'In', dataType: GraphPortType.text, multiple: true }
-        ],
+        inputs: [{ id: 'in', label: 'In', dataType: GraphPortType.text, multiple: true }],
         outputs: [
           {
             id: 'out',
@@ -200,9 +190,7 @@ export function defaultHostInterfaceForAssetType(
     case 'beat':
       return {
         version: HOST_INTERFACE_FORMAT_VERSION,
-        inputs: [
-          { id: 'in', label: 'In', dataType: GraphPortType.text, multiple: true }
-        ],
+        inputs: [{ id: 'in', label: 'In', dataType: GraphPortType.text, multiple: true }],
         outputs: [
           {
             id: 'out',
@@ -229,9 +217,7 @@ export function defaultHostInterfaceForAssetType(
             multiple: true
           }
         ],
-        outputs: [
-          { id: 'out', label: 'Out', dataType: GraphPortType.image, multiple: false }
-        ]
+        outputs: [{ id: 'out', label: 'Out', dataType: GraphPortType.image, multiple: false }]
       }
     case 'voice':
       return {
@@ -250,9 +236,7 @@ export function defaultHostInterfaceForAssetType(
             multiple: true
           }
         ],
-        outputs: [
-          { id: 'out', label: 'Out', dataType: GraphPortType.voice, multiple: false }
-        ]
+        outputs: [{ id: 'out', label: 'Out', dataType: GraphPortType.voice, multiple: false }]
       }
     case 'video':
       return {
@@ -283,19 +267,13 @@ export function defaultHostInterfaceForAssetType(
             multiple: true
           }
         ],
-        outputs: [
-          { id: 'out', label: 'Out', dataType: GraphPortType.video, multiple: false }
-        ]
+        outputs: [{ id: 'out', label: 'Out', dataType: GraphPortType.video, multiple: false }]
       }
     case 'subgraph':
       return {
         version: HOST_INTERFACE_FORMAT_VERSION,
-        inputs: [
-          { id: 'in', label: 'In', dataType: GraphPortType.text, multiple: true }
-        ],
-        outputs: [
-          { id: 'out', label: 'Out', dataType: GraphPortType.text, multiple: false }
-        ]
+        inputs: [{ id: 'in', label: 'In', dataType: GraphPortType.text, multiple: true }],
+        outputs: [{ id: 'out', label: 'Out', dataType: GraphPortType.text, multiple: false }]
       }
     default:
       return {
@@ -334,24 +312,20 @@ export function readHostSchemaVersion(
 export function hostInterfaceToPortDefs(iface: HostInterfaceDocument): GraphPortDef[] {
   const doc = sanitizeHostInterface(iface)
   return [
-    ...doc.inputs.map(
-      (port): GraphPortDef => ({
-        id: port.id,
-        direction: 'in',
-        dataType: port.dataType,
-        multiple: port.multiple !== false,
-        label: port.label
-      })
-    ),
-    ...doc.outputs.map(
-      (port): GraphPortDef => ({
-        id: port.id,
-        direction: 'out',
-        dataType: port.dataType,
-        multiple: port.multiple === true,
-        label: port.label
-      })
-    )
+    ...doc.inputs.map((port): GraphPortDef => ({
+      id: port.id,
+      direction: 'in',
+      dataType: port.dataType,
+      multiple: port.multiple !== false,
+      label: port.label
+    })),
+    ...doc.outputs.map((port): GraphPortDef => ({
+      id: port.id,
+      direction: 'out',
+      dataType: port.dataType,
+      multiple: port.multiple === true,
+      label: port.label
+    }))
   ]
 }
 
@@ -369,12 +343,10 @@ export function readHostInterfaceSnapshot(
  * 1. params.hostInterfaceSnapshot
  * 2. 按 assetType 默认模板
  */
-export function resolveNodeHostInterface(
-  node: {
-    assetType?: AssetType | string | null
-    params?: Pick<GraphNodeParams, 'hostInterfaceSnapshot'> | null
-  }
-): HostInterfaceDocument {
+export function resolveNodeHostInterface(node: {
+  assetType?: AssetType | string | null
+  params?: Pick<GraphNodeParams, 'hostInterfaceSnapshot'> | null
+}): HostInterfaceDocument {
   const fromSnap = readHostInterfaceSnapshot(node.params)
   if (fromSnap && (fromSnap.inputs.length || fromSnap.outputs.length)) {
     return fromSnap

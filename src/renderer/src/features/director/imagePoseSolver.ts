@@ -235,11 +235,7 @@ function takePair(
 }
 
 /** 图 x→+X、图 y（向下）→-Y；无深度（z=0） */
-function imageVectorToChar(
-  dxPx: number,
-  dyPx: number,
-  out: THREE.Vector3
-): boolean {
+function imageVectorToChar(dxPx: number, dyPx: number, out: THREE.Vector3): boolean {
   const dx = dxPx
   const dy = -dyPx
   out.set(dx, dy, 0)
@@ -462,7 +458,12 @@ export function solveImagePoseToBonePose(options: ImagePoseSolveOptions): ImageP
 
   // 4. 躯干脊柱基底（整体前倾/侧倾）
   if (driveTorso) {
-    const row: ImagePoseSolveSegment = { side: 'torso', role: 'spine', boneName: null, status: 'no-bone' }
+    const row: ImagePoseSolveSegment = {
+      side: 'torso',
+      role: 'spine',
+      boneName: null,
+      status: 'no-bone'
+    }
     const spineNode = ((): SNode | null => {
       for (const node of byName.values()) {
         if (node.role !== 'spine' || isAuxiliaryName(node.name)) continue

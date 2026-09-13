@@ -125,11 +125,7 @@ export const useProjectStore = defineStore('project', () => {
       const updated = await window.studio.updateAsset(toPlain(value))
       const index = assets.value.findIndex((item) => item.id === updated.id)
       if (index >= 0) {
-        assets.value = [
-          ...assets.value.slice(0, index),
-          updated,
-          ...assets.value.slice(index + 1)
-        ]
+        assets.value = [...assets.value.slice(0, index), updated, ...assets.value.slice(index + 1)]
       }
     }
     const scope = `document:asset:${asset.id}`

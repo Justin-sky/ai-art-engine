@@ -19,18 +19,13 @@ export type AssetRefInputHostType = (typeof ASSET_REF_INPUT_HOST_TYPES)[number]
 
 export function isAssetRefInputHostType(type: unknown): type is AssetRefInputHostType {
   return (
-    typeof type === 'string' &&
-    (ASSET_REF_INPUT_HOST_TYPES as readonly string[]).includes(type)
+    typeof type === 'string' && (ASSET_REF_INPUT_HOST_TYPES as readonly string[]).includes(type)
   )
 }
 
 /** 绑定了工程资产的引用节点（拖入资产 / 带 assetId） */
-export function isAssetRefNode(
-  node: Pick<GraphNode, 'category' | 'params' | 'assetId'>
-): boolean {
-  return (
-    node.category === 'asset' && (node.params.assetRef === true || !!node.assetId)
-  )
+export function isAssetRefNode(node: Pick<GraphNode, 'category' | 'params' | 'assetId'>): boolean {
+  return node.category === 'asset' && (node.params.assetRef === true || !!node.assetId)
 }
 
 /**

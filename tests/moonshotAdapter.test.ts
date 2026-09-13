@@ -50,11 +50,7 @@ describe('moonshotAdapter', () => {
   it('fetches and filters text catalog from GET /models', async () => {
     getMock.mockResolvedValueOnce({
       data: {
-        data: [
-          { id: 'kimi-k2' },
-          { id: 'moonshot-v1-128k' },
-          { id: 'some-other-model' }
-        ]
+        data: [{ id: 'kimi-k2' }, { id: 'moonshot-v1-128k' }, { id: 'some-other-model' }]
       }
     })
     const models = await moonshotAdapter.fetchCatalog(provider(), 'text')

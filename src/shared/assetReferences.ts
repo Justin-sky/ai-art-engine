@@ -6,13 +6,12 @@
 import { collectAssetGuids } from './assetRef'
 import type { AssetInfo } from './domain'
 
-export type AssetReferenceSite =
-  | {
-      kind: 'asset'
-      assetId: string
-      assetName: string
-      assetType: AssetInfo['type']
-    }
+export type AssetReferenceSite = {
+  kind: 'asset'
+  assetId: string
+  assetName: string
+  assetType: AssetInfo['type']
+}
 
 export interface AssetReferenceHit {
   /** 被引用的目标资产 id */

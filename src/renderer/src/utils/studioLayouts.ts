@@ -145,9 +145,7 @@ export function upsertNamedLayout(
   )
   if (sameName) {
     const next = state.presets.map((p) =>
-      p.id === sameName.id
-        ? { ...p, name: trimmed, data, updatedAt: nowIso(), builtIn: false }
-        : p
+      p.id === sameName.id ? { ...p, name: trimmed, data, updatedAt: nowIso(), builtIn: false } : p
     )
     return { ...state, activeId: sameName.id, presets: next }
   }
@@ -258,9 +256,7 @@ function cleanGroupViews(
 ): Record<string, unknown> | null {
   const viewsRaw = group.views
   if (!Array.isArray(viewsRaw)) return group
-  const views = viewsRaw.filter(
-    (id): id is string => typeof id === 'string' && !removeIds.has(id)
-  )
+  const views = viewsRaw.filter((id): id is string => typeof id === 'string' && !removeIds.has(id))
   if (views.length === 0) return null
   const activeView =
     typeof group.activeView === 'string' && views.includes(group.activeView)
@@ -330,9 +326,7 @@ export function stripPanelsFromDockLayout(
   const panels = data.panels
   if (!isRecord(panels)) return data
 
-  const removeIds = new Set(
-    Object.keys(panels).filter((id) => shouldStrip(id))
-  )
+  const removeIds = new Set(Object.keys(panels).filter((id) => shouldStrip(id)))
   if (removeIds.size === 0) {
     return healDockLayoutMissingPanelRefs(data)
   }
@@ -370,10 +364,7 @@ function leafHasSidePanel(group: Record<string, unknown>): boolean {
   return views.some((id) => typeof id === 'string' && SIDE_PANEL_LAYOUT_IDS.has(id))
 }
 
-function healSidePanelLeafNode(
-  node: GridNode,
-  fallbackWidth: (id: string) => number
-): GridNode {
+function healSidePanelLeafNode(node: GridNode, fallbackWidth: (id: string) => number): GridNode {
   if (node.type === 'leaf') {
     if (!isRecord(node.data) || !leafHasSidePanel(node.data)) return node
     const next: GridNode = { ...node }
@@ -413,9 +404,7 @@ export function sanitizeSidePanelCollapseFromLayoutData(
 ): Record<string, unknown> {
   if (!isDockLayoutData(data)) return data
   const minSide = options?.minSide ?? 300
-  const fallbackWidth =
-    options?.fallbackWidth ??
-    ((_id: 'assets' | 'inspector') => minSide)
+  const fallbackWidth = options?.fallbackWidth ?? ((_id: 'assets' | 'inspector') => minSide)
 
   let changed = false
   const panels = data.panels

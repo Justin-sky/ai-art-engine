@@ -13,23 +13,12 @@
     <div class="editor-root">
       <div class="topbar">
         <div class="grid-menu-wrap">
-          <button
-            type="button"
-            class="menu-btn"
-            @click="toggleGridMenu"
-          >
-            <span
-              class="grid-ico"
-              aria-hidden="true"
-            >▦</span>
+          <button type="button" class="menu-btn" @click="toggleGridMenu">
+            <span class="grid-ico" aria-hidden="true">▦</span>
             <span>{{ gridSizeLabel }}</span>
             <span class="chev">▾</span>
           </button>
-          <div
-            v-if="gridMenuOpen"
-            class="grid-menu"
-            @mousedown.stop
-          >
+          <div v-if="gridMenuOpen" class="grid-menu" @mousedown.stop>
             <button
               v-for="p in presets"
               :key="`${p.rows}x${p.cols}`"
@@ -45,10 +34,7 @@
               <div class="custom-title">
                 {{ t('graph.gridSplit.customTitle') }}
               </div>
-              <div
-                class="custom-picker"
-                @pointerleave="hoverRC = null"
-              >
+              <div class="custom-picker" @pointerleave="hoverRC = null">
                 <button
                   v-for="cell in pickerCells"
                   :key="cell.key"
@@ -70,19 +56,12 @@
           {{ t('graph.gridSplit.selectedCount', { n: draft.selected.length }) }}
         </div>
 
-        <button
-          type="button"
-          class="clear-btn"
-          @click="clearSelection"
-        >
+        <button type="button" class="clear-btn" @click="clearSelection">
           {{ t('graph.gridSplit.clearSelection') }}
         </button>
       </div>
 
-      <div
-        v-if="cells.length && !refineOpen"
-        class="refine-bar"
-      >
+      <div v-if="cells.length && !refineOpen" class="refine-bar">
         <span class="refine-label">{{ t('graph.gridSplit.refineBar') }}</span>
         <div class="refine-cells">
           <button
@@ -98,40 +77,16 @@
         </div>
       </div>
 
-      <div
-        ref="stageEl"
-        class="stage"
-        @click="gridMenuOpen = false"
-      >
-        <div
-          v-if="sourceLoading"
-          class="stage-empty"
-        >
+      <div ref="stageEl" class="stage" @click="gridMenuOpen = false">
+        <div v-if="sourceLoading" class="stage-empty">
           {{ t('graph.editor.loadingSource') }}
         </div>
-        <div
-          v-else-if="!sourceUrl"
-          class="stage-empty"
-        >
+        <div v-else-if="!sourceUrl" class="stage-empty">
           {{ t('graph.gridSplit.noSource') }}
         </div>
-        <div
-          v-else
-          class="canvas-wrap"
-          :style="canvasWrapStyle"
-        >
-          <img
-            class="source-img"
-            :src="sourceUrl"
-            alt=""
-            draggable="false"
-            decoding="async"
-          >
-          <div
-            class="grid-lines"
-            :style="gridLinesStyle"
-            aria-hidden="true"
-          />
+        <div v-else class="canvas-wrap" :style="canvasWrapStyle">
+          <img class="source-img" :src="sourceUrl" alt="" draggable="false" decoding="async" />
+          <div class="grid-lines" :style="gridLinesStyle" aria-hidden="true" />
           <button
             v-for="cell in cells"
             :key="cell.key"
@@ -141,19 +96,12 @@
             :style="cell.style"
             @click.stop="toggleCell(cell.key)"
           >
-            <span
-              v-if="isSelected(cell.key)"
-              class="cell-tag"
-            >{{ cell.key }}</span>
+            <span v-if="isSelected(cell.key)" class="cell-tag">{{ cell.key }}</span>
           </button>
         </div>
       </div>
 
-      <div
-        v-if="refineOpen"
-        class="refine-overlay"
-        @click.self="closeRefine"
-      >
+      <div v-if="refineOpen" class="refine-overlay" @click.self="closeRefine">
         <div class="refine-panel">
           <div class="refine-head">
             <div class="refine-title">
@@ -170,44 +118,21 @@
           </div>
 
           <div class="refine-body">
-            <div
-              v-if="originalPreviewUrl || resultUrl"
-              class="refine-previews"
-            >
-              <figure
-                v-if="originalPreviewUrl"
-                class="refine-fig"
-              >
-                <img
-                  :src="originalPreviewUrl"
-                  alt=""
-                  draggable="false"
-                >
+            <div v-if="originalPreviewUrl || resultUrl" class="refine-previews">
+              <figure v-if="originalPreviewUrl" class="refine-fig">
+                <img :src="originalPreviewUrl" alt="" draggable="false" />
                 <figcaption>{{ t('graph.gridSplit.refineOriginal') }}</figcaption>
               </figure>
-              <figure
-                v-if="resultUrl"
-                class="refine-fig"
-              >
-                <img
-                  :src="resultUrl"
-                  alt=""
-                  draggable="false"
-                >
+              <figure v-if="resultUrl" class="refine-fig">
+                <img :src="resultUrl" alt="" draggable="false" />
                 <figcaption>{{ t('graph.gridSplit.refineResult') }}</figcaption>
               </figure>
             </div>
 
-            <p
-              v-if="!refineCtx?.pack"
-              class="refine-note danger"
-            >
+            <p v-if="!refineCtx?.pack" class="refine-note danger">
               {{ t('graph.gridSplit.refineNoPack') }}
             </p>
-            <p
-              v-else-if="!modelConfigured"
-              class="refine-note warn"
-            >
+            <p v-else-if="!modelConfigured" class="refine-note warn">
               {{ t('graph.gridSplit.refineNoModelHint') }}
             </p>
 
@@ -222,33 +147,19 @@
 
             <label class="refine-field">
               <span>{{ t('graph.gridSplit.refinePrompt') }}</span>
-              <textarea
-                v-model="promptText"
-                rows="7"
-                spellcheck="false"
-              />
+              <textarea v-model="promptText" rows="7" spellcheck="false" />
             </label>
 
-            <p
-              v-if="refineError"
-              class="refine-note danger"
-            >
+            <p v-if="refineError" class="refine-note danger">
               {{ refineError }}
             </p>
-            <p
-              v-if="refineDone"
-              class="refine-note ok"
-            >
+            <p v-if="refineDone" class="refine-note ok">
               {{ refineDone }}
             </p>
           </div>
 
           <div class="refine-foot">
-            <button
-              type="button"
-              class="btn-ghost"
-              @click="closeRefine"
-            >
+            <button type="button" class="btn-ghost" @click="closeRefine">
               {{ t('graph.gridSplit.refineCancel') }}
             </button>
             <button
@@ -479,7 +390,11 @@ const refineError = ref('')
 const refineDone = ref('')
 const hintText = ref('')
 const promptText = ref('')
-const isEnglish = computed(() => String(locale.value ?? '').toLowerCase().startsWith('en'))
+const isEnglish = computed(() =>
+  String(locale.value ?? '')
+    .toLowerCase()
+    .startsWith('en')
+)
 
 const refineTitleText = computed(() => {
   const name = refineCtx.value?.name?.trim()
@@ -499,11 +414,7 @@ const modelConfigured = computed(() => {
 
 const canRunRefine = computed(() =>
   Boolean(
-    props.open &&
-      props.sourceUrl &&
-      refineCtx.value?.pack &&
-      promptText.value.trim() &&
-      !busy.value
+    props.open && props.sourceUrl && refineCtx.value?.pack && promptText.value.trim() && !busy.value
   )
 )
 

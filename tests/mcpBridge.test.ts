@@ -40,9 +40,9 @@ function startFakeUpstream(): Promise<{
           }
           const id = message.id
           const method = typeof message.method === 'string' ? message.method : ''
-          const params = (message.params && typeof message.params === 'object'
-            ? message.params
-            : {}) as Record<string, unknown>
+          const params = (
+            message.params && typeof message.params === 'object' ? message.params : {}
+          ) as Record<string, unknown>
           const isNotification = id === undefined || id === null
           const rpcResult = (result: unknown): void => send({ jsonrpc: '2.0', id, result })
           const rpcError = (code: number, text: string): void =>
@@ -51,7 +51,10 @@ function startFakeUpstream(): Promise<{
             case 'initialize':
               if (isNotification) return send(null, 202)
               rpcResult({
-                protocolVersion: typeof params.protocolVersion === 'string' ? params.protocolVersion : '2024-11-05',
+                protocolVersion:
+                  typeof params.protocolVersion === 'string'
+                    ? params.protocolVersion
+                    : '2024-11-05',
                 capabilities: { tools: { listChanged: false } },
                 serverInfo: { name: 'aiartengine', title: 'AiArtEngine', version: '5.0.0' }
               })
@@ -87,7 +90,12 @@ function startFakeUpstream(): Promise<{
               if (isNotification) return send(null, 202)
               if (name === 'echo') {
                 rpcResult({
-                  content: [{ type: 'text', text: JSON.stringify({ echo: params.arguments ?? null }, null, 2) }]
+                  content: [
+                    {
+                      type: 'text',
+                      text: JSON.stringify({ echo: params.arguments ?? null }, null, 2)
+                    }
+                  ]
                 })
                 return
               }
@@ -130,7 +138,10 @@ describe('mcp-bridge（stdio ↔ /mcp 纯隧道）', () => {
   let upstream: Awaited<ReturnType<typeof startFakeUpstream>>
   let configPath: string
   let child: ChildProcess
-  const waiters = new Map<number, { timer: NodeJS.Timeout; resolve: (value: RpcResponse) => void }>()
+  const waiters = new Map<
+    number,
+    { timer: NodeJS.Timeout; resolve: (value: RpcResponse) => void }
+  >()
   const queues = new Map<number, RpcResponse[]>()
   let nextId = 1
 
@@ -213,14 +224,20 @@ describe('mcp-bridge（stdio ↔ /mcp 纯隧道）', () => {
       capabilities: {},
       clientInfo: { name: 'test-client', version: '0' }
     })
-    const result = res.result as { protocolVersion: string; serverInfo: { name: string }; capabilities: { tools: unknown } }
+    const result = res.result as {
+      protocolVersion: string
+      serverInfo: { name: string }
+      capabilities: { tools: unknown }
+    }
     expect(result.protocolVersion).toBe('2024-11-05')
     expect(result.serverInfo.name).toBe('aiartengine')
     expect(result.capabilities.tools).toBeTruthy()
   })
 
   it('notifications/initialized 静默接受（无应答）', () => {
-    child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n')
+    child.stdin.write(
+      JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n'
+    )
   })
 
   it('tools/list 返回上游注册的工具', async () => {
@@ -234,7 +251,10 @@ describe('mcp-bridge（stdio ↔ /mcp 纯隧道）', () => {
 
   it('tools/call 成功时返回结构化文本结果', async () => {
     const res = await request('tools/call', { name: 'echo', arguments: { text: '你好' } })
-    const result = res.result as { content: Array<{ type: string; text: string }>; isError?: boolean }
+    const result = res.result as {
+      content: Array<{ type: string; text: string }>
+      isError?: boolean
+    }
     expect(result.isError).toBeUndefined()
     expect(JSON.parse(result.content[0].text)).toEqual({ echo: { text: '你好' } })
   })

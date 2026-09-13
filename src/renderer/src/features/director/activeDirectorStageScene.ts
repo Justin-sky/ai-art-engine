@@ -37,7 +37,9 @@ export function bindLiveDirectorStageScene(
         throw new Error('DirectorStageInspector requires an active director stage scene')
       }
       const value = Reflect.get(api, prop, api)
-      return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(api) : value
+      return typeof value === 'function'
+        ? (value as (...args: unknown[]) => unknown).bind(api)
+        : value
     }
   })
 }

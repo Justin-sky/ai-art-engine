@@ -40,20 +40,13 @@
 
       <label class="field">
         <span class="field-label">{{ t('director.stage.blockoutModelLabel') }}</span>
-        <select
-          v-model="modelKey"
-          class="model-select"
-          :disabled="generating"
-        >
-          <option
-            v-if="!modelOptions.length"
-            value=""
-          >{{ t('director.stage.blockoutNoModels') }}</option>
-          <option
-            v-for="opt in modelOptions"
-            :key="opt.key"
-            :value="opt.key"
-          >{{ opt.label }}</option>
+        <select v-model="modelKey" class="model-select" :disabled="generating">
+          <option v-if="!modelOptions.length" value="">
+            {{ t('director.stage.blockoutNoModels') }}
+          </option>
+          <option v-for="opt in modelOptions" :key="opt.key" :value="opt.key">
+            {{ opt.label }}
+          </option>
         </select>
       </label>
 
@@ -83,7 +76,7 @@
                 :src="refItem.previewUrl || refItem.dataUrl"
                 class="ref-thumb"
                 :alt="refItem.name"
-              >
+              />
               <button
                 type="button"
                 class="ref-remove"
@@ -128,15 +121,8 @@
 
     <template #footer>
       <div class="blockout-footer">
-        <span
-          v-if="error"
-          class="footer-error"
-          :title="error"
-        >{{ error }}</span>
-        <span
-          v-else
-          class="footer-hint"
-        >{{ t('director.stage.blockoutHint') }}</span>
+        <span v-if="error" class="footer-error" :title="error">{{ error }}</span>
+        <span v-else class="footer-hint">{{ t('director.stage.blockoutHint') }}</span>
         <button
           type="button"
           class="generate-btn"
@@ -232,15 +218,17 @@ const canGenerate = computed(
   () => !!modelKey.value && !!instruction.value.trim() && references.value.length > 0
 )
 const referenceAssetIds = computed(() => references.value.map((item) => item.assetId))
-const libraryRemaining = computed(() =>
-  Math.max(0, maxReferences - references.value.length)
-)
+const libraryRemaining = computed(() => Math.max(0, maxReferences - references.value.length))
 
 function applyLayoutMode(mode: BlockoutLayoutMode, options?: { resetInstruction?: boolean }): void {
   const prev = layoutMode.value
   layoutMode.value = mode
   systemPrompt.value = buildSceneBlockoutSystemPrompt(locale.value, mode)
-  if (options?.resetInstruction || !instruction.value.trim() || instruction.value === defaultInstructionFor(prev)) {
+  if (
+    options?.resetInstruction ||
+    !instruction.value.trim() ||
+    instruction.value === defaultInstructionFor(prev)
+  ) {
     instruction.value = defaultInstructionFor(mode)
   }
 }

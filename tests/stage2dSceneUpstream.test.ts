@@ -81,9 +81,7 @@ describe('stageSceneWithUpstreamSources（stage.2d 上游自动成层）', () =>
       { sourceUrl: 'assets/sprite/old-b.png' },
       { sourceUrl: 'assets/sprite/old-c.png' }
     ])
-    const next = stageSceneWithUpstreamSources(scene, [
-      { sourceUrl: 'assets/sprite/new-a.png' }
-    ])
+    const next = stageSceneWithUpstreamSources(scene, [{ sourceUrl: 'assets/sprite/new-a.png' }])
     expect(next.layers).toHaveLength(1)
     expect(next.layers[0].sourceUrl).toBe('assets/sprite/new-a.png')
   })
@@ -102,9 +100,7 @@ describe('stageSceneWithUpstreamSources（stage.2d 上游自动成层）', () =>
 
   it('输入为空源只留空白格（待 dock 补源）也视为合法场景', () => {
     const scene = makeScene()
-    const next = stageSceneWithUpstreamSources(scene, [
-      { sourceUrl: '   ', name: '空白' }
-    ])
+    const next = stageSceneWithUpstreamSources(scene, [{ sourceUrl: '   ', name: '空白' }])
     expect(next.layers).toHaveLength(0)
   })
 })

@@ -750,7 +750,6 @@ export type HarnessEvent =
   | { type: 'final'; text: string }
   | { type: 'done'; runId: string }
   | { type: 'error'; message: string }
-
   | {
       /**
        * Harness provider 报告的最新一次 LLM 请求的真实输入上下文 token。
@@ -846,9 +845,7 @@ export interface ExternalPluginManifest {
   version: string
   apiVersion: 1
   displayName: string
-  permissions?: Array<
-    'workspace.read' | 'workspace.write' | 'filesystem.read' | 'generation.run'
-  >
+  permissions?: Array<'workspace.read' | 'workspace.write' | 'filesystem.read' | 'generation.run'>
   contributions?: {
     toolbarItems?: WorkspaceToolbarItem[]
   }
@@ -1010,9 +1007,7 @@ export interface StudioApi {
 
   generateText: (input: GenerateTextInput) => Promise<GenerateTextResult>
   generateImage: (input: GenerateImageInput) => Promise<GenerateImageResult & { assetId?: string }>
-  generateVideo: (
-    input: GenerateVideoInput & { name?: string }
-  ) => Promise<GenerateVideoResult>
+  generateVideo: (input: GenerateVideoInput & { name?: string }) => Promise<GenerateVideoResult>
   generateSpeech: (input: GenerateSpeechInput) => Promise<GenerateSpeechResult>
   generateMusic: (input: GenerateMusicInput) => Promise<GenerateMusicAssetResult>
   generateModel3d: (input: GenerateModel3dInput) => Promise<GenerateModel3dResult>
@@ -1120,9 +1115,7 @@ export interface StudioApi {
   ) => () => void
 
   /** 订阅持久化视频任务状态 */
-  onVideoJobUpdated: (
-    callback: (job: import('./videoJob').VideoJobRecord) => void
-  ) => () => void
+  onVideoJobUpdated: (callback: (job: import('./videoJob').VideoJobRecord) => void) => () => void
 
   /** MCP：订阅主进程派发的工作流运行请求（渲染层受理后经 reportMcpTask 回报） */
   onMcpTaskRun: (callback: (payload: McpTaskRunPayload) => void) => () => void

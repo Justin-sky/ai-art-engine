@@ -6,13 +6,7 @@ import { useEditorKernel } from '../kernel'
 import { draftToAssetInfo, useDraftStore } from '../../stores/drafts'
 import { useProjectStore } from '../../stores/project'
 
-export type EditorPanelKind =
-  | 'asset'
-  | 'screenplay'
-  | 'canvas'
-  | 'world'
-  | 'beat'
-  | 'director'
+export type EditorPanelKind = 'asset' | 'screenplay' | 'canvas' | 'world' | 'beat' | 'director'
 
 export function usePanelTitles(dockApi: ShallowRef<DockviewApi | null>) {
   const project = useProjectStore()
@@ -31,14 +25,11 @@ export function usePanelTitles(dockApi: ShallowRef<DockviewApi | null>) {
     const asset = resolveEditorAsset(assetId)
     const prefix =
       kind === 'asset'
-        ? asset ? assetTypeLabel(asset.type) : t('asset.generic')
+        ? asset
+          ? assetTypeLabel(asset.type)
+          : t('asset.generic')
         : t(`studio.editor.${kind}`)
-    const title =
-      kind === 'screenplay'
-        ? prefix
-        : asset
-          ? `${prefix} · ${asset.name}`
-          : prefix
+    const title = kind === 'screenplay' ? prefix : asset ? `${prefix} · ${asset.name}` : prefix
     return isDraftAssetId(assetId) ? `${title} *` : title
   }
 
@@ -61,9 +52,7 @@ export function usePanelTitles(dockApi: ShallowRef<DockviewApi | null>) {
       (id) =>
         editor.documents.isDirty(id, true) ||
         editor.documents.sessions.value.some(
-          (session) =>
-            (session.id === id || session.id.startsWith(`${id}:`)) &&
-            session.dirty
+          (session) => (session.id === id || session.id.startsWith(`${id}:`)) && session.dirty
         )
     )
     return dirty && !base.endsWith(' *') ? `${base} *` : base
@@ -90,9 +79,7 @@ export function usePanelTitles(dockApi: ShallowRef<DockviewApi | null>) {
   watch(locale, apply)
   watch(
     () =>
-      editor.documents.sessions.value
-        .map((session) => `${session.id}:${session.status}`)
-        .join('|'),
+      editor.documents.sessions.value.map((session) => `${session.id}:${session.status}`).join('|'),
     apply
   )
 

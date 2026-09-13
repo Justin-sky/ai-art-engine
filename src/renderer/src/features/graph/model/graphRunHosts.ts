@@ -22,7 +22,7 @@ class GraphRunHostRegistry {
   }
 
   get(hostId: string | null | undefined): GraphRunHostApi | null {
-    return hostId ? this.hosts.get(hostId) ?? null : null
+    return hostId ? (this.hosts.get(hostId) ?? null) : null
   }
 
   /** 某资产编辑器下是否有节点图正在执行（含 script/asset 及 scope 后缀） */

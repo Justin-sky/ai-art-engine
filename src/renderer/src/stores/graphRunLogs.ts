@@ -146,8 +146,7 @@ export const useGraphRunLogsStore = defineStore('graphRunLogs', () => {
       message: input.message,
       errorCode: input.errorCode,
       durationMs: Math.max(0, endedAt - session.startedAt),
-      status:
-        input.status === 'done' ? 'done' : input.status === 'stopped' ? 'error' : 'error'
+      status: input.status === 'done' ? 'done' : input.status === 'stopped' ? 'error' : 'error'
     }
     replaceSession(input.runId, {
       ...session,

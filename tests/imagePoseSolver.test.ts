@@ -8,7 +8,13 @@ import type { ImagePoseBindBone, KeypointMap } from '@renderer/features/director
  * bind 即静止姿势：四肢沿 -Y，脊柱沿 +Y。
  */
 function buildBindBones(): ImagePoseBindBone[] {
-  const n = (name: string, parentName: string | null, x: number, y: number, z = 0): ImagePoseBindBone => ({
+  const n = (
+    name: string,
+    parentName: string | null,
+    x: number,
+    y: number,
+    z = 0
+  ): ImagePoseBindBone => ({
     name,
     parentName,
     position: { x, y, z },
@@ -202,14 +208,18 @@ describe('imagePoseSolver COCO17 → bonePose', () => {
       keypoints,
       minConfidence: 0.05
     })
-    const row = solved.segments.find(
-      (s) => s.side === 'l' && s.role === 'l_upperarm'
-    )
+    const row = solved.segments.find((s) => s.side === 'l' && s.role === 'l_upperarm')
     expect(row?.status).toBe('no-keypoints')
   })
 
   it('支持 L/R 侧别后缀/前缀的自定义骨骼命名（如 Arm_L / L_UpperArm）', () => {
-    const n = (name: string, parentName: string | null, x: number, y: number, z = 0): ImagePoseBindBone => ({
+    const n = (
+      name: string,
+      parentName: string | null,
+      x: number,
+      y: number,
+      z = 0
+    ): ImagePoseBindBone => ({
       name,
       parentName,
       position: { x, y, z },

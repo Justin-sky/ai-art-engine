@@ -134,8 +134,9 @@ describe('stripPanelsFromDockLayout', () => {
     }
 
     const next = stripPanelsFromDockLayout(data, () => false)
-    const leaf = (next.grid as { root: { data: Array<{ data: { views: string[]; activeView: string } }> } })
-      .root.data[0]
+    const leaf = (
+      next.grid as { root: { data: Array<{ data: { views: string[]; activeView: string } }> } }
+    ).root.data[0]
     expect(leaf.data.views).toEqual(['workspace'])
     expect(leaf.data.activeView).toBe('workspace')
   })
@@ -198,7 +199,9 @@ describe('sanitizeSidePanelCollapseFromLayoutData', () => {
       assets: { minimumWidth: 300 },
       inspector: { minimumWidth: 300 }
     })
-    expect((next.panels as { assets: { maximumWidth?: number } }).assets.maximumWidth).toBeUndefined()
+    expect(
+      (next.panels as { assets: { maximumWidth?: number } }).assets.maximumWidth
+    ).toBeUndefined()
     expect(
       (next.panels as { inspector: { maximumWidth?: number } }).inspector.maximumWidth
     ).toBeUndefined()

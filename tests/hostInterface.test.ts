@@ -73,7 +73,6 @@ describe('hostInterface sanitize', () => {
     })
     expect(fromParams.inputs[0]?.id).toBe('a')
     expect(fromParams.outputs[0]?.dataType).toBe('video')
-
   })
 
   it('unifies listHostInputPortDefs with default templates', () => {
@@ -89,18 +88,30 @@ describe('hostInterface sanitize', () => {
 
 describe('encapsulation', () => {
   function makeDoc(): GraphDocument {
-    const a = createNodeFromType('play.script', { x: 40, y: 40 }, {
-      title: 'A',
-      params: { text: 'hello' }
-    })
+    const a = createNodeFromType(
+      'play.script',
+      { x: 40, y: 40 },
+      {
+        title: 'A',
+        params: { text: 'hello' }
+      }
+    )
     a.id = 'n-a'
-    const b = createNodeFromType('prompt.optimize', { x: 260, y: 40 }, {
-      title: 'B'
-    })
+    const b = createNodeFromType(
+      'prompt.optimize',
+      { x: 260, y: 40 },
+      {
+        title: 'B'
+      }
+    )
     b.id = 'n-b'
-    const c = createNodeFromType('output.text', { x: 480, y: 40 }, {
-      title: 'C'
-    })
+    const c = createNodeFromType(
+      'output.text',
+      { x: 480, y: 40 },
+      {
+        title: 'C'
+      }
+    )
     c.id = 'n-c'
     return {
       nodes: [a, b, c],
@@ -131,12 +142,8 @@ describe('encapsulation', () => {
     expect(result.parentDocument.nodes.some((n) => n.id === result.hostNodeId)).toBe(true)
     expect(result.parentDocument.nodes.some((n) => n.id === 'n-b')).toBe(false)
     expect(result.innerDocument.nodes.some((n) => n.id === 'n-b')).toBe(true)
-    expect(
-      result.innerDocument.nodes.some((n) => n.typeId === 'graph.boundary.input')
-    ).toBe(true)
-    expect(
-      result.innerDocument.nodes.some((n) => n.typeId === 'graph.boundary.output')
-    ).toBe(true)
+    expect(result.innerDocument.nodes.some((n) => n.typeId === 'graph.boundary.input')).toBe(true)
+    expect(result.innerDocument.nodes.some((n) => n.typeId === 'graph.boundary.output')).toBe(true)
 
     const parentIn = result.parentDocument.edges.find((e) => e.target === result.hostNodeId)
     const parentOut = result.parentDocument.edges.find((e) => e.source === result.hostNodeId)
@@ -177,50 +184,51 @@ describe('encapsulation', () => {
     })
     expect(result.hostInterface.inputs.length).toBe(2)
     expect(result.hostInterface.outputs.length).toBe(2)
-    expect(result.hostInterface.inputs.map((p) => p.label)).toEqual([
-      '文本输入',
-      '文本输入 2'
-    ])
-    expect(result.hostInterface.outputs.map((p) => p.label)).toEqual([
-      '文本输出',
-      '文本输出 2'
-    ])
-    expect(result.innerDocument.nodes.filter((n) => n.id === 'm1' || n.id === 'm2')).toHaveLength(
-      2
-    )
+    expect(result.hostInterface.inputs.map((p) => p.label)).toEqual(['文本输入', '文本输入 2'])
+    expect(result.hostInterface.outputs.map((p) => p.label)).toEqual(['文本输出', '文本输出 2'])
+    expect(result.innerDocument.nodes.filter((n) => n.id === 'm1' || n.id === 'm2')).toHaveLength(2)
   })
 })
 
 describe('dynamic host ports', () => {
   it('reads ports from hostInterfaceSnapshot', () => {
-    const node = createAssetGraphNode(HOST_C, 'subgraph', 'Host', { x: 0, y: 0 }, {
-      assetHost: true,
-      hostInterfaceSnapshot: {
-        version: 1,
-        inputs: [
-          { id: 'in-a', label: 'A', dataType: 'text', multiple: true },
-          { id: 'in-b', label: 'B', dataType: 'image', multiple: true }
-        ],
-        outputs: [{ id: 'out-x', label: 'X', dataType: 'video', multiple: false }]
+    const node = createAssetGraphNode(
+      HOST_C,
+      'subgraph',
+      'Host',
+      { x: 0, y: 0 },
+      {
+        assetHost: true,
+        hostInterfaceSnapshot: {
+          version: 1,
+          inputs: [
+            { id: 'in-a', label: 'A', dataType: 'text', multiple: true },
+            { id: 'in-b', label: 'B', dataType: 'image', multiple: true }
+          ],
+          outputs: [{ id: 'out-x', label: 'X', dataType: 'video', multiple: false }]
+        }
       }
-    })
+    )
     const ports = getNodePorts(node)
-    expect(ports.filter((p) => p.direction === 'in').map((p) => p.id)).toEqual([
-      'in-a',
-      'in-b'
-    ])
+    expect(ports.filter((p) => p.direction === 'in').map((p) => p.id)).toEqual(['in-a', 'in-b'])
     expect(ports.filter((p) => p.direction === 'out').map((p) => p.id)).toEqual(['out-x'])
   })
 
   it('prunes incompatible edges after interface change', () => {
-    const host = createAssetGraphNode(HOST_C, 'subgraph', 'Host', { x: 200, y: 0 }, {
-      assetHost: true,
-      hostInterfaceSnapshot: {
-        version: 1,
-        inputs: [{ id: 'in-0', label: 'In', dataType: 'text', multiple: true }],
-        outputs: [{ id: 'out-0', label: 'Out', dataType: 'text', multiple: false }]
+    const host = createAssetGraphNode(
+      HOST_C,
+      'subgraph',
+      'Host',
+      { x: 200, y: 0 },
+      {
+        assetHost: true,
+        hostInterfaceSnapshot: {
+          version: 1,
+          inputs: [{ id: 'in-0', label: 'In', dataType: 'text', multiple: true }],
+          outputs: [{ id: 'out-0', label: 'Out', dataType: 'text', multiple: false }]
+        }
       }
-    })
+    )
     host.id = 'host'
     const src = createNodeFromType('note.text', { x: 0, y: 0 })
     src.id = 'src'
@@ -244,9 +252,13 @@ describe('dynamic host ports', () => {
 describe('boundary output mapping', () => {
   it('includes boundary outputs alongside regular output nodes', () => {
     const output = createNodeFromType('output.text', { x: 0, y: 0 })
-    const boundary = createNodeFromType('graph.boundary.output', { x: 200, y: 0 }, {
-      params: { hostBoundaryPort: { portId: 'out-0', dataType: 'text' } }
-    })
+    const boundary = createNodeFromType(
+      'graph.boundary.output',
+      { x: 200, y: 0 },
+      {
+        params: { hostBoundaryPort: { portId: 'out-0', dataType: 'text' } }
+      }
+    )
     const outputs = findAllOutputNodes({
       nodes: [output, boundary],
       edges: [],
@@ -338,16 +350,10 @@ describe('boundary output mapping', () => {
           params: { hostBoundaryPort: { portId: 'out', dataType: 'image' } }
         }
       ],
-      edges: [
-        { id: 'e1', source: 'gen', target: boutId, sourcePort: 'out', targetPort: 'in' }
-      ],
+      edges: [{ id: 'e1', source: 'gen', target: boutId, sourcePort: 'out', targetPort: 'in' }],
       viewport: { x: 0, y: 0, zoom: 1 }
     }
-    const mapped = mapHostBoundaryStatesToOutputs(
-      { [boutId]: { status: 'idle' } },
-      doc,
-      iface
-    )
+    const mapped = mapHostBoundaryStatesToOutputs({ [boutId]: { status: 'idle' } }, doc, iface)
     expect(mapped?.out).toEqual(
       expect.objectContaining({
         kind: 'image',
@@ -359,15 +365,7 @@ describe('boundary output mapping', () => {
 })
 
 describe('hostable assets as HDA', () => {
-  const hostable = [
-    'image',
-    'video',
-    'voice',
-    'screenplay',
-    'world',
-    'beat',
-    'subgraph'
-  ] as const
+  const hostable = ['image', 'video', 'voice', 'screenplay', 'world', 'beat', 'subgraph'] as const
 
   it('default hostInterface + ensureBoundary for every hostable type', () => {
     for (const type of hostable) {
@@ -393,17 +391,23 @@ describe('hostable assets as HDA', () => {
   it('host instance ports follow editable hostInterfaceSnapshot', () => {
     for (const type of ['image'] as const) {
       const iface = defaultHostInterfaceForAssetType(type)
-      const node = createAssetGraphNode(HOST_C, type, 'Host', { x: 0, y: 0 }, {
-        assetHost: true,
-        hostInterfaceSnapshot: {
-          version: 1,
-          inputs: [
-            ...iface.inputs,
-            { id: 'extra-in', label: 'Extra', dataType: 'text', multiple: true }
-          ],
-          outputs: iface.outputs
+      const node = createAssetGraphNode(
+        HOST_C,
+        type,
+        'Host',
+        { x: 0, y: 0 },
+        {
+          assetHost: true,
+          hostInterfaceSnapshot: {
+            version: 1,
+            inputs: [
+              ...iface.inputs,
+              { id: 'extra-in', label: 'Extra', dataType: 'text', multiple: true }
+            ],
+            outputs: iface.outputs
+          }
         }
-      })
+      )
       const inIds = getNodePorts(node)
         .filter((p) => p.direction === 'in')
         .map((p) => p.id)

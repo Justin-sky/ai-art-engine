@@ -122,13 +122,7 @@ const E_COMFY_SPEECH_FAILED = defErr<{ detail: string }>(
 )
 
 type ComfyJobStatus =
-  | 'queued'
-  | 'running'
-  | 'succeeded'
-  | 'canceling'
-  | 'canceled'
-  | 'failed'
-  | 'expired'
+  'queued' | 'running' | 'succeeded' | 'canceling' | 'canceled' | 'failed' | 'expired'
 
 type ComfyJobOutput = {
   type?: string
@@ -264,7 +258,15 @@ function userdataFileRequests(rel: string, origin: string): Array<{ url: string 
 function userdataCandidates(modelId: string): string[] {
   const id = modelId.trim().replace(/^\/+/, '')
   const withJson = id.endsWith('.json') ? id : `${id}.json`
-  return [...new Set([withJson, id, `workflows/${withJson}`, `workflows/${id}`, `aiartengine/${withJson}`])]
+  return [
+    ...new Set([
+      withJson,
+      id,
+      `workflows/${withJson}`,
+      `workflows/${id}`,
+      `aiartengine/${withJson}`
+    ])
+  ]
 }
 
 function isUsableWorkflowId(id: string): boolean {
@@ -301,7 +303,11 @@ function collectUserdataJsonFiles(raw: unknown, dirPrefix = ''): UserdataWorkflo
           : ''
     const rel = joinUserdataRel(dirPrefix, path)
     if (!rel.toLowerCase().endsWith('.json')) continue
-    const id = rel.replace(/\.json$/i, '').split('/').pop() ?? ''
+    const id =
+      rel
+        .replace(/\.json$/i, '')
+        .split('/')
+        .pop() ?? ''
     if (!isUsableWorkflowId(id) || seen.has(id)) continue
     seen.add(id)
     files.push({ id, rel })
@@ -523,7 +529,9 @@ async function uploadReferenceMedia(
         '/api/v2/assets',
         retry
       )
-      names.push(data?.file_path?.trim() || data?.name?.trim() || data?.id?.trim() || media.filename)
+      names.push(
+        data?.file_path?.trim() || data?.name?.trim() || data?.id?.trim() || media.filename
+      )
     }
   }
   return names
@@ -548,19 +556,13 @@ function pollingPath(job: ComfyJob): string {
   return job.urls?.self?.trim() || `/api/v2/jobs/${job.id}`
 }
 
-async function getJob(
-  provider: ModelProviderInstance,
-  path: string
-): Promise<ComfyJob> {
+async function getJob(provider: ModelProviderInstance, path: string): Promise<ComfyJob> {
   const client = createComfyUiHttpClient(provider)
   const { data } = await client.get<ComfyJob>(path)
   return data
 }
 
-async function waitForJob(
-  provider: ModelProviderInstance,
-  job: ComfyJob
-): Promise<ComfyJob> {
+async function waitForJob(provider: ModelProviderInstance, job: ComfyJob): Promise<ComfyJob> {
   let current = job
   const path = pollingPath(current)
   for (let i = 0; i < IMAGE_POLL_MAX_ATTEMPTS; i++) {
@@ -815,7 +817,10 @@ export const comfyUiAdapter: ModelProviderAdapter = {
       const current = await getJob(provider, path)
       const status = mapJobStatus(current.status)
       const downloadUrl = outputUrls(current, 'video')[0]
-      const error = status === 'failed' ? current.error?.message || fail(E_COMFY_VIDEO_FAILED).message : undefined
+      const error =
+        status === 'failed'
+          ? current.error?.message || fail(E_COMFY_VIDEO_FAILED).message
+          : undefined
       return { status, progress: jobProgress(current, status), error, downloadUrl }
     } catch (err) {
       throw fail(PROVIDER_ERRORS.actionFailed, {
@@ -843,9 +848,8 @@ export const comfyUiAdapter: ModelProviderAdapter = {
       const client = createComfyUiLongClient(provider)
       const { data, headers } = await client.get<ArrayBuffer>(url, { responseType: 'arraybuffer' })
       const contentType = String(headers['content-type'] ?? '')
-      const format: 'mp3' | 'pcm' = contentType.includes('wav') || contentType.includes('pcm')
-        ? 'pcm'
-        : 'mp3'
+      const format: 'mp3' | 'pcm' =
+        contentType.includes('wav') || contentType.includes('pcm') ? 'pcm' : 'mp3'
       const ext = format === 'pcm' ? 'wav' : 'mp3'
       const tmpDir = join(process.cwd(), '.aiartengine-tmp', 'tts')
       if (!existsSync(tmpDir)) mkdirSync(tmpDir, { recursive: true })

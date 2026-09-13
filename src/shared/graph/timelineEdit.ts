@@ -293,7 +293,11 @@ export function applyTimelineEdits(
       }
       const durationSec = toFinite(draft.durationSec)
       if (durationSec === null || durationSec <= 0) {
-        failures.push({ op: opLabel, code: 'invalid-duration', target: describeDraft(draft, index) })
+        failures.push({
+          op: opLabel,
+          code: 'invalid-duration',
+          target: describeDraft(draft, index)
+        })
         continue
       }
       const explicitStart = toFinite(draft.startSec)
@@ -340,12 +344,20 @@ export function applyTimelineEdits(
 
     if (operation.op === 'replaceRange') {
       if (!isTrackKind(operation.track)) {
-        failures.push({ op: 'replaceRange', code: 'invalid-track', target: String(operation.track) })
+        failures.push({
+          op: 'replaceRange',
+          code: 'invalid-track',
+          target: String(operation.track)
+        })
         continue
       }
       dropOverlapping(operation.track, operation.range)
       // 替换进来的草稿必须自带 startSec：轨尾语义在这里会让新内容跑到整轨末尾去
-      insertDrafts((operation.clips ?? []).map((clip) => ({ ...clip, startSec: clip.startSec ?? 0 })), 0, 'replaceRange')
+      insertDrafts(
+        (operation.clips ?? []).map((clip) => ({ ...clip, startSec: clip.startSec ?? 0 })),
+        0,
+        'replaceRange'
+      )
       continue
     }
 

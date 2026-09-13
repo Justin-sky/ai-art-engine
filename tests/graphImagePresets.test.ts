@@ -28,9 +28,7 @@ describe('image instruction presets', () => {
     ])
     for (const item of presets) {
       expect(item.body.trim().length).toBeGreaterThan(20)
-      expect(item.titleKey).toMatch(
-        /^graph\.inspector\.generate\.presets\.image\./
-      )
+      expect(item.titleKey).toMatch(/^graph\.inspector\.generate\.presets\.image\./)
     }
   })
 })

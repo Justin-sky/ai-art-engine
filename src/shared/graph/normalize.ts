@@ -4,10 +4,7 @@ import { sanitizeGraphGroups } from './groups'
 import { canConnectNodes } from './ports'
 import { inferNodeTypeId, resolveNodeType } from './registry'
 import type { GraphAddScope } from './registry'
-import {
-  ensureDefaultGraphFromTemplate,
-  resolveDefaultGraphTemplate
-} from './defaultGraph'
+import { ensureDefaultGraphFromTemplate, resolveDefaultGraphTemplate } from './defaultGraph'
 import {
   assetTypeToGraphScope,
   createDefaultScopedGraph,
@@ -24,25 +21,16 @@ import type {
   GraphPersistedRunState,
   NormalizeGraphOptions
 } from './types'
-import {
-  graphOutputNodeIdForType,
-  isCanonicalGraphOutputNodeId
-} from './types'
+import { graphOutputNodeIdForType, isCanonicalGraphOutputNodeId } from './types'
 import { syncNodeAssetRefFields } from '../assetRef'
 import { sanitizePersistedRunStates } from './runStatePersist'
 import { stripHostInputSlotNodes, type HostInputSlotSpec } from './hostInput'
 import { isAssetRefInputHostType } from './nodeRole'
-import {
-  defaultHostInterfaceForAssetType,
-  type HostInterfaceDocument
-} from './hostInterface'
+import { defaultHostInterfaceForAssetType, type HostInterfaceDocument } from './hostInterface'
 import { ensureBoundaryProxyNodes } from './ensureBoundary'
 import { inferElementWorkflowHostInterface } from './worldElementParams'
 
-export {
-  ASSET_DIRECTOR_OUTPUT_TITLE,
-  ASSET_SCREENPLAY_OUTPUT_TITLE
-} from './scopes'
+export { ASSET_DIRECTOR_OUTPUT_TITLE, ASSET_SCREENPLAY_OUTPUT_TITLE } from './scopes'
 
 export function createDefaultGraph(_options?: NormalizeGraphOptions): GraphDocument {
   // 默认图：仅加工链，不再插入 classic output.*
@@ -131,11 +119,7 @@ function remapLegacyMotionSourcePort(source: GraphNode, sourcePort?: string): st
   return sourcePort
 }
 
-function sanitizeEdges(
-  nodes: GraphNode[],
-  edges: GraphEdge[],
-  scope: GraphAddScope
-): GraphEdge[] {
+function sanitizeEdges(nodes: GraphNode[], edges: GraphEdge[], scope: GraphAddScope): GraphEdge[] {
   const byId = new Map(nodes.map((n) => [n.id, n]))
   const seen = new Set<string>()
   const next: GraphEdge[] = []
@@ -144,11 +128,13 @@ function sanitizeEdges(
     const target = byId.get(edge.target)
     if (!source || !target) continue
     const sourcePort = remapLegacyMotionSourcePort(source, edge.sourcePort)
-    if (!canConnectNodes(source, target, {
-      scope,
-      sourcePort,
-      targetPort: edge.targetPort
-    })) {
+    if (
+      !canConnectNodes(source, target, {
+        scope,
+        sourcePort,
+        targetPort: edge.targetPort
+      })
+    ) {
       continue
     }
     const key = `${edge.source}:${sourcePort}->${edge.target}:${edge.targetPort ?? 'in'}`
@@ -318,7 +304,11 @@ export function normalizeScopedGraph(
     workingStates = strippedSlots.runStates
   }
 
-  let result = finalizeGraph(nodes, { ...doc, edges: workingEdges, runStates: workingStates }, scope)
+  let result = finalizeGraph(
+    nodes,
+    { ...doc, edges: workingEdges, runStates: workingStates },
+    scope
+  )
   if (scope === 'elementWorkflow' || isAssetRefInputHostType(options?.assetType)) {
     result = ensureBoundaryProxyNodes(result, hostInterface())
   }

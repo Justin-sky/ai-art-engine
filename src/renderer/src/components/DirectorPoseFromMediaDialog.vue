@@ -44,7 +44,7 @@
           type="search"
           spellcheck="false"
           :placeholder="t('director.stage.poseMediaSearchPlaceholder')"
-        >
+        />
         <div class="pm-library-list">
           <button
             v-for="asset in filteredAssets"
@@ -59,17 +59,19 @@
               v-if="thumbUrls[asset.relativePath]"
               :src="thumbUrls[asset.relativePath]"
               :alt="asset.name"
-            >
-            <span
-              v-else
-              class="pm-asset-fallback"
-            >{{ asset.type === 'video' ? t('director.stage.poseMediaKindVideoShort') : t('director.stage.poseMediaKindImageShort') }}</span>
-            <span class="pm-asset-kind">{{ asset.type === 'video' ? t('director.stage.poseMediaKindVideoShort') : t('director.stage.poseMediaKindImageShort') }}</span>
+            />
+            <span v-else class="pm-asset-fallback">{{
+              asset.type === 'video'
+                ? t('director.stage.poseMediaKindVideoShort')
+                : t('director.stage.poseMediaKindImageShort')
+            }}</span>
+            <span class="pm-asset-kind">{{
+              asset.type === 'video'
+                ? t('director.stage.poseMediaKindVideoShort')
+                : t('director.stage.poseMediaKindImageShort')
+            }}</span>
           </button>
-          <p
-            v-if="!filteredAssets.length"
-            class="pm-library-empty"
-          >
+          <p v-if="!filteredAssets.length" class="pm-library-empty">
             {{ t('director.stage.poseMediaNoMedia') }}
           </p>
         </div>
@@ -101,7 +103,11 @@
                 :disabled="grabbingFrame"
                 @click="grabVideoFrame"
               >
-                {{ grabbingFrame ? t('director.stage.poseMediaGrabbingFrame') : t('director.stage.poseMediaGrabVideoFrame') }}
+                {{
+                  grabbingFrame
+                    ? t('director.stage.poseMediaGrabbingFrame')
+                    : t('director.stage.poseMediaGrabVideoFrame')
+                }}
               </button>
               <p class="pm-video-hint">
                 {{ t('director.stage.poseMediaVideoHint') }}
@@ -117,7 +123,7 @@
               :src="previewUrl"
               :alt="chosen?.name ?? ''"
               class="pm-preview-img"
-            >
+            />
             <svg
               v-if="result && overlayW > 0"
               class="pm-overlay"
@@ -151,17 +157,11 @@
             </svg>
           </div>
 
-          <div
-            v-if="result && !result.skeletons.length"
-            class="pm-status-line warn"
-          >
+          <div v-if="result && !result.skeletons.length" class="pm-status-line warn">
             {{ t('director.stage.poseMediaNoPerson') }}
           </div>
 
-          <div
-            v-if="result && result.skeletons.length"
-            class="pm-person-chips"
-          >
+          <div v-if="result && result.skeletons.length" class="pm-person-chips">
             <span class="pm-person-label">{{ t('director.stage.poseMediaPersonLabel') }}</span>
             <button
               v-for="(_person, pIndex) in result.skeletons"
@@ -176,27 +176,16 @@
           </div>
         </template>
 
-        <div
-          v-if="frameSource && videoMode"
-          class="pm-back-video-row"
-        >
-          <button
-            type="button"
-            class="pm-ghost-btn"
-            @click="backToVideo"
-          >
+        <div v-if="frameSource && videoMode" class="pm-back-video-row">
+          <button type="button" class="pm-ghost-btn" @click="backToVideo">
             {{ t('director.stage.poseMediaBackToVideo') }}
           </button>
-          <span
-            v-if="frameTimeSec !== null"
-            class="pm-frame-time"
-          >{{ t('director.stage.poseMediaFrameTime', { sec: frameTimeSec.toFixed(2) }) }}</span>
+          <span v-if="frameTimeSec !== null" class="pm-frame-time">{{
+            t('director.stage.poseMediaFrameTime', { sec: frameTimeSec.toFixed(2) })
+          }}</span>
         </div>
 
-        <div
-          v-if="chosen"
-          class="pm-controls"
-        >
+        <div v-if="chosen" class="pm-controls">
           <label class="pm-control-field">
             <span class="pm-control-label">{{ t('director.stage.poseMediaModelLabel') }}</span>
             <select
@@ -205,32 +194,21 @@
               :disabled="!poseModels.length || detecting || applying"
               @change="onPoseModelPicked"
             >
-              <option
-                v-if="!poseModels.length"
-                value=""
-              >{{ t('director.stage.poseMediaNoPoseModel') }}</option>
-              <option
-                v-for="model in poseModels"
-                :key="model.id"
-                :value="model.id"
-              >{{ model.id }}</option>
+              <option v-if="!poseModels.length" value="">
+                {{ t('director.stage.poseMediaNoPoseModel') }}
+              </option>
+              <option v-for="model in poseModels" :key="model.id" :value="model.id">
+                {{ model.id }}
+              </option>
             </select>
           </label>
 
           <label class="pm-check">
-            <input
-              v-model="flip"
-              type="checkbox"
-              :disabled="applying"
-            >
+            <input v-model="flip" type="checkbox" :disabled="applying" />
             <span>{{ t('director.stage.poseMediaFlip') }}</span>
           </label>
           <label class="pm-check">
-            <input
-              v-model="driveTorso"
-              type="checkbox"
-              :disabled="applying"
-            >
+            <input v-model="driveTorso" type="checkbox" :disabled="applying" />
             <span>{{ t('director.stage.poseMediaDriveTorso') }}</span>
           </label>
 
@@ -241,21 +219,17 @@
               :disabled="!canDetect || detecting || applying"
               @click="detectPose"
             >
-              {{ detecting ? t('director.stage.poseMediaDetecting') : t('director.stage.poseMediaDetect') }}
+              {{
+                detecting
+                  ? t('director.stage.poseMediaDetecting')
+                  : t('director.stage.poseMediaDetect')
+              }}
             </button>
-            <button
-              v-if="yoloError"
-              type="button"
-              class="pm-link-btn"
-              @click="refreshYoloStatus"
-            >
+            <button v-if="yoloError" type="button" class="pm-link-btn" @click="refreshYoloStatus">
               {{ t('director.stage.poseMediaRefreshYolo') }}
             </button>
           </div>
-          <p
-            v-if="bindBoneCount === 0"
-            class="pm-inline-warn"
-          >
+          <p v-if="bindBoneCount === 0" class="pm-inline-warn">
             {{ t('director.stage.poseMediaErrorNoBones') }}
           </p>
         </div>
@@ -264,12 +238,9 @@
 
     <template #footer>
       <div class="pm-footer">
-        <span
-          v-if="message"
-          class="pm-footer-msg"
-          :class="messageKind"
-          :title="message"
-        >{{ message }}</span>
+        <span v-if="message" class="pm-footer-msg" :class="messageKind" :title="message">{{
+          message
+        }}</span>
         <div class="pm-footer-actions">
           <button
             type="button"
@@ -277,7 +248,11 @@
             :disabled="!applied || savingPreset"
             @click="saveAsPreset"
           >
-            {{ savingPreset ? t('director.stage.poseMediaSavingPreset') : t('director.stage.poseMediaSavePreset') }}
+            {{
+              savingPreset
+                ? t('director.stage.poseMediaSavingPreset')
+                : t('director.stage.poseMediaSavePreset')
+            }}
           </button>
           <button
             type="button"
@@ -285,7 +260,13 @@
             :disabled="!canApply || applying"
             @click="applyPose"
           >
-            {{ applying ? t('director.stage.poseMediaApplying') : (applied ? t('director.stage.poseMediaAppliedShort') : t('director.stage.poseMediaApply')) }}
+            {{
+              applying
+                ? t('director.stage.poseMediaApplying')
+                : applied
+                  ? t('director.stage.poseMediaAppliedShort')
+                  : t('director.stage.poseMediaApply')
+            }}
           </button>
         </div>
       </div>
@@ -632,7 +613,11 @@ async function chooseAsset(asset: AssetInfo): Promise<void> {
   }
 }
 
-async function rawToObjectUrl(raw: { width: number; height: number; rgba: Uint8Array }): Promise<string> {
+async function rawToObjectUrl(raw: {
+  width: number
+  height: number
+  rgba: Uint8Array
+}): Promise<string> {
   const canvas = document.createElement('canvas')
   canvas.width = raw.width
   canvas.height = raw.height
@@ -640,7 +625,10 @@ async function rawToObjectUrl(raw: { width: number; height: number; rgba: Uint8A
   if (!ctx) throw new Error('PoseFromMedia: canvas 2d context unavailable')
   ctx.putImageData(new ImageData(new Uint8ClampedArray(raw.rgba), raw.width, raw.height), 0, 0)
   const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('PoseFromMedia: PNG encode failed'))), 'image/png')
+    canvas.toBlob(
+      (b) => (b ? resolve(b) : reject(new Error('PoseFromMedia: PNG encode failed'))),
+      'image/png'
+    )
   })
   const url = URL.createObjectURL(blob)
   ownObjectUrls.push(url)
@@ -655,7 +643,11 @@ async function grabVideoFrame(): Promise<void> {
   try {
     const nat = el.videoWidth || 1280
     const width = Math.max(320, Math.min(1280, nat))
-    const frames = await window.studio.grabVideoFramesAtTimestamps(chosen.value.relativePath, [timeSec], { width })
+    const frames = await window.studio.grabVideoFramesAtTimestamps(
+      chosen.value.relativePath,
+      [timeSec],
+      { width }
+    )
     const frame = frames[0]
     if (!frame) {
       setMessage(t('director.stage.poseMediaErrorFrameEmpty'), 'error')
@@ -726,10 +718,7 @@ async function detectPose(): Promise<void> {
     if (!r.skeletons.length) {
       setMessage(t('director.stage.poseMediaNoPerson'), 'warn')
     } else {
-      setMessage(
-        t('director.stage.poseMediaDetectedPeople', { count: r.skeletons.length }),
-        'ok'
-      )
+      setMessage(t('director.stage.poseMediaDetectedPeople', { count: r.skeletons.length }), 'ok')
     }
   } catch (err) {
     console.error('[poseFromMedia] pose detect failed:', err)
@@ -750,7 +739,9 @@ function describeErr(err: unknown): string {
 const overlayW = computed(() => result.value?.width ?? 0)
 const overlayH = computed(() => result.value?.height ?? 0)
 
-function personPoints(skel: readonly YoloSkeletonPoint[]): Array<{ index: number; x: number; y: number }> {
+function personPoints(
+  skel: readonly YoloSkeletonPoint[]
+): Array<{ index: number; x: number; y: number }> {
   const out: Array<{ index: number; x: number; y: number }> = []
   for (let i = 0; i < skel.length; i++) {
     const p = skel[i]
@@ -782,7 +773,7 @@ function personLines(
 }
 
 function onStageClick(event: MouseEvent): void {
-  const svg = (event.currentTarget as SVGElement | null)
+  const svg = event.currentTarget as SVGElement | null
   const r = result.value
   if (!r || !svg || !r.skeletons.length) return
   const rect = svg.getBoundingClientRect()
@@ -844,7 +835,10 @@ async function applyPose(): Promise<void> {
     })
     if (!solved.drivenBones.length) {
       const stat = summarizeSolveResult(solved)
-      setMessage(t('director.stage.poseMediaSolveEmpty', { ok: stat.ok, total: stat.total }), 'warn')
+      setMessage(
+        t('director.stage.poseMediaSolveEmpty', { ok: stat.ok, total: stat.total }),
+        'warn'
+      )
       return
     }
     const okCount = summarizeSolveResult(solved).ok

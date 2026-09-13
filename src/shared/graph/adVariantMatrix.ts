@@ -468,9 +468,7 @@ export const AD_VARIANT_PRESETS: readonly AdVariantPresetDef[] = [
 ] as const
 
 /** 某分组下的预设（保持 AD_VARIANT_PRESETS 顺序） */
-export function listAdVariantPresetsForGroup(
-  group: AdVariantPresetGroup
-): AdVariantPresetDef[] {
+export function listAdVariantPresetsForGroup(group: AdVariantPresetGroup): AdVariantPresetDef[] {
   return AD_VARIANT_PRESETS.filter((item) => item.group === group)
 }
 

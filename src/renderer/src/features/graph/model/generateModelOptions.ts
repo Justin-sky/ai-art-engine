@@ -34,7 +34,8 @@ function resolveModelOptionLabel(
   const cachedName = config.catalog?.[modelId]?.name?.trim()
   const display = cachedName || providerModelDisplayName(provider.providerKind, modelId)
   const providerLabel = provider.label.trim()
-  if (!providerLabel || display.toLowerCase().startsWith(providerLabel.toLowerCase())) return display
+  if (!providerLabel || display.toLowerCase().startsWith(providerLabel.toLowerCase()))
+    return display
   return `${providerLabel} · ${display}`
 }
 
@@ -59,11 +60,7 @@ export function buildModelOptions(
     if (!provider.apiKey.trim() && !allowsEmptyApiKey(provider)) continue
     // 本地服务仅文本（多模态理解可在文本节点传图）
     if (isVllmProvider(provider) && modality !== 'text' && modality !== 'video') continue
-    if (
-      isLocalOpenAiProvider(provider) &&
-      !isVllmProvider(provider) &&
-      modality !== 'text'
-    ) {
+    if (isLocalOpenAiProvider(provider) && !isVllmProvider(provider) && modality !== 'text') {
       continue
     }
     // 声音（audio）：火山方舟 voice_design / MiniMax 音色设计；排除 OpenRouter 等
@@ -89,11 +86,7 @@ export function buildModelOptions(
       continue
     }
     // 魔塔：文本 + 图片
-    if (
-      provider.providerKind === 'modelscope' &&
-      modality !== 'text' &&
-      modality !== 'image'
-    ) {
+    if (provider.providerKind === 'modelscope' && modality !== 'text' && modality !== 'image') {
       continue
     }
     // OpenAI：仅文本 + 图片
@@ -173,10 +166,7 @@ export function pickDefaultModelKey(
   return options[0]?.key ?? ''
 }
 
-export function preferredModelKey(
-  providerInstanceId?: string,
-  model?: string
-): string {
+export function preferredModelKey(providerInstanceId?: string, model?: string): string {
   if (!providerInstanceId || !model) return ''
   return modelKey(providerInstanceId, model)
 }
@@ -184,8 +174,10 @@ export function preferredModelKey(
 export type GenerateModelModality = 'text' | 'image' | 'video' | 'audio' | 'model3d'
 
 /** 打开编辑窗时会连打 getSettings；短缓存避免同一次打开多 Dialog 重复 IPC */
-let settingsCache: { at: number; value: Awaited<ReturnType<typeof window.studio.getSettings>> } | null =
-  null
+let settingsCache: {
+  at: number
+  value: Awaited<ReturnType<typeof window.studio.getSettings>>
+} | null = null
 const SETTINGS_CACHE_TTL_MS = 15_000
 
 export function invalidateGenerateModelSettingsCache(): void {

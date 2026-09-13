@@ -10,11 +10,8 @@ function event(partial: {
   return {
     position: partial.position,
     kind: partial.kind,
-    group: partial.groupPanels
-      ? { panels: partial.groupPanels.map((id) => ({ id })) }
-      : undefined,
-    getData: () =>
-      partial.panelId === undefined ? undefined : { panelId: partial.panelId }
+    group: partial.groupPanels ? { panels: partial.groupPanels.map((id) => ({ id })) } : undefined,
+    getData: () => (partial.panelId === undefined ? undefined : { panelId: partial.panelId })
   }
 }
 
@@ -61,9 +58,7 @@ describe('shouldPreventSidePanelOverlay', () => {
       )
     ).toBe(true)
     expect(
-      shouldPreventSidePanelOverlay(
-        event({ panelId: 'assets', position: 'left', kind: 'edge' })
-      )
+      shouldPreventSidePanelOverlay(event({ panelId: 'assets', position: 'left', kind: 'edge' }))
     ).toBe(true)
   })
 })

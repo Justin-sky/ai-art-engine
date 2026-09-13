@@ -1,10 +1,6 @@
 import * as THREE from 'three'
 import type { DirectorIkChainSpec, DirectorIkChainSlotId } from '@shared/domain'
-import {
-  collectSkinningBones,
-  isAuxiliaryPoseBone,
-  normalizeBoneName
-} from './skeletonRetarget'
+import { collectSkinningBones, isAuxiliaryPoseBone, normalizeBoneName } from './skeletonRetarget'
 
 export type IkChainSlot = DirectorIkChainSlotId
 
@@ -37,10 +33,14 @@ const AUTO_SLOT_HINTS: AutoSlotHint[] = [
 function isEffectorKey(key: string, kind: 'hand' | 'foot'): boolean {
   if (kind === 'hand') {
     if (/thumb|index|middle|ring|pinky|finger/.test(key)) return false
-    return /(^|[^a-z])(hand|wrist)([^a-z]|$)/.test(key) || key.endsWith('hand') || key.endsWith('wrist')
+    return (
+      /(^|[^a-z])(hand|wrist)([^a-z]|$)/.test(key) || key.endsWith('hand') || key.endsWith('wrist')
+    )
   }
   if (/toe|ball/.test(key)) return false
-  return /(^|[^a-z])(foot|ankle)([^a-z]|$)/.test(key) || key.endsWith('foot') || key.endsWith('ankle')
+  return (
+    /(^|[^a-z])(foot|ankle)([^a-z]|$)/.test(key) || key.endsWith('foot') || key.endsWith('ankle')
+  )
 }
 
 function sideOfKey(key: string): 'left' | 'right' | null {

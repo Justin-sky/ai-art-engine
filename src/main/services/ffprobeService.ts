@@ -37,9 +37,7 @@ export function parseKeyframeTimes(csv: string): number[] {
  * `FFPROBE_PATH` > 随包内置 `<resources>/ffmpeg/` > 应用私有安装目录 > 系统 PATH。
  * 无 ffprobe 或解析失败时返回 null（调用方回退逐帧生成）。
  */
-export async function detectVideoKeyframes(
-  fileAbs: string
-): Promise<number[] | null> {
+export async function detectVideoKeyframes(fileAbs: string): Promise<number[] | null> {
   const bin = findFfprobeBin()
   try {
     const { stdout } = await execFileAsync(

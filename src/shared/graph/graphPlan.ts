@@ -4,13 +4,7 @@ import { normalizeScopedGraph } from './normalize'
 import { canConnectNodes, getNodePorts } from './ports'
 import { listAddableNodeTypes, type NodeTypeDefinition } from './registry'
 import type { GraphAddScope } from './scopes'
-import type {
-  GraphDocument,
-  GraphEdge,
-  GraphNode,
-  GraphNodeParams,
-  GraphNodeTypeId
-} from './types'
+import type { GraphDocument, GraphEdge, GraphNode, GraphNodeParams, GraphNodeTypeId } from './types'
 import { fail } from '@shared/errors/appError'
 import { SHARED_ERRORS } from '../errors/catalog'
 
@@ -166,9 +160,13 @@ export function buildGraphPlanPreview(plan: GraphPlan): GraphPlanPreview {
   }
 }
 
-export function buildGraphPlanCatalog(scope: GraphAddScope = 'subgraphAsset'): GraphPlanCatalogEntry[] {
+export function buildGraphPlanCatalog(
+  scope: GraphAddScope = 'subgraphAsset'
+): GraphPlanCatalogEntry[] {
   return listAddableNodeTypes(scope)
-    .filter((def) => def.typeId !== 'graph.boundary.input' && def.typeId !== 'graph.boundary.output')
+    .filter(
+      (def) => def.typeId !== 'graph.boundary.input' && def.typeId !== 'graph.boundary.output'
+    )
     .map((def) => ({
       typeId: def.typeId,
       label: def.label,
@@ -316,9 +314,7 @@ export function materializeGraphPlan(
 ): MaterializeGraphPlanResult {
   const scope = options.scope ?? 'subgraphAsset'
   const warnings: string[] = []
-  const addable = new Map(
-    listAddableNodeTypes(scope).map((def) => [def.typeId, def] as const)
-  )
+  const addable = new Map(listAddableNodeTypes(scope).map((def) => [def.typeId, def] as const))
 
   const keyToId = new Map<string, string>()
   const nodes: GraphNode[] = []
@@ -344,13 +340,17 @@ export function materializeGraphPlan(
         `节点「${key}」(${spec.typeId}) 未声明参数 ${dropped.join(', ')}，已忽略并回落默认值`
       )
     }
-    const node = createNodeFromType(spec.typeId as GraphNodeTypeId, {
-      x: col * 280,
-      y: 80
-    }, {
-      title: spec.title?.trim() || undefined,
-      params
-    })
+    const node = createNodeFromType(
+      spec.typeId as GraphNodeTypeId,
+      {
+        x: col * 280,
+        y: 80
+      },
+      {
+        title: spec.title?.trim() || undefined,
+        params
+      }
+    )
     keyToId.set(key, node.id)
     nodes.push(node)
     col += 1

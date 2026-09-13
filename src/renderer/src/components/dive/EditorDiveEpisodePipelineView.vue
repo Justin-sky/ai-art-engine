@@ -3,75 +3,64 @@
     <div class="pipeline-header">
       <div class="pipeline-title">
         <span class="title-text">{{ assetTitle }}</span>
-        <span
-          class="step-chip"
-          :title="stateStepTitle"
-        >{{ t('divePipeline.episode.header.currentStep') }}{{ stateStepLabel }}</span>
+        <span class="step-chip" :title="stateStepTitle"
+          >{{ t('divePipeline.episode.header.currentStep') }}{{ stateStepLabel }}</span
+        >
       </div>
       <div class="header-actions">
-        <span
-          v-if="runningCount"
-          class="busy-chip"
-        >{{ t('divePipeline.episode.header.busyTasks') }}</span>
+        <span v-if="runningCount" class="busy-chip">{{
+          t('divePipeline.episode.header.busyTasks')
+        }}</span>
         <button
           class="ghost-button"
           type="button"
           :disabled="!lastPipelineRunId"
-          :title="lastPipelineRunId ? t('divePipeline.episode.header.traceOpen') : t('divePipeline.episode.header.traceNone')"
+          :title="
+            lastPipelineRunId
+              ? t('divePipeline.episode.header.traceOpen')
+              : t('divePipeline.episode.header.traceNone')
+          "
           @click="openPipelineLog"
         >
           {{ t('divePipeline.episode.header.viewTrace') }}
         </button>
-        <button
-          class="ghost-button"
-          type="button"
-          :disabled="refreshing"
-          @click="loadAll"
-        >
-          {{ refreshing ? t('divePipeline.episode.header.refreshing') : t('divePipeline.episode.header.refresh') }}
+        <button class="ghost-button" type="button" :disabled="refreshing" @click="loadAll">
+          {{
+            refreshing
+              ? t('divePipeline.episode.header.refreshing')
+              : t('divePipeline.episode.header.refresh')
+          }}
         </button>
       </div>
     </div>
 
-    <div
-      v-if="headerFailReason"
-      class="fail-row"
-    >
-      <span
-        class="fail-chip"
-        :title="t('divePipeline.episode.header.failReasonTitle')"
-      >
+    <div v-if="headerFailReason" class="fail-row">
+      <span class="fail-chip" :title="t('divePipeline.episode.header.failReasonTitle')">
         {{ t('divePipeline.episode.header.failPrefix') }}{{ headerFailReason }}
       </span>
     </div>
 
-    <div
-      v-if="!graphDoc"
-      class="empty-hint"
-    >
+    <div v-if="!graphDoc" class="empty-hint">
       {{ t('divePipeline.episode.empty.noGraph') }}
     </div>
 
-    <div
-      v-else
-      class="pipeline-body"
-      :style="pipelineBodyStyle"
-    >
+    <div v-else class="pipeline-body" :style="pipelineBodyStyle">
       <!-- 左：节拍拆解表 -->
       <section class="panel beats-panel">
         <div class="panel-head">
           <h3>
             {{ t('divePipeline.episode.panel.beats') }}
-            <span
-              v-if="reviewResult('breakdown') === 'PASS'"
-              class="pass-mark"
-            >{{ t('divePipeline.episode.state.passedMark') }}</span>
+            <span v-if="reviewResult('breakdown') === 'PASS'" class="pass-mark">{{
+              t('divePipeline.episode.state.passedMark')
+            }}</span>
           </h3>
           <div class="panel-actions">
             <button
               type="button"
               :disabled="stageBusy('breakdown')"
-              :title="stageBusy('breakdown') ? t('divePipeline.episode.stageBusyTitle.breakdown') : ''"
+              :title="
+                stageBusy('breakdown') ? t('divePipeline.episode.stageBusyTitle.breakdown') : ''
+              "
               @click="regenerateStage('breakdown')"
             >
               {{ stageActionLabel('breakdown') }}
@@ -96,10 +85,7 @@
             @click="selectBeat(beat)"
           >
             <span class="beat-index">#{{ beat.index }}</span>
-            <OverflowTip
-              class="beat-summary"
-              :text="beat.summary"
-            >
+            <OverflowTip class="beat-summary" :text="beat.summary">
               {{ beat.summary }}
             </OverflowTip>
             <span class="beat-meta">
@@ -108,13 +94,11 @@
                 v-if="isAnchorBeat(beat)"
                 class="anchor-badge"
                 :title="t('divePipeline.episode.anchor.badgeTitle')"
-              >{{ t('divePipeline.episode.anchor.badge') }}</span>
+                >{{ t('divePipeline.episode.anchor.badge') }}</span
+              >
             </span>
           </li>
-          <li
-            v-if="!beats.length"
-            class="empty-row"
-          >
+          <li v-if="!beats.length" class="empty-row">
             {{ beatsEmptyLabel }}
           </li>
         </ul>
@@ -133,17 +117,22 @@
       <section class="panel board-panel">
         <div class="panel-head">
           <h3>
-            {{ isDirect9 ? t('divePipeline.episode.panel.boardDirect') : t('graph.episodeAgent.title.grid9Storyboard') }}
-            <span
-              v-if="reviewResult('beatboard') === 'PASS'"
-              class="pass-mark"
-            >{{ t('divePipeline.episode.state.passedMark') }}</span>
+            {{
+              isDirect9
+                ? t('divePipeline.episode.panel.boardDirect')
+                : t('graph.episodeAgent.title.grid9Storyboard')
+            }}
+            <span v-if="reviewResult('beatboard') === 'PASS'" class="pass-mark">{{
+              t('divePipeline.episode.state.passedMark')
+            }}</span>
           </h3>
           <div class="panel-actions">
             <button
               type="button"
               :disabled="stageBusy('beatboard')"
-              :title="stageBusy('beatboard') ? t('divePipeline.episode.stageBusyTitle.beatboard') : ''"
+              :title="
+                stageBusy('beatboard') ? t('divePipeline.episode.stageBusyTitle.beatboard') : ''
+              "
               @click="regenerateStage('beatboard')"
             >
               {{ stageActionLabel('beatboard') }}
@@ -163,10 +152,7 @@
               :title="t('divePipeline.episode.action.buildGrid9')"
               @click="runAnchorImage"
             >
-              <GridIcon
-                :rows="3"
-                :cols="3"
-              />
+              <GridIcon :rows="3" :cols="3" />
             </button>
           </div>
         </div>
@@ -189,13 +175,11 @@
                 v-if="anchor.beatId"
                 class="beat-ref"
                 :title="t('divePipeline.episode.cell.beatRefTitle')"
-              >{{ t('divePipeline.episode.cell.beatRef', { n: anchor.beatId }) }}</span>
+                >{{ t('divePipeline.episode.cell.beatRef', { n: anchor.beatId }) }}</span
+              >
               <span class="status-badge">{{ anchorReviewLabel(anchor.index) }}</span>
             </span>
-            <OverflowTip
-              class="anchor-title"
-              :text="anchor.title"
-            >
+            <OverflowTip class="anchor-title" :text="anchor.title">
               {{ anchor.title }}
             </OverflowTip>
             <img
@@ -203,23 +187,14 @@
               :src="anchorImageUrl(anchor.index)"
               class="anchor-thumb"
               alt=""
-            >
-            <span
-              v-else
-              class="anchor-empty"
-            >{{ t('divePipeline.episode.state.noImage') }}</span>
+            />
+            <span v-else class="anchor-empty">{{ t('divePipeline.episode.state.noImage') }}</span>
           </button>
-          <div
-            v-if="!anchors9.length"
-            class="empty-row"
-          >
+          <div v-if="!anchors9.length" class="empty-row">
             {{ anchorsEmptyLabel }}
           </div>
         </div>
-        <p
-          v-if="anchors9.length"
-          class="hint"
-        >
+        <p v-if="anchors9.length" class="hint">
           {{ t('divePipeline.episode.hint.backFromToolbar') }}
         </p>
       </section>
@@ -241,23 +216,21 @@
           </h3>
         </div>
 
-        <div
-          v-if="!isDirect9"
-          class="detail-block"
-        >
+        <div v-if="!isDirect9" class="detail-block">
           <div class="detail-head">
             <h4>
               {{ t('divePipeline.episode.detail.grid4', { index: selectedAnchorIndex }) }}
-              <span
-                v-if="reviewResult('sequence') === 'PASS'"
-                class="pass-mark"
-              >{{ t('divePipeline.episode.state.passedMark') }}</span>
+              <span v-if="reviewResult('sequence') === 'PASS'" class="pass-mark">{{
+                t('divePipeline.episode.state.passedMark')
+              }}</span>
             </h4>
             <div class="panel-actions">
               <button
                 type="button"
                 :disabled="stageBusy('sequence')"
-                :title="stageBusy('sequence') ? t('divePipeline.episode.stageBusyTitle.sequence') : ''"
+                :title="
+                  stageBusy('sequence') ? t('divePipeline.episode.stageBusyTitle.sequence') : ''
+                "
                 @click="regenerateStage('sequence')"
               >
                 {{ stageActionLabel('sequence') }}
@@ -277,10 +250,7 @@
                 :title="t('divePipeline.episode.action.buildGrid4')"
                 @click="runFourGridImage"
               >
-                <GridIcon
-                  :rows="2"
-                  :cols="2"
-                />
+                <GridIcon :rows="2" :cols="2" />
               </button>
             </div>
           </div>
@@ -294,10 +264,7 @@
               @click="selectCell(cell)"
             >
               <span class="cell-stage">{{ cell.stage }}</span>
-              <OverflowTip
-                class="cell-desc"
-                :text="cell.text"
-              >
+              <OverflowTip class="cell-desc" :text="cell.text">
                 {{ cell.text }}
               </OverflowTip>
               <img
@@ -305,29 +272,22 @@
                 :src="cellImageUrl(cell.groupIndex, cell.cellIndex)"
                 class="cell-thumb"
                 alt=""
-              >
+              />
               <span class="status-badge">{{ cellVideoStatusLabel(cell) }}</span>
             </button>
-            <div
-              v-if="!anchorCells.length"
-              class="empty-row"
-            >
+            <div v-if="!anchorCells.length" class="empty-row">
               {{ cellsEmptyLabel }}
             </div>
           </div>
         </div>
 
-        <div
-          v-if="isDirect9"
-          class="detail-block"
-        >
+        <div v-if="isDirect9" class="detail-block">
           <div class="detail-head">
             <h4>
               {{ t('divePipeline.episode.detail.motionDirect') }}
-              <span
-                v-if="reviewResult('motion') === 'PASS'"
-                class="pass-mark"
-              >{{ t('divePipeline.episode.state.passedMark') }}</span>
+              <span v-if="reviewResult('motion') === 'PASS'" class="pass-mark">{{
+                t('divePipeline.episode.state.passedMark')
+              }}</span>
             </h4>
             <div class="panel-actions">
               <button
@@ -355,27 +315,18 @@
             class="motion-text interactive"
             :title="t('graph.notepad.openHint')"
             @dblclick="openMotionNotepad"
-          >{{ activeMotion.text }}</pre>
-          <span
-            v-else
-            class="video-path"
-          >{{ stageBusy('motion') ? t('divePipeline.episode.state.generating') : t('divePipeline.episode.state.notGenerated') }}</span>
+            >{{ activeMotion.text }}</pre>
+          <span v-else class="video-path">{{
+            stageBusy('motion')
+              ? t('divePipeline.episode.state.generating')
+              : t('divePipeline.episode.state.notGenerated')
+          }}</span>
         </div>
 
-        <div
-          v-if="activeCellVideo"
-          class="detail-block video-block"
-        >
+        <div v-if="activeCellVideo" class="detail-block video-block">
           <h4>{{ t('divePipeline.episode.detail.videoOutput') }}</h4>
-          <MediaPreviewPlayer
-            v-if="activeVideoUrl"
-            kind="video"
-            :src="activeVideoUrl"
-          />
-          <OverflowTip
-            class="video-path"
-            :text="activeCellVideo"
-          >
+          <MediaPreviewPlayer v-if="activeVideoUrl" kind="video" :src="activeVideoUrl" />
+          <OverflowTip class="video-path" :text="activeCellVideo">
             {{ activeCellVideo }}
           </OverflowTip>
           <button
@@ -386,15 +337,20 @@
             :title="videoActionTitle"
             @click="runCurrentVideo"
           >
-            {{ videoBusy ? t('divePipeline.episode.state.generating') : t('divePipeline.episode.detail.regenVideo') }}
+            {{
+              videoBusy
+                ? t('divePipeline.episode.state.generating')
+                : t('divePipeline.episode.detail.regenVideo')
+            }}
           </button>
         </div>
-        <div
-          v-else
-          class="detail-block video-block"
-        >
+        <div v-else class="detail-block video-block">
           <h4>{{ t('divePipeline.episode.detail.videoOutput') }}</h4>
-          <span class="video-path">{{ videoBusy ? t('divePipeline.episode.state.generating') : t('divePipeline.episode.state.notGenerated') }}</span>
+          <span class="video-path">{{
+            videoBusy
+              ? t('divePipeline.episode.state.generating')
+              : t('divePipeline.episode.state.notGenerated')
+          }}</span>
           <button
             class="ghost-button primary"
             :class="{ 'is-disabled': !canRunCurrentVideo }"
@@ -403,21 +359,21 @@
             :title="videoActionTitle"
             @click="runCurrentVideo"
           >
-            {{ videoBusy ? t('divePipeline.episode.state.generating') : t('divePipeline.episode.detail.generateVideo') }}
+            {{
+              videoBusy
+                ? t('divePipeline.episode.state.generating')
+                : t('divePipeline.episode.detail.generateVideo')
+            }}
           </button>
         </div>
 
-        <div
-          v-if="!isDirect9"
-          class="detail-block motion-block"
-        >
+        <div v-if="!isDirect9" class="detail-block motion-block">
           <div class="detail-head">
             <h4>
               {{ t('divePipeline.episode.detail.motionCell', { key: selectedCellKey }) }}
-              <span
-                v-if="reviewResult('motion') === 'PASS'"
-                class="pass-mark"
-              >{{ t('divePipeline.episode.state.passedMark') }}</span>
+              <span v-if="reviewResult('motion') === 'PASS'" class="pass-mark">{{
+                t('divePipeline.episode.state.passedMark')
+              }}</span>
             </h4>
             <div class="panel-actions">
               <button
@@ -445,11 +401,12 @@
             class="motion-text interactive"
             :title="t('graph.notepad.openHint')"
             @dblclick="openMotionNotepad"
-          >{{ activeMotion.text }}</pre>
-          <span
-            v-else
-            class="video-path"
-          >{{ stageBusy('motion') ? t('divePipeline.episode.state.generating') : t('divePipeline.episode.state.notGenerated') }}</span>
+            >{{ activeMotion.text }}</pre>
+          <span v-else class="video-path">{{
+            stageBusy('motion')
+              ? t('divePipeline.episode.state.generating')
+              : t('divePipeline.episode.state.notGenerated')
+          }}</span>
         </div>
       </section>
     </div>
@@ -574,7 +531,9 @@ function onSplitterUp(): void {
 }
 
 const asset = computed(() => project.assets.find((item) => item.id === props.hostAssetId) ?? null)
-const assetTitle = computed(() => asset.value?.name ?? String(t('divePipeline.episode.title.default')))
+const assetTitle = computed(
+  () => asset.value?.name ?? String(t('divePipeline.episode.title.default'))
+)
 
 const graphDoc = computed<GraphDocument | null>(() => {
   void refreshTick.value
@@ -592,9 +551,7 @@ const graphDoc = computed<GraphDocument | null>(() => {
 })
 
 const nodes = computed<GraphNode[]>(() => graphDoc.value?.nodes ?? [])
-const runStates = computed<Record<string, GraphNodeRunState>>(
-  () => graphDoc.value?.runStates ?? {}
-)
+const runStates = computed<Record<string, GraphNodeRunState>>(() => graphDoc.value?.runStates ?? {})
 
 function nodeByKey(key: string): GraphNode | undefined {
   return findEpisodeNode(key)
@@ -613,9 +570,7 @@ function findStageNode(step: EpisodeStageKey): GraphNode | undefined {
 function findReviewNode(target: EpisodeStageKey): GraphNode | undefined {
   const all = nodes.value
   return (
-    all.find(
-      (n) => n.typeId === 'prompt.optimize' && n.params?.episodeReviewTarget === target
-    ) ??
+    all.find((n) => n.typeId === 'prompt.optimize' && n.params?.episodeReviewTarget === target) ??
     all.find((n) => n.typeId === 'prompt.optimize' && titleMatchesEpisodeReview(n.title, target))
   )
 }
@@ -670,9 +625,7 @@ function findEpisodeNode(kind: string): GraphNode | undefined {
     const candidates = [
       gridSplit,
       nodes.value.find(
-        (n) =>
-          n.typeId === 'asset.image' &&
-          n.title?.includes(`锚点图·格${index}`) // cjk-ok 旧文档兼容探测
+        (n) => n.typeId === 'asset.image' && n.title?.includes(`锚点图·格${index}`) // cjk-ok 旧文档兼容探测
       ),
       nodes.value.find(
         (n) =>
@@ -695,9 +648,7 @@ function findEpisodeNode(kind: string): GraphNode | undefined {
         (n) => n.typeId === 'asset.video' && n.params?.motionCellIndex === cellKey
       ) ??
       nodes.value.find(
-        (n) =>
-          n.typeId === 'asset.video' &&
-          n.title?.includes(`格${g}-${c}`) // cjk-ok 旧文档兼容探测
+        (n) => n.typeId === 'asset.video' && n.title?.includes(`格${g}-${c}`) // cjk-ok 旧文档兼容探测
       ) ??
       nodes.value.find(
         (n) =>
@@ -798,13 +749,8 @@ function selectedVideoRelativePath(node: GraphNode | undefined): string {
   return ''
 }
 
-const scopeKey = computed(
-  () =>
-    String(
-      nodeByKey('breakdown')?.params?.episodeScopeKey?.trim() ||
-        props.hostAssetId ||
-        'default'
-    )
+const scopeKey = computed(() =>
+  String(nodeByKey('breakdown')?.params?.episodeScopeKey?.trim() || props.hostAssetId || 'default')
 )
 
 const beats = computed<EpisodeBeatRow[]>(() => parseEpisodeBeatBreakdown(stageText('breakdown')))
@@ -858,9 +804,8 @@ const breadcrumbTitle = computed(() =>
 const activeMotion = computed<EpisodeMotionRow | null>(() => {
   const { groupIndex, cellIndex } = selectedCell.value
   return (
-    motions36.value.find(
-      (row) => row.groupIndex === groupIndex && row.cellIndex === cellIndex
-    ) ?? null
+    motions36.value.find((row) => row.groupIndex === groupIndex && row.cellIndex === cellIndex) ??
+    null
   )
 })
 
@@ -883,9 +828,7 @@ function isNodeBusy(nodeId: string | undefined): boolean {
   return taskStore.tasks.some((task) => {
     if (!isActiveTaskStatus(task.status)) return false
     if (task.target.kind !== 'asset' || task.target.assetId !== props.hostAssetId) return false
-    return task.nodes.some(
-      (node) => node.nodeId === nodeId && isActiveTaskStatus(node.status)
-    )
+    return task.nodes.some((node) => node.nodeId === nodeId && isActiveTaskStatus(node.status))
   })
 }
 
@@ -897,9 +840,7 @@ function stageBusy(target: ReviewTarget): boolean {
     if (task.target.kind !== 'asset' || task.target.assetId !== props.hostAssetId) return false
     // 入队后、节点尚未标 pending 时也要锁视频：看本任务汇点是不是该阶段
     if (task.order[task.order.length - 1] === nodeId) return true
-    return task.nodes.some(
-      (node) => node.nodeId === nodeId && isActiveTaskStatus(node.status)
-    )
+    return task.nodes.some((node) => node.nodeId === nodeId && isActiveTaskStatus(node.status))
   })
 }
 
@@ -910,10 +851,7 @@ const hasMotionText = computed(() => !!activeMotion.value)
 /** 任一阶段「重新生成」进行中时，不允许再点生成视频 */
 const pipelineRegenBusy = computed(
   () =>
-    stageBusy('breakdown') ||
-    stageBusy('beatboard') ||
-    stageBusy('sequence') ||
-    stageBusy('motion')
+    stageBusy('breakdown') || stageBusy('beatboard') || stageBusy('sequence') || stageBusy('motion')
 )
 
 const canRunCurrentVideo = computed(() => {
@@ -944,7 +882,9 @@ function stageActionLabel(target: ReviewTarget, direct9 = false): string {
       ? String(t('divePipeline.episode.action.regenerate'))
       : String(t('divePipeline.episode.action.generateMotion'))
   }
-  return hasText ? String(t('divePipeline.episode.action.regenerate')) : String(t('divePipeline.episode.action.generate'))
+  return hasText
+    ? String(t('divePipeline.episode.action.regenerate'))
+    : String(t('divePipeline.episode.action.generate'))
 }
 
 /** 当前格视频的可播放 URL（由 relativePath 解析并缓存） */
@@ -1195,8 +1135,7 @@ function patchMotionNodeText(nextFull: string): void {
   const generatedTexts = generated.length
     ? generated.map((item, index) => {
         const hit =
-          (selectedId && item.id === selectedId) ||
-          (!selectedId && index === generated.length - 1)
+          (selectedId && item.id === selectedId) || (!selectedId && index === generated.length - 1)
         return hit ? { ...item, text: nextFull } : item
       })
     : undefined
@@ -1299,9 +1238,15 @@ function regenerateStage(target: ReviewTarget): void {
   // 级联失效：下游图/视频/审核不复用旧结果，后续生成自动从最新文本一致补跑
   invalidateDownstream(target)
   // “重新生成”强制执行目标节点，但继续复用其已完成上游。
-  const taskId = enqueueNode(nodeByKey(target), String(t('divePipeline.episode.task.stage', { stage: target })), true, undefined, {
-    pipelineStage: target
-  })
+  const taskId = enqueueNode(
+    nodeByKey(target),
+    String(t('divePipeline.episode.task.stage', { stage: target })),
+    true,
+    undefined,
+    {
+      pipelineStage: target
+    }
+  )
   if (taskId) regenerationTasks.set(taskId, target)
 }
 

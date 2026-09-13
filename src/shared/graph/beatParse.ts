@@ -1,7 +1,4 @@
-import {
-  asWorldRefList,
-  type WorldEntityRef
-} from '../domain'
+import { asWorldRefList, type WorldEntityRef } from '../domain'
 import {
   DEFAULT_REVIEW_STATUS,
   isReviewedStatus,
@@ -46,7 +43,10 @@ function serializeWorldRef(ref: BeatWorldRef): BeatWorldRef {
 }
 
 function worldRefNames(refs: BeatWorldRef[]): string {
-  return refs.map((ref) => ref.name.trim()).filter(Boolean).join('、')
+  return refs
+    .map((ref) => ref.name.trim())
+    .filter(Boolean)
+    .join('、')
 }
 
 function asString(value: unknown): string {
@@ -56,12 +56,7 @@ function asString(value: unknown): string {
 }
 
 function clampOrder(value: unknown, fallback: number): number {
-  const n =
-    typeof value === 'number'
-      ? value
-      : typeof value === 'string'
-        ? Number(value)
-        : NaN
+  const n = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN
   if (!Number.isFinite(n)) return fallback
   return Math.max(1, Math.round(n))
 }
@@ -164,7 +159,7 @@ function serializableBeat(row: BeatRow): Record<string, unknown> {
     props: row.props.map(serializeWorldRef),
     weapons: row.weapons.map(serializeWorldRef),
     sourceExcerpt: row.sourceExcerpt,
-  status: normalizeReviewStatus(row.status)
+    status: normalizeReviewStatus(row.status)
   }
 }
 
@@ -235,7 +230,7 @@ export function mergeBeatRowsPreservingReviewed(
   if (!previous?.length) {
     return next.map((row) => ({
       ...row,
-  status: normalizeReviewStatus(row.status) || DEFAULT_REVIEW_STATUS
+      status: normalizeReviewStatus(row.status) || DEFAULT_REVIEW_STATUS
     }))
   }
 
@@ -251,7 +246,7 @@ export function mergeBeatRowsPreservingReviewed(
     used.add(row.id)
     return {
       ...row,
-  status: normalizeReviewStatus(row.status) || DEFAULT_REVIEW_STATUS
+      status: normalizeReviewStatus(row.status) || DEFAULT_REVIEW_STATUS
     }
   })
 

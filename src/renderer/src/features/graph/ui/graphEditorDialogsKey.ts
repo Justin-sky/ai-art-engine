@@ -261,7 +261,10 @@ export type GraphEditorDialogsApi = {
   /** dive 面包屑回退前结束抠图编辑，补记撤销命令 */
   flushCutout: () => void
   closeCompose: () => void
-  saveCompose: (payload: { imageCompose: ImageComposeState; dataUrl?: string }) => void | Promise<void>
+  saveCompose: (payload: {
+    imageCompose: ImageComposeState
+    dataUrl?: string
+  }) => void | Promise<void>
   /** dive 面包屑回退前结束构图编辑，补记撤销命令 */
   flushCompose: () => void
   closeAlign: () => void
@@ -294,4 +297,5 @@ export type GraphEditorDialogsApi = {
   flushLayerSplit: () => void
 }
 
-export const graphEditorDialogsKey: InjectionKey<GraphEditorDialogsApi> = Symbol('graphEditorDialogs')
+export const graphEditorDialogsKey: InjectionKey<GraphEditorDialogsApi> =
+  Symbol('graphEditorDialogs')

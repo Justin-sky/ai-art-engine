@@ -104,16 +104,15 @@ function panelPlacement(
   return { row, col, rowSpan, colSpan }
 }
 
-function normalizeBubble(
-  raw: unknown,
-  index: number,
-  panelId: string
-): ComicSpeechBubble | null {
+function normalizeBubble(raw: unknown, index: number, panelId: string): ComicSpeechBubble | null {
   if (!raw || typeof raw !== 'object') return null
   const bubble = raw as Record<string, unknown>
   const text = typeof bubble.text === 'string' ? bubble.text.trim() : ''
   if (!text) return null
-  const id = typeof bubble.id === 'string' && bubble.id.trim() ? bubble.id.trim() : `${panelId}-bubble-${index + 1}`
+  const id =
+    typeof bubble.id === 'string' && bubble.id.trim()
+      ? bubble.id.trim()
+      : `${panelId}-bubble-${index + 1}`
   const tailRaw = bubble.tail
   const tail: ComicBubbleTail =
     tailRaw === 'tr' || tailRaw === 'bl' || tailRaw === 'br' ? tailRaw : 'tl'
@@ -138,7 +137,8 @@ function normalizePanel(
 ): ComicPanel | null {
   if (!raw || typeof raw !== 'object') return null
   const panel = raw as Record<string, unknown>
-  const id = typeof panel.id === 'string' && panel.id.trim() ? panel.id.trim() : `panel-${index + 1}`
+  const id =
+    typeof panel.id === 'string' && panel.id.trim() ? panel.id.trim() : `panel-${index + 1}`
   const { row, col, rowSpan, colSpan } = panelPlacement(
     {
       row: clampInt(panel.row, 0, 0),
@@ -185,7 +185,8 @@ export function normalizeComicPage(input: Partial<ComicPage> | null | undefined)
     if (panel) panels.push(panel)
   }
   const title = typeof input?.title === 'string' ? input.title.trim() : ''
-  const backgroundColor = typeof input?.backgroundColor === 'string' ? input.backgroundColor.trim() : ''
+  const backgroundColor =
+    typeof input?.backgroundColor === 'string' ? input.backgroundColor.trim() : ''
   return {
     ...(title ? { title } : {}),
     ...(backgroundColor ? { backgroundColor } : {}),
@@ -325,11 +326,7 @@ export function updateComicBubble(
 }
 
 /** 删除某格内一个台词气泡 */
-export function removeComicBubble(
-  page: ComicPage,
-  panelId: string,
-  bubbleId: string
-): ComicPage {
+export function removeComicBubble(page: ComicPage, panelId: string, bubbleId: string): ComicPage {
   const normalized = normalizeComicPage(page)
   const idx = normalized.panels.findIndex((item) => item.id === panelId)
   if (idx < 0) return normalized
@@ -503,7 +500,10 @@ export function findComicBubbleAtPagePoint(
 export function withComicPageLayout(
   page: ComicPage,
   patch: Partial<
-    Pick<ComicPage, 'title' | 'backgroundColor' | 'columns' | 'rows' | 'gutter' | 'width' | 'height'>
+    Pick<
+      ComicPage,
+      'title' | 'backgroundColor' | 'columns' | 'rows' | 'gutter' | 'width' | 'height'
+    >
   >
 ): ComicPage {
   return normalizeComicPage({ ...normalizeComicPage(page), ...patch })

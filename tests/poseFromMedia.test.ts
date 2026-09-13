@@ -21,21 +21,96 @@ function standingBindBones(): ImagePoseBindBone[] {
   const P = (x: number, y: number, z = 0) => ({ x, y, z })
   return [
     { name: 'mixamorig:Hips', parentName: null, position: P(0, 0, 0), quaternion: I() },
-    { name: 'mixamorig:Spine1', parentName: 'mixamorig:Hips', position: P(0, 0.18, 0), quaternion: I() },
-    { name: 'mixamorig:Neck', parentName: 'mixamorig:Spine1', position: P(0, 0.12, 0), quaternion: I() },
-    { name: 'mixamorig:Head', parentName: 'mixamorig:Neck', position: P(0, 0.08, 0), quaternion: I() },
-    { name: 'mixamorig:LeftUpLeg', parentName: 'mixamorig:Hips', position: P(-0.12, 0, 0), quaternion: I() },
-    { name: 'mixamorig:LeftLeg', parentName: 'mixamorig:LeftUpLeg', position: P(0, -0.45, 0), quaternion: I() },
-    { name: 'mixamorig:LeftFoot', parentName: 'mixamorig:LeftLeg', position: P(0, -0.45, 0), quaternion: I() },
-    { name: 'mixamorig:RightUpLeg', parentName: 'mixamorig:Hips', position: P(0.12, 0, 0), quaternion: I() },
-    { name: 'mixamorig:RightLeg', parentName: 'mixamorig:RightUpLeg', position: P(0, -0.45, 0), quaternion: I() },
-    { name: 'mixamorig:RightFoot', parentName: 'mixamorig:RightLeg', position: P(0, -0.45, 0), quaternion: I() },
-    { name: 'mixamorig:LeftArm', parentName: 'mixamorig:Spine1', position: P(-0.02, 0.03, 0), quaternion: I() },
-    { name: 'mixamorig:LeftForeArm', parentName: 'mixamorig:LeftArm', position: P(-0.32, 0, 0), quaternion: I() },
-    { name: 'mixamorig:LeftHand', parentName: 'mixamorig:LeftForeArm', position: P(-0.28, 0, 0), quaternion: I() },
-    { name: 'mixamorig:RightArm', parentName: 'mixamorig:Spine1', position: P(0.02, 0.03, 0), quaternion: I() },
-    { name: 'mixamorig:RightForeArm', parentName: 'mixamorig:RightArm', position: P(0.32, 0, 0), quaternion: I() },
-    { name: 'mixamorig:RightHand', parentName: 'mixamorig:RightForeArm', position: P(0.28, 0, 0), quaternion: I() }
+    {
+      name: 'mixamorig:Spine1',
+      parentName: 'mixamorig:Hips',
+      position: P(0, 0.18, 0),
+      quaternion: I()
+    },
+    {
+      name: 'mixamorig:Neck',
+      parentName: 'mixamorig:Spine1',
+      position: P(0, 0.12, 0),
+      quaternion: I()
+    },
+    {
+      name: 'mixamorig:Head',
+      parentName: 'mixamorig:Neck',
+      position: P(0, 0.08, 0),
+      quaternion: I()
+    },
+    {
+      name: 'mixamorig:LeftUpLeg',
+      parentName: 'mixamorig:Hips',
+      position: P(-0.12, 0, 0),
+      quaternion: I()
+    },
+    {
+      name: 'mixamorig:LeftLeg',
+      parentName: 'mixamorig:LeftUpLeg',
+      position: P(0, -0.45, 0),
+      quaternion: I()
+    },
+    {
+      name: 'mixamorig:LeftFoot',
+      parentName: 'mixamorig:LeftLeg',
+      position: P(0, -0.45, 0),
+      quaternion: I()
+    },
+    {
+      name: 'mixamorig:RightUpLeg',
+      parentName: 'mixamorig:Hips',
+      position: P(0.12, 0, 0),
+      quaternion: I()
+    },
+    {
+      name: 'mixamorig:RightLeg',
+      parentName: 'mixamorig:RightUpLeg',
+      position: P(0, -0.45, 0),
+      quaternion: I()
+    },
+    {
+      name: 'mixamorig:RightFoot',
+      parentName: 'mixamorig:RightLeg',
+      position: P(0, -0.45, 0),
+      quaternion: I()
+    },
+    {
+      name: 'mixamorig:LeftArm',
+      parentName: 'mixamorig:Spine1',
+      position: P(-0.02, 0.03, 0),
+      quaternion: I()
+    },
+    {
+      name: 'mixamorig:LeftForeArm',
+      parentName: 'mixamorig:LeftArm',
+      position: P(-0.32, 0, 0),
+      quaternion: I()
+    },
+    {
+      name: 'mixamorig:LeftHand',
+      parentName: 'mixamorig:LeftForeArm',
+      position: P(-0.28, 0, 0),
+      quaternion: I()
+    },
+    {
+      name: 'mixamorig:RightArm',
+      parentName: 'mixamorig:Spine1',
+      position: P(0.02, 0.03, 0),
+      quaternion: I()
+    },
+    {
+      name: 'mixamorig:RightForeArm',
+      parentName: 'mixamorig:RightArm',
+      position: P(0.32, 0, 0),
+      quaternion: I()
+    },
+    {
+      name: 'mixamorig:RightHand',
+      parentName: 'mixamorig:RightForeArm',
+      position: P(0.28, 0, 0),
+      quaternion: I()
+    }
   ]
 }
 
@@ -44,15 +119,22 @@ function standingSkeleton(): YoloSkeletonPoint[] {
   const K = (x: number, y: number, c = 0.9): YoloSkeletonPoint => ({ x, y, confidence: c })
   return [
     K(500, 80), // nose
-    K(478, 70), K(522, 70), // eyes
-    K(465, 76), K(535, 76), // ears
+    K(478, 70),
+    K(522, 70), // eyes
+    K(465, 76),
+    K(535, 76), // ears
     K(300, 220), // left_shoulder（图左）
     K(700, 220), // right_shoulder
-    K(230, 420), K(770, 420), // elbows
-    K(205, 640), K(795, 640), // wrists
-    K(455, 560), K(545, 560), // hips
-    K(440, 760), K(560, 760), // knees
-    K(445, 950), K(555, 950) // ankles
+    K(230, 420),
+    K(770, 420), // elbows
+    K(205, 640),
+    K(795, 640), // wrists
+    K(455, 560),
+    K(545, 560), // hips
+    K(440, 760),
+    K(560, 760), // knees
+    K(445, 950),
+    K(555, 950) // ankles
   ]
 }
 

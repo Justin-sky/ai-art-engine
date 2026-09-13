@@ -1,9 +1,6 @@
 import type { Context } from '@cordisjs/core'
 import type { ExternalPluginManifest } from '@shared/ipc'
-import {
-  assertExtensionPermissions,
-  validateExtensionManifest
-} from '../extensions/protocol'
+import { assertExtensionPermissions, validateExtensionManifest } from '../extensions/protocol'
 import type { EditorPluginPermission } from '../extensions/types'
 
 const DECLARATIVE_PLUGIN_PERMISSIONS = new Set<EditorPluginPermission>([

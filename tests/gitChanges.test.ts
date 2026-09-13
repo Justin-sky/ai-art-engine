@@ -145,9 +145,13 @@ describe('统一 diff 解析', () => {
 
   it('二进制与 rename 头同样归为 meta', () => {
     const types = parseUnifiedDiff(
-      ['diff --git a/a b/a', 'similarity index 90%', 'rename from a', 'rename to b', 'Binary files a and b differ'].join(
-        '\n'
-      )
+      [
+        'diff --git a/a b/a',
+        'similarity index 90%',
+        'rename from a',
+        'rename to b',
+        'Binary files a and b differ'
+      ].join('\n')
     ).map((line) => line.type)
     expect(types.every((type) => type === 'meta')).toBe(true)
   })

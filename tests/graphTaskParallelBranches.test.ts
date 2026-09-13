@@ -20,15 +20,11 @@ function active(
 
 describe('conflictsWithActiveWorkflow parallel branches', () => {
   it('allows different boundary output branches on the same canvas', () => {
-    expect(
-      conflictsWithActiveWorkflow(target, ['out-b'], [active(['out-a'])])
-    ).toBe(false)
+    expect(conflictsWithActiveWorkflow(target, ['out-b'], [active(['out-a'])])).toBe(false)
   })
 
   it('rejects the same branch twice', () => {
-    expect(
-      conflictsWithActiveWorkflow(target, ['out-a'], [active(['out-a'])])
-    ).toBe(true)
+    expect(conflictsWithActiveWorkflow(target, ['out-a'], [active(['out-a'])])).toBe(true)
   })
 
   it('rejects a full-graph enqueue while a branch is running', () => {

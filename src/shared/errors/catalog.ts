@@ -77,11 +77,7 @@ export const SHARED_ERRORS = {
     ({ cell }) => `宫格 ${cell} 裁切失败`,
     ({ cell }) => `Failed to crop grid cell ${cell}`
   ),
-  gridSplitEmpty: defErrSimple(
-    'graphExec.gridSplit.empty',
-    '宫格切分失败',
-    'Grid split failed'
-  ),
+  gridSplitEmpty: defErrSimple('graphExec.gridSplit.empty', '宫格切分失败', 'Grid split failed'),
   /** 帧序列切分单帧失败 */
   frameCellSplitFailed: defErr<{ cell: string | number }>(
     'graphExec.frameSplit.cellSplitFailed',
@@ -123,9 +119,21 @@ export const SHARED_ERRORS = {
     '模型未返回合法 JSON',
     'The model returned no valid JSON'
   ),
-  planNotObject: defErrSimple('graphPlan.notObject', 'GraphPlan 必须是对象', 'GraphPlan must be an object'),
-  planNodesNotArray: defErrSimple('graphPlan.nodesNotArray', 'GraphPlan.nodes 必须是数组', 'GraphPlan.nodes must be an array'),
-  planEdgesNotArray: defErrSimple('graphPlan.edgesNotArray', 'GraphPlan.edges 必须是数组', 'GraphPlan.edges must be an array'),
+  planNotObject: defErrSimple(
+    'graphPlan.notObject',
+    'GraphPlan 必须是对象',
+    'GraphPlan must be an object'
+  ),
+  planNodesNotArray: defErrSimple(
+    'graphPlan.nodesNotArray',
+    'GraphPlan.nodes 必须是数组',
+    'GraphPlan.nodes must be an array'
+  ),
+  planEdgesNotArray: defErrSimple(
+    'graphPlan.edgesNotArray',
+    'GraphPlan.edges 必须是数组',
+    'GraphPlan.edges must be an array'
+  ),
   /** ComfyUI workflow 格式校验（uiToApi / injectWorkflow） */
   comfyuiNotUiFormat: defErrSimple(
     'comfyui.workflow.notUiFormat',

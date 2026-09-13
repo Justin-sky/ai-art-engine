@@ -26,10 +26,7 @@
 
       <div class="body">
         <div class="sphere-col">
-          <div
-            ref="spherePaneEl"
-            class="sphere-pane"
-          >
+          <div ref="spherePaneEl" class="sphere-pane">
             <button
               type="button"
               class="orbit-btn up"
@@ -85,7 +82,7 @@
               :value="draft.yaw"
               :style="{ '--range-pct': rangePct(draft.yaw, yawMin, yawMax) }"
               @input="onYawInput"
-            >
+            />
             <span class="slider-value">{{ draft.yaw }}°</span>
           </label>
 
@@ -100,7 +97,7 @@
               :value="draft.pitch"
               :style="{ '--range-pct': rangePct(draft.pitch, pitchMin, pitchMax) }"
               @input="onPitchInput"
-            >
+            />
             <span class="slider-value">{{ draft.pitch }}°</span>
           </label>
 
@@ -115,7 +112,7 @@
               :value="draft.shotScale"
               :style="{ '--range-pct': rangePct(draft.shotScale, 0, 1) }"
               @input="onScaleInput"
-            >
+            />
             <span class="slider-value">{{ scaleLabel }}</span>
           </label>
 
@@ -150,19 +147,13 @@
             />
           </label>
 
-          <div
-            v-if="draft.promptEnabled"
-            class="prompt-preview-block"
-          >
+          <div v-if="draft.promptEnabled" class="prompt-preview-block">
             <span class="slider-label">{{ t('graph.multiAngle.outputPrompt') }}</span>
             <p class="prompt-preview">
               {{ outputPromptText || t('graph.multiAngle.promptEmpty') }}
             </p>
           </div>
-          <p
-            v-else
-            class="prompt-hint"
-          >
+          <p v-else class="prompt-hint">
             {{ t('graph.multiAngle.promptOffHint') }}
           </p>
         </div>
@@ -176,11 +167,7 @@
           :generate-provider-instance-id="generateProviderInstanceId"
           @change="onModelChange"
         />
-        <button
-          type="button"
-          class="reset-btn"
-          @click="resetParams"
-        >
+        <button type="button" class="reset-btn" @click="resetParams">
           {{ t('graph.multiAngle.resetParams') }}
         </button>
       </div>
@@ -278,9 +265,7 @@ let paneObserver: ResizeObserver | null = null
 
 const scaleLabel = computed(() => shotScaleLabel(draft.shotScale))
 const cameraPromptText = computed(() => buildMultiAnglePrompt(draft))
-const outputPromptText = computed(() =>
-  resolveMultiAngleOutputPrompt(draft, panelDraft.value)
-)
+const outputPromptText = computed(() => resolveMultiAngleOutputPrompt(draft, panelDraft.value))
 
 const dirty = computed(() => {
   const a = normalizeMultiAngleCamera(props.camera)
@@ -311,10 +296,7 @@ const hydrating = ref(false)
 let previewTimer: ReturnType<typeof setTimeout> | null = null
 
 function buildSavePayload(): MultiAngleEditorSavePayload {
-  const patch = multiAngleCameraToNodePatch(
-    normalizeMultiAngleCamera(draft),
-    panelDraft.value
-  )
+  const patch = multiAngleCameraToNodePatch(normalizeMultiAngleCamera(draft), panelDraft.value)
   const model = modelFieldEl.value?.currentSelection() ?? { ...modelDraft }
   return {
     ...patch,
@@ -404,14 +386,7 @@ watch(canvasEl, (el) => {
 })
 
 watch(
-  () =>
-    [
-      draft.yaw,
-      draft.pitch,
-      draft.shotScale,
-      draft.presetId,
-      draft.promptEnabled
-    ] as const,
+  () => [draft.yaw, draft.pitch, draft.shotScale, draft.presetId, draft.promptEnabled] as const,
   () => scheduleDraw()
 )
 
@@ -636,10 +611,7 @@ function silhouetteJoin(
   return { x: p.x, y: p.y }
 }
 
-function strokeEntirePolyline(
-  ctx: CanvasRenderingContext2D,
-  points: SphereStrokePoint[]
-): void {
+function strokeEntirePolyline(ctx: CanvasRenderingContext2D, points: SphereStrokePoint[]): void {
   if (points.length < 2) return
   ctx.beginPath()
   ctx.moveTo(points[0]!.x, points[0]!.y)

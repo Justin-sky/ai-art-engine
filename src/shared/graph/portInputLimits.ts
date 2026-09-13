@@ -91,9 +91,7 @@ export function resolveVideoGeneratePortLimits(
 
   // 分类型上限优先（max_images / max_input_images）；未声明时回退总参考数 input_references
   let maxImages =
-    fromSp('max_images') ??
-    asPositiveInt(caps?.max_input_images) ??
-    fromSp('input_references')
+    fromSp('max_images') ?? asPositiveInt(caps?.max_input_images) ?? fromSp('input_references')
   let maxVideos = fromSp('max_videos') ?? asPositiveInt(caps?.max_input_videos)
   let maxVoices = fromSp('max_audios') ?? asPositiveInt(caps?.max_input_audios)
 
@@ -157,7 +155,9 @@ export function portLimitMaxForDataType(
   return undefined
 }
 
-export function shouldShowPortLimitBadge(port: Pick<GraphPortDef, 'direction' | 'dataType'>): boolean {
+export function shouldShowPortLimitBadge(
+  port: Pick<GraphPortDef, 'direction' | 'dataType'>
+): boolean {
   return port.direction === 'in' && isPortLimitMediaType(port.dataType)
 }
 
@@ -184,8 +184,14 @@ export function mergeImageUrlsWithStyleBudget(
   max: number
 ): string[] {
   const cap = Math.max(0, Math.floor(max))
-  const styles = styleUrls.map((url) => url.trim()).filter(Boolean).slice(0, cap)
+  const styles = styleUrls
+    .map((url) => url.trim())
+    .filter(Boolean)
+    .slice(0, cap)
   const rest = Math.max(0, cap - styles.length)
-  const ports = portUrls.map((url) => url.trim()).filter(Boolean).slice(0, rest)
+  const ports = portUrls
+    .map((url) => url.trim())
+    .filter(Boolean)
+    .slice(0, rest)
   return [...styles, ...ports]
 }

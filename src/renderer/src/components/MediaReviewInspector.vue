@@ -1,8 +1,5 @@
 <template>
-  <div
-    v-if="node"
-    class="node-inspector"
-  >
+  <div v-if="node" class="node-inspector">
     <div class="head">
       <span class="type">{{ typeLabel }}</span>
       <h2>{{ displayTitle }}</h2>
@@ -19,18 +16,11 @@
       @toggle="toggleRun"
     />
 
-    <GraphNodeOutputPreview
-      v-if="node && hostId"
-      :node="node"
-      :host-id="hostId"
-    />
+    <GraphNodeOutputPreview v-if="node && hostId" :node="node" :host-id="hostId" />
 
     <label>
       {{ t('graph.inspector.displayName') }}
-      <input
-        v-model="localTitle"
-        @change="persistTitle"
-      >
+      <input v-model="localTitle" @change="persistTitle" />
     </label>
 
     <section class="gen-config">
@@ -48,23 +38,15 @@
 
       <label class="model-field">
         <span class="field-label">{{ t('graph.inspector.mediaReview.reviewModel') }}</span>
-        <select
-          v-model="selectedModelKey"
-          @change="persistModel"
-        >
-          <option
-            v-for="opt in modelSelectOptions"
-            :key="opt.key || 'empty'"
-            :value="opt.key"
-          >
+        <select v-model="selectedModelKey" @change="persistModel">
+          <option v-for="opt in modelSelectOptions" :key="opt.key || 'empty'" :value="opt.key">
             {{ opt.label }}
           </option>
         </select>
         <span class="field-hint">{{ t('graph.inspector.mediaReview.reviewModelHint') }}</span>
-        <span
-          v-if="!hasDedicatedReviewModel"
-          class="field-warn"
-        >{{ t('graph.inspector.mediaReview.reviewModelFallback') }}</span>
+        <span v-if="!hasDedicatedReviewModel" class="field-warn">{{
+          t('graph.inspector.mediaReview.reviewModelFallback')
+        }}</span>
       </label>
 
       <label class="attempts-field">
@@ -75,36 +57,24 @@
           :value="referenceCount"
           :placeholder="t('graph.inspector.mediaReview.referenceCountHint')"
           @change="persistReferenceCount"
-        >
+        />
       </label>
 
       <div class="status-block">
         <span class="field-label">{{ t('graph.inspector.mediaReview.status') }}</span>
         <div class="status-row">
-          <span
-            class="status-badge"
-            :class="statusClass"
-          >{{ statusLabel }}</span>
-          <span
-            v-if="reviewReason"
-            class="status-reason"
-          >{{ reviewReason }}</span>
+          <span class="status-badge" :class="statusClass">{{ statusLabel }}</span>
+          <span v-if="reviewReason" class="status-reason">{{ reviewReason }}</span>
         </div>
       </div>
 
-      <div
-        v-if="scoreText"
-        class="status-block"
-      >
+      <div v-if="scoreText" class="status-block">
         <span class="field-label">{{ t('graph.inspector.mediaReview.score') }}</span>
         <span class="status-reason">{{ scoreText }}</span>
       </div>
     </section>
   </div>
-  <div
-    v-else
-    class="node-inspector empty"
-  >
+  <div v-else class="node-inspector empty">
     {{ t('graph.inspector.node.empty') }}
   </div>
 </template>
@@ -141,7 +111,7 @@ const node = computed(() => {
 
 const hostId = computed(() => {
   const selection = editor.selection.current.value
-  return selection.kind === 'graph.node' ? selection.hostId ?? '' : ''
+  return selection.kind === 'graph.node' ? (selection.hostId ?? '') : ''
 })
 
 const { hasInPort, runStatus, isGraphRunning, blocked, toggleRun } = useGraphNodeRun(node)

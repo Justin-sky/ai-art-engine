@@ -1,12 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { isDraftAssetId, type AssetInfo, type AssetType } from '@shared/domain'
-import {
-  isAudioFilePath,
-  isImageFilePath,
-  isTextFilePath,
-  isVideoFilePath
-} from '@shared/import'
+import { isAudioFilePath, isImageFilePath, isTextFilePath, isVideoFilePath } from '@shared/import'
 import {
   flattenImagesValues,
   graphValueHasPayload,
@@ -271,12 +266,7 @@ function collectFromValue(value: GraphValue | undefined, into: PreviewItem[]): v
   }
   if (value.kind === 'videos') {
     for (const [index, item] of value.items.entries()) {
-      pushVideoLikeItem(
-        into,
-        item.id?.trim() || `vid:${index}`,
-        item.relativePath,
-        item.dataUrl
-      )
+      pushVideoLikeItem(into, item.id?.trim() || `vid:${index}`, item.relativePath, item.dataUrl)
     }
     return
   }
@@ -295,9 +285,7 @@ function collectFromValue(value: GraphValue | undefined, into: PreviewItem[]): v
     }
   }
   if (
-    (value.kind === 'world' ||
-      value.kind === 'worldEntities' ||
-      value.kind === 'beat') &&
+    (value.kind === 'world' || value.kind === 'worldEntities' || value.kind === 'beat') &&
     value.text.trim()
   ) {
     into.push({
@@ -404,7 +392,11 @@ function collectFromValue(value: GraphValue | undefined, into: PreviewItem[]): v
       for (const [index, note] of value.notes.entries()) {
         const text = note.text.trim()
         if (!text) continue
-        into.push({ key: `output-notes:${index}:${text.slice(0, 32)}`, kind: 'text', text: note.text })
+        into.push({
+          key: `output-notes:${index}:${text.slice(0, 32)}`,
+          kind: 'text',
+          text: note.text
+        })
       }
     }
   }
@@ -417,8 +409,7 @@ function pushLocalMediaPreview(
   opts: { dataUrl?: string; relativePath?: string; assetId?: string; label?: string }
 ): void {
   if (!kind || kind === 'text') return
-  const assetId =
-    revealableAssetId(opts.assetId) ?? assetIdByRelativePath(opts.relativePath)
+  const assetId = revealableAssetId(opts.assetId) ?? assetIdByRelativePath(opts.relativePath)
   const rel = opts.relativePath?.trim()
   if (rel) {
     if (kind === 'video' && isImageFilePath(rel)) {
@@ -467,8 +458,7 @@ function collectFallback(into: PreviewItem[]): void {
 
   const nodeMediaKind = mediaKindFromNode(node)
   const hasImageGallery =
-    !!(node.params.generatedImages ?? []).length ||
-    !!(node.params.cameraShots ?? []).length
+    !!(node.params.generatedImages ?? []).length || !!(node.params.cameraShots ?? []).length
 
   if (hasImageGallery || nodeMediaKind === 'image' || nodeMediaKind == null) {
     const imageItems = flattenImagesValues(
@@ -648,8 +638,7 @@ function softResolveBoundaryPreview(node: GraphNode): GraphValue | undefined {
       const asset = project.assets.find((a) => a.id === assetId)
       return asset?.genParams as Record<string, unknown> | undefined
     },
-    resolveLiveAssetGraph: (assetId) =>
-      graphEditorHosts.getLiveAssetDocument(assetId) ?? undefined
+    resolveLiveAssetGraph: (assetId) => graphEditorHosts.getLiveAssetDocument(assetId) ?? undefined
   })
 }
 
@@ -670,11 +659,16 @@ function pushNodeLocalPreview(source: GraphNode, into: PreviewItem[]): void {
   }
   if ((source.params.generatedVideos ?? []).length) {
     for (const [index, item] of (source.params.generatedVideos ?? []).entries()) {
-      pushLocalMediaPreview(into, item.id?.trim() || `up-gen-video:${source.id}:${index}`, 'video', {
-        relativePath: item.relativePath,
-        dataUrl: item.dataUrl,
-        assetId: item.id
-      })
+      pushLocalMediaPreview(
+        into,
+        item.id?.trim() || `up-gen-video:${source.id}:${index}`,
+        'video',
+        {
+          relativePath: item.relativePath,
+          dataUrl: item.dataUrl,
+          assetId: item.id
+        }
+      )
     }
     return
   }
@@ -705,7 +699,9 @@ function pushNodeLocalPreview(source: GraphNode, into: PreviewItem[]): void {
   if ((source.params.generatedVoices ?? []).length) {
     for (const [index, item] of (source.params.generatedVoices ?? []).entries()) {
       pushLocalMediaPreview(
-        into, item.id?.trim() || `up-gen-audio:${source.id}:${index}`, 'audio',
+        into,
+        item.id?.trim() || `up-gen-audio:${source.id}:${index}`,
+        'audio',
         {
           relativePath: item.relativePath,
           assetId: item.id
@@ -739,8 +735,7 @@ function pushNodeLocalPreview(source: GraphNode, into: PreviewItem[]): void {
       relativePath: previewRel
     })
     if (previewSrc) {
-      const kind =
-        mediaKind === 'audio' || mediaKind === 'image' ? mediaKind : 'image'
+      const kind = mediaKind === 'audio' || mediaKind === 'image' ? mediaKind : 'image'
       if (kind === 'audio' && previewRel && !isAudioFilePath(previewRel)) {
         /* skip non-audio preview path */
       } else {
@@ -748,8 +743,7 @@ function pushNodeLocalPreview(source: GraphNode, into: PreviewItem[]): void {
           key: `up-preview:${source.id}`,
           kind,
           src: previewSrc,
-          assetId:
-            revealableAssetId(source.assetId) ?? assetIdByRelativePath(previewRel)
+          assetId: revealableAssetId(source.assetId) ?? assetIdByRelativePath(previewRel)
         })
       }
     }
@@ -816,11 +810,7 @@ function runOutHasTextItems(value: GraphValue | undefined): boolean {
     return value.items.some((item) => !!item.text?.trim() || !!item.relativePath?.trim())
   }
   if (value.kind === 'text') return !!value.text.trim() || !!value.relativePath?.trim()
-  if (
-    value.kind === 'world' ||
-    value.kind === 'worldEntities' ||
-    value.kind === 'beat'
-  ) {
+  if (value.kind === 'world' || value.kind === 'worldEntities' || value.kind === 'beat') {
     return !!value.text.trim()
   }
   if (value.kind === 'output') {
@@ -1040,10 +1030,7 @@ async function resolveAssetSrc(assetId: string): Promise<string> {
   }
 }
 
-async function resolveRelSrc(
-  relativePath: string,
-  kind: PreviewMediaKind
-): Promise<string> {
+async function resolveRelSrc(relativePath: string, kind: PreviewMediaKind): Promise<string> {
   try {
     if (kind === 'video') {
       if (!isVideoFilePath(relativePath)) return ''
@@ -1090,9 +1077,7 @@ async function resolveItems(): Promise<void> {
   const next = { ...resolvedSrc.value }
   const nextText = { ...resolvedText.value }
   const pendingMedia = items.value.filter(
-    (item) =>
-      (item.src?.startsWith('asset:') || item.src?.startsWith('rel:')) &&
-      !next[item.key]
+    (item) => (item.src?.startsWith('asset:') || item.src?.startsWith('rel:')) && !next[item.key]
   )
   const pendingText = items.value.filter(
     (item) =>
@@ -1151,8 +1136,10 @@ onBeforeUnmount(() => {
 })
 
 function displaySrc(item: PreviewItem): string {
-  return resolvedSrc.value[item.key] ||
+  return (
+    resolvedSrc.value[item.key] ||
     (item.src?.startsWith('asset:') || item.src?.startsWith('rel:') ? '' : item.src || '')
+  )
 }
 
 const notepadOpen = ref(false)
@@ -1166,11 +1153,7 @@ const textOpenHint = computed(() => t('graph.notepad.openHint'))
 
 function openTextNotepad(item: PreviewItem | string | undefined): void {
   const text =
-    typeof item === 'string' || item == null
-      ? item?.trim()
-        ? item
-        : ''
-      : displayText(item)
+    typeof item === 'string' || item == null ? (item?.trim() ? item : '') : displayText(item)
   notepadText.value = text
   notepadOpen.value = true
 }
@@ -1206,10 +1189,7 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
     <div class="section-head">
       <span class="section-title">{{ t('graph.inspector.outputPreview') }}</span>
       <div class="section-actions">
-        <span
-          v-if="items.length > 1"
-          class="section-count"
-        >
+        <span v-if="items.length > 1" class="section-count">
           {{ t('graph.inspector.outputPreviewCount', { n: items.length }) }}
         </span>
         <button
@@ -1220,53 +1200,32 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
           :aria-label="t('graph.inspector.revealInAssets')"
           @click="revealInAssets(primaryRevealAssetId)"
         >
-          <span
-            class="icon-reveal"
-            aria-hidden="true"
-          />
+          <span class="icon-reveal" aria-hidden="true" />
         </button>
       </div>
     </div>
 
-    <p
-      v-if="clearable && canSelectGalleryOutput"
-      class="hint"
-    >
+    <p v-if="clearable && canSelectGalleryOutput" class="hint">
       {{ t('graph.inspector.outputGalleryHint') }}
     </p>
 
-    <p
-      v-if="loading"
-      class="hint"
-    >
+    <p v-if="loading" class="hint">
       {{ t('graph.inspector.outputPreviewLoading') }}
     </p>
 
-    <div
-      v-else-if="layoutKind === 'text'"
-      class="text-stack"
-    >
+    <div v-else-if="layoutKind === 'text'" class="text-stack">
       <pre
         v-for="item in items"
         :key="item.key"
         class="text-body interactive"
         :title="textOpenHint"
         @dblclick="openTextNotepad(item)"
-      >{{ displayText(item) }}</pre>
+        >{{ displayText(item) }}</pre>
     </div>
 
-    <div
-      v-else-if="layoutKind === 'mixed'"
-      class="mixed-stack"
-    >
-      <div
-        v-if="mediaItems.length === 1"
-        class="single"
-      >
-        <template
-          v-for="item in mediaItems"
-          :key="item.key"
-        >
+    <div v-else-if="layoutKind === 'mixed'" class="mixed-stack">
+      <div v-if="mediaItems.length === 1" class="single">
+        <template v-for="item in mediaItems" :key="item.key">
           <img
             v-if="item.kind === 'image' && displaySrc(item)"
             :src="displaySrc(item)"
@@ -1276,16 +1235,13 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
             class="preview-image interactive"
             :title="imagePreviewHint"
             @dblclick="openImageFull(item)"
-          >
+          />
           <MediaPreviewPlayer
             v-else-if="(item.kind === 'video' || item.kind === 'audio') && displaySrc(item)"
             :kind="item.kind === 'audio' ? 'voice' : 'video'"
             :src="displaySrc(item)"
           />
-          <p
-            v-else
-            class="hint"
-          >
+          <p v-else class="hint">
             {{ t('graph.inspector.outputPreviewMissing') }}
           </p>
           <button
@@ -1296,17 +1252,11 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
             :aria-label="t('graph.inspector.outputDelete')"
             @click.stop="deleteOutputItem(item)"
           >
-            <span
-              class="icon-delete"
-              aria-hidden="true"
-            />
+            <span class="icon-delete" aria-hidden="true" />
           </button>
         </template>
       </div>
-      <div
-        v-else
-        class="media-grid"
-      >
+      <div v-else class="media-grid">
         <div
           v-for="(item, index) in mediaItems"
           :key="item.key"
@@ -1325,10 +1275,7 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
               :aria-label="t('graph.inspector.revealInAssets')"
               @click.stop="revealInAssets(item.assetId)"
             >
-              <span
-                class="icon-reveal"
-                aria-hidden="true"
-              />
+              <span class="icon-reveal" aria-hidden="true" />
             </button>
             <button
               v-if="canDeleteOutputItem(item)"
@@ -1338,10 +1285,7 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
               :aria-label="t('graph.inspector.outputDelete')"
               @click.stop="deleteOutputItem(item)"
             >
-              <span
-                class="icon-delete"
-                aria-hidden="true"
-              />
+              <span class="icon-delete" aria-hidden="true" />
             </button>
           </div>
           <img
@@ -1353,24 +1297,18 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
             class="preview-image interactive"
             :title="imagePreviewHint"
             @dblclick.stop="openImageFull(item)"
-          >
+          />
           <MediaPreviewPlayer
             v-else-if="(item.kind === 'video' || item.kind === 'audio') && displaySrc(item)"
             class="grid-player"
             :kind="item.kind === 'audio' ? 'voice' : 'video'"
             :src="displaySrc(item)"
           />
-          <p
-            v-else
-            class="hint"
-          >
+          <p v-else class="hint">
             {{ t('graph.inspector.outputPreviewMissing') }}
           </p>
           <span class="media-index">{{ index + 1 }}</span>
-          <span
-            v-if="canSelectGalleryOutput && isSelectedPreview(item)"
-            class="media-current"
-          >
+          <span v-if="canSelectGalleryOutput && isSelectedPreview(item)" class="media-current">
             {{ t('graph.inspector.generate.selectedAsOutput') }}
           </span>
         </div>
@@ -1383,18 +1321,12 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
           class="text-body interactive"
           :title="textOpenHint"
           @dblclick="openTextNotepad(item)"
-        >{{ displayText(item) }}</pre>
+          >{{ displayText(item) }}</pre>
       </div>
     </div>
 
-    <div
-      v-else-if="layoutKind === 'single'"
-      class="single"
-    >
-      <template
-        v-for="item in items"
-        :key="item.key"
-      >
+    <div v-else-if="layoutKind === 'single'" class="single">
+      <template v-for="item in items" :key="item.key">
         <img
           v-if="item.kind === 'image' && displaySrc(item)"
           :src="displaySrc(item)"
@@ -1404,7 +1336,7 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
           class="preview-image interactive"
           :title="imagePreviewHint"
           @dblclick="openImageFull(item)"
-        >
+        />
         <MediaPreviewPlayer
           v-else-if="(item.kind === 'video' || item.kind === 'audio') && displaySrc(item)"
           :kind="item.kind === 'audio' ? 'voice' : 'video'"
@@ -1415,11 +1347,8 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
           class="text-body interactive"
           :title="textOpenHint"
           @dblclick="openTextNotepad(item)"
-        >{{ displayText(item) }}</pre>
-        <p
-          v-else
-          class="hint"
-        >
+          >{{ displayText(item) }}</pre>
+        <p v-else class="hint">
           {{ t('graph.inspector.outputPreviewMissing') }}
         </p>
         <button
@@ -1430,18 +1359,12 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
           :aria-label="t('graph.inspector.outputDelete')"
           @click.stop="deleteOutputItem(item)"
         >
-          <span
-            class="icon-delete"
-            aria-hidden="true"
-          />
+          <span class="icon-delete" aria-hidden="true" />
         </button>
       </template>
     </div>
 
-    <div
-      v-else
-      class="media-grid"
-    >
+    <div v-else class="media-grid">
       <div
         v-for="(item, index) in items"
         :key="item.key"
@@ -1460,10 +1383,7 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
             :aria-label="t('graph.inspector.revealInAssets')"
             @click.stop="revealInAssets(item.assetId)"
           >
-            <span
-              class="icon-reveal"
-              aria-hidden="true"
-            />
+            <span class="icon-reveal" aria-hidden="true" />
           </button>
           <button
             v-if="canDeleteOutputItem(item)"
@@ -1473,10 +1393,7 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
             :aria-label="t('graph.inspector.outputDelete')"
             @click.stop="deleteOutputItem(item)"
           >
-            <span
-              class="icon-delete"
-              aria-hidden="true"
-            />
+            <span class="icon-delete" aria-hidden="true" />
           </button>
         </div>
         <img
@@ -1488,21 +1405,15 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
           class="preview-image interactive"
           :title="imagePreviewHint"
           @dblclick.stop="openImageFull(item)"
-        >
+        />
         <MediaPreviewPlayer
           v-else-if="(item.kind === 'video' || item.kind === 'audio') && displaySrc(item)"
           class="grid-player"
           :kind="item.kind === 'audio' ? 'voice' : 'video'"
           :src="displaySrc(item)"
         />
-        <div
-          v-else-if="item.kind === 'audio'"
-          class="audio-card"
-        >
-          <span
-            class="audio-glyph"
-            aria-hidden="true"
-          >♪</span>
+        <div v-else-if="item.kind === 'audio'" class="audio-card">
+          <span class="audio-glyph" aria-hidden="true">♪</span>
           <p class="hint">
             {{ t('graph.inspector.outputPreviewMissing') }}
           </p>
@@ -1512,18 +1423,12 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
           class="text-body compact interactive"
           :title="textOpenHint"
           @dblclick.stop="openTextNotepad(item)"
-        >{{ displayText(item) }}</pre>
-        <p
-          v-else
-          class="hint"
-        >
+          >{{ displayText(item) }}</pre>
+        <p v-else class="hint">
           {{ t('graph.inspector.outputPreviewMissing') }}
         </p>
         <span class="media-index">{{ index + 1 }}</span>
-        <span
-          v-if="canSelectGalleryOutput && isSelectedPreview(item)"
-          class="media-current"
-        >
+        <span v-if="canSelectGalleryOutput && isSelectedPreview(item)" class="media-current">
           {{ t('graph.inspector.generate.selectedAsOutput') }}
         </span>
       </div>
@@ -1628,7 +1533,6 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
   border-radius: 1px 1px 0 0;
   background: transparent;
 }
-
 
 .icon-reveal::after {
   content: '';

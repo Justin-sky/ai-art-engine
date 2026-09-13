@@ -12,10 +12,7 @@
   >
     <div class="reshoot-editor">
       <div class="stage-col">
-        <div
-          v-if="videoUrl && !videoError"
-          class="stage"
-        >
+        <div v-if="videoUrl && !videoError" class="stage">
           <video
             ref="videoEl"
             class="video-el"
@@ -31,12 +28,7 @@
             @error="onVideoError"
           />
 
-          <div
-            class="transport"
-            @pointerdown.stop
-            @click.stop
-            @wheel.stop
-          >
+          <div class="transport" @pointerdown.stop @click.stop @wheel.stop>
             <div class="transport-actions">
               <button
                 type="button"
@@ -84,34 +76,23 @@
                 :value="progressValue"
                 @input="onSeekInput"
                 @change="onSeekChange"
-              >
+              />
             </div>
-            <div
-              class="segment-summary"
-              :class="{ active: segmentActive }"
-            >
+            <div class="segment-summary" :class="{ active: segmentActive }">
               <span class="segment-dot start" />
               <span>{{ formatTime(startSec) }}</span>
               <span class="segment-arrow">→</span>
               <span>{{ formatTime(endSec) }}</span>
               <span class="segment-dot end" />
-              <span
-                v-if="segmentActive"
-                class="segment-range"
-              >
+              <span v-if="segmentActive" class="segment-range">
                 {{ t('graph.inspector.reshoot.range', { range: segmentRange }) }}
               </span>
             </div>
           </div>
         </div>
-        <div
-          v-else
-          class="stage empty"
-        >
+        <div v-else class="stage empty">
           <span>{{
-            videoError
-              ? t('graph.preview.videoError')
-              : t('graph.inspector.reshoot.noSource')
+            videoError ? t('graph.preview.videoError') : t('graph.inspector.reshoot.noSource')
           }}</span>
         </div>
       </div>
@@ -140,23 +121,11 @@
           <div class="segment-inputs">
             <label>
               {{ t('graph.inspector.reshoot.start') }}
-              <input
-                type="number"
-                min="0"
-                step="0.1"
-                :value="startSec"
-                @input="onStartInput"
-              >
+              <input type="number" min="0" step="0.1" :value="startSec" @input="onStartInput" />
             </label>
             <label>
               {{ t('graph.inspector.reshoot.end') }}
-              <input
-                type="number"
-                min="0"
-                step="0.1"
-                :value="endSec"
-                @input="onEndInput"
-              >
+              <input type="number" min="0" step="0.1" :value="endSec" @input="onEndInput" />
             </label>
           </div>
           <p class="segment-hint">
@@ -260,14 +229,7 @@ const playing = ref(false)
 const seeking = ref(false)
 const videoError = ref(false)
 const videoEl = ref<HTMLVideoElement | null>(null)
-const {
-  fps,
-  frame,
-  time,
-  refreshMetadata,
-  step,
-  seekToTime
-} = useFrameStepper(videoEl)
+const { fps, frame, time, refreshMetadata, step, seekToTime } = useFrameStepper(videoEl)
 
 const startSec = computed(() => Number(node.value?.params.reshootStartSec ?? 0))
 const endSec = computed(() => Number(node.value?.params.reshootEndSec ?? 0))

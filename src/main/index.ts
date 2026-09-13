@@ -104,7 +104,9 @@ function createWindow(): void {
     const isPopout =
       details.url === 'about:blank' ||
       details.url.startsWith('file:') ||
-      (is.dev && !!process.env['ELECTRON_RENDERER_URL'] && details.url.startsWith(process.env['ELECTRON_RENDERER_URL']))
+      (is.dev &&
+        !!process.env['ELECTRON_RENDERER_URL'] &&
+        details.url.startsWith(process.env['ELECTRON_RENDERER_URL']))
 
     if (isPopout) {
       const requested = parseWindowFeatures(details.features)

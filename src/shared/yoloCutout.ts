@@ -234,7 +234,8 @@ export function resolveCutoutRegion(params: {
     x2 = Math.max(x2, b.x + b.width)
     y2 = Math.max(y2, b.y + b.height)
   }
-  const pad = Math.max(0, Math.round(params.feather ?? 0)) + Math.max(0, Math.round(params.margin ?? 0))
+  const pad =
+    Math.max(0, Math.round(params.feather ?? 0)) + Math.max(0, Math.round(params.margin ?? 0))
   const left = clampInt(Math.floor(x1) - pad, 0, srcW - 1)
   const top = clampInt(Math.floor(y1) - pad, 0, srcH - 1)
   const right = clampInt(Math.ceil(x2) + pad, left + 1, srcW)
@@ -243,10 +244,7 @@ export function resolveCutoutRegion(params: {
 }
 
 /** 把 0~1 的 alpha 写入 RGBA 像素的第 4 字节（就地修改） */
-export function applyAlphaToRgba(
-  rgba: Uint8ClampedArray | Uint8Array,
-  alpha: Float32Array
-): void {
+export function applyAlphaToRgba(rgba: Uint8ClampedArray | Uint8Array, alpha: Float32Array): void {
   const count = Math.min(alpha.length, rgba.length >> 2)
   for (let i = 0; i < count; i++) {
     rgba[i * 4 + 3] = Math.round(clamp(alpha[i]!, 0, 1) * 255)

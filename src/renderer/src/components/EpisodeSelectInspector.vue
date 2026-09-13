@@ -1,8 +1,5 @@
 <template>
-  <div
-    v-if="node"
-    class="node-inspector"
-  >
+  <div v-if="node" class="node-inspector">
     <div class="head">
       <h2>{{ displayTitle }}</h2>
     </div>
@@ -12,17 +9,10 @@
 
     <label>
       {{ t('graph.inspector.displayName') }}
-      <input
-        v-model="displayName"
-        type="text"
-        @change="persistTitle"
-      >
+      <input v-model="displayName" type="text" @change="persistTitle" />
     </label>
 
-    <section
-      v-if="isAnchorSelect"
-      class="select-section"
-    >
+    <section v-if="isAnchorSelect" class="select-section">
       <h3>{{ t('graph.inspector.episode.anchorLabel') }}</h3>
       <div class="grid-buttons">
         <button
@@ -81,17 +71,10 @@
 
     <section class="output-section">
       <h3>{{ t('graph.inspector.outputPreview') }}</h3>
-      <GraphNodeOutputPreview
-        v-if="hostId"
-        :node="node"
-        :host-id="hostId"
-      />
+      <GraphNodeOutputPreview v-if="hostId" :node="node" :host-id="hostId" />
     </section>
   </div>
-  <div
-    v-else
-    class="node-inspector empty"
-  >
+  <div v-else class="node-inspector empty">
     {{ t('graph.inspector.node.empty') }}
   </div>
 </template>
@@ -124,7 +107,7 @@ const node = computed((): GraphNode | null => {
 
 const hostId = computed(() => {
   const selection = editor.selection.current.value
-  return selection.kind === 'graph.node' ? selection.hostId ?? '' : ''
+  return selection.kind === 'graph.node' ? (selection.hostId ?? '') : ''
 })
 
 const isAnchorSelect = computed(() => node.value?.typeId === 'episode.anchorSelect')
@@ -132,9 +115,7 @@ const anchorIndex = computed(() => Number(node.value?.params?.anchorIndex ?? 1))
 const cellGroupIndex = computed(() => Number(node.value?.params?.cellGroupIndex ?? 1))
 const cellIndex = computed(() => Number(node.value?.params?.cellIndex ?? 1))
 
-const typeLabel = computed(() =>
-  node.value?.typeId ? graphTypeLabel(node.value.typeId) : ''
-)
+const typeLabel = computed(() => (node.value?.typeId ? graphTypeLabel(node.value.typeId) : ''))
 const displayTitle = useNodeDisplayTitle(node, typeLabel)
 
 const hint = computed(() =>

@@ -28,6 +28,11 @@ export function isNearIdentityQuat(q: THREE.Quaternion, eps = 1e-5): boolean {
 }
 
 /** 欧拉（弧度 XYZ）→ 四元数偏移 */
-export function offsetFromEulerXYZ(x: number, y: number, z: number, out = new THREE.Quaternion()): THREE.Quaternion {
+export function offsetFromEulerXYZ(
+  x: number,
+  y: number,
+  z: number,
+  out = new THREE.Quaternion()
+): THREE.Quaternion {
   return out.setFromEuler(new THREE.Euler(x, y, z, 'XYZ'))
 }

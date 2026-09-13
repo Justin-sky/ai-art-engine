@@ -1,27 +1,10 @@
 <template>
-  <div
-    class="inspector-host"
-    :class="{ stacked: mountedEditors.length > 1 }"
-  >
-    <div
-      v-for="editor in mountedEditors"
-      :key="editor.key"
-      class="editor-frame"
-    >
-      <component
-        :is="editor.component"
-        v-bind="editor.props"
-      />
+  <div class="inspector-host" :class="{ stacked: mountedEditors.length > 1 }">
+    <div v-for="editor in mountedEditors" :key="editor.key" class="editor-frame">
+      <component :is="editor.component" v-bind="editor.props" />
     </div>
-    <div
-      v-for="drawer in mountedDrawers"
-      :key="drawer.key"
-      class="editor-frame property-drawer"
-    >
-      <component
-        :is="drawer.component"
-        v-bind="drawer.props"
-      />
+    <div v-for="drawer in mountedDrawers" :key="drawer.key" class="editor-frame property-drawer">
+      <component :is="drawer.component" v-bind="drawer.props" />
     </div>
     <div
       v-if="!switching && mountedEditors.length === 0 && mountedDrawers.length === 0"
@@ -35,11 +18,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onErrorCaptured, ref, watch, type Component } from 'vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
-import {
-  resolveInspectors,
-  useInspectorTarget,
-  type InspectorContext
-} from '../inspector'
+import { resolveInspectors, useInspectorTarget, type InspectorContext } from '../inspector'
 import { listPropertyDrawers } from '../editor/extensions'
 
 type MountedEditor = {
@@ -81,9 +60,7 @@ const emptyInspectorMessage = computed(() => {
 })
 
 const propertyDrawers = computed(() =>
-  listPropertyDrawers().filter((drawer) =>
-    drawer.match(target.value.kind, target.value.subject)
-  )
+  listPropertyDrawers().filter((drawer) => drawer.match(target.value.kind, target.value.subject))
 )
 
 /**

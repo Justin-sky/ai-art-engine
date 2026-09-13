@@ -52,8 +52,14 @@ const LBL_STYLE_REFS = { zh: '风格参考图', en: 'Style reference images' }
 const HEADER_TITLE = { zh: '项目记忆', en: 'Project Memory' }
 const HEADER_PROJECT_INFO = { zh: '项目信息', en: 'Project info' }
 const MEMORY_INTRO = [
-  { zh: '跨会话沉淀的项目偏好（风格 / 机位 / 角色一致性 / 其它）；AI 对话会自动加载本文件，Agent 可随时用 project_memory_append 补充。', en: 'Persistent project preferences (style / camera / character / other); the AI chat auto-loads this file, agents may append via project_memory_append.' },
-  { zh: '由工程配置自动初始化；修改后下一轮对话立即生效。', en: 'Initialized from the project config; edits take effect on the next chat turn.' }
+  {
+    zh: '跨会话沉淀的项目偏好（风格 / 机位 / 角色一致性 / 其它）；AI 对话会自动加载本文件，Agent 可随时用 project_memory_append 补充。',
+    en: 'Persistent project preferences (style / camera / character / other); the AI chat auto-loads this file, agents may append via project_memory_append.'
+  },
+  {
+    zh: '由工程配置自动初始化；修改后下一轮对话立即生效。',
+    en: 'Initialized from the project config; edits take effect on the next chat turn.'
+  }
 ]
 
 /** 由工程配置生成初始记忆基线（记忆文件不存在时调用） */
@@ -114,9 +120,7 @@ export function parseMemorySections(content: string): MemorySectionEntry[] {
         const loose = s.zh
         return line === expected || line.includes(loose)
       })
-      current = def
-        ? { id: def.id, title: line, lines: [] }
-        : null
+      current = def ? { id: def.id, title: line, lines: [] } : null
       if (current) results.push(current)
       continue
     }

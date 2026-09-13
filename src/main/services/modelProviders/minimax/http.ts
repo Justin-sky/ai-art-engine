@@ -84,13 +84,14 @@ export function formatMiniMaxError(message: string, statusCode?: number): string
 export async function readMiniMaxHttpError(err: unknown): Promise<string> {
   if (axios.isAxiosError(err)) {
     const data = err.response?.data as
-      | { base_resp?: MiniMaxBaseResp; message?: string; error?: { message?: string } }
-      | undefined
+      { base_resp?: MiniMaxBaseResp; message?: string; error?: { message?: string } } | undefined
     const base = data?.base_resp
     if (base && typeof base.status_code === 'number' && base.status_code !== 0) {
       const raw =
         base.status_msg ||
-        (isEn() ? `MiniMax error code=${base.status_code}` : `MiniMax 错误 code=${base.status_code}`)
+        (isEn()
+          ? `MiniMax error code=${base.status_code}`
+          : `MiniMax 错误 code=${base.status_code}`)
       return formatMiniMaxError(raw, base.status_code)
     }
     if (data?.message) return formatMiniMaxError(data.message)

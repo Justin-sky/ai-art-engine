@@ -1,24 +1,14 @@
 <template>
-  <div
-    v-if="asset"
-    class="asset-editor"
-    :class="{ graph: supportsGraph }"
-  >
+  <div v-if="asset" class="asset-editor" :class="{ graph: supportsGraph }">
     <template v-if="supportsGraph">
-      <div
-        v-if="showDiveShellBar && diveContext"
-        class="dive-shell-bar"
-      >
+      <div v-if="showDiveShellBar && diveContext" class="dive-shell-bar">
         <EditorDiveBar
           :root-title="diveContext.rootTitle"
           :frames="diveContext.frames"
           @pop-to="diveContext.popTo"
         />
       </div>
-      <div
-        v-if="!embedded && !diving"
-        class="toolbar"
-      >
+      <div v-if="!embedded && !diving" class="toolbar">
         <span>{{ typeLabel }}</span>
         <span class="spacer" />
         <span class="hint">{{ t('asset.editor.graphHint') }}</span>
@@ -30,10 +20,7 @@
         :asset-id="assetId"
         :hide-toolbar="!embedded && toolbarCollapsed"
       />
-      <EditorDiveChildHost
-        :frame="diving ? diveTop : null"
-        :frames="diveFrames"
-      />
+      <EditorDiveChildHost :frame="diving ? diveTop : null" :frames="diveFrames" />
     </template>
 
     <template v-else>
@@ -41,17 +28,11 @@
         <div>
           <div class="type">
             <span>{{ typeLabel }}</span>
-            <span
-              v-if="isDraft"
-              class="draft-mark"
-            >*</span>
+            <span v-if="isDraft" class="draft-mark">*</span>
           </div>
           <h2 class="title-row">
-            <span>{{ isDraft ? (local.name || t('common.unnamed')) : asset.name }}</span>
-            <span
-              v-if="isDraft"
-              class="draft-mark"
-            >*</span>
+            <span>{{ isDraft ? local.name || t('common.unnamed') : asset.name }}</span>
+            <span v-if="isDraft" class="draft-mark">*</span>
           </h2>
         </div>
         <button @click="onAttach">
@@ -69,28 +50,14 @@
           class="preview-image"
           :title="t('graph.selectImage.previewHint')"
           @dblclick="openFullPreview"
-        >
-        <video
-          v-else-if="previewUrl && isVideoLike"
-          :src="previewUrl"
-          controls
         />
-        <audio
-          v-else-if="previewUrl && isAudioLike"
-          :src="previewUrl"
-          controls
-        />
-        <div
-          v-else-if="previewLoading"
-          class="placeholder"
-        >
+        <video v-else-if="previewUrl && isVideoLike" :src="previewUrl" controls />
+        <audio v-else-if="previewUrl && isAudioLike" :src="previewUrl" controls />
+        <div v-else-if="previewLoading" class="placeholder">
           <span>{{ typeLabel }}</span>
           <p>{{ t('asset.editor.loadingPreview') }}</p>
         </div>
-        <div
-          v-else
-          class="placeholder"
-        >
+        <div v-else class="placeholder">
           <span>{{ typeLabel }}</span>
           <p>{{ asset.relativePath ? t('asset.editor.noPreview') : t('asset.editor.noMedia') }}</p>
         </div>
@@ -98,10 +65,7 @@
 
       <label>
         {{ t('asset.field.name') }}
-        <input
-          v-model="local.name"
-          @change="persist"
-        >
+        <input v-model="local.name" @change="persist" />
       </label>
 
       <label>
@@ -124,37 +88,31 @@
         />
       </label>
 
-      <p
-        v-if="error"
-        class="err"
-      >
+      <p v-if="error" class="err">
         {{ error }}
       </p>
-      <p
-        v-if="!isDraft"
-        class="meta"
-      >
-        ID {{ asset.id.slice(0, 8) }} · v{{ asset.version }}
-      </p>
-      <p
-        v-else-if="isDraft"
-        class="meta draft-hint"
-      >
+      <p v-if="!isDraft" class="meta">ID {{ asset.id.slice(0, 8) }} · v{{ asset.version }}</p>
+      <p v-else-if="isDraft" class="meta draft-hint">
         {{ t('asset.editor.draftHint') }}
       </p>
     </template>
   </div>
-  <div
-    v-else
-    class="asset-editor empty"
-  >
+  <div v-else class="asset-editor empty">
     {{ t('asset.editor.notFound') }}
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { isDraftAssetId, isMediaFileAsset, isImportedMediaRefAsset, isSoundAsset, isScreenplayAsset, isSubgraphAsset, type AssetType } from '@shared/domain'
+import {
+  isDraftAssetId,
+  isMediaFileAsset,
+  isImportedMediaRefAsset,
+  isSoundAsset,
+  isScreenplayAsset,
+  isSubgraphAsset,
+  type AssetType
+} from '@shared/domain'
 import { persistAssetRecord, useAssetRecord } from '../composables/useAssetRecord'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useEditorDocumentSession } from '../composables/useEditorDocumentSession'
@@ -207,9 +165,7 @@ const supportsGraph = computed(
 const diveKind = computed(() =>
   asset.value && isScreenplayAsset(asset.value.type) ? ('screenplay' as const) : ('asset' as const)
 )
-const rootTitle = computed(
-  () => asset.value?.name?.trim() || t('studio.dive.root')
-)
+const rootTitle = computed(() => asset.value?.name?.trim() || t('studio.dive.root'))
 const { diving, diveTop, diveFrames, diveContext } = useEditorDiveHost({
   kind: diveKind,
   assetId: () => props.assetId,
@@ -269,14 +225,18 @@ async function openFullPreview(): Promise<void> {
 async function persistNow(): Promise<void> {
   if (!asset.value) return
   error.value = ''
-  await persistAssetRecord(props.assetId, {
-    name: local.name.trim() || asset.value.name,
-    prompt: local.prompt,
-    notes: local.notes
-  }, {
-    recordCommand: true,
-    label: 'Edit asset'
-  })
+  await persistAssetRecord(
+    props.assetId,
+    {
+      name: local.name.trim() || asset.value.name,
+      prompt: local.prompt,
+      notes: local.notes
+    },
+    {
+      recordCommand: true,
+      label: 'Edit asset'
+    }
+  )
 }
 
 const assetDocument = useEditorDocumentSession({
@@ -291,14 +251,23 @@ function persist(): void {
 function filtersForType(type: AssetType): { name: string; extensions: string[] }[] {
   switch (type) {
     case 'image':
-      return [{ name: t('asset.fileFilter.image'), extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }]
+      return [
+        { name: t('asset.fileFilter.image'), extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }
+      ]
     case 'video':
     case 'motion':
-      return [{ name: t('asset.fileFilter.video'), extensions: ['mp4', 'mov', 'webm', 'glb', 'gltf', 'png', 'jpg'] }]
+      return [
+        {
+          name: t('asset.fileFilter.video'),
+          extensions: ['mp4', 'mov', 'webm', 'glb', 'gltf', 'png', 'jpg']
+        }
+      ]
     case 'voice':
       return [{ name: t('asset.fileFilter.audio'), extensions: ['mp3', 'wav', 'ogg', 'm4a'] }]
     default:
-      return [{ name: t('asset.fileFilter.all'), extensions: ['png', 'jpg', 'mp4', 'mp3', 'txt', 'md'] }]
+      return [
+        { name: t('asset.fileFilter.all'), extensions: ['png', 'jpg', 'mp4', 'mp3', 'txt', 'md'] }
+      ]
   }
 }
 

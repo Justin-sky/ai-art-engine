@@ -78,16 +78,17 @@ describe('Cordis editor runtime', () => {
     fork.dispose()
     expect(getNodeType(DEMO_TYPE)).toBeUndefined()
     expect(listGraphScopes().some((scope) => scope.id === DEMO_SCOPE)).toBe(false)
-    expect(ctx.editor.plugins.value.some((plugin) => plugin.id === 'plugin.test.cordis')).toBe(false)
+    expect(ctx.editor.plugins.value.some((plugin) => plugin.id === 'plugin.test.cordis')).toBe(
+      false
+    )
   })
 
   it('overlays a node executor through ctx.editor.executor and rolls it back', async () => {
     ctx = await boot()
     const overlayType = 'plugin.test.cordis.executor'
-    const overlay = Object.assign(
-      () => ({ out: { kind: 'text' as const, text: 'from-plugin' } }),
-      { tag: 'cordis-executor-overlay' as const }
-    )
+    const overlay = Object.assign(() => ({ out: { kind: 'text' as const, text: 'from-plugin' } }), {
+      tag: 'cordis-executor-overlay' as const
+    })
     function overlayPlugin(pluginCtx: Context): void {
       pluginCtx.editor.executor(overlayType, overlay)
     }

@@ -1,8 +1,5 @@
 <template>
-  <div
-    v-if="node"
-    class="demo-inspector"
-  >
+  <div v-if="node" class="demo-inspector">
     <div class="head">
       <span class="type">{{ t('graph.demo.badge') }}</span>
       <h2>{{ displayTitle }}</h2>
@@ -13,25 +10,15 @@
 
     <label>
       {{ t('graph.inspector.note.title') }}
-      <input
-        v-model="localTitle"
-        @change="persist"
-      >
+      <input v-model="localTitle" @change="persist" />
     </label>
 
     <label>
       {{ t('graph.inspector.note.body') }}
-      <textarea
-        v-model="localText"
-        rows="8"
-        @change="persist"
-      />
+      <textarea v-model="localText" rows="8" @change="persist" />
     </label>
   </div>
-  <div
-    v-else
-    class="demo-inspector empty"
-  >
+  <div v-else class="demo-inspector empty">
     {{ t('graph.inspector.note.empty') }}
   </div>
 </template>
@@ -56,7 +43,10 @@ const node = computed(() => {
   const current = graphEditorHosts.getNode(selection.hostId, id)
   return current?.typeId === 'plugin.example.node' ? current : null
 })
-const displayTitle = useNodeDisplayTitle(node, computed(() => t('graph.demo.title')))
+const displayTitle = useNodeDisplayTitle(
+  node,
+  computed(() => t('graph.demo.title'))
+)
 
 watch(
   node,

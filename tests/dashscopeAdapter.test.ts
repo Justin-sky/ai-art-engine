@@ -256,9 +256,9 @@ describe('dashscopeAdapter', () => {
   })
 
   it('throws for speech', async () => {
-    await expect(
-      dashscopeAdapter.generateSpeech(provider(), 'x', { input: 'hi' })
-    ).rejects.toThrow(/不支持语音/)
+    await expect(dashscopeAdapter.generateSpeech(provider(), 'x', { input: 'hi' })).rejects.toThrow(
+      /不支持语音/
+    )
   })
 
   it('submits text-to-video and polls', async () => {

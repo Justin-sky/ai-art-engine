@@ -56,13 +56,10 @@ function isValidSubjectBox(v: unknown): v is ComposeSubjectBox {
   )
 }
 
-export function normalizeImageCompose(
-  raw?: Partial<ImageComposeState> | null
-): ImageComposeState {
+export function normalizeImageCompose(raw?: Partial<ImageComposeState> | null): ImageComposeState {
   const base = { ...DEFAULT_IMAGE_COMPOSE, ...(raw ?? {}) }
   const aspectId = String(base.aspectId ?? '').trim()
-  const strategy: ComposeStrategy =
-    base.strategy === 'center' ? 'center' : 'headroom'
+  const strategy: ComposeStrategy = base.strategy === 'center' ? 'center' : 'headroom'
   const detectedWidth = Math.max(0, Math.round(Number(base.detectedWidth) || 0))
   const detectedHeight = Math.max(0, Math.round(Number(base.detectedHeight) || 0))
   return {
@@ -71,17 +68,15 @@ export function normalizeImageCompose(
         ? aspectId
         : DEFAULT_IMAGE_COMPOSE.aspectId,
     strategy,
-    confThreshold: clamp(Number(base.confThreshold), 0.2, 0.9) || DEFAULT_IMAGE_COMPOSE.confThreshold,
+    confThreshold:
+      clamp(Number(base.confThreshold), 0.2, 0.9) || DEFAULT_IMAGE_COMPOSE.confThreshold,
     subjectBox:
-      isValidSubjectBox(base.subjectBox) &&
-      detectedWidth > 0 &&
-      detectedHeight > 0
+      isValidSubjectBox(base.subjectBox) && detectedWidth > 0 && detectedHeight > 0
         ? (base.subjectBox as ComposeSubjectBox)
         : null,
     detectedWidth,
     detectedHeight,
-    detectedConf:
-      clamp(Number(base.detectedConf), 0.2, 0.9) || DEFAULT_IMAGE_COMPOSE.detectedConf
+    detectedConf: clamp(Number(base.detectedConf), 0.2, 0.9) || DEFAULT_IMAGE_COMPOSE.detectedConf
   }
 }
 

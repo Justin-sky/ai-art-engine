@@ -1,8 +1,5 @@
 <template>
-  <div
-    v-if="node"
-    class="node-inspector"
-  >
+  <div v-if="node" class="node-inspector">
     <div class="head">
       <h2>{{ displayTitle }}</h2>
     </div>
@@ -18,18 +15,11 @@
       @toggle="toggleRun"
     />
 
-    <GraphNodeOutputPreview
-      v-if="node && hostId"
-      :node="node"
-      :host-id="hostId"
-    />
+    <GraphNodeOutputPreview v-if="node && hostId" :node="node" :host-id="hostId" />
 
     <label>
       {{ t('graph.inspector.displayName') }}
-      <input
-        v-model="localTitle"
-        @change="persistTitle"
-      >
+      <input v-model="localTitle" @change="persistTitle" />
     </label>
 
     <section class="gen-config">
@@ -44,24 +34,15 @@
           @change="persistGenerateConfig"
         />
       </label>
-      <p
-        v-if="modelOptions.length === 0"
-        class="hint"
-      >
+      <p v-if="modelOptions.length === 0" class="hint">
         {{ t('graph.inspector.generate.configureVideoModelsHint') }}
       </p>
-      <p
-        v-else
-        class="field-hint"
-      >
+      <p v-else class="field-hint">
         {{ t('graph.inspector.lipSync.modelHint') }}
       </p>
     </section>
   </div>
-  <div
-    v-else
-    class="node-inspector empty"
-  >
+  <div v-else class="node-inspector empty">
     {{ t('graph.inspector.node.empty') }}
   </div>
 </template>
@@ -102,7 +83,7 @@ const node = computed(() => {
 
 const hostId = computed(() => {
   const selection = editor.selection.current.value
-  return selection.kind === 'graph.node' ? selection.hostId ?? '' : ''
+  return selection.kind === 'graph.node' ? (selection.hostId ?? '') : ''
 })
 
 const { hasInPort, runStatus, isGraphRunning, blocked, toggleRun } = useGraphNodeRun(node)
@@ -169,9 +150,7 @@ watch(locale, (next) => {
 })
 
 function isDefaultSystemPrompt(value: string): boolean {
-  return (
-    value === DEFAULT_LIP_SYNC_SYSTEM_PROMPT_EN || value === DEFAULT_LIP_SYNC_SYSTEM_PROMPT_ZH
-  )
+  return value === DEFAULT_LIP_SYNC_SYSTEM_PROMPT_EN || value === DEFAULT_LIP_SYNC_SYSTEM_PROMPT_ZH
 }
 
 function persistTitle(): void {
@@ -187,7 +166,6 @@ function persistGenerateConfig(): void {
     generateSystemPrompt: systemPrompt.value
   })
 }
-
 </script>
 
 <style scoped>

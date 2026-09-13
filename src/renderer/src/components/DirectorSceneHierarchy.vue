@@ -1,9 +1,5 @@
 <template>
-  <aside
-    ref="rootEl"
-    class="hierarchy"
-    :style="{ width: `${paneWidth}px` }"
-  >
+  <aside ref="rootEl" class="hierarchy" :style="{ width: `${paneWidth}px` }">
     <div class="hierarchy-head">
       <div class="hierarchy-title">
         {{ t('director.stage.scenePanel') }}
@@ -16,10 +12,7 @@
           :aria-expanded="menuOpen && menuMode === 'dropdown'"
           @click.stop="toggleDropdownMenu"
         >
-          <span
-            class="create-plus"
-            aria-hidden="true"
-          />
+          <span class="create-plus" aria-hidden="true" />
         </button>
       </div>
     </div>
@@ -28,7 +21,7 @@
       class="search"
       type="search"
       :placeholder="t('director.stage.searchPlaceholder')"
-    >
+    />
     <ul
       class="list"
       @click="onListClick"
@@ -49,9 +42,7 @@
         }"
         :style="{ paddingLeft: `${8 + item.depth * 14}px` }"
         :draggable="
-          item.kind !== 'panorama' &&
-            item.kind !== 'cameraGroup' &&
-            editingId !== item.id
+          item.kind !== 'panorama' && item.kind !== 'cameraGroup' && editingId !== item.id
         "
         @click="onRowClick(item, $event)"
         @dblclick="onRowDblClick(item)"
@@ -67,19 +58,12 @@
           type="button"
           class="tree-chevron"
           :class="{ collapsed: !isExpanded(item.id) }"
-          :title="
-            isExpanded(item.id)
-              ? t('director.stage.collapse')
-              : t('director.stage.expand')
-          "
+          :title="isExpanded(item.id) ? t('director.stage.collapse') : t('director.stage.expand')"
           :aria-expanded="isExpanded(item.id)"
           @click.stop="toggleExpanded(item.id)"
           @dblclick.stop
         >
-          <span
-            class="chevron-icon"
-            v-html="CHEVRON_ICON"
-          />
+          <span class="chevron-icon" v-html="CHEVRON_ICON" />
         </button>
         <template v-if="item.kind !== 'panorama' && item.kind !== 'cameraGroup'">
           <button
@@ -143,16 +127,10 @@
           @keydown.enter.prevent="commitRename"
           @keydown.escape.prevent="cancelRename"
           @blur="commitRename"
-        >
-        <span
-          v-else
-          class="name"
-        >{{ item.name }}</span>
+        />
+        <span v-else class="name">{{ item.name }}</span>
       </li>
-      <li
-        v-if="filtered.length === 0"
-        class="empty"
-      >
+      <li v-if="filtered.length === 0" class="empty">
         {{ t('director.stage.hierarchyEmpty') }}
       </li>
     </ul>
@@ -166,12 +144,7 @@
       :style="menuStyle"
     >
       <template v-if="menuMode === 'item'">
-        <button
-          type="button"
-          class="menu-item"
-          role="menuitem"
-          @click="copyContextItems"
-        >
+        <button type="button" class="menu-item" role="menuitem" @click="copyContextItems">
           {{ t('director.stage.copy') }}
         </button>
         <button
@@ -206,20 +179,10 @@
           {{ t('director.stage.paste') }}
         </button>
         <div class="menu-sep" />
-        <button
-          type="button"
-          class="menu-item"
-          role="menuitem"
-          @click="createCamera"
-        >
+        <button type="button" class="menu-item" role="menuitem" @click="createCamera">
           {{ t('director.stage.createCamera') }}
         </button>
-        <button
-          type="button"
-          class="menu-item"
-          role="menuitem"
-          @click="createEmpty"
-        >
+        <button type="button" class="menu-item" role="menuitem" @click="createEmpty">
           {{ t('director.stage.createEmpty') }}
         </button>
         <div class="menu-sep" />
@@ -481,7 +444,12 @@ function pruneSelection(): void {
 }
 
 watch(
-  () => [scene.selectionKind.value, scene.selectedObjectId.value, scene.selectedCameraId.value] as const,
+  () =>
+    [
+      scene.selectionKind.value,
+      scene.selectedObjectId.value,
+      scene.selectedCameraId.value
+    ] as const,
   () => {
     if (syncingFromHierarchy) return
     const id = scenePrimaryId()
@@ -659,11 +627,7 @@ function onHierarchyKeyDown(event: KeyboardEvent): void {
 
   if (event.key !== 'Delete' && event.key !== 'Backspace') return
   const ids =
-    selectedIds.value.length > 0
-      ? selectedIds.value
-      : scenePrimaryId()
-        ? [scenePrimaryId()!]
-        : []
+    selectedIds.value.length > 0 ? selectedIds.value : scenePrimaryId() ? [scenePrimaryId()!] : []
   if (!ids.some((id) => scene.canDeleteObject(id))) return
   event.preventDefault()
   deleteSelectedObjects()
@@ -700,10 +664,7 @@ function rangeSelectIds(fromId: string, toId: string): string[] {
   return rows.slice(start, end + 1).map((row) => row.id)
 }
 
-function onRowClick(
-  item: { id: string; kind: string; name: string },
-  event: MouseEvent
-): void {
+function onRowClick(item: { id: string; kind: string; name: string }, event: MouseEvent): void {
   if (editingId.value) return
   clearRenameTimer()
   const additive = event.ctrlKey || event.metaKey
@@ -736,8 +697,7 @@ function onRowClick(
     return
   }
 
-  const wasOnlySelected =
-    selectedIds.value.length === 1 && selectedIds.value[0] === item.id
+  const wasOnlySelected = selectedIds.value.length === 1 && selectedIds.value[0] === item.id
   anchorId.value = item.id
   setSelection([item.id], item.id)
   if (!wasOnlySelected || item.kind === 'panorama' || item.kind === 'camera') return
@@ -892,12 +852,7 @@ function reparentableDragIds(): string[] {
   const rowById = new Map(rows.map((row) => [row.id, row]))
   const candidates = draggingIds.value.filter((id) => {
     const row = rowById.get(id)
-    return (
-      !!row &&
-      row.kind !== 'camera' &&
-      row.kind !== 'cameraGroup' &&
-      row.kind !== 'panorama'
-    )
+    return !!row && row.kind !== 'camera' && row.kind !== 'cameraGroup' && row.kind !== 'panorama'
   })
   const candidateSet = new Set(candidates)
   return candidates.filter((id) => {
@@ -949,8 +904,7 @@ async function onDropRow(targetId: string, event: DragEvent): Promise<void> {
     const asset = workspace.resolveDraggedAsset(event)
     if (!asset || asset.type !== 'model') return
     const row = scene.hierarchyRows.value.find((item) => item.id === targetId)
-    const parentId =
-      !row || row.kind === 'camera' || row.kind === 'panorama' ? null : targetId
+    const parentId = !row || row.kind === 'camera' || row.kind === 'panorama' ? null : targetId
     await scene.createModelObject(asset.id, parentId)
     return
   }

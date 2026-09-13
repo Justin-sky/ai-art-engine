@@ -16,29 +16,18 @@
           <strong>{{ selectedLayer?.name || t('graph.layerSplit.noSelection') }}</strong>
           <span v-if="selectedLayer" class="z-tag">z {{ selectedLayer.zIndex }}</span>
         </div>
-        <button
-          type="button"
-          class="tool-btn"
-          :disabled="!canReorder"
-          @click="reorder('down')"
-        >
+        <button type="button" class="tool-btn" :disabled="!canReorder" @click="reorder('down')">
           {{ t('graph.layerSplit.sendBack') }}
         </button>
-        <button
-          type="button"
-          class="tool-btn"
-          :disabled="!canReorder"
-          @click="reorder('up')"
-        >
+        <button type="button" class="tool-btn" :disabled="!canReorder" @click="reorder('up')">
           {{ t('graph.layerSplit.bringForward') }}
         </button>
-        <button
-          type="button"
-          class="tool-btn"
-          :disabled="!baseLayer"
-          @click="toggleBaseVisible"
-        >
-          {{ baseLayer && !baseLayer.visible ? t('graph.layerSplit.showBase') : t('graph.layerSplit.hideBase') }}
+        <button type="button" class="tool-btn" :disabled="!baseLayer" @click="toggleBaseVisible">
+          {{
+            baseLayer && !baseLayer.visible
+              ? t('graph.layerSplit.showBase')
+              : t('graph.layerSplit.hideBase')
+          }}
         </button>
         <button
           type="button"
@@ -48,12 +37,7 @@
         >
           {{ t('graph.layerSplit.resetPos') }}
         </button>
-        <button
-          type="button"
-          class="tool-btn"
-          :disabled="!draft.layers.length"
-          @click="resetAll"
-        >
+        <button type="button" class="tool-btn" :disabled="!draft.layers.length" @click="resetAll">
           {{ t('graph.layerSplit.resetAll') }}
         </button>
         <button
@@ -81,16 +65,10 @@
           @wheel.prevent="onStageWheel"
           @pointerdown="onStagePanStart"
         >
-          <div
-            v-if="sourceLoading"
-            class="stage-empty"
-          >
+          <div v-if="sourceLoading" class="stage-empty">
             {{ t('graph.editor.loadingSource') }}
           </div>
-          <div
-            v-else-if="!hasCanvas"
-            class="stage-empty"
-          >
+          <div v-else-if="!hasCanvas" class="stage-empty">
             {{ t('graph.layerSplit.needRun') }}
           </div>
           <div
@@ -100,10 +78,7 @@
             @pointerdown.self="draft.selectedId = ''"
             @dblclick.self="resetView"
           >
-            <div
-              v-if="splitting"
-              class="stage-mask"
-            >
+            <div v-if="splitting" class="stage-mask">
               {{ t('graph.layerSplit.splitting') }}
             </div>
             <div
@@ -124,7 +99,7 @@
                 alt=""
                 draggable="false"
                 decoding="async"
-              >
+              />
               <template v-if="layer.id === draft.selectedId && !isBase(layer)">
                 <span
                   v-for="handle in handles"
@@ -150,12 +125,7 @@
                 :aria-label="t('graph.layerSplit.exportSelected')"
                 @click="exportSelectedLayer"
               >
-                <svg
-                  viewBox="0 0 16 16"
-                  width="14"
-                  height="14"
-                  aria-hidden="true"
-                >
+                <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
                   <rect
                     x="3.2"
                     y="1.8"
@@ -184,12 +154,7 @@
                 :aria-label="t('graph.layerSplit.exportGroup')"
                 @click="exportSelectedGroup"
               >
-                <svg
-                  viewBox="0 0 16 16"
-                  width="14"
-                  height="14"
-                  aria-hidden="true"
-                >
+                <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
                   <path
                     d="M2.6 4.2h3.1l1 1.2h6.7v6.8H2.6z"
                     fill="none"
@@ -215,12 +180,7 @@
                 :aria-label="t('graph.layerSplit.exportAll')"
                 @click="exportAllLayers"
               >
-                <svg
-                  viewBox="0 0 16 16"
-                  width="14"
-                  height="14"
-                  aria-hidden="true"
-                >
+                <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
                   <rect
                     x="4.4"
                     y="1.4"
@@ -263,92 +223,81 @@
               </button>
             </div>
           </div>
-          <p
-            v-if="exportMessage"
-            class="side-export"
-            :class="{ error: exportFailed }"
-          >
+          <p v-if="exportMessage" class="side-export" :class="{ error: exportFailed }">
             {{ exportMessage }}
           </p>
           <div class="side-list">
-          <p
-            v-if="!draft.layers.length"
-            class="side-empty"
-          >
-            {{ t('graph.layerSplit.emptyLayers') }}
-          </p>
-          <p
-            v-else-if="splitError"
-            class="side-error"
-          >
-            {{ splitError }}
-          </p>
-          <template
-            v-for="row in listRows"
-            :key="row.id"
-          >
-            <button
-              v-if="row.kind === 'group'"
-              type="button"
-              class="layer-row group-row"
-              :class="{ active: row.group.id === selectedGroupId, dim: row.group.visible === false }"
-              :style="{ paddingLeft: `${6 + row.depth * 14}px` }"
-              @click="selectGroup(row.group.id)"
-            >
-              <span
-                class="chevron"
-                :title="
-                  row.group.collapsed
-                    ? t('graph.layerSplit.expandGroup')
-                    : t('graph.layerSplit.collapseGroup')
-                "
-                @click.stop="toggleGroupCollapsed(row.group.id)"
-              >{{ row.group.collapsed ? '▸' : '▾' }}</span>
-              <span
-                class="eye"
-                :class="{ off: row.group.visible === false }"
-                :title="
-                  row.group.visible === false
-                    ? t('graph.layerSplit.showGroup')
-                    : t('graph.layerSplit.hideGroup')
-                "
-                @click.stop="toggleGroupVisible(row.group.id)"
-              >{{ row.group.visible === false ? '🚫' : '👁' }}</span>
-              <span class="row-meta">
-                <span class="row-name">{{ row.group.name }}</span>
-                <span class="row-z">{{ t('graph.layerSplit.group') }}</span>
-              </span>
-            </button>
-            <button
-              v-else
-              type="button"
-              class="layer-row"
-              :class="{ active: row.layer.id === draft.selectedId, dim: !row.layer.visible }"
-              :style="{ paddingLeft: `${6 + row.depth * 14}px` }"
-              @click="draft.selectedId = row.layer.id"
-            >
-              <span
-                class="eye"
-                :class="{ off: !row.layer.visible }"
-                :title="row.layer.visible ? t('graph.layerSplit.hideLayer') : t('graph.layerSplit.showLayer')"
-                @click.stop="toggleVisible(row.layer.id)"
-              >{{ row.layer.visible ? '👁' : '🚫' }}</span>
-              <img
-                v-if="layerUrl(row.layer)"
-                class="thumb"
-                :src="layerUrl(row.layer)"
-                alt=""
+            <p v-if="!draft.layers.length" class="side-empty">
+              {{ t('graph.layerSplit.emptyLayers') }}
+            </p>
+            <p v-else-if="splitError" class="side-error">
+              {{ splitError }}
+            </p>
+            <template v-for="row in listRows" :key="row.id">
+              <button
+                v-if="row.kind === 'group'"
+                type="button"
+                class="layer-row group-row"
+                :class="{
+                  active: row.group.id === selectedGroupId,
+                  dim: row.group.visible === false
+                }"
+                :style="{ paddingLeft: `${6 + row.depth * 14}px` }"
+                @click="selectGroup(row.group.id)"
               >
-              <span
+                <span
+                  class="chevron"
+                  :title="
+                    row.group.collapsed
+                      ? t('graph.layerSplit.expandGroup')
+                      : t('graph.layerSplit.collapseGroup')
+                  "
+                  @click.stop="toggleGroupCollapsed(row.group.id)"
+                  >{{ row.group.collapsed ? '▸' : '▾' }}</span
+                >
+                <span
+                  class="eye"
+                  :class="{ off: row.group.visible === false }"
+                  :title="
+                    row.group.visible === false
+                      ? t('graph.layerSplit.showGroup')
+                      : t('graph.layerSplit.hideGroup')
+                  "
+                  @click.stop="toggleGroupVisible(row.group.id)"
+                  >{{ row.group.visible === false ? '🚫' : '👁' }}</span
+                >
+                <span class="row-meta">
+                  <span class="row-name">{{ row.group.name }}</span>
+                  <span class="row-z">{{ t('graph.layerSplit.group') }}</span>
+                </span>
+              </button>
+              <button
                 v-else
-                class="thumb placeholder"
-              />
-              <span class="row-meta">
-                <span class="row-name">{{ layerLabel(row.layer) }}</span>
-                <span class="row-z">z {{ row.layer.zIndex }}</span>
-              </span>
-            </button>
-          </template>
+                type="button"
+                class="layer-row"
+                :class="{ active: row.layer.id === draft.selectedId, dim: !row.layer.visible }"
+                :style="{ paddingLeft: `${6 + row.depth * 14}px` }"
+                @click="draft.selectedId = row.layer.id"
+              >
+                <span
+                  class="eye"
+                  :class="{ off: !row.layer.visible }"
+                  :title="
+                    row.layer.visible
+                      ? t('graph.layerSplit.hideLayer')
+                      : t('graph.layerSplit.showLayer')
+                  "
+                  @click.stop="toggleVisible(row.layer.id)"
+                  >{{ row.layer.visible ? '👁' : '🚫' }}</span
+                >
+                <img v-if="layerUrl(row.layer)" class="thumb" :src="layerUrl(row.layer)" alt="" />
+                <span v-else class="thumb placeholder" />
+                <span class="row-meta">
+                  <span class="row-name">{{ layerLabel(row.layer) }}</span>
+                  <span class="row-z">z {{ row.layer.zIndex }}</span>
+                </span>
+              </button>
+            </template>
           </div>
         </aside>
       </div>
@@ -363,37 +312,19 @@
         <div class="toolbar">
           <label class="tool tool-model">
             <span class="tool-label">{{ t('graph.inspector.generate.imageModel') }}</span>
-            <select
-              v-model="selectionKey"
-              class="select"
-              @change="onModelChange"
-            >
-              <option
-                v-for="opt in modelOptions"
-                :key="opt.key"
-                :value="opt.key"
-              >
+            <select v-model="selectionKey" class="select" @change="onModelChange">
+              <option v-for="opt in modelOptions" :key="opt.key" :value="opt.key">
                 {{ opt.label }}
               </option>
-              <option
-                v-if="modelOptions.length === 0"
-                value=""
-              >
+              <option v-if="modelOptions.length === 0" value="">
                 {{ t('graph.inspector.generate.noModels') }}
               </option>
             </select>
           </label>
           <label class="tool">
             <span class="tool-label">{{ t('graph.layerSplit.resolution') }}</span>
-            <select
-              v-model="draft.resolution"
-              class="select"
-            >
-              <option
-                v-for="r in resolutions"
-                :key="r"
-                :value="r"
-              >{{ r }}</option>
+            <select v-model="draft.resolution" class="select">
+              <option v-for="r in resolutions" :key="r" :value="r">{{ r }}</option>
             </select>
           </label>
         </div>
@@ -553,9 +484,7 @@ const selectedGroupId = computed(() => {
   if (!layer) return ''
   return layer.groupId || layerSplitGroupForSource(draft, layer.id)?.id || ''
 })
-const baseLayer = computed(
-  () => draft.layers.find((layer) => isLayerSplitBase(layer)) ?? null
-)
+const baseLayer = computed(() => draft.layers.find((layer) => isLayerSplitBase(layer)) ?? null)
 const canReorder = computed(() => {
   const layer = selectedLayer.value
   return !!layer && !isLayerSplitBase(layer)
@@ -623,7 +552,10 @@ function layerUrl(layer: ImageLayerSplitLayer): string {
 }
 
 function sanitizeFileBase(name: string): string {
-  const cleaned = name.trim().replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').replace(/\s+/g, ' ')
+  const cleaned = name
+    .trim()
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_')
+    .replace(/\s+/g, ' ')
   return cleaned || 'layer'
 }
 
@@ -1428,7 +1360,11 @@ onBeforeUnmount(() => {
     linear-gradient(45deg, transparent 75%, #3a3a3a 75%),
     linear-gradient(-45deg, transparent 75%, #3a3a3a 75%);
   background-size: 16px 16px;
-  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  background-position:
+    0 0,
+    0 8px,
+    8px -8px,
+    -8px 0;
   background-color: #2a2a2a;
 }
 
@@ -1478,10 +1414,26 @@ onBeforeUnmount(() => {
   z-index: 4;
 }
 
-.handle.nw { left: -5px; top: -5px; cursor: nwse-resize; }
-.handle.ne { right: -5px; top: -5px; cursor: nesw-resize; }
-.handle.sw { left: -5px; bottom: -5px; cursor: nesw-resize; }
-.handle.se { right: -5px; bottom: -5px; cursor: nwse-resize; }
+.handle.nw {
+  left: -5px;
+  top: -5px;
+  cursor: nwse-resize;
+}
+.handle.ne {
+  right: -5px;
+  top: -5px;
+  cursor: nesw-resize;
+}
+.handle.sw {
+  left: -5px;
+  bottom: -5px;
+  cursor: nesw-resize;
+}
+.handle.se {
+  right: -5px;
+  bottom: -5px;
+  cursor: nwse-resize;
+}
 
 .sidebar {
   width: 236px;

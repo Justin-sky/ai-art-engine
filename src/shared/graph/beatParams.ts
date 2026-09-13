@@ -54,7 +54,10 @@ export function readBoundBeatIdFromNodeParams(
 }
 
 function worldRefNames(refs: BeatRow['characters']): string {
-  return refs.map((ref) => ref.name.trim()).filter(Boolean).join('、')
+  return refs
+    .map((ref) => ref.name.trim())
+    .filter(Boolean)
+    .join('、')
 }
 
 /** 参考节点输出：场目录字段拼成可读文本 */

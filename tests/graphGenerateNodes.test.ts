@@ -84,7 +84,11 @@ describe('graph canvas menu nodes', () => {
   })
 
   it('classic output nodes are deletable', () => {
-    const fixed = createNodeFromType('output.image', { x: 0, y: 0 }, { id: graphOutputNodeId('image') })
+    const fixed = createNodeFromType(
+      'output.image',
+      { x: 0, y: 0 },
+      { id: graphOutputNodeId('image') }
+    )
     const extraA = createNodeFromType('output.video', { x: 40, y: 0 }, { id: 'node-out-a' })
     const extraB = createNodeFromType('output.director', { x: 80, y: 0 }, { id: 'node-out-b' })
     expect(isNodeDeletable(fixed)).toBe(true)
@@ -129,11 +133,15 @@ describe('graph canvas menu nodes', () => {
   })
 
   it('asset reference nodes only expose output ports', () => {
-    const node = createNodeFromType('asset.image', { x: 0, y: 0 }, {
-      assetId: '00000000-0000-4000-8000-000000000001',
-      assetType: 'image',
-      params: { assetRef: true }
-    })
+    const node = createNodeFromType(
+      'asset.image',
+      { x: 0, y: 0 },
+      {
+        assetId: '00000000-0000-4000-8000-000000000001',
+        assetType: 'image',
+        params: { assetRef: true }
+      }
+    )
     const ports = getNodePorts(node)
     expect(ports.every((port) => port.direction === 'out')).toBe(true)
   })

@@ -47,9 +47,7 @@ export function buildTextlessUiPrompt(prompt: string): string {
  * 供 ui.gen 执行与 dive 打开共用：dive 时无需先 cook，直接按端口数组展开。
  * cleanPrompt 可选随载荷透传（空字底图轨提示词，缺失时由构建层兜底派生）。
  */
-export function screensFromUiGenIncoming(
-  values: unknown[]
-): UiScreenPromptItem[] {
+export function screensFromUiGenIncoming(values: unknown[]): UiScreenPromptItem[] {
   const raw: Array<{ title: string; prompt: string; cleanPrompt?: string }> = []
   for (const value of values) {
     if (!value || typeof value !== 'object') continue
@@ -66,8 +64,7 @@ export function screensFromUiGenIncoming(
           raw.push({
             title: typeof rec.title === 'string' ? rec.title.trim() : '',
             prompt,
-            cleanPrompt:
-              typeof rec.cleanPrompt === 'string' ? rec.cleanPrompt.trim() : undefined
+            cleanPrompt: typeof rec.cleanPrompt === 'string' ? rec.cleanPrompt.trim() : undefined
           })
         }
       }
@@ -107,9 +104,7 @@ export function uiSplitCleanOutPortId(slot: number): string {
  * ui.split 内图资产的宿主接口：每屏一个提示词输入口；
  * 输出口每屏两个（带字精修图 + 空字底图，供引擎叠本地化文字）。
  */
-export function buildUiSplitHostInterface(
-  screens: UiScreenPromptItem[]
-): HostInterfaceDocument {
+export function buildUiSplitHostInterface(screens: UiScreenPromptItem[]): HostInterfaceDocument {
   const cap = Math.min(UI_SPLIT_SLOT_CAP, screens.length)
   const items = screens.slice(0, cap)
   const inputs = items.map((screen, i) => ({
@@ -330,8 +325,7 @@ function normalizeUiScreenRows(parsed: unknown[]): UiScreenPromptItem[] {
         asString(obj.content) ||
         asString(obj.description)
       // 空字底图轨：模型直接输出两套提示词时随行携带
-      cleanPrompt =
-        asString(obj.cleanPrompt) || asString(obj.textlessPrompt) || asString(obj.clean)
+      cleanPrompt = asString(obj.cleanPrompt) || asString(obj.textlessPrompt) || asString(obj.clean)
       id = asString(obj.id)
     }
     if (!prompt) continue

@@ -1,9 +1,5 @@
 <template>
-  <div
-    class="settings"
-    tabindex="-1"
-    @keydown="onSettingsKeydown"
-  >
+  <div class="settings" tabindex="-1" @keydown="onSettingsKeydown">
     <div class="panel">
       <h1>{{ t('settings.title') }}</h1>
       <p class="hint">
@@ -94,10 +90,7 @@
           </select>
         </label>
         <label class="check">
-          <input
-            v-model="form.editor.autoSaveEnabled"
-            type="checkbox"
-          >
+          <input v-model="form.editor.autoSaveEnabled" type="checkbox" />
           {{ t('settings.autoSave.enabled') }}
         </label>
         <label>
@@ -109,7 +102,7 @@
               min="1"
               max="3600"
               :disabled="!form.editor.autoSaveEnabled"
-            >
+            />
             <span>{{ t('common.second') }}</span>
           </div>
         </label>
@@ -123,12 +116,7 @@
             <strong>v{{ appVersion }}</strong>
           </div>
           <div class="about-actions">
-            <button
-              type="button"
-              class="about-btn"
-              :disabled="updateBusy"
-              @click="checkUpdate"
-            >
+            <button type="button" class="about-btn" :disabled="updateBusy" @click="checkUpdate">
               {{ t('settings.about.checkUpdate') }}
             </button>
             <button
@@ -146,40 +134,25 @@
         </p>
       </section>
 
-      <section
-        v-show="mainTab === 'models'"
-        class="models-section"
-      >
+      <section v-show="mainTab === 'models'" class="models-section">
         <ModelsPanel :models="form.models" />
       </section>
 
-      <section
-        v-show="mainTab === 'yolo'"
-        class="models-section"
-      >
+      <section v-show="mainTab === 'yolo'" class="models-section">
         <h2>{{ t('settings.section.yolo') }}</h2>
         <YoloModelsPanel v-model:yolo="form.yolo" />
       </section>
 
-      <section
-        v-show="mainTab === 'ffmpeg'"
-        class="models-section"
-      >
+      <section v-show="mainTab === 'ffmpeg'" class="models-section">
         <h2>{{ t('settings.section.ffmpeg') }}</h2>
         <FfmpegPanel />
       </section>
 
-      <section
-        v-show="mainTab === 'objectStorage'"
-        class="models-section"
-      >
+      <section v-show="mainTab === 'objectStorage'" class="models-section">
         <ObjectStoragePanel :object-storage="form.objectStorage" />
       </section>
 
-      <section
-        v-show="mainTab === 'mcp'"
-        class="models-section"
-      >
+      <section v-show="mainTab === 'mcp'" class="models-section">
         <h2>{{ t('settings.mcp.title') }}</h2>
         <p class="hint">
           <template v-if="mcpInfo">
@@ -200,18 +173,20 @@
               min="1"
               max="65535"
               :disabled="mcpBusy"
-            >
+            />
             <button
               type="button"
               class="about-btn primary"
               :disabled="mcpBusy"
               @click="applyMcpRestart(false)"
             >
-              {{ mcpBusy
-                ? t('settings.mcp.restarting')
-                : mcpInfo
-                  ? t('settings.mcp.restart')
-                  : t('settings.mcp.start') }}
+              {{
+                mcpBusy
+                  ? t('settings.mcp.restarting')
+                  : mcpInfo
+                    ? t('settings.mcp.restart')
+                    : t('settings.mcp.start')
+              }}
             </button>
           </div>
         </label>
@@ -221,7 +196,9 @@
 
         <div class="mcp-row">
           <span class="about-label">{{ t('settings.mcp.token') }}</span>
-          <code class="mcp-value">{{ tokenVisible && mcpInfo ? mcpInfo.token : '••••••••••••••••' }}</code>
+          <code class="mcp-value">{{
+            tokenVisible && mcpInfo ? mcpInfo.token : '••••••••••••••••'
+          }}</code>
           <button
             v-if="mcpInfo"
             type="button"
@@ -230,12 +207,7 @@
           >
             {{ t(tokenVisible ? 'settings.mcp.hide' : 'settings.mcp.show') }}
           </button>
-          <button
-            v-if="mcpInfo"
-            type="button"
-            class="about-btn"
-            @click="copyMcp(mcpInfo.token)"
-          >
+          <button v-if="mcpInfo" type="button" class="about-btn" @click="copyMcp(mcpInfo.token)">
             {{ t('settings.mcp.copy') }}
           </button>
           <button
@@ -258,10 +230,7 @@
           </button>
         </div>
 
-        <div
-          v-if="tokenEditing"
-          class="mcp-row"
-        >
+        <div v-if="tokenEditing" class="mcp-row">
           <span class="about-label">{{ t('settings.mcp.token') }}</span>
           <input
             v-model="tokenInput"
@@ -270,67 +239,37 @@
             spellcheck="false"
             :placeholder="t('settings.mcp.tokenPlaceholder')"
             :disabled="mcpBusy"
-          >
-          <button
-            type="button"
-            class="about-btn"
-            :disabled="mcpBusy"
-            @click="applyTokenEdit"
-          >
+          />
+          <button type="button" class="about-btn" :disabled="mcpBusy" @click="applyTokenEdit">
             {{ t('settings.mcp.saveToken') }}
           </button>
-          <button
-            type="button"
-            class="about-btn"
-            :disabled="mcpBusy"
-            @click="tokenEditing = false"
-          >
+          <button type="button" class="about-btn" :disabled="mcpBusy" @click="tokenEditing = false">
             {{ t('settings.mcp.cancelEdit') }}
           </button>
         </div>
 
-        <div
-          v-if="mcpInfo"
-          class="mcp-row"
-        >
+        <div v-if="mcpInfo" class="mcp-row">
           <span class="about-label">{{ t('settings.mcp.endpoint') }}</span>
           <code class="mcp-value">{{ mcpInfo.endpoint }}</code>
-          <button
-            type="button"
-            class="about-btn"
-            @click="copyMcp(mcpInfo.endpoint)"
-          >
+          <button type="button" class="about-btn" @click="copyMcp(mcpInfo.endpoint)">
             {{ t('settings.mcp.copy') }}
           </button>
         </div>
 
-        <div
-          v-if="mcpInfo"
-          class="mcp-row"
-        >
+        <div v-if="mcpInfo" class="mcp-row">
           <span class="about-label">{{ t('settings.mcp.command') }}</span>
           <code class="mcp-value mcp-cmd">{{ claudeCommand }}</code>
-          <button
-            type="button"
-            class="about-btn"
-            @click="copyMcp(claudeCommand)"
-          >
+          <button type="button" class="about-btn" @click="copyMcp(claudeCommand)">
             {{ t('settings.mcp.copy') }}
           </button>
         </div>
 
-        <p
-          v-if="mcpInfo"
-          class="hint"
-        >
+        <p v-if="mcpInfo" class="hint">
           {{ t('settings.mcp.hint') }}
         </p>
       </section>
 
-      <section
-        v-show="mainTab === 'skills'"
-        class="models-section"
-      >
+      <section v-show="mainTab === 'skills'" class="models-section">
         <h2>{{ t('settings.section.skills') }}</h2>
         <SkillsPanel />
       </section>
@@ -340,35 +279,23 @@
         <p class="hint">
           {{ t('settings.plugins.hint') }}
         </p>
-        <div
-          v-for="plugin in plugins"
-          :key="plugin.id"
-          class="plugin-row"
-        >
+        <div v-for="plugin in plugins" :key="plugin.id" class="plugin-row">
           <div>
             <strong>{{ plugin.displayName }}</strong>
             <span>{{ plugin.id }} · v{{ plugin.version }}</span>
           </div>
           <span>{{ t('settings.plugins.declarative') }}</span>
         </div>
-        <p
-          v-if="plugins.length === 0"
-          class="hint"
-        >
+        <p v-if="plugins.length === 0" class="hint">
           {{ t('settings.plugins.empty') }}
         </p>
       </section>
 
       <div class="actions">
-        <span
-          v-if="message"
-          class="msg"
-          :class="{ error: isError, saving: saving }"
-        >{{ message }}</span>
-        <button
-          type="button"
-          @click="router.back()"
-        >
+        <span v-if="message" class="msg" :class="{ error: isError, saving: saving }">{{
+          message
+        }}</span>
+        <button type="button" @click="router.back()">
           {{ t('common.back') }}
         </button>
       </div>
@@ -957,19 +884,19 @@ label {
   color: var(--success);
 }
 
-  .mcp-token-input {
-    flex: 1 1 240px;
-    min-width: 0;
-    padding: 6px 10px;
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    background: var(--panel);
-    color: var(--ink);
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 12px;
-  }
+.mcp-token-input {
+  flex: 1 1 240px;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
 
-  .mcp-value {
+.mcp-value {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
   padding: 3px 8px;

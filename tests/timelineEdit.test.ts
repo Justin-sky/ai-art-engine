@@ -47,10 +47,12 @@ describe('timelineEdit: 新增片段', () => {
     )
     expect(result.failures).toEqual([])
     expect(result.added).toBe(1)
-    expect(result.document.clips.map((item) => [item.id, item.startSec, item.durationSec])).toEqual([
-      ['a', 0, 4],
-      ['new:video:0', 4, 3]
-    ])
+    expect(result.document.clips.map((item) => [item.id, item.startSec, item.durationSec])).toEqual(
+      [
+        ['a', 0, 4],
+        ['new:video:0', 4, 3]
+      ]
+    )
   })
 
   it('同一批草稿依次紧接（第二枚接在第一枚结束处，而不是同一起点）', () => {
@@ -256,7 +258,11 @@ describe('timelineEdit: 删除片段', () => {
 describe('timelineEdit: 区间替换（字幕重建走这条）', () => {
   it('删掉与该区间重叠的旧片段，再放入新片段', () => {
     const result = applyTimelineEdits(
-      doc([clip('subtitle', 'old1', 0, 2), clip('subtitle', 'old2', 2, 2), clip('video', 'v', 0, 10)]),
+      doc([
+        clip('subtitle', 'old1', 0, 2),
+        clip('subtitle', 'old2', 2, 2),
+        clip('video', 'v', 0, 10)
+      ]),
       [
         {
           op: 'replaceRange',

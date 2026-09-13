@@ -37,14 +37,10 @@ function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n))
 }
 
-export function normalizeImageCutout(
-  raw?: Partial<ImageCutoutState> | null
-): ImageCutoutState {
+export function normalizeImageCutout(raw?: Partial<ImageCutoutState> | null): ImageCutoutState {
   const base = { ...DEFAULT_IMAGE_CUTOUT, ...(raw ?? {}) }
   const selected = Array.isArray(base.selected)
-    ? base.selected
-        .filter((n) => Number.isFinite(n) && n >= 0)
-        .map((n) => Math.trunc(n))
+    ? base.selected.filter((n) => Number.isFinite(n) && n >= 0).map((n) => Math.trunc(n))
     : null
   return {
     confThreshold: clamp(Number(base.confThreshold), 0.05, 0.9),

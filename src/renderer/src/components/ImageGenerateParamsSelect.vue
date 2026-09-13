@@ -1,10 +1,5 @@
 <template>
-  <div
-    v-if="visible"
-    class="img-params"
-    @pointerdown.stop
-    @dblclick.stop
-  >
+  <div v-if="visible" class="img-params" @pointerdown.stop @dblclick.stop>
     <button
       ref="triggerEl"
       type="button"
@@ -15,10 +10,7 @@
       @click.stop="toggleMenu"
     >
       <span class="summary-text">{{ summaryText }}</span>
-      <span
-        class="chevron"
-        aria-hidden="true"
-      />
+      <span class="chevron" aria-hidden="true" />
     </button>
 
     <Teleport to="body">
@@ -33,24 +25,15 @@
         @click.stop
         @pointerdown.stop
       >
-        <p
-          v-if="loading"
-          class="menu-status"
-        >
+        <p v-if="loading" class="menu-status">
           {{ t('graph.inspector.generate.imageParams.loading') }}
         </p>
         <template v-else>
-          <p
-            v-if="!hasSections"
-            class="menu-status"
-          >
+          <p v-if="!hasSections" class="menu-status">
             {{ t('graph.inspector.generate.imageParams.empty') }}
           </p>
           <template v-else>
-            <section
-              v-if="caps.qualities.length"
-              class="section"
-            >
+            <section v-if="caps.qualities.length" class="section">
               <div class="section-title">
                 {{ t('graph.inspector.generate.imageParams.quality') }}
               </div>
@@ -68,10 +51,7 @@
               </div>
             </section>
 
-            <section
-              v-if="caps.resolutions.length"
-              class="section"
-            >
+            <section v-if="caps.resolutions.length" class="section">
               <div class="section-title">
                 {{ t('graph.inspector.generate.imageParams.resolution') }}
               </div>
@@ -89,10 +69,7 @@
               </div>
             </section>
 
-            <section
-              v-if="caps.aspectRatios.length"
-              class="section"
-            >
+            <section v-if="caps.aspectRatios.length" class="section">
               <div class="section-title">
                 {{ t('graph.inspector.generate.imageParams.aspectRatio') }}
               </div>
@@ -105,19 +82,13 @@
                   :class="{ active: local.aspectRatio === ratio }"
                   @click="pickAspectRatio(ratio)"
                 >
-                  <span
-                    class="ratio-icon"
-                    v-html="ratioIcon(ratio)"
-                  />
+                  <span class="ratio-icon" v-html="ratioIcon(ratio)" />
                   <span class="ratio-label">{{ ratio }}</span>
                 </button>
               </div>
             </section>
 
-            <section
-              v-if="caps.counts.length"
-              class="section"
-            >
+            <section v-if="caps.counts.length" class="section">
               <div class="section-title">
                 {{ t('graph.inspector.generate.imageParams.count') }}
               </div>
@@ -145,7 +116,7 @@
                 type="checkbox"
                 :checked="local.seedUseGlobal !== false"
                 @change="toggleSeedUseGlobal"
-              >
+              />
               <span>{{ t('graph.inspector.generate.imageParams.seedUseGlobal') }}</span>
             </label>
             <div class="seed-row">
@@ -159,7 +130,7 @@
                 :disabled="local.seedUseGlobal !== false"
                 :placeholder="t('graph.inspector.generate.imageParams.seedPlaceholder')"
                 @input="pickSeed(($event.target as HTMLInputElement).value)"
-              >
+              />
               <button
                 type="button"
                 class="chip"

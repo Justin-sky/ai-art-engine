@@ -1,19 +1,8 @@
 <template>
-  <div
-    v-show="visible"
-    ref="panelEl"
-    class="camera-preview-panel"
-    :style="panelStyle"
-  >
-    <div
-      class="preview-head"
-      @pointerdown="onHeadPointerDown"
-    >
+  <div v-show="visible" ref="panelEl" class="camera-preview-panel" :style="panelStyle">
+    <div class="preview-head" @pointerdown="onHeadPointerDown">
       <span class="preview-title">{{ t('director.stage.cameraPreview') }}</span>
-      <span
-        v-if="cameras.length"
-        class="preview-count"
-      >{{ cameras.length }}</span>
+      <span v-if="cameras.length" class="preview-count">{{ cameras.length }}</span>
       <button
         type="button"
         class="preview-detach"
@@ -35,16 +24,9 @@
         ×
       </button>
     </div>
-    <div
-      class="preview-body"
-      :style="gridStyle"
-    >
+    <div class="preview-body" :style="gridStyle">
       <template v-if="cameras.length">
-        <div
-          v-for="cam in cameras"
-          :key="cam.id"
-          class="preview-cell"
-        >
+        <div v-for="cam in cameras" :key="cam.id" class="preview-cell">
           <canvas
             :ref="(el) => bindCanvas(cam.id, el)"
             class="preview-canvas"
@@ -54,10 +36,7 @@
           <span class="preview-label">{{ cam.name }}</span>
         </div>
       </template>
-      <p
-        v-else
-        class="preview-empty"
-      >
+      <p v-else class="preview-empty">
         {{ t('director.stage.cameraPreviewEmpty') }}
       </p>
     </div>
@@ -128,7 +107,9 @@ const previewAspect = computed(() => {
 })
 
 const canvasW = 320
-const canvasH = computed(() => Math.max(1, Math.round(canvasW / Math.max(0.01, previewAspect.value))))
+const canvasH = computed(() =>
+  Math.max(1, Math.round(canvasW / Math.max(0.01, previewAspect.value)))
+)
 
 /** 主窗口内固定尺寸（240×160），内容超出在面板内滚动 */
 const PANEL_WIDTH = 240
@@ -147,9 +128,7 @@ const gridStyle = computed(() => ({
   gridTemplateColumns: `repeat(${gridColumns.value}, minmax(0, 1fr))`
 }))
 
-const visible = computed(
-  () => scene.cameraPreviewOpen.value && !scene.cameraPreviewDetached.value
-)
+const visible = computed(() => scene.cameraPreviewOpen.value && !scene.cameraPreviewDetached.value)
 
 const panelStyle = computed(() => {
   const style: Record<string, string> = {

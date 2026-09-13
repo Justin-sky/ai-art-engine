@@ -66,7 +66,9 @@ describe('executeComicPageNode', () => {
           }
         ]
       },
-      composeComicPageImage: async (input: { page: { panels: Array<{ id: string; imageUrl?: string }> } }) => {
+      composeComicPageImage: async (input: {
+        page: { panels: Array<{ id: string; imageUrl?: string }> }
+      }) => {
         composedPages.push(input.page)
         return { dataUrl: 'data:image/png;base64,ccc', width: 1080, height: 1440 }
       },

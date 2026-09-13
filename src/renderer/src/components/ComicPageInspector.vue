@@ -1,8 +1,5 @@
 <template>
-  <div
-    v-if="node"
-    class="node-inspector"
-  >
+  <div v-if="node" class="node-inspector">
     <div class="head">
       <span class="type">{{ typeLabel }}</span>
       <h2>{{ displayTitle }}</h2>
@@ -13,68 +10,36 @@
 
     <label>
       {{ t('graph.inspector.displayName') }}
-      <input
-        v-model="localTitle"
-        @change="persistTitle"
-      >
+      <input v-model="localTitle" @change="persistTitle" />
     </label>
 
-    <button
-      type="button"
-      class="open-btn"
-      @click="openEditor"
-    >
+    <button type="button" class="open-btn" @click="openEditor">
       {{ t('graph.inspector.comicPage.openEditor') }}
     </button>
 
-    <ComicPageCanvas
-      :page="page"
-      exportable
-      :export-name="exportName"
-    />
+    <ComicPageCanvas :page="page" exportable :export-name="exportName" />
 
     <details class="gen-config">
       <summary class="section-head">
         <span class="field-label">{{ t('graph.inspector.comicPage.json') }}</span>
-        <button
-          type="button"
-          class="reset-btn"
-          @click.stop="resetPage"
-        >
+        <button type="button" class="reset-btn" @click.stop="resetPage">
           {{ t('graph.inspector.comicPage.reset') }}
         </button>
       </summary>
-      <textarea
-        v-model="text"
-        class="json-editor"
-        rows="14"
-        spellcheck="false"
-        @change="persist"
-      />
-      <p
-        v-if="parseError"
-        class="error"
-      >
+      <textarea v-model="text" class="json-editor" rows="14" spellcheck="false" @change="persist" />
+      <p v-if="parseError" class="error">
         {{ parseError }}
       </p>
     </details>
   </div>
-  <div
-    v-else
-    class="node-inspector empty"
-  >
+  <div v-else class="node-inspector empty">
     {{ t('graph.inspector.node.empty') }}
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, inject, ref, watch } from 'vue'
-import {
-  createComicPage,
-  parseComicPage,
-  serializeComicPage,
-  type ComicPage
-} from '@shared/graph'
+import { createComicPage, parseComicPage, serializeComicPage, type ComicPage } from '@shared/graph'
 import ComicPageCanvas from './ComicPageCanvas.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useNodeDisplayTitle } from '../composables/useNodeDisplayTitle'
@@ -97,7 +62,7 @@ const node = computed(() => {
 
 const hostId = computed(() => {
   const selection = editor.selection.current.value
-  return selection.kind === 'graph.node' ? selection.hostId ?? '' : ''
+  return selection.kind === 'graph.node' ? (selection.hostId ?? '') : ''
 })
 
 const typeLabel = computed(() => graphTypeLabel('comic.page'))

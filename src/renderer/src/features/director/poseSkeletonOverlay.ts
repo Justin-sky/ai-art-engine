@@ -28,17 +28,26 @@ function createBoneSegmentGeometry(): THREE.BufferGeometry {
   const w = 0.22
   const mid = 0.2
   const positions = new Float32Array([
-    0, 0, 0,
-    w, mid, 0,
-    0, mid, w,
-    -w, mid, 0,
-    0, mid, -w,
-    0, 1, 0
+    0,
+    0,
+    0,
+    w,
+    mid,
+    0,
+    0,
+    mid,
+    w,
+    -w,
+    mid,
+    0,
+    0,
+    mid,
+    -w,
+    0,
+    1,
+    0
   ])
-  const indices = [
-    0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 1,
-    5, 2, 1, 5, 3, 2, 5, 4, 3, 5, 1, 4
-  ]
+  const indices = [0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 1, 5, 2, 1, 5, 3, 2, 5, 4, 3, 5, 1, 4]
   const geom = new THREE.BufferGeometry()
   geom.setAttribute('position', new THREE.BufferAttribute(positions, 3))
   geom.setIndex(indices)
@@ -238,8 +247,7 @@ export function createPoseSkeletonOverlay(scene: THREE.Scene): PoseSkeletonOverl
       const thickness = Math.max(boneRadius * 1.2, len * 0.07)
       link.mesh.scale.set(thickness, len, thickness)
       const selected =
-        selectedBone != null &&
-        (selectedBone === link.fromName || selectedBone === link.toName)
+        selectedBone != null && (selectedBone === link.fromName || selectedBone === link.toName)
       link.mesh.material = selected ? linkMatSelected! : linkMat!
     }
   }

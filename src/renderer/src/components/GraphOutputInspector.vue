@@ -1,8 +1,5 @@
 <template>
-  <div
-    v-if="node"
-    class="output-inspector"
-  >
+  <div v-if="node" class="output-inspector">
     <div class="head">
       <span class="type">{{ outputLabel }}</span>
       <h2>{{ displayTitle }}</h2>
@@ -19,10 +16,7 @@
     <template v-if="isGenerateScriptOutput">
       <label>
         {{ t('graph.inspector.displayName') }}
-        <input
-          v-model="localTitle"
-          @change="persist"
-        >
+        <input v-model="localTitle" @change="persist" />
       </label>
       <div class="export-row">
         <button
@@ -32,19 +26,12 @@
           :title="t('graph.output.exportScreenplay')"
           @click="exportScreenplay"
         >
-          <span
-            class="icon-export"
-            aria-hidden="true"
-          />
+          <span class="icon-export" aria-hidden="true" />
           <span class="label">
             {{ exporting ? t('graph.output.exporting') : t('graph.output.exportScreenplay') }}
           </span>
         </button>
-        <span
-          v-if="exportMessage"
-          class="export-msg"
-          :class="{ error: exportFailed }"
-        >
+        <span v-if="exportMessage" class="export-msg" :class="{ error: exportFailed }">
           {{ exportMessage }}
         </span>
       </div>
@@ -56,37 +43,19 @@
       </p>
       <label>
         {{ t('graph.inspector.displayName') }}
-        <input
-          v-model="localTitle"
-          @change="persist"
-        >
+        <input v-model="localTitle" @change="persist" />
       </label>
       <label>
         {{ t('graph.output.volume') }}
-        <input
-          v-model.number="volume"
-          type="range"
-          min="0"
-          max="1"
-          step="0.05"
-          @change="persist"
-        >
+        <input v-model.number="volume" type="range" min="0" max="1" step="0.05" @change="persist" />
         <span class="value">{{ Math.round(volume * 100) }}%</span>
       </label>
       <label class="row">
-        <input
-          v-model="muted"
-          type="checkbox"
-          @change="persist"
-        >
+        <input v-model="muted" type="checkbox" @change="persist" />
         {{ t('graph.output.muted') }}
       </label>
       <label class="row">
-        <input
-          v-model="loop"
-          type="checkbox"
-          @change="persist"
-        >
+        <input v-model="loop" type="checkbox" @change="persist" />
         {{ t('graph.output.loop') }}
       </label>
     </template>
@@ -97,17 +66,11 @@
       </p>
       <label>
         {{ t('graph.inspector.displayName') }}
-        <input
-          v-model="localTitle"
-          @change="persist"
-        >
+        <input v-model="localTitle" @change="persist" />
       </label>
       <label>
         {{ t('graph.output.speed') }}
-        <select
-          v-model.number="playbackRate"
-          @change="persist"
-        >
+        <select v-model.number="playbackRate" @change="persist">
           <option :value="0.5">0.5×</option>
           <option :value="0.75">0.75×</option>
           <option :value="1">1×</option>
@@ -124,19 +87,12 @@
           :title="t('graph.output.exportVideo')"
           @click="exportVideo"
         >
-          <span
-            class="icon-export"
-            aria-hidden="true"
-          />
+          <span class="icon-export" aria-hidden="true" />
           <span class="label">
             {{ exporting ? t('graph.output.exporting') : t('graph.output.exportVideo') }}
           </span>
         </button>
-        <span
-          v-if="exportMessage"
-          class="export-msg"
-          :class="{ error: exportFailed }"
-        >
+        <span v-if="exportMessage" class="export-msg" :class="{ error: exportFailed }">
           {{ exportMessage }}
         </span>
       </div>
@@ -148,10 +104,7 @@
       </p>
       <label>
         {{ t('graph.inspector.displayName') }}
-        <input
-          v-model="localTitle"
-          @change="persist"
-        >
+        <input v-model="localTitle" @change="persist" />
       </label>
       <div class="export-row">
         <button
@@ -161,19 +114,12 @@
           :title="t('graph.output.exportImages')"
           @click="exportImagesBatch"
         >
-          <span
-            class="icon-export"
-            aria-hidden="true"
-          />
+          <span class="icon-export" aria-hidden="true" />
           <span class="label">
             {{ exporting ? t('graph.output.exporting') : t('graph.output.exportImages') }}
           </span>
         </button>
-        <span
-          v-if="exportMessage"
-          class="export-msg"
-          :class="{ error: exportFailed }"
-        >
+        <span v-if="exportMessage" class="export-msg" :class="{ error: exportFailed }">
           {{ exportMessage }}
         </span>
       </div>
@@ -185,18 +131,11 @@
       </p>
       <label>
         {{ t('graph.inspector.displayName') }}
-        <input
-          v-model="localTitle"
-          @change="persist"
-        >
+        <input v-model="localTitle" @change="persist" />
       </label>
     </template>
 
-    <GraphNodeOutputPreview
-      v-if="node && hostId"
-      :node="node"
-      :host-id="hostId"
-    />
+    <GraphNodeOutputPreview v-if="node && hostId" :node="node" :host-id="hostId" />
   </div>
 </template>
 
@@ -244,7 +183,7 @@ const node = computed(() => {
 
 const hostId = computed(() => {
   const selection = editor.selection.current.value
-  return selection.kind === 'graph.node' ? selection.hostId ?? '' : ''
+  return selection.kind === 'graph.node' ? (selection.hostId ?? '') : ''
 })
 
 const { hasInPort, runStatus, isGraphRunning, blocked, toggleRun } = useGraphNodeRun(node)
@@ -354,7 +293,11 @@ function pushUniqueImage(into: GraphImageItem[], item: GraphImageItem): void {
   const data = item.dataUrl?.trim()
   if (!rel && !data) return
   const key = item.id?.trim() || rel || data!.slice(0, 64)
-  if (into.some((row) => (row.id?.trim() || row.relativePath?.trim() || row.dataUrl?.slice(0, 64)) === key)) {
+  if (
+    into.some(
+      (row) => (row.id?.trim() || row.relativePath?.trim() || row.dataUrl?.slice(0, 64)) === key
+    )
+  ) {
     return
   }
   into.push(item)
@@ -406,9 +349,7 @@ function resolveExportImages(): GraphImageItem[] {
         pushUniqueImage(items, intoAsItem(shot))
       }
       if (source?.assetType === 'image' || source?.assetType === 'canvas') {
-        const asset = source.assetId
-          ? project.assets.find((a) => a.id === source.assetId)
-          : null
+        const asset = source.assetId ? project.assets.find((a) => a.id === source.assetId) : null
         const relativePath = asset?.relativePath?.trim()
         if (relativePath) {
           pushUniqueImage(items, { id: source.assetId, dataUrl: '', relativePath })
@@ -480,7 +421,10 @@ function persist(): void {
 }
 
 function sanitizeFileBase(name: string): string {
-  const cleaned = name.trim().replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').replace(/\s+/g, ' ')
+  const cleaned = name
+    .trim()
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_')
+    .replace(/\s+/g, ' ')
   return cleaned || 'output'
 }
 
@@ -561,9 +505,7 @@ function extensionFromMime(mime: string): string {
   return 'png'
 }
 
-async function resolveImageBytes(
-  item: GraphImageItem
-): Promise<{ data: Uint8Array; ext: string }> {
+async function resolveImageBytes(item: GraphImageItem): Promise<{ data: Uint8Array; ext: string }> {
   const relativePath = item.relativePath?.trim()
   if (relativePath) {
     const url = await window.studio.getAssetFileUrl(relativePath)

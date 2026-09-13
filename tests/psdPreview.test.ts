@@ -107,9 +107,7 @@ describe('PSD 合成预览解码', () => {
     const broken = breakFirstLayerBox(toLayeredPsdBuffer(width, height, rgba))
 
     // 先坐实这确实是 ag-psd 直读不了的畸形文件，否则本用例证明不了降级路径
-    expect(() =>
-      readPsd(broken, { skipLayerImageData: true, useImageData: true })
-    ).toThrow()
+    expect(() => readPsd(broken, { skipLayerImageData: true, useImageData: true })).toThrow()
 
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     try {

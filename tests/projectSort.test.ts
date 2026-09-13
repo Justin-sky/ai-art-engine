@@ -20,19 +20,13 @@ describe('unityNaturalCompare', () => {
 describe('compareProjectEntries', () => {
   it('keeps folders before assets when names are equal ignoring case', () => {
     expect(
-      compareProjectEntries(
-        { kind: 'folder', name: 'Props' },
-        { kind: 'asset', name: 'props' }
-      )
+      compareProjectEntries({ kind: 'folder', name: 'Props' }, { kind: 'asset', name: 'props' })
     ).toBeLessThan(0)
   })
 
   it('sorts within the same kind by natural compare', () => {
     expect(
-      compareProjectEntries(
-        { kind: 'asset', name: 'shot10' },
-        { kind: 'asset', name: 'shot2' }
-      )
+      compareProjectEntries({ kind: 'asset', name: 'shot10' }, { kind: 'asset', name: 'shot2' })
     ).toBeGreaterThan(0)
   })
 })

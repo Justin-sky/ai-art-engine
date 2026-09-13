@@ -152,9 +152,7 @@ describe('ui.split', () => {
     expect(imgNode?.title).toBe('图片·主界面')
     expect(imgNode?.params?.generateSystemPrompt).toContain('风格参考图')
     expect(imgNode?.params?.generateSystemPrompt).toContain('UI 元素')
-    expect(doc.nodes.find((n) => n.id === outId)?.typeId).toBe(
-      'graph.boundary.output'
-    )
+    expect(doc.nodes.find((n) => n.id === outId)?.typeId).toBe('graph.boundary.output')
     // 空字底图轨：无输入边界，提示词烘焙进图像节点自身指令
     const cleanImg = doc.nodes.find((n) => n.id === 'ui-img-clean-1')
     expect(cleanImg?.typeId).toBe('asset.image')
@@ -162,9 +160,9 @@ describe('ui.split', () => {
     expect(cleanImg?.params?.generateInstruction).toBe('主界面 HUD 空字底图提示词')
     expect(cleanImg?.params?.generateAspectRatio).toBe('9:16')
     expect(cleanImg?.params?.generateSystemPrompt).toContain('UI 元素')
-    expect(
-      doc.edges.some((e) => e.source === 'ui-img-clean-1' && e.target === outIdClean)
-    ).toBe(true)
+    expect(doc.edges.some((e) => e.source === 'ui-img-clean-1' && e.target === outIdClean)).toBe(
+      true
+    )
     expect(doc.nodes.find((n) => n.id === outIdClean)?.title).toBe('底图·主界面')
     // 缺 cleanPrompt 的第二屏：构建时兜底派生空字约束
     const cleanImg2 = doc.nodes.find((n) => n.id === 'ui-img-clean-2')
@@ -181,12 +179,7 @@ describe('ui.split', () => {
     expect(iface.inputs).toHaveLength(2)
     expect(iface.outputs).toHaveLength(4)
     expect(iface.inputs[0]).toMatchObject({ id: 'in-1', dataType: GraphPortType.text })
-    expect(iface.outputs.map((o) => o.id)).toEqual([
-      'out-1',
-      'out-1-clean',
-      'out-2',
-      'out-2-clean'
-    ])
+    expect(iface.outputs.map((o) => o.id)).toEqual(['out-1', 'out-1-clean', 'out-2', 'out-2-clean'])
     expect(iface.outputs[1]?.label).toContain('底图')
   })
 
@@ -211,9 +204,7 @@ describe('ui.split', () => {
       prompt: `提示词 ${i + 1}`
     }))
     const doc = buildUiSplitInnerGraph(screens)
-    expect(doc.nodes.filter((n) => n.typeId === 'asset.image')).toHaveLength(
-      UI_SPLIT_SLOT_CAP * 2
-    )
+    expect(doc.nodes.filter((n) => n.typeId === 'asset.image')).toHaveLength(UI_SPLIT_SLOT_CAP * 2)
   })
 
   it('keeps dual-track boundary sets after host interface normalization', () => {
@@ -224,21 +215,18 @@ describe('ui.split', () => {
     const doc = buildUiSplitInnerGraph(screens)
     const iface = buildUiSplitHostInterface(screens)
     const normalized = ensureBoundaryProxyNodes(doc, iface)
-    expect(
-      normalized.nodes.filter((n) => n.typeId === 'graph.boundary.input')
-    ).toHaveLength(iface.inputs.length)
-    expect(
-      normalized.nodes.filter((n) => n.typeId === 'graph.boundary.output')
-    ).toHaveLength(iface.outputs.length)
+    expect(normalized.nodes.filter((n) => n.typeId === 'graph.boundary.input')).toHaveLength(
+      iface.inputs.length
+    )
+    expect(normalized.nodes.filter((n) => n.typeId === 'graph.boundary.output')).toHaveLength(
+      iface.outputs.length
+    )
     const in1 = boundaryInputNodeId('in-1')
     const out1 = boundaryOutputNodeId('out-1')
     const out1Clean = boundaryOutputNodeId('out-1-clean')
     expect(
       normalized.edges.some(
-        (e) =>
-          e.source === in1 &&
-          e.target === 'ui-img-1' &&
-          (e.targetPort ?? 'in') === 'in-text'
+        (e) => e.source === in1 && e.target === 'ui-img-1' && (e.targetPort ?? 'in') === 'in-text'
       )
     ).toBe(true)
     expect(normalized.edges.some((e) => e.source === 'ui-img-1' && e.target === out1)).toBe(true)

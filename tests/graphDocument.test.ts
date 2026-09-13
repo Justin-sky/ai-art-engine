@@ -8,12 +8,14 @@ import type { GraphDocument } from '../src/shared/graph/types'
 
 function document(): GraphDocument {
   return {
-    nodes: [{
-      id: 'node',
-      category: 'note',
-      position: { x: 1, y: 2 },
-      params: { text: 'before' }
-    }],
+    nodes: [
+      {
+        id: 'node',
+        category: 'note',
+        position: { x: 1, y: 2 },
+        params: { text: 'before' }
+      }
+    ],
     edges: [],
     groups: [],
     viewport: { x: 0, y: 0, zoom: 1 }

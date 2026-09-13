@@ -41,10 +41,7 @@ describe('pose asset', () => {
   })
 
   it('readPoseAssetData round-trips genParams', () => {
-    const gen = buildPoseAssetGenParams(
-      { hips: { x: 1, y: 0, z: 0 } },
-      'model-1'
-    )
+    const gen = buildPoseAssetGenParams({ hips: { x: 1, y: 0, z: 0 } }, 'model-1')
     const data = readPoseAssetData(gen)
     expect(data).toEqual({
       schemaVersion: 1,

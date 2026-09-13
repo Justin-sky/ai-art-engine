@@ -10,22 +10,16 @@
     :min-height="200"
     @close="onBackdrop"
   >
-    <p
-      v-if="current"
-      class="message"
-    >
+    <p v-if="current" class="message">
       {{ current.message }}
     </p>
-    <div
-      v-if="current && typeof current.progress === 'number'"
-      class="progress-wrap"
-    >
-      <progress
-        class="progress"
-        :value="current.progress"
-        max="100"
-      />
-      <span class="progress-label">{{ current.progress }}%<template v-if="current.progressLabel"> · {{ current.progressLabel }}</template></span>
+    <div v-if="current && typeof current.progress === 'number'" class="progress-wrap">
+      <progress class="progress" :value="current.progress" max="100" />
+      <span class="progress-label"
+        >{{ current.progress }}%<template v-if="current.progressLabel">
+          · {{ current.progressLabel }}</template
+        ></span
+      >
     </div>
     <input
       v-if="current?.mode === 'prompt'"
@@ -36,22 +30,11 @@
       :placeholder="current.placeholder || ''"
       @keydown.enter.prevent="onConfirm"
       @keydown.escape.prevent="onCancel"
-    >
-    <label
-      v-if="current?.modelOptions?.length"
-      class="model-field"
-    >
+    />
+    <label v-if="current?.modelOptions?.length" class="model-field">
       <span>{{ t('common.model') }}</span>
-      <select
-        v-model="modelKey"
-        class="model-select"
-        @keydown.enter.prevent="onConfirm"
-      >
-        <option
-          v-for="opt in current.modelOptions"
-          :key="opt.key"
-          :value="opt.key"
-        >
+      <select v-model="modelKey" class="model-select" @keydown.enter.prevent="onConfirm">
+        <option v-for="opt in current.modelOptions" :key="opt.key" :value="opt.key">
           {{ opt.label }}
         </option>
       </select>
@@ -65,19 +48,10 @@
       >
         {{ current.cancelLabel || t('common.cancel') }}
       </button>
-      <button
-        v-if="current?.actionUrl"
-        type="button"
-        class="action"
-        @click="onAction"
-      >
+      <button v-if="current?.actionUrl" type="button" class="action" @click="onAction">
         {{ current.actionLabel || 'Open' }}
       </button>
-      <button
-        type="button"
-        class="primary"
-        @click="onConfirm"
-      >
+      <button type="button" class="primary" @click="onConfirm">
         {{
           current?.mode === 'confirm' || current?.mode === 'prompt'
             ? current.confirmLabel || t('common.confirm')

@@ -130,8 +130,7 @@ export async function composeComicPageImage(
 ): Promise<ComicPageComposeResult> {
   const page = normalizeComicPage(input.page)
   // 页面自带的背景色优先；未设置时回退调用方参数，最后透明底
-  const background =
-    page.backgroundColor?.trim() || input.background?.trim() || 'transparent'
+  const background = page.backgroundColor?.trim() || input.background?.trim() || 'transparent'
   const panelFill = input.panelFill ?? '#f2f2f2'
   const borderColor = input.borderColor ?? '#d8d8d8'
   const bubbleFill = input.bubbleFill ?? '#ffffff'
@@ -200,7 +199,12 @@ export async function composeComicPageImage(
       ctx.font = `${fontPx}px sans-serif`
       ctx.textAlign = 'center'
       ctx.textBaseline = 'middle'
-      ctx.fillText(panel.title, rect.x + rect.width / 2, rect.y + rect.height / 2, rect.width - padX * 2)
+      ctx.fillText(
+        panel.title,
+        rect.x + rect.width / 2,
+        rect.y + rect.height / 2,
+        rect.width - padX * 2
+      )
     }
     ctx.restore()
 
@@ -244,7 +248,16 @@ export async function composeComicPageImage(
       ctx.lineWidth = 1
       ctx.stroke()
 
-      drawBubbleTail(ctx, x, y, bodyW, bodyH, bubble.tail, Math.max(6, Math.round(bFontPx * 0.45)), bubbleFill)
+      drawBubbleTail(
+        ctx,
+        x,
+        y,
+        bodyW,
+        bodyH,
+        bubble.tail,
+        Math.max(6, Math.round(bFontPx * 0.45)),
+        bubbleFill
+      )
 
       ctx.fillStyle = textColor
       ctx.textAlign = 'left'

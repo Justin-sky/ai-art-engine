@@ -23,10 +23,7 @@ import { LONG_GENERATE_TIMEOUT_MS } from '../http'
 import { PROVIDER_ERRORS } from '../catalog'
 import { fail, defErr, defErrSimple, isAppError } from '@shared/errors/appError'
 import { generateOpenAiCompatibleText } from '../openaiCompat'
-import {
-  createMagicRouterHttpClient,
-  readMagicRouterHttpError
-} from './http'
+import { createMagicRouterHttpClient, readMagicRouterHttpError } from './http'
 
 type MagicRouterModelsLive = {
   chat?: string[]
@@ -174,8 +171,8 @@ export const magicRouterAdapter: ModelProviderAdapter = {
     try {
       const { data } = await client.post<MagicRouterImageResp>('/images/generations', body)
       const images = (data.data ?? [])
-        .map((row) =>
-          row.url?.trim() || (row.b64_json ? `data:image/png;base64,${row.b64_json}` : '')
+        .map(
+          (row) => row.url?.trim() || (row.b64_json ? `data:image/png;base64,${row.b64_json}` : '')
         )
         .filter(Boolean)
       if (!images.length) throw fail(PROVIDER_ERRORS.noImageResult)

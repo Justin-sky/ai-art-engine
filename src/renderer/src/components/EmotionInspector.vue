@@ -1,8 +1,5 @@
 <template>
-  <div
-    v-if="node"
-    class="node-inspector"
-  >
+  <div v-if="node" class="node-inspector">
     <div class="head">
       <span class="type">{{ typeLabel }}</span>
       <h2>{{ displayTitle }}</h2>
@@ -19,16 +16,9 @@
       @toggle="toggleRun"
     />
 
-    <GraphNodeOutputPreview
-      v-if="node && hostId"
-      :node="node"
-      :host-id="hostId"
-    />
+    <GraphNodeOutputPreview v-if="node && hostId" :node="node" :host-id="hostId" />
 
-    <div
-      v-if="emotionLabel"
-      class="label-row"
-    >
+    <div v-if="emotionLabel" class="label-row">
       <span>{{ t('graph.emotion.locate') }}</span>
       <strong>{{ emotionLabel }}</strong>
     </div>
@@ -47,18 +37,10 @@
 
     <label>
       {{ t('graph.emotion.outputPrompt') }}
-      <textarea
-        class="prompt-view"
-        :value="outputPrompt || emptyPrompt"
-        rows="6"
-        readonly
-      />
+      <textarea class="prompt-view" :value="outputPrompt || emptyPrompt" rows="6" readonly />
     </label>
   </div>
-  <div
-    v-else
-    class="node-inspector empty"
-  >
+  <div v-else class="node-inspector empty">
     {{ t('graph.inspector.node.empty') }}
   </div>
 </template>
@@ -97,7 +79,7 @@ const node = computed(() => {
 
 const hostId = computed(() => {
   const selection = editor.selection.current.value
-  return selection.kind === 'graph.node' ? selection.hostId ?? '' : ''
+  return selection.kind === 'graph.node' ? (selection.hostId ?? '') : ''
 })
 
 const { hasInPort, runStatus, isGraphRunning, blocked, toggleRun } = useGraphNodeRun(node)

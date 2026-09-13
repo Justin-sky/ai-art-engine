@@ -58,10 +58,7 @@ export async function collectImageItemsFromValue(
   const seen = new Set<string>()
   const pushItem = (item: GraphImageItem): void => {
     const key =
-      item.id?.trim() ||
-      item.relativePath?.trim() ||
-      item.dataUrl?.trim() ||
-      `idx:${items.length}`
+      item.id?.trim() || item.relativePath?.trim() || item.dataUrl?.trim() || `idx:${items.length}`
     if (seen.has(key)) return
     const hasPayload =
       (typeof item.dataUrl === 'string' && item.dataUrl.length > 0) ||
@@ -115,7 +112,9 @@ export async function collectImageGenerateSourceItems(
 }
 
 /** 收集节点入边图片（含 image / images，以及图片资产引用） */
-export async function collectIncomingImageItems(ctx: NodeExecuteContext): Promise<GraphImageItem[]> {
+export async function collectIncomingImageItems(
+  ctx: NodeExecuteContext
+): Promise<GraphImageItem[]> {
   const imageInputs = [...(ctx.inputs.in ?? []), ...(ctx.inputs['in-image'] ?? [])]
   const values = imageInputs.length ? imageInputs : collectIncomingValues(ctx.inputs)
   const items: GraphImageItem[] = []

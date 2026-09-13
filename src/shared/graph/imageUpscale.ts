@@ -37,9 +37,7 @@ export function normalizeUpscaleScale(value: unknown): UpscaleScale {
   return 2
 }
 
-export function normalizeImageUpscale(
-  raw?: Partial<ImageUpscaleState> | null
-): ImageUpscaleState {
+export function normalizeImageUpscale(raw?: Partial<ImageUpscaleState> | null): ImageUpscaleState {
   const base = { ...DEFAULT_IMAGE_UPSCALE, ...(raw ?? {}) }
   const variantId = UPSCALE_VARIANTS.some((v) => v.id === base.variantId)
     ? base.variantId

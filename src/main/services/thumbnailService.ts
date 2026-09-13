@@ -18,11 +18,7 @@ import { MAIN_ERRORS } from '../errors/messages'
 import { removeIfExists } from '../persistence/binaryStore'
 
 // ── 缩略图个性错误 ──
-const E_THUMB_EMPTY_PATH = defErrSimple(
-  'thumbnail.emptyPath',
-  '空路径',
-  'Path is empty'
-)
+const E_THUMB_EMPTY_PATH = defErrSimple('thumbnail.emptyPath', '空路径', 'Path is empty')
 const E_THUMB_SOURCE_MISSING = defErrSimple(
   'thumbnail.sourceImageMissing',
   '原图不存在',

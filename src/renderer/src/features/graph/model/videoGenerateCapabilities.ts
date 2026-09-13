@@ -172,9 +172,7 @@ export async function loadVideoGenerateCapabilities(
 }
 
 /** 按 provider + model 拉取视频模型能力并解析端口限额 */
-export async function loadVideoGeneratePortLimits(
-  key: string
-): Promise<VideoGeneratePortLimits> {
+export async function loadVideoGeneratePortLimits(key: string): Promise<VideoGeneratePortLimits> {
   const bundle = await loadVideoGenerateCapabilities(key)
   return bundle.portLimits
 }

@@ -14,10 +14,7 @@ export interface EditorWindowDefinition {
 }
 
 export type EditorPluginPermission =
-  | 'workspace.read'
-  | 'workspace.write'
-  | 'filesystem.read'
-  | 'generation.run'
+  'workspace.read' | 'workspace.write' | 'filesystem.read' | 'generation.run'
 
 export interface EditorPluginManifest {
   id: string

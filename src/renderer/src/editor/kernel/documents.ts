@@ -180,12 +180,15 @@ export class EditorDocumentService {
     if (oldTimer) clearTimeout(oldTimer)
     this.autosaveTimers.set(
       documentId,
-      setTimeout(() => {
-        this.autosaveTimers.delete(documentId)
-        void this.save(documentId).catch((error) => {
-          console.error(`[editor] autosave failed: ${documentId}`, error)
-        })
-      }, Math.max(1000, adapter.autoSaveDelayMs?.() ?? this.autosaveDelayMs))
+      setTimeout(
+        () => {
+          this.autosaveTimers.delete(documentId)
+          void this.save(documentId).catch((error) => {
+            console.error(`[editor] autosave failed: ${documentId}`, error)
+          })
+        },
+        Math.max(1000, adapter.autoSaveDelayMs?.() ?? this.autosaveDelayMs)
+      )
     )
   }
 

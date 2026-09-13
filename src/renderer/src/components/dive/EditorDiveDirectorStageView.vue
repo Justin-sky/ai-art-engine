@@ -1,10 +1,6 @@
 <template>
   <div class="dive-view">
-    <DirectorStageShellInner
-      :show-close="false"
-      :window-chrome="false"
-      @ready="onReady"
-    />
+    <DirectorStageShellInner :show-close="false" :window-chrome="false" @ready="onReady" />
   </div>
 </template>
 

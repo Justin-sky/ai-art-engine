@@ -8,9 +8,13 @@ import {
 
 describe('media.bundle execute', () => {
   it('aggregates images into plural out and patches preview', () => {
-    const node = createNodeFromType('media.bundle', { x: 0, y: 0 }, {
-      params: { bundleDataType: GraphPortType.image }
-    })
+    const node = createNodeFromType(
+      'media.bundle',
+      { x: 0, y: 0 },
+      {
+        params: { bundleDataType: GraphPortType.image }
+      }
+    )
     const patched: Record<string, unknown>[] = []
     const ctx: NodeExecuteContext = {
       node,
@@ -39,9 +43,13 @@ describe('media.bundle execute', () => {
   })
 
   it('returns empty plural when no inputs', () => {
-    const node = createNodeFromType('media.bundle', { x: 0, y: 0 }, {
-      params: { bundleDataType: GraphPortType.video }
-    })
+    const node = createNodeFromType(
+      'media.bundle',
+      { x: 0, y: 0 },
+      {
+        params: { bundleDataType: GraphPortType.video }
+      }
+    )
     const result = executeBundleNode({ node, inputs: { in: [] } })
     expect(result.out).toEqual({ kind: 'videos', items: [] })
   })

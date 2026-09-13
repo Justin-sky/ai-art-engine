@@ -1,11 +1,6 @@
 /** 工程内持久化的视频生成任务（跨重启可续轮询） */
 
-export type VideoJobStatus =
-  | 'submitted'
-  | 'running'
-  | 'succeeded'
-  | 'failed'
-  | 'cancelled'
+export type VideoJobStatus = 'submitted' | 'running' | 'succeeded' | 'failed' | 'cancelled'
 
 /** 任务类型：视频 / 3D 模型 */
 export type VideoJobKind = 'video' | 'model3d'

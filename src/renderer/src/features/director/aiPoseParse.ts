@@ -31,7 +31,11 @@ export interface AiPoseBoneContext {
 export function inferBoneRole(boneName: string): string {
   const key = normalizeBoneName(boneName)
   if (!key) return 'other'
-  if (/(^|[^a-z])(hips|hip|pelvis|root)([^a-z]|$)/.test(key) || key === 'hips' || key.endsWith('hips'))
+  if (
+    /(^|[^a-z])(hips|hip|pelvis|root)([^a-z]|$)/.test(key) ||
+    key === 'hips' ||
+    key.endsWith('hips')
+  )
     return 'hips'
   if (/spine|chest|torso|ribcage/.test(key)) return 'spine'
   if (/neck/.test(key)) return 'neck'
@@ -50,7 +54,11 @@ export function inferBoneRole(boneName: string): string {
   if (/right/.test(key) && /(upleg|thigh|upperleg)/.test(key)) return 'r_thigh'
   if (/left/.test(key) && /(leg|calf|shin|lowerleg)/.test(key) && !/upleg|thigh|upperleg/.test(key))
     return 'l_shin'
-  if (/right/.test(key) && /(leg|calf|shin|lowerleg)/.test(key) && !/upleg|thigh|upperleg/.test(key))
+  if (
+    /right/.test(key) &&
+    /(leg|calf|shin|lowerleg)/.test(key) &&
+    !/upleg|thigh|upperleg/.test(key)
+  )
     return 'r_shin'
   if (/left/.test(key) && /foot|ankle/.test(key)) return 'l_foot'
   if (/right/.test(key) && /foot|ankle/.test(key)) return 'r_foot'
@@ -140,7 +148,11 @@ export function parseAiPoseFunctionCall(raw: string | null | undefined): AiPoseF
     }
   }
 
-  if (typeof root.name === 'string' && root.name.trim() && root.name.trim() !== AI_POSE_FUNCTION_NAME) {
+  if (
+    typeof root.name === 'string' &&
+    root.name.trim() &&
+    root.name.trim() !== AI_POSE_FUNCTION_NAME
+  ) {
     return null
   }
 
@@ -174,8 +186,7 @@ export function mapAiPoseDegreesToBonePose(
   for (const [rawName, deg] of Object.entries(bonesDeg)) {
     const name = rawName.trim()
     if (!name) continue
-    const target =
-      byExact.get(name) ?? byNorm.get(normalizeBoneName(name)) ?? null
+    const target = byExact.get(name) ?? byNorm.get(normalizeBoneName(name)) ?? null
     if (!target) continue
     const x = (clampDeg(deg.x) * Math.PI) / 180
     const y = (clampDeg(deg.y) * Math.PI) / 180
@@ -235,7 +246,9 @@ export function buildAiPoseUserPrompt(input: {
     input.instruction.trim(),
     '',
     'Available bone roles in this skeleton:',
-    roles.length ? roles.join(', ') : '(no standard humanoid roles detected — still use exact name keys)',
+    roles.length
+      ? roles.join(', ')
+      : '(no standard humanoid roles detected — still use exact name keys)',
     '',
     'Skeleton editable bones (use exact "name" as JSON keys; role is only a hint):',
     JSON.stringify(skeleton, null, 2),

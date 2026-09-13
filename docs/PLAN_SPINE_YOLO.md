@@ -24,18 +24,18 @@
 
 ## 2. 现状与可复用基础
 
-| 能力 | 现有实现 | 复用方式 |
-|---|---|---|
-| 骨骼命名归一 | `renderer/features/director/skeletonRetarget.ts` `normalizeBoneName` | Spine 骨骼名 / YOLO 关键点名统一走同一套归一化 |
-| 姿态资产编码 | `renderer/features/director/poseAsset.ts` | Spine 姿态快照沿用 `encodeBonePoseNormalized` 结构 |
-| AI 姿态解析 | `renderer/features/director/aiPoseParse.ts` | 文本 → 规范化骨骼姿势，可直接套用 Spine 骨架 |
-| 骨架动画工具 | `renderer/features/director/skeletonAnim.ts` | 播放 / 混合逻辑参考（Spine 用自己的 runtime） |
-| IK 链 | `renderer/features/director/ikChains.ts` | 与骨骼链判断逻辑共用 `spine/hip/chest/head` 语义 |
-| 资产模型 | `shared/domain.ts` `AssetType` + 真实目录 / meta | 新增 `spine` 资产类型 |
-| 媒体帧提取 | 主进程 `videoFrameService.ts`（ffmpeg/ffprobe） | YOLO 视频抽帧复用；Spine 导出合成复用 ffmpeg |
-| 智能剪辑 | `shared/graph/smartCut.ts` | 融入 YOLO 主体定位结果做构图决策 |
-| 媒体质检 | `shared/graph/videoReview.ts` | YOLO 检测分数作为确定性维度叠加 |
-| MCP / Skill | 内置 MCP 工具 + 技能系统 | 暴露 `detect_objects`、`export_spine_animation` 等工具 |
+| 能力         | 现有实现                                                             | 复用方式                                               |
+| ------------ | -------------------------------------------------------------------- | ------------------------------------------------------ |
+| 骨骼命名归一 | `renderer/features/director/skeletonRetarget.ts` `normalizeBoneName` | Spine 骨骼名 / YOLO 关键点名统一走同一套归一化         |
+| 姿态资产编码 | `renderer/features/director/poseAsset.ts`                            | Spine 姿态快照沿用 `encodeBonePoseNormalized` 结构     |
+| AI 姿态解析  | `renderer/features/director/aiPoseParse.ts`                          | 文本 → 规范化骨骼姿势，可直接套用 Spine 骨架           |
+| 骨架动画工具 | `renderer/features/director/skeletonAnim.ts`                         | 播放 / 混合逻辑参考（Spine 用自己的 runtime）          |
+| IK 链        | `renderer/features/director/ikChains.ts`                             | 与骨骼链判断逻辑共用 `spine/hip/chest/head` 语义       |
+| 资产模型     | `shared/domain.ts` `AssetType` + 真实目录 / meta                     | 新增 `spine` 资产类型                                  |
+| 媒体帧提取   | 主进程 `videoFrameService.ts`（ffmpeg/ffprobe）                      | YOLO 视频抽帧复用；Spine 导出合成复用 ffmpeg           |
+| 智能剪辑     | `shared/graph/smartCut.ts`                                           | 融入 YOLO 主体定位结果做构图决策                       |
+| 媒体质检     | `shared/graph/videoReview.ts`                                        | YOLO 检测分数作为确定性维度叠加                        |
+| MCP / Skill  | 内置 MCP 工具 + 技能系统                                             | 暴露 `detect_objects`、`export_spine_animation` 等工具 |
 
 ---
 
@@ -66,11 +66,11 @@
 
 **依赖与运行时**（随包内置，Electron asar 内）：
 
-| 模块 | 选型 | 说明 |
-|---|---|---|
-| Spine 运行时 | `@esotericsoftware/spine-core` + `spine-webgl`（预览）/ `spine-canvas`（兜底） | 官方 runtime，MIT；**Spine 编辑器本身不在分发范围** |
-| 本地推理 | `onnxruntime-node` | 原生模块需按 Electron ABI 重建（electron-rebuild），Windows x64/arm64 + macOS + Linux 三平台验证 |
-| 模型权重 | YOLOv8n / YOLOv8n-seg / YOLOv8n-pose 的 ONNX（GPL-3.0 兼容，Ultralytics 权重为 AGPL-3.0——**需确认协议合规或换用 Apache 2.0 模型**） | 首次运行下载 / 随包内置，默认 CPU 推理，预留 DirectML/CUDA 开关 |
+| 模块         | 选型                                                                                                                                | 说明                                                                                             |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Spine 运行时 | `@esotericsoftware/spine-core` + `spine-webgl`（预览）/ `spine-canvas`（兜底）                                                      | 官方 runtime，MIT；**Spine 编辑器本身不在分发范围**                                              |
+| 本地推理     | `onnxruntime-node`                                                                                                                  | 原生模块需按 Electron ABI 重建（electron-rebuild），Windows x64/arm64 + macOS + Linux 三平台验证 |
+| 模型权重     | YOLOv8n / YOLOv8n-seg / YOLOv8n-pose 的 ONNX（GPL-3.0 兼容，Ultralytics 权重为 AGPL-3.0——**需确认协议合规或换用 Apache 2.0 模型**） | 首次运行下载 / 随包内置，默认 CPU 推理，预留 DirectML/CUDA 开关                                  |
 
 ---
 
@@ -118,27 +118,27 @@
 - 输出规范（跨平台自用协议）：
   ```ts
   type YoloDetectResult = {
-    boxes: Array<{ label: string; confidence: number; x, y, w, h: number }>
+    boxes: Array<{ label: string; confidence: number; x; y; w; h: number }>
   }
   type YoloSegmentResult = YoloDetectResult & {
     masks: Array<{ width: number; height: number; data: Uint8Array }> // 0/1 mask
   }
   type YoloPoseResult = YoloDetectResult & {
-    skeletons: Array<Array<{ x, y, confidence }>> // COCO 17 关键点
+    skeletons: Array<Array<{ x; y; confidence }>> // COCO 17 关键点
   }
   ```
 - 模型管理：`resources/models/yolo/`；设置页显示模型状态（存在 / 版本 / 推理后端 CPU/DirectML）。
 
 ### 5.2 应用场景
 
-| 场景 | 实现 | 复用/联动 |
-|---|---|---|
-| 素材自动标签 | 资产导入时对图片/视频首帧跑 Detect → 标签写入 meta | Roadmap「资产语义检索」的视觉通道 |
-| 智能剪辑构图 | 检测人物/主体 bbox → 建议裁切框（竖屏 9:16 适配、主体居中） | `smartCut.ts` 方案中新增「构图约束」输入 |
-| 实例分割抠图 | Segment mask → 抠图出透明 PNG | 现有「抠图」技能 / 图层分离链路的本地化补充 |
-| 媒体质检增强 | 主体是否完整在画面内、是否有人脸/人物、目标置信度 | 叠加到 `videoReview` 五维评分 |
-| 运镜辅助 | 逐帧主体位置 → 自动生成缩放/平移关键帧（模拟推拉摇移） | 时间线片段变换参数 |
-| 人体姿态动捕 | Pose 关键点 → 规范化骨骼旋转 → Spine / 3D 角色 | **见第 6 节联动** |
+| 场景         | 实现                                                        | 复用/联动                                   |
+| ------------ | ----------------------------------------------------------- | ------------------------------------------- |
+| 素材自动标签 | 资产导入时对图片/视频首帧跑 Detect → 标签写入 meta          | Roadmap「资产语义检索」的视觉通道           |
+| 智能剪辑构图 | 检测人物/主体 bbox → 建议裁切框（竖屏 9:16 适配、主体居中） | `smartCut.ts` 方案中新增「构图约束」输入    |
+| 实例分割抠图 | Segment mask → 抠图出透明 PNG                               | 现有「抠图」技能 / 图层分离链路的本地化补充 |
+| 媒体质检增强 | 主体是否完整在画面内、是否有人脸/人物、目标置信度           | 叠加到 `videoReview` 五维评分               |
+| 运镜辅助     | 逐帧主体位置 → 自动生成缩放/平移关键帧（模拟推拉摇移）      | 时间线片段变换参数                          |
+| 人体姿态动捕 | Pose 关键点 → 规范化骨骼旋转 → Spine / 3D 角色              | **见第 6 节联动**                           |
 
 ### 5.3 MCP / Skill 暴露
 
@@ -149,16 +149,16 @@
 
 > LibTV（LiblibAI 一站式 AI 视频创作平台，无限画布 + 剧本 / 分镜 / 生图 / 生视频）的「图像 / 视频工具集」中，**视觉类功能大部分可用本规划的 YOLO 底座本地实现**——这正是项目 Local-First 相对竞品的差异化点（本地、免费、数据不出机）。
 
-| LibTV 功能 | YOLO 能力 | 本规划落地 | 优先级 |
-|---|---|---|---|
-| 抠图 | Segment 实例分割 | 本地抠图，替代云端抠图 API | P0 |
-| 标注 | Detect 自动打标 | 资产导入自动标签（5.2 素材自动标签） | P0 |
-| 裁剪（智能构图） | Detect bbox 主体定位 | 9:16 居中裁切（5.2 智能剪辑构图） | P0 |
-| 视频分镜解析 | Detect + 镜头切分 | 「视频 → 分镜」管线：ffmpeg scene 切分 + 每镜首帧检测/场景标签 + 文本模型生成镜头描述 | P0 |
-| 擦除 / 重绘区域 | Segment mask | mask 精确限定 inpaint/erase 区域（接 ComfyUI） | P1 |
-| 宫格切分（9/25 宫格） | Detect 主体避让 | 分镜宫格排布避开主体 / 人脸 | P1 |
-| 打光（智能光位） | Detect 人脸 / 主体朝向 | 反推合理主光方位作「智能打光」参考 | P2 |
-| 角色一致性 | Detect + 跟踪（ByteTrack） | 跨镜头同角色匹配，辅助一致性控制 | P2 |
+| LibTV 功能            | YOLO 能力                  | 本规划落地                                                                            | 优先级 |
+| --------------------- | -------------------------- | ------------------------------------------------------------------------------------- | ------ |
+| 抠图                  | Segment 实例分割           | 本地抠图，替代云端抠图 API                                                            | P0     |
+| 标注                  | Detect 自动打标            | 资产导入自动标签（5.2 素材自动标签）                                                  | P0     |
+| 裁剪（智能构图）      | Detect bbox 主体定位       | 9:16 居中裁切（5.2 智能剪辑构图）                                                     | P0     |
+| 视频分镜解析          | Detect + 镜头切分          | 「视频 → 分镜」管线：ffmpeg scene 切分 + 每镜首帧检测/场景标签 + 文本模型生成镜头描述 | P0     |
+| 擦除 / 重绘区域       | Segment mask               | mask 精确限定 inpaint/erase 区域（接 ComfyUI）                                        | P1     |
+| 宫格切分（9/25 宫格） | Detect 主体避让            | 分镜宫格排布避开主体 / 人脸                                                           | P1     |
+| 打光（智能光位）      | Detect 人脸 / 主体朝向     | 反推合理主光方位作「智能打光」参考                                                    | P2     |
+| 角色一致性            | Detect + 跟踪（ByteTrack） | 跨镜头同角色匹配，辅助一致性控制                                                      | P2     |
 
 **关于「深度视频」的澄清**：深度估计（depth estimation）不是 YOLO 任务，LibTV 也并非主打深度视频，但 AI 视频圈确有「深度控制图生视频」用法。两种接近方案：
 
@@ -180,11 +180,11 @@
 
 ### 6.2 应用目标
 
-| 目标 | 描述 | 阶段 |
-|---|---|---|
-| Spine 驱动 | 规范化 bonePose 经 `mapNormalizedPoseToTargetBones` 套用到 Spine 骨架（演示角色小动画） | MVP |
-| 3D 角色驱动 | 套用到导演台 3D 角色（复用既有骨骼应用管线） | MVP+ |
-| 动画库积累 | 录制的姿势序列可存为 `motion` 资产，供复用/编辑 | MVP+ |
+| 目标        | 描述                                                                                    | 阶段 |
+| ----------- | --------------------------------------------------------------------------------------- | ---- |
+| Spine 驱动  | 规范化 bonePose 经 `mapNormalizedPoseToTargetBones` 套用到 Spine 骨架（演示角色小动画） | MVP  |
+| 3D 角色驱动 | 套用到导演台 3D 角色（复用既有骨骼应用管线）                                            | MVP+ |
+| 动画库积累  | 录制的姿势序列可存为 `motion` 资产，供复用/编辑                                         | MVP+ |
 
 ### 6.3 精度与鲁棒性
 
@@ -248,28 +248,28 @@
 
 ## 8. 风险与对策
 
-| 风险 | 影响 | 对策 |
-|---|---|---|
-| Spine 资产许可（编辑器商业，runtime 免费） | 合规 | 只分发 runtime（MIT）；文档注明资产版权归用户；不内置任何付费 Spine 示例 |
-| YOLOv8 权重 AGPL-3.0 与项目 GPL-3.0 混用 | 合规 / 授权 | 评估换用 Apache-2.0 模型（如 RT-DETR、部分 COCO 预训练权重）；或以「随包独立下载 + 独立协议文件」方式隔离 |
-| `onnxruntime-node` 原生模块跨平台/跨 Electron 版本 | 构建 | CI 三平台 electron-rebuild + smoke test；发布前在 win/mac/linux 实机验证 |
-| 打包体积膨胀（onnxruntime ~60-100MB + 模型） | 分发 | 模型按需下载（首次使用提示），运行时随包；体积报告纳入 CI |
-| Spine 逐帧导出性能 | 效率 | 离屏渲染并行批次 + 进度回报；降采样帧率（如 24fps→12fps）选项 |
-| 单目 2D 姿态歧义 | 质量 | 限定可捕捉动作类型；置信度门控 + 插值平滑；文档明确能力边界 |
-| Spine runtime 与 Electron 渲染器兼容 | 稳定性 | 早期 Spike 验证（webgl 上下文、透明、离屏渲染）后进入正式开发 |
+| 风险                                               | 影响        | 对策                                                                                                      |
+| -------------------------------------------------- | ----------- | --------------------------------------------------------------------------------------------------------- |
+| Spine 资产许可（编辑器商业，runtime 免费）         | 合规        | 只分发 runtime（MIT）；文档注明资产版权归用户；不内置任何付费 Spine 示例                                  |
+| YOLOv8 权重 AGPL-3.0 与项目 GPL-3.0 混用           | 合规 / 授权 | 评估换用 Apache-2.0 模型（如 RT-DETR、部分 COCO 预训练权重）；或以「随包独立下载 + 独立协议文件」方式隔离 |
+| `onnxruntime-node` 原生模块跨平台/跨 Electron 版本 | 构建        | CI 三平台 electron-rebuild + smoke test；发布前在 win/mac/linux 实机验证                                  |
+| 打包体积膨胀（onnxruntime ~60-100MB + 模型）       | 分发        | 模型按需下载（首次使用提示），运行时随包；体积报告纳入 CI                                                 |
+| Spine 逐帧导出性能                                 | 效率        | 离屏渲染并行批次 + 进度回报；降采样帧率（如 24fps→12fps）选项                                             |
+| 单目 2D 姿态歧义                                   | 质量        | 限定可捕捉动作类型；置信度门控 + 插值平滑；文档明确能力边界                                               |
+| Spine runtime 与 Electron 渲染器兼容               | 稳定性      | 早期 Spike 验证（webgl 上下文、透明、离屏渲染）后进入正式开发                                             |
 
 ---
 
 ## 9. 验收总览
 
-| 里程碑 | 一句话验收 |
-|---|---|
-| A Spine 资产化 | 导入 Spine 角色工程并在资产库预览、切动画 |
-| B Spine 生产化 | Spine 动画导出透明视频上轨成片，Agent 可驱动 |
-| C YOLO 底座 | 本地 CPU 完成检测 / 分割 / 姿态三种推理 |
-| D YOLO 链路 | 自动打标 + 智能构图裁切 + 抠图 + 质检增强 |
-| E 动捕闭环 | 视频 → YOLO-pose → Spine / 3D 角色动画 |
-| F 视觉进阶（可选） | 角色跨镜头匹配 / 深度图序列产出 |
+| 里程碑             | 一句话验收                                   |
+| ------------------ | -------------------------------------------- |
+| A Spine 资产化     | 导入 Spine 角色工程并在资产库预览、切动画    |
+| B Spine 生产化     | Spine 动画导出透明视频上轨成片，Agent 可驱动 |
+| C YOLO 底座        | 本地 CPU 完成检测 / 分割 / 姿态三种推理      |
+| D YOLO 链路        | 自动打标 + 智能构图裁切 + 抠图 + 质检增强    |
+| E 动捕闭环         | 视频 → YOLO-pose → Spine / 3D 角色动画       |
+| F 视觉进阶（可选） | 角色跨镜头匹配 / 深度图序列产出              |
 
 ---
 

@@ -53,7 +53,15 @@ function buildGameIconsDoc(): GraphDocument {
     {
       id: 'pack',
       params: {
-        iconPack: { rows: 3, cols: 3, edgeInset: 'auto', keyColor: 'auto', distance: 40, feather: 34, canvasSize: 0 },
+        iconPack: {
+          rows: 3,
+          cols: 3,
+          edgeInset: 'auto',
+          keyColor: 'auto',
+          distance: 40,
+          feather: 34,
+          canvasSize: 0
+        },
         mediaOutputDir: 'Assets/IconPacks/skill'
       }
     }
@@ -140,7 +148,10 @@ describe('单枚精修上下文解析（iconRefine）', () => {
 describe('单枚精修指令组装', () => {
   it('中文：含名单名 / 分类 / 主题 / 单枚规范与修正 hint', () => {
     const ctx = resolveIconRefineContext(buildGameIconsDoc(), 'split', '1-3')!
-    const instruction = buildIconRefineInstruction(ctx, { locale: 'zh', hint: '主体太糊、描边断线' })
+    const instruction = buildIconRefineInstruction(ctx, {
+      locale: 'zh',
+      hint: '主体太糊、描边断线'
+    })
     expect(instruction).toContain('雷击')
     expect(instruction).toContain('技能图标')
     expect(instruction).toContain('暖色 2D 卡通')
@@ -213,13 +224,25 @@ describe('单枚精修结果写回（withIconPackCellRefine）', () => {
   it('格位 key 非法 / dataUrl 非 data:image / 节点缺失时原样返回', () => {
     const doc = buildGameIconsDoc()
     expect(
-      withIconPackCellRefine(doc, { packNodeId: 'pack', cellKey: 'a-b', dataUrl: 'data:image/png;base64,AAA' })
+      withIconPackCellRefine(doc, {
+        packNodeId: 'pack',
+        cellKey: 'a-b',
+        dataUrl: 'data:image/png;base64,AAA'
+      })
     ).toBe(doc)
     expect(
-      withIconPackCellRefine(doc, { packNodeId: 'pack', cellKey: '1-1', dataUrl: 'https://x/y.png' })
+      withIconPackCellRefine(doc, {
+        packNodeId: 'pack',
+        cellKey: '1-1',
+        dataUrl: 'https://x/y.png'
+      })
     ).toBe(doc)
     expect(
-      withIconPackCellRefine(doc, { packNodeId: 'missing', cellKey: '1-1', dataUrl: 'data:image/png;base64,AAA' })
+      withIconPackCellRefine(doc, {
+        packNodeId: 'missing',
+        cellKey: '1-1',
+        dataUrl: 'data:image/png;base64,AAA'
+      })
     ).toBe(doc)
   })
 
@@ -240,7 +263,9 @@ describe('单枚精修结果写回（withIconPackCellRefine）', () => {
       dataUrl: 'data:image/png;base64,DDD'
     })
     expect(
-      Object.keys(readIconPackRefinesFromNode(next.nodes.find((n) => n.id === 'pack')!.params)).sort()
+      Object.keys(
+        readIconPackRefinesFromNode(next.nodes.find((n) => n.id === 'pack')!.params)
+      ).sort()
     ).toEqual(['1-1', '1-2'])
   })
 })

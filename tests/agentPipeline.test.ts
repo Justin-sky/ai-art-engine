@@ -40,7 +40,11 @@ describe('agent pipeline state machine', () => {
     expect(failed.current_step).toBe('generate')
     expect(failed.last_failed_reason).toBe('主体不一致')
     expect(failed.reviews?.length).toBe(2)
-    expect(failed.reviews?.[1]).toMatchObject({ step: 'generate', result: 'FAIL', reason: '主体不一致' })
+    expect(failed.reviews?.[1]).toMatchObject({
+      step: 'generate',
+      result: 'FAIL',
+      reason: '主体不一致'
+    })
   })
 
   it('returns the latest FAIL reason for a step, empty after PASS', () => {

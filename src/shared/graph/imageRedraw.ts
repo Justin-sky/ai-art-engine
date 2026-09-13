@@ -47,9 +47,7 @@ export function normalizeRedrawBrushSize(value: unknown): number {
   return Math.min(MAX_BRUSH, Math.max(MIN_BRUSH, n))
 }
 
-export function normalizeImageRedraw(
-  raw?: Partial<ImageRedrawState> | null
-): ImageRedrawState {
+export function normalizeImageRedraw(raw?: Partial<ImageRedrawState> | null): ImageRedrawState {
   const base = { ...DEFAULT_IMAGE_REDRAW, ...(raw ?? {}) }
   const aspectId =
     typeof base.aspectId === 'string' && base.aspectId.trim()
@@ -95,10 +93,7 @@ export function clampRedrawParamsToCapabilities(
   return normalizeImageRedraw({ ...s, aspectId, resolution, count })
 }
 
-export function redrawAspectRatioValue(
-  aspectId: string,
-  sourceAspect: number
-): number | undefined {
+export function redrawAspectRatioValue(aspectId: string, sourceAspect: number): number | undefined {
   if (!aspectId || aspectId === 'original') return sourceAspect > 0 ? sourceAspect : 1
   return parseAspectRatioString(aspectId)
 }

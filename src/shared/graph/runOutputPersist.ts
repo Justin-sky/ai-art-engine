@@ -441,8 +441,7 @@ export async function materializeNodePreviewParams(
 }
 
 export type HostMediaSyncSource =
-  | { kind: 'relativePath'; relativePath: string }
-  | { kind: 'asset'; assetId: string }
+  { kind: 'relativePath'; relativePath: string } | { kind: 'asset'; assetId: string }
 
 /**
  * 从已物化的输出中，为「尚无媒体文件」的宿主媒体资产解析可写入的文件来源。
@@ -539,10 +538,7 @@ export function resolveHostMediaSyncSource(
   return null
 }
 
-export function previewSrcFromImageItem(item: {
-  dataUrl?: string
-  relativePath?: string
-}): string {
+export function previewSrcFromImageItem(item: { dataUrl?: string; relativePath?: string }): string {
   if (item.relativePath?.trim()) return `rel:${item.relativePath}`
   if (item.dataUrl?.trim()) return item.dataUrl
   return ''

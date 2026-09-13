@@ -23,11 +23,7 @@ import {
   type HostInnerGraphRunResult,
   type GraphRunLogMeta
 } from '@shared/graph'
-import {
-  isDraftAssetId,
-  normalizeProjectStyleImages,
-  resolveMediaOutputDir
-} from '@shared/domain'
+import { isDraftAssetId, normalizeProjectStyleImages, resolveMediaOutputDir } from '@shared/domain'
 import { persistAssetRecord } from '../composables/useAssetRecord'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import { liftHostOutputsFromInnerGraph } from '../features/graph/model/liftHostOutputsFromInner'
@@ -67,20 +63,18 @@ import { composeImageIconPackSheet } from '../features/graph/model/composeImageI
 import { composeImageLayerStack } from '../features/graph/model/composeImageLayerStack'
 import { composeComicPageImage } from '../features/comic/composeComicPageImage'
 import { normalizeImageAspectRatio } from '../features/graph/model/normalizeImageAspectRatio'
-import {
-  prepareGraphDocumentForPersist
-} from '../features/graph/persistGraphRunOutputs'
+import { prepareGraphDocumentForPersist } from '../features/graph/persistGraphRunOutputs'
 import { saveGraphRunMediaForNode } from '../features/graph/saveGraphRunMediaForNode'
 import { saveGraphRunTextForNode } from '../features/graph/saveGraphRunTextForNode'
 import { readGraphRunText } from '../features/graph/readGraphRunText'
 import { useDraftStore } from './drafts'
 import { useProjectStore } from './project'
 import { toPlain } from '../utils/toPlain'
+import { applyWorldCatalog, loadWorldCatalog } from '../features/world/applyWorldCatalogOnOpen'
 import {
-  applyWorldCatalog,
-  loadWorldCatalog
-} from '../features/world/applyWorldCatalogOnOpen'
-import { collectWorldElementOutputs, previewWorldElementOutputsFromSubgraphs } from '../features/world/worldElementPipeline'
+  collectWorldElementOutputs,
+  previewWorldElementOutputsFromSubgraphs
+} from '../features/world/worldElementPipeline'
 import { collectBeatUnitTexts } from '../features/beat/beatPipeline'
 import { loadBeatCatalog, applyBeatCatalog } from '../features/beat/applyBeatCatalogOnOpen'
 import {
@@ -245,9 +239,7 @@ function taskTargetKey(target: GraphTaskTarget): string {
  */
 export function writeBackExclusiveKey(target: GraphTaskTarget): string {
   if (target.kind === 'world-element') {
-    return `world-element:${target.worldAssetId}${
-      target.nodeId ? `:${target.nodeId}` : ''
-    }`
+    return `world-element:${target.worldAssetId}${target.nodeId ? `:${target.nodeId}` : ''}`
   }
   if (target.kind === 'beat-unit') {
     return `beat-unit:${target.beatAssetId}`
@@ -359,10 +351,7 @@ function readPersistedGraphForTarget(target: GraphTaskTarget): GraphDocument | n
     return asGraphDocument(raw)
   }
   if (target.kind === 'beat-unit') {
-    const raw = readBeatGraphFromGenParams(
-      readBeatGenParams(target.beatAssetId),
-      target.beatId
-    )
+    const raw = readBeatGraphFromGenParams(readBeatGenParams(target.beatAssetId), target.beatId)
     return asGraphDocument(raw)
   }
   return null
@@ -393,9 +382,7 @@ function mergeSubsetGraphIntoBase(
 
 const MAX_COMPLETED_TASKS = 100
 
-export type EnqueueWorkflowResult =
-  | { ok: true; id: string }
-  | { ok: false; reason: 'duplicate' }
+export type EnqueueWorkflowResult = { ok: true; id: string } | { ok: false; reason: 'duplicate' }
 
 export type EnqueueBatchResult = {
   enqueued: number
@@ -503,7 +490,10 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
     )
   }
 
-  async function runWriteBackExclusive(targetKey: string, work: () => Promise<void>): Promise<void> {
+  async function runWriteBackExclusive(
+    targetKey: string,
+    work: () => Promise<void>
+  ): Promise<void> {
     const prev = writeBackChains.get(targetKey) ?? Promise.resolve()
     const curr = prev.catch(() => undefined).then(work)
     writeBackChains.set(
@@ -530,8 +520,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
   }
 
   function openDialog(anchor?: HTMLElement | null): void {
-    dialogAnchor.value =
-      anchor ?? document.querySelector<HTMLElement>('[data-graph-task-anchor]')
+    dialogAnchor.value = anchor ?? document.querySelector<HTMLElement>('[data-graph-task-anchor]')
     dialogOpen.value = true
   }
 
@@ -921,12 +910,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         done.runStates,
         done.graph,
         resolveNodeHostInterface(input.hostNode)
-      ) ??
-      mapHostInnerStatesToOutputs(
-        done.runStates,
-        done.graph,
-        input.hostNode.assetType ?? ''
-      )
+      ) ?? mapHostInnerStatesToOutputs(done.runStates, done.graph, input.hostNode.assetType ?? '')
     return {
       ok: done.status === 'done',
       states: { ...done.runStates },
@@ -1342,8 +1326,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           const base = isDraftAssetId(assetId)
             ? (useDraftStore().getDraft(assetId)?.genParams as Record<string, unknown> | undefined)
             : (project.assets.find((asset) => asset.id === assetId)?.genParams as
-                | Record<string, unknown>
-                | undefined)
+                Record<string, unknown> | undefined)
           if (live) {
             return { ...(base ?? {}), graphJson: live }
           }
@@ -1428,10 +1411,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             const downstreamGens = (task.graph?.edges ?? [])
               .filter((edge) => edge.source === sourceNodeId)
               .map((edge) => task.graph?.nodes.find((node) => node.id === edge.target))
-              .filter(
-                (node): node is GraphNode =>
-                  !!node && node.typeId === 'world.gen'
-              )
+              .filter((node): node is GraphNode => !!node && node.typeId === 'world.gen')
             for (const gen of downstreamGens) {
               await applyWorldCatalog(worldId, jsonText, gen.id)
             }

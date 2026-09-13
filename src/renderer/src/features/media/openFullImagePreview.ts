@@ -28,9 +28,9 @@ export async function openFullImagePreview(source: {
   if (relativePath && !url) {
     try {
       url =
-        ((layeredSource
+        (layeredSource
           ? await window.studio.getAssetPreviewUrl(relativePath)
-          : await window.studio.getAssetFileUrl(relativePath)) || '')
+          : await window.studio.getAssetFileUrl(relativePath)) || ''
     } catch {
       url = ''
     }

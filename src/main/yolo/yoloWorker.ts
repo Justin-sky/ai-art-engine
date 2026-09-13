@@ -237,7 +237,9 @@ async function handleRequest(req: YoloWorkerRequest): Promise<void> {
         result = await runInfer(req.params as YoloWorkerInferParams)
         break
       default:
-        throw new Error(`YOLO: unknown worker method: ${String((req as { method?: unknown }).method)}`)
+        throw new Error(
+          `YOLO: unknown worker method: ${String((req as { method?: unknown }).method)}`
+        )
     }
     const response: YoloWorkerResponse = { id: req.id, ok: true, result }
     process.parentPort?.postMessage(response)

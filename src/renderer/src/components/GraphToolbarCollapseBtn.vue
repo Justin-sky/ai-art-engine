@@ -18,22 +18,9 @@ function toggle(): void {
     :aria-expanded="!collapsed"
     @click="toggle"
   >
-    <svg
-      viewBox="0 0 16 16"
-      width="12"
-      height="12"
-      aria-hidden="true"
-    >
-      <path
-        v-if="collapsed"
-        fill="currentColor"
-        d="M3.2 6.2 8 11l4.8-4.8-.9-.9L8 9.2 4.1 5.3z"
-      />
-      <path
-        v-else
-        fill="currentColor"
-        d="M3.2 9.8 8 5l4.8 4.8-.9.9L8 6.8 4.1 10.7z"
-      />
+    <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+      <path v-if="collapsed" fill="currentColor" d="M3.2 6.2 8 11l4.8-4.8-.9-.9L8 9.2 4.1 5.3z" />
+      <path v-else fill="currentColor" d="M3.2 9.8 8 5l4.8 4.8-.9.9L8 6.8 4.1 10.7z" />
     </svg>
   </button>
 </template>

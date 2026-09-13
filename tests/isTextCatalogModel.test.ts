@@ -9,23 +9,15 @@ describe('isTextCatalogModel', () => {
   })
 
   it('keeps models that output text', () => {
-    expect(
-      isTextCatalogModel({ architecture: { output_modalities: ['text'] } })
-    ).toBe(true)
-    expect(
-      isTextCatalogModel({ architecture: { output_modalities: ['text', 'image'] } })
-    ).toBe(true)
+    expect(isTextCatalogModel({ architecture: { output_modalities: ['text'] } })).toBe(true)
+    expect(isTextCatalogModel({ architecture: { output_modalities: ['text', 'image'] } })).toBe(
+      true
+    )
   })
 
   it('drops speech/image/video-only models', () => {
-    expect(
-      isTextCatalogModel({ architecture: { output_modalities: ['speech'] } })
-    ).toBe(false)
-    expect(
-      isTextCatalogModel({ architecture: { output_modalities: ['image'] } })
-    ).toBe(false)
-    expect(
-      isTextCatalogModel({ architecture: { output_modalities: ['video'] } })
-    ).toBe(false)
+    expect(isTextCatalogModel({ architecture: { output_modalities: ['speech'] } })).toBe(false)
+    expect(isTextCatalogModel({ architecture: { output_modalities: ['image'] } })).toBe(false)
+    expect(isTextCatalogModel({ architecture: { output_modalities: ['video'] } })).toBe(false)
   })
 })

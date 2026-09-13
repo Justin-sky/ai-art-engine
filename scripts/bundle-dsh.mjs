@@ -21,7 +21,16 @@
  *
  * 版本从 package.json 的 dependencies 读取，保证与运行时解析入口一致。
  */
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync
+} from 'node:fs'
 import { cp } from 'node:fs/promises'
 import { basename, dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -35,7 +44,10 @@ const STAGE_DIR = join(ROOT, 'out', '.dsh-stage')
  * dsh 0.1.5 起 STARTUPINFO 编码从 dsh-sandbox-windows-acl 抽到 dsh-win32-process；
  * 与运行时补丁（src/main/services/dshSandboxConsolePatch.ts 的 SANDBOX_SPAWN_PACKAGES）保持一致。
  */
-const SANDBOX_SPAWN_PACKAGES = ['@deepseek-ai/dsh-win32-process', '@deepseek-ai/dsh-sandbox-windows-acl']
+const SANDBOX_SPAWN_PACKAGES = [
+  '@deepseek-ai/dsh-win32-process',
+  '@deepseek-ai/dsh-sandbox-windows-acl'
+]
 
 /** 主 package.json 中固定的 dsh 版本（单一事实来源） */
 function resolveDshVersion() {
@@ -50,8 +62,7 @@ function resolveDshVersion() {
 
 /** 解析包在根 node_modules 中的目录（支持 scoped；版本冲突时可能嵌套在子包的 node_modules 下） */
 function resolvePkgDir(name) {
-  const pkgPath = (nm) =>
-    name.startsWith('@') ? join(nm, ...name.split('/')) : join(nm, name)
+  const pkgPath = (nm) => (name.startsWith('@') ? join(nm, ...name.split('/')) : join(nm, name))
 
   const top = pkgPath(join(ROOT, 'node_modules'))
   if (existsSync(top)) return top
@@ -124,9 +135,7 @@ function verifyBundle() {
   for (const ent of readdirSync(nm, { withFileTypes: true })) {
     if (!ent.isDirectory()) continue
     const root = join(nm, ent.name)
-    const dirs = ent.name.startsWith('@')
-      ? readdirSync(root).map((n) => join(root, n))
-      : [root]
+    const dirs = ent.name.startsWith('@') ? readdirSync(root).map((n) => join(root, n)) : [root]
     for (const dir of dirs) {
       const pkgJson = join(dir, 'package.json')
       if (!existsSync(pkgJson)) continue
@@ -279,10 +288,7 @@ function verifyReachableRequires(packages) {
       // 只有「引用了具体文件（带扩展名）、该文件在源包里确实存在、产物里却没了」
       // 才算裁剪误删；目录/包引用（'./'、'./types/index'）与包内可选引用不在此列。
       const realDeletion =
-        /\.[a-z0-9]+$/i.test(spec) &&
-        src !== null &&
-        existsSync(src) &&
-        statSync(src).isFile()
+        /\.[a-z0-9]+$/i.test(spec) && src !== null && existsSync(src) && statSync(src).isFile()
       const bucket = realDeletion ? missing : loose
       if (!bucket.has(file)) bucket.set(file, new Set())
       bucket.get(file).add(spec)
@@ -462,6 +468,8 @@ await main()
   })
   .catch((err) => {
     cleanupStage()
-    console.error(`[bundle-dsh] 失败：${err instanceof Error ? err.stack ?? err.message : String(err)}`)
+    console.error(
+      `[bundle-dsh] 失败：${err instanceof Error ? (err.stack ?? err.message) : String(err)}`
+    )
     process.exit(1)
   })

@@ -83,19 +83,13 @@ const kind = computed((): 'image' | 'video' | 'voice' | 'text' | 'none' => {
 
 const textPreview = ref('')
 
-const resolvedMediaPath = computed(() =>
-  resolveAssetPreviewMediaPath(props.asset, project.assets)
-)
+const resolvedMediaPath = computed(() => resolveAssetPreviewMediaPath(props.asset, project.assets))
 
 const show = computed(() => {
   if (kind.value === 'none') return false
   if (kind.value === 'text') {
     // 导入 txt 或新建剧本（graphJson）都应显示预览区
-    return (
-      !!textPreview.value ||
-      loading.value ||
-      props.asset.type === 'screenplay'
-    )
+    return !!textPreview.value || loading.value || props.asset.type === 'screenplay'
   }
   return true
 })
@@ -207,9 +201,7 @@ function syncMediaClock(el?: HTMLMediaElement | null): void {
     duration.value = media.duration
   }
   if (progressInput.value && duration.value > 0 && !seeking.value) {
-    progressInput.value.value = String(
-      Math.round((currentTime.value / duration.value) * 1000)
-    )
+    progressInput.value.value = String(Math.round((currentTime.value / duration.value) * 1000))
   }
 }
 
@@ -285,11 +277,7 @@ async function loadPreview(): Promise<void> {
     }
 
     if (kind.value === 'video' || kind.value === 'voice') {
-      const playPath = pickPlayableMediaPath(
-        kind.value,
-        a.relativePath?.trim() || '',
-        path || ''
-      )
+      const playPath = pickPlayableMediaPath(kind.value, a.relativePath?.trim() || '', path || '')
       // 海报：优先可播放媒体的预览图；否则若解析结果是图片则直接作海报
       const posterPath =
         playPath ||
@@ -427,7 +415,6 @@ async function openFullPreview(): Promise<void> {
 
 const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
 
-
 const emptyHint = computed(() => {
   // PSD 等分层源文件：正常走图片预览（合成图）；只有合成预览失败才落到这里，
   // 说明原因与打开方式，而不是笼统的「无预览」
@@ -477,11 +464,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section
-    v-if="show"
-    class="asset-media-preview"
-    :aria-label="t('graph.inspector.outputPreview')"
-  >
+  <section v-if="show" class="asset-media-preview" :aria-label="t('graph.inspector.outputPreview')">
     <div class="section-head">
       <span class="section-title">{{ t('graph.inspector.outputPreview') }}</span>
       <button
@@ -492,40 +475,22 @@ onBeforeUnmount(() => {
         :aria-label="t('graph.inspector.revealInAssets')"
         @click="revealInAssets"
       >
-        <span
-          class="icon-reveal"
-          aria-hidden="true"
-        />
+        <span class="icon-reveal" aria-hidden="true" />
       </button>
     </div>
 
-    <p
-      v-if="loading"
-      class="hint"
-    >
+    <p v-if="loading" class="hint">
       {{ t('graph.inspector.outputPreviewLoading') }}
     </p>
 
-    <div
-      v-else-if="kind === 'text'"
-      class="text-wrap"
-    >
+    <div v-else-if="kind === 'text'" class="text-wrap">
       <pre class="text-body">{{ textPreview }}</pre>
     </div>
 
-    <div
-      v-else-if="kind === 'voice'"
-      class="av-wrap audio"
-    >
+    <div v-else-if="kind === 'voice'" class="av-wrap audio">
       <div class="audio-stage">
-        <span
-          class="audio-icon"
-          aria-hidden="true"
-        >
-          <WorkspaceItemIcon
-            :icon="typeIcon"
-            :size="28"
-          />
+        <span class="audio-icon" aria-hidden="true">
+          <WorkspaceItemIcon :icon="typeIcon" :size="28" />
         </span>
         <audio
           v-if="previewUrl"
@@ -542,10 +507,7 @@ onBeforeUnmount(() => {
         />
       </div>
 
-      <div
-        v-if="previewUrl && !mediaError"
-        class="transport"
-      >
+      <div v-if="previewUrl && !mediaError" class="transport">
         <div class="transport-actions">
           <button
             type="button"
@@ -580,29 +542,20 @@ onBeforeUnmount(() => {
             :value="progressValue"
             @input="onSeekInput"
             @change="onSeekChange"
-          >
+          />
         </div>
       </div>
 
-      <p
-        v-else-if="mediaError"
-        class="media-error"
-      >
+      <p v-else-if="mediaError" class="media-error">
         {{ t('graph.preview.audioError') }}
       </p>
-      <div
-        v-else
-        class="placeholder"
-      >
+      <div v-else class="placeholder">
         <span>{{ displayTypeLabel }}</span>
         <p>{{ emptyHint }}</p>
       </div>
     </div>
 
-    <div
-      v-else-if="kind === 'video'"
-      class="av-wrap video"
-    >
+    <div v-else-if="kind === 'video'" class="av-wrap video">
       <div class="video-stage">
         <video
           v-if="previewUrl && !mediaError"
@@ -626,27 +579,18 @@ onBeforeUnmount(() => {
           class="video-poster"
           loading="lazy"
           decoding="async"
-        >
-        <div
-          v-else
-          class="placeholder"
-        >
+        />
+        <div v-else class="placeholder">
           <span>{{ displayTypeLabel }}</span>
           <p>{{ videoPlaceholderText }}</p>
         </div>
       </div>
 
-      <p
-        v-if="mediaError && posterUrl"
-        class="media-error soft"
-      >
+      <p v-if="mediaError && posterUrl" class="media-error soft">
         {{ t('graph.preview.videoError') }}
       </p>
 
-      <div
-        v-if="previewUrl && !mediaError"
-        class="transport"
-      >
+      <div v-if="previewUrl && !mediaError" class="transport">
         <div class="transport-actions">
           <button
             type="button"
@@ -681,7 +625,7 @@ onBeforeUnmount(() => {
             :value="progressValue"
             @input="onSeekInput"
             @change="onSeekChange"
-          >
+          />
         </div>
 
         <div
@@ -703,10 +647,7 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <div
-      v-else
-      class="media-wrap"
-    >
+    <div v-else class="media-wrap">
       <img
         v-if="kind === 'image' && previewUrl"
         :src="previewUrl"
@@ -716,11 +657,8 @@ onBeforeUnmount(() => {
         class="preview-image"
         :title="imagePreviewHint"
         @dblclick="openFullPreview"
-      >
-      <div
-        v-else
-        class="placeholder"
-      >
+      />
+      <div v-else class="placeholder">
         <span>{{ displayTypeLabel }}</span>
         <p>{{ emptyHint }}</p>
       </div>

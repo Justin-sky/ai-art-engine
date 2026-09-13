@@ -59,9 +59,7 @@ export function registerPropertyDrawer(definition: PropertyDrawerDefinition): ()
 }
 
 export function listPropertyDrawers(): PropertyDrawerDefinition[] {
-  return drawers.list().sort(
-    (a, b) => (a.order ?? 0) - (b.order ?? 0) || a.id.localeCompare(b.id)
-  )
+  return drawers.list().sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.id.localeCompare(b.id))
 }
 
 export function registerAssetImporter(definition: AssetImporterDefinition): () => void {
@@ -72,9 +70,7 @@ export function listAssetImporters(): AssetImporterDefinition[] {
   return importers.list()
 }
 
-export function registerEditorCommand(
-  contribution: EditorCommandContribution
-): () => void {
+export function registerEditorCommand(contribution: EditorCommandContribution): () => void {
   return commands.register(contribution)
 }
 
@@ -82,10 +78,7 @@ export function listEditorCommands(): EditorCommandContribution[] {
   return commands.list()
 }
 
-export async function executeEditorCommand(
-  id: string,
-  kernel: EditorKernel
-): Promise<boolean> {
+export async function executeEditorCommand(id: string, kernel: EditorKernel): Promise<boolean> {
   const command = commands.get(id)
   if (!command || (command.when && !command.when(kernel))) return false
   await command.run(kernel)

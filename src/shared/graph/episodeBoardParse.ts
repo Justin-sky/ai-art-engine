@@ -53,8 +53,7 @@ const ANCHOR_HEADING_RE = /^##\s*格\s*(\d+)/i
 // 兼容中文「节拍ID」与英文「Beat ID」，冒号可省略，井号可带可不带
 const ANCHOR_BEAT_REF_RE = /(?:节拍ID|Beat\s*ID)\s*[:：]?\s*#?\s*([0-9A-Za-z_-]+)/i
 // 兼容 `| #1 |` 与 `| 1 |` 两种写法，避免模型省略井号导致整表解析失败
-const BEAT_ROW_RE =
-  /^\|\s*#?\s*(\d+)\s*\|([^|]*)\|([^|]*)\|([^|]*)\|\s*(是|否|YES|NO)\s*\|/i
+const BEAT_ROW_RE = /^\|\s*#?\s*(\d+)\s*\|([^|]*)\|([^|]*)\|([^|]*)\|\s*(是|否|YES|NO)\s*\|/i
 
 /** 从宫格引用的节拍ID中提取数字（'1' / '#1' / 'B1' / '节拍1' → 1）；无法识别返回 null */
 export function extractEpisodeBeatNumber(beatId: string | undefined | null): number | null {
@@ -151,9 +150,7 @@ export function selectEpisodeKeyframeSpans(
 export function formatEpisodeKeyframeSpanNotes(spans: readonly EpisodeKeyframeSpan[]): string {
   if (!spans.length) return ''
   const lines = spans.map((span) => {
-    const summaries = span.beats
-      .map((beat) => `#${beat.index}「${beat.summary}」`)
-      .join('、')
+    const summaries = span.beats.map((beat) => `#${beat.index}「${beat.summary}」`).join('、')
     if (span.tailBeats.length) {
       const tail = span.tailBeats.map((beat) => `#${beat.index}`).join('、')
       return `格${span.cell}：节拍 #${span.fromBeat}～#${span.toBeat}（上一关键帧之后→末端关键帧 #${span.keyframeBeat}，并含其后剩余节拍 ${tail} 直至结束）：${summaries}`
@@ -170,7 +167,10 @@ function clampIntensity(raw: number): number {
 }
 
 /** 按标题行拆分 Markdown 块，返回 [{ heading, body }] */
-function splitHeadingBlocks(text: string, headingRe: RegExp): Array<{ heading: string; body: string }> {
+function splitHeadingBlocks(
+  text: string,
+  headingRe: RegExp
+): Array<{ heading: string; body: string }> {
   const lines = text.replace(/\r\n/g, '\n').split('\n')
   const blocks: Array<{ heading: string; body: string[] }> = []
   let current: { heading: string; body: string[] } | null = null

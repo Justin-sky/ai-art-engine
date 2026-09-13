@@ -137,9 +137,7 @@ function waitStep(ms: number, signal?: AbortSignal): Promise<void> {
 }
 
 /** 输出表是否含有可用正文/媒体（空 text / 空 images 组视为无效） */
-function hasUsableOutputRecord(
-  outputs: Record<string, GraphValue> | undefined | null
-): boolean {
+function hasUsableOutputRecord(outputs: Record<string, GraphValue> | undefined | null): boolean {
   if (!outputs || !Object.keys(outputs).length) return false
   // world.gen 等只有 out-* 组口、无 out：必须逐口检查，不能因缺 out 当成可用
   return Object.values(outputs).some((value) => graphValueHasPayload(value))
@@ -223,12 +221,7 @@ async function softSnapshotOutputs(
       priorAsPersisted[id] = state
     }
     const softDoc: GraphDocument = { ...softCtx.graph, runStates: priorAsPersisted }
-    const softVal = softResolveSourceOutput(
-      softDoc,
-      node.id,
-      softCtx.sourcePort,
-      softResolveOpts
-    )
+    const softVal = softResolveSourceOutput(softDoc, node.id, softCtx.sourcePort, softResolveOpts)
     if (graphValueHasPayload(softVal)) {
       // 资产引用正文常依赖异步 resolveAssetText；勿用 params 占位正文短路
       const deferAsyncAssetText =
@@ -255,7 +248,7 @@ async function softSnapshotOutputs(
       resolveAssetGenParams: options.resolveAssetGenParams,
       hasAsset: options.hasAsset,
       readRunText: options.readRunText,
-      resolveBeatUnit: options.resolveBeatUnit,
+      resolveBeatUnit: options.resolveBeatUnit
     })
   )
 }
@@ -356,12 +349,7 @@ async function executeOneNode(
     const targetPort = edge.targetPort ?? 'in'
     const source = byId.get(edge.source)
     // 非帧口且源为束结：展开为真实上游值（与指令 @n 一致）；束结自身仍聚合输出
-    if (
-      source &&
-      isBundleNode(source) &&
-      !isVideoFramePortId(targetPort) &&
-      !isBundleNode(node)
-    ) {
+    if (source && isBundleNode(source) && !isVideoFramePortId(targetPort) && !isBundleNode(node)) {
       for (const logical of expandIncomingThroughBundles(graph, source.id)) {
         const value = outputs.get(logical.sourceNodeId)?.[logical.sourcePort]
         if (!value) continue
@@ -452,23 +440,18 @@ async function executeOneNode(
     // 显式 Cook 子图：内图整链重跑，不跳过空/过期 done
     hostInnerSkipCompleted:
       options.hostInnerSkipCompleted ??
-      (options.onlyTargetNode === true && options.cookHostInnerGraph === true
-        ? false
-        : undefined),
+      (options.onlyTargetNode === true && options.cookHostInnerGraph === true ? false : undefined),
     saveRunMedia: options.saveRunMedia,
     saveRunText: options.saveRunText,
     readRunText: options.readRunText,
     readEpisodeAgentState: options.readEpisodeAgentState,
     writeEpisodeAgentState: options.writeEpisodeAgentState,
-    patchNode: options.onNodePatch
-      ? (patch) => options.onNodePatch?.(nodeId, patch)
-      : undefined
+    patchNode: options.onNodePatch ? (patch) => options.onNodePatch?.(nodeId, patch) : undefined
   }
 
   try {
     // onlyTarget 默认不 cook 内图（防误点父节点）；Cook 子图 / 上游链运行显式允许。
-    const shouldCookHostInner =
-      options.cookHostInnerGraph ?? options.onlyTargetNode !== true
+    const shouldCookHostInner = options.cookHostInnerGraph ?? options.onlyTargetNode !== true
     if (isAssetHostNode(node) && !shouldCookHostInner) {
       // 内图 boundary 出口即真值：内层生成后无需 cook 宿主也能收集，且不会读到过期抬升缓存。
       // 缺内图 / 缺资产解析器时回退已抬升的宿主出口，再回退节点 params 图库；
@@ -511,10 +494,7 @@ async function executeOneNode(
     // 宿主 cook 属节点角色而非节点类型：必须先于类型专用 execute，
     // 否则 asset.screenplay 这类走专用函数的宿主会被当引用透传，内图永不入队。
     const hostCook = shouldCookHostInner ? executeAssetHostInnerGraph(ctx) : null
-    const result = await withAbort(
-      hostCook ?? Promise.resolve(execute(ctx)),
-      options.signal
-    )
+    const result = await withAbort(hostCook ?? Promise.resolve(execute(ctx)), options.signal)
     if (options.signal?.aborted) {
       publish(states, nodeId, { status: 'error', error: 'GRAPH_CANCELLED' }, options.onNodeUpdate)
       return { ok: false, error: 'GRAPH_CANCELLED' }
@@ -582,7 +562,8 @@ export async function runGraph(
     return { ok: false, order: [], states, error: 'GRAPH_NO_OUTPUT' }
   }
 
-  const onlyTarget = options.onlyTargetNode === true && !!options.targetNodeId && !multiTargets.length
+  const onlyTarget =
+    options.onlyTargetNode === true && !!options.targetNodeId && !multiTargets.length
   const subset = onlyTarget
     ? new Set<string>([target.id])
     : multiTargets.length
@@ -628,9 +609,7 @@ export async function runGraph(
     }
   }
 
-  const order = onlyTarget
-    ? [target.id]
-    : topologicalSort(subset, graph.edges)
+  const order = onlyTarget ? [target.id] : topologicalSort(subset, graph.edges)
   if (!order) {
     for (const id of subset) {
       publish(states, id, { status: 'error', error: 'GRAPH_CYCLE' }, options.onNodeUpdate)
@@ -670,8 +649,7 @@ export async function runGraph(
           (out?.kind === 'texts' &&
             !out.items.some(
               (item) =>
-                (!!item.text.trim() && !isPlaceholderText(item.text)) ||
-                !!item.relativePath?.trim()
+                (!!item.text.trim() && !isPlaceholderText(item.text)) || !!item.relativePath?.trim()
             ))
         // 软快照正文为空/占位「…」时，再按资产 id 读正文（Cook 子图上游剧本常见）
         if (emptyText && source.assetId && options.resolveAssetText) {
@@ -704,11 +682,7 @@ export async function runGraph(
     const source = byId.get(nodeId)
     if (!source) continue
     try {
-      const snap = await softSnapshotOutputs(
-        source,
-        options.priorNodeStates?.[nodeId],
-        options
-      )
+      const snap = await softSnapshotOutputs(source, options.priorNodeStates?.[nodeId], options)
       outputs.set(nodeId, snap)
       publish(states, nodeId, { status: 'done', outputs: snap }, options.onNodeUpdate)
     } catch {
@@ -717,9 +691,7 @@ export async function runGraph(
   }
 
   const runIds = order.filter((id) => !(canSkipNode(id) && outputs.has(id)))
-  const waves = onlyTarget
-    ? [runIds]
-    : topologicalWaves(runIds, graph.edges)
+  const waves = onlyTarget ? [runIds] : topologicalWaves(runIds, graph.edges)
   if (!waves) {
     for (const id of runIds) {
       publish(states, id, { status: 'error', error: 'GRAPH_CYCLE' }, options.onNodeUpdate)
@@ -745,10 +717,7 @@ export async function runGraph(
       wave.map((nodeId) => executeOneNode(nodeId, byId, graph, outputs, options, states))
     )
 
-    if (
-      options.signal?.aborted ||
-      steps.some((s) => !s.ok && s.error === 'GRAPH_CANCELLED')
-    ) {
+    if (options.signal?.aborted || steps.some((s) => !s.ok && s.error === 'GRAPH_CANCELLED')) {
       markCancelled(states, order, options.onNodeUpdate)
       return { ok: false, order, states, error: 'GRAPH_CANCELLED' }
     }
@@ -764,9 +733,7 @@ export async function runGraph(
   const targetOut = outputs.get(target.id)?.out
   const output: GraphOutputValue | undefined =
     targetOut && targetOut.kind === 'output' ? targetOut : undefined
-  const contribution = output
-    ? contributionFromAssets(output.items)
-    : undefined
+  const contribution = output ? contributionFromAssets(output.items) : undefined
 
   const degradedNodeIds = order.filter((id) => states[id]?.status === 'degraded')
   return {

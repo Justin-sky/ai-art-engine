@@ -26,8 +26,7 @@ export async function composeImageExpandCanvas(input: {
   const img = await loadImage(input.sourceDataUrl)
   const sourceAspect = img.naturalWidth / Math.max(1, img.naturalHeight)
   const contentAspect = contentAspectFromExpand(state, sourceAspect)
-  const targetAspect =
-    expandAspectRatioValue(state.aspectId, contentAspect) ?? contentAspect
+  const targetAspect = expandAspectRatioValue(state.aspectId, contentAspect) ?? contentAspect
   const { width, height } = expandCanvasPixelSize(targetAspect, state.resolution)
 
   const canvas = document.createElement('canvas')
@@ -66,7 +65,6 @@ export async function composeImageExpandCanvas(input: {
   ctx.drawImage(img, dx, dy, dw, dh)
 
   const dataUrl = canvas.toDataURL('image/png')
-  const aspectRatio =
-    state.aspectId === 'original' ? undefined : state.aspectId
+  const aspectRatio = state.aspectId === 'original' ? undefined : state.aspectId
   return { dataUrl, aspectRatio, width, height }
 }

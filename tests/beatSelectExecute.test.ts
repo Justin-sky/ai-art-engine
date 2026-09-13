@@ -53,9 +53,13 @@ describe('beat.select node', () => {
 
   it('picks selected unit as text', () => {
     const rows = [unit('u1', 1, '开场'), unit('u2', 2, '冲突')]
-    const node = createNodeFromType('beat.select', { x: 0, y: 0 }, {
-      params: { selectedBeatId: 'u2' }
-    })
+    const node = createNodeFromType(
+      'beat.select',
+      { x: 0, y: 0 },
+      {
+        params: { selectedBeatId: 'u2' }
+      }
+    )
     const patched: Record<string, unknown>[] = []
     const ctx: NodeExecuteContext = {
       node,
@@ -109,9 +113,13 @@ describe('beat.select node', () => {
   })
 
   it('keeps existing preview when upstream catalog is missing', () => {
-    const node = createNodeFromType('beat.select', { x: 0, y: 0 }, {
-      params: { selectedBeatId: 'u1', text: '#1 开场\n动作' }
-    })
+    const node = createNodeFromType(
+      'beat.select',
+      { x: 0, y: 0 },
+      {
+        params: { selectedBeatId: 'u1', text: '#1 开场\n动作' }
+      }
+    )
     const ctx: NodeExecuteContext = {
       node,
       inputs: { in: [] }

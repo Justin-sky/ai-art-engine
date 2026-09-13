@@ -80,7 +80,9 @@ describe('createComicPage / normalizeComicPage', () => {
   it('keeps a trimmed backgroundColor and drops blank or non-string values', () => {
     expect(normalizeComicPage({ backgroundColor: '  #ff0044 ' }).backgroundColor).toBe('#ff0044')
     expect('backgroundColor' in normalizeComicPage({ backgroundColor: '   ' })).toBe(false)
-    expect('backgroundColor' in normalizeComicPage({ backgroundColor: 42 as unknown as string })).toBe(false)
+    expect(
+      'backgroundColor' in normalizeComicPage({ backgroundColor: 42 as unknown as string })
+    ).toBe(false)
     expect('backgroundColor' in createComicPage()).toBe(false)
   })
 })
@@ -245,7 +247,9 @@ describe('serialize / parse / genParams', () => {
           colSpan: 1,
           backgroundColor: '#202020',
           imageUrl: 'shots/a.png',
-          bubbles: [{ id: 'b1', text: '台词', speaker: '甲', x: 0.4, y: 0.6, tail: 'br', scale: 1.5 }]
+          bubbles: [
+            { id: 'b1', text: '台词', speaker: '甲', x: 0.4, y: 0.6, tail: 'br', scale: 1.5 }
+          ]
         }
       ]
     })

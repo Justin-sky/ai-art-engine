@@ -7,10 +7,7 @@ import {
   normalizedColorDistance,
   sanitizeIconStem
 } from '../src/shared/gameAssets'
-import {
-  iconPackCellKeyAt,
-  parseIconNameLines
-} from '../src/shared/graph'
+import { iconPackCellKeyAt, parseIconNameLines } from '../src/shared/graph'
 
 describe('iconPack 键控与采样', () => {
   it('色距：同色距离为 0，反色距离为 255', () => {

@@ -2,13 +2,7 @@ import type { InjectionKey } from 'vue'
 import type { WorldElementKind } from '@shared/graph'
 
 /** 与 Dock EditorPanelKind 对齐 */
-export type EditorDiveKind =
-  | 'asset'
-  | 'screenplay'
-  | 'canvas'
-  | 'world'
-  | 'beat'
-  | 'director'
+export type EditorDiveKind = 'asset' | 'screenplay' | 'canvas' | 'world' | 'beat' | 'director'
 
 /** 逻辑视图 id（双击侧栏/表格/工具/预览等） */
 export type EditorDiveViewId =

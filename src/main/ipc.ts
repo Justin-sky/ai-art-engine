@@ -45,10 +45,7 @@ import { renderTimelineTransitionPreview } from './services/timelineTransitionPr
 import { exportAdVariants } from './services/adVariantExportService'
 import { videoJobService } from './services/videoJobService'
 import { mcpActivityService } from './services/mcpActivityService'
-import {
-  getFfmpegRuntimeStatus,
-  installFfmpeg
-} from './services/ffmpegInstallService'
+import { getFfmpegRuntimeStatus, installFfmpeg } from './services/ffmpegInstallService'
 import {
   abortHarnessTask,
   deleteHarnessSession,
@@ -81,10 +78,7 @@ import {
 } from './yolo/yoloModelManager'
 import { yoloService } from './yolo/yoloService'
 import type { YoloInferenceInput } from '@shared/yolo'
-import {
-  commitAiWorkflow,
-  planAiWorkflow
-} from './services/graphPlanService'
+import { commitAiWorkflow, planAiWorkflow } from './services/graphPlanService'
 import { uploadProjectMedia } from './services/objectStorageUploadService'
 import { autosaveRepository } from './repositories/autosaveRepository'
 import { pluginRepository } from './repositories/pluginRepository'
@@ -235,22 +229,17 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.VIDEO_DETECT_KEYFRAMES, (relativePath: string) =>
     projectService.detectVideoKeyframes(relativePath)
   )
-  handle(
-    IpcChannels.VIDEO_EXTRACT_FRAMES,
-    (input: { relativePath: string; count: number }) =>
-      projectService.extractVideoFrames(input.relativePath, input.count)
+  handle(IpcChannels.VIDEO_EXTRACT_FRAMES, (input: { relativePath: string; count: number }) =>
+    projectService.extractVideoFrames(input.relativePath, input.count)
   )
   handle(
     IpcChannels.VIDEO_GRAB_TIMESTAMPS,
-    (input: {
-      relativePath: string
-      timestamps: number[]
-      options?: { width?: number }
-    }) => projectService.grabVideoFramesAtTimestamps(
-      input.relativePath,
-      input.timestamps,
-      input.options
-    )
+    (input: { relativePath: string; timestamps: number[]; options?: { width?: number } }) =>
+      projectService.grabVideoFramesAtTimestamps(
+        input.relativePath,
+        input.timestamps,
+        input.options
+      )
   )
   handle(IpcChannels.VIDEO_BEAT_ANALYZE, (assetId: string) =>
     projectService.analyzeVideoBeats(assetId)
@@ -275,7 +264,9 @@ export function registerIpcHandlers(): void {
   )
 
   handle(IpcChannels.FOLDER_LIST, () => projectService.listFolders())
-  handle(IpcChannels.FOLDER_CREATE, (input: CreateFolderInput) => projectService.createFolder(input))
+  handle(IpcChannels.FOLDER_CREATE, (input: CreateFolderInput) =>
+    projectService.createFolder(input)
+  )
   handle(IpcChannels.FOLDER_RENAME, (folderId: string, name: string) =>
     projectService.renameFolder(folderId, name)
   )
@@ -287,7 +278,9 @@ export function registerIpcHandlers(): void {
     projectService.deleteFolder(input.folderId, { mode: input.mode })
   })
 
-  handle(IpcChannels.GEN_TEXT, (input: GenerateTextInput) => modelProviderFacade.generateText(input))
+  handle(IpcChannels.GEN_TEXT, (input: GenerateTextInput) =>
+    modelProviderFacade.generateText(input)
+  )
   handle(IpcChannels.GEN_AI_WORKFLOW_PLAN, (input: PlanAiWorkflowInput) => planAiWorkflow(input))
   handle(IpcChannels.GEN_AI_WORKFLOW_COMMIT, async (input: CommitAiWorkflowInput) => {
     const result = await commitAiWorkflow(input)
@@ -372,9 +365,7 @@ export function registerIpcHandlers(): void {
     runHarnessTask(input)
   )
   handle(IpcChannels.HARNESS_ABORT, () => abortHarnessTask())
-  handle(IpcChannels.HARNESS_DELETE_SESSION, (sessionId: string) =>
-    deleteHarnessSession(sessionId)
-  )
+  handle(IpcChannels.HARNESS_DELETE_SESSION, (sessionId: string) => deleteHarnessSession(sessionId))
   handle(IpcChannels.SKILLS_GET_INFO, () => getDshSkillsInfo())
   handle(IpcChannels.SKILLS_OPEN_DIR, () => openDshSkillsDir())
   handle(IpcChannels.SKILLS_WRITE_TEMPLATE, () => writeDshSkillsTemplate())
@@ -404,9 +395,7 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.AUTOSAVE_WRITE, (input: AutosaveWriteInput) =>
     autosaveRepository.write(projectService.getRoot(), input)
   )
-  handle(IpcChannels.AUTOSAVE_LIST, () =>
-    autosaveRepository.list(projectService.getRoot())
-  )
+  handle(IpcChannels.AUTOSAVE_LIST, () => autosaveRepository.list(projectService.getRoot()))
   handle(IpcChannels.AUTOSAVE_READ, (filter: Required<AutosaveFilter>) =>
     autosaveRepository.read(projectService.getRoot(), filter)
   )
@@ -434,10 +423,8 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.PROJECT_READ_FILE, (relativePath: string) =>
     projectService.readProjectFile(relativePath)
   )
-  handle(
-    IpcChannels.PROJECT_WRITE_FILE,
-    (input: { relativePath: string; content: string }) =>
-      projectService.writeProjectFile(input)
+  handle(IpcChannels.PROJECT_WRITE_FILE, (input: { relativePath: string; content: string }) =>
+    projectService.writeProjectFile(input)
   )
   handle(IpcChannels.GRAPH_DELETE_RUN_MEDIA, (relativePath: string) =>
     projectService.deleteGraphRunMedia(relativePath)

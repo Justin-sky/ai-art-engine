@@ -33,14 +33,13 @@
         :class="{ collapsed: previewCollapsed }"
         :title="previewCollapsed ? t('graph.node.expandPreview') : t('graph.node.collapsePreview')"
         :aria-expanded="!previewCollapsed"
-        :aria-label="previewCollapsed ? t('graph.node.expandPreview') : t('graph.node.collapsePreview')"
+        :aria-label="
+          previewCollapsed ? t('graph.node.expandPreview') : t('graph.node.collapsePreview')
+        "
         @pointerdown.stop
         @click.stop="togglePreviewCollapsed"
       >
-        <span
-          class="collapse-tri"
-          aria-hidden="true"
-        />
+        <span class="collapse-tri" aria-hidden="true" />
       </button>
       <input
         v-if="editingTitle"
@@ -52,13 +51,10 @@
         @blur="commitTitleEdit"
         @keydown.enter.prevent="commitTitleEdit"
         @keydown.esc.prevent="cancelTitleEdit"
-      >
-      <span
-        v-else
-        class="title"
-        :title="displayTitle"
-        @dblclick.stop="startTitleEdit"
-      >{{ displayTitle }}</span>
+      />
+      <span v-else class="title" :title="displayTitle" @dblclick.stop="startTitleEdit">{{
+        displayTitle
+      }}</span>
       <img
         v-if="previewCollapsed && isImageBoundary && mediaPreviewUrl"
         :src="mediaPreviewUrl"
@@ -68,7 +64,7 @@
         decoding="async"
         draggable="false"
         :title="displayTitle"
-      >
+      />
       <div class="head-actions">
         <button
           v-if="canLock"
@@ -81,10 +77,7 @@
           @pointerdown.stop
           @click.stop="toggleLock"
         >
-          <LockIcon
-            :locked="isLocked"
-            :size="12"
-          />
+          <LockIcon :locked="isLocked" :size="12" />
         </button>
         <span
           v-if="runStatus && runStatus !== 'idle' && runStatus !== 'skipped'"
@@ -111,28 +104,20 @@
         decoding="async"
         draggable="false"
         @load="onPreviewImageLoad"
-      >
-      <div
-        v-else
-        class="note-body"
-      >
+      />
+      <div v-else class="note-body">
         {{ displayText }}
       </div>
     </div>
 
-    <GraphNodeResizeHandle
-      v-if="!previewCollapsed"
-      @resize-start="onResizeStart"
-    />
+    <GraphNodeResizeHandle v-if="!previewCollapsed" @resize-start="onResizeStart" />
 
     <span
       v-if="!previewCollapsed"
       class="type-badge"
       :class="typeBadgeClass"
       :title="typeBadgeTitle"
-    ><WorkspaceItemIcon
-      :icon="typeBadgeIcon"
-      :size="14"
+      ><WorkspaceItemIcon :icon="typeBadgeIcon" :size="14"
     /></span>
 
     <div
@@ -255,14 +240,10 @@ const slotBinding = computed(() => readHostInputSlot(props.node))
 const slotDataType = computed<GraphPortDataType>(
   () => slotBinding.value?.dataType ?? outPorts.value[0]?.dataType ?? 'text'
 )
-const boundaryDataType = computed(
-  () => props.node.params.hostBoundaryPort?.dataType ?? 'text'
-)
+const boundaryDataType = computed(() => props.node.params.hostBoundaryPort?.dataType ?? 'text')
 const isImageBoundary = computed(
   () =>
-    isBoundary.value &&
-    (boundaryDataType.value === 'image' ||
-      boundaryDataType.value === 'images')
+    isBoundary.value && (boundaryDataType.value === 'image' || boundaryDataType.value === 'images')
 )
 
 function portTypeLabel(dataType: GraphPortDataType): string {
@@ -337,8 +318,7 @@ const previewCollapsed = computed(() => {
   if (isImageBoundary.value) {
     if (!hasBoundaryImage.value) return true
     const hasLocalPreview =
-      !!props.node.params.previewRelativePath?.trim() ||
-      !!props.node.params.previewDataUrl?.trim()
+      !!props.node.params.previewRelativePath?.trim() || !!props.node.params.previewDataUrl?.trim()
     return hasLocalPreview && props.node.params.previewCollapsed === true
   }
   if (isInputSlot.value || isBoundary.value) {
@@ -448,9 +428,7 @@ function tryAutoFitPreviewMedia(mediaW: number, mediaH: number, mediaKey?: strin
   if (previewCollapsed.value) return
   if (!mediaPreviewUrl.value) return
   if (props.node.params.sizeManuallyResized === true) return
-  const key =
-    mediaKey ||
-    `${mediaPreviewUrl.value}|${Math.round(mediaW)}x${Math.round(mediaH)}`
+  const key = mediaKey || `${mediaPreviewUrl.value}|${Math.round(mediaW)}x${Math.round(mediaH)}`
   if (key === lastAutoFitMediaKey.value) return
   const next = fitNodeSizeToMediaAspect(props.node, mediaW, mediaH)
   const cur = getNodeSize(props.node)
@@ -491,8 +469,7 @@ function loadImageNaturalSize(src: string): Promise<{ width: number; height: num
 }
 
 watch(
-  () =>
-    [mediaPreviewUrl.value, previewCollapsed.value, isImageBoundary.value] as const,
+  () => [mediaPreviewUrl.value, previewCollapsed.value, isImageBoundary.value] as const,
   async ([url, collapsed, imageBoundary]) => {
     if (!imageBoundary || collapsed || !url) return
     const token = ++noteImageAutoFitToken
@@ -667,11 +644,7 @@ function onBodyDblClick(): void {
   position: absolute;
   border: 1px solid color-mix(in srgb, var(--slot-border) 45%, transparent);
   border-radius: 8px;
-  background: linear-gradient(
-    160deg,
-    var(--graph-note-bg-from) 0%,
-    var(--graph-note-bg-to) 100%
-  );
+  background: linear-gradient(160deg, var(--graph-note-bg-from) 0%, var(--graph-note-bg-to) 100%);
   box-shadow: 0 2px 10px color-mix(in srgb, var(--shadow) 55%, transparent);
   display: flex;
   flex-direction: column;
@@ -688,7 +661,8 @@ function onBodyDblClick(): void {
 
 .graph-note.selected {
   border-color: var(--slot-accent);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--slot-accent) 50%, transparent),
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--slot-accent) 50%, transparent),
     0 6px 18px color-mix(in srgb, var(--slot-accent) 18%, transparent);
   z-index: 18;
 }

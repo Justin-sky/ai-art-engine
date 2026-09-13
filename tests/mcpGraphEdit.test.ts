@@ -6,7 +6,9 @@ import {
 } from '../src/shared/graph/mcpGraphEdit'
 import { listAddableNodeTypes, materializeGraphPlan, type GraphPlan } from '../src/shared/graph'
 
-function buildSampleGraph(): { graph: NonNullable<ReturnType<typeof materializeGraphPlan>['document']> } {
+function buildSampleGraph(): {
+  graph: NonNullable<ReturnType<typeof materializeGraphPlan>['document']>
+} {
   const plan: GraphPlan = {
     title: 'sample',
     nodes: [
@@ -87,9 +89,9 @@ describe('applyGraphEditOps（MCP 图编辑）', () => {
       ...(protectedNode ? [{ op: 'node_delete', nodeId: protectedNode.id } as McpGraphEditOp] : [])
     ])
     expect(result.graph.nodes.find((node) => node.id === vidId)).toBeUndefined()
-    expect(
-      result.graph.edges.some((edge) => edge.source === imgId && edge.target === vidId)
-    ).toBe(false)
+    expect(result.graph.edges.some((edge) => edge.source === imgId && edge.target === vidId)).toBe(
+      false
+    )
     if (protectedNode) {
       expect(result.warnings.some((warning) => warning.includes('禁止删除'))).toBe(true)
       expect(result.graph.nodes.find((node) => node.id === protectedNode.id)).toBeTruthy()

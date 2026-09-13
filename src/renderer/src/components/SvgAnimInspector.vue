@@ -1,8 +1,5 @@
 <template>
-  <div
-    v-if="node"
-    class="node-inspector"
-  >
+  <div v-if="node" class="node-inspector">
     <div class="head">
       <h2>{{ displayTitle }}</h2>
     </div>
@@ -28,7 +25,7 @@
           step="1"
           :value="state.frames"
           @change="onFramesChange"
-        >
+        />
       </label>
       <label class="field">
         <span>{{ t('graph.svgAnim.duration') }}</span>
@@ -39,7 +36,7 @@
           step="0.1"
           :value="state.durationSec"
           @change="onDurationChange"
-        >
+        />
       </label>
       <label class="field">
         <span>{{ t('graph.svgAnim.width') }}</span>
@@ -50,7 +47,7 @@
           step="1"
           :value="state.width"
           @change="onWidthChange"
-        >
+        />
       </label>
       <label class="field">
         <span>{{ t('graph.svgAnim.height') }}</span>
@@ -61,15 +58,11 @@
           step="1"
           :value="state.height"
           @change="onHeightChange"
-        >
+        />
       </label>
       <label class="field field-key">
         <span>{{ t('graph.svgAnim.background') }}</span>
-        <select
-          :value="state.background"
-          class="bg-select"
-          @change="onBackgroundChange"
-        >
+        <select :value="state.background" class="bg-select" @change="onBackgroundChange">
           <option value="">
             {{ t('graph.svgAnim.bgNone') }}
           </option>
@@ -85,45 +78,24 @@
     <p class="hint">
       {{ t('graph.svgAnim.zeroHint') }}
     </p>
-    <p
-      v-if="runSummary"
-      class="hint"
-    >
+    <p v-if="runSummary" class="hint">
       {{ runSummary }}
     </p>
-    <p
-      v-if="gifOutput"
-      class="hint"
-    >
+    <p v-if="gifOutput" class="hint">
       {{ gifOutput }}
     </p>
 
-    <section
-      v-if="frames.length > 1"
-      class="anim-section"
-      :aria-label="t('graph.svgAnim.preview')"
-    >
+    <section v-if="frames.length > 1" class="anim-section" :aria-label="t('graph.svgAnim.preview')">
       <div class="anim-preview">
-        <img
-          :src="frames[activeIndex]?.dataUrl"
-          alt=""
-        >
+        <img :src="frames[activeIndex]?.dataUrl" alt="" />
         <span class="anim-frame-badge">{{ activeIndex + 1 }}/{{ frames.length }}</span>
       </div>
       <div class="anim-bar">
-        <button
-          type="button"
-          class="anim-play"
-          @click="togglePlay"
-        >
+        <button type="button" class="anim-play" @click="togglePlay">
           {{ playing ? t('graph.svgAnim.pause') : t('graph.svgAnim.play') }}
         </button>
         <label class="anim-loop">
-          <input
-            type="checkbox"
-            :checked="loop"
-            @change="onLoopChange"
-          >
+          <input type="checkbox" :checked="loop" @change="onLoopChange" />
           <span>{{ t('graph.svgAnim.loop') }}</span>
         </label>
         <button
@@ -136,16 +108,10 @@
           {{ gifBusy ? t('graph.svgAnim.exportGifBusy') : t('graph.svgAnim.exportGif') }}
         </button>
       </div>
-      <p
-        v-if="gifError"
-        class="hint err"
-      >
+      <p v-if="gifError" class="hint err">
         {{ gifError }}
       </p>
-      <p
-        v-else
-        class="hint"
-      >
+      <p v-else class="hint">
         {{ gifStatus || t('graph.svgAnim.exportGifNote', { fps: previewFpsText }) }}
       </p>
       <div class="frame-grid">
@@ -158,39 +124,21 @@
           :title="frame.key"
           @click="seekTo(index)"
         >
-          <img
-            :src="frame.dataUrl"
-            alt=""
-            loading="lazy"
-            decoding="async"
-          >
+          <img :src="frame.dataUrl" alt="" loading="lazy" decoding="async" />
           <span class="frame-index">{{ index + 1 }}</span>
         </button>
       </div>
     </section>
-    <p
-      v-else-if="framesLoading"
-      class="hint"
-    >
+    <p v-else-if="framesLoading" class="hint">
       {{ t('graph.svgAnim.loading') }}
     </p>
-    <p
-      v-else
-      class="hint"
-    >
+    <p v-else class="hint">
       {{ t('graph.svgAnim.emptyPreview') }}
     </p>
 
-    <GraphNodeOutputPreview
-      v-if="hostId"
-      :node="node"
-      :host-id="hostId"
-    />
+    <GraphNodeOutputPreview v-if="hostId" :node="node" :host-id="hostId" />
   </div>
-  <div
-    v-else
-    class="node-inspector empty"
-  >
+  <div v-else class="node-inspector empty">
     {{ t('graph.inspector.node.empty') }}
   </div>
 
@@ -244,7 +192,7 @@ const node = computed(() => {
 
 const hostId = computed(() => {
   const selection = editor.selection.current.value
-  return selection.kind === 'graph.node' ? selection.hostId ?? '' : ''
+  return selection.kind === 'graph.node' ? (selection.hostId ?? '') : ''
 })
 
 const { hasInPort, runStatus, isGraphRunning, blocked, toggleRun } = useGraphNodeRun(node)
@@ -364,16 +312,19 @@ function startPlayback(): void {
   if (!frames.value.length) return
   playing.value = true
   clearFrameTimer()
-  frameTimer = setInterval(() => {
-    const count = frames.value.length
-    if (!count) return
-    if (activeIndex.value + 1 >= count) {
-      if (loop.value) activeIndex.value = 0
-      else stopPlayback()
-    } else {
-      activeIndex.value += 1
-    }
-  }, Math.max(1, Math.round(1000 / previewFps.value)))
+  frameTimer = setInterval(
+    () => {
+      const count = frames.value.length
+      if (!count) return
+      if (activeIndex.value + 1 >= count) {
+        if (loop.value) activeIndex.value = 0
+        else stopPlayback()
+      } else {
+        activeIndex.value += 1
+      }
+    },
+    Math.max(1, Math.round(1000 / previewFps.value))
+  )
 }
 
 function togglePlay(): void {
@@ -507,7 +458,8 @@ watch(
   [
     () => node.value?.id ?? '',
     () => hostId.value,
-    () => (node.value?.params.generatedImages ?? []).map((item) => item.relativePath ?? '').join('|')
+    () =>
+      (node.value?.params.generatedImages ?? []).map((item) => item.relativePath ?? '').join('|')
   ],
   () => {
     activeIndex.value = 0

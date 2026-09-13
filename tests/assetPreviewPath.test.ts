@@ -40,7 +40,15 @@ describe('resolveAssetPreviewMediaPath', () => {
       type: 'image',
       genParams: {
         graphJson: {
-          nodes: [{ id: 'image-output', category: 'output', typeId: 'output.image', position: { x: 0, y: 0 }, params: {} }],
+          nodes: [
+            {
+              id: 'image-output',
+              category: 'output',
+              typeId: 'output.image',
+              position: { x: 0, y: 0 },
+              params: {}
+            }
+          ],
           edges: [],
           viewport: { x: 0, y: 0, zoom: 1 },
           runStates: {

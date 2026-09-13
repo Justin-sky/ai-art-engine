@@ -61,7 +61,9 @@ export function normalizeAnimGifFps(raw: unknown): number {
   return Math.min(ANIM2D_GIF_FPS_MAX, v)
 }
 
-export function readAnimGifFpsFromNode(params: { animGifFps?: unknown } | null | undefined): number {
+export function readAnimGifFpsFromNode(
+  params: { animGifFps?: unknown } | null | undefined
+): number {
   return normalizeAnimGifFps(params?.animGifFps)
 }
 
@@ -70,10 +72,7 @@ export function animGifFpsToNodePatch(fps: unknown): { animGifFps: number } {
 }
 
 /** 生成侧背景约束句子：序列图整底为纯黑/纯白，便于切帧键控透明 */
-export function buildAnimKeyColorPrompt(
-  keyColor: AnimKeyColor,
-  locale?: string
-): string {
+export function buildAnimKeyColorPrompt(keyColor: AnimKeyColor, locale?: string): string {
   const mode = normalizeAnimKeyColor(keyColor)
   if (!mode) return ''
   if (locale?.startsWith('en')) {
@@ -134,19 +133,23 @@ export const ANIM2D_PRESETS: readonly Anim2dPreset[] = [
     id: 'idle',
     labelKey: 'idle',
     prompt: '角色原地待机循环：身体轻微上下起伏，头发与衣摆自然飘动，表情平静，动作幅度小且稳定',
-    promptEn: 'Idle loop: subtle body bob, hair and clothes sway naturally, calm expression, small stable movement'
+    promptEn:
+      'Idle loop: subtle body bob, hair and clothes sway naturally, calm expression, small stable movement'
   },
   {
     id: 'walk',
     labelKey: 'walk',
-    prompt: '角色侧面行走循环：双腿交替迈步，手臂自然摆动，身体随步伐轻微起伏，包含一个完整步态周期',
-    promptEn: 'Side walk loop: alternating legs, natural arm swing, slight body bob, one complete gait cycle'
+    prompt:
+      '角色侧面行走循环：双腿交替迈步，手臂自然摆动，身体随步伐轻微起伏，包含一个完整步态周期',
+    promptEn:
+      'Side walk loop: alternating legs, natural arm swing, slight body bob, one complete gait cycle'
   },
   {
     id: 'run',
     labelKey: 'run',
     prompt: '角色奔跑循环：身体前倾，双臂屈肘摆动，双腿交替大步，节奏快，动态感强',
-    promptEn: 'Run loop: leaning forward, bent arms pumping, long alternating strides, fast rhythm, strong motion'
+    promptEn:
+      'Run loop: leaning forward, bent arms pumping, long alternating strides, fast rhythm, strong motion'
   },
   {
     id: 'jump',
@@ -164,7 +167,8 @@ export const ANIM2D_PRESETS: readonly Anim2dPreset[] = [
     id: 'hurt',
     labelKey: 'hurt',
     prompt: '角色受击动作序列：身体后仰、表情痛苦、短暂僵直后恢复站姿',
-    promptEn: 'Hit reaction sequence: body recoils, pained expression, brief stun then recover to stance'
+    promptEn:
+      'Hit reaction sequence: body recoils, pained expression, brief stun then recover to stance'
   },
   {
     id: 'skill',
@@ -197,20 +201,13 @@ Turn the action description into a strictly tiled sequence image:
 - Motion is fluid and each frame transitions naturally per the action's movement rules;
 - Output only the sequence image itself: no outer frame, captions, watermarks or extra decoration.`
 
-export function resolveFrameAnimGenSystemPrompt(
-  override?: string | null,
-  locale?: string
-): string {
+export function resolveFrameAnimGenSystemPrompt(override?: string | null, locale?: string): string {
   if (typeof override === 'string' && override.trim()) return override.trim()
   return locale?.startsWith('en') ? FRAME_ANIM_SYSTEM_PROMPT_EN : FRAME_ANIM_SYSTEM_PROMPT_ZH
 }
 
 /** 帧数描述 → 序列图排版指令（追加在动作描述后） */
-export function buildAnim2dGridInstruction(
-  rows: number,
-  cols: number,
-  locale?: string
-): string {
+export function buildAnim2dGridInstruction(rows: number, cols: number, locale?: string): string {
   const r = Math.max(1, Math.floor(rows))
   const c = Math.max(1, Math.floor(cols))
   const total = r * c

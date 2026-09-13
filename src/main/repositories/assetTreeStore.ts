@@ -24,10 +24,7 @@ import {
   metaFileNameForMedia,
   toPosix
 } from '@shared/assetStorage/layout'
-import {
-  isRealThumbnailPath,
-  thumbRelativePathFor
-} from '@shared/media/thumbnailPath'
+import { isRealThumbnailPath, thumbRelativePathFor } from '@shared/media/thumbnailPath'
 import { fail, defErr } from '@shared/errors/appError'
 import { MAIN_ERRORS } from '../errors/messages'
 
@@ -192,7 +189,8 @@ export function ensureDirFolderMeta(
           id: folder.id,
           name,
           parentId,
-          createdAt: typeof folder.createdAt === 'string' ? folder.createdAt : new Date().toISOString(),
+          createdAt:
+            typeof folder.createdAt === 'string' ? folder.createdAt : new Date().toISOString(),
           updatedAt: new Date().toISOString()
         }
         writeFolderMeta(dirAbs, next)
@@ -334,9 +332,7 @@ export function writeAssetToTree(
   let metaAbs: string
   if (asset.relativePath) {
     // 媒体旁挂：路径由 relativePath 决定，不依赖 folderId（避免目录 id 暂不一致时写元数据失败）
-    const mediaAbs = options?.mediaAbs?.trim()
-      ? options.mediaAbs
-      : join(root, asset.relativePath)
+    const mediaAbs = options?.mediaAbs?.trim() ? options.mediaAbs : join(root, asset.relativePath)
     const mediaName = mediaAbs.split(/[/\\]/).pop()!
     metaAbs = join(dirname(mediaAbs), metaFileNameForMedia(mediaName))
     ensureDir(dirname(metaAbs))
@@ -437,7 +433,9 @@ export function moveAssetBetweenFolders(
   if (asset.relativePath) {
     const srcMedia = join(root, asset.relativePath)
     const ext = extname(asset.relativePath) || (srcMedia.includes('.') ? extname(srcMedia) : '')
-    const baseName = normalizePathSegment(asset.name.replace(new RegExp(`${ext.replace('.', '\\.')}$`, 'i'), '') || asset.name)
+    const baseName = normalizePathSegment(
+      asset.name.replace(new RegExp(`${ext.replace('.', '\\.')}$`, 'i'), '') || asset.name
+    )
     const desired = `${baseName}${ext}`
     // Avoid renaming into a name that only conflicts with the file we are moving out of another folder
     let fileName = desired
@@ -516,7 +514,5 @@ export function detectFlatLayout(root: string): boolean {
   const assetsRoot = join(root, 'Assets')
   if (!existsSync(assetsRoot)) return false
   const entries = readdirSync(assetsRoot)
-  return entries.some(
-    (name) => name.endsWith('.folder.json') && name !== FOLDER_META_NAME
-  )
+  return entries.some((name) => name.endsWith('.folder.json') && name !== FOLDER_META_NAME)
 }

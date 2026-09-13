@@ -11,23 +11,13 @@
     body-class="pad-none"
     @close="emitClose"
   >
-    <div
-      v-if="busy"
-      class="ac-status"
-    >
+    <div v-if="busy" class="ac-status">
       {{ t('stage2d.autoCutEditPreparing') }}
     </div>
-    <div
-      v-else-if="!session"
-      class="ac-status ac-status-fail"
-    >
+    <div v-else-if="!session" class="ac-status ac-status-fail">
       <p>{{ t('stage2d.autoCutFail') }}</p>
       <p class="ac-status-hint">{{ t('stage2d.autoCutEditFailHint') }}</p>
-      <button
-        type="button"
-        class="ac-btn ac-btn-primary"
-        @click="emitClose"
-      >
+      <button type="button" class="ac-btn ac-btn-primary" @click="emitClose">
         {{ t('stage2d.autoCutEditCancel') }}
       </button>
     </div>
@@ -92,16 +82,9 @@
                 }"
                 @click="selectSlot(slotIndex)"
               >
-                <span
-                  class="ac-chip"
-                  :style="{ background: slotColor(slotIndex) }"
-                />
+                <span class="ac-chip" :style="{ background: slotColor(slotIndex) }" />
                 <span class="ac-thumb checker">
-                  <img
-                    v-if="thumbs[slotIndex]"
-                    :src="thumbs[slotIndex]"
-                    alt=""
-                  >
+                  <img v-if="thumbs[slotIndex]" :src="thumbs[slotIndex]" alt="" />
                 </span>
                 <span class="ac-slot-meta">
                   <input
@@ -110,7 +93,7 @@
                     :title="t('stage2d.autoCutEditRenameTip')"
                     @click.stop
                     @change="onRenameSlot(slotIndex, $event)"
-                  >
+                  />
                   <span class="ac-count">{{ counts[slotIndex] ?? 0 }} px</span>
                 </span>
                 <button
@@ -124,38 +107,22 @@
                 </button>
               </li>
             </ul>
-            <p
-              v-if="tool === 'assign' && editSlotIndex < 0"
-              class="ac-warn"
-            >
+            <p v-if="tool === 'assign' && editSlotIndex < 0" class="ac-warn">
               {{ t('stage2d.autoCutEditPickSlot') }}
             </p>
           </div>
 
           <div class="ac-block ac-ops">
-            <button
-              type="button"
-              class="ac-btn"
-              :disabled="!undoStack.length"
-              @click="undo"
-            >
+            <button type="button" class="ac-btn" :disabled="!undoStack.length" @click="undo">
               ↩ {{ t('stage2d.autoCutEditUndo') }}
             </button>
-            <button
-              type="button"
-              class="ac-btn"
-              :disabled="!edited"
-              @click="resetParts"
-            >
+            <button type="button" class="ac-btn" :disabled="!edited" @click="resetParts">
               ↺ {{ t('stage2d.autoCutEditReset') }}
             </button>
           </div>
         </aside>
 
-        <section
-          class="ac-stage checker"
-          @wheel="onWheel"
-        >
+        <section class="ac-stage checker" @wheel="onWheel">
           <canvas
             ref="canvasEl"
             class="ac-canvas"
@@ -172,11 +139,7 @@
 
     <template #footer>
       <span class="ac-footer-hint">{{ t('stage2d.autoCutEditFooterHint') }}</span>
-      <button
-        type="button"
-        class="ac-btn"
-        @click="emitClose"
-      >
+      <button type="button" class="ac-btn" @click="emitClose">
         {{ t('stage2d.autoCutEditCancel') }}
       </button>
       <button
@@ -315,7 +278,13 @@ watch(
     busy.value = true
     void (async () => {
       const s = await prepareStage2dAutoCutSession({
-        state: props.scene ?? { layers: [], canvasWidth: 0, canvasHeight: 0, anchor: 'ground', groundRatio: 0.06 },
+        state: props.scene ?? {
+          layers: [],
+          canvasWidth: 0,
+          canvasHeight: 0,
+          anchor: 'ground',
+          groundRatio: 0.06
+        },
         rig: props.rig ?? DEFAULT_STAGE2D_RIG,
         frameLayerId: props.frameLayerId,
         resolveLayerUrl: props.resolveLayerUrl
@@ -430,7 +399,12 @@ function ensureSrcCanvas(): void {
   srcCanvas.width = s.contentWidth
   srcCanvas.height = s.contentHeight
   const ctx = srcCanvas.getContext('2d')
-  if (ctx) ctx.putImageData(new ImageData(new Uint8ClampedArray(s.contentRgba), s.contentWidth, s.contentHeight), 0, 0)
+  if (ctx)
+    ctx.putImageData(
+      new ImageData(new Uint8ClampedArray(s.contentRgba), s.contentWidth, s.contentHeight),
+      0,
+      0
+    )
 }
 
 function requestRedraw(): void {
@@ -980,14 +954,10 @@ function nextTickFit(): Promise<void> {
       transparent 75%,
       var(--wash-16) 75%
     ),
-    linear-gradient(
-      45deg,
-      var(--wash-16) 25%,
-      transparent 25%,
-      transparent 75%,
-      var(--wash-16) 75%
-    );
+    linear-gradient(45deg, var(--wash-16) 25%, transparent 25%, transparent 75%, var(--wash-16) 75%);
   background-size: 16px 16px;
-  background-position: 0 0, 8px 8px;
+  background-position:
+    0 0,
+    8px 8px;
 }
 </style>

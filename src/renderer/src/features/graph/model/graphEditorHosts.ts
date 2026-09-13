@@ -167,10 +167,7 @@ export function buildMentionIndexMapForStyleReserveChange(
 }
 
 /** 按 indexMap 重写指令中的 @n，使引用仍指向同一入边 */
-export function remapInstructionMentions(
-  text: string,
-  indexMap: Map<number, number>
-): string {
+export function remapInstructionMentions(text: string, indexMap: Map<number, number>): string {
   if (!text || indexMap.size === 0) return text
   let changed = false
   for (const [from, to] of indexMap) {
@@ -210,7 +207,7 @@ class GraphEditorHostRegistry {
 
   getNode(hostId: string | null | undefined, nodeId: string): GraphNode | null {
     void this.revision.value
-    return hostId ? this.hosts.get(hostId)?.getNode(nodeId) ?? null : null
+    return hostId ? (this.hosts.get(hostId)?.getNode(nodeId) ?? null) : null
   }
 
   findNode(
@@ -218,15 +215,15 @@ class GraphEditorHostRegistry {
     predicate: (node: GraphNode) => boolean
   ): GraphNode | null {
     void this.revision.value
-    return hostId ? this.hosts.get(hostId)?.findNode?.(predicate) ?? null : null
+    return hostId ? (this.hosts.get(hostId)?.findNode?.(predicate) ?? null) : null
   }
 
   getGroup(hostId: string | null | undefined, groupId: string): GraphGroup | null {
-    return hostId ? this.hosts.get(hostId)?.getGroup?.(groupId) ?? null : null
+    return hostId ? (this.hosts.get(hostId)?.getGroup?.(groupId) ?? null) : null
   }
 
   getGroupMemberIds(hostId: string | null | undefined, groupId: string): string[] {
-    return hostId ? this.hosts.get(hostId)?.getGroupMemberIds?.(groupId) ?? [] : []
+    return hostId ? (this.hosts.get(hostId)?.getGroupMemberIds?.(groupId) ?? []) : []
   }
 
   /** 列出指向 node 的入边；省略 portId 时返回全部入边 */
@@ -236,7 +233,7 @@ class GraphEditorHostRegistry {
     portId?: string
   ): GraphIncomingEdgeRef[] {
     void this.revision.value
-    return hostId ? this.hosts.get(hostId)?.listIncomingEdges?.(nodeId, portId) ?? [] : []
+    return hostId ? (this.hosts.get(hostId)?.listIncomingEdges?.(nodeId, portId) ?? []) : []
   }
 
   removeEdge(hostId: string | null | undefined, edgeId: string): void {
@@ -251,11 +248,7 @@ class GraphEditorHostRegistry {
     if (hostId) this.hosts.get(hostId)?.reorderIncomingEdges?.(nodeId, orderedEdgeIds)
   }
 
-  updateGroup(
-    hostId: string | null | undefined,
-    groupId: string,
-    patch: { title?: string }
-  ): void {
+  updateGroup(hostId: string | null | undefined, groupId: string, patch: { title?: string }): void {
     if (hostId) this.hosts.get(hostId)?.updateGroup?.(groupId, patch)
   }
 
@@ -274,26 +267,21 @@ class GraphEditorHostRegistry {
   }
 
   /** 在图上新建节点并接好上游连线，记入撤销栈；返回新节点 id，失败返回 null */
-  addNode(
-    hostId: string | null | undefined,
-    input: GraphEditorAddNodeInput
-  ): string | null {
+  addNode(hostId: string | null | undefined, input: GraphEditorAddNodeInput): string | null {
     if (!hostId) return null
     const nodeId = this.hosts.get(hostId)?.addNode?.(input) ?? null
     if (nodeId) this.bumpRevision()
     return nodeId
   }
 
-  setNodeAsset(
-    hostId: string | null | undefined,
-    nodeId: string,
-    asset: AssetInfo | null
-  ): void {
+  setNodeAsset(hostId: string | null | undefined, nodeId: string, asset: AssetInfo | null): void {
     if (!hostId) return
-    this.hosts.get(hostId)?.setNodeAsset(
-      nodeId,
-      asset ? { assetId: asset.id, assetType: asset.type, name: asset.name } : null
-    )
+    this.hosts
+      .get(hostId)
+      ?.setNodeAsset(
+        nodeId,
+        asset ? { assetId: asset.id, assetType: asset.type, name: asset.name } : null
+      )
   }
 
   applyExternalGraph(hostId: string | null | undefined, document: GraphDocument): void {

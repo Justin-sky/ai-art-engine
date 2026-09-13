@@ -17,16 +17,8 @@ import { resolveCustomApiStyle } from '@shared/modelProvider'
 import type { ModelProviderAdapter, VideoPollResult } from '../types'
 import { PROVIDER_ERRORS } from '../catalog'
 import { fail, defErr, defErrSimple } from '@shared/errors/appError'
-import {
-  createProviderHttpClient,
-  formatAuthError,
-  isAuthFailure,
-  readHttpError
-} from '../http'
-import {
-  generateOpenAiCompatibleImage,
-  generateOpenAiCompatibleText
-} from '../openaiCompat'
+import { createProviderHttpClient, formatAuthError, isAuthFailure, readHttpError } from '../http'
+import { generateOpenAiCompatibleImage, generateOpenAiCompatibleText } from '../openaiCompat'
 import { assertAnthropicAuth, generateAnthropicText, listAnthropicModels } from './anthropic'
 
 // ── 自定义提供商适配器 ──────────────────────────────────────────────
@@ -49,12 +41,13 @@ const E_CUSTOM_EMPTY_CATALOG = defErrSimple(
   'The endpoint returned no models. Check the Base URL and API Key; if the catalog API is unavailable, add model ids manually below.'
 )
 
-const FEATURE_LABELS: Record<'image' | 'video' | 'audio' | 'model3d', { zh: string; en: string }> = {
-  image: { zh: '图片生成', en: 'image generation' },
-  video: { zh: '视频生成', en: 'video generation' },
-  audio: { zh: '语音合成', en: 'speech synthesis' },
-  model3d: { zh: '3D 模型生成', en: '3D model generation' }
-}
+const FEATURE_LABELS: Record<'image' | 'video' | 'audio' | 'model3d', { zh: string; en: string }> =
+  {
+    image: { zh: '图片生成', en: 'image generation' },
+    video: { zh: '视频生成', en: 'video generation' },
+    audio: { zh: '语音合成', en: 'speech synthesis' },
+    model3d: { zh: '3D 模型生成', en: '3D model generation' }
+  }
 
 const E_CUSTOM_NOT_SUPPORTED = defErr<{ feature: { zh: string; en: string } }>(
   'provider.custom.not-supported',
@@ -85,7 +78,9 @@ async function assertOpenAiCompatAuth(provider: ModelProviderInstance): Promise<
     const status = axios.isAxiosError(err) ? err.response?.status : undefined
     const raw = await readHttpError(err)
     if (isAuthFailure(status, raw)) {
-      throw fail(PROVIDER_ERRORS.invalidApiKeyListModels, { detail: formatAuthError(raw, provider) })
+      throw fail(PROVIDER_ERRORS.invalidApiKeyListModels, {
+        detail: formatAuthError(raw, provider)
+      })
     }
     throw fail(PROVIDER_ERRORS.connectionTestFailed, { detail: formatAuthError(raw, provider) })
   }
@@ -126,7 +121,10 @@ export const customAdapter: ModelProviderAdapter = {
     if (modality === 'image') return []
     if (modality !== 'text') return []
     const style = resolveCustomApiStyle(provider)
-    const rows = style === 'anthropic' ? await listAnthropicModels(provider) : await listOpenAiCompatModels(provider)
+    const rows =
+      style === 'anthropic'
+        ? await listAnthropicModels(provider)
+        : await listOpenAiCompatModels(provider)
     // 目录为空但连接正常：给出可操作提示（手填模型 id）
     if (!rows.length && provider.apiKey.trim()) {
       throw fail(E_CUSTOM_EMPTY_CATALOG)
@@ -163,7 +161,10 @@ export const customAdapter: ModelProviderAdapter = {
     return notSupported('video')
   },
 
-  pollVideo(_provider: ModelProviderInstance, _job: { jobId: string; pollingUrl: string }): Promise<VideoPollResult> {
+  pollVideo(
+    _provider: ModelProviderInstance,
+    _job: { jobId: string; pollingUrl: string }
+  ): Promise<VideoPollResult> {
     return notSupported('video')
   },
 
@@ -183,7 +184,10 @@ export const customAdapter: ModelProviderAdapter = {
     return notSupported('model3d')
   },
 
-  pollModel3d(_provider: ModelProviderInstance, _job: { jobId: string; pollingUrl: string }): Promise<VideoPollResult> {
+  pollModel3d(
+    _provider: ModelProviderInstance,
+    _job: { jobId: string; pollingUrl: string }
+  ): Promise<VideoPollResult> {
     return notSupported('model3d')
   }
 }

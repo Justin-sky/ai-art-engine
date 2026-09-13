@@ -50,11 +50,7 @@ describe('deepSeekAdapter', () => {
   it('fetches and filters text catalog from GET /models', async () => {
     getMock.mockResolvedValueOnce({
       data: {
-        data: [
-          { id: 'deepseek-chat' },
-          { id: 'deepseek-reasoner' },
-          { id: 'some-other-model' }
-        ]
+        data: [{ id: 'deepseek-chat' }, { id: 'deepseek-reasoner' }, { id: 'some-other-model' }]
       }
     })
     const models = await deepSeekAdapter.fetchCatalog(provider(), 'text')

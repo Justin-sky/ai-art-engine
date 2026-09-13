@@ -42,10 +42,7 @@ export function collectHostOutputLifts(
 }
 
 /** 把宿主出口 lift 写入父图 runStates（status=done） */
-export function withHostOutputLifts(
-  doc: GraphDocument,
-  lifts: HostOutputLift[]
-): GraphDocument {
+export function withHostOutputLifts(doc: GraphDocument, lifts: HostOutputLift[]): GraphDocument {
   if (!lifts.length) return doc
   const runStates: NonNullable<GraphDocument['runStates']> = { ...(doc.runStates ?? {}) }
   const liftByNodeId = new Map(lifts.map((lift) => [lift.hostNodeId, lift]))
@@ -53,9 +50,7 @@ export function withHostOutputLifts(
     const lift = liftByNodeId.get(node.id)
     if (!lift) return node
     const params = outputsToHostGalleryParams(lift.outputs)
-    return Object.keys(params).length
-      ? { ...node, params: { ...node.params, ...params } }
-      : node
+    return Object.keys(params).length ? { ...node, params: { ...node.params, ...params } } : node
   })
   for (const lift of lifts) {
     const prev = runStates[lift.hostNodeId]

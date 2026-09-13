@@ -103,7 +103,9 @@ export function listAddableNodeTypes(scope: GraphAddScope = 'workflow'): NodeTyp
   })
 }
 
-export function resolveNodeType(node: Pick<GraphNode, 'typeId' | 'category' | 'assetType' | 'params'>): NodeTypeDefinition | undefined {
+export function resolveNodeType(
+  node: Pick<GraphNode, 'typeId' | 'category' | 'assetType' | 'params'>
+): NodeTypeDefinition | undefined {
   ensureBuiltinNodeTypes()
   if (node.typeId) {
     const byId = getNodeType(node.typeId)

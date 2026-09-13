@@ -5,12 +5,7 @@
 
 import { nextAgentPipelineStage } from './agentPipeline'
 
-export type EpisodePipelineStep =
-  | 'breakdown'
-  | 'beatboard'
-  | 'sequence'
-  | 'motion'
-  | 'completed'
+export type EpisodePipelineStep = 'breakdown' | 'beatboard' | 'sequence' | 'motion' | 'completed'
 
 export const EPISODE_PIPELINE_STEPS: readonly EpisodePipelineStep[] = [
   'breakdown',
@@ -65,7 +60,8 @@ export function parseEpisodeAgentState(raw: string | null | undefined): EpisodeA
       current_step: EPISODE_PIPELINE_STEPS.includes(parsed.current_step as EpisodePipelineStep)
         ? (parsed.current_step as EpisodePipelineStep)
         : 'breakdown',
-      last_failed_reason: typeof parsed.last_failed_reason === 'string' ? parsed.last_failed_reason : '',
+      last_failed_reason:
+        typeof parsed.last_failed_reason === 'string' ? parsed.last_failed_reason : '',
       output_files: {
         breakdown: parsed.output_files?.breakdown ?? '',
         beatboard: parsed.output_files?.beatboard ?? '',
@@ -83,7 +79,9 @@ export function serializeEpisodeAgentState(state: EpisodeAgentState): string {
   return `${JSON.stringify(state, null, 2)}\n`
 }
 
-export function nextEpisodePipelineStep(step: Exclude<EpisodePipelineStep, 'completed'>): EpisodePipelineStep {
+export function nextEpisodePipelineStep(
+  step: Exclude<EpisodePipelineStep, 'completed'>
+): EpisodePipelineStep {
   return nextAgentPipelineStage(EPISODE_PIPELINE_STEPS.slice(0, -1), step) as EpisodePipelineStep
 }
 

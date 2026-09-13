@@ -219,9 +219,12 @@ describe('resolveCutoutRegion', () => {
   })
 
   it('falls back to the full frame without boxes', () => {
-    expect(
-      resolveCutoutRegion({ boxes: [], srcWidth: 64, srcHeight: 32 })
-    ).toEqual({ x: 0, y: 0, width: 64, height: 32 })
+    expect(resolveCutoutRegion({ boxes: [], srcWidth: 64, srcHeight: 32 })).toEqual({
+      x: 0,
+      y: 0,
+      width: 64,
+      height: 32
+    })
   })
 })
 
@@ -237,11 +240,7 @@ describe('defringeRgba', () => {
   it('recovers the foreground color from a background-mixed edge pixel', () => {
     // 一行三个像素：背景(alpha 0, 亮黄) / 过渡(alpha 0.5) / 前景(alpha 1, 深色)
     // 过渡像素的颜色是 0.5*前景 + 0.5*背景 → (145,130,65)
-    const rgba = new Uint8ClampedArray([
-      240, 200, 60, 0,
-      145, 130, 65, 255,
-      50, 60, 70, 255
-    ])
+    const rgba = new Uint8ClampedArray([240, 200, 60, 0, 145, 130, 65, 255, 50, 60, 70, 255])
     const alpha = new Float32Array([0, 0.5, 1])
     defringeRgba(rgba, alpha, 3, 1, { strength: 1 })
     // 过渡像素被还原为前景色（误差 ±1），背景与前景本体不变

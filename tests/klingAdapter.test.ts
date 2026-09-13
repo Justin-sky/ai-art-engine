@@ -56,9 +56,9 @@ describe('klingAdapter', () => {
     await expect(klingAdapter.generateText(provider(), 'x', { prompt: 'hi' })).rejects.toThrow(
       /不支持文本/
     )
-    await expect(
-      klingAdapter.generateSpeech(provider(), 'x', { input: 'hi' })
-    ).rejects.toThrow(/不支持语音/)
+    await expect(klingAdapter.generateSpeech(provider(), 'x', { input: 'hi' })).rejects.toThrow(
+      /不支持语音/
+    )
   })
 
   it('submits text2video when no first frame', async () => {

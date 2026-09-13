@@ -19,16 +19,16 @@ describe('model animation asset kind', () => {
   it('reads modelKind from genParams', () => {
     expect(readModelAssetKind({ modelKind: 'animation' })).toBe('animation')
     expect(readModelAssetKind({})).toBe('model')
-    expect(
-      isAnimationModelAsset({ type: 'model', genParams: { modelKind: 'animation' } })
-    ).toBe(true)
+    expect(isAnimationModelAsset({ type: 'model', genParams: { modelKind: 'animation' } })).toBe(
+      true
+    )
     expect(isAnimationModelAsset({ type: 'model', genParams: {} })).toBe(false)
   })
 
   it('uses animation clip icon for animation models', () => {
-    expect(
-      assetDisplayIcon({ type: 'model', genParams: { modelKind: 'animation' } })
-    ).toBe(MODEL_ANIMATION_ICON)
+    expect(assetDisplayIcon({ type: 'model', genParams: { modelKind: 'animation' } })).toBe(
+      MODEL_ANIMATION_ICON
+    )
     expect(assetDisplayIcon({ type: 'model', genParams: {} })).toBe(ASSET_TYPE_ICONS.model)
   })
 })

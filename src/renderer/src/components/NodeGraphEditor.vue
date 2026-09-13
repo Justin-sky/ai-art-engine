@@ -7,20 +7,14 @@
     @dragleave="onDragLeave"
     @drop.prevent="onDrop"
   >
-    <div
-      v-if="!hideToolbar"
-      class="graph-toolbar"
-    >
+    <div v-if="!hideToolbar" class="graph-toolbar">
       <EditorDiveBar
         v-if="diveNavActive && editorDive"
         :root-title="editorDive.rootTitle"
         :frames="editorDive.frames"
         @pop-to="editorDive.popTo"
       />
-      <span
-        v-else
-        class="hint"
-      >{{ t('graph.toolbar.hint') }}</span>
+      <span v-else class="hint">{{ t('graph.toolbar.hint') }}</span>
       <div class="tools">
         <template v-if="isRunning">
           <button
@@ -30,10 +24,7 @@
             :aria-label="t('graph.play.stopAria')"
             @click="stopWorkflow"
           >
-            <span
-              class="play-glyph"
-              aria-hidden="true"
-            >
+            <span class="play-glyph" aria-hidden="true">
               <MediaRunIcon kind="stop" />
             </span>
           </button>
@@ -46,10 +37,7 @@
             :aria-label="toolbarCurrentNodeLabel"
             @click="onToolbarRunCurrent"
           >
-            <span
-              class="play-glyph"
-              aria-hidden="true"
-            >
+            <span class="play-glyph" aria-hidden="true">
               <MediaRunIcon :kind="toolbarCurrentIsRerun ? 'replay' : 'play'" />
             </span>
           </button>
@@ -60,10 +48,7 @@
             :aria-label="t('graph.play.runUpstreamSkip')"
             @click="onToolbarRunUpstreamSkip"
           >
-            <span
-              class="play-glyph"
-              aria-hidden="true"
-            >
+            <span class="play-glyph" aria-hidden="true">
               <MediaRunIcon kind="forward" />
             </span>
           </button>
@@ -74,10 +59,7 @@
             :aria-label="t('graph.play.runUpstreamForce')"
             @click="onToolbarRunUpstreamForce"
           >
-            <span
-              class="play-glyph"
-              aria-hidden="true"
-            >
+            <span class="play-glyph" aria-hidden="true">
               <MediaRunIcon kind="rewind" />
             </span>
           </button>
@@ -89,10 +71,7 @@
             :aria-label="t('graph.play.enqueue')"
             @click="onEnqueueWorkflowClick"
           >
-            <span
-              class="play-glyph"
-              aria-hidden="true"
-            >
+            <span class="play-glyph" aria-hidden="true">
               <MediaRunIcon kind="queue" />
             </span>
           </button>
@@ -102,13 +81,19 @@
           :class="{ active: linkingFrom || linkingTo || rewireSession }"
           @click="cancelLink"
         >
-          {{ linkingFrom || linkingTo || rewireSession ? t('graph.link.cancel') : t('graph.link.start') }}
+          {{
+            linkingFrom || linkingTo || rewireSession
+              ? t('graph.link.cancel')
+              : t('graph.link.start')
+          }}
         </button>
         <button
           type="button"
           class="edge-style-btn"
           :title="t('graph.edgeStyle.cycleTitle', { style: t(`graph.edgeStyle.${edgePathStyle}`) })"
-          :aria-label="t('graph.edgeStyle.cycleTitle', { style: t(`graph.edgeStyle.${edgePathStyle}`) })"
+          :aria-label="
+            t('graph.edgeStyle.cycleTitle', { style: t(`graph.edgeStyle.${edgePathStyle}`) })
+          "
           @click="cycleEdgePathStyle"
         >
           <svg
@@ -142,13 +127,7 @@
               d="M2 12 H8 V4 H14"
             />
           </svg>
-          <svg
-            v-else
-            viewBox="0 0 16 16"
-            width="16"
-            height="16"
-            aria-hidden="true"
-          >
+          <svg v-else viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
             <path
               fill="none"
               stroke="currentColor"
@@ -167,11 +146,7 @@
           </svg>
           <span class="edge-style-label">{{ t(`graph.edgeStyle.${edgePathStyle}`) }}</span>
         </button>
-        <span
-          class="tool-mode-group"
-          role="group"
-          :aria-label="t('graph.toolbar.toolMode')"
-        >
+        <span class="tool-mode-group" role="group" :aria-label="t('graph.toolbar.toolMode')">
           <button
             type="button"
             class="tool-mode-btn"
@@ -182,12 +157,7 @@
             @click="setViewportToolMode('select')"
           >
             <!-- 选择：实心鼠标光标箭头 -->
-            <svg
-              viewBox="0 0 16 16"
-              width="16"
-              height="16"
-              aria-hidden="true"
-            >
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
               <path
                 fill="currentColor"
                 d="M3 1.4v12.2l3.15-3.05 1.85 4.45 1.85-.75-1.85-4.4H12.9Z"
@@ -204,12 +174,7 @@
             @click="setViewportToolMode('pan')"
           >
             <!-- 平移：鼠标实心抓取手形（Material pan_tool） -->
-            <svg
-              viewBox="0 0 24 24"
-              width="16"
-              height="16"
-              aria-hidden="true"
-            >
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
               <path
                 fill="currentColor"
                 d="M23 5.5V20c0 2.2-1.8 4-4 4h-7.3c-1.08 0-2.1-.43-2.85-1.19L1 14.83s1.26-1.23 1.3-1.25c.22-.19.49-.29.79-.29.22 0 .42.06.6.16.04.01 4.31 2.46 4.31 2.46V4c0-.83.67-1.5 1.5-1.5S11 3.17 11 4v7h1V1.5c0-.83.67-1.5 1.5-1.5S15 .67 15 1.5V11h1V2.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5V11h1V5.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5z"
@@ -217,24 +182,13 @@
             </svg>
           </button>
         </span>
-        <button
-          type="button"
-          @click="fitView"
-        >
+        <button type="button" @click="fitView">
           {{ t('graph.fitView') }}
         </button>
-        <button
-          v-if="canGroupSelection"
-          type="button"
-          @click="groupSelectedNodes"
-        >
+        <button v-if="canGroupSelection" type="button" @click="groupSelectedNodes">
           {{ t('graph.group.action') }}
         </button>
-        <button
-          v-if="canUngroupSelection"
-          type="button"
-          @click="ungroupSelectedNodes"
-        >
+        <button v-if="canUngroupSelection" type="button" @click="ungroupSelectedNodes">
           {{ t('graph.group.ungroup') }}
         </button>
         <button
@@ -263,10 +217,7 @@
         >
           {{ t('graph.agentPipeline.open') }}
         </button>
-        <span
-          ref="zoomLabelEl"
-          class="zoom"
-        >100%</span>
+        <span ref="zoomLabelEl" class="zoom">100%</span>
       </div>
     </div>
     <div
@@ -346,19 +297,9 @@
       @pointermove="onViewportPointerMove"
       @pointerleave="onViewportPointerLeave"
     >
-      <div
-        class="grid-layer"
-        :class="{ hidden: !gridVisible }"
-        aria-hidden="true"
-      >
-        <div
-          ref="gridMinorEl"
-          class="grid-pattern grid-pattern-minor"
-        />
-        <div
-          ref="gridMajorEl"
-          class="grid-pattern grid-pattern-major"
-        />
+      <div class="grid-layer" :class="{ hidden: !gridVisible }" aria-hidden="true">
+        <div ref="gridMinorEl" class="grid-pattern grid-pattern-minor" />
+        <div ref="gridMajorEl" class="grid-pattern grid-pattern-major" />
       </div>
       <div
         v-if="selectionBox"
@@ -370,10 +311,7 @@
           height: `${selectionBox.h}px`
         }"
       />
-      <div
-        ref="worldBackEl"
-        class="graph-world graph-world-back"
-      >
+      <div ref="worldBackEl" class="graph-world graph-world-back">
         <div
           v-for="frame in renderedGroupFrames"
           :key="frame.id"
@@ -405,18 +343,11 @@
             @blur="commitGroupTitleEdit"
             @keydown.enter.prevent="commitGroupTitleEdit"
             @keydown.esc.prevent="cancelGroupTitleEdit"
-          >
+          />
         </div>
       </div>
-      <canvas
-        ref="edgesCanvasEl"
-        class="edges-canvas"
-        aria-hidden="true"
-      />
-      <div
-        ref="worldEl"
-        class="graph-world"
-      >
+      <canvas ref="edgesCanvasEl" class="edges-canvas" aria-hidden="true" />
+      <div ref="worldEl" class="graph-world">
         <component
           :is="card.component"
           v-for="{ node, card } in renderedGraphCards"
@@ -470,83 +401,116 @@
           <template v-if="selectedLayoutNodes.length >= 2">
             <button
               type="button"
-              @click="applyAlign('left'); closeCtxMenu()"
+              @click="
+                applyAlign('left')
+                closeCtxMenu()
+              "
             >
               {{ t('graph.layout.alignLeft') }}
             </button>
             <button
               type="button"
-              @click="applyAlign('centerX'); closeCtxMenu()"
+              @click="
+                applyAlign('centerX')
+                closeCtxMenu()
+              "
             >
               {{ t('graph.layout.alignCenterX') }}
             </button>
             <button
               type="button"
-              @click="applyAlign('right'); closeCtxMenu()"
+              @click="
+                applyAlign('right')
+                closeCtxMenu()
+              "
             >
               {{ t('graph.layout.alignRight') }}
             </button>
             <button
               type="button"
-              @click="applyAlign('top'); closeCtxMenu()"
+              @click="
+                applyAlign('top')
+                closeCtxMenu()
+              "
             >
               {{ t('graph.layout.alignTop') }}
             </button>
             <button
               type="button"
-              @click="applyAlign('centerY'); closeCtxMenu()"
+              @click="
+                applyAlign('centerY')
+                closeCtxMenu()
+              "
             >
               {{ t('graph.layout.alignCenterY') }}
             </button>
             <button
               type="button"
-              @click="applyAlign('bottom'); closeCtxMenu()"
+              @click="
+                applyAlign('bottom')
+                closeCtxMenu()
+              "
             >
               {{ t('graph.layout.alignBottom') }}
             </button>
             <button
               v-if="selectedLayoutNodes.length >= 3"
               type="button"
-              @click="applyDistribute('horizontal'); closeCtxMenu()"
+              @click="
+                applyDistribute('horizontal')
+                closeCtxMenu()
+              "
             >
               {{ t('graph.layout.distributeH') }}
             </button>
             <button
               v-if="selectedLayoutNodes.length >= 3"
               type="button"
-              @click="applyDistribute('vertical'); closeCtxMenu()"
+              @click="
+                applyDistribute('vertical')
+                closeCtxMenu()
+              "
             >
               {{ t('graph.layout.distributeV') }}
             </button>
             <button
               type="button"
-              @click="applyAutoLayout(); closeCtxMenu()"
+              @click="
+                applyAutoLayout()
+                closeCtxMenu()
+              "
             >
               {{ t('graph.layout.auto') }}
             </button>
-            <div
-              class="ctx-sep"
-              aria-hidden="true"
-            />
+            <div class="ctx-sep" aria-hidden="true" />
           </template>
           <button
             v-if="canGroupSelection"
             type="button"
-            @click="groupSelectedNodes(); closeCtxMenu()"
+            @click="
+              groupSelectedNodes()
+              closeCtxMenu()
+            "
           >
             {{ t('graph.group.action') }}
           </button>
           <button
             v-if="canUngroupSelection"
             type="button"
-            @click="ungroupSelectedNodes(); closeCtxMenu()"
+            @click="
+              ungroupSelectedNodes()
+              closeCtxMenu()
+            "
           >
             {{ t('graph.group.ungroup') }}
           </button>
           <button
             v-if="canEncapsulateSelection"
             type="button"
-            @click="encapsulateSelectedAsHost(); closeCtxMenu()"
+            @click="
+              encapsulateSelectedAsHost()
+              closeCtxMenu()
+            "
           >
             {{ t('graph.hostInterface.encapsulate') }}
           </button>
@@ -558,14 +522,20 @@
           <button
             type="button"
             :disabled="!canCopySelection"
-            @click="copySelectedNodes(); closeCtxMenu()"
+            @click="
+              copySelectedNodes()
+              closeCtxMenu()
+            "
           >
             {{ t('graph.context.copy') }}
           </button>
           <button
             type="button"
             :disabled="!canPasteClipboard"
-            @click="void pasteClipboardNodes(); closeCtxMenu()"
+            @click="
+              void pasteClipboardNodes()
+              closeCtxMenu()
+            "
           >
             {{ t('graph.context.paste') }}
           </button>
@@ -574,10 +544,9 @@
           <div class="ctx-title">
             <template v-if="ctxMenu.linkFromNodeId || ctxMenu.linkToNodeId">
               {{ t('graph.context.addAndConnect') }}
-              <span
-                v-if="connectMenuPortTypeLabel"
-                class="ctx-port-type"
-              >{{ connectMenuPortTypeLabel }}</span>
+              <span v-if="connectMenuPortTypeLabel" class="ctx-port-type">{{
+                connectMenuPortTypeLabel
+              }}</span>
             </template>
             <template v-else>
               {{ t('graph.context.addNode') }}
@@ -589,15 +558,9 @@
             type="button"
             @click="addNodeFromMenu(item)"
           >
-            <span class="ctx-icon"><WorkspaceItemIcon
-              :icon="item.icon"
-              :size="14"
-            /></span>
+            <span class="ctx-icon"><WorkspaceItemIcon :icon="item.icon" :size="14" /></span>
             <span class="ctx-label">{{ item.label }}</span>
-            <span
-              v-if="item.portTypeLabel"
-              class="ctx-item-type"
-            >{{ item.portTypeLabel }}</span>
+            <span v-if="item.portTypeLabel" class="ctx-item-type">{{ item.portTypeLabel }}</span>
           </button>
           <div
             v-for="group in resourceAddableMenuGroups"
@@ -609,18 +572,15 @@
             <button
               type="button"
               class="ctx-submenu-trigger"
-              :class="{ open: ctxSubmenu === group.id, pinned: ctxSubmenuPinned && ctxSubmenu === group.id }"
+              :class="{
+                open: ctxSubmenu === group.id,
+                pinned: ctxSubmenuPinned && ctxSubmenu === group.id
+              }"
               @click="toggleCtxSubmenu(group.id)"
             >
-              <span class="ctx-icon"><WorkspaceItemIcon
-                :icon="group.icon"
-                :size="14"
-              /></span>
+              <span class="ctx-icon"><WorkspaceItemIcon :icon="group.icon" :size="14" /></span>
               <span class="ctx-label">{{ group.label }}</span>
-              <span
-                class="ctx-submenu-arrow"
-                aria-hidden="true"
-              >›</span>
+              <span class="ctx-submenu-arrow" aria-hidden="true">›</span>
             </button>
             <div
               v-if="ctxSubmenu === group.id"
@@ -636,15 +596,11 @@
                 type="button"
                 @click="addNodeFromMenu(item)"
               >
-                <span class="ctx-icon"><WorkspaceItemIcon
-                  :icon="item.icon"
-                  :size="14"
-                /></span>
+                <span class="ctx-icon"><WorkspaceItemIcon :icon="item.icon" :size="14" /></span>
                 <span class="ctx-label">{{ item.label }}</span>
-                <span
-                  v-if="item.portTypeLabel"
-                  class="ctx-item-type"
-                >{{ item.portTypeLabel }}</span>
+                <span v-if="item.portTypeLabel" class="ctx-item-type">{{
+                  item.portTypeLabel
+                }}</span>
               </button>
             </div>
           </div>
@@ -684,10 +640,7 @@
       body-class="pad-none"
       @close="closeEpisodePipeline"
     >
-      <EpisodePipelineView
-        :frame-key="'episode-pipeline'"
-        :host-asset-id="props.assetId ?? ''"
-      />
+      <EpisodePipelineView :frame-key="'episode-pipeline'" :host-asset-id="props.assetId ?? ''" />
     </StudioFloatingWindow>
 
     <!-- Agent 流水线独立窗口：质检 / 返工节点总览 -->
@@ -703,10 +656,7 @@
       body-class="pad-none"
       @close="closeAgentPipeline"
     >
-      <AgentPipelineView
-        :frame-key="'agent-pipeline'"
-        :host-asset-id="props.assetId ?? ''"
-      />
+      <AgentPipelineView :frame-key="'agent-pipeline'" :host-asset-id="props.assetId ?? ''" />
     </StudioFloatingWindow>
   </div>
 </template>
@@ -731,10 +681,7 @@ import EditorDiveBar from './EditorDiveBar.vue'
 import NodeGraphEditorDialogLayer from './NodeGraphEditorDialogLayer.vue'
 import SaveAssetDialog from './SaveAssetDialog.vue'
 import StudioFloatingWindow from './StudioFloatingWindow.vue'
-import {
-  editorDiveKey,
-  isEditorDiveAssetFrame
-} from '../features/graph/model/editorDive'
+import { editorDiveKey, isEditorDiveAssetFrame } from '../features/graph/model/editorDive'
 import {
   graphEditorDialogsKey,
   type GraphEditorDialogsApi
@@ -755,7 +702,10 @@ import {
 } from '../stores/workspace'
 import { useDraftStore } from '../stores/drafts'
 import { useGraphTaskStore, type GraphTaskTarget } from '../stores/graphTasks'
-import { registerOpenGraphEditor, unregisterOpenGraphEditor } from '../features/mcp/openGraphEditors'
+import {
+  registerOpenGraphEditor,
+  unregisterOpenGraphEditor
+} from '../features/mcp/openGraphEditors'
 import { worldElementKindKey } from '../features/world/worldElementKindKey'
 import { detectImportAssetType, isImportablePath } from '@shared/import'
 import { compareNames } from '@shared/folderTree'
@@ -775,13 +725,13 @@ import { resolveGraphImageUrls } from '../features/graph/model/resolveGraphImage
 import { saveGraphRunTextForNode } from '../features/graph/saveGraphRunTextForNode'
 import { readGraphRunText } from '../features/graph/readGraphRunText'
 import { resolveAssetText } from '../features/media/resolveAssetText'
-import { collectWorldElementOutputs, previewWorldElementOutputsFromSubgraphs } from '../features/world/worldElementPipeline'
+import {
+  collectWorldElementOutputs,
+  previewWorldElementOutputsFromSubgraphs
+} from '../features/world/worldElementPipeline'
 import { collectBeatUnitTexts } from '../features/beat/beatPipeline'
 import { applyWorldCatalog, loadWorldCatalog } from '../features/world/applyWorldCatalogOnOpen'
-import {
-  applyBeatCatalog,
-  loadBeatCatalog
-} from '../features/beat/applyBeatCatalogOnOpen'
+import { applyBeatCatalog, loadBeatCatalog } from '../features/beat/applyBeatCatalogOnOpen'
 import {
   canConnectFromNodeType,
   canConnectNodes,
@@ -1115,10 +1065,7 @@ const worldElementNodeId = computed(() => {
   return id === LEGACY_WORLD_GEN_NODE_ID ? '' : id
 })
 const isBeatUnitGraph = computed(
-  () =>
-    isAssetGraph.value &&
-    graphScope.value === 'beatUnit' &&
-    !!props.beatId?.trim()
+  () => isAssetGraph.value && graphScope.value === 'beatUnit' && !!props.beatId?.trim()
 )
 
 const previewVisibleNodeIds = ref<ReadonlySet<string>>(new Set())
@@ -1194,9 +1141,7 @@ provide(graphPreviewVisibilityKey, {
   revision: previewVisibilityRevision
 })
 const graphHostId = computed(() => {
-  const base = props.assetId
-    ? `asset:${props.assetId}`
-    : 'asset:unscoped'
+  const base = props.assetId ? `asset:${props.assetId}` : 'asset:unscoped'
   if (isElementWorkflowGraph.value && worldElementKind.value) {
     return worldElementNodeId.value
       ? `${base}:element:${worldElementKind.value}:${worldElementNodeId.value}`
@@ -1224,10 +1169,7 @@ function syncHostInterfaceSnapshots(doc: GraphDocument): GraphDocument {
     if (!asset) continue
     const genParams = asset.genParams as Record<string, unknown> | undefined
     const schemaVersion = readHostSchemaVersion(genParams)
-    if (
-      node.params.hostSchemaVersion === schemaVersion &&
-      node.params.hostInterfaceSnapshot
-    ) {
+    if (node.params.hostSchemaVersion === schemaVersion && node.params.hostInterfaceSnapshot) {
       continue
     }
     const iface = readHostInterfaceFromGenParams(genParams, asset.type)
@@ -1299,13 +1241,11 @@ function hostInputResolveOptions(): ResolveHostInputSlotsOptions {
       const base = isDraftAssetId(assetId)
         ? (draftStore.getDraft(assetId)?.genParams as Record<string, unknown> | undefined)
         : (project.assets.find((a) => a.id === assetId)?.genParams as
-            | Record<string, unknown>
-            | undefined)
+            Record<string, unknown> | undefined)
       if (live) return { ...(base ?? {}), graphJson: live }
       return base
     },
-    resolveLiveAssetGraph: (assetId) =>
-      graphEditorHosts.getLiveAssetDocument(assetId) ?? undefined
+    resolveLiveAssetGraph: (assetId) => graphEditorHosts.getLiveAssetDocument(assetId) ?? undefined
   }
 }
 
@@ -1435,8 +1375,8 @@ function commitAssetGraph(): boolean {
     const write = persistAssetRecord(props.assetId, {
       genParams: withBeatGraph(
         (project.assets.find((item) => item.id === props.assetId)?.genParams as
-          | Record<string, unknown>
-          | undefined) ?? (latest.genParams as Record<string, unknown> | undefined),
+          Record<string, unknown> | undefined) ??
+          (latest.genParams as Record<string, unknown> | undefined),
         props.beatId,
         plain
       )
@@ -1615,9 +1555,7 @@ async function hydrateHostInputSlotTextsInGraph(): Promise<void> {
       const nextIndex = filledIndexByPort.get(targetPort) ?? 0
       const carrier = emptyTextSlots.find(
         (item) =>
-          item.portId === targetPort &&
-          item.index === nextIndex &&
-          !item.node.params.text?.trim()
+          item.portId === targetPort && item.index === nextIndex && !item.node.params.text?.trim()
       )
       if (!carrier) continue
       carrier.node.params = { ...carrier.node.params, text }
@@ -1855,15 +1793,13 @@ const {
     const base = isDraftAssetId(assetId)
       ? (draftStore.getDraft(assetId)?.genParams as Record<string, unknown> | undefined)
       : (project.assets.find((asset) => asset.id === assetId)?.genParams as
-          | Record<string, unknown>
-          | undefined)
+          Record<string, unknown> | undefined)
     if (live) {
       return { ...(base ?? {}), graphJson: live }
     }
     return base
   },
-  resolveLiveAssetGraph: (assetId) =>
-    graphEditorHosts.getLiveAssetDocument(assetId) ?? undefined,
+  resolveLiveAssetGraph: (assetId) => graphEditorHosts.getLiveAssetDocument(assetId) ?? undefined,
   hasAsset: (assetId) => {
     if (isDraftAssetId(assetId)) return !!draftStore.getDraft(assetId)
     return project.assets.some((asset) => asset.id === assetId)
@@ -1876,8 +1812,7 @@ const {
   },
   resolveHostAssetName: () => graphAsset.value?.name?.trim() || undefined,
   resolveHostAssetId: () => props.assetId?.trim() || undefined,
-  resolveProjectStyleImages: () =>
-    normalizeProjectStyleImages(project.config?.styleImages),
+  resolveProjectStyleImages: () => normalizeProjectStyleImages(project.config?.styleImages),
   resolveBeatUnit: (beatId) => {
     const id = beatId.trim()
     if (!id) return null
@@ -1945,10 +1880,7 @@ const {
       const downstreamGens = graph.edges
         .filter((edge) => edge.source === sourceNodeId)
         .map((edge) => graph.nodes.find((node) => node.id === edge.target))
-        .filter(
-          (node): node is GraphNode =>
-            !!node && node.typeId === 'world.gen'
-        )
+        .filter((node): node is GraphNode => !!node && node.typeId === 'world.gen')
       for (const gen of downstreamGens) {
         await applyWorldCatalog(worldId, jsonText, gen.id)
       }
@@ -1989,7 +1921,10 @@ function openRunLog(runId: string): void {
 
 runStateBridge.exportForDocument = (nodeIds) => exportRunStatesSnapshot(nodeIds)
 runStateBridge.importFromDocument = (doc) => {
-  importRunStatesSnapshot(doc.runStates, doc.nodes.map((n) => n.id))
+  importRunStatesSnapshot(
+    doc.runStates,
+    doc.nodes.map((n) => n.id)
+  )
 }
 // 首次加载可能发生在 session 接线前，这里用当前图再灌一次
 importRunStatesSnapshot(
@@ -2399,12 +2334,7 @@ function isEditableKeyTarget(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null
   if (!el) return false
   const tag = el.tagName
-  return (
-    tag === 'INPUT' ||
-    tag === 'TEXTAREA' ||
-    tag === 'SELECT' ||
-    !!el.isContentEditable
-  )
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || !!el.isContentEditable
 }
 
 async function enqueueWorkflowTask(fromEl?: HTMLElement | null): Promise<void> {
@@ -2707,9 +2637,7 @@ function collectEdgeGeometry(): EdgeScreenGeometry[] {
     const source = nodeById.get(edge.source)
     const target = nodeById.get(edge.target)
     if (!source || !target) continue
-    geoms.push(
-      computeEdgeScreenGeometry(edge, source, target, liveViewport, edgePathStyle.value)
-    )
+    geoms.push(computeEdgeScreenGeometry(edge, source, target, liveViewport, edgePathStyle.value))
   }
   return geoms
 }
@@ -2854,9 +2782,7 @@ watch(
   () => [workspace.selectedGraphGroupId, workspace.selectedGraphHostId] as const,
   ([groupId, hostId]) => {
     if (hostId !== graphHostId.value || !groupId) return
-    const memberIds = graph.nodes
-      .filter((node) => node.groupId === groupId)
-      .map((node) => node.id)
+    const memberIds = graph.nodes.filter((node) => node.groupId === groupId).map((node) => node.id)
     if (memberIds.length === 0) return
     selectedGroupId.value = groupId
     selectedNodeIds.value = new Set(memberIds)
@@ -2947,10 +2873,11 @@ const groupFrames = computed(() => {
     .map((group) => {
       const bounds = getGroupBounds(graph.nodes, group.id)
       if (!bounds) return null
-      const memberIds = graph.nodes.filter((node) => node.groupId === group.id).map((node) => node.id)
+      const memberIds = graph.nodes
+        .filter((node) => node.groupId === group.id)
+        .map((node) => node.id)
       const selected =
-        selectedGroupId.value === group.id ||
-        memberIds.some((id) => selectedNodeIds.value.has(id))
+        selectedGroupId.value === group.id || memberIds.some((id) => selectedNodeIds.value.has(id))
       return {
         id: group.id,
         title: group.title?.trim() || t('graph.group.defaultName'),
@@ -3225,7 +3152,11 @@ const hasSelectionFlow = computed(() => {
 // 待绘制边集合变化（边增删 / 窗口 / 可见节点集变化）→ 一次性重绘
 watch(renderedGraphEdges, () => requestEdgeRender())
 // 边端点/连线数据深层变化（改端口等）→ 一次性重绘；edges 数组轻量，深监听开销可忽略
-watch(() => graph.edges, () => requestEdgeRender(), { deep: true })
+watch(
+  () => graph.edges,
+  () => requestEdgeRender(),
+  { deep: true }
+)
 // 选中边高亮变化 → 重绘
 watch(selectedEdgeIds, () => requestEdgeRender())
 // 收起/展开预览会改有效节点高度（getNodeSize），需重算连线与分组框
@@ -3248,9 +3179,7 @@ function clearSelection(): void {
 }
 
 function setGroupSelection(groupId: string): void {
-  const memberIds = graph.nodes
-    .filter((node) => node.groupId === groupId)
-    .map((node) => node.id)
+  const memberIds = graph.nodes.filter((node) => node.groupId === groupId).map((node) => node.id)
   if (memberIds.length === 0) return
   selectedGroupId.value = groupId
   selectedNodeIds.value = new Set(memberIds)
@@ -3379,7 +3308,10 @@ const renderedGraphCards = computed(() =>
       const card = resolveGraphCard(node)
       return card ? { node, card } : null
     })
-    .filter((item): item is { node: GraphNode; card: NonNullable<ReturnType<typeof resolveGraphCard>> } => item != null)
+    .filter(
+      (item): item is { node: GraphNode; card: NonNullable<ReturnType<typeof resolveGraphCard>> } =>
+        item != null
+    )
 )
 
 type AddableMenuItem = {
@@ -3392,16 +3324,9 @@ type AddableMenuItem = {
   params?: Partial<GraphNodeParams>
 }
 
-type ResourceMenuGroupId = Extract<
-  AssetType,
-  | 'image'
-  | 'video'
-  | 'voice'
-  | 'screenplay'
-  | 'motion'
-  | 'world'
-  | 'beat'
-> | 'episode'
+type ResourceMenuGroupId =
+  | Extract<AssetType, 'image' | 'video' | 'voice' | 'screenplay' | 'motion' | 'world' | 'beat'>
+  | 'episode'
   | 'imageRefine'
   | 'imageEdit'
   | 'text'
@@ -3424,12 +3349,7 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
   },
   {
     id: 'imageRefine',
-    typeIds: [
-      'image.multiAngle',
-      'image.lighting',
-      'image.emotion',
-      'image.portraitTexture'
-    ]
+    typeIds: ['image.multiAngle', 'image.lighting', 'image.emotion', 'image.portraitTexture']
   },
   {
     id: 'imageEdit',
@@ -3661,7 +3581,7 @@ const resourceAddableMenuGroups = computed(() => {
               group.id === 'agent' ||
               group.id === 'ad'
             ? t(`graph.context.groups.${group.id}`)
-          : assetTypeLabel(group.id),
+            : assetTypeLabel(group.id),
       icon:
         group.id === 'episode'
           ? '📽️'
@@ -3669,23 +3589,23 @@ const resourceAddableMenuGroups = computed(() => {
             ? '🎨'
             : group.id === 'imageEdit'
               ? '🛠️'
-            : group.id === 'text'
-              ? '📝'
-              : group.id === 'prompt'
-                ? '✨'
-              : group.id === 'game'
-                ? '🕹️'
-                : group.id === 'motionFx'
-                  ? ANIM2D_ASSET_ICON
-                : group.id === 'model3d'
-                  ? '🧊'
-                : group.id === 'comic'
-                  ? '💬'
-                : group.id === 'agent'
-                  ? '🤖'
-                : group.id === 'ad'
-                  ? '📢'
-                : (ASSET_TYPE_ICONS[group.id] ?? '◇'),
+              : group.id === 'text'
+                ? '📝'
+                : group.id === 'prompt'
+                  ? '✨'
+                  : group.id === 'game'
+                    ? '🕹️'
+                    : group.id === 'motionFx'
+                      ? ANIM2D_ASSET_ICON
+                      : group.id === 'model3d'
+                        ? '🧊'
+                        : group.id === 'comic'
+                          ? '💬'
+                          : group.id === 'agent'
+                            ? '🤖'
+                            : group.id === 'ad'
+                              ? '📢'
+                              : (ASSET_TYPE_ICONS[group.id] ?? '◇'),
       items
     }
   })
@@ -3724,7 +3644,10 @@ function assetFor(node: GraphNode): AssetInfo | null {
 }
 
 /** 临时连线（拖拽建边 / 批量改接 / 节点吸附预览）在世界坐标下的两端；供 Canvas 直接绘制 */
-function resolveTempEdgeWorlds(): Array<{ from: { x: number; y: number }; to: { x: number; y: number } }> {
+function resolveTempEdgeWorlds(): Array<{
+  from: { x: number; y: number }
+  to: { x: number; y: number }
+}> {
   // 拖节点靠近：不依赖光标临时端点
   if (snapPreviewCandidates.value.length > 0 && !tempEdgeEnd.value) {
     const out: Array<{ from: { x: number; y: number }; to: { x: number; y: number } }> = []
@@ -3848,7 +3771,8 @@ function endTransientPanToolHighlight(): void {
 
 function onViewportPointerDown(e: PointerEvent): void {
   if (e.button !== 0 || isLeftButtonPanArmed()) return
-  if ((e.target as HTMLElement).closest('.graph-node, .graph-note, .port, .graph-group-label')) return
+  if ((e.target as HTMLElement).closest('.graph-node, .graph-note, .port, .graph-group-label'))
+    return
   const host = viewportEl.value
   if (!host) return
 
@@ -4091,8 +4015,7 @@ function setAllNodePreviewsCollapsed(collapsed: boolean): void {
 function fitView(): void {
   const host = viewportEl.value
   if (!host) return
-  const targets =
-    selectedLayoutNodes.value.length > 0 ? selectedLayoutNodes.value : graph.nodes
+  const targets = selectedLayoutNodes.value.length > 0 ? selectedLayoutNodes.value : graph.nodes
   const bounds = getNodesBounds(targets, 48)
   if (!bounds || bounds.w <= 0 || bounds.h <= 0) {
     graph.viewport.x = 40
@@ -4102,10 +4025,7 @@ function fitView(): void {
     const pad = 56
     const zoomX = (host.clientWidth - pad * 2) / bounds.w
     const zoomY = (host.clientHeight - pad * 2) / bounds.h
-    const zoom = Math.min(
-      GRAPH_FIT_ZOOM_MAX,
-      Math.max(GRAPH_ZOOM_MIN, Math.min(zoomX, zoomY))
-    )
+    const zoom = Math.min(GRAPH_FIT_ZOOM_MAX, Math.max(GRAPH_ZOOM_MIN, Math.min(zoomX, zoomY)))
     graph.viewport.zoom = zoom
     graph.viewport.x = host.clientWidth / 2 - (bounds.x + bounds.w / 2) * zoom
     graph.viewport.y = host.clientHeight / 2 - (bounds.y + bounds.h / 2) * zoom
@@ -4284,7 +4204,11 @@ function tryOpenCtxMenuAtPointer(): boolean {
   return true
 }
 
-function centerPosition(typeId: GraphNodeTypeId | GraphNode['category'], worldX: number, worldY: number) {
+function centerPosition(
+  typeId: GraphNodeTypeId | GraphNode['category'],
+  worldX: number,
+  worldY: number
+) {
   return graphCenterPosition(typeId, worldX, worldY)
 }
 
@@ -4318,11 +4242,7 @@ function removeStagesForNodeIds(nodeIds: string[], graphJson: GraphDocument): vo
   // 自由画布等作用域同样会内嵌导演台节点：只要资产带 stagesByNodeId 就清理，避免孤儿舞台残留
   if (!asset || !props.assetId || !nodeIds.length) return
   const genParams = asset.genParams
-  if (
-    !genParams ||
-    typeof genParams !== 'object' ||
-    !(DIRECTOR_STAGES_BY_NODE_KEY in genParams)
-  ) {
+  if (!genParams || typeof genParams !== 'object' || !(DIRECTOR_STAGES_BY_NODE_KEY in genParams)) {
     return
   }
   const nextGenParams = removeNodeStagesFromGenParams(genParams, nodeIds, graphJson)
@@ -4360,7 +4280,11 @@ function addNodeFromMenu(item: AddableMenuItem): void {
         existing.params = { ...next.params }
         existing.title = graphTypeLabel(typeId)
         // 输出类型变更时同步规范单例 id（image-output / video-output …）
-        if (def.singletonId && prevId !== def.singletonId && !graph.nodes.some((n) => n.id === def.singletonId)) {
+        if (
+          def.singletonId &&
+          prevId !== def.singletonId &&
+          !graph.nodes.some((n) => n.id === def.singletonId)
+        ) {
           existing.id = def.singletonId
           for (const edge of graph.edges) {
             if (edge.source === prevId) edge.source = def.singletonId
@@ -4398,22 +4322,24 @@ function addNodeFromMenu(item: AddableMenuItem): void {
     graphScope.value === 'directorAsset' &&
     isDirectorProcessingNode(node)
 
-  const linkFromSources =
-    menu.linkFromSources?.length
-      ? menu.linkFromSources
-      : linkFromId
-        ? [{ nodeId: linkFromId, portId: menu.linkFromPortId ?? 'out' }]
-        : []
+  const linkFromSources = menu.linkFromSources?.length
+    ? menu.linkFromSources
+    : linkFromId
+      ? [{ nodeId: linkFromId, portId: menu.linkFromPortId ?? 'out' }]
+      : []
   if (linkFromSources.length) {
     for (const src of linkFromSources) {
       const source = graph.nodes.find((n) => n.id === src.nodeId)
       const sourcePort = src.portId || findOutPort(source!)?.id || 'out'
       if (!source || !canConnectNodes(source, node, { sourcePort })) continue
       const outPort = findOutPort(source, sourcePort)
-      let inPort = outPort
-        ? findCompatibleInPort(node, outPort.dataType)
-        : undefined
-      if (!inPort && isBundleNode(node) && outPort && isBundleAcceptableDataType(outPort.dataType)) {
+      let inPort = outPort ? findCompatibleInPort(node, outPort.dataType) : undefined
+      if (
+        !inPort &&
+        isBundleNode(node) &&
+        outPort &&
+        isBundleAcceptableDataType(outPort.dataType)
+      ) {
         inPort = findInPort(node, 'in') ?? undefined
       }
       if (!outPort || !inPort) continue
@@ -4431,10 +4357,7 @@ function addNodeFromMenu(item: AddableMenuItem): void {
   } else if (linkToId) {
     const target = graph.nodes.find((n) => n.id === linkToId)
     const targetPort = menu.linkToPortId ?? undefined
-    if (
-      target &&
-      canConnectNodes(node, target, { targetPort })
-    ) {
+    if (target && canConnectNodes(node, target, { targetPort })) {
       const outPort = findOutPort(node)
       const inPort = outPort
         ? findCompatibleInPort(target, outPort.dataType, targetPort)
@@ -4494,9 +4417,7 @@ function onNodeTitleChange(nodeId: string, title: string): void {
   const trimmed = title.trim()
   const assetId = node.assetId?.trim()
   const linkedAsset =
-    assetId && isAssetRefNode(node)
-      ? project.assets.find((a) => a.id === assetId)
-      : undefined
+    assetId && isAssetRefNode(node) ? project.assets.find((a) => a.id === assetId) : undefined
   // 画布节点显示名与资产库原名解耦；改资产名请走资产浏览器
   const prev = node.title?.trim() || linkedAsset?.name?.trim() || ''
   if (trimmed === prev) return
@@ -4667,7 +4588,8 @@ async function importDroppedFilesOntoGraph(
     const result = await window.studio.importAssets({ filePaths: accepted })
     project.patchAssets(result.imported)
     if (!result.imported.length) {
-      const detail = result.skipped.map((s) => s.reason).join('; ') || t('graph.error.noneImportable')
+      const detail =
+        result.skipped.map((s) => s.reason).join('; ') || t('graph.error.noneImportable')
       showDropError(t('graph.error.importFailed', { detail }))
       return
     }
@@ -4762,8 +4684,7 @@ function resolveDroppedBeatUnit(e: DragEvent): BeatRow | null {
 
 function addBeatUnitRefNode(unit: BeatRow, position: { x: number; y: number }): boolean {
   const existing = graph.nodes.find(
-    (n) =>
-      n.typeId === 'beat.unitRef' && readBoundBeatIdFromNodeParams(n.params) === unit.id
+    (n) => n.typeId === 'beat.unitRef' && readBoundBeatIdFromNodeParams(n.params) === unit.id
   )
   if (existing) {
     workspace.selectGraphNode(existing.id, graphHostId.value)
@@ -4971,9 +4892,7 @@ function onGroupLabelDragStart(groupId: string, event: PointerEvent): void {
 
   const onMove = (ev: PointerEvent): void => {
     if (dragStarted) return
-    if (
-      Math.hypot(ev.clientX - startX, ev.clientY - startY) >= GROUP_LABEL_CLICK_THRESHOLD
-    ) {
+    if (Math.hypot(ev.clientX - startX, ev.clientY - startY) >= GROUP_LABEL_CLICK_THRESHOLD) {
       dragStarted = true
       cleanup()
       onNodeDragStart(memberIds[0], event, { moveWholeGroup: true })
@@ -5133,12 +5052,7 @@ function onOutPortDown(nodeId: string, portId: string, e: PointerEvent): void {
 
 function onInPortDown(nodeId: string, portId: string, e: PointerEvent): void {
   if (linkingFrom.value) {
-    connectNodes(
-      linkingFrom.value,
-      nodeId,
-      linkingFromPort.value ?? undefined,
-      portId
-    )
+    connectNodes(linkingFrom.value, nodeId, linkingFromPort.value ?? undefined, portId)
     cancelLink()
     return
   }
@@ -5269,9 +5183,7 @@ function beginEdgesRewire(
   const affectedTargets = [...new Set(batch.map((edge) => edge.target))]
   graph.edges = graph.edges.filter((item) => !removeIds.has(item.id))
   if ([...removeIds].some((id) => selectedEdgeIds.value.has(id))) {
-    selectedEdgeIds.value = new Set(
-      [...selectedEdgeIds.value].filter((id) => !removeIds.has(id))
-    )
+    selectedEdgeIds.value = new Set([...selectedEdgeIds.value].filter((id) => !removeIds.has(id)))
   }
   for (const targetId of affectedTargets) {
     syncBundleDataTypeAfterEdgeChange(graph as GraphDocument, targetId)
@@ -5356,11 +5268,7 @@ function connectNodes(
   const outPort = findOutPort(source, sourcePortId)
   if (!outPort) return false
   let inPort = findCompatibleInPort(target, outPort.dataType, targetPortId)
-  if (
-    !inPort &&
-    isBundleNode(target) &&
-    isBundleAcceptableDataType(outPort.dataType)
-  ) {
+  if (!inPort && isBundleNode(target) && isBundleAcceptableDataType(outPort.dataType)) {
     inPort = findInPort(target, targetPortId ?? 'in') ?? undefined
   }
   if (!inPort) return false
@@ -5576,12 +5484,7 @@ function collectSelectImageItems(nodeId: string): GraphImageItem[] {
     // 宿主节点：按边上的源端口解析对应的内部边界输出，
     // 不能读合并后的节点画廊（generatedImages），否则每个端口都会拿到全部图片
     if (isAssetHostNode(source)) {
-      const soft = softResolveSourceOutput(
-        buildGraphJson(),
-        source.id,
-        sourcePort,
-        {}
-      )
+      const soft = softResolveSourceOutput(buildGraphJson(), source.id, sourcePort, {})
       if (soft && graphValueHasPayload(soft)) {
         for (const item of flattenImagesValues([soft])) pushItem(item)
       }
@@ -5673,8 +5576,7 @@ function onSelectImageOpen(nodeId: string): void {
   if (!node) return
   const items = collectSelectImageItems(nodeId)
   const selectedKey = node.params.selectedImageId?.trim() || ''
-  const selected =
-    pickImageItem(items, selectedKey) ?? (items[0] ? items[0] : undefined)
+  const selected = pickImageItem(items, selectedKey) ?? (items[0] ? items[0] : undefined)
   selectImage.open = true
   selectImage.nodeId = nodeId
   selectImage.title = nodeDisplayTitle(node)
@@ -5805,8 +5707,7 @@ function onSelectVideoOpen(nodeId: string): void {
   if (!node) return
   const items = collectSelectVideoItems(nodeId)
   const selected =
-    pickVideoItem(items, node.params.selectedVideoId) ??
-    (items[0] ? items[0] : undefined)
+    pickVideoItem(items, node.params.selectedVideoId) ?? (items[0] ? items[0] : undefined)
   selectVideo.open = true
   selectVideo.nodeId = nodeId
   selectVideo.title = nodeDisplayTitle(node)
@@ -5927,8 +5828,7 @@ function onSelectVoiceOpen(nodeId: string): void {
   if (!node) return
   const items = collectSelectVoiceItems(nodeId)
   const selected =
-    pickVoiceItem(items, node.params.selectedVoiceId) ??
-    (items[0] ? items[0] : undefined)
+    pickVoiceItem(items, node.params.selectedVoiceId) ?? (items[0] ? items[0] : undefined)
   selectVoice.open = true
   selectVoice.nodeId = nodeId
   selectVoice.title = nodeDisplayTitle(node)
@@ -5979,9 +5879,7 @@ function collectSelectTextItems(nodeId: string): GraphTextItem[] {
     const text = typeof item.text === 'string' ? item.text : ''
     const relativePath = item.relativePath?.trim() || ''
     if (!text.trim() && !relativePath) return
-    const keys = [item.id?.trim(), relativePath, text.trim() || ''].filter(
-      (k): k is string => !!k
-    )
+    const keys = [item.id?.trim(), relativePath, text.trim() || ''].filter((k): k is string => !!k)
     if (keys.some((k) => seen.has(k))) return
     for (const k of keys) seen.add(k)
     items.push({
@@ -6050,9 +5948,7 @@ function collectSelectBeatItems(nodeId: string): GraphTextItem[] {
     const sourcePort = edge.sourcePort ?? 'out'
     const runOut = runStates[source.id]?.outputs?.[sourcePort]
     const catalog =
-      catalogTextFromValue(runOut, GraphPortType.beat) ||
-      source.params.text?.trim() ||
-      ''
+      catalogTextFromValue(runOut, GraphPortType.beat) || source.params.text?.trim() || ''
     for (const row of parseBeatJson(catalog) ?? []) pushRow(row)
     if (source.assetId && (source.assetType === 'beat' || source.typeId === 'asset.beat')) {
       for (const row of loadBeatCatalog(source.assetId)) pushRow(row)
@@ -6065,19 +5961,14 @@ function onSelectTextOpen(nodeId: string): void {
   const node = graph.nodes.find((n) => n.id === nodeId)
   if (!node) return
   const isBeat = node.typeId === 'beat.select'
-  const items = isBeat
-    ? collectSelectBeatItems(nodeId)
-    : collectSelectTextItems(nodeId)
+  const items = isBeat ? collectSelectBeatItems(nodeId) : collectSelectTextItems(nodeId)
   const selectedId = isBeat
     ? node.params.selectedBeatId?.trim() || ''
     : node.params.selectedTextId?.trim() || ''
-  const selected =
-    pickTextItem(items, selectedId) ?? (items[0] ? items[0] : undefined)
+  const selected = pickTextItem(items, selectedId) ?? (items[0] ? items[0] : undefined)
   selectText.open = true
   selectText.nodeId = nodeId
-  selectText.title = isBeat
-    ? t('graph.selectBeat.appMark')
-    : nodeDisplayTitle(node)
+  selectText.title = isBeat ? t('graph.selectBeat.appMark') : nodeDisplayTitle(node)
   selectText.items = items
   selectText.selectedTextId = selected
     ? textItemKey(selected, Math.max(0, items.indexOf(selected)))
@@ -6371,9 +6262,7 @@ async function fillEditorSourceUrl(
   })()
   const timedOut = await Promise.race([
     load.then(() => false),
-    new Promise<boolean>((resolve) =>
-      setTimeout(() => resolve(true), EDITOR_SOURCE_URL_TIMEOUT_MS)
-    )
+    new Promise<boolean>((resolve) => setTimeout(() => resolve(true), EDITOR_SOURCE_URL_TIMEOUT_MS))
   ])
   if (seq !== editorSourceLoadSeq || !isCurrent()) return
   // 超时：先以空源图放行（工具页据此显示「无上游」提示），真实结果稍后到达仍会回填
@@ -7415,9 +7304,7 @@ async function materializeToolResult(
       node,
       hostAssetId: props.assetId ?? null
     })
-    const previous = (node.params.generatedImages ?? []).filter(
-      (item) => item.id?.trim() !== id
-    )
+    const previous = (node.params.generatedImages ?? []).filter((item) => item.id?.trim() !== id)
     const item: GraphImageItem = {
       id,
       dataUrl: '',
@@ -8011,13 +7898,8 @@ function flushLayerSplit(): void {
   recordGraphChange('layerSplit', before)
 }
 
-async function resolveLayerSplitLayerApiUrl(
-  node: GraphNode,
-  layerId: string
-): Promise<string> {
-  const item = (node.params.generatedImages ?? []).find(
-    (row) => row.id === layerId
-  )
+async function resolveLayerSplitLayerApiUrl(node: GraphNode, layerId: string): Promise<string> {
+  const item = (node.params.generatedImages ?? []).find((row) => row.id === layerId)
   if (item) {
     const urls = await resolveGraphImageUrls([item])
     const url = urls[0]?.trim()
@@ -8637,7 +8519,7 @@ watch(
 
 /** 已打开的宿主面板再次激活（双击宿主 / 切回面板）时重新注入外层输入 */
 watch(
-  () => (props.assetId ? workspace.hostInputSlotSyncNonce[props.assetId] ?? 0 : 0),
+  () => (props.assetId ? (workspace.hostInputSlotSyncNonce[props.assetId] ?? 0) : 0),
   (nonce, prev) => {
     if (!nonce || nonce === prev) return
     syncHostInputSlotsFromParents()
@@ -8722,94 +8604,90 @@ onMounted(() => {
     syncViewportHostSize()
     resizeObserver.observe(viewportEl.value)
   }
-  unregisterGraphHost = graphEditorHosts.register(
-    graphHostId.value,
-    {
-      getNode: (nodeId) => graph.nodes.find((n) => n.id === nodeId) ?? null,
-      findNode: (predicate) => graph.nodes.find(predicate) ?? null,
-      getDocument: () => cloneGraphDocument(buildGraphJson()),
-      getGroup: (groupId) => graph.groups?.find((group) => group.id === groupId) ?? null,
-      getGroupMemberIds: (groupId) =>
-        graph.nodes.filter((node) => node.groupId === groupId).map((node) => node.id),
-      listIncomingEdges: (nodeId, portId) =>
-        buildIncomingEdgeRefs(graph.edges, nodeId, portId),
-      removeEdge: (edgeId) => removeGraphEdge(edgeId),
-      reorderIncomingEdges: (nodeId, orderedEdgeIds) =>
-        reorderGraphIncomingEdges(nodeId, orderedEdgeIds),
-      updateNode: (nodeId, params, title) => {
-        const node = graph.nodes.find((n) => n.id === nodeId)
-        if (!node) return
-        const before = buildGraphJson()
-        node.params = { ...node.params, ...params }
-        if (title !== undefined) node.title = title
-        scheduleSave()
-        recordGraphChange('update-node', before)
-      },
-      addNode: (input) => {
-        if (!getNodeType(input.typeId)) return null
-        const before = buildGraphJson()
-        const linkFrom = input.linkFrom ?? []
-        const anchor = linkFrom.length
-          ? graph.nodes.find((node) => node.id === linkFrom[0]!.nodeId)
-          : undefined
-        const rect = viewportEl.value?.getBoundingClientRect()
-        const viewportCenter = rect
-          ? screenToWorld(rect.left + rect.width / 2, rect.top + rect.height / 2)
-          : { x: 0, y: 0 }
-        const node = createNodeFromType(
-          input.typeId,
-          input.position ??
-            (anchor
-              ? {
-                  x: anchor.position.x + (anchor.size?.w ?? 260) + 90,
-                  y: anchor.position.y
-                }
-              : viewportCenter),
-          {
-            ...(input.params ? { params: input.params } : {}),
-            title: input.title ?? graphTypeLabel(input.typeId)
-          }
-        )
-        graph.nodes.push(node)
-        for (const src of linkFrom) {
-          const source = graph.nodes.find((item) => item.id === src.nodeId)
-          if (!source || !canConnectNodes(source, node, { sourcePort: src.portId || 'out' })) {
-            continue
-          }
-          const outPort = findOutPort(source, src.portId || undefined)
-          const inPort = outPort ? findCompatibleInPort(node, outPort.dataType) : undefined
-          if (!outPort || !inPort) continue
-          graph.edges = connectEdgesWithShortcutPrune(graph.edges, {
-            sourceId: source.id,
-            targetId: node.id,
-            sourcePort: outPort.id,
-            targetPort: inPort.id,
-            edgeId: `edge-${crypto.randomUUID()}`
-          })
-        }
-        scheduleSave()
-        recordGraphChange('add-node', before)
-        requestPreviewVisibilityUpdate()
-        return node.id
-      },
-      updateGroup: (groupId, patch) => {
-        const group = graph.groups?.find((item) => item.id === groupId)
-        if (!group) return
-        const before = buildGraphJson()
-        if (patch.title !== undefined) group.title = patch.title
-        scheduleSave()
-        recordGraphChange('update-group', before)
-      },
-      setNodeAsset: (nodeId, asset) => setNodeAsset(nodeId, asset),
-      applyExternalGraph: (document) => {
-        applyGraphDocument(document)
-        applyViewportTransform(true)
-        requestPreviewVisibilityUpdate()
-        commitAssetGraph()
-      },
-      flush: () => flushSave()
+  unregisterGraphHost = graphEditorHosts.register(graphHostId.value, {
+    getNode: (nodeId) => graph.nodes.find((n) => n.id === nodeId) ?? null,
+    findNode: (predicate) => graph.nodes.find(predicate) ?? null,
+    getDocument: () => cloneGraphDocument(buildGraphJson()),
+    getGroup: (groupId) => graph.groups?.find((group) => group.id === groupId) ?? null,
+    getGroupMemberIds: (groupId) =>
+      graph.nodes.filter((node) => node.groupId === groupId).map((node) => node.id),
+    listIncomingEdges: (nodeId, portId) => buildIncomingEdgeRefs(graph.edges, nodeId, portId),
+    removeEdge: (edgeId) => removeGraphEdge(edgeId),
+    reorderIncomingEdges: (nodeId, orderedEdgeIds) =>
+      reorderGraphIncomingEdges(nodeId, orderedEdgeIds),
+    updateNode: (nodeId, params, title) => {
+      const node = graph.nodes.find((n) => n.id === nodeId)
+      if (!node) return
+      const before = buildGraphJson()
+      node.params = { ...node.params, ...params }
+      if (title !== undefined) node.title = title
+      scheduleSave()
+      recordGraphChange('update-node', before)
     },
-  )
+    addNode: (input) => {
+      if (!getNodeType(input.typeId)) return null
+      const before = buildGraphJson()
+      const linkFrom = input.linkFrom ?? []
+      const anchor = linkFrom.length
+        ? graph.nodes.find((node) => node.id === linkFrom[0]!.nodeId)
+        : undefined
+      const rect = viewportEl.value?.getBoundingClientRect()
+      const viewportCenter = rect
+        ? screenToWorld(rect.left + rect.width / 2, rect.top + rect.height / 2)
+        : { x: 0, y: 0 }
+      const node = createNodeFromType(
+        input.typeId,
+        input.position ??
+          (anchor
+            ? {
+                x: anchor.position.x + (anchor.size?.w ?? 260) + 90,
+                y: anchor.position.y
+              }
+            : viewportCenter),
+        {
+          ...(input.params ? { params: input.params } : {}),
+          title: input.title ?? graphTypeLabel(input.typeId)
+        }
+      )
+      graph.nodes.push(node)
+      for (const src of linkFrom) {
+        const source = graph.nodes.find((item) => item.id === src.nodeId)
+        if (!source || !canConnectNodes(source, node, { sourcePort: src.portId || 'out' })) {
+          continue
+        }
+        const outPort = findOutPort(source, src.portId || undefined)
+        const inPort = outPort ? findCompatibleInPort(node, outPort.dataType) : undefined
+        if (!outPort || !inPort) continue
+        graph.edges = connectEdgesWithShortcutPrune(graph.edges, {
+          sourceId: source.id,
+          targetId: node.id,
+          sourcePort: outPort.id,
+          targetPort: inPort.id,
+          edgeId: `edge-${crypto.randomUUID()}`
+        })
+      }
+      scheduleSave()
+      recordGraphChange('add-node', before)
+      requestPreviewVisibilityUpdate()
+      return node.id
+    },
+    updateGroup: (groupId, patch) => {
+      const group = graph.groups?.find((item) => item.id === groupId)
+      if (!group) return
+      const before = buildGraphJson()
+      if (patch.title !== undefined) group.title = patch.title
+      scheduleSave()
+      recordGraphChange('update-group', before)
+    },
+    setNodeAsset: (nodeId, asset) => setNodeAsset(nodeId, asset),
+    applyExternalGraph: (document) => {
+      applyGraphDocument(document)
+      applyViewportTransform(true)
+      requestPreviewVisibilityUpdate()
+      commitAssetGraph()
+    },
+    flush: () => flushSave()
+  })
   unregisterGraphRunHost = graphRunHosts.register(graphHostId.value, {
     runStates,
     isRunning,
@@ -9216,20 +9094,14 @@ defineExpose({
 }
 
 .grid-pattern-minor {
-  background-image: linear-gradient(
-      to right,
-      var(--graph-grid-minor) 1px,
-      transparent 1px
-    ),
+  background-image:
+    linear-gradient(to right, var(--graph-grid-minor) 1px, transparent 1px),
     linear-gradient(to bottom, var(--graph-grid-minor) 1px, transparent 1px);
 }
 
 .grid-pattern-major {
-  background-image: linear-gradient(
-      to right,
-      var(--graph-grid-major) 1px,
-      transparent 1px
-    ),
+  background-image:
+    linear-gradient(to right, var(--graph-grid-major) 1px, transparent 1px),
     linear-gradient(to bottom, var(--graph-grid-major) 1px, transparent 1px);
 }
 

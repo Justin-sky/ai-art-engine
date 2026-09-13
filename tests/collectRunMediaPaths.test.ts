@@ -22,7 +22,9 @@ function makeGraph(nodes: GraphNode[]): GraphDocument {
   return { nodes, edges: [], viewport: { x: 0, y: 0, zoom: 1 } }
 }
 
-function statesOf(entries: Record<string, Record<string, GraphValue>>): Record<string, GraphNodeRunState> {
+function statesOf(
+  entries: Record<string, Record<string, GraphValue>>
+): Record<string, GraphNodeRunState> {
   const states: Record<string, GraphNodeRunState> = {}
   for (const [nodeId, outputs] of Object.entries(entries)) {
     states[nodeId] = { status: 'done', outputs }
@@ -138,7 +140,11 @@ describe('collectRunMediaPaths', () => {
       const id = `gen-${i}`
       nodes.push(createNodeFromType('asset.image', { x: i * 100, y: 0 }, { id }))
       outputs[id] = {
-        out: { kind: 'image', dataUrl: '', relativePath: i < 2 ? 'Cache/dup.png' : `Cache/${i}.png` }
+        out: {
+          kind: 'image',
+          dataUrl: '',
+          relativePath: i < 2 ? 'Cache/dup.png' : `Cache/${i}.png`
+        }
       }
     }
 

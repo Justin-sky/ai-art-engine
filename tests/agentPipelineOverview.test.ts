@@ -33,7 +33,11 @@ describe('agent pipeline overview', () => {
     const nodes = [
       reviewNode(),
       reviewNode({ mediaReviewPending: false, mediaReviewStatus: 'PASS' }),
-      reviewNode({ mediaReviewPending: false, mediaReviewStatus: 'FAIL', mediaReviewReason: '糊脸' })
+      reviewNode({
+        mediaReviewPending: false,
+        mediaReviewStatus: 'FAIL',
+        mediaReviewReason: '糊脸'
+      })
     ]
     const rows = collectAgentReviewRows(nodes)
     expect(rows.map((r) => r.status)).toEqual(['pending', 'PASS', 'FAIL'])
@@ -50,7 +54,11 @@ describe('agent pipeline overview', () => {
     })
     const nodes = [
       reworkNode(),
-      reworkNode({ mediaReworkState: exhausted, mediaReviewStatus: 'FAIL', mediaReviewReason: '手指畸形' })
+      reworkNode({
+        mediaReworkState: exhausted,
+        mediaReviewStatus: 'FAIL',
+        mediaReviewReason: '手指畸形'
+      })
     ]
     const rows = collectAgentReworkRows(nodes)
     expect(rows[0]!.status).toBe('running')
@@ -72,8 +80,16 @@ describe('agent pipeline overview', () => {
     })
     const overview = buildAgentPipelineOverview([
       reviewNode(),
-      reviewNode({ mediaReviewPending: false, mediaReviewStatus: 'FAIL', mediaReviewReason: '错乱主体' }),
-      reworkNode({ mediaReworkState: exhausted, mediaReviewStatus: 'FAIL', mediaReviewReason: '多手指' })
+      reviewNode({
+        mediaReviewPending: false,
+        mediaReviewStatus: 'FAIL',
+        mediaReviewReason: '错乱主体'
+      }),
+      reworkNode({
+        mediaReworkState: exhausted,
+        mediaReviewStatus: 'FAIL',
+        mediaReviewReason: '多手指'
+      })
     ])
     expect(overview.hasPipeline).toBe(true)
     expect(overview.reviewRows).toHaveLength(2)

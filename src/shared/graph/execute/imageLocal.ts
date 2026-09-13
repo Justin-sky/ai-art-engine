@@ -222,9 +222,7 @@ export async function executeComposeNode(
   await ensureAlive(ctx)
 
   // 写回本次命中的主体框，让「只改画幅/策略重跑」不再重复检测
-  const nextState = composed.state
-    ? { ...state, ...composed.state }
-    : state
+  const nextState = composed.state ? { ...state, ...composed.state } : state
 
   const createdAt = new Date().toISOString()
   const stamp = Date.now()
@@ -246,10 +244,7 @@ export async function executeComposeNode(
     materializedBatch,
     `compose:${ctx.node.id}:${stamp}:keep`
   )
-  return commitGeneratedImages(
-    ctx,
-    generatedImages,
-    materializedBatch[0]?.relativePath?.trim(),
-    { imageCompose: nextState }
-  )
+  return commitGeneratedImages(ctx, generatedImages, materializedBatch[0]?.relativePath?.trim(), {
+    imageCompose: nextState
+  })
 }

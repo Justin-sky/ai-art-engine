@@ -8,11 +8,7 @@
  * 仅绑定几何、无 pose（= 中立站立 + T 臂）。返回的 rig 坐标在画布 px 上，
  * 可整体按 { x, groundY, height } 摆放；比例可按需二次微调。
  */
-import {
-  normalizeStage2dRig,
-  type Stage2dJoint,
-  type Stage2dRig
-} from './stage2dRig'
+import { normalizeStage2dRig, type Stage2dJoint, type Stage2dRig } from './stage2dRig'
 
 export interface HumanoidStage2dRigOptions {
   /** 角色中轴线 x（画布 px），默认 0 */
@@ -60,9 +56,7 @@ const TEMPLATE: Array<Omit<TemplateJointSpec, 'dx' | 'dy'> & { offset: [number, 
  * @param options.groundY 脚底 y（默认 = height，即 x 轴处落地）
  * @param options.height  特征身高 px（默认 100）
  */
-export function createHumanoidStage2dRig(
-  options: HumanoidStage2dRigOptions = {}
-): Stage2dRig {
+export function createHumanoidStage2dRig(options: HumanoidStage2dRigOptions = {}): Stage2dRig {
   const h = Math.max(1, options.height ?? 100)
   const x = options.x ?? 0
   const groundY = options.groundY ?? h
@@ -71,8 +65,8 @@ export function createHumanoidStage2dRig(
     id: spec.id,
     name: spec.name,
     parentId: spec.parentId,
-    x: Math.round((spec.offset[0] * h) * 1000) / 1000,
-    y: Math.round((spec.offset[1] * h) * 1000) / 1000,
+    x: Math.round(spec.offset[0] * h * 1000) / 1000,
+    y: Math.round(spec.offset[1] * h * 1000) / 1000,
     rotation: 0
   }))
   return normalizeStage2dRig({

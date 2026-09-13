@@ -168,9 +168,7 @@ describe('graphPlan materialize', () => {
       { scope: 'subgraphAsset', assetType: 'subgraph' }
     )
     expect(result.ok, result.error).toBe(true)
-    const split = result.document!.nodes.find(
-      (n) => n.typeId === 'image.gridSplit'
-    )!
+    const split = result.document!.nodes.find((n) => n.typeId === 'image.gridSplit')!
     expect(split.params.imageGridSplit).toMatchObject({
       rows: 2,
       cols: 2,
@@ -318,15 +316,11 @@ describe('graphPlan materialize', () => {
     const imageGens = wired.nodes.filter((n) => n.typeId === 'asset.image')
     expect(imageGens).toHaveLength(3)
     for (const gen of imageGens) {
-      const toBout = wired.edges.filter(
-        (e) => e.source === gen.id && boutIds.includes(e.target)
-      )
+      const toBout = wired.edges.filter((e) => e.source === gen.id && boutIds.includes(e.target))
       expect(toBout).toHaveLength(1)
     }
     expect(
-      new Set(
-        wired.edges.filter((e) => boutIds.includes(e.target)).map((e) => e.target)
-      ).size
+      new Set(wired.edges.filter((e) => boutIds.includes(e.target)).map((e) => e.target)).size
     ).toBe(3)
   })
 
@@ -339,12 +333,8 @@ describe('graphPlan materialize', () => {
     })
     expect(result.ok, result.error).toBe(true)
     const iface = inferHostInterfaceFromGraph(result.document!)
-    const videoOuts = iface.outputs.filter(
-      (p) => p.dataType === 'video' || p.dataType === 'videos'
-    )
-    const textOuts = iface.outputs.filter(
-      (p) => p.dataType === 'text' || p.dataType === 'texts'
-    )
+    const videoOuts = iface.outputs.filter((p) => p.dataType === 'video' || p.dataType === 'videos')
+    const textOuts = iface.outputs.filter((p) => p.dataType === 'text' || p.dataType === 'texts')
     // 36 路视频应收成一个视频组方形口，而不是 36 个单数口
     expect(videoOuts).toHaveLength(1)
     expect(videoOuts[0]).toMatchObject({
@@ -410,9 +400,7 @@ describe('graphPlan materialize', () => {
     )
     expect(reviewInEdges.length).toBe(14)
     // 汇总主节点已被槽节点替代，内部只保留逐个拆分的边界输出
-    expect(
-      wired.nodes.filter((n) => n.typeId === 'graph.boundary.output').length
-    ).toBe(40)
+    expect(wired.nodes.filter((n) => n.typeId === 'graph.boundary.output').length).toBe(40)
   })
 
   it('wires director review single out to its own boundary output', () => {
@@ -445,10 +433,7 @@ describe('graphPlan materialize', () => {
     const boutId = boundaryOutputNodeId(reviewOuts[0]!.id)
     expect(
       wired.edges.some(
-        (e) =>
-          e.source === review.id &&
-          (e.sourcePort ?? 'out') === 'out' &&
-          e.target === boutId
+        (e) => e.source === review.id && (e.sourcePort ?? 'out') === 'out' && e.target === boutId
       )
     ).toBe(true)
   })

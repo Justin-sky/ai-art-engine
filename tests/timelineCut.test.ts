@@ -6,7 +6,10 @@ import {
   planTimelineRoughCut,
   subtractRanges
 } from '../src/shared/graph/timelineCut'
-import type { ScriptTimelineClip, ScriptTimelineTrackKind } from '../src/shared/graph/scriptTimeline'
+import type {
+  ScriptTimelineClip,
+  ScriptTimelineTrackKind
+} from '../src/shared/graph/scriptTimeline'
 
 function clip(
   track: ScriptTimelineTrackKind,
@@ -68,11 +71,9 @@ describe('timelineCut: 语音 → 保留区间', () => {
   })
 
   it('paddingSec 可调：设为 0 时保留区间紧贴语音', () => {
-    const plan = buildKeepRangesFromSpeech(
-      [voice('v1', 0, 10)],
-      [{ startSec: 3, endSec: 4 }],
-      { paddingSec: 0 }
-    )
+    const plan = buildKeepRangesFromSpeech([voice('v1', 0, 10)], [{ startSec: 3, endSec: 4 }], {
+      paddingSec: 0
+    })
     expect(plan.keepRanges).toEqual([{ startSec: 3, endSec: 4 }])
   })
 
@@ -165,10 +166,13 @@ describe('timelineCut: 区间运算', () => {
 
 describe('timelineCut: ripple 前移', () => {
   it('片段被切开：保留子段各自带正确的 sourceOffsetSec', () => {
-    const result = planRippleCut([clip('video', 'c1', 0, 10, { sourceOffsetSec: 0 })], [
-      { startSec: 2.2, endSec: 4.8 },
-      { startSec: 7.2, endSec: 10 }
-    ])
+    const result = planRippleCut(
+      [clip('video', 'c1', 0, 10, { sourceOffsetSec: 0 })],
+      [
+        { startSec: 2.2, endSec: 4.8 },
+        { startSec: 7.2, endSec: 10 }
+      ]
+    )
     expect(result.clips).toHaveLength(2)
     expect(result.clips[0]).toMatchObject({
       id: 'c1',

@@ -5,10 +5,7 @@
     :class="{ 'sfw-window-editor': variant === 'editor' }"
     :aria-label="ariaLabel"
   >
-    <header
-      v-if="showTitlebar"
-      class="sfw-titlebar sfw-titlebar-embedded"
-    >
+    <header v-if="showTitlebar" class="sfw-titlebar sfw-titlebar-embedded">
       <div class="sfw-title">
         <slot name="title">
           <h3>{{ title }}</h3>
@@ -19,34 +16,22 @@
       </div>
     </header>
 
-    <div
-      v-if="showTitlebar && ($slots.subtitle || subtitle)"
-      class="sfw-subtitle"
-    >
+    <div v-if="showTitlebar && ($slots.subtitle || subtitle)" class="sfw-subtitle">
       <slot name="subtitle">
         <p>{{ subtitle }}</p>
       </slot>
     </div>
 
-    <div
-      class="sfw-body"
-      :class="bodyClass"
-    >
+    <div class="sfw-body" :class="bodyClass">
       <slot v-if="bodyReady" />
     </div>
 
-    <footer
-      v-if="$slots.footer"
-      class="sfw-footer"
-    >
+    <footer v-if="$slots.footer" class="sfw-footer">
       <slot name="footer" />
     </footer>
   </div>
 
-  <Teleport
-    v-else-if="open"
-    :to="teleportTarget"
-  >
+  <Teleport v-else-if="open" :to="teleportTarget">
     <div
       class="sfw-mask"
       :class="{ 'sfw-mask-dim': variant === 'editor', 'sfw-mask-detached': detached }"
@@ -67,10 +52,7 @@
         @mousedown.stop="onWindowMouseDown"
       >
         <!-- 无窗壳标题栏的弹窗：补一条系统拖动条，避开原生窗口按钮叠加区 -->
-        <div
-          v-if="detached && !showTitlebar"
-          class="sfw-detached-strip"
-        >
+        <div v-if="detached && !showTitlebar" class="sfw-detached-strip">
           <span class="sfw-detached-strip-title">{{ title }}</span>
           <button
             type="button"
@@ -83,20 +65,13 @@
           </button>
         </div>
 
-        <header
-          v-if="showTitlebar"
-          class="sfw-titlebar"
-          @mousedown.prevent="onDragStart"
-        >
+        <header v-if="showTitlebar" class="sfw-titlebar" @mousedown.prevent="onDragStart">
           <div class="sfw-title">
             <slot name="title">
               <h3>{{ title }}</h3>
             </slot>
           </div>
-          <div
-            class="sfw-title-actions"
-            @mousedown.stop
-          >
+          <div class="sfw-title-actions" @mousedown.stop>
             <slot name="title-actions" />
             <button
               v-if="canDetach && !detached"
@@ -130,27 +105,18 @@
           </div>
         </header>
 
-        <div
-          v-if="showTitlebar && ($slots.subtitle || subtitle)"
-          class="sfw-subtitle"
-        >
+        <div v-if="showTitlebar && ($slots.subtitle || subtitle)" class="sfw-subtitle">
           <slot name="subtitle">
             <p>{{ subtitle }}</p>
           </slot>
         </div>
 
-        <div
-          class="sfw-body"
-          :class="bodyClass"
-        >
+        <div class="sfw-body" :class="bodyClass">
           <!-- 先上屏窗壳，下一帧再挂内容，避免打开瞬间卡死 -->
           <slot v-if="bodyReady" />
         </div>
 
-        <footer
-          v-if="$slots.footer"
-          class="sfw-footer"
-        >
+        <footer v-if="$slots.footer" class="sfw-footer">
           <slot name="footer" />
         </footer>
 

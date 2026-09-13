@@ -78,15 +78,12 @@ describe('useGraphNodeInteraction drag threshold', () => {
       onNodesDragEnd
     })
 
-    onNodeDragStart(
-      'n1',
-      {
-        button: 0,
-        pointerId: 1,
-        clientX: 100,
-        clientY: 100
-      } as PointerEvent
-    )
+    onNodeDragStart('n1', {
+      button: 0,
+      pointerId: 1,
+      clientX: 100,
+      clientY: 100
+    } as PointerEvent)
     fire('pointermove', {
       pointerId: 1,
       clientX: 100 + NODE_DRAG_THRESHOLD_PX - 1,
@@ -127,15 +124,12 @@ describe('useGraphNodeInteraction drag threshold', () => {
       onNodesDragEnd
     })
 
-    onNodeDragStart(
-      'n1',
-      {
-        button: 0,
-        pointerId: 1,
-        clientX: 100,
-        clientY: 100
-      } as PointerEvent
-    )
+    onNodeDragStart('n1', {
+      button: 0,
+      pointerId: 1,
+      clientX: 100,
+      clientY: 100
+    } as PointerEvent)
     fire('pointermove', {
       pointerId: 1,
       clientX: 100 + NODE_DRAG_THRESHOLD_PX + 2,
@@ -173,15 +167,12 @@ describe('useGraphNodeInteraction drag threshold', () => {
       recordChange: () => undefined
     })
 
-    onNodeDragStart(
-      'n2',
-      {
-        button: 0,
-        pointerId: 1,
-        clientX: 100,
-        clientY: 100
-      } as PointerEvent
-    )
+    onNodeDragStart('n2', {
+      button: 0,
+      pointerId: 1,
+      clientX: 100,
+      clientY: 100
+    } as PointerEvent)
     expect(selectNode).toHaveBeenCalledWith(null)
     expect(selectedNodeIds.value).toEqual(new Set(['n1', 'n2', 'n3']))
 
@@ -215,15 +206,12 @@ describe('useGraphNodeInteraction drag threshold', () => {
       recordChange: () => undefined
     })
 
-    onNodeDragStart(
-      'n1',
-      {
-        button: 0,
-        pointerId: 1,
-        clientX: 50,
-        clientY: 50
-      } as PointerEvent
-    )
+    onNodeDragStart('n1', {
+      button: 0,
+      pointerId: 1,
+      clientX: 50,
+      clientY: 50
+    } as PointerEvent)
 
     expect(selectedNodeIds.value).toEqual(new Set(['n1', 'n2']))
     expect(selectNode).toHaveBeenCalledWith(null)

@@ -23,10 +23,7 @@
     <div class="bundle-body">
       <span class="bundle-plus">+</span>
       <span class="bundle-mark">{{ t('graph.bundle.title') }}</span>
-      <span
-        v-if="incomingCount"
-        class="bundle-count"
-      >{{ incomingCount }}</span>
+      <span v-if="incomingCount" class="bundle-count">{{ incomingCount }}</span>
     </div>
 
     <div
@@ -157,12 +154,11 @@ function onOutPortDown(portId: string, e: PointerEvent): void {
   box-sizing: border-box;
   border-radius: 999px;
   border: 1.5px solid color-mix(in srgb, var(--studio-border, #3a3a42) 80%, #7a8a9a);
-  background:
-    linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--studio-panel, #1e1e24) 88%, #4a6a7a) 0%,
-      color-mix(in srgb, var(--studio-panel, #1e1e24) 94%, #2a2a32) 100%
-    );
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--studio-panel, #1e1e24) 88%, #4a6a7a) 0%,
+    color-mix(in srgb, var(--studio-panel, #1e1e24) 94%, #2a2a32) 100%
+  );
   box-shadow: 0 1px 0 color-mix(in srgb, var(--studio-text, #ececf1) 6%, transparent) inset;
   cursor: grab;
   user-select: none;

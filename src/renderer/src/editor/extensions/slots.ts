@@ -30,10 +30,7 @@ export function createEditorWindowComponents(
   context: EditorWindowFactoryContext
 ): Record<string, VueComponent> {
   return Object.fromEntries(
-    listEditorWindows().map((definition) => [
-      definition.id,
-      definition.createComponent(context)
-    ])
+    listEditorWindows().map((definition) => [definition.id, definition.createComponent(context)])
   )
 }
 
@@ -55,9 +52,10 @@ export function registerToolbarItem(item: WorkspaceToolbarItem): () => void {
   }
 }
 
-export function listRegisteredToolbarItems(
-  options?: { toolbar?: boolean; assetMenu?: boolean }
-): ResolvedWorkspaceToolbarItem[] {
+export function listRegisteredToolbarItems(options?: {
+  toolbar?: boolean
+  assetMenu?: boolean
+}): ResolvedWorkspaceToolbarItem[] {
   return [...toolbarItemsRef.value.values()]
     .filter((item) => item.enabled !== false)
     .filter((item) => {

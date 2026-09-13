@@ -145,7 +145,11 @@ describe('computeSpriteAlignPlan：统一画布放置', () => {
   })
 
   it('fitWithinWidth：宽幅素材放高会超宽时收缩到画布内', () => {
-    const wide = { srcWidth: 1024, srcHeight: 256, bounds: { x: 0, y: 0, width: 1024, height: 256 } }
+    const wide = {
+      srcWidth: 1024,
+      srcHeight: 256,
+      bounds: { x: 0, y: 0, width: 1024, height: 256 }
+    }
     const plan = computeSpriteAlignPlan(wide, {
       canvasWidth: 512,
       canvasHeight: 512,
@@ -195,7 +199,10 @@ describe('estimateContentTranslation：平移去抖估计', () => {
   const ref = makeFrame(64, 64, [[20, 20, 16, 16]])
 
   it('同内容零平移 → (0,0)', () => {
-    expect(estimateContentTranslation(ref, makeFrame(64, 64, [[20, 20, 16, 16]]))).toEqual({ dx: 0, dy: 0 })
+    expect(estimateContentTranslation(ref, makeFrame(64, 64, [[20, 20, 16, 16]]))).toEqual({
+      dx: 0,
+      dy: 0
+    })
   })
 
   it('内容右移 +4 → 需左移 dx=-4 对齐', () => {
@@ -214,9 +221,10 @@ describe('estimateContentTranslation：平移去抖估计', () => {
   })
 
   it('尺寸不一致返回 (0,0)', () => {
-    expect(
-      estimateContentTranslation(ref, makeFrame(32, 64, [[5, 5, 8, 8]]))
-    ).toEqual({ dx: 0, dy: 0 })
+    expect(estimateContentTranslation(ref, makeFrame(32, 64, [[5, 5, 8, 8]]))).toEqual({
+      dx: 0,
+      dy: 0
+    })
   })
 })
 

@@ -14,15 +14,23 @@ describe('EditorCommandService', () => {
     await service.execute({
       id: 'a+1',
       label: 'A',
-      execute: () => { a += 1 },
-      undo: () => { a -= 1 }
+      execute: () => {
+        a += 1
+      },
+      undo: () => {
+        a -= 1
+      }
     })
     service.setActiveScope('b')
     await service.execute({
       id: 'b+1',
       label: 'B',
-      execute: () => { b += 1 },
-      undo: () => { b -= 1 }
+      execute: () => {
+        b += 1
+      },
+      undo: () => {
+        b -= 1
+      }
     })
 
     await service.undo()
@@ -39,15 +47,23 @@ describe('EditorCommandService', () => {
       id: 'first',
       label: 'Edit',
       mergeKey: 'field',
-      execute: () => { value = 1 },
-      undo: () => { value = 0 }
+      execute: () => {
+        value = 1
+      },
+      undo: () => {
+        value = 0
+      }
     })
     await service.execute({
       id: 'second',
       label: 'Edit',
       mergeKey: 'field',
-      execute: () => { value = 2 },
-      undo: () => { value = 1 }
+      execute: () => {
+        value = 2
+      },
+      undo: () => {
+        value = 1
+      }
     })
     await service.undo()
     expect(value).toBe(0)
@@ -59,7 +75,12 @@ describe('EditorDocumentService', () => {
 
   it('tracks clean, dirty, saving and saved states', async () => {
     let resolveSave!: () => void
-    const save = vi.fn(() => new Promise<void>((resolve) => { resolveSave = resolve }))
+    const save = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveSave = resolve
+        })
+    )
     const service = new EditorDocumentService(new EditorEventBus())
     service.register({ id: 'doc', save })
 

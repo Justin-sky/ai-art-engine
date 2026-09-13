@@ -2,51 +2,28 @@
   <div class="home">
     <section class="hero">
       <div class="hero-brand">
-        <img
-          class="hero-mark"
-          :src="iconUrl"
-          alt=""
-        >
-        <h1 class="hero-title">
-          AI Art Engine
-        </h1>
+        <img class="hero-mark" :src="iconUrl" alt="" />
+        <h1 class="hero-title">AI Art Engine</h1>
       </div>
       <p>{{ t('home.tagline') }}</p>
       <div class="actions">
-        <button
-          class="primary"
-          @click="openCreateDialog"
-        >
+        <button class="primary" @click="openCreateDialog">
           {{ t('home.createProject') }}
         </button>
         <button @click="onOpen">
           {{ t('home.openProject') }}
         </button>
       </div>
-      <p
-        v-if="errorMessage"
-        class="error"
-      >
+      <p v-if="errorMessage" class="error">
         {{ errorMessage }}
       </p>
     </section>
 
-    <section
-      v-if="recent.length"
-      class="recent"
-    >
+    <section v-if="recent.length" class="recent">
       <h2>{{ t('home.recentProjects') }}</h2>
       <ul>
-        <li
-          v-for="path in recent"
-          :key="path"
-          class="recent-row"
-        >
-          <button
-            type="button"
-            class="linkish"
-            @click="openProjectPath(path)"
-          >
+        <li v-for="path in recent" :key="path" class="recent-row">
+          <button type="button" class="linkish" @click="openProjectPath(path)">
             {{ path }}
           </button>
           <button
@@ -72,10 +49,7 @@
       :min-height="240"
       @close="closeCreateDialog"
     >
-      <form
-        class="create-form"
-        @submit.prevent="confirmCreate"
-      >
+      <form class="create-form" @submit.prevent="confirmCreate">
         <label>
           {{ t('home.dialog.projectName') }}
           <input
@@ -84,7 +58,7 @@
             required
             placeholder="MyShortFilm"
             @keydown.esc.prevent="closeCreateDialog"
-          >
+          />
         </label>
         <label>
           {{ t('home.dialog.storageDir') }}
@@ -93,26 +67,17 @@
               v-model="parentDir"
               readonly
               :placeholder="t('home.dialog.selectDirPlaceholder')"
-            >
-            <button
-              type="button"
-              @click="pickCreateDir"
-            >{{ t('common.browse') }}</button>
+            />
+            <button type="button" @click="pickCreateDir">{{ t('common.browse') }}</button>
           </div>
         </label>
-        <p
-          v-if="createError"
-          class="form-error"
-        >
+        <p v-if="createError" class="form-error">
           {{ createError }}
         </p>
       </form>
 
       <template #footer>
-        <button
-          type="button"
-          @click="closeCreateDialog"
-        >
+        <button type="button" @click="closeCreateDialog">
           {{ t('common.cancel') }}
         </button>
         <button
@@ -191,8 +156,7 @@ async function onOpen(): Promise<void> {
   gap: 40px;
   background:
     radial-gradient(ellipse at 30% 20%, #1e2a3a 0%, transparent 50%),
-    radial-gradient(ellipse at 70% 80%, #1a2420 0%, transparent 45%),
-    var(--bg);
+    radial-gradient(ellipse at 70% 80%, #1a2420 0%, transparent 45%), var(--bg);
   padding: 40px;
 }
 

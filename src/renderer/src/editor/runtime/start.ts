@@ -37,6 +37,9 @@ export async function stopEditorRuntime(): Promise<void> {
   await ctx.stop()
 }
 
-export function loadEditorPlugin(plugin: Parameters<Context['plugin']>[0], config?: unknown): ForkScope {
+export function loadEditorPlugin(
+  plugin: Parameters<Context['plugin']>[0],
+  config?: unknown
+): ForkScope {
   return useEditorContext().plugin(plugin, config)
 }

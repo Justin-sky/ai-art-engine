@@ -110,10 +110,7 @@ export function folderChildren(folders: AssetFolder[], parentId: string | null):
  * Collect folderId and all descendant folder ids.
  * Returned deepest-first so children can be removed before parents.
  */
-export function collectFolderSubtreeIds(
-  folders: AssetFolder[],
-  folderId: string
-): string[] {
+export function collectFolderSubtreeIds(folders: AssetFolder[], folderId: string): string[] {
   const normalized = normalizeFolders(folders)
   const byParent = new Map<string | null, AssetFolder[]>()
   for (const folder of normalized) {

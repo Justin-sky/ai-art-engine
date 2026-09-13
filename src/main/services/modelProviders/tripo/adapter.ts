@@ -161,10 +161,7 @@ export const tripoAdapter: ModelProviderAdapter = {
     }
 
     try {
-      const { data } = await client.post<{ data?: { task_id?: string } }>(
-        '/v2/openapi/task',
-        body
-      )
+      const { data } = await client.post<{ data?: { task_id?: string } }>('/v2/openapi/task', body)
       const taskId = data?.data?.task_id
       if (!taskId) throw fail(E_TRIPO_NO_TASK_ID)
       return {

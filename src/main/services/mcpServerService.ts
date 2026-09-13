@@ -1,6 +1,14 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { randomUUID, timingSafeEqual } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, statSync, appendFileSync, renameSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  statSync,
+  appendFileSync,
+  renameSync,
+  writeFileSync
+} from 'node:fs'
 import { join } from 'node:path'
 import { app, ipcMain } from 'electron'
 import { AsyncSemaphore } from '@shared/asyncSemaphore'
@@ -38,10 +46,7 @@ import {
   type TimelineExportClip,
   type TimelineExportInput
 } from '@shared/graph'
-import {
-  planTimelineRoughCut,
-  type TimelineRoughCutWarning
-} from '@shared/graph/timelineCut'
+import { planTimelineRoughCut, type TimelineRoughCutWarning } from '@shared/graph/timelineCut'
 import {
   applyTimelineEdits,
   type TimelineClipDraft,
@@ -142,7 +147,12 @@ const MCP_GEN_LIMIT = Number(process.env.AIAE_MCP_GEN_LIMIT) || 3
 /** 审计日志单文件上限（超过滚动为 .1） */
 const MCP_AUDIT_MAX_BYTES = 5 * 1024 * 1024
 /** 纳入并发闸门的工具（同步等待的耗时生成/规划） */
-const GATED_TOOLS = new Set(['generate_image', 'generate_speech', 'generate_music', 'workflow_plan'])
+const GATED_TOOLS = new Set([
+  'generate_image',
+  'generate_speech',
+  'generate_music',
+  'workflow_plan'
+])
 
 interface McpToolDef {
   name: string
@@ -185,9 +195,7 @@ async function runGenActivity<T>(
   fn: () => Promise<T>,
   describe: (result: T) => { assetId?: string; relativePath?: string },
   settle?: (result: T) => void | Promise<void>,
-  apiCall?: (
-    result: T
-  ) => Omit<GraphRunLogApiCall, 'id' | 'ts'> | undefined
+  apiCall?: (result: T) => Omit<GraphRunLogApiCall, 'id' | 'ts'> | undefined
 ): Promise<T> {
   const activityId = mcpActivityService.begin({ tool, title, model })
   try {
@@ -218,7 +226,10 @@ function activityTitle(name: string | undefined, prompt: string): string {
  * 取资产最新的相对路径：资产可能已被 applyAssetFolder 按 folderId 搬移，
  * 活动终态 / 工具返回值都必须用最终路径，否则界面预览会指向失效文件。
  */
-function liveAssetRelativePath(result: { assetId?: string; relativePath?: string }): string | undefined {
+function liveAssetRelativePath(result: {
+  assetId?: string
+  relativePath?: string
+}): string | undefined {
   if (!result.assetId) return result.relativePath
   const live = projectService.listAssets().find((item) => item.id === result.assetId)
   return live?.relativePath || result.relativePath
@@ -362,7 +373,8 @@ const TOOL_DEFS: McpToolDef[] = [
         section: {
           type: 'string',
           enum: ['style', 'camera', 'character', 'other'],
-          description: '记忆分类：style（风格）/ camera（机位与镜头）/ character（角色一致性）/ other（其它）'
+          description:
+            '记忆分类：style（风格）/ camera（机位与镜头）/ character（角色一致性）/ other（其它）'
         },
         content: {
           type: 'string',
@@ -562,7 +574,10 @@ const TOOL_DEFS: McpToolDef[] = [
       properties: {
         type: { type: 'string', description: '资产类型（见工具描述白名单）' },
         name: { type: 'string', description: '资产名称（可选，缺省按类型自动命名）' },
-        folderId: { type: 'string', description: '目标资产库文件夹 id（可选，缺省放资产库根目录）' },
+        folderId: {
+          type: 'string',
+          description: '目标资产库文件夹 id（可选，缺省放资产库根目录）'
+        },
         prompt: { type: 'string', description: '初始提示词 / 摘要（可选）' },
         notes: { type: 'string', description: '备注（可选）' }
       },
@@ -817,7 +832,10 @@ const TOOL_DEFS: McpToolDef[] = [
           description: '要打包的资产库文件夹 id（含子文件夹）'
         },
         includeDependencies: { type: 'boolean', description: '是否收集依赖资产（默认 true）' },
-        includeGeneratedOutputs: { type: 'boolean', description: '是否一并打包生成缓存（默认 false）' }
+        includeGeneratedOutputs: {
+          type: 'boolean',
+          description: '是否一并打包生成缓存（默认 false）'
+        }
       },
       required: ['targetPath']
     },
@@ -926,7 +944,10 @@ const TOOL_DEFS: McpToolDef[] = [
             type: 'object',
             properties: {
               kind: { type: 'string', enum: [...UI_KIT_PART_KINDS], description: '部件类型' },
-              name: { type: 'string', description: '部件名（同时作为落盘文件名，建议 kebab-case）' },
+              name: {
+                type: 'string',
+                description: '部件名（同时作为落盘文件名，建议 kebab-case）'
+              },
               rect: {
                 type: 'object',
                 description: '源图内的像素矩形（左上角坐标 + 宽高）',
@@ -1098,7 +1119,10 @@ const TOOL_DEFS: McpToolDef[] = [
         nodeId: { type: 'string', description: '时间线节点 id（缺省默认时间线）' },
         paddingSec: { type: 'number', description: '每句语音前后保留的呼吸边距（秒，默认 0.2）' },
         minSilenceSec: { type: 'number', description: '净静默达到该时长才剪（秒，默认 0.8）' },
-        apply: { type: 'boolean', description: '是否把计划写回时间线（默认 false，只回计划不落盘）' }
+        apply: {
+          type: 'boolean',
+          description: '是否把计划写回时间线（默认 false，只回计划不落盘）'
+        }
       },
       required: ['assetId', 'segments']
     },
@@ -1254,7 +1278,8 @@ const TOOL_DEFS: McpToolDef[] = [
               mode: {
                 type: 'string',
                 enum: ['replace', 'append'],
-                description: 'subtitles：replace（默认，替换该配音区间上的旧字幕）或 append（直接追加）'
+                description:
+                  'subtitles：replace（默认，替换该配音区间上的旧字幕）或 append（直接追加）'
               }
             },
             required: ['op']
@@ -1341,10 +1366,7 @@ const TOOL_DEFS: McpToolDef[] = [
         ...(Array.isArray(args.atSec) ? { atSec: args.atSec.map((sec) => Number(sec)) } : {})
       })
       if (!plan.timestamps.length) {
-        const reason = plan.notes
-          .map(previewNoteText)
-          .filter(Boolean)
-          .join('；')
+        const reason = plan.notes.map(previewNoteText).filter(Boolean).join('；')
         throw new Error(reason || '没有可抽帧的画面')
       }
       const width = Number(args.width)
@@ -1519,7 +1541,10 @@ const TOOL_DEFS: McpToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        assetId: { type: 'string', description: '宿主资产 id（asset_list 或 workflow_commit 返回）' }
+        assetId: {
+          type: 'string',
+          description: '宿主资产 id（asset_list 或 workflow_commit 返回）'
+        }
       },
       required: ['assetId']
     },
@@ -1528,8 +1553,7 @@ const TOOL_DEFS: McpToolDef[] = [
       const assetId = readString(args, 'assetId')
       const asset = projectService.listAssets().find((item) => item.id === assetId)
       const graphJson = (asset?.genParams as Record<string, unknown> | undefined)?.graphJson as
-        | GraphDocument
-        | undefined
+        GraphDocument | undefined
       if (!asset || !graphJson || !Array.isArray(graphJson.nodes)) {
         throw new Error('资产不存在或不含图文档（task_run 仅支持宿主资产子图）')
       }
@@ -1568,7 +1592,8 @@ const TOOL_DEFS: McpToolDef[] = [
   {
     name: 'task_status',
     title: '任务状态',
-    description: '查询 task_run 返回的 mcpTaskId 当前执行状态（running / done / error / stopped）。',
+    description:
+      '查询 task_run 返回的 mcpTaskId 当前执行状态（running / done / error / stopped）。',
     inputSchema: {
       type: 'object',
       properties: { mcpTaskId: { type: 'string' } },
@@ -1640,7 +1665,8 @@ const TOOL_DEFS: McpToolDef[] = [
         typeId: { type: 'string', description: '只查该节点类型；缺省返回全部可添加类型' },
         includeParams: {
           type: 'boolean',
-          description: 'true 时附带每种节点的默认参数（可作 node_upsert 的 params 起点；默认 false）'
+          description:
+            'true 时附带每种节点的默认参数（可作 node_upsert 的 params 起点；默认 false）'
         }
       },
       required: []
@@ -1699,8 +1725,7 @@ const TOOL_DEFS: McpToolDef[] = [
       const assetId = readString(args, 'assetId')
       const asset = projectService.listAssets().find((item) => item.id === assetId)
       const graphJson = (asset?.genParams as Record<string, unknown> | undefined)?.graphJson as
-        | GraphDocument
-        | undefined
+        GraphDocument | undefined
       if (!asset || !graphJson || !Array.isArray(graphJson.nodes)) {
         throw new Error('资产不存在或不含图文档（仅支持宿主资产子图）')
       }
@@ -1745,7 +1770,10 @@ const TOOL_DEFS: McpToolDef[] = [
                 enum: ['node_upsert', 'node_update', 'node_delete', 'edge_connect', 'edge_delete']
               },
               nodeId: { type: 'string' },
-              typeId: { type: 'string', description: 'node_upsert 必填，如 asset.image / play.script' },
+              typeId: {
+                type: 'string',
+                description: 'node_upsert 必填，如 asset.image / play.script'
+              },
               title: { type: 'string' },
               params: { type: 'object', description: '节点参数（浅合并）' },
               fromNodeId: { type: 'string' },
@@ -1764,8 +1792,7 @@ const TOOL_DEFS: McpToolDef[] = [
       const assetId = readString(args, 'assetId')
       const asset = projectService.listAssets().find((item) => item.id === assetId)
       const graphJson = (asset?.genParams as Record<string, unknown> | undefined)?.graphJson as
-        | GraphDocument
-        | undefined
+        GraphDocument | undefined
       if (!asset || !graphJson || !Array.isArray(graphJson.nodes)) {
         throw new Error('资产不存在或不含图文档（graph_edit 仅支持宿主资产子图）')
       }
@@ -1824,8 +1851,7 @@ const TOOL_DEFS: McpToolDef[] = [
       const cellKey = readString(args, 'cellKey')
       const asset = projectService.listAssets().find((item) => item.id === assetId)
       const graphJson = (asset?.genParams as Record<string, unknown> | undefined)?.graphJson as
-        | GraphDocument
-        | undefined
+        GraphDocument | undefined
       if (!asset || !graphJson || !Array.isArray(graphJson.nodes)) {
         throw new Error('资产不存在或不含图文档（graph_icon_refine 仅支持宿主资产子图）')
       }
@@ -1907,7 +1933,10 @@ const TOOL_DEFS: McpToolDef[] = [
         speed: { type: 'number', description: '语速' },
         outputDir: { type: 'string', description: '工程内相对输出目录' },
         folderId: { type: 'string', description: '资产库文件夹 id（folder_list 查询）' },
-        extraParams: { type: 'object', description: '低频参数透传（如 responseFormat / 参考图），合并进底层生成输入' }
+        extraParams: {
+          type: 'object',
+          description: '低频参数透传（如 responseFormat / 参考图），合并进底层生成输入'
+        }
       },
       required: ['input']
     },
@@ -1920,7 +1949,8 @@ const TOOL_DEFS: McpToolDef[] = [
         model: optionalString(args, 'model'),
         providerInstanceId: optionalString(args, 'providerInstanceId'),
         voice: optionalString(args, 'voice'),
-        speed: typeof args.speed === 'number' && Number.isFinite(args.speed) ? args.speed : undefined,
+        speed:
+          typeof args.speed === 'number' && Number.isFinite(args.speed) ? args.speed : undefined,
         name: optionalString(args, 'name'),
         outputDir: optionalString(args, 'outputDir')
       }
@@ -1966,15 +1996,28 @@ const TOOL_DEFS: McpToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        prompt: { type: 'string', description: '音乐描述：风格 / 情绪 / 场景（如「轻快明亮的电子配乐，适合 Vlog」）' },
+        prompt: {
+          type: 'string',
+          description: '音乐描述：风格 / 情绪 / 场景（如「轻快明亮的电子配乐，适合 Vlog」）'
+        },
         name: { type: 'string', description: '资产显示名' },
-        model: { type: 'string', description: '音乐模型 id（models_list 查询，如 music-3.0 / fun-music-v1）' },
+        model: {
+          type: 'string',
+          description: '音乐模型 id（models_list 查询，如 music-3.0 / fun-music-v1）'
+        },
         providerInstanceId: { type: 'string', description: '提供商实例 id' },
-        lyrics: { type: 'string', description: '歌词（纯音乐时省略；多段用 \\n 分隔，支持 [Intro]/[Verse]/[Chorus] 结构标签）' },
+        lyrics: {
+          type: 'string',
+          description:
+            '歌词（纯音乐时省略；多段用 \\n 分隔，支持 [Intro]/[Verse]/[Chorus] 结构标签）'
+        },
         instrumental: { type: 'boolean', description: '是否纯音乐（无歌词 / 人声），缺省 true' },
         outputDir: { type: 'string', description: '工程内相对输出目录（缺省 Cache/Music）' },
         folderId: { type: 'string', description: '资产库文件夹 id（folder_list 查询）' },
-        extraParams: { type: 'object', description: '低频参数透传（如 audio_setting），合并进底层生成输入' }
+        extraParams: {
+          type: 'object',
+          description: '低频参数透传（如 audio_setting），合并进底层生成输入'
+        }
       },
       required: ['prompt']
     },
@@ -2095,10 +2138,18 @@ const TOOL_DEFS: McpToolDef[] = [
         },
         outputDir: {
           type: 'string',
-          description: '工程内相对输出目录（缺省 Cache/Images，只落盘不登记资产；指定 Assets/ 下目录则同时登记为资产）'
+          description:
+            '工程内相对输出目录（缺省 Cache/Images，只落盘不登记资产；指定 Assets/ 下目录则同时登记为资产）'
         },
-        folderId: { type: 'string', description: '资产库文件夹 id（folder_list 查询），界面分类用' },
-        extraParams: { type: 'object', description: '低频参数透传（如 seed / quality / resolution），合并进底层生成输入；同名常用参数以显式传参为准' }
+        folderId: {
+          type: 'string',
+          description: '资产库文件夹 id（folder_list 查询），界面分类用'
+        },
+        extraParams: {
+          type: 'object',
+          description:
+            '低频参数透传（如 seed / quality / resolution），合并进底层生成输入；同名常用参数以显式传参为准'
+        }
       },
       required: ['prompt']
     },
@@ -2174,7 +2225,10 @@ const TOOL_DEFS: McpToolDef[] = [
         },
         outputDir: { type: 'string', description: '工程内相对输出目录（缺省 Cache/Videos）' },
         folderId: { type: 'string', description: '资产库文件夹 id（folder_list 查询）' },
-        extraParams: { type: 'object', description: '低频参数透传（如 resolution / size / seed），合并进底层生成输入' }
+        extraParams: {
+          type: 'object',
+          description: '低频参数透传（如 resolution / size / seed），合并进底层生成输入'
+        }
       },
       required: ['prompt']
     },
@@ -2186,7 +2240,10 @@ const TOOL_DEFS: McpToolDef[] = [
         name: optionalString(args, 'name'),
         model: optionalString(args, 'model'),
         providerInstanceId: optionalString(args, 'providerInstanceId'),
-        duration: typeof args.duration === 'number' && Number.isFinite(args.duration) ? args.duration : undefined,
+        duration:
+          typeof args.duration === 'number' && Number.isFinite(args.duration)
+            ? args.duration
+            : undefined,
         aspectRatio: optionalString(args, 'aspectRatio'),
         generateAudio: typeof args.generateAudio === 'boolean' ? args.generateAudio : undefined,
         firstFrameImageUrl: optionalString(args, 'firstFrameImageUrl'),
@@ -2249,7 +2306,8 @@ const TOOL_DEFS: McpToolDef[] = [
         providerInstanceId: { type: 'string', description: '提供商实例 id' },
         style: {
           type: 'string',
-          description: '风格：photorealistic / cartoon / anime / hand_painted / cyberpunk / fantasy / glass'
+          description:
+            '风格：photorealistic / cartoon / anime / hand_painted / cyberpunk / fantasy / glass'
         },
         referenceImageUrls: {
           type: 'array',
@@ -2258,7 +2316,10 @@ const TOOL_DEFS: McpToolDef[] = [
             '参考图（图生 3D / 多图生 3D）：支持 http(s) 地址、data URL、工程内相对路径或本地绝对路径。3D 供应商仅接受 http(s) 图片，相对/本地路径会自动上传到已配置的对象存储转换为公网 URL（未配置对象存储时报错，可用 storage_status 查询）'
         },
         folderId: { type: 'string', description: '资产库文件夹 id（folder_list 查询）' },
-        extraParams: { type: 'object', description: '低频参数透传（模型特有字段），合并进底层生成输入' }
+        extraParams: {
+          type: 'object',
+          description: '低频参数透传（模型特有字段），合并进底层生成输入'
+        }
       },
       required: ['prompt']
     },
@@ -2569,7 +2630,8 @@ function resolveTimelineDraft(value: unknown, label: string): TimelineClipDraft 
   }
   const row = { ...(value as Record<string, unknown>) }
   const track = typeof row.track === 'string' ? row.track.trim() : ''
-  if (!track) throw new Error(`${label} 缺少 track（video / overlay / voice / subtitle / music / sfx）`)
+  if (!track)
+    throw new Error(`${label} 缺少 track（video / overlay / voice / subtitle / music / sfx）`)
   const durationSec = Number(row.durationSec)
   if (!Number.isFinite(durationSec) || durationSec <= 0) {
     throw new Error(`${label} 缺少合法的 durationSec（秒，需大于 0）`)
@@ -2699,9 +2761,10 @@ function resolveProjectRelativePath(
 
 /** 读取 extraParams 透传对象：剥离内部回写绑定字段，避免外部注入节点级回写 */
 function extraParamsOf(args: Record<string, unknown>): Record<string, unknown> {
-  const extra = args.extraParams && typeof args.extraParams === 'object'
-    ? { ...(args.extraParams as Record<string, unknown>) }
-    : {}
+  const extra =
+    args.extraParams && typeof args.extraParams === 'object'
+      ? { ...(args.extraParams as Record<string, unknown>) }
+      : {}
   delete extra.graphBinding
   return extra
 }
@@ -2974,7 +3037,8 @@ function summarizeArgs(args: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(args)) {
     if (typeof value === 'string') out[key] = truncateText(value)
-    else if (typeof value === 'number' || typeof value === 'boolean' || value === null) out[key] = value
+    else if (typeof value === 'number' || typeof value === 'boolean' || value === null)
+      out[key] = value
     else if (Array.isArray(value)) out[key] = `[${value.length} 项]`
     else if (typeof value === 'object') out[key] = truncateText(JSON.stringify(value))
   }
@@ -3005,12 +3069,13 @@ function appendMcpAudit(entry: {
       ok: entry.ok,
       durationMs: entry.durationMs,
       args: summarizeArgs(entry.args),
-      ...(entry.error !== undefined
-        ? { error: truncateText(String(entry.error), 300) }
-        : {})
+      ...(entry.error !== undefined ? { error: truncateText(String(entry.error), 300) } : {})
     })
-    appendFileSync(path, `${line}
-`)
+    appendFileSync(
+      path,
+      `${line}
+`
+    )
   } catch {
     /* 审计写失败不影响工具调用 */
   }
@@ -3098,7 +3163,13 @@ function auditDeniedToolCall(name: string, args: Record<string, unknown>, reason
 /** MCP 协议处理（streamable HTTP /mcp 端点与 stdio 桥共用同一工具面） */
 let mcpServerVersion = '0.0.0'
 const handleMcpProtocolMessage = createMcpProtocolHandler({
-  serverInfo: { name: 'aiartengine', title: 'AiArtEngine', get version() { return mcpServerVersion } },
+  serverInfo: {
+    name: 'aiartengine',
+    title: 'AiArtEngine',
+    get version() {
+      return mcpServerVersion
+    }
+  },
   listTools: (ctx) => {
     const view = accessViewFor(ctx)
     return TOOL_DEFS.filter(({ name }) => isToolVisible(toolAccessOf(name), view)).map(
@@ -3379,7 +3450,11 @@ async function onRequest(req: IncomingMessage, res: ServerResponse): Promise<voi
     try {
       message = JSON.parse(body)
     } catch {
-      sendJson(res, 400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'JSON 解析失败' } })
+      sendJson(res, 400, {
+        jsonrpc: '2.0',
+        id: null,
+        error: { code: -32700, message: 'JSON 解析失败' }
+      })
       return
     }
     // 客户端断开连接即视为取消：中止进行中的长任务（如 workflow_plan）

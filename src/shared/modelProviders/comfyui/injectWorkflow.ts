@@ -77,7 +77,9 @@ export const LOAD_AUDIO_CLASSES = new Set([
 ])
 
 function className(node: ComfyApiNode): string {
-  return String(node.class_type ?? '').trim().toLowerCase()
+  return String(node.class_type ?? '')
+    .trim()
+    .toLowerCase()
 }
 
 function titleOf(node: ComfyApiNode): string {
@@ -107,7 +109,9 @@ function classTypesFromNode(node: Record<string, unknown>): string[] {
   const meta = node._meta
   const title =
     meta && typeof meta === 'object' ? String((meta as { title?: unknown }).title ?? '').trim() : ''
-  return [String(node.type ?? '').trim(), String(node.class_type ?? '').trim(), title].filter(Boolean)
+  return [String(node.type ?? '').trim(), String(node.class_type ?? '').trim(), title].filter(
+    Boolean
+  )
 }
 
 /** 从 API 图或 UI 工作流里抽出节点 class / type，供目录按模态分类。 */
@@ -280,16 +284,15 @@ export function injectComfyWorkflow(
         setText(node, input.prompt)
         filledPositive = true
       }
-    } else if (
-      !filledPositive &&
-      input.prompt.trim() &&
-      typeof inputs.prompt === 'string'
-    ) {
+    } else if (!filledPositive && input.prompt.trim() && typeof inputs.prompt === 'string') {
       inputs.prompt = input.prompt
       filledPositive = true
     }
 
-    if (SIZE_CLASSES.has(cls) || ('width' in inputs && 'height' in inputs && typeof inputs.width === 'number')) {
+    if (
+      SIZE_CLASSES.has(cls) ||
+      ('width' in inputs && 'height' in inputs && typeof inputs.width === 'number')
+    ) {
       if (input.width && input.height) {
         if ('width' in inputs || cls.startsWith('empty')) inputs.width = input.width
         if ('height' in inputs || cls.startsWith('empty')) inputs.height = input.height

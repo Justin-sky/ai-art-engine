@@ -94,10 +94,7 @@ export function serializeModelChain(chain: readonly ModelRef[]): string[] {
 }
 
 /** 组装完整候选链：首选在前，备选依次排后，重复的备选剔除 */
-export function buildModelChain(
-  primary: ModelRef,
-  fallbacks: readonly ModelRef[]
-): ModelRef[] {
+export function buildModelChain(primary: ModelRef, fallbacks: readonly ModelRef[]): ModelRef[] {
   const out: ModelRef[] = []
   const seen = new Set<string>()
   const primaryKey = modelRefKey(primary)

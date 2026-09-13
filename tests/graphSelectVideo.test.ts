@@ -39,9 +39,13 @@ describe('video.select node', () => {
   })
 
   it('execute outputs the selected single video', () => {
-    const node = createNodeFromType('video.select', { x: 0, y: 0 }, {
-      params: { selectedVideoId: 'b' }
-    })
+    const node = createNodeFromType(
+      'video.select',
+      { x: 0, y: 0 },
+      {
+        params: { selectedVideoId: 'b' }
+      }
+    )
     const patched: Record<string, unknown>[] = []
     const ctx: NodeExecuteContext = {
       node,

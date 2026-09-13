@@ -3,13 +3,7 @@
  */
 
 export type MultiAnglePresetId =
-  | 'custom'
-  | 'fisheye'
-  | 'dutch'
-  | 'frontHigh'
-  | 'frontLow'
-  | 'panoramaHigh'
-  | 'back'
+  'custom' | 'fisheye' | 'dutch' | 'frontHigh' | 'frontLow' | 'panoramaHigh' | 'back'
 
 /** 景别档：滑条 0=全景 … 1=特写 */
 export type MultiAngleShotScaleLabel = '全景' | '中景' | '特写'
@@ -113,10 +107,7 @@ export function clampMultiAngleYaw(yaw: number): number {
 
 export function clampMultiAnglePitch(pitch: number): number {
   if (!Number.isFinite(pitch)) return 0
-  return Math.max(
-    MULTI_ANGLE_PITCH_MIN,
-    Math.min(MULTI_ANGLE_PITCH_MAX, Math.round(pitch))
-  )
+  return Math.max(MULTI_ANGLE_PITCH_MIN, Math.min(MULTI_ANGLE_PITCH_MAX, Math.round(pitch)))
 }
 
 export function clampMultiAngleShotScale(scale: number): number {
@@ -144,8 +135,7 @@ export function applyMultiAnglePreset(
   id: MultiAnglePresetId,
   promptEnabled?: boolean
 ): MultiAngleCameraState {
-  const preset =
-    MULTI_ANGLE_PRESETS.find((p) => p.id === id) ?? MULTI_ANGLE_PRESETS[0]!
+  const preset = MULTI_ANGLE_PRESETS.find((p) => p.id === id) ?? MULTI_ANGLE_PRESETS[0]!
   return normalizeMultiAngleCamera({
     presetId: preset.id,
     yaw: preset.yaw,
@@ -156,9 +146,7 @@ export function applyMultiAnglePreset(
 }
 
 /** 拖动滑条后标记为自定义（保留当前数值） */
-export function markMultiAngleCustom(
-  state: MultiAngleCameraState
-): MultiAngleCameraState {
+export function markMultiAngleCustom(state: MultiAngleCameraState): MultiAngleCameraState {
   return { ...state, presetId: 'custom' }
 }
 
@@ -199,20 +187,14 @@ function pitchPromptZh(pitch: number): string {
 export function buildMultiAnglePrompt(state: MultiAngleCameraState): string {
   const s = normalizeMultiAngleCamera(state)
   const scale = shotScaleLabel(s.shotScale)
-  const parts: string[] = [
-    shotScalePromptZh(scale),
-    yawPromptZh(s.yaw),
-    pitchPromptZh(s.pitch)
-  ]
+  const parts: string[] = [shotScalePromptZh(scale), yawPromptZh(s.yaw), pitchPromptZh(s.pitch)]
   return parts.join('，')
 }
 
 /**
  * 点选预设时写入面板的提示词：仅返回预设自带文案；无则空（不自动填入、不打开开关）。
  */
-export function resolveMultiAnglePresetPanelPrompt(
-  id: MultiAnglePresetId
-): string {
+export function resolveMultiAnglePresetPanelPrompt(id: MultiAnglePresetId): string {
   const preset = MULTI_ANGLE_PRESETS.find((p) => p.id === id)
   return preset?.prompt?.trim() || ''
 }

@@ -132,16 +132,20 @@ export function useChatHistory() {
     } else {
       activeId.value = createSessionId()
       sessions.value = [
-        { id: activeId.value, title: '', createdAt: Date.now(), updatedAt: Date.now(), messages: [] }
+        {
+          id: activeId.value,
+          title: '',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          messages: []
+        }
       ]
     }
     localStorage.setItem(ACTIVE_KEY, activeId.value)
   }
 
   /** 当前会话（始终存在；调用前需先 load） */
-  const activeSession = computed(
-    () => sessions.value.find((s) => s.id === activeId.value) ?? null
-  )
+  const activeSession = computed(() => sessions.value.find((s) => s.id === activeId.value) ?? null)
 
   function persist(): void {
     writeSessions(sessions.value)
@@ -200,5 +204,15 @@ export function useChatHistory() {
     }
   }
 
-  return { sessions, activeId, activeSession, load, persist, create, remove, activate, commitMessages }
+  return {
+    sessions,
+    activeId,
+    activeSession,
+    load,
+    persist,
+    create,
+    remove,
+    activate,
+    commitMessages
+  }
 }

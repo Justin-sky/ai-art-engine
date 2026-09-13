@@ -70,10 +70,7 @@ export function resolveVolcengineArkModelCapabilities(
       return profileCapabilities(rule.profile)
     }
   }
-  if (
-    (modality === 'image' || modality === 'video') &&
-    isOpaqueVolcengineArkEndpointId(modelId)
-  ) {
+  if ((modality === 'image' || modality === 'video') && isOpaqueVolcengineArkEndpointId(modelId)) {
     const fallback = MODALITY_FALLBACK_PROFILE[modality]
     if (fallback) return profileCapabilities(fallback)
   }

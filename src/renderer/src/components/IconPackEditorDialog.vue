@@ -96,13 +96,7 @@
             {{ t('graph.iconPack.distance') }}
           </div>
           <div class="range-row">
-            <input
-              v-model.number="draft.distance"
-              type="range"
-              min="0"
-              max="120"
-              step="1"
-            >
+            <input v-model.number="draft.distance" type="range" min="0" max="120" step="1" />
             <span class="range-value">{{ draft.distance }}</span>
           </div>
         </div>
@@ -111,13 +105,7 @@
             {{ t('graph.iconPack.feather') }}
           </div>
           <div class="range-row">
-            <input
-              v-model.number="draft.feather"
-              type="range"
-              min="0"
-              max="120"
-              step="1"
-            >
+            <input v-model.number="draft.feather" type="range" min="0" max="120" step="1" />
             <span class="range-value">{{ draft.feather }}</span>
           </div>
         </div>
@@ -143,10 +131,7 @@
               {{ edgeInsetPx }}px
             </button>
           </div>
-          <div
-            v-if="draft.edgeInset !== 'auto'"
-            class="range-row"
-          >
+          <div v-if="draft.edgeInset !== 'auto'" class="range-row">
             <input
               :value="edgeInsetPx"
               type="range"
@@ -154,7 +139,7 @@
               max="32"
               step="1"
               @input="onEdgeInsetInput(Number(($event.target as HTMLInputElement).value))"
-            >
+            />
             <span class="range-value">{{ edgeInsetPx }}</span>
           </div>
         </div>
@@ -184,17 +169,8 @@
               {{ defaultCanvasManual }}px
             </button>
           </div>
-          <div
-            v-if="draft.canvasSize > 0"
-            class="range-row"
-          >
-            <input
-              v-model.number="draft.canvasSize"
-              type="range"
-              min="64"
-              max="1024"
-              step="16"
-            >
+          <div v-if="draft.canvasSize > 0" class="range-row">
+            <input v-model.number="draft.canvasSize" type="range" min="64" max="1024" step="16" />
             <span class="range-value">{{ draft.canvasSize }}</span>
           </div>
         </div>
@@ -205,39 +181,16 @@
       </aside>
 
       <section class="stage-panel">
-        <div
-          ref="stageEl"
-          class="stage"
-        >
-          <div
-            v-if="sourceLoading"
-            class="stage-empty"
-          >
+        <div ref="stageEl" class="stage">
+          <div v-if="sourceLoading" class="stage-empty">
             {{ t('graph.editor.loadingSource') }}
           </div>
-          <div
-            v-else-if="!sourceUrl"
-            class="stage-empty"
-          >
+          <div v-else-if="!sourceUrl" class="stage-empty">
             {{ t('graph.iconPack.noSource') }}
           </div>
-          <div
-            v-else
-            class="canvas-wrap"
-            :style="canvasWrapStyle"
-          >
-            <img
-              class="source-img"
-              :src="sourceUrl"
-              alt=""
-              draggable="false"
-              decoding="async"
-            >
-            <div
-              class="grid-lines"
-              :style="gridLinesStyle"
-              aria-hidden="true"
-            />
+          <div v-else class="canvas-wrap" :style="canvasWrapStyle">
+            <img class="source-img" :src="sourceUrl" alt="" draggable="false" decoding="async" />
+            <div class="grid-lines" :style="gridLinesStyle" aria-hidden="true" />
           </div>
         </div>
         <div class="cells-hint">

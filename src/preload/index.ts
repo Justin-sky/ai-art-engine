@@ -2,7 +2,18 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import { IpcChannels, type StudioApi } from '@shared/ipc'
 import type { AppSettings, AssetInfo, ProjectConfig } from '@shared/domain'
-import type { AskUserAnswer, AskUserQuestion, McpGraphEditResultPayload, McpGraphEditPayload, McpGraphIconRefinePayload, McpGraphIconRefineResultPayload, McpRenderJobPayload, McpRenderJobResultPayload, McpTaskReportPayload, McpTaskRunPayload } from '@shared/ipc'
+import type {
+  AskUserAnswer,
+  AskUserQuestion,
+  McpGraphEditResultPayload,
+  McpGraphEditPayload,
+  McpGraphIconRefinePayload,
+  McpGraphIconRefineResultPayload,
+  McpRenderJobPayload,
+  McpRenderJobResultPayload,
+  McpTaskReportPayload,
+  McpTaskRunPayload
+} from '@shared/ipc'
 import type {
   AttachAssetFileInput,
   AttachAssetRelativeInput,
@@ -21,8 +32,10 @@ import type {
 } from '@shared/ipc'
 
 const api: StudioApi = {
-  createProject: (input: CreateProjectInput) => ipcRenderer.invoke(IpcChannels.PROJECT_CREATE, input),
-  openProject: (projectJsonPath: string) => ipcRenderer.invoke(IpcChannels.PROJECT_OPEN, projectJsonPath),
+  createProject: (input: CreateProjectInput) =>
+    ipcRenderer.invoke(IpcChannels.PROJECT_CREATE, input),
+  openProject: (projectJsonPath: string) =>
+    ipcRenderer.invoke(IpcChannels.PROJECT_OPEN, projectJsonPath),
   saveProject: (config: ProjectConfig) => ipcRenderer.invoke(IpcChannels.PROJECT_SAVE, config),
   getRecentProjects: () => ipcRenderer.invoke(IpcChannels.PROJECT_GET_RECENT),
   removeRecentProject: (projectJsonPath: string) =>
@@ -31,8 +44,7 @@ const api: StudioApi = {
   selectDirectory: () => ipcRenderer.invoke(IpcChannels.DIALOG_SELECT_DIRECTORY),
   selectProject: () => ipcRenderer.invoke(IpcChannels.DIALOG_SELECT_PROJECT),
   selectFiles: (filters?) => ipcRenderer.invoke(IpcChannels.DIALOG_SELECT_FILES, filters),
-  writeClipboardText: (text: string) =>
-    ipcRenderer.invoke(IpcChannels.CLIPBOARD_WRITE_TEXT, text),
+  writeClipboardText: (text: string) => ipcRenderer.invoke(IpcChannels.CLIPBOARD_WRITE_TEXT, text),
 
   listAssets: () => ipcRenderer.invoke(IpcChannels.ASSET_LIST),
   importAssets: (input: ImportAssetsInput) => ipcRenderer.invoke(IpcChannels.ASSET_IMPORT, input),
@@ -101,8 +113,7 @@ const api: StudioApi = {
   exportAssetPackage: (input) => ipcRenderer.invoke(IpcChannels.ASSET_PACKAGE_EXPORT, input),
   previewAssetPackage: (packPath?) =>
     ipcRenderer.invoke(IpcChannels.ASSET_PACKAGE_PREVIEW, packPath),
-  importAssetPackage: (input) =>
-    ipcRenderer.invoke(IpcChannels.ASSET_PACKAGE_IMPORT, input ?? {}),
+  importAssetPackage: (input) => ipcRenderer.invoke(IpcChannels.ASSET_PACKAGE_IMPORT, input ?? {}),
 
   listFolders: () => ipcRenderer.invoke(IpcChannels.FOLDER_LIST),
   createFolder: (input: CreateFolderInput) => ipcRenderer.invoke(IpcChannels.FOLDER_CREATE, input),
@@ -139,7 +150,8 @@ const api: StudioApi = {
   yoloPose: (input) => ipcRenderer.invoke(IpcChannels.YOLO_POSE, input),
   openYoloModelDir: () => ipcRenderer.invoke(IpcChannels.YOLO_OPEN_MODEL_DIR),
   getYoloModelCatalog: () => ipcRenderer.invoke(IpcChannels.YOLO_MODEL_CATALOG),
-  downloadYoloModel: (modelId: string) => ipcRenderer.invoke(IpcChannels.YOLO_MODEL_DOWNLOAD, modelId),
+  downloadYoloModel: (modelId: string) =>
+    ipcRenderer.invoke(IpcChannels.YOLO_MODEL_DOWNLOAD, modelId),
   cancelYoloModelDownload: () => ipcRenderer.invoke(IpcChannels.YOLO_MODEL_DOWNLOAD_CANCEL),
   deleteYoloModel: (modelId: string) => ipcRenderer.invoke(IpcChannels.YOLO_MODEL_DELETE, modelId),
   chooseYoloModelDir: () => ipcRenderer.invoke(IpcChannels.YOLO_MODEL_DIR_CHOOSE),
@@ -159,10 +171,7 @@ const api: StudioApi = {
   checkForUpdates: () => ipcRenderer.invoke(IpcChannels.UPDATE_CHECK),
   installUpdate: () => ipcRenderer.invoke(IpcChannels.UPDATE_INSTALL),
   onUpdateEvent: (callback) => {
-    const listener = (
-      _event: unknown,
-      payload: import('@shared/update').AppUpdateEvent
-    ): void => {
+    const listener = (_event: unknown, payload: import('@shared/update').AppUpdateEvent): void => {
       callback(payload)
     }
     ipcRenderer.on(IpcChannels.UPDATE_EVENT, listener)
@@ -236,10 +245,7 @@ const api: StudioApi = {
     return () => ipcRenderer.removeListener(IpcChannels.VIDEO_BEAT_BUSY, listener)
   },
   onVideoJobUpdated: (callback) => {
-    const listener = (
-      _event: unknown,
-      job: import('@shared/videoJob').VideoJobRecord
-    ): void => {
+    const listener = (_event: unknown, job: import('@shared/videoJob').VideoJobRecord): void => {
       callback(job)
     }
     ipcRenderer.on(IpcChannels.VIDEO_JOB_UPDATED, listener)
@@ -312,7 +318,8 @@ const api: StudioApi = {
   runHarnessTask: (input) => ipcRenderer.invoke(IpcChannels.HARNESS_RUN, input),
   getGitStatus: () => ipcRenderer.invoke(IpcChannels.GIT_STATUS),
   getGitFileDiff: (input) => ipcRenderer.invoke(IpcChannels.GIT_FILE_DIFF, input),
-  deleteHarnessSession: (sessionId) => ipcRenderer.invoke(IpcChannels.HARNESS_DELETE_SESSION, sessionId),
+  deleteHarnessSession: (sessionId) =>
+    ipcRenderer.invoke(IpcChannels.HARNESS_DELETE_SESSION, sessionId),
   abortHarnessTask: () => ipcRenderer.invoke(IpcChannels.HARNESS_ABORT),
   getDshSkillsInfo: () => ipcRenderer.invoke(IpcChannels.SKILLS_GET_INFO),
   openDshSkillsDir: () => ipcRenderer.invoke(IpcChannels.SKILLS_OPEN_DIR),
@@ -322,10 +329,7 @@ const api: StudioApi = {
   getSessionSkills: () => ipcRenderer.invoke(IpcChannels.SKILLS_GET_SESSION),
   importCustomSkillsToGraph: () => ipcRenderer.invoke(IpcChannels.SKILLS_IMPORT_TO_GRAPH),
   onHarnessEvent: (callback) => {
-    const listener = (
-      _event: unknown,
-      payload: import('@shared/ipc').HarnessEvent
-    ): void => {
+    const listener = (_event: unknown, payload: import('@shared/ipc').HarnessEvent): void => {
       callback(payload)
     }
     ipcRenderer.on(IpcChannels.HARNESS_EVENT, listener)

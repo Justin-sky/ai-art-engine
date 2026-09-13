@@ -20,10 +20,7 @@
             :title="t(`${i18nRoot}.tools.brush`)"
             @click="tool = 'brush'"
           >
-            <span
-              class="ico"
-              aria-hidden="true"
-            >✏️</span>
+            <span class="ico" aria-hidden="true">✏️</span>
           </button>
           <button
             type="button"
@@ -32,10 +29,7 @@
             :title="t(`${i18nRoot}.tools.rect`)"
             @click="tool = 'rect'"
           >
-            <span
-              class="ico"
-              aria-hidden="true"
-            >▢</span>
+            <span class="ico" aria-hidden="true">▢</span>
           </button>
           <button
             type="button"
@@ -44,19 +38,10 @@
             :title="t(`${i18nRoot}.tools.eraser`)"
             @click="tool = 'eraser'"
           >
-            <span
-              class="ico"
-              aria-hidden="true"
-            >🧹</span>
+            <span class="ico" aria-hidden="true">🧹</span>
           </button>
-          <div
-            class="brush-size"
-            :title="t(`${i18nRoot}.brushSize`)"
-          >
-            <span
-              class="brush-ico"
-              aria-hidden="true"
-            >〰️</span>
+          <div class="brush-size" :title="t(`${i18nRoot}.brushSize`)">
+            <span class="brush-ico" aria-hidden="true">〰️</span>
             <input
               v-model.number="draft.brushSize"
               class="brush-range"
@@ -64,7 +49,7 @@
               min="4"
               max="120"
               step="1"
-            >
+            />
           </div>
         </div>
         <div class="history">
@@ -89,20 +74,11 @@
         </div>
       </div>
 
-      <div
-        ref="stageEl"
-        class="stage"
-      >
-        <div
-          v-if="sourceLoading"
-          class="stage-empty"
-        >
+      <div ref="stageEl" class="stage">
+        <div v-if="sourceLoading" class="stage-empty">
           {{ t('graph.editor.loadingSource') }}
         </div>
-        <div
-          v-else-if="!sourceUrl"
-          class="stage-empty"
-        >
+        <div v-else-if="!sourceUrl" class="stage-empty">
           {{ t(`${i18nRoot}.noSource`) }}
         </div>
         <div
@@ -111,13 +87,7 @@
           :class="{ 'canvas-wrap-matte': mode === 'matte' }"
           :style="canvasWrapStyle"
         >
-          <img
-            class="source-img"
-            :src="sourceUrl"
-            alt=""
-            draggable="false"
-            decoding="async"
-          >
+          <img class="source-img" :src="sourceUrl" alt="" draggable="false" decoding="async" />
           <canvas
             ref="overlayEl"
             class="overlay-canvas"
@@ -125,11 +95,7 @@
             :height="canvasSize.h"
             @pointerdown="onPaintPointerDown"
           />
-          <div
-            v-if="rectPreview"
-            class="rect-preview"
-            :style="rectPreviewStyle"
-          />
+          <div v-if="rectPreview" class="rect-preview" :style="rectPreviewStyle" />
         </div>
       </div>
 
@@ -143,66 +109,34 @@
         <div class="toolbar">
           <label class="tool tool-model">
             <span class="tool-label">{{ t('graph.inspector.generate.imageModel') }}</span>
-            <select
-              v-model="selectionKey"
-              class="select"
-              @change="onModelChange"
-            >
-              <option
-                v-for="opt in modelOptions"
-                :key="opt.key"
-                :value="opt.key"
-              >
+            <select v-model="selectionKey" class="select" @change="onModelChange">
+              <option v-for="opt in modelOptions" :key="opt.key" :value="opt.key">
                 {{ opt.label }}
               </option>
-              <option
-                v-if="modelOptions.length === 0"
-                value=""
-              >
+              <option v-if="modelOptions.length === 0" value="">
                 {{ t('graph.inspector.generate.noModels') }}
               </option>
             </select>
           </label>
           <label class="tool">
             <span class="tool-label">{{ t(`${i18nRoot}.aspect`) }}</span>
-            <select
-              v-model="draft.aspectId"
-              class="select"
-            >
+            <select v-model="draft.aspectId" class="select">
               <option value="original">{{ t(`${i18nRoot}.aspects.original`) }}</option>
-              <option
-                v-for="ratio in aspectOptions"
-                :key="ratio"
-                :value="ratio"
-              >
+              <option v-for="ratio in aspectOptions" :key="ratio" :value="ratio">
                 {{ ratio }}
               </option>
             </select>
           </label>
           <label class="tool">
             <span class="tool-label">{{ t(`${i18nRoot}.resolution`) }}</span>
-            <select
-              v-model="draft.resolution"
-              class="select"
-            >
-              <option
-                v-for="r in resolutionOptions"
-                :key="r"
-                :value="r"
-              >{{ r }}</option>
+            <select v-model="draft.resolution" class="select">
+              <option v-for="r in resolutionOptions" :key="r" :value="r">{{ r }}</option>
             </select>
           </label>
           <label class="tool">
             <span class="tool-label">{{ t(`${i18nRoot}.count`) }}</span>
-            <select
-              v-model.number="draft.count"
-              class="select"
-            >
-              <option
-                v-for="c in countOptions"
-                :key="c"
-                :value="c"
-              >
+            <select v-model.number="draft.count" class="select">
+              <option v-for="c in countOptions" :key="c" :value="c">
                 {{ t(`${i18nRoot}.countOption`, { n: c }) }}
               </option>
             </select>
@@ -551,8 +485,7 @@ async function refreshCapabilities(): Promise<void> {
   aspectOptions.value = [...caps.aspectRatios]
   resolutionOptions.value =
     caps.resolutions.length > 0 ? [...caps.resolutions] : [...REDRAW_FALLBACK_RESOLUTIONS]
-  countOptions.value =
-    caps.counts.length > 0 ? [...caps.counts] : [...REDRAW_FALLBACK_COUNTS]
+  countOptions.value = caps.counts.length > 0 ? [...caps.counts] : [...REDRAW_FALLBACK_COUNTS]
   Object.assign(
     draft,
     clampRedrawParamsToCapabilities(draft, {

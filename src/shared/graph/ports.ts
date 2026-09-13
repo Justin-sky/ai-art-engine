@@ -11,11 +11,7 @@ import {
   hostInterfaceToPortDefs,
   resolveNodeHostInterface
 } from './hostInterface'
-import {
-  isBundleAcceptableDataType,
-  isBundleNode,
-  MEDIA_BUNDLE_TYPE_ID
-} from './bundleExpand'
+import { isBundleAcceptableDataType, isBundleNode, MEDIA_BUNDLE_TYPE_ID } from './bundleExpand'
 import {
   GraphPortType,
   toSingularGraphPortDataType,
@@ -78,13 +74,8 @@ export function pruneVideoFrameEdges(
   })
 }
 
-function injectVideoFramePorts(
-  ports: GraphPortDef[],
-  frameMode: VideoFrameMode
-): GraphPortDef[] {
-  let next = ports.map((port) =>
-    port.id === 'in-image' ? { ...port, label: 'Reference' } : port
-  )
+function injectVideoFramePorts(ports: GraphPortDef[], frameMode: VideoFrameMode): GraphPortDef[] {
+  let next = ports.map((port) => (port.id === 'in-image' ? { ...port, label: 'Reference' } : port))
   // 去掉旧动态口，避免重复注入
   next = next.filter(
     (port) => port.id !== VIDEO_FIRST_FRAME_PORT_ID && port.id !== VIDEO_LAST_FRAME_PORT_ID
@@ -143,16 +134,12 @@ function readVideoInputLimit(
   params:
     | Pick<
         GraphNodeParams,
-        | 'generateMaxInputImages'
-        | 'generateMaxInputVideos'
-        | 'generateMaxInputVoices'
+        'generateMaxInputImages' | 'generateMaxInputVideos' | 'generateMaxInputVoices'
       >
     | null
     | undefined,
   node:
-    | Pick<GraphNode, 'category' | 'params' | 'assetId' | 'typeId' | 'assetType'>
-    | null
-    | undefined,
+    Pick<GraphNode, 'category' | 'params' | 'assetId' | 'typeId' | 'assetType'> | null | undefined,
   key: 'generateMaxInputImages' | 'generateMaxInputVideos' | 'generateMaxInputVoices'
 ): number | undefined {
   const raw = params?.[key] ?? node?.params?.[key]
@@ -181,15 +168,13 @@ export function resolveTypeDefPorts(
   const hideInputs = shouldHideAssetRefInputs(params, node)
   if (hideInputs) {
     // 引用节点无图库：去掉加工节点的 out-all，只保留单条 out
-    ports = ports.filter(
-      (port) => port.direction !== 'in' && port.id !== GRAPH_OUT_ALL_PORT_ID
-    )
+    ports = ports.filter((port) => port.direction !== 'in' && port.id !== GRAPH_OUT_ALL_PORT_ID)
   }
 
   // 剧本宿主：只要选中单条 out，不暴露图库「全部」口
   const isScreenplayHost =
     (typeDef.assetType === 'screenplay' || typeDef.typeId === 'asset.screenplay') &&
-    ((node?.params ?? params)?.assetHost === true)
+    (node?.params ?? params)?.assetHost === true
   if (isScreenplayHost) {
     ports = ports.filter((port) => port.id !== GRAPH_OUT_ALL_PORT_ID)
   }
@@ -212,8 +197,7 @@ export function resolveTypeDefPorts(
 
   // 束结：按 bundleDataType 锁定 in/out；未锁定时占位 image（连接/菜单另有特例）
   if (typeDef.typeId === MEDIA_BUNDLE_TYPE_ID) {
-    const locked =
-      node?.params?.bundleDataType ?? params?.bundleDataType ?? GraphPortType.image
+    const locked = node?.params?.bundleDataType ?? params?.bundleDataType ?? GraphPortType.image
     const dataType = toSingularGraphPortDataType(locked)
     ports = [
       {
@@ -277,9 +261,7 @@ export function resolveTypeDefPorts(
     !hideInputs &&
     (node ? isProcessingAssetNode(node) : params?.assetRef !== true)
   if (isVideoGenerateProcessing) {
-    const mode = resolveVideoFrameMode(
-      params?.generateFrameMode ?? node?.params?.generateFrameMode
-    )
+    const mode = resolveVideoFrameMode(params?.generateFrameMode ?? node?.params?.generateFrameMode)
     ports = injectVideoFramePorts(ports, mode)
     ports = hideZeroLimitVideoInputPorts(
       ports,
@@ -390,11 +372,17 @@ export function canConnectNodes(
 
 type NodeTypeConnectMeta = Pick<NodeTypeDefinition, 'ports' | 'typeId' | 'category' | 'assetType'>
 
-function typeDefInPorts(typeDef: NodeTypeConnectMeta, options: GraphConnectOptions): GraphPortDef[] {
+function typeDefInPorts(
+  typeDef: NodeTypeConnectMeta,
+  options: GraphConnectOptions
+): GraphPortDef[] {
   return resolveTypeDefPorts(typeDef, options.typeParams).filter((p) => p.direction === 'in')
 }
 
-function typeDefOutPorts(typeDef: NodeTypeConnectMeta, options: GraphConnectOptions): GraphPortDef[] {
+function typeDefOutPorts(
+  typeDef: NodeTypeConnectMeta,
+  options: GraphConnectOptions
+): GraphPortDef[] {
   return resolveTypeDefPorts(typeDef, options.typeParams).filter((p) => p.direction === 'out')
 }
 
@@ -408,10 +396,7 @@ export function typeDefAcceptsDataType(
     const locked = options.typeParams?.bundleDataType
     if (!locked) return isBundleAcceptableDataType(dataType)
     const singular = toSingularGraphPortDataType(locked)
-    return (
-      portsCompatible(dataType, singular) ||
-      toSingularGraphPortDataType(dataType) === singular
-    )
+    return portsCompatible(dataType, singular) || toSingularGraphPortDataType(dataType) === singular
   }
   const inPorts = typeDefInPorts(typeDef, options)
   if (options.targetPort) {
@@ -431,10 +416,7 @@ export function typeDefProvidesDataType(
     const locked = options.typeParams?.bundleDataType
     if (!locked) return isBundleAcceptableDataType(dataType)
     const singular = toSingularGraphPortDataType(locked)
-    return (
-      portsCompatible(singular, dataType) ||
-      singular === toSingularGraphPortDataType(dataType)
-    )
+    return portsCompatible(singular, dataType) || singular === toSingularGraphPortDataType(dataType)
   }
   const outPorts = typeDefOutPorts(typeDef, options)
   if (options.sourcePort) {

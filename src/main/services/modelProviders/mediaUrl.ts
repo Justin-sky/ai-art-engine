@@ -41,9 +41,7 @@ export function toMediaUrl(pathOrUrl: string, projectRoot?: string): string {
     return pathOrUrl
   }
   const abs =
-    projectRoot && !pathOrUrl.match(/^[A-Za-z]:\\|^\//)
-      ? join(projectRoot, pathOrUrl)
-      : pathOrUrl
+    projectRoot && !pathOrUrl.match(/^[A-Za-z]:\\|^\//) ? join(projectRoot, pathOrUrl) : pathOrUrl
   return toDataUrlFromFile(abs)
 }
 

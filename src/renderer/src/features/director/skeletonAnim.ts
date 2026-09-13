@@ -83,9 +83,7 @@ export function clampSkeletonSegmentRange(
   end: number,
   timelineDuration: number
 ): { start: number; end: number } {
-  const others = existing
-    .filter((item) => item.id !== segmentId)
-    .sort((a, b) => a.start - b.start)
+  const others = existing.filter((item) => item.id !== segmentId).sort((a, b) => a.start - b.start)
   let nextStart = Math.max(0, start)
   let nextEnd = Math.max(nextStart + MIN_SEGMENT_DURATION, end)
   nextEnd = Math.min(Math.max(MIN_SEGMENT_DURATION, timelineDuration), nextEnd)
@@ -121,7 +119,10 @@ export function clampSkeletonSegmentRange(
   }
 
   nextStart = Math.max(0, nextStart)
-  nextEnd = Math.min(Math.max(MIN_SEGMENT_DURATION, timelineDuration), Math.max(nextStart + MIN_SEGMENT_DURATION, nextEnd))
+  nextEnd = Math.min(
+    Math.max(MIN_SEGMENT_DURATION, timelineDuration),
+    Math.max(nextStart + MIN_SEGMENT_DURATION, nextEnd)
+  )
   return { start: nextStart, end: nextEnd }
 }
 

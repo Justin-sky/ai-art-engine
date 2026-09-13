@@ -55,11 +55,11 @@ describe('check-hardcoded-cjk: comment stripping', () => {
 describe('check-hardcoded-cjk: bilingual data suppression', () => {
   it('suppresses multi-line defErr initializer bodies', () => {
     const src = [
-      "const E_X = defErr<{ guid: string }>(",
+      'const E_X = defErr<{ guid: string }>(',
       "  'x.y',",
-      "  ({ guid }) => `包条目不完整: ${guid}`,",
-      "  ({ guid }) => `Incomplete entry: ${guid}`",
-      ")"
+      '  ({ guid }) => `包条目不完整: ${guid}`,',
+      '  ({ guid }) => `Incomplete entry: ${guid}`',
+      ')'
     ].join('\n')
     expect(scanText(src)).toHaveLength(0)
   })
@@ -94,8 +94,8 @@ describe('check-hardcoded-cjk: bilingual data suppression', () => {
       '  name: string',
       '}>(',
       "  'x.y',",
-      "  ({ name }) => `找不到 ${name}`,",
-      "  ({ name }) => `Not found: ${name}`",
+      '  ({ name }) => `找不到 ${name}`,',
+      '  ({ name }) => `Not found: ${name}`',
       ')',
       "throw new Error('残留')"
     ].join('\n')
@@ -108,7 +108,7 @@ describe('check-hardcoded-cjk: bilingual data suppression', () => {
 describe('check-hardcoded-cjk: regex literal state', () => {
   it('quote inside regex does not poison string state (later comments still stripped)', () => {
     const src = [
-      "const a = p.replace(/'/g, \"\\\\'\")",
+      'const a = p.replace(/\'/g, "\\\\\'")',
       '// 这行注释应被剥离',
       "const b = '保留'"
     ].join('\n')
@@ -146,7 +146,7 @@ describe('check-hardcoded-cjk: regex literal state', () => {
   })
 
   it('division after identifier is not treated as regex', () => {
-    const src = ["const r = total / count / ratio", "const s = '保留'"]
+    const src = ['const r = total / count / ratio', "const s = '保留'"]
     const hits = scanText(src.join('\n'))
     expect(hits).toHaveLength(1)
     expect(hits[0].text).toContain("const s = '保留'")

@@ -48,7 +48,17 @@ function makeMixamoArmature(): THREE.Group {
 
   const mesh = new THREE.SkinnedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial())
   mesh.bind(
-    new THREE.Skeleton([hips, spine, leftArm, leftFore, leftHand, leftRoll, leftUpLeg, leftLeg, leftFoot])
+    new THREE.Skeleton([
+      hips,
+      spine,
+      leftArm,
+      leftFore,
+      leftHand,
+      leftRoll,
+      leftUpLeg,
+      leftLeg,
+      leftFoot
+    ])
   )
   root.add(mesh)
   root.updateMatrixWorld(true)

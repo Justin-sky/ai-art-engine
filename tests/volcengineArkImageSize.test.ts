@@ -56,9 +56,7 @@ describe('resolveSeedreamImageSize', () => {
     expect(resolveSeedreamImageSize('1K', '16:9')).toBe('1280x720')
     expect(resolveSeedreamImageSize('1K', '16:9', SEEDREAM_MIN_PIXELS)).toBe('2560x1440')
     expect(resolveSeedreamImageSize('1K', '1:1', SEEDREAM_MIN_PIXELS)).toBe('2048x2048')
-    expect(resolveSeedreamImageSize('1024x1024', undefined, SEEDREAM_MIN_PIXELS)).toBe(
-      '1920x1920'
-    )
+    expect(resolveSeedreamImageSize('1024x1024', undefined, SEEDREAM_MIN_PIXELS)).toBe('1920x1920')
   })
 
   it('面积已达下限时保持不变', () => {

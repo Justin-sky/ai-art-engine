@@ -32,9 +32,7 @@ export type {
   EditorDiveViewMeta
 } from '../features/graph/model/editorDive'
 
-export type CloseEditorsForAssetsResult =
-  | { ok: true }
-  | { ok: false; reason: 'graph-running' }
+export type CloseEditorsForAssetsResult = { ok: true } | { ok: false; reason: 'graph-running' }
 
 type CloseEditorsForAssetsFn = (assetIds: string[]) => CloseEditorsForAssetsResult
 
@@ -200,11 +198,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
 
   /** 同面板 dive 进入逻辑视图 */
-  function diveIntoView(
-    rootKey: string,
-    meta: EditorDiveViewMeta,
-    title?: string
-  ): boolean {
+  function diveIntoView(rootKey: string, meta: EditorDiveViewMeta, title?: string): boolean {
     const key = rootKey?.trim()
     if (!key) return false
     const frameKey = editorDiveViewFrameKey(key, meta)
@@ -348,10 +342,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
     if (sel.kind === 'graph.node' || sel.kind === 'graph.group') {
       const ctx = parseGraphHostContext(sel.hostId)
-      if (
-        ctx.kind === 'asset' &&
-        ctx.id === assetId
-      ) {
+      if (ctx.kind === 'asset' && ctx.id === assetId) {
         editor.selection.clear()
         return
       }
@@ -364,7 +355,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
 
   function consumeScreenplayEditor(screenplayAssetId: string): void {
-    openScreenplayEditorIds.value = openScreenplayEditorIds.value.filter((id) => id !== screenplayAssetId)
+    openScreenplayEditorIds.value = openScreenplayEditorIds.value.filter(
+      (id) => id !== screenplayAssetId
+    )
     clearInspectorForClosedEditor(screenplayAssetId)
   }
 
@@ -468,9 +461,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       id: beatId ?? undefined
     })
     editor.commands.setActiveScope(
-      beatId
-        ? `document:beatUnit:${beatId}`
-        : 'selection:beatUnit:none'
+      beatId ? `document:beatUnit:${beatId}` : 'selection:beatUnit:none'
     )
   }
 

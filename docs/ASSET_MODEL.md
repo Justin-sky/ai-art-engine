@@ -15,13 +15,13 @@ Assets/
     Opening.script.asset.json # 无媒体：meta 即主文件
 ```
 
-| 概念 | 实现 |
-|------|------|
-| 身份 | `AssetInfo.id`（写在 meta 内） |
-| 组织 | 真实子目录；树由扫描得到 |
-| 文件夹 | 每目录 `.folder.json`（保留稳定 `folderId`） |
-| 媒体 meta | `<file>.asset.json` |
-| 文档资产 | `<Name>.<type>.asset.json` |
+| 概念      | 实现                                         |
+| --------- | -------------------------------------------- |
+| 身份      | `AssetInfo.id`（写在 meta 内）               |
+| 组织      | 真实子目录；树由扫描得到                     |
+| 文件夹    | 每目录 `.folder.json`（保留稳定 `folderId`） |
+| 媒体 meta | `<file>.asset.json`                          |
+| 文档资产  | `<Name>.<type>.asset.json`                   |
 
 业务引用仍用 `assetId` / [AssetRef](./ASSET_REF.md)。仅支持本布局；旧版扁平工程需手动重建或另行转换。
 

@@ -72,7 +72,12 @@ describe('episode board parse', () => {
   it('parses beat breakdown table', () => {
     const rows = parseEpisodeBeatBreakdown(BEAT_BREAKDOWN)
     expect(rows.length).toBe(2)
-    expect(rows[0]).toMatchObject({ index: 1, summary: '太史令沈约被御林军从梦中押走', intensity: 7, anchor: true })
+    expect(rows[0]).toMatchObject({
+      index: 1,
+      summary: '太史令沈约被御林军从梦中押走',
+      intensity: 7,
+      anchor: true
+    })
     expect(rows[1]).toMatchObject({ index: 2, anchor: false })
   })
 
@@ -239,19 +244,22 @@ describe('episode agent state machine', () => {
 describe('episode director verdict', () => {
   it('parses PASS / FAIL / missing verdict', () => {
     expect(parseEpisodeDirectorVerdict('## 结论: PASS')).toEqual({ result: 'PASS', reason: '' })
-    expect(
-      parseEpisodeDirectorVerdict('## 结论: FAIL (原因: 第二幕视高跳跃太大)')
-    ).toEqual({ result: 'FAIL', reason: '第二幕视高跳跃太大' })
+    expect(parseEpisodeDirectorVerdict('## 结论: FAIL (原因: 第二幕视高跳跃太大)')).toEqual({
+      result: 'FAIL',
+      reason: '第二幕视高跳跃太大'
+    })
     expect(parseEpisodeDirectorVerdict('没有结论')).toBeNull()
   })
 
   it('parses FAIL reasons on the next line and full-width punctuation', () => {
-    expect(
-      parseEpisodeDirectorVerdict('## 结论: FAIL\n原因：第二幕视高跳跃太大')
-    ).toEqual({ result: 'FAIL', reason: '第二幕视高跳跃太大' })
-    expect(
-      parseEpisodeDirectorVerdict('## 结论：FAIL（原因：格3主光跳变）')
-    ).toEqual({ result: 'FAIL', reason: '格3主光跳变' })
+    expect(parseEpisodeDirectorVerdict('## 结论: FAIL\n原因：第二幕视高跳跃太大')).toEqual({
+      result: 'FAIL',
+      reason: '第二幕视高跳跃太大'
+    })
+    expect(parseEpisodeDirectorVerdict('## 结论：FAIL（原因：格3主光跳变）')).toEqual({
+      result: 'FAIL',
+      reason: '格3主光跳变'
+    })
     expect(
       parseEpisodeDirectorVerdict(
         '## 审核清单\n- 叙事完整性：5/5\n- 视觉一致性：4/5\n\n## 结论: FAIL\n原因：缺少第 3 组对白'
@@ -311,17 +319,13 @@ describe('shortDrama agent pipeline preset', () => {
       (n) => n.typeId === 'image.gridSplit' && n.params.imageGridSplit?.rows === 3
     )
     expect(grid9.length).toBe(9)
-    expect(
-      grid9.every((n) => n.params.imageGridSplit?.selected?.length === 1)
-    ).toBe(true)
+    expect(grid9.every((n) => n.params.imageGridSplit?.selected?.length === 1)).toBe(true)
     // 4宫格提取：2×2 布局，每节点提取对应 1 格
     const grid4 = nodes.filter(
       (n) => n.typeId === 'image.gridSplit' && n.params.imageGridSplit?.cols === 2
     )
     expect(grid4.length).toBe(36)
-    expect(
-      grid4.every((n) => n.params.imageGridSplit?.selected?.length === 1)
-    ).toBe(true)
+    expect(grid4.every((n) => n.params.imageGridSplit?.selected?.length === 1)).toBe(true)
     const breakdown = nodes.find((n) => n.params.episodeStep === 'breakdown')
     expect(breakdown).toBeTruthy()
     expect(breakdown?.params.generateSystemPrompt).toContain('分镜师')
@@ -347,9 +351,7 @@ describe('shortDrama agent pipeline preset', () => {
     expect(sourceTitles(reviewBreakdown?.id)).toEqual(
       expect.arrayContaining(['剧本', EPISODE_AGENT_STOCK_TITLES.breakdown])
     )
-    expect(
-      sourceTitles(nodes.find((n) => n.params.episodeReviewTarget === 'motion')?.id)
-    ).toEqual(
+    expect(sourceTitles(nodes.find((n) => n.params.episodeReviewTarget === 'motion')?.id)).toEqual(
       expect.arrayContaining([
         '剧本',
         EPISODE_AGENT_STOCK_TITLES.breakdown,
@@ -366,30 +368,20 @@ describe('shortDrama agent pipeline preset', () => {
     expect(titleMatchesEpisodeReview('导演审核·4宫格动态分镜表', 'sequence')).toBe(true) // cjk-ok 旧标题
     expect(titleMatchesEpisodeStage(EPISODE_AGENT_STOCK_TITLES.beatboard, 'beatboard')).toBe(true)
     expect(titleMatchesEpisodeStage(EPISODE_AGENT_STOCK_TITLES.sequence, 'beatboard')).toBe(false)
-    expect(
-      edges.some((e) => e.sourcePort === 'out' && e.targetPort === 'in-text')
-    ).toBe(true)
-    expect(
-      edges.some((e) => e.sourcePort === 'out' && e.targetPort === 'in-image')
-    ).toBe(true)
+    expect(edges.some((e) => e.sourcePort === 'out' && e.targetPort === 'in-text')).toBe(true)
+    expect(edges.some((e) => e.sourcePort === 'out' && e.targetPort === 'in-image')).toBe(true)
     // 高清放大节点已移除：9宫格提取图直接作 4宫格拼图参考图
     const extract9 = nodes.find((n) => n.title === '宫格提取·格1')
     expect(
       edges.some(
-        (e) =>
-          e.source === extract9?.id &&
-          e.target === img4?.id &&
-          e.targetPort === 'in-image'
+        (e) => e.source === extract9?.id && e.target === img4?.id && e.targetPort === 'in-image'
       )
     ).toBe(true)
     // 4宫格提取图直接作动态视频参考图
     const extract4 = nodes.find((n) => n.title === '宫格提取·组1-格1')
     expect(
       edges.some(
-        (e) =>
-          e.source === extract4?.id &&
-          e.target === video?.id &&
-          e.targetPort === 'in-image'
+        (e) => e.source === extract4?.id && e.target === video?.id && e.targetPort === 'in-image'
       )
     ).toBe(true)
   })

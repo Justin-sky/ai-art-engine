@@ -27,7 +27,9 @@ export interface StudioPromptOptions {
   progressLabel?: string
 }
 
-interface StudioPromptState extends Required<Pick<StudioPromptOptions, 'title' | 'message' | 'mode'>> {
+interface StudioPromptState extends Required<
+  Pick<StudioPromptOptions, 'title' | 'message' | 'mode'>
+> {
   confirmLabel?: string
   cancelLabel?: string
   defaultValue?: string
@@ -50,7 +52,9 @@ function closePrompt(value: boolean | string | null | { text: string; modelKey: 
   active.resolve(value)
 }
 
-function openPrompt(options: StudioPromptOptions): Promise<boolean | string | null | { text: string; modelKey: string }> {
+function openPrompt(
+  options: StudioPromptOptions
+): Promise<boolean | string | null | { text: string; modelKey: string }> {
   // 若已有弹窗，先取消旧的，避免卡住
   if (current.value) closePrompt(false)
   return new Promise((resolve) => {
@@ -84,9 +88,7 @@ export function promptConfirm(options: Omit<StudioPromptOptions, 'mode'>): Promi
 }
 
 /** 文本输入（取消返回 null；确定返回去首尾空白后的字符串，允许空串由调用方校验） */
-export function promptText(
-  options: Omit<StudioPromptOptions, 'mode'>
-): Promise<string | null> {
+export function promptText(options: Omit<StudioPromptOptions, 'mode'>): Promise<string | null> {
   return openPrompt({ ...options, mode: 'prompt' }).then((v) => {
     if (typeof v === 'string') return v
     return null

@@ -1,31 +1,18 @@
 <template>
-  <div
-    ref="rootEl"
-    class="style-image-picker"
-    :class="{ readonly }"
-  >
+  <div ref="rootEl" class="style-image-picker" :class="{ readonly }">
     <template v-if="showHeader">
       <div class="head">
         <span class="label">{{ label || t('stylePicker.label') }}</span>
         <span class="count">{{ items.length }}/{{ max }}</span>
       </div>
 
-      <p
-        v-if="hint"
-        class="hint"
-      >
+      <p v-if="hint" class="hint">
         {{ hint }}
       </p>
-      <p
-        v-else-if="readonly"
-        class="hint"
-      >
+      <p v-else-if="readonly" class="hint">
         {{ t('stylePicker.readonlyHint') }}
       </p>
-      <p
-        v-else
-        class="hint"
-      >
+      <p v-else class="hint">
         {{ t('stylePicker.hint', { max }) }}
       </p>
     </template>
@@ -38,30 +25,11 @@
       @dragleave="onDragLeave"
       @drop.prevent="onDrop"
     >
-      <div
-        v-for="item in items"
-        :key="item.id"
-        class="slot"
-      >
-        <img
-          v-if="previewUrl(item)"
-          :src="previewUrl(item)"
-          :alt="item.name"
-        >
-        <div
-          v-else
-          class="slot-empty"
-        >
-          ?
-        </div>
-        <span
-          class="slot-name"
-          :title="item.name"
-        >{{ item.name }}</span>
-        <label
-          class="weight"
-          :title="t('stylePicker.weight')"
-        >
+      <div v-for="item in items" :key="item.id" class="slot">
+        <img v-if="previewUrl(item)" :src="previewUrl(item)" :alt="item.name" />
+        <div v-else class="slot-empty">?</div>
+        <span class="slot-name" :title="item.name">{{ item.name }}</span>
+        <label class="weight" :title="t('stylePicker.weight')">
           <span class="weight-label">
             {{ t('stylePicker.weight') }}
             <span class="weight-value">{{ Math.round(item.weight * 100) }}%</span>
@@ -74,7 +42,7 @@
             :value="item.weight"
             :disabled="readonly"
             @input="onWeightChange(item.id, Number(($event.target as HTMLInputElement).value))"
-          >
+          />
         </label>
         <button
           v-if="!readonly"
@@ -87,10 +55,7 @@
         </button>
       </div>
 
-      <div
-        v-if="!readonly && canAdd"
-        class="add-wrap"
-      >
+      <div v-if="!readonly && canAdd" class="add-wrap">
         <button
           type="button"
           class="add-slot"
@@ -99,31 +64,18 @@
         >
           +
         </button>
-        <div
-          v-if="menuOpen"
-          class="add-menu"
-          @pointerdown.stop
-        >
-          <button
-            type="button"
-            @click="openLibrary"
-          >
+        <div v-if="menuOpen" class="add-menu" @pointerdown.stop>
+          <button type="button" @click="openLibrary">
             {{ t('stylePicker.fromLibrary') }}
           </button>
-          <button
-            type="button"
-            @click="pickCustom"
-          >
+          <button type="button" @click="pickCustom">
             {{ t('stylePicker.upload') }}
           </button>
         </div>
       </div>
     </div>
 
-    <p
-      v-if="error"
-      class="error"
-    >
+    <p v-if="error" class="error">
       {{ error }}
     </p>
 
@@ -134,7 +86,7 @@
       accept="image/png,image/jpeg,image/webp,image/gif"
       multiple
       @change="onFilesPicked"
-    >
+    />
 
     <StyleLibraryDialog
       :open="libraryOpen"

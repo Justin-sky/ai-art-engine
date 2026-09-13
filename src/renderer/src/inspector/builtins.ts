@@ -42,7 +42,11 @@ import DirectorStageInspector from '../components/DirectorStageInspector.vue'
 import GraphHostInspector from '../components/GraphHostInspector.vue'
 import type { InspectorDefinition } from './types'
 import type { ProjectConfig } from '@shared/domain'
-import { readBoundBeatIdFromNodeParams, isAssetRefInputHostType, type GraphNode } from '@shared/graph'
+import {
+  readBoundBeatIdFromNodeParams,
+  isAssetRefInputHostType,
+  type GraphNode
+} from '@shared/graph'
 
 function isStageInspectorTarget(kind: string): boolean {
   return (
@@ -67,8 +71,7 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     component: BeatInspector,
     match: (target) => target.kind === 'beatUnit',
     props: (context) => ({
-      beatAssetId:
-        (context.target.meta?.beatAssetId as string | undefined) ?? undefined
+      beatAssetId: (context.target.meta?.beatAssetId as string | undefined) ?? undefined
     })
   },
   {
@@ -97,11 +100,7 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     match: (target) => {
       if (target.kind !== 'graph.node') return false
       const node = target.subject as GraphNode | null
-      return (
-        !!node &&
-        node.params?.assetHost === true &&
-        isAssetRefInputHostType(node.assetType)
-      )
+      return !!node && node.params?.assetHost === true && isAssetRefInputHostType(node.assetType)
     }
   },
   {

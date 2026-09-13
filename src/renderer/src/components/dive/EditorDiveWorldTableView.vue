@@ -1,10 +1,6 @@
 <template>
   <div class="dive-view">
-    <WorldTable
-      ref="tableRef"
-      class="table-body"
-      :world-asset-id="worldAssetId"
-    />
+    <WorldTable ref="tableRef" class="table-body" :world-asset-id="worldAssetId" />
   </div>
 </template>
 

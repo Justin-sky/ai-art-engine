@@ -120,7 +120,10 @@ async function detectOnce(root: string, rel: string): Promise<VideoBeatTags | nu
       // 打点失败原因直接透传 UI（skipped.error，与 assetVisionTagger 同约定）
       if (!(await isFfprobeAvailable())) {
         // 打点失败原因直接透传 UI（skipped.error，与 assetVisionTagger 同约定）
-        return skipped('视频打点需要 ffmpeg：当前系统未检测到 ffmpeg/ffprobe，安装后重试', ffmpegInstallHintFor(process.platform)) // cjk-ok 失败原因直接透传 UI
+        return skipped(
+          '视频打点需要 ffmpeg：当前系统未检测到 ffmpeg/ffprobe，安装后重试',
+          ffmpegInstallHintFor(process.platform)
+        ) // cjk-ok 失败原因直接透传 UI
       }
       return skipped('视频打点失败：无法读取视频时长，文件可能已损坏或格式不受支持') // cjk-ok 失败原因直接透传 UI
     }

@@ -87,10 +87,7 @@ function portableAsset(asset: AssetInfo): AssetPackageAssetMeta['asset'] {
   }
 }
 
-function portableFingerprint(
-  asset: AssetInfo,
-  payloadSha: string
-): string {
+function portableFingerprint(asset: AssetInfo, payloadSha: string): string {
   return sha256Json({
     asset: portableAsset(asset),
     payloadSha
@@ -113,7 +110,11 @@ function resolveSafeProjectFile(root: string, relativePosix: string): string | n
 function collectExportDependencies(
   seedIds: Iterable<string>,
   byId: Map<string, AssetInfo>
-): { exportIds: Set<string>; dependencyIds: Set<string>; skipped: { id: string; reason: string }[] } {
+): {
+  exportIds: Set<string>
+  dependencyIds: Set<string>
+  skipped: { id: string; reason: string }[]
+} {
   const exportIds = new Set(seedIds)
   const dependencyIds = new Set<string>()
   const skipped: { id: string; reason: string }[] = []
@@ -263,9 +264,7 @@ class AssetPackageService {
         mode = 'binary'
       }
       const deps = includeDeps
-        ? [
-            ...collectAssetGuids(asset.genParams ?? {})
-          ].filter((g) => g !== id)
+        ? [...collectAssetGuids(asset.genParams ?? {})].filter((g) => g !== id)
         : []
       const meta: AssetPackageAssetMeta = {
         schemaVersion: 1,
@@ -755,10 +754,7 @@ class AssetPackageService {
           let relativePath = ''
           if (meta.payload.mode === 'binary' && extension) {
             const dirAbs = resolveFolderDirAbs(root, folderId)
-            const fileName = uniqueFileName(
-              dirAbs,
-              `${normalizePathSegment(name)}${extension}`
-            )
+            const fileName = uniqueFileName(dirAbs, `${normalizePathSegment(name)}${extension}`)
             const mediaAbs = join(dirAbs, fileName)
             writeFileSync(mediaAbs, payload)
             relativePath = toPosix(relative(root, mediaAbs))

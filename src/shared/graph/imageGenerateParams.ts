@@ -193,9 +193,7 @@ export function parseImageGenerateCapabilities(
   const resolutions = parseEnumValues(sp.resolution)
   const qualities = parseEnumValues(sp.quality).map((q) => normalizeImageQuality(q) || q)
   const counts = parseCountOptions(sp.n)
-  const maxInputReferences = parseInputReferencesMax(
-    sp.input_references ?? sp.inputReferences
-  )
+  const maxInputReferences = parseInputReferencesMax(sp.input_references ?? sp.inputReferences)
 
   return {
     aspectRatios: uniqueStrings(aspectRatios),
@@ -235,8 +233,7 @@ export function clampImageGenerateParams(
   const next: ImageGenerateParams = { ...params }
   if (caps.aspectRatios.length) {
     if (!next.aspectRatio || !caps.aspectRatios.includes(next.aspectRatio)) {
-      next.aspectRatio =
-        pickPreferred(caps.aspectRatios, ['16:9', '1:1']) ?? caps.aspectRatios[0]
+      next.aspectRatio = pickPreferred(caps.aspectRatios, ['16:9', '1:1']) ?? caps.aspectRatios[0]
     }
   }
   if (caps.resolutions.length) {
@@ -247,7 +244,8 @@ export function clampImageGenerateParams(
   if (caps.qualities.length) {
     const q = normalizeImageQuality(next.quality)
     if (!q || !caps.qualities.includes(q)) {
-      next.quality = pickPreferred(caps.qualities, ['medium', 'high', 'low', 'auto']) ?? caps.qualities[0]
+      next.quality =
+        pickPreferred(caps.qualities, ['medium', 'high', 'low', 'auto']) ?? caps.qualities[0]
     } else {
       next.quality = q
     }
@@ -325,7 +323,9 @@ export function imageGenerateParamsToNodePatch(params: ImageGenerateParams): {
     generateAspectRatio: params.aspectRatio ?? '',
     generateResolution: params.resolution ?? '',
     generateQuality: params.quality ?? '',
-    ...(params.count != null && params.count >= 1 ? { generateCount: Math.floor(params.count) } : {}),
+    ...(params.count != null && params.count >= 1
+      ? { generateCount: Math.floor(params.count) }
+      : {}),
     ...(clampSeed(params.seed) != null ? { generateSeed: clampSeed(params.seed) } : {}),
     generateSeedUseGlobal: params.seedUseGlobal !== false
   }

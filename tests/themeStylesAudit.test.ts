@@ -11,8 +11,7 @@ const MAIN_CSS = join(ROOT, 'src/renderer/src/styles/main.css')
 const SETTINGS_SERVICE = join(ROOT, 'src/main/services/settingsService.ts')
 const RENDERER_SRC = join(ROOT, 'src/renderer/src')
 
-const WHITE_RGBA_RE =
-  /rgba\(\s*255\s*,\s*255\s*,\s*255\s*,\s*(0?\.\d+|1(?:\.0+)?)\s*\)/gi
+const WHITE_RGBA_RE = /rgba\(\s*255\s*,\s*255\s*,\s*255\s*,\s*(0?\.\d+|1(?:\.0+)?)\s*\)/gi
 
 /** 暗色向硬编码 fallback：变量缺失时浅色主题会错 */
 const DARK_FALLBACK_RE =
@@ -146,8 +145,7 @@ function collectIssues(): ThemeIssue[] {
           severity: 'error',
           kind: 'resize-chrome',
           file: rel,
-          detail:
-            '::-webkit-resizer 未使用主题 CSS 变量（--bg / --bg-input / --resizer-grip 等）'
+          detail: '::-webkit-resizer 未使用主题 CSS 变量（--bg / --bg-input / --resizer-grip 等）'
         })
       }
       if (WHITE_RGBA_RE.test(body) || /#fff(?:fff)?\b/i.test(body)) {
@@ -170,7 +168,8 @@ function collectIssues(): ThemeIssue[] {
       severity: 'error',
       kind: 'fixed-theme-chrome',
       file: 'styles/main.css',
-      detail: '.graph-task-flyer 使用固定深蓝底/字色，浅色主题下突兀；应改用 --accent / --bg-elevated 等'
+      detail:
+        '.graph-task-flyer 使用固定深蓝底/字色，浅色主题下突兀；应改用 --accent / --bg-elevated 等'
     })
   }
 

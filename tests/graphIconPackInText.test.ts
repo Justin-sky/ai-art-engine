@@ -19,7 +19,15 @@ describe('image.iconPack 多口输入取值', () => {
       {
         id: 'pack',
         params: {
-          iconPack: { rows: 3, cols: 3, edgeInset: 'auto', keyColor: 'auto', distance: 40, feather: 34, canvasSize: 0 }
+          iconPack: {
+            rows: 3,
+            cols: 3,
+            edgeInset: 'auto',
+            keyColor: 'auto',
+            distance: 40,
+            feather: 34,
+            canvasSize: 0
+          }
         }
       }
     )

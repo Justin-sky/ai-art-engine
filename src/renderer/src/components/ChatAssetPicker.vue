@@ -24,24 +24,12 @@
           <span class="count">{{ countByType(tab.value) }}</span>
         </button>
       </div>
-      <input
-        v-model="query"
-        class="search"
-        type="search"
-        :placeholder="t('common.search')"
-      >
+      <input v-model="query" class="search" type="search" :placeholder="t('common.search')" />
     </div>
-    <div
-      v-if="!visibleAssets.length"
-      class="empty"
-    >
+    <div v-if="!visibleAssets.length" class="empty">
       {{ query.trim() ? t('studio.chat.mentionNoMatch') : t('studio.chat.mentionEmpty') }}
     </div>
-    <div
-      v-else
-      class="library"
-      role="listbox"
-    >
+    <div v-else class="library" role="listbox">
       <button
         v-for="asset in visibleAssets"
         :key="asset.id"
@@ -58,53 +46,34 @@
         @click="toggle(asset.id)"
         @dblclick="pickOne(asset.id)"
       >
-        <div
-          v-if="asset.type === 'voice'"
-          class="thumb thumb-fallback"
-        >
+        <div v-if="asset.type === 'voice'" class="thumb thumb-fallback">
           <span class="fallback-icon">🎵</span>
           <span class="type-badge">{{ typeLabel(asset) }}</span>
         </div>
-        <div
-          v-else-if="thumbUrls[asset.id]"
-          class="thumb"
-        >
-          <img
-            :src="thumbUrls[asset.id]"
-            :alt="asset.name"
-          >
+        <div v-else-if="thumbUrls[asset.id]" class="thumb">
+          <img :src="thumbUrls[asset.id]" :alt="asset.name" />
           <span class="type-badge">{{ typeLabel(asset) }}</span>
         </div>
-        <div
-          v-else
-          class="thumb thumb-fallback"
-        >
+        <div v-else class="thumb thumb-fallback">
           <span class="fallback-icon">{{ fallbackIcon(asset) }}</span>
           <span class="type-badge">{{ typeLabel(asset) }}</span>
         </div>
-        <span
-          class="caption"
-          :title="asset.name"
-        >{{ asset.name }}</span>
+        <span class="caption" :title="asset.name">{{ asset.name }}</span>
       </button>
     </div>
 
     <template #footer>
       <span class="footer-hint">
-        {{ pending.size ? t('studio.chat.mentionPicked', { n: pending.size }) : t('studio.chat.mentionHint') }}
+        {{
+          pending.size
+            ? t('studio.chat.mentionPicked', { n: pending.size })
+            : t('studio.chat.mentionHint')
+        }}
       </span>
-      <button
-        type="button"
-        @click="emit('cancel')"
-      >
+      <button type="button" @click="emit('cancel')">
         {{ t('common.cancel') }}
       </button>
-      <button
-        type="button"
-        class="primary"
-        :disabled="!pending.size"
-        @click="confirm"
-      >
+      <button type="button" class="primary" :disabled="!pending.size" @click="confirm">
         {{ t('common.confirm') }}
       </button>
     </template>

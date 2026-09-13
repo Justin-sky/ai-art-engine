@@ -69,11 +69,13 @@ export default {
     busy: 'Processing {done}/{total}…',
     name: 'Action name',
     apply: 'Apply',
-    doneInfo: 'Generated a {count}-frame bone keyframe action ({seconds}). Apply it to preview in the stage, then hit Save to persist with the node.',
+    doneInfo:
+      'Generated a {count}-frame bone keyframe action ({seconds}). Apply it to preview in the stage, then hit Save to persist with the node.',
     actionDefaultName: 'Reference action',
     errorNoVideo: 'Pick a reference video and wait until it loads',
     errorVideoOpen: 'Failed to read video: {message}',
-    errorPose: 'No frames could drive the bones from this video — try a higher FPS, a more centered actor, or toggle Mirror and retry.',
+    errorPose:
+      'No frames could drive the bones from this video — try a higher FPS, a more centered actor, or toggle Mirror and retry.',
     errorRun: 'Action generation failed; see console for details'
   },
   sheetPreview: {
@@ -88,8 +90,10 @@ export default {
     overview: 'Full sheet (click to jump)',
     loading: 'Loading…',
     loadFailed: 'Failed to load image',
-    singleFrameHint: 'This is a single frame. Enter rows / cols on the right to cut this image into a frame sheet and preview it.',
-    gridTip: 'Rows / cols are auto-detected for generated frame animations; set them manually for plain PNG sheets.'
+    singleFrameHint:
+      'This is a single frame. Enter rows / cols on the right to cut this image into a frame sheet and preview it.',
+    gridTip:
+      'Rows / cols are auto-detected for generated frame animations; set them manually for plain PNG sheets.'
   },
   common: {
     browse: 'Browse',
@@ -360,13 +364,15 @@ export default {
       endpoint: 'Endpoint',
       token: 'Token',
       port: 'Listen port',
-      portHint: 'Port changes take effect after restart. If AIAE_MCP_PORT was set at launch, it takes precedence.',
+      portHint:
+        'Port changes take effect after restart. If AIAE_MCP_PORT was set at launch, it takes precedence.',
       start: 'Start MCP service',
       restart: 'Restart MCP service',
       restarting: 'Restarting…',
       restarted: 'MCP service restarted',
       resetToken: 'Reset token',
-      tokenReset: 'Token reset — the old token is invalid immediately. Update your connected clients.',
+      tokenReset:
+        'Token reset — the old token is invalid immediately. Update your connected clients.',
       editToken: 'Edit',
       tokenPlaceholder: 'Enter a new token (8–128 chars, no spaces)',
       saveToken: 'Save token',
@@ -381,7 +387,7 @@ export default {
       hint: 'The token is reused across restarts (reset it above). Treat it as full access to the local MCP service — do not share it.'
     },
     skills: {
-      hint: 'The AI chat agent discovers skills through dsh\'s skill system: drop a .md file in dsh SKILL.md format (frontmatter name / description + body) into the folder below and it takes effect on the next chat. Built-in skills are managed automatically — please don\'t edit them.',
+      hint: "The AI chat agent discovers skills through dsh's skill system: drop a .md file in dsh SKILL.md format (frontmatter name / description + body) into the folder below and it takes effect on the next chat. Built-in skills are managed automatically — please don't edit them.",
       dirPath: 'Skills directory',
       builtinCount: '{count} built-in skills (managed automatically)',
       kind: {
@@ -426,7 +432,7 @@ export default {
         gemini: 'Gemini'
       },
       customApiStyleHint:
-        'Endpoint type: {style}. OpenAI compatible covers most relay services / one-api / vLLM; Gemini uses Google\'s official OpenAI-compatible layer and most Gemini gateways; Anthropic uses the Messages API (x-api-key auth).',
+        "Endpoint type: {style}. OpenAI compatible covers most relay services / one-api / vLLM; Gemini uses Google's official OpenAI-compatible layer and most Gemini gateways; Anthropic uses the Messages API (x-api-key auth).",
       customBaseUrlPlaceholder:
         'e.g. https://api.openai.com/v1, https://generativelanguage.googleapis.com/v1beta/openai, or https://api.anthropic.com',
       nativeBaseUrl: 'ComfyUI native URL',
@@ -480,8 +486,10 @@ export default {
       manualModelAdd: 'Add & select',
       manualSpeakerPlaceholder: 'Enter purchased speaker_id (e.g. S_xxx)',
       manualSpeakerAdd: 'Add & select',
-      emptyCatalog: 'Catalog is empty. Enter a model ID manually, or check the provider and API key.',
-      emptyRemoteKeepPrevious: 'Remote returned an empty list; kept the previous catalog. Try again later.',
+      emptyCatalog:
+        'Catalog is empty. Enter a model ID manually, or check the provider and API key.',
+      emptyRemoteKeepPrevious:
+        'Remote returned an empty list; kept the previous catalog. Try again later.',
       filterNoMatch: 'No models match this filter. Clear the filter and try again.',
       clearFilter: 'Clear filter',
       emptySpeakers: 'No speakers yet. Enter a purchased speaker_id and select it.',
@@ -504,8 +512,10 @@ export default {
       },
       arkModalityHint: {
         text: 'Volcengine Ark chat models (Doubao, etc.). Default Base URL https://ark.cn-beijing.volces.com/api/v3 via /chat/completions.',
-        image: 'Seedream image models via /images/generations. Catalog filtered by endpoint name heuristics.',
-        video: 'Seedance video models via /contents/generations/tasks. Reference media must be publicly reachable (TOS helps).',
+        image:
+          'Seedream image models via /images/generations. Catalog filtered by endpoint name heuristics.',
+        video:
+          'Seedance video models via /contents/generations/tasks. Reference media must be publicly reachable (TOS helps).',
         audio:
           'Doubao openspeech voice design (X-Api-Key). No model fetch — use the speech console API key above and enter a purchased speaker_id (e.g. S_xxx). Node instruction is used as the design prompt.'
       },
@@ -535,7 +545,8 @@ export default {
       },
       modelscopeModalityHint: {
         text: 'ModelScope API-Inference chat. Default Base URL is api-inference.modelscope.cn/v1; use an access token (ms-…).',
-        image: 'ModelScope text-to-image via /v1/images/generations; model ids look like org/model_name.'
+        image:
+          'ModelScope text-to-image via /v1/images/generations; model ids look like org/model_name.'
       },
       openaiModalityHint: {
         text: 'OpenAI official chat models (GPT family). Default Base URL is api.openai.com/v1 via /chat/completions; the text catalog is fetched from GET /models.',
@@ -576,8 +587,7 @@ export default {
           'ComfyUI API v2 audio uses the same /api/v2/jobs path and collects type=audio outputs. Use a txt2audio API-format workflow.'
       },
       magicrouterModalityHint: {
-        text:
-          'MagicRouter multi-provider aggregator (OpenAI-compatible). Default Base URL is api.magicrouter.ai/v1 via /chat/completions; the catalog is fetched from /models/live.',
+        text: 'MagicRouter multi-provider aggregator (OpenAI-compatible). Default Base URL is api.magicrouter.ai/v1 via /chat/completions; the catalog is fetched from /models/live.',
         image:
           'MagicRouter text-to-image / image editing via /images/generations (reference images use the image / images fields); the catalog is fetched from /models/live.',
         video:
@@ -614,8 +624,10 @@ export default {
       confLabel: 'Detection confidence',
       iouLabel: 'NMS IoU',
       installedTitle: 'Installed models',
-      installedEmpty: 'No models yet. Drop yolo11*.onnx files into the model directory or download larger variants below.',
-      defaultPickHint: 'The largest model per task is picked automatically, so downloading a bigger variant makes it the default right away.',
+      installedEmpty:
+        'No models yet. Drop yolo11*.onnx files into the model directory or download larger variants below.',
+      defaultPickHint:
+        'The largest model per task is picked automatically, so downloading a bigger variant makes it the default right away.',
       autoPick: 'Auto-selected',
       autoPickTitle: 'Default model for this task',
       delete: 'Delete',
@@ -636,7 +648,8 @@ export default {
     },
     objectStorage: {
       hint: 'Configure object storage for media upload and public access. Supports Volcengine TOS, Alibaba Cloud OSS, and Tencent Cloud COS.',
-      singleEnabledHint: 'Only one object storage provider can be enabled at a time; enabling one turns the others off.',
+      singleEnabledHint:
+        'Only one object storage provider can be enabled at a time; enabling one turns the others off.',
       addProvider: 'Add object storage',
       add: 'Add',
       collapseProvider: 'Collapse provider',
@@ -738,8 +751,10 @@ export default {
       multiAssets: '{count} assets selected'
     },
     chat: {
-      empty: 'Describe a task to DeepSeek Harness; it can call this app\u2019s generation tools (image / video / voice / 3D) over MCP.',
-      placeholder: "Type a task. Enter to send, Shift+Enter for a new line; {'@'} references assets, paste screenshots/images",
+      empty:
+        'Describe a task to DeepSeek Harness; it can call this app\u2019s generation tools (image / video / voice / 3D) over MCP.',
+      placeholder:
+        "Type a task. Enter to send, Shift+Enter for a new line; {'@'} references assets, paste screenshots/images",
       send: 'Send',
       stop: 'Stop',
       ready: 'Ready',
@@ -757,7 +772,8 @@ export default {
       modeAsk: 'Ask',
       modePlan: 'Plan',
       skills: 'Skills',
-      skillsTitle: 'Skills available in this session (built-in snapshot + custom); marked as loaded when the model calls the skill tool',
+      skillsTitle:
+        'Skills available in this session (built-in snapshot + custom); marked as loaded when the model calls the skill tool',
       skillsMeta: 'Loaded {loaded}/{total}',
       skillsEmpty: 'No skills available',
       promptContinue: 'Continue',
@@ -781,7 +797,8 @@ export default {
       mentionSubtitle: 'Pick images / GIFs / videos / audio to reference for the model',
       mentionHint: 'Click cards to select (multiple allowed)',
       mentionPicked: '{n} assets selected',
-      mentionEmpty: 'No referenceable assets in the project yet; import images / GIFs / videos / audio first',
+      mentionEmpty:
+        'No referenceable assets in the project yet; import images / GIFs / videos / audio first',
       mentionNoMatch: 'No matching assets',
       mentionTypeAll: 'All',
       mentionTypeImage: 'Image',
@@ -812,7 +829,8 @@ export default {
       gitChangeUntracked: 'Untracked',
       gitChangeConflicted: 'Conflict',
       gitChangesNoGit: 'git was not found, so project changes cannot be previewed',
-      gitChangesNotRepo: 'This project is not a git repository; run git init to preview changes here'
+      gitChangesNotRepo:
+        'This project is not a git repository; run git init to preview changes here'
     },
     editor: {
       asset: 'Asset Editor',
@@ -1080,7 +1098,8 @@ export default {
       noPreview: 'No preview',
       loadingPreview: 'Loading preview…',
       noMedia: 'No media file linked yet',
-      psdSourceHint: 'Could not render a composite preview for this PSD — double-click to open in Photoshop',
+      psdSourceHint:
+        'Could not render a composite preview for this PSD — double-click to open in Photoshop',
       descPlaceholder: 'Describe purpose, style, constraints…',
       draftHint: 'Ctrl+S to choose folder and file name, then save',
       notFound: 'Asset missing or deleted',
@@ -1271,7 +1290,8 @@ export default {
     source: 'Source',
     loadingSource: 'Loading source image…',
     noSource: 'No upstream transparent PNG found — connect an image to the node first',
-    sourceHint: 'The source should carry an alpha channel (e.g. a local cutout); the aligned sprite is placed on a uniform canvas',
+    sourceHint:
+      'The source should carry an alpha channel (e.g. a local cutout); the aligned sprite is placed on a uniform canvas',
     params: 'Parameters',
     result: 'Aligned result',
     resultEmpty: 'Connect a source to preview the uniform-canvas output here',
@@ -1326,7 +1346,8 @@ export default {
     bindJoint: 'To joint',
     unbind: 'Unbind',
     rigTemplate: '🧍 Humanoid rig',
-    rigTemplateTip: 'Rebuild a standard humanoid rig to fit the canvas (replaces joints & attachments; naming follows the pose-solve convention)',
+    rigTemplateTip:
+      'Rebuild a standard humanoid rig to fit the canvas (replaces joints & attachments; naming follows the pose-solve convention)',
     rigToolLabel: 'Handle tools',
     rigToolMove: 'Move',
     rigToolRotate: 'Rotate',
@@ -1334,7 +1355,8 @@ export default {
       'Move a bone point: drag a joint handle to rewrite that joint’s bind offset from its parent (the point and its whole child chain translate) for aligning the rig onto the art',
     rigToolRotateTip:
       'Rotate a bone: drag a joint handle to spin the joint around itself, rewriting its bind rotation (drives the whole child chain) for straightening bones',
-    rigToolMoveHint: 'Move tool active: drag a joint handle to relocate the bone point (edits bind offset x/y)',
+    rigToolMoveHint:
+      'Move tool active: drag a joint handle to relocate the bone point (edits bind offset x/y)',
     rigToolRotateHint:
       'Rotate tool active: drag a joint handle to spin the bone about the joint (edits bind rotation)',
     rigStageHint:
@@ -1358,14 +1380,16 @@ export default {
     spineExporting: 'Assembling Spine skeleton pack…',
     spineNoAttach:
       'Drop a part image onto the canvas in the “Layers” tab, then select the target joint in the “Rig” tab and bind the layer to it',
-    spineExportDone: 'Written to {path} ({count} part pages + skeleton.json + .atlas); library refreshed',
+    spineExportDone:
+      'Written to {path} ({count} part pages + skeleton.json + .atlas); library refreshed',
     autoCut: 'Auto-cut parts from whole image',
     autoCutHint:
       'Slices the whole illustration into part layers along the skeleton joints and attaches them automatically (build/align a humanoid rig on the Rig tab first; cut happens at the bind pose and resets the pose, so the canvas shows the original image afterwards)',
     autoCutNeedRig: 'Build and roughly align a humanoid rig on the Rig tab first, then auto-cut',
     autoCutNeedLayer:
       'No whole layer to cut (drag in a whole transparent illustration first; it must not already be attached to a joint)',
-    autoCutFail: 'Auto-cut failed: content too small / missing key joints / layer could not be decoded',
+    autoCutFail:
+      'Auto-cut failed: content too small / missing key joints / layer could not be decoded',
     autoCutDone:
       'Cut into {count} parts and attached them to the skeleton (verify on the Rig tab, or export the Spine pack directly)',
     exportTitle: 'Export action frames (transparent PNG)',
@@ -1411,7 +1435,8 @@ export default {
     actionAssetSaved: 'Saved to library as “{name}” — reusable on any 2D-bone node',
     actionAssetLoadDone: 'Loaded “{asset}”: {matched}/{total} joints matched, previewing',
     actionAssetLoadMismatch: '“{asset}” joint set does not match this rig — not loaded',
-    actionAssetLoadEmptyAction: '“{asset}” has no keyframes yet — author one in a 2D-bone editor first',
+    actionAssetLoadEmptyAction:
+      '“{asset}” has no keyframes yet — author one in a 2D-bone editor first',
     actionAssetFail: 'Failed to save action asset: {message}',
     actionPreviewTitle: '2D Action Preview',
     actionPreviewPlay: 'Play',
@@ -1421,14 +1446,19 @@ export default {
     actionPreviewOnce: 'Once',
     actionPreviewNoPack: 'Not a valid 2D action asset payload',
     actionPreviewNoRig: 'This action asset has no attached rig snapshot',
-    actionPreviewNoRigHint: 'Action assets come from the 2D-bone editor “💾 Save as Action Asset”, which stores the rig alongside the action',
-    actionPreviewNoFrames: 'This action has no keyframes yet — author one in the 2D-bone editor, then “💾 Save as Action Asset” again to preview looping',
-    actionPreviewSingleFrame: 'This asset is a single static frame with no loopable duration — add keyframes in the 2D-bone editor and re-save',
-    actionPreviewHint: 'Bundles a rig snapshot + keyframes: pick it under the 2D-bone editor’s “📥 Load from Library” to load and fine-tune it on any rig',
+    actionPreviewNoRigHint:
+      'Action assets come from the 2D-bone editor “💾 Save as Action Asset”, which stores the rig alongside the action',
+    actionPreviewNoFrames:
+      'This action has no keyframes yet — author one in the 2D-bone editor, then “💾 Save as Action Asset” again to preview looping',
+    actionPreviewSingleFrame:
+      'This asset is a single static frame with no loopable duration — add keyframes in the 2D-bone editor and re-save',
+    actionPreviewHint:
+      'Bundles a rig snapshot + keyframes: pick it under the 2D-bone editor’s “📥 Load from Library” to load and fine-tune it on any rig',
     result: 'Stage preview',
     resultEmpty: 'Add sprites to preview the composited stage here',
     apply: 'Apply to node',
-    applyHint: 'Stage canvas, anchors and per-layer parameters are written to the node, and the frame shows on the card right away'
+    applyHint:
+      'Stage canvas, anchors and per-layer parameters are written to the node, and the frame shows on the card right away'
   },
   script: {
     dialog: {
@@ -1440,9 +1470,11 @@ export default {
       refreshSources: 'Refresh inputs',
       autoPlace: 'Auto-place',
       generateBgm: 'Generate BGM',
-      generateBgmHint: 'Describe the music (style / mood / scene); it will be placed on the music track',
+      generateBgmHint:
+        'Describe the music (style / mood / scene); it will be placed on the music track',
       generateBgmPlaceholder: 'Upbeat bright electronic score for a Vlog background',
-      generateBgmPrompt: 'Describe the BGM you want (style, mood, scene, optionally tempo/duration)',
+      generateBgmPrompt:
+        'Describe the BGM you want (style, mood, scene, optionally tempo/duration)',
       generateBgmDoneTitle: 'BGM generated',
       generateBgmDone: 'Generated "{name}" and placed it on the music track',
       generateBgmFailed: 'BGM generation failed: {error}',
@@ -1454,9 +1486,12 @@ export default {
       generateSfxFailed: 'SFX generation failed: {error}',
       smartCut: 'Smart cut',
       smartCutTitle: 'AI rough cut',
-      smartCutHint: 'The AI reordered the video track from titles and shot descriptions. Adjust duration and transitions below.',
-      smartCutNoVideo: 'No video sources available. Collect sources from output nodes or drag in videos first.',
-      smartCutNoModel: 'No text generation model configured. Choose a model on the screenplay node first.',
+      smartCutHint:
+        'The AI reordered the video track from titles and shot descriptions. Adjust duration and transitions below.',
+      smartCutNoVideo:
+        'No video sources available. Collect sources from output nodes or drag in videos first.',
+      smartCutNoModel:
+        'No text generation model configured. Choose a model on the screenplay node first.',
       smartCutParseFailed: 'The AI did not return a valid cut plan. Try again or switch model.',
       smartCutFailed: 'Smart cut failed: {error}',
       smartCutDuration: 'Duration (s)',
@@ -1465,7 +1500,8 @@ export default {
       smartCutRegenerating: 'Generating…',
       smartCutGenerating: 'Generating the cut plan…',
       smartCutStart: 'Generate',
-      smartCutNotStarted: 'Click "Generate" to have AI reorder clips and set durations automatically',
+      smartCutNotStarted:
+        'Click "Generate" to have AI reorder clips and set durations automatically',
       smartCutBeatPick: 'Beat-picked shot: skipped empty shots, {from}s in-source · {dur}s',
       smartCutBeatShorter: 'Not enough usable frames; trimmed to {dur}s by beat detection',
       sfxLibrary: 'SFX library',
@@ -1473,12 +1509,13 @@ export default {
       sfxLibraryGenerate: 'Generate & place',
       sfxLibraryImport: 'Import from asset library',
       sfxLibraryImportBtn: 'Import & place',
-      sfxLibraryNoAssets: 'No usable audio assets yet (import sound / audio files into the asset library first)',
+      sfxLibraryNoAssets:
+        'No usable audio assets yet (import sound / audio files into the asset library first)',
       sfxLibraryGenerated: 'Generated SFX and placed it on the SFX track: {name}',
       sfxLibraryImported: 'Imported SFX and placed it on the SFX track: {name}',
       sourceNode: 'Source node',
       locateNode: 'Locate in graph',
-      locateNodeHint: 'Locate this clip\'s source node in the graph (back to its generation branch)',
+      locateNodeHint: "Locate this clip's source node in the graph (back to its generation branch)",
       sourceGridSize: 'Media tile size',
       sourceGroup: {
         input: 'Node inputs',
@@ -1520,7 +1557,8 @@ export default {
       startSec: 'Start time',
       durationSec: 'Clip duration',
       sourceOffsetSec: 'In-source start',
-      sourceOffsetSecTip: 'This clip is trimmed from that point in the source file to skip the empty intro (video beat analysis)',
+      sourceOffsetSecTip:
+        'This clip is trimmed from that point in the source file to skip the empty intro (video beat analysis)',
       hideTrack: 'Hide track',
       showTrack: 'Show track',
       muteTrack: 'Mute track',
@@ -1571,7 +1609,8 @@ export default {
       transitionWipeDown: 'Wipe down',
       transitionCircleOpen: 'Circle open',
       transitionCircleClose: 'Circle close',
-      transitionDragHint: 'Drag the blue handle between two video clips to adjust overlap/duration.',
+      transitionDragHint:
+        'Drag the blue handle between two video clips to adjust overlap/duration.',
       overlayTransform: 'Picture-in-picture transform',
       overlayX: 'Position X %',
       overlayY: 'Position Y %',
@@ -1792,7 +1831,8 @@ export default {
       },
       tabProps: 'Properties',
       tabPose: 'Pose',
-      poseHint: 'Skeleton joints and bones are shown in the viewport. Select a joint below or in the view to adjust the pose.',
+      poseHint:
+        'Skeleton joints and bones are shown in the viewport. Select a joint below or in the view to adjust the pose.',
       poseBones: 'Bones ({n})',
       poseBonesEmpty: 'This model has no editable bones',
       poseViewportHint: 'Click a green joint in the viewport, then drag the rotate gizmo to pose',
@@ -1827,7 +1867,8 @@ export default {
       poseAiGenerate: 'Generate AI pose',
       poseAiGenerating: 'Generating…',
       poseAiApplied: 'Applied {matched}/{total} bones',
-      poseAiParseFailed: 'Could not parse the model reply as a pose function call. Try another model or rewrite the prompt.',
+      poseAiParseFailed:
+        'Could not parse the model reply as a pose function call. Try another model or rewrite the prompt.',
       poseAiNoMatch: 'Returned bone names do not match this character',
       poseAiFailed: 'Generation failed: {error}',
       poseAiLog: {
@@ -1870,7 +1911,8 @@ export default {
       poseAssetSaved: 'Saved asset "{name}"',
       poseAssetSaveFailed: 'Failed to save pose asset',
       poseFromMediaOpen: 'Detect pose from image/video',
-      poseFromMediaHint: 'Detect a human skeleton from a project image or a video frame with local YOLO, then apply it to the selected character start pose',
+      poseFromMediaHint:
+        'Detect a human skeleton from a project image or a video frame with local YOLO, then apply it to the selected character start pose',
       poseMediaTitle: 'Detect Pose from Image/Video',
       poseMediaSubtitle: 'Applied to selected character',
       poseMediaKindImage: 'Images',
@@ -1905,14 +1947,18 @@ export default {
       poseMediaSavePreset: 'Save as pose preset',
       poseMediaSavingPreset: 'Saving…',
       poseMediaUndoLabel: 'Apply image pose',
-      poseMediaErrorNoPoseModel: 'No pose model available. Download one in Settings first (a pose model is required)',
+      poseMediaErrorNoPoseModel:
+        'No pose model available. Download one in Settings first (a pose model is required)',
       poseMediaErrorYoloUnavailable: 'YOLO service unavailable; refresh and retry',
       poseMediaErrorFileMissing: 'Asset file unavailable; pick another asset',
-      poseMediaErrorFrameEmpty: 'Failed to grab video frame; retry or pick another time (requires ffmpeg)',
+      poseMediaErrorFrameEmpty:
+        'Failed to grab video frame; retry or pick another time (requires ffmpeg)',
       poseMediaErrorDetect: 'Pose detection failed; please retry',
-      poseMediaErrorNoBones: 'No usable skeleton data for the target character; make sure its skeleton is loaded first',
+      poseMediaErrorNoBones:
+        'No usable skeleton data for the target character; make sure its skeleton is loaded first',
       poseMediaSolveEmpty: 'No drivable bone segments matched (ok {ok}/{total})',
-      poseMediaApplied: 'Applied as start pose, aligned {ok}/{total} segments{readback}{detail}; Ctrl+Z to undo',
+      poseMediaApplied:
+        'Applied as start pose, aligned {ok}/{total} segments{readback}{detail}; Ctrl+Z to undo',
       poseMediaReadback: 'mesh readback: {list}',
       poseMediaErrorApply: 'Failed to apply pose; please retry',
       poseMediaErrorPreset: 'Failed to save pose preset',
@@ -2107,7 +2153,8 @@ export default {
         addTrack: 'New Track',
         cameraCutTrack: 'Camera Cut',
         cameraCutTag: 'CUT',
-        cameraCutHint: 'Add a camera cut track: activates the camera whose segment covers the playhead',
+        cameraCutHint:
+          'Add a camera cut track: activates the camera whose segment covers the playhead',
         cameraCutAddHint: 'Add a segment for the active camera at the playhead',
         cameraCutRemoveHint: 'Remove the selected camera segment',
         cameraCutDropHint: 'Drag cameras here (or use + to add the active camera)',
@@ -2232,7 +2279,8 @@ export default {
           '9-grid storyboard table generated; advancing to the 4-grid motion storyboard table',
         readyDirect:
           '9-grid motion prompt table generated; generate all 9 direct videos cell by cell or in one click',
-        sequenceCells: '4-grid motion storyboard table generated; advancing to the motion prompt table',
+        sequenceCells:
+          '4-grid motion storyboard table generated; advancing to the motion prompt table',
         motionCells: 'Motion prompt table generated; completes once director review passes',
         completed: 'All stages approved'
       },
@@ -2514,7 +2562,8 @@ export default {
       enqueueFailedNoTarget:
         'Cannot resolve a task target for this canvas (missing shot or script context). Open shot video from the script and try again.',
       nodeRunBlockedTitle: 'Cannot run node',
-      nodeRunBlockedMessage: 'This workflow is running in the task list. Individual or upstream node runs are disabled until it finishes or is stopped.',
+      nodeRunBlockedMessage:
+        'This workflow is running in the task list. Individual or upstream node runs are disabled until it finishes or is stopped.',
       status: {
         pending: 'Queued',
         running: 'Running',
@@ -2803,7 +2852,8 @@ export default {
       aspectRatioPlaceholder: 'Leave blank for default',
       dimensions: 'Variant dimensions',
       addDimension: 'Add dimension',
-      dimensionHint: 'Each dimension is a label plus values (one per line); cells are the Cartesian product of all values.',
+      dimensionHint:
+        'Each dimension is a label plus values (one per line); cells are the Cartesian product of all values.',
       dimensionEmpty: 'No dimensions yet. Click "Add dimension" to start.',
       dimensionLabelPlaceholder: 'Dimension name, e.g. camera angle',
       dimensionValuesPlaceholder: 'One value per line',
@@ -2815,7 +2865,8 @@ export default {
       selectedCount: '{n} selected',
       exporting: 'Exporting…',
       exportSelected: 'Export selected',
-      compareEmptyHint: 'Run this node to generate variants, then compare and mark selected / rejected here.',
+      compareEmptyHint:
+        'Run this node to generate variants, then compare and mark selected / rejected here.',
       loading: 'Loading…',
       select: 'Select',
       reject: 'Reject',
@@ -3001,7 +3052,8 @@ export default {
     upscale: {
       systemPrompt: 'System prompt',
       mergedPrompt: 'Merged prompt',
-      promptEmpty: 'No merged prompt yet. Write the upscale instruction in the node instruction box.'
+      promptEmpty:
+        'No merged prompt yet. Write the upscale instruction in the node instruction box.'
     },
     expand: {
       appMark: 'Image expand',
@@ -3153,8 +3205,10 @@ export default {
       refineBar: 'Refine a cell',
       refineOriginal: 'Current cell',
       refineResult: 'Refined result',
-      refineNoPack: 'No sibling icon-pack node found for this cell: an icon-pack node sourced from the same sheet image is required to write the refined tile back',
-      refineNoModelHint: 'No generation model configured on the sheet node: if generation fails, set a model on the sheet image node first',
+      refineNoPack:
+        'No sibling icon-pack node found for this cell: an icon-pack node sourced from the same sheet image is required to write the refined tile back',
+      refineNoModelHint:
+        'No generation model configured on the sheet node: if generation fails, set a model on the sheet image node first',
       refineHint: 'What to fix (leave empty to redraw in the sheet style)',
       refineHintPh: 'e.g. subject is blurry, strokes broken',
       refinePrompt: 'Refine prompt (editable)',
@@ -3162,8 +3216,10 @@ export default {
       refineRunning: 'Refining…',
       refineCancel: 'Cancel',
       refineClose: 'Close',
-      refineUnresolved: 'Cannot resolve this cell context (missing connected sheet / icon-pack node)',
-      refineNoSource: 'No sheet image resolved: run the sheet image node first to generate / persist it',
+      refineUnresolved:
+        'Cannot resolve this cell context (missing connected sheet / icon-pack node)',
+      refineNoSource:
+        'No sheet image resolved: run the sheet image node first to generate / persist it',
       refineNoResult: 'The model returned no local image',
       refineSuccess: 'Cell {cell} ({name}) refined and written back to the pack; repacking…',
       refineFailedPrefix: 'Refine failed'
@@ -3171,7 +3227,8 @@ export default {
     iconPack: {
       appMark: 'Icon pack',
       hint: 'Double-click to tweak packing options (grid / keying / canvas); run the node to cut cells, key transparency, and save PNGs named after the list',
-      editorHint: 'Changes write back to the node live; after saving, run the node to repack. Keying prefers auto (samples blank-cell color when the list is short); black / white backgrounds also work and feathering is preserved.',
+      editorHint:
+        'Changes write back to the node live; after saving, run the node to repack. Keying prefers auto (samples blank-cell color when the list is short); black / white backgrounds also work and feathering is preserved.',
       noSource: 'Connect the upstream icon-sheet image first',
       gridSection: 'Sheet grid',
       rows: 'Rows',
@@ -3203,13 +3260,15 @@ export default {
     layerSplit: {
       appMark: 'Layer split',
       hint: 'Run the node to decompose with Seedream 5.0 Pro; double-click to reorder and move layers',
-      needRun: 'Connect an upstream image and run the node. The model returns a base image plus transparent layers you can drag, resize, and restack here.',
+      needRun:
+        'Connect an upstream image and run the node. The model returns a base image plus transparent layers you can drag, resize, and restack here.',
       noSelection: 'No layer selected',
       layers: 'Layers',
       emptyLayers: 'No layers yet. Run the node to decompose the image.',
       layerCount: '{n} layers',
       prompt: 'Decompose prompt',
-      promptPlaceholder: 'Optional: name the elements to isolate. Leave empty to detect subjects, text, and decorations automatically.',
+      promptPlaceholder:
+        'Optional: name the elements to isolate. Leave empty to detect subjects, text, and decorations automatically.',
       resolution: 'Resolution',
       sendBack: 'Send backward',
       bringForward: 'Bring forward',
@@ -3250,14 +3309,17 @@ export default {
       exportPsdFilter: 'Photoshop PSD'
     },
     anim2d: {
-      inspectorHint: 'Feed in a frame-animation sheet from upstream; run this node to split frames and preview playback below',
-      genInspectorHint: 'Double-click the node to open the instruction panel for presets and action; set rows/cols and system prompt here, then run to generate the sheet',
+      inspectorHint:
+        'Feed in a frame-animation sheet from upstream; run this node to split frames and preview playback below',
+      genInspectorHint:
+        'Double-click the node to open the instruction panel for presets and action; set rows/cols and system prompt here, then run to generate the sheet',
       cardPlayHint: 'Double-click to play / pause the frame sequence',
       rows: 'Rows',
       cols: 'Cols',
       preset: 'Preset',
       bgKey: 'FX transparency',
-      bgKeyHint: 'Chroma key by background color: generate the sheet on a solid-color background, then near-key pixels turn transparent when splitting frames — engine-ready transparent frames',
+      bgKeyHint:
+        'Chroma key by background color: generate the sheet on a solid-color background, then near-key pixels turn transparent when splitting frames — engine-ready transparent frames',
       bgKeyNone: 'Off (keep original)',
       bgKeyBlack: 'Black bg → transparent',
       bgKeyWhite: 'White bg → transparent',
@@ -3279,7 +3341,8 @@ export default {
       exportGifNote: 'Renders at the current {fps} fps, keeping transparent frames',
       exportGifHint: 'Pick a library folder and a name on export',
       exportGifTitle: 'Export GIF to library',
-      exportGifSubtitle: 'Pick a library folder and a name; the GIF is registered as an image asset',
+      exportGifSubtitle:
+        'Pick a library folder and a name; the GIF is registered as an image asset',
       runGifFps: 'GIF on run',
       runGifOff: 'Off',
       runGifHint:
@@ -3306,9 +3369,11 @@ export default {
       bgWhite: 'White',
       bgBlack: 'Black',
       instruction: 'Instruction',
-      instructionPlaceholder: "Describe the vector art to generate; use {'@'} to cite connected inputs",
+      instructionPlaceholder:
+        "Describe the vector art to generate; use {'@'} to cite connected inputs",
       systemPrompt: 'System prompt',
-      systemPromptPlaceholder: 'Define the model role and output rules; leave empty to use the built-in default'
+      systemPromptPlaceholder:
+        'Define the model role and output rules; leave empty to use the built-in default'
     },
     svgAnim: {
       inspectorHint:
@@ -3484,7 +3549,8 @@ export default {
       instructionHint: 'Double-click to edit generation instruction'
     },
     error: {
-      selfAssetDrop: 'Cannot drop this asset into its own workflow — that would create a circular dependency',
+      selfAssetDrop:
+        'Cannot drop this asset into its own workflow — that would create a circular dependency',
       alreadyOnGraph: 'This host asset is already on the canvas',
       unsupportedDrop: 'This canvas does not accept this asset type',
       dropPathFailed: 'Could not read dropped file paths. Import into the library first.',
@@ -3713,7 +3779,8 @@ export default {
       textHint: 'Controls the final text output of this workflow.',
       connectHint: 'Connect reference nodes here to form the final output.',
       resultText: 'Run result',
-      resultPlaceholder: 'After you run the node, aggregated screenplay text appears here and can be edited',
+      resultPlaceholder:
+        'After you run the node, aggregated screenplay text appears here and can be edited',
       exportScreenplay: 'Export screenplay…',
       exportVideo: 'Export video…',
       exportImages: 'Batch export…',
@@ -3868,7 +3935,8 @@ export default {
       framePull: {
         hint: 'Double-click the node to open the frame puller: < and > step frames, Space toggles playback. Capture frames and add notes there.',
         openHint: 'Double-click to open the frame puller',
-        noSource: 'Connect an upstream video (a video generation node after running, or a video asset)',
+        noSource:
+          'Connect an upstream video (a video generation node after running, or a video asset)',
         capture: 'Capture frame',
         clear: 'Clear frames',
         captured: '{n} captured',
@@ -3885,15 +3953,18 @@ export default {
       },
       reshoot: {
         hint: 'Connect a source video and double-click the node to open the reshoot desk: locate the start and end times to edit, write the change, and run — only that segment is regenerated while the rest stays intact. Works best with Seedance 2.5 (timestamp-level video editing)',
-        noSource: 'Connect an upstream video (a video generation node after running, or a video asset)',
+        noSource:
+          'Connect an upstream video (a video generation node after running, or a video asset)',
         segment: 'Reshoot segment',
         markStart: 'Mark start {time}',
         markEnd: 'Mark end {time}',
         start: 'Start (s)',
         end: 'End (s)',
-        segmentHint: 'Seek the video, then click "Mark start / Mark end", or type seconds directly; the range is written into the prompt as mm:ss',
+        segmentHint:
+          'Seek the video, then click "Mark start / Mark end", or type seconds directly; the range is written into the prompt as mm:ss',
         instruction: 'Change',
-        instructionPlaceholder: 'e.g. change the black umbrella in the character’s hand to a transparent one',
+        instructionPlaceholder:
+          'e.g. change the black umbrella in the character’s hand to a transparent one',
         model: 'Video model',
         range: 'Reshoot range {range}',
         done: 'Done'
@@ -3956,17 +4027,21 @@ export default {
         fail: 'Fail',
         reason: 'FAIL reason',
         reviewModel: 'Review model',
-        reviewModelHint: 'A vision model that can read the image; pick one with image input support',
-        reviewModelFallback: 'No review model set — falling back to the generate model; verdicts may be unreliable',
+        reviewModelHint:
+          'A vision model that can read the image; pick one with image input support',
+        reviewModelFallback:
+          'No review model set — falling back to the generate model; verdicts may be unreliable',
         referenceCount: 'Reference image count',
-        referenceCountHint: 'The first N images are the comparison baseline (not scored); the rest are under review. Leave empty for auto',
+        referenceCountHint:
+          'The first N images are the comparison baseline (not scored); the rest are under review. Leave empty for auto',
         score: 'Review score',
         rounds: 'Rounds'
       },
       mediaRework: {
         hint: 'Generate → review → inject the FAIL reason and regenerate until passed or max attempts',
         instruction: 'Generation instruction',
-        instructionPlaceholder: 'Describe what to generate; the last FAIL reason is injected on each retry',
+        instructionPlaceholder:
+          'Describe what to generate; the last FAIL reason is injected on each retry',
         maxAttempts: 'Max rework attempts',
         status: 'Rework status',
         running: 'Running',
@@ -3976,20 +4051,25 @@ export default {
         lastReason: 'Last reason',
         imageModel: 'Image model',
         reviewModel: 'Review model',
-        reviewModelHint: 'Must be a vision model with image input; reviewing with an image model is blind judging',
-        reviewModelFallback: 'No review model set — falling back to the image model; verdicts may be unreliable',
+        reviewModelHint:
+          'Must be a vision model with image input; reviewing with an image model is blind judging',
+        reviewModelFallback:
+          'No review model set — falling back to the image model; verdicts may be unreliable',
         imageModelFallbacks: 'Fallback image models',
         reviewModelFallbacks: 'Fallback review models',
-        modelFallbacksHint: 'Used in order when the primary model call fails (rate limit / unavailable / timeout)',
+        modelFallbacksHint:
+          'Used in order when the primary model call fails (rate limit / unavailable / timeout)',
         strategy: 'Rework strategy',
         strategyAuto: 'Auto escalate (recommended)',
         strategyGuidance: 'Targeted fix',
         strategyReseed: 'Re-stage composition',
         strategyStronger: 'Reinforced constraints',
         confirmFirst: 'Wait for confirmation after the first image',
-        confirmFirstHint: 'Shows you the first image before spending the remaining attempts unattended',
+        confirmFirstHint:
+          'Shows you the first image before spending the remaining attempts unattended',
         awaitingConfirm: 'Awaiting confirmation',
-        awaitingConfirmHint: 'Paused after the first image. Continue reworking, or accept the current result',
+        awaitingConfirmHint:
+          'Paused after the first image. Continue reworking, or accept the current result',
         continueRework: 'Continue rework',
         acceptCurrent: 'Accept current',
         rounds: 'Rounds',
@@ -4037,7 +4117,8 @@ export default {
         exportDone: 'Exported {count} file(s)',
         exportCancel: 'Cancelled',
         emptyPanels: 'No panels yet',
-        gridHint: 'Click a panel/bubble for its properties; use the Global properties toolbar button or blank space for page properties. Drag the selected panel edge/corner handles to resize, drag the bubble corner dot to scale; drag images onto empty cells to create panels',
+        gridHint:
+          'Click a panel/bubble for its properties; use the Global properties toolbar button or blank space for page properties. Drag the selected panel edge/corner handles to resize, drag the bubble corner dot to scale; drag images onto empty cells to create panels',
         done: 'Done'
       },
       generate: {
@@ -4059,7 +4140,8 @@ export default {
         voiceProfileNone: 'None (describe the voice)',
         voiceProfileManage: 'Manage voice profiles',
         voiceProfileDelete: 'Delete',
-        voiceProfileEmpty: 'No character voice profiles yet; create one below (character + voice id or clone reference audio)',
+        voiceProfileEmpty:
+          'No character voice profiles yet; create one below (character + voice id or clone reference audio)',
         voiceProfileCharacter: 'Character name (required)',
         voiceProfileVoice: 'Voice id (MiniMax voice_id / Ark speaker_id)',
         voiceProfileReferenceAudio: 'Clone reference audio (in-project path or URL)',
@@ -4080,13 +4162,17 @@ export default {
         },
         noModels: 'No models available',
         systemPrompt: 'System prompt',
-        systemPromptPlaceholder: 'Define the model role and output rules; leave empty to use the built-in default',
+        systemPromptPlaceholder:
+          'Define the model role and output rules; leave empty to use the built-in default',
         instruction: 'Instruction',
-        instructionPlaceholder: "Expand or rewrite into a full screenplay; use {'@'} to cite connected inputs",
-        imageInstructionPlaceholder: "Describe the image generation intent; use {'@'} to cite connected inputs",
+        instructionPlaceholder:
+          "Expand or rewrite into a full screenplay; use {'@'} to cite connected inputs",
+        imageInstructionPlaceholder:
+          "Describe the image generation intent; use {'@'} to cite connected inputs",
         toPromptInstructionPlaceholder:
           'Generate a structured Chinese prompt from the image, covering subject, environment, lighting, camera language, and style keywords.',
-        videoInstructionPlaceholder: "Describe the video generation intent; use {'@'} to cite connected inputs",
+        videoInstructionPlaceholder:
+          "Describe the video generation intent; use {'@'} to cite connected inputs",
         lipSyncInstructionPlaceholder:
           'Optional performance / camera notes (image→图片1+音频1; video→视频1+音频1); Seedance 2.0 recommended',
         voiceInstructionPlaceholder:
@@ -4299,12 +4385,15 @@ export default {
         instructionDialogTitle: 'Generation instruction',
         instructionDialogHint: "Use {'@'} to cite connected inputs and apply presets",
         instructionDialogDone: 'Done',
-        executeHint: 'Running this generation node calls the model above. The “Screenplay output” node only passes results through (no API).',
-        configureModelsHint: 'Configure a text model in Settings (API key + at least one selected model)',
-        configureImageModelsHint: 'Configure an image model in Settings (API key + at least one selected model)',
-        configureAudioModelsHint:
-          'Add a purchased speaker_id under Settings → Ark → Voice first',
-        configureVideoModelsHint: 'Configure a video model in Settings (API key + at least one selected model)',
+        executeHint:
+          'Running this generation node calls the model above. The “Screenplay output” node only passes results through (no API).',
+        configureModelsHint:
+          'Configure a text model in Settings (API key + at least one selected model)',
+        configureImageModelsHint:
+          'Configure an image model in Settings (API key + at least one selected model)',
+        configureAudioModelsHint: 'Add a purchased speaker_id under Settings → Ark → Voice first',
+        configureVideoModelsHint:
+          'Configure a video model in Settings (API key + at least one selected model)',
         imageParams: {
           title: 'Image generation params',
           placeholder: 'Params',
@@ -4323,7 +4412,7 @@ export default {
           seedPlaceholder: 'Empty = random',
           seedRandom: 'Random',
           seedSummary: 'seed {n}',
-          seedUseGlobal: 'Use global seed',
+          seedUseGlobal: 'Use global seed'
         },
         videoParams: {
           title: 'Video generation params',

@@ -83,7 +83,9 @@ async function separateViaFfmpegCenter(params: {
       )
     } catch (err) {
       const stderr = err instanceof Error ? err.message : String(err)
-      throw new Error(`ffmpeg 分离 ${kind === 'vocal' ? '人声' : '伴奏'} 失败：${stderr.slice(0, 300)}`)
+      throw new Error(
+        `ffmpeg 分离 ${kind === 'vocal' ? '人声' : '伴奏'} 失败：${stderr.slice(0, 300)}`
+      )
     }
   }
   return {

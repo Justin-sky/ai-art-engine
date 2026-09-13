@@ -3,10 +3,7 @@ import type { InspectorDefinition, InspectorTarget } from './types'
 
 /** 可宿主资产的宿主实例（HDA）：走 GraphHostInspector */
 function isHostableHostNode(node: GraphNode): boolean {
-  return (
-    node.params?.assetHost === true &&
-    isAssetRefInputHostType(node.assetType)
-  )
+  return node.params?.assetHost === true && isAssetRefInputHostType(node.assetType)
 }
 
 export function matchesInspectorTarget(

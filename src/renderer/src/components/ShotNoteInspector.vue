@@ -1,13 +1,7 @@
 <template>
-  <div
-    v-if="node"
-    class="note-inspector"
-  >
+  <div v-if="node" class="note-inspector">
     <div class="head">
-      <span
-        class="type"
-        :class="typeToneClass"
-      >{{ typeLabel }}</span>
+      <span class="type" :class="typeToneClass">{{ typeLabel }}</span>
       <h2>{{ displayTitle }}</h2>
     </div>
     <p class="hint">
@@ -17,10 +11,7 @@
     <template v-if="isBoundary">
       <div class="meta-row">
         <span class="meta-label">{{ t('graph.inspector.boundary.dataType') }}</span>
-        <span
-          class="meta-value type-chip"
-          :class="typeToneClass"
-        >{{ dataTypeLabel }}</span>
+        <span class="meta-value type-chip" :class="typeToneClass">{{ dataTypeLabel }}</span>
       </div>
       <div class="meta-row">
         <span class="meta-label">{{ t('graph.inspector.boundary.port') }}</span>
@@ -29,31 +20,23 @@
 
       <label>
         {{ t('graph.inspector.note.title') }}
-        <input
-          v-model="localTitle"
-          @change="persistTitleOnly"
-        >
+        <input v-model="localTitle" @change="persistTitleOnly" />
       </label>
 
       <section class="preview-section">
         <div class="preview-label">
           {{ t('graph.inspector.boundary.preview') }}
         </div>
-        <GraphNodeOutputPreview
-          v-if="hostId"
-          :node="node"
-          :host-id="hostId"
-        />
+        <GraphNodeOutputPreview v-if="hostId" :node="node" :host-id="hostId" />
       </section>
     </template>
 
     <template v-else-if="isInputSlot">
       <div class="meta-row">
         <span class="meta-label">{{ t('graph.inspector.inputInterface.dataType') }}</span>
-        <span
-          class="meta-value type-chip"
-          :class="`slot-${slotDataType}`"
-        >{{ dataTypeLabel }}</span>
+        <span class="meta-value type-chip" :class="`slot-${slotDataType}`">{{
+          dataTypeLabel
+        }}</span>
       </div>
       <div class="meta-row">
         <span class="meta-label">{{ t('graph.inspector.inputInterface.port') }}</span>
@@ -66,10 +49,7 @@
 
       <label>
         {{ t('graph.inspector.note.title') }}
-        <input
-          v-model="localTitle"
-          @change="persistTitleOnly"
-        >
+        <input v-model="localTitle" @change="persistTitleOnly" />
       </label>
 
       <div class="preview-block">
@@ -83,10 +63,7 @@
     <template v-else>
       <label>
         {{ t('graph.inspector.note.title') }}
-        <input
-          v-model="localTitle"
-          @change="persist"
-        >
+        <input v-model="localTitle" @change="persist" />
       </label>
 
       <label>
@@ -102,10 +79,7 @@
       </label>
     </template>
   </div>
-  <div
-    v-else
-    class="note-inspector empty"
-  >
+  <div v-else class="note-inspector empty">
     {{ emptyText }}
   </div>
 </template>
@@ -145,7 +119,7 @@ const node = computed(() => {
 
 const hostId = computed(() => {
   const selection = editor.selection.current.value
-  return selection.kind === 'graph.node' ? selection.hostId ?? '' : ''
+  return selection.kind === 'graph.node' ? (selection.hostId ?? '') : ''
 })
 
 const isTextNode = computed(() => node.value?.typeId === 'play.script')
@@ -190,9 +164,7 @@ const bodyLabel = computed(() =>
 )
 
 const bodyPlaceholder = computed(() =>
-  isTextNode.value
-    ? t('graph.scriptNode.placeholder')
-    : t('graph.note.placeholder')
+  isTextNode.value ? t('graph.scriptNode.placeholder') : t('graph.note.placeholder')
 )
 
 const emptyText = computed(() => {

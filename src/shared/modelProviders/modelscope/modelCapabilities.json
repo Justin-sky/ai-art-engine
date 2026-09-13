@@ -68,13 +68,7 @@
       "capabilities": {
         "supported_parameters": {
           "aspect_ratio": {
-            "values": [
-              "1:1",
-              "16:9",
-              "9:16",
-              "4:3",
-              "3:4"
-            ]
+            "values": ["1:1", "16:9", "9:16", "4:3", "3:4"]
           },
           "n": {
             "min": 1,

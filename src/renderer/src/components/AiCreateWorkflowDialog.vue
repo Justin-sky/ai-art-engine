@@ -14,10 +14,7 @@
     <div class="body">
       <div class="row">
         <span class="label">{{ t('aiWorkflow.presetsLabel') }}</span>
-        <div
-          class="presets"
-          role="list"
-        >
+        <div class="presets" role="list">
           <button
             v-for="id in presetIds"
             :key="id"
@@ -80,41 +77,20 @@
             <option value="">
               {{ t('aiWorkflow.aspectRatioEmpty') }}
             </option>
-            <option value="1:1">
-              1:1
-            </option>
-            <option value="16:9">
-              16:9
-            </option>
-            <option value="9:16">
-              9:16
-            </option>
-            <option value="4:3">
-              4:3
-            </option>
-            <option value="3:4">
-              3:4
-            </option>
-            <option value="3:2">
-              3:2
-            </option>
-            <option value="2:3">
-              2:3
-            </option>
-            <option value="21:9">
-              21:9
-            </option>
-            <option value="9:21">
-              9:21
-            </option>
+            <option value="1:1">1:1</option>
+            <option value="16:9">16:9</option>
+            <option value="9:16">9:16</option>
+            <option value="4:3">4:3</option>
+            <option value="3:4">3:4</option>
+            <option value="3:2">3:2</option>
+            <option value="2:3">2:3</option>
+            <option value="21:9">21:9</option>
+            <option value="9:21">9:21</option>
           </select>
         </div>
       </div>
 
-      <label
-        class="label"
-        for="ai-workflow-prompt"
-      >{{ t('aiWorkflow.promptLabel') }}</label>
+      <label class="label" for="ai-workflow-prompt">{{ t('aiWorkflow.promptLabel') }}</label>
       <textarea
         id="ai-workflow-prompt"
         v-model="promptModel"
@@ -127,75 +103,49 @@
         @keydown.meta.enter.prevent="onPlanAi"
       />
 
-      <div
-        v-if="preview"
-        class="preview"
-      >
+      <div v-if="preview" class="preview">
         <div class="preview-head">
           <span class="label">{{ t('aiWorkflow.previewLabel') }}</span>
           <strong class="preview-title">{{ preview.title }}</strong>
           <span class="preview-meta">
-            {{ t('aiWorkflow.previewMeta', { nodes: preview.nodes.length, edges: preview.edges.length }) }}
+            {{
+              t('aiWorkflow.previewMeta', {
+                nodes: preview.nodes.length,
+                edges: preview.edges.length
+              })
+            }}
           </span>
         </div>
         <ul class="preview-nodes">
-          <li
-            v-for="node in preview.nodes"
-            :key="node.key"
-          >
+          <li v-for="node in preview.nodes" :key="node.key">
             <span class="node-title">{{ previewNodeTitle(node) }}</span>
             <span class="node-type">{{ node.typeId }}</span>
           </li>
         </ul>
-        <p
-          v-if="preview.edges.length"
-          class="preview-edges"
-        >
+        <p v-if="preview.edges.length" class="preview-edges">
           {{ preview.edges.map((e) => `${e.from}→${e.to}`).join(' · ') }}
         </p>
-        <p
-          v-if="previewWarnings.length"
-          class="preview-warn"
-        >
+        <p v-if="previewWarnings.length" class="preview-warn">
           {{ previewWarnings.slice(0, 4).join('；') }}
         </p>
       </div>
 
-      <p
-        v-if="error"
-        class="error"
-      >
+      <p v-if="error" class="error">
         {{ error }}
       </p>
-      <p
-        v-else
-        class="hint"
-      >
+      <p v-else class="hint">
         {{ t('aiWorkflow.hint') }}
       </p>
     </div>
 
     <template #footer>
-      <button
-        type="button"
-        :disabled="busy"
-        @click="onClose"
-      >
+      <button type="button" :disabled="busy" @click="onClose">
         {{ t('common.cancel') }}
       </button>
-      <button
-        type="button"
-        :disabled="busy || !canPlanAi"
-        @click="onPlanAi"
-      >
+      <button type="button" :disabled="busy || !canPlanAi" @click="onPlanAi">
         {{ generating ? t('aiWorkflow.planning') : t('aiWorkflow.previewAi') }}
       </button>
-      <button
-        type="button"
-        class="primary"
-        :disabled="busy || !hasPreview"
-        @click="emit('commit')"
-      >
+      <button type="button" class="primary" :disabled="busy || !hasPreview" @click="emit('commit')">
         {{ committing ? t('aiWorkflow.creating') : t('aiWorkflow.create') }}
       </button>
     </template>
@@ -249,10 +199,11 @@ const { t, graphTypeLabel } = useStudioI18n()
 
 /** 预览节点：库存英文标题（剧集 Agent 阶段 / 复合审核标题）走 i18n，与节点卡片一致 */
 function previewNodeTitle(node: { key: string; typeId: string; title: string }): string {
-  return resolveGraphNodeDisplayTitle(
-    { typeId: node.typeId, title: node.title } as GraphNode,
-    { scope: undefined, t, graphTypeLabel }
-  )
+  return resolveGraphNodeDisplayTitle({ typeId: node.typeId, title: node.title } as GraphNode, {
+    scope: undefined,
+    t,
+    graphTypeLabel
+  })
 }
 
 const busy = computed(() => props.generating || props.committing)

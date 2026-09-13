@@ -13,11 +13,7 @@ import {
 const REF = 'data:image/png;base64,ref'
 
 function imageCtx(
-  typeId:
-    | 'image.multiAngle'
-    | 'image.lighting'
-    | 'image.portraitTexture'
-    | 'image.emotion',
+  typeId: 'image.multiAngle' | 'image.lighting' | 'image.portraitTexture' | 'image.emotion',
   generateImage?: NodeExecuteContext['generateImage']
 ): NodeExecuteContext {
   const node = createNodeFromType(typeId, { x: 0, y: 0 })

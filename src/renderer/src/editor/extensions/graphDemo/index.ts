@@ -27,7 +27,9 @@ export function apply(ctx: Context): void {
     defaultTitle: 'Example',
     defaultSize: { w: 220, h: 140 },
     sizeLimits: { minW: 140, minH: 90, maxW: 480, maxH: 360 },
-    ports: [{ id: 'out', direction: 'out', dataType: GraphPortType.text, multiple: true, label: 'Out' }],
+    ports: [
+      { id: 'out', direction: 'out', dataType: GraphPortType.text, multiple: true, label: 'Out' }
+    ],
     defaultParams: () => ({ text: '' }),
     addable: true,
     deletable: true,

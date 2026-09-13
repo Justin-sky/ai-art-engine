@@ -1,7 +1,4 @@
-import {
-  buildIconPackManifest,
-  sanitizeIconStem
-} from '../../gameAssets'
+import { buildIconPackManifest, sanitizeIconStem } from '../../gameAssets'
 import {
   iconPackCellKeyAt,
   iconPackCellRefinesToOverrides,
@@ -20,7 +17,9 @@ import { commitGeneratedImages } from './materialize'
  * 统一画布中心对齐 → 按名单命名 PNG 落盘 → 同目录写 icons manifest。
  * 纯本地处理；名单顺序即整版表逐行格位顺序，名单不足处为空白格不导出。
  */
-export async function executeIconPackNode(ctx: NodeExecuteContext): Promise<Record<string, GraphValue>> {
+export async function executeIconPackNode(
+  ctx: NodeExecuteContext
+): Promise<Record<string, GraphValue>> {
   const state = readIconPackFromNode(ctx.node.params)
 
   const sourceItems = await collectIncomingImageItems(ctx)
@@ -52,9 +51,7 @@ export async function executeIconPackNode(ctx: NodeExecuteContext): Promise<Reco
   if (!ctx.composeImageIconPackSheet) {
     throw new Error('ICON_PACK_CANVAS_UNAVAILABLE')
   }
-  const cellOverrides = iconPackCellRefinesToOverrides(
-    readIconPackRefinesFromNode(ctx.node.params)
-  )
+  const cellOverrides = iconPackCellRefinesToOverrides(readIconPackRefinesFromNode(ctx.node.params))
   const result = await ctx.composeImageIconPackSheet({
     sourceDataUrl: sourceUrl,
     state,
@@ -143,8 +140,7 @@ export async function executeIconPackNode(ctx: NodeExecuteContext): Promise<Reco
     }
   }
 
-  const previewRelativePath =
-    generatedImages[generatedImages.length - 1]?.relativePath ?? ''
+  const previewRelativePath = generatedImages[generatedImages.length - 1]?.relativePath ?? ''
   return commitGeneratedImages(
     ctx,
     generatedImages as Parameters<typeof commitGeneratedImages>[1],

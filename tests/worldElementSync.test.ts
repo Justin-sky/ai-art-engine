@@ -72,9 +72,7 @@ describe('syncWorldElementKindGraph', () => {
     const next = syncWorldElementKindGraph(first, [
       { id: 'c1', name: 'Hero', prompt: 'a', status: 'draft' }
     ])
-    const ids = [
-      ...new Set(next.nodes.map((node) => node.params.worldElementId).filter(Boolean))
-    ]
+    const ids = [...new Set(next.nodes.map((node) => node.params.worldElementId).filter(Boolean))]
     expect(ids).toEqual(['c1'])
     expect(next.nodes.filter((n) => n.typeId === 'play.script')).toHaveLength(1)
     expect(next.nodes.filter((n) => n.typeId === 'asset.image')).toHaveLength(1)
@@ -94,11 +92,7 @@ describe('syncWorldElementKindGraph', () => {
     const boundaryId = boundaryOutputNodeId(worldElementBoundaryPortId('c1'))
 
     // 模拟用户把托管生成节点换成自己的链路：script → head → 三视图加工 → boundary
-    const head = createNodeFromType(
-      'asset.image',
-      { x: 300, y: 0 },
-      { title: 'Hero', params: {} }
-    )
+    const head = createNodeFromType('asset.image', { x: 300, y: 0 }, { title: 'Hero', params: {} })
     const proc = createNodeFromType(
       'asset.image',
       { x: 500, y: 0 },
@@ -153,18 +147,12 @@ describe('syncWorldElementKindGraph', () => {
     expect(adopted.params.generateInstruction).toBe('')
     // 中间加工节点及其边完整保留
     expect(synced.nodes.some((node) => node.id === proc.id)).toBe(true)
-    expect(
-      synced.edges.some(
-        (edge) =>
-          edge.source === head.id && edge.target === proc.id
-      )
-    ).toBe(true)
-    expect(
-      synced.edges.some(
-        (edge) =>
-          edge.source === proc.id && edge.target === boundaryId
-      )
-    ).toBe(true)
+    expect(synced.edges.some((edge) => edge.source === head.id && edge.target === proc.id)).toBe(
+      true
+    )
+    expect(synced.edges.some((edge) => edge.source === proc.id && edge.target === boundaryId)).toBe(
+      true
+    )
   })
 
   it('preserves intermediate processing nodes on existing managed chain', () => {
@@ -187,9 +175,7 @@ describe('syncWorldElementKindGraph', () => {
       ...base,
       nodes: [...base.nodes, proc],
       edges: [
-        ...base.edges.filter(
-          (edge) => edge.source !== gen.id && edge.target !== gen.id
-        ),
+        ...base.edges.filter((edge) => edge.source !== gen.id && edge.target !== gen.id),
         {
           id: 'e1',
           source: script.id,
@@ -220,22 +206,16 @@ describe('syncWorldElementKindGraph', () => {
 
     expect(synced.nodes.filter((node) => node.typeId === 'asset.image')).toHaveLength(2)
     expect(synced.nodes.some((node) => node.id === proc.id)).toBe(true)
-    expect(
-      synced.edges.some(
-        (edge) => edge.source === gen.id && edge.target === proc.id
-      )
-    ).toBe(true)
-    expect(
-      synced.edges.some(
-        (edge) => edge.source === proc.id && edge.target === boundaryId
-      )
-    ).toBe(true)
+    expect(synced.edges.some((edge) => edge.source === gen.id && edge.target === proc.id)).toBe(
+      true
+    )
+    expect(synced.edges.some((edge) => edge.source === proc.id && edge.target === boundaryId)).toBe(
+      true
+    )
     // 已有链路时不补直达 gen → boundary 边，避免边界双源
-    expect(
-      synced.edges.some(
-        (edge) => edge.source === gen.id && edge.target === boundaryId
-      )
-    ).toBe(false)
+    expect(synced.edges.some((edge) => edge.source === gen.id && edge.target === boundaryId)).toBe(
+      false
+    )
   })
 
   it('keeps world element graphs independent per world.gen node', () => {
@@ -292,10 +272,7 @@ describe('syncWorldElementKindGraph', () => {
       graphJson: { nodes: [] }
     } as never
 
-    const picked = pickWorldElementStateForMigration(source, [
-      LEGACY_WORLD_GEN_NODE_ID,
-      'gen-a'
-    ])
+    const picked = pickWorldElementStateForMigration(source, [LEGACY_WORLD_GEN_NODE_ID, 'gen-a'])
     expect(picked.worldElementGraphs).toBe(legacyGraphs)
     expect(picked.lastAppliedWorldCatalogFingerprint).toBe('fp-legacy')
     expect(picked.worldElementGraphsByNode).toEqual({ 'gen-a': byNode['gen-a'] })
@@ -319,11 +296,7 @@ describe('syncWorldElementKindGraph', () => {
 
     const doc = {
       nodes: [
-        createNodeFromType(
-          'world.gen',
-          { x: 0, y: 0 },
-          { id: LEGACY_WORLD_GEN_NODE_ID }
-        ),
+        createNodeFromType('world.gen', { x: 0, y: 0 }, { id: LEGACY_WORLD_GEN_NODE_ID }),
         createNodeFromType('output.image', { x: 300, y: 0 }, { id: 'out' })
       ],
       edges: [
@@ -344,21 +317,17 @@ describe('syncWorldElementKindGraph', () => {
     })
 
     // 内图保留 world.gen 节点
-    expect(
-      result.innerDocument.nodes.some((node) => node.id === LEGACY_WORLD_GEN_NODE_ID)
-    ).toBe(true)
+    expect(result.innerDocument.nodes.some((node) => node.id === LEGACY_WORLD_GEN_NODE_ID)).toBe(
+      true
+    )
     // 外层被替换为 host 节点
-    expect(
-      result.parentDocument.nodes.some((node) => node.id === LEGACY_WORLD_GEN_NODE_ID)
-    ).toBe(false)
-    expect(
-      result.parentDocument.nodes.some((node) => node.typeId === 'asset.subgraph')
-    ).toBe(true)
+    expect(result.parentDocument.nodes.some((node) => node.id === LEGACY_WORLD_GEN_NODE_ID)).toBe(
+      false
+    )
+    expect(result.parentDocument.nodes.some((node) => node.typeId === 'asset.subgraph')).toBe(true)
 
     // 自动迁移：封装资产的 genParams 应带上源画布的四类子图与指纹
-    const migrated = pickWorldElementStateForMigration(sourceGenParams, [
-      LEGACY_WORLD_GEN_NODE_ID
-    ])
+    const migrated = pickWorldElementStateForMigration(sourceGenParams, [LEGACY_WORLD_GEN_NODE_ID])
     expect(migrated.worldElementGraphs).toBe(sourceGenParams.worldElementGraphs)
     expect(migrated.lastAppliedWorldCatalogFingerprint).toBe('fp-legacy')
   })

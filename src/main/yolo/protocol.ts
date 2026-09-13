@@ -24,8 +24,7 @@ export interface YoloWorkerRequest {
 }
 
 export type YoloWorkerResponse =
-  | { id: number; ok: true; result: unknown }
-  | { id: number; ok: false; error: string }
+  { id: number; ok: true; result: unknown } | { id: number; ok: false; error: string }
 
 /** status 方法返回：ready + ortVersion + 会话缓存信息 */
 export interface YoloWorkerStatus {

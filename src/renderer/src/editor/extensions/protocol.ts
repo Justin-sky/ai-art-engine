@@ -42,9 +42,7 @@ export function assertExtensionPermissions(
   manifest: EditorPluginManifest,
   granted: ReadonlySet<EditorPluginPermission>
 ): void {
-  const denied = (manifest.permissions ?? []).filter(
-    (permission) => !granted.has(permission)
-  )
+  const denied = (manifest.permissions ?? []).filter((permission) => !granted.has(permission))
   if (denied.length) {
     throw new Error(`Extension ${manifest.id} lacks permissions: ${denied.join(', ')}`)
   }

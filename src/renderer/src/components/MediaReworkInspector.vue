@@ -1,8 +1,5 @@
 <template>
-  <div
-    v-if="node"
-    class="node-inspector"
-  >
+  <div v-if="node" class="node-inspector">
     <div class="head">
       <span class="type">{{ typeLabel }}</span>
       <h2>{{ displayTitle }}</h2>
@@ -19,18 +16,11 @@
       @toggle="toggleRun"
     />
 
-    <GraphNodeOutputPreview
-      v-if="node && hostId"
-      :node="node"
-      :host-id="hostId"
-    />
+    <GraphNodeOutputPreview v-if="node && hostId" :node="node" :host-id="hostId" />
 
     <label>
       {{ t('graph.inspector.displayName') }}
-      <input
-        v-model="localTitle"
-        @change="persistTitle"
-      >
+      <input v-model="localTitle" @change="persistTitle" />
     </label>
 
     <section class="gen-config">
@@ -60,15 +50,8 @@
 
       <label class="model-field">
         <span class="field-label">{{ t('graph.inspector.mediaRework.imageModel') }}</span>
-        <select
-          v-model="selectedModelKey"
-          @change="persistModel"
-        >
-          <option
-            v-for="opt in modelSelectOptions"
-            :key="opt.key || 'empty'"
-            :value="opt.key"
-          >
+        <select v-model="selectedModelKey" @change="persistModel">
+          <option v-for="opt in modelSelectOptions" :key="opt.key || 'empty'" :value="opt.key">
             {{ opt.label }}
           </option>
         </select>
@@ -78,31 +61,19 @@
         <summary>{{ t('graph.inspector.mediaRework.imageModelFallbacks') }}</summary>
         <span class="field-hint">{{ t('graph.inspector.mediaRework.modelFallbacksHint') }}</span>
         <div class="fallback-options">
-          <label
-            v-for="opt in fallbackImageOptions"
-            :key="opt.key"
-            class="fallback-option"
-          >
-            <input
-              type="checkbox"
-              :checked="opt.checked"
-              @change="toggleImageFallback(opt.key)"
-            >
+          <label v-for="opt in fallbackImageOptions" :key="opt.key" class="fallback-option">
+            <input type="checkbox" :checked="opt.checked" @change="toggleImageFallback(opt.key)" />
             <span>{{ opt.label }}</span>
           </label>
-          <span
-            v-if="!fallbackImageOptions.length"
-            class="field-hint"
-          >{{ t('graph.inspector.generate.noModels') }}</span>
+          <span v-if="!fallbackImageOptions.length" class="field-hint">{{
+            t('graph.inspector.generate.noModels')
+          }}</span>
         </div>
       </details>
 
       <label class="model-field">
         <span class="field-label">{{ t('graph.inspector.mediaRework.reviewModel') }}</span>
-        <select
-          v-model="selectedReviewModelKey"
-          @change="persistReviewModel"
-        >
+        <select v-model="selectedReviewModelKey" @change="persistReviewModel">
           <option
             v-for="opt in reviewModelSelectOptions"
             :key="opt.key || 'empty'"
@@ -112,32 +83,22 @@
           </option>
         </select>
         <span class="field-hint">{{ t('graph.inspector.mediaRework.reviewModelHint') }}</span>
-        <span
-          v-if="!hasDedicatedReviewModel"
-          class="field-warn"
-        >{{ t('graph.inspector.mediaRework.reviewModelFallback') }}</span>
+        <span v-if="!hasDedicatedReviewModel" class="field-warn">{{
+          t('graph.inspector.mediaRework.reviewModelFallback')
+        }}</span>
       </label>
 
       <details class="fallback-field">
         <summary>{{ t('graph.inspector.mediaRework.reviewModelFallbacks') }}</summary>
         <span class="field-hint">{{ t('graph.inspector.mediaRework.modelFallbacksHint') }}</span>
         <div class="fallback-options">
-          <label
-            v-for="opt in fallbackReviewOptions"
-            :key="opt.key"
-            class="fallback-option"
-          >
-            <input
-              type="checkbox"
-              :checked="opt.checked"
-              @change="toggleReviewFallback(opt.key)"
-            >
+          <label v-for="opt in fallbackReviewOptions" :key="opt.key" class="fallback-option">
+            <input type="checkbox" :checked="opt.checked" @change="toggleReviewFallback(opt.key)" />
             <span>{{ opt.label }}</span>
           </label>
-          <span
-            v-if="!fallbackReviewOptions.length"
-            class="field-hint"
-          >{{ t('graph.inspector.generate.noModels') }}</span>
+          <span v-if="!fallbackReviewOptions.length" class="field-hint">{{
+            t('graph.inspector.generate.noModels')
+          }}</span>
         </div>
       </details>
 
@@ -149,15 +110,12 @@
           :max="MEDIA_REWORK_MAX_ATTEMPTS_HARD_LIMIT"
           :value="maxAttempts"
           @change="persistMaxAttempts"
-        >
+        />
       </label>
 
       <label class="model-field">
         <span class="field-label">{{ t('graph.inspector.mediaRework.strategy') }}</span>
-        <select
-          v-model="strategy"
-          @change="persistStrategy"
-        >
+        <select v-model="strategy" @change="persistStrategy">
           <option value="auto">{{ t('graph.inspector.mediaRework.strategyAuto') }}</option>
           <option value="guidance">{{ t('graph.inspector.mediaRework.strategyGuidance') }}</option>
           <option value="reseed">{{ t('graph.inspector.mediaRework.strategyReseed') }}</option>
@@ -166,32 +124,19 @@
       </label>
 
       <label class="switch-field">
-        <input
-          type="checkbox"
-          :checked="confirmFirst"
-          @change="persistConfirmFirst"
-        >
+        <input type="checkbox" :checked="confirmFirst" @change="persistConfirmFirst" />
         <span>{{ t('graph.inspector.mediaRework.confirmFirst') }}</span>
       </label>
       <span class="field-hint">{{ t('graph.inspector.mediaRework.confirmFirstHint') }}</span>
 
-      <div
-        v-if="awaitingConfirm"
-        class="confirm-block"
-      >
+      <div v-if="awaitingConfirm" class="confirm-block">
         <span class="field-label">{{ t('graph.inspector.mediaRework.awaitingConfirm') }}</span>
         <span class="field-hint">{{ t('graph.inspector.mediaRework.awaitingConfirmHint') }}</span>
         <div class="confirm-actions">
-          <button
-            type="button"
-            @click="continueRework"
-          >
+          <button type="button" @click="continueRework">
             {{ t('graph.inspector.mediaRework.continueRework') }}
           </button>
-          <button
-            type="button"
-            @click="acceptCurrent"
-          >
+          <button type="button" @click="acceptCurrent">
             {{ t('graph.inspector.mediaRework.acceptCurrent') }}
           </button>
         </div>
@@ -200,51 +145,31 @@
       <div class="status-block">
         <span class="field-label">{{ t('graph.inspector.mediaRework.status') }}</span>
         <div class="status-row">
-          <span
-            class="status-badge"
-            :class="reworkStatusClass"
-          >{{ reworkStatusLabel }}</span>
-          <span
-            v-if="reviewStatusLabel"
-            class="status-badge"
-            :class="reviewStatusClass"
-          >{{ reviewStatusLabel }}</span>
-          <span
-            v-if="lastReason"
-            class="status-reason"
-          >{{ lastReason }}</span>
+          <span class="status-badge" :class="reworkStatusClass">{{ reworkStatusLabel }}</span>
+          <span v-if="reviewStatusLabel" class="status-badge" :class="reviewStatusClass">{{
+            reviewStatusLabel
+          }}</span>
+          <span v-if="lastReason" class="status-reason">{{ lastReason }}</span>
         </div>
       </div>
 
-      <div
-        v-if="scoreText"
-        class="status-block"
-      >
+      <div v-if="scoreText" class="status-block">
         <span class="field-label">{{ t('graph.inspector.mediaRework.score') }}</span>
         <span class="status-reason">{{ scoreText }}</span>
       </div>
 
-      <div
-        v-if="roundsText"
-        class="status-block"
-      >
+      <div v-if="roundsText" class="status-block">
         <span class="field-label">{{ t('graph.inspector.mediaRework.rounds') }}</span>
         <span class="status-reason">{{ roundsText }}</span>
       </div>
 
-      <div
-        v-if="costText"
-        class="status-block"
-      >
+      <div v-if="costText" class="status-block">
         <span class="field-label">{{ t('graph.inspector.mediaRework.cost') }}</span>
         <span class="status-reason">{{ costText }}</span>
       </div>
     </section>
   </div>
-  <div
-    v-else
-    class="node-inspector empty"
-  >
+  <div v-else class="node-inspector empty">
     {{ t('graph.inspector.node.empty') }}
   </div>
 </template>
@@ -288,7 +213,7 @@ const node = computed(() => {
 
 const hostId = computed(() => {
   const selection = editor.selection.current.value
-  return selection.kind === 'graph.node' ? selection.hostId ?? '' : ''
+  return selection.kind === 'graph.node' ? (selection.hostId ?? '') : ''
 })
 
 const { hasInPort, runStatus, isGraphRunning, blocked, toggleRun } = useGraphNodeRun(node)

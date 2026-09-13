@@ -20,17 +20,14 @@ vi.mock('axios', () => ({
 }))
 
 vi.mock('../src/main/services/modelProviders/openaiCompat', async (importOriginal) => {
-  const actual = await importOriginal<
-    typeof import('../src/main/services/modelProviders/openaiCompat')
-  >()
+  const actual =
+    await importOriginal<typeof import('../src/main/services/modelProviders/openaiCompat')>()
   return {
     ...actual,
-    generateOpenAiCompatibleText: vi.fn(
-      async (_p, modelId: string, input: { prompt: string }) => ({
-        text: `echo:${input.prompt}`,
-        model: modelId
-      })
-    )
+    generateOpenAiCompatibleText: vi.fn(async (_p, modelId: string, input: { prompt: string }) => ({
+      text: `echo:${input.prompt}`,
+      model: modelId
+    }))
   }
 })
 
@@ -100,10 +97,13 @@ describe('openAiAdapter', () => {
       quality: 'medium',
       n: 2
     })
-    expect(postMock).toHaveBeenCalledWith(
-      '/images/generations',
-      { model: 'gpt-image-1', prompt: 'a cat', size: '1536x1024', quality: 'medium', n: 2 }
-    )
+    expect(postMock).toHaveBeenCalledWith('/images/generations', {
+      model: 'gpt-image-1',
+      prompt: 'a cat',
+      size: '1536x1024',
+      quality: 'medium',
+      n: 2
+    })
     expect(result.images[0]).toBe('data:image/png;base64,QUJD')
   })
 
@@ -130,8 +130,8 @@ describe('openAiAdapter', () => {
     await expect(
       openAiAdapter.generateSpeech(provider(), 'tts-1', { input: 'hi' })
     ).rejects.toThrow(/仅支持文本与图片/)
-    await expect(
-      openAiAdapter.submitVideo(provider(), 'sora-2', { prompt: 'x' })
-    ).rejects.toThrow(/仅支持文本与图片/)
+    await expect(openAiAdapter.submitVideo(provider(), 'sora-2', { prompt: 'x' })).rejects.toThrow(
+      /仅支持文本与图片/
+    )
   })
 })

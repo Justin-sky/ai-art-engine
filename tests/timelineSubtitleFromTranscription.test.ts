@@ -53,10 +53,8 @@ function rebuildSubtitles(
   document: ScriptTimelineDocument,
   voiceClip: ScriptTimelineClip
 ): ReturnType<typeof applyTimelineEdits> {
-  const subtitleClips = buildSubtitleClipsFromTranscription(
-    voiceClip,
-    voiceSegments,
-    (at) => makeClipId('subtitle', at)
+  const subtitleClips = buildSubtitleClipsFromTranscription(voiceClip, voiceSegments, (at) =>
+    makeClipId('subtitle', at)
   )
   return applyTimelineEdits(
     document,

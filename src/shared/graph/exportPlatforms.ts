@@ -3,13 +3,7 @@
  * 供导出向导自动套用规格、预览安全区可视化、字幕适配使用。
  */
 
-export type ExportPlatformId =
-  | 'custom'
-  | 'douyin'
-  | 'kuaishou'
-  | 'shipinhao'
-  | 'tiktok'
-  | 'youtube'
+export type ExportPlatformId = 'custom' | 'douyin' | 'kuaishou' | 'shipinhao' | 'tiktok' | 'youtube'
 
 export type ExportFrame = 'portrait' | 'landscape' | 'square'
 
@@ -127,19 +121,13 @@ export function exportPlatformSafeRect(
 }
 
 /** 竖屏平台建议的字幕底部偏移（px，落在底部安全区下沿内侧） */
-export function exportPlatformSubtitleOffset(
-  height: number,
-  spec: ExportPlatformSpec
-): number {
+export function exportPlatformSubtitleOffset(height: number, spec: ExportPlatformSpec): number {
   if (spec.frame !== 'portrait' || spec.safeAreaRatio <= 0) return Math.round(height * 0.11)
   return Math.max(24, Math.round(height * spec.safeAreaRatio * 0.75))
 }
 
 /** 时长是否超出平台上限 */
-export function isExportDurationOverLimit(
-  durationSec: number,
-  spec: ExportPlatformSpec
-): boolean {
+export function isExportDurationOverLimit(durationSec: number, spec: ExportPlatformSpec): boolean {
   return Number.isFinite(spec.maxDurationSec) && durationSec > spec.maxDurationSec
 }
 

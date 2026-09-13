@@ -112,11 +112,7 @@ export function normalizePortraitTexture(
       DEFAULT_PORTRAIT_TEXTURE.lightShadow
     ),
     skin: pickOptionId(base.skin, PORTRAIT_SKIN_OPTIONS, DEFAULT_PORTRAIT_TEXTURE.skin),
-    texture: pickOptionId(
-      base.texture,
-      PORTRAIT_TEXTURE_OPTIONS,
-      DEFAULT_PORTRAIT_TEXTURE.texture
-    ),
+    texture: pickOptionId(base.texture, PORTRAIT_TEXTURE_OPTIONS, DEFAULT_PORTRAIT_TEXTURE.texture),
     sharpness: pickOptionId(
       base.sharpness,
       PORTRAIT_SHARPNESS_OPTIONS,
@@ -125,10 +121,7 @@ export function normalizePortraitTexture(
   }
 }
 
-function promptForField(
-  field: PortraitTextureField,
-  state: PortraitTextureState
-): string {
+function promptForField(field: PortraitTextureField, state: PortraitTextureState): string {
   const row = PORTRAIT_TEXTURE_FIELDS.find((item) => item.field === field)!
   const opt = row.options.find((o) => o.id === state[field])
   return opt?.prompt ?? ''

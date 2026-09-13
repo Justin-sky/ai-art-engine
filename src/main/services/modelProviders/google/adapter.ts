@@ -232,9 +232,7 @@ export const googleAdapter: ModelProviderAdapter = {
   ): Promise<VideoPollResult> {
     const client = createProviderHttpClient(provider)
     try {
-      const path = job.pollingUrl.startsWith('http')
-        ? job.pollingUrl
-        : `/videos/${job.jobId}`
+      const path = job.pollingUrl.startsWith('http') ? job.pollingUrl : `/videos/${job.jobId}`
       const { data } = await client.get<Record<string, unknown>>(path)
       const raw = String(data.status ?? 'in_progress').toLowerCase()
 

@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  buildAgentReviewPack,
-  parseAgentVerdict,
-  pickAgentPrompt
-} from '../src/shared/graph'
+import { buildAgentReviewPack, parseAgentVerdict, pickAgentPrompt } from '../src/shared/graph'
 
 describe('buildAgentReviewPack', () => {
   const pack = buildAgentReviewPack({

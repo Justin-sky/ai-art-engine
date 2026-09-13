@@ -8,20 +8,10 @@
       {{ t('settings.skills.dirPath') }}
       <div class="dir-row">
         <code class="dir-value">{{ info?.dirPath || '…' }}</code>
-        <button
-          type="button"
-          class="about-btn"
-          :disabled="busy"
-          @click="openDir"
-        >
+        <button type="button" class="about-btn" :disabled="busy" @click="openDir">
           {{ t('settings.skills.openDir') }}
         </button>
-        <button
-          type="button"
-          class="about-btn primary"
-          :disabled="busy"
-          @click="writeTemplate"
-        >
+        <button type="button" class="about-btn primary" :disabled="busy" @click="writeTemplate">
           {{ t('settings.skills.writeTemplate') }}
         </button>
       </div>
@@ -31,28 +21,15 @@
       {{ t('settings.skills.builtinCount', { count: info?.builtinCount ?? 0 }) }}
     </p>
 
-    <ul
-      v-if="info && info.files.length > 0"
-      class="file-list"
-    >
-      <li
-        v-for="file in info.files"
-        :key="file.fileName"
-        class="file-row"
-      >
+    <ul v-if="info && info.files.length > 0" class="file-list">
+      <li v-for="file in info.files" :key="file.fileName" class="file-row">
         <code class="file-name">{{ file.fileName }}</code>
-        <span
-          class="file-kind"
-          :class="file.kind"
-        >
+        <span class="file-kind" :class="file.kind">
           {{ t(`settings.skills.kind.${file.kind}`) }}
         </span>
       </li>
     </ul>
-    <p
-      v-else
-      class="hint"
-    >
+    <p v-else class="hint">
       {{ t('settings.skills.empty') }}
     </p>
 
@@ -67,29 +44,15 @@
         {{ t('settings.skills.templateLibrary') }}
         <span class="template-count">{{ templates.length }}</span>
       </button>
-      <button
-        type="button"
-        class="about-btn primary"
-        :disabled="busy"
-        @click="importCustom"
-      >
+      <button type="button" class="about-btn primary" :disabled="busy" @click="importCustom">
         {{ t('settings.skills.importToGraph') }}
       </button>
     </div>
-    <div
-      v-if="templatesOpen"
-      class="template-list"
-    >
-      <div
-        v-for="template in templates"
-        :key="template.id"
-        class="template-row"
-      >
+    <div v-if="templatesOpen" class="template-list">
+      <div v-for="template in templates" :key="template.id" class="template-row">
         <div class="template-info">
           <code class="template-name">{{ template.name }}</code>
-          <span class="template-title">
-            {{ template.titleZh }} / {{ template.titleEn }}
-          </span>
+          <span class="template-title"> {{ template.titleZh }} / {{ template.titleEn }} </span>
           <span class="template-desc">{{ template.description }}</span>
         </div>
         <button
@@ -101,19 +64,12 @@
           {{ t('settings.skills.exportTemplate') }}
         </button>
       </div>
-      <p
-        v-if="templates.length === 0"
-        class="hint"
-      >
+      <p v-if="templates.length === 0" class="hint">
         {{ t('settings.skills.templateEmpty') }}
       </p>
     </div>
 
-    <p
-      v-if="message"
-      class="msg"
-      :class="{ error: isError }"
-    >
+    <p v-if="message" class="msg" :class="{ error: isError }">
       {{ message }}
     </p>
   </div>

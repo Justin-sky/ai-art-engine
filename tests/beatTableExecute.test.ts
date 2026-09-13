@@ -138,9 +138,7 @@ describe('beat table / editor execute', () => {
           in: [
             {
               kind: 'texts',
-              items: [
-                { id: 'beat-1', title: '开场', text: '正文', relativePath: 'Texts/开场.txt' }
-              ]
+              items: [{ id: 'beat-1', title: '开场', text: '正文', relativePath: 'Texts/开场.txt' }]
             }
           ]
         }

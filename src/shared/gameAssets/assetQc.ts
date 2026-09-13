@@ -347,7 +347,10 @@ export function sortAssetQcIssues(issues: readonly AssetQcIssue[]): AssetQcIssue
  * 资产规范体检：一次遍历全部维度，返回问题清单与度量。
  * 全透明 / 尺寸非法（0）时报 `empty-image` 并提前返回（其余维度无意义）。
  */
-export function analyzeAssetQc(input: AssetQcInput, options?: AssetQcOptions | null): AssetQcReport {
+export function analyzeAssetQc(
+  input: AssetQcInput,
+  options?: AssetQcOptions | null
+): AssetQcReport {
   const opts = resolveAssetQcOptions(options)
   const width = Math.max(0, Math.floor(input.width))
   const height = Math.max(0, Math.floor(input.height))
@@ -532,10 +535,7 @@ export function checkAssetQcNaming(raw: string): AssetQcIssue | null {
  * 按反混合公式剔除半透明像素里残留的背景色（白边 / 光晕）。
  * 这是当前唯一可自动执行的修复项——不改画布、不改 alpha，下游引用不受影响。
  */
-export function applyAssetQcFringeFix(
-  input: AssetQcInput,
-  options?: { strength?: number }
-): void {
+export function applyAssetQcFringeFix(input: AssetQcInput, options?: { strength?: number }): void {
   const alpha = extractAlphaPlane(input.data, input.width, input.height)
   if (!alpha) return
   const total = input.width * input.height
@@ -563,9 +563,7 @@ export interface AssetQcSummary {
 }
 
 /** 批量体检汇总（供工具返回值与界面概览共用） */
-export function summarizeAssetQc(
-  reports: readonly AssetQcReport[]
-): AssetQcSummary {
+export function summarizeAssetQc(reports: readonly AssetQcReport[]): AssetQcSummary {
   let errors = 0
   let warnings = 0
   let infos = 0

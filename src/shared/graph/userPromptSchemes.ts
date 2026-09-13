@@ -158,11 +158,7 @@ export const DEFAULT_BEAT_SPLIT_USER_PROMPT_ZH =
   '请将剧本拆解为场，并仅输出系统提示词要求的 JSON 数组。按故事顺序覆盖全文，使用 beat- id，完整填写时间、地点、核心动作、冲突与目标、氛围与声音等新字段；已审核场原样保留。'
 
 export function defaultBeatSplitUserPrompt(locale?: string): string {
-  return pickByLocale(
-    locale,
-    DEFAULT_BEAT_SPLIT_USER_PROMPT_EN,
-    DEFAULT_BEAT_SPLIT_USER_PROMPT_ZH
-  )
+  return pickByLocale(locale, DEFAULT_BEAT_SPLIT_USER_PROMPT_EN, DEFAULT_BEAT_SPLIT_USER_PROMPT_ZH)
 }
 
 export function buildBeatSplitPrompt(instruction: string, locale?: string): string {
@@ -230,8 +226,7 @@ export function buildFrameAnimGenPrompt(instruction: string, locale?: string): s
 export const DEFAULT_MODEL3D_USER_PROMPT_EN =
   'Generate a 3D model according to the brief (text and/or reference images).'
 
-export const DEFAULT_MODEL3D_USER_PROMPT_ZH =
-  '根据创作意图（文本和/或参考图）生成 3D 模型。'
+export const DEFAULT_MODEL3D_USER_PROMPT_ZH = '根据创作意图（文本和/或参考图）生成 3D 模型。'
 
 export function defaultModel3dUserPrompt(locale?: string): string {
   return pickByLocale(locale, DEFAULT_MODEL3D_USER_PROMPT_EN, DEFAULT_MODEL3D_USER_PROMPT_ZH)

@@ -1,8 +1,5 @@
 <template>
-  <div
-    ref="rootEl"
-    class="script-timeline"
-  >
+  <div ref="rootEl" class="script-timeline">
     <div
       class="workspace"
       :style="{
@@ -13,12 +10,7 @@
         <div class="panel-head">
           <span class="panel-title">{{ t('script.timeline.sources') }}</span>
           <div class="panel-actions">
-            <button
-              type="button"
-              class="ghost-btn"
-              :disabled="sourcesBusy"
-              @click="reloadSources"
-            >
+            <button type="button" class="ghost-btn" :disabled="sourcesBusy" @click="reloadSources">
               {{ sourcesBusy ? '…' : t('script.timeline.refreshSources') }}
             </button>
             <button
@@ -29,35 +21,16 @@
             >
               {{ t('script.timeline.autoPlace') }}
             </button>
-            <button
-              type="button"
-              class="ghost-btn"
-              :disabled="bgmBusy"
-              @click="onGenerateBgm"
-            >
+            <button type="button" class="ghost-btn" :disabled="bgmBusy" @click="onGenerateBgm">
               {{ bgmBusy ? '…' : t('script.timeline.generateBgm') }}
             </button>
-            <button
-              type="button"
-              class="ghost-btn"
-              :disabled="sfxBusy"
-              @click="onGenerateSfx"
-            >
+            <button type="button" class="ghost-btn" :disabled="sfxBusy" @click="onGenerateSfx">
               {{ sfxBusy ? '…' : t('script.timeline.generateSfx') }}
             </button>
-            <button
-              type="button"
-              class="ghost-btn"
-              @click="openSfxLibrary"
-            >
+            <button type="button" class="ghost-btn" @click="openSfxLibrary">
               {{ t('script.timeline.sfxLibrary') }}
             </button>
-            <button
-              type="button"
-              class="ghost-btn"
-              :disabled="smartCutBusy"
-              @click="onSmartCut"
-            >
+            <button type="button" class="ghost-btn" :disabled="smartCutBusy" @click="onSmartCut">
               {{ smartCutBusy ? '…' : t('script.timeline.smartCut') }}
             </button>
           </div>
@@ -67,10 +40,7 @@
           :style="{ '--source-card-size': `${sourceGridSize}px` }"
           @contextmenu.prevent="onImportedPanelContextMenu"
         >
-          <section
-            v-if="inputSources.length"
-            class="source-group"
-          >
+          <section v-if="inputSources.length" class="source-group">
             <div class="source-group-head">
               <span>{{ t('script.timeline.sourceGroup.input') }}</span>
               <span class="source-group-count">{{ inputSources.length }}</span>
@@ -83,34 +53,19 @@
               @dragstart="onSourceDragStart($event, src)"
               @dblclick="onSourceActivate(src)"
             >
-              <span
-                class="source-thumb"
-                :class="sourceThumbClass(src)"
-                aria-hidden="true"
-              >
-                <img
-                  v-if="sourceThumbUrls[src.id]"
-                  :src="sourceThumbUrls[src.id]"
-                  alt=""
-                >
-                <span
-                  v-else-if="sourceMediaKind(src) === 'voice'"
-                  class="source-thumb-glyph"
-                >{{
+              <span class="source-thumb" :class="sourceThumbClass(src)" aria-hidden="true">
+                <img v-if="sourceThumbUrls[src.id]" :src="sourceThumbUrls[src.id]" alt="" />
+                <span v-else-if="sourceMediaKind(src) === 'voice'" class="source-thumb-glyph">{{
                   voiceSourceIcon
                 }}</span>
               </span>
               <span class="source-meta">
-                <span
-                  class="source-name"
-                  :title="src.title"
-                >{{ src.title }}</span>
+                <span class="source-name" :title="src.title">{{ src.title }}</span>
                 <span class="source-tags">
                   <span class="source-tag">{{ sourceMediaLabel(src) }}</span>
-                  <span
-                    v-if="src.durationSec"
-                    class="source-dur"
-                  >{{ formatTime(src.durationSec) }}</span>
+                  <span v-if="src.durationSec" class="source-dur">{{
+                    formatTime(src.durationSec)
+                  }}</span>
                 </span>
               </span>
             </div>
@@ -140,24 +95,14 @@
               @dragleave="onGroupDragLeave($event, group.id)"
               @drop.prevent.stop="onGroupDrop($event, group.id)"
             >
-              <button
-                type="button"
-                class="folder-head"
-                @click="toggleGroupCollapsed(group.id)"
-              >
-                <span
-                  class="folder-chevron"
-                  aria-hidden="true"
-                >{{
+              <button type="button" class="folder-head" @click="toggleGroupCollapsed(group.id)">
+                <span class="folder-chevron" aria-hidden="true">{{
                   collapsedGroupIds.has(group.id) ? '▸' : '▾'
                 }}</span>
                 <span class="folder-title">{{ group.title }}</span>
                 <span class="source-group-count">{{ sourcesInGroup(group.id).length }}</span>
               </button>
-              <div
-                v-show="!collapsedGroupIds.has(group.id)"
-                class="folder-body"
-              >
+              <div v-show="!collapsedGroupIds.has(group.id)" class="folder-body">
                 <div
                   v-for="src in sourcesInGroup(group.id)"
                   :key="`im-${src.id}`"
@@ -166,34 +111,17 @@
                   @dragstart="onSourceDragStart($event, src)"
                   @dblclick="onSourceActivate(src)"
                 >
-                  <span
-                    class="source-thumb"
-                    :class="sourceThumbClass(src)"
-                    aria-hidden="true"
-                  >
-                    <img
-                      v-if="sourceThumbUrls[src.id]"
-                      :src="sourceThumbUrls[src.id]"
-                      alt=""
-                    >
-                    <span
-                      v-else-if="sourceMediaKind(src) === 'voice'"
-                      class="source-thumb-glyph"
-                    >{{
+                  <span class="source-thumb" :class="sourceThumbClass(src)" aria-hidden="true">
+                    <img v-if="sourceThumbUrls[src.id]" :src="sourceThumbUrls[src.id]" alt="" />
+                    <span v-else-if="sourceMediaKind(src) === 'voice'" class="source-thumb-glyph">{{
                       voiceSourceIcon
                     }}</span>
                   </span>
                   <span class="source-meta">
-                    <span
-                      class="source-name"
-                      :title="src.title"
-                    >{{ src.title }}</span>
+                    <span class="source-name" :title="src.title">{{ src.title }}</span>
                     <span class="source-tags">
                       <span class="source-tag">{{ sourceMediaLabel(src) }}</span>
-                      <span
-                        v-if="src.durationSec"
-                        class="source-dur"
-                      >{{
+                      <span v-if="src.durationSec" class="source-dur">{{
                         formatTime(src.durationSec)
                       }}</span>
                     </span>
@@ -208,10 +136,7 @@
                     ×
                   </button>
                 </div>
-                <div
-                  v-if="!sourcesInGroup(group.id).length"
-                  class="folder-empty"
-                >
+                <div v-if="!sourcesInGroup(group.id).length" class="folder-empty">
                   {{ t('script.timeline.groupEmpty') }}
                 </div>
               </div>
@@ -239,37 +164,20 @@
                 @dragstart="onSourceDragStart($event, src)"
                 @dblclick="onSourceActivate(src)"
               >
-                <span
-                  class="source-thumb"
-                  :class="sourceThumbClass(src)"
-                  aria-hidden="true"
-                >
-                  <img
-                    v-if="sourceThumbUrls[src.id]"
-                    :src="sourceThumbUrls[src.id]"
-                    alt=""
-                  >
-                  <span
-                    v-else-if="sourceMediaKind(src) === 'voice'"
-                    class="source-thumb-glyph"
-                  >{{
+                <span class="source-thumb" :class="sourceThumbClass(src)" aria-hidden="true">
+                  <img v-if="sourceThumbUrls[src.id]" :src="sourceThumbUrls[src.id]" alt="" />
+                  <span v-else-if="sourceMediaKind(src) === 'voice'" class="source-thumb-glyph">{{
                     voiceSourceIcon
                   }}</span>
                 </span>
                 <span class="source-meta">
-                  <span
-                    class="source-name"
-                    :title="src.title"
-                  >{{ src.title }}</span>
+                  <span class="source-name" :title="src.title">{{ src.title }}</span>
                   <span class="source-tags">
                     <span class="source-tag imported">{{
                       t('script.timeline.sourceGroup.importedTag')
                     }}</span>
                     <span class="source-tag">{{ sourceMediaLabel(src) }}</span>
-                    <span
-                      v-if="src.durationSec"
-                      class="source-dur"
-                    >{{
+                    <span v-if="src.durationSec" class="source-dur">{{
                       formatTime(src.durationSec)
                     }}</span>
                   </span>
@@ -307,7 +215,7 @@
             min="48"
             max="120"
             step="4"
-          >
+          />
         </div>
 
         <div
@@ -316,17 +224,10 @@
           :style="{ left: `${sourceCtx.x}px`, top: `${sourceCtx.y}px` }"
           @pointerdown.stop
         >
-          <button
-            type="button"
-            @click="createImportedGroup"
-          >
+          <button type="button" @click="createImportedGroup">
             {{ t('script.timeline.createGroup') }}
           </button>
-          <button
-            v-if="sourceCtx.groupId"
-            type="button"
-            @click="renameImportedGroup"
-          >
+          <button v-if="sourceCtx.groupId" type="button" @click="renameImportedGroup">
             {{ t('script.timeline.renameGroup') }}
           </button>
           <button
@@ -347,10 +248,7 @@
       />
 
       <section class="panel preview-panel">
-        <div
-          ref="previewStageEl"
-          class="preview-stage"
-        >
+        <div ref="previewStageEl" class="preview-stage">
           <video
             v-if="previewSrc"
             ref="previewEl"
@@ -363,21 +261,11 @@
             @timeupdate="onPreviewTimeUpdate"
             @loadedmetadata="onPreviewLoaded"
           />
-          <div
-            v-else
-            class="preview-empty"
-          >
-            <span
-              class="play-glyph"
-              aria-hidden="true"
-            />
+          <div v-else class="preview-empty">
+            <span class="play-glyph" aria-hidden="true" />
             <p>{{ t('script.timeline.emptyPreview') }}</p>
           </div>
-          <div
-            ref="previewCanvasEl"
-            class="export-frame-overlay"
-            :style="previewFrameStyle"
-          >
+          <div ref="previewCanvasEl" class="export-frame-overlay" :style="previewFrameStyle">
             <span class="export-frame-label">{{ previewFrameRatioLabel }}</span>
             <div
               v-if="exportPlatform.id !== 'custom' && previewFrameRatioKey === 'export'"
@@ -390,10 +278,7 @@
                 v-if="activeMainTransitionClip"
                 :ref="
                   (el) =>
-                    bindTransitionVideo(
-                      el as HTMLVideoElement | null,
-                      activeMainTransitionClipId
-                    )
+                    bindTransitionVideo(el as HTMLVideoElement | null, activeMainTransitionClipId)
                 "
                 class="transition-overlay-video"
                 :style="mainTransitionVideoStyle"
@@ -501,7 +386,9 @@
             >
               <span :class="playing && playMode === 'solo' ? 'pause' : 'triangle'" />
             </button>
-            <span class="time">{{ formatTime(playheadSec) }} / {{ formatTime(totalDuration) }}</span>
+            <span class="time"
+              >{{ formatTime(playheadSec) }} / {{ formatTime(totalDuration) }}</span
+            >
           </div>
         </div>
       </section>
@@ -514,10 +401,7 @@
         <div class="panel-head">
           <span class="panel-title">{{ t('script.timeline.inspector') }}</span>
         </div>
-        <div
-          v-if="selectedClip"
-          class="inspector-body"
-        >
+        <div v-if="selectedClip" class="inspector-body">
           <div class="inspector-track">
             {{ trackLabel(selectedClip.track) }}
           </div>
@@ -528,12 +412,8 @@
               min="0"
               step="0.1"
               :value="selectedClip.startSec"
-              @change="
-                onClipStartChange(
-                  Number(($event.target as HTMLInputElement).value)
-                )
-              "
-            >
+              @change="onClipStartChange(Number(($event.target as HTMLInputElement).value))"
+            />
           </label>
           <label class="inspector-field">
             <span>{{ t('script.timeline.durationSec') }}</span>
@@ -542,12 +422,8 @@
               min="0.1"
               step="0.1"
               :value="selectedClip.durationSec"
-              @change="
-                onClipDurationChange(
-                  Number(($event.target as HTMLInputElement).value)
-                )
-              "
-            >
+              @change="onClipDurationChange(Number(($event.target as HTMLInputElement).value))"
+            />
           </label>
           <div
             v-if="selectedClip.sourceOffsetSec"
@@ -555,11 +431,7 @@
             :title="t('script.timeline.sourceOffsetSecTip')"
           >
             <span>{{ t('script.timeline.sourceOffsetSec') }}</span>
-            <input
-              type="text"
-              :value="formatTime(selectedClip.sourceOffsetSec)"
-              readonly
-            >
+            <input type="text" :value="formatTime(selectedClip.sourceOffsetSec)" readonly />
           </div>
           <template v-if="selectedClip.track === 'video'">
             <template v-if="selectedClip.nodeId">
@@ -570,9 +442,8 @@
                 <span
                   class="source-node-title"
                   :title="selectedClip.nodeTitle || selectedClip.nodeId"
-                >{{
-                  selectedClip.nodeTitle || selectedClip.nodeId
-                }}</span>
+                  >{{ selectedClip.nodeTitle || selectedClip.nodeId }}</span
+                >
                 <button
                   type="button"
                   class="ghost-btn inspector-locate-btn"
@@ -585,10 +456,7 @@
             <div class="inspector-section-title">
               {{ t('script.timeline.reshoot') }}
             </div>
-            <div
-              v-if="selectedClipNode"
-              class="inspector-hint"
-            >
+            <div v-if="selectedClipNode" class="inspector-hint">
               {{
                 t('script.timeline.reshootSource', {
                   node: selectedClipNode.title?.trim() || selectedClipNode.id
@@ -604,10 +472,7 @@
             >
               {{ t('script.timeline.reshootClip') }}
             </button>
-            <div
-              v-else
-              class="inspector-hint"
-            >
+            <div v-else class="inspector-hint">
               {{ t('script.timeline.reshootUnavailable') }}
             </div>
             <div class="inspector-section-title">
@@ -617,11 +482,7 @@
               <span>{{ t('script.timeline.transitionEffect') }}</span>
               <select
                 :value="selectedClip.transitionType ?? 'none'"
-                @change="
-                  onVideoTransitionTypeChange(
-                    ($event.target as HTMLSelectElement).value
-                  )
-                "
+                @change="onVideoTransitionTypeChange(($event.target as HTMLSelectElement).value)"
               >
                 <option value="none">{{ t('script.timeline.transitionNone') }}</option>
                 <option value="dissolve">{{ t('script.timeline.transitionDissolve') }}</option>
@@ -637,7 +498,9 @@
                 <option value="wipeup">{{ t('script.timeline.transitionWipeUp') }}</option>
                 <option value="wipedown">{{ t('script.timeline.transitionWipeDown') }}</option>
                 <option value="circleopen">{{ t('script.timeline.transitionCircleOpen') }}</option>
-                <option value="circleclose">{{ t('script.timeline.transitionCircleClose') }}</option>
+                <option value="circleclose">
+                  {{ t('script.timeline.transitionCircleClose') }}
+                </option>
               </select>
             </label>
             <div class="inspector-hint">
@@ -650,11 +513,7 @@
               <textarea
                 rows="2"
                 :value="selectedClip.text || selectedClip.title"
-                @change="
-                  onSubtitleTextChange(
-                    ($event.target as HTMLTextAreaElement).value
-                  )
-                "
+                @change="onSubtitleTextChange(($event.target as HTMLTextAreaElement).value)"
               />
             </label>
             <div class="inspector-section-title">
@@ -669,7 +528,7 @@
                 max="200"
                 step="1"
                 @change="scheduleSave"
-              >
+              />
             </label>
             <label class="inspector-field">
               <span>{{ t('script.timeline.subtitleYOffset') }}</span>
@@ -680,7 +539,7 @@
                 max="1000"
                 step="1"
                 @change="scheduleSave"
-              >
+              />
             </label>
             <label class="inspector-field">
               <span>{{ t('script.timeline.subtitleColor') }}</span>
@@ -689,7 +548,7 @@
                 type="color"
                 class="color-input"
                 @change="scheduleSave"
-              >
+              />
             </label>
           </template>
           <template v-if="selectedClip.track === 'overlay'">
@@ -711,7 +570,7 @@
                       Number(($event.target as HTMLInputElement).value) / 100
                     )
                   "
-                >
+                />
               </label>
               <label class="inspector-field">
                 <span>{{ t('script.timeline.overlayY') }}</span>
@@ -727,7 +586,7 @@
                       Number(($event.target as HTMLInputElement).value) / 100
                     )
                   "
-                >
+                />
               </label>
             </div>
             <div class="inspector-grid">
@@ -745,7 +604,7 @@
                       Number(($event.target as HTMLInputElement).value) / 100
                     )
                   "
-                >
+                />
               </label>
               <label class="inspector-field">
                 <span>{{ t('script.timeline.overlayHeight') }}</span>
@@ -761,7 +620,7 @@
                       Number(($event.target as HTMLInputElement).value) / 100
                     )
                   "
-                >
+                />
               </label>
             </div>
             <label class="inspector-field">
@@ -773,12 +632,9 @@
                 step="0.05"
                 :value="selectedClip.opacity ?? 1"
                 @input="
-                  onOverlayFieldChange(
-                    'opacity',
-                    Number(($event.target as HTMLInputElement).value)
-                  )
+                  onOverlayFieldChange('opacity', Number(($event.target as HTMLInputElement).value))
                 "
-              >
+              />
             </label>
             <label class="inspector-field">
               <span>{{ t('script.timeline.overlayVolume') }}</span>
@@ -789,22 +645,21 @@
                 step="0.05"
                 :value="selectedClip.volume ?? 1"
                 @input="
-                  onOverlayFieldChange(
-                    'volume',
-                    Number(($event.target as HTMLInputElement).value)
-                  )
+                  onOverlayFieldChange('volume', Number(($event.target as HTMLInputElement).value))
                 "
-              >
+              />
             </label>
-            <button
-              type="button"
-              class="ghost-btn inspector-reset"
-              @click="resetOverlayTransform"
-            >
+            <button type="button" class="ghost-btn inspector-reset" @click="resetOverlayTransform">
               {{ t('script.timeline.overlayReset') }}
             </button>
           </template>
-          <template v-if="selectedClip.track === 'voice' || selectedClip.track === 'music' || selectedClip.track === 'sfx'">
+          <template
+            v-if="
+              selectedClip.track === 'voice' ||
+              selectedClip.track === 'music' ||
+              selectedClip.track === 'sfx'
+            "
+          >
             <label class="inspector-field">
               <span>{{ t('script.timeline.volume') }}</span>
               <input
@@ -813,12 +668,8 @@
                 max="1"
                 step="0.05"
                 :value="selectedClip.volume ?? 1"
-                @input="
-                  onAudioVolumeChange(
-                    Number(($event.target as HTMLInputElement).value)
-                  )
-                "
-              >
+                @input="onAudioVolumeChange(Number(($event.target as HTMLInputElement).value))"
+              />
             </label>
             <label class="inspector-field">
               <span>{{ t('script.timeline.fadeIn') }}</span>
@@ -829,12 +680,9 @@
                 step="0.1"
                 :value="selectedClip.fadeInSec ?? 0"
                 @change="
-                  onAudioFadeChange(
-                    'fadeInSec',
-                    Number(($event.target as HTMLInputElement).value)
-                  )
+                  onAudioFadeChange('fadeInSec', Number(($event.target as HTMLInputElement).value))
                 "
-              >
+              />
             </label>
             <label class="inspector-field">
               <span>{{ t('script.timeline.fadeOut') }}</span>
@@ -845,19 +693,13 @@
                 step="0.1"
                 :value="selectedClip.fadeOutSec ?? 0"
                 @change="
-                  onAudioFadeChange(
-                    'fadeOutSec',
-                    Number(($event.target as HTMLInputElement).value)
-                  )
+                  onAudioFadeChange('fadeOutSec', Number(($event.target as HTMLInputElement).value))
                 "
-              >
+              />
             </label>
           </template>
         </div>
-        <div
-          v-else
-          class="inspector-body"
-        >
+        <div v-else class="inspector-body">
           <div class="inspector-section-title">
             {{ t('script.timeline.exportSettings') }}
           </div>
@@ -888,7 +730,7 @@
                 max="7680"
                 step="2"
                 :disabled="!isCustomResolution"
-              >
+              />
             </label>
             <label class="inspector-field">
               <span>{{ t('script.timeline.exportHeightField') }}</span>
@@ -899,20 +741,13 @@
                 max="4320"
                 step="2"
                 :disabled="!isCustomResolution"
-              >
+              />
             </label>
           </div>
           <label class="inspector-field">
             <span>{{ t('script.timeline.exportFps') }}</span>
-            <select
-              v-model.number="exportFps"
-              @change="scheduleSave"
-            >
-              <option
-                v-for="fps in EXPORT_FPS_OPTIONS"
-                :key="fps"
-                :value="fps"
-              >
+            <select v-model.number="exportFps" @change="scheduleSave">
+              <option v-for="fps in EXPORT_FPS_OPTIONS" :key="fps" :value="fps">
                 {{ fps }}
               </option>
             </select>
@@ -926,7 +761,7 @@
               max="200000"
               step="500"
               @change="scheduleSave"
-            >
+            />
           </label>
         </div>
       </aside>
@@ -943,18 +778,9 @@
       :class="{ collapsed: timelineCollapsed }"
       :style="{ height: `${timelineHeight}px` }"
     >
-      <header
-        ref="timelineBarEl"
-        class="timeline-bar"
-      >
-        <div
-          class="timeline-controls"
-          @pointerdown.stop
-        >
-          <label
-            class="ctrl-field"
-            :title="t('script.timeline.durationHint')"
-          >
+      <header ref="timelineBarEl" class="timeline-bar">
+        <div class="timeline-controls" @pointerdown.stop>
+          <label class="ctrl-field" :title="t('script.timeline.durationHint')">
             <span>{{ t('script.timeline.duration') }}</span>
             <input
               v-model.number="durationInputSec"
@@ -964,21 +790,13 @@
               max="3600"
               step="1"
               @change="commitDuration"
-            >
+            />
             <span class="ctrl-unit">s</span>
           </label>
           <label class="ctrl-field">
             <span>{{ t('script.timeline.rate') }}</span>
-            <select
-              v-model.number="playbackRate"
-              class="ctrl-select"
-              @change="onRateChange"
-            >
-              <option
-                v-for="rate in PLAYBACK_RATE_OPTIONS"
-                :key="rate"
-                :value="rate"
-              >
+            <select v-model.number="playbackRate" class="ctrl-select" @change="onRateChange">
+              <option v-for="rate in PLAYBACK_RATE_OPTIONS" :key="rate" :value="rate">
                 {{ rate }}x
               </option>
             </select>
@@ -995,15 +813,11 @@
               max="96"
               step="2"
               @change="scheduleSave"
-            >
+            />
             <span class="ctrl-unit">{{ trackHeight }}px</span>
           </label>
           <label class="ctrl-check">
-            <input
-              v-model="loopPlayback"
-              type="checkbox"
-              @change="scheduleSave"
-            >
+            <input v-model="loopPlayback" type="checkbox" @change="scheduleSave" />
             <span>{{ t('script.timeline.loop') }}</span>
           </label>
           <button
@@ -1098,8 +912,8 @@
             {{
               exporting
                 ? t('script.timeline.exporting', {
-                  progress: Math.round(exportProgress * 100)
-                })
+                    progress: Math.round(exportProgress * 100)
+                  })
                 : t('script.timeline.export')
             }}
           </button>
@@ -1161,10 +975,7 @@
         >
           <div class="ruler-row">
             <div class="track-label gutter" />
-            <div
-              class="ruler"
-              @pointerdown="onRulerPointerDown"
-            >
+            <div class="ruler" @pointerdown="onRulerPointerDown">
               <span
                 v-for="mark in rulerMarks"
                 :key="mark.t"
@@ -1229,10 +1040,7 @@
                 "
                 @click.stop="toggleTrackHidden(track.kind)"
               >
-                <span
-                  class="eye-icon"
-                  :class="{ off: hiddenTracks.has(track.kind) }"
-                >👁</span>
+                <span class="eye-icon" :class="{ off: hiddenTracks.has(track.kind) }">👁</span>
               </button>
               <button
                 type="button"
@@ -1262,16 +1070,10 @@
                 />
               </button>
             </div>
-            <div
-              v-show="!collapsedTracks.has(track.kind)"
-              class="track-lane"
-            >
+            <div v-show="!collapsedTracks.has(track.kind)" class="track-lane">
               <template v-if="track.kind === 'video' && !clipsOn(track.kind).length">
                 <div class="lane-empty">
-                  <span
-                    class="play-glyph sm"
-                    aria-hidden="true"
-                  />
+                  <span class="play-glyph sm" aria-hidden="true" />
                   <span>{{ t('script.timeline.videoEmpty') }}</span>
                 </div>
               </template>
@@ -1282,10 +1084,7 @@
               </template>
               <template v-else-if="track.kind === 'voice' && !clipsOn(track.kind).length">
                 <div class="lane-muted">
-                  <span
-                    class="speaker"
-                    aria-hidden="true"
-                  />
+                  <span class="speaker" aria-hidden="true" />
                   <span>{{ t('script.timeline.voiceEmpty') }}</span>
                 </div>
               </template>
@@ -1293,11 +1092,7 @@
                 <div class="lane-muted">
                   <span>{{ t('script.timeline.subtitleEmpty') }}</span>
                 </div>
-                <button
-                  type="button"
-                  class="create-hint"
-                  @click="addBlankSubtitle"
-                >
+                <button type="button" class="create-hint" @click="addBlankSubtitle">
                   {{ t('script.timeline.addSubtitle') }}
                 </button>
               </template>
@@ -1327,11 +1122,7 @@
                 @pointerdown.stop="onClipPointerDown($event, clip)"
                 @dblclick.stop="onClipDblClick(clip)"
               >
-                <span
-                  v-if="isAudioClip(clip)"
-                  class="clip-wave"
-                  :style="clipWaveStyle(clip)"
-                />
+                <span v-if="isAudioClip(clip)" class="clip-wave" :style="clipWaveStyle(clip)" />
                 <span
                   class="clip-handle left"
                   @pointerdown.stop="onClipResizeStart($event, clip, 'left')"
@@ -1340,7 +1131,8 @@
                   v-if="clip.track !== 'video' && clip.track !== 'overlay'"
                   class="clip-title"
                   :class="{ 'on-media': clipHasVisual(clip) }"
-                >{{ clipDisplayTitle(clip) }}</span>
+                  >{{ clipDisplayTitle(clip) }}</span
+                >
                 <button
                   v-if="clip.nodeId"
                   type="button"
@@ -1387,10 +1179,7 @@
             </div>
           </div>
 
-          <div
-            class="timeline-bottom-pad"
-            aria-hidden="true"
-          />
+          <div class="timeline-bottom-pad" aria-hidden="true" />
 
           <div
             v-if="clipDragPreview && clipDragPreviewClip"
@@ -1416,16 +1205,8 @@
       </div>
     </section>
 
-    <div
-      v-if="exportDialogOpen"
-      class="export-settings-mask"
-      @click.self="closeExportDialog"
-    >
-      <div
-        class="export-settings-panel"
-        role="dialog"
-        aria-modal="true"
-      >
+    <div v-if="exportDialogOpen" class="export-settings-mask" @click.self="closeExportDialog">
+      <div class="export-settings-panel" role="dialog" aria-modal="true">
         <div class="export-settings-title">
           {{ t('script.timeline.exportSettings') }}
         </div>
@@ -1435,47 +1216,43 @@
             :value="exportPlatformId"
             @change="onExportPlatformChange(($event.target as HTMLSelectElement).value)"
           >
-            <option
-              v-for="platform in EXPORT_PLATFORMS"
-              :key="platform.id"
-              :value="platform.id"
-            >
+            <option v-for="platform in EXPORT_PLATFORMS" :key="platform.id" :value="platform.id">
               {{ t(`script.timeline.platform.${platform.nameKey}`) }}
               <template v-if="platform.id !== 'custom'">
-                — {{ t(`script.timeline.platform.${platform.frame}`) }} {{ platform.width }} × {{ platform.height }}
+                — {{ t(`script.timeline.platform.${platform.frame}`) }} {{ platform.width }} ×
+                {{ platform.height }}
               </template>
             </option>
           </select>
         </label>
-        <div
-          v-if="exportPlatform.id !== 'custom'"
-          class="export-platform-info"
-        >
+        <div v-if="exportPlatform.id !== 'custom'" class="export-platform-info">
           <span>
-            {{ t('script.timeline.platformSpec', {
-              width: exportPlatform.width,
-              height: exportPlatform.height,
-              fps: exportPlatform.fps,
-              bitrate: Math.round(exportPlatform.videoBitrateKbps / 1000)
-            }) }}
+            {{
+              t('script.timeline.platformSpec', {
+                width: exportPlatform.width,
+                height: exportPlatform.height,
+                fps: exportPlatform.fps,
+                bitrate: Math.round(exportPlatform.videoBitrateKbps / 1000)
+              })
+            }}
           </span>
           <span v-if="Number.isFinite(exportPlatform.maxDurationSec)">
-            {{ t('script.timeline.platformMaxDuration', { maxSec: Math.round(exportPlatform.maxDurationSec / 60) }) }}
+            {{
+              t('script.timeline.platformMaxDuration', {
+                maxSec: Math.round(exportPlatform.maxDurationSec / 60)
+              })
+            }}
           </span>
-          <span
-            v-if="exportDurationOverLimit"
-            class="export-platform-warning"
-          >
-            {{ t('script.timeline.platformTooLong', {
-              maxSec: Math.round(exportPlatform.maxDurationSec / 60),
-              curSec: Math.round(totalDuration)
-            }) }}
+          <span v-if="exportDurationOverLimit" class="export-platform-warning">
+            {{
+              t('script.timeline.platformTooLong', {
+                maxSec: Math.round(exportPlatform.maxDurationSec / 60),
+                curSec: Math.round(totalDuration)
+              })
+            }}
           </span>
         </div>
-        <div
-          v-if="exportCompliance.warnings.length"
-          class="export-compliance"
-        >
+        <div v-if="exportCompliance.warnings.length" class="export-compliance">
           <span
             v-for="warning in exportCompliance.warnings"
             :key="warning"
@@ -1484,10 +1261,7 @@
             ⚠ {{ warning }}
           </span>
         </div>
-        <div
-          v-else-if="exportPlatform.id !== 'custom'"
-          class="export-compliance ok"
-        >
+        <div v-else-if="exportPlatform.id !== 'custom'" class="export-compliance ok">
           <span>{{ t('script.timeline.exportCheckPass') }}</span>
         </div>
         <label class="inspector-field">
@@ -1497,11 +1271,7 @@
             :disabled="exportPlatformId !== 'custom'"
             @change="onExportResolutionChange(($event.target as HTMLSelectElement).value)"
           >
-            <option
-              v-for="res in EXPORT_RESOLUTIONS"
-              :key="res.label"
-              :value="`${res.w}x${res.h}`"
-            >
+            <option v-for="res in EXPORT_RESOLUTIONS" :key="res.label" :value="`${res.w}x${res.h}`">
               {{ res.label }}
             </option>
             <option value="custom">{{ t('script.timeline.customResolution') }}</option>
@@ -1517,7 +1287,7 @@
               max="7680"
               step="2"
               :disabled="!isCustomResolution"
-            >
+            />
           </label>
           <label class="inspector-field">
             <span>{{ t('script.timeline.exportHeightField') }}</span>
@@ -1528,17 +1298,13 @@
               max="4320"
               step="2"
               :disabled="!isCustomResolution"
-            >
+            />
           </label>
         </div>
         <label class="inspector-field">
           <span>{{ t('script.timeline.exportFps') }}</span>
           <select v-model.number="exportFps">
-            <option
-              v-for="fps in EXPORT_FPS_OPTIONS"
-              :key="fps"
-              :value="fps"
-            >
+            <option v-for="fps in EXPORT_FPS_OPTIONS" :key="fps" :value="fps">
               {{ fps }}
             </option>
           </select>
@@ -1551,7 +1317,7 @@
             min="500"
             max="200000"
             step="500"
-          >
+          />
         </label>
         <div class="mixer-section-title">
           {{ t('script.timeline.watermark') }}
@@ -1562,17 +1328,13 @@
             type="checkbox"
             :checked="watermarkEnabled"
             @change="onWatermarkEnabledChange(($event.target as HTMLInputElement).checked)"
-          >
+          />
         </label>
         <template v-if="watermarkEnabled">
           <label class="inspector-field">
             <span>{{ t('script.timeline.watermarkImage') }}</span>
             <span class="watermark-pick-row">
-              <button
-                type="button"
-                class="ghost-btn"
-                @click="pickWatermarkImage"
-              >
+              <button type="button" class="ghost-btn" @click="pickWatermarkImage">
                 {{ watermarkFileName || t('script.timeline.watermarkPick') }}
               </button>
               <button
@@ -1596,7 +1358,7 @@
                 max="1"
                 step="0.05"
                 @change="scheduleSave"
-              >
+              />
               <span class="mixer-value">{{ Math.round(watermarkOpacity * 100) }}%</span>
             </span>
           </label>
@@ -1610,7 +1372,7 @@
                 max="0.5"
                 step="0.01"
                 @change="scheduleSave"
-              >
+              />
               <span class="mixer-value">{{ Math.round(watermarkScale * 100) }}%</span>
             </span>
           </label>
@@ -1627,28 +1389,17 @@
             </select>
           </label>
         </template>
-        <div
-          v-if="lastExportError"
-          class="export-error-box"
-        >
+        <div v-if="lastExportError" class="export-error-box">
           <span class="export-error-title">
             {{ t('script.timeline.exportRetryHint') }}
           </span>
           <code>{{ lastExportError }}</code>
         </div>
         <div class="export-settings-actions">
-          <button
-            type="button"
-            class="ghost-btn"
-            @click="closeExportDialog"
-          >
+          <button type="button" class="ghost-btn" @click="closeExportDialog">
             {{ t('common.cancel') }}
           </button>
-          <button
-            type="button"
-            class="export-btn"
-            @click="confirmExportDialog"
-          >
+          <button type="button" class="export-btn" @click="confirmExportDialog">
             {{ t('script.timeline.export') }}
           </button>
         </div>
@@ -1658,31 +1409,19 @@
           accept="image/png,image/jpeg,image/webp"
           hidden
           @change="onWatermarkImagePicked"
-        >
+        />
       </div>
     </div>
 
-    <div
-      v-if="mixerOpen"
-      class="export-settings-mask"
-      @click.self="closeMixer"
-    >
-      <div
-        class="export-settings-panel mixer-panel"
-        role="dialog"
-        aria-modal="true"
-      >
+    <div v-if="mixerOpen" class="export-settings-mask" @click.self="closeMixer">
+      <div class="export-settings-panel mixer-panel" role="dialog" aria-modal="true">
         <div class="export-settings-title">
           {{ t('script.timeline.mixer') }}
         </div>
         <div class="mixer-section-title">
           {{ t('script.timeline.mixerTrackGains') }}
         </div>
-        <label
-          v-for="track in audioMixerTracks"
-          :key="track.kind"
-          class="inspector-field"
-        >
+        <label v-for="track in audioMixerTracks" :key="track.kind" class="inspector-field">
           <span>{{ track.label }}</span>
           <span class="mixer-slider-row">
             <input
@@ -1691,8 +1430,10 @@
               max="2"
               step="0.05"
               :value="mixGains[track.kind] ?? 1"
-              @input="onMixGainChange(track.kind, Number(($event.target as HTMLInputElement).value))"
-            >
+              @input="
+                onMixGainChange(track.kind, Number(($event.target as HTMLInputElement).value))
+              "
+            />
             <span class="mixer-value">
               {{ mixGainPercent(track.kind) }}% ({{ mixGainDbLabel(track.kind) }})
             </span>
@@ -1711,7 +1452,7 @@
               max="2"
               step="0.05"
               @change="onMasterGainChange(mixMasterGain)"
-            >
+            />
             <span class="mixer-value">
               {{ Math.round(clampTrackGain(mixMasterGain) * 100) }}% ({{ mixMasterGainDbLabel() }})
             </span>
@@ -1727,7 +1468,7 @@
               max="12"
               step="0.5"
               @change="onMixEqChange"
-            >
+            />
             <span class="mixer-value">{{ Math.round(mixBassGainDb) }} dB</span>
           </span>
         </label>
@@ -1741,7 +1482,7 @@
               max="12"
               step="0.5"
               @change="onMixEqChange"
-            >
+            />
             <span class="mixer-value">{{ Math.round(mixTrebleGainDb) }} dB</span>
           </span>
         </label>
@@ -1751,30 +1492,18 @@
             type="checkbox"
             :checked="mixCompression"
             @change="onMixCompressionChange(($event.target as HTMLInputElement).checked)"
-          >
+          />
         </label>
         <div class="export-settings-actions">
-          <button
-            type="button"
-            class="ghost-btn"
-            @click="closeMixer"
-          >
+          <button type="button" class="ghost-btn" @click="closeMixer">
             {{ t('common.done') }}
           </button>
         </div>
       </div>
     </div>
 
-    <div
-      v-if="sfxLibraryOpen"
-      class="export-settings-mask"
-      @click.self="closeSfxLibrary"
-    >
-      <div
-        class="export-settings-panel sfx-library-panel"
-        role="dialog"
-        aria-modal="true"
-      >
+    <div v-if="sfxLibraryOpen" class="export-settings-mask" @click.self="closeSfxLibrary">
+      <div class="export-settings-panel sfx-library-panel" role="dialog" aria-modal="true">
         <div class="export-settings-title">
           {{ t('script.timeline.sfxLibrary') }}
         </div>
@@ -1791,11 +1520,7 @@
           </button>
         </div>
         <div class="sfx-preset-grid">
-          <div
-            v-for="preset in filteredSfxPresets"
-            :key="preset.id"
-            class="sfx-preset-card"
-          >
+          <div v-for="preset in filteredSfxPresets" :key="preset.id" class="sfx-preset-card">
             <div class="sfx-preset-name">
               {{ localizedText(locale, preset.name) }}
             </div>
@@ -1803,10 +1528,7 @@
               {{ localizedText(locale, preset.prompt) }}
             </div>
             <div class="sfx-preset-foot">
-              <span
-                v-if="preset.durationSec"
-                class="sfx-preset-duration"
-              >
+              <span v-if="preset.durationSec" class="sfx-preset-duration">
                 ~{{ preset.durationSec }}s
               </span>
               <button
@@ -1823,19 +1545,9 @@
         <div class="mixer-section-title">
           {{ t('script.timeline.sfxLibraryImport') }}
         </div>
-        <div
-          v-if="projectAudioAssets.length"
-          class="sfx-library-assets"
-        >
-          <div
-            v-for="asset in projectAudioAssets"
-            :key="asset.id"
-            class="sfx-library-asset-row"
-          >
-            <span
-              class="sfx-library-asset-name"
-              :title="asset.relativePath"
-            >
+        <div v-if="projectAudioAssets.length" class="sfx-library-assets">
+          <div v-for="asset in projectAudioAssets" :key="asset.id" class="sfx-library-asset-row">
+            <span class="sfx-library-asset-name" :title="asset.relativePath">
               {{ asset.name }}
             </span>
             <button
@@ -1848,34 +1560,19 @@
             </button>
           </div>
         </div>
-        <p
-          v-else
-          class="sfx-library-empty"
-        >
+        <p v-else class="sfx-library-empty">
           {{ t('script.timeline.sfxLibraryNoAssets') }}
         </p>
         <div class="export-settings-actions">
-          <button
-            type="button"
-            class="ghost-btn"
-            @click="closeSfxLibrary"
-          >
+          <button type="button" class="ghost-btn" @click="closeSfxLibrary">
             {{ t('common.done') }}
           </button>
         </div>
       </div>
     </div>
 
-    <div
-      v-if="subtitleEditor"
-      class="subtitle-edit-mask"
-      @click.self="cancelSubtitleEdit"
-    >
-      <div
-        class="subtitle-edit-panel"
-        role="dialog"
-        aria-modal="true"
-      >
+    <div v-if="subtitleEditor" class="subtitle-edit-mask" @click.self="cancelSubtitleEdit">
+      <div class="subtitle-edit-panel" role="dialog" aria-modal="true">
         <div class="subtitle-edit-title">
           {{ t('script.timeline.editSubtitle') }}
         </div>
@@ -1887,36 +1584,20 @@
           maxlength="200"
           @keydown.enter.prevent="commitSubtitleEdit"
           @keydown.escape.prevent="cancelSubtitleEdit"
-        >
+        />
         <div class="subtitle-edit-actions">
-          <button
-            type="button"
-            class="ghost-btn"
-            @click="cancelSubtitleEdit"
-          >
+          <button type="button" class="ghost-btn" @click="cancelSubtitleEdit">
             {{ t('common.cancel') }}
           </button>
-          <button
-            type="button"
-            class="export-btn"
-            @click="commitSubtitleEdit"
-          >
+          <button type="button" class="export-btn" @click="commitSubtitleEdit">
             {{ t('common.confirm') }}
           </button>
         </div>
       </div>
     </div>
 
-    <div
-      v-if="smartCutDialogOpen"
-      class="smart-cut-mask"
-      @click.self="smartCutDialogOpen = false"
-    >
-      <div
-        class="smart-cut-panel"
-        role="dialog"
-        aria-modal="true"
-      >
+    <div v-if="smartCutDialogOpen" class="smart-cut-mask" @click.self="smartCutDialogOpen = false">
+      <div class="smart-cut-panel" role="dialog" aria-modal="true">
         <div class="smart-cut-title">
           {{ t('script.timeline.smartCutTitle') }}
         </div>
@@ -1926,15 +1607,8 @@
         <div class="smart-cut-model-row">
           <label class="smart-cut-field">
             <span>{{ t('common.model') }}</span>
-            <select
-              v-model="smartCutModelKey"
-              :disabled="smartCutBusy"
-            >
-              <option
-                v-for="opt in smartCutModelOptions"
-                :key="opt.key"
-                :value="opt.key"
-              >
+            <select v-model="smartCutModelKey" :disabled="smartCutBusy">
+              <option v-for="opt in smartCutModelOptions" :key="opt.key" :value="opt.key">
                 {{ opt.label }}
               </option>
             </select>
@@ -1955,37 +1629,20 @@
           </button>
         </div>
         <div class="smart-cut-list">
-          <p
-            v-if="smartCutBusy && !smartCutEdits.length"
-            class="smart-cut-empty"
-          >
+          <p v-if="smartCutBusy && !smartCutEdits.length" class="smart-cut-empty">
             {{ t('script.timeline.smartCutGenerating') }}
           </p>
-          <p
-            v-else-if="!smartCutEdits.length"
-            class="smart-cut-empty"
-          >
+          <p v-else-if="!smartCutEdits.length" class="smart-cut-empty">
             {{ t('script.timeline.smartCutNotStarted') }}
           </p>
-          <div
-            v-for="(edit, i) in smartCutEdits"
-            :key="edit.sourceId"
-            class="smart-cut-item"
-          >
+          <div v-for="(edit, i) in smartCutEdits" :key="edit.sourceId" class="smart-cut-item">
             <span class="smart-cut-index">{{ i + 1 }}</span>
             <div class="smart-cut-item-main">
-              <span
-                class="smart-cut-item-title"
-                :title="edit.title"
-              >{{ edit.title }}</span>
-              <span
-                v-if="edit.nodeTitle"
-                class="smart-cut-item-shot"
-              >{{ edit.nodeTitle }}</span>
-              <span
-                v-if="smartCutBeatNote(edit)"
-                class="smart-cut-beat-note"
-              >{{ smartCutBeatNote(edit) }}</span>
+              <span class="smart-cut-item-title" :title="edit.title">{{ edit.title }}</span>
+              <span v-if="edit.nodeTitle" class="smart-cut-item-shot">{{ edit.nodeTitle }}</span>
+              <span v-if="smartCutBeatNote(edit)" class="smart-cut-beat-note">{{
+                smartCutBeatNote(edit)
+              }}</span>
             </div>
             <label class="smart-cut-field">
               <span>{{ t('script.timeline.smartCutDuration') }}</span>
@@ -1995,16 +1652,12 @@
                 min="0.5"
                 max="60"
                 step="0.5"
-              >
+              />
             </label>
             <label class="smart-cut-field">
               <span>{{ t('script.timeline.transitionEffect') }}</span>
               <select v-model="edit.transitionType">
-                <option
-                  v-for="tr in smartCutTransitions"
-                  :key="tr"
-                  :value="tr"
-                >
+                <option v-for="tr in smartCutTransitions" :key="tr" :value="tr">
                   {{ t(smartCutTransitionLabelKey(tr)) }}
                 </option>
               </select>
@@ -2012,11 +1665,7 @@
           </div>
         </div>
         <div class="smart-cut-actions">
-          <button
-            type="button"
-            class="ghost-btn"
-            @click="smartCutDialogOpen = false"
-          >
+          <button type="button" class="ghost-btn" @click="smartCutDialogOpen = false">
             {{ t('common.cancel') }}
           </button>
           <button
@@ -2078,7 +1727,12 @@ import {
   type SfxPreset,
   type SfxPresetCategory
 } from '../features/timeline/sfxPresets'
-import { promptAlert, promptConfirm, promptText, promptTextWithModel } from '../composables/useStudioPrompt'
+import {
+  promptAlert,
+  promptConfirm,
+  promptText,
+  promptTextWithModel
+} from '../composables/useStudioPrompt'
 import {
   loadGenerateModelOptions,
   parseModelKey,
@@ -2412,16 +2066,13 @@ const tracks = computed(() => [
 ])
 
 /** 混音器里可调增益的轨道（subtitle 无音频） */
-const audioMixerTracks = computed(() =>
-  tracks.value.filter((track) => track.kind !== 'subtitle')
-)
+const audioMixerTracks = computed(() => tracks.value.filter((track) => track.kind !== 'subtitle'))
 
 const timelineInnerHeight = computed(
   () =>
     28 +
     tracks.value.reduce(
-      (sum, track) =>
-        sum + (collapsedTracks.value.has(track.kind) ? 24 : trackHeight.value),
+      (sum, track) => sum + (collapsedTracks.value.has(track.kind) ? 24 : trackHeight.value),
       0
     ) +
     TIMELINE_BOTTOM_PAD
@@ -2445,14 +2096,12 @@ function trackTopOffset(kind: ScriptTimelineTrackKind): number {
   return top
 }
 
-const inputSources = computed(() =>
-  sources.value.filter((s) => (s.origin ?? 'input') === 'input')
-)
-const importedSources = computed(() =>
-  sources.value.filter((s) => s.origin === 'imported')
-)
+const inputSources = computed(() => sources.value.filter((s) => (s.origin ?? 'input') === 'input'))
+const importedSources = computed(() => sources.value.filter((s) => s.origin === 'imported'))
 const ungroupedImportedSources = computed(() =>
-  importedSources.value.filter((s) => !s.groupId || !sourceGroups.value.some((g) => g.id === s.groupId))
+  importedSources.value.filter(
+    (s) => !s.groupId || !sourceGroups.value.some((g) => g.id === s.groupId)
+  )
 )
 const videoSources = computed(() =>
   sources.value.filter((s) => (s.mediaKind ?? 'video') === 'video')
@@ -2509,23 +2158,16 @@ const activeMainTransition = computed(() => {
     // 转场窗口在 A 实际结束后保留一小段余量：主 <video> 换源期间播放头被
     // 冻结在 fromEnd 上、B 就位前不会前进，overlay 自然会一直盖住；
     // 这里只需留出 1~2 帧余量，避免 B 已开播后 overlay 还长时间静止造成跳变。
-    if (
-      playheadSec.value >= to.startSec &&
-      playheadSec.value <= fromEnd + 0.12
-    ) {
+    if (playheadSec.value >= to.startSec && playheadSec.value <= fromEnd + 0.12) {
       return { from, to }
     }
   }
   return null
 })
 
-const activeMainTransitionClip = computed(
-  () => activeMainTransition.value?.to ?? null
-)
+const activeMainTransitionClip = computed(() => activeMainTransition.value?.to ?? null)
 
-const activeMainTransitionClipId = computed(
-  () => activeMainTransition.value?.to.id ?? ''
-)
+const activeMainTransitionClipId = computed(() => activeMainTransition.value?.to.id ?? '')
 
 /** 当前转场窗口是否已有就绪的 ffmpeg 微渲染片段（与导出一致的画面） */
 const activeTransitionPreviewEntry = computed(() => {
@@ -2538,13 +2180,8 @@ const activeTransitionPreviewEntry = computed(() => {
 const mainTransitionVideoStyle = computed(() => {
   const transition = activeMainTransition.value
   if (!transition) return { display: 'none' }
-  const duration = Math.max(
-    0.05,
-    transition.to.transitionInSec ?? 0.5
-  )
-  const progress = clamp01(
-    (playheadSec.value - transition.to.startSec) / duration
-  )
+  const duration = Math.max(0.05, transition.to.transitionInSec ?? 0.5)
+  const progress = clamp01((playheadSec.value - transition.to.startSec) / duration)
   const type = transition.to.transitionType ?? 'dissolve'
   const style: Record<string, string> = {
     display: 'block',
@@ -2639,8 +2276,16 @@ const videoTransitionHandles = computed(() => {
 })
 
 const previewFrameRatioOptions = computed(() => [
-  { key: 'video', label: t('script.timeline.previewFrameRatioVideo'), ratio: null as number | null },
-  { key: 'export', label: t('script.timeline.previewFrameRatioExport'), ratio: null as number | null },
+  {
+    key: 'video',
+    label: t('script.timeline.previewFrameRatioVideo'),
+    ratio: null as number | null
+  },
+  {
+    key: 'export',
+    label: t('script.timeline.previewFrameRatioExport'),
+    ratio: null as number | null
+  },
   { key: '16:9', label: '16:9', ratio: 16 / 9 },
   { key: '9:16', label: '9:16', ratio: 9 / 16 },
   { key: '1:1', label: '1:1', ratio: 1 },
@@ -2751,10 +2396,7 @@ function onGroupDrop(e: DragEvent, groupId: string): void {
   void moveImportedSourceToGroup(e, groupId || null)
 }
 
-async function moveImportedSourceToGroup(
-  e: DragEvent,
-  groupId: string | null
-): Promise<void> {
+async function moveImportedSourceToGroup(e: DragEvent, groupId: string | null): Promise<void> {
   const id =
     e.dataTransfer?.getData(SOURCE_MOVE_MIME) ||
     (() => {
@@ -2770,12 +2412,9 @@ async function moveImportedSourceToGroup(
   if (!id) return
   const src = sources.value.find((s) => s.id === id)
   if (!src || src.origin !== 'imported') return
-  const nextGroupId =
-    groupId && sourceGroups.value.some((g) => g.id === groupId) ? groupId : null
+  const nextGroupId = groupId && sourceGroups.value.some((g) => g.id === groupId) ? groupId : null
   if ((src.groupId ?? null) === nextGroupId) return
-  sources.value = sources.value.map((s) =>
-    s.id === id ? { ...s, groupId: nextGroupId } : s
-  )
+  sources.value = sources.value.map((s) => (s.id === id ? { ...s, groupId: nextGroupId } : s))
   scheduleSave()
 }
 
@@ -2790,9 +2429,11 @@ async function createImportedGroup(): Promise<void> {
     placeholder: t('script.timeline.groupNamePlaceholder')
   })
   if (name == null) return
-  const title = name.trim() || t('script.timeline.groupNameDefault', {
-    n: sourceGroups.value.length + 1
-  })
+  const title =
+    name.trim() ||
+    t('script.timeline.groupNameDefault', {
+      n: sourceGroups.value.length + 1
+    })
   const group: ScriptTimelineSourceGroup = {
     id: `sg:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 6)}`,
     title
@@ -2815,9 +2456,7 @@ async function renameImportedGroup(): Promise<void> {
   if (name == null) return
   const title = name.trim()
   if (!title) return
-  sourceGroups.value = sourceGroups.value.map((g) =>
-    g.id === group.id ? { ...g, title } : g
-  )
+  sourceGroups.value = sourceGroups.value.map((g) => (g.id === group.id ? { ...g, title } : g))
   scheduleSave()
 }
 
@@ -2856,10 +2495,7 @@ function sourceThumbClass(src: ScriptTimelineSource): string {
   return sourceMediaKind(src) === 'voice' ? 'voice' : 'video'
 }
 
-function sourceRelativePath(source: {
-  relativePath?: string
-  assetId?: string
-}): string {
+function sourceRelativePath(source: { relativePath?: string; assetId?: string }): string {
   return (
     source.relativePath?.trim() ||
     (source.assetId
@@ -2917,7 +2553,9 @@ function onSourceActivate(src: ScriptTimelineSource): void {
   void addSourceToTrack(src, defaultTrackForSource(src))
 }
 
-function sourceIdentityKey(src: Pick<ScriptTimelineSource, 'id' | 'assetId' | 'relativePath'>): string {
+function sourceIdentityKey(
+  src: Pick<ScriptTimelineSource, 'id' | 'assetId' | 'relativePath'>
+): string {
   const rel = src.relativePath?.trim().replace(/\\/g, '/')
   if (rel) return `path:${rel}`
   const assetId = src.assetId?.trim()
@@ -2965,17 +2603,19 @@ function removeSource(id: string): void {
   sources.value = sources.value.filter((s) => s.id !== id)
   const key = sourceIdentityKey(src)
   const removedClipIds = new Set<string>()
-  commitClips(clips.value.filter((clip) => {
-    const sameSource =
-      clip.sourceId === src.id ||
-      sourceIdentityKey({
-        id: clip.sourceId,
-        assetId: clip.assetId,
-        relativePath: clip.relativePath
-      }) === key
-    if (sameSource) removedClipIds.add(clip.id)
-    return !sameSource
-  }))
+  commitClips(
+    clips.value.filter((clip) => {
+      const sameSource =
+        clip.sourceId === src.id ||
+        sourceIdentityKey({
+          id: clip.sourceId,
+          assetId: clip.assetId,
+          relativePath: clip.relativePath
+        }) === key
+      if (sameSource) removedClipIds.add(clip.id)
+      return !sameSource
+    })
+  )
   selectedClipIds.value = new Set(
     [...selectedClipIds.value].filter((id) => clips.value.some((clip) => clip.id === id))
   )
@@ -3175,9 +2815,7 @@ function undo(): void {
     activeClipId.value = null
     previewSrc.value = ''
   }
-  selectedClipIds.value = activeClipId.value
-    ? new Set([activeClipId.value])
-    : new Set()
+  selectedClipIds.value = activeClipId.value ? new Set([activeClipId.value]) : new Set()
   scheduleSave()
 }
 
@@ -3190,9 +2828,7 @@ function redo(): void {
     activeClipId.value = null
     previewSrc.value = ''
   }
-  selectedClipIds.value = activeClipId.value
-    ? new Set([activeClipId.value])
-    : new Set()
+  selectedClipIds.value = activeClipId.value ? new Set([activeClipId.value]) : new Set()
   scheduleSave()
 }
 
@@ -3373,9 +3009,7 @@ function reorderClipsOnTrack(
 
   const clampedStart = Math.max(0, desiredStart)
   let insertIndex = others.findIndex(
-    (clip) =>
-      clampedStart <
-      clip.startSec + Math.max(MIN_CLIP_SEC, clip.durationSec) / 2 - 0.001
+    (clip) => clampedStart < clip.startSec + Math.max(MIN_CLIP_SEC, clip.durationSec) / 2 - 0.001
   )
   if (insertIndex < 0) insertIndex = others.length
 
@@ -3397,9 +3031,7 @@ function reorderClipsOnTrack(
   }
 
   const byId = new Map(updatedTrack.map((clip) => [clip.id, clip]))
-  return clips.value.map((clip) =>
-    clip.track === kind ? byId.get(clip.id) ?? clip : clip
-  )
+  return clips.value.map((clip) => (clip.track === kind ? (byId.get(clip.id) ?? clip) : clip))
 }
 
 function clipStyle(clip: ScriptTimelineClip): Record<string, string> {
@@ -3414,9 +3046,7 @@ function transitionHandleStyle(handle: {
   durationSec: number
 }): Record<string, string> {
   const x = timeToX(handle.startSec)
-  const width = handle.durationSec > 0
-    ? Math.max(12, timeToX(handle.durationSec))
-    : 12
+  const width = handle.durationSec > 0 ? Math.max(12, timeToX(handle.durationSec)) : 12
   return {
     left: `${x - width / 2}px`,
     width: `${width}px`
@@ -3587,9 +3217,8 @@ async function generateVideoStrip(clip: ScriptTimelineClip): Promise<string | nu
       }
       video.src = url
     })
-    const duration = Number.isFinite(video.duration) && video.duration > 0
-      ? video.duration
-      : clip.durationSec || 1
+    const duration =
+      Number.isFinite(video.duration) && video.duration > 0 ? video.duration : clip.durationSec || 1
     const frameCount = Math.max(1, Math.min(10, Math.ceil(clip.durationSec / 1.5)))
     const frameWidth = 112
     const frameHeight = 62
@@ -3605,19 +3234,10 @@ async function generateVideoStrip(clip: ScriptTimelineClip): Promise<string | nu
       )
       await seekVideoTo(video, target)
       if (video.videoWidth > 0) {
-        const scale = Math.max(
-          frameWidth / video.videoWidth,
-          frameHeight / video.videoHeight
-        )
+        const scale = Math.max(frameWidth / video.videoWidth, frameHeight / video.videoHeight)
         const dw = video.videoWidth * scale
         const dh = video.videoHeight * scale
-        ctx.drawImage(
-          video,
-          i * frameWidth + (frameWidth - dw) / 2,
-          (frameHeight - dh) / 2,
-          dw,
-          dh
-        )
+        ctx.drawImage(video, i * frameWidth + (frameWidth - dw) / 2, (frameHeight - dh) / 2, dw, dh)
       }
     }
     return canvas.toDataURL('image/jpeg', 0.72)
@@ -3962,10 +3582,7 @@ function overlaySelectionStyle(clip: ScriptTimelineClip): Record<string, string>
 }
 
 function isOverlayClipActive(clip: ScriptTimelineClip): boolean {
-  return (
-    playheadSec.value >= clip.startSec &&
-    playheadSec.value < clip.startSec + clip.durationSec
-  )
+  return playheadSec.value >= clip.startSec && playheadSec.value < clip.startSec + clip.durationSec
 }
 
 function bindOverlayVideo(el: HTMLVideoElement | null, clipId: string): void {
@@ -4014,9 +3631,7 @@ function loadPersisted(): void {
   // 清理指向已删分组的引用
   const groupIds = new Set(sourceGroups.value.map((g) => g.id))
   sources.value = sources.value.map((s) =>
-    s.origin === 'imported' && s.groupId && !groupIds.has(s.groupId)
-      ? { ...s, groupId: null }
-      : s
+    s.origin === 'imported' && s.groupId && !groupIds.has(s.groupId) ? { ...s, groupId: null } : s
   )
   const settings = doc.settings
   const content = contentEndSec.value
@@ -4145,9 +3760,7 @@ function onExportResolutionChange(value: string): void {
   scheduleSave()
 }
 
-const watermarkFileName = computed(() =>
-  watermarkSrc.value.split(/[\\/]/).pop()?.trim() || ''
-)
+const watermarkFileName = computed(() => watermarkSrc.value.split(/[\\/]/).pop()?.trim() || '')
 
 /** 选择目标平台 → 自动套用分辨率 / 帧率 / 码率建议，并按安全区适配竖屏字幕偏移 */
 function onExportPlatformChange(id: string): void {
@@ -4237,7 +3850,10 @@ function onTimelineWheel(e: WheelEvent): void {
   const cursorLaneX = e.clientX - rect.left + board.scrollLeft - TRACK_LABEL_W
   const timeAtCursor = Math.max(0, cursorLaneX / pxPerSec.value)
   const direction = e.deltaY < 0 ? 1 : -1
-  const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoomFactor.value * (direction > 0 ? 1.12 : 1 / 1.12)))
+  const next = Math.min(
+    ZOOM_MAX,
+    Math.max(ZOOM_MIN, zoomFactor.value * (direction > 0 ? 1.12 : 1 / 1.12))
+  )
   if (Math.abs(next - zoomFactor.value) < 0.001) return
   zoomFactor.value = next
   void nextTick(() => {
@@ -4247,10 +3863,7 @@ function onTimelineWheel(e: WheelEvent): void {
   })
 }
 
-async function resolveSrc(source: {
-  relativePath?: string
-  assetId?: string
-}): Promise<string> {
+async function resolveSrc(source: { relativePath?: string; assetId?: string }): Promise<string> {
   const rel = sourceRelativePath(source)
   if (!rel) return ''
   try {
@@ -4311,12 +3924,11 @@ async function generateSfxCore(
       ...(parsed ? { providerInstanceId: parsed.providerInstanceId, model: parsed.model } : {})
     })
     const durationSec =
-      result.durationMs && result.durationMs > 0
-        ? Math.round(result.durationMs / 1000)
-        : undefined
+      result.durationMs && result.durationMs > 0 ? Math.round(result.durationMs / 1000) : undefined
     const source: ScriptTimelineSource = {
       id: `sfx:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 7)}`,
-      title: name?.trim() || (result.relativePath?.split('/').pop() || 'SFX').replace(/\.[^.]+$/, ''),
+      title:
+        name?.trim() || (result.relativePath?.split('/').pop() || 'SFX').replace(/\.[^.]+$/, ''),
       relativePath: result.relativePath,
       assetId: result.assetId,
       origin: 'imported'
@@ -4348,7 +3960,8 @@ const sfxLibraryCategoryLabels = computed<Record<'all' | SfxPresetCategory, stri
     transition: '',
     ambient: ''
   }
-  for (const meta of SFX_PRESET_CATEGORIES) labels[meta.id] = localizedText(locale.value, meta.label)
+  for (const meta of SFX_PRESET_CATEGORIES)
+    labels[meta.id] = localizedText(locale.value, meta.label)
   return labels
 })
 
@@ -4518,13 +4131,12 @@ async function reloadSources(): Promise<void> {
         if (s.origin == null) return !inputKeys.has(sourceIdentityKey(s))
         return false
       })
-      .map(
-        (s) =>
-          normalizeScriptTimelineSource({
-            ...s,
-            origin: 'imported',
-            mediaKind: s.mediaKind === 'voice' ? 'voice' : 'video'
-          })!
+      .map((s) =>
+        normalizeScriptTimelineSource({
+          ...s,
+          origin: 'imported',
+          mediaKind: s.mediaKind === 'voice' ? 'voice' : 'video'
+        })!
       )
       .filter(Boolean)
     sources.value = [...inputNext, ...preservedImported]
@@ -4568,9 +4180,7 @@ async function addSourceToTrack(
     ...(source.nodeId?.trim() ? { nodeId: source.nodeId.trim() } : {}),
     ...(source.nodeTitle?.trim() ? { nodeTitle: source.nodeTitle.trim() } : {}),
     startSec:
-      startSec == null
-        ? nextStartOnTrack(track)
-        : fitClipStart(track, startSec, durationSec),
+      startSec == null ? nextStartOnTrack(track) : fitClipStart(track, startSec, durationSec),
     durationSec,
     ...(track === 'subtitle' ? { text: source.title } : {}),
     ...(track === 'overlay'
@@ -4654,9 +4264,7 @@ function commitSubtitleEdit(): void {
   if (!editor) return
   const text = editor.draft.trim() || t('script.timeline.subtitlePlaceholder')
   if (editor.clipId) {
-    commitClips(clips.value.map((c) =>
-      c.id === editor.clipId ? { ...c, text, title: text } : c
-    ))
+    commitClips(clips.value.map((c) => (c.id === editor.clipId ? { ...c, text, title: text } : c)))
   }
   subtitleEditor.value = null
   scheduleSave()
@@ -4665,8 +4273,7 @@ function commitSubtitleEdit(): void {
 function selectSubtitleAtPlayhead(): void {
   const clip = clipsOn('subtitle').find(
     (item) =>
-      playheadSec.value >= item.startSec &&
-      playheadSec.value < item.startSec + item.durationSec
+      playheadSec.value >= item.startSec && playheadSec.value < item.startSec + item.durationSec
   )
   if (!clip) return
   activeClipId.value = clip.id
@@ -4724,10 +4331,7 @@ function onSubtitleDragMove(e: PointerEvent): void {
   if (!session || e.pointerId !== session.pointerId) return
   const delta = session.startY - e.clientY
   if (session.type === 'scale') {
-    subtitleFontSize.value = Math.min(
-      200,
-      Math.max(12, Math.round(session.startFont + delta / 2))
-    )
+    subtitleFontSize.value = Math.min(200, Math.max(12, Math.round(session.startFont + delta / 2)))
   } else {
     subtitleYOffset.value = Math.min(1000, Math.max(0, Math.round(session.startOffset + delta)))
   }
@@ -4745,9 +4349,7 @@ function onAudioVolumeChange(value: number): void {
   const clip = selectedAudioClip.value
   if (!clip) return
   const volume = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 1
-  clips.value = clips.value.map((c) =>
-    c.id === clip.id ? { ...c, volume } : c
-  )
+  clips.value = clips.value.map((c) => (c.id === clip.id ? { ...c, volume } : c))
   scheduleSave()
 }
 
@@ -4755,11 +4357,7 @@ function onAudioFadeChange(field: 'fadeInSec' | 'fadeOutSec', value: number): vo
   const clip = selectedAudioClip.value
   if (!clip) return
   const sec = Number.isFinite(value) ? Math.min(clip.durationSec, Math.max(0, value)) : 0
-  commitClips(
-    clips.value.map((c) =>
-      c.id === clip.id ? { ...c, [field]: sec } : c
-    )
-  )
+  commitClips(clips.value.map((c) => (c.id === clip.id ? { ...c, [field]: sec } : c)))
   scheduleSave()
 }
 
@@ -4925,9 +4523,7 @@ function onClipStartChange(value: number): void {
     ? Math.min(Math.max(0, totalDuration.value - MIN_CLIP_SEC), Math.max(0, value))
     : clip.startSec
   if (Math.abs(startSec - clip.startSec) < 0.001) return
-  commitClips(
-    clips.value.map((c) => (c.id === clip.id ? { ...c, startSec } : c))
-  )
+  commitClips(clips.value.map((c) => (c.id === clip.id ? { ...c, startSec } : c)))
   scheduleSave()
 }
 
@@ -4938,9 +4534,7 @@ function onClipDurationChange(value: number): void {
     ? Math.max(MIN_CLIP_SEC, Math.min(totalDuration.value - clip.startSec, value))
     : clip.durationSec
   if (Math.abs(durationSec - clip.durationSec) < 0.001) return
-  commitClips(
-    clips.value.map((c) => (c.id === clip.id ? { ...c, durationSec } : c))
-  )
+  commitClips(clips.value.map((c) => (c.id === clip.id ? { ...c, durationSec } : c)))
   scheduleSave()
 }
 
@@ -4974,11 +4568,7 @@ function onVideoTransitionTypeChange(value: string): void {
   const ids = new Set([clip.id])
   if (clip.transitionInSec && previous) ids.add(previous.id)
   if (clip.transitionOutSec && next) ids.add(next.id)
-  commitClips(
-    clips.value.map((c) =>
-      ids.has(c.id) ? { ...c, transitionType: type } : c
-    )
-  )
+  commitClips(clips.value.map((c) => (ids.has(c.id) ? { ...c, transitionType: type } : c)))
   scheduleSave()
 }
 
@@ -5075,9 +4665,7 @@ function onSubtitleTextChange(value: string): void {
   if (!clip || clip.track !== 'subtitle') return
   const text = value.trim()
   commitClips(
-    clips.value.map((c) =>
-      c.id === clip.id ? { ...c, text, title: text || c.title } : c
-    )
+    clips.value.map((c) => (c.id === clip.id ? { ...c, text, title: text || c.title } : c))
   )
   scheduleSave()
 }
@@ -5317,10 +4905,12 @@ function splitSelectedClipAtPlayhead(): void {
     startSec: t,
     durationSec: clip.startSec + clip.durationSec - t
   }
-  commitClips(clips.value.flatMap((c) => {
-    if (c.id !== clip.id) return [c]
-    return [first, second]
-  }))
+  commitClips(
+    clips.value.flatMap((c) => {
+      if (c.id !== clip.id) return [c]
+      return [first, second]
+    })
+  )
   activeClipId.value = second.id
   scheduleSave()
 }
@@ -5540,15 +5130,9 @@ function onTransitionPointerMove(e: PointerEvent): void {
   if (!left || !right) return
   const deltaSec = (e.clientX - session.startClientX) / Math.max(1, pxPerSec.value)
   const maxTransition = Math.min(left.durationSec, right.durationSec)
-  const duration = Math.min(
-    maxTransition,
-    Math.max(0, session.startTransitionSec - deltaSec)
-  )
-  const transitionType = duration > 0
-    ? (right.transitionType ?? 'dissolve')
-    : 'none'
-  const originalRightStart =
-    left.startSec + left.durationSec
+  const duration = Math.min(maxTransition, Math.max(0, session.startTransitionSec - deltaSec))
+  const transitionType = duration > 0 ? (right.transitionType ?? 'dissolve') : 'none'
+  const originalRightStart = left.startSec + left.durationSec
   const nextStart = originalRightStart - duration
   session.moved = true
   clips.value = clips.value.map((c) => {
@@ -5629,9 +5213,7 @@ function onClipResizeMove(e: PointerEvent): void {
     const durationSec = Math.max(MIN_CLIP_SEC, nextEnd - clip.startSec)
     if (Math.abs(durationSec - clip.durationSec) < 0.001) return
     session.moved = true
-    clips.value = clips.value.map((c) =>
-      c.id === clip.id ? { ...c, durationSec } : c
-    )
+    clips.value = clips.value.map((c) => (c.id === clip.id ? { ...c, durationSec } : c))
     return
   }
 
@@ -5737,8 +5319,7 @@ function onTrackDragOver(e: DragEvent, kind: ScriptTimelineTrackKind): void {
     }
     // 素材上轨为 copy；若仍有 move 会话则配合 effectAllowed，避免 copy/move 不匹配导致无法放下
     const allowed = e.dataTransfer.effectAllowed
-    e.dataTransfer.dropEffect =
-      allowed === 'move' || allowed === 'linkMove' ? 'move' : 'copy'
+    e.dataTransfer.dropEffect = allowed === 'move' || allowed === 'linkMove' ? 'move' : 'copy'
     dragOverTrack.value = kind
     return
   }
@@ -5846,11 +5427,12 @@ async function appendAssetsToTrack(
     if (!track) continue
     const source = assetToSource(asset)
     if (!source) continue
-    const mediaKind: ScriptTimelineSourceMediaKind =
-      asset.type === 'voice' ? 'voice' : 'video'
+    const mediaKind: ScriptTimelineSourceMediaKind = asset.type === 'voice' ? 'voice' : 'video'
     // 先写入左侧「导入」列表；从轨道删除片段不会移除列表项
     upsertImportedSource(source, mediaKind)
-    const listed = sources.value.find((s) => sourceIdentityKey(s) === sourceIdentityKey(source)) ?? {
+    const listed = sources.value.find(
+      (s) => sourceIdentityKey(s) === sourceIdentityKey(source)
+    ) ?? {
       ...source,
       origin: 'imported' as const,
       mediaKind
@@ -5939,9 +5521,7 @@ async function onTrackDrop(e: DragEvent, kind: ScriptTimelineTrackKind): Promise
           ...prev,
           track: kind,
           startSec: dropStart,
-          ...(kind === 'subtitle' && !prev.text
-            ? { text: prev.text || prev.title }
-            : {})
+          ...(kind === 'subtitle' && !prev.text ? { text: prev.text || prev.title } : {})
         }
         commitClips(clips.value.map((c, i) => (i === idx ? next : c)))
         scheduleSave()
@@ -6049,7 +5629,10 @@ function onRulerPointerDown(e: PointerEvent): void {
 function clipAtPlayhead(): ScriptTimelineClip | null {
   const list = visibleClipsOn('video')
   for (const clip of list) {
-    if (playheadSec.value >= clip.startSec && playheadSec.value < clip.startSec + clip.durationSec) {
+    if (
+      playheadSec.value >= clip.startSec &&
+      playheadSec.value < clip.startSec + clip.durationSec
+    ) {
       return clip
     }
   }
@@ -6443,9 +6026,7 @@ async function syncOverlayVideosToPlayhead(playingNow: boolean): Promise<void> {
       void ensureTransitionPreview(transition)
       const local = playheadSec.value - transition.to.startSec
       const prevUrl = el.dataset.transitionSrc
-      const targetUrl = entry
-        ? entry.url
-        : prevUrl || (await resolveSrc(transition.to)) || ''
+      const targetUrl = entry ? entry.url : prevUrl || (await resolveSrc(transition.to)) || ''
       const media = entry
         ? Math.min(Math.max(0, local), Math.max(0, entry.durationSec - 0.001))
         : mediaTimeForClip(transition.to, Math.max(0, local))
@@ -6472,10 +6053,7 @@ async function syncOverlayVideosToPlayhead(playingNow: boolean): Promise<void> {
               if (!Number.isFinite(pending)) return
               try {
                 if (Math.abs(el.currentTime - pending) > 0.2) {
-                  el.currentTime = Math.max(
-                    0,
-                    Math.min(pending, Math.max(0, el.duration - 0.001))
-                  )
+                  el.currentTime = Math.max(0, Math.min(pending, Math.max(0, el.duration - 0.001)))
                 }
               } catch {
                 /* ignore */
@@ -6811,10 +6389,7 @@ async function runSequence(seq: number): Promise<void> {
       if (i > startIndex) {
         const previous = list[i - 1]!
         const previousEnd = previous.startSec + previous.durationSec
-        startLocal = Math.min(
-          clip.durationSec,
-          Math.max(0, previousEnd - clip.startSec)
-        )
+        startLocal = Math.min(clip.durationSec, Math.max(0, previousEnd - clip.startSec))
       }
       const startAt =
         i > startIndex
@@ -6988,7 +6563,7 @@ function updatePreviewFrameRect(): void {
       ? previewVideoMeta.value.width / previewVideoMeta.value.height
       : previewFrameRatioKey.value === 'export'
         ? exportWidth.value / exportHeight.value
-        : option?.ratio ?? exportWidth.value / exportHeight.value
+        : (option?.ratio ?? exportWidth.value / exportHeight.value)
 
   const videoAspect =
     previewVideoMeta.value.width && previewVideoMeta.value.height
@@ -7125,9 +6700,7 @@ async function exportTimeline(): Promise<void> {
     })
 
     const needFallback =
-      !result.ok &&
-      !result.canceled &&
-      /ffmpeg|ENOENT|not found|无法启动/i.test(result.error) // cjk-ok 跨语言错误兜底匹配（须含中英特征词）
+      !result.ok && !result.canceled && /ffmpeg|ENOENT|not found|无法启动/i.test(result.error) // cjk-ok 跨语言错误兜底匹配（须含中英特征词）
 
     if (needFallback) {
       exportProgress.value = 0.05
@@ -7223,7 +6796,10 @@ async function separateClipAudio(): Promise<void> {
     const result = await window.studio.separateAudio(rel)
     const base =
       clip.title?.trim() ||
-      rel.split('/').pop()?.replace(/\.[^.]+$/, '') ||
+      rel
+        .split('/')
+        .pop()
+        ?.replace(/\.[^.]+$/, '') ||
       t('script.timeline.audio')
     const durationSec = clip.durationSec > 0 ? clip.durationSec : undefined
     const vocal: ScriptTimelineSource = {
@@ -7426,7 +7002,10 @@ function onPanelSplitterMove(e: PointerEvent): void {
   const root = rootEl.value
   const max = Math.max(160, (root?.clientWidth ?? 960) - 320)
   const delta = e.clientX - session.startX
-  const next = Math.min(max, Math.max(160, session.startWidth + (session.side === 'left' ? delta : -delta)))
+  const next = Math.min(
+    max,
+    Math.max(160, session.startWidth + (session.side === 'left' ? delta : -delta))
+  )
   if (session.side === 'left') leftPaneWidth.value = next
   else rightPaneWidth.value = next
 }
@@ -7530,15 +7109,10 @@ watch(
   { deep: false }
 )
 
-
-
 watch(
   () =>
     sources.value
-      .map(
-        (s) =>
-          `${s.id}:${s.relativePath ?? ''}:${s.assetId ?? ''}:${s.mediaKind ?? ''}`
-      )
+      .map((s) => `${s.id}:${s.relativePath ?? ''}:${s.assetId ?? ''}:${s.mediaKind ?? ''}`)
       .join('|'),
   () => {
     void refreshSourceThumbs()
@@ -8443,7 +8017,8 @@ defineExpose({ flushSave: persist, reloadSources })
   top: 13px;
   border-style: solid;
   border-width: 8px 0 8px 12px;
-  border-color: transparent transparent transparent color-mix(in srgb, var(--text-muted) 70%, transparent);
+  border-color: transparent transparent transparent
+    color-mix(in srgb, var(--text-muted) 70%, transparent);
 }
 
 .play-glyph.sm {
@@ -9441,7 +9016,9 @@ defineExpose({ flushSave: persist, reloadSources })
   cursor: ew-resize;
   z-index: 2;
   opacity: 0;
-  transition: opacity 0.12s ease, background-color 0.12s ease;
+  transition:
+    opacity 0.12s ease,
+    background-color 0.12s ease;
 }
 
 .clip-handle.left {

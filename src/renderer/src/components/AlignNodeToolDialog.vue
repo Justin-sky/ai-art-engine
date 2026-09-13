@@ -10,25 +10,14 @@
     body-class="pad-none align-body"
     @close="emit('close')"
   >
-    <div
-      v-if="open"
-      class="align"
-    >
+    <div v-if="open" class="align">
       <section class="pane">
         <div class="section-label">
           {{ t('align.source') }}
         </div>
         <div class="stage checker">
-          <img
-            v-if="ready && sourceUrl"
-            :src="sourceUrl"
-            alt=""
-            crossorigin="anonymous"
-          >
-          <p
-            v-else-if="sourceLoading || !sourceUrl"
-            class="hint"
-          >
+          <img v-if="ready && sourceUrl" :src="sourceUrl" alt="" crossorigin="anonymous" />
+          <p v-else-if="sourceLoading || !sourceUrl" class="hint">
             {{ sourceLoading ? t('align.loadingSource') : t('align.noSource') }}
           </p>
         </div>
@@ -51,7 +40,7 @@
               step="16"
               :value="canvasWidth"
               @change="patchCanvas('canvasWidth', $event)"
-            >
+            />
           </label>
           <label class="field">
             <span>{{ t('graph.align.canvasHeight') }}</span>
@@ -62,16 +51,13 @@
               step="16"
               :value="canvasHeight"
               @change="patchCanvas('canvasHeight', $event)"
-            >
+            />
           </label>
         </div>
 
         <label class="field">
           <span>{{ t('graph.align.anchor') }}</span>
-          <select
-            :value="anchor"
-            @change="patchAnchor($event)"
-          >
+          <select :value="anchor" @change="patchAnchor($event)">
             <option value="center">
               {{ t('graph.align.anchorCenter') }}
             </option>
@@ -85,36 +71,18 @@
           <span>
             {{ t('graph.align.subjectHeight') }}<b>{{ Math.round(contentHeightRatio * 100) }}%</b>
           </span>
-          <input
-            v-model.number="contentHeightRatio"
-            type="range"
-            min="0.1"
-            max="1"
-            step="0.05"
-          >
+          <input v-model.number="contentHeightRatio" type="range" min="0.1" max="1" step="0.05" />
         </label>
 
-        <label
-          v-if="anchor === 'ground'"
-          class="slider"
-        >
+        <label v-if="anchor === 'ground'" class="slider">
           <span>
             {{ t('graph.align.groundGap') }}<b>{{ Math.round(groundRatio * 100) }}%</b>
           </span>
-          <input
-            v-model.number="groundRatio"
-            type="range"
-            min="0"
-            max="0.5"
-            step="0.01"
-          >
+          <input v-model.number="groundRatio" type="range" min="0" max="0.5" step="0.01" />
         </label>
 
         <label class="check">
-          <input
-            v-model="fitWithinWidth"
-            type="checkbox"
-          >
+          <input v-model="fitWithinWidth" type="checkbox" />
           <span>{{ t('graph.align.fitWidth') }}</span>
         </label>
 
@@ -122,36 +90,18 @@
           {{ t('align.result') }}
         </div>
         <div class="stage checker result-stage">
-          <img
-            v-if="resultUrl"
-            :src="resultUrl"
-            alt=""
-          >
-          <p
-            v-else
-            class="hint"
-          >
+          <img v-if="resultUrl" :src="resultUrl" alt="" />
+          <p v-else class="hint">
             {{ t('align.resultEmpty') }}
           </p>
         </div>
         <div class="row">
-          <span
-            v-if="resultUrl"
-            class="hint"
-          >{{ resultWidth }}×{{ resultHeight }}</span>
-          <button
-            type="button"
-            class="primary"
-            :disabled="!resultUrl || !ready"
-            @click="save"
-          >
+          <span v-if="resultUrl" class="hint">{{ resultWidth }}×{{ resultHeight }}</span>
+          <button type="button" class="primary" :disabled="!resultUrl || !ready" @click="save">
             {{ t('align.apply') }}
           </button>
         </div>
-        <p
-          v-if="error"
-          class="error"
-        >
+        <p v-if="error" class="error">
           {{ error }}
         </p>
         <p class="apply-hint">

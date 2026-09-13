@@ -20,7 +20,11 @@ function source(id: string, extra: Partial<ScriptTimelineSource> = {}): ScriptTi
   }
 }
 
-function clip(id: string, track: ScriptTimelineClip['track'], startSec: number): ScriptTimelineClip {
+function clip(
+  id: string,
+  track: ScriptTimelineClip['track'],
+  startSec: number
+): ScriptTimelineClip {
   return {
     id,
     track,
@@ -74,13 +78,19 @@ describe('smartCut.parseSmartCutPlan', () => {
     const plan = parseSmartCutPlan(text)
     expect(plan).not.toBeNull()
     expect(plan!.edits).toHaveLength(2)
-    expect(plan!.edits[0]).toMatchObject({ sourceId: 'b', durationSec: 4, transitionType: 'dissolve', transitionSec: 0.5 })
+    expect(plan!.edits[0]).toMatchObject({
+      sourceId: 'b',
+      durationSec: 4,
+      transitionType: 'dissolve',
+      transitionSec: 0.5
+    })
     expect(plan!.edits[1]).toMatchObject({ sourceId: 'a' })
     expect(plan!.totalDurationSec).toBe(60)
   })
 
   it('容忍代码围栏与前后废话', () => {
-    const text = '好的，方案如下：\n```json\n{"edits":[{"sourceId":"c","durationSec":99}]}\n```\n希望有帮助'
+    const text =
+      '好的，方案如下：\n```json\n{"edits":[{"sourceId":"c","durationSec":99}]}\n```\n希望有帮助'
     const plan = parseSmartCutPlan(text)
     expect(plan).not.toBeNull()
     expect(plan!.edits[0]!.durationSec).toBe(SMART_CUT_MAX_DURATION_SEC)

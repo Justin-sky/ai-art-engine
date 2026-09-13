@@ -10,27 +10,21 @@
     body-class="pad-none compose-body"
     @close="emit('close')"
   >
-    <div
-      v-if="open"
-      class="compose"
-    >
+    <div v-if="open" class="compose">
       <section class="pane">
         <div class="section-label">
           {{ t('compose.subjects', { n: persons.length }) }}
         </div>
         <template v-if="persons.length">
           <ul class="subjects">
-            <li
-              v-for="(p, i) in persons"
-              :key="i"
-            >
+            <li v-for="(p, i) in persons" :key="i">
               <label>
                 <input
                   type="radio"
                   name="compose-subject"
                   :checked="i === activeIndex"
                   @change="activeIndex = i"
-                >
+                />
                 <span>{{ p.labelZh || p.label }}</span>
                 <span class="conf">{{ Math.round(p.confidence * 100) }}%</span>
               </label>
@@ -41,11 +35,7 @@
           </div>
           <div class="stage comp-stage">
             <div class="wrap">
-              <img
-                v-if="sourceUrl"
-                :src="sourceUrl"
-                alt=""
-              >
+              <img v-if="sourceUrl" :src="sourceUrl" alt="" />
               <div class="overlay">
                 <div
                   v-for="(p, i) in persons"
@@ -55,16 +45,8 @@
                   :style="boxStyle(p)"
                   :title="boxTitle(p)"
                 />
-                <div
-                  v-if="geometry"
-                  class="crop-frame"
-                  :style="cropStyle"
-                />
-                <div
-                  v-if="geometry && showSafe"
-                  class="safe-frame"
-                  :style="safeCropStyle"
-                />
+                <div v-if="geometry" class="crop-frame" :style="cropStyle" />
+                <div v-if="geometry && showSafe" class="safe-frame" :style="safeCropStyle" />
               </div>
             </div>
           </div>
@@ -72,10 +54,7 @@
             {{ t('compose.sourceLegend') }}
           </p>
         </template>
-        <p
-          v-else
-          class="hint"
-        >
+        <p v-else class="hint">
           {{ statusHint }}
         </p>
       </section>
@@ -101,38 +80,24 @@
             {{ t('compose.strategy') }}
           </div>
           <label class="radio">
-            <input
-              v-model="strategy"
-              type="radio"
-              value="headroom"
-            >
+            <input v-model="strategy" type="radio" value="headroom" />
             <span>
               {{ t('compose.strategyHeadroom') }}
               <small>{{ t('compose.strategyHeadroomHint') }}</small>
             </span>
           </label>
           <label class="radio">
-            <input
-              v-model="strategy"
-              type="radio"
-              value="center"
-            >
+            <input v-model="strategy" type="radio" value="center" />
             <span>
               {{ t('compose.strategyCenter') }}
               <small>{{ t('compose.strategyCenterHint') }}</small>
             </span>
           </label>
           <label class="check">
-            <input
-              v-model="showSafe"
-              type="checkbox"
-            >
+            <input v-model="showSafe" type="checkbox" />
             <span>{{ t('compose.safeArea') }}</span>
           </label>
-          <p
-            v-if="!geometry.subjectFullyVisible"
-            class="hint warn"
-          >
+          <p v-if="!geometry.subjectFullyVisible" class="hint warn">
             {{ t('compose.clipped') }}
           </p>
 
@@ -141,35 +106,16 @@
           </div>
           <div class="stage out-stage">
             <div class="wrap">
-              <img
-                v-if="resultUrl"
-                :src="resultUrl"
-                alt=""
-              >
-              <div
-                v-if="resultUrl && showSafe"
-                class="safe-line"
-                :style="safeLineStyle"
-              />
+              <img v-if="resultUrl" :src="resultUrl" alt="" />
+              <div v-if="resultUrl && showSafe" class="safe-line" :style="safeLineStyle" />
             </div>
-            <p
-              v-if="!resultUrl"
-              class="hint empty-hint"
-            >
+            <p v-if="!resultUrl" class="hint empty-hint">
               {{ t('compose.outputEmpty') }}
             </p>
           </div>
           <div class="row">
-            <span
-              v-if="resultUrl"
-              class="hint"
-            >{{ resultWidth }}×{{ resultHeight }}</span>
-            <button
-              type="button"
-              class="primary"
-              :disabled="!resultUrl"
-              @click="save"
-            >
+            <span v-if="resultUrl" class="hint">{{ resultWidth }}×{{ resultHeight }}</span>
+            <button type="button" class="primary" :disabled="!resultUrl" @click="save">
               {{ t('compose.apply') }}
             </button>
           </div>
@@ -177,16 +123,10 @@
             {{ t('compose.applyHint') }}
           </p>
         </template>
-        <p
-          v-else
-          class="hint"
-        >
+        <p v-else class="hint">
           {{ t('compose.outputEmpty') }}
         </p>
-        <p
-          v-if="error"
-          class="error"
-        >
+        <p v-if="error" class="error">
           {{ error }}
         </p>
       </section>
@@ -244,9 +184,7 @@ interface ComposePersonItem {
 }
 
 /** 源图与节点参数就绪后自动开始检测人物 */
-const ready = computed(
-  () => props.open && !!props.sourceUrl && !props.sourceLoading
-)
+const ready = computed(() => props.open && !!props.sourceUrl && !props.sourceLoading)
 
 /** 推理使用的检测阈值：沿用节点 imageCompose 参数（素材版无此滑杆） */
 const detectConf = computed(() => props.setup?.confThreshold ?? 0.5)
@@ -279,9 +217,7 @@ const statusHint = computed(() => {
   return t('compose.loadingSource')
 })
 
-const frame = computed(
-  () => frames.find((f) => f.id === frameId.value) ?? frames[0]!
-)
+const frame = computed(() => frames.find((f) => f.id === frameId.value) ?? frames[0]!)
 
 function frameLabel(id: string): string {
   const map: Record<string, string> = {

@@ -164,7 +164,10 @@ export function normalizeIconPackCellRefines(
     out[key] = {
       cellKey: key,
       dataUrl,
-      updatedAt: typeof value === 'object' && typeof value.updatedAt === 'string' ? value.updatedAt : undefined
+      updatedAt:
+        typeof value === 'object' && typeof value.updatedAt === 'string'
+          ? value.updatedAt
+          : undefined
     }
   }
   return out

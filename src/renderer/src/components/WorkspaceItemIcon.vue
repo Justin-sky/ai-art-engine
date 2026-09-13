@@ -1,27 +1,16 @@
 <template>
-  <FreeCanvasIcon
-    v-if="isFreeCanvas"
-    :size="size"
-  />
-  <VideoAssetIcon
-    v-else-if="isVideo"
-    :size="size"
-  />
-  <Anim2dIcon
-    v-else-if="isAnim2d"
-    :size="size"
-  />
-  <FrameAnimGenIcon
-    v-else-if="isFrameAnimGen"
-    :size="size"
-  />
+  <FreeCanvasIcon v-if="isFreeCanvas" :size="size" />
+  <VideoAssetIcon v-else-if="isVideo" :size="size" />
+  <Anim2dIcon v-else-if="isAnim2d" :size="size" />
+  <FrameAnimGenIcon v-else-if="isFrameAnimGen" :size="size" />
   <span
     v-else
     class="emoji-icon"
     :class="{ 'emoji-icon-lg': isEnlargedEmoji }"
     :style="emojiStyle"
     aria-hidden="true"
-  >{{ icon }}</span>
+    >{{ icon }}</span
+  >
 </template>
 
 <script setup lang="ts">
@@ -62,9 +51,7 @@ const isFreeCanvas = computed(
   () => props.itemId === 'freeCanvas' || FREE_CANVAS_ICON_KEYS.has(props.icon || '')
 )
 
-const isVideo = computed(
-  () => props.itemId === 'video' || VIDEO_ICON_KEYS.has(props.icon || '')
-)
+const isVideo = computed(() => props.itemId === 'video' || VIDEO_ICON_KEYS.has(props.icon || ''))
 
 const isAnim2d = computed(() => ANIM2D_ICON_KEYS.has(props.icon || ''))
 

@@ -1,7 +1,4 @@
-import {
-  normalizeImageCrop,
-  type ImageCropState
-} from '@shared/graph'
+import { normalizeImageCrop, type ImageCropState } from '@shared/graph'
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {

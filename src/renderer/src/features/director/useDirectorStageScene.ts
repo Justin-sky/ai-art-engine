@@ -128,10 +128,7 @@ import {
   isNearIdentityQuat,
   offsetFromEulerXYZ
 } from './bonePoseMath'
-import {
-  encodeBonePoseNormalized,
-  mapNormalizedPoseToTargetBones
-} from './poseAsset'
+import { encodeBonePoseNormalized, mapNormalizedPoseToTargetBones } from './poseAsset'
 import type { ImagePoseBindBone } from './imagePoseSolver'
 import {
   createPoseSkeletonOverlay,
@@ -206,7 +203,9 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   const multiSelectedIds = ref<string[]>([])
   /** 复制剪贴板：对象 / 相机深拷贝 */
   const stageClipboard = ref<
-    Array<{ kind: 'camera'; data: DirectorCameraState } | { kind: 'object'; data: StageObjectState }>
+    Array<
+      { kind: 'camera'; data: DirectorCameraState } | { kind: 'object'; data: StageObjectState }
+    >
   >([])
   const isPanning = ref(false)
   const isOrbiting = ref(false)
@@ -415,8 +414,9 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
         samples: 0
       })
       // Three ????RT ???? toneMapping???XR ??????????????????
-      ;(shotRenderTarget as THREE.WebGLRenderTarget & { isXRRenderTarget?: boolean }).isXRRenderTarget =
-        true
+      ;(
+        shotRenderTarget as THREE.WebGLRenderTarget & { isXRRenderTarget?: boolean }
+      ).isXRRenderTarget = true
       return shotRenderTarget
     }
     if (shotRenderTarget.width !== width || shotRenderTarget.height !== height) {
@@ -645,7 +645,10 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     if (!Array.isArray(stage.value.cameras) || stage.value.cameras.length === 0) {
       stage.value.cameras = resolved.cameras
     }
-    if (!stage.value.activeCameraId || !stage.value.cameras.some((camera) => camera.id === stage.value.activeCameraId)) {
+    if (
+      !stage.value.activeCameraId ||
+      !stage.value.cameras.some((camera) => camera.id === stage.value.activeCameraId)
+    ) {
       stage.value.activeCameraId = resolved.activeCameraId
     }
     return stage.value.cameras
@@ -875,11 +878,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     if (!node) return
     const shots = [...(stage.value.cameraShots ?? [])]
     const videos = [...(stage.value.cameraVideos ?? [])]
-    const preview =
-      previewOverride ||
-      shots[0]?.dataUrl ||
-      node.params.previewDataUrl ||
-      undefined
+    const preview = previewOverride || shots[0]?.dataUrl || node.params.previewDataUrl || undefined
     updateDirectorProcessingNode({
       viewer: activeCameraState().viewer,
       cameraShots: shots,
@@ -1149,10 +1148,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     const aimY = centerY + (frameBias - 0.5) * subjectHeight
     const target: StageVec3 = { x: centerX, y: aimY, z: centerZ }
     const frameHeight = Math.max(0.1, subjectHeight * preset.frameFactor)
-    const distance = Math.max(
-      0.3,
-      frameHeight / 2 / Math.tan((fov / 2) * Math.PI / 180)
-    )
+    const distance = Math.max(0.3, frameHeight / 2 / Math.tan(((fov / 2) * Math.PI) / 180))
 
     // 相机方向：相对主体朝向旋转 azimuth；azimuth 0 = 正面
     const az = (preset.azimuthDeg * Math.PI) / 180
@@ -1343,15 +1339,15 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     rootHost?.remove(viz.helper, viz.root, viz.body)
     viz.helper.dispose()
     viz.body.traverse((child) => {
-        if (!(child instanceof THREE.Mesh)) return
-        child.geometry.dispose()
-        const material = child.material
-        const materials = Array.isArray(material) ? material : [material]
-        materials.forEach((item) => {
-          const texture = (item as THREE.Material & { map?: THREE.Texture }).map
-          texture?.dispose()
-          item.dispose()
-        })
+      if (!(child instanceof THREE.Mesh)) return
+      child.geometry.dispose()
+      const material = child.material
+      const materials = Array.isArray(material) ? material : [material]
+      materials.forEach((item) => {
+        const texture = (item as THREE.Material & { map?: THREE.Texture }).map
+        texture?.dispose()
+        item.dispose()
+      })
     })
     shotVisuals.delete(id)
   }
@@ -1366,9 +1362,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       const viz = ensureShotCameraVisual(cameraState)
       if (!viz) continue
       const visible =
-        cameraState.visible !== false &&
-        viewMode.value === 'director' &&
-        cameraGizmosVisible.value
+        cameraState.visible !== false && viewMode.value === 'director' && cameraGizmosVisible.value
       const selected = selectionKind.value === 'camera' && selectedCameraId.value === cameraState.id
       viz.root.visible = visible
       viz.helper.visible = visible && selected
@@ -1381,11 +1375,13 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
         nameLabel.element.textContent = cameraState.name
       }
       const draggingCamera =
-        !!transform?.dragging && selectionKind.value === 'camera' && selectedCameraId.value === cameraState.id
+        !!transform?.dragging &&
+        selectionKind.value === 'camera' &&
+        selectedCameraId.value === cameraState.id
       if (!draggingCamera) {
         const viewer = cameraState.viewer
-      const rotation =
-        viewer.rotation ?? directorViewerRotationFromLook(viewer.position, viewer.target)
+        const rotation =
+          viewer.rotation ?? directorViewerRotationFromLook(viewer.position, viewer.target)
         viz.root.position.set(viewer.position.x, viewer.position.y, viewer.position.z)
         viz.root.rotation.set(rotation.x, rotation.y, rotation.z, 'XYZ')
         viz.camera.fov = viewer.fov ?? DEFAULT_DIRECTOR_CAMERA_FOV
@@ -1724,11 +1720,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     contentRoot.add(grid)
   }
 
-  function updateGround(patch: {
-    visible?: boolean
-    opacity?: number
-    offsetY?: number
-  }): void {
+  function updateGround(patch: { visible?: boolean; opacity?: number; offsetY?: number }): void {
     if (patch.visible !== undefined) stage.value.gridVisible = patch.visible
     if (patch.opacity !== undefined) {
       stage.value.gridOpacity = clampGridOpacity(patch.opacity)
@@ -1906,7 +1898,11 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     }
   }
 
-  function syncPathVisual(trackId: string, path: DirectorAnimPath | null, targetKind?: 'camera' | 'object'): void {
+  function syncPathVisual(
+    trackId: string,
+    path: DirectorAnimPath | null,
+    targetKind?: 'camera' | 'object'
+  ): void {
     void targetKind
     const prev = pathVisuals.get(trackId)
     if (prev) {
@@ -2106,9 +2102,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   function targetWorldPosition(targetKind: 'camera' | 'object', targetId: string): StageVec3 {
     if (targetKind === 'camera') {
       const cam = getCameraState(targetId)
-      return cam
-        ? contentLocalToWorld(cam.viewer.position)
-        : { x: 0, y: 1.5, z: 0 }
+      return cam ? contentLocalToWorld(cam.viewer.position) : { x: 0, y: 1.5, z: 0 }
     }
     const obj = stage.value.objects.find((o) => o.id === targetId)
     return obj ? contentLocalToWorld(obj.position) : { x: 0, y: 0, z: 0 }
@@ -2138,12 +2132,10 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
         points: path.points.map((p) => worldToContentLocal(p)),
         ...(path.handles
           ? {
-              handles: path.handles.map(
-                (h): DirectorAnimPathHandle => ({
-                  in: worldToContentLocal(h.in),
-                  out: worldToContentLocal(h.out)
-                })
-              )
+              handles: path.handles.map((h): DirectorAnimPathHandle => ({
+                in: worldToContentLocal(h.in),
+                out: worldToContentLocal(h.out)
+              }))
             }
           : {})
       }
@@ -2353,7 +2345,11 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     }
 
     // ??????? > ??
-    pathEditPickables.push(...pathEditHandleInMeshes, ...pathEditHandleOutMeshes, ...pathEditAnchorMeshes)
+    pathEditPickables.push(
+      ...pathEditHandleInMeshes,
+      ...pathEditHandleOutMeshes,
+      ...pathEditAnchorMeshes
+    )
 
     if (
       prevSelection &&
@@ -2480,8 +2476,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       let obj: THREE.Object3D | null = hit.object
       while (obj) {
         const pe = obj.userData.pathEdit as
-          | { trackId: string; kind: PathEditKind; index: number }
-          | undefined
+          { trackId: string; kind: PathEditKind; index: number } | undefined
         if (pe && typeof pe.trackId === 'string' && typeof pe.index === 'number') {
           return { trackId: pe.trackId, kind: pe.kind, index: pe.index }
         }
@@ -2911,7 +2906,9 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
           rotationDeg: getObjectBonePoseDeg(objectId, name)
         }
       })
-      .filter((row): row is { name: string; parent: string | null; rotationDeg: StageVec3 } => !!row)
+      .filter(
+        (row): row is { name: string; parent: string | null; rotationDeg: StageVec3 } => !!row
+      )
   }
 
   function getObjectBonePoseDeg(objectId: string, boneName: string): StageVec3 {
@@ -3295,7 +3292,12 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     poseBoneEditEuler.setFromQuaternion(poseTmpQuat, 'XYZ')
     const nextPose = { ...(obj.bonePose ?? {}) }
     if (isNearIdentityQuat(poseTmpQuat)) delete nextPose[boneName]
-    else nextPose[boneName] = { x: poseBoneEditEuler.x, y: poseBoneEditEuler.y, z: poseBoneEditEuler.z }
+    else
+      nextPose[boneName] = {
+        x: poseBoneEditEuler.x,
+        y: poseBoneEditEuler.y,
+        z: poseBoneEditEuler.z
+      }
     const bonePose = Object.keys(nextPose).length ? nextPose : undefined
     stage.value.objects = stage.value.objects.map((item, i) =>
       i === idx ? { ...item, bonePose } : item
@@ -3565,9 +3567,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     const bones = cloneBonePoseMap(obj.bonePose) ?? {}
     const existing = obj.posePresets ?? []
     const trimmed = name?.trim()
-    const presetName =
-      trimmed ||
-      `${t('director.stage.posePresetDefault')} ${existing.length + 1}`
+    const presetName = trimmed || `${t('director.stage.posePresetDefault')} ${existing.length + 1}`
     const id = `pose:${crypto.randomUUID()}`
     const next: DirectorPosePreset = { id, name: presetName, bones }
     stage.value.objects = stage.value.objects.map((item, i) =>
@@ -3587,9 +3587,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     if (!existing.some((item) => item.id === presetId)) return false
     const posePresets = existing.filter((item) => item.id !== presetId)
     stage.value.objects = stage.value.objects.map((item, i) =>
-      i === idx
-        ? { ...item, posePresets: posePresets.length ? posePresets : undefined }
-        : item
+      i === idx ? { ...item, posePresets: posePresets.length ? posePresets : undefined } : item
     )
     previewRevision.value += 1
     schedulePersist()
@@ -3639,10 +3637,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     if (!data) return null
     const targetBones = listObjectBones(objectId)
     const mapped = mapNormalizedPoseToTargetBones(data.bones, targetBones)
-    patchObjectBonePose(
-      objectId,
-      Object.keys(mapped.bonePose).length ? mapped.bonePose : undefined
-    )
+    patchObjectBonePose(objectId, Object.keys(mapped.bonePose).length ? mapped.bonePose : undefined)
     return { matched: mapped.matched, total: mapped.total }
   }
 
@@ -4010,19 +4005,17 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     return { track, keyframe }
   }
 
-  function isEditingAnimKeyframeFor(
-    targetKind: 'camera' | 'object',
-    targetId: string
-  ): boolean {
+  function isEditingAnimKeyframeFor(targetKind: 'camera' | 'object', targetId: string): boolean {
     if (stageEditMode.value !== 'animation') return false
     const selected = getSelectedAnimKeyframe()
     if (!selected) return false
     return selected.track.targetKind === targetKind && selected.track.targetId === targetId
   }
 
-  function targetAnimFallbackTransform(
-    track: DirectorAnimTrack
-  ): { rotation: StageVec3; scale: StageVec3 } {
+  function targetAnimFallbackTransform(track: DirectorAnimTrack): {
+    rotation: StageVec3
+    scale: StageVec3
+  } {
     if (track.targetKind === 'object') {
       const obj = stage.value.objects.find((o) => o.id === track.targetId)
       return {
@@ -4063,10 +4056,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       )
     }
     schedulePersist()
-    if (
-      animSelectedKeyframeId.value === keyframeId &&
-      animSelectedTrackId.value === trackId
-    ) {
+    if (animSelectedKeyframeId.value === keyframeId && animSelectedTrackId.value === trackId) {
       previewRevision.value += 1
     }
     requestRender()
@@ -4189,11 +4179,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
           (track.targetKind === 'camera' ? '-z' : DEFAULT_PATH_FORWARD_AXIS)
         sample = {
           ...sample,
-          rotation: rotationFromPathTangent(
-            sample.tangent,
-            fallback.rotation,
-            forwardAxis
-          )
+          rotation: rotationFromPathTangent(sample.tangent, fallback.rotation, forwardAxis)
         }
       }
       applyAnimSampleToTarget(track, sample, persistState)
@@ -4259,8 +4245,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   function seekAnimation(time: number, opts?: { persist?: boolean }): void {
     const anim = ensureAnimation()
     animTime.value = Math.min(anim.duration, Math.max(0, time))
-    const defaultPersist =
-      stageEditMode.value === 'animation' ? false : !animPlaying.value
+    const defaultPersist = stageEditMode.value === 'animation' ? false : !animPlaying.value
     const persist = opts?.persist ?? defaultPersist
     applyAnimationAtTime(animTime.value, persist)
     if (persist) schedulePersist()
@@ -4292,7 +4277,9 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   function addAnimTrack(targetKind: 'camera' | 'object', targetId: string): void {
     const anim = ensureAnimation()
     if (anim.tracks.some((t) => t.targetKind === targetKind && t.targetId === targetId)) {
-      const existing = anim.tracks.find((t) => t.targetKind === targetKind && t.targetId === targetId)
+      const existing = anim.tracks.find(
+        (t) => t.targetKind === targetKind && t.targetId === targetId
+      )
       if (existing) {
         animSelectedTrackId.value = existing.id
         syncSelectionFromAnimTrack(existing.id)
@@ -4301,8 +4288,8 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     }
     const name =
       targetKind === 'camera'
-        ? getCameraState(targetId)?.name ?? 'Camera'
-        : stage.value.objects.find((o) => o.id === targetId)?.name ?? 'Object'
+        ? (getCameraState(targetId)?.name ?? 'Camera')
+        : (stage.value.objects.find((o) => o.id === targetId)?.name ?? 'Object')
     const track: DirectorAnimTrack = {
       id: `anim:${crypto.randomUUID()}`,
       name,
@@ -4339,7 +4326,11 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   }
 
   /** 机位切换轨：按当前时间激活对应相机（只切 activeCameraId，不改选中） */
-  function applyCameraCutAtTime(track: DirectorAnimTrack, time: number, persistState = false): void {
+  function applyCameraCutAtTime(
+    track: DirectorAnimTrack,
+    time: number,
+    persistState = false
+  ): void {
     const segments = track.cameraSegments ?? []
     const seg = segments.find((s) => time >= s.start - 1e-6 && time < s.end)
     if (!seg) return
@@ -4535,9 +4526,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
               directorViewerRotationFromLook(cam.viewer.position, cam.viewer.target))
           }
         : { x: 0, y: 0, z: 0 }
-      localScale = cam?.viewer.scale
-        ? { ...cam.viewer.scale }
-        : { x: 1, y: 1, z: 1 }
+      localScale = cam?.viewer.scale ? { ...cam.viewer.scale } : { x: 1, y: 1, z: 1 }
     }
     const list = track.keyframes ?? []
     if (existing) {
@@ -4659,7 +4648,9 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   function tickAnimation(deltaSeconds: number): void {
     if (!animPlaying.value) return
     const anim = ensureAnimation()
-    const rate = Number.isFinite(animPlaybackRate.value) ? Math.max(0.05, animPlaybackRate.value) : 1
+    const rate = Number.isFinite(animPlaybackRate.value)
+      ? Math.max(0.05, animPlaybackRate.value)
+      : 1
     let next = animTime.value + deltaSeconds * rate
     if (next >= anim.duration) {
       if (anim.loop) {
@@ -4684,11 +4675,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
 
   function pickExportMimeType(): string {
     if (typeof MediaRecorder === 'undefined') return ''
-    const candidates = [
-      'video/webm;codecs=vp9',
-      'video/webm;codecs=vp8',
-      'video/webm'
-    ]
+    const candidates = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']
     return candidates.find((type) => MediaRecorder.isTypeSupported(type)) ?? ''
   }
 
@@ -5066,10 +5053,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     material: THREE.LineBasicMaterial
   ): THREE.LineSegments | null {
     if (!mesh.geometry) return null
-    const wire = new THREE.LineSegments(
-      new THREE.WireframeGeometry(mesh.geometry),
-      material
-    )
+    const wire = new THREE.LineSegments(new THREE.WireframeGeometry(mesh.geometry), material)
     wire.userData[SHADING_WIRE_OVERLAY_FLAG] = true
     wire.renderOrder = (mesh.renderOrder || 0) + 1
     wire.frustumCulled = false
@@ -5095,9 +5079,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       if (!(child instanceof THREE.Mesh)) return
       if (child.userData?.[SHADING_WIRE_OVERLAY_FLAG]) return
       const orig = child.userData[SHADING_ORIG_MATERIAL_KEY] as
-        | THREE.Material
-        | THREE.Material[]
-        | undefined
+        THREE.Material | THREE.Material[] | undefined
       if (!orig) return
       child.material = orig
       delete child.userData[SHADING_ORIG_MATERIAL_KEY]
@@ -5116,9 +5098,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       if (child.userData?.[SHADING_WIRE_OVERLAY_FLAG]) return
       if (wireMat) {
         child.userData[SHADING_ORIG_MATERIAL_KEY] = child.material
-        child.material = Array.isArray(child.material)
-          ? child.material.map(() => wireMat)
-          : wireMat
+        child.material = Array.isArray(child.material) ? child.material.map(() => wireMat) : wireMat
         return
       }
       if (!overlayMat) return
@@ -5288,21 +5268,23 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
           prev.target.z - prev.position.z
         )
       )
-      updateCamera(id, { viewer: {
-        ...prev,
-        position: {
-          x: viz.root.position.x,
-          y: viz.root.position.y,
-          z: viz.root.position.z
-        },
-        rotation,
-        scale,
-        target: {
-          x: viz.root.position.x + forward.x * lookDist,
-          y: viz.root.position.y + forward.y * lookDist,
-          z: viz.root.position.z + forward.z * lookDist
+      updateCamera(id, {
+        viewer: {
+          ...prev,
+          position: {
+            x: viz.root.position.x,
+            y: viz.root.position.y,
+            z: viz.root.position.z
+          },
+          rotation,
+          scale,
+          target: {
+            x: viz.root.position.x + forward.x * lookDist,
+            y: viz.root.position.y + forward.y * lookDist,
+            z: viz.root.position.z + forward.z * lookDist
+          }
         }
-      } })
+      })
       viz.root.scale.set(1, 1, 1)
       viz.helper.update()
       previewRevision.value += 1
@@ -5390,10 +5372,9 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     root.traverse((child) => {
       if (!(child instanceof THREE.Mesh)) return
       if (child.userData?.[SHADING_WIRE_OVERLAY_FLAG]) return
-      const raw = (child.userData[SHADING_ORIG_MATERIAL_KEY] as
-        | THREE.Material
-        | THREE.Material[]
-        | undefined) ?? child.material
+      const raw =
+        (child.userData[SHADING_ORIG_MATERIAL_KEY] as
+          THREE.Material | THREE.Material[] | undefined) ?? child.material
       const materials = Array.isArray(raw) ? raw : [raw]
       for (const material of materials) {
         if (material) out.push({ material, name: material.name })
@@ -5767,10 +5748,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     const mesh = objectMeshes.get(id)
     if (mesh) {
       if (patch.visible !== undefined) mesh.visible = patch.visible !== false
-      if (
-        patch.visible !== undefined ||
-        patch.nameVisible !== undefined
-      ) {
+      if (patch.visible !== undefined || patch.nameVisible !== undefined) {
         syncObjectNameLabel(next, mesh)
       }
     }
@@ -5831,7 +5809,8 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     const idx = stage.value.objects.findIndex((o) => o.id === childId)
     if (idx < 0) return
     const current = stage.value.objects[idx]
-    const nextParent = parentId && stage.value.objects.some((o) => o.id === parentId) ? parentId : null
+    const nextParent =
+      parentId && stage.value.objects.some((o) => o.id === parentId) ? parentId : null
     if ((current.parentId ?? null) === nextParent) return
 
     const childMesh = objectMeshes.get(childId)
@@ -5945,11 +5924,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     const worldScaleY = Math.max(0.0001, mesh.getWorldScale(new THREE.Vector3()).y)
     if (box && !box.isEmpty()) {
       const anchor = mesh.worldToLocal(
-        new THREE.Vector3(
-          (box.min.x + box.max.x) / 2,
-          box.max.y,
-          (box.min.z + box.max.z) / 2
-        )
+        new THREE.Vector3((box.min.x + box.max.x) / 2, box.max.y, (box.min.z + box.max.z) / 2)
       )
       label.position.set(anchor.x, anchor.y + 0.1 / worldScaleY, anchor.z)
     } else {
@@ -6050,10 +6025,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       visible: true,
       locked: false,
       position: { x: 0, y: 0, z: 0 },
-      rotation:
-        primitive === 'plane'
-          ? { x: -Math.PI / 2, y: 0, z: 0 }
-          : { x: 0, y: 0, z: 0 },
+      rotation: primitive === 'plane' ? { x: -Math.PI / 2, y: 0, z: 0 } : { x: 0, y: 0, z: 0 },
       scale: { x: 1, y: 1, z: 1 }
     }
     insertObjectMesh(obj, makePrimitive(obj.name, primitive, parseColor(obj.color)))
@@ -6297,9 +6269,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
               (seg) => !removeIds.has(seg.cameraId)
             )
             if (segments.length === 0) continue
-            const targetId = removeIds.has(track.targetId)
-              ? segments[0].cameraId
-              : track.targetId
+            const targetId = removeIds.has(track.targetId) ? segments[0].cameraId : track.targetId
             tracks.push(
               segments.length === (track.cameraSegments?.length ?? 0)
                 ? { ...track, targetId }
@@ -6342,9 +6312,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       const wasSelectedInGroup = groupCameraIds.has(selectedCameraId.value ?? '')
       for (const cameraId of groupCameraIds) disposeShotCameraVisual(cameraId)
       stage.value.cameras = listCameras().filter((camera) => !groupCameraIds.has(camera.id))
-      stage.value.cameraGroups = (stage.value.cameraGroups ?? []).filter(
-        (group) => group.id !== id
-      )
+      stage.value.cameraGroups = (stage.value.cameraGroups ?? []).filter((group) => group.id !== id)
       if (wasActiveInGroup || !getCameraState(stage.value.activeCameraId ?? '')) {
         stage.value.activeCameraId = listCameras()[0]?.id ?? null
       }
@@ -6480,11 +6448,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     }
     for (const cam of listCameras()) ensureShotCameraVisual(cam)
     if (selection) {
-      if (
-        selection.kind === 'camera' &&
-        selection.cameraId &&
-        getCameraState(selection.cameraId)
-      ) {
+      if (selection.kind === 'camera' && selection.cameraId && getCameraState(selection.cameraId)) {
         selectCamera(selection.cameraId)
       } else if (
         selection.kind === 'object' &&
@@ -6712,7 +6676,10 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       selectScene()
       return
     }
-    if (poseSkeletonOverlay?.getTargetObjectId() && poseSkeletonOverlay.getTargetObjectId() !== id) {
+    if (
+      poseSkeletonOverlay?.getTargetObjectId() &&
+      poseSkeletonOverlay.getTargetObjectId() !== id
+    ) {
       setPoseSkeletonVisible(null)
     }
     selectedObjectId.value = id
@@ -6780,8 +6747,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       } else {
         selectScene()
       }
-    }
-    else selectObject(id)
+    } else selectObject(id)
   }
 
   /** ?????????????????? Hierarchy ?????*/
@@ -7172,7 +7138,10 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     return geo
   }
 
-  function makeHorizontalCircleGeometry(innerRadius: number, outerRadius: number): THREE.BufferGeometry {
+  function makeHorizontalCircleGeometry(
+    innerRadius: number,
+    outerRadius: number
+  ): THREE.BufferGeometry {
     const geo =
       innerRadius > 0
         ? new THREE.RingGeometry(innerRadius, outerRadius, 32)
@@ -7632,7 +7601,11 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     const previewPath = source.params.previewRelativePath?.trim()
     if (previewPath) {
       try {
-        return { key: `path:${previewPath}`, url: await resolveAssetFileUrl(previewPath), assetId: '' }
+        return {
+          key: `path:${previewPath}`,
+          url: await resolveAssetFileUrl(previewPath),
+          assetId: ''
+        }
       } catch {
         // ignore
       }
@@ -7791,7 +7764,12 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       }
     }
     syncOrbitTargetFromCamera()
-    if (orbit && viewMode.value === 'director' && !transform?.dragging && !poseBoneTransform?.dragging) {
+    if (
+      orbit &&
+      viewMode.value === 'director' &&
+      !transform?.dragging &&
+      !poseBoneTransform?.dragging
+    ) {
       orbit.enabled = true
     }
     syncShotVisuals()
@@ -7812,7 +7790,9 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   function tickFlyNavigate(deltaSeconds: number): boolean {
     if (!flyNavigateActive || !camera) return false
     const speed =
-      FLY_MOVE_SPEED * (flyKeys.boost ? FLY_BOOST_MULT : 1) * Math.max(0, Math.min(0.1, deltaSeconds))
+      FLY_MOVE_SPEED *
+      (flyKeys.boost ? FLY_BOOST_MULT : 1) *
+      Math.max(0, Math.min(0.1, deltaSeconds))
     camera.getWorldDirection(flyForward)
     flyRight.crossVectors(flyForward, flyWorldUp)
     if (flyRight.lengthSq() < 1e-8) {
@@ -7925,9 +7905,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
         : editor.commands.canUndoInScope(scope)
       if (can) {
         stageUndoRetryCount = 0
-        void (redo
-          ? editor.commands.redoInScope(scope)
-          : editor.commands.undoInScope(scope))
+        void (redo ? editor.commands.redoInScope(scope) : editor.commands.undoInScope(scope))
         return
       }
       const has = redo
@@ -7998,7 +7976,11 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
         cancelPathDraw()
         return
       }
-      if (e.code === 'Enter' && pathDrawMode.value.kind === 'pen' && pathDrawDraft.value.length >= 2) {
+      if (
+        e.code === 'Enter' &&
+        pathDrawMode.value.kind === 'pen' &&
+        pathDrawDraft.value.length >= 2
+      ) {
         e.preventDefault()
         commitPathDraw(pathDrawDraft.value)
         return
@@ -8393,7 +8375,11 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
 
     const fill = new THREE.DirectionalLight(0xdde6ff, 0.45)
     fill.name = 'Default Fill Light'
-    fill.position.set(lightDirection.x * 8, Math.abs(lightDirection.y) * 4 + 2, lightDirection.z * 8)
+    fill.position.set(
+      lightDirection.x * 8,
+      Math.abs(lightDirection.y) * 4 + 2,
+      lightDirection.z * 8
+    )
     fill.target.position.set(0, 1, 0)
     contentRoot.add(key, key.target, fill, fill.target)
     applySceneWorldTransform()
@@ -8598,10 +8584,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     }
   }
 
-  function renderSceneWithoutGizmos(
-    targetRenderer: THREE.WebGLRenderer,
-    cam: THREE.Camera
-  ): void {
+  function renderSceneWithoutGizmos(targetRenderer: THREE.WebGLRenderer, cam: THREE.Camera): void {
     if (!scene) return
     runWithoutStageGizmos(() => {
       targetRenderer.render(scene!, cam)
@@ -8675,7 +8658,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
         selectedCameraId.value =
           keepCameraId && isStageCameraId(keepCameraId)
             ? keepCameraId
-            : stage.value.activeCameraId ?? null
+            : (stage.value.activeCameraId ?? null)
         selectionKind.value = selectedCameraId.value ? 'camera' : 'scene'
       } else if (
         keepKind === 'object' &&

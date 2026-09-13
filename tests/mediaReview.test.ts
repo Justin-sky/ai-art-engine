@@ -111,9 +111,7 @@ describe('executeMediaReviewNode', () => {
     }))
     const patchNode = vi.fn()
 
-    await executeMediaReviewNode(
-      baseCtx({ node, generateText, patchNode, inputs: imageInput() })
-    )
+    await executeMediaReviewNode(baseCtx({ node, generateText, patchNode, inputs: imageInput() }))
 
     expect(node.params.mediaReviewStatus).toBe('FAIL')
     expect(node.params.mediaReviewReason).toBe('缺手指；风格漂移')
@@ -130,9 +128,13 @@ describe('executeMediaReviewNode', () => {
   })
 
   it('reuses cached verdict without calling the model', async () => {
-    const node = createNodeFromType('media.review', { x: 0, y: 0 }, {
-      params: { mediaReviewStatus: 'PASS', mediaReviewPending: false, text: '## 结论: PASS' }
-    })
+    const node = createNodeFromType(
+      'media.review',
+      { x: 0, y: 0 },
+      {
+        params: { mediaReviewStatus: 'PASS', mediaReviewPending: false, text: '## 结论: PASS' }
+      }
+    )
     const generateText = vi.fn(async () => ({ text: 'x', model: 'mock' }))
 
     const result = await executeMediaReviewNode(baseCtx({ node, generateText, inputs: {} }))

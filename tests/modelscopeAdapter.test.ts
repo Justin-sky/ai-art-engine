@@ -108,9 +108,9 @@ describe('modelScopeAdapter', () => {
   })
 
   it('rejects video and speech', async () => {
-    await expect(
-      modelScopeAdapter.submitVideo(provider(), 'x', { prompt: 'v' })
-    ).rejects.toThrow(/不支持视频/)
+    await expect(modelScopeAdapter.submitVideo(provider(), 'x', { prompt: 'v' })).rejects.toThrow(
+      /不支持视频/
+    )
     await expect(
       modelScopeAdapter.generateSpeech(provider(), 'x', { input: 'hi' })
     ).rejects.toThrow(/不支持语音/)

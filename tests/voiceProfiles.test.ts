@@ -50,10 +50,7 @@ describe('voiceProfiles', () => {
   })
 
   it('delete 删除指定角色', () => {
-    const list = [
-      profile('A', { voice: 'S_1' }),
-      profile('B', { voice: 'S_2' })
-    ]
+    const list = [profile('A', { voice: 'S_1' }), profile('B', { voice: 'S_2' })]
     const next = deleteVoiceProfile(list, 'A')
     expect(next.map((p) => p.character)).toEqual(['B'])
     expect(deleteVoiceProfile(list, '')).toEqual(list)

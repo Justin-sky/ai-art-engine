@@ -7,9 +7,7 @@ export function catalogValue(
   text: string,
   relativePath?: string
 ): GraphCatalogValue {
-  return relativePath?.trim()
-    ? { kind, text, relativePath: relativePath.trim() }
-    : { kind, text }
+  return relativePath?.trim() ? { kind, text, relativePath: relativePath.trim() } : { kind, text }
 }
 
 export function isCatalogValue(

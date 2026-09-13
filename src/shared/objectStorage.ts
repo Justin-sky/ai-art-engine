@@ -22,7 +22,11 @@ export const VOLCENGINE_TOS_REGION_PRESETS: ReadonlyArray<{
 }> = [
   { region: 'cn-beijing', endpoint: 'https://tos-cn-beijing.volces.com', label: '华北2（北京）' },
   { region: 'cn-shanghai', endpoint: 'https://tos-cn-shanghai.volces.com', label: '华东2（上海）' },
-  { region: 'cn-guangzhou', endpoint: 'https://tos-cn-guangzhou.volces.com', label: '华南1（广州）' },
+  {
+    region: 'cn-guangzhou',
+    endpoint: 'https://tos-cn-guangzhou.volces.com',
+    label: '华南1（广州）'
+  },
   { region: 'cn-chengdu', endpoint: 'https://tos-cn-chengdu.volces.com', label: '西南1（成都）' },
   { region: 'cn-hongkong', endpoint: 'https://tos-cn-hongkong.volces.com', label: '中国香港' }
 ]
@@ -33,10 +37,26 @@ export const ALIYUN_OSS_REGION_PRESETS: ReadonlyArray<{
   endpoint: string
   label: string
 }> = [
-  { region: 'oss-cn-hangzhou', endpoint: 'https://oss-cn-hangzhou.aliyuncs.com', label: '华东1（杭州）' },
-  { region: 'oss-cn-shanghai', endpoint: 'https://oss-cn-shanghai.aliyuncs.com', label: '华东2（上海）' },
-  { region: 'oss-cn-beijing', endpoint: 'https://oss-cn-beijing.aliyuncs.com', label: '华北2（北京）' },
-  { region: 'oss-cn-shenzhen', endpoint: 'https://oss-cn-shenzhen.aliyuncs.com', label: '华南1（深圳）' },
+  {
+    region: 'oss-cn-hangzhou',
+    endpoint: 'https://oss-cn-hangzhou.aliyuncs.com',
+    label: '华东1（杭州）'
+  },
+  {
+    region: 'oss-cn-shanghai',
+    endpoint: 'https://oss-cn-shanghai.aliyuncs.com',
+    label: '华东2（上海）'
+  },
+  {
+    region: 'oss-cn-beijing',
+    endpoint: 'https://oss-cn-beijing.aliyuncs.com',
+    label: '华北2（北京）'
+  },
+  {
+    region: 'oss-cn-shenzhen',
+    endpoint: 'https://oss-cn-shenzhen.aliyuncs.com',
+    label: '华南1（深圳）'
+  },
   { region: 'oss-cn-hongkong', endpoint: 'https://oss-cn-hongkong.aliyuncs.com', label: '中国香港' }
 ]
 
@@ -209,10 +229,7 @@ export function applyVolcengineTosRegionPreset(
   return { ...tos, region: preset.region, endpoint: preset.endpoint }
 }
 
-export function applyAliyunOssRegionPreset(
-  oss: AliyunOssParams,
-  region: string
-): AliyunOssParams {
+export function applyAliyunOssRegionPreset(oss: AliyunOssParams, region: string): AliyunOssParams {
   const preset = ALIYUN_OSS_REGION_PRESETS.find((p) => p.region === region)
   if (!preset) return { ...oss, region }
   return { ...oss, region: preset.region, endpoint: preset.endpoint }
@@ -242,7 +259,9 @@ function ensureHttpsEndpoint(endpoint: string, fallback: string): string {
   return value
 }
 
-function normalizeVolcengineTosParams(raw?: Partial<VolcengineTosParams> | null): VolcengineTosParams {
+function normalizeVolcengineTosParams(
+  raw?: Partial<VolcengineTosParams> | null
+): VolcengineTosParams {
   const empty = createEmptyVolcengineTosParams()
   if (!raw || typeof raw !== 'object') return empty
   const region =
@@ -288,8 +307,7 @@ function normalizeTencentCosParams(raw?: Partial<TencentCosParams> | null): Tenc
   return {
     secretId: typeof raw.secretId === 'string' ? raw.secretId : '',
     secretKey: typeof raw.secretKey === 'string' ? raw.secretKey : '',
-    region:
-      typeof raw.region === 'string' && raw.region.trim() ? raw.region.trim() : empty.region,
+    region: typeof raw.region === 'string' && raw.region.trim() ? raw.region.trim() : empty.region,
     bucket: typeof raw.bucket === 'string' ? raw.bucket.trim() : '',
     publicBaseUrl:
       typeof raw.publicBaseUrl === 'string' ? raw.publicBaseUrl.trim().replace(/\/$/, '') : ''
@@ -322,18 +340,16 @@ function isTosReady(provider: ObjectStorageProviderInstance): boolean {
   const { accessKeyId, accessKeySecret, region, endpoint, bucket } = provider.tos
   return Boolean(
     accessKeyId.trim() &&
-      accessKeySecret.trim() &&
-      region.trim() &&
-      endpoint.trim() &&
-      bucket.trim()
+    accessKeySecret.trim() &&
+    region.trim() &&
+    endpoint.trim() &&
+    bucket.trim()
   )
 }
 
 function isOssReady(provider: ObjectStorageProviderInstance): boolean {
   const { accessKeyId, accessKeySecret, region, bucket } = provider.oss
-  return Boolean(
-    accessKeyId.trim() && accessKeySecret.trim() && region.trim() && bucket.trim()
-  )
+  return Boolean(accessKeyId.trim() && accessKeySecret.trim() && region.trim() && bucket.trim())
 }
 
 function isCosReady(provider: ObjectStorageProviderInstance): boolean {

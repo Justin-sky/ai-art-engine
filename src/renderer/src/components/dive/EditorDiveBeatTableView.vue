@@ -1,10 +1,6 @@
 <template>
   <div class="dive-view">
-    <BeatTable
-      ref="tableRef"
-      class="table-body"
-      :beat-asset-id="beatAssetId"
-    />
+    <BeatTable ref="tableRef" class="table-body" :beat-asset-id="beatAssetId" />
   </div>
 </template>
 

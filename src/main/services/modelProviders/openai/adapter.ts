@@ -22,16 +22,8 @@ import {
 import type { ModelProviderAdapter, VideoPollResult } from '../types'
 import { PROVIDER_ERRORS } from '../catalog'
 import { fail, defErr, defErrSimple } from '@shared/errors/appError'
-import {
-  createProviderHttpClient,
-  formatAuthError,
-  isAuthFailure,
-  readHttpError
-} from '../http'
-import {
-  generateOpenAiCompatibleImage,
-  generateOpenAiCompatibleText
-} from '../openaiCompat'
+import { createProviderHttpClient, formatAuthError, isAuthFailure, readHttpError } from '../http'
+import { generateOpenAiCompatibleImage, generateOpenAiCompatibleText } from '../openaiCompat'
 import { transcribeAudioViaOpenAiCompatible } from '../transcribe'
 
 // ── 本文件错误条目（catalog 未覆盖的个性文案）──

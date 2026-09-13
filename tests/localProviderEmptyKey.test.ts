@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { authHeaders } from '../src/main/services/modelProviders/http'
-import {
-  buildModelOptions
-} from '../src/renderer/src/features/graph/model/generateModelOptions'
+import { buildModelOptions } from '../src/renderer/src/features/graph/model/generateModelOptions'
 import {
   allowsEmptyApiKey,
   createEmptyModalityMap,

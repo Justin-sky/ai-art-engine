@@ -60,11 +60,7 @@ export function resolveMagicRouterModelCapabilities(
 
   const mod: ModelModality =
     modality ??
-    (/t2v|i2v|r2v|videoedit|video/i.test(id)
-      ? 'video'
-      : /image/i.test(id)
-        ? 'image'
-        : 'text')
+    (/t2v|i2v|r2v|videoedit|video/i.test(id) ? 'video' : /image/i.test(id) ? 'image' : 'text')
   return profileCapabilities(inferProfile(id, mod))
 }
 
@@ -82,10 +78,7 @@ export function listMagicRouterCatalogModels(modality: ModelModality): CatalogMo
 }
 
 /** /models/live 的 chat / image / video 分类 id → 目录条目 */
-export function toMagicRouterCatalogModels(
-  modality: ModelModality,
-  ids: string[]
-): CatalogModel[] {
+export function toMagicRouterCatalogModels(modality: ModelModality, ids: string[]): CatalogModel[] {
   const seen = new Set<string>()
   const out: CatalogModel[] = []
   for (const raw of ids) {

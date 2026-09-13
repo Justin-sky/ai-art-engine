@@ -88,9 +88,7 @@ export interface PoseFromSkeletonOptions {
 }
 
 /** 单人 YOLO 骨架 → 姿势解算（返回与 solver 同构的完整结果） */
-export function solvePoseFromSkeleton(
-  options: PoseFromSkeletonOptions
-): ImagePoseSolveResult {
+export function solvePoseFromSkeleton(options: PoseFromSkeletonOptions): ImagePoseSolveResult {
   const solverOptions: ImagePoseSolveOptions = {
     bones: options.bones,
     keypoints: keypointMapFromSkeleton(options.skeleton, options.minConfidence),
@@ -102,9 +100,13 @@ export function solvePoseFromSkeleton(
 }
 
 /** 便于 UI 展示的段状态统计 */
-export function summarizeSolveResult(
-  result: ImagePoseSolveResult
-): { ok: number; noBone: number; noKeypoints: number; degenerate: number; total: number } {
+export function summarizeSolveResult(result: ImagePoseSolveResult): {
+  ok: number
+  noBone: number
+  noKeypoints: number
+  degenerate: number
+  total: number
+} {
   let ok = 0
   let noBone = 0
   let noKeypoints = 0

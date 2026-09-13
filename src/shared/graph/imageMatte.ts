@@ -24,9 +24,7 @@ export const MATTE_FALLBACK_COUNTS = REDRAW_FALLBACK_COUNTS
 
 export const normalizeMatteBrushSize = normalizeRedrawBrushSize
 
-export function normalizeImageMatte(
-  raw?: Partial<ImageMatteState> | null
-): ImageMatteState {
+export function normalizeImageMatte(raw?: Partial<ImageMatteState> | null): ImageMatteState {
   return normalizeImageRedraw(raw)
 }
 

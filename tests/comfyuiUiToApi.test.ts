@@ -11,7 +11,11 @@ describe('comfyui uiToApi', () => {
           widgets_values_named: { text: 'a cat' },
           inputs: [{ name: 'clip', link: 9 }]
         },
-        { id: 2, type: 'CheckpointLoaderSimple', widgets_values_named: { ckpt_name: 'x.safetensors' } }
+        {
+          id: 2,
+          type: 'CheckpointLoaderSimple',
+          widgets_values_named: { ckpt_name: 'x.safetensors' }
+        }
       ],
       links: [[9, 2, 1, 1, 0, 'CLIP']]
     })

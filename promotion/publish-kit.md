@@ -6,20 +6,21 @@
 
 ## 0. 通用信息速查（所有平台通用）
 
-| 项目 | 内容 |
-|---|---|
-| 产品名 | AI Art Engine（AIArtEngine） |
-| 中文标语 | 专业 AI 创作工具 · 短剧 · 广告 · 成片 |
-| 一句话卖点 | 本地优先的 AI 创作工作站：资产、分镜、节点图在一个桌面端完成，内置 AI 对话 + MCP，可被 Claude Code 直接驱动 |
-| 官网 | https://justin-sky.github.io/ai-art-engine/ |
-| 使用手册 | https://justin-sky.github.io/ai-art-engine/manual.html |
-| GitHub | https://github.com/Justin-sky/ai-art-engine |
-| Gitee 镜像 | https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine |
-| Releases | https://github.com/Justin-sky/ai-art-engine/releases |
-| 视频教程（B站） | https://space.bilibili.com/3707036976024122 |
-| 交流 | QQ 群 647306826 · 邮箱 284139554@qq.com |
+| 项目            | 内容                                                                                                        |
+| --------------- | ----------------------------------------------------------------------------------------------------------- |
+| 产品名          | AI Art Engine（AIArtEngine）                                                                                |
+| 中文标语        | 专业 AI 创作工具 · 短剧 · 广告 · 成片                                                                       |
+| 一句话卖点      | 本地优先的 AI 创作工作站：资产、分镜、节点图在一个桌面端完成，内置 AI 对话 + MCP，可被 Claude Code 直接驱动 |
+| 官网            | https://justin-sky.github.io/ai-art-engine/                                                                 |
+| 使用手册        | https://justin-sky.github.io/ai-art-engine/manual.html                                                      |
+| GitHub          | https://github.com/Justin-sky/ai-art-engine                                                                 |
+| Gitee 镜像      | https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine                                            |
+| Releases        | https://github.com/Justin-sky/ai-art-engine/releases                                                        |
+| 视频教程（B站） | https://space.bilibili.com/3707036976024122                                                                 |
+| 交流            | QQ 群 647306826 · 邮箱 284139554@qq.com                                                                     |
 
 核心亮点（写帖子时挑 2-3 个展开）：
+
 1. **AI 对话 + MCP**：应用内聊天 `@` 引用资产直接生成；内置 MCP Server，Claude Code / Codex 可直连操作工程
 2. **节点图驱动生成**：文本/图片/视频/声音/3D 节点，任务容错模式、媒体质检自动返工、漫画页、帧动画、图层分离导出 PSD
 3. **30+ 模型提供商**：可灵 / ComfyUI / Meshy / Tripo / Rodin / Luma / Lux3D / 火山方舟 / MiniMax / 通义 / 本地 vLLM / Ollama 等，走你自己的 API Key
@@ -30,11 +31,13 @@
 ## 1. V2EX 发帖正文（节点：分享创造）
 
 ### 标题
+
 ```
 [分享创造] 开源免费：本地优先的 AI 创作工作站 —— 节点图 + AI 对话 + MCP Server，Claude Code 可直接驱动，对接 30+ 模型（可灵/ComfyUI/Meshy/Lux3D…）
 ```
 
 ### 正文
+
 ```
 做这个软件是因为做短剧/广告/成片时，生成素材要来回切换一堆网站和脚本：文生图一个站、图生视频一个站、3D 一个站、配音一个站，还要自己维护 prompt、整理素材、拼时间线，特别碎。
 
@@ -68,6 +71,7 @@
 ```
 
 ### 发布要点
+
 - 选节点「分享创造」，标题不要带「求 star」「求关注」等
 - 发完前 1 小时多回复楼层互动，帖子热度会滚起来
 - 图片先传到 sm.ms / 图床，V2EX 外链图片直接可用
@@ -77,12 +81,14 @@
 ## 2. Product Hunt（英文素材）
 
 ### 基础信息
+
 - **Name**: AI Art Engine
 - **Tagline**（≤60 字符）: `Local-first AI studio for short dramas & ads, MCP-powered`
 - **Website**: https://justin-sky.github.io/ai-art-engine/
 - **Links**: GitHub `https://github.com/Justin-sky/ai-art-engine` · Releases `https://github.com/Justin-sky/ai-art-engine/releases`
 
 ### Description（首段 + 详细介绍）
+
 ```
 AI Art Engine is a local-first desktop studio for making short dramas, ads, and films. Assets, storyboards, and a node graph live in one app — projects stay on your disk, and generation runs through your own API keys.
 
@@ -97,6 +103,7 @@ Open source (GPL-3.0), cross-platform (Win / macOS / Linux). Manual and tutorial
 ```
 
 ### 首图 / 截图建议
+
 - 首图 1275×750：节点图全屏工作台（深色主题，效果最好），左上角放产品 logo
 - 第二张：AI 对话面板演示（`@` 引用资产 + 生成结果）
 - 第三张：一键工作流菜单 / 分镜
@@ -104,6 +111,7 @@ Open source (GPL-3.0), cross-platform (Win / macOS / Linux). Manual and tutorial
 - 附 30-45s 演示 GIF 或视频（优先：AI 对话让 Agent 跑通"分镜→生成→成片"）
 
 ### 第一评论（First Comment，发布后立即自己发）
+
 ```
 Hi Product Hunt! I built AI Art Engine because making short dramas and ads means juggling too many separate tools: image gen on one site, video on another, 3D somewhere else, voice-over elsewhere — plus keeping prompts, assets, and timelines in sync by hand.
 
@@ -118,6 +126,7 @@ Happy to answer questions about the node engine, MCP integration, or provider su
 ```
 
 ### 发布时间
+
 - 美西时间（PDT）00:30 前后发布（= 北京/上海时间 15:30，上午发完图，晚间冲榜）
 - 发布当天白天持续回复评论、拉朋友 upvote
 
@@ -126,11 +135,13 @@ Happy to answer questions about the node engine, MCP integration, or provider su
 ## 3. 掘金技术文（可直接发布）
 
 ### 标题
+
 ```
 我用 Electron 给 AI 创作工具加了一双"能干活的手"：内置 MCP Server 驱动本地节点图
 ```
 
 ### 正文
+
 ```
 做 AI 创作工具（短剧/广告/成片方向）时，有个反复被问的问题：AI 到底是在"陪你聊天"，还是"帮你把活干了"？
 
@@ -183,16 +194,16 @@ Happy to answer questions about the node engine, MCP integration, or provider su
 **标题**：用 AI 从零做一条广告片，全程本地不联网？（AI Art Engine 全流程）
 **封面**：左边"传统流程 6 个软件"，右边"AI Art Engine 1 个软件"，中间大箭头
 
-| 时间 | 画面 | 旁白 |
-|---|---|---|
-| 0:00-0:15 | 快剪：6 个软件来回切换的痛苦 | 做一条广告片要开几个软件？文生图、图生视频、3D、配音、剪辑……今天给你看一个全干完的 |
-| 0:15-0:45 | 打开软件 → 新建工程 | 本地优先，工程和素材全在你自己硬盘上 |
-| 0:45-1:30 | 一键工作流 → 选"产品广告" | 不用搭节点，AI 直接给你规划一条生成流水线 |
-| 1:30-2:15 | AI 对话面板 `@` 引用资产 → 让它生成 | 在聊天里 @ 一下素材，Agent 直接调用 MCP 工具生成图片/视频 |
-| 2:15-2:45 | 切 Claude Code 终端 → MCP 直连 | 不只内置助手，Claude Code 也能连进来驱动工程 |
-| 2:45-3:30 | 节点图调整 → 成片时间线 | 不满意的地方在节点图上改参数，重跑；时间线里叠画中画、转场 |
-| 3:30-4:00 | 导出成片 + 下载地址 | 全流程一条龙。开源免费，链接在简介 |
-| 结尾 | 口播 | 30+ 模型提供商，走你自己的 API Key；QQ 群 647306826 交流 |
+| 时间      | 画面                                | 旁白                                                                               |
+| --------- | ----------------------------------- | ---------------------------------------------------------------------------------- |
+| 0:00-0:15 | 快剪：6 个软件来回切换的痛苦        | 做一条广告片要开几个软件？文生图、图生视频、3D、配音、剪辑……今天给你看一个全干完的 |
+| 0:15-0:45 | 打开软件 → 新建工程                 | 本地优先，工程和素材全在你自己硬盘上                                               |
+| 0:45-1:30 | 一键工作流 → 选"产品广告"           | 不用搭节点，AI 直接给你规划一条生成流水线                                          |
+| 1:30-2:15 | AI 对话面板 `@` 引用资产 → 让它生成 | 在聊天里 @ 一下素材，Agent 直接调用 MCP 工具生成图片/视频                          |
+| 2:15-2:45 | 切 Claude Code 终端 → MCP 直连      | 不只内置助手，Claude Code 也能连进来驱动工程                                       |
+| 2:45-3:30 | 节点图调整 → 成片时间线             | 不满意的地方在节点图上改参数，重跑；时间线里叠画中画、转场                         |
+| 3:30-4:00 | 导出成片 + 下载地址                 | 全流程一条龙。开源免费，链接在简介                                                 |
+| 结尾      | 口播                                | 30+ 模型提供商，走你自己的 API Key；QQ 群 647306826 交流                           |
 
 **发布要点**：简介放官网 + GitHub Releases + QQ 群；标题带"AI 生成""广告片""免费开源"关键词；投稿分区选「科技·软件教程」。
 
@@ -201,18 +212,19 @@ Happy to answer questions about the node engine, MCP integration, or provider su
 ## 5. AI 导航站批量提交（一次性铺量）
 
 统一简介（各站微调）：
+
 > AI Art Engine — 本地优先的 AI 创作工作站：节点图驱动生成图片/视频/声音/3D，内置 AI 对话与 MCP Server（Claude Code/Codex 可直连），对接 30+ 模型提供商（可灵、ComfyUI、Meshy、Tripo、Lux3D 等），走自己的 API Key。开源 GPL-3.0，支持 Win/macOS/Linux。
 
-| 站点 | 地址 | 分类建议 |
-|---|---|---|
-| AIbase | aibase.com（站内找"提交/Submit"） | AI 视频/图像/创意工具 |
-| Toolify.ai | toolify.ai（Submit a tool） | Video Generator / 3D |
-| TopAI.tools | topai.tools | AI Art / 3D Model |
-| Woy.ai | woy.ai（站内提交） | 3D / Video |
-| Futurepedia | futurepedia.io（Submit） | Video Generation |
-| There's An AI For That | theresanaiforthat.com（Submit） | Video / 3D |
-| FlowGPT | flowgpt.com | 创作工具 |
-| 灵感岛 / 集智导航等国内导航 | 站内提交 | AIGC 创作 |
+| 站点                        | 地址                              | 分类建议              |
+| --------------------------- | --------------------------------- | --------------------- |
+| AIbase                      | aibase.com（站内找"提交/Submit"） | AI 视频/图像/创意工具 |
+| Toolify.ai                  | toolify.ai（Submit a tool）       | Video Generator / 3D  |
+| TopAI.tools                 | topai.tools                       | AI Art / 3D Model     |
+| Woy.ai                      | woy.ai（站内提交）                | 3D / Video            |
+| Futurepedia                 | futurepedia.io（Submit）          | Video Generation      |
+| There's An AI For That      | theresanaiforthat.com（Submit）   | Video / 3D            |
+| FlowGPT                     | flowgpt.com                       | 创作工具              |
+| 灵感岛 / 集智导航等国内导航 | 站内提交                          | AIGC 创作             |
 
 > 注意：以上站点提交入口入口位置可能调整，进站搜 "Submit" / "提交" 即可；部分站需要注册。
 
@@ -220,13 +232,13 @@ Happy to answer questions about the node engine, MCP integration, or provider su
 
 ## 6. 发布节奏建议（一周版）
 
-| 时间 | 动作 |
-|---|---|
-| Day 1 | V2EX「分享创造」发帖 + B站上传演示视频 |
-| Day 2 | 批量提交 AI 导航站（10-20 个，半天完成） |
-| Day 3 | 掘金发技术文 + 公众号/知乎同步 |
-| Day 4-5 | 准备 PH 素材（截图、英文文案用第 2 节） |
-| Day 6 | Product Hunt 美西 00:30 发布 + 白天互动；GitHub 同步打 Release tag 冲 Trending |
+| 时间    | 动作                                                                           |
+| ------- | ------------------------------------------------------------------------------ |
+| Day 1   | V2EX「分享创造」发帖 + B站上传演示视频                                         |
+| Day 2   | 批量提交 AI 导航站（10-20 个，半天完成）                                       |
+| Day 3   | 掘金发技术文 + 公众号/知乎同步                                                 |
+| Day 4-5 | 准备 PH 素材（截图、英文文案用第 2 节）                                        |
+| Day 6   | Product Hunt 美西 00:30 发布 + 白天互动；GitHub 同步打 Release tag 冲 Trending |
 
 ---
 

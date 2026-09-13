@@ -70,16 +70,7 @@ export function keypointsFromSkeleton(
 // ── 关节角色命名推断 ──────────────────────────────────────────────
 
 export type Stage2dJointRole =
-  | 'chest'
-  | 'neck'
-  | 'head'
-  | 'shoulder'
-  | 'elbow'
-  | 'wrist'
-  | 'hip'
-  | 'knee'
-  | 'ankle'
-  | 'other'
+  'chest' | 'neck' | 'head' | 'shoulder' | 'elbow' | 'wrist' | 'hip' | 'knee' | 'ankle' | 'other'
 
 const ROLE_WORDS: Record<Exclude<Stage2dJointRole, 'other'>, string[]> = {
   chest: ['spine', 'chest', 'torso'],
@@ -113,10 +104,7 @@ export function tokenizeJointName(raw: string): JointNameTokens {
     .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
     .replace(/[^A-Za-z0-9]+/g, ' ')
     .trim()
-  const all = text
-    .toLowerCase()
-    .split(/\s+/)
-    .filter(Boolean)
+  const all = text.toLowerCase().split(/\s+/).filter(Boolean)
   const words: string[] = []
   let side: 'l' | 'r' | null = null
   for (const word of all) {
@@ -146,12 +134,7 @@ export function classifyStage2dJoint(raw: string): {
 // ── 解算计划与几何 ────────────────────────────────────────────────
 
 /** 状态行：ok / no-joint / no-tip / no-keypoints / degenerate */
-export type Stage2dPoseSegmentStatus =
-  | 'ok'
-  | 'no-joint'
-  | 'no-tip'
-  | 'no-keypoints'
-  | 'degenerate'
+export type Stage2dPoseSegmentStatus = 'ok' | 'no-joint' | 'no-tip' | 'no-keypoints' | 'degenerate'
 
 export type Stage2dPoseSegmentKey = 'upperarm' | 'forearm' | 'thigh' | 'shin' | 'torso'
 
@@ -197,7 +180,13 @@ interface LimbDrivePlan {
 }
 
 const LIMB_DRIVE_PLANS: LimbDrivePlan[] = [
-  { key: 'upperarm', pivotRole: 'shoulder', tipRole: 'elbow', proximalKp: 'shoulder', distalKp: 'elbow' },
+  {
+    key: 'upperarm',
+    pivotRole: 'shoulder',
+    tipRole: 'elbow',
+    proximalKp: 'shoulder',
+    distalKp: 'elbow'
+  },
   { key: 'forearm', pivotRole: 'elbow', tipRole: 'wrist', proximalKp: 'elbow', distalKp: 'wrist' },
   { key: 'thigh', pivotRole: 'hip', tipRole: 'knee', proximalKp: 'hip', distalKp: 'knee' },
   { key: 'shin', pivotRole: 'knee', tipRole: 'ankle', proximalKp: 'knee', distalKp: 'ankle' }
@@ -225,13 +214,17 @@ function sideMid(
   const l = pairPoint(names, 'l', kp, minConfidence)
   const r = pairPoint(names, 'r', kp, minConfidence)
   if (l && r) {
-    return { x: (l.x + r.x) / 2, y: (l.y + r.y) / 2, confidence: Math.min(l.confidence, r.confidence) }
+    return {
+      x: (l.x + r.x) / 2,
+      y: (l.y + r.y) / 2,
+      confidence: Math.min(l.confidence, r.confidence)
+    }
   }
   return l ?? r
 }
 
 function wrap180(degAngle: number): number {
-  let a = ((degAngle % 360) + 540) % 360 - 180
+  let a = (((degAngle % 360) + 540) % 360) - 180
   if (a === -180) a = 180
   return a
 }
@@ -273,7 +266,11 @@ function jointByRole(
 }
 
 /** 在 fromId 子树里找第一个角色匹配的后代（不含自身） */
-function descendantByRole(index: RigIndex, fromId: string, want: Stage2dJointRole): Stage2dJoint | null {
+function descendantByRole(
+  index: RigIndex,
+  fromId: string,
+  want: Stage2dJointRole
+): Stage2dJoint | null {
   const queue = [...(index.children.get(fromId) ?? [])]
   const seen = new Set<string>()
   while (queue.length) {
@@ -355,7 +352,12 @@ export function solveStage2dPoseFromSkeleton(
 
   // 1) 躯干：驱动“上面挂着 neck/head”的躯干关节（chest/spine…），方向 = 中髋→中肩
   if (driveTorso) {
-    const row: Stage2dPoseSolveSegment = { key: 'torso', side: null, jointId: null, status: 'no-joint' }
+    const row: Stage2dPoseSolveSegment = {
+      key: 'torso',
+      side: null,
+      jointId: null,
+      status: 'no-joint'
+    }
     let chest: Stage2dJoint | null = null
     for (const joint of rig.joints) {
       const cls = classifyStage2dJoint(joint.name || joint.id)
@@ -371,10 +373,13 @@ export function solveStage2dPoseFromSkeleton(
     const shoulderMid = sideMid(names, 'shoulder', minConfidence)
     const pair =
       hipMid && shoulderMid
-        ? { from: { x: hipMid.x, y: hipMid.y, confidence: hipMid.confidence }, to: { x: shoulderMid.x, y: shoulderMid.y, confidence: shoulderMid.confidence } }
+        ? {
+            from: { x: hipMid.x, y: hipMid.y, confidence: hipMid.confidence },
+            to: { x: shoulderMid.x, y: shoulderMid.y, confidence: shoulderMid.confidence }
+          }
         : null
     const tip = chest
-      ? descendantByRole(index, chest.id, 'neck') ?? descendantByRole(index, chest.id, 'head')
+      ? (descendantByRole(index, chest.id, 'neck') ?? descendantByRole(index, chest.id, 'head'))
       : null
     pushDrive(row, chest, tip, pair)
   }
@@ -390,13 +395,18 @@ export function solveStage2dPoseFromSkeleton(
       }
       const joint = jointByRole(rig, plan.pivotRole, side)
       const tip = joint
-        ? descendantByRole(index, joint.id, plan.tipRole) ?? firstChild(index, joint.id)
+        ? (descendantByRole(index, joint.id, plan.tipRole) ?? firstChild(index, joint.id))
         : null
       const src = sourceSide(side)
       const from = pairPoint(names, src, plan.proximalKp, minConfidence)
       const to = pairPoint(names, src, plan.distalKp, minConfidence)
       const pair =
-        from && to ? { from: { x: from.x, y: from.y, confidence: from.confidence }, to: { x: to.x, y: to.y, confidence: to.confidence } } : null
+        from && to
+          ? {
+              from: { x: from.x, y: from.y, confidence: from.confidence },
+              to: { x: to.x, y: to.y, confidence: to.confidence }
+            }
+          : null
       pushDrive(row, joint, tip, pair)
     }
   }
@@ -470,9 +480,13 @@ function firstChild(index: RigIndex, jointId: string): Stage2dJoint | null {
 }
 
 /** 便于 UI 展示的段状态统计 */
-export function summarizeStage2dSolve(
-  result: Stage2dPoseSolveResult
-): { ok: number; noJoint: number; noKeypoints: number; degenerate: number; total: number } {
+export function summarizeStage2dSolve(result: Stage2dPoseSolveResult): {
+  ok: number
+  noJoint: number
+  noKeypoints: number
+  degenerate: number
+  total: number
+} {
   let ok = 0
   let noJoint = 0
   let noKeypoints = 0

@@ -35,10 +35,7 @@ export async function composeImageLayerStack(input: {
   if (!baseUrl) throw fail(SHARED_ERRORS.imageComposeBaseMissing)
   const baseImg = await loadImage(baseUrl)
 
-  const canvasWidth = Math.max(
-    1,
-    Math.round(input.state.canvasWidth) || baseImg.naturalWidth || 1
-  )
+  const canvasWidth = Math.max(1, Math.round(input.state.canvasWidth) || baseImg.naturalWidth || 1)
   const canvasHeight = Math.max(
     1,
     Math.round(input.state.canvasHeight) || baseImg.naturalHeight || 1
@@ -60,13 +57,7 @@ export async function composeImageLayerStack(input: {
       ctx.drawImage(img, 0, 0, canvasWidth, canvasHeight)
       continue
     }
-    ctx.drawImage(
-      img,
-      layer.left,
-      layer.top,
-      Math.max(1, layer.width),
-      Math.max(1, layer.height)
-    )
+    ctx.drawImage(img, layer.left, layer.top, Math.max(1, layer.width), Math.max(1, layer.height))
   }
 
   return {

@@ -33,9 +33,7 @@ export class AutosaveRepository {
     if (!existsSync(path)) return { ...EMPTY_MANIFEST, entries: [] }
     try {
       const manifest = readJsonFile<AutosaveManifest>(path)
-      return manifest.version === 1
-        ? manifest
-        : { ...EMPTY_MANIFEST, entries: [] }
+      return manifest.version === 1 ? manifest : { ...EMPTY_MANIFEST, entries: [] }
     } catch {
       return { ...EMPTY_MANIFEST, entries: [] }
     }
@@ -69,10 +67,7 @@ export class AutosaveRepository {
     return entry
   }
 
-  read(
-    projectRoot: string,
-    filter: Required<AutosaveFilter>
-  ): AssetInfo | null {
+  read(projectRoot: string, filter: Required<AutosaveFilter>): AssetInfo | null {
     const entry = this.list(projectRoot).entries.find(
       (item) => item.kind === filter.kind && item.id === filter.id
     )
@@ -86,8 +81,7 @@ export class AutosaveRepository {
     const current = this.list(projectRoot)
     const removed = current.entries.filter(
       (entry) =>
-        (!filter?.kind || entry.kind === filter.kind) &&
-        (!filter?.id || entry.id === filter.id)
+        (!filter?.kind || entry.kind === filter.kind) && (!filter?.id || entry.id === filter.id)
     )
     for (const entry of removed) {
       const path = join(root, entry.relativePath)

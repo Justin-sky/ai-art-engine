@@ -3,21 +3,29 @@ import { createNodeFromType, runGraph } from '../src/shared/graph'
 import { boundaryOutputNodeId } from '../src/shared/graph/hostInterface'
 
 function lockedImage(id: string, dataUrl: string) {
-  return createNodeFromType('asset.image', { x: 0, y: 0 }, {
-    id,
-    params: {
-      locked: true,
-      generatedImages: [{ id: `${id}-pick`, dataUrl }],
-      selectedImageId: `${id}-pick`
+  return createNodeFromType(
+    'asset.image',
+    { x: 0, y: 0 },
+    {
+      id,
+      params: {
+        locked: true,
+        generatedImages: [{ id: `${id}-pick`, dataUrl }],
+        selectedImageId: `${id}-pick`
+      }
     }
-  })
+  )
 }
 
 function boundaryOut(portId: string) {
-  return createNodeFromType('graph.boundary.output', { x: 200, y: 0 }, {
-    id: boundaryOutputNodeId(portId),
-    params: { hostBoundaryPort: { portId, dataType: 'image' } }
-  })
+  return createNodeFromType(
+    'graph.boundary.output',
+    { x: 200, y: 0 },
+    {
+      id: boundaryOutputNodeId(portId),
+      params: { hostBoundaryPort: { portId, dataType: 'image' } }
+    }
+  )
 }
 
 /** 侧栏元素图每项一条链共存一图：入队单个汇点不应带上兄弟链 */

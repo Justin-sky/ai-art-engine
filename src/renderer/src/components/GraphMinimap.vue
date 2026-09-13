@@ -16,10 +16,7 @@
       :height="bitmapH"
       @pointerdown="onPointerDown"
     />
-    <div
-      v-if="nodes.length === 0"
-      class="graph-minimap-empty"
-    >
+    <div v-if="nodes.length === 0" class="graph-minimap-empty">
       {{ t('graph.minimap.empty') }}
     </div>
   </div>

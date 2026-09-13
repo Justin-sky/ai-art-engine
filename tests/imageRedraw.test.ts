@@ -25,9 +25,9 @@ describe('imageRedraw', () => {
 
   it('detects mask presence', () => {
     expect(hasRedrawMask(normalizeImageRedraw())).toBe(false)
-    expect(
-      hasRedrawMask(normalizeImageRedraw({ maskDataUrl: 'data:image/png;base64,aaa' }))
-    ).toBe(true)
+    expect(hasRedrawMask(normalizeImageRedraw({ maskDataUrl: 'data:image/png;base64,aaa' }))).toBe(
+      true
+    )
   })
 
   it('clamps params to capabilities', () => {
@@ -45,9 +45,7 @@ describe('imageRedraw', () => {
   })
 
   it('builds inpaint prompt with user text', () => {
-    const p = buildRedrawUserPrompt(
-      normalizeImageRedraw({ prompt: 'change scarf to red' })
-    )
+    const p = buildRedrawUserPrompt(normalizeImageRedraw({ prompt: 'change scarf to red' }))
     expect(p).toContain('Inpaint')
     expect(p).toContain('change scarf to red')
   })

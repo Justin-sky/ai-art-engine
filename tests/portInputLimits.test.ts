@@ -26,15 +26,11 @@ describe('portInputLimits', () => {
   })
 
   it('only shows badges on media input ports', () => {
-    expect(
-      shouldShowPortLimitBadge({ direction: 'in', dataType: GraphPortType.image })
-    ).toBe(true)
-    expect(
-      shouldShowPortLimitBadge({ direction: 'in', dataType: GraphPortType.text })
-    ).toBe(false)
-    expect(
-      shouldShowPortLimitBadge({ direction: 'out', dataType: GraphPortType.video })
-    ).toBe(false)
+    expect(shouldShowPortLimitBadge({ direction: 'in', dataType: GraphPortType.image })).toBe(true)
+    expect(shouldShowPortLimitBadge({ direction: 'in', dataType: GraphPortType.text })).toBe(false)
+    expect(shouldShowPortLimitBadge({ direction: 'out', dataType: GraphPortType.video })).toBe(
+      false
+    )
   })
 
   it('resolves Seedance known media caps', () => {
@@ -58,9 +54,7 @@ describe('portInputLimits', () => {
   })
 
   it('maps port data types for image vs video nodes', () => {
-    expect(
-      portLimitMaxForDataType(GraphPortType.image, { kind: 'image', imageMax: 14 })
-    ).toBe(14)
+    expect(portLimitMaxForDataType(GraphPortType.image, { kind: 'image', imageMax: 14 })).toBe(14)
     expect(
       portLimitMaxForDataType(GraphPortType.text, { kind: 'image', imageMax: 14 })
     ).toBeUndefined()
@@ -86,11 +80,7 @@ describe('portInputLimits', () => {
 
   it('merges style urls first within budget', () => {
     expect(
-      mergeImageUrlsWithStyleBudget(
-        ['port-a', 'port-b', 'port-c'],
-        ['style-1', 'style-2'],
-        3
-      )
+      mergeImageUrlsWithStyleBudget(['port-a', 'port-b', 'port-c'], ['style-1', 'style-2'], 3)
     ).toEqual(['style-1', 'style-2', 'port-a'])
   })
 })

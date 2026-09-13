@@ -148,9 +148,7 @@ describe('style mention reserve indexing', () => {
       outputs: new Map(),
       mentionIndexBase: 2
     })
-    expect(sources).toEqual([
-      { index: 3, title: '角色', text: '', keepMentionToken: true }
-    ])
+    expect(sources).toEqual([{ index: 3, title: '角色', text: '', keepMentionToken: true }])
   })
 
   it('remaps port @n when style reserve changes', () => {

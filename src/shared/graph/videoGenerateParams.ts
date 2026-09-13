@@ -9,24 +9,17 @@ import { clampSeed } from './imageGenerateParams'
 export const VIDEO_FIRST_FRAME_PORT_ID = 'in-first-frame'
 export const VIDEO_LAST_FRAME_PORT_ID = 'in-last-frame'
 
-export const VIDEO_FRAME_PORT_IDS = [
-  VIDEO_FIRST_FRAME_PORT_ID,
-  VIDEO_LAST_FRAME_PORT_ID
-] as const
+export const VIDEO_FRAME_PORT_IDS = [VIDEO_FIRST_FRAME_PORT_ID, VIDEO_LAST_FRAME_PORT_ID] as const
 
 export type VideoFramePortId = (typeof VIDEO_FRAME_PORT_IDS)[number]
 
 export type VideoFrameMode = 'none' | 'first' | 'first_last'
 
 export function isVideoFramePortId(portId: string | undefined | null): boolean {
-  return (
-    portId === VIDEO_FIRST_FRAME_PORT_ID || portId === VIDEO_LAST_FRAME_PORT_ID
-  )
+  return portId === VIDEO_FIRST_FRAME_PORT_ID || portId === VIDEO_LAST_FRAME_PORT_ID
 }
 
-export function availableVideoFrameModes(
-  supportedFrameImages: string[]
-): VideoFrameMode[] {
+export function availableVideoFrameModes(supportedFrameImages: string[]): VideoFrameMode[] {
   const modes: VideoFrameMode[] = ['none']
   const hasFirst = supportedFrameImages.includes('first_frame')
   const hasLast = supportedFrameImages.includes('last_frame')
@@ -97,9 +90,9 @@ function uniqueStrings(values: string[]): string[] {
 }
 
 function uniqueSortedInts(values: number[]): number[] {
-  return [...new Set(values.map((n) => Math.round(n)).filter((n) => Number.isFinite(n) && n > 0))].sort(
-    (a, b) => a - b
-  )
+  return [
+    ...new Set(values.map((n) => Math.round(n)).filter((n) => Number.isFinite(n) && n > 0))
+  ].sort((a, b) => a - b)
 }
 
 function parseStringList(raw: unknown): string[] {
@@ -185,9 +178,7 @@ export function parseVideoGenerateParamCapabilities(
   }
 }
 
-export function hasAnyVideoGenerateCapability(
-  caps: VideoGenerateParamCapabilities
-): boolean {
+export function hasAnyVideoGenerateCapability(caps: VideoGenerateParamCapabilities): boolean {
   return (
     caps.aspectRatios.length > 0 ||
     caps.resolutions.length > 0 ||

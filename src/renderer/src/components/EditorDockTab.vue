@@ -1,14 +1,7 @@
 <template>
   <div class="dv-default-tab editor-tab">
-    <span
-      v-if="icon"
-      class="editor-tab-icon"
-      aria-hidden="true"
-    >
-      <WorkspaceItemIcon
-        :icon="icon"
-        :size="14"
-      />
+    <span v-if="icon" class="editor-tab-icon" aria-hidden="true">
+      <WorkspaceItemIcon :icon="icon" :size="14" />
     </span>
     <span class="dv-default-tab-content editor-tab-content">{{ title }}</span>
     <div
@@ -98,9 +91,7 @@ const title = computed(() => {
   return String(api?.title ?? readFallbackTitle())
 })
 const icon = computed(() => resolveEditorPanelIcon(panelId.value))
-const showClose = computed(() =>
-  isClosableDockTab(panelId.value, readTabApi()?.tabComponent)
-)
+const showClose = computed(() => isClosableDockTab(panelId.value, readTabApi()?.tabComponent))
 
 async function onClose(): Promise<void> {
   const api = readTabApi()

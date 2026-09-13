@@ -56,10 +56,7 @@ function pickPrimaryOutType(node: GraphNode): GraphPortDataType | null {
 }
 
 function sortSinks(a: GraphNode, b: GraphNode): number {
-  return (
-    (a.position?.y ?? 0) - (b.position?.y ?? 0) ||
-    (b.position?.x ?? 0) - (a.position?.x ?? 0)
-  )
+  return (a.position?.y ?? 0) - (b.position?.y ?? 0) || (b.position?.x ?? 0) - (a.position?.x ?? 0)
 }
 
 function canAggregatePortType(dataType: GraphPortDataType): boolean {
@@ -165,13 +162,10 @@ export function inferHostInterfaceFromGraph(document: GraphDocument): HostInterf
   }
 
   const sources = business
-    .filter(
-      (n) => !document.edges.some((e) => e.target === n.id && businessIds.has(e.source))
-    )
+    .filter((n) => !document.edges.some((e) => e.target === n.id && businessIds.has(e.source)))
     .sort(
       (a, b) =>
-        (a.position?.x ?? 0) - (b.position?.x ?? 0) ||
-        (a.position?.y ?? 0) - (b.position?.y ?? 0)
+        (a.position?.x ?? 0) - (b.position?.x ?? 0) || (a.position?.y ?? 0) - (b.position?.y ?? 0)
     )
 
   const inputs: HostBoundaryPort[] = []

@@ -46,12 +46,7 @@ describe('graph policy', () => {
   })
 
   it('all builtin scopes use the all-node addable wildcard', () => {
-    for (const scope of [
-      'workflow',
-      'screenplayAsset',
-      'directorAsset',
-      'canvasAsset'
-    ]) {
+    for (const scope of ['workflow', 'screenplayAsset', 'directorAsset', 'canvasAsset']) {
       expect(getScopePolicy(scope)!.addableNodeTypes).toEqual(['*'])
     }
     expect(isNodeAddableInScope('directorAsset', 'asset.motion')).toBe(true)
@@ -152,11 +147,18 @@ describe('graph policy', () => {
   })
 
   it('allows image processing and image refs to connect to image output', () => {
-    const output = createOutputGraphNode('image', { x: 400, y: 0 }, {
-      id: graphOutputNodeId('image'),
-      params: { outputKind: 'image' }
+    const output = createOutputGraphNode(
+      'image',
+      { x: 400, y: 0 },
+      {
+        id: graphOutputNodeId('image'),
+        params: { outputKind: 'image' }
+      }
+    )
+    const ref = createAssetGraphNode('00000000-0000-4000-8000-000000000101', 'image', 'Ref', {
+      x: 0,
+      y: 0
     })
-    const ref = createAssetGraphNode('00000000-0000-4000-8000-000000000101', 'image', 'Ref', { x: 0, y: 0 })
     const processing = createNodeFromType('asset.image', { x: 200, y: 0 })
     expect(canConnectNodes(ref, processing)).toBe(true)
     expect(canConnectNodes(processing, output)).toBe(true)
@@ -164,10 +166,25 @@ describe('graph policy', () => {
   })
 
   it('allows image and model references to director inputs, rejects video refs', () => {
-    const modelRef = createAssetGraphNode('00000000-0000-4000-8000-000000000201', 'model', 'Model', { x: 0, y: 0 })
+    const modelRef = createAssetGraphNode(
+      '00000000-0000-4000-8000-000000000201',
+      'model',
+      'Model',
+      { x: 0, y: 0 }
+    )
     const director = createNodeFromType('asset.motion', { x: 200, y: 0 })
-    const imageRef = createAssetGraphNode('00000000-0000-4000-8000-000000000202', 'image', 'Image', { x: 0, y: 160 })
-    const videoRef = createAssetGraphNode('00000000-0000-4000-8000-000000000203', 'video', 'Video', { x: 0, y: 240 })
+    const imageRef = createAssetGraphNode(
+      '00000000-0000-4000-8000-000000000202',
+      'image',
+      'Image',
+      { x: 0, y: 160 }
+    )
+    const videoRef = createAssetGraphNode(
+      '00000000-0000-4000-8000-000000000203',
+      'video',
+      'Video',
+      { x: 0, y: 240 }
+    )
 
     expect(canConnectNodes(modelRef, director)).toBe(true)
     expect(canConnectNodes(imageRef, director)).toBe(true)

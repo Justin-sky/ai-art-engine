@@ -43,8 +43,7 @@ function readWorldGenParams(worldAssetId: string): Record<string, unknown> | und
     return useDraftStore().getDraft(worldAssetId)?.genParams
   }
   return useProjectStore().assets.find((item) => item.id === worldAssetId)?.genParams as
-    | Record<string, unknown>
-    | undefined
+    Record<string, unknown> | undefined
 }
 
 async function ensureMediaAssetForPath(
@@ -56,9 +55,7 @@ async function ensureMediaAssetForPath(
   const key = normalizeRel(relativePath)
   const existing = project.assets.find(
     (asset) =>
-      asset.type === 'image' &&
-      !!asset.relativePath &&
-      normalizeRel(asset.relativePath) === key
+      asset.type === 'image' && !!asset.relativePath && normalizeRel(asset.relativePath) === key
   )
   if (existing) {
     return {
@@ -126,8 +123,7 @@ function resolveElementName(doc: GraphDocument, output: GraphNode, fallback: str
   const elementId = readWorldElementIdFromNodeParams(output.params)
   if (elementId) {
     const titled = doc.nodes.find(
-      (node) =>
-        readWorldElementIdFromNodeParams(node.params) === elementId && !!node.title?.trim()
+      (node) => readWorldElementIdFromNodeParams(node.params) === elementId && !!node.title?.trim()
     )
     if (titled?.title?.trim()) return titled.title.trim()
   }

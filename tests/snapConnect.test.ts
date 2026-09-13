@@ -125,13 +125,17 @@ describe('resolveSnapConnectEdges', () => {
   it('allows a second output to connect into an already-fed input port', () => {
     const a = createNodeFromType('asset.screenplay', { x: 0, y: 0 }, { id: 'a' })
     const b = createNodeFromType('asset.screenplay', { x: 0, y: 400 }, { id: 'b' })
-    const note = createNodeFromType('graph.boundary.output', { x: 200, y: 0 }, {
-      id: 'bout',
-      params: {
-        hostBoundaryPort: { portId: 'out', dataType: 'text', multiple: false },
-        previewCollapsed: false
+    const note = createNodeFromType(
+      'graph.boundary.output',
+      { x: 200, y: 0 },
+      {
+        id: 'bout',
+        params: {
+          hostBoundaryPort: { portId: 'out', dataType: 'text', multiple: false },
+          previewCollapsed: false
+        }
       }
-    })
+    )
     const aSize = getNodeSize(a)
     const inCenter = getNodePortCenter(note, 'left', 'in')
     a.position = { x: inCenter.x - aSize.w - 12, y: 0 }

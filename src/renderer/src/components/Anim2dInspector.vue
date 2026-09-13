@@ -1,8 +1,5 @@
 <template>
-  <div
-    v-if="node"
-    class="node-inspector"
-  >
+  <div v-if="node" class="node-inspector">
     <div class="head">
       <h2>{{ displayTitle }}</h2>
     </div>
@@ -28,7 +25,7 @@
           step="1"
           :value="state.rows"
           @change="onRowsChange"
-        >
+        />
       </label>
       <label class="field">
         <span>{{ t('graph.anim2d.cols') }}</span>
@@ -39,15 +36,11 @@
           step="1"
           :value="state.cols"
           @change="onColsChange"
-        >
+        />
       </label>
       <label class="field field-key">
         <span>{{ t('graph.anim2d.bgKey') }}</span>
-        <select
-          :value="keyColor"
-          class="key-select"
-          @change="onKeyColorChange"
-        >
+        <select :value="keyColor" class="key-select" @change="onKeyColorChange">
           <option value="">
             {{ t('graph.anim2d.bgKeyNone') }}
           </option>
@@ -60,85 +53,43 @@
         </select>
       </label>
     </div>
-    <p
-      v-if="keyColor"
-      class="hint"
-    >
+    <p v-if="keyColor" class="hint">
       {{ t('graph.anim2d.bgKeyHint') }}
     </p>
 
     <label class="field field-key">
       <span>{{ t('graph.anim2d.runGifFps') }}</span>
-      <select
-        :value="gifFps"
-        class="key-select"
-        @change="onGifFpsChange"
-      >
+      <select :value="gifFps" class="key-select" @change="onGifFpsChange">
         <option :value="0">
           {{ t('graph.anim2d.runGifOff') }}
         </option>
-        <option
-          v-for="f in FPS_OPTIONS"
-          :key="f"
-          :value="f"
-        >{{ f }}</option>
+        <option v-for="f in FPS_OPTIONS" :key="f" :value="f">{{ f }}</option>
       </select>
     </label>
-    <p
-      v-if="gifFps > 0"
-      class="hint"
-    >
+    <p v-if="gifFps > 0" class="hint">
       {{ t('graph.anim2d.runGifHint') }}
     </p>
-    <p
-      v-if="gifOutput"
-      class="hint"
-    >
+    <p v-if="gifOutput" class="hint">
       {{ gifOutput }}
     </p>
 
-    <section
-      v-if="cells.length > 1"
-      class="anim-section"
-      :aria-label="t('graph.anim2d.preview')"
-    >
+    <section v-if="cells.length > 1" class="anim-section" :aria-label="t('graph.anim2d.preview')">
       <div class="anim-preview">
-        <img
-          :src="cells[activeIndex]?.dataUrl"
-          alt=""
-        >
+        <img :src="cells[activeIndex]?.dataUrl" alt="" />
         <span class="anim-frame-badge">{{ activeIndex + 1 }}/{{ cells.length }}</span>
       </div>
       <div class="anim-bar">
-        <button
-          type="button"
-          class="anim-play"
-          @click="togglePlay"
-        >
+        <button type="button" class="anim-play" @click="togglePlay">
           {{ playing ? t('graph.anim2d.pause') : t('graph.anim2d.play') }}
         </button>
         <label class="anim-field">
           <span>{{ t('graph.anim2d.fps') }}</span>
-          <select
-            :value="fps"
-            class="anim-fps"
-            :disabled="playing"
-            @change="onFpsChange"
-          >
-            <option
-              v-for="f in FPS_OPTIONS"
-              :key="f"
-              :value="f"
-            >{{ f }}</option>
+          <select :value="fps" class="anim-fps" :disabled="playing" @change="onFpsChange">
+            <option v-for="f in FPS_OPTIONS" :key="f" :value="f">{{ f }}</option>
           </select>
         </label>
         <label class="anim-loop">
-          <input
-            type="checkbox"
-            :checked="loop"
-            :disabled="playing"
-            @change="onLoopChange"
-          >
+          <input type="checkbox" :checked="loop" :disabled="playing" @change="onLoopChange" />
           <span>{{ t('graph.anim2d.loop') }}</span>
         </label>
         <button
@@ -151,16 +102,10 @@
           {{ gifBusy ? t('graph.anim2d.exportGifBusy') : t('graph.anim2d.exportGif') }}
         </button>
       </div>
-      <p
-        v-if="gifError"
-        class="hint err"
-      >
+      <p v-if="gifError" class="hint err">
         {{ gifError }}
       </p>
-      <p
-        v-else
-        class="hint"
-      >
+      <p v-else class="hint">
         {{ gifStatus || t('graph.anim2d.exportGifNote', { fps }) }}
       </p>
       <div class="frame-grid">
@@ -173,39 +118,21 @@
           :title="cell.key"
           @click="seekTo(index)"
         >
-          <img
-            :src="cell.dataUrl"
-            alt=""
-            loading="lazy"
-            decoding="async"
-          >
+          <img :src="cell.dataUrl" alt="" loading="lazy" decoding="async" />
           <span class="frame-index">{{ index + 1 }}</span>
         </button>
       </div>
     </section>
-    <p
-      v-else-if="gridLoading"
-      class="hint"
-    >
+    <p v-else-if="gridLoading" class="hint">
       {{ t('graph.anim2d.loading') }}
     </p>
-    <p
-      v-else
-      class="hint"
-    >
+    <p v-else class="hint">
       {{ t('graph.anim2d.emptyPreview') }}
     </p>
 
-    <GraphNodeOutputPreview
-      v-if="hostId"
-      :node="node"
-      :host-id="hostId"
-    />
+    <GraphNodeOutputPreview v-if="hostId" :node="node" :host-id="hostId" />
   </div>
-  <div
-    v-else
-    class="node-inspector empty"
-  >
+  <div v-else class="node-inspector empty">
     {{ t('graph.inspector.node.empty') }}
   </div>
 
@@ -258,7 +185,7 @@ const node = computed(() => {
 
 const hostId = computed(() => {
   const selection = editor.selection.current.value
-  return selection.kind === 'graph.node' ? selection.hostId ?? '' : ''
+  return selection.kind === 'graph.node' ? (selection.hostId ?? '') : ''
 })
 
 const { hasInPort, runStatus, isGraphRunning, blocked, toggleRun } = useGraphNodeRun(node)
@@ -268,9 +195,7 @@ const displayTitle = useNodeDisplayTitle(node, typeLabel)
 const state = computed(() =>
   node.value ? readAnim2dFromNode(node.value.params) : { rows: 1, cols: 4 }
 )
-const keyColor = computed(() =>
-  node.value ? readAnimKeyColorFromNode(node.value.params) : ''
-)
+const keyColor = computed(() => (node.value ? readAnimKeyColorFromNode(node.value.params) : ''))
 
 function clampDim(n: number): number {
   return Math.min(ANIM2D_MAX_DIM, Math.max(1, Math.floor(n) || 1))
@@ -360,16 +285,19 @@ function startPlayback(): void {
   if (!cells.value.length) return
   playing.value = true
   clearFrameTimer()
-  frameTimer = setInterval(() => {
-    const count = cells.value.length
-    if (!count) return
-    if (activeIndex.value + 1 >= count) {
-      if (loop.value) activeIndex.value = 0
-      else stopPlayback()
-    } else {
-      activeIndex.value += 1
-    }
-  }, Math.max(1, Math.round(1000 / fps.value)))
+  frameTimer = setInterval(
+    () => {
+      const count = cells.value.length
+      if (!count) return
+      if (activeIndex.value + 1 >= count) {
+        if (loop.value) activeIndex.value = 0
+        else stopPlayback()
+      } else {
+        activeIndex.value += 1
+      }
+    },
+    Math.max(1, Math.round(1000 / fps.value))
+  )
 }
 
 function togglePlay(): void {
@@ -485,8 +413,7 @@ async function onGifSaveConfirm(payload: { name: string; folderId: string | null
 
 async function resolveGridImageUrl(): Promise<string> {
   const grid = node.value?.params?.animGridImage as
-    | { dataUrl?: string; relativePath?: string }
-    | undefined
+    { dataUrl?: string; relativePath?: string } | undefined
   if (!grid) return ''
   if (grid.dataUrl?.trim()) return grid.dataUrl.trim()
   if (grid.relativePath?.trim()) {
@@ -550,8 +477,7 @@ watch(
     () => readAnimKeyColorFromNode(node.value?.params),
     () => {
       const grid = node.value?.params?.animGridImage as
-        | { dataUrl?: string; relativePath?: string }
-        | undefined
+        { dataUrl?: string; relativePath?: string } | undefined
       return grid?.dataUrl?.slice(0, 48) ?? grid?.relativePath ?? ''
     }
   ],

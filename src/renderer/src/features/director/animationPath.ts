@@ -75,7 +75,8 @@ export function finalizeDrawnPath(
     return { kind, points: [points[0], points[1]], closed: false }
   }
   if (points.length < 2) return null
-  const cleaned = kind === 'pencil' ? simplifyStrokePoints(points, 0.08, 64) : points.map((p) => ({ ...p }))
+  const cleaned =
+    kind === 'pencil' ? simplifyStrokePoints(points, 0.08, 64) : points.map((p) => ({ ...p }))
   if (cleaned.length < 2) return null
   return {
     kind,
@@ -101,10 +102,7 @@ export function simplifyStrokePoints(
     }
   }
   const end = points[points.length - 1]
-  if (
-    result.length === 1 ||
-    Math.hypot(end.x - last.x, end.y - last.y, end.z - last.z) > 1e-6
-  ) {
+  if (result.length === 1 || Math.hypot(end.x - last.x, end.y - last.y, end.z - last.z) > 1e-6) {
     result.push({ ...end })
   }
   if (result.length <= maxPoints) return result
@@ -168,20 +166,10 @@ function buildCurve(path: DirectorAnimPath): THREE.Curve<THREE.Vector3> | null {
   if (bezier) return bezier
   // 铅笔/钢笔：用 chordal + 低张力，更贴近手绘，减少过冲
   if (path.kind === 'pencil' || path.kind === 'pen') {
-    return new THREE.CatmullRomCurve3(
-      path.points.map(toVec3),
-      false,
-      'chordal',
-      0.15
-    )
+    return new THREE.CatmullRomCurve3(path.points.map(toVec3), false, 'chordal', 0.15)
   }
   const closed = path.closed === true || path.kind === 'circle' || path.kind === 'rect'
-  return new THREE.CatmullRomCurve3(
-    path.points.map(toVec3),
-    closed,
-    'catmullrom',
-    0.5
-  )
+  return new THREE.CatmullRomCurve3(path.points.map(toVec3), closed, 'catmullrom', 0.5)
 }
 
 export function sampleAnimPath(
@@ -257,7 +245,10 @@ export function rotationFromPathTangent(
   return { x: 0, y, z: 0 }
 }
 
-export function buildPathLineGeometry(path: DirectorAnimPath, divisions = 128): THREE.BufferGeometry {
+export function buildPathLineGeometry(
+  path: DirectorAnimPath,
+  divisions = 128
+): THREE.BufferGeometry {
   const curve = buildCurve(path)
   if (!curve) {
     const geo = new THREE.BufferGeometry()
@@ -321,7 +312,10 @@ export function bakeKeyframesFromPath(
 ): DirectorAnimKeyframe[] {
   const span = Math.max(0.1, end - start)
   const closed = path.closed === true || path.kind === 'circle' || path.kind === 'rect'
-  let count = Math.min(24, Math.max(2, path.kind === 'line' ? 2 : Math.ceil(path.points.length / 2)))
+  let count = Math.min(
+    24,
+    Math.max(2, path.kind === 'line' ? 2 : Math.ceil(path.points.length / 2))
+  )
   if (path.kind === 'circle' || path.kind === 'rect') count = Math.min(16, Math.max(8, count))
   if (path.kind === 'pencil' || path.kind === 'pen') {
     count = Math.min(32, Math.max(6, Math.round(path.points.length * 0.6)))

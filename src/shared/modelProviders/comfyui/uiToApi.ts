@@ -223,7 +223,9 @@ function expandSubgraph(
   }
 
   const outputs: Array<[string, number] | undefined> = []
-  for (const link of (def.links ?? []).map(parseLink).filter((row): row is UiLink => Boolean(row))) {
+  for (const link of (def.links ?? [])
+    .map(parseLink)
+    .filter((row): row is UiLink => Boolean(row))) {
     if (link.target_id !== -20) continue
     outputs[link.target_slot] = resolveOrigin(
       link.origin_id,
@@ -236,7 +238,9 @@ function expandSubgraph(
 }
 
 export function isComfyUiGraphWorkflow(raw: unknown): boolean {
-  return Boolean(raw && typeof raw === 'object' && Array.isArray((raw as { nodes?: unknown }).nodes))
+  return Boolean(
+    raw && typeof raw === 'object' && Array.isArray((raw as { nodes?: unknown }).nodes)
+  )
 }
 
 /** 把画布保存的 UI JSON（含 subgraph）转成 API prompt。 */

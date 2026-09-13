@@ -9,7 +9,10 @@ const RELATIVE_PATH_KEYS = new Set(['relativePath', 'previewRelativePath'])
 
 /** 规范化为工程相对 POSIX 路径；非法则返回空串 */
 export function normalizePackableRelativePath(raw?: string | null): string {
-  const posix = (raw ?? '').trim().replace(/\\/g, '/').replace(/^\.\/+/, '')
+  const posix = (raw ?? '')
+    .trim()
+    .replace(/\\/g, '/')
+    .replace(/^\.\/+/, '')
   if (!posix) return ''
   if (posix.includes('\0') || posix.includes('..')) return ''
   if (posix.startsWith('/') || /^[a-zA-Z]:/.test(posix)) return ''

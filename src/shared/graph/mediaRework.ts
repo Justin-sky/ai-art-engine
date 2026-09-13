@@ -114,9 +114,7 @@ export function shouldMediaReworkContinue(state: MediaReworkState): boolean {
  * 从全部轮次里挑最优产物：优先 PASS，其次质检均分最高，最后退回最新一轮。
  * 返工的价值是「多试取优」，此前只保留最后一轮，等于花了 N 倍成本却可能拿到最差的一张。
  */
-export function selectBestIteration(
-  state: MediaReworkState
-): MediaReworkIteration | null {
+export function selectBestIteration(state: MediaReworkState): MediaReworkIteration | null {
   const rounds = (state.iterations ?? []).filter((it) => it.result !== 'UNDECIDED')
   if (!rounds.length) return null
   const passed = rounds.filter((it) => it.result === 'PASS')
@@ -264,9 +262,7 @@ export function parseMediaReworkState(raw: string | null | undefined): MediaRewo
   const cost = Array.isArray(obj.cost)
     ? obj.cost.filter(
         (it): it is MediaReworkCostEntry =>
-          !!it &&
-          typeof it === 'object' &&
-          typeof (it as MediaReworkCostEntry).attempt === 'number'
+          !!it && typeof it === 'object' && typeof (it as MediaReworkCostEntry).attempt === 'number'
       )
     : []
   const undecidedStreakRaw = obj.undecidedStreak

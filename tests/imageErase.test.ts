@@ -14,9 +14,7 @@ describe('imageErase', () => {
   })
 
   it('builds erase / object-removal prompt', () => {
-    const p = buildEraseUserPrompt(
-      normalizeImageErase({ prompt: 'remove the person' })
-    )
+    const p = buildEraseUserPrompt(normalizeImageErase({ prompt: 'remove the person' }))
     expect(p).toContain('Erase')
     expect(p).toContain('remove the person')
     expect(p).toContain('background')

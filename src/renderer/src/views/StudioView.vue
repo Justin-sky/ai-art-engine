@@ -1,20 +1,11 @@
 <template>
-  <div
-    v-if="!project.isOpen"
-    class="empty"
-  >
+  <div v-if="!project.isOpen" class="empty">
     <p>{{ t('studio.noProject') }}</p>
-    <button
-      class="primary"
-      @click="router.push('/')"
-    >
+    <button class="primary" @click="router.push('/')">
       {{ t('studio.backHome') }}
     </button>
   </div>
-  <div
-    v-else
-    class="studio"
-  >
+  <div v-else class="studio">
     <div class="studio-toolbar">
       <span class="hint">{{ t('studio.toolbar.hint') }}</span>
       <button
@@ -52,10 +43,7 @@
         @click="taskStore.openDialog(tasksBtnEl)"
       >
         {{ t('studio.toolbar.tasks') }}
-        <span
-          v-if="busyCount > 0"
-          class="tasks-badge"
-        >
+        <span v-if="busyCount > 0" class="tasks-badge">
           {{ busyCount }}
         </span>
       </button>
@@ -67,10 +55,7 @@
         @click="runLogsStore.openDialog()"
       >
         {{ t('studio.toolbar.logs') }}
-        <span
-          v-if="runLogsStore.activeRunId"
-          class="tasks-badge live"
-        >·</span>
+        <span v-if="runLogsStore.activeRunId" class="tasks-badge live">·</span>
       </button>
       <div class="layout-menu">
         <button
@@ -84,10 +69,7 @@
           @click="toggleLayoutMenu"
         >
           {{ t('studio.layout.menu') }}
-          <span
-            class="layout-caret"
-            aria-hidden="true"
-          >▾</span>
+          <span class="layout-caret" aria-hidden="true">▾</span>
         </button>
         <Teleport to="body">
           <div
@@ -108,28 +90,19 @@
               :aria-checked="preset.id === layouts.activeId"
               @click="onLayoutMenuSelect(preset.id)"
             >
-              <span
-                class="layout-check"
-                aria-hidden="true"
-              >{{
+              <span class="layout-check" aria-hidden="true">{{
                 preset.id === layouts.activeId ? '✓' : ''
               }}</span>
               <span class="layout-item-label">{{ presetLabel(preset) }}</span>
             </button>
-            <div
-              class="layout-menu-sep"
-              role="separator"
-            />
+            <div class="layout-menu-sep" role="separator" />
             <button
               type="button"
               class="layout-menu-item"
               role="menuitem"
               @click="onLayoutMenuAction(openSaveLayoutDialog)"
             >
-              <span
-                class="layout-check"
-                aria-hidden="true"
-              />
+              <span class="layout-check" aria-hidden="true" />
               <span class="layout-item-label">{{ t('studio.layout.save') }}…</span>
             </button>
             <button
@@ -139,26 +112,17 @@
               :disabled="!canDeleteActive"
               @click="onLayoutMenuAction(removeActiveLayout)"
             >
-              <span
-                class="layout-check"
-                aria-hidden="true"
-              />
+              <span class="layout-check" aria-hidden="true" />
               <span class="layout-item-label">{{ t('studio.layout.delete') }}</span>
             </button>
-            <div
-              class="layout-menu-sep"
-              role="separator"
-            />
+            <div class="layout-menu-sep" role="separator" />
             <button
               type="button"
               class="layout-menu-item"
               role="menuitem"
               @click="onLayoutMenuAction(triggerImportLayout)"
             >
-              <span
-                class="layout-check"
-                aria-hidden="true"
-              />
+              <span class="layout-check" aria-hidden="true" />
               <span class="layout-item-label">{{ t('studio.layout.fromFile') }}</span>
             </button>
             <button
@@ -167,10 +131,7 @@
               role="menuitem"
               @click="onLayoutMenuAction(exportActiveLayout)"
             >
-              <span
-                class="layout-check"
-                aria-hidden="true"
-              />
+              <span class="layout-check" aria-hidden="true" />
               <span class="layout-item-label">{{ t('studio.layout.toFile') }}</span>
             </button>
           </div>
@@ -182,7 +143,7 @@
         accept=".json,application/json"
         hidden
         @change="onImportFile"
-      >
+      />
     </div>
     <div class="studio-main">
       <DockviewVue
@@ -340,9 +301,7 @@ import {
 const PANEL_IDS = ['workspace-tools', 'workspace', 'assets', 'inspector'] as const
 const CENTER_PANEL_ID = 'workspace'
 const WORKSPACE_TOOLS_PANEL_ID = 'workspace-tools'
-const dockTheme = computed(() =>
-  themePreference.value === 'light' ? themeLight : themeDark
-)
+const dockTheme = computed(() => (themePreference.value === 'light' ? themeLight : themeDark))
 const WORKSPACE_TOOLS_WIDTH = 44
 const LOCKED_PANEL_IDS = new Set([CENTER_PANEL_ID, WORKSPACE_TOOLS_PANEL_ID])
 /** 默认布局：资产与参数同宽，各约占 25%（上限放宽以便更宽） */
@@ -691,7 +650,10 @@ function openSaveDialog(draftId: string): void {
   saveDialogOpen.value = true
 }
 
-async function onSaveDraftConfirm(payload: { name: string; folderId: string | null }): Promise<void> {
+async function onSaveDraftConfirm(payload: {
+  name: string
+  folderId: string | null
+}): Promise<void> {
   const draftId = saveDraftId.value
   if (!draftId) return
   try {
@@ -869,9 +831,14 @@ function addDefaultPanels(api: DockviewApi): void {
     minimumWidth: assetsInit.minimumWidth,
     ...(assetsInit.maximumWidth != null ? { maximumWidth: assetsInit.maximumWidth } : {})
   })
-  const inspectorInit = sidePanelInitialWidth('inspector', inspector, DEFAULT_LAYOUT_RATIO.minSide, {
-    useRememberedWidth: false
-  })
+  const inspectorInit = sidePanelInitialWidth(
+    'inspector',
+    inspector,
+    DEFAULT_LAYOUT_RATIO.minSide,
+    {
+      useRememberedWidth: false
+    }
+  )
   api.addPanel({
     id: 'inspector',
     component: 'inspector',
@@ -942,7 +909,11 @@ function ensureCorePanels(api: DockviewApi): void {
 
   if (!api.getPanel('inspector')) {
     const assetsRef = api.getPanel('assets')?.id ?? centerId
-    const inspectorInit = sidePanelInitialWidth('inspector', inspector, DEFAULT_LAYOUT_RATIO.minSide)
+    const inspectorInit = sidePanelInitialWidth(
+      'inspector',
+      inspector,
+      DEFAULT_LAYOUT_RATIO.minSide
+    )
     api.addPanel({
       id: 'inspector',
       component: 'inspector',
@@ -1184,9 +1155,7 @@ function closePanels(api: DockviewApi, panels: readonly IDockviewPanel[]): void 
   }
 }
 
-type TabContextMenuItem =
-  | 'separator'
-  | { label: string; action: () => void }
+type TabContextMenuItem = 'separator' | { label: string; action: () => void }
 
 function getCloseTabMenuItems(
   api: DockviewApi,
@@ -1496,7 +1465,8 @@ onBeforeUnmount(() => {
   -ms-overflow-style: none;
 }
 
-.studio-main :deep(.studio-dock .dv-tabs-and-actions-container .dv-tabs-container::-webkit-scrollbar) {
+.studio-main
+  :deep(.studio-dock .dv-tabs-and-actions-container .dv-tabs-container::-webkit-scrollbar) {
   display: none;
   width: 0;
   height: 0;

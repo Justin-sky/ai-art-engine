@@ -1,4 +1,9 @@
-import { getNodePortCenter, type GraphEdge, type GraphNode, type GraphViewport } from '@shared/graph'
+import {
+  getNodePortCenter,
+  type GraphEdge,
+  type GraphNode,
+  type GraphViewport
+} from '@shared/graph'
 
 /** 画布连线路径样式（视图偏好，不写入 GraphEdge） */
 export type GraphEdgePathStyle = 'curve' | 'orthogonal' | 'hidden'
@@ -284,14 +289,16 @@ function outsideEdgeBounds(
     if (p.y > maxY) maxY = p.y
   }
   return (
-    px < minX - tolerance ||
-    px > maxX + tolerance ||
-    py < minY - tolerance ||
-    py > maxY + tolerance
+    px < minX - tolerance || px > maxX + tolerance || py < minY - tolerance || py > maxY + tolerance
   )
 }
 
-function distanceToEdgePath(g: EdgeScreenGeometry, px: number, py: number, samples: number): number {
+function distanceToEdgePath(
+  g: EdgeScreenGeometry,
+  px: number,
+  py: number,
+  samples: number
+): number {
   if (g.pathStyle === 'orthogonal' && g.points.length >= 2) {
     let best = Infinity
     for (let i = 1; i < g.points.length; i += 1) {
@@ -366,8 +373,18 @@ export function drawGraphEdges(
   tempEdge: TempEdgeScreen | TempEdgeScreen[] | null,
   opts: DrawEdgesOptions
 ): void {
-  const { dpr, width, height, offsetX, offsetY, zoom, selectedEdgeIds, flowEdgeIds, colors, reduceEffects } =
-    opts
+  const {
+    dpr,
+    width,
+    height,
+    offsetX,
+    offsetY,
+    zoom,
+    selectedEdgeIds,
+    flowEdgeIds,
+    colors,
+    reduceEffects
+  } = opts
   const pathStyle = opts.pathStyle ?? 'curve'
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   ctx.clearRect(0, 0, width, height)

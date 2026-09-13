@@ -95,7 +95,8 @@ const L_STORAGE_DELETED = defErr<{ label: string; bucket: string; key: string }>
 const L_STORAGE_DELETE_FAILED = defErr<{ bucket: string; key: string; reason: string }>(
   'storage.log.deleteFailed',
   ({ bucket, key, reason }) => `删除临时参考媒体失败：${bucket}/${key} — ${reason}`,
-  ({ bucket, key, reason }) => `Failed to delete temporary reference media: ${bucket}/${key} — ${reason}`
+  ({ bucket, key, reason }) =>
+    `Failed to delete temporary reference media: ${bucket}/${key} — ${reason}`
 )
 
 export interface ObjectStorageLogEntry {
@@ -150,26 +151,25 @@ function bufferFromDataUrl(dataUrl: string): { buffer: Buffer; ext: string } {
   const buffer = match[2]
     ? Buffer.from(payload, 'base64')
     : Buffer.from(decodeURIComponent(payload))
-  const ext =
-    mime.includes('mp4')
-      ? 'mp4'
-      : mime.includes('webm')
-        ? 'webm'
-        : mime.includes('quicktime') || mime.includes('mov')
-          ? 'mov'
-          : mime.includes('mpeg') || mime.includes('mp3')
-            ? 'mp3'
-            : mime.includes('wav')
-              ? 'wav'
-              : mime.includes('png')
-                ? 'png'
-                : mime.includes('jpeg') || mime.includes('jpg')
-                  ? 'jpg'
-                  : mime.includes('webp')
-                    ? 'webp'
-                    : mime.includes('gif')
-                      ? 'gif'
-                      : 'bin'
+  const ext = mime.includes('mp4')
+    ? 'mp4'
+    : mime.includes('webm')
+      ? 'webm'
+      : mime.includes('quicktime') || mime.includes('mov')
+        ? 'mov'
+        : mime.includes('mpeg') || mime.includes('mp3')
+          ? 'mp3'
+          : mime.includes('wav')
+            ? 'wav'
+            : mime.includes('png')
+              ? 'png'
+              : mime.includes('jpeg') || mime.includes('jpg')
+                ? 'jpg'
+                : mime.includes('webp')
+                  ? 'webp'
+                  : mime.includes('gif')
+                    ? 'gif'
+                    : 'bin'
   return { buffer, ext }
 }
 
@@ -206,7 +206,11 @@ const UPLOAD_CACHE_TTL_MS = 12 * 60 * 60 * 1000
 const uploadCache = new Map<string, UploadCacheEntry>()
 
 /** 本地文件 key：绝对路径 + size + mtime，文件未变即可复用 */
-function fileUploadCacheKey(absPath: string, providerId: string, bucket: string): string | undefined {
+function fileUploadCacheKey(
+  absPath: string,
+  providerId: string,
+  bucket: string
+): string | undefined {
   try {
     const st = statSync(absPath)
     return `file:${providerId}:${bucket}:${absPath}:${st.size}:${st.mtimeMs}`
@@ -488,4 +492,3 @@ export async function deleteUploads(
   }
   return logs
 }
-

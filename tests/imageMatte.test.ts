@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  buildMatteUserPrompt,
-  hasMatteMask,
-  normalizeImageMatte
-} from '../src/shared/graph'
+import { buildMatteUserPrompt, hasMatteMask, normalizeImageMatte } from '../src/shared/graph'
 
 describe('imageMatte', () => {
   it('normalizes defaults', () => {

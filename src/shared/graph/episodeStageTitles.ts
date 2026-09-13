@@ -19,10 +19,7 @@ export type EpisodeAgentStockTitle =
   (typeof EPISODE_AGENT_STOCK_TITLES)[keyof typeof EPISODE_AGENT_STOCK_TITLES]
 
 /** 分镜师 / 动画师生成步骤（不含导演审核） */
-export type EpisodeStageKey = Exclude<
-  keyof typeof EPISODE_AGENT_STOCK_TITLES,
-  'directorReview'
->
+export type EpisodeStageKey = Exclude<keyof typeof EPISODE_AGENT_STOCK_TITLES, 'directorReview'>
 
 /**
  * 各阶段的标题识别片段（小写比较）：英文为规范库存标题，中文保持旧行为的

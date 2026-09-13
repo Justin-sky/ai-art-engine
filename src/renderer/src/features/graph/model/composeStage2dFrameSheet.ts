@@ -31,7 +31,9 @@ export interface Stage2dFrameSheet {
 export async function composeStage2dFrameSheet(input: {
   frameUrls: string[]
 }): Promise<Stage2dFrameSheet | null> {
-  const urls = (input.frameUrls ?? []).map((url) => url?.trim()).filter((url): url is string => !!url)
+  const urls = (input.frameUrls ?? [])
+    .map((url) => url?.trim())
+    .filter((url): url is string => !!url)
   if (!urls.length) return null
   const images = await Promise.all(urls.map(loadSheetFrame))
   const sourceWidth = images[0].naturalWidth || 1
