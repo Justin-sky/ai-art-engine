@@ -1,8 +1,9 @@
 import { canConnectNodes, getNodePorts } from './ports'
 import { createNodeFromType } from './create'
+import { REFERENCE_PARAM_KEYS, sanitizeReferenceParams } from './referenceParams'
 import { listAddableNodeTypes } from './registry'
 import type { GraphAddScope } from './scopes'
-import type { GraphDocument, GraphEdge, GraphNode, GraphNodeTypeId } from './types'
+import type { GraphDocument, GraphEdge, GraphNode, GraphNodeParams, GraphNodeTypeId } from './types'
 
 /**
  * MCP graph_edit 的共享纯逻辑：把外部 Agent 提交的一组编辑操作应用到
@@ -90,6 +91,39 @@ function resolveEdgePorts(
   return null
 }
 
+/**
+ * 把 op.params 合并到节点上，并对参考图参数做可用性校验（与 GraphPlan 物化同一套口径）。
+ *
+ * - 校验用「合并后」的值：单独更新 styleImagesUseGlobal 时也要能看到节点已有的 styleImages，
+ *   否则会把「本地风格图 + 关掉全局风格」的合法组合误判成无风格；
+ * - 本次传入不可用时保留节点原值（有的话），不静默销毁既有参考图配置。
+ */
+function mergeNodeParams(
+  node: GraphNode,
+  incoming: Record<string, unknown> | undefined,
+  warnings: string[]
+): void {
+  if (!incoming || typeof incoming !== 'object') return
+  const before = (node.params ?? {}) as Record<string, unknown>
+  const merged = { ...before, ...incoming }
+  if (!REFERENCE_PARAM_KEYS.some((key) => key in incoming)) {
+    node.params = merged as GraphNodeParams
+    return
+  }
+  const sanitized = sanitizeReferenceParams(
+    merged as Partial<GraphNodeParams>,
+    node.id,
+    warnings
+  ) as Record<string, unknown>
+  for (const key of REFERENCE_PARAM_KEYS) {
+    if (key in sanitized || !(key in before)) continue
+    // 合并后不可用（含 styleImages 变空连带的开关回落）：保留原值，别让一次失败的写入抹掉既有配置
+    sanitized[key] = before[key]
+    warnings.push(`节点「${node.id}」${key} 本次改动无法生效，已保留原值`)
+  }
+  node.params = sanitized as GraphNodeParams
+}
+
 function applyOp(
   graph: GraphDocument,
   op: McpGraphEditOp,
@@ -105,9 +139,7 @@ function applyOp(
       const existing = op.nodeId ? findNode(graph, op.nodeId) : undefined
       if (op.nodeId && existing) {
         if (typeof op.title === 'string' && op.title.trim()) existing.title = op.title.trim()
-        if (op.params && typeof op.params === 'object') {
-          existing.params = { ...existing.params, ...op.params }
-        }
+        mergeNodeParams(existing, op.params, warnings)
         return `更新节点 ${existing.id}`
       }
       const node = createNodeFromType(
@@ -116,16 +148,14 @@ function applyOp(
           x: op.x ?? 0,
           y: op.y ?? 0
         },
-        {
-          title: op.title?.trim() || undefined,
-          params: op.params && typeof op.params === 'object' ? op.params : undefined
-        }
+        { title: op.title?.trim() || undefined }
       )
       if (op.nodeId) node.id = op.nodeId
       if (findNode(graph, node.id)) {
         warnings.push(`节点 id「${node.id}」已存在，已跳过新建`)
         return null
       }
+      mergeNodeParams(node, op.params, warnings)
       graph.nodes.push(node)
       return `新建节点 ${node.id}（${op.typeId}）`
     }
@@ -136,9 +166,7 @@ function applyOp(
         return null
       }
       if (typeof op.title === 'string' && op.title.trim()) node.title = op.title.trim()
-      if (op.params && typeof op.params === 'object') {
-        node.params = { ...node.params, ...op.params }
-      }
+      mergeNodeParams(node, op.params, warnings)
       return `更新节点 ${node.id}`
     }
     case 'node_delete': {

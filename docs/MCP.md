@@ -256,6 +256,11 @@ AiArtEngine 内置了一个 **MCP 工具服务**（MCP 是"模型上下文协议
   图放在结果的旁路字段里，不混进文本结果，也不会被审计日志记下 base64。
   预览与 `timeline_export` 走**同一条 ffmpeg 滤镜图**，所以「预览看到的就是成片」，不是另画一套近似预览；
   代价是它要真渲染：时间点越靠后解码越久（抽几帧比导出一次便宜得多，但不是瞬时）。
+- **写节点参数会被校验，不可用的参考图不会静默留下**：`workflow_commit` 与 `graph_edit` 共用一套参考图参数口径
+  （`styleImages` / `styleImagesUseGlobal` / `styleReferenceSubject` / `characterRefs`）——风格图条目须带 `libraryId`
+  或 `data:` 开头的 `dataUrl`，角色引用须带 `imageUrl`（只写名字解析不出参考图，需要先在节点检查器里绑定角色），
+  不可解析的条目会被丢弃并逐条列进返回的 `warnings`；`graph_edit` 按**合并后**的值校验，本次改动无法生效时
+  保留节点原值。写完计划 / 编辑后请看一眼 `warnings`，不要只看「成功」。
 - **低频参数透传**：`generate_*` 工具支持 `extraParams` 对象，把底层生成输入的全部字段
   （如图片 `seed` / `quality`、视频 `resolution` / `lastFrameImageUrl`）合并进生成请求；
   显式传参优先于透传值，内部回写绑定字段（graphBinding）会被自动剥离。

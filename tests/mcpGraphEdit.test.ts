@@ -155,3 +155,85 @@ describe('MCP_GRAPH_EDIT_SCOPE（清单工具与 graph_edit 同源）', () => {
     expect(result.warnings.some((warning) => warning.includes('不可添加'))).toBe(true)
   })
 })
+
+/**
+ * 参考图参数与 GraphPlan 物化同一套校验：放行 ≠ 可用。
+ * 远端只写名字 / 没有来源的风格图必须丢弃并告警，不能静默跑出没有参考图的生成。
+ */
+describe('applyGraphEditOps 参考图参数校验', () => {
+  it('node_upsert 保留可解析的参考图，丢弃不可解析的条目', () => {
+    const { graph } = buildSampleGraph()
+    const result = applyGraphEditOps(graph, [
+      {
+        op: 'node_upsert',
+        nodeId: 'img-2',
+        typeId: 'asset.image',
+        title: '参考图节点',
+        params: {
+          styleImagesUseGlobal: false,
+          styleReferenceSubject: 'ui',
+          styleImages: [{ libraryId: 'character-cinematic', name: '电影感' }, { name: '没有来源' }],
+          characterRefs: [
+            { name: '小明', imageUrl: 'Assets/World/Characters/hero.png' },
+            { name: '小红' }
+          ]
+        }
+      }
+    ])
+    const node = result.graph.nodes.find((item) => item.id === 'img-2')!
+    expect(node.params.styleImagesUseGlobal).toBe(false)
+    expect(node.params.styleReferenceSubject).toBe('ui')
+    expect(node.params.styleImages).toHaveLength(1)
+    expect(node.params.characterRefs).toEqual([
+      { name: '小明', imageUrl: 'Assets/World/Characters/hero.png' }
+    ])
+    expect(result.warnings.some((warning) => warning.includes('styleImages'))).toBe(true)
+    expect(result.warnings.some((warning) => warning.includes('characterRefs'))).toBe(true)
+  })
+
+  it('node_update 单独改 styleImagesUseGlobal 时按合并后的值校验', () => {
+    const { graph, byTitle } = buildSampleGraph()
+    const imgId = byTitle.get('分镜图')!
+    const seeded = applyGraphEditOps(graph, [
+      {
+        op: 'node_update',
+        nodeId: imgId,
+        params: { styleImages: [{ libraryId: 'character-cinematic' }] }
+      }
+    ])
+    expect(seeded.warnings).toEqual([])
+    // 只改开关：合并后本地风格图仍在，不能误判成「无风格」而把开关丢掉
+    const toggled = applyGraphEditOps(seeded.graph, [
+      { op: 'node_update', nodeId: imgId, params: { styleImagesUseGlobal: false } }
+    ])
+    expect(toggled.warnings).toEqual([])
+    const node = toggled.graph.nodes.find((item) => item.id === imgId)!
+    expect(node.params.styleImagesUseGlobal).toBe(false)
+    expect(node.params.styleImages).toHaveLength(1)
+  })
+
+  it('node_update 传入不可解析的风格图时保留原值并告警', () => {
+    const { graph, byTitle } = buildSampleGraph()
+    const imgId = byTitle.get('分镜图')!
+    const seeded = applyGraphEditOps(graph, [
+      {
+        op: 'node_update',
+        nodeId: imgId,
+        params: {
+          styleImages: [{ libraryId: 'character-cinematic', name: '电影感' }],
+          styleImagesUseGlobal: false
+        }
+      }
+    ])
+    expect(seeded.warnings).toEqual([])
+    const failed = applyGraphEditOps(seeded.graph, [
+      { op: 'node_update', nodeId: imgId, params: { styleImages: [{ name: '没有来源' }] } }
+    ])
+    const seededNode = seeded.graph.nodes.find((item) => item.id === imgId)!
+    const node = failed.graph.nodes.find((item) => item.id === imgId)!
+    expect(node.params.styleImages).toEqual(seededNode.params.styleImages)
+    expect(node.params.styleImagesUseGlobal).toBe(false)
+    expect(failed.warnings.some((warning) => warning.includes('styleImages'))).toBe(true)
+    expect(failed.warnings.some((warning) => warning.includes('已保留原值'))).toBe(true)
+  })
+})

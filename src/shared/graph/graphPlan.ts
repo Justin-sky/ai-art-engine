@@ -2,6 +2,7 @@ import { createNodeFromType } from './create'
 import { autoLayoutNodes } from './layout'
 import { normalizeScopedGraph } from './normalize'
 import { canConnectNodes, getNodePorts } from './ports'
+import { sanitizeReferenceParams } from './referenceParams'
 import { listAddableNodeTypes, type NodeTypeDefinition } from './registry'
 import type { GraphAddScope } from './scopes'
 import type { GraphDocument, GraphEdge, GraphNode, GraphNodeParams, GraphNodeTypeId } from './types'
@@ -90,7 +91,18 @@ const ALLOWED_PARAM_KEYS = new Set<keyof GraphNodeParams | string>([
   'motionCellIndex',
   'episodeScopeKey',
   'imageGridSplit',
-  'imageLayerSplit'
+  'imageLayerSplit',
+  /**
+   * 参考图参数：生成节点直接从 node.params 读取，但没有任何节点类型在 defaultParams 里声明它们
+   * （styleImages / styleImagesUseGlobal → resolveGenerateStyleImages；styleReferenceSubject →
+   * 风格参考追加语义，'ui' 允许复刻参考图界面语言；characterRefs → 注入 inputReferences）。
+   * 不登记在这里，物化时会被当作「未声明参数」丢掉，跑出来就是「提示词写了参考、API 没有参考图」。
+   * 放行只代表键合法，值是否可用由 sanitizeReferenceParams（./referenceParams，graph_edit 共用）校验。
+   */
+  'styleImages',
+  'styleImagesUseGlobal',
+  'styleReferenceSubject',
+  'characterRefs'
 ])
 
 export interface GraphPlanMediaModelDefaults {
@@ -348,7 +360,7 @@ export function materializeGraphPlan(
       },
       {
         title: spec.title?.trim() || undefined,
-        params
+        params: sanitizeReferenceParams(params, key, warnings)
       }
     )
     keyToId.set(key, node.id)

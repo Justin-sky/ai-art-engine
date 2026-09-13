@@ -217,6 +217,110 @@ describe('graphPlan materialize', () => {
     expect(anim.params.animCols).toBe(4)
   })
 
+  it('keeps resolvable style-reference params and drops unresolvable style images', () => {
+    const result = materializeGraphPlan(
+      {
+        nodes: [
+          {
+            key: 'img',
+            typeId: 'asset.image',
+            params: {
+              styleImagesUseGlobal: false,
+              styleReferenceSubject: 'ui',
+              styleImages: [
+                { libraryId: 'character-cinematic', name: '电影感' },
+                { name: '没有来源的图' }
+              ]
+            }
+          }
+        ],
+        edges: []
+      },
+      { scope: 'subgraphAsset', assetType: 'subgraph' }
+    )
+    expect(result.ok, result.error).toBe(true)
+    const img = result.document!.nodes.find((n) => n.typeId === 'asset.image')!
+    expect(img.params.styleImagesUseGlobal).toBe(false)
+    expect(img.params.styleReferenceSubject).toBe('ui')
+    expect(img.params.styleImages).toHaveLength(1)
+    expect(img.params.styleImages?.[0]).toMatchObject({
+      libraryId: 'character-cinematic',
+      name: '电影感'
+    })
+    expect(result.warnings.some((w) => w.includes('styleImages'))).toBe(true)
+  })
+
+  it('falls back to global style when local style images resolve to nothing', () => {
+    const result = materializeGraphPlan(
+      {
+        nodes: [
+          {
+            key: 'img',
+            typeId: 'asset.image',
+            params: { styleImagesUseGlobal: false, styleImages: [{ name: 'no-source' }] }
+          }
+        ],
+        edges: []
+      },
+      { scope: 'subgraphAsset', assetType: 'subgraph' }
+    )
+    expect(result.ok, result.error).toBe(true)
+    const img = result.document!.nodes.find((n) => n.typeId === 'asset.image')!
+    // 两条都回落：本地风格图清空 + 关掉全局风格的开关一起丢，避免「无风格但报成功」
+    expect(img.params.styleImages).toBeUndefined()
+    expect(img.params.styleImagesUseGlobal).toBeUndefined()
+    expect(result.warnings.some((w) => w.includes('回落使用工程全局风格'))).toBe(true)
+  })
+
+  it('rejects malformed style switches', () => {
+    const result = materializeGraphPlan(
+      {
+        nodes: [
+          {
+            key: 'img',
+            typeId: 'asset.image',
+            params: { styleImagesUseGlobal: 'yes', styleReferenceSubject: 'banner' }
+          }
+        ],
+        edges: []
+      },
+      { scope: 'subgraphAsset', assetType: 'subgraph' }
+    )
+    expect(result.ok, result.error).toBe(true)
+    const img = result.document!.nodes.find((n) => n.typeId === 'asset.image')!
+    expect(img.params.styleImagesUseGlobal).toBeUndefined()
+    expect(img.params.styleReferenceSubject).toBeUndefined()
+    expect(result.warnings.some((w) => w.includes('styleImagesUseGlobal'))).toBe(true)
+    expect(result.warnings.some((w) => w.includes('styleReferenceSubject'))).toBe(true)
+  })
+
+  it('keeps character refs only when they carry a resolvable imageUrl', () => {
+    const result = materializeGraphPlan(
+      {
+        nodes: [
+          {
+            key: 'img',
+            typeId: 'asset.image',
+            params: {
+              characterRefs: [
+                { name: '小明', imageUrl: 'Assets/World/Characters/hero.png' },
+                { name: '小红' }
+              ]
+            }
+          }
+        ],
+        edges: []
+      },
+      { scope: 'subgraphAsset', assetType: 'subgraph' }
+    )
+    expect(result.ok, result.error).toBe(true)
+    const img = result.document!.nodes.find((n) => n.typeId === 'asset.image')!
+    expect(img.params.characterRefs).toEqual([
+      { name: '小明', imageUrl: 'Assets/World/Characters/hero.png' }
+    ])
+    expect(result.warnings.some((w) => w.includes('characterRefs'))).toBe(true)
+  })
+
   it('materializes every curated preset seed plan', () => {
     for (const id of [
       'gameUaVideo',

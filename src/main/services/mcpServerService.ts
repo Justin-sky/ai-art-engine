@@ -1811,7 +1811,11 @@ const TOOL_DEFS: McpToolDef[] = [
                 description: 'node_upsert 必填，如 asset.image / play.script'
               },
               title: { type: 'string' },
-              params: { type: 'object', description: '节点参数（浅合并）' },
+              params: {
+                type: 'object',
+                description:
+                  '节点参数（与节点现有参数浅合并）。参考图参数会被校验：styleImages 条目须带 libraryId 或 data: 开头的 dataUrl，styleImagesUseGlobal=false 须同时给 styleImages，styleReferenceSubject 只能是 default / ui，characterRefs 条目须带 imageUrl（只写角色名解析不出参考图）；不可解析的值丢弃并记入 warnings'
+              },
               fromNodeId: { type: 'string' },
               toNodeId: { type: 'string' },
               fromPort: { type: 'string' },
