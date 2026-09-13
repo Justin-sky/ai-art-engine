@@ -36,3 +36,12 @@ jobs:
 
       - name: Check hardcoded CJK strings
         run: node scripts/check-hardcoded-cjk.mjs --enforce
+
+      - name: Build renderer & main bundles
+        run: npm run build
+
+      # 主进程 / preload 的第三方依赖是外置的，若某个包被 electron-builder.yml 从 asar
+      # 排除（那份清单按 dsh 依赖闭包审计生成），打包版启动就会 require 不到并挂住 ——
+      # 6.1.1 的 chokidar 正是这样让冒烟测试卡在「未就绪」。这里在打包前拦住同类改动。
+      - name: Check packaged externals
+        run: node scripts/check-pack-externals.mjs

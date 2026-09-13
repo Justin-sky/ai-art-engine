@@ -201,19 +201,33 @@ jobs:
 
           # 就绪探活：主进程在首个窗口加载完成后写就绪文件（见 src/main/smokeReady.ts），
           # 比固定 sleep 更能证明「UI 真的起来了」；同时监测进程是否提前退出。
+          # 主进程 stdout / stderr 落文件：启动期抛错（例如 asar 内 require 不到模块）时
+          # Electron 会把异常与堆栈写到 stderr，失败时回显出来，免得只看到「未就绪」。
           $readyFile = Join-Path $env:RUNNER_TEMP 'aiartengine-ready-win.json'
+          $appLog = Join-Path $env:RUNNER_TEMP 'aiartengine-smoke-app.log'
+          $appErr = Join-Path $env:RUNNER_TEMP 'aiartengine-smoke-app.err.log'
+          function Show-AppOutput {
+            if (Test-Path $appLog) { Write-Host '--- app stdout ---'; Get-Content $appLog -Raw }
+            if (Test-Path $appErr) { Write-Host '--- app stderr ---'; Get-Content $appErr -Raw }
+          }
           Remove-Item $readyFile -ErrorAction SilentlyContinue
           $env:AIART_SMOKE_READY_FILE = $readyFile
-          $app = Start-Process -FilePath $exe -PassThru
+          $app = Start-Process -FilePath $exe -PassThru -RedirectStandardOutput $appLog -RedirectStandardError $appErr
           $ready = $false
           $deadline = (Get-Date).AddSeconds(60)
           while ((Get-Date) -lt $deadline) {
             $app.Refresh()
-            if ($app.HasExited) { throw "SMOKE_FAIL app exited early with code $($app.ExitCode)" }
+            if ($app.HasExited) {
+              Show-AppOutput
+              throw "SMOKE_FAIL app exited early with code $($app.ExitCode)"
+            }
             if (Test-Path $readyFile) { $ready = $true; break }
             Start-Sleep -Milliseconds 500
           }
-          if (-not $ready) { throw 'SMOKE_FAIL app did not reach ready state within 60s' }
+          if (-not $ready) {
+            Show-AppOutput
+            throw 'SMOKE_FAIL app did not reach ready state within 60s'
+          }
           Write-Host "SMOKE_OK app ready: $(Get-Content $readyFile -Raw)"
           Stop-Process -Id $app.Id -Force
           Remove-Item Env:AIART_SMOKE_READY_FILE -ErrorAction SilentlyContinue
