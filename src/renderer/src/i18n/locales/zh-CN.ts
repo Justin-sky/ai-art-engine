@@ -2688,6 +2688,7 @@ export default {
         imageRefine: '图片精修',
         imageEdit: '图片编辑',
         episode: '剧集',
+        filmTv: '影视',
         text: '文本',
         prompt: '提示词',
         game: '游戏',

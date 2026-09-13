@@ -521,7 +521,7 @@
             </button>
             <div
               v-if="ctxSubmenu === group.id"
-              class="ctx-submenu-panel"
+              class="ctx-submenu-panel ctx-root-panel"
               :class="{
                 'open-left': submenuFlip.left,
                 'open-up': submenuFlip.up
@@ -539,6 +539,49 @@
                   item.portTypeLabel
                 }}</span>
               </button>
+              <!-- 影视：父级只作二级入口，子分组再悬浮出一层节点面板 -->
+              <div
+                v-for="child in group.children ?? []"
+                :key="child.id"
+                class="ctx-submenu ctx-nested-submenu"
+                @pointerenter="openNestedCtxSubmenu(child.id)"
+                @pointerleave="closeNestedCtxSubmenu(child.id)"
+              >
+                <button
+                  type="button"
+                  class="ctx-submenu-trigger"
+                  :class="{
+                    open: ctxNestedSubmenu === child.id,
+                    pinned: ctxNestedSubmenuPinned && ctxNestedSubmenu === child.id
+                  }"
+                  @click="toggleNestedCtxSubmenu(child.id)"
+                >
+                  <span class="ctx-icon"><WorkspaceItemIcon :icon="child.icon" :size="14" /></span>
+                  <span class="ctx-label">{{ child.label }}</span>
+                  <span class="ctx-submenu-arrow" aria-hidden="true">›</span>
+                </button>
+                <div
+                  v-if="ctxNestedSubmenu === child.id"
+                  class="ctx-submenu-panel ctx-nested-panel"
+                  :class="{
+                    'open-left': nestedSubmenuFlip.left,
+                    'open-up': nestedSubmenuFlip.up
+                  }"
+                >
+                  <button
+                    v-for="item in child.items"
+                    :key="`${item.typeId}:${item.title ?? ''}`"
+                    type="button"
+                    @click="addNodeFromMenu(item)"
+                  >
+                    <span class="ctx-icon"><WorkspaceItemIcon :icon="item.icon" :size="14" /></span>
+                    <span class="ctx-label">{{ item.label }}</span>
+                    <span v-if="item.portTypeLabel" class="ctx-item-type">{{
+                      item.portTypeLabel
+                    }}</span>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
           <div
@@ -917,7 +960,12 @@ import { createGraphRunLogBridge } from '../features/graph/model/graphRunLogBrid
 import { formatProviderErrorForLog } from '../features/graph/model/formatProviderErrorForLog'
 import { useGraphRunLogsStore } from '../stores/graphRunLogs'
 import { toPlain } from '../utils/toPlain'
-import { placeFixedMenu } from '../utils/clampFixedMenuPosition'
+import { measureSubmenuFlip, placeFixedMenu } from '../utils/clampFixedMenuPosition'
+import {
+  CONTEXT_MENU_NESTED_PARENT_ID,
+  nestContextMenuResourceGroups,
+  type ContextMenuResourceGroup
+} from '../features/graph/contextMenuGroups'
 
 const { t, graphTypeLabel, assetTypeLabel, locale } = useStudioI18n()
 const project = useProjectStore()
@@ -1619,8 +1667,12 @@ const lastPointerClient = { x: 0, y: 0 }
 const ctxSubmenu = ref<string | null>(null)
 /** 点击分组后固定子菜单，pointerleave 不再收起（拉线添加与右键同一套） */
 const ctxSubmenuPinned = ref(false)
+/** 影视二级分组（三级悬浮面板）当前展开项 */
+const ctxNestedSubmenu = ref<string | null>(null)
+const ctxNestedSubmenuPinned = ref(false)
 const ctxMenuEl = ref<HTMLElement | null>(null)
 const submenuFlip = ref({ left: false, up: false })
+const nestedSubmenuFlip = ref({ left: false, up: false })
 type CtxMenuState = {
   x: number
   y: number
@@ -3275,6 +3327,12 @@ type ResourceMenuGroupId =
   | 'agent'
   | 'ad'
 
+/** 菜单分组：影视父级 id 不是资产类型，只作二级入口，故不进 ResourceMenuGroupId（否则文案窄化会漏到 assetTypeLabel） */
+type ResourceMenuGroup = ContextMenuResourceGroup<
+  AddableMenuItem,
+  ResourceMenuGroupId | typeof CONTEXT_MENU_NESTED_PARENT_ID
+>
+
 /** 右键菜单按资源类型分组；组内顺序即展示顺序 */
 const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
   id: ResourceMenuGroupId
@@ -3494,7 +3552,8 @@ const rootAddableMenuItems = computed(() =>
     .sort((a, b) => compareNames(a.label, b.label))
 )
 
-const resourceAddableMenuGroups = computed(() => {
+/** 资源分组完整清单（含影视的子分组），根菜单与二级菜单共用这一份派生 */
+const resourceMenuGroups = computed((): ResourceMenuGroup[] => {
   const byTypeId = new Map(addableMenuItems.value.map((item) => [item.typeId, item]))
   return CONTEXT_MENU_RESOURCE_GROUPS.map((group) => {
     const items = group.typeIds
@@ -3549,6 +3608,18 @@ const resourceAddableMenuGroups = computed(() => {
     .filter((group) => group.items.length > 0)
     .sort((a, b) => compareNames(a.label, b.label))
 })
+
+/**
+ * 根菜单的资源分组：影视的四个分组收进「影视」父级（二级嵌套），其余原样平铺。
+ * 名称排序在嵌套之后做——父级与其余分组一起排，二级分组保持声明顺序（剧本 → 剧集 → 世界元素 → 场）。
+ */
+const resourceAddableMenuGroups = computed((): ResourceMenuGroup[] =>
+  nestContextMenuResourceGroups(resourceMenuGroups.value, {
+    // 胶片图标：不用 🎬（motion 图标会被 WorkspaceItemIcon 放大渲染）
+    label: t('graph.context.groups.filmTv'),
+    icon: '🎞️'
+  }).sort((a, b) => compareNames(a.label, b.label))
+)
 
 const connectMenuPortTypeLabel = computed(() => {
   const dataType = resolveConnectMenuDataType()
@@ -3988,11 +4059,19 @@ function menuAddableNodeTypes() {
   return listAddableNodeTypes(graphScope.value)
 }
 
+/** 收起二级（影视子分组）面板；收起父面板或切到别的父分组时一并清理 */
+function resetNestedCtxSubmenu(): void {
+  ctxNestedSubmenu.value = null
+  ctxNestedSubmenuPinned.value = false
+  nestedSubmenuFlip.value = { left: false, up: false }
+}
+
 function closeCtxMenu(): void {
   ctxMenu.value = null
   ctxSubmenu.value = null
   ctxSubmenuPinned.value = false
   submenuFlip.value = { left: false, up: false }
+  resetNestedCtxSubmenu()
 }
 
 // Menu item actions must stay a single expression: prettier (semi: false) strips the
@@ -4008,6 +4087,7 @@ async function showCtxMenu(next: CtxMenuState): Promise<void> {
   ctxSubmenu.value = null
   ctxSubmenuPinned.value = false
   submenuFlip.value = { left: false, up: false }
+  resetNestedCtxSubmenu()
   ctxMenu.value = next
   await nextTick()
   const el = ctxMenuEl.value
@@ -4021,6 +4101,8 @@ async function showCtxMenu(next: CtxMenuState): Promise<void> {
 function openCtxSubmenu(kind: string): void {
   // 已固定时悬停其他分组不抢开，避免误关已点开的面板
   if (ctxSubmenuPinned.value && ctxSubmenu.value && ctxSubmenu.value !== kind) return
+  // 换组时收起上一组的二级面板；同组内悬停不打断已展开的子分组
+  if (ctxSubmenu.value !== kind) resetNestedCtxSubmenu()
   ctxSubmenu.value = kind
   void repositionCtxSubmenu()
 }
@@ -4031,8 +4113,10 @@ function toggleCtxSubmenu(kind: string): void {
     ctxSubmenu.value = null
     ctxSubmenuPinned.value = false
     submenuFlip.value = { left: false, up: false }
+    resetNestedCtxSubmenu()
     return
   }
+  if (ctxSubmenu.value !== kind) resetNestedCtxSubmenu()
   ctxSubmenuPinned.value = true
   ctxSubmenu.value = kind
   void repositionCtxSubmenu()
@@ -4043,20 +4127,54 @@ function closeCtxSubmenu(kind: string): void {
   if (ctxSubmenu.value === kind) {
     ctxSubmenu.value = null
     submenuFlip.value = { left: false, up: false }
+    resetNestedCtxSubmenu()
+  }
+}
+
+/** 影视二级分组（三级悬浮面板）：与一级同款悬停展开 / 点击固定交互 */
+function openNestedCtxSubmenu(kind: string): void {
+  if (ctxNestedSubmenuPinned.value && ctxNestedSubmenu.value && ctxNestedSubmenu.value !== kind) {
+    return
+  }
+  ctxNestedSubmenu.value = kind
+  void repositionNestedCtxSubmenu()
+}
+
+function toggleNestedCtxSubmenu(kind: string): void {
+  if (ctxNestedSubmenu.value === kind && ctxNestedSubmenuPinned.value) {
+    ctxNestedSubmenu.value = null
+    ctxNestedSubmenuPinned.value = false
+    nestedSubmenuFlip.value = { left: false, up: false }
+    return
+  }
+  ctxNestedSubmenuPinned.value = true
+  ctxNestedSubmenu.value = kind
+  void repositionNestedCtxSubmenu()
+}
+
+function closeNestedCtxSubmenu(kind: string): void {
+  if (ctxNestedSubmenuPinned.value) return
+  if (ctxNestedSubmenu.value === kind) {
+    ctxNestedSubmenu.value = null
+    nestedSubmenuFlip.value = { left: false, up: false }
   }
 }
 
 async function repositionCtxSubmenu(): Promise<void> {
   submenuFlip.value = { left: false, up: false }
   await nextTick()
-  const panel = ctxMenuEl.value?.querySelector('.ctx-submenu-panel') as HTMLElement | null
+  // 只量一级面板：三级面板带 .ctx-nested-panel，选择器必须区分开
+  const panel = ctxMenuEl.value?.querySelector('.ctx-root-panel') as HTMLElement | null
   if (!panel || !ctxSubmenu.value) return
-  const rect = panel.getBoundingClientRect()
-  const margin = 8
-  submenuFlip.value = {
-    left: rect.right > window.innerWidth - margin,
-    up: rect.bottom > window.innerHeight - margin
-  }
+  submenuFlip.value = measureSubmenuFlip(panel)
+}
+
+async function repositionNestedCtxSubmenu(): Promise<void> {
+  nestedSubmenuFlip.value = { left: false, up: false }
+  await nextTick()
+  const panel = ctxMenuEl.value?.querySelector('.ctx-nested-panel') as HTMLElement | null
+  if (!panel || !ctxNestedSubmenu.value) return
+  nestedSubmenuFlip.value = measureSubmenuFlip(panel)
 }
 
 function onViewportPointerMove(e: PointerEvent): void {
@@ -9258,8 +9376,14 @@ defineExpose({
   background: color-mix(in srgb, var(--accent) 18%, var(--bg-hover));
 }
 
+/* 一级分组与二级分组（影视下的剧本 / 剧集 / 世界元素 / 场）共用定位与悬浮交互 */
 .ctx-submenu {
   position: relative;
+}
+
+/* 影视二级分组容器：复用 .ctx-submenu 定位，节点面板由 .ctx-nested-panel 承载 */
+.ctx-nested-submenu {
+  width: 100%;
 }
 
 .ctx-submenu-trigger {
@@ -9290,8 +9414,8 @@ defineExpose({
   z-index: 4001;
 }
 
-/* 桥接主菜单与子面板空隙，悬停移入时不易误关 */
-.ctx-submenu-panel::before {
+/* 桥接主菜单与一级子面板空隙，悬停移入时不易误关（三级面板紧贴父面板，无需桥接） */
+.ctx-root-panel::before {
   content: '';
   position: absolute;
   top: 0;
@@ -9305,7 +9429,7 @@ defineExpose({
   right: 100%;
 }
 
-.ctx-submenu-panel.open-left::before {
+.ctx-root-panel.open-left::before {
   left: auto;
   right: -10px;
 }

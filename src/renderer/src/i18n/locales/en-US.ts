@@ -2754,6 +2754,7 @@ export default {
         imageRefine: 'Image refine',
         imageEdit: 'Image edit',
         episode: 'Episode',
+        filmTv: 'Film & TV',
         text: 'Text',
         prompt: 'Prompt',
         game: 'Game',

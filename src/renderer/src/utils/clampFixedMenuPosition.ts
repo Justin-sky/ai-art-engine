@@ -24,3 +24,12 @@ export function placeFixedMenu(
   const rect = el.getBoundingClientRect()
   return clampFixedMenuPosition(preferredX, preferredY, rect.width, rect.height, margin)
 }
+
+/** 测量已渲染的子菜单面板：贴右 / 贴下边时改为向左 / 向上展开（右键菜单二级、三级面板共用） */
+export function measureSubmenuFlip(panel: HTMLElement, margin = 8): { left: boolean; up: boolean } {
+  const rect = panel.getBoundingClientRect()
+  return {
+    left: rect.right > window.innerWidth - margin,
+    up: rect.bottom > window.innerHeight - margin
+  }
+}
