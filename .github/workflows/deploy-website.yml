@@ -31,14 +31,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      # 三个 Pages action 均升到 Node 24 运行时（旧版本基于已弃用的 Node 20，runner 会强制升级并告警）：
+      # upload-pages-artifact 从 v3 起默认不打隐藏文件（website/ 无点文件，不受影响），v5 内部固定
+      # upload-artifact v7；deploy-pages 需与之一同升级到 v5。
       - name: Configure Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
 
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: website
 
       - name: Deploy
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

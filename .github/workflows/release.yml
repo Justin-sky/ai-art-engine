@@ -494,8 +494,9 @@ jobs:
       - name: List release assets
         run: find release-assets -type f | sort
 
+      # v3 起基于 Node 24（v2 用已弃用的 Node 20，runner 会强制升级并告警）
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           name: AIArtEngine ${{ github.ref_name }}
