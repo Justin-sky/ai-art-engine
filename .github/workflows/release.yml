@@ -71,7 +71,21 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: npm ci
+        shell: bash
+        run: |
+          # onnxruntime-node 的 postinstall 会从 CDN 拉预编译二进制，偶发超时会让整条腿在
+          # 装依赖阶段就挂掉（与代码无关；2026-09-13 的 6.1.1 首发就撞上一次，Linux 腿
+          # 因此直接失败）。npm 自带的重试只覆盖 registry 请求，管不到 postinstall 的
+          # 下载，这里对整步做有限次重试。
+          for attempt in 1 2 3; do
+            if npm ci; then break; fi
+            if [ "$attempt" = 3 ]; then
+              echo '::error::npm ci failed after 3 attempts'
+              exit 1
+            fi
+            echo "npm ci failed (attempt $attempt), retrying in 20s..."
+            sleep 20
+          done
 
       # deb 打包依赖 fakeroot（app-builder 内部走 dpkg 兼容路径）；Ubuntu runner 多数已带，
       # 显式安装一次避免镜像变更导致下游打包失败。

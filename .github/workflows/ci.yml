@@ -23,7 +23,20 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        shell: bash
+        run: |
+          # onnxruntime-node 的 postinstall 会从 CDN 拉预编译二进制，偶发超时会让整条腿在
+          # 装依赖阶段就挂掉（与代码无关；2026-09-13 的 6.1.1 首发就撞上一次）。npm 自带的
+          # 重试只覆盖 registry 请求，管不到 postinstall 的下载，这里对整步做有限次重试。
+          for attempt in 1 2 3; do
+            if npm ci; then break; fi
+            if [ "$attempt" = 3 ]; then
+              echo '::error::npm ci failed after 3 attempts'
+              exit 1
+            fi
+            echo "npm ci failed (attempt $attempt), retrying in 20s..."
+            sleep 20
+          done
 
       - name: Typecheck
         run: npm run typecheck
