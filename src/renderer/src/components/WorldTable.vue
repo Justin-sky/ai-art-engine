@@ -8,10 +8,7 @@
           type="button"
           class="tab"
           :class="{ active: !briefTab && activeKind === kind }"
-          @click="
-            activeKind = kind
-            briefTab = null
-          "
+          @click="selectKind(kind)"
         >
           {{ t(`world.tab.${kind}`) }}
           <span class="count">{{ catalog[kind].length }}</span>
@@ -146,6 +143,13 @@ const activeKind = ref<WorldElementKind>('characters')
 const briefTab = ref<'style' | 'worldview' | null>(null)
 const error = ref('')
 const catalog = reactive<WorldElementCatalog>(emptyWorldElementCatalog())
+
+// Keep the template handler a single expression: prettier (semi: false) strips the
+// statement separator from multi-statement directive values and breaks the template.
+function selectKind(kind: WorldElementKind): void {
+  activeKind.value = kind
+  briefTab.value = null
+}
 
 const PERSIST_DEBOUNCE_MS = 280
 const pendingWrites = new Set<Promise<unknown>>()

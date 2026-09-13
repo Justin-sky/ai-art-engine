@@ -399,87 +399,39 @@
             {{ t('graph.context.selection') }}
           </div>
           <template v-if="selectedLayoutNodes.length >= 2">
-            <button
-              type="button"
-              @click="
-                applyAlign('left')
-                closeCtxMenu()
-              "
-            >
+            <button type="button" @click="runCtxAction(() => applyAlign('left'))">
               {{ t('graph.layout.alignLeft') }}
             </button>
-            <button
-              type="button"
-              @click="
-                applyAlign('centerX')
-                closeCtxMenu()
-              "
-            >
+            <button type="button" @click="runCtxAction(() => applyAlign('centerX'))">
               {{ t('graph.layout.alignCenterX') }}
             </button>
-            <button
-              type="button"
-              @click="
-                applyAlign('right')
-                closeCtxMenu()
-              "
-            >
+            <button type="button" @click="runCtxAction(() => applyAlign('right'))">
               {{ t('graph.layout.alignRight') }}
             </button>
-            <button
-              type="button"
-              @click="
-                applyAlign('top')
-                closeCtxMenu()
-              "
-            >
+            <button type="button" @click="runCtxAction(() => applyAlign('top'))">
               {{ t('graph.layout.alignTop') }}
             </button>
-            <button
-              type="button"
-              @click="
-                applyAlign('centerY')
-                closeCtxMenu()
-              "
-            >
+            <button type="button" @click="runCtxAction(() => applyAlign('centerY'))">
               {{ t('graph.layout.alignCenterY') }}
             </button>
-            <button
-              type="button"
-              @click="
-                applyAlign('bottom')
-                closeCtxMenu()
-              "
-            >
+            <button type="button" @click="runCtxAction(() => applyAlign('bottom'))">
               {{ t('graph.layout.alignBottom') }}
             </button>
             <button
               v-if="selectedLayoutNodes.length >= 3"
               type="button"
-              @click="
-                applyDistribute('horizontal')
-                closeCtxMenu()
-              "
+              @click="runCtxAction(() => applyDistribute('horizontal'))"
             >
               {{ t('graph.layout.distributeH') }}
             </button>
             <button
               v-if="selectedLayoutNodes.length >= 3"
               type="button"
-              @click="
-                applyDistribute('vertical')
-                closeCtxMenu()
-              "
+              @click="runCtxAction(() => applyDistribute('vertical'))"
             >
               {{ t('graph.layout.distributeV') }}
             </button>
-            <button
-              type="button"
-              @click="
-                applyAutoLayout()
-                closeCtxMenu()
-              "
-            >
+            <button type="button" @click="runCtxAction(() => applyAutoLayout())">
               {{ t('graph.layout.auto') }}
             </button>
             <div class="ctx-sep" aria-hidden="true" />
@@ -487,30 +439,21 @@
           <button
             v-if="canGroupSelection"
             type="button"
-            @click="
-              groupSelectedNodes()
-              closeCtxMenu()
-            "
+            @click="runCtxAction(() => groupSelectedNodes())"
           >
             {{ t('graph.group.action') }}
           </button>
           <button
             v-if="canUngroupSelection"
             type="button"
-            @click="
-              ungroupSelectedNodes()
-              closeCtxMenu()
-            "
+            @click="runCtxAction(() => ungroupSelectedNodes())"
           >
             {{ t('graph.group.ungroup') }}
           </button>
           <button
             v-if="canEncapsulateSelection"
             type="button"
-            @click="
-              encapsulateSelectedAsHost()
-              closeCtxMenu()
-            "
+            @click="runCtxAction(() => encapsulateSelectedAsHost())"
           >
             {{ t('graph.hostInterface.encapsulate') }}
           </button>
@@ -522,20 +465,14 @@
           <button
             type="button"
             :disabled="!canCopySelection"
-            @click="
-              copySelectedNodes()
-              closeCtxMenu()
-            "
+            @click="runCtxAction(() => copySelectedNodes())"
           >
             {{ t('graph.context.copy') }}
           </button>
           <button
             type="button"
             :disabled="!canPasteClipboard"
-            @click="
-              void pasteClipboardNodes()
-              closeCtxMenu()
-            "
+            @click="runCtxAction(() => void pasteClipboardNodes())"
           >
             {{ t('graph.context.paste') }}
           </button>
@@ -4056,6 +3993,13 @@ function closeCtxMenu(): void {
   ctxSubmenu.value = null
   ctxSubmenuPinned.value = false
   submenuFlip.value = { left: false, up: false }
+}
+
+// Menu item actions must stay a single expression: prettier (semi: false) strips the
+// statement separator from multi-statement directive values and breaks the template.
+function runCtxAction(action: () => unknown): void {
+  void action()
+  closeCtxMenu()
 }
 
 async function showCtxMenu(next: CtxMenuState): Promise<void> {
