@@ -19,6 +19,20 @@ export const SVG_ANIM_SIZE_MAX = 1024
 /** 目标时长上限（秒）：防止把超长动画采成上千帧 */
 export const SVG_ANIM_DURATION_MAX = 30
 
+/**
+ * MCP 工具 `render_svg` 的取样帧数默认值：只求「看一眼画面」，不必按出图口径采满 12 帧。
+ * 静态 SVG（无可求值动画）仍然只出一帧。
+ */
+export const SVG_RASTER_DEFAULT_FRAMES = 4
+
+/**
+ * `render_svg` 一次最多回给客户端的图数量。
+ *
+ * 多模态通道按 base64 体积计价：1024 边长的 PNG 一帧就有数百 KB，60 帧会把一次工具响应
+ * 撑到几十 MB。超出上限的帧只在文本结果里报数量与时长，需要完整序列请走 svg.anim 出图。
+ */
+export const SVG_RASTER_MAX_IMAGES = 4
+
 export type SvgAnimBackground = '' | 'white' | 'black'
 
 export interface SvgAnimState {

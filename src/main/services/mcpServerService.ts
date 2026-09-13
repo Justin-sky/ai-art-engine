@@ -55,6 +55,14 @@ import {
   type TimelineEditOperation
 } from '@shared/graph/timelineEdit'
 import {
+  SVG_ANIM_DURATION_MAX,
+  SVG_ANIM_FRAMES_MAX,
+  SVG_ANIM_FRAMES_MIN,
+  SVG_ANIM_SIZE_MAX,
+  SVG_RASTER_DEFAULT_FRAMES,
+  SVG_RASTER_MAX_IMAGES
+} from '@shared/graph/svgAnim'
+import {
   DEFAULT_PREVIEW_FRAMES,
   MAX_PREVIEW_FRAMES,
   planPreviewTimestamps,
@@ -1426,6 +1434,62 @@ const TOOL_DEFS: McpToolDef[] = [
         ],
         mcpImages: result.frames.map((frame) => frame.dataUrl)
       }
+    }
+  },
+  {
+    name: 'render_svg',
+    title: '渲染 SVG 看画面',
+    description:
+      '把矢量源（内联 SVG 标记，或工程内的 .svg 文件）用应用自己的引擎栅格化成画面直接回给你看：静态 SVG 出一帧，带动画的按动效时间轴逐帧烘焙，画面随本次响应回给客户端。全程不需要浏览器——沙箱里禁止起本机浏览器（受限令牌下 Chromium 建不出自己的 IPC 管道，会崩在 0x80000003 并弹出系统模态框挡住用户），所以矢量 / HTML 产物的视觉自查请用这个工具，不要用 msedge / chrome 截图。默认只回前 ' +
+      `${SVG_RASTER_MAX_IMAGES} 帧。不落盘、只回画面：要产出可入库的 PNG / GIF 请走图的 svg.gen → svg.anim 出图。仅在应用界面打开时可用。`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        svg: { type: 'string', description: '内联 SVG 标记（与 svgPath 二选一）' },
+        svgPath: {
+          type: 'string',
+          description: '工程内相对路径的 .svg 文件（如 Assets/Vector/hero.svg；与 svg 二选一）'
+        },
+        frames: {
+          type: 'number',
+          description: `动画取样帧数（${SVG_ANIM_FRAMES_MIN}~${SVG_ANIM_FRAMES_MAX}，默认 ${SVG_RASTER_DEFAULT_FRAMES}）；SVG 里没有可求值动画时忽略，只出一帧`
+        },
+        durationSec: {
+          type: 'number',
+          description: `取样时长（秒，上限 ${SVG_ANIM_DURATION_MAX}）；缺省 0 = 自动探测 SVG 自身动画周期`
+        },
+        width: {
+          type: 'number',
+          description: `目标像素宽（上限 ${SVG_ANIM_SIZE_MAX}；缺省跟随 SVG 自身尺寸）`
+        },
+        height: {
+          type: 'number',
+          description: `目标像素高（上限 ${SVG_ANIM_SIZE_MAX}；缺省跟随 SVG 自身尺寸）`
+        },
+        background: {
+          type: 'string',
+          enum: ['', 'white', 'black'],
+          description: '背景填充：白 / 黑 / 透明（缺省透明）'
+        }
+      }
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const svg = optionalString(args, 'svg')
+      const svgPath = optionalString(args, 'svgPath')?.trim()
+      const hasInline = Boolean(svg && svg.trim())
+      if (hasInline === Boolean(svgPath)) {
+        throw new Error('svg 与 svgPath 二选一：内联 SVG 标记，或工程内相对路径')
+      }
+      return runRenderJob('svg-raster', {
+        ...(hasInline ? { svg } : {}),
+        ...(svgPath ? { svgPath } : {}),
+        ...(args.frames !== undefined ? { frames: args.frames } : {}),
+        ...(args.durationSec !== undefined ? { durationSec: args.durationSec } : {}),
+        ...(args.width !== undefined ? { width: args.width } : {}),
+        ...(args.height !== undefined ? { height: args.height } : {}),
+        ...(args.background !== undefined ? { background: args.background } : {})
+      })
     }
   },
   {

@@ -54,6 +54,7 @@ export function normalizeChatMode(value: unknown): ChatMode {
 /**
  * 只读工具：不写盘、不改工程、不消耗模型额度。
  * `timeline_preview` 虽然要跑 ffmpeg 真渲染，但只回画面、不落盘资产，算只读（规划阶段先看画面有用）；
+ * `render_svg` 同理：用应用自己的引擎栅格化矢量源，只把画面回给客户端，不落盘；
  * `asset_qc` 体检只回报告不写盘；`ask_user` 是提问通道，Plan 模式要靠它拿确认，必须可见。
  */
 const READ_TOOLS = new Set([
@@ -66,6 +67,7 @@ const READ_TOOLS = new Set([
   'asset_qc',
   'timeline_read',
   'timeline_preview',
+  'render_svg',
   'models_list',
   'storage_status',
   'folder_list',

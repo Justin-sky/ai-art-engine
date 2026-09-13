@@ -35,6 +35,7 @@ import {
   HIDE_CHILD_WINDOWS_HOOK_FILENAME,
   HIDE_CHILD_WINDOWS_HOOK_SOURCE
 } from './dshHideChildWindowsHook'
+import { patchBrowserGuard } from './dshBrowserGuardPatch'
 import { patchAclSandboxConsole } from './dshSandboxConsolePatch'
 import {
   confirmHarnessRunAccess,
@@ -1369,19 +1370,24 @@ function buildPersona(mode: ChatMode, projectMemory?: string | null): string[] {
     // system prompt 已是 Plan、工具面也已换成只读）。这里明确「以本轮说法为准」，并禁止复述旧结论。
     'The mode stated for the current turn is authoritative: the user may switch modes between turns of this same session.',
     "Never carry over a previous turn's mode name, and never repeat an earlier claim that tools are unavailable unless this turn says so.",
-    // 沙箱禁用本机浏览器：pwsh 命令跑在 Windows ACL 沙箱（受限令牌）里，Chromium 建不出自己的
+    // 沙箱禁用本机浏览器：shell 命令跑在 Windows ACL 沙箱（受限令牌）里，Chromium 建不出自己的
     // mojo IPC 命名管道会 CHECK 失败 → __debugbreak → 0x80000003，系统在应用之外弹「应用程序错误」
-    // 对话框（实测每次都会弹，而且工具调用还是失败）。dsh 的沙箱只有文件效果策略、没有进程策略，
-    // 拦不住这条命令，只能在这里收口；同时把「要光栅化就走应用自带 svg.gen → svg.anim」讲清楚，
-    // 免得模型为了视觉自查反复重试。详见 CHANGELOG。
+    // 对话框（实测每次都会弹，而且工具调用还是失败）。光靠这段提示词压不住——实测模型会换写法继续
+    // 试（把路径存进变量、用调用运算符、--version 试探），所以另有硬拦截：运行体补丁在所有 shell
+    // 进程的必经点（LocalSubprocessRuntime.spawn / spawnTerminal）按 argv 拒绝这类命令并回同一条
+    // 原因（dshBrowserGuardPatch）。这里要讲清替代路径：视觉自查调 render_svg（应用自己的引擎出图，
+    // 不碰浏览器），批量出资产走 svg.gen → svg.anim；并且「换写法也没用」。详见 CHANGELOG。
     '=== Headless browser is unavailable ===',
     'Shell commands run inside the harness sandbox, where some host programs cannot start at all.',
     'Never launch a local browser from a shell command (msedge.exe / chrome.exe, including any --headless or --remote-debugging-port run):',
     'under the sandbox restricted token Chromium cannot create its internal IPC pipe, so it aborts with exit code 0x80000003 (STATUS_BREAKPOINT)',
     'and Windows pops a modal application-error dialog in front of the user while the command fails anyway.',
+    'Such commands are refused before they run: the harness rejects any shell command that launches a browser and answers with exactly this policy reason,',
+    'so trying another browser, path, flag, script file or wrapper only wastes a turn.',
     'Do not retry with --no-sandbox or any other flag, and never try to escalate or bypass the sandbox just to run a browser.',
-    'To rasterize or visually check an SVG or HTML artifact, use the studio path instead:',
-    'commit a plan whose svg.gen node feeds svg.anim, then read the baked PNG frames and the GIF reported by the task result.',
+    'To rasterize or visually check an SVG or HTML artifact, call the render_svg tool instead:',
+    'it renders the file with the app own engine and returns the picture to you, with no browser involved.',
+    'To bake assets into the project, use the studio path: commit a plan whose svg.gen node feeds svg.anim, then read the baked PNG frames and the GIF reported by the task result.',
     'If a check genuinely needs a real browser, stop and tell the user to run it outside the app.'
   ]
   if (mode === 'ask') {
@@ -1491,6 +1497,9 @@ function writeHideChildWindowsHook(): string | null {
  */
 const aclConsolePatchApplied = new Set<string>()
 
+/** 同上：浏览器启动守卫补丁的应用记录（补丁自身幂等，失败也不重试） */
+const browserGuardApplied = new Set<string>()
+
 /**
  * 给 dsh 依赖树里的 ACL 沙箱打「隐藏控制台窗口」补丁。
  *
@@ -1506,6 +1515,40 @@ function applyAclConsolePatch(dshModules: string): void {
   if (report.failedFiles > 0) {
     console.warn(
       '[aiart] acl sandbox console patch not applied (read-only install?):',
+      dshModules,
+      `${report.failedFiles} file(s)`
+    )
+  }
+}
+
+/**
+ * 给 dsh 依赖树的子进程收口打「禁止启动浏览器」补丁。
+ *
+ * 提示词侧的软约束压不住这件事：agent 为给 SVG / HTML 产物做视觉自查，会起本机浏览器
+ * （会话日志里的实测形态：把 msedge.exe 路径存进变量，再 `& $edge --headless=new
+ * --screenshot=...`）。命令跑在 ACL 沙箱的受限令牌里，Chromium 建不出自己的 mojo 命名管道
+ * → 0x80000003，系统在**应用之外**弹出模态「应用程序错误」框挡住用户，而工具调用照样失败。
+ * 沙箱只有文件效果策略、没有进程策略，拦不住 CreateProcess 出浏览器这一步；Windows 上所有
+ * shell 进程（pwsh 直连、沙箱重包后的 argv、终端）都要过
+ * `LocalSubprocessRuntime.spawn(spec)` / `spawnTerminal(spec)`，所以在那两个方法体开头按 argv
+ * 判定并抛出可读原因。详见 dshBrowserGuardPatch。
+ *
+ * 写盘失败只记一行日志：补丁只是体验优化，绝不影响对话。
+ */
+function applyBrowserGuardPatch(dshModules: string): void {
+  if (browserGuardApplied.has(dshModules)) return
+  browserGuardApplied.add(dshModules)
+  const report = patchBrowserGuard(dshModules)
+  if (report.patchedSites > 0) {
+    console.info(
+      '[aiart] browser launch guard patch applied:',
+      dshModules,
+      `${report.patchedFiles} file(s) / ${report.patchedSites} site(s)`
+    )
+  }
+  if (report.failedFiles > 0) {
+    console.warn(
+      '[aiart] browser launch guard patch not applied (read-only install?):',
       dshModules,
       `${report.failedFiles} file(s)`
     )
@@ -1830,6 +1873,9 @@ export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRun
   // 隐藏 dsh 子进程的控制台窗口：非沙箱命令走预载 hook（dshHideChildWindowsHook），
   // 沙箱内命令走运行体补丁（dshSandboxConsolePatch）。两条都必须在下拉 dsh 之前就位。
   if (dshModules) applyAclConsolePatch(dshModules)
+  // 禁止 agent 起本机浏览器（受限令牌下 Chromium 崩在 0x80000003，会弹系统模态框）：
+  // 收口在所有 shell 进程的必经点 LocalSubprocessRuntime.spawn / spawnTerminal
+  if (dshModules) applyBrowserGuardPatch(dshModules)
   const hideWindowsHook = writeHideChildWindowsHook()
   const args = dshEntry
     ? [

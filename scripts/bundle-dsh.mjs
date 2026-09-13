@@ -408,6 +408,104 @@ function patchAclSandboxConsoleWindow() {
   )
 }
 
+/**
+ * 预置「沙箱内禁止启动浏览器」补丁（Windows 链路）。
+ *
+ * 收口点选在所有 shell 进程的必经点：`LocalSubprocessRuntime.spawn(spec)` /
+ * `async spawnTerminal(spec)`（`@deepseek-ai/dsh-subprocess-local`）。pwsh 直连链路
+ * （run/start）与沙箱链路（dsh-pwsh-sandbox 的 confine 重包 argv）都最终走 `runArgv` /
+ * `startArgv` → `ctx.subprocess.spawn(...)`，终端同理，因此两处插入即覆盖全部执行器，
+ * 不依赖任何执行器包的内部结构。agent 起本机浏览器做视觉自查时，Chromium 在沙箱受限令牌下
+ * 建不出自己的 mojo IPC 命名管道 → `0x80000003` → 系统弹出模态「应用程序错误」框挡在
+ * 用户面前。补丁在方法体开头插入守卫：按 argv 判定命中「启动浏览器」特征就直接抛出可读
+ * 原因（写清了替代路径 render_svg / svg.gen → svg.anim）。
+ *
+ * 守卫片段的唯一事实源是运行时补丁模块 src/main/services/dshBrowserGuardPatch.ts：
+ * 构建脚本不能 import TS，于是按同一个正则抽走 `BROWSER_GUARD_SNIPPET` 的原文（片段内没有
+ * 反引号与 `${`，可原样抽取；CRLF 与运行时一样规范成 LF）。插入锚点与写法也与运行时一致。
+ *
+ * 找不到锚点或片段就跳过：上游换实现不该让打包失败（补丁只是体验优化）。
+ */
+const BROWSER_GUARD_MODULE = 'src/main/services/dshBrowserGuardPatch.ts'
+const SUBPROCESS_LOCAL_PACKAGE = '@deepseek-ai/dsh-subprocess-local'
+const BROWSER_GUARD_MARKER = '__aiartBrowserLaunchGuard'
+
+/** 从运行时补丁模块抽出守卫片段（找不到返回 null） */
+function readBrowserGuardSnippet() {
+  const source = readFileSync(join(ROOT, BROWSER_GUARD_MODULE), 'utf8')
+  const match = source.match(/export const BROWSER_GUARD_SNIPPET = String\.raw`([\s\S]*?)`/)
+  if (!match) return null
+  return match[1].replace(/\r\n/g, '\n').trim()
+}
+
+function patchBrowserGuard() {
+  const libDir = join(OUT_DIR, 'node_modules', ...SUBPROCESS_LOCAL_PACKAGE.split('/'), 'lib')
+  if (!existsSync(libDir)) {
+    console.log('[bundle-dsh] 产物中没有子进程收口包，跳过浏览器启动守卫')
+    return
+  }
+  const snippet = readBrowserGuardSnippet()
+  if (snippet === null) {
+    console.warn(
+      `[bundle-dsh] 未能从 ${BROWSER_GUARD_MODULE} 抽出浏览器守卫片段，跳过（请检查该常量是否被改名）`
+    )
+    return
+  }
+  // 与运行时同口径：spawn(spec) 与 async spawnTerminal(spec) 两个方法体开头
+  const anchors = [
+    /(\r?\n)([ \t]*)spawn\(spec\) \{/,
+    /(\r?\n)([ \t]*)async spawnTerminal\(spec\) \{/
+  ]
+
+  let files = 0
+  let sites = 0
+  const jsFiles = []
+  const walk = (dir) => {
+    for (const ent of readdirSync(dir, { withFileTypes: true })) {
+      const p = join(dir, ent.name)
+      if (ent.isDirectory()) walk(p)
+      else if (/\.[cm]?js$/.test(ent.name)) jsFiles.push(p)
+    }
+  }
+  walk(libDir)
+
+  for (const file of jsFiles) {
+    const source = readFileSync(file, 'utf8')
+    if (!source.includes('spawn(spec)') || source.includes(BROWSER_GUARD_MARKER)) continue
+    let patched = source
+    for (const anchor of anchors) {
+      patched = patched.replace(anchor, (_match, eol, indent) => {
+        sites += 1
+        const body = `${indent}\t`
+        const block = snippet
+          .split('\n')
+          .map((line) => (line.length > 0 ? `${body}${line}` : line))
+          .join(eol)
+        const head = anchor.source.includes('spawnTerminal')
+          ? 'async spawnTerminal(spec) {'
+          : 'spawn(spec) {'
+        return [
+          `${eol}${indent}${head}`,
+          `${eol}${body}// AIArtEngine: refuse browser launches at the subprocess seam.`,
+          `${eol}${body}{`,
+          `${eol}${block}`,
+          `${eol}${body}\tconst __aiartBlocked = __aiartBrowserLaunchGuard(spec?.argv);`,
+          `${eol}${body}\tif (__aiartBlocked !== null) throw new Error(__aiartBlocked);`,
+          `${eol}${body}}`
+        ].join('')
+      })
+    }
+    if (patched === source) continue
+    writeFileSync(file, patched, 'utf8')
+    files += 1
+  }
+  console.log(
+    sites > 0
+      ? `[bundle-dsh] 已预置浏览器启动守卫：${files} 个文件 / ${sites} 处进程收口`
+      : '[bundle-dsh] 提示：子进程收口包存在但没有可改写的 spawn/spawnTerminal 方法体，跳过浏览器启动守卫'
+  )
+}
+
 async function main() {
   const version = resolveDshVersion()
   console.log(`[bundle-dsh] 从已安装依赖构建 ${DSH_PACKAGE}@${version} 自包含运行体…`)
@@ -436,6 +534,7 @@ async function main() {
   cpSync(join(STAGE_DIR, 'node_modules'), join(OUT_DIR, 'node_modules'), { recursive: true })
   writeFileSync(join(OUT_DIR, 'package.json'), readFileSync(join(STAGE_DIR, 'package.json')))
   patchAclSandboxConsoleWindow()
+  patchBrowserGuard()
 
   verifyBundle()
   verifyReachableRequires(packages)

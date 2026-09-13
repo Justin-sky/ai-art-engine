@@ -573,6 +573,7 @@ export const MCP_RENDER_JOB_KINDS = [
   'stage2d-spine-export',
   'ui-kit-extract',
   'asset-qc',
+  'svg-raster',
   'timeline-document-apply'
 ] as const
 

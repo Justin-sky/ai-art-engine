@@ -18,6 +18,15 @@ import {
   type ScriptTimelineDocument
 } from '@shared/graph'
 import {
+  normalizeSvgAnimBackground,
+  normalizeSvgAnimDurationSec,
+  normalizeSvgAnimFrameCount,
+  normalizeSvgAnimSize,
+  normalizeSvgAnimState,
+  SVG_RASTER_DEFAULT_FRAMES,
+  SVG_RASTER_MAX_IMAGES
+} from '@shared/graph/svgAnim'
+import {
   UI_KIT_PART_KINDS,
   UI_KIT_PART_KIND_PREFIXES,
   analyzeAssetQc,
@@ -35,6 +44,7 @@ import type { McpRenderJobKind, McpRenderJobPayload } from '@shared/ipc'
 import { persistAssetRecord } from '../../composables/useAssetRecord'
 import { useProjectStore } from '../../stores/project'
 import { composeStage2dSpineExport } from '../graph/model/composeStage2dSpineExport'
+import { renderSvgFrames } from '../graph/model/renderSvgFrames'
 import { resolveAssetPreviewUrl } from '../media/assetUrlCache'
 import { cropUiKitPartPng, loadUiKitSourceImage } from '../uiKit/uiKitRender'
 import { isGraphEditorOpen } from './openGraphEditors'
@@ -457,6 +467,70 @@ async function handleTimelineDocumentApply(args: Record<string, unknown>): Promi
 }
 
 /**
+ * SVG 栅格化：把矢量源（内联标记或工程内 SVG 文件）按动效时间轴逐帧烘焙成 PNG，画面随响应回给客户端。
+ *
+ * 为什么要有这个作业：agent 需要「看一眼自己画的东西」，而沙箱里起不了本机浏览器——受限令牌下
+ * Chromium 建不出自己的 mojo IPC 命名管道，会崩在 0x80000003 并弹系统模态框（见
+ * `dshBrowserGuardPatch` 与 persona 的 headless browser 段）。这里复用图执行同一条烘焙链
+ * （`renderSvgFrames`：解析 → 探测动画周期 → 逐帧求值并静态化 → canvas 栅格化），全过程在渲染层
+ * 完成，不碰浏览器、不落盘（要看序列请走 svg.anim 出图）。
+ *
+ * 只回前 `SVG_RASTER_MAX_IMAGES` 帧：多模态通道按体积计价，其余帧只在文本里报数量与时长。
+ */
+async function handleSvgRaster(args: Record<string, unknown>): Promise<unknown> {
+  const inline = readString(args.svg)
+  const relativePath = readString(args.svgPath).trim()
+  const hasInline = inline.trim().length > 0
+  if (hasInline === Boolean(relativePath)) {
+    throw new Error('svg 与 svgPath 二选一：内联 SVG 标记，或工程内相对路径')
+  }
+
+  let svgText = inline
+  if (relativePath) {
+    const fileText = await window.studio.readProjectFile(relativePath)
+    if (fileText === null) throw new Error(`工程内找不到该文件：${relativePath}`)
+    svgText = fileText
+  }
+
+  const state = normalizeSvgAnimState({
+    frames: normalizeSvgAnimFrameCount(args.frames ?? SVG_RASTER_DEFAULT_FRAMES),
+    durationSec: normalizeSvgAnimDurationSec(args.durationSec),
+    width: normalizeSvgAnimSize(args.width),
+    height: normalizeSvgAnimSize(args.height),
+    background: normalizeSvgAnimBackground(args.background)
+  })
+  const result = await renderSvgFrames({ svgText, state })
+  const images = result.frameUrls.slice(0, SVG_RASTER_MAX_IMAGES)
+  const notes = [
+    result.animated
+      ? `检测到可求值的 SVG 动画：按 ${result.durationSec.toFixed(2)} 秒采 ${result.frameCount} 帧（${result.fps.toFixed(1)} fps，不含终点）`
+      : 'SVG 里没有可求值的动画（animate / animateTransform / set），只出了一帧'
+  ]
+  if (result.frameCount > images.length) {
+    notes.push(`只回前 ${images.length} 帧画面；要完整序列请走 svg.anim 出图`)
+  }
+  if (/<image\b|@font-face|url\((?!#)/i.test(svgText)) {
+    notes.push(
+      '外链资源（<image href> / Web Font / 外部 CSS）在离屏栅格化下不会加载，画面可能缺贴图或字体'
+    )
+  }
+
+  return {
+    source: relativePath || 'inline',
+    width: result.width,
+    height: result.height,
+    frameCount: result.frameCount,
+    durationSec: result.durationSec,
+    fps: result.fps,
+    animated: result.animated,
+    background: state.background || 'transparent',
+    returnedImages: images.length,
+    notes,
+    mcpImages: images
+  }
+}
+
+/**
  * 作业清单：`Record<McpRenderJobKind, …>` 让「主进程声明的 kind」与「渲染层实现」
  * 在类型层强绑定——新增能力漏写实现会直接编译失败，不会拖到运行时才发现。
  */
@@ -467,6 +541,7 @@ const RENDER_JOB_HANDLERS: Record<
   'stage2d-spine-export': handleStage2dSpineExport,
   'ui-kit-extract': handleUiKitExtract,
   'asset-qc': handleAssetQc,
+  'svg-raster': handleSvgRaster,
   'timeline-document-apply': handleTimelineDocumentApply
 }
 

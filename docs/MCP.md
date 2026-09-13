@@ -17,6 +17,7 @@ AiArtEngine 内置了一个 **MCP 工具服务**（MCP 是"模型上下文协议
 - 「把这条口播里的停顿静默剪掉，再导出成片」→ `transcribe_audio` + `timeline_rough_cut` + `timeline_export`
 - 「把这 5 张分镜图铺到视频轨、每张 3 秒，台词按转写铺成字幕」→ `timeline_edit`
 - 「铺完了，让我看看画面对不对」→ `timeline_preview`
+- 「这个 SVG 矢量图标 / 矢量动画画成什么样了？」→ `render_svg`
 - 「生成一张标题图 / 一段口播音频，存进工程」→ `generate_image` / `generate_speech`
 - 「刚才提交的视频生成好了吗？」→ `task_status` / `video_job_get`
 
@@ -179,6 +180,7 @@ AiArtEngine 内置了一个 **MCP 工具服务**（MCP 是"模型上下文协议
 | `timeline_export`       | 时间线合成 MP4（拼接 / 转场 / 画中画 / 混音 / 烧字幕 / 水印）                                                                                                                                       | 已打开工程，且系统可用 ffmpeg（无界面链路需传 `targetPath`） |
 | `timeline_edit`         | 时间线增删改：铺素材上轨 / 改音量·转场·字幕文本 / 删片段 / 用转写重建字幕                                                                                                                           | 已打开工程（`apply: true` 时还需该剧本的时间线编辑器已关闭） |
 | `timeline_preview`      | 看成片画面：按导出同一条滤镜图渲染几张静帧（可均匀抽 / 定点抽），画面随响应回给多模态客户端                                                                                                         | 已打开工程，且系统可用 ffmpeg                                |
+| `render_svg`            | 看矢量画面：内联 SVG 或工程内 `.svg` 用应用自己的引擎栅格化（静态出一帧，带动画按时间轴逐帧烘焙，最多回 4 帧），不落盘、不需要浏览器                                                                | 已打开工程，且应用的界面已打开                               |
 | `graph_edit`            | 对节点图做编辑操作批（节点/连线，应用内校验类型与端口兼容性）                                                                                                                                       | 已打开工程，且该图未在编辑器中打开                           |
 
 ### ② 工作流：规划 → 落盘 → 运行
@@ -237,9 +239,9 @@ AiArtEngine 内置了一个 **MCP 工具服务**（MCP 是"模型上下文协议
   `asset_package_import` 必须传绝对路径 `packPath`；界面上两者仍走「另存为 / 打开」对话框，两条链路互不影响。
 - **媒体路径边界**：`transcribe_audio` / `audio_separate` / `storage_upload` 只接受 `assetId` 或工程内相对路径，
   绝对路径与含 `..` 的路径会被直接拒绝（`asset_import` 是唯一允许读工程外文件的工具，且只复制进工程）。
-- **渲染层能力需要界面在场**：`stage2d_spine_export` / `ui_kit_extract` / `asset_qc` / `asset_qc_fix` 要跑 canvas 与落盘，
-  作业由界面进程执行——应用没开界面（或界面版本过旧）时会明确报错，不会静默产出空壳结果；导出骨架包沿用
-  「图编辑器打开时拒绝」的保护，避免导出编辑器里未落盘的旧装配。
+- **渲染层能力需要界面在场**：`stage2d_spine_export` / `ui_kit_extract` / `asset_qc` / `asset_qc_fix` / `render_svg`
+  要跑 canvas（`render_svg` 只是不落盘），作业由界面进程执行——应用没开界面（或界面版本过旧）时会明确报错，
+  不会静默产出空壳结果；导出骨架包沿用「图编辑器打开时拒绝」的保护，避免导出编辑器里未落盘的旧装配。
 - **质检只读、返工不覆盖原件**：`asset_qc` 逐像素判完只回报告，不写盘也不改资产；`asset_qc_fix` 只修「边缘白边残留」
   这一项安全缺陷（按反混合公式去掉半透明边缘里的背景色），产出新资产落 `Assets/QC/<原名>/`，原件保留可回溯。
   抠图漏底（镂空可能是刻意设计）、主体贴边、命名只报告不自动改——改画布会动到所有下游引用，改名请走 `asset_rename`。
@@ -251,11 +253,20 @@ AiArtEngine 内置了一个 **MCP 工具服务**（MCP 是"模型上下文协议
   粗剪会切分片段并改名（`clip-1` → `clip-1~2`），所以重排之后要重新读一次 ids。
   单条指令失败不会中断其余指令，原因逐条回在 `failures` 里（id 找不到、时长 ≤ 0 等），
   返回的 `addedClipIds` / `removedClipIds` 是后续编辑的抓手。
-- **工具能回图片，旧客户端只是看不到**：`timeline_preview` 的画面以 MCP image content 随响应回给客户端，
-  多模态客户端（Claude Desktop / Codex 等）能直接看到；纯文本客户端只会读到时间点列表与说明，不会报错——
-  图放在结果的旁路字段里，不混进文本结果，也不会被审计日志记下 base64。
+- **工具能回图片，旧客户端只是看不到**：`timeline_preview` 与 `render_svg` 的画面以 MCP image content 随响应回给客户端，
+  多模态客户端（Claude Desktop / Codex 等）能直接看到；纯文本客户端只会读到时间点列表与说明、或 SVG 的尺寸与帧信息，
+  不会报错——图放在结果的旁路字段里，不混进文本结果，也不会被审计日志记下 base64。
   预览与 `timeline_export` 走**同一条 ffmpeg 滤镜图**，所以「预览看到的就是成片」，不是另画一套近似预览；
   代价是它要真渲染：时间点越靠后解码越久（抽几帧比导出一次便宜得多，但不是瞬时）。
+  `render_svg` 同理走 `svg.anim` 同一条逐帧烘焙链（静态 SVG 只出 1 帧），但只回前 4 帧——多模态通道按体积计价，
+  1024 边长一帧就有数百 KB，要完整序列请走 `svg.gen` → `svg.anim` 出图。
+- **沙箱里起不了本机浏览器，视觉自查用 `render_svg`**：shell 命令跑在 dsh 的 Windows ACL 沙箱里（受限令牌），
+  Chromium 在该令牌下建不出自己的 mojo IPC 命名管道，会崩在 `0x80000003` 并由系统在应用之外弹出模态「应用程序错误」框，
+  而命令照样失败（`--no-sandbox` 也救不了：失败点在 mojo 管道，不在 Chromium 自己的沙箱开关）。
+  应用侧已在两处收口：persona 明说禁用（含换写法），运行体则在所有 shell 进程的必经点
+  （`LocalSubprocessRuntime.spawn` / `spawnTerminal`）按 argv 拒绝这类命令并回同一条原因。
+  所以「矢量 / HTML 产物长什么样」请调 `render_svg`；要看资产化产物就走 `svg.gen` → `svg.anim` 出图后再读。
+  真需要真浏览器（比如交互调试）时，停下来让用户在应用外跑，不要尝试提权或绕过沙箱。
 - **写节点参数会被校验，不可用的参考图不会静默留下**：`workflow_commit` 与 `graph_edit` 共用一套参考图参数口径
   （`styleImages` / `styleImagesUseGlobal` / `styleReferenceSubject` / `characterRefs`）——风格图条目须带 `libraryId`
   或 `data:` 开头的 `dataUrl`，角色引用须带 `imageUrl`（只写名字解析不出参考图，需要先在节点检查器里绑定角色），
