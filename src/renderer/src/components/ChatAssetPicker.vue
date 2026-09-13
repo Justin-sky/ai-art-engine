@@ -83,7 +83,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import type { AssetInfo, AssetType } from '@shared/domain'
-import { isAnimatedImageFilePath } from '@shared/import'
+import { isAnimatedImageFilePath, isVectorImageFilePath } from '@shared/import'
+import { resolvePreviewMediaPath } from '@shared/media/thumbnailPath'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
 import { useProjectStore } from '../stores/project'
@@ -92,22 +93,25 @@ import StudioFloatingWindow from './StudioFloatingWindow.vue'
 /** 可被 @ 引用的资产类型：图片 / 视频 / 音频（voice 为工程语音资产） */
 const MENTION_TYPES: ReadonlySet<AssetType> = new Set(['image', 'video', 'voice'])
 /**
- * 引用分类：GIF 在资产模型里仍是 image 类型，但选择器里单列一类，
- * 避免和一堆静态图混在一起挑不出来。
+ * 引用分类：GIF / SVG 在资产模型里仍是 image 类型，但选择器里各单列一类，
+ * 避免和一堆静态位图混在一起挑不出来（SVG 自成一路：预览走原文件、不进位图链路）。
  */
-type MentionKind = 'all' | 'image' | 'gif' | 'video' | 'voice'
+type MentionKind = 'all' | 'image' | 'gif' | 'svg' | 'video' | 'voice'
 type MentionAssetKind = Exclude<MentionKind, 'all'>
 const KIND_LABEL_KEY: Record<MentionAssetKind, string> = {
   image: 'studio.chat.mentionTypeImage',
   gif: 'studio.chat.mentionTypeGif',
+  svg: 'studio.chat.mentionTypeSvg',
   video: 'studio.chat.mentionTypeVideo',
   voice: 'studio.chat.mentionTypeAudio'
 }
 
-/** 资产 → 引用分类（动图扩展名从图片里拆出来；非图片类型原样返回） */
+/** 资产 → 引用分类（动图与矢量图从图片里拆出来；非图片类型原样返回） */
 function mentionKindOf(asset: AssetInfo): MentionAssetKind {
   if (asset.type !== 'image') return asset.type as MentionAssetKind
-  return isAnimatedImageFilePath(asset.relativePath ?? '') ? 'gif' : 'image'
+  const relativePath = asset.relativePath ?? ''
+  if (isVectorImageFilePath(relativePath)) return 'svg'
+  return isAnimatedImageFilePath(relativePath) ? 'gif' : 'image'
 }
 
 const props = defineProps<{
@@ -133,6 +137,7 @@ const tabs = computed(() => [
   { value: 'all' as const, label: t('studio.chat.mentionTypeAll') },
   { value: 'image' as const, label: t('studio.chat.mentionTypeImage') },
   { value: 'gif' as const, label: t('studio.chat.mentionTypeGif') },
+  { value: 'svg' as const, label: t('studio.chat.mentionTypeSvg') },
   { value: 'video' as const, label: t('studio.chat.mentionTypeVideo') },
   { value: 'voice' as const, label: t('studio.chat.mentionTypeAudio') }
 ])
@@ -157,7 +162,7 @@ function countByType(type: MentionKind): number {
   return mentionAssets.value.filter((a) => mentionKindOf(a) === type).length
 }
 
-/** 卡片右上角徽标：动图显示 GIF，而非笼统的「图片」 */
+/** 卡片右上角徽标：动图显示 GIF、矢量图显示 SVG，而非笼统的「图片」 */
 function typeLabel(asset: AssetInfo): string {
   return t(KIND_LABEL_KEY[mentionKindOf(asset)])
 }
@@ -167,6 +172,7 @@ function fallbackIcon(asset: AssetInfo): string {
   const kind = mentionKindOf(asset)
   if (kind === 'video') return '🎬'
   if (kind === 'gif') return '🎞️'
+  if (kind === 'svg') return '📐'
   return '🖼️'
 }
 
@@ -194,10 +200,22 @@ async function resolveThumbs(assets: AssetInfo[]): Promise<void> {
       if (next[asset.id]) return
       // 音频资产没有可视化缩略图，直接显示图标，避免用 <img> 加载音频文件出现破损图
       if (asset.type === 'voice') return
-      const path = asset.thumbnailPath?.trim() || asset.relativePath?.trim() || ''
+      const source = asset.relativePath?.trim() || ''
+      // 预览路径口径与资产库 / 检查器一致：矢量图（SVG）与视频走原文件，静态图优先真缩略图。
+      // 直接拿 thumbnailPath 会踩矢量图——它没有位图缩略图，规划出来的路径永不落盘。
+      const path =
+        resolvePreviewMediaPath({
+          relativePath: asset.relativePath,
+          thumbnailPath: asset.thumbnailPath,
+          type: asset.type
+        }) || ''
       if (!path) return
       try {
         next[asset.id] = await resolveAssetPreviewUrl(path)
+        // 规划中的缩略图还没落盘（刚导入 / 后台生成中）：退回原文件，别把卡片留成占位图标
+        if (!next[asset.id] && source && source !== path) {
+          next[asset.id] = await resolveAssetPreviewUrl(source)
+        }
       } catch {
         /* keep fallback */
       }

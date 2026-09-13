@@ -788,6 +788,7 @@ export default {
       mentionTypeAll: '全部',
       mentionTypeImage: '图片',
       mentionTypeGif: 'GIF',
+      mentionTypeSvg: 'SVG',
       mentionTypeVideo: '视频',
       mentionTypeAudio: '音频',
       mentionTypeFile: '文件',

@@ -35,6 +35,7 @@ import {
   normalizeOutputPathKey,
   selectRoundOutputs
 } from '@shared/outputScan'
+import { resolvePreviewMediaPath } from '@shared/media/thumbnailPath'
 import ChatAssetPreview from './ChatAssetPreview.vue'
 import ChatChangesCard from './ChatChangesCard.vue'
 import ChatAssetPicker from './ChatAssetPicker.vue'
@@ -144,7 +145,13 @@ function onComposerInput(): void {
 /** 音频没有可视化缩略图，chips 直接显示音符图标，不请求预览 URL */
 function resolveMentionThumb(asset: AssetInfo): Promise<string> {
   if (asset.type === 'voice') return Promise.resolve('')
-  const path = asset.thumbnailPath?.trim() || asset.relativePath?.trim() || ''
+  // 预览路径口径与资产库 / 检查器一致：矢量图（SVG）与视频走原文件，静态图优先真缩略图
+  const path =
+    resolvePreviewMediaPath({
+      relativePath: asset.relativePath,
+      thumbnailPath: asset.thumbnailPath,
+      type: asset.type
+    }) || ''
   if (!path) return Promise.resolve('')
   return resolveAssetPreviewUrl(path)
 }

@@ -1085,6 +1085,11 @@ class ProjectService {
   /** 导入/挂载后规划并异步生成缩略图，返回应写入资产的 thumbnailPath */
   planAndScheduleImageThumbnail(relativePath: string): string {
     const root = this.getRoot()
+    // 矢量图（SVG）：没有位图缩略图可生成（nativeImage 解不出矢量），thumbnailPath 直接落原文件路径。
+    // 否则会留一个永不落盘的规划路径，让「按 thumbnailPath 取预览」的调用方（如 @ 引用选择器）
+    // 每次都拿到空串、卡片只剩占位图标——与开工程扫描（scheduleMissingThumbnails）修正后的口径保持一致。
+    const posix = relativePath.replace(/\\/g, '/')
+    if (isVectorImageFilePath(posix)) return posix
     const planned = plannedThumbnailPath(relativePath)
     void scheduleEnsureThumbnail(root, relativePath).catch((err) => {
       console.warn('[thumbnail] async generate failed', relativePath, err)

@@ -2,17 +2,19 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
-## [6.1.1] — 2026-09-13
-
-6.1.1 版本：SVG 矢量链路进资产库（`svg.gen` 生成 / `svg.anim` 烘焙），PSD 源文件进库并能看到合成画面，对话里的 Markdown 真正渲染、2D 帧动画在对话流里出 GIF；dsh 升到 0.1.5 并把 Ask / Plan / Craft 落成工具面硬约束；另补资产库目录 watchdog（外部落盘文件自动入库）与 MCP `workflow_commit` 手写 plan 两项能力，修掉 PSD 畸形图层解不出画面、dsh 会话恢复、SVG 产物卡与全仓格式化拆坏模板等缺陷。
-
 ## [6.2.0] — 2026-09-13
 
 6.2.0 版本：对话流产物展示补齐两条缺口——`asset_import` 导入的素材登记为「素材导入」活动并逐条出卡、Agent 用脚本直接落盘到 `Output/` / `Cache/` 的媒体也在每轮结束扫盘出卡，同一批次连排的副本（矢量源 / 烘焙位图 / 参数预览）折成一张卡、不再一版刷出十几张；另修掉参考图参数被当「未声明参数」整键丢弃、对话上下文占用重开应用即回退成估算两处缺陷，并给 Agent 补上 `render_svg`（不必起浏览器就能看矢量画面）与「禁在沙箱里起浏览器」的进程创建处硬拦截。
 
+## [6.1.1] — 2026-09-13
+
+6.1.1 版本：SVG 矢量链路进资产库（`svg.gen` 生成 / `svg.anim` 烘焙），PSD 源文件进库并能看到合成画面，对话里的 Markdown 真正渲染、2D 帧动画在对话流里出 GIF；dsh 升到 0.1.5 并把 Ask / Plan / Craft 落成工具面硬约束；另补资产库目录 watchdog（外部落盘文件自动入库）与 MCP `workflow_commit` 手写 plan 两项能力，修掉 PSD 畸形图层解不出画面、dsh 会话恢复、SVG 产物卡与全仓格式化拆坏模板等缺陷。
+
 ## [未发布]
 
 ### Added
+
+- **`@` 引用选择器的资产窗口把 SVG 矢量图单列一类（与 GIF 同等处理）**：选择器此前照「GIF 单列一类」的口径把位图拆成「图片 / GIF」两栏，而 SVG 在资产模型里同为 `image` 类型却自成一路（预览走原文件，不进 `nativeImage` 与缩略图链路），于是只能混在「图片」里挑——只认矢量的下游（`svg.gen` 的参考图、`svg.anim` 的烘焙输入）要从中找 `.svg` 源文件，全凭文件名猜。现按扩展名（`isVectorImageFilePath`）新增 `svg` 分类：页签变「全部 / 图片 / GIF / SVG / 视频 / 音频」，卡片右上角徽标显示「SVG」而非笼统的「图片」，没有缩略图时占位图标用 📐；矢量判定排在动图判定之前（两者扩展名互斥，顺序只为口径明确）。新增文案 `studio.chat.mentionTypeSvg`（中英同步，`localeParity` 覆盖）。改动只落在分类与展示：`mentionAssets` 的可引用口径、引用后回传的相对路径与既有引用链路一律未动。验证：`typecheck` / `lint`（`check:cjk` 0 违规）/ `format:check` 通过，全量 274 文件 2058 项单测通过
 
 - **对话流新增「本轮产物」扫盘出卡（agent 直接落盘到 `Output/` / `Cache/` 的媒体也会出卡）**：产物卡此前只由 MCP 活动回报的路径驱动，而 agent 用脚本 / 原生工具写出的文件（`Output/PortraitSVG/*.svg` 这类）不经活动链路——文件确实生成在工程里、对话里却一张卡都没有，很容易被判成「这一步没执行」。现在每轮运行结束会扫一遍工程 `Output/` 与 `Cache/`，把本轮（发送之后）写入的可预览媒体逐条追加为产物卡（与 MCP 活动卡同一形态、同样带「保存到素材库」入口，Cache 产物依旧默认不入库）。口径集中在共享纯函数层 `@shared/outputScan`：只认这两个产物目录（`Assets/` 走资产链路、`.aiartengine/graph-outputs/` 走活动链路，不重复出卡），只收能渲染成卡的类型（集合与 `ChatAssetPreview` 白名单一致，文本 / JSON 中间产物不出卡），跳过隐藏路径段、`.asset.json` 与缩略图文件；主进程 `outputScanService` 只读遍历（不写盘、目录名写死、文件数 4000 与目录深度 8 双上限，任何失败返回空清单而非抛错），IPC 走 `project:scan-outputs`。渲染层在发送前记录基线时刻，结束时（含运行中途报错的那一轮）按「写入时间 ≥ 基线 + 本次会话未出过卡」筛选——已由活动卡展示过的路径不重复出卡（生成产物同样落在 `Cache/` 下），单轮最多 24 张卡（`MAX_ROUND_OUTPUT_CARDS`，超出只提示数量），避免批量帧序列把对话流冲成瀑布并撑爆会话存储。验证：`typecheck` / `lint` / `check:cjk` / `format:check` 通过，全量 1994 项单测通过（新增 `outputScan` 16 项：路径口径 8 项 + 本轮筛选 8 项）
 
@@ -58,6 +60,8 @@
 - **新增「SVG 生成」节点（`svg.gen`）与 `svg` / `svgs` 端口类型**：文本模型按生成指令产出 SVG 源码，落盘为工程内 `.svg` 资产（主进程按 `image/svg+xml` 落 `.svg`，缩略图与预览复用图库 SVG 资产的既有链路），`out` 出选中结果、`out-all` 出历次结果。双击节点卡片即展开生成指令框（内置扁平图标 / 徽章图标 / 加载动效 / UI 按钮 / 图标动效 / 扁平插画六套预设），右侧检查器可调画布宽高、背景与系统提示词。同时新增 `GraphSvgItem` / `GraphSvgValue` / `GraphSvgsValue` 值类型，`svg.anim` 的输入口由 `image` 改为 `svg` 以消费该节点的输出；为不打断既有工程，`portsCompatible` 放行 `image → svg` 单向兼容（图库 SVG 资产的引用节点只出 image 口），内容确实不是矢量时由执行期明确报「SVG 源不可读」。**本轮补上参考图输入**：`svg.gen` 新增 `in-image` 图片端口（`multiple`，可多连），上游图片节点与图库图片资产可直接接进来，执行时经 `collectIncomingImageItems` 收集、`resolveImageUrls` 解析成模型可消费的 URL（最多 4 张，`SVG_GEN_REFERENCE_MAX` 截断），随请求作为多模态 `images` 与指令一同送出，并在提示词末尾追加一句参考图说明（`buildSvgGenReferenceInstruction`，中英同步）——「照着图片生成矢量图」不必再先把图转成文字。未接图片时 `images` 参数完全不出现（沿用纯文生 SVG 路径），既有工程不受影响；节点描述与检查器提示同步注明该图片端口
 
 ### Fixed
+
+- **修复 SVG 资产在引用链路里没有预览（预览路径用「规划中的位图缩略图」而不是原文件，那个路径永远不会落盘）**：@ 引用选择器与对话里的引用 chip 此前按 `asset.thumbnailPath || asset.relativePath` 取预览，而矢量图（SVG）在导入 / 生成登记时同样被写进了规划中的位图缩略图路径（`.aiartengine/thumbs/<原图>.png`）——SVG 根本不生成位图缩略图（`nativeImage` 解不出矢量，`isThumbnailableMediaPath` 直接返回原文件），这个路径永远不落盘，`getAssetPreviewUrl` 见文件不存在即回空串（该早返回发生在矢量分支之前），卡片 / chip 于是永远只剩占位图标（📐），新增的 SVG 分类页签也就只剩徽标。三处收口：① 主进程 `planAndScheduleImageThumbnail` 对矢量图直接返回原文件路径、不再排队生成——与开工程扫描（`scheduleMissingThumbnails`）修正后的口径一致，一处治好所有按 `thumbnailPath` 取预览的调用方（画布图卡、上游图解析等）；② @ 引用选择器与对话 chip 的预览路径改走共享口径 `resolvePreviewMediaPath`（矢量图与视频走原文件、静态图优先真缩略图），并在规划缩略图尚未落盘（刚导入 / 后台生成中）时回退原文件；③ 资产库 / 检查器 / 大图预览原本就走原文件口径，未动。验证：`typecheck` / `lint`（`check:cjk` 0 违规）/ `format:check` 通过，全量 274 文件 2058 项单测通过
 
 - **修复重开应用后对话的「上下文占用」环形进度条归零（真实用量只活在内存里，重启 / 切会话即丢）**：进度条的已用 token 优先取 harness 每轮 LLM 请求后上报的真实值（`context` 事件，含系统提示 / 工具定义 / 历史），而它此前只有渲染层一个 ref（`harnessContextUsed`）承载——重开应用、切换会话、关掉面板再打开都会让它消失，`contextUsed` 于是回退到本地估算（`gpt-tokenizer` 只数用户与助手消息的 text / reasoning，不含系统提示、工具定义与工具结果），用户看到的就是「保存的进度没了」。现把真实用量随会话落盘：`ChatSession` 增可选 `contextUsed`，`useChatHistory` 增 `commitContextUsed`（只改该会话这一个字段，**刻意不碰 `updatedAt`**——用量上报不是会话活动，不该把会话列表顺序搅乱），落盘与消息共用同一个 400ms 防抖窗口（`scheduleHistoryPersist`：一轮对话里每次 LLM 请求都会上报一次 context，逐次写 localStorage 太贵），`loadActiveMessages` 改为按激活会话恢复该值（此前是显式置 `undefined`），切走 / 新建会话 / 面板卸载前各补一次同步提交（否则防抖窗口内那一次上报会跟着新会话一起丢掉），`readSessions` 对脏数据（非有限非负数）直接丢弃并回退估算。新会话与无记录的旧数据仍走原估算路径，环形进度条的绘制与配色逻辑一行未动。**注意首次生效范围**：修复只对「在新的版本里发生过至少一轮 LLM 请求」的会话有效——旧版本从未把用量写上盘，因此升级后第一次打开旧会话时进度条仍会先显示偏小的估算值，等该会话发出一次请求（收到 `context` 事件）后即恢复真实值，此后不再丢。验证：新增 `tests/chatHistoryContextUsed.test.ts`（9 项：重启后按会话恢复真实用量、会话间互不串味、用量上报不动 `updatedAt` / `title`、缺省不写字段、负数 / 字符串 / `null` / `1e999` 等脏数据一律视为无记录、合法 0 值保留），`typecheck` / `lint` / `check:cjk` / `format:check` 通过，全量 273 文件 2022 项单测通过
 

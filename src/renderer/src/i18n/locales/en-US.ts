@@ -803,6 +803,7 @@ export default {
       mentionTypeAll: 'All',
       mentionTypeImage: 'Image',
       mentionTypeGif: 'GIF',
+      mentionTypeSvg: 'SVG',
       mentionTypeVideo: 'Video',
       mentionTypeAudio: 'Audio',
       mentionTypeFile: 'File',
