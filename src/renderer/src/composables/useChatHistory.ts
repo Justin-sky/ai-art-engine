@@ -65,6 +65,12 @@ export interface ChatSession {
   createdAt: number
   updatedAt: number
   messages: ChatMsg[]
+  /**
+   * 该会话最近一次 harness 上报的真实上下文 token（含系统提示 / 工具定义 / 历史）。
+   * 落盘后重启或切回会话时，对话输入框右侧的环形进度条仍显示上次真实用量，
+   * 而不是回退到只算消息文本的本地估算（进度看着像「没保存」）。缺省表示从未上报过。
+   */
+  contextUsed?: number
 }
 
 const SESSIONS_KEY = 'studio.chat.sessions.v1'
@@ -80,13 +86,23 @@ function readSessions(): ChatSession[] {
     if (!raw) return []
     const parsed = JSON.parse(raw) as unknown
     if (!Array.isArray(parsed)) return []
-    return parsed.filter(
-      (s): s is ChatSession =>
-        !!s && typeof s === 'object' && typeof (s as ChatSession).id === 'string'
-    )
+    return parsed
+      .filter(
+        (s): s is ChatSession =>
+          !!s && typeof s === 'object' && typeof (s as ChatSession).id === 'string'
+      )
+      .map(withoutInvalidContextUsed)
   } catch {
     return []
   }
+}
+
+/** 上下文用量是可选字段：非有限非负数（手改 localStorage / 旧版脏数据）一律丢弃，交给渲染层回退本地估算 */
+function withoutInvalidContextUsed(session: ChatSession): ChatSession {
+  const used = session.contextUsed
+  if (typeof used === 'number' && Number.isFinite(used) && used >= 0) return session
+  delete session.contextUsed
+  return session
 }
 
 function writeSessions(sessions: ChatSession[]): void {
@@ -206,6 +222,18 @@ export function useChatHistory() {
     }
   }
 
+  /**
+   * 记录当前会话最近一次 harness 上报的真实上下文 token（环形进度条据此在重启 / 切回会话后恢复）。
+   * 刻意不更新 updatedAt：用量上报不是会话活动，不该把会话列表顺序搅乱。
+   */
+  function commitContextUsed(used: number | undefined): void {
+    const index = sessions.value.findIndex((s) => s.id === activeId.value)
+    if (index < 0) return
+    const prev = sessions.value[index]!
+    if (prev.contextUsed === used) return
+    sessions.value[index] = { ...prev, contextUsed: used }
+  }
+
   return {
     sessions,
     activeId,
@@ -215,6 +243,7 @@ export function useChatHistory() {
     create,
     remove,
     activate,
-    commitMessages
+    commitMessages,
+    commitContextUsed
   }
 }

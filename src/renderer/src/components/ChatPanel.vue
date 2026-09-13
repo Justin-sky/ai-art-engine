@@ -56,7 +56,8 @@ const {
   create: createSession,
   remove: removeSession,
   activate: activateSession,
-  commitMessages
+  commitMessages,
+  commitContextUsed
 } = useChatHistory()
 
 /** @ 资产引用弹窗与已引用资产（工程内相对路径） */
@@ -73,17 +74,20 @@ const referenced = ref<MentionAsset[]>([])
 const project = useProjectStore()
 let historyTimer: number | null = null
 
-/** 从当前激活会话恢复消息 */
+/** 从当前激活会话恢复消息与上下文用量 */
 function loadActiveMessages(): void {
   messages.value = activeSession.value?.messages ? [...activeSession.value.messages] : []
-  // 切换会话后 harness 报告的上文不再适用，回退本地估算兜底
-  harnessContextUsed.value = undefined
+  // 上下文用量随会话落盘：切回 / 重启后恢复上次 harness 上报的真实值，
+  // 无记录（新会话或旧数据）时才回落本地估算，环形进度条不再重启即归零
+  harnessContextUsed.value = activeSession.value?.contextUsed
 }
 
 /** 切换会话：先保存当前，再加载目标 */
 function onSessionChange(id: string): void {
   if (!id || id === activeId.value) return
   commitMessages([...messages.value])
+  // 真实上下文用量也归到切走前的会话：否则防抖窗口里那一次上报会跟着新会话一起丢掉
+  commitContextUsed(harnessContextUsed.value)
   activateSession(id)
   loadActiveMessages()
   // 切换可能打断输入法组合（compositionend 丢失时 composing 残留，导致 Enter 无法发送），复位之
@@ -93,6 +97,7 @@ function onSessionChange(id: string): void {
 
 function onNewSession(): void {
   commitMessages([...messages.value])
+  commitContextUsed(harnessContextUsed.value)
   createSession()
   loadActiveMessages()
   resetEditor()
@@ -550,7 +555,7 @@ function buildTask(text: string): string {
 }
 
 const messages = ref<ChatMsg[]>([])
-/** harness provider 报告的最新真实上下文 token（每轮 LLM 请求完成后更新；切换会话后失效） */
+/** harness provider 报告的最新真实上下文 token（每轮 LLM 请求完成后更新，并随会话落盘） */
 const harnessContextUsed = ref<number | undefined>(undefined)
 /** 当前 agent 模式：craft（完整执行）/ ask（纯问答）/ plan（先规划后执行），持久化到本地 */
 const savedMode = localStorage.getItem(CHAT_MODE_KEY) as ChatMode | null
@@ -879,7 +884,7 @@ function formatTokenCount(n: number): string {
  */
 const contextUsed = computed<number>(() => {
   // harness 每轮请求后报告真实上下文 token（含系统提示/工具定义/历史），优先使用；
-  // 尚无 harness 数据（空闲期、恢复历史会话）时回退本地估算
+  // 尚无 harness 数据（新会话或旧记录未落盘）时回退本地估算
   if (typeof harnessContextUsed.value === 'number' && harnessContextUsed.value >= 0) {
     return harnessContextUsed.value
   }
@@ -923,18 +928,22 @@ const ringPct = computed<string>(() => {
   return `${Math.round(pct * 10) / 10}%`
 })
 
-/** 消息变化后防抖落盘历史会话（流式期间工具卡状态频繁更新，避免高频写 localStorage） */
-watch(
-  messages,
-  () => {
-    if (historyTimer !== null) window.clearTimeout(historyTimer)
-    historyTimer = window.setTimeout(() => {
-      commitMessages([...messages.value])
-      persistHistory()
-    }, 400)
-  },
-  { deep: true }
-)
+/**
+ * 防抖落盘历史会话：消息与上下文用量共用同一个窗口。
+ * 流式期间工具卡状态频繁更新、每轮 LLM 请求又各上报一次 context，避免高频写 localStorage。
+ */
+function scheduleHistoryPersist(): void {
+  if (historyTimer !== null) window.clearTimeout(historyTimer)
+  historyTimer = window.setTimeout(() => {
+    historyTimer = null
+    commitMessages([...messages.value])
+    // 上下文用量与消息同批落盘：重启后环形进度条仍显示上次上报的真实值
+    commitContextUsed(harnessContextUsed.value)
+    persistHistory()
+  }, 400)
+}
+
+watch(messages, scheduleHistoryPersist, { deep: true })
 
 let stopEvent: (() => void) | null = null
 let stopActivity: (() => void) | null = null
@@ -1069,6 +1078,8 @@ function onHarnessEvent(event: HarnessEvent): void {
     case 'context':
       // provider 报告的精确输入上下文 token：多轮会话为最新一次 LLM 请求的完整输入
       harnessContextUsed.value = event.used
+      // 顺手落盘：重启 / 切走再切回时环形进度条恢复这次的真实用量，而不是回退到偏小的本地估算
+      scheduleHistoryPersist()
       break
     case 'final': {
       // 流式期间文本已通过 assistant 事件实时显示，这里仅标记回答完成，避免覆盖丢失内容
@@ -1522,8 +1533,9 @@ onBeforeUnmount(() => {
   document.removeEventListener('keydown', onModeOutside)
   if (copyTimer !== null) window.clearTimeout(copyTimer)
   if (historyTimer !== null) window.clearTimeout(historyTimer)
-  // 卸载前把当前消息落盘，避免切换面板丢失最后一段对话
+  // 卸载前把当前消息与上下文用量落盘，避免切换面板丢失最后一段对话与真实用量
   commitMessages([...messages.value])
+  commitContextUsed(harnessContextUsed.value)
   persistHistory()
 })
 </script>

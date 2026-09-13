@@ -1368,7 +1368,21 @@ function buildPersona(mode: ChatMode, projectMemory?: string | null): string[] {
     // 实测 Ask 轮说过「我在 Ask 模式」后，同一会话切到 Plan 的下一轮它仍照抄这句话（即使这一轮的
     // system prompt 已是 Plan、工具面也已换成只读）。这里明确「以本轮说法为准」，并禁止复述旧结论。
     'The mode stated for the current turn is authoritative: the user may switch modes between turns of this same session.',
-    "Never carry over a previous turn's mode name, and never repeat an earlier claim that tools are unavailable unless this turn says so."
+    "Never carry over a previous turn's mode name, and never repeat an earlier claim that tools are unavailable unless this turn says so.",
+    // 沙箱禁用本机浏览器：pwsh 命令跑在 Windows ACL 沙箱（受限令牌）里，Chromium 建不出自己的
+    // mojo IPC 命名管道会 CHECK 失败 → __debugbreak → 0x80000003，系统在应用之外弹「应用程序错误」
+    // 对话框（实测每次都会弹，而且工具调用还是失败）。dsh 的沙箱只有文件效果策略、没有进程策略，
+    // 拦不住这条命令，只能在这里收口；同时把「要光栅化就走应用自带 svg.gen → svg.anim」讲清楚，
+    // 免得模型为了视觉自查反复重试。详见 CHANGELOG。
+    '=== Headless browser is unavailable ===',
+    'Shell commands run inside the harness sandbox, where some host programs cannot start at all.',
+    'Never launch a local browser from a shell command (msedge.exe / chrome.exe, including any --headless or --remote-debugging-port run):',
+    'under the sandbox restricted token Chromium cannot create its internal IPC pipe, so it aborts with exit code 0x80000003 (STATUS_BREAKPOINT)',
+    'and Windows pops a modal application-error dialog in front of the user while the command fails anyway.',
+    'Do not retry with --no-sandbox or any other flag, and never try to escalate or bypass the sandbox just to run a browser.',
+    'To rasterize or visually check an SVG or HTML artifact, use the studio path instead:',
+    'commit a plan whose svg.gen node feeds svg.anim, then read the baked PNG frames and the GIF reported by the task result.',
+    'If a check genuinely needs a real browser, stop and tell the user to run it outside the app.'
   ]
   if (mode === 'ask') {
     return [
