@@ -134,8 +134,12 @@
 
 - [ ] **3D 闭环**：3D 角色 / 场景资产库、骨骼动画导入编辑（复用导演台 IK / 骨骼基础）、3D 场景 → 分镜机位自动生成、GLB 动画导出
 - [ ] **3D 动作生成（MoMask）**：文本 / 姿态提示 → 动作序列（text-to-motion），角色动作来源从 Mixamo 等现成库扩展到"生成"——动作重定向到目标角色骨骼后可入导演台 / 资产库驱动预览
-  - [ ] 推理接入：MoMask 模型适配（承接 YoloBackend worker 思路，本地优先 / API 兜底），动作 token 序列解码为骨骼旋转 / 位移帧
-  - [ ] 动作重定向与消费：生成动作重定向（retarget）到目标骨骼 → 导演台骨骼 / 3D 资产预览驱动 → 动画片段入资产库，对接 P1「3D 闭环」骨骼编辑与 GLB 动画导出
+  - [ ] 动作表示与解码：动作 token 序列 → T2M / HumanML3D 263 维姿态特征（6D 局部关节旋转 + 根旋转 / 线速度与高度 + 关节位置），6D 旋转正交化回四元数、根速度积分还原位移 / 朝向，装配到 3D 侧标准人形骨架契约 `humanoidRig3d`（与 5.5 `stage2dHumanoid` 对称）产出 `AnimationClip`；关节位置分量用于脚部接触与地面校正（消滑步）
+  - [ ] 推理接入：MoMask 模型适配（RVQ 动作 tokenizer + Masked / Residual Transformer 两阶段掩码生成，采样迭代与 CFG 留在 TS 侧），承接 `YoloService` utilityProcess + onnxruntime-node worker 思路，本地 ONNX 优先 / Python sidecar 仅作开发验证与数值对拍 / 远程 API 兜底；模型权重按需下载，目录与设置页复用 YOLO 侧管理策略
+  - [ ] 动作重定向与消费：生成动作按 `normalizeBoneName` 语义经 `retargetClipToCharacter` 重定向到目标骨骼 → 落「仅骨骼 + 动画 GLB」资产（`genParams.modelKind='animation'`，目录 `Models/`）→ 导演台骨骼轨（`DirectorSkeletonClipSegment`）与资产库 3D 预览驱动播放；候选重抽（`out-all`）与「生成即挂骨骼轨」
+  - [ ] 姿态提示与动作编辑：工程内既有姿势（姿态资产 `PoseAssetData` / YOLO 关键点反解 / AI 文本姿态）作为首段条件或时间区间掩码，支持区间续写 / 插值 / 补全（时间 in-painting，无需微调）；时长自动预测与闭环尾帧
+  - [ ] 入口与暴露：节点图「3D 动作生成」节点 + MCP `generate_motion` + 对话技能，Agent 可编排「生成 → 挑候选 → 挂轨 → 调时长 / 循环」
+  - > 详见 [PLAN_MOMASK.md](./PLAN_MOMASK.md)：解码路径、三级推理承载选型、重定向契约、合规边界与分阶段实施。
   - > 依赖：P1「3D 闭环」骨骼链路（角色骨骼绑定 / 动画格式）、5.3「姿态进导演台」关键点映射基础。验收：一段动作描述（如"拔剑挥砍"）3 分钟内产出可在导演台 / 3D 资产上循环播放的动作并导出 GLB 动画。
 
 - [ ] **资产语义检索**：AI 自动标签（现有文本模型描述 → 标签）、自然语言检索资产、跨工程资产库、资产级版本历史
