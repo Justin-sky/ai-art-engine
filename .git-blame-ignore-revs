@@ -1,0 +1,4 @@
+# 全仓 Prettier 格式化（一次性排版收口，744 个文件，运行时行为零改动）
+# 本地启用：git config blame.ignoreRevsFile .git-blame-ignore-revs
+# GitHub 的 blame 视图会自动识别该文件，无需额外配置
+257dbbf28d0c663c92b7fac0c28b3ecb3b7c9bd6
