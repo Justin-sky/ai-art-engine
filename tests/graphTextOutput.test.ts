@@ -110,6 +110,19 @@ describe('graph text output', () => {
     ).toBe(false)
   })
 
+  it('does not treat svg.anim (note category but baked frames) as text capable', () => {
+    // SVG 烘焙同样挂在 note 分类下，但产出的是位图帧序列，双击应播放帧而不是开记事本
+    expect(
+      isNodeTextCapable(
+        baseNode({
+          id: 'svganim',
+          category: 'note',
+          typeId: 'svg.anim'
+        })
+      )
+    ).toBe(false)
+  })
+
   it('prefers live run output, then persisted fields', () => {
     const screenplay = baseNode({
       id: 'edit',

@@ -58,6 +58,7 @@ export type GraphSkillKind =
   | 'episode-image'
   | 'episode-video'
   | 'anim2d'
+  | 'svg'
   | 'system'
 
 /** 解析入口指针；实现仍在 episodeBoardParse 等文件，此处不搬家 */
@@ -127,6 +128,22 @@ const ANIM2D_FRAMES_USAGE_ZH =
 const ANIM2D_FRAMES_USAGE_EN =
   'Usage: add a "2D frame animation" node (typeId `anim.2d`), wire a rows×cols sprite sheet into its `in` port, and set animRows / animCols plus the action preset animPresetId (or a custom animInstruction); then set animGifFps to 8–12 and run — the node slices per-frame PNGs and additionally emits a GIF through the `out-gif` port, persisted as a project asset. When no sprite sheet exists yet, either wire an upstream image node that draws the grid, or dive into this node\'s inner graph and generate it with the image API.' +
   ' Over MCP the minimum is 3 calls, and workflow_plan is not needed first (workflow_commit takes a hand-written plan directly): (1) workflow_commit({ plan, name }) — plan is {"title":"2D frame animation","nodes":[{"key":"sheet","typeId":"asset.image","params":{"generateInstruction":"Generate a sprite sheet of the <action> action for one character: a single image divided into <rows> rows x <cols> columns, frame order left to right then top to bottom, keeping the character look, proportions and art style identical across every cell, changing only the pose"}},{"key":"anim","typeId":"anim.2d","params":{"animRows":<rows>,"animCols":<cols>,"animPresetId":"walk","animInstruction":"<action cycle description>","animGifFps":12}}],"edges":[{"from":"sheet","to":"anim"}]}, which returns assetId; (2) task_run({ assetId }) returns mcpTaskId; (3) task_status({ mcpTaskId }) fetches the outputs (generation plus encoding takes roughly 30-90 seconds, so several polls may be needed). animRows / animCols must match the actual grid of the sprite sheet, and animGifFps must be set explicitly and be greater than 0 (the default 0 slices frames without producing a GIF). Use graph_node_types / graph_read / graph_edit only when modifying an existing asset.'
+
+/** SVG 矢量动画（svg.gen）：生成指令模板（{subject} 由 applyGraphSkill 的 vars 插值） */
+const SVG_MOTION_INSTRUCTION_ZH =
+  '把「{subject}」绘制成一份独立可渲染的 SVG 矢量图：只用矢量元素（path / rect / circle / ellipse / polygon / g，可配 defs / gradient），不要位图、不要外部字体或网络资源。需要动画时把动效写在 SVG 自身内（<animate> / <animateTransform> / <animateMotion> 或 <style> 里的 CSS @keyframes），并构成一个可无缝循环的完整动作周期。' // cjk-ok（LLM 生成指令模板：与 anim2d 同域的双语提示词数据）
+
+const SVG_MOTION_INSTRUCTION_EN =
+  'Draw "{subject}" as a standalone, directly renderable SVG vector artwork using vector elements only (path / rect / circle / ellipse / polygon / g, optionally with defs / gradients) — no bitmaps, no external fonts or network resources. If animation is required, implement the motion inside the SVG itself (<animate> / <animateTransform> / <animateMotion> or CSS @keyframes inside <style>) as one seamless, loopable action cycle.'
+
+/** SVG 矢量动画：dsh 技能快照里的操作说明（矢量 → 帧序列 / GIF 的完整链路，不进节点 params） */
+const SVG_MOTION_USAGE_ZH =
+  '用法：用户要**矢量**（SVG）而不是位图时，用「SVG 生成」节点（typeId `svg.gen`）：`in` 端口接文本指令、`in-image` 端口接参考图（可照着图片生成矢量图），节点自带 SVG 系统提示词并强制全矢量、禁外部资源，产出 .svg 工程资产（`out` 出选中结果、`out-all` 出历次结果）。需要位图帧序列或 GIF 动图时，再把矢量源接到「SVG 烘焙」节点（typeId `svg.anim`）的 `in` 端口（端口类型 svg）：含 SMIL / CSS 动效时按动画时间轴逐帧烘焙 PNG（`out` / `out-all`）并合成 GIF（`out-gif` 端口）；**静态 SVG 只出 1 帧、不产 GIF**，所以要动画就必须在生成指令里明确要求 SVG 内置动效。关键参数：svg.gen 的 generateInstruction（画面 + 动效描述）、svgGenWidth / svgGenHeight（16–2048，默认 512）、svgGenBackground（空串 = 透明，或 white / black）；svg.anim 的 svgFrames（2–60，默认 12，GIF 帧数即此值）、svgDurationSec（0 = 自动探测 SVG 自身动画周期，上限 30 秒）、svgWidth / svgHeight（0 = 用 SVG 自身尺寸）。' + // cjk-ok（dsh 技能用法文本：双语提示词数据）
+  '走 MCP 时最少 3 次调用，且不必先调 workflow_plan（workflow_commit 直接收手写 plan）：① workflow_commit({ plan, name }) —— plan 为 {"title":"鹈鹕骑车 SVG 动画","nodes":[{"key":"svg","typeId":"svg.gen","params":{"generateInstruction":"把一只卡通鹈鹕骑自行车画成独立可渲染的 SVG：严格正侧面朝左，车轮、辐条、车架、车把、脚踏都要画全；用 <animateTransform> 让车轮与曲柄持续旋转、双腿交替蹬踏、身体随节奏轻微起伏，构成可无缝循环的蹬车动画","svgGenWidth":512,"svgGenHeight":512}},{"key":"bake","typeId":"svg.anim","params":{"svgFrames":24,"svgDurationSec":2,"svgWidth":512,"svgHeight":512}}],"edges":[{"from":"svg","to":"bake"}]}，返回 assetId；② task_run({ assetId }) 返回 mcpTaskId；③ task_status({ mcpTaskId }) 取产物（文本模型出 SVG 约十几秒，烘焙 + GIF 编码另需数秒）。只要一张静态矢量图时，plan 里只留 svg.gen 单节点、edges 留空，不要接 svg.anim。用户提到 SVG / 矢量 / 矢量动画 / 矢量图标时不要改用 generate_image —— 那是位图。只有改动已存在的资产时才用 graph_node_types / graph_read / graph_edit。' // cjk-ok（dsh 技能用法文本：双语提示词数据）
+
+const SVG_MOTION_USAGE_EN =
+  'Usage: when the user wants **vector** (SVG) output instead of a bitmap, use the "SVG gen" node (typeId `svg.gen`): wire the text instruction into `in` and reference images into `in-image` (it can redraw an image as vectors); the node ships its own SVG system prompt and forces pure vector output with no external resources, producing a .svg project asset (`out` = selected result, `out-all` = every run). To get a raster frame sequence or an animated GIF, wire the vector source into the `in` port (port type svg) of the "SVG bake" node (typeId `svg.anim`): with SMIL / CSS animation inside the SVG it bakes one PNG per frame along the animation timeline (`out` / `out-all`) and composes a GIF (`out-gif`); a **static SVG yields one frame and no GIF**, so ask for in-SVG motion explicitly when animation is wanted. Key params: svg.gen generateInstruction (artwork plus motion description), svgGenWidth / svgGenHeight (16-2048, default 512), svgGenBackground (empty string = transparent, or white / black); svg.anim svgFrames (2-60, default 12, which is also the GIF frame count), svgDurationSec (0 = auto-detect the SVG animation cycle, max 30 s), svgWidth / svgHeight (0 = use the SVG intrinsic size).' +
+  ' Over MCP the minimum is 3 calls and workflow_plan is not needed first (workflow_commit accepts a hand-written plan): (1) workflow_commit({ plan, name }) — plan is {"title":"Pelican riding a bicycle (SVG)","nodes":[{"key":"svg","typeId":"svg.gen","params":{"generateInstruction":"Draw a cartoon pelican riding a bicycle as a standalone renderable SVG: strict left-facing side view with both wheels, spokes, frame, handlebars and pedals fully visible; use <animateTransform> to keep the wheels and crank rotating, the legs pedalling alternately and the body bobbing slightly, forming one seamless pedalling loop","svgGenWidth":512,"svgGenHeight":512}},{"key":"bake","typeId":"svg.anim","params":{"svgFrames":24,"svgDurationSec":2,"svgWidth":512,"svgHeight":512}}],"edges":[{"from":"svg","to":"bake"}]}, which returns assetId; (2) task_run({ assetId }) returns mcpTaskId; (3) task_status({ mcpTaskId }) fetches the outputs (the text model needs roughly ten seconds for the SVG, then baking and GIF encoding take a few more). For a single static vector image keep only the svg.gen node with an empty edges array and skip svg.anim. Do not switch to generate_image when the user asks for SVG / vector / vector animation / vector icons — that produces a bitmap. Use graph_node_types / graph_read / graph_edit only when modifying an existing asset.'
 
 function fromEpisodePack(
   id: string,
@@ -287,6 +304,17 @@ const BUILTIN_SKILLS: GraphSkill[] = [
     instructionEn: ANIM2D_FRAMES_INSTRUCTION_EN,
     usageZh: ANIM2D_FRAMES_USAGE_ZH,
     usageEn: ANIM2D_FRAMES_USAGE_EN
+  },
+  {
+    // SVG 矢量动画（svg.gen → svg.anim）：矢量源码 → 帧序列 / GIF 动图，与 anim2d.frames 同口径
+    id: 'svg.motion',
+    kind: 'svg',
+    titleZh: 'SVG 矢量图与矢量动画（GIF）', // cjk-ok（技能标题：与 builtins 节点名同域）
+    titleEn: 'SVG vector art / vector animation (GIF)',
+    instructionZh: SVG_MOTION_INSTRUCTION_ZH,
+    instructionEn: SVG_MOTION_INSTRUCTION_EN,
+    usageZh: SVG_MOTION_USAGE_ZH,
+    usageEn: SVG_MOTION_USAGE_EN
   },
   fromSystemDefault('system.screenplay', '剧本', 'Screenplay', defaultScreenplaySystemPrompt),
   fromSystemDefault('system.gameSystem', '策划案', 'Game system', defaultGameSystemSystemPrompt),

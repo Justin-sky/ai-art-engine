@@ -1,5 +1,5 @@
 /** 渲染进程媒体 URL / 文本缓存，避免重复 IPC 与 fetch */
-import { isAnimatedImageFilePath } from '@shared/import'
+import { isAnimatedImageFilePath, isVectorImageFilePath } from '@shared/import'
 
 const fileUrlCache = new Map<string, string>()
 const previewUrlCache = new Map<string, string>()
@@ -53,13 +53,13 @@ export async function resolveAssetPreviewUrl(relativePath: string): Promise<stri
 }
 
 /**
- * 大图 / 播放预览 URL：动图（GIF）必须走原文件——预览缩略图是静态首帧，会把动画压没；
- * 静态图仍走缩略图，省内存与 IO。
+ * 大图 / 播放预览 URL：动图（GIF）与矢量图（SVG）必须走原文件——前者的预览缩略图
+ * 是静态首帧，会把动画压没；后者根本没有位图缩略图。静态图仍走缩略图，省内存与 IO。
  */
 export async function resolveAssetPlaybackUrl(relativePath: string): Promise<string> {
   const key = relativePath.replace(/\\/g, '/').trim()
   if (!key) return ''
-  if (isAnimatedImageFilePath(key)) return resolveAssetFileUrl(key)
+  if (isAnimatedImageFilePath(key) || isVectorImageFilePath(key)) return resolveAssetFileUrl(key)
   return resolveAssetPreviewUrl(key)
 }
 

@@ -3420,7 +3420,7 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
 }> = [
   {
     id: 'image',
-    typeIds: ['asset.image', 'image.select']
+    typeIds: ['asset.image', 'image.select', 'svg.gen', 'svg.anim']
   },
   {
     id: 'imageRefine',

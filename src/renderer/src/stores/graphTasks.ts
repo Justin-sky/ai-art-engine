@@ -62,6 +62,7 @@ import { composeStage2dCanvas } from '../features/graph/model/composeStage2dCanv
 import { composeStage2dFrameSheet } from '../features/graph/model/composeStage2dFrameSheet'
 import { composeImageGridCell } from '../features/graph/model/composeImageGridCell'
 import { composeAnim2dGif } from '../features/graph/model/composeAnim2dGif'
+import { renderSvgFrames } from '../features/graph/model/renderSvgFrames'
 import { composeImageIconPackSheet } from '../features/graph/model/composeImageIconPackSheet'
 import { composeImageLayerStack } from '../features/graph/model/composeImageLayerStack'
 import { composeComicPageImage } from '../features/comic/composeComicPageImage'
@@ -1385,6 +1386,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         composeStage2dFrameSheet,
         composeImageGridCell,
         composeGifFrames: composeAnim2dGif,
+        renderSvgFrames,
         composeImageIconPackSheet,
         composeImageLayerStack,
         composeComicPageImage,

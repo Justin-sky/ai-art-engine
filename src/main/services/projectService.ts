@@ -118,6 +118,7 @@ import {
   isLayeredSourceImageFilePath,
   isModelFilePath,
   isTextFilePath,
+  isVectorImageFilePath,
   isVideoFilePath
 } from '@shared/import'
 import {
@@ -1032,6 +1033,12 @@ class ProjectService {
       return this.getAssetFileUrl(posix)
     }
 
+    // 矢量图（SVG）：原文件本身就能被 Chromium 渲染，而 nativeImage 解不出它，
+    // 没有可生成的位图缩略图，直接给原文件 URL
+    if (isVectorImageFilePath(abs)) {
+      return this.getAssetFileUrl(relativePath)
+    }
+
     // 分层源文件（PSD）：原文件 Chromium 解不了，预览只能走应用内合成解码出的 PNG。
     // 已有缩略图直接用；否则等一次合成解码（结果落盘，之后秒开）；解不出返回空串，
     // 由界面按类型徽章展示。
@@ -1132,6 +1139,8 @@ class ProjectService {
       // PSD 等分层源文件不排队：画面要经合成解码才有，打标只在缩略图尺度上跑、收益不对等
       const mediaRel = asset.relativePath?.trim()
       if (mediaRel && isLayeredSourceImageFilePath(mediaRel)) continue
+      // SVG 矢量图同理：画面由 Chromium 渲染，主进程取不到像素
+      if (mediaRel && isVectorImageFilePath(mediaRel)) continue
       const last = asset.visionTags
       if (last?.status === 'ok') continue
       // 上次 skipped 距今不足节流窗口（模型未就绪 / 视频抽帧失败等）：
@@ -1448,6 +1457,8 @@ class ProjectService {
 
     let ext = '.bin'
     if (mime.includes('png')) ext = '.png'
+    // SVG 生成节点落盘：image/svg+xml → .svg（assetTypeFromMime 归 image 家族，缩略图链路同图库 SVG 资产）
+    else if (mime.includes('svg')) ext = '.svg'
     else if (mime.includes('jpeg') || mime.includes('jpg')) ext = '.jpg'
     else if (mime.includes('webp')) ext = '.webp'
     else if (mime.includes('gif')) ext = '.gif'

@@ -29,6 +29,8 @@ function mimeForPath(filePath: string): string {
       return 'image/webp'
     case '.gif':
       return 'image/gif'
+    case '.svg':
+      return 'image/svg+xml'
     case '.bmp':
       return 'image/bmp'
     case '.glb':

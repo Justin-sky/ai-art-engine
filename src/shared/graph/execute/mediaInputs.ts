@@ -27,6 +27,29 @@ export async function resolveStyleReferenceUrls(
     .filter((url): url is string => Boolean(url?.startsWith('data:')))
 }
 
+/** svg / svgs 值 → 图像条目（保留 `data:image/svg+xml` 前缀供解码，落盘态退 relativePath 读原文件） */
+export function flattenSvgValues(values: GraphValue[]): GraphImageItem[] {
+  const items: GraphImageItem[] = []
+  const push = (item: {
+    id?: string
+    title?: string
+    dataUrl?: string
+    relativePath?: string
+  }): void => {
+    items.push({
+      ...(item.id ? { id: item.id } : {}),
+      ...(item.title ? { title: item.title } : {}),
+      dataUrl: item.dataUrl ?? '',
+      ...(item.relativePath ? { relativePath: item.relativePath } : {})
+    })
+  }
+  for (const value of values) {
+    if (value.kind === 'svg') push(value)
+    else if (value.kind === 'svgs') for (const item of value.items) push(item)
+  }
+  return items
+}
+
 export async function collectImageItemsFromValue(
   value: GraphValue,
   ctx: NodeExecuteContext
@@ -49,6 +72,11 @@ export async function collectImageItemsFromValue(
   }
 
   for (const item of flattenImagesValues([value])) {
+    pushItem(item)
+  }
+
+  // SVG 生成节点的矢量输出：按图像条目消费（SVG 烘焙节点即靠这里接住上游 svg 端口）
+  for (const item of flattenSvgValues([value])) {
     pushItem(item)
   }
 

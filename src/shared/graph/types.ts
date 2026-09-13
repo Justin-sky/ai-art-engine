@@ -119,6 +119,9 @@ export const GraphPortType = {
   videos: 'videos',
   text: 'text',
   texts: 'texts',
+  /** SVG 矢量图：生成节点产出源码并落盘 .svg，动画/烘焙类节点消费 */
+  svg: 'svg',
+  svgs: 'svgs',
   world: 'world',
   /** 世界元素生成结果实体表（type/name/imageUrl），与目录口 world 区分 */
   worldEntities: 'worldEntities',
@@ -157,7 +160,8 @@ const PLURAL_GRAPH_PORT_DATA_TYPES = new Set<GraphPortDataType>([
   GraphPortType.images,
   GraphPortType.videos,
   GraphPortType.voices,
-  GraphPortType.texts
+  GraphPortType.texts,
+  GraphPortType.svgs
 ])
 
 export function isPluralGraphPortDataType(dataType: GraphPortDataType): boolean {
@@ -175,6 +179,8 @@ export function toPluralGraphPortDataType(dataType: GraphPortDataType): GraphPor
       return GraphPortType.voices
     case GraphPortType.text:
       return GraphPortType.texts
+    case GraphPortType.svg:
+      return GraphPortType.svgs
     default:
       return dataType
   }
@@ -191,6 +197,8 @@ export function toSingularGraphPortDataType(dataType: GraphPortDataType): GraphP
       return GraphPortType.voice
     case GraphPortType.texts:
       return GraphPortType.text
+    case GraphPortType.svgs:
+      return GraphPortType.svg
     default:
       return dataType
   }
@@ -236,6 +244,7 @@ export type GraphNodeTypeId =
   | 'image.gridSplit'
   | 'image.layerSplit'
   | 'image.toPrompt'
+  | 'svg.gen'
   | 'graph.input.slot'
   | (string & {})
 
@@ -310,6 +319,26 @@ export interface GraphNodeParams {
   animGifFrameCount?: number
   animGifWidth?: number
   animGifHeight?: number
+  /** SVG 烘焙：采样帧数（决定 GIF 帧数） */
+  svgFrames?: number
+  /** SVG 烘焙：取样时长（秒）；0 = 自动探测 SVG 自身动画周期 */
+  svgDurationSec?: number
+  /** SVG 烘焙：输出宽 / 高；0 = 用 SVG 自身尺寸 */
+  svgWidth?: number
+  svgHeight?: number
+  /** SVG 烘焙：背景填充（'' = 透明） */
+  svgBackground?: '' | 'white' | 'black'
+  /** SVG 烘焙：输入的 SVG 图库资产工程相对路径（最近一次运行） */
+  svgSourceRelativePath?: string
+  /** SVG 烘焙：最近一次运行实际取样的动画周期（秒），供 Inspector 展示 */
+  svgDetectedPeriodSec?: number
+  /** SVG 烘焙：最近一次运行产出的 GIF 工程相对路径 */
+  svgGifRelativePath?: string
+  /** SVG 烘焙：最近一次运行产出的 GIF 规格（供 Inspector 展示） */
+  svgGifFps?: number
+  svgGifFrameCount?: number
+  svgGifWidth?: number
+  svgGifHeight?: number
   /** 视频生成：输出时长（秒） */
   generateDuration?: number
   /** 视频生成：是否生成音频（模型支持时） */
@@ -427,6 +456,24 @@ export interface GraphNodeParams {
     createdAt?: string
     relativePath?: string
   }>
+  /**
+   * SVG 生成节点：历次生成累计的矢量源码（含落盘 .svg 路径）。
+   * `text` 是端口直传用的源码正文；`dataUrl` 仅供卡片缩略，不写进资产 JSON。
+   */
+  generatedSvgs?: Array<{
+    id?: string
+    title?: string
+    text: string
+    dataUrl?: string
+    createdAt?: string
+    relativePath?: string
+  }>
+  /** SVG 生成节点当前选中的那一条（写入 out 端口） */
+  selectedSvgId?: string
+  /** SVG 生成画布：宽高与背景（背景空 = 透明） */
+  svgGenWidth?: number
+  svgGenHeight?: number
+  svgGenBackground?: string
   /**
    * 世界元素生成节点：从子窗口已完成输出节点收集的实体结果
    *（type / name / imageUrl）。
@@ -690,6 +737,11 @@ export interface GraphPortDef {
   /** 是否允许多条边连到同一端口 */
   multiple?: boolean
   label?: string
+  /**
+   * 端口在卡片上的显示名（i18n key）。缺省时按 `dataType` 翻译——
+   * 同类型的多个端口（如图库节点的 out / out-gif 都是 image）需要它来区分。
+   */
+  labelKey?: string
 }
 
 export interface GraphGroup {

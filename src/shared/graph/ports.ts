@@ -39,9 +39,16 @@ function shouldHideAssetRefInputs(
   return (node?.params ?? params)?.assetHost !== true
 }
 
-/** 同类型可连。单数与复数不互通（选择节点只收 images / videos / voices / texts 列表）。 */
+/**
+ * 同类型可连。单数与复数不互通（选择节点只收 images / videos / voices / texts 列表）。
+ *
+ * 例外：`image → svg`。SVG 在资产库里仍是 image 家族（图库 SVG 资产的引用节点只出 image 口），
+ * 而 SVG 烘焙等矢量消费口要能接它们；若不兼容，既有工程里那条连线会被 normalize 直接清掉。
+ * 内容是否真是矢量交给执行期判定（不是 SVG 时明确报「SVG 源不可读」）。
+ */
 export function portsCompatible(source: GraphPortDataType, target: GraphPortDataType): boolean {
-  return source === target
+  if (source === target) return true
+  return source === GraphPortType.image && target === GraphPortType.svg
 }
 
 function resolveVideoFrameMode(raw: unknown): VideoFrameMode {

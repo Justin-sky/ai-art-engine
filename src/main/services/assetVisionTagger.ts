@@ -21,6 +21,7 @@ import { nativeImage, type NativeImage } from 'electron'
 import {
   isImageFilePath,
   isLayeredSourceImageFilePath,
+  isVectorImageFilePath,
   isVideoFilePath
 } from '@shared/import'
 import { cocoLabelZh } from '@shared/yolo'
@@ -109,6 +110,8 @@ async function detectOnce(root: string, rel: string): Promise<VisionAssetTags | 
   // 缩略图尺度上跑，收益不对等，暂不参与入库打标——不写 skipped 状态，
   // 免得素材卡长出「打标失败」角标
   if (isLayeredSourceImageFilePath(abs)) return null
+  // 矢量图（SVG）：画面由 Chromium 渲染，nativeImage 取不到像素，打标无从谈起
+  if (isVectorImageFilePath(abs)) return null
   if (!isImageFilePath(abs) && !isVideoFilePath(abs)) return null
 
   try {

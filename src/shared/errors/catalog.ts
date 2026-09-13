@@ -48,6 +48,11 @@ export const SHARED_ERRORS = {
     '帧序列切分能力未注入',
     'Frame sequence split capability not injected'
   ),
+  capabilitySvgRender: defErrSimple(
+    'graphExec.capability.svgRender',
+    'SVG 逐帧烘焙能力未注入',
+    'SVG frame render capability not injected'
+  ),
   capabilityImageGenerate: defErrSimple(
     'graphExec.capability.imageGenerate',
     '未注入图片生成能力，无法图层分离',
@@ -87,6 +92,24 @@ export const SHARED_ERRORS = {
     'graphExec.frameSplit.empty',
     '帧序列切分失败',
     'Frame sequence split failed'
+  ),
+  /** SVG 烘焙：输入不是可读的 SVG（缺源文件、或端口给的是位图） */
+  svgSourceUnreadable: defErrSimple(
+    'graphExec.svgAnim.sourceUnreadable',
+    '读不到 SVG 源内容：请把图库里的 SVG 资产接到此节点',
+    'Cannot read the SVG source: connect an SVG asset from the library'
+  ),
+  /** SVG 生成：模型输出里没有可用的 <svg> 标记 */
+  svgGenEmpty: defErrSimple(
+    'graphExec.svgGen.empty',
+    '模型没有返回可用的 SVG 源码',
+    'The model returned no usable SVG source'
+  ),
+  /** SVG 烘焙：烘焙未产出画面 */
+  svgRenderEmpty: defErrSimple(
+    'graphExec.svgAnim.renderEmpty',
+    'SVG 逐帧烘焙未产出画面',
+    'SVG frame rendering produced no image'
   ),
   /** 语音合成：主进程未返回资产条目 */
   ttsNoAsset: defErrSimple(

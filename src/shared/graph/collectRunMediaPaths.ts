@@ -2,7 +2,7 @@
  * 图运行产出 → 会话可见的媒体相对路径。
  *
  * 图运行的产物本身只是 runStates 里的端口值与节点参数，会话侧无从感知；
- * 这里把「作品级」产物挑出来（2D 帧动画 GIF、2D 舞台拼版、输出节点成片），
+ * 这里把「作品级」产物挑出来（2D 帧动画 GIF、2D 舞台拼版、SVG 烘焙 GIF、输出节点成片），
  * 逐帧序列这类中间产物只按单件末条收敛，避免一次运行刷出上百张卡片。
  */
 
@@ -10,12 +10,14 @@ import type { GraphDocument } from './types'
 import type { GraphNodeRunState, GraphValue } from './execute/types'
 import { ANIM2D_GIF_OUT_PORT_ID } from './anim2d'
 import { STAGE2D_FRAMES_OUT_PORT_ID, STAGE2D_SHEET_OUT_PORT_ID } from './stage2dAction'
+import { SVG_ANIM_GIF_OUT_PORT_ID } from './svgAnim'
 import { findAllOutputNodes } from './query'
 
 /** 作品级单件产出端口（按展示优先级排列） */
 const FEATURE_OUT_PORT_IDS: readonly string[] = [
   ANIM2D_GIF_OUT_PORT_ID,
-  STAGE2D_SHEET_OUT_PORT_ID
+  STAGE2D_SHEET_OUT_PORT_ID,
+  SVG_ANIM_GIF_OUT_PORT_ID
 ]
 
 /** 批量中间产物端口：兜底阶段跳过，避免把逐帧序列当成作品 */
@@ -33,6 +35,18 @@ function lastRelativePath(items: ReadonlyArray<{ relativePath?: string }>): stri
   return undefined
 }
 
+/**
+ * SVG 图库取首条：`commitSvgGallery` 的合并顺序是「新在前」（与 image 图库的
+ * append 顺序相反），末条是最旧的一张，取它会把会话卡指向过期产物。
+ */
+function firstRelativePath(items: ReadonlyArray<{ relativePath?: string }>): string | undefined {
+  for (const item of items) {
+    const path = item?.relativePath?.trim()
+    if (path) return path
+  }
+  return undefined
+}
+
 /** 端口值 → 可展示的相对路径（无物化路径的一律忽略，dataUrl 不进会话） */
 function mediaPathOf(value: GraphValue | undefined): string | undefined {
   if (!value) return undefined
@@ -40,11 +54,15 @@ function mediaPathOf(value: GraphValue | undefined): string | undefined {
     case 'image':
     case 'video':
     case 'voice':
+    // SVG 生成节点的 out 出 .svg 源码 + 落盘路径，与位图同为「可放给人看」的产物
+    case 'svg':
       return value.relativePath?.trim() || undefined
     case 'images':
     case 'videos':
     case 'voices':
       return lastRelativePath(value.items)
+    case 'svgs':
+      return firstRelativePath(value.items)
     case 'output':
       return (
         lastRelativePath(value.images ?? []) ??

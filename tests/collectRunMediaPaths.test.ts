@@ -4,6 +4,7 @@ import {
   RUN_MEDIA_PATH_LIMIT,
   STAGE2D_FRAMES_OUT_PORT_ID,
   STAGE2D_SHEET_OUT_PORT_ID,
+  SVG_ANIM_GIF_OUT_PORT_ID,
   collectRunMediaPaths,
   createNodeFromType,
   type GraphDocument,
@@ -158,5 +159,64 @@ describe('collectRunMediaPaths', () => {
     )
 
     expect(paths).toEqual([])
+  })
+
+  it('SVG 生成：收集落盘 .svg（图库「新在前」，取首条即最新）', () => {
+    const gen = createNodeFromType('svg.gen', { x: 0, y: 0 }, { id: 'svg-gen' })
+    const paths = collectRunMediaPaths(
+      makeGraph([gen]),
+      statesOf({
+        'svg-gen': {
+          out: { kind: 'svg', text: '<svg/>', relativePath: 'Assets/SVG/b.svg' },
+          'out-all': {
+            kind: 'svgs',
+            items: [
+              { text: '<svg/>', relativePath: 'Assets/SVG/b.svg' },
+              { text: '<svg/>', relativePath: 'Assets/SVG/a.svg' }
+            ]
+          }
+        }
+      })
+    )
+
+    expect(paths).toEqual(['Assets/SVG/b.svg'])
+  })
+
+  it('SVG 生成：只出源码未落盘时不进会话', () => {
+    const gen = createNodeFromType('svg.gen', { x: 0, y: 0 }, { id: 'svg-gen' })
+    const paths = collectRunMediaPaths(
+      makeGraph([gen]),
+      statesOf({
+        'svg-gen': { out: { kind: 'svg', text: '<svg/>' } }
+      })
+    )
+
+    expect(paths).toEqual([])
+  })
+
+  it('SVG 烘焙：GIF 与 2D 帧动画 GIF 同为作品级产物，两条都收', () => {
+    const anim = createNodeFromType('anim.2d', { x: 0, y: 0 }, { id: 'anim' })
+    const svgAnim = createNodeFromType('svg.anim', { x: 200, y: 0 }, { id: 'svg-anim' })
+    const paths = collectRunMediaPaths(
+      makeGraph([anim, svgAnim]),
+      statesOf({
+        anim: {
+          [ANIM2D_GIF_OUT_PORT_ID]: {
+            kind: 'image',
+            dataUrl: '',
+            relativePath: 'Cache/Anim/anim.gif'
+          }
+        },
+        'svg-anim': {
+          [SVG_ANIM_GIF_OUT_PORT_ID]: {
+            kind: 'image',
+            dataUrl: '',
+            relativePath: 'Cache/SvgAnim/bake.gif'
+          }
+        }
+      })
+    )
+
+    expect(paths).toEqual(['Cache/Anim/anim.gif', 'Cache/SvgAnim/bake.gif'])
   })
 })

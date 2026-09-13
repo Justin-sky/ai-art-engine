@@ -18,6 +18,7 @@ export type InstructionPresetKind =
   | 'beatUnitGen'
   | 'uiSplit'
   | 'frameAnimGen'
+  | 'svgGen'
   | 'model3d'
   | 'mediaReview'
   | 'mediaRework'
@@ -1520,6 +1521,39 @@ const FRAME_ANIM_GEN_FX_PRESETS: InstructionPreset[] = [
   }
 ]
 
+const SVG_GEN_PRESETS: InstructionPreset[] = [
+  {
+    id: 'icon.flat',
+    titleKey: 'graph.inspector.generate.presets.svgGen.iconFlat',
+    body: '扁平风格应用图标：单一主体居中，圆角几何造型，双色渐变，简洁明快，边缘干净无噪点'
+  },
+  {
+    id: 'icon.badge',
+    titleKey: 'graph.inspector.generate.presets.svgGen.iconBadge',
+    body: '游戏道具徽章图标：外圈描边与高光，内部符号居中，深色底衬托，适合背包 / 技能图标'
+  },
+  {
+    id: 'ui.loading',
+    titleKey: 'graph.inspector.generate.presets.svgGen.uiLoading',
+    body: '加载动效：圆环顺时针匀速旋转，柔和渐变，尾部渐隐，节奏平稳并可无缝循环'
+  },
+  {
+    id: 'ui.button',
+    titleKey: 'graph.inspector.generate.presets.svgGen.uiButton',
+    body: 'UI 按钮：圆角矩形底板 + 内高光 + 轻微投影，中心留白放文字，配色与整体风格统一'
+  },
+  {
+    id: 'anim.icon',
+    titleKey: 'graph.inspector.generate.presets.svgGen.animIcon',
+    body: '图标动效：主体上下轻浮动（或按压回弹），阴影随之缩放，无缝循环'
+  },
+  {
+    id: 'illust.flat',
+    titleKey: 'graph.inspector.generate.presets.svgGen.illustFlat',
+    body: '扁平插画：几何色块构成场景，主体明确、构图留白，颜色数量控制在 5 种以内'
+  }
+]
+
 const PRESET_PACKS: Record<InstructionPresetKind, InstructionPreset[]> = {
   screenplay: SCREENPLAY_PRESETS,
   image: IMAGE_PRESETS,
@@ -1535,6 +1569,7 @@ const PRESET_PACKS: Record<InstructionPresetKind, InstructionPreset[]> = {
   beatUnitGen: [],
   uiSplit: [],
   frameAnimGen: [...FRAME_ANIM_GEN_CHARACTER_PRESETS, ...FRAME_ANIM_GEN_FX_PRESETS],
+  svgGen: SVG_GEN_PRESETS,
   model3d: [],
   mediaReview: [],
   mediaRework: []

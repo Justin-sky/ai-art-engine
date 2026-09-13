@@ -1,7 +1,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { AssetType } from '@shared/domain'
-import { isLayeredSourceImageFilePath } from '@shared/import'
+import { isLayeredSourceImageFilePath, isVectorImageFilePath } from '@shared/import'
 
 /** Typed helpers for common domain labels */
 export function useStudioI18n() {
@@ -22,6 +22,9 @@ export function useStudioI18n() {
   }): string {
     if (isLayeredSourceImageFilePath(asset.relativePath || '')) {
       return String(t('asset.type.psdSource'))
+    }
+    if (isVectorImageFilePath(asset.relativePath || '')) {
+      return String(t('asset.type.svgSource'))
     }
     return assetTypeLabel(asset.type)
   }

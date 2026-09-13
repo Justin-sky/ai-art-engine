@@ -9,6 +9,7 @@ import {
 import {
   isImageFilePath,
   isLayeredSourceImageFilePath,
+  isVectorImageFilePath,
   isVideoFilePath
 } from '@shared/import'
 import { encodeRgbaPng, readPsdCompositeFile } from './psdCompositeService'
@@ -69,6 +70,9 @@ function previewMaxEdgeFor(sourceAbs: string): number {
  * 分层源文件只能走异步链路——合成解码会把主进程占住数百毫秒，同步 IPC 里跑不动。
  */
 function isThumbnailableMediaPath(filePath: string): boolean {
+  // 矢量图（SVG）：nativeImage 解不出画面，没有可生成的位图缩略图，
+  // 预览一律走原文件（Chromium 能直接渲染）
+  if (isVectorImageFilePath(filePath)) return false
   return isImageFilePath(filePath) || isVideoFilePath(filePath)
 }
 
@@ -77,6 +81,8 @@ function loadNativeImageSync(sourceAbs: string): NativeImage | null {
   if (isVideoFilePath(sourceAbs)) return null
   // 分层源文件（PSD）nativeImage 必然解空，省掉 buffer → path 两次白试
   if (isLayeredSourceImageFilePath(sourceAbs)) return null
+  // 矢量图（SVG）同理：nativeImage 不认矢量格式
+  if (isVectorImageFilePath(sourceAbs)) return null
   try {
     const buf = readFileSync(sourceAbs)
     const fromBuf = nativeImage.createFromBuffer(buf)
@@ -211,7 +217,11 @@ export function ensureImageThumbnail(root: string, sourceRelativePath: string): 
 
   const sourceAbs = assertInside(root, join(root, sourceRel))
   if (!existsSync(sourceAbs)) throw fail(E_THUMB_SOURCE_MISSING)
-  if (!isImageFilePath(sourceAbs) || isLayeredSourceImageFilePath(sourceAbs)) {
+  if (
+    !isImageFilePath(sourceAbs) ||
+    isLayeredSourceImageFilePath(sourceAbs) ||
+    isVectorImageFilePath(sourceAbs)
+  ) {
     return sourceRel
   }
 

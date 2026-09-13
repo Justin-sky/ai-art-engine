@@ -28,7 +28,9 @@ import MediaReworkInspector from '../components/MediaReworkInspector.vue'
 import AdVariantsInspector from '../components/AdVariantsInspector.vue'
 import ComicPageInspector from '../components/ComicPageInspector.vue'
 import Anim2dInspector from '../components/Anim2dInspector.vue'
+import SvgAnimInspector from '../components/SvgAnimInspector.vue'
 import FrameAnimGenInspector from '../components/FrameAnimGenInspector.vue'
+import SvgGenInspector from '../components/SvgGenInspector.vue'
 import TablePassThroughInspector from '../components/TablePassThroughInspector.vue'
 import WorldGenInspector from '../components/WorldGenInspector.vue'
 import BeatInspector from '../components/BeatInspector.vue'
@@ -169,9 +171,19 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     nodeTypeId: 'anim.2d'
   },
   {
+    id: 'studio.graph.svgAnim',
+    component: SvgAnimInspector,
+    nodeTypeId: 'svg.anim'
+  },
+  {
     id: 'studio.graph.frameAnimGen',
     component: FrameAnimGenInspector,
     nodeTypeId: 'frame.animGen'
+  },
+  {
+    id: 'studio.graph.svgGen',
+    component: SvgGenInspector,
+    nodeTypeId: 'svg.gen'
   },
   {
     id: 'studio.graph.beatUnitGen',

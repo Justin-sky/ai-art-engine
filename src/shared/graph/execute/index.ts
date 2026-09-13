@@ -66,6 +66,8 @@ export { executeIconPackNode } from './iconPack'
 export * from './stageLocal'
 export * from './adVariants'
 export * from './anim'
+export * from './svgAnim'
+export * from './svgGen'
 export {
   executeScreenplayOutputNode,
   executeBeatOutputNode,

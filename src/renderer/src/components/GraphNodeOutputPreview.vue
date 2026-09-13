@@ -204,6 +204,7 @@ function mediaKindFromNode(node: GraphNode): PreviewMediaKind | null {
   const boundaryKind = mediaKindFromBoundaryPort(node)
   if (boundaryKind) return boundaryKind
   if (node.typeId === 'image.select') return 'image'
+  if (node.typeId === 'svg.gen') return 'image'
   if (node.typeId === 'video.select') return 'video'
   if (node.typeId === 'voice.select') return 'audio'
   if (node.typeId === 'text.select') return 'text'
@@ -245,6 +246,21 @@ function collectFromValue(value: GraphValue | undefined, into: PreviewItem[]): v
         kind: 'image',
         src,
         assetId: revealableAssetId(item.id) ?? assetIdByRelativePath(item.relativePath)
+      })
+    }
+    return
+  }
+  if (value.kind === 'svg' || value.kind === 'svgs') {
+    const svgItems = value.kind === 'svg' ? [value] : value.items
+    for (const [index, item] of svgItems.entries()) {
+      const rel = item.relativePath?.trim()
+      const data = item.dataUrl?.trim()
+      if (!rel && !data) continue
+      into.push({
+        key: item.id?.trim() || `svg:${index}`,
+        kind: 'image',
+        src: rel ? `rel:${rel}` : data,
+        assetId: revealableAssetId(item.id) ?? assetIdByRelativePath(rel)
       })
     }
     return

@@ -807,7 +807,7 @@ import {
 } from '../features/media/openFullImagePreview'
 import { openMotion2dActionPreviewDialog } from '../features/media/motion2dActionPreviewDialog'
 import { openUiKitExtractDialog } from '../features/uiKit/uiKitExtractDialog'
-import { isLayeredSourceImageFilePath } from '@shared/import'
+import { isLayeredSourceImageFilePath, isVectorImageFilePath } from '@shared/import'
 import { thumbRelativePathFor } from '@shared/media/thumbnailPath'
 import { isWeakVisionTag } from '@shared/visionTags'
 import type { VideoBeatTags } from '@shared/videoBeats'
@@ -904,6 +904,8 @@ function assetIcon(asset: AssetInfo): string {
 function assetLabel(asset: AssetInfo): string {
   // PSD 等设计源文件：卡片不按「图片」示人——它解不出画面，也不能直接送模型
   if (isLayeredSourceImageFilePath(asset.relativePath || '')) return t('asset.type.psdSource')
+  // SVG 矢量图：同样归 image 家族但自成一路（预览走原文件，不进位图链路）
+  if (isVectorImageFilePath(asset.relativePath || '')) return t('asset.type.svgSource')
   if (isAnimationModelAsset(asset)) return t('asset.type.modelAnimation')
   if (isPoseModelAsset(asset)) return t('asset.type.modelPose')
   if (isFreeCanvasAsset(asset)) return t('asset.type.freeCanvas')
@@ -2242,8 +2244,12 @@ async function saveScreenplayNotepad(text: string): Promise<void> {
 async function onAssetDblClick(assetId: string): Promise<void> {
   const asset = project.assets.find((a) => a.id === assetId)
   if (!asset) return
-  // PSD 等分层源文件：双击看合成图预览（拿不到合成图时由预览入口降级交系统默认程序）
-  if (isLayeredSourceImageFilePath(asset.relativePath || '')) {
+  // PSD 等分层源文件 / SVG 矢量图：应用内没有能承载它们的编辑器（矢量图进图编辑器只会是一张空图），
+  // 双击直接看画面——PSD 取主进程合成预览（拿不到时由预览入口降级交系统默认程序），SVG 取原文件
+  if (
+    isLayeredSourceImageFilePath(asset.relativePath || '') ||
+    isVectorImageFilePath(asset.relativePath || '')
+  ) {
     await openFullImagePreview({
       relativePath: asset.relativePath,
       title: asset.name

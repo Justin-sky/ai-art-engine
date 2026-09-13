@@ -7,7 +7,8 @@ import {
 } from '../src/shared/graph/instructionMentions'
 import {
   buildInstructionFinalPromptPreview,
-  buildMentionSourcesForNode
+  buildMentionSourcesForNode,
+  resolveInstructionFinalPreviewKind
 } from '../src/shared/graph/execute'
 import type { GraphDocument, GraphNode } from '../src/shared/graph/types'
 import { portMentionIndex } from '../src/shared/domain'
@@ -249,5 +250,26 @@ describe('buildInstructionFinalPromptPreview reshoot', () => {
     })
     expect(preview).not.toContain('00:')
     expect(preview).toContain('把雨伞改成透明')
+  })
+})
+
+describe('buildInstructionFinalPromptPreview svgGen', () => {
+  it('svg.gen 解析为专属预览种类（不退化为剧本）', () => {
+    expect(resolveInstructionFinalPreviewKind({ typeId: 'svg.gen' })).toBe('svgGen')
+  })
+
+  it('系统提示词走 SVG 专家，用户提示词追加画布约束', () => {
+    const preview = buildInstructionFinalPromptPreview({
+      kind: 'svgGen',
+      instructionRaw: '扁平风格应用图标',
+      sources: [],
+      locale: 'zh-CN',
+      svgGen: { width: 256, height: 256, background: 'white' }
+    })
+    expect(preview).toContain('SVG 矢量图生成专家')
+    expect(preview).toContain('画布：256×256 px')
+    expect(preview).toContain('背景纯白')
+    expect(preview).toContain('扁平风格应用图标')
+    expect(preview).not.toContain('专业编剧')
   })
 })

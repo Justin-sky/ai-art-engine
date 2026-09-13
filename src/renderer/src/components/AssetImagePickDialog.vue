@@ -91,7 +91,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import type { AssetInfo } from '@shared/domain'
-import { isLayeredSourceImageFilePath } from '@shared/import'
+import { isLayeredSourceImageFilePath, isVectorImageFilePath } from '@shared/import'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
 import { useProjectStore } from '../stores/project'
@@ -123,7 +123,9 @@ const imageAssets = computed(() =>
       asset.type === 'image' &&
       asset.relativePath &&
       // PSD 等分层源文件不能作为生成输入：下游按原文件取像素，而它解不出画面
-      !isLayeredSourceImageFilePath(asset.relativePath)
+      !isLayeredSourceImageFilePath(asset.relativePath) &&
+      // SVG 矢量图同理：下游按原文件字节送模型，位图模型吃不了
+      !isVectorImageFilePath(asset.relativePath)
   )
 )
 

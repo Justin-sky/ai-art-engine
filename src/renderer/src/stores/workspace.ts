@@ -10,7 +10,7 @@ import {
   isBeatAsset,
   type AssetInfo
 } from '@shared/domain'
-import { isLayeredSourceImageFilePath } from '@shared/import'
+import { isLayeredSourceImageFilePath, isVectorImageFilePath } from '@shared/import'
 import { parseGraphHostContext } from '@shared/editorGlobals'
 import { useEditorKernel } from '../editor/kernel'
 import i18n from '../i18n'
@@ -266,6 +266,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (isImportedMediaRefAsset(asset)) return false
     // PSD 等分层源文件：应用内没有能承载它的编辑器（双击走合成图预览），不开编辑器
     if (isLayeredSourceImageFilePath(asset.relativePath || '')) return false
+    // SVG 矢量图同理：双击走原文件预览（Chromium 能直接渲染），进图编辑器只会是一张空图
+    if (isVectorImageFilePath(asset.relativePath || '')) return false
     return true
   }
 

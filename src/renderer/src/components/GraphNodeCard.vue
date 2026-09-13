@@ -148,7 +148,7 @@
         >
 
         <div
-          v-else-if="isAnim2dNode && cardAnimFrames.length > 1"
+          v-else-if="isCardAnimNode && cardAnimFrames.length > 1"
           class="card-preview-grid anim2d-live"
           :title="previewOpenHint"
         >
@@ -621,6 +621,7 @@ import {
   readImageGenerateParamsFromNode,
   readAnim2dFromNode,
   readAnimKeyColorFromNode,
+  readSvgAnimFromNode,
   readVideoGenerateParamsFromNode,
   resolveNodeTextContent,
   resolveNodeType,
@@ -739,6 +740,10 @@ const mediaPlaying = ref(false)
 const mediaError = ref(false)
 /** 2D 帧动画：卡片自动播放帧预览 */
 const isAnim2dNode = computed(() => props.node.typeId === 'anim.2d')
+/** SVG 烘焙：note 分类但产出的是位图帧序列，卡片同样播放帧（而不是弹记事本） */
+const isSvgAnimNode = computed(() => props.node.typeId === 'svg.anim')
+/** 卡片帧播放节点（2D 帧动画 / SVG 烘焙帧） */
+const isCardAnimNode = computed(() => isAnim2dNode.value || isSvgAnimNode.value)
 /** 生成帧动画序列图：note 分类但输出图片，需走图片预览与尺寸自适应 */
 const isFrameAnimGenNode = computed(() => props.node.typeId === 'frame.animGen')
 const animFrameIndex = ref(0)
@@ -803,6 +808,8 @@ function portDataTypeClass(port: GraphPortDef): string {
 }
 
 function outPortTypeLabel(port: GraphPortDef): string {
+  // 端口自带显示名优先：SVG 烘焙的 帧 / 全部帧 / GIF 都是 image 类型，只能靠 labelKey 区分
+  if (port.labelKey) return t(port.labelKey)
   if (port.id === GRAPH_OUT_ALL_PORT_ID) {
     return t('graph.port.outAllShort')
   }
@@ -818,6 +825,7 @@ function outPortTitle(port: GraphPortDef): string {
 }
 
 function inPortTypeLabel(port: GraphPortDef): string {
+  if (port.labelKey) return t(port.labelKey)
   if (port.id === VIDEO_FIRST_FRAME_PORT_ID) return t('graph.port.firstFrame')
   if (port.id === VIDEO_LAST_FRAME_PORT_ID) return t('graph.port.lastFrame')
   if (
@@ -909,6 +917,8 @@ const instructionKind = computed((): InstructionPresetKind | null => {
       return 'uiSplit'
     case 'frame.animGen':
       return 'frameAnimGen'
+    case 'svg.gen':
+      return 'svgGen'
     case 'asset.screenplay':
       return isProcessingNode.value ? 'screenplay' : null
     case 'asset.gameSystem':
@@ -1073,6 +1083,9 @@ const instructionPlaceholder = computed(() => {
   }
   if (instructionKind.value === 'beatUnitGen') {
     return t('graph.inspector.generate.beatUnitGenInstructionPlaceholder')
+  }
+  if (instructionKind.value === 'svgGen') {
+    return t('graph.inspector.generate.svgGenInstructionPlaceholder')
   }
   return t('graph.inspector.generate.instructionPlaceholder')
 })
@@ -1328,6 +1341,7 @@ watch(
           ]?.imageUrl
         : '',
       isFrameAnimGenNode.value ||
+        props.node.typeId === 'svg.gen' ||
         isSelectImageNode(props.node) ||
         isMultiAngleEditorNode(props.node) ||
         isLightingEditorNode(props.node) ||
@@ -1409,6 +1423,14 @@ const cardImageGridSources = computed((): CardImageGridSource[] => {
         relativePath: url && !url.startsWith('data:') ? url : undefined
       }
     })
+  }
+  const generatedSvgs = props.node.params.generatedSvgs ?? []
+  if (props.node.typeId === 'svg.gen' && generatedSvgs.length > 1) {
+    return generatedSvgs.map((item, index) => ({
+      key: item.id?.trim() || `svg:${index}`,
+      dataUrl: item.dataUrl?.trim() || undefined,
+      relativePath: item.relativePath?.trim() || undefined
+    }))
   }
   const generated = props.node.params.generatedImages ?? []
   if (generated.length > 1) {
@@ -1599,6 +1621,7 @@ const previewHint = computed(() => {
 
 const previewOpenHint = computed(() => {
   if (isAnim2dNode.value) return t('graph.anim2d.cardPlayHint')
+  if (isSvgAnimNode.value) return t('graph.svgAnim.cardPlayHint')
   if (props.node.typeId === 'media.review' || props.node.typeId === 'media.rework') {
     return t('graph.generateNode.instructionHint')
   }
@@ -1633,7 +1656,7 @@ const previewKind = computed((): 'image' | 'video' | 'voice' | 'none' => {
     if (kind === 'text') return 'none'
   }
   // 帧动画：note 分类无 assetType，但仍输出图片，需按 image 走预览与尺寸自适应
-  if (isFrameAnimGenNode.value || isAnim2dNode.value) return 'image'
+  if (isFrameAnimGenNode.value || isCardAnimNode.value) return 'image'
   if (isSelectVideoNode(props.node)) return 'video'
   if (isSelectVoiceNode(props.node)) return 'voice'
   const t = props.node.assetType ?? props.asset?.type
@@ -2141,8 +2164,8 @@ function onPreviewDblClick(): void {
       return
     }
 
-    // 2D帧动画：双击播放/暂停序列帧，勿走 note 分类的记事本
-    if (isAnim2dNode.value) {
+    // 2D帧动画 / SVG 烘焙：双击播放/暂停烘焙帧，勿走 note 分类的记事本
+    if (isCardAnimNode.value) {
       await toggleCardAnimPreview()
       return
     }
@@ -2479,7 +2502,7 @@ const lastAutoFitMediaKey = ref('')
 /** 卡片上是否在展示可按比例适配的图片/视频 */
 function hasAutoFitMediaPreview(): boolean {
   if (previewKind.value === 'image' || previewKind.value === 'video') return true
-  if (isAnim2dNode.value && cardAnimFrames.value.length > 0) return true
+  if (isCardAnimNode.value && cardAnimFrames.value.length > 0) return true
   if (isFrameAnimGenNode.value) return true
   if (cardImageGridSrcs.value.length > 0) return true
   if (selectImagePreview.value.trim()) return true
@@ -2612,13 +2635,30 @@ function onMediaLoaded(e: Event): void {
   }
 }
 
+/** 卡片帧播放间隔：SVG 烘焙按「采样帧数 / 取样时长」推出的 FPS，2D 序列帧维持固定 8fps */
+function cardAnimIntervalMs(): number {
+  if (isSvgAnimNode.value) {
+    const state = readSvgAnimFromNode(props.node.params)
+    const fps = state.durationSec > 0 ? state.frames / state.durationSec : 0
+    if (fps > 0) return Math.min(1000, Math.max(40, Math.round(1000 / fps)))
+  }
+  return 125
+}
+
+let animCardTimerInterval = 125
+
 function startCardAnimPreview(): void {
-  if (animCardTimer != null) return
+  if (animCardTimer != null) {
+    // 间隔变了（如切到 SVG 烘焙的 FPS）才重启，避免每次进入视口都重建定时器
+    if (animCardTimerInterval === cardAnimIntervalMs()) return
+    stopCardAnimPreview()
+  }
+  animCardTimerInterval = cardAnimIntervalMs()
   animCardTimer = setInterval(() => {
     const count = cardAnimFrames.value.length
     if (count <= 1) return
     animFrameIndex.value = (animFrameIndex.value + 1) % count
-  }, 125)
+  }, animCardTimerInterval)
 }
 
 function stopCardAnimPreview(): void {
@@ -2686,13 +2726,13 @@ async function loadCardAnimFramesFromSequence(): Promise<void> {
 watch(
   () => [cardImageGridSrcs.value.slice().join('\0'), previewInViewport.value] as const,
   async () => {
-    if (isAnim2dNode.value && cardImageGridSrcs.value.length > 1) {
+    if (isCardAnimNode.value && cardImageGridSrcs.value.length > 1) {
       cardAnimFrames.value = cardImageGridSrcs.value.slice()
     } else if (cardAnimFrames.value.length <= 1) {
       await loadCardAnimFramesFromSequence()
     }
     if (
-      isAnim2dNode.value &&
+      isCardAnimNode.value &&
       previewInViewport.value &&
       cardAnimFrames.value.length > 1 &&
       !animCardUserPaused

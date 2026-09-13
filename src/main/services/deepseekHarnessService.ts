@@ -1700,14 +1700,19 @@ function launchDsh(opts: {
     // 末尾未换行的残段最后解析一次；若思考段因异常未闭合，补发一次
     if (parsedLen < fullOut.length) parseStdout(fullOut.length)
     if (inReasoning) emit({ type: 'reasoning', text: reasoningBuf })
-    const failed = code !== 0 && !sawOutput
+    // 失败判定只看「有没有真正产出文本」：sawOutput 会被工具事件置位，用它会让
+    // 「异常退出 + 已经调过工具」被当成正常结束——面板上表现为本轮什么都不显示。
+    const failed = code !== 0 && finalText === ''
     emit({ type: 'tool', name: 'dsh-agent', state: 'done' })
     if (failed) {
       const hint = dshEntry
         ? '请重试或查看上方状态信息'
         : '若为首次运行，请等待包下载完成后重试'
-      emit({ type: 'error', message: `dsh 异常退出（code ${code}）。${hint}。` })
+      // 有工具事件却没文本，是「面板看起来什么都没发生」的典型成因，说清楚免得误判为卡死
+      const onlyTools = sawOutput ? '，本轮只产生了工具调用、没有文本' : ''
+      emit({ type: 'error', message: `dsh 异常退出（code ${code}）${onlyTools}。${hint}。` })
     } else {
+      if (code !== 0) emitStatus(`dsh 退出码 ${code}（本轮已有输出，未受影响）`)
       emit({ type: 'done', runId })
       // 流式期间已把文本通过 assistant 事件实时下发，final 仅标记「回答已完成」
       if (finalText) emit({ type: 'final', text: finalText })

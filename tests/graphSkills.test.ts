@@ -47,6 +47,16 @@ describe('graphSkills', () => {
     expect(getGraphSkill('episode.breakdown')).toBe(builtin)
   })
 
+  it('exposes the svg vector skill for the chat agent', () => {
+    const skill = getGraphSkill('svg.motion')
+    expect(skill?.kind).toBe('svg')
+    expect(skill?.titleEn).toContain('SVG')
+    // dsh 靠 usage 里的 3 步 MCP 流程执行，改技能文案时保持这两个 typeId 可查
+    expect(skill?.usageZh).toContain('svg.gen')
+    expect(skill?.usageZh).toContain('svg.anim')
+    expect(applyGraphSkill('svg.motion').generateInstruction).toContain('SVG')
+  })
+
   it('registers a new skill and removes it on dispose', () => {
     const dispose = registerGraphSkill({
       id: 'plugin.test.skill',

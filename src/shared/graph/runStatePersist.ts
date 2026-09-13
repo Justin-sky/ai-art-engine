@@ -2,6 +2,7 @@ import type { GraphDocument, GraphPersistedRunState } from './types'
 import type {
   GraphImageItem,
   GraphNodeRunState,
+  GraphSvgItem,
   GraphVoiceItem,
   GraphValue,
   GraphVideoItem
@@ -69,6 +70,21 @@ function sanitizeVoiceItem(item: GraphVoiceItem): GraphVoiceItem | null {
   }
 }
 
+/** SVG 条目落盘：保留源码正文与相对路径即可（dataUrl 可由源码重建，不写盘） */
+function sanitizeSvgItem(item: GraphSvgItem): GraphSvgItem | null {
+  const text = (item.text ?? '').trim()
+  const relativePath = item.relativePath?.trim() || undefined
+  const id = item.id?.trim() || undefined
+  if (!text && !relativePath) return null
+  return {
+    ...(id ? { id } : {}),
+    ...(item.title ? { title: item.title } : {}),
+    text,
+    ...(relativePath ? { relativePath } : {}),
+    ...(item.createdAt ? { createdAt: item.createdAt } : {})
+  }
+}
+
 function sanitizeGraphValue(value: GraphValue): GraphValue | undefined {
   switch (value.kind) {
     case 'asset':
@@ -76,6 +92,18 @@ function sanitizeGraphValue(value: GraphValue): GraphValue | undefined {
     case 'texts':
     case 'camera':
       return value
+    case 'svg': {
+      const item = sanitizeSvgItem(value)
+      if (!item) return undefined
+      return { kind: 'svg', ...item }
+    }
+    case 'svgs': {
+      const items = value.items
+        .map(sanitizeSvgItem)
+        .filter((item): item is GraphSvgItem => !!item)
+      if (!items.length) return undefined
+      return { kind: 'svgs', items }
+    }
     case 'image': {
       const item = sanitizeImageItem({
         id: value.id,

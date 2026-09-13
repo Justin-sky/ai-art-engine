@@ -28,6 +28,11 @@ import {
 } from '../systemPromptSchemes'
 import { resolveReshootSystemPrompt, buildReshootPrompt } from '../reshoot'
 import {
+  buildSvgGenCanvasInstruction,
+  resolveSvgGenSystemPrompt,
+  type SvgGenState
+} from '../svgGen'
+import {
   buildImagePrompt,
   buildVideoPrompt,
   buildOptimizePrompt,
@@ -66,6 +71,7 @@ export type InstructionFinalPreviewKind =
   | 'beatUnitGen'
   | 'uiSplit'
   | 'frameAnimGen'
+  | 'svgGen'
   | 'model3d'
 
 /** 按节点 typeId / assetType / 编辑器 preset 解析预览种类 */
@@ -89,6 +95,7 @@ export function resolveInstructionFinalPreviewKind(
   if (typeId === 'frame.animGen' || presetKind === 'frameAnimGen') {
     return 'frameAnimGen'
   }
+  if (typeId === 'svg.gen' || presetKind === 'svgGen') return 'svgGen'
   if (typeId === 'video.reshoot' || presetKind === 'reshoot') return 'reshoot'
 
   const assetType = node?.assetType
@@ -134,6 +141,8 @@ function resolveSystemPromptForPreviewKind(
       return resolveUiSplitSystemPrompt(raw, locale)
     case 'frameAnimGen':
       return resolveFrameAnimGenSystemPrompt(raw, locale)
+    case 'svgGen':
+      return resolveSvgGenSystemPrompt(raw, locale)
     case 'model3d':
       return resolveModel3dSystemPrompt(raw, locale)
     case 'screenplay':
@@ -171,6 +180,9 @@ function buildUserPromptForPreviewKind(
       return buildUiSplitPrompt(instruction, locale)
     case 'frameAnimGen':
       return buildFrameAnimGenPrompt(instruction, locale)
+    case 'svgGen':
+      // 与 execute/svgGen.ts 同口径：用户提示词就是指令本身（画布约束在下面单独追加），不套默认模板
+      return instruction
     case 'model3d':
       return buildModel3dPrompt(instruction, locale)
     case 'screenplay':
@@ -198,6 +210,7 @@ export function buildInstructionFinalPromptPreview(input: {
   styleReferenceSubject?: StyleReferenceSubject
   reshootSegment?: { startSec?: number; endSec?: number }
   frameAnimGrid?: { rows?: number; cols?: number }
+  svgGen?: SvgGenState
 }): string {
   const instruction = expandInstructionMentions(input.instructionRaw.trim(), input.sources)
   let userPrompt = buildUserPromptForPreviewKind(
@@ -226,6 +239,10 @@ export function buildInstructionFinalPromptPreview(input: {
     const cols = Math.max(1, Math.floor(Number(input.frameAnimGrid.cols) || 4))
     const grid = buildAnim2dGridInstruction(rows, cols, input.locale)
     userPrompt = userPrompt.trim() ? `${userPrompt.trim()}\n\n${grid}` : grid
+  }
+  if (input.kind === 'svgGen' && input.svgGen) {
+    const canvas = buildSvgGenCanvasInstruction(input.svgGen, input.locale)
+    userPrompt = userPrompt.trim() ? `${userPrompt.trim()}\n\n${canvas}` : canvas
   }
   if (input.includeSystem === false) return userPrompt
   const system = resolveSystemPromptForPreviewKind(input.kind, input.systemPrompt, input.locale)

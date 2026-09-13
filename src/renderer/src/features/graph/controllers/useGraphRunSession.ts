@@ -46,6 +46,7 @@ import { composeStage2dCanvas } from '../model/composeStage2dCanvas'
 import { composeStage2dFrameSheet } from '../model/composeStage2dFrameSheet'
 import { composeImageGridCell } from '../model/composeImageGridCell'
 import { composeAnim2dGif } from '../model/composeAnim2dGif'
+import { renderSvgFrames } from '../model/renderSvgFrames'
 import { composeImageIconPackSheet } from '../model/composeImageIconPackSheet'
 import { composeImageLayerStack } from '../model/composeImageLayerStack'
 import { composeComicPageImage } from '../../comic/composeComicPageImage'
@@ -793,6 +794,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         composeStage2dFrameSheet,
         composeImageGridCell,
         composeGifFrames: composeAnim2dGif,
+        renderSvgFrames,
         composeImageIconPackSheet,
         composeImageLayerStack,
         composeComicPageImage,

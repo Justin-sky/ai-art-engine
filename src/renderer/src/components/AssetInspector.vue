@@ -547,6 +547,7 @@ import {
   isAnimatedImageFilePath,
   isAudioFilePath,
   isLayeredSourceImageFilePath,
+  isVectorImageFilePath,
   isVideoFilePath
 } from '@shared/import'
 import { isWeakVisionTag, type VisionObjectTag } from '@shared/visionTags'
@@ -816,6 +817,10 @@ const typeLabel = computed(() => {
   if (isLayeredSourceImageFilePath(asset.value.relativePath || '')) {
     return t('asset.type.psdSource')
   }
+  // SVG 矢量图：同为 image 家族的特殊子格式（预览走原文件，不进位图链路）
+  if (isVectorImageFilePath(asset.value.relativePath || '')) {
+    return t('asset.type.svgSource')
+  }
   if (isPoseModelAsset(asset.value)) return t('asset.type.modelPose')
   if (isAnimationModelAsset(asset.value) || modelMeta.value?.animationOnly) {
     return t('asset.type.modelAnimation')
@@ -953,6 +958,8 @@ const cutoutSourcePath = computed(() => {
   // PSD 等分层源文件：像素要经合成解码才有，且这些能力按原图文件取像素，
   // 抠图 / 智能构图 / UI 部件提取一律不开放
   if (rel && isLayeredSourceImageFilePath(rel)) return ''
+  // SVG 矢量图同理：这些能力都按原图文件取像素，而主进程解不出矢量格式
+  if (rel && isVectorImageFilePath(rel)) return ''
   if (rel && isAnimatedImageFilePath(rel)) return ''
   return rel
 })

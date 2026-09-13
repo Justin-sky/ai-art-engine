@@ -20,6 +20,8 @@ describe('GraphPortType', () => {
       GraphPortType.videos,
       GraphPortType.text,
       GraphPortType.texts,
+      GraphPortType.svg,
+      GraphPortType.svgs,
       GraphPortType.world,
       GraphPortType.worldEntities,
       GraphPortType.beat,
@@ -31,6 +33,8 @@ describe('GraphPortType', () => {
     expect(isGraphPortDataType('videos')).toBe(true)
     expect(isGraphPortDataType('text')).toBe(true)
     expect(isGraphPortDataType('texts')).toBe(true)
+    expect(isGraphPortDataType('svg')).toBe(true)
+    expect(isGraphPortDataType('svgs')).toBe(true)
     expect(isGraphPortDataType('world')).toBe(true)
     expect(isGraphPortDataType('worldEntities')).toBe(true)
     expect(isGraphPortDataType('beat')).toBe(true)

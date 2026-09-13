@@ -15,6 +15,8 @@ const CANVAS_ADDABLE_NODE_TYPES = [
   'asset.gameSystem',
   'ui.gen',
   'anim.2d',
+  'svg.anim',
+  'svg.gen',
   'frame.animGen',
   'asset.video',
   'asset.voice',

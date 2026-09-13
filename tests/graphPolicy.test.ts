@@ -98,6 +98,8 @@ describe('graph policy', () => {
         'asset.gameSystem',
         'ui.gen',
         'anim.2d',
+        'svg.anim',
+        'svg.gen',
         'frame.animGen',
         'asset.video',
         'asset.voice',

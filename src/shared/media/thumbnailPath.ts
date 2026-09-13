@@ -1,4 +1,5 @@
 /** 工程内图片预览缩略图路径约定与识别 */
+import { isVectorImageFilePath } from '../import'
 
 export const THUMBNAILS_DIR = '.aiartengine/thumbs'
 export const THUMB_MAX_EDGE = 384
@@ -44,6 +45,8 @@ export function resolvePreviewMediaPath(input: {
   const rel = trimPath(input.relativePath)
   const type = input.type ?? ''
   if (type === 'video' || type === 'voice') return rel
+  // 矢量图（SVG）：没有位图缩略图可生成，预览走原文件
+  if (isVectorImageFilePath(rel ?? '')) return rel
 
   const thumb = trimPath(input.thumbnailPath)
   if (thumb && isRealThumbnailPath(thumb, rel)) return thumb

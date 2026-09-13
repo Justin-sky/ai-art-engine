@@ -1,6 +1,6 @@
 import type { AssetType } from './domain'
 
-const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.psd'])
+const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.psd', '.svg'])
 /** 动画图片：预览必须读原文件，静态缩略图只剩首帧 */
 const ANIMATED_IMAGE_EXT = new Set(['.gif'])
 /**
@@ -14,6 +14,16 @@ const ANIMATED_IMAGE_EXT = new Set(['.gif'])
  * 也不能按扩展名送进内置解码器（.psd 不是 png/jpg）；需要编辑图层时交系统默认程序打开。
  */
 const LAYERED_SOURCE_IMAGE_EXT = new Set(['.psd'])
+/**
+ * 矢量图片格式（SVG）。
+ *
+ * 仍归 image 家族，但两个解码器各缺一半：Chromium 能直接把它当 `<img>` 渲染，
+ * 而 Electron `nativeImage` 解不出它。因此凡「主进程先栅格化成位图」的链路
+ * （缩略图、系统缩略图、视觉打标）都要让开，预览一律读原文件与
+ * `isAnimatedImageFilePath`（GIF）同一口径——差别只在 GIF 退化的原因是丢掉动画，
+ * SVG 退化的原因是根本没解出画面。
+ */
+const VECTOR_IMAGE_EXT = new Set(['.svg'])
 const VIDEO_EXT = new Set(['.mp4', '.mov', '.webm'])
 const AUDIO_EXT = new Set(['.mp3', '.wav', '.ogg', '.m4a'])
 const MODEL_EXT = new Set(['.glb', '.gltf', '.fbx'])
@@ -28,6 +38,7 @@ export const IMPORTABLE_EXTENSIONS = [
   'webp',
   'gif',
   'psd',
+  'svg',
   'mp4',
   'mov',
   'webm',
@@ -64,6 +75,15 @@ export function isLayeredSourceImageFilePath(filePath: string): boolean {
 /** 是否为动画图片（GIF）：预览必须走原文件，缩略图只保留首帧 */
 export function isAnimatedImageFilePath(filePath: string): boolean {
   return ANIMATED_IMAGE_EXT.has(fileExt(filePath))
+}
+
+/**
+ * 是否为矢量图片（SVG）。
+ * 判 true 的路径不得进 nativeImage / 缩略图链路（解不出画面），
+ * 预览与展示一律用原文件。
+ */
+export function isVectorImageFilePath(filePath: string): boolean {
+  return VECTOR_IMAGE_EXT.has(fileExt(filePath))
 }
 
 export function isVideoFilePath(filePath: string): boolean {

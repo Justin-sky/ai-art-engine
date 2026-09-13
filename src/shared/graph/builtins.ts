@@ -6,6 +6,9 @@ const VIDEO_ASSET_ICON = 'video-file'
 const ANIM2D_ASSET_ICON = 'anim2d'
 /** 与 domain.FRAME_ANIM_GEN_ASSET_ICON 同值；勿从 domain 导入（循环依赖同上） */
 const FRAME_ANIM_GEN_ASSET_ICON = 'frame-anim-gen'
+
+import { DEFAULT_SVG_ANIM_STATE, SVG_ANIM_GIF_OUT_PORT_ID } from './svgAnim'
+import { DEFAULT_SVG_GEN_STATE } from './svgGen'
 import {
   bindEnsureBuiltinNodeTypes,
   builtinRegistrationState
@@ -85,7 +88,9 @@ import {
   executeWorldExtractNode,
   executeWorldTableNode,
   executeAnim2dNode,
-  executeFrameAnimGenNode
+  executeFrameAnimGenNode,
+  executeSvgAnimNode,
+  executeSvgGenNode
 } from './execute'
 import { DEFAULT_GAME_SYSTEM_SYSTEM_PROMPT_ZH, DEFAULT_UI_SPLIT_SYSTEM_PROMPT_ZH } from './systemPromptSchemes'
 import { DEFAULT_GAME_SYSTEM_USER_PROMPT_ZH, DEFAULT_UI_SPLIT_USER_PROMPT_ZH } from './userPromptSchemes'
@@ -1966,6 +1971,101 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     card: 'media',
     contributeToGeneration: false,
     execute: executeAnim2dNode
+  },
+  {
+    typeId: 'svg.anim',
+    category: 'note',
+    label: 'SVG 烘焙', // cjk-ok（节点名：与 anim.2d 同口径，随 graph_node_types 返回给外部 Agent）
+    icon: '🌀',
+    defaultTitle: 'SVG 烘焙', // cjk-ok（同上）
+    description:
+      '把矢量源（SVG 生成节点 / 图库 SVG 资产）烘焙为位图序列：含 SMIL / CSS 动效时按动画时间轴逐帧烘焙 PNG（out / out-all）并合成 GIF 动图（out-gif 端口）落盘为工程资产，无动效时只出 1 帧、不产 GIF；svgDurationSec = 0 时自动探测 SVG 自身动画周期。', // cjk-ok（MCP / Agent 集成文本：随 graph_node_types 返回给外部 Agent，非 UI 文案）
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      /**
+       * 矢量输入：接 SVG 生成节点 / 图库 SVG 资产。
+       * 端口为 svg 类型（`image → svg` 单向放行，见 portsCompatible：图库 SVG 资产的引用节点只出 image 口）。
+       */
+      { id: 'in', direction: 'in', dataType: GraphPortType.svg, multiple: false, label: 'In' },
+      /**
+       * 帧序列：out 出选中帧、out-all 出本次烘焙的全部帧。
+       * 两者都是 image / images 类型，靠 labelKey 在卡片上显示为「帧 / 全部帧」，
+       * 免得和下面的 GIF 端口（同为 image）挤成三个一模一样的「图片」。
+       */
+      {
+        id: 'out',
+        direction: 'out',
+        dataType: GraphPortType.image,
+        multiple: false,
+        label: 'Selected',
+        labelKey: 'graph.port.frame'
+      },
+      {
+        id: 'out-all',
+        direction: 'out',
+        dataType: GraphPortType.images,
+        multiple: true,
+        label: 'All',
+        labelKey: 'graph.port.frames'
+      },
+      /** 运行后按动画周期合成的 GIF 动图 */
+      {
+        id: SVG_ANIM_GIF_OUT_PORT_ID,
+        direction: 'out',
+        dataType: GraphPortType.image,
+        multiple: false,
+        label: 'GIF',
+        labelKey: 'graph.port.gif'
+      }
+    ],
+    defaultParams: () => ({
+      svgFrames: DEFAULT_SVG_ANIM_STATE.frames,
+      svgDurationSec: DEFAULT_SVG_ANIM_STATE.durationSec,
+      svgWidth: DEFAULT_SVG_ANIM_STATE.width,
+      svgHeight: DEFAULT_SVG_ANIM_STATE.height,
+      svgBackground: DEFAULT_SVG_ANIM_STATE.background
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.svgAnim',
+    card: 'media',
+    contributeToGeneration: false,
+    execute: executeSvgAnimNode
+  },
+  {
+    typeId: 'svg.gen',
+    category: 'note',
+    label: 'SVG 生成', // cjk-ok（节点名：与 svg.anim 同口径，随 graph_node_types 返回给外部 Agent）
+    icon: '🖋️',
+    defaultTitle: 'SVG 生成', // cjk-ok（同上）
+    description:
+      '调用文本模型生成 SVG 矢量源码并落盘为工程 .svg 资产：in 接文本指令、in-image 接参考图（可照着图片生成矢量图）；out 出选中结果、out-all 出历次结果，可直接接入 SVG 烘焙节点转为位图序列（含动效出多帧 + GIF，无动效出单帧）。', // cjk-ok（MCP / Agent 集成文本：随 graph_node_types 返回给外部 Agent，非 UI 文案）
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'In' },
+      { id: 'in-image', direction: 'in', dataType: GraphPortType.image, multiple: true, label: 'Image' },
+      ...galleryOutPorts(GraphPortType.svg)
+    ],
+    defaultParams: () => ({
+      generateInstruction: '',
+      generateSystemPrompt: '',
+      generateModel: '',
+      generateProviderInstanceId: '',
+      svgGenWidth: DEFAULT_SVG_GEN_STATE.width,
+      svgGenHeight: DEFAULT_SVG_GEN_STATE.height,
+      svgGenBackground: DEFAULT_SVG_GEN_STATE.background,
+      text: ''
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.svgGen',
+    card: 'media',
+    contributeToGeneration: false,
+    execute: executeSvgGenNode
   },
   {
     typeId: 'frame.animGen',

@@ -35,6 +35,7 @@ export function isBundleAcceptableDataType(dataType: GraphPortDataType): boolean
     case GraphPortType.video:
     case GraphPortType.voice:
     case GraphPortType.text:
+    case GraphPortType.svg:
     case GraphPortType.beat:
     case GraphPortType.world:
     case GraphPortType.worldEntities:

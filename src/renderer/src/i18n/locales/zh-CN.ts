@@ -914,6 +914,7 @@ export default {
       voice: '声音',
       imageRef: '引用图片',
       psdSource: 'PSD 源文件',
+      svgSource: 'SVG 矢量图',
       videoRef: '引用视频',
       voiceRef: '引用声音',
       screenplayRef: '引用剧本',
@@ -3259,6 +3260,51 @@ export default {
         skill: '技能'
       }
     },
+    svgGen: {
+      inspectorHint:
+        '文本模型产出 SVG 源码并落盘为 .svg 资产；接参考图端口可照着图片生成矢量图，输出可接入 SVG 烘焙节点转为位图序列',
+      canvas: '画布',
+      width: '宽',
+      height: '高',
+      background: '背景',
+      bgNone: '透明',
+      bgWhite: '白底',
+      bgBlack: '黑底',
+      instruction: '生成指令',
+      instructionPlaceholder: "描述要生成的矢量图；可用 {'@'} 引用上方连线资源",
+      systemPrompt: '系统提示词',
+      systemPromptPlaceholder: '定义模型角色与输出规范；留空则使用内置默认'
+    },
+    svgAnim: {
+      inspectorHint:
+        '接入 SVG（SVG 生成节点或图库矢量资产）烘焙为位图序列：含 SMIL / CSS 动效时按动画时间轴逐帧出 PNG 并合成 GIF 落盘，无动效时只出 1 帧、不产 GIF',
+      cardPlayHint: '双击节点播放 / 暂停烘焙帧',
+      frames: '采样帧数',
+      duration: '取样时长（秒）',
+      width: '输出宽',
+      height: '输出高',
+      background: '背景',
+      bgNone: '透明',
+      bgWhite: '白底',
+      bgBlack: '黑底',
+      zeroHint:
+        '时长 / 宽 / 高填 0 表示自动：时长取 SVG 自身动画周期，尺寸取 SVG 自身尺寸；无动效的 SVG 只出 1 帧、不产 GIF；改完参数需重新运行才生效。',
+      runSummary: '上次运行：{frames} 帧 / {seconds} 秒',
+      runGifDone: '已输出 GIF：{path}（{frames} 帧 @ {fps} fps）',
+      preview: 'SVG 烘焙预览',
+      play: '播放',
+      pause: '暂停',
+      loop: '循环',
+      loading: '正在读取预览帧…',
+      emptyPreview: '暂无预览：接入图库 SVG 资产并运行本节点',
+      exportGif: '导出 GIF',
+      exportGifBusy: '正在合成 GIF…',
+      exportGifDone: '已导出 GIF：{path}',
+      exportGifNote: '按 {fps} fps 合成，透明背景保留',
+      exportGifHint: '导出时选择资源库目录并命名',
+      exportGifTitle: '导出 GIF 到资源库',
+      exportGifSubtitle: '选择资源库目录并命名，导出后自动登记为图片资产'
+    },
     group: {
       action: '分组',
       ungroup: '取消分组',
@@ -3413,6 +3459,9 @@ export default {
       outTitle: '拖出连线至输出节点',
       outAllTitle: '拖出全部历史结果',
       outAllShort: '全部',
+      frame: '帧',
+      frames: '全部帧',
+      gif: 'GIF',
       inTitle: '接入参考',
       limitMax: '最多 {n}',
       limitMaxAfterStyle: '端口最多 {n}（风格参考已占 {style}）',
@@ -3430,6 +3479,8 @@ export default {
         videos: '视频组',
         text: '文本',
         texts: '文本组',
+        svg: 'SVG',
+        svgs: 'SVG 组',
         world: '世界元素',
         worldEntities: '世界元素实体',
         beat: '场',
@@ -3568,6 +3619,10 @@ export default {
       },
       anim: {
         '2d': '2D帧动画'
+      },
+      svg: {
+        anim: 'SVG 烘焙',
+        gen: 'SVG 生成'
       },
       frame: {
         animGen: '生成帧动画序列图'
@@ -3998,6 +4053,8 @@ export default {
           "将策划案中的 UI 拆为独立界面详细提示词；可用 {'@'} 引用上方连线资源",
         beatUnitGenInstructionPlaceholder:
           "可选：补充本次细化焦点（规则已在 Inspector 系统提示词）；可用 {'@'} 引用上游",
+        svgGenInstructionPlaceholder:
+          "描述要生成的矢量图（图标 / 插画 / UI 元素 / 动效）；可用 {'@'} 引用上方连线资源",
         refsEmpty: "连接上游后可用 {'@'} 引用；也可只在指令框中输入文本",
         disconnectRef: '断开连接',
         reorderRef: '拖动可调整引用顺序',
@@ -4020,11 +4077,20 @@ export default {
           titleVideo: '视频生成模板',
           titleLipSync: '对口型模板',
           titleToPrompt: '图片反推模板',
+          titleSvgGen: 'SVG 生成模板',
           tabGeneral: '通用',
           tabGame: '游戏',
           tabFilm: '影视',
           tabCharacter: '角色',
           tabFx: '特效',
+          svgGen: {
+            iconFlat: '扁平图标',
+            iconBadge: '徽章图标',
+            uiLoading: '加载动效',
+            uiButton: 'UI 按钮',
+            animIcon: '图标动效',
+            illustFlat: '扁平插画'
+          },
           frameAnimFx: {
             smoke: '烟雾',
             fire: '火焰',

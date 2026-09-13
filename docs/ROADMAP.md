@@ -87,6 +87,8 @@
 - [ ] **2D 特效帧序列**：anim2d 管线扩展「特效时序」动作预设（爆炸 / 火焰 / 雷电 / 命中 / 投射物，中英双语），参考图 + 特效描述 → rows×cols 序列图，产物经「对齐去抖」落透明 sheet；技能图标批量变体（透明底、统一风格）
   - [x] 已落地：FX 特效时序预设补齐（新增 `fx.hit` 命中受击 / `fx.projectile` 投射物，中英标题）；`frame.animGen` 与 `anim.2d` 新增「特效透明化」参数（纯黑 / 纯白键控，`buildAnimKeyColorPrompt` 生成时注入纯色底约束）；切帧输出 chroma key 透明 PNG（`shared/graph/chromaKey.ts` 纯函数，`composeImageGridCell` 支持 `chromaKey` 后处理，检查器 / 节点卡预览同步透传）
   - > 待办：序列帧「对齐去抖」落透明 sheet、技能图标批量变体（依赖统一对齐工具）。验收：爆炸 / 火焰序列帧直接进引擎循环播放无抖动。
+- [x] **SVG 矢量资产与 SVG 烘焙节点**（已落地）：`.svg` 按 image 家族入库（Chromium 能直接渲染，预览与展示走原文件、不进位图缩略图链路，展示口径「SVG 矢量图」）；新增 `svg.anim` 节点（现名「SVG 烘焙」）——矢量源（SVG 生成节点 / 图库 SVG 资产）→ 含动效时按动画时间轴逐帧烘焙 PNG（`out` / `out-all`）、无动效只出单帧+ 合成 GIF（`out-gif`，落盘为工程资产），检查器可导出 GIF 到资源库；求值侧为共享纯函数层 `shared/media/svgTimeline`（SMIL 时间语义，19 项单测），栅格化在渲染层 `renderSvgFrames`
+  - > 待办：`keySplines` 缓动（现按 linear）、`<animateMotion>` 路径运动（需路径求长）、CSS `@keyframes` 动画、SVG 内 `<image href>` / Web Font 内联（data URI 下不加载）
 - [ ] **无缝场景与循环背景**：本地接缝检测（左右 / 上下边缘像素差分析 + 平铺预览判定，纯本地无模型依赖）；「循环背景」生成预设——提示词注入左右回环约束，生成后自动接缝检测不达标即回环重抽
   - > 验收：横版 / 竖版循环背景 3 张内达标，平铺接缝不可见。
 - [ ] **Spine 骨骼拆件与装配数据**：YOLO pose 17 关键点 → 2D 骨骼平面角度反解（沿用 5.3「姿态进5.5「2D 导演台」」`imagePoseSolver` 自根向下逐骨解算思路，仅保留平面旋转）→ 按参考骨骼模板拆分部件（半自动：图层分离 / 擦除 / 部件框选提边）→ 导出 Spine `skeleton.json`（部件 PNG + attach 点）；骨骼装配、摆姿与预览在 5.5「2D 导演台」内闭环

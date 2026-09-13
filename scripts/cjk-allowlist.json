@@ -17,7 +17,7 @@
    "3. 边的 from/to 使用节点 key；端口 dataType 必须相同（image≠images，单数不能进复数口）。",
    "4. 不要编造 assetId；不要填写 generateModel / generateProviderInstanceId（由客户端注入）。",
    "5. params 用节点声明的键：公共生成参数为 text, generateInstruction, generateSystemPrompt, generateAspectRatio, generateResolution, generateQuality, generateDuration, generateCount, generateSeed, generateSeedUseGlobal, generateFrameMode, generateAudio, notes, label, inputDataType；节点私有参数（如 anim.2d 的 animRows / animCols / animGifFps）按 typeId 语义填写。编造的键会被忽略。",
-   "6. 常见链：play.script / prompt.optimize → asset.image → asset.video；备注用 note.text。",
+   "6. 常见链：play.script / prompt.optimize → asset.image → asset.video；备注用 note.text；矢量图 / SVG 动画用 svg.gen（要帧序列或 GIF 再接 svg.anim，端口 svg → in；注意 image ≠ svg，位图端口接不进矢量口）。",
    "7. 输出严格为此 JSON 形状：",
    "{\"title\":\"短标题\",\"nodes\":[{\"key\":\"a\",\"typeId\":\"...\",\"title\":\"可选\",\"params\":{}}],\"edges\":[{\"from\":\"a\",\"to\":\"b\",\"fromPort\":\"out\",\"toPort\":\"in\"}]}",
    "可用节点 catalog：",

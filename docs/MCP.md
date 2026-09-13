@@ -161,7 +161,7 @@ AiArtEngine 内置了一个 **MCP 工具服务**（MCP 是"模型上下文协议
 | `asset_write_text` | 更新文本资产（剧本/备注），界面同步刷新 | 已打开工程 |
 | `folder_create` | 新建资产库文件夹，返回 `folderId`（供 `asset_import` / `asset_create` / `generate_*` 归档用） | 已打开工程 |
 | `asset_create` | 新建资产（剧本 / 策划案 / 世界观 / 分镜 / 子图 / 自由画布 / 图片 / 视频 / 声音 / 2D 动作），界面同步出现 | 已打开工程 |
-| `asset_import` | 把本机绝对路径的媒体文件导入资产库（图片 / 视频 / 音频 / 文本，单次上限 50 条），返回逐条结果与跳过原因 | 已打开工程 |
+| `asset_import` | 把本机绝对路径的媒体文件导入资产库（图片（含 PSD / SVG 矢量图）/ 视频 / 音频 / 3D 模型 / 剧本文本，单次上限 50 条；SVG 归图片资产，预览读原文件，可直接接 `svg.anim` 烘焙），返回逐条结果与跳过原因 | 已打开工程 |
 | `asset_rename` | 重命名资产 | 已打开工程 |
 | `asset_move` | 把资产移动到指定文件夹（省略 `folderId` 即移回资产库根目录，媒体文件随目录搬移） | 已打开工程 |
 | `asset_delete` | 从资产库移除资产（默认拒绝删除仍被引用的资产，`force: true` 强制） | 已打开工程 |
@@ -189,7 +189,7 @@ AiArtEngine 内置了一个 **MCP 工具服务**（MCP 是"模型上下文协议
 | `workflow_plan` | 自然语言 → 工作流方案预览（走应用已配置的文本模型，耗时可能数十秒） | 已打开工程 + 文本模型 |
 | `workflow_commit` | 把方案落盘为宿主资产，界面同步出现（`plan` 也可手写从而跳过 `workflow_plan`；节点 `params` 按类型声明的键校验，未声明的键会被忽略并列在返回的 `warnings` 里；`imageModel` / `videoModel` 等可显式指定生成模型） | 已打开工程 |
 | `folder_list` | 列出资产库文件夹（generate_* 的 folderId 来源） | 已打开工程 |
-| `graph_node_types` | 可添加节点类型清单（typeId / 名称 / 分类 / 端口 / 能力说明 / 可选默认参数），即 graph_edit 建节点的白名单，供 Agent 自发现节点；能力说明会点出关键参数语义，如 `anim.2d` 设 `animGifFps` > 0 后运行即额外输出 GIF 动图（`out-gif` 端口 + 落盘资产）、`stage.2d` 设 `stage2dAnimFps` > 0 且带自定义动作时运行即额外输出逐帧 PNG 序列与拼版 sheet（`out-frames` / `out-sheet` 端口 + 落盘资产） | 应用运行中 |
+| `graph_node_types` | 可添加节点类型清单（typeId / 名称 / 分类 / 端口 / 能力说明 / 可选默认参数），即 graph_edit 建节点的白名单，供 Agent 自发现节点；能力说明会点出关键参数语义，如 `anim.2d` 设 `animGifFps` > 0 后运行即额外输出 GIF 动图（`out-gif` 端口 + 落盘资产）、`stage.2d` 设 `stage2dAnimFps` > 0 且带自定义动作时运行即额外输出逐帧 PNG 序列与拼版 sheet（`out-frames` / `out-sheet` 端口 + 落盘资产）、`svg.gen` 用文本模型把描述画成 SVG 矢量源码并落盘为 .svg 资产（`in` 接文本指令、`in-image` 接参考图照图生矢量）、`svg.anim`（SVG 烘焙）接入矢量源（SVG 生成节点 / 图库 SVG 资产）后运行即烘焙为位图序列——含动效时按动画时间轴逐帧出 PNG 并合成 GIF（`out-gif` 端口 + 落盘资产），无动效只出单帧 | 应用运行中 |
 | `graph_read` | 读取宿主资产图结构（节点 id / 类型 / 标题 + 连线），graph_edit 前置 | 已打开工程 |
 | `graph_icon_refine` | 单枚图标精修回炉：按整版画风重画某一枚（hint / prompt 可指定），写回同源打包节点的逐枚覆盖并默认重跑打包（耗时较长：一次生图 + 一次打包重跑；调用期间任务列表与素材库资产卡片角标可见运行中活动） | 已打开工程，且该图未在编辑器中打开 |
 | `task_run` | 运行已落盘的工作流（整图拓扑序执行，输出写回资产），返回 `mcpTaskId` | 已打开工程 + 应用界面运行 |

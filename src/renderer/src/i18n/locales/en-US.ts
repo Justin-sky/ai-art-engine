@@ -919,6 +919,7 @@ export default {
       voice: 'Voice',
       imageRef: 'Image Reference',
       psdSource: 'PSD Source',
+      svgSource: 'SVG Vector',
       videoRef: 'Video Reference',
       voiceRef: 'Voice Reference',
       screenplayRef: 'Screenplay Reference',
@@ -3294,6 +3295,51 @@ export default {
         skill: 'Skill'
       }
     },
+    svgGen: {
+      inspectorHint:
+        'A text model produces the SVG source and saves it as a .svg asset; wire a reference image into the Image port to vectorize it, and feed the result into the SVG Bake node to rasterize it into bitmap frames',
+      canvas: 'Canvas',
+      width: 'Width',
+      height: 'Height',
+      background: 'Background',
+      bgNone: 'Transparent',
+      bgWhite: 'White',
+      bgBlack: 'Black',
+      instruction: 'Instruction',
+      instructionPlaceholder: "Describe the vector art to generate; use {'@'} to cite connected inputs",
+      systemPrompt: 'System prompt',
+      systemPromptPlaceholder: 'Define the model role and output rules; leave empty to use the built-in default'
+    },
+    svgAnim: {
+      inspectorHint:
+        'Bake an SVG (from the SVG Generation node or a vector library asset) into bitmap frames: with SMIL / CSS animation it renders one PNG per timeline sample and composes a GIF, while a static SVG yields a single frame and no GIF',
+      cardPlayHint: 'Double-click the node to play / pause the baked frames',
+      frames: 'Sample frames',
+      duration: 'Sample duration (s)',
+      width: 'Output width',
+      height: 'Output height',
+      background: 'Background',
+      bgNone: 'Transparent',
+      bgWhite: 'White',
+      bgBlack: 'Black',
+      zeroHint:
+        'Duration / width / height of 0 means auto: duration follows the SVG animation period, size follows the SVG itself. A static SVG yields a single frame and no GIF. Re-run the node after changing parameters.',
+      runSummary: 'Last run: {frames} frames / {seconds}s',
+      runGifDone: 'GIF written: {path} ({frames} frames @ {fps} fps)',
+      preview: 'SVG bake preview',
+      play: 'Play',
+      pause: 'Pause',
+      loop: 'Loop',
+      loading: 'Loading preview frames…',
+      emptyPreview: 'No preview yet: connect an SVG asset and run this node',
+      exportGif: 'Export GIF',
+      exportGifBusy: 'Composing GIF…',
+      exportGifDone: 'GIF exported: {path}',
+      exportGifNote: 'Composed at {fps} fps, transparency preserved',
+      exportGifHint: 'Choose a library folder and name on export',
+      exportGifTitle: 'Export GIF to library',
+      exportGifSubtitle: 'Pick a library folder and name; the GIF is registered as an image asset'
+    },
     group: {
       action: 'Group',
       ungroup: 'Ungroup',
@@ -3449,6 +3495,9 @@ export default {
       outTitle: 'Drag to connect to output',
       outAllTitle: 'Drag full history output',
       outAllShort: 'All',
+      frame: 'Frame',
+      frames: 'All frames',
+      gif: 'GIF',
       inTitle: 'Accept references',
       limitMax: 'Up to {n}',
       limitMaxAfterStyle: 'Port up to {n} ({style} reserved by style refs)',
@@ -3466,6 +3515,8 @@ export default {
         videos: 'Videos',
         text: 'Text',
         texts: 'Texts',
+        svg: 'SVG',
+        svgs: 'SVGs',
         world: 'World element',
         worldEntities: 'World entities',
         beat: 'Beat',
@@ -3606,6 +3657,10 @@ export default {
       },
       anim: {
         '2d': '2D Frame Animation'
+      },
+      svg: {
+        anim: 'SVG Bake',
+        gen: 'SVG Generation'
       },
       frame: {
         animGen: 'Generate Frame Animation Sheet'
@@ -4046,6 +4101,8 @@ export default {
           "Split UI screens from the design doc into detailed prompts; use {'@'} to cite connected inputs",
         beatUnitGenInstructionPlaceholder:
           "Optional focus for this refine (rules live in Inspector system prompt); use {'@'} to cite upstream",
+        svgGenInstructionPlaceholder:
+          "Describe the vector art to generate (icon / illustration / UI element / motion); use {'@'} to cite connected inputs",
         refsEmpty: "Connect upstream inputs to cite with {'@'}, or type the instruction alone",
         disconnectRef: 'Disconnect',
         reorderRef: 'Drag to reorder references',
@@ -4068,11 +4125,20 @@ export default {
           titleVideo: 'Video generation templates',
           titleLipSync: 'Lip sync templates',
           titleToPrompt: 'Image reverse-prompt templates',
+          titleSvgGen: 'SVG generation templates',
           tabGeneral: 'General',
           tabGame: 'Game',
           tabFilm: 'Film',
           tabCharacter: 'Character',
           tabFx: 'Effects',
+          svgGen: {
+            iconFlat: 'Flat icon',
+            iconBadge: 'Badge icon',
+            uiLoading: 'Loading motion',
+            uiButton: 'UI button',
+            animIcon: 'Icon motion',
+            illustFlat: 'Flat illustration'
+          },
           frameAnimFx: {
             smoke: 'Smoke',
             fire: 'Fire',

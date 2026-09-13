@@ -338,6 +338,7 @@ import {
   resolveNodeTextContent,
   type RefMentionOption,
   readBoundBeatIdFromNodeParams,
+  readSvgGenFromNode,
   formatBeatRefText,
   shouldKeepInstructionMentionToken,
   softResolveBoundaryInputParams,
@@ -636,6 +637,7 @@ const presetMenuTitle = computed(() => {
   if (props.presetKind === 'video') return t('graph.inspector.generate.presets.titleVideo')
   if (props.presetKind === 'lipSync') return t('graph.inspector.generate.presets.titleLipSync')
   if (props.presetKind === 'frameAnimGen') return t('graph.anim2d.preset')
+  if (props.presetKind === 'svgGen') return t('graph.inspector.generate.presets.titleSvgGen')
   return t('graph.inspector.generate.presets.title')
 })
 
@@ -1315,6 +1317,7 @@ function openPromptPreview(): void {
     systemPrompt: node?.params.generateSystemPrompt,
     locale: String(locale.value),
     styleImages,
+    svgGen: kind === 'svgGen' && node ? readSvgGenFromNode(node.params) : undefined,
     styleReferenceSubject: node?.params.styleReferenceSubject,
     frameAnimGrid:
       kind === 'frameAnimGen'

@@ -56,11 +56,12 @@ function isTextToolNode(node: GraphNode): boolean {
 /**
  * 节点是否具备可打开的文本输出 / 正文。
  *
- * 注：`stage.2d` 虽属 note 分类（与 image.align 同族工具节点），
- * 但产出的是舞台帧图像，须排除，否则被 note 分类误判成可记事本节点。
+ * 注：`stage.2d` / `svg.anim` 虽属 note 分类（与 image.align 同族工具节点），
+ * 但产出的是舞台帧 / 烘焙帧序列，须排除，否则被 note 分类误判成可记事本节点
+ * （双击卡片会弹出记事本，而不是播放帧动画）。
  */
 export function isNodeTextCapable(node: GraphNode): boolean {
-  if (node.typeId === 'stage.2d') return false
+  if (node.typeId === 'stage.2d' || node.typeId === 'svg.anim') return false
   if (node.category === 'note') return true
   if (node.typeId === 'note.text' || node.typeId === 'play.script') return true
   if (isTextToolNode(node)) return true

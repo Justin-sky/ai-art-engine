@@ -77,6 +77,39 @@ export interface GraphTextsValue {
   items: GraphTextItem[]
 }
 
+/**
+ * SVG 矢量条目：源码正文为主（端口直传），落盘后带工程相对路径。
+ * `dataUrl` 用 `data:image/svg+xml;base64,…` 形式，仅作卡片缩略与下游解码。
+ */
+export interface GraphSvgItem {
+  id?: string
+  /** 展示名 / 落盘文件名 */
+  title?: string
+  /** SVG 源码正文 */
+  text: string
+  dataUrl?: string
+  createdAt?: string
+  /** 物化后的工程相对路径（.svg） */
+  relativePath?: string
+}
+
+/** 单条 SVG（生成节点 `out` 选中项） */
+export interface GraphSvgValue {
+  kind: 'svg'
+  id?: string
+  title?: string
+  text: string
+  dataUrl?: string
+  createdAt?: string
+  relativePath?: string
+}
+
+/** SVG 数组（生成节点 out-all；供 SVG 烘焙等批量消费） */
+export interface GraphSvgsValue {
+  kind: 'svgs'
+  items: GraphSvgItem[]
+}
+
 export interface GraphCameraValue {
   kind: 'camera'
   viewer?: DirectorViewerState
@@ -172,6 +205,8 @@ export type GraphValue =
   | GraphAssetValue
   | GraphTextValue
   | GraphTextsValue
+  | GraphSvgValue
+  | GraphSvgsValue
   | GraphCatalogValue
   | GraphOutputValue
   | GraphCameraValue
@@ -496,6 +531,25 @@ export interface NodeExecuteContext {
     byteLength: number
   } | null>
   /**
+   * SVG 烘焙 → 逐帧位图：把 SVG 文本按动效时间轴采样成 PNG dataUrl 序列。
+   * 渲染层负责 DOM 求值 + canvas 栅格化（`renderSvgFrames`），未注入时节点无法执行。
+   */
+  renderSvgFrames?: (input: {
+    svgText: string
+    state?: Partial<import('../svgAnim').SvgAnimState>
+    signal?: AbortSignal
+  }) => Promise<{
+    frameUrls: string[]
+    width: number
+    height: number
+    frameCount: number
+    /** 实际取样时长（秒） */
+    durationSec: number
+    /** 由帧数与时长推得的帧率（静态 SVG 为 0） */
+    fps: number
+    animated: boolean
+  }>
+  /**
    * 图标包：整版图标表按名单逐格裁切 → 采样色键控透明 → 统一画布中心对齐，
    * 返回按名单命名的一组透明 PNG（本地像素合成，不调用模型）。
    */
@@ -711,6 +765,7 @@ export interface GraphRunOptions {
   composeStage2dFrameSheet?: NodeExecuteContext['composeStage2dFrameSheet']
   composeImageGridCell?: NodeExecuteContext['composeImageGridCell']
   composeGifFrames?: NodeExecuteContext['composeGifFrames']
+  renderSvgFrames?: NodeExecuteContext['renderSvgFrames']
   composeImageIconPackSheet?: NodeExecuteContext['composeImageIconPackSheet']
   composeImageLayerStack?: NodeExecuteContext['composeImageLayerStack']
   composeComicPageImage?: NodeExecuteContext['composeComicPageImage']
