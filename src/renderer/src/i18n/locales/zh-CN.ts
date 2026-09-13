@@ -3277,7 +3277,7 @@ export default {
     },
     svgAnim: {
       inspectorHint:
-        '接入 SVG（SVG 生成节点或图库矢量资产）烘焙为位图序列：含 SMIL / CSS 动效时按动画时间轴逐帧出 PNG 并合成 GIF 落盘，无动效时只出 1 帧、不产 GIF',
+        '接入 SVG（SVG 生成节点或图库矢量资产）烘焙为位图序列：含 SMIL 动效（SVG 自身的 <animate> / <animateTransform> / <set>；CSS @keyframes 与 <animateMotion> 不参与求值）时按动画时间轴逐帧出 PNG 并合成 GIF 落盘，无动效时只出 1 帧、不产 GIF',
       cardPlayHint: '双击节点播放 / 暂停烘焙帧',
       frames: '采样帧数',
       duration: '取样时长（秒）',

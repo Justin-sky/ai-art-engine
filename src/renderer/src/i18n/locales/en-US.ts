@@ -3312,7 +3312,7 @@ export default {
     },
     svgAnim: {
       inspectorHint:
-        'Bake an SVG (from the SVG Generation node or a vector library asset) into bitmap frames: with SMIL / CSS animation it renders one PNG per timeline sample and composes a GIF, while a static SVG yields a single frame and no GIF',
+        'Bake an SVG (from the SVG Generation node or a vector library asset) into bitmap frames: with SMIL animation (the SVG\u2019s own <animate> / <animateTransform> / <set>; CSS @keyframes and <animateMotion> are not evaluated) it renders one PNG per timeline sample and composes a GIF, while a static SVG yields a single frame and no GIF',
       cardPlayHint: 'Double-click the node to play / pause the baked frames',
       frames: 'Sample frames',
       duration: 'Sample duration (s)',

@@ -1979,7 +1979,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     icon: '🌀',
     defaultTitle: 'SVG 烘焙', // cjk-ok（同上）
     description:
-      '把矢量源（SVG 生成节点 / 图库 SVG 资产）烘焙为位图序列：含 SMIL / CSS 动效时按动画时间轴逐帧烘焙 PNG（out / out-all）并合成 GIF 动图（out-gif 端口）落盘为工程资产，无动效时只出 1 帧、不产 GIF；svgDurationSec = 0 时自动探测 SVG 自身动画周期。', // cjk-ok（MCP / Agent 集成文本：随 graph_node_types 返回给外部 Agent，非 UI 文案）
+      '把矢量源（SVG 生成节点 / 图库 SVG 资产）烘焙为位图序列：含 SMIL 动效时按动画时间轴逐帧烘焙 PNG（out / out-all）并合成 GIF 动图（out-gif 端口）落盘为工程资产，无动效时只出 1 帧、不产 GIF（动效须是 SVG 自身的 <animate> / <animateTransform> / <set>，CSS @keyframes 与 <animateMotion> 不参与求值）；svgDurationSec = 0 时自动探测 SVG 自身动画周期。', // cjk-ok（MCP / Agent 集成文本：随 graph_node_types 返回给外部 Agent，非 UI 文案）
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
