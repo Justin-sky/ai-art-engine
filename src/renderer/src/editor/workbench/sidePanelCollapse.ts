@@ -325,13 +325,20 @@ function attachExpandedWidthWatchers(dock: DockviewApi): void {
   }
 }
 
-/** Capture drop-target width before dockview merges column sizes. */
+/**
+ * Capture drop-target width before dockview merges column sizes.
+ *
+ * `draggedPanelId` 让这里只服务于「侧栏互拖」：把 AI 对话 / 编辑器页签拖到资产或参数上
+ * 时，落点组的成员里同样有侧栏面板，但那不是侧栏叠放，不该顺手武装列宽归一窗口。
+ */
 export function noteSidePanelWillStackDrop(
   dock: DockviewApi,
   position: string,
-  targetGroup: { panels?: ReadonlyArray<{ id: string; api: DockviewPanelApi }> } | undefined
+  targetGroup: { panels?: ReadonlyArray<{ id: string; api: DockviewPanelApi }> } | undefined,
+  draggedPanelId?: string | null
 ): void {
   if (position !== 'top' && position !== 'bottom') return
+  if (draggedPanelId && !isSidePanelId(draggedPanelId)) return
   const target = targetGroup?.panels?.find((panel) => isSidePanelId(panel.id))
   if (!target || !isSidePanelId(target.id)) return
   // Refresh solos from live layout while still side-by-side.
@@ -451,16 +458,35 @@ export function configureSidePanelStackDropTargets(dock: DockviewApi): void {
 }
 
 /**
+ * 拖放落位后的统一收尾，与面板类型无关。
+ *
+ * dockview 把「同一个 dock 内」的面板拖动走内部 move，只会触发 onDidMovePanel；
+ * onDidDrop 仅用于跨 dockview / paneview 的拖放。而资产 / 参数组的落点用的是锚点
+ * 覆盖层（`.dv-drop-target-container`），只有真正发生过 drop 才会被 dockview 自己清掉。
+ * 于是把 AI 对话这类普通页签拖到资产 / 参数上时，没人清这层半屏半透明预览，
+ * 松手后它就留在面板上变成灰块（面板其实已落位，只是被灰块盖住像没移动成功）。
+ * 本帧先清一次，下一帧再清一次：dockview 会在落位后的下一帧重建覆盖层 / 重置 group 落点配置。
+ */
+export function clearDockDropArtifacts(dock: DockviewApi): void {
+  const studioDockRoot = (): ParentNode | null =>
+    typeof document !== 'undefined' ? document.querySelector('.studio-dock') : null
+  clearDockviewDropOverlays(studioDockRoot())
+  configureSidePanelStackDropTargets(dock)
+  requestAnimationFrame(() => {
+    clearDockviewDropOverlays(studioDockRoot())
+    configureSidePanelStackDropTargets(dock)
+  })
+}
+
+/**
  * After dragging assets/inspector above/below each other, dockview often sizes the
  * new column to (assets + inspector). Snap the column to the drop-target panel's
  * pre-stack width (e.g. drag assets under inspector → keep inspector width).
  */
 export function handleSidePanelMoved(dock: DockviewApi, movedId: string): void {
+  // 收尾不分面板类型：AI 对话 / 编辑器页签拖到侧栏上同样会残留落点灰块
+  clearDockDropArtifacts(dock)
   if (!isSidePanelId(movedId)) return
-  clearDockviewDropOverlays(
-    typeof document !== 'undefined' ? document.querySelector('.studio-dock') : null
-  )
-  configureSidePanelStackDropTargets(dock)
 
   // 合并为 Tab 组：共享同一列，列宽归一化不适用（areSidePanelsStackedVertically 已同组短路）。
   // dockview 会激活被拖入的面板，若它处于收起态需切回未收起的一侧。

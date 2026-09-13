@@ -264,7 +264,7 @@ import { useEditorPanelOpener } from '../editor/workbench/useEditorPanelOpener'
 import { isEditorPanelGraphRunning } from '../editor/workbench/canCloseEditorPanel'
 import { parseEditorPanelId } from '../editor/workbench/editorPanelIcon'
 import {
-  clearDockviewDropOverlays,
+  clearDockDropArtifacts,
   configureSidePanelStackDropTargets,
   handleSidePanelLayoutMaybeStacked,
   handleSidePanelMoved,
@@ -1024,6 +1024,22 @@ function tryRestoreLayout(api: DockviewApi): boolean {
   return false
 }
 
+/**
+ * 兜底收尾：落点被拒（面板没有真的移动）时 onDidMovePanel / onDidDrop 都不会触发，
+ * dockview 的半透明落点框就会一直留在资产 / 参数面板上。松手后下一帧只要还查得到
+ * 未清掉的落点容器，就补一次收尾（延迟到下一帧，避免打断 dockview 自己的 drop 处理）。
+ */
+function cleanupStrayDockDropOverlays(): void {
+  const api = dockApi.value
+  if (!api) return
+  requestAnimationFrame(() => {
+    if (dockApi.value !== api) return
+    const root = typeof document !== 'undefined' ? document.querySelector('.studio-dock') : null
+    if (!root?.querySelector('.dv-drop-target-container')) return
+    clearDockDropArtifacts(api)
+  })
+}
+
 function onReady(event: DockviewReadyEvent): void {
   const api = event.api
   dockApi.value = api
@@ -1065,14 +1081,18 @@ function onReady(event: DockviewReadyEvent): void {
       event.preventDefault()
       return
     }
-    noteSidePanelWillStackDrop(api, String(event.position), event.group)
+    noteSidePanelWillStackDrop(api, String(event.position), event.group, event.getData()?.panelId)
   })
   dropDisposable = api.onDidDrop((event) => {
-    clearDockviewDropOverlays(document.querySelector('.studio-dock'))
-    noteSidePanelWillStackDrop(api, String(event.position), event.group)
     const movedId = event.getData()?.panelId
-    if (typeof movedId === 'string' && movedId) handleSidePanelMoved(api, movedId)
-    else handleSidePanelLayoutMaybeStacked(api)
+    noteSidePanelWillStackDrop(api, String(event.position), event.group, movedId)
+    if (typeof movedId === 'string' && movedId) {
+      handleSidePanelMoved(api, movedId)
+      return
+    }
+    // 非面板拖放（外部文件等）同样要清掉落点覆盖层
+    clearDockDropArtifacts(api)
+    handleSidePanelLayoutMaybeStacked(api)
   })
   moveDisposable = api.onDidMovePanel((event) => {
     handleSidePanelMoved(api, event.panel.id)
@@ -1257,6 +1277,8 @@ onMounted(() => {
   window.addEventListener('keydown', onGlobalKeyDown)
   window.addEventListener('mousedown', onLayoutMenuOutside, true)
   window.addEventListener('keydown', onLayoutMenuKeydown)
+  window.addEventListener('pointerup', cleanupStrayDockDropOverlays, true)
+  window.addEventListener('pointercancel', cleanupStrayDockDropOverlays, true)
 })
 
 onBeforeUnmount(() => {
@@ -1265,6 +1287,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onGlobalKeyDown)
   window.removeEventListener('mousedown', onLayoutMenuOutside, true)
   window.removeEventListener('keydown', onLayoutMenuKeydown)
+  window.removeEventListener('pointerup', cleanupStrayDockDropOverlays, true)
+  window.removeEventListener('pointercancel', cleanupStrayDockDropOverlays, true)
   if (saveTimer) clearTimeout(saveTimer)
   layoutDisposable?.dispose()
   removeDisposable?.dispose()
