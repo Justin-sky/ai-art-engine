@@ -43,8 +43,7 @@ function makeResponse({
     headers: {
       get: (name: string) => headers.get(name) ?? null
     },
-    arrayBuffer: async () =>
-      buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
+    arrayBuffer: async () => buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
   } as unknown as Response
 }
 

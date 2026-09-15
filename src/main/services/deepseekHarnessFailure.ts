@@ -7,7 +7,5 @@
  * 这里保持纯函数 + 零依赖，可直接被 vitest 引用。
  */
 export function isDshQuotaError(text: string): boolean {
-  return /quota[:\s]?\s*insufficient|insufficient[_\s-]?balance|余额不足|账户余额|欠费/i.test(
-    text
-  )
+  return /quota[:\s]?\s*insufficient|insufficient[_\s-]?balance|余额不足|账户余额|欠费/i.test(text)
 }

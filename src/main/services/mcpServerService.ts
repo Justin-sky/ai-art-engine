@@ -109,9 +109,11 @@ import {
   assetImportActivityDetail,
   assetImportActivityTitle,
   isMcpCreatableAssetType,
+  isProjectGeneratedOutputPath,
   normalizeImportFilePaths,
   normalizeProjectRelativePath,
-  normalizeStringList
+  normalizeStringList,
+  projectGeneratedOutputImportError
 } from '@shared/mcpAssetWrite'
 import {
   getObjectStorageBucket,
@@ -241,7 +243,7 @@ function activityTitle(name: string | undefined, prompt: string): string {
 }
 
 /**
- * 取资产最新的相对路径：资产可能已被 applyAssetFolder 按 folderId 搬移，
+ * 取资产最新的相对路径：资产可能在生成后被搬移过（如用户在资产库改文件夹），
  * 活动终态 / 工具返回值都必须用最终路径，否则界面预览会指向失效文件。
  */
 function liveAssetRelativePath(result: {
@@ -251,12 +253,6 @@ function liveAssetRelativePath(result: {
   if (!result.assetId) return result.relativePath
   const live = projectService.listAssets().find((item) => item.id === result.assetId)
   return live?.relativePath || result.relativePath
-}
-
-/** settle 钩子：把生成资产挂到 folder_list 返回的资产库文件夹（可能触发搬移） */
-function settleAssetFolder(assetId: string | undefined, folderId: string | undefined): void {
-  if (!folderId || !assetId) return
-  applyAssetFolder(assetId, folderId)
 }
 
 const TOOL_DEFS: McpToolDef[] = [
@@ -632,7 +628,7 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'asset_import',
     title: '导入素材',
     description:
-      '把本机绝对路径上的媒体文件导入当前工程资产库（图片（含 PSD / SVG 矢量图）/ 视频 / 音频 / 3D 模型 / 剧本文本，按扩展名判定类型），返回逐条导入结果与跳过原因；界面资产库同步刷新，导入同时登记为「素材导入」活动并逐条回报工程内相对路径（导入的素材随即以资产卡出现在对话流）；导入的 SVG 归图片资产，可直接接入 svg.anim 烘焙节点转位图序列。',
+      '把本机绝对路径上的媒体文件导入当前工程资产库（图片（含 PSD / SVG 矢量图）/ 视频 / 音频 / 3D 模型 / 剧本文本，按扩展名判定类型），返回逐条导入结果与跳过原因；界面资产库同步刷新，导入同时登记为「素材导入」活动并逐条回报工程内相对路径（导入的素材随即以资产卡出现在对话流）；导入的 SVG 归图片资产，可直接接入 svg.anim 烘焙节点转位图序列。只收编工程外的本机素材：工程内生成产物目录（Cache/ 与 Output/）一律拒绝——生成结果是否需要入库，由用户在对话产物卡上点「保存到资产库」按钮决定。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -655,6 +651,19 @@ const TOOL_DEFS: McpToolDef[] = [
         throw new Error(
           `单次最多导入 ${MCP_ASSET_IMPORT_LIMIT} 个文件（本次 ${filePaths.length} 个），请分批调用`
         )
+      }
+      // 工程内生成产物（Cache/ 与 Output/）不走导入：Agent 反复 import 会把同一份媒体
+      // 再复制一份进 Assets/，资产库里留下重复文件、对话流里再出一张重复卡。
+      // 生成结果要入库由用户在对话产物卡上点「保存到资产库」按钮决定。
+      const generatedOutputPaths = filePaths.filter((filePath) =>
+        isProjectGeneratedOutputPath(
+          filePath,
+          projectService.getRoot(),
+          projectService.getConfig().cacheOutputDir
+        )
+      )
+      if (generatedOutputPaths.length) {
+        throw new Error(projectGeneratedOutputImportError(generatedOutputPaths))
       }
       const folderId = optionalString(args, 'folderId') ?? null
       assertFolderExists(folderId)
@@ -2026,7 +2035,7 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'generate_speech',
     title: '生成语音',
     description:
-      '用音频模型（火山方舟 TTS / 声音设计等）把台词转成 MP3 并导入为工程声音资产。返回资产 id 与相对路径。',
+      '用音频模型（火山方舟 TTS / 声音设计等）把台词转成 MP3 并落盘到工程缓存目录 Cache/Voices（不自动进资产库，避免在对话流里出重复卡）；需要进资产库时由用户在对话产物卡上点「保存到资产库」按钮。返回工程内相对路径。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -2036,8 +2045,6 @@ const TOOL_DEFS: McpToolDef[] = [
         providerInstanceId: { type: 'string', description: '提供商实例 id' },
         voice: { type: 'string', description: '音色（缺省用模型默认音色）' },
         speed: { type: 'number', description: '语速' },
-        outputDir: { type: 'string', description: '工程内相对输出目录' },
-        folderId: { type: 'string', description: '资产库文件夹 id（folder_list 查询）' },
         extraParams: {
           type: 'object',
           description: '低频参数透传（如 responseFormat / 参考图），合并进底层生成输入'
@@ -2049,23 +2056,24 @@ const TOOL_DEFS: McpToolDef[] = [
       assertProjectOpen()
       const inputText = readString(args, 'input')
       const input = {
-        ...extraParamsOf(args),
+        ...cacheOnlyGenExtraParams(args),
         input: inputText,
         model: optionalString(args, 'model'),
         providerInstanceId: optionalString(args, 'providerInstanceId'),
         voice: optionalString(args, 'voice'),
         speed:
           typeof args.speed === 'number' && Number.isFinite(args.speed) ? args.speed : undefined,
-        name: optionalString(args, 'name'),
-        outputDir: optionalString(args, 'outputDir')
+        name: optionalString(args, 'name')
       }
+      // 对话生成的语音只落 Cache、不入资产库（避免在对话流里出现重复卡）；
+      // 想入库让用户点资产卡上的「保存到资产库」按钮。
       const result = await runGenActivity(
         'generate_speech',
         activityTitle(input.name, inputText),
         input.model,
         () => modelProviderFacade.generateSpeechAsset(input),
         (r) => ({ assetId: r.assetId, relativePath: liveAssetRelativePath(r) }),
-        (r) => settleAssetFolder(r.assetId, optionalString(args, 'folderId')),
+        undefined,
         (r) => ({
           kind: 'generateSpeech',
           nodeId: 'mcp',
@@ -2097,7 +2105,7 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'generate_music',
     title: '生成 BGM / 音乐',
     description:
-      '用音乐模型（MiniMax Music / 百炼 Fun-Music 等）按情绪与时长描述生成配乐并落盘到工程缓存目录（缺省 Cache/Music，不自动进资产库）。返回资产 id 与相对路径，可直接铺到时间线 music 轨。',
+      '用音乐模型（MiniMax Music / 百炼 Fun-Music 等）按情绪与时长描述生成配乐并落盘到工程缓存目录 Cache/Music（不自动进资产库，避免在对话流里出重复卡）；需要进资产库时由用户在对话产物卡上点「保存到资产库」按钮。返回工程内相对路径，可直接铺到时间线 music 轨。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -2117,8 +2125,6 @@ const TOOL_DEFS: McpToolDef[] = [
             '歌词（纯音乐时省略；多段用 \\n 分隔，支持 [Intro]/[Verse]/[Chorus] 结构标签）'
         },
         instrumental: { type: 'boolean', description: '是否纯音乐（无歌词 / 人声），缺省 true' },
-        outputDir: { type: 'string', description: '工程内相对输出目录（缺省 Cache/Music）' },
-        folderId: { type: 'string', description: '资产库文件夹 id（folder_list 查询）' },
         extraParams: {
           type: 'object',
           description: '低频参数透传（如 audio_setting），合并进底层生成输入'
@@ -2130,22 +2136,23 @@ const TOOL_DEFS: McpToolDef[] = [
       assertProjectOpen()
       const inputText = readString(args, 'prompt')
       const input = {
-        ...extraParamsOf(args),
+        ...cacheOnlyGenExtraParams(args),
         prompt: inputText,
         name: optionalString(args, 'name'),
         model: optionalString(args, 'model'),
         providerInstanceId: optionalString(args, 'providerInstanceId'),
         lyrics: optionalString(args, 'lyrics'),
-        instrumental: typeof args.instrumental === 'boolean' ? args.instrumental : undefined,
-        outputDir: optionalString(args, 'outputDir')
+        instrumental: typeof args.instrumental === 'boolean' ? args.instrumental : undefined
       }
+      // 对话生成的 BGM 只落 Cache、不入资产库（避免在对话流里出现重复卡）；
+      // 想入库让用户点资产卡上的「保存到资产库」按钮。
       const result = await runGenActivity(
         'generate_music',
         activityTitle(input.name, inputText),
         input.model,
         () => modelProviderFacade.generateMusicAsset(input),
         (r) => ({ assetId: r.assetId, relativePath: liveAssetRelativePath(r) }),
-        (r) => settleAssetFolder(r.assetId, optionalString(args, 'folderId')),
+        undefined,
         (r) => ({
           kind: 'generateMusic',
           nodeId: 'mcp',
@@ -2252,7 +2259,7 @@ const TOOL_DEFS: McpToolDef[] = [
     handler: async (args) => {
       assertProjectOpen()
       const input: GenerateImageInput & { name?: string } = {
-        ...extraParamsOf(args),
+        ...cacheOnlyGenExtraParams(args),
         prompt: readString(args, 'prompt'),
         name: optionalString(args, 'name'),
         model: optionalString(args, 'model'),
@@ -2330,7 +2337,7 @@ const TOOL_DEFS: McpToolDef[] = [
     handler: async (args) => {
       assertProjectOpen()
       const input: GenerateVideoInput & { name?: string } = {
-        ...extraParamsOf(args),
+        ...cacheOnlyGenExtraParams(args),
         prompt: readString(args, 'prompt'),
         name: optionalString(args, 'name'),
         model: optionalString(args, 'model'),
@@ -2420,7 +2427,7 @@ const TOOL_DEFS: McpToolDef[] = [
     handler: async (args) => {
       assertProjectOpen()
       const input: GenerateModel3dInput & { name?: string } = {
-        ...extraParamsOf(args),
+        ...cacheOnlyGenExtraParams(args),
         prompt: readString(args, 'prompt'),
         name: optionalString(args, 'name'),
         model: optionalString(args, 'model'),
@@ -2468,18 +2475,6 @@ const TOOL_DEFS: McpToolDef[] = [
     }
   }
 ]
-
-/**
- * 校验 folderId 存在并把资产挂到该资产库文件夹。
- * 注意：updateAsset 在 folderId 变化时会 moveAssetBetweenFolders 把媒体文件
- * 搬进文件夹目录并更新 relativePath，因此调用方必须在活动终态广播前处理并回填最终路径。
- */
-function applyAssetFolder(assetId: string, folderId: string | undefined): void {
-  if (!folderId) return
-  assertFolderExists(folderId)
-  const asset = projectService.listAssets().find((item) => item.id === assetId)
-  if (asset) projectService.updateAsset({ ...asset, folderId })
-}
 
 /** 校验资产库文件夹 id 存在（不存在直接报错，避免资产落进无效目录） */
 function assertFolderExists(folderId: string | null): void {
@@ -2861,6 +2856,21 @@ function extraParamsOf(args: Record<string, unknown>): Record<string, unknown> {
       ? { ...(args.extraParams as Record<string, unknown>) }
       : {}
   delete extra.graphBinding
+  return extra
+}
+
+/**
+ * `generate_*` 工具的低频透传参数：在 `extraParamsOf` 之上再剥掉 `outputDir` / `folderId`。
+ *
+ * 对话生成的产物一律只落缓存目录（Cache/Images、Videos、Voices、Music、Models），
+ * 是否入库由用户在产物卡上点「保存到资产库」按钮决定。`inputSchema` 已不再暴露这两个字段，
+ * 但 `extraParams` 是自由对象，能把它们夹带进来——展开后恰好命中
+ * `attachExternalGeneratedFile` 的「落 Assets/ 即登记资产」分支，所以这里必须再兜一道。
+ */
+function cacheOnlyGenExtraParams(args: Record<string, unknown>): Record<string, unknown> {
+  const extra = extraParamsOf(args)
+  delete extra.outputDir
+  delete extra.folderId
   return extra
 }
 

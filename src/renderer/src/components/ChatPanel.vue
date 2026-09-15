@@ -1311,10 +1311,7 @@ function onMcpActivity(activity: McpActivity): void {
   // 一次运行产出多件（如工作流同时出 GIF 与成片）时逐条出卡
   if (mediaPaths.length && (prev || running.value)) {
     mediaPaths.forEach((path, index) => {
-      void pushAsset(
-        index === 0 ? `asset:${activity.id}` : `asset:${activity.id}:${index}`,
-        path
-      )
+      void pushAsset(index === 0 ? `asset:${activity.id}` : `asset:${activity.id}:${index}`, path)
     })
   }
 }
@@ -1363,10 +1360,7 @@ async function isDuplicateChatAsset(relativePath: string, excludeKey: string): P
   const targetFp = await getChatAssetFingerprint(relativePath)
   if (!targetFp) return false
   const recent = messages.value
-    .filter(
-      (m): m is ChatMsg & { kind: 'asset' } =>
-        m.kind === 'asset' && m.key !== excludeKey
-    )
+    .filter((m): m is ChatMsg & { kind: 'asset' } => m.kind === 'asset' && m.key !== excludeKey)
     .slice(-20)
   for (const m of recent) {
     if (normalizeOutputPathKey(m.relativePath) === targetKey) continue

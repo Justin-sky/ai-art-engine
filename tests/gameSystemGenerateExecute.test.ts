@@ -85,7 +85,9 @@ describe('game system plan generation node', () => {
         position: { x: 0, y: 0 },
         params: {
           text: previous,
-          generatedTexts: [{ id: 'gen-text:1', text: previous, createdAt: '2026-01-01T00:00:00.000Z' }]
+          generatedTexts: [
+            { id: 'gen-text:1', text: previous, createdAt: '2026-01-01T00:00:00.000Z' }
+          ]
         }
       },
       inputs: {},

@@ -130,9 +130,10 @@ export async function executeGameSystemGenerateNode(
   if (hasOwnInstruction) {
     userPrompt = instruction
   } else if (localDraft && !draftIsPreviousOutput) {
-    const lead = ctx.locale === 'en'
-      ? 'Below is an existing human-readable draft of the game system design document. Expand and complete it into a deliverable version, preserving its structure and decisions:'
-      : '以下是已有人类可读的策划案底稿，请在其结构与既有决策的基础上扩写、补全为完整交付版（不要推翻底稿结论）：'
+    const lead =
+      ctx.locale === 'en'
+        ? 'Below is an existing human-readable draft of the game system design document. Expand and complete it into a deliverable version, preserving its structure and decisions:'
+        : '以下是已有人类可读的策划案底稿，请在其结构与既有决策的基础上扩写、补全为完整交付版（不要推翻底稿结论）：'
     userPrompt = `${defaultGameSystemUserPrompt(ctx.locale)}\n\n${lead}\n\n${localDraft}`
   } else {
     userPrompt = defaultGameSystemUserPrompt(ctx.locale)

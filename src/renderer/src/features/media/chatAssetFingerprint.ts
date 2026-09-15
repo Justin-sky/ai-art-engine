@@ -30,7 +30,7 @@ function normalize(p: string): string {
 function djb2(bytes: Uint8Array): number {
   let h = 5381
   for (let i = 0; i < bytes.length; i++) {
-    h = (((h << 5) + h) + bytes[i]) | 0
+    h = ((h << 5) + h + bytes[i]) | 0
   }
   return h
 }

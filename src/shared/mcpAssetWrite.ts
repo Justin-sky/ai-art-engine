@@ -1,4 +1,5 @@
-import type { AssetType } from './domain'
+import { resolveCacheOutputRoot, type AssetType } from './domain'
+import { SCANNED_OUTPUT_DIRS } from './outputScan'
 
 /**
  * MCP `asset_create` 允许创建的资产类型白名单。
@@ -79,4 +80,73 @@ export function assetImportActivityDetail(filePaths: string[]): string {
   const first = filePaths[0] ?? ''
   const name = first.replace(/\\/g, '/').split('/').pop() || first
   return filePaths.length > 1 ? `${name} 等 ${filePaths.length} 个文件` : name // cjk-ok: MCP 活动副标题
+}
+
+/** 比对用路径归一化：去空白、反斜杠转正斜杠、去掉尾部斜杠 */
+function normalizePathForCompare(value: string): string {
+  return String(value ?? '')
+    .trim()
+    .replace(/\\/g, '/')
+    .replace(/\/+$/, '')
+}
+
+/** 工程内生成产物目录名（小写）：配置的缓存根 + `Output/`（与对话扫盘口径一致） */
+function generatedOutputDirNames(cacheOutputDir?: string | null): string[] {
+  return [
+    ...new Set([
+      resolveCacheOutputRoot(cacheOutputDir).toLowerCase(),
+      ...SCANNED_OUTPUT_DIRS.map((dir) => dir.toLowerCase())
+    ])
+  ]
+}
+
+/**
+ * `asset_import` 的入参路径是否指向**本工程内的生成产物目录**（缓存根 `Cache/` 与 `Output/`）。
+ *
+ * 为什么要拒：生成产物入库的正道是用户在对话产物卡上点「保存到资产库」按钮
+ * （走 `saveProjectAsset`，由用户挑名字与目标文件夹）。Agent 直接 import 会把同一份
+ * 媒体再复制一份进 `Assets/`——资产库里多出一份重复文件，对话流里再出一张重复卡。
+ * 工程外的本机素材照常放行，那才是本工具的原意（收编用户给的参考素材）。
+ */
+export function isProjectGeneratedOutputPath(
+  filePath: string,
+  projectRoot: string,
+  cacheOutputDir?: string | null
+): boolean {
+  const file = normalizePathForCompare(filePath)
+  const root = normalizePathForCompare(projectRoot)
+  if (!file || !root) return false
+
+  const lowerFile = file.toLowerCase()
+  const lowerRoot = root.toLowerCase()
+  let rel: string
+  if (lowerFile.startsWith(`${lowerRoot}/`)) {
+    rel = file.slice(root.length + 1)
+  } else if (!/^[a-z]:/i.test(file) && !file.startsWith('/')) {
+    // 非绝对路径：Agent 有时直接回传相对路径，按工程内路径理解
+    rel = file
+  } else {
+    // 绝对路径且不在本工程内：属外部素材，放行
+    return false
+  }
+
+  const lowerRel = rel.replace(/^\.\/+/, '').toLowerCase()
+  if (!lowerRel) return false
+  return generatedOutputDirNames(cacheOutputDir).some(
+    (dir) => lowerRel === dir || lowerRel.startsWith(`${dir}/`)
+  )
+}
+
+/**
+ * 命中生成产物目录时给 Agent 的错误文案：讲清原因并指明正确入口，
+ * 免得它换个写法（改写 outputDir、先拷到别处）反复重试。
+ */
+export function projectGeneratedOutputImportError(paths: readonly string[]): string {
+  const list = paths.slice(0, 5).join('、')
+  const more = paths.length > 5 ? ` 等 ${paths.length} 个文件` : '' // cjk-ok: MCP 工具错误文案
+  return [
+    `不能通过 asset_import 把工程内生成产物导入资产库：${list}${more}。`, // cjk-ok: MCP 工具错误文案
+    `Cache/ 与 Output/ 是生成产物的临时落盘目录，要入库请让用户在对话产物卡上点「保存到资产库」按钮，`, // cjk-ok: MCP 工具错误文案
+    `由用户决定存哪一份、放进哪个文件夹；本工具只用于收编工程外的本机素材。` // cjk-ok: MCP 工具错误文案
+  ].join('')
 }
