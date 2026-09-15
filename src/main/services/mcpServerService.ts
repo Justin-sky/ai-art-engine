@@ -538,7 +538,8 @@ const TOOL_DEFS: McpToolDef[] = [
   {
     name: 'asset_write_text',
     title: '写入文本资产',
-    description: '更新文本资产内容（剧本、备注等），应用界面会同步刷新。',
+    description:
+      '把正文写回剧本（screenplay）资产的旁挂文本文件，应用界面会同步刷新。仅支持剧本资产：策划案（gameSystem）等无旁挂文件的文本资产没有独立正文文件，其正文存于资产图文档中——要写入 Agent 撰写的 Markdown 底稿，请用 graph_edit 对该资产的 asset.gameSystem 节点做 node_update，把正文写入 params.text（持久化并同步界面，下游节点优先读取该参数）。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1854,7 +1855,7 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'graph_edit',
     title: '编辑节点图',
     description:
-      '对一个已落盘的宿主资产图应用一批编辑操作（node_upsert / node_update / node_delete / edge_connect / edge_delete）。端口兼容性与类型合法性在应用内校验，未通过的操作跳过并记入 warnings。图正在编辑器中打开时会拒绝。修改立即持久化并同步应用界面。可借此搭建生成链路，如「图片节点出序列图 → 2D 帧动画（anim.2d，animGifFps > 0 时运行产出 GIF 动图）」；可建节点类型清单见 graph_node_types。',
+      '对一个已落盘的宿主资产图应用一批编辑操作（node_upsert / node_update / node_delete / edge_connect / edge_delete）。端口兼容性与类型合法性在应用内校验，未通过的操作跳过并记入 warnings。图正在编辑器中打开时会拒绝。修改立即持久化并同步应用界面。可借此搭建生成链路，如「图片节点出序列图 → 2D 帧动画（anim.2d，animGifFps > 0 时运行产出 GIF 动图）」；可建节点类型清单见 graph_node_types。也用于落 Agent 撰写的 Markdown 正文（如游戏策划案底稿）：node_update 目标 asset.gameSystem 节点、把正文写入 params.text 即可（下游 ui.split 等优先读取该参数；注意该节点自身再跑生成会重写 text）。',
     inputSchema: {
       type: 'object',
       properties: {
