@@ -79,9 +79,32 @@ export async function readHttpError(err: unknown): Promise<string> {
     if (data?.error && typeof data.error === 'object' && data.error.message)
       return data.error.message
     if (data?.message) return data.message
-    return err.message
+    // 网络层错（DNS / TCP / TLS 握手前 socket 被断 / 超时）：err.response 缺失，
+    // 只能靠 err.message + err.code + err.cause 给出可定位的诊断串。
+    return annotateAxiosNetworkError(err)
   }
   return err instanceof Error ? err.message : String(err)
+}
+
+/**
+ * 把 axios 网络错的关键诊断信息拼成单行：
+ *   `code=<err.code> | <err.message> | cause.code=<cause.code> | cause=<cause.message>`
+ * - `err.code`：Node/undici 给的稳定标签（`ECONNRESET` / `ENOTFOUND` / `EAI_AGAIN` / `UND_ERR_SOCKET` / `ERR_TLS_HANDSHAKE` / `ETIMEDOUT`...），便于用户一眼看出是防火墙断握手、DNS 失败还是连接被拒。
+ * - `err.cause`：undici 在 TLS 握手前断开时常挂在 cause 上（与顶层 message 重复时不重复打印）。
+ * - `err.message`：原生的可读描述，保留便于沟通。
+ *
+ * 对有 response 的"上游业务错"路径不生效——那条路径上游通常自带 message，不带冗余诊断反而更干净。
+ */
+export function annotateAxiosNetworkError(err: import('axios').AxiosError): string {
+  const parts: string[] = []
+  if (err.code) parts.push(`code=${err.code}`)
+  if (err.message) parts.push(err.message)
+  const cause = err.cause as { code?: string; message?: string } | undefined
+  if (cause) {
+    if (cause.code && cause.code !== err.code) parts.push(`cause.code=${cause.code}`)
+    if (cause.message && cause.message !== err.message) parts.push(`cause=${cause.message}`)
+  }
+  return parts.filter(Boolean).join(' | ')
 }
 
 export function sleep(ms: number): Promise<void> {
