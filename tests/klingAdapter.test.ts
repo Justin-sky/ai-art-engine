@@ -144,4 +144,32 @@ describe('klingAdapter', () => {
       expect.objectContaining({ model_name: 'kling-v2', prompt: 'sunset' })
     )
   })
+
+  it('annotates axios network error with code/cause in detail', async () => {
+    // 模拟 TLS 握手前 socket 被对端/中间设备切断：axios 抛错带 code + cause，没有 response
+    postMock.mockRejectedValueOnce({
+      isAxiosError: true,
+      message: 'Client network socket disconnected before secure TLS connection was established',
+      code: 'ECONNRESET',
+      cause: { code: 'UND_ERR_SOCKET', message: 'socket hang up' }
+    })
+    const err = await klingAdapter
+      .generateImage(provider(), 'kling-v2', { prompt: 'sunset' })
+      .catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(Error)
+    const msg = (err as Error).message
+    expect(msg).toMatch(/code=ECONNRESET/)
+    expect(msg).toMatch(/Client network socket disconnected/)
+    expect(msg).toMatch(/cause\.code=UND_ERR_SOCKET/)
+  })
+
+  it('falls back to err.message when axios error has no code and no cause', async () => {
+    postMock.mockRejectedValueOnce({
+      isAxiosError: true,
+      message: 'something vague'
+    })
+    await expect(
+      klingAdapter.generateImage(provider(), 'kling-v2', { prompt: 'sunset' })
+    ).rejects.toThrow(/something vague/)
+  })
 })

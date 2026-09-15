@@ -57,9 +57,27 @@ export async function readKlingHttpError(err: unknown): Promise<string> {
     if (typeof data?.code === 'number' && data.code !== 0) {
       return isEn() ? `Kling error code=${data.code}` : `可灵错误 code=${data.code}`
     }
-    return err.message
+    // 网络层错（DNS / TCP / TLS 握手等）：err.response 缺失，只能靠 err.message + err.code 诊断
+    return annotateNetworkError(err)
   }
   return err instanceof Error ? err.message : String(err)
+}
+
+/**
+ * 给 axios 网络错补一个稳定诊断尾巴：code（如 `ECONNRESET` / `ENOTFOUND` / `UND_ERR_SOCKET`）
+ * + cause 的 code/message（undici 在 TLS 握手前断开时常挂在 cause 上）。
+ * 避免用户只看到一行"Client network socket disconnected..."无法定位是防火墙断握手、DNS 失败还是连接被拒。
+ */
+function annotateNetworkError(err: import('axios').AxiosError): string {
+  const parts: string[] = []
+  if (err.code) parts.push(`code=${err.code}`)
+  if (err.message) parts.push(err.message)
+  const cause = err.cause as { code?: string; message?: string } | undefined
+  if (cause) {
+    if (cause.code && cause.code !== err.code) parts.push(`cause.code=${cause.code}`)
+    if (cause.message && cause.message !== err.message) parts.push(`cause=${cause.message}`)
+  }
+  return parts.filter(Boolean).join(' | ')
 }
 
 /** unwrapKlingData 的动作标签：中文文案保持与旧版逐字一致，另附英文映射 */
