@@ -296,7 +296,39 @@ export default {
       objectStorage: '对象存储',
       mcp: 'MCP',
       skills: '自定义技能',
-      plugins: '扩展'
+      plugins: '扩展',
+      search: '联网搜索'
+    },
+    search: {
+      title: '联网搜索',
+      hint: '为 AI 对话提供搜索 / 网页抓取能力；默认走 DeepSeek Anthropic 兼容端点（LLM 中介，非真联网）。',
+      providerDeepseek: 'DeepSeek 联网搜索',
+      providerTavily: 'Tavily 搜索',
+      providerBrave: 'Brave 搜索',
+      providerSerpapi: 'SerpAPI 搜索',
+      providerMock: 'Mock 搜索（调试）',
+      capabilitiesLabel: '能力',
+      capabilities: {
+        search: '搜索',
+        fetch: '抓取'
+      },
+      emptyResult: '搜索未返回结果',
+      testConnection: '测试连接',
+      testOk: '连接正常',
+      testFailed: '连接失败',
+      addProvider: '添加提供商', // cjk-ok
+      add: '添加', // cjk-ok
+      enabled: '启用', // cjk-ok
+      remove: '删除', // cjk-ok
+      label: '显示名', // cjk-ok
+      apiKey: 'API Key',
+      apiKeyPlaceholder: '请填写该平台的 API Key', // cjk-ok
+      baseUrl: 'Base URL',
+      baseUrlPlaceholder: '留空使用默认端点', // cjk-ok
+      emptyProviders: '尚未添加任何联网搜索提供商', // cjk-ok
+      collapseProvider: '折叠', // cjk-ok
+      expandProvider: '展开', // cjk-ok
+      getKeyHint: '前往该平台申请 API Key' // cjk-ok
     },
     ffmpeg: {
       notBundledHint:

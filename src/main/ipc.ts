@@ -83,6 +83,7 @@ import { yoloService } from './yolo/yoloService'
 import type { YoloInferenceInput } from '@shared/yolo'
 import { commitAiWorkflow, planAiWorkflow } from './services/graphPlanService'
 import { uploadProjectMedia } from './services/objectStorageUploadService'
+import { getBuiltinSearchProvider } from './plugins/searchProviders'
 import { autosaveRepository } from './repositories/autosaveRepository'
 import { pluginRepository } from './repositories/pluginRepository'
 import { dialogService } from './services/dialogService'
@@ -343,6 +344,18 @@ export function registerIpcHandlers(): void {
 
   handle(IpcChannels.SETTINGS_GET, () => settingsService.get())
   handle(IpcChannels.SETTINGS_SET, (settings: AppSettings) => settingsService.set(settings))
+
+  // 联网搜索：测试指定 provider 连通性（按 providerKind 取内置 adapter 做一次轻量探测）
+  handle(IpcChannels.SEARCH_TEST_CONNECTION, async (input: { id?: string } | undefined) => {
+    if (!input || typeof input.id !== 'string' || !input.id) {
+      throw new Error('search provider id is required')
+    }
+    const provider = settingsService.get().search.providers.find((p) => p.id === input.id)
+    if (!provider) throw new Error(`search provider not found: ${input.id}`)
+    const adapter = getBuiltinSearchProvider(provider.providerKind)
+    if (!adapter) throw new Error(`search adapter not registered: ${provider.providerKind}`)
+    await adapter.assertAuth(provider)
+  })
 
   // Local vision (YOLO)
   handle(IpcChannels.YOLO_STATUS, () => yoloService.status())

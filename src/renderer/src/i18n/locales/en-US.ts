@@ -301,7 +301,39 @@ export default {
       objectStorage: 'Object storage',
       mcp: 'MCP',
       skills: 'Custom skills',
-      plugins: 'Extensions'
+      plugins: 'Extensions',
+      search: 'Web search'
+    },
+    search: {
+      title: 'Web search',
+      hint: 'Provide online search / page fetching for the AI assistant. Default routes through the DeepSeek Anthropic-compatible endpoint (LLM-mediated, not real web).',
+      providerDeepseek: 'DeepSeek web search',
+      providerTavily: 'Tavily search',
+      providerBrave: 'Brave search',
+      providerSerpapi: 'SerpAPI search',
+      providerMock: 'Mock search (debug)',
+      capabilitiesLabel: 'Capabilities',
+      capabilities: {
+        search: 'Search',
+        fetch: 'Fetch'
+      },
+      emptyResult: 'No results',
+      testConnection: 'Test connection',
+      testOk: 'Connection OK',
+      testFailed: 'Connection failed',
+      addProvider: 'Add provider',
+      add: 'Add',
+      enabled: 'Enabled',
+      remove: 'Remove',
+      label: 'Label',
+      apiKey: 'API Key',
+      apiKeyPlaceholder: 'Enter the API key from this platform',
+      baseUrl: 'Base URL',
+      baseUrlPlaceholder: 'Leave empty to use the default endpoint',
+      emptyProviders: 'No web search provider added yet',
+      collapseProvider: 'Collapse',
+      expandProvider: 'Expand',
+      getKeyHint: 'Get your API key from this platform'
     },
     ffmpeg: {
       notBundledHint:

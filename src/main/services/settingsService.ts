@@ -3,6 +3,7 @@ import Store from 'electron-store'
 import { DEFAULT_SETTINGS, type AppSettings } from '@shared/domain'
 import { normalizeModelsSettings } from '@shared/modelProvider'
 import { normalizeObjectStorageSettings } from '@shared/objectStorage'
+import { normalizeSearchSettings } from '@shared/searchProvider'
 
 export type WindowChromeColors = {
   background: string
@@ -67,6 +68,7 @@ class SettingsService {
         ...(saved.editor ?? {})
       },
       models: normalizeModelsSettings(saved.models ?? DEFAULT_SETTINGS.models),
+      search: normalizeSearchSettings(saved.search ?? DEFAULT_SETTINGS.search),
       objectStorage: normalizeObjectStorageSettings(
         saved.objectStorage ?? DEFAULT_SETTINGS.objectStorage
       ),
@@ -96,6 +98,7 @@ class SettingsService {
         )
       },
       models: normalizeModelsSettings(settings.models),
+      search: normalizeSearchSettings(settings.search),
       objectStorage: normalizeObjectStorageSettings(settings.objectStorage),
       yolo: {
         ...DEFAULT_SETTINGS.yolo,

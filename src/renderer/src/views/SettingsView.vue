@@ -71,6 +71,14 @@
         >
           {{ t('settings.section.plugins') }}
         </button>
+        <button
+          type="button"
+          class="top-tab"
+          :class="{ active: mainTab === 'search' }"
+          @click="mainTab = 'search'"
+        >
+          {{ t('settings.section.search') }}
+        </button>
       </nav>
 
       <section v-show="mainTab === 'general'">
@@ -291,6 +299,10 @@
         </p>
       </section>
 
+      <section v-show="mainTab === 'search'" class="models-section">
+        <SearchProvidersPanel :search="form.search" @test-message="onSearchTestMessage" />
+      </section>
+
       <div class="actions">
         <span v-if="message" class="msg" :class="{ error: isError, saving: saving }">{{
           message
@@ -309,6 +321,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { DEFAULT_SETTINGS, type AppSettings } from '@shared/domain'
 import { normalizeModelsSettings } from '@shared/modelProvider'
 import { normalizeObjectStorageSettings } from '@shared/objectStorage'
+import { normalizeSearchSettings } from '@shared/searchProvider'
 import type { ExternalPluginManifest, McpServerInfo } from '@shared/ipc'
 import type { AppUpdateEvent } from '@shared/update'
 import { setAppLocale } from '../i18n'
@@ -320,6 +333,7 @@ import ObjectStoragePanel from '../components/settings/ObjectStoragePanel.vue'
 import SkillsPanel from '../components/settings/SkillsPanel.vue'
 import YoloModelsPanel from '../components/settings/YoloModelsPanel.vue'
 import FfmpegPanel from '../components/settings/FfmpegPanel.vue'
+import SearchProvidersPanel from '../components/settings/SearchProvidersPanel.vue'
 
 const DEBOUNCE_MS = 500
 
@@ -331,7 +345,15 @@ const message = ref('')
 const isError = ref(false)
 const plugins = ref<ExternalPluginManifest[]>([])
 const mainTab = ref<
-  'general' | 'models' | 'yolo' | 'ffmpeg' | 'objectStorage' | 'mcp' | 'skills' | 'plugins'
+  | 'general'
+  | 'models'
+  | 'yolo'
+  | 'ffmpeg'
+  | 'objectStorage'
+  | 'mcp'
+  | 'skills'
+  | 'plugins'
+  | 'search'
 >('general')
 const appVersion = ref('…')
 const updateStatus = ref('')
@@ -343,6 +365,12 @@ const tokenEditing = ref(false)
 const tokenInput = ref('')
 const portInput = ref<number | null>(null)
 const mcpBusy = ref(false)
+
+/** search provider 测试连接结果写到顶部消息条，便于用户感知 */
+function onSearchTestMessage(payload: { ok: boolean; message: string }): void {
+  message.value = payload.message
+  isError.value = !payload.ok
+}
 let stopUpdateListen: (() => void) | null = null
 
 const SETTINGS_TAB_QUERY_VALUES = new Set([
@@ -353,7 +381,8 @@ const SETTINGS_TAB_QUERY_VALUES = new Set([
   'objectStorage',
   'mcp',
   'skills',
-  'plugins'
+  'plugins',
+  'search'
 ])
 const route = useRoute()
 // 调用点（如缺 ffmpeg 时的「去设置下载」）以 route.query.tab 定位到具体 tab；
@@ -561,6 +590,7 @@ function cloneSettings(source: AppSettings): AppSettings {
     defaultProjectPath: raw.defaultProjectPath,
     editor: { ...toRaw(raw.editor ?? DEFAULT_SETTINGS.editor) },
     models: normalizeModelsSettings(toRaw(raw.models ?? DEFAULT_SETTINGS.models)),
+    search: normalizeSearchSettings(raw.search ?? DEFAULT_SETTINGS.search),
     objectStorage: normalizeObjectStorageSettings(
       toRaw(raw.objectStorage ?? DEFAULT_SETTINGS.objectStorage)
     ),
@@ -581,6 +611,7 @@ function applyToForm(cloned: AppSettings): void {
   Object.assign(form.yolo, cloned.yolo)
   // 就地替换 providers，避免拉取模型 await 期间整表替换导致设置页引用失效
   form.models.providers.splice(0, form.models.providers.length, ...cloned.models.providers)
+  form.search.providers.splice(0, form.search.providers.length, ...cloned.search.providers)
   form.objectStorage.providers.splice(
     0,
     form.objectStorage.providers.length,

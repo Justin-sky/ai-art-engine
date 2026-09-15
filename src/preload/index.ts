@@ -145,6 +145,8 @@ const api: StudioApi = {
 
   getSettings: () => ipcRenderer.invoke(IpcChannels.SETTINGS_GET),
   setSettings: (settings: AppSettings) => ipcRenderer.invoke(IpcChannels.SETTINGS_SET, settings),
+  testSearchProvider: (input: { id: string }) =>
+    ipcRenderer.invoke(IpcChannels.SEARCH_TEST_CONNECTION, input),
 
   getYoloStatus: () => ipcRenderer.invoke(IpcChannels.YOLO_STATUS),
   yoloDetect: (input) => ipcRenderer.invoke(IpcChannels.YOLO_DETECT, input),

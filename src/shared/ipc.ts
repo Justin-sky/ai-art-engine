@@ -131,6 +131,8 @@ export const IpcChannels = {
   // Settings
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
+  /** 测试指定 search provider 的连通性（凭鉴权探测；返回断言结果） */
+  SEARCH_TEST_CONNECTION: 'search:test-connection',
 
   // Local vision (YOLO): onnxruntime 本地推理，数据不出机
   YOLO_STATUS: 'yolo:status',
@@ -1053,6 +1055,12 @@ export interface StudioApi {
 
   getSettings: () => Promise<AppSettings>
   setSettings: (settings: AppSettings) => Promise<AppSettings>
+  /**
+   * 测试设置中指定 id 的 search provider 连通性；
+   * 走该 provider 内置 adapter 的 assertAuth（一次轻量探测）。
+   * 抛错表示鉴权 / 网络 / 协议层失败；返回 void 表示通过。
+   */
+  testSearchProvider: (input: { id: string }) => Promise<void>
 
   /** 查询本地视觉（YOLO）状态：推理进程 / 运行时 / 模型清单 */
   getYoloStatus: () => Promise<YoloStatus>

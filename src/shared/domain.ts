@@ -2,6 +2,7 @@
 
 import { createEmptyModelsSettings, type ModelsSettings } from './modelProvider'
 import { createEmptyObjectStorageSettings, type ObjectStorageSettings } from './objectStorage'
+import { createEmptySearchSettings, type SearchSettings } from './searchProvider'
 import type { ProjectStyleImage } from './stylePresets'
 import type { VideoBeatTags } from './videoBeats'
 import type { VisionAssetTags } from './visionTags'
@@ -53,6 +54,21 @@ export {
   createObjectStorageProvider,
   normalizeObjectStorageSettings
 } from './objectStorage'
+
+export {
+  SEARCH_PROVIDER_KINDS,
+  createEmptySearchSettings,
+  createSearchProviderInstance,
+  normalizeSearchProviderInstance,
+  normalizeSearchSettings,
+  searchProviderCredentialsUrl,
+  searchProviderSupports,
+  type SearchProviderInstance,
+  type SearchProviderKind,
+  type SearchProviderKindMeta,
+  type SearchSettings,
+  type SearchCapability
+} from './searchProvider'
 
 export type AssetType =
   | 'image'
@@ -469,6 +485,8 @@ export interface AppSettings {
    * 模型提供商配置（文本 / 图片 / 视频 / 音频）。
    */
   models: ModelsSettings
+  /** 联网搜索提供商（Tavily / Brave / SerpAPI / DeepSeek LLM 中介 等） */
+  search: SearchSettings
   /** 对象存储（火山引擎 TOS 等，可扩展） */
   objectStorage: ObjectStorageSettings
   /** Seedance 直连 / Mock 流水线（未配置 OpenRouter 视频时回退） */
@@ -1927,6 +1945,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     autoSaveIntervalSec: 30
   },
   models: createEmptyModelsSettings(),
+  search: createEmptySearchSettings(),
   objectStorage: createEmptyObjectStorageSettings(),
   seedance: {
     endpoint: '',
