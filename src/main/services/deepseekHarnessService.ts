@@ -30,6 +30,7 @@ import {
 } from '@shared/modelProvider'
 import { PROJECT_MEMORY_INJECT_LIMIT, PROJECT_MEMORY_RELATIVE_PATH } from '@shared/projectMemory'
 import { broadcastToAllWindows } from '../broadcast'
+import { isDshQuotaError } from './deepseekHarnessFailure'
 import {
   appendNodeRequireOption,
   HIDE_CHILD_WINDOWS_HOOK_FILENAME,
@@ -1773,7 +1774,13 @@ function launchDsh(opts: {
     const failed = code !== 0 && finalText === ''
     emit({ type: 'tool', name: 'dsh-agent', state: 'done' })
     if (failed) {
-      const hint = dshEntry ? '请重试或查看上方状态信息' : '若为首次运行，请等待包下载完成后重试'
+      // 余额不足是已知高频失败原因：给具体指路，避免用户撞上「请重试」无指引
+      const quotaHint = isDshQuotaError(fullOut + '\n' + errBuf)
+        ? 'DeepSeek 账户余额不足：到 platform.deepseek.com → 账户中心充值后再发，或在设置 → 模型接入切换到其它服务商'
+        : null
+      const hint =
+        quotaHint ??
+        (dshEntry ? '请重试或查看上方状态信息' : '若为首次运行，请等待包下载完成后重试')
       // 有工具事件却没文本，是「面板看起来什么都没发生」的典型成因，说清楚免得误判为卡死
       const onlyTools = sawOutput ? '，本轮只产生了工具调用、没有文本' : ''
       emit({ type: 'error', message: `dsh 异常退出（code ${code}）${onlyTools}。${hint}。` })
