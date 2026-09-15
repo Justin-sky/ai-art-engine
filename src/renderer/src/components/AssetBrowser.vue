@@ -2905,12 +2905,14 @@ async function moveFoldersToFolder(folderIds: string[], folderId: string | null)
   const results = await Promise.allSettled(
     valid.map((id) => window.studio.moveFolder({ folderId: id, newParentId: folderId }))
   )
-  const failures = results
-    .map((r, i) => ({ r, id: valid[i] }))
-    .filter((x) => x.r.status === 'rejected')
+  const failures: { id: string; reason: unknown }[] = []
+  results.forEach((r, i) => {
+    if (r.status === 'rejected') failures.push({ id: valid[i], reason: r.reason })
+  })
   if (failures.length) {
-    const first = failures[0].r
-    const reason = first.reason instanceof Error ? first.reason.message : String(first.reason)
+    const reason = failures[0].reason instanceof Error
+      ? failures[0].reason.message
+      : String(failures[0].reason)
     await promptAlert({
       title: t('asset.browser.title'),
       message: t('asset.browser.moveFolderFailed', { count: failures.length, reason })

@@ -1426,12 +1426,12 @@ class ProjectService {
     this.readFolder(folderId)
     if (newParentId) this.readFolder(newParentId)
     if (newParentId === folderId) {
-      throw fail(MAIN_ERRORS.folderCycle, { folderId })
+      throw fail(MAIN_ERRORS.folderCycle)
     }
     const folders = this.listFolders()
     const subtree = new Set(collectFolderSubtreeIds(folders, folderId))
     if (newParentId && subtree.has(newParentId)) {
-      throw fail(MAIN_ERRORS.folderCycle, { folderId, newParentId })
+      throw fail(MAIN_ERRORS.folderCycle)
     }
     return folderRepository.move(this.getRoot(), folderId, newParentId)
   }
