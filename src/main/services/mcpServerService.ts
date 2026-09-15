@@ -580,6 +580,35 @@ const TOOL_DEFS: McpToolDef[] = [
     }
   },
   {
+    name: 'folder_move',
+    title: '移动文件夹',
+    description:
+      '把文件夹移动到另一父目录（省略/传 null newParentId 表示移到资产库根目录）。新父目录不能是 folderId 自身，也不能是其任意子孙——子目录里的资产会随父目录一起搬移，磁盘上的目录与子孙 .asset.json 的 relativePath 都会更新。同名冲突会自动追加 " 2" / " 3" 后缀。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        folderId: { type: 'string', description: '要移动的文件夹 id' },
+        newParentId: {
+          type: 'string',
+          description: '目标父目录 id；省略/传 null 表示移到资产库根目录'
+        }
+      },
+      required: ['folderId']
+    },
+    handler: (args) => {
+      assertProjectOpen()
+      const folderId = readString(args, 'folderId')
+      const newParentId = optionalString(args, 'newParentId') ?? null
+      assertFolderExists(newParentId)
+      const updated = projectService.moveFolder(folderId, newParentId)
+      return {
+        folderId: updated.id,
+        name: updated.name,
+        parentId: updated.parentId ?? null
+      }
+    }
+  },
+  {
     name: 'asset_create',
     title: '新建资产',
     description:

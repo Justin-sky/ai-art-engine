@@ -1041,7 +1041,11 @@ export default {
       videoBeatFailed: '打点失败：视频不可用或本机推理组件未就绪，请稍后重试。',
       videoBeatGuideFfmpeg:
         '当前未检测到 ffmpeg / ffprobe。安装包已不再内置：点击「去设置下载」，到「设置 → ffmpeg 工具」页安装后，再回来重新打点。',
-      videoBeatGoSettings: '去设置下载'
+      videoBeatGoSettings: '去设置下载',
+      moveAssetFailed: '移动「{name}」失败：{reason}',
+      moveFolderCycle: '不能把目录搬到自身或子目录下',
+      moveFolderAllCycle: '所选目录全部是目标目录的子孙，无法移动',
+      moveFolderFailed: '{count} 个目录移动失败：{reason}'
     },
     package: {
       exportTitle: '导出资产包',

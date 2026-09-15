@@ -39,6 +39,8 @@ type CloseEditorsForAssetsFn = (assetIds: string[]) => CloseEditorsForAssetsResu
 export const STUDIO_ASSET_DRAG_MIME = 'application/x-studio-asset'
 export const STUDIO_ASSET_ID_DRAG_MIME = 'application/x-studio-asset-id'
 export const STUDIO_ASSET_IDS_DRAG_MIME = 'application/x-studio-asset-ids'
+/** 资产库内部：左侧目录树拖动目录（多选 ids）到另一目录 */
+export const STUDIO_FOLDER_IDS_DRAG_MIME = 'application/x-studio-folder-ids'
 /** 场栏 → 画布：拖入创建场参考节点 */
 export const STUDIO_BEAT_UNIT_DRAG_MIME = 'application/x-studio-beat-unit'
 export const STUDIO_BEAT_UNIT_ID_DRAG_MIME = 'application/x-studio-beat-unit-id'

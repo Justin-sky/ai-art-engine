@@ -28,7 +28,8 @@ import type {
   SaveBinaryFileInput,
   SaveGraphRunMediaInput,
   SaveGraphRunTextInput,
-  DeleteFolderInput
+  DeleteFolderInput,
+  MoveFolderInput
 } from '@shared/ipc'
 
 const api: StudioApi = {
@@ -124,6 +125,7 @@ const api: StudioApi = {
       IpcChannels.FOLDER_DELETE,
       typeof input === 'string' ? { folderId: input, mode: 'hoist' as const } : input
     ),
+  moveFolder: (input: MoveFolderInput) => ipcRenderer.invoke(IpcChannels.FOLDER_MOVE, input),
 
   generateText: (input) => ipcRenderer.invoke(IpcChannels.GEN_TEXT, input),
   generateImage: (input) => ipcRenderer.invoke(IpcChannels.GEN_IMAGE, input),

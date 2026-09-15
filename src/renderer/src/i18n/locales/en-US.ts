@@ -1061,7 +1061,11 @@ export default {
         'Beat analysis failed: video unavailable or local inference is not ready. Try again later.',
       videoBeatGuideFfmpeg:
         'No usable ffmpeg/ffprobe detected. ffmpeg is no longer bundled — tap "Open settings" and install it on the ffmpeg tools page, then run beat analysis again.',
-      videoBeatGoSettings: 'Open settings'
+      videoBeatGoSettings: 'Open settings',
+      moveAssetFailed: 'Failed to move "{name}": {reason}',
+      moveFolderCycle: 'A folder cannot be moved into itself or one of its descendants',
+      moveFolderAllCycle: 'All selected folders are descendants of the target folder',
+      moveFolderFailed: '{count} folder(s) failed to move: {reason}'
     },
     package: {
       exportTitle: 'Export package',

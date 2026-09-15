@@ -104,9 +104,11 @@
           class="tree-row"
           :class="{ active: isTreeRowActive(row), 'drop-over': isTreeRowDropOver(row) }"
           :style="{ paddingLeft: `${4 + row.depth * 14}px` }"
+          :draggable="folderIdFromTreeRow(row.id) !== null"
           @click="onTreeRowClick(row.id, $event)"
           @dblclick.stop="onTreeRowDblClick(row.id)"
           @contextmenu.prevent.stop="onTreeRowContextMenu($event, row.id)"
+          @dragstart.stop="onFolderDragStart($event, folderIdFromTreeRow(row.id))"
           @dragover.prevent="onFolderDragOver($event, folderIdFromTreeRow(row.id))"
           @dragleave="onFolderDragLeave(folderIdFromTreeRow(row.id))"
           @drop.prevent="onDropToFolder($event, folderIdFromTreeRow(row.id))"
@@ -570,7 +572,8 @@ import {
   useWorkspaceStore,
   STUDIO_ASSET_DRAG_MIME,
   STUDIO_ASSET_ID_DRAG_MIME,
-  STUDIO_ASSET_IDS_DRAG_MIME
+  STUDIO_ASSET_IDS_DRAG_MIME,
+  STUDIO_FOLDER_IDS_DRAG_MIME
 } from '../stores/workspace'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { promptAlert, promptConfirm, promptText } from '../composables/useStudioPrompt'
@@ -625,6 +628,7 @@ const props = withDefaults(
 const ROOT_DROP = '__root__'
 const CURRENT_DROP = '__current__'
 const ASSET_MOVE_MIME = STUDIO_ASSET_ID_DRAG_MIME
+const FOLDER_MOVE_MIME = STUDIO_FOLDER_IDS_DRAG_MIME
 const VIEW_SIZE_KEY = 'studio.assets.viewSize'
 const TREE_WIDTH_KEY = 'studio.assets.treeWidth'
 const DEFAULT_TREE_WIDTH = 180
@@ -963,6 +967,8 @@ const anchorFolderId = ref<string | null>(null)
 const selectionBox = ref<{ x: number; y: number; w: number; h: number } | null>(null)
 const dropTargetId = ref<string | null>(null)
 const draggingAssetIds = ref<string[]>([])
+/** 多选目录拖动时记录 ids（drop 后清空） */
+const draggingFolderIds = ref<string[]>([])
 /** 拖动结束后可能仍会冒泡 click，用此跳过 Inspector 同步 */
 let skipAssetClickSync = false
 let skipAssetClickSyncTimer: ReturnType<typeof setTimeout> | null = null
@@ -2592,7 +2598,7 @@ function getDroppedFilePaths(e: DragEvent): string[] {
 }
 
 function hasExternalFiles(e: DragEvent): boolean {
-  if (hasAssetMove(e)) return false
+  if (hasInternalDrag(e)) return false
   const types = e.dataTransfer ? Array.from(e.dataTransfer.types) : []
   return types.includes('Files')
 }
@@ -2727,13 +2733,15 @@ function dropKey(folderId: string | null): string {
   return folderId ?? ROOT_DROP
 }
 
-function hasAssetMove(e: DragEvent): boolean {
+function hasInternalDrag(e: DragEvent): boolean {
   if (draggingAssetIds.value.length > 0) return true
+  if (draggingFolderIds.value.length > 0) return true
   const types = e.dataTransfer ? Array.from(e.dataTransfer.types) : []
   return (
     types.includes(ASSET_MOVE_MIME) ||
     types.includes(STUDIO_ASSET_IDS_DRAG_MIME) ||
-    types.includes(STUDIO_ASSET_DRAG_MIME)
+    types.includes(STUDIO_ASSET_DRAG_MIME) ||
+    types.includes(FOLDER_MOVE_MIME)
   )
 }
 
@@ -2758,7 +2766,7 @@ function onFolderDragOver(e: DragEvent, folderId: string | null): void {
     externalImportHover.value = true
     return
   }
-  if (!hasAssetMove(e)) return
+  if (!hasInternalDrag(e)) return
   e.dataTransfer!.dropEffect = 'move'
   dropTargetId.value = dropKey(folderId)
 }
@@ -2774,7 +2782,7 @@ function onCurrentFolderDragOver(e: DragEvent): void {
     externalImportHover.value = true
     return
   }
-  if (!hasAssetMove(e)) return
+  if (!hasInternalDrag(e)) return
   e.dataTransfer!.dropEffect = 'move'
   dropTargetId.value = CURRENT_DROP
 }
@@ -2783,25 +2791,131 @@ function onCurrentFolderDragLeave(): void {
   if (dropTargetId.value === CURRENT_DROP) dropTargetId.value = null
 }
 
-async function moveAssetToFolder(assetId: string, folderId: string | null): Promise<void> {
-  const asset = project.assets.find((a) => a.id === assetId)
-  if (!asset) return
-  if ((asset.folderId ?? null) === folderId) return
-  try {
-    const updated = await window.studio.updateAsset(toPlain({ ...asset, folderId }))
+/** 目录树行 dragstart：把多选目录 ids 写入 dataTransfer；资产库根目录不可拖 */
+function onFolderDragStart(e: DragEvent, folderId: string | null): void {
+  if (!folderId) {
+    e.preventDefault()
+    return
+  }
+  let ids =
+    selectedFolderIds.value.has(folderId) && selectedFolderIds.value.size > 1
+      ? [...selectedFolderIds.value]
+      : [folderId]
+  if (!selectedFolderIds.value.has(folderId)) {
+    selectedFolderIds.value = new Set([folderId])
+    ids = [folderId]
+  }
+  draggingFolderIds.value = ids
+  e.dataTransfer?.setData(FOLDER_MOVE_MIME, JSON.stringify(ids))
+  e.dataTransfer?.setData('text/plain', folderId)
+  e.dataTransfer!.effectAllowed = 'move'
+}
+
+/** 区分当前拖动是资产还是目录（用于 dropEffect 与 drop 分支） */
+function dragKind(e: DragEvent): 'asset' | 'folder' | null {
+  if (draggingAssetIds.value.length > 0) return 'asset'
+  if (draggingFolderIds.value.length > 0) return 'folder'
+  const types = e.dataTransfer ? Array.from(e.dataTransfer.types) : []
+  if (types.includes(FOLDER_MOVE_MIME)) return 'folder'
+  if (
+    types.includes(ASSET_MOVE_MIME) ||
+    types.includes(STUDIO_ASSET_IDS_DRAG_MIME) ||
+    types.includes(STUDIO_ASSET_DRAG_MIME)
+  )
+    return 'asset'
+  return null
+}
+
+/** drop 时从 dataTransfer 反解出被拖动的目录 ids */
+function resolveDroppedFolderIds(e: DragEvent): string[] {
+  const raw = e.dataTransfer?.getData(FOLDER_MOVE_MIME)
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw) as string[]
+      if (Array.isArray(parsed) && parsed.length) return parsed
+    } catch {
+      /* ignore */
+    }
+  }
+  return [...draggingFolderIds.value]
+}
+
+/** targetId 是否为 sourceId 的子孙（含自身）——成环检测 */
+function isFolderDescendant(targetId: string, sourceId: string): boolean {
+  if (targetId === sourceId) return true
+  return collectFolderSubtreeIds(project.folders, sourceId).includes(targetId)
+}
+
+/** 批量移动资产到目标目录：并发 + 就地 splice 局部更新 + 失败聚合报告 */
+async function moveAssetsToFolder(assetIds: string[], folderId: string | null): Promise<void> {
+  const targets: AssetInfo[] = []
+  for (const id of new Set(assetIds)) {
+    const a = project.assets.find((x) => x.id === id)
+    if (a && (a.folderId ?? null) !== folderId) targets.push(a)
+  }
+  if (!targets.length) return
+  const results = await Promise.allSettled(
+    targets.map((asset) => window.studio.updateAsset(toPlain({ ...asset, folderId })))
+  )
+  for (let i = 0; i < targets.length; i++) {
+    const r = results[i]
+    if (r.status === 'rejected') {
+      const reason = r.reason instanceof Error ? r.reason.message : String(r.reason)
+      await promptAlert({
+        title: t('asset.browser.title'),
+        message: t('asset.browser.moveAssetFailed', { name: targets[i].name, reason })
+      })
+    }
+  }
+  for (let i = 0; i < targets.length; i++) {
+    const r = results[i]
+    if (r.status !== 'fulfilled') continue
+    const updated = r.value
     const idx = project.assets.findIndex((a) => a.id === updated.id)
     if (idx >= 0) project.assets.splice(idx, 1, updated)
-    else await project.refreshAssets()
-  } catch (e) {
-    await openNameDialog({
-      mode: 'alert',
-      title: t('asset.browser.title'),
-      value: '',
-      parentId: null,
-      error: e instanceof Error ? e.message : String(e)
-    })
-    await project.refreshLibrary()
   }
+  if (results.some((r) => r.status === 'rejected')) {
+    await project.refreshAssets()
+  }
+}
+
+/** 批量移动目录到目标父目录：成环检测 + 整体并发 + 整体刷新 */
+async function moveFoldersToFolder(folderIds: string[], folderId: string | null): Promise<void> {
+  const unique = [...new Set(folderIds)]
+  if (!unique.length) return
+  // 自指 / 拖到自身下：整体拒绝
+  if (folderId && unique.includes(folderId)) {
+    await promptAlert({
+      title: t('asset.browser.title'),
+      message: t('asset.browser.moveFolderCycle')
+    })
+    return
+  }
+  // 拖到自身子孙下：跳过该 folder（其他仍可继续）
+  const valid = unique.filter((id) => !folderId || !isFolderDescendant(folderId, id))
+  if (valid.length === 0) {
+    await promptAlert({
+      title: t('asset.browser.title'),
+      message: t('asset.browser.moveFolderAllCycle')
+    })
+    return
+  }
+  const results = await Promise.allSettled(
+    valid.map((id) => window.studio.moveFolder({ folderId: id, newParentId: folderId }))
+  )
+  const failures = results
+    .map((r, i) => ({ r, id: valid[i] }))
+    .filter((x) => x.r.status === 'rejected')
+  if (failures.length) {
+    const first = failures[0].r
+    const reason = first.reason instanceof Error ? first.reason.message : String(first.reason)
+    await promptAlert({
+      title: t('asset.browser.title'),
+      message: t('asset.browser.moveFolderFailed', { count: failures.length, reason })
+    })
+  }
+  // 整体刷新一次（descendant folder.parentId 与 asset.relativePath 都变了）
+  await Promise.all([project.refreshFolders(), project.refreshAssets()])
 }
 
 async function onDropToFolder(e: DragEvent, folderId: string | null): Promise<void> {
@@ -2814,11 +2928,19 @@ async function onDropToFolder(e: DragEvent, folderId: string | null): Promise<vo
 
   e.stopPropagation()
   dropTargetId.value = null
-  const assetIds = resolveDroppedAssetIds(e)
-  draggingAssetIds.value = []
-  if (!assetIds.length) return
-  for (const assetId of assetIds) {
-    await moveAssetToFolder(assetId, folderId)
+  const kind = dragKind(e)
+  if (kind === 'folder') {
+    const ids = resolveDroppedFolderIds(e)
+    draggingFolderIds.value = []
+    if (!ids.length) return
+    await moveFoldersToFolder(ids, folderId)
+    return
+  }
+  if (kind === 'asset') {
+    const assetIds = resolveDroppedAssetIds(e)
+    draggingAssetIds.value = []
+    if (!assetIds.length) return
+    await moveAssetsToFolder(assetIds, folderId)
   }
 }
 

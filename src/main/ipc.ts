@@ -9,6 +9,7 @@ import type {
   CreateProjectInput,
   DeleteFolderInput,
   ImportAssetsInput,
+  MoveFolderInput,
   ReimportAssetsInput,
   SaveProjectAssetInput,
   AutosaveFilter,
@@ -279,6 +280,9 @@ export function registerIpcHandlers(): void {
     }
     projectService.deleteFolder(input.folderId, { mode: input.mode })
   })
+  handle(IpcChannels.FOLDER_MOVE, (input: MoveFolderInput) =>
+    projectService.moveFolder(input.folderId, input.newParentId ?? null)
+  )
 
   handle(IpcChannels.GEN_TEXT, (input: GenerateTextInput) =>
     modelProviderFacade.generateText(input)

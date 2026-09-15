@@ -1418,6 +1418,24 @@ class ProjectService {
     return folderRepository.rename(this.getRoot(), folderId, name)
   }
 
+  /**
+   * 把文件夹搬到另一父目录（含磁盘搬移与 descendant 资产 relativePath 写回）。
+   * 成环约束：newParentId 不能是 folderId 自身，也不能是其任意子孙。
+   */
+  moveFolder(folderId: string, newParentId: string | null): AssetFolder {
+    this.readFolder(folderId)
+    if (newParentId) this.readFolder(newParentId)
+    if (newParentId === folderId) {
+      throw fail(MAIN_ERRORS.folderCycle, { folderId })
+    }
+    const folders = this.listFolders()
+    const subtree = new Set(collectFolderSubtreeIds(folders, folderId))
+    if (newParentId && subtree.has(newParentId)) {
+      throw fail(MAIN_ERRORS.folderCycle, { folderId, newParentId })
+    }
+    return folderRepository.move(this.getRoot(), folderId, newParentId)
+  }
+
   deleteFolder(folderId: string, options?: { mode?: 'hoist' | 'deleteContents' }): void {
     const root = this.getRoot()
     this.readFolder(folderId)

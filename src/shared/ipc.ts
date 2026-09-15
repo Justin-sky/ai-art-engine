@@ -101,6 +101,7 @@ export const IpcChannels = {
   FOLDER_CREATE: 'folder:create',
   FOLDER_RENAME: 'folder:rename',
   FOLDER_DELETE: 'folder:delete',
+  FOLDER_MOVE: 'folder:move',
 
   // Generation
   GEN_TEXT: 'gen:text',
@@ -420,6 +421,12 @@ export interface CreateFolderInput {
 export interface DeleteFolderInput {
   folderId: string
   mode?: 'hoist' | 'deleteContents'
+}
+
+/** 移动目录到另一父目录；省略/传 null newParentId 表示移回资产库根目录 */
+export interface MoveFolderInput {
+  folderId: string
+  newParentId?: string | null
 }
 
 export interface AttachAssetFileInput {
@@ -1023,6 +1030,7 @@ export interface StudioApi {
   createFolder: (input: CreateFolderInput) => Promise<AssetFolder>
   renameFolder: (folderId: string, name: string) => Promise<AssetFolder>
   deleteFolder: (input: DeleteFolderInput | string) => Promise<void>
+  moveFolder: (input: MoveFolderInput) => Promise<AssetFolder>
 
   generateText: (input: GenerateTextInput) => Promise<GenerateTextResult>
   generateImage: (input: GenerateImageInput) => Promise<GenerateImageResult & { assetId?: string }>

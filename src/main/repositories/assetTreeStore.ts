@@ -1,4 +1,5 @@
 import {
+  cpSync,
   existsSync,
   mkdirSync,
   readdirSync,
@@ -515,4 +516,88 @@ export function detectFlatLayout(root: string): boolean {
   if (!existsSync(assetsRoot)) return false
   const entries = readdirSync(assetsRoot)
   return entries.some((name) => name.endsWith('.folder.json') && name !== FOLDER_META_NAME)
+}
+
+// ── 文件夹跨目录搬移 ──
+
+/** 把磁盘目录搬到另一位置；跨卷时回退到 cpSync + rmSync */
+function relocateDir(src: string, dest: string): void {
+  if (resolve(src) === resolve(dest)) return
+  ensureDir(dirname(dest))
+  if (existsSync(dest)) {
+    throw new Error(`目标目录已存在: ${dest}`) // cjk-ok: 中文文案仅抛向主进程日志，未对外
+  }
+  try {
+    renameSync(src, dest)
+  } catch {
+    cpSync(src, dest, { recursive: true })
+    try {
+      rmSync(src, { recursive: true, force: true })
+    } catch {
+      /* Windows 上偶发文件被占用，dest 已就位可继续 */
+    }
+  }
+}
+
+/**
+ * 把文件夹搬到另一父目录（含磁盘搬移 + 写回根 `.folder.json`）。
+ * **不**主动重写子孙 asset 的 `.asset.json` relativePath——调用方按需触发
+ * `scanAssetTree` + `writeAssetToTree`；descendant folder 的 `.folder.json`
+ * 由下次 `scanAssetTree` 自动修复（parentId 与磁盘树不一致会触发 needsWrite）。
+ *
+ * 名字冲突按 `renameFolder` 同一规则处理：末尾追加 ` 2` / ` 3` …
+ *
+ * `newParentId` **必须不是** folderId 自身或其子孙——这一约束由
+ * `projectService.moveFolder` 在调用前用 `collectFolderSubtreeIds` 校验。
+ */
+export function moveFolderBetweenFolders(
+  root: string,
+  folderId: string,
+  newParentId: string | null,
+  scan?: AssetTreeScan
+): { folder: AssetFolder; destDirAbs: string } {
+  const tree = scan ?? scanAssetTree(root)
+  const srcDir = tree.dirAbsByFolderId.get(folderId)
+  const folder = tree.folders.find((f) => f.id === folderId)
+  if (!srcDir || !folder) throw fail(MAIN_ERRORS.dirNotFound)
+
+  const destParentAbs = resolveFolderDirAbs(root, newParentId, tree)
+  const srcNorm = resolve(srcDir)
+  const destParentNorm = resolve(destParentAbs)
+
+  // 目标父目录就是自身所在目录 → 仅更新 .folder.json，不搬磁盘
+  if (srcNorm === destParentNorm) {
+    const updated: AssetFolder = {
+      ...folder,
+      parentId: newParentId,
+      updatedAt: new Date().toISOString()
+    }
+    writeFolderMeta(srcDir, updated)
+    return { folder: updated, destDirAbs: srcDir }
+  }
+
+  // 名字冲突：同 parent 下已有同名目录时，追加 " 2" / " 3"
+  let targetName = folder.name
+  let destDirAbs = join(destParentAbs, targetName)
+  if (existsSync(destDirAbs)) {
+    const safe = normalizePathSegment(targetName)
+    let i = 2
+    while (existsSync(join(destParentAbs, `${safe} ${i}`))) i += 1
+    targetName = `${safe} ${i}`
+    destDirAbs = join(destParentAbs, targetName)
+  }
+
+  if (resolve(srcDir) !== resolve(destDirAbs)) {
+    relocateDir(srcDir, destDirAbs)
+  }
+
+  const updated: AssetFolder = {
+    ...folder,
+    parentId: newParentId,
+    name: targetName,
+    updatedAt: new Date().toISOString()
+  }
+  writeFolderMeta(destDirAbs, updated)
+
+  return { folder: updated, destDirAbs }
 }

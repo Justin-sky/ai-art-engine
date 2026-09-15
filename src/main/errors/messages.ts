@@ -15,6 +15,11 @@ export const MAIN_ERRORS = {
     '路径越界：操作必须在工程目录内',
     'Path out of bounds: operation must stay inside the project directory'
   ),
+  folderCycle: defErrSimple(
+    'folder.cycle',
+    '不能把目录搬到自身或子目录下',
+    'Cannot move a folder into itself or one of its descendants'
+  ),
 
   // ── 资产包完整性（assetPackageArchive / assetPackageService）──
   packageEmptyEntries: defErrSimple(

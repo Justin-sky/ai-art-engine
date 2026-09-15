@@ -1,14 +1,16 @@
 import { existsSync, mkdirSync, renameSync, rmSync } from 'fs'
 import { join } from 'path'
-import { compareNames } from '@shared/folderTree'
+import { collectFolderSubtreeIds, compareNames } from '@shared/folderTree'
 import type { AssetFolder } from '@shared/domain'
 import { normalizePathSegment } from '@shared/assetPackage/pathname'
 import { fail } from '@shared/errors/appError'
 import { MAIN_ERRORS } from '../errors/messages'
 import {
   hoistDirectoryContentsAndRemove,
+  moveFolderBetweenFolders,
   resolveFolderDirAbs,
   scanAssetTree,
+  writeAssetToTree,
   writeFolderMeta
 } from './assetTreeStore'
 
@@ -46,6 +48,26 @@ export class FolderRepository {
     const dirAbs = scan.dirAbsByFolderId.get(folder.id)
     if (!dirAbs) throw fail(MAIN_ERRORS.dirNotFound)
     writeFolderMeta(dirAbs, folder)
+  }
+
+  /**
+   * 把文件夹搬到另一父目录（含磁盘搬移、`.folder.json` 更新、descendant
+   * asset.relativePath 写回）。成环约束（newParentId 不能是 folderId 自身
+   * 或其子孙）由 `projectService.moveFolder` 在调用前校验。
+   */
+  move(root: string, folderId: string, newParentId: string | null): AssetFolder {
+    const before = scanAssetTree(root)
+    const { folder } = moveFolderBetweenFolders(root, folderId, newParentId, before)
+    // 重新扫描：磁盘树已变；把所有 descendant asset 的 .asset.json relativePath 写回
+    // （descendant folder 的 .folder.json 由下次 scan 自动修，本次只搬资产）
+    const fresh = scanAssetTree(root)
+    const subtree = new Set(collectFolderSubtreeIds(fresh.folders, folderId))
+    for (const asset of fresh.assets) {
+      if (asset.folderId != null && subtree.has(asset.folderId)) {
+        writeAssetToTree(root, asset, { scan: fresh })
+      }
+    }
+    return folder
   }
 
   rename(root: string, folderId: string, name: string): AssetFolder {
