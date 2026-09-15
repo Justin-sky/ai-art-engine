@@ -4172,6 +4172,19 @@ export default {
           fantasy: 'Fantasy',
           glass: 'Glass'
         },
+        model3dRig: '3D Rigging',
+        model3dRigHint:
+          'Ask the upstream to attach a skeleton to the model (Tripo / Meshy / Rodin only)',
+        model3dRigType: 'Skeleton type',
+        model3dRigTypes: {
+          humanoid: 'Humanoid',
+          quadruped: 'Quadruped',
+          bipedal: 'Bipedal',
+          creature: 'Creature'
+        },
+        model3dRigAnimation: 'Bind animation',
+        model3dRigAnimationNone: 'None',
+        model3dRigAnimationPlaceholder: 'Optional: animation name (walk / run / dance…)',
         noModels: 'No models available',
         systemPrompt: 'System prompt',
         systemPromptPlaceholder:

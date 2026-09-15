@@ -321,6 +321,12 @@ export interface NodeExecuteContext {
     providerInstanceId?: string
     /** 风格（Lux3D 文生3D） */
     style?: string
+    /** 是否要求上游附加骨骼蒙皮（Tripo / Meshy / Rodin 支持；其它传了会拒绝） */
+    rig?: boolean
+    /** 骨架类型；未启用 rig 时忽略 */
+    rigType?: string
+    /** 绑定动画预设 id；未启用 rig 或上游不支持时忽略 */
+    rigAnimation?: string
     inputReferences?: Array<{ kind: 'image_url' | 'video_url' | 'audio_url'; url: string }>
     outputDir?: string
     name?: string

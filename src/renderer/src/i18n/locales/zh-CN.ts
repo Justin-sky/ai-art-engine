@@ -4071,6 +4071,18 @@ export default {
           fantasy: '奇幻',
           glass: '玻璃'
         },
+        model3dRig: '3D 蒙皮',
+        model3dRigHint: '要求上游为模型附加骨骼蒙皮（仅 Tripo / Meshy / Rodin 支持）',
+        model3dRigType: '骨架类型',
+        model3dRigTypes: {
+          humanoid: '人形',
+          quadruped: '四足',
+          bipedal: '双足',
+          creature: '通用'
+        },
+        model3dRigAnimation: '绑定动画',
+        model3dRigAnimationNone: '不绑定',
+        model3dRigAnimationPlaceholder: '可选：输入动画名（walk / run / dance…）',
         noModels: '暂无可用模型',
         systemPrompt: '系统提示词',
         systemPromptPlaceholder: '定义模型角色与输出规范；留空则使用内置默认',

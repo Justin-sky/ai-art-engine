@@ -158,10 +158,20 @@ export const meshyAdapter: ModelProviderAdapter = {
     const hasImages = refs.length > 0
 
     try {
+      // Meshy v2 rigging：rigging=true 开启骨架蒙皮；rig_type 限定 humanoid/quadruped 等
+      // pose 选择内置动作预设（如 'walk'）。上游未支持时静默忽略。
+      const riggingFields: Record<string, unknown> = {}
+      if (input.rig === true) {
+        riggingFields.rigging = true
+        if (input.rigType?.trim()) riggingFields.rig_type = input.rigType.trim()
+        if (input.rigAnimation?.trim()) riggingFields.pose = input.rigAnimation.trim()
+      }
+
       if (hasImages && refs.length > 1) {
         // 多图生3D
         const { data } = await client.post<{ result?: { id?: string } }>('/v2/multi-image-to-3d', {
-          images: refs
+          images: refs,
+          ...riggingFields
         })
         const taskId = data?.result?.id
         if (!taskId) throw fail(E_MESHY_NO_TASK_ID)
@@ -177,7 +187,8 @@ export const meshyAdapter: ModelProviderAdapter = {
         // 图生3D
         const { data } = await client.post<{ result?: { id?: string } }>('/v2/image-to-3d', {
           image_url: refs[0],
-          prompt: input.prompt?.trim() || undefined
+          prompt: input.prompt?.trim() || undefined,
+          ...riggingFields
         })
         const taskId = data?.result?.id
         if (!taskId) throw fail(E_MESHY_NO_TASK_ID)
@@ -192,7 +203,8 @@ export const meshyAdapter: ModelProviderAdapter = {
       // 文生3D
       const { data } = await client.post<{ result?: { id?: string } }>('/v2/text-to-3d', {
         prompt: input.prompt?.trim() || '',
-        ...(input.name ? { name: input.name } : {})
+        ...(input.name ? { name: input.name } : {}),
+        ...riggingFields
       })
       const taskId = data?.result?.id
       if (!taskId) throw fail(E_MESHY_NO_TASK_ID)

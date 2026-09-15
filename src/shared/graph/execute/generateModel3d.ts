@@ -93,6 +93,9 @@ export async function executeModel3dGenerateNode(
     model: node.params.generateModel || undefined,
     providerInstanceId: node.params.generateProviderInstanceId || undefined,
     style: node.params.generateStyle || undefined,
+    rig: node.params.generateRig === true,
+    rigType: node.params.generateRigType?.trim() || undefined,
+    rigAnimation: node.params.generateRigAnimation?.trim() || undefined,
     inputReferences: inputReferences.length > 0 ? inputReferences : undefined,
     name: node.title,
     graphBinding: {

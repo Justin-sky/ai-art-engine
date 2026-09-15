@@ -49,6 +49,11 @@ const E_LUMA_PROMPT_OR_REF_REQUIRED = defErrSimple(
   'Luma AI 需要文本提示或参考图',
   'Luma AI requires a text prompt or a reference image'
 )
+const E_LUMA_RIG_UNSUPPORTED = defErrSimple(
+  'provider.luma.rigUnsupported',
+  'Luma AI 不支持蒙皮绑定（仅 Tripo / Meshy / Rodin 支持）',
+  'Luma AI does not support rigging (only Tripo / Meshy / Rodin)'
+)
 const E_LUMA_NO_TASK_ID = defErrSimple(
   'provider.luma.noTaskId',
   'Luma AI 未返回生成任务 id',
@@ -167,6 +172,8 @@ export const lumaAdapter: ModelProviderAdapter = {
     const prompt = input.prompt?.trim() || ''
 
     if (!refs.length && !prompt) throw fail(E_LUMA_PROMPT_OR_REF_REQUIRED)
+    // Luma Genie 仅几何生成，官方不提供 rig 服务
+    if (input.rig === true) throw fail(E_LUMA_RIG_UNSUPPORTED)
 
     const body: Record<string, unknown> = { prompt, format: 'glb' }
     // 图生3D：按官方语义尽力传递首图 URL（是否需先上传图片取 artifact id 待联调确认）

@@ -225,3 +225,32 @@ describe('lux3dAdapter', () => {
     })
   })
 })
+
+describe('lux3dAdapter rigging', () => {
+  beforeEach(() => {
+    getMock.mockReset()
+    postMock.mockReset()
+  })
+
+  it('rejects rig=true because Lux3D SDK has no rig field', async () => {
+    await expect(
+      lux3dAdapter.submitModel3d(provider(), 'G1', {
+        prompt: 'a robot',
+        rig: true
+      })
+    ).rejects.toThrow(/不支持蒙皮|不支持 rigging|蒙皮/)
+    expect(postMock).not.toHaveBeenCalled()
+  })
+
+  it('does not forward rig-related fields when rig is unset or false', async () => {
+    postMock.mockResolvedValueOnce(ok(9001))
+    await lux3dAdapter.submitModel3d(provider(), 'G1', {
+      prompt: 'a chair',
+      rig: false
+    })
+    const body = postMock.mock.calls[0]?.[1] as Record<string, unknown>
+    expect(body).not.toHaveProperty('rig')
+    expect(body).not.toHaveProperty('rig_type')
+    expect(body).not.toHaveProperty('rig_animation')
+  })
+})

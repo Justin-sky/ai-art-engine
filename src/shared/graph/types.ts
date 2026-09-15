@@ -275,6 +275,12 @@ export interface GraphNodeParams {
   generateCount?: number
   /** 3D 模型生成：风格（Lux3D 文生3D photorealistic/cartoon/anime/hand_painted/cyberpunk/fantasy/glass） */
   generateStyle?: string
+  /** 3D 模型生成：是否要求上游附加骨骼蒙皮（rig）；仅 Tripo / Meshy / Rodin 支持 */
+  generateRig?: boolean
+  /** 3D 模型生成：骨架类型（humanoid / quadruped / bipedal / creature…）；未启 rig 时忽略 */
+  generateRigType?: string
+  /** 3D 模型生成：绑定动画预设 id；未启 rig 或上游不支持时忽略 */
+  generateRigAnimation?: string
   /** 图片/视频生成：随机种子（固定可复现，留空随机） */
   generateSeed?: number
   /** 图片/视频生成：是否跟随工程全局种子（默认 true；false 时用 generateSeed） */

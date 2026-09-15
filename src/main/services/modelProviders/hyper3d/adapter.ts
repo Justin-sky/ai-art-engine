@@ -171,6 +171,14 @@ export const hyper3dAdapter: ModelProviderAdapter = {
     const form = new FormData()
     if (prompt) form.append('prompt', prompt)
 
+    // Rodin /rodin 端点 multipart 接受 rig=true / rig_type / rig_animation；
+    // 字段拼写按上游文档，部分 tier（如 Sketch / Detailed）需 rig=true 才输出 rigged GLB。
+    if (input.rig === true) {
+      form.append('rig', 'true')
+      if (input.rigType?.trim()) form.append('rig_type', input.rigType.trim())
+      if (input.rigAnimation?.trim()) form.append('rig_animation', input.rigAnimation.trim())
+    }
+
     try {
       if (refs.length) {
         // 图生3D：把参考图下载回字节，以 multipart images 文件上传

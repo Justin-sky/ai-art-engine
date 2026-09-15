@@ -69,6 +69,11 @@ const E_LUX3D_GEN_FAILED = defErrSimple(
   'Lux3D 3D 生成失败',
   'Lux3D 3D generation failed'
 )
+const E_LUX3D_RIG_UNSUPPORTED = defErrSimple(
+  'provider.lux3d.rigUnsupported',
+  'Lux3D 不支持蒙皮绑定（仅 Tripo / Meshy / Rodin 支持）',
+  'Lux3D does not support rigging (only Tripo / Meshy / Rodin)'
+)
 const E_LUX3D_NO_GLB = defErrSimple(
   'provider.lux3d.noGlbOutput',
   'Lux3D 任务已完成但未返回 GLB 模型',
@@ -226,6 +231,9 @@ export const lux3dAdapter: ModelProviderAdapter = {
     const refs = (input.inputReferences ?? [])
       .map((r) => (typeof r === 'string' ? r.trim() : r.url?.trim()))
       .filter(Boolean)
+
+    // Lux3D SDK 文档无 rig 字段；上游能力不支持蒙皮时直接拒绝，避免静默吞字段
+    if (input.rig === true) throw fail(E_LUX3D_RIG_UNSUPPORTED)
 
     const version = resolveVersion(modelId)
     // G1 固定返回 ZIP+GLB；G1-Turbo 按请求返回（缺省仅 ZIP），显式请求 GLB

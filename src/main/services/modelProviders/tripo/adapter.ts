@@ -159,6 +159,11 @@ export const tripoAdapter: ModelProviderAdapter = {
     if (input.prompt?.trim()) {
       body.prompt = input.prompt.trim()
     }
+    // Tripo v2 rig：仅 v2.5-20250123 / v2.0-20240913 等模型接受 rig 字段；
+    // 字段拼写上游以「rig」为准（rig_type 由服务端自动判定 humanoid）。
+    if (input.rig === true) {
+      body.rig = true
+    }
 
     try {
       const { data } = await client.post<{ data?: { task_id?: string } }>('/v2/openapi/task', body)

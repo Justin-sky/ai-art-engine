@@ -414,6 +414,15 @@
             :title="t('graph.inspector.generate.model3dStyleHint')"
             @update:model-value="persistModel3dStyle"
           />
+          <Model3dRigControls
+            v-if="showModel3dRig"
+            :enabled="model3dRigEnabled"
+            :rig-type="model3dRigType"
+            :rig-animation="model3dRigAnimation"
+            @update:enabled="persistModel3dRigEnabled"
+            @update:rig-type="persistModel3dRigType"
+            @update:rig-animation="persistModel3dRigAnimation"
+          />
           <ImageGenerateParamsSelect
             v-if="showImageGenerateParams"
             v-model="imageGenerateParams"
@@ -514,6 +523,7 @@ import GraphInstructionMentionEditor from './GraphInstructionMentionEditor.vue'
 import GraphInstructionEditorDialog from './GraphInstructionEditorDialog.vue'
 import InstructionModelSelect from './InstructionModelSelect.vue'
 import Model3dStyleSelect from './Model3dStyleSelect.vue'
+import Model3dRigControls from './Model3dRigControls.vue'
 import ImageGenerateParamsSelect from './ImageGenerateParamsSelect.vue'
 import VideoGenerateParamsSelect from './VideoGenerateParamsSelect.vue'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
@@ -2001,6 +2011,33 @@ const model3dStyle = computed(() => props.node.params.generateStyle || 'photorea
 function persistModel3dStyle(value: string): void {
   if (!props.hostId || !instructionKind.value) return
   graphEditorHosts.updateNode(props.hostId, props.node.id, { generateStyle: value })
+}
+
+/** 3D 蒙皮：仅 Tripo / Meshy / Rodin 上游支持 */
+const MODEL3D_RIG_SUPPORTED_KINDS = new Set(['tripo', 'meshy', 'hyper3d'])
+const showModel3dRig = computed(
+  () =>
+    instructionKind.value === 'model3d' &&
+    MODEL3D_RIG_SUPPORTED_KINDS.has(
+      modelOptions.value.find((o) => o.key === selectedModelKey.value)?.providerKind ?? ''
+    )
+)
+/** 缺省 false（与 builtins 默认值一致；未启用时控件折叠为单一 checkbox） */
+const model3dRigEnabled = computed(() => props.node.params.generateRig === true)
+const model3dRigType = computed(() => props.node.params.generateRigType || 'humanoid')
+const model3dRigAnimation = computed(() => props.node.params.generateRigAnimation || '')
+
+function persistModel3dRigEnabled(value: boolean): void {
+  if (!props.hostId || !instructionKind.value) return
+  graphEditorHosts.updateNode(props.hostId, props.node.id, { generateRig: value })
+}
+function persistModel3dRigType(value: string): void {
+  if (!props.hostId || !instructionKind.value) return
+  graphEditorHosts.updateNode(props.hostId, props.node.id, { generateRigType: value })
+}
+function persistModel3dRigAnimation(value: string): void {
+  if (!props.hostId || !instructionKind.value) return
+  graphEditorHosts.updateNode(props.hostId, props.node.id, { generateRigAnimation: value })
 }
 
 /** 视频模型端口上限 → 节点参数（同步驱动端口隐藏/显示）；同时剪掉已隐藏口的入边 */

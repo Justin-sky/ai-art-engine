@@ -896,6 +896,22 @@ export interface GenerateModel3dInput {
    * 图生3D 无该参数，适配器会忽略。
    */
   style?: string
+  /**
+   * 是否要求上游为模型附加骨骼蒙皮（rig），输出 rigged GLB。
+   * 支持：tripo / meshy / hyper3d；不支持：luma / lux3d（传了会抛错）。
+   * 缺省 false → 仍输出纯几何 GLB，与既有行为一致。
+   */
+  rig?: boolean
+  /**
+   * 骨架类型：humanoid / quadruped / bipedal / creature 等（按上游白名单映射）。
+   * 缺省 humanoid；未启用 rig 时忽略；上游不支持给定类型时走服务端兜底。
+   */
+  rigType?: string
+  /**
+   * 绑定动画预设 id（部分上游支持把骨骼蒙皮模型直接绑到一段动画输出）。
+   * 未启用 rig 时忽略；上游不支持则忽略。
+   */
+  rigAnimation?: string
   /** 参考图（图生3D/多图生3D） */
   inputReferences?: GenerateVideoInputReference[]
   /** 落盘目录（相对工程根） */
