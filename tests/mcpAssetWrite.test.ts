@@ -5,7 +5,7 @@ import {
   assetImportActivityDetail,
   assetImportActivityTitle,
   isMcpCreatableAssetType,
-  isProjectGeneratedOutputPath,
+  isProjectInternalPath,
   normalizeImportFilePaths,
   normalizeProjectRelativePath,
   normalizeStringList,
@@ -129,61 +129,59 @@ describe('MCP 资产写入：导入活动文案', () => {
   })
 })
 
-describe('MCP 资产写入：拒绝把工程内生成产物当素材导入', () => {
+describe('MCP 资产写入：拒绝把工程内任意素材当素材导入', () => {
   const ROOT = 'C:/proj'
 
-  it('缓存根与 Output 下的文件判定为生成产物', () => {
-    expect(isProjectGeneratedOutputPath('C:/proj/Cache/Images/a.png', ROOT)).toBe(true)
-    expect(isProjectGeneratedOutputPath('C:/proj/Cache/Videos/a.mp4', ROOT)).toBe(true)
-    expect(isProjectGeneratedOutputPath('C:/proj/Output/a.svg', ROOT)).toBe(true)
+  it('缓存根、Output、Assets、Docs、Build 等工程内目录一律拦截', () => {
+    expect(isProjectInternalPath('C:/proj/Cache/Images/a.png', ROOT)).toBe(true)
+    expect(isProjectInternalPath('C:/proj/Cache/Videos/a.mp4', ROOT)).toBe(true)
+    expect(isProjectInternalPath('C:/proj/Output/a.svg', ROOT)).toBe(true)
+    expect(isProjectInternalPath('C:/proj/Assets/Advert/a.png', ROOT)).toBe(true)
+    expect(isProjectInternalPath('C:/proj/Docs/a.png', ROOT)).toBe(true)
+    expect(isProjectInternalPath('C:/proj/Build/a.png', ROOT)).toBe(true)
   })
 
   it('反斜杠 / 大小写 / 尾斜杠都归一化后判定', () => {
-    expect(isProjectGeneratedOutputPath('C:\\proj\\Cache\\Images\\a.png', ROOT)).toBe(true)
-    expect(isProjectGeneratedOutputPath('C:/PROJ/cache/images/a.png', ROOT)).toBe(true)
-    expect(isProjectGeneratedOutputPath('C:/proj/Cache/Images/a.png', 'C:/proj/')).toBe(true)
+    expect(isProjectInternalPath('C:\\proj\\Cache\\Images\\a.png', ROOT)).toBe(true)
+    expect(isProjectInternalPath('C:/PROJ/assets/advert/a.png', ROOT)).toBe(true)
+    expect(isProjectInternalPath('C:/proj/Cache/Images/a.png', 'C:/proj/')).toBe(true)
   })
 
-  it('相对路径按工程内路径判定', () => {
-    expect(isProjectGeneratedOutputPath('Cache/Images/a.png', ROOT)).toBe(true)
-    expect(isProjectGeneratedOutputPath('./Output/a.svg', ROOT)).toBe(true)
-    expect(isProjectGeneratedOutputPath('Assets/Advert/a.png', ROOT)).toBe(false)
+  it('相对路径按工程内路径判定（含 Assets/Cache/Output/Docs）', () => {
+    expect(isProjectInternalPath('Cache/Images/a.png', ROOT)).toBe(true)
+    expect(isProjectInternalPath('./Output/a.svg', ROOT)).toBe(true)
+    expect(isProjectInternalPath('Assets/Advert/a.png', ROOT)).toBe(true)
+    expect(isProjectInternalPath('Docs/a.txt', ROOT)).toBe(true)
   })
 
-  it('工程内非产物目录（Assets / Docs）不算生成产物', () => {
-    expect(isProjectGeneratedOutputPath('C:/proj/Assets/Advert/a.png', ROOT)).toBe(false)
-    expect(isProjectGeneratedOutputPath('C:/proj/Docs/a.png', ROOT)).toBe(false)
+  it('工程外的本机素材放行（即便目录碰巧叫 Cache 或 Assets）', () => {
+    expect(isProjectInternalPath('D:/downloads/Cache/a.png', ROOT)).toBe(false)
+    expect(isProjectInternalPath('C:/other/Cache/a.png', ROOT)).toBe(false)
+    expect(isProjectInternalPath('/home/user/Cache/a.png', ROOT)).toBe(false)
+    expect(isProjectInternalPath('D:/photos/Assets/xxx.png', ROOT)).toBe(false)
   })
 
-  it('工程外的本机素材放行（即便目录碰巧叫 Cache）', () => {
-    expect(isProjectGeneratedOutputPath('D:/downloads/Cache/a.png', ROOT)).toBe(false)
-    expect(isProjectGeneratedOutputPath('C:/other/Cache/a.png', ROOT)).toBe(false)
-    expect(isProjectGeneratedOutputPath('/home/user/Cache/a.png', ROOT)).toBe(false)
+  it('工程根自身、空路径、空根都不算工程内文件', () => {
+    expect(isProjectInternalPath(ROOT, ROOT)).toBe(false)
+    expect(isProjectInternalPath('', ROOT)).toBe(false)
+    expect(isProjectInternalPath('   ', ROOT)).toBe(false)
+    expect(isProjectInternalPath('C:/proj/Cache/a.png', '')).toBe(false)
   })
 
-  it('配置了自定义缓存根时同样拦住', () => {
-    expect(isProjectGeneratedOutputPath('C:/proj/Build/a.png', ROOT, 'Build')).toBe(true)
-    expect(isProjectGeneratedOutputPath('C:/proj/Assets/a.png', ROOT, 'Build')).toBe(false)
-  })
-
-  it('工程根自身、空路径、空根都不算产物文件', () => {
-    expect(isProjectGeneratedOutputPath(ROOT, ROOT)).toBe(false)
-    expect(isProjectGeneratedOutputPath('', ROOT)).toBe(false)
-    expect(isProjectGeneratedOutputPath('   ', ROOT)).toBe(false)
-    expect(isProjectGeneratedOutputPath('C:/proj/Cache/a.png', '')).toBe(false)
-  })
-
-  it('前缀相近的兄弟目录不误伤（Cache2 / Outputs 不是产物目录）', () => {
-    expect(isProjectGeneratedOutputPath('C:/proj/Cache2/a.png', ROOT)).toBe(false)
-    expect(isProjectGeneratedOutputPath('C:/proj/Outputs/a.png', ROOT)).toBe(false)
+  it('前缀相近的兄弟目录仍在工程内，照拦', () => {
+    expect(isProjectInternalPath('C:/proj/Cache2/a.png', ROOT)).toBe(true)
+    expect(isProjectInternalPath('C:/proj/Outputs/a.png', ROOT)).toBe(true)
   })
 })
 
-describe('MCP 资产写入：生成产物入库拒绝文案', () => {
-  it('列出被拒文件并指向「保存到资产库」按钮', () => {
+describe('MCP 资产写入：工程内素材拒绝文案', () => {
+  it('列出被拒文件并区分两类工程内素材（生成产物 / 已入库）', () => {
     const message = projectGeneratedOutputImportError(['C:/proj/Cache/Images/a.png'])
     expect(message).toContain('C:/proj/Cache/Images/a.png')
     expect(message).toContain('保存到资产库')
+    expect(message).toContain('Cache/')
+    expect(message).toContain('Output/')
+    expect(message).toContain('Assets/')
   })
 
   it('超过 5 个文件时折叠为总数', () => {

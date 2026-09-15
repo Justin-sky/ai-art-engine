@@ -109,7 +109,7 @@ import {
   assetImportActivityDetail,
   assetImportActivityTitle,
   isMcpCreatableAssetType,
-  isProjectGeneratedOutputPath,
+  isProjectInternalPath,
   normalizeImportFilePaths,
   normalizeProjectRelativePath,
   normalizeStringList,
@@ -656,7 +656,7 @@ const TOOL_DEFS: McpToolDef[] = [
       // 再复制一份进 Assets/，资产库里留下重复文件、对话流里再出一张重复卡。
       // 生成结果要入库由用户在对话产物卡上点「保存到资产库」按钮决定。
       const generatedOutputPaths = filePaths.filter((filePath) =>
-        isProjectGeneratedOutputPath(
+        isProjectInternalPath(
           filePath,
           projectService.getRoot(),
           projectService.getConfig().cacheOutputDir
@@ -2871,6 +2871,11 @@ function cacheOnlyGenExtraParams(args: Record<string, unknown>): Record<string, 
   const extra = extraParamsOf(args)
   delete extra.outputDir
   delete extra.folderId
+  // 防御 harness 缓存旧 schema 仍传 outputDir/folderId 顶层字段：input 字面量构造
+  // 时虽然不展开这两个键，但 `GenerateImageInput` / `GenerateMusicInput` 等类型允许
+  // 它们存在——这里直接 mutate args 抹掉，杜绝一切泄露。
+  delete args.outputDir
+  delete args.folderId
   return extra
 }
 

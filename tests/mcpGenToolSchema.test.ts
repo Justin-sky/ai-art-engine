@@ -6,8 +6,9 @@ import { describe, expect, it } from 'vitest'
  * 对话生成类工具（generate_image / generate_video / generate_model3d / generate_speech /
  * generate_music）已统一为「落 Cache、不入资产库」的工作流：inputSchema 不再接受 outputDir
  * （Assets/ 例外入口）也不再接受 folderId（settle 入库的口），透传参数经
- * cacheOnlyGenExtraParams 再剥一道，堵住 extraParams 夹带。同时 asset_import 拒绝收编
- * Cache/ 与 Output/ 下的生成产物。本测试通过源码片段解析验证这些约束，
+ * cacheOnlyGenExtraParams 再剥一道，堵住 extraParams 夹带 + harness 缓存旧 schema 时
+ * 顶层字段的泄漏。同时 asset_import 拒绝收编**工程内任意素材**（Cache/、Output/、
+ * Assets/ 等都不行），仅放行工程外的本机素材。本测试通过源码片段解析验证这些约束，
  * 避免出现「agent 误以为还能直接入库 → 又在对话流里出两张卡」的回归。
  */
 const SRC = readFileSync(resolve('src/main/services/mcpServerService.ts'), 'utf8')
@@ -117,10 +118,10 @@ describe('MCP 对话生成工具 handler 不再 settle 入库', () => {
   })
 })
 
-describe('MCP asset_import 拒绝工程内生成产物', () => {
-  it('handler 用 isProjectGeneratedOutputPath 拦截并给出引导文案', () => {
+describe('MCP asset_import 拒绝工程内任意素材', () => {
+  it('handler 用 isProjectInternalPath 拦截并给出引导文案', () => {
     const block = extractToolBlock('asset_import')
-    expect(block).toMatch(/isProjectGeneratedOutputPath\(/)
+    expect(block).toMatch(/isProjectInternalPath\(/)
     expect(block).toMatch(/projectGeneratedOutputImportError\(/)
   })
 

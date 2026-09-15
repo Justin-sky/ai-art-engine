@@ -1,5 +1,4 @@
-import { resolveCacheOutputRoot, type AssetType } from './domain'
-import { SCANNED_OUTPUT_DIRS } from './outputScan'
+import { type AssetType } from './domain'
 
 /**
  * MCP `asset_create` 允许创建的资产类型白名单。
@@ -90,28 +89,24 @@ function normalizePathForCompare(value: string): string {
     .replace(/\/+$/, '')
 }
 
-/** 工程内生成产物目录名（小写）：配置的缓存根 + `Output/`（与对话扫盘口径一致） */
-function generatedOutputDirNames(cacheOutputDir?: string | null): string[] {
-  return [
-    ...new Set([
-      resolveCacheOutputRoot(cacheOutputDir).toLowerCase(),
-      ...SCANNED_OUTPUT_DIRS.map((dir) => dir.toLowerCase())
-    ])
-  ]
-}
-
 /**
- * `asset_import` 的入参路径是否指向**本工程内的生成产物目录**（缓存根 `Cache/` 与 `Output/`）。
+ * `asset_import` 的入参路径是否指向**本工程内任意目录**（含 `Assets/`、`Cache/`、
+ * `Output/` 与自定义缓存根）。
  *
- * 为什么要拒：生成产物入库的正道是用户在对话产物卡上点「保存到资产库」按钮
- * （走 `saveProjectAsset`，由用户挑名字与目标文件夹）。Agent 直接 import 会把同一份
- * 媒体再复制一份进 `Assets/`——资产库里多出一份重复文件，对话流里再出一张重复卡。
- * 工程外的本机素材照常放行，那才是本工具的原意（收编用户给的参考素材）。
+ * 为什么要拒：资产入库的正道是用户在对话产物卡上点「保存到资产库」按钮（走
+ * `saveProjectAsset`，由用户挑名字与目标文件夹）。Agent 直接 import 会：
+ *  - 把 `Cache/` 下的生成产物再复制一份进 `Assets/`——资产库里多一份重复文件，
+ *    对话流里再出一张重复卡（上一轮已堵，但仍可能被绕开）；
+ *  - 把 `Assets/` 下已入库的资产**再复制一份**为新文件名——同一份媒体占两个资产位、
+ *    对话流里再出一张卡；
+ * 两者都会让对话流里出现两张内容相同的产物卡。`asset_import` 的本意是收编
+ * **工程外的本机素材**（参考图、用户给的照片），工程内的任何素材都不该走它。
  */
-export function isProjectGeneratedOutputPath(
+export function isProjectInternalPath(
   filePath: string,
   projectRoot: string,
-  cacheOutputDir?: string | null
+  // 保留形参以维持调用方兼容性；新语义不再按具体目录判定（任何工程内路径都拒）
+  _cacheOutputDir?: string | null
 ): boolean {
   const file = normalizePathForCompare(filePath)
   const root = normalizePathForCompare(projectRoot)
@@ -121,9 +116,11 @@ export function isProjectGeneratedOutputPath(
   const lowerRoot = root.toLowerCase()
   let rel: string
   if (lowerFile.startsWith(`${lowerRoot}/`)) {
+    // 绝对路径落在工程根下：按工程内路径理解
     rel = file.slice(root.length + 1)
   } else if (!/^[a-z]:/i.test(file) && !file.startsWith('/')) {
-    // 非绝对路径：Agent 有时直接回传相对路径，按工程内路径理解
+    // 非绝对路径（相对路径）：Agent 经常直接回传 Cache/Images/xxx.png 这样的串，
+    // 它不可能指向工程外——按工程内路径理解
     rel = file
   } else {
     // 绝对路径且不在本工程内：属外部素材，放行
@@ -132,9 +129,9 @@ export function isProjectGeneratedOutputPath(
 
   const lowerRel = rel.replace(/^\.\/+/, '').toLowerCase()
   if (!lowerRel) return false
-  return generatedOutputDirNames(cacheOutputDir).some(
-    (dir) => lowerRel === dir || lowerRel.startsWith(`${dir}/`)
-  )
+  // 工程根自身（空字符串 / `.`）不算
+  if (lowerRel === '.' || lowerRel === '') return false
+  return true
 }
 
 /**
@@ -145,8 +142,9 @@ export function projectGeneratedOutputImportError(paths: readonly string[]): str
   const list = paths.slice(0, 5).join('、')
   const more = paths.length > 5 ? ` 等 ${paths.length} 个文件` : '' // cjk-ok: MCP 工具错误文案
   return [
-    `不能通过 asset_import 把工程内生成产物导入资产库：${list}${more}。`, // cjk-ok: MCP 工具错误文案
-    `Cache/ 与 Output/ 是生成产物的临时落盘目录，要入库请让用户在对话产物卡上点「保存到资产库」按钮，`, // cjk-ok: MCP 工具错误文案
-    `由用户决定存哪一份、放进哪个文件夹；本工具只用于收编工程外的本机素材。` // cjk-ok: MCP 工具错误文案
+    `不能通过 asset_import 把工程内素材导入资产库：${list}${more}。`, // cjk-ok: MCP 工具错误文案
+    `工程内任何素材（含 Cache/ 与 Output/ 的生成产物、Assets/ 下的已入库资产）都不该走本工具：`, // cjk-ok: MCP 工具错误文案
+    `生成产物入库请让用户在对话产物卡上点「保存到资产库」按钮；已入库资产请用 asset_list / asset_read 引用，不要重新导入。`, // cjk-ok: MCP 工具错误文案
+    `本工具只用于收编工程外的本机素材（参考图、用户给的照片等）。` // cjk-ok: MCP 工具错误文案
   ].join('')
 }
