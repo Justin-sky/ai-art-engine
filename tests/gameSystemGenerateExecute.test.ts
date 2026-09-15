@@ -50,4 +50,50 @@ describe('game system plan generation node', () => {
     expect((ctx.node.params.generatedTexts as unknown[]).length).toBe(1)
     expect(patchNode).toHaveBeenCalled()
   })
+
+  it('feeds the params.text draft into the prompt when instruction is empty', async () => {
+    const generateText = vi.fn(async () => ({ text: '扩写后的策划案', model: 'm' }))
+    const ctx = {
+      node: {
+        id: 'gen',
+        typeId: 'asset.gameSystem',
+        category: 'asset',
+        assetType: 'gameSystem',
+        title: '系统策划案生成',
+        position: { x: 0, y: 0 },
+        params: { text: '## 商城系统底稿\n- 货币：金币' }
+      },
+      inputs: {},
+      generateText
+    } as unknown as NodeExecuteContext
+    await executeGameSystemGenerateNode(ctx)
+    const prompt = String(generateText.mock.calls[0]?.[0]?.prompt ?? '')
+    expect(prompt).toContain('策划案底稿')
+    expect(prompt).toContain('## 商城系统底稿')
+  })
+
+  it('does not re-feed a previous generated output as the draft on rerun', async () => {
+    const generateText = vi.fn(async () => ({ text: '重新生成的策划案', model: 'm' }))
+    const previous = '上一轮生成的策划案正文'
+    const ctx = {
+      node: {
+        id: 'gen',
+        typeId: 'asset.gameSystem',
+        category: 'asset',
+        assetType: 'gameSystem',
+        title: '系统策划案生成',
+        position: { x: 0, y: 0 },
+        params: {
+          text: previous,
+          generatedTexts: [{ id: 'gen-text:1', text: previous, createdAt: '2026-01-01T00:00:00.000Z' }]
+        }
+      },
+      inputs: {},
+      generateText
+    } as unknown as NodeExecuteContext
+    await executeGameSystemGenerateNode(ctx)
+    const prompt = String(generateText.mock.calls[0]?.[0]?.prompt ?? '')
+    expect(prompt).not.toContain(previous)
+    expect(prompt).not.toContain('策划案底稿')
+  })
 })

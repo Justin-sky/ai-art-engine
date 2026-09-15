@@ -119,7 +119,24 @@ export async function executeGameSystemGenerateNode(
     throw new DOMException('Aborted', 'AbortError')
   }
 
-  const userPrompt = instruction.trim() || defaultGameSystemUserPrompt(ctx.locale)
+  const localDraft = normalizeLocalScreenplayText(node.params.text)
+  // 底稿并入：指令为空且 text 非空时，以底稿为基础扩写。若 text 就是上次生成产物
+  // （rerun 场景），不并入，保持「重新生成」语义、避免输出反复自喂漂移。
+  const draftIsPreviousOutput = (node.params.generatedTexts ?? []).some(
+    (item) => (item.text ?? '').trim() === localDraft
+  )
+  const hasOwnInstruction = instruction.trim().length > 0
+  let userPrompt: string
+  if (hasOwnInstruction) {
+    userPrompt = instruction
+  } else if (localDraft && !draftIsPreviousOutput) {
+    const lead = ctx.locale === 'en'
+      ? 'Below is an existing human-readable draft of the game system design document. Expand and complete it into a deliverable version, preserving its structure and decisions:'
+      : '以下是已有人类可读的策划案底稿，请在其结构与既有决策的基础上扩写、补全为完整交付版（不要推翻底稿结论）：'
+    userPrompt = `${defaultGameSystemUserPrompt(ctx.locale)}\n\n${lead}\n\n${localDraft}`
+  } else {
+    userPrompt = defaultGameSystemUserPrompt(ctx.locale)
+  }
   const prompt = incomingText ? `${userPrompt.trim()}\n\n${incomingText}` : userPrompt
   const system = resolveGameSystemSystemPrompt(node.params.generateSystemPrompt, ctx.locale)
 
