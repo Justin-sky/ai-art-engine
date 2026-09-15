@@ -2225,7 +2225,7 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'generate_image',
     title: '生成图片',
     description:
-      '用图片模型生成图片并落盘到工程缓存目录（缺省 Cache/Images，不自动进资产库，与视频一致；需要进资产库时用界面「保存到资产库」或显式指定 Assets/ 下的 outputDir）。需要已打开工程；模型 / 提供商缺省时用应用当前选择。返回文件相对路径。',
+      '用图片模型生成图片并落盘到工程缓存目录 Cache/Images（不自动进资产库）；需要进资产库时由用户在对话卡上点「保存到资产库」按钮。需要已打开工程；模型 / 提供商缺省时用应用当前选择。返回工程内相对路径。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -2241,15 +2241,6 @@ const TOOL_DEFS: McpToolDef[] = [
           description:
             '参考图（图生图）：支持 http(s) 地址、data URL、工程内相对路径（如 Assets/Generated/Images/x.png）或本地绝对路径。相对/本地路径会自动读取为 data URL 内联发送，无需对象存储'
         },
-        outputDir: {
-          type: 'string',
-          description:
-            '工程内相对输出目录（缺省 Cache/Images，只落盘不登记资产；指定 Assets/ 下目录则同时登记为资产）'
-        },
-        folderId: {
-          type: 'string',
-          description: '资产库文件夹 id（folder_list 查询），界面分类用'
-        },
         extraParams: {
           type: 'object',
           description:
@@ -2260,7 +2251,7 @@ const TOOL_DEFS: McpToolDef[] = [
     },
     handler: async (args) => {
       assertProjectOpen()
-      const input: GenerateImageInput & { name?: string; outputDir?: string } = {
+      const input: GenerateImageInput & { name?: string } = {
         ...extraParamsOf(args),
         prompt: readString(args, 'prompt'),
         name: optionalString(args, 'name'),
@@ -2270,16 +2261,17 @@ const TOOL_DEFS: McpToolDef[] = [
         n: typeof args.n === 'number' && Number.isFinite(args.n) ? args.n : undefined,
         inputReferences: Array.isArray(args.referenceImageUrls)
           ? args.referenceImageUrls.filter((item): item is string => typeof item === 'string')
-          : undefined,
-        outputDir: optionalString(args, 'outputDir')
+          : undefined
       }
+      // 对话生成的图片只落 Cache、不入资产库（避免在对话流里出现重复卡）；
+      // 想入库让用户点资产卡上的「保存到资产库」按钮。
       const result = await runGenActivity(
         'generate_image',
         activityTitle(input.name, input.prompt),
         input.model,
         () => modelProviderFacade.generateImageAsset(input),
         (r) => ({ assetId: r.assetId, relativePath: liveAssetRelativePath(r) }),
-        (r) => settleAssetFolder(r.assetId, optionalString(args, 'folderId')),
+        undefined,
         (r) => ({
           kind: 'generateImage',
           nodeId: 'mcp',
@@ -2307,12 +2299,12 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'generate_video',
     title: '生成视频',
     description:
-      '提交视频生成任务并登记为工程资产（供应商异步任务由应用后台轮询；可用 video_job_list / video_job_get 跟踪进度）。返回资产 id 与相对路径。',
+      '提交视频生成任务并落盘到工程缓存目录 Cache/Videos（不自动进资产库，避免在对话流里出现重复卡）；供应商异步任务由应用后台轮询，可用 video_job_list / video_job_get 跟踪进度。需要进资产库时由用户在对话卡上点「保存到资产库」按钮。返回工程内相对路径。',
     inputSchema: {
       type: 'object',
       properties: {
         prompt: { type: 'string', description: '画面与运镜描述' },
-        name: { type: 'string', description: '资产显示名' },
+        name: { type: 'string', description: '文件显示名' },
         model: { type: 'string', description: '视频模型 id（models_list 查询）' },
         providerInstanceId: { type: 'string', description: '提供商实例 id' },
         duration: { type: 'integer', description: '时长（秒）' },
@@ -2328,8 +2320,6 @@ const TOOL_DEFS: McpToolDef[] = [
           description:
             '尾帧图：支持 http(s) 地址、data URL、工程内相对路径或本地绝对路径；本地文件会经对象存储转远程 URL（未配置对象存储时报错，可用 storage_status 查询）。用户消息含两张参考图生成视频时，第二张为尾帧'
         },
-        outputDir: { type: 'string', description: '工程内相对输出目录（缺省 Cache/Videos）' },
-        folderId: { type: 'string', description: '资产库文件夹 id（folder_list 查询）' },
         extraParams: {
           type: 'object',
           description: '低频参数透传（如 resolution / size / seed），合并进底层生成输入'
@@ -2339,7 +2329,7 @@ const TOOL_DEFS: McpToolDef[] = [
     },
     handler: async (args) => {
       assertProjectOpen()
-      const input: GenerateVideoInput & { name?: string; outputDir?: string } = {
+      const input: GenerateVideoInput & { name?: string } = {
         ...extraParamsOf(args),
         prompt: readString(args, 'prompt'),
         name: optionalString(args, 'name'),
@@ -2352,17 +2342,17 @@ const TOOL_DEFS: McpToolDef[] = [
         aspectRatio: optionalString(args, 'aspectRatio'),
         generateAudio: typeof args.generateAudio === 'boolean' ? args.generateAudio : undefined,
         firstFrameImageUrl: optionalString(args, 'firstFrameImageUrl'),
-        lastFrameImageUrl: optionalString(args, 'lastFrameImageUrl'),
-        outputDir: optionalString(args, 'outputDir'),
-        folderId: optionalString(args, 'folderId')
+        lastFrameImageUrl: optionalString(args, 'lastFrameImageUrl')
       }
+      // 对话生成的视频只落 Cache、不入资产库（避免在对话流里出现重复卡）；
+      // 想入库让用户点资产卡上的「保存到资产库」按钮。
       const result = await runGenActivity(
         'generate_video',
         activityTitle(input.name, input.prompt),
         input.model,
         () => modelProviderFacade.generateVideo(input),
         (r) => ({ assetId: r.assetId, relativePath: liveAssetRelativePath(r) }),
-        (r) => settleAssetFolder(r.assetId, optionalString(args, 'folderId')),
+        undefined,
         (r) => ({
           kind: 'generateVideo',
           nodeId: 'mcp',
@@ -2401,12 +2391,12 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'generate_model3d',
     title: '生成 3D 模型',
     description:
-      '文生 3D / 图生 3D（Meshy / Tripo / Rodin / Luma / Lux3D），产出 GLB 模型资产（供应商异步轮询）。返回资产 id 与相对路径。',
+      '文生 3D / 图生 3D（Meshy / Tripo / Rodin / Luma / Lux3D），产出 GLB 模型并落盘到工程缓存目录 Cache/Models（不自动进资产库，避免在对话流里出现重复卡）；供应商异步轮询。需要进资产库时由用户在对话卡上点「保存到资产库」按钮。返回工程内相对路径。',
     inputSchema: {
       type: 'object',
       properties: {
         prompt: { type: 'string', description: '外观描述' },
-        name: { type: 'string', description: '资产显示名' },
+        name: { type: 'string', description: '文件显示名' },
         model: { type: 'string', description: '3D 模型 id（models_list 查询）' },
         providerInstanceId: { type: 'string', description: '提供商实例 id' },
         style: {
@@ -2420,7 +2410,6 @@ const TOOL_DEFS: McpToolDef[] = [
           description:
             '参考图（图生 3D / 多图生 3D）：支持 http(s) 地址、data URL、工程内相对路径或本地绝对路径。3D 供应商仅接受 http(s) 图片，相对/本地路径会自动上传到已配置的对象存储转换为公网 URL（未配置对象存储时报错，可用 storage_status 查询）'
         },
-        folderId: { type: 'string', description: '资产库文件夹 id（folder_list 查询）' },
         extraParams: {
           type: 'object',
           description: '低频参数透传（模型特有字段），合并进底层生成输入'
@@ -2430,7 +2419,7 @@ const TOOL_DEFS: McpToolDef[] = [
     },
     handler: async (args) => {
       assertProjectOpen()
-      const input: GenerateModel3dInput & { name?: string; outputDir?: string } = {
+      const input: GenerateModel3dInput & { name?: string } = {
         ...extraParamsOf(args),
         prompt: readString(args, 'prompt'),
         name: optionalString(args, 'name'),
@@ -2439,16 +2428,17 @@ const TOOL_DEFS: McpToolDef[] = [
         style: optionalString(args, 'style'),
         inputReferences: Array.isArray(args.referenceImageUrls)
           ? args.referenceImageUrls.filter((item): item is string => typeof item === 'string')
-          : undefined,
-        folderId: optionalString(args, 'folderId')
+          : undefined
       }
+      // 对话生成的 3D 模型只落 Cache、不入资产库（避免在对话流里出现重复卡）；
+      // 想入库让用户点资产卡上的「保存到资产库」按钮。
       const result = await runGenActivity(
         'generate_model3d',
         activityTitle(input.name, input.prompt),
         input.model,
         () => modelProviderFacade.generateModel3d(input),
         (r) => ({ assetId: r.assetId, relativePath: liveAssetRelativePath(r) }),
-        (r) => settleAssetFolder(r.assetId, optionalString(args, 'folderId')),
+        undefined,
         (r) => ({
           kind: 'generateModel3d',
           nodeId: 'mcp',
