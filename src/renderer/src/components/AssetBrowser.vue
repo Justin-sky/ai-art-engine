@@ -187,9 +187,11 @@
               'drop-over': dropTargetId === folder.id
             }"
             :title="folder.name"
+            draggable="true"
             @click.stop="onFolderClick(folder.id, $event)"
             @dblclick.stop="onFolderDblClick(folder.id)"
             @contextmenu.prevent.stop="onFolderContextMenu($event, folder.id)"
+            @dragstart.stop="onFolderDragStart($event, folder.id)"
             @dragover.prevent.stop="onFolderDragOver($event, folder.id)"
             @dragleave.stop="onFolderDragLeave(folder.id)"
             @drop.prevent.stop="onDropToFolder($event, folder.id)"
@@ -3538,11 +3540,11 @@ onBeforeUnmount(() => {
   border-radius: 0;
   background: transparent;
   border: none;
-  cursor: default;
+  cursor: grab;
 }
 
 .grid.list .card.folder {
-  cursor: pointer;
+  cursor: grab;
 }
 
 .grid.list .card:hover {
@@ -3685,7 +3687,7 @@ onBeforeUnmount(() => {
 }
 
 .card.folder {
-  cursor: pointer;
+  cursor: grab;
 }
 
 .card.drop-over {
