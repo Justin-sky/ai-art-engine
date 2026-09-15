@@ -2910,9 +2910,8 @@ async function moveFoldersToFolder(folderIds: string[], folderId: string | null)
     if (r.status === 'rejected') failures.push({ id: valid[i], reason: r.reason })
   })
   if (failures.length) {
-    const reason = failures[0].reason instanceof Error
-      ? failures[0].reason.message
-      : String(failures[0].reason)
+    const reason =
+      failures[0].reason instanceof Error ? failures[0].reason.message : String(failures[0].reason)
     await promptAlert({
       title: t('asset.browser.title'),
       message: t('asset.browser.moveFolderFailed', { count: failures.length, reason })
