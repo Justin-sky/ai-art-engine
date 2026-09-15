@@ -39,11 +39,13 @@ const EXEMPT_FILES = new Set([
   'src/main/services/audioSeparationService.ts',
   // MCP / Agent 集成域：展示给外部 Agent 与开发者，非 UI 文案
   'src/main/services/deepseekHarnessService.ts',
+  'src/main/services/deepseekHarnessFailure.ts',
   'src/main/services/mcpServerService.ts',
   'src/renderer/src/features/mcp/mcpTaskRunner.ts',
   'src/renderer/src/features/mcp/renderJobHandlers.ts',
   'src/shared/asyncSemaphore.ts',
   'src/shared/graph/mcpGraphEdit.ts',
+  'src/shared/graph/execute/generateText.ts',
   'src/shared/mcpModeAccess.ts',
   'src/shared/mcpProtocol.ts'
 ])
