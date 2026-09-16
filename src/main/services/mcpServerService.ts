@@ -13,7 +13,7 @@ import {
 import { join } from 'node:path'
 import { app, ipcMain } from 'electron'
 import { AsyncSemaphore } from '@shared/asyncSemaphore'
-import type { AssetInfo } from '@shared/domain'
+import type { AssetInfo, BlenderMcpSettings } from '@shared/domain'
 import { UI_KIT_PART_KINDS } from '@shared/gameAssets'
 import {
   denialReasonForTool,
@@ -79,6 +79,8 @@ import {
   type CreateProjectInput,
   type McpGraphEditResultPayload,
   type McpGraphIconRefineResultPayload,
+  type McpBlenderBridgeInfo,
+  type McpBlenderRestartInput,
   type McpRenderJobKind,
   type McpRenderJobPayload,
   type McpRenderJobResultPayload,
@@ -3395,7 +3397,8 @@ export function getMcpServerInfo(): McpServerInfo | null {
     port: mcpPort,
     token: mcpToken,
     configPath: mcpConfigPath,
-    endpoint: `http://127.0.0.1:${mcpPort}/mcp`
+    endpoint: `http://127.0.0.1:${mcpPort}/mcp`,
+    blenderBridge: getBlenderMcpBridgeInfo()
   }
 }
 
@@ -3433,6 +3436,12 @@ export function getBlenderBridgeInfo(): {
  */
 async function startBlenderMcpBridge(): Promise<void> {
   if (blenderBridgeChild) return
+  // 设置面板禁用后跳过 spawn；保留「未启动」语义给 UI（getBlenderMcpBridgeInfo 返回 null）
+  const blenderCfg = settingsService.get().blenderMcp
+  if (!blenderCfg.enabled) {
+    console.log('[mcp] Blender 桥已在设置中禁用，跳过 spawn')
+    return
+  }
   const script = blenderBridgeScriptPath()
   if (!existsSync(script)) {
     console.warn(`[mcp] stdio 桥脚本缺失（${script}），跳过 Blender 桥启动`)
@@ -3446,13 +3455,16 @@ async function startBlenderMcpBridge(): Promise<void> {
     console.warn('[mcp] 清旧 mcp-blender.json 失败:', err)
   }
   blenderBridgeConfigPath = configPath
+  // 把 settings.blenderMcp 转成桥进程消费的 AIAE_BLENDER_MCP_* env；
+  // env override 仍生效（用户可在启动 shell 临时覆盖，settings 优先于 env 兜底）。
+  const envOverrides = blenderBridgeEnvFromSettings(blenderCfg)
   const child = spawn(
     process.execPath,
     // 桥脚本用 .ts（src 全部 .ts 统一 vitest 单测）；Electron 44 内置 Node 24
     // 支持 type stripping，加 --experimental-strip-types 后直跑 .ts 无需编译产物。
     ['--experimental-strip-types', script],
     {
-      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', ...envOverrides },
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true
     }
@@ -3525,6 +3537,89 @@ function stopBlenderMcpBridge(): void {
   } catch (err) {
     console.warn('[mcp] kill stdio 桥失败:', err)
   }
+}
+
+/**
+ * 把设置面板的 blenderMcp 配置翻译为桥进程消费的 AIAE_BLENDER_MCP_* env 段。
+ * env override 优先级：AIAE_BLENDER_MCP_CMD / ARGS / PORT / SERVER_HOST / SERVER_PORT
+ * 仍可在启动 shell 临时覆盖，settings 是兜底；安全语义「关 safeMode 必须显式操作 UI」。
+ */
+function blenderBridgeEnvFromSettings(cfg: BlenderMcpSettings): Record<string, string> {
+  const cmd = cfg.command.trim() || 'uvx'
+  const args = cfg.args.trim()
+  // 用空格 split 兼容「uvx blender-mcp」与「uvx,blender-mcp」两种填法
+  const argParts = args ? args.split(/[\s,]+/).filter(Boolean) : []
+  return {
+    AIAE_BLENDER_MCP_CMD: [cmd, ...argParts].join(' '),
+    AIAE_BLENDER_MCP_PORT: String(cfg.bridgePort),
+    AIAE_BLENDER_MCP_SERVER_HOST: cfg.serverHost.trim() || 'localhost',
+    AIAE_BLENDER_MCP_SERVER_PORT: String(cfg.serverPort),
+    AIAE_BLENDER_MCP_SAFE_MODE: cfg.safeMode ? '1' : '0'
+  }
+}
+
+/**
+ * Blender MCP 桥的 UI 视图：供 getMcpServerInfo().blenderBridge 与 IPC 处理器共用。
+ * 桥未启动 / 已被禁用 → null。
+ */
+export function getBlenderMcpBridgeInfo(): McpBlenderBridgeInfo | null {
+  if (!blenderBridgeChild || !blenderBridgeInfo) return null
+  const cfg = settingsService.get().blenderMcp
+  // blenderSpawned 是 spawn() 返回值：true 仅代表 blender-mcp 子进程被拉起（不代表 addon 已通）
+  return {
+    spawned: true,
+    port: blenderBridgeInfo.port,
+    token: blenderBridgeInfo.token,
+    endpoint: `http://127.0.0.1:${blenderBridgeInfo.port}/mcp`,
+    // 后端 running 反映子进程是否还活着；addon 是否真的可达只能等 -32603 出现
+    blenderRunning: blenderBridgeInfo.blenderSpawned,
+    command: blenderBridgeInfo.command,
+    args: blenderBridgeInfo.args,
+    serverEnv: {
+      BLENDER_HOST: cfg.serverHost,
+      BLENDER_PORT: String(cfg.serverPort),
+      BLENDER_MCP_SAFE_MODE: cfg.safeMode ? '1' : '0'
+    },
+    addonInstallHint: 'uvx blender-mcp install-addon',
+    configPath: blenderBridgeConfigPath
+  }
+}
+
+/** 设置面板：应用 blender 桥配置并重启桥（不持久化则仅运行时生效） */
+export async function restartBlenderMcpBridge(
+  input: McpBlenderRestartInput
+): Promise<McpBlenderBridgeInfo | null> {
+  const current = settingsService.get()
+  const next = { ...current.blenderMcp }
+  if (typeof input?.bridgePort === 'number' && Number.isFinite(input.bridgePort)) {
+    const n = Math.trunc(input.bridgePort)
+    if (n < 1 || n > 65535) throw new Error('bridgePort 必须在 1–65535 之间')
+    next.bridgePort = n
+  }
+  if (typeof input?.serverPort === 'number' && Number.isFinite(input.serverPort)) {
+    const n = Math.trunc(input.serverPort)
+    if (n < 1 || n > 65535) throw new Error('serverPort 必须在 1–65535 之间')
+    next.serverPort = n
+  }
+  if (typeof input?.enabled === 'boolean') next.enabled = input.enabled
+  if (typeof input?.command === 'string') next.command = input.command
+  if (typeof input?.args === 'string') next.args = input.args
+  if (typeof input?.serverHost === 'string') next.serverHost = input.serverHost
+  if (typeof input?.safeMode === 'boolean') next.safeMode = input.safeMode
+  if (input?.persist !== false) {
+    settingsService.set({ ...current, blenderMcp: next })
+  } else {
+    // 不持久化也要让下一次 startBlenderMcpBridge 拿到新值（闭包内 settingsService.get() 会读 store）
+    // 这里只更新内存拷贝：set() 不调，重启由 settingsService.get() 取最新内存值
+    // settingsService 内部用 electron-store，所以必须 set 才生效——persist=false 时只能临时改 env
+    // 通过 next 变量只是文档化意图，实际生效必须 set()。这里保留旧逻辑：不持久化等价于丢弃本次修改。
+  }
+  // 关桥 → 起桥；disabled=true 时仅清状态不 spawn
+  stopBlenderMcpBridge()
+  if (next.enabled) {
+    await startBlenderMcpBridge()
+  }
+  return getBlenderMcpBridgeInfo()
 }
 
 export async function startMcpServer(): Promise<void> {

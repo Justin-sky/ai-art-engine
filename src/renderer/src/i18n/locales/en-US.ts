@@ -416,7 +416,43 @@ export default {
       copy: 'Copy',
       copied: 'Copied to clipboard',
       command: 'Claude Code command',
-      hint: 'The token is reused across restarts (reset it above). Treat it as full access to the local MCP service — do not share it.'
+      hint: 'The token is reused across restarts (reset it above). Treat it as full access to the local MCP service — do not share it.',
+      blender: {
+        title: 'Blender MCP bridge',
+        subtitle:
+          'Expose a stdio MCP server like blender-mcp as a streamable-http endpoint so the dsh mcp-client can consume Blender tools.',
+        enabled: 'Enable',
+        notEnabledHint:
+          'The bridge is disabled. Tick "Enable" and click "Restart Blender bridge" to apply.',
+        running: 'Bridge running · port {port}',
+        notRunning:
+          'Bridge not running (blender-mcp not installed / child process crashed / disabled).',
+        command: 'Spawn command',
+        args: 'Extra arguments',
+        argsHint:
+          'Whitespace or comma separated — passed after the spawn command. Use the dedicated env fields below for environment variables.',
+        serverHost: 'Addon host',
+        serverHostHint:
+          'Passed to the blender-mcp child as BLENDER_HOST. The default Blender addon listens on localhost:9876.',
+        serverPort: 'Addon port',
+        serverPortHint:
+          'Passed to the blender-mcp child as BLENDER_PORT; usually matches the Blender addon port.',
+        safeMode: 'Safe mode',
+        safeModeHint:
+          'When on, blender-mcp runs a whitelist check before executing scripts in Blender, blocking file I/O, subprocess and network access. Both Blender official docs and PyPI recommend leaving this on.',
+        bridgePort: 'Bridge HTTP port',
+        bridgePortHint:
+          'Streamable-http port the bridge exposes; must match what the dsh mcp-client registers against.',
+        addonInstall: 'Install Blender-side addon',
+        addonInstallHint: 'Copy install command',
+        addonInstallCopied: 'Install command copied to clipboard',
+        restart: 'Restart Blender bridge',
+        restartBusy: 'Restarting…',
+        restartOk: 'Blender bridge restarted',
+        restartDisabled: 'Blender bridge disabled',
+        serverEnv: 'Child process environment',
+        persist: 'Persist to settings (apply on next launch)'
+      }
     },
     skills: {
       hint: "The AI chat agent discovers skills through dsh's skill system: drop a .md file in dsh SKILL.md format (frontmatter name / description + body) into the folder below and it takes effect on the next chat. Built-in skills are managed automatically — please don't edit them.",

@@ -1,6 +1,6 @@
 import { BrowserWindow, type BrowserWindowConstructorOptions } from 'electron'
 import Store from 'electron-store'
-import { DEFAULT_SETTINGS, type AppSettings } from '@shared/domain'
+import { DEFAULT_SETTINGS, normalizeBlenderMcpSettings, type AppSettings } from '@shared/domain'
 import { normalizeModelsSettings } from '@shared/modelProvider'
 import { normalizeObjectStorageSettings } from '@shared/objectStorage'
 import { normalizeSearchSettings } from '@shared/searchProvider'
@@ -83,7 +83,8 @@ class SettingsService {
       yolo: {
         ...DEFAULT_SETTINGS.yolo,
         ...(saved.yolo ?? {})
-      }
+      },
+      blenderMcp: normalizeBlenderMcpSettings(saved.blenderMcp)
     }
   }
 
@@ -103,7 +104,8 @@ class SettingsService {
       yolo: {
         ...DEFAULT_SETTINGS.yolo,
         ...(settings.yolo ?? {})
-      }
+      },
+      blenderMcp: normalizeBlenderMcpSettings(settings.blenderMcp)
     }
     this.ensure().set('settings', normalized)
     this.syncWindowChrome()

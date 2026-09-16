@@ -238,6 +238,10 @@ export const IpcChannels = {
   MCP_GET_INFO: 'mcp:get-info',
   /** MCP：设置界面应用端口 / 重置 token 修改并重启工具服务 */
   MCP_RESTART: 'mcp:restart',
+  /** MCP：查询 stdio→HTTP 桥（blender-mcp 等第三方 stdio MCP server）当前状态 */
+  MCP_BLENDER_GET_INFO: 'mcp:blender-get-info',
+  /** MCP：应用 blender 桥配置（命令 / 参数 / addon socket / safe mode / 桥端口）并重启 */
+  MCP_BLENDER_RESTART: 'mcp:blender-restart',
   /** MCP：主进程推送旁路生成活动（生成中 / 完成 / 失败，任务列表与执行日志可见） */
   MCP_ACTIVITY_UPDATED: 'mcp:activity-updated',
   /** MCP：主进程清空旁路生成活动（工程关闭时） */
@@ -640,6 +644,51 @@ export interface McpServerInfo {
   configPath: string
   /** 工具服务 HTTP 端点，如 http://127.0.0.1:43110/mcp */
   endpoint: string
+  /** stdio→HTTP 桥（blender-mcp 等）当前状态；未启动 / 已禁用时为 null */
+  blenderBridge: McpBlenderBridgeInfo | null
+}
+
+/** MCP：stdio→HTTP 桥当前状态（设置面板展示 / 复制 addonInstallHint） */
+export interface McpBlenderBridgeInfo {
+  /** 桥进程是否已 spawn 出来（与 blender-mcp 子进程成功启动是两回事） */
+  spawned: boolean
+  /** 桥 HTTP 监听端口（如 43120） */
+  port: number
+  /** 桥 Bearer token；跨重启持久复用 */
+  token: string
+  /** 桥 HTTP 端点，如 http://127.0.0.1:43120/mcp */
+  endpoint: string
+  /** 桥当前 spawn 的 blender-mcp 子进程是否还活着（addon 未装 / 已退出为 false） */
+  blenderRunning: boolean
+  /** 当前实际执行的命令与参数（已展开默认值/用户配置） */
+  command: string
+  args: string[]
+  /** 传给子进程的环境变量（BLENDER_HOST/PORT/SAFE_MODE） */
+  serverEnv: { BLENDER_HOST: string; BLENDER_PORT: string; BLENDER_MCP_SAFE_MODE: string }
+  /** 提示用户在 Blender 里启用 add-on 的命令（PyPI 推荐） */
+  addonInstallHint: string
+  /** 配置快照绝对路径（mcp-blender.json，UI 调试用） */
+  configPath: string
+}
+
+/** MCP：blender 桥重启入参（设置界面提交的配置修改） */
+export interface McpBlenderRestartInput {
+  /** 期望桥端口；写入 settings 后重启生效（被占用时自动顺延） */
+  bridgePort?: number
+  /** 是否整体启用 / 禁用 blender 桥 */
+  enabled?: boolean
+  /** spawn 命令首段（不传则保留 settings 现有值） */
+  command?: string
+  /** spawn 命令后续参数（空格或逗号分隔） */
+  args?: string
+  /** addon socket 主机（传给 blender-mcp 子进程的 BLENDER_HOST） */
+  serverHost?: string
+  /** addon socket 端口（传给 blender-mcp 子进程的 BLENDER_PORT） */
+  serverPort?: number
+  /** 是否开启 safe mode（传给 blender-mcp 子进程的 BLENDER_MCP_SAFE_MODE） */
+  safeMode?: boolean
+  /** 持久化到 settings（默认 true）。设置 false 表示仅运行时重启桥、不写盘 */
+  persist?: boolean
 }
 
 /** Harness：DeepSeek Harness (dsh) 接入状态（Chat 面板顶部状态条展示） */
@@ -1187,6 +1236,12 @@ export interface StudioApi {
 
   /** MCP：应用端口 / 重置 token 修改并重启工具服务，返回重启后的状态 */
   restartMcpServer: (input: McpRestartInput) => Promise<McpServerInfo | null>
+
+  /** MCP：查询 stdio→HTTP 桥（blender-mcp 等）当前状态；未启用 / 启动失败时返回 null */
+  getBlenderMcpInfo: () => Promise<McpBlenderBridgeInfo | null>
+
+  /** MCP：应用 blender 桥配置并重启；返回重启后的状态（禁用时仍返回最后已知状态） */
+  restartBlenderMcpBridge: (input: McpBlenderRestartInput) => Promise<McpBlenderBridgeInfo | null>
 
   /** MCP：订阅旁路生成活动更新（生成中 / 完成 / 失败） */
   onMcpActivityUpdated: (callback: (activity: McpActivity) => void) => () => void

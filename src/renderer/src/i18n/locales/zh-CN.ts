@@ -410,7 +410,38 @@ export default {
       copy: '复制',
       copied: '已复制到剪贴板',
       command: 'Claude Code 接入命令',
-      hint: 'Token 跨重启复用（可在上方重置）。Token 相当于本机 MCP 服务的全部权限，请勿泄露。'
+      hint: 'Token 跨重启复用（可在上方重置）。Token 相当于本机 MCP 服务的全部权限，请勿泄露。',
+      blender: {
+        title: 'Blender MCP 桥',
+        subtitle:
+          '把 blender-mcp 这类 stdio MCP server 暴露为 streamable-http 端点，供 dsh mcp-client 消费 Blender 工具面。',
+        enabled: '启用',
+        notEnabledHint: '桥已关闭。勾选启用并点击「重启 Blender 桥」生效。',
+        running: '桥运行中 · 端口 {port}',
+        notRunning: '桥未启动（blender-mcp 未安装 / 子进程崩溃 / 已被禁用）',
+        command: '启动命令',
+        args: '附加参数',
+        argsHint: '空格或逗号分隔，传给命令首段之后的参数；环境变量请用下方独立字段。',
+        serverHost: 'Addon 主机',
+        serverHostHint: '传给 blender-mcp 子进程的 BLENDER_HOST；addon 默认监听本机 9876。',
+        serverPort: 'Addon 端口',
+        serverPortHint:
+          '传给 blender-mcp 子进程的 BLENDER_PORT；通常与 Blender 内 addon 端口一致。',
+        safeMode: 'Safe Mode',
+        safeModeHint:
+          '开启后 blender-mcp 会在 Blender 中执行脚本前做白名单检查，阻断文件 I/O、subprocess、网络访问。官方与 PyPI 均推荐开启。',
+        bridgePort: '桥 HTTP 端口',
+        bridgePortHint: '桥对外暴露的 streamable-http 端口；需与 dsh mcp-client 注册端点一致。',
+        addonInstall: '安装 Blender 端 addon',
+        addonInstallHint: '复制安装命令',
+        addonInstallCopied: '安装命令已复制到剪贴板',
+        restart: '重启 Blender 桥',
+        restartBusy: '重启中…',
+        restartOk: 'Blender 桥已重启',
+        restartDisabled: '已禁用 Blender 桥',
+        serverEnv: '子进程环境变量',
+        persist: '保存到设置（下次启动仍生效）'
+      }
     },
     skills: {
       hint: 'AI 对话的 agent 通过 dsh 技能机制感知技能：把符合 dsh SKILL.md 格式（frontmatter name / description + 正文）的 .md 文件放进下方目录，下次对话自动生效。应用内置技能由程序自动管理，请勿手动修改。',

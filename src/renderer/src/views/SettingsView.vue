@@ -275,6 +275,121 @@
         <p v-if="mcpInfo" class="hint">
           {{ t('settings.mcp.hint') }}
         </p>
+
+        <h3 class="sub-h3">{{ t('settings.mcp.blender.title') }}</h3>
+        <p class="hint">{{ t('settings.mcp.blender.subtitle') }}</p>
+
+        <div class="mcp-row">
+          <label class="check">
+            <input v-model="form.blenderMcp.enabled" type="checkbox" :disabled="blenderBusy" />
+            <span>{{ t('settings.mcp.blender.enabled') }}</span>
+          </label>
+          <span v-if="mcpInfo?.blenderBridge" class="mcp-running">
+            {{ t('settings.mcp.blender.running', { port: mcpInfo.blenderBridge.port }) }}
+          </span>
+          <span v-else-if="form.blenderMcp.enabled" class="hint-inline">
+            {{ t('settings.mcp.blender.notRunning') }}
+          </span>
+          <span v-else class="hint-inline">
+            {{ t('settings.mcp.blender.notEnabledHint') }}
+          </span>
+        </div>
+
+        <label>
+          {{ t('settings.mcp.blender.command') }}
+          <input
+            v-model="form.blenderMcp.command"
+            type="text"
+            spellcheck="false"
+            :disabled="blenderBusy"
+          />
+        </label>
+
+        <label>
+          {{ t('settings.mcp.blender.args') }}
+          <input
+            v-model="form.blenderMcp.args"
+            type="text"
+            spellcheck="false"
+            :disabled="blenderBusy"
+          />
+          <span class="hint">{{ t('settings.mcp.blender.argsHint') }}</span>
+        </label>
+
+        <div class="number-row">
+          <label>
+            {{ t('settings.mcp.blender.serverHost') }}
+            <input
+              v-model="form.blenderMcp.serverHost"
+              type="text"
+              spellcheck="false"
+              :disabled="blenderBusy"
+            />
+            <span class="hint">{{ t('settings.mcp.blender.serverHostHint') }}</span>
+          </label>
+          <label>
+            {{ t('settings.mcp.blender.serverPort') }}
+            <input
+              v-model.number="form.blenderMcp.serverPort"
+              type="number"
+              min="1"
+              max="65535"
+              :disabled="blenderBusy"
+            />
+            <span class="hint">{{ t('settings.mcp.blender.serverPortHint') }}</span>
+          </label>
+        </div>
+
+        <label class="check">
+          <input v-model="form.blenderMcp.safeMode" type="checkbox" :disabled="blenderBusy" />
+          <span>{{ t('settings.mcp.blender.safeMode') }}</span>
+        </label>
+        <p class="hint">{{ t('settings.mcp.blender.safeModeHint') }}</p>
+
+        <label>
+          {{ t('settings.mcp.blender.bridgePort') }}
+          <div class="number-row">
+            <input
+              v-model.number="form.blenderMcp.bridgePort"
+              type="number"
+              min="1"
+              max="65535"
+              :disabled="blenderBusy"
+            />
+            <button
+              type="button"
+              class="about-btn primary"
+              :disabled="blenderBusy"
+              @click="applyBlenderRestart"
+            >
+              {{
+                blenderBusy
+                  ? t('settings.mcp.blender.restartBusy')
+                  : t('settings.mcp.blender.restart')
+              }}
+            </button>
+          </div>
+          <span class="hint">{{ t('settings.mcp.blender.bridgePortHint') }}</span>
+        </label>
+
+        <div v-if="mcpInfo?.blenderBridge" class="mcp-row">
+          <span class="about-label">{{ t('settings.mcp.blender.serverEnv') }}</span>
+          <code class="mcp-value mcp-cmd">{{
+            `BLENDER_HOST=${mcpInfo.blenderBridge.serverEnv.BLENDER_HOST}  BLENDER_PORT=${mcpInfo.blenderBridge.serverEnv.BLENDER_PORT}  BLENDER_MCP_SAFE_MODE=${mcpInfo.blenderBridge.serverEnv.BLENDER_MCP_SAFE_MODE}`
+          }}</code>
+        </div>
+
+        <div v-if="mcpInfo?.blenderBridge" class="mcp-row">
+          <span class="about-label">{{ t('settings.mcp.blender.addonInstall') }}</span>
+          <code class="mcp-value mcp-cmd">{{ mcpInfo.blenderBridge.addonInstallHint }}</code>
+          <button
+            type="button"
+            class="about-btn"
+            @click="copyAddonInstall(mcpInfo.blenderBridge.addonInstallHint)"
+          >
+            {{ t('settings.mcp.blender.addonInstallHint') }}
+          </button>
+        </div>
       </section>
 
       <section v-show="mainTab === 'skills'" class="models-section">
@@ -342,6 +457,9 @@ const router = useRouter()
 const form = reactive<AppSettings>(cloneSettings(DEFAULT_SETTINGS))
 const saving = ref(false)
 const message = ref('')
+
+/** Blender MCP 桥：v-model 直接绑 form.blenderMcp，重启按钮统一提交 + 重启 */
+const blenderBusy = ref(false)
 const isError = ref(false)
 const plugins = ref<ExternalPluginManifest[]>([])
 const mainTab = ref<
@@ -464,6 +582,43 @@ async function applyTokenEdit(): Promise<void> {
   } finally {
     mcpBusy.value = false
   }
+}
+
+/** 提交当前 form.blenderMcp 到主进程 + 重启 blender 桥；持久化默认 true */
+async function applyBlenderRestart(): Promise<void> {
+  if (blenderBusy.value) return
+  const cfg = form.blenderMcp
+  blenderBusy.value = true
+  message.value = t('settings.mcp.blender.restartBusy')
+  isError.value = false
+  try {
+    const next = await window.studio.restartBlenderMcpBridge({
+      enabled: cfg.enabled,
+      command: cfg.command,
+      args: cfg.args,
+      serverHost: cfg.serverHost,
+      serverPort: cfg.serverPort,
+      safeMode: cfg.safeMode,
+      bridgePort: cfg.bridgePort,
+      persist: true
+    })
+    if (mcpInfo.value) mcpInfo.value = { ...mcpInfo.value, blenderBridge: next }
+    message.value = cfg.enabled
+      ? t('settings.mcp.blender.restartOk')
+      : t('settings.mcp.blender.restartDisabled')
+  } catch (e) {
+    isError.value = true
+    message.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    blenderBusy.value = false
+  }
+}
+
+/** 复制 addonInstallHint（`uvx blender-mcp install-addon`）到剪贴板 */
+async function copyAddonInstall(text: string): Promise<void> {
+  await window.studio.writeClipboardText(text)
+  message.value = t('settings.mcp.blender.addonInstallCopied')
+  isError.value = false
 }
 
 const updateStatusDefault = computed(() => t('settings.about.idle'))
@@ -596,7 +751,11 @@ function cloneSettings(source: AppSettings): AppSettings {
     ),
     seedance: { ...toRaw(raw.seedance) },
     llm: { ...toRaw(raw.llm) },
-    yolo: { ...DEFAULT_SETTINGS.yolo, ...toRaw(raw.yolo) }
+    yolo: { ...DEFAULT_SETTINGS.yolo, ...toRaw(raw.yolo) },
+    blenderMcp: {
+      ...DEFAULT_SETTINGS.blenderMcp,
+      ...toRaw(raw.blenderMcp)
+    }
   }
 }
 

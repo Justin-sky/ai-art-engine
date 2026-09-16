@@ -504,6 +504,32 @@ export interface AppSettings {
   }
   /** 本地视觉（YOLO）：ONNX 本地推理 */
   yolo: YoloSettings
+  /**
+   * Blender stdio MCP 桥（mcp-stdio-bridge.ts）配置：把第三方 blender-mcp 这类
+   * stdio MCP server 暴露为 streamable-http 端点供 dsh mcp-client 消费。
+   *
+   * 旧版本设置可能没有本字段；normalizeSettings 写入磁盘前会兜底默认值，
+   * 升级到新版本后第一次保存才会持久化。
+   */
+  blenderMcp: BlenderMcpSettings
+}
+
+/** Blender stdio MCP 桥配置；语义同 scripts/mcp-stdio-bridge.ts 顶部 JSDoc。 */
+export interface BlenderMcpSettings {
+  /** 是否启用 blender 桥；关闭后不 spawn 子进程，dsh 也看不到 blender 工具 */
+  enabled: boolean
+  /** spawn 命令首段（默认 `uvx`；env override AIAE_BLENDER_MCP_CMD 仍可用） */
+  command: string
+  /** spawn 命令后续参数（空格或逗号分隔；env override AIAE_BLENDER_MCP_ARGS 仍可用） */
+  args: string
+  /** 传给 blender-mcp 子进程的 BLENDER_HOST：Blender Add-on socket 监听主机 */
+  serverHost: string
+  /** 传给 blender-mcp 子进程的 BLENDER_PORT：Blender Add-on socket 端口（默认 9876） */
+  serverPort: number
+  /** 传给 blender-mcp 子进程的 BLENDER_MCP_SAFE_MODE（默认 1，开 PyPI 推荐的安全白名单） */
+  safeMode: boolean
+  /** 桥 HTTP 监听端口（默认 43120，与主 MCP 服务 43110 错开） */
+  bridgePort: number
 }
 
 export const DEFAULT_RESOLUTION: Resolution = { w: 1280, h: 720 }
@@ -1964,5 +1990,48 @@ export const DEFAULT_SETTINGS: AppSettings = {
     modelDir: '',
     confThreshold: 0.25,
     iouThreshold: 0.45
+  },
+  blenderMcp: createDefaultBlenderMcpSettings()
+}
+
+/** Blender MCP 桥默认值：与 scripts/mcp-stdio-bridge.ts 内置默认保持一致 */
+export function createDefaultBlenderMcpSettings(): BlenderMcpSettings {
+  return {
+    enabled: true,
+    command: 'uvx',
+    args: 'blender-mcp',
+    serverHost: 'localhost',
+    serverPort: 9876,
+    safeMode: true,
+    bridgePort: 43120
   }
+}
+
+/**
+ * 兜底任意输入为合法 BlenderMcpSettings：未知字段忽略、范围越界回退默认。
+ * 老版本 settings.json 缺 blenderMcp 段时调用，保证写入磁盘前结构完整。
+ */
+export function normalizeBlenderMcpSettings(raw: unknown): BlenderMcpSettings {
+  const defaults = createDefaultBlenderMcpSettings()
+  const obj = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+  const command =
+    typeof obj.command === 'string' && obj.command.trim() ? obj.command.trim() : defaults.command
+  const args = typeof obj.args === 'string' ? obj.args : defaults.args
+  const serverHost =
+    typeof obj.serverHost === 'string' && obj.serverHost.trim()
+      ? obj.serverHost.trim()
+      : defaults.serverHost
+  let serverPort = defaults.serverPort
+  if (typeof obj.serverPort === 'number' && Number.isFinite(obj.serverPort)) {
+    const n = Math.trunc(obj.serverPort)
+    if (n >= 1 && n <= 65535) serverPort = n
+  }
+  let bridgePort = defaults.bridgePort
+  if (typeof obj.bridgePort === 'number' && Number.isFinite(obj.bridgePort)) {
+    const n = Math.trunc(obj.bridgePort)
+    if (n >= 1 && n <= 65535) bridgePort = n
+  }
+  const safeMode = typeof obj.safeMode === 'boolean' ? obj.safeMode : defaults.safeMode
+  const enabled = typeof obj.enabled === 'boolean' ? obj.enabled : defaults.enabled
+  return { enabled, command, args, serverHost, serverPort, safeMode, bridgePort }
 }

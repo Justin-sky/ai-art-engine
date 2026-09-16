@@ -68,6 +68,7 @@ import { updateService } from './services/updateService'
 import {
   getMcpServerInfo,
   receiveAskUserAnswer,
+  restartBlenderMcpBridge,
   restartMcpServer
 } from './services/mcpServerService'
 import { modelProviderFacade, toMediaUrl } from './services/modelProviders'
@@ -373,6 +374,10 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.MCP_GET_INFO, () => getMcpServerInfo())
   handle(IpcChannels.MCP_RESTART, (input: import('@shared/ipc').McpRestartInput) =>
     restartMcpServer(input)
+  )
+  handle(IpcChannels.MCP_BLENDER_GET_INFO, () => getMcpServerInfo()?.blenderBridge ?? null)
+  handle(IpcChannels.MCP_BLENDER_RESTART, (input: import('@shared/ipc').McpBlenderRestartInput) =>
+    restartBlenderMcpBridge(input)
   )
   handle(IpcChannels.MCP_ACTIVITY_LIST, () => mcpActivityService.list())
 
