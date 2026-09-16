@@ -37,11 +37,11 @@
  * 运行要求：Node 22.6+（默认开启 type stripping），Electron 44 内置 Node 24 直接支持。
  * 主进程通过 spawn(process.execPath, ['--experimental-strip-types', script], ...) 拉起。
  */
-import { spawn, type ChildProcess } from 'node:child_process'
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { createServer, type IncomingMessage } from 'node:http'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, isAbsolute, join } from 'node:path'
 import { randomBytes } from 'node:crypto'
 
 const PORT_BASE = 43120
@@ -82,6 +82,55 @@ export function pickPort(): number {
     if (Number.isFinite(n) && n > 0) return n
   }
   return PORT_BASE
+}
+
+/**
+ * 把 `uvx` 这种 PATH 上的命令解析为绝对路径。
+ *
+ * Windows 上 Node 的 spawn 不走 PATHEXT（CreateProcessW 只接 .exe / 字面名字），
+ * 即便 `where uvx` 找得到 `.bat` shim 也只能跑到 .exe。所以拿到一个 `uvx` 后
+ * 必须先 `where` / `which` 转绝对路径，spawn 才有把握。
+ *
+ * `cmd` 已是绝对 / 相对路径时直接返回——用户显式填了路径就别再二次解析，避免
+ * 干扰自定义解析逻辑（比如 .cmd shim 故意不放在 PATH 上）。
+ *
+ * 找不到 → 返回 null；调用方应该生成 friendly lastError，不要 spawn。
+ */
+export function resolveExecutable(cmd: string): string | null {
+  const trimmed = cmd.trim()
+  if (!trimmed) return null
+  // 已经显式给路径（含 / 或 \，或 Windows drive letter C:）：直接用
+  if (
+    isAbsolute(trimmed) ||
+    trimmed.includes('/') ||
+    trimmed.includes('\\') ||
+    /^[a-zA-Z]:/.test(trimmed)
+  ) {
+    return trimmed
+  }
+  try {
+    if (process.platform === 'win32') {
+      // where.exe 自带（Win 7+），成功时 stdout 列出所有匹配；空时 stderr 写
+      // "INFO: Could not find files..."，exit code 1。我们靠 stdout 第一行判断。
+      // PATHEXT 多匹配时返回多行，取第一行（最高优先级扩展名）。
+      const stdout = execFileSync('where.exe', [trimmed], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+        encoding: 'utf8'
+      })
+      const first = stdout.split(/\r?\n/).map((l) => l.trim()).find(Boolean)
+      return first || null
+    }
+    // POSIX：which 在 macOS / Linux / WSL 都默认装
+    const stdout = execFileSync('which', [trimmed], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      encoding: 'utf8'
+    })
+    const first = stdout.split(/\r?\n/).map((l) => l.trim()).find(Boolean)
+    return first || null
+  } catch {
+    return null
+  }
 }
 
 const SERVER_HOST_DEFAULT = 'localhost'
@@ -175,6 +224,8 @@ export class StdioMcpBackend {
   child: ChildProcess | null = null
   private command: string
   private args: string[]
+  /** 解析后的命令绝对路径（spawn 时真正用的那个）；null 表示解析失败 */
+  private resolvedCommand: string | null
   /** 不变字段快照，写 mcp-blender.json 时复用，避免每次重新序列化 */
   private infoBase: Record<string, unknown> | null = null
   /** mcp-blender.json 绝对路径；构造时由 main() 注入 */
@@ -196,7 +247,12 @@ export class StdioMcpBackend {
     this.command = opts.command
     this.args = opts.args
     this.configPath = opts.configPath
-    this.infoBase = opts.infoBase
+    // 解析 PATH 上的命令为绝对路径；找不到时保留 null，让 spawn() 走友好报错路径
+    // 而不是把 ENOENT 透到 UI。spawn() 写 lastError 时同时把 actionable 提示写进
+    // mcp-blender.json 的 serverEnvHint，UI 可以直接渲染给用户看。
+    this.resolvedCommand = resolveExecutable(opts.command)
+    // 把解析结果回填 infoBase，让主进程 / UI 看到实际命令路径
+    this.infoBase = { ...opts.infoBase, resolvedCommand: this.resolvedCommand }
   }
 
   /**
@@ -204,12 +260,31 @@ export class StdioMcpBackend {
    * 因此 spawn() 返回 true 不代表子进程最终存活——这里把 mcp-blender.json 的写盘权收归
    * backend：先乐观写 spawned=true，on('error') / on('exit') 触发后覆盖写 spawned=false
    * 并附带 lastError。主进程轮询 mcp-blender.json 时读到的是终态值，避免 race。
+   *
+   * 路径解析失败的分支：构造时 resolveExecutable 已经把 uvx / blender-mcp 转成绝对路径，
+   * 找不到时这里立刻 lastError + flushSnapshot + return false，不调用 spawn。
    */
   spawn(): boolean {
+    if (!this.resolvedCommand) {
+      // 构造时已尝试过 PATH 查找（Windows 不走 PATHEXT，POSIX 走 $PATH）。这里
+      // 兜底：用户填的就是 uvx 这种纯名字且 PATH 找不到。给 actionable 提示，比
+      // 裸 ENOENT 友好得多——把「去 settings 填绝对路径」的入口直接告诉用户。
+      this.lastError =
+        `找不到可执行文件 \`${this.command}\`：PATH 上无此命令，spawn 会报 ENOENT。\n` +
+        `修复：\n` +
+        `  1. 在「设置 → MCP → Blender MCP 桥」把启动命令改成 uvx 的绝对路径（Windows 默认 ` +
+        `C:\\Users\\<user>\\.local\\bin\\uvx.exe，macOS / Linux 默认 ~/.local/bin/uv）；或\n` +
+        `  2. 确认 PATH 含 .local/bin（uv 安装器一般会自动加，shell 重启后才生效）；或\n` +
+        `  3. 装 blender-mcp 后用 pipx / pip：设置启动命令填 blender-mcp 的 Python 模块路径`
+      log('spawn 前路径解析失败:', this.lastError.split('\n')[0])
+      this.running = false
+      this.flushSnapshot()
+      return false
+    }
     // 先乐观写一份「spawn 尝试了」的快照；后续事件回调再覆盖
     this.flushSnapshot()
     try {
-      this.child = spawn(this.command, this.args, {
+      this.child = spawn(this.resolvedCommand, this.args, {
         stdio: ['pipe', 'pipe', 'pipe'],
         env: { ...process.env, ...pickServerEnv() },
         windowsHide: true
@@ -246,7 +321,7 @@ export class StdioMcpBackend {
       this.running = false
       this.flushSnapshot()
     })
-    log(`已 spawn blender-mcp: ${this.command} ${this.args.join(' ')} (pid=${this.child.pid})`)
+    log(`已 spawn blender-mcp: ${this.resolvedCommand} ${this.args.join(' ')} (pid=${this.child.pid})`)
     return true
   }
 

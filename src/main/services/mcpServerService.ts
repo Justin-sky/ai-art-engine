@@ -3109,6 +3109,7 @@ let blenderBridgeInfo: {
   blenderSpawned: boolean
   command: string
   args: string[]
+  resolvedCommand: string | null
   lastError: string | null
 } | null = null
 let blenderBridgeConfigPath = ''
@@ -3509,6 +3510,7 @@ async function startBlenderMcpBridge(): Promise<void> {
         blenderSpawned?: unknown
         command?: unknown
         args?: unknown
+        resolvedCommand?: unknown
         lastError?: unknown
       }
       if (
@@ -3520,6 +3522,10 @@ async function startBlenderMcpBridge(): Promise<void> {
       ) {
         // 看到 spawned=false 立即停止轮询：已是终态，再等也是同一个值
         const args = parsed.args.filter((a): a is string => typeof a === 'string')
+        const resolvedCommand =
+          typeof parsed.resolvedCommand === 'string' && parsed.resolvedCommand
+            ? parsed.resolvedCommand
+            : null
         const lastError =
           typeof parsed.lastError === 'string' && parsed.lastError ? parsed.lastError : null
         blenderBridgeInfo = {
@@ -3528,6 +3534,7 @@ async function startBlenderMcpBridge(): Promise<void> {
           blenderSpawned: parsed.blenderSpawned,
           command: parsed.command,
           args,
+          resolvedCommand,
           lastError
         }
         if (parsed.blenderSpawned) {
@@ -3595,6 +3602,7 @@ export function getBlenderMcpBridgeInfo(): McpBlenderBridgeInfo | null {
     blenderRunning: blenderBridgeInfo.blenderSpawned,
     command: blenderBridgeInfo.command,
     args: blenderBridgeInfo.args,
+    resolvedCommand: blenderBridgeInfo.resolvedCommand,
     serverEnv: {
       BLENDER_HOST: cfg.serverHost,
       BLENDER_PORT: String(cfg.serverPort),

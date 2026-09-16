@@ -20,7 +20,8 @@ import {
   parseExtraArgs,
   pickCommand,
   pickPort,
-  pickServerEnv
+  pickServerEnv,
+  resolveExecutable
 } from '../scripts/mcp-stdio-bridge'
 
 describe('mcp-stdio-bridge 解析函数', () => {
@@ -149,6 +150,43 @@ describe('mcp-stdio-bridge 解析函数', () => {
   it('pickServerEnv 端口超出 65535 时回退默认', () => {
     process.env.AIAE_BLENDER_MCP_SERVER_PORT = '99999'
     expect(pickServerEnv().BLENDER_PORT).toBe('9876')
+  })
+
+  it('resolveExecutable 已是绝对路径 → 原样返回（不再二次解析）', () => {
+    // 已经是绝对路径就别再 which/where，干扰用户显式填的解析逻辑
+    expect(resolveExecutable('/usr/local/bin/foo')).toBe('/usr/local/bin/foo')
+    if (process.platform === 'win32') {
+      expect(resolveExecutable('C:\\Users\\me\\.local\\bin\\uvx.exe')).toBe(
+        'C:\\Users\\me\\.local\\bin\\uvx.exe'
+      )
+    }
+  })
+
+  it('resolveExecutable 含 / 或 \\ 的相对路径 → 原样返回', () => {
+    expect(resolveExecutable('./node_modules/.bin/foo')).toBe('./node_modules/.bin/foo')
+    expect(resolveExecutable('scripts\\tool.exe')).toBe('scripts\\tool.exe')
+  })
+
+  it('resolveExecutable 空字符串 / 全空白 → null', () => {
+    expect(resolveExecutable('')).toBeNull()
+    expect(resolveExecutable('   ')).toBeNull()
+  })
+
+  it('resolveExecutable PATH 上真实存在的命令 → 解析成绝对路径', () => {
+    // 跨平台：node / python3 是任何 CI 环境都会有的命令
+    const found = resolveExecutable(process.platform === 'win32' ? 'node.exe' : 'node')
+    expect(found).toBeTruthy()
+    // 绝对路径：Windows 含 drive letter，POSIX 以 / 开头
+    if (process.platform === 'win32') {
+      expect(found).toMatch(/^[a-zA-Z]:[\\/]/)
+    } else {
+      expect(found).toMatch(/^\//)
+    }
+  })
+
+  it('resolveExecutable PATH 上找不到的命令 → null（不要抛）', () => {
+    // 不能用 `null` / 空串作测试样例（部分 shell 会把它们当成合法 token）
+    expect(resolveExecutable('__aiartengine_no_such_command_xyz_12345__')).toBeNull()
   })
 })
 
@@ -360,5 +398,33 @@ describe('StdioMcpBackend', () => {
     const parsed = JSON.parse(text) as { blenderSpawned: boolean; lastError: string | null }
     expect(parsed.blenderSpawned).toBe(false)
     expect(parsed.lastError).toMatch(/退出 code=7/)
+  })
+
+  it('PATH 找不到的命令 → spawn() 直接返回 false + lastError 含 actionable 提示', () => {
+    const configPath = tmpConfigPath()
+    // 用一个肯定不会存在的命令名（不是绝对路径，所以会走 PATH 解析）
+    const missing = '__aiartengine_no_such_command_xyz_99999__'
+    const backend = new StdioMcpBackend({
+      command: missing,
+      args: [],
+      configPath,
+      infoBase: { ...TEST_INFO_BASE, port: 0, token: 't', command: missing, args: [] }
+    })
+    // 路径解析失败 → spawn() 不调用子进程 spawn，直接返回 false
+    expect(backend.spawn()).toBe(false)
+    expect(backend.running).toBe(false)
+    // mcp-blender.json 写入 spawned=false + lastError 含 actionable 提示
+    const text = readFileSync(configPath, 'utf8')
+    const parsed = JSON.parse(text) as {
+      blenderSpawned: boolean
+      lastError: string | null
+      resolvedCommand: string | null
+    }
+    expect(parsed.blenderSpawned).toBe(false)
+    expect(parsed.resolvedCommand).toBeNull()
+    expect(parsed.lastError).toBeTruthy()
+    // 友好提示要包含 actionable hint，比裸 ENOENT 强
+    expect(parsed.lastError).toContain('PATH')
+    expect(parsed.lastError).toContain('ENOENT')
   })
 })

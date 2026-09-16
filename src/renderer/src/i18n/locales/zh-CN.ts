@@ -421,6 +421,11 @@ export default {
         notRunning: '桥未启动（blender-mcp 未安装 / 子进程崩溃 / 已被禁用）',
         spawnError: '子进程失败：{error}',
         command: '启动命令',
+        commandHint:
+          'Windows 上 Node 的 spawn 不走 PATHEXT，建议直接填绝对路径（uv 安装后默认在 C:\\Users\\<你>\\.local\\bin\\uvx.exe）。',
+        resolvedCommand: '实际可执行文件（PATH 解析后）',
+        resolvedCommandNull:
+          '在 PATH 上找不到 `{command}`；spawn 会 ENOENT 失败。请填绝对路径，或确认 uv 已装且 PATH 含 .local\\bin。',
         args: '附加参数',
         argsHint: '空格或逗号分隔，传给命令首段之后的参数；环境变量请用下方独立字段。',
         serverHost: 'Addon 主机',

@@ -309,7 +309,19 @@
             spellcheck="false"
             :disabled="blenderBusy"
           />
+          <span class="hint">
+            {{ t('settings.mcp.blender.commandHint') }}
+          </span>
         </label>
+        <div v-if="mcpInfo?.blenderBridge" class="mcp-row">
+          <span class="about-label">{{ t('settings.mcp.blender.resolvedCommand') }}</span>
+          <code v-if="mcpInfo.blenderBridge.resolvedCommand" class="mcp-value mcp-cmd">{{
+            mcpInfo.blenderBridge.resolvedCommand
+          }}</code>
+          <code v-else class="mcp-value mcp-cmd error">
+            {{ t('settings.mcp.blender.resolvedCommandNull', { command: form.blenderMcp.command }) }}
+          </code>
+        </div>
 
         <label>
           {{ t('settings.mcp.blender.args') }}

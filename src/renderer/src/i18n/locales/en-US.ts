@@ -429,6 +429,11 @@ export default {
           'Bridge not running (blender-mcp not installed / child process crashed / disabled).',
         spawnError: 'Child process failed: {error}',
         command: 'Spawn command',
+        commandHint:
+          "Node's spawn on Windows does not honour PATHEXT, so it's safer to give an absolute path (uv installs to C:\\Users\\<you>\\.local\\bin\\uvx.exe by default).",
+        resolvedCommand: 'Resolved executable (after PATH lookup)',
+        resolvedCommandNull:
+          'No `{command}` on PATH; spawn will fail with ENOENT. Fill an absolute path above, or confirm uv is installed and PATH contains .local\\bin.',
         args: 'Extra arguments',
         argsHint:
           'Whitespace or comma separated — passed after the spawn command. Use the dedicated env fields below for environment variables.',

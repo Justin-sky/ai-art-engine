@@ -663,6 +663,13 @@ export interface McpBlenderBridgeInfo {
   /** 当前实际执行的命令与参数（已展开默认值/用户配置） */
   command: string
   args: string[]
+  /**
+   * PATH 解析后的可执行文件绝对路径（spawn 时真正用的那个）；null 表示 PATH 上找不到命令，
+   * 用户需要在 settings 里填绝对路径，或确认 uv 已装且 PATH 含 .local\bin。
+   * Windows 上 Node 的 spawn 不走 PATHEXT，所以「command 设 uvx + spawn ENOENT」通常
+   * 是 PATH 没 .local\bin 而非 uvx.exe 不存在——看 resolvedCommand 是否 null 一目了然。
+   */
+  resolvedCommand: string | null
   /** 传给子进程的环境变量（BLENDER_HOST/PORT/SAFE_MODE） */
   serverEnv: { BLENDER_HOST: string; BLENDER_PORT: string; BLENDER_MCP_SAFE_MODE: string }
   /** 提示用户在 Blender 里启用 add-on 的命令（PyPI 推荐） */
