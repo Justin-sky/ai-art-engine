@@ -733,7 +733,7 @@ const promptLabel = computed(() => {
     case 'motion':
       return t('asset.contentLabel.motion')
     case 'voice':
-      return t('asset.contentLabel.audio')
+      return t('asset.contentLabel.voice')
     case 'model':
       return t('asset.contentLabel.model')
     default:
@@ -750,7 +750,7 @@ const promptPlaceholder = computed(() => {
     case 'motion':
       return t('asset.inspector.promptPlaceholder.motion')
     case 'voice':
-      return t('asset.inspector.promptPlaceholder.audio')
+      return t('asset.inspector.promptPlaceholder.voice')
     case 'model':
       return t('asset.inspector.promptPlaceholder.model')
     default:

@@ -111,7 +111,8 @@ export default {
     second: '秒',
     open: '打开',
     close: '关闭',
-    done: '完成'
+    done: '完成',
+    remove: '移除'
   },
   characterRefs: {
     title: '角色绑定',
@@ -357,6 +358,8 @@ export default {
       refreshFailed: '检测 ffmpeg 状态失败，请重试。',
       installDone: '下载安装完成，可直接使用视频功能。',
       installFailed: '安装未完成：可打开下载页手动下载。',
+      installDir: '安装目录',
+      versionLabel: '版本',
       goSettings: '去设置下载 ffmpeg'
     },
     theme: '主题',
@@ -412,40 +415,40 @@ export default {
       command: 'Claude Code 接入命令',
       hint: 'Token 跨重启复用（可在上方重置）。Token 相当于本机 MCP 服务的全部权限，请勿泄露。',
       blender: {
-        title: 'Blender MCP 桥',
+        title: 'Blender 工具集',
         subtitle:
-          '把 blender-mcp 这类 stdio MCP server 暴露为 streamable-http 端点，供 dsh mcp-client 消费 Blender 工具面。',
+          '应用内建的 MCP server 直接连 Blender addon，不再需要 Python / uv 或任何子进程：在 Blender 里启用 MCP addon 后，AI 即可读场景、执行 bpy 脚本、截屏，并把模型导出回资产库。',
         enabled: '启用',
-        notEnabledHint: '桥已关闭。勾选启用并点击「重启 Blender 桥」生效。',
-        running: '桥运行中 · 端口 {port}',
-        notRunning: '桥未启动（blender-mcp 未安装 / 子进程崩溃 / 已被禁用）',
-        spawnError: '子进程失败：{error}',
-        command: '启动命令',
-        commandHint:
-          'Windows 上 Node 的 spawn 不走 PATHEXT，建议直接填绝对路径（uv 安装后默认在 C:\\Users\\<你>\\.local\\bin\\uvx.exe）。',
-        resolvedCommand: '实际可执行文件（PATH 解析后）',
-        resolvedCommandNull:
-          '在 PATH 上找不到 `{command}`；spawn 会 ENOENT 失败。请填绝对路径，或确认 uv 已装且 PATH 含 .local\\bin。',
-        args: '附加参数',
-        argsHint: '空格或逗号分隔，传给命令首段之后的参数；环境变量请用下方独立字段。',
+        notEnabledHint:
+          '已关闭。勾选「启用」并点击「应用并重连」生效；关闭后 AI 看不到 Blender 工具。',
+        connected: '已连接 Blender addon',
+        notConnected: '尚未连上 Blender addon（确认 Blender 正在运行且 addon 已启用）',
+        connectError: '连接失败：{error}',
+        endpoint: '端点',
+        copyEndpoint: '复制端点',
+        endpointCopied: '端点已复制到剪贴板',
+        addonType: 'Blender 端 addon',
+        addonTypeCommunity: 'ahujasid/blender-mcp（社区 addon.py）',
+        addonTypeOfficial: 'Blender Lab MCP Server（官方扩展）',
+        addonTypeHint:
+          '两种 addon 默认都监听 localhost:9876，但线协议互不兼容：装的是哪一种就选哪一种，连不上或一直报「连接已重置」多半是选错了。',
         serverHost: 'Addon 主机',
-        serverHostHint: '传给 blender-mcp 子进程的 BLENDER_HOST；addon 默认监听本机 9876。',
+        serverHostHint: 'Blender addon 监听的主机；addon.py 默认只监听本机。',
         serverPort: 'Addon 端口',
-        serverPortHint:
-          '传给 blender-mcp 子进程的 BLENDER_PORT；通常与 Blender 内 addon 端口一致。',
-        safeMode: 'Safe Mode',
+        serverPortHint: 'Blender addon 监听的端口，默认 9876；若改过 addon 端口请同步修改。',
+        safeMode: '代码护栏（Safe Mode）',
         safeModeHint:
-          '开启后 blender-mcp 会在 Blender 中执行脚本前做白名单检查，阻断文件 I/O、subprocess、网络访问。官方与 PyPI 均推荐开启。',
-        bridgePort: '桥 HTTP 端口',
-        bridgePortHint: '桥对外暴露的 streamable-http 端口；需与 dsh mcp-client 注册端点一致。',
-        addonInstall: '安装 Blender 端 addon',
-        addonInstallHint: '复制安装命令',
-        addonInstallCopied: '安装命令已复制到剪贴板',
-        restart: '重启 Blender 桥',
-        restartBusy: '重启中…',
-        restartOk: 'Blender 桥已重启',
-        restartDisabled: '已禁用 Blender 桥',
-        serverEnv: '子进程环境变量',
+          '开启后：脚本只能 import bpy / bmesh / mathutils 与纯 Python 标准库，并禁用 eval/exec/open、os/subprocess、handlers/timers 与类注册；渲染、保存、导入导出等 bpy 操作符不受限制。这是词法护栏而非沙箱——真正的兜底是对话模式（Ask / Plan）在请求级收窄可用工具。',
+        applyAndReconnect: '应用并重连',
+        restartBusy: '重连中…',
+        restartOk: 'Blender 工具集已应用，连接状态见上方',
+        restartDisabled: '已关闭 Blender 工具集',
+        blenderVersion: 'Blender 版本',
+        addonVersion: 'Addon 版本',
+        protocolVersion: '协议版本',
+        lastCheckedAt: '最近探活',
+        addonSetup:
+          'Blender 端准备（二选一）：① 社区方案——从 blender-mcp 项目下载 addon.py，在 Edit → Preferences → Add-ons 里安装并启用；② 官方方案——在 Blender 的扩展平台安装「MCP Server」（Blender Lab）并启动。两种 addon 都无需在 Blender 侧填写地址，本应用会主动连接；端口默认 9876。',
         persist: '保存到设置（下次启动仍生效）'
       }
     },
@@ -1749,6 +1752,7 @@ export default {
       separateAudioCenterNote:
         '本次使用内置中置声道分离（适合人声居中的素材）；配置 AUDIO_SEPARATION_API_URL 可启用第三方 AI 分离服务。',
       separateAudioNoSource: '选中片段没有可用音源',
+      separateAudioFailTitle: '分离失败',
       separateAudioFailed: '分离失败：{error}',
       separateVocal: '人声',
       separateInstrumental: '伴奏',
@@ -3769,7 +3773,8 @@ export default {
         image: '图片输出',
         video: '视频输出',
         voice: '声音输出',
-        text: '文本输出'
+        text: '文本输出',
+        default: '输出'
       }
     },
     output: {
@@ -3803,6 +3808,7 @@ export default {
     },
     notepad: {
       appMark: '记事本',
+      title: '记事本',
       copy: '复制',
       copied: '已复制到剪贴板',
       close: '关闭',
@@ -3906,6 +3912,9 @@ export default {
       },
       beatGen: {
         hint: '运行本节点收集各单元文本并落地到输出路径'
+      },
+      tablePassThrough: {
+        hint: '双击打开表格；运行节点导入目录 JSON，并在此预览输出端口'
       },
       multiAngle: {
         hint: '双击节点编辑机位与模型；运行后输出结果图，此处可预览图库与提示词',

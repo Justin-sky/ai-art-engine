@@ -41,6 +41,8 @@ const EXEMPT_FILES = new Set([
   'src/main/services/deepseekHarnessService.ts',
   'src/main/services/deepseekHarnessFailure.ts',
   'src/main/services/mcpServerService.ts',
+  'src/shared/blenderMcp.ts',
+  'src/main/services/blenderMcpService.ts',
   'src/renderer/src/features/mcp/mcpTaskRunner.ts',
   'src/renderer/src/features/mcp/renderJobHandlers.ts',
   'src/shared/asyncSemaphore.ts',

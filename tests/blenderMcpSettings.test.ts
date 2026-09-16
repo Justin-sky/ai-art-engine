@@ -2,7 +2,7 @@
  * src/shared/domain.ts 中 BlenderMcpSettings 兜底归一化测试：
  * - 老 settings.json 缺 blenderMcp 段时调用，保证写盘前结构完整
  * - 非法值（端口越界、空字符串、错误类型）回退默认
- * - 合法值原样保留
+ * - 旧版本写入的 command / args / bridgePort 已被移除，必须当未知字段丢弃
  */
 import { describe, expect, it } from 'vitest'
 import {
@@ -27,20 +27,37 @@ describe('normalizeBlenderMcpSettings', () => {
     )
   })
 
+  it('默认值指向 addon.py 的默认监听地址，且护栏默认打开', () => {
+    const defaults = createDefaultBlenderMcpSettings()
+    expect(defaults).toEqual({
+      enabled: true,
+      serverHost: 'localhost',
+      serverPort: 9876,
+      safeMode: true,
+      addonType: 'community'
+    })
+  })
+
   it('合法字段全部保留', () => {
     const input = {
       enabled: false,
-      command: 'python',
-      args: '-m blender_mcp',
       serverHost: '192.168.1.10',
       serverPort: 9877,
       safeMode: false,
-      bridgePort: 43200
+      addonType: 'official'
     }
     expect(normalizeBlenderMcpSettings(input)).toEqual(input)
   })
 
-  it('serverPort / bridgePort 越界 / 非法值回退默认', () => {
+  it('addonType 只有 official 合法，其余回退 community', () => {
+    expect(normalizeBlenderMcpSettings({ addonType: 'official' }).addonType).toBe('official')
+    expect(normalizeBlenderMcpSettings({ addonType: 'Community' }).addonType).toBe('community')
+    expect(normalizeBlenderMcpSettings({ addonType: 'blender-lab' }).addonType).toBe('community')
+    expect(normalizeBlenderMcpSettings({ addonType: 1 }).addonType).toBe('community')
+    expect(normalizeBlenderMcpSettings({}).addonType).toBe('community')
+  })
+
+  it('serverPort 越界 / 非法值回退默认', () => {
     const defaults = createDefaultBlenderMcpSettings()
     expect(normalizeBlenderMcpSettings({ serverPort: 0 }).serverPort).toBe(defaults.serverPort)
     expect(normalizeBlenderMcpSettings({ serverPort: 99999 }).serverPort).toBe(defaults.serverPort)
@@ -48,16 +65,13 @@ describe('normalizeBlenderMcpSettings', () => {
       defaults.serverPort
     )
     expect(normalizeBlenderMcpSettings({ serverPort: 3.7 }).serverPort).toBe(3)
-    expect(normalizeBlenderMcpSettings({ bridgePort: 70000 }).bridgePort).toBe(defaults.bridgePort)
-    expect(normalizeBlenderMcpSettings({ bridgePort: -1 }).bridgePort).toBe(defaults.bridgePort)
   })
 
-  it('空白 command / serverHost 回退默认', () => {
+  it('空白 serverHost 回退默认', () => {
     const defaults = createDefaultBlenderMcpSettings()
-    expect(normalizeBlenderMcpSettings({ command: '   ' }).command).toBe(defaults.command)
-    expect(normalizeBlenderMcpSettings({ command: '' }).command).toBe(defaults.command)
     expect(normalizeBlenderMcpSettings({ serverHost: '' }).serverHost).toBe(defaults.serverHost)
     expect(normalizeBlenderMcpSettings({ serverHost: '  ' }).serverHost).toBe(defaults.serverHost)
+    expect(normalizeBlenderMcpSettings({ serverHost: ' 10.0.0.2 ' }).serverHost).toBe('10.0.0.2')
   })
 
   it('非布尔 safeMode / enabled 回退默认', () => {
@@ -69,11 +83,30 @@ describe('normalizeBlenderMcpSettings', () => {
     )
   })
 
-  it('未知字段被忽略（不会进结果）', () => {
+  it('旧版本的 command / args / bridgePort 被当作未知字段丢弃', () => {
     const result = normalizeBlenderMcpSettings({
       enabled: true,
       command: 'uvx',
       args: 'blender-mcp',
+      bridgePort: 43120,
+      serverPort: 9876,
+      safeMode: true
+    })
+    expect(result).toEqual({
+      enabled: true,
+      serverHost: 'localhost',
+      serverPort: 9876,
+      safeMode: true,
+      addonType: 'community'
+    })
+    expect(result).not.toHaveProperty('command')
+    expect(result).not.toHaveProperty('args')
+    expect(result).not.toHaveProperty('bridgePort')
+  })
+
+  it('未知字段 / 原型污染被忽略（不会进结果）', () => {
+    const result = normalizeBlenderMcpSettings({
+      enabled: true,
       extraField: 'dropped',
       __proto__: { malicious: true }
     })

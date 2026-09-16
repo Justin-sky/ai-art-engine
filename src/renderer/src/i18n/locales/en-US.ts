@@ -115,7 +115,8 @@ export default {
     second: 's',
     open: 'Open',
     close: 'Close',
-    done: 'Done'
+    done: 'Done',
+    remove: 'Remove'
   },
   characterRefs: {
     title: 'Character refs',
@@ -362,6 +363,8 @@ export default {
       refreshFailed: 'Failed to check the ffmpeg status. Try again.',
       installDone: 'Installed. Video features are ready to use.',
       installFailed: 'Install did not complete — open the download page to install manually.',
+      installDir: 'Install directory',
+      versionLabel: 'Version',
       goSettings: 'Open ffmpeg settings'
     },
     theme: 'Theme',
@@ -418,45 +421,42 @@ export default {
       command: 'Claude Code command',
       hint: 'The token is reused across restarts (reset it above). Treat it as full access to the local MCP service — do not share it.',
       blender: {
-        title: 'Blender MCP bridge',
+        title: 'Blender tools',
         subtitle:
-          'Expose a stdio MCP server like blender-mcp as a streamable-http endpoint so the dsh mcp-client can consume Blender tools.',
+          'A built-in MCP server talks to the Blender addon directly — no Python, no uv, no child process. Once the MCP addon is enabled inside Blender, the AI can read scenes, run bpy scripts, take screenshots and export models back to the asset library.',
         enabled: 'Enable',
         notEnabledHint:
-          'The bridge is disabled. Tick "Enable" and click "Restart Blender bridge" to apply.',
-        running: 'Bridge running · port {port}',
-        notRunning:
-          'Bridge not running (blender-mcp not installed / child process crashed / disabled).',
-        spawnError: 'Child process failed: {error}',
-        command: 'Spawn command',
-        commandHint:
-          "Node's spawn on Windows does not honour PATHEXT, so it's safer to give an absolute path (uv installs to C:\\Users\\<you>\\.local\\bin\\uvx.exe by default).",
-        resolvedCommand: 'Resolved executable (after PATH lookup)',
-        resolvedCommandNull:
-          'No `{command}` on PATH; spawn will fail with ENOENT. Fill an absolute path above, or confirm uv is installed and PATH contains .local\\bin.',
-        args: 'Extra arguments',
-        argsHint:
-          'Whitespace or comma separated — passed after the spawn command. Use the dedicated env fields below for environment variables.',
+          'Disabled. Tick "Enable" and click "Apply and reconnect"; the AI sees no Blender tools while off.',
+        connected: 'Connected to the Blender addon',
+        notConnected: 'Not connected yet (make sure Blender is running with the addon enabled)',
+        connectError: 'Connection failed: {error}',
+        endpoint: 'Endpoint',
+        copyEndpoint: 'Copy endpoint',
+        endpointCopied: 'Endpoint copied to clipboard',
+        addonType: 'Blender addon type',
+        addonTypeCommunity: 'ahujasid/blender-mcp (community addon.py)',
+        addonTypeOfficial: 'Blender Lab MCP Server (official extension)',
+        addonTypeHint:
+          'Both addons listen on localhost:9876 by default but speak incompatible wire protocols — pick the one you actually installed. Constant "connection reset" errors usually mean the wrong type is selected.',
         serverHost: 'Addon host',
         serverHostHint:
-          'Passed to the blender-mcp child as BLENDER_HOST. The default Blender addon listens on localhost:9876.',
+          'Host the Blender addon listens on; addon.py binds to localhost by default.',
         serverPort: 'Addon port',
         serverPortHint:
-          'Passed to the blender-mcp child as BLENDER_PORT; usually matches the Blender addon port.',
-        safeMode: 'Safe mode',
+          'Port the Blender addon listens on, 9876 by default; change it here if you changed the addon.',
+        safeMode: 'Code guard (safe mode)',
         safeModeHint:
-          'When on, blender-mcp runs a whitelist check before executing scripts in Blender, blocking file I/O, subprocess and network access. Both Blender official docs and PyPI recommend leaving this on.',
-        bridgePort: 'Bridge HTTP port',
-        bridgePortHint:
-          'Streamable-http port the bridge exposes; must match what the dsh mcp-client registers against.',
-        addonInstall: 'Install Blender-side addon',
-        addonInstallHint: 'Copy install command',
-        addonInstallCopied: 'Install command copied to clipboard',
-        restart: 'Restart Blender bridge',
-        restartBusy: 'Restarting…',
-        restartOk: 'Blender bridge restarted',
-        restartDisabled: 'Blender bridge disabled',
-        serverEnv: 'Child process environment',
+          'When on, scripts may only import bpy / bmesh / mathutils and pure-Python stdlib, and eval/exec/open, os/subprocess, handlers/timers and class registration are rejected. Rendering, saving and importing/exporting bpy operators stay available. This is a lexical guard, not a sandbox — the real backstop is the chat mode (Ask / Plan) narrowing the available tools per request.',
+        applyAndReconnect: 'Apply and reconnect',
+        restartBusy: 'Reconnecting…',
+        restartOk: 'Blender tools applied — see the connection state above',
+        restartDisabled: 'Blender tools disabled',
+        blenderVersion: 'Blender version',
+        addonVersion: 'Addon version',
+        protocolVersion: 'Protocol version',
+        lastCheckedAt: 'Last probe',
+        addonSetup:
+          'Blender side (pick one): ① community — download addon.py from the blender-mcp project and install it via Edit → Preferences → Add-ons; ② official — install the "MCP Server" extension (Blender Lab) from the Blender extensions platform and start it. Either way nothing needs to be filled in on the Blender side; this app connects outbound. Default port 9876.',
         persist: 'Persist to settings (apply on next launch)'
       }
     },
@@ -1800,6 +1800,7 @@ export default {
       separateAudioCenterNote:
         'Used built-in center-channel separation (best for centered dialogue); set AUDIO_SEPARATION_API_URL to enable a third-party AI separation service.',
       separateAudioNoSource: 'The selected clip has no usable audio source',
+      separateAudioFailTitle: 'Separation failed',
       separateAudioFailed: 'Separation failed: {error}',
       separateVocal: 'Vocal',
       separateInstrumental: 'Instrumental',
@@ -3855,7 +3856,8 @@ export default {
         image: 'Image output',
         video: 'Video output',
         voice: 'Voice output',
-        text: 'Text output'
+        text: 'Text output',
+        default: 'Output'
       }
     },
     output: {
@@ -3891,6 +3893,7 @@ export default {
     },
     notepad: {
       appMark: 'Notepad',
+      title: 'Notepad',
       copy: 'Copy',
       copied: 'Copied to clipboard',
       close: 'Close',
@@ -3998,6 +4001,9 @@ export default {
       },
       beatGen: {
         hint: 'Running this node collects unit texts and saves them to the output path.'
+      },
+      tablePassThrough: {
+        hint: 'Double-click to open the table. Run the node to import catalog JSON and preview the out port here.'
       },
       multiAngle: {
         hint: 'Double-click to edit camera and model. Run to generate an image; this panel shows the gallery and prompt.',

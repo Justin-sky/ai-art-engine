@@ -1,5 +1,4 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
-import { spawn, type ChildProcess } from 'node:child_process'
 import { randomUUID, timingSafeEqual } from 'node:crypto'
 import {
   existsSync,
@@ -13,7 +12,13 @@ import {
 import { join } from 'node:path'
 import { app, ipcMain } from 'electron'
 import { AsyncSemaphore } from '@shared/asyncSemaphore'
-import type { AssetInfo, BlenderMcpSettings } from '@shared/domain'
+import {
+  BLENDER_MCP_PATH,
+  blenderToolAccessOf,
+  blenderToolDescriptors,
+  blenderToolSpec
+} from '@shared/blenderMcp'
+import type { AssetInfo } from '@shared/domain'
 import { UI_KIT_PART_KINDS } from '@shared/gameAssets'
 import {
   denialReasonForTool,
@@ -130,6 +135,13 @@ import type {
   TranscribeAudioSegment
 } from '@shared/modelProvider'
 import { modelProviderFacade } from './modelProviders'
+import {
+  blenderAddonLink,
+  blenderMcpEnabled,
+  restartBlenderMcp,
+  runBlenderTool,
+  stopBlenderMcp
+} from './blenderMcpService'
 import { mcpActivityService } from './mcpActivityService'
 import { broadcastToAllWindows } from '../broadcast'
 import { commitAiWorkflow, planAiWorkflow } from './graphPlanService'
@@ -3101,29 +3113,6 @@ function mcpConfigFile(): string {
   return join(app.getPath('userData'), 'mcp.json')
 }
 
-/** stdio→HTTP 桥（mcp-stdio-bridge.mjs）的子进程句柄与最近一次握手状态 */
-let blenderBridgeChild: ChildProcess | null = null
-let blenderBridgeInfo: {
-  port: number
-  token: string
-  blenderSpawned: boolean
-  command: string
-  args: string[]
-  resolvedCommand: string | null
-  lastError: string | null
-} | null = null
-let blenderBridgeConfigPath = ''
-
-function blenderBridgeConfigFile(): string {
-  return join(app.getPath('userData'), 'mcp-blender.json')
-}
-
-/** 解析桥脚本路径：dev = 项目 scripts/，打包后 = resources/mcp-stdio-bridge.ts */
-function blenderBridgeScriptPath(): string {
-  if (app.isPackaged) return join(process.resourcesPath || '', 'mcp-stdio-bridge.ts')
-  return join(app.getAppPath(), 'scripts', 'mcp-stdio-bridge.ts')
-}
-
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   const payload = JSON.stringify(body)
   res.writeHead(status, {
@@ -3377,6 +3366,50 @@ const handleMcpProtocolMessage = createMcpProtocolHandler({
   }
 })
 
+/**
+ * Blender 工具面的协议处理：挂在**同一个 HTTP 服务**的另一个路径上（`/mcp/blender`）。
+ *
+ * 复用主工具面的全部治理：模式收窄（Ask 不给工具、Plan 未确认前只留只读）、越权拒绝、
+ * 审计日志、图片回传（截图走 image content）。差别只在「谁来执行」——这里把命令交给
+ * blenderMcpService，由它走 TCP 直连 addon，不再有 Python / uv / 子进程。
+ */
+const handleBlenderMcpProtocolMessage = createMcpProtocolHandler({
+  serverInfo: {
+    name: 'blender',
+    title: 'Blender',
+    get version() {
+      return mcpServerVersion
+    }
+  },
+  listTools: (ctx) => {
+    const view = accessViewFor(ctx)
+    return blenderToolDescriptors().filter(({ name }) =>
+      isToolVisible(blenderToolAccessOf(name), view)
+    )
+  },
+  callTool: async (name, args, callCtx) => {
+    const spec = blenderToolSpec(name)
+    if (!spec) return { error: `未知工具：${name}` }
+    // 与主工具面同一套硬约束：工具清单里没有的东西被调用（模型幻觉 / 陈旧清单）也要挡住
+    const denial = denialReasonForTool(spec.access, accessViewFor(callCtx))
+    if (denial) {
+      auditDeniedToolCall(name, args, denial)
+      return { error: denial }
+    }
+    if (callCtx?.signal?.aborted) return { error: '调用已取消' }
+    const startedAt = Date.now()
+    const outcome = await runBlenderTool(spec, args)
+    appendMcpAudit({
+      tool: `blender.${name}`,
+      ok: !outcome.error,
+      durationMs: Date.now() - startedAt,
+      args,
+      error: outcome.error
+    })
+    return outcome
+  }
+})
+
 function readStoredMcpConfig(): { port?: number; token?: string } {
   try {
     const path = mcpConfigFile()
@@ -3400,251 +3433,49 @@ export function getMcpServerInfo(): McpServerInfo | null {
     token: mcpToken,
     configPath: mcpConfigPath,
     endpoint: `http://127.0.0.1:${mcpPort}/mcp`,
-    blenderBridge: getBlenderMcpBridgeInfo()
-  }
-}
-
-/** Blender MCP stdio 桥当前状态：供 dsh 注入第二个 mcp-client 实例、UI 展示 */
-export function getBlenderBridgeInfo(): {
-  port: number
-  token: string
-  blenderSpawned: boolean
-  command: string
-  args: string[]
-  configPath: string
-  endpoint: string
-} | null {
-  if (!blenderBridgeChild || !blenderBridgeInfo) return null
-  return {
-    port: blenderBridgeInfo.port,
-    token: blenderBridgeInfo.token,
-    blenderSpawned: blenderBridgeInfo.blenderSpawned,
-    command: blenderBridgeInfo.command,
-    args: blenderBridgeInfo.args,
-    configPath: blenderBridgeConfigPath,
-    endpoint: `http://127.0.0.1:${blenderBridgeInfo.port}/mcp`
+    blenderBridge: getBlenderMcpInfo()
   }
 }
 
 /**
- * 启动 stdio→streamable-http 桥进程：把 blender-mcp 这类 stdio MCP server 暴露为 HTTP 端点，
- * 让 dsh 的 mcp-client 插件（仅 streamable-http）能直接消费 Blender 工具面。
+ * dsh 侧 Blender 工具面接入信息：启用且主服务在跑时给出端点，否则 null（不写第二段 mcp-client）。
  *
- * 桥脚本路径：dev 下从 scripts/mcp-stdio-bridge.mjs 直接跑；打包后从
- * resources/mcp-stdio-bridge.mjs（由 electron-builder.yml 的 extraResources 同步）。
- *
- * 桥握手：spawn 后短暂轮询读 mcp-blender.json（与 mcp.json 同目录），由桥在 listen 回调里
- * 写盘。轮询上限 3 秒，超时视为启动失败。
+ * 与旧实现的关键差别：**同端口、同 token**。Blender 工具面现在是主 MCP 服务上的一个路径
+ * （`/mcp/blender`），不再是独立端口 + 独立 token + 独立子进程，因此这里只回端点——
+ * dsh 复用 STUDIO_MCP_TOKEN，桥已经不需要自己的凭据了。
  */
-async function startBlenderMcpBridge(): Promise<void> {
-  if (blenderBridgeChild) return
-  // 设置面板禁用后跳过 spawn；保留「未启动」语义给 UI（getBlenderMcpBridgeInfo 返回 null）
-  const blenderCfg = settingsService.get().blenderMcp
-  if (!blenderCfg.enabled) {
-    console.log('[mcp] Blender 桥已在设置中禁用，跳过 spawn')
-    return
-  }
-  const script = blenderBridgeScriptPath()
-  if (!existsSync(script)) {
-    console.warn(`[mcp] stdio 桥脚本缺失（${script}），跳过 Blender 桥启动`)
-    return
-  }
-  const configPath = blenderBridgeConfigFile()
-  // 清掉旧状态文件，避免读到上一次进程的端口/token
-  try {
-    if (existsSync(configPath)) writeFileSync(configPath, '')
-  } catch (err) {
-    console.warn('[mcp] 清旧 mcp-blender.json 失败:', err)
-  }
-  blenderBridgeConfigPath = configPath
-  // settings.blenderMcp 是唯一权威：翻译成桥进程消费的 AIAE_BLENDER_MCP_* env 后
-  // 直接注入 spawn env，不再继承 process.env 的杂项（防泄漏 + 防 shell env 误覆盖）。
-  // PATH 必须保留，否则子进程找不到 uvx / blender-mcp 可执行文件。
-  const envOverrides = blenderBridgeEnvFromSettings(blenderCfg)
-  const child = spawn(
-    process.execPath,
-    // 桥脚本用 .ts（src 全部 .ts 统一 vitest 单测）；Electron 44 内置 Node 24
-    // 支持 type stripping，加 --experimental-strip-types 后直跑 .ts 无需编译产物。
-    ['--experimental-strip-types', script],
-    {
-      env: {
-        PATH: process.env.PATH,
-        ELECTRON_RUN_AS_NODE: '1',
-        ...envOverrides
-      },
-      stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true
-    }
-  )
-  blenderBridgeChild = child
-  child.stderr.on('data', (chunk: Buffer) => {
-    const text = chunk.toString('utf8').trimEnd()
-    if (text) console.warn('[mcp][blender-bridge]', text)
-  })
-  child.on('exit', (code, signal) => {
-    console.warn(`[mcp] stdio 桥退出 code=${code} signal=${signal}`)
-    if (blenderBridgeChild === child) {
-      blenderBridgeChild = null
-      blenderBridgeInfo = null
-    }
-  })
-  // 轮询 mcp-blender.json，等桥写盘。桥脚本在 spawn 时立即乐观写一份 spawned=true 快照，
-  // on('error')/on('exit') 触发后覆盖写 spawned=false + lastError（race-free 因为 backend 是
-  // 唯一写入者）。这里 5s 超时覆盖「ENOENT + Node module 重新解析」+ 「TypeScript 首次编译」
-  // 的最坏情况；超过 5s 视为不可恢复。
-  const deadline = Date.now() + 5000
-  while (Date.now() < deadline) {
-    if (!existsSync(configPath)) {
-      await new Promise((r) => setTimeout(r, 100))
-      continue
-    }
-    try {
-      const text = readFileSync(configPath, 'utf8')
-      if (!text.trim()) {
-        await new Promise((r) => setTimeout(r, 100))
-        continue
-      }
-      const parsed = JSON.parse(text) as {
-        port?: unknown
-        token?: unknown
-        blenderSpawned?: unknown
-        command?: unknown
-        args?: unknown
-        resolvedCommand?: unknown
-        lastError?: unknown
-      }
-      if (
-        typeof parsed.port === 'number' &&
-        typeof parsed.token === 'string' &&
-        typeof parsed.blenderSpawned === 'boolean' &&
-        typeof parsed.command === 'string' &&
-        Array.isArray(parsed.args)
-      ) {
-        // 看到 spawned=false 立即停止轮询：已是终态，再等也是同一个值
-        const args = parsed.args.filter((a): a is string => typeof a === 'string')
-        const resolvedCommand =
-          typeof parsed.resolvedCommand === 'string' && parsed.resolvedCommand
-            ? parsed.resolvedCommand
-            : null
-        const lastError =
-          typeof parsed.lastError === 'string' && parsed.lastError ? parsed.lastError : null
-        blenderBridgeInfo = {
-          port: parsed.port,
-          token: parsed.token,
-          blenderSpawned: parsed.blenderSpawned,
-          command: parsed.command,
-          args,
-          resolvedCommand,
-          lastError
-        }
-        if (parsed.blenderSpawned) {
-          console.log(`[mcp] stdio 桥就绪 → http://127.0.0.1:${parsed.port}/mcp`)
-        } else {
-          console.warn(
-            `[mcp] stdio 桥子进程未存活：${lastError ?? '未知原因（见 mcp-blender.json）'}`
-          )
-        }
-        return
-      }
-    } catch (err) {
-      console.warn('[mcp] 解析 mcp-blender.json 失败:', err)
-    }
-    await new Promise((r) => setTimeout(r, 100))
-  }
-  console.warn('[mcp] stdio 桥 5s 内未写出有效 mcp-blender.json，按未就绪处理')
+export function getBlenderMcpEndpoint(): string | null {
+  if (!server || !mcpPort) return null
+  if (!blenderMcpEnabled()) return null
+  return `http://127.0.0.1:${mcpPort}${BLENDER_MCP_PATH}`
 }
 
-/** 关闭 stdio 桥进程与配置快照；mcp-blender.json 不主动删（重启若端口/token 复用可继续生效） */
-function stopBlenderMcpBridge(): void {
-  if (!blenderBridgeChild) return
-  const child = blenderBridgeChild
-  blenderBridgeChild = null
-  blenderBridgeInfo = null
-  try {
-    child.kill()
-  } catch (err) {
-    console.warn('[mcp] kill stdio 桥失败:', err)
-  }
-}
-
-/**
- * 把设置面板的 blenderMcp 配置翻译为桥进程消费的 AIAE_BLENDER_MCP_* env 段。
- * settings.blenderMcp 是唯一来源——不读 process.env，避免 shell 残留 env 误覆盖 UI 选项。
- */
-function blenderBridgeEnvFromSettings(cfg: BlenderMcpSettings): Record<string, string> {
-  const cmd = cfg.command.trim() || 'uvx'
-  const args = cfg.args.trim()
-  // 用空格 split 兼容「uvx blender-mcp」与「uvx,blender-mcp」两种填法
-  const argParts = args ? args.split(/[\s,]+/).filter(Boolean) : []
+/** Blender 工具面状态：供 getMcpServerInfo().blenderBridge 与 IPC 处理器共用（同步读缓存） */
+export function getBlenderMcpInfo(): McpBlenderBridgeInfo {
+  const link = blenderAddonLink()
   return {
-    AIAE_BLENDER_MCP_CMD: [cmd, ...argParts].join(' '),
-    AIAE_BLENDER_MCP_PORT: String(cfg.bridgePort),
-    AIAE_BLENDER_MCP_SERVER_HOST: cfg.serverHost.trim() || 'localhost',
-    AIAE_BLENDER_MCP_SERVER_PORT: String(cfg.serverPort),
-    AIAE_BLENDER_MCP_SAFE_MODE: cfg.safeMode ? '1' : '0'
+    enabled: link.enabled,
+    mounted: !!server && !!mcpPort && link.enabled,
+    endpoint: mcpPort ? `http://127.0.0.1:${mcpPort}${BLENDER_MCP_PATH}` : '',
+    serverHost: link.host,
+    serverPort: link.port,
+    safeMode: link.safeMode,
+    connected: link.connected,
+    blenderVersion: link.blenderVersion,
+    addonVersion: link.addonVersion,
+    protocolVersion: link.protocolVersion,
+    lastError: link.lastError,
+    lastCheckedAt: link.lastCheckedAt
   }
 }
 
-/**
- * Blender MCP 桥的 UI 视图：供 getMcpServerInfo().blenderBridge 与 IPC 处理器共用。
- * 桥未启动 / 已被禁用 → null。
- */
-export function getBlenderMcpBridgeInfo(): McpBlenderBridgeInfo | null {
-  if (!blenderBridgeChild || !blenderBridgeInfo) return null
-  const cfg = settingsService.get().blenderMcp
-  // blenderSpawned 是 spawn() 返回值：true 仅代表 blender-mcp 子进程被拉起（不代表 addon 已通）
-  return {
-    spawned: true,
-    port: blenderBridgeInfo.port,
-    token: blenderBridgeInfo.token,
-    endpoint: `http://127.0.0.1:${blenderBridgeInfo.port}/mcp`,
-    // 后端 running 反映子进程是否还活着；addon 是否真的可达只能等 -32603 出现
-    blenderRunning: blenderBridgeInfo.blenderSpawned,
-    command: blenderBridgeInfo.command,
-    args: blenderBridgeInfo.args,
-    resolvedCommand: blenderBridgeInfo.resolvedCommand,
-    serverEnv: {
-      BLENDER_HOST: cfg.serverHost,
-      BLENDER_PORT: String(cfg.serverPort),
-      BLENDER_MCP_SAFE_MODE: cfg.safeMode ? '1' : '0'
-    },
-    addonInstallHint: 'uvx blender-mcp install-addon',
-    configPath: blenderBridgeConfigPath,
-    lastError: blenderBridgeInfo.lastError
-  }
-}
-
-/** 设置面板：应用 blender 桥配置（落盘 + 重启）；不接受运行时临时改配置 */
-export async function restartBlenderMcpBridge(
+/** 设置面板：应用 Blender 配置（落盘 + 断开重连 + 立即探活），并回一份带端点的完整状态 */
+export async function applyBlenderMcpSettings(
   input: McpBlenderRestartInput
-): Promise<McpBlenderBridgeInfo | null> {
-  const current = settingsService.get()
-  const next = { ...current.blenderMcp }
-  if (typeof input?.bridgePort === 'number' && Number.isFinite(input.bridgePort)) {
-    const n = Math.trunc(input.bridgePort)
-    if (n < 1 || n > 65535) throw new Error('bridgePort 必须在 1–65535 之间')
-    next.bridgePort = n
-  }
-  if (typeof input?.serverPort === 'number' && Number.isFinite(input.serverPort)) {
-    const n = Math.trunc(input.serverPort)
-    if (n < 1 || n > 65535) throw new Error('serverPort 必须在 1–65535 之间')
-    next.serverPort = n
-  }
-  if (typeof input?.enabled === 'boolean') next.enabled = input.enabled
-  if (typeof input?.command === 'string') next.command = input.command
-  if (typeof input?.args === 'string') next.args = input.args
-  if (typeof input?.serverHost === 'string') next.serverHost = input.serverHost
-  if (typeof input?.safeMode === 'boolean') next.safeMode = input.safeMode
-  // settings 是唯一权威：立即写盘，spawn env 由 startBlenderMcpBridge 从 settings 翻译
-  settingsService.set({ ...current, blenderMcp: next })
-  // 关桥 → 起桥；disabled=true 时仅清状态不 spawn
-  stopBlenderMcpBridge()
-  if (next.enabled) {
-    await startBlenderMcpBridge()
-  }
-  return getBlenderMcpBridgeInfo()
+): Promise<McpBlenderBridgeInfo> {
+  await restartBlenderMcp(input)
+  return getBlenderMcpInfo()
 }
-
 export async function startMcpServer(): Promise<void> {
   if (server) return
   const stored = readStoredMcpConfig()
@@ -3731,11 +3562,10 @@ export async function startMcpServer(): Promise<void> {
         )
       )
       console.log(`[mcp] tool server ready at http://127.0.0.1:${port} (config: ${mcpConfigPath})`)
-      // 启动 stdio→HTTP 桥（blender-mcp 等第三方 stdio MCP server 的入口）；
-      // 桥脚本缺失或 spawn 失败不阻塞主工具服务，仅日志告警。
-      void startBlenderMcpBridge().catch((err) => {
-        console.warn('[mcp] 启动 stdio 桥失败:', err)
-      })
+      console.log(
+        `[mcp] blender tools at http://127.0.0.1:${port}${BLENDER_MCP_PATH}` +
+          '（addon 连接按需建立，无需子进程）'
+      )
       return
     }
   }
@@ -3745,8 +3575,8 @@ export async function startMcpServer(): Promise<void> {
 /** 关闭运行中的 MCP 服务（保留 mcp.json，供 restart 复用 token / 端口偏好） */
 async function closeMcpServer(): Promise<void> {
   if (!server) return
-  // 先关 stdio 桥：避免主 HTTP server 关闭后桥还在响应孤儿请求
-  stopBlenderMcpBridge()
+  // 先断 addon 连接：Blender 工具面挂在同一个 server 上，避免它比 server 活得久
+  stopBlenderMcp()
   const closing = server
   server = null
   ipcMain.removeHandler(IpcChannels.MCP_TASK_REPORT)
@@ -3813,6 +3643,7 @@ export async function restartMcpServer(input: McpRestartInput): Promise<McpServe
 
 export function stopMcpServer(): void {
   if (!server) return
+  stopBlenderMcp()
   const closing = server
   server = null
   ipcMain.removeHandler(IpcChannels.MCP_TASK_REPORT)
@@ -3852,49 +3683,74 @@ async function onRequest(req: IncomingMessage, res: ServerResponse): Promise<voi
     return
   }
 
-  /** MCP streamable HTTP 直连端点：POST 单条 JSON-RPC；通知回 202；GET/DELETE 不支持 */
   if (url === '/mcp') {
-    if (req.method !== 'POST') {
-      res.writeHead(405, { Allow: 'POST' })
-      res.end()
+    await serveMcpEndpoint(req, res, handleMcpProtocolMessage)
+    return
+  }
+
+  /**
+   * Blender 工具面：与主工具面同端口、不同路径。
+   * 用路径而不是独立端口/独立 token/独立进程，是为了让「端口被占用 / token 过期 /
+   * 子进程没起来」这三类旧故障整体消失（旧实现各有一份，排查要串联三处日志）。
+   */
+  if (url === BLENDER_MCP_PATH) {
+    if (!blenderMcpEnabled()) {
+      sendJson(res, 403, { ok: false, error: 'Blender 工具面已在设置中禁用' })
       return
     }
-    const body = await readBody(req)
-    let message: unknown
-    try {
-      message = JSON.parse(body)
-    } catch {
-      sendJson(res, 400, {
-        jsonrpc: '2.0',
-        id: null,
-        error: { code: -32700, message: 'JSON 解析失败' }
-      })
-      return
-    }
-    // 客户端断开连接即视为取消：中止进行中的长任务（如 workflow_plan）
-    const controller = new AbortController()
-    const onClose = (): void => {
-      if (!res.writableEnded) controller.abort()
-    }
-    req.on('close', onClose)
-    try {
-      const response = await handleMcpProtocolMessage(message, {
-        signal: controller.signal,
-        ...requestModeContext(req)
-      })
-      if (!response) {
-        res.writeHead(202, { 'Content-Type': 'application/json' })
-        res.end()
-        return
-      }
-      sendJson(res, 200, response)
-    } finally {
-      req.off('close', onClose)
-    }
+    await serveMcpEndpoint(req, res, handleBlenderMcpProtocolMessage)
     return
   }
 
   sendJson(res, 404, { ok: false, error: `未知端点：${req.method} ${url}` })
+}
+
+/**
+ * MCP streamable HTTP 端点的公共管道：POST 单条 JSON-RPC；通知回 202；GET/DELETE 不支持。
+ * `/mcp`（应用工具面）与 `/mcp/blender`（Blender 工具面）共用，只差一个协议处理器。
+ */
+async function serveMcpEndpoint(
+  req: IncomingMessage,
+  res: ServerResponse,
+  handler: (message: unknown, ctx: McpRequestContext) => Promise<Record<string, unknown> | null>
+): Promise<void> {
+  if (req.method !== 'POST') {
+    res.writeHead(405, { Allow: 'POST' })
+    res.end()
+    return
+  }
+  const body = await readBody(req)
+  let message: unknown
+  try {
+    message = JSON.parse(body)
+  } catch {
+    sendJson(res, 400, {
+      jsonrpc: '2.0',
+      id: null,
+      error: { code: -32700, message: 'JSON 解析失败' }
+    })
+    return
+  }
+  // 客户端断开连接即视为取消：中止进行中的长任务（如 workflow_plan、长时间 Blender 命令）
+  const controller = new AbortController()
+  const onClose = (): void => {
+    if (!res.writableEnded) controller.abort()
+  }
+  req.on('close', onClose)
+  try {
+    const response = await handler(message, {
+      signal: controller.signal,
+      ...requestModeContext(req)
+    })
+    if (!response) {
+      res.writeHead(202, { 'Content-Type': 'application/json' })
+      res.end()
+      return
+    }
+    sendJson(res, 200, response)
+  } finally {
+    req.off('close', onClose)
+  }
 }
 
 /** 供测试注入：当前 token（仅测试用途） */

@@ -125,7 +125,7 @@ const hint = computed(() => {
   if (typeId === 'world.table') return t('graph.inspector.worldTable.hint')
   if (typeId === 'beat.table') return t('graph.inspector.beatTable.hint')
   if (typeId === 'beat.gen') return t('graph.inspector.beatGen.hint')
-  return t('graph.inspector.shotTable.hint')
+  return t('graph.inspector.tablePassThrough.hint')
 })
 
 const localTitle = ref('')

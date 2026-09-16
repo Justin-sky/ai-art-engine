@@ -2,7 +2,7 @@
 
 ## 这是什么？
 
-AiArtEngine 内置了一个 **MCP 工具服务**（MCP 是"模型上下文协议"，即 AI 助手调用你本机工具的标准方式）。接入后，**Claude Code、Codex 等 AI Agent 就可以直接操作你的工程**，而不用你手动点界面。应用内的 **AI 对话面板**（工作区左侧「◈」按钮）也通过这套同一工具面运行——它在聊天里 `@` 引用资产并让 Agent 调用下列工具，行为与外部 Agent 完全一致。
+AiArtEngine 内置了一个 **MCP 工具服务**（MCP 是"模型上下文协议"，即 AI 助手调用你本机工具的标准方式）。接入后，**Claude Code、Codex 等 AI Agent 就可以直接操作你的工程**，而不用你手动点界面。应用内的 **AI 对话面板**（工作区左侧「◈」按钮）也通过这套同一套工具集运行——它在聊天里 `@` 引用资产并让 Agent 调用下列工具，行为与外部 Agent 完全一致。
 
 能帮你做什么，举几个例子（对话里直接说就行）：
 
@@ -20,6 +20,8 @@ AiArtEngine 内置了一个 **MCP 工具服务**（MCP 是"模型上下文协议
 - 「这个 SVG 矢量图标 / 矢量动画画成什么样了？」→ `render_svg`
 - 「生成一张标题图 / 一段口播音频，存进工程」→ `generate_image` / `generate_speech`
 - 「刚才提交的视频生成好了吗？」→ `task_status` / `video_job_get`
+- 「在 Blender 里把这几个 Cube 拼成一个底座，做完截张图给我看」→ `execute_blender_code` + `get_viewport_screenshot`
+- 「Blender 里调好的角色导出成 GLB 存进资产库」→ `export_scene` + `asset_import`
 
 一句话：**应用负责干活，Agent 负责发指令，全程不离开你的对话窗口。**
 
@@ -142,7 +144,7 @@ AiArtEngine 内置了一个 **MCP 工具服务**（MCP 是"模型上下文协议
 
 ## 可用工具清单
 
-按用途分四组，按需查阅：
+按用途分五组，按需查阅（第 ⑤ 组需要本机 Blender，且挂在另一个端点上）：
 
 ### ① 工程与资产（探索、读写你的工程）
 
@@ -216,6 +218,37 @@ AiArtEngine 内置了一个 **MCP 工具服务**（MCP 是"模型上下文协议
 | `app_status`  | 版本、当前工程、资产数量                               | 应用运行中 |
 | `models_list` | 已启用的模型提供商与各模态勾选模型（**不含任何密钥**） | 无         |
 
+### ⑤ Blender 工具集（可选，需要本机 Blender）
+
+这一组工具**不在 `/mcp` 主工具集里**，而是挂在同一服务的另一个端点 `/mcp/blender`（「设置 → MCP → Blender 工具集」默认开启；关掉后该端点直接回 403，主工具集不受影响）。外部 Agent 想拿到它，需要**再注册一个 MCP server**：
+
+```bash
+claude mcp add --transport http blender http://127.0.0.1:43110/mcp/blender --header "Authorization: Bearer <应用侧 mcp.json 里的 token>"
+```
+
+应用内的 AI 对话面板自动带上（内部为 dsh 注册第二个 mcp-client 实例），你在对话里说「用 Blender ……」即可。
+
+前置条件：**Blender 正在运行，且已启用 MCP addon**。支持两种 addon，在「设置 → MCP → Blender 工具集」里选择对应类型（两种线协议互不兼容，选错会表现为连接超时或「连接已重置」）：
+
+- **社区方案（默认）**：[blender-mcp](https://github.com/ahujasid/blender-mcp) 项目的 `addon.py`，在 Blender 的 Edit → Preferences → Add-ons 里安装启用；
+- **官方方案**：Blender 扩展平台上的 [Blender Lab「MCP Server」](https://projects.blender.org/lab/blender_mcp) 官方扩展，安装后在其偏好设置里启动服务。
+
+本应用会**主动出站连接** addon 的监听端口（两种 addon 默认都是 `localhost:9876`），不需要在 Blender 侧填任何地址，也不需要 uv / Python / 子进程；两种后端下的工具名称、入参与输出结构保持一致。
+
+| 工具                       | 作用                                                                                                                               | 前置条件         |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| `get_scene_info`           | 场景概览：场景名、对象 / 材质数量、前若干对象的名称 · 类型 · 位置                                                                  | Blender 运行中   |
+| `get_world_state_snapshot` | 完整快照：几何 / 关系 / 动画摘要、当前帧与帧范围、FPS、选中对象、激活相机与灯光                                                    | Blender 运行中   |
+| `get_object_info`          | 单个对象详情（网格对象带顶点 / 边 / 面数与世界包围盒）                                                                             | Blender 运行中   |
+| `get_viewport_screenshot`  | 3D 视口截图，**画面随响应回给多模态客户端**（离屏抓帧，失败回退窗口抓屏）                                                          | Blender 界面可见 |
+| `execute_blender_code`     | 在 Blender 进程内执行 Python（可完整访问 bpy），`print` 原样返回，报错带异常类型与 traceback                                       | Blender 运行中   |
+| `export_scene`             | 把场景（或选中对象 / 指定对象）导出为 glb / gltf / fbx / obj / usd / stl，**回传 3D 资产的主力出口**（配 `asset_import` 进资产库） | Blender 运行中   |
+| `describe_node_type`       | 查节点类型（如 `ShaderNodeTexImage`）的端口与可设属性，写着色器 / 几何节点脚本前先问它                                             | Blender 运行中   |
+| `bpy_api_lookup`           | 在运行中的 Blender 里查 bpy API（操作符 / 类型 / 属性 / 函数），参数名与默认值来自真实 RNA                                         | Blender 运行中   |
+| `get_addon_status`         | addon 版本 / 协议版本 / 能力清单 / Blender 版本，用来判断「连不上」是没启用、版本不匹配还是 Blender 没开                           | Blender 运行中   |
+
+典型闭环：`get_scene_info` 看清现状 → `execute_blender_code` 逐步建模 / 调材质 → `get_viewport_screenshot` 自查画面 → `export_scene` 导出 → `asset_import` 进资产库。
+
 ---
 
 ## 安全设计
@@ -224,8 +257,11 @@ AiArtEngine 内置了一个 **MCP 工具服务**（MCP 是"模型上下文协议
 - 除健康检查外，所有请求必须带 `Authorization: Bearer <token>`。
 - 文件读写被限制在工程根目录内，无法越权访问其他路径。唯一例外是 `asset_import`：它按你（或你授权的 Agent）给出的**绝对路径**读取工程外文件并复制进工程，不接受目录扫描，单次最多 50 条。
 - 密钥类信息（`models_list` 等）**不对外暴露**。
-- **对话面板的模式是硬约束，不是提示词**：面板上的 Ask / Plan / Craft 随每次运行经请求头（`X-AIArt-Mode` / `X-AIArt-Run-Id`）下发，服务端据此收窄工具面——**Ask 不返回任何工具**、任何调用一律被拒；**Plan 在用户确认计划前只返回只读工具**，写 / 生成类调用被拒（用户经 `ask_user` 选「继续」后，本条消息内放行）；**Craft 不限制**。工具分级与文案见 `src/shared/mcpModeAccess.ts`（read / write / generate 三级，未登记的工具按 write 处理），被拦下的调用同样写入审计日志。**外部 Agent（stdio 桥 / HTTP 直连）不带这两个头，不受任何模式限制**——模式绑在请求上而不是服务上，所以面板切模式不会影响你挂到其他客户端的用法。注意这条约束只覆盖**本应用的工具面**：dsh 自带的原生工具（文件读写、执行命令、网络、子 agent 等）不经 MCP，不在其内，仍由 persona 与系统级沙箱约束。
+- **对话面板的模式是硬约束，不是提示词**：面板上的 Ask / Plan / Craft 随每次运行经请求头（`X-AIArt-Mode` / `X-AIArt-Run-Id`）下发，服务端据此收窄可用工具——**Ask 不返回任何工具**、任何调用一律被拒；**Plan 在用户确认计划前只返回只读工具**，写 / 生成类调用被拒（用户经 `ask_user` 选「继续」后，本条消息内放行）；**Craft 不限制**。工具分级与文案见 `src/shared/mcpModeAccess.ts`（read / write / generate 三级，未登记的工具按 write 处理），被拦下的调用同样写入审计日志。**外部 Agent（stdio 桥 / HTTP 直连）不带这两个头，不受任何模式限制**——模式绑在请求上而不是服务上，所以面板切模式不会影响你挂到其他客户端的用法。注意这条约束只覆盖**本应用的这套工具集**：dsh 自带的原生工具（文件读写、执行命令、网络、子 agent 等）不经 MCP，不在其内，仍由 persona 与系统级沙箱约束。
 - 全部工具调用追加写入审计日志 `<userData>/logs/mcp-audit.jsonl`（时间 / 工具 / 参数摘要 / 耗时 / 结果，参数超 200 字符截断，单文件 5MB 滚动），可回查 Agent 触发的每次生成与写入。
+- **Blender 工具集受同一套模式约束**：它挂在同一个服务、共用同一个 token，请求同样带 `X-AIArt-Mode` / `X-AIArt-Run-Id`——Ask 下整组不返回、Plan 下只返回只读那几个（`get_scene_info` / `get_world_state_snapshot` / `get_object_info` / `get_viewport_screenshot` / `describe_node_type` / `bpy_api_lookup` / `get_addon_status`），`execute_blender_code` 与 `export_scene` 属 write 会被拒并记入审计日志。它不会成为绕过面板模式的侧门。
+- **`execute_blender_code` 的代码护栏是词法护栏，不是沙箱**：开启时（默认开启）脚本只能 import bpy / bmesh / mathutils 与纯 Python 标准库，禁用 eval / exec / compile / open / `__import__` / dunder 逃脱链，禁 import os / subprocess / 网络模块，禁 handlers / timers / 驱动与类注册（`bpy.utils.register_class`），也禁装饰器 / lambda / class / global / 海象 / `type()` 造类这类结构性写法；渲染、保存、导入导出等 bpy 操作符**不受限制**（否则工具就没用了）。匹配前先抹掉字符串与注释，所以 `print("bpy.ops.script")` 这样的纯字符串不会误伤。它的作用是提高逃脱成本、把「顺手写个 subprocess」挡在门外；**真正的兜底是上一条模式约束**——要写场景的调用在 Ask / Plan 下本来就到不了。
+- **截图走一次性临时文件**：`get_viewport_screenshot` 让 Blender 写到系统临时目录里的一个一次性文件，应用读回后立即删除；画面只随 MCP 响应回给多模态客户端，不落工程、不进审计日志（base64 不写盘）。
 
 ---
 
@@ -281,16 +317,20 @@ AiArtEngine 内置了一个 **MCP 工具服务**（MCP 是"模型上下文协议
 - **取消粒度**：客户端断开连接，或发送 `notifications/cancelled`，会中止进行中的长任务（如 `workflow_plan` 在两次模型调用之间）；单次模型调用内部不可中断。
 - **状态报告有 TTL**：`task_status` 的成功/失败终态保留 10 分钟后自动清理，过期查询返回「未知任务 id」。
 - **环境变量覆盖**：`AIAE_MCP_CONFIG` 指定应用侧 mcp.json 路径；`AIAE_MCP_PORT` + `AIAE_MCP_TOKEN` 直接指定端口与 token（优先于文件）。
+- **Blender 工具集需要 Blender 进程在场**：addon 是 socket 服务端，Blender 一关，这一组工具全部失败（错误会明确说是「连不上 addon」而不是含糊的超时）；应用不负责启动 Blender，也没有无界面模式——`get_viewport_screenshot` 连窗口可见性都有要求（最小化时抓不到画面，离屏抓帧失败会回退窗口抓屏）。连接状态在设置面板里每 4 秒刷新一次，`get_addon_status` 可随时查 addon 版本与协议版本。
+- **一次只跑一条 Blender 命令**：addon 的 socket 协议是「一条命令一个 JSON 帧」，没有请求 id，所以应用侧对命令做了串行化（前一条没回完，后一条排队）。批量操作请在一条 `execute_blender_code` 里写完，而不是并发发多条。
 
 ---
 
 ## 常见问题排查
 
-| 现象                     | 原因                                       | 解决                                                     |
-| ------------------------ | ------------------------------------------ | -------------------------------------------------------- |
-| 报错「未找到 mcp.json」  | 应用没启动，或应用侧 mcp.json 被删         | 先启动 AiArtEngine；或用 `AIAE_MCP_CONFIG` 指定路径      |
-| 返回 401「未授权」       | token 对不上（应用重启过换了？配置过期？） | 删除 mcp.json 重启应用拿新 token，重新注册               |
-| 连不上 / ECONNREFUSED    | 端口被占用，实际端口不是 43110             | 看应用侧 mcp.json 里的 `port`，换成实际端口              |
-| 注册后工具不出现         | 注册后需新开会话                           | 重启 Claude Code 会话                                    |
-| 工具报错「请先打开工程」 | 对应工具需要已打开工程                     | 先调用 `project_open`                                    |
-| 生成长任务卡住不动       | 模型调用耗时（`workflow_plan` 可数十秒）   | 等待；超时想中断可断开连接或发 `notifications/cancelled` |
+| 现象                     | 原因                                                         | 解决                                                                                                                                                                               |
+| ------------------------ | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 报错「未找到 mcp.json」  | 应用没启动，或应用侧 mcp.json 被删                           | 先启动 AiArtEngine；或用 `AIAE_MCP_CONFIG` 指定路径                                                                                                                                |
+| 返回 401「未授权」       | token 对不上（应用重启过换了？配置过期？）                   | 删除 mcp.json 重启应用拿新 token，重新注册                                                                                                                                         |
+| 连不上 / ECONNREFUSED    | 端口被占用，实际端口不是 43110                               | 看应用侧 mcp.json 里的 `port`，换成实际端口                                                                                                                                        |
+| 注册后工具不出现         | 注册后需新开会话                                             | 重启 Claude Code 会话                                                                                                                                                              |
+| 工具报错「请先打开工程」 | 对应工具需要已打开工程                                       | 先调用 `project_open`                                                                                                                                                              |
+| 生成长任务卡住不动       | 模型调用耗时（`workflow_plan` 可数十秒）                     | 等待；超时想中断可断开连接或发 `notifications/cancelled`                                                                                                                           |
+| Blender 工具报「连不上」 | Blender 没开 / addon 没启用 / 端口不是 9876 / addon 类型选错 | 确认 Blender 正在运行、对应 MCP addon 已启用；改过 addon 端口或换了 addon 类型（社区 addon.py ↔ 官方 Blender Lab 扩展）就在「设置 → MCP → Blender 工具集」同步，再点「应用并重连」 |
+| Blender 工具根本没出现   | 没注册 `/mcp/blender`，或设置里关了                          | 按上面方式 B 再注册一个 server（端点带 `/blender` 后缀），或到设置面板勾上「启用」                                                                                                 |

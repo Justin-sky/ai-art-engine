@@ -227,11 +227,8 @@ extraResources:
   # 面板按需下载到应用私有目录，或自行安装后由 PATH / 环境变量供视频打点、取帧、导出使用。
   - from: scripts/mcp-bridge.mjs
     to: mcp-bridge.mjs
-  # stdio → streamable-http 反向桥：把第三方 stdio MCP server（如 Blender 官方
-  # blender-mcp addon）暴露为 HTTP 端点，供 dsh 的 mcp-client 插件消费。
-  # 脚本是 .ts，由 Node 22.6+ 的 type stripping 直跑，无需额外编译产物。
-  - from: scripts/mcp-stdio-bridge.ts
-    to: mcp-stdio-bridge.ts
+  # 注：Blender 工具面不再需要随包脚本——它是主进程内建的 MCP server（/mcp/blender），
+  # 直接以 TCP 连 Blender addon，既不需要 uv/Python，也没有子进程要拉起来。
   # dsh 运行体（DeepSeek Harness）：构建时由 scripts/bundle-dsh.mjs 产出 out/dsh，
   # 以目录形式随安装包分发到 <resources>/dsh，由系统/内置 Node 拉起，故放 asar 外。
   # 随应用一起安装、一起升级，无需首启解压；未压缩文件交由 NSIS solid LZMA 统一压缩。

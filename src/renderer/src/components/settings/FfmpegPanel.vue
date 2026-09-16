@@ -28,7 +28,7 @@
         <code class="path">{{ status.ffprobePath }}</code>
       </div>
       <div v-if="status.ffmpegVersion || status.ffprobeVersion" class="row">
-        <span class="row-label">version</span>
+        <span class="row-label">{{ t('settings.ffmpeg.versionLabel') }}</span>
         <code class="versions">{{ versionText }}</code>
       </div>
     </template>

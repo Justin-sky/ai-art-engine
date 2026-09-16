@@ -1,5 +1,10 @@
 /** Shared domain models for AIArtEngine P0 */
 
+import {
+  BLENDER_ADDON_DEFAULT_HOST,
+  BLENDER_ADDON_DEFAULT_PORT,
+  type BlenderAddonType
+} from './blenderMcp'
 import { createEmptyModelsSettings, type ModelsSettings } from './modelProvider'
 import { createEmptyObjectStorageSettings, type ObjectStorageSettings } from './objectStorage'
 import { createEmptySearchSettings, type SearchSettings } from './searchProvider'
@@ -505,31 +510,42 @@ export interface AppSettings {
   /** 本地视觉（YOLO）：ONNX 本地推理 */
   yolo: YoloSettings
   /**
-   * Blender stdio MCP 桥（mcp-stdio-bridge.ts）配置：把第三方 blender-mcp 这类
-   * stdio MCP server 暴露为 streamable-http 端点供 dsh mcp-client 消费。
+   * Blender 工具面配置：应用内建的 MCP server 直接以 TCP 连 Blender addon，
+   * 挂在主 MCP 服务的 `/mcp/blender` 路径上供 dsh 的 mcp-client 消费。
    *
-   * 旧版本设置可能没有本字段；normalizeSettings 写入磁盘前会兜底默认值，
-   * 升级到新版本后第一次保存才会持久化。
+   * 不依赖 Python / uv / 子进程（旧版是 `uvx blender-mcp` + stdio→HTTP 桥，
+   * 用户机器上少任何一环工具面就会静默消失）。
+   *
+   * 旧版本设置可能没有本字段，或带已废弃的 command / args / bridgePort；
+   * normalizeSettings 写入磁盘前会兜底默认值并忽略未知字段。
    */
   blenderMcp: BlenderMcpSettings
 }
 
-/** Blender stdio MCP 桥配置；语义同 scripts/mcp-stdio-bridge.ts 顶部 JSDoc。 */
+/** Blender 工具面配置；实现见 main/services/blenderMcpService.ts 顶部 JSDoc。 */
 export interface BlenderMcpSettings {
-  /** 是否启用 blender 桥；关闭后不 spawn 子进程，dsh 也看不到 blender 工具 */
+  /** 是否启用；关闭后 dsh 不再挂载第二段 mcp-client，`/mcp/blender` 直接拒绝请求 */
   enabled: boolean
-  /** spawn 命令首段（默认 `uvx`；env override AIAE_BLENDER_MCP_CMD 仍可用） */
-  command: string
-  /** spawn 命令后续参数（空格或逗号分隔；env override AIAE_BLENDER_MCP_ARGS 仍可用） */
-  args: string
-  /** 传给 blender-mcp 子进程的 BLENDER_HOST：Blender Add-on socket 监听主机 */
+  /** Blender addon socket 监听主机（addon.py 默认 localhost） */
   serverHost: string
-  /** 传给 blender-mcp 子进程的 BLENDER_PORT：Blender Add-on socket 端口（默认 9876） */
+  /** Blender addon socket 端口（addon.py 默认 9876） */
   serverPort: number
-  /** 传给 blender-mcp 子进程的 BLENDER_MCP_SAFE_MODE（默认 1，开 PyPI 推荐的安全白名单） */
+  /**
+   * 代码护栏（safe mode）：开启时 execute_blender_code 只放行 bpy / bmesh / mathutils
+   * 与纯 Python 标准库，并禁用 eval/exec/open、os/subprocess、handlers/timers、类注册等。
+   *
+   * 注意：这是**词法护栏，不是沙箱**——规则与差异见 shared/blenderMcp.ts 的 guardBlenderCode。
+   * 真正的兜底是对话模式在 MCP 请求级收窄工具面（Ask / Plan，见 shared/mcpModeAccess.ts）。
+   */
   safeMode: boolean
-  /** 桥 HTTP 监听端口（默认 43120，与主 MCP 服务 43110 错开） */
-  bridgePort: number
+  /**
+   * Blender 端 addon 方言：
+   * - `community`：ahujasid/blender-mcp 的 addon.py（`{command, params}` 裸 JSON 帧）
+   * - `official`：Blender Lab「MCP Server」官方扩展（execute 帧 + `\0` 边界）
+   *
+   * 两者默认都监听 localhost:9876，但线协议互不兼容；工具契约在两种后端下同构。
+   */
+  addonType: BlenderAddonType
 }
 
 export const DEFAULT_RESOLUTION: Resolution = { w: 1280, h: 720 }
@@ -1994,29 +2010,25 @@ export const DEFAULT_SETTINGS: AppSettings = {
   blenderMcp: createDefaultBlenderMcpSettings()
 }
 
-/** Blender MCP 桥默认值：与 scripts/mcp-stdio-bridge.ts 内置默认保持一致 */
+/** Blender 工具面默认值：addon.py 的默认监听地址 */
 export function createDefaultBlenderMcpSettings(): BlenderMcpSettings {
   return {
     enabled: true,
-    command: 'uvx',
-    args: 'blender-mcp',
-    serverHost: 'localhost',
-    serverPort: 9876,
+    serverHost: BLENDER_ADDON_DEFAULT_HOST,
+    serverPort: BLENDER_ADDON_DEFAULT_PORT,
     safeMode: true,
-    bridgePort: 43120
+    addonType: 'community'
   }
 }
 
 /**
  * 兜底任意输入为合法 BlenderMcpSettings：未知字段忽略、范围越界回退默认。
- * 老版本 settings.json 缺 blenderMcp 段时调用，保证写入磁盘前结构完整。
+ * 老版本 settings.json 缺 blenderMcp 段时调用，保证写入磁盘前结构完整；
+ * 旧版本写入的 command / args / bridgePort 已被移除，这里按未知字段丢弃。
  */
 export function normalizeBlenderMcpSettings(raw: unknown): BlenderMcpSettings {
   const defaults = createDefaultBlenderMcpSettings()
   const obj = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
-  const command =
-    typeof obj.command === 'string' && obj.command.trim() ? obj.command.trim() : defaults.command
-  const args = typeof obj.args === 'string' ? obj.args : defaults.args
   const serverHost =
     typeof obj.serverHost === 'string' && obj.serverHost.trim()
       ? obj.serverHost.trim()
@@ -2026,12 +2038,8 @@ export function normalizeBlenderMcpSettings(raw: unknown): BlenderMcpSettings {
     const n = Math.trunc(obj.serverPort)
     if (n >= 1 && n <= 65535) serverPort = n
   }
-  let bridgePort = defaults.bridgePort
-  if (typeof obj.bridgePort === 'number' && Number.isFinite(obj.bridgePort)) {
-    const n = Math.trunc(obj.bridgePort)
-    if (n >= 1 && n <= 65535) bridgePort = n
-  }
   const safeMode = typeof obj.safeMode === 'boolean' ? obj.safeMode : defaults.safeMode
   const enabled = typeof obj.enabled === 'boolean' ? obj.enabled : defaults.enabled
-  return { enabled, command, args, serverHost, serverPort, safeMode, bridgePort }
+  const addonType: BlenderAddonType = obj.addonType === 'official' ? 'official' : 'community'
+  return { enabled, serverHost, serverPort, safeMode, addonType }
 }

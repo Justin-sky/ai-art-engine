@@ -40,7 +40,7 @@ import { patchBrowserGuard } from './dshBrowserGuardPatch'
 import { patchAclSandboxConsole } from './dshSandboxConsolePatch'
 import {
   confirmHarnessRunAccess,
-  getBlenderBridgeInfo,
+  getBlenderMcpEndpoint,
   getMcpServerInfo,
   registerHarnessRunAccess,
   releaseHarnessRunAccess
@@ -327,19 +327,22 @@ export async function getHarnessStatus(): Promise<HarnessStatus> {
  * 「用户是否已确认计划」。配置每轮重写，所以这两个头天然是一次运行一个值。
  */
 
-/** 提取 dsh 注册第二个 mcp-client 需要的最小字段；桥未起 → null（不写 blender 段） */
-function getBlenderBridgeInfoForHarness(): { port: number; token: string } | null {
-  const info = getBlenderBridgeInfo()
-  if (!info) return null
-  // blenderSpawned=false 表示桥进程在跑但 blender-mcp 子进程没启（未安装 addon），
-  // 仍把 URL 注册进 dsh——让用户感知到「端点通了但工具列表为空」，而不是静默缺位。
-  return { port: info.port, token: info.token }
+/**
+ * 第二个 mcp-client 的接入信息；未启用或主 MCP 服务未起 → null（不写 blender 段）。
+ *
+ * 与旧实现差别：端点固定指向主服务的 `/mcp/blender`，**凭据复用主 token**。旧实现给桥
+ * 单独发一套 port + token、再经 `STUDIO_BLENDER_MCP_*` 环境变量注入 dsh，一旦端口被占或
+ * token 不同步，dsh 会整轮起不来；同端口同 token 之后这两类故障整体消失。
+ */
+function getBlenderClientForHarness(): { endpoint: string } | null {
+  const endpoint = getBlenderMcpEndpoint()
+  return endpoint ? { endpoint } : null
 }
 function writeDshConfig(
   endpoint: string,
   mode: ChatMode,
   runId: string,
-  blenderBridge: { port: number; token: string } | null
+  blenderClient: { endpoint: string } | null
 ): void {
   const home = dshHome()
   mkdirSync(home, { recursive: true })
@@ -373,9 +376,9 @@ function writeDshConfig(
       ([key, value]) => `        ${key}: ${yamlScalar(value)}`
     )
   ]
-  // 第二个 mcp-client 实例：指向 stdio→HTTP 桥（默认消费 blender-mcp）。
-  // 桥未就绪时不写这一段，dsh 就只看到本应用的工具面——避免「桥挂了 → dsh 启动失败」。
-  if (blenderBridge) {
+  // 第二个 mcp-client 实例：指向主 MCP 服务的 Blender 工具面路径（应用内建，无子进程）。
+  // 未启用时不写这一段，dsh 就只看到本应用的工具面。
+  if (blenderClient) {
     patch.push(
       '- insert:',
       '  - id: mcp-blender',
@@ -383,10 +386,16 @@ function writeDshConfig(
       '    config:',
       '      serverName: blender',
       '      transport: streamable-http',
-      `      url: http://127.0.0.1:${blenderBridge.port}/mcp`,
+      `      url: ${blenderClient.endpoint}`,
       '      toolCallTimeoutMs: 7200000',
       '      headers:',
-      '        Authorization: !!js "`Bearer ${process.env.STUDIO_BLENDER_MCP_TOKEN}`"'
+      // 与主工具面共用同一个 token：Blender 工具面挂在同一个服务上，不需要独立凭据。
+      '        Authorization: !!js "`Bearer ${process.env.STUDIO_MCP_TOKEN}`"',
+      // 模式与 runId 同样下发：Blender 侧会改场景（execute_blender_code 等属 write），
+      // 必须和主工具面一样受面板模式约束，而不是成为绕过 Plan/Ask 的后门。
+      ...Object.entries(accessHeaders(mode, runId)).map(
+        ([key, value]) => `        ${key}: ${yamlScalar(value)}`
+      )
     )
   }
   writeFileSync(join(home, 'cordis.patch.yml'), patch.join('\n') + '\n', 'utf8')
@@ -1864,7 +1873,7 @@ export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRun
   // 「用户是否已确认计划」），并登记到 MCP 侧的运行授权表（请求到达时按 runId 查）
   const runId = String(++runSeq)
   const mode = normalizeChatMode(input.mode)
-  writeDshConfig(mcp.endpoint, mode, runId, getBlenderBridgeInfoForHarness())
+  writeDshConfig(mcp.endpoint, mode, runId, getBlenderClientForHarness())
   registerHarnessRunAccess(runId, mode)
   // dsh 不读 DSH_MODEL 环境变量，模型必须写进 settings.yaml，否则始终用内置默认
   // deepseek-v4-flash（多数端点不存在 → HTTP_404），与面板选择无关。
@@ -1955,18 +1964,6 @@ export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRun
       ...(provider.baseUrl ? { DEEPSEEK_BASE_URL: provider.baseUrl } : {}),
       // MCP 插件配置里的 header 由该变量展开；name 为 /TOKEN/ 会被 dsh 清洗，故用 STUDIO_ 前缀
       STUDIO_MCP_TOKEN: mcp.token,
-      // stdio→HTTP 桥（mcp-stdio-bridge.mjs）的端口与 token：桥未就绪时缺省为空，
-      // dsh 解析 YAML 时 !!js 表达式取 undefined 在 headers 里等同「不设」，
-      // 桥即使后启动，也不会被本轮 dsh 拉到（一次运行一份 patch 文件）。
-      ...(getBlenderBridgeInfoForHarness()
-        ? (() => {
-            const info = getBlenderBridgeInfo()!
-            return {
-              STUDIO_BLENDER_MCP_PORT: String(info.port),
-              STUDIO_BLENDER_MCP_TOKEN: info.token
-            }
-          })()
-        : {}),
       // 原生持久化 session：runner 据此「有则恢复、无则创建」（见 AIART_RUNNER_TEMPLATE）
       ...(input.sessionId?.trim() ? { AIART_SESSION_ID: input.sessionId.trim() } : {}),
       // ask_user_question 提问的临时目录与本次运行 id：runner 经 answerFile 与主进程交换用户选择

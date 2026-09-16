@@ -160,8 +160,26 @@
         <ObjectStoragePanel :object-storage="form.objectStorage" />
       </section>
 
-      <section v-show="mainTab === 'mcp'" class="models-section">
-        <h2>{{ t('settings.mcp.title') }}</h2>
+      <nav v-show="mainTab === 'mcp'" class="top-tabs">
+        <button
+          type="button"
+          class="top-tab"
+          :class="{ active: mcpTab === 'server' }"
+          @click="mcpTab = 'server'"
+        >
+          {{ t('settings.mcp.title') }}
+        </button>
+        <button
+          type="button"
+          class="top-tab"
+          :class="{ active: mcpTab === 'blender' }"
+          @click="mcpTab = 'blender'"
+        >
+          {{ t('settings.mcp.blender.title') }}
+        </button>
+      </nav>
+
+      <section v-show="mainTab === 'mcp' && mcpTab === 'server'" class="models-section">
         <p class="hint">
           <template v-if="mcpInfo">
             <span class="mcp-running">{{ t('settings.mcp.running', { port: mcpInfo.port }) }}</span>
@@ -275,8 +293,9 @@
         <p v-if="mcpInfo" class="hint">
           {{ t('settings.mcp.hint') }}
         </p>
+      </section>
 
-        <h3 class="sub-h3">{{ t('settings.mcp.blender.title') }}</h3>
+      <section v-show="mainTab === 'mcp' && mcpTab === 'blender'" class="models-section">
         <p class="hint">{{ t('settings.mcp.blender.subtitle') }}</p>
 
         <div class="mcp-row">
@@ -284,57 +303,42 @@
             <input v-model="form.blenderMcp.enabled" type="checkbox" :disabled="blenderBusy" />
             <span>{{ t('settings.mcp.blender.enabled') }}</span>
           </label>
-          <span v-if="mcpInfo?.blenderBridge" class="mcp-running">
-            {{ t('settings.mcp.blender.running', { port: mcpInfo.blenderBridge.port }) }}
-          </span>
-          <span
-            v-else-if="form.blenderMcp.enabled && mcpInfo?.blenderBridge?.lastError"
-            class="hint-inline error"
-          >
-            {{ t('settings.mcp.blender.spawnError', { error: mcpInfo.blenderBridge.lastError }) }}
-          </span>
-          <span v-else-if="form.blenderMcp.enabled" class="hint-inline">
-            {{ t('settings.mcp.blender.notRunning') }}
-          </span>
-          <span v-else class="hint-inline">
+          <span v-if="!form.blenderMcp.enabled" class="hint-inline">
             {{ t('settings.mcp.blender.notEnabledHint') }}
           </span>
-        </div>
-
-        <label>
-          {{ t('settings.mcp.blender.command') }}
-          <input
-            v-model="form.blenderMcp.command"
-            type="text"
-            spellcheck="false"
-            :disabled="blenderBusy"
-          />
-          <span class="hint">
-            {{ t('settings.mcp.blender.commandHint') }}
+          <span v-else-if="mcpInfo?.blenderBridge?.connected" class="mcp-running">
+            {{ t('settings.mcp.blender.connected') }}
           </span>
-        </label>
-        <div v-if="mcpInfo?.blenderBridge" class="mcp-row">
-          <span class="about-label">{{ t('settings.mcp.blender.resolvedCommand') }}</span>
-          <code v-if="mcpInfo.blenderBridge.resolvedCommand" class="mcp-value mcp-cmd">{{
-            mcpInfo.blenderBridge.resolvedCommand
-          }}</code>
-          <code v-else class="mcp-value mcp-cmd error">
-            {{ t('settings.mcp.blender.resolvedCommandNull', { command: form.blenderMcp.command }) }}
-          </code>
+          <span v-else-if="mcpInfo?.blenderBridge?.lastError" class="hint-inline error">
+            {{ t('settings.mcp.blender.connectError', { error: mcpInfo.blenderBridge.lastError }) }}
+          </span>
+          <span v-else class="hint-inline">
+            {{ t('settings.mcp.blender.notConnected') }}
+          </span>
         </div>
 
-        <label>
-          {{ t('settings.mcp.blender.args') }}
-          <input
-            v-model="form.blenderMcp.args"
-            type="text"
-            spellcheck="false"
-            :disabled="blenderBusy"
-          />
-          <span class="hint">{{ t('settings.mcp.blender.argsHint') }}</span>
-        </label>
+        <div v-if="mcpInfo?.blenderBridge" class="mcp-row">
+          <span class="about-label">{{ t('settings.mcp.blender.endpoint') }}</span>
+          <code class="mcp-value mcp-cmd">{{ mcpInfo.blenderBridge.endpoint || '—' }}</code>
+          <button
+            v-if="mcpInfo.blenderBridge.endpoint"
+            type="button"
+            class="about-btn"
+            @click="copyBlenderEndpoint(mcpInfo.blenderBridge.endpoint)"
+          >
+            {{ t('settings.mcp.blender.copyEndpoint') }}
+          </button>
+        </div>
 
         <div class="number-row">
+          <label>
+            {{ t('settings.mcp.blender.addonType') }}
+            <select v-model="form.blenderMcp.addonType" :disabled="blenderBusy">
+              <option value="community">{{ t('settings.mcp.blender.addonTypeCommunity') }}</option>
+              <option value="official">{{ t('settings.mcp.blender.addonTypeOfficial') }}</option>
+            </select>
+            <span class="hint">{{ t('settings.mcp.blender.addonTypeHint') }}</span>
+          </label>
           <label>
             {{ t('settings.mcp.blender.serverHost') }}
             <input
@@ -364,50 +368,41 @@
         </label>
         <p class="hint">{{ t('settings.mcp.blender.safeModeHint') }}</p>
 
-        <label>
-          {{ t('settings.mcp.blender.bridgePort') }}
-          <div class="number-row">
-            <input
-              v-model.number="form.blenderMcp.bridgePort"
-              type="number"
-              min="1"
-              max="65535"
-              :disabled="blenderBusy"
-            />
-            <button
-              type="button"
-              class="about-btn primary"
-              :disabled="blenderBusy"
-              @click="applyBlenderRestart"
-            >
-              {{
-                blenderBusy
-                  ? t('settings.mcp.blender.restartBusy')
-                  : t('settings.mcp.blender.restart')
-              }}
-            </button>
-          </div>
-          <span class="hint">{{ t('settings.mcp.blender.bridgePortHint') }}</span>
-        </label>
-
-        <div v-if="mcpInfo?.blenderBridge" class="mcp-row">
-          <span class="about-label">{{ t('settings.mcp.blender.serverEnv') }}</span>
-          <code class="mcp-value mcp-cmd">{{
-            `BLENDER_HOST=${mcpInfo.blenderBridge.serverEnv.BLENDER_HOST}  BLENDER_PORT=${mcpInfo.blenderBridge.serverEnv.BLENDER_PORT}  BLENDER_MCP_SAFE_MODE=${mcpInfo.blenderBridge.serverEnv.BLENDER_MCP_SAFE_MODE}`
-          }}</code>
-        </div>
-
-        <div v-if="mcpInfo?.blenderBridge" class="mcp-row">
-          <span class="about-label">{{ t('settings.mcp.blender.addonInstall') }}</span>
-          <code class="mcp-value mcp-cmd">{{ mcpInfo.blenderBridge.addonInstallHint }}</code>
+        <div class="mcp-row">
           <button
             type="button"
-            class="about-btn"
-            @click="copyAddonInstall(mcpInfo.blenderBridge.addonInstallHint)"
+            class="about-btn primary"
+            :disabled="blenderBusy"
+            @click="applyBlenderRestart"
           >
-            {{ t('settings.mcp.blender.addonInstallHint') }}
+            {{
+              blenderBusy
+                ? t('settings.mcp.blender.restartBusy')
+                : t('settings.mcp.blender.applyAndReconnect')
+            }}
           </button>
         </div>
+
+        <template v-if="mcpInfo?.blenderBridge?.connected">
+          <div class="mcp-row">
+            <span class="about-label">{{ t('settings.mcp.blender.blenderVersion') }}</span>
+            <code class="mcp-value">{{ mcpInfo.blenderBridge.blenderVersion || '—' }}</code>
+          </div>
+          <div class="mcp-row">
+            <span class="about-label">{{ t('settings.mcp.blender.addonVersion') }}</span>
+            <code class="mcp-value">{{ mcpInfo.blenderBridge.addonVersion || '—' }}</code>
+          </div>
+          <div class="mcp-row">
+            <span class="about-label">{{ t('settings.mcp.blender.protocolVersion') }}</span>
+            <code class="mcp-value">{{ mcpInfo.blenderBridge.protocolVersion || '—' }}</code>
+          </div>
+          <div class="mcp-row">
+            <span class="about-label">{{ t('settings.mcp.blender.lastCheckedAt') }}</span>
+            <code class="mcp-value">{{ mcpInfo.blenderBridge.lastCheckedAt || '—' }}</code>
+          </div>
+        </template>
+
+        <p class="hint">{{ t('settings.mcp.blender.addonSetup') }}</p>
       </section>
 
       <section v-show="mainTab === 'skills'" class="models-section">
@@ -476,8 +471,10 @@ const form = reactive<AppSettings>(cloneSettings(DEFAULT_SETTINGS))
 const saving = ref(false)
 const message = ref('')
 
-/** Blender MCP 桥：v-model 直接绑 form.blenderMcp，重启按钮统一提交 + 重启 */
+/** Blender 工具集：v-model 直接绑 form.blenderMcp，「应用并重连」按钮统一提交 */
 const blenderBusy = ref(false)
+/** 状态轮询定时器：addon 是否可达只有主进程知道，靠它把连接状态驱动到 UI */
+let blenderPollTimer: ReturnType<typeof setInterval> | null = null
 const isError = ref(false)
 const plugins = ref<ExternalPluginManifest[]>([])
 const mainTab = ref<
@@ -491,6 +488,8 @@ const mainTab = ref<
   | 'plugins'
   | 'search'
 >('general')
+/** MCP 区内二级 tab：「MCP 接入」（主服务）与「Blender 工具集」分开显示 */
+const mcpTab = ref<'server' | 'blender'>('server')
 const appVersion = ref('…')
 const updateStatus = ref('')
 const updateBusy = ref(false)
@@ -602,7 +601,11 @@ async function applyTokenEdit(): Promise<void> {
   }
 }
 
-/** 提交当前 form.blenderMcp 到主进程 + 重启 blender 桥；持久化默认 true */
+/**
+ * 提交当前 form.blenderMcp 到主进程并重连。
+ * 主进程会落盘 + 断开旧 TCP + 立即探活，返回探活后的完整状态，所以这一次调用就把
+ * 「配置生效」和「连上了没有」一起拿到，不需要用户再点一次「刷新」。
+ */
 async function applyBlenderRestart(): Promise<void> {
   if (blenderBusy.value) return
   const cfg = form.blenderMcp
@@ -610,14 +613,12 @@ async function applyBlenderRestart(): Promise<void> {
   message.value = t('settings.mcp.blender.restartBusy')
   isError.value = false
   try {
-    const next = await window.studio.restartBlenderMcpBridge({
+    const next = await window.studio.restartBlenderMcp({
       enabled: cfg.enabled,
-      command: cfg.command,
-      args: cfg.args,
       serverHost: cfg.serverHost,
       serverPort: cfg.serverPort,
       safeMode: cfg.safeMode,
-      bridgePort: cfg.bridgePort
+      addonType: cfg.addonType
     })
     if (mcpInfo.value) mcpInfo.value = { ...mcpInfo.value, blenderBridge: next }
     message.value = cfg.enabled
@@ -631,10 +632,21 @@ async function applyBlenderRestart(): Promise<void> {
   }
 }
 
-/** 复制 addonInstallHint（`uvx blender-mcp install-addon`）到剪贴板 */
-async function copyAddonInstall(text: string): Promise<void> {
+/** 拉一次 Blender 工具面状态。主进程侧探活按 5s TTL 缓存，这里只取缓存值，开销可忽略 */
+async function refreshBlenderStatus(): Promise<void> {
+  if (blenderBusy.value) return
+  try {
+    const info = await window.studio.getBlenderMcpInfo()
+    if (info && mcpInfo.value) mcpInfo.value = { ...mcpInfo.value, blenderBridge: info }
+  } catch {
+    // 状态刷新失败不打扰用户：真正的连接问题会由主进程写进 lastError 展示
+  }
+}
+
+/** 复制 Blender 工具面端点（外部 MCP 客户端接入用） */
+async function copyBlenderEndpoint(text: string): Promise<void> {
   await window.studio.writeClipboardText(text)
-  message.value = t('settings.mcp.blender.addonInstallCopied')
+  message.value = t('settings.mcp.blender.endpointCopied')
   isError.value = false
 }
 
@@ -793,6 +805,8 @@ function applyToForm(cloned: AppSettings): void {
     form.objectStorage.providers.length,
     ...cloned.objectStorage.providers
   )
+  // 同上：不回填会让「打开设置页 → 自动保存」把用户已存的主机 / 端口 / 护栏状态写回默认值
+  Object.assign(form.blenderMcp, cloned.blenderMcp)
 }
 
 function schedulePersist(): void {
@@ -868,11 +882,19 @@ onMounted(async () => {
   portInput.value = mcp?.port ?? null
   await nextTick()
   suppressPersist.value = false
+  // Blender addon 的连接状态是外部事实（用户可能中途才打开 Blender），只读一次会误导人
+  blenderPollTimer = setInterval(() => {
+    void refreshBlenderStatus()
+  }, 4000)
 })
 
 onBeforeUnmount(() => {
   stopUpdateListen?.()
   stopUpdateListen = null
+  if (blenderPollTimer) {
+    clearInterval(blenderPollTimer)
+    blenderPollTimer = null
+  }
   if (debounceTimer) {
     clearTimeout(debounceTimer)
     debounceTimer = null

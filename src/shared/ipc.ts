@@ -644,58 +644,60 @@ export interface McpServerInfo {
   configPath: string
   /** 工具服务 HTTP 端点，如 http://127.0.0.1:43110/mcp */
   endpoint: string
-  /** stdio→HTTP 桥（blender-mcp 等）当前状态；未启动 / 已禁用时为 null */
+  /** Blender 工具面当前状态；已禁用时为 null */
   blenderBridge: McpBlenderBridgeInfo | null
 }
 
-/** MCP：stdio→HTTP 桥当前状态（设置面板展示 / 复制 addonInstallHint） */
+/**
+ * MCP：Blender 工具面当前状态（设置面板展示）。
+ *
+ * 重写后不再有「桥进程 / 子进程 / 独立端口 / 独立 token」这些概念：Blender 工具面是主 MCP
+ * 服务上的一个路径（`/mcp/blender`），执行侧直接以 TCP 连 Blender addon。因此这里描述的是
+ * 「主服务挂载状态」+「addon 是否可达」两件事，而不是三层套娃各自的健康状况。
+ */
 export interface McpBlenderBridgeInfo {
-  /** 桥进程是否已 spawn 出来（与 blender-mcp 子进程成功启动是两回事） */
-  spawned: boolean
-  /** 桥 HTTP 监听端口（如 43120） */
-  port: number
-  /** 桥 Bearer token；跨重启持久复用 */
-  token: string
-  /** 桥 HTTP 端点，如 http://127.0.0.1:43120/mcp */
+  /** 设置面板是否启用 Blender 工具面 */
+  enabled: boolean
+  /** 是否已挂在运行中的主 MCP 服务上（enabled 且主服务在跑） */
+  mounted: boolean
+  /** Blender 工具面端点（如 http://127.0.0.1:43110/mcp/blender）；主服务未起为空串 */
   endpoint: string
-  /** 桥当前 spawn 的 blender-mcp 子进程是否还活着（addon 未装 / 已退出为 false） */
-  blenderRunning: boolean
-  /** 当前实际执行的命令与参数（已展开默认值/用户配置） */
-  command: string
-  args: string[]
-  /**
-   * PATH 解析后的可执行文件绝对路径（spawn 时真正用的那个）；null 表示 PATH 上找不到命令，
-   * 用户需要在 settings 里填绝对路径，或确认 uv 已装且 PATH 含 .local\bin。
-   * Windows 上 Node 的 spawn 不走 PATHEXT，所以「command 设 uvx + spawn ENOENT」通常
-   * 是 PATH 没 .local\bin 而非 uvx.exe 不存在——看 resolvedCommand 是否 null 一目了然。
-   */
-  resolvedCommand: string | null
-  /** 传给子进程的环境变量（BLENDER_HOST/PORT/SAFE_MODE） */
-  serverEnv: { BLENDER_HOST: string; BLENDER_PORT: string; BLENDER_MCP_SAFE_MODE: string }
-  /** 提示用户在 Blender 里启用 add-on 的命令（PyPI 推荐） */
-  addonInstallHint: string
-  /** 配置快照绝对路径（mcp-blender.json，UI 调试用） */
-  configPath: string
-  /** spawn / 运行失败原因（ENOENT / 进程退出 / 信号等）；null 表示无错误 */
+  /** addon socket 主机 */
+  serverHost: string
+  /** addon socket 端口 */
+  serverPort: number
+  /** 是否开启代码护栏（safe mode）：开启时 execute_blender_code 只放行白名单写法 */
+  safeMode: boolean
+  /** 最近一次探活是否成功（缓存值：UI 可立即读，真值由后台探活按 TTL 刷新） */
+  connected: boolean
+  /** Blender 版本；未连上为 null */
+  blenderVersion: string | null
+  /** Blender 端 addon 版本；未连上为 null */
+  addonVersion: string | null
+  /** addon 报告的协议版本；未连上为 null */
+  protocolVersion: string | null
+  /** 最近一次失败原因（连不上 / addon 报错）；null 表示无错误 */
   lastError: string | null
+  /** 最近一次探活时刻（ISO 字符串）；从未探活为 null */
+  lastCheckedAt: string | null
 }
 
-/** MCP：blender 桥重启入参（设置界面提交的配置修改） */
+/** MCP：Blender 工具面设置入参（设置界面提交的配置修改） */
 export interface McpBlenderRestartInput {
-  /** 期望桥端口；写入 settings 后重启生效（被占用时自动顺延） */
-  bridgePort?: number
-  /** 是否整体启用 / 禁用 blender 桥 */
+  /** 是否启用 Blender 工具面（关闭后 dsh 不再挂载第二段 mcp-client） */
   enabled?: boolean
-  /** spawn 命令首段（不传则保留 settings 现有值） */
-  command?: string
-  /** spawn 命令后续参数（空格或逗号分隔） */
-  args?: string
-  /** addon socket 主机（传给 blender-mcp 子进程的 BLENDER_HOST） */
+  /** addon socket 主机（不传则保留 settings 现有值，默认 localhost） */
   serverHost?: string
-  /** addon socket 端口（传给 blender-mcp 子进程的 BLENDER_PORT） */
+  /** addon socket 端口（不传则保留 settings 现有值，默认 9876） */
   serverPort?: number
-  /** 是否开启 safe mode（传给 blender-mcp 子进程的 BLENDER_MCP_SAFE_MODE） */
+  /** 是否开启代码护栏（safe mode） */
   safeMode?: boolean
+  /**
+   * Blender 端 addon 方言：`community`（ahujasid/blender-mcp 的 addon.py，裸 JSON 帧）
+   * 或 `official`（Blender Lab「MCP Server」官方扩展，execute 帧 + `\0` 边界）。
+   * 不传则保留 settings 现有值，默认 community。
+   */
+  addonType?: 'community' | 'official'
 }
 
 /** Harness：DeepSeek Harness (dsh) 接入状态（Chat 面板顶部状态条展示） */
@@ -1244,11 +1246,11 @@ export interface StudioApi {
   /** MCP：应用端口 / 重置 token 修改并重启工具服务，返回重启后的状态 */
   restartMcpServer: (input: McpRestartInput) => Promise<McpServerInfo | null>
 
-  /** MCP：查询 stdio→HTTP 桥（blender-mcp 等）当前状态；未启用 / 启动失败时返回 null */
+  /** MCP：查询 Blender 工具面当前状态；已禁用时为 null */
   getBlenderMcpInfo: () => Promise<McpBlenderBridgeInfo | null>
 
-  /** MCP：应用 blender 桥配置并重启；返回重启后的状态（禁用时仍返回最后已知状态） */
-  restartBlenderMcpBridge: (input: McpBlenderRestartInput) => Promise<McpBlenderBridgeInfo | null>
+  /** MCP：应用 Blender 配置（落盘 + 断开重连 + 立即探活），返回探活后的状态 */
+  restartBlenderMcp: (input: McpBlenderRestartInput) => Promise<McpBlenderBridgeInfo>
 
   /** MCP：订阅旁路生成活动更新（生成中 / 完成 / 失败） */
   onMcpActivityUpdated: (callback: (activity: McpActivity) => void) => () => void

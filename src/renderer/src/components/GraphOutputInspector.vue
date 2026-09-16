@@ -218,7 +218,7 @@ const outputLabel = computed(() => {
   if (node.value?.params.outputKind === 'text') return t('graph.titles.assetOutput.text')
   if (isVideoOutput.value) return t('graph.titles.assetOutput.video')
   if (node.value?.params.outputKind === 'image') return t('graph.titles.assetOutput.image')
-  return t('graph.titles.assetOutput.scene')
+  return t('graph.titles.assetOutput.default')
 })
 /** 自定义标题走节点卡片同一 i18n 解析；无标题回退 outputLabel，保持原行为 */
 const displayTitle = computed(() => {

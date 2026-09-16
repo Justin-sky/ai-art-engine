@@ -263,7 +263,7 @@ function filtersForType(type: AssetType): { name: string; extensions: string[] }
         }
       ]
     case 'voice':
-      return [{ name: t('asset.fileFilter.audio'), extensions: ['mp3', 'wav', 'ogg', 'm4a'] }]
+      return [{ name: t('asset.fileFilter.voice'), extensions: ['mp3', 'wav', 'ogg', 'm4a'] }]
     default:
       return [
         { name: t('asset.fileFilter.all'), extensions: ['png', 'jpg', 'mp4', 'mp3', 'txt', 'md'] }

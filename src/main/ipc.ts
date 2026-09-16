@@ -66,9 +66,9 @@ import {
 import { settingsService } from './services/settingsService'
 import { updateService } from './services/updateService'
 import {
+  applyBlenderMcpSettings,
   getMcpServerInfo,
   receiveAskUserAnswer,
-  restartBlenderMcpBridge,
   restartMcpServer
 } from './services/mcpServerService'
 import { modelProviderFacade, toMediaUrl } from './services/modelProviders'
@@ -377,7 +377,7 @@ export function registerIpcHandlers(): void {
   )
   handle(IpcChannels.MCP_BLENDER_GET_INFO, () => getMcpServerInfo()?.blenderBridge ?? null)
   handle(IpcChannels.MCP_BLENDER_RESTART, (input: import('@shared/ipc').McpBlenderRestartInput) =>
-    restartBlenderMcpBridge(input)
+    applyBlenderMcpSettings(input)
   )
   handle(IpcChannels.MCP_ACTIVITY_LIST, () => mcpActivityService.list())
 
