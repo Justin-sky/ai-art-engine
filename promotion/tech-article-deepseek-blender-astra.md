@@ -56,16 +56,16 @@ Astra 原生多模态，视口就是它的眼睛。普通模型 API 只收 base6
 **第二样：「手」的通道。**
 Astra 背后是 OpenAI 花大价钱铺的工具面。我这边对应的是 MCP（Model Context Protocol）——2026 年的事实标准。AI Art Engine 内置了一整套 MCP 工具服务，其中 Blender 组 9 个工具：
 
-| 工具 | 干什么 |
-|---|---|
-| `execute_blender_code` | 在 Blender 进程内执行 Python，完整访问 bpy / bmesh / mathutils |
-| `get_viewport_screenshot` | 视口截图回给模型（上面说的"眼睛"） |
-| `export_scene` | 导出 GLB / GLTF / FBX / OBJ / USD / STL |
-| `get_scene_info` / `get_object_info` | 场景概览 / 对象详情 |
-| `get_world_state_snapshot` | 几何 / 关系 / 动画摘要、当前帧、FPS、激活相机 |
-| `describe_node_type` | 查 Shader 节点的端口与属性 |
-| `bpy_api_lookup` | 在**运行中的 Blender 里**查 bpy API，参数默认值来自真实 RNA |
-| `get_addon_status` | addon 版本 / 协议版本，判断"连不上"是哪种连不上 |
+| 工具                                 | 干什么                                                         |
+| ------------------------------------ | -------------------------------------------------------------- |
+| `execute_blender_code`               | 在 Blender 进程内执行 Python，完整访问 bpy / bmesh / mathutils |
+| `get_viewport_screenshot`            | 视口截图回给模型（上面说的"眼睛"）                             |
+| `export_scene`                       | 导出 GLB / GLTF / FBX / OBJ / USD / STL                        |
+| `get_scene_info` / `get_object_info` | 场景概览 / 对象详情                                            |
+| `get_world_state_snapshot`           | 几何 / 关系 / 动画摘要、当前帧、FPS、激活相机                  |
+| `describe_node_type`                 | 查 Shader 节点的端口与属性                                     |
+| `bpy_api_lookup`                     | 在**运行中的 Blender 里**查 bpy API，参数默认值来自真实 RNA    |
+| `get_addon_status`                   | addon 版本 / 协议版本，判断"连不上"是哪种连不上                |
 
 `bpy_api_lookup` 值得单独说一句：Blender 的 API 每个版本都在变，模型训练语料里的 bpy 知识是有"保质期"的。与其让模型凭记忆写 API 然后报错，不如让它先查再说——这是把"幻觉"问题转成了"检索"问题，成本几乎为零。
 
@@ -90,6 +90,7 @@ AI Art Engine 主动连 addon 在 `localhost:9876` 的监听端口，不装 uv�
 DeepSeek 的 agent 环境只吃 streamable-http 协议的 MCP server，而业界一堆好东西只暴露 stdio。AI Art Engine 6.3.0 加了一个 stdio→HTTP 反向桥：起一个本地 HTTP 端点，行缓冲把 stdio 包成 MCP over HTTP。第三方 stdio server 从此可以直接注册进对话。**协议适配层永远值得单独造**，比说服上游改协议容易一百倍。
 
 **4. 「看」这件事，我做了三件套，不止截图。**
+
 - 视口截图（上面说的 Blender 眼睛）
 - **YOLO 本地打标**：资产入库自动跑本地视觉模型，不耗一分钱 API。工程里那张鹈鹕骑车图，入库时打出的标签是 `bicycle 0.96 / bird 0.68 / umbrella 0.55`——agent 后续用"这张图里有自行车"这种语义查资产，靠的就是它
 - **timeline_preview**：出片前用导出同一条 ffmpeg 滤镜图抽帧回传——预览看到的就是成片，不是近似。AI 自己铺的时间线，AI 自己"看片"自查

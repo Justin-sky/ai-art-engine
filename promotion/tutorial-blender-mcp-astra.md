@@ -14,12 +14,12 @@ Astra 演示里最让人印象深刻的一幕：屏幕开着 Blender，用户动
 
 AI Art Engine 的复现方案：
 
-| Astra 环节 | 我们的实现 | 成本 |
-|---|---|---|
-| 看 | `get_viewport_screenshot` 视口截图回传 + 本地 YOLO 资产打标 | 边际成本 ≈ 0 |
-| 想 | DeepSeek（或其他任一已配置文本模型） | 按 token 现结，几毛钱级 |
-| 做 | MCP 工具面：Blender 工具集 9 个 + `generate_model3d` 等 | 本地，免费 |
-| 查 | 截图自查 + `get_world_state_snapshot` 状态快照 | 本地，免费 |
+| Astra 环节 | 我们的实现                                                  | 成本                    |
+| ---------- | ----------------------------------------------------------- | ----------------------- |
+| 看         | `get_viewport_screenshot` 视口截图回传 + 本地 YOLO 资产打标 | 边际成本 ≈ 0            |
+| 想         | DeepSeek（或其他任一已配置文本模型）                        | 按 token 现结，几毛钱级 |
+| 做         | MCP 工具面：Blender 工具集 9 个 + `generate_model3d` 等     | 本地，免费              |
+| 查         | 截图自查 + `get_world_state_snapshot` 状态快照              | 本地，免费              |
 
 需要准备的三样东西：
 
@@ -52,12 +52,12 @@ AI 对话面板的大脑可以是任何已配置的文本模型，DeepSeek 官�
 
 三家简单对比（做角色动画推荐前三家，因为支持 rig 骨骼绑定）：
 
-| 服务商 | rig 骨骼 | 特点 |
-|---|---|---|
-| Tripo | ✅ | rig 质量稳，动画友好 |
-| Meshy | ✅ | rigging + rig_type + pose 选项细 |
-| Hyper3D (Rodin) | ✅ | rig + rig_type + rig_animation |
-| Luma / Lux3D | ❌ | 入口守卫会直接拒绝传 rig |
+| 服务商          | rig 骨骼 | 特点                             |
+| --------------- | -------- | -------------------------------- |
+| Tripo           | ✅       | rig 质量稳，动画友好             |
+| Meshy           | ✅       | rigging + rig_type + pose 选项细 |
+| Hyper3D (Rodin) | ✅       | rig + rig_type + rig_animation   |
+| Luma / Lux3D    | ❌       | 入口守卫会直接拒绝传 rig         |
 
 ### 2.2 一个容易漏的坑：对象存储
 
@@ -118,17 +118,17 @@ AI Art Engine **主动出站连接** Blender addon 在 `localhost:9876` 的监�
 
 9 个工具一览：
 
-| 工具 | 用途 | 写/读 |
-|---|---|---|
-| `execute_blender_code` | Blender 进程内执行 Python，完整 bpy / bmesh / mathutils | 写 |
-| `export_scene` | 导出 GLB / GLTF / FBX / OBJ / USD / STL | 写 |
-| `get_scene_info` | 场景概览：对象 / 材质数量与位置 | 读 |
-| `get_world_state_snapshot` | 几何 / 关系 / **动画摘要、当前帧与帧范围、FPS**、激活相机 | 读 |
-| `get_object_info` | 对象详情（顶点 / 边 / 面数、包围盒） | 读 |
-| `get_viewport_screenshot` | **视口截图回传给多模态客户端**（AI 的眼睛） | 读 |
-| `describe_node_type` | 查节点类型端口与属性（写着色器前先问它） | 读 |
-| `bpy_api_lookup` | 在运行中的 Blender 里查 bpy API（参数默认值来自真实 RNA） | 读 |
-| `get_addon_status` | addon 版本 / 协议版本 / 能力清单 | 读 |
+| 工具                       | 用途                                                      | 写/读 |
+| -------------------------- | --------------------------------------------------------- | ----- |
+| `execute_blender_code`     | Blender 进程内执行 Python，完整 bpy / bmesh / mathutils   | 写    |
+| `export_scene`             | 导出 GLB / GLTF / FBX / OBJ / USD / STL                   | 写    |
+| `get_scene_info`           | 场景概览：对象 / 材质数量与位置                           | 读    |
+| `get_world_state_snapshot` | 几何 / 关系 / **动画摘要、当前帧与帧范围、FPS**、激活相机 | 读    |
+| `get_object_info`          | 对象详情（顶点 / 边 / 面数、包围盒）                      | 读    |
+| `get_viewport_screenshot`  | **视口截图回传给多模态客户端**（AI 的眼睛）               | 读    |
+| `describe_node_type`       | 查节点类型端口与属性（写着色器前先问它）                  | 读    |
+| `bpy_api_lookup`           | 在运行中的 Blender 里查 bpy API（参数默认值来自真实 RNA） | 读    |
+| `get_addon_status`         | addon 版本 / 协议版本 / 能力清单                          | 读    |
 
 ### 顺便：外部 Agent 也想用？
 
@@ -224,14 +224,14 @@ asset_import                      进 Cache/imports/ 缓存
 
 ## 7. 常见问题排查
 
-| 症状 | 原因 | 解法 |
-|---|---|---|
-| Blender 工具报「连不上」 | Blender 没开 / addon 没启用 / 端口不是 9876 / addon 类型选错 | 确认 Blender 运行中、addon 已启用；换过 addon 类型或端口就去「设置 → MCP → Blender 工具集」同步，点「应用并重连」 |
-| 连接超时 / 连接已重置 | addon 类型选错（社区 ↔ 官方互不兼容） | 设置里换成你实际装的那个 |
-| 截图工具时灵时不灵 | Blender 最小化（窗口抓屏失败） | 保持 Blender 窗口可见 |
-| Plan 模式下 AI 说「需要先确认」 | 符合预期 | 看方案选「继续」，或切 Craft |
-| 图生 3D 报对象存储错误 | 本地参考图无法转公网 URL | 配置对象存储，或传 http(s) / data URL |
-| 3D 生成「卡住很久」 | 供应商异步轮询中（工具超时已放宽到 120 分钟） | 正常等待；瞬时网络错误会自动退避重试，不会判死重发 |
+| 症状                            | 原因                                                         | 解法                                                                                                              |
+| ------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| Blender 工具报「连不上」        | Blender 没开 / addon 没启用 / 端口不是 9876 / addon 类型选错 | 确认 Blender 运行中、addon 已启用；换过 addon 类型或端口就去「设置 → MCP → Blender 工具集」同步，点「应用并重连」 |
+| 连接超时 / 连接已重置           | addon 类型选错（社区 ↔ 官方互不兼容）                        | 设置里换成你实际装的那个                                                                                          |
+| 截图工具时灵时不灵              | Blender 最小化（窗口抓屏失败）                               | 保持 Blender 窗口可见                                                                                             |
+| Plan 模式下 AI 说「需要先确认」 | 符合预期                                                     | 看方案选「继续」，或切 Craft                                                                                      |
+| 图生 3D 报对象存储错误          | 本地参考图无法转公网 URL                                     | 配置对象存储，或传 http(s) / data URL                                                                             |
+| 3D 生成「卡住很久」             | 供应商异步轮询中（工具超时已放宽到 120 分钟）                | 正常等待；瞬时网络错误会自动退避重试，不会判死重发                                                                |
 
 ---
 
