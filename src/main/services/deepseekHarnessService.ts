@@ -40,6 +40,7 @@ import { patchBrowserGuard } from './dshBrowserGuardPatch'
 import { patchAclSandboxConsole } from './dshSandboxConsolePatch'
 import {
   confirmHarnessRunAccess,
+  getBlenderBridgeInfo,
   getMcpServerInfo,
   registerHarnessRunAccess,
   releaseHarnessRunAccess
@@ -325,7 +326,21 @@ export async function getHarnessStatus(): Promise<HarnessStatus> {
  * 只留只读工具，见 shared/mcpModeAccess.ts），不再只靠 persona 提示；runId 供 Plan 回查
  * 「用户是否已确认计划」。配置每轮重写，所以这两个头天然是一次运行一个值。
  */
-function writeDshConfig(endpoint: string, mode: ChatMode, runId: string): void {
+
+/** 提取 dsh 注册第二个 mcp-client 需要的最小字段；桥未起 → null（不写 blender 段） */
+function getBlenderBridgeInfoForHarness(): { port: number; token: string } | null {
+  const info = getBlenderBridgeInfo()
+  if (!info) return null
+  // blenderSpawned=false 表示桥进程在跑但 blender-mcp 子进程没启（未安装 addon），
+  // 仍把 URL 注册进 dsh——让用户感知到「端点通了但工具列表为空」，而不是静默缺位。
+  return { port: info.port, token: info.token }
+}
+function writeDshConfig(
+  endpoint: string,
+  mode: ChatMode,
+  runId: string,
+  blenderBridge: { port: number; token: string } | null
+): void {
   const home = dshHome()
   mkdirSync(home, { recursive: true })
   // !!js 为 dsh 的 YAML 特殊语法：标签值必须是「合法 JS 表达式」，由 cordis-plugin-loader
@@ -358,6 +373,22 @@ function writeDshConfig(endpoint: string, mode: ChatMode, runId: string): void {
       ([key, value]) => `        ${key}: ${yamlScalar(value)}`
     )
   ]
+  // 第二个 mcp-client 实例：指向 stdio→HTTP 桥（默认消费 blender-mcp）。
+  // 桥未就绪时不写这一段，dsh 就只看到本应用的工具面——避免「桥挂了 → dsh 启动失败」。
+  if (blenderBridge) {
+    patch.push(
+      '- insert:',
+      '  - id: mcp-blender',
+      "    name: '@deepseek-ai/dsh-mcp-client'",
+      '    config:',
+      '      serverName: blender',
+      '      transport: streamable-http',
+      `      url: http://127.0.0.1:${blenderBridge.port}/mcp`,
+      '      toolCallTimeoutMs: 7200000',
+      '      headers:',
+      '        Authorization: !!js "`Bearer ${process.env.STUDIO_BLENDER_MCP_TOKEN}`"'
+    )
+  }
   writeFileSync(join(home, 'cordis.patch.yml'), patch.join('\n') + '\n', 'utf8')
 }
 
@@ -1833,7 +1864,7 @@ export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRun
   // 「用户是否已确认计划」），并登记到 MCP 侧的运行授权表（请求到达时按 runId 查）
   const runId = String(++runSeq)
   const mode = normalizeChatMode(input.mode)
-  writeDshConfig(mcp.endpoint, mode, runId)
+  writeDshConfig(mcp.endpoint, mode, runId, getBlenderBridgeInfoForHarness())
   registerHarnessRunAccess(runId, mode)
   // dsh 不读 DSH_MODEL 环境变量，模型必须写进 settings.yaml，否则始终用内置默认
   // deepseek-v4-flash（多数端点不存在 → HTTP_404），与面板选择无关。
@@ -1924,6 +1955,18 @@ export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRun
       ...(provider.baseUrl ? { DEEPSEEK_BASE_URL: provider.baseUrl } : {}),
       // MCP 插件配置里的 header 由该变量展开；name 为 /TOKEN/ 会被 dsh 清洗，故用 STUDIO_ 前缀
       STUDIO_MCP_TOKEN: mcp.token,
+      // stdio→HTTP 桥（mcp-stdio-bridge.mjs）的端口与 token：桥未就绪时缺省为空，
+      // dsh 解析 YAML 时 !!js 表达式取 undefined 在 headers 里等同「不设」，
+      // 桥即使后启动，也不会被本轮 dsh 拉到（一次运行一份 patch 文件）。
+      ...(getBlenderBridgeInfoForHarness()
+        ? (() => {
+            const info = getBlenderBridgeInfo()!
+            return {
+              STUDIO_BLENDER_MCP_PORT: String(info.port),
+              STUDIO_BLENDER_MCP_TOKEN: info.token
+            }
+          })()
+        : {}),
       // 原生持久化 session：runner 据此「有则恢复、无则创建」（见 AIART_RUNNER_TEMPLATE）
       ...(input.sessionId?.trim() ? { AIART_SESSION_ID: input.sessionId.trim() } : {}),
       // ask_user_question 提问的临时目录与本次运行 id：runner 经 answerFile 与主进程交换用户选择
