@@ -669,6 +669,8 @@ export interface McpBlenderBridgeInfo {
   addonInstallHint: string
   /** 配置快照绝对路径（mcp-blender.json，UI 调试用） */
   configPath: string
+  /** spawn / 运行失败原因（ENOENT / 进程退出 / 信号等）；null 表示无错误 */
+  lastError: string | null
 }
 
 /** MCP：blender 桥重启入参（设置界面提交的配置修改） */

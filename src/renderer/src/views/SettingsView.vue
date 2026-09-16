@@ -287,6 +287,12 @@
           <span v-if="mcpInfo?.blenderBridge" class="mcp-running">
             {{ t('settings.mcp.blender.running', { port: mcpInfo.blenderBridge.port }) }}
           </span>
+          <span
+            v-else-if="form.blenderMcp.enabled && mcpInfo?.blenderBridge?.lastError"
+            class="hint-inline error"
+          >
+            {{ t('settings.mcp.blender.spawnError', { error: mcpInfo.blenderBridge.lastError }) }}
+          </span>
           <span v-else-if="form.blenderMcp.enabled" class="hint-inline">
             {{ t('settings.mcp.blender.notRunning') }}
           </span>

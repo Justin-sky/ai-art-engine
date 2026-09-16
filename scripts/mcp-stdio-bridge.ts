@@ -175,16 +175,39 @@ export class StdioMcpBackend {
   child: ChildProcess | null = null
   private command: string
   private args: string[]
+  /** 不变字段快照，写 mcp-blender.json 时复用，避免每次重新序列化 */
+  private infoBase: Record<string, unknown> | null = null
+  /** mcp-blender.json 绝对路径；构造时由 main() 注入 */
+  private configPath: string | null = null
+  /** spawn 失败原因（ENOENT / unknown command / 信号退出等），写盘给 UI 调试 */
+  private lastError: string | null = null
   private stdoutBuffer = ''
   private stderrBuffer = ''
   private pending = new Map<unknown, PendingResolver>()
 
-  constructor(opts: { command: string; args: string[] }) {
+  constructor(opts: {
+    command: string
+    args: string[]
+    /** mcp-blender.json 路径；spawn() 会写两份：尝试 + 终态 */
+    configPath: string
+    /** 写盘时不变字段的快照（port / token / command / args / serverEnv / addonInstallHint） */
+    infoBase: Record<string, unknown>
+  }) {
     this.command = opts.command
     this.args = opts.args
+    this.configPath = opts.configPath
+    this.infoBase = opts.infoBase
   }
 
+  /**
+   * 启动 blender-mcp 子进程。Node 的 spawn 在 ENOENT 等错误时**不抛**而是异步 emit 'error'，
+   * 因此 spawn() 返回 true 不代表子进程最终存活——这里把 mcp-blender.json 的写盘权收归
+   * backend：先乐观写 spawned=true，on('error') / on('exit') 触发后覆盖写 spawned=false
+   * 并附带 lastError。主进程轮询 mcp-blender.json 时读到的是终态值，避免 race。
+   */
   spawn(): boolean {
+    // 先乐观写一份「spawn 尝试了」的快照；后续事件回调再覆盖
+    this.flushSnapshot()
     try {
       this.child = spawn(this.command, this.args, {
         stdio: ['pipe', 'pipe', 'pipe'],
@@ -192,8 +215,10 @@ export class StdioMcpBackend {
         windowsHide: true
       })
     } catch (err) {
-      log('spawn 失败:', err instanceof Error ? err.message : String(err))
+      this.lastError = err instanceof Error ? err.message : String(err)
+      log('spawn 失败:', this.lastError)
       this.running = false
+      this.flushSnapshot()
       return false
     }
     this.running = true
@@ -202,20 +227,47 @@ export class StdioMcpBackend {
     this.child.stdout?.on('data', (chunk: string) => this.onStdout(chunk))
     this.child.stderr?.on('data', (chunk: string) => this.onStderr(chunk))
     this.child.on('exit', (code, signal) => {
-      log(`blender-mcp 退出 code=${code} signal=${signal}`)
+      // on('error') 已写入失败态时跳过，避免覆盖掉 ENOENT 等更具体原因
+      if (this.running) {
+        this.lastError = `blender-mcp 进程退出 code=${code} signal=${signal}`
+        log(this.lastError)
+      }
       this.running = false
       this.child = null
+      this.flushSnapshot()
       for (const [id, resolver] of this.pending) {
         resolver.resolve(rpcError(id, -32603, 'blender-mcp 进程已退出'))
       }
       this.pending.clear()
     })
     this.child.on('error', (err) => {
-      log('blender-mcp 进程错误:', err.message)
+      this.lastError = err.message
+      log('blender-mcp 进程错误:', this.lastError)
       this.running = false
+      this.flushSnapshot()
     })
     log(`已 spawn blender-mcp: ${this.command} ${this.args.join(' ')} (pid=${this.child.pid})`)
     return true
+  }
+
+  /**
+   * 把当前状态写到 mcp-blender.json：spawned 由 this.running 决定，lastError 同步写入。
+   * 主进程等待 mcp-blender.json 出现；race-free 因为 backend 是唯一写入者。
+   */
+  /** 公开：手动触发一次写盘（main 在 server.listen 回调里补 endpoint 用） */
+  flushSnapshot(): void {
+    if (!this.configPath || !this.infoBase) return
+    const payload = {
+      ...this.infoBase,
+      blenderSpawned: this.running,
+      lastError: this.lastError
+    }
+    try {
+      mkdirSync(dirname(this.configPath), { recursive: true })
+      writeFileSync(this.configPath, JSON.stringify(payload, null, 2), 'utf8')
+    } catch (err) {
+      log('写 mcp-blender.json 失败:', err instanceof Error ? err.message : String(err))
+    }
   }
 
   private onStdout(chunk: string): void {
@@ -313,11 +365,6 @@ export class StdioMcpBackend {
   }
 }
 
-function writeConfig(path: string, info: unknown): void {
-  mkdirSync(dirname(path), { recursive: true })
-  writeFileSync(path, JSON.stringify(info, null, 2), 'utf8')
-}
-
 async function main(): Promise<void> {
   const configPath = process.env.AIAE_BLENDER_MCP_CONFIG || defaultConfigPath()
   const portBase = pickPort()
@@ -325,20 +372,26 @@ async function main(): Promise<void> {
   const command = pickCommand()
   const args = parseExtraArgs()
   const serverEnv = pickServerEnv()
-  const backend = new StdioMcpBackend({ command: command[0], args: [...command.slice(1), ...args] })
-  const spawned = backend.spawn()
   const port = await findOpenPort(portBase)
-  const info = {
+  // infoBase 是 mcp-blender.json 中**不变**字段；backend 会在每次写盘时叠加
+  // blenderSpawned（this.running 决定）和 lastError（错误信息）。main() 在 server.listen
+  // 回调里再调一次 flushSnapshot 把 endpoint 补进去。
+  const infoBase: Record<string, unknown> = {
     port,
     command: command.join(' '),
     args,
-    blenderSpawned: spawned,
     token,
     startedAt: Date.now(),
     serverEnv,
     addonInstallHint: 'uvx blender-mcp install-addon'
   }
-  writeConfig(configPath, info)
+  const backend = new StdioMcpBackend({
+    command: command[0],
+    args: [...command.slice(1), ...args],
+    configPath,
+    infoBase
+  })
+  backend.spawn()
 
   const server = createServer(async (req, res) => {
     if (token) {
@@ -416,7 +469,9 @@ async function main(): Promise<void> {
 
   server.listen(port, '127.0.0.1', () => {
     log(`bridge ready → http://127.0.0.1:${port}/mcp  (token ${token ? '已配置' : '未配置'})`)
-    writeConfig(configPath, info)
+    // listen 成功时再补一字段；主进程轮询 mcp-blender.json 看到完整快照
+    infoBase.endpoint = `http://127.0.0.1:${port}/mcp`
+    backend.flushSnapshot()
   })
 
   const shutdown = async (): Promise<void> => {

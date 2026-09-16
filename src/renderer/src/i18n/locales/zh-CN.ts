@@ -419,6 +419,7 @@ export default {
         notEnabledHint: '桥已关闭。勾选启用并点击「重启 Blender 桥」生效。',
         running: '桥运行中 · 端口 {port}',
         notRunning: '桥未启动（blender-mcp 未安装 / 子进程崩溃 / 已被禁用）',
+        spawnError: '子进程失败：{error}',
         command: '启动命令',
         args: '附加参数',
         argsHint: '空格或逗号分隔，传给命令首段之后的参数；环境变量请用下方独立字段。',

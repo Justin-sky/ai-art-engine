@@ -3109,6 +3109,7 @@ let blenderBridgeInfo: {
   blenderSpawned: boolean
   command: string
   args: string[]
+  lastError: string | null
 } | null = null
 let blenderBridgeConfigPath = ''
 
@@ -3486,8 +3487,11 @@ async function startBlenderMcpBridge(): Promise<void> {
       blenderBridgeInfo = null
     }
   })
-  // 轮询 mcp-blender.json，等桥写盘
-  const deadline = Date.now() + 3000
+  // 轮询 mcp-blender.json，等桥写盘。桥脚本在 spawn 时立即乐观写一份 spawned=true 快照，
+  // on('error')/on('exit') 触发后覆盖写 spawned=false + lastError（race-free 因为 backend 是
+  // 唯一写入者）。这里 5s 超时覆盖「ENOENT + Node module 重新解析」+ 「TypeScript 首次编译」
+  // 的最坏情况；超过 5s 视为不可恢复。
+  const deadline = Date.now() + 5000
   while (Date.now() < deadline) {
     if (!existsSync(configPath)) {
       await new Promise((r) => setTimeout(r, 100))
@@ -3505,6 +3509,7 @@ async function startBlenderMcpBridge(): Promise<void> {
         blenderSpawned?: unknown
         command?: unknown
         args?: unknown
+        lastError?: unknown
       }
       if (
         typeof parsed.port === 'number' &&
@@ -3513,14 +3518,25 @@ async function startBlenderMcpBridge(): Promise<void> {
         typeof parsed.command === 'string' &&
         Array.isArray(parsed.args)
       ) {
+        // 看到 spawned=false 立即停止轮询：已是终态，再等也是同一个值
+        const args = parsed.args.filter((a): a is string => typeof a === 'string')
+        const lastError =
+          typeof parsed.lastError === 'string' && parsed.lastError ? parsed.lastError : null
         blenderBridgeInfo = {
           port: parsed.port,
           token: parsed.token,
           blenderSpawned: parsed.blenderSpawned,
           command: parsed.command,
-          args: parsed.args.filter((a): a is string => typeof a === 'string')
+          args,
+          lastError
         }
-        console.log(`[mcp] stdio 桥就绪 → http://127.0.0.1:${parsed.port}/mcp`)
+        if (parsed.blenderSpawned) {
+          console.log(`[mcp] stdio 桥就绪 → http://127.0.0.1:${parsed.port}/mcp`)
+        } else {
+          console.warn(
+            `[mcp] stdio 桥子进程未存活：${lastError ?? '未知原因（见 mcp-blender.json）'}`
+          )
+        }
         return
       }
     } catch (err) {
@@ -3528,7 +3544,7 @@ async function startBlenderMcpBridge(): Promise<void> {
     }
     await new Promise((r) => setTimeout(r, 100))
   }
-  console.warn('[mcp] stdio 桥 3s 内未写出 mcp-blender.json，按未就绪处理')
+  console.warn('[mcp] stdio 桥 5s 内未写出有效 mcp-blender.json，按未就绪处理')
 }
 
 /** 关闭 stdio 桥进程与配置快照；mcp-blender.json 不主动删（重启若端口/token 复用可继续生效） */
@@ -3585,7 +3601,8 @@ export function getBlenderMcpBridgeInfo(): McpBlenderBridgeInfo | null {
       BLENDER_MCP_SAFE_MODE: cfg.safeMode ? '1' : '0'
     },
     addonInstallHint: 'uvx blender-mcp install-addon',
-    configPath: blenderBridgeConfigPath
+    configPath: blenderBridgeConfigPath,
+    lastError: blenderBridgeInfo.lastError
   }
 }
 

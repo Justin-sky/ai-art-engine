@@ -427,6 +427,7 @@ export default {
         running: 'Bridge running · port {port}',
         notRunning:
           'Bridge not running (blender-mcp not installed / child process crashed / disabled).',
+        spawnError: 'Child process failed: {error}',
         command: 'Spawn command',
         args: 'Extra arguments',
         argsHint:

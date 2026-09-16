@@ -8,6 +8,9 @@
  * 直跑 .ts：vitest 原生支持，避免了 scripts/mcp-stdio-bridge.mjs 经 vite transform 时
  * 因 esbuild target 差异报 SyntaxError。
  */
+import { readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   StdioMcpBackend,
@@ -201,10 +204,27 @@ const ENV_PROBE_SCRIPT = `
 `
 
 describe('StdioMcpBackend', () => {
+  // 重构后构造必须传 configPath + infoBase；用 tmpdir 给每个测试一个独立路径，避免污染
+  function tmpConfigPath(): string {
+    return join(
+      tmpdir(),
+      `mcp-blender-test-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.json`
+    )
+  }
+  const TEST_INFO_BASE = {
+    port: 0,
+    token: '',
+    command: '',
+    args: [] as string[],
+    addonInstallHint: ''
+  }
+
   it('未 spawn 时 request 返回 -32603', async () => {
     const backend = new StdioMcpBackend({
       command: 'node',
-      args: ['-e', 'process.stdin.pipe(process.stdout)']
+      args: ['-e', 'process.stdin.pipe(process.stdout)'],
+      configPath: tmpConfigPath(),
+      infoBase: TEST_INFO_BASE
     })
     expect(backend.running).toBe(false)
     const res = (await backend.request({
@@ -217,7 +237,12 @@ describe('StdioMcpBackend', () => {
   })
 
   it('正常 spawn + request 拿到 echo 响应', async () => {
-    const backend = new StdioMcpBackend({ command: 'node', args: ['-e', ECHO_SCRIPT] })
+    const backend = new StdioMcpBackend({
+      command: 'node',
+      args: ['-e', ECHO_SCRIPT],
+      configPath: tmpConfigPath(),
+      infoBase: TEST_INFO_BASE
+    })
     expect(backend.spawn()).toBe(true)
     const res = (await Promise.race([
       backend.request({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }),
@@ -233,7 +258,12 @@ describe('StdioMcpBackend', () => {
   })
 
   it('子进程死亡后 request 返回 -32603', async () => {
-    const backend = new StdioMcpBackend({ command: 'node', args: ['-e', ECHO_SCRIPT] })
+    const backend = new StdioMcpBackend({
+      command: 'node',
+      args: ['-e', ECHO_SCRIPT],
+      configPath: tmpConfigPath(),
+      infoBase: TEST_INFO_BASE
+    })
     expect(backend.spawn()).toBe(true)
     await backend.stop()
     expect(backend.running).toBe(false)
@@ -253,7 +283,12 @@ describe('StdioMcpBackend', () => {
     delete process.env.BLENDER_HOST
     delete process.env.BLENDER_PORT
     delete process.env.BLENDER_MCP_SAFE_MODE
-    const backend = new StdioMcpBackend({ command: 'node', args: ['-e', ENV_PROBE_SCRIPT] })
+    const backend = new StdioMcpBackend({
+      command: 'node',
+      args: ['-e', ENV_PROBE_SCRIPT],
+      configPath: tmpConfigPath(),
+      infoBase: TEST_INFO_BASE
+    })
     expect(backend.spawn()).toBe(true)
     const res = (await Promise.race([
       backend.request({ jsonrpc: '2.0', id: 99, method: 'probe-env' }),
@@ -282,5 +317,48 @@ describe('StdioMcpBackend', () => {
     else process.env.BLENDER_PORT = savedPort
     if (savedSafe === undefined) delete process.env.BLENDER_MCP_SAFE_MODE
     else process.env.BLENDER_MCP_SAFE_MODE = savedSafe
+  })
+
+  it('spawn 不存在的命令 → mcp-blender.json 终态 spawned=false + lastError 非空', async () => {
+    const configPath = tmpConfigPath()
+    const backend = new StdioMcpBackend({
+      // 命令绝对路径用随机目录保证 ENOENT；并绕过 PATH 解析（bash 找不到这玩意）
+      command:
+        process.platform === 'win32'
+          ? 'C:\\__no_such_command_for_aiartengine_test__\\xyz.exe'
+          : '/tmp/__no_such_command_for_aiartengine_test__/xyz',
+      args: [],
+      configPath,
+      infoBase: { ...TEST_INFO_BASE, port: 0, token: 't', command: 'fake', args: [] }
+    })
+    expect(backend.spawn()).toBe(true) // spawn 不抛，仅异步 emit 'error'
+    // 给 on('error') 触发 + flushSnapshot 跑一拍
+    await new Promise((r) => setTimeout(r, 200))
+    expect(backend.running).toBe(false)
+    // 主进程读 mcp-blender.json 看到的就是这个终态值（race-free 因为 backend 是唯一写入者）
+    const text = readFileSync(configPath, 'utf8')
+    const parsed = JSON.parse(text) as { blenderSpawned: boolean; lastError: string | null }
+    expect(parsed.blenderSpawned).toBe(false)
+    expect(parsed.lastError).toBeTruthy()
+    // ENOENT 错误信息应包含 'ENOENT'（Node 标准错误码）
+    expect(parsed.lastError).toMatch(/ENOENT/)
+  })
+
+  it("spawn 成功后 on('exit') 触发 → 覆盖写 spawned=false + lastError 含 code/signal", async () => {
+    const configPath = tmpConfigPath()
+    const backend = new StdioMcpBackend({
+      command: 'node',
+      // 立刻退出的脚本
+      args: ['-e', 'process.exit(7)'],
+      configPath,
+      infoBase: { ...TEST_INFO_BASE, port: 0, token: 't', command: 'node', args: ['-e'] }
+    })
+    expect(backend.spawn()).toBe(true)
+    await new Promise((r) => setTimeout(r, 200))
+    expect(backend.running).toBe(false)
+    const text = readFileSync(configPath, 'utf8')
+    const parsed = JSON.parse(text) as { blenderSpawned: boolean; lastError: string | null }
+    expect(parsed.blenderSpawned).toBe(false)
+    expect(parsed.lastError).toMatch(/退出 code=7/)
   })
 })
