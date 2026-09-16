@@ -13,6 +13,7 @@ import { isVideoJobActive, jobKind } from '@shared/videoJob'
 import { IpcChannels } from '@shared/ipc'
 import { findProviderById } from '@shared/modelProvider'
 import { fail, defErr, defErrSimple, type BiDef } from '@shared/errors/appError'
+import { isAuthFailure } from './modelProviders/http'
 import { MAIN_ERRORS } from '../errors/messages'
 import { broadcastToAllWindows } from '../broadcast'
 import { videoJobRepository } from '../repositories/videoJobRepository'
@@ -52,6 +53,13 @@ const E_VIDEOJOB_PROJECT_CLOSED = defErrSimple(
   '工程已关闭',
   'Project has been closed'
 )
+const E_VIDEOJOB_POLL_UNSTABLE = defErr<{ count: number }>(
+  'videoJob.pollUnstable',
+  ({ count }) =>
+    `轮询供应商状态连续失败 ${count} 次，已停止。远端任务可能仍在进行，可稍后重试；若反复出现请检查网络与提供商 Base URL`,
+  ({ count }) =>
+    `Polling the provider failed ${count} consecutive times; stopped. The remote task may still be running — retry later, and check the network and provider Base URL if this repeats`
+)
 
 /** 按当前语言取消息（任务记录里存的文案在调用时刻固化） */
 function msg(def: BiDef<undefined>): string {
@@ -59,6 +67,25 @@ function msg(def: BiDef<undefined>): string {
 }
 
 const POLL_INTERVAL_MS = 5000
+
+/**
+ * 轮询瞬时失败容忍度：一次网络抖动（超时 / DNS / 5xx）不该判死整条生成任务——
+ * vendor 远端往往已经在真跑，判死后上游 agent 会重发请求造成重复生成。
+ * 连续失败按退避重试，超过预算才判定任务失败；鉴权类错误（Key 失效）立即判死。
+ */
+const POLL_TRANSIENT_MAX = 20
+/** 产物下载重试：vendor 刚完成时 CDN 偶发 5xx / 超时，一次失败不应判死 */
+const DOWNLOAD_MAX_ATTEMPTS = 3
+const DOWNLOAD_RETRY_DELAY_MS = 5000
+
+/** 瞬时失败退避：前 2 次 5s，3-5 次 15s，之后 30s */
+function pollRetryDelayMs(count: number): number {
+  if (count <= 2) return POLL_INTERVAL_MS
+  if (count <= 5) return 15_000
+  return 30_000
+}
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
 export interface CreateVideoJobInput {
   kind: VideoJobKind
@@ -93,6 +120,8 @@ class VideoJobService {
   private waiters = new Map<string, Waiter[]>()
   /** 防止同一 job 并发 poll */
   private polling = new Set<string>()
+  /** 连续轮询瞬时失败计数（内存态，不落盘；成功一次即清零） */
+  private pollFailures = new Map<string, number>()
 
   list(): VideoJobRecord[] {
     if (!projectService.isOpen()) return []
@@ -179,6 +208,7 @@ class VideoJobService {
       progress: 100,
       error: msg(E_VIDEOJOB_CANCELLED)
     })
+    this.pollFailures.delete(localJobId)
     void this.cleanupUploads(next)
     this.finishWaiters(next, new Error(msg(E_VIDEOJOB_CANCELLED)))
     this.emitUpdated(next)
@@ -217,6 +247,7 @@ class VideoJobService {
       this.clearTimer(id)
     }
     this.polling.clear()
+    this.pollFailures.clear()
     for (const [id, list] of this.waiters) {
       for (const w of list) w.reject(new Error(msg(E_VIDEOJOB_PROJECT_CLOSED)))
       this.waiters.delete(id)
@@ -288,9 +319,28 @@ class VideoJobService {
         progress
       })
       this.emitUpdated(updated)
+      // 本次轮询成功：清零连续失败计数
+      this.pollFailures.delete(localJobId)
       this.schedulePoll(localJobId, POLL_INTERVAL_MS)
     } catch (err) {
-      await this.failJob(localJobId, err instanceof Error ? err : new Error(String(err)))
+      const error = err instanceof Error ? err : new Error(String(err))
+      // 鉴权类错误立即判死：Key 失效 / 无权限，重试没有意义
+      if (isAuthFailure(undefined, error.message)) {
+        await this.failJob(localJobId, error)
+        return
+      }
+      // 瞬时错误（超时 / DNS / 5xx / 限流）：退避后重试，超预算才判死
+      const count = (this.pollFailures.get(localJobId) ?? 0) + 1
+      if (count >= POLL_TRANSIENT_MAX) {
+        this.pollFailures.delete(localJobId)
+        await this.failJob(
+          localJobId,
+          new Error(fail(E_VIDEOJOB_POLL_UNSTABLE, { count }).message)
+        )
+        return
+      }
+      this.pollFailures.set(localJobId, count)
+      this.schedulePoll(localJobId, pollRetryDelayMs(count))
     } finally {
       this.polling.delete(localJobId)
     }
@@ -312,7 +362,19 @@ class VideoJobService {
     )
     if (!existsSync(tmpDir)) mkdirSync(tmpDir, { recursive: true })
     const dest = join(tmpDir, isModel3d ? 'output.glb' : 'output.mp4')
-    await modelProviderFacade.downloadVideoToFile(provider, downloadUrl, dest)
+    // 下载重试：vendor 刚完成时 CDN 偶发 5xx / 超时，一次失败不应判死整条任务
+    let downloadErr: unknown
+    for (let attempt = 1; attempt <= DOWNLOAD_MAX_ATTEMPTS; attempt++) {
+      try {
+        await modelProviderFacade.downloadVideoToFile(provider, downloadUrl, dest)
+        downloadErr = undefined
+        break
+      } catch (err) {
+        downloadErr = err
+        if (attempt < DOWNLOAD_MAX_ATTEMPTS) await sleep(DOWNLOAD_RETRY_DELAY_MS)
+      }
+    }
+    if (downloadErr) throw downloadErr
 
     // 与视频一致：显式 outputDir > 缓存根下 {Videos|Models}（3D 模型缺省 Cache/Models）
     const outputDir = resolveJobOutputDir(job)
@@ -329,6 +391,7 @@ class VideoJobService {
     })
     this.bestEffortPatchGraph(job, asset)
 
+    this.pollFailures.delete(job.localJobId)
     const next = videoJobRepository.write(root, {
       ...job,
       status: 'succeeded',
@@ -380,6 +443,7 @@ class VideoJobService {
     const root = projectService.getRoot()
     const job = videoJobRepository.get(root, localJobId)
     if (!job || !isVideoJobActive(job.status)) return
+    this.pollFailures.delete(localJobId)
 
     const next = videoJobRepository.write(root, {
       ...job,
