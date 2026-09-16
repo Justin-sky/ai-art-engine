@@ -13,11 +13,21 @@
  * - 本脚本自带 spawn 子进程的能力（前者是 client，不需要拉起对端）。
  *
  * 配置（环境变量）：
- *   AIAE_BLENDER_MCP_CMD     覆盖 spawn 命令（默认按 `uvx blender-mcp` 探测）
- *   AIAE_BLENDER_MCP_ARGS    附加参数（空格或逗号分隔）
- *   AIAE_BLENDER_MCP_PORT    强制监听端口（默认 43120，自动扫描 43120-43129）
- *   AIAE_BLENDER_MCP_TOKEN   Bearer token（缺省随机生成；写入 mcp-blender.json）
- *   AIAE_BLENDER_MCP_CONFIG  mcp-blender.json 输出路径（默认 <appData>/aiartengine/mcp-blender.json）
+ *   AIAE_BLENDER_MCP_CMD            覆盖 spawn 命令（默认按 `uvx blender-mcp` 探测）
+ *   AIAE_BLENDER_MCP_ARGS           附加参数（空格或逗号分隔的 CLI flag，如 `--port 9876`）
+ *                                    注意：仅用于 blender-mcp CLI flag，请勿写成 `BLENDER_PORT=9876`
+ *                                    那种 env 前缀——env 走下面三个专用变量。
+ *   AIAE_BLENDER_MCP_PORT           桥监听端口（默认 43120，自动扫描 43120-43129）
+ *   AIAE_BLENDER_MCP_TOKEN          Bearer token（缺省随机生成；写入 mcp-blender.json）
+ *   AIAE_BLENDER_MCP_CONFIG         mcp-blender.json 输出路径（默认 <appData>/aiartengine/mcp-blender.json）
+ *   AIAE_BLENDER_MCP_SERVER_HOST    透传给 blender-mcp 子进程的 BLENDER_HOST（默认 localhost）
+ *   AIAE_BLENDER_MCP_SERVER_PORT    透传给 blender-mcp 子进程的 BLENDER_PORT（默认 9876）
+ *   AIAE_BLENDER_MCP_SAFE_MODE      透传给 blender-mcp 子进程的 BLENDER_MCP_SAFE_MODE（默认 1）
+ *
+ * 透传到子进程的环境变量（blender-mcp v1.9.x 参考 PyPI 官方页）：
+ *   BLENDER_HOST=localhost          → blender-mcp 主动连 Blender Add-on 的 socket 主机
+ *   BLENDER_PORT=9876               → blender-mcp 主动连 Blender Add-on 的 socket 端口
+ *   BLENDER_MCP_SAFE_MODE=1         → 在 Blender 中执行脚本前做白名单检查（PyPI 推荐）
  *
  * 协议边界（streamable-http 最小子集）：
  *   POST /mcp  Content-Type: application/json  body=JSON-RPC  → 200 application/json | 202 空
@@ -73,6 +83,42 @@ export function pickPort(): number {
     if (Number.isFinite(n) && n > 0) return n
   }
   return PORT_BASE
+}
+
+const SERVER_HOST_DEFAULT = 'localhost'
+const SERVER_PORT_DEFAULT = 9876
+const SAFE_MODE_DEFAULT = '1'
+
+/**
+ * 收集 blender-mcp 子进程要继承的关键环境变量。
+ * 三个变量全部以 `AIAE_BLENDER_MCP_SERVER_*` / `AIAE_BLENDER_MCP_SAFE_MODE` 为入口，
+ * 避免用户把 `BLENDER_PORT=9876` 这种 env 前缀塞进 AIAE_BLENDER_MCP_ARGS（空格 split 会
+ * 当成 CLI flag 丢给 spawn，子进程会报 unknown arg 立即退出）。
+ */
+export function pickServerEnv(): {
+  BLENDER_HOST: string
+  BLENDER_PORT: string
+  BLENDER_MCP_SAFE_MODE: string
+} {
+  const hostRaw = process.env.AIAE_BLENDER_MCP_SERVER_HOST
+  const portRaw = process.env.AIAE_BLENDER_MCP_SERVER_PORT
+  const safeRaw = process.env.AIAE_BLENDER_MCP_SAFE_MODE
+
+  const host = hostRaw && hostRaw.trim() ? hostRaw.trim() : SERVER_HOST_DEFAULT
+  let port = String(SERVER_PORT_DEFAULT)
+  if (portRaw) {
+    const n = Number(portRaw)
+    if (Number.isFinite(n) && n > 0 && n <= 65535) port = String(Math.floor(n))
+  }
+  // safe mode 默认开启：blender-mcp 会在 Blender 中无防护执行 LLM 生成代码，
+  // 关闭等于主动绕过 PyPI 文档列出的白名单检查（文件 I/O、subprocess、网络、持久 hook）。
+  const safe = safeRaw && /^(0|1)$/.test(safeRaw.trim()) ? safeRaw.trim() : SAFE_MODE_DEFAULT
+
+  return {
+    BLENDER_HOST: host,
+    BLENDER_PORT: port,
+    BLENDER_MCP_SAFE_MODE: safe
+  }
 }
 
 export function genToken(): string {
@@ -143,7 +189,7 @@ export class StdioMcpBackend {
     try {
       this.child = spawn(this.command, this.args, {
         stdio: ['pipe', 'pipe', 'pipe'],
-        env: process.env,
+        env: { ...process.env, ...pickServerEnv() },
         windowsHide: true
       })
     } catch (err) {
@@ -279,6 +325,7 @@ async function main(): Promise<void> {
   const token = genToken()
   const command = pickCommand()
   const args = parseExtraArgs()
+  const serverEnv = pickServerEnv()
   const backend = new StdioMcpBackend({ command: command[0], args: [...command.slice(1), ...args] })
   const spawned = backend.spawn()
   const port = await findOpenPort(portBase)
@@ -288,7 +335,9 @@ async function main(): Promise<void> {
     args,
     blenderSpawned: spawned,
     token,
-    startedAt: Date.now()
+    startedAt: Date.now(),
+    serverEnv,
+    addonInstallHint: 'uvx blender-mcp install-addon'
   }
   writeConfig(configPath, info)
 
@@ -392,7 +441,7 @@ if (isDirectRun && !process.env.AIAE_BRIDGE_TEST_NO_MAIN) {
   })
 }
 
-// 注意：解析函数、findOpenPort、StdioMcpBackend 已在定义处 export；
+// 注意：解析函数、findOpenPort、StdioMcpBackend、pickServerEnv 已在定义处 export；
 // 此处只补 main 与 defaultConfigPath 的对外暴露。
 export { main }
 export { defaultConfigPath }

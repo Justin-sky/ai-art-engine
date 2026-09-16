@@ -16,7 +16,8 @@ import {
   genToken,
   parseExtraArgs,
   pickCommand,
-  pickPort
+  pickPort,
+  pickServerEnv
 } from '../scripts/mcp-stdio-bridge'
 
 describe('mcp-stdio-bridge 解析函数', () => {
@@ -26,7 +27,10 @@ describe('mcp-stdio-bridge 解析函数', () => {
       'AIAE_BLENDER_MCP_CMD',
       'AIAE_BLENDER_MCP_ARGS',
       'AIAE_BLENDER_MCP_PORT',
-      'AIAE_BLENDER_MCP_TOKEN'
+      'AIAE_BLENDER_MCP_TOKEN',
+      'AIAE_BLENDER_MCP_SERVER_HOST',
+      'AIAE_BLENDER_MCP_SERVER_PORT',
+      'AIAE_BLENDER_MCP_SAFE_MODE'
     ]) {
       savedEnv[k] = process.env[k]
       delete process.env[k]
@@ -104,6 +108,45 @@ describe('mcp-stdio-bridge 解析函数', () => {
     expect(port).toBeGreaterThanOrEqual(49000)
     expect(port).toBeLessThan(49000 + 10)
   })
+
+  it('pickServerEnv 默认 localhost:9876 + safe mode=1', () => {
+    expect(pickServerEnv()).toEqual({
+      BLENDER_HOST: 'localhost',
+      BLENDER_PORT: '9876',
+      BLENDER_MCP_SAFE_MODE: '1'
+    })
+  })
+
+  it('pickServerEnv 由三个 env 覆盖', () => {
+    process.env.AIAE_BLENDER_MCP_SERVER_HOST = '192.168.1.10'
+    process.env.AIAE_BLENDER_MCP_SERVER_PORT = '9877'
+    process.env.AIAE_BLENDER_MCP_SAFE_MODE = '0'
+    expect(pickServerEnv()).toEqual({
+      BLENDER_HOST: '192.168.1.10',
+      BLENDER_PORT: '9877',
+      BLENDER_MCP_SAFE_MODE: '0'
+    })
+  })
+
+  it('pickServerEnv 非法端口/非法 safe mode 回退默认', () => {
+    process.env.AIAE_BLENDER_MCP_SERVER_PORT = 'not-a-number'
+    process.env.AIAE_BLENDER_MCP_SAFE_MODE = 'maybe'
+    expect(pickServerEnv()).toEqual({
+      BLENDER_HOST: 'localhost',
+      BLENDER_PORT: '9876',
+      BLENDER_MCP_SAFE_MODE: '1'
+    })
+  })
+
+  it('pickServerEnv 空白 host 回退默认', () => {
+    process.env.AIAE_BLENDER_MCP_SERVER_HOST = '   '
+    expect(pickServerEnv().BLENDER_HOST).toBe('localhost')
+  })
+
+  it('pickServerEnv 端口超出 65535 时回退默认', () => {
+    process.env.AIAE_BLENDER_MCP_SERVER_PORT = '99999'
+    expect(pickServerEnv().BLENDER_PORT).toBe('9876')
+  })
 })
 
 /** echo stdio MCP server：每条 JSON-RPC 消息回 { id, result: { ok: true, echo: method } } */
@@ -122,6 +165,35 @@ const ECHO_SCRIPT = `
         if (msg.id !== undefined && msg.id !== null) {
           process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { ok: true, echo: msg.method } }) + '\\n');
         }
+      } catch {}
+    }
+  });
+  process.stdin.on('end', () => process.exit(0));
+`
+
+/** 把子进程实际收到的三个 env 回给测试进程（echo server） */
+const ENV_PROBE_SCRIPT = `
+  let buf = '';
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', (c) => {
+    buf += c;
+    let i;
+    while ((i = buf.indexOf('\\n')) >= 0) {
+      const line = buf.slice(0, i).trim();
+      buf = buf.slice(i + 1);
+      if (!line) continue;
+      try {
+        const msg = JSON.parse(line);
+        if (msg.id === undefined || msg.id === null) continue;
+        process.stdout.write(JSON.stringify({
+          jsonrpc: '2.0',
+          id: msg.id,
+          result: {
+            BLENDER_HOST: process.env.BLENDER_HOST || null,
+            BLENDER_PORT: process.env.BLENDER_PORT || null,
+            BLENDER_MCP_SAFE_MODE: process.env.BLENDER_MCP_SAFE_MODE || null
+          }
+        }) + '\\n');
       } catch {}
     }
   });
@@ -171,5 +243,44 @@ describe('StdioMcpBackend', () => {
       method: 'tools/list'
     })) as { error?: { code: number; message: string } }
     expect(res.error?.code).toBe(-32603)
+  })
+
+  it('spawn 时把 BLENDER_HOST/PORT/SAFE_MODE 透传到子进程', async () => {
+    // 隔离测试进程已存在的同名 env，避免污染断言
+    const savedHost = process.env.BLENDER_HOST
+    const savedPort = process.env.BLENDER_PORT
+    const savedSafe = process.env.BLENDER_MCP_SAFE_MODE
+    delete process.env.BLENDER_HOST
+    delete process.env.BLENDER_PORT
+    delete process.env.BLENDER_MCP_SAFE_MODE
+    const backend = new StdioMcpBackend({ command: 'node', args: ['-e', ENV_PROBE_SCRIPT] })
+    expect(backend.spawn()).toBe(true)
+    const res = (await Promise.race([
+      backend.request({ jsonrpc: '2.0', id: 99, method: 'probe-env' }),
+      new Promise((r) => setTimeout(() => r({ timeout: true }), 5000))
+    ])) as
+      | { timeout?: boolean }
+      | {
+          result?: {
+            BLENDER_HOST?: string | null
+            BLENDER_PORT?: string | null
+            BLENDER_MCP_SAFE_MODE?: string | null
+          }
+        }
+    expect(res).not.toEqual({ timeout: true })
+    expect(res).toMatchObject({
+      result: {
+        BLENDER_HOST: 'localhost',
+        BLENDER_PORT: '9876',
+        BLENDER_MCP_SAFE_MODE: '1'
+      }
+    })
+    await backend.stop()
+    if (savedHost === undefined) delete process.env.BLENDER_HOST
+    else process.env.BLENDER_HOST = savedHost
+    if (savedPort === undefined) delete process.env.BLENDER_PORT
+    else process.env.BLENDER_PORT = savedPort
+    if (savedSafe === undefined) delete process.env.BLENDER_MCP_SAFE_MODE
+    else process.env.BLENDER_MCP_SAFE_MODE = savedSafe
   })
 })
