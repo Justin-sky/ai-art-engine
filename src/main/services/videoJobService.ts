@@ -333,10 +333,7 @@ class VideoJobService {
       const count = (this.pollFailures.get(localJobId) ?? 0) + 1
       if (count >= POLL_TRANSIENT_MAX) {
         this.pollFailures.delete(localJobId)
-        await this.failJob(
-          localJobId,
-          new Error(fail(E_VIDEOJOB_POLL_UNSTABLE, { count }).message)
-        )
+        await this.failJob(localJobId, new Error(fail(E_VIDEOJOB_POLL_UNSTABLE, { count }).message))
         return
       }
       this.pollFailures.set(localJobId, count)
