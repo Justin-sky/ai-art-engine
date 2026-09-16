@@ -400,6 +400,14 @@ async function onSaveToLibraryConfirm(payload: {
       outputDir: `${cacheRoot}/Composed`
     })
     console.log('[compose] staged to', tmpRel)
+    // pre-check：saveGraphRunMedia 刚写完，但若工程被移动 / 路径被外部删除，主进程会抛 fs.fileNotFound；
+    // 在此处收口避免用户填好名字再被错误打断。
+    if (!(await window.studio.projectFileExists(tmpRel))) {
+      const name = tmpRel.split('/').pop() || tmpRel
+      saveAssetRef.value?.setSourceMissing(tmpRel)
+      saveAssetRef.value?.setError(t('dialog.saveAsset.sourceMissing', { name }))
+      return
+    }
     await window.studio.saveProjectAsset({
       relativePath: tmpRel,
       name: payload.name,

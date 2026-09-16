@@ -836,7 +836,53 @@
             token; file access is confined to the project root; every tool call is appended to the audit log
             <code>&lt;userData&gt;/logs/mcp-audit.jsonl</code> (5 MB rolling).
           </div>
+          <p>
+            The settings panel also lets you <strong>configure the stdio bridge</strong> visually: change the
+            bridge command (default is still <code>node</code> + the in-repo <code>scripts/mcp-bridge.mjs</code>
+            or the installer's bundled <code>&lt;install dir&gt;/resources/mcp-bridge.mjs</code>), the bridge
+            HTTP port, the Blender addon host / port passthrough (<code>BLENDER_HOST</code> /
+            <code>BLENDER_PORT</code>), and the default-on <strong>safe mode</strong> (refuses
+            <code>os</code> / <code>subprocess</code> and other sensitive modules). Changes persist immediately;
+            external agents just reconnect — no app restart needed.
+          </p>
+          <p>
+            The same panel supports a <strong>“reverse bridge”</strong>: register any external stdio MCP server
+            (such as the Blender addon or any local MCP service) so the in-app ◈ AI chat panel (DeepSeek
+            Harness / dsh) can consume its tools directly — no need to expose a separate socket port. See the
+            <a href="guide-mcp.en.html">MCP setup guide</a>, reverse-bridge section.
+          </p>
         </section>
+
+        <h3 id="web-search">4.6 Web search</h3>
+          <p>
+            Settings → <strong>Web search</strong> tab configures <strong>multiple providers running side by
+            side</strong>. Deliberately split from the model provider system — fewer adapters, no per-project
+            context injection needed; the module-level registry is sufficient, and it can be migrated to a
+            Cordis plugin cleanly once a flood of third-party search services shows up.
+          </p>
+          <ul>
+            <li>
+              <strong>5 built-in adapters</strong>: DeepSeek Search (default) / Tavily / Brave / SerpAPI / Mock
+              (Mock returns fixed samples for local connectivity testing — no real request leaves your machine).
+              Each adapter has its own enable toggle, Base URL, API key, search depth and time window.
+            </li>
+            <li>
+              <strong>Panel actions</strong>: toolbar “Add provider” dropdown → pick a kind → add; each card
+              collapses / expands, toggles enable / disable, or removes the instance; a built-in connectivity
+              test prints the raw response or failure reason inline.
+            </li>
+            <li>
+              <strong>Current scope</strong>: the panel is <strong>config only</strong> for now — not yet wired
+              into the in-app AI chat panel or one-click workflow as a web-search tool. Trigger the connectivity
+              test from the panel to verify a provider. The same instance list will be reused when web search
+              becomes an agent tool later.
+            </li>
+          </ul>
+          <div class="tip">
+            Mock always returns the same fixed payload — useful in offline dev and CI to flip the
+            “search available” bit without a real network call. Don't enable it in production (it can fall
+            through when other providers are off, but never replaces real data).
+          </div>
 
         <section id="workspace">
           <h2>5. Workspace</h2>
@@ -1011,6 +1057,15 @@
             <li>
               Marquee multi-select is supported; you can drag images / videos / audio / models /
               <code>.aipackage</code> in from your system.
+            </li>
+            <li>
+              <strong>Multi-select files / folders dragged to another directory</strong>: left-side directory
+              rows and right-side asset cards are both <code>draggable</code>; drag a batch of files or
+              multiple folders onto a target directory at once (everything goes through the
+              <code>folder_move</code> IPC + the same on-disk rules: physical move + descendant asset.relativePath
+              rewrite + cycle detection + duplicate-name auto-append <code>" 2"</code> / <code>" 3"</code>).
+              Dragging within the same parent only rewrites <code>.folder.json</code> and doesn't move any
+              data on disk. The asset library root cannot be dragged out of.
             </li>
           </ul>
 
@@ -1343,7 +1398,16 @@
               <strong>3D model generation</strong>: text / upstream reference images → a 3D model asset (Meshy,
               Tripo, Rodin (Hyper3D), Luma AI, Lux3D; text-to-3D / image-to-3D, with multi-image to 3D on some);
               submit async → poll → download, and the result can feed the director stage or downstream nodes,
-              with write-back binding persistence and cancellation.
+              with write-back binding persistence and cancellation. The node's parameter panel shows a
+              <strong>“Generate rig”</strong> toggle (only when the selected provider is
+              <code>tripo</code> / <code>meshy</code> / <code>hyper3d</code>) so the upstream returns a rigged
+              GLB — Tripo sends <code>rig=true</code>; Meshy sends <code>rigging=true</code> +
+              <code>rig_type</code> (humanoid etc.) + <code>pose</code>; Rodin (Hyper3D) multipart sends
+              <code>rig=true</code> + <code>rig_type</code> + <code>rig_animation</code>, and some tiers
+              need <code>rig=true</code> for the rigged GLB. <strong>Luma AI / Lux3D don't support
+              rigging</strong> — turning it on is rejected with a clear message
+              (<code>provider.luma.rigUnsupported</code> / <code>provider.lux3d.rigUnsupported</code>),
+              never silently dropped.
             </li>
             <li>
               <strong>Host asset</strong>: bring an existing asset (image / video / audio / script / shot /

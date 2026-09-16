@@ -148,7 +148,10 @@
           <li><a href="#tools">工具清单</a></li>
           <li><a href="#examples">场景示例</a></li>
           <li><a href="#env">配置与环境变量</a></li>
+          <li><a href="#settings-bridge">stdio 桥可视化设置</a></li>
+          <li><a href="#reverse-bridge">反向桥：dsh 直连 stdio server</a></li>
           <li><a href="#security">安全与当前限制</a></li>
+          <li><a href="#blender">Blender 工具集（进阶）</a></li>
         </ol>
         <p style="margin-top: 1.25rem; font-size: 12px; color: var(--mute)">
           <a href="manual.html">← 返回使用手册</a>
@@ -473,6 +476,60 @@
           </p>
         </section>
 
+        <section id="settings-bridge">
+          <h2>5.1 stdio 桥可视化设置</h2>
+          <p>
+            设置页 → <strong>MCP 工具服务</strong> → <strong>stdio 桥</strong> Tab 可视化配置桥脚本
+            （无需手写环境变量）。当前可设：<strong>桥命令</strong>（默认仍是
+            <code>node</code> + 仓库内 <code>scripts/mcp-bridge.mjs</code> 或安装包内置
+            <code>&lt;安装目录&gt;/resources/mcp-bridge.mjs</code>）、<strong>桥端口</strong>
+            （桥 HTTP 监听端口，默认同上）、Blender addon 的 <code>BLENDER_HOST</code> /
+            <code>BLENDER_PORT</code> <strong>透传</strong>、<strong>safe mode</strong>（默认开：
+            拒绝 <code>os</code> / <code>subprocess</code> 等敏感模块）。改完即时落盘，外部
+            Agent 重连即生效，不需要重启应用。
+          </p>
+          <div class="tip">
+            开发场景用仓库内 <code>scripts/mcp-bridge.mjs</code>；正式安装包内置在
+            <code>&lt;安装目录&gt;/resources/mcp-bridge.mjs</code>。同一面板可加多组外部 stdio
+            server 入口（见 <a href="#reverse-bridge">§5.2 反向桥</a>），与 Blender stdio 桥共用一份
+            配置存储。
+          </div>
+        </section>
+
+        <section id="reverse-bridge">
+          <h2>5.2 反向桥：让 dsh（应用内对话面板）直连 stdio MCP server</h2>
+          <p>
+            「正向桥」是把 Claude Code 等外部 Agent 通过 stdio 桥 / HTTP 连进来；<strong
+              >反向桥</strong
+            >反过来 —— 应用内 ◈ AI 对话面板（DeepSeek Harness / dsh）也能注册并消费
+            <strong>任意外部 stdio MCP server</strong>（不再局限于连回应用自己的
+            <code>/mcp</code>）。
+          </p>
+          <p>
+            典型场景：Blender addon 等只暴露 stdio 协议的 MCP server，不再需要先开 socket 端口；dsh
+            注册一条 <code>claude mcp add --transport stdio ...</code> 之类的命令后，AI 对话里说
+            「在 Blender 里把…做完截张图」即可直接驱动。配置入口在设置面板
+            <strong>MCP 工具服务 → stdio 桥</strong> Tab 同一区域，可加多组外部 stdio server
+            （每组：名称 / 启动命令 / 工作目录 / 环境变量），与 Blender stdio 桥共用一份配置存储。
+          </p>
+          <p>协议层细节：</p>
+          <ul>
+            <li>
+              反向桥在 dsh 进程内 fork stdio 子进程、转 MCP 帧、复用既有 mcp-client 实例 —— 不再
+              单独起桥进程
+            </li>
+            <li>
+              协议错误 / 子进程崩溃与正向桥共用同一套日志（<code>&lt;userData&gt;/logs/mcp-audit.jsonl</code>）
+            </li>
+            <li>
+              仅限本机 + token 鉴权；外部 stdio server 不会自动获得应用侧 <code>/mcp</code> 的写权限
+            </li>
+            <li>
+              Ask / Plan 模式对反向桥的工具同样只读 —— 它不是绕过面板模式的侧门
+            </li>
+          </ul>
+        </section>
+
         <section id="security">
           <h2>6. 安全与当前限制</h2>
           <ul>
@@ -485,6 +542,163 @@
             <li><code>graph_edit</code> / <code>graph_icon_refine</code> 对正在编辑器中打开的图会拒绝修改，避免与编辑器内存态互相覆盖。</li>
             <li><code>workflow_plan</code> 走 LLM，耗时可能数十秒；<code>generate_video</code> / <code>generate_model3d</code> 为异步任务，用 <code>video_job_*</code> 跟踪。</li>
             <li>接入方式两选一：<strong>stdio 桥</strong>（安装包内置在 <code>&lt;安装目录&gt;/resources/mcp-bridge.mjs</code>；开发场景用仓库内 <code>scripts/mcp-bridge.mjs</code>，需 Node.js 18+）或 <strong>HTTP 直连</strong>（无需 Node.js）。</li>
+          </ul>
+        </section>
+
+        <section id="blender">
+          <h2>7. Blender 工具集（进阶）</h2>
+          <p>
+            这一组工具<strong>不在 <code>/mcp</code> 主工具集里</strong>，而是挂在同一服务的另一个端点
+            <code>/mcp/blender</code>（「设置 → MCP → Blender 工具集」默认开启；关掉后该端点直接回
+            403，主工具集不受影响）。
+          </p>
+          <p>
+            让 AI <strong>直接操作本机 Blender</strong> —— 搭场景、写 bpy 建模、截图自查画面、导出
+            GLB / GLTF / FBX 出库。<strong>出站直连 addon</strong>，不需要装 uv、不起 Python
+            子进程、不改 Blender 配置：应用主动连 addon 的 <code>localhost:9876</code>。
+          </p>
+          <h3>前置条件</h3>
+          <ul>
+            <li>
+              <strong>Blender 正在运行</strong>，且已启用 MCP addon（设置面板里选择对应 addon
+              类型，两种线协议互不兼容，选错表现为「连接超时」或「连接已重置」）：
+              <ul>
+                <li>
+                  <strong>社区方案（默认）</strong>：<a
+                    href="https://github.com/ahujasid/blender-mcp"
+                    target="_blank"
+                    rel="noopener noreferrer">blender-mcp</a
+                  > 项目的 <code>addon.py</code>，在 Blender 的
+                  <code>Edit → Preferences → Add-ons</code> 安装启用
+                </li>
+                <li>
+                  <strong>官方方案</strong>：Blender 扩展平台上的
+                  <a
+                    href="https://projects.blender.org/lab/blender_mcp"
+                    target="_blank"
+                    rel="noopener noreferrer">Blender Lab「MCP Server」</a
+                  > 官方扩展，安装后在扩展偏好里启动服务
+                </li>
+              </ul>
+            </li>
+            <li>两种 addon 默认端口都是 <code>9876</code>；改过端口就在设置面板里同步填上</li>
+            <li>外部 Agent 想拿到这组工具，需要再注册一个 MCP server（<code>&lt;token&gt;</code> 取自应用侧 <code>mcp.json</code>）：
+              <pre class="mcp-code"><code>claude mcp add --transport http blender http://127.0.0.1:43110/mcp/blender --header "Authorization: Bearer &lt;token&gt;"</code></pre>
+              <p style="margin: 0.25rem 0 0">
+                应用内的 ◈ AI 对话面板自动带上（内部为 dsh 注册第二个 mcp-client 实例），你在对话里说「用 Blender……」即可。
+              </p>
+            </li>
+          </ul>
+
+          <h3>工具清单</h3>
+          <p>工具名称、入参与输出在两种 addon 下完全一致，模型侧无感：</p>
+          <table>
+            <thead>
+              <tr>
+                <th>工具</th>
+                <th>作用</th>
+                <th>前置条件</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>get_scene_info</code></td>
+                <td>场景概览：场景名、对象 / 材质数量、前若干对象的名称 · 类型 · 位置</td>
+                <td>Blender 运行中</td>
+              </tr>
+              <tr>
+                <td><code>get_world_state_snapshot</code></td>
+                <td>完整快照：几何 / 关系 / 动画摘要、当前帧与帧范围、FPS、选中对象、激活相机与灯光</td>
+                <td>Blender 运行中</td>
+              </tr>
+              <tr>
+                <td><code>get_object_info</code></td>
+                <td>单个对象详情（网格对象带顶点 / 边 / 面数与世界包围盒）</td>
+                <td>Blender 运行中</td>
+              </tr>
+              <tr>
+                <td><code>get_viewport_screenshot</code></td>
+                <td>3D 视口截图，画面随 MCP 响应回给多模态客户端（离屏抓帧，失败回退窗口抓屏）</td>
+                <td>Blender 界面可见</td>
+              </tr>
+              <tr>
+                <td><code>execute_blender_code</code></td>
+                <td>在 Blender 进程内执行 Python（完整访问 bpy），<code>print</code> 原样返回，报错带异常类型与 traceback</td>
+                <td>Blender 运行中</td>
+              </tr>
+              <tr>
+                <td><code>export_scene</code></td>
+                <td>把场景（或选中对象 / 指定对象）导出为 glb / gltf / fbx / obj / usd / stl，配 <code>asset_import</code> 入资产库</td>
+                <td>Blender 运行中</td>
+              </tr>
+              <tr>
+                <td><code>describe_node_type</code></td>
+                <td>查节点类型（如 <code>ShaderNodeTexImage</code>）的端口与可设属性，写着色器 / 几何节点脚本前先问它</td>
+                <td>Blender 运行中</td>
+              </tr>
+              <tr>
+                <td><code>bpy_api_lookup</code></td>
+                <td>在运行中的 Blender 里查 bpy API（操作符 / 类型 / 属性 / 函数），参数名与默认值来自真实 RNA</td>
+                <td>Blender 运行中</td>
+              </tr>
+              <tr>
+                <td><code>get_addon_status</code></td>
+                <td>addon 版本 / 协议版本 / 能力清单 / Blender 版本，用来判断「连不上」是没启用、版本不匹配还是 Blender 没开</td>
+                <td>Blender 运行中</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h3>典型闭环</h3>
+          <pre class="mcp-code"><code>get_scene_info            看清现状
+   ↓
+execute_blender_code      写 bpy 建模 / 调材质 / 摆相机
+   ↓
+get_viewport_screenshot   截图自查（多模态客户端直接看到画面）
+   ↓
+export_scene              出 GLB / GLTF / FBX …
+   ↓
+asset_import              一键入资产库</code></pre>
+
+          <div class="tip">
+            对话里这样说就行：<em>「在 Blender 里把这几个 Cube 拼成一个底座，做完截张图给我看，调好后导出 GLB 入库」</em
+            >。模型会自己安排 <code>execute_blender_code</code> 的步骤与参数，截图不对再迭代。
+          </div>
+
+          <h3>安全护栏</h3>
+          <ul>
+            <li>
+              <strong><code>execute_blender_code</code> 走词法护栏，不是沙箱</strong>：禁止
+              <code>os</code> / <code>subprocess</code> / 网络模块，禁用
+              <code>eval</code> / <code>exec</code> / <code>compile</code> /
+              <code>open</code> / <code>__import__</code> / dunder 逃脱链，禁装饰器 /
+              <code>lambda</code> / <code>class</code> / <code>global</code> / 海象 /
+              <code>type()</code> 造类这类结构性写法；<strong
+                >渲染 / 保存 / 导入导出等 bpy 操作符不受限</strong
+              >（否则工具就没用了）。匹配前先抹掉字符串与注释，<code>print("bpy.ops.script")</code> 不会被误伤。它的作用是<strong>提高逃脱成本</strong>，兜底是
+              <a href="#security">§6</a> 的模式约束 —— Ask / Plan 下整组只读，写入调用被拒。
+            </li>
+            <li>
+              <strong>截图走一次性临时文件</strong>：<code>get_viewport_screenshot</code>
+              让 Blender 写到系统临时目录的一次性文件，应用读回后立即删除；画面只随 MCP
+              响应回给多模态客户端，<strong>不落工程、不进审计日志</strong>。
+            </li>
+            <li>
+              <strong>模式绑定请求，不绑定客户端</strong>：Blender 端点与主工具集共用
+              token，Ask / Plan 通过 <code>X-AIArt-Mode</code> /
+              <code>X-AIArt-Run-Id</code> 下发 —— Ask 整组不返回、Plan 只返回只读工具（<code
+                >get_scene_info</code
+              >  / <code>get_world_state_snapshot</code> /
+              <code>get_object_info</code> /
+              <code>get_viewport_screenshot</code> /
+              <code>describe_node_type</code> /
+              <code>bpy_api_lookup</code> /
+              <code>get_addon_status</code>），<code>execute_blender_code</code> 与
+              <code>export_scene</code> 属 write 被拒并记审计。
+            </li>
+            <li>
+              <strong>addon 是 socket 服务端</strong>：Blender 一关，这组工具全部失败（错误明确说「连不上 addon」）；应用<strong>不负责启动 Blender</strong>，也没有无界面模式 —— <code>get_viewport_screenshot</code> 对窗口可见性有要求（最小化时抓不到画面）。连接状态在设置面板里每 4 秒刷新一次，<code>get_addon_status</code> 可随时查版本。
+            </li>
           </ul>
         </section>
       </article>

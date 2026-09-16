@@ -48,13 +48,21 @@
       <p v-if="error" class="err">
         {{ error }}
       </p>
+      <p v-else-if="sourceMissing" class="err">
+        {{ t('dialog.saveAsset.sourceMissing', { name: sourceMissingName }) }}
+      </p>
     </div>
 
     <template #footer>
       <button type="button" @click="onCancel">
         {{ t('common.cancel') }}
       </button>
-      <button type="button" class="primary" :disabled="saving" @click="onConfirm">
+      <button
+        type="button"
+        class="primary"
+        :disabled="saving || !!sourceMissing"
+        @click="onConfirm"
+      >
         {{ saving ? t('common.saving') : t('common.save') }}
       </button>
     </template>
@@ -118,6 +126,7 @@ function onCancel(): void {
 
 function onConfirm(): void {
   if (saving.value) return
+  if (sourceMissing.value) return
   const trimmed = name.value.trim()
   if (!trimmed) {
     error.value = t('validation.nameRequired')
@@ -127,6 +136,15 @@ function onConfirm(): void {
   emit('confirm', { name: trimmed, folderId: folderId.value })
 }
 
+/**
+ * 源文件已被外部移除（Cache 被清理 / 路径越界 / 工程被移动）：禁用确认按钮 + 行内错误。
+ * 非空字符串表示路径已确认缺失；null / 空串视为「源文件正常」。
+ */
+const sourceMissing = ref<string | null>(null)
+const sourceMissingName = computed(() =>
+  sourceMissing.value ? sourceMissing.value.split('/').pop() || sourceMissing.value : ''
+)
+
 defineExpose({
   setSaving(value: boolean): void {
     saving.value = value
@@ -134,6 +152,13 @@ defineExpose({
   setError(message: string): void {
     error.value = message
     saving.value = false
+  },
+  /**
+   * 由调用方传入「工程内相对路径」，由 IPC 主进程 stat 检查是否存在；
+   * 缺失时禁用确认按钮并展示行内错误文案，避免点保存后才发现 fs.fileNotFound。
+   */
+  setSourceMissing(relativePath: string | null): void {
+    sourceMissing.value = relativePath && relativePath.trim() ? relativePath : null
   }
 })
 </script>

@@ -672,7 +672,7 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'asset_import',
     title: '导入素材',
     description:
-      '把本机绝对路径上的媒体文件导入当前工程资产库（图片（含 PSD / SVG 矢量图）/ 视频 / 音频 / 3D 模型 / 剧本文本，按扩展名判定类型），返回逐条导入结果与跳过原因；界面资产库同步刷新，导入同时登记为「素材导入」活动并逐条回报工程内相对路径（导入的素材随即以资产卡出现在对话流）；导入的 SVG 归图片资产，可直接接入 svg.anim 烘焙节点转位图序列。只收编工程外的本机素材：工程内生成产物目录（Cache/ 与 Output/）一律拒绝——生成结果是否需要入库，由用户在对话产物卡上点「保存到资产库」按钮决定。',
+      '把本机绝对路径上的媒体文件先收入工程的临时缓存 `Cache/imports/`（图片（含 PSD / SVG 矢量图）/ 视频 / 音频 / 3D 模型 / 剧本文本，按扩展名判定类型），不直接入库。导入结果以「素材导入」活动逐条回报工程内相对路径，对话流随即出产物卡并附带「保存到资产库」按钮——是否真正入 `Assets/<folder>/` 由用户在弹窗里挑文件夹、命名并点确认决定。只有用户点过保存的素材才会被资产库收录、并出现在 `asset_list` 等查询里。**只收编工程外的本机素材**：工程内任意路径（含 `Assets/`、`Cache/`、`Output/`）整单拒绝；生成产物要入库继续走对话产物卡上的「保存到资产库」。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -680,8 +680,7 @@ const TOOL_DEFS: McpToolDef[] = [
           type: 'array',
           items: { type: 'string' },
           description: `本机绝对路径列表（最多 ${MCP_ASSET_IMPORT_LIMIT} 条）`
-        },
-        folderId: { type: 'string', description: '目标资产库文件夹 id（可选，缺省放资产库根目录）' }
+        }
       },
       required: ['filePaths']
     },
@@ -696,43 +695,33 @@ const TOOL_DEFS: McpToolDef[] = [
           `单次最多导入 ${MCP_ASSET_IMPORT_LIMIT} 个文件（本次 ${filePaths.length} 个），请分批调用`
         )
       }
-      // 工程内生成产物（Cache/ 与 Output/）不走导入：Agent 反复 import 会把同一份媒体
-      // 再复制一份进 Assets/，资产库里留下重复文件、对话流里再出一张重复卡。
-      // 生成结果要入库由用户在对话产物卡上点「保存到资产库」按钮决定。
-      const generatedOutputPaths = filePaths.filter((filePath) =>
+      // 工程内任意路径（含 Assets/、Cache/、Output/）一律拒。
+      // 此前这条仅防「Cache/Output 反复入 Assets/ 造成重复资产」，现在目的更广：
+      // 既然素材不再自动入库、Cache/imports/ 也是工程内路径，重新导入同一份已缓存的
+      // 文件只会再造一份磁盘拷贝（且无法被 ChatPanel 旧的「保存到资产库」按钮命中）。
+      const internalPaths = filePaths.filter((filePath) =>
         isProjectInternalPath(
           filePath,
           projectService.getRoot(),
           projectService.getConfig().cacheOutputDir
         )
       )
-      if (generatedOutputPaths.length) {
-        throw new Error(projectGeneratedOutputImportError(generatedOutputPaths))
+      if (internalPaths.length) {
+        throw new Error(projectGeneratedOutputImportError(internalPaths))
       }
-      const folderId = optionalString(args, 'folderId') ?? null
-      assertFolderExists(folderId)
       // 登记为界面可见的 MCP 活动：导入此前只进资产库、不进会话流，Agent 导入的 SVG / 图片
       // 在对话里没有任何产物卡（文件确实进了工程，用户却以为这一步没发生）；现按导入结果
-      // 逐条回报工程内相对路径，对话流随即出资产卡（SVG 由 ChatAssetPreview 直接渲染）
+      // 逐条回报工程内相对路径，对话流随即出产物卡，并附带「保存到资产库」按钮让用户拍板。
       const result = await runGenActivity(
         'asset_import',
         assetImportActivityTitle(filePaths.length),
         undefined,
-        async () => {
-          const imported = projectService.importAssets(filePaths, folderId)
-          for (const asset of imported.imported) {
-            broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
-          }
-          return imported
-        },
+        async () => projectService.importExternalMaterials(filePaths),
         (r) => {
           const relativePaths = r.imported
-            .map((asset) =>
-              liveAssetRelativePath({ assetId: asset.id, relativePath: asset.relativePath })
-            )
+            .map((item) => item.relativePath)
             .filter((path): path is string => !!path?.trim())
           return {
-            assetId: r.imported[0]?.id,
             relativePath: relativePaths[0],
             relativePaths
           }
@@ -742,11 +731,9 @@ const TOOL_DEFS: McpToolDef[] = [
         assetImportActivityDetail(filePaths)
       )
       return {
-        imported: result.imported.map((asset) => ({
-          assetId: asset.id,
-          type: asset.type,
-          name: asset.name,
-          relativePath: asset.relativePath
+        imported: result.imported.map((item) => ({
+          relativePath: item.relativePath,
+          basename: item.basename
         })),
         skipped: result.skipped
       }

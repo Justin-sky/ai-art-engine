@@ -886,6 +886,8 @@ export default {
       saveToLibraryTitle: 'Save generated result to asset library',
       saveToLibrarySubtitle: 'Choose a target folder and file name',
       savedToLibrary: 'Saved',
+      alreadyInLibrary: 'In library',
+      alreadyInLibraryTitle: 'This file is already registered in the asset library (Assets/)',
       assetGroupCount: '{count} outputs',
       assetGroupTitle:
         'Show or hide the other outputs written in the same run (vector source / baked bitmap / frames)',
@@ -958,7 +960,8 @@ export default {
       title: 'Save Asset',
       subtitle: 'Choose a folder and file name (Ctrl+S)',
       fileName: 'File name',
-      folder: 'Save to'
+      folder: 'Save to',
+      sourceMissing: 'Source file “{name}” no longer exists. Please regenerate it before saving.'
     }
   },
   validation: {

@@ -869,6 +869,8 @@ export default {
       saveToLibraryTitle: '将生成结果保存到资产库',
       saveToLibrarySubtitle: '选择目标文件夹并输入文件名',
       savedToLibrary: '已保存',
+      alreadyInLibrary: '已在资产库',
+      alreadyInLibraryTitle: '该文件已收录在资产库（Assets/）内，无需重复保存',
       assetGroupCount: '含 {count} 个产物',
       assetGroupTitle: '展开或收起同一次跑动一起落盘的其它产物（矢量源 / 烘焙位图 / 帧序列等）',
       roundOutputsMore:
@@ -939,7 +941,8 @@ export default {
       title: '保存资产',
       subtitle: '选择保存目录并输入文件名（Ctrl+S）',
       fileName: '文件名',
-      folder: '保存到'
+      folder: '保存到',
+      sourceMissing: '源文件「{name}」已不存在，请重新生成后再保存'
     }
   },
   validation: {

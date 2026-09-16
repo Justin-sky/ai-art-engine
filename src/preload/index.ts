@@ -199,6 +199,8 @@ const api: StudioApi = {
     ipcRenderer.invoke(IpcChannels.PROJECT_READ_FILE, relativePath),
   writeProjectFile: (input: { relativePath: string; content: string }) =>
     ipcRenderer.invoke(IpcChannels.PROJECT_WRITE_FILE, input),
+  projectFileExists: (relativePath: string) =>
+    ipcRenderer.invoke(IpcChannels.PROJECT_FILE_EXISTS, relativePath),
   deleteGraphRunMedia: (relativePath: string) =>
     ipcRenderer.invoke(IpcChannels.GRAPH_DELETE_RUN_MEDIA, relativePath),
 

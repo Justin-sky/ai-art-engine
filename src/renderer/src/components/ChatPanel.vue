@@ -1408,6 +1408,7 @@ const saveDialogDefaultFolderId = ref<string | null>(null)
 const saveDialogRef = ref<{
   setSaving: (v: boolean) => void
   setError: (m: string) => void
+  setSourceMissing: (relativePath: string | null) => void
 } | null>(null)
 const savingAssetPath = ref('')
 /** 本次会话已成功保存到资产库的产物路径：一张卡里折叠的每份产物各自判定「已保存」并禁用 */
@@ -1428,6 +1429,15 @@ function assetDefaultName(relativePath: string): string {
   )
 }
 
+/**
+ * 路径是否已落在资产库目录（Assets/）内：`asset_import` 等活动回报的是已入库资产，
+ * 卡上不该再出现「保存到资产库」按钮（点了会把已入库文件再复制一份重复资产）。
+ */
+function isLibraryRelativePath(relativePath: string): boolean {
+  const normalized = relativePath?.replace(/\\/g, '/').replace(/^\.\//, '').trim() ?? ''
+  return /^assets\//i.test(normalized)
+}
+
 function openSaveAsset(relativePath: string): void {
   const path = normalizeOutputPathKey(relativePath)
   if (!path || isAssetSaved(path)) return
@@ -1435,6 +1445,18 @@ function openSaveAsset(relativePath: string): void {
   saveDialogDefaultName.value = assetDefaultName(path)
   saveDialogDefaultFolderId.value = null
   saveDialogOpen.value = true
+  // 打开对话框的瞬间异步 stat：Cache 被清理 / 路径越界时直接禁用确认按钮，
+  // 避免用户填好名字再点保存才发现 fs.fileNotFound。后续每次点保存会再 stat 一次（onSaveAssetConfirm）。
+  void window.studio
+    .projectFileExists(path)
+    .then((exists) => {
+      if (pendingSavePath !== path) return
+      saveDialogRef.value?.setSourceMissing(exists ? null : path)
+    })
+    .catch(() => {
+      if (pendingSavePath !== path) return
+      saveDialogRef.value?.setSourceMissing(null)
+    })
 }
 
 function closeSaveAssetDialog(): void {
@@ -1452,6 +1474,15 @@ async function onSaveAssetConfirm(payload: {
   savingAssetPath.value = path
   saveDialogRef.value?.setSaving(true)
   try {
+    // 二次 stat：对话框从打开到用户点确认可能跨分钟；期间 Cache 被清理会让主进程抛 fs.fileNotFound。
+    const exists = await window.studio.projectFileExists(path)
+    if (!exists) {
+      saveDialogRef.value?.setError(
+        t('dialog.saveAsset.sourceMissing', { name: path.split('/').pop() || path })
+      )
+      saveDialogRef.value?.setSourceMissing(path)
+      return
+    }
     await window.studio.saveProjectAsset({
       relativePath: path,
       name: payload.name,
@@ -1698,7 +1729,11 @@ onBeforeUnmount(() => {
               <ul v-if="isAssetGroupOpen(msg.key)" class="asset-card-group">
                 <li v-for="path in msg.relatedPaths ?? []" :key="path">
                   <span class="asset-group-name" :title="path">{{ assetFileName(path) }}</span>
+                  <span v-if="isLibraryRelativePath(path)" class="library-tag">
+                    {{ t('studio.chat.alreadyInLibrary') }}
+                  </span>
                   <button
+                    v-else
                     class="save-btn"
                     :class="{ saved: isAssetSaved(path) }"
                     :disabled="savingAssetPath === path || isAssetSaved(path)"
@@ -1726,7 +1761,15 @@ onBeforeUnmount(() => {
                 >
                   {{ t('studio.chat.assetGroupCount', { count: assetGroupCount(msg) }) }}
                 </button>
+                <span
+                  v-if="isLibraryRelativePath(msg.relativePath)"
+                  class="library-tag"
+                  :title="t('studio.chat.alreadyInLibraryTitle')"
+                >
+                  {{ t('studio.chat.alreadyInLibrary') }}
+                </span>
                 <button
+                  v-else
                   class="save-btn"
                   :class="{ saved: isAssetSaved(msg.relativePath) }"
                   :disabled="savingAssetPath === msg.relativePath || isAssetSaved(msg.relativePath)"
@@ -2600,6 +2643,12 @@ onBeforeUnmount(() => {
   justify-content: flex-end;
   gap: 6px;
   margin-top: 6px;
+}
+
+/* 已入库资产（Assets/ 下路径）的标记：替代无意义的「保存到资产库」按钮 */
+.library-tag {
+  font-size: 11px;
+  color: var(--text-muted);
 }
 
 /* 同批次产物清单：默认收起，靠「含 N 个产物」角标展开，避免对话流里连排几乎相同的图 */

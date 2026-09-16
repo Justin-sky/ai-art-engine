@@ -486,6 +486,78 @@ class ProjectService {
   }
 
   /**
+   * Stage external materials into `Cache/imports/` for user review before they
+   * are promoted to the asset library. Differs from `importAssets` (which the
+   * UI import dialog still uses, immediately registering assets): here files
+   * land in the project's cache as plain media — no asset metadata, no
+   * folder association, no ASSET_UPDATED broadcast. The MCP chat card that
+   * follows renders the regular `Save to asset library` button; the user
+   * decides whether each piece earns a slot in `Assets/<folder>/` via
+   * `saveProjectAsset`. On-disk layout intentionally mirrors `saveGraphRunMedia`
+   * so the same dedup / cache-sweep rules apply.
+   */
+  importExternalMaterials(filePaths: string[]): {
+    imported: { relativePath: string; basename: string }[]
+    skipped: { path: string; reason: string }[]
+  } {
+    const root = this.getRoot()
+    const importsDirRel = `${resolveCacheOutputRoot(this.config?.cacheOutputDir)}/imports`
+    const dirAbs = assertInsideProject(root, join(root, importsDirRel))
+    mkdirSync(dirAbs, { recursive: true })
+
+    const imported: { relativePath: string; basename: string }[] = []
+    const skipped: { path: string; reason: string }[] = []
+    const stamp = new Date()
+      .toISOString()
+      .replace(/[-:.TZ]/g, '')
+      .slice(0, 17)
+
+    for (const src of filePaths) {
+      try {
+        if (!src || typeof src !== 'string') {
+          skipped.push({ path: src, reason: 'Invalid source path' })
+          continue
+        }
+        if (!existsSync(src)) {
+          skipped.push({ path: src, reason: 'Source file does not exist' })
+          continue
+        }
+        const st = statSync(src)
+        if (!st.isFile()) {
+          skipped.push({ path: src, reason: 'Not a regular file' })
+          continue
+        }
+        if (!isImportablePath(src)) {
+          skipped.push({ path: src, reason: 'Unsupported file type' })
+          continue
+        }
+        const ext = extname(src).toLowerCase()
+        const base = normalizePathSegment(basename(src, ext)) || 'material'
+        const fileName = uniqueFileName(dirAbs, `${stamp}_${base}${ext}`)
+        const dest = join(dirAbs, fileName)
+        runTransactionSync([
+          {
+            label: 'stage imported material into cache',
+            forward: () => copyFileAtomic(src, dest),
+            rollback: () => removeIfExists(dest)
+          }
+        ])
+        imported.push({
+          relativePath: toPosix(relative(root, dest)),
+          basename: base
+        })
+      } catch (err) {
+        skipped.push({
+          path: src,
+          reason: err instanceof Error ? err.message : String(err)
+        })
+      }
+    }
+
+    return { imported, skipped }
+  }
+
+  /**
    * 将工程内文件（如 Cache 生成产物）复制到资产库并登记为资产。
    * 与 importAssets 类似，但源是工程内相对路径（无需经过系统文件选择），
    * 且支持自定义资产名称与目标文件夹。
@@ -493,7 +565,9 @@ class ProjectService {
   saveProjectAsset(input: SaveProjectAssetInput): AssetInfo {
     const root = this.getRoot()
     const srcAbs = assertInsideProject(root, join(root, input.relativePath))
-    if (!existsSync(srcAbs)) throw fail(MAIN_ERRORS.fileNotFound)
+    if (!existsSync(srcAbs)) {
+      throw fail(MAIN_ERRORS.fileNotFound, { path: input.relativePath })
+    }
     const folderId = input.folderId ?? null
     if (folderId) this.readFolder(folderId)
     const dirAbs = resolveFolderDirAbs(root, folderId)
@@ -1360,7 +1434,7 @@ class ProjectService {
   async separateAudio(relativePath: string): Promise<import('@shared/ipc').SeparateAudioResult> {
     const root = this.getRoot()
     if (!relativePath?.trim()) {
-      throw fail(MAIN_ERRORS.fileNotFound)
+      throw fail(MAIN_ERRORS.fileNotFound, { path: '' })
     }
     return separateAudioStems({ projectRoot: root, relativePath: relativePath.trim() })
   }
@@ -1606,7 +1680,9 @@ class ProjectService {
   }): AssetInfo {
     const root = this.getRoot()
     const abs = assertInsideProject(root, join(root, params.relativePath))
-    if (!existsSync(abs)) throw fail(MAIN_ERRORS.fileNotFound)
+    if (!existsSync(abs)) {
+      throw fail(MAIN_ERRORS.fileNotFound, { path: params.relativePath })
+    }
     const dirAbs = dirname(abs)
     const relDir = toPosix(relative(root, dirAbs)) || 'Assets'
     if (relDir === 'Assets' || relDir.startsWith('Assets/')) {
@@ -1678,12 +1754,31 @@ class ProjectService {
     }
   }
 
+  /**
+   * 检查工程内相对路径文件是否存在：保存资产前的 pre-check。
+   * 未打开工程或越界路径统一返回 false（不抛错，渲染层据此禁用「保存到资产库」按钮）。
+   */
+  checkProjectFileExists(relativePath: string): boolean {
+    if (!this.rootPath) return false
+    const posix = relativePath?.replace(/\\/g, '/').trim() ?? ''
+    if (!posix) return false
+    let abs: string
+    try {
+      abs = assertInsideProject(this.rootPath, join(this.rootPath, posix))
+    } catch {
+      return false
+    }
+    return existsSync(abs)
+  }
+
   /** 用工程内已有相对路径媒体挂到资产（图执行结果物化后写回宿主；不拷贝，避免落到资产同级） */
   attachAssetRelative(input: AttachAssetRelativeInput): AssetInfo {
     const root = this.getRoot()
     const asset = this.readAsset(input.assetId)
     const abs = assertInsideProject(root, join(root, input.relativePath))
-    if (!existsSync(abs)) throw fail(MAIN_ERRORS.fileNotFound)
+    if (!existsSync(abs)) {
+      throw fail(MAIN_ERRORS.fileNotFound, { path: input.relativePath })
+    }
     const posix = toPosix(relative(root, abs))
     asset.relativePath = posix
     if (asset.type === 'image' || asset.type === 'canvas') {

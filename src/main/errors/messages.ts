@@ -8,7 +8,15 @@ export const MAIN_ERRORS = {
   // ── 工程 / 文件系统基础 ──
   noProject: defErrSimple('project.noProject', '未打开工程', 'No project is open'),
   dirNotFound: defErrSimple('fs.dirNotFound', '目录不存在', 'Directory not found'),
-  fileNotFound: defErrSimple('fs.fileNotFound', '媒体文件不存在', 'Media file not found'),
+  /**
+   * 源媒体文件不存在：固定带 `path`（工程内相对路径）便于用户定位。
+   * 调用方若传入空路径，自动回退为占位 `<未指定>`。
+   */
+  fileNotFound: defErr<{ path: string }>(
+    'fs.fileNotFound',
+    ({ path }) => `媒体文件不存在: ${path}`,
+    ({ path }) => `Media file not found: ${path}`
+  ),
   assetNotFound: defErrSimple('asset.notFound', '资产不存在', 'Asset not found'),
   pathOutsideProject: defErrSimple(
     'fs.pathOutsideProject',

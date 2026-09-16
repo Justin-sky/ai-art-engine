@@ -453,6 +453,9 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.PROJECT_WRITE_FILE, (input: { relativePath: string; content: string }) =>
     projectService.writeProjectFile(input)
   )
+  handle(IpcChannels.PROJECT_FILE_EXISTS, (relativePath: string) =>
+    projectService.checkProjectFileExists(relativePath)
+  )
   handle(IpcChannels.GRAPH_DELETE_RUN_MEDIA, (relativePath: string) =>
     projectService.deleteGraphRunMedia(relativePath)
   )

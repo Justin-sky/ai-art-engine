@@ -94,10 +94,22 @@ npm run dist:linux  # Linux
 - **自定义技能** — 设置 → **自定义技能**：把符合 dsh SKILL.md 格式（frontmatter `name` / `description` + Markdown 正文）的 `.md` 文件放进技能目录，下次对话自动生效；目录内一键「生成示例模板」
 - **机制** — 技能清单以 `<available_skills>` 注入对话上下文，Agent 判断任务匹配时按需加载技能文件作为指令；内置技能由程序自动管理（快照 + 指纹去重），自定义技能不受影响。节点图节点也使用同一套技能定义节点行为
 
+### 特色功能：Blender MCP Server（让 AI 直接操作 Blender）
+
+> 本机 Blender 跑着，AI 就能在对话里搭场景、写材质、截图自查、导出 GLB —— **出站直连 addon，不需要 uv / Python / 子进程**。
+
+- **直接驱动 Blender** — 9 个 MCP 工具覆盖「看清现状 → 写 bpy 建模 → 截图自查 → 导出 GLB」闭环：`get_scene_info` / `get_world_state_snapshot` / `get_object_info` 查场景与选中对象，`execute_blender_code` 在 Blender 进程内执行 Python（完整访问 bpy / bmesh / mathutils），`get_viewport_screenshot` 抓视口画面回给多模态客户端，`export_scene` 出 GLB / GLTF / FBX / OBJ / USD / STL（配 `asset_import` 一键入资产库），`describe_node_type` / `bpy_api_lookup` / `get_addon_status` 查节点端口、查 bpy API、查 addon 版本
+- **双 addon 兼容** — 同时支持**社区方案** [blender-mcp](https://github.com/ahujasid/blender-mcp) 的 `addon.py` 与**官方方案** [Blender Lab「MCP Server」](https://projects.blender.org/lab/blender_mcp) 扩展，在「设置 → MCP → Blender 工具集」里切换；两种后端下工具名、入参、输出结构**完全一致**，模型侧无感
+- **零额外依赖** — 不装 uv、不起 Python 子进程、不改 Blender 配置：应用主动出站连 addon 的 `localhost:9876` 监听端口；安装包 / 仓库 / 容器环境开箱即用
+- **应用内对话 + 外部 Agent 同源** — 工作区左侧 ◈ AI 对话面板（在聊天里说「用 Blender 把这几个 Cube 拼成底座，做完截张图」）与 Claude Code / Codex 等外部 Agent 走**同一套** Blender 工具集；设置里关掉即整组从工具清单里消失，主工具集不受影响；面板的 Ask / Plan 模式同样约束 Blender 工具 —— 它不是绕过面板模式的侧门
+- **安全护栏** — `execute_blender_code` 走词法护栏（拒绝 `os` / `subprocess` / 网络模块、`open` / `__import__` 逃脱链、装饰器 / `class` / `type()` 造类等结构性写法；渲染 / 保存 / 导入导出等 bpy 操作符不受限）；截图走一次性临时文件、画面只随 MCP 响应回给多模态客户端，不落工程也不进审计日志
+
+详细工具清单、协议细节与安全设计见 [MCP 接入指南](./docs/MCP.md#⑤- blender-工具集可选需要本机-blender) / [MCP 接入教程](https://justin-sky.github.io/ai-art-engine/guide-mcp.html#blender)。
+
 ### 完整能力
 
 - **本地工程** — 新建 / 打开 / 最近列表，JSON + 媒体目录落盘，数据不出本机
-- **资产库** — 图片 / 视频 / 声音 / 3D 模型；AssetRef GUID；`.aipackage` 导入导出
+- **资产库** — 图片 / 视频 / 声音 / 3D 模型；AssetRef GUID；`.aipackage` 导入导出；**多选文件 / 多选目录拖拽到其它目录**（磁盘搬移 + descendant asset.relativePath 写回 + 成环检测 + 同名追加 " 2" / " 3"）
 - **分镜与画布** — 镜头参数、Fabric 构图、可停靠布局
 - **一键工作流** — 预设模板（短剧分镜、游戏UI界面、游戏买量、产品广告、电商带货、游戏3D资产、漫画出版、知识口播、3D白模预演等）或 AI 规划拓扑，一键创建可复用宿主资产（边界 I/O + Dive 内图）
 - **节点图生成** — 文本 / 图片 / 视频 / 声音 / 3D 模型节点，指令面板与模型参数；生成锁定、图库双输出口；端口类型必须相同（单数不能进复数，选取节点只收列表口）；连线样式 / 小地图；任务队列复用共同上游、**任务容错模式**（节点失败降级不整链中断）；漫画页（分镜格 + 台词气泡，导出透明 PNG）、广告变体矩阵、媒体质检 / 返工（专用质检模型五维评分 → FAIL 自动注入原因重试）、2D 帧动画与帧动画序列图、图层分离（拆层后可导出 PSD）
@@ -105,6 +117,9 @@ npm run dist:linux  # Linux
 - **导演台** — 3D 站位截图与动作录制（写入 `Cache/Videos`）；方形口 `out-shots` / `out-actions`；3D 模型输入端口，dive 自动实例化到舞台；全景图输入自动设为背景；AI 白模搭场景、20+ 种基础几何体、材质贴图覆盖（基础 / 法线贴图）、着色模式与线框模式
 - **成片时间线** — 素材分组与上轨编排；画中画叠加（位置 / 尺寸 / 不透明度 / 音量）与视频轨转场；预览播选中 / 时间线整轨联播；导出成片
 - **多模型提供商** — OpenRouter、OpenAI（GPT 文本 / gpt-image 图片）、DeepSeek（文本）、智谱（GLM 文本 / CogView 图片）、Kimi / 月之暗面（文本）、xAI / Grok（文本 / 图片 / 视频）、Google / Gemini（文本 / 图片 / 视频）、本地 vLLM（文本 / Wan 视频）、Ollama / LM Studio（文本，OpenAI 兼容，无需 API Key）、火山方舟（Seedream / Seedance / 声音）、可灵、MiniMax、通义千问（DashScope）、魔塔（ModelScope）、ComfyUI（API 2：图片 / 视频 / 声音，本机或云端 Base URL）、MagicRouter（聚合网关：文本 / 图片 / 视频）、Meshy / Tripo / Rodin（Hyper3D） / Luma AI / Lux3D（3D 模型生成，文生 3D / 图生 3D）、自定义提供商（自选 OpenAI 兼容 / Anthropic / Gemini 端点类型，填 Base URL 与 API Key 拉取文本模型）
+- **3D 模型蒙皮与骨骼** — 3D 节点勾选「生成骨骼」后由上游骨骼蒙皮：**Tripo** 发 `rig=true`、`Meshy` 发 `rigging=true` + `rig_type`（humanoid 等） + `pose`、**Rodin (Hyper3D)** 发 `rig=true` + `rig_type` + `rig_animation`（multipart，部分 tier 需 `rig=true` 才出 rigged GLB）；**Luma AI / Lux3D 不支持蒙皮**，强行开启会被拒并给明确文案
+- **联网搜索 provider（设置面板配置）** — DeepSeek Search（默认）/ Tavily / Brave / SerpAPI / Mock 五种适配器并行可用，每个独立开关、Base URL、API Key、搜索深度与时间窗；面板自带连通性测试；与模型 provider 体系刻意分离（数量少、无上下文注入）
+- **HTTP 网络错诊断通用化** — axios 网络错 (`err.code` + `err.cause.code` / `err.cause.message`) 从 Kling 适配器抽到通用 `readHttpError`，覆盖全部 33 个 provider —— DNS / TCP / TLS 握手前 socket 被断等场景，UI 现在能直接看到 `ECONNRESET` / `UND_ERR_SOCKET` 这种稳定标签，便于一眼判断是防火墙断握手还是连接被拒
 - **对象存储** — 火山引擎 TOS、阿里云 OSS、腾讯云 COS（同时仅可启用一个，用于参考视频等公网外链）
 - **可扩展** — Editor Kernel + Cordis 内部扩展（窗口 / Inspector / 节点 / Skill / 执行器）+ 声明式外部插件清单
 

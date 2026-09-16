@@ -148,7 +148,10 @@
           <li><a href="#tools">Tool reference</a></li>
           <li><a href="#examples">Example conversations</a></li>
           <li><a href="#env">Configuration &amp; environment</a></li>
+          <li><a href="#settings-bridge">stdio bridge settings</a></li>
+          <li><a href="#reverse-bridge">Reverse bridge: dsh connects to stdio servers</a></li>
           <li><a href="#security">Security &amp; limitations</a></li>
+          <li><a href="#blender">Blender tools (advanced)</a></li>
         </ol>
         <p style="margin-top: 1.25rem; font-size: 12px; color: var(--mute)">
           <a href="manual.en.html">← Back to the manual</a>
@@ -480,6 +483,66 @@
           </p>
         </section>
 
+        <section id="settings-bridge">
+          <h2>5.1 stdio bridge settings</h2>
+          <p>
+            Settings → <strong>MCP tool server</strong> → <strong>stdio bridge</strong> tab visualizes the
+            bridge config — no env vars to hand-edit. You can set: the <strong>bridge command</strong>
+            (default is still <code>node</code> + the in-repo <code>scripts/mcp-bridge.mjs</code> or the
+            installer's bundled <code>&lt;install dir&gt;/resources/mcp-bridge.mjs</code>), the
+            <strong>bridge port</strong> (default HTTP port the bridge listens on), the
+            <code>BLENDER_HOST</code> / <code>BLENDER_PORT</code> passthrough for the Blender addon, and
+            <strong>safe mode</strong> (on by default: refuses <code>os</code> / <code>subprocess</code> and
+            other sensitive modules). Changes persist immediately; external agents just reconnect — no app
+            restart needed.
+          </p>
+          <div class="tip">
+            For development use the in-repo <code>scripts/mcp-bridge.mjs</code>; installers bundle one at
+            <code>&lt;install dir&gt;/resources/mcp-bridge.mjs</code>. The same panel also lets you register
+            multiple external stdio server entries (see
+            <a href="#reverse-bridge">§5.2 Reverse bridge</a>); they share the same config store as the
+            Blender stdio bridge.
+          </div>
+        </section>
+
+        <section id="reverse-bridge">
+          <h2>5.2 Reverse bridge: let dsh (in-app chat panel) connect to stdio MCP servers</h2>
+          <p>
+            The "forward bridge" brings Claude Code and other external agents in via stdio bridge or HTTP.
+            The <strong>reverse bridge</strong> goes the other way — the in-app ◈ AI chat panel (DeepSeek
+            Harness / dsh) can also register and consume <strong>any external stdio MCP server</strong>
+            (not limited to its own <code>/mcp</code> endpoint).
+          </p>
+          <p>
+            Typical scenario: the Blender addon or any other stdio-only MCP server no longer needs to expose a
+            separate socket port; once dsh registers a <code>claude mcp add --transport stdio ...</code>-style
+            command, "use Blender to assemble this and screenshot it" in the conversation drives the addon
+            directly. Configuration lives in the same settings panel —
+            <strong>MCP tool server → stdio bridge</strong> tab — and supports multiple external stdio
+            servers (each with name / command / working dir / env); they share the same store as the Blender
+            stdio bridge.
+          </p>
+          <p>Protocol details:</p>
+          <ul>
+            <li>
+              The reverse bridge forks a stdio subprocess inside the dsh process, translates MCP frames and
+              reuses the existing mcp-client instance — no separate bridge process
+            </li>
+            <li>
+              Protocol errors and subprocess crashes share the same audit log
+              (<code>&lt;userData&gt;/logs/mcp-audit.jsonl</code>) as the forward bridge
+            </li>
+            <li>
+              Local only, with token auth; external stdio servers do <em>not</em> automatically gain write
+              access to the app's <code>/mcp</code> endpoint
+            </li>
+            <li>
+              Ask / Plan modes also keep reverse-bridge tools read-only — they aren't a side door around
+              panel mode
+            </li>
+          </ul>
+        </section>
+
         <section id="security">
           <h2>6. Security &amp; limitations</h2>
           <ul>
@@ -497,6 +560,179 @@
             <li><code>workflow_plan</code> runs an LLM and may take tens of seconds; <code>generate_video</code> /
               <code>generate_model3d</code> are async — track them with <code>video_job_*</code>.</li>
             <li>Two connection options: the <strong>stdio bridge</strong> (bundled in installers at <code>&lt;install dir&gt;/resources/mcp-bridge.mjs</code>; for development use the in-repo <code>scripts/mcp-bridge.mjs</code>, Node.js 18+ required) or <strong>HTTP direct</strong> (no Node.js needed).</li>
+          </ul>
+        </section>
+
+        <section id="blender">
+          <h2>7. Blender tools (advanced)</h2>
+          <p>
+            These tools are <strong>not part of the main <code>/mcp</code> toolset</strong> — they live on a sibling
+            endpoint <code>/mcp/blender</code> on the same service (enabled by default in
+            <strong>Settings → MCP → Blender tools</strong>; the endpoint returns 403 if you turn it off, and the
+            main toolset is unaffected).
+          </p>
+          <p>
+            Let AI <strong>drive Blender directly</strong> — build scenes, write bpy code, screenshot for self-check,
+            export GLB / GLTF / FBX into your project. The app makes an <strong>outbound socket</strong> to the
+            addon's <code>localhost:9876</code> — no uv, no Python subprocess, no Blender config tweaks.
+          </p>
+
+          <h3>Prerequisites</h3>
+          <ul>
+            <li>
+              <strong>Blender is running</strong> with an MCP addon enabled (pick the matching type in
+              Settings → MCP → Blender tools — the two wire protocols are incompatible; mismatch shows up as a
+              connect timeout or "connection reset"):
+              <ul>
+                <li>
+                  <strong>Community (default)</strong>:
+                  <a
+                    href="https://github.com/ahujasid/blender-mcp"
+                    target="_blank"
+                    rel="noopener noreferrer">blender-mcp</a
+                  >'s <code>addon.py</code>, installed under
+                  <code>Edit → Preferences → Add-ons</code>
+                </li>
+                <li>
+                  <strong>Official</strong>: the
+                  <a
+                    href="https://projects.blender.org/lab/blender_mcp"
+                    target="_blank"
+                    rel="noopener noreferrer">Blender Lab "MCP Server"</a
+                  > extension on the Blender Extensions platform — start the service in the extension's preferences
+                </li>
+              </ul>
+            </li>
+            <li>Both addons listen on <code>9876</code> by default; if you change it, update the port in Settings.</li>
+            <li>
+              External agents need a second MCP server registered to reach these tools
+              (<code>&lt;token&gt;</code> from the app-side <code>mcp.json</code>):
+              <pre class="mcp-code"><code>claude mcp add --transport http blender http://127.0.0.1:43110/mcp/blender --header "Authorization: Bearer &lt;token&gt;"</code></pre>
+              <p style="margin: 0.25rem 0 0">
+                The in-app ◈ AI chat panel wires it automatically (dsh registers a second mcp-client instance), so
+                just say "use Blender …" in the conversation.
+              </p>
+            </li>
+          </ul>
+
+          <h3>Tool reference</h3>
+          <p>Tool names, schemas and outputs are identical across both addons — the model side doesn't care which is running:</p>
+          <table>
+            <thead>
+              <tr>
+                <th>Tool</th>
+                <th>What it does</th>
+                <th>Prerequisite</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>get_scene_info</code></td>
+                <td>Scene overview: scene name, object / material counts, name · type · location of the first few objects</td>
+                <td>Blender running</td>
+              </tr>
+              <tr>
+                <td><code>get_world_state_snapshot</code></td>
+                <td>Full snapshot: geometry / relations / animation summary, current frame &amp; frame range, FPS, selection, active camera &amp; lights</td>
+                <td>Blender running</td>
+              </tr>
+              <tr>
+                <td><code>get_object_info</code></td>
+                <td>Single-object detail (mesh objects include vert / edge / face count and world bounding box)</td>
+                <td>Blender running</td>
+              </tr>
+              <tr>
+                <td><code>get_viewport_screenshot</code></td>
+                <td>3D viewport screenshot, returned to multimodal clients in-band (offscreen capture, fallback to window grab)</td>
+                <td>Blender UI visible</td>
+              </tr>
+              <tr>
+                <td><code>execute_blender_code</code></td>
+                <td>Run Python inside the Blender process (full bpy access); <code>print</code> returns verbatim; errors carry exception type &amp; traceback</td>
+                <td>Blender running</td>
+              </tr>
+              <tr>
+                <td><code>export_scene</code></td>
+                <td>Export the scene (or selection / named objects) to glb / gltf / fbx / obj / usd / stl — chain with <code>asset_import</code> to land in the asset library</td>
+                <td>Blender running</td>
+              </tr>
+              <tr>
+                <td><code>describe_node_type</code></td>
+                <td>Look up a node type (e.g. <code>ShaderNodeTexImage</code>): sockets and settable properties — call this before writing shader / geometry-node scripts</td>
+                <td>Blender running</td>
+              </tr>
+              <tr>
+                <td><code>bpy_api_lookup</code></td>
+                <td>Look up bpy API in the running Blender (operators / types / properties / functions) — names and defaults come from live RNA</td>
+                <td>Blender running</td>
+              </tr>
+              <tr>
+                <td><code>get_addon_status</code></td>
+                <td>Addon version / protocol version / capability list / Blender version — tells you whether "can't connect" means disabled, version mismatch, or Blender not running</td>
+                <td>Blender running</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h3>Typical loop</h3>
+          <pre class="mcp-code"><code>get_scene_info            Inspect state
+   ↓
+execute_blender_code      Write bpy: model / material / camera
+   ↓
+get_viewport_screenshot   Self-check the viewport (multimodal client sees the image)
+   ↓
+export_scene              Export GLB / GLTF / FBX …
+   ↓
+asset_import              Land it in the asset library</code></pre>
+
+          <div class="tip">
+            Just say it in conversation:
+            <em>"Use Blender to assemble these cubes into a base, screenshot it, and export a GLB into the project when it looks good."</em>
+            The model decides how to split the <code>execute_blender_code</code> steps and parameters — iterate from the screenshot if it's not right.
+          </div>
+
+          <h3>Safety rails</h3>
+          <ul>
+            <li>
+              <strong><code>execute_blender_code</code> is guarded lexically, not sandboxed</strong>: blocks
+              <code>os</code> / <code>subprocess</code> / network modules, bans
+              <code>eval</code> / <code>exec</code> / <code>compile</code> /
+              <code>open</code> / <code>__import__</code> / dunder escape chains, rejects decorator /
+              <code>lambda</code> / <code>class</code> / <code>global</code> / walrus /
+              <code>type()</code>-built classes and other structural tricks. <strong>Render / save / import-export
+              bpy operators stay unrestricted</strong> — otherwise the tools would be useless. Strings and comments
+              are stripped before matching, so <code>print("bpy.ops.script")</code> won't false-positive. Its job is
+              to <strong>raise the escape cost</strong>; the real backstop is the
+              <a href="#security">§6</a> mode constraint — Ask / Plan make the whole group read-only, and write
+              calls are rejected.
+            </li>
+            <li>
+              <strong>Screenshots go through a one-shot temp file</strong>:
+              <code>get_viewport_screenshot</code> writes to a system temp file the app reads and deletes
+              immediately; the image is returned only in-band to multimodal clients and
+              <strong>never touches the project or the audit log</strong>.
+            </li>
+            <li>
+              <strong>Mode is bound to the request, not the client</strong>: the Blender endpoint shares the
+              service's token; Ask / Plan flow through <code>X-AIArt-Mode</code> /
+              <code>X-AIArt-Run-Id</code>. Ask returns nothing; Plan returns only the read-only tools
+              (<code>get_scene_info</code> /
+              <code>get_world_state_snapshot</code> /
+              <code>get_object_info</code> /
+              <code>get_viewport_screenshot</code> /
+              <code>describe_node_type</code> /
+              <code>bpy_api_lookup</code> /
+              <code>get_addon_status</code>); <code>execute_blender_code</code> and
+              <code>export_scene</code> count as write and are rejected + audited.
+            </li>
+            <li>
+              <strong>The addon is a socket server</strong>: close Blender and the whole group fails
+              (the error explicitly says "can't connect to addon", not a vague timeout). The app
+              <strong>does not launch Blender</strong> and has no headless mode — <code>get_viewport_screenshot</code>
+              even requires the window to be visible (minimized captures fail and fall back to the window grab).
+              Connection state refreshes every 4 seconds in the Settings panel; <code>get_addon_status</code> checks
+              versions on demand.
+            </li>
           </ul>
         </section>
       </article>

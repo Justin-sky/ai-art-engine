@@ -246,7 +246,9 @@ export async function ensureImageThumbnailAsync(
   if (!sourceRel) throw fail(E_THUMB_EMPTY_PATH)
 
   const sourceAbs = assertInside(root, join(root, sourceRel))
-  if (!existsSync(sourceAbs)) throw fail(MAIN_ERRORS.fileNotFound)
+  if (!existsSync(sourceAbs)) {
+    throw fail(MAIN_ERRORS.fileNotFound, { path: sourceRel })
+  }
   if (!isThumbnailableMediaPath(sourceAbs)) {
     return sourceRel
   }

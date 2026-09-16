@@ -179,6 +179,11 @@ export const IpcChannels = {
   PROJECT_READ_FILE: 'project:read-file',
   /** 写入工程内相对路径文本文件（agent-state.json 等） */
   PROJECT_WRITE_FILE: 'project:write-file',
+  /**
+   * 检查工程内相对路径文件是否存在：保存资产前的 pre-check，避免源文件已被外部删除时
+   * 走到 saveProjectAsset 才抛 fs.fileNotFound；越界路径同样视为不存在。
+   */
+  PROJECT_FILE_EXISTS: 'project:file-exists',
   /** 删除图执行产物及对应缩略图（允许的图片输出目录内） */
   GRAPH_DELETE_RUN_MEDIA: 'graph:delete-run-media',
   /** 用工程内相对路径媒体挂到资产上 */
@@ -1165,6 +1170,8 @@ export interface StudioApi {
   readProjectFile: (relativePath: string) => Promise<string | null>
   /** 写入工程内相对路径文本文件；路径越界返回 false */
   writeProjectFile: (input: { relativePath: string; content: string }) => Promise<boolean>
+  /** 检查工程内相对路径文件是否存在；路径越界或未打开工程返回 false */
+  projectFileExists: (relativePath: string) => Promise<boolean>
   /** 删除图执行产物原图及缩略图 */
   deleteGraphRunMedia: (relativePath: string) => Promise<void>
 

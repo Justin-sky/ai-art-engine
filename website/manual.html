@@ -752,7 +752,48 @@
             （唯一例外是 <code>asset_import</code>：按你给出的绝对路径读取工程外文件并复制进工程）；
             所有工具调用写入审计日志 <code>&lt;userData&gt;/logs/mcp-audit.jsonl</code>（5MB 滚动）。
           </div>
+          <p>
+            设置面板另提供 <strong>「stdio 桥」</strong>可视化配置：可改 stdio 桥命令（默认仍是
+            <code>node</code> + 仓库内 <code>scripts/mcp-bridge.mjs</code> 或安装包内置
+            <code>&lt;安装目录&gt;/resources/mcp-bridge.mjs</code>）、桥 HTTP 监听端口、Blender addon
+            的 <code>BLENDER_HOST</code> / <code>BLENDER_PORT</code> 透传、以及默认开启的
+            <strong>safe mode</strong>（拒绝 <code>os</code> / <code>subprocess</code> 等敏感模块）。
+            修改即时落盘，外部 Agent 重连即生效，不需要重启应用。
+          </p>
+          <p>
+            同一设置面板还支持 <strong>「反向桥」</strong>：注册任意外部 stdio MCP server（如 Blender
+            addon / 其它本地 MCP 服务），让应用内 ◈ AI 对话面板（DeepSeek Harness / dsh）也能直接消费
+            它们的工具 —— 不再需要它们额外暴露 socket 端口。详见
+            <a href="guide-mcp.html">MCP 接入教程</a>里的反向桥段。
+          </p>
         </section>
+
+        <h3 id="web-search">4.6 联网搜索</h3>
+          <p>
+            设置页 → <strong>联网搜索</strong> Tab 配置 <strong>多 provider 并行可用</strong> 的搜索能力。
+            与模型 provider 体系刻意分离 —— 搜索适配器数量少、不需要按工程维度注入上下文，模块级注册中心
+            已够用；后续若出现大量第三方搜索服务可平滑迁移到 Cordis plugin。
+          </p>
+          <ul>
+            <li>
+              <strong>内置 5 个适配器</strong>：DeepSeek Search（默认）/ Tavily / Brave / SerpAPI / Mock
+              （Mock 仅用于本地连通性测试，不会发真请求）。每个适配器可独立启停、配 Base URL、API Key、搜索
+              深度与时间窗。
+            </li>
+            <li>
+              <strong>面板操作</strong>：工具栏「新增 provider」下拉 → 选 kind → 加；每张 provider 卡
+              折叠 / 展开、勾启用 / 禁用 / 移除；自带「连通性测试」按钮，命中响应 / 失败原因直接显示。
+            </li>
+            <li>
+              <strong>当前使用范围</strong>：设置面板里<strong>仅配置</strong>（暂未接入应用内 AI 对话面板或
+              一键工作流的联网检索调用）；如需触发联网检索，请在面板里手动测连通。后续会按 agent tool
+              形态接入对话流，届时与本面板共用同一组 provider 实例。
+            </li>
+          </ul>
+          <div class="tip">
+            Mock provider 始终返回固定样本 —— 离线开发、CI 跑通「搜索可用」状态位用；不要在生产环境勾选
+            （其它 provider 关闭时可能回落 Mock，但不会替换真实数据）。
+          </div>
 
         <section id="workspace">
           <h2>5. 工作区</h2>
@@ -892,6 +933,13 @@
             <li>底部滑条在列表视图与图标视图间切换。</li>
             <li>面包屑显示路径，如 Assets &gt; …</li>
             <li>支持框选多选；可从系统拖入图片 / 视频 / 声音 / 模型 / <code>.aipackage</code>。</li>
+            <li>
+              <strong>多选文件 / 多选目录拖拽到其它目录</strong>：左侧目录树行与右侧资产卡片均加
+              <code>draggable</code>，可一次拖多枚文件或多个目录到目标目录（统一走
+              <code>folder_move</code> IPC + 同名落盘：磁盘搬移 + descendant asset.relativePath 写回
+              + 成环检测 + 同名追加 <code>" 2"</code> / <code>" 3"</code>）。同源目录内部拖拽仅写
+              <code>.folder.json</code>、不挪磁盘。资产库根目录不可拖出。
+            </li>
           </ul>
 
           <h3>空白或目录右键</h3>
@@ -1158,6 +1206,14 @@
             <li>
               <strong>3D 模型生成</strong>：文本 / 上游参考图 → 3D 模型资产（Meshy、Tripo、Rodin（Hyper3D）、Luma AI、Lux3D，文生 3D / 图生 3D，部分支持多图生 3D）；
               异步提交 → 轮询 → 下载，结果可接入导演台或下游继续加工，支持回写绑定持久化与取消。
+              节点参数区（仅 <code>tripo</code> / <code>meshy</code> / <code>hyper3d</code> provider 显示）
+              可勾选「<strong>生成骨骼</strong>」让上游输出 rigged GLB —— Tripo 发
+              <code>rig=true</code>；Meshy 发 <code>rigging=true</code> + <code>rig_type</code>
+              （humanoid 等） + <code>pose</code>；Rodin (Hyper3D) multipart 发
+              <code>rig=true</code> + <code>rig_type</code> + <code>rig_animation</code>，部分 tier
+              需 <code>rig=true</code> 才出 rigged GLB。<strong>Luma AI / Lux3D 不支持蒙皮</strong>，
+              强行开启会被拒并给明确文案（<code>provider.luma.rigUnsupported</code> /
+              <code>provider.lux3d.rigUnsupported</code>），不会静默吞字段。
             </li>
             <li>
               <strong>宿主资产</strong>：把已有资产（图片 / 视频 / 声音 / 剧本 / 场 / 导演台等）作为节点引入当前画布，

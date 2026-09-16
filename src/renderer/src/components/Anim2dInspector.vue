@@ -392,6 +392,14 @@ async function onGifSaveConfirm(payload: { name: string; folderId: string | null
       key: `anim2d-gif-${Date.now()}`,
       outputDir: `${cacheRoot}/Gifs`
     })
+    // pre-check：saveGraphRunMedia 刚写完，但若工程被移动 / 路径被外部删除，主进程会抛 fs.fileNotFound；
+    // 在此处收口避免用户填好名字再被错误打断。
+    if (!(await window.studio.projectFileExists(stagedPath))) {
+      const name = stagedPath.split('/').pop() || stagedPath
+      gifSaveRef.value?.setSourceMissing(stagedPath)
+      gifSaveRef.value?.setError(t('dialog.saveAsset.sourceMissing', { name }))
+      return
+    }
     const asset = await window.studio.saveProjectAsset({
       relativePath: stagedPath,
       name: payload.name,
