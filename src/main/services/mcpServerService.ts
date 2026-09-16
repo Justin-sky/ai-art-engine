@@ -3455,8 +3455,9 @@ async function startBlenderMcpBridge(): Promise<void> {
     console.warn('[mcp] 清旧 mcp-blender.json 失败:', err)
   }
   blenderBridgeConfigPath = configPath
-  // 把 settings.blenderMcp 转成桥进程消费的 AIAE_BLENDER_MCP_* env；
-  // env override 仍生效（用户可在启动 shell 临时覆盖，settings 优先于 env 兜底）。
+  // settings.blenderMcp 是唯一权威：翻译成桥进程消费的 AIAE_BLENDER_MCP_* env 后
+  // 直接注入 spawn env，不再继承 process.env 的杂项（防泄漏 + 防 shell env 误覆盖）。
+  // PATH 必须保留，否则子进程找不到 uvx / blender-mcp 可执行文件。
   const envOverrides = blenderBridgeEnvFromSettings(blenderCfg)
   const child = spawn(
     process.execPath,
@@ -3464,7 +3465,11 @@ async function startBlenderMcpBridge(): Promise<void> {
     // 支持 type stripping，加 --experimental-strip-types 后直跑 .ts 无需编译产物。
     ['--experimental-strip-types', script],
     {
-      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', ...envOverrides },
+      env: {
+        PATH: process.env.PATH,
+        ELECTRON_RUN_AS_NODE: '1',
+        ...envOverrides
+      },
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true
     }
@@ -3541,8 +3546,7 @@ function stopBlenderMcpBridge(): void {
 
 /**
  * 把设置面板的 blenderMcp 配置翻译为桥进程消费的 AIAE_BLENDER_MCP_* env 段。
- * env override 优先级：AIAE_BLENDER_MCP_CMD / ARGS / PORT / SERVER_HOST / SERVER_PORT
- * 仍可在启动 shell 临时覆盖，settings 是兜底；安全语义「关 safeMode 必须显式操作 UI」。
+ * settings.blenderMcp 是唯一来源——不读 process.env，避免 shell 残留 env 误覆盖 UI 选项。
  */
 function blenderBridgeEnvFromSettings(cfg: BlenderMcpSettings): Record<string, string> {
   const cmd = cfg.command.trim() || 'uvx'
@@ -3585,7 +3589,7 @@ export function getBlenderMcpBridgeInfo(): McpBlenderBridgeInfo | null {
   }
 }
 
-/** 设置面板：应用 blender 桥配置并重启桥（不持久化则仅运行时生效） */
+/** 设置面板：应用 blender 桥配置（落盘 + 重启）；不接受运行时临时改配置 */
 export async function restartBlenderMcpBridge(
   input: McpBlenderRestartInput
 ): Promise<McpBlenderBridgeInfo | null> {
@@ -3606,14 +3610,8 @@ export async function restartBlenderMcpBridge(
   if (typeof input?.args === 'string') next.args = input.args
   if (typeof input?.serverHost === 'string') next.serverHost = input.serverHost
   if (typeof input?.safeMode === 'boolean') next.safeMode = input.safeMode
-  if (input?.persist !== false) {
-    settingsService.set({ ...current, blenderMcp: next })
-  } else {
-    // 不持久化也要让下一次 startBlenderMcpBridge 拿到新值（闭包内 settingsService.get() 会读 store）
-    // 这里只更新内存拷贝：set() 不调，重启由 settingsService.get() 取最新内存值
-    // settingsService 内部用 electron-store，所以必须 set 才生效——persist=false 时只能临时改 env
-    // 通过 next 变量只是文档化意图，实际生效必须 set()。这里保留旧逻辑：不持久化等价于丢弃本次修改。
-  }
+  // settings 是唯一权威：立即写盘，spawn env 由 startBlenderMcpBridge 从 settings 翻译
+  settingsService.set({ ...current, blenderMcp: next })
   // 关桥 → 起桥；disabled=true 时仅清状态不 spawn
   stopBlenderMcpBridge()
   if (next.enabled) {

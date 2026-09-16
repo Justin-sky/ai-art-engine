@@ -12,11 +12,8 @@
  *   把第三方 stdio server 暴露回应用内的 Agent。
  * - 本脚本自带 spawn 子进程的能力（前者是 client，不需要拉起对端）。
  *
- * 配置（环境变量）：
- *   AIAE_BLENDER_MCP_CMD            覆盖 spawn 命令（默认按 `uvx blender-mcp` 探测）
- *   AIAE_BLENDER_MCP_ARGS           附加参数（空格或逗号分隔的 CLI flag，如 `--port 9876`）
- *                                    注意：仅用于 blender-mcp CLI flag，请勿写成 `BLENDER_PORT=9876`
- *                                    那种 env 前缀——env 走下面三个专用变量。
+ * 配置（环境变量，由 spawn 进程注入；不接受 shell env 覆盖）：
+ *   AIAE_BLENDER_MCP_CMD            spawn 命令首段（默认 `uvx`）+ 后续参数（空格分隔，默认 `blender-mcp`）
  *   AIAE_BLENDER_MCP_PORT           桥监听端口（默认 43120，自动扫描 43120-43129）
  *   AIAE_BLENDER_MCP_TOKEN          Bearer token（缺省随机生成；写入 mcp-blender.json）
  *   AIAE_BLENDER_MCP_CONFIG         mcp-blender.json 输出路径（默认 <appData>/aiartengine/mcp-blender.json）
@@ -24,7 +21,9 @@
  *   AIAE_BLENDER_MCP_SERVER_PORT    透传给 blender-mcp 子进程的 BLENDER_PORT（默认 9876）
  *   AIAE_BLENDER_MCP_SAFE_MODE      透传给 blender-mcp 子进程的 BLENDER_MCP_SAFE_MODE（默认 1）
  *
- * 透传到子进程的环境变量（blender-mcp v1.9.x 参考 PyPI 官方页）：
+ * 以上 7 个 env 由主进程 src/main/services/mcpServerService.ts 翻译
+ * settings.blenderMcp 后通过 spawn env 注入，本脚本不读 process.env 兜底。
+ * 透传给 blender-mcp 子进程的环境变量（v1.9.x 参考 PyPI 官方页）：
  *   BLENDER_HOST=localhost          → blender-mcp 主动连 Blender Add-on 的 socket 主机
  *   BLENDER_PORT=9876               → blender-mcp 主动连 Blender Add-on 的 socket 端口
  *   BLENDER_MCP_SAFE_MODE=1         → 在 Blender 中执行脚本前做白名单检查（PyPI 推荐）

@@ -599,8 +599,7 @@ async function applyBlenderRestart(): Promise<void> {
       serverHost: cfg.serverHost,
       serverPort: cfg.serverPort,
       safeMode: cfg.safeMode,
-      bridgePort: cfg.bridgePort,
-      persist: true
+      bridgePort: cfg.bridgePort
     })
     if (mcpInfo.value) mcpInfo.value = { ...mcpInfo.value, blenderBridge: next }
     message.value = cfg.enabled

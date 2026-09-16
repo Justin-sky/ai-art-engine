@@ -687,8 +687,6 @@ export interface McpBlenderRestartInput {
   serverPort?: number
   /** 是否开启 safe mode（传给 blender-mcp 子进程的 BLENDER_MCP_SAFE_MODE） */
   safeMode?: boolean
-  /** 持久化到 settings（默认 true）。设置 false 表示仅运行时重启桥、不写盘 */
-  persist?: boolean
 }
 
 /** Harness：DeepSeek Harness (dsh) 接入状态（Chat 面板顶部状态条展示） */
