@@ -3,7 +3,6 @@
   "version": "6.2.2",
   "description": "AIArtEngine — professional AI creation tool for short drama, ads, and film",
   "main": "./out/main/index.js",
-  "type": "module",
   "author": "AIArtEngine",
   "license": "GPL-3.0-only",
   "homepage": "https://github.com/Justin-sky/ai-art-engine#readme",
