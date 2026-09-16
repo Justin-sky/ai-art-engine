@@ -128,11 +128,13 @@ onMounted(() => {
     })
   }
   if (typeof window.studio?.onAssetRemoved === 'function') {
-    stopAssetRemoved = window.studio.onAssetRemoved((assetId) => {
+    stopAssetRemoved = window.studio.onAssetRemoved((payload) => {
       if (!project.isOpen) return
+      // 载荷为 { id, path }：id 用于按引用收尾（关编辑器 + 内存 cache 摘除），
+      // path 暂时不在这条路径上用——ChatPanel 单独订阅这一事件负责回退「已保存」标记。
       // 旁路（MCP）删除的资产：先关闭它的编辑器面板，避免留下悬空编辑窗
-      workspace.closeEditorsForAssetIds([assetId])
-      project.removeAssetLocal(assetId)
+      workspace.closeEditorsForAssetIds([payload.id])
+      project.removeAssetLocal(payload.id)
     })
   }
   if (typeof window.studio?.onFoldersUpdated === 'function') {

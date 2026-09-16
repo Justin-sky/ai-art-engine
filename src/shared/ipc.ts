@@ -217,7 +217,9 @@ export const IpcChannels = {
   /** 主进程推送：资产已写入（多窗口同步） */
   ASSET_UPDATED: 'asset:updated',
 
-  /** 主进程推送：资产已从资产库移除（多窗口同步，载荷为资产 id） */
+  /** 主进程推送：资产已从资产库移除（多窗口同步，载荷为 `{ id, path }`）。
+   *  id 方便订阅方按引用收尾（关编辑器面板 / 内存 cache），path 方便按目标文件路径
+   *  反查哪些对话产物卡源自此资产（让「已保存」状态可以及时回退）。 */
   ASSET_REMOVED: 'asset:removed',
 
   /** 主进程推送：资产库文件夹已变化（多窗口同步，载荷为空） */
@@ -1203,8 +1205,10 @@ export interface StudioApi {
   /** 订阅资产落盘更新（多窗口同步内存中的 assets） */
   onAssetUpdated: (callback: (asset: AssetInfo) => void) => () => void
 
-  /** 订阅资产移除（多窗口同步内存中的 assets） */
-  onAssetRemoved: (callback: (assetId: string) => void) => () => void
+  /** 订阅资产移除（多窗口同步内存中的 assets）。载荷为 `{ id, path }`：
+   *  id 用来按引用收尾（编辑器 / 内存 cache），path 用来按目标路径
+   *  反查对话产物卡上「已保存到资产库」的来源，让其正确回退为「未保存」。 */
+  onAssetRemoved: (callback: (payload: { id: string; path: string }) => void) => () => void
 
   /** 订阅资产库文件夹变化（多窗口同步目录树） */
   onFoldersUpdated: (callback: () => void) => () => void

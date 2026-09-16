@@ -955,6 +955,8 @@ watch(messages, scheduleHistoryPersist, { deep: true })
 
 let stopEvent: (() => void) | null = null
 let stopActivity: (() => void) | null = null
+/** 订阅 ASSET_REMOVED 的清理器：用户在资产库面板 / MCP 删除资产时回退「已保存」状态 */
+let stopAssetRemoved: (() => void) | null = null
 /** 本次任务在消息数组中的起点：状态更新只作用于该索引之后的工具卡，避免跨任务误更新重名卡 */
 let sessionStart = 0
 /** 本轮产物扫盘基线：发送前记录时刻，运行结束后只收这之后落盘的 Output / Cache 媒体 */
@@ -1413,6 +1415,12 @@ const saveDialogRef = ref<{
 const savingAssetPath = ref('')
 /** 本次会话已成功保存到资产库的产物路径：一张卡里折叠的每份产物各自判定「已保存」并禁用 */
 const savedAssetPaths = ref<Set<string>>(new Set())
+/**
+ * 已保存源路径 → 资产 id：用户在资产库面板 / MCP 把对应资产删除时，主进程会
+ * 广播 `ASSET_REMOVED { id, path }`，订阅回调由此反查把源路径从 savedAssetPaths
+ * 里摘掉，让「已保存」标记正确回退为可再次点击保存。
+ */
+const savedAssetIdsByPath = new Map<string, string>()
 let pendingSavePath = ''
 
 function isAssetSaved(relativePath: string): boolean {
@@ -1483,12 +1491,14 @@ async function onSaveAssetConfirm(payload: {
       saveDialogRef.value?.setSourceMissing(path)
       return
     }
-    await window.studio.saveProjectAsset({
+    const savedAsset = await window.studio.saveProjectAsset({
       relativePath: path,
       name: payload.name,
       folderId: payload.folderId
     })
     savedAssetPaths.value.add(path)
+    // 记录 id↔源路径映射：主进程 ASSET_REMOVED 事件来时按 id 反查回退「已保存」标记
+    if (savedAsset?.id) savedAssetIdsByPath.set(path, savedAsset.id)
     saveDialogOpen.value = false
     // 资产库同步刷新：新资产在资产浏览器中立即可见
     await project.scheduleRefreshLibrary()
@@ -1500,6 +1510,36 @@ async function onSaveAssetConfirm(payload: {
 }
 
 let stopAskUser: (() => void) | null = null
+
+/**
+ * 主进程 ASSET_REMOVED 载荷 `{ id, path }` 到达时，把对应的「已保存」标记回退。
+ * 反查按 id 优先（id 稳定，不会因路径归一化口径变化而漏命中）；
+ * 按 path 命中是兜底（极端情况：刚保存完还没拉到 id 就被删除）。
+ */
+function onAssetRemoved(payload: { id: string; path: string }): void {
+  let matchedSourcePath: string | undefined
+  for (const [sourcePath, assetId] of savedAssetIdsByPath) {
+    if (assetId === payload.id) {
+      matchedSourcePath = sourcePath
+      break
+    }
+  }
+  // 兜底：用资产的目标路径命中（多张卡映射到同一个资产时也一并摘掉）
+  if (!matchedSourcePath && payload.path) {
+    const normalizedTarget = payload.path.replace(/\\/g, '/').replace(/^\.\//, '').trim()
+    for (const sourcePath of [...savedAssetIdsByPath.keys()]) {
+      const sourceBase = sourcePath.split('/').pop()
+      const targetBase = normalizedTarget.split('/').pop()
+      if (sourceBase && sourceBase === targetBase) {
+        matchedSourcePath = sourcePath
+        // 不 break：删一个资产可能同时清掉多张缓存卡的 id 映射
+      }
+    }
+  }
+  if (!matchedSourcePath) return
+  savedAssetPaths.value.delete(matchedSourcePath)
+  savedAssetIdsByPath.delete(matchedSourcePath)
+}
 
 /** agent 通过 ask_user 工具发起提问：在消息流中插入一条「问题 + 选项按钮」卡 */
 function handleAskUser(question: AskUserQuestion): void {
@@ -1590,6 +1630,10 @@ onMounted(async () => {
   stopEvent = window.studio.onHarnessEvent(onHarnessEvent)
   stopActivity = window.studio.onMcpActivityUpdated(onMcpActivity)
   stopAskUser = window.studio.onAskUser(handleAskUser)
+  // 订阅资产移除事件：用户在资产库 / MCP 删除时让对话产物卡上的「已保存」状态回退
+  if (typeof window.studio?.onAssetRemoved === 'function') {
+    stopAssetRemoved = window.studio.onAssetRemoved(onAssetRemoved)
+  }
   // 模式选择下拉：点外部或 ESC 收起；用 document 监听，trigger 用 .stop 防止冒泡立即关
   document.addEventListener('click', onModeOutside)
   document.addEventListener('keydown', onModeOutside)
@@ -1602,6 +1646,7 @@ onBeforeUnmount(() => {
   stopEvent?.()
   stopActivity?.()
   stopAskUser?.()
+  stopAssetRemoved?.()
   document.removeEventListener('click', onModeOutside)
   document.removeEventListener('keydown', onModeOutside)
   if (copyTimer !== null) window.clearTimeout(copyTimer)

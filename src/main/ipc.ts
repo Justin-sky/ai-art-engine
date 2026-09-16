@@ -176,7 +176,19 @@ export function registerIpcHandlers(): void {
     }
   })
   handle(IpcChannels.ASSET_CREATE, (input: CreateAssetInput) => projectService.createAsset(input))
-  handle(IpcChannels.ASSET_DELETE, (assetId: string) => projectService.deleteAsset(assetId))
+  handle(IpcChannels.ASSET_DELETE, (assetId: string) => {
+    // 资产库面板删除也要广播 ASSET_REMOVED：此前只有 MCP asset_delete 路径广播，
+    // 渲染层（对话产物卡上的「已保存」状态、编辑窗关闭）会一直拿着已不存在的资产引用。
+    // 删除前先拿一次目标路径，载荷里带 `{ id, path }`（详见 shared/ipc.ts ASSET_REMOVED）。
+    const target = projectService.listAssets().find((item) => item.id === assetId)
+    projectService.deleteAsset(assetId)
+    if (target) {
+      broadcastToAllWindows(IpcChannels.ASSET_REMOVED, {
+        id: assetId,
+        path: target.relativePath
+      })
+    }
+  })
   handle(IpcChannels.ASSET_FIND_REFERENCES, (assetIds: string[]) =>
     projectService.findAssetReferences(assetIds)
   )

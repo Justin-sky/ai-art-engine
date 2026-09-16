@@ -230,8 +230,8 @@ const api: StudioApi = {
     return () => ipcRenderer.removeListener(IpcChannels.ASSET_UPDATED, listener)
   },
   onAssetRemoved: (callback) => {
-    const listener = (_event: unknown, assetId: string): void => {
-      callback(assetId)
+    const listener = (_event: unknown, payload: { id: string; path: string }): void => {
+      callback(payload)
     }
     ipcRenderer.on(IpcChannels.ASSET_REMOVED, listener)
     return () => ipcRenderer.removeListener(IpcChannels.ASSET_REMOVED, listener)

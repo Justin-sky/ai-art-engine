@@ -817,7 +817,12 @@ const TOOL_DEFS: McpToolDef[] = [
         )
       }
       projectService.deleteAsset(assetId)
-      broadcastToAllWindows(IpcChannels.ASSET_REMOVED, assetId)
+      // 同时携带 id 与目标路径：订阅方可按 id 关编辑器、按 path 让对话产物卡
+      // 上的「已保存」状态回退（见 shared/ipc.ts ASSET_REMOVED）。
+      broadcastToAllWindows(IpcChannels.ASSET_REMOVED, {
+        id: assetId,
+        path: asset.relativePath
+      })
       return { assetId, name: asset.name, deleted: true, referencedBy: hits.length }
     }
   },
