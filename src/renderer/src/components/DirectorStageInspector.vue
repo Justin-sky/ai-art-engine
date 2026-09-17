@@ -1078,12 +1078,27 @@ import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { vNumberScrub } from '../directives/numberScrub'
 import { themePreference } from '../editor/preferences'
+import { inferBoneRole } from '../features/director/aiPoseParse'
 import {
-  buildAiPoseSystemPrompt,
-  buildAiPoseUserPrompt,
-  mapAiPoseDegreesToBonePose,
-  parseAiPoseFunctionCall
-} from '../features/director/aiPoseParse'
+  buildBlenderAiPosePrompts,
+  decideBlenderPoseStrategy,
+  parseBlenderPoseReadback,
+  type BlenderBoneRole,
+  type BlenderPoseDispatch,
+  type BlenderPoseReadback
+} from '@shared/blenderPoseGeneration'
+
+/**
+ * 去掉 LLM 在生成 Python 时常见的 markdown 围栏（```python / ```py / ```）。
+ * 与 `stripJsonCodeFence` 同思路，但允许保留更多语言 token——LLM 偶尔会写成
+ * ` ```python\n...code...\n``` ` 或漏写代码栅栏仅给纯 Python，这里都做兜底。
+ */
+function stripPythonCodeFence(raw: string): string {
+  const trimmed = raw.trim()
+  const fenced = trimmed.match(/^```(?:python|py|python3)?\s*([\s\S]*?)\s*```$/i)
+  if (fenced?.[1]) return fenced[1].trim()
+  return trimmed
+}
 import {
   AI_POSE_INSTRUCTION_PRESETS,
   matchAiPosePresetId,
@@ -1452,117 +1467,192 @@ async function onGenerateAiPose(): Promise<void> {
       })
     )
 
-    const parsedKey = parseModelKey(aiPoseModelKey.value)
-    if (!parsedKey) {
-      const msg = t('director.stage.poseAiModelEmpty')
+    // 1. 渲染层先按骨名推角色，再决定走预设派发（无需 LLM）还是 LLM 生成 Python
+    const boneRoles: Record<string, BlenderBoneRole> = {}
+    const boneParents: Record<string, string | null> = {}
+    for (const b of hierarchy) {
+      boneRoles[b.name] = inferBoneRole(b.name) as BlenderBoneRole
+      boneParents[b.name] = b.parent ?? null
+    }
+
+    let dispatch: BlenderPoseDispatch
+    try {
+      dispatch = decideBlenderPoseStrategy({
+        instruction: aiPoseInstruction.value,
+        locale: locale.value,
+        boneRoles
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      aiPoseStatus.value = msg
+      logMessage(msg, 'error')
+      runLogs.endRun({ runId, status: 'error', message: msg })
+      return
+    }
+    logMessage(t('director.stage.poseAiLog.dispatch', { strategy: dispatch.description }))
+
+    // 3a. 预设路径直接用预设脚本；LLM 路径先调文本模型要 Python 源码
+    let blenderCode = dispatch.code
+    if (dispatch.strategy === 'ai') {
+      const parsedKey = parseModelKey(aiPoseModelKey.value)
+      if (!parsedKey) {
+        const msg = t('director.stage.poseAiModelEmpty')
+        aiPoseStatus.value = msg
+        logMessage(msg, 'error')
+        runLogs.endRun({ runId, status: 'error', message: msg })
+        return
+      }
+      try {
+        localStorage.setItem(AI_POSE_MODEL_STORAGE_KEY, aiPoseModelKey.value)
+      } catch {
+        /* ignore */
+      }
+
+      const prompts = buildBlenderAiPosePrompts({
+        instruction: aiPoseInstruction.value,
+        boneRoles,
+        boneParents,
+        locale: locale.value
+      })
+      logMessage(t('director.stage.poseAiLog.llmStart', { model: parsedKey.model }))
+
+      const apiStarted = Date.now()
+      try {
+        const result = await window.studio.generateText({
+          providerInstanceId: parsedKey.providerInstanceId,
+          model: parsedKey.model,
+          system: prompts.system,
+          prompt: prompts.user
+        })
+        runLogs.appendApiCall(runId, {
+          kind: 'generateText',
+          nodeId: AI_POSE_LOG_NODE_ID,
+          durationMs: Math.max(0, Date.now() - apiStarted),
+          request: {
+            prompt: prompts.user,
+            system: prompts.system,
+            model: parsedKey.model,
+            providerInstanceId: parsedKey.providerInstanceId
+          },
+          response: { text: result.text, model: result.model }
+        })
+        logMessage(
+          t('director.stage.poseAiLog.llmDone', {
+            chars: result.text.length,
+            model: result.model || parsedKey.model
+          })
+        )
+
+        blenderCode = stripPythonCodeFence(result.text)
+        if (!blenderCode.trim()) {
+          const msg = t('director.stage.poseAiParseFailed')
+          aiPoseStatus.value = msg
+          logMessage(msg, 'error')
+          logMessage(
+            t('director.stage.poseAiLog.rawReply', { text: result.text.slice(0, 800) }),
+            'warn'
+          )
+          runLogs.endRun({ runId, status: 'error', message: msg })
+          return
+        }
+      } catch (err) {
+        const error = err instanceof Error ? err.message : String(err)
+        runLogs.appendApiCall(runId, {
+          kind: 'generateText',
+          nodeId: AI_POSE_LOG_NODE_ID,
+          durationMs: Math.max(0, Date.now() - apiStarted),
+          request: {
+            prompt: prompts.user,
+            system: prompts.system,
+            model: parsedKey.model,
+            providerInstanceId: parsedKey.providerInstanceId
+          },
+          error
+        })
+        throw err
+      }
+    }
+
+    // 3b. 把脚本送进 Blender MCP 跑；预设/AI 两条路共用同一通道
+    logMessage(t('director.stage.poseAiLog.blenderRun'))
+    const blenderStarted = Date.now()
+    const outcome = await window.studio.runBlenderMcpTool({
+      name: 'execute_blender_code',
+      args: { code: blenderCode },
+      timeoutMs: 60000
+    })
+    runLogs.appendApiCall(runId, {
+      kind: 'blenderMcp',
+      nodeId: AI_POSE_LOG_NODE_ID,
+      durationMs: Math.max(0, Date.now() - blenderStarted),
+      request: {
+        toolName: 'execute_blender_code',
+        codeBytes: blenderCode.length,
+        strategy: dispatch.strategy,
+        presetId: dispatch.presetId ?? undefined
+      },
+      response: outcome.error ? undefined : { ok: true },
+      error: outcome.error
+    })
+
+    if (outcome.error) {
+      // Blender 没起 / 没装 addon / safe mode 拦截——给用户具体的开法指引
+      const isConnIssue =
+        /required.*addon|addon.*not.*enabled|ECONNREFUSED|disconnected|EHOSTUNREACH|connect.*fail/i.test(
+          outcome.error
+        )
+      const msg = isConnIssue
+        ? t('director.stage.poseAiMcpDisabled') + `\n${outcome.error}`
+        : t('director.stage.poseAiLog.blenderRunFail', { error: outcome.error })
       aiPoseStatus.value = msg
       logMessage(msg, 'error')
       runLogs.endRun({ runId, status: 'error', message: msg })
       return
     }
 
+    // 4. 解析 Blender 读回：stdout 里必须含 POSE_RESULT:json
+    let readback: BlenderPoseReadback
     try {
-      localStorage.setItem(AI_POSE_MODEL_STORAGE_KEY, aiPoseModelKey.value)
-    } catch {
-      /* ignore */
+      readback = parseBlenderPoseReadback(outcome)
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err)
+      const msg = t('director.stage.poseAiParseFailed')
+      aiPoseStatus.value = msg
+      logMessage(msg, 'error')
+      logMessage(error, 'error')
+      runLogs.endRun({ runId, status: 'error', message: msg })
+      return
     }
-
-    const system = buildAiPoseSystemPrompt(locale.value)
-    const prompt = buildAiPoseUserPrompt({
-      instruction: aiPoseInstruction.value,
-      bones: hierarchy
-    })
+    const matched = Object.keys(readback).length
     logMessage(
-      t('director.stage.poseAiLog.llmStart', {
-        model: parsedKey.model
+      t('director.stage.poseAiLog.blenderReadback', {
+        matched,
+        total: hierarchy.length
       })
     )
 
-    const apiStarted = Date.now()
-    try {
-      const result = await window.studio.generateText({
-        providerInstanceId: parsedKey.providerInstanceId,
-        model: parsedKey.model,
-        system,
-        prompt
-      })
-      runLogs.appendApiCall(runId, {
-        kind: 'generateText',
-        nodeId: AI_POSE_LOG_NODE_ID,
-        durationMs: Math.max(0, Date.now() - apiStarted),
-        request: {
-          prompt,
-          system,
-          model: parsedKey.model,
-          providerInstanceId: parsedKey.providerInstanceId
-        },
-        response: {
-          text: result.text,
-          model: result.model
-        }
-      })
-      logMessage(
-        t('director.stage.poseAiLog.llmDone', {
-          chars: result.text.length,
-          model: result.model || parsedKey.model
-        })
-      )
-
-      const call = parseAiPoseFunctionCall(result.text)
-      if (!call) {
-        const msg = t('director.stage.poseAiParseFailed')
-        aiPoseStatus.value = msg
-        logMessage(msg, 'error')
-        logMessage(
-          t('director.stage.poseAiLog.rawReply', { text: result.text.slice(0, 800) }),
-          'warn'
-        )
-        runLogs.endRun({ runId, status: 'error', message: msg })
-        return
-      }
-      const mapped = mapAiPoseDegreesToBonePose(
-        call.arguments.bones,
-        hierarchy.map((b) => b.name)
-      )
-      logMessage(
-        t('director.stage.poseAiLog.parsed', {
-          matched: mapped.matched,
-          total: mapped.total,
-          mode: call.arguments.mode
-        })
-      )
-      if (!mapped.matched) {
-        const msg = t('director.stage.poseAiNoMatch')
-        aiPoseStatus.value = msg
-        logMessage(msg, 'error')
-        runLogs.endRun({ runId, status: 'error', message: msg })
-        return
-      }
-      scene.applyObjectBonePoseMap(id, mapped.bonePose, call.arguments.mode)
-      syncPoseDegCache()
-      const msg = t('director.stage.poseAiApplied', {
-        matched: mapped.matched,
-        total: mapped.total
-      })
+    // 5. 应用到角色（Blender 输出的就是弧度，与 applyObjectBonePoseMap 同口径）
+    if (!matched) {
+      const msg = t('director.stage.poseAiNoMatch')
       aiPoseStatus.value = msg
-      logMessage(msg)
-      runLogs.endRun({ runId, status: 'done', message: msg })
-    } catch (err) {
-      const error = err instanceof Error ? err.message : String(err)
-      runLogs.appendApiCall(runId, {
-        kind: 'generateText',
-        nodeId: AI_POSE_LOG_NODE_ID,
-        durationMs: Math.max(0, Date.now() - apiStarted),
-        request: {
-          prompt,
-          system,
-          model: parsedKey.model,
-          providerInstanceId: parsedKey.providerInstanceId
-        },
-        error
-      })
-      throw err
+      logMessage(msg, 'error')
+      runLogs.endRun({ runId, status: 'error', message: msg })
+      return
     }
+    const bonePose: Record<string, { x: number; y: number; z: number }> = {}
+    for (const [name, [rx, ry, rz]] of Object.entries(readback)) {
+      bonePose[name] = { x: rx, y: ry, z: rz }
+    }
+    scene.applyObjectBonePoseMap(id, bonePose, 'replace')
+    syncPoseDegCache()
+    logMessage(t('director.stage.poseAiLog.parsed', { matched, total: hierarchy.length }))
+    const doneMsg = t('director.stage.poseAiApplied', {
+      matched,
+      total: hierarchy.length
+    })
+    aiPoseStatus.value = doneMsg
+    logMessage(doneMsg)
+    runLogs.endRun({ runId, status: 'done', message: doneMsg })
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err)
     const msg = t('director.stage.poseAiFailed', { error })

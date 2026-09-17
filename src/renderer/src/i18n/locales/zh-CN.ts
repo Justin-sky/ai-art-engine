@@ -1904,8 +1904,10 @@ export default {
       poseAiGenerate: 'AI 生成姿势',
       poseAiGenerating: '正在生成…',
       poseAiApplied: '已应用 {matched}/{total} 根骨骼',
-      poseAiParseFailed: '模型返回无法解析为姿势 function call，请换模型或改写指令重试',
-      poseAiNoMatch: '模型返回的骨骼名与当前角色不匹配',
+      poseAiParseFailed: 'Blender 未返回有效骨骼旋转；可能 LLM 输出非 Python 或脚本异常退出',
+      poseAiNoMatch: '返回的骨骼名与当前角色不匹配（Blender 端没有任何 bone 能映射）',
+      poseAiMcpDisabled:
+        'Blender MCP 未连接：请打开 Blender 并启用 Blender MCP 插件（设置 → 工具面 → Blender）',
       poseAiFailed: '生成失败：{error}',
       poseAiLog: {
         title: 'AI 姿势',
@@ -1913,9 +1915,13 @@ export default {
         start: '开始生成：对象「{object}」，可编辑骨骼 {bones} 根',
         reset: '已重置姿势（与重置按钮相同）',
         instruction: '姿势指令：{text}',
+        dispatch: '派发：{strategy}',
         llmStart: '调用文本模型：{model}',
         llmDone: '模型返回完成：{chars} 字符（{model}）',
-        parsed: '已解析 function call：匹配 {matched}/{total}，mode={mode}',
+        blenderRun: '调用 Blender MCP execute_blender_code',
+        blenderRunFail: 'Blender 调用失败：{error}',
+        blenderReadback: 'Blender 返回 {matched}/{total} 根骨骼的 Euler 偏移（弧度）',
+        parsed: '已应用 Blender MCP 返回的旋转：匹配 {matched}/{total}',
         rawReply: '原始回复摘录：{text}'
       },
       poseIkChains: 'IK 目标 ({n})',

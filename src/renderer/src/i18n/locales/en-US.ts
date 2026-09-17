@@ -1956,8 +1956,11 @@ export default {
       poseAiGenerating: 'Generating…',
       poseAiApplied: 'Applied {matched}/{total} bones',
       poseAiParseFailed:
-        'Could not parse the model reply as a pose function call. Try another model or rewrite the prompt.',
-      poseAiNoMatch: 'Returned bone names do not match this character',
+        'Blender did not return usable bone rotations. The LLM may have produced non-Python or the script raised.',
+      poseAiNoMatch:
+        'Returned bone names do not match this character (Blender could not map any bone).',
+      poseAiMcpDisabled:
+        'Blender MCP is not connected. Open Blender with the Blender MCP addon enabled (Settings → Tooling → Blender).',
       poseAiFailed: 'Generation failed: {error}',
       poseAiLog: {
         title: 'AI Pose',
@@ -1965,9 +1968,13 @@ export default {
         start: 'Start: object “{object}”, {bones} editable bones',
         reset: 'Pose reset (same as Reset pose)',
         instruction: 'Instruction: {text}',
+        dispatch: 'Dispatch: {strategy}',
         llmStart: 'Calling text model: {model}',
         llmDone: 'Model reply received: {chars} chars ({model})',
-        parsed: 'Parsed function call: matched {matched}/{total}, mode={mode}',
+        blenderRun: 'Calling Blender MCP execute_blender_code',
+        blenderRunFail: 'Blender call failed: {error}',
+        blenderReadback: 'Blender returned Euler offsets for {matched}/{total} bones (radians)',
+        parsed: 'Applied Blender MCP rotation: matched {matched}/{total}',
         rawReply: 'Raw reply excerpt: {text}'
       },
       poseIkChains: 'IK targets ({n})',

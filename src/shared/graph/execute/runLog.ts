@@ -47,6 +47,7 @@ export interface GraphRunLogApiCall {
     | 'generateSpeech'
     | 'generateMusic'
     | 'generateModel3d'
+    | 'blenderMcp'
   nodeId: string
   /** 节点 params.skillId；无则省略 */
   skillId?: string
@@ -97,6 +98,14 @@ export interface GraphRunLogApiCall {
       bytes: number
       urlPreview: string
     }>
+    /** blenderMcp：调用的工具名（execute_blender_code / get_object_info 等） */
+    toolName?: string
+    /** blenderMcp：发送的 Python 源码字节数（不落代码体本身，体积可能很大） */
+    codeBytes?: number
+    /** blenderMcp：调度策略（preset / ai） */
+    strategy?: string
+    /** blenderMcp：命中的预设 id（preset 路径下） */
+    presetId?: string
   }
   response?: {
     text?: string
@@ -106,6 +115,8 @@ export interface GraphRunLogApiCall {
     imageCount?: number
     assetId?: string
     relativePath?: string
+    /** blenderMcp：仅记录是否成功执行；不落 stdout（可能很大） */
+    ok?: boolean
   }
   error?: string
   durationMs?: number

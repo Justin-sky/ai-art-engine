@@ -306,6 +306,7 @@ const api: StudioApi = {
   restartMcpServer: (input) => ipcRenderer.invoke(IpcChannels.MCP_RESTART, input),
   getBlenderMcpInfo: () => ipcRenderer.invoke(IpcChannels.MCP_BLENDER_GET_INFO),
   restartBlenderMcp: (input) => ipcRenderer.invoke(IpcChannels.MCP_BLENDER_RESTART, input),
+  runBlenderMcpTool: (input) => ipcRenderer.invoke(IpcChannels.MCP_BLENDER_RUN_TOOL, input),
   onMcpActivityUpdated: (callback) => {
     const listener = (_event: unknown, activity: import('@shared/ipc').McpActivity): void => {
       callback(activity)

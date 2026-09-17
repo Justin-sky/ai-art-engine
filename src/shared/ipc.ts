@@ -9,6 +9,7 @@ import type {
   TimelineTransitionPreviewResult,
   GraphRunLogApiCall
 } from './graph'
+import type { McpToolCallOutcome } from './mcpProtocol'
 import type {
   CatalogModel,
   GenerateImageInput,
@@ -249,6 +250,8 @@ export const IpcChannels = {
   MCP_BLENDER_GET_INFO: 'mcp:blender-get-info',
   /** MCP：应用 blender 桥配置（命令 / 参数 / addon socket / safe mode / 桥端口）并重启 */
   MCP_BLENDER_RESTART: 'mcp:blender-restart',
+  /** MCP：UI 直接调用一个 Blender 工具（限于 BLENDER_TOOLS 内已登记工具；safe mode 在主进程硬约束） */
+  MCP_BLENDER_RUN_TOOL: 'mcp:blender-run-tool',
   /** MCP：主进程推送旁路生成活动（生成中 / 完成 / 失败，任务列表与执行日志可见） */
   MCP_ACTIVITY_UPDATED: 'mcp:activity-updated',
   /** MCP：主进程清空旁路生成活动（工程关闭时） */
@@ -705,6 +708,19 @@ export interface McpBlenderRestartInput {
    * 不传则保留 settings 现有值，默认 community。
    */
   addonType?: 'community' | 'official'
+}
+
+/** MCP：Blender 工具面调用入参（UI 侧直接调用 Blender addon 工具的窄门）。 */
+export interface RunBlenderMcpToolInput {
+  /** 工具名（必须在 BLENDER_TOOLS 表内；其他一律拒绝） */
+  name: string
+  /** 工具入参（按工具的 toParams 白名单过滤后再下发给 addon） */
+  args: Record<string, unknown>
+  /**
+   * 调用超时（ms）；0/未传 = 使用默认。Blender 主线程长脚本执行可能需要更长时间，
+   * UI 侧生成姿势场景默认 30s，`get_object_info` 等快路径可显式传短值。
+   */
+  timeoutMs?: number
 }
 
 /** Harness：DeepSeek Harness (dsh) 接入状态（Chat 面板顶部状态条展示） */
@@ -1262,6 +1278,12 @@ export interface StudioApi {
 
   /** MCP：应用 Blender 配置（落盘 + 断开重连 + 立即探活），返回探活后的状态 */
   restartBlenderMcp: (input: McpBlenderRestartInput) => Promise<McpBlenderBridgeInfo>
+
+  /**
+   * MCP：直接调用一个 Blender 工具（限于 BLENDER_TOOLS 中已登记的工具；safe mode 在主进程硬约束）。
+   * UI 侧典型用途：3D 导演台 AI 姿势生成把渲染层拼好的 Python 脚本送进 Blender 跑，再读 stdout 拿回 bone 旋转。
+   */
+  runBlenderMcpTool: (input: RunBlenderMcpToolInput) => Promise<McpToolCallOutcome>
 
   /** MCP：订阅旁路生成活动更新（生成中 / 完成 / 失败） */
   onMcpActivityUpdated: (callback: (activity: McpActivity) => void) => () => void

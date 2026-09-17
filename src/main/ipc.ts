@@ -71,6 +71,8 @@ import {
   receiveAskUserAnswer,
   restartMcpServer
 } from './services/mcpServerService'
+import { runBlenderTool } from './services/blenderMcpService'
+import { blenderToolSpec } from '@shared/blenderMcp'
 import { modelProviderFacade, toMediaUrl } from './services/modelProviders'
 import { YOLO_CATALOG } from '@shared/yoloCatalog'
 import {
@@ -390,6 +392,16 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.MCP_BLENDER_GET_INFO, () => getMcpServerInfo()?.blenderBridge ?? null)
   handle(IpcChannels.MCP_BLENDER_RESTART, (input: import('@shared/ipc').McpBlenderRestartInput) =>
     applyBlenderMcpSettings(input)
+  )
+  handle(
+    IpcChannels.MCP_BLENDER_RUN_TOOL,
+    async (input: import('@shared/ipc').RunBlenderMcpToolInput) => {
+      // 名字白名单：与协议层（dsh / 外部 Agent）走同一张 BLENDER_TOOLS 表，避免 UI 侧拿到任何
+      // 「handler(**kwargs) 多传一个键就 TypeError」的工具而误调到 addon 内部未导出命令。
+      const spec = blenderToolSpec(input?.name ?? '')
+      if (!spec) return { error: `Unknown Blender tool: ${input?.name ?? ''}` }
+      return runBlenderTool(spec, input?.args ?? {})
+    }
   )
   handle(IpcChannels.MCP_ACTIVITY_LIST, () => mcpActivityService.list())
 
