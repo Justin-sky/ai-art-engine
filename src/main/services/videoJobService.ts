@@ -72,11 +72,21 @@ const POLL_INTERVAL_MS = 5000
  * 轮询瞬时失败容忍度：一次网络抖动（超时 / DNS / 5xx）不该判死整条生成任务——
  * vendor 远端往往已经在真跑，判死后上游 agent 会重发请求造成重复生成。
  * 连续失败按退避重试，超过预算才判定任务失败；鉴权类错误（Key 失效）立即判死。
+ *
+ * 3D 模型生成通常比视频更慢（Tripo/Meshy/Rodin 动辄 10~30 分钟），
+ * 同样 20 次连续失败≈8 分钟，对 3D 来说太容易误判。故 3D 单独放宽到 120 次，
+ * 按退避策略≈58 分钟，覆盖绝大多数慢任务而不致无限等待。
  */
 const POLL_TRANSIENT_MAX = 20
+const POLL_TRANSIENT_MAX_MODEL3D = 120
 /** 产物下载重试：vendor 刚完成时 CDN 偶发 5xx / 超时，一次失败不应判死 */
 const DOWNLOAD_MAX_ATTEMPTS = 3
 const DOWNLOAD_RETRY_DELAY_MS = 5000
+
+/** 按任务类型取瞬时失败容忍上限 */
+function pollTransientMaxFor(kind: VideoJobKind | 'model3d' | 'video'): number {
+  return kind === 'model3d' ? POLL_TRANSIENT_MAX_MODEL3D : POLL_TRANSIENT_MAX
+}
 
 /** 瞬时失败退避：前 2 次 5s，3-5 次 15s，之后 30s */
 function pollRetryDelayMs(count: number): number {
@@ -331,7 +341,8 @@ class VideoJobService {
       }
       // 瞬时错误（超时 / DNS / 5xx / 限流）：退避后重试，超预算才判死
       const count = (this.pollFailures.get(localJobId) ?? 0) + 1
-      if (count >= POLL_TRANSIENT_MAX) {
+      const kind = jobKind(job)
+      if (count >= pollTransientMaxFor(kind)) {
         this.pollFailures.delete(localJobId)
         await this.failJob(localJobId, new Error(fail(E_VIDEOJOB_POLL_UNSTABLE, { count }).message))
         return
