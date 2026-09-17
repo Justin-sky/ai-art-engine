@@ -616,6 +616,9 @@ const TOOL_DEFS: McpToolDef[] = [
       const newParentId = optionalString(args, 'newParentId') ?? null
       assertFolderExists(newParentId)
       const updated = projectService.moveFolder(folderId, newParentId)
+      // 搬移会同时改动子孙目录与其中资产的相对路径：广播目录变化让界面
+      // 立刻重扫（与 folder_create 一致），否则旧位置的目录树节点会残留。
+      broadcastToAllWindows(IpcChannels.FOLDERS_UPDATED, null)
       return {
         folderId: updated.id,
         name: updated.name,

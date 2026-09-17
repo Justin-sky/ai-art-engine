@@ -409,6 +409,10 @@ class ProjectService {
     let adoptedCount = 0
     for (const dirAbs of topLevelDirs) {
       try {
+        // 事件去抖期间目录可能已被搬走 / 删除（移动文件夹就会触发旧路径的 unlink
+        // 事件，其 dirname 正是被搬走的那个目录）。此时若无条件 ensure，会把旧位置
+        // 凭空重建出一个空目录 + 新 `.folder.json`，表现为「移动后残留一个空目录」。
+        if (!existsSync(dirAbs)) continue
         const relDir = toPosix(relative(root, dirAbs))
         ensureAssetRelativeFolderChain(root, relDir)
         const batch = this.repairOrphanMediaMetas(root, relDir)

@@ -5,6 +5,7 @@ import {
   readdirSync,
   renameSync,
   rmSync,
+  rmdirSync,
   statSync,
   writeFileSync,
   copyFileSync
@@ -493,7 +494,7 @@ export function hoistDirectoryContentsAndRemove(dirAbs: string, parentAbs: strin
       // meta moved with unique name already via rename of the meta file itself
     }
   }
-  rmSync(dirAbs, { recursive: true, force: true })
+  removeDirWithRetry(dirAbs, 'hoistDirectoryContentsAndRemove')
 }
 
 export function copyBufferToTreeMedia(
@@ -520,6 +521,30 @@ export function detectFlatLayout(root: string): boolean {
 
 // ── 文件夹跨目录搬移 ──
 
+/**
+ * 删除目录（带重试）。Windows 上 `renameSync` 会因目录句柄被占用（资源管理器、
+ * 杀软、缩略图/预览、文件监听）而失败，回退路径 `cpSync + rmSync` 里 `rmSync`
+ * 的 recursive 往往已把子项删干净，只剩最后一步删除目录本体失败——结果就是
+ * 旧位置凭空留下一个「空目录」，下次 `scanAssetTree` 还会给它补一个全新的
+ * `.folder.json`，界面上表现为「移动完还残留一个空目录」。
+ * 这里带 maxRetries 重删，并在仍然删不掉时明确告警（不再静默吞掉失败）。
+ */
+function removeDirWithRetry(dirAbs: string, context: string): void {
+  if (!existsSync(dirAbs)) return
+  try {
+    rmSync(dirAbs, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+  } catch (err) {
+    console.warn('[assetTree] remove dir failed, retrying later:', dirAbs, context, err)
+  }
+  if (!existsSync(dirAbs)) return
+  // 子项可能已删完、只剩被占用的空目录本体：至少把它收掉，避免残留空目录
+  try {
+    rmdirSync(dirAbs)
+  } catch {
+    console.warn('[assetTree] source dir locked, empty dir kept:', dirAbs, context)
+  }
+}
+
 /** 把磁盘目录搬到另一位置；跨卷时回退到 cpSync + rmSync */
 function relocateDir(src: string, dest: string): void {
   if (resolve(src) === resolve(dest)) return
@@ -531,11 +556,8 @@ function relocateDir(src: string, dest: string): void {
     renameSync(src, dest)
   } catch {
     cpSync(src, dest, { recursive: true })
-    try {
-      rmSync(src, { recursive: true, force: true })
-    } catch {
-      /* Windows 上偶发文件被占用，dest 已就位可继续 */
-    }
+    // 源目录必须清掉，否则旧位置会残留（多半是空目录）
+    removeDirWithRetry(src, 'relocateDir')
   }
 }
 

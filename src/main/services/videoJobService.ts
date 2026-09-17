@@ -286,6 +286,9 @@ class VideoJobService {
     const root = projectService.getRoot()
     let job = videoJobRepository.get(root, localJobId)
     if (!job || !isVideoJobActive(job.status)) return
+    // 任务类型在 try 外固定下来：catch 里也要用它挑瞬时失败预算，
+    // 而 `job` 在 catch 中已被重新赋值过、类型上可能是 null。
+    const kind = jobKind(job)
 
     this.polling.add(localJobId)
     try {
@@ -301,7 +304,7 @@ class VideoJobService {
       const { modelProviderFacade } = await import('./modelProviders')
       const pollJob = { jobId: job.providerJobId, pollingUrl: job.pollingUrl }
       const result =
-        jobKind(job) === 'model3d'
+        kind === 'model3d'
           ? await modelProviderFacade.pollModel3d(provider, pollJob)
           : await modelProviderFacade.pollVideo(provider, pollJob)
 
@@ -341,7 +344,6 @@ class VideoJobService {
       }
       // 瞬时错误（超时 / DNS / 5xx / 限流）：退避后重试，超预算才判死
       const count = (this.pollFailures.get(localJobId) ?? 0) + 1
-      const kind = jobKind(job)
       if (count >= pollTransientMaxFor(kind)) {
         this.pollFailures.delete(localJobId)
         await this.failJob(localJobId, new Error(fail(E_VIDEOJOB_POLL_UNSTABLE, { count }).message))
