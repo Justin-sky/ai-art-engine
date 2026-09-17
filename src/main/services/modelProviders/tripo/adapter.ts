@@ -68,8 +68,9 @@ function resolveTripoV3BaseUrl(raw: string | undefined): string {
   // 兼容用户直接粘贴的 v2 完整前缀
   url = url.replace(/\/v2\/openapi$/i, '').replace(/\/v3$/i, '')
   // v2 旧域名 → v3 新域名（API Key 两版共用，仅域名不同）
-  url = url.replace(/^https?:\/\/api\.tripo3d\.(ai|com)/i, (_m, tld: string) =>
-    `https://openapi.tripo3d.${tld.toLowerCase()}`
+  url = url.replace(
+    /^https?:\/\/api\.tripo3d\.(ai|com)/i,
+    (_m, tld: string) => `https://openapi.tripo3d.${tld.toLowerCase()}`
   )
   return url || 'https://openapi.tripo3d.ai'
 }
@@ -247,7 +248,9 @@ export const tripoAdapter: ModelProviderAdapter = {
         const output = taskData?.output
         // 优先 PBR 模型，其次最终模型 / 白模
         const downloadUrl =
-          output?.pbr_model_url?.trim() || output?.model_url?.trim() || output?.base_model_url?.trim()
+          output?.pbr_model_url?.trim() ||
+          output?.model_url?.trim() ||
+          output?.base_model_url?.trim()
         return {
           status: 'completed',
           progress: 100,
