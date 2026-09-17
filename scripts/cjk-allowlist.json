@@ -100,7 +100,7 @@
       "if (err instanceof Error && /音色设计|请提供|voice design/i.test(err.message)) throw err"
     ],
     "src/main/services/modelProviders/tripo/adapter.ts": [
-      "description: 'Tripo 3D 模型生成（文本/图片/多图）'"
+      "description: 'Tripo 3D 模型生成 v3.1（文本/图片/多图）'"
     ],
     "src/main/services/modelProviders/volcengineArk/openspeech.ts": [
       "return resolveAppErrorLocale() === 'en-US' ? `error code ${code}` : `错误码 ${code}`",
