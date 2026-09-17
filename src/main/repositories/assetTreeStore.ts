@@ -772,14 +772,23 @@ export function removeDirWithRetry(dirAbs: string, context: string): boolean {
     }
     console.warn(
       '[assetTree] source dir locked (rm + rename both failed). Queued for pending cleanup + 45s background retry.',
-      '\n  path:', dirAbs,
-      '\n  context:', context,
-      '\n  orphan marker:', marked ? 'written (hidden from asset tree)' : 'FAILED (dir may reappear as an empty folder)',
+      '\n  path:',
+      dirAbs,
+      '\n  context:',
+      context,
+      '\n  orphan marker:',
+      marked ? 'written (hidden from asset tree)' : 'FAILED (dir may reappear as an empty folder)',
       '\n  If it persists, close any program holding the directory and delete it manually, or wait for next app launch.'
     )
     return false
   }
-  console.warn('[assetTree] source dir locked, renamed to orphan:', dirAbs, '->', orphanAbs, context)
+  console.warn(
+    '[assetTree] source dir locked, renamed to orphan:',
+    dirAbs,
+    '->',
+    orphanAbs,
+    context
+  )
   // rename 成功后多试几次 rm orphan
   for (let i = 1; i <= 2; i++) {
     sleepSync(300 * i)

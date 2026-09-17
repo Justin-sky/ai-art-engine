@@ -2,10 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import {
-  moveFolderBetweenFolders,
-  scanAssetTree
-} from '../src/main/repositories/assetTreeStore'
+import { moveFolderBetweenFolders, scanAssetTree } from '../src/main/repositories/assetTreeStore'
 import { folderRepository } from '../src/main/repositories/folderRepository'
 import {
   ASSET_META_SUFFIX,
