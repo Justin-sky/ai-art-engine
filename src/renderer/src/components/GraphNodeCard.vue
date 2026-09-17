@@ -630,6 +630,7 @@ import {
   type VideoGeneratePortLimits
 } from '@shared/graph'
 import type { InstructionPresetKind } from '@shared/graph/instructionPresets'
+import { supportsModel3dRig } from '@shared/modelProvider'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useGraphScope } from '../composables/useGraphScope'
 import { isAudioFilePath, isVideoFilePath } from '@shared/import'
@@ -2013,12 +2014,11 @@ function persistModel3dStyle(value: string): void {
   graphEditorHosts.updateNode(props.hostId, props.node.id, { generateStyle: value })
 }
 
-/** 3D 蒙皮：仅 Tripo / Meshy / Rodin 上游支持 */
-const MODEL3D_RIG_SUPPORTED_KINDS = new Set(['tripo', 'meshy', 'hyper3d'])
+/** 3D 蒙皮：仅 Tripo / Meshy / Rodin 上游支持（白名单与 MCP `generate_model3d` 的入参校验共用） */
 const showModel3dRig = computed(
   () =>
     instructionKind.value === 'model3d' &&
-    MODEL3D_RIG_SUPPORTED_KINDS.has(
+    supportsModel3dRig(
       modelOptions.value.find((o) => o.key === selectedModelKey.value)?.providerKind ?? ''
     )
 )

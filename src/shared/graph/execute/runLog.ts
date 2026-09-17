@@ -61,6 +61,12 @@ export interface GraphRunLogApiCall {
     providerInstanceId?: string
     /** 3D 生成：风格（Lux3D 文生3D） */
     style?: string
+    /** 3D 生成：是否要求上游附加骨骼蒙皮（rig） */
+    rig?: boolean
+    /** 3D 生成：骨架类型（humanoid / quadruped 等） */
+    rigType?: string
+    /** 3D 生成：绑定动画预设 id */
+    rigAnimation?: string
     /** 多模态附图 / 参考图数量（不落 data URL，避免日志膨胀） */
     imageCount?: number
     aspectRatio?: string
