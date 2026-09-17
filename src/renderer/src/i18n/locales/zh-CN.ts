@@ -1876,7 +1876,7 @@ export default {
       poseViewportHint: '在视口中点击绿色关节点选中，拖动旋转轴调整姿势',
       poseModeFk: 'FK 旋转',
       poseModeIk: 'IK 拖拽',
-      poseModeAi: 'AI 姿势',
+      poseModeAi: '3D姿势',
       poseAiHint:
         '用自然语言描述姿势（如走路、跳跃、挥手），由文本模型生成骨骼旋转并应用到当前角色。若 OpenRouter 的 openai/* 报 Terms of Service，请到 openrouter.ai/settings/privacy 放行上游，或换非 OpenAI / 国内文本模型。',
       poseAiModel: '文本模型',
@@ -1910,8 +1910,8 @@ export default {
         'Blender MCP 未连接：请打开 Blender 并启用 Blender MCP 插件（设置 → 工具面 → Blender）',
       poseAiFailed: '生成失败：{error}',
       poseAiLog: {
-        title: 'AI 姿势',
-        titlePreset: 'AI 姿势 · {name}',
+        title: '3D姿势',
+        titlePreset: '3D姿势 · {name}',
         start: '开始生成：对象「{object}」，可编辑骨骼 {bones} 根',
         reset: '已重置姿势（与重置按钮相同）',
         instruction: '姿势指令：{text}',
@@ -1928,14 +1928,16 @@ export default {
         agentToolMissing: '，Blender 缺失：{missing}',
         agentToolFail: 'try_blender_pose 失败：{error}',
         agentFinalize: 'finalize_pose 已写入：{matched}/{total} 根骨骼',
-        agentStop: 'Agent 停止：{reason}（no_finalize=模型未调 finalize；max_turns=轮数用尽；error=异常）',
+        agentStop:
+          'Agent 停止：{reason}（no_finalize=模型未调 finalize；max_turns=轮数用尽；error=异常）',
         agentMissing:
           'Blender 端 armature 「{armature}」缺这些骨（LLM 写了但 pose.bones 里没有）：{missing}',
         agentError: 'Agent 异常：{message}',
         armatureList:
           'Blender armature 校准：name={armature}, Blender 端 {blenderBones} 骨，渲染层 {sceneBones} 骨，交集 {matched}',
         armatureNone: '（Blender 里没找到 armature）',
-        armatureMissing: 'Blender 当前 view_layer 里没有任何 ARMATURE 对象——请在 Blender 里打开/选中 armature 后再点 AI 姿势。',
+        armatureMissing:
+          'Blender 当前 view_layer 里没有任何 ARMATURE 对象——请在 Blender 里打开/选中 armature 后再点 3D姿势。',
         armatureNoMatch:
           'Blender armature 骨名与渲染层骨架完全不匹配——agent 只能拿到 LLM 猜的 Euler；请检查 Blender 端是否导入了同一份 .fbx/.glb。'
       },
@@ -3598,6 +3600,12 @@ export default {
       frame: '帧',
       frames: '全部帧',
       gif: 'GIF',
+      skinnedMesh: '蒙皮网格',
+      skinnedMeshAll: '全部蒙皮网格',
+      pose: '姿势',
+      poseAll: '全部姿势',
+      animation: '动画',
+      animationAll: '全部动画',
       inTitle: '接入参考',
       limitMax: '最多 {n}',
       limitMaxAfterStyle: '端口最多 {n}（风格参考已占 {style}）',
@@ -3671,7 +3679,18 @@ export default {
       modelPoseNoTextModel: '请先在节点上选择文本模型（自由描述姿势时需要）',
       modelPoseMcp: '自由描述姿势需要启用 Blender MCP；常用姿势预设无需 Blender',
       modelPoseNoMatch: '未能生成可套用的骨骼旋转（骨骼名可能无法映射）',
-      modelPoseFailed: 'AI 姿势生成未完成',
+      modelPoseFailed: '3D姿势生成未完成',
+      modelRigNoModel: '请先连接上游 3D 模型',
+      modelRigNoTextModel: '请先在节点上选择文本模型（自由描述绑骨时需要）',
+      modelRigMcp: '自由描述绑骨需要启用 Blender MCP；预设拓扑无需 Blender',
+      modelRigNoMatch: 'Blender 端未能创建 armature 或自动蒙皮失败',
+      modelRigFailed: 'AI 骨骼蒙皮生成未完成',
+      modelAnimNoModel: '请先连接上游 3D 模型',
+      modelAnimNoArmature: '上游模型没有 armature；请先经过「3D 骨骼蒙皮」节点',
+      modelAnimNoTextModel: '请先在节点上选择文本模型（自由描述动画时需要）',
+      modelAnimMcp: '自由描述动画需要启用 Blender MCP；预设动画无需 Blender',
+      modelAnimNoMatch: 'Blender 端未写入任何关键帧（armature 名/骨名可能不一致）',
+      modelAnimFailed: 'AI 关键帧动画生成未完成',
       dismissHint: '点击关闭提示'
     },
     types: {
@@ -3710,7 +3729,9 @@ export default {
         page: '漫画页'
       },
       model: {
-        pose: 'AI 姿势'
+        pose: '3D姿势',
+        rigSkin: '3D 骨骼蒙皮',
+        animation: '3D 动画'
       },
       play: {
         script: '文本'
@@ -3972,9 +3993,60 @@ export default {
         hint: '连接上游 3D 模型，选择常用姿势或填写描述后运行。输出接到 3D 导演台的模型口即可套用姿势。常用姿势无需 Blender；自由描述需要文本模型，并启用 Blender MCP。',
         presets: '常用姿势',
         instruction: '姿势指令',
+        posePreview: '姿势预览',
+        poseHint: '套用 Cook 生成的骨骼旋转。鼠标拖拽旋转视角、滚轮缩放。',
+        noModel: '请先在上游连接 3D 模型',
+        poseEmpty: '运行节点后在此查看生成的姿势',
+        saveToAsset: '保存到资产库',
+        saveToAssetTitle: '把当前 Cook 生成的姿势保存为姿势资产（可重复套用）',
+        saveDialogTitle: '保存姿势到资产库',
+        saveDialogSubtitle:
+          '选择资产库文件夹并命名；保存后可在 3D 导演台「套用姿势」中按骨骼名复用。',
+        saveDialogDefaultName: '姿势',
+        saveDone: '已保存到 {path}',
+        saveFailed: '保存失败：{message}',
         instructionPlaceholder: '例如：走路迈右腿、双手叉腰站立、跳跃腾空…或点上方预设',
         modelPick: '选择模型…',
         modelEmpty: '请先在设置中启用并勾选文本模型'
+      },
+      modelRigSkin: {
+        hint: '连接上游 3D 模型，选择常用蒙皮类型或填写描述后运行。常用蒙皮无需 Blender；自由描述需要文本模型，并启用 Blender MCP。',
+        tabsAria: '3D 骨骼蒙皮页签',
+        tabs: {
+          preview: '模型',
+          skeleton: '骨骼'
+        },
+        armature: '骨架名称',
+        preset: '常用蒙皮预设',
+        bones: '骨骼列表 · 共 {n} 根',
+        bonesEmpty: '模型里未发现 THREE.Bone 节点；可能不是带骨骼蒙皮的模型',
+        vertexGroups: '顶点组 · 共 {n} 个',
+        skeletonHint: '仅显示骨架。橙色点为骨骼节点，点击预览或列表里的节点可选中高亮。',
+        skeletonPresetHint:
+          '模型文件还没有烘焙骨骼，这里按预设拓扑合成显示骨架（经 Blender MCP 蒙皮后骨骼才会写入模型）。橙色点为骨骼节点，点击可选中。',
+        skeletonEmpty: '运行节点后在此查看 rig 后的骨架信息'
+      },
+      modelAnimation: {
+        hint: '连接上游已蒙皮模型，选择游戏常用动画预设或填写描述后运行。常用动画无需 Blender；自由描述需要文本模型，并启用 Blender MCP。',
+        animPreview: '动画预览',
+        animHint:
+          '按 fps 节拍推进当前帧，姿态按关键帧线性插值后驱动模型骨骼。拖动时间轴单帧定位，▶/❚❚ 播放暂停，循环到起帧。',
+        noModel: '请先在上游连接 3D 模型',
+        animEmpty: '运行节点后在此查看生成的动画',
+        play: '播放',
+        pause: '暂停',
+        frameLabel: '当前帧 {n}/{total}',
+        clipName: '动作名',
+        fps: '帧率',
+        frameCount: '总帧数',
+        preset: '预设',
+        saveToAsset: '保存到资产库',
+        saveToAssetTitle: '把当前 Cook 生成的关键帧保存为动画资产（可重复套用）',
+        saveDialogTitle: '保存动画到资产库',
+        saveDialogSubtitle: '选择资产库文件夹并命名；保存后可在 3D 导演台动画轨上按骨骼名复用。',
+        saveDialogDefaultName: '动画',
+        saveDone: '已保存到 {path}',
+        saveFailed: '保存失败：{message}'
       },
       upscale: {
         hint: '双击节点打开指令框填写放大指令；此处预览系统提示词与最终放大提示词',
@@ -4232,6 +4304,10 @@ export default {
           "描述要生成的矢量图（图标 / 插画 / UI 元素 / 动效）；可用 {'@'} 引用上方连线资源",
         modelPoseInstructionPlaceholder:
           "描述角色静帧姿势（走路、挥手、叉腰…）或点 Inspector 常用姿势；可用 {'@'} 引用上游文本",
+        modelRigSkinInstructionPlaceholder:
+          "描述骨骼蒙皮类型（人形 / 四足 / 道具等）或点常用预设；可用 {'@'} 引用上游文本",
+        modelAnimationInstructionPlaceholder:
+          "游戏常用动画（待机 / 走路 / 跳跃 / 战斗戒备 / 命中受击 / 倒地 等）或自描述；可用 {'@'} 引用上游文本",
         refsEmpty: "连接上游后可用 {'@'} 引用；也可只在指令框中输入文本",
         disconnectRef: '断开连接',
         reorderRef: '拖动可调整引用顺序',
@@ -4255,6 +4331,9 @@ export default {
           titleLipSync: '对口型模板',
           titleToPrompt: '图片反推模板',
           titleSvgGen: 'SVG 生成模板',
+          titleModelPose: '3D姿势模板',
+          titleModelRigSkin: '3D骨骼蒙皮模板',
+          titleModelAnimation: '3D动画模板',
           tabGeneral: '通用',
           tabGame: '游戏',
           tabFilm: '影视',
@@ -4267,6 +4346,46 @@ export default {
             uiButton: 'UI 按钮',
             animIcon: '图标动效',
             illustFlat: '扁平插画'
+          },
+          modelPose: {
+            idle: '自然站立',
+            walk: '走路',
+            run: '跑步',
+            jumpAir: '跳跃腾空',
+            jumpLand: '落地缓冲',
+            wave: '挥手致意',
+            handsOnHips: '双手叉腰',
+            point: '右手指向',
+            think: '托腮思考',
+            crouch: '深蹲警戒',
+            kneel: '单膝跪地',
+            bow: '鞠躬致意',
+            fightGuard: '戒备站姿',
+            sit: '端坐'
+          },
+          modelRigSkin: {
+            humanoidSimple: '人形简单骨架',
+            humanoidMixamo: '人形 Mixamo 骨架',
+            quadruped: '四足骨架',
+            propRigid: '道具单骨'
+          },
+          modelAnimation: {
+            idle: '循环待机',
+            walk: '走路循环',
+            run: '跑步循环',
+            jumpAir: '跳跃腾空帧',
+            jumpLand: '落地缓冲帧',
+            wave: '挥手循环',
+            handsOnHips: '叉腰站立循环',
+            think: '托腮循环',
+            crouch: '深蹲戒备循环',
+            kneel: '单膝跪姿',
+            bow: '鞠躬静帧',
+            fightGuard: '戒备站姿循环',
+            sit: '端坐静帧',
+            hitReact: '命中受击',
+            death: '倒地死亡',
+            celebrate: '胜利庆祝'
           },
           frameAnimFx: {
             smoke: '烟雾',

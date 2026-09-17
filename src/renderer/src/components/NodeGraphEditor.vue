@@ -3364,7 +3364,14 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
   },
   {
     id: 'video',
-    typeIds: ['asset.video', 'video.lipSync', 'video.select', 'video.framePull', 'video.reshoot']
+    typeIds: [
+      'asset.video',
+      'video.lipSync',
+      'video.select',
+      'video.framePull',
+      'video.reshoot',
+      'output.timeline'
+    ]
   },
   {
     id: 'voice',
@@ -3412,7 +3419,7 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
   },
   {
     id: 'model3d',
-    typeIds: ['asset.model3d', 'asset.motion', 'model.pose']
+    typeIds: ['asset.model3d', 'asset.motion', 'model.pose', 'model.rigSkin', 'model.animation']
   },
   {
     id: 'comic',

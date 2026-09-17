@@ -267,7 +267,18 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       GRAPH_MODEL_POSE_NO_TEXT_MODEL: 'graph.run.modelPoseNoTextModel',
       GRAPH_MODEL_POSE_MCP: 'graph.run.modelPoseMcp',
       GRAPH_MODEL_POSE_NO_MATCH: 'graph.run.modelPoseNoMatch',
-      GRAPH_MODEL_POSE_FAILED: 'graph.run.modelPoseFailed'
+      GRAPH_MODEL_POSE_FAILED: 'graph.run.modelPoseFailed',
+      GRAPH_MODEL_RIG_NO_MODEL: 'graph.run.modelRigNoModel',
+      GRAPH_MODEL_RIG_NO_TEXT_MODEL: 'graph.run.modelRigNoTextModel',
+      GRAPH_MODEL_RIG_MCP: 'graph.run.modelRigMcp',
+      GRAPH_MODEL_RIG_NO_MATCH: 'graph.run.modelRigNoMatch',
+      GRAPH_MODEL_RIG_FAILED: 'graph.run.modelRigFailed',
+      GRAPH_MODEL_ANIM_NO_MODEL: 'graph.run.modelAnimNoModel',
+      GRAPH_MODEL_ANIM_NO_ARMATURE: 'graph.run.modelAnimNoArmature',
+      GRAPH_MODEL_ANIM_NO_TEXT_MODEL: 'graph.run.modelAnimNoTextModel',
+      GRAPH_MODEL_ANIM_MCP: 'graph.run.modelAnimMcp',
+      GRAPH_MODEL_ANIM_NO_MATCH: 'graph.run.modelAnimNoMatch',
+      GRAPH_MODEL_ANIM_FAILED: 'graph.run.modelAnimFailed'
     }
     if (!code) return options.t('graph.run.failed')
     if (keys[code]) return options.t(keys[code])

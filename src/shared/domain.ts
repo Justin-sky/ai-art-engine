@@ -738,6 +738,118 @@ export function buildPoseAssetGenParams(
   }
 }
 
+/**
+ * 动画资产数据（关键帧字典直接存 JSON，可跨模型套用）。
+ *
+ * 与姿势资产同构（`sourceModelAssetId` 携带源模型引用，下游
+ * `applyAnimationAssetToAnimTrack` 可据此做骨骼名映射）。关键帧以
+ * `Record<frameNumber: [eulerX, eulerY, eulerZ]>` 存——frame 用字符串键保证
+ * JSON round-trip 安全（与 GraphAssetValue.clip.keyframes 同口径）。
+ *
+ * 注意：动画资产的 `modelKind` 已被 `isAnimationModelAsset` 识别为 'animation'，
+ * 但 stage 当前 `loadAnimationAsset` 仍按 `asset.relativePath` 加载 GLB 文件——
+ * JSON 编码路径需要 stage 侧增强「缺文件则按 genParams 构造 AnimationClip」。
+ * 这次先在 inspector + asset save 链路把数据形状落稳，stage 集成留作跟进。
+ */
+export interface AnimationAssetData {
+  schemaVersion: 1
+  clipName: string
+  fps: number
+  frameRange: [number, number]
+  /**
+   * 骨名 → 帧号 → [x, y, z] 局部欧拉弧度。骨名使用模型原始名（与
+   * `GraphAssetValue.clip.keyframes` 同口径；不做归一化）。
+   */
+  keyframes: Record<string, Record<string, [number, number, number]>>
+  presetId?: string | null
+  sourceModelAssetId?: string | null
+}
+
+export function createAnimationAssetData(
+  clip: {
+    name: string
+    fps: number
+    frameRange: [number, number] | number[]
+    keyframes: Record<string, Record<string, [number, number, number]>>
+    presetId?: string | null
+  },
+  sourceModelAssetId?: string | null
+): AnimationAssetData {
+  return {
+    schemaVersion: 1,
+    clipName: clip.name,
+    fps: clip.fps,
+    frameRange: [clip.frameRange[0], clip.frameRange[1]],
+    keyframes: JSON.parse(JSON.stringify(clip.keyframes)) as Record<
+      string,
+      Record<string, [number, number, number]>
+    >,
+    presetId: clip.presetId ?? null,
+    sourceModelAssetId: sourceModelAssetId ?? null
+  }
+}
+
+export function readAnimationAssetData(gen?: Record<string, unknown>): AnimationAssetData | null {
+  if (readModelAssetKind(gen) !== 'animation') return null
+  const raw = gen?.animation
+  if (!raw || typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+  const fps = typeof o.fps === 'number' && Number.isFinite(o.fps) ? o.fps : 0
+  const frameRangeRaw = o.frameRange
+  const frameRange: [number, number] | null =
+    Array.isArray(frameRangeRaw) &&
+    frameRangeRaw.length >= 2 &&
+    typeof frameRangeRaw[0] === 'number' &&
+    typeof frameRangeRaw[1] === 'number'
+      ? [frameRangeRaw[0], frameRangeRaw[1]]
+      : null
+  if (!frameRange) return null
+  const keyframesRaw = o.keyframes
+  if (!keyframesRaw || typeof keyframesRaw !== 'object') return null
+  const keyframes: Record<string, Record<string, [number, number, number]>> = {}
+  for (const [bone, frameMap] of Object.entries(keyframesRaw as Record<string, unknown>)) {
+    if (!frameMap || typeof frameMap !== 'object') continue
+    const boneKey = bone.trim()
+    if (!boneKey) continue
+    const out: Record<string, [number, number, number]> = {}
+    for (const [frame, value] of Object.entries(frameMap as Record<string, unknown>)) {
+      if (!value || typeof value !== 'object') continue
+      const v = value as Record<string, unknown>
+      const arr = Array.isArray(v) ? v : null
+      const x = arr && typeof arr[0] === 'number' ? arr[0] : 0
+      const y = arr && typeof arr[1] === 'number' ? arr[1] : 0
+      const z = arr && typeof arr[2] === 'number' ? arr[2] : 0
+      out[frame] = [x, y, z]
+    }
+    keyframes[boneKey] = out
+  }
+  return {
+    schemaVersion: 1,
+    clipName: typeof o.clipName === 'string' ? o.clipName : '',
+    fps,
+    frameRange,
+    keyframes,
+    presetId: typeof o.presetId === 'string' ? o.presetId : null,
+    sourceModelAssetId: typeof o.sourceModelAssetId === 'string' ? o.sourceModelAssetId : null
+  }
+}
+
+export function buildAnimationAssetGenParams(
+  clip: {
+    name: string
+    fps: number
+    frameRange: [number, number] | number[]
+    keyframes: Record<string, Record<string, [number, number, number]>>
+    presetId?: string | null
+  },
+  sourceModelAssetId?: string | null
+): Record<string, unknown> {
+  return {
+    modelKind: 'animation',
+    animation: createAnimationAssetData(clip, sourceModelAssetId)
+  }
+}
+
 /** 资产库/面板展示用图标（动画模型用片段图标；自由画布用专用 key） */
 export function assetDisplayIcon(
   asset: Pick<AssetInfo, 'type' | 'genParams'> | null | undefined

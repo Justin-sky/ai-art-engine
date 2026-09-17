@@ -60,6 +60,8 @@ const CANVAS_ADDABLE_NODE_TYPES = [
   'beat.table',
   'comic.page',
   'model.pose',
+  'model.rigSkin',
+  'model.animation',
   'stage.2d',
   'text.select',
   'world.gen',

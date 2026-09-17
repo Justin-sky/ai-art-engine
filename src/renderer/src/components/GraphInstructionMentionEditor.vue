@@ -540,6 +540,11 @@ const presetMenuTitle = computed(() => {
   if (props.presetKind === 'lipSync') return t('graph.inspector.generate.presets.titleLipSync')
   if (props.presetKind === 'frameAnimGen') return t('graph.anim2d.preset')
   if (props.presetKind === 'svgGen') return t('graph.inspector.generate.presets.titleSvgGen')
+  if (props.presetKind === 'modelPose') return t('graph.inspector.generate.presets.titleModelPose')
+  if (props.presetKind === 'modelRigSkin')
+    return t('graph.inspector.generate.presets.titleModelRigSkin')
+  if (props.presetKind === 'modelAnimation')
+    return t('graph.inspector.generate.presets.titleModelAnimation')
   return t('graph.inspector.generate.presets.title')
 })
 

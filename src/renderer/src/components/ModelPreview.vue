@@ -22,6 +22,7 @@ import { skeletonClipLabel } from '../features/director/skeletonAnim'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { themePreference } from '../editor/preferences'
 import { detectModelPreviewMeta, type ModelPreviewMeta } from '@shared/domain'
+import type { StageVec3 } from '@shared/domain'
 import {
   extractModelSceneDefaults,
   type ModelSceneDefaults
@@ -56,6 +57,17 @@ const props = withDefaults(
     showSkeleton?: boolean
     /** 列表选中的骨骼显示名 */
     selectedBone?: string | null
+    /**
+     * 预设骨架拓扑（armature 空间 head/tail 坐标）。模型文件里没有 THREE.Bone
+     * 时（rigSkin 预设路径只写 rigMeta 元数据、不烘焙模型），用它合成骨架预览。
+     */
+    presetBones?: readonly PresetBoneSpec[] | null
+    /**
+     * 骨名 → 局部欧拉弧度（与 GraphNodeParams.bonePose 同口径）。modelPose 节点
+     * 用它给 SkinnedMesh 套姿势：bind 局部 quaternion 乘上 Euler 偏移四元数，
+     * 子骨自然跟随父骨 FK，skinned mesh 按原始 vertex 权重 / blend 变形。
+     */
+    bonePose?: Readonly<Record<string, StageVec3>> | null
   }>(),
   {
     relativePath: null,
@@ -64,9 +76,21 @@ const props = withDefaults(
     previewPlaying: false,
     previewSpeed: 1,
     showSkeleton: false,
-    selectedBone: null
+    selectedBone: null,
+    presetBones: null,
+    bonePose: null
   }
 )
+
+/** 骨架来源：模型自带 / 预设拓扑合成 / 都没有 */
+type SkeletonSource = 'baked' | 'preset' | 'none'
+
+type PresetBoneSpec = {
+  name: string
+  parent?: string
+  head: [number, number, number]
+  tail: [number, number, number]
+}
 
 const emit = defineEmits<{
   clips: [names: string[]]
@@ -74,6 +98,7 @@ const emit = defineEmits<{
   meta: [meta: ModelPreviewMeta]
   'select-bone': [name: string | null]
   'scene-defaults': [defaults: ModelSceneDefaults]
+  'skeleton-source': [source: SkeletonSource]
 }>()
 
 const { t } = useStudioI18n()
@@ -87,16 +112,22 @@ const BONE_LINE_COLOR = 0xe8a54b
 
 type BoneEntry = {
   name: string
-  bone: THREE.Bone
+  /** 模型自带骨骼；预设合成骨架时为 null（用 rest 静态位置） */
+  bone: THREE.Bone | null
   joint: THREE.Mesh
+  /** 预设合成骨架的关节静态世界坐标；模型自带骨骼时为 null */
+  rest: THREE.Vector3 | null
 }
 
 type BoneLink = {
-  from: THREE.Bone
-  to: THREE.Bone
+  from: THREE.Bone | null
+  to: THREE.Bone | null
   fromName: string
   toName: string
   mesh: THREE.Mesh
+  /** 预设合成骨段的静态端点（armature 空间换算到模型包围盒后）；自带骨骼时为 null */
+  restFrom: THREE.Vector3 | null
+  restTo: THREE.Vector3 | null
 }
 
 let renderer: THREE.WebGLRenderer | null = null
@@ -111,6 +142,10 @@ let boneOverlay: THREE.Group | null = null
 let boneEntries: BoneEntry[] = []
 let boneLinks: BoneLink[] = []
 let boneRadius = 0.02
+/** 模型自带骨骼的 bind 局部 quaternion（GLTF 读进来时的 rest pose） */
+const boneRotationSnapshot = new Map<string, { bone: THREE.Bone; bind: THREE.Quaternion }>()
+const poseEuler = new THREE.Euler()
+const poseOffsetQuat = new THREE.Quaternion()
 let jointGeom: THREE.SphereGeometry | null = null
 let segmentGeom: THREE.BufferGeometry | null = null
 let boneMatNormal: THREE.MeshBasicMaterial | null = null
@@ -334,49 +369,153 @@ function syncSkeletonOverlay(): void {
     if (seen.has(name)) return
     seen.add(name)
     bones.push(child)
+  })
+
+  if (bones.length) {
+    for (const bone of bones) {
+      const name = boneLabel(bone)
+      const joint = new THREE.Mesh(jointGeom!, boneMatNormal!)
+      joint.name = `bone-joint:${name}`
+      joint.renderOrder = 12
+      joint.userData.boneName = name
+      joint.frustumCulled = false
+      boneOverlay!.add(joint)
+      boneEntries.push({ name, bone, joint, rest: null })
+    }
+
+    for (const bone of bones) {
+      for (const child of bone.children) {
+        if (!(child instanceof THREE.Bone)) continue
+        const mesh = new THREE.Mesh(segmentGeom!, boneMatLink!)
+        mesh.name = `bone-link:${boneLabel(bone)}>${boneLabel(child)}`
+        mesh.renderOrder = 11
+        mesh.userData.boneName = boneLabel(child)
+        mesh.userData.parentBoneName = boneLabel(bone)
+        mesh.frustumCulled = false
+        boneOverlay!.add(mesh)
+        boneLinks.push({
+          from: bone,
+          to: child,
+          fromName: boneLabel(bone),
+          toName: boneLabel(child),
+          mesh,
+          restFrom: null,
+          restTo: null
+        })
+      }
+    }
+
+    scene.add(boneOverlay)
+    updateBoneMarkers()
+    emit('skeleton-source', 'baked')
+    return
+  }
+
+  // 模型文件里没有 THREE.Bone——rigSkin 预设路径只写 rigMeta 元数据、
+  // 不改模型文件。有预设拓扑时按 armature 空间坐标合成骨架预览，
+  // 缩放对齐到模型包围盒，交互（点击选中 / 列表联动）与自带骨骼一致。
+  if (buildPresetSkeletonOverlay()) {
+    scene.add(boneOverlay)
+    updateBoneMarkers()
+    emit('skeleton-source', 'preset')
+    return
+  }
+
+  clearBoneOverlay()
+  emit('skeleton-source', 'none')
+}
+
+/** 按预设拓扑合成骨架（armature 空间 head/tail → 模型包围盒内缩放对齐） */
+function buildPresetSkeletonOverlay(): boolean {
+  const specs = props.presetBones
+  if (!boneOverlay || !rootObject || !specs?.length) return false
+
+  // 模型包围盒（mesh 被 showSkeleton 隐藏后 setFromObject 仍读几何）
+  const modelBox = new THREE.Box3().setFromObject(rootObject)
+  if (modelBox.isEmpty()) return false
+  const modelSize = modelBox.getSize(new THREE.Vector3())
+  const modelCenter = modelBox.getCenter(new THREE.Vector3())
+
+  const skelBox = new THREE.Box3()
+  for (const spec of specs) {
+    skelBox.expandByPoint(new THREE.Vector3(...spec.head))
+    skelBox.expandByPoint(new THREE.Vector3(...spec.tail))
+  }
+  const skelSize = skelBox.getSize(new THREE.Vector3())
+  const skelCenter = skelBox.getCenter(new THREE.Vector3())
+  const scale = Math.max(modelSize.y, modelSize.x, modelSize.z, 1e-3) / Math.max(skelSize.y, 1e-3)
+  const toWorld = (p: readonly [number, number, number]): THREE.Vector3 =>
+    new THREE.Vector3(p[0], p[1], p[2]).sub(skelCenter).multiplyScalar(scale).add(modelCenter)
+  boneRadius = Math.max(0.008, Math.max(modelSize.y, 1e-3) * 0.012)
+
+  for (const spec of specs) {
+    const name = spec.name?.trim() || spec.name
+    const pos = toWorld(spec.head)
     const joint = new THREE.Mesh(jointGeom!, boneMatNormal!)
     joint.name = `bone-joint:${name}`
+    joint.position.copy(pos)
     joint.renderOrder = 12
     joint.userData.boneName = name
     joint.frustumCulled = false
     boneOverlay!.add(joint)
-    boneEntries.push({ name, bone: child, joint })
-  })
-
-  for (const bone of bones) {
-    for (const child of bone.children) {
-      if (!(child instanceof THREE.Bone)) continue
-      const mesh = new THREE.Mesh(segmentGeom!, boneMatLink!)
-      mesh.name = `bone-link:${boneLabel(bone)}>${boneLabel(child)}`
-      mesh.renderOrder = 11
-      mesh.userData.boneName = boneLabel(child)
-      mesh.userData.parentBoneName = boneLabel(bone)
-      mesh.frustumCulled = false
-      boneOverlay!.add(mesh)
-      boneLinks.push({
-        from: bone,
-        to: child,
-        fromName: boneLabel(bone),
-        toName: boneLabel(child),
-        mesh
-      })
-    }
+    boneEntries.push({ name, bone: null, joint, rest: pos })
   }
 
-  scene.add(boneOverlay)
-  updateBoneMarkers()
+  for (const spec of specs) {
+    const name = spec.name?.trim() || spec.name
+    const from = toWorld(spec.head)
+    const to = toWorld(spec.tail)
+    const mesh = new THREE.Mesh(segmentGeom!, boneMatLink!)
+    mesh.name = `bone-link:${name}`
+    mesh.renderOrder = 11
+    mesh.userData.boneName = name
+    mesh.frustumCulled = false
+    const dir = new THREE.Vector3().subVectors(to, from)
+    const len = dir.length()
+    if (len < 1e-6) {
+      mesh.visible = false
+    } else {
+      dir.multiplyScalar(1 / len)
+      mesh.position.copy(from)
+      mesh.quaternion.copy(boneQuat.setFromUnitVectors(yAxis, dir))
+      const thickness = Math.max(boneRadius * 1.4, len * 0.1)
+      mesh.scale.set(thickness, len, thickness)
+    }
+    boneOverlay!.add(mesh)
+    boneLinks.push({
+      from: null,
+      to: null,
+      fromName: name,
+      toName: name,
+      mesh,
+      restFrom: from,
+      restTo: to
+    })
+  }
+
+  emit(
+    'bones',
+    boneEntries.map((entry) => entry.name)
+  )
+  return true
 }
 
 function updateBoneMarkers(): void {
   if (!props.showSkeleton || !boneEntries.length) return
 
   for (const entry of boneEntries) {
-    entry.bone.updateWorldMatrix(true, false)
-    entry.bone.getWorldPosition(worldPos)
-    entry.joint.position.copy(worldPos)
+    if (entry.bone) {
+      entry.bone.updateWorldMatrix(true, false)
+      entry.bone.getWorldPosition(worldPos)
+      entry.joint.position.copy(worldPos)
+    } else if (entry.rest) {
+      worldPos.copy(entry.rest)
+    } else {
+      continue
+    }
     const selected = props.selectedBone != null && props.selectedBone === entry.name
     entry.joint.material = selected ? boneMatSelected! : boneMatNormal!
-    entry.joint.scale.setScalar(selected ? boneRadius * 0.55 : boneRadius * 0.32)
+    entry.joint.scale.setScalar(selected ? boneRadius * 0.35 : boneRadius * 0.2)
 
     if (selected) {
       if (!selectedAxes) {
@@ -390,21 +529,25 @@ function updateBoneMarkers(): void {
   }
 
   for (const link of boneLinks) {
-    link.from.getWorldPosition(worldPos)
-    link.to.getWorldPosition(worldPosChild)
-    boneDir.subVectors(worldPosChild, worldPos)
-    const len = boneDir.length()
-    if (len < 1e-6) {
-      link.mesh.visible = false
+    if (link.from && link.to) {
+      link.from.getWorldPosition(worldPos)
+      link.to.getWorldPosition(worldPosChild)
+      boneDir.subVectors(worldPosChild, worldPos)
+      const len = boneDir.length()
+      if (len < 1e-6) {
+        link.mesh.visible = false
+        continue
+      }
+      link.mesh.visible = true
+      boneDir.multiplyScalar(1 / len)
+      boneQuat.setFromUnitVectors(yAxis, boneDir)
+      link.mesh.position.copy(worldPos)
+      link.mesh.quaternion.copy(boneQuat)
+      const thickness = Math.max(boneRadius * 1.4, len * 0.1)
+      link.mesh.scale.set(thickness, len, thickness)
+    } else if (!(link.restFrom && link.restTo)) {
       continue
     }
-    link.mesh.visible = true
-    boneDir.multiplyScalar(1 / len)
-    boneQuat.setFromUnitVectors(yAxis, boneDir)
-    link.mesh.position.copy(worldPos)
-    link.mesh.quaternion.copy(boneQuat)
-    const thickness = Math.max(boneRadius * 2.4, len * 0.14)
-    link.mesh.scale.set(thickness, len, thickness)
     const selected =
       props.selectedBone != null &&
       (props.selectedBone === link.fromName || props.selectedBone === link.toName)
@@ -465,6 +608,7 @@ function syncPreviewAction(): void {
 function clearRoot(): void {
   stopPreviewAction()
   clearBoneOverlay()
+  boneRotationSnapshot.clear()
   mixer = null
   clips = []
   activeAction = null
@@ -475,6 +619,46 @@ function clearRoot(): void {
   scene.remove(rootObject)
   disposeObject(rootObject)
   rootObject = null
+}
+
+/**
+ * 模型加载完成后抓取每根 THREE.Bone 的 bind 局部 quaternion（rest-pose 旋转）；
+ * 之后套姿势都用 bind 作为基准，避免在已偏移基础上叠加导致累计漂移。
+ */
+function captureBoneRotationSnapshot(root: THREE.Object3D): void {
+  boneRotationSnapshot.clear()
+  root.traverse((child) => {
+    if (!(child instanceof THREE.Bone)) return
+    const name = boneLabel(child)
+    if (!name || boneRotationSnapshot.has(name)) return
+    boneRotationSnapshot.set(name, { bone: child, bind: child.quaternion.clone() })
+  })
+}
+
+/**
+ * 把姿态字典（骨名 → 局部欧拉弧度，与 GraphNodeParams.bonePose 同口径）套到当前
+ * 模型上。空字典 / null 时恢复到 bind。骨名匹配使用原始 GLTF 骨骼名（不做归一化
+ * ——Inspector 拿到的就是 Blender readback 的原始名）。
+ */
+function applyBonePoseToRoot(
+  root: THREE.Object3D,
+  pose: Readonly<Record<string, StageVec3>> | null | undefined
+): void {
+  if (!boneRotationSnapshot.size) captureBoneRotationSnapshot(root)
+  for (const snap of boneRotationSnapshot.values()) {
+    snap.bone.quaternion.copy(snap.bind)
+  }
+  if (!pose) return
+  for (const [name, rot] of Object.entries(pose)) {
+    const key = name?.trim()
+    if (!key || !rot) continue
+    if (rot.x === 0 && rot.y === 0 && rot.z === 0) continue
+    const snap = boneRotationSnapshot.get(key)
+    if (!snap) continue
+    poseEuler.set(rot.x, rot.y, rot.z, 'XYZ')
+    poseOffsetQuat.setFromEuler(poseEuler)
+    snap.bone.quaternion.multiply(poseOffsetQuat)
+  }
 }
 
 function sceneHasRenderableMesh(object: THREE.Object3D): boolean {
@@ -658,6 +842,8 @@ async function loadModel(relativePath: string | null | undefined): Promise<void>
     clips = loaded.animations.slice()
     mixer = clips.length ? new THREE.AnimationMixer(rootObject) : null
     scene.add(rootObject)
+    captureBoneRotationSnapshot(rootObject)
+    applyBonePoseToRoot(rootObject, props.bonePose)
     const sceneDefaults = extractModelSceneDefaults(rootObject)
     emit('scene-defaults', sceneDefaults)
     applyTransformProp()
@@ -734,6 +920,20 @@ watch(
   () => props.showSkeleton,
   () => {
     syncSkeletonOverlay()
+  }
+)
+
+watch(
+  () => props.presetBones,
+  () => {
+    if (props.showSkeleton) syncSkeletonOverlay()
+  }
+)
+
+watch(
+  () => props.bonePose,
+  (pose) => {
+    if (rootObject) applyBonePoseToRoot(rootObject, pose ?? null)
   }
 )
 

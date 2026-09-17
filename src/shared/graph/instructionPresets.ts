@@ -21,6 +21,8 @@ export type InstructionPresetKind =
   | 'svgGen'
   | 'model3d'
   | 'modelPose'
+  | 'modelRigSkin'
+  | 'modelAnimation'
   | 'mediaReview'
   | 'mediaRework'
 
@@ -1555,6 +1557,200 @@ const SVG_GEN_PRESETS: InstructionPreset[] = [
   }
 ]
 
+/**
+ * 3D 姿势节点常用预设：body 文案与 `blenderPoseGeneration.matchBlenderPresetId`
+ * 字面量严格一致，保证写入选预设后能命中预设派发（不走 LLM）。菜单标题走
+ * `graph.inspector.generate.presets.modelPose.<id>`，chip 名称只显示动作主题。
+ */
+const MODEL_POSE_PRESETS: InstructionPreset[] = [
+  {
+    id: 'idle',
+    titleKey: 'graph.inspector.generate.presets.modelPose.idle',
+    body: '自然站立休息：重心略偏右腿，左膝微松；双臂自然垂于体侧，肩放松；脊柱直立，头略微前看，整体放松不僵硬。'
+  },
+  {
+    id: 'walk',
+    titleKey: 'graph.inspector.generate.presets.modelPose.walk',
+    body: '走路迈步中段：右腿向前跨出、膝微屈，左腿在后且膝更屈；左臂前摆、右臂后摆；骨盆略向右前侧下沉，脊柱轻微扭转，目视前方。'
+  },
+  {
+    id: 'run',
+    titleKey: 'graph.inspector.generate.presets.modelPose.run',
+    body: '跑步冲刺静帧：躯干明显前倾；右腿大步前跨、左腿后蹬膝高屈；左臂大幅前摆肘屈约90°，右臂后摆；头略低看前方，动态张力强。'
+  },
+  {
+    id: 'jumpAir',
+    titleKey: 'graph.inspector.generate.presets.modelPose.jumpAir',
+    body: '跳跃腾空：双臂上扬或略后摆平衡；髋与双膝屈曲收腿，脚尖略下指；脊柱轻微伸展，胸部打开，面朝前上方，像刚离开地面。'
+  },
+  {
+    id: 'jumpLand',
+    titleKey: 'graph.inspector.generate.presets.modelPose.jumpLand',
+    body: '跳跃落地缓冲：双脚着地感，双膝深度屈曲，髋后坐；躯干前倾，双臂前伸或侧开保持平衡；头前看，重心低稳。'
+  },
+  {
+    id: 'wave',
+    titleKey: 'graph.inspector.generate.presets.modelPose.wave',
+    body: '右侧挥手致意：身体略转向右；右上臂外展抬起，右肘屈约40°–60°，右腕上扬作挥手；左臂自然下垂；重心偏左腿，表情面向观者。'
+  },
+  {
+    id: 'handsOnHips',
+    titleKey: 'graph.inspector.generate.presets.modelPose.handsOnHips',
+    body: '双手叉腰站立：双脚略分开，重心稳；双手叉于腰侧，肘外展；胸稍挺，下巴微抬，自信站姿。'
+  },
+  {
+    id: 'point',
+    titleKey: 'graph.inspector.generate.presets.modelPose.point',
+    body: '右手指向前方：右臂前伸指向正前方，肘微直；左臂自然垂或轻屈于体侧；躯干略跟右手方向扭转，目视所指方向。'
+  },
+  {
+    id: 'think',
+    titleKey: 'graph.inspector.generate.presets.modelPose.think',
+    body: '托腮思考：重心偏一侧；右手抬至下颌/面颊轻托，右肘屈；左臂交叠或垂于身前；头略侧倾低头思考，肩放松。'
+  },
+  {
+    id: 'crouch',
+    titleKey: 'graph.inspector.generate.presets.modelPose.crouch',
+    body: '深蹲警戒：双膝深屈、髋下沉，上身微前倾；双手可置于膝前或抬起防护；头抬起观察前方，重心低、随时可起身。'
+  },
+  {
+    id: 'kneel',
+    titleKey: 'graph.inspector.generate.presets.modelPose.kneel',
+    body: '右膝单跪：右膝着地、左脚前撑；躯干直立或微前倾；双手可放在左膝上；头正视前方，稳定单跪姿势。'
+  },
+  {
+    id: 'bow',
+    titleKey: 'graph.inspector.generate.presets.modelPose.bow',
+    body: '鞠躬致意：双脚并拢站稳；髋为轴上身前倾约30°–45°，脊柱连贯弯曲；双臂垂于体侧或身前；头随躯干低下，礼貌正式。'
+  },
+  {
+    id: 'fightGuard',
+    titleKey: 'graph.inspector.generate.presets.modelPose.fightGuard',
+    body: '运动训练戒备站姿：左脚在前右脚在后，膝微屈；双手抬至下颌前方护面，肘内收；躯干略侧对前方，重心居中可移动，目光平视前方。'
+  },
+  {
+    id: 'sit',
+    titleKey: 'graph.inspector.generate.presets.modelPose.sit',
+    body: '端坐姿势（无椅子也可表现坐姿感）：髋膝约90°屈曲，躯干直立；双手放在大腿上；双脚平放地面感，肩放松，头正直前视。'
+  }
+]
+
+/**
+ * 3D 骨骼蒙皮常用预设：body 文案与 `blenderRigSkinGeneration.matchBlenderRigPresetId`
+ * 字面量严格一致，写入选预设后命中预设派发（本地算拓扑，不走 LLM）。
+ */
+const MODEL_RIG_SKIN_PRESETS: InstructionPreset[] = [
+  {
+    id: 'humanoid-simple',
+    titleKey: 'graph.inspector.generate.presets.modelRigSkin.humanoidSimple',
+    body: '人形简单骨架：根骨 + 脊柱链（髋/胸/颈/头）+ 双手臂（肩/上臂/前臂/手）+ 双腿（上腿/下腿/脚），共 21 根骨头，适合人型角色基础动画。'
+  },
+  {
+    id: 'humanoid-mixamo',
+    titleKey: 'graph.inspector.generate.presets.modelRigSkin.humanoidMixamo',
+    body: '人形 Mixamo 兼容骨架：humanoid-simple + 双手指（每指 2~3 段）+ toe，可直接挂 Mixamo 动作库。'
+  },
+  {
+    id: 'quadruped',
+    titleKey: 'graph.inspector.generate.presets.modelRigSkin.quadruped',
+    body: '四足骨架：脊柱链 + 头/颈/尾 + 四条腿（前左/前右/后左/后后，每条上腿+下腿），适合兽类角色。'
+  },
+  {
+    id: 'prop-rigid',
+    titleKey: 'graph.inspector.generate.presets.modelRigSkin.propRigid',
+    body: '道具单骨骨架：只有一根 Root 骨；适合静态/小幅度摆动物体（剑、门、旗杆）。'
+  }
+]
+
+/**
+ * 3D 动画常用预设：body 文案与 `blenderAnimationGeneration.matchBlenderAnimPresetId`
+ * 字面量严格一致，写入选预设后命中预设派发（本地算关键帧，不走 LLM）。
+ * 16 个 id 与 modelPose 重复但 body 不同——姿势是静帧、动画是循环/关键帧。
+ * 14–16（hitReact/death/celebrate）为游戏特化的反馈/结局循环。
+ */
+const MODEL_ANIMATION_PRESETS: InstructionPreset[] = [
+  {
+    id: 'idle',
+    titleKey: 'graph.inspector.generate.presets.modelAnimation.idle',
+    body: '循环待机动画：身体轻微起伏、双手小摆、头微动，整体放松，24 fps，约 30 帧无缝循环。'
+  },
+  {
+    id: 'walk',
+    titleKey: 'graph.inspector.generate.presets.modelAnimation.walk',
+    body: '走路循环：四肢对侧摆、髋部上下/侧倾，24 fps，24 帧（一步半）无缝循环。'
+  },
+  {
+    id: 'run',
+    titleKey: 'graph.inspector.generate.presets.modelAnimation.run',
+    body: '跑步循环：明显前倾、双臂高摆、双腿大幅摆动，24 fps，20 帧无缝循环。'
+  },
+  {
+    id: 'jumpAir',
+    titleKey: 'graph.inspector.generate.presets.modelAnimation.jumpAir',
+    body: '跳跃腾空帧：双臂上扬平衡、髋膝收腿，18 帧静帧姿态（适合补到 jumpLand 之前）。'
+  },
+  {
+    id: 'jumpLand',
+    titleKey: 'graph.inspector.generate.presets.modelAnimation.jumpLand',
+    body: '跳跃落地缓冲：双膝深屈、髋后坐、双臂前伸，18 帧静帧姿态。'
+  },
+  {
+    id: 'wave',
+    titleKey: 'graph.inspector.generate.presets.modelAnimation.wave',
+    body: '右手挥手循环：右上臂高摆+右腕来回摆，36 帧无缝循环。'
+  },
+  {
+    id: 'handsOnHips',
+    titleKey: 'graph.inspector.generate.presets.modelAnimation.handsOnHips',
+    body: '双手叉腰站立循环：双手叉腰、肘外摆、胸微挺，24 帧轻微摆动。'
+  },
+  {
+    id: 'think',
+    titleKey: 'graph.inspector.generate.presets.modelAnimation.think',
+    body: '思考托腮循环：右手托下颌、头略低垂、轻微左右偏头，36 帧。'
+  },
+  {
+    id: 'crouch',
+    titleKey: 'graph.inspector.generate.presets.modelAnimation.crouch',
+    body: '深蹲戒备循环：双膝深屈、重心低、双臂抬前护面，24 帧轻微起伏。'
+  },
+  {
+    id: 'kneel',
+    titleKey: 'graph.inspector.generate.presets.modelAnimation.kneel',
+    body: '单膝跪姿静帧：右膝着地、左脚前撑，24 帧轻微呼吸起伏。'
+  },
+  {
+    id: 'bow',
+    titleKey: 'graph.inspector.generate.presets.modelAnimation.bow',
+    body: '鞠躬致意静帧：髋为轴上身前倾、脊柱连贯弯曲，30 帧（弯腰 + 短暂停顿）。'
+  },
+  {
+    id: 'fightGuard',
+    titleKey: 'graph.inspector.generate.presets.modelAnimation.fightGuard',
+    body: '运动训练戒备站姿循环：双肘抬起护面、膝微屈，20 帧轻微摆动。'
+  },
+  {
+    id: 'sit',
+    titleKey: 'graph.inspector.generate.presets.modelAnimation.sit',
+    body: '端坐静帧：髋膝约 90° 屈曲、躯干直立，24 帧呼吸起伏。'
+  },
+  {
+    id: 'hitReact',
+    titleKey: 'graph.inspector.generate.presets.modelAnimation.hitReact',
+    body: '命中受击短循环：上身受击后仰 1–2 帧、双臂回收护体、重心微降，24 fps，16 帧（连续受击反馈用）。'
+  },
+  {
+    id: 'death',
+    titleKey: 'graph.inspector.generate.presets.modelAnimation.death',
+    body: '倒地死亡：膝先软、髋下坐、再翻倒侧卧，36 帧，末帧静帧（用于击倒/击杀反馈）。'
+  },
+  {
+    id: 'celebrate',
+    titleKey: 'graph.inspector.generate.presets.modelAnimation.celebrate',
+    body: '胜利庆祝循环：双臂上举握拳/挥手、原地小幅跳跃，24 fps，24 帧无缝循环（关卡通关/任务完成）。'
+  }
+]
+
 const PRESET_PACKS: Record<InstructionPresetKind, InstructionPreset[]> = {
   screenplay: SCREENPLAY_PRESETS,
   image: IMAGE_PRESETS,
@@ -1572,7 +1768,9 @@ const PRESET_PACKS: Record<InstructionPresetKind, InstructionPreset[]> = {
   frameAnimGen: [...FRAME_ANIM_GEN_CHARACTER_PRESETS, ...FRAME_ANIM_GEN_FX_PRESETS],
   svgGen: SVG_GEN_PRESETS,
   model3d: [],
-  modelPose: [],
+  modelPose: MODEL_POSE_PRESETS,
+  modelRigSkin: MODEL_RIG_SKIN_PRESETS,
+  modelAnimation: MODEL_ANIMATION_PRESETS,
   mediaReview: [],
   mediaRework: []
 }

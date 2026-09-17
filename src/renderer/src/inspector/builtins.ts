@@ -28,6 +28,8 @@ import MediaReworkInspector from '../components/MediaReworkInspector.vue'
 import AdVariantsInspector from '../components/AdVariantsInspector.vue'
 import ComicPageInspector from '../components/ComicPageInspector.vue'
 import ModelPoseInspector from '../components/ModelPoseInspector.vue'
+import ModelRigSkinInspector from '../components/ModelRigSkinInspector.vue'
+import ModelAnimationInspector from '../components/ModelAnimationInspector.vue'
 import Anim2dInspector from '../components/Anim2dInspector.vue'
 import SvgAnimInspector from '../components/SvgAnimInspector.vue'
 import FrameAnimGenInspector from '../components/FrameAnimGenInspector.vue'
@@ -144,6 +146,16 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     id: 'studio.graph.modelPose',
     component: ModelPoseInspector,
     nodeTypeId: 'model.pose'
+  },
+  {
+    id: 'studio.graph.modelRigSkin',
+    component: ModelRigSkinInspector,
+    nodeTypeId: 'model.rigSkin'
+  },
+  {
+    id: 'studio.graph.modelAnimation',
+    component: ModelAnimationInspector,
+    nodeTypeId: 'model.animation'
   },
   {
     id: 'studio.graph.adVariants',

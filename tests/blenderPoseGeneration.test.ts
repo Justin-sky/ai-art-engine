@@ -314,8 +314,7 @@ describe('blenderPoseGeneration', () => {
 
     it('returns armature=null + empty bones when Blender has no armature', () => {
       const stdout =
-        BLENDER_ARMATURE_BONE_LIST_MARKER +
-        JSON.stringify({ armature: null, bones: [] })
+        BLENDER_ARMATURE_BONE_LIST_MARKER + JSON.stringify({ armature: null, bones: [] })
       const outcome: McpToolCallOutcome = { result: { result: stdout } }
       const list = parseBlenderArmatureBoneList(outcome)
       expect(list.armature).toBeNull()
@@ -546,10 +545,7 @@ describe('blenderPoseGeneration', () => {
       const bad = 'print("no marker")'
       const good = 'print_pose_v2'
       const stdoutByCode = new Map<string, string>([
-        [
-          good,
-          BLENDER_POSE_RESULT_MARKER + JSON.stringify({ 'mixamorig:Hips': [0.2, 0, 0] })
-        ]
+        [good, BLENDER_POSE_RESULT_MARKER + JSON.stringify({ 'mixamorig:Hips': [0.2, 0, 0] })]
       ])
       // 脚本顺序 = [try(bad), try(good), finalize]
       const model = scriptedModel([
@@ -613,10 +609,7 @@ describe('blenderPoseGeneration', () => {
     })
 
     it('model 始终不调 tool → 返回 no_finalize', async () => {
-      const model = scriptedModel([
-        { text: 'I will not call tools.' },
-        { text: 'still nothing.' }
-      ])
+      const model = scriptedModel([{ text: 'I will not call tools.' }, { text: 'still nothing.' }])
       const blender = scriptedBlenderRun(new Map())
       const result = await runBlenderAiPoseAgent(
         {
@@ -779,10 +772,7 @@ describe('blenderPoseGeneration', () => {
     it('listArmatureBones 抛错 → 不阻塞 agent，按渲染层骨架名继续（graceful fallback）', async () => {
       const good = 'print_payload'
       const stdoutByCode = new Map<string, string>([
-        [
-          good,
-          BLENDER_POSE_RESULT_MARKER + JSON.stringify({ 'mixamorig:Hips': [0.1, 0, 0] })
-        ]
+        [good, BLENDER_POSE_RESULT_MARKER + JSON.stringify({ 'mixamorig:Hips': [0.1, 0, 0] })]
       ])
       const model = scriptedModel([
         { text: 'attempt', python: good },

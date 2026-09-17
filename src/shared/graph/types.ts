@@ -237,6 +237,8 @@ export type GraphNodeTypeId =
   | 'image.toPrompt'
   | 'svg.gen'
   | 'model.pose'
+  | 'model.rigSkin'
+  | 'model.animation'
   | 'graph.input.slot'
   | (string & {})
 
@@ -290,6 +292,52 @@ export interface GraphNodeParams {
   bonePose?: Record<string, StageVec3>
   /** AI 姿势节点：Inspector 当前高亮的常用姿势 id */
   posePresetId?: string
+  /**
+   * AI 姿势节点：最近一次 Cook 写入的输入端模型相对路径，供 Inspector 姿势预览。
+   * 与 `model.rigSkin.rigModelRelativePath` 同口径——只缓存路径、不烘焙文件。
+   */
+  poseModelRelativePath?: string
+  /** AI 姿势节点：输入端模型 assetId（保存姿势资产时携带源模型引用） */
+  poseSourceAssetId?: string
+  /**
+   * 3D 动画节点：最近一次 Cook 写入的输入端模型相对路径，供 Inspector 动画预览。
+   * 与 `model.pose.poseModelRelativePath` / `model.rigSkin.rigModelRelativePath`
+   * 同口径——只缓存路径，不烘焙文件。
+   */
+  animationModelRelativePath?: string
+  /** 3D 动画节点：输入端模型 assetId（保存动画资产时携带源模型引用） */
+  animationSourceAssetId?: string
+  /**
+   * 3D 骨骼蒙皮节点：最近一次 Cook 写入的 rigMeta（armature + bones + vertex groups）。
+   * 输出端口同时带在 GraphAssetValue.rigMeta 上，供导演台套用。
+   */
+  rigMeta?: {
+    armature: string
+    bones: string[]
+    vertexGroups: string[]
+    presetId?: string
+  }
+  /** 3D 骨骼蒙皮节点：Inspector 当前高亮的常用拓扑 id */
+  rigPresetId?: string
+  /**
+   * 3D 骨骼蒙皮节点：最近一次 Cook 写入的「输入端 3D 模型」的工程相对路径。
+   * rig 本身不重写模型文件，所以 inspector 预览的就是上游资产节点生成的同一份
+   * glTF/GLB/FBX/OBJ。Cook 时由 `executeModelRigSkinNode` 用 `ctx.patchNode` 写入；
+   * inspector 拿到这个字段直接喂给 ModelPreview 即可，不要从入边再回溯——避免在
+   * 多级 pipeline（rigSkin → rigSkin → ...）里走出错模型。
+   */
+  rigModelRelativePath?: string
+  /**
+   * 3D 关键帧动画节点：最近一次 Cook 写入的 clip（action + fps + 帧范围 + 关键帧表）。
+   * 输出端口同时带在 GraphAssetValue.clip 上，供导演台按帧驱动。
+   */
+  clip?: {
+    name: string
+    fps: number
+    frameRange: [number, number]
+    keyframes: Record<string, Record<number, [number, number, number]>>
+    presetId?: string
+  }
   /** 图片/视频生成：随机种子（固定可复现，留空随机） */
   generateSeed?: number
   /** 图片/视频生成：是否跟随工程全局种子（默认 true；false 时用 generateSeed） */

@@ -88,7 +88,9 @@ import {
   executeFrameAnimGenNode,
   executeSvgAnimNode,
   executeSvgGenNode,
-  executeModelPoseNode
+  executeModelPoseNode,
+  executeModelRigSkinNode,
+  executeModelAnimationNode
 } from './execute'
 import {
   DEFAULT_GAME_SYSTEM_SYSTEM_PROMPT_ZH,
@@ -284,12 +286,29 @@ function motionProcessingPorts(): GraphPortDef[] {
 }
 
 /** 生成/加工图库节点：`out` 当前选中单条（默认连线）；`out-all` 全部历史（复数类型，仅连 select） */
-function galleryOutPorts(dataType: GraphPortDataType): GraphPortDef[] {
+function galleryOutPorts(
+  dataType: GraphPortDataType,
+  labelKey?: { out?: string; outAll?: string }
+): GraphPortDef[] {
   const singular = toSingularGraphPortDataType(dataType)
   const plural = toPluralGraphPortDataType(singular)
+  const outPort: GraphPortDef = {
+    id: 'out',
+    direction: 'out',
+    dataType: singular,
+    multiple: false,
+    label: 'Selected'
+  }
+  const outAllPort: GraphPortDef = {
+    id: 'out-all',
+    direction: 'out',
+    dataType: plural,
+    multiple: true,
+    label: 'All'
+  }
   return [
-    { id: 'out', direction: 'out', dataType: singular, multiple: false, label: 'Selected' },
-    { id: 'out-all', direction: 'out', dataType: plural, multiple: true, label: 'All' }
+    labelKey?.out ? { ...outPort, labelKey: labelKey.out } : outPort,
+    labelKey?.outAll ? { ...outAllPort, labelKey: labelKey.outAll } : outAllPort
   ]
 }
 
@@ -2411,7 +2430,8 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
         direction: 'in',
         dataType: GraphPortType.model,
         multiple: false,
-        label: 'Model'
+        label: 'Model',
+        labelKey: 'graph.port.skinnedMesh'
       },
       {
         id: 'in-text',
@@ -2420,7 +2440,10 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
         multiple: true,
         label: 'Text'
       },
-      ...galleryOutPorts(GraphPortType.model)
+      ...galleryOutPorts(GraphPortType.model, {
+        out: 'graph.port.pose',
+        outAll: 'graph.port.poseAll'
+      })
     ],
     defaultParams: () => ({
       generateInstruction: '',
@@ -2435,6 +2458,91 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     assetType: 'model',
     contributeToGeneration: false,
     execute: executeModelPoseNode
+  },
+  {
+    typeId: 'model.rigSkin',
+    category: 'note',
+    label: '3D 骨骼蒙皮',
+    icon: '🦴',
+    defaultTitle: '3D 骨骼蒙皮',
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      {
+        id: 'in-model',
+        direction: 'in',
+        dataType: GraphPortType.model,
+        multiple: false,
+        label: 'Model'
+      },
+      {
+        id: 'in-text',
+        direction: 'in',
+        dataType: GraphPortType.text,
+        multiple: true,
+        label: 'Text'
+      },
+      ...galleryOutPorts(GraphPortType.model, {
+        out: 'graph.port.skinnedMesh',
+        outAll: 'graph.port.skinnedMeshAll'
+      })
+    ],
+    defaultParams: () => ({
+      generateInstruction: '',
+      generateModel: '',
+      generateProviderInstanceId: ''
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.modelRigSkin',
+    card: 'media',
+    assetType: 'model',
+    contributeToGeneration: false,
+    execute: executeModelRigSkinNode
+  },
+  {
+    typeId: 'model.animation',
+    category: 'note',
+    label: '3D 动画',
+    icon: '🎞️',
+    defaultTitle: '3D 动画',
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      {
+        id: 'in-model',
+        direction: 'in',
+        dataType: GraphPortType.model,
+        multiple: false,
+        label: 'Model',
+        labelKey: 'graph.port.skinnedMesh'
+      },
+      {
+        id: 'in-text',
+        direction: 'in',
+        dataType: GraphPortType.text,
+        multiple: true,
+        label: 'Text'
+      },
+      ...galleryOutPorts(GraphPortType.model, {
+        out: 'graph.port.animation',
+        outAll: 'graph.port.animationAll'
+      })
+    ],
+    defaultParams: () => ({
+      generateInstruction: '',
+      generateModel: '',
+      generateProviderInstanceId: ''
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.modelAnimation',
+    card: 'media',
+    assetType: 'model',
+    contributeToGeneration: false,
+    execute: executeModelAnimationNode
   }
 ]
 

@@ -441,7 +441,11 @@
       "label: '2D帧动画',",
       "defaultTitle: '2D帧动画',",
       "label: '生成帧动画序列图',",
-      "defaultTitle: '生成帧动画序列图',"
+      "defaultTitle: '生成帧动画序列图',",
+      "label: '3D 骨骼蒙皮',",
+      "defaultTitle: '3D 骨骼蒙皮',",
+      "label: '3D 动画',",
+      "defaultTitle: '3D 动画',"
     ],
     "src/shared/graph/create.ts": ["gameSystem: '策划案生成',"],
     "src/shared/graph/episodeBoardParse.ts": [

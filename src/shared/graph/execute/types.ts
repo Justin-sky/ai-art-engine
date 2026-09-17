@@ -1,9 +1,4 @@
-import type {
-  AssetType,
-  DirectorViewerState,
-  ProjectStyleImage,
-  StageVec3
-} from '../../domain'
+import type { AssetType, DirectorViewerState, ProjectStyleImage, StageVec3 } from '../../domain'
 import type { InstructionMentionSource } from '../instructionMentions'
 import type { WorldElementGenResult } from '../worldElementParse'
 import type { ImageGenerateParamCapabilities } from '../imageGenerateParams'
@@ -38,6 +33,27 @@ export interface GraphAssetValue {
    * 导演台从 `in-model` 实例化时套用到舞台物体。
    */
   bonePose?: Record<string, StageVec3>
+  /**
+   * 3D 骨骼蒙皮元数据。`model.rigSkin` 节点输出时带上，记录创建出来的 armature 名、
+   * 全部 bone 名以及自动权重后 vertex group 名。
+   */
+  rigMeta?: {
+    armature: string
+    bones: string[]
+    vertexGroups: string[]
+    presetId?: string
+  }
+  /**
+   * 3D 关键帧动作。`model.animation` 节点输出时带上，记录 action 名 / fps / 帧范围
+   * 与「骨名 → 帧号 → 局部欧拉弧度」表。导演台从 `in-model` 实例化时按帧驱动。
+   */
+  clip?: {
+    name: string
+    fps: number
+    frameRange: [number, number]
+    keyframes: Record<string, Record<number, [number, number, number]>>
+    presetId?: string
+  }
 }
 
 export interface GraphTextValue {

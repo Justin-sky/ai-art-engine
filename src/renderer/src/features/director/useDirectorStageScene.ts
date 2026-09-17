@@ -7660,7 +7660,10 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     if (!source) return null
 
     const fromValue = (value: GraphValue): IncomingModelInfo | null => {
-      if (value.kind !== 'asset' || (value.assetType !== 'model' && value.assetType !== 'model3d')) {
+      if (
+        value.kind !== 'asset' ||
+        (value.assetType !== 'model' && value.assetType !== 'model3d')
+      ) {
         return null
       }
       if (!value.assetId) return null
@@ -7668,7 +7671,9 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
         assetId: value.assetId,
         ...(value.relativePath?.trim() ? { relativePath: value.relativePath.trim() } : {}),
         ...(value.title?.trim() ? { name: value.title.trim() } : {}),
-        ...(value.bonePose && Object.keys(value.bonePose).length ? { bonePose: value.bonePose } : {})
+        ...(value.bonePose && Object.keys(value.bonePose).length
+          ? { bonePose: value.bonePose }
+          : {})
       }
     }
     const runOut = doc.runStates?.[source.id]?.outputs?.out

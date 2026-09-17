@@ -966,7 +966,9 @@ export interface BlenderDrivePoseMeta {
 }
 
 /** 解析 POSE_DRIVE_META: 行；marker 缺失返回 null（兼容老脚本只 print POSE_RESULT） */
-export function parseBlenderDrivePoseMeta(outcome: McpToolCallOutcome): BlenderDrivePoseMeta | null {
+export function parseBlenderDrivePoseMeta(
+  outcome: McpToolCallOutcome
+): BlenderDrivePoseMeta | null {
   if (outcome.error) return null
   const stdout = extractExecuteStdout(outcome)
   if (!stdout) return null
@@ -1042,8 +1044,12 @@ export const BLENDER_POSE_AGENT_TOOLS: ReadonlyArray<{
         '            missing.append(name)\n' +
         '    bpy.context.view_layer.update()\n' +
         '\n' +
-        'print("' + BLENDER_POSE_RESULT_MARKER + '" + json.dumps(matched, ensure_ascii=False))\n' +
-        'print("' + BLENDER_POSE_DRIVE_META_MARKER + '" + json.dumps(\n' +
+        'print("' +
+        BLENDER_POSE_RESULT_MARKER +
+        '" + json.dumps(matched, ensure_ascii=False))\n' +
+        'print("' +
+        BLENDER_POSE_DRIVE_META_MARKER +
+        '" + json.dumps(\n' +
         '    {"matched": len(matched), "missing": missing, "armature": armature_name},\n' +
         '    ensure_ascii=False,\n' +
         '))\n' +
@@ -1084,7 +1090,13 @@ export const BLENDER_POSE_AGENT_TOOLS: ReadonlyArray<{
 
 /** Agent loop 与 renderer 通信的事件：用于日志 / UI 状态条 */
 export type BlenderPoseAgentEvent =
-  | { kind: 'armature_list'; armature: string | null; bones: string[]; sceneBones: string[]; matched: string[] }
+  | {
+      kind: 'armature_list'
+      armature: string | null
+      bones: string[]
+      sceneBones: string[]
+      matched: string[]
+    }
   | { kind: 'turn'; turn: number; text?: string; toolNames: string[] }
   | {
       kind: 'tool'
@@ -1096,7 +1108,12 @@ export type BlenderPoseAgentEvent =
       error?: string
     }
   | { kind: 'finalize'; matched: number; total: number }
-  | { kind: 'done'; reason: 'finalized' | 'no_finalize' | 'max_turns'; matched: number; total: number }
+  | {
+      kind: 'done'
+      reason: 'finalized' | 'no_finalize' | 'max_turns'
+      matched: number
+      total: number
+    }
   | { kind: 'error'; message: string }
 
 /** Agent loop 的依赖注入：把 I/O 从算法里拆出去 */
@@ -1239,8 +1256,7 @@ export async function runBlenderAiPoseAgent(
   // 起手：先问 Blender 当前 armature 有什么骨；与渲染层骨架取交集后塞进 system prompt，
   // 让 LLM 的 POSE_BONES 只用 Blender 真正有的骨名——避免名字不对导致静默丢姿态。
   let boneContext:
-    | { armature: string | null; blenderBones: string[]; intersect: string[] }
-    | undefined
+    { armature: string | null; blenderBones: string[]; intersect: string[] } | undefined
   const sceneBoneNames = Object.keys(input.boneRoles).filter((n) => !!n)
   if (deps.listArmatureBones) {
     try {

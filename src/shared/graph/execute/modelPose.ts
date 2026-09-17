@@ -240,10 +240,10 @@ async function generateAiPoseReadback(
   return readback
 }
 
-function modelOutputs(model: GraphAssetValue, bonePose: Record<string, StageVec3>): Record<
-  string,
-  GraphValue
-> {
+function modelOutputs(
+  model: GraphAssetValue,
+  bonePose: Record<string, StageVec3>
+): Record<string, GraphValue> {
   const value: GraphAssetValue = {
     ...model,
     kind: 'asset',
@@ -291,12 +291,16 @@ export async function executeModelPoseNode(
   ctx.node.params = {
     ...ctx.node.params,
     bonePose,
-    ...(dispatch.presetId ? { posePresetId: dispatch.presetId } : { posePresetId: undefined })
+    ...(dispatch.presetId ? { posePresetId: dispatch.presetId } : { posePresetId: undefined }),
+    poseModelRelativePath: model.relativePath?.trim() || undefined,
+    poseSourceAssetId: model.assetId ?? undefined
   }
   ctx.patchNode?.({
     params: {
       bonePose,
-      posePresetId: dispatch.presetId ?? undefined
+      posePresetId: dispatch.presetId ?? undefined,
+      poseModelRelativePath: model.relativePath?.trim() || undefined,
+      poseSourceAssetId: model.assetId ?? undefined
     }
   })
 

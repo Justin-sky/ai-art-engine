@@ -778,9 +778,7 @@ export interface GenerateTextTool {
 }
 
 export type GenerateTextToolChoice =
-  | 'auto'
-  | 'none'
-  | { type: 'function'; function: { name: string } }
+  'auto' | 'none' | { type: 'function'; function: { name: string } }
 
 /** 单次 tool_call（OpenAI 风格）。arguments 在 OpenAI 协议里是 JSON 字符串，已就地解析 */
 export interface GenerateTextToolCall {

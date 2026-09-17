@@ -389,9 +389,7 @@ export async function generateOpenAiCompatibleText(
 }
 
 /** 从 chat/completions 响应里提取 tool_calls；arguments 仍是 JSON 字符串（调用方按需 JSON.parse） */
-export function extractChatCompletionToolCalls(
-  data: ChatCompletionResponse
-): Array<{
+export function extractChatCompletionToolCalls(data: ChatCompletionResponse): Array<{
   id: string
   type: 'function'
   function: { name: string; arguments: string }
@@ -407,9 +405,10 @@ export function extractChatCompletionToolCalls(
     const fn = (call.function ?? {}) as { name?: unknown; arguments?: unknown }
     const name = typeof fn.name === 'string' ? fn.name.trim() : ''
     if (!name) continue
-    const id = typeof (call as { id?: unknown }).id === 'string'
-      ? ((call as { id: string }).id)
-      : `call_${out.length}`
+    const id =
+      typeof (call as { id?: unknown }).id === 'string'
+        ? (call as { id: string }).id
+        : `call_${out.length}`
     let args = ''
     if (typeof fn.arguments === 'string') {
       args = fn.arguments
