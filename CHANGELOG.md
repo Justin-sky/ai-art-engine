@@ -2,6 +2,10 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [6.3.2] — 2026-09-17
+
+6.3.2 版本：MCP `generate_model3d` 工具补上 rig 骨骼蒙皮参数——Tripo / Meshy / Rodin 三个供应商透传 `rig` / `rigType` / `rigAnimation`，Agent 对话里也能直接生成带骨骼的 3D 模型，与 6.3.0 节点图侧已有的蒙皮控件同口径。3D 模型生成轮询的瞬时失败容忍度按任务类型放宽：3D 生成（Tripo / Meshy / Rodin 常见 10~30 分钟）单独放宽到 120 次连续瞬时失败（≈58 分钟），视频保持 20 次（≈8 分钟）不变，慢任务不再因网络抖动被误判失败。修掉 Windows 上移动资产文件夹残留空目录的一串缺陷：回退路径 `cpSync`+`rmSync` 的删除失败不再静默吞掉（改用带 maxRetries 的 `removeDirWithRetry`，`rmSync` 重试 + 空目录 `rmdir` 兜底）；资产监听器 reconcile 前先判目录是否仍存在，避免把已搬走的旧路径重建为空目录 + 新 `.folder.json`；MCP `folder_move` 补 `FOLDERS_UPDATED` 广播，AI 侧移动目录后界面目录树即时刷新、不再残留旧节点；目录被 rm / rename 双双 EPERM（杀软、索引器、本进程自有句柄）时，搬移前先关闭 `studio-media://` 读流与 chokidar 监听句柄并等待真正释放，仍失败则写入 `.orphan` 标记让扫描据此跳过残留目录（不再被重新认领成同名空文件夹），路径写入项目根 `.asset-engine-pending-cleanup.json` 由 45s 后台重试（上限 4 轮）持续回收，回收后同路径可被 `reclaimAssetDirPath` 重新占用；另修 `videoJobService.pollOnce` 里 `jobKind(job)` 的 null 类型错误（上版引入）。工程侧新增 commit-msg 中文防乱码钩子；CI 两处修复——`check-hardcoded-cjk` 白名单同步 Tripo v3 描述文案（整行严格相等匹配，描述加版本号导致旧条目失效而阻断 CI）、prettier 修复 assetTreeStore 与 folderMove 测试的格式。
+
 ## [6.3.1] — 2026-09-17
 
 6.3.1 版本：把 Tripo 模型供应商整体迁到官方 v3 API——Base URL 从 `api.tripo3d.ai/v2/openapi` 换为 `openapi.tripo3d.ai/v3`，任务端点按 v2→v3 迁移指南改用专用路由（text-to-model / image-to-model / multiview-to-model 等）替代 v2 的 `type` 字段，响应字段对齐 v3（`create_time` → `created_at`、`consumed_credit` → `credits_consumed`、输出键名改 `*_url`），用户从 v2 控制台原样粘贴的旧 Base URL 会自动剥掉 `/v2/openapi` / `/v3` 后缀并把旧域名归一到新域名；`assertAuth` 鉴权连接测试从不存在的 `GET /v2/openapi/user`（恒返 404「Cannot GET …」）改为官方 SDK 同款 `GET /v2/openapi/user/balance`，无效 Key 现在返回 401 而不是误导性的 404。生成节点的「3D 蒙皮」控件排版优化——启用蒙皮后整组控件独占底部工具栏一整行，骨架类型下拉框与动画输入框宽度同步放宽，「动画名（可选）」占位文案不再被截断；底部工具栏开启 `flex-wrap` 并加大横向间距，与其他模型（Lux3D 风格 / 图片 / 视频参数）共用时不再拥挤。`electron.vite.config.ts` 给主进程 build 的 Rollup 加 `onwarn` 过滤——`chokidar`（按既有约定打进主进程 bundle）`import { Stats } from "node:fs"` 未使用导致的 `UNUSED_EXTERNAL_IMPORT` 警告不再刷屏。CI `prettier --check` 修复两处 printWidth=100 换行（electron.vite.config / tripo adapter）。
