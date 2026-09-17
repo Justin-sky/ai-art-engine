@@ -5,7 +5,6 @@ import {
   readdirSync,
   renameSync,
   rmSync,
-  rmdirSync,
   statSync,
   writeFileSync,
   copyFileSync
@@ -24,6 +23,7 @@ import {
   mediaNameFromMetaFileName,
   metaFileNameForDocument,
   metaFileNameForMedia,
+  ORPHAN_MARKER_NAME,
   toPosix
 } from '@shared/assetStorage/layout'
 import { isRealThumbnailPath, thumbRelativePathFor } from '@shared/media/thumbnailPath'
@@ -55,6 +55,27 @@ function ensureDir(path: string): void {
   mkdirSync(path, { recursive: true })
 }
 
+/**
+ * 目录是否已被标记为搬移残留。
+ *
+ * 搬走后源目录删不掉、也改不了名时（Windows 上被资源管理器 / 杀软 / 索引器占用），
+ * 里面会留下一个标记文件。没有它，`scanAssetTree` 会给残留的空目录补一份新
+ * `.folder.json`，旧位置就会凭空多出一个同名空文件夹。
+ */
+export function isOrphanedAssetDir(dirAbs: string): boolean {
+  return existsSync(join(dirAbs, ORPHAN_MARKER_NAME))
+}
+
+/** 写入弃用标记。目录本身被锁住时写文件通常仍能成功；失败则返回 false。 */
+function markAssetDirOrphaned(dirAbs: string): boolean {
+  try {
+    writeFileSync(join(dirAbs, ORPHAN_MARKER_NAME), `${new Date().toISOString()}\n`)
+    return true
+  } catch {
+    return false
+  }
+}
+
 function normalizeAsset(asset: AssetInfo): AssetInfo {
   const type = normalizeAssetType(asset.type as string)
   return type === asset.type ? asset : { ...asset, type }
@@ -66,6 +87,8 @@ function normalizeAsset(asset: AssetInfo): AssetInfo {
  */
 export function scanAssetTree(root: string): AssetTreeScan {
   const assetsRoot = join(root, 'Assets')
+  // 进入扫描前先尝试回收上次搬移残留的源目录（限流 30s）
+  runPendingCleanup(root)
   const assets: AssetInfo[] = []
   const folders: AssetFolder[] = []
   const metaAbsByAssetId = new Map<string, string>()
@@ -94,6 +117,7 @@ export function scanAssetTree(root: string): AssetTreeScan {
       }
 
       if (st.isDirectory()) {
+        if (isOrphanedAssetDir(abs)) continue
         try {
           const folder = ensureDirFolderMeta(abs, name, folderId)
           folder.parentId = folderId
@@ -290,7 +314,7 @@ export function repairAssetFolderMetas(root: string, relativeDir = 'Assets'): As
       } catch {
         continue
       }
-      if (!st.isDirectory()) continue
+      if (!st.isDirectory() || isOrphanedAssetDir(abs)) continue
       try {
         const folder = ensureDirFolderMeta(abs, name, folderId)
         folders.push(folder)
@@ -521,44 +545,325 @@ export function detectFlatLayout(root: string): boolean {
 
 // ── 文件夹跨目录搬移 ──
 
-/**
- * 删除目录（带重试）。Windows 上 `renameSync` 会因目录句柄被占用（资源管理器、
- * 杀软、缩略图/预览、文件监听）而失败，回退路径 `cpSync + rmSync` 里 `rmSync`
- * 的 recursive 往往已把子项删干净，只剩最后一步删除目录本体失败——结果就是
- * 旧位置凭空留下一个「空目录」，下次 `scanAssetTree` 还会给它补一个全新的
- * `.folder.json`，界面上表现为「移动完还残留一个空目录」。
- * 这里带 maxRetries 重删，并在仍然删不掉时明确告警（不再静默吞掉失败）。
- */
-function removeDirWithRetry(dirAbs: string, context: string): void {
-  if (!existsSync(dirAbs)) return
-  try {
-    rmSync(dirAbs, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
-  } catch (err) {
-    console.warn('[assetTree] remove dir failed, retrying later:', dirAbs, context, err)
+// 待清理目录清单（处理 Windows 上 rm + rename 同时被堵死的硬 EPERM）。
+// 源目录彻底删不掉时把绝对路径写进 <项目根>/.asset-engine-pending-cleanup.json，
+// 下次 scanAssetTree 或下次启动继续试；应用开着时再发一个 45s unref 定时器。
+const PENDING_CLEANUP_FILENAME = '.asset-engine-pending-cleanup.json'
+const PENDING_GLOBAL_THROTTLE_MS = 30_000
+const PENDING_ENTRY_THROTTLE_MS = 30_000
+const BG_RETRY_DELAY_MS = 45_000
+const MAX_BG_RETRY_ATTEMPTS = 4
+
+interface PendingEntry {
+  path: string
+  lastAttempt: number
+  attempts: number
+}
+interface PendingCleanupFile {
+  entries: PendingEntry[]
+}
+
+let lastPendingRunAt = 0
+const backgroundRetryPaths = new Set<string>()
+const backgroundRetryTimers = new Set<ReturnType<typeof setTimeout>>()
+const backgroundRetryAttempts = new Map<string, number>()
+
+/** 从 dirAbs 向上找含 Assets 的祖先作为项目根（待清理清单写在这里） */
+function findProjectRoot(dirAbs: string): string {
+  let p = resolve(dirAbs)
+  for (let i = 0; i < 20; i++) {
+    if (existsSync(join(p, 'Assets'))) return p
+    const parent = dirname(p)
+    if (parent === p) break
+    p = parent
   }
-  if (!existsSync(dirAbs)) return
-  // 子项可能已删完、只剩被占用的空目录本体：至少把它收掉，避免残留空目录
+  return ''
+}
+
+function readPendingCleanupFile(root: string): PendingCleanupFile {
+  const file = join(root, PENDING_CLEANUP_FILENAME)
+  if (!existsSync(file)) return { entries: [] }
   try {
-    rmdirSync(dirAbs)
+    const parsed = readJsonFile<Partial<PendingCleanupFile>>(file)
+    const entries = Array.isArray(parsed.entries) ? parsed.entries : []
+    return {
+      entries: entries.filter(
+        (e): e is PendingEntry =>
+          typeof e?.path === 'string' &&
+          typeof e?.lastAttempt === 'number' &&
+          typeof e?.attempts === 'number'
+      )
+    }
   } catch {
-    console.warn('[assetTree] source dir locked, empty dir kept:', dirAbs, context)
+    return { entries: [] }
   }
 }
 
-/** 把磁盘目录搬到另一位置；跨卷时回退到 cpSync + rmSync */
+function writePendingCleanupFile(root: string, data: PendingCleanupFile): void {
+  try {
+    writeJsonAtomic(join(root, PENDING_CLEANUP_FILENAME), data)
+  } catch (err) {
+    console.warn('[assetTree] write pending cleanup file failed:', root, err)
+  }
+}
+
+function addPendingCleanup(root: string, dirAbs: string): void {
+  if (!root) return
+  const data = readPendingCleanupFile(root)
+  if (data.entries.some((e) => e.path === dirAbs)) return
+  data.entries.push({ path: dirAbs, lastAttempt: 0, attempts: 0 })
+  writePendingCleanupFile(root, data)
+}
+
+function removePendingCleanup(root: string, dirAbs: string): void {
+  if (!root) return
+  const data = readPendingCleanupFile(root)
+  const next = data.entries.filter((e) => e.path !== dirAbs)
+  if (next.length !== data.entries.length) writePendingCleanupFile(root, { entries: next })
+}
+
+/**
+ * 尝试清理待清理清单里的目录。全局限流 30 秒一次（避免每次 scan 都读盘），
+ * 单条限流 30 秒一次，单次 rm 用 fast 模式（不重试），把"等久一点"
+ * 交给后台定时器 / 下次 scan / 下次应用启动。
+ */
+function runPendingCleanup(root: string): void {
+  if (!root) return
+  const now = Date.now()
+  if (now - lastPendingRunAt < PENDING_GLOBAL_THROTTLE_MS) return
+  lastPendingRunAt = now
+  const data = readPendingCleanupFile(root)
+  if (data.entries.length === 0) return
+  const retained: PendingEntry[] = []
+  let dirty = false
+  for (const entry of data.entries) {
+    if (now - entry.lastAttempt < PENDING_ENTRY_THROTTLE_MS) {
+      retained.push(entry)
+      continue
+    }
+    if (!existsSync(entry.path)) {
+      // 已被外部清理（用户手动删除 / 上次后台重试成功但文件没及时刷掉）
+      dirty = true
+      continue
+    }
+    let ok = false
+    try {
+      rmSync(entry.path, { recursive: true, force: true, maxRetries: 1 })
+      ok = !existsSync(entry.path)
+    } catch (err) {
+      console.warn('[assetTree] pending cleanup attempt failed:', entry.path, err)
+    }
+    if (ok) {
+      console.info('[assetTree] pending cleanup succeeded:', entry.path)
+      dirty = true
+    } else {
+      retained.push({ path: entry.path, lastAttempt: now, attempts: entry.attempts + 1 })
+      dirty = true
+    }
+  }
+  if (dirty) writePendingCleanupFile(root, { entries: retained })
+}
+
+/** 后台定时再试一次删除（unref，不阻塞进程退出）。同路径有上限，避免日志轰炸。 */
+function scheduleBackgroundRetry(dirAbs: string, root: string, context: string): void {
+  if (backgroundRetryPaths.has(dirAbs)) return
+  if ((backgroundRetryAttempts.get(dirAbs) ?? 0) >= MAX_BG_RETRY_ATTEMPTS) return
+  backgroundRetryPaths.add(dirAbs)
+  const t = setTimeout(() => {
+    backgroundRetryTimers.delete(t)
+    backgroundRetryPaths.delete(dirAbs)
+    const attempts = (backgroundRetryAttempts.get(dirAbs) ?? 0) + 1
+    backgroundRetryAttempts.set(dirAbs, attempts)
+    if (!existsSync(dirAbs)) {
+      removePendingCleanup(root, dirAbs)
+      backgroundRetryAttempts.delete(dirAbs)
+      return
+    }
+    const removed = removeDirWithRetry(dirAbs, `${context}-bg`)
+    if (removed) {
+      removePendingCleanup(root, dirAbs)
+      backgroundRetryAttempts.delete(dirAbs)
+      return
+    }
+    // 仍删不掉：removeDirWithRetry 已把它重新入队，由 scan / 下次启动继续试
+    if (attempts >= MAX_BG_RETRY_ATTEMPTS) {
+      console.warn(
+        '[assetTree] background cleanup gave up after',
+        attempts,
+        'attempts. Please delete manually:',
+        dirAbs,
+        context
+      )
+    }
+  }, BG_RETRY_DELAY_MS)
+  t.unref?.()
+  backgroundRetryTimers.add(t)
+}
+
+/**
+ * 删除目录（带多轮重试 + 改名收尾 + 持久化兜底）。
+ *
+ * Windows 上 `rmSync` / `renameSync` 会因目录句柄被占用（资源管理器、杀软、
+ * 缩略图/预览、文件监听）而失败。上一轮只加了改名成 `.orphan-*` 的收尾，
+ * 但遇到 `rm` 和 `rename` 两条路同时被堵死（EPERM/EBUSY，常见于杀软实时扫描）
+ * 的极端情况时，旧路径整目录原封不动留在原地，导致同名同 ID 的鬼影。
+ *
+ * 处理顺序：
+ *   1) 内置重试的 `rmSync`
+ *   2) 退避更长的多轮重试
+ *   3) 仍删不掉则把目录改名成 `.orphan-<ts>`，让 `scanAssetTree` 跳过；
+ *      rename 本身也有几轮退避重试
+ *   4) rename 成功后尝试 rm orphan；rm 失败则 orphan 进待清理清单
+ *   5) rename 也失败 → 把原路径写进待清理清单 + 45s 后台再试 + 明确告警
+ *
+ * 返回 `true` 表示 dirAbs 已不存在（无鬼影），`false` 表示原路径仍残留。
+ */
+export function removeDirWithRetry(dirAbs: string, context: string): boolean {
+  if (!existsSync(dirAbs)) return true
+  const root = findProjectRoot(dirAbs)
+
+  // 1) 内置重试的 rmSync
+  try {
+    rmSync(dirAbs, { recursive: true, force: true, maxRetries: 6, retryDelay: 400 })
+  } catch (err) {
+    console.warn('[assetTree] remove dir failed, retrying later:', dirAbs, context, err)
+  }
+  if (!existsSync(dirAbs)) return true
+
+  // 2) 退避更长的多轮重试
+  for (let i = 1; i <= 3; i++) {
+    sleepSync(300 * i)
+    try {
+      rmSync(dirAbs, { recursive: true, force: true })
+      if (!existsSync(dirAbs)) return true
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // 3) 改名成 ".orphan-<ts>"，让 scan 跳过，避免鬼影
+  const parent = dirname(dirAbs)
+  const ts = Date.now()
+  let orphanName = `.orphan-${ts}`
+  let n = 0
+  while (existsSync(join(parent, orphanName))) {
+    n += 1
+    orphanName = `.orphan-${ts}-${n}`
+  }
+  const orphanAbs = join(parent, orphanName)
+  let renamed = false
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    if (attempt > 1) sleepSync(500 * attempt)
+    try {
+      renameSync(dirAbs, orphanAbs)
+      renamed = true
+      break
+    } catch {
+      /* retry */
+    }
+  }
+  if (!renamed) {
+    // 4) rm + rename 都失败 → 标记弃用 + 持久化兜底 + 后台定时再试。
+    // 标记必须有：目录改不了名，扫描只能靠它跳过，否则旧位置会重新长出一个空文件夹。
+    const marked = markAssetDirOrphaned(dirAbs)
+    if (root) {
+      addPendingCleanup(root, dirAbs)
+      scheduleBackgroundRetry(dirAbs, root, context)
+    }
+    console.warn(
+      '[assetTree] source dir locked (rm + rename both failed). Queued for pending cleanup + 45s background retry.',
+      '\n  path:', dirAbs,
+      '\n  context:', context,
+      '\n  orphan marker:', marked ? 'written (hidden from asset tree)' : 'FAILED (dir may reappear as an empty folder)',
+      '\n  If it persists, close any program holding the directory and delete it manually, or wait for next app launch.'
+    )
+    return false
+  }
+  console.warn('[assetTree] source dir locked, renamed to orphan:', dirAbs, '->', orphanAbs, context)
+  // rename 成功后多试几次 rm orphan
+  for (let i = 1; i <= 2; i++) {
+    sleepSync(300 * i)
+    try {
+      rmSync(orphanAbs, { recursive: true, force: true })
+      if (!existsSync(orphanAbs)) return true
+    } catch {
+      /* ignore */
+    }
+  }
+  if (existsSync(orphanAbs)) {
+    // orphan 本身以 "." 开头，scan 不会看到，但占着磁盘；交给待清理清单兜底
+    if (root) addPendingCleanup(root, orphanAbs)
+    console.warn('[assetTree] orphan dir kept, queued for later cleanup:', orphanAbs, context)
+  }
+  return true
+}
+
+/**
+ * 判断目录路径是否可用；被搬移残留目录占着时先试着回收。
+ *
+ * 残留目录对资产树不可见，但仍占着磁盘上的名字。不回收的话同一个文件夹每搬回
+ * 原位置一次就多一截 " 2" 后缀（Images 3 → Images 3 2 → Images 3 2 2），而且这个
+ * 名字会被永久占死。走到这里时占用通常已经释放（杀软扫完 / 资源管理器关了），
+ * 直接删就能把名字让出来；删不掉则返回 false，调用方退回追加后缀。
+ */
+export function reclaimAssetDirPath(dirAbs: string): boolean {
+  if (!existsSync(dirAbs)) return true
+  if (!isOrphanedAssetDir(dirAbs)) return false
+  try {
+    rmSync(dirAbs, { recursive: true, force: true, maxRetries: 2, retryDelay: 100 })
+  } catch {
+    /* 仍被占用 */
+  }
+  if (existsSync(dirAbs)) return false
+  const root = findProjectRoot(dirAbs)
+  if (root) removePendingCleanup(root, dirAbs)
+  console.info('[assetTree] reclaimed orphaned dir, name is free again:', dirAbs)
+  return true
+}
+
+function sleepSync(ms: number): void {
+  const end = Date.now() + ms
+  while (Date.now() < end) {
+    /* busy wait — 主进程同步路径，避免引入 async */
+  }
+}
+
+function isRetryableMoveError(err: unknown): boolean {
+  const code = (err as NodeJS.ErrnoException | undefined)?.code
+  // Windows 上目录被占用/杀软扫描/句柄未释放时，rename 会报 EIO/EPERM/EBUSY，
+  // 先重试，比直接 cpSync+rmSync 更稳；EXDEV（跨卷）不重试。
+  return code === 'EPERM' || code === 'EACCES' || code === 'EBUSY' || code === 'EIO'
+}
+
+/** 把磁盘目录搬到另一位置；同卷优先 rename，跨卷或重试失败后回退到 cpSync + rmSync */
 function relocateDir(src: string, dest: string): void {
   if (resolve(src) === resolve(dest)) return
   ensureDir(dirname(dest))
   if (existsSync(dest)) {
     throw new Error(`目标目录已存在: ${dest}`) // cjk-ok: 中文文案仅抛向主进程日志，未对外
   }
-  try {
-    renameSync(src, dest)
-  } catch {
-    cpSync(src, dest, { recursive: true })
-    // 源目录必须清掉，否则旧位置会残留（多半是空目录）
-    removeDirWithRetry(src, 'relocateDir')
+
+  // Windows 上对占用目录 rename 常为临时错误，先退避重试
+  let lastError: unknown
+  for (let i = 0; i < 5; i++) {
+    try {
+      renameSync(src, dest)
+      return
+    } catch (err) {
+      lastError = err
+      if (!isRetryableMoveError(err)) break
+      sleepSync(50 * (i + 1))
+    }
   }
+
+  // 跨卷或重试失败：复制过去后再清掉源目录
+  try {
+    cpSync(src, dest, { recursive: true, errorOnExist: true })
+  } catch (err) {
+    // 复制失败时把原始 rename 错误抛出去（通常更有信息量）
+    throw lastError ?? err
+  }
+  removeDirWithRetry(src, 'relocateDir')
 }
 
 /**
@@ -598,13 +903,13 @@ export function moveFolderBetweenFolders(
     return { folder: updated, destDirAbs: srcDir }
   }
 
-  // 名字冲突：同 parent 下已有同名目录时，追加 " 2" / " 3"
-  let targetName = folder.name
+  // 先规范化名字（去首尾空格、非法字符、Windows 保留名、尾点等），再处理冲突
+  let targetName = normalizePathSegment(folder.name)
   let destDirAbs = join(destParentAbs, targetName)
-  if (existsSync(destDirAbs)) {
-    const safe = normalizePathSegment(targetName)
+  if (!reclaimAssetDirPath(destDirAbs)) {
+    const safe = targetName
     let i = 2
-    while (existsSync(join(destParentAbs, `${safe} ${i}`))) i += 1
+    while (!reclaimAssetDirPath(join(destParentAbs, `${safe} ${i}`))) i += 1
     targetName = `${safe} ${i}`
     destDirAbs = join(destParentAbs, targetName)
   }

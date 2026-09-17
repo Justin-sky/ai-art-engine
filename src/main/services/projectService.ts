@@ -98,6 +98,7 @@ import { copyFileAtomic, removeIfExists } from '../persistence/binaryStore'
 import { runTransactionSync } from '../persistence/transactionRunner'
 import {
   ensureAssetRelativeFolderChain,
+  isOrphanedAssetDir,
   moveAssetBetweenFolders,
   repairAssetFolderMetas,
   resolveFolderDirAbs,
@@ -105,6 +106,7 @@ import {
   uniqueFileName
 } from '../repositories/assetTreeStore'
 import { assetWatchService } from './assetWatchService'
+import { closeMediaStreamsUnder } from '../studioMediaProtocol'
 
 import {
   detectImportAssetType,
@@ -413,6 +415,8 @@ class ProjectService {
         // 事件，其 dirname 正是被搬走的那个目录）。此时若无条件 ensure，会把旧位置
         // 凭空重建出一个空目录 + 新 `.folder.json`，表现为「移动后残留一个空目录」。
         if (!existsSync(dirAbs)) continue
+        // 搬走后删不掉的残留目录：只等清理，别再给它补元数据
+        if (isOrphanedAssetDir(dirAbs)) continue
         const relDir = toPosix(relative(root, dirAbs))
         ensureAssetRelativeFolderChain(root, relDir)
         const batch = this.repairOrphanMediaMetas(root, relDir)
@@ -1500,18 +1504,43 @@ class ProjectService {
    * 把文件夹搬到另一父目录（含磁盘搬移与 descendant 资产 relativePath 写回）。
    * 成环约束：newParentId 不能是 folderId 自身，也不能是其任意子孙。
    */
-  moveFolder(folderId: string, newParentId: string | null): AssetFolder {
+  async moveFolder(folderId: string, newParentId: string | null): Promise<AssetFolder> {
     this.readFolder(folderId)
     if (newParentId) this.readFolder(newParentId)
     if (newParentId === folderId) {
       throw fail(MAIN_ERRORS.folderCycle)
     }
+    const root = this.getRoot()
     const folders = this.listFolders()
     const subtree = new Set(collectFolderSubtreeIds(folders, folderId))
     if (newParentId && subtree.has(newParentId)) {
       throw fail(MAIN_ERRORS.folderCycle)
     }
-    return folderRepository.move(this.getRoot(), folderId, newParentId)
+    await this.releaseOwnDirHandles(resolveFolderDirAbs(root, folderId))
+    try {
+      return folderRepository.move(root, folderId, newParentId)
+    } finally {
+      assetWatchService.resume()
+    }
+  }
+
+  /**
+   * 搬移 / 删除目录前放开本进程自己持有的句柄。
+   *
+   * Windows 上目录里只要还有一个打开的文件句柄，整个目录就改不了名（`renameSync`
+   * 报 EPERM），目录本身被监听时同理。两个来源都在我们进程内：
+   *   - `studio-media://` 给资产库缩略图/预览开的文件读流
+   *   - chokidar 给每层目录开的 `fs.watch` 句柄
+   * `destroy()` / `close()` 都只是安排关闭，所以这里要让出事件循环等它们落地，
+   * 否则后面 `removeDirWithRetry` 的忙等会把事件循环堵死，句柄永远关不掉。
+   */
+  private async releaseOwnDirHandles(dirAbs: string): Promise<void> {
+    const closed = closeMediaStreamsUnder(dirAbs)
+    if (closed > 0) {
+      console.info('[folderMove] closed', closed, 'in-flight media stream(s) under', dirAbs)
+    }
+    await assetWatchService.suspend()
+    await new Promise<void>((done) => setTimeout(done, 0))
   }
 
   deleteFolder(folderId: string, options?: { mode?: 'hoist' | 'deleteContents' }): void {

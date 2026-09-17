@@ -1,5 +1,5 @@
-import { createReadStream, existsSync, statSync } from 'fs'
-import { extname } from 'path'
+import { createReadStream, existsSync, statSync, type ReadStream } from 'fs'
+import { extname, resolve, sep } from 'path'
 import { Readable } from 'stream'
 
 /** Chromium 媒体元素依赖正确 MIME；file:// 经 net.fetch 时常为 octet-stream，导致 mp3 等无法播放。 */
@@ -49,8 +49,58 @@ function mimeForPath(filePath: string): string {
   }
 }
 
-function nodeStreamToWeb(stream: ReturnType<typeof createReadStream>): ReadableStream {
+/**
+ * 在途文件读流登记表。
+ *
+ * Windows 上只要目录里还有打开的文件句柄，这个目录就改不了名也删不掉。资产库的
+ * 缩略图与预览全走本协议，而 Chromium 取消请求（切 `src`、组件卸载、视频 seek 放弃
+ * range 请求）时读流不保证立刻回收，于是搬移文件夹会撞上 EPERM。搬移前按目录前缀
+ * 强制关掉，见 `closeMediaStreamsUnder`。
+ */
+interface TrackedStream {
+  key: string
+  stream: ReadStream
+}
+const activeStreams = new Set<TrackedStream>()
+
+/** Windows 路径大小写不敏感，比较前统一 */
+function pathKey(filePath: string): string {
+  const abs = resolve(filePath)
+  return process.platform === 'win32' ? abs.toLowerCase() : abs
+}
+
+function openTrackedStream(
+  filePath: string,
+  range?: { start: number; end: number }
+): ReadableStream {
+  const stream = range ? createReadStream(filePath, range) : createReadStream(filePath)
+  const entry: TrackedStream = { key: pathKey(filePath), stream }
+  activeStreams.add(entry)
+  const forget = (): void => {
+    activeStreams.delete(entry)
+  }
+  stream.once('close', forget)
+  stream.once('error', forget)
   return Readable.toWeb(stream) as unknown as ReadableStream
+}
+
+/**
+ * 关掉某个目录（含子目录）下所有在途读流，返回关闭数量。
+ *
+ * `destroy()` 只是安排关闭，真正的 `close` 回调要等事件循环，所以调用方必须
+ * 之后让出一次事件循环，再去动磁盘。
+ */
+export function closeMediaStreamsUnder(dirAbs: string): number {
+  const dirKey = pathKey(dirAbs)
+  const prefix = dirKey.endsWith(sep) ? dirKey : `${dirKey}${sep}`
+  let closed = 0
+  for (const entry of [...activeStreams]) {
+    if (entry.key !== dirKey && !entry.key.startsWith(prefix)) continue
+    activeStreams.delete(entry)
+    entry.stream.destroy()
+    closed += 1
+  }
+  return closed
 }
 
 /**
@@ -80,6 +130,20 @@ export function handleStudioMediaRequest(request: Request): Response {
     const mime = mimeForPath(filePath)
     const rangeHeader = request.headers.get('Range')
 
+    // HEAD 不读 body：开了读流也没人消费，白占一个文件句柄
+    if (request.method === 'HEAD') {
+      return new Response(null, {
+        status: 200,
+        headers: {
+          ...CORS_HEADERS,
+          'Content-Type': mime,
+          'Content-Length': String(size),
+          'Accept-Ranges': 'bytes',
+          'Cache-Control': 'no-cache'
+        }
+      })
+    }
+
     if (rangeHeader) {
       const match = /^bytes=(\d*)-(\d*)$/i.exec(rangeHeader.trim())
       if (match) {
@@ -94,8 +158,7 @@ export function handleStudioMediaRequest(request: Request): Response {
         ) {
           const safeEnd = Math.min(end, size - 1)
           const chunkSize = safeEnd - start + 1
-          const stream = createReadStream(filePath, { start, end: safeEnd })
-          return new Response(nodeStreamToWeb(stream), {
+          return new Response(openTrackedStream(filePath, { start, end: safeEnd }), {
             status: 206,
             headers: {
               ...CORS_HEADERS,
@@ -110,8 +173,7 @@ export function handleStudioMediaRequest(request: Request): Response {
       }
     }
 
-    const stream = createReadStream(filePath)
-    return new Response(nodeStreamToWeb(stream), {
+    return new Response(openTrackedStream(filePath), {
       status: 200,
       headers: {
         ...CORS_HEADERS,

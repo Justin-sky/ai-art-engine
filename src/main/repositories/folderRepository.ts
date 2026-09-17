@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, renameSync, rmSync } from 'fs'
+import { mkdirSync, renameSync, rmSync } from 'fs'
 import { join } from 'path'
 import { collectFolderSubtreeIds, compareNames } from '@shared/folderTree'
 import type { AssetFolder } from '@shared/domain'
@@ -8,6 +8,7 @@ import { MAIN_ERRORS } from '../errors/messages'
 import {
   hoistDirectoryContentsAndRemove,
   moveFolderBetweenFolders,
+  reclaimAssetDirPath,
   resolveFolderDirAbs,
   scanAssetTree,
   writeAssetToTree,
@@ -31,9 +32,9 @@ export class FolderRepository {
     const parentAbs = resolveFolderDirAbs(root, folder.parentId ?? null)
     const dirName = normalizePathSegment(folder.name)
     let dirAbs = join(parentAbs, dirName)
-    if (existsSync(dirAbs)) {
+    if (!reclaimAssetDirPath(dirAbs)) {
       let i = 2
-      while (existsSync(join(parentAbs, `${dirName} ${i}`))) i += 1
+      while (!reclaimAssetDirPath(join(parentAbs, `${dirName} ${i}`))) i += 1
       folder.name = `${dirName} ${i}`
       dirAbs = join(parentAbs, folder.name)
     } else {
@@ -79,9 +80,9 @@ export class FolderRepository {
     const safe = normalizePathSegment(name.trim() || folder.name)
     let nextAbs = join(parentAbs, safe)
     if (nextAbs !== dirAbs) {
-      if (existsSync(nextAbs)) {
+      if (!reclaimAssetDirPath(nextAbs)) {
         let i = 2
-        while (existsSync(join(parentAbs, `${safe} ${i}`))) i += 1
+        while (!reclaimAssetDirPath(join(parentAbs, `${safe} ${i}`))) i += 1
         nextAbs = join(parentAbs, `${safe} ${i}`)
         folder.name = `${safe} ${i}`
       } else {

@@ -3,6 +3,14 @@ import { normalizePathSegment } from '../assetPackage/pathname'
 /** 每个真实目录内的文件夹元数据文件名 */
 export const FOLDER_META_NAME = '.folder.json'
 
+/**
+ * 搬移残留目录的弃用标记文件名。
+ *
+ * 源目录被外部程序锁住（rm 与 rename 都失败）时写进去，扫描据此跳过整个目录，
+ * 避免残留的空目录被重新认领成一个新文件夹。
+ */
+export const ORPHAN_MARKER_NAME = '.orphan'
+
 /** 资产旁挂后缀：Hero.png → Hero.png.asset.json */
 export const ASSET_META_SUFFIX = '.asset.json'
 

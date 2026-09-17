@@ -29,10 +29,13 @@ export class AssetWatchService {
   private timer: ReturnType<typeof setTimeout> | null = null
   private pendingDirs = new Set<string>()
   private onRefresh: ((dirs: string[]) => void) | null = null
+  private root: string | null = null
+  private suspended = false
 
   start(root: string, onRefresh: (dirs: string[]) => void): void {
     this.stop()
     this.onRefresh = onRefresh
+    this.root = root
     const assetsRoot = `${root}${sep}Assets`
     if (!existsSync(assetsRoot)) {
       return
@@ -62,10 +65,7 @@ export class AssetWatchService {
   }
 
   stop(): void {
-    if (this.timer) {
-      clearTimeout(this.timer)
-      this.timer = null
-    }
+    this.clearPending()
     if (this.watcher) {
       this.watcher
         .close()
@@ -77,8 +77,46 @@ export class AssetWatchService {
         })
       this.watcher = null
     }
-    this.pendingDirs.clear()
     this.onRefresh = null
+    this.root = null
+    this.suspended = false
+  }
+
+  /**
+   * 暂停监听并**等到**句柄真正释放。
+   *
+   * chokidar 会给每层目录开一个 `fs.watch` 句柄。Windows 上搬移 / 删除目录时这些
+   * 句柄会让 rename 直接 EPERM，所以动磁盘前必须先 await 这个方法，而不是发个
+   * 关闭请求就走。
+   */
+  async suspend(): Promise<void> {
+    if (!this.watcher) return
+    this.suspended = true
+    const watcher = this.watcher
+    this.watcher = null
+    this.clearPending()
+    try {
+      await watcher.close()
+    } catch (err) {
+      console.warn('[assetWatch] suspend close error:', err)
+    }
+  }
+
+  /** 恢复监听（`ignoreInitial` 为真，不会补发暂停期间的存量事件） */
+  resume(): void {
+    if (!this.suspended) return
+    this.suspended = false
+    const root = this.root
+    const onRefresh = this.onRefresh
+    if (root && onRefresh) this.start(root, onRefresh)
+  }
+
+  private clearPending(): void {
+    if (this.timer) {
+      clearTimeout(this.timer)
+      this.timer = null
+    }
+    this.pendingDirs.clear()
   }
 
   private mark(dirAbs: string): void {
