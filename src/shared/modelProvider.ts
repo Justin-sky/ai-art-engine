@@ -212,7 +212,8 @@ export const MODEL_PROVIDER_KINDS: readonly ModelProviderKindMeta[] = [
   {
     id: 'tripo',
     label: 'Tripo',
-    defaultBaseUrl: 'https://api.tripo3d.ai',
+    // v3 API（openapi.tripo3d.ai/v3）；v2 的 api.tripo3d.ai 由 tripo/adapter.ts 自动映射
+    defaultBaseUrl: 'https://openapi.tripo3d.ai',
     credentialsUrl: 'https://platform.tripo3d.ai/'
   },
   {
