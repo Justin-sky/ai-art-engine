@@ -20,6 +20,7 @@ export type InstructionPresetKind =
   | 'frameAnimGen'
   | 'svgGen'
   | 'model3d'
+  | 'modelPose'
   | 'mediaReview'
   | 'mediaRework'
 
@@ -1571,6 +1572,7 @@ const PRESET_PACKS: Record<InstructionPresetKind, InstructionPreset[]> = {
   frameAnimGen: [...FRAME_ANIM_GEN_CHARACTER_PRESETS, ...FRAME_ANIM_GEN_FX_PRESETS],
   svgGen: SVG_GEN_PRESETS,
   model3d: [],
+  modelPose: [],
   mediaReview: [],
   mediaRework: []
 }

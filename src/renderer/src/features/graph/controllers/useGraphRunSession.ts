@@ -45,6 +45,7 @@ import { renderSvgFrames } from '../model/renderSvgFrames'
 import { composeImageIconPackSheet } from '../model/composeImageIconPackSheet'
 import { composeImageLayerStack } from '../model/composeImageLayerStack'
 import { composeComicPageImage } from '../../comic/composeComicPageImage'
+import { inspectModelSkeleton } from '../model/inspectModelSkeleton'
 import { normalizeImageAspectRatio } from '../model/normalizeImageAspectRatio'
 import { enrichStyleImagesWithLibraryPrompts } from '../../stylePresets/defaultLibrary'
 import { resolveStyleImageUrls } from '../../stylePresets/resolveStyleImageUrls'
@@ -259,7 +260,14 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       GRAPH_HOST_NO_CACHE_COOK: 'graph.run.hostNoCacheCook',
       GRAPH_COMIC_PAGE_EMPTY: 'graph.run.comicPageEmpty',
       COMIC_PAGE_COMPOSE_UNAVAILABLE: 'graph.run.comicPageCompose',
-      COMIC_PAGE_COMPOSE_FAILED: 'graph.run.comicPageCompose'
+      COMIC_PAGE_COMPOSE_FAILED: 'graph.run.comicPageCompose',
+      GRAPH_MODEL_POSE_NO_MODEL: 'graph.run.modelPoseNoModel',
+      GRAPH_MODEL_POSE_NO_BONES: 'graph.run.modelPoseNoBones',
+      GRAPH_MODEL_POSE_INSPECT: 'graph.run.modelPoseInspect',
+      GRAPH_MODEL_POSE_NO_TEXT_MODEL: 'graph.run.modelPoseNoTextModel',
+      GRAPH_MODEL_POSE_MCP: 'graph.run.modelPoseMcp',
+      GRAPH_MODEL_POSE_NO_MATCH: 'graph.run.modelPoseNoMatch',
+      GRAPH_MODEL_POSE_FAILED: 'graph.run.modelPoseFailed'
     }
     if (!code) return options.t('graph.run.failed')
     if (keys[code]) return options.t(keys[code])
@@ -808,6 +816,13 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         composeImageIconPackSheet,
         composeImageLayerStack,
         composeComicPageImage,
+        inspectModelSkeleton,
+        runBlenderMcpTool: (input) =>
+          window.studio.runBlenderMcpTool({
+            name: input.name,
+            args: input.args ?? {},
+            timeoutMs: input.timeoutMs
+          }),
         normalizeImageAspectRatio,
         onNodePatch: (nodeId, patch) => {
           if (token !== runToken || signal.aborted) return

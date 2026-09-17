@@ -59,6 +59,7 @@ const CANVAS_ADDABLE_NODE_TYPES = [
   'ui.split',
   'beat.table',
   'comic.page',
+  'model.pose',
   'stage.2d',
   'text.select',
   'world.gen',
@@ -118,6 +119,17 @@ describe('graph canvas menu nodes', () => {
       ['in-image', 'in', 'image'],
       ['out', 'out', 'image'],
       ['out-all', 'out', 'images']
+    ])
+  })
+
+  it('model.pose takes a 3D model and outputs a posed model', () => {
+    const node = createNodeFromType('model.pose', { x: 0, y: 0 })
+    const ports = getNodePorts(node)
+    expect(ports.map((port) => [port.id, port.direction, port.dataType])).toEqual([
+      ['in-model', 'in', 'model'],
+      ['in-text', 'in', 'text'],
+      ['out', 'out', 'model'],
+      ['out-all', 'out', 'model']
     ])
   })
 

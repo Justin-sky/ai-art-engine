@@ -87,7 +87,8 @@ import {
   executeAnim2dNode,
   executeFrameAnimGenNode,
   executeSvgAnimNode,
-  executeSvgGenNode
+  executeSvgGenNode,
+  executeModelPoseNode
 } from './execute'
 import {
   DEFAULT_GAME_SYSTEM_SYSTEM_PROMPT_ZH,
@@ -2395,6 +2396,45 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     contributeToGeneration: false,
     /** 同步目录后收集实体；批跑元素子图由 cookBatchSubgraphs / Cook 子图控制 */
     execute: executeWorldGenNode
+  },
+  {
+    typeId: 'model.pose',
+    category: 'note',
+    label: 'AI pose',
+    icon: '🧍',
+    defaultTitle: 'AI pose',
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      {
+        id: 'in-model',
+        direction: 'in',
+        dataType: GraphPortType.model,
+        multiple: false,
+        label: 'Model'
+      },
+      {
+        id: 'in-text',
+        direction: 'in',
+        dataType: GraphPortType.text,
+        multiple: true,
+        label: 'Text'
+      },
+      ...galleryOutPorts(GraphPortType.model)
+    ],
+    defaultParams: () => ({
+      generateInstruction: '',
+      generateModel: '',
+      generateProviderInstanceId: ''
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.modelPose',
+    card: 'media',
+    assetType: 'model',
+    contributeToGeneration: false,
+    execute: executeModelPoseNode
   }
 ]
 

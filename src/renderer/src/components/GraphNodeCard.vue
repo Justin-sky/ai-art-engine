@@ -910,6 +910,8 @@ const instructionKind = computed((): InstructionPresetKind | null => {
       return 'frameAnimGen'
     case 'svg.gen':
       return 'svgGen'
+    case 'model.pose':
+      return 'modelPose'
     case 'asset.screenplay':
       return isProcessingNode.value ? 'screenplay' : null
     case 'asset.gameSystem':
@@ -1077,6 +1079,9 @@ const instructionPlaceholder = computed(() => {
   }
   if (instructionKind.value === 'svgGen') {
     return t('graph.inspector.generate.svgGenInstructionPlaceholder')
+  }
+  if (instructionKind.value === 'modelPose') {
+    return t('graph.inspector.generate.modelPoseInstructionPlaceholder')
   }
   return t('graph.inspector.generate.instructionPlaceholder')
 })

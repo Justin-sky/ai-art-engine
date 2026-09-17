@@ -3752,6 +3752,13 @@ export default {
         'No reusable host output; use the radial menu “Cook subgraph” to run the inner graph',
       comicPageEmpty: 'Add panels in the comic page editor, or connect upstream images and Cook',
       comicPageCompose: 'Comic page compose failed (must run in the app UI)',
+      modelPoseNoModel: 'Connect an upstream 3D model first',
+      modelPoseNoBones: 'The upstream model has no editable bones (needs a skinned character)',
+      modelPoseInspect: 'Cannot read model bones (must run in the app UI)',
+      modelPoseNoTextModel: 'Pick a text model on the node first (needed for free-text poses)',
+      modelPoseMcp: 'Free-text poses need Blender MCP enabled; common pose presets do not',
+      modelPoseNoMatch: 'No usable bone rotations were generated (bone names may not map)',
+      modelPoseFailed: 'AI pose generation did not finish',
       dismissHint: 'Click to dismiss'
     },
     types: {
@@ -3788,6 +3795,9 @@ export default {
       },
       comic: {
         page: 'Comic page'
+      },
+      model: {
+        pose: 'AI pose'
       },
       play: {
         script: 'Text'
@@ -4050,6 +4060,15 @@ export default {
       },
       emotion: {
         hint: 'Double-click to adjust emotion and model. Run to generate an image; this panel shows the gallery and prompt.'
+      },
+      modelPose: {
+        hint: 'Connect an upstream 3D model, pick a common pose or write a description, then run. Wire the output into the Director Deck model port to apply the pose. Common poses do not need Blender; free-text poses need a text model and Blender MCP.',
+        presets: 'Common poses',
+        instruction: 'Pose instruction',
+        instructionPlaceholder:
+          'e.g. walking with right leg forward, hands on hips, jump airborne… or tap a preset above',
+        modelPick: 'Select a model…',
+        modelEmpty: 'Enable and select a text model in Settings first'
       },
       upscale: {
         hint: 'Double-click the node to open the instruction box. This panel shows the system prompt and the final upscale prompt.',
@@ -4326,6 +4345,8 @@ export default {
           "Optional focus for this refine (rules live in Inspector system prompt); use {'@'} to cite upstream",
         svgGenInstructionPlaceholder:
           "Describe the vector art to generate (icon / illustration / UI element / motion); use {'@'} to cite connected inputs",
+        modelPoseInstructionPlaceholder:
+          "Describe a still pose (walk, wave, hands on hips…) or pick a preset in Inspector; use {'@'} to cite upstream text",
         refsEmpty: "Connect upstream inputs to cite with {'@'}, or type the instruction alone",
         disconnectRef: 'Disconnect',
         reorderRef: 'Drag to reorder references',

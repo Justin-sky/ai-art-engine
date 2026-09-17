@@ -3412,7 +3412,7 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
   },
   {
     id: 'model3d',
-    typeIds: ['asset.model3d', 'asset.motion']
+    typeIds: ['asset.model3d', 'asset.motion', 'model.pose']
   },
   {
     id: 'comic',

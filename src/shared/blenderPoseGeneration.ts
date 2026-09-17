@@ -539,6 +539,26 @@ export function buildBlenderPresetPoseScript(input: BlenderPresetPoseInput): str
   ].join('\n')
 }
 
+/**
+ * 预设姿势的本地计算：与 `buildBlenderPresetPoseScript` 输出同一份骨名→弧度表，
+ * 不经过 Blender。节点图 Cook 常用姿势时不必先开 Blender。
+ */
+export function computePresetPoseReadback(input: BlenderPresetPoseInput): BlenderPoseReadback {
+  const table = PRESET_ROTATIONS_DEG[input.presetId]
+  if (!table) throw new Error(`未知 Blender 姿势预设：${input.presetId}`)
+  const out: BlenderPoseReadback = {}
+  for (const [name, role] of Object.entries(input.boneRoles)) {
+    const bone = name.trim()
+    if (!bone || !role) continue
+    const deg = table[role]
+    if (!deg) continue
+    const [x, y, z] = deg
+    if (x === 0 && y === 0 && z === 0) continue
+    out[bone] = [(x * Math.PI) / 180, (y * Math.PI) / 180, (z * Math.PI) / 180]
+  }
+  return out
+}
+
 /** 自由文本描述 → LLM prompt（system + user） */
 export function buildBlenderAiPosePrompts(input: BlenderAiPoseScriptInput): {
   system: string

@@ -1,4 +1,9 @@
-import type { AssetType, DirectorViewerState, ProjectStyleImage } from '../../domain'
+import type {
+  AssetType,
+  DirectorViewerState,
+  ProjectStyleImage,
+  StageVec3
+} from '../../domain'
 import type { InstructionMentionSource } from '../instructionMentions'
 import type { WorldElementGenResult } from '../worldElementParse'
 import type { ImageGenerateParamCapabilities } from '../imageGenerateParams'
@@ -28,6 +33,11 @@ export interface GraphAssetValue {
   muted?: boolean
   notes?: string
   title?: string
+  /**
+   * 3D 姿势（骨名 → 局部欧拉弧度）。`model.pose` 节点输出时带上，
+   * 导演台从 `in-model` 实例化时套用到舞台物体。
+   */
+  bonePose?: Record<string, StageVec3>
 }
 
 export interface GraphTextValue {
@@ -584,6 +594,23 @@ export interface NodeExecuteContext {
     page: import('../comicPage').ComicPage
     resolveImage?: (imageUrl: string) => Promise<string>
   }) => Promise<{ dataUrl: string; width: number; height: number }>
+  /**
+   * 读取 3D 模型骨骼层级（蒙皮主链）。AI 姿势节点 Cook 时用来推断角色并生成旋转。
+   * 未注入时节点无法从 GLB 取骨名。
+   */
+  inspectModelSkeleton?: (input: {
+    relativePath?: string
+    assetId?: string
+  }) => Promise<Array<{ name: string; parent: string | null }>>
+  /**
+   * 调用本机 Blender MCP（`execute_blender_code` 等）。自由文本姿势走 LLM→Python 时需要；
+   * 常用姿势预设在共享层本地计算，不经过此接口。
+   */
+  runBlenderMcpTool?: (input: {
+    name: string
+    args?: Record<string, unknown>
+    timeoutMs?: number
+  }) => Promise<{ result?: unknown; error?: string }>
   /** 图片生成后按目标宽高比居中裁正（宫格画布保证每格比例） */
   normalizeImageAspectRatio?: (input: { dataUrl: string; aspectRatio: string }) => Promise<string>
   /** 场参考节点：按 boundBeatId 解析目录行 */
@@ -766,6 +793,8 @@ export interface GraphRunOptions {
   composeImageIconPackSheet?: NodeExecuteContext['composeImageIconPackSheet']
   composeImageLayerStack?: NodeExecuteContext['composeImageLayerStack']
   composeComicPageImage?: NodeExecuteContext['composeComicPageImage']
+  inspectModelSkeleton?: NodeExecuteContext['inspectModelSkeleton']
+  runBlenderMcpTool?: NodeExecuteContext['runBlenderMcpTool']
   normalizeImageAspectRatio?: NodeExecuteContext['normalizeImageAspectRatio']
   resolveBeatUnit?: NodeExecuteContext['resolveBeatUnit']
   collectWorldElementOutputs?: NodeExecuteContext['collectWorldElementOutputs']

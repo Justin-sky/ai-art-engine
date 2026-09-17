@@ -64,6 +64,8 @@ const presetKind = computed((): InstructionPresetKind | null => {
       return 'reshoot'
     case 'asset.voice':
       return 'voice'
+    case 'model.pose':
+      return 'modelPose'
     default:
       return null
   }

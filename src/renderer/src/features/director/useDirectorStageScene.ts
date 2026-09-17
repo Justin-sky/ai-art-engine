@@ -265,7 +265,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   const poseTmpQuat = new THREE.Quaternion()
   const poseTmpVec3 = new THREE.Vector3()
   /** 'fk' ????'ik' ????????*/
-  const poseEditMode = ref<'fk' | 'ik' | 'ai'>('fk')
+  const poseEditMode = ref<'fk' | 'ik'>('fk')
   const selectedIkChainId = ref<IkChainSlot | null>(null)
   let ikTarget: THREE.Object3D | null = null
   let ikTargetGeom: THREE.SphereGeometry | null = null
@@ -3083,7 +3083,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     return ensureIkChains(objectId).find((c) => c.id === id) ?? null
   }
 
-  function setPoseEditMode(mode: 'fk' | 'ik' | 'ai'): void {
+  function setPoseEditMode(mode: 'fk' | 'ik'): void {
     if (poseEditMode.value === mode) return
     poseEditMode.value = mode
     if (mode === 'fk') {
@@ -3097,12 +3097,6 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
         const chains = ensureIkChains(objectId)
         if (!selectedIkChainId.value && chains[0]) selectedIkChainId.value = chains[0].id
       }
-    } else {
-      // AI：不挂 FK/IK gizmo
-      selectedIkChainId.value = null
-      selectedPoseBone.value = null
-      poseSkeletonOverlay?.setSelectedBone(null)
-      if (ikTarget) ikTarget.visible = false
     }
     syncPoseBoneGizmo()
     requestRender()
@@ -3322,7 +3316,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       if (ikTarget) ikTarget.visible = false
       return
     }
-    if (!isPoseEditActive() || poseEditMode.value === 'ai') {
+    if (!isPoseEditActive()) {
       detachPoseBoneGizmo()
       if (ikTarget) ikTarget.visible = false
       return
@@ -6040,7 +6034,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     parentId: string | null = null,
     position?: StageVec3,
     /** Cache 产物（如 in-model 端口的 3D 生成）不入资产库，用回传的 relativePath 直接实例化 */
-    incoming?: { relativePath?: string; name?: string }
+    incoming?: { relativePath?: string; name?: string; bonePose?: Record<string, StageVec3> }
   ): Promise<string | null> {
     const libraryModel = project.assets.find(
       (item) => item.id === modelAssetId && item.type === 'model'
@@ -6097,7 +6091,10 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       locked: false,
       position: position ? { ...position } : { ...xf.position },
       rotation: { ...xf.rotation },
-      scale: { ...xf.scale }
+      scale: { ...xf.scale },
+      ...(incoming?.bonePose && Object.keys(incoming.bonePose).length
+        ? { bonePose: cloneBonePoseMap(incoming.bonePose) }
+        : {})
     }
     stage.value.objects = [...stage.value.objects, obj]
     selectObject(id)
@@ -7643,6 +7640,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     /** Cache 产物不入资产库，实例化需要物化路径 */
     relativePath?: string
     name?: string
+    bonePose?: Record<string, StageVec3>
   }
 
   /**
@@ -7662,11 +7660,15 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     if (!source) return null
 
     const fromValue = (value: GraphValue): IncomingModelInfo | null => {
-      if (value.kind !== 'asset' || value.assetType !== 'model' || !value.assetId) return null
+      if (value.kind !== 'asset' || (value.assetType !== 'model' && value.assetType !== 'model3d')) {
+        return null
+      }
+      if (!value.assetId) return null
       return {
         assetId: value.assetId,
         ...(value.relativePath?.trim() ? { relativePath: value.relativePath.trim() } : {}),
-        ...(value.title?.trim() ? { name: value.title.trim() } : {})
+        ...(value.title?.trim() ? { name: value.title.trim() } : {}),
+        ...(value.bonePose && Object.keys(value.bonePose).length ? { bonePose: value.bonePose } : {})
       }
     }
     const runOut = doc.runStates?.[source.id]?.outputs?.out
@@ -7684,6 +7686,11 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
 
   let appliedIncomingModelKey = ''
 
+  function incomingModelKey(info: IncomingModelInfo): string {
+    const pose = info.bonePose ? JSON.stringify(info.bonePose) : ''
+    return `${info.assetId}::${info.relativePath ?? ''}::${pose}`
+  }
+
   /** dive 进入导演台时，把 `in-model` 端口的 3D 模型自动实例化到舞台模型列表（去重）。 */
   async function syncIncomingModel(): Promise<void> {
     const incoming = await resolveIncomingModel()
@@ -7691,8 +7698,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       appliedIncomingModelKey = ''
       return
     }
-    if (incoming.assetId === appliedIncomingModelKey) return
-    appliedIncomingModelKey = incoming.assetId
+    const key = incomingModelKey(incoming)
     const existing = stage.value.objects.find(
       (o) => o.kind === 'model' && o.modelAssetId === incoming.assetId
     )
@@ -7705,11 +7711,17 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
         schedulePersist()
         await rebuildObjects()
       }
+      if (incoming.bonePose && key !== appliedIncomingModelKey) {
+        applyObjectBonePoseMap(existing.id, incoming.bonePose, 'replace')
+      }
+      appliedIncomingModelKey = key
       return
     }
+    appliedIncomingModelKey = key
     await createModelObject(incoming.assetId, null, undefined, {
       relativePath: incoming.relativePath,
-      name: incoming.name
+      name: incoming.name,
+      bonePose: incoming.bonePose
     })
   }
 

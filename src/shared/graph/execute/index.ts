@@ -58,6 +58,7 @@ export {
   executeBoundaryOutputNode
 } from './slots'
 export { executeComicPageNode } from './comicPage'
+export { executeModelPoseNode, bonePoseFromReadback } from './modelPose'
 export * from './narrative'
 export * from './select'
 export * from './imageEdit'

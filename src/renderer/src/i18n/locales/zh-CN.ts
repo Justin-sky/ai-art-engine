@@ -3665,6 +3665,13 @@ export default {
       hostNoCacheCook: '没有可复用的宿主输出；请用圆形菜单「Cook 子图」执行内图',
       comicPageEmpty: '请先在漫画页编辑器中添加分格，或连接上游图片后 Cook',
       comicPageCompose: '漫画页合成失败（需要在界面中运行）',
+      modelPoseNoModel: '请先连接上游 3D 模型',
+      modelPoseNoBones: '上游模型没有可编辑骨骼（需要带蒙皮的角色模型）',
+      modelPoseInspect: '无法读取模型骨骼（需要在界面中运行）',
+      modelPoseNoTextModel: '请先在节点上选择文本模型（自由描述姿势时需要）',
+      modelPoseMcp: '自由描述姿势需要启用 Blender MCP；常用姿势预设无需 Blender',
+      modelPoseNoMatch: '未能生成可套用的骨骼旋转（骨骼名可能无法映射）',
+      modelPoseFailed: 'AI 姿势生成未完成',
       dismissHint: '点击关闭提示'
     },
     types: {
@@ -3701,6 +3708,9 @@ export default {
       },
       comic: {
         page: '漫画页'
+      },
+      model: {
+        pose: 'AI 姿势'
       },
       play: {
         script: '文本'
@@ -3958,6 +3968,14 @@ export default {
       emotion: {
         hint: '双击节点调节情绪与模型；运行后输出结果图，此处可预览图库与提示词'
       },
+      modelPose: {
+        hint: '连接上游 3D 模型，选择常用姿势或填写描述后运行。输出接到 3D 导演台的模型口即可套用姿势。常用姿势无需 Blender；自由描述需要文本模型，并启用 Blender MCP。',
+        presets: '常用姿势',
+        instruction: '姿势指令',
+        instructionPlaceholder: '例如：走路迈右腿、双手叉腰站立、跳跃腾空…或点上方预设',
+        modelPick: '选择模型…',
+        modelEmpty: '请先在设置中启用并勾选文本模型'
+      },
       upscale: {
         hint: '双击节点打开指令框填写放大指令；此处预览系统提示词与最终放大提示词',
         previewHint: '双击缩略图进入媒体预览',
@@ -4212,6 +4230,8 @@ export default {
           "可选：补充本次细化焦点（规则已在 Inspector 系统提示词）；可用 {'@'} 引用上游",
         svgGenInstructionPlaceholder:
           "描述要生成的矢量图（图标 / 插画 / UI 元素 / 动效）；可用 {'@'} 引用上方连线资源",
+        modelPoseInstructionPlaceholder:
+          "描述角色静帧姿势（走路、挥手、叉腰…）或点 Inspector 常用姿势；可用 {'@'} 引用上游文本",
         refsEmpty: "连接上游后可用 {'@'} 引用；也可只在指令框中输入文本",
         disconnectRef: '断开连接',
         reorderRef: '拖动可调整引用顺序',

@@ -137,6 +137,7 @@ describe('graph policy', () => {
         'beat.unitGen',
         'beat.unitRef',
         'comic.page',
+        'model.pose',
         'stage.2d',
         'text.select',
         'world.gen',

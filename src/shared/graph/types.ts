@@ -6,7 +6,8 @@ import type {
   DirectorViewerState,
   ProjectStyleImage,
   StyleReferenceSubject,
-  WorldEntityRef
+  WorldEntityRef,
+  StageVec3
 } from '../domain'
 import type { MultiAngleCameraState } from './multiAngleCamera'
 import type { LightingSetupState } from './lightingSetup'
@@ -235,6 +236,7 @@ export type GraphNodeTypeId =
   | 'image.layerSplit'
   | 'image.toPrompt'
   | 'svg.gen'
+  | 'model.pose'
   | 'graph.input.slot'
   | (string & {})
 
@@ -281,6 +283,13 @@ export interface GraphNodeParams {
   generateRigType?: string
   /** 3D 模型生成：绑定动画预设 id；未启 rig 或上游不支持时忽略 */
   generateRigAnimation?: string
+  /**
+   * AI 姿势节点：最近一次 Cook 写入的骨名 → 局部欧拉弧度。
+   * 输出端口同时带在 GraphAssetValue.bonePose 上，供导演台套用。
+   */
+  bonePose?: Record<string, StageVec3>
+  /** AI 姿势节点：Inspector 当前高亮的常用姿势 id */
+  posePresetId?: string
   /** 图片/视频生成：随机种子（固定可复现，留空随机） */
   generateSeed?: number
   /** 图片/视频生成：是否跟随工程全局种子（默认 true；false 时用 generateSeed） */

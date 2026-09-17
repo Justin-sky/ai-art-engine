@@ -62,6 +62,7 @@ import { renderSvgFrames } from '../features/graph/model/renderSvgFrames'
 import { composeImageIconPackSheet } from '../features/graph/model/composeImageIconPackSheet'
 import { composeImageLayerStack } from '../features/graph/model/composeImageLayerStack'
 import { composeComicPageImage } from '../features/comic/composeComicPageImage'
+import { inspectModelSkeleton } from '../features/graph/model/inspectModelSkeleton'
 import { normalizeImageAspectRatio } from '../features/graph/model/normalizeImageAspectRatio'
 import { prepareGraphDocumentForPersist } from '../features/graph/persistGraphRunOutputs'
 import { saveGraphRunMediaForNode } from '../features/graph/saveGraphRunMediaForNode'
@@ -1373,6 +1374,13 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         composeImageIconPackSheet,
         composeImageLayerStack,
         composeComicPageImage,
+        inspectModelSkeleton,
+        runBlenderMcpTool: (input) =>
+          window.studio.runBlenderMcpTool({
+            name: input.name,
+            args: input.args ?? {},
+            timeoutMs: input.timeoutMs
+          }),
         normalizeImageAspectRatio,
         resolveWorldCatalogJson: () => {
           if (task.target.kind !== 'asset') return null
