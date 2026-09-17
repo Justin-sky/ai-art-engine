@@ -1080,12 +1080,16 @@ import { vNumberScrub } from '../directives/numberScrub'
 import { themePreference } from '../editor/preferences'
 import { inferBoneRole } from '../features/director/aiPoseParse'
 import {
-  buildBlenderAiPosePrompts,
+  buildBlenderListArmatureBonesScript,
   decideBlenderPoseStrategy,
+  parseBlenderArmatureBoneList,
+  parseBlenderDrivePoseMeta,
   parseBlenderPoseReadback,
+  runBlenderAiPoseAgent,
   type BlenderBoneRole,
   type BlenderPoseDispatch,
-  type BlenderPoseReadback
+  type BlenderPoseReadback,
+  type BlenderPoseAgentEvent
 } from '@shared/blenderPoseGeneration'
 
 /**
@@ -1491,168 +1495,342 @@ async function onGenerateAiPose(): Promise<void> {
     }
     logMessage(t('director.stage.poseAiLog.dispatch', { strategy: dispatch.description }))
 
-    // 3a. 预设路径直接用预设脚本；LLM 路径先调文本模型要 Python 源码
-    let blenderCode = dispatch.code
-    if (dispatch.strategy === 'ai') {
-      const parsedKey = parseModelKey(aiPoseModelKey.value)
-      if (!parsedKey) {
-        const msg = t('director.stage.poseAiModelEmpty')
+    // 3. 预设路径直接走 Blender one-shot（无需 LLM）；AI 路径走 agent loop
+    if (dispatch.strategy === 'preset') {
+      // 3a-preset. 把脚本送进 Blender MCP 跑一次
+      logMessage(t('director.stage.poseAiLog.blenderRun'))
+      const blenderStarted = Date.now()
+      const outcome = await window.studio.runBlenderMcpTool({
+        name: 'execute_blender_code',
+        args: { code: dispatch.code },
+        timeoutMs: 60000
+      })
+      runLogs.appendApiCall(runId, {
+        kind: 'blenderMcp',
+        nodeId: AI_POSE_LOG_NODE_ID,
+        durationMs: Math.max(0, Date.now() - blenderStarted),
+        request: {
+          toolName: 'execute_blender_code',
+          codeBytes: dispatch.code.length,
+          strategy: dispatch.strategy,
+          presetId: dispatch.presetId ?? undefined
+        },
+        response: outcome.error ? undefined : { ok: true },
+        error: outcome.error
+      })
+      if (outcome.error) {
+        const isConnIssue =
+          /required.*addon|addon.*not.*enabled|ECONNREFUSED|disconnected|EHOSTUNREACH|connect.*fail/i.test(
+            outcome.error
+          )
+        const msg = isConnIssue
+          ? t('director.stage.poseAiMcpDisabled') + `\n${outcome.error}`
+          : t('director.stage.poseAiLog.blenderRunFail', { error: outcome.error })
         aiPoseStatus.value = msg
         logMessage(msg, 'error')
         runLogs.endRun({ runId, status: 'error', message: msg })
         return
       }
+      let readback: BlenderPoseReadback
       try {
-        localStorage.setItem(AI_POSE_MODEL_STORAGE_KEY, aiPoseModelKey.value)
-      } catch {
-        /* ignore */
+        readback = parseBlenderPoseReadback(outcome)
+      } catch (err) {
+        const error = err instanceof Error ? err.message : String(err)
+        const msg = `${t('director.stage.poseAiParseFailed')}\n${error}`
+        aiPoseStatus.value = msg
+        logMessage(msg, 'error')
+        runLogs.endRun({ runId, status: 'error', message: msg })
+        return
       }
+      const matched = Object.keys(readback).length
+      logMessage(
+        t('director.stage.poseAiLog.blenderReadback', { matched, total: hierarchy.length })
+      )
+      if (!matched) {
+        const msg = t('director.stage.poseAiNoMatch')
+        aiPoseStatus.value = msg
+        logMessage(msg, 'error')
+        runLogs.endRun({ runId, status: 'error', message: msg })
+        return
+      }
+      const bonePose: Record<string, { x: number; y: number; z: number }> = {}
+      for (const [name, [rx, ry, rz]] of Object.entries(readback)) {
+        bonePose[name] = { x: rx, y: ry, z: rz }
+      }
+      scene.applyObjectBonePoseMap(id, bonePose, 'replace')
+      syncPoseDegCache()
+      logMessage(t('director.stage.poseAiLog.parsed', { matched, total: hierarchy.length }))
+      const doneMsg = t('director.stage.poseAiApplied', { matched, total: hierarchy.length })
+      aiPoseStatus.value = doneMsg
+      logMessage(doneMsg)
+      runLogs.endRun({ runId, status: 'done', message: doneMsg })
+      return
+    }
 
-      const prompts = buildBlenderAiPosePrompts({
+    // 3b-ai. agent loop：LLM 通过 tool 调用反复试 Blender 脚本，最终 finalize 才落盘
+    const parsedKey = parseModelKey(aiPoseModelKey.value)
+    if (!parsedKey) {
+      const msg = t('director.stage.poseAiModelEmpty')
+      aiPoseStatus.value = msg
+      logMessage(msg, 'error')
+      runLogs.endRun({ runId, status: 'error', message: msg })
+      return
+    }
+    try {
+      localStorage.setItem(AI_POSE_MODEL_STORAGE_KEY, aiPoseModelKey.value)
+    } catch {
+      /* ignore */
+    }
+    logMessage(t('director.stage.poseAiLog.llmStart', { model: parsedKey.model }))
+
+    const sharedReadback: { value: BlenderPoseReadback } = { value: {} }
+    const agentResult = await runBlenderAiPoseAgent(
+      {
         instruction: aiPoseInstruction.value,
         boneRoles,
         boneParents,
         locale: locale.value
-      })
-      logMessage(t('director.stage.poseAiLog.llmStart', { model: parsedKey.model }))
-
-      const apiStarted = Date.now()
-      try {
-        const result = await window.studio.generateText({
-          providerInstanceId: parsedKey.providerInstanceId,
-          model: parsedKey.model,
-          system: prompts.system,
-          prompt: prompts.user
-        })
-        runLogs.appendApiCall(runId, {
-          kind: 'generateText',
-          nodeId: AI_POSE_LOG_NODE_ID,
-          durationMs: Math.max(0, Date.now() - apiStarted),
-          request: {
-            prompt: prompts.user,
-            system: prompts.system,
-            model: parsedKey.model,
-            providerInstanceId: parsedKey.providerInstanceId
-          },
-          response: { text: result.text, model: result.model }
-        })
-        logMessage(
-          t('director.stage.poseAiLog.llmDone', {
-            chars: result.text.length,
-            model: result.model || parsedKey.model
-          })
-        )
-
-        blenderCode = stripPythonCodeFence(result.text)
-        if (!blenderCode.trim()) {
-          const msg = t('director.stage.poseAiParseFailed')
-          aiPoseStatus.value = msg
-          logMessage(msg, 'error')
-          logMessage(
-            t('director.stage.poseAiLog.rawReply', { text: result.text.slice(0, 800) }),
-            'warn'
-          )
-          runLogs.endRun({ runId, status: 'error', message: msg })
-          return
-        }
-      } catch (err) {
-        const error = err instanceof Error ? err.message : String(err)
-        runLogs.appendApiCall(runId, {
-          kind: 'generateText',
-          nodeId: AI_POSE_LOG_NODE_ID,
-          durationMs: Math.max(0, Date.now() - apiStarted),
-          request: {
-            prompt: prompts.user,
-            system: prompts.system,
-            model: parsedKey.model,
-            providerInstanceId: parsedKey.providerInstanceId
-          },
-          error
-        })
-        throw err
-      }
-    }
-
-    // 3b. 把脚本送进 Blender MCP 跑；预设/AI 两条路共用同一通道
-    logMessage(t('director.stage.poseAiLog.blenderRun'))
-    const blenderStarted = Date.now()
-    const outcome = await window.studio.runBlenderMcpTool({
-      name: 'execute_blender_code',
-      args: { code: blenderCode },
-      timeoutMs: 60000
-    })
-    runLogs.appendApiCall(runId, {
-      kind: 'blenderMcp',
-      nodeId: AI_POSE_LOG_NODE_ID,
-      durationMs: Math.max(0, Date.now() - blenderStarted),
-      request: {
-        toolName: 'execute_blender_code',
-        codeBytes: blenderCode.length,
-        strategy: dispatch.strategy,
-        presetId: dispatch.presetId ?? undefined
       },
-      response: outcome.error ? undefined : { ok: true },
-      error: outcome.error
-    })
-
-    if (outcome.error) {
-      // Blender 没起 / 没装 addon / safe mode 拦截——给用户具体的开法指引
-      const isConnIssue =
-        /required.*addon|addon.*not.*enabled|ECONNREFUSED|disconnected|EHOSTUNREACH|connect.*fail/i.test(
-          outcome.error
-        )
-      const msg = isConnIssue
-        ? t('director.stage.poseAiMcpDisabled') + `\n${outcome.error}`
-        : t('director.stage.poseAiLog.blenderRunFail', { error: outcome.error })
-      aiPoseStatus.value = msg
-      logMessage(msg, 'error')
-      runLogs.endRun({ runId, status: 'error', message: msg })
-      return
-    }
-
-    // 4. 解析 Blender 读回：stdout 里必须含 POSE_RESULT:json
-    let readback: BlenderPoseReadback
-    try {
-      readback = parseBlenderPoseReadback(outcome)
-    } catch (err) {
-      const error = err instanceof Error ? err.message : String(err)
-      const msg = t('director.stage.poseAiParseFailed')
-      aiPoseStatus.value = msg
-      logMessage(msg, 'error')
-      logMessage(error, 'error')
-      runLogs.endRun({ runId, status: 'error', message: msg })
-      return
-    }
-    const matched = Object.keys(readback).length
-    logMessage(
-      t('director.stage.poseAiLog.blenderReadback', {
-        matched,
-        total: hierarchy.length
-      })
+      {
+        modelClient: async ({ system, messages, tools }) => {
+          // 当前 IPC 的 generateText 是 single-turn；把多轮历史拍进 system prompt
+          // 让 LLM 在单次回复里同时输出 Python（继续 try_blender_pose）。
+          // 完整 OpenAI chat/completions 多轮等 IPC 升级后只需替换 modelClient，
+          // agent loop 自身不需要改。
+          void tools
+          const apiStarted = Date.now()
+          const history = messages
+            .filter((m) => m.role !== 'system')
+            .map((m) => {
+              if (m.role === 'user') return `USER: ${m.content}`
+              if (m.role === 'assistant') {
+                const toolSummary = m.tool_calls.length
+                  ? '\n  tool_calls: ' +
+                    JSON.stringify(
+                      m.tool_calls.map((c) => ({ name: c.function.name }))
+                    )
+                  : ''
+                return `ASSISTANT: ${m.content}${toolSummary}`
+              }
+              return `TOOL_RESULT[${m.tool_call_id}]: ${m.content}`
+            })
+            .join('\n\n')
+          const composedSystem =
+            system +
+            `\n\n${t('director.stage.poseAiAgentHistory')}\n` +
+            (history || t('director.stage.poseAiAgentHistoryEmpty'))
+          const userPrompt = t('director.stage.poseAiAgentContinue')
+          try {
+            const result = await window.studio.generateText({
+              providerInstanceId: parsedKey.providerInstanceId,
+              model: parsedKey.model,
+              system: composedSystem,
+              prompt: userPrompt
+            })
+            runLogs.appendApiCall(runId, {
+              kind: 'generateText',
+              nodeId: AI_POSE_LOG_NODE_ID,
+              durationMs: Math.max(0, Date.now() - apiStarted),
+              request: {
+                prompt: userPrompt,
+                system: composedSystem,
+                model: parsedKey.model,
+                providerInstanceId: parsedKey.providerInstanceId,
+                agentTurn: true
+              },
+              response: { text: result.text, model: result.model }
+            })
+            const stripped = stripPythonCodeFence(result.text)
+            if (!stripped.trim()) {
+              return { text: result.text, toolCalls: [] }
+            }
+            return {
+              text: result.text,
+              toolCalls: [
+                {
+                  id: `auto_${Date.now()}`,
+                  type: 'function',
+                  function: {
+                    name: 'try_blender_pose',
+                    arguments: JSON.stringify({ python_code: stripped })
+                  }
+                }
+              ]
+            }
+          } catch (err) {
+            const error = err instanceof Error ? err.message : String(err)
+            runLogs.appendApiCall(runId, {
+              kind: 'generateText',
+              nodeId: AI_POSE_LOG_NODE_ID,
+              durationMs: Math.max(0, Date.now() - apiStarted),
+              request: {
+                prompt: userPrompt,
+                system: composedSystem,
+                model: parsedKey.model,
+                providerInstanceId: parsedKey.providerInstanceId,
+                agentTurn: true
+              },
+              error
+            })
+            throw err
+          }
+        },
+        blenderRun: async (code) => {
+          logMessage(t('director.stage.poseAiLog.blenderRun'))
+          const blenderStarted = Date.now()
+          const outcome = await window.studio.runBlenderMcpTool({
+            name: 'execute_blender_code',
+            args: { code },
+            timeoutMs: 60000
+          })
+          runLogs.appendApiCall(runId, {
+            kind: 'blenderMcp',
+            nodeId: AI_POSE_LOG_NODE_ID,
+            durationMs: Math.max(0, Date.now() - blenderStarted),
+            request: {
+              toolName: 'execute_blender_code',
+              codeBytes: code.length,
+              strategy: dispatch.strategy,
+              presetId: dispatch.presetId ?? undefined,
+              agentTurn: true
+            },
+            response: outcome.error ? undefined : { ok: true },
+            error: outcome.error
+          })
+          if (outcome.error) {
+            throw new Error(outcome.error)
+          }
+          const readback = parseBlenderPoseReadback(outcome)
+          // 同时解析 POSE_DRIVE_META: 行——脚本如果按新模板跑，会拿到 Blender 端真驱动的
+          // 命中数 / missing 列表 / armature 名；agent 用它诊断「LLM 用了 Blender 上没有的
+          // 骨名」一类问题。marker 缺失时（脚本是旧版本）返回 null，agent 按 fallback 处理。
+          const meta = parseBlenderDrivePoseMeta(outcome)
+          sharedReadback.value = readback
+          return { readback, meta }
+        },
+        listArmatureBones: async () => {
+          const outcome = await window.studio.runBlenderMcpTool({
+            name: 'execute_blender_code',
+            args: { code: buildBlenderListArmatureBonesScript() },
+            timeoutMs: 30000
+          })
+          return parseBlenderArmatureBoneList(outcome)
+        },
+        applyToRenderer: (readback) => {
+          const matched = Object.keys(readback).length
+          if (!matched) {
+            return { matched: 0, total: hierarchy.length }
+          }
+          const bonePose: Record<string, { x: number; y: number; z: number }> = {}
+          for (const [name, [rx, ry, rz]] of Object.entries(readback)) {
+            bonePose[name] = { x: rx, y: ry, z: rz }
+          }
+          scene.applyObjectBonePoseMap(id, bonePose, 'replace')
+          syncPoseDegCache()
+          return { matched, total: hierarchy.length }
+        },
+        onEvent: (event: BlenderPoseAgentEvent) => {
+          switch (event.kind) {
+            case 'armature_list':
+              logMessage(
+                t('director.stage.poseAiLog.armatureList', {
+                  armature: event.armature ?? t('director.stage.poseAiLog.armatureNone'),
+                  blenderBones: event.bones.length,
+                  sceneBones: event.sceneBones.length,
+                  matched: event.matched.length
+                })
+              )
+              if (!event.armature) {
+                logMessage(t('director.stage.poseAiLog.armatureMissing'), 'warn')
+              } else if (event.matched.length === 0 && event.sceneBones.length > 0) {
+                logMessage(t('director.stage.poseAiLog.armatureNoMatch'), 'warn')
+              }
+              break
+            case 'turn':
+              logMessage(
+                t('director.stage.poseAiLog.agentTurn', {
+                  turn: event.turn + 1,
+                  tools: event.toolNames.join(', ') || '(none)'
+                })
+              )
+              break
+            case 'tool':
+              if (event.error) {
+                logMessage(
+                  t('director.stage.poseAiLog.agentToolFail', { error: event.error }),
+                  'warn'
+                )
+              } else {
+                logMessage(
+                  t('director.stage.poseAiLog.agentToolOk', {
+                    matched: event.matched,
+                    total: event.total,
+                    missing: event.missing?.length
+                      ? t('director.stage.poseAiLog.agentToolMissing', {
+                          missing: event.missing.slice(0, 5).join(', ') +
+                            (event.missing.length > 5
+                              ? `…(+${event.missing.length - 5})`
+                              : '')
+                        })
+                      : ''
+                  })
+                )
+              }
+              break
+            case 'finalize':
+              logMessage(
+                t('director.stage.poseAiLog.agentFinalize', {
+                  matched: event.matched,
+                  total: event.total
+                })
+              )
+              break
+            case 'done':
+              if (event.reason !== 'finalized') {
+                logMessage(
+                  t('director.stage.poseAiLog.agentStop', { reason: event.reason }),
+                  'warn'
+                )
+              }
+              break
+            case 'error':
+              logMessage(
+                t('director.stage.poseAiLog.agentError', { message: event.message }),
+                'error'
+              )
+              break
+          }
+        }
+      }
     )
 
-    // 5. 应用到角色（Blender 输出的就是弧度，与 applyObjectBonePoseMap 同口径）
-    if (!matched) {
-      const msg = t('director.stage.poseAiNoMatch')
+    if (!agentResult.ok) {
+      const msg = t('director.stage.poseAiLog.agentStop', { reason: agentResult.reason })
       aiPoseStatus.value = msg
       logMessage(msg, 'error')
+      if (agentResult.lastMissing?.length) {
+        logMessage(
+          t('director.stage.poseAiLog.agentMissing', {
+            missing: agentResult.lastMissing.slice(0, 8).join(', ') +
+              (agentResult.lastMissing.length > 8
+                ? `…(+${agentResult.lastMissing.length - 8})`
+                : ''),
+            armature: agentResult.lastArmature ?? '?'
+          }),
+          'warn'
+        )
+      }
       runLogs.endRun({ runId, status: 'error', message: msg })
       return
     }
-    const bonePose: Record<string, { x: number; y: number; z: number }> = {}
-    for (const [name, [rx, ry, rz]] of Object.entries(readback)) {
-      bonePose[name] = { x: rx, y: ry, z: rz }
-    }
-    scene.applyObjectBonePoseMap(id, bonePose, 'replace')
-    syncPoseDegCache()
-    logMessage(t('director.stage.poseAiLog.parsed', { matched, total: hierarchy.length }))
     const doneMsg = t('director.stage.poseAiApplied', {
-      matched,
-      total: hierarchy.length
+      matched: agentResult.matched,
+      total: agentResult.total
     })
     aiPoseStatus.value = doneMsg
     logMessage(doneMsg)
     runLogs.endRun({ runId, status: 'done', message: doneMsg })
+    return
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err)
     const msg = t('director.stage.poseAiFailed', { error })

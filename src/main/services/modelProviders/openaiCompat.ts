@@ -28,6 +28,7 @@ type ChatMessage = { role: string; content: unknown }
 
 type ChatCompletionResponse = {
   choices?: Array<{
+    finish_reason?: string | null
     message?: {
       content?: string | Array<{ type?: string; text?: string; content?: string }> | null
       reasoning_content?: string | null
@@ -323,14 +324,29 @@ export async function generateOpenAiCompatibleText(
     if (ark && attempt > 0) {
       body.thinking = { type: 'disabled' }
     }
+    // Agent loop：透传 tool schema + tool_choice。带了 tools 但没传 tool_choice 默认 'auto'
+    if (input.tools && input.tools.length) {
+      body.tools = input.tools.map((t) => ({ ...t }))
+      body.tool_choice = input.toolChoice ?? 'auto'
+    } else if (input.toolChoice) {
+      body.tool_choice = input.toolChoice
+    }
 
     try {
       const { data } = await client.post<ChatCompletionResponse>('/chat/completions', body, {
         headers: authHeaders(provider.apiKey)
       })
       const text = extractChatCompletionText(data)
-      if (!text) throw fail(E_EMPTY_CHAT_TEXT)
-      return { text, model: data.model ?? modelId }
+      const toolCalls = extractChatCompletionToolCalls(data)
+      const finishReason = data.choices?.[0]?.finish_reason ?? undefined
+      // agent 路径：tool_calls 与 text 任一即可；纯文本路径仍要求 text 非空
+      if (!text && !toolCalls.length) throw fail(E_EMPTY_CHAT_TEXT)
+      return {
+        text,
+        model: data.model ?? modelId,
+        toolCalls: toolCalls.length ? toolCalls : undefined,
+        finishReason
+      }
     } catch (err) {
       lastError = err
       // thinking.disabled 不被该模型接受时，去掉该字段再试一次（仍计在同一 attempt 的补救）
@@ -348,8 +364,15 @@ export async function generateOpenAiCompatibleText(
             { headers: authHeaders(provider.apiKey) }
           )
           const text = extractChatCompletionText(data)
-          if (!text) throw fail(E_EMPTY_CHAT_TEXT)
-          return { text, model: data.model ?? modelId }
+          const toolCalls = extractChatCompletionToolCalls(data)
+          const finishReason = data.choices?.[0]?.finish_reason ?? undefined
+          if (!text && !toolCalls.length) throw fail(E_EMPTY_CHAT_TEXT)
+          return {
+            text,
+            model: data.model ?? modelId,
+            toolCalls: toolCalls.length ? toolCalls : undefined,
+            finishReason
+          }
         } catch (retryErr) {
           lastError = retryErr
         }
@@ -363,6 +386,39 @@ export async function generateOpenAiCompatibleText(
   throw fail(E_TEXT_GENERATE_FAILED, {
     detail: await formatTextGenerateFailure(lastError, provider)
   })
+}
+
+/** 从 chat/completions 响应里提取 tool_calls；arguments 仍是 JSON 字符串（调用方按需 JSON.parse） */
+export function extractChatCompletionToolCalls(
+  data: ChatCompletionResponse
+): Array<{
+  id: string
+  type: 'function'
+  function: { name: string; arguments: string }
+}> {
+  const raw = data.choices?.[0]?.message?.tool_calls
+  if (!Array.isArray(raw)) return []
+  const out: Array<{
+    id: string
+    type: 'function'
+    function: { name: string; arguments: string }
+  }> = []
+  for (const call of raw) {
+    const fn = (call.function ?? {}) as { name?: unknown; arguments?: unknown }
+    const name = typeof fn.name === 'string' ? fn.name.trim() : ''
+    if (!name) continue
+    const id = typeof (call as { id?: unknown }).id === 'string'
+      ? ((call as { id: string }).id)
+      : `call_${out.length}`
+    let args = ''
+    if (typeof fn.arguments === 'string') {
+      args = fn.arguments
+    } else if (fn.arguments && typeof fn.arguments === 'object') {
+      args = JSON.stringify(fn.arguments)
+    }
+    out.push({ id, type: 'function', function: { name, arguments: args } })
+  }
+  return out
 }
 
 /** OpenAI 兼容：POST /audio/speech */

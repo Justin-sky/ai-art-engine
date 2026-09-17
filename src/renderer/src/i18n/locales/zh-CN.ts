@@ -1922,8 +1922,27 @@ export default {
         blenderRunFail: 'Blender 调用失败：{error}',
         blenderReadback: 'Blender 返回 {matched}/{total} 根骨骼的 Euler 偏移（弧度）',
         parsed: '已应用 Blender MCP 返回的旋转：匹配 {matched}/{total}',
-        rawReply: '原始回复摘录：{text}'
+        rawReply: '原始回复摘录：{text}',
+        agentTurn: 'Agent 第 {turn} 轮，调 tool: {tools}',
+        agentToolOk: 'try_blender_pose 命中 {matched} 根骨骼（readback 内 {total} 项）{missing}',
+        agentToolMissing: '，Blender 缺失：{missing}',
+        agentToolFail: 'try_blender_pose 失败：{error}',
+        agentFinalize: 'finalize_pose 已写入：{matched}/{total} 根骨骼',
+        agentStop: 'Agent 停止：{reason}（no_finalize=模型未调 finalize；max_turns=轮数用尽；error=异常）',
+        agentMissing:
+          'Blender 端 armature 「{armature}」缺这些骨（LLM 写了但 pose.bones 里没有）：{missing}',
+        agentError: 'Agent 异常：{message}',
+        armatureList:
+          'Blender armature 校准：name={armature}, Blender 端 {blenderBones} 骨，渲染层 {sceneBones} 骨，交集 {matched}',
+        armatureNone: '（Blender 里没找到 armature）',
+        armatureMissing: 'Blender 当前 view_layer 里没有任何 ARMATURE 对象——请在 Blender 里打开/选中 armature 后再点 AI 姿势。',
+        armatureNoMatch:
+          'Blender armature 骨名与渲染层骨架完全不匹配——agent 只能拿到 LLM 猜的 Euler；请检查 Blender 端是否导入了同一份 .fbx/.glb。'
       },
+      poseAiAgentHistory: '[上一轮对话历史 — 之前的 tool 结果列在这里]',
+      poseAiAgentHistoryEmpty: '(无 — 这是第一轮)',
+      poseAiAgentContinue:
+        '请基于以上历史继续，按 system 规则决定下一步。如果满意就再回一段 final 脚本，agent 会再调一次 try_blender_pose；最终由 agent loop 判定是否落盘（LLM 不需要显式调用 finalize）。',
       poseIkChains: 'IK 目标 ({n})',
       poseIkChainsEmpty: '未识别到可用 IK 目标；可手动指定末端骨骼',
       poseIkHint: '选择 IK 目标后，拖动橙色目标点；松手后写入姿势',

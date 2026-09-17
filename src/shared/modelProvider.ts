@@ -756,11 +756,50 @@ export interface GenerateTextInput {
   providerInstanceId?: string
   /** 视觉输入：data URL 或 http(s) URL，走 chat/completions 多模态 */
   images?: string[]
+  /**
+   * OpenAI 风格 tool schema。LLM agent 多轮调用走这条；
+   * 设了则一并下发 `tool_choice: 'auto'`（除非显式覆盖），让模型自行决定何时调用。
+   */
+  tools?: ReadonlyArray<GenerateTextTool>
+  /** 'auto' | 'none' | { type:'function', function:{name}; }
+   *  未传但带了 tools 时默认 'auto'；不想让模型调 tool 时显式传 'none'。 */
+  toolChoice?: GenerateTextToolChoice
+}
+
+/** OpenAI 风格 tool schema 的最小子集（足够 agent loop 用） */
+export interface GenerateTextTool {
+  type: 'function'
+  function: {
+    name: string
+    description?: string
+    /** JSON Schema 对象（OpenAI 兼容端点接受 properties/required） */
+    parameters?: Record<string, unknown>
+  }
+}
+
+export type GenerateTextToolChoice =
+  | 'auto'
+  | 'none'
+  | { type: 'function'; function: { name: string } }
+
+/** 单次 tool_call（OpenAI 风格）。arguments 在 OpenAI 协议里是 JSON 字符串，已就地解析 */
+export interface GenerateTextToolCall {
+  id: string
+  type: 'function'
+  function: {
+    name: string
+    /** JSON 字符串（OpenAI 协议原样）——调用方按需 JSON.parse */
+    arguments: string
+  }
 }
 
 export interface GenerateTextResult {
   text: string
   model: string
+  /** 模型本轮要求的 tool 调用；空数组表示纯文本回答 */
+  toolCalls?: ReadonlyArray<GenerateTextToolCall>
+  /** finish_reason: tool_calls / stop / length 等；用于 agent loop 终止判断 */
+  finishReason?: string
 }
 
 /** 图片生成参考图元信息：用于执行日志展示来源与落盘路径，不落 data URL */

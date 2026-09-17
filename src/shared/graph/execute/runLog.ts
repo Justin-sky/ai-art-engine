@@ -106,6 +106,7 @@ export interface GraphRunLogApiCall {
     strategy?: string
     /** blenderMcp：命中的预设 id（preset 路径下） */
     presetId?: string
+    agentTurn?: boolean
   }
   response?: {
     text?: string

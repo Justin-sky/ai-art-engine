@@ -1975,8 +1975,30 @@ export default {
         blenderRunFail: 'Blender call failed: {error}',
         blenderReadback: 'Blender returned Euler offsets for {matched}/{total} bones (radians)',
         parsed: 'Applied Blender MCP rotation: matched {matched}/{total}',
-        rawReply: 'Raw reply excerpt: {text}'
+        rawReply: 'Raw reply excerpt: {text}',
+        agentTurn: 'Agent turn {turn}, calling tool: {tools}',
+        agentToolOk:
+          'try_blender_pose matched {matched} bones ({total} in readback) {missing}',
+        agentToolMissing: ', missing in Blender: {missing}',
+        agentToolFail: 'try_blender_pose failed: {error}',
+        agentFinalize: 'finalize_pose committed: {matched}/{total} bones',
+        agentStop:
+          'Agent stopped: {reason} (no_finalize=model did not call finalize; max_turns=turns exhausted; error=exception)',
+        agentMissing:
+          'Blender armature "{armature}" has no bone named (LLM wrote but pose.bones missed): {missing}',
+        agentError: 'Agent error: {message}',
+        armatureList:
+          'Blender armature calibration: name={armature}, Blender has {blenderBones} bones, scene has {sceneBones}, intersection {matched}',
+        armatureNone: '(no armature found in Blender)',
+        armatureMissing:
+          'No ARMATURE found in the current view_layer — please open/activate the armature in Blender and retry.',
+        armatureNoMatch:
+          'Blender armature bone names do not overlap with the scene skeleton — the agent can only forward whatever Euler the LLM guesses. Make sure both sides use the same .fbx/.glb.'
       },
+      poseAiAgentHistory: '[Conversation history — previous tool results are listed here]',
+      poseAiAgentHistoryEmpty: '(None — this is the first turn)',
+      poseAiAgentContinue:
+        'Continue from the history above and follow the system rules to decide the next step. If satisfied, return a final script for the agent to call try_blender_pose again; the agent loop decides whether to apply it (the LLM does not need to call finalize explicitly).',
       poseIkChains: 'IK targets ({n})',
       poseIkChainsEmpty: 'No IK target found. You can manually pick an end bone.',
       poseIkHint: 'Select an IK target, then drag the orange target; release to save pose',
