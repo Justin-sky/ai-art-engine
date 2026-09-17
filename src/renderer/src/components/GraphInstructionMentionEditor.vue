@@ -1782,8 +1782,9 @@ onBeforeUnmount(() => {
 
 .footer-toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 6px 10px;
   padding: 6px 10px 8px;
   border-top: 1px solid var(--border);
   box-sizing: border-box;

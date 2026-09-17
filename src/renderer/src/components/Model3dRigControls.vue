@@ -1,5 +1,5 @@
 <template>
-  <div class="model3d-rig" :title="hint">
+  <div class="model3d-rig" :class="{ 'is-enabled': enabled }" :title="hint">
     <label class="rig-toggle">
       <input type="checkbox" :checked="enabled" @change="onToggle" :aria-label="label" />
       <span>{{ label }}</span>
@@ -77,10 +77,17 @@ function onAnimationChange(event: Event): void {
 <style scoped>
 .model3d-rig {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 5px;
+  gap: 5px 8px;
   flex: none;
   margin: 0;
+}
+/* 启用蒙皮后控件较多，独占 footer 一整行，避免与模型选择挤在一行 */
+.model3d-rig.is-enabled {
+  display: flex;
+  flex: 0 0 100%;
+  max-width: 100%;
 }
 .rig-toggle {
   display: inline-flex;
@@ -89,6 +96,11 @@ function onAnimationChange(event: Event): void {
   font-size: 11px;
   color: var(--text-muted);
   cursor: default;
+  transition: color 120ms ease;
+}
+.is-enabled .rig-toggle {
+  color: var(--text);
+  font-weight: 600;
 }
 .rig-toggle input {
   margin: 0;
@@ -105,10 +117,12 @@ select,
   line-height: 22px;
 }
 select {
-  max-width: 90px;
+  max-width: 100px;
 }
 .rig-animation {
-  max-width: 130px;
+  flex: 1 1 auto;
+  min-width: 80px;
+  max-width: 180px;
 }
 select:hover,
 select:focus,

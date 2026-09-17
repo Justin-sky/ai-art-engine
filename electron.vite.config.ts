@@ -21,6 +21,13 @@ export default defineConfig({
           index: resolve('src/main/index.ts'),
           // YOLO 推理子进程（utilityProcess）独立入口，产物 out/main/yoloWorker.js
           yoloWorker: resolve('src/main/yolo/yoloWorker.ts')
+        },
+        onwarn(warning, defaultHandler) {
+          // chokidar 被打进 bundle（见上方 exclude 说明）时，其未使用的
+          // `import { Stats } from 'node:fs'` 会触发 UNUSED_EXTERNAL_IMPORT，
+          // 属无害警告，过滤掉以免干扰日志
+          if (warning.code === 'UNUSED_EXTERNAL_IMPORT' && warning.message.includes('chokidar')) return
+          defaultHandler(warning)
         }
       }
     }

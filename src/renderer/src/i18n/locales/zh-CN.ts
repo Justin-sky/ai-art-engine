@@ -4163,7 +4163,7 @@ export default {
         },
         model3dRigAnimation: '绑定动画',
         model3dRigAnimationNone: '不绑定',
-        model3dRigAnimationPlaceholder: '可选：输入动画名（walk / run / dance…）',
+        model3dRigAnimationPlaceholder: '动画名（可选）',
         noModels: '暂无可用模型',
         systemPrompt: '系统提示词',
         systemPromptPlaceholder: '定义模型角色与输出规范；留空则使用内置默认',

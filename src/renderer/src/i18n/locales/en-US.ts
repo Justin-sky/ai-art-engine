@@ -4267,7 +4267,7 @@ export default {
         },
         model3dRigAnimation: 'Bind animation',
         model3dRigAnimationNone: 'None',
-        model3dRigAnimationPlaceholder: 'Optional: animation name (walk / run / dance…)',
+        model3dRigAnimationPlaceholder: 'Animation name (optional)',
         noModels: 'No models available',
         systemPrompt: 'System prompt',
         systemPromptPlaceholder:
