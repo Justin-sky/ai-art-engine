@@ -428,9 +428,7 @@ class ModelProviderFacade {
       rigInput.model
     )
     if (!supportsModel3dRig(provider.providerKind)) {
-      throw new Error(
-        `GRAPH_MODEL_RIG_PROVIDER:${provider.label}（${provider.providerKind}）不支持独立蒙皮，请选用 Meshy 或 Tripo`
-      )
+      throw new Error('GRAPH_MODEL_RIG_PROVIDER')
     }
 
     let uploads: ObjectStorageUploadResult[] = []

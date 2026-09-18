@@ -293,6 +293,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       GRAPH_MODEL_RIG_FAILED: 'graph.run.modelRigFailed',
       GRAPH_MODEL_RIG_EXPORT: 'graph.run.modelRigExport',
       GRAPH_MODEL_RIG_DSH: 'graph.run.modelRigDsh',
+      GRAPH_MODEL_RIG_PROVIDER: 'graph.run.modelRigProvider',
       GRAPH_MODEL_ANIM_NO_MODEL: 'graph.run.modelAnimNoModel',
       GRAPH_MODEL_ANIM_MCP: 'graph.run.modelAnimMcp',
       GRAPH_MODEL_ANIM_EXPORT: 'graph.run.modelAnimExport',

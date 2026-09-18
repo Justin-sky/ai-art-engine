@@ -26,9 +26,22 @@ function inferRigTypeFromLegacyInstruction(raw: string): string | undefined {
   if (RIG_TYPE_KEYS.has(text)) return text
   const first = text.split(/[\s,，]+/)[0]
   if (first && RIG_TYPE_KEYS.has(first)) return first
-  if (/四足|quadruped/.test(text)) return 'quadruped'
-  if (/creature|生物|道具|prop/.test(text)) return 'creature'
-  if (/人形|humanoid|mixamo|biped|双足/.test(text)) return 'humanoid'
+  if (text.includes('quadruped') || raw.includes('四足')) return 'quadruped' // cjk-ok（短指令匹配）
+  if (
+    text.includes('creature') ||
+    raw.includes('生物') || // cjk-ok
+    raw.includes('道具') || // cjk-ok
+    text.includes('prop')
+  )
+    return 'creature'
+  if (
+    text.includes('humanoid') ||
+    text.includes('mixamo') ||
+    text.includes('biped') ||
+    raw.includes('人形') || // cjk-ok
+    raw.includes('双足') // cjk-ok
+  )
+    return 'humanoid'
   return undefined
 }
 

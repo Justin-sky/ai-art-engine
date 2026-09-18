@@ -192,10 +192,10 @@ export function isTransientBlenderError(message: string): boolean {
     text.includes('epipe') ||
     text.includes('etimedout') ||
     text.includes('socket hang up') ||
-    text.includes('主动断开') ||
-    text.includes('连接已重置') ||
-    text.includes('无法连接 blender') ||
-    text.includes('响应超时') ||
+    text.includes('主动断开') || // cjk-ok（Blender MCP 中文错误）
+    text.includes('连接已重置') || // cjk-ok
+    text.includes('无法连接 blender') || // cjk-ok
+    text.includes('响应超时') || // cjk-ok
     text.includes('connection reset') ||
     text.includes('broken pipe')
   )

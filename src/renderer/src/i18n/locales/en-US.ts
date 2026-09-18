@@ -3778,6 +3778,7 @@ export default {
       modelRigFailed: '3D rigging did not finish',
       modelRigExport: 'Blender did not export a skinned GLB',
       modelRigDsh: 'Cloud rigging API is not wired up',
+      modelRigProvider: 'This 3D provider does not support standalone rigging — use Meshy or Tripo',
       modelAnimNoModel: 'Connect an upstream 3D model first',
       modelAnimNoArmature: 'Upstream model has no armature; pipe through "3D Rigging" first',
       modelAnimNoTextModel: 'Pick a text model on the node first',

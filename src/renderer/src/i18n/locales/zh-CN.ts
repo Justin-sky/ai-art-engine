@@ -3694,6 +3694,7 @@ export default {
       modelRigFailed: '3D 骨骼蒙皮未完成',
       modelRigExport: 'Blender 未导出蒙皮 GLB',
       modelRigDsh: '无法调用云端骨骼蒙皮（Rigging API 未接入）',
+      modelRigProvider: '当前 3D 提供商不支持独立蒙皮，请选用 Meshy 或 Tripo',
       modelAnimNoModel: '请先连接上游 3D 模型',
       modelAnimNoArmature: '上游模型没有 armature；请先经过「3D 骨骼蒙皮」节点',
       modelAnimNoTextModel: '请先在节点上选择文本模型',
