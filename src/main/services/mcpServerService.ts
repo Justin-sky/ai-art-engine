@@ -129,15 +129,12 @@ import {
   type ObjectStorageProviderInstance
 } from '@shared/objectStorage'
 import {
-  MODEL3D_RIG_PROVIDER_KINDS,
-  supportsModel3dRig,
   type GenerateImageInput,
   type GenerateModel3dInput,
   type GenerateVideoInput,
   type TranscribeAudioSegment
 } from '@shared/modelProvider'
 import { modelProviderFacade } from './modelProviders'
-import { resolveActiveProvider } from './modelProviders/resolve'
 import {
   blenderAddonLink,
   blenderMcpEnabled,
@@ -2441,7 +2438,7 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'generate_model3d',
     title: '生成 3D 模型',
     description:
-      '文生 3D / 图生 3D（Meshy / Tripo / Rodin / Luma / Lux3D），产出 GLB 模型并落盘到工程缓存目录 Cache/Models（不自动进资产库，避免在对话流里出现重复卡）；供应商异步轮询。需要骨骼蒙皮（rigged GLB）时传 rig: true —— 仅 Tripo / Meshy / Rodin 支持，可再用 rigType / rigAnimation 指定骨架类型与绑定动画；Luma / Lux3D 传 rig 会明确报错（不静默吞参数）。需要进资产库时由用户在对话卡上点「保存到资产库」按钮。返回工程内相对路径。',
+      '文生 3D / 图生 3D（Meshy / Tripo / Rodin / Luma / Lux3D），产出 GLB 模型并落盘到工程缓存目录 Cache/Models（不自动进资产库）。骨骼蒙皮请用图节点「3D 骨骼蒙皮」（Meshy/Tripo Rigging API），不要在本工具传 rig。需要进资产库时由用户在对话卡上点「保存到资产库」按钮。返回工程内相对路径。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -2454,21 +2451,6 @@ const TOOL_DEFS: McpToolDef[] = [
           description:
             '风格：photorealistic / cartoon / anime / hand_painted / cyberpunk / fantasy / glass'
         },
-        rig: {
-          type: 'boolean',
-          description:
-            '是否要求上游为模型附加骨骼蒙皮（输出 rigged GLB）。仅 Tripo / Meshy / Rodin(hyper3d) 支持；Luma / Lux3D 传 true 会明确报错。缺省 false → 输出纯几何 GLB'
-        },
-        rigType: {
-          type: 'string',
-          description:
-            '骨架类型（需 rig: true）：humanoid / quadruped / bipedal / creature，缺省 humanoid。Meshy / Rodin 透传上游 rig_type；Tripo 只认 rig 开关、忽略本字段。单独传而 rig 未开启会报错'
-        },
-        rigAnimation: {
-          type: 'string',
-          description:
-            '绑定动画预设 id（需 rig: true）：Meshy 映射为 pose（如 walk），Rodin 映射为 rig_animation；Tripo 忽略本字段。单独传而 rig 未开启会报错'
-        },
         referenceImageUrls: {
           type: 'array',
           items: { type: 'string' },
@@ -2478,7 +2460,7 @@ const TOOL_DEFS: McpToolDef[] = [
         extraParams: {
           type: 'object',
           description:
-            '低频参数透传（模型特有字段），合并进底层生成输入；显式入参（含 rig / rigType / rigAnimation）优先于这里的同名字段'
+            '低频参数透传（模型特有字段），合并进底层生成输入；显式入参优先于这里的同名字段'
         }
       },
       required: ['prompt']
@@ -2496,8 +2478,6 @@ const TOOL_DEFS: McpToolDef[] = [
           ? args.referenceImageUrls.filter((item): item is string => typeof item === 'string')
           : undefined
       }
-      // 蒙皮入参：顶层显式传参优先于 extraParams 透传，并在提交前校验上游白名单
-      const rigNotes = applyModel3dRigArgs(input, args)
       // 对话生成的 3D 模型只落 Cache、不入资产库（避免在对话流里出现重复卡）；
       // 想入库让用户点资产卡上的「保存到资产库」按钮。
       const result = await runGenActivity(
@@ -2515,9 +2495,6 @@ const TOOL_DEFS: McpToolDef[] = [
             model: input.model,
             providerInstanceId: input.providerInstanceId,
             style: input.style,
-            rig: input.rig === true || undefined,
-            rigType: input.rigType?.trim() || undefined,
-            rigAnimation: input.rigAnimation?.trim() || undefined,
             inputReferenceCount: input.inputReferences?.length || undefined,
             inputReferenceUrls: summarizeReferenceListForLog(input.inputReferences),
             uploads: r.uploads?.map((item) => ({
@@ -2537,9 +2514,7 @@ const TOOL_DEFS: McpToolDef[] = [
       broadcastAsset(result.assetId)
       return {
         ...result,
-        relativePath: liveAssetRelativePath(result),
-        // Tripo 不认 rigType / rigAnimation，如实回报被上游忽略，不静默吞
-        ...(rigNotes.length ? { warnings: rigNotes } : {})
+        relativePath: liveAssetRelativePath(result)
       }
     }
   }
@@ -2946,52 +2921,6 @@ function cacheOnlyGenExtraParams(args: Record<string, unknown>): Record<string, 
   delete args.outputDir
   delete args.folderId
   return extra
-}
-
-/**
- * 3D 蒙皮入参：顶层显式传参优先于 `extraParams` 透传，缺省则保留透传值（不覆盖成 undefined），
- * 随后调用 `validateModel3dRigArgs` 做提交前校验。
- */
-function applyModel3dRigArgs(input: GenerateModel3dInput, args: Record<string, unknown>): string[] {
-  if (typeof args.rig === 'boolean') input.rig = args.rig
-  const rigType = optionalString(args, 'rigType')
-  if (rigType) input.rigType = rigType
-  const rigAnimation = optionalString(args, 'rigAnimation')
-  if (rigAnimation) input.rigAnimation = rigAnimation
-  return validateModel3dRigArgs(input)
-}
-
-/**
- * 3D 蒙皮提交前校验（宁可报错也不静默吞参数）：
- * - `rigType` / `rigAnimation` 必须配 `rig: true`，否则参数会被上游忽略；
- * - `rig: true` 时上游 kind 必须在白名单（Tripo / Meshy / Rodin）——Luma / Lux3D 等无蒙皮能力，
- *   在这里就拦掉，不必白跑一次异步任务；
- * - Tripo 只认 rig 开关，带了 `rigType` / `rigAnimation` 时回一条 warning 说明已被上游忽略。
- */
-function validateModel3dRigArgs(input: GenerateModel3dInput): string[] {
-  const rigType = input.rigType?.trim()
-  const rigAnimation = input.rigAnimation?.trim()
-  if (input.rig !== true) {
-    if (rigType || rigAnimation) {
-      throw new Error(
-        'rigType / rigAnimation 只在 rig: true 时生效：请显式传 rig: true（或用 rig: false 去掉这两个参数）'
-      )
-    }
-    return []
-  }
-  const { provider } = resolveActiveProvider('model3d', input.providerInstanceId, input.model)
-  if (!supportsModel3dRig(provider.providerKind)) {
-    throw new Error(
-      `${provider.label}（${provider.providerKind}）不支持骨骼蒙皮：rig 目前仅支持 ${MODEL3D_RIG_PROVIDER_KINDS.join(' / ')}，` +
-        '请改用支持蒙皮的上游（models_list 查询），或传 rig: false 生成纯几何模型'
-    )
-  }
-  if (provider.providerKind === 'tripo' && (rigType || rigAnimation)) {
-    return [
-      'Tripo 只接受 rig 开关：rigType / rigAnimation 已被上游忽略（需要指定骨架类型或绑定动画请改用 Meshy / Rodin）'
-    ]
-  }
-  return []
 }
 
 function assertProjectOpen(): void {

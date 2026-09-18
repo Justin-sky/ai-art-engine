@@ -12,6 +12,7 @@ import type {
   GraphOutputKind
 } from '../types'
 import type { GraphImageReferenceMeta } from '../../modelProvider'
+import type { RigQaReport } from '../../blenderRigSkinPipeline'
 
 export type GraphNodeRunStatus =
   'idle' | 'pending' | 'running' | 'done' | 'error' | 'degraded' | 'skipped'
@@ -42,7 +43,16 @@ export interface GraphAssetValue {
     bones: string[]
     vertexGroups: string[]
     presetId?: string
+    boneGeom?: Array<{
+      name: string
+      parent: string
+      head: [number, number, number]
+      tail: [number, number, number]
+    }>
+    deformMeshes?: string[]
   }
+  /** 人形蒙皮硬 QA 报告（PASS 才进入历史图库） */
+  rigQa?: RigQaReport
   /**
    * 3D 关键帧动作。`model.animation` 节点输出时带上，记录 action 名 / fps / 帧范围
    * 与「骨名 → 帧号 → 局部欧拉弧度」表。导演台从 `in-model` 实例化时按帧驱动。
@@ -154,6 +164,7 @@ export interface GraphModelItem {
   relativePath?: string
   assetId?: string
   rigMeta?: GraphAssetValue['rigMeta']
+  rigQa?: GraphAssetValue['rigQa']
   bonePose?: GraphAssetValue['bonePose']
   clip?: GraphAssetValue['clip']
 }
@@ -358,16 +369,29 @@ export interface NodeExecuteContext {
     providerInstanceId?: string
     /** 风格（Lux3D 文生3D） */
     style?: string
-    /** 是否要求上游附加骨骼蒙皮（Tripo / Meshy / Rodin 支持；其它传了会拒绝） */
-    rig?: boolean
-    /** 骨架类型；未启用 rig 时忽略 */
-    rigType?: string
-    /** 绑定动画预设 id；未启用 rig 或上游不支持时忽略 */
-    rigAnimation?: string
     inputReferences?: Array<{ kind: 'image_url' | 'video_url' | 'audio_url'; url: string }>
     outputDir?: string
     name?: string
     /** 图节点回写绑定 */
+    graphBinding?: {
+      hostId?: string
+      nodeId?: string
+      assetId?: string
+      shotId?: string
+      canvasField?: string
+    }
+  }) => Promise<{ assetId: string; relativePath: string; model: string }>
+  /**
+   * 可选：对已有模型调用 Meshy/Tripo 独立 Rigging API（`model.rigSkin`）。
+   */
+  rigModel3d?: (input: {
+    modelRelativePath?: string
+    modelUrl?: string
+    model?: string
+    providerInstanceId?: string
+    rigType?: string
+    name?: string
+    outputDir?: string
     graphBinding?: {
       hostId?: string
       nodeId?: string
@@ -801,6 +825,7 @@ export interface GraphRunOptions {
   generateImage?: NodeExecuteContext['generateImage']
   generateVideo?: NodeExecuteContext['generateVideo']
   generateModel3d?: NodeExecuteContext['generateModel3d']
+  rigModel3d?: NodeExecuteContext['rigModel3d']
   generateSpeech?: NodeExecuteContext['generateSpeech']
   /** 软件界面语言，用于默认系统提示词等 */
   locale?: string

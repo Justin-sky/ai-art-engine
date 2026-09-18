@@ -15,7 +15,6 @@
       :blocked="blocked"
       @toggle="toggleRun"
     />
-    <BlenderDshLiveStatus :node-id="node.id" />
 
     <div class="tabs" role="tablist" :aria-label="t('graph.inspector.modelRigSkin.tabsAria')">
       <button
@@ -40,20 +39,22 @@
       </button>
     </div>
 
-    <!-- 共享 ModelPreview：tabs 下方、panel 上方始终挂载。v-show 不卸载
-         <section>，所以 ModelPreview 始终位于 layout flow 中，display 不为
-         none，clientWidth/clientHeight 永远 > 0；切 tab 时只切 props（show-
-         skeleton / selected-bone），不重建 WebGLRenderer。 -->
-    <ModelPreview
-      v-if="modelPreviewPath"
-      :relative-path="modelPreviewPath"
-      :show-skeleton="activeTab === 'skeleton'"
-      :selected-bone="activeTab === 'skeleton' ? selectedBone : null"
-      :show-save-to-library="true"
-      @bones="onModelBones"
-      @select-bone="onSelectBone"
-      @skeleton-source="onSkeletonSource"
-    />
+    <!-- 预览必须 flex-shrink:0，否则骨骼列表会把 200px 视口挤成 0 高 -->
+    <div v-if="modelPreviewPath" class="preview-slot">
+      <ModelPreview
+        :relative-path="modelPreviewPath"
+        :show-skeleton="activeTab === 'skeleton'"
+        :selected-bone="activeTab === 'skeleton' ? selectedBone : null"
+        :preset-bones="presetBones"
+        :show-save-to-library="true"
+        @bones="onModelBones"
+        @select-bone="onSelectBone"
+        @skeleton-source="onSkeletonSource"
+      />
+    </div>
+    <p v-else class="section-hint preview-missing">
+      {{ t('graph.inspector.generate.modelPreviewEmpty') }}
+    </p>
 
     <section
       v-if="activeTab === 'model'"
@@ -144,9 +145,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import GraphNodeRunControl from './GraphNodeRunControl.vue'
-import BlenderDshLiveStatus from './BlenderDshLiveStatus.vue'
 import GraphNodeOutputPreview from './GraphNodeOutputPreview.vue'
 import GeneratedModelsGallery from './GeneratedModelsGallery.vue'
 import ModelPreview from './ModelPreview.vue'
@@ -156,6 +156,7 @@ import { useGraphNodeRun } from '../composables/useGraphNodeRun'
 import { useEditorKernel } from '../editor/kernel'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import { graphRunHosts } from '../features/graph/model/graphRunHosts'
+import { BLENDER_HUMANOID_BONE_SPECS } from '@shared/blenderHumanoidRig'
 
 /**
  * 3D 骨骼蒙皮节点的 inspector 拆成「模型 / 骨骼」两个 Tab：
@@ -213,31 +214,78 @@ const { hasInPort, runStatus, isGraphRunning, blocked, toggleRun } = useGraphNod
 const typeLabel = computed(() => graphTypeLabel('model.rigSkin'))
 const displayTitle = useNodeDisplayTitle(node, typeLabel)
 
-/** 预览源：Cook 写回的路径，缺省时回退 runStates.out */
+/** 预览源：Cook 输出 → runStates → 上游模型入边 */
 const modelPreviewPath = computed((): string | null => {
   const current = node.value
+  const hid = hostId.value
   if (!current) return null
   const fromParams = current.params.rigModelRelativePath?.trim()
   if (fromParams) return fromParams
-  const runOut = graphRunHosts.get(hostId.value)?.runStates?.[current.id]?.outputs?.out
+  const runOut = graphRunHosts.get(hid)?.runStates?.[current.id]?.outputs?.out
   if (runOut && runOut.kind === 'asset' && runOut.relativePath?.trim()) {
     return runOut.relativePath.trim()
   }
-  return null
+  // 尚未 Cook：回退上游 in-model，方便骨架 Tab 用预设拓扑叠预览
+  const incoming = graphEditorHosts.listIncomingEdges(hid, current.id, 'in-model')
+  const sourceId = incoming[0]?.sourceNodeId
+  if (!sourceId) return null
+  const source = graphEditorHosts.getNode(hid, sourceId)
+  if (!source) return null
+  const gallerySelected = source.params.selectedModelId?.trim()
+  if (gallerySelected && source.params.generatedModels?.length) {
+    const hit = source.params.generatedModels.find((item) => item.id === gallerySelected)
+    if (hit?.relativePath?.trim()) return hit.relativePath.trim()
+  }
+  const upstream =
+    source.params.rigModelRelativePath?.trim() ||
+    source.params.poseModelRelativePath?.trim() ||
+    source.params.generatedModels?.[0]?.relativePath?.trim()
+  return upstream || null
 })
 
 /** 最近一次 Cook 写入的 rigMeta（文字摘要数据源：armature / presetId / vertex groups） */
 const rigMeta = computed(() => node.value?.params.rigMeta ?? null)
 
 /**
- * 骨骼列表数据源——优先用 ModelPreview 从实际模型扫出来的 `THREE.Bone` 名字
- * （与 3D 视图联动），fallback 到 rigMeta.bones（用于模型尚未加载完的过渡期）。
+ * 无烘焙骨时的合成骨架：优先用 QA/readback 的 boneGeom；
+ * 否则用人形默认拓扑（与 ModelPreview.presetBones 契约一致）。
+ */
+const presetBones = computed(() => {
+  const geom = rigMeta.value?.boneGeom
+  if (geom?.length) {
+    return geom.map((bone) => ({
+      name: bone.name,
+      parent: bone.parent || undefined,
+      head: bone.head,
+      tail: bone.tail
+    }))
+  }
+  return BLENDER_HUMANOID_BONE_SPECS.map((bone) => ({
+    name: bone.name,
+    parent: bone.parent || undefined,
+    head: bone.head,
+    tail: bone.tail
+  }))
+})
+
+// 云端 Rigging 不再产出 Blender QA；打开 Inspector 时清掉旧节点残留
+watch(
+  () => [node.value?.id, hostId.value, !!node.value?.params.rigQa] as const,
+  ([id, hid, hasQa]) => {
+    if (!id || !hid || !hasQa) return
+    graphEditorHosts.updateNode(hid, id, { rigQa: undefined, skillId: undefined })
+  },
+  { immediate: true }
+)
+
+/**
+ * 骨骼列表：模型扫到的骨名优先；否则用预设/元数据骨名，保证骨架 Tab 有可选列表。
  */
 const modelBones = ref<string[]>([])
 const bonesForList = computed(() => {
-  const fromModel = modelBones.value
-  if (fromModel.length) return fromModel
-  return rigMeta.value?.bones ?? []
+  if (modelBones.value.length) return modelBones.value
+  if (rigMeta.value?.bones?.length) return rigMeta.value.bones
+  return presetBones.value.map((bone) => bone.name)
 })
 
 const selectedBone = ref<string | null>(null)
@@ -305,6 +353,22 @@ function onBoneListClick(bone: string): void {
   padding: 2px;
   border-radius: 8px;
   background: color-mix(in srgb, var(--bg-elevated) 80%, var(--border));
+}
+
+.preview-slot {
+  flex: 0 0 auto;
+  width: 100%;
+  min-height: 240px;
+  height: 240px;
+}
+
+.preview-slot :deep(.model-preview) {
+  height: 100%;
+  min-height: 240px;
+}
+
+.preview-missing {
+  flex-shrink: 0;
 }
 
 .tab {

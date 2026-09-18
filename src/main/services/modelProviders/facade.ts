@@ -25,10 +25,12 @@ import type {
   ModelModality,
   ModelProviderInstance,
   ModelProviderKind,
+  RigModel3dInput,
+  RigModel3dResult,
   TranscribeAudioInput,
   TranscribeAudioResult
 } from '@shared/modelProvider'
-import { allowsEmptyApiKey, findProviderById } from '@shared/modelProvider'
+import { allowsEmptyApiKey, findProviderById, supportsModel3dRig } from '@shared/modelProvider'
 import { createProviderHttpClient, sleep } from './http'
 import { PROVIDER_ERRORS } from './catalog'
 import { fail, defErrSimple, isAppError } from '@shared/errors/appError'
@@ -45,6 +47,7 @@ import {
 import { projectService } from '../projectService'
 import { videoJobService } from '../videoJobService'
 import { resolveMediaOutputDir } from '@shared/domain'
+import { pollCloudModel3dRig, submitCloudModel3dRig } from './model3dRig'
 import {
   findVoiceProfile,
   normalizeVoiceProfiles,
@@ -270,12 +273,7 @@ class ModelProviderFacade {
   async pollVideo(
     provider: ModelProviderInstance,
     job: { jobId: string; pollingUrl: string }
-  ): Promise<{
-    status: 'pending' | 'in_progress' | 'completed' | 'failed'
-    progress: number
-    error?: string
-    downloadUrl?: string
-  }> {
+  ): Promise<import('./types').VideoPollResult> {
     return getProviderAdapter(provider.providerKind).pollVideo(provider, job)
   }
 
@@ -408,13 +406,89 @@ class ModelProviderFacade {
   async pollModel3d(
     provider: ModelProviderInstance,
     job: { jobId: string; pollingUrl: string }
-  ): Promise<{
-    status: 'pending' | 'in_progress' | 'completed' | 'failed'
-    progress: number
-    error?: string
-    downloadUrl?: string
-  }> {
+  ): Promise<import('./types').VideoPollResult> {
+    const token = job.pollingUrl || ''
+    if (token.startsWith('meshy::') || token.startsWith('tripo::')) {
+      return pollCloudModel3dRig(provider, job)
+    }
     return getProviderAdapter(provider.providerKind).pollModel3d(provider, job)
+  }
+
+  /**
+   * 对已有 GLB 做独立骨骼蒙皮（Meshy / Tripo Rigging API）。
+   * 本地路径会先上传对象存储得到公网 URL。
+   */
+  async rigModel3d(input: RigModel3dInput): Promise<RigModel3dResult> {
+    const { graphBinding, ...rigInput } = input
+    if (!projectService.isOpen()) throw fail(E_NO_PROJECT)
+
+    const { provider, modelId } = resolveActiveProvider(
+      'model3d',
+      rigInput.providerInstanceId,
+      rigInput.model
+    )
+    if (!supportsModel3dRig(provider.providerKind)) {
+      throw new Error(
+        `GRAPH_MODEL_RIG_PROVIDER:${provider.label}（${provider.providerKind}）不支持独立蒙皮，请选用 Meshy 或 Tripo`
+      )
+    }
+
+    let uploads: ObjectStorageUploadResult[] = []
+    try {
+      let modelUrl = rigInput.modelUrl?.trim() || ''
+      if (!modelUrl) {
+        const rel = rigInput.modelRelativePath?.trim()
+        if (!rel) throw new Error('GRAPH_MODEL_RIG_NO_MODEL')
+        const root = projectService.getRoot()
+        const { url, uploaded } = await ensureRemoteMediaUrl(rel, {
+          sourceLabel: 'model3d-rig-source',
+          projectRoot: root
+        })
+        modelUrl = url
+        if (uploaded) uploads.push(uploaded)
+      }
+
+      const job = await submitCloudModel3dRig(provider, {
+        modelUrl,
+        rigType: rigInput.rigType
+      })
+
+      const persisted = videoJobService.create({
+        kind: 'model3d',
+        providerJobId: job.jobId,
+        pollingUrl: job.pollingUrl,
+        providerInstanceId: provider.id,
+        model: modelId || job.model,
+        prompt: `rig:${rigInput.rigType || 'humanoid'}`,
+        name: rigInput.name,
+        source: 'graph',
+        outputDir: rigInput.outputDir,
+        graphBinding,
+        uploads: uploads.map((item) => ({
+          objectKey: item.objectKey,
+          url: item.url,
+          bytes: item.bytes,
+          bucket: item.bucket,
+          providerId: item.providerId,
+          providerLabel: item.providerLabel,
+          sourceLabel: item.sourceLabel
+        }))
+      })
+      uploads = []
+
+      const settled = await videoJobService.waitUntilSettled(persisted.localJobId)
+      if (settled.status !== 'succeeded' || !settled.assetId || !settled.relativePath) {
+        throw new Error(settled.error ?? fail(E_MODEL3D_GEN_FAILED).message)
+      }
+      return {
+        assetId: settled.assetId,
+        relativePath: settled.relativePath,
+        model: settled.model
+      }
+    } catch (err) {
+      if (uploads.length) await deleteUploads(uploads)
+      throw err
+    }
   }
 
   /**

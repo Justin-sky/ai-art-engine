@@ -515,9 +515,6 @@ function assetDef(meta: (typeof ASSET_META)[number]): NodeTypeDefinition {
           generateModel: '',
           generateProviderInstanceId: '',
           generateStyle: '',
-          generateRig: false,
-          generateRigType: 'humanoid',
-          generateRigAnimation: '',
           weight: meta.weight,
           volume: 1,
           muted: false,
@@ -2489,10 +2486,10 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
       })
     ],
     defaultParams: () => ({
-      skillId: 'blender.rigSkin',
       generateInstruction: '',
       generateModel: '',
-      generateProviderInstanceId: ''
+      generateProviderInstanceId: '',
+      generateRigType: 'humanoid'
     }),
     addable: true,
     deletable: true,

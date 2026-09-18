@@ -89,6 +89,7 @@ export function resolveGalleryOutputsFromNodeParams(
       createdAt: item.createdAt,
       assetId: item.assetId,
       rigMeta: item.rigMeta,
+      rigQa: item.rigQa,
       bonePose: item.bonePose,
       clip: item.clip
     }))

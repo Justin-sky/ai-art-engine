@@ -1777,6 +1777,13 @@ const {
     }
     return value
   },
+  rigModel3d: async (input) => {
+    const value = await window.studio.rigModel3d(input)
+    if (value.relativePath === 'Assets' || value.relativePath.startsWith('Assets/')) {
+      await project.refreshAssets()
+    }
+    return value
+  },
   resolveAssetGenParams: (assetId) => {
     const live = graphEditorHosts.getLiveAssetDocument(assetId)
     const base = isDraftAssetId(assetId)

@@ -87,7 +87,11 @@ function axisExtents(points: Vec3[]): { min: Vec3; max: Vec3; size: Vec3 } {
 }
 
 /** 站立角色：最长轴为 up；side 取 X（若 up 不是 X），否则 Z。 */
-export function detectStandingAxes(points: Vec3[]): { up: 0 | 1 | 2; side: 0 | 1 | 2; fwd: 0 | 1 | 2 } {
+export function detectStandingAxes(points: Vec3[]): {
+  up: 0 | 1 | 2
+  side: 0 | 1 | 2
+  fwd: 0 | 1 | 2
+} {
   const { size } = axisExtents(points)
   let up: 0 | 1 | 2 = 1
   if (size[2] >= size[1] && size[2] >= size[0]) up = 2
@@ -101,11 +105,7 @@ function comp(p: Vec3, axis: 0 | 1 | 2): number {
   return p[axis]
 }
 
-function bfsUntil(
-  adj: number[][],
-  start: number,
-  ok: (i: number) => boolean
-): number[] {
+function bfsUntil(adj: number[][], start: number, ok: (i: number) => boolean): number[] {
   const prev = new Map<number, number>()
   prev.set(start, -1)
   const q = [start]
@@ -216,7 +216,12 @@ export function detectHumanoidJoints(graph: MeshGraph): {
   const hasEdges = adj.some((n) => n.length > 0)
   const atTorso = (i: number) => Math.abs(sidev(points[i]!) - cx) <= torsoR * 1.25
 
-  const pickExtreme = (sideSign: 1 | -1, lo: number, hi: number, mode: 'side' | 'upMin' | 'fwdMax') => {
+  const pickExtreme = (
+    sideSign: 1 | -1,
+    lo: number,
+    hi: number,
+    mode: 'side' | 'upMin' | 'fwdMax'
+  ) => {
     let best = -1
     let score = mode === 'upMin' ? Infinity : -Infinity
     for (let i = 0; i < points.length; i++) {
@@ -318,8 +323,10 @@ export function detectHumanoidJoints(graph: MeshGraph): {
   const rElbow = rShoHit
     ? points[rHand.path[pathIndexAt(0.5, rShoHit.idx + 1)]!]!
     : lerp(rShoulder, rHandP, 0.5)
-  const lWrist = lHand.path.length >= 4 ? pathPoint(points, lHand.path, 0.12) : lerp(lElbow, lHandP, 0.72)
-  const rWrist = rHand.path.length >= 4 ? pathPoint(points, rHand.path, 0.12) : lerp(rElbow, rHandP, 0.72)
+  const lWrist =
+    lHand.path.length >= 4 ? pathPoint(points, lHand.path, 0.12) : lerp(lElbow, lHandP, 0.72)
+  const rWrist =
+    rHand.path.length >= 4 ? pathPoint(points, rHand.path, 0.12) : lerp(rElbow, rHandP, 0.72)
 
   let lHip = lFootPath.length >= 4 ? pathPoint(points, lFootPath, 1) : lerp(lFoot, lShoulder, 0.52)
   let rHip = rFootPath.length >= 4 ? pathPoint(points, rFootPath, 1) : lerp(rFoot, rShoulder, 0.52)
@@ -336,13 +343,23 @@ export function detectHumanoidJoints(graph: MeshGraph): {
   const rKnee = rFootPath.length >= 4 ? pathPoint(points, rFootPath, 0.5) : lerp(rHip, rFoot, 0.5)
 
   const hips = mul(add(lHip, rHip), 0.5)
-  const chest = centroid(points, (p) => {
-    const u = unorm(p)
-    return u > (unorm(hips) + shoulderU) * 0.5 - 0.04 && u < shoulderU + 0.02 && Math.abs(sidev(p) - cx) < torsoR
-  }) ?? lerp(hips, head, 0.62)
+  const chest =
+    centroid(points, (p) => {
+      const u = unorm(p)
+      return (
+        u > (unorm(hips) + shoulderU) * 0.5 - 0.04 &&
+        u < shoulderU + 0.02 &&
+        Math.abs(sidev(p) - cx) < torsoR
+      )
+    }) ?? lerp(hips, head, 0.62)
   const neck =
-    centroid(points, (p) => unorm(p) > shoulderU - 0.02 && unorm(p) < unorm(head) - 0.04 && Math.abs(sidev(p) - cx) < torsoR * 0.7) ??
-    lerp(chest, head, 0.45)
+    centroid(
+      points,
+      (p) =>
+        unorm(p) > shoulderU - 0.02 &&
+        unorm(p) < unorm(head) - 0.04 &&
+        Math.abs(sidev(p) - cx) < torsoR * 0.7
+    ) ?? lerp(chest, head, 0.45)
   const spine = lerp(hips, chest, 0.45)
 
   const minLen = ur * 0.012
@@ -375,7 +392,9 @@ export function detectHumanoidJoints(graph: MeshGraph): {
 
 function fallbackBones(points: Vec3[]): HumanoidBoneSpec[] {
   const { min, size } = axisExtents(points.length ? points : [[0, 0, 0]])
-  const axes = points.length ? detectStandingAxes(points) : { up: 2 as const, side: 0 as const, fwd: 1 as const }
+  const axes = points.length
+    ? detectStandingAxes(points)
+    : { up: 2 as const, side: 0 as const, fwd: 1 as const }
   const wp = (side: number, fwd: number, h: number): Vec3 => {
     const p: Vec3 = [0, 0, 0]
     p[axes.side] = min[axes.side] + (side * 0.5 + 0.5) * Math.max(size[axes.side], 0.001)

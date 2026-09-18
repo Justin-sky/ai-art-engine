@@ -70,6 +70,7 @@ export function modelJobOutputs(
       relativePath,
       assetId: model.assetId,
       ...(result.rigMeta ? { rigMeta: result.rigMeta } : {}),
+      ...(result.rigQa ? { rigQa: result.rigQa } : {}),
       ...(result.bonePose ? { bonePose: result.bonePose } : {}),
       ...(result.clip
         ? {

@@ -3688,9 +3688,12 @@ export default {
       modelRigNoTextModel: '请先在节点上选择文本模型',
       modelRigMcp: '请先启动 Blender 并启用 Blender MCP',
       modelRigNoMatch: 'Blender 未能创建可用骨架',
+      modelRigNoWeights: '骨架已创建但顶点组为空，蒙皮权重未写入',
+      modelRigQa: '蒙皮硬 QA 未通过（骨架对齐 / 权重 / Pose 测试）',
+      modelRigStuck: '蒙皮返工无进展，已停止以避免空转',
       modelRigFailed: '3D 骨骼蒙皮未完成',
       modelRigExport: 'Blender 未导出蒙皮 GLB',
-      modelRigDsh: '无法启动 dsh 作业（蒙皮）',
+      modelRigDsh: '无法调用云端骨骼蒙皮（Rigging API 未接入）',
       modelAnimNoModel: '请先连接上游 3D 模型',
       modelAnimNoArmature: '上游模型没有 armature；请先经过「3D 骨骼蒙皮」节点',
       modelAnimNoTextModel: '请先在节点上选择文本模型',
@@ -4022,7 +4025,7 @@ export default {
         modelEmpty: '请先在设置中启用并勾选文本模型'
       },
       modelRigSkin: {
-        hint: '连接上游 3D 模型，点选常用骨架或填写描述后运行。Cook 经 dsh 指挥 Blender 建骨、自动权重并导出新 GLB。需要启动 Blender 并启用 Blender MCP。',
+        hint: '连接上游 3D 模型，选择 Meshy 或 Tripo，Cook 后上传模型并调用云端 Rigging API 绑定骨骼，导出带蒙皮的 GLB。需配置对应 API Key 与对象存储（用于上传模型）。',
         tabsAria: '3D 骨骼蒙皮页签',
         tabs: {
           preview: '模型',
@@ -4035,10 +4038,24 @@ export default {
         vertexGroups: '顶点组 · 共 {n} 个',
         skeletonHint: '仅显示骨架。橙色点为骨骼节点，点击预览或列表里的节点可选中高亮。',
         skeletonPresetHint:
-          '模型文件还没有烘焙骨骼，这里按预设拓扑合成显示骨架（经 Blender MCP 蒙皮后骨骼才会写入模型）。橙色点为骨骼节点，点击可选中。',
+          '模型文件还没有烘焙骨骼时，这里按预设拓扑合成显示骨架；云端 Rigging 完成后骨骼会写入 GLB。橙色点为骨骼节点，点击可选中。',
         skeletonMissingBaked:
-          'Cook 记到了骨名，但当前 GLB 没有可绘制骨架。请确认 Blender 已导出带 Armature 与权重的 output.glb。',
-        skeletonEmpty: '运行节点后在此查看 rig 后的骨架信息'
+          'Cook 记到了骨名，但当前 GLB 没有可绘制骨架。请确认云端 Rigging 已返回带 Armature 与权重的 GLB。',
+        skeletonEmpty: '运行节点后在此查看 rig 后的骨架信息',
+        qaTitle: '蒙皮 QA',
+        qaPass: '通过',
+        qaFail: '未通过',
+        qaAttempt: '轮次 {n}',
+        qaUnweighted: '未加权顶点 {pct}%',
+        qaInfluences: '单顶点最大影响 {n}',
+        qaBones: '骨骼 {n}',
+        qaGroups: '顶点组 {n}',
+        qaFails: '失败项',
+        qaPoses: 'Pose 测试',
+        qaEmpty: '运行节点后显示硬 QA 结果；失败时不会写入历史图库',
+        qaScreenshots: 'QA 截图',
+        qaScreenshotMissing: '截图已失效（任务清理后未保留）',
+        qaScreenshotDelete: '删除此截图'
       },
       modelAnimation: {
         hint: '连接上游已蒙皮模型，点选常用动作或填写描述后运行。Cook 经 dsh 指挥 Blender 做关键帧并导出带 AnimationClip 的 GLB。需要启动 Blender 并启用 Blender MCP。',
@@ -4070,7 +4087,10 @@ export default {
           start: '正在启动 dsh…',
           skill: '正在加载技能…',
           inspect: '正在读取场景…',
-          blender: '正在操作 Blender…',
+          landmark: '正在拟合关节标记…',
+          blender: '正在建骨与自动权重…',
+          repair: '正在修正权重…',
+          qa: '正在跑硬 QA…',
           screenshot: '正在截图自检…',
           export: '正在导出 GLB…',
           write: '正在写 result.json…',
@@ -4298,7 +4318,7 @@ export default {
           glass: '玻璃'
         },
         model3dRig: '3D 蒙皮',
-        model3dRigHint: '要求上游为模型附加骨骼蒙皮（仅 Tripo / Meshy / Rodin 支持）',
+        model3dRigHint: '已改用「3D 骨骼蒙皮」节点调用 Meshy/Tripo Rigging API',
         model3dRigType: '骨架类型',
         model3dRigTypes: {
           humanoid: '人形',
@@ -4335,7 +4355,7 @@ export default {
         modelPoseInstructionPlaceholder:
           "描述角色静帧姿势（走路、挥手、叉腰…）或点 Inspector 常用姿势；可用 {'@'} 引用上游文本",
         modelRigSkinInstructionPlaceholder:
-          "描述骨骼蒙皮类型（人形 / 四足 / 道具等）或点常用预设；可用 {'@'} 引用上游文本",
+          '可选备注；骨架类型请用下方下拉或点预设（humanoid / quadruped…）',
         modelAnimationInstructionPlaceholder:
           "游戏常用动画（待机 / 走路 / 跳跃 / 战斗戒备 / 命中受击 / 倒地 等）或自描述；可用 {'@'} 引用上游文本",
         refsEmpty: "连接上游后可用 {'@'} 引用；也可只在指令框中输入文本",
@@ -4639,8 +4659,7 @@ export default {
         generatedVideosDelete: '删除此视频',
         generatedModels: '已生成模型',
         generatedModelsCount: '{n} 个',
-        generatedModelsHint:
-          '每次执行追加新模型并自动选中最新；单击设为当前输出（out），× 删除',
+        generatedModelsHint: '每次执行追加新模型并自动选中最新；单击设为当前输出（out），× 删除',
         generatedModelsEmpty: '暂无生成结果。执行本节点后会显示在这里',
         generatedModelsDelete: '删除此模型',
         generatedTexts: '已生成剧本',

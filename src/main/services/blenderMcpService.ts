@@ -469,6 +469,17 @@ export function stopBlenderMcp(): void {
   link.connected = false
 }
 
+/** 强制丢弃当前 TCP（ECONNRESET 后调用，避免半死连接粘帧） */
+export function resetBlenderMcpConnection(): void {
+  client.reset()
+  link.connected = false
+  link.lastError = 'connection reset'
+  link.lastCheckedAt = new Date().toISOString()
+  probeInFlight = null
+  probeToken = null
+  lastProbeAt = 0
+}
+
 // --- 工具执行 -------------------------------------------------------------
 
 /**
@@ -555,16 +566,20 @@ function publishChatModelExport(relativePath: string): void {
  */
 export async function runBlenderTool(
   spec: BlenderToolSpec,
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  options?: { timeoutMs?: number }
 ): Promise<McpToolCallOutcome> {
   const cfg = syncLinkFromSettings()
   if (!cfg.enabled) {
     return { error: 'Blender 工具已在设置中禁用（设置 → MCP 工具服务 → Blender）' }
   }
 
-  const exportPrepared =
-    spec.command === 'export_scene' ? prepareExportSceneArgs(args) : null
+  const exportPrepared = spec.command === 'export_scene' ? prepareExportSceneArgs(args) : null
   const toolArgs = exportPrepared?.args ?? args
+  const timeoutMs =
+    typeof options?.timeoutMs === 'number' && options.timeoutMs > 0
+      ? options.timeoutMs
+      : BLENDER_COMMAND_TIMEOUT_MS
 
   if (spec.command === 'execute_code' && cfg.safeMode) {
     const verdict = guardBlenderCode(String(toolArgs.code ?? ''))
@@ -581,13 +596,13 @@ export async function runBlenderTool(
       // 官方后端：同一套白名单校验后编成 Python execute 帧
       raw = await client.requestExecute(
         buildOfficialToolCode(spec, toolArgs, { screenshotFilepath: shotPath }),
-        BLENDER_COMMAND_TIMEOUT_MS
+        timeoutMs
       )
     } else {
       const { type, params } = buildBlenderCommand(spec, toolArgs, {
         screenshotFilepath: shotPath
       })
-      raw = await client.request(type, params, BLENDER_COMMAND_TIMEOUT_MS)
+      raw = await client.request(type, params, timeoutMs)
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
@@ -620,11 +635,7 @@ export async function runBlenderTool(
   }
 
   if (!spec.screenshot) {
-    if (
-      spec.command === 'export_scene' &&
-      exportPrepared?.relativePath &&
-      !exportPrepared.isJob
-    ) {
+    if (spec.command === 'export_scene' && exportPrepared?.relativePath && !exportPrepared.isJob) {
       publishChatModelExport(exportPrepared.relativePath)
       const payload =
         reply.payload && typeof reply.payload === 'object'

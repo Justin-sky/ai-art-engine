@@ -149,15 +149,21 @@ const SVG_MOTION_USAGE_EN =
 
 /** 3D 加工节点：dsh 只指挥 Blender MCP，禁止在对话里编欧拉表交差 */
 const BLENDER_JOB_SYSTEM_ZH =
-  '你是 Blender 操作员，不是观察者。读场景最多一次，然后必须改场景。禁止用 execute_blender_code 反复列物体、量 bbox 或自己写截图脚本（img=bpy / render）。截图只用 get_viewport_screenshot，且必须在真正改过骨架/姿态之后、最多一次。只加工作业目录里的 input.glb，禁止 generate_model3d。禁止在对话里编造 Euler JSON 当最终产物。最后必须 export_scene 到 brief 里的 output.glb。不要用 open() 写 result.json，应用会从 Blender 回读骨架。' // cjk-ok（dsh 技能：Blender 作业硬约束）
+  '你是 Blender 操作员，不是观察者。读场景最多一次，然后必须改场景。禁止用 execute_blender_code 反复列物体、量 bbox 或自己写截图脚本（img=bpy / render）。截图只用 get_viewport_screenshot，且必须在真正改过骨架/姿态之后。只加工作业目录里的 input.glb，禁止 generate_model3d。禁止在对话里编造 Euler JSON 当最终产物。最后必须 export_scene 到 brief 里的 output.glb。不要用 open() 写 result.json，应用会从 Blender 回读骨架。' // cjk-ok（dsh 技能：Blender 作业硬约束）
 
 const BLENDER_JOB_SYSTEM_EN =
-  'You operate Blender; you are not a spectator. Inspect the scene at most once, then you MUST edit it. Do not loop execute_blender_code to list objects, remeasure bbox, or write custom screenshot scripts (img=bpy / render). Screenshots: get_viewport_screenshot only, and only once after a real rig/pose change. Process only the job input.glb — never generate_model3d. Never invent Euler JSON as the deliverable. Finally export_scene to the brief output.glb. Do not write result.json with open(); the app reads the armature back.'
+  'You operate Blender; you are not a spectator. Inspect the scene at most once, then you MUST edit it. Do not loop execute_blender_code to list objects, remeasure bbox, or write custom screenshot scripts (img=bpy / render). Screenshots: get_viewport_screenshot only after a real rig/pose change. Process only the job input.glb — never generate_model3d. Never invent Euler JSON as the deliverable. Finally export_scene to the brief output.glb. Do not write result.json with open(); the app reads the armature back.'
+
+const BLENDER_RIG_SYSTEM_ZH =
+  '你是 Blender 操作员，不是观察者。读场景每轮最多一次，然后必须改场景。禁止用 execute_blender_code 空转列物体。截图只用 get_viewport_screenshot，且必须在真正改过骨架之后；同轮禁止无改动重复截图。只加工作业目录里的 input.glb，禁止 generate_model3d。禁止在对话里编造 Euler JSON。不要用 open() 写 result.json。人形蒙皮：先跑 AIAE_HUMANOID_LANDMARKS，再按需挪 Empty，再跑 AIAE_HUMANOID_BIND_FROM_LANDMARKS；不要自行导出，应用会跑硬 QA。' // cjk-ok（dsh 技能：人形蒙皮硬约束）
+
+const BLENDER_RIG_SYSTEM_EN =
+  'You operate Blender; you are not a spectator. Inspect the scene at most once per attempt, then you MUST edit it. Do not loop execute_blender_code just to list objects. Screenshots: get_viewport_screenshot only after a real change; never spam identical shots. Process only the job input.glb — never generate_model3d. Never invent Euler JSON. Do not write result.json with open(). For humanoid skinning: run AIAE_HUMANOID_LANDMARKS, optionally nudge empties, then AIAE_HUMANOID_BIND_FROM_LANDMARKS; do not export — the app runs hard QA.'
 
 const BLENDER_RIG_INSTRUCTION_ZH =
-  '按网格包围盒建立可用骨架并自动权重，导出带 armature 与蒙皮的 GLB。' // cjk-ok（节点默认生成指令）
+  '按网格 landmark 建可用骨架并自动权重；应用硬 QA 通过后才导出带 armature 的 GLB。' // cjk-ok（节点默认生成指令）
 const BLENDER_RIG_INSTRUCTION_EN =
-  'Build a usable armature from the mesh bounding box, auto-weight it, and export a skinned GLB.'
+  'Build a usable armature from mesh landmarks, auto-weight it; the app exports a skinned GLB only after hard QA passes.'
 const BLENDER_POSE_INSTRUCTION_ZH =
   '在已有骨架上用 IK/约束做出静帧姿势，保持 bind/rest，导出 GLB 并读回 bonePose。' // cjk-ok（节点默认生成指令）
 const BLENDER_POSE_INSTRUCTION_EN =
@@ -168,9 +174,9 @@ const BLENDER_ANIM_INSTRUCTION_EN =
   'Create a loopable keyframed action on the existing armature, bake it, and export a GLB with AnimationClip.'
 
 const BLENDER_RIG_USAGE_ZH =
-  '用法：图节点 `model.rigSkin`。① import input.glb（一次）；② 若已有 ARMATURE 且用户未要求重绑则直接导出。③ 否则下一刀 execute_blender_code 必须原样执行 brief 里的 AIAE_HUMANOID_RIG 脚本（按网格顶点/边走到手脚与躯干，摆 21 骨 + parent_set ARMATURE_AUTO），禁止自己猜 head/tail。④ 确认 scene 里 type==ARMATURE 且 bones>0，才允许 get_viewport_screenshot 一次。⑤ export_scene 到 output.glb（含 armature+weights）。⑥ 不要写 result.json，应用会回读 rigMeta。空转检查 = 失败。' // cjk-ok（dsh 技能用法）
+  '用法：图节点 `model.rigSkin`（迭代）。① import input.glb（首轮一次）。② execute_blender_code 原样跑 brief 的 AIAE_HUMANOID_LANDMARKS（建 AIAE_LM_* Empty，配件/头发不参与端点）。③ 必要时 get_viewport_screenshot 后挪 Empty。④ 原样跑 AIAE_HUMANOID_BIND_FROM_LANDMARKS（只从 Empty 建 21 骨 + ARMATURE_AUTO + 权重清理）。⑤ 不要 export、不要写 result.json；应用跑硬 QA，失败会把失败项塞回下一轮（不限轮次，直到通过或判定卡死）。返工：关节错 → 调 Empty 再 bind；权重错 → 跑 AIAE_RIG_WEIGHT_REPAIR。空转检查 = 失败。' // cjk-ok（dsh 技能用法）
 const BLENDER_RIG_USAGE_EN =
-  'Usage: graph node `model.rigSkin`. (1) Import input.glb once. (2) If an ARMATURE already exists and the user did not ask to rebind, just export. (3) Otherwise the NEXT execute_blender_code MUST run the AIAE_HUMANOID_RIG script from the brief verbatim (place 21 bones from mesh vertices + edge walks from hands/feet into the torso, then parent_set ARMATURE_AUTO). Do not invent head/tail. (4) Only after scene has type==ARMATURE and bones>0 may you call get_viewport_screenshot once. (5) export_scene to output.glb with armature+weights. (6) Do not write result.json; the app reads rigMeta. Inspect-only loops are a failure.'
+  'Usage: graph node `model.rigSkin` (iterative). (1) Import input.glb once on attempt 1. (2) Run AIAE_HUMANOID_LANDMARKS from the brief verbatim (AIAE_LM_* empties; accessories/hair excluded). (3) Optionally screenshot then nudge empties. (4) Run AIAE_HUMANOID_BIND_FROM_LANDMARKS verbatim (21 bones from empties only + ARMATURE_AUTO + weight cleanup). (5) Do not export or write result.json; the app runs hard QA and may send failures back without a fixed attempt cap (until PASS or stuck). Repair: bad joints → move empties + rebind; bad weights → AIAE_RIG_WEIGHT_REPAIR. Inspect-only loops fail.'
 
 const BLENDER_POSE_USAGE_ZH =
   '用法：图节点 `model.pose` 只加工已蒙皮模型。流程：① import input.glb，列出 pose.bones 真名；② 用 IK（手脚）和约束做静帧，指令来自检查器芯片或手写，二者同一条通路；③ 禁止填欧拉表交差；④ 导出时保留 bind/rest，把当前姿态作为 default pose 或单帧 action，不要把姿势烤进 rest；⑤ 不要写 result.json，应用会回读 bonePose。上游无骨则失败。' // cjk-ok（dsh 技能用法）
@@ -358,8 +364,8 @@ const BUILTIN_SKILLS: GraphSkill[] = [
     kind: 'blender',
     titleZh: '3D 骨骼蒙皮', // cjk-ok（技能标题）
     titleEn: '3D rig & skin',
-    systemPromptZh: BLENDER_JOB_SYSTEM_ZH,
-    systemPromptEn: BLENDER_JOB_SYSTEM_EN,
+    systemPromptZh: BLENDER_RIG_SYSTEM_ZH,
+    systemPromptEn: BLENDER_RIG_SYSTEM_EN,
     instructionZh: BLENDER_RIG_INSTRUCTION_ZH,
     instructionEn: BLENDER_RIG_INSTRUCTION_EN,
     usageZh: BLENDER_RIG_USAGE_ZH,

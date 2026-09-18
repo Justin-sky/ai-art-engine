@@ -3772,9 +3772,12 @@ export default {
       modelRigNoTextModel: 'Pick a text model on the node first',
       modelRigMcp: 'Start Blender and enable Blender MCP first',
       modelRigNoMatch: 'Blender did not create a usable armature',
+      modelRigNoWeights: 'Armature exists but vertex groups are empty — weights were not written',
+      modelRigQa: 'Hard skinning QA failed (joint alignment / weights / pose tests)',
+      modelRigStuck: 'Skinning repair made no progress; stopped to avoid spinning',
       modelRigFailed: '3D rigging did not finish',
       modelRigExport: 'Blender did not export a skinned GLB',
-      modelRigDsh: 'Could not start the dsh job (rig)',
+      modelRigDsh: 'Cloud rigging API is not wired up',
       modelAnimNoModel: 'Connect an upstream 3D model first',
       modelAnimNoArmature: 'Upstream model has no armature; pipe through "3D Rigging" first',
       modelAnimNoTextModel: 'Pick a text model on the node first',
@@ -3783,7 +3786,8 @@ export default {
       modelAnimFailed: '3D keyframe animation did not finish',
       modelAnimExport: 'Blender did not export an animated GLB',
       modelAnimDsh: 'Could not start the dsh job (animation)',
-      modelDshTimeout: 'The dsh / Blender job timed out (rig ~100 min, pose ~60 min, animation ~120 min)',
+      modelDshTimeout:
+        'The dsh / Blender job timed out (rig ~100 min, pose ~60 min, animation ~120 min)',
       modelDshResult: 'The job did not write a valid result.json',
       modelDshExport: 'The job did not export a GLB',
       modelDshStart: 'dsh failed to start',
@@ -4114,7 +4118,7 @@ export default {
         modelEmpty: 'Enable and select a text model in Settings first'
       },
       modelRigSkin: {
-        hint: 'Connect an upstream 3D model, pick a rig chip or write a description, then run. Cook drives Blender through dsh to build bones, auto-weight, and export a new GLB. Start Blender and enable Blender MCP first.',
+        hint: 'Connect an upstream 3D model, pick Meshy or Tripo, then Cook. The app uploads the mesh and calls the cloud Rigging API to produce a skinned GLB. Requires the provider API key and object storage for the upload.',
         tabsAria: '3D rig skin tabs',
         tabs: {
           preview: 'Model',
@@ -4128,10 +4132,24 @@ export default {
         skeletonHint:
           'Skeleton only. Orange dots are bone joints; click one in the preview or list to highlight.',
         skeletonPresetHint:
-          'No bones are baked into the model file yet — this renders the preset rig topology (bones are written into the model after skinning via Blender MCP). Orange dots are bone joints; click to select.',
+          'No bones are baked into the model file yet — this renders the preset topology; bones are written after cloud Rigging completes. Orange dots are bone joints; click to select.',
         skeletonMissingBaked:
-          'Bone names were recorded, but this GLB has no drawable skeleton. Export the mesh with an Armature and weights from Blender.',
-        skeletonEmpty: 'Run the node to inspect the resulting rig topology here'
+          'Bone names were recorded, but this GLB has no drawable skeleton. Confirm the cloud Rigging result includes an Armature and weights.',
+        skeletonEmpty: 'Run the node to inspect the resulting rig topology here',
+        qaTitle: 'Skinning QA',
+        qaPass: 'Pass',
+        qaFail: 'Fail',
+        qaAttempt: 'Attempt {n}',
+        qaUnweighted: 'Unweighted verts {pct}%',
+        qaInfluences: 'Max influences {n}',
+        qaBones: 'Bones {n}',
+        qaGroups: 'Vertex groups {n}',
+        qaFails: 'Failures',
+        qaPoses: 'Pose tests',
+        qaEmpty: 'Hard QA appears after a run; failures are not added to the history gallery',
+        qaScreenshots: 'QA screenshots',
+        qaScreenshotMissing: 'Screenshot missing (cleaned up with the job)',
+        qaScreenshotDelete: 'Remove this screenshot'
       },
       modelAnimation: {
         hint: 'Connect an upstream skinned model, pick an action chip or write a description, then run. Cook drives Blender through dsh to keyframe and export a GLB with AnimationClip. Start Blender and enable Blender MCP first.',
@@ -4165,7 +4183,10 @@ export default {
           start: 'Starting dsh…',
           skill: 'Loading skill…',
           inspect: 'Reading the scene…',
-          blender: 'Driving Blender…',
+          landmark: 'Fitting joint landmarks…',
+          blender: 'Building bones and auto-weights…',
+          repair: 'Repairing weights…',
+          qa: 'Running hard QA…',
           screenshot: 'Taking a viewport screenshot…',
           export: 'Exporting GLB…',
           write: 'Writing result.json…',
@@ -4407,8 +4428,7 @@ export default {
           glass: 'Glass'
         },
         model3dRig: '3D Rigging',
-        model3dRigHint:
-          'Ask the upstream to attach a skeleton to the model (Tripo / Meshy / Rodin only)',
+        model3dRigHint: 'Use the “3D Rigging” node with Meshy/Tripo Rigging API instead',
         model3dRigType: 'Skeleton type',
         model3dRigTypes: {
           humanoid: 'Humanoid',
@@ -4451,7 +4471,7 @@ export default {
         modelPoseInstructionPlaceholder:
           "Describe a still pose (walk, wave, hands on hips…) or pick a preset in Inspector; use {'@'} to cite upstream text",
         modelRigSkinInstructionPlaceholder:
-          "Describe the rig type (humanoid / quadruped / prop…) or pick a preset; use {'@'} to cite upstream text",
+          'Optional notes; pick skeleton type below or via presets (humanoid / quadruped…)',
         modelAnimationInstructionPlaceholder:
           "Game-ready animation (idle / walk / jump / guard / hit react / death, etc.) or a free-text description; use {'@'} to cite upstream text",
         refsEmpty: "Connect upstream inputs to cite with {'@'}, or type the instruction alone",

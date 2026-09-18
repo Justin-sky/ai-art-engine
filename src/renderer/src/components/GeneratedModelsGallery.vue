@@ -89,8 +89,18 @@ const props = defineProps<{
 }>()
 
 const { t } = useStudioI18n()
-const { canSave, isSaved, isSaving, openSave, dialogOpen, dialogRef, defaultName, defaultFolderId, confirmSave, closeDialog } =
-  useSaveCacheAsset()
+const {
+  canSave,
+  isSaved,
+  isSaving,
+  openSave,
+  dialogOpen,
+  dialogRef,
+  defaultName,
+  defaultFolderId,
+  confirmSave,
+  closeDialog
+} = useSaveCacheAsset()
 
 const items = computed(() => {
   void graphEditorHosts.revision.value

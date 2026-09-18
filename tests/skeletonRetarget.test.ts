@@ -80,10 +80,7 @@ describe('skeleton retarget helpers', () => {
     expect(isSkinningBone(new THREE.Bone())).toBe(true)
     expect(isSkinningBone(new THREE.Object3D())).toBe(false)
     expect(isSkinningBone({ isBone: true } as unknown as THREE.Object3D)).toBe(true)
-    const mesh = new THREE.SkinnedMesh(
-      new THREE.BufferGeometry(),
-      new THREE.MeshBasicMaterial()
-    )
+    const mesh = new THREE.SkinnedMesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial())
     expect(isSkinnedMeshObject(mesh)).toBe(true)
     expect(isSkinnedMeshObject(new THREE.Mesh())).toBe(false)
   })

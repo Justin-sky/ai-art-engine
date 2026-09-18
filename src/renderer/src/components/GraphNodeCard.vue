@@ -415,13 +415,9 @@
             @update:model-value="persistModel3dStyle"
           />
           <Model3dRigControls
-            v-if="showModel3dRig"
-            :enabled="model3dRigEnabled"
+            v-if="showModel3dRigType"
             :rig-type="model3dRigType"
-            :rig-animation="model3dRigAnimation"
-            @update:enabled="persistModel3dRigEnabled"
             @update:rig-type="persistModel3dRigType"
-            @update:rig-animation="persistModel3dRigAnimation"
           />
           <ImageGenerateParamsSelect
             v-if="showImageGenerateParams"
@@ -1040,7 +1036,8 @@ const instructionModality = computed((): GenerateModelModality => {
   }
   if (instructionKind.value === 'video' || instructionKind.value === 'lipSync') return 'video'
   if (instructionKind.value === 'voice') return 'audio'
-  if (instructionKind.value === 'model3d') return 'model3d'
+  if (instructionKind.value === 'model3d' || instructionKind.value === 'modelRigSkin')
+    return 'model3d'
   return 'text'
 })
 
@@ -1105,6 +1102,7 @@ const instructionModelTitle = computed(() => {
   }
   if (instructionKind.value === 'voice') return t('graph.inspector.generate.voiceModel')
   if (instructionKind.value === 'model3d') return t('graph.inspector.generate.model3dModel')
+  if (instructionKind.value === 'modelRigSkin') return t('graph.inspector.generate.model3dModel')
   if (instructionKind.value === 'mediaRework') return t('graph.inspector.generate.imageModel')
   return t('graph.inspector.generate.model')
 })
@@ -1994,15 +1992,36 @@ async function refreshModelOptions(): Promise<void> {
     preferred,
     selectedModelKey.value
   )
-  modelOptions.value = options
-  selectedModelKey.value = selectedKey
+  // 骨骼蒙皮节点只保留支持独立 Rigging API 的供应商
+  const filtered =
+    instructionKind.value === 'modelRigSkin'
+      ? options.filter((o) => supportsModel3dRig(o.providerKind ?? ''))
+      : options
+  modelOptions.value = filtered
+  selectedModelKey.value = filtered.some((o) => o.key === selectedKey)
+    ? selectedKey
+    : (filtered[0]?.key ?? '')
 }
 
 function persistInstruction(): void {
   if (!props.hostId || !instructionKind.value) return
-  graphEditorHosts.updateNode(props.hostId, props.node.id, {
+  const next: Record<string, string> = {
     generateInstruction: instruction.value
-  })
+  }
+  // 蒙皮预设 body 即骨架类型关键字时，同步写入 generateRigType
+  if (instructionKind.value === 'modelRigSkin') {
+    const key = instruction.value.trim().toLowerCase()
+    if (
+      key === 'humanoid' ||
+      key === 'quadruped' ||
+      key === 'bipedal' ||
+      key === 'creature' ||
+      key === 'biped'
+    ) {
+      next.generateRigType = key === 'biped' ? 'humanoid' : key
+    }
+  }
+  graphEditorHosts.updateNode(props.hostId, props.node.id, next)
 }
 
 function persistGenerateModel(): void {
@@ -2021,38 +2040,22 @@ const showModel3dStyle = computed(
     modelOptions.value.find((o) => o.key === selectedModelKey.value)?.providerKind === 'lux3d'
 )
 
+/** 3D 骨骼蒙皮：骨架类型（Meshy/Tripo Rigging API） */
+const showModel3dRigType = computed(() => instructionKind.value === 'modelRigSkin')
+
+const model3dRigType = computed(() => props.node.params.generateRigType || 'humanoid')
+
+function persistModel3dRigType(value: string): void {
+  if (!props.hostId || !instructionKind.value) return
+  graphEditorHosts.updateNode(props.hostId, props.node.id, { generateRigType: value })
+}
+
 /** 未设置时展示服务端缺省风格（photorealistic）；选中后才落盘到节点参数 */
 const model3dStyle = computed(() => props.node.params.generateStyle || 'photorealistic')
 
 function persistModel3dStyle(value: string): void {
   if (!props.hostId || !instructionKind.value) return
   graphEditorHosts.updateNode(props.hostId, props.node.id, { generateStyle: value })
-}
-
-/** 3D 蒙皮：仅 Tripo / Meshy / Rodin 上游支持（白名单与 MCP `generate_model3d` 的入参校验共用） */
-const showModel3dRig = computed(
-  () =>
-    instructionKind.value === 'model3d' &&
-    supportsModel3dRig(
-      modelOptions.value.find((o) => o.key === selectedModelKey.value)?.providerKind ?? ''
-    )
-)
-/** 缺省 false（与 builtins 默认值一致；未启用时控件折叠为单一 checkbox） */
-const model3dRigEnabled = computed(() => props.node.params.generateRig === true)
-const model3dRigType = computed(() => props.node.params.generateRigType || 'humanoid')
-const model3dRigAnimation = computed(() => props.node.params.generateRigAnimation || '')
-
-function persistModel3dRigEnabled(value: boolean): void {
-  if (!props.hostId || !instructionKind.value) return
-  graphEditorHosts.updateNode(props.hostId, props.node.id, { generateRig: value })
-}
-function persistModel3dRigType(value: string): void {
-  if (!props.hostId || !instructionKind.value) return
-  graphEditorHosts.updateNode(props.hostId, props.node.id, { generateRigType: value })
-}
-function persistModel3dRigAnimation(value: string): void {
-  if (!props.hostId || !instructionKind.value) return
-  graphEditorHosts.updateNode(props.hostId, props.node.id, { generateRigAnimation: value })
 }
 
 /** 视频模型端口上限 → 节点参数（同步驱动端口隐藏/显示）；同时剪掉已隐藏口的入边 */

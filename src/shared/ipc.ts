@@ -113,6 +113,7 @@ export const IpcChannels = {
   GEN_SPEECH: 'gen:speech',
   GEN_MUSIC: 'gen:music',
   GEN_MODEL3D: 'gen:model3d',
+  RIG_MODEL3D: 'gen:model3d-rig',
   /** AI 自由构图：仅规划预览，不落盘 */
   GEN_AI_WORKFLOW_PLAN: 'gen:ai-workflow-plan',
   /** AI 自由构图：确认 GraphPlan 后落盘 */
@@ -274,6 +275,8 @@ export const IpcChannels = {
   HARNESS_ABORT: 'harness:abort',
   /** 图节点：准备 Blender dsh 作业目录 */
   BLENDER_DSH_PREPARE: 'blender-dsh:prepare',
+  /** 图节点：对人形蒙皮跑硬 QA（不导出） */
+  BLENDER_DSH_EVALUATE: 'blender-dsh:evaluate',
   /** 图节点：验收导出并落入 Cache/Models */
   BLENDER_DSH_FINALIZE: 'blender-dsh:finalize',
   /** 图节点：清理作业目录 */
@@ -820,10 +823,24 @@ export interface PrepareBlenderDshJobResult {
   briefAbs: string
 }
 
+export interface EvaluateBlenderDshJobInput {
+  jobId: string
+  attempt: number
+  /** 是否额外拍标准视角截图并落盘到 job/qa */
+  captureScreenshots?: boolean
+}
+
+export interface EvaluateBlenderDshJobResult {
+  result: import('./blenderDshJob').BlenderJobResult
+  screenshotRelativePaths: string[]
+}
+
 export interface FinalizeBlenderDshJobInput {
   jobId: string
   kind: 'rig' | 'pose' | 'anim'
   key: string
+  /** 仅当硬 QA PASS 后调用；pose/anim 忽略 */
+  requireRigQaPass?: boolean
 }
 
 /** Skills：dsh 技能目录中的一个文件 */
@@ -1175,6 +1192,10 @@ export interface StudioApi {
   generateSpeech: (input: GenerateSpeechInput) => Promise<GenerateSpeechResult>
   generateMusic: (input: GenerateMusicInput) => Promise<GenerateMusicAssetResult>
   generateModel3d: (input: GenerateModel3dInput) => Promise<GenerateModel3dResult>
+  /** 对已有模型调用 Meshy/Tripo 独立 Rigging API */
+  rigModel3d: (
+    input: import('./modelProvider').RigModel3dInput
+  ) => Promise<import('./modelProvider').RigModel3dResult>
   /** 音频转写：本地音频文件 → 带时间戳文本（语音识别） */
   transcribeAudio: (input: TranscribeAudioInput) => Promise<TranscribeAudioResult>
   /** AI 自由构图：仅规划预览 */
@@ -1359,6 +1380,9 @@ export interface StudioApi {
 
   /** 准备 Blender dsh 作业目录（拷输入 GLB、写 brief） */
   prepareBlenderDshJob: (input: PrepareBlenderDshJobInput) => Promise<PrepareBlenderDshJobResult>
+
+  /** 人形蒙皮：对当前 Blender 场景跑硬 QA，可选截图落盘 */
+  evaluateBlenderDshJob: (input: EvaluateBlenderDshJobInput) => Promise<EvaluateBlenderDshJobResult>
 
   /** 验收导出 GLB 并落入 Cache/Models */
   finalizeBlenderDshJob: (input: FinalizeBlenderDshJobInput) => Promise<{

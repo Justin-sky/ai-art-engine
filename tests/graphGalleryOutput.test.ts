@@ -166,26 +166,79 @@ describe('model gallery output', () => {
       size: { w: 220, h: 180 },
       params: {
         generatedModels: [
-          { id: 'm-1', relativePath: 'Cache/Models/a.glb' },
+          {
+            id: 'm-1',
+            relativePath: 'Cache/Models/a.glb',
+            rigMeta: { armature: 'A', bones: ['Hips'], vertexGroups: ['Hips'] },
+            rigQa: {
+              pass: true,
+              attempt: 1,
+              fingerprint: '1',
+              boneCount: 1,
+              requiredBonesOk: true,
+              parentChainOk: true,
+              vertexGroupCount: 1,
+              unweightedRatio: 0,
+              maxInfluences: 1,
+              weightSumError: 0,
+              zeroInfluenceBones: [],
+              deformMeshes: [],
+              bones: [],
+              poseMetrics: [],
+              fails: [],
+              notes: []
+            }
+          },
           { id: 'm-2', relativePath: 'Cache/Models/b.glb' }
         ],
         selectedModelId: 'm-2',
-        rigModelRelativePath: 'Cache/Models/b.glb'
+        rigModelRelativePath: 'Cache/Models/b.glb',
+        rigMeta: { armature: 'Stale', bones: ['Old'], vertexGroups: ['Old'] },
+        rigQa: {
+          pass: false,
+          attempt: 3,
+          fingerprint: 'stale',
+          boneCount: 0,
+          requiredBonesOk: false,
+          parentChainOk: false,
+          vertexGroupCount: 0,
+          unweightedRatio: 1,
+          maxInfluences: 0,
+          weightSumError: 1,
+          zeroInfluenceBones: [],
+          deformMeshes: [],
+          bones: [],
+          poseMetrics: [],
+          fails: [],
+          notes: []
+        }
       }
     }
   }
 
-  it('selects a historical model as current out', () => {
+  it('selects a historical model as current out and syncs rigMeta/rigQa', () => {
     const node = rigNode()
     const { runStates, dispose } = registerHosts(node)
     cleanup = dispose
     expect(selectGalleryOutput(HOST_ID, node, 'model', 'm-1')).toBe(true)
     expect(node.params.selectedModelId).toBe('m-1')
     expect(node.params.rigModelRelativePath).toBe('Cache/Models/a.glb')
+    expect(node.params.rigMeta?.armature).toBe('A')
+    expect(node.params.rigQa?.pass).toBe(true)
     expect(runStates[node.id]?.outputs?.out).toMatchObject({
       kind: 'asset',
       relativePath: 'Cache/Models/a.glb'
     })
+  })
+
+  it('clears stale rigMeta/rigQa when the selected history entry has none', () => {
+    const node = rigNode()
+    const { dispose } = registerHosts(node)
+    cleanup = dispose
+    expect(selectGalleryOutput(HOST_ID, node, 'model', 'm-2')).toBe(true)
+    expect(node.params.rigMeta).toBeUndefined()
+    expect(node.params.rigQa).toBeUndefined()
+    expect(node.params.rigModelRelativePath).toBe('Cache/Models/b.glb')
   })
 
   it('deletes a model and falls back to the newest remaining', () => {

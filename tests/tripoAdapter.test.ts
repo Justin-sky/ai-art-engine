@@ -17,6 +17,7 @@ vi.mock('axios', () => ({
   }
 }))
 
+import { mapCloudRigType } from '../src/main/services/modelProviders/model3dRig'
 import { tripoAdapter } from '../src/main/services/modelProviders/tripo/adapter'
 
 function provider(overrides?: Partial<ModelProviderInstance>): ModelProviderInstance {
@@ -32,40 +33,52 @@ function provider(overrides?: Partial<ModelProviderInstance>): ModelProviderInst
   }
 }
 
-describe('tripoAdapter rigging', () => {
+describe('tripoAdapter generation is geometry-only', () => {
   beforeEach(() => {
     getMock.mockReset()
     postMock.mockReset()
   })
 
-  it('omits the rig field by default to preserve the prior non-rigged behaviour', async () => {
-    postMock.mockResolvedValueOnce({ data: { data: { task_id: 't-1' } } })
-    await tripoAdapter.submitModel3d(provider(), 'tripo-3d-v1', { prompt: 'a chair' })
-    const body = postMock.mock.calls[0]?.[1] as Record<string, unknown>
-    expect(body).not.toHaveProperty('rig')
+  it('maps UI rig types for standalone Rigging API', () => {
+    expect(mapCloudRigType('humanoid')).toBe('biped')
+    expect(mapCloudRigType('bipedal')).toBe('biped')
+    expect(mapCloudRigType('quadruped')).toBe('quadruped')
+    expect(mapCloudRigType('creature')).toBe('avian')
   })
 
-  it('emits rig=true when the input opts in', async () => {
-    postMock.mockResolvedValueOnce({ data: { data: { task_id: 't-2' } } })
-    await tripoAdapter.submitModel3d(provider(), 'tripo-3d-v1', {
+  it('omits inline rig on generation even when deprecated rig flags are set', async () => {
+    postMock.mockResolvedValueOnce({ data: { data: { task_id: 't-1' } } })
+    const job = await tripoAdapter.submitModel3d(provider(), 'tripo-3d-v1', {
       prompt: 'a robot',
       rig: true,
-      rigType: 'humanoid'
-    })
-    const body = postMock.mock.calls[0]?.[1] as Record<string, unknown>
-    expect(body.rig).toBe(true)
-    // Tripo v2 仅识别 `rig`；rigType / rigAnimation 留供未来扩展，不强行注入
-    expect(body).not.toHaveProperty('rig_type')
-    expect(body).not.toHaveProperty('rig_animation')
-  })
-
-  it('omits rig when the input sets rig=false explicitly', async () => {
-    postMock.mockResolvedValueOnce({ data: { data: { task_id: 't-3' } } })
-    await tripoAdapter.submitModel3d(provider(), 'tripo-3d-v1', {
-      prompt: 'a mug',
-      rig: false
+      rigType: 'humanoid',
+      rigAnimation: 'walk'
     })
     const body = postMock.mock.calls[0]?.[1] as Record<string, unknown>
     expect(body).not.toHaveProperty('rig')
+    expect(postMock.mock.calls[0]?.[0]).toBe('/v3/generation/text-to-model')
+    expect(job.pollingUrl).toBe('t-1')
+    expect(job.pollingUrl).not.toMatch(/tripo-pipe/)
+  })
+
+  it('polls a bare task id without gen→rig pipe', async () => {
+    getMock.mockResolvedValueOnce({
+      data: {
+        data: {
+          status: 'success',
+          progress: 100,
+          output: { model_url: 'https://cdn.tripo3d.ai/mesh.glb' }
+        }
+      }
+    })
+    const poll = await tripoAdapter.pollModel3d(provider(), {
+      jobId: 't-1',
+      pollingUrl: 't-1'
+    })
+    expect(poll).toMatchObject({
+      status: 'completed',
+      downloadUrl: 'https://cdn.tripo3d.ai/mesh.glb'
+    })
+    expect(postMock).not.toHaveBeenCalled()
   })
 })

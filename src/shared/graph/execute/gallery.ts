@@ -357,7 +357,12 @@ export function dualModelGalleryOutputs(
     ...(base?.weight != null ? { weight: base.weight } : {}),
     ...(base?.notes ? { notes: base.notes } : {}),
     ...(base?.title ? { title: base.title } : {}),
-    ...(picked?.rigMeta ? { rigMeta: picked.rigMeta } : base?.rigMeta ? { rigMeta: base.rigMeta } : {}),
+    ...(picked?.rigMeta
+      ? { rigMeta: picked.rigMeta }
+      : base?.rigMeta
+        ? { rigMeta: base.rigMeta }
+        : {}),
+    ...(picked?.rigQa ? { rigQa: picked.rigQa } : base?.rigQa ? { rigQa: base.rigQa } : {}),
     ...(picked?.bonePose
       ? { bonePose: picked.bonePose }
       : base?.bonePose

@@ -316,7 +316,16 @@ export interface GraphNodeParams {
     bones: string[]
     vertexGroups: string[]
     presetId?: string
+    boneGeom?: Array<{
+      name: string
+      parent: string
+      head: [number, number, number]
+      tail: [number, number, number]
+    }>
+    deformMeshes?: string[]
   }
+  /** 最近一次 Cook 的硬 QA（失败时也保留，供 Inspector 展示） */
+  rigQa?: import('../blenderRigSkinPipeline').RigQaReport
   /** 3D 骨骼蒙皮节点：Inspector 当前高亮的常用拓扑 id */
   rigPresetId?: string
   /**
@@ -555,6 +564,7 @@ export interface GraphNodeParams {
     relativePath?: string
     assetId?: string
     rigMeta?: GraphNodeParams['rigMeta']
+    rigQa?: GraphNodeParams['rigQa']
     bonePose?: GraphNodeParams['bonePose']
     clip?: GraphNodeParams['clip']
   }>

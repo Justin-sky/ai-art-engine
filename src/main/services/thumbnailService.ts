@@ -195,11 +195,7 @@ export function peekExistingImageThumbnail(
     const sourceAbs = assertInside(root, join(root, sourceRel))
     if (!existsSync(sourceAbs)) return null
     // 这里是「只看有没有」的探测：只认已落盘的缩略图，不触发生成
-    if (
-      !isImageFilePath(sourceAbs) &&
-      !isVideoFilePath(sourceAbs) &&
-      !isModelFilePath(sourceAbs)
-    ) {
+    if (!isImageFilePath(sourceAbs) && !isVideoFilePath(sourceAbs) && !isModelFilePath(sourceAbs)) {
       return null
     }
     const thumbRel = thumbRelativePathFor(sourceRel)

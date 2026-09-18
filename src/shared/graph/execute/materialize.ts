@@ -290,6 +290,7 @@ export function mergeGeneratedModels(
         id: 'gen-model:seed',
         relativePath: seed,
         ...(ctx.node.params.rigMeta ? { rigMeta: ctx.node.params.rigMeta } : {}),
+        ...(ctx.node.params.rigQa ? { rigQa: ctx.node.params.rigQa } : {}),
         ...(ctx.node.params.bonePose ? { bonePose: ctx.node.params.bonePose } : {}),
         ...(ctx.node.params.clip ? { clip: ctx.node.params.clip } : {})
       })
@@ -314,6 +315,7 @@ export function persistModelGeneration(
     ...(relativePath ? { relativePath } : {}),
     ...(item.assetId?.trim() ? { assetId: item.assetId.trim() } : {}),
     ...(item.rigMeta ? { rigMeta: item.rigMeta } : {}),
+    ...(item.rigQa ? { rigQa: item.rigQa } : {}),
     ...(item.bonePose ? { bonePose: item.bonePose } : {}),
     ...(item.clip ? { clip: item.clip } : {})
   }
@@ -324,6 +326,7 @@ export function persistModelGeneration(
       ...(entry.relativePath?.trim() ? { relativePath: entry.relativePath.trim() } : {}),
       ...(entry.assetId?.trim() ? { assetId: entry.assetId.trim() } : {}),
       ...(entry.rigMeta ? { rigMeta: entry.rigMeta } : {}),
+      ...(entry.rigQa ? { rigQa: entry.rigQa } : {}),
       ...(entry.bonePose ? { bonePose: entry.bonePose } : {}),
       ...(entry.clip ? { clip: entry.clip } : {})
     })

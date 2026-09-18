@@ -71,8 +71,8 @@ const E_LUX3D_GEN_FAILED = defErrSimple(
 )
 const E_LUX3D_RIG_UNSUPPORTED = defErrSimple(
   'provider.lux3d.rigUnsupported',
-  'Lux3D 不支持蒙皮绑定（仅 Tripo / Meshy / Rodin 支持）',
-  'Lux3D does not support rigging (only Tripo / Meshy / Rodin)'
+  'Lux3D 不支持生成侧蒙皮：请用「3D 骨骼蒙皮」节点（Meshy / Tripo Rigging API）',
+  'Lux3D does not support gen-side rigging; use the 3D Rigging node (Meshy / Tripo)'
 )
 const E_LUX3D_NO_GLB = defErrSimple(
   'provider.lux3d.noGlbOutput',

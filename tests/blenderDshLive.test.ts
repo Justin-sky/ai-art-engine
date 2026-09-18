@@ -40,6 +40,13 @@ describe('phaseFromHarnessEvent', () => {
       'screenshot'
     )
     expect(actionFromBlenderCode('arm_data = bpy.data.armatures.new("Rig")')).toBe('blender')
+    expect(
+      actionFromBlenderCode('# AIAE_HUMANOID_LANDMARKS\nbpy.data.objects.new("AIAE_LM_head", None)')
+    ).toBe('landmark')
+    expect(
+      actionFromBlenderCode('# AIAE_RIG_WEIGHT_REPAIR\nbpy.ops.object.vertex_group_smooth()')
+    ).toBe('repair')
+    expect(actionFromBlenderCode('# AIAE_RIG_QA\nprint("AIAE_RIG_QA")')).toBe('qa')
   })
 
   it('summarizes tool lines without python source', () => {

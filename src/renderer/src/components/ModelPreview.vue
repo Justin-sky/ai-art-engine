@@ -344,7 +344,8 @@ function ensureBoneMaterials(): void {
   if (!boneMatNormal) {
     boneMatNormal = new THREE.MeshBasicMaterial({
       color: BONE_COLOR,
-      depthTest: true,
+      depthTest: false,
+      depthWrite: false,
       transparent: true,
       opacity: 0.95
     })
@@ -352,7 +353,8 @@ function ensureBoneMaterials(): void {
   if (!boneMatSelected) {
     boneMatSelected = new THREE.MeshBasicMaterial({
       color: BONE_SELECTED_COLOR,
-      depthTest: true,
+      depthTest: false,
+      depthWrite: false,
       transparent: true,
       opacity: 1
     })
@@ -360,16 +362,18 @@ function ensureBoneMaterials(): void {
   if (!boneMatLink) {
     boneMatLink = new THREE.MeshBasicMaterial({
       color: BONE_LINE_COLOR,
-      depthTest: true,
+      depthTest: false,
+      depthWrite: false,
       transparent: true,
-      opacity: 0.88,
+      opacity: 0.92,
       side: THREE.DoubleSide
     })
   }
   if (!boneMatLinkSelected) {
     boneMatLinkSelected = new THREE.MeshBasicMaterial({
       color: BONE_SELECTED_COLOR,
-      depthTest: true,
+      depthTest: false,
+      depthWrite: false,
       transparent: true,
       opacity: 0.95,
       side: THREE.DoubleSide
@@ -460,6 +464,7 @@ function syncSkeletonOverlay(): void {
     syncModelMeshVisibility(true)
     scene.add(boneOverlay)
     updateBoneMarkers()
+    fitCameraToBoneOverlay()
     emit('skeleton-source', 'preset')
     return
   }
@@ -487,10 +492,13 @@ function buildPresetSkeletonOverlay(): boolean {
   }
   const skelSize = skelBox.getSize(new THREE.Vector3())
   const skelCenter = skelBox.getCenter(new THREE.Vector3())
-  const scale = Math.max(modelSize.y, modelSize.x, modelSize.z, 1e-3) / Math.max(skelSize.y, 1e-3)
+  // 用三轴最大边对齐：Blender Z-up 拓扑的「身高」在 Z，不能只除 skelSize.y（会把骨架放大到视野外）
+  const modelExtent = Math.max(modelSize.x, modelSize.y, modelSize.z, 1e-3)
+  const skelExtent = Math.max(skelSize.x, skelSize.y, skelSize.z, 1e-3)
+  const scale = modelExtent / skelExtent
   const toWorld = (p: readonly [number, number, number]): THREE.Vector3 =>
     new THREE.Vector3(p[0], p[1], p[2]).sub(skelCenter).multiplyScalar(scale).add(modelCenter)
-  boneRadius = Math.max(0.008, Math.max(modelSize.y, 1e-3) * 0.012)
+  boneRadius = Math.max(0.01, modelExtent * 0.015)
 
   for (const spec of specs) {
     const name = spec.name?.trim() || spec.name
@@ -498,11 +506,12 @@ function buildPresetSkeletonOverlay(): boolean {
     const joint = new THREE.Mesh(jointGeom!, boneMatNormal!)
     joint.name = `bone-joint:${name}`
     joint.position.copy(pos)
+    joint.scale.setScalar(boneRadius * 0.35)
     joint.renderOrder = 12
     joint.userData.boneName = name
     joint.frustumCulled = false
     boneOverlay!.add(joint)
-    boneEntries.push({ name, bone: null, joint, rest: pos })
+    boneEntries.push({ name, bone: null, joint, rest: pos.clone() })
   }
 
   for (const spec of specs) {
@@ -522,7 +531,7 @@ function buildPresetSkeletonOverlay(): boolean {
       dir.multiplyScalar(1 / len)
       mesh.position.copy(from)
       mesh.quaternion.copy(boneQuat.setFromUnitVectors(yAxis, dir))
-      const thickness = Math.max(boneRadius * 1.4, len * 0.1)
+      const thickness = Math.max(boneRadius * 0.5, len * 0.07)
       mesh.scale.set(thickness, len, thickness)
     }
     boneOverlay!.add(mesh)
@@ -554,16 +563,18 @@ function updateBoneMarkers(): void {
       entry.joint.position.copy(worldPos)
     } else if (entry.rest) {
       worldPos.copy(entry.rest)
+      entry.joint.position.copy(entry.rest)
     } else {
       continue
     }
     const selected = props.selectedBone != null && props.selectedBone === entry.name
     entry.joint.material = selected ? boneMatSelected! : boneMatNormal!
-    entry.joint.scale.setScalar(selected ? boneRadius * 0.35 : boneRadius * 0.2)
+    // 关节球：能看清 / 可点选，但不盖住骨架结构
+    entry.joint.scale.setScalar(selected ? boneRadius * 0.45 : boneRadius * 0.32)
 
     if (selected) {
       if (!selectedAxes) {
-        selectedAxes = new THREE.AxesHelper(boneRadius * 6)
+        selectedAxes = new THREE.AxesHelper(boneRadius * 4)
         selectedAxes.renderOrder = 13
         scene?.add(selectedAxes)
       }
@@ -587,7 +598,7 @@ function updateBoneMarkers(): void {
       boneQuat.setFromUnitVectors(yAxis, boneDir)
       link.mesh.position.copy(worldPos)
       link.mesh.quaternion.copy(boneQuat)
-      const thickness = Math.max(boneRadius * 1.4, len * 0.1)
+      const thickness = Math.max(boneRadius * 0.5, len * 0.07)
       link.mesh.scale.set(thickness, len, thickness)
     } else if (!(link.restFrom && link.restTo)) {
       continue
@@ -732,10 +743,29 @@ function fitCameraToBones(object: THREE.Object3D): boolean {
     any = true
   }
   if (!any || box.isEmpty()) return false
+  fitCameraToBox(box)
+  return true
+}
+
+/** 预设合成骨架：按 overlay 关节包围盒取景 */
+function fitCameraToBoneOverlay(): boolean {
+  if (!camera || !controls || !boneEntries.length) return false
+  const box = new THREE.Box3()
+  for (const entry of boneEntries) {
+    if (entry.rest) box.expandByPoint(entry.rest)
+    else if (entry.joint) box.expandByPoint(entry.joint.position)
+  }
+  if (box.isEmpty()) return false
+  fitCameraToBox(box)
+  return true
+}
+
+function fitCameraToBox(box: THREE.Box3): void {
+  if (!camera || !controls) return
   const size = box.getSize(new THREE.Vector3())
   const center = box.getCenter(new THREE.Vector3())
   const maxDim = Math.max(size.x, size.y, size.z, 0.25)
-  boneRadius = Math.max(0.012, maxDim * 0.035)
+  boneRadius = Math.max(0.012, maxDim * 0.025)
   const distance = maxDim * 2.6
   camera.near = Math.max(distance / 100, 0.01)
   camera.far = Math.max(distance * 20, 100)
@@ -748,7 +778,6 @@ function fitCameraToBones(object: THREE.Object3D): boolean {
   camera.updateProjectionMatrix()
   controls.target.copy(center)
   controls.update()
-  return true
 }
 
 function fitCameraToObject(object: THREE.Object3D, preferBones = false): void {
@@ -957,6 +986,8 @@ watch(
   () => props.showSkeleton,
   () => {
     syncSkeletonOverlay()
+    // 父级 flex 曾把视口挤成 0 高时，切 Tab 后补一次尺寸
+    requestAnimationFrame(() => resize())
   }
 )
 
@@ -964,7 +995,8 @@ watch(
   () => props.presetBones,
   () => {
     if (props.showSkeleton) syncSkeletonOverlay()
-  }
+  },
+  { deep: true }
 )
 
 watch(
@@ -995,6 +1027,8 @@ onBeforeUnmount(() => {
   position: relative;
   width: 100%;
   height: 200px;
+  min-height: 160px;
+  flex-shrink: 0;
   border-radius: 8px;
   overflow: hidden;
   background: var(--graph-preview-bg);

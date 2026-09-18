@@ -32,15 +32,20 @@ function provider(overrides?: Partial<ModelProviderInstance>): ModelProviderInst
   }
 }
 
-describe('meshyAdapter rigging', () => {
+describe('meshyAdapter generation omits inline rigging', () => {
   beforeEach(() => {
     getMock.mockReset()
     postMock.mockReset()
   })
 
-  it('omits rigging on text-to-3d by default', async () => {
+  it('omits rigging on text-to-3d even when deprecated rig flags are set', async () => {
     postMock.mockResolvedValueOnce({ data: { result: { id: 'm-1' } } })
-    await meshyAdapter.submitModel3d(provider(), 'meshy-3d-v2', { prompt: 'a chair' })
+    await meshyAdapter.submitModel3d(provider(), 'meshy-3d-v2', {
+      prompt: 'a chair',
+      rig: true,
+      rigType: 'humanoid',
+      rigAnimation: 'walk'
+    })
     const [endpoint, body] = postMock.mock.calls[0] as [string, Record<string, unknown>]
     expect(endpoint).toBe('/v2/text-to-3d')
     expect(body).not.toHaveProperty('rigging')
@@ -48,61 +53,29 @@ describe('meshyAdapter rigging', () => {
     expect(body).not.toHaveProperty('pose')
   })
 
-  it('forwards rigging+rig_type+pose on text-to-3d', async () => {
+  it('omits rigging on image-to-3d', async () => {
     postMock.mockResolvedValueOnce({ data: { result: { id: 'm-2' } } })
     await meshyAdapter.submitModel3d(provider(), 'meshy-3d-v2', {
-      prompt: 'a robot',
-      rig: true,
-      rigType: 'humanoid',
-      rigAnimation: 'walk'
-    })
-    const body = postMock.mock.calls[0]?.[1] as Record<string, unknown>
-    expect(body).toMatchObject({
-      rigging: true,
-      rig_type: 'humanoid',
-      pose: 'walk'
-    })
-  })
-
-  it('forwards rigging on image-to-3d', async () => {
-    postMock.mockResolvedValueOnce({ data: { result: { id: 'm-3' } } })
-    await meshyAdapter.submitModel3d(provider(), 'meshy-3d-v2', {
       prompt: '',
-      inputReferences: ['https://cdn.example.com/a.png'],
+      inputReferences: ['https://cdn.example/a.png'],
       rig: true,
       rigType: 'quadruped'
     })
     const [endpoint, body] = postMock.mock.calls[0] as [string, Record<string, unknown>]
     expect(endpoint).toBe('/v2/image-to-3d')
-    expect(body).toMatchObject({ rigging: true, rig_type: 'quadruped' })
-    // 未填 animation → 不发 pose
-    expect(body).not.toHaveProperty('pose')
+    expect(body).not.toHaveProperty('rigging')
+    expect(body).not.toHaveProperty('rig_type')
   })
 
-  it('forwards rigging on multi-image-to-3d', async () => {
-    postMock.mockResolvedValueOnce({ data: { result: { id: 'm-4' } } })
+  it('omits rigging on multi-image-to-3d', async () => {
+    postMock.mockResolvedValueOnce({ data: { result: { id: 'm-3' } } })
     await meshyAdapter.submitModel3d(provider(), 'meshy-3d-v2', {
       prompt: '',
-      inputReferences: [
-        { kind: 'image_url', url: 'https://cdn.example.com/1.png' },
-        { kind: 'image_url', url: 'https://cdn.example.com/2.png' }
-      ],
+      inputReferences: ['https://cdn.example/a.png', 'https://cdn.example/b.png'],
       rig: true
     })
     const [endpoint, body] = postMock.mock.calls[0] as [string, Record<string, unknown>]
     expect(endpoint).toBe('/v2/multi-image-to-3d')
-    expect(body).toMatchObject({ rigging: true })
-  })
-
-  it('skips rig_type when only rigType is empty after trim', async () => {
-    postMock.mockResolvedValueOnce({ data: { result: { id: 'm-5' } } })
-    await meshyAdapter.submitModel3d(provider(), 'meshy-3d-v2', {
-      prompt: 'a chair',
-      rig: true,
-      rigType: '   '
-    })
-    const body = postMock.mock.calls[0]?.[1] as Record<string, unknown>
-    expect(body.rigging).toBe(true)
-    expect(body).not.toHaveProperty('rig_type')
+    expect(body).not.toHaveProperty('rigging')
   })
 })

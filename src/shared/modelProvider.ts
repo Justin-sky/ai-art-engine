@@ -925,17 +925,12 @@ export interface GenerateVideoJob {
 // ── 3D 模型生成 ──────────────────────────────────────────
 
 /**
- * 支持骨骼蒙皮（rig）的 3D 供应商 kind：Tripo / Meshy / Rodin(Hyper3D)。
- * Luma / Lux3D 官方不提供 rig 服务（传 `rig: true` 会被明确拒绝），其余 kind 无 3D 能力。
- * 节点卡片的蒙皮控件（GraphNodeCard）与 MCP `generate_model3d` 的入参校验共用这一份白名单。
+ * 支持独立骨骼蒙皮（Rigging API）的供应商：Meshy / Tripo。
+ * `model.rigSkin` 节点与 MCP 校验共用；生成节点不再内联蒙皮。
  */
-export const MODEL3D_RIG_PROVIDER_KINDS: readonly ModelProviderKind[] = [
-  'tripo',
-  'meshy',
-  'hyper3d'
-]
+export const MODEL3D_RIG_PROVIDER_KINDS: readonly ModelProviderKind[] = ['meshy', 'tripo']
 
-/** 该供应商 kind 是否支持骨骼蒙皮（不支持的上游传 rig 会被明确拒绝，不静默吞参数） */
+/** 该供应商 kind 是否支持对已有模型做独立骨骼蒙皮 */
 export function supportsModel3dRig(kind: string): boolean {
   return (MODEL3D_RIG_PROVIDER_KINDS as readonly string[]).includes(kind)
 }
@@ -951,21 +946,16 @@ export interface GenerateModel3dInput {
    */
   style?: string
   /**
-   * 是否要求上游为模型附加骨骼蒙皮（rig），输出 rigged GLB。
-   * 支持：tripo / meshy / hyper3d；不支持：luma / lux3d（传了会抛错）。
-   * 缺省 false → 仍输出纯几何 GLB，与既有行为一致。
+   * 是否要求上游为模型附加骨骼蒙皮（已废弃：请用 `model.rigSkin` 节点走独立 Rigging API）。
+   * @deprecated
    */
   rig?: boolean
   /**
-   * 骨架类型：humanoid / quadruped / bipedal / creature 等（按上游白名单映射）。
-   * 缺省 humanoid；未启用 rig 时忽略；上游不支持给定类型时走服务端兜底。
-   * Meshy / Rodin 透传上游 `rig_type`，Tripo 只认 rig 开关、忽略本字段。
+   * @deprecated 见 `model.rigSkin`
    */
   rigType?: string
   /**
-   * 绑定动画预设 id（部分上游支持把骨骼蒙皮模型直接绑到一段动画输出）。
-   * 未启用 rig 时忽略；上游不支持则忽略。
-   * Meshy 映射为 `pose`（如 walk），Rodin 映射为 `rig_animation`；Tripo 忽略本字段。
+   * @deprecated 见 `model.rigSkin`
    */
   rigAnimation?: string
   /** 参考图（图生3D/多图生3D） */
@@ -977,6 +967,21 @@ export interface GenerateModel3dInput {
   /** 落盘文件名 stem */
   name?: string
   /** 图节点回写绑定 */
+  graphBinding?: GenerateGraphBinding
+}
+
+/** 对已有模型做独立骨骼蒙皮（Meshy / Tripo Rigging API） */
+export interface RigModel3dInput {
+  /** 公网可访问的模型 URL（与 modelRelativePath 二选一，优先 url） */
+  modelUrl?: string
+  /** 工程内相对路径；facade 会上传对象存储得到公网 URL */
+  modelRelativePath?: string
+  providerInstanceId?: string
+  model?: string
+  /** humanoid / quadruped / … → 上游映射 */
+  rigType?: string
+  name?: string
+  outputDir?: string
   graphBinding?: GenerateGraphBinding
 }
 
@@ -994,6 +999,8 @@ export interface GenerateModel3dResult {
     logs: Array<{ level: 'info' | 'warn' | 'error'; message: string; ts: number }>
   }>
 }
+
+export type RigModel3dResult = GenerateModel3dResult
 
 export interface GenerateModel3dJob {
   jobId: string

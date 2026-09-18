@@ -2,8 +2,16 @@
  * 图节点经 dsh 调度 Blender MCP 的作业契约。
  * LLM 只指挥工具；交付物是导出的 GLB + result.json，不是猜出来的欧拉表。
  */
-import { BLENDER_HUMANOID_RIG_CODE, humanoidSimpleRecipe } from './blenderHumanoidRig'
+import { humanoidSimpleRecipe } from './blenderHumanoidRig'
 import type { StageVec3 } from './domain'
+import {
+  AIAE_RIG_QA_PREFIX,
+  BLENDER_RIG_QA_CODE,
+  isRigQaPass,
+  parseRigQaReport,
+  type RigBoneGeom,
+  type RigQaReport
+} from './blenderRigSkinPipeline'
 
 export type BlenderDshJobKind = 'rig' | 'pose' | 'anim'
 
@@ -12,7 +20,13 @@ export interface BlenderJobRigMeta {
   bones: string[]
   vertexGroups: string[]
   presetId?: string
+  /** 实际 head/tail（世界坐标）与父子，供 QA / Inspector */
+  boneGeom?: RigBoneGeom[]
+  /** 被 Armature modifier 绑定的 Mesh 名 */
+  deformMeshes?: string[]
 }
+
+export type { RigQaReport as BlenderJobRigQa }
 
 export interface BlenderJobClip {
   name: string
@@ -30,7 +44,10 @@ export interface BlenderJobResult {
   rigMeta?: BlenderJobRigMeta
   bonePose?: Record<string, StageVec3>
   clip?: BlenderJobClip
+  /** 旧字段：截图路径备注；rig 优先用 rigQa */
   qa?: { screenshots?: string[]; notes?: string }
+  /** 人形蒙皮硬 QA（应用侧跑 BLENDER_RIG_QA_CODE） */
+  rigQa?: RigQaReport
 }
 
 export interface BlenderJobBriefInput {
@@ -41,6 +58,9 @@ export interface BlenderJobBriefInput {
   outputAbs: string
   resultAbs: string
   skillId: string
+  briefAbs?: string
+  attempt?: number
+  repairHint?: string
 }
 
 export const BLENDER_DSH_SKILL_ID: Record<BlenderDshJobKind, string> = {
@@ -141,7 +161,11 @@ export function parseBlenderJobMetaLine(
 }
 
 export function blenderJobOverlayReady(kind: BlenderDshJobKind, result: BlenderJobResult): boolean {
-  if (kind === 'rig') return !!result.rigMeta?.bones.length
+  if (kind === 'rig') {
+    if (!result.rigMeta?.bones.length || !result.rigMeta.vertexGroups.length) return false
+    if (result.rigQa) return isRigQaPass(result.rigQa)
+    return false
+  }
   if (kind === 'pose') return !!result.bonePose && Object.keys(result.bonePose).length > 0
   return !!result.clip?.name
 }
@@ -155,9 +179,10 @@ export function mergeBlenderJobOverlay(
     ...base,
     exportedPath: extra.exportedPath || base.exportedPath,
     rigMeta: extra.rigMeta?.bones.length ? extra.rigMeta : base.rigMeta,
-    bonePose:
-      extra.bonePose && Object.keys(extra.bonePose).length ? extra.bonePose : base.bonePose,
-    clip: extra.clip?.name ? extra.clip : base.clip
+    bonePose: extra.bonePose && Object.keys(extra.bonePose).length ? extra.bonePose : base.bonePose,
+    clip: extra.clip?.name ? extra.clip : base.clip,
+    rigQa: extra.rigQa ?? base.rigQa,
+    qa: extra.qa ?? base.qa
   }
   if (blenderJobOverlayReady(merged.kind, merged)) {
     merged.ok = true
@@ -213,11 +238,44 @@ function parseRigMeta(raw: unknown): BlenderJobRigMeta | undefined {
     : []
   if (!armature && !bones.length) return undefined
   const presetId = typeof rec.presetId === 'string' ? rec.presetId.trim() : ''
+  const boneGeom = Array.isArray(rec.boneGeom)
+    ? (rec.boneGeom as unknown[])
+        .map((item) => {
+          if (!item || typeof item !== 'object') return null
+          const b = item as Record<string, unknown>
+          const name = typeof b.name === 'string' ? b.name.trim() : ''
+          const parent = typeof b.parent === 'string' ? b.parent : ''
+          const head = Array.isArray(b.head) ? b.head : null
+          const tail = Array.isArray(b.tail) ? b.tail : null
+          if (!name || !head || !tail || head.length < 3 || tail.length < 3) return null
+          const hx = asFiniteNumber(head[0])
+          const hy = asFiniteNumber(head[1])
+          const hz = asFiniteNumber(head[2])
+          const tx = asFiniteNumber(tail[0])
+          const ty = asFiniteNumber(tail[1])
+          const tz = asFiniteNumber(tail[2])
+          if (hx == null || hy == null || hz == null || tx == null || ty == null || tz == null) {
+            return null
+          }
+          return {
+            name,
+            parent,
+            head: [hx, hy, hz] as [number, number, number],
+            tail: [tx, ty, tz] as [number, number, number]
+          }
+        })
+        .filter((item): item is RigBoneGeom => !!item)
+    : undefined
+  const deformMeshes = Array.isArray(rec.deformMeshes)
+    ? rec.deformMeshes.filter((item): item is string => typeof item === 'string' && !!item.trim())
+    : undefined
   return {
     armature,
     bones,
     vertexGroups,
-    ...(presetId ? { presetId } : {})
+    ...(presetId ? { presetId } : {}),
+    ...(boneGeom?.length ? { boneGeom } : {}),
+    ...(deformMeshes?.length ? { deformMeshes } : {})
   }
 }
 
@@ -297,6 +355,7 @@ export function parseBlenderJobResult(
               : undefined
         }
       : undefined
+  const rigQa = parseRigQaReport(rec.rigQa)
   return {
     ok,
     kind,
@@ -305,16 +364,19 @@ export function parseBlenderJobResult(
     ...(parseRigMeta(rec.rigMeta) ? { rigMeta: parseRigMeta(rec.rigMeta) } : {}),
     ...(parseBonePose(rec.bonePose) ? { bonePose: parseBonePose(rec.bonePose) } : {}),
     ...(parseClip(rec.clip) ? { clip: parseClip(rec.clip) } : {}),
-    ...(qa ? { qa } : {})
+    ...(qa ? { qa } : {}),
+    ...(rigQa ? { rigQa } : {})
   }
 }
+
+export { BLENDER_RIG_QA_CODE, AIAE_RIG_QA_PREFIX, parseRigQaReport, isRigQaPass }
 
 const HUMANOID_SIMPLE_RECIPE = humanoidSimpleRecipe()
 
 const HUMANOID_MIXAMO_RECIPE = [
-  'Expanded recipe (humanoid-mixamo): first run AIAE_HUMANOID_RIG verbatim, then add 2-3 bones per finger if the mesh has distinct fingers.',
+  'Expanded recipe (humanoid-mixamo): first run the iterative humanoid landmark+bind recipe, then add 2-3 bones per finger if the mesh has distinct fingers.',
   'Prefer Mixamo-style names (mixamorig:Hips) only after the 21-bone T-pose exists.',
-  BLENDER_HUMANOID_RIG_CODE
+  HUMANOID_SIMPLE_RECIPE
 ].join('\n')
 
 const QUADRUPED_RECIPE = [
@@ -355,7 +417,11 @@ export function expandBlenderJobInstruction(kind: BlenderDshJobKind, instruction
             ? HUMANOID_SIMPLE_RECIPE
             : ''
   if (!recipe) return raw || '(none)'
-  if (raw.includes('AIAE_HUMANOID_RIG') || raw.includes('Expanded recipe')) {
+  if (
+    raw.includes('AIAE_HUMANOID_RIG') ||
+    raw.includes('AIAE_HUMANOID_LANDMARKS') ||
+    raw.includes('Expanded recipe')
+  ) {
     return raw
   }
   return raw ? `${raw}\n\n${recipe}` : recipe
@@ -371,37 +437,62 @@ export function buildBlenderJobBrief(input: BlenderJobBriefInput): string {
     `Input GLB (absolute): ${input.inputAbs}`,
     `Export GLB (absolute): ${input.outputAbs}`,
     `Write result JSON (absolute, app-owned): ${input.resultAbs}`,
+    `Brief path (absolute): read this file via the task text; follow its scripts verbatim.`,
     '',
     '## User instruction',
     expandBlenderJobInstruction(input.kind, input.instruction),
     '',
     '## Hard rules',
-    '- Load the named skill first. Inspect the real scene at most once, then change it.',
+    '- Load the named skill first. Inspect the real scene at most once per attempt, then change it.',
     '- Never invent Euler angles or bone names. Read pose_bones / armature from Blender.',
     '- Import only the input GLB. Do not call generate_model3d or create a new character.',
-    '- Do not loop execute_blender_code just to list objects or take screenshots.',
-    '- Use get_viewport_screenshot (not custom render scripts) at most once after a real edit.',
+    '- Do not loop execute_blender_code just to list objects without editing.',
     ...(input.kind === 'rig'
       ? [
-          '- After import, the NEXT execute_blender_code MUST be the AIAE_HUMANOID_RIG script from the user instruction. Do not invent head/tail.',
-          '- Success requires an ARMATURE object in the scene before export. Inspect-only scripts are a failure.'
+          '- Rig pipeline: (1) AIAE_HUMANOID_LANDMARKS creates AIAE_LM_* empties from mesh walks; (2) optionally move empties after screenshots; (3) AIAE_HUMANOID_BIND_FROM_LANDMARKS builds bones ONLY from empties + ARMATURE_AUTO + weight cleanup.',
+          '- Per attempt you may take fixed-view get_viewport_screenshot after a real edit. Do not spam identical screenshots with no scene change.',
+          '- Do NOT export and do NOT write result.json. The app runs hard QA and only exports on PASS.',
+          '- If landmarks are unreliable, fail loudly — never invent fixed-ratio head/tail coordinates.'
         ]
       : [
-          '- After large edits, take a viewport screenshot and fix feet / intersections / flipped sides.'
+          '- Use get_viewport_screenshot (not custom render scripts) after large edits.',
+          '- Export to the exact output path. Do not write result.json (open() is blocked); the app reads bones back.'
         ]),
-    '- Export to the exact output path. Do not write result.json (open() is blocked); the app reads bones back.',
     ''
   ].join('\n')
 }
 
-export function buildBlenderJobTask(input: BlenderJobBriefInput): string {
+export function buildBlenderJobTask(
+  input: BlenderJobBriefInput & { attempt?: number; repairHint?: string }
+): string {
   const skill = input.skillId
+  const attempt = input.attempt ?? 1
+  if (input.kind === 'rig') {
+    const repair = input.repairHint?.trim()
+    if (repair && attempt > 1) {
+      return [
+        `Use skill "${skill}".`,
+        `Repair attempt ${attempt}/3 for humanoid skinning.`,
+        `Brief file: ${input.briefAbs ?? '(see prepare paths)'}.`,
+        repair,
+        'Do not export. Do not write result.json. The app re-runs hard QA.'
+      ].join('\n')
+    }
+    return [
+      `Use skill "${skill}".`,
+      `Attempt ${attempt}/3: iterative humanoid skinning.`,
+      `Import "${input.inputAbs}" once.`,
+      'Follow the brief: run AIAE_HUMANOID_LANDMARKS verbatim, optionally adjust AIAE_LM_* empties after screenshots, then run AIAE_HUMANOID_BIND_FROM_LANDMARKS verbatim.',
+      'Do not invent bone coordinates. Do not export. Do not write result.json. The app runs hard QA and exports only on PASS.',
+      '',
+      'User instruction:',
+      expandBlenderJobInstruction(input.kind, input.instruction)
+    ].join('\n')
+  }
   const goal =
-    input.kind === 'rig'
-      ? 'Create a real armature now. After import, run the AIAE_HUMANOID_RIG script from the brief verbatim (mesh landmarks, not a fixed body ratio). Do not invent bone coordinates. Then export a skinned GLB.'
-      : input.kind === 'pose'
-        ? 'Pose the existing armature with IK/constraints. Keep rest/bind. Export GLB plus bonePose readback.'
-        : 'Create a keyframed action on the existing armature, bake it, export GLB with AnimationClip plus clip overlay.'
+    input.kind === 'pose'
+      ? 'Pose the existing armature with IK/constraints. Keep rest/bind. Export GLB plus bonePose readback.'
+      : 'Create a keyframed action on the existing armature, bake it, export GLB with AnimationClip plus clip overlay.'
   return [
     `Use skill "${skill}".`,
     goal,
@@ -422,8 +513,12 @@ export function validateBlenderJobDelivery(input: {
 }): string | null {
   if (!input.outputExists) return blenderDshError(input.kind, 'EXPORT')
   if (!input.result.ok) return input.result.error || blenderDshError(input.kind, 'FAILED')
-  if (input.kind === 'rig' && !input.result.rigMeta?.bones.length) {
-    return blenderDshError(input.kind, 'NO_MATCH')
+  if (input.kind === 'rig') {
+    if (!input.result.rigMeta?.bones.length) return blenderDshError(input.kind, 'NO_MATCH')
+    if (!input.result.rigMeta.vertexGroups.length) return blenderDshError(input.kind, 'NO_WEIGHTS')
+    if (!input.result.rigQa || !isRigQaPass(input.result.rigQa)) {
+      return blenderDshError(input.kind, 'QA')
+    }
   }
   if (input.kind === 'pose' && !input.result.bonePose) {
     return blenderDshError(input.kind, 'NO_MATCH')

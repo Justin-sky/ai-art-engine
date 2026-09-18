@@ -7,7 +7,10 @@ export type BlenderDshLivePhase =
   | 'start'
   | 'skill'
   | 'inspect'
+  | 'landmark'
   | 'blender'
+  | 'repair'
+  | 'qa'
   | 'screenshot'
   | 'export'
   | 'write'
@@ -40,7 +43,11 @@ export function actionFromBlenderCode(code: string): BlenderDshLivePhase | 'impo
   ) {
     return 'screenshot'
   }
-  if (blob.includes('export_scene') || blob.includes('output.glb') || blob.includes('gltf_export')) {
+  if (
+    blob.includes('export_scene') ||
+    blob.includes('output.glb') ||
+    blob.includes('gltf_export')
+  ) {
     return 'export'
   }
   if (blob.includes('result.json')) return 'write'
@@ -48,9 +55,19 @@ export function actionFromBlenderCode(code: string): BlenderDshLivePhase | 'impo
     blob.includes('armatures.new') ||
     blob.includes('edit_bones') ||
     blob.includes('parent_set') ||
-    blob.includes('armature_auto')
+    blob.includes('armature_auto') ||
+    blob.includes('aiae_humanoid_bind')
   ) {
     return 'blender'
+  }
+  if (blob.includes('aiae_humanoid_landmarks') || blob.includes('aiae_lm_')) {
+    return 'landmark'
+  }
+  if (blob.includes('aiae_rig_weight_repair') || blob.includes('vertex_group_smooth')) {
+    return 'repair'
+  }
+  if (blob.includes('aiae_rig_qa')) {
+    return 'qa'
   }
   if (blob.includes('import_scene') || blob.includes('gltf(') || blob.includes('input.glb')) {
     return 'import'
@@ -89,7 +106,10 @@ export function phaseFromHarnessEvent(event: HarnessEvent): BlenderDshLivePhase 
 const ACTION_LABEL: Record<string, string> = {
   inspect: 'inspect',
   import: 'import',
-  blender: 'rig',
+  landmark: 'landmarks',
+  blender: 'bind',
+  repair: 'weight-repair',
+  qa: 'qa',
   screenshot: 'screenshot',
   export: 'export',
   write: 'result.json'
@@ -109,7 +129,7 @@ export function summarizeHarnessLogLine(event: HarnessEvent): string | null {
   if (event.type !== 'tool') return null
   const name = shortToolName(event.name)
   const action = actionFromBlenderCode(`${event.detail ?? ''} ${event.args ?? ''}`)
-  const hint = action ? ACTION_LABEL[action] ?? action : ''
+  const hint = action ? (ACTION_LABEL[action] ?? action) : ''
   const state = event.state
   return hint ? `${name} ${state} · ${hint}` : `${name} ${state}`
 }

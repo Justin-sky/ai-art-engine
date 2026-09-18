@@ -8,8 +8,7 @@ import {
 const JOB_PREFIX = 'Cache/BlenderJobs/'
 
 export type BlenderExportTarget =
-  | { action: 'keep'; relativePath: string; isJob: boolean }
-  | { action: 'remap'; fileName: string }
+  { action: 'keep'; relativePath: string; isJob: boolean } | { action: 'remap'; fileName: string }
 
 function posixFileName(path: string): string {
   const posix = path.replace(/\\/g, '/').replace(/\/+$/, '')
@@ -38,10 +37,7 @@ export function classifyBlenderExportTarget(input: {
   if (posix === 'Cache/BlenderJobs' || posix.startsWith(JOB_PREFIX)) {
     return { action: 'keep', relativePath: posix, isJob: true }
   }
-  if (
-    isUnderCacheOutputDir(posix, input.cacheOutputDir) &&
-    !isUnderAssetLibraryDir(posix)
-  ) {
+  if (isUnderCacheOutputDir(posix, input.cacheOutputDir) && !isUnderAssetLibraryDir(posix)) {
     return { action: 'keep', relativePath: posix, isJob: false }
   }
   return { action: 'remap', fileName }

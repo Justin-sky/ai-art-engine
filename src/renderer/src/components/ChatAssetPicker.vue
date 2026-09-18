@@ -92,7 +92,13 @@ import { useProjectStore } from '../stores/project'
 import StudioFloatingWindow from './StudioFloatingWindow.vue'
 
 /** 可被 @ 引用的资产类型：图片 / 视频 / 3D 模型 / 音频（voice 为工程语音资产） */
-const MENTION_TYPES: ReadonlySet<AssetType> = new Set(['image', 'video', 'voice', 'model', 'model3d'])
+const MENTION_TYPES: ReadonlySet<AssetType> = new Set([
+  'image',
+  'video',
+  'voice',
+  'model',
+  'model3d'
+])
 /**
  * 引用分类：GIF / SVG 在资产模型里仍是 image 类型，但选择器里各单列一类，
  * 避免和一堆静态位图混在一起挑不出来（SVG 自成一路：预览走原文件、不进位图链路）。

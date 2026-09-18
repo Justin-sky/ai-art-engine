@@ -51,8 +51,8 @@ const E_LUMA_PROMPT_OR_REF_REQUIRED = defErrSimple(
 )
 const E_LUMA_RIG_UNSUPPORTED = defErrSimple(
   'provider.luma.rigUnsupported',
-  'Luma AI 不支持蒙皮绑定（仅 Tripo / Meshy / Rodin 支持）',
-  'Luma AI does not support rigging (only Tripo / Meshy / Rodin)'
+  'Luma AI 不支持生成侧蒙皮：请用「3D 骨骼蒙皮」节点（Meshy / Tripo Rigging API）',
+  'Luma AI does not support gen-side rigging; use the 3D Rigging node (Meshy / Tripo)'
 )
 const E_LUMA_NO_TASK_ID = defErrSimple(
   'provider.luma.noTaskId',

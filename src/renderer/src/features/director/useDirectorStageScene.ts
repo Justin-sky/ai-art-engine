@@ -7732,7 +7732,9 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     const name = clip.name.trim()
     if (!name) return
     const anim = ensureAnimation()
-    let track = anim.tracks.find((item) => item.targetKind === 'object' && item.targetId === objectId)
+    let track = anim.tracks.find(
+      (item) => item.targetKind === 'object' && item.targetId === objectId
+    )
     if (!track) {
       const objName = stage.value.objects.find((item) => item.id === objectId)?.name ?? 'Object'
       track = {

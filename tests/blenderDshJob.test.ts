@@ -82,6 +82,30 @@ describe('blenderDshJob', () => {
 
     expect(
       validateBlenderJobDelivery({
+        kind: 'rig',
+        result: {
+          ok: true,
+          kind: 'rig',
+          rigMeta: { armature: 'A', bones: ['Hips'], vertexGroups: [] }
+        },
+        outputExists: true
+      })
+    ).toBe('GRAPH_MODEL_RIG_NO_WEIGHTS')
+
+    expect(
+      validateBlenderJobDelivery({
+        kind: 'rig',
+        result: {
+          ok: true,
+          kind: 'rig',
+          rigMeta: { armature: 'A', bones: ['Hips'], vertexGroups: ['Hips'] }
+        },
+        outputExists: true
+      })
+    ).toBe('GRAPH_MODEL_RIG_QA')
+
+    expect(
+      validateBlenderJobDelivery({
         kind: 'anim',
         result: { ok: false, kind: 'anim', error: 'GRAPH_MODEL_ANIM_FAILED' },
         outputExists: true
@@ -115,7 +139,6 @@ describe('blenderDshJob', () => {
     expect(brief).toContain('Skill: blender.pose')
     expect(brief).toContain('F:/job/output.glb')
     expect(brief).toContain('Never invent Euler angles')
-    expect(brief).toContain('Do not loop execute_blender_code')
 
     const task = buildBlenderJobTask(input)
     expect(task).toContain('Use skill "blender.pose"')
@@ -124,45 +147,48 @@ describe('blenderDshJob', () => {
     expect(task).toContain('Do not guess joint angles')
 
     const rigTask = buildBlenderJobTask({ ...input, kind: 'rig', skillId: 'blender.rigSkin' })
-    expect(rigTask).toContain('Create a real armature now')
-    expect(rigTask).toContain('AIAE_HUMANOID_RIG')
+    expect(rigTask).toContain('Attempt 1/3')
+    expect(rigTask).toContain('AIAE_HUMANOID_LANDMARKS')
+    expect(rigTask).toContain('AIAE_HUMANOID_BIND_FROM_LANDMARKS')
+    expect(rigTask).toContain('Do not export')
   })
 
-  it('expands a short 人形骨架 chip into the 21-bone recipe', () => {
+  it('expands a short 人形骨架 chip into the iterative recipe', () => {
     const expanded = expandBlenderJobInstruction('rig', '人形骨架')
     expect(expanded).toContain('人形骨架')
-    expect(expanded).toContain('Hips')
+    expect(expanded).toContain('AIAE_HUMANOID_LANDMARKS')
     expect(expanded).toContain('ARMATURE_AUTO')
-    expect(buildBlenderJobTask({
-      kind: 'rig',
-      instruction: '人形骨架',
-      inputAbs: 'a',
-      outputAbs: 'b',
-      resultAbs: 'c',
-      skillId: 'blender.rigSkin'
-    })).toContain('L_UpperArm')
+    expect(
+      buildBlenderJobTask({
+        kind: 'rig',
+        instruction: '人形骨架',
+        inputAbs: 'a',
+        outputAbs: 'b',
+        resultAbs: 'c',
+        skillId: 'blender.rigSkin'
+      })
+    ).toContain('L_UpperArm')
   })
 
   it('expands stacked 人形骨架 + 人形简单骨架 chip text once', () => {
     const stacked =
       '人形骨架\n人形简单骨架：根骨 + 脊柱链（髋/胸/颈/头）+ 双手臂（肩/上臂/前臂/手）+ 双腿（上腿/下腿/脚），共 21 根骨头，适合人型角色基础动画。'
     const expanded = expandBlenderJobInstruction('rig', stacked)
-    expect(expanded).toContain('Expanded recipe (humanoid-simple, 21 bones)')
-    expect(expanded).toContain('Hips')
+    expect(expanded).toContain('Expanded recipe (humanoid iterative skinning)')
+    expect(expanded).toContain('AIAE_HUMANOID_LANDMARKS')
     expect(expanded).toContain('L_UpperArm')
     expect(expanded).not.toContain('prop-rigid')
     expect(expanded.match(/Expanded recipe/g)?.length ?? 0).toBe(1)
 
-    const already =
-      '人形简单骨架，共 21 骨：Hips（根）→ Spine。parent_set(ARMATURE_AUTO)。'
+    const already = '人形简单骨架，共 21 骨：Hips（根）→ Spine。parent_set(ARMATURE_AUTO)。'
     const withScript = expandBlenderJobInstruction('rig', already)
     expect(withScript).toContain(already)
-    expect(withScript).toContain('AIAE_HUMANOID_RIG')
+    expect(withScript).toContain('AIAE_HUMANOID_LANDMARKS')
     expect(expandBlenderJobInstruction('rig', withScript)).toBe(withScript)
 
     const prop = expandBlenderJobInstruction('rig', '道具单骨骨架：只有一根 Root 骨')
     expect(prop).toContain('prop-rigid')
-    expect(prop).not.toContain('humanoid-simple')
+    expect(prop).not.toContain('humanoid iterative')
   })
 
   it('ships a 21-bone mesh-landmark script that passes safe-mode', () => {
@@ -189,28 +215,51 @@ describe('blenderDshJob', () => {
     expect(rightLeg.head[0]).toBeLessThan(0)
     const verdict = guardBlenderCode(BLENDER_HUMANOID_RIG_CODE)
     expect(verdict.ok, verdict.reason).toBe(true)
-    expect(expandBlenderJobInstruction('rig', 'mixamo')).toContain('AIAE_HUMANOID_RIG')
+    expect(expandBlenderJobInstruction('rig', 'mixamo')).toContain('AIAE_HUMANOID_LANDMARKS')
   })
 
-  it('parses Blender readback stdout and merges a missing overlay', () => {
+  it('parses Blender readback stdout and requires rigQa for overlay ready', () => {
     expect(guardBlenderCode(BLENDER_JOB_READBACK_CODE).ok).toBe(true)
     const stdout = blenderExecuteStdout({
       executed: true,
-      result: 'noise AIAE_JOB_META:{"ok":true,"rigMeta":{"armature":"Armature","bones":["Hips","Spine"],"vertexGroups":["Hips"]}} tail'
+      result:
+        'noise AIAE_JOB_META:{"ok":true,"rigMeta":{"armature":"Armature","bones":["Hips","Spine"],"vertexGroups":["Hips"]}} tail'
     })
     const meta = parseBlenderJobMetaLine(stdout, 'rig')
     expect(meta?.rigMeta?.bones).toEqual(['Hips', 'Spine'])
-    expect(blenderJobOverlayReady('rig', meta!)).toBe(true)
+    expect(blenderJobOverlayReady('rig', meta!)).toBe(false)
+
+    const withQa = {
+      ...meta!,
+      rigQa: {
+        pass: true,
+        attempt: 1,
+        fingerprint: 'ok',
+        boneCount: 2,
+        requiredBonesOk: true,
+        parentChainOk: true,
+        vertexGroupCount: 1,
+        unweightedRatio: 0.01,
+        maxInfluences: 2,
+        weightSumError: 0.01,
+        zeroInfluenceBones: [],
+        deformMeshes: ['Body'],
+        bones: [],
+        poseMetrics: [],
+        fails: [],
+        notes: []
+      }
+    }
+    expect(blenderJobOverlayReady('rig', withQa)).toBe(true)
+    expect(
+      validateBlenderJobDelivery({ kind: 'rig', result: withQa, outputExists: true })
+    ).toBeNull()
 
     const merged = mergeBlenderJobOverlay(
       { ok: false, kind: 'rig', error: 'GRAPH_MODEL_DSH_RESULT' },
-      meta
+      withQa
     )
     expect(merged.ok).toBe(true)
-    expect(merged.error).toBeUndefined()
-    expect(merged.rigMeta?.bones).toEqual(['Hips', 'Spine'])
-    expect(
-      validateBlenderJobDelivery({ kind: 'rig', result: merged, outputExists: true })
-    ).toBeNull()
+    expect(merged.rigQa?.pass).toBe(true)
   })
 })

@@ -1636,29 +1636,28 @@ const MODEL_POSE_PRESETS: InstructionPreset[] = [
 ]
 
 /**
- * 3D 骨骼蒙皮常用预设：只当指令模板写入 generateInstruction，
- * 与自由描述同一条 dsh→Blender 通路。
+ * 3D 骨骼蒙皮常用预设：写入 generateInstruction，并与骨架类型选择对齐（云端 Rigging API）。
  */
 const MODEL_RIG_SKIN_PRESETS: InstructionPreset[] = [
   {
     id: 'humanoid-simple',
     titleKey: 'graph.inspector.generate.presets.modelRigSkin.humanoidSimple',
-    body: '人形简单骨架，共 21 骨：Hips（根）→ Spine → Chest → Neck → Head；L/R_Shoulder → UpperArm → ForeArm → Hand；L/R_UpLeg → LoLeg → Foot + L/R_Toes。按网格包围盒缩放后 parent_set(ARMATURE_AUTO)。'
+    body: 'humanoid'
   },
   {
     id: 'humanoid-mixamo',
     titleKey: 'graph.inspector.generate.presets.modelRigSkin.humanoidMixamo',
-    body: '人形 Mixamo 兼容骨架：humanoid-simple 21 骨 + 每指 2~3 段 + toe。优先 mixamorig:Hips 前缀（网格已有则沿用），再 parent_set(ARMATURE_AUTO)。'
+    body: 'humanoid'
   },
   {
     id: 'quadruped',
     titleKey: 'graph.inspector.generate.presets.modelRigSkin.quadruped',
-    body: '四足骨架：脊柱链 + 头/颈/尾 + 四条腿（前左/前右/后左/后后，每条上腿+下腿），适合兽类角色。'
+    body: 'quadruped'
   },
   {
     id: 'prop-rigid',
     titleKey: 'graph.inspector.generate.presets.modelRigSkin.propRigid',
-    body: '道具单骨骨架：只有一根 Root 骨；适合静态/小幅度摆动物体（剑、门、旗杆）。'
+    body: 'creature'
   }
 ]
 

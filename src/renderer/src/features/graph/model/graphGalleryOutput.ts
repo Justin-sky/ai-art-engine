@@ -138,10 +138,7 @@ function commitVoices(hostId: string, node: GraphNode, list: VoiceList, selected
   })
 }
 
-function modelPathPatch(
-  node: GraphNode,
-  relativePath: string
-): Partial<GraphNodeParams> {
+function modelPathPatch(node: GraphNode, relativePath: string): Partial<GraphNodeParams> {
   if (node.typeId === 'model.rigSkin') return { rigModelRelativePath: relativePath }
   if (node.typeId === 'model.pose') return { poseModelRelativePath: relativePath }
   if (node.typeId === 'model.animation') return { animationModelRelativePath: relativePath }
@@ -158,6 +155,7 @@ function commitModels(hostId: string, node: GraphNode, list: ModelList, selected
       assetType: 'model',
       ...(relativePath ? { relativePath } : {}),
       ...(picked.rigMeta ? { rigMeta: picked.rigMeta } : {}),
+      ...(picked.rigQa ? { rigQa: picked.rigQa } : {}),
       ...(picked.bonePose ? { bonePose: picked.bonePose } : {}),
       ...(picked.clip ? { clip: picked.clip } : {})
     }
@@ -170,7 +168,16 @@ function commitModels(hostId: string, node: GraphNode, list: ModelList, selected
     selectedModelId: picked?.id ?? '',
     previewRelativePath: relativePath,
     ...modelPathPatch(node, relativePath),
-    ...(picked?.rigMeta ? { rigMeta: picked.rigMeta } : {}),
+    ...(picked?.rigMeta
+      ? { rigMeta: picked.rigMeta }
+      : node.typeId === 'model.rigSkin'
+        ? { rigMeta: undefined }
+        : {}),
+    ...(picked?.rigQa
+      ? { rigQa: picked.rigQa }
+      : node.typeId === 'model.rigSkin'
+        ? { rigQa: undefined }
+        : {}),
     ...(picked?.bonePose ? { bonePose: picked.bonePose } : {}),
     ...(picked?.clip ? { clip: picked.clip } : {})
   })

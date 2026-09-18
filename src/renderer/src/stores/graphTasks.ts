@@ -1320,6 +1320,37 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             throw err
           }
         },
+        rigModel3d: async (input) => {
+          const startedAt = Date.now()
+          const request = {
+            modelRelativePath: input.modelRelativePath,
+            model: input.model,
+            providerInstanceId: input.providerInstanceId,
+            rigType: input.rigType
+          }
+          try {
+            const value = await window.studio.rigModel3d(input)
+            logBridge.recordApiCall({
+              kind: 'rigModel3d',
+              request,
+              response: {
+                model: value.model,
+                assetId: value.assetId,
+                relativePath: value.relativePath
+              },
+              durationMs: Math.max(0, Date.now() - startedAt)
+            })
+            return value
+          } catch (err) {
+            logBridge.recordApiCall({
+              kind: 'rigModel3d',
+              request,
+              error: err instanceof Error ? err.message : String(err),
+              durationMs: Math.max(0, Date.now() - startedAt)
+            })
+            throw err
+          }
+        },
         resolveLiveAssetGraph: (assetId) =>
           graphEditorHosts.getLiveAssetDocument(assetId) ?? undefined,
         resolveAssetGenParams: (assetId) => {

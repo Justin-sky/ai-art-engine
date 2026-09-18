@@ -329,7 +329,10 @@ class VideoJobService {
       const updated = videoJobRepository.write(root, {
         ...job,
         status: 'running',
-        progress
+        progress,
+        ...(result.pollingUrl && result.pollingUrl !== job.pollingUrl
+          ? { pollingUrl: result.pollingUrl }
+          : {})
       })
       this.emitUpdated(updated)
       // 本次轮询成功：清零连续失败计数

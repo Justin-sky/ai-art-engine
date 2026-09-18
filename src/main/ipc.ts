@@ -66,6 +66,7 @@ import {
 } from './services/deepseekHarnessService'
 import {
   cleanupBlenderDshJob,
+  evaluateBlenderDshJob,
   finalizeBlenderDshJob,
   prepareBlenderDshJob
 } from './services/blenderDshJobService'
@@ -357,6 +358,15 @@ export function registerIpcHandlers(): void {
     if (asset) broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
     return result
   })
+  handle(
+    IpcChannels.RIG_MODEL3D,
+    async (input: import('@shared/modelProvider').RigModel3dInput) => {
+      const result = await modelProviderFacade.rigModel3d(input)
+      const asset = projectService.listAssets().find((item) => item.id === result.assetId)
+      if (asset) broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
+      return result
+    }
+  )
   handle(IpcChannels.VIDEO_JOB_LIST, () => videoJobService.list())
   handle(IpcChannels.VIDEO_JOB_GET, (localJobId: string) => videoJobService.get(localJobId))
   handle(IpcChannels.VIDEO_JOB_CANCEL, (localJobId: string) => videoJobService.cancel(localJobId))
@@ -435,8 +445,13 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.HARNESS_RUN_WAIT, (input: import('@shared/ipc').HarnessJobWaitInput) =>
     runHarnessJobWait(input)
   )
-  handle(IpcChannels.BLENDER_DSH_PREPARE, (input: import('@shared/ipc').PrepareBlenderDshJobInput) =>
-    prepareBlenderDshJob(input)
+  handle(
+    IpcChannels.BLENDER_DSH_PREPARE,
+    (input: import('@shared/ipc').PrepareBlenderDshJobInput) => prepareBlenderDshJob(input)
+  )
+  handle(
+    IpcChannels.BLENDER_DSH_EVALUATE,
+    (input: import('@shared/ipc').EvaluateBlenderDshJobInput) => evaluateBlenderDshJob(input)
   )
   handle(
     IpcChannels.BLENDER_DSH_FINALIZE,

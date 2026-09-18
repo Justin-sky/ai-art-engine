@@ -111,6 +111,8 @@ describe('blenderHumanoidLandmarks', () => {
     expect(BLENDER_HUMANOID_RIG_CODE).toContain('mesh.data.edges')
     expect(BLENDER_HUMANOID_RIG_CODE).toContain('bfs_until')
     expect(BLENDER_HUMANOID_RIG_CODE).toContain('pick_hand')
+    expect(BLENDER_HUMANOID_RIG_CODE).toContain('AIAE_LM_')
+    expect(BLENDER_HUMANOID_RIG_CODE).toContain('landmarks_unreliable')
     expect(BLENDER_HUMANOID_RIG_CODE).not.toContain('wp(spec')
     const verdict = guardBlenderCode(BLENDER_HUMANOID_RIG_CODE)
     expect(verdict.ok, verdict.reason).toBe(true)

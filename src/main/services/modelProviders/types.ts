@@ -24,6 +24,11 @@ export type VideoPollResult = {
   progress: number
   error?: string
   downloadUrl?: string
+  /**
+   * 多阶段任务（如 Tripo 生成 → Auto Rig）可回写下一阶段轮询 token；
+   * videoJobService 会持久化到 VideoJobRecord.pollingUrl。
+   */
+  pollingUrl?: string
 }
 
 /**

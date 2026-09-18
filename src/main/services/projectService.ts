@@ -1193,8 +1193,9 @@ class ProjectService {
     }
     const thumbRel = writeModelThumbnailPng(root, sourceRel, buf)
     const asset =
-      this.listAssets().find((item) => (item.relativePath ?? '').replace(/\\/g, '/') === sourceRel) ??
-      null
+      this.listAssets().find(
+        (item) => (item.relativePath ?? '').replace(/\\/g, '/') === sourceRel
+      ) ?? null
     if (!asset) return { thumbnailPath: thumbRel, asset: null }
     const updated = this.updateAsset({ ...asset, thumbnailPath: thumbRel })
     return { thumbnailPath: thumbRel, asset: updated }

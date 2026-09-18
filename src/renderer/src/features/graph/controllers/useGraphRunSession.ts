@@ -151,6 +151,22 @@ export interface GraphRunSessionOptions {
       logs: Array<{ level: 'info' | 'warn' | 'error'; message: string; ts: number }>
     }>
   }>
+  rigModel3d?: (input: {
+    modelRelativePath?: string
+    modelUrl?: string
+    model?: string
+    providerInstanceId?: string
+    rigType?: string
+    name?: string
+    outputDir?: string
+    graphBinding?: {
+      hostId?: string
+      nodeId?: string
+      assetId?: string
+      shotId?: string
+      canvasField?: string
+    }
+  }) => Promise<{ assetId: string; relativePath: string; model: string }>
   /** 当前界面语言（影响默认系统提示词等） */
   locale?: () => string
   /** 图宿主 id，用于执行日志关联 */
@@ -271,6 +287,9 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       GRAPH_MODEL_RIG_NO_MODEL: 'graph.run.modelRigNoModel',
       GRAPH_MODEL_RIG_MCP: 'graph.run.modelRigMcp',
       GRAPH_MODEL_RIG_NO_MATCH: 'graph.run.modelRigNoMatch',
+      GRAPH_MODEL_RIG_NO_WEIGHTS: 'graph.run.modelRigNoWeights',
+      GRAPH_MODEL_RIG_QA: 'graph.run.modelRigQa',
+      GRAPH_MODEL_RIG_STUCK: 'graph.run.modelRigStuck',
       GRAPH_MODEL_RIG_FAILED: 'graph.run.modelRigFailed',
       GRAPH_MODEL_RIG_EXPORT: 'graph.run.modelRigExport',
       GRAPH_MODEL_RIG_DSH: 'graph.run.modelRigDsh',
@@ -724,6 +743,32 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
     }
   }
 
+  function wrapRigModel3d(token: number, signal: AbortSignal) {
+    const rigModel3d = options.rigModel3d
+    if (!rigModel3d) return undefined
+    return async (input: {
+      modelRelativePath?: string
+      modelUrl?: string
+      model?: string
+      providerInstanceId?: string
+      rigType?: string
+      name?: string
+      outputDir?: string
+      graphBinding?: {
+        hostId?: string
+        nodeId?: string
+        assetId?: string
+        shotId?: string
+        canvasField?: string
+      }
+    }) => {
+      if (token !== runToken || signal.aborted) {
+        throw new DOMException('Aborted', 'AbortError')
+      }
+      return withAbortSignal(rigModel3d(input), token, signal)
+    }
+  }
+
   async function executeRun(opts: {
     targetNodeId?: string
     clearAll: boolean
@@ -789,6 +834,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         generateVideo: wrapGenerateVideo(token, signal),
         generateSpeech: wrapGenerateSpeech(token, signal),
         generateModel3d: wrapGenerateModel3d(token, signal),
+        rigModel3d: wrapRigModel3d(token, signal),
         locale: options.locale?.(),
         resolveAssetGenParams: options.resolveAssetGenParams,
         resolveLiveAssetGraph: options.resolveLiveAssetGraph,
