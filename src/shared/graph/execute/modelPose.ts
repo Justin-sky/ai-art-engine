@@ -35,5 +35,5 @@ export async function executeModelPoseNode(
       poseSourceAssetId: model.assetId
     }
   })
-  return modelJobOutputs(model, relativePath, result)
+  return modelJobOutputs(ctx, model, relativePath, result)
 }

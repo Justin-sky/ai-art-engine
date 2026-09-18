@@ -77,5 +77,36 @@ describe('executeModelRigSkinNode', () => {
     expect(value.relativePath).toBe('Cache/Models/rig-1.glb')
     expect(value.rigMeta?.bones).toEqual(['Hips', 'Spine', 'Head'])
     expect(ctx.node.params.rigModelRelativePath).toBe('Cache/Models/rig-1.glb')
+    expect(ctx.node.params.generatedModels?.map((item) => item.relativePath)).toEqual([
+      'Cache/Models/rig-1.glb'
+    ])
+    expect(ctx.node.params.selectedModelId).toBeTruthy()
+  })
+
+  it('appends a second cook into generatedModels', async () => {
+    let n = 0
+    const runBlenderDshJob = vi.fn(async () => {
+      n += 1
+      return {
+        relativePath: `Cache/Models/rig-${n}.glb`,
+        result: {
+          ok: true,
+          kind: 'rig' as const,
+          rigMeta: { armature: 'Armature', bones: ['Hips'], vertexGroups: ['Hips'] }
+        }
+      }
+    })
+    const ctx = {
+      node: rigSkinNode({ generateInstruction: 'humanoid simple' }),
+      inputs: { 'in-model': [incomingModel] },
+      runBlenderDshJob
+    } as unknown as NodeExecuteContext
+    await executeModelRigSkinNode(ctx)
+    await executeModelRigSkinNode(ctx)
+    expect(ctx.node.params.generatedModels?.map((item) => item.relativePath)).toEqual([
+      'Cache/Models/rig-1.glb',
+      'Cache/Models/rig-2.glb'
+    ])
+    expect(ctx.node.params.rigModelRelativePath).toBe('Cache/Models/rig-2.glb')
   })
 })

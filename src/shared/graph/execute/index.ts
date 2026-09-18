@@ -22,7 +22,9 @@ export {
   flattenVideosValues,
   flattenVoicesValues,
   imageItemKey,
+  modelItemKey,
   pickImageItem,
+  pickModelItem,
   pickTextItem,
   pickVideoItem,
   pickVoiceItem,
@@ -65,6 +67,7 @@ export * from './narrative'
 export * from './select'
 export * from './imageEdit'
 export * from './imageLocal'
+export { persistModelGeneration, mergeGeneratedModels } from './materialize'
 export { executeIconPackNode } from './iconPack'
 export * from './stageLocal'
 export * from './adVariants'

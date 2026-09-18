@@ -15,10 +15,12 @@ import type {
 } from './types'
 import {
   dualImageGalleryOutputs,
+  dualModelGalleryOutputs,
   dualTextGalleryOutputs,
   dualVideoGalleryOutputs,
   dualVoiceGalleryOutputs,
   newestImageSelectedId,
+  newestModelSelectedId,
   newestTextSelectedId,
   newestVideoSelectedId,
   newestVoiceSelectedId
@@ -77,6 +79,21 @@ export function resolveGalleryOutputsFromNodeParams(
     }))
     const selectedId = params.selectedImageId?.trim() || newestImageSelectedId(items)
     return dualImageGalleryOutputs(items, selectedId)
+  }
+
+  const generatedModels = params.generatedModels
+  if (Array.isArray(generatedModels) && generatedModels.length) {
+    const items = generatedModels.map((item) => ({
+      id: item.id,
+      relativePath: item.relativePath,
+      createdAt: item.createdAt,
+      assetId: item.assetId,
+      rigMeta: item.rigMeta,
+      bonePose: item.bonePose,
+      clip: item.clip
+    }))
+    const selectedId = params.selectedModelId?.trim() || newestModelSelectedId(items)
+    return dualModelGalleryOutputs(items, selectedId)
   }
 
   const generatedVideos = params.generatedVideos

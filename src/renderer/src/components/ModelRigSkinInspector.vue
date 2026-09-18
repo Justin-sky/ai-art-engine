@@ -134,6 +134,8 @@
       </p>
     </section>
 
+    <GeneratedModelsGallery v-if="node && hostId" :node="node" :host-id="hostId" />
+
     <GraphNodeOutputPreview v-if="node && hostId" :node="node" :host-id="hostId" />
   </div>
   <div v-else class="node-inspector empty">
@@ -146,6 +148,7 @@ import { computed, ref } from 'vue'
 import GraphNodeRunControl from './GraphNodeRunControl.vue'
 import BlenderDshLiveStatus from './BlenderDshLiveStatus.vue'
 import GraphNodeOutputPreview from './GraphNodeOutputPreview.vue'
+import GeneratedModelsGallery from './GeneratedModelsGallery.vue'
 import ModelPreview from './ModelPreview.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useNodeDisplayTitle } from '../composables/useNodeDisplayTitle'

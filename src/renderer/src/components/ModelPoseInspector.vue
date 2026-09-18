@@ -62,6 +62,8 @@
       </p>
     </section>
 
+    <GeneratedModelsGallery v-if="node && hostId" :node="node" :host-id="hostId" />
+
     <p v-if="saveStatus === 'ok'" class="save-status ok" role="status">
       {{ t('graph.inspector.modelPose.saveDone', { path: savedPath }) }}
     </p>
@@ -93,6 +95,7 @@ import GraphNodeRunControl from './GraphNodeRunControl.vue'
 import BlenderDshLiveStatus from './BlenderDshLiveStatus.vue'
 import GraphNodeOutputPreview from './GraphNodeOutputPreview.vue'
 import ModelPreview from './ModelPreview.vue'
+import GeneratedModelsGallery from './GeneratedModelsGallery.vue'
 import SaveAssetDialog from './SaveAssetDialog.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useNodeDisplayTitle } from '../composables/useNodeDisplayTitle'

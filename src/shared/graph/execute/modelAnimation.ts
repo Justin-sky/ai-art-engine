@@ -35,5 +35,5 @@ export async function executeModelAnimationNode(
       animationSourceAssetId: model.assetId
     }
   })
-  return modelJobOutputs(model, relativePath, result)
+  return modelJobOutputs(ctx, model, relativePath, result)
 }

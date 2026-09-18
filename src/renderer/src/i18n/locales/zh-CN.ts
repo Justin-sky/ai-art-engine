@@ -4637,6 +4637,12 @@ export default {
           '每次执行追加新视频并自动选中最新；单击设为当前输出（out），双击预览，× 删除',
         generatedVideosEmpty: '暂无生成结果。执行本节点后会显示在这里',
         generatedVideosDelete: '删除此视频',
+        generatedModels: '已生成模型',
+        generatedModelsCount: '{n} 个',
+        generatedModelsHint:
+          '每次执行追加新模型并自动选中最新；单击设为当前输出（out），× 删除',
+        generatedModelsEmpty: '暂无生成结果。执行本节点后会显示在这里',
+        generatedModelsDelete: '删除此模型',
         generatedTexts: '已生成剧本',
         generatedTextsCount: '{n} 份',
         generatedTextsHint:

@@ -147,6 +147,17 @@ export interface GraphImagesValue {
   items: GraphImageItem[]
 }
 
+/** 3D 模型图库条目（生成 / 蒙皮 / 姿势 / 动画） */
+export interface GraphModelItem {
+  id?: string
+  createdAt?: string
+  relativePath?: string
+  assetId?: string
+  rigMeta?: GraphAssetValue['rigMeta']
+  bonePose?: GraphAssetValue['bonePose']
+  clip?: GraphAssetValue['clip']
+}
+
 /** 视频数组条目 */
 export interface GraphVideoItem {
   id?: string

@@ -81,7 +81,10 @@ export function registerSidePanelDockApi(api: DockviewApi | null): void {
   for (const d of widthWatchDisposables) d.dispose()
   widthWatchDisposables.length = 0
   dockApiRef = api
-  if (!api) return
+  if (!api) {
+    clearSidePanelLayoutTimers()
+    return
+  }
   attachExpandedWidthWatchers(api)
 }
 
@@ -139,7 +142,19 @@ function rememberCurrentWidth(api: DockviewPanelApi, id: SidePanelId): void {
 /** Pending column width captured on willDrop before dockview sums both panels. */
 let pendingStackColumnWidth = 0
 let stackNormalizeTimer: ReturnType<typeof setTimeout> | null = null
+let unlockConstraintsTimer: ReturnType<typeof setTimeout> | null = null
 let unlockingConstraints = false
+
+function clearSidePanelLayoutTimers(): void {
+  if (stackNormalizeTimer) {
+    clearTimeout(stackNormalizeTimer)
+    stackNormalizeTimer = null
+  }
+  if (unlockConstraintsTimer) {
+    clearTimeout(unlockConstraintsTimer)
+    unlockConstraintsTimer = null
+  }
+}
 /** Only auto-correct summed widths shortly after a vertical stack drop. */
 let stackNormalizeUntil = 0
 
@@ -229,7 +244,9 @@ function forceStackedColumnWidth(dock: DockviewApi, width: number): boolean {
     unlockingConstraints = false
   }
 
-  window.setTimeout(() => {
+  if (unlockConstraintsTimer) clearTimeout(unlockConstraintsTimer)
+  unlockConstraintsTimer = setTimeout(() => {
+    unlockConstraintsTimer = null
     if (!dockApiRef) return
     const a = dockApiRef.getPanel('assets')
     const b = dockApiRef.getPanel('inspector')

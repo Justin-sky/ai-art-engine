@@ -141,6 +141,7 @@
       <p v-else class="section-hint">
         {{ t('graph.inspector.generate.modelPreviewEmpty') }}
       </p>
+      <GeneratedModelsGallery v-if="node && hostId" :node="node" :host-id="hostId" />
     </section>
 
     <GraphNodeOutputPreview
@@ -531,6 +532,7 @@ import ExpandableTextarea from './ExpandableTextarea.vue'
 import InstructionModelSelect from './InstructionModelSelect.vue'
 import ImageGenerateParamsSelect from './ImageGenerateParamsSelect.vue'
 import ModelPreview from './ModelPreview.vue'
+import GeneratedModelsGallery from './GeneratedModelsGallery.vue'
 import PreviewSaveToLibraryButton from './PreviewSaveToLibraryButton.vue'
 import SaveAssetDialog from './SaveAssetDialog.vue'
 import { useSaveCacheAsset } from '../composables/useSaveCacheAsset'

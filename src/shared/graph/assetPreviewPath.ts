@@ -108,6 +108,10 @@ function pathFromNodeParams(graph: GraphDocument): string | null {
       const path = trimPath(item.relativePath)
       if (path) return path
     }
+    for (const item of node.params?.generatedModels ?? []) {
+      const path = trimPath(item.relativePath)
+      if (path) return path
+    }
     for (const item of node.params?.generatedVoices ?? []) {
       const path = trimPath(item.relativePath)
       if (path) return path

@@ -3,7 +3,8 @@ import type { DockviewApi } from 'dockview-vue'
 import {
   handleSidePanelLayoutMaybeStacked,
   handleSidePanelMoved,
-  noteSidePanelWillStackDrop
+  noteSidePanelWillStackDrop,
+  registerSidePanelDockApi
 } from '../src/renderer/src/editor/workbench/sidePanelCollapse'
 
 /** 最小 DOM 替身：只实现 clearDockviewDropOverlays 用到的查询 / 移除 / classList */
@@ -156,6 +157,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  registerSidePanelDockApi(null)
   const globals = globalThis as unknown as Record<string, unknown>
   delete globals.document
   delete globals.requestAnimationFrame

@@ -1,6 +1,7 @@
 import type {
   GraphAssetValue,
   GraphImageItem,
+  GraphModelItem,
   GraphTextItem,
   GraphTextValue,
   GraphVoiceItem,
@@ -314,6 +315,57 @@ export function dualTextGalleryOutputs(
     },
     [GRAPH_OUT_ALL_PORT_ID]: { kind: 'texts', items }
   }
+}
+
+export function modelItemKey(item: GraphModelItem, index: number): string {
+  return item.id?.trim() || item.relativePath?.trim() || item.assetId?.trim() || `model:${index}`
+}
+
+export function pickModelItem(
+  items: GraphModelItem[],
+  selectedModelId?: string | null
+): GraphModelItem | undefined {
+  if (!items.length) return undefined
+  if (selectedModelId) {
+    const byKey = items.find((item, index) => modelItemKey(item, index) === selectedModelId)
+    if (byKey) return byKey
+    const byRawId = items.find((item) => item.id === selectedModelId)
+    if (byRawId) return byRawId
+  }
+  return items[items.length - 1]
+}
+
+export function newestModelSelectedId(items: GraphModelItem[]): string {
+  if (!items.length) return ''
+  const index = items.length - 1
+  return modelItemKey(items[index]!, index)
+}
+
+export function dualModelGalleryOutputs(
+  items: GraphModelItem[],
+  selectedModelId: string,
+  base?: Partial<GraphAssetValue>
+): Record<string, GraphValue> {
+  const picked = pickModelItem(items, selectedModelId)
+  const relativePath = picked?.relativePath?.trim() || base?.relativePath?.trim() || ''
+  const value: GraphAssetValue = {
+    kind: 'asset',
+    assetId: picked?.assetId?.trim() || picked?.id?.trim() || base?.assetId || relativePath,
+    assetType: 'model',
+    ...(relativePath ? { relativePath } : {}),
+    ...(base?.label ? { label: base.label } : {}),
+    ...(base?.weight != null ? { weight: base.weight } : {}),
+    ...(base?.notes ? { notes: base.notes } : {}),
+    ...(base?.title ? { title: base.title } : {}),
+    ...(picked?.rigMeta ? { rigMeta: picked.rigMeta } : base?.rigMeta ? { rigMeta: base.rigMeta } : {}),
+    ...(picked?.bonePose
+      ? { bonePose: picked.bonePose }
+      : base?.bonePose
+        ? { bonePose: base.bonePose }
+        : {}),
+    ...(picked?.clip ? { clip: picked.clip } : base?.clip ? { clip: base.clip } : {})
+  }
+  return { out: value, [GRAPH_OUT_ALL_PORT_ID]: value }
 }
 
 export function newestImageSelectedId(items: GraphImageItem[]): string {

@@ -155,3 +155,50 @@ describe('gallery output delete', () => {
     expect(node.params.generatedImages).toHaveLength(3)
   })
 })
+
+describe('model gallery output', () => {
+  function rigNode(): GraphNode {
+    return {
+      id: 'rig-1',
+      typeId: 'model.rigSkin',
+      category: 'note',
+      position: { x: 0, y: 0 },
+      size: { w: 220, h: 180 },
+      params: {
+        generatedModels: [
+          { id: 'm-1', relativePath: 'Cache/Models/a.glb' },
+          { id: 'm-2', relativePath: 'Cache/Models/b.glb' }
+        ],
+        selectedModelId: 'm-2',
+        rigModelRelativePath: 'Cache/Models/b.glb'
+      }
+    }
+  }
+
+  it('selects a historical model as current out', () => {
+    const node = rigNode()
+    const { runStates, dispose } = registerHosts(node)
+    cleanup = dispose
+    expect(selectGalleryOutput(HOST_ID, node, 'model', 'm-1')).toBe(true)
+    expect(node.params.selectedModelId).toBe('m-1')
+    expect(node.params.rigModelRelativePath).toBe('Cache/Models/a.glb')
+    expect(runStates[node.id]?.outputs?.out).toMatchObject({
+      kind: 'asset',
+      relativePath: 'Cache/Models/a.glb'
+    })
+  })
+
+  it('deletes a model and falls back to the newest remaining', () => {
+    const node = rigNode()
+    const { dispose } = registerHosts(node)
+    cleanup = dispose
+    const result = deleteGalleryOutput(HOST_ID, node, 'model', 'm-2')
+    expect(result).toMatchObject({
+      removed: true,
+      emptied: false,
+      relativePath: 'Cache/Models/b.glb'
+    })
+    expect(node.params.selectedModelId).toBe('m-1')
+    expect(node.params.rigModelRelativePath).toBe('Cache/Models/a.glb')
+  })
+})

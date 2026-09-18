@@ -1,5 +1,7 @@
 import type {
+  GraphAssetValue,
   GraphImageItem,
+  GraphModelItem,
   GraphTextItem,
   GraphValue,
   GraphVideoItem,
@@ -15,10 +17,12 @@ import { SHARED_ERRORS } from '../../errors/catalog'
 import {
   dedupeGalleryIds,
   dualImageGalleryOutputs,
+  dualModelGalleryOutputs,
   dualTextGalleryOutputs,
   dualVideoGalleryOutputs,
   dualVoiceGalleryOutputs,
   newestImageSelectedId,
+  newestModelSelectedId,
   newestTextSelectedId,
   newestVideoSelectedId,
   newestVoiceSelectedId,
@@ -265,6 +269,83 @@ export function persistVideoGeneration(
     }
   })
   return dualVideoGalleryOutputs(generatedVideos, selectedVideoId)
+}
+
+export function mergeGeneratedModels(
+  ctx: NodeExecuteContext,
+  batch: GraphModelItem[],
+  idFallbackPrefix: string
+): GraphModelItem[] {
+  const previous = [...(ctx.node.params.generatedModels ?? [])]
+  if (!previous.length) {
+    const seed =
+      ctx.node.params.previewRelativePath?.trim() ||
+      ctx.node.params.rigModelRelativePath?.trim() ||
+      ctx.node.params.poseModelRelativePath?.trim() ||
+      ctx.node.params.animationModelRelativePath?.trim() ||
+      ''
+    const incoming = batch[0]?.relativePath?.trim() || ''
+    if (seed && seed !== incoming) {
+      previous.push({
+        id: 'gen-model:seed',
+        relativePath: seed,
+        ...(ctx.node.params.rigMeta ? { rigMeta: ctx.node.params.rigMeta } : {}),
+        ...(ctx.node.params.bonePose ? { bonePose: ctx.node.params.bonePose } : {}),
+        ...(ctx.node.params.clip ? { clip: ctx.node.params.clip } : {})
+      })
+    }
+  }
+  return dedupeGalleryIds(previous, batch, idFallbackPrefix)
+}
+
+/** 3D 结果写入累计图库；强制选中最新；`out` / `out-all` 为当前选中模型 */
+export function persistModelGeneration(
+  ctx: NodeExecuteContext,
+  item: GraphModelItem,
+  base?: Partial<GraphAssetValue>
+): Record<string, GraphValue> {
+  const createdAt = item.createdAt ?? new Date().toISOString()
+  const stamp = formatGeneratedMediaStamp()
+  const id = item.id?.trim() || `gen-model:${stamp}`
+  const relativePath = item.relativePath?.trim() || ''
+  const materialized: GraphModelItem = {
+    id,
+    createdAt,
+    ...(relativePath ? { relativePath } : {}),
+    ...(item.assetId?.trim() ? { assetId: item.assetId.trim() } : {}),
+    ...(item.rigMeta ? { rigMeta: item.rigMeta } : {}),
+    ...(item.bonePose ? { bonePose: item.bonePose } : {}),
+    ...(item.clip ? { clip: item.clip } : {})
+  }
+  const generatedModels = mergeGeneratedModels(ctx, [materialized], `${stamp}:keep`).map(
+    (entry) => ({
+      id: entry.id?.trim() || id,
+      createdAt: entry.createdAt ?? createdAt,
+      ...(entry.relativePath?.trim() ? { relativePath: entry.relativePath.trim() } : {}),
+      ...(entry.assetId?.trim() ? { assetId: entry.assetId.trim() } : {}),
+      ...(entry.rigMeta ? { rigMeta: entry.rigMeta } : {}),
+      ...(entry.bonePose ? { bonePose: entry.bonePose } : {}),
+      ...(entry.clip ? { clip: entry.clip } : {})
+    })
+  )
+  const selectedModelId = newestModelSelectedId(generatedModels)
+  ctx.node.params = {
+    ...ctx.node.params,
+    generatedModels,
+    selectedModelId,
+    ...(relativePath ? { previewRelativePath: relativePath } : {})
+  }
+  ctx.patchNode?.({
+    params: {
+      generatedModels,
+      selectedModelId,
+      ...(relativePath ? { previewRelativePath: relativePath } : {})
+    }
+  })
+  return dualModelGalleryOutputs(generatedModels, selectedModelId, {
+    ...base,
+    ...(relativePath ? { relativePath } : {})
+  })
 }
 
 export function persistVoiceGeneration(

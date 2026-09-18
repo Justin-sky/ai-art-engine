@@ -33,5 +33,5 @@ export async function executeModelRigSkinNode(
       rigModelRelativePath: relativePath
     }
   })
-  return modelJobOutputs(model, relativePath, result)
+  return modelJobOutputs(ctx, model, relativePath, result)
 }

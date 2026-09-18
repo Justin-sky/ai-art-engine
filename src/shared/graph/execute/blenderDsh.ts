@@ -8,7 +8,7 @@ import {
   type BlenderDshJobKind,
   type BlenderJobResult
 } from '../../blenderDshJob'
-import { GRAPH_OUT_ALL_PORT_ID } from '../ports'
+import { persistModelGeneration } from './materialize'
 import { collectIncomingValues } from './incoming'
 import { flattenAssetValues, flattenTextValues } from './gallery'
 import type { GraphAssetValue, GraphValue, NodeExecuteContext } from './types'
@@ -59,28 +59,35 @@ export async function runModelBlenderDshJob(
 }
 
 export function modelJobOutputs(
+  ctx: NodeExecuteContext,
   model: GraphAssetValue,
   relativePath: string,
   result: BlenderJobResult
 ): Record<string, GraphValue> {
-  const value: GraphAssetValue = {
-    ...model,
-    kind: 'asset',
-    assetType: 'model',
-    relativePath,
-    ...(result.rigMeta ? { rigMeta: result.rigMeta } : {}),
-    ...(result.bonePose ? { bonePose: result.bonePose } : {}),
-    ...(result.clip
-      ? {
-          clip: {
-            name: result.clip.name,
-            fps: result.clip.fps,
-            frameRange: result.clip.frameRange,
-            keyframes: result.clip.keyframes,
-            ...(result.clip.presetId ? { presetId: result.clip.presetId } : {})
+  return persistModelGeneration(
+    ctx,
+    {
+      relativePath,
+      assetId: model.assetId,
+      ...(result.rigMeta ? { rigMeta: result.rigMeta } : {}),
+      ...(result.bonePose ? { bonePose: result.bonePose } : {}),
+      ...(result.clip
+        ? {
+            clip: {
+              name: result.clip.name,
+              fps: result.clip.fps,
+              frameRange: result.clip.frameRange,
+              keyframes: result.clip.keyframes,
+              ...(result.clip.presetId ? { presetId: result.clip.presetId } : {})
+            }
           }
-        }
-      : {})
-  }
-  return { out: value, [GRAPH_OUT_ALL_PORT_ID]: value }
+        : {})
+    },
+    {
+      ...model,
+      kind: 'asset',
+      assetType: 'model',
+      relativePath
+    }
+  )
 }

@@ -1,12 +1,11 @@
-import type { GraphValue } from '../types'
-import type { NodeExecuteContext } from './types'
+import type { GraphValue, NodeExecuteContext } from './types'
 import { expandInstructionMentions } from '../instructionMentions'
 import { resolveMentionSources } from './context'
 import { autoIncomingTextForInstruction } from './incoming'
 import { selectIncomingValuesForInstruction } from './incoming'
 import { collectImageGenerateSourceItems } from './mediaInputs'
 import { dualImageGalleryOutputs } from './gallery'
-import { GRAPH_OUT_ALL_PORT_ID } from '../ports'
+import { persistModelGeneration } from './materialize'
 
 /**
  * 收集上游图片输入（参考图）
@@ -104,17 +103,21 @@ export async function executeModel3dGenerateNode(
     }
   })
 
-  // 构建输出值
-  const modelValue: GraphValue = {
-    kind: 'asset',
-    assetId: result.assetId,
-    assetType: 'model',
-    relativePath: result.relativePath,
-    label: node.params.label,
-    weight: node.params.weight,
-    notes: localNotes,
-    title: node.title
-  }
-
-  return { out: modelValue, [GRAPH_OUT_ALL_PORT_ID]: modelValue }
+  return persistModelGeneration(
+    ctx,
+    {
+      relativePath: result.relativePath,
+      assetId: result.assetId
+    },
+    {
+      kind: 'asset',
+      assetId: result.assetId,
+      assetType: 'model',
+      relativePath: result.relativePath,
+      label: node.params.label,
+      weight: node.params.weight,
+      notes: localNotes,
+      title: node.title
+    }
+  )
 }

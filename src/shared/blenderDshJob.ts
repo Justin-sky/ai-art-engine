@@ -2,6 +2,7 @@
  * 图节点经 dsh 调度 Blender MCP 的作业契约。
  * LLM 只指挥工具；交付物是导出的 GLB + result.json，不是猜出来的欧拉表。
  */
+import { BLENDER_HUMANOID_RIG_CODE, humanoidSimpleRecipe } from './blenderHumanoidRig'
 import type { StageVec3 } from './domain'
 
 export type BlenderDshJobKind = 'rig' | 'pose' | 'anim'
@@ -308,19 +309,12 @@ export function parseBlenderJobResult(
   }
 }
 
-const HUMANOID_SIMPLE_RECIPE = [
-  'Expanded recipe (humanoid-simple, 21 bones):',
-  'Hips (root) at mesh bbox center. Spine → Chest → Neck → Head up the Y/Z spine.',
-  'L_Shoulder / R_Shoulder → UpperArm → ForeArm → Hand along the arm span.',
-  'L_UpLeg / R_UpLeg → LoLeg → Foot down to the soles.',
-  'Scale every bone to the imported MESH bounding box. Then parent_set(ARMATURE_AUTO).',
-  'Bone names must be exactly: Hips, Spine, Chest, Neck, Head, L_Shoulder, L_UpperArm, L_ForeArm, L_Hand, R_Shoulder, R_UpperArm, R_ForeArm, R_Hand, L_UpLeg, L_LoLeg, L_Foot, R_UpLeg, R_LoLeg, R_Foot, L_Toes, R_Toes.'
-].join('\n')
+const HUMANOID_SIMPLE_RECIPE = humanoidSimpleRecipe()
 
 const HUMANOID_MIXAMO_RECIPE = [
-  'Expanded recipe (humanoid-mixamo): humanoid-simple plus finger chains (2–3 bones per finger) and toes.',
-  'Prefer Mixamo-style names (mixamorig:Hips …) if the mesh already uses that prefix; otherwise use the humanoid-simple names.',
-  'Scale to MESH bbox, then parent_set(ARMATURE_AUTO).'
+  'Expanded recipe (humanoid-mixamo): first run AIAE_HUMANOID_RIG verbatim, then add 2-3 bones per finger if the mesh has distinct fingers.',
+  'Prefer Mixamo-style names (mixamorig:Hips) only after the 21-bone T-pose exists.',
+  BLENDER_HUMANOID_RIG_CODE
 ].join('\n')
 
 const QUADRUPED_RECIPE = [
@@ -361,7 +355,7 @@ export function expandBlenderJobInstruction(kind: BlenderDshJobKind, instruction
             ? HUMANOID_SIMPLE_RECIPE
             : ''
   if (!recipe) return raw || '(none)'
-  if (raw.includes('Expanded recipe') || (raw.includes('Hips') && raw.includes('ARMATURE_AUTO'))) {
+  if (raw.includes('AIAE_HUMANOID_RIG') || raw.includes('Expanded recipe')) {
     return raw
   }
   return raw ? `${raw}\n\n${recipe}` : recipe
@@ -389,7 +383,7 @@ export function buildBlenderJobBrief(input: BlenderJobBriefInput): string {
     '- Use get_viewport_screenshot (not custom render scripts) at most once after a real edit.',
     ...(input.kind === 'rig'
       ? [
-          '- After import + one bbox read, the NEXT execute_blender_code MUST create an armature, add edit_bones, and parent_set(ARMATURE_AUTO).',
+          '- After import, the NEXT execute_blender_code MUST be the AIAE_HUMANOID_RIG script from the user instruction. Do not invent head/tail.',
           '- Success requires an ARMATURE object in the scene before export. Inspect-only scripts are a failure.'
         ]
       : [
@@ -404,7 +398,7 @@ export function buildBlenderJobTask(input: BlenderJobBriefInput): string {
   const skill = input.skillId
   const goal =
     input.kind === 'rig'
-      ? 'Create a real armature now. After one import/bbox read, write bones with edit_bones + parent_set(ARMATURE_AUTO). Do not screenshot-loop. Then export a skinned GLB.'
+      ? 'Create a real armature now. After import, run the AIAE_HUMANOID_RIG script from the brief verbatim (mesh landmarks, not a fixed body ratio). Do not invent bone coordinates. Then export a skinned GLB.'
       : input.kind === 'pose'
         ? 'Pose the existing armature with IK/constraints. Keep rest/bind. Export GLB plus bonePose readback.'
         : 'Create a keyframed action on the existing armature, bake it, export GLB with AnimationClip plus clip overlay.'

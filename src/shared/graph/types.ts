@@ -547,6 +547,18 @@ export interface GraphNodeParams {
     relativePath?: string
   }>
   /**
+   * 3D 生成 / 蒙皮 / 姿势 / 动画：历次 Cook 累计的模型（重新执行追加，可在 Inspector 删除）。
+   */
+  generatedModels?: Array<{
+    id?: string
+    createdAt?: string
+    relativePath?: string
+    assetId?: string
+    rigMeta?: GraphNodeParams['rigMeta']
+    bonePose?: GraphNodeParams['bonePose']
+    clip?: GraphNodeParams['clip']
+  }>
+  /**
    * 剧本生成节点：历次生成累计的文本（重新执行追加，可在 Inspector 删除）。
    * 对齐图片：有 relativePath 时 text 可为空，预览时按路径读文件。
    */
@@ -598,6 +610,11 @@ export interface GraphNodeParams {
    * 生成节点每次运行成功后强制切到最新一条。
    */
   selectedVideoId?: string
+  /**
+   * 当前选中的 3D 模型 id：生成 / 蒙皮 / 姿势 / 动画节点 `out`。
+   * 每次运行成功后强制切到最新一条。
+   */
+  selectedModelId?: string
   /**
    * 当前选中的文本 id：生成节点 `out` / 选取剧本节点共用。
    * 生成节点每次运行成功后强制切到最新一条。

@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { guardBlenderCode } from '../src/shared/blenderMcp'
 import {
+  BLENDER_HUMANOID_BONE_NAMES,
+  BLENDER_HUMANOID_BONE_SPECS,
+  BLENDER_HUMANOID_RIG_CODE
+} from '../src/shared/blenderHumanoidRig'
+import {
   BLENDER_DSH_SKILL_ID,
   BLENDER_DSH_TIMEOUT_MS,
   BLENDER_JOB_READBACK_CODE,
@@ -120,7 +125,7 @@ describe('blenderDshJob', () => {
 
     const rigTask = buildBlenderJobTask({ ...input, kind: 'rig', skillId: 'blender.rigSkin' })
     expect(rigTask).toContain('Create a real armature now')
-    expect(rigTask).toContain('Do not screenshot-loop')
+    expect(rigTask).toContain('AIAE_HUMANOID_RIG')
   })
 
   it('expands a short 人形骨架 chip into the 21-bone recipe', () => {
@@ -150,11 +155,41 @@ describe('blenderDshJob', () => {
 
     const already =
       '人形简单骨架，共 21 骨：Hips（根）→ Spine。parent_set(ARMATURE_AUTO)。'
-    expect(expandBlenderJobInstruction('rig', already)).toBe(already)
+    const withScript = expandBlenderJobInstruction('rig', already)
+    expect(withScript).toContain(already)
+    expect(withScript).toContain('AIAE_HUMANOID_RIG')
+    expect(expandBlenderJobInstruction('rig', withScript)).toBe(withScript)
 
     const prop = expandBlenderJobInstruction('rig', '道具单骨骨架：只有一根 Root 骨')
     expect(prop).toContain('prop-rigid')
     expect(prop).not.toContain('humanoid-simple')
+  })
+
+  it('ships a 21-bone mesh-landmark script that passes safe-mode', () => {
+    expect(BLENDER_HUMANOID_BONE_SPECS).toHaveLength(21)
+    expect(new Set(BLENDER_HUMANOID_BONE_NAMES).size).toBe(21)
+    expect(BLENDER_HUMANOID_BONE_SPECS.map((s) => s.name)).toEqual([...BLENDER_HUMANOID_BONE_NAMES])
+    const names = new Set<string>([''])
+    for (const spec of BLENDER_HUMANOID_BONE_SPECS) {
+      expect(names.has(spec.parent)).toBe(true)
+      names.add(spec.name)
+    }
+    const hips = BLENDER_HUMANOID_BONE_SPECS.find((s) => s.name === 'Hips')!
+    const leftArm = BLENDER_HUMANOID_BONE_SPECS.find((s) => s.name === 'L_Hand')!
+    const rightArm = BLENDER_HUMANOID_BONE_SPECS.find((s) => s.name === 'R_Hand')!
+    const leftShoulder = BLENDER_HUMANOID_BONE_SPECS.find((s) => s.name === 'L_Shoulder')!
+    const leftLeg = BLENDER_HUMANOID_BONE_SPECS.find((s) => s.name === 'L_UpLeg')!
+    const rightLeg = BLENDER_HUMANOID_BONE_SPECS.find((s) => s.name === 'R_UpLeg')!
+    expect(hips.head[2]).toBeCloseTo(0.5)
+    expect(leftShoulder.head[2]).toBeCloseTo(0.8)
+    expect(leftShoulder.head[2] - hips.head[2]).toBeGreaterThan(0.25)
+    expect(leftArm.tail[0]).toBeGreaterThan(0.5)
+    expect(rightArm.tail[0]).toBeLessThan(-0.5)
+    expect(leftLeg.head[0]).toBeGreaterThan(0)
+    expect(rightLeg.head[0]).toBeLessThan(0)
+    const verdict = guardBlenderCode(BLENDER_HUMANOID_RIG_CODE)
+    expect(verdict.ok, verdict.reason).toBe(true)
+    expect(expandBlenderJobInstruction('rig', 'mixamo')).toContain('AIAE_HUMANOID_RIG')
   })
 
   it('parses Blender readback stdout and merges a missing overlay', () => {

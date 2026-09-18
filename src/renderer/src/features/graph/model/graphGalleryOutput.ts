@@ -7,7 +7,7 @@ import type { GraphNode, GraphNodeParams, GraphValue } from '@shared/graph'
 import { graphEditorHosts } from './graphEditorHosts'
 import { graphRunHosts } from './graphRunHosts'
 
-export type GalleryOutputKind = 'image' | 'video' | 'voice' | 'text'
+export type GalleryOutputKind = 'image' | 'video' | 'voice' | 'text' | 'model'
 
 export type GalleryDeleteResult = {
   /** 是否命中图库条目（未命中时调用方可回退整体清空） */
@@ -22,6 +22,7 @@ type ImageList = NonNullable<GraphNodeParams['generatedImages']>
 type VideoList = NonNullable<GraphNodeParams['generatedVideos']>
 type VoiceList = NonNullable<GraphNodeParams['generatedVoices']>
 type TextList = NonNullable<GraphNodeParams['generatedTexts']>
+type ModelList = NonNullable<GraphNodeParams['generatedModels']>
 
 function writeRunOutputs(
   hostId: string,
@@ -137,6 +138,44 @@ function commitVoices(hostId: string, node: GraphNode, list: VoiceList, selected
   })
 }
 
+function modelPathPatch(
+  node: GraphNode,
+  relativePath: string
+): Partial<GraphNodeParams> {
+  if (node.typeId === 'model.rigSkin') return { rigModelRelativePath: relativePath }
+  if (node.typeId === 'model.pose') return { poseModelRelativePath: relativePath }
+  if (node.typeId === 'model.animation') return { animationModelRelativePath: relativePath }
+  return {}
+}
+
+function commitModels(hostId: string, node: GraphNode, list: ModelList, selectedId: string): void {
+  const picked = pickEntry(list, selectedId)
+  const relativePath = picked?.relativePath?.trim() ?? ''
+  if (picked?.id) {
+    const value: GraphValue = {
+      kind: 'asset',
+      assetId: picked.assetId?.trim() || picked.id,
+      assetType: 'model',
+      ...(relativePath ? { relativePath } : {}),
+      ...(picked.rigMeta ? { rigMeta: picked.rigMeta } : {}),
+      ...(picked.bonePose ? { bonePose: picked.bonePose } : {}),
+      ...(picked.clip ? { clip: picked.clip } : {})
+    }
+    writeRunOutputs(hostId, node.id, value, value)
+  } else {
+    dropRunState(hostId, node.id)
+  }
+  graphEditorHosts.updateNode(hostId, node.id, {
+    generatedModels: list,
+    selectedModelId: picked?.id ?? '',
+    previewRelativePath: relativePath,
+    ...modelPathPatch(node, relativePath),
+    ...(picked?.rigMeta ? { rigMeta: picked.rigMeta } : {}),
+    ...(picked?.bonePose ? { bonePose: picked.bonePose } : {}),
+    ...(picked?.clip ? { clip: picked.clip } : {})
+  })
+}
+
 function commitTexts(hostId: string, node: GraphNode, list: TextList, selectedId: string): void {
   const picked = pickEntry(list, selectedId)
   const body = picked?.text ?? ''
@@ -187,6 +226,7 @@ function galleryList(node: GraphNode, kind: GalleryOutputKind): Array<{ id?: str
   if (kind === 'image') return node.params.generatedImages ?? []
   if (kind === 'video') return node.params.generatedVideos ?? []
   if (kind === 'voice') return node.params.generatedVoices ?? []
+  if (kind === 'model') return node.params.generatedModels ?? []
   return node.params.generatedTexts ?? []
 }
 
@@ -209,6 +249,10 @@ export function selectGalleryOutput(
   }
   if (kind === 'voice') {
     commitVoices(hostId, node, node.params.generatedVoices ?? [], id)
+    return true
+  }
+  if (kind === 'model') {
+    commitModels(hostId, node, node.params.generatedModels ?? [], id)
     return true
   }
   commitTexts(hostId, node, node.params.generatedTexts ?? [], id)
@@ -247,6 +291,14 @@ export function deleteGalleryOutput(
     if (!target) return { removed: false, emptied: false }
     const next = list.filter((entry) => entry.id !== id)
     commitVoices(hostId, node, next, nextSelectedId(node.params.selectedVoiceId, id, next))
+    return { removed: true, emptied: !next.length, relativePath: target.relativePath }
+  }
+  if (kind === 'model') {
+    const list = node.params.generatedModels ?? []
+    const target = list.find((entry) => entry.id === id)
+    if (!target) return { removed: false, emptied: false }
+    const next = list.filter((entry) => entry.id !== id)
+    commitModels(hostId, node, next, nextSelectedId(node.params.selectedModelId, id, next))
     return { removed: true, emptied: !next.length, relativePath: target.relativePath }
   }
   const list = node.params.generatedTexts ?? []

@@ -4756,6 +4756,12 @@ export default {
           'Each run appends videos and selects the newest. Click to set as current out; double-click to preview; × to delete.',
         generatedVideosEmpty: 'No generations yet. Run this node to see results here.',
         generatedVideosDelete: 'Delete this video',
+        generatedModels: 'Generated models',
+        generatedModelsCount: '{n}',
+        generatedModelsHint:
+          'Each run appends models and selects the newest. Click to set as current out; × to delete.',
+        generatedModelsEmpty: 'No generations yet. Run this node to see results here.',
+        generatedModelsDelete: 'Delete this model',
         generatedTexts: 'Generated screenplays',
         generatedTextsCount: '{n}',
         generatedTextsHint:
