@@ -30,11 +30,22 @@ export function parseAnimationTrackBone(
   return { bone, property: dotted[2]! }
 }
 
+/** 避免 Vite 打出多份 three 时 `instanceof THREE.Bone` 失效。 */
+export function isSkinningBone(obj: THREE.Object3D | null | undefined): obj is THREE.Bone {
+  return !!obj && (obj as THREE.Bone).isBone === true
+}
+
+export function isSkinnedMeshObject(
+  obj: THREE.Object3D | null | undefined
+): obj is THREE.SkinnedMesh {
+  return !!obj && (obj as THREE.SkinnedMesh).isSkinnedMesh === true
+}
+
 export function findPrimarySkinnedMesh(root: THREE.Object3D): THREE.SkinnedMesh | null {
   let best: THREE.SkinnedMesh | null = null
   let bestCount = 0
   root.traverse((obj) => {
-    if (!(obj instanceof THREE.SkinnedMesh) || !obj.skeleton?.bones.length) return
+    if (!isSkinnedMeshObject(obj) || !obj.skeleton?.bones.length) return
     if (obj.skeleton.bones.length > bestCount) {
       best = obj
       bestCount = obj.skeleton.bones.length
@@ -50,7 +61,7 @@ export function findPrimarySkinnedMesh(root: THREE.Object3D): THREE.SkinnedMesh 
 export function collectSkinningBones(root: THREE.Object3D): THREE.Bone[] {
   const meshes: THREE.SkinnedMesh[] = []
   root.traverse((obj) => {
-    if (obj instanceof THREE.SkinnedMesh && obj.skeleton?.bones.length) {
+    if (isSkinnedMeshObject(obj) && obj.skeleton?.bones.length) {
       meshes.push(obj)
     }
   })
@@ -74,7 +85,7 @@ export function collectSkinningBones(root: THREE.Object3D): THREE.Bone[] {
   if (bones.length) return bones
 
   root.traverse((obj) => {
-    if (!(obj instanceof THREE.Bone) || seen.has(obj)) return
+    if (!isSkinningBone(obj) || seen.has(obj)) return
     const name = obj.name?.trim()
     if (name) {
       if (seenNames.has(name)) return
@@ -116,7 +127,7 @@ export function findNearestPoseBoneParent(
 ): THREE.Bone | null {
   let p: THREE.Object3D | null = bone.parent
   while (p) {
-    if (p instanceof THREE.Bone && boneSet.has(p)) return p
+    if (isSkinningBone(p) && boneSet.has(p)) return p
     p = p.parent
   }
   return null

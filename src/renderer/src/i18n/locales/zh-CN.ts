@@ -4031,11 +4031,13 @@ export default {
         armature: '骨架名称',
         preset: '常用蒙皮预设',
         bones: '骨骼列表 · 共 {n} 根',
-        bonesEmpty: '模型里未发现 THREE.Bone 节点；可能不是带骨骼蒙皮的模型',
+        bonesEmpty: '模型里未发现可绘制骨骼；可能不是带蒙皮的 GLB',
         vertexGroups: '顶点组 · 共 {n} 个',
         skeletonHint: '仅显示骨架。橙色点为骨骼节点，点击预览或列表里的节点可选中高亮。',
         skeletonPresetHint:
           '模型文件还没有烘焙骨骼，这里按预设拓扑合成显示骨架（经 Blender MCP 蒙皮后骨骼才会写入模型）。橙色点为骨骼节点，点击可选中。',
+        skeletonMissingBaked:
+          'Cook 记到了骨名，但当前 GLB 没有可绘制骨架。请确认 Blender 已导出带 Armature 与权重的 output.glb。',
         skeletonEmpty: '运行节点后在此查看 rig 后的骨架信息'
       },
       modelAnimation: {

@@ -4123,12 +4123,14 @@ export default {
         armature: 'Armature',
         preset: 'Common rig preset',
         bones: 'Bones · {n} total',
-        bonesEmpty: 'No THREE.Bone nodes found in the model; it may not be a rigged skin.',
+        bonesEmpty: 'No drawable bones in this model; it may not be a skinned GLB.',
         vertexGroups: 'Vertex groups · {n} total',
         skeletonHint:
           'Skeleton only. Orange dots are bone joints; click one in the preview or list to highlight.',
         skeletonPresetHint:
           'No bones are baked into the model file yet — this renders the preset rig topology (bones are written into the model after skinning via Blender MCP). Orange dots are bone joints; click to select.',
+        skeletonMissingBaked:
+          'Bone names were recorded, but this GLB has no drawable skeleton. Export the mesh with an Armature and weights from Blender.',
         skeletonEmpty: 'Run the node to inspect the resulting rig topology here'
       },
       modelAnimation: {

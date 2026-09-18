@@ -78,7 +78,9 @@
         {{
           skeletonSource === 'preset'
             ? t('graph.inspector.modelRigSkin.skeletonPresetHint')
-            : t('graph.inspector.modelRigSkin.skeletonHint')
+            : skeletonSource === 'none'
+              ? t('graph.inspector.modelRigSkin.skeletonMissingBaked')
+              : t('graph.inspector.modelRigSkin.skeletonHint')
         }}
       </p>
 
@@ -150,6 +152,7 @@ import { useNodeDisplayTitle } from '../composables/useNodeDisplayTitle'
 import { useGraphNodeRun } from '../composables/useGraphNodeRun'
 import { useEditorKernel } from '../editor/kernel'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
+import { graphRunHosts } from '../features/graph/model/graphRunHosts'
 
 /**
  * 3D 骨骼蒙皮节点的 inspector 拆成「模型 / 骨骼」两个 Tab：
@@ -207,11 +210,17 @@ const { hasInPort, runStatus, isGraphRunning, blocked, toggleRun } = useGraphNod
 const typeLabel = computed(() => graphTypeLabel('model.rigSkin'))
 const displayTitle = useNodeDisplayTitle(node, typeLabel)
 
-/** 输入端 3D 模型预览源——rigMeta 写入时同步缓存的模型工程相对路径 */
+/** 预览源：Cook 写回的路径，缺省时回退 runStates.out */
 const modelPreviewPath = computed((): string | null => {
   const current = node.value
   if (!current) return null
-  return current.params.rigModelRelativePath?.trim() || null
+  const fromParams = current.params.rigModelRelativePath?.trim()
+  if (fromParams) return fromParams
+  const runOut = graphRunHosts.get(hostId.value)?.runStates?.[current.id]?.outputs?.out
+  if (runOut && runOut.kind === 'asset' && runOut.relativePath?.trim()) {
+    return runOut.relativePath.trim()
+  }
+  return null
 })
 
 /** 最近一次 Cook 写入的 rigMeta（文字摘要数据源：armature / presetId / vertex groups） */

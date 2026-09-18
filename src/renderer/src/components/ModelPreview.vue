@@ -42,6 +42,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { loadModelScene } from '../features/director/loadModelScene'
 import { skeletonClipLabel } from '../features/director/skeletonAnim'
+import { collectSkinningBones, isSkinningBone } from '../features/director/skeletonRetarget'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { themePreference } from '../editor/preferences'
 import { detectModelPreviewMeta, type ModelPreviewMeta } from '@shared/domain'
@@ -239,13 +240,12 @@ function boneLabel(bone: THREE.Bone): string {
 function collectBoneNames(root: THREE.Object3D): string[] {
   const names: string[] = []
   const seen = new Set<string>()
-  root.traverse((child) => {
-    if (!(child instanceof THREE.Bone)) return
-    const label = boneLabel(child)
-    if (seen.has(label)) return
+  for (const bone of collectSkinningBones(root)) {
+    const label = boneLabel(bone)
+    if (seen.has(label)) continue
     seen.add(label)
     names.push(label)
-  })
+  }
   return names
 }
 
@@ -377,62 +377,65 @@ function ensureBoneMaterials(): void {
   }
 }
 
-function syncModelMeshVisibility(): void {
+function syncModelMeshVisibility(hideMesh: boolean): void {
   if (!rootObject) return
-  const skeletonOnly = props.showSkeleton === true
   rootObject.traverse((child) => {
-    if (child instanceof THREE.Bone) return
+    if (isSkinningBone(child)) return
     if (
       child instanceof THREE.Mesh ||
       child instanceof THREE.Line ||
       child instanceof THREE.Points
     ) {
-      child.visible = !skeletonOnly
+      child.visible = !hideMesh
     }
   })
 }
 
 function syncSkeletonOverlay(): void {
   clearBoneOverlay()
-  syncModelMeshVisibility()
-  if (!scene || !rootObject || !props.showSkeleton) return
+  if (!scene || !rootObject || !props.showSkeleton) {
+    syncModelMeshVisibility(false)
+    return
+  }
 
   ensureBoneMaterials()
   boneOverlay = new THREE.Group()
   boneOverlay.name = 'bone-overlay'
 
-  const bones: THREE.Bone[] = []
+  const bones = collectSkinningBones(rootObject)
   const seen = new Set<string>()
-  rootObject.traverse((child) => {
-    if (!(child instanceof THREE.Bone)) return
-    const name = boneLabel(child)
-    if (seen.has(name)) return
+  const unique: THREE.Bone[] = []
+  for (const bone of bones) {
+    const name = boneLabel(bone)
+    if (seen.has(name)) continue
     seen.add(name)
-    bones.push(child)
-  })
+    unique.push(bone)
+  }
 
-  if (bones.length) {
-    for (const bone of bones) {
+  if (unique.length) {
+    syncModelMeshVisibility(true)
+    for (const bone of unique) {
       const name = boneLabel(bone)
       const joint = new THREE.Mesh(jointGeom!, boneMatNormal!)
       joint.name = `bone-joint:${name}`
       joint.renderOrder = 12
       joint.userData.boneName = name
       joint.frustumCulled = false
-      boneOverlay!.add(joint)
+      boneOverlay.add(joint)
       boneEntries.push({ name, bone, joint, rest: null })
     }
 
-    for (const bone of bones) {
+    const boneSet = new Set(unique)
+    for (const bone of unique) {
       for (const child of bone.children) {
-        if (!(child instanceof THREE.Bone)) continue
+        if (!isSkinningBone(child) || !boneSet.has(child)) continue
         const mesh = new THREE.Mesh(segmentGeom!, boneMatLink!)
         mesh.name = `bone-link:${boneLabel(bone)}>${boneLabel(child)}`
         mesh.renderOrder = 11
         mesh.userData.boneName = boneLabel(child)
         mesh.userData.parentBoneName = boneLabel(bone)
         mesh.frustumCulled = false
-        boneOverlay!.add(mesh)
+        boneOverlay.add(mesh)
         boneLinks.push({
           from: bone,
           to: child,
@@ -447,20 +450,21 @@ function syncSkeletonOverlay(): void {
 
     scene.add(boneOverlay)
     updateBoneMarkers()
+    fitCameraToBones(rootObject)
     emit('skeleton-source', 'baked')
     return
   }
 
-  // 模型文件里没有 THREE.Bone——rigSkin 预设路径只写 rigMeta 元数据、
-  // 不改模型文件。有预设拓扑时按 armature 空间坐标合成骨架预览，
-  // 缩放对齐到模型包围盒，交互（点击选中 / 列表联动）与自带骨骼一致。
+  // 模型文件里没有可绘制骨骼——有预设拓扑时按 armature 空间坐标合成骨架预览。
   if (buildPresetSkeletonOverlay()) {
+    syncModelMeshVisibility(true)
     scene.add(boneOverlay)
     updateBoneMarkers()
     emit('skeleton-source', 'preset')
     return
   }
 
+  syncModelMeshVisibility(false)
   clearBoneOverlay()
   emit('skeleton-source', 'none')
 }
@@ -667,12 +671,11 @@ function clearRoot(): void {
  */
 function captureBoneRotationSnapshot(root: THREE.Object3D): void {
   boneRotationSnapshot.clear()
-  root.traverse((child) => {
-    if (!(child instanceof THREE.Bone)) return
-    const name = boneLabel(child)
-    if (!name || boneRotationSnapshot.has(name)) return
-    boneRotationSnapshot.set(name, { bone: child, bind: child.quaternion.clone() })
-  })
+  for (const bone of collectSkinningBones(root)) {
+    const name = boneLabel(bone)
+    if (!name || boneRotationSnapshot.has(name)) continue
+    boneRotationSnapshot.set(name, { bone, bind: bone.quaternion.clone() })
+  }
 }
 
 /**
@@ -714,12 +717,7 @@ function sceneHasRenderableMesh(object: THREE.Object3D): boolean {
 }
 
 function sceneHasBones(object: THREE.Object3D): boolean {
-  let found = false
-  object.traverse((child) => {
-    if (found) return
-    if (child instanceof THREE.Bone) found = true
-  })
-  return found
+  return collectSkinningBones(object).length > 0
 }
 
 function fitCameraToBones(object: THREE.Object3D): boolean {
@@ -728,12 +726,11 @@ function fitCameraToBones(object: THREE.Object3D): boolean {
   const point = new THREE.Vector3()
   let any = false
   object.updateMatrixWorld(true)
-  object.traverse((child) => {
-    if (!(child instanceof THREE.Bone)) return
-    child.getWorldPosition(point)
+  for (const bone of collectSkinningBones(object)) {
+    bone.getWorldPosition(point)
     box.expandByPoint(point)
     any = true
-  })
+  }
   if (!any || box.isEmpty()) return false
   const size = box.getSize(new THREE.Vector3())
   const center = box.getCenter(new THREE.Vector3())

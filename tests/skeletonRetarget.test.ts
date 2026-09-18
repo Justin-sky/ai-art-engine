@@ -6,6 +6,8 @@ import {
   collectSkinningBones,
   findNearestPoseBoneParent,
   isAuxiliaryPoseBone,
+  isSkinningBone,
+  isSkinnedMeshObject,
   normalizeBoneName,
   parseAnimationTrackBone,
   remapClipTracksByBoneNames,
@@ -74,6 +76,18 @@ describe('skeleton retarget helpers', () => {
     expect(rewritten.tracks[0]?.name).toBe('Hips.quaternion')
   })
 
+  it('duck-types bones and skinned meshes without instanceof', () => {
+    expect(isSkinningBone(new THREE.Bone())).toBe(true)
+    expect(isSkinningBone(new THREE.Object3D())).toBe(false)
+    expect(isSkinningBone({ isBone: true } as unknown as THREE.Object3D)).toBe(true)
+    const mesh = new THREE.SkinnedMesh(
+      new THREE.BufferGeometry(),
+      new THREE.MeshBasicMaterial()
+    )
+    expect(isSkinnedMeshObject(mesh)).toBe(true)
+    expect(isSkinnedMeshObject(new THREE.Mesh())).toBe(false)
+  })
+
   it('collectSkinningBones ignores orphan bones with the same name', () => {
     const root = new THREE.Group()
     const hips = new THREE.Bone()
@@ -100,6 +114,22 @@ describe('skeleton retarget helpers', () => {
     const bones = collectSkinningBones(root)
     expect(bones.map((b) => b.name)).toEqual(['Hips', 'LeftUpLeg', 'LeftFoot'])
     expect(bones.find((b) => b.name === 'LeftFoot')).toBe(foot)
+  })
+
+  it('collectSkinningBones reads skeleton.bones that are not scene children', () => {
+    const root = new THREE.Group()
+    const hips = new THREE.Bone()
+    hips.name = 'Hips'
+    const spine = new THREE.Bone()
+    spine.name = 'Spine'
+    hips.add(spine)
+    const mesh = new THREE.SkinnedMesh(
+      new THREE.BoxGeometry(1, 1, 1),
+      new THREE.MeshBasicMaterial()
+    )
+    mesh.bind(new THREE.Skeleton([hips, spine]))
+    root.add(mesh)
+    expect(collectSkinningBones(root).map((bone) => bone.name)).toEqual(['Hips', 'Spine'])
   })
 
   it('isAuxiliaryPoseBone filters twist/roll/ik without harming Hand', () => {
