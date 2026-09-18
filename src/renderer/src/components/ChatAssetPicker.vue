@@ -83,31 +83,35 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import type { AssetInfo, AssetType } from '@shared/domain'
-import { isAnimatedImageFilePath, isVectorImageFilePath } from '@shared/import'
+import { isAnimatedImageFilePath, isModelFilePath, isVectorImageFilePath } from '@shared/import'
 import { resolvePreviewMediaPath } from '@shared/media/thumbnailPath'
+import { ensureModelPreviewUrl } from '../features/media/ensureModelPreviewUrl'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
 import { useProjectStore } from '../stores/project'
 import StudioFloatingWindow from './StudioFloatingWindow.vue'
 
-/** 可被 @ 引用的资产类型：图片 / 视频 / 音频（voice 为工程语音资产） */
-const MENTION_TYPES: ReadonlySet<AssetType> = new Set(['image', 'video', 'voice'])
+/** 可被 @ 引用的资产类型：图片 / 视频 / 3D 模型 / 音频（voice 为工程语音资产） */
+const MENTION_TYPES: ReadonlySet<AssetType> = new Set(['image', 'video', 'voice', 'model', 'model3d'])
 /**
  * 引用分类：GIF / SVG 在资产模型里仍是 image 类型，但选择器里各单列一类，
  * 避免和一堆静态位图混在一起挑不出来（SVG 自成一路：预览走原文件、不进位图链路）。
+ * model / model3d 都归到「模型」页签。
  */
-type MentionKind = 'all' | 'image' | 'gif' | 'svg' | 'video' | 'voice'
+type MentionKind = 'all' | 'image' | 'gif' | 'svg' | 'video' | 'model' | 'voice'
 type MentionAssetKind = Exclude<MentionKind, 'all'>
 const KIND_LABEL_KEY: Record<MentionAssetKind, string> = {
   image: 'studio.chat.mentionTypeImage',
   gif: 'studio.chat.mentionTypeGif',
   svg: 'studio.chat.mentionTypeSvg',
   video: 'studio.chat.mentionTypeVideo',
+  model: 'studio.chat.mentionTypeModel',
   voice: 'studio.chat.mentionTypeAudio'
 }
 
-/** 资产 → 引用分类（动图与矢量图从图片里拆出来；非图片类型原样返回） */
+/** 资产 → 引用分类（动图与矢量图从图片里拆出来；3D 统一归模型） */
 function mentionKindOf(asset: AssetInfo): MentionAssetKind {
+  if (asset.type === 'model' || asset.type === 'model3d') return 'model'
   if (asset.type !== 'image') return asset.type as MentionAssetKind
   const relativePath = asset.relativePath ?? ''
   if (isVectorImageFilePath(relativePath)) return 'svg'
@@ -139,6 +143,7 @@ const tabs = computed(() => [
   { value: 'gif' as const, label: t('studio.chat.mentionTypeGif') },
   { value: 'svg' as const, label: t('studio.chat.mentionTypeSvg') },
   { value: 'video' as const, label: t('studio.chat.mentionTypeVideo') },
+  { value: 'model' as const, label: t('studio.chat.mentionTypeModel') },
   { value: 'voice' as const, label: t('studio.chat.mentionTypeAudio') }
 ])
 
@@ -171,6 +176,7 @@ function typeLabel(asset: AssetInfo): string {
 function fallbackIcon(asset: AssetInfo): string {
   const kind = mentionKindOf(asset)
   if (kind === 'video') return '🎬'
+  if (kind === 'model') return '🧊'
   if (kind === 'gif') return '🎞️'
   if (kind === 'svg') return '📐'
   return '🖼️'
@@ -198,8 +204,12 @@ async function resolveThumbs(assets: AssetInfo[]): Promise<void> {
   await Promise.all(
     assets.map(async (asset) => {
       if (next[asset.id]) return
-      // 音频资产没有可视化缩略图，直接显示图标，避免用 <img> 加载音频文件出现破损图
       if (asset.type === 'voice') return
+      if (asset.type === 'model' || asset.type === 'model3d') {
+        const url = await ensureModelPreviewUrl(asset)
+        if (url) next[asset.id] = url
+        return
+      }
       const source = asset.relativePath?.trim() || ''
       // 预览路径口径与资产库 / 检查器一致：矢量图（SVG）与视频走原文件，静态图优先真缩略图。
       // 直接拿 thumbnailPath 会踩矢量图——它没有位图缩略图，规划出来的路径永不落盘。
@@ -209,7 +219,7 @@ async function resolveThumbs(assets: AssetInfo[]): Promise<void> {
           thumbnailPath: asset.thumbnailPath,
           type: asset.type
         }) || ''
-      if (!path) return
+      if (!path || isModelFilePath(path)) return
       try {
         next[asset.id] = await resolveAssetPreviewUrl(path)
         // 规划中的缩略图还没落盘（刚导入 / 后台生成中）：退回原文件，别把卡片留成占位图标
@@ -259,6 +269,7 @@ function confirm(): void {
 
 .type-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
 }
 

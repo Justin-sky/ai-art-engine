@@ -36,7 +36,9 @@ import {
   normalizeOutputPathKey,
   selectRoundOutputs
 } from '@shared/outputScan'
+import { isModelFilePath } from '@shared/import'
 import { resolvePreviewMediaPath } from '@shared/media/thumbnailPath'
+import { ensureModelPreviewUrl } from '../features/media/ensureModelPreviewUrl'
 import ChatAssetPreview from './ChatAssetPreview.vue'
 import ChatChangesCard from './ChatChangesCard.vue'
 import ChatAssetPicker from './ChatAssetPicker.vue'
@@ -143,9 +145,10 @@ function onComposerInput(): void {
   if (/@[^\s@]*$/.test(before)) mentionOpen.value = true
 }
 
-/** 音频没有可视化缩略图，chips 直接显示音符图标，不请求预览 URL */
+/** 音频没有可视化缩略图；3D 走离屏预览图，原文件不能当图片 */
 function resolveMentionThumb(asset: AssetInfo): Promise<string> {
   if (asset.type === 'voice') return Promise.resolve('')
+  if (asset.type === 'model' || asset.type === 'model3d') return ensureModelPreviewUrl(asset)
   // 预览路径口径与资产库 / 检查器一致：矢量图（SVG）与视频走原文件，静态图优先真缩略图
   const path =
     resolvePreviewMediaPath({
@@ -153,7 +156,7 @@ function resolveMentionThumb(asset: AssetInfo): Promise<string> {
       thumbnailPath: asset.thumbnailPath,
       type: asset.type
     }) || ''
-  if (!path) return Promise.resolve('')
+  if (!path || isModelFilePath(path)) return Promise.resolve('')
   return resolveAssetPreviewUrl(path)
 }
 
@@ -2198,6 +2201,9 @@ onBeforeUnmount(() => {
         <span v-for="item in referenced" :key="item.path" class="mention-chip" :title="item.path">
           <img v-if="item.thumbUrl" class="chip-thumb" :src="item.thumbUrl" alt="" />
           <span v-else-if="item.type === 'voice'" class="chip-icon">🎵</span>
+          <span v-else-if="item.type === 'model' || item.type === 'model3d'" class="chip-icon"
+            >🧊</span
+          >
           <span v-else class="chip-icon">📄</span>
           <span class="chip-name">{{ item.name }}</span>
           <button

@@ -1,11 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import {
-  bonePoseFromReadback,
-  executeModelPoseNode,
-  type GraphNode,
-  type NodeExecuteContext
-} from '../src/shared/graph'
-import { computePresetPoseReadback } from '../src/shared/blenderPoseGeneration'
+import { describe, expect, it, vi } from 'vitest'
+import { executeModelPoseNode, type GraphNode, type NodeExecuteContext } from '../src/shared/graph'
 
 function poseNode(params: Record<string, unknown> = {}): GraphNode {
   return {
@@ -28,7 +22,7 @@ const incomingModel = {
 describe('executeModelPoseNode', () => {
   it('throws when no upstream model is connected', async () => {
     const ctx = {
-      node: poseNode({ generateInstruction: '自然站立休息' }),
+      node: poseNode({ generateInstruction: 'idle' }),
       inputs: {}
     } as unknown as NodeExecuteContext
     await expect(executeModelPoseNode(ctx)).rejects.toThrow('GRAPH_MODEL_POSE_NO_MODEL')
@@ -37,56 +31,52 @@ describe('executeModelPoseNode', () => {
   it('throws when instruction is empty', async () => {
     const ctx = {
       node: poseNode({}),
-      inputs: { 'in-model': [incomingModel] },
-      inspectModelSkeleton: async () => [{ name: 'Hips', parent: null }]
+      inputs: { 'in-model': [incomingModel] }
     } as unknown as NodeExecuteContext
     await expect(executeModelPoseNode(ctx)).rejects.toThrow('GRAPH_PROCESS_NO_INPUT')
   })
 
-  it('applies a preset pose locally without Blender or a text model', async () => {
+  it('throws GRAPH_MODEL_POSE_DSH when the blender job runner is missing', async () => {
+    const ctx = {
+      node: poseNode({ generateInstruction: 'idle stand' }),
+      inputs: { 'in-model': [incomingModel] }
+    } as unknown as NodeExecuteContext
+    await expect(executeModelPoseNode(ctx)).rejects.toThrow('GRAPH_MODEL_POSE_DSH')
+  })
+
+  it('writes the new GLB path and bonePose overlay from the dsh job', async () => {
+    const runBlenderDshJob = vi.fn(async () => ({
+      relativePath: 'Cache/Models/pose-1.glb',
+      result: {
+        ok: true,
+        kind: 'pose' as const,
+        bonePose: { Spine: { x: 0.1, y: 0, z: 0 } }
+      }
+    }))
     const patched: Record<string, unknown>[] = []
     const ctx = {
-      node: poseNode({
-        generateInstruction:
-          '自然站立休息：重心略偏右腿，左膝微松；双臂自然垂于体侧，肩放松；脊柱直立，头略微前看，整体放松不僵硬。'
-      }),
+      node: poseNode({ generateInstruction: 'idle stand' }),
       inputs: { 'in-model': [incomingModel] },
-      locale: 'zh-CN',
-      inspectModelSkeleton: async () => [
-        { name: 'mixamorig:Hips', parent: null },
-        { name: 'mixamorig:Spine', parent: 'mixamorig:Hips' },
-        { name: 'mixamorig:LeftArm', parent: 'mixamorig:Spine' }
-      ],
+      runBlenderDshJob,
       patchNode: (patch: { params?: Record<string, unknown> }) => {
         if (patch.params) patched.push(patch.params)
       }
     } as unknown as NodeExecuteContext
 
     const out = await executeModelPoseNode(ctx)
+    expect(runBlenderDshJob).toHaveBeenCalledTimes(1)
+    const call = runBlenderDshJob.mock.calls[0]![0]
+    expect(call.kind).toBe('pose')
+    expect(call.skillId).toBe('blender.pose')
+    expect(call.sourceRelativePath).toBe('Cache/Models/hero.glb')
+
     const value = out.out
     expect(value.kind).toBe('asset')
     if (value.kind !== 'asset') return
     expect(value.assetId).toBe('model-1')
-    expect(value.relativePath).toBe('Cache/Models/hero.glb')
-    expect(value.bonePose?.['mixamorig:Spine']).toBeTruthy()
-    expect(value.bonePose?.['mixamorig:LeftArm']).toBeTruthy()
-    expect(ctx.node.params.posePresetId).toBe('idle')
-    expect(patched[0]?.posePresetId).toBe('idle')
-  })
-})
-
-describe('computePresetPoseReadback', () => {
-  it('maps role rotations onto the supplied bone names', () => {
-    const readback = computePresetPoseReadback({
-      presetId: 'idle',
-      boneRoles: {
-        Hips: 'hips',
-        Spine: 'spine',
-        LeftArm: 'l_upperarm'
-      }
-    })
-    const pose = bonePoseFromReadback(readback)
-    expect(pose.Spine?.x).toBeCloseTo((3 * Math.PI) / 180, 5)
-    expect(pose.LeftArm?.x).toBeCloseTo((-6 * Math.PI) / 180, 5)
+    expect(value.relativePath).toBe('Cache/Models/pose-1.glb')
+    expect(value.bonePose?.Spine).toEqual({ x: 0.1, y: 0, z: 0 })
+    expect(ctx.node.params.poseModelRelativePath).toBe('Cache/Models/pose-1.glb')
+    expect(patched[0]?.bonePose).toEqual(value.bonePose)
   })
 })

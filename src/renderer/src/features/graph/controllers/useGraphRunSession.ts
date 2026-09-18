@@ -46,6 +46,7 @@ import { composeImageIconPackSheet } from '../model/composeImageIconPackSheet'
 import { composeImageLayerStack } from '../model/composeImageLayerStack'
 import { composeComicPageImage } from '../../comic/composeComicPageImage'
 import { inspectModelSkeleton } from '../model/inspectModelSkeleton'
+import { runBlenderDshJob } from '../model/runBlenderDshJob'
 import { normalizeImageAspectRatio } from '../model/normalizeImageAspectRatio'
 import { enrichStyleImagesWithLibraryPrompts } from '../../stylePresets/defaultLibrary'
 import { resolveStyleImageUrls } from '../../stylePresets/resolveStyleImageUrls'
@@ -262,21 +263,26 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       COMIC_PAGE_COMPOSE_UNAVAILABLE: 'graph.run.comicPageCompose',
       COMIC_PAGE_COMPOSE_FAILED: 'graph.run.comicPageCompose',
       GRAPH_MODEL_POSE_NO_MODEL: 'graph.run.modelPoseNoModel',
-      GRAPH_MODEL_POSE_NO_BONES: 'graph.run.modelPoseNoBones',
-      GRAPH_MODEL_POSE_INSPECT: 'graph.run.modelPoseInspect',
-      GRAPH_MODEL_POSE_NO_TEXT_MODEL: 'graph.run.modelPoseNoTextModel',
       GRAPH_MODEL_POSE_MCP: 'graph.run.modelPoseMcp',
       GRAPH_MODEL_POSE_NO_MATCH: 'graph.run.modelPoseNoMatch',
       GRAPH_MODEL_POSE_FAILED: 'graph.run.modelPoseFailed',
+      GRAPH_MODEL_POSE_EXPORT: 'graph.run.modelPoseExport',
+      GRAPH_MODEL_POSE_DSH: 'graph.run.modelPoseDsh',
       GRAPH_MODEL_RIG_NO_MODEL: 'graph.run.modelRigNoModel',
-      GRAPH_MODEL_RIG_NO_TEXT_MODEL: 'graph.run.modelRigNoTextModel',
       GRAPH_MODEL_RIG_MCP: 'graph.run.modelRigMcp',
       GRAPH_MODEL_RIG_NO_MATCH: 'graph.run.modelRigNoMatch',
       GRAPH_MODEL_RIG_FAILED: 'graph.run.modelRigFailed',
+      GRAPH_MODEL_RIG_EXPORT: 'graph.run.modelRigExport',
+      GRAPH_MODEL_RIG_DSH: 'graph.run.modelRigDsh',
       GRAPH_MODEL_ANIM_NO_MODEL: 'graph.run.modelAnimNoModel',
-      GRAPH_MODEL_ANIM_NO_ARMATURE: 'graph.run.modelAnimNoArmature',
-      GRAPH_MODEL_ANIM_NO_TEXT_MODEL: 'graph.run.modelAnimNoTextModel',
       GRAPH_MODEL_ANIM_MCP: 'graph.run.modelAnimMcp',
+      GRAPH_MODEL_ANIM_EXPORT: 'graph.run.modelAnimExport',
+      GRAPH_MODEL_ANIM_DSH: 'graph.run.modelAnimDsh',
+      GRAPH_MODEL_DSH_TIMEOUT: 'graph.run.modelDshTimeout',
+      GRAPH_MODEL_DSH_RESULT: 'graph.run.modelDshResult',
+      GRAPH_MODEL_DSH_EXPORT: 'graph.run.modelDshExport',
+      GRAPH_MODEL_DSH_START: 'graph.run.modelDshStart',
+      GRAPH_MODEL_DSH_NO_MODEL: 'graph.run.modelPoseNoModel',
       GRAPH_MODEL_ANIM_NO_MATCH: 'graph.run.modelAnimNoMatch',
       GRAPH_MODEL_ANIM_FAILED: 'graph.run.modelAnimFailed'
     }
@@ -828,6 +834,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         composeImageLayerStack,
         composeComicPageImage,
         inspectModelSkeleton,
+        runBlenderDshJob,
         runBlenderMcpTool: (input) =>
           window.studio.runBlenderMcpTool({
             name: input.name,

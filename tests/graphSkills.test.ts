@@ -47,6 +47,17 @@ describe('graphSkills', () => {
     expect(getGraphSkill('episode.breakdown')).toBe(builtin)
   })
 
+  it('exposes blender dsh skills for the three 3D cook nodes', () => {
+    for (const id of ['blender.rigSkin', 'blender.pose', 'blender.animation'] as const) {
+      const skill = getGraphSkill(id)
+      expect(skill?.kind).toBe('blender')
+      expect(skill?.usageEn).toContain('input.glb')
+      expect(skill?.usageEn).toContain('result.json')
+      expect(skill?.systemPromptEn).toContain('Never invent Euler JSON')
+    }
+    expect(applyGraphSkill('blender.pose').generateInstruction).toContain('IK')
+  })
+
   it('exposes the svg vector skill for the chat agent', () => {
     const skill = getGraphSkill('svg.motion')
     expect(skill?.kind).toBe('svg')

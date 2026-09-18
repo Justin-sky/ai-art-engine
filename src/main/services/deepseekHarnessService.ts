@@ -13,6 +13,8 @@ import {
   type DshSkillsInfo,
   type DshSkillsTemplateResult,
   type HarnessEvent,
+  type HarnessJobWaitInput,
+  type HarnessJobWaitResult,
   type HarnessRunInput,
   type HarnessRunResult,
   type HarnessStatus,
@@ -80,6 +82,33 @@ const NPX_PROGRESS_HINT_MS = 20_000
 
 let child: ChildProcess | null = null
 let runSeq = 0
+type HarnessQueueItem = {
+  input: HarnessRunInput
+  waiters: Array<(result: HarnessJobWaitResult) => void>
+  onStart?: () => void
+}
+const harnessQueue: HarnessQueueItem[] = []
+let activeWaiters: Array<(result: HarnessJobWaitResult) => void> = []
+
+function completeActiveJob(result: HarnessJobWaitResult): void {
+  const waiters = activeWaiters
+  activeWaiters = []
+  for (const wait of waiters) wait(result)
+  pumpHarnessQueue()
+}
+
+function pumpHarnessQueue(): void {
+  if (child || activeWaiters.length) return
+  const next = harnessQueue.shift()
+  if (!next) return
+  activeWaiters = next.waiters
+  next.onStart?.()
+  void startHarnessNow(next.input).then((started) => {
+    if (!started.started) {
+      completeActiveJob({ ok: false, error: started.message || 'GRAPH_MODEL_DSH_START' })
+    }
+  })
+}
 /** 最近一次下发的 status 文本，用于合并连续重复行，避免同文刷屏 */
 let lastStatusText = ''
 /** 已提示过的工作区路径：仅在切换时提示，避免每条消息都重复输出 */
@@ -1797,6 +1826,7 @@ function launchDsh(opts: {
     if (child === proc) child = null
     releaseHarnessRunAccess(runId)
     emit({ type: 'error', message: `dsh 启动失败：${err.message}` })
+    completeActiveJob({ ok: false, error: err.message, finalText: '' })
   })
   proc.on('close', (code) => {
     if (child === proc) child = null
@@ -1823,12 +1853,14 @@ function launchDsh(opts: {
         (dshEntry ? '请重试或查看上方状态信息' : '若为首次运行，请等待包下载完成后重试')
       // 有工具事件却没文本，是「面板看起来什么都没发生」的典型成因，说清楚免得误判为卡死
       const onlyTools = sawOutput ? '，本轮只产生了工具调用、没有文本' : ''
-      emit({ type: 'error', message: `dsh 异常退出（code ${code}）${onlyTools}。${hint}。` })
+      const message = `dsh 异常退出（code ${code}）${onlyTools}。${hint}。`
+      emit({ type: 'error', message })
+      completeActiveJob({ ok: false, error: message, finalText })
     } else {
       if (code !== 0) emitStatus(`dsh 退出码 ${code}（本轮已有输出，未受影响）`)
       emit({ type: 'done', runId })
-      // 流式期间已把文本通过 assistant 事件实时下发，final 仅标记「回答已完成」
       if (finalText) emit({ type: 'final', text: finalText })
+      completeActiveJob({ ok: true, finalText })
     }
   })
 
@@ -1854,7 +1886,57 @@ function launchDsh(opts: {
   }
 }
 
+export async function runHarnessJobWait(input: HarnessJobWaitInput): Promise<HarnessJobWaitResult> {
+  const rest: HarnessRunInput = {
+    task: input.task,
+    mode: input.mode,
+    sessionId: input.sessionId,
+    model: input.model,
+    providerId: input.providerId
+  }
+  const rawTask = String(rest.task ?? '').trim()
+  if (!rawTask) return { ok: false, error: '任务内容为空' }
+  return new Promise((resolve) => {
+    let settled = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const finish = (result: HarnessJobWaitResult): void => {
+      if (settled) return
+      settled = true
+      if (timer) clearTimeout(timer)
+      resolve(result)
+    }
+    const armTimeout = (): void => {
+      if (!input.timeoutMs || input.timeoutMs <= 0 || timer) return
+      timer = setTimeout(() => {
+        finish({ ok: false, error: 'GRAPH_MODEL_DSH_TIMEOUT' })
+      }, input.timeoutMs)
+    }
+    const waiter = (result: HarnessJobWaitResult): void => finish(result)
+    if (child || harnessQueue.length || activeWaiters.length) {
+      harnessQueue.push({ input: rest, waiters: [waiter], onStart: armTimeout })
+      emitStatus('排队等待 dsh…')
+      return
+    }
+    activeWaiters = [waiter]
+    armTimeout()
+    void startHarnessNow(rest).then((started) => {
+      if (!started.started) finish({ ok: false, error: started.message || 'GRAPH_MODEL_DSH_START' })
+    })
+  })
+}
+
 export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRunResult> {
+  const rawTask = String(input?.task ?? '').trim()
+  if (!rawTask) return { started: false, message: '任务内容为空' }
+  if (child || harnessQueue.length || activeWaiters.length) {
+    harnessQueue.push({ input, waiters: [] })
+    emitStatus('已加入队列，当前 dsh 任务结束后开始')
+    return { started: true, message: 'queued' }
+  }
+  return startHarnessNow(input)
+}
+
+async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult> {
   const rawTask = String(input?.task ?? '').trim()
   if (!rawTask) return { started: false, message: '任务内容为空' }
   if (child) return { started: false, message: '已有任务正在运行' }

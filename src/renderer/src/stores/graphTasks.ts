@@ -63,6 +63,7 @@ import { composeImageIconPackSheet } from '../features/graph/model/composeImageI
 import { composeImageLayerStack } from '../features/graph/model/composeImageLayerStack'
 import { composeComicPageImage } from '../features/comic/composeComicPageImage'
 import { inspectModelSkeleton } from '../features/graph/model/inspectModelSkeleton'
+import { runBlenderDshJob } from '../features/graph/model/runBlenderDshJob'
 import { normalizeImageAspectRatio } from '../features/graph/model/normalizeImageAspectRatio'
 import { prepareGraphDocumentForPersist } from '../features/graph/persistGraphRunOutputs'
 import { saveGraphRunMediaForNode } from '../features/graph/saveGraphRunMediaForNode'
@@ -1375,6 +1376,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         composeImageLayerStack,
         composeComicPageImage,
         inspectModelSkeleton,
+        runBlenderDshJob,
         runBlenderMcpTool: (input) =>
           window.studio.runBlenderMcpTool({
             name: input.name,

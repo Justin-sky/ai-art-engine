@@ -426,6 +426,7 @@ async function executeOneNode(
     composeImageLayerStack: options.composeImageLayerStack,
     composeComicPageImage: options.composeComicPageImage,
     inspectModelSkeleton: options.inspectModelSkeleton,
+    runBlenderDshJob: options.runBlenderDshJob,
     runBlenderMcpTool: options.runBlenderMcpTool,
     normalizeImageAspectRatio: options.normalizeImageAspectRatio,
     resolveBeatUnit: options.resolveBeatUnit,

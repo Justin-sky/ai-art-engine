@@ -7641,6 +7641,8 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     relativePath?: string
     name?: string
     bonePose?: Record<string, StageVec3>
+    /** 上游 `model.animation` 的 overlay；空 assetId 片段播新 GLB 内嵌 clip */
+    clip?: { name: string; fps: number; frameRange: [number, number] }
   }
 
   /**
@@ -7673,6 +7675,15 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
         ...(value.title?.trim() ? { name: value.title.trim() } : {}),
         ...(value.bonePose && Object.keys(value.bonePose).length
           ? { bonePose: value.bonePose }
+          : {}),
+        ...(value.clip?.name?.trim()
+          ? {
+              clip: {
+                name: value.clip.name.trim(),
+                fps: value.clip.fps,
+                frameRange: value.clip.frameRange
+              }
+            }
           : {})
       }
     }
@@ -7693,7 +7704,54 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
 
   function incomingModelKey(info: IncomingModelInfo): string {
     const pose = info.bonePose ? JSON.stringify(info.bonePose) : ''
-    return `${info.assetId}::${info.relativePath ?? ''}::${pose}`
+    const clip = info.clip
+      ? `${info.clip.name}:${info.clip.fps}:${info.clip.frameRange.join('-')}`
+      : ''
+    return `${info.assetId}::${info.relativePath ?? ''}::${pose}::${clip}`
+  }
+
+  function attachIncomingEmbeddedClip(
+    objectId: string,
+    clip: NonNullable<IncomingModelInfo['clip']>
+  ): void {
+    const name = clip.name.trim()
+    if (!name) return
+    const anim = ensureAnimation()
+    let track = anim.tracks.find((item) => item.targetKind === 'object' && item.targetId === objectId)
+    if (!track) {
+      const objName = stage.value.objects.find((item) => item.id === objectId)?.name ?? 'Object'
+      track = {
+        id: `anim:${crypto.randomUUID()}`,
+        name: objName,
+        targetKind: 'object',
+        targetId: objectId,
+        start: 0,
+        end: anim.duration,
+        path: null,
+        keyframes: [],
+        orientToPath: false,
+        pathForwardAxis: DEFAULT_PATH_FORWARD_AXIS
+      }
+      anim.tracks = [...anim.tracks, track]
+    }
+    const existing = directorTrackSkeletonClips(track)
+    if (existing.some((item) => !item.assetId?.trim() && item.clip === name)) return
+    const frames = Math.max(1, clip.frameRange[1] - clip.frameRange[0])
+    const duration = Math.max(0.5, frames / Math.max(1, clip.fps))
+    if (duration > anim.duration) anim.duration = duration
+    const placed = placeSkeletonSegmentRange(existing, 0, duration, anim.duration)
+    if (!placed) return
+    patchTrackSkeletonClips(track.id, [
+      ...existing,
+      {
+        id: `skel:${crypto.randomUUID()}`,
+        clip: name,
+        start: placed.start,
+        end: placed.end,
+        speed: 1,
+        loop: true
+      }
+    ])
   }
 
   /** dive 进入导演台时，把 `in-model` 端口的 3D 模型自动实例化到舞台模型列表（去重）。 */
@@ -7708,26 +7766,29 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       (o) => o.kind === 'model' && o.modelAssetId === incoming.assetId
     )
     if (existing) {
-      // 旧数据可能丢了物化路径（Cache 产物查不到资产），补回后才不会退化成占位方块
-      if (incoming.relativePath && !existing.modelRelativePath?.trim()) {
+      const nextPath = incoming.relativePath?.trim() || ''
+      const prevPath = existing.modelRelativePath?.trim() || ''
+      if (nextPath && nextPath !== prevPath) {
         stage.value.objects = stage.value.objects.map((o) =>
-          o.id === existing.id ? { ...o, modelRelativePath: incoming.relativePath } : o
+          o.id === existing.id ? { ...o, modelRelativePath: nextPath } : o
         )
         schedulePersist()
         await rebuildObjects()
       }
-      if (incoming.bonePose && key !== appliedIncomingModelKey) {
-        applyObjectBonePoseMap(existing.id, incoming.bonePose, 'replace')
+      if (key !== appliedIncomingModelKey) {
+        if (incoming.bonePose) applyObjectBonePoseMap(existing.id, incoming.bonePose, 'replace')
+        if (incoming.clip) attachIncomingEmbeddedClip(existing.id, incoming.clip)
       }
       appliedIncomingModelKey = key
       return
     }
     appliedIncomingModelKey = key
-    await createModelObject(incoming.assetId, null, undefined, {
+    const createdId = await createModelObject(incoming.assetId, null, undefined, {
       relativePath: incoming.relativePath,
       name: incoming.name,
       bonePose: incoming.bonePose
     })
+    if (createdId && incoming.clip) attachIncomingEmbeddedClip(createdId, incoming.clip)
   }
 
   function clearFlyKeys(): void {

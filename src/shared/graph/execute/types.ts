@@ -611,16 +611,32 @@ export interface NodeExecuteContext {
     resolveImage?: (imageUrl: string) => Promise<string>
   }) => Promise<{ dataUrl: string; width: number; height: number }>
   /**
-   * 读取 3D 模型骨骼层级（蒙皮主链）。AI 姿势节点 Cook 时用来推断角色并生成旋转。
-   * 未注入时节点无法从 GLB 取骨名。
+   * 读取 3D 模型骨骼层级（蒙皮主链）。预览 / 导演台 FK 用。
    */
   inspectModelSkeleton?: (input: {
     relativePath?: string
     assetId?: string
   }) => Promise<Array<{ name: string; parent: string | null }>>
   /**
-   * 调用本机 Blender MCP（`execute_blender_code` 等）。自由文本姿势走 LLM→Python 时需要；
-   * 常用姿势预设在共享层本地计算，不经过此接口。
+   * 三个 3D 加工节点的唯一执行通路：dsh craft + Blender MCP，导出新 GLB。
+   */
+  runBlenderDshJob?: (input: {
+    kind: import('../../blenderDshJob').BlenderDshJobKind
+    node: GraphNode
+    sourceRelativePath: string
+    instruction: string
+    locale?: string
+    timeoutMs?: number
+    skillId: string
+    model?: string
+    providerInstanceId?: string
+    signal?: AbortSignal
+  }) => Promise<{
+    relativePath: string
+    result: import('../../blenderDshJob').BlenderJobResult
+  }>
+  /**
+   * 调用本机 Blender MCP（探活 / 诊断）。节点 Cook 不再用它猜欧拉。
    */
   runBlenderMcpTool?: (input: {
     name: string
@@ -810,6 +826,7 @@ export interface GraphRunOptions {
   composeImageLayerStack?: NodeExecuteContext['composeImageLayerStack']
   composeComicPageImage?: NodeExecuteContext['composeComicPageImage']
   inspectModelSkeleton?: NodeExecuteContext['inspectModelSkeleton']
+  runBlenderDshJob?: NodeExecuteContext['runBlenderDshJob']
   runBlenderMcpTool?: NodeExecuteContext['runBlenderMcpTool']
   normalizeImageAspectRatio?: NodeExecuteContext['normalizeImageAspectRatio']
   resolveBeatUnit?: NodeExecuteContext['resolveBeatUnit']

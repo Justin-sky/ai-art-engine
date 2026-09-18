@@ -1558,8 +1558,8 @@ const SVG_GEN_PRESETS: InstructionPreset[] = [
 ]
 
 /**
- * 3D 姿势节点常用预设：body 文案与 `blenderPoseGeneration.matchBlenderPresetId`
- * 字面量严格一致，保证写入选预设后能命中预设派发（不走 LLM）。菜单标题走
+ * 3D 姿势节点常用预设：只当指令模板写入 generateInstruction，
+ * 与自由描述同一条 dsh→Blender 通路。菜单标题走
  * `graph.inspector.generate.presets.modelPose.<id>`，chip 名称只显示动作主题。
  */
 const MODEL_POSE_PRESETS: InstructionPreset[] = [
@@ -1636,19 +1636,19 @@ const MODEL_POSE_PRESETS: InstructionPreset[] = [
 ]
 
 /**
- * 3D 骨骼蒙皮常用预设：body 文案与 `blenderRigSkinGeneration.matchBlenderRigPresetId`
- * 字面量严格一致，写入选预设后命中预设派发（本地算拓扑，不走 LLM）。
+ * 3D 骨骼蒙皮常用预设：只当指令模板写入 generateInstruction，
+ * 与自由描述同一条 dsh→Blender 通路。
  */
 const MODEL_RIG_SKIN_PRESETS: InstructionPreset[] = [
   {
     id: 'humanoid-simple',
     titleKey: 'graph.inspector.generate.presets.modelRigSkin.humanoidSimple',
-    body: '人形简单骨架：根骨 + 脊柱链（髋/胸/颈/头）+ 双手臂（肩/上臂/前臂/手）+ 双腿（上腿/下腿/脚），共 21 根骨头，适合人型角色基础动画。'
+    body: '人形简单骨架，共 21 骨：Hips（根）→ Spine → Chest → Neck → Head；L/R_Shoulder → UpperArm → ForeArm → Hand；L/R_UpLeg → LoLeg → Foot + L/R_Toes。按网格包围盒缩放后 parent_set(ARMATURE_AUTO)。'
   },
   {
     id: 'humanoid-mixamo',
     titleKey: 'graph.inspector.generate.presets.modelRigSkin.humanoidMixamo',
-    body: '人形 Mixamo 兼容骨架：humanoid-simple + 双手指（每指 2~3 段）+ toe，可直接挂 Mixamo 动作库。'
+    body: '人形 Mixamo 兼容骨架：humanoid-simple 21 骨 + 每指 2~3 段 + toe。优先 mixamorig:Hips 前缀（网格已有则沿用），再 parent_set(ARMATURE_AUTO)。'
   },
   {
     id: 'quadruped',
@@ -1663,8 +1663,8 @@ const MODEL_RIG_SKIN_PRESETS: InstructionPreset[] = [
 ]
 
 /**
- * 3D 动画常用预设：body 文案与 `blenderAnimationGeneration.matchBlenderAnimPresetId`
- * 字面量严格一致，写入选预设后命中预设派发（本地算关键帧，不走 LLM）。
+ * 3D 动画常用预设：只当指令模板写入 generateInstruction，
+ * 与自由描述同一条 dsh→Blender 通路。
  * 16 个 id 与 modelPose 重复但 body 不同——姿势是静帧、动画是循环/关键帧。
  * 14–16（hitReact/death/celebrate）为游戏特化的反馈/结局循环。
  */

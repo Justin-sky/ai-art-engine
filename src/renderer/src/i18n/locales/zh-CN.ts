@@ -852,16 +852,17 @@ export default {
       // 按钮仅保留 @ 符号，完整说明放 title（mentionTitle）
       mentionButton: "{'@'}",
       mentionTitle: '引用资产',
-      mentionSubtitle: '选择要作为模型参考的图片 / GIF / 视频 / 音频',
+      mentionSubtitle: '选择要作为模型参考的图片 / GIF / 视频 / 3D 模型 / 音频',
       mentionHint: '点击卡片选择，可多选',
       mentionPicked: '已选 {n} 个资产',
-      mentionEmpty: '工程中暂无可用资产，先导入图片 / GIF / 视频 / 音频',
+      mentionEmpty: '工程中暂无可用资产，先导入图片 / GIF / 视频 / 3D 模型 / 音频',
       mentionNoMatch: '没有匹配的资产',
       mentionTypeAll: '全部',
       mentionTypeImage: '图片',
       mentionTypeGif: 'GIF',
       mentionTypeSvg: 'SVG',
       mentionTypeVideo: '视频',
+      mentionTypeModel: '模型',
       mentionTypeAudio: '音频',
       mentionTypeFile: '文件',
       removeMention: '移除引用',
@@ -2651,7 +2652,8 @@ export default {
         generate_model3d: '3D 模型',
         graph_icon_refine: '图标精修',
         task_run: '工作流',
-        asset_import: '素材导入'
+        asset_import: '素材导入',
+        blender_export: 'Blender 导出'
       }
     },
     logs: {
@@ -3676,21 +3678,31 @@ export default {
       modelPoseNoModel: '请先连接上游 3D 模型',
       modelPoseNoBones: '上游模型没有可编辑骨骼（需要带蒙皮的角色模型）',
       modelPoseInspect: '无法读取模型骨骼（需要在界面中运行）',
-      modelPoseNoTextModel: '请先在节点上选择文本模型（自由描述姿势时需要）',
-      modelPoseMcp: '自由描述姿势需要启用 Blender MCP；常用姿势预设无需 Blender',
-      modelPoseNoMatch: '未能生成可套用的骨骼旋转（骨骼名可能无法映射）',
-      modelPoseFailed: '3D姿势生成未完成',
+      modelPoseNoTextModel: '请先在节点上选择文本模型',
+      modelPoseMcp: '请先启动 Blender 并启用 Blender MCP',
+      modelPoseNoMatch: 'Blender 未回传可用骨骼姿势',
+      modelPoseFailed: '3D 姿势生成未完成',
+      modelPoseExport: 'Blender 未导出姿势 GLB',
+      modelPoseDsh: '无法启动 dsh 作业（姿势）',
       modelRigNoModel: '请先连接上游 3D 模型',
-      modelRigNoTextModel: '请先在节点上选择文本模型（自由描述绑骨时需要）',
-      modelRigMcp: '自由描述绑骨需要启用 Blender MCP；预设拓扑无需 Blender',
-      modelRigNoMatch: 'Blender 端未能创建 armature 或自动蒙皮失败',
-      modelRigFailed: 'AI 骨骼蒙皮生成未完成',
+      modelRigNoTextModel: '请先在节点上选择文本模型',
+      modelRigMcp: '请先启动 Blender 并启用 Blender MCP',
+      modelRigNoMatch: 'Blender 未能创建可用骨架',
+      modelRigFailed: '3D 骨骼蒙皮未完成',
+      modelRigExport: 'Blender 未导出蒙皮 GLB',
+      modelRigDsh: '无法启动 dsh 作业（蒙皮）',
       modelAnimNoModel: '请先连接上游 3D 模型',
       modelAnimNoArmature: '上游模型没有 armature；请先经过「3D 骨骼蒙皮」节点',
-      modelAnimNoTextModel: '请先在节点上选择文本模型（自由描述动画时需要）',
-      modelAnimMcp: '自由描述动画需要启用 Blender MCP；预设动画无需 Blender',
-      modelAnimNoMatch: 'Blender 端未写入任何关键帧（armature 名/骨名可能不一致）',
-      modelAnimFailed: 'AI 关键帧动画生成未完成',
+      modelAnimNoTextModel: '请先在节点上选择文本模型',
+      modelAnimMcp: '请先启动 Blender 并启用 Blender MCP',
+      modelAnimNoMatch: 'Blender 未写入可用动画',
+      modelAnimFailed: '3D 关键帧动画未完成',
+      modelAnimExport: 'Blender 未导出动画 GLB',
+      modelAnimDsh: '无法启动 dsh 作业（动画）',
+      modelDshTimeout: 'dsh / Blender 作业超时（绑骨约 100 分钟、姿势约 60 分钟、动画约 120 分钟）',
+      modelDshResult: '作业未写出有效 result.json',
+      modelDshExport: '作业未导出 GLB',
+      modelDshStart: 'dsh 未能启动',
       dismissHint: '点击关闭提示'
     },
     types: {
@@ -3990,7 +4002,7 @@ export default {
         hint: '双击节点调节情绪与模型；运行后输出结果图，此处可预览图库与提示词'
       },
       modelPose: {
-        hint: '连接上游 3D 模型，选择常用姿势或填写描述后运行。输出接到 3D 导演台的模型口即可套用姿势。常用姿势无需 Blender；自由描述需要文本模型，并启用 Blender MCP。',
+        hint: '连接上游已蒙皮 3D 模型，点选常用姿势或填写描述后运行。Cook 经 dsh 指挥 Blender 导出新 GLB，再接到 3D 导演台模型口。需要启动 Blender 并启用 Blender MCP。',
         presets: '常用姿势',
         instruction: '姿势指令',
         posePreview: '姿势预览',
@@ -4010,7 +4022,7 @@ export default {
         modelEmpty: '请先在设置中启用并勾选文本模型'
       },
       modelRigSkin: {
-        hint: '连接上游 3D 模型，选择常用蒙皮类型或填写描述后运行。常用蒙皮无需 Blender；自由描述需要文本模型，并启用 Blender MCP。',
+        hint: '连接上游 3D 模型，点选常用骨架或填写描述后运行。Cook 经 dsh 指挥 Blender 建骨、自动权重并导出新 GLB。需要启动 Blender 并启用 Blender MCP。',
         tabsAria: '3D 骨骼蒙皮页签',
         tabs: {
           preview: '模型',
@@ -4027,7 +4039,7 @@ export default {
         skeletonEmpty: '运行节点后在此查看 rig 后的骨架信息'
       },
       modelAnimation: {
-        hint: '连接上游已蒙皮模型，选择游戏常用动画预设或填写描述后运行。常用动画无需 Blender；自由描述需要文本模型，并启用 Blender MCP。',
+        hint: '连接上游已蒙皮模型，点选常用动作或填写描述后运行。Cook 经 dsh 指挥 Blender 做关键帧并导出带 AnimationClip 的 GLB。需要启动 Blender 并启用 Blender MCP。',
         animPreview: '动画预览',
         animHint:
           '按 fps 节拍推进当前帧，姿态按关键帧线性插值后驱动模型骨骼。拖动时间轴单帧定位，▶/❚❚ 播放暂停，循环到起帧。',
@@ -4047,6 +4059,22 @@ export default {
         saveDialogDefaultName: '动画',
         saveDone: '已保存到 {path}',
         saveFailed: '保存失败：{message}'
+      },
+      blenderDsh: {
+        live: {
+          probe: '正在检查 Blender MCP…',
+          prepare: '正在准备作业目录…',
+          queued: '排队等待 dsh…',
+          start: '正在启动 dsh…',
+          skill: '正在加载技能…',
+          inspect: '正在读取场景…',
+          blender: '正在操作 Blender…',
+          screenshot: '正在截图自检…',
+          export: '正在导出 GLB…',
+          write: '正在写 result.json…',
+          finalize: '正在收作业产物…',
+          error: 'dsh 报错'
+        }
       },
       upscale: {
         hint: '双击节点打开指令框填写放大指令；此处预览系统提示词与最终放大提示词',

@@ -60,13 +60,20 @@ import {
   importCustomSkillsToGraph,
   listSkillTemplates,
   openDshSkillsDir,
+  runHarnessJobWait,
   runHarnessTask,
   writeDshSkillsTemplate
 } from './services/deepseekHarnessService'
+import {
+  cleanupBlenderDshJob,
+  finalizeBlenderDshJob,
+  prepareBlenderDshJob
+} from './services/blenderDshJobService'
 import { settingsService } from './services/settingsService'
 import { updateService } from './services/updateService'
 import {
   applyBlenderMcpSettings,
+  getBlenderMcpInfoFresh,
   getMcpServerInfo,
   receiveAskUserAnswer,
   restartMcpServer
@@ -217,6 +224,14 @@ export function registerIpcHandlers(): void {
   )
   handle(IpcChannels.ASSET_GET_PREVIEW_URL, (relativePath: string) =>
     projectService.getAssetPreviewUrl(relativePath)
+  )
+  handle(
+    IpcChannels.ASSET_SAVE_MODEL_THUMBNAIL,
+    async (input: import('@shared/ipc').SaveModelThumbnailInput) => {
+      const result = await projectService.saveModelThumbnail(input)
+      if (result.asset) broadcastToAllWindows(IpcChannels.ASSET_UPDATED, result.asset)
+      return result
+    }
   )
   handle(IpcChannels.ASSET_WRITE_TEXT, (input: WriteAssetTextInput) => {
     const updated = projectService.writeAssetText(input)
@@ -389,7 +404,9 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.MCP_RESTART, (input: import('@shared/ipc').McpRestartInput) =>
     restartMcpServer(input)
   )
-  handle(IpcChannels.MCP_BLENDER_GET_INFO, () => getMcpServerInfo()?.blenderBridge ?? null)
+  handle(IpcChannels.MCP_BLENDER_GET_INFO, (input?: { probe?: boolean }) =>
+    input?.probe ? getBlenderMcpInfoFresh() : (getMcpServerInfo()?.blenderBridge ?? null)
+  )
   handle(IpcChannels.MCP_BLENDER_RESTART, (input: import('@shared/ipc').McpBlenderRestartInput) =>
     applyBlenderMcpSettings(input)
   )
@@ -415,6 +432,17 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.HARNESS_RUN, (input: import('@shared/ipc').HarnessRunInput) =>
     runHarnessTask(input)
   )
+  handle(IpcChannels.HARNESS_RUN_WAIT, (input: import('@shared/ipc').HarnessJobWaitInput) =>
+    runHarnessJobWait(input)
+  )
+  handle(IpcChannels.BLENDER_DSH_PREPARE, (input: import('@shared/ipc').PrepareBlenderDshJobInput) =>
+    prepareBlenderDshJob(input)
+  )
+  handle(
+    IpcChannels.BLENDER_DSH_FINALIZE,
+    (input: import('@shared/ipc').FinalizeBlenderDshJobInput) => finalizeBlenderDshJob(input)
+  )
+  handle(IpcChannels.BLENDER_DSH_CLEANUP, (jobId: string) => cleanupBlenderDshJob(jobId))
   handle(IpcChannels.HARNESS_ABORT, () => abortHarnessTask())
   handle(IpcChannels.HARNESS_DELETE_SESSION, (sessionId: string) => deleteHarnessSession(sessionId))
   handle(IpcChannels.SKILLS_GET_INFO, () => getDshSkillsInfo())

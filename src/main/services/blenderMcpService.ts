@@ -32,7 +32,7 @@
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { createConnection, type Socket } from 'node:net'
-import { join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { app } from 'electron'
 import {
   BLENDER_ADDON_DEFAULT_HOST,
@@ -48,7 +48,12 @@ import {
   type BlenderReply,
   type BlenderToolSpec
 } from '@shared/blenderMcp'
+import { classifyBlenderExportTarget } from '@shared/blenderExportPath'
+import { resolveMediaOutputDir } from '@shared/domain'
 import type { McpBlenderRestartInput } from '@shared/ipc'
+import { uniqueFileName } from '../repositories/assetTreeStore'
+import { mcpActivityService } from './mcpActivityService'
+import { projectService } from './projectService'
 import type { McpToolCallOutcome, McpToolImage } from '@shared/mcpProtocol'
 import {
   buildOfficialProbeCode,
@@ -504,6 +509,46 @@ function readScreenshot(path: string): {
   }
 }
 
+function prepareExportSceneArgs(args: Record<string, unknown>): {
+  args: Record<string, unknown>
+  relativePath: string | null
+  isJob: boolean
+} {
+  const requested = String(args.filepath ?? '').trim()
+  if (!requested || !projectService.isOpen()) {
+    return { args, relativePath: null, isJob: false }
+  }
+  const root = projectService.getRoot()
+  const cacheOutputDir = projectService.getConfig()?.cacheOutputDir
+  const classified = classifyBlenderExportTarget({
+    requestedPath: requested,
+    projectRoot: root,
+    cacheOutputDir
+  })
+  if (classified.action === 'keep') {
+    mkdirSync(dirname(join(root, classified.relativePath)), { recursive: true })
+    return { args, relativePath: classified.relativePath, isJob: classified.isJob }
+  }
+  const destDirRel = resolveMediaOutputDir({ cacheOutputDir, kind: 'model' })
+  const destDirAbs = join(root, destDirRel)
+  mkdirSync(destDirAbs, { recursive: true })
+  const fileName = uniqueFileName(destDirAbs, classified.fileName)
+  const relativePath = `${destDirRel}/${fileName}`.replace(/\\/g, '/')
+  return {
+    args: { ...args, filepath: join(root, relativePath) },
+    relativePath,
+    isJob: false
+  }
+}
+
+function publishChatModelExport(relativePath: string): void {
+  const activityId = mcpActivityService.begin({
+    tool: 'blender_export',
+    title: basename(relativePath)
+  })
+  mcpActivityService.end(activityId, { ok: true, relativePath })
+}
+
 /**
  * 执行一条 Blender 工具调用：护栏 → addon 命令 → 应答归一 → （截图类）读回图片。
  * 协议层（模式授权、审计、JSON-RPC 包装）留在 mcpServerService。
@@ -517,8 +562,12 @@ export async function runBlenderTool(
     return { error: 'Blender 工具已在设置中禁用（设置 → MCP 工具服务 → Blender）' }
   }
 
+  const exportPrepared =
+    spec.command === 'export_scene' ? prepareExportSceneArgs(args) : null
+  const toolArgs = exportPrepared?.args ?? args
+
   if (spec.command === 'execute_code' && cfg.safeMode) {
-    const verdict = guardBlenderCode(String(args.code ?? ''))
+    const verdict = guardBlenderCode(String(toolArgs.code ?? ''))
     if (!verdict.ok) {
       // 拒绝理由写给模型看：它需要据此改写脚本，而不是重试同一段代码
       return { error: `代码护栏拦截：${verdict.reason}` }
@@ -531,11 +580,13 @@ export async function runBlenderTool(
     if (cfg.addonType === 'official') {
       // 官方后端：同一套白名单校验后编成 Python execute 帧
       raw = await client.requestExecute(
-        buildOfficialToolCode(spec, args, { screenshotFilepath: shotPath }),
+        buildOfficialToolCode(spec, toolArgs, { screenshotFilepath: shotPath }),
         BLENDER_COMMAND_TIMEOUT_MS
       )
     } else {
-      const { type, params } = buildBlenderCommand(spec, args, { screenshotFilepath: shotPath })
+      const { type, params } = buildBlenderCommand(spec, toolArgs, {
+        screenshotFilepath: shotPath
+      })
       raw = await client.request(type, params, BLENDER_COMMAND_TIMEOUT_MS)
     }
   } catch (err) {
@@ -568,7 +619,27 @@ export async function runBlenderTool(
     return { result: { result: stdout ?? '', ...payload } }
   }
 
-  if (!spec.screenshot) return { result: reply.payload ?? null }
+  if (!spec.screenshot) {
+    if (
+      spec.command === 'export_scene' &&
+      exportPrepared?.relativePath &&
+      !exportPrepared.isJob
+    ) {
+      publishChatModelExport(exportPrepared.relativePath)
+      const payload =
+        reply.payload && typeof reply.payload === 'object'
+          ? { ...(reply.payload as Record<string, unknown>) }
+          : {}
+      return {
+        result: {
+          ...payload,
+          relativePath: exportPrepared.relativePath,
+          exportedPath: toolArgs.filepath
+        }
+      }
+    }
+    return { result: reply.payload ?? null }
+  }
 
   const payload =
     reply.payload && typeof reply.payload === 'object'

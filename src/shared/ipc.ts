@@ -64,6 +64,8 @@ export const IpcChannels = {
   ASSET_ATTACH_FILE: 'asset:attach-file',
   ASSET_GET_FILE_URL: 'asset:get-file-url',
   ASSET_GET_PREVIEW_URL: 'asset:get-preview-url',
+  /** 渲染层把 3D 离屏预览 PNG 落到 .aiartengine/thumbs */
+  ASSET_SAVE_MODEL_THUMBNAIL: 'asset:save-model-thumbnail',
   /** 将文本写回资产旁挂文件（剧本 txt 等） */
   ASSET_WRITE_TEXT: 'asset:write-text',
   ASSET_SHOW_IN_FOLDER: 'asset:show-in-folder',
@@ -266,8 +268,16 @@ export const IpcChannels = {
   HARNESS_STATUS: 'harness:status',
   /** Harness：运行一次对话任务（main 进程 spawn dsh） */
   HARNESS_RUN: 'harness:run',
+  /** Harness：排队并等到本轮 dsh 结束（图节点 Cook） */
+  HARNESS_RUN_WAIT: 'harness:run-wait',
   /** Harness：中止当前任务 */
   HARNESS_ABORT: 'harness:abort',
+  /** 图节点：准备 Blender dsh 作业目录 */
+  BLENDER_DSH_PREPARE: 'blender-dsh:prepare',
+  /** 图节点：验收导出并落入 Cache/Models */
+  BLENDER_DSH_FINALIZE: 'blender-dsh:finalize',
+  /** 图节点：清理作业目录 */
+  BLENDER_DSH_CLEANUP: 'blender-dsh:cleanup',
   /** Harness：删除会话在磁盘上的持久化记录（对应前端 ChatSession.id） */
   HARNESS_DELETE_SESSION: 'harness:delete-session',
   /** Git：采集工程当前变更（对话「变更预览」用；只读，不写仓库） */
@@ -456,6 +466,12 @@ export interface WriteAssetTextInput {
   content: string
 }
 
+/** 把渲染层拍好的 3D 预览图落到工程 thumbs */
+export interface SaveModelThumbnailInput {
+  sourceRelativePath: string
+  dataUrl: string
+}
+
 /** MCP：主进程 → 渲染层，请求运行宿主资产工作流 */
 export interface McpTaskRunPayload {
   mcpTaskId: string
@@ -492,6 +508,7 @@ export type McpActivityTool =
   | 'graph_icon_refine'
   | 'task_run'
   | 'asset_import'
+  | 'blender_export'
 
 export type McpActivityStatus = 'running' | 'done' | 'error'
 
@@ -776,6 +793,39 @@ export interface HarnessRunResult {
   message?: string
 }
 
+/** Harness：图节点等待一轮 dsh 结束 */
+export interface HarnessJobWaitInput extends HarnessRunInput {
+  timeoutMs?: number
+}
+
+export interface HarnessJobWaitResult {
+  ok: boolean
+  error?: string
+  finalText?: string
+}
+
+export interface PrepareBlenderDshJobInput {
+  kind: 'rig' | 'pose' | 'anim'
+  sourceRelativePath: string
+  instruction: string
+  locale?: string
+  skillId: string
+}
+
+export interface PrepareBlenderDshJobResult {
+  jobId: string
+  inputAbs: string
+  outputAbs: string
+  resultAbs: string
+  briefAbs: string
+}
+
+export interface FinalizeBlenderDshJobInput {
+  jobId: string
+  kind: 'rig' | 'pose' | 'anim'
+  key: string
+}
+
 /** Skills：dsh 技能目录中的一个文件 */
 export interface DshSkillsFile {
   fileName: string
@@ -1042,8 +1092,12 @@ export interface StudioApi {
   /** 将工程内文件（如 Cache 生成产物）复制到资产库并登记为资产 */
   saveProjectAsset: (input: SaveProjectAssetInput) => Promise<AssetInfo>
   getAssetFileUrl: (relativePath: string) => Promise<string>
-  /** 预览级 URL（图片缩略图 / 视频首帧）；列表/节点卡应优先使用 */
+  /** 预览级 URL（图片缩略图 / 视频首帧 / 3D 离屏预览）；列表/节点卡应优先使用 */
   getAssetPreviewUrl: (relativePath: string) => Promise<string>
+  /** 把 3D 离屏预览 PNG 写入 thumbs，并回写资产 thumbnailPath */
+  saveModelThumbnail: (
+    input: SaveModelThumbnailInput
+  ) => Promise<{ thumbnailPath: string; asset: AssetInfo | null }>
   /** 将文本写回资产旁挂文件（剧本 txt），并刷新 updatedAt */
   writeAssetText: (input: WriteAssetTextInput) => Promise<AssetInfo>
   /** 将工程内媒体读成 data URL，供生成 API 参考素材使用 */
@@ -1273,8 +1327,8 @@ export interface StudioApi {
   /** MCP：应用端口 / 重置 token 修改并重启工具服务，返回重启后的状态 */
   restartMcpServer: (input: McpRestartInput) => Promise<McpServerInfo | null>
 
-  /** MCP：查询 Blender 工具面当前状态；已禁用时为 null */
-  getBlenderMcpInfo: () => Promise<McpBlenderBridgeInfo | null>
+  /** MCP：查询 Blender 工具面当前状态。`probe: true` 时等探活完成（Cook 用，避免首次空缓存） */
+  getBlenderMcpInfo: (input?: { probe?: boolean }) => Promise<McpBlenderBridgeInfo | null>
 
   /** MCP：应用 Blender 配置（落盘 + 断开重连 + 立即探活），返回探活后的状态 */
   restartBlenderMcp: (input: McpBlenderRestartInput) => Promise<McpBlenderBridgeInfo>
@@ -1299,6 +1353,21 @@ export interface StudioApi {
 
   /** Harness：运行一次对话任务（事件通过 onHarnessEvent 推送） */
   runHarnessTask: (input: HarnessRunInput) => Promise<HarnessRunResult>
+
+  /** Harness：排队并等待本轮结束（图节点 Cook） */
+  runHarnessJobWait: (input: HarnessJobWaitInput) => Promise<HarnessJobWaitResult>
+
+  /** 准备 Blender dsh 作业目录（拷输入 GLB、写 brief） */
+  prepareBlenderDshJob: (input: PrepareBlenderDshJobInput) => Promise<PrepareBlenderDshJobResult>
+
+  /** 验收导出 GLB 并落入 Cache/Models */
+  finalizeBlenderDshJob: (input: FinalizeBlenderDshJobInput) => Promise<{
+    relativePath: string
+    result: import('./blenderDshJob').BlenderJobResult
+  }>
+
+  /** 清理 Blender dsh 作业目录 */
+  cleanupBlenderDshJob: (jobId: string) => Promise<void>
 
   /** Harness：中止当前任务 */
   abortHarnessTask: () => Promise<void>

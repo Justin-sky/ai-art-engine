@@ -213,7 +213,8 @@ export const BLENDER_TOOLS: BlenderToolSpec[] = [
       '出错时会返回异常类型、消息与带行号的 traceback。' +
       '开启代码护栏（设置面板 Safe Mode）时，脚本只能 import bpy/bmesh/mathutils 与纯 Python 标准库，' +
       '且禁用 eval/exec/open、os/subprocess/网络访问、handlers/timers/drivers 与类注册；' +
-      '渲染、保存、导入导出等 bpy 操作符不受限制。',
+      '渲染、保存、导入导出等 bpy 操作符不受限制。' +
+      '若用脚本导出 glb，路径必须写在工程 Cache/Models（或图节点作业的 output.glb），禁止写 Assets/。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -229,9 +230,10 @@ export const BLENDER_TOOLS: BlenderToolSpec[] = [
     name: 'export_scene',
     title: '导出 Blender 场景',
     description:
-      '把场景（或选中对象）导出为文件，供后续导入本应用的资产库。' +
-      'filepath 必须是绝对路径，并且父目录已存在。默认导出 glb（含网格与材质），' +
-      '这是回传 3D 资产的主力出口。',
+      '把场景（或选中对象）导出为 glb（默认，含网格 / 蒙皮 / 动画）。' +
+      '对话里的导出会被改写到工程 Cache/Models，不进资产库；对话流会出预览卡，' +
+      '由用户点「保存到资产库」。图节点作业目录 Cache/BlenderJobs 下的 output.glb 原样保留。' +
+      'filepath 必须是绝对路径；父目录不存在时由本应用创建。',
     inputSchema: {
       type: 'object',
       properties: {

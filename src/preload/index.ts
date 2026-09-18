@@ -67,6 +67,7 @@ const api: StudioApi = {
     ipcRenderer.invoke(IpcChannels.ASSET_GET_FILE_URL, relativePath),
   getAssetPreviewUrl: (relativePath: string) =>
     ipcRenderer.invoke(IpcChannels.ASSET_GET_PREVIEW_URL, relativePath),
+  saveModelThumbnail: (input) => ipcRenderer.invoke(IpcChannels.ASSET_SAVE_MODEL_THUMBNAIL, input),
   writeAssetText: (input) => ipcRenderer.invoke(IpcChannels.ASSET_WRITE_TEXT, input),
   getAssetMediaDataUrl: (relativePath: string) =>
     ipcRenderer.invoke(IpcChannels.ASSET_MEDIA_DATA_URL, relativePath),
@@ -304,7 +305,7 @@ const api: StudioApi = {
     ipcRenderer.invoke(IpcChannels.MCP_ASK_USER_RESPONSE, payload),
   getMcpInfo: () => ipcRenderer.invoke(IpcChannels.MCP_GET_INFO),
   restartMcpServer: (input) => ipcRenderer.invoke(IpcChannels.MCP_RESTART, input),
-  getBlenderMcpInfo: () => ipcRenderer.invoke(IpcChannels.MCP_BLENDER_GET_INFO),
+  getBlenderMcpInfo: (input) => ipcRenderer.invoke(IpcChannels.MCP_BLENDER_GET_INFO, input),
   restartBlenderMcp: (input) => ipcRenderer.invoke(IpcChannels.MCP_BLENDER_RESTART, input),
   runBlenderMcpTool: (input) => ipcRenderer.invoke(IpcChannels.MCP_BLENDER_RUN_TOOL, input),
   onMcpActivityUpdated: (callback) => {
@@ -325,6 +326,10 @@ const api: StudioApi = {
 
   getHarnessStatus: () => ipcRenderer.invoke(IpcChannels.HARNESS_STATUS),
   runHarnessTask: (input) => ipcRenderer.invoke(IpcChannels.HARNESS_RUN, input),
+  runHarnessJobWait: (input) => ipcRenderer.invoke(IpcChannels.HARNESS_RUN_WAIT, input),
+  prepareBlenderDshJob: (input) => ipcRenderer.invoke(IpcChannels.BLENDER_DSH_PREPARE, input),
+  finalizeBlenderDshJob: (input) => ipcRenderer.invoke(IpcChannels.BLENDER_DSH_FINALIZE, input),
+  cleanupBlenderDshJob: (jobId) => ipcRenderer.invoke(IpcChannels.BLENDER_DSH_CLEANUP, jobId),
   getGitStatus: () => ipcRenderer.invoke(IpcChannels.GIT_STATUS),
   getGitFileDiff: (input) => ipcRenderer.invoke(IpcChannels.GIT_FILE_DIFF, input),
   scanProjectOutputs: (input) => ipcRenderer.invoke(IpcChannels.PROJECT_SCAN_OUTPUTS, input),

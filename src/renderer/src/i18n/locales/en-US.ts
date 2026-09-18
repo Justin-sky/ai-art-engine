@@ -868,17 +868,18 @@ export default {
       // Button shows only @, full label lives in title (mentionTitle)
       mentionButton: "{'@'}",
       mentionTitle: 'Reference assets',
-      mentionSubtitle: 'Pick images / GIFs / videos / audio to reference for the model',
+      mentionSubtitle: 'Pick images / GIFs / videos / 3D models / audio to reference for the model',
       mentionHint: 'Click cards to select (multiple allowed)',
       mentionPicked: '{n} assets selected',
       mentionEmpty:
-        'No referenceable assets in the project yet; import images / GIFs / videos / audio first',
+        'No referenceable assets in the project yet; import images / GIFs / videos / 3D models / audio first',
       mentionNoMatch: 'No matching assets',
       mentionTypeAll: 'All',
       mentionTypeImage: 'Image',
       mentionTypeGif: 'GIF',
       mentionTypeSvg: 'SVG',
       mentionTypeVideo: 'Video',
+      mentionTypeModel: '3D model',
       mentionTypeAudio: 'Audio',
       mentionTypeFile: 'File',
       removeMention: 'Remove reference',
@@ -2718,7 +2719,8 @@ export default {
         generate_model3d: '3D model',
         graph_icon_refine: 'Icon refine',
         task_run: 'Workflow',
-        asset_import: 'Import'
+        asset_import: 'Import',
+        blender_export: 'Blender export'
       }
     },
     logs: {
@@ -3760,21 +3762,31 @@ export default {
       modelPoseNoModel: 'Connect an upstream 3D model first',
       modelPoseNoBones: 'The upstream model has no editable bones (needs a skinned character)',
       modelPoseInspect: 'Cannot read model bones (must run in the app UI)',
-      modelPoseNoTextModel: 'Pick a text model on the node first (needed for free-text poses)',
-      modelPoseMcp: 'Free-text poses need Blender MCP enabled; common pose presets do not',
-      modelPoseNoMatch: 'No usable bone rotations were generated (bone names may not map)',
+      modelPoseNoTextModel: 'Pick a text model on the node first',
+      modelPoseMcp: 'Start Blender and enable Blender MCP first',
+      modelPoseNoMatch: 'Blender did not return a usable bone pose',
       modelPoseFailed: '3D pose generation did not finish',
+      modelPoseExport: 'Blender did not export a posed GLB',
+      modelPoseDsh: 'Could not start the dsh job (pose)',
       modelRigNoModel: 'Connect an upstream 3D model first',
-      modelRigNoTextModel: 'Pick a text model on the node first (needed for free-text rigging)',
-      modelRigMcp: 'Free-text rigging needs Blender MCP enabled; preset topologies do not',
-      modelRigNoMatch: 'Blender did not create the armature or auto-skinning failed',
-      modelRigFailed: 'AI rigging did not finish',
+      modelRigNoTextModel: 'Pick a text model on the node first',
+      modelRigMcp: 'Start Blender and enable Blender MCP first',
+      modelRigNoMatch: 'Blender did not create a usable armature',
+      modelRigFailed: '3D rigging did not finish',
+      modelRigExport: 'Blender did not export a skinned GLB',
+      modelRigDsh: 'Could not start the dsh job (rig)',
       modelAnimNoModel: 'Connect an upstream 3D model first',
       modelAnimNoArmature: 'Upstream model has no armature; pipe through "3D Rigging" first',
-      modelAnimNoTextModel: 'Pick a text model on the node first (needed for free-text animation)',
-      modelAnimMcp: 'Free-text animation needs Blender MCP enabled; preset clips do not',
-      modelAnimNoMatch: 'Blender did not write any keyframes (armature/bone names may not match)',
-      modelAnimFailed: 'AI keyframe animation did not finish',
+      modelAnimNoTextModel: 'Pick a text model on the node first',
+      modelAnimMcp: 'Start Blender and enable Blender MCP first',
+      modelAnimNoMatch: 'Blender did not write a usable animation',
+      modelAnimFailed: '3D keyframe animation did not finish',
+      modelAnimExport: 'Blender did not export an animated GLB',
+      modelAnimDsh: 'Could not start the dsh job (animation)',
+      modelDshTimeout: 'The dsh / Blender job timed out (rig ~100 min, pose ~60 min, animation ~120 min)',
+      modelDshResult: 'The job did not write a valid result.json',
+      modelDshExport: 'The job did not export a GLB',
+      modelDshStart: 'dsh failed to start',
       dismissHint: 'Click to dismiss'
     },
     types: {
@@ -4080,7 +4092,7 @@ export default {
         hint: 'Double-click to adjust emotion and model. Run to generate an image; this panel shows the gallery and prompt.'
       },
       modelPose: {
-        hint: 'Connect an upstream 3D model, pick a common pose or write a description, then run. Wire the output into the Director Deck model port to apply the pose. Common poses do not need Blender; free-text poses need a text model and Blender MCP.',
+        hint: 'Connect an upstream skinned 3D model, pick a pose chip or write a description, then run. Cook drives Blender through dsh and exports a new GLB; wire that into the Director Deck model port. Start Blender and enable Blender MCP first.',
         presets: 'Common poses',
         instruction: 'Pose instruction',
         posePreview: 'Pose preview',
@@ -4102,7 +4114,7 @@ export default {
         modelEmpty: 'Enable and select a text model in Settings first'
       },
       modelRigSkin: {
-        hint: 'Connect an upstream 3D model, pick a common rig topology or write a description, then run. Common rigs do not need Blender; free-text rigs need a text model and Blender MCP.',
+        hint: 'Connect an upstream 3D model, pick a rig chip or write a description, then run. Cook drives Blender through dsh to build bones, auto-weight, and export a new GLB. Start Blender and enable Blender MCP first.',
         tabsAria: '3D rig skin tabs',
         tabs: {
           preview: 'Model',
@@ -4120,7 +4132,7 @@ export default {
         skeletonEmpty: 'Run the node to inspect the resulting rig topology here'
       },
       modelAnimation: {
-        hint: 'Connect an upstream rigged model, then pick from game-ready animation presets or write a free-text description and run. Common animations do not need Blender; free-text animations need a text model and Blender MCP.',
+        hint: 'Connect an upstream skinned model, pick an action chip or write a description, then run. Cook drives Blender through dsh to keyframe and export a GLB with AnimationClip. Start Blender and enable Blender MCP first.',
         animPreview: 'Animation preview',
         animHint:
           'The current frame advances at the clip fps; the pose is linearly interpolated between keyframes to drive the model. Drag the slider to scrub, ▶/❚❚ to play/pause, looping back to the start.',
@@ -4142,6 +4154,22 @@ export default {
         saveDialogDefaultName: 'Animation',
         saveDone: 'Saved to {path}',
         saveFailed: 'Save failed: {message}'
+      },
+      blenderDsh: {
+        live: {
+          probe: 'Checking Blender MCP…',
+          prepare: 'Preparing the job folder…',
+          queued: 'Queued for dsh…',
+          start: 'Starting dsh…',
+          skill: 'Loading skill…',
+          inspect: 'Reading the scene…',
+          blender: 'Driving Blender…',
+          screenshot: 'Taking a viewport screenshot…',
+          export: 'Exporting GLB…',
+          write: 'Writing result.json…',
+          finalize: 'Collecting the job output…',
+          error: 'dsh reported an error'
+        }
       },
       upscale: {
         hint: 'Double-click the node to open the instruction box. This panel shows the system prompt and the final upscale prompt.',

@@ -27,6 +27,7 @@
       :blocked="blocked"
       @toggle="toggleRun"
     />
+    <BlenderDshLiveStatus :node-id="node.id" />
 
     <section
       v-if="modelPreviewPath && bonePose"
@@ -88,6 +89,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import GraphNodeRunControl from './GraphNodeRunControl.vue'
+import BlenderDshLiveStatus from './BlenderDshLiveStatus.vue'
 import GraphNodeOutputPreview from './GraphNodeOutputPreview.vue'
 import ModelPreview from './ModelPreview.vue'
 import SaveAssetDialog from './SaveAssetDialog.vue'

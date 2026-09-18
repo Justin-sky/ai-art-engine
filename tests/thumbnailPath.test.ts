@@ -46,6 +46,17 @@ describe('thumbnailPath', () => {
     ).toBe('Assets/foo.png')
   })
 
+  it('prefers real thumb for 3D model preview cards', () => {
+    const thumb = '.aiartengine/thumbs/Cache/Models/hero.glb.png'
+    expect(
+      resolvePreviewMediaPath({
+        relativePath: 'Cache/Models/hero.glb',
+        thumbnailPath: thumb,
+        type: 'model'
+      })
+    ).toBe(thumb)
+  })
+
   it('uses relativePath for video/audio playback (not first-frame thumb)', () => {
     expect(
       resolvePreviewMediaPath({

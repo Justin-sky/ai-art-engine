@@ -53,7 +53,14 @@ import type { GraphNodeParams } from './types'
 import { resolveFrameAnimGenSystemPrompt } from './anim2d'
 
 export type GraphSkillKind =
-  'episode' | 'episode-review' | 'episode-image' | 'episode-video' | 'anim2d' | 'svg' | 'system'
+  | 'episode'
+  | 'episode-review'
+  | 'episode-image'
+  | 'episode-video'
+  | 'anim2d'
+  | 'svg'
+  | 'system'
+  | 'blender'
 
 /** 解析入口指针；实现仍在 episodeBoardParse 等文件，此处不搬家 */
 export type GraphSkillParseKind =
@@ -139,6 +146,41 @@ const SVG_MOTION_USAGE_EN =
   ' Over MCP the minimum is 3 calls and workflow_plan is not needed first (workflow_commit accepts a hand-written plan): (1) workflow_commit({ plan, name }) — plan is {"title":"Pelican riding a bicycle (SVG)","nodes":[{"key":"svg","typeId":"svg.gen","params":{"generateInstruction":"Draw a cartoon pelican riding a bicycle as a standalone renderable SVG: strict left-facing side view with both wheels, spokes, frame, handlebars and pedals fully visible; use <animateTransform> to keep the wheels and crank rotating, the legs pedalling alternately and the body bobbing slightly, forming one seamless pedalling loop","svgGenWidth":512,"svgGenHeight":512}},{"key":"bake","typeId":"svg.anim","params":{"svgFrames":24,"svgDurationSec":2,"svgWidth":512,"svgHeight":512}}],"edges":[{"from":"svg","to":"bake"}]}, which returns assetId; (2) task_run({ assetId }) returns mcpTaskId; (3) task_status({ mcpTaskId }) fetches the outputs (the text model needs roughly ten seconds for the SVG, then baking and GIF encoding take a few more). For a single static vector image keep only the svg.gen node with an empty edges array and skip svg.anim. Do not switch to generate_image when the user asks for SVG / vector / vector animation / vector icons — that produces a bitmap. Use graph_node_types / graph_read / graph_edit only when modifying an existing asset.' +
   // Mirrors the persona guardrail: the skill is what the model reads while doing vector work.
   ' For a visual self-check (what was drawn, whether the motion reads) call the `render_svg` tool — pass inline SVG markup or a project-relative .svg path and the picture comes back with the response, nothing written to disk, no browser needed; to inspect the asset-side frame sequence and GIF, use the PNG frames and the GIF that svg.anim bakes, whose paths task_status reports. Do not take headless screenshots with a local browser: inside the sandbox msedge / chrome cannot create their internal IPC pipe, so they abort with 0x80000003 and pop an out-of-app Windows error dialog, and the tool call fails anyway (such commands are refused before they run).'
+
+/** 3D 加工节点：dsh 只指挥 Blender MCP，禁止在对话里编欧拉表交差 */
+const BLENDER_JOB_SYSTEM_ZH =
+  '你是 Blender 操作员，不是观察者。读场景最多一次，然后必须改场景。禁止用 execute_blender_code 反复列物体、量 bbox 或自己写截图脚本（img=bpy / render）。截图只用 get_viewport_screenshot，且必须在真正改过骨架/姿态之后、最多一次。只加工作业目录里的 input.glb，禁止 generate_model3d。禁止在对话里编造 Euler JSON 当最终产物。最后必须 export_scene 到 brief 里的 output.glb。不要用 open() 写 result.json，应用会从 Blender 回读骨架。' // cjk-ok（dsh 技能：Blender 作业硬约束）
+
+const BLENDER_JOB_SYSTEM_EN =
+  'You operate Blender; you are not a spectator. Inspect the scene at most once, then you MUST edit it. Do not loop execute_blender_code to list objects, remeasure bbox, or write custom screenshot scripts (img=bpy / render). Screenshots: get_viewport_screenshot only, and only once after a real rig/pose change. Process only the job input.glb — never generate_model3d. Never invent Euler JSON as the deliverable. Finally export_scene to the brief output.glb. Do not write result.json with open(); the app reads the armature back.'
+
+const BLENDER_RIG_INSTRUCTION_ZH =
+  '按网格包围盒建立可用骨架并自动权重，导出带 armature 与蒙皮的 GLB。' // cjk-ok（节点默认生成指令）
+const BLENDER_RIG_INSTRUCTION_EN =
+  'Build a usable armature from the mesh bounding box, auto-weight it, and export a skinned GLB.'
+const BLENDER_POSE_INSTRUCTION_ZH =
+  '在已有骨架上用 IK/约束做出静帧姿势，保持 bind/rest，导出 GLB 并读回 bonePose。' // cjk-ok（节点默认生成指令）
+const BLENDER_POSE_INSTRUCTION_EN =
+  'Pose the existing armature with IK/constraints. Keep bind/rest. Export the GLB and read bonePose back.'
+const BLENDER_ANIM_INSTRUCTION_ZH =
+  '在已有骨架上制作可循环关键帧动作，烘焙后导出带 AnimationClip 的 GLB。' // cjk-ok（节点默认生成指令）
+const BLENDER_ANIM_INSTRUCTION_EN =
+  'Create a loopable keyframed action on the existing armature, bake it, and export a GLB with AnimationClip.'
+
+const BLENDER_RIG_USAGE_ZH =
+  '用法：图节点 `model.rigSkin`。① import input.glb（一次）；② 读第一个 MESH 的 bbox；若已有 ARMATURE 且用户未要求重绑则直接导出。③ 否则下一刀 execute_blender_code 必须建骨，禁止再列物体/截图：bpy.data.armatures.new + edit_bones.new，按 bbox 缩放，人形简单用 21 骨（Hips 根，Spine/Chest/Neck/Head，左右 Shoulder/UpperArm/ForeArm/Hand，左右 UpLeg/LoLeg/Foot），然后 parent_set(type="ARMATURE_AUTO")。④ 确认 scene 里 type==ARMATURE 且 bones>0，才允许 get_viewport_screenshot 一次。⑤ export_scene 到 output.glb（含 armature+weights）。⑥ 不要写 result.json，应用会回读 rigMeta。空转检查 = 失败。' // cjk-ok（dsh 技能用法）
+const BLENDER_RIG_USAGE_EN =
+  'Usage: graph node `model.rigSkin`. (1) Import input.glb once. (2) Read the first MESH bbox. If an ARMATURE already exists and the user did not ask to rebind, just export. (3) Otherwise the NEXT execute_blender_code MUST create bones — no more object lists or screenshots: bpy.data.armatures.new + edit_bones.new, scale to bbox. Humanoid-simple = 21 bones (Hips root, Spine/Chest/Neck/Head, L/R Shoulder/UpperArm/ForeArm/Hand, L/R UpLeg/LoLeg/Foot), then parent_set(type="ARMATURE_AUTO"). (4) Only after scene has type==ARMATURE and bones>0 may you call get_viewport_screenshot once. (5) export_scene to output.glb with armature+weights. (6) Do not write result.json; the app reads rigMeta. Inspect-only loops are a failure.'
+
+const BLENDER_POSE_USAGE_ZH =
+  '用法：图节点 `model.pose` 只加工已蒙皮模型。流程：① import input.glb，列出 pose.bones 真名；② 用 IK（手脚）和约束做静帧，指令来自检查器芯片或手写，二者同一条通路；③ 禁止填欧拉表交差；④ 导出时保留 bind/rest，把当前姿态作为 default pose 或单帧 action，不要把姿势烤进 rest；⑤ 不要写 result.json，应用会回读 bonePose。上游无骨则失败。' // cjk-ok（dsh 技能用法）
+const BLENDER_POSE_USAGE_EN =
+  'Usage: graph node `model.pose` only processes a skinned model. (1) Import input.glb and list real pose.bones names; (2) build a still pose with IK (hands/feet) and constraints — inspector chips and free text are the same path; (3) never invent an Euler table; (4) export while keeping bind/rest, using the current pose as the default pose or a one-frame action — do not bake the pose into rest; (5) Do not write result.json; the app reads bonePose. If the import has no armature, the job fails.'
+
+const BLENDER_ANIM_USAGE_ZH =
+  '用法：图节点 `model.animation` 在已蒙皮模型上产出 GLB AnimationClip。流程：① import input.glb 并确认 armature；② 建 action + fcurves，循环动作用周期与踩地 IK，不要按 Hips/LeftUpperArm 硬编码帧表；③ Bake 到 pose bones 并写入 GLTF NLA/animation；④ export_scene 带 animations 到 output.glb；⑤ 不要写 result.json，应用会回读 clip。无骨架则失败。' // cjk-ok（dsh 技能用法）
+const BLENDER_ANIM_USAGE_EN =
+  'Usage: graph node `model.animation` produces a GLB AnimationClip on a skinned model. (1) Import input.glb and confirm the armature; (2) create an action + fcurves — use cycles and planted-foot IK for loops, never a hardcoded Hips/LeftUpperArm frame table; (3) bake onto pose bones and write GLTF NLA/animation; (4) export_scene with animations to output.glb; (5) Do not write result.json; the app reads clip. If there is no armature, the job fails.'
 
 function fromEpisodePack(
   id: string,
@@ -310,6 +352,42 @@ const BUILTIN_SKILLS: GraphSkill[] = [
     instructionEn: SVG_MOTION_INSTRUCTION_EN,
     usageZh: SVG_MOTION_USAGE_ZH,
     usageEn: SVG_MOTION_USAGE_EN
+  },
+  {
+    id: 'blender.rigSkin',
+    kind: 'blender',
+    titleZh: '3D 骨骼蒙皮', // cjk-ok（技能标题）
+    titleEn: '3D rig & skin',
+    systemPromptZh: BLENDER_JOB_SYSTEM_ZH,
+    systemPromptEn: BLENDER_JOB_SYSTEM_EN,
+    instructionZh: BLENDER_RIG_INSTRUCTION_ZH,
+    instructionEn: BLENDER_RIG_INSTRUCTION_EN,
+    usageZh: BLENDER_RIG_USAGE_ZH,
+    usageEn: BLENDER_RIG_USAGE_EN
+  },
+  {
+    id: 'blender.pose',
+    kind: 'blender',
+    titleZh: '3D 姿势', // cjk-ok（技能标题）
+    titleEn: '3D pose',
+    systemPromptZh: BLENDER_JOB_SYSTEM_ZH,
+    systemPromptEn: BLENDER_JOB_SYSTEM_EN,
+    instructionZh: BLENDER_POSE_INSTRUCTION_ZH,
+    instructionEn: BLENDER_POSE_INSTRUCTION_EN,
+    usageZh: BLENDER_POSE_USAGE_ZH,
+    usageEn: BLENDER_POSE_USAGE_EN
+  },
+  {
+    id: 'blender.animation',
+    kind: 'blender',
+    titleZh: '3D 关键帧动画', // cjk-ok（技能标题）
+    titleEn: '3D keyframe animation',
+    systemPromptZh: BLENDER_JOB_SYSTEM_ZH,
+    systemPromptEn: BLENDER_JOB_SYSTEM_EN,
+    instructionZh: BLENDER_ANIM_INSTRUCTION_ZH,
+    instructionEn: BLENDER_ANIM_INSTRUCTION_EN,
+    usageZh: BLENDER_ANIM_USAGE_ZH,
+    usageEn: BLENDER_ANIM_USAGE_EN
   },
   fromSystemDefault('system.screenplay', '剧本', 'Screenplay', defaultScreenplaySystemPrompt),
   fromSystemDefault('system.gameSystem', '策划案', 'Game system', defaultGameSystemSystemPrompt),

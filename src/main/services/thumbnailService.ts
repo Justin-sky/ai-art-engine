@@ -9,6 +9,7 @@ import {
 import {
   isImageFilePath,
   isLayeredSourceImageFilePath,
+  isModelFilePath,
   isVectorImageFilePath,
   isVideoFilePath
 } from '@shared/import'
@@ -194,7 +195,13 @@ export function peekExistingImageThumbnail(
     const sourceAbs = assertInside(root, join(root, sourceRel))
     if (!existsSync(sourceAbs)) return null
     // 这里是「只看有没有」的探测：只认已落盘的缩略图，不触发生成
-    if (!isImageFilePath(sourceAbs) && !isVideoFilePath(sourceAbs)) return null
+    if (
+      !isImageFilePath(sourceAbs) &&
+      !isVideoFilePath(sourceAbs) &&
+      !isModelFilePath(sourceAbs)
+    ) {
+      return null
+    }
     const thumbRel = thumbRelativePathFor(sourceRel)
     const thumbAbs = assertInside(root, join(root, thumbRel))
     return existingThumbRel(sourceAbs, sourceRel, thumbAbs, thumbRel)
@@ -270,6 +277,25 @@ export async function ensureImageThumbnailAsync(
     throw fail(isVideoFilePath(sourceAbs) ? E_THUMB_VIDEO_FRAME_FAILED : E_THUMB_DECODE_FAILED)
   }
   writeResizedPng(image, thumbAbs, previewMaxEdgeFor(sourceAbs))
+  return thumbRel
+}
+
+/** 把渲染层拍好的 3D 预览 PNG 写到旁挂 thumbs 路径（覆盖旧文件） */
+export function writeModelThumbnailPng(
+  root: string,
+  sourceRelativePath: string,
+  png: Buffer
+): string {
+  const sourceRel = sourceRelativePath.replace(/\\/g, '/').trim()
+  if (!sourceRel) throw fail(E_THUMB_EMPTY_PATH)
+  const sourceAbs = assertInside(root, join(root, sourceRel))
+  if (!existsSync(sourceAbs)) throw fail(E_THUMB_SOURCE_MISSING)
+  if (!isModelFilePath(sourceAbs)) throw fail(E_THUMB_DECODE_FAILED)
+  if (!png.length) throw fail(E_THUMB_DECODE_FAILED)
+  const thumbRel = thumbRelativePathFor(sourceRel)
+  const thumbAbs = assertInside(root, join(root, thumbRel))
+  mkdirSync(dirname(thumbAbs), { recursive: true })
+  writeFileSync(thumbAbs, png)
   return thumbRel
 }
 

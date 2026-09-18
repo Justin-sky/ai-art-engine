@@ -15,6 +15,7 @@
       :blocked="blocked"
       @toggle="toggleRun"
     />
+    <BlenderDshLiveStatus :node-id="node.id" />
 
     <div class="tabs" role="tablist" :aria-label="t('graph.inspector.modelRigSkin.tabsAria')">
       <button
@@ -48,7 +49,6 @@
       :relative-path="modelPreviewPath"
       :show-skeleton="activeTab === 'skeleton'"
       :selected-bone="activeTab === 'skeleton' ? selectedBone : null"
-      :preset-bones="presetBones"
       @bones="onModelBones"
       @select-bone="onSelectBone"
       @skeleton-source="onSkeletonSource"
@@ -141,6 +141,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import GraphNodeRunControl from './GraphNodeRunControl.vue'
+import BlenderDshLiveStatus from './BlenderDshLiveStatus.vue'
 import GraphNodeOutputPreview from './GraphNodeOutputPreview.vue'
 import ModelPreview from './ModelPreview.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
@@ -148,7 +149,6 @@ import { useNodeDisplayTitle } from '../composables/useNodeDisplayTitle'
 import { useGraphNodeRun } from '../composables/useGraphNodeRun'
 import { useEditorKernel } from '../editor/kernel'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
-import { BLENDER_RIG_TOPOLOGY_TABLE, type BlenderBoneSpec } from '@shared/blenderRigSkinGeneration'
 
 /**
  * 3D 骨骼蒙皮节点的 inspector 拆成「模型 / 骨骼」两个 Tab：
@@ -164,8 +164,7 @@ import { BLENDER_RIG_TOPOLOGY_TABLE, type BlenderBoneSpec } from '@shared/blende
  *   节点图元命名不一致或被 Blender 重命名），预览以模型为准。
  *
  * 文字摘要部分保留 armature 名称、presetId 与 vertex groups 列表（vertex groups
- * 是蒙皮权重映射——哪些顶点受哪根骨骼影响——3D 空间无法直接可视化，留作文字列表
- * 仍然有用，让用户在跑 agent 之前/之后对比蒙皮拓扑）。
+ * 是蒙皮权重映射——哪些顶点受哪根骨骼影响——3D 空间无法直接可视化，留作文字列表）。
  *
  * 关键实现点：**ModelPreview 是 tabs 下、所有 panel 上方的共享单例**（不是每
  * 个 tab 一个）。之前的实现把 ModelPreview 放进 `<section v-show>` 里——v-show
@@ -230,17 +229,7 @@ const bonesForList = computed(() => {
 
 const selectedBone = ref<string | null>(null)
 
-/**
- * 预设骨架拓扑——rigSkin 预设路径只写 rigMeta 元数据、不把骨骼烘焙进模型文件，
- * 模型里没有 THREE.Bone 时 ModelPreview 用这份拓扑合成骨架预览。
- */
-const presetBones = computed((): readonly BlenderBoneSpec[] | null => {
-  const presetId = rigMeta.value?.presetId
-  if (!presetId) return null
-  return BLENDER_RIG_TOPOLOGY_TABLE[presetId]?.bones ?? null
-})
-
-/** 骨架来源：模型自带 baked / 预设拓扑合成 preset / 都没有 none */
+/** 骨架来源：模型自带 baked / 都没有 none */
 const skeletonSource = ref<'baked' | 'preset' | 'none'>('none')
 
 function onSkeletonSource(source: 'baked' | 'preset' | 'none'): void {

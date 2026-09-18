@@ -125,7 +125,8 @@ import {
   plannedThumbnailPath,
   removeImageAndThumbnail,
   scheduleEnsureThumbnail,
-  warnThumbnailOnce
+  warnThumbnailOnce,
+  writeModelThumbnailPng
 } from './thumbnailService'
 import { isRealThumbnailPath } from '@shared/media/thumbnailPath'
 import { resolveMediaBytesFromUrl } from './resolveMediaBytesFromUrl'
@@ -1153,6 +1154,12 @@ class ProjectService {
       }
     }
 
+    // 3D 模型：原文件不能当 <img>。已有离屏预览图则返回；否则空串，由渲染层拍一张再 saveModelThumbnail。
+    if (isModelFilePath(abs)) {
+      const existing = peekExistingImageThumbnail(root, posix)
+      return existing ? this.getAssetFileUrl(existing) : ''
+    }
+
     if (!isImageFilePath(abs)) {
       return this.getAssetFileUrl(relativePath)
     }
@@ -1162,6 +1169,35 @@ class ProjectService {
       warnThumbnailOnce(posix, err)
     })
     return this.getAssetFileUrl(relativePath)
+  }
+
+  /**
+   * 把渲染层离屏拍好的 3D 预览 PNG 落到 `.aiartengine/thumbs/`，
+   * 并回写对应资产的 thumbnailPath（找不到资产时只落盘）。
+   */
+  async saveModelThumbnail(input: {
+    sourceRelativePath: string
+    dataUrl: string
+  }): Promise<{ thumbnailPath: string; asset: AssetInfo | null }> {
+    const root = this.getRoot()
+    const sourceRel = String(input?.sourceRelativePath ?? '')
+      .replace(/\\/g, '/')
+      .replace(/^\/+/, '')
+      .trim()
+    if (!sourceRel || sourceRel.includes('..')) {
+      throw fail(MAIN_ERRORS.pathOutsideProject)
+    }
+    const { buf, mime } = await resolveMediaBytesFromUrl(input.dataUrl)
+    if (!mime.includes('png') && !mime.includes('jpeg') && !mime.includes('jpg')) {
+      throw new Error('Invalid model thumbnail image')
+    }
+    const thumbRel = writeModelThumbnailPng(root, sourceRel, buf)
+    const asset =
+      this.listAssets().find((item) => (item.relativePath ?? '').replace(/\\/g, '/') === sourceRel) ??
+      null
+    if (!asset) return { thumbnailPath: thumbRel, asset: null }
+    const updated = this.updateAsset({ ...asset, thumbnailPath: thumbRel })
+    return { thumbnailPath: thumbRel, asset: updated }
   }
 
   /** 导入/挂载后规划并异步生成缩略图，返回应写入资产的 thumbnailPath */

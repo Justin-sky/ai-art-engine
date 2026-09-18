@@ -141,6 +141,7 @@ import { resolveActiveProvider } from './modelProviders/resolve'
 import {
   blenderAddonLink,
   blenderMcpEnabled,
+  probeBlenderAddon,
   restartBlenderMcp,
   runBlenderTool,
   stopBlenderMcp
@@ -3537,6 +3538,12 @@ export function getBlenderMcpInfo(): McpBlenderBridgeInfo {
     lastError: link.lastError,
     lastCheckedAt: link.lastCheckedAt
   }
+}
+
+/** Cook / 作业入口：等探活完成再读状态，避免首次拿到 connected:false 空缓存 */
+export async function getBlenderMcpInfoFresh(): Promise<McpBlenderBridgeInfo> {
+  await probeBlenderAddon()
+  return getBlenderMcpInfo()
 }
 
 /** 设置面板：应用 Blender 配置（落盘 + 断开重连 + 立即探活），并回一份带端点的完整状态 */

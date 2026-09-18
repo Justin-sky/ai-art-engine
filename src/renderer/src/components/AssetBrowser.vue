@@ -587,6 +587,7 @@ import {
   resolveAssetFileUrl,
   resolveAssetPreviewUrl
 } from '../features/media/assetUrlCache'
+import { ensureModelPreviewUrl } from '../features/media/ensureModelPreviewUrl'
 import { openFrameSheetPreviewDialog } from '../features/media/frameSheetPreviewDialog'
 import { resolveAssetFrameSheetGrid } from '../features/media/resolveAssetFrameSheetGrid'
 import { resolveAssetText } from '../features/media/resolveAssetText'
@@ -1525,7 +1526,17 @@ watch(
 )
 
 async function loadAssetListThumb(asset: AssetInfo): Promise<void> {
-  if ((asset.type !== 'image' && asset.type !== 'video') || !asset.relativePath) return
+  if (!asset.relativePath) return
+  if (asset.type === 'model' || asset.type === 'model3d') {
+    try {
+      const url = await ensureModelPreviewUrl(asset)
+      if (url) thumbUrls.value[asset.id] = url
+    } catch {
+      /* 3D 离屏预览失败时仍显示类型徽章 */
+    }
+    return
+  }
+  if (asset.type !== 'image' && asset.type !== 'video') return
   try {
     thumbUrls.value[asset.id] = await resolveAssetPreviewUrl(asset.relativePath)
   } catch {
