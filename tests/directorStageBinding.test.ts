@@ -14,6 +14,7 @@ import {
   resolveDirectorStageForNode,
   shouldResetDirectorStage
 } from '../src/renderer/src/features/director/directorStageBinding'
+import { pickDirectorIncomingModels } from '../src/renderer/src/features/director/pickDirectorIncomingModel'
 
 describe('directorStageBinding', () => {
   it('keeps independent stages per processing node', () => {
@@ -176,5 +177,32 @@ describe('directorStageBinding', () => {
     expect(stage.ownerProcessingNodeId).toBe(node.id)
     expect(getActiveDirectorCamera(stage).viewer.fov).toBe(55)
     expect(stage).not.toHaveProperty('viewer')
+  })
+
+  it('keeps one incoming model when the raw GLB and rig-skin share an assetId', () => {
+    const picked = pickDirectorIncomingModels([
+      {
+        assetId: 'char-1',
+        relativePath: 'Cache/Models/raw.glb',
+        sourceTypeId: 'asset.model3d'
+      },
+      {
+        assetId: 'char-1',
+        relativePath: 'Cache/Models/rigged.glb',
+        sourceTypeId: 'model.rigSkin'
+      },
+      {
+        assetId: 'char-2',
+        relativePath: 'Cache/Models/other.glb',
+        sourceTypeId: 'asset.model3d'
+      }
+    ])
+    expect(picked).toHaveLength(2)
+    expect(picked.find((item) => item.assetId === 'char-1')?.relativePath).toBe(
+      'Cache/Models/rigged.glb'
+    )
+    expect(picked.find((item) => item.assetId === 'char-2')?.relativePath).toBe(
+      'Cache/Models/other.glb'
+    )
   })
 })

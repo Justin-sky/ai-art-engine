@@ -41,6 +41,7 @@
         :relative-path="modelPreviewPath"
         :bone-pose="bonePose"
         :show-skeleton="false"
+        :show-save-to-library="true"
       />
       <p v-if="posePresetId" class="pose-preset">
         <code>{{ posePresetId }}</code>

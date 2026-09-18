@@ -142,6 +142,7 @@ import {
   resolveDirectorStageForNode,
   shouldResetDirectorStage
 } from './directorStageBinding'
+import { pickDirectorIncomingModels } from './pickDirectorIncomingModel'
 import {
   flattenAssetValues,
   flattenImagesValues,
@@ -7643,25 +7644,24 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     bonePose?: Record<string, StageVec3>
     /** 上游 `model.animation` 的 overlay；空 assetId 片段播新 GLB 内嵌 clip */
     clip?: { name: string; fps: number; frameRange: [number, number] }
+    sourceTypeId?: string
   }
 
   /**
-   * 解析导演台节点 `in-model` 端口连接的上游 3D 模型。
-   * 优先取上游节点的已物化模型输出（runStates.out），其次取模型引用节点自身的 assetId。
+   * 解析导演台节点 `in-model` 上全部上游 3D 模型。
+   * 同一角色（同一 assetId）只留加工最深的一条，避免原模和蒙皮各建一个实例。
    */
-  async function resolveIncomingModel(): Promise<IncomingModelInfo | null> {
+  async function resolveIncomingModels(): Promise<IncomingModelInfo[]> {
     const nodeId = boundProcessingNodeId()
-    if (!nodeId) return null
+    if (!nodeId) return []
     const doc = graphEditorHosts.getDocument(graphHostId.value)
-    if (!doc) return null
-    const edge = (doc.edges ?? []).find(
+    if (!doc) return []
+    const edges = (doc.edges ?? []).filter(
       (item) => item.target === nodeId && (item.targetPort ?? 'in') === 'in-model'
     )
-    if (!edge) return null
-    const source = (doc.nodes ?? []).find((item) => item.id === edge.source)
-    if (!source) return null
+    if (!edges.length) return []
 
-    const fromValue = (value: GraphValue): IncomingModelInfo | null => {
+    const fromValue = (value: GraphValue, sourceTypeId?: string): IncomingModelInfo | null => {
       if (
         value.kind !== 'asset' ||
         (value.assetType !== 'model' && value.assetType !== 'model3d')
@@ -7671,6 +7671,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       if (!value.assetId) return null
       return {
         assetId: value.assetId,
+        sourceTypeId,
         ...(value.relativePath?.trim() ? { relativePath: value.relativePath.trim() } : {}),
         ...(value.title?.trim() ? { name: value.title.trim() } : {}),
         ...(value.bonePose && Object.keys(value.bonePose).length
@@ -7687,17 +7688,31 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
           : {})
       }
     }
-    const runOut = doc.runStates?.[source.id]?.outputs?.out
-    const direct = runOut ? fromValue(runOut) : null
-    if (direct) return direct
-    for (const item of flattenAssetValues(runOut ? [runOut] : [])) {
-      const info = fromValue(item)
-      if (info) return info
+
+    const candidates: IncomingModelInfo[] = []
+    for (const edge of edges) {
+      const source = (doc.nodes ?? []).find((item) => item.id === edge.source)
+      if (!source) continue
+      const runOut = doc.runStates?.[source.id]?.outputs?.out
+      const direct = runOut ? fromValue(runOut, source.typeId) : null
+      if (direct) {
+        candidates.push(direct)
+        continue
+      }
+      let found = false
+      for (const item of flattenAssetValues(runOut ? [runOut] : [])) {
+        const info = fromValue(item, source.typeId)
+        if (info) {
+          candidates.push(info)
+          found = true
+          break
+        }
+      }
+      if (!found && source.assetType === 'model' && source.assetId) {
+        candidates.push({ assetId: source.assetId, sourceTypeId: source.typeId })
+      }
     }
-    if (source.assetType === 'model' && source.assetId) {
-      return { assetId: source.assetId }
-    }
-    return null
+    return pickDirectorIncomingModels(candidates)
   }
 
   let appliedIncomingModelKey = ''
@@ -7754,13 +7769,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     ])
   }
 
-  /** dive 进入导演台时，把 `in-model` 端口的 3D 模型自动实例化到舞台模型列表（去重）。 */
-  async function syncIncomingModel(): Promise<void> {
-    const incoming = await resolveIncomingModel()
-    if (!incoming) {
-      appliedIncomingModelKey = ''
-      return
-    }
+  async function applyIncomingModel(incoming: IncomingModelInfo): Promise<void> {
     const key = incomingModelKey(incoming)
     const existing = stage.value.objects.find(
       (o) => o.kind === 'model' && o.modelAssetId === incoming.assetId
@@ -7779,16 +7788,39 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
         if (incoming.bonePose) applyObjectBonePoseMap(existing.id, incoming.bonePose, 'replace')
         if (incoming.clip) attachIncomingEmbeddedClip(existing.id, incoming.clip)
       }
-      appliedIncomingModelKey = key
       return
     }
-    appliedIncomingModelKey = key
     const createdId = await createModelObject(incoming.assetId, null, undefined, {
       relativePath: incoming.relativePath,
       name: incoming.name,
       bonePose: incoming.bonePose
     })
     if (createdId && incoming.clip) attachIncomingEmbeddedClip(createdId, incoming.clip)
+  }
+
+  /** dive 进入导演台时，把 `in-model` 端口的 3D 模型自动实例化到舞台（同角色去重）。 */
+  async function syncIncomingModelNow(): Promise<void> {
+    const incomingList = await resolveIncomingModels()
+    if (!incomingList.length) {
+      appliedIncomingModelKey = ''
+      return
+    }
+    const key = incomingList.map((item) => incomingModelKey(item)).join('|')
+    for (const incoming of incomingList) {
+      await applyIncomingModel(incoming)
+    }
+    appliedIncomingModelKey = key
+  }
+
+  let incomingModelSyncTail = Promise.resolve()
+
+  function syncIncomingModel(): Promise<void> {
+    const run = incomingModelSyncTail.then(syncIncomingModelNow, syncIncomingModelNow)
+    incomingModelSyncTail = run.then(
+      () => undefined,
+      () => undefined
+    )
+    return run
   }
 
   function clearFlyKeys(): void {

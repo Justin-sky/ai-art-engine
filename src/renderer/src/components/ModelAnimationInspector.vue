@@ -41,6 +41,7 @@
         :relative-path="modelPreviewPath"
         :bone-pose="currentPose"
         :show-skeleton="false"
+        :show-save-to-library="true"
       />
 
       <div class="timeline">

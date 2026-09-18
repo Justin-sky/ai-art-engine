@@ -133,7 +133,11 @@
       <div class="section-head">
         <span class="section-title">{{ t('graph.inspector.generate.modelPreview') }}</span>
       </div>
-      <ModelPreview v-if="modelPreviewPath" :relative-path="modelPreviewPath" />
+      <ModelPreview
+        v-if="modelPreviewPath"
+        :relative-path="modelPreviewPath"
+        :show-save-to-library="true"
+      />
       <p v-else class="section-hint">
         {{ t('graph.inspector.generate.modelPreviewEmpty') }}
       </p>
@@ -186,6 +190,15 @@
             <span v-else class="shot-loading">…</span>
             <span class="shot-index">{{ index + 1 }}</span>
           </button>
+          <PreviewSaveToLibraryButton
+            v-if="canSave(shot.relativePath)"
+            compact
+            class="shot-save"
+            :can-save="true"
+            :saved="isSaved(shot.relativePath)"
+            :saving="isSaving(shot.relativePath)"
+            @save="openSave(shot.relativePath!)"
+          />
           <button
             type="button"
             class="shot-delete"
@@ -234,6 +247,15 @@
             }}</pre>
             <span class="shot-index">{{ index + 1 }}</span>
           </button>
+          <PreviewSaveToLibraryButton
+            v-if="canSave(item.relativePath)"
+            compact
+            class="shot-save"
+            :can-save="true"
+            :saved="isSaved(item.relativePath)"
+            :saving="isSaving(item.relativePath)"
+            @save="openSave(item.relativePath!)"
+          />
           <button
             type="button"
             class="shot-delete"
@@ -286,6 +308,15 @@
             <span v-else class="shot-loading">…</span>
             <span class="shot-index">{{ index + 1 }}</span>
           </button>
+          <PreviewSaveToLibraryButton
+            v-if="canSave(item.relativePath)"
+            compact
+            class="shot-save"
+            :can-save="true"
+            :saved="isSaved(item.relativePath)"
+            :saving="isSaving(item.relativePath)"
+            @save="openSave(item.relativePath!)"
+          />
           <button
             type="button"
             class="shot-delete"
@@ -341,6 +372,15 @@
             <span v-else class="shot-loading">…</span>
             <span class="shot-index">{{ index + 1 }}</span>
           </button>
+          <PreviewSaveToLibraryButton
+            v-if="canSave(item.relativePath)"
+            compact
+            class="shot-save"
+            :can-save="true"
+            :saved="isSaved(item.relativePath)"
+            :saving="isSaving(item.relativePath)"
+            @save="openSave(item.relativePath!)"
+          />
           <button
             type="button"
             class="shot-delete"
@@ -359,6 +399,16 @@
       :text="textNotepadBody"
       :editable="false"
       @close="textNotepadOpen = false"
+    />
+    <SaveAssetDialog
+      ref="dialogRef"
+      :open="dialogOpen"
+      :default-name="defaultName"
+      :default-folder-id="defaultFolderId"
+      :title="t('studio.chat.saveToLibraryTitle')"
+      :subtitle="t('studio.chat.saveToLibrarySubtitle')"
+      @confirm="confirmSave"
+      @cancel="closeDialog"
     />
     <div
       v-if="voiceProfileDialogOpen"
@@ -481,6 +531,9 @@ import ExpandableTextarea from './ExpandableTextarea.vue'
 import InstructionModelSelect from './InstructionModelSelect.vue'
 import ImageGenerateParamsSelect from './ImageGenerateParamsSelect.vue'
 import ModelPreview from './ModelPreview.vue'
+import PreviewSaveToLibraryButton from './PreviewSaveToLibraryButton.vue'
+import SaveAssetDialog from './SaveAssetDialog.vue'
+import { useSaveCacheAsset } from '../composables/useSaveCacheAsset'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useNodeDisplayTitle } from '../composables/useNodeDisplayTitle'
 import { useGraphNodeRun } from '../composables/useGraphNodeRun'
@@ -536,6 +589,18 @@ type StoredGeneratedVideo = {
 }
 
 const { t, locale, graphTypeLabel, assetTypeLabel } = useStudioI18n()
+const {
+  dialogOpen,
+  defaultName,
+  defaultFolderId,
+  dialogRef,
+  canSave,
+  isSaved,
+  isSaving,
+  openSave,
+  closeDialog,
+  confirmSave
+} = useSaveCacheAsset()
 const editor = useEditorKernel()
 
 const node = computed(() => {
@@ -2208,6 +2273,13 @@ textarea,
   line-height: 18px;
   text-align: center;
   pointer-events: none;
+}
+
+.shot-save {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  z-index: 2;
 }
 
 .shot-delete {

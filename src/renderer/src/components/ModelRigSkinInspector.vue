@@ -49,6 +49,7 @@
       :relative-path="modelPreviewPath"
       :show-skeleton="activeTab === 'skeleton'"
       :selected-bone="activeTab === 'skeleton' ? selectedBone : null"
+      :show-save-to-library="true"
       @bones="onModelBones"
       @select-bone="onSelectBone"
       @skeleton-source="onSkeletonSource"

@@ -21,12 +21,16 @@ import {
   selectGalleryOutput,
   type GalleryOutputKind
 } from '../features/graph/model/graphGalleryOutput'
+import { normalizeOutputPathKey } from '@shared/outputScan'
 import { invalidateAssetUrlCache } from '../features/media/assetUrlCache'
 import { useProjectStore } from '../stores/project'
 import { useWorkspaceStore } from '../stores/workspace'
+import { useSaveCacheAsset } from '../composables/useSaveCacheAsset'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import GraphTextNotepadDialog from './GraphTextNotepadDialog.vue'
 import MediaPreviewPlayer from './MediaPreviewPlayer.vue'
+import PreviewSaveToLibraryButton from './PreviewSaveToLibraryButton.vue'
+import SaveAssetDialog from './SaveAssetDialog.vue'
 import { openFullImagePreview } from '../features/media/openFullImagePreview'
 import { resolveAssetText } from '../features/media/resolveAssetText'
 
@@ -58,6 +62,24 @@ const emit = defineEmits<{
 const { t } = useStudioI18n()
 const project = useProjectStore()
 const workspace = useWorkspaceStore()
+const {
+  dialogOpen,
+  defaultName,
+  defaultFolderId,
+  dialogRef,
+  canSave,
+  isSaved,
+  isSaving,
+  openSave,
+  closeDialog,
+  confirmSave
+} = useSaveCacheAsset()
+
+function itemSavePath(item: PreviewItem): string {
+  if (item.relativePath?.trim()) return normalizeOutputPathKey(item.relativePath)
+  if (item.src?.startsWith('rel:')) return normalizeOutputPathKey(item.src.slice('rel:'.length))
+  return ''
+}
 
 const resolvedSrc = ref<Record<string, string>>({})
 const resolvedText = ref<Record<string, string>>({})
@@ -1244,16 +1266,25 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
           <p v-else class="hint">
             {{ t('graph.inspector.outputPreviewMissing') }}
           </p>
-          <button
-            v-if="canDeleteOutputItem(item)"
-            type="button"
-            class="output-clear-btn"
-            :title="t('graph.inspector.outputDelete')"
-            :aria-label="t('graph.inspector.outputDelete')"
-            @click.stop="deleteOutputItem(item)"
-          >
-            <span class="icon-delete" aria-hidden="true" />
-          </button>
+          <div class="preview-actions">
+            <PreviewSaveToLibraryButton
+              v-if="canSave(itemSavePath(item))"
+              :can-save="true"
+              :saved="isSaved(itemSavePath(item))"
+              :saving="isSaving(itemSavePath(item))"
+              @save="openSave(itemSavePath(item))"
+            />
+            <button
+              v-if="canDeleteOutputItem(item)"
+              type="button"
+              class="output-clear-btn"
+              :title="t('graph.inspector.outputDelete')"
+              :aria-label="t('graph.inspector.outputDelete')"
+              @click.stop="deleteOutputItem(item)"
+            >
+              <span class="icon-delete" aria-hidden="true" />
+            </button>
+          </div>
         </template>
       </div>
       <div v-else class="media-grid">
@@ -1267,6 +1298,14 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
           @click.capture="selectAsCurrentOutputCapture(item, $event)"
         >
           <div class="card-actions">
+            <PreviewSaveToLibraryButton
+              v-if="canSave(itemSavePath(item))"
+              compact
+              :can-save="true"
+              :saved="isSaved(itemSavePath(item))"
+              :saving="isSaving(itemSavePath(item))"
+              @save="openSave(itemSavePath(item))"
+            />
             <button
               v-if="revealableAssetId(item.assetId)"
               type="button"
@@ -1351,16 +1390,25 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
         <p v-else class="hint">
           {{ t('graph.inspector.outputPreviewMissing') }}
         </p>
-        <button
-          v-if="canDeleteOutputItem(item)"
-          type="button"
-          class="output-clear-btn"
-          :title="t('graph.inspector.outputDelete')"
-          :aria-label="t('graph.inspector.outputDelete')"
-          @click.stop="deleteOutputItem(item)"
-        >
-          <span class="icon-delete" aria-hidden="true" />
-        </button>
+        <div class="preview-actions">
+          <PreviewSaveToLibraryButton
+            v-if="canSave(itemSavePath(item))"
+            :can-save="true"
+            :saved="isSaved(itemSavePath(item))"
+            :saving="isSaving(itemSavePath(item))"
+            @save="openSave(itemSavePath(item))"
+          />
+          <button
+            v-if="canDeleteOutputItem(item)"
+            type="button"
+            class="output-clear-btn"
+            :title="t('graph.inspector.outputDelete')"
+            :aria-label="t('graph.inspector.outputDelete')"
+            @click.stop="deleteOutputItem(item)"
+          >
+            <span class="icon-delete" aria-hidden="true" />
+          </button>
+        </div>
       </template>
     </div>
 
@@ -1375,6 +1423,14 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
         @click.capture="selectAsCurrentOutputCapture(item, $event)"
       >
         <div class="card-actions">
+          <PreviewSaveToLibraryButton
+            v-if="canSave(itemSavePath(item))"
+            compact
+            :can-save="true"
+            :saved="isSaved(itemSavePath(item))"
+            :saving="isSaving(itemSavePath(item))"
+            @save="openSave(itemSavePath(item))"
+          />
           <button
             v-if="revealableAssetId(item.assetId)"
             type="button"
@@ -1440,6 +1496,16 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
       :text="notepadText"
       :editable="false"
       @close="closeTextNotepad"
+    />
+    <SaveAssetDialog
+      ref="dialogRef"
+      :open="dialogOpen"
+      :default-name="defaultName"
+      :default-folder-id="defaultFolderId"
+      :title="t('studio.chat.saveToLibraryTitle')"
+      :subtitle="t('studio.chat.saveToLibrarySubtitle')"
+      @confirm="confirmSave"
+      @cancel="closeDialog"
     />
   </section>
 </template>
@@ -1567,6 +1633,22 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
   max-height: 240px;
   object-fit: contain;
   background: var(--graph-preview-bg);
+}
+
+.preview-actions {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.preview-actions .output-clear-btn {
+  position: static;
+  top: auto;
+  right: auto;
 }
 
 .output-clear-btn {

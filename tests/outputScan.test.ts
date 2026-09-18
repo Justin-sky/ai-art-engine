@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   MAX_ROUND_OUTPUT_CARDS,
+  cacheAssetStem,
   generatedAssetKeyOf,
   groupRoundOutputs,
+  isLibraryRelativePath,
   isScannedOutputPath,
   normalizeOutputPathKey,
   selectRoundOutputs,
@@ -54,6 +56,14 @@ describe('产物扫盘：路径口径', () => {
     expect(isScannedOutputPath('Cache/Texts/a.txt')).toBe(false)
     expect(isScannedOutputPath('Output/data.json')).toBe(false)
     expect(isScannedOutputPath('Output/noext')).toBe(false)
+  })
+
+  it('识别资产库路径并给出保存默认名', () => {
+    expect(isLibraryRelativePath('Assets/Models/a.glb')).toBe(true)
+    expect(isLibraryRelativePath('assets/images/a.png')).toBe(true)
+    expect(isLibraryRelativePath('Cache/Models/a.glb')).toBe(false)
+    expect(cacheAssetStem('Cache/Models/3D 模型生成 5.glb')).toBe('3D 模型生成 5')
+    expect(cacheAssetStem('Cache/Images/foo.png')).toBe('foo')
   })
 
   it('路径比对键：统一正斜杠并去掉前导斜杠', () => {

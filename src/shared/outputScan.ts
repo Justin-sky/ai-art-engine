@@ -110,6 +110,17 @@ export function normalizeOutputPathKey(relativePath: string): string {
     .replace(/^\/+/, '')
 }
 
+/** 已落在资产库目录（Assets/）内：保存入口应隐藏，避免再复制一份。 */
+export function isLibraryRelativePath(relativePath: string): boolean {
+  return normalizeOutputPathKey(relativePath).toLowerCase().startsWith('assets/')
+}
+
+/** 保存对话框默认文件名：取路径最后一段并去掉扩展名。 */
+export function cacheAssetStem(relativePath: string): string {
+  const base = normalizeOutputPathKey(relativePath).split('/').pop() ?? ''
+  return base.replace(/\.[^.]+$/, '') || 'asset'
+}
+
 /**
  * 是否属于可出卡的产物路径：位于 `Output/` 或 `Cache/` 下（至少「目录 / 文件」两段）、
  * 不含隐藏路径段、扩展名可预览，且不是元数据文件（`.asset.json` / 缩略图）。

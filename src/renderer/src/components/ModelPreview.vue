@@ -10,11 +10,34 @@
     <div v-else-if="status === 'error'" class="overlay error">
       {{ errorMessage }}
     </div>
+    <div v-if="showSaveToLibrary && canSave(relativePath)" class="save-slot">
+      <PreviewSaveToLibraryButton
+        :can-save="true"
+        :saved="isSaved(relativePath)"
+        :saving="isSaving(relativePath)"
+        @save="openSave(savePath)"
+      />
+    </div>
+    <SaveAssetDialog
+      v-if="showSaveToLibrary"
+      ref="dialogRef"
+      :open="dialogOpen"
+      :default-name="defaultName"
+      :default-folder-id="defaultFolderId"
+      :title="t('studio.chat.saveToLibraryTitle')"
+      :subtitle="t('studio.chat.saveToLibrarySubtitle')"
+      @confirm="confirmSave"
+      @cancel="closeDialog"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { normalizeOutputPathKey } from '@shared/outputScan'
+import { useSaveCacheAsset } from '../composables/useSaveCacheAsset'
+import PreviewSaveToLibraryButton from './PreviewSaveToLibraryButton.vue'
+import SaveAssetDialog from './SaveAssetDialog.vue'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { loadModelScene } from '../features/director/loadModelScene'
@@ -68,6 +91,8 @@ const props = withDefaults(
      * 子骨自然跟随父骨 FK，skinned mesh 按原始 vertex 权重 / blend 变形。
      */
     bonePose?: Readonly<Record<string, StageVec3>> | null
+    /** Inspector 预览：把 Cache 产物保存到资产库。对话卡已有独立按钮，不要开。 */
+    showSaveToLibrary?: boolean
   }>(),
   {
     relativePath: null,
@@ -78,9 +103,24 @@ const props = withDefaults(
     showSkeleton: false,
     selectedBone: null,
     presetBones: null,
+    showSaveToLibrary: false,
     bonePose: null
   }
 )
+
+const {
+  dialogOpen,
+  defaultName,
+  defaultFolderId,
+  dialogRef,
+  canSave,
+  isSaved,
+  isSaving,
+  openSave,
+  closeDialog,
+  confirmSave
+} = useSaveCacheAsset()
+const savePath = computed(() => normalizeOutputPathKey(props.relativePath ?? ''))
 
 /** 骨架来源：模型自带 / 预设拓扑合成 / 都没有 */
 type SkeletonSource = 'baked' | 'preset' | 'none'
@@ -991,5 +1031,12 @@ onBeforeUnmount(() => {
 
 .overlay.error {
   color: var(--danger);
+}
+
+.save-slot {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 3;
 }
 </style>
