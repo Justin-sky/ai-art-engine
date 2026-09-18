@@ -2,6 +2,10 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [6.4.2] — 2026-09-18
+
+修复 Release CI 在 `typecheck:web` 阶段失败：`GraphRunLogApiCall.kind` 补齐 `rigModel3d`，与 `graphTasks` 绑骨 API 日志记录一致。
+
 ## [6.4.1] — 2026-09-18
 
 6.4.1 版本：把「3D 骨骼蒙皮」从 Blender MCP / dsh 本地绑骨改为 **Meshy / Tripo 云端 Rigging API**。生成侧（`asset.model3d` / MCP `generate_model3d` / Meshy·Tripo·Rodin 适配器）去掉内联蒙皮选项与 gen→rig 二段式管道，只出几何 GLB；`model.rigSkin` Cook 上传上游模型到对象存储后调用 `POST /openapi/v1/rigging`（Meshy）或 `POST /v3/animations/rig`（Tripo），经 `videoJobService` 轮询下载带骨 GLB。补齐 IPC `gen:model3d-rig`、`facade.rigModel3d`、图编辑器 / 后台任务双路径注入 `ctx.rigModel3d`（修复漏接导致的 `GRAPH_MODEL_RIG_DSH`）。节点卡片仅保留 Meshy/Tripo 供应商与骨架类型下拉；Inspector 去掉 Blender QA / dsh 实时状态，打开时清掉旧 `rigQa` / `skillId`，预览槽固定高度防 flex 挤没，骨骼叠层按三轴对齐缩放并调小关节球。单测覆盖独立 Rigging API、生成侧不再透传 rig、MCP schema 去蒙皮入参、execute 走 `rigModel3d`。

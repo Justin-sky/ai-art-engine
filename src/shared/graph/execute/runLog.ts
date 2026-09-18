@@ -47,6 +47,7 @@ export interface GraphRunLogApiCall {
     | 'generateSpeech'
     | 'generateMusic'
     | 'generateModel3d'
+    | 'rigModel3d'
     | 'blenderMcp'
   nodeId: string
   /** 节点 params.skillId；无则省略 */
@@ -68,6 +69,8 @@ export interface GraphRunLogApiCall {
     rigType?: string
     /** 3D 生成：绑定动画预设 id */
     rigAnimation?: string
+    /** 3D 绑骨：待绑定模型相对路径 */
+    modelRelativePath?: string
     /** 多模态附图 / 参考图数量（不落 data URL，避免日志膨胀） */
     imageCount?: number
     aspectRatio?: string
