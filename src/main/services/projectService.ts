@@ -20,8 +20,6 @@ import {
 import { separateAudioStems } from './audioSeparationService'
 import {
   DEFAULT_RESOLUTION,
-  ASSET_IMAGE_OUTPUT_KIND_DIR,
-  ASSET_TEXT_OUTPUT_KIND_DIR,
   createDefaultDirectorStage,
   assetTypeLabel,
   defaultAssetName,
@@ -268,6 +266,26 @@ function assertInsideProject(root: string, target: string): string {
     throw fail(MAIN_ERRORS.pathOutsideProject)
   }
   return resolvedTarget
+}
+
+/**
+ * 解析媒体落盘目录：preferredRel 经 join 后若等于工程根（空 / `.`），改落到 fallbackRel。
+ * 挡住 outputDir="."、绝对工程根路径等把生成媒体直接写到工程根。
+ */
+function resolveMediaDestDirAbs(
+  root: string,
+  preferredRel: string,
+  fallbackRel: string
+): { dirAbs: string; dirRel: string } {
+  const preferred = normalizeProjectRelativeDir(preferredRel) || fallbackRel
+  let dirAbs = assertInsideProject(root, join(root, preferred))
+  let dirRel = toPosix(relative(root, dirAbs)).replace(/\/+$/, '')
+  if (!dirRel || dirRel === '.') {
+    dirAbs = assertInsideProject(root, join(root, fallbackRel))
+    dirRel = toPosix(relative(root, dirAbs)).replace(/\/+$/, '') || fallbackRel
+  }
+  mkdirSync(dirAbs, { recursive: true })
+  return { dirAbs, dirRel }
 }
 
 function detectAssetType(filePath: string): AssetType {
@@ -1660,13 +1678,25 @@ class ProjectService {
 
     const safeStem = normalizePathSegment(input.key || 'generate')
     const cacheRoot = resolveCacheOutputRoot(this.config?.cacheOutputDir)
-    const outDir =
-      normalizeProjectRelativeDir(input.outputDir) || `${cacheRoot}/${ASSET_IMAGE_OUTPUT_KIND_DIR}`
-    const dirAbs = assertInsideProject(root, join(root, outDir))
-    mkdirSync(dirAbs, { recursive: true })
+    const mediaKind =
+      mime.includes('mp4') || mime.includes('webm') || mime.startsWith('video/')
+        ? 'video'
+        : mime.includes('mpeg') ||
+            mime.includes('mp3') ||
+            mime.includes('wav') ||
+            mime.includes('ogg') ||
+            mime.startsWith('audio/')
+          ? 'voice'
+          : 'image'
+    const fallback = resolveMediaOutputDir({ cacheOutputDir: cacheRoot, kind: mediaKind })
+    const preferred = resolveMediaOutputDir({
+      mediaOutputDir: input.outputDir,
+      cacheOutputDir: cacheRoot,
+      kind: mediaKind
+    })
     // 入库判定与实际写入目录同源：outDir 来自节点参数 / Agent，写法差异（前导斜杠等）
     // 一旦让判定与写盘分叉，文件会静静落在 Assets/ 里却拿不到旁挂元数据（素材库看不到）
-    const dirRel = toPosix(relative(root, dirAbs)) || outDir
+    const { dirAbs, dirRel } = resolveMediaDestDirAbs(root, preferred, fallback)
     const register = shouldRegisterOutputInAssetLibrary(dirRel, this.config?.cacheOutputDir)
     if (register) {
       ensureAssetRelativeFolderChain(root, dirRel)
@@ -1732,12 +1762,14 @@ class ProjectService {
     const content = input.content ?? ''
     const safeStem = normalizePathSegment(input.key || 'screenplay')
     const cacheRoot = resolveCacheOutputRoot(this.config?.cacheOutputDir)
-    const outDir =
-      normalizeProjectRelativeDir(input.outputDir) || `${cacheRoot}/${ASSET_TEXT_OUTPUT_KIND_DIR}`
-    const dirAbs = assertInsideProject(root, join(root, outDir))
-    mkdirSync(dirAbs, { recursive: true })
+    const fallback = resolveMediaOutputDir({ cacheOutputDir: cacheRoot, kind: 'text' })
+    const preferred = resolveMediaOutputDir({
+      mediaOutputDir: input.outputDir,
+      cacheOutputDir: cacheRoot,
+      kind: 'text'
+    })
     // 与 saveGraphRunMedia 同一口径：按实际写入目录判定是否入库
-    const dirRel = toPosix(relative(root, dirAbs)) || outDir
+    const { dirAbs, dirRel } = resolveMediaDestDirAbs(root, preferred, fallback)
     const register = shouldRegisterOutputInAssetLibrary(dirRel, this.config?.cacheOutputDir)
     if (register) {
       ensureAssetRelativeFolderChain(root, dirRel)
@@ -1893,23 +1925,29 @@ class ProjectService {
   }): AssetInfo {
     const root = this.getRoot()
     const ext = extname(params.sourceFilePath) || (params.type === 'video' ? '.mp4' : '.png')
-    const explicitDir = normalizeProjectRelativeDir(params.outputDir)
     const cacheRoot = this.config?.cacheOutputDir
-    const destDirRel =
-      explicitDir ||
-      (params.type === 'video'
-        ? resolveMediaOutputDir({ cacheOutputDir: cacheRoot, kind: 'video' })
+    const mediaKind =
+      params.type === 'video'
+        ? 'video'
         : params.type === 'voice'
-          ? resolveMediaOutputDir({ cacheOutputDir: cacheRoot, kind: 'voice' })
+          ? 'voice'
           : params.type === 'model'
-            ? resolveMediaOutputDir({ cacheOutputDir: cacheRoot, kind: 'model' })
+            ? 'model'
             : params.type === 'image'
-              ? resolveMediaOutputDir({ cacheOutputDir: cacheRoot, kind: 'image' })
-              : 'Assets')
-    const dirAbs = assertInsideProject(root, join(root, destDirRel))
-    mkdirSync(dirAbs, { recursive: true })
-    // 与 saveGraphRunMedia 同一口径：按实际写入目录判定是否入库
-    const dirRel = toPosix(relative(root, dirAbs)) || destDirRel
+              ? 'image'
+              : null
+    const fallback = mediaKind
+      ? resolveMediaOutputDir({ cacheOutputDir: cacheRoot, kind: mediaKind })
+      : 'Assets'
+    const preferred = mediaKind
+      ? resolveMediaOutputDir({
+          mediaOutputDir: params.outputDir,
+          cacheOutputDir: cacheRoot,
+          kind: mediaKind
+        })
+      : normalizeProjectRelativeDir(params.outputDir) || 'Assets'
+    // 与 saveGraphRunMedia 同一口径：按实际写入目录判定是否入库；媒体类型禁止落到工程根
+    const { dirAbs, dirRel } = resolveMediaDestDirAbs(root, preferred, fallback)
     const register = shouldRegisterOutputInAssetLibrary(dirRel, cacheRoot)
     if (register) {
       ensureAssetRelativeFolderChain(root, dirRel)

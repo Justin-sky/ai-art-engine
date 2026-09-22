@@ -1458,7 +1458,12 @@ function buildPersona(mode: ChatMode, projectMemory?: string | null): string[] {
     'To rasterize or visually check an SVG or HTML artifact, call the render_svg tool instead:',
     'it renders the file with the app own engine and returns the picture to you, with no browser involved.',
     'To bake assets into the project, use the studio path: commit a plan whose svg.gen node feeds svg.anim, then read the baked PNG frames and the GIF reported by the task result.',
-    'If a check genuinely needs a real browser, stop and tell the user to run it outside the app.'
+    'If a check genuinely needs a real browser, stop and tell the user to run it outside the app.',
+    '=== Generated media must not land in the project root ===',
+    'Never write image/video/audio/3D files into the workspace root (cwd) with shell, Save-File, or relative paths like ./foo.png or .\\bar.mp4.',
+    'Always create media through studio MCP tools (generate_image / generate_video / generate_speech / generate_music / …): they save under Cache/Images (or Cache/Videos, Cache/Voices, …) automatically.',
+    'Do not invent outputDir as "." or the absolute project path. Leave outputDir unset for MCP generate_* tools.',
+    'If you need a file on disk after generation, read the relativePath returned by the MCP tool — never invent a path at the project root.'
   ]
   if (mode === 'ask') {
     return [

@@ -606,7 +606,11 @@ class ModelProviderFacade {
       sourceFilePath: absPath,
       name: input.name ?? `生成图片 ${new Date().toLocaleString()}`,
       prompt: input.prompt,
-      outputDir: input.outputDir
+      outputDir: resolveMediaOutputDir({
+        mediaOutputDir: input.outputDir,
+        cacheOutputDir: projectService.getConfig().cacheOutputDir,
+        kind: 'image'
+      })
     })
     return { assetId: asset.id, model: result.model, relativePath: asset.relativePath }
   }
@@ -658,7 +662,11 @@ class ModelProviderFacade {
       sourceFilePath: result.filePath,
       name: input.name ?? `生成语音 ${new Date().toLocaleString()}`,
       prompt: input.input,
-      outputDir: input.outputDir
+      outputDir: resolveMediaOutputDir({
+        mediaOutputDir: input.outputDir,
+        cacheOutputDir: projectService.getConfig().cacheOutputDir,
+        kind: 'voice'
+      })
     })
     return { ...result, assetId: asset.id, relativePath: asset.relativePath }
   }

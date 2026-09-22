@@ -67,8 +67,22 @@ describe('normalizeProjectRelativeDir', () => {
     expect(normalizeProjectRelativeDir('')).toBe('')
   })
 
+  it('裸 . 视为未设置（避免 join(root, ".") 落到工程根）', () => {
+    expect(normalizeProjectRelativeDir('.')).toBe('')
+    expect(normalizeProjectRelativeDir('./')).toBe('')
+    expect(normalizeProjectRelativeDir('.\\')).toBe('')
+  })
+
   it('保留 .. 段（越界交给 assertInsideProject 拦）', () => {
     expect(normalizeProjectRelativeDir('../Assets')).toBe('../Assets')
+  })
+})
+
+describe('resolveMediaOutputDir root coercion', () => {
+  it('outputDir="." / 空串回退 Cache/{Kind}', () => {
+    expect(resolveMediaOutputDir({ kind: 'image', mediaOutputDir: '.' })).toBe('Cache/Images')
+    expect(resolveMediaOutputDir({ kind: 'video', mediaOutputDir: './' })).toBe('Cache/Videos')
+    expect(resolveMediaOutputDir({ kind: 'voice', mediaOutputDir: '' })).toBe('Cache/Voices')
   })
 })
 

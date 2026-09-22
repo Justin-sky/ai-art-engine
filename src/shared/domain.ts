@@ -283,13 +283,18 @@ export const ASSET_MODEL_OUTPUT_KIND_DIR = 'Models'
  * 前导斜杠必须去掉：`/Assets/Hero` 这种绝对式写法在 `join(root, …)` 下会被解析成
  * `<root>/Assets/Hero`（真的写进资产库），但 `isUnderAssetLibraryDir('/Assets/Hero')`
  * 却判否——写盘与入库口径就此分叉，文件落进 `Assets/` 却拿不到旁挂元数据。
+ *
+ * 裸 `.`（或规范化后只剩 `.`）视为未设置：否则 `join(root, '.')` 等于工程根，
+ * 对话 / Agent 误传 outputDir="." 会把生成图直接写到工程根。
  */
 export function normalizeProjectRelativeDir(dir?: string | null): string {
-  return (dir ?? '')
+  const s = (dir ?? '')
     .trim()
     .replace(/\\/g, '/')
     .replace(/^\.?\/+/, '')
     .replace(/\/+$/, '')
+  if (!s || s === '.') return ''
+  return s
 }
 
 /** 工程相对文件路径的父目录；无父级时返回空串 */
@@ -395,6 +400,7 @@ export function formatGeneratedMediaStamp(date = new Date()): string {
 /**
  * 解析媒体输出目录：
  * 节点显式 mediaOutputDir > `{cacheOutputDir|Cache}/{Images|Videos|Texts|Voices|Models}`。
+ * 显式值为空 / `.` 时按未设置处理，回退 Cache/{Kind}（避免落到工程根）。
  */
 export function resolveMediaOutputDir(input: {
   mediaOutputDir?: string | null
