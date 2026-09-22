@@ -91,6 +91,7 @@ import {
   createDefaultStage2dActionAssetPack,
   stage2dActionAssetGenParams
 } from '@shared/gameAssets/stage2dActionAsset'
+import { sampleGameHtmlForMode } from '@shared/gamePlay'
 import { readJsonFile, writeJsonAtomic } from '../repositories/jsonFile'
 import { normalizePathSegment } from '@shared/assetPackage/pathname'
 import { dialogService } from './dialogService'
@@ -745,9 +746,26 @@ class ProjectService {
         ...stage2dActionAssetGenParams(createDefaultStage2dActionAssetPack())
       }
     }
-    // 新建图/视/声/剧本：默认「生成节点 → 输出节点」（导入引用文件不走此处）
+    // 可玩 HTML：默认播种 2D 样例，双击 Dive 沙盒即可试玩
+    if (input.type === 'gamePlay' && !asset.genParams?.gamePlayHtml) {
+      const mode =
+        asset.genParams?.gamePlayMode === '3d' || asset.genParams?.gamePlayMode === '2d'
+          ? asset.genParams.gamePlayMode
+          : '2d'
+      asset.genParams = {
+        ...(asset.genParams ?? {}),
+        gamePlayMode: mode,
+        gamePlayHtml: sampleGameHtmlForMode(mode)
+      }
+    }
+    // 新建图/视/声/可玩HTML/剧本：默认加工链（导入引用文件不走此处）
     if (!asset.genParams?.graphJson) {
-      if (input.type === 'image' || input.type === 'video' || input.type === 'voice') {
+      if (
+        input.type === 'image' ||
+        input.type === 'video' ||
+        input.type === 'voice' ||
+        input.type === 'gamePlay'
+      ) {
         asset.genParams = {
           ...(asset.genParams ?? {}),
           graphJson: createDefaultScopedGraph('workflow', input.type)

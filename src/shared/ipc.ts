@@ -93,6 +93,9 @@ export const IpcChannels = {
   ASSET_COPY_ORIGINAL_FILES: 'asset:copy-original-files',
   /** 主进程写系统剪贴板文本（脱离主窗口的弹窗无文档焦点时 navigator.clipboard 不可用） */
   CLIPBOARD_WRITE_TEXT: 'clipboard:write-text',
+  /** 可玩 HTML 沙盒：登记文档并返回 studio-gameplay:// URL（绕过主窗口 CSP） */
+  GAMEPLAY_OPEN_DOCUMENT: 'gameplay:open-document',
+  GAMEPLAY_RELEASE_DOCUMENT: 'gameplay:release-document',
   ASSET_FIND_REFERENCES: 'asset:find-references',
 
   ASSET_PACKAGE_EXPORT: 'asset-package:export',
@@ -1101,6 +1104,10 @@ export interface StudioApi {
   selectFiles: (filters?: { name: string; extensions: string[] }[]) => Promise<string[]>
   /** 主进程写系统剪贴板文本（弹窗/脱离窗口等无文档焦点场景的可靠路径） */
   writeClipboardText: (text: string) => Promise<void>
+  /** 登记可玩 HTML，返回 iframe 可用的 studio-gameplay:// URL */
+  openGameplayDocument: (html: string) => Promise<string>
+  /** 释放已登记的可玩 HTML 文档 */
+  releaseGameplayDocument: (urlOrId: string) => Promise<void>
 
   listAssets: () => Promise<AssetInfo[]>
   importAssets: (input: ImportAssetsInput) => Promise<ImportAssetsResult>

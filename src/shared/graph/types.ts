@@ -719,6 +719,12 @@ export interface GraphNodeParams {
   stage2dAnimSheetColumns?: number
   /** 2D 舞台最近一次运行产出的 sheet 行数 */
   stage2dAnimSheetRows?: number
+  /** 可玩 HTML：完整文档源码（game.htmlGen / asset.gamePlay） */
+  gamePlayHtml?: string
+  /** 可玩 HTML：2d / 3d / auto */
+  gamePlayMode?: '2d' | '3d' | 'auto'
+  /** 可玩 HTML：落盘相对路径（可选） */
+  gamePlayHtmlPath?: string
   /** 宫格切分 / 局部放大 */
   imageGridSplit?: Partial<ImageGridSplitState>
   /** 图标包导出（image.iconPack）：逐格键控透明 / 统一画布 / 命名打包参数 */

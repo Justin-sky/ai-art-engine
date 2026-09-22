@@ -78,12 +78,42 @@ function mediaProcessingTemplate(
   }
 }
 
+/** 可玩 HTML 资产：生成 → 试玩节点（与一句话小游戏预设同构） */
+function gamePlayProcessingTemplate(): DefaultGraphTemplate {
+  return {
+    nodes: [
+      {
+        key: 'gen',
+        typeId: 'game.htmlGen',
+        x: 200,
+        y: 160,
+        params: { gamePlayMode: 'auto' }
+      },
+      {
+        key: 'play',
+        typeId: 'asset.gamePlay',
+        x: 520,
+        y: 160,
+        params: { gamePlayMode: 'auto' }
+      }
+    ],
+    edges: [{ from: 'gen', to: 'play' }],
+    inputLinkTo: 'gen'
+  }
+}
+
 /** 各作用域默认图模板（新建图唯一来源；出口由 HDA boundary 承担，不再插入 classic output.*） */
 export const DEFAULT_GRAPH_TEMPLATES: Record<
   string,
   DefaultGraphTemplate | DefaultGraphTemplateResolver
 > = {
-  workflow: ({ assetType }) => mediaProcessingTemplate(assetType),
+  workflow: ({ assetType }) => {
+    const media = mediaProcessingTemplate(assetType)
+    if (media) return media
+    if (assetType && normalizeAssetType(assetType) === 'gamePlay')
+      return gamePlayProcessingTemplate()
+    return null
+  },
   screenplayAsset: {
     nodes: [{ key: 'gen', typeId: 'asset.screenplay', x: 240, y: 160 }],
     edges: [],

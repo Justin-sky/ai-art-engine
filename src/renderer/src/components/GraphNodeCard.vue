@@ -906,6 +906,8 @@ const instructionKind = computed((): InstructionPresetKind | null => {
       return 'frameAnimGen'
     case 'svg.gen':
       return 'svgGen'
+    case 'game.htmlGen':
+      return 'gameHtmlGen'
     case 'model.pose':
       return 'modelPose'
     case 'model.rigSkin':
@@ -1080,6 +1082,9 @@ const instructionPlaceholder = computed(() => {
   }
   if (instructionKind.value === 'svgGen') {
     return t('graph.inspector.generate.svgGenInstructionPlaceholder')
+  }
+  if (instructionKind.value === 'gameHtmlGen') {
+    return t('graph.inspector.generate.gameHtmlGenInstructionPlaceholder')
   }
   if (instructionKind.value === 'modelPose') {
     return t('graph.inspector.generate.modelPoseInstructionPlaceholder')
@@ -2187,6 +2192,31 @@ function onPreviewDblClick(): void {
       const hostId = props.hostId?.trim()
       if (!hostId) return
       await diveView({ viewId: 'comic.page', hostId, nodeId: props.node.id }, title)
+      return
+    }
+
+    // 可玩 HTML 资产节点：双击进 Dive 沙盒（无 dive 上下文时退回浮窗）
+    if (props.node.typeId === 'asset.gamePlay') {
+      const hostId = props.hostId?.trim()
+      if (hostId) {
+        const ok = await diveView(
+          { viewId: 'gamePlay.sandbox', hostId, nodeId: props.node.id },
+          title
+        )
+        if (ok) return
+      }
+      const { openGamePlaySandboxDialog } = await import('../features/media/gamePlaySandboxDialog')
+      openGamePlaySandboxDialog({
+        hostId: hostId || undefined,
+        nodeId: props.node.id,
+        title
+      })
+      return
+    }
+
+    // 可玩 HTML 生成：双击展开/收起生成指令（勿被 HTML 正文抢成记事本）
+    if (props.node.typeId === 'game.htmlGen') {
+      instructionOpen.value = !instructionOpen.value
       return
     }
 

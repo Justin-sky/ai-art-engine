@@ -52,6 +52,10 @@ const presetKind = computed((): InstructionPresetKind | null => {
       return 'beatSplit'
     case 'ui.split':
       return 'uiSplit'
+    case 'svg.gen':
+      return 'svgGen'
+    case 'game.htmlGen':
+      return 'gameHtmlGen'
     case 'asset.screenplay':
       return 'screenplay'
     case 'asset.image':

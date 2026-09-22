@@ -88,6 +88,8 @@ import {
   executeFrameAnimGenNode,
   executeSvgAnimNode,
   executeSvgGenNode,
+  executeGameHtmlGenNode,
+  executeGamePlayAssetNode,
   executeModelPoseNode,
   executeModelRigSkinNode,
   executeModelAnimationNode
@@ -235,6 +237,15 @@ const ASSET_META: Array<{
     type: 'gameSystem',
     label: '策划案生成',
     icon: '🕹️',
+    outType: GraphPortType.text,
+    addable: true,
+    weight: 0.85,
+    processingIn: GraphPortType.text
+  },
+  {
+    type: 'gamePlay',
+    label: '可玩 HTML',
+    icon: '🎮',
     outType: GraphPortType.text,
     addable: true,
     weight: 0.85,
@@ -448,20 +459,30 @@ function assetDef(meta: (typeof ASSET_META)[number]): NodeTypeDefinition {
                   ? worldHostPorts()
                   : meta.type === 'beat'
                     ? beatHostPorts()
-                    : [
-                        ...(meta.processingIn
-                          ? [
-                              {
-                                id: 'in',
-                                direction: 'in' as const,
-                                dataType: meta.processingIn,
-                                multiple: true,
-                                label: 'In'
-                              }
-                            ]
-                          : []),
-                        ...galleryOutPorts(meta.outType)
-                      ]
+                    : meta.type === 'gamePlay'
+                      ? [
+                          {
+                            id: 'in',
+                            direction: 'in' as const,
+                            dataType: GraphPortType.text,
+                            multiple: true,
+                            label: 'In'
+                          }
+                        ]
+                      : [
+                          ...(meta.processingIn
+                            ? [
+                                {
+                                  id: 'in',
+                                  direction: 'in' as const,
+                                  dataType: meta.processingIn,
+                                  multiple: true,
+                                  label: 'In'
+                                }
+                              ]
+                            : []),
+                          ...galleryOutPorts(meta.outType)
+                        ]
 
   const defaultViewer = {
     position: { x: 0, y: 2.2, z: 10 },
@@ -545,6 +566,20 @@ function assetDef(meta: (typeof ASSET_META)[number]): NodeTypeDefinition {
           loop: true
         }
       }
+      if (meta.type === 'gamePlay') {
+        return {
+          text: '',
+          gamePlayHtml: '',
+          gamePlayMode: 'auto',
+          generateInstruction: '',
+          generateModel: '',
+          generateProviderInstanceId: '',
+          weight: meta.weight,
+          volume: 1,
+          muted: false,
+          loop: true
+        }
+      }
       if (meta.type === 'motion') {
         return { viewer: defaultViewer }
       }
@@ -556,7 +591,8 @@ function assetDef(meta: (typeof ASSET_META)[number]): NodeTypeDefinition {
     inspector: meta.type === 'motion' ? 'camera' : 'asset',
     inspectorId: meta.type === 'subgraph' ? 'studio.graph.host' : undefined,
     card: 'media',
-    contributeToGeneration: meta.type !== 'motion' && meta.type !== 'subgraph',
+    contributeToGeneration:
+      meta.type !== 'motion' && meta.type !== 'subgraph' && meta.type !== 'gamePlay',
     execute:
       meta.type === 'motion'
         ? (ctx: NodeExecuteContext) =>
@@ -565,7 +601,9 @@ function assetDef(meta: (typeof ASSET_META)[number]): NodeTypeDefinition {
           ? executeScreenplayGenerateNode
           : meta.type === 'gameSystem'
             ? executeGameSystemGenerateNode
-            : executeAssetNode
+            : meta.type === 'gamePlay'
+              ? executeGamePlayAssetNode
+              : executeAssetNode
   }
 }
 
@@ -2543,6 +2581,44 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     assetType: 'model',
     contributeToGeneration: false,
     execute: executeModelAnimationNode
+  },
+  {
+    typeId: 'game.htmlGen',
+    category: 'note',
+    label: '可玩 HTML 生成',
+    icon: '🎮',
+    defaultTitle: '可玩 HTML 生成',
+    description:
+      '一句话生成可试玩的单文件 HTML（2D Canvas 或 3D Three.js）。in 接文本、in-image 接参考图；双击展开生成指令；out 出当前选中 HTML、out-all 出历次结果，可接入 asset.gamePlay。无模型时回退内置样例。',
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'In' },
+      {
+        id: 'in-image',
+        direction: 'in',
+        dataType: GraphPortType.image,
+        multiple: true,
+        label: 'Image'
+      },
+      ...galleryOutPorts(GraphPortType.text)
+    ],
+    defaultParams: () => ({
+      generateInstruction: '',
+      generateSystemPrompt: '',
+      generateModel: '',
+      generateProviderInstanceId: '',
+      gamePlayMode: 'auto',
+      gamePlayHtml: '',
+      text: ''
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.gameHtmlGen',
+    card: 'media',
+    contributeToGeneration: false,
+    execute: executeGameHtmlGenNode
   }
 ]
 

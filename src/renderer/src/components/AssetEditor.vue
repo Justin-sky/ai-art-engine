@@ -159,7 +159,8 @@ const supportsGraph = computed(
     !isImportedMediaRefAsset(asset.value) &&
     (isMediaFileAsset(asset.value.type) ||
       isScreenplayAsset(asset.value.type) ||
-      isSubgraphAsset(asset.value.type))
+      isSubgraphAsset(asset.value.type) ||
+      asset.value.type === 'gamePlay')
 )
 
 const diveKind = computed(() =>

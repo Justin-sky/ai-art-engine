@@ -30,6 +30,7 @@ export const WORKSPACE_TOOLBAR_ITEMS: WorkspaceToolbarItem[] = [
   { id: 'beat', assetType: 'beat', openOnCreate: true },
   { id: 'motion', assetType: 'motion', openOnCreate: true },
   { id: 'motion2d', assetType: 'motion2d', openOnCreate: false },
+  { id: 'gamePlay', assetType: 'gamePlay', openOnCreate: true },
   { id: 'image', assetType: 'image', openOnCreate: true },
   { id: 'video', assetType: 'video', openOnCreate: true },
   { id: 'voice', assetType: 'voice', openOnCreate: true }

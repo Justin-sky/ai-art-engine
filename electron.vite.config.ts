@@ -1,6 +1,27 @@
+import { readFileSync } from 'fs'
 import { resolve } from 'path'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import vue from '@vitejs/plugin-vue'
+import type { Plugin } from 'vite'
+
+/** 沙盒 iframe 注入用：绕过 three package exports，提供 min 源码字符串 */
+function threeModuleRawPlugin(): Plugin {
+  const virtualId = 'virtual:three-module-source'
+  const resolvedId = '\0' + virtualId
+  return {
+    name: 'three-module-raw',
+    resolveId(id) {
+      if (id === virtualId) return resolvedId
+      return null
+    },
+    load(id) {
+      if (id !== resolvedId) return null
+      const abs = resolve('node_modules/three/build/three.module.min.js')
+      const source = readFileSync(abs, 'utf-8')
+      return `export default ${JSON.stringify(source)}`
+    }
+  }
+}
 
 export default defineConfig({
   main: {
@@ -48,6 +69,6 @@ export default defineConfig({
         '@shared': resolve('src/shared')
       }
     },
-    plugins: [vue()]
+    plugins: [vue(), threeModuleRawPlugin()]
   }
 })

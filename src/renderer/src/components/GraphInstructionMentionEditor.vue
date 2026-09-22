@@ -540,6 +540,8 @@ const presetMenuTitle = computed(() => {
   if (props.presetKind === 'lipSync') return t('graph.inspector.generate.presets.titleLipSync')
   if (props.presetKind === 'frameAnimGen') return t('graph.anim2d.preset')
   if (props.presetKind === 'svgGen') return t('graph.inspector.generate.presets.titleSvgGen')
+  if (props.presetKind === 'gameHtmlGen')
+    return t('graph.inspector.generate.presets.titleGameHtmlGen')
   if (props.presetKind === 'modelPose') return t('graph.inspector.generate.presets.titleModelPose')
   if (props.presetKind === 'modelRigSkin')
     return t('graph.inspector.generate.presets.titleModelRigSkin')
@@ -1143,6 +1145,21 @@ async function applyPreset(item: InstructionPreset): Promise<void> {
   const inserted = insertInstructionPresetText(current, item.body, position)
   emit('update:modelValue', inserted.text)
   emit('change')
+  // 可玩 HTML：3D/2D 模板同步写入 gamePlayMode，避免仍停在 auto 导致模型退回 2D
+  if (props.presetKind === 'gameHtmlGen') {
+    const id = item.id.toLowerCase()
+    const mode = id.includes('3d') ? '3d' : id.includes('2d') ? '2d' : null
+    if (mode) {
+      const node = graphEditorHosts.getNode(props.hostId, props.nodeId)
+      const stored = node?.params.generateSystemPrompt
+      const patch: Record<string, unknown> = { gamePlayMode: mode }
+      const { isBuiltinGameHtmlSystemPrompt } = await import('@shared/gamePlay')
+      if (isBuiltinGameHtmlSystemPrompt(stored)) {
+        patch.generateSystemPrompt = ''
+      }
+      graphEditorHosts.updateNode(props.hostId, props.nodeId, patch)
+    }
+  }
   closeMenu()
   editorRef.value?.setSelection(inserted.cursor)
 }
@@ -1217,6 +1234,7 @@ function openPromptPreview(): void {
     locale: String(locale.value),
     styleImages,
     svgGen: kind === 'svgGen' && node ? readSvgGenFromNode(node.params) : undefined,
+    gamePlayMode: kind === 'gameHtmlGen' ? node?.params.gamePlayMode : undefined,
     styleReferenceSubject: node?.params.styleReferenceSubject,
     frameAnimGrid:
       kind === 'frameAnimGen'

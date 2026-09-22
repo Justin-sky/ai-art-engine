@@ -19,6 +19,7 @@ export type InstructionPresetKind =
   | 'uiSplit'
   | 'frameAnimGen'
   | 'svgGen'
+  | 'gameHtmlGen'
   | 'model3d'
   | 'modelPose'
   | 'modelRigSkin'
@@ -1557,6 +1558,29 @@ const SVG_GEN_PRESETS: InstructionPreset[] = [
   }
 ]
 
+const GAME_HTML_GEN_PRESETS: InstructionPreset[] = [
+  {
+    id: 'collect.2d',
+    titleKey: 'graph.inspector.generate.presets.gameHtmlGen.collect2d',
+    body: '2D 顶视收集小游戏：WASD / 方向键移动蓝球，收集 8 个黄点后胜利，按 R 重开'
+  },
+  {
+    id: 'dodge.2d',
+    titleKey: 'graph.inspector.generate.presets.gameHtmlGen.dodge2d',
+    body: '2D 躲避小游戏：玩家左右移动躲开从上往下掉的障碍，坚持越久分越高，撞到即失败，R 重开'
+  },
+  {
+    id: 'collect.3d',
+    titleKey: 'graph.inspector.generate.presets.gameHtmlGen.collect3d',
+    body: '3D 简易收集：WASD 在平面上移动方块角色，捡起周围黄块，全部收完胜利，R 重置'
+  },
+  {
+    id: 'arena.3d',
+    titleKey: 'graph.inspector.generate.presets.gameHtmlGen.arena3d',
+    body: '3D 小竞技场：第三人称视角，WASD 移动，在平台上存活并碰到目标物得分，掉落出局，R 重开'
+  }
+]
+
 /**
  * 3D 姿势节点常用预设：只当指令模板写入 generateInstruction，
  * 与自由描述同一条 dsh→Blender 通路。菜单标题走
@@ -1766,6 +1790,7 @@ const PRESET_PACKS: Record<InstructionPresetKind, InstructionPreset[]> = {
   uiSplit: [],
   frameAnimGen: [...FRAME_ANIM_GEN_CHARACTER_PRESETS, ...FRAME_ANIM_GEN_FX_PRESETS],
   svgGen: SVG_GEN_PRESETS,
+  gameHtmlGen: GAME_HTML_GEN_PRESETS,
   model3d: [],
   modelPose: MODEL_POSE_PRESETS,
   modelRigSkin: MODEL_RIG_SKIN_PRESETS,

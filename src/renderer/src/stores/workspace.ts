@@ -163,6 +163,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         return String(i18n.global.t('graph.types.ui.split'))
       case 'comic.page':
         return String(i18n.global.t('graph.types.comic.page'))
+      case 'gamePlay.sandbox':
+        return String(i18n.global.t('studio.dive.gamePlay.title'))
       default:
         return meta.viewId
     }

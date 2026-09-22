@@ -335,6 +335,7 @@ export const AI_WORKFLOW_PRESET_IDS = [
   'storyboardVideo',
   'productAd',
   'gameUi',
+  'gamePlayHtml',
   'gameIcons',
   'ecomAdDeep',
   'game3dAsset',
@@ -543,6 +544,46 @@ const PRESET_PLANS: Record<Exclude<AiWorkflowPresetId, 'custom'>, GraphPlan> = {
     edges: [
       { from: 'gameSystem', to: 'uiSplit' },
       { from: 'uiSplit', to: 'uiGen' }
+    ]
+  },
+  gamePlayHtml: {
+    title: '一句话小游戏',
+    nodes: [
+      {
+        key: 'brief',
+        typeId: 'play.script',
+        title: '一句话玩法',
+        params: {
+          text: '顶视收集小游戏：玩家用 WASD 移动，收集 8 个黄点后胜利，按 R 重开（2D）'
+        }
+      },
+      {
+        key: 'htmlGen',
+        typeId: 'game.htmlGen',
+        title: '可玩 HTML 生成',
+        params: {
+          gamePlayMode: 'auto',
+          generateInstruction: ''
+        }
+      },
+      {
+        key: 'play',
+        typeId: 'asset.gamePlay',
+        title: '可玩 HTML',
+        params: { gamePlayMode: 'auto' }
+      },
+      {
+        key: 'note',
+        typeId: 'note.text',
+        title: '使用说明',
+        params: {
+          text: '流程：改「一句话玩法」或双击「可玩 HTML 生成」写指令（可接参考图）→ 运行生成（out / 全部）→ 接到「可玩 HTML」后运行并双击进沙盒试玩（该节点只有输入、无输出，仅预览）。可将 gamePlayMode 改为 2d / 3d。'
+        }
+      }
+    ],
+    edges: [
+      { from: 'brief', to: 'htmlGen' },
+      { from: 'htmlGen', to: 'play' }
     ]
   },
   gameIcons: {

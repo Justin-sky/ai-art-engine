@@ -34,6 +34,7 @@ import Anim2dInspector from '../components/Anim2dInspector.vue'
 import SvgAnimInspector from '../components/SvgAnimInspector.vue'
 import FrameAnimGenInspector from '../components/FrameAnimGenInspector.vue'
 import SvgGenInspector from '../components/SvgGenInspector.vue'
+import GameHtmlGenInspector from '../components/GameHtmlGenInspector.vue'
 import TablePassThroughInspector from '../components/TablePassThroughInspector.vue'
 import WorldGenInspector from '../components/WorldGenInspector.vue'
 import BeatInspector from '../components/BeatInspector.vue'
@@ -201,6 +202,11 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     id: 'studio.graph.svgGen',
     component: SvgGenInspector,
     nodeTypeId: 'svg.gen'
+  },
+  {
+    id: 'studio.graph.gameHtmlGen',
+    component: GameHtmlGenInspector,
+    nodeTypeId: 'game.htmlGen'
   },
   {
     id: 'studio.graph.beatUnitGen',

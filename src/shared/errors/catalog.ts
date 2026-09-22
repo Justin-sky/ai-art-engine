@@ -101,6 +101,18 @@ export const SHARED_ERRORS = {
     '模型没有返回可用的 SVG 源码',
     'The model returned no usable SVG source'
   ),
+  /** 可玩 HTML：模型输出抽不出 HTML */
+  gameHtmlExtractFailed: defErrSimple(
+    'graphExec.gameHtml.extractFailed',
+    '模型没有返回可用的 HTML（需要完整 HTML 或带 canvas/script 的代码块）',
+    'The model returned no usable HTML (need a full HTML document or a canvas/script fence)'
+  ),
+  /** 可玩 HTML：结构校验失败 */
+  gameHtmlInvalid: defErr(
+    'graphExec.gameHtml.invalid',
+    (p: { reason: string }) => `可玩 HTML 校验失败：${p.reason}`,
+    (p: { reason: string }) => `Playable HTML validation failed: ${p.reason}`
+  ),
   /** SVG 烘焙：烘焙未产出画面 */
   svgRenderEmpty: defErrSimple(
     'graphExec.svgAnim.renderEmpty',

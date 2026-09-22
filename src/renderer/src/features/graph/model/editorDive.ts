@@ -40,6 +40,7 @@ export type EditorDiveViewId =
   | 'node.stage2d'
   | 'node.instruction'
   | 'comic.page'
+  | 'gamePlay.sandbox'
   | 'media.preview'
 
 export type EditorDiveNodeToolViewId = Extract<
@@ -91,6 +92,7 @@ export type EditorDiveViewMeta =
     }
   | { viewId: 'ui.split'; hostId: string; nodeId: string }
   | { viewId: 'comic.page'; hostId: string; nodeId: string }
+  | { viewId: 'gamePlay.sandbox'; hostId?: string; nodeId?: string; gamePlayAssetId?: string }
   | {
       viewId: EditorDiveNodeToolViewId
       hostId: string
@@ -174,6 +176,8 @@ export function editorDiveViewFrameKey(rootKey: string, meta: EditorDiveViewMeta
       return `${root}/view:ui.split:${meta.hostId}:${meta.nodeId}`
     case 'comic.page':
       return `${root}/view:comic.page:${meta.hostId}:${meta.nodeId}`
+    case 'gamePlay.sandbox':
+      return `${root}/view:gamePlay.sandbox:${meta.gamePlayAssetId || '_'}:${meta.hostId || '_'}:${meta.nodeId || '_'}`
     case 'media.preview':
       return `${root}/view:media.preview:${meta.mediaKind}:${meta.relativePath || meta.url}`
     default:

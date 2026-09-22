@@ -30,6 +30,7 @@ import type {
 import type { GitFileDiffInput } from '@shared/git'
 import type { TimelineExportInput, TimelineTransitionPreviewInput } from '@shared/graph'
 import { assetPackageService } from './services/assetPackageService'
+import { openGameplayDocument, releaseGameplayDocument } from './studioGameplayProtocol'
 import type {
   GenerateImageInput,
   GenerateMusicInput,
@@ -117,6 +118,12 @@ function handle<T>(channel: string, fn: (...args: never[]) => Promise<T> | T): v
 export function registerIpcHandlers(): void {
   handle(IpcChannels.CLIPBOARD_WRITE_TEXT, (text: string) => {
     clipboard.writeText(String(text ?? ''))
+  })
+  handle(IpcChannels.GAMEPLAY_OPEN_DOCUMENT, (html: string) =>
+    openGameplayDocument(String(html ?? ''))
+  )
+  handle(IpcChannels.GAMEPLAY_RELEASE_DOCUMENT, (urlOrId: string) => {
+    releaseGameplayDocument(String(urlOrId ?? ''))
   })
 
   handle(IpcChannels.DIALOG_SELECT_DIRECTORY, () => projectService.selectDirectory())

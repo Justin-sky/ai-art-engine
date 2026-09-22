@@ -33,6 +33,12 @@ import {
   type SvgGenState
 } from '../svgGen'
 import {
+  buildGameHtmlUserPrompt,
+  resolveGameHtmlSystemPrompt,
+  resolvePreferredGamePlayMode,
+  type GamePlayMode
+} from '../../gamePlay'
+import {
   buildImagePrompt,
   buildVideoPrompt,
   buildOptimizePrompt,
@@ -72,6 +78,7 @@ export type InstructionFinalPreviewKind =
   | 'uiSplit'
   | 'frameAnimGen'
   | 'svgGen'
+  | 'gameHtmlGen'
   | 'model3d'
 
 /** 按节点 typeId / assetType / 编辑器 preset 解析预览种类 */
@@ -96,6 +103,7 @@ export function resolveInstructionFinalPreviewKind(
     return 'frameAnimGen'
   }
   if (typeId === 'svg.gen' || presetKind === 'svgGen') return 'svgGen'
+  if (typeId === 'game.htmlGen' || presetKind === 'gameHtmlGen') return 'gameHtmlGen'
   if (typeId === 'video.reshoot' || presetKind === 'reshoot') return 'reshoot'
 
   const assetType = node?.assetType
@@ -113,7 +121,8 @@ export function resolveInstructionFinalPreviewKind(
 function resolveSystemPromptForPreviewKind(
   kind: InstructionFinalPreviewKind,
   raw: string | undefined,
-  locale?: string
+  locale?: string,
+  gamePlayMode: GamePlayMode = 'auto'
 ): string {
   switch (kind) {
     case 'image':
@@ -140,6 +149,8 @@ function resolveSystemPromptForPreviewKind(
       return resolveFrameAnimGenSystemPrompt(raw, locale)
     case 'svgGen':
       return resolveSvgGenSystemPrompt(raw, locale)
+    case 'gameHtmlGen':
+      return resolveGameHtmlSystemPrompt(gamePlayMode, raw, locale)
     case 'model3d':
       return resolveModel3dSystemPrompt(raw, locale)
     case 'screenplay':
@@ -152,7 +163,8 @@ function buildUserPromptForPreviewKind(
   kind: InstructionFinalPreviewKind,
   instruction: string,
   locale?: string,
-  reshootSegment?: { startSec?: number; endSec?: number }
+  reshootSegment?: { startSec?: number; endSec?: number },
+  gamePlayMode: GamePlayMode = 'auto'
 ): string {
   switch (kind) {
     case 'image':
@@ -180,6 +192,8 @@ function buildUserPromptForPreviewKind(
     case 'svgGen':
       // 与 execute/svgGen.ts 同口径：用户提示词就是指令本身（画布约束在下面单独追加），不套默认模板
       return instruction
+    case 'gameHtmlGen':
+      return buildGameHtmlUserPrompt(instruction, gamePlayMode, locale)
     case 'model3d':
       return buildModel3dPrompt(instruction, locale)
     case 'screenplay':
@@ -208,13 +222,16 @@ export function buildInstructionFinalPromptPreview(input: {
   reshootSegment?: { startSec?: number; endSec?: number }
   frameAnimGrid?: { rows?: number; cols?: number }
   svgGen?: SvgGenState
+  gamePlayMode?: GamePlayMode | string | null
 }): string {
+  const gamePlayMode = resolvePreferredGamePlayMode(input.gamePlayMode)
   const instruction = expandInstructionMentions(input.instructionRaw.trim(), input.sources)
   let userPrompt = buildUserPromptForPreviewKind(
     input.kind,
     instruction,
     input.locale,
-    input.reshootSegment
+    input.reshootSegment,
+    gamePlayMode
   )
   if (!instructionHasMentions(input.instructionRaw)) {
     const auto = input.sources
@@ -242,7 +259,12 @@ export function buildInstructionFinalPromptPreview(input: {
     userPrompt = userPrompt.trim() ? `${userPrompt.trim()}\n\n${canvas}` : canvas
   }
   if (input.includeSystem === false) return userPrompt
-  const system = resolveSystemPromptForPreviewKind(input.kind, input.systemPrompt, input.locale)
+  const system = resolveSystemPromptForPreviewKind(
+    input.kind,
+    input.systemPrompt,
+    input.locale,
+    gamePlayMode
+  )
   const labels = previewSectionLabels(input.locale)
   return `【${labels.system}】\n${system}\n\n【${labels.user}】\n${userPrompt}`
 }

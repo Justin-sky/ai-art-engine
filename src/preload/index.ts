@@ -47,6 +47,10 @@ const api: StudioApi = {
   selectProject: () => ipcRenderer.invoke(IpcChannels.DIALOG_SELECT_PROJECT),
   selectFiles: (filters?) => ipcRenderer.invoke(IpcChannels.DIALOG_SELECT_FILES, filters),
   writeClipboardText: (text: string) => ipcRenderer.invoke(IpcChannels.CLIPBOARD_WRITE_TEXT, text),
+  openGameplayDocument: (html: string) =>
+    ipcRenderer.invoke(IpcChannels.GAMEPLAY_OPEN_DOCUMENT, html),
+  releaseGameplayDocument: (urlOrId: string) =>
+    ipcRenderer.invoke(IpcChannels.GAMEPLAY_RELEASE_DOCUMENT, urlOrId),
 
   listAssets: () => ipcRenderer.invoke(IpcChannels.ASSET_LIST),
   importAssets: (input: ImportAssetsInput) => ipcRenderer.invoke(IpcChannels.ASSET_IMPORT, input),

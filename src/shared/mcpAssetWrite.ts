@@ -18,7 +18,8 @@ export const MCP_CREATABLE_ASSET_TYPES: readonly AssetType[] = [
   'image',
   'video',
   'voice',
-  'motion2d'
+  'motion2d',
+  'gamePlay'
 ]
 
 export function isMcpCreatableAssetType(value: string): value is AssetType {

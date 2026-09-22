@@ -57,6 +57,12 @@ function emptyDraft(type: AssetType): DraftAssetRecord {
   if (type === 'motion') {
     draft.genParams = { stage: createDefaultDirectorStage() }
   }
+  if (type === 'gamePlay') {
+    draft.genParams = {
+      gamePlayMode: 'auto',
+      graphJson: createDefaultScopedGraph('workflow', 'gamePlay')
+    }
+  }
   return draft
 }
 

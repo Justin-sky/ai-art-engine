@@ -3398,7 +3398,7 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
   },
   {
     id: 'game',
-    typeIds: ['asset.gameSystem', 'ui.split', 'ui.gen']
+    typeIds: ['asset.gameSystem', 'ui.split', 'ui.gen', 'game.htmlGen', 'asset.gamePlay']
   },
   {
     id: 'motionFx',

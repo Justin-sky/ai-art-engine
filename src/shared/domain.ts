@@ -85,6 +85,7 @@ export type AssetType =
   | 'model3d'
   | 'screenplay'
   | 'gameSystem'
+  | 'gamePlay'
   | 'canvas'
   | 'world'
   | 'beat'
@@ -560,6 +561,7 @@ export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   model3d: '3D Model',
   screenplay: 'Screenplay',
   gameSystem: 'Game System Plan',
+  gamePlay: 'Playable HTML',
   canvas: 'Series',
   world: 'World Elements',
   beat: 'Beat Units',
@@ -577,6 +579,7 @@ export const ASSET_TYPE_LABELS_ZH: Record<AssetType, string> = {
   model3d: '3D 模型',
   screenplay: '剧本',
   gameSystem: '游戏系统策划案',
+  gamePlay: '可玩 HTML',
   canvas: '剧集',
   world: '世界元素',
   beat: '场',
@@ -610,6 +613,7 @@ export const ASSET_TYPE_ICONS: Record<AssetType, string> = {
   model3d: '🧊',
   screenplay: '📜',
   gameSystem: '🕹️',
+  gamePlay: '🎮',
   canvas: '📺',
   world: '🤺',
   beat: '📖',
@@ -2052,6 +2056,8 @@ export function defaultAssetName(type: AssetType, language?: string | null): str
       return en ? 'New Screenplay' : '新建剧本'
     case 'gameSystem':
       return en ? 'New Game System Plan' : '新建游戏系统策划案'
+    case 'gamePlay':
+      return en ? 'New Playable HTML' : '新建可玩 HTML'
     case 'canvas':
       return en ? 'New Series' : '新建剧集'
     case 'world':

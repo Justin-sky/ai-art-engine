@@ -9,6 +9,7 @@ import { settingsService } from './services/settingsService'
 import { updateService } from './services/updateService'
 import { yoloService } from './yolo/yoloService'
 import { handleStudioMediaRequest } from './studioMediaProtocol'
+import { handleStudioGameplayRequest } from './studioGameplayProtocol'
 import { resolveAppIconPath } from './appIcon'
 import { markSmokeRuntimeStarted, signalSmokeReady } from './smokeReady'
 
@@ -23,11 +24,23 @@ protocol.registerSchemesAsPrivileged([
       bypassCSP: true,
       corsEnabled: true
     }
+  },
+  {
+    // 可玩 HTML iframe：不继承主窗口 script-src 'self'，允许内联试玩脚本
+    scheme: 'studio-gameplay',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      bypassCSP: true,
+      corsEnabled: true
+    }
   }
 ])
 
 function registerMediaProtocol(): void {
   protocol.handle('studio-media', (request) => handleStudioMediaRequest(request))
+  protocol.handle('studio-gameplay', (request) => handleStudioGameplayRequest(request))
 }
 
 /** 解析 window.open 的 features，让渲染层能决定弹出窗的初始尺寸与位置 */

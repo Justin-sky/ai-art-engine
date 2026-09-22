@@ -1038,7 +1038,8 @@ const filterTypes: AssetType[] = [
   'video',
   'voice',
   'motion',
-  'model'
+  'model',
+  'gamePlay'
 ]
 
 function filterTypeOptionLabel(type: AssetType | 'all'): string {

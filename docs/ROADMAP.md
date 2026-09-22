@@ -2,174 +2,100 @@
 
 ## Unreleased（进行中）
 
-### 5.1「成片版」— P0 近期
+## 战略路线 V7–V9（AI 创作操作系统）
 
-> 主题：把「生成很强、成片很弱」的短板补上——时间线可剪辑 + 音频域 + 平台导出。
-> 成功标准：用户能在 10 分钟内完成一条带字幕 + BGM 的 30s 成片并一键导出到目标平台规格。
+> 定位升级：从「用户 → AI 助手 → 节点图 → 模型 → 素材」升级为「导演 → AI Producer → 角色 Agent 团队 → Workflow Compiler → 节点图执行 → 结构化工程交付」。
+> 节点图仍是执行层（bytecode）；Compiler / Agent 是编排层；用户当导演。
+> 三大突破点优先贯穿 V7–V8：**AI Director Agent**、**Character Consistency Engine**、**AI Blender / 动画系统**。
+> 下方条目为战略 checklist，与上方 5.x / P1 / P2 交叉推进；已有底座（episode 流水线、`workflow_plan`、导演台、Rig API、gameSystem / stage2d、stylePresets、Cordis / Skills）必须复用，禁止另起炉灶。
 
-- [x] **成片时间线升级为可剪辑面板**（承接既有「时间线高级剪辑」规划）
-  - [x] 多轨非线性时间轴：video / overlay / voice / subtitle / music 五轨（`scriptTimeline`），素材源支持图节点收集与资产库 / 系统文件拖入
-  - [x] 转场库：镜头间转场预设与上轨
-  - [x] 语音识别自动字幕：音频转写分段时间戳对齐配音轨生成字幕片段（`timelineSubtitle`，已下沉共享层供编辑器与 MCP 共用）
-  - [x] 时间线上直接「重拍此镜头」：片段溯源到图节点，回到对应节点图分支
-  - [x] 成片导出合成：系统 ffmpeg 混流视频轨 + 配音 / 音乐 + 字幕烧录（`timelineExportService`）
+### 三大突破点
 
-- [x] **AI 音乐 / BGM 生成**：按成片情绪与时长生成配乐，一键铺轨
-  - [x] 音乐模型接入：MiniMax 音乐模型（`music-3.0` / `music-2.6`）同步接口 `POST /v1/music_generation` 适配，复用 generate 落盘管线（产物默认落 `Cache/Music`，资产卡可手动入库）
-  - [x] 生成参数：`prompt` 描述风格 / 情绪 / 场景 + 可选 `lyrics` / `instrumental`，返回 `durationMs` 时长元数据（MCP `generate_music`、时间线「生成 BGM」双入口）
-  - [x] 一键铺轨：时间线素材区「生成 BGM」→ 产出声音资产直接落到 music 轨；对话侧 `generate_music` 资产同样可拖入音乐轨
-  - [x] 音乐编辑基础：片段音量、淡入淡出（时间线 clip 既有 `volume` / `fadeInSec` / `fadeOutSec` 参数，music 轨直接可用）
-  - > 依赖：时间线 music 轨（已完成）。验收：从对话 / 素材库任一入口 2 分钟内产出配乐并上轨。
+- [ ] **A. AI Director Agent（价值 ★★★★★ / 难度中）**
+  - [ ] Producer 编排器：自然语言意图 + 工程记忆 → `ProductionPlan`（角色 Agent 列表、依赖、交付物）；可选 `ask_user` 确认
+  - [ ] 角色 Agent 技能包：Script / Concept / Character / Camera / Animator / Editor / QA（dsh skill / graphSkills；白名单 MCP / 图节点；产出写回约定目录）
+  - [ ] 项目交付目录规范：`project/{script,storyboard,characters,shots,assets,timeline,reviews}/` + `final.*`；Dive「项目总览」
+  - [ ] 与现有合流：短剧继续 episode.review 链；广告 / 影视用 ProductionPlan 物化为 graph + Dive
+  - [ ] **闭环**：QA Agent FAIL 必须能驱动 Producer / Compiler 局部改 Plan 或重跑，不得停在「只出报告」
+  - > V7 先做单 Producer + 3–5 角色 Agent + 落盘目录 + 至少一轮自动返工；并行 Agent / 消息总线放 V7.x。
 
-- [x] **音效与混音基础**
-  - [x] 音效轨：新增 `sfx` 轨（六轨：video / overlay / voice / subtitle / music / sfx），支持声音资产 / 音频文件拖入叠放、波形、音量、淡入淡出，导出与回退录制均收集该轨
-  - [x] AI 音效生成：时间线素材区「生成音效」→ 按描述走音乐模型 `instrumental` 产出（默认落 `Cache/Sfx`），自动铺到音效轨
-  - [x] 音效库：内置常用音效（转场 8 / UI 7 / 环境 7）预设库（`features/timeline/sfxPresets.ts` 双语预设，一键「生成并上轨」复用生成音效管线 + 资产库声音一键「导入上轨」）
-  - [x] 人声 / 伴奏分离：隔离对白、去 BGM 再混音。内置 ffmpeg 中置 / 侧置声道提取（人声近似 `(L+R)/2`、伴奏近似 `(L-R)/2`，产物落 `Cache/Separated/<stem>/`）；时间线选中视频 / 配音 / 音乐 / 音效片段「人声伴奏分离」→ 对白对齐上配音轨、伴奏上音乐轨，混音器调比例后再混音导出。MiniMax 未开放专用分离接口：接入位已预留（配置 `AUDIO_SEPARATION_API_URL` 即改走第三方 AI 分离服务，POST 原始音频 → `{ vocal, instrumental }` 下载落盘）
-  - [x] 混音器：混音器面板（轨道级增益 0~200% + dB 读数、主输出增益、低音 / 高音 EQ ±12dB、动态压缩开关），导出按混音参数经 ffmpeg 渲染（轨道增益并入片段音量 → amix → 主增益 → EQ → 压缩）
-  - > 依赖：AI 音乐落轨（已完成）。验收：多轨音量比例在导出成片中的听感与面板一致。
+- [ ] **B. Character Consistency Engine（价值 ★★★★★ / 难度中）**
+  - [ ] Character Bible 资产类型：Identity（face / body / voice embedding，v1 可先参考图集）、Attributes、Relations
+  - [ ] 生成时强制注入：扩展 `characterConsistency` / `characterRefs`——命中角色名 → `input_references` + prompt 锁
+  - [ ] World 实体 ↔ Bible 双向同步；一致性 QA 节点（VLM / embedding）→ FAIL 返工（对齐 media.review）
+  - [ ] **闭环**：一致性 FAIL → 强制带参考重抽 / 重跑，结果回写 Bible 使用记录
+  - > V7：Bible + 参考图注入 + 返工接线；V7.1：embedding 与自动 QA。
 
-- [ ] **平台规格导出预设**
-  - [x] 平台规格库：抖音 / 快手 / 视频号 / TikTok / YouTube 的画幅（竖 / 横 / 方）、分辨率、时长上限、码率与安全区常量（`shared/graph/exportPlatforms.ts`，含安全区矩形 / 字幕偏移 / 时长判定工具）
-  - [x] 导出向导：导出设置选目标平台 → 自动应用尺寸 / 帧率 / 码率建议，预览画框叠加安全区可视化，时长超上限给出警示
-  - [x] 字幕适配：选竖屏平台自动将字幕偏移落到底部安全区内（承接已有字幕烧录 / 拖拽排版）
-  - [x] 水印：可选品牌水印叠加（本地图片，不透明度 / 相对尺寸 / 四角位置，ffmpeg overlay 渲染，随设置持久化）
-  - [x] 导出报告：导出设置内规格符合性检查（分辨率 / 帧率 / 时长 / 字幕安全区逐项提示），导出失败错误留存在弹窗内可修正重试
-  - > 依赖：成片导出合成（已完成）。验收：同一工程一键导出到 3 个平台规格，字幕与安全区无遮挡。
+- [ ] **C. AI Blender / 动画系统（价值 ★★★★★ / 难度高）**
+  - [ ] AI Rigging 产品化：统一入口（上传 / 生成 → 检测 → 绑骨 → 权重 → 动作库匹配 → `.glb` / `.fbx`；`.blend` 可选经 Blender MCP）；承接现有 Meshy / Tripo Rig + 导演台骨骼预览
+  - [ ] AI Motion Library：walk / run / fight / dance… + 情绪标签；NL → `{ emotion, motion, camera }` → 导演台挂轨（承接 P1 MoMask）
+  - [ ] 一句话 Stage Compile：角色 / 服装 / 骨骼 / 动作 / 机位 / 灯 / 录屏或渲染
+  - [ ] 与「单 HTML 可玩沙盒」分流：影视预演走导演台；轻量可玩原型走 HTML iframe（见 V7.8）
 
-### 5.2「智能创作版」— P0 近期
+### V7 — AI Director（创作团队模拟器 · 第一阶段）
 
-> 主题：Agent 从"会生成"进化到"懂项目"——记忆、一致性、智能剪辑。
+> **成功标准（创作闭环必达，缺一不可）**
+>
+> 1. **意图 → 交付**：一句话广告 / 短片，无需手搭图，得到 Project Tree 中间件 + 至少一条可预览成片（或等价预览）链路。
+> 2. **质检 → 返工 → 再质检**：主路径上至少一轮 **自动** `QA FAIL → 注入原因 → 局部重编译或重跑子图 → 再 QA`（复用 `mediaRework` / episode FAIL 注入，禁止只出报告不返工）。
+> 3. **经验回注**：本轮 Bible / DNA / 制作结论写入 `memory.md`（或等价），下一轮同类意图可被 Producer / Compiler 读到。
+>
+> 只做到「出目录 + 可预览、人工点重跑」视为 **开环**，不算 V7 完成。
 
-- [x] **项目级 Agent 记忆**：工程 `.aiartengine/memory.md` 记忆文件（`shared/projectMemory.ts` 双语模板 + 增量追加 + 解析），工程创建 / 打开时由配置自动初始化基线；MCP 工具 `project_memory_read / append / write` 供 Agent 跨会话沉淀偏好；每次对话把记忆（截断 4000 字符）注入 persona system prompt
-- [x] **角色音色 / 声音克隆**：工程级角色音色档案 `.aiartengine/voiceProfiles.json`（角色 → 音色 id / 克隆参考音频，`shared/voiceProfiles.ts`）；语音生成按角色名（节点 `generateSpeechCharacter` / 生成入参 `voiceProfile`）自动取档跨镜头一致配音；`referenceAudio` 透传方舟声音复刻（few-shot voice clone，成功后 speaker_id 回填）；检查器「角色音色」下拉 + 档案管理对话框；MCP `voice_profile_list / upsert / delete`
-- [x] **智能剪辑（AI 粗剪）**：`shared/graph/smartCut.ts` 依据视频素材标题 / 分镜描述编排视频轨顺序、每段时长与转场（提示词构建 / JSON 解析 / 防御式应用均为纯函数）；时间线「智能粗剪」按钮调用剧本节点文本模型生成方案，预览对话框可调时长与转场后一键应用（只重排视频轨，其他轨保留）；已内置 BGM / 音效一键生成与上轨
-- [x] **视频级媒体理解**：媒体质检从首帧扩展到多帧序列理解（场景 / 动作 / 表情 / 画面质量 / 转场连贯性）。`shared/graph/videoReview.ts` 按时间均匀抽帧（含首末帧，纯函数）；主进程 `videoFrameService.ts` 用 ffmpeg/ffprobe 按时间戳取帧（`FFMPEG_PATH` 环境变量 / resources 内嵌 / PATH），IPC `video:extract-frames`；质检执行器优先图片、视频帧补位（上限 6 张），帧数 >1 时提示词追加「同一视频时间切片」说明；无 ffmpeg 时自动回退首帧缩略图
+- [ ] **7.1 Producer Agent**：NL → ProductionPlan；可选确认
+- [ ] **7.2 Role Agents MVP**：Script / Storyboard / Character / Image|Video / QA
+- [ ] **7.3 Project Tree**：标准目录落盘 + Dive 项目总览
+- [ ] **7.4 Character Bible v1**：资产类型 + 参考图锁 + 生成注入
+- [ ] **7.5 Visual DNA v1**：电影 / 风格 → Color / Lens / Light / Grain / Composition 等槽位，写入工程全局（扩展 stylePresets，非再造一套）
+- [ ] **7.6 Workflow Compiler v1**：Intent IR（`movie|ad|episode|gameProto`）→ 选预设 / 改拓扑 / 绑模型（扩展 `workflow_plan` / `materializeGraphPlan`）
+- [ ] **7.6a 创作闭环运行时（V7 必达）**：统一「执行 → QA → FAIL 原因落盘 → 局部重编译 / 重跑 → 再 QA」；广告 / 影视新链路必须接线，短剧继续吃 episode.review；上限 `maxAttempts`，禁止无限循环
+- [ ] **7.7 记忆升级**：`memory.md` ↔ Bible / DNA / 制作计划双向写（闭环第 3 环）
+- [x] **7.8 可玩 HTML 沙盒（快赢）**：一句话 → 单 HTML（**2D Canvas** / **3D Three.js**，`gamePlayMode=2d|3d|auto`）→ Dive iframe（`sandbox` + `srcdoc`，本地注入 three）；新资产 `gamePlay` + 预设 `gamePlayHtml`；试玩闭环自洽，**不替代**影视成片闭环
 
-### 5.3「本地视觉版」— P0 近期
+### V8 — AI Film Studio（AI 原生 Blender 体验）
 
-> 主题：YOLO 本地推理引擎已随包内置（检测 / 分割 / 姿态），把它从“能力底座”做成素材库、质检、剪辑日常开箱即用的视觉工具——全程离线不联网。
-> 成功标准：素材打标、智能构图、本地抠图、视频打点四条链路至少三条无需配置即可使用。
+> 成功标准：无 Blender 经验用户，一句话出可导 GLB + 导演台可播镜头序列。
 
-- [x] **YOLO 本地推理底座**：`yolo11n` / `yolo11n-seg` / `yolo11n-pose` 三模型随包内置（onnxruntime CPU worker，`YoloBackend` 已预留 DML），检测 / 实例分割 / 姿态估计（COCO 80 类 + 17 关键点）三通道 IPC + 设置页模型目录管理，输入支持本地文件 / dataUrl / 画布 raw（`main/yolo/*` + `shared/yolo.ts`）
-- [x] **素材视觉打标**：资产入库对图片 / 视频首帧做本地检测 → 对象标签（person / car / 场景…）与主体位置写入旁挂 meta；素材卡展示检测对象；标签作为「资产语义检索（P1）」的本地数据源
-- [x] **本地一键抠图**：segment 掩码 → 透明通道 PNG 资产（置信度阈值 + 边缘羽化），资产库图片一键入口，产物落 `Assets/Cutouts` 自动入库
-  - [x] segment 通道升级软掩码：worker 输出 mask 网格（覆盖整张 letterbox 画布）并附带 letterbox 几何，掩码 / 框共用同一坐标系
-  - [x] 掩码纯函数管线（`shared/yoloCutout.ts`）：网格 → 原图坐标双线性采样、多实例取 max 合并、阈值二值化、可分离盒式羽化、主体外接框裁剪 + 输出倍率，均有单测覆盖
-  - [x] 一键抠图对话框：自动识别 + 多主体勾选 + 检测 / 掩码阈值 + 羽化 + 透明棋盘格预览 + 保存入库
-  - [x] 资产检查器图片条目「本地抠图」入口；png/jpeg 直接主进程解码保原分辨率，webp 等渲染层 canvas 解码兜底
-- [x] **图节点智能构图 / 本地抠图编辑工具**：`image.compose` / `image.cutout` 节点卡双击即下钻进入节点工具，读节点既有参数与上游源图就地编辑，无需素材入库 / 另开弹窗往返
-  - [x] 源图链路：先开工具再异步填充节点上游源图（超时兜底放行），关闭 / 换节点自动丢弃过期结果
-  - [x] 智能构图：现场 YOLO 检测人物 → 主体多选 + 目标画幅（9:16 / 1:1 / 16:9）+ 居中 / 头部留边策略 → 实时重构图预览，保存把参数与产物写回节点，卡片立即更新
-  - [x] 本地抠图：主体多选 + 检测 / 掩码阈值 + 羽化 + 裁剪到主体（沿用节点只保留人物语义），透明 PNG 预览写回节点
-  - [x] dive 下钻内编辑在回退 / 切换前自动 flush 进撤销栈；检查器 / 卡片类型名补齐 `graph.types.image.cutout / compose` 双语
-- [x] **视频人 / 物打点**：ffmpeg 抽帧 + YOLO 帧序列检测 → 空镜 / 有物 / 单人 / 群像时间线分段 +「人物在第几秒出现」摘要写入旁挂 meta（`shared/videoBeats` 纯聚合有单测）；素材卡角标进度、右键「视频打点 / 重新打点」按需触发、导入后低优先级自动补打点（手动优先插队），缺 ffmpeg 时一键引导安装
-  - [x] ffmpeg 抽帧修复：`execFile` 默认 utf8 解码破坏 PNG 二进制导致 YOLO 报错，改 `encoding:'buffer'` 直出帧
-  - [x] 消费端①智能剪辑选段：应用粗剪方案时按打点把每个片段收敛进有效画面窗口，写入 `clip.sourceOffsetSec`（源内取段起点），素材预览条 / 缩略图取帧 / ffmpeg 导出 / 录屏兜底导出全链路按偏移截取；粗剪方案行提示「打点取段：跳过空镜头」
-  - [x] 消费端②镜头检索：素材库搜索支持「空镜 / 人物出镜 / 单人 / 群像 / 物体段」等镜头语义词（除对象标签外命中打点分段类型），命中视频在预览条上分段着色、点击跳转对应时间点
-- [x] **姿态进导演台**：姿态 17 关键点映射导演台骨骼，图片 / 视频中人物姿势可“摆入”导演台作为角色起始姿势，为后续 3D 骨骼动捕与分镜一致性铺路
-  - [x] 入口与选材：导演台检查器「起始姿势」区按钮「从图片 / 视频识别姿势」打开 `DirectorPoseFromMediaDialog`——工程素材库选图 / 视频（类型筛选 + 搜索 + 缩略图），视频进度条定位到目标画面后取帧，全程本地 YOLO pose 通道、不联网
-  - [x] 精确取帧：`videoFrameService.grabFramesAtTimestamps` 按时间点 ffmpeg 抓帧（帧宽可调、升序 seek），IPC `video:grab-timestamps` 透出（`preload` / `StudioApi` 同步声明），帧缺失 / 无 ffmpeg 安全返回空
-  - [x] 姿势解算纯函数链（有单测）：`features/director/poseFromMedia.ts` 做 YOLO COCO17 ↔ 骨骼关键点映射与可见点过滤；`imagePoseSolver.ts` 由 COCO17 按 FK 自根向下逐骨解算相对 bind 的局部欧拉偏移（只对齐自身骨段、避免链式过度弯曲），输出可喂 `applyObjectBonePoseMap(mode='replace')` 写为角色起始姿势，支持左右镜像 flip / 躯干驱动开关
-  - [x] 识别质量层 `features/director/poseQuality.ts`（纯函数 + 单测）：关键点统一置信度下限（叠加显示与骨骼驱动一致，“所见即所驱”）、多人默认取面积最大主体、按场景自动选用最准可用 pose 模型档位
-  - [x] 画布叠加预览：COCO17 骨架连线 + 关键点覆盖在媒体帧上实时预览，低置信度点不画不驱动；确认后整姿应用写入当前角色起始姿势
+- [ ] **8.1 AI Rigging Studio**：统一 Rig UX、骨骼 QA 预览、多格式导出
+- [ ] **8.2 Motion Library + NL 检索**：情绪 × 动作 × 镜头语法；挂导演台轨
+- [ ] **8.3 One-shot Stage Compile**：一句话 → 白模 / 角色 / 机位 / 灯 / 录屏
+- [ ] **8.4 Camera Director Agent**：镜头语言预设自动排机位与切换
+- [ ] **8.5 Editor Agent**：时间线粗剪 + 旁白 / 字幕对齐（扩展现有 timeline / smartCut）
+- [ ] **8.6 Consistency QA 视觉**：embedding / VLM 角色与 DNA 校验进流水线
+- [ ] **8.7 Visual DNA v2**：跨镜头强制 DNA；「只变情节不变风格」
 
-### 5.4「2D 游戏资产版」— P0 近期
+### V9 — AI Game Engine + 生态
 
-> 主题：把“能生成图”升级为“能成套交付 2D 游戏美术资产”——角色、场景、特效、UI、Spine 五类资产的引擎就绪生产（透明 PNG / 统一尺寸与锚点 / 九宫格与可循环 / 可驱动骨骼），目标客群为独立游戏单人 / 小团队。
-> 成功标准：从一张角色图与一段动作描述出发，10 分钟内产出「带锚点的透明角色差分包」或「一套 6~12 帧特效 sheet」；「角色图 → 可动 Spine 骨骼」与「整屏 UI → 九宫格部件包」闭环至少各跑通一条。
+> 成功标准：一句话小游戏有可玩 HTML + 可导入 Godot / Unity 的资产包；商店有第一条第三方 Workflow。
 
-- [ ] **统一对齐与资产出口工具**：本地图像处理节点集——画布统一缩放居中、脚底 / 中心锚点写入旁挂 meta、多帧序列自动对齐去抖、透明 PNG 导出（承接 5.3 本地抠图产物）；同时服务角色差分、特效序列、骨骼拆件与 UI 部件提取，五类资产共用前置
-  - [x] 已落地：`shared/gameAssets` 统一对齐纯函数层（alpha 主体外接框 → 统一画布等比摆放，中心 / 脚底锚点、超宽收缩、多帧平移去抖估计、sprite manifest 构建器，均有单测）；节点图新增 `image.align`「精灵对齐」节点——参数态 `imageAlign`，执行器经渲染层 `composeImageAlignCanvas` 本地像素合成（无模型）；节点卡双击下钻进入对齐工具（同 `image.cutout / compose` dive 框架），画布 / 锚点 / 主体高度占比 / 地面留白就地预览并写回节点，检查器与卡片同步更新
-  - > 待办：多帧序列批量对齐去抖编排 + 差分包 / 特效 sheet 的锚点 manifest 导出（复用已落地的几何层）
-- [ ] **角色视觉档案与资产卡**：工程 `.aiartengine/characterProfiles.json` 持久化角色视觉特征（脸型 / 配色 / 画风 / 禁忌，沿用 `voiceProfiles` 档案思路，MCP 可读写）；角色资产卡一键工作流——人设 → 正面 / 背面全身立绘 → 表情 / 换装 / 配色差分（复用「变体矩阵 + 一致性参考」）→ 统一尺寸透明 PNG + 锚点 manifest 导出，供 3D / Spine / 换装复用
-  - > 依赖：5.3 本地抠图 / 智能构图。验收：同一角色 20 表情 / 8 换色包约 30 分钟产出，进引擎不抖动、可换装拼接。
-- [ ] **2D 特效帧序列**：anim2d 管线扩展「特效时序」动作预设（爆炸 / 火焰 / 雷电 / 命中 / 投射物，中英双语），参考图 + 特效描述 → rows×cols 序列图，产物经「对齐去抖」落透明 sheet；技能图标批量变体（透明底、统一风格）
-  - [x] 已落地：FX 特效时序预设补齐（新增 `fx.hit` 命中受击 / `fx.projectile` 投射物，中英标题）；`frame.animGen` 与 `anim.2d` 新增「特效透明化」参数（纯黑 / 纯白键控，`buildAnimKeyColorPrompt` 生成时注入纯色底约束）；切帧输出 chroma key 透明 PNG（`shared/graph/chromaKey.ts` 纯函数，`composeImageGridCell` 支持 `chromaKey` 后处理，检查器 / 节点卡预览同步透传）
-  - > 待办：序列帧「对齐去抖」落透明 sheet、技能图标批量变体（依赖统一对齐工具）。验收：爆炸 / 火焰序列帧直接进引擎循环播放无抖动。
-- [x] **SVG 矢量资产与 SVG 烘焙节点**（已落地）：`.svg` 按 image 家族入库（Chromium 能直接渲染，预览与展示走原文件、不进位图缩略图链路，展示口径「SVG 矢量图」）；新增 `svg.anim` 节点（现名「SVG 烘焙」）——矢量源（SVG 生成节点 / 图库 SVG 资产）→ 含动效时按动画时间轴逐帧烘焙 PNG（`out` / `out-all`）、无动效只出单帧+ 合成 GIF（`out-gif`，落盘为工程资产），检查器可导出 GIF 到资源库；求值侧为共享纯函数层 `shared/media/svgTimeline`（SMIL 时间语义，19 项单测），栅格化在渲染层 `renderSvgFrames`
-  - > 待办：`keySplines` 缓动（现按 linear）、`<animateMotion>` 路径运动（需路径求长）、CSS `@keyframes` 动画、SVG 内 `<image href>` / Web Font 内联（data URI 下不加载）
-- [ ] **无缝场景与循环背景**：本地接缝检测（左右 / 上下边缘像素差分析 + 平铺预览判定，纯本地无模型依赖）；「循环背景」生成预设——提示词注入左右回环约束，生成后自动接缝检测不达标即回环重抽
-  - > 验收：横版 / 竖版循环背景 3 张内达标，平铺接缝不可见。
-- [ ] **Spine 骨骼拆件与装配数据**：YOLO pose 17 关键点 → 2D 骨骼平面角度反解（沿用 5.3「姿态进5.5「2D 导演台」」`imagePoseSolver` 自根向下逐骨解算思路，仅保留平面旋转）→ 按参考骨骼模板拆分部件（半自动：图层分离 / 擦除 / 部件框选提边）→ 导出 Spine `skeleton.json`（部件 PNG + attach 点）；骨骼装配、摆姿与预览在 5.5「2D 导演台」内闭环
-  - > 依赖：5.3 本地视觉 pose 通道。验收：一张角色立绘约 30 分钟拆出「部件 PNG + attach 槽清单」，可在 5.5 2D 导演台内装配骨骼并摆姿循环播放。
-  - [x] 已落地：Spine `skeleton.json` 导出（见 5.5「骨骼装配与摆姿」Spine 导出待办句转正）——关节层级 / attach 槽 / 平面 FK 结构即引擎标准骨架，部件页 PNG + attach 点随装配一键导出；「立绘自动拆件」剥层切分半自动工具仍为剩余待办
-- [ ] **UI 资产包（部件化 / 九宫格）**：把 `gameUi` 一键工作流的「整屏效果图」延伸为引擎可拼装 UI kit——从生成屏图中提取可复用控件（面板底 / 按钮 / 输入框 / 页签 / 弹窗），标注 9-slice 切边与安全边距后按命名规范落资产库透明 PNG；整屏出图改「带字精修 + 空字底图」双轨输出（供引擎叠本地化文字，绕开 AI 像素文字）；批量图标包（技能 / 道具 / 状态，统一线宽 / 圆角 / 最小可读尺寸规范）
-  - > 依赖：统一对齐与资产出口工具（本节）、5.3 本地抠图。验收：从整屏 UI 提取的面板 / 按钮九宫格任意缩放不变形；同批图标 16~256px 均可读。
-  - [x] 已落地：九宫格 UI 部件共享核心层（`shared/gameAssets/uiKit`）——部件类型（面板底 / 按钮 / 输入框 / 页签 / 弹窗）→ 命名规范前缀与文件主干安全化去重、源图框选矩形归一化、9-slice 切边与安全边距数据模型与夹取、`computeNineSliceCells` 九宫格拉伸网格几何（角块 / 边块原样不拉伸、仅中央区铺满，目标小于切边时自动收缩角块且中央区不为负，等大绘制逐格一一对应）、`uiKit` manifest 构建（部件 rect / 切边 / 安全边距 / 落盘 fileName 契约）。单测覆盖见 `tests/uiKit.test.ts`（13 项，含「九宫格任意缩放不变形」验收口径的网格几何断言）
-  - [x] 已落地：素材库「UI 部件提取」交互标注工具（`UiKitExtractDialog`，图片资产右键与检查器入口）——整屏图缩放 / 平移视图上「框选新部件 / 选中」标注：拖拽框选控件（自动夹取进源图）→ 类型（面板底 / 按钮 / 输入框 / 页签 / 弹窗）与命名规范主干（实时显示落盘名）→ 裁剪框 / 9-slice 切边 / 安全边距数值标注（超界自动夹取），右侧带部件原图 + 横向 / 纵向拉伸的 9-slice 即时预览（复用核心层网格几何，所见即所得）；导出走 `saveGraphRunMedia` 逐部件透明 PNG 落 `Assets/UIKits/<sourceName>/`（自动登记进素材库）+ `writeProjectFile` 落 `ui-kit.json` 清单
-  - [x] 已落地：gameUi 整屏出图「带字精修 + 空字底图」双轨输出（`uiSplitParse` 内图结构 v5）——ui.split 拆分时每屏输出 `prompt`（带字精修）与 `cleanPrompt`（空字底图）两套生图提示词（中英拆分提示词与示例、字段契约同步）；dive 内图每屏两条链：带字轨「提示词边界 → image → 图片边界」+ 底图轨（cleanPrompt 烘焙进 image 自身指令、无多余输入边界），两轨共用同一套 9:16 / 全局风格参考 / uiImage 系统提示词保证同屏同构；`cleanPrompt` 随 texts 载荷透传（`GraphTextItem` / `uiScreens` / `generatedTexts` 类型扩展），dive 重建不丢；旧模型仅出单轨时构建期兜底派生空字约束（`buildTextlessUiPrompt` 中英后缀）；输出口每屏两枚（`图片·` 带字 / `底图·` 空字），引擎直接取底图叠本地化文字、绕开 AI 像素文字；host 接口 / 边界归一化 / 持久化均同步（`tests/uiSplitExecute.test.ts` 17 项）
-  - [x] 已落地：批量图标包「整版表 + 宫格切分」一键工作流首版（`aiWorkflowPresets` 新增 `gameIcons` 预设）——「图标清单与风格」文本节点放画风主题与技能 / 道具 / 状态三类名单（每类 ≤9，顺序即切格顺序），三类各接一个 `asset.image` 整版节点绘制 3×3 均匀九宫格方形卡片图标表（统一规范尾句：等线宽描边、同一圆角与内边距比例、主体简洁高对比 16px 可辨、不画文字 / 网格线 / 外框，空余格纯色空白），每版再接 `image.gridSplit` 切成 9 枚独立方形图标，自左向右逐行与名单一致；风格经「风格参考图 → UI/图标」统一，i18n 与预设物化测试同步（`graphPlanMaterialize.test.ts` 12 项）
-  - [x] 已落地：图标包「透明 PNG + cellKey manifest」交付链路（`image.iconPack` 打包节点）——gameIcons 预设每类整版再接打包节点（`mediaOutputDir: Assets/IconPacks/{skill,item,status}`），名单文本走 `in-text` 口、整版图走 `in` 口；执行器逐格（cellKey row-major）裁切 → 纯色底本地采样键控抠透明（`gameAssets/iconPackKeying` RGB 欧氏距离 + 羽化软过渡，`auto` 优先采空白格、占满时回退版面外框，支持 black/white/none）→ 透明修剪后统一方形画布中心对齐（锚点=画布中心）→ 按名单名落透明 PNG 并同目录写 manifest（`gameAssets/iconPackManifest`：packId / canvasSize / background / grid / 逐条 cellKey↔name↔fileName↔width/height↔anchor，engine 可直接消费）；画布合成为渲染层 `composeImageIconPackSheet`（仅纯本地像素处理、不调模型），打包节点带 dive 实时预览编辑器（`IconPackEditorDialog`）与检查器（manifest 相对路径可见）。名单占不满整表时空白格不进 manifest；多口取值修复 in 有图时名单仍从 in-text 完整收集（soft 快照场景）。测试：`tests/iconPack.test.ts`（键控/采样/manifest/cellKey 换算）、`tests/graphIconPackInText.test.ts`（多口取值回归）、`tests/graphIconPackExecute.test.ts`（执行产物契约 2 项：cellKey↔落盘名↔manifest 一致 + 空白格剔除）
-  - > 待办：单枚不满意的逐枚精修——把 `image.gridSplit` 单枚产物接 dive 精修链路逐枚回炉（本轮先交付整包，逐枚精修留后续）。
+- [ ] **9.1 Game Producer**：「做一个塔防」→ 角色 / 地图 / UI / 任务 / 剧情 Agent
+- [ ] **9.2 游戏节点包**：Story / Character / Model / Anim / Level / Audio → engine-ready manifest（对齐 5.4 / GameFactory 观察项）
+- [ ] **9.3 导出适配器**：先 Godot + 现有 Spine；再 Unity Prefab；UE 更后
+- [ ] **9.4 NPC / 剧情 Agent**：对话树 + 任务图（与 `gameSystem` 合流）
+- [ ] **9.5 HTML 原型升级**：沙盒 HTML ↔ 引擎导出中间层（仍非自研完整引擎）
+- [ ] **9.6 Marketplace**：LoRA / Character / Motion / Workflow / Node / Skill；V7 先规范化 pack 清单格式
+- [ ] **9.7 Studio Server**：团队角色、云工程、GPU 队列；Desktop 变客户端（Frame.io + 审片心智）；V8 末可做只读云同步试点
 
-### 5.5「2D 导演台」— P0 近期
+### Workflow Compiler（持续技术壁垒）
 
-> 主题：为 2D 游戏资产生成单独做一个平面舞台——「能看、能摆、能动」。不把 2D 精灵塞进 Three.js 3D 导演台：精灵以锚点落位、骨骼部件装配摆姿、换装差分拼接、动作与特效 sheet 循环试播，让 5.4 产出的透明 PNG / 锚点 manifest 先在“引擎视角”下被摆对、被驱动起来再交付。
-> 成功标准：在 2D 导演台内把 5.4 角色差分按锚点叠放完成换装拼接无错位；一套拆件（部件 + attach 槽）装配成 2D 骨骼并可摆姿循环播放。
+- [ ] Intent 解析 → 类型 + 约束（时长 / 比例 / DNA / Bible）
+- [ ] Plan IR → Agent 步骤 + 预设种子 + 资源绑定
+- [ ] Materialize → 现有物化 + 目录约定
+- [ ] **Execute + QA 闭环（硬门槛）** → FAIL 注入原因、局部子图重编译、再 QA；对齐 `mediaRework` / episode FAIL；V7 必达见 7.6a
+- [ ] 长期：类型检查、成本估算、并行调度、可微调解译器
 
-- [ ] **2D 舞台与锚点落位**：与 3D 导演台平级的独立 2D 舞台 dock——正交视口（透明棋盘 / 统一画布栅格 / 锚点十字 / 缩放平移），直接消费 5.4 精灵对齐产物（透明 PNG + `spriteManifest` 锚点批清单）：多精灵拖入即按锚点就位、可叠放排序；渲染栈用 canvas 2D，不引入 three 依赖
-  - [x] 已落地：`shared/gameAssets/stage2dScene` 舞台共享层（统一画布 + 按 z 序精灵层，逐层锚点落位复用精灵统一对齐几何；含归一化夹取 / 剔除无源层 / ground 基线，均有单测）；节点图新增 `stage.2d`「2D 舞台」节点——参数态 `stage2dScene` 入 GraphNodeParams 随 free canvas 图持久化，新建节点自动播种默认舞台场景，右键「2D」分组可添加；执行器 `executeStage2dNode`（上游精灵自动成层 `stageSceneWithUpstreamSources`、逐层解析像素源、渲染层 `composeStage2dCanvas` 按 z 序叠绘单帧 PNG、物化落盘写回图库，均有单测）
-  - [x] 已落地：2D 舞台编辑器（`Stage2dNodeToolDialog`，双击 `stage.2d` 节点下钻）——层列表（z 序上下移 / 显隐 / 移除 / 资产库添加精灵即按锚点就位）+ 舞台参数（统一画布 / ground 语义与地面留白）+ 选中层参数（锚点 / 内容占高 / 地面留白 / 限制宽度）+ 透明棋盘实时合成视口（复用 `composeStage2dCanvas`）；应用后舞台参数与合成帧一起写回节点，卡片即刻显示
-  - [x] 已落地：正交视口（滚轮以光标为锚缩放 / 拖拽平移 / 复位适配，栅格 + ground 基线或中心十字参考线可开关）+ 层手动微调 `offset`（拖拽选中层或数值输入，叠加在锚点自动落位之上；归一化补默认与越界夹取、放置计划叠加偏移，均有单测）
-  - > 待办：骨骼摆姿接入（2D rig）、多帧 / 序列帧预览
-- [ ] **骨骼装配与摆姿（2D rig）**：承接 5.4「Spine 骨骼拆件与装配数据」——部件 PNG 依 attach 槽挂到 2D 骨骼层级，用 YOLO pose / 参考骨骼模板反解的平面旋转赋起始姿势；应用内 2D 骨骼播放器拖动关节实时驱动（FK），低置信关键点不驱动（沿用 5.3 `poseQuality` 口径）
-  - [x] 已落地：`shared/gameAssets/stage2dRig` 骨骼装配共享层（关节层级 + attach 槽 + 平面 FK：父关节旋转带动子关节与挂点、pose 只覆盖旋转不改写绑定、父缺失/成环断链、角度收敛，均有单测）；该数据结构同时作为 5.4 导出 Spine `skeleton.json` 的目标契约
-  - [x] 已落地：编辑器「骨骼」页——加/删关节、改名/换父级/绑定偏移，部件层挂到关节（挂点层/关节/偏移 X/Y 可改），摆姿旋转滑杆或直接在视口拖关节（骨骼线 + 关节点随画布缩放平移，FK 实时驱动子链与挂件）；挂到骨骼的层合成时以自身锚点对准挂点并随关节旋转，`composeStage2dCanvas` 与 stage.2d 执行器同步消费 rig/pose（导出帧 = 编辑器预览），rig/pose 随节点 params 持久化（参数 schema / api / 保存链路接线，桥接层有单测）
-  - [x] 已落地：YOLO pose 反解赋起始姿势——`shared/gameAssets/stage2dPoseSolve` 纯平面 FK 解算（无 THREE，自根向下逐骨对齐方向、保留 rig 自身比例；低置信关键点不驱动；关节↔关键点按角色命名配对，命名含 chest/shoulder/elbow/wrist/hip/knee/ankle + L/R 即驱动；flip 按镜像参考换边 + 水平反射；torso 用中髋→中肩，均有单测）。`stage2dHumanoid` 一键人形模板（模板即中性站姿，直接可驱动）。编辑器「骨骼」页新增「人形模板」「从图片反解姿势」：图片选素材 → 自动 YOLO 检测 → 命中段 chips（绿=已命中，黄=rig 缺关节，灰=参考图缺关键点）→ 应用覆盖 pose；视口实时看到 FK 结果
-  - [x] 已落地：从表演视频生成骨骼关键帧动作（5.5 待办句落地）——「骨骼」页动作区新增「🎬 从视频生成动作」：选工程视频资产 → 预载元数据取时长 → 按帧率（4~24fps，单条上限 60 帧）均匀抽帧（主进程 ffmpeg 采样）→ 逐帧 YOLO pose（跟随上一帧 / 平均置信最高选主角色，支持镜像）→ `solveStage2dPoseFromSkeleton` 反解 → 空帧剔除、补动作起始帧、可选闭环收尾帧 → 生成「custom」动作直接进「动作试播」（播放 / 定格 / 导出动作帧与内置预设同一链路），点「保存」随节点 params 的 `stage2dAction` 持久化（参数 schema / 保存链路 / 桥接层单测，重开节点自动恢复该动作）
-  - [x] 已落地：Spine `skeleton.json` 导出（5.4「Spine 骨骼拆件与装配数据」导出侧落地）——stage.2d 编辑器「骨骼」页新增「Spine 骨架包」导出：把挂到关节的可见部件层按放置计划从源图裁出实际绘制主体、缩放到部件页尺寸成独立透明 PNG（共享 `shared/gameAssets/stage2dSpineExport` 纯函数层做全部几何换算）——root 骨承载舞台根锚点、y-down→y-up 翻转（局部 y 取反、旋转取相反数、位图不翻转）、当前摆姿并入 setup pose、每个挂点生成 attach 子骨（偏移 + 部件旋转入骨、ground 锚点=图像底边中点为挂点故 region 中心上移半高、center 锚点即中心）、部件名安全化 + 槽名去重；输出 Spine 3.8 `skeleton.json`（bones / slots / skins + region）+ `.atlas`（每部件一页）+ 部件页 PNG；部件页走工程媒体落 `Assets/2D/Spine/<包名>/` 自动入库，skeleton.json 与 .atlas 同目录写工程文件供 Spine 编辑器 / 引擎直接导入；几何换算全量单测（`tests/stage2dSpineExport.test.ts` 12 项，渲染层 `composeStage2dSpineExport` 像素拼装与纯函数共用同一放置计划口径）。拆件剥层切分（立绘 → 部件 PNG + attach 槽清单的半自动工具）仍待办，留本 5.4 主条目
-- [ ] **换装与差分拼接**：5.4 角色档案差分包按部件 slot 在舞台叠放拼接，锚点 / 画布错位即时可见，服务「换装进引擎不抖动」的验收口径
-- [ ] **动作与循环预览**：pose 关键帧插值循环（本地纯函数）与动作预设播放；5.4 特效 sheet 按帧率循环试播（接缝 / 抖动即时可见）；为 P1「Spine 关键帧动画编辑器」预留时间轴编辑接口
-  - [x] 已落地：`shared/gameAssets/stage2dAction` 动作纯函数层——秒制 pose 关键帧插值循环（逐关节最短路径角度插值、`{}` 帧=回绑定姿势可平滑回绕、循环对时长取模 / 非循环夹取，含 19 项新单测）与内置动作预设 `stage2dActionPresets`（待机呼吸 / 挥手 / 欢呼 / 节奏摇摆，按人形模板关节命名，播放到任意 rig 时命中的关节照常驱动、其余忽略）；stage.2d 编辑器「骨骼」页新增「动作试播」——动作下拉即循环播放（播放 / 暂停 / 停止），停止回到试播前摆姿，可一键把当前采样帧「定格」为你的摆姿；摆姿编辑（拖关节 / 滑杆 / 人形模板 / 图片反解应用）与切离骨骼页、关闭浮窗会自动停止试播；动作数据结构同时是 P1「Spine 关键帧动画编辑器」时间轴的本地契约
-  - [x] 已落地：帧动画 sheet 循环试播（素材库右键任意图片资产 →「帧动画试播」独立浮窗，5.5 待办句落地）——`frame.animGen` / `anim.2d` 产出的网格 sheet PNG 从生成内图 `genParams.graphJson` 自动识别 rows×cols 预填，普通多帧 PNG 由用户手填行 / 列；渲染层 rAF 精确按帧率（2~30fps）行优先逐格切帧循环试播（循环可关、单帧步进、点击网格总览跳帧），透明棋盘底便于直查接缝与抖动；播放器为通用 frame sheet 播放组件 `SheetFramePreview`，可再挂到任意宿主
-  - > 待办：时间轴编辑接口（P1 Spine 编辑器预留）
-- [ ] **导出与资产出口**：摆姿定格按画布导出透明 PNG / 序列 sheet（复用 5.4 统一对齐出口）；骨骼 pose / 动作保存为工程内 2D 动画资产，供引擎或 P1 编辑器继续消费
-  - [x] 已落地：动作帧序列导出（stage.2d 编辑器「骨骼」页新增「导出动作帧」）——选中试播动作按帧率（6~24fps）采样，逐帧 `composeStage2dCanvas` cook 出透明 PNG（首尾帧无缝衔接可进引擎循环），落盘为工程图片资产并刷新素材库；帧导出后自动拼一张水平序列 sheet（自动等比缩放控制尺寸）一并落资产，编辑器显示进度与结果；导出不入节点 params（动画帧是复用资产而非节点产物），渲染线程本地拼版 util `composeStage2dFrameSheet`，宿主经 `saveGraphRunMediaForNode` 写盘
-  - [x] 已落地：2D 动作资产容器（5.5「导出与资产出口」——骨骼 pose / 动作保存为工程内 2D 动画资产）——素材库新增数据型资产类型 `motion2d`（类型 / 双语命名 / 图标 / 工具栏「新建 2D 动作」，主进程 createAsset 自动播种标准人形装配 + 空动作包）；动作资产包纯函数层 `shared/gameAssets/stage2dActionAsset`（动作 + 创作装配快照 → 可入库纯 JSON，pack / unpack / 归一化 + 单测）；stage.2d 编辑器动作区「💾 存为动作资产」把当前动作 + rig + 摆姿写入素材库（默认名取动作名，成功即刷新素材库并提示可跨节点复用），「📥 载入素材库」下拉列出全部 2D 动作资产载回并自动试播（关键帧关节按 id 命中检测：0 命中拒载并提示装配不匹配、部分命中提示 matched/total；无动作帧资产提示先回编辑器生成）；motion2d 暂无独立编辑窗，双击已接入素材库试播浮窗（见下一条），Inspector 仍可看元数据 / 改名，主入口为 2D 骨骼节点编辑器（可编辑/试播/再存）
-  - [x] 已落地：动作资产独立试播宿主（5.5「动作资产独立预览宿主」先行落地为素材库浮窗而非 P1 全量编辑器）——素材库双击 2D 动作资产或右键「试播 2D 动作」开全局浮窗，直接用资产自带的装配快照 + 动作帧实时 FK 骨架试播（播放 / 暂停 / 停止、进度拖拽即时采样、循环/单次随动作、静态自适视口不随播放跳框）；空帧 / 单帧定格 / 无装配数据分别给「先回 2D 骨骼编辑器补帧再存」「单帧不可循环」等引导，正常资产提示可用「📥 载入素材库」在其他 2D 骨骼节点载回精修
-  - > 待办：摆姿定格单帧按画布导出透明 PNG（当前「应用」保存的节点产物已可当帧）；跨 rig 自动重定向映射仍依赖 5.4 统一对齐；motion2d 独立资产编辑器（试播宿主已落地为浮窗）留 P1。验收：对齐差分包按锚点叠放 1 分钟完成换装拼接；拆件骨骼可摆姿、循环播放并可导出序列帧进引擎
+### 近两季度建议切片（与 Unreleased / P1 交叉）
 
-### P1 — 中期
+**Q1（V7 前半）**：Character Bible v1 → Producer MVP（广告 / 短剧各 1 模板）+ Project Tree → **创作闭环运行时 7.6a（接现有返工）** → Visual DNA v1 → 单 HTML 2D/3D 沙盒 → Compiler Intent IR 文档化并联 `workflow_plan`。
 
-- [ ] **3D 闭环**：3D 角色 / 场景资产库、骨骼动画导入编辑（复用导演台 IK / 骨骼基础）、3D 场景 → 分镜机位自动生成、GLB 动画导出
-- [ ] **3D 动作生成（MoMask）**：文本 / 姿态提示 → 动作序列（text-to-motion），角色动作来源从 Mixamo 等现成库扩展到"生成"——动作重定向到目标角色骨骼后可入导演台 / 资产库驱动预览
-  - [ ] 动作表示与解码：动作 token 序列 → T2M / HumanML3D 263 维姿态特征（6D 局部关节旋转 + 根旋转 / 线速度与高度 + 关节位置），6D 旋转正交化回四元数、根速度积分还原位移 / 朝向，装配到 3D 侧标准人形骨架契约 `humanoidRig3d`（与 5.5 `stage2dHumanoid` 对称）产出 `AnimationClip`；关节位置分量用于脚部接触与地面校正（消滑步）
-  - [ ] 推理接入：MoMask 模型适配（RVQ 动作 tokenizer + Masked / Residual Transformer 两阶段掩码生成，采样迭代与 CFG 留在 TS 侧），承接 `YoloService` utilityProcess + onnxruntime-node worker 思路，本地 ONNX 优先 / Python sidecar 仅作开发验证与数值对拍 / 远程 API 兜底；模型权重按需下载，目录与设置页复用 YOLO 侧管理策略
-  - [ ] 动作重定向与消费：生成动作按 `normalizeBoneName` 语义经 `retargetClipToCharacter` 重定向到目标骨骼 → 落「仅骨骼 + 动画 GLB」资产（`genParams.modelKind='animation'`，目录 `Models/`）→ 导演台骨骼轨（`DirectorSkeletonClipSegment`）与资产库 3D 预览驱动播放；候选重抽（`out-all`）与「生成即挂骨骼轨」
-  - [ ] 姿态提示与动作编辑：工程内既有姿势（姿态资产 `PoseAssetData` / YOLO 关键点反解 / AI 文本姿态）作为首段条件或时间区间掩码，支持区间续写 / 插值 / 补全（时间 in-painting，无需微调）；时长自动预测与闭环尾帧
-  - [ ] 入口与暴露：节点图「3D 动作生成」节点 + MCP `generate_motion` + 对话技能，Agent 可编排「生成 → 挑候选 → 挂轨 → 调时长 / 循环」
-  - > 详见 [PLAN_MOMASK.md](./PLAN_MOMASK.md)：解码路径、三级推理承载选型、重定向契约、合规边界与分阶段实施。
-  - > 依赖：P1「3D 闭环」骨骼链路（角色骨骼绑定 / 动画格式）、5.3「姿态进导演台」关键点映射基础。验收：一段动作描述（如"拔剑挥砍"）3 分钟内产出可在导演台 / 3D 资产上循环播放的动作并导出 GLB 动画。
+**Q2（V7 后半 → V8 启动）**：Role Agents 扩 Camera / Editor → Motion Library 数据模型 + 导演台挂接 → Rigging UX 统一 → Consistency QA 节点（进闭环）→ Skill/Pack 清单格式（Marketplace 铺路）。
 
-- [ ] **资产语义检索**：AI 自动标签（现有文本模型描述 → 标签）、自然语言检索资产、跨工程资产库、资产级版本历史
-- [ ] **插件 SDK 正式化**：开放组件 / 脚本贡献点（当前仅声明式 toolbarItems）、配套文档与示例仓库、`aiartengine.*` 生态规范
-- [ ] **内容级多语言出海**：字幕翻译 + 台词翻译 + 多语言配音替换，一键生成多语言版本成片（短剧 / 广告出海）
-- [ ] **AI 内容合规检测**：违禁词、敏感内容、版权风险扫描，叠加在媒体质检五维评分之上（投放审核硬需求）
-- [ ] **工程模板市场前置**：把 `shortDrama` 等行业预设与 `.aipackage` 升级为可分享的「项目模板包」，为模板商城铺路
-- [ ] **Headless / CLI 模式**：无头批处理（进参 → 跑图 → 导出）、CI 可集成，配合现有 MCP HTTP 做成自动化生产
-- [ ] **渲染代理与性能体系**：大视频代理（proxy）文件、图 / 视频处理 worker 化（自 P2 提前——剪辑面板的性能前提）
-- [ ] **工程快照 / 版本历史**：里程碑快照与回滚，为团队协作与商业化版本奠基
-- [ ] **视差分层与 tile 试拼**：静态场景拆前景 / 中景 / 背景分层导出（承接 PSD 图层分离）；tileset 概念图 → 风格一致 tile 集切分与挑选，试拼沙盘铺贴验证接缝（复用全景图视图思路）
-- [ ] **Spine 关键帧动画编辑器**：承接 5.5「2D 导演台」装配与动作预览——拆件自动提边成熟化、pose 关键帧时间轴与插值、多部件换装组合、导出 Spine / 龙骨格式
-- [ ] **2D 游戏资产规范质检**：游戏版质检维度叠加五维质检——透明漏底 / 白边 halo / 尺寸与命名规范 / 锚点对齐 / 跨批次风格一致性，返工链直接消费（含 UI 专项：跨屏控件体系 / 圆角 / 图标语言一致性、小尺寸可读性与文字乱码抽查）
-- [ ] **UI 结构元数据与控件级重绘**：`ui.split` 拆分时每屏附带「控件布局清单」（按钮 / 列表 / 文字位 bbox 与层级），支持选中控件局部重绘 / 换图标 / 改配色而不动整屏；复用重绘 / 擦除 + 一致性参考编排成控件级编辑体验
+### 战略上明确不做
 
-### P2 — 长期
-
-- [ ] **商业化**：许可证 / 试用、素材与技能市场（Skill 生态的商业化出口）、模板商城
-- [ ] **Web / 移动端**：PWA 预览版（只读资产 + 审片）、移动端审片
-- [ ] **E2E 与崩溃体系**：桌面 E2E 测试、崩溃报告（隐私合规）
-
-### 参考与观察（不承诺排期）
-
-> 记录外部项目的架构启发，择机并入上方条目，不单独立项。
-
-- [ ] **3A 游戏资产出口规范（观察项，参考 OpenDCAI/GameFactory-3A，Apache-2.0）**
-  - 项目定位：面向 Codex / Claude Code 等 Coding Agent 的 3A 游戏全栈资产生成「技能框架」——agent 按 `setting_overview.md` 路由，经 `models → operators → pipeline` 产资产，QA 技能验收后入引擎；用 UE5 / Blender / Unity / Godot / three.js 的 engine adapter + API 上下文文档解耦引擎差异；角色动画链路 Puppeteer + MoMask；demo 大量依赖 Meshy / Hunyuan3D / Mixamo / MiniMax 等商业服务，第三方资产 / checkpoint 许可各自保留
-  - 借鉴点：①「Agent 技能 + QA 验收」的内容生产组织方式——对应 dsh 技能包 / 多 Agent 协作编排 / Headless 条目，可把生成 → 质检 → 返工 → 入库沉淀为可被外部 Agent 路由的技能；②「engine-ready 资产 manifest」——为 3D / Spine / 2D 精灵 / UI 九宫格定义带锚点 / 绑定 / 循环 / 切边校验的交付规范，并入 P1「3D 闭环」与 5.4「游戏版质检」的验收口径；③「图 → T-pose → Rig → 动作 → GLB/引擎」链路作为 P1「3D 动作生成（MoMask）」+「3D 闭环」的编排参考（承接 5.3 姿态进导演台）
-  - 不吸收：玩法 / UI 运行时代码生成（无引擎运行体输出目标，与当前内容创作定位错位，待互动内容方向立项再评）；商业 API 依赖的示例链路不照搬
-  - > 验收：不在 P0/P1 主线增项；借鉴点随上述条目落地时按各自验收口径衡量。
+- 自研通用游戏引擎替换 Unity / UE
+- 无沙箱 `eval` 任意代码当 gameplay（HTML iframe 沙盒除外且须隔离）
+- V7 同步上完整 SaaS 与商店（格式先于商店）
+- 用提示词堆砌替代 Bible / DNA / Compiler 结构化层
 
 ## 5.0.7（已发布）
 

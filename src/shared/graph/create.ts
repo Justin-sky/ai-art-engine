@@ -23,6 +23,7 @@ const ASSET_NODE_TITLES: Record<AssetType, string> = {
   model3d: '3D Model',
   screenplay: 'Screenplay',
   gameSystem: '策划案生成',
+  gamePlay: '可玩 HTML',
   canvas: 'Canvas',
   world: 'World Elements',
   beat: 'Beat Units',

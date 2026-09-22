@@ -112,7 +112,8 @@ const viewRegistry: Record<string, Component> = {
   'node.compose': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
   'node.align': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
   'node.stage2d': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
-  'comic.page': defineAsyncComponent(() => import('./dive/EditorDiveComicPageView.vue'))
+  'comic.page': defineAsyncComponent(() => import('./dive/EditorDiveComicPageView.vue')),
+  'gamePlay.sandbox': defineAsyncComponent(() => import('./dive/EditorDiveGamePlayView.vue'))
 }
 
 const props = defineProps<{
@@ -202,6 +203,13 @@ const viewBindings = computed(() => {
       return { ...base, hostId: meta.hostId, nodeId: meta.nodeId }
     case 'comic.page':
       return { ...base, hostId: meta.hostId, nodeId: meta.nodeId }
+    case 'gamePlay.sandbox':
+      return {
+        ...base,
+        hostId: meta.hostId,
+        nodeId: meta.nodeId,
+        gamePlayAssetId: meta.gamePlayAssetId
+      }
     default:
       return {
         ...base,

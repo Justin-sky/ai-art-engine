@@ -105,6 +105,23 @@ describe('asset editor graph', () => {
     ).toBe(true)
   })
 
+  it('creates default gamePlay asset graph with htmlGen linked to play node', () => {
+    const doc = createDefaultScopedGraph('workflow', 'gamePlay')
+    const gen = doc.nodes.find((node) => node.typeId === 'game.htmlGen')
+    const play = doc.nodes.find((node) => node.typeId === 'asset.gamePlay')
+    expect(gen).toBeTruthy()
+    expect(play).toBeTruthy()
+    expect(
+      doc.edges.some(
+        (edge) =>
+          edge.source === gen?.id &&
+          edge.target === play?.id &&
+          (edge.sourcePort ?? 'out') === 'out' &&
+          (edge.targetPort ?? 'in') === 'in'
+      )
+    ).toBe(true)
+  })
+
   it('creates default director asset graph without classic output', () => {
     const doc = createDefaultScopedGraph('directorAsset', 'motion')
     const processing = doc.nodes.find((node) => node.typeId === 'asset.motion')

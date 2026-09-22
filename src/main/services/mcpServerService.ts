@@ -631,7 +631,7 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'asset_create',
     title: '新建资产',
     description:
-      '在资产库新建一个资产，返回资产 id，应用界面同步出现。支持类型：screenplay 剧本 / gameSystem 策划案 / world 世界观 / beat 分镜 / subgraph 子图 / canvas 自由画布 / image 图片 / video 视频 / voice 声音 / motion2d 2D 动作。',
+      '在资产库新建一个资产，返回资产 id，应用界面同步出现。支持类型：screenplay 剧本 / gameSystem 策划案 / gamePlay 可玩HTML / world 世界观 / beat 分镜 / subgraph 子图 / canvas 自由画布 / image 图片 / video 视频 / voice 声音 / motion2d 2D 动作。',
     inputSchema: {
       type: 'object',
       properties: {

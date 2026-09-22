@@ -204,6 +204,12 @@ export default {
         prompt:
           'Create a game UI workflow: a system-plan node produces the game system design, a UI split node breaks it into per-screen image prompts (without concrete colors or art style), and a UI generation node (dive into its inner graph) renders each screen, with global style reference images unifying the UI look.'
       },
+      gamePlayHtml: {
+        title: 'One-sentence mini-game',
+        desc: 'Text → playable HTML → sandbox',
+        prompt:
+          'Create a playable HTML mini-game workflow: a text node holds a one-sentence gameplay brief, a playable-HTML generation node outputs a single-file HTML game (2D Canvas or 3D Three.js), then an asset.gamePlay node stores it; double-click the generation node or asset to try it in the iframe sandbox.'
+      },
       gameIcons: {
         title: 'Game icon pack',
         desc: 'Name lists ×3 → 3×3 icon sheets ×3 → split / transparent pack',
@@ -928,7 +934,19 @@ export default {
       up: 'Up',
       root: 'Series',
       sep: '/',
-      toolMissing: 'Tool unavailable'
+      toolMissing: 'Tool unavailable',
+      gamePlay: {
+        title: 'Playable HTML sandbox',
+        reload: 'Reload',
+        showSource: 'Source',
+        hideSource: 'Play',
+        done: 'Done',
+        loading: 'Loading HTML…',
+        empty:
+          'No HTML yet. Run upstream Playable HTML generation first, or cook this node (seeds a sample when empty).',
+        mode2d: '2D Canvas',
+        mode3d: '3D Three.js'
+      }
     },
     window: {
       detach: 'Pop out to its own window (or drag it outside the main window)',
@@ -1037,7 +1055,8 @@ export default {
       beat: 'Beat Units',
       subgraph: 'Host Asset',
       model3d: '3D Model',
-      motion2d: '2D Motion'
+      motion2d: '2D Motion',
+      gamePlay: 'Playable HTML'
     },
     create: {
       image: 'New Image',
@@ -1053,6 +1072,7 @@ export default {
       subgraph: 'New Host Asset',
       model3d: 'New 3D Model',
       motion2d: 'New 2D Motion',
+      gamePlay: 'New Playable HTML',
       default: 'New Asset',
       freeCanvasNameTitle: 'New Free Canvas',
       freeCanvasNameMessage:
@@ -3495,6 +3515,19 @@ export default {
       systemPromptPlaceholder:
         'Define the model role and output rules; leave empty to use the built-in default'
     },
+    gameHtmlGen: {
+      inspectorHint:
+        'Generate a playable single-file HTML mini-game (2D Canvas / 3D Three); optional reference images; double-click asset.gamePlay to sandbox-play',
+      mode: 'Mode',
+      modeAuto: 'Auto',
+      mode2d: '2D Canvas',
+      mode3d: '3D Three.js',
+      instruction: 'Instruction',
+      instructionPlaceholder: "One-sentence gameplay brief; use {'@'} to cite connected inputs",
+      systemPrompt: 'System prompt',
+      systemPromptPlaceholder:
+        'Define the model role and output rules; leave empty to use the mode default'
+    },
     svgAnim: {
       inspectorHint:
         'Bake an SVG (from the SVG Generation node or a vector library asset) into bitmap frames: with SMIL animation (the SVG\u2019s own <animate> / <animateTransform> / <set>; CSS @keyframes and <animateMotion> are not evaluated) it renders one PNG per timeline sample and composes a GIF, while a static SVG yields a single frame and no GIF',
@@ -3804,6 +3837,7 @@ export default {
         model: 'Model',
         screenplay: 'Screenplay generation',
         gameSystem: 'Plan generation',
+        gamePlay: 'Playable HTML',
         script: 'Shot',
         subgraph: 'Host asset'
       },
@@ -3891,6 +3925,9 @@ export default {
       svg: {
         anim: 'SVG Bake',
         gen: 'SVG Generation'
+      },
+      game: {
+        htmlGen: 'Playable HTML gen'
       },
       frame: {
         animGen: 'Generate Frame Animation Sheet'
@@ -4469,6 +4506,8 @@ export default {
           "Optional focus for this refine (rules live in Inspector system prompt); use {'@'} to cite upstream",
         svgGenInstructionPlaceholder:
           "Describe the vector art to generate (icon / illustration / UI element / motion); use {'@'} to cite connected inputs",
+        gameHtmlGenInstructionPlaceholder:
+          "One-sentence playable mini-game brief (rules / controls / win); wire in-image for art refs; use {'@'} to cite inputs",
         modelPoseInstructionPlaceholder:
           "Describe a still pose (walk, wave, hands on hips…) or pick a preset in Inspector; use {'@'} to cite upstream text",
         modelRigSkinInstructionPlaceholder:
@@ -4498,6 +4537,7 @@ export default {
           titleLipSync: 'Lip sync templates',
           titleToPrompt: 'Image reverse-prompt templates',
           titleSvgGen: 'SVG generation templates',
+          titleGameHtmlGen: 'Playable HTML templates',
           titleModelPose: '3D pose templates',
           titleModelRigSkin: '3D rig skin templates',
           titleModelAnimation: '3D animation templates',
@@ -4513,6 +4553,12 @@ export default {
             uiButton: 'UI button',
             animIcon: 'Icon motion',
             illustFlat: 'Flat illustration'
+          },
+          gameHtmlGen: {
+            collect2d: '2D collect',
+            dodge2d: '2D dodge',
+            collect3d: '3D collect',
+            arena3d: '3D arena'
           },
           modelPose: {
             idle: 'Idle stand',
