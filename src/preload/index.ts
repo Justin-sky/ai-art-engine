@@ -12,7 +12,8 @@ import type {
   McpRenderJobPayload,
   McpRenderJobResultPayload,
   McpTaskReportPayload,
-  McpTaskRunPayload
+  McpTaskRunPayload,
+  McpWorkflowFocusPayload
 } from '@shared/ipc'
 import type {
   AttachAssetFileInput,
@@ -265,6 +266,13 @@ const api: StudioApi = {
     }
     ipcRenderer.on(IpcChannels.MCP_TASK_RUN, listener)
     return () => ipcRenderer.removeListener(IpcChannels.MCP_TASK_RUN, listener)
+  },
+  onMcpWorkflowFocus: (callback) => {
+    const listener = (_event: unknown, payload: McpWorkflowFocusPayload): void => {
+      callback(payload)
+    }
+    ipcRenderer.on(IpcChannels.MCP_WORKFLOW_FOCUS, listener)
+    return () => ipcRenderer.removeListener(IpcChannels.MCP_WORKFLOW_FOCUS, listener)
   },
   reportMcpTask: (payload: McpTaskReportPayload) =>
     ipcRenderer.invoke(IpcChannels.MCP_TASK_REPORT, payload),

@@ -196,12 +196,13 @@ export async function executePromptOptimizeNode(
         verdict.reason
       )
       await ctx.writeEpisodeAgentState(episodeScopeKey, serializeEpisodeAgentState(next))
-      node.params = {
-        ...node.params,
+      const reviewMarks = {
         episodeReviewStatus: verdict.result,
         episodeReviewReason: verdict.reason,
         episodeReviewPending: false
       }
+      node.params = { ...node.params, ...reviewMarks }
+      ctx.patchNode?.({ params: reviewMarks })
     }
   }
 

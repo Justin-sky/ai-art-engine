@@ -8700,6 +8700,12 @@ onMounted(() => {
       scheduleSave()
       recordGraphChange('update-node', before)
     },
+    // MCP 实时同步专用：不记撤销 / 不 scheduleSave，避免与滚轮缩放抢主线程
+    patchNodeParamsLive: (nodeId, params) => {
+      const node = graph.nodes.find((n) => n.id === nodeId)
+      if (!node) return
+      node.params = { ...node.params, ...params }
+    },
     addNode: (input) => {
       if (!getNodeType(input.typeId)) return null
       const before = buildGraphJson()
@@ -8757,7 +8763,13 @@ onMounted(() => {
     },
     setNodeAsset: (nodeId, asset) => setNodeAsset(nodeId, asset),
     applyExternalGraph: (document) => {
+      // 后台任务写回时 document.viewport 仍是入队快照；保留用户正在滚轮/平移的视口
+      const keepVp = { x: liveViewport.x, y: liveViewport.y, zoom: liveViewport.zoom }
       applyGraphDocument(document)
+      liveViewport.x = keepVp.x
+      liveViewport.y = keepVp.y
+      liveViewport.zoom = keepVp.zoom
+      commitLiveViewportToGraph()
       applyViewportTransform(true)
       requestPreviewVisibilityUpdate()
       commitAssetGraph()

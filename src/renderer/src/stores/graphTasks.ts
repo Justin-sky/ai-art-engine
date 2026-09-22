@@ -26,6 +26,13 @@ import {
 import { isDraftAssetId, normalizeProjectStyleImages, resolveMediaOutputDir } from '@shared/domain'
 import { persistAssetRecord } from '../composables/useAssetRecord'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
+import {
+  seedLiveCanvasRunStates,
+  syncLiveCanvasEpisodeReviewFromNode,
+  syncLiveCanvasNodeParams,
+  syncLiveCanvasRunState,
+  waitForLiveCanvasHost
+} from '../features/mcp/mcpGraphLiveCanvas'
 import { liftHostOutputsFromInnerGraph } from '../features/graph/model/liftHostOutputsFromInner'
 import { createGraphRunLogBridge } from '../features/graph/model/graphRunLogBridge'
 import {
@@ -156,6 +163,8 @@ interface GraphTaskInternal extends GraphTask {
   /** 本次任务不得复用这些节点的旧 done 结果（上游内容已失效） */
   invalidatedNodeIds?: string[]
   logMeta?: GraphRunLogMeta
+  /** MCP 旁路跑图：同步节点 running/done 到已打开画布 */
+  liveCanvasSync?: boolean
 }
 
 function nodeIcon(node: GraphNode): string {
@@ -586,6 +595,12 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
       Object.assign(task.runStates, materializedStates)
       task.graph = prepared
 
+      // 写回前并入当前画布视口，避免落盘/applyExternalGraph 用入队时的旧 zoom 冲掉滚轮缩放
+      const liveVp = graphEditorHosts.getDocument(task.target.hostId)?.viewport
+      if (liveVp) {
+        prepared.viewport = { ...liveVp }
+      }
+
       const isSubset = !!task.targetNodeIds?.length
       const graph = isSubset
         ? mergeSubsetGraphIntoBase(
@@ -599,6 +614,10 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             materializedStates
           )
         : prepared
+
+      if (liveVp) {
+        graph.viewport = { ...liveVp }
+      }
 
       // 实时编辑器若仍打开，先同步 UI（含已物化 outputs）
       graphEditorHosts.applyExternalGraph(task.target.hostId, graph)
@@ -655,6 +674,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
     /** 本次任务不得复用这些节点的旧 done 结果（上游内容已失效） */
     invalidatedNodeIds?: string[]
     logMeta?: GraphRunLogMeta
+    liveCanvasSync?: boolean
   }): EnqueueWorkflowResult {
     const targetNodeIds = input.targetNodeIds?.length ? [...input.targetNodeIds] : undefined
     if (conflictsWithActiveWorkflow(input.target, targetNodeIds, activeTasks.value)) {
@@ -683,7 +703,8 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
       cookAssetIdStack: input.cookAssetIdStack,
       targetNodeIds,
       invalidatedNodeIds: input.invalidatedNodeIds,
-      logMeta: input.logMeta
+      logMeta: input.logMeta,
+      liveCanvasSync: input.liveCanvasSync === true
     }) as GraphTaskInternal
 
     activeTasks.value = [task, ...activeTasks.value]
@@ -1026,6 +1047,12 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         task.message = ''
         bump()
       }
+      if (task.liveCanvasSync) {
+        await waitForLiveCanvasHost(task.target.hostId)
+        if (task.priorNodeStates) {
+          seedLiveCanvasRunStates(task.target.hostId, task.priorNodeStates)
+        }
+      }
       const result = await runGraph(task.graph, {
         signal: task.abort.signal,
         stepDelayMs: 100,
@@ -1045,6 +1072,10 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           }
           task.runStates[nodeId] = { ...state }
           applyRunStateToNodes(task.nodes, task.runStates)
+          if (task.liveCanvasSync) {
+            syncLiveCanvasRunState(task.target.hostId, nodeId, state)
+            syncLiveCanvasEpisodeReviewFromNode(task.target.hostId, task.graph.nodes, nodeId)
+          }
           bump()
         },
         onNodePatch: (nodeId, patch) => {
@@ -1053,6 +1084,9 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           if (!node) return
           if (patch.params) {
             node.params = { ...node.params, ...patch.params } as GraphNodeParams
+            if (task.liveCanvasSync) {
+              syncLiveCanvasNodeParams(task.target.hostId, nodeId, patch.params)
+            }
           }
           if (patch.title !== undefined) node.title = patch.title
         },
@@ -1584,6 +1618,9 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           if (prev?.status !== 'pending' && prev?.status !== 'running') continue
         }
         task.runStates[id] = { ...state }
+        if (task.liveCanvasSync) {
+          syncLiveCanvasRunState(task.target.hostId, id, state)
+        }
       }
       applyRunStateToNodes(task.nodes, task.runStates)
 
@@ -1591,6 +1628,9 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
       applyEpisodeReviewMarks(task.graph.nodes, (nodeId, params) => {
         const node = task.graph.nodes.find((n) => n.id === nodeId)
         if (node) node.params = { ...node.params, ...params } as GraphNodeParams
+        if (task.liveCanvasSync) {
+          syncLiveCanvasNodeParams(task.target.hostId, nodeId, params)
+        }
       })
 
       if (result.ok) {

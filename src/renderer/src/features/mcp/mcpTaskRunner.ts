@@ -6,6 +6,7 @@ import { useProjectStore } from '../../stores/project'
 import { persistAssetRecord } from '../../composables/useAssetRecord'
 import { IconRefineError, runIconRefine } from '../graph/model/runIconRefine'
 import { isGraphEditorOpen } from './openGraphEditors'
+import { openMcpWorkflowAssetEditor } from './mcpGraphLiveCanvas'
 
 /**
  * MCP task_run 的渲染层执行入口：
@@ -61,12 +62,15 @@ async function handleTaskRun(payload: { mcpTaskId: string; assetId: string }): P
     return
   }
 
+  openMcpWorkflowAssetEditor(payload.assetId)
+
   const result = taskStore.enqueueWorkflow({
     title: `${asset.name} · MCP`,
     graph: graphJson,
     target: { kind: 'asset', assetId: payload.assetId, hostId: `asset:${payload.assetId}` },
     priorNodeStates: graphJson.runStates,
-    skipCompletedNodes: true
+    skipCompletedNodes: true,
+    liveCanvasSync: true
   })
 
   if (!result.ok) {
@@ -256,6 +260,8 @@ async function handleGraphIconRefine(payload: McpGraphIconRefinePayload): Promis
       return
     }
 
+    openMcpWorkflowAssetEditor(payload.assetId)
+
     const taskStore = useGraphTaskStore()
     const enqueued = taskStore.enqueueWorkflow({
       title: `${asset.name} · MCP 精修回炉`,
@@ -263,6 +269,7 @@ async function handleGraphIconRefine(payload: McpGraphIconRefinePayload): Promis
       target: { kind: 'asset', assetId: payload.assetId, hostId: `asset:${payload.assetId}` },
       priorNodeStates: result.document.runStates,
       skipCompletedNodes: true,
+      liveCanvasSync: true,
       // 该节点旧 done 结果已失效（本格精修图要顶替成图），不得复用
       invalidatedNodeIds: [result.packNodeId]
     })
@@ -295,6 +302,12 @@ let registered = false
 export function registerMcpTaskRunner(): void {
   if (registered) return
   registered = true
+  if (typeof window.studio?.onMcpWorkflowFocus === 'function') {
+    window.studio.onMcpWorkflowFocus((payload) => {
+      const assetId = payload.assetId?.trim()
+      if (assetId) openMcpWorkflowAssetEditor(assetId)
+    })
+  }
   if (typeof window.studio?.onMcpTaskRun !== 'function') return
   window.studio.onMcpTaskRun((payload) => {
     void handleTaskRun(payload)

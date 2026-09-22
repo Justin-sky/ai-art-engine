@@ -1653,7 +1653,10 @@ const TOOL_DEFS: McpToolDef[] = [
         throw new Error(result.error ?? '无法落盘工作流')
       }
       const asset = projectService.listAssets().find((item) => item.id === result.assetId)
-      if (asset) broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
+      if (asset) {
+        broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
+        broadcastToAllWindows(IpcChannels.MCP_WORKFLOW_FOCUS, { assetId: result.assetId })
+      }
       return {
         assetId: result.assetId,
         name: asset?.name ?? input.name ?? null,

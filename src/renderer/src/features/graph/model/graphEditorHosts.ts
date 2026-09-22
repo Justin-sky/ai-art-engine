@@ -48,6 +48,11 @@ export interface GraphEditorHostApi {
   reorderIncomingEdges?: (nodeId: string, orderedEdgeIds: string[]) => void
   updateNode: (nodeId: string, params: Partial<GraphNodeParams>, title?: string) => void
   /**
+   * MCP / 后台任务实时同步：只改内存 params，不记撤销、不触发自动保存。
+   * 避免滚轮缩放时与 buildGraphJson / recordGraphChange / scheduleSave 抢主线程。
+   */
+  patchNodeParamsLive?: (nodeId: string, params: Partial<GraphNodeParams>) => void
+  /**
    * 在图上新建节点并接好上游连线，记入撤销栈。
    * 返回新节点 id；节点类型未注册或宿主不支持时返回 null。
    */
@@ -264,6 +269,32 @@ class GraphEditorHostRegistry {
     host.updateNode(nodeId, params, title)
     // 参数变更（含本地风格图）需通知 Inspector / 指令编辑器重新解析
     this.bumpRevision()
+  }
+
+  private livePatchRevisionTimer: ReturnType<typeof setTimeout> | null = null
+
+  /**
+   * 后台/MCP 实时补丁：优先走 patchNodeParamsLive；节流 bumpRevision，
+   * 避免高频同步把 Inspector / Dive 拖成每帧全量刷新、滚轮缩放卡顿。
+   */
+  patchNodeParamsLive(
+    hostId: string | null | undefined,
+    nodeId: string,
+    params: Partial<GraphNodeParams>
+  ): void {
+    if (!hostId) return
+    const host = this.hosts.get(hostId)
+    if (!host) return
+    if (host.patchNodeParamsLive) {
+      host.patchNodeParamsLive(nodeId, params)
+    } else {
+      host.updateNode(nodeId, params)
+    }
+    if (this.livePatchRevisionTimer) return
+    this.livePatchRevisionTimer = setTimeout(() => {
+      this.livePatchRevisionTimer = null
+      this.bumpRevision()
+    }, 120)
   }
 
   /** 在图上新建节点并接好上游连线，记入撤销栈；返回新节点 id，失败返回 null */

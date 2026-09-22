@@ -231,6 +231,8 @@ export const IpcChannels = {
 
   /** MCP：主进程派发工作流运行请求（main → 渲染层） */
   MCP_TASK_RUN: 'mcp:task-run',
+  /** MCP：workflow_commit 落盘后请求渲染层打开宿主资产编辑器 */
+  MCP_WORKFLOW_FOCUS: 'mcp:workflow-focus',
   /** MCP：渲染层回报任务受理 / 终态（渲染层 → 主进程） */
   MCP_TASK_REPORT: 'mcp:task-report',
   /** MCP：主进程派发图编辑操作批（main → 渲染层） */
@@ -478,6 +480,11 @@ export interface SaveModelThumbnailInput {
 /** MCP：主进程 → 渲染层，请求运行宿主资产工作流 */
 export interface McpTaskRunPayload {
   mcpTaskId: string
+  assetId: string
+}
+
+/** MCP：主进程 → 渲染层，workflow_commit 后打开工作流资产 */
+export interface McpWorkflowFocusPayload {
   assetId: string
 }
 
@@ -1314,6 +1321,9 @@ export interface StudioApi {
 
   /** MCP：订阅主进程派发的工作流运行请求（渲染层受理后经 reportMcpTask 回报） */
   onMcpTaskRun: (callback: (payload: McpTaskRunPayload) => void) => () => void
+
+  /** MCP：订阅 workflow_commit 落盘后的「打开工作流资产」请求 */
+  onMcpWorkflowFocus: (callback: (payload: McpWorkflowFocusPayload) => void) => () => void
 
   /** MCP：渲染层回报任务受理 / 终态 */
   reportMcpTask: (payload: McpTaskReportPayload) => Promise<boolean>
