@@ -25,6 +25,7 @@
     "lint": "eslint . && npm run check:cjk",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "precommit": "npx prettier --write . && npm run typecheck && npm test",
     "bundle:dsh": "node scripts/bundle-dsh.mjs",
     "fetch:yolo-models": "node scripts/fetch-yolo-models.mjs",
     "lock:update": "npm install --package-lock-only --no-audit --no-fund",
@@ -34,7 +35,8 @@
     "dist:mac": "npm run build && npm run bundle:dsh && electron-builder --mac --x64 --arm64",
     "dist:linux": "npm run build && npm run bundle:dsh && npm run fetch:yolo-models && electron-builder --linux",
     "site": "npx --yes serve website -p 5174",
-    "site:deploy": "node scripts/deploy-website-oss.mjs"
+    "site:deploy": "node scripts/deploy-website-oss.mjs",
+    "prepare": "husky"
   },
   "dependencies": {
     "@cordisjs/core": "^3.18.1",
@@ -74,6 +76,7 @@
     "electron-vite": "^3.1.0",
     "eslint": "^10.8.1",
     "eslint-plugin-vue": "^10.10.0",
+    "husky": "^9.1.7",
     "prettier": "^3.9.6",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.67.0",

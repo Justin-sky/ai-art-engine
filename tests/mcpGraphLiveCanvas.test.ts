@@ -31,7 +31,10 @@ describe('mcpGraphLiveCanvas', () => {
       expect(runStates.n1?.status).toBe('running')
       expect(runStates.n1?.inputs).toBeUndefined()
 
-      syncLiveCanvasRunState(hostId, 'n1', { status: 'done', outputs: { out: { kind: 'text', text: 'ok' } } })
+      syncLiveCanvasRunState(hostId, 'n1', {
+        status: 'done',
+        outputs: { out: { kind: 'text', text: 'ok' } }
+      })
       expect(runStates.n1?.status).toBe('done')
       expect(runStates.n1?.outputs?.out).toEqual({ kind: 'text', text: 'ok' })
     } finally {

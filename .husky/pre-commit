@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+set -e
+
+# pre-commit: format -> restage -> typecheck + test
+npx prettier --write .
+git add -u
+
+npm run typecheck
+npm test
