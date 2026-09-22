@@ -80,6 +80,13 @@ const MIN_NODE_MINOR = 19
 const NPX_TIMEOUT_MS = 120_000
 /** npx 现场拉包期间的进度提醒间隔：下载可能长时间无输出，避免界面看起来卡死 */
 const NPX_PROGRESS_HINT_MS = 20_000
+/**
+ * 内置 dsh 已启动但尚未有任何输出时的进度提示间隔。
+ * 常见卡点：OpenRouter/上游 TLS 已连上却迟迟不回首包，面板会一直停在「正在启动」。
+ */
+const DSH_IDLE_PROGRESS_HINT_MS = 15_000
+/** 完全无输出时强制中止：避免僵死子进程占住队列，后续消息永远「排队」 */
+const DSH_IDLE_ABORT_MS = 300_000
 
 let child: ChildProcess | null = null
 let runSeq = 0
@@ -1702,6 +1709,8 @@ function launchDsh(opts: {
   const proc = spawn(command, args, { cwd: workspace, windowsHide: true, shell: false, env })
   child = proc
   const startedAt = Date.now()
+  // 立刻把状态从「正在启动」推进到「等待响应」，否则上游卡住时面板会长期停在启动文案
+  emitStatus('dsh 已启动，等待模型响应…')
 
   let sawOutput = false
   let finalText = ''
@@ -1922,7 +1931,8 @@ function launchDsh(opts: {
     }
   })
 
-  // 仅 npx 现场拉包时保留超时兜底（下载可能悬挂）；内置运行体执行时长不可预测，交给用户手动中止
+  // 仅 npx 现场拉包时保留超时兜底（下载可能悬挂）；内置运行体执行时长不可预测，交给用户手动中止。
+  // 但「完全无输出」仍要有心跳与上限：否则上游挂起时状态栏永远停在启动文案，且占住队列。
   if (!dshEntry) {
     const timeout = setTimeout(() => {
       if (child !== proc) return
@@ -1941,6 +1951,33 @@ function launchDsh(opts: {
     }
     proc.once('close', stopTimers)
     proc.once('error', stopTimers)
+  } else {
+    const idleProgress = setInterval(() => {
+      if (child !== proc || sawOutput) return
+      const waited = Math.round((Date.now() - startedAt) / 1000)
+      emitStatus(
+        `仍在等待模型响应（已等待 ${waited}s）。若长时间无进展，可中止后检查网络 / OpenRouter 额度`
+      )
+    }, DSH_IDLE_PROGRESS_HINT_MS)
+    const idleAbort = setTimeout(() => {
+      if (child !== proc || sawOutput) return
+      emitStatus('等待模型响应超时，正在中止（可重试）')
+      proc.kill()
+    }, DSH_IDLE_ABORT_MS)
+    const stopIdleTimers = (): void => {
+      clearInterval(idleProgress)
+      clearTimeout(idleAbort)
+    }
+    // 一旦有任何 stdout/stderr 就停掉「无输出」心跳与中止计时，避免长工具轮被误杀
+    const onFirstOutput = (): void => {
+      stopIdleTimers()
+      proc.stdout?.off('data', onFirstOutput)
+      proc.stderr?.off('data', onFirstOutput)
+    }
+    proc.stdout?.on('data', onFirstOutput)
+    proc.stderr?.on('data', onFirstOutput)
+    proc.once('close', stopIdleTimers)
+    proc.once('error', stopIdleTimers)
   }
 }
 
