@@ -30,6 +30,7 @@ import {
   resolveCustomApiStyle,
   type ModelProviderInstance
 } from '@shared/modelProvider'
+import { resolveDshChatInputModalitiesForProvider } from '@shared/dshChatModelModalities'
 import { PROJECT_MEMORY_INJECT_LIMIT, PROJECT_MEMORY_RELATIVE_PATH } from '@shared/projectMemory'
 import { broadcastToAllWindows } from '../broadcast'
 import { isDshQuotaError } from './deepseekHarnessFailure'
@@ -164,6 +165,7 @@ function resolveTextProvider(providerId?: string): {
   apiKey: string
   baseUrl?: string
   modelId: string
+  provider: ModelProviderInstance
 } | null {
   const settings = settingsService.get()
   const providers = settings.models?.providers ?? []
@@ -177,7 +179,12 @@ function resolveTextProvider(providerId?: string): {
         : undefined) ?? text.selectedModelIds[0]?.trim()
     if (!modelId) return null
     const baseUrl = p.baseUrl?.trim()
-    return { apiKey: p.apiKey.trim(), modelId, ...(baseUrl ? { baseUrl } : {}) }
+    return {
+      apiKey: p.apiKey.trim(),
+      modelId,
+      provider: p,
+      ...(baseUrl ? { baseUrl } : {})
+    }
   }
   // dsh 经由 OpenAI 兼容端点透传：自定义提供商中 Anthropic 端点类型（Messages API）不可用作 agent 模型
   const isDshCompatible = (p: ModelProviderInstance): boolean =>
@@ -371,7 +378,13 @@ function writeDshConfig(
   endpoint: string,
   mode: ChatMode,
   runId: string,
-  blenderClient: { endpoint: string } | null
+  blenderClient: { endpoint: string } | null,
+  llm?: {
+    baseUrl?: string
+    modelId: string
+    modelName?: string
+    inputModalities: ReadonlyArray<'text' | 'image'>
+  }
 ): void {
   const home = dshHome()
   mkdirSync(home, { recursive: true })
@@ -427,6 +440,29 @@ function writeDshConfig(
       )
     )
   }
+
+  // 同步修补 llm-deepseek / agent-default-model：不能只靠 settings.yaml。
+  // settings-file 异步 publish；首轮 LLM 若仍读到内置 DEFAULT_MODELS，会把附图投影成
+  // 「image omitted because this model accepts text only」，模型就回「不支持图片输入」。
+  if (llm?.modelId) {
+    const modelName = llm.modelName?.trim() || llm.modelId
+    const modalities = llm.inputModalities.length > 0 ? llm.inputModalities : (['text'] as const)
+    patch.push(
+      '- id: agent-default-model',
+      '  config:',
+      '    provider: deepseek-official',
+      `    model: ${yamlScalar(llm.modelId)}`,
+      '- id: llm-deepseek',
+      '  config:',
+      ...(llm.baseUrl?.trim() ? [`    baseURL: ${yamlScalar(llm.baseUrl.trim())}`] : []),
+      '    models:',
+      `      - id: ${yamlScalar(llm.modelId)}`,
+      `        name: ${yamlScalar(modelName)}`,
+      '        inputModalities:',
+      ...modalities.map((m) => `          - ${m}`)
+    )
+  }
+
   writeFileSync(join(home, 'cordis.patch.yml'), patch.join('\n') + '\n', 'utf8')
 }
 
@@ -444,20 +480,37 @@ function yamlScalar(value: string): string {
  * 以外的 OpenAI 兼容端点（或前缀裁剪后）多不存在，导致每次对话都报 HTTP_404，且与用户
  * 在面板里选中的模型无关。这里在每次任务前把用户选择的模型/端点写入 settings，覆盖默认值；
  * API Key 仍经 `DEEPSEEK_API_KEY` 环境变量透传（dsh 的 llm-deepseek 默认读它）。
+ *
+ * 另须写入 `llm-deepseek.models`：适配器对「不在内置目录」的模型默认 inputModalities=["text"]，
+ * 附图时会被 LlmRuntime 投影成 text-only placeholder。OpenRouter 多模态模型须显式声明 text+image。
+ * 仅写 settings.yaml 不够：settings-file 异步 publish，首轮可能仍用 composition 默认目录；
+ * 同步修补见 writeDshConfig 对 `llm-deepseek` 的 cordis.patch.yml 条目。
  */
-function writeDshSettings(provider: { baseUrl?: string; modelId: string }): void {
+function writeDshSettings(provider: {
+  baseUrl?: string
+  modelId: string
+  inputModalities: ReadonlyArray<'text' | 'image'>
+  modelName?: string
+}): void {
   const home = dshHome()
   mkdirSync(home, { recursive: true })
+  const modelName = provider.modelName?.trim() || provider.modelId
+  const modalities = provider.inputModalities.length
+    ? provider.inputModalities
+    : (['text'] as const)
   const lines = [
     '# AIArtEngine 生成的 dsh 设置（模型选择/端点），请勿手改。',
     'agent-default-model:',
     '  provider: deepseek-official',
-    `  model: ${yamlScalar(provider.modelId)}`
+    `  model: ${yamlScalar(provider.modelId)}`,
+    'llm-deepseek:',
+    ...(provider.baseUrl?.trim() ? [`  baseURL: ${yamlScalar(provider.baseUrl.trim())}`] : []),
+    '  models:',
+    `    - id: ${yamlScalar(provider.modelId)}`,
+    `      name: ${yamlScalar(modelName)}`,
+    '      inputModalities:',
+    ...modalities.map((m) => `        - ${m}`)
   ]
-  if (provider.baseUrl?.trim()) {
-    lines.push('llm-deepseek:')
-    lines.push(`  baseURL: ${yamlScalar(provider.baseUrl.trim())}`)
-  }
   writeFileSync(join(home, 'settings.yaml'), lines.join('\n') + '\n', 'utf8')
 }
 
@@ -1960,13 +2013,25 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
   // 「用户是否已确认计划」），并登记到 MCP 侧的运行授权表（请求到达时按 runId 查）
   const runId = String(++runSeq)
   const mode = normalizeChatMode(input.mode)
-  writeDshConfig(mcp.endpoint, mode, runId, getBlenderClientForHarness())
+  const modelId = input.model?.trim() || provider.modelId
+  const textCatalog = modalityConfig(provider.provider, 'text').catalog?.[modelId]
+  const inputModalities = resolveDshChatInputModalitiesForProvider(provider.provider, modelId)
+  const modelName = textCatalog?.name?.trim() || modelId
+  writeDshConfig(mcp.endpoint, mode, runId, getBlenderClientForHarness(), {
+    baseUrl: provider.baseUrl,
+    modelId,
+    modelName,
+    inputModalities
+  })
   registerHarnessRunAccess(runId, mode)
   // dsh 不读 DSH_MODEL 环境变量，模型必须写进 settings.yaml，否则始终用内置默认
   // deepseek-v4-flash（多数端点不存在 → HTTP_404），与面板选择无关。
+  // settings.yaml 与 cordis.patch.yml 双写：后者保证进程启动瞬间 composition base 已含看图能力。
   writeDshSettings({
     baseUrl: provider.baseUrl,
-    modelId: input.model?.trim() || provider.modelId
+    modelId,
+    modelName,
+    inputModalities
   })
   // 把应用内置 GraphSkill 快照为 dsh 的 SKILL.md（$DSH_HOME/skills），
   // 让 AI 对话里的 agent 能发现并加载应用技能（skill-filesystem 默认扫描该目录）。
