@@ -1,4 +1,4 @@
-**QQ groups: `346340389` · `647306826`** · If this helps, please ⭐ [Star](https://github.com/Justin-sky/ai-art-engine)
+**QQ groups: `346340389` · `647306826`** · [X](https://x.com/IoKKFOvWAt12669) · If this helps, please ⭐ [Star](https://github.com/Justin-sky/ai-art-engine)
 
 <div align="center">
   <img src="docs/assets/logo-mark.png" alt="" width="96" />
@@ -203,6 +203,7 @@ Track bugs on [GitHub Issues](https://github.com/Justin-sky/ai-art-engine/issues
 - **Website**: [justin-sky.github.io/ai-art-engine](https://justin-sky.github.io/ai-art-engine/index.en.html)
 - **Video tutorials**: [Bilibili space](https://space.bilibili.com/3707036976024122)
 - **QQ groups**: `346340389` · `647306826`
+- **X**: [AI Art Engine](https://x.com/IoKKFOvWAt12669)
 - **Email**: [284139554@qq.com](mailto:284139554@qq.com)
 
 ---

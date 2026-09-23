@@ -1,4 +1,4 @@
-**交流 QQ 群：`346340389` · `647306826`** · 喜欢就点个 ⭐ [Star](https://github.com/Justin-sky/ai-art-engine)
+**交流 QQ 群：`346340389` · `647306826`** · [X](https://x.com/IoKKFOvWAt12669) · 喜欢就点个 ⭐ [Star](https://github.com/Justin-sky/ai-art-engine)
 
 <div align="center">
   <img src="docs/assets/logo-mark.png" alt="" width="96" />
@@ -245,6 +245,7 @@ npm run typecheck && npm test
 - **GitHub**：[Justin-sky/ai-art-engine](https://github.com/Justin-sky/ai-art-engine)
 - **Gitee**：[beijing_blue_whale_era_zhangjian/ai-art-engine](https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine)
 - **QQ 群**：`346340389` · `647306826`
+- **X**：[AI Art Engine](https://x.com/IoKKFOvWAt12669)
 - **邮箱**：[284139554@qq.com](mailto:284139554@qq.com)
 
 ---
