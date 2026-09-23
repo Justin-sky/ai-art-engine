@@ -1,4 +1,4 @@
-**交流 QQ 群：`346340389` · `647306826`** · [X](https://x.com/IoKKFOvWAt12669) · 喜欢就点个 ⭐ [Star](https://github.com/Justin-sky/ai-art-engine)
+**交流 QQ 群：`346340389` · `647306826`** · <a href="https://x.com/IoKKFOvWAt12669"><img src="https://img.shields.io/badge/X-000000?style=flat-square&logo=x&logoColor=white" alt="X" /></a> · 喜欢就点个 ⭐ [Star](https://github.com/Justin-sky/ai-art-engine)
 
 <div align="center">
   <img src="docs/assets/logo-mark.png" alt="" width="96" />
@@ -15,6 +15,7 @@
   <p>
     <a href="https://github.com/Justin-sky/ai-art-engine/stargazers"><img src="https://img.shields.io/github/stars/Justin-sky/ai-art-engine?style=social" alt="GitHub stars" /></a>
     <a href="https://github.com/Justin-sky/ai-art-engine/network/members"><img src="https://img.shields.io/github/forks/Justin-sky/ai-art-engine?style=social" alt="GitHub forks" /></a>
+    <a href="https://x.com/IoKKFOvWAt12669"><img src="https://img.shields.io/badge/X-000000?style=flat-square&logo=x&logoColor=white" alt="Follow on X" /></a>
     <a href="https://github.com/Justin-sky/ai-art-engine/releases"><img src="https://img.shields.io/github/v/release/Justin-sky/ai-art-engine?include_prereleases&label=release&style=flat-square" alt="release" /></a>
     <a href="https://github.com/Justin-sky/ai-art-engine/releases"><img src="https://img.shields.io/github/downloads/Justin-sky/ai-art-engine/total?label=downloads&style=flat-square" alt="downloads" /></a>
     <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-blue.svg?style=flat-square" alt="license" /></a>
@@ -245,7 +246,7 @@ npm run typecheck && npm test
 - **GitHub**：[Justin-sky/ai-art-engine](https://github.com/Justin-sky/ai-art-engine)
 - **Gitee**：[beijing_blue_whale_era_zhangjian/ai-art-engine](https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine)
 - **QQ 群**：`346340389` · `647306826`
-- **X**：[AI Art Engine](https://x.com/IoKKFOvWAt12669)
+- **X**：<a href="https://x.com/IoKKFOvWAt12669"><img src="https://img.shields.io/badge/X-%40IoKKFOvWAt12669-000000?style=flat-square&logo=x&logoColor=white" alt="X @IoKKFOvWAt12669" /></a>
 - **邮箱**：[284139554@qq.com](mailto:284139554@qq.com)
 
 ---

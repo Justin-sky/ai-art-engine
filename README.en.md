@@ -1,4 +1,4 @@
-**QQ groups: `346340389` · `647306826`** · [X](https://x.com/IoKKFOvWAt12669) · If this helps, please ⭐ [Star](https://github.com/Justin-sky/ai-art-engine)
+**QQ groups: `346340389` · `647306826`** · <a href="https://x.com/IoKKFOvWAt12669"><img src="https://img.shields.io/badge/X-000000?style=flat-square&logo=x&logoColor=white" alt="X" /></a> · If this helps, please ⭐ [Star](https://github.com/Justin-sky/ai-art-engine)
 
 <div align="center">
   <img src="docs/assets/logo-mark.png" alt="" width="96" />
@@ -15,6 +15,7 @@
   <p>
     <a href="https://github.com/Justin-sky/ai-art-engine/stargazers"><img src="https://img.shields.io/github/stars/Justin-sky/ai-art-engine?style=social" alt="GitHub stars" /></a>
     <a href="https://github.com/Justin-sky/ai-art-engine/network/members"><img src="https://img.shields.io/github/forks/Justin-sky/ai-art-engine?style=social" alt="GitHub forks" /></a>
+    <a href="https://x.com/IoKKFOvWAt12669"><img src="https://img.shields.io/badge/X-000000?style=flat-square&logo=x&logoColor=white" alt="Follow on X" /></a>
     <a href="https://github.com/Justin-sky/ai-art-engine/releases"><img src="https://img.shields.io/github/v/release/Justin-sky/ai-art-engine?include_prereleases&label=release&style=flat-square" alt="release" /></a>
     <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-blue.svg?style=flat-square" alt="license" /></a>
     <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/package.json"><img src="https://img.shields.io/github/package-json/v/Justin-sky/ai-art-engine?label=version&style=flat-square&color=orange" alt="version" /></a>
@@ -203,7 +204,7 @@ Track bugs on [GitHub Issues](https://github.com/Justin-sky/ai-art-engine/issues
 - **Website**: [justin-sky.github.io/ai-art-engine](https://justin-sky.github.io/ai-art-engine/index.en.html)
 - **Video tutorials**: [Bilibili space](https://space.bilibili.com/3707036976024122)
 - **QQ groups**: `346340389` · `647306826`
-- **X**: [AI Art Engine](https://x.com/IoKKFOvWAt12669)
+- **X**: <a href="https://x.com/IoKKFOvWAt12669"><img src="https://img.shields.io/badge/X-%40IoKKFOvWAt12669-000000?style=flat-square&logo=x&logoColor=white" alt="X @IoKKFOvWAt12669" /></a>
 - **Email**: [284139554@qq.com](mailto:284139554@qq.com)
 
 ---
