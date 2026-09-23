@@ -158,6 +158,53 @@ describe('directorStageBinding', () => {
     }
   })
 
+  it('keeps stage lights across persist + reload', () => {
+    const node = createNodeFromType('asset.motion', { x: 0, y: 0 })
+    const stage = createFreshDirectorStage(node)
+    stage.objects = [
+      {
+        id: 'light-dir',
+        name: 'Key',
+        kind: 'light',
+        light: { type: 'directional', intensity: 2.5 },
+        color: '#ffe0b0',
+        position: { x: 1, y: 4, z: 2 },
+        rotation: { x: -0.5, y: 0.2, z: 0 },
+        scale: { x: 1, y: 1, z: 1 }
+      },
+      {
+        id: 'light-spot',
+        name: 'Spot',
+        kind: 'light',
+        light: {
+          type: 'spot',
+          intensity: 1.8,
+          distance: 12,
+          decay: 2,
+          angle: Math.PI / 5,
+          penumbra: 0.4
+        },
+        color: '#ffffff',
+        position: { x: 0, y: 5, z: 0 },
+        rotation: { x: -0.8, y: 0, z: 0 },
+        scale: { x: 1, y: 1, z: 1 }
+      }
+    ]
+    const genParams = patchGenParamsWithNodeStage({}, node.id, stage)
+    const graphJson = { nodes: [node], edges: [], groups: [], viewport: { x: 0, y: 0, zoom: 1 } }
+    const resolved = resolveDirectorStageForNode(genParams, graphJson, node.id)
+    expect(resolved.objects).toHaveLength(2)
+    const dir = resolved.objects.find((o) => o.id === 'light-dir')
+    expect(dir?.kind).toBe('light')
+    expect(dir?.light?.type).toBe('directional')
+    expect(dir?.light?.intensity).toBe(2.5)
+    expect(dir?.color).toBe('#ffe0b0')
+    const spot = resolved.objects.find((o) => o.id === 'light-spot')
+    expect(spot?.light?.type).toBe('spot')
+    expect(spot?.light?.distance).toBe(12)
+    expect(spot?.light?.penumbra).toBe(0.4)
+  })
+
   it('resets stage when owner node id no longer exists in graph', () => {
     const oldNode = createNodeFromType('asset.motion', { x: 0, y: 0 })
     const newNode = createNodeFromType('asset.motion', { x: 120, y: 0 })

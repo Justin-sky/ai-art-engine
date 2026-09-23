@@ -114,7 +114,9 @@
                 ? GROUP_ICON
                 : item.kind === 'panorama'
                   ? PANORAMA_ICON
-                  : CUBE_ICON
+                  : item.kind === 'light'
+                    ? LIGHT_ICON
+                    : CUBE_ICON
           "
         />
         <input
@@ -187,6 +189,17 @@
         </button>
         <div class="menu-sep" />
         <button
+          v-for="item in lightItems"
+          :key="item.type"
+          type="button"
+          class="menu-item"
+          role="menuitem"
+          @click="createLight(item.type)"
+        >
+          {{ t(item.labelKey) }}
+        </button>
+        <div class="menu-sep" />
+        <button
           v-for="item in primitiveItems"
           :key="item.primitive"
           type="button"
@@ -209,7 +222,11 @@
 
 <script setup lang="ts">
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { DIRECTOR_PANORAMA_HIERARCHY_ID, type StagePrimitive } from '@shared/domain'
+import {
+  DIRECTOR_PANORAMA_HIERARCHY_ID,
+  type StageLightType,
+  type StagePrimitive
+} from '@shared/domain'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { directorStageSceneKey } from '../features/director/stageSceneKey'
 
@@ -299,6 +316,12 @@ let renameCommitted = false
 /** 已选中项再单击后，稍候进入重命名（与双击聚焦区分）。 */
 const RENAME_CLICK_DELAY_MS = 480
 let renameTimer: ReturnType<typeof setTimeout> | null = null
+
+const lightItems: { type: StageLightType; labelKey: string }[] = [
+  { type: 'directional', labelKey: 'director.stage.light.directional' },
+  { type: 'point', labelKey: 'director.stage.light.point' },
+  { type: 'spot', labelKey: 'director.stage.light.spot' }
+]
 
 const primitiveItems: { primitive: StagePrimitive; labelKey: string }[] = [
   { primitive: 'box', labelKey: 'director.stage.primitive.cube' },
@@ -545,6 +568,11 @@ function createCamera(): void {
 function createPrimitive(primitive: StagePrimitive): void {
   closeMenu()
   scene.createPrimitiveObject(primitive, selectedParentId())
+}
+
+function createLight(type: StageLightType): void {
+  closeMenu()
+  scene.createLightObject(type, selectedParentId())
 }
 
 function contextDeleteIds(): string[] {
@@ -937,6 +965,7 @@ async function onDropRoot(event: DragEvent): Promise<void> {
 }
 
 const CUBE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.8 20.5 7v10L12 21.2 3.5 17V7L12 2.8Z"/><path d="M3.7 7.2 12 11.8l8.3-4.6"/><path d="M12 11.8v9.2"/></svg>`
+const LIGHT_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.5"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.2 5.2l1.6 1.6M17.2 17.2l1.6 1.6M5.2 18.8l1.6-1.6M17.2 6.8l1.6-1.6"/></svg>`
 const CHEVRON_ICON = `<svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4"/></svg>`
 const CAMERA_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z"/><circle cx="12" cy="13" r="3.5"/></svg>`
 const GROUP_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/><path d="M3 11h18"/></svg>`

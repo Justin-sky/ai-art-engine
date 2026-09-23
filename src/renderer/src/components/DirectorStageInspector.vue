@@ -267,10 +267,10 @@
                 @input="persistObject"
             /></label>
           </div>
-          <div class="section-label">
+          <div v-if="obj.kind !== 'light'" class="section-label">
             {{ t('director.stage.scale') }}
           </div>
-          <div class="vec-row" :class="{ disabled: obj.locked }">
+          <div v-if="obj.kind !== 'light'" class="vec-row" :class="{ disabled: obj.locked }">
             <label
               >X
               <input
@@ -305,7 +305,7 @@
                 @input="persistObject"
             /></label>
           </div>
-          <label class="uniform-row">
+          <label v-if="obj.kind !== 'light'" class="uniform-row">
             {{ t('director.stage.uniformScale') }}
             <span class="uniform-control">
               <input
@@ -335,6 +335,139 @@
               <input v-model="objColor" type="text" @input="persistObject" />
             </span>
           </label>
+          <template v-if="obj.kind === 'light'">
+            <div class="section-label">
+              {{ t('director.stage.lightSection') }}
+            </div>
+            <label>
+              {{ t('director.stage.lightType') }}
+              <input :value="lightTypeLabel" type="text" disabled />
+            </label>
+            <label class="uniform-row">
+              {{ t('director.stage.lightIntensity') }}
+              <span class="uniform-control">
+                <input
+                  v-model.number="lightIntensity"
+                  type="range"
+                  min="0"
+                  max="8"
+                  step="0.05"
+                  :disabled="obj.locked"
+                  @input="persistLight"
+                />
+                <input
+                  v-model.number="lightIntensity"
+                  v-number-scrub
+                  type="number"
+                  step="0.05"
+                  min="0"
+                  :disabled="obj.locked"
+                  @input="persistLight"
+                />
+              </span>
+            </label>
+            <template v-if="isAttenuatedLight">
+              <label class="uniform-row">
+                {{ t('director.stage.lightDistance') }}
+                <span class="uniform-control">
+                  <input
+                    v-model.number="lightDistance"
+                    type="range"
+                    min="0"
+                    max="50"
+                    step="0.5"
+                    :disabled="obj.locked"
+                    @input="persistLight"
+                  />
+                  <input
+                    v-model.number="lightDistance"
+                    v-number-scrub
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    :disabled="obj.locked"
+                    @input="persistLight"
+                  />
+                </span>
+              </label>
+              <label class="uniform-row">
+                {{ t('director.stage.lightDecay') }}
+                <span class="uniform-control">
+                  <input
+                    v-model.number="lightDecay"
+                    type="range"
+                    min="0"
+                    max="4"
+                    step="0.05"
+                    :disabled="obj.locked"
+                    @input="persistLight"
+                  />
+                  <input
+                    v-model.number="lightDecay"
+                    v-number-scrub
+                    type="number"
+                    step="0.05"
+                    min="0"
+                    :disabled="obj.locked"
+                    @input="persistLight"
+                  />
+                </span>
+              </label>
+            </template>
+            <template v-if="obj.light?.type === 'spot'">
+              <label class="uniform-row">
+                {{ t('director.stage.lightAngleDeg') }}
+                <span class="uniform-control">
+                  <input
+                    v-model.number="lightAngleDeg"
+                    type="range"
+                    min="1"
+                    max="90"
+                    step="0.5"
+                    :disabled="obj.locked"
+                    @input="persistLight"
+                  />
+                  <input
+                    v-model.number="lightAngleDeg"
+                    v-number-scrub
+                    type="number"
+                    step="0.5"
+                    min="1"
+                    max="90"
+                    :disabled="obj.locked"
+                    @input="persistLight"
+                  />
+                </span>
+              </label>
+              <label class="uniform-row">
+                {{ t('director.stage.lightPenumbra') }}
+                <span class="uniform-control">
+                  <input
+                    v-model.number="lightPenumbra"
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    :disabled="obj.locked"
+                    @input="persistLight"
+                  />
+                  <input
+                    v-model.number="lightPenumbra"
+                    v-number-scrub
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="1"
+                    :disabled="obj.locked"
+                    @input="persistLight"
+                  />
+                </span>
+              </label>
+            </template>
+            <p class="locked-hint">
+              {{ t('director.stage.lightAimHint') }}
+            </p>
+          </template>
           <template v-if="objectMaterialRows.length">
             <div class="section-label">
               {{ t('director.stage.textures') }}
@@ -996,7 +1129,9 @@ import {
   readDirectorSceneWorld,
   readModelAssetColor,
   isPoseModelAsset,
-  type StageTextureSlot
+  type StageTextureSlot,
+  createDefaultStageLightParams,
+  normalizeStageLightParams
 } from '@shared/domain'
 import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
 import { useStudioI18n } from '../composables/useStudioI18n'
@@ -1082,6 +1217,11 @@ const objScaleY = ref(1)
 const objScaleZ = ref(1)
 const objName = ref('')
 const objColor = ref('#ffffff')
+const lightIntensity = ref(1)
+const lightDistance = ref(0)
+const lightDecay = ref(2)
+const lightAngleDeg = ref(30)
+const lightPenumbra = ref(0.25)
 const objUniformScale = ref(1)
 const isEditingObject = ref(false)
 const objectInspectorTab = ref<'props' | 'pose'>('props')
@@ -1659,12 +1799,27 @@ function syncPoseSkeletonOverlay(): void {
 }
 const showSceneGlobal = computed(() => scene.selectionKind.value === 'scene')
 const showPanoramaProps = computed(() => scene.selectionKind.value === 'panorama')
+const isAttenuatedLight = computed(
+  () =>
+    obj.value?.kind === 'light' &&
+    (obj.value.light?.type === 'point' || obj.value.light?.type === 'spot')
+)
+const lightTypeLabel = computed(() => {
+  const type = obj.value?.light?.type
+  if (type === 'point') return t('director.stage.light.point')
+  if (type === 'spot') return t('director.stage.light.spot')
+  if (type === 'directional') return t('director.stage.light.directional')
+  return t('director.stage.light.directional')
+})
+
 const selectionTypeLabel = computed(() => {
   switch (scene.selectionKind.value) {
     case 'camera':
       return t('director.stage.selectionType.camera')
     case 'object':
-      return t('director.stage.selectionType.object')
+      return obj.value?.kind === 'light'
+        ? t('director.stage.selectionType.light')
+        : t('director.stage.selectionType.object')
     case 'panorama':
       return t('director.stage.selectionType.panorama')
     case 'scene':
@@ -1678,7 +1833,7 @@ const selectionIcon = computed(() => {
     case 'camera':
       return 'CAM'
     case 'object':
-      return 'OBJ'
+      return obj.value?.kind === 'light' ? 'LIT' : 'OBJ'
     case 'panorama':
       return 'PAN'
     case 'scene':
@@ -1872,6 +2027,7 @@ function fillObjectLocals(): void {
         3
       ).toFixed(3)
     )
+    fillLightLocals(o)
     return
   }
   objPosX.value = o.position.x
@@ -1886,6 +2042,36 @@ function fillObjectLocals(): void {
   objName.value = o.name
   objColor.value = defaultObjectColor(o)
   objUniformScale.value = Number(((o.scale.x + o.scale.y + o.scale.z) / 3).toFixed(3))
+  fillLightLocals(o)
+}
+
+function fillLightLocals(o: NonNullable<typeof obj.value>): void {
+  if (o.kind !== 'light') return
+  const light = normalizeStageLightParams(o.light, o.light?.type)
+  lightIntensity.value = light.intensity
+  lightDistance.value = light.distance ?? 0
+  lightDecay.value = light.decay ?? 2
+  lightAngleDeg.value = radToDeg(light.angle ?? Math.PI / 6)
+  lightPenumbra.value = light.penumbra ?? 0.25
+}
+
+function persistLight(): void {
+  const o = obj.value
+  if (!o || o.kind !== 'light' || o.locked) return
+  const base = createDefaultStageLightParams(o.light?.type ?? 'directional')
+  const next = normalizeStageLightParams(
+    {
+      ...base,
+      ...o.light,
+      intensity: Math.max(0, finiteInput(lightIntensity.value, base.intensity)),
+      distance: Math.max(0, finiteInput(lightDistance.value, base.distance ?? 0)),
+      decay: Math.max(0, finiteInput(lightDecay.value, base.decay ?? 2)),
+      angle: degToRad(Math.min(90, Math.max(1, finiteInput(lightAngleDeg.value, 30)))),
+      penumbra: Math.min(1, Math.max(0, finiteInput(lightPenumbra.value, base.penumbra ?? 0.25)))
+    },
+    base.type
+  )
+  scene.updateObjectTransform(o.id, { light: next })
 }
 
 function persistViewer(): void {

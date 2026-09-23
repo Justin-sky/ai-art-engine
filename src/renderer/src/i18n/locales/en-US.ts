@@ -1900,6 +1900,7 @@ export default {
       selectionType: {
         camera: 'Camera',
         object: 'Object',
+        light: 'Light',
         panorama: 'Panorama',
         scene: 'Scene',
         none: 'None'
@@ -1908,6 +1909,19 @@ export default {
       createCamera: 'Create Camera',
       createEmpty: 'Create Empty',
       createMenu: 'Create object',
+      lightSection: 'Light',
+      lightType: 'Type',
+      lightIntensity: 'Intensity',
+      lightDistance: 'Distance (0 = infinite)',
+      lightDecay: 'Decay',
+      lightAngleDeg: 'Cone angle (°)',
+      lightPenumbra: 'Penumbra',
+      lightAimHint: 'Directional / spot lights aim along local -Z; rotate the object to aim.',
+      light: {
+        directional: 'Directional Light',
+        point: 'Point Light',
+        spot: 'Spot Light'
+      },
       aiBlockoutGroupName: 'AI Blockout',
       deleteObject: 'Delete',
       copy: 'Copy',

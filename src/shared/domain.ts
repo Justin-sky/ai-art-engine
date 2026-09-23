@@ -927,8 +927,88 @@ export const STAGE_PRIMITIVE_VALUES = [
 export type StagePrimitive = (typeof STAGE_PRIMITIVE_VALUES)[number]
 
 const STAGE_PRIMITIVE_SET: ReadonlySet<string> = new Set(STAGE_PRIMITIVE_VALUES)
-export type StageObjectKind = 'character' | 'prop' | 'model' | 'primitive' | 'empty'
+export type StageObjectKind = 'character' | 'prop' | 'model' | 'primitive' | 'empty' | 'light'
 export type TransformMode = 'translate' | 'rotate' | 'scale'
+
+/** 导演台可添加的灯光类型（不含场景默认环境/半球光） */
+export const STAGE_LIGHT_TYPE_VALUES = ['directional', 'point', 'spot'] as const
+export type StageLightType = (typeof STAGE_LIGHT_TYPE_VALUES)[number]
+const STAGE_LIGHT_TYPE_SET: ReadonlySet<string> = new Set(STAGE_LIGHT_TYPE_VALUES)
+
+export interface StageLightParams {
+  type: StageLightType
+  /** 光照强度，默认 1 */
+  intensity: number
+  /** Point / Spot 衰减距离；0 = 无限 */
+  distance?: number
+  /** Point / Spot 衰减指数，默认 2 */
+  decay?: number
+  /** Spot 圆锥半角（弧度），默认 π/6 */
+  angle?: number
+  /** Spot 边缘软化 0–1，默认 0.25 */
+  penumbra?: number
+}
+
+export function createDefaultStageLightParams(
+  type: StageLightType = 'directional'
+): StageLightParams {
+  if (type === 'point') {
+    return { type, intensity: 1.2, distance: 0, decay: 2 }
+  }
+  if (type === 'spot') {
+    return {
+      type,
+      intensity: 1.4,
+      distance: 0,
+      decay: 2,
+      angle: Math.PI / 6,
+      penumbra: 0.25
+    }
+  }
+  return { type: 'directional', intensity: 1.15 }
+}
+
+export function normalizeStageLightParams(
+  raw: unknown,
+  fallbackType?: StageLightType
+): StageLightParams {
+  const base = createDefaultStageLightParams(
+    fallbackType && STAGE_LIGHT_TYPE_SET.has(fallbackType) ? fallbackType : 'directional'
+  )
+  if (!raw || typeof raw !== 'object') return base
+  const o = raw as Record<string, unknown>
+  const type =
+    typeof o.type === 'string' && STAGE_LIGHT_TYPE_SET.has(o.type)
+      ? (o.type as StageLightType)
+      : base.type
+  const defaults = createDefaultStageLightParams(type)
+  const intensity =
+    typeof o.intensity === 'number' && Number.isFinite(o.intensity)
+      ? Math.max(0, o.intensity)
+      : defaults.intensity
+  const distance =
+    typeof o.distance === 'number' && Number.isFinite(o.distance)
+      ? Math.max(0, o.distance)
+      : defaults.distance
+  const decay =
+    typeof o.decay === 'number' && Number.isFinite(o.decay) ? Math.max(0, o.decay) : defaults.decay
+  const angle =
+    typeof o.angle === 'number' && Number.isFinite(o.angle)
+      ? Math.min(Math.PI / 2, Math.max(0.01, o.angle))
+      : defaults.angle
+  const penumbra =
+    typeof o.penumbra === 'number' && Number.isFinite(o.penumbra)
+      ? Math.min(1, Math.max(0, o.penumbra))
+      : defaults.penumbra
+  return {
+    type,
+    intensity,
+    ...(distance !== undefined ? { distance } : {}),
+    ...(decay !== undefined ? { decay } : {}),
+    ...(angle !== undefined ? { angle } : {}),
+    ...(penumbra !== undefined ? { penumbra } : {})
+  }
+}
 /** 导演台视口着色显示模式（对齐 Unity Scene View Shading Mode） */
 export type DirectorShadingMode = 'shaded' | 'wireframe' | 'shadedWireframe'
 
@@ -1031,6 +1111,8 @@ export interface StageObjectState {
   name: string
   kind: StageObjectKind
   primitive?: StagePrimitive
+  /** kind === 'light' 时的灯光参数 */
+  light?: StageLightParams
   modelAssetId?: string
   /** 模型文件工程相对路径；Cache 产物（如 3D 生成）不入资产库时作回退 */
   modelRelativePath?: string
@@ -1929,7 +2011,8 @@ function normalizeStageObject(raw: unknown): StageObjectState | null {
     kind !== 'prop' &&
     kind !== 'model' &&
     kind !== 'primitive' &&
-    kind !== 'empty'
+    kind !== 'empty' &&
+    kind !== 'light'
   ) {
     return null
   }
@@ -1944,6 +2027,7 @@ function normalizeStageObject(raw: unknown): StageObjectState | null {
       typeof o.primitive === 'string' && STAGE_PRIMITIVE_SET.has(o.primitive)
         ? (o.primitive as StagePrimitive)
         : undefined,
+    light: kind === 'light' ? normalizeStageLightParams(o.light) : undefined,
     modelAssetId: typeof o.modelAssetId === 'string' ? o.modelAssetId : undefined,
     // Cache 产物不入资产库，丢了这条路径就只能退化成占位方块
     modelRelativePath:

@@ -67,6 +67,9 @@ import {
   type StageObjectState,
   type StageMaterialTextureOverrides,
   type StagePrimitive,
+  type StageLightType,
+  createDefaultStageLightParams,
+  normalizeStageLightParams,
   STAGE_TEXTURE_SLOTS,
   type StageTextureSlot,
   type StageVec3,
@@ -5091,6 +5094,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     root.traverse((child) => {
       if (!(child instanceof THREE.Mesh)) return
       if (child.userData?.[SHADING_WIRE_OVERLAY_FLAG]) return
+      if (child.userData?.stageLightHelper) return
       if (wireMat) {
         child.userData[SHADING_ORIG_MATERIAL_KEY] = child.material
         child.material = Array.isArray(child.material) ? child.material.map(() => wireMat) : wireMat
@@ -5312,6 +5316,10 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
 
   function applyObjectColor(mesh: THREE.Object3D, color?: string): void {
     const hex = parseColor(color)
+    const light = mesh.userData.stageLight as THREE.Light | undefined
+    if (light && 'color' in light && light.color instanceof THREE.Color) {
+      light.color.setHex(hex)
+    }
     mesh.traverse((child) => {
       if (child instanceof THREE.Mesh) {
         const materials = Array.isArray(child.material) ? child.material : [child.material]
@@ -5319,8 +5327,287 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
           const materialColor = (material as THREE.Material & { color?: THREE.Color }).color
           if (materialColor instanceof THREE.Color) materialColor.setHex(hex)
         }
+      } else if (
+        (child instanceof THREE.LineSegments || child instanceof THREE.Line) &&
+        child.userData?.stageLightHelper
+      ) {
+        const mat = child.material
+        if (mat && !Array.isArray(mat) && 'color' in mat && mat.color instanceof THREE.Color) {
+          mat.color.setHex(hex)
+        }
       }
     })
+  }
+
+  function applyLightParams(root: THREE.Object3D, obj: StageObjectState): void {
+    if (obj.kind !== 'light') return
+    const light = root.userData.stageLight as THREE.Light | undefined
+    if (!light) return
+    const params = normalizeStageLightParams(obj.light)
+    const hex = parseColor(obj.color ?? '#ffffff')
+    if ('color' in light && light.color instanceof THREE.Color) light.color.setHex(hex)
+    light.intensity = params.intensity
+    if (light instanceof THREE.PointLight || light instanceof THREE.SpotLight) {
+      light.distance = params.distance ?? 0
+      light.decay = params.decay ?? 2
+    }
+    if (light instanceof THREE.SpotLight) {
+      light.angle = params.angle ?? Math.PI / 6
+      light.penumbra = params.penumbra ?? 0.25
+    }
+    // 几何会随距离/锥角变化，整组重建 Unity 风格 Gizmo
+    attachStageLightGizmo(root, params, hex)
+  }
+
+  function disposeStageLightGizmo(root: THREE.Object3D): void {
+    const old = root.userData.stageLightGizmo as THREE.Object3D | undefined
+    if (!old) return
+    old.removeFromParent()
+    old.traverse((child) => {
+      if (
+        child instanceof THREE.Mesh ||
+        child instanceof THREE.LineSegments ||
+        child instanceof THREE.Line
+      ) {
+        child.geometry?.dispose()
+        const mat = child.material
+        if (Array.isArray(mat)) mat.forEach((m) => m.dispose())
+        else mat?.dispose()
+      }
+    })
+    root.userData.stageLightGizmo = undefined
+  }
+
+  /** Unity Scene View 风格：平行光箭头 / 点光范围球 / 聚光锥 */
+  function buildUnityStyleLightGizmo(
+    params: ReturnType<typeof normalizeStageLightParams>,
+    colorHex: number
+  ): THREE.Group {
+    const root = new THREE.Group()
+    root.name = 'StageLightGizmo'
+    root.userData.stageLightHelper = true
+
+    const lineMat = new THREE.LineBasicMaterial({
+      color: colorHex,
+      depthTest: true,
+      depthWrite: false,
+      transparent: true,
+      opacity: 0.92
+    })
+    const iconMat = new THREE.MeshBasicMaterial({
+      color: colorHex,
+      depthTest: true,
+      depthWrite: false,
+      transparent: true,
+      opacity: 0.7,
+      side: THREE.FrontSide
+    })
+
+    // 可拾取中心（对应 Unity 灯光图标落点）
+    const pick = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 10), iconMat.clone())
+    pick.userData.stageLightHelper = true
+    pick.userData.stageLightPick = true
+    pick.renderOrder = 12
+    root.add(pick)
+
+    if (params.type === 'directional') {
+      root.add(makeDirectionalLightIcon(lineMat, iconMat))
+      root.add(makeDirectionalLightArrows(lineMat))
+    } else if (params.type === 'point') {
+      root.add(makePointLightIconRays(lineMat))
+      const range = params.distance && params.distance > 0 ? params.distance : 1.6
+      root.add(makePointLightRangeSphere(range, lineMat))
+    } else {
+      const length = params.distance && params.distance > 0 ? params.distance : 4
+      const angle = params.angle ?? Math.PI / 6
+      root.add(makeSpotLightCone(length, angle, lineMat))
+      // 内锥（penumbra）示意，与 Unity 双锥接近
+      const penumbra = params.penumbra ?? 0.25
+      if (penumbra > 0.02) {
+        const innerAngle = Math.max(0.02, angle * (1 - penumbra * 0.65))
+        const inner = makeSpotLightCone(length, innerAngle, lineMat.clone())
+        ;(inner.material as THREE.LineBasicMaterial).opacity = 0.45
+        root.add(inner)
+      }
+    }
+
+    root.traverse((child) => {
+      if (child !== root) child.userData.stageLightHelper = true
+    })
+    return root
+  }
+
+  function makeLineFromPositions(
+    positions: number[],
+    material: THREE.LineBasicMaterial
+  ): THREE.LineSegments {
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+    const lines = new THREE.LineSegments(geo, material)
+    lines.renderOrder = 11
+    lines.frustumCulled = false
+    return lines
+  }
+
+  /** Unity 平行光：朝 -Z 的圆环 + 放射短线图标 */
+  function makeDirectionalLightIcon(
+    lineMat: THREE.LineBasicMaterial,
+    fillMat: THREE.MeshBasicMaterial
+  ): THREE.Group {
+    const g = new THREE.Group()
+    // Ring 在 XY，法线 +Z；灯光朝 -Z，从前方看图标正对照射方向
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.1, 0.18, 24), fillMat.clone())
+    g.add(ring)
+    const rays: number[] = []
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2
+      const c = Math.cos(a)
+      const s = Math.sin(a)
+      rays.push(c * 0.22, s * 0.22, 0, c * 0.34, s * 0.34, 0)
+    }
+    g.add(makeLineFromPositions(rays, lineMat))
+    return g
+  }
+
+  /** Unity 平行光：若干平行箭头沿照射方向（本地 -Z） */
+  function makeDirectionalLightArrows(lineMat: THREE.LineBasicMaterial): THREE.LineSegments {
+    const positions: number[] = []
+    const offsets: Array<[number, number]> = [
+      [0, 0],
+      [0.22, 0.12],
+      [-0.22, 0.12],
+      [0.12, -0.2],
+      [-0.12, -0.2]
+    ]
+    const z0 = -0.35
+    const z1 = -1.55
+    const head = 0.18
+    for (const [x, y] of offsets) {
+      positions.push(x, y, z0, x, y, z1)
+      // 箭头分叉
+      positions.push(x, y, z1, x + head * 0.35, y + head * 0.2, z1 + head)
+      positions.push(x, y, z1, x - head * 0.35, y + head * 0.2, z1 + head)
+      positions.push(x, y, z1, x, y - head * 0.4, z1 + head)
+    }
+    return makeLineFromPositions(positions, lineMat)
+  }
+
+  /** Unity 点光：中心放射短线（灯泡感） */
+  function makePointLightIconRays(lineMat: THREE.LineBasicMaterial): THREE.LineSegments {
+    const positions: number[] = []
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2
+      const c = Math.cos(a)
+      const s = Math.sin(a)
+      positions.push(c * 0.2, s * 0.2, 0, c * 0.38, s * 0.38, 0)
+      positions.push(c * 0.14, 0, s * 0.14, c * 0.28, 0, s * 0.28)
+    }
+    return makeLineFromPositions(positions, lineMat)
+  }
+
+  function makePointLightRangeSphere(
+    radius: number,
+    lineMat: THREE.LineBasicMaterial
+  ): THREE.LineSegments {
+    const r = Math.max(0.05, radius)
+    // 经纬线球，比满配 Wireframe 更接近 Unity 的干净范围球
+    const positions: number[] = []
+    const segs = 48
+    const rings = 6
+    for (let i = 0; i < rings; i++) {
+      const v = ((i + 1) / (rings + 1)) * Math.PI
+      const y = Math.cos(v) * r
+      const rr = Math.sin(v) * r
+      for (let j = 0; j < segs; j++) {
+        const a0 = (j / segs) * Math.PI * 2
+        const a1 = ((j + 1) / segs) * Math.PI * 2
+        positions.push(
+          Math.cos(a0) * rr,
+          y,
+          Math.sin(a0) * rr,
+          Math.cos(a1) * rr,
+          y,
+          Math.sin(a1) * rr
+        )
+      }
+    }
+    const meridians = 8
+    for (let i = 0; i < meridians; i++) {
+      const a = (i / meridians) * Math.PI * 2
+      const cx = Math.cos(a)
+      const cz = Math.sin(a)
+      for (let j = 0; j < segs; j++) {
+        const v0 = (j / segs) * Math.PI
+        const v1 = ((j + 1) / segs) * Math.PI
+        positions.push(
+          cx * Math.sin(v0) * r,
+          Math.cos(v0) * r,
+          cz * Math.sin(v0) * r,
+          cx * Math.sin(v1) * r,
+          Math.cos(v1) * r,
+          cz * Math.sin(v1) * r
+        )
+      }
+    }
+    return makeLineFromPositions(positions, lineMat)
+  }
+
+  /** Unity 聚光：沿 -Z 的圆锥线框（底面圆 + 母线） */
+  function makeSpotLightCone(
+    length: number,
+    angle: number,
+    lineMat: THREE.LineBasicMaterial
+  ): THREE.LineSegments {
+    const len = Math.max(0.2, length)
+    const rad = Math.max(0.02, Math.tan(angle) * len)
+    const positions: number[] = []
+    const segs = 48
+    // 底面圆（在 z = -len）
+    for (let i = 0; i < segs; i++) {
+      const a0 = (i / segs) * Math.PI * 2
+      const a1 = ((i + 1) / segs) * Math.PI * 2
+      positions.push(
+        Math.cos(a0) * rad,
+        Math.sin(a0) * rad,
+        -len,
+        Math.cos(a1) * rad,
+        Math.sin(a1) * rad,
+        -len
+      )
+    }
+    // 从原点到圆周的母线
+    const spokes = 8
+    for (let i = 0; i < spokes; i++) {
+      const a = (i / spokes) * Math.PI * 2
+      positions.push(0, 0, 0, Math.cos(a) * rad, Math.sin(a) * rad, -len)
+    }
+    // 近处小截圆（Unity 锥体近端感）
+    const near = Math.min(0.45, len * 0.18)
+    const nearRad = rad * (near / len)
+    for (let i = 0; i < segs; i++) {
+      const a0 = (i / segs) * Math.PI * 2
+      const a1 = ((i + 1) / segs) * Math.PI * 2
+      positions.push(
+        Math.cos(a0) * nearRad,
+        Math.sin(a0) * nearRad,
+        -near,
+        Math.cos(a1) * nearRad,
+        Math.sin(a1) * nearRad,
+        -near
+      )
+    }
+    return makeLineFromPositions(positions, lineMat)
+  }
+
+  function attachStageLightGizmo(
+    root: THREE.Object3D,
+    params: ReturnType<typeof normalizeStageLightParams>,
+    colorHex: number
+  ): void {
+    disposeStageLightGizmo(root)
+    const gizmo = buildUnityStyleLightGizmo(params, colorHex)
+    root.userData.stageLightGizmo = gizmo
+    root.add(gizmo)
   }
 
   /**
@@ -5663,7 +5950,9 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
 
   function updateObjectTransform(
     id: string,
-    patch: Partial<Pick<StageObjectState, 'position' | 'rotation' | 'scale' | 'name' | 'color'>>
+    patch: Partial<
+      Pick<StageObjectState, 'position' | 'rotation' | 'scale' | 'name' | 'color' | 'light'>
+    >
   ): void {
     if (isStageCameraId(id)) {
       if (patch.name === undefined) return
@@ -5718,6 +6007,9 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       return
     }
     const next = { ...stage.value.objects[idx], ...patch }
+    if (patch.light !== undefined) {
+      next.light = normalizeStageLightParams(patch.light, stage.value.objects[idx].light?.type)
+    }
     stage.value.objects[idx] = next
     const mesh = objectMeshes.get(id)
     if (mesh) {
@@ -5725,6 +6017,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       const label = objectLabels.get(id)
       if (label && patch.name) label.element.textContent = patch.name
       if (patch.color !== undefined) applyObjectColor(mesh, next.color)
+      if (patch.light !== undefined || patch.color !== undefined) applyLightParams(mesh, next)
       if (selectionHelper) selectionHelper.update()
     }
     previewRevision.value += 1
@@ -6024,6 +6317,34 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       scale: { x: 1, y: 1, z: 1 }
     }
     insertObjectMesh(obj, makePrimitive(obj.name, primitive, parseColor(obj.color)))
+    return id
+  }
+
+  function createLightObject(type: StageLightType, parentId: string | null = null): string {
+    const labels: Record<StageLightType, string> = {
+      directional: 'Directional Light',
+      point: 'Point Light',
+      spot: 'Spot Light'
+    }
+    const light = createDefaultStageLightParams(type)
+    const name = resolveUniqueObjectName(labels[type])
+    const id = `light:${crypto.randomUUID()}`
+    const aimDown = type === 'directional' || type === 'spot'
+    const obj: StageObjectState = {
+      id,
+      name,
+      kind: 'light',
+      light,
+      color: '#ffffff',
+      parentId: resolveCreateParentId(parentId),
+      visible: true,
+      locked: false,
+      nameVisible: true,
+      position: type === 'point' ? { x: 0, y: 3, z: 0 } : { x: 2, y: 5, z: 2 },
+      rotation: aimDown ? { x: -Math.PI / 4, y: -Math.PI / 6, z: 0 } : { x: 0, y: 0, z: 0 },
+      scale: { x: 1, y: 1, z: 1 }
+    }
+    insertObjectMesh(obj, makeLightObject(obj))
     return id
   }
 
@@ -7338,6 +7659,43 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     return mesh
   }
 
+  /** 用户灯光：Group + Light（定向/聚光带局部 target）+ Unity 风格 Gizmo */
+  function makeLightObject(obj: StageObjectState): THREE.Object3D {
+    const params = normalizeStageLightParams(obj.light)
+    const color = parseColor(obj.color ?? '#ffffff')
+    const group = new THREE.Group()
+    group.name = obj.name
+
+    let light: THREE.Light
+    if (params.type === 'point') {
+      light = new THREE.PointLight(color, params.intensity, params.distance ?? 0, params.decay ?? 2)
+    } else if (params.type === 'spot') {
+      const spot = new THREE.SpotLight(
+        color,
+        params.intensity,
+        params.distance ?? 0,
+        params.angle ?? Math.PI / 6,
+        params.penumbra ?? 0.25,
+        params.decay ?? 2
+      )
+      spot.target.position.set(0, 0, -1)
+      group.add(spot.target)
+      light = spot
+    } else {
+      const dir = new THREE.DirectionalLight(color, params.intensity)
+      dir.target.position.set(0, 0, -1)
+      group.add(dir.target)
+      light = dir
+    }
+    light.name = 'StageLight'
+    group.add(light)
+
+    group.userData.stageLight = light
+    group.userData.stageLightType = params.type
+    attachStageLightGizmo(group, params, color)
+    return group
+  }
+
   async function buildMeshForObject(
     obj: StageObjectState
   ): Promise<{ mesh: THREE.Object3D; clips: THREE.AnimationClip[] }> {
@@ -7345,6 +7703,9 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       const g = new THREE.Group()
       g.name = obj.name
       return { mesh: g, clips: [] }
+    }
+    if (obj.kind === 'light') {
+      return { mesh: makeLightObject(obj), clips: [] }
     }
     if (obj.kind === 'model' && (obj.modelAssetId || obj.modelRelativePath)) {
       const modelAsset = obj.modelAssetId
@@ -7381,16 +7742,19 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
 
   function disposeObject(obj: THREE.Object3D): void {
     restoreShadingMaterials(obj)
+    disposeStageLightGizmo(obj)
     obj.traverse((child) => {
       if (child instanceof THREE.Mesh) {
         child.geometry.dispose()
         if (Array.isArray(child.material)) child.material.forEach((m) => m.dispose())
         else child.material.dispose()
-      } else if (
-        child instanceof THREE.LineSegments &&
-        child.userData?.[SHADING_WIRE_OVERLAY_FLAG]
-      ) {
-        child.geometry.dispose()
+      } else if (child instanceof THREE.LineSegments || child instanceof THREE.Line) {
+        if (child.userData?.[SHADING_WIRE_OVERLAY_FLAG] || child.userData?.stageLightHelper) {
+          child.geometry.dispose()
+          const mat = child.material
+          if (Array.isArray(mat)) mat.forEach((m) => m.dispose())
+          else mat?.dispose()
+        }
       }
     })
   }
@@ -8903,6 +9267,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     createEmptyObject,
     createCameraObject,
     createPrimitiveObject,
+    createLightObject,
     createModelObject,
     canDeleteObject,
     removeObject,

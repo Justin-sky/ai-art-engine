@@ -1852,6 +1852,7 @@ export default {
       selectionType: {
         camera: '相机',
         object: '物体',
+        light: '灯光',
         panorama: '全景',
         scene: '场景',
         none: '未选择'
@@ -1860,6 +1861,19 @@ export default {
       createCamera: '创建相机',
       createEmpty: '创建空物体',
       createMenu: '创建物体',
+      lightSection: '灯光',
+      lightType: '类型',
+      lightIntensity: '强度',
+      lightDistance: '衰减距离（0=无限）',
+      lightDecay: '衰减',
+      lightAngleDeg: '锥角（度）',
+      lightPenumbra: '边缘软化',
+      lightAimHint: '平行光 / 聚光灯沿物体 -Z 方向照射，用旋转调整朝向。',
+      light: {
+        directional: '平行光',
+        point: '点光',
+        spot: '聚光灯'
+      },
       aiBlockoutGroupName: 'AI 白模',
       deleteObject: '删除',
       copy: '复制',
