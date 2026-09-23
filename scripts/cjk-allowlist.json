@@ -153,7 +153,9 @@
       "return en ? 'New Beat Units' : '新建场'",
       "return en ? 'New Host Asset' : '新建宿主资产'",
       "return en ? (label ? `New ${label}` : 'New Asset') : label ? `新建${label}` : '新建资产'",
-      "const name = asWorldEntityString(row.name).trim() || asWorldEntityString(row['名称']).trim()"
+      "const name = asWorldEntityString(row.name).trim() || asWorldEntityString(row['名称']).trim()",
+      "gamePlay: '可玩 HTML',",
+      "return en ? 'New Playable HTML' : '新建可玩 HTML'"
     ],
     "src/shared/graph/adVariantMatrix.ts": [
       "if (value === 'selected' || value === '入选') return 'selected'",
@@ -364,7 +366,13 @@
       "text: '画风主题（示例）：暖色 2D 卡通、浅色卡片底、描边统一——可按需改写主题句，正式风格以「风格参考图 → UI/图标」为准。'",
       "text: '火焰斩\\n冰霜护盾\\n雷击\\n冲刺\\n治疗术\\n狂暴\\n破甲\\n圣光祝福'",
       "text: '使用流程：1) 在「画风主题」填主题句；在「技能/道具/状态图标名单」各填一枚一行的名单（每类 ≤9 枚，名单顺序即整版表逐行格位，如 1-1 = 第 1 枚；改名单后对应「·整版」需重跑）；2) 为工程选择「UI / 图标」风格参考图，保证三类同一画风；3) 运行各「·整版」节点生成 3×3 方形卡片整版表；4) 运行各「·打包」节点：从整版逐格裁切 → 采样纯色底键控透明 → 修剪并统一画布中心对齐 → 按名单命名 PNG 落盘 Assets/IconPacks/…，并同目录写 icons.txt 清单（含 cellKey↔名单映射、文件名、锚点）；5) 「·切格」节点仅用于单枚检查/精修（逐枚 dive 后续再做）。打包前建议先跑一次「·切格」目检格位；若名单占满 9 枚无空白格，键控自动退回版面外框采样。'",
-      "generateInstruction: '保持产品形态与卖点信息一致，优化构图、清晰度与画面合规性'"
+      "generateInstruction: '保持产品形态与卖点信息一致，优化构图、清晰度与画面合规性'",
+      "title: '一句话小游戏',",
+      "title: '一句话玩法',",
+      "text: '顶视收集小游戏：玩家用 WASD 移动，收集 8 个黄点后胜利，按 R 重开（2D）'",
+      "title: '可玩 HTML 生成',",
+      "title: '可玩 HTML',",
+      "text: '流程：改「一句话玩法」或双击「可玩 HTML 生成」写指令（可接参考图）→ 运行生成（out / 全部）→ 接到「可玩 HTML」后运行并双击进沙盒试玩（该节点只有输入、无输出，仅预览）。可将 gamePlayMode 改为 2d / 3d。'"
     ],
     "src/shared/graph/anim2d.ts": [
       "prompt: '角色原地待机循环：身体轻微上下起伏，头发与衣摆自然飘动，表情平静，动作幅度小且稳定',",
@@ -445,9 +453,13 @@
       "label: '3D 骨骼蒙皮',",
       "defaultTitle: '3D 骨骼蒙皮',",
       "label: '3D 动画',",
-      "defaultTitle: '3D 动画',"
+      "defaultTitle: '3D 动画',",
+      "label: '可玩 HTML',",
+      "label: '可玩 HTML 生成',",
+      "defaultTitle: '可玩 HTML 生成',",
+      "'一句话生成可试玩的单文件 HTML（2D Canvas 或 3D Three.js）。in 接文本、in-image 接参考图；双击展开生成指令；out 出当前选中 HTML、out-all 出历次结果，可接入 asset.gamePlay。无模型时回退内置样例。',"
     ],
-    "src/shared/graph/create.ts": ["gameSystem: '策划案生成',"],
+    "src/shared/graph/create.ts": ["gameSystem: '策划案生成',", "gamePlay: '可玩 HTML',"],
     "src/shared/graph/episodeBoardParse.ts": [
       "const ANCHOR_HEADING_RE = /^##\\s*格\\s*(\\d+)/i",
       "const ANCHOR_BEAT_REF_RE = /(?:节拍ID|Beat\\s*ID)\\s*[:：]?\\s*#?\\s*([0-9A-Za-z_-]+)/i",
@@ -879,6 +891,10 @@
     "src/shared/projectMemory.ts": [
       "zh: '跨会话沉淀的项目偏好（风格 / 机位 / 角色一致性 / 其它）；AI 对话会自动加载本文件，Agent 可随时用 project_memory_append 补充。',",
       "zh: '由工程配置自动初始化；修改后下一轮对话立即生效。',"
+    ],
+    "src/renderer/src/components/ChatPanel.vue": [
+      "/仍在等待|尚未返回|已提交给模型|接手任务|Still waiting|Waiting for/.test(last.text) &&",
+      "/仍在等待|尚未返回|已提交给模型|接手任务|Still waiting|Waiting for/.test(text)"
     ]
   }
 }

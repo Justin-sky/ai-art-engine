@@ -49,7 +49,12 @@ const EXEMPT_FILES = new Set([
   'src/shared/graph/mcpGraphEdit.ts',
   'src/shared/graph/execute/generateText.ts',
   'src/shared/mcpModeAccess.ts',
-  'src/shared/mcpProtocol.ts'
+  'src/shared/mcpProtocol.ts',
+  // 可玩 HTML：系统提示词 / 样例游戏 / 沙盒校验文案（Agent 与生成域，非 UI i18n）
+  'src/shared/gamePlay/prompts.ts',
+  'src/shared/gamePlay/sampleGames.ts',
+  'src/shared/gamePlay/gameHtml.ts',
+  'src/shared/graph/execute/gameHtmlGen.ts'
 ])
 const EXEMPT_DIR_PARTS = [['src', 'renderer', 'src', 'i18n', 'locales']]
 

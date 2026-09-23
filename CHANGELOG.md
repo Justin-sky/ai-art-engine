@@ -2,6 +2,15 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [6.5.0] — 2026-09-23
+
+6.5.0 功能版：节点图新增「可玩 HTML」生成与沙盒试玩；DeepSeek Harness 改为常驻 worker，显著缩短多轮对话冷启动，并修好停止按钮与等待超时误杀。
+
+- **可玩 HTML（gamePlay）**：一句话 / 参考图生成单文件 2D Canvas 或 3D Three.js 小游戏；`asset.gamePlay` 资产 + iframe 沙盒试玩；工作流预设「一句话小游戏」；无模型时回退内置样例。
+- **Harness 常驻 worker**：stdin NDJSON 多轮复用 Cordis/MCP 进程；Chat 打开预热、空闲回收；并发预热串行化避免双进程；`active-run` 让 Ask/Plan 授权粘性更稳。
+- **对话体验**：`/clear` `/model` 斜杠菜单；输入区可拖拽改高；等待心跳合并不刷屏；去掉「无输出自动中止」；停止按钮立即退出运行态并用 Windows `taskkill /T /F` 杀进程树。
+- **其它**：OpenRouter 多模态不再被误判为纯文本；生成媒体禁止落到工程根、Agent 走 MCP 落盘；MCP 操作同步工作区；README 置顶交流 QQ 群与 Star；补齐 gamePlay 相关 CJK 豁免以通过发版前检查。
+
 ## [6.4.2] — 2026-09-18
 
 修复 Release CI 在 `typecheck:web` 阶段失败：`GraphRunLogApiCall.kind` 补齐 `rigModel3d`，与 `graphTasks` 绑骨 API 日志记录一致。
