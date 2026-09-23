@@ -334,6 +334,21 @@ function registerAskUserTool(ctx, io, getMode, getRunId) {
   return answerAskUserQuestion
 }
 
+/** Drop a cached agent and release its session write handle (flush alone is not enough). */
+async function releaseAgentSlot(agentSlot) {
+  const handle = agentSlot.handle
+  agentSlot.handle = undefined
+  agentSlot.sessionId = ''
+  agentSlot.model = ''
+  agentSlot.provider = ''
+  if (!handle?.dispose) return
+  try {
+    await handle.dispose()
+  } catch {
+    /* ignore — next create/resume must not be blocked by a leaked write lease */
+  }
+}
+
 async function runOneTurn(ctx, io, opts) {
   const {
     task,
@@ -368,7 +383,7 @@ async function runOneTurn(ctx, io, opts) {
     )
   }
 
-  let agent = agentSlot.agent
+  let agent = agentSlot.handle?.agent
   const sameSession = agentSlot.sessionId === sessionId
   const sameModel =
     agent && agentSlot.model === selection.model && agentSlot.provider === selection.provider
@@ -379,9 +394,8 @@ async function runOneTurn(ctx, io, opts) {
     } catch {
       /* ignore */
     }
+    await releaseAgentSlot(agentSlot)
     agent = undefined
-    agentSlot.agent = undefined
-    agentSlot.sessionId = ''
   }
 
   if (agent === undefined) {
@@ -396,16 +410,55 @@ async function runOneTurn(ctx, io, opts) {
             )
       if (exists) {
         try {
-          const resumed = await agents.resume({ resumeSessionId: sessionId, agentOptions, setup })
+          const resumed = await agents.resume({
+            resumeSessionId: sessionId,
+            agentOptions,
+            setup
+          })
+          agentSlot.handle = resumed
           agent = resumed.agent
           io.stderr.write('[aiart-runner] resumed session: ' + sessionId + '\n')
         } catch (error) {
-          io.stderr.write(
-            '[aiart-runner] resume failed: ' +
-              (error instanceof Error ? error.message : String(error)) +
-              '\n'
-          )
-          throw error
+          // Same-process leak recovery: agent still registered → reuse instead of resume
+          const live =
+            typeof agents.get === 'function' ? agents.get(SessionId(sessionId)) : undefined
+          const owned =
+            error instanceof Error && /already owned by an active write handle/i.test(error.message)
+          if (owned && live) {
+            agentSlot.handle = {
+              agent: live,
+              // Best-effort teardown: disposing the agent scope runs the loop's
+              // tracked disposer, which closes the persistence write handle.
+              dispose: async () => {
+                try {
+                  if (typeof live.cancel === 'function') live.cancel({ kind: 'disposed' })
+                } catch {
+                  /* ignore */
+                }
+                try {
+                  if (typeof live.whenIdle === 'function') await live.whenIdle()
+                } catch {
+                  /* ignore */
+                }
+                try {
+                  if (live.scope && typeof live.scope.dispose === 'function') {
+                    await live.scope.dispose()
+                  }
+                } catch {
+                  /* ignore */
+                }
+              }
+            }
+            agent = live
+            io.stderr.write('[aiart-runner] reused live session: ' + sessionId + '\n')
+          } else {
+            io.stderr.write(
+              '[aiart-runner] resume failed: ' +
+                (error instanceof Error ? error.message : String(error)) +
+                '\n'
+            )
+            throw error
+          }
         }
       }
     }
@@ -416,10 +469,10 @@ async function runOneTurn(ctx, io, opts) {
         agentOptions,
         setup
       })
+      agentSlot.handle = created
       agent = created.agent
       if (hasSessionId) io.stderr.write('[aiart-runner] created session: ' + sessionId + '\n')
     }
-    agentSlot.agent = agent
     agentSlot.sessionId = sessionId
     agentSlot.model = selection.model
     agentSlot.provider = selection.provider
@@ -557,7 +610,7 @@ async function runPersistent(ctx, io) {
   let currentMode = (process.env.AIART_MODE || 'craft').trim() || 'craft'
   let currentRunId = process.env.AIART_RUN_ID || 'run'
   let forcedSelection = null
-  const agentSlot = { agent: undefined, sessionId: '', model: '', provider: '' }
+  const agentSlot = { handle: undefined, sessionId: '', model: '', provider: '' }
 
   const answerAskUserQuestion = registerAskUserTool(
     ctx,
@@ -589,6 +642,7 @@ async function runPersistent(ctx, io) {
     }
     const op = msg?.op
     if (op === 'shutdown') {
+      await releaseAgentSlot(agentSlot)
       rl.close()
       io.exit(0)
       return
@@ -608,9 +662,8 @@ async function runPersistent(ctx, io) {
         provider: cur?.provider || 'deepseek-official',
         model: modelId
       }
-      // Drop cached agent so next prompt recreates/resumes with the new model
-      agentSlot.agent = undefined
-      agentSlot.model = ''
+      // Must dispose so the session write lease is released before next resume
+      await releaseAgentSlot(agentSlot)
       io.stderr.write('[aiart-runner] model_set ' + JSON.stringify({ ok: true, modelId }) + '\n')
       continue
     }
@@ -659,6 +712,7 @@ async function runPersistent(ctx, io) {
     }
     io.stderr.write('[aiart-runner] unknown op: ' + String(op) + '\n')
   }
+  await releaseAgentSlot(agentSlot)
   io.exit(0)
 }
 
@@ -679,7 +733,7 @@ async function runOnce(ctx, task, io) {
   await ctx.get('loader')?.await()
   const defaultModel = ctx.get('agentDefaultModel')
   if (defaultModel === void 0) return
-  const agentSlot = { agent: undefined, sessionId: '', model: '', provider: '' }
+  const agentSlot = { handle: undefined, sessionId: '', model: '', provider: '' }
   const selection = defaultModel.currentSelection()
   const outcome = await runOneTurn(ctx, io, {
     task,
@@ -690,6 +744,7 @@ async function runOnce(ctx, task, io) {
     answerAskUserQuestion,
     agentSlot
   })
+  await releaseAgentSlot(agentSlot)
   io.exit(outcome.reason?.kind === 'completed' ? 0 : 1)
 }
 
