@@ -105,7 +105,7 @@ npm run dist:linux  # Linux
 - **双 addon 兼容** — 同时支持**社区方案** [blender-mcp](https://github.com/ahujasid/blender-mcp) 的 `addon.py` 与**官方方案** [Blender Lab「MCP Server」](https://projects.blender.org/lab/blender_mcp) 扩展，在「设置 → MCP → Blender 工具集」里切换；两种后端下工具名、入参、输出结构**完全一致**，模型侧无感
 - **零额外依赖** — 不装 uv、不起 Python 子进程、不改 Blender 配置：应用主动出站连 addon 的 `localhost:9876` 监听端口；安装包 / 仓库 / 容器环境开箱即用
 - **应用内对话 + 外部 Agent 同源** — 工作区左侧 ◈ AI 对话面板（在聊天里说「用 Blender 把这几个 Cube 拼成底座，做完截张图」）与 Claude Code / Codex 等外部 Agent 走**同一套** Blender 工具集；设置里关掉即整组从工具清单里消失，主工具集不受影响；面板的 Ask / Plan 模式同样约束 Blender 工具 —— 它不是绕过面板模式的侧门
-- **安全护栏** — `execute_blender_code` 走词法护栏（拒绝 `os` / `subprocess` / 网络模块、`open` / `__import__` 逃脱链、装饰器 / `class` / `type()` 造类等结构性写法；渲染 / 保存 / 导入导出等 bpy 操作符不受限）；截图走一次性临时文件、画面只随 MCP 响应回给多模态客户端，不落工程也不进审计日志
+- **模式兜底与截图边界** — `execute_blender_code` **不再做词法护栏**（可使用完整 Python / bpy 能力）；写入仍由 Ask / Plan 在请求级收窄。截图走一次性临时文件，画面只随 MCP 响应回给多模态客户端，不落工程也不进审计日志
 
 详细工具清单、协议细节与安全设计见 [MCP 接入指南](./docs/MCP.md#⑤- blender-工具集可选需要本机-blender) / [MCP 接入教程](https://justin-sky.github.io/ai-art-engine/guide-mcp.html#blender)。
 

@@ -85,7 +85,7 @@ export const BLENDER_JOB_META_PREFIX = 'AIAE_JOB_META:'
 
 /**
  * 收尾时由主进程执行：从当前 Blender 场景读 armature / pose / action。
- * 禁止 open()——safe mode 会拦，overlay 由本进程写 result.json。
+ * 不要用 open() 写 result.json——overlay 由本进程写；脚本侧用 print / bpy 即可。
  */
 export const BLENDER_JOB_READBACK_CODE = [
   'import bpy',

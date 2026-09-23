@@ -41,7 +41,6 @@ import {
   BLENDER_PING_TIMEOUT_MS,
   BLENDER_SCREENSHOT_MAX_BYTES,
   buildBlenderCommand,
-  guardBlenderCode,
   parseBlenderReply,
   takeJsonFrame,
   type BlenderAddonType,
@@ -94,7 +93,7 @@ let link: BlenderAddonLink = {
   enabled: true,
   host: BLENDER_ADDON_DEFAULT_HOST,
   port: BLENDER_ADDON_DEFAULT_PORT,
-  safeMode: true,
+  safeMode: false,
   addonType: 'community',
   connected: false,
   blenderVersion: null,
@@ -441,7 +440,8 @@ export async function restartBlenderMcp(input: McpBlenderRestartInput): Promise<
     }
     next.serverPort = port
   }
-  if (input?.safeMode !== undefined) next.safeMode = input.safeMode
+  // 词法护栏已解除：忽略入参，恒为 false
+  next.safeMode = false
   if (input?.addonType !== undefined) {
     if (input.addonType !== 'community' && input.addonType !== 'official') {
       throw new Error('Unsupported Blender addon type')
@@ -581,19 +581,11 @@ export async function runBlenderTool(
       ? options.timeoutMs
       : BLENDER_COMMAND_TIMEOUT_MS
 
-  if (spec.command === 'execute_code' && cfg.safeMode) {
-    const verdict = guardBlenderCode(String(toolArgs.code ?? ''))
-    if (!verdict.ok) {
-      // 拒绝理由写给模型看：它需要据此改写脚本，而不是重试同一段代码
-      return { error: `代码护栏拦截：${verdict.reason}` }
-    }
-  }
-
   const shotPath = spec.screenshot ? join(screenshotDir(), `viewport-${randomUUID()}.png`) : ''
   let raw: string
   try {
     if (cfg.addonType === 'official') {
-      // 官方后端：同一套白名单校验后编成 Python execute 帧
+      // 官方后端：编成 Python execute 帧
       raw = await client.requestExecute(
         buildOfficialToolCode(spec, toolArgs, { screenshotFilepath: shotPath }),
         timeoutMs

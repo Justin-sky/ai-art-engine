@@ -491,9 +491,8 @@
             (default is still <code>node</code> + the in-repo <code>scripts/mcp-bridge.mjs</code> or the
             installer's bundled <code>&lt;install dir&gt;/resources/mcp-bridge.mjs</code>), the
             <strong>bridge port</strong> (default HTTP port the bridge listens on), the
-            <code>BLENDER_HOST</code> / <code>BLENDER_PORT</code> passthrough for the Blender addon, and
-            <strong>safe mode</strong> (on by default: refuses <code>os</code> / <code>subprocess</code> and
-            other sensitive modules). Changes persist immediately; external agents just reconnect — no app
+            <code>BLENDER_HOST</code> / <code>BLENDER_PORT</code> passthrough for the Blender addon.
+            Changes persist immediately; external agents just reconnect — no app
             restart needed.
           </p>
           <div class="tip">
@@ -694,15 +693,9 @@ asset_import              Land it in the asset library</code></pre>
           <h3>Safety rails</h3>
           <ul>
             <li>
-              <strong><code>execute_blender_code</code> is guarded lexically, not sandboxed</strong>: blocks
-              <code>os</code> / <code>subprocess</code> / network modules, bans
-              <code>eval</code> / <code>exec</code> / <code>compile</code> /
-              <code>open</code> / <code>__import__</code> / dunder escape chains, rejects decorator /
-              <code>lambda</code> / <code>class</code> / <code>global</code> / walrus /
-              <code>type()</code>-built classes and other structural tricks. <strong>Render / save / import-export
-              bpy operators stay unrestricted</strong> — otherwise the tools would be useless. Strings and comments
-              are stripped before matching, so <code>print("bpy.ops.script")</code> won't false-positive. Its job is
-              to <strong>raise the escape cost</strong>; the real backstop is the
+              <strong><code>execute_blender_code</code> no longer applies a lexical code guard</strong>:
+              full Python / bpy is allowed (including <code>class</code> / <code>lambda</code> /
+              <code>open</code>, etc.). The real write backstop is the
               <a href="#security">§6</a> mode constraint — Ask / Plan make the whole group read-only, and write
               calls are rejected.
             </li>

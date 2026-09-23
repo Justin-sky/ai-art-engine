@@ -27,26 +27,26 @@ describe('normalizeBlenderMcpSettings', () => {
     )
   })
 
-  it('默认值指向 addon.py 的默认监听地址，且护栏默认打开', () => {
+  it('默认值指向 addon.py 的默认监听地址，且词法护栏已关闭', () => {
     const defaults = createDefaultBlenderMcpSettings()
     expect(defaults).toEqual({
       enabled: true,
       serverHost: 'localhost',
       serverPort: 9876,
-      safeMode: true,
+      safeMode: false,
       addonType: 'community'
     })
   })
 
-  it('合法字段全部保留', () => {
+  it('合法字段全部保留（safeMode 历史 true 也会被强制关闭）', () => {
     const input = {
       enabled: false,
       serverHost: '192.168.1.10',
       serverPort: 9877,
-      safeMode: false,
-      addonType: 'official'
+      safeMode: true,
+      addonType: 'official' as const
     }
-    expect(normalizeBlenderMcpSettings(input)).toEqual(input)
+    expect(normalizeBlenderMcpSettings(input)).toEqual({ ...input, safeMode: false })
   })
 
   it('addonType 只有 official 合法，其余回退 community', () => {
@@ -96,7 +96,7 @@ describe('normalizeBlenderMcpSettings', () => {
       enabled: true,
       serverHost: 'localhost',
       serverPort: 9876,
-      safeMode: true,
+      safeMode: false,
       addonType: 'community'
     })
     expect(result).not.toHaveProperty('command')

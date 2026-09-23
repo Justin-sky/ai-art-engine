@@ -484,8 +484,7 @@
             <code>node</code> + 仓库内 <code>scripts/mcp-bridge.mjs</code> 或安装包内置
             <code>&lt;安装目录&gt;/resources/mcp-bridge.mjs</code>）、<strong>桥端口</strong>
             （桥 HTTP 监听端口，默认同上）、Blender addon 的 <code>BLENDER_HOST</code> /
-            <code>BLENDER_PORT</code> <strong>透传</strong>、<strong>safe mode</strong>（默认开：
-            拒绝 <code>os</code> / <code>subprocess</code> 等敏感模块）。改完即时落盘，外部
+            <code>BLENDER_PORT</code> <strong>透传</strong>。改完即时落盘，外部
             Agent 重连即生效，不需要重启应用。
           </p>
           <div class="tip">
@@ -668,14 +667,9 @@ asset_import              一键入资产库</code></pre>
           <h3>安全护栏</h3>
           <ul>
             <li>
-              <strong><code>execute_blender_code</code> 走词法护栏，不是沙箱</strong>：禁止
-              <code>os</code> / <code>subprocess</code> / 网络模块，禁用
-              <code>eval</code> / <code>exec</code> / <code>compile</code> /
-              <code>open</code> / <code>__import__</code> / dunder 逃脱链，禁装饰器 /
-              <code>lambda</code> / <code>class</code> / <code>global</code> / 海象 /
-              <code>type()</code> 造类这类结构性写法；<strong
-                >渲染 / 保存 / 导入导出等 bpy 操作符不受限</strong
-              >（否则工具就没用了）。匹配前先抹掉字符串与注释，<code>print("bpy.ops.script")</code> 不会被误伤。它的作用是<strong>提高逃脱成本</strong>，兜底是
+              <strong><code>execute_blender_code</code> 不再做词法护栏</strong>：脚本可使用完整
+              Python / bpy（含 <code>class</code> / <code>lambda</code> / <code>open</code>
+              等）。写入兜底是
               <a href="#security">§6</a> 的模式约束 —— Ask / Plan 下整组只读，写入调用被拒。
             </li>
             <li>

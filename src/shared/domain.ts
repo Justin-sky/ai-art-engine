@@ -538,11 +538,9 @@ export interface BlenderMcpSettings {
   /** Blender addon socket 端口（addon.py 默认 9876） */
   serverPort: number
   /**
-   * 代码护栏（safe mode）：开启时 execute_blender_code 只放行 bpy / bmesh / mathutils
-   * 与纯 Python 标准库，并禁用 eval/exec/open、os/subprocess、handlers/timers、类注册等。
-   *
-   * 注意：这是**词法护栏，不是沙箱**——规则与差异见 shared/blenderMcp.ts 的 guardBlenderCode。
-   * 真正的兜底是对话模式在 MCP 请求级收窄工具面（Ask / Plan，见 shared/mcpModeAccess.ts）。
+   * 历史字段：曾表示 execute_blender_code 词法护栏。
+   * 现已固定为 false（不再拦截）；保留以免旧 settings.json 解析报错。
+   * 写入兜底仍靠对话 Ask / Plan 模式（mcpModeAccess）。
    */
   safeMode: boolean
   /**
@@ -2140,7 +2138,7 @@ export function createDefaultBlenderMcpSettings(): BlenderMcpSettings {
     enabled: true,
     serverHost: BLENDER_ADDON_DEFAULT_HOST,
     serverPort: BLENDER_ADDON_DEFAULT_PORT,
-    safeMode: true,
+    safeMode: false,
     addonType: 'community'
   }
 }
@@ -2162,7 +2160,8 @@ export function normalizeBlenderMcpSettings(raw: unknown): BlenderMcpSettings {
     const n = Math.trunc(obj.serverPort)
     if (n >= 1 && n <= 65535) serverPort = n
   }
-  const safeMode = typeof obj.safeMode === 'boolean' ? obj.safeMode : defaults.safeMode
+  // 词法护栏已解除：一律关闭，忽略历史 settings 里的 true
+  const safeMode = false
   const enabled = typeof obj.enabled === 'boolean' ? obj.enabled : defaults.enabled
   const addonType: BlenderAddonType = obj.addonType === 'official' ? 'official' : 'community'
   return { enabled, serverHost, serverPort, safeMode, addonType }

@@ -362,12 +362,6 @@
           </label>
         </div>
 
-        <label class="check">
-          <input v-model="form.blenderMcp.safeMode" type="checkbox" :disabled="blenderBusy" />
-          <span>{{ t('settings.mcp.blender.safeMode') }}</span>
-        </label>
-        <p class="hint">{{ t('settings.mcp.blender.safeModeHint') }}</p>
-
         <div class="mcp-row">
           <button
             type="button"

@@ -256,9 +256,9 @@ export const IpcChannels = {
   MCP_RESTART: 'mcp:restart',
   /** MCP：查询 stdio→HTTP 桥（blender-mcp 等第三方 stdio MCP server）当前状态 */
   MCP_BLENDER_GET_INFO: 'mcp:blender-get-info',
-  /** MCP：应用 blender 桥配置（命令 / 参数 / addon socket / safe mode / 桥端口）并重启 */
+  /** MCP：应用 blender addon 连接配置并重连 */
   MCP_BLENDER_RESTART: 'mcp:blender-restart',
-  /** MCP：UI 直接调用一个 Blender 工具（限于 BLENDER_TOOLS 内已登记工具；safe mode 在主进程硬约束） */
+  /** MCP：UI 直接调用一个 Blender 工具（限于 BLENDER_TOOLS 内已登记工具） */
   MCP_BLENDER_RUN_TOOL: 'mcp:blender-run-tool',
   /** MCP：主进程推送旁路生成活动（生成中 / 完成 / 失败，任务列表与执行日志可见） */
   MCP_ACTIVITY_UPDATED: 'mcp:activity-updated',
@@ -708,7 +708,7 @@ export interface McpBlenderBridgeInfo {
   serverHost: string
   /** addon socket 端口 */
   serverPort: number
-  /** 是否开启代码护栏（safe mode）：开启时 execute_blender_code 只放行白名单写法 */
+  /** 历史字段：词法护栏已解除，归一化后恒为 false */
   safeMode: boolean
   /** 最近一次探活是否成功（缓存值：UI 可立即读，真值由后台探活按 TTL 刷新） */
   connected: boolean
@@ -732,7 +732,7 @@ export interface McpBlenderRestartInput {
   serverHost?: string
   /** addon socket 端口（不传则保留 settings 现有值，默认 9876） */
   serverPort?: number
-  /** 是否开启代码护栏（safe mode） */
+  /** 历史字段：词法护栏已解除，归一化后恒为 false */
   safeMode?: boolean
   /**
    * Blender 端 addon 方言：`community`（ahujasid/blender-mcp 的 addon.py，裸 JSON 帧）
@@ -1374,7 +1374,7 @@ export interface StudioApi {
   restartBlenderMcp: (input: McpBlenderRestartInput) => Promise<McpBlenderBridgeInfo>
 
   /**
-   * MCP：直接调用一个 Blender 工具（限于 BLENDER_TOOLS 中已登记的工具；safe mode 在主进程硬约束）。
+   * MCP：直接调用一个 Blender 工具（限于 BLENDER_TOOLS 中已登记的工具）。
    * UI 侧典型用途：3D 导演台 AI 姿势生成把渲染层拼好的 Python 脚本送进 Blender 跑，再读 stdout 拿回 bone 旋转。
    */
   runBlenderMcpTool: (input: RunBlenderMcpToolInput) => Promise<McpToolCallOutcome>
