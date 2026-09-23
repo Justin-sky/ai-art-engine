@@ -1267,6 +1267,7 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
             {{ t('graph.inspector.outputPreviewMissing') }}
           </p>
           <div class="preview-actions">
+            <slot name="preview-actions-start" />
             <PreviewSaveToLibraryButton
               v-if="canSave(itemSavePath(item))"
               :can-save="true"
@@ -1298,6 +1299,7 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
           @click.capture="selectAsCurrentOutputCapture(item, $event)"
         >
           <div class="card-actions">
+            <slot name="preview-actions-start" :compact="true" />
             <PreviewSaveToLibraryButton
               v-if="canSave(itemSavePath(item))"
               compact
@@ -1391,6 +1393,7 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
           {{ t('graph.inspector.outputPreviewMissing') }}
         </p>
         <div class="preview-actions">
+          <slot name="preview-actions-start" />
           <PreviewSaveToLibraryButton
             v-if="canSave(itemSavePath(item))"
             :can-save="true"
@@ -1423,6 +1426,7 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
         @click.capture="selectAsCurrentOutputCapture(item, $event)"
       >
         <div class="card-actions">
+          <slot name="preview-actions-start" :compact="true" />
           <PreviewSaveToLibraryButton
             v-if="canSave(itemSavePath(item))"
             compact

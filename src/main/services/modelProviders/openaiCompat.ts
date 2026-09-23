@@ -109,6 +109,13 @@ const E_TEXT_SERVER_INTERNAL = defErr<{ requestId?: string }>(
     `Server-side internal error${requestId ? ` (Request id: ${requestId})` : ''}; please retry later`
 )
 
+/** 502/504：上游网关超时（OpenRouter / CDN / 反向代理常见），不是本地 axios 超时 */
+const E_TEXT_GATEWAY_TIMEOUT = defErrSimple(
+  'provider.openai-compat.text-gateway-timeout',
+  '上游网关超时（HTTP 504/502）。常见于长提示词或慢模型（如复杂 SVG / 长文生成）。请缩短指令后重试，或换更快的文本模型；若频繁出现请检查 OpenRouter / 代理网络。',
+  'Upstream gateway timeout (HTTP 504/502). Common with long prompts or slow models (e.g. complex SVG / long text). Shorten the instruction and retry, or switch to a faster text model; if it keeps happening, check OpenRouter / proxy network.'
+)
+
 const E_TEXT_GENERATE_FAILED = defErr<{ detail: string }>(
   'provider.openai-compat.text-generate-failed',
   ({ detail }) => `文本生成失败: ${detail}`,
@@ -222,7 +229,9 @@ function isRetryableTextError(err: unknown): boolean {
     return true
   }
   const status = axiosErr.response?.status
-  if (status === 500 || status === 502 || status === 503 || status === 529) return true
+  // 504/502 多为网关空等上游超时，值得有限次重试
+  if (status === 500 || status === 502 || status === 503 || status === 504 || status === 529)
+    return true
   const raw = axiosErr.response?.data as
     { error?: { code?: string; message?: string } | string; message?: string } | undefined
   const code = raw?.error && typeof raw.error === 'object' ? String(raw.error.code ?? '') : ''
@@ -287,6 +296,10 @@ async function formatTextGenerateFailure(
   const tosHint = explainProviderTosDenial(raw, provider.baseUrl)
   if (tosHint) return tosHint
 
+  if (status === 504 || status === 502) {
+    return fail(E_TEXT_GATEWAY_TIMEOUT).message
+  }
+
   if (
     status === 500 ||
     /InternalServiceError/i.test(code) ||
@@ -311,7 +324,8 @@ export async function generateOpenAiCompatibleText(
 ): Promise<GenerateTextResult> {
   const client = createProviderHttpClient(provider, LONG_GENERATE_TIMEOUT_MS)
   const messages = buildChatMessages(input)
-  const retries = Math.max(0, options?.retries ?? (isVolcengineArkProvider(provider) ? 2 : 0))
+  // 默认重试 2 次：覆盖 OpenRouter 等网关的瞬时 502/504；方舟仍用同一套次数
+  const retries = Math.max(0, options?.retries ?? 2)
   const ark = isVolcengineArkProvider(provider)
 
   let lastError: unknown

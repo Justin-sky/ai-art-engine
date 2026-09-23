@@ -83,32 +83,73 @@
       :host-id="hostId"
       clearable
       @clear-output="onClearOutput"
-    />
+    >
+      <template #preview-actions-start="{ compact }">
+        <button
+          v-if="canExportGif"
+          type="button"
+          class="gif-chip"
+          :class="{ compact: !!compact, busy: gifBusy }"
+          :disabled="gifBusy"
+          :title="t('graph.svgGen.exportGifHint')"
+          :aria-label="t('graph.svgGen.exportGif')"
+          @click.stop="openGifSave"
+        >
+          {{ gifBusy ? t('graph.svgGen.exportGifBusy') : t('graph.svgGen.exportGif') }}
+        </button>
+      </template>
+    </GraphNodeOutputPreview>
+    <p v-if="gifError" class="hint err">
+      {{ gifError }}
+    </p>
+    <p v-else-if="gifStatus" class="hint">
+      {{ gifStatus }}
+    </p>
   </div>
   <div v-else class="node-inspector empty">
     {{ t('graph.inspector.node.empty') }}
   </div>
+
+  <SaveAssetDialog
+    ref="gifSaveRef"
+    :open="gifSaveOpen"
+    :default-name="gifSaveDefaultName"
+    :title="t('graph.svgGen.exportGifTitle')"
+    :subtitle="t('graph.svgGen.exportGifSubtitle')"
+    :z-index="2600"
+    @confirm="onGifSaveConfirm"
+    @cancel="closeGifSave"
+  />
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import {
+  DEFAULT_SVG_ANIM_STATE,
+  SVG_ANIM_FRAMES_DEFAULT,
   SVG_GEN_SIZE_MAX,
   SVG_GEN_SIZE_MIN,
+  extractSvgMarkup,
   readSvgGenFromNode,
   resolveSvgGenSystemPrompt
 } from '@shared/graph'
+import { resolveCacheOutputRoot } from '@shared/domain'
 import GraphNodeRunControl from './GraphNodeRunControl.vue'
 import GraphNodeOutputPreview from './GraphNodeOutputPreview.vue'
+import SaveAssetDialog from './SaveAssetDialog.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useNodeDisplayTitle } from '../composables/useNodeDisplayTitle'
 import { useGraphNodeRun } from '../composables/useGraphNodeRun'
 import { useEditorKernel } from '../editor/kernel'
+import { useProjectStore } from '../stores/project'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import { graphRunHosts } from '../features/graph/model/graphRunHosts'
+import { composeAnim2dGif } from '../features/graph/model/composeAnim2dGif'
+import { renderSvgFrames } from '../features/graph/model/renderSvgFrames'
 
 const { t, locale, graphTypeLabel } = useStudioI18n()
 const editor = useEditorKernel()
+const project = useProjectStore()
 
 const node = computed(() => {
   void graphEditorHosts.revision.value
@@ -135,6 +176,19 @@ const state = computed(() =>
 )
 const instruction = ref('')
 const systemPrompt = ref('')
+
+/** 当前选中的 SVG 源码（预览同款） */
+const selectedSvgText = computed(() => {
+  const params = node.value?.params
+  if (!params) return ''
+  const items = Array.isArray(params.generatedSvgs) ? params.generatedSvgs : []
+  if (!items.length) return ''
+  const selectedId = params.selectedSvgId?.trim()
+  const item = (selectedId ? items.find((row) => row.id === selectedId) : null) ?? items[0]
+  return extractSvgMarkup(item?.text?.trim() || '')
+})
+
+const canExportGif = computed(() => selectedSvgText.value.length > 0)
 
 watch(
   () => node.value?.params.generateInstruction,
@@ -195,7 +249,109 @@ function onClearOutput(): void {
     previewDataUrl: undefined,
     previewRelativePath: ''
   })
+  gifStatus.value = ''
+  gifError.value = ''
 }
+
+const gifBusy = ref(false)
+const gifStatus = ref('')
+const gifError = ref('')
+const gifSaveOpen = ref(false)
+const gifSaveDefaultName = ref('svg-gen-gif')
+const gifSaveRef = ref<InstanceType<typeof SaveAssetDialog> | null>(null)
+const gifSaving = ref(false)
+
+function openGifSave(): void {
+  if (!canExportGif.value || gifBusy.value) return
+  gifError.value = ''
+  gifSaveDefaultName.value = 'svg-gen-gif'
+  gifSaveOpen.value = true
+}
+
+function closeGifSave(): void {
+  if (gifSaving.value) return
+  gifSaveOpen.value = false
+}
+
+/**
+ * 把当前预览 SVG 按 SMIL 时间轴烘焙成帧再合成 GIF，落盘并登记到所选资产目录。
+ * 静态 SVG（无动效）会提示无法导出。
+ */
+async function onGifSaveConfirm(payload: { name: string; folderId: string | null }): Promise<void> {
+  if (!node.value || gifSaving.value) return
+  const svgText = selectedSvgText.value
+  if (!svgText) return
+  gifSaving.value = true
+  gifBusy.value = true
+  gifStatus.value = ''
+  gifError.value = ''
+  gifSaveRef.value?.setSaving(true)
+  try {
+    const gen = state.value
+    const rendered = await renderSvgFrames({
+      svgText,
+      state: {
+        ...DEFAULT_SVG_ANIM_STATE,
+        frames: SVG_ANIM_FRAMES_DEFAULT,
+        durationSec: 0,
+        width: gen.width,
+        height: gen.height,
+        background: gen.background
+      }
+    })
+    if (!rendered.animated || rendered.frameCount < 2 || rendered.fps <= 0) {
+      const message = t('graph.svgGen.exportGifStatic')
+      gifError.value = message
+      gifSaveRef.value?.setError(message)
+      return
+    }
+    const gif = await composeAnim2dGif({
+      frameUrls: rendered.frameUrls,
+      fps: rendered.fps,
+      loop: true
+    })
+    if (!gif) throw new Error('SVG_GEN_GIF_NO_FRAMES')
+    const cacheRoot = resolveCacheOutputRoot(project.config?.cacheOutputDir)
+    const stagedPath = await window.studio.saveGraphRunMedia({
+      dataUrl: gif.dataUrl,
+      key: `svg-gen-gif-${Date.now()}`,
+      outputDir: `${cacheRoot}/Gifs`
+    })
+    if (!(await window.studio.projectFileExists(stagedPath))) {
+      const name = stagedPath.split('/').pop() || stagedPath
+      gifSaveRef.value?.setSourceMissing(stagedPath)
+      gifSaveRef.value?.setError(t('dialog.saveAsset.sourceMissing', { name }))
+      return
+    }
+    const asset = await window.studio.saveProjectAsset({
+      relativePath: stagedPath,
+      name: payload.name,
+      folderId: payload.folderId
+    })
+    await project.scheduleRefreshLibrary()
+    gifSaveOpen.value = false
+    gifStatus.value = t('graph.svgGen.exportGifDone', {
+      path: asset.relativePath || asset.name
+    })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    gifError.value = message
+    gifSaveRef.value?.setError(message)
+  } finally {
+    gifSaving.value = false
+    gifBusy.value = false
+    gifSaveRef.value?.setSaving(false)
+  }
+}
+
+watch(
+  () => node.value?.id ?? '',
+  () => {
+    if (!gifSaving.value) gifSaveOpen.value = false
+    gifStatus.value = ''
+    gifError.value = ''
+  }
+)
 </script>
 
 <style scoped>
@@ -226,6 +382,42 @@ function onClearOutput(): void {
   line-height: 1.5;
 }
 
+.hint.err {
+  color: var(--danger);
+}
+
+.gif-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
+  padding: 3px 8px;
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.gif-chip.compact {
+  padding: 2px 6px;
+  font-size: 10px;
+}
+
+.gif-chip:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--bg-hover);
+}
+
+.gif-chip:disabled,
+.gif-chip.busy {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .config-row {
   display: flex;
   gap: 8px;
@@ -245,10 +437,6 @@ function onClearOutput(): void {
 .field :is(input, select, textarea) {
   width: 100%;
   box-sizing: border-box;
-}
-
-.field-note {
-  color: var(--text-muted);
 }
 
 .instruction {

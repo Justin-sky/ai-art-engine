@@ -3440,7 +3440,16 @@ export default {
       instruction: '生成指令',
       instructionPlaceholder: "描述要生成的矢量图；可用 {'@'} 引用上方连线资源",
       systemPrompt: '系统提示词',
-      systemPromptPlaceholder: '定义模型角色与输出规范；留空则使用内置默认'
+      systemPromptPlaceholder: '定义模型角色与输出规范；留空则使用内置默认',
+      exportGif: '保存 GIF',
+      exportGifBusy: '正在合成 GIF…',
+      exportGifDone: '已保存 GIF：{path}',
+      exportGifNote: '将当前预览 SVG 按 SMIL 动效烘焙为 GIF，并保存到资产库',
+      exportGifHint: '选择资产库目录并命名后保存',
+      exportGifTitle: '保存 GIF 到资产库',
+      exportGifSubtitle: '选择资产库目录并命名，保存后自动登记为图片资产',
+      exportGifStatic:
+        '当前 SVG 没有可烘焙的 SMIL 动效，无法导出 GIF（请生成含 animate / animateTransform 的动画）'
     },
     gameHtmlGen: {
       inspectorHint:

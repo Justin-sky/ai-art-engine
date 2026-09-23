@@ -3519,7 +3519,17 @@ export default {
         "Describe the vector art to generate; use {'@'} to cite connected inputs",
       systemPrompt: 'System prompt',
       systemPromptPlaceholder:
-        'Define the model role and output rules; leave empty to use the built-in default'
+        'Define the model role and output rules; leave empty to use the built-in default',
+      exportGif: 'Save GIF',
+      exportGifBusy: 'Composing GIF…',
+      exportGifDone: 'GIF saved: {path}',
+      exportGifNote: 'Bake the preview SVG’s SMIL animation into a GIF and save it to the library',
+      exportGifHint: 'Pick a library folder and a name',
+      exportGifTitle: 'Save GIF to library',
+      exportGifSubtitle:
+        'Choose a library folder and name; the GIF is registered as an image asset',
+      exportGifStatic:
+        'This SVG has no bakeable SMIL animation, so a GIF cannot be exported (generate animate / animateTransform motion first)'
     },
     gameHtmlGen: {
       inspectorHint:
