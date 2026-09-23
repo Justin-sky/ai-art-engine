@@ -278,6 +278,8 @@ export const IpcChannels = {
   HARNESS_RUN_WAIT: 'harness:run-wait',
   /** Harness：中止当前任务 */
   HARNESS_ABORT: 'harness:abort',
+  /** Harness：闲时预热常驻 dsh（Chat 面板打开时） */
+  HARNESS_PREWARM: 'harness:prewarm',
   /** 图节点：准备 Blender dsh 作业目录 */
   BLENDER_DSH_PREPARE: 'blender-dsh:prepare',
   /** 图节点：对人形蒙皮跑硬 QA（不导出） */
@@ -1412,6 +1414,9 @@ export interface StudioApi {
 
   /** Harness：中止当前任务 */
   abortHarnessTask: () => Promise<void>
+
+  /** Harness：闲时预热常驻 dsh worker */
+  prewarmHarness: () => Promise<{ ok: boolean; message?: string }>
 
   /** Skills：查询 dsh 自定义技能目录信息 */
   getDshSkillsInfo: () => Promise<DshSkillsInfo>

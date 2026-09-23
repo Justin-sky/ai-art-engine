@@ -819,7 +819,8 @@ export default {
     chat: {
       empty:
         '向 DeepSeek Harness 描述任务，它会通过 MCP 调用本应用的生成工具（图片 / 视频 / 语音 / 3D 等）。',
-      placeholder: "输入任务，Enter 发送，Shift+Enter 换行；{'@'} 引用资产，支持粘贴截图/图片",
+      placeholder:
+        "输入任务，Enter 发送，Shift+Enter 换行；{'@'} 引用资产，支持粘贴截图/图片；/ 查看指令",
       send: '发送',
       stop: '停止',
       ready: '就绪',
@@ -854,6 +855,12 @@ export default {
       newSession: '新建',
       deleteSession: '删除',
       deleteConfirm: '删除该会话？历史消息将一并移除，且不可恢复。',
+      cleared: '已清除上下文，开启全新会话。',
+      resizeComposer: '拖动调节输入框高度',
+      slashMenu: '指令',
+      slashClearDesc: '清除上下文，开启全新会话',
+      slashModelDesc: '打开模型选择列表',
+      slashEmpty: '没有匹配的指令',
       // 注意：vue-i18n 会把消息开头（token 起始）的 @ 解析为 linked format，须用 {'@'} 转义
       // 按钮仅保留 @ 符号，完整说明放 title（mentionTitle）
       mentionButton: "{'@'}",

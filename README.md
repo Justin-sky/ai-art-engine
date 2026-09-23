@@ -1,3 +1,5 @@
+**交流 QQ 群：`346340389` · `647306826`** · 喜欢就点个 ⭐ [Star](https://github.com/Justin-sky/ai-art-engine)
+
 <div align="center">
   <img src="docs/assets/logo-mark.png" alt="" width="96" />
 
@@ -242,10 +244,7 @@ npm run typecheck && npm test
 - **国内镜像**：阿里云 OSS 静态托管（自定义域名 / `publicBaseUrl`）
 - **GitHub**：[Justin-sky/ai-art-engine](https://github.com/Justin-sky/ai-art-engine)
 - **Gitee**：[beijing_blue_whale_era_zhangjian/ai-art-engine](https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine)
-- **QQ 群**：647306826（扫码入群）
-
-  <img src="docs/assets/qq-group.png" alt="AIArtEngine QQ 群二维码" width="220" />
-
+- **QQ 群**：`346340389` · `647306826`
 - **邮箱**：[284139554@qq.com](mailto:284139554@qq.com)
 
 ---
@@ -259,10 +258,3 @@ npm run typecheck && npm test
 ## License
 
 [GPL-3.0](./LICENSE) — 修改并再分发时，衍生作品需以相同协议开源。
-
----
-
-<div align="center">
-  <p>如果这个项目对你有帮助，请点一颗 ⭐ Star</p>
-  <img src="docs/assets/logo-mark.png" alt="" width="40" />
-</div>

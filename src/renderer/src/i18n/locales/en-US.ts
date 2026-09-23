@@ -834,7 +834,7 @@ export default {
       empty:
         'Describe a task to DeepSeek Harness; it can call this app\u2019s generation tools (image / video / voice / 3D) over MCP.',
       placeholder:
-        "Type a task. Enter to send, Shift+Enter for a new line; {'@'} references assets, paste screenshots/images",
+        "Type a task. Enter to send, Shift+Enter for a new line; {'@'} references assets, paste screenshots/images; / for commands",
       send: 'Send',
       stop: 'Stop',
       ready: 'Ready',
@@ -870,6 +870,12 @@ export default {
       newSession: 'New',
       deleteSession: 'Delete',
       deleteConfirm: 'Delete this session? Its history will be removed and cannot be restored.',
+      cleared: 'Context cleared. Starting a fresh session.',
+      resizeComposer: 'Drag to resize the input box',
+      slashMenu: 'Commands',
+      slashClearDesc: 'Clear context and start a fresh session',
+      slashModelDesc: 'Open the model picker',
+      slashEmpty: 'No matching commands',
       // Note: vue-i18n parses a leading @ in a message as linked format; escape it with {'@'}
       // Button shows only @, full label lives in title (mentionTitle)
       mentionButton: "{'@'}",

@@ -46,7 +46,64 @@ import SaveAssetDialog from './SaveAssetDialog.vue'
 
 const CHAT_MODEL_KEY = 'studio.chat.model'
 const CHAT_MODE_KEY = 'studio.chat.mode'
+const CHAT_COMPOSER_HEIGHT_KEY = 'studio.chat.composerHeight'
 const CHAT_MODES: ChatMode[] = ['craft', 'ask', 'plan']
+const COMPOSER_HEIGHT_MIN = 64
+const COMPOSER_HEIGHT_MAX = 420
+const COMPOSER_HEIGHT_DEFAULT = 64
+
+function readComposerHeight(): number {
+  try {
+    const n = Number(localStorage.getItem(CHAT_COMPOSER_HEIGHT_KEY))
+    if (Number.isFinite(n)) {
+      return Math.min(COMPOSER_HEIGHT_MAX, Math.max(COMPOSER_HEIGHT_MIN, Math.round(n)))
+    }
+  } catch {
+    /* ignore */
+  }
+  return COMPOSER_HEIGHT_DEFAULT
+}
+
+/** 输入框可拖高度（向上拖变高），记住用户偏好 */
+const composerHeight = ref(readComposerHeight())
+let composerResizeStartY = 0
+let composerResizeStartH = COMPOSER_HEIGHT_DEFAULT
+
+function onComposerResizePointerDown(event: PointerEvent): void {
+  if (event.button !== 0) return
+  event.preventDefault()
+  const handle = event.currentTarget
+  if (!(handle instanceof HTMLElement)) return
+  handle.setPointerCapture(event.pointerId)
+  composerResizeStartY = event.clientY
+  composerResizeStartH = composerHeight.value
+  handle.classList.add('dragging')
+}
+
+function onComposerResizePointerMove(event: PointerEvent): void {
+  const handle = event.currentTarget
+  if (!(handle instanceof HTMLElement) || !handle.hasPointerCapture(event.pointerId)) return
+  // 向上拖 → clientY 变小 → 高度增加
+  const next = composerResizeStartH + (composerResizeStartY - event.clientY)
+  composerHeight.value = Math.min(
+    COMPOSER_HEIGHT_MAX,
+    Math.max(COMPOSER_HEIGHT_MIN, Math.round(next))
+  )
+}
+
+function onComposerResizePointerUp(event: PointerEvent): void {
+  const handle = event.currentTarget
+  if (!(handle instanceof HTMLElement)) return
+  if (handle.hasPointerCapture(event.pointerId)) {
+    handle.releasePointerCapture(event.pointerId)
+  }
+  handle.classList.remove('dragging')
+  try {
+    localStorage.setItem(CHAT_COMPOSER_HEIGHT_KEY, String(composerHeight.value))
+  } catch {
+    /* ignore */
+  }
+}
 
 const { t } = useStudioI18n()
 
@@ -58,6 +115,7 @@ const {
   load: loadHistory,
   persist: persistHistory,
   create: createSession,
+  rotateActive: rotateActiveSession,
   remove: removeSession,
   activate: activateSession,
   commitMessages,
@@ -110,6 +168,175 @@ function onNewSession(): void {
   void nextTick(() => inputRef.value?.focus())
 }
 
+/**
+ * `/clear`：清空当前对话上下文并换新 session id（不保留旧消息进历史列表位）。
+ * 同步删除 dsh 磁盘会话，避免下一句被幽灵 resume。
+ */
+async function onClearCommand(): Promise<void> {
+  // 挡住中止过程中迟到的 harness 事件，避免污染新会话
+  ignoreHarnessEvents = true
+  try {
+    if (running.value) {
+      await window.studio.abortHarnessTask()
+      running.value = false
+    }
+    resetEditor()
+    referenced.value = []
+    pendingReasoning = ''
+    const oldId = rotateActiveSession()
+    if (oldId && typeof window.studio?.deleteHarnessSession === 'function') {
+      window.studio.deleteHarnessSession(oldId).catch(() => undefined)
+    }
+    loadActiveMessages()
+    pushStatus(t('studio.chat.cleared'))
+    commitMessages([...messages.value])
+    persistHistory()
+    composing.value = false
+    scrollToBottom()
+    void nextTick(() => inputRef.value?.focus())
+  } finally {
+    window.setTimeout(() => {
+      ignoreHarnessEvents = false
+    }, 400)
+  }
+}
+
+/** 本地斜杠指令（整行匹配，不发给模型） */
+function isLocalSlashCommand(text: string): 'clear' | 'model' | null {
+  const raw = text.trim().toLowerCase()
+  if (raw === '/clear') return 'clear'
+  if (raw === '/model') return 'model'
+  return null
+}
+
+/** 对话面板支持的斜杠指令（输入 `/` 时弹出） */
+type SlashCommandDef = {
+  id: 'clear' | 'model'
+  name: string
+  /** i18n 描述键（相对 studio.chat） */
+  descKey: 'slashClearDesc' | 'slashModelDesc'
+}
+
+const SLASH_COMMANDS: readonly SlashCommandDef[] = [
+  { id: 'clear', name: '/clear', descKey: 'slashClearDesc' },
+  { id: 'model', name: '/model', descKey: 'slashModelDesc' }
+]
+
+const slashOpen = ref(false)
+const slashIndex = ref(0)
+const slashFilter = ref('')
+
+const slashItems = computed(() => {
+  const q = slashFilter.value.trim().toLowerCase()
+  if (!q) return [...SLASH_COMMANDS]
+  return SLASH_COMMANDS.filter(
+    (c) => c.name.toLowerCase().includes(q) || c.id.toLowerCase().includes(q)
+  )
+})
+
+function closeSlashMenu(): void {
+  slashOpen.value = false
+  slashFilter.value = ''
+  slashIndex.value = 0
+}
+
+/** 光标前是否正在输入斜杠指令（行首或换行后的 `/xxx`） */
+function matchSlashInput(before: string): { filter: string } | null {
+  const m = /(?:^|\n)\/([a-zA-Z0-9_-]*)$/.exec(before)
+  if (!m) return null
+  return { filter: m[1] ?? '' }
+}
+
+function updateSlashMenuFromCursor(): void {
+  if (composing.value || mentionOpen.value) {
+    closeSlashMenu()
+    return
+  }
+  const hit = matchSlashInput(textBeforeCursor())
+  if (!hit) {
+    closeSlashMenu()
+    return
+  }
+  slashFilter.value = hit.filter
+  if (!slashOpen.value) {
+    slashOpen.value = true
+    slashIndex.value = 0
+  } else if (slashIndex.value >= slashItems.value.length) {
+    slashIndex.value = Math.max(0, slashItems.value.length - 1)
+  }
+}
+
+async function applySlashCommand(cmd: SlashCommandDef): Promise<void> {
+  closeSlashMenu()
+  resetEditor()
+  if (cmd.id === 'clear') {
+    await onClearCommand()
+    return
+  }
+  if (cmd.id === 'model') {
+    await onModelCommand()
+  }
+}
+
+/** `/model`：打开底部模型下拉列表 */
+async function onModelCommand(): Promise<void> {
+  await loadModels()
+  if (!modelOptions.value.length) {
+    pushStatus(t('studio.chat.noModel'))
+    return
+  }
+  modeOpen.value = false
+  sessionOpen.value = false
+  skillsOpen.value = false
+  modelOpen.value = true
+  void nextTick(() => {
+    const trigger = modelDropdownRef.value?.querySelector('button.model-trigger')
+    if (trigger instanceof HTMLElement) trigger.focus()
+  })
+}
+
+function onSlashNav(delta: number): void {
+  if (!slashOpen.value || !slashItems.value.length) return
+  const n = slashItems.value.length
+  slashIndex.value = (slashIndex.value + delta + n) % n
+}
+
+function onSlashArrowKey(event: KeyboardEvent, delta: number): void {
+  if (!slashOpen.value) return
+  event.preventDefault()
+  onSlashNav(delta)
+}
+
+function onComposerEnter(): void {
+  if (slashOpen.value) {
+    const item = slashItems.value[slashIndex.value]
+    if (item) void applySlashCommand(item)
+    else closeSlashMenu()
+    return
+  }
+  void onSend()
+}
+
+function onComposerTab(): void {
+  if (!slashOpen.value) return
+  const item = slashItems.value[slashIndex.value]
+  if (item) void applySlashCommand(item)
+}
+
+function onComposerTabKey(event: KeyboardEvent): void {
+  if (!slashOpen.value) return
+  event.preventDefault()
+  onComposerTab()
+}
+
+function onComposerEscape(): void {
+  if (slashOpen.value) {
+    closeSlashMenu()
+    return
+  }
+  if (mentionOpen.value) mentionOpen.value = false
+}
+
 async function onDeleteSession(): Promise<void> {
   const session = activeSession.value
   if (!session) return
@@ -140,8 +367,16 @@ function onComposerInput(): void {
   if (referenced.value.some((r) => !text.includes(`@${r.path}`))) {
     referenced.value = referenced.value.filter((r) => text.includes(`@${r.path}`))
   }
-  if (mentionOpen.value || composing.value) return
+  if (composing.value) return
   const before = textBeforeCursor()
+  // `/` 指令菜单优先于 @（互斥）
+  if (matchSlashInput(before)) {
+    mentionOpen.value = false
+    updateSlashMenuFromCursor()
+    return
+  }
+  closeSlashMenu()
+  if (mentionOpen.value) return
   if (/@[^\s@]*$/.test(before)) mentionOpen.value = true
 }
 
@@ -223,6 +458,7 @@ function resetEditor(): void {
   const el = inputRef.value
   if (el) el.replaceChildren()
   draft.value = ''
+  closeSlashMenu()
 }
 
 /** 当前选区（无选区或选区在编辑区外时取编辑区末尾） */
@@ -654,6 +890,8 @@ const inputRef = ref<HTMLElement | null>(null)
 /** 输入法组合期间：跳过 @ 触发 / 粘贴接管，避免组合文本被误处理 */
 const composing = ref(false)
 const running = ref(false)
+/** `/clear` 后短暂忽略 harness 事件，避免中止尾包写进新会话 */
+let ignoreHarnessEvents = false
 const status = ref<HarnessStatus | null>(null)
 const listRef = ref<HTMLElement | null>(null)
 
@@ -714,6 +952,8 @@ function toolArgs(tm: ChatMsg & { kind: 'tool' }): ToolArgEntry[] {
 
 function onCompositionEnd(): void {
   composing.value = false
+  // 组合结束后再判断 `/` / `@` 触发
+  onComposerInput()
 }
 
 /** 最近复制成功的消息索引，用于按钮上的“已复制”反馈 */
@@ -1036,6 +1276,17 @@ function pushAssistant(text: string, replace = false): void {
 }
 
 function pushStatus(text: string): void {
+  // 合并「仍在等待模型响应」类心跳：只更新最后一条，避免刷屏
+  const last = messages.value[messages.value.length - 1]
+  if (
+    last?.kind === 'status' &&
+    /仍在等待|尚未返回|已提交给模型|接手任务|Still waiting|Waiting for/.test(last.text) &&
+    /仍在等待|尚未返回|已提交给模型|接手任务|Still waiting|Waiting for/.test(text)
+  ) {
+    last.text = text
+    scrollToBottom()
+    return
+  }
   messages.value.push({ kind: 'status', text })
   scrollToBottom()
 }
@@ -1050,6 +1301,7 @@ async function refreshStatus(): Promise<void> {
 }
 
 function onHarnessEvent(event: HarnessEvent): void {
+  if (ignoreHarnessEvents) return
   switch (event.type) {
     case 'assistant':
       pushAssistant(event.text)
@@ -1579,7 +1831,16 @@ async function answerPrompt(msg: ChatMsg & { kind: 'prompt' }, option: string): 
 async function onSend(): Promise<void> {
   if (composing.value) return
   const raw = draft.value.trim()
-  if (!raw || running.value) return
+  if (!raw) return
+  // 本地指令：不消耗模型、不依赖 MCP 就绪
+  const slash = isLocalSlashCommand(raw)
+  if (slash) {
+    resetEditor()
+    if (slash === 'clear') await onClearCommand()
+    else if (slash === 'model') await onModelCommand()
+    return
+  }
+  if (running.value) return
   // 发送前重新预检一次（Node 版本 / dsh 运行体 / MCP 服务 / 模型），
   // 不用挂载时的旧快照判断，避免按过期的“就绪”放行后才发现环境缺失
   await refreshStatus()
@@ -1622,6 +1883,8 @@ async function onSend(): Promise<void> {
 }
 
 async function onAbort(): Promise<void> {
+  // 先本地退出 running，避免主进程杀进程慢时按钮一直停在「停止」
+  running.value = false
   await window.studio.abortHarnessTask()
 }
 
@@ -1643,6 +1906,10 @@ onMounted(async () => {
   // 打开面板即做一次环境预检，未就绪时在面板顶部与空状态区给出具体原因
   await refreshStatus()
   await loadModels()
+  // 闲时预热常驻 dsh：就绪后首条消息跳过 Cordis/MCP 冷启动
+  if (typeof window.studio?.prewarmHarness === 'function') {
+    void window.studio.prewarmHarness()
+  }
 })
 
 onBeforeUnmount(() => {
@@ -1907,6 +2174,20 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="chat-input">
+      <div
+        class="chat-input-resize"
+        role="separator"
+        :aria-orientation="'horizontal'"
+        :aria-valuemin="COMPOSER_HEIGHT_MIN"
+        :aria-valuemax="COMPOSER_HEIGHT_MAX"
+        :aria-valuenow="composerHeight"
+        :aria-label="t('studio.chat.resizeComposer')"
+        :title="t('studio.chat.resizeComposer')"
+        @pointerdown="onComposerResizePointerDown"
+        @pointermove="onComposerResizePointerMove"
+        @pointerup="onComposerResizePointerUp"
+        @pointercancel="onComposerResizePointerUp"
+      />
       <div class="chat-toolbar">
         <!-- 技能调试视图：展示会话可用技能清单与已加载命中次数 -->
         <div ref="skillsDropdownRef" class="skills-dropdown" :class="{ open: skillsOpen }">
@@ -2217,9 +2498,33 @@ onBeforeUnmount(() => {
       </div>
       <div class="composer">
         <div
+          v-show="slashOpen"
+          class="slash-menu"
+          role="listbox"
+          :aria-label="t('studio.chat.slashMenu')"
+        >
+          <div class="slash-menu-title">{{ t('studio.chat.slashMenu') }}</div>
+          <button
+            v-for="(cmd, i) in slashItems"
+            :key="cmd.id"
+            type="button"
+            class="slash-item"
+            role="option"
+            :class="{ active: i === slashIndex }"
+            :aria-selected="i === slashIndex"
+            @mousedown.prevent="applySlashCommand(cmd)"
+            @mouseenter="slashIndex = i"
+          >
+            <span class="slash-name">{{ cmd.name }}</span>
+            <span class="slash-desc">{{ t(`studio.chat.${cmd.descKey}`) }}</span>
+          </button>
+          <div v-if="!slashItems.length" class="slash-empty">{{ t('studio.chat.slashEmpty') }}</div>
+        </div>
+        <div
           ref="inputRef"
           class="composer-editor"
           :class="{ composing }"
+          :style="{ height: `${composerHeight}px` }"
           :contenteditable="!running"
           role="textbox"
           :aria-label="t('studio.chat.placeholder')"
@@ -2230,7 +2535,11 @@ onBeforeUnmount(() => {
           @dragover.prevent
           @compositionstart="composing = true"
           @compositionend="onCompositionEnd"
-          @keydown.enter.exact.prevent="onSend"
+          @keydown.enter.exact.prevent="onComposerEnter"
+          @keydown.escape.prevent="onComposerEscape"
+          @keydown.arrow-down.exact="onSlashArrowKey($event, 1)"
+          @keydown.arrow-up.exact="onSlashArrowKey($event, -1)"
+          @keydown.tab.exact="onComposerTabKey"
         />
       </div>
       <div class="chat-actions">
@@ -2973,11 +3282,47 @@ onBeforeUnmount(() => {
 }
 
 .chat-input {
+  position: relative;
   border-top: 1px solid var(--border);
   padding: 8px;
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+/* 顶边拖条：向上拖可加高输入框 */
+.chat-input-resize {
+  position: absolute;
+  top: -3px;
+  left: 0;
+  right: 0;
+  height: 7px;
+  z-index: 5;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.chat-input-resize::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 50%;
+  width: 36px;
+  height: 3px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-muted) 45%, transparent);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.chat-input-resize:hover::after,
+.chat-input-resize.dragging::after {
+  opacity: 1;
+}
+
+.chat-input-resize.dragging::after {
+  background: var(--accent);
 }
 
 /* 输入框上方工具栏：会话切换 / 新建 / 删除 / @ 引用资产 */
@@ -3506,10 +3851,76 @@ onBeforeUnmount(() => {
 }
 
 /* 输入区：contenteditable 富文本，支持文本与图片内联引用混排 */
+.composer {
+  position: relative;
+}
+
+.slash-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 4px);
+  z-index: 20;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated, var(--bg-panel, var(--bg)));
+  box-shadow: 0 8px 24px color-mix(in srgb, #000 28%, transparent);
+  padding: 6px;
+}
+
+.slash-menu-title {
+  padding: 4px 8px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.slash-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  margin: 0;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.slash-item:hover,
+.slash-item.active {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.slash-name {
+  font-size: 13px;
+  font-weight: 600;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.slash-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.slash-empty {
+  padding: 10px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 .composer-editor {
   width: 100%;
   min-height: 64px;
-  max-height: 180px;
   overflow-y: auto;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -3523,6 +3934,7 @@ onBeforeUnmount(() => {
   word-break: break-word;
   box-sizing: border-box;
   outline: none;
+  resize: none;
 }
 
 .composer-editor:focus {

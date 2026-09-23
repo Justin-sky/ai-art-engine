@@ -61,6 +61,7 @@ import {
   importCustomSkillsToGraph,
   listSkillTemplates,
   openDshSkillsDir,
+  prewarmHarness,
   runHarnessJobWait,
   runHarnessTask,
   writeDshSkillsTemplate
@@ -466,6 +467,7 @@ export function registerIpcHandlers(): void {
   )
   handle(IpcChannels.BLENDER_DSH_CLEANUP, (jobId: string) => cleanupBlenderDshJob(jobId))
   handle(IpcChannels.HARNESS_ABORT, () => abortHarnessTask())
+  handle(IpcChannels.HARNESS_PREWARM, () => prewarmHarness())
   handle(IpcChannels.HARNESS_DELETE_SESSION, (sessionId: string) => deleteHarnessSession(sessionId))
   handle(IpcChannels.SKILLS_GET_INFO, () => getDshSkillsInfo())
   handle(IpcChannels.SKILLS_OPEN_DIR, () => openDshSkillsDir())

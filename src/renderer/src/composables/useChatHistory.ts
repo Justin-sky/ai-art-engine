@@ -185,6 +185,34 @@ export function useChatHistory() {
     persist()
   }
 
+  /**
+   * `/clear`：在当前列表位上轮换会话 id 并清空消息 / 上下文用量。
+   * 返回旧 id，供调用方删除 dsh 磁盘持久化，避免幽灵 resume。
+   */
+  function rotateActive(): string | null {
+    const index = sessions.value.findIndex((s) => s.id === activeId.value)
+    const oldId = activeId.value || null
+    const now = Date.now()
+    const next: ChatSession = {
+      id: createSessionId(),
+      title: '',
+      createdAt: now,
+      updatedAt: now,
+      messages: []
+    }
+    if (index < 0) {
+      sessions.value = [next, ...sessions.value]
+    } else {
+      const copy = [...sessions.value]
+      copy[index] = next
+      sessions.value = copy
+    }
+    activeId.value = next.id
+    localStorage.setItem(ACTIVE_KEY, next.id)
+    persist()
+    return oldId && oldId !== next.id ? oldId : null
+  }
+
   /** 删除会话；删除当前会话后自动激活最近一个 */
   function remove(id: string): void {
     sessions.value = sessions.value.filter((s) => s.id !== id)
@@ -241,6 +269,7 @@ export function useChatHistory() {
     load,
     persist,
     create,
+    rotateActive,
     remove,
     activate,
     commitMessages,

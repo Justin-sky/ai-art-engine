@@ -7,7 +7,8 @@ import {
   statSync,
   appendFileSync,
   renameSync,
-  writeFileSync
+  writeFileSync,
+  rmSync
 } from 'node:fs'
 import { join } from 'node:path'
 import { app, ipcMain } from 'electron'
@@ -29,6 +30,11 @@ import {
   toolAccessOf,
   type McpAccessView
 } from '@shared/mcpModeAccess'
+import {
+  clearActiveHarnessRunState,
+  resolveHarnessAwareAccessView,
+  setActiveHarnessRunState
+} from '@shared/harnessActiveRunAccess'
 import {
   createMcpProtocolHandler,
   type McpRequestContext,
@@ -3304,11 +3310,42 @@ export function releaseHarnessRunAccess(runId: string): void {
   harnessRunAccess.delete(runId)
 }
 
+/**
+ * 常驻 harness 当前回合的模式授权（内存 + active-run.json）。
+ * MCP headers 在进程启动时冻住，每轮改 mode/runId 靠这里，而不是 sticky headers。
+ */
+function activeHarnessRunPath(): string {
+  return join(app.getPath('userData'), 'dsh-harness', 'active-run.json')
+}
+
+export function setActiveHarnessRun(runId: string, mode: ChatMode): void {
+  setActiveHarnessRunState(runId, mode)
+  try {
+    const dir = join(app.getPath('userData'), 'dsh-harness')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(activeHarnessRunPath(), JSON.stringify({ runId, mode, ts: Date.now() }), 'utf8')
+  } catch {
+    /* 写盘失败不影响内存授权 */
+  }
+}
+
+export function clearActiveHarnessRun(): void {
+  clearActiveHarnessRunState()
+  try {
+    const path = activeHarnessRunPath()
+    if (existsSync(path)) rmSync(path, { force: true })
+  } catch {
+    /* ignore */
+  }
+}
+
 /** 把请求头里的模式 + runId 折算成授权视图；无模式声明的请求（外部客户端）不做任何限制 */
+export function resolveMcpAccessView(ctx?: McpRequestContext): McpAccessView {
+  return resolveHarnessAwareAccessView(ctx, harnessRunAccess)
+}
+
 function accessViewFor(ctx?: McpRequestContext): McpAccessView {
-  if (!ctx?.mode) return {}
-  const state = ctx.runId ? harnessRunAccess.get(ctx.runId) : undefined
-  return { mode: ctx.mode, confirmed: state?.confirmed ?? false }
+  return resolveMcpAccessView(ctx)
 }
 
 /** 被模式拦截的调用同样进审计：模型试图越权本身就是值得回查的线索 */
