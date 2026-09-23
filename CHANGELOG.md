@@ -2,6 +2,14 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [6.5.1] — 2026-09-23
+
+6.5.1 补丁：修好常驻 Harness 会话 resume 报 `already owned by an active write handle`；顺带收敛 TS6 弃用告警，并补上 SVG 存 GIF、Blender 代码拦截放宽与 README 外链表。
+
+- **Harness**：`create`/`resume` 保留 `AgentHandle.dispose`，换模型 / 换会话 / shutdown 时释放会话写锁；若仍撞上 AlreadyOwned 且 registry 仍有存活 agent 则复用，避免多轮对话中断。
+- **TypeScript 6**：`moduleResolution` 改为 `bundler`，去掉已弃用的 `baseUrl`（`paths` 写成相对 tsconfig 路径）。
+- **SVG / Blender / 文档**：`svg.gen` 支持保存 GIF；放宽 Blender MCP `execute_blender_code` 的 Python 拦截；README 增加 X 链接与展示样式调整。
+
 ## [6.5.0] — 2026-09-23
 
 6.5.0 功能版：节点图新增「可玩 HTML」生成与沙盒试玩；DeepSeek Harness 改为常驻 worker，显著缩短多轮对话冷启动，并修好停止按钮与等待超时误杀。
