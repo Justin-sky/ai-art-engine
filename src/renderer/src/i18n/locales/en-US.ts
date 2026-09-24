@@ -206,9 +206,9 @@ export default {
       },
       gamePlayHtml: {
         title: 'One-sentence mini-game',
-        desc: 'Text → playable HTML → sandbox',
+        desc: 'Text → dsh/Node → cook single HTML → sandbox',
         prompt:
-          'Create a playable HTML mini-game workflow: a text node holds a one-sentence gameplay brief, a playable-HTML generation node outputs a single-file HTML game (2D Canvas or 3D Three.js), then an asset.gamePlay node stores it; double-click the generation node or asset to try it in the iframe sandbox.'
+          'Create a playable HTML mini-game workflow: a text node holds a one-sentence gameplay brief, a playable-HTML generation node uses multi-turn dsh to produce a pure Node (esbuild) project, then an asset.gamePlay node cooks it (npm + node build.mjs → single HTML); double-click the asset to try it in the iframe sandbox.'
       },
       gameIcons: {
         title: 'Game icon pack',
@@ -953,7 +953,7 @@ export default {
         done: 'Done',
         loading: 'Loading HTML…',
         empty:
-          'No HTML yet. Run upstream Playable HTML generation first, or cook this node (seeds a sample when empty).',
+          'No playable HTML yet. Run upstream Playable HTML generation (dsh), then cook this node (npm + node build.mjs); seeds a sample when no project.',
         mode2d: '2D Canvas',
         mode3d: '3D Three.js'
       }
@@ -3559,16 +3559,14 @@ export default {
     },
     gameHtmlGen: {
       inspectorHint:
-        'Generate a playable single-file HTML mini-game (2D Canvas / 3D Three); optional reference images; double-click asset.gamePlay to sandbox-play',
+        'Generate a playable pure Node (esbuild) mini-game via dsh (multi-turn); cook on asset.gamePlay (npm + node build.mjs → single HTML); optional reference images; double-click to sandbox-play',
       mode: 'Mode',
       modeAuto: 'Auto',
       mode2d: '2D Canvas',
       mode3d: '3D Three.js',
-      instruction: 'Instruction',
-      instructionPlaceholder: "One-sentence gameplay brief; use {'@'} to cite connected inputs",
-      systemPrompt: 'System prompt',
-      systemPromptPlaceholder:
-        'Define the model role and output rules; leave empty to use the mode default'
+      instruction: 'Gameplay brief',
+      instructionPlaceholder:
+        "One-sentence gameplay brief; use {'@'} to cite inputs; written into the dsh brief"
     },
     svgAnim: {
       inspectorHint:
@@ -3787,7 +3785,8 @@ export default {
         world: 'World element',
         worldEntities: 'World entities',
         beat: 'Beat',
-        model: 'Model'
+        model: 'Model',
+        project: 'Project'
       }
     },
     media: {
@@ -4549,7 +4548,7 @@ export default {
         svgGenInstructionPlaceholder:
           "Describe the vector art to generate (icon / illustration / UI element / motion); use {'@'} to cite connected inputs",
         gameHtmlGenInstructionPlaceholder:
-          "One-sentence playable mini-game brief (rules / controls / win); wire in-image for art refs; use {'@'} to cite inputs",
+          "One-sentence playable mini-game brief (rules / controls / win); dsh writes pure Node/esbuild; wire in-image for art refs; use {'@'} to cite inputs",
         modelPoseInstructionPlaceholder:
           "Describe a still pose (walk, wave, hands on hips…) or pick a preset in Inspector; use {'@'} to cite upstream text",
         modelRigSkinInstructionPlaceholder:

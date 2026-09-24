@@ -246,10 +246,10 @@ const ASSET_META: Array<{
     type: 'gamePlay',
     label: '可玩 HTML',
     icon: '🎮',
-    outType: GraphPortType.text,
+    outType: GraphPortType.project,
     addable: true,
     weight: 0.85,
-    processingIn: GraphPortType.text
+    processingIn: GraphPortType.project
   },
   {
     type: 'subgraph',
@@ -464,7 +464,7 @@ function assetDef(meta: (typeof ASSET_META)[number]): NodeTypeDefinition {
                           {
                             id: 'in',
                             direction: 'in' as const,
-                            dataType: GraphPortType.text,
+                            dataType: GraphPortType.project,
                             multiple: true,
                             label: 'In'
                           }
@@ -571,6 +571,7 @@ function assetDef(meta: (typeof ASSET_META)[number]): NodeTypeDefinition {
           text: '',
           gamePlayHtml: '',
           gamePlayMode: 'auto',
+          gamePlayProjectDir: '',
           generateInstruction: '',
           generateModel: '',
           generateProviderInstanceId: '',
@@ -2589,7 +2590,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     icon: '🎮',
     defaultTitle: '可玩 HTML 生成',
     description:
-      '一句话生成可试玩的单文件 HTML（2D Canvas 或 3D Three.js）。in 接文本、in-image 接参考图；双击展开生成指令；out 出当前选中 HTML、out-all 出历次结果，可接入 asset.gamePlay。无模型时回退内置样例。',
+      '一句话经 dsh 多轮生成纯 Node（esbuild）小游戏工程（2D Canvas 或 3D Three）。in 接文本、in-image 接参考图；out 出「工程」目录，可接入 asset.gamePlay；在可玩 HTML 节点执行时 cook（npm + node build.mjs）打成单文件沙盒试玩。无 dsh 时回退样例工程。',
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
@@ -2601,7 +2602,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
         multiple: true,
         label: 'Image'
       },
-      ...galleryOutPorts(GraphPortType.text)
+      ...galleryOutPorts(GraphPortType.project)
     ],
     defaultParams: () => ({
       generateInstruction: '',
@@ -2610,6 +2611,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
       generateProviderInstanceId: '',
       gamePlayMode: 'auto',
       gamePlayHtml: '',
+      gamePlayProjectDir: '',
       text: ''
     }),
     addable: true,

@@ -122,7 +122,9 @@ export const GraphPortType = {
   /** 世界元素生成结果实体表（type/name/imageUrl），与目录口 world 区分 */
   worldEntities: 'worldEntities',
   beat: 'beat',
-  model: 'model'
+  model: 'model',
+  /** 可玩 HTML 等：磁盘上的工程目录（相对工程根） */
+  project: 'project'
 } as const
 
 /** 目录 JSON 端口 / 运行时 kind（与 GraphPortType 同名） */
@@ -719,12 +721,16 @@ export interface GraphNodeParams {
   stage2dAnimSheetColumns?: number
   /** 2D 舞台最近一次运行产出的 sheet 行数 */
   stage2dAnimSheetRows?: number
-  /** 可玩 HTML：完整文档源码（game.htmlGen / asset.gamePlay） */
+  /** 可玩 HTML：完整文档源码（编译后的单文件；沙盒预览源） */
   gamePlayHtml?: string
   /** 可玩 HTML：2d / 3d / auto */
   gamePlayMode?: '2d' | '3d' | 'auto'
-  /** 可玩 HTML：落盘相对路径（可选） */
+  /** 可玩 HTML：单文件落盘相对路径（可选） */
   gamePlayHtmlPath?: string
+  /** 可玩 HTML：纯 Node（esbuild）工程相对工程根路径 */
+  gamePlayProjectDir?: string
+  /** 可玩 HTML：cook 构建产物相对路径 */
+  gamePlayBuildHtmlPath?: string
   /** 宫格切分 / 局部放大 */
   imageGridSplit?: Partial<ImageGridSplitState>
   /** 图标包导出（image.iconPack）：逐格键控透明 / 统一画布 / 命名打包参数 */

@@ -8,6 +8,7 @@ import {
   createNodeFromType,
   createOutputGraphNode,
   getNodePorts,
+  GraphPortType,
   isAssetRefNode,
   isNodeDeletable,
   isProcessingAssetNode,
@@ -118,6 +119,16 @@ describe('asset editor graph', () => {
           edge.target === play?.id &&
           (edge.sourcePort ?? 'out') === 'out' &&
           (edge.targetPort ?? 'in') === 'in'
+      )
+    ).toBe(true)
+    expect(
+      getNodePorts(gen!).some(
+        (p) => p.direction === 'out' && p.id === 'out' && p.dataType === GraphPortType.project
+      )
+    ).toBe(true)
+    expect(
+      getNodePorts(play!).some(
+        (p) => p.direction === 'in' && p.id === 'in' && p.dataType === GraphPortType.project
       )
     ).toBe(true)
   })

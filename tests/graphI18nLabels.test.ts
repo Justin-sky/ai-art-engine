@@ -72,5 +72,6 @@ describe('graph processing menu labels', () => {
     expect(t('graph.port.types.worldEntities')).toBe('世界元素实体')
     expect(t('graph.port.types.beat')).toBe('场')
     expect(t('graph.port.types.model')).toBe('模型')
+    expect(t('graph.port.types.project')).toBe('工程')
   })
 })

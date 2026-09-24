@@ -25,3 +25,12 @@ export {
   DEFAULT_GAME_HTML_SYSTEM_PROMPT_3D_ZH,
   DEFAULT_GAME_HTML_SYSTEM_PROMPT_AUTO_ZH
 } from './prompts'
+
+export {
+  GAME_PLAY_DSH_TIMEOUT_MS,
+  buildGamePlayJobBrief,
+  buildGamePlayJobTask,
+  parseGamePlayJobResult,
+  validateGamePlayJobDelivery,
+  gamePlayDshError
+} from '../gamePlayDshJob'

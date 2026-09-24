@@ -16,21 +16,6 @@
     />
 
     <label class="field">
-      <span>{{ t('graph.gameHtmlGen.mode') }}</span>
-      <select :value="mode" @change="onModeChange">
-        <option value="auto">
-          {{ t('graph.gameHtmlGen.modeAuto') }}
-        </option>
-        <option value="2d">
-          {{ t('graph.gameHtmlGen.mode2d') }}
-        </option>
-        <option value="3d">
-          {{ t('graph.gameHtmlGen.mode3d') }}
-        </option>
-      </select>
-    </label>
-
-    <label class="field">
       <span>{{ t('graph.gameHtmlGen.instruction') }}</span>
       <textarea
         v-model="instruction"
@@ -38,17 +23,6 @@
         rows="4"
         :placeholder="t('graph.gameHtmlGen.instructionPlaceholder')"
         @change="persistInstruction"
-      />
-    </label>
-
-    <label class="field">
-      <span>{{ t('graph.gameHtmlGen.systemPrompt') }}</span>
-      <textarea
-        v-model="systemPrompt"
-        class="instruction"
-        rows="6"
-        :placeholder="t('graph.gameHtmlGen.systemPromptPlaceholder')"
-        @change="persistSystemPrompt"
       />
     </label>
 
@@ -67,12 +41,6 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import {
-  resolveGameHtmlSystemPrompt,
-  resolvePreferredGamePlayMode,
-  isBuiltinGameHtmlSystemPrompt,
-  type GamePlayMode
-} from '@shared/gamePlay'
 import GraphNodeRunControl from './GraphNodeRunControl.vue'
 import GraphNodeOutputPreview from './GraphNodeOutputPreview.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
@@ -82,7 +50,7 @@ import { useEditorKernel } from '../editor/kernel'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import { graphRunHosts } from '../features/graph/model/graphRunHosts'
 
-const { t, locale, graphTypeLabel } = useStudioI18n()
+const { t, graphTypeLabel } = useStudioI18n()
 const editor = useEditorKernel()
 
 const node = computed(() => {
@@ -103,11 +71,7 @@ const { hasInPort, runStatus, isGraphRunning, blocked, toggleRun } = useGraphNod
 const typeLabel = computed(() => graphTypeLabel('game.htmlGen'))
 const displayTitle = useNodeDisplayTitle(node, typeLabel)
 
-const mode = computed((): GamePlayMode =>
-  resolvePreferredGamePlayMode(node.value?.params.gamePlayMode)
-)
 const instruction = ref('')
-const systemPrompt = ref('')
 
 watch(
   () => node.value?.params.generateInstruction,
@@ -117,53 +81,11 @@ watch(
   { immediate: true }
 )
 
-watch(
-  () =>
-    [
-      node.value?.params.generateSystemPrompt,
-      node.value?.params.gamePlayMode,
-      locale.value
-    ] as const,
-  ([stored, playMode]) => {
-    systemPrompt.value = resolveGameHtmlSystemPrompt(
-      resolvePreferredGamePlayMode(playMode),
-      stored,
-      String(locale.value)
-    )
-  },
-  { immediate: true }
-)
-
-function patchParams(patch: Record<string, unknown>): void {
-  if (!node.value || !hostId.value) return
-  graphEditorHosts.updateNode(hostId.value, node.value.id, patch)
-}
-
-function onModeChange(e: Event): void {
-  const value = (e.target as HTMLSelectElement).value
-  const next = resolvePreferredGamePlayMode(value)
-  const stored = node.value?.params.generateSystemPrompt
-  const patch: Record<string, unknown> = { gamePlayMode: next }
-  // 切换模式时清掉内置默认系统词，避免旧 2D 默认锁死 3D 生成
-  if (isBuiltinGameHtmlSystemPrompt(stored)) {
-    patch.generateSystemPrompt = ''
-  }
-  patchParams(patch)
-}
-
 function persistInstruction(): void {
-  patchParams({ generateInstruction: instruction.value })
-}
-
-function persistSystemPrompt(): void {
-  const trimmed = systemPrompt.value.trim()
-  const modeDefault = resolveGameHtmlSystemPrompt(
-    mode.value,
-    undefined,
-    String(locale.value)
-  ).trim()
-  // 与当前模式默认相同则不落盘，让模式切换始终生效
-  patchParams({ generateSystemPrompt: trimmed === modeDefault ? '' : systemPrompt.value })
+  if (!node.value || !hostId.value) return
+  graphEditorHosts.updateNode(hostId.value, node.value.id, {
+    generateInstruction: instruction.value
+  })
 }
 
 function onClearOutput(): void {
@@ -177,6 +99,7 @@ function onClearOutput(): void {
     selectedTextId: '',
     gamePlayHtml: '',
     gamePlayHtmlPath: '',
+    gamePlayProjectDir: '',
     text: ''
   })
 }

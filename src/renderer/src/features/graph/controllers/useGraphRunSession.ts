@@ -51,6 +51,7 @@ import { composeImageLayerStack } from '../model/composeImageLayerStack'
 import { composeComicPageImage } from '../../comic/composeComicPageImage'
 import { inspectModelSkeleton } from '../model/inspectModelSkeleton'
 import { runBlenderDshJob } from '../model/runBlenderDshJob'
+import { buildGamePlayProjectForNode, runGamePlayDshJob } from '../model/runGamePlayDshJob'
 import { normalizeImageAspectRatio } from '../model/normalizeImageAspectRatio'
 import { enrichStyleImagesWithLibraryPrompts } from '../../stylePresets/defaultLibrary'
 import { resolveStyleImageUrls } from '../../stylePresets/resolveStyleImageUrls'
@@ -914,6 +915,8 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         composeComicPageImage,
         inspectModelSkeleton,
         runBlenderDshJob,
+        runGamePlayDshJob,
+        buildGamePlayProject: buildGamePlayProjectForNode,
         runBlenderMcpTool: (input) =>
           window.studio.runBlenderMcpTool({
             name: input.name,

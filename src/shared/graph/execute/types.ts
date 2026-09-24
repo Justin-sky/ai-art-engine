@@ -130,6 +130,17 @@ export interface GraphSvgValue {
   relativePath?: string
 }
 
+/** 可玩 HTML 等：工程目录（相对工程根） */
+export interface GraphProjectValue {
+  kind: 'project'
+  /** 工程目录相对路径（如 Cache/GamePlayJobs/.../project） */
+  relativePath: string
+  /** 摘要文案（可选） */
+  text?: string
+  gameMode?: '2d' | '3d'
+  id?: string
+}
+
 /** SVG 数组（生成节点 out-all；供 SVG 烘焙等批量消费） */
 export interface GraphSvgsValue {
   kind: 'svgs'
@@ -245,6 +256,7 @@ export type GraphValue =
   | GraphTextsValue
   | GraphSvgValue
   | GraphSvgsValue
+  | GraphProjectValue
   | GraphCatalogValue
   | GraphOutputValue
   | GraphCameraValue
@@ -676,6 +688,36 @@ export interface NodeExecuteContext {
     result: import('../../blenderDshJob').BlenderJobResult
   }>
   /**
+   * 可玩 HTML：dsh 多轮生成纯 Node（esbuild）工程（仅写盘；构建见 buildGamePlayProject）。
+   */
+  runGamePlayDshJob?: (input: {
+    node: GraphNode
+    instruction: string
+    preferredMode?: '2d' | '3d' | 'auto'
+    locale?: string
+    referenceNote?: string
+    timeoutMs?: number
+    model?: string
+    providerInstanceId?: string
+    signal?: AbortSignal
+    /** true：不跑 dsh，只写样例工程（冒烟） */
+    seedOnly?: boolean
+    /** 续跑：已有工程相对路径；缺省时读 node.params.gamePlayProjectDir */
+    projectRelativeDir?: string
+    log?: (message: string, level?: 'info' | 'warn' | 'error') => void
+  }) => Promise<{
+    projectRelativeDir: string
+    gameMode: '2d' | '3d'
+  }>
+  /** 可玩 HTML：主进程 npm + node build.mjs 构建并内联单文件 */
+  buildGamePlayProject?: (input: {
+    projectRelativeDir: string
+    log?: (message: string, level?: 'info' | 'warn' | 'error') => void
+  }) => Promise<{
+    html: string
+    buildHtmlRelativePath: string
+  }>
+  /**
    * 调用本机 Blender MCP（探活 / 诊断）。节点 Cook 不再用它猜欧拉。
    */
   runBlenderMcpTool?: (input: {
@@ -870,6 +912,8 @@ export interface GraphRunOptions {
   composeComicPageImage?: NodeExecuteContext['composeComicPageImage']
   inspectModelSkeleton?: NodeExecuteContext['inspectModelSkeleton']
   runBlenderDshJob?: NodeExecuteContext['runBlenderDshJob']
+  runGamePlayDshJob?: NodeExecuteContext['runGamePlayDshJob']
+  buildGamePlayProject?: NodeExecuteContext['buildGamePlayProject']
   runBlenderMcpTool?: NodeExecuteContext['runBlenderMcpTool']
   normalizeImageAspectRatio?: NodeExecuteContext['normalizeImageAspectRatio']
   resolveBeatUnit?: NodeExecuteContext['resolveBeatUnit']

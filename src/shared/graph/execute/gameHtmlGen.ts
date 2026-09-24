@@ -1,26 +1,21 @@
 /**
- * `game.htmlGen`：一句话 → 可玩 HTML（2d Canvas / 3d Three）→ 校验落盘参数 → out / out-all。
- * 无 generateText 时退回内置样例（seed），保证沙盒可测通。
+ * `game.htmlGen`：一句话 → dsh 多轮生成纯 Node（esbuild）工程 → 写出 projectDir（单 HTML 由 asset.gamePlay cook）。
+ * 宿主注入的 runGamePlayDshJob 在无 dsh 时会自动 seed 样例工程。
  */
-import {
-  buildGameHtmlUserPrompt,
-  prepareGameHtml,
-  resolveGameHtmlSystemPrompt,
-  resolvePreferredGamePlayMode,
-  seedGameHtml
-} from '../../gamePlay'
+import { resolvePreferredGamePlayMode } from '../../gamePlay'
 import { formatGeneratedMediaStamp } from '../../domain'
 import { expandInstructionMentions } from '../instructionMentions'
 import { resolveMentionSources } from './context'
 import { autoIncomingTextForInstruction, selectIncomingValuesForInstruction } from './incoming'
 import { collectIncomingImageItems } from './mediaInputs'
-import { dualTextGalleryOutputs, newestTextSelectedId } from './gallery'
+import { newestTextSelectedId } from './gallery'
 import { mergeGeneratedTexts } from './materialize'
-import type { GraphValue, NodeExecuteContext } from './types'
+import type { GraphProjectValue, GraphValue, NodeExecuteContext } from './types'
 import { fail } from '../../errors/appError'
 import { SHARED_ERRORS } from '../../errors/catalog'
+import { gamePlayDshError } from '../../gamePlayDshJob'
+import { GRAPH_OUT_ALL_PORT_ID } from '../ports'
 
-/** 参考图上限，避免单次请求塞过多图 */
 const GAME_HTML_REFERENCE_MAX = 4
 
 async function resolveGameHtmlReferenceUrls(ctx: NodeExecuteContext): Promise<string[]> {
@@ -43,58 +38,54 @@ function buildReferenceHint(count: number, locale?: string): string {
     : `已附带 ${count} 张参考图：请参考其画风 / 角色 / 布局；不要外链图片 URL，用 canvas / three 几何重绘。`
 }
 
-async function persistGameHtml(
+async function persistProjectMeta(
   ctx: NodeExecuteContext,
-  html: string,
+  projectRelativeDir: string,
   mode: '2d' | '3d'
 ): Promise<Record<string, GraphValue>> {
-  const { node } = ctx
   const createdAt = new Date().toISOString()
   const stamp = formatGeneratedMediaStamp()
-  const id = `gen-html:${stamp}`
-  let relativePath = ''
-  if (ctx.saveRunText) {
-    try {
-      relativePath = await ctx.saveRunText({
-        content: html,
-        key: `${(node.title || 'game').replace(/[^\w\u4e00-\u9fff-]+/g, '_').slice(0, 40) || 'game'}_play`,
-        outputDir: node.params.mediaOutputDir?.trim() || undefined,
-        node
-      })
-    } catch (err) {
-      console.warn('[graph] save game html failed', err)
-    }
-  }
-  // 可玩 HTML 需在 out 口保留全文，供下游 asset.gamePlay / Dive 直接消费（同时落盘 relativePath）
+  const id = `gen-html-project:${stamp}`
+  const summary = `Node/esbuild project\n${projectRelativeDir}\nmode=${mode}`
   const generatedTexts = mergeGeneratedTexts(
     ctx,
     [
       {
         id,
-        text: html,
+        text: summary,
         createdAt,
-        ...(relativePath ? { relativePath } : {})
+        relativePath: projectRelativeDir
       }
     ],
     `${stamp}:keep`
   ).map((item) => ({
     id: item.id?.trim() || id,
-    text: item.text || html,
+    text: item.text || summary,
     createdAt: item.createdAt ?? createdAt,
     ...(item.relativePath ? { relativePath: item.relativePath } : {})
   }))
   const selectedTextId = newestTextSelectedId(generatedTexts)
   const params = {
-    gamePlayHtml: html,
+    gamePlayProjectDir: projectRelativeDir,
     gamePlayMode: mode,
-    ...(relativePath ? { gamePlayHtmlPath: relativePath } : {}),
-    text: html,
+    // 单 HTML 等 cook；清空旧全文避免误预览未编译源码
+    gamePlayHtml: '',
+    gamePlayHtmlPath: '',
+    gamePlayBuildHtmlPath: '',
+    text: summary,
     generatedTexts,
     selectedTextId
   }
   ctx.node.params = { ...ctx.node.params, ...params }
   ctx.patchNode?.({ params })
-  return dualTextGalleryOutputs(generatedTexts, selectedTextId)
+  const projectOut: GraphProjectValue = {
+    kind: 'project',
+    relativePath: projectRelativeDir,
+    text: summary,
+    gameMode: mode,
+    id
+  }
+  return { out: projectOut, [GRAPH_OUT_ALL_PORT_ID]: projectOut }
 }
 
 export async function executeGameHtmlGenNode(
@@ -112,16 +103,6 @@ export async function executeGameHtmlGenNode(
     .filter(Boolean)
     .join('\n\n')
 
-  // 离线 / 测试：无模型时优先吃指令里已有 HTML，否则 seed 样例
-  if (!ctx.generateText) {
-    if (brief && /<html[\s>]|```html/i.test(brief)) {
-      const prepared = prepareGameHtml(brief, preferred)
-      return persistGameHtml(ctx, prepared.html, prepared.mode)
-    }
-    const seeded = seedGameHtml(preferred)
-    return persistGameHtml(ctx, seeded.html, seeded.mode)
-  }
-
   if (!brief.trim()) {
     throw fail(SHARED_ERRORS.resultMissing, {
       what: { zh: '游戏一句话需求', en: 'one-sentence game brief' }
@@ -136,26 +117,29 @@ export async function executeGameHtmlGenNode(
   if (ctx.signal?.aborted) {
     throw new DOMException('Aborted', 'AbortError')
   }
+  const referenceNote = buildReferenceHint(referenceUrls.length, ctx.locale)
 
-  const prompt = [
-    buildGameHtmlUserPrompt(brief, preferred, ctx.locale),
-    buildReferenceHint(referenceUrls.length, ctx.locale)
-  ]
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .join('\n\n')
+  const runner = ctx.runGamePlayDshJob
+  if (!runner) {
+    throw new Error(gamePlayDshError('DSH'))
+  }
 
-  const result = await ctx.generateText({
-    prompt,
-    system: resolveGameHtmlSystemPrompt(preferred, node.params.generateSystemPrompt, ctx.locale),
+  const result = await runner({
+    node,
+    instruction: brief.trim(),
+    preferredMode: preferred,
+    locale: ctx.locale,
+    referenceNote: referenceNote || undefined,
     model: node.params.generateModel || undefined,
     providerInstanceId: node.params.generateProviderInstanceId || undefined,
-    ...(referenceUrls.length ? { images: referenceUrls } : {})
+    signal: ctx.signal,
+    projectRelativeDir: node.params.gamePlayProjectDir?.trim() || undefined,
+    log: ctx.log
   })
+
   if (ctx.signal?.aborted) {
     throw new DOMException('Aborted', 'AbortError')
   }
 
-  const prepared = prepareGameHtml(result.text ?? '', preferred)
-  return persistGameHtml(ctx, prepared.html, prepared.mode)
+  return persistProjectMeta(ctx, result.projectRelativeDir, result.gameMode)
 }

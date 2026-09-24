@@ -201,9 +201,9 @@ export default {
       },
       gamePlayHtml: {
         title: '一句话小游戏',
-        desc: '文本 → 可玩 HTML → 沙盒试玩',
+        desc: '文本 → dsh/Node → cook 单文件 → 沙盒',
         prompt:
-          '创建一个可玩 HTML 小游戏工作流：文本节点写一句话玩法需求，可玩 HTML 生成节点产出单文件 HTML（2D Canvas 或 3D Three.js），再接到可玩 HTML 资产节点；双击生成节点或资产进入 iframe 沙盒试玩。'
+          '创建一个可玩 HTML 小游戏工作流：文本节点写一句话玩法需求，可玩 HTML 生成节点经 dsh 多轮产出纯 Node（esbuild）工程，再接到可玩 HTML 资产节点执行 cook（npm + node build.mjs 打成单文件）；双击资产进入 iframe 沙盒试玩。'
       },
       gameIcons: {
         title: '游戏图标包',
@@ -935,7 +935,7 @@ export default {
         done: '完成',
         loading: '正在加载 HTML…',
         empty:
-          '还没有 HTML。先运行上游「可玩 HTML 生成」，或对本节点运行一次（无输入时会写入样例）。',
+          '还没有可试玩 HTML。先运行上游「可玩 HTML 生成」（dsh），再对本节点 cook（npm + node build.mjs）；无工程时会写入样例。',
         mode2d: '2D Canvas',
         mode3d: '3D Three.js'
       }
@@ -3479,15 +3479,13 @@ export default {
     },
     gameHtmlGen: {
       inspectorHint:
-        '一句话生成可试玩单文件 HTML（2D Canvas / 3D Three）；可接参考图；双击「可玩 HTML」节点进沙盒试玩',
+        '一句话经 dsh 多轮生成纯 Node（esbuild）可玩工程；在「可玩 HTML」资产节点 cook（npm + node build.mjs→单文件）；可接参考图；双击进沙盒试玩',
       mode: '模式',
       modeAuto: '自动',
       mode2d: '2D Canvas',
       mode3d: '3D Three.js',
-      instruction: '生成指令',
-      instructionPlaceholder: "一句话描述玩法；可用 {'@'} 引用上方连线",
-      systemPrompt: '系统提示词',
-      systemPromptPlaceholder: '定义模型角色与输出规范；留空则按模式使用内置默认'
+      instruction: '玩法需求',
+      instructionPlaceholder: "一句话描述玩法；可用 {'@'} 引用上方连线；将写入 dsh brief"
     },
     svgAnim: {
       inspectorHint:
@@ -3704,7 +3702,8 @@ export default {
         world: '世界元素',
         worldEntities: '世界元素实体',
         beat: '场',
-        model: '模型'
+        model: '模型',
+        project: '工程'
       }
     },
     media: {
@@ -4432,7 +4431,7 @@ export default {
         svgGenInstructionPlaceholder:
           "描述要生成的矢量图（图标 / 插画 / UI 元素 / 动效）；可用 {'@'} 引用上方连线资源",
         gameHtmlGenInstructionPlaceholder:
-          "一句话描述可玩小游戏（玩法 / 操作 / 胜负）；可接 in-image 参考画风；可用 {'@'} 引用上方连线",
+          "一句话描述可玩小游戏（玩法 / 操作 / 胜负）；dsh 多轮写纯 Node/esbuild；可接 in-image；可用 {'@'} 引用上方连线",
         modelPoseInstructionPlaceholder:
           "描述角色静帧姿势（走路、挥手、叉腰…）或点 Inspector 常用姿势；可用 {'@'} 引用上游文本",
         modelRigSkinInstructionPlaceholder:

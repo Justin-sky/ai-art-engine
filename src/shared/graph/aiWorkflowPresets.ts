@@ -577,7 +577,7 @@ const PRESET_PLANS: Record<Exclude<AiWorkflowPresetId, 'custom'>, GraphPlan> = {
         typeId: 'note.text',
         title: '使用说明',
         params: {
-          text: '流程：改「一句话玩法」或双击「可玩 HTML 生成」写指令（可接参考图）→ 运行生成（out / 全部）→ 接到「可玩 HTML」后运行并双击进沙盒试玩（该节点只有输入、无输出，仅预览）。可将 gamePlayMode 改为 2d / 3d。'
+          text: '流程：改「一句话玩法」→ 运行「可玩 HTML 生成」（dsh 多轮写纯 Node/esbuild 工程）→ 接到「可玩 HTML」后运行 cook（npm + node build.mjs→单文件）→ 双击进沙盒试玩。可将 gamePlayMode 改为 2d / 3d。'
         }
       }
     ],

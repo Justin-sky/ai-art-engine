@@ -46,11 +46,14 @@ describe('gamePlay html contract', () => {
     expect(detectGamePlayMode(SAMPLE_GAME_HTML_3D)).toBe('3d')
   })
 
-  it('rejects dangerous patterns', () => {
-    const bad = SAMPLE_GAME_HTML_2D.replace('</script>', 'parent.location=1</script>')
-    const v = validateGameHtml(bad, '2d')
-    expect(v.ok).toBe(false)
-    expect(v.errors.some((e) => /parent/i.test(e))).toBe(true)
+  it('does not block cook on parent/eval-looking script text', () => {
+    const withApis = SAMPLE_GAME_HTML_2D.replace(
+      '</script>',
+      'parent.location=1;window.parent.x;eval(1);mesh.parent.matrix;</script>'
+    )
+    const v = validateGameHtml(withApis, '2d')
+    expect(v.ok).toBe(true)
+    expect(v.errors).toEqual([])
   })
 
   it('injects three importmap for 3d', () => {

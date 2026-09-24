@@ -25,7 +25,8 @@ describe('GraphPortType', () => {
       GraphPortType.world,
       GraphPortType.worldEntities,
       GraphPortType.beat,
-      GraphPortType.model
+      GraphPortType.model,
+      GraphPortType.project
     ])
     expect(isGraphPortDataType('image')).toBe(true)
     expect(isGraphPortDataType('images')).toBe(true)

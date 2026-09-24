@@ -26,6 +26,7 @@ import {
   newestVoiceSelectedId
 } from './gallery'
 import { dualBeatCatalogOutputs, dualWorldCatalogOutputs } from './materialize'
+import { GRAPH_OUT_ALL_PORT_ID } from '../ports'
 
 /** 预览/汇总时按路径补全文；无 readRunText 或无路径则原样返回 */
 export async function hydrateTextItems(
@@ -58,6 +59,24 @@ export function resolveGalleryOutputsFromNodeParams(
   options?: { typeId?: string | null }
 ): Record<string, GraphValue> | null {
   if (!params) return null
+
+  if (options?.typeId === 'game.htmlGen') {
+    const projectDir = params.gamePlayProjectDir?.trim()
+    if (projectDir) {
+      const mode =
+        params.gamePlayMode === '3d' || params.gamePlayMode === '2d'
+          ? params.gamePlayMode
+          : undefined
+      const projectOut = {
+        kind: 'project' as const,
+        relativePath: projectDir.replace(/\\/g, '/'),
+        text: params.text?.trim() || `Node/esbuild project\n${projectDir}`,
+        ...(mode ? { gameMode: mode } : {}),
+        ...(params.selectedTextId?.trim() ? { id: params.selectedTextId.trim() } : {})
+      }
+      return { out: projectOut, [GRAPH_OUT_ALL_PORT_ID]: projectOut }
+    }
+  }
 
   if (options?.typeId === 'world.gen') {
     const fromParams = Array.isArray(params.worldElementOutputs)

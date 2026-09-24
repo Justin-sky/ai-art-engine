@@ -1,5 +1,5 @@
 /**
- * `asset.gamePlay`：接收上游 HTML → 校验写回 → 双击沙盒试玩（无输出端口，仅预览终端）。
+ * `asset.gamePlay`：接收上游工程目录 → cook（npm + node build.mjs）→ 单 HTML 写回 → 沙盒试玩。
  */
 import { isAssetRefNode } from '../nodeRole'
 import {
@@ -12,80 +12,94 @@ import { flattenTextValues, flattenTextsValues } from './gallery'
 import { autoIncomingTextForInstruction, selectIncomingValuesForInstruction } from './incoming'
 import { resolveMentionSources } from './context'
 import type { GraphValue, NodeExecuteContext } from './types'
+import { gamePlayDshError } from '../../gamePlayDshJob'
 
 function readStoredHtml(ctx: NodeExecuteContext): string {
   const fromParams = ctx.node.params.gamePlayHtml?.trim() || ctx.node.params.text?.trim() || ''
-  if (fromParams) return fromParams
+  if (fromParams && fromParams.includes('<html')) return fromParams
   if (ctx.node.assetId && ctx.resolveAssetGenParams) {
     const gp = ctx.resolveAssetGenParams(ctx.node.assetId) as
       { gamePlayHtml?: string; text?: string } | undefined
     const fromAsset = gp?.gamePlayHtml?.trim() || gp?.text?.trim() || ''
-    if (fromAsset) return fromAsset
+    if (fromAsset && fromAsset.includes('<html')) return fromAsset
   }
   return ''
 }
 
-async function hydratePathOnlyTexts(
-  ctx: NodeExecuteContext,
-  values: GraphValue[]
-): Promise<string> {
-  const fromPorts = flattenTextValues(values)
-    .map((item) => item.text.trim())
-    .filter(Boolean)
-    .join('\n\n')
-  if (fromPorts) return fromPorts
-
-  if (!ctx.readRunText) return ''
-  const items = flattenTextsValues(values)
-  for (const item of items) {
-    const path = item.relativePath?.trim()
-    if (!path) continue
-    try {
-      const text = (await ctx.readRunText(path))?.trim() ?? ''
-      if (text) return text
-    } catch {
-      // try next
-    }
-  }
-  // 单条 text 口也可能只有 relativePath
-  for (const v of values) {
-    if (v.kind !== 'text') continue
-    const path = v.relativePath?.trim()
-    if (!path || v.text.trim()) continue
-    try {
-      const text = (await ctx.readRunText(path))?.trim() ?? ''
-      if (text) return text
-    } catch {
-      // try next
-    }
+function readProjectDir(ctx: NodeExecuteContext): string {
+  const fromParams = ctx.node.params.gamePlayProjectDir?.trim() || ''
+  if (fromParams) return fromParams.replace(/\\/g, '/')
+  if (ctx.node.assetId && ctx.resolveAssetGenParams) {
+    const gp = ctx.resolveAssetGenParams(ctx.node.assetId) as
+      { gamePlayProjectDir?: string } | undefined
+    const fromAsset = gp?.gamePlayProjectDir?.trim() || ''
+    if (fromAsset) return fromAsset.replace(/\\/g, '/')
   }
   return ''
 }
 
-async function resolveIncomingHtml(ctx: NodeExecuteContext): Promise<string> {
+async function resolveIncomingProjectDir(ctx: NodeExecuteContext): Promise<string> {
+  const stored = readProjectDir(ctx)
+  if (stored) return stored
+
   const mentionSources = resolveMentionSources(ctx)
   const instructionRaw = ctx.node.params.generateInstruction?.trim() ?? ''
   const selected = selectIncomingValuesForInstruction(ctx, instructionRaw)
+
+  for (const v of selected) {
+    if (v.kind === 'project' && v.relativePath?.trim()) {
+      return v.relativePath.replace(/\\/g, '/')
+    }
+  }
+
+  // 兼容旧链路：上游仍以 text / texts 携带工程路径
+  for (const v of selected) {
+    if (v.kind === 'text' && v.relativePath?.includes('GamePlayJobs')) {
+      return v.relativePath.replace(/\\/g, '/')
+    }
+    if (v.kind === 'texts') {
+      for (const item of v.items) {
+        if (item.relativePath?.includes('GamePlayJobs')) {
+          return item.relativePath.replace(/\\/g, '/')
+        }
+      }
+    }
+  }
+
   const fromAuto = autoIncomingTextForInstruction(instructionRaw, selected, mentionSources)
-  if (fromAuto.trim()) return fromAuto.trim()
-  const hydrated = await hydratePathOnlyTexts(ctx, selected)
-  if (hydrated.trim()) return hydrated.trim()
-  return readStoredHtml(ctx)
+  const match = /Cache\/GamePlayJobs\/[^\s\n]+/i.exec(fromAuto)
+  if (match?.[0]) return match[0].replace(/\\/g, '/')
+
+  for (const item of flattenTextsValues(selected)) {
+    if (item.relativePath?.includes('GamePlayJobs')) {
+      return item.relativePath.replace(/\\/g, '/')
+    }
+  }
+  for (const item of flattenTextValues(selected)) {
+    if (item.relativePath?.includes('GamePlayJobs')) {
+      return item.relativePath.replace(/\\/g, '/')
+    }
+  }
+  return ''
 }
 
 async function commitGamePlay(
   ctx: NodeExecuteContext,
   html: string,
-  mode: '2d' | '3d'
+  mode: '2d' | '3d',
+  extra?: { projectDir?: string; buildPath?: string }
 ): Promise<Record<string, GraphValue>> {
   const params = {
     gamePlayHtml: html,
     gamePlayMode: mode,
-    text: html
+    text: html,
+    ...(extra?.projectDir ? { gamePlayProjectDir: extra.projectDir } : {}),
+    ...(extra?.buildPath
+      ? { gamePlayBuildHtmlPath: extra.buildPath, gamePlayHtmlPath: extra.buildPath }
+      : {})
   }
   ctx.node.params = { ...ctx.node.params, ...params }
   ctx.patchNode?.({ params })
-  // 仅作沙盒预览终端，无输出口
   return {}
 }
 
@@ -94,7 +108,21 @@ export async function executeGamePlayAssetNode(
 ): Promise<Record<string, GraphValue>> {
   const preferred = resolvePreferredGamePlayMode(ctx.node.params.gamePlayMode) as GamePlayMode
 
+  // 资产引用：已有编译 HTML 则直接校验；否则尝试 cook 工程
   if (isAssetRefNode(ctx.node)) {
+    const projectDir = readProjectDir(ctx)
+    if (projectDir && ctx.buildGamePlayProject) {
+      ctx.log?.('cook：构建 Node/esbuild 工程…')
+      const built = await ctx.buildGamePlayProject({
+        projectRelativeDir: projectDir,
+        log: ctx.log
+      })
+      const prepared = prepareGameHtml(built.html, preferred)
+      return commitGamePlay(ctx, prepared.html, prepared.mode, {
+        projectDir,
+        buildPath: built.buildHtmlRelativePath
+      })
+    }
     const stored = readStoredHtml(ctx)
     if (!stored) {
       const seeded = seedGameHtml(preferred)
@@ -104,13 +132,39 @@ export async function executeGamePlayAssetNode(
     return commitGamePlay(ctx, prepared.html, prepared.mode)
   }
 
-  const raw = await resolveIncomingHtml(ctx)
-
-  if (!raw) {
-    const seeded = seedGameHtml(preferred)
-    return commitGamePlay(ctx, seeded.html, seeded.mode)
+  const projectDir = await resolveIncomingProjectDir(ctx)
+  if (projectDir) {
+    if (!ctx.buildGamePlayProject) {
+      throw new Error(gamePlayDshError('BUILD'))
+    }
+    ctx.log?.(`cook：${projectDir}`)
+    const built = await ctx.buildGamePlayProject({
+      projectRelativeDir: projectDir,
+      log: ctx.log
+    })
+    const prepared = prepareGameHtml(built.html, preferred)
+    return commitGamePlay(ctx, prepared.html, prepared.mode, {
+      projectDir,
+      buildPath: built.buildHtmlRelativePath
+    })
   }
 
-  const prepared = prepareGameHtml(raw, preferred)
-  return commitGamePlay(ctx, prepared.html, prepared.mode)
+  // 兼容：上游仍是整页 HTML 文本
+  const rawHtml = readStoredHtml(ctx)
+  if (rawHtml) {
+    const prepared = prepareGameHtml(rawHtml, preferred)
+    return commitGamePlay(ctx, prepared.html, prepared.mode)
+  }
+
+  const mentionSources = resolveMentionSources(ctx)
+  const instructionRaw = ctx.node.params.generateInstruction?.trim() ?? ''
+  const selected = selectIncomingValuesForInstruction(ctx, instructionRaw)
+  const fromAuto = autoIncomingTextForInstruction(instructionRaw, selected, mentionSources)
+  if (fromAuto && /<html[\s>]/i.test(fromAuto)) {
+    const prepared = prepareGameHtml(fromAuto, preferred)
+    return commitGamePlay(ctx, prepared.html, prepared.mode)
+  }
+
+  const seeded = seedGameHtml(preferred)
+  return commitGamePlay(ctx, seeded.html, seeded.mode)
 }

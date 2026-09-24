@@ -1150,14 +1150,7 @@ async function applyPreset(item: InstructionPreset): Promise<void> {
     const id = item.id.toLowerCase()
     const mode = id.includes('3d') ? '3d' : id.includes('2d') ? '2d' : null
     if (mode) {
-      const node = graphEditorHosts.getNode(props.hostId, props.nodeId)
-      const stored = node?.params.generateSystemPrompt
-      const patch: Record<string, unknown> = { gamePlayMode: mode }
-      const { isBuiltinGameHtmlSystemPrompt } = await import('@shared/gamePlay')
-      if (isBuiltinGameHtmlSystemPrompt(stored)) {
-        patch.generateSystemPrompt = ''
-      }
-      graphEditorHosts.updateNode(props.hostId, props.nodeId, patch)
+      graphEditorHosts.updateNode(props.hostId, props.nodeId, { gamePlayMode: mode })
     }
   }
   closeMenu()

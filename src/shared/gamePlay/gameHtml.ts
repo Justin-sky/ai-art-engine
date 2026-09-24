@@ -73,17 +73,7 @@ export interface ValidateGameHtmlResult {
   warnings: string[]
 }
 
-const DANGEROUS_PATTERNS: Array<{ re: RegExp; msg: string }> = [
-  { re: /\b(?:window\.)?parent\./i, msg: '禁止访问 parent' },
-  { re: /\b(?:window\.)?top\./i, msg: '禁止访问 top' },
-  { re: /\bwindow\.open\s*\(/i, msg: '禁止 window.open' },
-  { re: /\beval\s*\(/i, msg: '禁止 eval' },
-  { re: /\bnew\s+Function\s*\(/i, msg: '禁止 Function 构造器' },
-  { re: /file:\/\//i, msg: '禁止 file://' },
-  { re: /\brequire\s*\(/i, msg: '禁止 require' }
-]
-
-/** 轻量校验：结构 + 危险 API 启发式 */
+/** 轻量校验：结构 / 模式线索；不做危险 API 启发式拦截（cook 后的 Three 打包体易误杀） */
 export function validateGameHtml(
   html: string,
   preferred: GamePlayMode = 'auto'
@@ -97,9 +87,6 @@ export function validateGameHtml(
     if (!(mode === '3d' && /WebGLRenderer|THREE\.|from\s+['"]three['"]/i.test(html))) {
       errors.push('缺少 <canvas>')
     }
-  }
-  for (const { re, msg } of DANGEROUS_PATTERNS) {
-    if (re.test(html)) errors.push(msg)
   }
   if (/phaser|pixi\.js|from\s+['"]pixi/i.test(html)) {
     warnings.push('检测到 Phaser/Pixi 外链倾向；v1 建议原生 Canvas / Three')
