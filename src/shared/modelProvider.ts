@@ -3,6 +3,8 @@
 export const OPENROUTER_DEFAULT_BASE_URL = 'https://openrouter.ai/api/v1'
 /** OpenAI 官方 API（文本 / 图片） */
 export const OPENAI_DEFAULT_BASE_URL = 'https://api.openai.com/v1'
+/** Anthropic Messages API（Claude；认证 x-api-key + anthropic-version） */
+export const ANTHROPIC_DEFAULT_BASE_URL = 'https://api.anthropic.com'
 /** DeepSeek 开放平台（OpenAI 兼容，仅文本） */
 export const DEEPSEEK_DEFAULT_BASE_URL = 'https://api.deepseek.com'
 /** 智谱开放平台（OpenAI 兼容；GLM 文本 + CogView 图片） */
@@ -45,6 +47,7 @@ export const LUX3D_DEFAULT_BASE_URL = 'https://api.aholo3d.cn'
 export type ModelProviderKind =
   | 'openrouter'
   | 'openai'
+  | 'anthropic'
   | 'deepseek'
   | 'zhipu'
   | 'moonshot'
@@ -118,6 +121,12 @@ export const MODEL_PROVIDER_KINDS: readonly ModelProviderKindMeta[] = [
     label: 'OpenAI',
     defaultBaseUrl: OPENAI_DEFAULT_BASE_URL,
     credentialsUrl: 'https://platform.openai.com/api-keys'
+  },
+  {
+    id: 'anthropic',
+    label: 'Anthropic（Claude）',
+    defaultBaseUrl: ANTHROPIC_DEFAULT_BASE_URL,
+    credentialsUrl: 'https://console.anthropic.com/settings/keys'
   },
   {
     id: 'deepseek',
@@ -354,6 +363,14 @@ export function isOpenAiProvider(
   if (!provider) return false
   if (typeof provider === 'string') return provider === 'openai'
   return provider.providerKind === 'openai'
+}
+
+export function isAnthropicProvider(
+  provider: Pick<ModelProviderInstance, 'providerKind'> | ModelProviderKind | undefined | null
+): boolean {
+  if (!provider) return false
+  if (typeof provider === 'string') return provider === 'anthropic'
+  return provider.providerKind === 'anthropic'
 }
 
 export function isDeepSeekProvider(
@@ -597,6 +614,15 @@ const PROVIDER_MODEL_DISPLAY_NAMES: Partial<Record<ModelProviderKind, Record<str
     'deepseek-v4-pro': 'DeepSeek V4 Pro',
     'deepseek-v4-flash': 'DeepSeek V4 Flash (legacy alias → V4.1 Flash)',
     'deepseek-v4-flash-vision-exp': 'DeepSeek V4 Flash Vision (legacy alias → V4.1 Flash)'
+  },
+  anthropic: {
+    'claude-opus-4-20250514': 'Claude Opus 4',
+    'claude-sonnet-4-20250514': 'Claude Sonnet 4',
+    'claude-3-7-sonnet-20250219': 'Claude Sonnet 3.7',
+    'claude-3-5-sonnet-20241022': 'Claude Sonnet 3.5',
+    'claude-3-5-haiku-20241022': 'Claude Haiku 3.5',
+    'claude-3-opus-20240229': 'Claude Opus 3',
+    'claude-3-haiku-20240307': 'Claude Haiku 3'
   }
 }
 

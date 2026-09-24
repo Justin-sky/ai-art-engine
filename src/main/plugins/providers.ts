@@ -3,6 +3,7 @@ import { MODEL_PROVIDER_KINDS, type ModelProviderKindMeta } from '@shared/modelP
 import type { ModelProviderAdapter } from '../services/modelProviders/types'
 import { openRouterAdapter } from '../services/modelProviders/openrouter/adapter'
 import { openAiAdapter } from '../services/modelProviders/openai/adapter'
+import { anthropicAdapter } from '../services/modelProviders/anthropic/adapter'
 import { deepSeekAdapter } from '../services/modelProviders/deepseek/adapter'
 import { zhipuAdapter } from '../services/modelProviders/zhipu/adapter'
 import { moonshotAdapter } from '../services/modelProviders/moonshot/adapter'
@@ -56,6 +57,7 @@ export function createProviderPlugin(adapter: ModelProviderAdapter, meta?: Model
 export const builtinProviderPlugins = [
   createProviderPlugin(openRouterAdapter),
   createProviderPlugin(openAiAdapter),
+  createProviderPlugin(anthropicAdapter),
   createProviderPlugin(deepSeekAdapter),
   createProviderPlugin(zhipuAdapter),
   createProviderPlugin(moonshotAdapter),

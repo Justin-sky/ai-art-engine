@@ -480,6 +480,9 @@ function settingsModalitiesFor(provider: ModelProviderInstance): ModelModality[]
   if (provider.providerKind === 'deepseek') {
     return ['text']
   }
+  if (provider.providerKind === 'anthropic') {
+    return ['text']
+  }
   if (provider.providerKind === 'openai') {
     return ['text', 'image']
   }
@@ -619,6 +622,9 @@ function modalityHintText(provider: ModelProviderInstance): string {
   }
   if (provider.providerKind === 'deepseek') {
     return t(`settings.models.deepseekModalityHint.${mod}`)
+  }
+  if (provider.providerKind === 'anthropic') {
+    return t(`settings.models.anthropicModalityHint.${mod}`)
   }
   if (provider.providerKind === 'openai') {
     return t(`settings.models.openaiModalityHint.${mod}`)

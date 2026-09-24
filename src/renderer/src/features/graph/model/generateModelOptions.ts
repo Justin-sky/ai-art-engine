@@ -97,6 +97,10 @@ export function buildModelOptions(
     if (provider.providerKind === 'deepseek' && modality !== 'text') {
       continue
     }
+    // Anthropic（Claude）：仅文本
+    if (provider.providerKind === 'anthropic' && modality !== 'text') {
+      continue
+    }
     // 智谱：文本 + 图片
     if (provider.providerKind === 'zhipu' && modality !== 'text' && modality !== 'image') {
       continue

@@ -524,6 +524,7 @@ export default {
       credentialsHint: {
         openrouter: 'Get API key:',
         openai: 'Get OpenAI API key:',
+        anthropic: 'Get Anthropic API key:',
         deepseek: 'Get DeepSeek API key:',
         zhipu: 'Get Zhipu API key:',
         moonshot: 'Get Kimi (Moonshot) API key:',
@@ -635,6 +636,9 @@ export default {
       },
       deepseekModalityHint: {
         text: 'DeepSeek chat models (deepseek-flash = V4.1 Flash / deepseek-v4-pro), OpenAI-compatible. Default Base URL is api.deepseek.com via /chat/completions; the text catalog is fetched from GET /models.'
+      },
+      anthropicModalityHint: {
+        text: 'Anthropic Claude chat models via the Messages API (not OpenAI-compatible). Default Base URL is api.anthropic.com via /v1/messages; the text catalog is fetched from GET /v1/models. Auth uses x-api-key + anthropic-version.'
       },
       moonshotModalityHint: {
         text: 'Kimi chat models (kimi-k2 family / moonshot-v1 family), OpenAI-compatible. Default Base URL is api.moonshot.cn/v1 via /chat/completions; the text catalog is fetched from GET /models.'

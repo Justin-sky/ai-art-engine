@@ -212,9 +212,10 @@ function resolveTextProvider(providerId?: string): {
       ...(baseUrl ? { baseUrl } : {})
     }
   }
-  // dsh 经由 OpenAI 兼容端点透传：自定义提供商中 Anthropic 端点类型（Messages API）不可用作 agent 模型
+  // dsh 经由 OpenAI 兼容端点透传：Anthropic Messages API（一等提供商或自定义 anthropic 端点）不可用作 agent 模型
   const isDshCompatible = (p: ModelProviderInstance): boolean =>
-    !isCustomProvider(p) || resolveCustomApiStyle(p) !== 'anthropic'
+    p.providerKind !== 'anthropic' &&
+    (!isCustomProvider(p) || resolveCustomApiStyle(p) !== 'anthropic')
   if (providerId) {
     const candidate = providers.find(
       (p) =>

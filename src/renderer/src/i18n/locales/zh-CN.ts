@@ -516,6 +516,7 @@ export default {
       credentialsHint: {
         openrouter: '获取 API Key：',
         openai: '获取 OpenAI API Key：',
+        anthropic: '获取 Anthropic API Key：',
         deepseek: '获取 DeepSeek API Key：',
         zhipu: '获取智谱 API Key：',
         moonshot: '获取 Kimi（月之暗面）API Key：',
@@ -624,6 +625,9 @@ export default {
       },
       deepseekModalityHint: {
         text: 'DeepSeek 对话模型（deepseek-flash = V4.1 Flash / deepseek-v4-pro），OpenAI 兼容，默认 Base URL 为 api.deepseek.com，对应 /chat/completions；文本目录由 GET /models 拉取。'
+      },
+      anthropicModalityHint: {
+        text: 'Anthropic Claude 对话模型，Messages API（非 OpenAI 兼容），默认 Base URL 为 api.anthropic.com，对应 /v1/messages；文本目录由 GET /v1/models 拉取。认证头为 x-api-key + anthropic-version。'
       },
       moonshotModalityHint: {
         text: 'Kimi 对话模型（kimi-k2 系列 / moonshot-v1 系列），OpenAI 兼容，默认 Base URL 为 api.moonshot.cn/v1，对应 /chat/completions；文本目录由 GET /models 拉取。'
