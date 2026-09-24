@@ -112,7 +112,7 @@ export async function executeGamePlayAssetNode(
   if (isAssetRefNode(ctx.node)) {
     const projectDir = readProjectDir(ctx)
     if (projectDir && ctx.buildGamePlayProject) {
-      ctx.log?.('cook：构建 Node/esbuild 工程…')
+      ctx.log?.('cook: building Node/esbuild project…')
       const built = await ctx.buildGamePlayProject({
         projectRelativeDir: projectDir,
         log: ctx.log
@@ -137,7 +137,7 @@ export async function executeGamePlayAssetNode(
     if (!ctx.buildGamePlayProject) {
       throw new Error(gamePlayDshError('BUILD'))
     }
-    ctx.log?.(`cook：${projectDir}`)
+    ctx.log?.(`cook: ${projectDir}`)
     const built = await ctx.buildGamePlayProject({
       projectRelativeDir: projectDir,
       log: ctx.log

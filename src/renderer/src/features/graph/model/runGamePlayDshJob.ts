@@ -93,8 +93,8 @@ export async function runGamePlayDshJob(
     try {
       input.log?.(
         resumed
-          ? `dsh：继续上次工程 ${prepared.projectRelativeDir}`
-          : 'dsh：开始多轮生成 Node/esbuild 工程…'
+          ? `dsh: resume project ${prepared.projectRelativeDir}`
+          : 'dsh: multi-turn Node/esbuild generation…'
       )
       const wait = await window.studio.runHarnessJobWait({
         task,
@@ -123,8 +123,8 @@ export async function runGamePlayDshJob(
   } else {
     input.log?.(
       resumed
-        ? `无 dsh：复用样例工程 ${prepared.projectRelativeDir}`
-        : '无 dsh：已写入样例 Node/esbuild 工程'
+        ? `no dsh: reuse sample project ${prepared.projectRelativeDir}`
+        : 'no dsh: wrote sample Node/esbuild project'
     )
   }
 
@@ -152,14 +152,14 @@ export async function runGamePlayDshJob(
 export async function buildGamePlayProjectForNode(
   input: Parameters<NonNullable<NodeExecuteContext['buildGamePlayProject']>>[0]
 ): Promise<{ html: string; buildHtmlRelativePath: string }> {
-  input.log?.('cook：npm install + node build.mjs…')
+  input.log?.('cook: npm install + node build.mjs…')
   const built = await window.studio.buildGamePlayProject({
     projectRelativeDir: input.projectRelativeDir
   })
   for (const line of built.logs.slice(-20)) {
     input.log?.(line)
   }
-  input.log?.(`cook：单文件 ${built.bytes}B`)
+  input.log?.(`cook: single HTML ${built.bytes}B`)
   return {
     html: built.html,
     buildHtmlRelativePath: built.buildHtmlRelativePath

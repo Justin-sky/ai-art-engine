@@ -2590,7 +2590,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     icon: '🎮',
     defaultTitle: '可玩 HTML 生成',
     description:
-      '一句话经 dsh 多轮生成纯 Node（esbuild）小游戏工程（2D Canvas 或 3D Three）。in 接文本、in-image 接参考图；out 出「工程」目录，可接入 asset.gamePlay；在可玩 HTML 节点执行时 cook（npm + node build.mjs）打成单文件沙盒试玩。无 dsh 时回退样例工程。',
+      '一句话经 dsh 多轮生成纯 Node（esbuild）小游戏工程（2D Canvas 或 3D Three）。in 接文本、in-image 接参考图；out 出「工程」目录，可接入 asset.gamePlay；在可玩 HTML 节点执行时 cook（npm + node build.mjs）打成单文件沙盒试玩。无 dsh 时回退样例工程。', // cjk-ok（MCP / Agent 集成文本：随 graph_node_types 返回给外部 Agent，非 UI 文案）
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [

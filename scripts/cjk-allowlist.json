@@ -372,7 +372,7 @@
       "text: '顶视收集小游戏：玩家用 WASD 移动，收集 8 个黄点后胜利，按 R 重开（2D）'",
       "title: '可玩 HTML 生成',",
       "title: '可玩 HTML',",
-      "text: '流程：改「一句话玩法」或双击「可玩 HTML 生成」写指令（可接参考图）→ 运行生成（out / 全部）→ 接到「可玩 HTML」后运行并双击进沙盒试玩（该节点只有输入、无输出，仅预览）。可将 gamePlayMode 改为 2d / 3d。'"
+      "text: '流程：改「一句话玩法」→ 运行「可玩 HTML 生成」（dsh 多轮写纯 Node/esbuild 工程）→ 接到「可玩 HTML」后运行 cook（npm + node build.mjs→单文件）→ 双击进沙盒试玩。可将 gamePlayMode 改为 2d / 3d。'"
     ],
     "src/shared/graph/anim2d.ts": [
       "prompt: '角色原地待机循环：身体轻微上下起伏，头发与衣摆自然飘动，表情平静，动作幅度小且稳定',",
@@ -456,8 +456,7 @@
       "defaultTitle: '3D 动画',",
       "label: '可玩 HTML',",
       "label: '可玩 HTML 生成',",
-      "defaultTitle: '可玩 HTML 生成',",
-      "'一句话生成可试玩的单文件 HTML（2D Canvas 或 3D Three.js）。in 接文本、in-image 接参考图；双击展开生成指令；out 出当前选中 HTML、out-all 出历次结果，可接入 asset.gamePlay。无模型时回退内置样例。',"
+      "defaultTitle: '可玩 HTML 生成',"
     ],
     "src/shared/graph/create.ts": ["gameSystem: '策划案生成',", "gamePlay: '可玩 HTML',"],
     "src/shared/graph/episodeBoardParse.ts": [

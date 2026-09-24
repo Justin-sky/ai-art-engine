@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      ;(function () {
+        try {
+          var pref = localStorage.getItem('site.theme')
+          if (
+            pref !== 'light' &&
+            (pref === 'dark' ||
+              pref == null ||
+              (pref === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches))
+          ) {
+            document.documentElement.classList.add('dark')
+          }
+        } catch (e) {}
+      })()
+    </script>
+    <meta
+      name="description"
+      content="AIArtEngine guide: one-line playable HTML via dsh multi-turn Node/esbuild projects, cook to a single file, sandbox play for 2D/3D prototypes."
+    />
+    <title>Playable HTML mini-games — AIArtEngine</title>
+    <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/guide-gameplay.en.html" />
+    <meta property="og:site_name" content="AIArtEngine" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:title" content="Playable HTML mini-games — AIArtEngine" />
+    <meta
+      property="og:description"
+      content="One line → dsh Node/esbuild project → cook single HTML → sandbox play."
+    />
+    <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/guide-gameplay.en.html" />
+    <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-gameplay.html" />
+    <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-gameplay.en.html" />
+    <link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/guide-gameplay.html" />
+    <link rel="icon" href="assets/logo-mark.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Syne:wght@500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="manual.css?v=20260924" />
+    <link rel="stylesheet" href="site.css?v=20260924" />
+  </head>
+  <body>
+    <a class="skip" href="#manual">Skip to content</a>
+
+    <header class="top">
+      <a class="brand" href="index.en.html">
+        <img src="assets/logo-mark.png" alt="" width="30" height="30" />
+        <span>AI Art Engine</span>
+      </a>
+      <nav class="nav" aria-label="Primary">
+        <a href="index.en.html">Home</a>
+        <a href="quickstart.en.html">Quick start</a>
+        <a href="manual.en.html">Manual</a>
+        <a href="guide-video.en.html">Video guide</a>
+        <a href="guide-short-video.en.html">Short-form</a>
+        <a href="guide-comfyui.en.html">ComfyUI</a>
+        <a href="guide-mcp.en.html">MCP</a>
+        <a href="guide-gameplay.en.html" aria-current="page">Playable HTML</a>
+        <a href="index.en.html#download">Download</a>
+        <a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer">Videos</a>
+        <a
+          href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
+          target="_blank"
+          rel="noopener noreferrer"
+          >Gitee</a
+        >
+        <a class="nav-src" href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"
+          >GitHub</a
+        >
+      </nav>
+      <a class="nav-lang" href="guide-gameplay.html" hreflang="zh-CN" lang="zh-CN">中文</a>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme">◐</button>
+      <details class="mobile-menu">
+        <summary aria-label="Open menu"><span aria-hidden="true">☰</span> Menu</summary>
+        <nav class="mobile-nav" aria-label="Mobile">
+          <a href="index.en.html">Home</a>
+          <a href="quickstart.en.html">Quick start</a>
+          <a href="manual.en.html">Manual</a>
+          <a href="guide-video.en.html">Video guide</a>
+          <a href="guide-short-video.en.html">Short-form</a>
+          <a href="guide-comfyui.en.html">ComfyUI</a>
+          <a href="guide-mcp.en.html">MCP</a>
+          <a href="guide-gameplay.en.html" aria-current="page">Playable HTML</a>
+          <a href="index.en.html#download">Download</a>
+        </nav>
+      </details>
+    </header>
+
+    <div class="manual-shell">
+      <aside class="toc" aria-label="On this page">
+        <h2>Contents</h2>
+        <ol>
+          <li><a href="#overview">What it is</a></li>
+          <li><a href="#pipeline">Wire three nodes</a></li>
+          <li><a href="#mode">2D / 3D / Auto</a></li>
+          <li><a href="#run">Generate → cook → play</a></li>
+          <li><a href="#resume">Resume &amp; folders</a></li>
+          <li><a href="#faq">FAQ</a></li>
+        </ol>
+        <p style="margin-top: 1.25rem; font-size: 12px; color: var(--mute)">
+          <a href="manual.en.html#graph">← Manual · Graph</a>
+        </p>
+      </aside>
+
+      <article class="manual" id="manual">
+        <header class="manual-hero">
+          <p class="eyebrow">Guide · Playable HTML · v6.6+</p>
+          <h1>Playable HTML mini-games</h1>
+          <p class="lede">
+            Turn a <strong>one-line pitch</strong> into a tryable prototype: not one-shot chat HTML, but a
+            <strong>dsh multi-turn</strong> pure Node (esbuild) project, then <strong>cook</strong> locally
+            into a single file and open the in-app sandbox. Great for game-feel drafts—not a Unity/Godot
+            replacement.
+          </p>
+        </header>
+
+        <section id="overview">
+          <h2>1. What it is</h2>
+          <p>From v6.6 the playable HTML path is:</p>
+          <table>
+            <thead>
+              <tr>
+                <th>Step</th>
+                <th>Node / action</th>
+                <th>Output</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Brief</td>
+                <td>Text node (or instruction)</td>
+                <td>One-line pitch</td>
+              </tr>
+              <tr>
+                <td>Scaffold + agent</td>
+                <td><code>game.htmlGen</code></td>
+                <td><code>Cache/GamePlayJobs/…/project</code> (package.json / build.mjs / src/*.js)</td>
+              </tr>
+              <tr>
+                <td>Build</td>
+                <td><code>asset.gamePlay</code> cook</td>
+                <td><code>dist/single.html</code> (npm + node build.mjs)</td>
+              </tr>
+              <tr>
+                <td>Play</td>
+                <td>Double-click asset</td>
+                <td>In-app iframe sandbox</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="tip">
+            You need a configured <strong>text model</strong> (DeepSeek recommended). Generation uses the
+            embedded <strong>dsh</strong> agent; cook needs a working <code>npm</code> on PATH.
+          </div>
+        </section>
+
+        <section id="pipeline">
+          <h2>2. Wire three nodes</h2>
+          <h3>2.1 Fastest: AI workflow preset</h3>
+          <ol>
+            <li>Open <strong>AI workflow</strong> in the top bar.</li>
+            <li>Pick <strong>One-line mini-game</strong> (or describe “playable HTML mini-game”).</li>
+            <li>Review the preview, then <strong>Create workflow</strong> and drop it on the canvas.</li>
+          </ol>
+          <p>Typical inner graph: text brief → playable HTML generate → playable HTML asset.</p>
+
+          <h3>2.2 Manual</h3>
+          <ol>
+            <li>Add a text node with controls, goal, and win/lose.</li>
+            <li>Add <strong>Playable HTML generate</strong>; wire text to <code>in</code> (optional ref image to <code>in-image</code>).</li>
+            <li>Add <strong>Playable HTML</strong> asset; wire the generate node’s <strong>project</strong> port to asset <code>in</code>.</li>
+          </ol>
+        </section>
+
+        <section id="mode">
+          <h2>3. 2D / 3D / Auto</h2>
+          <p>
+            Select the generate node; Inspector has a <strong>Mode</strong> dropdown
+            (<code>gamePlayMode</code>):
+          </p>
+          <ul>
+            <li><strong>2D Canvas</strong>: scaffold without three; agent writes Canvas 2D.</li>
+            <li>
+              <strong>3D Three.js</strong>: scaffold includes <code>three</code> and a 3D sample entry;
+              brief forces Three. Pick this when you want reliable 3D.
+            </li>
+            <li>
+              <strong>Auto</strong>: prompt may choose; scaffold still starts 2D—easy to get “3D copy, 2D
+              project.”
+            </li>
+          </ul>
+          <div class="tip">
+            Instruction templates whose names contain “2D / 3D” set the mode automatically.
+          </div>
+        </section>
+
+        <section id="run">
+          <h2>4. Generate → cook → play</h2>
+          <ol>
+            <li>
+              <strong>Run generate</strong>: logs show dsh editing <code>src/</code>. Don’t race
+              <code>npm install</code> / build yourself—the host does that on cook.
+            </li>
+            <li>
+              <strong>Run the asset node</strong>: look for <code>npm install</code>,
+              <code>node build.mjs</code>, and a single-file size.
+            </li>
+            <li>
+              <strong>Double-click</strong> the playable HTML node to open the sandbox (WASD / mouse /
+              often <kbd>R</kbd> to reset).
+            </li>
+          </ol>
+          <p>Example brief (3D):</p>
+          <pre><code>Low-poly space-station corridor: pick up energy orbs, WASD move, mouse look, red enemies drain HP, collect 10 to win, R resets; Three.js, crisp look.</code></pre>
+        </section>
+
+        <section id="resume">
+          <h2>5. Resume &amp; folders</h2>
+          <ul>
+            <li>
+              Generate stores the project relative path in <code>gamePlayProjectDir</code>. Re-running the
+              same node <strong>resumes that folder</strong> (no fresh scaffold).
+            </li>
+            <li>
+              After cook with a disk path, the full HTML is not stuffed into the card preview (avoids drag
+              lag); the sandbox reads <code>dist/single.html</code>.
+            </li>
+            <li>On disk: <code>Cache/GamePlayJobs/&lt;jobId&gt;/project/</code> under the project root.</li>
+          </ul>
+        </section>
+
+        <section id="faq">
+          <h2>6. FAQ</h2>
+          <details>
+            <summary>I chose Auto but it feels 2D?</summary>
+            <p>
+              Auto only tweaks the prompt; scaffold defaults to 2D. Pick <strong>3D Three.js</strong> or a
+              3D-named instruction template.
+            </p>
+          </details>
+          <details>
+            <summary>Cook fails on npm / build?</summary>
+            <p>
+              Ensure Node.js / npm are on PATH; read the node run log. You can
+              <code>npm run build</code> manually in <code>Cache/GamePlayJobs/…/project</code> to compare.
+            </p>
+          </details>
+          <details>
+            <summary>Black sandbox or shader errors?</summary>
+            <p>
+              Custom WebGL (e.g. <code>dFdx</code>) is sensitive to WebGL1/2 extensions. Prefer Three
+              standard materials, or resume the agent to fix. This is a prototype path—not every shader
+              lands in one shot.
+            </p>
+          </details>
+          <details>
+            <summary>How does this relate to film workflows?</summary>
+            <p>
+              It doesn’t have to. Playable HTML is a <strong>lightweight gameplay prototype</strong>;
+              short-form / ads still use the graph + timeline / director. See
+              <a href="manual.en.html#graph">Manual § Graph</a> and the
+              <a href="guide-short-video.en.html">short-form guide</a>.
+            </p>
+          </details>
+        </section>
+
+        <nav class="doc-pager" aria-label="Related">
+          <a href="manual.en.html#ai-workflow">← Manual · AI workflow</a>
+          <a href="manual.en.html#graph">Manual · Graph →</a>
+        </nav>
+      </article>
+    </div>
+
+    <footer class="foot">
+      <div class="foot-row">
+        <a class="foot-brand" href="index.en.html">
+          <img src="assets/logo-mark.png" alt="" width="22" height="22" />
+          AI Art Engine
+        </a>
+        <nav class="foot-links" aria-label="Footer">
+          <a href="index.en.html">Home</a>
+          <a href="quickstart.en.html">Quick start</a>
+          <a href="manual.en.html">Manual</a>
+          <a href="guide-gameplay.en.html">Playable HTML</a>
+          <a href="guide-mcp.en.html">MCP</a>
+          <a href="index.en.html#download">Download</a>
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a>
+        </nav>
+        <span>GPL-3.0</span>
+      </div>
+    </footer>
+    <script>
+      document.querySelectorAll('.mobile-nav a').forEach((link) => {
+        link.addEventListener('click', () => link.closest('.mobile-menu')?.removeAttribute('open'))
+      })
+    </script>
+    <script>
+      ;(function () {
+        var KEY = 'site.theme'
+        var btn = document.querySelector('.theme-toggle')
+        if (!btn) return
+        var root = document.documentElement
+        var query = window.matchMedia('(prefers-color-scheme: dark)')
+        var META = {
+          auto: { icon: '◐', label: 'Theme: system' },
+          light: { icon: '☀', label: 'Theme: light' },
+          dark: { icon: '☾', label: 'Theme: dark' }
+        }
+        function readPref() {
+          try {
+            var v = localStorage.getItem(KEY)
+            return v === 'light' || v === 'dark' || v === 'auto' ? v : 'dark'
+          } catch (e) {
+            return 'auto'
+          }
+        }
+        function apply() {
+          var pref = readPref()
+          root.classList.toggle('dark', pref === 'dark' || (pref !== 'light' && query.matches))
+          root.classList.toggle('light', pref === 'light')
+          var meta = META[pref]
+          btn.textContent = meta.icon
+          btn.title = meta.label + ' (click to cycle)'
+          btn.setAttribute('aria-label', meta.label)
+        }
+        query.addEventListener('change', apply)
+        btn.addEventListener('click', function () {
+          var cur = readPref()
+          var next = cur === 'dark' ? 'light' : cur === 'light' ? 'auto' : 'dark'
+          try {
+            localStorage.setItem(KEY, next)
+          } catch (e) {}
+          apply()
+        })
+        apply()
+      })()
+    </script>
+    <script src="site-enhance.js" defer></script>
+    <script src="site-search.js" defer></script>
+  </body>
+</html>

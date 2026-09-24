@@ -280,7 +280,7 @@ export async function buildGamePlayProject(
   }
 }
 
-/** 测试辅助：列出脚手架写入的相对路径 */
+/** Test helper: list relative paths written by the scaffold. */
 export function listScaffoldFiles(projectAbs: string): string[] {
   const out: string[] = []
   const walk = (dir: string): void => {

@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      ;(function () {
+        try {
+          var pref = localStorage.getItem('site.theme')
+          if (
+            pref !== 'light' &&
+            (pref === 'dark' ||
+              pref == null ||
+              (pref === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches))
+          ) {
+            document.documentElement.classList.add('dark')
+          }
+        } catch (e) {}
+      })()
+    </script>
+    <meta
+      name="description"
+      content="AIArtEngine 教程：一句话经 dsh 多轮生成纯 Node（esbuild）可玩工程，cook 打成单文件 HTML，沙盒试玩 2D / 3D 小游戏。"
+    />
+    <title>可玩 HTML 小游戏教程 — AIArtEngine</title>
+    <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/guide-gameplay.html" />
+    <meta property="og:site_name" content="AIArtEngine" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="zh_CN" />
+    <meta property="og:title" content="可玩 HTML 小游戏教程 — AIArtEngine" />
+    <meta
+      property="og:description"
+      content="一句话 → dsh 多轮 Node/esbuild 工程 → cook 单文件 → 沙盒试玩。"
+    />
+    <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/guide-gameplay.html" />
+    <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-gameplay.html" />
+    <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-gameplay.en.html" />
+    <link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/guide-gameplay.html" />
+    <link rel="icon" href="assets/logo-mark.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Syne:wght@500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="manual.css?v=20260924" />
+    <link rel="stylesheet" href="site.css?v=20260924" />
+  </head>
+  <body>
+    <a class="skip" href="#manual">跳到正文</a>
+
+    <header class="top">
+      <a class="brand" href="index.html">
+        <img src="assets/logo-mark.png" alt="" width="30" height="30" />
+        <span>AI Art Engine</span>
+      </a>
+      <nav class="nav" aria-label="主导航">
+        <a href="index.html">首页</a>
+        <a href="quickstart.html">快速上手</a>
+        <a href="manual.html">使用手册</a>
+        <a href="guide-video.html">视频生成指南</a>
+        <a href="guide-short-video.html">短视频教程</a>
+        <a href="guide-comfyui.html">ComfyUI 教程</a>
+        <a href="guide-mcp.html">MCP 接入</a>
+        <a href="guide-gameplay.html" aria-current="page">可玩 HTML</a>
+        <a href="index.html#download">下载</a>
+        <a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer">视频教程</a>
+        <a
+          href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
+          target="_blank"
+          rel="noopener noreferrer"
+          >Gitee</a
+        >
+        <a class="nav-src" href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"
+          >GitHub</a
+        >
+      </nav>
+      <a class="nav-lang" href="guide-gameplay.en.html" hreflang="en" lang="en">EN</a>
+      <button class="theme-toggle" type="button" aria-label="切换主题">◐</button>
+      <details class="mobile-menu">
+        <summary aria-label="打开导航菜单"><span aria-hidden="true">☰</span> 菜单</summary>
+        <nav class="mobile-nav" aria-label="移动端导航">
+          <a href="index.html">首页</a>
+          <a href="quickstart.html">快速上手</a>
+          <a href="manual.html">使用手册</a>
+          <a href="guide-video.html">视频生成指南</a>
+          <a href="guide-short-video.html">短视频教程</a>
+          <a href="guide-comfyui.html">ComfyUI 教程</a>
+          <a href="guide-mcp.html">MCP 接入</a>
+          <a href="guide-gameplay.html" aria-current="page">可玩 HTML</a>
+          <a href="index.html#download">下载</a>
+        </nav>
+      </details>
+    </header>
+
+    <div class="manual-shell">
+      <aside class="toc" aria-label="目录">
+        <h2>目录</h2>
+        <ol>
+          <li><a href="#overview">它是什么</a></li>
+          <li><a href="#pipeline">三条节点怎么连</a></li>
+          <li><a href="#mode">2D / 3D / 自动</a></li>
+          <li><a href="#run">生成 → cook → 试玩</a></li>
+          <li><a href="#resume">续跑与工程目录</a></li>
+          <li><a href="#faq">常见问题</a></li>
+        </ol>
+        <p style="margin-top: 1.25rem; font-size: 12px; color: var(--mute)">
+          <a href="manual.html#graph">← 返回手册 · 节点图</a>
+        </p>
+      </aside>
+
+      <article class="manual" id="manual">
+        <header class="manual-hero">
+          <p class="eyebrow">Guide · Playable HTML · v6.6+</p>
+          <h1>可玩 HTML 小游戏</h1>
+          <p class="lede">
+            用<strong>一句话玩法</strong>生成可试玩原型：不是聊天框吐一整页 HTML，而是
+            <strong>dsh 多轮</strong>写纯 Node（esbuild）工程，再在本机
+            <strong>cook</strong>成单文件，双击进沙盒开玩。适合玩法草案，不替代 Unity / Godot。
+          </p>
+        </header>
+
+        <section id="overview">
+          <h2>1. 它是什么</h2>
+          <p>从 v6.6 起，可玩 HTML 链路是：</p>
+          <table>
+            <thead>
+              <tr>
+                <th>步骤</th>
+                <th>节点 / 动作</th>
+                <th>产出</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>写需求</td>
+                <td>文本节点（或指令）</td>
+                <td>一句话玩法</td>
+              </tr>
+              <tr>
+                <td>生成工程</td>
+                <td><code>game.htmlGen</code>（可玩 HTML 生成）</td>
+                <td><code>Cache/GamePlayJobs/…/project</code>（package.json / build.mjs / src/*.js）</td>
+              </tr>
+              <tr>
+                <td>构建</td>
+                <td><code>asset.gamePlay</code>（可玩 HTML）cook</td>
+                <td><code>dist/single.html</code>（npm + node build.mjs）</td>
+              </tr>
+              <tr>
+                <td>试玩</td>
+                <td>双击资产节点</td>
+                <td>应用内 iframe 沙盒</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="tip">
+            需要已配置<strong>文本模型</strong>（推荐 DeepSeek；也可用其它兼容提供商）。生成走内嵌
+            <strong>dsh</strong> Agent，cook 需要本机可执行 <code>npm</code>。
+          </div>
+        </section>
+
+        <section id="pipeline">
+          <h2>2. 三条节点怎么连</h2>
+          <h3>2.1 最快：一键工作流</h3>
+          <ol>
+            <li>顶栏打开<strong>一键工作流</strong>。</li>
+            <li>选预设<strong>一句话小游戏</strong>（或描述「可玩 HTML 小游戏」让 AI 规划）。</li>
+            <li>预览拓扑后<strong>创建工作流</strong>，拖入画布。</li>
+          </ol>
+          <p>内图通常是：文本简报 → 可玩 HTML 生成 → 可玩 HTML 资产。</p>
+
+          <h3>2.2 手动搭建</h3>
+          <ol>
+            <li>新建文本节点，写一句话玩法（操作、目标、胜负）。</li>
+            <li>添加<strong>可玩 HTML 生成</strong>，把文本接到 <code>in</code>（可选参考图接 <code>in-image</code>）。</li>
+            <li>添加<strong>可玩 HTML</strong>资产节点，把生成节点的<strong>工程</strong>口接到资产 <code>in</code>。</li>
+          </ol>
+        </section>
+
+        <section id="mode">
+          <h2>3. 2D / 3D / 自动</h2>
+          <p>
+            选中「可玩 HTML 生成」节点，右侧 Inspector 里有<strong>模式</strong>下拉（参数
+            <code>gamePlayMode</code>）：
+          </p>
+          <ul>
+            <li><strong>2D Canvas</strong>：脚手架无 three，Agent 写 Canvas 2D。</li>
+            <li>
+              <strong>3D Three.js</strong>：脚手架带 <code>three</code> 依赖与 3D 样例入口；brief
+              强制 Three。要稳定出 3D，请显式选此项。
+            </li>
+            <li>
+              <strong>自动</strong>：提示词允许自选；脚手架仍按 2D 起。容易「文案像 3D、工程却是 2D」。
+            </li>
+          </ul>
+          <div class="tip">
+            选指令模板时，名称含「2D / 3D」的模板会自动写入模式（例如「3D 收集」「3D 竞技场」）。
+          </div>
+        </section>
+
+        <section id="run">
+          <h2>4. 生成 → cook → 试玩</h2>
+          <ol>
+            <li>
+              <strong>运行「可玩 HTML 生成」</strong>：日志里会出现 dsh 多轮改
+              <code>src/</code>。不要自己在工程目录里抢跑 <code>npm install</code> /
+              <code>build</code>（宿主 cook 时会做）。
+            </li>
+            <li>
+              <strong>运行「可玩 HTML」资产节点</strong>：日志出现
+              <code>npm install</code>、<code>node build.mjs</code>、单文件体积即 cook 成功。
+            </li>
+            <li>
+              <strong>双击</strong>可玩 HTML 节点：打开沙盒试玩（WASD / 鼠标等以游戏为准；常见
+              <kbd>R</kbd> 重置）。
+            </li>
+          </ol>
+          <p>示例一句话（3D）：</p>
+          <pre><code>低多边形太空站走廊里捡能量块，WASD 移动，鼠标转向，碰到红怪扣血，捡满 10 个过关，R 重置；用 Three.js，画面干脆。</code></pre>
+        </section>
+
+        <section id="resume">
+          <h2>5. 续跑与工程目录</h2>
+          <ul>
+            <li>
+              生成节点会把工程相对路径记在 <code>gamePlayProjectDir</code>（Inspector
+              可看到）。再次运行同一节点会<strong>续跑同目录</strong>，不重建脚手架。
+            </li>
+            <li>
+              cook 有落盘路径时，不再把整页 HTML 塞进节点预览（避免拖拽卡顿）；沙盒从
+              <code>dist/single.html</code> 读取。
+            </li>
+            <li>磁盘位置：工程根下 <code>Cache/GamePlayJobs/&lt;jobId&gt;/project/</code>。</li>
+          </ul>
+        </section>
+
+        <section id="faq">
+          <h2>6. 常见问题</h2>
+          <details>
+            <summary>为什么选了自动却像 2D？</summary>
+            <p>
+              「自动」只影响提示词；脚手架默认 2D。要 3D 请在 Inspector 选
+              <strong>3D Three.js</strong>，或使用带 3D 字样的指令模板。
+            </p>
+          </details>
+          <details>
+            <summary>cook 报 npm / build 失败？</summary>
+            <p>
+              确认本机 PATH 有 Node.js / npm；看节点执行日志中的具体报错。可进
+              <code>Cache/GamePlayJobs/…/project</code> 手动 <code>npm run build</code> 对照。
+            </p>
+          </details>
+          <details>
+            <summary>沙盒黑屏或着色器报错？</summary>
+            <p>
+              复杂自定义 WebGL（如 <code>dFdx</code>）对 WebGL1/2 扩展较敏感；可改玩法为 Three
+              标准材质，或续跑让 Agent 修。这是原型链路，不保证任意着色器一次通过。
+            </p>
+          </details>
+          <details>
+            <summary>和影视成片有什么关系？</summary>
+            <p>
+              没有强绑定。可玩 HTML 是<strong>轻量玩法原型</strong>；短剧 / 广告成片仍走节点图 +
+              时间线 / 导演台。见手册
+              <a href="manual.html#graph">§8 节点图</a>与
+              <a href="guide-short-video.html">短视频教程</a>。
+            </p>
+          </details>
+        </section>
+
+        <nav class="doc-pager" aria-label="相关文档">
+          <a href="manual.html#ai-workflow">← 手册 · 一键工作流</a>
+          <a href="manual.html#graph">手册 · 节点图 →</a>
+        </nav>
+      </article>
+    </div>
+
+    <footer class="foot">
+      <div class="foot-row">
+        <a class="foot-brand" href="index.html">
+          <img src="assets/logo-mark.png" alt="" width="22" height="22" />
+          AI Art Engine
+        </a>
+        <nav class="foot-links" aria-label="页脚">
+          <a href="index.html">首页</a>
+          <a href="quickstart.html">快速上手</a>
+          <a href="manual.html">使用手册</a>
+          <a href="guide-gameplay.html">可玩 HTML</a>
+          <a href="guide-mcp.html">MCP 接入</a>
+          <a href="index.html#download">下载</a>
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a>
+        </nav>
+        <span>GPL-3.0</span>
+      </div>
+    </footer>
+    <script>
+      document.querySelectorAll('.mobile-nav a').forEach((link) => {
+        link.addEventListener('click', () => link.closest('.mobile-menu')?.removeAttribute('open'))
+      })
+    </script>
+    <script>
+      ;(function () {
+        var KEY = 'site.theme'
+        var btn = document.querySelector('.theme-toggle')
+        if (!btn) return
+        var root = document.documentElement
+        var query = window.matchMedia('(prefers-color-scheme: dark)')
+        var META = {
+          auto: { icon: '◐', label: '主题：跟随系统' },
+          light: { icon: '☀', label: '主题：浅色' },
+          dark: { icon: '☾', label: '主题：深色' }
+        }
+        function readPref() {
+          try {
+            var v = localStorage.getItem(KEY)
+            return v === 'light' || v === 'dark' || v === 'auto' ? v : 'dark'
+          } catch (e) {
+            return 'auto'
+          }
+        }
+        function apply() {
+          var pref = readPref()
+          root.classList.toggle('dark', pref === 'dark' || (pref !== 'light' && query.matches))
+          root.classList.toggle('light', pref === 'light')
+          var meta = META[pref]
+          btn.textContent = meta.icon
+          btn.title = meta.label + '（点击切换）'
+          btn.setAttribute('aria-label', meta.label)
+        }
+        query.addEventListener('change', apply)
+        btn.addEventListener('click', function () {
+          var cur = readPref()
+          var next = cur === 'dark' ? 'light' : cur === 'light' ? 'auto' : 'dark'
+          try {
+            localStorage.setItem(KEY, next)
+          } catch (e) {}
+          apply()
+        })
+        apply()
+      })()
+    </script>
+    <script src="site-enhance.js" defer></script>
+    <script src="site-search.js" defer></script>
+  </body>
+</html>
