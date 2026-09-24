@@ -2,6 +2,15 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [6.6.0] — 2026-09-24
+
+6.6.0 功能版：可玩 HTML 改为 dsh 多轮纯 Node（esbuild）工程再 cook 成单文件；新增 Anthropic（Claude）提供商与导演台多光源；节点执行日志实时进度；并修好沙盒读盘 CSP、cook 误校验与卡片拖拽卡顿。
+
+- **可玩 HTML（gamePlay）**：`game.htmlGen` 经 dsh 多轮写 `package.json` / `build.mjs` / `src/*.js` 工程，`asset.gamePlay` cook（`npm` + `node build.mjs`→单 HTML）；工程口串联与续跑复用同目录；Inspector 可选 2d / 3d / auto；沙盒经 IPC / `studio-media` 读盘，去掉易误杀的结构硬校验；cook 后不再把整页 HTML 塞进卡片预览以免拖拽卡顿；3D 沙盒 Three 相对导入与打包体跳过重复注入。
+- **模型提供商**：新增 Anthropic（Claude）一等提供商。
+- **导演台**：3D 导演台可添加平行光 / 点光 / 聚光。
+- **节点图**：节点执行日志实时输出生成进度。
+
 ## [6.5.1] — 2026-09-23
 
 6.5.1 补丁：修好常驻 Harness 会话 resume 报 `already owned by an active write handle`；顺带收敛 TS6 弃用告警，并补上 SVG 存 GIF、Blender 代码拦截放宽与 README 外链表。
