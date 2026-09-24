@@ -46,6 +46,7 @@ import {
   resolvePreferredGamePlayMode
 } from '@shared/gamePlay'
 import threeModuleSource from 'virtual:three-module-source'
+import threeCoreSource from 'virtual:three-core-source'
 import { editorDiveKey } from '../../features/graph/model/editorDive'
 import { graphEditorHosts } from '../../features/graph/model/graphEditorHosts'
 import { closeGamePlaySandboxDialog } from '../../features/media/gamePlaySandboxDialog'
@@ -83,7 +84,7 @@ const modeLabel = computed(() =>
 function buildPlayableHtml(source: string, playMode: '2d' | '3d'): string {
   if (playMode !== '3d') return source
   try {
-    return injectThreeIntoHtml(source, threeModuleSource)
+    return injectThreeIntoHtml(source, threeModuleSource, threeCoreSource)
   } catch {
     return source
   }

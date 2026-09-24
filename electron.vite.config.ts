@@ -4,21 +4,31 @@ import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import vue from '@vitejs/plugin-vue'
 import type { Plugin } from 'vite'
 
-/** 沙盒 iframe 注入用：绕过 three package exports，提供 min 源码字符串 */
+/** 沙盒 iframe 注入用：绕过 three package exports，提供 module + core 源码（r163+ 拆包） */
 function threeModuleRawPlugin(): Plugin {
-  const virtualId = 'virtual:three-module-source'
-  const resolvedId = '\0' + virtualId
+  const virtualModuleId = 'virtual:three-module-source'
+  const virtualCoreId = 'virtual:three-core-source'
+  const resolvedModuleId = '\0' + virtualModuleId
+  const resolvedCoreId = '\0' + virtualCoreId
   return {
     name: 'three-module-raw',
     resolveId(id) {
-      if (id === virtualId) return resolvedId
+      if (id === virtualModuleId) return resolvedModuleId
+      if (id === virtualCoreId) return resolvedCoreId
       return null
     },
     load(id) {
-      if (id !== resolvedId) return null
-      const abs = resolve('node_modules/three/build/three.module.min.js')
-      const source = readFileSync(abs, 'utf-8')
-      return `export default ${JSON.stringify(source)}`
+      if (id === resolvedModuleId) {
+        const abs = resolve('node_modules/three/build/three.module.min.js')
+        const source = readFileSync(abs, 'utf-8')
+        return `export default ${JSON.stringify(source)}`
+      }
+      if (id === resolvedCoreId) {
+        const abs = resolve('node_modules/three/build/three.core.min.js')
+        const source = readFileSync(abs, 'utf-8')
+        return `export default ${JSON.stringify(source)}`
+      }
+      return null
     }
   }
 }

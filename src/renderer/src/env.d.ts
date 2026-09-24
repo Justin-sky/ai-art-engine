@@ -15,3 +15,8 @@ declare module 'virtual:three-module-source' {
   const src: string
   export default src
 }
+
+declare module 'virtual:three-core-source' {
+  const src: string
+  export default src
+}

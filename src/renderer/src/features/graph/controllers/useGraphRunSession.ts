@@ -19,6 +19,10 @@ import {
   type GraphRunResult
 } from '@shared/graph'
 import { createGraphRunLogBridge } from '../model/graphRunLogBridge'
+import {
+  formatVideoJobProgressMessage,
+  subscribeVideoJobProgress
+} from '../model/subscribeVideoJobProgress'
 import { formatProviderErrorForLog } from '../model/formatProviderErrorForLog'
 import { resolveImageGenerateCapabilitiesForRun } from '../model/imageGenerateCapabilities'
 import { resolveVideoGenerateCapabilitiesForRun } from '../model/videoGenerateCapabilities'
@@ -418,6 +422,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         imageCount: input.images?.length || undefined,
         inputReferenceUrls: summarizeReferenceListForLog(input.images)
       }
+      activeLogBridge?.appendMessage(options.t('graph.logs.submitText'))
       try {
         const value = await withAbortSignal(generateText(input), token, signal)
         activeLogBridge?.recordApiCall({
@@ -475,6 +480,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         inputReferenceUrls: summarizeReferenceListForLog(input.inputReferences),
         layerDecomposition: input.layerDecomposition || undefined
       }
+      activeLogBridge?.appendMessage(options.t('graph.logs.submitImage'))
       try {
         const value = await withAbortSignal(generateImage(input), token, signal)
         activeLogBridge?.recordApiCall({
@@ -568,6 +574,14 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
           ? summarizeMediaUrlForLog(input.lastFrameImageUrl)
           : undefined
       }
+      activeLogBridge?.appendMessage(options.t('graph.logs.submitVideo'))
+      const progressNodeId =
+        input.graphBinding?.nodeId?.trim() || activeLogBridge?.currentRunningNodeId() || undefined
+      const stopProgress = subscribeVideoJobProgress({
+        nodeId: progressNodeId,
+        onMessage: (message) => activeLogBridge?.appendMessage(message),
+        format: (job) => formatVideoJobProgressMessage(job, options.t)
+      })
       try {
         const value = await withAbortSignal(generateVideo(input), token, signal)
         if (value.uploads?.length) {
@@ -604,6 +618,8 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
           })
         }
         throw err
+      } finally {
+        stopProgress()
       }
     }
   }
@@ -632,6 +648,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         imageCount: input.images?.length,
         inputReferenceUrls: summarizeReferenceListForLog(input.images)
       }
+      activeLogBridge?.appendMessage(options.t('graph.logs.submitSpeech'))
       try {
         const value = await withAbortSignal(generateSpeech(input), token, signal)
         activeLogBridge?.recordApiCall({
@@ -704,6 +721,14 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         inputReferenceCount: input.inputReferences?.length || undefined,
         inputReferenceUrls: summarizeReferenceListForLog(input.inputReferences)
       }
+      activeLogBridge?.appendMessage(options.t('graph.logs.submitModel3d'))
+      const progressNodeId =
+        input.graphBinding?.nodeId?.trim() || activeLogBridge?.currentRunningNodeId() || undefined
+      const stopProgress = subscribeVideoJobProgress({
+        nodeId: progressNodeId,
+        onMessage: (message) => activeLogBridge?.appendMessage(message),
+        format: (job) => formatVideoJobProgressMessage(job, options.t)
+      })
       try {
         const value = await withAbortSignal(generateModel3d(input), token, signal)
         if (value.uploads?.length) {
@@ -740,6 +765,8 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
           })
         }
         throw err
+      } finally {
+        stopProgress()
       }
     }
   }
@@ -766,6 +793,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       if (token !== runToken || signal.aborted) {
         throw new DOMException('Aborted', 'AbortError')
       }
+      activeLogBridge?.appendMessage(options.t('graph.logs.submitRig'))
       return withAbortSignal(rigModel3d(input), token, signal)
     }
   }
@@ -830,6 +858,10 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         priorNodeStates: { ...runStates },
         preserveOutsideSubset: opts.preserveOutsideSubset,
         onNodeUpdate: (nodeId, state) => applyNodeUpdate(token, nodeId, state),
+        onLog: (_nodeId, message, level) => {
+          if (token !== runToken || signal.aborted) return
+          activeLogBridge?.appendMessage(message, level)
+        },
         generateText: wrapGenerateText(token, signal),
         generateImage: wrapGenerateImage(token, signal),
         generateVideo: wrapGenerateVideo(token, signal),

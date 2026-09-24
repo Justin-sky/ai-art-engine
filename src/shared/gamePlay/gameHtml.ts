@@ -115,11 +115,33 @@ export function validateGameHtml(
 }
 
 /**
- * 将本地 three.module 源码注入为 importmap data URL，并替换 CDN / 占位。
- * 仅 3D 使用；threeSource 为 three.module.js（或 .min）全文。
+ * three.module 含 `from "./three.core.min.js"`；把其作为 data: URL 注入时，
+ * 相对路径无法解析（base scheme 非 hierarchical）。把相对导入改写成 core 的绝对 data URL。
  */
-export function injectThreeIntoHtml(html: string, threeModuleSource: string): string {
-  const dataUrl = 'data:text/javascript;charset=utf-8,' + encodeURIComponent(threeModuleSource)
+export function rewriteThreeCoreRelativeImports(
+  threeModuleSource: string,
+  threeCoreSource: string
+): string {
+  const core = threeCoreSource.trim()
+  if (!core) return threeModuleSource
+  const coreDataUrl = 'data:text/javascript;charset=utf-8,' + encodeURIComponent(core)
+  return threeModuleSource.replace(/(["'])\.\/three\.core(?:\.min)?\.js\1/g, () =>
+    JSON.stringify(coreDataUrl)
+  )
+}
+
+/**
+ * 将本地 three.module 源码注入为 importmap data URL，并替换 CDN / 占位。
+ * 仅 3D 使用；threeModuleSource 为 three.module.js（或 .min）全文。
+ * 传入 threeCoreSource（three.core.min.js）时改写相对导入，避免 data: 基址下解析失败。
+ */
+export function injectThreeIntoHtml(
+  html: string,
+  threeModuleSource: string,
+  threeCoreSource = ''
+): string {
+  const moduleSrc = rewriteThreeCoreRelativeImports(threeModuleSource, threeCoreSource)
+  const dataUrl = 'data:text/javascript;charset=utf-8,' + encodeURIComponent(moduleSrc)
   const importMap = `<script type="importmap">
 {"imports":{"three":${JSON.stringify(dataUrl)}}}
 </script>`

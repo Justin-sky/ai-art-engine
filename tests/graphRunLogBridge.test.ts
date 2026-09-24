@@ -224,4 +224,30 @@ describe('graphRunLogBridge', () => {
     expect(call?.promptHash).toMatch(/^[0-9a-f]{8}$/)
     expect(call?.nodeId).toBe('n-opt')
   })
+
+  it('appendMessage attaches running node and marks status running', () => {
+    const graph = sampleGraph()
+    const store = useGraphRunLogsStore()
+    const bridge = createGraphRunLogBridge({
+      runId: 'run-msg',
+      title: 'Progress',
+      mode: 'workflow',
+      graph
+    })
+    bridge.onNodeUpdate('n-text', { status: 'running' })
+    bridge.appendMessage('提交文本生成…')
+    const msg = store.sessions[0]?.events.find((e) => e.kind === 'run_message')
+    expect(msg?.nodeId).toBe('n-text')
+    expect(msg?.nodeTitle).toBeTruthy()
+    expect(msg?.status).toBe('running')
+    expect(msg?.message).toBe('提交文本生成…')
+
+    bridge.appendMessage('failed', 'error')
+    const err = store.sessions[0]?.events.filter((e) => e.kind === 'run_message').at(-1)
+    expect(err?.status).toBe('error')
+    expect(err?.level).toBe('error')
+    expect(err?.nodeId).toBe('n-text')
+
+    bridge.endFromResult({ ok: true, order: ['n-text'], states: {} })
+  })
 })

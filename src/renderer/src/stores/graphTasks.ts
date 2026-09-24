@@ -36,6 +36,10 @@ import {
 import { liftHostOutputsFromInnerGraph } from '../features/graph/model/liftHostOutputsFromInner'
 import { createGraphRunLogBridge } from '../features/graph/model/graphRunLogBridge'
 import {
+  formatVideoJobProgressMessage,
+  subscribeVideoJobProgress
+} from '../features/graph/model/subscribeVideoJobProgress'
+import {
   resolveGraphNodeDisplayTitle,
   resolveGraphTypeLabel
 } from '../features/graph/model/graphNodeDisplayTitle'
@@ -1078,6 +1082,10 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           }
           bump()
         },
+        onLog: (_nodeId, message, level) => {
+          if (task.abort.signal.aborted) return
+          logBridge.appendMessage(message, level)
+        },
         onNodePatch: (nodeId, patch) => {
           if (task.abort.signal.aborted) return
           const node = task.graph.nodes.find((n) => n.id === nodeId)
@@ -1113,6 +1121,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             imageCount: input.images?.length || undefined,
             inputReferenceUrls: summarizeReferenceListForLog(input.images)
           }
+          logBridge.appendMessage(String(i18n.global.t('graph.logs.submitText')))
           try {
             const value = await window.studio.generateText(input)
             logBridge.recordApiCall({
@@ -1148,6 +1157,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             inputReferenceUrls: summarizeReferenceListForLog(input.inputReferences),
             layerDecomposition: input.layerDecomposition || undefined
           }
+          logBridge.appendMessage(String(i18n.global.t('graph.logs.submitImage')))
           try {
             const value = await window.studio.generateImage(input)
             logBridge.recordApiCall({
@@ -1206,6 +1216,17 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
               ? summarizeMediaUrlForLog(input.lastFrameImageUrl)
               : undefined
           }
+          logBridge.appendMessage(String(i18n.global.t('graph.logs.submitVideo')))
+          const progressNodeId =
+            input.graphBinding?.nodeId?.trim() || logBridge.currentRunningNodeId() || undefined
+          const stopProgress = subscribeVideoJobProgress({
+            nodeId: progressNodeId,
+            onMessage: (message) => logBridge.appendMessage(message),
+            format: (job) =>
+              formatVideoJobProgressMessage(job, (key, params) =>
+                String(i18n.global.t(key, params ?? {}))
+              )
+          })
           try {
             const project = useProjectStore()
             const outputDir = resolveMediaOutputDir({
@@ -1249,6 +1270,8 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
               durationMs: Math.max(0, Date.now() - startedAt)
             })
             throw err
+          } finally {
+            stopProgress()
           }
         },
         generateSpeech: async (input) => {
@@ -1262,6 +1285,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             imageCount: input.images?.length,
             inputReferenceUrls: summarizeReferenceListForLog(input.images)
           }
+          logBridge.appendMessage(String(i18n.global.t('graph.logs.submitSpeech')))
           try {
             const project = useProjectStore()
             const outputDir = resolveMediaOutputDir({
@@ -1318,6 +1342,17 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             inputReferenceCount: input.inputReferences?.length || undefined,
             inputReferenceUrls: summarizeReferenceListForLog(input.inputReferences)
           }
+          logBridge.appendMessage(String(i18n.global.t('graph.logs.submitModel3d')))
+          const progressNodeId =
+            input.graphBinding?.nodeId?.trim() || logBridge.currentRunningNodeId() || undefined
+          const stopProgress = subscribeVideoJobProgress({
+            nodeId: progressNodeId,
+            onMessage: (message) => logBridge.appendMessage(message),
+            format: (job) =>
+              formatVideoJobProgressMessage(job, (key, params) =>
+                String(i18n.global.t(key, params ?? {}))
+              )
+          })
           try {
             const value = await window.studio.generateModel3d(input)
             if (value.uploads?.length) {
@@ -1352,6 +1387,8 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
               durationMs: Math.max(0, Date.now() - startedAt)
             })
             throw err
+          } finally {
+            stopProgress()
           }
         },
         rigModel3d: async (input) => {
@@ -1362,6 +1399,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             providerInstanceId: input.providerInstanceId,
             rigType: input.rigType
           }
+          logBridge.appendMessage(String(i18n.global.t('graph.logs.submitRig')))
           try {
             const value = await window.studio.rigModel3d(input)
             logBridge.recordApiCall({

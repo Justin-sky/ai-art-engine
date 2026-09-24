@@ -272,6 +272,11 @@ export interface NodeExecuteContext {
   /** 可选：执行中写回图上的节点参数（供 UI 持久化） */
   patchNode?: (patch: { params?: Partial<GraphNodeParams>; title?: string }) => void
   /**
+   * 执行中写入执行日志（实时进度行）；未注入时忽略。
+   * 由会话 / 任务包装层接到 graphRunLogBridge.appendMessage。
+   */
+  log?: (message: string, level?: 'info' | 'warn' | 'error') => void
+  /**
    * 将生成图片写入工程目录，返回相对路径。
    * 注入后生成结果只保留 relativePath，避免 dataUrl 写入资产 JSON。
    */
@@ -811,6 +816,8 @@ export interface GraphRunOptions {
   /** 覆盖内图 skipCompletedNodes；未设时见 NodeExecuteContext.hostInnerSkipCompleted */
   hostInnerSkipCompleted?: boolean
   onNodeUpdate?: (nodeId: string, state: GraphNodeRunState) => void
+  /** 节点内实时进度行 → 执行日志 run_message */
+  onLog?: (nodeId: string, message: string, level?: 'info' | 'warn' | 'error') => void
   /** 将参数写回宿主图文档（克隆图执行时需要） */
   onNodePatch?: (
     nodeId: string,

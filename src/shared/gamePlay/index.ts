@@ -3,6 +3,7 @@ export {
   ensureGameModeComment,
   extractGameHtml,
   injectThreeIntoHtml,
+  rewriteThreeCoreRelativeImports,
   THREE_INJECT_MARKER,
   validateGameHtml,
   type GamePlayMode,

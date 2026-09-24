@@ -450,7 +450,8 @@ async function executeOneNode(
     readRunText: options.readRunText,
     readEpisodeAgentState: options.readEpisodeAgentState,
     writeEpisodeAgentState: options.writeEpisodeAgentState,
-    patchNode: options.onNodePatch ? (patch) => options.onNodePatch?.(nodeId, patch) : undefined
+    patchNode: options.onNodePatch ? (patch) => options.onNodePatch?.(nodeId, patch) : undefined,
+    log: options.onLog ? (message, level) => options.onLog?.(nodeId, message, level) : undefined
   }
 
   try {

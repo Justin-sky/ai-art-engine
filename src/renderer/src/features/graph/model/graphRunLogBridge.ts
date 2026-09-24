@@ -156,14 +156,23 @@ export function createGraphRunLogBridge(options: GraphRunLogBridgeOptions): Grap
   }
 
   function appendMessage(message: string, level: 'info' | 'warn' | 'error' = 'info'): void {
+    const nodeId = currentRunningNodeId ?? options.targetNodeId ?? undefined
+    const node = nodeId ? byId.get(nodeId) : undefined
     store.append({
       runId: options.runId,
       level,
       kind: 'run_message',
       hostId: options.hostId,
       mode: options.mode,
+      ...(nodeId
+        ? {
+            nodeId,
+            nodeTitle: resolveTitle(node, nodeId),
+            typeId: nodeTypeId(node)
+          }
+        : {}),
       message,
-      status: level === 'error' ? 'error' : 'done'
+      status: level === 'error' ? 'error' : 'running'
     })
   }
 

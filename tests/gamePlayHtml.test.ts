@@ -4,6 +4,7 @@ import {
   extractGameHtml,
   injectThreeIntoHtml,
   prepareGameHtml,
+  rewriteThreeCoreRelativeImports,
   SAMPLE_GAME_HTML_2D,
   SAMPLE_GAME_HTML_3D,
   seedGameHtml,
@@ -57,6 +58,18 @@ describe('gamePlay html contract', () => {
     expect(next).toContain('importmap')
     expect(next).toContain(THREE_INJECT_MARKER)
     expect(next).toContain('data:text/javascript')
+  })
+
+  it('rewrites three.core relative imports to absolute data URLs', () => {
+    const moduleSrc =
+      'import{Matrix3 as e}from"./three.core.min.js";export{WebGLRenderer}from"./three.core.min.js";'
+    const coreSrc = 'export class Matrix3 {} export class WebGLRenderer {}'
+    const rewritten = rewriteThreeCoreRelativeImports(moduleSrc, coreSrc)
+    expect(rewritten).not.toContain('./three.core')
+    expect(rewritten).toContain('data:text/javascript;charset=utf-8,')
+    const next = injectThreeIntoHtml(SAMPLE_GAME_HTML_3D, moduleSrc, coreSrc)
+    expect(next).toContain('importmap')
+    expect(next).not.toMatch(/\.\/three\.core(?:\.min)?\.js/)
   })
 
   it('prepare + seed roundtrip', () => {
