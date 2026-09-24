@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { shouldPreventSidePanelOverlay } from '../src/renderer/src/editor/workbench/sidePanelCollapse'
+import {
+  shouldPreventSidePanelDrop,
+  shouldPreventSidePanelOverlay
+} from '../src/renderer/src/editor/workbench/sidePanelCollapse'
 
 function event(partial: {
   panelId?: string | null
@@ -59,6 +62,58 @@ describe('shouldPreventSidePanelOverlay', () => {
     ).toBe(true)
     expect(
       shouldPreventSidePanelOverlay(event({ panelId: 'assets', position: 'left', kind: 'edge' }))
+    ).toBe(true)
+  })
+
+  it('blocks solo panel dropping onto itself (dockview would no-op after showing gray)', () => {
+    expect(
+      shouldPreventSidePanelOverlay(
+        event({ panelId: 'inspector', position: 'bottom', groupPanels: ['inspector'] })
+      )
+    ).toBe(true)
+    expect(
+      shouldPreventSidePanelOverlay(
+        event({ panelId: 'assets', position: 'top', groupPanels: ['assets'] })
+      )
+    ).toBe(true)
+  })
+})
+
+describe('shouldPreventSidePanelDrop', () => {
+  it('never cancels top/bottom/center even if target group looks non-side', () => {
+    expect(
+      shouldPreventSidePanelDrop(
+        event({ panelId: 'inspector', position: 'bottom', groupPanels: ['workspace'] })
+      )
+    ).toBe(false)
+    expect(
+      shouldPreventSidePanelDrop(
+        event({ panelId: 'inspector', position: 'top', groupPanels: ['assets'] })
+      )
+    ).toBe(false)
+    expect(
+      shouldPreventSidePanelDrop(
+        event({ panelId: 'inspector', position: 'center', groupPanels: ['assets'] })
+      )
+    ).toBe(false)
+  })
+
+  it('still blocks left/right and edge drops for side panels', () => {
+    expect(
+      shouldPreventSidePanelDrop(
+        event({ panelId: 'inspector', position: 'left', groupPanels: ['assets'] })
+      )
+    ).toBe(true)
+    expect(
+      shouldPreventSidePanelDrop(event({ panelId: 'inspector', position: 'bottom', kind: 'edge' }))
+    ).toBe(true)
+  })
+
+  it('blocks solo self drops so gray cannot lie about a move', () => {
+    expect(
+      shouldPreventSidePanelDrop(
+        event({ panelId: 'assets', position: 'bottom', groupPanels: ['assets'] })
+      )
     ).toBe(true)
   })
 })

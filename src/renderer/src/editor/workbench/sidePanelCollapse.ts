@@ -375,21 +375,41 @@ function groupHasSidePanel(group: { panels?: ReadonlyArray<{ id: string }> } | u
 }
 
 /**
- * 侧栏互拖时禁止 left/right/center 半屏 drop 预览：先悬停半屏再丢到对方下方
- * 时，dockview 锚点 overlay / 列宽容易留下灰框。仅允许上下叠放。
- * 拖到工作区/文档等非侧栏目标时一律不显示预览；AI 对话页签（chat）除外，
- * 允许把资产/参数窗口拖入其中合并或拆分。
+ * 独面板拖到自己身上：dockview 会画 top/bottom 灰框，但 handleDropEvent 对
+ * `fromSameGroup && tabs.size === 1` 直接 return —— 典型「有灰框、松手不动」。
+ */
+export function isSoloSelfSidePanelDrop(event: {
+  group?: { id?: string; panels?: ReadonlyArray<{ id: string }> }
+  getData: () => { panelId?: string | null; groupId?: string | null } | undefined
+}): boolean {
+  const data = event.getData()
+  const panelId = data?.panelId
+  if (!panelId || !isSidePanelId(panelId)) return false
+  const panels = event.group?.panels
+  if (!panels || panels.length !== 1 || panels[0]?.id !== panelId) return false
+  if (data.groupId && event.group?.id && data.groupId !== event.group.id) return false
+  return true
+}
+
+/**
+ * 侧栏互拖时禁止 left/right 半屏拆列预览；仅允许上下叠放 / center 合并 Tab。
+ * 拖到工作区等非侧栏目标时不显示预览；AI 对话页签（chat）除外。
+ *
+ * 注意：dockview PointerDropTarget 在 willShowOverlay.preventDefault 后，
+ * 就地模式会卸 dropzone；锚点模式（absolute）只清 _state、不清 _model，
+ * 需另调 dropTargetContainer.model.clear（见 clearSidePanelDropTargetOverlays）。
  */
 export function shouldPreventSidePanelOverlay(event: {
   position: string
   kind?: string
-  group?: { panels?: ReadonlyArray<{ id: string }> }
-  getData: () => { panelId?: string | null } | undefined
+  group?: { id?: string; panels?: ReadonlyArray<{ id: string }> }
+  getData: () => { panelId?: string | null; groupId?: string | null } | undefined
 }): boolean {
   const panelId = event.getData()?.panelId
   if (!panelId || !isSidePanelId(panelId)) return false
 
   if (event.kind === 'edge') return true
+  if (isSoloSelfSidePanelDrop(event)) return true
   if (!groupHasSidePanel(event.group)) {
     // 拖到 AI 对话页签（chat）时放行，其余非侧栏目标仍阻止
     if (event.group?.panels?.some((panel) => panel.id === 'chat')) return false
@@ -402,14 +422,41 @@ export function shouldPreventSidePanelOverlay(event: {
   return event.position !== 'top' && event.position !== 'bottom'
 }
 
-/** 清理未卸掉的 drop 锚点容器，避免拖放结束后半透明灰框残留 */
-export function clearDockviewDropOverlays(root?: ParentNode | null): void {
+/**
+ * willDrop 专用：比 overlay 守卫更松。
+ * 一旦灰框已表示 top/bottom/center，就不要再因 group 判定失败把落位掐掉；
+ * 只拦 edge / left / right，以及独面板拖到自己（与 overlay 守卫一致）。
+ */
+export function shouldPreventSidePanelDrop(event: {
+  position: string
+  kind?: string
+  group?: { id?: string; panels?: ReadonlyArray<{ id: string }> }
+  getData: () => { panelId?: string | null; groupId?: string | null } | undefined
+}): boolean {
+  const panelId = event.getData()?.panelId
+  if (!panelId || !isSidePanelId(panelId)) return false
+  if (event.kind === 'edge') return true
+  if (isSoloSelfSidePanelDrop(event)) return true
+  if (event.position === 'top' || event.position === 'bottom' || event.position === 'center') {
+    return false
+  }
+  return event.position === 'left' || event.position === 'right'
+}
+
+/**
+ * @deprecated 不要再从外部卸 `.dv-drop-target-dropzone`：
+ * PointerDropTarget 仍握着 `_targetElement`，卸 DOM 会变成
+ * 「下次拖动无灰框但落位成功」。保留空实现以免旧调用点炸掉。
+ */
+export function clearDockviewDropOverlays(_root?: ParentNode | null): void {
+  // intentionally empty — use clearSidePanelDropTargetOverlays / dockview 自身收尾
+}
+
+/** 落点覆盖层是否仍挂在 dock 上（仅查锚点；就地 dropzone 由 PointerDropTarget 自管） */
+export function hasDockDropOverlayArtifacts(root?: ParentNode | null): boolean {
   const host = root ?? (typeof document !== 'undefined' ? document : null)
-  if (!host) return
-  host.querySelectorAll('.dv-drop-target-container').forEach((el) => el.remove())
-  host.querySelectorAll('.dv-drop-target').forEach((el) => {
-    el.classList.remove('dv-drop-target')
-  })
+  if (!host) return false
+  return !!host.querySelector('.dv-drop-target-container .dv-drop-target-anchor')
 }
 
 /** 侧栏上下叠放：上/下各半屏即可出预览（dockview 默认约 20%） */
@@ -426,6 +473,11 @@ type DropTargetLike = {
     activationSize?: { type: 'percentage' | 'pixels'; value: number }
     size?: { type: 'percentage' | 'pixels'; value: number }
   }) => void
+  clearOverlay?: () => void
+}
+
+type DropTargetContainerLike = {
+  model?: { clear?: () => void }
 }
 
 function groupContentDropTargets(group: { model?: unknown }): DropTargetLike[] {
@@ -458,16 +510,62 @@ function groupContentDropTargets(group: { model?: unknown }): DropTargetLike[] {
   return []
 }
 
+function resolveDropTargetContainer(group: {
+  model?: unknown
+}): DropTargetContainerLike | undefined {
+  const model = group.model as { dropTargetContainer?: DropTargetContainerLike | null } | undefined
+  return model?.dropTargetContainer ?? undefined
+}
+
+/**
+ * 唯一安全的锚点清理：Droptarget.clearOverlay（会 model.clear）+ 显式 model.clear。
+ * PointerDropTarget 没有 clearOverlay，必须靠共享的 dropTargetContainer.model.clear。
+ */
+export function clearSidePanelDropTargetOverlays(dock: DockviewApi): void {
+  const clearedContainers = new Set<DropTargetContainerLike>()
+  for (const id of SIDE_PANEL_IDS) {
+    const group = dock.getPanel(id)?.group
+    if (!group) continue
+    for (const target of groupContentDropTargets(group)) {
+      // HTML5 Droptarget：清 in-place + 调用 getOverrideTarget().clear()
+      try {
+        target.clearOverlay?.()
+      } catch {
+        // ignore
+      }
+    }
+    const container = resolveDropTargetContainer(group)
+    if (container && !clearedContainers.has(container)) {
+      clearedContainers.add(container)
+      try {
+        container.model?.clear?.()
+      } catch {
+        // ignore
+      }
+    }
+  }
+}
+
 /**
  * 资产/参数组仅接受上下落点，并把激活区扩到 50%。
- * dockview 在 group location 变更时会重置 zones，故布局/拖放后需再调用。
+ * dockview 在 group location 变更时会把 zones 重置为含 left/right；
+ * left 在象限计算里优先于 bottom，导致拖到「下方偏左」时被当成 left 拦截，
+ * 出现「有灰框但落不下去」。因此每次 layout / willShow 都要重新断言。
  */
 export function configureSidePanelStackDropTargets(dock: DockviewApi): void {
   for (const id of SIDE_PANEL_IDS) {
-    const panel = dock.getPanel(id)
-    const group = panel?.group
-    if (!group) continue
-    for (const target of groupContentDropTargets(group)) {
+    const model = dock.getPanel(id)?.group?.model as
+      | {
+          contentContainer?: {
+            dropTarget?: DropTargetLike
+            pointerDropTarget?: DropTargetLike
+          }
+        }
+      | undefined
+    const container = model?.contentContainer
+    if (!container) continue
+    for (const target of [container.dropTarget, container.pointerDropTarget]) {
+      if (!target?.setTargetZones || !target.setOverlayModel) continue
       target.setTargetZones([...SIDE_PANEL_STACK_ZONES])
       target.setOverlayModel(SIDE_PANEL_STACK_OVERLAY)
     }
@@ -477,22 +575,17 @@ export function configureSidePanelStackDropTargets(dock: DockviewApi): void {
 /**
  * 拖放落位后的统一收尾，与面板类型无关。
  *
- * dockview 把「同一个 dock 内」的面板拖动走内部 move，只会触发 onDidMovePanel；
- * onDidDrop 仅用于跨 dockview / paneview 的拖放。而资产 / 参数组的落点用的是锚点
- * 覆盖层（`.dv-drop-target-container`），只有真正发生过 drop 才会被 dockview 自己清掉。
- * 于是把 AI 对话这类普通页签拖到资产 / 参数上时，没人清这层半屏半透明预览，
- * 松手后它就留在面板上变成灰块（面板其实已落位，只是被灰块盖住像没移动成功）。
- * 本帧先清一次，下一帧再清一次：dockview 会在落位后的下一帧重建覆盖层 / 重置 group 落点配置。
+ * 只走 model.clear / clearOverlay；禁止对锚点 / dropzone DOM 硬删。
+ * 成功落位后 dockview 通常会自己清；这里补清被拒落点留下的锚点。
  */
 export function clearDockDropArtifacts(dock: DockviewApi): void {
-  const studioDockRoot = (): ParentNode | null =>
-    typeof document !== 'undefined' ? document.querySelector('.studio-dock') : null
-  clearDockviewDropOverlays(studioDockRoot())
-  configureSidePanelStackDropTargets(dock)
-  requestAnimationFrame(() => {
-    clearDockviewDropOverlays(studioDockRoot())
+  const sweep = (): void => {
+    clearSidePanelDropTargetOverlays(dock)
     configureSidePanelStackDropTargets(dock)
-  })
+  }
+  sweep()
+  if (typeof requestAnimationFrame === 'undefined') return
+  requestAnimationFrame(sweep)
 }
 
 /**
@@ -501,19 +594,13 @@ export function clearDockDropArtifacts(dock: DockviewApi): void {
  * pre-stack width (e.g. drag assets under inspector → keep inspector width).
  */
 export function handleSidePanelMoved(dock: DockviewApi, movedId: string): void {
-  // 收尾不分面板类型：AI 对话 / 编辑器页签拖到侧栏上同样会残留落点灰块
   clearDockDropArtifacts(dock)
   if (!isSidePanelId(movedId)) return
 
-  // 合并为 Tab 组：共享同一列，列宽归一化不适用（areSidePanelsStackedVertically 已同组短路）。
-  // dockview 会激活被拖入的面板，若它处于收起态需切回未收起的一侧。
   if (areSidePanelsTabbed(dock)) {
     syncTabbedGroupActiveState(dock, movedId)
-    // dockview 在下一帧才落定激活项，再同步一次
     requestAnimationFrame(() => {
-      clearDockviewDropOverlays(
-        typeof document !== 'undefined' ? document.querySelector('.studio-dock') : null
-      )
+      clearSidePanelDropTargetOverlays(dock)
       configureSidePanelStackDropTargets(dock)
       syncTabbedGroupActiveState(dock, movedId)
     })
@@ -525,17 +612,11 @@ export function handleSidePanelMoved(dock: DockviewApi, movedId: string): void {
     pendingStackColumnWidth > 16 ? pendingStackColumnWidth : readSoloWidth(targetId)
   armStackNormalizeWindow()
   scheduleStackedColumnNormalize(dock, columnWidth)
-  // 叠放后偶发留下窄列灰洞；下一帧再压一次列宽并清 overlay
   requestAnimationFrame(() => {
-    clearDockviewDropOverlays(
-      typeof document !== 'undefined' ? document.querySelector('.studio-dock') : null
-    )
+    clearSidePanelDropTargetOverlays(dock)
     configureSidePanelStackDropTargets(dock)
     scheduleStackedColumnNormalize(dock, columnWidth)
     reassertCollapsedHidden(dock)
-    // 防御性激活：dockview v7.0.2 把面板拖进新组后，偶发 body 不渲染只剩灰洞（与
-    // Vue 面板挂载时机有关，v7.0.3 起改用 Teleport 修复；此处保留双保险）。显式
-    // setActive 可确保该组的 active panel 被设置，从而触发内容渲染。
     for (const id of SIDE_PANEL_IDS) {
       dock.getPanel(id)?.api.setActive()
     }

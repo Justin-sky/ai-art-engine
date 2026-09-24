@@ -1154,6 +1154,7 @@ import {
   type BlockoutLayoutMode
 } from '../features/director/aiSceneBlockout'
 import { prepareBlockoutReferenceImages } from '../features/director/equirectViews'
+import { isBlockoutDshReady, runBlockoutDshJob } from '../features/director/runBlockoutDshJob'
 import { useGraphRunLogsStore } from '../stores/graphRunLogs'
 import { useProjectStore } from '../stores/project'
 import {
@@ -1512,15 +1513,47 @@ async function onGenerateBlockout(payload: {
 
   blockoutGenerating.value = true
   blockoutError.value = ''
+  const abort = new AbortController()
 
-  // 深度预调用（best-effort，失败静默降级，绝不阻塞白模）
-  const depth = await tryEnrichWithDepthMap({
-    images,
-    providerInstanceId: payload.providerInstanceId,
-    model: payload.model,
-    locale: locale.value
-  })
-  if (depth.depthDescription) {
+  const finishWithCall = (rawText: string, via: 'dsh' | 'generateText'): boolean => {
+    const call = parseAiSceneBlockoutCall(rawText)
+    if (!call) {
+      const msg = t('director.stage.blockoutParseFailed')
+      blockoutError.value = msg
+      runLogs.append({
+        runId,
+        level: 'warn',
+        kind: 'run_message',
+        mode: 'task',
+        nodeId: BLOCKOUT_LOG_NODE_ID,
+        nodeTitle: t('director.stage.blockoutLogTitle'),
+        message: t('director.stage.poseAiLog.rawReply', { text: rawText.slice(0, 800) }),
+        status: 'error'
+      })
+      runLogs.endRun({ runId, status: 'error', message: msg })
+      return false
+    }
+
+    const fixedObjects = fixCommonBlockoutMistakes(call.arguments.objects)
+    const fixedCount = fixedObjects.filter(
+      (o, i) => o.primitive !== call.arguments.objects[i]?.primitive
+    ).length
+    if (fixedCount > 0) {
+      runLogs.append({
+        runId,
+        level: 'info',
+        kind: 'run_message',
+        mode: 'task',
+        nodeId: BLOCKOUT_LOG_NODE_ID,
+        nodeTitle: t('director.stage.blockoutLogTitle'),
+        message: t('director.stage.blockoutAutoFix', { count: fixedCount }),
+        status: 'done'
+      })
+    }
+
+    const created = applySceneBlockoutObjects(fixedObjects, layoutMode)
+    const msg = t('director.stage.blockoutDone', { count: created })
+    const summaryBit = call.arguments.summary ? ` — ${call.arguments.summary}` : ''
     runLogs.append({
       runId,
       level: 'info',
@@ -1528,26 +1561,103 @@ async function onGenerateBlockout(payload: {
       mode: 'task',
       nodeId: BLOCKOUT_LOG_NODE_ID,
       nodeTitle: t('director.stage.blockoutLogTitle'),
-      message: depth.depthDescription,
+      message: `${msg}${summaryBit} (${via})`,
       status: 'done'
     })
+    runLogs.endRun({ runId, status: 'done', message: msg })
+    blockoutDialogOpen.value = false
+    return true
   }
-
-  const prompt = buildSceneBlockoutUserPrompt({
-    instruction: payload.instruction,
-    imageCount: images.length,
-    mode: layoutMode,
-    panoramaRadius,
-    panoramaYawDeg,
-    unwrapped: prepared.unwrapped,
-    fovDeg,
-    aspectRatio,
-    eyeHeight,
-    depthDescription: depth.depthDescription ?? undefined
-  })
 
   const apiStarted = Date.now()
   try {
+    const dshReady = await isBlockoutDshReady()
+    if (dshReady) {
+      // dsh 多轮：深度分析交给 agent；brief 内已含 system + user 规则
+      const prompt = buildSceneBlockoutUserPrompt({
+        instruction: payload.instruction,
+        imageCount: images.length,
+        mode: layoutMode,
+        panoramaRadius,
+        panoramaYawDeg,
+        unwrapped: prepared.unwrapped,
+        fovDeg,
+        aspectRatio,
+        eyeHeight
+      })
+      runLogs.append({
+        runId,
+        level: 'info',
+        kind: 'run_message',
+        mode: 'task',
+        nodeId: BLOCKOUT_LOG_NODE_ID,
+        nodeTitle: t('director.stage.blockoutLogTitle'),
+        message: t('director.stage.blockoutDshStart'),
+        status: 'running'
+      })
+      const dsh = await runBlockoutDshJob({
+        instruction: payload.instruction,
+        locale: locale.value,
+        layoutMode,
+        systemPrompt: system,
+        userPrompt: prompt,
+        images,
+        model: payload.model,
+        providerInstanceId: payload.providerInstanceId,
+        signal: abort.signal,
+        runId,
+        logNodeId: BLOCKOUT_LOG_NODE_ID
+      })
+      runLogs.appendApiCall(runId, {
+        kind: 'generateText',
+        nodeId: BLOCKOUT_LOG_NODE_ID,
+        durationMs: Math.max(0, Date.now() - apiStarted),
+        request: {
+          prompt,
+          system,
+          model: payload.model,
+          providerInstanceId: payload.providerInstanceId,
+          imageCount: images.length
+        },
+        response: { text: dsh.resultText, model: payload.model }
+      })
+      finishWithCall(dsh.resultText, 'dsh')
+      return
+    }
+
+    // 无 dsh：保留原单轮 generateText + 可选深度预调用
+    const depth = await tryEnrichWithDepthMap({
+      images,
+      providerInstanceId: payload.providerInstanceId,
+      model: payload.model,
+      locale: locale.value
+    })
+    if (depth.depthDescription) {
+      runLogs.append({
+        runId,
+        level: 'info',
+        kind: 'run_message',
+        mode: 'task',
+        nodeId: BLOCKOUT_LOG_NODE_ID,
+        nodeTitle: t('director.stage.blockoutLogTitle'),
+        message: depth.depthDescription,
+        status: 'done'
+      })
+    }
+
+    const prompt = buildSceneBlockoutUserPrompt({
+      instruction: payload.instruction,
+      imageCount: images.length,
+      mode: layoutMode,
+      panoramaRadius,
+      panoramaYawDeg,
+      unwrapped: prepared.unwrapped,
+      fovDeg,
+      aspectRatio,
+      eyeHeight,
+      depthDescription: depth.depthDescription ?? undefined
+    })
+
     const result = await window.studio.generateText({
       providerInstanceId: payload.providerInstanceId,
       model: payload.model,
@@ -1568,57 +1678,7 @@ async function onGenerateBlockout(payload: {
       },
       response: { text: result.text, model: result.model }
     })
-
-    const call = parseAiSceneBlockoutCall(result.text)
-    if (!call) {
-      const msg = t('director.stage.blockoutParseFailed')
-      blockoutError.value = msg
-      runLogs.append({
-        runId,
-        level: 'warn',
-        kind: 'run_message',
-        mode: 'task',
-        nodeId: BLOCKOUT_LOG_NODE_ID,
-        nodeTitle: t('director.stage.blockoutLogTitle'),
-        message: t('director.stage.poseAiLog.rawReply', { text: result.text.slice(0, 800) }),
-        status: 'error'
-      })
-      runLogs.endRun({ runId, status: 'error', message: msg })
-      return
-    }
-
-    // 后处理修复常见几何体误匹配（如 box 变 arch/cone/hemisphere）
-    const fixedObjects = fixCommonBlockoutMistakes(call.arguments.objects)
-    const fixedCount = fixedObjects.filter(
-      (o, i) => o.primitive !== call.arguments.objects[i]?.primitive
-    ).length
-    if (fixedCount > 0) {
-      runLogs.append({
-        runId,
-        level: 'info',
-        kind: 'run_message',
-        mode: 'task',
-        nodeId: BLOCKOUT_LOG_NODE_ID,
-        nodeTitle: t('director.stage.blockoutLogTitle'),
-        message: t('director.stage.blockoutAutoFix', { count: fixedCount }),
-        status: 'done'
-      })
-    }
-
-    const created = applySceneBlockoutObjects(fixedObjects, layoutMode)
-    const msg = t('director.stage.blockoutDone', { count: created })
-    runLogs.append({
-      runId,
-      level: 'info',
-      kind: 'run_message',
-      mode: 'task',
-      nodeId: BLOCKOUT_LOG_NODE_ID,
-      nodeTitle: t('director.stage.blockoutLogTitle'),
-      message: call.arguments.summary ? `${msg} — ${call.arguments.summary}` : msg,
-      status: 'done'
-    })
-    runLogs.endRun({ runId, status: 'done', message: msg })
-    blockoutDialogOpen.value = false
+    finishWithCall(result.text, 'generateText')
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err)
     blockoutError.value = error
@@ -1627,7 +1687,7 @@ async function onGenerateBlockout(payload: {
       nodeId: BLOCKOUT_LOG_NODE_ID,
       durationMs: Math.max(0, Date.now() - apiStarted),
       request: {
-        prompt,
+        prompt: payload.instruction,
         system,
         model: payload.model,
         providerInstanceId: payload.providerInstanceId,
@@ -1637,6 +1697,7 @@ async function onGenerateBlockout(payload: {
     })
     runLogs.endRun({ runId, status: 'error', message: error })
   } finally {
+    abort.abort()
     blockoutGenerating.value = false
   }
 }

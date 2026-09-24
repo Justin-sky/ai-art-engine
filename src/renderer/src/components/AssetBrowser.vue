@@ -194,7 +194,7 @@
             @dragstart.stop="onFolderDragStart($event, folder.id)"
             @dragover.prevent.stop="onFolderDragOver($event, folder.id)"
             @dragleave.stop="onFolderDragLeave(folder.id)"
-            @drop.prevent.stop="onDropToFolder($event, folder.id)"
+            @drop.prevent="onDropToFolder($event, folder.id)"
           >
             <div v-if="showThumbs" class="thumb folder-thumb">
               <FolderTreeIcon :open="false" />
@@ -544,6 +544,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { getPanelData } from 'dockview-vue'
 import {
   ASSET_TYPE_ICONS,
   assetDisplayIcon,
@@ -2934,6 +2935,10 @@ async function moveFoldersToFolder(folderIds: string[], folderId: string | null)
 }
 
 async function onDropToFolder(e: DragEvent, folderId: string | null): Promise<void> {
+  // dockview 面板 DnD：灰框画在 content-container 上，但 drop 命中资产库子节点。
+  // 这里若 stopPropagation，dock 收不到 drop →「有灰框、松手面板不动」。
+  if (getPanelData()) return
+
   if (hasExternalFiles(e)) {
     e.stopPropagation()
     resetExternalImportUi()
@@ -2941,9 +2946,11 @@ async function onDropToFolder(e: DragEvent, folderId: string | null): Promise<vo
     return
   }
 
+  const kind = dragKind(e)
+  if (kind !== 'folder' && kind !== 'asset') return
+
   e.stopPropagation()
   dropTargetId.value = null
-  const kind = dragKind(e)
   if (kind === 'folder') {
     const ids = resolveDroppedFolderIds(e)
     draggingFolderIds.value = []
@@ -2951,12 +2958,10 @@ async function onDropToFolder(e: DragEvent, folderId: string | null): Promise<vo
     await moveFoldersToFolder(ids, folderId)
     return
   }
-  if (kind === 'asset') {
-    const assetIds = resolveDroppedAssetIds(e)
-    draggingAssetIds.value = []
-    if (!assetIds.length) return
-    await moveAssetsToFolder(assetIds, folderId)
-  }
+  const assetIds = resolveDroppedAssetIds(e)
+  draggingAssetIds.value = []
+  if (!assetIds.length) return
+  await moveAssetsToFolder(assetIds, folderId)
 }
 
 async function deleteAssets(ids: string[]): Promise<void> {

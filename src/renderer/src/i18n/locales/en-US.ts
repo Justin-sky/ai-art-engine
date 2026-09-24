@@ -2293,7 +2293,8 @@ export default {
       blockoutRun: 'Create Scene',
       blockoutRunning: 'Generating scene…',
       blockoutHint:
-        'Perspective or 360 panorama. Sends up to 3 reference images plus the instruction to a text model and builds stage blockout from its function call',
+        'Perspective or 360 panorama. Prefers multi-turn dsh (reads refs, writes result.json); falls back to one-shot text if dsh is unavailable. Builds stage blockout from the model output.',
+      blockoutDshStart: 'dsh: multi-turn blockout from reference images…',
       blockoutNoImage: 'Add at least one scene reference image',
       blockoutParseFailed: 'The model returned no valid scene data',
       blockoutDone: 'Created {count} blockout objects',

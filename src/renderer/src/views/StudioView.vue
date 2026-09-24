@@ -265,13 +265,16 @@ import { isEditorPanelGraphRunning } from '../editor/workbench/canCloseEditorPan
 import { parseEditorPanelId } from '../editor/workbench/editorPanelIcon'
 import {
   clearDockDropArtifacts,
+  clearSidePanelDropTargetOverlays,
   configureSidePanelStackDropTargets,
   handleSidePanelLayoutMaybeStacked,
   handleSidePanelMoved,
+  hasDockDropOverlayArtifacts,
   noteSidePanelWillStackDrop,
   registerSidePanelDockApi,
   registerSidePanelSizeProvider,
   rememberedExpandedSideWidth,
+  shouldPreventSidePanelDrop,
   shouldPreventSidePanelOverlay,
   sidePanelCollapsed,
   sidePanelInitialWidth,
@@ -475,6 +478,7 @@ let moveDisposable: { dispose: () => void } | null = null
 let dropDisposable: { dispose: () => void } | null = null
 let willDropDisposable: { dispose: () => void } | null = null
 let willShowOverlayDisposable: { dispose: () => void } | null = null
+let willDragPanelDisposable: { dispose: () => void } | null = null
 /** Suppress ensureCorePanels / persist while rebuilding layout */
 let layoutMutating = false
 
@@ -1025,18 +1029,22 @@ function tryRestoreLayout(api: DockviewApi): boolean {
 }
 
 /**
- * 兜底收尾：落点被拒（面板没有真的移动）时 onDidMovePanel / onDidDrop 都不会触发，
- * dockview 的半透明落点框就会一直留在资产 / 参数面板上。松手后下一帧只要还查得到
- * 未清掉的落点容器，就补一次收尾（延迟到下一帧，避免打断 dockview 自己的 drop 处理）。
+ * 兜底收尾：落点被拒时 onDidMovePanel / onDidDrop 都不会触发，半透明落点框会残留。
+ *
+ * 注意：pointerup 以 capture 注册，早于 dockview 完成 drop。若同步清掉
+ * `.dv-drop-target-*`，会打断落位，出现「灰框闪过但参数面板没到灰框位置」。
+ * 因此只在双 rAF 之后、且仍有残留时再清。
  */
 function cleanupStrayDockDropOverlays(): void {
   const api = dockApi.value
   if (!api) return
   requestAnimationFrame(() => {
-    if (dockApi.value !== api) return
-    const root = typeof document !== 'undefined' ? document.querySelector('.studio-dock') : null
-    if (!root?.querySelector('.dv-drop-target-container')) return
-    clearDockDropArtifacts(api)
+    requestAnimationFrame(() => {
+      if (dockApi.value !== api) return
+      const root = typeof document !== 'undefined' ? document.querySelector('.studio-dock') : null
+      if (!hasDockDropOverlayArtifacts(root)) return
+      clearDockDropArtifacts(api)
+    })
   })
 }
 
@@ -1050,6 +1058,7 @@ function onReady(event: DockviewReadyEvent): void {
   dropDisposable?.dispose()
   willDropDisposable?.dispose()
   willShowOverlayDisposable?.dispose()
+  willDragPanelDisposable?.dispose()
 
   try {
     if (!tryRestoreLayout(api)) {
@@ -1065,6 +1074,12 @@ function onReady(event: DockviewReadyEvent): void {
     createDefaultLayout(api)
   }
 
+  // 拖动一开始就锁死侧栏 zones，避免首帧仍含 left/right
+  willDragPanelDisposable = api.onWillDragPanel((event) => {
+    if (event.panel.id === 'assets' || event.panel.id === 'inspector') {
+      configureSidePanelStackDropTargets(api)
+    }
+  })
   layoutDisposable = api.onDidLayoutChange(() => {
     persistLayout(api)
     handleSidePanelLayoutMaybeStacked(api)
@@ -1072,13 +1087,25 @@ function onReady(event: DockviewReadyEvent): void {
     configureSidePanelStackDropTargets(api)
   })
   willShowOverlayDisposable = api.onWillShowOverlay((event) => {
+    const draggingId = event.getData()?.panelId
+    // 侧栏互拖：先重新断言只允许 top/bottom/center，避免 location 重置带回 left/right
+    if (typeof draggingId === 'string' && (draggingId === 'assets' || draggingId === 'inspector')) {
+      configureSidePanelStackDropTargets(api)
+    }
     if (shouldPreventSidePanelOverlay(event)) {
       event.preventDefault()
+      // 锚点模式：preventDefault 后 _state 已空但 _model 可能仍挂着灰框
+      clearSidePanelDropTargetOverlays(api)
     }
   })
   willDropDisposable = api.onWillDrop((event) => {
-    if (shouldPreventSidePanelOverlay(event)) {
+    const draggingId = event.getData()?.panelId
+    if (typeof draggingId === 'string' && (draggingId === 'assets' || draggingId === 'inspector')) {
+      configureSidePanelStackDropTargets(api)
+    }
+    if (shouldPreventSidePanelDrop(event)) {
       event.preventDefault()
+      clearSidePanelDropTargetOverlays(api)
       return
     }
     noteSidePanelWillStackDrop(api, String(event.position), event.group, event.getData()?.panelId)
@@ -1296,12 +1323,14 @@ onBeforeUnmount(() => {
   dropDisposable?.dispose()
   willDropDisposable?.dispose()
   willShowOverlayDisposable?.dispose()
+  willDragPanelDisposable?.dispose()
   layoutDisposable = null
   removeDisposable = null
   moveDisposable = null
   dropDisposable = null
   willDropDisposable = null
   willShowOverlayDisposable = null
+  willDragPanelDisposable = null
   dockApi.value = null
 })
 </script>
@@ -1609,8 +1638,9 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 
-/* 拖放结束后偶发残留的锚点容器不应再挡交互 */
+/* 锚点容器勿用 JS remove（会弄坏 dockview _model）；仅隐藏空壳 */
 .studio-main :deep(.studio-dock .dv-drop-target-container:empty) {
   display: none !important;
+  pointer-events: none !important;
 }
 </style>

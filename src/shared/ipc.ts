@@ -296,6 +296,10 @@ export const IpcChannels = {
   GAMEPLAY_DSH_VALIDATE: 'gameplay-dsh:validate',
   /** 可玩 HTML：npm + node build.mjs 构建并内联单文件 */
   GAMEPLAY_DSH_BUILD: 'gameplay-dsh:build',
+  /** 导演台白模：准备 dsh 作业目录（refs + brief + result） */
+  BLOCKOUT_DSH_PREPARE: 'blockout-dsh:prepare',
+  /** 导演台白模：校验 dsh 交付的 result.json */
+  BLOCKOUT_DSH_VALIDATE: 'blockout-dsh:validate',
   /** Harness：删除会话在磁盘上的持久化记录（对应前端 ChatSession.id） */
   HARNESS_DELETE_SESSION: 'harness:delete-session',
   /** Git：采集工程当前变更（对话「变更预览」用；只读，不写仓库） */
@@ -906,6 +910,39 @@ export interface BuildGamePlayProjectResult {
   logs: string[]
 }
 
+export interface PrepareBlockoutDshJobInput {
+  instruction: string
+  locale?: string
+  layoutMode?: 'perspective' | 'panorama'
+  /** 完整 system 规则（几何目录等） */
+  systemPrompt: string
+  /** 用户上下文（指令、相机、深度等） */
+  userPrompt: string
+  /** 参考图 data URL（最多 3） */
+  images: string[]
+}
+
+export interface PrepareBlockoutDshJobResult {
+  jobId: string
+  resultAbs: string
+  briefAbs: string
+  /** 工程相对路径，如 Cache/BlockoutJobs/<id>/refs/0.png */
+  refRelativePaths: string[]
+  jobRelativeDir: string
+}
+
+export interface ValidateBlockoutDshJobInput {
+  resultAbs: string
+}
+
+export interface ValidateBlockoutDshJobResult {
+  ok: boolean
+  error?: string
+  summary?: string
+  /** 原始 result.json 文本，供渲染端 parseAiSceneBlockoutCall */
+  resultText?: string
+}
+
 /** Skills：dsh 技能目录中的一个文件 */
 export interface DshSkillsFile {
   fileName: string
@@ -1476,6 +1513,14 @@ export interface StudioApi {
 
   /** 主进程 npm + node build.mjs 构建并内联为单 HTML */
   buildGamePlayProject: (input: BuildGamePlayProjectInput) => Promise<BuildGamePlayProjectResult>
+
+  /** 导演台白模：准备 dsh 作业（写 refs / brief / pending result） */
+  prepareBlockoutDshJob: (input: PrepareBlockoutDshJobInput) => Promise<PrepareBlockoutDshJobResult>
+
+  /** 导演台白模：校验 dsh 交付 */
+  validateBlockoutDshJob: (
+    input: ValidateBlockoutDshJobInput
+  ) => Promise<ValidateBlockoutDshJobResult>
 
   /** Harness：中止当前任务 */
   abortHarnessTask: () => Promise<void>

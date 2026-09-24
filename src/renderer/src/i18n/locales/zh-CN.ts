@@ -2234,7 +2234,8 @@ export default {
       blockoutRun: '创建场景',
       blockoutRunning: '正在生成场景…',
       blockoutHint:
-        '透视或 360 全景都可。将最多 3 张参考图与指令发给文本模型，按返回的 function call 用基础几何体搭建白模',
+        '透视或 360 全景都可。优先走 dsh 多轮（读参考图、写 result.json）；无 dsh 时回退单轮文本。按返回结果用基础几何体搭建白模',
+      blockoutDshStart: 'dsh：多轮读图生成白模…',
       blockoutNoImage: '请先添加至少一张场景参考图',
       blockoutParseFailed: '模型未返回有效的场景数据',
       blockoutDone: '已创建 {count} 个白模物体',

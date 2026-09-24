@@ -41,10 +41,10 @@ class FakeNode {
   }
 
   querySelectorAll(selector: string): FakeNode[] {
-    const wanted = selector.replace(/^\./, '')
+    const parts = selector.split(',').map((s) => s.trim().replace(/^\./, ''))
     const hits: FakeNode[] = []
     for (const child of this.children) {
-      if (child.classes.includes(wanted)) hits.push(child)
+      if (parts.some((wanted) => child.classes.includes(wanted))) hits.push(child)
       hits.push(...child.querySelectorAll(selector))
     }
     return hits
@@ -72,6 +72,9 @@ function fakeDropTarget(calls: string[], label: string) {
     },
     setOverlayModel: (): void => {
       calls.push(`${label}:overlay`)
+    },
+    clearOverlay: (): void => {
+      calls.push(`${label}:clearOverlay`)
     }
   }
 }
@@ -79,6 +82,16 @@ function fakeDropTarget(calls: string[], label: string) {
 /** 只实现 handleSidePanelMoved / configureSidePanelStackDropTargets 触及的 API 面 */
 function fakeSidePanel(options: FakePanelOptions) {
   const { id, groupId, calls } = options
+  const dropTargetContainer = {
+    model: {
+      clear: (): void => {
+        calls.push(`${id}:anchor:clear`)
+        for (const node of studioDock.querySelectorAll('.dv-drop-target-container')) {
+          node.remove()
+        }
+      }
+    }
+  }
   const groupApi = {
     boundingBox: options.box,
     width: options.width,
@@ -96,6 +109,7 @@ function fakeSidePanel(options: FakePanelOptions) {
       id: groupId,
       api: groupApi,
       model: {
+        dropTargetContainer,
         contentContainer: {
           dropTarget: fakeDropTarget(calls, `${id}:content`),
           pointerDropTarget: fakeDropTarget(calls, `${id}:pointer`)
@@ -183,16 +197,17 @@ function buildStackedDock(calls: string[], widths: { assets: number; inspector: 
 }
 
 describe('handleSidePanelMoved 落点覆盖层收尾', () => {
-  it('AI 对话等普通页签拖到侧栏上时清掉落点灰框，且不做侧栏列宽归一', () => {
+  it('AI 对话等普通页签拖到侧栏上时走 clearOverlay / model.clear，且不做侧栏列宽归一', () => {
     const calls: string[] = []
     const { dock, assets } = buildStackedDock(calls, { assets: 380, inspector: 380 })
     const stale = studioDock.append(new FakeNode('dv-drop-target-container'))
-    const marked = studioDock.append(new FakeNode('dv-drop-target'))
 
     handleSidePanelMoved(dock, 'chat')
 
+    // 只通过 model.clear 卸锚点，禁止再硬删 dropzone（会弄坏 PointerDropTarget）
     expect(stale.removed).toBe(true)
-    expect(marked.classes).not.toContain('dv-drop-target')
+    expect(calls.some((call) => call.endsWith(':clearOverlay'))).toBe(true)
+    expect(calls.some((call) => call.endsWith(':anchor:clear'))).toBe(true)
     // 侧栏落点配置被重新断言（group location 变更会重置 zones）
     expect(calls).toContain('assets:content:zones:top,bottom,center')
     expect(calls).toContain('assets:content:overlay')
@@ -212,6 +227,18 @@ describe('handleSidePanelMoved 落点覆盖层收尾', () => {
     flushAnimationFrames()
 
     expect(rebuilt.removed).toBe(true)
+  })
+
+  it('落点收尾会先走 clearOverlay / model.clear', () => {
+    const calls: string[] = []
+    const { dock } = buildStackedDock(calls, { assets: 380, inspector: 380 })
+    studioDock.append(new FakeNode('dv-drop-target-container'))
+
+    handleSidePanelMoved(dock, 'chat')
+
+    expect(calls.some((call) => call.endsWith(':clearOverlay'))).toBe(true)
+    expect(calls.some((call) => call.endsWith(':anchor:clear'))).toBe(true)
+    expect(studioDock.querySelector('.dv-drop-target-container')).toBeNull()
   })
 })
 
