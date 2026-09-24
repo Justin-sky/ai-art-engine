@@ -89,14 +89,14 @@ async function commitGamePlay(
   mode: '2d' | '3d',
   extra?: { projectDir?: string; buildPath?: string }
 ): Promise<Record<string, GraphValue>> {
+  // 有落盘路径时不要把整页 HTML 塞进 params（卡片 textPreview / 响应式图文档都会拖垮拖拽）
+  const buildPath = extra?.buildPath?.trim() || ''
   const params = {
-    gamePlayHtml: html,
+    gamePlayHtml: buildPath ? '' : html,
     gamePlayMode: mode,
-    text: html,
+    text: '',
     ...(extra?.projectDir ? { gamePlayProjectDir: extra.projectDir } : {}),
-    ...(extra?.buildPath
-      ? { gamePlayBuildHtmlPath: extra.buildPath, gamePlayHtmlPath: extra.buildPath }
-      : {})
+    ...(buildPath ? { gamePlayBuildHtmlPath: buildPath, gamePlayHtmlPath: buildPath } : {})
   }
   ctx.node.params = { ...ctx.node.params, ...params }
   ctx.patchNode?.({ params })

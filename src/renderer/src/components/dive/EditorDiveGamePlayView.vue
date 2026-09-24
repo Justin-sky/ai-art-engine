@@ -143,9 +143,12 @@ async function hydrateFromPath(path: string): Promise<string> {
 
 async function resolveFromParams(params: GraphNodeParams | undefined | null): Promise<RawHtml> {
   const preferred = resolvePreferredGamePlayMode(params?.gamePlayMode)
-  let htmlBody = params?.gamePlayHtml?.trim() || params?.text?.trim() || ''
-  let path = params?.gamePlayHtmlPath?.trim() || ''
-  if (!htmlBody && path) htmlBody = await hydrateFromPath(path)
+  let path = params?.gamePlayHtmlPath?.trim() || params?.gamePlayBuildHtmlPath?.trim() || ''
+  // 优先落盘路径，避免节点 params 里残留巨大 HTML 字符串
+  let htmlBody = path ? await hydrateFromPath(path) : ''
+  if (!htmlBody) {
+    htmlBody = params?.gamePlayHtml?.trim() || params?.text?.trim() || ''
+  }
   if (!htmlBody && Array.isArray(params?.generatedTexts) && params.generatedTexts.length) {
     const selectedId = params.selectedTextId?.trim()
     const items = params.generatedTexts

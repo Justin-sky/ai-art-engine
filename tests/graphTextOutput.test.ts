@@ -110,6 +110,31 @@ describe('graph text output', () => {
     ).toBe(false)
   })
 
+  it('does not treat asset.gamePlay as text capable even with huge HTML in params', () => {
+    expect(
+      isNodeTextCapable(
+        baseNode({
+          id: 'play',
+          category: 'asset',
+          assetType: 'gamePlay',
+          typeId: 'asset.gamePlay',
+          params: { text: '<!doctype html><html>…</html>', gamePlayHtml: '<html></html>' }
+        })
+      )
+    ).toBe(false)
+    expect(
+      resolveNodeTextContent(
+        baseNode({
+          id: 'play2',
+          category: 'asset',
+          assetType: 'gamePlay',
+          typeId: 'asset.gamePlay',
+          params: { text: '<!doctype html><html>huge</html>' }
+        })
+      )
+    ).toBeNull()
+  })
+
   it('does not treat svg.anim (note category but baked frames) as text capable', () => {
     // SVG 烘焙同样挂在 note 分类下，但产出的是位图帧序列，双击应播放帧而不是开记事本
     expect(

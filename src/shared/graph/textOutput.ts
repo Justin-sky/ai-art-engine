@@ -62,6 +62,8 @@ function isTextToolNode(node: GraphNode): boolean {
  */
 export function isNodeTextCapable(node: GraphNode): boolean {
   if (node.typeId === 'stage.2d' || node.typeId === 'svg.anim') return false
+  // 可玩 HTML：cook 后 params 可能残留整页 HTML，绝不能当记事本/卡片正文预览
+  if (node.typeId === 'asset.gamePlay' || node.assetType === 'gamePlay') return false
   if (node.category === 'note') return true
   if (node.typeId === 'note.text' || node.typeId === 'play.script') return true
   if (isTextToolNode(node)) return true

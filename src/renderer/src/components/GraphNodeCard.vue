@@ -1538,7 +1538,7 @@ const cardTextGridItems = computed((): string[] => {
     .filter(Boolean)
 })
 
-/** 分镜 / 世界元素流程节点：不展示正文预览，仅显示图标+提示以便双击 */
+/** 分镜 / 世界元素 / 可玩 HTML：不展示正文预览，仅显示图标+提示以便双击 */
 const hideCardPreview = computed(
   () =>
     isWorldExtractNode(props.node) ||
@@ -1546,7 +1546,9 @@ const hideCardPreview = computed(
     isWorldGenNode(props.node) ||
     isBeatSplitNode(props.node) ||
     isBeatTableNode(props.node) ||
-    isBeatGenNode(props.node)
+    isBeatGenNode(props.node) ||
+    props.node.typeId === 'asset.gamePlay' ||
+    props.node.assetType === 'gamePlay'
 )
 
 const scriptNodePreviewTitle = computed(() => {

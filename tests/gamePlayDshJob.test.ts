@@ -232,7 +232,9 @@ describe('game.htmlGen / asset.gamePlay execute', () => {
     expect(buildGamePlayProject).toHaveBeenCalledWith(
       expect.objectContaining({ projectRelativeDir: 'Cache/GamePlayJobs/abc/project' })
     )
-    expect(node.params.gamePlayHtml).toContain('<html')
+    expect(node.params.gamePlayHtml).toBe('')
+    expect(node.params.text).toBe('')
     expect(node.params.gamePlayBuildHtmlPath).toContain('single.html')
+    expect(node.params.gamePlayHtmlPath).toContain('single.html')
   })
 })
