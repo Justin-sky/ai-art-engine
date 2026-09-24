@@ -46,6 +46,36 @@ describe('gamePlay html contract', () => {
     expect(detectGamePlayMode(SAMPLE_GAME_HTML_3D)).toBe('3d')
   })
 
+  it('accepts esbuild-style dynamic canvas; stale 3d comment without Three → 2d', () => {
+    const cooked = `<!DOCTYPE html>
+<html><head><!-- game-mode: 3d --><title>g</title></head>
+<body><div id="app"></div>
+<script>
+const root=document.getElementById("app");
+const canvas=document.createElement("canvas");
+root.appendChild(canvas);
+const ctx=canvas.getContext("2d");
+ctx.fillRect(0,0,10,10);
+</script></body></html>`
+    const v = validateGameHtml(cooked, '3d')
+    expect(v.ok).toBe(true)
+    expect(v.mode).toBe('2d')
+    expect(v.warnings.some((w) => /2D/.test(w))).toBe(true)
+  })
+
+  it('accepts minified Three IIFE without static canvas tag', () => {
+    const cooked = `<!DOCTYPE html>
+<html><head><!-- game-mode: 3d --></head><body><div id="app"></div>
+<script>
+(()=>{const canvas=document.createElement("canvas");document.body.appendChild(canvas);
+const WebGLRenderer=function(){};const THREE={WebGLRenderer,PerspectiveCamera:function(){}};
+new THREE.WebGLRenderer({canvas});})();
+</script></body></html>`
+    const v = validateGameHtml(cooked, 'auto')
+    expect(v.ok).toBe(true)
+    expect(v.mode).toBe('3d')
+  })
+
   it('does not block cook on parent/eval-looking script text', () => {
     const withApis = SAMPLE_GAME_HTML_2D.replace(
       '</script>',
@@ -73,6 +103,19 @@ describe('gamePlay html contract', () => {
     const next = injectThreeIntoHtml(SAMPLE_GAME_HTML_3D, moduleSrc, coreSrc)
     expect(next).toContain('importmap')
     expect(next).not.toMatch(/\.\/three\.core(?:\.min)?\.js/)
+  })
+
+  it('prepare accepts esbuild dynamic-canvas HTML without structural gate', () => {
+    const cooked = `<!DOCTYPE html>
+<html><head><!-- game-mode: 3d --><title>g</title></head>
+<body><div id="app"></div>
+<script>
+const canvas=document.createElement("canvas");
+document.body.appendChild(canvas);
+</script></body></html>`
+    const prepared = prepareGameHtml(cooked, '3d')
+    expect(prepared.mode).toBe('2d')
+    expect(prepared.html).toMatch(/game-mode:\s*2d/i)
   })
 
   it('prepare + seed roundtrip', () => {

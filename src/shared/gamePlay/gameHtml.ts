@@ -5,6 +5,19 @@ export type GamePlayMode = '2d' | '3d' | 'auto'
 export const GAME_MODE_COMMENT_RE = /<!--\s*game-mode\s*:\s*(2d|3d)\s*-->/i
 export const THREE_INJECT_MARKER = '<!-- THREE_INJECT -->'
 
+/** 静态 <canvas> 或 JS 动态 createElement('canvas')（Node/esbuild 脚手架常用后者） */
+export function hasPlayableCanvas(html: string): boolean {
+  return /<canvas[\s>]/i.test(html) || /createElement\s*\(\s*['"]canvas['"]\s*\)/i.test(html)
+}
+
+/** Three / WebGL 线索；esbuild 打包后通常仍保留 WebGLRenderer 等标识字符串 */
+export function hasThreeClue(html: string): boolean {
+  if (html.includes(THREE_INJECT_MARKER)) return true
+  return /THREE_INJECT|from\s+['"]three['"]|three\.module|WebGLRenderer|PerspectiveCamera|WebGLRenderTarget|MeshStandardMaterial|BufferGeometry|THREE\./i.test(
+    html
+  )
+}
+
 /** 从模型输出中抽出完整 HTML 文档 */
 export function extractGameHtml(raw: string): string | null {
   const text = raw.trim()
@@ -57,12 +70,19 @@ ${body}
 </html>`
 }
 
-/** 解析头注释或启发式判定 2d/3d */
+/**
+ * 解析头注释或启发式判定 2d/3d。
+ * preferred 仅作偏好：内容无 Three 线索时不把 3d 偏好/注释硬判成 3d
+ * （cook 后的 Node 工程常保留脚手架 `game-mode: 3d` 注释，但 agent 已改成 2D）。
+ */
 export function detectGamePlayMode(html: string, preferred: GamePlayMode = 'auto'): '2d' | '3d' {
-  if (preferred === '2d' || preferred === '3d') return preferred
+  const content3d = hasThreeClue(html)
+  if (preferred === '2d') return '2d'
+  if (preferred === '3d') return content3d ? '3d' : '2d'
+  if (content3d) return '3d'
   const m = html.match(GAME_MODE_COMMENT_RE)
-  if (m?.[1]) return m[1].toLowerCase() === '3d' ? '3d' : '2d'
-  if (/WebGLRenderer|THREE\.|from\s+['"]three['"]|three\.module/i.test(html)) return '3d'
+  if (m?.[1]?.toLowerCase() === '3d') return '2d' // 注释过时、无 Three → 按 2d
+  if (m?.[1]) return '2d'
   return '2d'
 }
 
@@ -82,20 +102,20 @@ export function validateGameHtml(
   const warnings: string[] = []
   const mode = detectGamePlayMode(html, preferred)
 
-  if (!/<canvas[\s>]/i.test(html)) {
-    // 3D 常见由 WebGLRenderer 动态挂 canvas；有 THREE/WebGL 线索即可
-    if (!(mode === '3d' && /WebGLRenderer|THREE\.|from\s+['"]three['"]/i.test(html))) {
+  if (!hasPlayableCanvas(html)) {
+    // 3D 偶发完全由库内部建 canvas；有 Three 线索即可
+    if (!(mode === '3d' && hasThreeClue(html))) {
       errors.push('缺少 <canvas>')
     }
   }
   if (/phaser|pixi\.js|from\s+['"]pixi/i.test(html)) {
     warnings.push('检测到 Phaser/Pixi 外链倾向；v1 建议原生 Canvas / Three')
   }
-  if (mode === '3d') {
-    const hasThree =
-      /THREE_INJECT|from\s+['"]three['"]|three\.module|WebGLRenderer/i.test(html) ||
-      html.includes(THREE_INJECT_MARKER)
-    if (!hasThree) errors.push('3D 模式需要 Three 引用或 <!-- THREE_INJECT -->')
+  if (preferred === '3d' && mode === '2d') {
+    warnings.push('偏好 3D 但产物无 Three 线索，已按 2D 受理')
+  }
+  if (mode === '3d' && !hasThreeClue(html)) {
+    errors.push('3D 模式需要 Three 引用或 <!-- THREE_INJECT -->')
   }
 
   return { ok: errors.length === 0, mode, errors, warnings }

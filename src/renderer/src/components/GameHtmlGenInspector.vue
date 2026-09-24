@@ -16,6 +16,15 @@
     />
 
     <label class="field">
+      <span>{{ t('graph.gameHtmlGen.mode') }}</span>
+      <select v-model="playMode" @change="persistMode">
+        <option value="auto">{{ t('graph.gameHtmlGen.modeAuto') }}</option>
+        <option value="2d">{{ t('graph.gameHtmlGen.mode2d') }}</option>
+        <option value="3d">{{ t('graph.gameHtmlGen.mode3d') }}</option>
+      </select>
+    </label>
+
+    <label class="field">
       <span>{{ t('graph.gameHtmlGen.instruction') }}</span>
       <textarea
         v-model="instruction"
@@ -25,6 +34,10 @@
         @change="persistInstruction"
       />
     </label>
+
+    <p v-if="projectDir" class="meta" :title="projectDir">
+      {{ t('graph.gameHtmlGen.projectDir') }}：{{ projectDir }}
+    </p>
 
     <GraphNodeOutputPreview
       v-if="hostId"
@@ -72,6 +85,9 @@ const typeLabel = computed(() => graphTypeLabel('game.htmlGen'))
 const displayTitle = useNodeDisplayTitle(node, typeLabel)
 
 const instruction = ref('')
+const playMode = ref<'auto' | '2d' | '3d'>('auto')
+
+const projectDir = computed(() => node.value?.params.gamePlayProjectDir?.trim() || '')
 
 watch(
   () => node.value?.params.generateInstruction,
@@ -81,10 +97,26 @@ watch(
   { immediate: true }
 )
 
+watch(
+  () => node.value?.params.gamePlayMode,
+  (stored) => {
+    const v = typeof stored === 'string' ? stored.trim().toLowerCase() : ''
+    playMode.value = v === '2d' || v === '3d' || v === 'auto' ? v : 'auto'
+  },
+  { immediate: true }
+)
+
 function persistInstruction(): void {
   if (!node.value || !hostId.value) return
   graphEditorHosts.updateNode(hostId.value, node.value.id, {
     generateInstruction: instruction.value
+  })
+}
+
+function persistMode(): void {
+  if (!node.value || !hostId.value) return
+  graphEditorHosts.updateNode(hostId.value, node.value.id, {
+    gamePlayMode: playMode.value
   })
 }
 
@@ -148,5 +180,13 @@ function onClearOutput(): void {
 .instruction {
   resize: vertical;
   font-family: inherit;
+}
+
+.meta {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  word-break: break-all;
 }
 </style>

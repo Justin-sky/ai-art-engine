@@ -3561,12 +3561,13 @@ export default {
       inspectorHint:
         'Generate a playable pure Node (esbuild) mini-game via dsh (multi-turn); cook on asset.gamePlay (npm + node build.mjs → single HTML); optional reference images; double-click to sandbox-play',
       mode: 'Mode',
-      modeAuto: 'Auto',
+      modeAuto: 'Auto (agent chooses; scaffold starts as 2D)',
       mode2d: '2D Canvas',
       mode3d: '3D Three.js',
       instruction: 'Gameplay brief',
       instructionPlaceholder:
-        "One-sentence gameplay brief; use {'@'} to cite inputs; written into the dsh brief"
+        "One-sentence gameplay brief (rules / controls / win); dsh writes pure Node/esbuild; optional in-image; use {'@'} to cite inputs",
+      projectDir: 'Project dir'
     },
     svgAnim: {
       inspectorHint:

@@ -2,6 +2,8 @@ export {
   detectGamePlayMode,
   ensureGameModeComment,
   extractGameHtml,
+  hasPlayableCanvas,
+  hasThreeClue,
   injectThreeIntoHtml,
   rewriteThreeCoreRelativeImports,
   THREE_INJECT_MARKER,

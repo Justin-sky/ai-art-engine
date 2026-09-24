@@ -83,6 +83,13 @@ const modeLabel = computed(() =>
 
 function buildPlayableHtml(source: string, playMode: '2d' | '3d'): string {
   if (playMode !== '3d') return source
+  // Node/esbuild IIFE 已打进 three 时勿再注入 importmap，避免双份运行时
+  if (
+    /createElement\s*\(\s*['"]canvas['"]\s*\)/i.test(source) &&
+    !/from\s+['"]three['"]/i.test(source)
+  ) {
+    return source
+  }
   try {
     return injectThreeIntoHtml(source, threeModuleSource, threeCoreSource)
   } catch {

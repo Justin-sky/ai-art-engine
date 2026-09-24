@@ -78,6 +78,7 @@ export function buildGamePlayJobBrief(input: GamePlayJobBriefInput): string {
     '- Allowed: plain ES modules under src/, Canvas 2D, and optionally `three` + `esbuild` from npm.',
     '- Do NOT call npm install / npm run build / node build.mjs. The host app builds later.',
     '- No CDN scripts, no external http(s) asset URLs, no eval / new Function / parent / top / window.open / file://.',
+    '- If using raw WebGL1 GLSL with dFdx/dFdy/fwidth, put `#extension GL_OES_standard_derivatives : enable` at the top of that fragment shader (before precision).',
     '- Full-viewport playable mini-game with rAF loop; R resets; keyboard or mouse controls; simple score or win/lose.',
     `- ${modeHint}`,
     '- Keep the /*APP_JS*/ marker in index.template.html so build.mjs can inject the bundle.',

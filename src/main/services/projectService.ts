@@ -1096,13 +1096,14 @@ class ProjectService {
     if (!existsSync(abs)) throw fail(E_ASSET_FILE_MISSING)
 
     const mtime = statSync(abs).mtimeMs
-    // 图/音/视/文本统一走 studio-media，避免 base64 撑爆内存，并支持 fetch
+    // 图/音/视/文本/可玩 HTML 统一走 studio-media，避免 base64 撑爆内存，并支持 fetch（CSP 不含 file:）
     if (
       isImageFilePath(abs) ||
       isAudioFilePath(abs) ||
       isVideoFilePath(abs) ||
       isModelFilePath(abs) ||
-      isTextFilePath(abs)
+      isTextFilePath(abs) ||
+      /\.html?$/i.test(abs)
     ) {
       return `studio-media://local/?path=${encodeURIComponent(abs)}&t=${mtime}`
     }

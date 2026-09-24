@@ -3481,11 +3481,13 @@ export default {
       inspectorHint:
         '一句话经 dsh 多轮生成纯 Node（esbuild）可玩工程；在「可玩 HTML」资产节点 cook（npm + node build.mjs→单文件）；可接参考图；双击进沙盒试玩',
       mode: '模式',
-      modeAuto: '自动',
+      modeAuto: '自动（按玩法自选，脚手架按 2D）',
       mode2d: '2D Canvas',
       mode3d: '3D Three.js',
       instruction: '玩法需求',
-      instructionPlaceholder: "一句话描述玩法；可用 {'@'} 引用上方连线；将写入 dsh brief"
+      instructionPlaceholder:
+        "一句话描述可玩小游戏（玩法 / 操作 / 胜负）；dsh 多轮写纯 Node/esbuild；可接 in-image；可用 {'@'} 引用上方连线",
+      projectDir: '工程目录'
     },
     svgAnim: {
       inspectorHint:
