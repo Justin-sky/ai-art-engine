@@ -1,8 +1,8 @@
 <template>
   <StudioFloatingWindow
     :open="open"
-    :title="t('director.stage.blockoutLibraryTitle')"
-    :subtitle="t('director.stage.blockoutLibrarySubtitle', { max: remaining })"
+    :title="t('director.stage.imageLibraryTitle')"
+    :subtitle="t('director.stage.imageLibrarySubtitle', { max: remaining })"
     :z-index="2600"
     :default-width="720"
     :default-height="560"
@@ -16,8 +16,8 @@
     <div v-if="!visibleAssets.length" class="empty">
       {{
         query.trim()
-          ? t('director.stage.blockoutLibraryNoMatch')
-          : t('director.stage.blockoutLibraryEmpty')
+          ? t('director.stage.imageLibraryNoMatch')
+          : t('director.stage.imageLibraryEmpty')
       }}
     </div>
     <div v-else class="library" role="listbox">
@@ -42,14 +42,14 @@
         <span v-else class="thumb-fallback">🖼</span>
         <span class="caption" :title="asset.name">{{ asset.name }}</span>
         <span v-if="isLocked(asset.id)" class="badge">{{
-          t('director.stage.blockoutLibraryAdded')
+          t('director.stage.imageLibraryAdded')
         }}</span>
       </button>
     </div>
 
     <template #footer>
       <span class="footer-hint">
-        {{ t('director.stage.blockoutLibraryPicked', { n: pending.size, max: remaining }) }}
+        {{ t('director.stage.imageLibraryPicked', { n: pending.size, max: remaining }) }}
       </span>
       <button type="button" @click="emit('cancel')">
         {{ t('common.cancel') }}

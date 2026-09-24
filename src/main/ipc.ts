@@ -78,10 +78,6 @@ import {
   seedGamePlayProject,
   validatePreparedGamePlayJob
 } from './services/gamePlayDshJobService'
-import {
-  prepareBlockoutDshJob,
-  validatePreparedBlockoutJob
-} from './services/blockoutDshJobService'
 import { settingsService } from './services/settingsService'
 import { updateService } from './services/updateService'
 import {
@@ -496,14 +492,6 @@ export function registerIpcHandlers(): void {
   )
   handle(IpcChannels.GAMEPLAY_DSH_BUILD, (input: import('@shared/ipc').BuildGamePlayProjectInput) =>
     buildGamePlayProject(input)
-  )
-  handle(
-    IpcChannels.BLOCKOUT_DSH_PREPARE,
-    (input: import('@shared/ipc').PrepareBlockoutDshJobInput) => prepareBlockoutDshJob(input)
-  )
-  handle(
-    IpcChannels.BLOCKOUT_DSH_VALIDATE,
-    (input: import('@shared/ipc').ValidateBlockoutDshJobInput) => validatePreparedBlockoutJob(input)
   )
   handle(IpcChannels.HARNESS_ABORT, () => abortHarnessTask())
   handle(IpcChannels.HARNESS_PREWARM, () => prewarmHarness())

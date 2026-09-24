@@ -864,7 +864,7 @@ const PRESET_PLANS: Record<Exclude<AiWorkflowPresetId, 'custom'>, GraphPlan> = {
         typeId: 'note.text',
         title: '使用说明',
         params: {
-          text: '流程：运行两个「3D 模型」节点生成 GLB → 连到「导演台预演」后双击进入舞台，模型自动实例化；在舞台里用基础几何体或「生成3D白模」补景、摆机位 → 截取站位图（out-shots）→ 经「选站位图」挑一张生成展示视频。配套道具模型可随时替换接入导演台。'
+          text: '流程：运行两个「3D 模型」节点生成 GLB → 连到「导演台预演」后双击进入舞台，模型自动实例化；在舞台里用基础几何体补景、摆机位 → 截取站位图（out-shots）→ 经「选站位图」挑一张生成展示视频。配套道具模型可随时替换接入导演台。'
         }
       }
     ],
@@ -973,7 +973,7 @@ const PRESET_PLANS: Record<Exclude<AiWorkflowPresetId, 'custom'>, GraphPlan> = {
     ]
   },
   directorPreviz: {
-    title: '3D 白模预演',
+    title: '3D 导演台预演',
     nodes: [
       {
         key: 'brief',
@@ -987,7 +987,7 @@ const PRESET_PLANS: Record<Exclude<AiWorkflowPresetId, 'custom'>, GraphPlan> = {
         title: '全景氛围参考',
         params: { generateInstruction: '生成场景 360 全景氛围图，透视与光线方向明确' }
       },
-      { key: 'motion', typeId: 'asset.motion', title: '导演台·AI 白模' },
+      { key: 'motion', typeId: 'asset.motion', title: '导演台预演' },
       { key: 'select', typeId: 'image.select', title: '选站位图' },
       {
         key: 'video',
@@ -1003,7 +1003,7 @@ const PRESET_PLANS: Record<Exclude<AiWorkflowPresetId, 'custom'>, GraphPlan> = {
         typeId: 'note.text',
         title: '使用说明',
         params: {
-          text: '流程：运行「全景氛围参考」→ 连到「导演台·AI 白模」的全景口，双击进入舞台自动设为背景 → 点「生成3D白模」，丢最多 3 张透视 / 360 全景参考图与一句话指令，AI 用基础几何体搭出整座场景（人物当 1.7m 比例尺）→ 摆机位、截站位图 → 「选站位图」后生成预演成片，构图提前锁死。'
+          text: '流程：运行「全景氛围参考」→ 连到「导演台预演」的全景口，双击进入舞台自动设为背景 → 用基础几何体手动搭景、摆机位、截站位图 → 「选站位图」后生成预演成片，构图提前锁死。'
         }
       }
     ],

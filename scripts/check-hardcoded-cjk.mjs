@@ -29,7 +29,6 @@ const EXEMPT_FILES = new Set([
   'src/shared/graph/instructionPresets.ts',
   'src/shared/graph/systemPromptSchemes.ts',
   'src/shared/graph/emotionPad.ts',
-  'src/renderer/src/features/director/aiSceneBlockout.ts',
   'src/renderer/src/features/director/aiPosePresets.ts',
   'src/shared/graph/smartCut.ts',
   'src/shared/graph/videoReview.ts',

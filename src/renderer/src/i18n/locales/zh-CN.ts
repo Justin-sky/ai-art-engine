@@ -221,7 +221,7 @@ export default {
         title: '游戏3D资产',
         desc: '文生3D模型 → 导演台 → 站位图 → 展示视频',
         prompt:
-          '创建一个游戏 3D 资产工作流：文本节点写资产设定，两个 3D 模型生成节点分别生成主角与配套道具 GLB 模型；导演台节点接入模型，dive 进入舞台自动实例化，用基础几何体或 AI 白模补景并摆机位；站位图（out-shots）经选择节点挑一张，图生视频生成资产展示视频。'
+          '创建一个游戏 3D 资产工作流：文本节点写资产设定，两个 3D 模型生成节点分别生成主角与配套道具 GLB 模型；导演台节点接入模型，dive 进入舞台自动实例化，用基础几何体补景并摆机位；站位图（out-shots）经选择节点挑一张，图生视频生成资产展示视频。'
       },
       comicPublish: {
         title: '漫画出版',
@@ -236,10 +236,10 @@ export default {
           '创建一个知识课程口播工作流：文本节点放课程讲稿，图片节点生成主讲人形象，声音节点按讲稿生成口播配音，视频节点基于主讲人形象生成口播视频；口型同步节点接入口播视频与配音，输出口型对齐的成片。'
       },
       directorPreviz: {
-        title: '3D白模预演',
-        desc: '全景参考 → AI 白模搭景 → 站位图锁构图',
+        title: '3D导演台预演',
+        desc: '全景参考 → 几何体搭景 → 站位图锁构图',
         prompt:
-          '创建一个 3D 白模预演工作流：图片节点生成 360 全景氛围参考并接入导演台的全景口，dive 进入舞台自动设为背景；在舞台用「生成3D白模」按参考图与一句话指令搭建白模场景，摆机位截取站位图；站位图经选择节点挑一张，图生视频按构图生成预演成片，文本节点作为成片提示词补充。'
+          '创建一个 3D 导演台预演工作流：图片节点生成 360 全景氛围参考并接入导演台的全景口，dive 进入舞台自动设为背景；在舞台用基础几何体手动搭景，摆机位截取站位图；站位图经选择节点挑一张，图生视频按构图生成预演成片，文本节点作为成片提示词补充。'
       },
       shortDrama: {
         title: '短剧分镜',
@@ -1878,7 +1878,6 @@ export default {
         point: '点光',
         spot: '聚光灯'
       },
-      aiBlockoutGroupName: 'AI 白模',
       deleteObject: '删除',
       copy: '复制',
       paste: '粘贴',
@@ -2206,42 +2205,12 @@ export default {
       panoramaRemove: '移除背景图',
       hidePanorama: '隐藏全景背景',
       showPanorama: '显示全景背景',
-      blockoutButton: '生成3D白模',
-      blockoutTitle: '生成3D白模',
-      blockoutNeedPanorama: '请先设置全景背景图',
-      blockoutRefAdd: '添加场景参考图',
-      blockoutRefRemove: '移除参考图',
-      blockoutPickAsset: '从资产库选择',
-      blockoutAddFromAsset: '添加',
-      blockoutLibraryTitle: '选择场景参考图',
-      blockoutLibrarySubtitle: '仅显示图片，还可选 {max} 张',
-      blockoutLibraryEmpty: '资产库中暂无图片',
-      blockoutLibraryNoMatch: '没有匹配的图片',
-      blockoutLibraryAdded: '已添加',
-      blockoutLibraryPicked: '已选 {n} / {max}',
-      blockoutLayoutLabel: '参考图类型',
-      blockoutLayoutPerspective: '透视照片',
-      blockoutLayoutPanorama: '360 全景',
-      blockoutModelLabel: '文本模型',
-      blockoutNoModels: '暂无可用文本模型',
-      blockoutSystemLabel: '系统提示词',
-      blockoutInstructionLabel: '指令',
-      blockoutDefaultInstruction: '分析参考图中的场景元素，用基础几何体还原整个场景布局。',
-      blockoutDefaultInstructionPerspective:
-        '尽量按参考图还原：圆拱用 arch（不要转 90°），圆锥塔尖用 cone（尖朝上，底面正圆），圆塔身用 cylinder 不要用 prism；拱门留空，用人物当 1.7m 比例尺。',
-      blockoutDefaultInstructionPanorama:
-        '这是 360° 等距柱状全景。按图中方位把物体围在观察者周围，不要当成透视照片堆在相机正前方。',
-      blockoutRun: '创建场景',
-      blockoutRunning: '正在生成场景…',
-      blockoutHint:
-        '透视或 360 全景都可。优先走 dsh 多轮（读参考图、写 result.json）；无 dsh 时回退单轮文本。按返回结果用基础几何体搭建白模',
-      blockoutDshStart: 'dsh：多轮读图生成白模…',
-      blockoutNoImage: '请先添加至少一张场景参考图',
-      blockoutParseFailed: '模型未返回有效的场景数据',
-      blockoutDone: '已创建 {count} 个白模物体',
-      blockoutAutoFix: '自动修复了 {count} 个几何体类型',
-      blockoutLogTitle: 'AI 场景白模',
-      blockoutLogStart: '开始生成场景白模（模型：{model}）',
+      imageLibraryTitle: '选择图片',
+      imageLibrarySubtitle: '仅显示图片，还可选 {max} 张',
+      imageLibraryEmpty: '资产库中暂无图片',
+      imageLibraryNoMatch: '没有匹配的图片',
+      imageLibraryAdded: '已添加',
+      imageLibraryPicked: '已选 {n} / {max}',
       skyColor: '天空颜色',
       panoramaSphere: '全景球',
       panoramaYaw: '水平旋转',

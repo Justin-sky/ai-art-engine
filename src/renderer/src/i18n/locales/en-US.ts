@@ -226,7 +226,7 @@ export default {
         title: 'Game 3D assets',
         desc: 'Text-to-3D → director deck → shots → showcase video',
         prompt:
-          'Create a game 3D asset workflow: text holds the asset design; two 3D-model nodes generate the hero and prop GLB models; a director-deck node takes the model and dive auto-instances it on stage, where primitives or an AI blockout flesh out the scene and cameras are staged; shots (out-shots) go through a select node, and image-to-video renders the showcase clip.'
+          'Create a game 3D asset workflow: text holds the asset design; two 3D-model nodes generate the hero and prop GLB models; a director-deck node takes the model and dive auto-instances it on stage, where primitives flesh out the scene and cameras are staged; shots (out-shots) go through a select node, and image-to-video renders the showcase clip.'
       },
       comicPublish: {
         title: 'Comic publishing',
@@ -241,10 +241,10 @@ export default {
           'Create a knowledge-course talking-head workflow: text holds the lecture script, an image node generates the presenter look, a voice node narrates the script, and a video node turns the presenter image into a talking video; a lip-sync node takes the talking video plus the narration and outputs a lip-aligned clip.'
       },
       directorPreviz: {
-        title: '3D blockout previz',
-        desc: 'Panorama reference → AI blockout → shots lock framing',
+        title: '3D director previz',
+        desc: 'Panorama reference → primitive stage → shots lock framing',
         prompt:
-          'Create a 3D blockout previz workflow: an image node generates a 360 panorama mood reference wired into the director deck panorama port, dive sets it as stage background; use Generate 3D Blockout with reference images plus a one-line instruction to build the scene from primitives, stage cameras and capture shots; a select node picks a shot and image-to-video renders the previz clip, with the text node supplementing the video prompt.'
+          'Create a 3D director previz workflow: an image node generates a 360 panorama mood reference wired into the director deck panorama port, dive sets it as stage background; build the scene with primitives on stage, set cameras and capture shots; a select node picks a shot and image-to-video renders the previz clip, with the text node supplementing the video prompt.'
       },
       shortDrama: {
         title: 'Short drama',
@@ -1926,7 +1926,6 @@ export default {
         point: 'Point Light',
         spot: 'Spot Light'
       },
-      aiBlockoutGroupName: 'AI Blockout',
       deleteObject: 'Delete',
       copy: 'Copy',
       paste: 'Paste',
@@ -2264,43 +2263,12 @@ export default {
       panoramaRemove: 'Remove background',
       hidePanorama: 'Hide panorama background',
       showPanorama: 'Show panorama background',
-      blockoutButton: 'Generate 3D Blockout',
-      blockoutTitle: 'Generate 3D Blockout',
-      blockoutNeedPanorama: 'Set a panorama background first',
-      blockoutRefAdd: 'Add scene reference image',
-      blockoutRefRemove: 'Remove reference',
-      blockoutPickAsset: 'Choose from assets',
-      blockoutAddFromAsset: 'Add',
-      blockoutLibraryTitle: 'Choose scene references',
-      blockoutLibrarySubtitle: 'Images only, {max} more can be added',
-      blockoutLibraryEmpty: 'No image assets in the library',
-      blockoutLibraryNoMatch: 'No matching images',
-      blockoutLibraryAdded: 'Added',
-      blockoutLibraryPicked: 'Selected {n} / {max}',
-      blockoutLayoutLabel: 'Reference type',
-      blockoutLayoutPerspective: 'Perspective',
-      blockoutLayoutPanorama: '360 panorama',
-      blockoutModelLabel: 'Text model',
-      blockoutNoModels: 'No text models available',
-      blockoutSystemLabel: 'System prompt',
-      blockoutInstructionLabel: 'Instruction',
-      blockoutDefaultInstruction:
-        'Analyze the reference images and rebuild the scene with primitives.',
-      blockoutDefaultInstructionPerspective:
-        'Match the photo: round arches = arch (no extra 90° rotation); circular spires = cone (tip up, circular base); round towers = cylinder not prism; leave openings; use people as a 1.7m scale.',
-      blockoutDefaultInstructionPanorama:
-        'This is a 360° equirectangular panorama. Place objects around the viewer by image azimuth; do not treat it as one perspective photo stacked in front of the camera.',
-      blockoutRun: 'Create Scene',
-      blockoutRunning: 'Generating scene…',
-      blockoutHint:
-        'Perspective or 360 panorama. Prefers multi-turn dsh (reads refs, writes result.json); falls back to one-shot text if dsh is unavailable. Builds stage blockout from the model output.',
-      blockoutDshStart: 'dsh: multi-turn blockout from reference images…',
-      blockoutNoImage: 'Add at least one scene reference image',
-      blockoutParseFailed: 'The model returned no valid scene data',
-      blockoutDone: 'Created {count} blockout objects',
-      blockoutAutoFix: 'Auto-fixed {count} primitive types',
-      blockoutLogTitle: 'AI scene blockout',
-      blockoutLogStart: 'Start scene blockout (model: {model})',
+      imageLibraryTitle: 'Choose images',
+      imageLibrarySubtitle: 'Images only, {max} more can be added',
+      imageLibraryEmpty: 'No image assets in the library',
+      imageLibraryNoMatch: 'No matching images',
+      imageLibraryAdded: 'Added',
+      imageLibraryPicked: 'Selected {n} / {max}',
       skyColor: 'Sky Color',
       panoramaSphere: 'Panorama Sphere',
       panoramaYaw: 'Horizontal Rotation',

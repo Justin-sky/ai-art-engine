@@ -758,15 +758,6 @@
               t('director.stage.panoramaDropHint')
             }}</span>
           </div>
-          <button
-            type="button"
-            class="blockout-btn"
-            :disabled="blockoutGenerating"
-            :title="t('director.stage.blockoutButton')"
-            @click="openBlockoutDialog"
-          >
-            {{ t('director.stage.blockoutButton') }}
-          </button>
           <label class="color-row">
             {{ t('director.stage.skyColor') }}
             <span class="color-control">
@@ -1015,15 +1006,6 @@
               t('director.stage.panoramaDropHint')
             }}</span>
           </div>
-          <button
-            type="button"
-            class="blockout-btn"
-            :disabled="blockoutGenerating"
-            :title="t('director.stage.blockoutButton')"
-            @click="openBlockoutDialog"
-          >
-            {{ t('director.stage.blockoutButton') }}
-          </button>
           <label class="color-row">
             {{ t('director.stage.skyColor') }}
             <span class="color-control">
@@ -1093,15 +1075,6 @@
     @cancel="closeSavePoseAssetDialog"
   />
 
-  <DirectorStageBlockoutDialog
-    :open="blockoutDialogOpen"
-    :initial-asset-id="scene.linkedPanoramaId.value ?? ''"
-    :generating="blockoutGenerating"
-    :error="blockoutError"
-    @close="closeBlockoutDialog"
-    @generate="onGenerateBlockout"
-  />
-
   <DirectorPoseFromMediaDialog
     :open="poseFromMediaOpen"
     :scene="scene"
@@ -1142,20 +1115,6 @@ import {
   resolveDirectorStageScene
 } from '../features/director/activeDirectorStageScene'
 import { directorStageSceneKey } from '../features/director/stageSceneKey'
-import {
-  buildSceneBlockoutSystemPrompt,
-  buildSceneBlockoutUserPrompt,
-  tryEnrichWithDepthMap,
-  parseAiSceneBlockoutCall,
-  fixCommonBlockoutMistakes,
-  resolveBlockoutWorldPosition,
-  snapBlockoutToGround,
-  type AiSceneBlockoutObject,
-  type BlockoutLayoutMode
-} from '../features/director/aiSceneBlockout'
-import { prepareBlockoutReferenceImages } from '../features/director/equirectViews'
-import { isBlockoutDshReady, runBlockoutDshJob } from '../features/director/runBlockoutDshJob'
-import { useGraphRunLogsStore } from '../stores/graphRunLogs'
 import { useProjectStore } from '../stores/project'
 import {
   STUDIO_ASSET_DRAG_MIME,
@@ -1164,7 +1123,6 @@ import {
   useWorkspaceStore
 } from '../stores/workspace'
 import SaveAssetDialog from './SaveAssetDialog.vue'
-import DirectorStageBlockoutDialog from './DirectorStageBlockoutDialog.vue'
 import DirectorPoseFromMediaDialog from './DirectorPoseFromMediaDialog.vue'
 
 withDefaults(
@@ -1175,7 +1133,7 @@ withDefaults(
   { embedded: false }
 )
 
-const { t, locale } = useStudioI18n()
+const { t } = useStudioI18n()
 const injectedScene = inject(directorStageSceneKey, null)
 if (!resolveDirectorStageScene(injectedScene)) {
   throw new Error('DirectorStageInspector requires an active director stage scene')
@@ -1183,15 +1141,10 @@ if (!resolveDirectorStageScene(injectedScene)) {
 const scene = bindLiveDirectorStageScene(injectedScene)
 const workspace = useWorkspaceStore()
 const project = useProjectStore()
-const runLogs = useGraphRunLogsStore()
 
 const previewCanvas = ref<HTMLCanvasElement | null>(null)
 const panoramaDragOver = ref(false)
 
-const BLOCKOUT_LOG_NODE_ID = 'director.blockout'
-const blockoutDialogOpen = ref(false)
-const blockoutGenerating = ref(false)
-const blockoutError = ref('')
 const poseFromMediaOpen = ref(false)
 
 const posX = ref(0)
@@ -1403,17 +1356,6 @@ function setPoseEditMode(mode: 'fk' | 'ik'): void {
   scene.setPoseEditMode(mode)
 }
 
-function openBlockoutDialog(): void {
-  if (blockoutGenerating.value) return
-  blockoutError.value = ''
-  blockoutDialogOpen.value = true
-}
-
-function closeBlockoutDialog(): void {
-  if (blockoutGenerating.value) return
-  blockoutDialogOpen.value = false
-}
-
 function openPoseFromMediaDialog(): void {
   const o = obj.value
   if (!o || o.locked) return
@@ -1422,284 +1364,6 @@ function openPoseFromMediaDialog(): void {
 
 function closePoseFromMediaDialog(): void {
   poseFromMediaOpen.value = false
-}
-
-function applySceneBlockoutObjects(
-  objects: AiSceneBlockoutObject[],
-  mode: BlockoutLayoutMode
-): number {
-  const groupId = scene.createEmptyObject()
-  if (groupId) {
-    scene.updateObjectTransform(groupId, { name: t('director.stage.aiBlockoutGroupName') })
-  }
-  const yaw = typeof scene.stage.value.panoramaYaw === 'number' ? scene.stage.value.panoramaYaw : 0
-  let created = 0
-  for (const spec of objects) {
-    const id = scene.createPrimitiveObject(spec.primitive, groupId)
-    if (!id) continue
-    const rotation =
-      spec.primitive === 'plane' &&
-      spec.rotation.x === 0 &&
-      spec.rotation.y === 0 &&
-      spec.rotation.z === 0
-        ? { x: -Math.PI / 2, y: 0, z: 0 }
-        : spec.rotation
-    const worldPos = resolveBlockoutWorldPosition(spec, { mode, panoramaYawDeg: yaw })
-    const groundedY = snapBlockoutToGround(spec, worldPos.y)
-    scene.updateObjectTransform(id, {
-      name: spec.name,
-      color: spec.color,
-      position: groundedY == null ? worldPos : { ...worldPos, y: groundedY },
-      rotation,
-      scale: spec.scale
-    })
-    created += 1
-  }
-  return created
-}
-
-async function onGenerateBlockout(payload: {
-  providerInstanceId: string
-  model: string
-  system: string
-  instruction: string
-  images: string[]
-  layoutMode?: BlockoutLayoutMode
-}): Promise<void> {
-  if (blockoutGenerating.value) return
-  const rawImages = payload.images
-    .map((url) => url.trim())
-    .filter(Boolean)
-    .slice(0, 3)
-  if (!rawImages.length) {
-    blockoutError.value = t('director.stage.blockoutNoImage')
-    return
-  }
-  const layoutMode = payload.layoutMode === 'panorama' ? 'panorama' : 'perspective'
-  const prepared = await prepareBlockoutReferenceImages(rawImages, layoutMode)
-  const images = prepared.images
-  const panoramaRadius =
-    typeof scene.stage.value.panoramaRadius === 'number'
-      ? scene.stage.value.panoramaRadius
-      : DEFAULT_DIRECTOR_PANORAMA_RADIUS
-  const panoramaYawDeg =
-    typeof scene.stage.value.panoramaYaw === 'number' ? scene.stage.value.panoramaYaw : 0
-
-  const viewer = scene.getViewer()
-  const fovDeg =
-    typeof viewer?.fov === 'number' && viewer.fov > 0 ? viewer.fov : DEFAULT_DIRECTOR_CAMERA_FOV
-  const aspectRatio = directorAspectRatioValue(scene.aspectRatio.value, 16, 9)
-  const eyeHeight = 1.6
-
-  const drafted = payload.system.trim()
-  const modeToken = layoutMode === 'panorama' ? 'azimuthDeg' : 'position'
-  const system = drafted.includes(modeToken)
-    ? drafted
-    : buildSceneBlockoutSystemPrompt(locale.value, layoutMode, {
-        fovDeg,
-        aspectRatio,
-        eyeHeight
-      })
-
-  const runId = `ai-blockout-${crypto.randomUUID()}`
-  runLogs.beginRun({
-    runId,
-    title: t('director.stage.blockoutLogTitle'),
-    mode: 'task',
-    targetNodeId: BLOCKOUT_LOG_NODE_ID,
-    targetNodeTitle: linkedPanoramaName.value || t('director.stage.blockoutLogTitle'),
-    message: t('director.stage.blockoutLogStart', { model: payload.model })
-  })
-
-  blockoutGenerating.value = true
-  blockoutError.value = ''
-  const abort = new AbortController()
-
-  const finishWithCall = (rawText: string, via: 'dsh' | 'generateText'): boolean => {
-    const call = parseAiSceneBlockoutCall(rawText)
-    if (!call) {
-      const msg = t('director.stage.blockoutParseFailed')
-      blockoutError.value = msg
-      runLogs.append({
-        runId,
-        level: 'warn',
-        kind: 'run_message',
-        mode: 'task',
-        nodeId: BLOCKOUT_LOG_NODE_ID,
-        nodeTitle: t('director.stage.blockoutLogTitle'),
-        message: t('director.stage.poseAiLog.rawReply', { text: rawText.slice(0, 800) }),
-        status: 'error'
-      })
-      runLogs.endRun({ runId, status: 'error', message: msg })
-      return false
-    }
-
-    const fixedObjects = fixCommonBlockoutMistakes(call.arguments.objects)
-    const fixedCount = fixedObjects.filter(
-      (o, i) => o.primitive !== call.arguments.objects[i]?.primitive
-    ).length
-    if (fixedCount > 0) {
-      runLogs.append({
-        runId,
-        level: 'info',
-        kind: 'run_message',
-        mode: 'task',
-        nodeId: BLOCKOUT_LOG_NODE_ID,
-        nodeTitle: t('director.stage.blockoutLogTitle'),
-        message: t('director.stage.blockoutAutoFix', { count: fixedCount }),
-        status: 'done'
-      })
-    }
-
-    const created = applySceneBlockoutObjects(fixedObjects, layoutMode)
-    const msg = t('director.stage.blockoutDone', { count: created })
-    const summaryBit = call.arguments.summary ? ` — ${call.arguments.summary}` : ''
-    runLogs.append({
-      runId,
-      level: 'info',
-      kind: 'run_message',
-      mode: 'task',
-      nodeId: BLOCKOUT_LOG_NODE_ID,
-      nodeTitle: t('director.stage.blockoutLogTitle'),
-      message: `${msg}${summaryBit} (${via})`,
-      status: 'done'
-    })
-    runLogs.endRun({ runId, status: 'done', message: msg })
-    blockoutDialogOpen.value = false
-    return true
-  }
-
-  const apiStarted = Date.now()
-  try {
-    const dshReady = await isBlockoutDshReady()
-    if (dshReady) {
-      // dsh 多轮：深度分析交给 agent；brief 内已含 system + user 规则
-      const prompt = buildSceneBlockoutUserPrompt({
-        instruction: payload.instruction,
-        imageCount: images.length,
-        mode: layoutMode,
-        panoramaRadius,
-        panoramaYawDeg,
-        unwrapped: prepared.unwrapped,
-        fovDeg,
-        aspectRatio,
-        eyeHeight
-      })
-      runLogs.append({
-        runId,
-        level: 'info',
-        kind: 'run_message',
-        mode: 'task',
-        nodeId: BLOCKOUT_LOG_NODE_ID,
-        nodeTitle: t('director.stage.blockoutLogTitle'),
-        message: t('director.stage.blockoutDshStart'),
-        status: 'running'
-      })
-      const dsh = await runBlockoutDshJob({
-        instruction: payload.instruction,
-        locale: locale.value,
-        layoutMode,
-        systemPrompt: system,
-        userPrompt: prompt,
-        images,
-        model: payload.model,
-        providerInstanceId: payload.providerInstanceId,
-        signal: abort.signal,
-        runId,
-        logNodeId: BLOCKOUT_LOG_NODE_ID
-      })
-      runLogs.appendApiCall(runId, {
-        kind: 'generateText',
-        nodeId: BLOCKOUT_LOG_NODE_ID,
-        durationMs: Math.max(0, Date.now() - apiStarted),
-        request: {
-          prompt,
-          system,
-          model: payload.model,
-          providerInstanceId: payload.providerInstanceId,
-          imageCount: images.length
-        },
-        response: { text: dsh.resultText, model: payload.model }
-      })
-      finishWithCall(dsh.resultText, 'dsh')
-      return
-    }
-
-    // 无 dsh：保留原单轮 generateText + 可选深度预调用
-    const depth = await tryEnrichWithDepthMap({
-      images,
-      providerInstanceId: payload.providerInstanceId,
-      model: payload.model,
-      locale: locale.value
-    })
-    if (depth.depthDescription) {
-      runLogs.append({
-        runId,
-        level: 'info',
-        kind: 'run_message',
-        mode: 'task',
-        nodeId: BLOCKOUT_LOG_NODE_ID,
-        nodeTitle: t('director.stage.blockoutLogTitle'),
-        message: depth.depthDescription,
-        status: 'done'
-      })
-    }
-
-    const prompt = buildSceneBlockoutUserPrompt({
-      instruction: payload.instruction,
-      imageCount: images.length,
-      mode: layoutMode,
-      panoramaRadius,
-      panoramaYawDeg,
-      unwrapped: prepared.unwrapped,
-      fovDeg,
-      aspectRatio,
-      eyeHeight,
-      depthDescription: depth.depthDescription ?? undefined
-    })
-
-    const result = await window.studio.generateText({
-      providerInstanceId: payload.providerInstanceId,
-      model: payload.model,
-      system,
-      prompt,
-      images
-    })
-    runLogs.appendApiCall(runId, {
-      kind: 'generateText',
-      nodeId: BLOCKOUT_LOG_NODE_ID,
-      durationMs: Math.max(0, Date.now() - apiStarted),
-      request: {
-        prompt,
-        system,
-        model: payload.model,
-        providerInstanceId: payload.providerInstanceId,
-        imageCount: images.length
-      },
-      response: { text: result.text, model: result.model }
-    })
-    finishWithCall(result.text, 'generateText')
-  } catch (err) {
-    const error = err instanceof Error ? err.message : String(err)
-    blockoutError.value = error
-    runLogs.appendApiCall(runId, {
-      kind: 'generateText',
-      nodeId: BLOCKOUT_LOG_NODE_ID,
-      durationMs: Math.max(0, Date.now() - apiStarted),
-      request: {
-        prompt: payload.instruction,
-        system,
-        model: payload.model,
-        providerInstanceId: payload.providerInstanceId,
-        imageCount: images.length
-      },
-      error
-    })
-    runLogs.endRun({ runId, status: 'error', message: error })
-  } finally {
-    abort.abort()
-    blockoutGenerating.value = false
-  }
 }
 
 function onSelectIkChain(id: (typeof ikTargetSlots.value)[number]['id']): void {
@@ -3195,27 +2859,6 @@ input:not([type]):focus {
   color: var(--text-muted);
   font-size: 11px;
   line-height: 1.4;
-}
-
-.blockout-btn {
-  height: 26px;
-  padding: 0 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg-input);
-  color: var(--text);
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.blockout-btn:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
-  color: var(--accent);
-}
-
-.blockout-btn:disabled {
-  opacity: 0.5;
-  cursor: default;
 }
 
 .panorama-drop-name {
