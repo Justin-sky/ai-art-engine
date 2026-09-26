@@ -2891,7 +2891,6 @@ export default {
         episode: 'Episode',
         filmTv: 'Film & TV',
         text: 'Text',
-        prompt: 'Prompt',
         game: 'Game',
         motionFx: '2D',
         model3d: '3D',

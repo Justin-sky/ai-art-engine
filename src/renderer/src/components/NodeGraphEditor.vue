@@ -3338,7 +3338,6 @@ type ResourceMenuGroupId =
   | 'imageRefine'
   | 'imageEdit'
   | 'text'
-  | 'prompt'
   | 'game'
   | 'motionFx'
   | 'model3d'
@@ -3402,11 +3401,7 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
   },
   {
     id: 'text',
-    typeIds: ['play.script', 'text.select']
-  },
-  {
-    id: 'prompt',
-    typeIds: ['prompt.optimize', 'image.toPrompt']
+    typeIds: ['play.script', 'text.select', 'note.text', 'prompt.optimize', 'image.toPrompt']
   },
   {
     id: 'game',
@@ -3583,7 +3578,7 @@ const addableMenuItems = computed((): AddableMenuItem[] => {
     }))
 })
 
-/** 未归入资源类型的节点（备注、提示词优化等）留在根菜单 */
+/** 未归入资源分组的节点（上游接口槽 / 宿主边界 / 束结等）留在根菜单 */
 const rootAddableMenuItems = computed(() =>
   addableMenuItems.value
     .filter((item) => !CONTEXT_MENU_GROUPED_TYPE_IDS.has(item.typeId))
@@ -3608,7 +3603,6 @@ const resourceMenuGroups = computed((): ResourceMenuGroup[] => {
           : group.id === 'imageRefine' ||
               group.id === 'imageEdit' ||
               group.id === 'text' ||
-              group.id === 'prompt' ||
               group.id === 'game' ||
               group.id === 'motionFx' ||
               group.id === 'model3d' ||
@@ -3626,21 +3620,19 @@ const resourceMenuGroups = computed((): ResourceMenuGroup[] => {
               ? '🛠️'
               : group.id === 'text'
                 ? '📝'
-                : group.id === 'prompt'
-                  ? '✨'
-                  : group.id === 'game'
-                    ? '🕹️'
-                    : group.id === 'motionFx'
-                      ? ANIM2D_ASSET_ICON
-                      : group.id === 'model3d'
-                        ? '🧊'
-                        : group.id === 'comic'
-                          ? '💬'
-                          : group.id === 'qc'
-                            ? '🤖'
-                            : group.id === 'ad'
-                              ? '📢'
-                              : (ASSET_TYPE_ICONS[group.id] ?? '◇'),
+                : group.id === 'game'
+                  ? '🕹️'
+                  : group.id === 'motionFx'
+                    ? ANIM2D_ASSET_ICON
+                    : group.id === 'model3d'
+                      ? '🧊'
+                      : group.id === 'comic'
+                        ? '💬'
+                        : group.id === 'qc'
+                          ? '🤖'
+                          : group.id === 'ad'
+                            ? '📢'
+                            : (ASSET_TYPE_ICONS[group.id] ?? '◇'),
       items
     }
   })

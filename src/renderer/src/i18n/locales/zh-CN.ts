@@ -2824,7 +2824,6 @@ export default {
         episode: '剧集',
         filmTv: '影视',
         text: '文本',
-        prompt: '提示词',
         game: '游戏',
         motionFx: '2D',
         model3d: '3D',
