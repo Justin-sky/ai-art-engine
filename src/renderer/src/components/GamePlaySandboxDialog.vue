@@ -17,6 +17,7 @@
       :host-id="state.hostId || undefined"
       :node-id="state.nodeId || undefined"
       :game-play-asset-id="state.gamePlayAssetId || undefined"
+      :html-path="state.htmlPath || undefined"
       dialog-mode
     />
   </StudioFloatingWindow>

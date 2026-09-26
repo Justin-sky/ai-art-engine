@@ -58,6 +58,8 @@ const props = defineProps<{
   hostId?: string
   nodeId?: string
   gamePlayAssetId?: string
+  /** 单文件 HTML 的工程内相对路径：对话产物卡的「试玩」走这条（无需节点 / 资产） */
+  htmlPath?: string
   /** 浮窗模式：完成按钮关对话框而非 dive.pop */
   dialogMode?: boolean
 }>()
@@ -188,6 +190,12 @@ async function resolveUpstream(hostId: string, nodeId: string): Promise<RawHtml>
 }
 
 async function readRawHtml(): Promise<RawHtml> {
+  // 对话产物卡：直接给单文件 HTML 路径，不依赖节点 / 资产
+  const directPath = props.htmlPath?.trim()
+  if (directPath) {
+    const body = await hydrateFromPath(directPath)
+    return { html: body, path: directPath, preferred: 'auto' }
+  }
   if (props.gamePlayAssetId) {
     const asset = project.assets.find((a) => a.id === props.gamePlayAssetId)
     return resolveFromParams((asset?.genParams ?? {}) as GraphNodeParams)
@@ -271,6 +279,7 @@ watch(
       props.hostId,
       props.nodeId,
       props.gamePlayAssetId,
+      props.htmlPath,
       props.frameKey,
       graphEditorHosts.revision.value
     ] as const,

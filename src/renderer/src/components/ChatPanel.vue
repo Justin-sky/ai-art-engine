@@ -39,6 +39,7 @@ import {
 import { isModelFilePath } from '@shared/import'
 import { resolvePreviewMediaPath } from '@shared/media/thumbnailPath'
 import { ensureModelPreviewUrl } from '../features/media/ensureModelPreviewUrl'
+import { openGamePlaySandboxDialog } from '../features/media/gamePlaySandboxDialog'
 import ChatAssetPreview from './ChatAssetPreview.vue'
 import ChatChangesCard from './ChatChangesCard.vue'
 import ChatAssetPicker from './ChatAssetPicker.vue'
@@ -1563,6 +1564,14 @@ function onMcpActivity(activity: McpActivity): void {
     })
     scrollToBottom()
   }
+  // 可玩 HTML：产物是单文件游戏，出的是一张「只有一个试玩按钮」的游戏卡，
+  // 不走通用资产卡（那张卡带保存到资产库与同批次折叠，与约定冲突）
+  if (activity.tool === 'gameplay_build') {
+    if (state === 'done' && mediaPaths.length) {
+      upsertGameCard(activity, mediaPaths[0]!)
+    }
+    return
+  }
   // 生成完成且产出了资产：在对话末尾追加独立预览卡（图片/视频/音频/3D），
   // 仅在任务卡存在或任务仍运行时插入，避免产生孤立的预览卡；
   // 一次运行产出多件（如工作流同时出 GIF 与成片）时逐条出卡
@@ -1571,6 +1580,30 @@ function onMcpActivity(activity: McpActivity): void {
       void pushAsset(index === 0 ? `asset:${activity.id}` : `asset:${activity.id}:${index}`, path)
     })
   }
+}
+
+/**
+ * 游戏卡按 `assetId`（cook 成功时自动登记的 gamePlay 资产）原地更新：
+ * 对话里「再暗一点」会反复 build，每个活动 id 都新出一张卡会把对话刷成一列重复卡。
+ */
+function upsertGameCard(activity: McpActivity, htmlPath: string): void {
+  const key = `game:${activity.assetId || activity.id}`
+  const title = activity.title || t('studio.chat.gamePlay.play')
+  const prev = messages.value.find(
+    (m): m is ChatMsg & { kind: 'game' } => m.kind === 'game' && m.key === key
+  )
+  if (prev) {
+    prev.title = title
+    prev.htmlPath = htmlPath
+    return
+  }
+  messages.value.push({ kind: 'game', key, title, htmlPath })
+  scrollToBottom()
+}
+
+/** 游戏卡唯一的动作：直接开试玩窗口（不经资产库 / dive / 文件路径） */
+function playGame(msg: ChatMsg & { kind: 'game' }): void {
+  openGamePlaySandboxDialog({ htmlPath: msg.htmlPath, title: msg.title })
 }
 
 /** 生成完成的独立资产预览卡：同 key 去重，追加到对话末尾（原地更新路径以幂等处理延迟回调）。
@@ -2033,6 +2066,18 @@ onBeforeUnmount(() => {
                 @click.stop="copyMessage(i, msg.text)"
               >
                 {{ copiedIndex === i ? t('studio.chat.copied') : t('studio.chat.copy') }}
+              </button>
+            </div>
+          </div>
+          <!-- 可玩 HTML 产物卡：只有一个「试玩」按钮，点击直接开试玩窗口 -->
+          <div v-else-if="msg.kind === 'game'" class="msg-row asset">
+            <div class="asset-card game-card">
+              <div class="game-card-head">
+                <span class="game-card-icon" aria-hidden="true">🎮</span>
+                <span class="game-card-title" :title="msg.title">{{ msg.title }}</span>
+              </div>
+              <button type="button" class="play-btn" @click.stop="playGame(msg)">
+                ▶ {{ t('studio.chat.gamePlay.play') }}
               </button>
             </div>
           </div>
@@ -2995,6 +3040,51 @@ onBeforeUnmount(() => {
   border-radius: 8px;
   background: var(--bg-panel);
   overflow: hidden;
+}
+
+/* 可玩 HTML 产物卡：标题一行 + 唯一的「试玩」按钮 */
+.game-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.game-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.game-card-icon {
+  flex-shrink: 0;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.game-card-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.play-btn {
+  align-self: flex-start;
+  padding: 4px 12px;
+  border: 1px solid var(--accent, #4c8bf5);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--accent, #4c8bf5);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.play-btn:hover {
+  background: color-mix(in srgb, var(--accent, #4c8bf5) 16%, transparent);
 }
 
 .asset-card-actions {

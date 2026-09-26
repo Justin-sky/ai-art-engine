@@ -891,6 +891,10 @@ export default {
       alreadyInLibraryTitle: '该文件已收录在资产库（Assets/）内，无需重复保存',
       assetGroupCount: '含 {count} 个产物',
       assetGroupTitle: '展开或收起同一次跑动一起落盘的其它产物（矢量源 / 烘焙位图 / 帧序列等）',
+      gamePlay: {
+        play: '试玩',
+        playTitle: '在试玩窗口里打开这个游戏'
+      },
       roundOutputsMore:
         '另有 {count} 个产物超出展示上限、未在对话里逐条列出（可在素材库或工程目录查看）',
       gitChangesTitle: '变更预览',

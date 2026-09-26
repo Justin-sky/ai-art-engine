@@ -537,6 +537,8 @@ export type McpActivityTool =
   | 'task_run'
   | 'asset_import'
   | 'blender_export'
+  /** 可玩 HTML：宿主 cook 一个纯 Node/esbuild 游戏工程（对话路径的产物卡来源） */
+  | 'gameplay_build'
 
 export type McpActivityStatus = 'running' | 'done' | 'error'
 

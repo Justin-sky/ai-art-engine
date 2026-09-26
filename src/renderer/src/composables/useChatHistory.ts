@@ -47,6 +47,20 @@ export type ChatMsg =
       relatedPaths?: string[]
     }
   | {
+      /**
+       * 可玩 HTML 产物卡：卡上只有一个「试玩」按钮（点击直接开试玩窗口）。
+       * 不并入 `asset` 卡——那张卡带「保存到资产库」与同批次折叠，与「只有试玩」的约定冲突；
+       * 游戏已在 cook 成功时自动登记为 gamePlay 资产，不需要再让用户手动入库。
+       */
+      kind: 'game'
+      /** 会话内唯一标识：`game:<assetId|activity id>`，同一工程重复 build 原地更新同一张卡 */
+      key: string
+      /** 游戏名（产物卡标题） */
+      title: string
+      /** 单文件 HTML 的工程内相对路径（试玩窗口按它读取） */
+      htmlPath: string
+    }
+  | {
       kind: 'prompt'
       /** ask_user 提问 id（MCP 侧 requestId），回传选择时使用 */
       requestId: string

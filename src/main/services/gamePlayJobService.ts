@@ -33,6 +33,8 @@ interface GamePlayJobRecord {
   mode: GamePlayJobMode
   status: GamePlayJobStatus
   logs: string[]
+  title?: string
+  assetId?: string
   error?: string
   buildHtmlRelativePath?: string
   bytes?: number
@@ -48,6 +50,8 @@ function snapshot(record: GamePlayJobRecord): GamePlayJobSnapshot {
     mode: record.mode,
     status: record.status,
     logs: gamePlayJobLogTail(record.logs),
+    ...(record.title ? { title: record.title } : {}),
+    ...(record.assetId ? { assetId: record.assetId } : {}),
     ...(record.error ? { error: record.error } : {}),
     ...(record.buildHtmlRelativePath
       ? { buildHtmlRelativePath: record.buildHtmlRelativePath }
@@ -90,6 +94,8 @@ export interface PrepareGamePlayProjectResult {
 export function prepareGamePlayProject(input: {
   mode?: string
   projectRelativeDir?: string
+  /** 游戏名（写入作业记录，供资产命名与产物卡标题） */
+  title?: string
 }): PrepareGamePlayProjectResult {
   const root = requireProjectRoot()
   const mode = normalizeGamePlayJobMode(input.mode)
@@ -97,6 +103,7 @@ export function prepareGamePlayProject(input: {
   if (input.projectRelativeDir && !existingRel) {
     throw new Error(gamePlayJobError('BAD_PROJECT'))
   }
+  const title = input.title?.replace(/\s+/g, ' ').trim() || undefined
 
   let jobId: string
   let projectAbs: string
@@ -123,6 +130,7 @@ export function prepareGamePlayProject(input: {
     mode,
     status: 'ready',
     logs: [`scaffold ready: ${projectRelativeDir} (${files.length} files)`],
+    ...(title ? { title } : {}),
     updatedAt: Date.now()
   }
   records.set(jobId, record)
@@ -132,8 +140,15 @@ export function prepareGamePlayProject(input: {
 /**
  * 提交 cook（后台跑）。同一个工程重复提交时复用既有记录并追加日志——
  * 对话里「再改一版」会反复 build，不应该每次生成一条新作业。
+ *
+ * `onSettled` 在构建收尾（成功或失败）后回调：MCP 层据此收尾活动记录、登记 gamePlay 资产。
  */
-export function startGamePlayBuild(input: { projectRelativeDir: string }): GamePlayJobSnapshot {
+export function startGamePlayBuild(input: {
+  projectRelativeDir: string
+  /** 游戏名：本次调用给了就更新记录（再次 build 时不必重传） */
+  title?: string
+  onSettled?: (snapshot: GamePlayJobSnapshot) => void
+}): GamePlayJobSnapshot {
   requireProjectRoot()
   const projectRelativeDir = resolveGamePlayProjectRelativeDir(input.projectRelativeDir)
   if (!projectRelativeDir) throw new Error(gamePlayJobError('BAD_PROJECT'))
@@ -153,6 +168,8 @@ export function startGamePlayBuild(input: { projectRelativeDir: string }): GameP
     logs: [],
     updatedAt: Date.now()
   }
+  const title = input.title?.replace(/\s+/g, ' ').trim()
+  if (title) record.title = title
   record.status = 'building'
   delete record.error
   delete record.buildHtmlRelativePath
@@ -183,14 +200,37 @@ export function startGamePlayBuild(input: { projectRelativeDir: string }): GameP
       appendGamePlayJobLog(record.logs, `build failed: ${record.error}`)
     } finally {
       touch(record)
+      try {
+        input.onSettled?.(snapshot(record))
+      } catch (error) {
+        console.error('[gameplay] onSettled failed', error)
+      }
     }
   })()
 
   return snapshot(record)
 }
 
+/** 记下本作业登记出的游戏资产（MCP 层建完资产后回填，产物卡按它去重） */
+export function setGamePlayJobAsset(jobId: string, assetId: string): void {
+  const record = records.get(String(jobId ?? '').trim())
+  if (!record || !assetId.trim()) return
+  record.assetId = assetId.trim()
+  touch(record)
+}
+
 export function getGamePlayJob(jobId: string): GamePlayJobSnapshot | null {
   const record = records.get(String(jobId ?? '').trim())
+  return record ? snapshot(record) : null
+}
+
+/** 按工程目录取当前作业（工具在起活动前要拿标题；没有记录则返回 null） */
+export function getGamePlayJobByProjectDir(
+  projectRelativeDir: string | undefined
+): GamePlayJobSnapshot | null {
+  const rel = resolveGamePlayProjectRelativeDir(projectRelativeDir)
+  if (!rel) return null
+  const record = findRecordByProjectDir(rel)
   return record ? snapshot(record) : null
 }
 

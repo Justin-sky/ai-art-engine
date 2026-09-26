@@ -44,6 +44,13 @@
 - 系统提示（`deepseekHarnessService` 的 studio 提示块）补一段「有这条路」，否则工具再全模型也想不起来用；`docs/MCP.md`（新增第 ④ 组并顺延编号）、`website/guide-mcp.html`（工具表 + 场景示例）同步。
 - 测试：新增 `tests/gamePlayScaffoldAssets.test.ts`（用 esbuild 把两个模式的样例真打一遍，顺带守住「core 不 import three」「无 `Math.random`」）、`tests/gamePlayJob.test.ts`（路径校验 / 日志截断 / building→done / 失败落 error / 重复构建复用记录）、`tests/gamePlayMcpAccess.test.ts`（Ask 全隐、Plan 未确认只放行 status），`tests/graphSkills.test.ts` 补技能契约。全量 330 文件 / 2557 例通过，typecheck（node + web）/ cjk 门禁 / prettier 干净；`gamePlayScaffold.ts` 加入 cjk 门禁的域数据豁免清单（模板串里是生成到工程文件的样例源码，与 `sampleGames.ts` 同域）。
 
+「一句话 3D 游戏」第 2 步：**cook 成功后自动建资产 + 对话里只留一个「试玩」按钮**（阶段 2）。这一步把「生成完能玩」补齐成闭环：
+
+- **自动登记 gamePlay 资产**（`ensureGamePlayAsset`）：`gameplay_build` 的构建收尾回调里按工程目录找既有资产——有就只更新 `genParams`（`gamePlayProjectDir` / `gamePlayBuildHtmlPath` / `gamePlayMode`，`gamePlayHtml` 一律留空，别把整页 HTML 塞进资产参数），没有才新建；去重键是工程目录，所以对话里「再暗一点」反复 build **不会在资产库里刷出一串重复条目**。资产名取游戏名，缺省 `<defaultAssetName('gamePlay')> <jobId 前 8 位>`。
+- **产物卡**：`McpActivityTool` 加 `gameplay_build`，cook 起手登记活动（对话里先出现一张运行中的工具卡），收尾时 `end({ relativePaths: [dist/single.html] })` 触发产物卡。对话流新增 `kind: 'game'` 卡片：**只有一个「试玩」按钮**，点击直接 `openGamePlaySandboxDialog({ htmlPath })` 开试玩窗口——刻意不走通用资产卡（那张卡带「保存到资产库」与同批次折叠，与「只留试玩」的约定冲突，且游戏已自动入库）。同工程重复 build 按 `assetId` **原地更新同一张卡**，不刷屏。
+- **沙盒第三种入口**：`gamePlaySandboxDialog` 与 `EditorDiveGamePlayView` 增加 `htmlPath`——按 `readProjectFile` 读单文件 → 复用既有 `prepareGameHtml` / three 注入 / `studio-gameplay://` 沙盒，不新写播放器；节点、资产、路径三种入口共用同一个窗口。
+- 测试：`tests/chatGameplayCard.test.ts` 按源码钉住四条约定（活动分支在通用出卡之前返回、游戏卡按 assetId 原地更新、卡片只渲染一个按钮且调 `openGamePlaySandboxDialog({ htmlPath })`、沙盒三入口齐备），`tests/gamePlayJob.test.ts` 扩到 13 例（资产名 / genParams / 按目录去重、`onSettled` 成功与失败都回调、资产 id 回填）。全量 331 文件 / 2565 例通过，typecheck（node + web）/ cjk 门禁 / prettier 干净。
+
 ## [6.6.0] — 2026-09-24
 
 6.6.0 功能版：可玩 HTML 改为 dsh 多轮纯 Node（esbuild）工程再 cook 成单文件；新增 Anthropic（Claude）提供商与导演台多光源；节点执行日志实时进度；并修好沙盒读盘 CSP、cook 误校验与卡片拖拽卡顿。

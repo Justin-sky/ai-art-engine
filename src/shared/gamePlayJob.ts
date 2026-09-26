@@ -22,6 +22,10 @@ export interface GamePlayJobSnapshot {
   status: GamePlayJobStatus
   /** 日志尾部（最新在后） */
   logs: string[]
+  /** 游戏名（准备工程时给的名字，缺省按 jobId 兜底）；用于资产卡与游戏资产命名 */
+  title?: string
+  /** cook 成功后自动登记的 gamePlay 资产 id */
+  assetId?: string
   error?: string
   /** cook 成功后的单文件 HTML 相对路径 */
   buildHtmlRelativePath?: string
@@ -77,4 +81,66 @@ export function gamePlayJobIdOf(projectRelativeDir: string): string | null {
 
 export function gamePlayJobLogTail(logs: readonly string[]): string[] {
   return logs.slice(-GAME_PLAY_JOB_LOG_TAIL)
+}
+
+/**
+ * 资产名：给了游戏名就用它；没给则 `<fallback> <jobId 前 8 位>`——
+ * fallback 由调用方按语言传入（`defaultAssetName('gamePlay', language)`），
+ * 避免共享层写死中文。
+ */
+export const GAME_PLAY_ASSET_NAME_MAX = 60
+
+export function gamePlayAssetName(
+  title: string | undefined,
+  jobId: string,
+  fallback: string
+): string {
+  const raw = String(title ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, GAME_PLAY_ASSET_NAME_MAX)
+  if (raw) return raw
+  const short = String(jobId ?? '')
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .slice(0, 8)
+  const base = String(fallback ?? '').trim()
+  return short ? `${base} ${short}`.trim() : base
+}
+
+/** 游戏资产的 genParams：工程目录 + 单文件路径 + 模式（`gamePlayHtml` 一律留空，别把整页 HTML 塞进资产） */
+export function gamePlayAssetGenParams(input: {
+  projectRelativeDir: string
+  buildHtmlRelativePath: string
+  mode: GamePlayJobMode
+}): Record<string, unknown> {
+  return {
+    gamePlayProjectDir: input.projectRelativeDir,
+    gamePlayBuildHtmlPath: input.buildHtmlRelativePath,
+    gamePlayHtmlPath: input.buildHtmlRelativePath,
+    gamePlayMode: input.mode,
+    gamePlayHtml: ''
+  }
+}
+
+function normalizeProjectDirKey(raw: unknown): string {
+  return String(raw ?? '')
+    .trim()
+    .replace(/\\/g, '/')
+    .replace(/\/+$/, '')
+    .toLowerCase()
+}
+
+/**
+ * 按工程目录找已登记的 gamePlay 资产：对话里「再改一版」重复 cook 时必须更新既有资产，
+ * 否则每轮迭代都会在资产库里多出一条。缺失 / 类型不符一律当没有。
+ */
+export function findGamePlayAssetByProject<
+  T extends { id: string; type?: string; genParams?: Record<string, unknown> | null }
+>(assets: readonly T[], projectRelativeDir: string): T | undefined {
+  const key = normalizeProjectDirKey(projectRelativeDir)
+  if (!key) return undefined
+  return assets.find((asset) => {
+    if (asset.type && asset.type !== 'gamePlay') return false
+    return normalizeProjectDirKey(asset.genParams?.gamePlayProjectDir) === key
+  })
 }

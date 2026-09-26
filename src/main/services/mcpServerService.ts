@@ -160,10 +160,18 @@ import { updateService } from './updateService'
 import { videoJobService } from './videoJobService'
 import {
   getGamePlayJob,
+  getGamePlayJobByProjectDir,
   listGamePlayJobs,
   prepareGamePlayProject,
+  setGamePlayJobAsset,
   startGamePlayBuild
 } from './gamePlayJobService'
+import {
+  findGamePlayAssetByProject,
+  gamePlayAssetGenParams,
+  gamePlayAssetName
+} from '@shared/gamePlayJob'
+import { defaultAssetName } from '@shared/domain'
 import { exportScriptTimeline, renderTimelineFrames } from './timelineExportService'
 
 /**
@@ -281,6 +289,48 @@ function liveAssetRelativePath(result: {
   if (!result.assetId) return result.relativePath
   const live = projectService.listAssets().find((item) => item.id === result.assetId)
   return live?.relativePath || result.relativePath
+}
+
+/**
+ * 可玩 HTML cook 成功后登记 / 更新 gamePlay 资产。
+ *
+ * 为什么要建资产：工程与单文件都落在 `Cache/GamePlayJobs/**`，没有资产就等于「关掉这条对话
+ * 就找不回这个游戏」。去重键是工程目录——对话里「再暗一点」会反复 build，每次都新建资产
+ * 会把资产库刷爆，所以同一个工程只更新同一条资产的 genParams。
+ */
+function ensureGamePlayAsset(input: {
+  projectRelativeDir: string
+  title?: string
+  mode: string
+  buildHtmlRelativePath: string
+}): string {
+  const genParams = gamePlayAssetGenParams({
+    projectRelativeDir: input.projectRelativeDir,
+    buildHtmlRelativePath: input.buildHtmlRelativePath,
+    mode: input.mode === '2d' || input.mode === '3d' ? input.mode : 'auto'
+  })
+  const assets = projectService.listAssets()
+  const existing = findGamePlayAssetByProject(assets, input.projectRelativeDir)
+  if (existing) {
+    const next = projectService.updateAsset({
+      ...existing,
+      genParams: { ...(existing.genParams ?? {}), ...genParams }
+    })
+    broadcastToAllWindows(IpcChannels.ASSET_UPDATED, next)
+    return next.id
+  }
+  const jobId = input.projectRelativeDir.split('/').slice(-2)[0] ?? ''
+  const asset = projectService.createAsset({
+    type: 'gamePlay',
+    name: gamePlayAssetName(
+      input.title,
+      jobId,
+      defaultAssetName('gamePlay', settingsService.get().language)
+    ),
+    genParams
+  })
+  broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
+  return asset.id
 }
 
 const TOOL_DEFS: McpToolDef[] = [
@@ -1718,14 +1768,16 @@ const TOOL_DEFS: McpToolDef[] = [
           type: 'string',
           description:
             '可选：已有工程相对路径（如 Cache/GamePlayJobs/<id>/project），用于续写而不是新建'
-        }
+        },
+        title: { type: 'string', description: '游戏名（可选，用于资产命名与产物卡标题）' }
       }
     },
     handler: (args) => {
       assertProjectOpen()
       return prepareGamePlayProject({
         mode: optionalString(args, 'mode'),
-        projectRelativeDir: optionalString(args, 'projectRelativeDir')
+        projectRelativeDir: optionalString(args, 'projectRelativeDir'),
+        title: optionalString(args, 'title')
       })
     }
   },
@@ -1734,21 +1786,55 @@ const TOOL_DEFS: McpToolDef[] = [
     title: '构建可玩 HTML',
     description:
       '在后台 cook 一个可玩 HTML 工程：npm install + node build.mjs，把 src/main.js 打成单文件 dist/single.html。' +
-      '立即返回 jobId（构建要几十秒到几分钟），用 gameplay_job_status 轮询到 done；成功后对话流会出现一张卡，卡上「试玩」按钮直接打开试玩窗口。' +
-      '同一个 projectRelativeDir 重复构建会复用同一条作业记录，适合「再改一版」的迭代。',
+      '立即返回 jobId（构建要几十秒到几分钟），用 gameplay_job_status 轮询到 done；成功后对话流会出现一张卡，卡上「试玩」按钮直接打开试玩窗口，' +
+      '同时自动在资产库登记一个 gamePlay 资产（同一工程重复 build 只更新它，不会多出重复资产）。',
     inputSchema: {
       type: 'object',
       properties: {
         projectRelativeDir: {
           type: 'string',
           description: '工程相对路径（gameplay_prepare_project 返回）'
-        }
+        },
+        title: { type: 'string', description: '游戏名（可选，用于资产命名与产物卡标题）' }
       },
       required: ['projectRelativeDir']
     },
     handler: (args) => {
       assertProjectOpen()
-      return startGamePlayBuild({ projectRelativeDir: readString(args, 'projectRelativeDir') })
+      const projectRelativeDir = readString(args, 'projectRelativeDir')
+      const title = optionalString(args, 'title')
+      const before = getGamePlayJobByProjectDir(projectRelativeDir)
+      const activityId = mcpActivityService.begin({
+        tool: 'gameplay_build',
+        title: title || before?.title || projectRelativeDir.split('/').slice(-2)[0] || 'gamePlay',
+        detail: 'npm install + node build.mjs…'
+      })
+      const snapshot = startGamePlayBuild({
+        projectRelativeDir,
+        title,
+        onSettled: (job) => {
+          if (job.status === 'done' && job.buildHtmlRelativePath) {
+            const assetId = ensureGamePlayAsset({
+              projectRelativeDir: job.projectRelativeDir,
+              title: job.title,
+              mode: job.mode,
+              buildHtmlRelativePath: job.buildHtmlRelativePath
+            })
+            setGamePlayJobAsset(job.jobId, assetId)
+            mcpActivityService.end(activityId, {
+              ok: true,
+              assetId,
+              relativePaths: [job.buildHtmlRelativePath]
+            })
+            return
+          }
+          mcpActivityService.end(activityId, {
+            ok: false,
+            error: job.error || 'build failed'
+          })
+        }
+      })
+      return { ...snapshot, title: snapshot.title ?? title ?? null }
     }
   },
   {

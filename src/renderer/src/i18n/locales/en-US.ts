@@ -908,6 +908,10 @@ export default {
       assetGroupCount: '{count} outputs',
       assetGroupTitle:
         'Show or hide the other outputs written in the same run (vector source / baked bitmap / frames)',
+      gamePlay: {
+        play: 'Play',
+        playTitle: 'Open this game in the play window'
+      },
       roundOutputsMore:
         '{count} more outputs exceeded the display limit and are not listed in the chat (see the asset library or the project folder)',
       gitChangesTitle: 'Changes',
