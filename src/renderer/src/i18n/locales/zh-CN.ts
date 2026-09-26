@@ -893,7 +893,12 @@ export default {
       assetGroupTitle: '展开或收起同一次跑动一起落盘的其它产物（矢量源 / 烘焙位图 / 帧序列等）',
       gamePlay: {
         play: '试玩',
-        playTitle: '在试玩窗口里打开这个游戏'
+        playTitle: '在浏览器里打开这个游戏',
+        fallbackModule:
+          '这个游戏用了 ES 模块（type="module"），浏览器从本地文件打开会被 CORS 拦下，已改用应用内试玩窗口。',
+        fallbackRelative:
+          '这个游戏引用了本地兄弟文件，浏览器直接打开会缺文件，已改用应用内试玩窗口。',
+        openFailed: '没能调起系统默认程序，已改用应用内试玩窗口。'
       },
       roundOutputsMore:
         '另有 {count} 个产物超出展示上限、未在对话里逐条列出（可在素材库或工程目录查看）',

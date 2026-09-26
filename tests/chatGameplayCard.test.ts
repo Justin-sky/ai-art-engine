@@ -38,7 +38,7 @@ describe('对话里的可玩 HTML 卡片', () => {
     expect(fn).toMatch(/if \(prev\) \{[\s\S]*?prev\.htmlPath = htmlPath[\s\S]*?return/)
   })
 
-  it('卡片只渲染一个「试玩」按钮，且按钮直接开试玩窗口', () => {
+  it('卡片只渲染一个「试玩」按钮，且按钮交给系统默认程序打开', () => {
     const src = chatPanel()
     const start = src.indexOf('v-else-if="msg.kind === \'game\'"')
     const end = src.indexOf('v-else-if="msg.kind === \'asset\'"')
@@ -53,9 +53,33 @@ describe('对话里的可玩 HTML 卡片', () => {
     expect(block).not.toMatch(/save-btn|openSaveAsset|saveToLibrary/)
     expect(block).not.toMatch(/toggleAssetGroup/)
 
-    const play = src.slice(src.indexOf('function playGame'))
+    // 主路径：自检通过就交系统默认程序（浏览器）打开
+    const play = src.slice(
+      src.indexOf('async function playGame'),
+      src.indexOf('async function pushAsset')
+    )
+    expect(play).toMatch(/await readGraphRunText\(msg\.htmlPath\)/)
+    expect(play).toMatch(/gameHtmlBrowserIssue\(html\)/)
+    expect(play).toMatch(/await window\.studio\.openAssetWithDefaultApp\(msg\.htmlPath\)/)
+    // 兜底：会白屏 / 调起失败才退应用内窗口，并把原因说清楚
     expect(play).toMatch(
       /openGamePlaySandboxDialog\(\{ htmlPath: msg\.htmlPath, title: msg\.title \}\)/
+    )
+    expect(play).toMatch(/pushStatus\(t\(reasonKey\)\)/)
+    expect(play).toMatch(/studio\.chat\.gamePlay\.fallbackModule/)
+    expect(play).toMatch(/studio\.chat\.gamePlay\.fallbackRelative/)
+    expect(play).toMatch(/studio\.chat\.gamePlay\.openFailed/)
+  })
+
+  it('资产库仍给应用内试玩入口（双击 + 右键）', () => {
+    const browser = readSrc('renderer', 'src', 'components', 'AssetBrowser.vue')
+    expect(browser).toMatch(
+      /if \(asset\.type === 'gamePlay'\) \{[\s\S]*?openGamePlaySandboxDialog\(\{ gamePlayAssetId: asset\.id, title: asset\.name \}\)/
+    )
+    expect(browser).toMatch(/contextMenuGamePlayAsset/)
+    expect(browser).toMatch(/function openGamePlayForContextAsset/)
+    expect(browser).toMatch(
+      /openGamePlaySandboxDialog\(\{ gamePlayAssetId: asset\.id, title: asset\.name \}\)/
     )
   })
 

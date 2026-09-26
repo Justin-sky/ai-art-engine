@@ -910,7 +910,13 @@ export default {
         'Show or hide the other outputs written in the same run (vector source / baked bitmap / frames)',
       gamePlay: {
         play: 'Play',
-        playTitle: 'Open this game in the play window'
+        playTitle: 'Open this game in your browser',
+        fallbackModule:
+          'This game uses ES modules (type="module"), which browsers block for local files (CORS), so it opened in the in-app play window instead.',
+        fallbackRelative:
+          'This game references sibling files that a browser cannot resolve from a lone local file, so it opened in the in-app play window instead.',
+        openFailed:
+          'Could not launch the system default app, so it opened in the in-app play window instead.'
       },
       roundOutputsMore:
         '{count} more outputs exceeded the display limit and are not listed in the chat (see the asset library or the project folder)',

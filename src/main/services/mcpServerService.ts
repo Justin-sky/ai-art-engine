@@ -1786,8 +1786,8 @@ const TOOL_DEFS: McpToolDef[] = [
     title: '构建可玩 HTML',
     description:
       '在后台 cook 一个可玩 HTML 工程：npm install + node build.mjs，把 src/main.js 打成单文件 dist/single.html。' +
-      '立即返回 jobId（构建要几十秒到几分钟），用 gameplay_job_status 轮询到 done；成功后对话流会出现一张卡，卡上「试玩」按钮直接打开试玩窗口，' +
-      '同时自动在资产库登记一个 gamePlay 资产（同一工程重复 build 只更新它，不会多出重复资产）。',
+      '立即返回 jobId（构建要几十秒到几分钟），用 gameplay_job_status 轮询到 done；成功后对话流会出现一张卡，卡上「试玩」按钮用系统默认程序（通常是浏览器）打开游戏，' +
+      '若产物不是自包含（用了 ES 模块或相对引用）则自动退回应用内试玩窗口；同时自动在资产库登记一个 gamePlay 资产（同一工程重复 build 只更新它，不会多出重复资产）。',
     inputSchema: {
       type: 'object',
       properties: {

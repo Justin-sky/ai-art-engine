@@ -40,6 +40,8 @@ import { isModelFilePath } from '@shared/import'
 import { resolvePreviewMediaPath } from '@shared/media/thumbnailPath'
 import { ensureModelPreviewUrl } from '../features/media/ensureModelPreviewUrl'
 import { openGamePlaySandboxDialog } from '../features/media/gamePlaySandboxDialog'
+import { readGraphRunText } from '../features/graph/readGraphRunText'
+import { gameHtmlBrowserIssue } from '@shared/gamePlay'
 import ChatAssetPreview from './ChatAssetPreview.vue'
 import ChatChangesCard from './ChatChangesCard.vue'
 import ChatAssetPicker from './ChatAssetPicker.vue'
@@ -1601,9 +1603,41 @@ function upsertGameCard(activity: McpActivity, htmlPath: string): void {
   scrollToBottom()
 }
 
-/** 游戏卡唯一的动作：直接开试玩窗口（不经资产库 / dive / 文件路径） */
-function playGame(msg: ChatMsg & { kind: 'game' }): void {
-  openGamePlaySandboxDialog({ htmlPath: msg.htmlPath, title: msg.title })
+/**
+ * 游戏卡唯一的动作：交给系统默认程序（通常是浏览器）打开单文件游戏。
+ *
+ * 为什么不默认走应用内沙盒窗口：沙盒 iframe 没给 `allow-fullscreen`，指针锁定 / 音频设备
+ * 也受限，重型 rAF 循环还会跑在应用渲染进程里；cook 出来的单文件本来就是自包含的
+ * （IIFE 内联 + three 打包 + Canvas 贴图 + WebAudio 合成），浏览器里体验更好。
+ *
+ * 但 `file://` 对 `type="module"` 与相对引用会直接白屏（这两类在应用内沙盒里反而正常），
+ * 所以开之前先自检；不可开或调起失败就退回应用内窗口，并把原因说清楚。
+ */
+async function playGame(msg: ChatMsg & { kind: 'game' }): Promise<void> {
+  const fallback = (reasonKey?: string): void => {
+    openGamePlaySandboxDialog({ htmlPath: msg.htmlPath, title: msg.title })
+    if (reasonKey) pushStatus(t(reasonKey))
+  }
+  let html = ''
+  try {
+    html = await readGraphRunText(msg.htmlPath)
+  } catch {
+    html = ''
+  }
+  const issue = gameHtmlBrowserIssue(html)
+  if (issue) {
+    fallback(
+      issue === 'module-script'
+        ? 'studio.chat.gamePlay.fallbackModule'
+        : 'studio.chat.gamePlay.fallbackRelative'
+    )
+    return
+  }
+  try {
+    await window.studio.openAssetWithDefaultApp(msg.htmlPath)
+  } catch {
+    fallback('studio.chat.gamePlay.openFailed')
+  }
 }
 
 /** 生成完成的独立资产预览卡：同 key 去重，追加到对话末尾（原地更新路径以幂等处理延迟回调）。

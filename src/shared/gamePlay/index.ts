@@ -2,12 +2,14 @@ export {
   detectGamePlayMode,
   ensureGameModeComment,
   extractGameHtml,
+  gameHtmlBrowserIssue,
   hasPlayableCanvas,
   hasThreeClue,
   injectThreeIntoHtml,
   rewriteThreeCoreRelativeImports,
   THREE_INJECT_MARKER,
   validateGameHtml,
+  type GameHtmlBrowserIssue,
   type GamePlayMode,
   type ValidateGameHtmlResult
 } from './gameHtml'

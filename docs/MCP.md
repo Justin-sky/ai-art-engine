@@ -255,12 +255,12 @@ save_project_asset（用户点「保存到资产库」）   入 Assets/<folder>/
 
 ### ④ 可玩 HTML（一句话小游戏，程序化资产生成）
 
-交付物是一个**纯 Node + esbuild 工程**（不落资产文件）：agent 写 `src/**`，宿主负责 cook，`dist/single.html` 在试玩沙盒窗口里打开。所有美术与音频都由生成的代码合成（几何 / Canvas 贴图 / WebAudio 音效 / 种子关卡），因此零素材下载、零 API 计费、同种子可复现。
+交付物是一个**纯 Node + esbuild 工程**（不落资产文件）：agent 写 `src/**`，宿主负责 cook，`dist/single.html` 交给系统默认程序（通常是浏览器）打开，产物不自包含时退回应用内试玩沙盒窗口。所有美术与音频都由生成的代码合成（几何 / Canvas 贴图 / WebAudio 音效 / 种子关卡），因此零素材下载、零 API 计费、同种子可复现。
 
 | 工具                       | 作用                                                                                                                                                                                                                               | 前置条件                     |
 | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
 | `gameplay_prepare_project` | 落下宿主脚手架（`package.json` / `build.mjs` / `index.template.html` / `src/core/{rng,palette,registry}.js` / `src/assets/**` / `src/main.js` 样例），返回 `projectRelativeDir` 与文件清单；传 `projectRelativeDir` 则续写既有工程 | 已打开工程                   |
-| `gameplay_build`           | 后台 cook：`npm install` + `node build.mjs` → 单文件 `dist/single.html`；立即返回 `jobId`（**由宿主跑 npm，agent 不要自己跑**）                                                                                                    | 已打开工程 + 本机 Node / npm |
+| `gameplay_build`           | 后台 cook：`npm install` + `node build.mjs` → 单文件 `dist/single.html`；立即返回 `jobId`（**由宿主跑 npm，agent 不要自己跑**）。成功后自动在资产库登记 / 更新一个 `gamePlay` 资产，对话流出一张卡，「试玩」按钮用浏览器打开       | 已打开工程 + 本机 Node / npm |
 | `gameplay_job_status`      | 轮询作业：`ready` / `building` / `done` / `error` + 日志尾部 + 产物路径与体积；省略 `jobId` 列出全部作业                                                                                                                           | 应用运行中                   |
 
 装配约定写在内置技能 `gameplay-proc-assets` 里（资产层目录、`defineAsset` 契约、禁止 `Math.random`、Canvas 贴图与 WebAudio 配方、工具流程）。典型三步：

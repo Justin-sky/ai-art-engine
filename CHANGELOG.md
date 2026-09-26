@@ -51,6 +51,13 @@
 - **沙盒第三种入口**：`gamePlaySandboxDialog` 与 `EditorDiveGamePlayView` 增加 `htmlPath`——按 `readProjectFile` 读单文件 → 复用既有 `prepareGameHtml` / three 注入 / `studio-gameplay://` 沙盒，不新写播放器；节点、资产、路径三种入口共用同一个窗口。
 - 测试：`tests/chatGameplayCard.test.ts` 按源码钉住四条约定（活动分支在通用出卡之前返回、游戏卡按 assetId 原地更新、卡片只渲染一个按钮且调 `openGamePlaySandboxDialog({ htmlPath })`、沙盒三入口齐备），`tests/gamePlayJob.test.ts` 扩到 13 例（资产名 / genParams / 按目录去重、`onSettled` 成功与失败都回调、资产 id 回填）。全量 331 文件 / 2565 例通过，typecheck（node + web）/ cjk 门禁 / prettier 干净。
 
+「一句话 3D 游戏」第 3 步：**「试玩」改为交给系统默认程序（浏览器）打开，应用内窗口退为兜底**。cook 出来的单文件本来就是自包含的（esbuild IIFE 内联 + three 打包 + Canvas 贴图 + WebAudio 合成、零外链），浏览器里能全屏、能真指针锁定、能开 DevTools，也不用把重型 rAF 循环跑在应用渲染进程里——而应用内沙盒 iframe 恰恰**没给 `allow-fullscreen`**。实现上没写新通道：`window.studio.openAssetWithDefaultApp` → `shell.openPath`（带 `assertInsideProject` 护栏）早就有了，接上即可。
+
+- **开前自检**（`shared/gamePlay/gameHtml.ts` 的 `gameHtmlBrowserIssue`，纯函数可单测）：`file://` 下有两类东西会白屏，而它们在应用内沙盒（`studio-gameplay://` 真 HTTP 文档）里反而正常——① `type="module"`（浏览器按 CORS 拒绝执行本地模块脚本）；② 相对的 `src` / `href`（cook 只写 `dist/index.html` 一个文件，兄弟文件并不存在）。命中就**退回应用内窗口**并在对话流里说明原因（`fallbackModule` / `fallbackRelative`）；外链 / `data:` / `blob:` / 协议相对 / 根路径一律不拦（那些在沙盒 CSP 下本来就被拦，只有浏览器能跑，不构成本地文件依赖）。调起失败同样兜底（`openFailed`）。
+- **资产库补上应用内入口**（`AssetBrowser.vue`）：`gamePlay` 资产双击与右键「试玩」都开应用内沙盒窗口（复用早就预留但一直没人调的 `openGamePlaySandboxDialog({ gamePlayAssetId })`），这样浏览器路径与沙盒路径各有明确入口——**对话产物卡走浏览器，资产库走应用内**。
+- 技能硬规则补第 ⑧ 条：`index.template.html` 保持内联经典脚本（保留 `/*APP_JS*/`、别加 `type="module"`、别引兄弟文件），否则只能在应用内窗口跑、浏览器里白屏。工具描述与 `docs/MCP.md` / `website/guide-mcp.html` 同步。
+- 测试：新增 `tests/gameHtmlBrowserOpen.test.ts`（自检口径：经典内联放行、模块脚本与相对引用拦下、外链 / data: / blob: / 锚点 / 根路径放行、模块优先上报），`tests/chatGameplayCard.test.ts` 改为钉住「主路径交系统程序 + 白屏形态兜底 + 资产库双击/右键入口」。全量 332 文件 / 2572 例通过，typecheck（node + web）/ cjk 门禁 / prettier 干净。
+
 ## [6.6.0] — 2026-09-24
 
 6.6.0 功能版：可玩 HTML 改为 dsh 多轮纯 Node（esbuild）工程再 cook 成单文件；新增 Anthropic（Claude）提供商与导演台多光源；节点执行日志实时进度；并修好沙盒读盘 CSP、cook 误校验与卡片拖拽卡顿。

@@ -177,3 +177,40 @@ export function ensureGameModeComment(html: string, mode: '2d' | '3d'): string {
   }
   return `<!-- game-mode: ${mode} -->\n${html}`
 }
+
+/**
+ * 交给系统默认程序（浏览器）打开前的自检：`file://` 下有两类东西会白屏，
+ * 而它们在应用内沙盒里（走 `studio-gameplay://` 真 HTTP 文档）是正常的。
+ *
+ * - `type="module"`：浏览器对 `file://` 的模块脚本按 CORS 处理，直接拒绝执行；
+ * - 相对引用的脚本 / 样式（`./assets/index.js`）：cook 只写 `dist/index.html` 一个文件，
+ *   磁盘上并没有这些兄弟文件。
+ *
+ * 外链（http(s) / data: / blob: / 协议相对 / 根路径）不在此列：它们要么在沙盒 CSP 下
+ * 本来就被拦（只有浏览器里能跑），要么自带数据，不构成本地文件依赖。
+ */
+export type GameHtmlBrowserIssue = 'module-script' | 'relative-asset'
+
+const MODULE_SCRIPT_RE = /<script\b[^>]*\btype\s*=\s*["']?module\b/i
+const EXTERNAL_REF_RE = /<(?:script|link)\b[^>]*\b(?:src|href)\s*=\s*["']([^"']+)["']/gi
+
+function isSelfContainedRef(url: string): boolean {
+  const value = url.trim()
+  if (!value) return true
+  if (value.startsWith('#')) return true
+  if (/^(?:[a-z][a-z0-9+.-]*:|\/\/|\/)/i.test(value)) return true
+  return false
+}
+
+/** 返回导致「浏览器打不开」的原因；没有则返回 null（可以放心交给系统默认程序） */
+export function gameHtmlBrowserIssue(html: string): GameHtmlBrowserIssue | null {
+  const text = typeof html === 'string' ? html : ''
+  if (!text.trim()) return null
+  if (MODULE_SCRIPT_RE.test(text)) return 'module-script'
+  EXTERNAL_REF_RE.lastIndex = 0
+  let match: RegExpExecArray | null
+  while ((match = EXTERNAL_REF_RE.exec(text))) {
+    if (!isSelfContainedRef(match[1] ?? '')) return 'relative-asset'
+  }
+  return null
+}

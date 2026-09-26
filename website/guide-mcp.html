@@ -441,7 +441,7 @@
                 <td><code>gameplay_build</code></td>
                 <td>
                   后台 cook（<code>npm install</code> + <code>node build.mjs</code>）打成单文件，返回
-                  <code>jobId</code>；<strong>由宿主跑 npm</strong>
+                  <code>jobId</code>；<strong>由宿主跑 npm</strong>。成功后自动登记 gamePlay 资产，对话卡的「试玩」用浏览器打开
                 </td>
               </tr>
               <tr>
@@ -467,7 +467,7 @@
               「做个低多边形太空站捡能量块的 3D 小游戏，WASD 移动」→
               <code>gameplay_prepare_project</code>（3d）→ 写 <code>src/assets/**</code> 与
               <code>src/game/**</code> → <code>gameplay_build</code> +
-              <code>gameplay_job_status</code> 轮询到 <code>done</code>，产物在试玩沙盒窗口里打开
+              <code>gameplay_job_status</code> 轮询到 <code>done</code>，对话卡点「试玩」即在浏览器里开玩
             </li>
           </ul>
         </section>

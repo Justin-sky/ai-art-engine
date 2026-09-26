@@ -462,6 +462,14 @@
             <span class="ctx-icon" aria-hidden="true">🏃</span>
             <span class="ctx-label">{{ t('asset.browser.context.motion2dPlay') }}</span>
           </button>
+          <button
+            v-if="contextMenuGamePlayAsset"
+            type="button"
+            @click="openGamePlayForContextAsset"
+          >
+            <span class="ctx-icon" aria-hidden="true">🎮</span>
+            <span class="ctx-label">{{ t('studio.chat.gamePlay.play') }}</span>
+          </button>
           <button type="button" @click="findContextMenuReferences">
             <span class="ctx-icon" aria-hidden="true">🔗</span>
             <span class="ctx-label">{{ t('asset.browser.context.findReferences') }}</span>
@@ -597,6 +605,7 @@ import {
   openImportedMediaRefPreview
 } from '../features/media/openFullImagePreview'
 import { openMotion2dActionPreviewDialog } from '../features/media/motion2dActionPreviewDialog'
+import { openGamePlaySandboxDialog } from '../features/media/gamePlaySandboxDialog'
 import { openUiKitExtractDialog } from '../features/uiKit/uiKitExtractDialog'
 import { isLayeredSourceImageFilePath, isVectorImageFilePath } from '@shared/import'
 import { thumbRelativePathFor } from '@shared/media/thumbnailPath'
@@ -1320,6 +1329,14 @@ const contextMenuMotion2dPreviewAsset = computed<AssetInfo | null>(() => {
   return asset
 })
 
+/** 可「试玩」的右键目标：可玩 HTML 资产（对话 cook 成功后自动登记的那些） */
+const contextMenuGamePlayAsset = computed<AssetInfo | null>(() => {
+  const asset = contextMenuTargetAsset()
+  if (!asset || asset.type !== 'gamePlay') return null
+  if (isDraftAssetId(asset.id)) return null
+  return asset
+})
+
 /** 可「提取 UI 部件」的右键目标：带原图文件的本机图片资产（与帧试播同门槛） */
 const contextMenuUiKitAsset = computed<AssetInfo | null>(() => {
   const asset = contextMenuTargetAsset()
@@ -1484,6 +1501,14 @@ function openMotion2dPlayForContextAsset(): void {
   closeMenu()
   if (!asset) return
   openMotion2dActionPreviewDialog({ assetId: asset.id, title: asset.name })
+}
+
+/** 资产库里的可玩 HTML：右键 / 双击都进应用内试玩窗口（对话产物卡那条走系统浏览器） */
+function openGamePlayForContextAsset(): void {
+  const asset = contextMenuGamePlayAsset.value
+  closeMenu()
+  if (!asset) return
+  openGamePlaySandboxDialog({ gamePlayAssetId: asset.id, title: asset.name })
 }
 
 async function openUiKitExtractForContextAsset(): Promise<void> {
@@ -2071,6 +2096,12 @@ async function onAssetDblClick(assetId: string): Promise<void> {
   // 2D 动作资产：用资产自带的装配快照 + 动作帧开试播浮窗（无独立编辑页）
   if (asset.type === 'motion2d') {
     openMotion2dActionPreviewDialog({ assetId: asset.id, title: asset.name })
+    return
+  }
+  // 可玩 HTML：游戏不进内图编辑器，双击直接试玩（对话产物卡上的「试玩」走浏览器，
+  // 这里给的是应用内沙盒窗口，也是资产库唯一的试玩入口）
+  if (asset.type === 'gamePlay') {
+    openGamePlaySandboxDialog({ gamePlayAssetId: asset.id, title: asset.name })
     return
   }
   openEditor(assetId)
