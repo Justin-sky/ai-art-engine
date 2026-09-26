@@ -2,6 +2,11 @@
 
 ## Unreleased（进行中）
 
+- [x] 3D 模型加工节点补齐：**3D 骨骼蒙皮**（Meshy / Tripo Rigging API，可选骨架命名与 GLB / FBX 输出）、**绑骨检查**、**动画重定向**（Tripo 预设 / Meshy 动作库选择器）、**模型拆分**（网格 / 智能分割）、**部件补全**、**重拓扑**、**贴图**、**格式转换**；生成节点回归「只出几何 GLB」
+- [x] 3D 网格加工分层重构：能力矩阵（`shared/meshOps.ts`）+ 供应商方言（`tripo/meshOps.ts` / `meshy/meshOps.ts`）+ 与供应商无关的编排层；卡片下拉、facade 门禁、参数显隐全部由能力位派生
+- [x] 轮询 token 去品牌化（`<providerKind>-<jobOp>::<taskId>`）并兼容 9 条历史前缀，在途任务续跑不受影响
+- [ ] Meshy 次要开关（`hd_texture` / `enable_original_uv` / 动作合并 `post_process`）与 Tripo `refine` / `import` 视需求再评估
+
 ## 战略路线 V7–V9（AI 创作操作系统）
 
 > 定位升级：从「用户 → AI 助手 → 节点图 → 模型 → 素材」升级为「导演 → AI Producer → 角色 Agent 团队 → Workflow Compiler → 节点图执行 → 结构化工程交付」。

@@ -1202,19 +1202,26 @@
           <ul>
             <li>
               图片生成 · 视频生成 · 声音生成 · 剧本生成 · 场生成 · 世界元素提取 · 策划案生成 ·
-              导演台编辑 · 画布编辑 · 3D 模型生成 · 2D 帧动画 · 模型（引用）· 宿主资产
+              导演台编辑 · 画布编辑 · 3D 模型生成 · 3D 模型加工（蒙皮 / 绑骨检查 / 动画重定向 / 拆分 / 部件补全 /
+              重拓扑 / 贴图 / 格式转换）· 2D 帧动画 · 模型（引用）· 宿主资产
             </li>
             <li>
               <strong>3D 模型生成</strong>：文本 / 上游参考图 → 3D 模型资产（Meshy、Tripo、Rodin（Hyper3D）、Luma AI、Lux3D，文生 3D / 图生 3D，部分支持多图生 3D）；
               异步提交 → 轮询 → 下载，结果可接入导演台或下游继续加工，支持回写绑定持久化与取消。
-              节点参数区（仅 <code>tripo</code> / <code>meshy</code> / <code>hyper3d</code> provider 显示）
-              可勾选「<strong>生成骨骼</strong>」让上游输出 rigged GLB —— Tripo 发
-              <code>rig=true</code>；Meshy 发 <code>rigging=true</code> + <code>rig_type</code>
-              （humanoid 等） + <code>pose</code>；Rodin (Hyper3D) multipart 发
-              <code>rig=true</code> + <code>rig_type</code> + <code>rig_animation</code>，部分 tier
-              需 <code>rig=true</code> 才出 rigged GLB。<strong>Luma AI / Lux3D 不支持蒙皮</strong>，
-              强行开启会被拒并给明确文案（<code>provider.luma.rigUnsupported</code> /
-              <code>provider.lux3d.rigUnsupported</code>），不会静默吞字段。
+              <strong>生成节点只出几何 GLB</strong>，蒙皮等加工交给下面的 3D 加工节点（6.4.1 起不再内联「生成骨骼」）。
+            </li>
+            <li>
+              <strong>3D 模型加工（节点）</strong>：<strong>3D 骨骼蒙皮</strong>（Meshy / Tripo Rigging
+              API，可选骨架命名 Mixamo / Tripo 与输出 GLB / FBX）、<strong>3D 绑骨检查</strong>（免费，给
+              <code>riggable</code> + 推荐骨架类型）、<strong>3D 动画重定向</strong>（Tripo 预设
+              <code>preset:walk</code> / Meshy 动作库 <code>action_id</code>，面板内可直接拉取动作库）、<strong>3D
+              模型拆分</strong>（网格分割 / 智能分割，拆完列出部件名）、<strong>3D 部件补全</strong>、<strong>3D
+              重拓扑</strong>（Tripo 智能 / 基础档、Meshy remesh）、<strong>3D 贴图</strong>（含 Meshy
+              retexture）、<strong>3D 格式转换</strong>（GLTF / FBX / USDZ / OBJ / STL / 3MF，可带 FBX
+              预设、pivot 归底、UV 打包）。供应商能力按矩阵自动过滤：<strong>Tripo 支持全部 8 项、Meshy 支持 5
+              项</strong>，卡片下拉只列能做该动作的供应商，Inspector 按能力位隐藏对面不识的参数。
+              两条硬约束：<strong>部件补全只吃拆件任务 id、动画重定向只吃绑骨任务 id</strong>；task id
+              属于别家（如 Tripo 拆件后接 Meshy 贴图）时自动退回「上传模型换公网 URL」。
             </li>
             <li>
               <strong>宿主资产</strong>：把已有资产（图片 / 视频 / 声音 / 剧本 / 场 / 导演台等）作为节点引入当前画布，

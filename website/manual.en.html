@@ -1393,22 +1393,33 @@
             <li>
               Image generation · video generation · audio generation · script generation · shot generation ·
               world element extraction · planning doc generation · director stage edit · canvas edit · 3D model
-              generation · 2D frame animation · model (reference) · host asset
+              generation · 3D mesh processing (rigging / rig check / animation retarget / split / part completion
+              / retopology / texture / format convert) · 2D frame animation · model (reference) · host asset
             </li>
             <li>
               <strong>3D model generation</strong>: text / upstream reference images → a 3D model asset (Meshy,
               Tripo, Rodin (Hyper3D), Luma AI, Lux3D; text-to-3D / image-to-3D, with multi-image to 3D on some);
               submit async → poll → download, and the result can feed the director stage or downstream nodes,
-              with write-back binding persistence and cancellation. The node's parameter panel shows a
-              <strong>“Generate rig”</strong> toggle (only when the selected provider is
-              <code>tripo</code> / <code>meshy</code> / <code>hyper3d</code>) so the upstream returns a rigged
-              GLB — Tripo sends <code>rig=true</code>; Meshy sends <code>rigging=true</code> +
-              <code>rig_type</code> (humanoid etc.) + <code>pose</code>; Rodin (Hyper3D) multipart sends
-              <code>rig=true</code> + <code>rig_type</code> + <code>rig_animation</code>, and some tiers
-              need <code>rig=true</code> for the rigged GLB. <strong>Luma AI / Lux3D don't support
-              rigging</strong> — turning it on is rejected with a clear message
-              (<code>provider.luma.rigUnsupported</code> / <code>provider.lux3d.rigUnsupported</code>),
-              never silently dropped.
+              with write-back binding persistence and cancellation. <strong>Generation nodes output geometry
+              only</strong> — rigging and the rest moved to the 3D processing nodes below (no inline
+              “Generate rig” since 6.4.1).
+            </li>
+            <li>
+              <strong>3D mesh processing (nodes)</strong>: <strong>3D rigging</strong> (Meshy / Tripo Rigging
+              API, with Mixamo or Tripo bone naming and GLB / FBX output), <strong>3D rig check</strong> (free;
+              returns <code>riggable</code> plus the recommended rig type), <strong>3D animation
+              retarget</strong> (Tripo <code>preset:walk</code> presets / Meshy action-library
+              <code>action_id</code>, with the library loadable right in the panel), <strong>3D mesh
+              split</strong> (mesh / smart segmentation, listing the resulting part names), <strong>3D part
+              completion</strong>, <strong>3D retopology</strong> (Tripo smart / basic tiers, Meshy remesh),
+              <strong>3D texture</strong> (incl. Meshy retexture) and <strong>3D format convert</strong>
+              (GLTF / FBX / USDZ / OBJ / STL / 3MF with FBX presets, pivot-to-bottom, UV packing). A
+              per-provider capability matrix filters the UI: <strong>Tripo covers all 8 ops, Meshy covers
+              5</strong>, provider dropdowns only list vendors implementing that action, and the Inspector hides
+              parameters the selected vendor does not understand. Two hard constraints: <strong>part completion
+              only accepts a segmentation task id and retarget only a rig task id</strong>; when a task id
+              belongs to another vendor (say a Tripo split feeding a Meshy texture node) the app falls back to
+              uploading the model for a public URL.
             </li>
             <li>
               <strong>Host asset</strong>: bring an existing asset (image / video / audio / script / shot /

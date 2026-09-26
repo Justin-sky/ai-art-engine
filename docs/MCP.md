@@ -244,14 +244,14 @@ save_project_asset（用户点「保存到资产库」）   入 Assets/<folder>/
 
 ### ③ 内容生成（图片 / 视频 / 3D / 语音 / 音乐）
 
-| 工具                               | 作用                                                                                                                                                      | 前置条件                                |
-| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
-| `generate_image`                   | 文生图 / 图生图，落盘 `Cache/Images`（不自动进资产库），返回工程内相对路径                                                                                | 已打开工程 + 图片模型                   |
-| `generate_video`                   | 提交视频生成，落盘 `Cache/Videos`（异步，用 `video_job_*` 跟踪；不自动进资产库）                                                                          | 已打开工程 + 视频模型                   |
-| `generate_model3d`                 | 文生 3D / 图生 3D，产出 GLB 落 `Cache/Models`（异步；不自动进资产库）；可选骨骼蒙皮 `rig`（配 `rigType` / `rigAnimation`，仅 Tripo / Meshy / Rodin 支持） | 已打开工程 + 3D 模型                    |
-| `generate_speech`                  | 台词转 MP3，落盘 `Cache/Voices`（不自动进资产库）                                                                                                         | 已打开工程 + 音频模型                   |
-| `generate_music`                   | 按情绪 / 场景描述生成 BGM 并落盘 `Cache/Music`（同步；不自动进资产库），返回 `relativePath` / `durationMs`，可铺到时间线 music 轨                         | 已打开工程 + 音乐模型（如 `music-3.0`） |
-| `video_job_list` / `video_job_get` | 查询异步视频生成任务的状态                                                                                                                                | 应用运行中                              |
+| 工具                               | 作用                                                                                                                              | 前置条件                                |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| `generate_image`                   | 文生图 / 图生图，落盘 `Cache/Images`（不自动进资产库），返回工程内相对路径                                                        | 已打开工程 + 图片模型                   |
+| `generate_video`                   | 提交视频生成，落盘 `Cache/Videos`（异步，用 `video_job_*` 跟踪；不自动进资产库）                                                  | 已打开工程 + 视频模型                   |
+| `generate_model3d`                 | 文生 3D / 图生 3D，产出几何 GLB 落 `Cache/Models`（异步；不自动进资产库）；**不含蒙皮等加工**——请用图节点（见下）                 | 已打开工程 + 3D 模型                    |
+| `generate_speech`                  | 台词转 MP3，落盘 `Cache/Voices`（不自动进资产库）                                                                                 | 已打开工程 + 音频模型                   |
+| `generate_music`                   | 按情绪 / 场景描述生成 BGM 并落盘 `Cache/Music`（同步；不自动进资产库），返回 `relativePath` / `durationMs`，可铺到时间线 music 轨 | 已打开工程 + 音乐模型（如 `music-3.0`） |
+| `video_job_list` / `video_job_get` | 查询异步视频生成任务的状态                                                                                                        | 应用运行中                              |
 
 ### ④ 环境查询
 
@@ -355,12 +355,12 @@ claude mcp add --transport http blender http://127.0.0.1:43110/mcp/blender --hea
   （如图片 `seed` / `quality`、视频 `resolution` / `lastFrameImageUrl`）合并进生成请求；
   显式传参优先于透传值，内部回写绑定字段（graphBinding）会被自动剥离。`outputDir` / `folderId`
   会被剔除——对话生成产物一律落缓存目录，不会经透传参数被写进 `Assets/` 直接入库。
-- **3D 蒙皮（rig）是 `generate_model3d` 的顶层入参**：`rig: true` 要求上游输出 rigged GLB，
-  可用 `rigType`（humanoid / quadruped / bipedal / creature，缺省 humanoid）与 `rigAnimation`
-  （绑定动画预设 id）细化。仅 Tripo / Meshy / Rodin 支持——其余上游（Luma / Lux3D 等）传
-  `rig: true` 会在提交前明确报错，不静默吞参数；`rigType` / `rigAnimation` 单独传（没开 `rig`）
-  同样报错。Tripo 只认 `rig` 开关，带了骨架类型 / 动画时结果里会多一条 `warnings` 说明已被上游忽略
-  （需要指定骨架类型或绑定动画请改用 Meshy / Rodin）。上游是否支持可用 `models_list` 查。
+- **3D 蒙皮等加工不在 MCP 工具里**：`generate_model3d` 只出几何 GLB，`rig` / `rigType` / `rigAnimation` 等入参
+  自 6.4.1 起已移除（传了会在提交前明确报错）。蒙皮、绑骨检查、动画重定向、模型拆分、部件补全、重拓扑、贴图、
+  格式转换这 8 类加工一律走**节点图**（`model.rigSkin` / `model.rigCheck` / `model.retarget` / `model.segment` /
+  `model.meshComplete` / `model.retopology` / `model.texture` / `model.convert`，供应商在卡片里选，能力按供应商
+  矩阵过滤），由用户在画布上编排；外部 Agent 可用 `graph_edit` 增删这些节点与连线。上游是否支持某项加工与
+  3D 模型提供商一致，可用 `models_list` 查已启用的 3D 提供商。
 - **并发闸门**：`generate_image` / `generate_speech` / `generate_music` / `workflow_plan` 同时最多 3 个（可用环境变量 `AIAE_MCP_GEN_LIMIT` 调整），排队超限直接返回错误；`generate_video` / `generate_model3d` 提交即返回，不受闸门限制。
 - **取消粒度**：客户端断开连接，或发送 `notifications/cancelled`，会中止进行中的长任务（如 `workflow_plan` 在两次模型调用之间）；单次模型调用内部不可中断。
 - **状态报告有 TTL**：`task_status` 的成功/失败终态保留 10 分钟后自动清理，过期查询返回「未知任务 id」。
