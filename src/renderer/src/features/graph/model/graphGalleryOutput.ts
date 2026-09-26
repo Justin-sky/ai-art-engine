@@ -140,6 +140,12 @@ function commitVoices(hostId: string, node: GraphNode, list: VoiceList, selected
 
 function modelPathPatch(node: GraphNode, relativePath: string): Partial<GraphNodeParams> {
   if (node.typeId === 'model.rigSkin') return { rigModelRelativePath: relativePath }
+  if (node.typeId === 'model.segment') return { segmentModelRelativePath: relativePath }
+  if (node.typeId === 'model.meshComplete') return { meshCompleteModelRelativePath: relativePath }
+  if (node.typeId === 'model.retopology') return { retopologyModelRelativePath: relativePath }
+  if (node.typeId === 'model.retarget') return { retargetModelRelativePath: relativePath }
+  if (node.typeId === 'model.convert') return { convertModelRelativePath: relativePath }
+  if (node.typeId === 'model.texture') return { textureModelRelativePath: relativePath }
   if (node.typeId === 'model.pose') return { poseModelRelativePath: relativePath }
   if (node.typeId === 'model.animation') return { animationModelRelativePath: relativePath }
   return {}

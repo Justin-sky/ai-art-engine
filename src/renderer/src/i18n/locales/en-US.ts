@@ -2760,6 +2760,8 @@ export default {
       submitSpeech: 'Submitting speech generation…',
       submitModel3d: 'Submitting 3D model generation…',
       submitRig: 'Submitting 3D rig…',
+      submitSegment: 'Submitting 3D segmentation…',
+      submitPostProcess: 'Submitting 3D mesh post-process…',
       videoProgress: 'Video generation {progress}% · {status}',
       model3dProgress: '3D model generation {progress}% · {status}',
       sessionStatus: {
@@ -3729,6 +3731,19 @@ export default {
       gif: 'GIF',
       skinnedMesh: 'Skinned mesh',
       skinnedMeshAll: 'All skinned meshes',
+      partsModel: 'Segmented model',
+      partsModelAll: 'All segmented models',
+      completedMesh: 'Completed model',
+      completedMeshAll: 'All completed models',
+      lowPolyMesh: 'Low-poly model',
+      lowPolyMeshAll: 'All low-poly models',
+      rigCheckedMesh: 'Checked model',
+      animatedMesh: 'Animated model',
+      animatedMeshAll: 'All animated models',
+      convertedMesh: 'Converted model',
+      convertedMeshAll: 'All converted models',
+      texturedMesh: 'Textured model',
+      texturedMeshAll: 'All textured models',
       pose: 'Pose',
       poseAll: 'All poses',
       animation: 'Animation',
@@ -3823,6 +3838,15 @@ export default {
       modelRigExport: 'Blender did not export a skinned GLB',
       modelRigDsh: 'Cloud rigging API is not wired up',
       modelRigProvider: 'This 3D provider does not support standalone rigging — use Meshy or Tripo',
+      modelSegNoModel: 'Connect an upstream 3D model first',
+      modelSegApi: 'Cloud segmentation is unavailable (Segmentation API not wired)',
+      modelSegProvider: 'This 3D provider does not support mesh segmentation — use Tripo',
+      modelSegFailed: '3D segmentation did not finish',
+      modelPostNoModel: 'Connect an upstream 3D model first',
+      modelPostApi: 'Cloud mesh post-process is unavailable (Post-process API not wired)',
+      modelPostProvider: 'This 3D provider does not support mesh post-process — use Tripo',
+      modelPostTimeout: 'Rig check timed out, please retry later',
+      modelPostResult: 'Mesh post-process returned an unexpected result type',
       modelAnimNoModel: 'Connect an upstream 3D model first',
       modelAnimNoArmature: 'Upstream model has no armature; pipe through "3D Rigging" first',
       modelAnimNoTextModel: 'Pick a text model on the node first',
@@ -3877,6 +3901,13 @@ export default {
       model: {
         pose: '3D pose',
         rigSkin: '3D Rigging',
+        segment: '3D Mesh Split',
+        meshComplete: '3D Part Completion',
+        retopology: '3D Retopology',
+        rigCheck: '3D Rig Check',
+        retarget: '3D Animation Retarget',
+        convert: '3D Format Convert',
+        texture: '3D Texture',
         animation: '3D Animation'
       },
       play: {
@@ -4167,7 +4198,7 @@ export default {
         modelEmpty: 'Enable and select a text model in Settings first'
       },
       modelRigSkin: {
-        hint: 'Connect an upstream 3D model, pick Meshy or Tripo, then Cook. The app uploads the mesh and calls the cloud Rigging API to produce a skinned GLB. Requires the provider API key and object storage for the upload.',
+        hint: 'Connect an upstream 3D model, pick Meshy or Tripo, then Cook. The app uploads the mesh and calls the cloud Rigging API to produce a skinned GLB (Tripo can also output FBX with Mixamo or Tripo bone naming). Requires the provider API key and object storage for the upload.',
         tabsAria: '3D rig skin tabs',
         tabs: {
           preview: 'Model',
@@ -4199,6 +4230,140 @@ export default {
         qaScreenshots: 'QA screenshots',
         qaScreenshotMissing: 'Screenshot missing (cleaned up with the job)',
         qaScreenshotDelete: 'Remove this screenshot'
+      },
+      modelSegment: {
+        hint: 'Connect an upstream 3D model, pick Tripo, then Cook: the app uploads the mesh and calls the cloud segmentation API to split it into parts. Mesh segmentation splits by geometry topology (upgrades to v2 semantic mode when a granularity is set); smart segmentation names parts semantically and returns a mask plus a part description. Requires the Tripo API key and object storage for the upload.',
+        mode: 'Split mode',
+        partsTitle: 'Parts · {n}',
+        partsEmpty:
+          'Run the node to list the parts it produced; part names are the node names in the segmented GLB',
+        partsHint:
+          'Part names feed downstream per-part operations (completion / retopology / texture / export)',
+        description: 'Parts Tripo found',
+        mask: 'Part mask',
+        maskHint: 'Smart segmentation also returns a mask image of the parts',
+        previewEmpty: 'Connect an upstream 3D model first'
+      },
+      meshOpParts: {
+        title: 'Parts from the upstream split',
+        hint: 'Click the parts to process; empty means all. The selection syncs with the card instruction box (editing it by hand works too)',
+        empty: 'No parts upstream yet: Cook the 3D Mesh Split node first',
+        selected: '{n} selected'
+      },
+      modelMeshComplete: {
+        hint: 'Connect a 3D Mesh Split node, then Cook: calls Tripo part completion (POST /v3/mesh/complete) to repair holes and missing regions on the segmented parts. That endpoint only accepts a mesh/segment task id, so it must be fed by the split node.',
+        mode: 'Completion mode',
+        modes: {
+          ai: 'AI completion',
+          quickCap: 'Quick cap'
+        },
+        parts: 'Parts to complete',
+        partsHint:
+          'Empty completes every part; type part names in the card instruction box, comma or newline separated',
+        needTask: 'No upstream segmentation task id: feed this node from a 3D Mesh Split node',
+        previewEmpty: 'Connect an upstream 3D model first'
+      },
+      modelRetopology: {
+        hint: 'Connect an upstream 3D model, then Cook: calls Tripo retopology (POST /v3/mesh/decimate) to reduce polycount. The smart tier (v2.0) keeps clean topology and supports per-part work; the basic tier (v1.0) is plain decimation.',
+        mode: 'Algorithm tier',
+        modes: {
+          smart: 'Smart (v2.0)',
+          basic: 'Basic decimate (v1.0)'
+        },
+        faceLimit: 'Target faces',
+        faceLimitHint: 'Empty means adaptive',
+        quad: 'Quad output',
+        bake: 'Bake textures onto the low-poly mesh',
+        parts: 'Parts to process',
+        partsHint: 'The basic tier ignores parts',
+        providerNote:
+          'This provider runs remesh: algorithm tier and texture baking are unavailable; it works from topology (triangle / quad) plus a target polycount.',
+        previewEmpty: 'Connect an upstream 3D model first'
+      },
+      modelRigCheck: {
+        hint: 'Connect an upstream 3D model, then Cook: calls Tripo rig check (POST /v3/animations/rig-check, free) to see whether the model can be rigged and which rig type Tripo recommends, passing the model through unchanged.',
+        resultTitle: 'Check result',
+        riggable: 'Riggable',
+        notRiggable: 'Not recommended for rigging',
+        rigType: 'Recommended rig type',
+        resultEmpty: 'Run the node to see the check result',
+        taskId: 'Check task id',
+        previewEmpty: 'Connect an upstream 3D model first'
+      },
+      modelRetarget: {
+        hint: 'Connect a 3D Rigging node, then Cook: calls Tripo animation retargeting (POST /v3/animations/retarget) to apply preset animations to the rigged model. That endpoint only accepts a rig task id, so it must be fed by the rigging node.',
+        animations: 'Preset animations',
+        animationsHint:
+          'Type ids in the card instruction box, comma or newline separated, e.g. preset:walk, preset:idle',
+        libraryTitle: 'Action library',
+        libraryLoad: 'Load library',
+        libraryLoading: 'Loading…',
+        librarySearchPlaceholder: 'Search actions (e.g. walk)',
+        libraryEmpty: 'No actions found',
+        librarySelected: '{n} selected',
+        libraryToggleHint:
+          'Click an action to toggle it; several actions are exported as one file with multiple clips',
+        providerNote:
+          'This provider runs Meshy animations: pick action_ids from the library (preset:xxx ids do not apply) and the upstream must be a Meshy rigging task.',
+        outFormat: 'Output format',
+        bakeAnimation: 'Bake animation into the model',
+        exportWithGeometry: 'Export with geometry',
+        animateInPlace: 'Animate in place',
+        needTask: 'No upstream rig task id: feed this node from a 3D Rigging node',
+        previewEmpty: 'Connect an upstream 3D model first'
+      },
+      modelConvert: {
+        hint: 'Connect an upstream 3D model, then Cook: calls Tripo format conversion (POST /v3/models/convert) to export GLTF / FBX / USDZ / OBJ / STL / 3MF, optionally with decimation, texture baking, quads and an FBX preset. Basic conversion costs 5 credits; passing any advanced value (quad / face limit / texture size / texture format / pivot / scale) makes it the 10-credit tier.',
+        format: 'Target format',
+        fbxPreset: 'FBX preset',
+        fbxPresets: {
+          blender: 'Blender',
+          '3dsmax': '3ds Max',
+          mixamo: 'Mixamo',
+          bake_scale: 'Bake scale'
+        },
+        faceLimit: 'Face limit',
+        faceLimitHint: 'Empty keeps the original face count',
+        textureSize: 'Texture size',
+        textureFormat: 'Texture format',
+        quad: 'Quad output (forces FBX)',
+        pivotToCenterBottom: 'Pivot to bottom center',
+        packUv: 'Pack UVs',
+        bake: 'Bake materials into base textures',
+        withAnimation: 'Keep skeleton and animation',
+        parts: 'Parts to export',
+        partsHint: 'Empty exports the whole model; type part names in the card instruction box',
+        providerNote:
+          'This provider converts formats only: the FBX preset, face limit, texture size / format, pivot and UV options are unavailable.',
+        previewEmpty: 'Connect an upstream 3D model first'
+      },
+      modelTexture: {
+        hint: 'Connect an upstream 3D model, then Cook: calls Tripo texture (POST /v3/models/texture) to regenerate texture maps. A prompt means text-to-texture; leaving it empty retextures from the original reference image. The fast tier requires texture model v3.5-20260815.',
+        version: 'Texture model',
+        quality: 'Quality',
+        qualities: {
+          fast: 'Fast',
+          standard: 'Standard',
+          detailed: 'Detailed',
+          extreme: 'Extreme 8K'
+        },
+        alignment: 'Alignment',
+        alignments: {
+          original_image: 'Match source colors',
+          geometry: 'Match generated geometry'
+        },
+        seed: 'Seed',
+        seedHint: 'Empty means random',
+        pbr: 'Generate PBR materials',
+        delight: 'Baked lighting',
+        delightDefault: 'Default (Tripo removes / Meshy keeps)',
+        delightRemove: 'Remove lighting from the reference',
+        delightKeep: 'Keep lighting from the reference',
+        parts: 'Parts to texture',
+        partsHint: 'Empty textures every part',
+        providerNote:
+          'This provider runs retexture: texture model version and seed are unavailable, and the quality tier is converted to a 2k / 4k / 8k resolution.',
+        previewEmpty: 'Connect an upstream 3D model first'
       },
       modelAnimation: {
         hint: 'Connect an upstream skinned model, pick an action chip or write a description, then run. Cook drives Blender through dsh to keyframe and export a GLB with AnimationClip. Start Blender and enable Blender MCP first.',
@@ -4485,9 +4650,37 @@ export default {
           bipedal: 'Bipedal',
           creature: 'Creature'
         },
+        model3dRigSpecHint: 'Bone naming (Tripo only)',
+        model3dRigSpecs: {
+          mixamo: 'Mixamo naming',
+          tripo: 'Tripo naming'
+        },
+        model3dRigOutFormatHint: 'Rig output format (Tripo only)',
+        model3dRigOutFormats: {
+          glb: 'GLB',
+          fbx: 'FBX'
+        },
         model3dRigAnimation: 'Bind animation',
         model3dRigAnimationNone: 'None',
         model3dRigAnimationPlaceholder: 'Animation name (optional)',
+        model3dSegmentMode: 'Split mode',
+        model3dSegmentModes: {
+          mesh: 'Mesh segmentation',
+          smart: 'Smart segmentation'
+        },
+        model3dSegmentGranularity: 'Granularity (v2 semantic)',
+        model3dSegmentGranularities: {
+          v1: 'v1 geometry (default)',
+          simple: 'Simple',
+          balanced: 'Balanced',
+          detailed: 'Detailed'
+        },
+        model3dSegmentSmartGranularity: 'Smart granularity',
+        model3dSegmentSmartGranularities: {
+          coarse: 'Coarse',
+          medium: 'Medium',
+          fine: 'Fine'
+        },
         noModels: 'No models available',
         systemPrompt: 'System prompt',
         systemPromptPlaceholder:
@@ -4523,6 +4716,20 @@ export default {
           "Describe a still pose (walk, wave, hands on hips…) or pick a preset in Inspector; use {'@'} to cite upstream text",
         modelRigSkinInstructionPlaceholder:
           'Optional notes; pick skeleton type below or via presets (humanoid / quadruped…)',
+        modelSegmentInstructionPlaceholder:
+          'Smart segmentation: name the parts to look for (e.g. "game character with sword and armor"); mesh segmentation ignores this box',
+        modelMeshCompleteInstructionPlaceholder:
+          'Parts to complete, comma or newline separated (e.g. head, torso); leave empty for every part',
+        modelRetopologyInstructionPlaceholder:
+          'Parts to retopologize, comma or newline separated; leave empty for the whole model (the basic tier ignores parts)',
+        modelRigCheckInstructionPlaceholder:
+          'Optional: rig check only reads the upstream model and its recommended rig type',
+        modelRetargetInstructionPlaceholder:
+          'Preset animation ids, comma or newline separated (e.g. preset:walk, preset:idle); several ids run a batch retarget',
+        modelConvertInstructionPlaceholder:
+          'Parts to export, comma or newline separated; leave empty for the whole model (pair with a split node to export only some parts)',
+        modelTextureInstructionPlaceholder:
+          'Text-to-texture prompt (e.g. "worn leather with scratches"); leave empty to retexture from the reference image',
         modelAnimationInstructionPlaceholder:
           "Game-ready animation (idle / walk / jump / guard / hit react / death, etc.) or a free-text description; use {'@'} to cite upstream text",
         refsEmpty: "Connect upstream inputs to cite with {'@'}, or type the instruction alone",
@@ -4534,6 +4741,8 @@ export default {
         presets: {
           open: 'Prompt presets',
           title: 'Instruction templates',
+          empty:
+            'No templates for this node: the instruction box takes free text (part names / prompts / animation ids), just type it in',
           visualChip: {
             genre: 'Genre',
             cast: 'Cast',
@@ -4552,6 +4761,9 @@ export default {
           titleModelPose: '3D pose templates',
           titleModelRigSkin: '3D rig skin templates',
           titleModelAnimation: '3D animation templates',
+          titleModelSegment: 'Split hint templates',
+          titleModelRetarget: 'Animation combo templates',
+          titleModelTexture: 'Texture style templates',
           tabGeneral: 'General',
           tabGame: 'Game',
           tabFilm: 'Film',
@@ -4610,6 +4822,34 @@ export default {
             hitReact: 'Hit react loop',
             death: 'Death drop',
             celebrate: 'Victory celebrate loop'
+          },
+          modelSegment: {
+            gameCharacter: 'Game character (with weapon & armor)',
+            mechanical: 'Mechanical vehicle parts',
+            furniture: 'Furniture parts',
+            architecture: 'Building components',
+            cartoonPerson: 'Cartoon character limbs',
+            creature: 'Creature limbs'
+          },
+          modelRetarget: {
+            walk: 'Walk only',
+            idleWalkRun: 'Idle + walk + run',
+            locomotionCombat: 'Locomotion + 3 attacks',
+            hurtFall: 'Hurt + fall',
+            turnJump: 'Turn + jump',
+            dance: 'Dance'
+          },
+          modelTexture: {
+            wornLeather: 'Worn leather',
+            brushedMetal: 'Brushed metal',
+            agedWood: 'Aged wood',
+            ceramic: 'Ceramic glaze',
+            fabric: 'Fabric',
+            cartoonFlat: 'Cartoon flat',
+            cyberpunk: 'Cyberpunk',
+            stone: 'Stone',
+            wetSurface: 'Wet surface',
+            glass: 'Glass'
           },
           frameAnimFx: {
             smoke: 'Smoke',

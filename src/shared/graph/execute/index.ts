@@ -62,6 +62,16 @@ export {
 export { executeComicPageNode } from './comicPage'
 export { executeModelPoseNode } from './modelPose'
 export { executeModelRigSkinNode } from './modelRigSkin'
+export { executeModelSegmentNode } from './modelSegment'
+export {
+  executeModelMeshCompleteNode,
+  executeModelRetopologyNode,
+  executeModelRigCheckNode,
+  executeModelRetargetNode,
+  executeModelConvertNode,
+  executeModelTextureNode,
+  normalizePostProcessList
+} from './modelPostProcess'
 export { executeModelAnimationNode } from './modelAnimation'
 export * from './narrative'
 export * from './select'

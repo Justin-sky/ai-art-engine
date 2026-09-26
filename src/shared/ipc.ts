@@ -117,6 +117,11 @@ export const IpcChannels = {
   GEN_MUSIC: 'gen:music',
   GEN_MODEL3D: 'gen:model3d',
   RIG_MODEL3D: 'gen:model3d-rig',
+  SEGMENT_MODEL3D: 'gen:model3d-segment',
+  /** Tripo 网格后处理 / 骨骼动画：部件补全 / 重拓扑 / 绑骨检查 / 动画重定向 */
+  POST_PROCESS_MODEL3D: 'gen:model3d-post',
+  /** 3D 重定向的可选动画列表（Meshy 动作库） */
+  LIST_MODEL3D_ANIMATIONS: 'gen:model3d-animations',
   /** AI 自由构图：仅规划预览，不落盘 */
   GEN_AI_WORKFLOW_PLAN: 'gen:ai-workflow-plan',
   /** AI 自由构图：确认 GraphPlan 后落盘 */
@@ -1263,6 +1268,21 @@ export interface StudioApi {
   rigModel3d: (
     input: import('./modelProvider').RigModel3dInput
   ) => Promise<import('./modelProvider').RigModel3dResult>
+  /** 对已有模型调用 Tripo 拆分 API（网格分割 / 智能分割） */
+  segmentModel3d: (
+    input: import('./modelProvider').SegmentModel3dInput
+  ) => Promise<import('./modelProvider').SegmentModel3dResult>
+  /**
+   * 对已有模型调用 Tripo 网格后处理 / 骨骼动画：
+   * 部件补全 / 重拓扑 / 绑骨检查 / 动画重定向。
+   */
+  postProcessModel3d: (
+    input: import('./modelProvider').Model3dPostProcessInput
+  ) => Promise<import('./modelProvider').Model3dPostProcessResult>
+  /** 3D 重定向可选动画（Meshy 动作库；不支持的供应商返回空数组） */
+  listModel3dAnimations: (
+    input: import('./modelProvider').ListModel3dAnimationsInput
+  ) => Promise<import('./modelProvider').Model3dAnimationAction[]>
   /** 音频转写：本地音频文件 → 带时间戳文本（语音识别） */
   transcribeAudio: (input: TranscribeAudioInput) => Promise<TranscribeAudioResult>
   /** AI 自由构图：仅规划预览 */

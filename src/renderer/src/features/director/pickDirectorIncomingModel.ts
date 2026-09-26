@@ -13,6 +13,13 @@ const SOURCE_TYPE_RANK: Record<string, number> = {
   'model.animation': 4,
   'model.pose': 3,
   'model.rigSkin': 2,
+  'model.segment': 2,
+  'model.meshComplete': 2,
+  'model.retopology': 2,
+  'model.retarget': 2,
+  'model.convert': 2,
+  'model.texture': 2,
+  'model.rigCheck': 1,
   'asset.model3d': 1,
   'asset.model': 1
 }

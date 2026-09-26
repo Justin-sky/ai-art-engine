@@ -240,6 +240,13 @@ export type GraphNodeTypeId =
   | 'svg.gen'
   | 'model.pose'
   | 'model.rigSkin'
+  | 'model.segment'
+  | 'model.meshComplete'
+  | 'model.retopology'
+  | 'model.rigCheck'
+  | 'model.retarget'
+  | 'model.convert'
+  | 'model.texture'
   | 'model.animation'
   | 'graph.input.slot'
   | (string & {})
@@ -338,6 +345,137 @@ export interface GraphNodeParams {
    * 多级 pipeline（rigSkin → rigSkin → ...）里走出错模型。
    */
   rigModelRelativePath?: string
+  /**
+   * 3D 模型拆分节点（`model.segment`）：拆分模式。
+   * `mesh`=网格分割（几何拓扑；给粒度时升级到 v2 语义 + 几何），`smart`=智能分割（语义命名 + mask）。
+   */
+  segmentMode?: 'mesh' | 'smart'
+  /** 网格分割粒度（`/v3/mesh/segment` v2 专用）；空串 = 走 v1 几何拓扑（默认） */
+  segmentGranularity?: 'simple' | 'balanced' | 'detailed' | ''
+  /** 网格分割 v2：是否按连通域拆分（默认 true） */
+  segmentSplitByConnectivity?: boolean
+  /** 智能分割粒度（与网格分割不是同一套枚举） */
+  segmentSmartGranularity?: 'coarse' | 'medium' | 'fine'
+  /** 智能分割：点名要拆哪些部件（如「带剑与盔甲的游戏角色」） */
+  segmentHint?: string
+  /**
+   * 3D 模型拆分节点：最近一次 Cook 写入的输入端模型相对路径（拆分不重写源文件），
+   * 与 `model.rigSkin.rigModelRelativePath` 同口径，供 Inspector 预览。
+   */
+  segmentModelRelativePath?: string
+  /** 3D 模型拆分节点：最近一次 Cook 解析出的部件名（= 拆分后 GLB 的 node 名） */
+  segmentParts?: string[]
+  /** 3D 模型拆分节点：智能分割返回的部件描述 */
+  segmentDescription?: string
+  /** 3D 模型拆分节点：智能分割返回的部件 mask 图 URL */
+  segmentMaskUrl?: string
+  /**
+   * 3D 骨骼蒙皮节点：Tripo rig 任务 id。
+   * 动画重定向（`/v3/animations/retarget`）只吃 rig 任务 id，靠输出值上的
+   * `providerTaskId` 传给下游节点，这里存一份供 Inspector 展示。
+   */
+  rigTaskId?: string
+  /** 3D 骨骼蒙皮节点：Tripo 骨架命名规范（mixamo 兼容 Mixamo 动作库 / tripo 原生） */
+  generateRigSpec?: 'tripo' | 'mixamo'
+  /** 3D 骨骼蒙皮节点：Tripo 输出格式（glb 网页预览 / fbx 进 DCC 与游戏引擎） */
+  generateRigOutFormat?: 'glb' | 'fbx'
+  /** 3D 模型拆分节点：Tripo 拆分任务 id（部件补全只吃 mesh/segment 任务 id） */
+  segmentTaskId?: string
+  /** 3D 部件补全节点：上游拆件任务 id（未连接时为空） */
+  meshCompleteTaskId?: string
+  /** 3D 部件补全节点：要补全的部件，省略 = 全部 */
+  meshCompletePartNames?: string[]
+  /** 3D 部件补全节点：补全模式（AI 补全 / 快速封口） */
+  meshCompleteMode?: 'ai_completion' | 'quick_cap'
+  /** 3D 部件补全节点：上游模型相对路径（Inspector 预览） */
+  meshCompleteModelRelativePath?: string
+  /** 3D 重拓扑节点：算法档位（v2.0 智能 / v1.0 基础减面） */
+  retopologyMode?: 'smart' | 'basic'
+  /** 3D 重拓扑节点：目标面数（留空 = 自适应） */
+  retopologyFaceLimit?: number
+  /** 3D 重拓扑节点：输出四边面 */
+  retopologyQuad?: boolean
+  /** 3D 重拓扑节点：把贴图烘焙到低模（v1.0 不支持） */
+  retopologyBake?: boolean
+  /** 3D 重拓扑节点：要重拓扑的部件（v1.0 不支持） */
+  retopologyPartNames?: string[]
+  /** 3D 重拓扑节点：结果模型相对路径（Inspector 预览） */
+  retopologyModelRelativePath?: string
+  /** 3D 重拓扑节点：最近一次任务 id */
+  retopologyTaskId?: string
+  /** 3D 绑骨检查节点：模型是否可绑骨 */
+  rigCheckRiggable?: boolean
+  /** 3D 绑骨检查节点：Tripo 推荐的骨架类型 */
+  rigCheckRigType?: string
+  /** 3D 绑骨检查节点：检查任务 id */
+  rigCheckTaskId?: string
+  /** 3D 绑骨检查节点：被检查模型相对路径（Inspector 预览） */
+  rigCheckModelRelativePath?: string
+  /** 3D 动画重定向节点：预设动画 id 列表（如 preset:walk） */
+  retargetAnimations?: string[]
+  /** 3D 动画重定向节点：动作库动画 id 列表（Meshy action_id；从动作库选择器挑） */
+  retargetActionIds?: number[]
+  /** 3D 动画重定向节点：输出格式 */
+  retargetOutFormat?: 'glb' | 'fbx'
+  /** 3D 动画重定向节点：把动画烘焙进模型（仅 glb 生效） */
+  retargetBakeAnimation?: boolean
+  /** 3D 动画重定向节点：带几何导出 */
+  retargetExportWithGeometry?: boolean
+  /** 3D 动画重定向节点：原地播放（不产生位移） */
+  retargetAnimateInPlace?: boolean
+  /** 3D 动画重定向节点：结果模型相对路径（Inspector 预览） */
+  retargetModelRelativePath?: string
+  /** 3D 动画重定向节点：最近一次任务 id */
+  retargetTaskId?: string
+  /** 3D 格式转换节点：目标格式 */
+  convertFormat?: 'GLTF' | 'FBX' | 'USDZ' | 'OBJ' | 'STL' | '3MF'
+  /** 3D 格式转换节点：输出四边面（会强制回 FBX） */
+  convertQuad?: boolean
+  /** 3D 格式转换节点：目标面数上限 */
+  convertFaceLimit?: number
+  /** 3D 格式转换节点：导出贴图尺寸 */
+  convertTextureSize?: number
+  /** 3D 格式转换节点：导出贴图格式 */
+  convertTextureFormat?: string
+  /** 3D 格式转换节点：FBX 兼容预设 */
+  convertFbxPreset?: string
+  /** 3D 格式转换节点：pivot 移到模型底部中心 */
+  convertPivotToCenterBottom?: boolean
+  /** 3D 格式转换节点：统一打包 UV */
+  convertPackUv?: boolean
+  /** 3D 格式转换节点：烘焙材质到基础贴图 */
+  convertBake?: boolean
+  /** 3D 格式转换节点：保留骨骼与动画 */
+  convertWithAnimation?: boolean
+  /** 3D 格式转换节点：导出部件子集（留空 = 整模） */
+  convertPartNames?: string[]
+  /** 3D 格式转换节点：结果模型相对路径（Inspector 预览） */
+  convertModelRelativePath?: string
+  /** 3D 格式转换节点：最近一次任务 id */
+  convertTaskId?: string
+  /** 3D 贴图节点：文生贴图提示词（与卡片指令框同源） */
+  texturePromptText?: string
+  /** 3D 贴图节点：贴图模型版本 */
+  textureVersion?: string
+  /** 3D 贴图节点：精度档位（fast / standard / detailed / extreme） */
+  textureQuality?: string
+  /** 3D 贴图节点：对齐优先项 */
+  textureAlignment?: string
+  /** 3D 贴图节点：生成 PBR 材质 */
+  texturePbr?: boolean
+  /**
+   * 3D 贴图节点：是否去掉参考图里的烘焙光照。
+   * 未设置 = 用上游默认（Tripo delight 默认开、Meshy remove_lighting 默认不动）。
+   */
+  textureDelight?: boolean
+  /** 3D 贴图节点：随机种子（留空随机） */
+  textureSeed?: number
+  /** 3D 贴图节点：只贴这些部件（留空 = 全部） */
+  texturePartNames?: string[]
+  /** 3D 贴图节点：结果模型相对路径（Inspector 预览） */
+  textureModelRelativePath?: string
+  /** 3D 贴图节点：最近一次任务 id */
+  textureTaskId?: string
   /**
    * 3D 关键帧动画节点：最近一次 Cook 写入的 clip（action + fps + 帧范围 + 关键帧表）。
    * 输出端口同时带在 GraphAssetValue.clip 上，供导演台按帧驱动。

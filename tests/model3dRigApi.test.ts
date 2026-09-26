@@ -50,7 +50,7 @@ describe('cloud model3d Rigging API', () => {
     expect(mapCloudRigType('quadruped')).toBe('quadruped')
   })
 
-  it('submits Meshy /openapi/v1/rigging and encodes meshy:: task id', async () => {
+  it('submits Meshy /openapi/v1/rigging and encodes the poll token', async () => {
     postMock.mockResolvedValueOnce({ data: { result: 'rig-task-1' } })
     const job = await submitCloudModel3dRig(provider('meshy'), {
       modelUrl: 'https://cdn.example/model.glb',
@@ -60,7 +60,7 @@ describe('cloud model3d Rigging API', () => {
     expect(postMock.mock.calls[0]?.[1]).toMatchObject({
       model_url: 'https://cdn.example/model.glb'
     })
-    expect(job.pollingUrl).toBe('meshy::rig-task-1')
+    expect(job.pollingUrl).toBe('meshy-rig::rig-task-1')
   })
 
   it('polls Meshy rigging for rigged_character_glb_url', async () => {
@@ -82,7 +82,7 @@ describe('cloud model3d Rigging API', () => {
     })
   })
 
-  it('submits Tripo /v3/animations/rig and encodes tripo:: task id', async () => {
+  it('submits Tripo /v3/animations/rig and encodes the poll token', async () => {
     postMock.mockResolvedValueOnce({ data: { data: { task_id: 't-rig' } } })
     const job = await submitCloudModel3dRig(provider('tripo'), {
       modelUrl: 'https://cdn.example/model.glb',
@@ -95,7 +95,31 @@ describe('cloud model3d Rigging API', () => {
       spec: 'mixamo',
       out_format: 'glb'
     })
-    expect(job.pollingUrl).toBe('tripo::t-rig')
+    expect(job.pollingUrl).toBe('tripo-rig::t-rig')
+  })
+
+  it('honours Tripo spec / out_format and falls back on unknown values', async () => {
+    postMock.mockResolvedValueOnce({ data: { data: { task_id: 't-rig-fbx' } } })
+    await submitCloudModel3dRig(provider('tripo'), {
+      modelUrl: 'https://cdn.example/model.glb',
+      rigType: 'quadruped',
+      spec: 'tripo',
+      outFormat: 'fbx'
+    })
+    expect(postMock.mock.calls[0]?.[1]).toMatchObject({
+      rig_type: 'quadruped',
+      spec: 'tripo',
+      out_format: 'fbx'
+    })
+
+    postMock.mockResolvedValueOnce({ data: { data: { task_id: 't-rig-bad' } } })
+    await submitCloudModel3dRig(provider('tripo'), {
+      modelUrl: 'https://cdn.example/model.glb',
+      rigType: 'humanoid',
+      spec: 'nonsense' as never,
+      outFormat: 'obj' as never
+    })
+    expect(postMock.mock.calls[1]?.[1]).toMatchObject({ spec: 'mixamo', out_format: 'glb' })
   })
 
   it('polls Tripo rig task for model url', async () => {

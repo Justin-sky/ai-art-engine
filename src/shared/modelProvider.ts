@@ -1,5 +1,7 @@
 /** Model provider + catalog types shared by main/renderer */
 
+import { meshOpsProvidersFor } from './meshOps'
+
 export const OPENROUTER_DEFAULT_BASE_URL = 'https://openrouter.ai/api/v1'
 /** OpenAI 官方 API（文本 / 图片） */
 export const OPENAI_DEFAULT_BASE_URL = 'https://api.openai.com/v1'
@@ -953,8 +955,9 @@ export interface GenerateVideoJob {
 /**
  * 支持独立骨骼蒙皮（Rigging API）的供应商：Meshy / Tripo。
  * `model.rigSkin` 节点与 MCP 校验共用；生成节点不再内联蒙皮。
+ * 值由 `@shared/meshOps` 的能力矩阵派生，避免门禁散落多处。
  */
-export const MODEL3D_RIG_PROVIDER_KINDS: readonly ModelProviderKind[] = ['meshy', 'tripo']
+export const MODEL3D_RIG_PROVIDER_KINDS: readonly ModelProviderKind[] = meshOpsProvidersFor('rig')
 
 /** 该供应商 kind 是否支持对已有模型做独立骨骼蒙皮 */
 export function supportsModel3dRig(kind: string): boolean {
@@ -1006,6 +1009,13 @@ export interface RigModel3dInput {
   model?: string
   /** humanoid / quadruped / … → 上游映射 */
   rigType?: string
+  /**
+   * Tripo 骨架命名规范：`mixamo`（默认，兼容 Mixamo 动作库）或 `tripo`（原生命名）。
+   * Meshy 无此参数，忽略。
+   */
+  spec?: 'tripo' | 'mixamo'
+  /** Tripo 输出格式：`glb`（默认，网页可直接预览）或 `fbx`（DCC / 游戏引擎）。Meshy 固定 glb */
+  outFormat?: 'glb' | 'fbx'
   name?: string
   outputDir?: string
   graphBinding?: GenerateGraphBinding
@@ -1026,7 +1036,234 @@ export interface GenerateModel3dResult {
   }>
 }
 
-export type RigModel3dResult = GenerateModel3dResult
+export type RigModel3dResult = GenerateModel3dResult & {
+  /** 上游任务 id（Tripo `/v3/animations/rig` 的 task_id）；下游重定向要用它 */
+  taskId?: string
+}
+
+/**
+ * 支持「模型拆分 / 拆件」（Mesh Segmentation API）的供应商：仅 Tripo。
+ * `/v3/mesh/segment`（网格分割）与 `/v3/mesh/smartsegment`（智能分割）都只有 Tripo 提供。
+ */
+export const MODEL3D_SEGMENT_PROVIDER_KINDS: readonly ModelProviderKind[] =
+  meshOpsProvidersFor('segment')
+
+/** 该供应商 kind 是否支持对已有模型做拆分 */
+export function supportsModel3dSegment(kind: string): boolean {
+  return (MODEL3D_SEGMENT_PROVIDER_KINDS as readonly string[]).includes(kind)
+}
+
+/**
+ * 支持 Tripo 网格后处理 / 骨骼动画系列端点的供应商：仅 Tripo。
+ * 覆盖 `/v3/mesh/complete`、`/v3/mesh/decimate`、`/v3/animations/rig-check`、`/v3/animations/retarget`。
+ */
+/**
+ * 「支持至少一个后处理 op」的供应商（能力概览，值由能力矩阵派生）。
+ *
+ * ⚠️ 不要用它做门禁：各家覆盖的 op 不同（如 Meshy 有重拓扑 / 贴图，但没有部件补全 /
+ * 格式转换 / 动画重定向），逐 op 判定请用 `@shared/meshOps` 的 `meshOpSupported(kind, op)`。
+ */
+export const MODEL3D_POST_PROCESS_PROVIDER_KINDS: readonly ModelProviderKind[] =
+  meshOpsProvidersFor('meshComplete', 'retopology', 'rigCheck', 'retarget', 'convert', 'texture')
+
+export function supportsModel3dPostProcess(kind: string): boolean {
+  return (MODEL3D_POST_PROCESS_PROVIDER_KINDS as readonly string[]).includes(kind)
+}
+
+/** Tripo 后处理任务类型 */
+export type Model3dPostProcessOp =
+  'meshComplete' | 'retopology' | 'rigCheck' | 'retarget' | 'convert' | 'texture'
+
+/** 部件补全模式：AI 补全（默认）或快速封口 */
+export type Model3dCompletionMode = 'ai_completion' | 'quick_cap'
+/** 重拓扑算法档位：`smart`=v2.0 智能（默认），`basic`=v1.0 基础减面 */
+export type Model3dRetopologyMode = 'smart' | 'basic'
+/** 重定向输出格式 */
+export type Model3dRetargetFormat = 'glb' | 'fbx'
+/** 格式转换目标格式（quad 会强制回 FBX） */
+export type Model3dConvertFormat = 'GLTF' | 'FBX' | 'USDZ' | 'OBJ' | 'STL' | '3MF'
+/** 导出贴图格式 */
+export type Model3dTextureFormat =
+  'JPEG' | 'PNG' | 'WEBP' | 'BMP' | 'DPX' | 'HDR' | 'OPEN_EXR' | 'TARGA' | 'TIFF'
+/** FBX 兼容预设 */
+export type Model3dFbxPreset = 'blender' | '3dsmax' | 'mixamo' | 'bake_scale'
+/** 导出朝向（前向轴） */
+export type Model3dExportOrientation = '+x' | '-x' | '+y' | '-y'
+/** 贴图精度档位（`fast` 仅在贴图模型 v3.5-20260815 上可用） */
+export type Model3dTextureQuality = 'fast' | 'standard' | 'detailed' | 'extreme'
+/** 贴图对齐优先项 */
+export type Model3dTextureAlignment = 'original_image' | 'geometry'
+
+/** 重定向的可选动画：预设字符串（Tripo）与动作库 id（Meshy）两套体系 */
+export interface Model3dAnimationAction {
+  /** 传给上游的标识：Meshy 是 action_id，Tripo 是 preset:xxx */
+  id: string
+  label: string
+  category?: string
+  subCategory?: string
+  previewUrl?: string
+}
+
+export interface ListModel3dAnimationsInput {
+  providerInstanceId?: string
+  /** 按 name / key 子串过滤（Meshy 服务端支持） */
+  search?: string
+}
+
+/**
+ * Tripo 网格后处理 / 骨骼动画（`/v3/mesh/complete`、`/v3/mesh/decimate`、
+ * `/v3/animations/rig-check`、`/v3/animations/retarget`）。
+ *
+ * `providerTaskId` 优先：`meshComplete` 只吃 `mesh/segment` 的任务 id，
+ * `retarget` 只吃 rig 任务 id；没有 id 时退回「上传模型换公网 URL」。
+ */
+export interface Model3dPostProcessInput {
+  op: Model3dPostProcessOp
+  /** 上游任务 id（拆分 / 绑骨节点的 providerTaskId） */
+  providerTaskId?: string
+  /** 公网可访问的模型 URL（与 modelRelativePath 二选一，优先 url） */
+  modelUrl?: string
+  /** 工程内相对路径；facade 会上传对象存储得到公网 URL */
+  modelRelativePath?: string
+  providerInstanceId?: string
+  model?: string
+  /** meshComplete：要补全的部件，省略 = 全部 */
+  partNames?: string[]
+  /** meshComplete：补全模式，缺省 ai_completion */
+  completionMode?: Model3dCompletionMode
+  /** retopology：算法档位，缺省 smart（v2.0） */
+  retopologyMode?: Model3dRetopologyMode
+  /** retopology：目标面数 */
+  faceLimit?: number
+  /** retopology：输出四边面 */
+  quad?: boolean
+  /** retopology：把贴图烘焙到低模（默认 true，v1.0 不支持） */
+  bake?: boolean
+  /** retarget：单个预设动画 id（与 animations 互斥） */
+  animation?: string
+  /** retarget：多个预设动画 id（与 animation 互斥） */
+  animations?: string[]
+  /** retarget：动作库动画 id（Meshy action_id；与预设动画 id 是两套体系） */
+  actionIds?: number[]
+  /** retarget：输出格式，缺省 glb */
+  outFormat?: Model3dRetargetFormat
+  /** retarget：把动画烘焙进模型（仅 glb 生效，默认 true） */
+  bakeAnimation?: boolean
+  /** retarget：是否带几何导出（默认 true） */
+  exportWithGeometry?: boolean
+  /** retarget：原地播放（不产生位移，默认 false） */
+  animateInPlace?: boolean
+  /** convert：目标格式（必填） */
+  format?: Model3dConvertFormat
+  /** convert：输出贴图尺寸（默认 4096） */
+  textureSize?: number
+  /** convert：贴图图片格式（默认 JPEG） */
+  textureFormat?: Model3dTextureFormat
+  /** convert：FBX 兼容预设（默认 blender） */
+  fbxPreset?: Model3dFbxPreset
+  /** convert：把 pivot 移到模型底部中心 */
+  pivotToCenterBottom?: boolean
+  /** convert：统一打包 UV */
+  packUv?: boolean
+  /** convert：导出顶点色（仅 OBJ / GLTF） */
+  exportVertexColors?: boolean
+  /** convert：导出朝向（前向轴） */
+  exportOrientation?: Model3dExportOrientation
+  /** convert：压平底部（打印件常用） */
+  flattenBottom?: boolean
+  /** convert：压平深度阈值（默认 0.01） */
+  flattenBottomThreshold?: number
+  /** convert：强制对称（仅 quad 时有效） */
+  forceSymmetry?: boolean
+  /** convert：导出缩放系数 */
+  scaleFactor?: number
+  /** convert：保留骨骼与动画数据 */
+  withAnimation?: boolean
+  /** texture：贴图模型版本（默认 v3.0-20250812；`fast` 需 v3.5-20260815） */
+  textureVersion?: string
+  /** texture：文生贴图提示词 */
+  texturePromptText?: string
+  /** texture：生成 PBR 材质（默认 true） */
+  pbr?: boolean
+  /** texture：贴图随机种子 */
+  textureSeed?: number
+  /** texture：贴图对齐优先项（默认 original_image） */
+  textureAlignment?: Model3dTextureAlignment
+  /** texture：贴图精度档位（默认 standard） */
+  textureQuality?: Model3dTextureQuality
+  /** texture：去掉参考图里的烘焙光照（仅 v3.5-20260815 生效） */
+  delight?: boolean
+  /** texture / 生成：meshopt 几何压缩 */
+  compress?: string
+  name?: string
+  outputDir?: string
+  graphBinding?: GenerateGraphBinding
+}
+
+/** 后处理结果：绑骨检查只回分析结论，其余回模型资产 */
+export type Model3dPostProcessResult =
+  | {
+      op: 'rigCheck'
+      /** 绑骨检查任务 id */
+      taskId: string
+      /** 该模型是否可绑骨 */
+      riggable: boolean
+      /** Tripo 推荐的骨架类型 */
+      rigType: string
+    }
+  | {
+      op: 'meshComplete' | 'retopology' | 'retarget' | 'convert' | 'texture'
+      /** 上游任务 id（下游继续链式调用时用） */
+      taskId: string
+      assetId: string
+      relativePath: string
+      model: string
+    }
+
+/** 拆分模式：`mesh`=网格分割（几何 / 语义），`smart`=智能分割（语义命名 + mask） */
+export type Model3dSegmentMode = 'mesh' | 'smart'
+/** 网格分割粒度（`/v3/mesh/segment` v2 模型专用） */
+export type Model3dSegmentGranularity = 'simple' | 'balanced' | 'detailed'
+/** 智能分割粒度（`/v3/mesh/smartsegment`；与网格分割不是同一套枚举） */
+export type Model3dSmartSegmentGranularity = 'coarse' | 'medium' | 'fine'
+
+/** 对已有模型做拆分（Tripo Mesh Segmentation API） */
+export interface SegmentModel3dInput {
+  /** 公网可访问的模型 URL（与 modelRelativePath 二选一，优先 url） */
+  modelUrl?: string
+  /** 工程内相对路径；facade 会上传对象存储得到公网 URL */
+  modelRelativePath?: string
+  providerInstanceId?: string
+  model?: string
+  /** 拆分模式，缺省 mesh */
+  mode?: Model3dSegmentMode
+  /** 网格分割粒度；传入即用 v2.0-20260430（语义 + 几何） */
+  granularity?: Model3dSegmentGranularity
+  /** 网格分割 v2：是否按连通域拆分（默认 true） */
+  splitByConnectivity?: boolean
+  /** 智能分割粒度，缺省 medium */
+  smartGranularity?: Model3dSmartSegmentGranularity
+  /** 智能分割：点名要拆哪些部件（如「带剑与盔甲的游戏角色」） */
+  hint?: string
+  name?: string
+  outputDir?: string
+  graphBinding?: GenerateGraphBinding
+}
+
+/**
+ * 拆件结果：模型资产 + 部件名。
+ * 部件名不在 API 响应里，等于拆分后 GLB 各 node 名，由主进程解析落盘文件得到。
+ */
+export interface SegmentModel3dResult extends GenerateModel3dResult {
+  mode: Model3dSegmentMode
+  parts: string[]
+  /** 拆分任务 id（智能分割取其中的 `mesh_segmentation` 子任务 id）；部件补全要用它 */
+  taskId?: string
+  /** 智能分割：部件 mask 图 URL */
+  maskUrl?: string
+  /** 智能分割：Tripo 识别出的部件描述 */
+  description?: string
+}
 
 export interface GenerateModel3dJob {
   jobId: string

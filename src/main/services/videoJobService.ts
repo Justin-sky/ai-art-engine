@@ -88,6 +88,17 @@ function pollTransientMaxFor(kind: VideoJobKind | 'model3d' | 'video'): number {
   return kind === 'model3d' ? POLL_TRANSIENT_MAX_MODEL3D : POLL_TRANSIENT_MAX
 }
 
+/**
+ * 3D 产物落盘文件名：按下载直链后缀推断真实格式。
+ * 上游可能返回 FBX（如 Tripo 绑骨 / 重定向传 `out_format: fbx`），
+ * 一律存成 `.glb` 会让资产库与预览按 GLB 解析失败；拿不到后缀时仍按 GLB。
+ */
+export function resolveModel3dDownloadName(downloadUrl: string): string {
+  const path = (downloadUrl ?? '').split(/[?#]/)[0] ?? ''
+  const hit = /\.(glb|gltf|fbx|obj|stl|usdz)$/i.exec(path)
+  return `output.${hit?.[1]?.toLowerCase() ?? 'glb'}`
+}
+
 /** 瞬时失败退避：前 2 次 5s，3-5 次 15s，之后 30s */
 function pollRetryDelayMs(count: number): number {
   if (count <= 2) return POLL_INTERVAL_MS
@@ -374,7 +385,7 @@ class VideoJobService {
       job.localJobId
     )
     if (!existsSync(tmpDir)) mkdirSync(tmpDir, { recursive: true })
-    const dest = join(tmpDir, isModel3d ? 'output.glb' : 'output.mp4')
+    const dest = join(tmpDir, isModel3d ? resolveModel3dDownloadName(downloadUrl) : 'output.mp4')
     // 下载重试：vendor 刚完成时 CDN 偶发 5xx / 超时，一次失败不应判死整条任务
     let downloadErr: unknown
     for (let attempt = 1; attempt <= DOWNLOAD_MAX_ATTEMPTS; attempt++) {

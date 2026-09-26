@@ -1784,6 +1784,22 @@ const {
     }
     return value
   },
+  segmentModel3d: async (input) => {
+    const value = await window.studio.segmentModel3d(input)
+    if (value.relativePath === 'Assets' || value.relativePath.startsWith('Assets/')) {
+      await project.refreshAssets()
+    }
+    return value
+  },
+  postProcessModel3d: async (input) => {
+    const value = await window.studio.postProcessModel3d(input)
+    if (value.op !== 'rigCheck') {
+      if (value.relativePath === 'Assets' || value.relativePath.startsWith('Assets/')) {
+        await project.refreshAssets()
+      }
+    }
+    return value
+  },
   resolveAssetGenParams: (assetId) => {
     const live = graphEditorHosts.getLiveAssetDocument(assetId)
     const base = isDraftAssetId(assetId)
@@ -3426,7 +3442,20 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
   },
   {
     id: 'model3d',
-    typeIds: ['asset.model3d', 'asset.motion', 'model.pose', 'model.rigSkin', 'model.animation']
+    typeIds: [
+      'asset.model3d',
+      'asset.motion',
+      'model.pose',
+      'model.rigSkin',
+      'model.segment',
+      'model.meshComplete',
+      'model.retopology',
+      'model.rigCheck',
+      'model.retarget',
+      'model.convert',
+      'model.texture',
+      'model.animation'
+    ]
   },
   {
     id: 'comic',

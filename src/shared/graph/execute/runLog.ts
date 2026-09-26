@@ -48,6 +48,8 @@ export interface GraphRunLogApiCall {
     | 'generateMusic'
     | 'generateModel3d'
     | 'rigModel3d'
+    | 'segmentModel3d'
+    | 'postProcessModel3d'
     | 'blenderMcp'
   nodeId: string
   /** 节点 params.skillId；无则省略 */

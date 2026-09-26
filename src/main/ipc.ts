@@ -381,6 +381,32 @@ export function registerIpcHandlers(): void {
       return result
     }
   )
+  handle(
+    IpcChannels.SEGMENT_MODEL3D,
+    async (input: import('@shared/modelProvider').SegmentModel3dInput) => {
+      const result = await modelProviderFacade.segmentModel3d(input)
+      const asset = projectService.listAssets().find((item) => item.id === result.assetId)
+      if (asset) broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
+      return result
+    }
+  )
+  handle(
+    IpcChannels.POST_PROCESS_MODEL3D,
+    async (input: import('@shared/modelProvider').Model3dPostProcessInput) => {
+      const result = await modelProviderFacade.postProcessModel3d(input)
+      // 绑骨检查无产物，不广播资产更新
+      if (result.op !== 'rigCheck') {
+        const asset = projectService.listAssets().find((item) => item.id === result.assetId)
+        if (asset) broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
+      }
+      return result
+    }
+  )
+  handle(
+    IpcChannels.LIST_MODEL3D_ANIMATIONS,
+    (input: import('@shared/modelProvider').ListModel3dAnimationsInput) =>
+      modelProviderFacade.listModel3dAnimations(input)
+  )
   handle(IpcChannels.VIDEO_JOB_LIST, () => videoJobService.list())
   handle(IpcChannels.VIDEO_JOB_GET, (localJobId: string) => videoJobService.get(localJobId))
   handle(IpcChannels.VIDEO_JOB_CANCEL, (localJobId: string) => videoJobService.cancel(localJobId))

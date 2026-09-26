@@ -17,6 +17,7 @@ import type { ModelProviderAdapter, VideoPollResult } from '../types'
 import { PROVIDER_ERRORS } from '../catalog'
 import { fail, defErr, defErrSimple } from '@shared/errors/appError'
 import { createProviderHttpClient, readHttpError } from '../http'
+import { tripoMeshOps } from './meshOps'
 
 const E_TRIPO_NO_TEXT = defErrSimple(
   'provider.tripo.unsupportedText',
@@ -83,9 +84,11 @@ function mapTaskStatus(raw: string | undefined): VideoPollResult['status'] {
 
 /**
  * Tripo 3D 模型生成（仅几何）。骨骼蒙皮请用 `model.rigSkin` → `/v3/animations/rig`。
+ * 网格加工（拆分 / 补全 / 重拓扑 / 绑骨检查 / 重定向 / 转换 / 贴图）的协议在 `./meshOps`。
  */
 export const tripoAdapter: ModelProviderAdapter = {
   kind: 'tripo',
+  meshOps: tripoMeshOps,
 
   async assertAuth(provider) {
     const client = createTripoClient(provider)

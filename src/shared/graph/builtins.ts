@@ -92,6 +92,13 @@ import {
   executeGamePlayAssetNode,
   executeModelPoseNode,
   executeModelRigSkinNode,
+  executeModelSegmentNode,
+  executeModelMeshCompleteNode,
+  executeModelRetopologyNode,
+  executeModelRigCheckNode,
+  executeModelRetargetNode,
+  executeModelConvertNode,
+  executeModelTextureNode,
   executeModelAnimationNode
 } from './execute'
 import {
@@ -2538,6 +2545,323 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     assetType: 'model',
     contributeToGeneration: false,
     execute: executeModelRigSkinNode
+  },
+  {
+    typeId: 'model.segment',
+    category: 'note',
+    label: '3D 模型拆分',
+    icon: '🧩',
+    defaultTitle: '3D 模型拆分',
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      {
+        id: 'in-model',
+        direction: 'in',
+        dataType: GraphPortType.model,
+        multiple: false,
+        label: 'Model'
+      },
+      {
+        id: 'in-text',
+        direction: 'in',
+        dataType: GraphPortType.text,
+        multiple: true,
+        label: 'Text'
+      },
+      ...galleryOutPorts(GraphPortType.model, {
+        out: 'graph.port.partsModel',
+        outAll: 'graph.port.partsModelAll'
+      })
+    ],
+    defaultParams: () => ({
+      segmentMode: 'mesh',
+      // 空粒度 = v1 几何拓扑（稳定）；选具体粒度才升级到 v2 Beta 语义分割
+      segmentGranularity: '',
+      segmentSplitByConnectivity: true,
+      segmentSmartGranularity: 'medium',
+      segmentHint: '',
+      generateModel: '',
+      generateProviderInstanceId: ''
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.modelSegment',
+    card: 'media',
+    assetType: 'model',
+    contributeToGeneration: false,
+    execute: executeModelSegmentNode
+  },
+  {
+    typeId: 'model.meshComplete',
+    category: 'note',
+    label: '3D 部件补全',
+    icon: '🩹',
+    defaultTitle: '3D 部件补全',
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      {
+        id: 'in-model',
+        direction: 'in',
+        dataType: GraphPortType.model,
+        multiple: false,
+        label: 'Model'
+      },
+      {
+        id: 'in-text',
+        direction: 'in',
+        dataType: GraphPortType.text,
+        multiple: true,
+        label: 'Text'
+      },
+      ...galleryOutPorts(GraphPortType.model, {
+        out: 'graph.port.completedMesh',
+        outAll: 'graph.port.completedMeshAll'
+      })
+    ],
+    defaultParams: () => ({
+      meshCompleteMode: 'ai_completion',
+      meshCompletePartNames: [],
+      generateModel: '',
+      generateProviderInstanceId: ''
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.modelMeshComplete',
+    card: 'media',
+    assetType: 'model',
+    contributeToGeneration: false,
+    execute: executeModelMeshCompleteNode
+  },
+  {
+    typeId: 'model.retopology',
+    category: 'note',
+    label: '3D 重拓扑',
+    icon: '🔻',
+    defaultTitle: '3D 重拓扑',
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      {
+        id: 'in-model',
+        direction: 'in',
+        dataType: GraphPortType.model,
+        multiple: false,
+        label: 'Model'
+      },
+      {
+        id: 'in-text',
+        direction: 'in',
+        dataType: GraphPortType.text,
+        multiple: true,
+        label: 'Text'
+      },
+      ...galleryOutPorts(GraphPortType.model, {
+        out: 'graph.port.lowPolyMesh',
+        outAll: 'graph.port.lowPolyMeshAll'
+      })
+    ],
+    defaultParams: () => ({
+      retopologyMode: 'smart',
+      retopologyQuad: false,
+      retopologyBake: true,
+      retopologyPartNames: [],
+      generateModel: '',
+      generateProviderInstanceId: ''
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.modelRetopology',
+    card: 'media',
+    assetType: 'model',
+    contributeToGeneration: false,
+    execute: executeModelRetopologyNode
+  },
+  {
+    typeId: 'model.rigCheck',
+    category: 'note',
+    label: '3D 绑骨检查',
+    icon: '🩺',
+    defaultTitle: '3D 绑骨检查',
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      {
+        id: 'in-model',
+        direction: 'in',
+        dataType: GraphPortType.model,
+        multiple: false,
+        label: 'Model'
+      },
+      {
+        id: 'out',
+        direction: 'out',
+        dataType: GraphPortType.model,
+        multiple: false,
+        label: 'Selected',
+        labelKey: 'graph.port.rigCheckedMesh'
+      }
+    ],
+    defaultParams: () => ({
+      generateModel: '',
+      generateProviderInstanceId: ''
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.modelRigCheck',
+    card: 'media',
+    assetType: 'model',
+    contributeToGeneration: false,
+    execute: executeModelRigCheckNode
+  },
+  {
+    typeId: 'model.retarget',
+    category: 'note',
+    label: '3D 动画重定向',
+    icon: '🏃',
+    defaultTitle: '3D 动画重定向',
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      {
+        id: 'in-model',
+        direction: 'in',
+        dataType: GraphPortType.model,
+        multiple: false,
+        label: 'Model',
+        labelKey: 'graph.port.skinnedMesh'
+      },
+      {
+        id: 'in-text',
+        direction: 'in',
+        dataType: GraphPortType.text,
+        multiple: true,
+        label: 'Text'
+      },
+      ...galleryOutPorts(GraphPortType.model, {
+        out: 'graph.port.animatedMesh',
+        outAll: 'graph.port.animatedMeshAll'
+      })
+    ],
+    defaultParams: () => ({
+      retargetAnimations: [],
+      retargetOutFormat: 'glb',
+      retargetBakeAnimation: true,
+      retargetExportWithGeometry: true,
+      retargetAnimateInPlace: false,
+      generateModel: '',
+      generateProviderInstanceId: ''
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.modelRetarget',
+    card: 'media',
+    assetType: 'model',
+    contributeToGeneration: false,
+    execute: executeModelRetargetNode
+  },
+  {
+    typeId: 'model.convert',
+    category: 'note',
+    label: '3D 格式转换',
+    icon: '🔁',
+    defaultTitle: '3D 格式转换',
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      {
+        id: 'in-model',
+        direction: 'in',
+        dataType: GraphPortType.model,
+        multiple: false,
+        label: 'Model'
+      },
+      {
+        id: 'in-text',
+        direction: 'in',
+        dataType: GraphPortType.text,
+        multiple: true,
+        label: 'Text'
+      },
+      ...galleryOutPorts(GraphPortType.model, {
+        out: 'graph.port.convertedMesh',
+        outAll: 'graph.port.convertedMeshAll'
+      })
+    ],
+    defaultParams: () => ({
+      convertFormat: 'FBX',
+      convertQuad: false,
+      convertTextureSize: 4096,
+      convertTextureFormat: 'JPEG',
+      convertFbxPreset: 'blender',
+      convertPivotToCenterBottom: false,
+      convertPackUv: false,
+      convertBake: true,
+      convertWithAnimation: true,
+      convertPartNames: [],
+      generateModel: '',
+      generateProviderInstanceId: ''
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.modelConvert',
+    card: 'media',
+    assetType: 'model',
+    contributeToGeneration: false,
+    execute: executeModelConvertNode
+  },
+  {
+    typeId: 'model.texture',
+    category: 'note',
+    label: '3D 贴图',
+    icon: '🎨',
+    defaultTitle: '3D 贴图',
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      {
+        id: 'in-model',
+        direction: 'in',
+        dataType: GraphPortType.model,
+        multiple: false,
+        label: 'Model'
+      },
+      {
+        id: 'in-text',
+        direction: 'in',
+        dataType: GraphPortType.text,
+        multiple: true,
+        label: 'Text'
+      },
+      ...galleryOutPorts(GraphPortType.model, {
+        out: 'graph.port.texturedMesh',
+        outAll: 'graph.port.texturedMeshAll'
+      })
+    ],
+    defaultParams: () => ({
+      textureVersion: 'v3.0-20250812',
+      textureQuality: 'standard',
+      textureAlignment: 'original_image',
+      texturePbr: true,
+      texturePartNames: [],
+      generateModel: '',
+      generateProviderInstanceId: ''
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.modelTexture',
+    card: 'media',
+    assetType: 'model',
+    contributeToGeneration: false,
+    execute: executeModelTextureNode
   },
   {
     typeId: 'model.animation',

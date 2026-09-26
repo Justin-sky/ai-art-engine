@@ -23,6 +23,13 @@ export type InstructionPresetKind =
   | 'model3d'
   | 'modelPose'
   | 'modelRigSkin'
+  | 'modelSegment'
+  | 'modelMeshComplete'
+  | 'modelRetopology'
+  | 'modelRigCheck'
+  | 'modelRetarget'
+  | 'modelConvert'
+  | 'modelTexture'
   | 'modelAnimation'
   | 'mediaReview'
   | 'mediaRework'
@@ -1660,6 +1667,135 @@ const MODEL_POSE_PRESETS: InstructionPreset[] = [
 ]
 
 /**
+ * 3D 模型拆分（智能分割）常用点名提示：写入 generateInstruction → `hint`，
+ * 告诉上游「想拆出哪些部件」。网格分割不使用该框。
+ */
+const MODEL_SEGMENT_PRESETS: InstructionPreset[] = [
+  {
+    id: 'gameCharacter',
+    titleKey: 'graph.inspector.generate.presets.modelSegment.gameCharacter',
+    body: '带武器与护甲的游戏角色，把武器、护甲与身体各部位拆成独立部件'
+  },
+  {
+    id: 'mechanical',
+    titleKey: 'graph.inspector.generate.presets.modelSegment.mechanical',
+    body: '机械载具：车体、车轮、炮塔、舱盖分别拆开'
+  },
+  {
+    id: 'furniture',
+    titleKey: 'graph.inspector.generate.presets.modelSegment.furniture',
+    body: '家具：桌面、抽屉、柜门、支腿分别拆开'
+  },
+  {
+    id: 'architecture',
+    titleKey: 'graph.inspector.generate.presets.modelSegment.architecture',
+    body: '建筑构件：屋顶、墙体、门窗、台阶分别拆开'
+  },
+  {
+    id: 'cartoonPerson',
+    titleKey: 'graph.inspector.generate.presets.modelSegment.cartoonPerson',
+    body: '卡通角色：头、躯干、双臂、双腿、头发分别拆开'
+  },
+  {
+    id: 'creature',
+    titleKey: 'graph.inspector.generate.presets.modelSegment.creature',
+    body: '生物：头部、躯干、四肢、尾巴、翅膀分别拆开'
+  }
+]
+
+/**
+ * 3D 动画重定向预设动作组合：写入 generateInstruction → `animations`。
+ * 仅预设型供应商（Tripo `preset:xxx`）适用；动作库型（Meshy `action_id`）
+ * 在卡片上会隐藏预设按钮，改用 Inspector 里的动作库选择器。
+ */
+const MODEL_RETARGET_PRESETS: InstructionPreset[] = [
+  {
+    id: 'walk',
+    titleKey: 'graph.inspector.generate.presets.modelRetarget.walk',
+    body: 'preset:walk'
+  },
+  {
+    id: 'idleWalkRun',
+    titleKey: 'graph.inspector.generate.presets.modelRetarget.idleWalkRun',
+    body: 'preset:idle, preset:walk, preset:run'
+  },
+  {
+    id: 'locomotionCombat',
+    titleKey: 'graph.inspector.generate.presets.modelRetarget.locomotionCombat',
+    body: 'preset:walk, preset:run, preset:slash, preset:shoot'
+  },
+  {
+    id: 'hurtFall',
+    titleKey: 'graph.inspector.generate.presets.modelRetarget.hurtFall',
+    body: 'preset:hurt, preset:fall'
+  },
+  {
+    id: 'turnJump',
+    titleKey: 'graph.inspector.generate.presets.modelRetarget.turnJump',
+    body: 'preset:turn, preset:jump'
+  },
+  {
+    id: 'dance',
+    titleKey: 'graph.inspector.generate.presets.modelRetarget.dance',
+    body: 'preset:dance_01'
+  }
+]
+
+/** 3D 贴图常用材质模板：写入 generateInstruction → `texturePromptText`（文生贴图） */
+const MODEL_TEXTURE_PRESETS: InstructionPreset[] = [
+  {
+    id: 'wornLeather',
+    titleKey: 'graph.inspector.generate.presets.modelTexture.wornLeather',
+    body: '磨损皮革：表面有细密龟裂纹，边缘泛白起毛，缝线处略油亮，整体哑光。'
+  },
+  {
+    id: 'brushedMetal',
+    titleKey: 'graph.inspector.generate.presets.modelTexture.brushedMetal',
+    body: '拉丝金属：细密单向拉丝纹理，倒角处高光，表面有轻微指纹与油渍，冷色反射。'
+  },
+  {
+    id: 'agedWood',
+    titleKey: 'graph.inspector.generate.presets.modelTexture.agedWood',
+    body: '做旧木纹：年轮清晰，表面有划痕与磕碰缺口，边角磨损露底色，哑光清漆。'
+  },
+  {
+    id: 'ceramic',
+    titleKey: 'graph.inspector.generate.presets.modelTexture.ceramic',
+    body: '陶瓷釉面：釉层光滑带细微开片，边缘有积釉，高光柔和，色彩均匀。'
+  },
+  {
+    id: 'fabric',
+    titleKey: 'graph.inspector.generate.presets.modelTexture.fabric',
+    body: '织物：经纬编织纹理可见，带细微绒毛与自然褶皱，颜色深浅略有变化，完全哑光。'
+  },
+  {
+    id: 'cartoonFlat',
+    titleKey: 'graph.inspector.generate.presets.modelTexture.cartoonFlat',
+    body: '卡通平涂：大块纯色，无写实纹理与噪点，色块边缘干净，轻微手绘描边。'
+  },
+  {
+    id: 'cyberpunk',
+    titleKey: 'graph.inspector.generate.presets.modelTexture.cyberpunk',
+    body: '赛博朋克：深色基底 + 霓虹紫青高光，面板接缝发光，表面有磨损与贴纸残迹。'
+  },
+  {
+    id: 'stone',
+    titleKey: 'graph.inspector.generate.presets.modelTexture.stone',
+    body: '石材：颗粒感明显，天然色斑与细裂纹，边缘风化圆钝，哑光吸光。'
+  },
+  {
+    id: 'wetSurface',
+    titleKey: 'graph.inspector.generate.presets.modelTexture.wetSurface',
+    body: '湿润表面：整体覆盖薄水膜，边缘挂水珠，反射增强，暗部压深。'
+  },
+  {
+    id: 'glass',
+    titleKey: 'graph.inspector.generate.presets.modelTexture.glass',
+    body: '玻璃：高透光，厚度处偏绿，表面有细微划痕与灰尘，高光锐利。'
+  }
+]
+
+/**
  * 3D 骨骼蒙皮常用预设：写入 generateInstruction，并与骨架类型选择对齐（云端 Rigging API）。
  */
 const MODEL_RIG_SKIN_PRESETS: InstructionPreset[] = [
@@ -1794,6 +1930,15 @@ const PRESET_PACKS: Record<InstructionPresetKind, InstructionPreset[]> = {
   model3d: [],
   modelPose: MODEL_POSE_PRESETS,
   modelRigSkin: MODEL_RIG_SKIN_PRESETS,
+  // 拆分节点的指令框是智能分割的部件点名提示
+  modelSegment: MODEL_SEGMENT_PRESETS,
+  // 部件补全 / 重拓扑 / 转换的指令框写「上游部件名」（从部件选择器点选更准），绑骨检查无输入
+  modelMeshComplete: [],
+  modelRetopology: [],
+  modelRigCheck: [],
+  modelConvert: [],
+  modelRetarget: MODEL_RETARGET_PRESETS,
+  modelTexture: MODEL_TEXTURE_PRESETS,
   modelAnimation: MODEL_ANIMATION_PRESETS,
   mediaReview: [],
   mediaRework: []

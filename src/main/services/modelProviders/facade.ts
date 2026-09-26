@@ -22,15 +22,28 @@ import type {
   GenerateVideoInput,
   GenerateVideoJob,
   GenerateVideoResult,
+  Model3dSegmentMode,
+  Model3dPostProcessInput,
+  Model3dPostProcessResult,
+  ListModel3dAnimationsInput,
+  Model3dAnimationAction,
   ModelModality,
   ModelProviderInstance,
   ModelProviderKind,
   RigModel3dInput,
   RigModel3dResult,
+  SegmentModel3dInput,
+  SegmentModel3dResult,
   TranscribeAudioInput,
   TranscribeAudioResult
 } from '@shared/modelProvider'
-import { allowsEmptyApiKey, findProviderById, supportsModel3dRig } from '@shared/modelProvider'
+import {
+  allowsEmptyApiKey,
+  findProviderById,
+  supportsModel3dRig,
+  supportsModel3dSegment
+} from '@shared/modelProvider'
+import { meshOpSupported } from '@shared/meshOps'
 import { createProviderHttpClient, sleep } from './http'
 import { PROVIDER_ERRORS } from './catalog'
 import { fail, defErrSimple, isAppError } from '@shared/errors/appError'
@@ -48,6 +61,21 @@ import { projectService } from '../projectService'
 import { videoJobService } from '../videoJobService'
 import { resolveMediaOutputDir } from '@shared/domain'
 import { pollCloudModel3dRig, submitCloudModel3dRig } from './model3dRig'
+import {
+  fetchCloudModel3dSegmentExtras,
+  pollCloudModel3dSegment,
+  submitCloudModel3dSegment
+} from './model3dSegment'
+import { readGlbPartNames } from './glbParts'
+import { parseMeshOpsJobToken } from './meshOpsJob'
+import { meshOpsDialectFor, requireMeshOpsDialect } from './meshOpsDialect'
+import type { MeshOpsDialect } from './types'
+import {
+  pollCloudModel3dPostProcess,
+  pollCloudRigCheck,
+  submitCloudModel3dPostProcess,
+  submitCloudRigCheck
+} from './model3dPostProcess'
 import {
   findVoiceProfile,
   normalizeVoiceProfiles,
@@ -73,6 +101,8 @@ const E_MODEL3D_GEN_FAILED = defErrSimple(
   '3D 模型生成失败',
   '3D model generation failed'
 )
+/** 绑骨检查（免费、无产物）就地轮询上限 */
+const RIG_CHECK_TIMEOUT_MS = 180_000
 const E_BAD_IMAGE_DATA_URL = defErrSimple(
   'provider.common.badDataUrl',
   '无法解析图片 data URL',
@@ -408,8 +438,14 @@ class ModelProviderFacade {
     job: { jobId: string; pollingUrl: string }
   ): Promise<import('./types').VideoPollResult> {
     const token = job.pollingUrl || ''
-    if (token.startsWith('meshy::') || token.startsWith('tripo::')) {
-      return pollCloudModel3dRig(provider, job)
+    // 网格加工任务按 token 里的 op 分发（新旧 token 格式都由 parseMeshOpsJobToken 归一）
+    const meshOp = parseMeshOpsJobToken(token)
+    if (meshOp) {
+      if (meshOp.op === 'rig') return pollCloudModel3dRig(provider, job)
+      if (meshOp.op === 'segment' || meshOp.op === 'smartSegment') {
+        return pollCloudModel3dSegment(provider, job)
+      }
+      return pollCloudModel3dPostProcess(provider, job)
     }
     return getProviderAdapter(provider.providerKind).pollModel3d(provider, job)
   }
@@ -448,7 +484,9 @@ class ModelProviderFacade {
 
       const job = await submitCloudModel3dRig(provider, {
         modelUrl,
-        rigType: rigInput.rigType
+        rigType: rigInput.rigType,
+        spec: rigInput.spec,
+        outFormat: rigInput.outFormat
       })
 
       const persisted = videoJobService.create({
@@ -481,7 +519,230 @@ class ModelProviderFacade {
       return {
         assetId: settled.assetId,
         relativePath: settled.relativePath,
+        model: settled.model,
+        // 下游重定向要用 rig 任务 id（Tripo /v3/animations/retarget 只吃 task_id）
+        taskId: job.jobId
+      }
+    } catch (err) {
+      if (uploads.length) await deleteUploads(uploads)
+      throw err
+    }
+  }
+
+  /**
+   * 拉取 3D 重定向的可选动画列表（Meshy 动作库；Tripo 用固定 preset 字符串，返回空）。
+   */
+  async listModel3dAnimations(
+    input: ListModel3dAnimationsInput
+  ): Promise<Model3dAnimationAction[]> {
+    const { provider } = resolveActiveProvider('model3d', input.providerInstanceId)
+    const dialect = meshOpsDialectFor(provider.providerKind)
+    if (!dialect?.listAnimations) return []
+    return dialect.listAnimations(provider, { search: input.search })
+  }
+
+  /**
+   * 需要上游 task_id 或公网 URL 的后处理：解析输入源。
+   *
+   * 上游带来的 task id 可能是**别家**的（Tripo 拆分 → 选 Meshy 的贴图节点），
+   * 是否可直接用由方言的 `acceptsTaskId` 判定；不认就退回「上传模型换公网 URL」。
+   */
+  async #resolvePostProcessSource(
+    input: Model3dPostProcessInput,
+    dialect: MeshOpsDialect
+  ): Promise<{ source: string; uploads: ObjectStorageUploadResult[] }> {
+    const taskId = input.providerTaskId?.trim()
+    if (taskId && dialect.acceptsTaskId(taskId)) return { source: taskId, uploads: [] }
+    const url = input.modelUrl?.trim()
+    if (url) return { source: url, uploads: [] }
+    const rel = input.modelRelativePath?.trim()
+    if (!rel) return { source: '', uploads: [] }
+    const { url: remote, uploaded } = await ensureRemoteMediaUrl(rel, {
+      sourceLabel: `model3d-${input.op}`,
+      projectRoot: projectService.getRoot()
+    })
+    return { source: remote, uploads: uploaded ? [uploaded] : [] }
+  }
+
+  /**
+   * Tripo 网格后处理 / 骨骼动画：部件补全、重拓扑、绑骨检查、动画重定向。
+   * 前两者与重定向走 videoJobService 落盘登记；绑骨检查无产物，就地轮询返回分析结论。
+   */
+  async postProcessModel3d(input: Model3dPostProcessInput): Promise<Model3dPostProcessResult> {
+    const { graphBinding, ...rest } = input
+    if (!projectService.isOpen()) throw fail(E_NO_PROJECT)
+
+    const { provider, modelId } = resolveActiveProvider(
+      'model3d',
+      rest.providerInstanceId,
+      rest.model
+    )
+    // 按 op 逐个校验能力（Meshy 已支持重拓扑 / 贴图，但不支持补全 / 转换 / 重定向）
+    if (!meshOpSupported(provider.providerKind, rest.op)) {
+      throw new Error('GRAPH_MODEL_POST_PROVIDER')
+    }
+    const dialect = requireMeshOpsDialect(provider.providerKind)
+
+    if (rest.op === 'rigCheck') {
+      const { source } = await this.#resolvePostProcessSource(rest, dialect)
+      if (!source) throw new Error('GRAPH_MODEL_POST_NO_MODEL')
+      const taskId = await submitCloudRigCheck(provider, {
+        providerTaskId: rest.providerTaskId,
+        modelUrl: dialect.acceptsTaskId(source) ? undefined : source
+      })
+      const deadline = Date.now() + RIG_CHECK_TIMEOUT_MS
+      for (;;) {
+        const poll = await pollCloudRigCheck(provider, taskId)
+        if (poll.status === 'completed') {
+          return {
+            op: 'rigCheck',
+            taskId,
+            riggable: poll.riggable === true,
+            rigType: poll.rigType ?? ''
+          }
+        }
+        if (poll.status === 'failed') {
+          throw new Error(poll.error ?? fail(E_MODEL3D_GEN_FAILED).message)
+        }
+        if (Date.now() > deadline) throw new Error('GRAPH_MODEL_POST_TIMEOUT')
+        await sleep(2000)
+      }
+    }
+
+    let uploads: ObjectStorageUploadResult[] = []
+    try {
+      const { source, uploads: uploaded } = await this.#resolvePostProcessSource(rest, dialect)
+      uploads = uploaded
+      const op = rest.op
+      const job = await submitCloudModel3dPostProcess(provider, {
+        ...rest,
+        op,
+        ...(dialect.acceptsTaskId(source)
+          ? { providerTaskId: source, modelUrl: undefined }
+          : { providerTaskId: undefined, modelUrl: source })
+      })
+
+      const persisted = videoJobService.create({
+        kind: 'model3d',
+        providerJobId: job.jobId,
+        pollingUrl: job.pollingUrl,
+        providerInstanceId: provider.id,
+        model: modelId || job.model,
+        prompt: `post:${op}`,
+        name: rest.name,
+        source: 'graph',
+        outputDir: rest.outputDir,
+        graphBinding,
+        uploads: uploads.map((item) => ({
+          objectKey: item.objectKey,
+          url: item.url,
+          bytes: item.bytes,
+          bucket: item.bucket,
+          providerId: item.providerId,
+          providerLabel: item.providerLabel,
+          sourceLabel: item.sourceLabel
+        }))
+      })
+      uploads = []
+
+      const settled = await videoJobService.waitUntilSettled(persisted.localJobId)
+      if (settled.status !== 'succeeded' || !settled.assetId || !settled.relativePath) {
+        throw new Error(settled.error ?? fail(E_MODEL3D_GEN_FAILED).message)
+      }
+      return {
+        op,
+        taskId: job.jobId,
+        assetId: settled.assetId,
+        relativePath: settled.relativePath,
         model: settled.model
+      }
+    } catch (err) {
+      if (uploads.length) await deleteUploads(uploads)
+      throw err
+    }
+  }
+
+  /**
+   * 对已有 GLB 做拆分（Tripo 网格分割 / 智能分割）。
+   * 本地路径会先上传对象存储得到公网 URL；结果按拆分后 GLB 的 node 名解析出部件列表。
+   */
+  async segmentModel3d(input: SegmentModel3dInput): Promise<SegmentModel3dResult> {
+    const { graphBinding, ...segInput } = input
+    if (!projectService.isOpen()) throw fail(E_NO_PROJECT)
+
+    const { provider, modelId } = resolveActiveProvider(
+      'model3d',
+      segInput.providerInstanceId,
+      segInput.model
+    )
+    if (!supportsModel3dSegment(provider.providerKind)) {
+      throw new Error('GRAPH_MODEL_SEG_PROVIDER')
+    }
+
+    let uploads: ObjectStorageUploadResult[] = []
+    try {
+      let modelUrl = segInput.modelUrl?.trim() || ''
+      if (!modelUrl) {
+        const rel = segInput.modelRelativePath?.trim()
+        if (!rel) throw new Error('GRAPH_MODEL_SEG_NO_MODEL')
+        const root = projectService.getRoot()
+        const { url, uploaded } = await ensureRemoteMediaUrl(rel, {
+          sourceLabel: 'model3d-segment-source',
+          projectRoot: root
+        })
+        modelUrl = url
+        if (uploaded) uploads.push(uploaded)
+      }
+
+      const mode: Model3dSegmentMode = segInput.mode === 'smart' ? 'smart' : 'mesh'
+      const job = await submitCloudModel3dSegment(provider, {
+        modelUrl,
+        mode,
+        granularity: segInput.granularity,
+        splitByConnectivity: segInput.splitByConnectivity,
+        smartGranularity: segInput.smartGranularity,
+        hint: segInput.hint
+      })
+
+      const persisted = videoJobService.create({
+        kind: 'model3d',
+        providerJobId: job.jobId,
+        pollingUrl: job.pollingUrl,
+        providerInstanceId: provider.id,
+        model: modelId || job.model,
+        prompt: `segment:${mode}`,
+        name: segInput.name,
+        source: 'graph',
+        outputDir: segInput.outputDir,
+        graphBinding,
+        uploads: uploads.map((item) => ({
+          objectKey: item.objectKey,
+          url: item.url,
+          bytes: item.bytes,
+          bucket: item.bucket,
+          providerId: item.providerId,
+          providerLabel: item.providerLabel,
+          sourceLabel: item.sourceLabel
+        }))
+      })
+      uploads = []
+
+      const settled = await videoJobService.waitUntilSettled(persisted.localJobId)
+      if (settled.status !== 'succeeded' || !settled.assetId || !settled.relativePath) {
+        throw new Error(settled.error ?? fail(E_MODEL3D_GEN_FAILED).message)
+      }
+
+      const parts = readGlbPartNames(join(projectService.getRoot(), settled.relativePath))
+      const extras = await fetchCloudModel3dSegmentExtras(provider, job)
+      return {
+        assetId: settled.assetId,
+        relativePath: settled.relativePath,
+        model: settled.model,
+        mode,
+        parts,
+        // 部件补全只吃 mesh/segment 的任务 id：智能分割取其中的子任务 id
+        taskId: extras.segTaskId ?? job.jobId,
+        ...extras
       }
     } catch (err) {
       if (uploads.length) await deleteUploads(uploads)

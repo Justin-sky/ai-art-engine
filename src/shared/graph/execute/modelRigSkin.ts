@@ -51,6 +51,15 @@ function resolveRigType(ctx: NodeExecuteContext): string {
   return inferRigTypeFromLegacyInstruction(ctx.node.params.generateInstruction ?? '') || 'humanoid'
 }
 
+/** Tripo 骨架命名规范 / 输出格式（仅 Tripo 生效；缺省 mixamo + glb） */
+function resolveRigSpec(ctx: NodeExecuteContext): 'tripo' | 'mixamo' {
+  return ctx.node.params.generateRigSpec === 'tripo' ? 'tripo' : 'mixamo'
+}
+
+function resolveRigOutFormat(ctx: NodeExecuteContext): 'glb' | 'fbx' {
+  return ctx.node.params.generateRigOutFormat === 'fbx' ? 'fbx' : 'glb'
+}
+
 /**
  * 旧节点可能仍绑着 Blender dsh 文本模型（如 deepseek-flash）。
  * 云端 Rig 只认 Meshy/Tripo：无效选型交给 facade 的 resolveActiveProvider 默认。
@@ -77,6 +86,8 @@ export async function executeModelRigSkinNode(
   if (!ctx.rigModel3d) throw new Error(blenderDshError('rig', 'DSH'))
 
   const rigType = resolveRigType(ctx)
+  const rigSpec = resolveRigSpec(ctx)
+  const rigOutFormat = resolveRigOutFormat(ctx)
   const selection = sanitizeCloudRigSelection(ctx)
 
   // 一进 Cook 就清掉旧 Blender QA / skill，避免失败时 Inspector 仍显示过期 QA
@@ -93,6 +104,8 @@ export async function executeModelRigSkinNode(
     providerInstanceId: selection.providerInstanceId,
     model: selection.model,
     rigType,
+    spec: rigSpec,
+    outFormat: rigOutFormat,
     name: ctx.node.title,
     graphBinding: {
       nodeId: ctx.node.id,
@@ -115,6 +128,10 @@ export async function executeModelRigSkinNode(
     generateModel: selection.model ?? '',
     generateProviderInstanceId: selection.providerInstanceId ?? '',
     rigModelRelativePath: result.relativePath,
+    // 动画重定向只吃 rig 任务 id
+    rigTaskId: result.taskId ?? '',
+    generateRigSpec: rigSpec,
+    generateRigOutFormat: rigOutFormat,
     // 云端 Rig 无 Blender QA
     rigQa: undefined
   }
@@ -126,19 +143,28 @@ export async function executeModelRigSkinNode(
       generateModel: selection.model ?? '',
       generateProviderInstanceId: selection.providerInstanceId ?? '',
       rigModelRelativePath: result.relativePath,
+      rigTaskId: result.taskId ?? '',
+      generateRigSpec: rigSpec,
+      generateRigOutFormat: rigOutFormat,
       rigQa: undefined
     }
   })
 
-  return modelJobOutputs(ctx, model, result.relativePath, {
-    ok: true,
-    kind: 'rig',
-    rigMeta: {
-      armature: 'Armature',
-      bones: [],
-      vertexGroups: []
-    }
-  })
+  return modelJobOutputs(
+    ctx,
+    model,
+    result.relativePath,
+    {
+      ok: true,
+      kind: 'rig',
+      rigMeta: {
+        armature: 'Armature',
+        bones: [],
+        vertexGroups: []
+      }
+    },
+    { providerTaskId: result.taskId }
+  )
 }
 
 /** 供测试 / UI：当前节点所选供应商是否支持独立蒙皮 */

@@ -2695,6 +2695,8 @@ export default {
       submitSpeech: '提交语音生成…',
       submitModel3d: '提交 3D 模型生成…',
       submitRig: '提交 3D 绑骨…',
+      submitSegment: '提交 3D 拆件…',
+      submitPostProcess: '提交 3D 网格后处理…',
       videoProgress: '视频生成 {progress}% · {status}',
       model3dProgress: '3D 模型生成 {progress}% · {status}',
       sessionStatus: {
@@ -3648,6 +3650,19 @@ export default {
       gif: 'GIF',
       skinnedMesh: '蒙皮网格',
       skinnedMeshAll: '全部蒙皮网格',
+      partsModel: '拆件模型',
+      partsModelAll: '全部拆件模型',
+      completedMesh: '补全后模型',
+      completedMeshAll: '全部补全后模型',
+      lowPolyMesh: '低模',
+      lowPolyMeshAll: '全部低模',
+      rigCheckedMesh: '已检查模型',
+      animatedMesh: '带动画模型',
+      animatedMeshAll: '全部带动画模型',
+      convertedMesh: '转换后模型',
+      convertedMeshAll: '全部转换后模型',
+      texturedMesh: '贴图后模型',
+      texturedMeshAll: '全部贴图后模型',
       pose: '姿势',
       poseAll: '全部姿势',
       animation: '动画',
@@ -3740,6 +3755,15 @@ export default {
       modelRigExport: 'Blender 未导出蒙皮 GLB',
       modelRigDsh: '无法调用云端骨骼蒙皮（Rigging API 未接入）',
       modelRigProvider: '当前 3D 提供商不支持独立蒙皮，请选用 Meshy 或 Tripo',
+      modelSegNoModel: '请先连接上游 3D 模型',
+      modelSegApi: '无法调用云端模型拆分（Segmentation API 未接入）',
+      modelSegProvider: '当前 3D 提供商不支持模型拆分，请选用 Tripo',
+      modelSegFailed: '3D 模型拆分未完成',
+      modelPostNoModel: '请先连接上游 3D 模型',
+      modelPostApi: '无法调用云端网格后处理（Post-process API 未接入）',
+      modelPostProvider: '当前 3D 提供商不支持网格后处理，请选用 Tripo',
+      modelPostTimeout: '绑骨检查超时，请稍后重试',
+      modelPostResult: '网格后处理返回了非预期的结果类型',
       modelAnimNoModel: '请先连接上游 3D 模型',
       modelAnimNoArmature: '上游模型没有 armature；请先经过「3D 骨骼蒙皮」节点',
       modelAnimNoTextModel: '请先在节点上选择文本模型',
@@ -3793,6 +3817,13 @@ export default {
       model: {
         pose: '3D姿势',
         rigSkin: '3D 骨骼蒙皮',
+        segment: '3D 模型拆分',
+        meshComplete: '3D 部件补全',
+        retopology: '3D 重拓扑',
+        rigCheck: '3D 绑骨检查',
+        retarget: '3D 动画重定向',
+        convert: '3D 格式转换',
+        texture: '3D 贴图',
         animation: '3D 动画'
       },
       play: {
@@ -4075,7 +4106,7 @@ export default {
         modelEmpty: '请先在设置中启用并勾选文本模型'
       },
       modelRigSkin: {
-        hint: '连接上游 3D 模型，选择 Meshy 或 Tripo，Cook 后上传模型并调用云端 Rigging API 绑定骨骼，导出带蒙皮的 GLB。需配置对应 API Key 与对象存储（用于上传模型）。',
+        hint: '连接上游 3D 模型，选择 Meshy 或 Tripo，Cook 后上传模型并调用云端 Rigging API 绑定骨骼，导出带蒙皮的 GLB（Tripo 可选 FBX 与 Mixamo/Tripo 骨架命名）。需配置对应 API Key 与对象存储（用于上传模型）。',
         tabsAria: '3D 骨骼蒙皮页签',
         tabs: {
           preview: '模型',
@@ -4106,6 +4137,135 @@ export default {
         qaScreenshots: 'QA 截图',
         qaScreenshotMissing: '截图已失效（任务清理后未保留）',
         qaScreenshotDelete: '删除此截图'
+      },
+      modelSegment: {
+        hint: '连接上游 3D 模型，选择 Tripo，Cook 后上传模型并调用云端拆分 API 把模型拆成部件。网格分割按几何拓扑拆（给粒度时升级到 v2 语义分割），智能分割按语义命名部件并返回 mask 与部件描述。需配置 Tripo API Key 与对象存储（用于上传模型）。',
+        mode: '拆分模式',
+        partsTitle: '部件列表 · 共 {n} 个',
+        partsEmpty: '运行节点后在此查看拆分出的部件；部件名等于拆分后 GLB 的节点名',
+        partsHint: '部件名可直接用于下游按部件操作（补全 / 重拓扑 / 贴图 / 导出）',
+        description: 'Tripo 识别到的部件',
+        mask: '部件 mask 图',
+        maskHint: '智能分割会额外返回每个部件的 mask 叠加图',
+        previewEmpty: '请先连接上游 3D 模型'
+      },
+      meshOpParts: {
+        title: '上游拆分出的部件',
+        hint: '点选要处理的部件；留空即全部。选择会同步到卡片指令框，手改也一样生效',
+        empty: '上游没有部件信息：先把「3D 模型拆分」节点 Cook 一次',
+        selected: '已选 {n} 个'
+      },
+      modelMeshComplete: {
+        hint: '连接「3D 模型拆分」节点后 Cook：调用 Tripo 部件补全（POST /v3/mesh/complete）修补拆件后的破洞与缺失区域。该端点只认 mesh/segment 任务 id，所以必须从拆件节点接入。',
+        mode: '补全模式',
+        modes: {
+          ai: 'AI 补全',
+          quickCap: '快速封口'
+        },
+        parts: '补全部件',
+        partsHint: '留空 = 全部部件；在卡片指令框里按逗号或换行填写部件名',
+        needTask: '未拿到上游拆件任务 id：请把「3D 模型拆分」节点接在本节点上游',
+        previewEmpty: '请先连接上游 3D 模型'
+      },
+      modelRetopology: {
+        hint: '连接上游 3D 模型后 Cook：调用 Tripo 重拓扑（POST /v3/mesh/decimate）减面。智能档（v2.0）保留干净拓扑并支持按部件处理，基础档（v1.0）只做快速减面。',
+        mode: '算法档位',
+        modes: {
+          smart: '智能（v2.0）',
+          basic: '基础减面（v1.0）'
+        },
+        faceLimit: '目标面数',
+        faceLimitHint: '留空 = 自适应',
+        quad: '输出四边面',
+        bake: '烘焙贴图到低模',
+        parts: '处理部件',
+        partsHint: '基础减面档不支持按部件',
+        providerNote:
+          '当前供应商走 remesh：不支持算法档位与烘焙贴图，按 topology（三角/四边面）与目标面数处理。',
+        previewEmpty: '请先连接上游 3D 模型'
+      },
+      modelRigCheck: {
+        hint: '连接上游 3D 模型后 Cook：调用 Tripo 绑骨检查（POST /v3/animations/rig-check，免费）判断模型能否绑骨并给出推荐骨架类型，再把模型原样透传给下游。',
+        resultTitle: '检查结果',
+        riggable: '可绑骨',
+        notRiggable: '不建议绑骨',
+        rigType: '推荐骨架类型',
+        resultEmpty: '运行节点后显示检查结论',
+        taskId: '检查任务 id',
+        previewEmpty: '请先连接上游 3D 模型'
+      },
+      modelRetarget: {
+        hint: '连接「3D 骨骼蒙皮」节点后 Cook：调用 Tripo 动画重定向（POST /v3/animations/retarget）把预设动画套到绑好骨的模型上。该端点只认 rig 任务 id，所以必须从蒙皮节点接入。',
+        animations: '预设动画',
+        animationsHint: '在卡片指令框里按逗号或换行填写，如 preset:walk, preset:idle',
+        libraryTitle: '动作库',
+        libraryLoad: '加载动作库',
+        libraryLoading: '加载中…',
+        librarySearchPlaceholder: '搜索动作（如 walk）',
+        libraryEmpty: '未找到动作',
+        librarySelected: '已选 {n} 个',
+        libraryToggleHint: '点击动作切换选中；选多个会导出成一条包含多段动画的文件',
+        providerNote:
+          '当前供应商走 Meshy animations：动画从动作库选 action_id（预设 id preset:xxx 对它无效），且上游必须是 Meshy 的绑骨任务。',
+        outFormat: '输出格式',
+        bakeAnimation: '把动画烘焙进模型',
+        exportWithGeometry: '带几何导出',
+        animateInPlace: '原地播放',
+        needTask: '未拿到上游 rig 任务 id：请把「3D 骨骼蒙皮」节点接在本节点上游',
+        previewEmpty: '请先连接上游 3D 模型'
+      },
+      modelConvert: {
+        hint: '连接上游 3D 模型后 Cook：调用 Tripo 格式转换（POST /v3/models/convert）导出 GLTF / FBX / USDZ / OBJ / STL / 3MF，可顺带减面、烘焙贴图、四边面与 FBX 预设。基础转换 5 积分；传入四边面 / 面数 / 贴图尺寸 / 贴图格式 / pivot / 缩放等任一非默认参数即为高级档 10 积分。',
+        format: '目标格式',
+        fbxPreset: 'FBX 预设',
+        fbxPresets: {
+          blender: 'Blender',
+          '3dsmax': '3ds Max',
+          mixamo: 'Mixamo',
+          bake_scale: '烘焙缩放'
+        },
+        faceLimit: '面数上限',
+        faceLimitHint: '留空 = 保持原面数',
+        textureSize: '贴图尺寸',
+        textureFormat: '贴图格式',
+        quad: '输出四边面（强制 FBX）',
+        pivotToCenterBottom: 'pivot 移到模型底部中心',
+        packUv: '统一打包 UV',
+        bake: '烘焙材质到基础贴图',
+        withAnimation: '保留骨骼与动画',
+        parts: '导出部件',
+        partsHint: '留空 = 整模；在卡片指令框里按逗号或换行填写部件名',
+        providerNote:
+          '当前供应商的格式转换只支持目标格式：FBX 预设 / 面数 / 贴图尺寸与格式 / pivot / UV 等参数不可用。',
+        previewEmpty: '请先连接上游 3D 模型'
+      },
+      modelTexture: {
+        hint: '连接上游 3D 模型后 Cook：调用 Tripo 贴图（POST /v3/models/texture）重绘 / 重生成贴图。给提示词即文生贴图，留空则按原参考图重绘；精度 fast 只在贴图模型 v3.5-20260815 上可用。',
+        version: '贴图模型版本',
+        quality: '精度档位',
+        qualities: {
+          fast: '快速',
+          standard: '标准',
+          detailed: '精细',
+          extreme: '极致 8K'
+        },
+        alignment: '对齐优先',
+        alignments: {
+          original_image: '贴合原图配色',
+          geometry: '贴合生成几何'
+        },
+        seed: '随机种子',
+        seedHint: '留空随机',
+        pbr: '生成 PBR 材质',
+        delight: '烘焙光照处理',
+        delightDefault: '默认（Tripo 去光照 / Meshy 保留）',
+        delightRemove: '去掉参考图光照',
+        delightKeep: '保留参考图光照',
+        parts: '贴图部件',
+        partsHint: '留空 = 全部部件',
+        providerNote:
+          '当前供应商走 retexture：不支持贴图模型版本与随机种子，精度档位会换算为 2k / 4k / 8k 分辨率。',
+        previewEmpty: '请先连接上游 3D 模型'
       },
       modelAnimation: {
         hint: '连接上游已蒙皮模型，点选常用动作或填写描述后运行。Cook 经 dsh 指挥 Blender 做关键帧并导出带 AnimationClip 的 GLB。需要启动 Blender 并启用 Blender MCP。',
@@ -4376,9 +4536,37 @@ export default {
           bipedal: '双足',
           creature: '通用'
         },
+        model3dRigSpecHint: '骨架命名（仅 Tripo）',
+        model3dRigSpecs: {
+          mixamo: 'Mixamo 命名',
+          tripo: 'Tripo 命名'
+        },
+        model3dRigOutFormatHint: '绑骨输出格式（仅 Tripo）',
+        model3dRigOutFormats: {
+          glb: 'GLB',
+          fbx: 'FBX'
+        },
         model3dRigAnimation: '绑定动画',
         model3dRigAnimationNone: '不绑定',
         model3dRigAnimationPlaceholder: '动画名（可选）',
+        model3dSegmentMode: '拆分模式',
+        model3dSegmentModes: {
+          mesh: '网格分割',
+          smart: '智能分割'
+        },
+        model3dSegmentGranularity: '分割粒度（v2 语义）',
+        model3dSegmentGranularities: {
+          v1: 'v1 几何（默认）',
+          simple: '粗略',
+          balanced: '均衡',
+          detailed: '精细'
+        },
+        model3dSegmentSmartGranularity: '智能分割粒度',
+        model3dSegmentSmartGranularities: {
+          coarse: '粗',
+          medium: '中',
+          fine: '细'
+        },
         noModels: '暂无可用模型',
         systemPrompt: '系统提示词',
         systemPromptPlaceholder: '定义模型角色与输出规范；留空则使用内置默认',
@@ -4408,6 +4596,19 @@ export default {
           "描述角色静帧姿势（走路、挥手、叉腰…）或点 Inspector 常用姿势；可用 {'@'} 引用上游文本",
         modelRigSkinInstructionPlaceholder:
           '可选备注；骨架类型请用下方下拉或点预设（humanoid / quadruped…）',
+        modelSegmentInstructionPlaceholder:
+          '智能分割：点名想拆出的部件（如「带剑与盔甲的游戏角色」）；网格分割不使用此框',
+        modelMeshCompleteInstructionPlaceholder:
+          '要补全的部件名，逗号或换行分隔（如 head, torso）；留空 = 全部部件',
+        modelRetopologyInstructionPlaceholder:
+          '要重拓扑的部件名，逗号或换行分隔；留空 = 整个模型（基础减面档不支持按部件）',
+        modelRigCheckInstructionPlaceholder: '可不填：绑骨检查只读取上游模型与推荐骨架类型',
+        modelRetargetInstructionPlaceholder:
+          '预设动画 id，逗号或换行分隔（如 preset:walk, preset:idle）；多个即批量重定向',
+        modelConvertInstructionPlaceholder:
+          '要导出的部件名，逗号或换行分隔；留空 = 整个模型（配合拆分节点可只导某几个部件）',
+        modelTextureInstructionPlaceholder:
+          '文生贴图提示词（如「磨损皮革带划痕」）；留空则按参考图重绘贴图',
         modelAnimationInstructionPlaceholder:
           "游戏常用动画（待机 / 走路 / 跳跃 / 战斗戒备 / 命中受击 / 倒地 等）或自描述；可用 {'@'} 引用上游文本",
         refsEmpty: "连接上游后可用 {'@'} 引用；也可只在指令框中输入文本",
@@ -4419,6 +4620,8 @@ export default {
         presets: {
           open: '预设提示词',
           title: '生成指令模板',
+          empty:
+            '该节点没有指令模板：指令框是自由文本（部件名 / 提示词 / 动画 id 等），直接填写即可',
           visualChip: {
             genre: '题材',
             cast: '人物',
@@ -4437,6 +4640,9 @@ export default {
           titleModelPose: '3D姿势模板',
           titleModelRigSkin: '3D骨骼蒙皮模板',
           titleModelAnimation: '3D动画模板',
+          titleModelSegment: '拆分点名模板',
+          titleModelRetarget: '动画组合模板',
+          titleModelTexture: '贴图材质模板',
           tabGeneral: '通用',
           tabGame: '游戏',
           tabFilm: '影视',
@@ -4495,6 +4701,34 @@ export default {
             hitReact: '命中受击',
             death: '倒地死亡',
             celebrate: '胜利庆祝'
+          },
+          modelSegment: {
+            gameCharacter: '游戏角色（含武器护甲）',
+            mechanical: '机械载具分件',
+            furniture: '家具拆件',
+            architecture: '建筑构件拆件',
+            cartoonPerson: '卡通角色分肢',
+            creature: '生物分肢'
+          },
+          modelRetarget: {
+            walk: '单个走路',
+            idleWalkRun: '待机 + 走 + 跑',
+            locomotionCombat: '移动 + 攻击四连',
+            hurtFall: '受击 + 倒地',
+            turnJump: '转身 + 跳跃',
+            dance: '舞蹈'
+          },
+          modelTexture: {
+            wornLeather: '磨损皮革',
+            brushedMetal: '拉丝金属',
+            agedWood: '做旧木纹',
+            ceramic: '陶瓷釉面',
+            fabric: '织物',
+            cartoonFlat: '卡通平涂',
+            cyberpunk: '赛博朋克',
+            stone: '石材',
+            wetSurface: '湿润表面',
+            glass: '玻璃'
           },
           frameAnimFx: {
             smoke: '烟雾',

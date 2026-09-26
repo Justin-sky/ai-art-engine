@@ -70,7 +70,10 @@ describe('executeModelRigSkinNode', () => {
       modelRelativePath: 'Cache/Models/hero.glb',
       providerInstanceId: 'meshy-1',
       model: 'meshy-3d',
-      rigType: 'quadruped'
+      rigType: 'quadruped',
+      // 未配置时用 Tripo 的默认口径
+      spec: 'mixamo',
+      outFormat: 'glb'
     })
 
     const value = out.out
@@ -161,5 +164,50 @@ describe('executeModelRigSkinNode', () => {
       'Cache/Models/rig-2.glb'
     ])
     expect(ctx.node.params.rigModelRelativePath).toBe('Cache/Models/rig-2.glb')
+  })
+
+  it('forwards Tripo spec / out_format and persists them on the node', async () => {
+    const rigModel3d = vi.fn(async () => ({
+      assetId: 'model-1',
+      relativePath: 'Cache/Models/rigged.fbx',
+      model: 'tripo',
+      taskId: 'task_rig'
+    }))
+    const ctx = {
+      node: rigSkinNode({
+        generateRigType: 'humanoid',
+        generateRigSpec: 'tripo',
+        generateRigOutFormat: 'fbx'
+      }),
+      inputs: { 'in-model': [incomingModel] },
+      rigModel3d
+    } as unknown as NodeExecuteContext
+
+    await executeModelRigSkinNode(ctx)
+    expect(rigModel3d.mock.calls[0]![0]).toMatchObject({ spec: 'tripo', outFormat: 'fbx' })
+    expect(ctx.node.params.generateRigSpec).toBe('tripo')
+    expect(ctx.node.params.generateRigOutFormat).toBe('fbx')
+    // rig 任务 id 随输出值传下去（动画重定向只吃它）
+    expect(ctx.node.params.rigTaskId).toBe('task_rig')
+  })
+
+  it('normalises unknown spec / out_format back to the Tripo defaults', async () => {
+    const rigModel3d = vi.fn(async () => ({
+      assetId: 'model-1',
+      relativePath: 'Cache/Models/rig-3.glb',
+      model: 'tripo'
+    }))
+    const ctx = {
+      node: rigSkinNode({
+        generateRigType: 'humanoid',
+        generateRigSpec: 'nonsense' as never,
+        generateRigOutFormat: 'obj' as never
+      }),
+      inputs: { 'in-model': [incomingModel] },
+      rigModel3d
+    } as unknown as NodeExecuteContext
+
+    await executeModelRigSkinNode(ctx)
+    expect(rigModel3d.mock.calls[0]![0]).toMatchObject({ spec: 'mixamo', outFormat: 'glb' })
   })
 })

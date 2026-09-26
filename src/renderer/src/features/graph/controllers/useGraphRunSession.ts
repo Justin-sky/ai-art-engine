@@ -162,6 +162,8 @@ export interface GraphRunSessionOptions {
     model?: string
     providerInstanceId?: string
     rigType?: string
+    spec?: 'tripo' | 'mixamo'
+    outFormat?: 'glb' | 'fbx'
     name?: string
     outputDir?: string
     graphBinding?: {
@@ -172,6 +174,94 @@ export interface GraphRunSessionOptions {
       canvasField?: string
     }
   }) => Promise<{ assetId: string; relativePath: string; model: string }>
+  segmentModel3d?: (input: {
+    modelRelativePath?: string
+    modelUrl?: string
+    model?: string
+    providerInstanceId?: string
+    mode?: 'mesh' | 'smart'
+    granularity?: 'simple' | 'balanced' | 'detailed'
+    splitByConnectivity?: boolean
+    smartGranularity?: 'coarse' | 'medium' | 'fine'
+    hint?: string
+    name?: string
+    outputDir?: string
+    graphBinding?: {
+      hostId?: string
+      nodeId?: string
+      assetId?: string
+      shotId?: string
+      canvasField?: string
+    }
+  }) => Promise<{
+    assetId: string
+    relativePath: string
+    model: string
+    mode: 'mesh' | 'smart'
+    parts: string[]
+    maskUrl?: string
+    description?: string
+  }>
+  postProcessModel3d?: (input: {
+    op: 'meshComplete' | 'retopology' | 'rigCheck' | 'retarget' | 'convert' | 'texture'
+    providerTaskId?: string
+    modelUrl?: string
+    modelRelativePath?: string
+    providerInstanceId?: string
+    model?: string
+    partNames?: string[]
+    completionMode?: 'ai_completion' | 'quick_cap'
+    retopologyMode?: 'smart' | 'basic'
+    faceLimit?: number
+    quad?: boolean
+    bake?: boolean
+    animation?: string
+    animations?: string[]
+    actionIds?: number[]
+    outFormat?: 'glb' | 'fbx'
+    bakeAnimation?: boolean
+    exportWithGeometry?: boolean
+    animateInPlace?: boolean
+    format?: 'GLTF' | 'FBX' | 'USDZ' | 'OBJ' | 'STL' | '3MF'
+    textureSize?: number
+    textureFormat?: 'JPEG' | 'PNG' | 'WEBP' | 'BMP' | 'DPX' | 'HDR' | 'OPEN_EXR' | 'TARGA' | 'TIFF'
+    fbxPreset?: 'blender' | '3dsmax' | 'mixamo' | 'bake_scale'
+    pivotToCenterBottom?: boolean
+    packUv?: boolean
+    exportVertexColors?: boolean
+    exportOrientation?: '+x' | '-x' | '+y' | '-y'
+    flattenBottom?: boolean
+    flattenBottomThreshold?: number
+    forceSymmetry?: boolean
+    scaleFactor?: number
+    withAnimation?: boolean
+    textureVersion?: string
+    texturePromptText?: string
+    pbr?: boolean
+    textureSeed?: number
+    textureAlignment?: 'original_image' | 'geometry'
+    textureQuality?: 'fast' | 'standard' | 'detailed' | 'extreme'
+    delight?: boolean
+    compress?: string
+    name?: string
+    outputDir?: string
+    graphBinding?: {
+      hostId?: string
+      nodeId?: string
+      assetId?: string
+      shotId?: string
+      canvasField?: string
+    }
+  }) => Promise<
+    | { op: 'rigCheck'; taskId: string; riggable: boolean; rigType: string }
+    | {
+        op: 'meshComplete' | 'retopology' | 'retarget' | 'convert' | 'texture'
+        taskId: string
+        assetId: string
+        relativePath: string
+        model: string
+      }
+  >
   /** 当前界面语言（影响默认系统提示词等） */
   locale?: () => string
   /** 图宿主 id，用于执行日志关联 */
@@ -299,6 +389,15 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       GRAPH_MODEL_RIG_EXPORT: 'graph.run.modelRigExport',
       GRAPH_MODEL_RIG_DSH: 'graph.run.modelRigDsh',
       GRAPH_MODEL_RIG_PROVIDER: 'graph.run.modelRigProvider',
+      GRAPH_MODEL_SEG_NO_MODEL: 'graph.run.modelSegNoModel',
+      GRAPH_MODEL_SEG_API: 'graph.run.modelSegApi',
+      GRAPH_MODEL_SEG_PROVIDER: 'graph.run.modelSegProvider',
+      GRAPH_MODEL_SEG_FAILED: 'graph.run.modelSegFailed',
+      GRAPH_MODEL_POST_NO_MODEL: 'graph.run.modelPostNoModel',
+      GRAPH_MODEL_POST_API: 'graph.run.modelPostApi',
+      GRAPH_MODEL_POST_PROVIDER: 'graph.run.modelPostProvider',
+      GRAPH_MODEL_POST_TIMEOUT: 'graph.run.modelPostTimeout',
+      GRAPH_MODEL_POST_RESULT: 'graph.run.modelPostResult',
       GRAPH_MODEL_ANIM_NO_MODEL: 'graph.run.modelAnimNoModel',
       GRAPH_MODEL_ANIM_MCP: 'graph.run.modelAnimMcp',
       GRAPH_MODEL_ANIM_EXPORT: 'graph.run.modelAnimExport',
@@ -781,6 +880,8 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       model?: string
       providerInstanceId?: string
       rigType?: string
+      spec?: 'tripo' | 'mixamo'
+      outFormat?: 'glb' | 'fbx'
       name?: string
       outputDir?: string
       graphBinding?: {
@@ -796,6 +897,92 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       }
       activeLogBridge?.appendMessage(options.t('graph.logs.submitRig'))
       return withAbortSignal(rigModel3d(input), token, signal)
+    }
+  }
+
+  function wrapSegmentModel3d(token: number, signal: AbortSignal) {
+    const segmentModel3d = options.segmentModel3d
+    if (!segmentModel3d) return undefined
+    return async (input: {
+      modelRelativePath?: string
+      modelUrl?: string
+      model?: string
+      providerInstanceId?: string
+      mode?: 'mesh' | 'smart'
+      granularity?: 'simple' | 'balanced' | 'detailed'
+      splitByConnectivity?: boolean
+      smartGranularity?: 'coarse' | 'medium' | 'fine'
+      hint?: string
+      name?: string
+      outputDir?: string
+      graphBinding?: {
+        hostId?: string
+        nodeId?: string
+        assetId?: string
+        shotId?: string
+        canvasField?: string
+      }
+    }) => {
+      if (token !== runToken || signal.aborted) {
+        throw new DOMException('Aborted', 'AbortError')
+      }
+      activeLogBridge?.appendMessage(options.t('graph.logs.submitSegment'))
+      return withAbortSignal(segmentModel3d(input), token, signal)
+    }
+  }
+
+  function wrapPostProcessModel3d(token: number, signal: AbortSignal) {
+    const postProcessModel3d = options.postProcessModel3d
+    if (!postProcessModel3d) return undefined
+    return async (input: {
+      op: 'meshComplete' | 'retopology' | 'rigCheck' | 'retarget' | 'convert' | 'texture'
+      providerTaskId?: string
+      modelUrl?: string
+      modelRelativePath?: string
+      providerInstanceId?: string
+      model?: string
+      partNames?: string[]
+      completionMode?: 'ai_completion' | 'quick_cap'
+      retopologyMode?: 'smart' | 'basic'
+      faceLimit?: number
+      quad?: boolean
+      bake?: boolean
+      animation?: string
+      animations?: string[]
+      actionIds?: number[]
+      outFormat?: 'glb' | 'fbx'
+      bakeAnimation?: boolean
+      exportWithGeometry?: boolean
+      animateInPlace?: boolean
+      format?: 'GLTF' | 'FBX' | 'USDZ' | 'OBJ' | 'STL' | '3MF'
+      textureSize?: number
+      textureFormat?:
+        'JPEG' | 'PNG' | 'WEBP' | 'BMP' | 'DPX' | 'HDR' | 'OPEN_EXR' | 'TARGA' | 'TIFF'
+      fbxPreset?: 'blender' | '3dsmax' | 'mixamo' | 'bake_scale'
+      pivotToCenterBottom?: boolean
+      packUv?: boolean
+      withAnimation?: boolean
+      textureVersion?: string
+      texturePromptText?: string
+      pbr?: boolean
+      textureSeed?: number
+      textureAlignment?: 'original_image' | 'geometry'
+      textureQuality?: 'fast' | 'standard' | 'detailed' | 'extreme'
+      name?: string
+      outputDir?: string
+      graphBinding?: {
+        hostId?: string
+        nodeId?: string
+        assetId?: string
+        shotId?: string
+        canvasField?: string
+      }
+    }) => {
+      if (token !== runToken || signal.aborted) {
+        throw new DOMException('Aborted', 'AbortError')
+      }
+      activeLogBridge?.appendMessage(options.t('graph.logs.submitPostProcess'))
+      return withAbortSignal(postProcessModel3d(input), token, signal)
     }
   }
 
@@ -869,6 +1056,8 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         generateSpeech: wrapGenerateSpeech(token, signal),
         generateModel3d: wrapGenerateModel3d(token, signal),
         rigModel3d: wrapRigModel3d(token, signal),
+        segmentModel3d: wrapSegmentModel3d(token, signal),
+        postProcessModel3d: wrapPostProcessModel3d(token, signal),
         locale: options.locale?.(),
         resolveAssetGenParams: options.resolveAssetGenParams,
         resolveLiveAssetGraph: options.resolveLiveAssetGraph,

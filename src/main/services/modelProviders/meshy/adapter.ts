@@ -17,6 +17,7 @@ import type { ModelProviderAdapter, VideoPollResult } from '../types'
 import { PROVIDER_ERRORS } from '../catalog'
 import { fail, defErr, defErrSimple } from '@shared/errors/appError'
 import { createProviderHttpClient, readHttpError } from '../http'
+import { meshyMeshOps } from './meshOps'
 
 // ── 本文件错误条目（catalog 未覆盖的个性文案）──
 const E_MESHY_NO_TEXT = defErrSimple(
@@ -68,6 +69,7 @@ function mapTaskStatus(raw: string | undefined): VideoPollResult['status'] {
 
 export const meshyAdapter: ModelProviderAdapter = {
   kind: 'meshy',
+  meshOps: meshyMeshOps,
 
   async assertAuth(provider) {
     const client = createProviderHttpClient(provider)

@@ -62,13 +62,15 @@ export function modelJobOutputs(
   ctx: NodeExecuteContext,
   model: GraphAssetValue,
   relativePath: string,
-  result: BlenderJobResult
+  result: BlenderJobResult,
+  extra?: { providerTaskId?: string }
 ): Record<string, GraphValue> {
   return persistModelGeneration(
     ctx,
     {
       relativePath,
       assetId: model.assetId,
+      ...(extra?.providerTaskId ? { providerTaskId: extra.providerTaskId } : {}),
       ...(result.rigMeta ? { rigMeta: result.rigMeta } : {}),
       ...(result.rigQa ? { rigQa: result.rigQa } : {}),
       ...(result.bonePose ? { bonePose: result.bonePose } : {}),
@@ -88,7 +90,8 @@ export function modelJobOutputs(
       ...model,
       kind: 'asset',
       assetType: 'model',
-      relativePath
+      relativePath,
+      ...(extra?.providerTaskId ? { providerTaskId: extra.providerTaskId } : {})
     }
   )
 }

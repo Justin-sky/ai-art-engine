@@ -87,11 +87,28 @@ describe('model.rigSkin Cook 走云端 Rigging API', () => {
   })
 })
 
-describe('节点卡片蒙皮供应商过滤', () => {
-  it('GraphNodeCard 用 supportsModel3dRig 过滤 modelRigSkin', () => {
-    expect(NODE_CARD_SRC).toMatch(/supportsModel3dRig\(/)
-    expect(NODE_CARD_SRC).toMatch(/import { supportsModel3dRig } from '@shared\/modelProvider'/)
-    expect(NODE_CARD_SRC).toMatch(/instructionKind\.value === 'modelRigSkin'/)
-    expect(NODE_CARD_SRC).toMatch(/showModel3dRigType/)
+describe('节点卡片加工供应商过滤（能力矩阵驱动）', () => {
+  it('GraphNodeCard 用 meshOpSupported 过滤 3D 加工节点', () => {
+    expect(NODE_CARD_SRC).toMatch(/meshOpSupported\(/)
+    expect(NODE_CARD_SRC).toMatch(/from '@shared\/meshOps'/)
+    expect(NODE_CARD_SRC).toMatch(/meshOpForInstructionKind/)
+    // 不再在卡片里维护白名单数组 / Set
+    expect(NODE_CARD_SRC).not.toMatch(/tripoOnly/)
+    expect(NODE_CARD_SRC).not.toMatch(/supportsModel3d(?:Rig|Segment|PostProcess)\(/)
+  })
+
+  it('每个 3D 加工节点都能映射到一个能力矩阵 op', () => {
+    for (const [kind, op] of [
+      ['modelRigSkin', 'rig'],
+      ['modelSegment', 'segment'],
+      ['modelMeshComplete', 'meshComplete'],
+      ['modelRetopology', 'retopology'],
+      ['modelRigCheck', 'rigCheck'],
+      ['modelRetarget', 'retarget'],
+      ['modelConvert', 'convert'],
+      ['modelTexture', 'texture']
+    ] as const) {
+      expect(NODE_CARD_SRC).toMatch(new RegExp(`case '${kind}':\\s*\\n\\s*return '${op}'`))
+    }
   })
 })

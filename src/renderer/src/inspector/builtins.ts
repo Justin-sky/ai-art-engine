@@ -29,6 +29,8 @@ import AdVariantsInspector from '../components/AdVariantsInspector.vue'
 import ComicPageInspector from '../components/ComicPageInspector.vue'
 import ModelPoseInspector from '../components/ModelPoseInspector.vue'
 import ModelRigSkinInspector from '../components/ModelRigSkinInspector.vue'
+import ModelSegmentInspector from '../components/ModelSegmentInspector.vue'
+import ModelPostProcessInspector from '../components/ModelPostProcessInspector.vue'
 import ModelAnimationInspector from '../components/ModelAnimationInspector.vue'
 import Anim2dInspector from '../components/Anim2dInspector.vue'
 import SvgAnimInspector from '../components/SvgAnimInspector.vue'
@@ -152,6 +154,41 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     id: 'studio.graph.modelRigSkin',
     component: ModelRigSkinInspector,
     nodeTypeId: 'model.rigSkin'
+  },
+  {
+    id: 'studio.graph.modelSegment',
+    component: ModelSegmentInspector,
+    nodeTypeId: 'model.segment'
+  },
+  {
+    id: 'studio.graph.modelMeshComplete',
+    component: ModelPostProcessInspector,
+    nodeTypeId: 'model.meshComplete'
+  },
+  {
+    id: 'studio.graph.modelRetopology',
+    component: ModelPostProcessInspector,
+    nodeTypeId: 'model.retopology'
+  },
+  {
+    id: 'studio.graph.modelRigCheck',
+    component: ModelPostProcessInspector,
+    nodeTypeId: 'model.rigCheck'
+  },
+  {
+    id: 'studio.graph.modelRetarget',
+    component: ModelPostProcessInspector,
+    nodeTypeId: 'model.retarget'
+  },
+  {
+    id: 'studio.graph.modelConvert',
+    component: ModelPostProcessInspector,
+    nodeTypeId: 'model.convert'
+  },
+  {
+    id: 'studio.graph.modelTexture',
+    component: ModelPostProcessInspector,
+    nodeTypeId: 'model.texture'
   },
   {
     id: 'studio.graph.modelAnimation',

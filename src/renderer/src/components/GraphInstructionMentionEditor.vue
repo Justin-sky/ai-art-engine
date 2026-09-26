@@ -122,7 +122,7 @@
     <!-- Teleport：避免 instruction-box overflow / 画布 transform 遮挡 -->
     <Teleport to="body">
       <div
-        v-if="menuOpen && presets.length"
+        v-if="menuOpen"
         ref="presetMenuEl"
         class="preset-menu"
         :class="{ 'has-tabs': presetTabs.length > 1 }"
@@ -147,7 +147,7 @@
             {{ presetTabLabel(tab) }}
           </button>
         </div>
-        <div class="preset-grid">
+        <div v-if="visiblePresets.length" class="preset-grid">
           <button
             v-for="item in visiblePresets"
             :key="item.id"
@@ -159,6 +159,10 @@
             <PresetVisualGlyph class="preset-glyph" :visual="visualForPreset(item)" />
             <span class="preset-card-title">{{ t(item.titleKey) }}</span>
           </button>
+        </div>
+        <!-- 该节点没有模板（指令框是部件名 / 提示词等自由文本）：给说明而不是空面板 -->
+        <div v-else class="preset-empty">
+          {{ t('graph.inspector.generate.presets.empty') }}
         </div>
       </div>
     </Teleport>
@@ -547,6 +551,12 @@ const presetMenuTitle = computed(() => {
     return t('graph.inspector.generate.presets.titleModelRigSkin')
   if (props.presetKind === 'modelAnimation')
     return t('graph.inspector.generate.presets.titleModelAnimation')
+  if (props.presetKind === 'modelSegment')
+    return t('graph.inspector.generate.presets.titleModelSegment')
+  if (props.presetKind === 'modelRetarget')
+    return t('graph.inspector.generate.presets.titleModelRetarget')
+  if (props.presetKind === 'modelTexture')
+    return t('graph.inspector.generate.presets.titleModelTexture')
   return t('graph.inspector.generate.presets.title')
 })
 
@@ -1099,7 +1109,7 @@ function updatePresetMenuPosition(): void {
 
 async function openPresetMenu(): Promise<void> {
   await ensurePresetsLoaded()
-  if (!presets.value.length) return
+  // 没有模板也照常打开：空面板换成一句说明，避免「点了没反应」的观感
   if (presetTabs.value.length) {
     activePresetTab.value = presetTabs.value[0] ?? 'general'
   }
@@ -1750,6 +1760,13 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
+}
+
+.preset-empty {
+  max-width: 220px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-muted);
 }
 
 .preset-card {

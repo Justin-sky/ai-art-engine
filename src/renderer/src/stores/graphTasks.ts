@@ -1401,7 +1401,9 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             modelRelativePath: input.modelRelativePath,
             model: input.model,
             providerInstanceId: input.providerInstanceId,
-            rigType: input.rigType
+            rigType: input.rigType,
+            spec: input.spec,
+            outFormat: input.outFormat
           }
           logBridge.appendMessage(String(i18n.global.t('graph.logs.submitRig')))
           try {
@@ -1420,6 +1422,77 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           } catch (err) {
             logBridge.recordApiCall({
               kind: 'rigModel3d',
+              request,
+              error: err instanceof Error ? err.message : String(err),
+              durationMs: Math.max(0, Date.now() - startedAt)
+            })
+            throw err
+          }
+        },
+        segmentModel3d: async (input) => {
+          const startedAt = Date.now()
+          const request = {
+            modelRelativePath: input.modelRelativePath,
+            model: input.model,
+            providerInstanceId: input.providerInstanceId,
+            mode: input.mode,
+            granularity: input.granularity,
+            smartGranularity: input.smartGranularity
+          }
+          logBridge.appendMessage(String(i18n.global.t('graph.logs.submitSegment')))
+          try {
+            const value = await window.studio.segmentModel3d(input)
+            logBridge.recordApiCall({
+              kind: 'segmentModel3d',
+              request,
+              response: {
+                model: value.model,
+                assetId: value.assetId,
+                relativePath: value.relativePath,
+                text: value.parts.join(', ')
+              },
+              durationMs: Math.max(0, Date.now() - startedAt)
+            })
+            return value
+          } catch (err) {
+            logBridge.recordApiCall({
+              kind: 'segmentModel3d',
+              request,
+              error: err instanceof Error ? err.message : String(err),
+              durationMs: Math.max(0, Date.now() - startedAt)
+            })
+            throw err
+          }
+        },
+        postProcessModel3d: async (input) => {
+          const startedAt = Date.now()
+          const request = {
+            op: input.op,
+            providerTaskId: input.providerTaskId,
+            modelRelativePath: input.modelRelativePath,
+            model: input.model,
+            providerInstanceId: input.providerInstanceId
+          }
+          logBridge.appendMessage(String(i18n.global.t('graph.logs.submitPostProcess')))
+          try {
+            const value = await window.studio.postProcessModel3d(input)
+            logBridge.recordApiCall({
+              kind: 'postProcessModel3d',
+              request,
+              response:
+                value.op === 'rigCheck'
+                  ? { ok: value.riggable, text: value.rigType }
+                  : {
+                      model: value.model,
+                      assetId: value.assetId,
+                      relativePath: value.relativePath
+                    },
+              durationMs: Math.max(0, Date.now() - startedAt)
+            })
+            return value
+          } catch (err) {
+            logBridge.recordApiCall({
+              kind: 'postProcessModel3d',
               request,
               error: err instanceof Error ? err.message : String(err),
               durationMs: Math.max(0, Date.now() - startedAt)

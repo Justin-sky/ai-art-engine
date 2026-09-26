@@ -368,7 +368,13 @@ export function dualModelGalleryOutputs(
       : base?.bonePose
         ? { bonePose: base.bonePose }
         : {}),
-    ...(picked?.clip ? { clip: picked.clip } : base?.clip ? { clip: base.clip } : {})
+    ...(picked?.clip ? { clip: picked.clip } : base?.clip ? { clip: base.clip } : {}),
+    // 上游供应商任务 id 要透给下游（部件补全 / 动画重定向只吃 task_id）
+    ...(picked?.providerTaskId
+      ? { providerTaskId: picked.providerTaskId }
+      : base?.providerTaskId
+        ? { providerTaskId: base.providerTaskId }
+        : {})
   }
   return { out: value, [GRAPH_OUT_ALL_PORT_ID]: value }
 }

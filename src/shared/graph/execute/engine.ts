@@ -394,6 +394,8 @@ async function executeOneNode(
     generateVideo: options.generateVideo,
     generateModel3d: options.generateModel3d,
     rigModel3d: options.rigModel3d,
+    segmentModel3d: options.segmentModel3d,
+    postProcessModel3d: options.postProcessModel3d,
     generateSpeech: options.generateSpeech,
     locale: options.locale,
     signal: options.signal,

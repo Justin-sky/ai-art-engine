@@ -23,6 +23,11 @@ export interface GraphAssetValue {
   assetType: AssetType
   /** 生成落盘后的工程相对路径；供输出节点写回预览，无需再查资产表 */
   relativePath?: string
+  /**
+   * 上游供应商任务 id（Tripo task_id）。拆分 / 绑骨节点带上，
+   * 供只吃 task_id 的下游端点（部件补全 / 动画重定向）链式调用。
+   */
+  providerTaskId?: string
   label?: string
   weight?: number
   volume?: number
@@ -168,12 +173,13 @@ export interface GraphImagesValue {
   items: GraphImageItem[]
 }
 
-/** 3D 模型图库条目（生成 / 蒙皮 / 姿势 / 动画） */
+/** 3D 模型图库条目（生成 / 蒙皮 / 姿势 / 动画 / 拆分 / 后处理） */
 export interface GraphModelItem {
   id?: string
   createdAt?: string
   relativePath?: string
   assetId?: string
+  providerTaskId?: string
   rigMeta?: GraphAssetValue['rigMeta']
   rigQa?: GraphAssetValue['rigQa']
   bonePose?: GraphAssetValue['bonePose']
@@ -407,6 +413,10 @@ export interface NodeExecuteContext {
     model?: string
     providerInstanceId?: string
     rigType?: string
+    /** Tripo 骨架命名规范（tripo 原生 / mixamo 兼容动作库） */
+    spec?: 'tripo' | 'mixamo'
+    /** Tripo 输出格式（glb / fbx） */
+    outFormat?: 'glb' | 'fbx'
     name?: string
     outputDir?: string
     graphBinding?: {
@@ -416,7 +426,109 @@ export interface NodeExecuteContext {
       shotId?: string
       canvasField?: string
     }
-  }) => Promise<{ assetId: string; relativePath: string; model: string }>
+  }) => Promise<{ assetId: string; relativePath: string; model: string; taskId?: string }>
+  /**
+   * 可选：对已有模型调用 Tripo 拆分 API（`model.segment`）。
+   */
+  segmentModel3d?: (input: {
+    modelRelativePath?: string
+    modelUrl?: string
+    model?: string
+    providerInstanceId?: string
+    /** 拆分模式：网格分割 / 智能分割 */
+    mode?: 'mesh' | 'smart'
+    granularity?: 'simple' | 'balanced' | 'detailed'
+    splitByConnectivity?: boolean
+    smartGranularity?: 'coarse' | 'medium' | 'fine'
+    hint?: string
+    name?: string
+    outputDir?: string
+    graphBinding?: {
+      hostId?: string
+      nodeId?: string
+      assetId?: string
+      shotId?: string
+      canvasField?: string
+    }
+  }) => Promise<{
+    assetId: string
+    relativePath: string
+    model: string
+    mode: 'mesh' | 'smart'
+    /** 部件名（= 拆分后 GLB 的 node 名） */
+    parts: string[]
+    /** 拆分任务 id（部件补全要用） */
+    taskId?: string
+    maskUrl?: string
+    description?: string
+  }>
+  /**
+   * 可选：Tripo 网格后处理 / 骨骼动画（`model.meshComplete` / `model.retopology` /
+   * `model.rigCheck` / `model.retarget`）。
+   */
+  postProcessModel3d?: (input: {
+    op: 'meshComplete' | 'retopology' | 'rigCheck' | 'retarget' | 'convert' | 'texture'
+    providerTaskId?: string
+    modelUrl?: string
+    modelRelativePath?: string
+    providerInstanceId?: string
+    model?: string
+    partNames?: string[]
+    completionMode?: 'ai_completion' | 'quick_cap'
+    retopologyMode?: 'smart' | 'basic'
+    faceLimit?: number
+    quad?: boolean
+    bake?: boolean
+    animation?: string
+    animations?: string[]
+    /** 动作库动画 id（Meshy action_id） */
+    actionIds?: number[]
+    outFormat?: 'glb' | 'fbx'
+    bakeAnimation?: boolean
+    exportWithGeometry?: boolean
+    animateInPlace?: boolean
+    /** convert */
+    format?: 'GLTF' | 'FBX' | 'USDZ' | 'OBJ' | 'STL' | '3MF'
+    textureSize?: number
+    textureFormat?: 'JPEG' | 'PNG' | 'WEBP' | 'BMP' | 'DPX' | 'HDR' | 'OPEN_EXR' | 'TARGA' | 'TIFF'
+    fbxPreset?: 'blender' | '3dsmax' | 'mixamo' | 'bake_scale'
+    pivotToCenterBottom?: boolean
+    packUv?: boolean
+    exportVertexColors?: boolean
+    exportOrientation?: '+x' | '-x' | '+y' | '-y'
+    flattenBottom?: boolean
+    flattenBottomThreshold?: number
+    forceSymmetry?: boolean
+    scaleFactor?: number
+    withAnimation?: boolean
+    /** texture */
+    textureVersion?: string
+    texturePromptText?: string
+    pbr?: boolean
+    textureSeed?: number
+    textureAlignment?: 'original_image' | 'geometry'
+    textureQuality?: 'fast' | 'standard' | 'detailed' | 'extreme'
+    delight?: boolean
+    compress?: string
+    name?: string
+    outputDir?: string
+    graphBinding?: {
+      hostId?: string
+      nodeId?: string
+      assetId?: string
+      shotId?: string
+      canvasField?: string
+    }
+  }) => Promise<
+    | { op: 'rigCheck'; taskId: string; riggable: boolean; rigType: string }
+    | {
+        op: 'meshComplete' | 'retopology' | 'retarget' | 'convert' | 'texture'
+        taskId: string
+        assetId: string
+        relativePath: string
+        model: string
+      }
+  >
   /**
    * 可选：调用设置中的语音合成；未注入时声音节点退回上游透传 / 文本。
    */
@@ -875,6 +987,8 @@ export interface GraphRunOptions {
   generateVideo?: NodeExecuteContext['generateVideo']
   generateModel3d?: NodeExecuteContext['generateModel3d']
   rigModel3d?: NodeExecuteContext['rigModel3d']
+  segmentModel3d?: NodeExecuteContext['segmentModel3d']
+  postProcessModel3d?: NodeExecuteContext['postProcessModel3d']
   generateSpeech?: NodeExecuteContext['generateSpeech']
   /** 软件界面语言，用于默认系统提示词等 */
   locale?: string

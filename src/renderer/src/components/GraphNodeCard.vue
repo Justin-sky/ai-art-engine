@@ -394,7 +394,7 @@
         v-model="instruction"
         :host-id="hostId"
         :node-id="node.id"
-        :preset-kind="instructionKind"
+        :preset-kind="effectivePresetKind"
         :rows="5"
         :placeholder="instructionPlaceholder"
         @change="persistInstruction"
@@ -417,7 +417,21 @@
           <Model3dRigControls
             v-if="showModel3dRigType"
             :rig-type="model3dRigType"
+            :spec="model3dRigSpec"
+            :out-format="model3dRigOutFormat"
+            :provider-kind="selectedProviderKind"
             @update:rig-type="persistModel3dRigType"
+            @update:spec="persistModel3dRigSpec"
+            @update:out-format="persistModel3dRigOutFormat"
+          />
+          <Model3dSegmentControls
+            v-if="showModel3dSegment"
+            :mode="segmentMode"
+            :granularity="segmentGranularity"
+            :smart-granularity="segmentSmartGranularity"
+            @update:mode="persistSegmentMode"
+            @update:granularity="persistSegmentGranularity"
+            @update:smart-granularity="persistSegmentSmartGranularity"
           />
           <ImageGenerateParamsSelect
             v-if="showImageGenerateParams"
@@ -440,7 +454,7 @@
         :open="instructionDialogOpen"
         :host-id="hostId"
         :node-id="node.id"
-        :preset-kind="instructionKind"
+        :preset-kind="effectivePresetKind"
         :placeholder="instructionPlaceholder"
         @change="persistInstruction"
         @close="instructionDialogOpen = false"
@@ -520,6 +534,7 @@ import GraphInstructionEditorDialog from './GraphInstructionEditorDialog.vue'
 import InstructionModelSelect from './InstructionModelSelect.vue'
 import Model3dStyleSelect from './Model3dStyleSelect.vue'
 import Model3dRigControls from './Model3dRigControls.vue'
+import Model3dSegmentControls from './Model3dSegmentControls.vue'
 import ImageGenerateParamsSelect from './ImageGenerateParamsSelect.vue'
 import VideoGenerateParamsSelect from './VideoGenerateParamsSelect.vue'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
@@ -625,8 +640,9 @@ import {
   type VideoGenerateParams,
   type VideoGeneratePortLimits
 } from '@shared/graph'
+import { meshOpCaps, meshOpSupported, type MeshOp } from '@shared/meshOps'
 import type { InstructionPresetKind } from '@shared/graph/instructionPresets'
-import { supportsModel3dRig } from '@shared/modelProvider'
+import type { GraphNodeParams } from '@shared/graph'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useGraphScope } from '../composables/useGraphScope'
 import { isAudioFilePath, isVideoFilePath } from '@shared/import'
@@ -912,6 +928,20 @@ const instructionKind = computed((): InstructionPresetKind | null => {
       return 'modelPose'
     case 'model.rigSkin':
       return 'modelRigSkin'
+    case 'model.segment':
+      return 'modelSegment'
+    case 'model.meshComplete':
+      return 'modelMeshComplete'
+    case 'model.retopology':
+      return 'modelRetopology'
+    case 'model.rigCheck':
+      return 'modelRigCheck'
+    case 'model.retarget':
+      return 'modelRetarget'
+    case 'model.convert':
+      return 'modelConvert'
+    case 'model.texture':
+      return 'modelTexture'
     case 'model.animation':
       return 'modelAnimation'
     case 'asset.screenplay':
@@ -939,6 +969,19 @@ const instructionKind = computed((): InstructionPresetKind | null => {
     default:
       return null
   }
+})
+/**
+ * 实际传给预设面板的 kind：动作库型供应商（Meshy）的动画重定向不吃 `preset:xxx`
+ * 预设字符串，它的动画在 Inspector 的动作库选择器里选，所以这里不给预设。
+ */
+const effectivePresetKind = computed((): InstructionPresetKind | null => {
+  const kind = instructionKind.value
+  if (!kind) return null
+  const op = meshOpForInstructionKind(kind)
+  if (op === 'retarget' && meshOpCaps(selectedProviderKind.value)?.retargetIds === 'library') {
+    return null
+  }
+  return kind
 })
 
 const portLimitKind = computed((): 'image' | 'video' | null => {
@@ -1092,6 +1135,27 @@ const instructionPlaceholder = computed(() => {
   if (instructionKind.value === 'modelRigSkin') {
     return t('graph.inspector.generate.modelRigSkinInstructionPlaceholder')
   }
+  if (instructionKind.value === 'modelSegment') {
+    return t('graph.inspector.generate.modelSegmentInstructionPlaceholder')
+  }
+  if (instructionKind.value === 'modelMeshComplete') {
+    return t('graph.inspector.generate.modelMeshCompleteInstructionPlaceholder')
+  }
+  if (instructionKind.value === 'modelRetopology') {
+    return t('graph.inspector.generate.modelRetopologyInstructionPlaceholder')
+  }
+  if (instructionKind.value === 'modelRigCheck') {
+    return t('graph.inspector.generate.modelRigCheckInstructionPlaceholder')
+  }
+  if (instructionKind.value === 'modelRetarget') {
+    return t('graph.inspector.generate.modelRetargetInstructionPlaceholder')
+  }
+  if (instructionKind.value === 'modelConvert') {
+    return t('graph.inspector.generate.modelConvertInstructionPlaceholder')
+  }
+  if (instructionKind.value === 'modelTexture') {
+    return t('graph.inspector.generate.modelTextureInstructionPlaceholder')
+  }
   if (instructionKind.value === 'modelAnimation') {
     return t('graph.inspector.generate.modelAnimationInstructionPlaceholder')
   }
@@ -1108,6 +1172,17 @@ const instructionModelTitle = computed(() => {
   if (instructionKind.value === 'voice') return t('graph.inspector.generate.voiceModel')
   if (instructionKind.value === 'model3d') return t('graph.inspector.generate.model3dModel')
   if (instructionKind.value === 'modelRigSkin') return t('graph.inspector.generate.model3dModel')
+  if (instructionKind.value === 'modelSegment') return t('graph.inspector.generate.model3dModel')
+  if (
+    instructionKind.value === 'modelMeshComplete' ||
+    instructionKind.value === 'modelRetopology' ||
+    instructionKind.value === 'modelRigCheck' ||
+    instructionKind.value === 'modelRetarget' ||
+    instructionKind.value === 'modelConvert' ||
+    instructionKind.value === 'modelTexture'
+  ) {
+    return t('graph.inspector.generate.model3dModel')
+  }
   if (instructionKind.value === 'mediaRework') return t('graph.inspector.generate.imageModel')
   return t('graph.inspector.generate.model')
 })
@@ -1988,6 +2063,30 @@ watch(
   { immediate: true }
 )
 
+/** 3D 加工节点 → 能力矩阵里的 op（决定可选供应商与可选预设） */
+function meshOpForInstructionKind(kind: InstructionPresetKind | null): MeshOp | undefined {
+  switch (kind) {
+    case 'modelRigSkin':
+      return 'rig'
+    case 'modelSegment':
+      return 'segment'
+    case 'modelMeshComplete':
+      return 'meshComplete'
+    case 'modelRetopology':
+      return 'retopology'
+    case 'modelRigCheck':
+      return 'rigCheck'
+    case 'modelRetarget':
+      return 'retarget'
+    case 'modelConvert':
+      return 'convert'
+    case 'modelTexture':
+      return 'texture'
+    default:
+      return undefined
+  }
+}
+
 async function refreshModelOptions(): Promise<void> {
   if (!instructionKind.value) return
   const preferred = preferredModelKey(
@@ -1999,11 +2098,12 @@ async function refreshModelOptions(): Promise<void> {
     preferred,
     selectedModelKey.value
   )
-  // 骨骼蒙皮节点只保留支持独立 Rigging API 的供应商
-  const filtered =
-    instructionKind.value === 'modelRigSkin'
-      ? options.filter((o) => supportsModel3dRig(o.providerKind ?? ''))
-      : options
+  // 3D 加工节点按能力矩阵过滤供应商（谁能做这个 op 就留谁）：
+  // 见 @shared/meshOps 的 MESH_OPS_CAPS，不再在卡片里维护白名单。
+  const meshOp = meshOpForInstructionKind(instructionKind.value)
+  const filtered = meshOp
+    ? options.filter((o) => meshOpSupported(o.providerKind ?? '', meshOp))
+    : options
   modelOptions.value = filtered
   selectedModelKey.value = filtered.some((o) => o.key === selectedKey)
     ? selectedKey
@@ -2012,7 +2112,7 @@ async function refreshModelOptions(): Promise<void> {
 
 function persistInstruction(): void {
   if (!props.hostId || !instructionKind.value) return
-  const next: Record<string, string> = {
+  const next: Partial<GraphNodeParams> = {
     generateInstruction: instruction.value
   }
   // 蒙皮预设 body 即骨架类型关键字时，同步写入 generateRigType
@@ -2027,6 +2127,29 @@ function persistInstruction(): void {
     ) {
       next.generateRigType = key === 'biped' ? 'humanoid' : key
     }
+  }
+  // 拆分节点的指令框即智能分割的「点名要拆的部件」提示词
+  if (instructionKind.value === 'modelSegment') {
+    next.segmentHint = instruction.value
+  }
+  // 部件补全 / 重拓扑：指令框写「要处理的部件」（逗号或换行分隔，空 = 全部）
+  if (instructionKind.value === 'modelMeshComplete') {
+    next.meshCompletePartNames = splitPostProcessList(instruction.value)
+  }
+  if (instructionKind.value === 'modelRetopology') {
+    next.retopologyPartNames = splitPostProcessList(instruction.value)
+  }
+  // 重定向：指令框写预设动画 id（逗号或换行分隔，如 preset:walk, preset:idle）
+  if (instructionKind.value === 'modelRetarget') {
+    next.retargetAnimations = splitPostProcessList(instruction.value)
+  }
+  // 格式转换：指令框写「要导出的部件」（空 = 整模）
+  if (instructionKind.value === 'modelConvert') {
+    next.convertPartNames = splitPostProcessList(instruction.value)
+  }
+  // 贴图：指令框即文生贴图提示词
+  if (instructionKind.value === 'modelTexture') {
+    next.texturePromptText = instruction.value
   }
   graphEditorHosts.updateNode(props.hostId, props.node.id, next)
 }
@@ -2055,6 +2178,68 @@ const model3dRigType = computed(() => props.node.params.generateRigType || 'huma
 function persistModel3dRigType(value: string): void {
   if (!props.hostId || !instructionKind.value) return
   graphEditorHosts.updateNode(props.hostId, props.node.id, { generateRigType: value })
+}
+
+/** 当前所选 3D 供应商（spec / out_format 只对 Tripo 生效） */
+const selectedProviderKind = computed(
+  () => modelOptions.value.find((o) => o.key === selectedModelKey.value)?.providerKind ?? ''
+)
+
+const model3dRigSpec = computed(() =>
+  props.node.params.generateRigSpec === 'tripo' ? 'tripo' : 'mixamo'
+)
+const model3dRigOutFormat = computed(() =>
+  props.node.params.generateRigOutFormat === 'fbx' ? 'fbx' : 'glb'
+)
+
+function persistModel3dRigSpec(value: string): void {
+  if (!props.hostId || !instructionKind.value) return
+  graphEditorHosts.updateNode(props.hostId, props.node.id, {
+    generateRigSpec: value === 'tripo' ? 'tripo' : 'mixamo'
+  })
+}
+
+function persistModel3dRigOutFormat(value: string): void {
+  if (!props.hostId || !instructionKind.value) return
+  graphEditorHosts.updateNode(props.hostId, props.node.id, {
+    generateRigOutFormat: value === 'fbx' ? 'fbx' : 'glb'
+  })
+}
+
+/** 3D 模型拆分：拆分模式 / 粒度 / 连通域 / 智能分割提示词（Tripo Mesh Segmentation API） */
+const showModel3dSegment = computed(() => instructionKind.value === 'modelSegment')
+
+const segmentMode = computed(() => props.node.params.segmentMode || 'mesh')
+const segmentGranularity = computed(() => props.node.params.segmentGranularity ?? '')
+const segmentSmartGranularity = computed(
+  () => props.node.params.segmentSmartGranularity || 'medium'
+)
+
+function patchSegmentParams(patch: Record<string, unknown>): void {
+  if (!props.hostId || !showModel3dSegment.value) return
+  graphEditorHosts.updateNode(props.hostId, props.node.id, patch)
+}
+
+function persistSegmentMode(value: string): void {
+  patchSegmentParams({ segmentMode: value === 'smart' ? 'smart' : 'mesh' })
+}
+
+function persistSegmentGranularity(value: string): void {
+  patchSegmentParams({ segmentGranularity: value })
+}
+
+function persistSegmentSmartGranularity(value: string): void {
+  patchSegmentParams({ segmentSmartGranularity: value })
+}
+
+/** 指令框 → 部件名 / 动画 id 列表（逗号、中文逗号、换行分隔；去空去重） */
+function splitPostProcessList(raw: string): string[] {
+  const out: string[] = []
+  for (const item of raw.split(/[,，\n]/)) {
+    const value = item.trim()
+    if (value && !out.includes(value)) out.push(value)
+  }
+  return out
 }
 
 /** 未设置时展示服务端缺省风格（photorealistic）；选中后才落盘到节点参数 */
