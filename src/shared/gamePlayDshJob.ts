@@ -7,7 +7,8 @@
 
 export const GAME_PLAY_DSH_SKILL_HINT = 'gameplay.nodeEsbuild'
 export const GAME_PLAY_DSH_TIMEOUT_MS = 3_600_000
-export const GAME_PLAY_JOB_ROOT = 'Cache/GamePlayJobs'
+/** 工程根下存放可玩 HTML 作业的目录；与对话路径的 `gamePlayJob.ts` 共用同一份常量 */
+export { GAME_PLAY_PROJECT_ROOT as GAME_PLAY_JOB_ROOT } from './gamePlayJob'
 
 export type GamePlayDshMode = '2d' | '3d' | 'auto'
 

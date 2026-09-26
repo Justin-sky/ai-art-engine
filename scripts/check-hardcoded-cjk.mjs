@@ -53,7 +53,10 @@ const EXEMPT_FILES = new Set([
   'src/shared/gamePlay/prompts.ts',
   'src/shared/gamePlay/sampleGames.ts',
   'src/shared/gamePlay/gameHtml.ts',
-  'src/shared/graph/execute/gameHtmlGen.ts'
+  'src/shared/graph/execute/gameHtmlGen.ts',
+  // 可玩 HTML 工程脚手架：模板串里是**生成到工程文件里的**样例源码与注释（含 3D 样例 HUD），
+  // 不参与本应用 UI 渲染，与 sampleGames 同域
+  'src/main/services/gamePlayScaffold.ts'
 ])
 const EXEMPT_DIR_PARTS = [['src', 'renderer', 'src', 'i18n', 'locales']]
 

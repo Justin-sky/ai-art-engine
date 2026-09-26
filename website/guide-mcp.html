@@ -429,6 +429,25 @@
                 <td><code>video_job_list</code> / <code>video_job_get</code></td>
                 <td>异步视频任务状态</td>
               </tr>
+              <tr>
+                <td rowspan="3">可玩 HTML</td>
+                <td><code>gameplay_prepare_project</code></td>
+                <td>
+                  为一句话小游戏落下纯 Node + esbuild 脚手架（含
+                  <code>src/core</code> / <code>src/assets</code> 资产层骨架），返回工程相对路径
+                </td>
+              </tr>
+              <tr>
+                <td><code>gameplay_build</code></td>
+                <td>
+                  后台 cook（<code>npm install</code> + <code>node build.mjs</code>）打成单文件，返回
+                  <code>jobId</code>；<strong>由宿主跑 npm</strong>
+                </td>
+              </tr>
+              <tr>
+                <td><code>gameplay_job_status</code></td>
+                <td>轮询构建状态与日志尾部，取单文件产物路径与体积</td>
+              </tr>
             </tbody>
           </table>
         </section>
@@ -444,6 +463,12 @@
             <li>「这张图还能加哪些节点？图标包打包用哪个类型？」→ <code>graph_node_types</code>（typeId + 端口 + 默认参数）</li>
             <li>「图标包第 3 枚的剑画糊了，重画这一枚」→ <code>graph_icon_refine</code>（cellKey + hint，自动写回并重跑打包）</li>
             <li>「用已配置的模型生成一张 9:16 的海报」→ <code>models_list</code> + <code>generate_image</code></li>
+            <li>
+              「做个低多边形太空站捡能量块的 3D 小游戏，WASD 移动」→
+              <code>gameplay_prepare_project</code>（3d）→ 写 <code>src/assets/**</code> 与
+              <code>src/game/**</code> → <code>gameplay_build</code> +
+              <code>gameplay_job_status</code> 轮询到 <code>done</code>，产物在试玩沙盒窗口里打开
+            </li>
           </ul>
         </section>
 

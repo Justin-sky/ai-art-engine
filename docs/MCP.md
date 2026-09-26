@@ -31,7 +31,7 @@ AiArtEngine 内置了一个 **MCP 工具服务**（MCP 是"模型上下文协议
 
 > 本机 Blender 跑着，AI 就能在对话里搭场景、写材质、截图自查、导出 GLB —— **出站直连 addon，不需要 uv / Python / 子进程**。
 
-这一组工具挂在同一服务的另一个端点 `/mcp/blender`，**默认开启**（设置 → MCP → Blender 工具集），共 9 个工具（详见 [§⑤ Blender 工具集](#⑤- blender-工具集可选需要本机-blender)）：
+这一组工具挂在同一服务的另一个端点 `/mcp/blender`，**默认开启**（设置 → MCP → Blender 工具集），共 9 个工具（详见 [§⑥ Blender 工具集](#⑥-blender-工具集可选需要本机-blender)）：
 
 - **直接驱动 Blender** — `execute_blender_code` 在 Blender 进程内执行 Python（完整访问 bpy / bmesh / mathutils），`get_viewport_screenshot` 抓视口画面回给多模态客户端，`export_scene` 出 GLB / GLTF / FBX / OBJ / USD / STL
 - **双 addon 兼容** — 同时支持**社区方案** [blender-mcp](https://github.com/ahujasid/blender-mcp) 的 `addon.py` 与**官方方案** [Blender Lab「MCP Server」](https://projects.blender.org/lab/blender_mcp) 扩展；两种后端下工具名、入参、输出结构**完全一致**，模型侧无感
@@ -186,7 +186,7 @@ save_project_asset（用户点「保存到资产库」）   入 Assets/<folder>/
 
 ## 可用工具清单
 
-按用途分五组，按需查阅（第 ⑤ 组需要本机 Blender，且挂在另一个端点上）：
+按用途分六组，按需查阅（第 ⑥ 组需要本机 Blender，且挂在另一个端点上）：
 
 ### ① 工程与资产（探索、读写你的工程）
 
@@ -253,14 +253,33 @@ save_project_asset（用户点「保存到资产库」）   入 Assets/<folder>/
 | `generate_music`                   | 按情绪 / 场景描述生成 BGM 并落盘 `Cache/Music`（同步；不自动进资产库），返回 `relativePath` / `durationMs`，可铺到时间线 music 轨 | 已打开工程 + 音乐模型（如 `music-3.0`） |
 | `video_job_list` / `video_job_get` | 查询异步视频生成任务的状态                                                                                                        | 应用运行中                              |
 
-### ④ 环境查询
+### ④ 可玩 HTML（一句话小游戏，程序化资产生成）
+
+交付物是一个**纯 Node + esbuild 工程**（不落资产文件）：agent 写 `src/**`，宿主负责 cook，`dist/single.html` 在试玩沙盒窗口里打开。所有美术与音频都由生成的代码合成（几何 / Canvas 贴图 / WebAudio 音效 / 种子关卡），因此零素材下载、零 API 计费、同种子可复现。
+
+| 工具                       | 作用                                                                                                                                                                                                                               | 前置条件                     |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| `gameplay_prepare_project` | 落下宿主脚手架（`package.json` / `build.mjs` / `index.template.html` / `src/core/{rng,palette,registry}.js` / `src/assets/**` / `src/main.js` 样例），返回 `projectRelativeDir` 与文件清单；传 `projectRelativeDir` 则续写既有工程 | 已打开工程                   |
+| `gameplay_build`           | 后台 cook：`npm install` + `node build.mjs` → 单文件 `dist/single.html`；立即返回 `jobId`（**由宿主跑 npm，agent 不要自己跑**）                                                                                                    | 已打开工程 + 本机 Node / npm |
+| `gameplay_job_status`      | 轮询作业：`ready` / `building` / `done` / `error` + 日志尾部 + 产物路径与体积；省略 `jobId` 列出全部作业                                                                                                                           | 应用运行中                   |
+
+装配约定写在内置技能 `gameplay-proc-assets` 里（资产层目录、`defineAsset` 契约、禁止 `Math.random`、Canvas 贴图与 WebAudio 配方、工具流程）。典型三步：
+
+```
+gameplay_prepare_project({ mode: "3d" })      →  { projectRelativeDir, files }
+（用自己的文件工具写 src/assets/** 与 src/game/**）
+gameplay_build({ projectRelativeDir })        →  { jobId, status: "building" }
+gameplay_job_status({ jobId })                →  { status: "done", buildHtmlRelativePath, bytes }
+```
+
+### ⑤ 环境查询
 
 | 工具          | 作用                                                   | 前置条件   |
 | ------------- | ------------------------------------------------------ | ---------- |
 | `app_status`  | 版本、当前工程、资产数量                               | 应用运行中 |
 | `models_list` | 已启用的模型提供商与各模态勾选模型（**不含任何密钥**） | 无         |
 
-### ⑤ Blender 工具集（可选，需要本机 Blender）
+### ⑥ Blender 工具集（可选，需要本机 Blender）
 
 这一组工具**不在 `/mcp` 主工具集里**，而是挂在同一服务的另一个端点 `/mcp/blender`（「设置 → MCP → Blender 工具集」默认开启；关掉后该端点直接回 403，主工具集不受影响）。外部 Agent 想拿到它，需要**再注册一个 MCP server**：
 

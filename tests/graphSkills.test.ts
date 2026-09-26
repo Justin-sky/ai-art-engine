@@ -68,6 +68,29 @@ describe('graphSkills', () => {
     expect(applyGraphSkill('svg.motion').generateInstruction).toContain('SVG')
   })
 
+  it('exposes the procedural-assets skill for the chat game flow', () => {
+    const skill = getGraphSkill('gameplay.proc-assets')
+    expect(skill?.kind).toBe('gameplay')
+    expect(skill?.titleEn).toContain('procedural')
+    // 技能是对话里唯一的约定来源：资产层结构、硬规则、工具流程三者都必须写在 usage 里
+    for (const token of [
+      'defineAsset',
+      'createRng',
+      'gameplay_prepare_project',
+      'gameplay_build',
+      'gameplay_job_status',
+      'src/assets/'
+    ]) {
+      expect(skill?.usageZh, `技能缺 ${token}`).toContain(token)
+      expect(skill?.usageEn, `技能缺 ${token}`).toContain(token)
+    }
+    expect(skill?.usageZh).toMatch(/禁止 Math\.random/)
+    expect(skill?.usageEn).toMatch(/never run npm yourself/)
+    // 这条技能只服务对话，不进任何节点 params
+    expect(skill?.systemPromptZh).toBeUndefined()
+    expect(skill?.instructionZh).toBeUndefined()
+  })
+
   it('registers a new skill and removes it on dispose', () => {
     const dispose = registerGraphSkill({
       id: 'plugin.test.skill',

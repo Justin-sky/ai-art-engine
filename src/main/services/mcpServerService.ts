@@ -158,6 +158,12 @@ import { uploadProjectMedia } from './objectStorageUploadService'
 import { settingsService } from './settingsService'
 import { updateService } from './updateService'
 import { videoJobService } from './videoJobService'
+import {
+  getGamePlayJob,
+  listGamePlayJobs,
+  prepareGamePlayProject,
+  startGamePlayBuild
+} from './gamePlayJobService'
 import { exportScriptTimeline, renderTimelineFrames } from './timelineExportService'
 
 /**
@@ -1689,6 +1695,80 @@ const TOOL_DEFS: McpToolDef[] = [
     handler: (args) => {
       const job = videoJobService.get(readString(args, 'localJobId'))
       if (!job) throw new Error('任务不存在')
+      return job
+    }
+  },
+  {
+    name: 'gameplay_prepare_project',
+    title: '准备可玩 HTML 工程',
+    description:
+      '为一句话小游戏落下宿主脚手架（纯 Node + esbuild 工程：package.json / build.mjs / index.template.html / src/core/{rng,palette,registry}.js / src/assets/** 骨架 / src/main.js 样例），返回 projectRelativeDir —— 之后用你自己的文件工具写 src/**（程序化生成几何 / 贴图 / 材质 / 音效 / 关卡），再调 gameplay_build。' +
+      '传了 projectRelativeDir 则在既有工程上续写（保留你已写的代码）。**不要自己跑 npm 或 build.mjs**：cook 由宿主执行。' +
+      '细节约定（资产层结构、硬规则、配方）见技能 gameplay-proc-assets。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        mode: {
+          type: 'string',
+          enum: ['2d', '3d', 'auto'],
+          description:
+            '2d = 只用 Canvas 2D；3d = three 依赖与 3D 样例；auto = 按玩法自选（脚手架按 2D 起）'
+        },
+        projectRelativeDir: {
+          type: 'string',
+          description:
+            '可选：已有工程相对路径（如 Cache/GamePlayJobs/<id>/project），用于续写而不是新建'
+        }
+      }
+    },
+    handler: (args) => {
+      assertProjectOpen()
+      return prepareGamePlayProject({
+        mode: optionalString(args, 'mode'),
+        projectRelativeDir: optionalString(args, 'projectRelativeDir')
+      })
+    }
+  },
+  {
+    name: 'gameplay_build',
+    title: '构建可玩 HTML',
+    description:
+      '在后台 cook 一个可玩 HTML 工程：npm install + node build.mjs，把 src/main.js 打成单文件 dist/single.html。' +
+      '立即返回 jobId（构建要几十秒到几分钟），用 gameplay_job_status 轮询到 done；成功后对话流会出现一张卡，卡上「试玩」按钮直接打开试玩窗口。' +
+      '同一个 projectRelativeDir 重复构建会复用同一条作业记录，适合「再改一版」的迭代。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectRelativeDir: {
+          type: 'string',
+          description: '工程相对路径（gameplay_prepare_project 返回）'
+        }
+      },
+      required: ['projectRelativeDir']
+    },
+    handler: (args) => {
+      assertProjectOpen()
+      return startGamePlayBuild({ projectRelativeDir: readString(args, 'projectRelativeDir') })
+    }
+  },
+  {
+    name: 'gameplay_job_status',
+    title: '可玩 HTML 作业状态',
+    description:
+      '查询可玩 HTML 作业状态（ready / building / done / error）、日志尾部、单文件产物路径与体积。' +
+      '不传 jobId 时列出本次会话的全部作业。构建失败时看 error 与 logs 定位（npm 缺失 / 语法错误 / 体积超限）。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        jobId: { type: 'string', description: 'gameplay_build 返回的 jobId；省略则列出全部作业' }
+      }
+    },
+    handler: (args) => {
+      const jobId = optionalString(args, 'jobId')
+      if (!jobId) return { jobs: listGamePlayJobs() }
+      const job = getGamePlayJob(jobId)
+      if (!job)
+        throw new Error('作业不存在（应用重启后内存记录会清空，磁盘工程仍在 Cache/GamePlayJobs）')
       return job
     }
   },

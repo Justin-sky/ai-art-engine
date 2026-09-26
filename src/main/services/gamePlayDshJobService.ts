@@ -235,7 +235,10 @@ export function inlineDistToSingleHtml(distDir: string): string {
 }
 
 export async function buildGamePlayProject(
-  input: BuildGamePlayProjectInput
+  input: BuildGamePlayProjectInput & {
+    /** 逐行回调：对话路径的作业服务用它做实时日志（IPC 调用方不传） */ // cjk-ok（JSDoc 注释：cjk 门禁的正则态误判，非 UI 文案）
+    onLog?: (line: string) => void
+  }
 ): Promise<BuildGamePlayProjectResult> {
   const root = projectService.getRoot()
   const rel = String(input.projectRelativeDir ?? '')
@@ -253,6 +256,7 @@ export async function buildGamePlayProject(
   const logs: string[] = []
   const onLog = (line: string): void => {
     logs.push(line)
+    input.onLog?.(line)
   }
 
   onLog('npm install…')

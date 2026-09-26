@@ -77,11 +77,14 @@ const READ_TOOLS = new Set([
   'task_status',
   'video_job_list',
   'video_job_get',
+  'gameplay_job_status',
   'ask_user'
 ])
 
 /**
  * 生成类：同步阻塞等待模型产出、消耗额度且产物不可逆（`transcribe_audio` 走 ASR 模型，同理）。
+ * `gameplay_build` 不花模型额度，但要跑 npm install + esbuild 且产物不可逆，按生成类收口
+ * （Plan 模式确认前不可用，Ask 模式不可见）。
  */
 const GENERATE_TOOLS = new Set([
   'generate_image',
@@ -90,7 +93,8 @@ const GENERATE_TOOLS = new Set([
   'generate_speech',
   'generate_music',
   'workflow_plan',
-  'transcribe_audio'
+  'transcribe_audio',
+  'gameplay_build'
 ])
 
 /**
