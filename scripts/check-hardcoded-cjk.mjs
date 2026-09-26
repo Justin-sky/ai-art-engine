@@ -46,6 +46,9 @@ const EXEMPT_FILES = new Set([
   'src/renderer/src/features/mcp/renderJobHandlers.ts',
   'src/shared/asyncSemaphore.ts',
   'src/shared/graph/mcpGraphEdit.ts',
+  // 对话路径的可玩 HTML 作业契约：smoke 报告文案随 MCP 工具返回给模型（Agent 域，非 UI i18n）
+  'src/shared/gamePlayJob.ts',
+  'src/main/services/gamePlaySmokeService.ts',
   'src/shared/graph/execute/generateText.ts',
   'src/shared/mcpModeAccess.ts',
   'src/shared/mcpProtocol.ts',

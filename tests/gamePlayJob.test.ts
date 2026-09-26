@@ -57,6 +57,26 @@ vi.mock('../src/main/services/gamePlayBuildService', async (importOriginal) => {
   }
 })
 
+/** 试玩门禁跑在隐藏窗口里（依赖 Electron），作业流程测试里换成一个可断言的桩 */
+vi.mock('../src/main/services/gamePlaySmokeService', () => ({
+  runGamePlaySmokeTest: (input: { htmlRelativePath: string }) => ({
+    status: 'pass' as const,
+    ok: true,
+    errors: [],
+    warnings: [],
+    metrics: {
+      frames: 3,
+      distinctFrames: 3,
+      minLuma: 12,
+      maxLuma: 40,
+      averageLuma: 26,
+      durationMs: 1200
+    },
+    htmlRelativePath: input.htmlRelativePath,
+    checkedAt: '2026-09-26T00:00:00.000Z'
+  })
+}))
+
 const {
   getGamePlayJob,
   getGamePlayJobByProjectDir,
@@ -206,7 +226,10 @@ describe('可玩 HTML 作业：服务', () => {
     expect(job?.status).toBe('done')
     expect(job?.bytes).toBe(2048)
     expect(job?.buildHtmlRelativePath).toBe(`${prepared.projectRelativeDir}/dist/single.html`)
+    // 门禁结论随 done 一起给出（agent 轮询到 done 时就能看到体检结果）
+    expect(job?.smoke?.ok).toBe(true)
     expect(job?.logs.join('\n')).toContain('build done')
+    expect(job?.logs.join('\n')).toContain('smoke pass')
   })
 
   it('build 失败落 error 与可读原因，且不吞日志', async () => {

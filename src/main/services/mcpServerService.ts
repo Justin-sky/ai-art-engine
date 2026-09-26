@@ -1787,7 +1787,8 @@ const TOOL_DEFS: McpToolDef[] = [
     description:
       '在后台 cook 一个可玩 HTML 工程：npm install + node build.mjs，把 src/main.js 打成单文件 dist/single.html。' +
       '立即返回 jobId（构建要几十秒到几分钟），用 gameplay_job_status 轮询到 done；成功后对话流会出现一张卡，卡上「试玩」按钮用系统默认程序（通常是浏览器）打开游戏，' +
-      '若产物不是自包含（用了 ES 模块或相对引用）则自动退回应用内试玩窗口；同时自动在资产库登记一个 gamePlay 资产（同一工程重复 build 只更新它，不会多出重复资产）。',
+      '若产物不是自包含（用了 ES 模块或相对引用）则自动退回应用内试玩窗口；同时自动在资产库登记一个 gamePlay 资产（同一工程重复 build 只更新它，不会多出重复资产）。' +
+      '**构建成功后会跑一次试玩门禁**（隐藏窗口真跑几秒）：结论在 gameplay_job_status 的 smoke 字段里——`smoke.ok === false` 时先按 smoke.errors 改代码再重建一次，不要急着交付。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1841,7 +1842,9 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'gameplay_job_status',
     title: '可玩 HTML 作业状态',
     description:
-      '查询可玩 HTML 作业状态（ready / building / done / error）、日志尾部、单文件产物路径与体积。' +
+      '查询可玩 HTML 作业状态（ready / building / done / error）、日志尾部、单文件产物路径与体积，以及**试玩门禁报告** `smoke`。' +
+      'smoke 是隐藏窗口真跑几秒后的体检：status（pass / warn / fail）、ok、errors（未捕获异常 / 加载失败 / 渲染进程崩溃 / 黑屏 / 一帧都没渲染）、' +
+      'warnings（画面静止等需人判断的情况）、metrics（采到的帧数 / 去重帧数 / 亮度区间）。**smoke.ok === false 时应按 errors 修代码并重新 build**，而不是直接交付。' +
       '不传 jobId 时列出本次会话的全部作业。构建失败时看 error 与 logs 定位（npm 缺失 / 语法错误 / 体积超限）。',
     inputSchema: {
       type: 'object',

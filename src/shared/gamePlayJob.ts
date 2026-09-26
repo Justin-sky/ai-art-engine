@@ -30,7 +30,98 @@ export interface GamePlayJobSnapshot {
   /** cook 成功后的单文件 HTML 相对路径 */
   buildHtmlRelativePath?: string
   bytes?: number
+  /** 试玩门禁结论：隐藏窗口真跑几秒后的「未捕获异常 / 黑屏 / 画面静止」体检报告 */
+  smoke?: GamePlaySmokeReport
   updatedAt: string
+}
+
+/**
+ * 试玩门禁（阶段 3）：把 cook 出来的单文件在隐藏窗口里真跑几秒，抓三类问题——
+ * 未捕获异常 / 加载失败、黑屏、画面静止（rAF 卡死或只渲染了一帧）。
+ *
+ * 不做自动修复：报告回给 agent，由它决定要不要改一轮（避免我们在后台替用户烧轮次）。
+ */
+export type GamePlaySmokeStatus = 'pass' | 'warn' | 'fail'
+
+/** 一帧采样的统计量：亮度均值 + 采样指纹（用于判断画面是否真的在动） */
+export interface GamePlaySmokeSample {
+  meanLuma: number
+  hash: string
+  pixels: number
+}
+
+export interface GamePlaySmokeReport {
+  status: GamePlaySmokeStatus
+  ok: boolean
+  /** 硬问题：未捕获异常 / 加载失败 / 渲染进程崩溃 / 黑屏 / 一帧都采不到 */
+  errors: string[]
+  /** 软问题：画面静止、截不到图之类，需要人（或 agent）判断 */
+  warnings: string[]
+  metrics: {
+    /** 成功采到的帧数 */
+    frames: number
+    /** 指纹去重后的帧数：1 表示画面从头到尾没变 */
+    distinctFrames: number
+    minLuma: number
+    maxLuma: number
+    averageLuma: number
+    durationMs: number
+  }
+  htmlRelativePath: string
+  checkedAt: string
+}
+
+/** 判黑屏的亮度阈值（0–255，采样点均值）：低于它按「整屏黑」处理 */
+export const GAME_PLAY_SMOKE_BLACK_LUMA = 8
+
+/**
+ * 纯判定：把采样与错误清单折成结论（Electron 那部分单独在 main 里做，便于单测）。
+ *
+ * 判定顺序刻意如此：先看硬错误 → 再看有没有采到帧 → 再看是不是整屏黑 → 最后才看静止。
+ * 「静止」只算 warn：等输入的回合制游戏本来就可能几秒不动，交给人判断。
+ */
+export function evaluateGamePlaySmoke(input: {
+  errors: readonly string[]
+  warnings: readonly string[]
+  samples: readonly GamePlaySmokeSample[]
+  durationMs: number
+  htmlRelativePath: string
+  checkedAt?: string
+}): GamePlaySmokeReport {
+  const errors = [...new Set(input.errors.map((item) => item.trim()).filter(Boolean))]
+  const warnings = [...new Set(input.warnings.map((item) => item.trim()).filter(Boolean))]
+  const samples = input.samples.filter((sample) => sample.pixels > 0)
+  const lumas = samples.map((sample) => sample.meanLuma)
+  const metrics = {
+    frames: samples.length,
+    distinctFrames: new Set(samples.map((sample) => sample.hash)).size,
+    minLuma: lumas.length ? Math.min(...lumas) : 0,
+    maxLuma: lumas.length ? Math.max(...lumas) : 0,
+    averageLuma: lumas.length ? lumas.reduce((sum, value) => sum + value, 0) / lumas.length : 0,
+    durationMs: input.durationMs
+  }
+
+  if (samples.length === 0) {
+    errors.push('一帧都没采到：游戏可能没有真正渲染（检查主循环、canvas 尺寸与 WebGL 上下文创建）')
+  } else if (metrics.maxLuma <= GAME_PLAY_SMOKE_BLACK_LUMA) {
+    errors.push(
+      `整屏黑（采样最亮一帧的平均亮度 ${metrics.maxLuma.toFixed(1)} ≤ ${GAME_PLAY_SMOKE_BLACK_LUMA}）：相机 / 灯光 / 背景色或首帧渲染有问题`
+    )
+  } else if (metrics.frames > 1 && metrics.distinctFrames === 1) {
+    warnings.push(
+      `画面静止（${metrics.frames} 帧指纹完全相同）：rAF 主循环可能已停，或渲染只跑了一帧——若游戏本来就等待输入可忽略`
+    )
+  }
+
+  return {
+    status: errors.length ? 'fail' : warnings.length ? 'warn' : 'pass',
+    ok: errors.length === 0,
+    errors,
+    warnings,
+    metrics,
+    htmlRelativePath: input.htmlRelativePath,
+    checkedAt: input.checkedAt ?? new Date().toISOString()
+  }
 }
 
 export const GAME_PLAY_JOB_LOG_TAIL = 40

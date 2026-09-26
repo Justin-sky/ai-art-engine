@@ -212,7 +212,7 @@
               <strong>Generate</strong>: describe the game in the chat; the log shows the agent editing <code>src/**</code>. In 3D mode the scaffold ships the <code>three</code> dependency and a 3D sample entry.
             </li>
             <li>
-              <strong>Build</strong>: <code>gameplay_build</code> starts, a running tool card appears, and the log shows <code>npm install</code>, <code>node build.mjs</code> and the single-file size when it succeeds.
+              <strong>Build</strong>: <code>gameplay_build</code> starts, a running tool card appears, and the log shows <code>npm install</code>, <code>node build.mjs</code> and the single-file size when it succeeds. After a successful build the host also <strong>runs a playtest gate</strong> — the game really runs for a few seconds in a hidden window, catching uncaught exceptions, load failures, black screens and static frames, with the verdict in the <code>smoke</code> field of <code>gameplay_job_status</code>; when <code>smoke.ok === false</code> the agent fixes it from that report and rebuilds.
             </li>
             <li>
               <strong>Play</strong>: the Play button opens the self-contained single file in your browser — fullscreen and DevTools included. If the build is not self-contained (ES modules or relative references), it falls back to the in-app play window and tells you why.
@@ -261,7 +261,10 @@
           <details>
             <summary>Black screen or shader errors?</summary>
             <p>
-              Complex custom WebGL (such as <code>dFdx</code>) is sensitive to WebGL1/2 extensions; switch to standard Three materials or ask the agent for another pass. This is a prototyping path and does not guarantee that any shader works first try.
+              Start with the <code>smoke</code> field of <code>gameplay_job_status</code>: after a successful build the host runs the game once in a hidden window, and <strong>uncaught exceptions / load failures / an all-black screen / not a single rendered frame</strong> land in <code>smoke.errors</code>, while a frame that never changes lands in <code>smoke.warnings</code>. Hand that report to the agent for one more pass.
+            </p>
+            <p>
+              If the gate passes and only the visuals disappoint: complex custom WebGL (such as <code>dFdx</code>) is sensitive to WebGL1/2 extensions, so ask for standard Three materials instead. This is a prototyping path — the gate only guarantees that it runs and that pixels move, not that any shader looks good.
             </p>
           </details>
           <details>

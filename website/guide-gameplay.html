@@ -217,7 +217,7 @@
             </li>
             <li>
               <strong>构建</strong>：<code>gameplay_build</code> 起手，对话里先出现一张「运行中」的工具卡；日志出现
-              <code>npm install</code>、<code>node build.mjs</code>、单文件体积即成功。
+              <code>npm install</code>、<code>node build.mjs</code>、单文件体积即成功。构建成功后宿主还会<strong>自动跑一次试玩门禁</strong>——把游戏在隐藏窗口里真跑几秒，抓未捕获异常 / 加载失败 / 黑屏 / 画面静止，结论在 <code>gameplay_job_status</code> 的 <code>smoke</code> 字段；<code>smoke.ok === false</code> 时 Agent 会按报告再改一轮。
             </li>
             <li>
               <strong>试玩</strong>：点游戏卡上的「试玩」——自包含的单文件用浏览器打开，能全屏、能开 DevTools；若产物不自包含（用了 ES 模块或相对引用），会自动退回应用内试玩窗口并说明原因。
@@ -271,8 +271,10 @@
           <details>
             <summary>画面黑屏或着色器报错？</summary>
             <p>
-              复杂自定义 WebGL（如 <code>dFdx</code>）对 WebGL1/2 扩展较敏感；可改玩法为 Three
-              标准材质，或让 Agent 再改一轮。这是原型链路，不保证任意着色器一次通过。
+              先看 <code>gameplay_job_status</code> 的 <code>smoke</code>：构建成功后宿主会自动在隐藏窗口里跑一次试玩门禁，<strong>未捕获异常 / 加载失败 / 整屏黑 / 一帧都没渲染</strong>都会写进 <code>smoke.errors</code>，画面几秒不动则进 <code>smoke.warnings</code>。把报告交给 Agent 让它再改一轮即可。
+            </p>
+            <p>
+              如果门禁是通过的、只是画面不理想：复杂自定义 WebGL（如 <code>dFdx</code>）对 WebGL1/2 扩展较敏感，可要求改用 Three 标准材质。这是原型链路，门禁只保证「跑得起来、画面在动」，不保证任意着色器都好看。
             </p>
           </details>
           <details>

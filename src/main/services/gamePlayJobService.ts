@@ -21,11 +21,13 @@ import {
   resolveGamePlayProjectRelativeDir,
   type GamePlayJobMode,
   type GamePlayJobSnapshot,
-  type GamePlayJobStatus
+  type GamePlayJobStatus,
+  type GamePlaySmokeReport
 } from '@shared/gamePlayJob'
 import { projectService } from './projectService'
 import { writeNodeGamePlayScaffold } from './gamePlayScaffold'
 import { buildGamePlayProject, listScaffoldFiles } from './gamePlayBuildService'
+import { runGamePlaySmokeTest } from './gamePlaySmokeService'
 
 interface GamePlayJobRecord {
   jobId: string
@@ -38,6 +40,7 @@ interface GamePlayJobRecord {
   error?: string
   buildHtmlRelativePath?: string
   bytes?: number
+  smoke?: GamePlaySmokeReport
   updatedAt: number
 }
 
@@ -57,6 +60,7 @@ function snapshot(record: GamePlayJobRecord): GamePlayJobSnapshot {
       ? { buildHtmlRelativePath: record.buildHtmlRelativePath }
       : {}),
     ...(typeof record.bytes === 'number' ? { bytes: record.bytes } : {}),
+    ...(record.smoke ? { smoke: record.smoke } : {}),
     updatedAt: new Date(record.updatedAt).toISOString()
   }
 }
@@ -187,13 +191,26 @@ export function startGamePlayBuild(input: {
           touch(record)
         }
       })
-      record.status = 'done'
       record.buildHtmlRelativePath = built.buildHtmlRelativePath
       record.bytes = built.bytes
       appendGamePlayJobLog(
         record.logs,
         `build done: ${built.buildHtmlRelativePath} (${Math.round(built.bytes / 1024)} KB)`
       )
+      // 试玩门禁：先体检再报 done——agent 轮询到 done 时就能看到结论，
+      // 不必再多问一次（体检约几秒，相对 npm install 可忽略）
+      appendGamePlayJobLog(record.logs, 'smoke: playtest gate (hidden window)…')
+      record.smoke = await runGamePlaySmokeTest({
+        htmlRelativePath: built.buildHtmlRelativePath
+      })
+      appendGamePlayJobLog(
+        record.logs,
+        `smoke ${record.smoke.status}: frames=${record.smoke.metrics.frames} distinct=${record.smoke.metrics.distinctFrames}`
+      )
+      for (const line of [...record.smoke.errors, ...record.smoke.warnings]) {
+        appendGamePlayJobLog(record.logs, `smoke: ${line}`)
+      }
+      record.status = 'done'
     } catch (error) {
       record.status = 'error'
       record.error = error instanceof Error ? error.message : String(error)

@@ -66,6 +66,14 @@
 - 文档：`website/guide-gameplay.html` / `.en.html` **整篇改写**为对话流程（含"旧节点去哪了"的 FAQ），`docs/ROADMAP.md` 的 7.8 条目补记 v6.7 的形态变化。
 - 测试：新增 `tests/graphGamePlayRetire.test.ts`（迁移保留原文 / 自定义标题 / 无标题兜底 / 无指令不抛错 / 相关边被丢弃、`asset.gamePlay` 仍注册但不可添加、`game.htmlGen` 彻底移除）与 `tests/gamePlayBuild.test.ts`（内联、`BUILD_NO_DIST`、非法工程路径、脚手架清单、兼容节点 cook）；删掉 `tests/gamePlayDshJob.test.ts`，`assetEditorGraph` / `graphGenerateNodes` / `graphPolicy` / `gamePlayHtml` 的清单断言同步。全量 333 文件 / 2578 例通过，typecheck（node + web）/ cjk 门禁 / prettier 干净。
 
+「一句话 3D 游戏」第 5 步（阶段 3）：**试玩门禁**——cook 成功不再等于交付。此前「能跑」只能靠人眼：cook 只证明 esbuild 打得出来，白屏 / 黑了 / 主循环挂了都要用户点开才知道，agent 更拿不到任何反馈（手册 FAQ 里那句「不保证任意着色器一次通过」就是这件事的自白）。现在每次构建成功后，宿主把 `dist/single.html` 在**隐藏窗口**里用 `file://` 载入（与产物卡「试玩」同一条路径，所以「ES 模块 / 相对引用 → 浏览器白屏」这类形态会如实现形）真跑约 3 秒，采 5 帧给出结构化报告，随 `gameplay_job_status` 的 `smoke` 字段回到 agent：
+
+- **采集**（`main/services/gamePlaySmokeService.ts`，新）：`console-message`（level ≥ 2）+ `did-fail-load` + `render-process-gone` + `unresponsive`；`capturePage()` 取帧后用 `toBitmap()` 的 BGRA 位图按步长抽样算**平均亮度与指纹**（不逐像素、不引图像库），隐藏窗口靠关掉后台节流持续出帧；采样间隙发合成按键，给「等输入才动」的游戏一点机会。
+- **判定**（`shared/gamePlayJob.ts` 的 `evaluateGamePlaySmoke`，纯函数可单测）分两层，顺序刻意：硬错误 → 有没有采到帧 → 是不是**整屏黑**（按采样**最亮**一帧判定，避免只有首帧黑就误伤）→ 最后才看**画面静止**（多帧指纹全同，rAF 可能已停 / 只渲染了一帧）。静止**只算 warning**：等输入的回合制游戏本来就可能几秒不动，交给人判断；截图拿不到时同样按 warning 上报，绝不把「我们截不到」说成「游戏是黑的」。
+- **接进作业**：门禁插在「构建成功」与 `done` 之间，所以 agent 轮询到 `done` 时结论已经在手（不必多问一次）；`smoke` 报告同时进日志尾部。**不自动改代码、不额外消耗模型额度**——报告只描述问题，改不改由 agent 与用户决定。
+- 面向模型的三处说明同步：`gameplay_build` / `gameplay_job_status` 工具描述、dsh 技能 `gameplay-proc-assets`（`smoke.ok === false` 要先按 errors 改一轮再交付）、studio 系统提示块；`docs/MCP.md` 新增「试玩门禁（`smoke`）」小节，`website/guide-gameplay.html` / `.en.html` 的构建步骤与黑屏 FAQ 改写（FAQ 从「不保证任意着色器一次通过」改成「先看 smoke，跑不起来就按报告再改一轮」）。
+- 测试：新增 `tests/gamePlaySmoke.test.ts` 9 例（在动即 pass、未捕获异常 fail、整屏黑按最亮帧判、一帧未采到 fail、指纹全同 warn、单帧不做静止判定、错误优先于静止、错误去重、亮度统计），`tests/gamePlayJob.test.ts` 断言 `done` 时已带 `smoke`（隐藏窗口依赖 Electron，测试里把门禁换桩）。全量 334 文件 / 2587 例通过，typecheck（node + web）/ cjk 门禁 / prettier 干净。
+
 ## [6.6.0] — 2026-09-24
 
 6.6.0 功能版：可玩 HTML 改为 dsh 多轮纯 Node（esbuild）工程再 cook 成单文件；新增 Anthropic（Claude）提供商与导演台多光源；节点执行日志实时进度；并修好沙盒读盘 CSP、cook 误校验与卡片拖拽卡顿。

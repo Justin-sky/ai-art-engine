@@ -132,9 +132,11 @@ Assets/…/<游戏名>        ← 自动建的 gamePlay 资产（genParams 指�
 - 资产编辑器（`AssetEditor.vue`）工具栏对 `gamePlay` 资产加一个「试玩」按钮（同一入口）。
 - 复用同一个 `EditorDiveGamePlayView`，不新写播放器。
 
-### 4.5 试玩门禁（可选阶段 3）
+### 4.5 试玩门禁（阶段 3）——**已实现**
 
-同一个隐藏窗口加载 `dist/single.html` → 收 `console-message` / `did-fail-load` / `render-process-gone` → 进程内合成输入 → 采样若干帧判断非纯色 + rAF 计数 → 报告 `{ ok, errors[], blank, fps }`。作为 `gameplay_job_status` 的附加字段回给 agent，让它自己决定要不要再改一轮（**不自动烧轮次**）。
+隐藏窗口 `file://` 载入 `dist/single.html`（与「试玩」按钮同一条路径）真跑约 3 秒，采 5 帧算亮度与指纹，报告 `{ status, ok, errors[], warnings[], metrics }`。**构建成功后自动跑**，结论随 `gameplay_job_status` 的 `smoke` 字段回到 agent（轮询到 `done` 就能看到，不用多问一次）；不自动改代码、不额外花模型额度。
+
+判定刻意分两层：未捕获异常 / 加载失败 / 渲染进程崩溃 / 无响应 / 整屏黑 / 一帧未渲染 → `errors`（`ok: false`）；画面静止 → 只算 `warnings`（等输入的回合制游戏本来就可能几秒不动）。截图拿不到时按 warning 上报，绝不把「我们截不到」说成「游戏是黑的」。
 
 ---
 
@@ -177,11 +179,11 @@ Assets/…/<游戏名>        ← 自动建的 gamePlay 资产（genParams 指�
 - `features/media/gamePlaySandboxDialog.ts` + `EditorDiveGamePlayView.vue`：`htmlPath` 第三入口。
 - 测试：`tests/chatGameplayCard.test.ts`（可玩 HTML 判定、卡上只有一个按钮的源码不变量、按钮调 `openGamePlaySandboxDialog({ htmlPath })`）+ 沙盒第三入口的单测（`readProjectFile` → `prepareGameHtml` 分支）+ 资产去重（同工程二次 build 不新建）。
 
-### 阶段 3（可选）：试玩门禁（1–2d）
+### 阶段 3（可选）：试玩门禁（1–2d）——**已完成**
 
-- `main/services/gamePlaySmokeService.ts`（新）：隐藏窗口加载单文件、错误采集、合成输入、帧采样。
-- `gameplay_job_status` 增字段 `smoke`（`off` 时不跑）；不做自动修复轮。
-- 测试：报告解析、`off` 时不执行、失败不影响已产出的 `dist/single.html`。
+- `main/services/gamePlaySmokeService.ts`（新）：隐藏窗口 `loadFile` 载入单文件、控制台错误 / `did-fail-load` / `render-process-gone` / `unresponsive` 采集、`capturePage()` 采 5 帧算亮度与指纹（BGRA 位图抽样，不依赖图像库）、采样间隙发合成按键轻推「等输入才动」的游戏。
+- 判定纯函数在 `shared/gamePlayJob.ts` 的 `evaluateGamePlaySmoke`（可单测）：错误 → 无帧 → 整屏黑 → 静止，逐层判定；静止只算 warn。
+- `gamePlayJobService` 在构建成功与 `done` 之间插入门禁，结论写进作业快照；`gameplay_job_status` 与工具描述、技能、系统提示同步说明。
 
 ### 阶段 4：资产库试玩入口 + 删除两个节点（1–2d）
 
