@@ -72,12 +72,7 @@ import {
   finalizeBlenderDshJob,
   prepareBlenderDshJob
 } from './services/blenderDshJobService'
-import {
-  buildGamePlayProject,
-  prepareGamePlayDshJob,
-  seedGamePlayProject,
-  validatePreparedGamePlayJob
-} from './services/gamePlayDshJobService'
+import { buildGamePlayProject } from './services/gamePlayBuildService'
 import { settingsService } from './services/settingsService'
 import { updateService } from './services/updateService'
 import {
@@ -498,25 +493,7 @@ export function registerIpcHandlers(): void {
     (input: import('@shared/ipc').FinalizeBlenderDshJobInput) => finalizeBlenderDshJob(input)
   )
   handle(IpcChannels.BLENDER_DSH_CLEANUP, (jobId: string) => cleanupBlenderDshJob(jobId))
-  handle(
-    IpcChannels.GAMEPLAY_DSH_PREPARE,
-    (input: import('@shared/ipc').PrepareGamePlayDshJobInput) => prepareGamePlayDshJob(input)
-  )
-  handle(IpcChannels.GAMEPLAY_DSH_SEED, (input: import('@shared/ipc').PrepareGamePlayDshJobInput) =>
-    seedGamePlayProject(input)
-  )
-  handle(
-    IpcChannels.GAMEPLAY_DSH_VALIDATE,
-    (input: import('@shared/ipc').ValidateGamePlayDshJobInput) => {
-      const outcome = validatePreparedGamePlayJob(input)
-      if (!outcome.ok) return { ok: false as const, error: outcome.error }
-      return {
-        ok: true as const,
-        gameMode: outcome.result.gameMode
-      }
-    }
-  )
-  handle(IpcChannels.GAMEPLAY_DSH_BUILD, (input: import('@shared/ipc').BuildGamePlayProjectInput) =>
+  handle(IpcChannels.GAMEPLAY_BUILD, (input: import('@shared/ipc').BuildGamePlayProjectInput) =>
     buildGamePlayProject(input)
   )
   handle(IpcChannels.HARNESS_ABORT, () => abortHarnessTask())

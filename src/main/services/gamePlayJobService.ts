@@ -25,7 +25,7 @@ import {
 } from '@shared/gamePlayJob'
 import { projectService } from './projectService'
 import { writeNodeGamePlayScaffold } from './gamePlayScaffold'
-import { buildGamePlayProject, listScaffoldFiles } from './gamePlayDshJobService'
+import { buildGamePlayProject, listScaffoldFiles } from './gamePlayBuildService'
 
 interface GamePlayJobRecord {
   jobId: string

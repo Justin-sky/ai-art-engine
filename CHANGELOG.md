@@ -58,6 +58,14 @@
 - 技能硬规则补第 ⑧ 条：`index.template.html` 保持内联经典脚本（保留 `/*APP_JS*/`、别加 `type="module"`、别引兄弟文件），否则只能在应用内窗口跑、浏览器里白屏。工具描述与 `docs/MCP.md` / `website/guide-mcp.html` 同步。
 - 测试：新增 `tests/gameHtmlBrowserOpen.test.ts`（自检口径：经典内联放行、模块脚本与相对引用拦下、外链 / data: / blob: / 锚点 / 根路径放行、模块优先上报），`tests/chatGameplayCard.test.ts` 改为钉住「主路径交系统程序 + 白屏形态兜底 + 资产库双击/右键入口」。全量 332 文件 / 2572 例通过，typecheck（node + web）/ cjk 门禁 / prettier 干净。
 
+「一句话 3D 游戏」第 4 步：**下线图内的两个可玩 HTML 节点**（游戏生成从此只有对话一条路）。落地方式是先补齐入口、再拆旧壳，**两个节点的删法刻意不同**——依据是 `shared/graph/registry.ts` 的 `inferNodeTypeId`：类型不在注册表时会按 `category` / `assetType` 兜底推断，硬删会留下语义漂移的僵尸：
+
+- **`game.htmlGen`（可玩 HTML 生成）硬删**，并在 `normalize.ts` 加**显式迁移**：旧工程里的节点迁成备注节点（`note.text`），玩法需求原文落到 `params.text`，标题加「（已下线，改用 AI 对话生成）」；游戏专属参数（`gamePlayHtml` / `gamePlayProjectDir` / `gamePlayMode` / `generateInstruction`）直接删掉而不是留空串。迁移必须跑在 `hydrateNode` 的最前面——放到 `finalizeGraph` 里就再也认不出它了（类型已移除，`inferNodeTypeId` 早把 typeId 换成了 `note.text`；第一次实现正是踩了这个坑，`tests/graphGamePlayRetire.test.ts` 现在把这条钉住）。连带下线：`execute/gameHtmlGen.ts`、图内指令对话框的 presetKind 与提示词构造（`context.ts`）、`GraphInstructionMentionEditor` 的预设文案分支、`GameHtmlGenInspector.vue` 及其注册、「一句话小游戏」一键工作流预设（含中英文案）、`defaultGraph` 的 gamePlay 内图模板、`runGamePlayDshJob` 与它的整个文件式 dsh 作业契约（`shared/gamePlayDshJob.ts` 的 brief/result/validate + `GAMEPLAY_DSH_PREPARE|SEED|VALIDATE` 三条 IPC + preload）。
+- **`asset.gamePlay` 保留类型注册、改为 `addable: false`**（兼容层）：`inferNodeTypeId` 会由 `assetType: 'gamePlay'` 把它推回来，硬删只会得到未知 def 的节点，而游戏本体又没有替代节点可迁。于是它对用户"消失"（右键分组去掉、`graph_node_types` 不再返回、加不出来），旧图照常显示、照常双击试玩。同理**保留了** `GraphNodeCard` 的卡面/双击分支与 `textOutput` 的大 HTML 排除分支（旧资产里仍可能存着整页 `gamePlayHtml`，那不是死代码）。
+- **服务收敛**：`gamePlayDshJobService.ts` → `gamePlayBuildService.ts`（只剩构建内联 + 脚手架文件清单），IPC `GAMEPLAY_DSH_BUILD` → `GAMEPLAY_BUILD`，`NodeExecuteContext` 去掉 `runGamePlayDshJob` 只留 `buildGamePlayProject`；`features/graph/model/runGamePlayDshJob.ts` → `runGamePlayBuild.ts`；`shared/gamePlay/prompts.ts`（图内指令框专用的系统/用户提示词）整块删除，约定改由技能承担。
+- 文档：`website/guide-gameplay.html` / `.en.html` **整篇改写**为对话流程（含"旧节点去哪了"的 FAQ），`docs/ROADMAP.md` 的 7.8 条目补记 v6.7 的形态变化。
+- 测试：新增 `tests/graphGamePlayRetire.test.ts`（迁移保留原文 / 自定义标题 / 无标题兜底 / 无指令不抛错 / 相关边被丢弃、`asset.gamePlay` 仍注册但不可添加、`game.htmlGen` 彻底移除）与 `tests/gamePlayBuild.test.ts`（内联、`BUILD_NO_DIST`、非法工程路径、脚手架清单、兼容节点 cook）；删掉 `tests/gamePlayDshJob.test.ts`，`assetEditorGraph` / `graphGenerateNodes` / `graphPolicy` / `gamePlayHtml` 的清单断言同步。全量 333 文件 / 2578 例通过，typecheck（node + web）/ cjk 门禁 / prettier 干净。
+
 ## [6.6.0] — 2026-09-24
 
 6.6.0 功能版：可玩 HTML 改为 dsh 多轮纯 Node（esbuild）工程再 cook 成单文件；新增 Anthropic（Claude）提供商与导演台多光源；节点执行日志实时进度；并修好沙盒读盘 CSP、cook 误校验与卡片拖拽卡顿。

@@ -238,7 +238,10 @@ Assets/…/<游戏名>        ← 自动建的 gamePlay 资产（genParams 指�
 
 ---
 
-## 10. 删除既有两个节点（阶段 4）
+## 10. 删除既有两个节点（阶段 4）——**已完成**
+
+> 落地情况：阶段 0–4 全部实现（含「试玩交给系统默认程序打开」这一变更）。本节保留为**删除依据与兼容决策记录**；
+> 实际删法与本节最初的设想有两处偏差，已在下面灰字标注。
 
 **目标**：`game.htmlGen`（可玩 HTML 生成）与 `asset.gamePlay`（可玩 HTML 资产）从节点图里消失；游戏生成只剩对话一条路，游戏本身以 `gamePlay` **资产**（不是节点）形式留存。
 
@@ -286,6 +289,13 @@ Assets/…/<游戏名>        ← 自动建的 gamePlay 资产（genParams 指�
 | `asset.gamePlay`                     | `inferNodeTypeId` 会推回 `asset.gamePlay`（由 `assetType` 派生）→ 类型仍不存在 → 节点带着未知 def 留在图里，渲染/连线行为不可控；而游戏本体没有替代节点可迁 | **保留类型注册，但 `addable: false`**：从右键分组与 MCP `graph_node_types` 自动消失（该工具走 `listAddableNodeTypes`，且对不可添加类型已有「存在但不可添加」的友好提示），旧图照常显示、照常双击试玩 |
 
 也就是说：**对用户可见的「节点」消失（加不出来、菜单里没有、Agent 也看不到），但旧工程不丢数据**。保留的那点内部类型定义（`asset.gamePlay` + `executeGamePlayAssetNode`）是兼容层，不是功能入口——不再给它加任何能力，等旧工程自然淘汰后再硬删。
+
+**实际落地的两处偏差（记录在案，免得后来者按本表核对时困惑）**：
+
+1. **`asset.gamePlay` 的卡面与双击分支没有删**（表中「GraphNodeCard 删 `asset.gamePlay` 卡面分支（1625）与双击进沙盒分支（2386）」作废）：既然类型保留了兼容层，旧图里的节点就该照常显示、照常双击试玩——删掉分支反而会让旧工程变成"看得见点不动"。
+2. **`textOutput.ts` 的 gamePlay 排除分支保留**：节点类型仍在（旧资产里仍可能存着整页 `gamePlayHtml`），这条保护不是死代码。
+3. 迁移实现放在 `hydrateNode` 的**最前面**（`migrateRetiredGameHtmlGenNode`），而不是 `finalizeGraph`：类型已从注册表移除，`inferNodeTypeId` 会先把 `typeId` 换成 `note.text`，放到后面就再也认不出被下线的节点了（第一次实现就踩了这个坑，由新测试 `tests/graphGamePlayRetire.test.ts` 钉住）。
+4. 迁移时**删除**游戏专属参数（`gamePlayHtml` / `gamePlayProjectDir` / `gamePlayMode` / `generateInstruction`），而不是留空串——备注节点不该拖着无用键；玩法需求原文落到 `params.text`。
 
 ### 10.4 删除后失去的能力（已知账）
 

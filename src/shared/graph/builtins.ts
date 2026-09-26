@@ -88,7 +88,6 @@ import {
   executeFrameAnimGenNode,
   executeSvgAnimNode,
   executeSvgGenNode,
-  executeGameHtmlGenNode,
   executeGamePlayAssetNode,
   executeModelPoseNode,
   executeModelRigSkinNode,
@@ -254,7 +253,10 @@ const ASSET_META: Array<{
     label: '可玩 HTML',
     icon: '🎮',
     outType: GraphPortType.project,
-    addable: true,
+    // 兼容层：游戏生成已改由 AI 对话面板驱动（MCP gameplay_* 工具），这个节点不再可添加，
+    // 但类型保留注册——旧工程里已有的节点还要能显示、能双击试玩，且 `inferNodeTypeId`
+    // 会由 assetType='gamePlay' 推回本类型，硬删会留下未知 def 的僵尸节点。
+    addable: false,
     weight: 0.85,
     processingIn: GraphPortType.project
   },
@@ -2906,45 +2908,6 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     assetType: 'model',
     contributeToGeneration: false,
     execute: executeModelAnimationNode
-  },
-  {
-    typeId: 'game.htmlGen',
-    category: 'note',
-    label: '可玩 HTML 生成',
-    icon: '🎮',
-    defaultTitle: '可玩 HTML 生成',
-    description:
-      '一句话经 dsh 多轮生成纯 Node（esbuild）小游戏工程（2D Canvas 或 3D Three）。in 接文本、in-image 接参考图；out 出「工程」目录，可接入 asset.gamePlay；在可玩 HTML 节点执行时 cook（npm + node build.mjs）打成单文件沙盒试玩。无 dsh 时回退样例工程。', // cjk-ok（MCP / Agent 集成文本：随 graph_node_types 返回给外部 Agent，非 UI 文案）
-    defaultSize: { ...ASSET_SIZE },
-    sizeLimits: { ...ASSET_LIMITS },
-    ports: [
-      { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'In' },
-      {
-        id: 'in-image',
-        direction: 'in',
-        dataType: GraphPortType.image,
-        multiple: true,
-        label: 'Image'
-      },
-      ...galleryOutPorts(GraphPortType.project)
-    ],
-    defaultParams: () => ({
-      generateInstruction: '',
-      generateSystemPrompt: '',
-      generateModel: '',
-      generateProviderInstanceId: '',
-      gamePlayMode: 'auto',
-      gamePlayHtml: '',
-      gamePlayProjectDir: '',
-      text: ''
-    }),
-    addable: true,
-    deletable: true,
-    inspector: 'none',
-    inspectorId: 'studio.graph.gameHtmlGen',
-    card: 'media',
-    contributeToGeneration: false,
-    execute: executeGameHtmlGenNode
   }
 ]
 

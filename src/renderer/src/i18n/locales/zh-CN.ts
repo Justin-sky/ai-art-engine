@@ -199,12 +199,6 @@ export default {
         prompt:
           '创建一个游戏 UI 工作流：先用策划案生成节点产出游戏系统策划案，再用 UI 界面拆分节点把策划案拆成各界面的详细生图提示词（不写具体配色与画风），最后由 UI 界面生成节点（可 dive 进入内图）逐屏生成界面图，并配合全局风格参考图统一界面风格。'
       },
-      gamePlayHtml: {
-        title: '一句话小游戏',
-        desc: '文本 → dsh/Node → cook 单文件 → 沙盒',
-        prompt:
-          '创建一个可玩 HTML 小游戏工作流：文本节点写一句话玩法需求，可玩 HTML 生成节点经 dsh 多轮产出纯 Node（esbuild）工程，再接到可玩 HTML 资产节点执行 cook（npm + node build.mjs 打成单文件）；双击资产进入 iframe 沙盒试玩。'
-      },
       gameIcons: {
         title: '游戏图标包',
         desc: '名单 ×3 → 3×3 整版表 ×3 → 切格 / 透明打包',
@@ -3457,18 +3451,6 @@ export default {
       exportGifStatic:
         '当前 SVG 没有可烘焙的 SMIL 动效，无法导出 GIF（请生成含 animate / animateTransform 的动画）'
     },
-    gameHtmlGen: {
-      inspectorHint:
-        '一句话经 dsh 多轮生成纯 Node（esbuild）可玩工程；在「可玩 HTML」资产节点 cook（npm + node build.mjs→单文件）；可接参考图；双击进沙盒试玩',
-      mode: '模式',
-      modeAuto: '自动（按玩法自选，脚手架按 2D）',
-      mode2d: '2D Canvas',
-      mode3d: '3D Three.js',
-      instruction: '玩法需求',
-      instructionPlaceholder:
-        "一句话描述可玩小游戏（玩法 / 操作 / 胜负）；dsh 多轮写纯 Node/esbuild；可接 in-image；可用 {'@'} 引用上方连线",
-      projectDir: '工程目录'
-    },
     svgAnim: {
       inspectorHint:
         '接入 SVG（SVG 生成节点或图库矢量资产）烘焙为位图序列：含 SMIL 动效（SVG 自身的 <animate> / <animateTransform> / <set>；CSS @keyframes 与 <animateMotion> 不参与求值）时按动画时间轴逐帧出 PNG 并合成 GIF 落盘，无动效时只出 1 帧、不产 GIF',
@@ -4598,8 +4580,6 @@ export default {
           "可选：补充本次细化焦点（规则已在 Inspector 系统提示词）；可用 {'@'} 引用上游",
         svgGenInstructionPlaceholder:
           "描述要生成的矢量图（图标 / 插画 / UI 元素 / 动效）；可用 {'@'} 引用上方连线资源",
-        gameHtmlGenInstructionPlaceholder:
-          "一句话描述可玩小游戏（玩法 / 操作 / 胜负）；dsh 多轮写纯 Node/esbuild；可接 in-image；可用 {'@'} 引用上方连线",
         modelPoseInstructionPlaceholder:
           "描述角色静帧姿势（走路、挥手、叉腰…）或点 Inspector 常用姿势；可用 {'@'} 引用上游文本",
         modelRigSkinInstructionPlaceholder:
@@ -4644,7 +4624,6 @@ export default {
           titleLipSync: '对口型模板',
           titleToPrompt: '图片反推模板',
           titleSvgGen: 'SVG 生成模板',
-          titleGameHtmlGen: '可玩 HTML 模板',
           titleModelPose: '3D姿势模板',
           titleModelRigSkin: '3D骨骼蒙皮模板',
           titleModelAnimation: '3D动画模板',
@@ -4663,12 +4642,6 @@ export default {
             uiButton: 'UI 按钮',
             animIcon: '图标动效',
             illustFlat: '扁平插画'
-          },
-          gameHtmlGen: {
-            collect2d: '2D 收集',
-            dodge2d: '2D 躲避',
-            collect3d: '3D 收集',
-            arena3d: '3D 竞技场'
           },
           modelPose: {
             idle: '自然站立',

@@ -126,21 +126,4 @@ document.body.appendChild(canvas);
     expect(seeded.mode).toBe('3d')
     expect(seeded.html).toContain(THREE_INJECT_MARKER)
   })
-
-  it('ignores builtin system prompts when resolving by mode', async () => {
-    const {
-      DEFAULT_GAME_HTML_SYSTEM_PROMPT_2D_ZH,
-      isBuiltinGameHtmlSystemPrompt,
-      resolveGameHtmlSystemPrompt
-    } = await import('../src/shared/gamePlay')
-    expect(isBuiltinGameHtmlSystemPrompt(DEFAULT_GAME_HTML_SYSTEM_PROMPT_2D_ZH)).toBe(true)
-    expect(isBuiltinGameHtmlSystemPrompt('自定义系统词')).toBe(false)
-    const resolved = resolveGameHtmlSystemPrompt(
-      '3d',
-      DEFAULT_GAME_HTML_SYSTEM_PROMPT_2D_ZH,
-      'zh-CN'
-    )
-    expect(resolved).toMatch(/Three\.js/)
-    expect(resolved).not.toMatch(/只用原生 Canvas 2D/)
-  })
 })

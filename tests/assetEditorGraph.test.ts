@@ -8,6 +8,7 @@ import {
   createNodeFromType,
   createOutputGraphNode,
   getNodePorts,
+  getNodeType,
   GraphPortType,
   isAssetRefNode,
   isNodeDeletable,
@@ -106,31 +107,19 @@ describe('asset editor graph', () => {
     ).toBe(true)
   })
 
-  it('creates default gamePlay asset graph with htmlGen linked to play node', () => {
+  it('gamePlay 资产不再有默认内图（游戏生成改由 AI 对话面板驱动）', () => {
     const doc = createDefaultScopedGraph('workflow', 'gamePlay')
-    const gen = doc.nodes.find((node) => node.typeId === 'game.htmlGen')
-    const play = doc.nodes.find((node) => node.typeId === 'asset.gamePlay')
-    expect(gen).toBeTruthy()
-    expect(play).toBeTruthy()
-    expect(
-      doc.edges.some(
-        (edge) =>
-          edge.source === gen?.id &&
-          edge.target === play?.id &&
-          (edge.sourcePort ?? 'out') === 'out' &&
-          (edge.targetPort ?? 'in') === 'in'
-      )
-    ).toBe(true)
-    expect(
-      getNodePorts(gen!).some(
-        (p) => p.direction === 'out' && p.id === 'out' && p.dataType === GraphPortType.project
-      )
-    ).toBe(true)
-    expect(
-      getNodePorts(play!).some(
-        (p) => p.direction === 'in' && p.id === 'in' && p.dataType === GraphPortType.project
-      )
-    ).toBe(true)
+    // 模板已随 `game.htmlGen` 节点一起下线：新建的可玩 HTML 资产只带 genParams
+    // （工程目录 + 单文件路径），内图留空由用户自行编排
+    expect(doc.nodes.some((node) => node.typeId === 'game.htmlGen')).toBe(false)
+    expect(doc.nodes.some((node) => node.typeId === 'asset.gamePlay')).toBe(false)
+  })
+
+  it('asset.gamePlay 仍是注册类型（旧工程节点要能显示与试玩）但不可添加', () => {
+    const def = getNodeType('asset.gamePlay')
+    expect(def).toBeTruthy()
+    expect(def?.addable).toBe(false)
+    expect(getNodeType('game.htmlGen')).toBeUndefined()
   })
 
   it('creates default director asset graph without classic output', () => {

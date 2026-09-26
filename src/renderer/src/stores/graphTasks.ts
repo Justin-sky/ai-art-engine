@@ -75,10 +75,7 @@ import { composeImageLayerStack } from '../features/graph/model/composeImageLaye
 import { composeComicPageImage } from '../features/comic/composeComicPageImage'
 import { inspectModelSkeleton } from '../features/graph/model/inspectModelSkeleton'
 import { runBlenderDshJob } from '../features/graph/model/runBlenderDshJob'
-import {
-  buildGamePlayProjectForNode,
-  runGamePlayDshJob
-} from '../features/graph/model/runGamePlayDshJob'
+import { buildGamePlayProjectForNode } from '../features/graph/model/runGamePlayBuild'
 import { normalizeImageAspectRatio } from '../features/graph/model/normalizeImageAspectRatio'
 import { prepareGraphDocumentForPersist } from '../features/graph/persistGraphRunOutputs'
 import { saveGraphRunMediaForNode } from '../features/graph/saveGraphRunMediaForNode'
@@ -1557,7 +1554,6 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         composeComicPageImage,
         inspectModelSkeleton,
         runBlenderDshJob,
-        runGamePlayDshJob,
         buildGamePlayProject: buildGamePlayProjectForNode,
         runBlenderMcpTool: (input) =>
           window.studio.runBlenderMcpTool({

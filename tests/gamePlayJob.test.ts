@@ -37,8 +37,8 @@ vi.mock('../src/main/services/projectService', () => ({
 
 let projectRoot = ''
 
-vi.mock('../src/main/services/gamePlayDshJobService', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../src/main/services/gamePlayDshJobService')>()
+vi.mock('../src/main/services/gamePlayBuildService', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/main/services/gamePlayBuildService')>()
   return {
     ...actual,
     buildGamePlayProject: (input: {

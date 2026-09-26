@@ -764,8 +764,14 @@ class ProjectService {
         ...stage2dActionAssetGenParams(createDefaultStage2dActionAssetPack())
       }
     }
-    // 可玩 HTML：默认播种 2D 样例，双击 Dive 沙盒即可试玩
-    if (input.type === 'gamePlay' && !asset.genParams?.gamePlayHtml) {
+    // 可玩 HTML：默认播种 2D 样例，双击 Dive 沙盒即可试玩。
+    // 已带工程目录的（对话路径 cook 成功后自动登记的资产）不播种——那种资产要玩的是
+    // `dist/single.html`，塞样例 HTML 只会盖掉它。
+    if (
+      input.type === 'gamePlay' &&
+      !asset.genParams?.gamePlayHtml &&
+      !asset.genParams?.gamePlayProjectDir
+    ) {
       const mode =
         asset.genParams?.gamePlayMode === '3d' || asset.genParams?.gamePlayMode === '2d'
           ? asset.genParams.gamePlayMode

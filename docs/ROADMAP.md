@@ -55,7 +55,8 @@
 - [ ] **7.6 Workflow Compiler v1**：Intent IR（`movie|ad|episode|gameProto`）→ 选预设 / 改拓扑 / 绑模型（扩展 `workflow_plan` / `materializeGraphPlan`）
 - [ ] **7.6a 创作闭环运行时（V7 必达）**：统一「执行 → QA → FAIL 原因落盘 → 局部重编译 / 重跑 → 再 QA」；广告 / 影视新链路必须接线，短剧继续吃 episode.review；上限 `maxAttempts`，禁止无限循环
 - [ ] **7.7 记忆升级**：`memory.md` ↔ Bible / DNA / 制作计划双向写（闭环第 3 环）
-- [x] **7.8 可玩 HTML 沙盒（快赢）**：一句话 → 单 HTML（**2D Canvas** / **3D Three.js**，`gamePlayMode=2d|3d|auto`）→ Dive iframe（`sandbox` + `srcdoc`，本地注入 three）；新资产 `gamePlay` + 预设 `gamePlayHtml`；试玩闭环自洽，**不替代**影视成片闭环
+- [x] **7.8 可玩 HTML 沙盒（快赢）**：一句话 → 单 HTML（**2D Canvas** / **3D Three.js**）→ 试玩；新资产 `gamePlay` + 预设 `gamePlayHtml`；试玩闭环自洽，**不替代**影视成片闭环
+  - v6.7 起改为**对话面板驱动**：MCP `gameplay_prepare_project` / `gameplay_build` / `gameplay_job_status` + 内置技能 `gameplay-proc-assets`，资产（几何 / Canvas 贴图 / WebAudio 音效 / 种子关卡）全部由生成的代码程序化产出；cook 成功后自动登记 `gamePlay` 资产，产物卡「试玩」用系统默认程序（浏览器）打开。图内的 `game.htmlGen` / 资产节点已下线（`game.htmlGen` 硬删并迁移为备注；`asset.gamePlay` 保留类型作兼容层，不再可添加）
 
 ### V8 — AI Film Studio（AI 原生 Blender 体验）
 

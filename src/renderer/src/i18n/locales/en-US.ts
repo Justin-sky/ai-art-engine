@@ -204,12 +204,6 @@ export default {
         prompt:
           'Create a game UI workflow: a system-plan node produces the game system design, a UI split node breaks it into per-screen image prompts (without concrete colors or art style), and a UI generation node (dive into its inner graph) renders each screen, with global style reference images unifying the UI look.'
       },
-      gamePlayHtml: {
-        title: 'One-sentence mini-game',
-        desc: 'Text → dsh/Node → cook single HTML → sandbox',
-        prompt:
-          'Create a playable HTML mini-game workflow: a text node holds a one-sentence gameplay brief, a playable-HTML generation node uses multi-turn dsh to produce a pure Node (esbuild) project, then an asset.gamePlay node cooks it (npm + node build.mjs → single HTML); double-click the asset to try it in the iframe sandbox.'
-      },
       gameIcons: {
         title: 'Game icon pack',
         desc: 'Name lists ×3 → 3×3 icon sheets ×3 → split / transparent pack',
@@ -3537,18 +3531,6 @@ export default {
       exportGifStatic:
         'This SVG has no bakeable SMIL animation, so a GIF cannot be exported (generate animate / animateTransform motion first)'
     },
-    gameHtmlGen: {
-      inspectorHint:
-        'Generate a playable pure Node (esbuild) mini-game via dsh (multi-turn); cook on asset.gamePlay (npm + node build.mjs → single HTML); optional reference images; double-click to sandbox-play',
-      mode: 'Mode',
-      modeAuto: 'Auto (agent chooses; scaffold starts as 2D)',
-      mode2d: '2D Canvas',
-      mode3d: '3D Three.js',
-      instruction: 'Gameplay brief',
-      instructionPlaceholder:
-        "One-sentence gameplay brief (rules / controls / win); dsh writes pure Node/esbuild; optional in-image; use {'@'} to cite inputs",
-      projectDir: 'Project dir'
-    },
     svgAnim: {
       inspectorHint:
         'Bake an SVG (from the SVG Generation node or a vector library asset) into bitmap frames: with SMIL animation (the SVG\u2019s own <animate> / <animateTransform> / <set>; CSS @keyframes and <animateMotion> are not evaluated) it renders one PNG per timeline sample and composes a GIF, while a static SVG yields a single frame and no GIF',
@@ -4719,8 +4701,6 @@ export default {
           "Optional focus for this refine (rules live in Inspector system prompt); use {'@'} to cite upstream",
         svgGenInstructionPlaceholder:
           "Describe the vector art to generate (icon / illustration / UI element / motion); use {'@'} to cite connected inputs",
-        gameHtmlGenInstructionPlaceholder:
-          "One-sentence playable mini-game brief (rules / controls / win); dsh writes pure Node/esbuild; wire in-image for art refs; use {'@'} to cite inputs",
         modelPoseInstructionPlaceholder:
           "Describe a still pose (walk, wave, hands on hips…) or pick a preset in Inspector; use {'@'} to cite upstream text",
         modelRigSkinInstructionPlaceholder:
@@ -4766,7 +4746,6 @@ export default {
           titleLipSync: 'Lip sync templates',
           titleToPrompt: 'Image reverse-prompt templates',
           titleSvgGen: 'SVG generation templates',
-          titleGameHtmlGen: 'Playable HTML templates',
           titleModelPose: '3D pose templates',
           titleModelRigSkin: '3D rig skin templates',
           titleModelAnimation: '3D animation templates',
@@ -4785,12 +4764,6 @@ export default {
             uiButton: 'UI button',
             animIcon: 'Icon motion',
             illustFlat: 'Flat illustration'
-          },
-          gameHtmlGen: {
-            collect2d: '2D collect',
-            dodge2d: '2D dodge',
-            collect3d: '3D collect',
-            arena3d: '3D arena'
           },
           modelPose: {
             idle: 'Idle stand',

@@ -78,7 +78,8 @@ export function syncCanonicalOutputNodeIds(
   }
 }
 
-function hydrateNode(raw: GraphNode): GraphNode {
+function hydrateNode(rawNode: GraphNode): GraphNode {
+  const raw = migrateRetiredGameHtmlGenNode(rawNode)
   const typeId = inferNodeTypeId(raw)
   const def = resolveNodeType({ ...raw, typeId })
   const params = { ...raw.params }
@@ -191,6 +192,44 @@ function ensureDirectorProcessingDefaults(nodes: GraphNode[]): void {
         fov: 50
       }
     }
+  }
+}
+
+/**
+ * `game.htmlGen` 已随「游戏生成改由 AI 对话面板驱动」下线（MCP gameplay_* 工具）。
+ *
+ * 旧工程里的节点不丢弃、也不留成未知类型：显式迁成备注节点并保留标题与指令文本
+ * （`inferNodeTypeId` 对 `category: 'note'` 本来就会兜底成 `note.text`，这里把隐式兜底
+ * 变成有意为之，顺带在标题上留一句说明，用户打开旧图时知道自己该去哪生成游戏）。
+ * 连到它的边由后续 `sanitizeEdges` 按端口兼容性丢弃。
+ */
+const RETIRED_GAME_HTML_GEN_TYPE_ID = 'game.htmlGen'
+/** 节点名与迁移说明都是「存量数据里的节点标题」文案，随节点 label 一样不走 i18n */
+const RETIRED_GAME_HTML_GEN_LABEL = '可玩 HTML 生成' // cjk-ok（存量节点标题：与 builtins 的 label 同源）
+const RETIRED_GAME_HTML_GEN_SUFFIX = '（已下线，改用 AI 对话生成）' // cjk-ok（迁移说明：写进节点标题的存量数据）
+const RETIRED_GAME_HTML_GEN_FALLBACK = '游戏需求' // cjk-ok（迁移兜底标题：同上）
+
+/**
+ * 必须在 `inferNodeTypeId` **之前**跑：类型已从注册表移除，推断逻辑对 `category: 'note'`
+ * 会先把 typeId 换成 `note.text`，那时就再也认不出这是被下线的节点了。
+ */
+function migrateRetiredGameHtmlGenNode(raw: GraphNode): GraphNode {
+  if (raw.typeId !== RETIRED_GAME_HTML_GEN_TYPE_ID) return raw
+  const brief = raw.params?.generateInstruction?.trim() || raw.params?.text?.trim() || ''
+  const kept = raw.title?.trim()
+  const base = kept && kept !== RETIRED_GAME_HTML_GEN_LABEL ? kept : RETIRED_GAME_HTML_GEN_FALLBACK
+  const {
+    gamePlayHtml: _html,
+    gamePlayProjectDir: _dir,
+    gamePlayMode: _mode,
+    generateInstruction: _instruction,
+    ...rest
+  } = raw.params ?? {}
+  return {
+    ...raw,
+    category: 'note',
+    title: `${base}${RETIRED_GAME_HTML_GEN_SUFFIX}`,
+    params: { ...rest, text: brief }
   }
 }
 

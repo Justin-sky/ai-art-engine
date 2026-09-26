@@ -1,9 +1,9 @@
 /**
  * 可玩 HTML 作业契约（AI 对话路径）：prepare → build → status 三段式。
  *
- * 与旧的文件式 dsh 作业契约（`gamePlayDshJob.ts`：brief.md / result.json，供图节点用隐藏
- * dsh 会话执行）不同：对话路径里**生成者就是当前可见会话**，宿主只负责「落脚手架 / cook /
- * 报状态」，不需要 brief 与 result 这两个中间文件。两者共用同一份工程根目录常量。
+ * 生成者是**当前可见的对话会话**（agent 自己写 `src/**`），宿主只负责「落脚手架 / cook /
+ * 报状态」，因此不需要 brief.md / result.json 这类中间契约文件——那是早期「图节点开隐藏
+ * dsh 会话」时的做法，已随 `game.htmlGen` 节点一起下线。
  */
 
 /** 工程根下存放可玩 HTML 作业的目录（相对路径，正斜杠） */

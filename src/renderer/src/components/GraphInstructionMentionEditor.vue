@@ -544,8 +544,6 @@ const presetMenuTitle = computed(() => {
   if (props.presetKind === 'lipSync') return t('graph.inspector.generate.presets.titleLipSync')
   if (props.presetKind === 'frameAnimGen') return t('graph.anim2d.preset')
   if (props.presetKind === 'svgGen') return t('graph.inspector.generate.presets.titleSvgGen')
-  if (props.presetKind === 'gameHtmlGen')
-    return t('graph.inspector.generate.presets.titleGameHtmlGen')
   if (props.presetKind === 'modelPose') return t('graph.inspector.generate.presets.titleModelPose')
   if (props.presetKind === 'modelRigSkin')
     return t('graph.inspector.generate.presets.titleModelRigSkin')
@@ -1237,7 +1235,6 @@ function openPromptPreview(): void {
     locale: String(locale.value),
     styleImages,
     svgGen: kind === 'svgGen' && node ? readSvgGenFromNode(node.params) : undefined,
-    gamePlayMode: kind === 'gameHtmlGen' ? node?.params.gamePlayMode : undefined,
     styleReferenceSubject: node?.params.styleReferenceSubject,
     frameAnimGrid:
       kind === 'frameAnimGen'

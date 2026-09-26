@@ -922,8 +922,6 @@ const instructionKind = computed((): InstructionPresetKind | null => {
       return 'frameAnimGen'
     case 'svg.gen':
       return 'svgGen'
-    case 'game.htmlGen':
-      return 'gameHtmlGen'
     case 'model.pose':
       return 'modelPose'
     case 'model.rigSkin':
@@ -1125,9 +1123,6 @@ const instructionPlaceholder = computed(() => {
   }
   if (instructionKind.value === 'svgGen') {
     return t('graph.inspector.generate.svgGenInstructionPlaceholder')
-  }
-  if (instructionKind.value === 'gameHtmlGen') {
-    return t('graph.inspector.generate.gameHtmlGenInstructionPlaceholder')
   }
   if (instructionKind.value === 'modelPose') {
     return t('graph.inspector.generate.modelPoseInstructionPlaceholder')
@@ -2398,12 +2393,6 @@ function onPreviewDblClick(): void {
         nodeId: props.node.id,
         title
       })
-      return
-    }
-
-    // 可玩 HTML 生成：双击展开/收起生成指令（勿被 HTML 正文抢成记事本）
-    if (props.node.typeId === 'game.htmlGen') {
-      instructionOpen.value = !instructionOpen.value
       return
     }
 

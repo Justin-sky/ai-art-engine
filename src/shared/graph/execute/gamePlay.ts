@@ -12,7 +12,7 @@ import { flattenTextValues, flattenTextsValues } from './gallery'
 import { autoIncomingTextForInstruction, selectIncomingValuesForInstruction } from './incoming'
 import { resolveMentionSources } from './context'
 import type { GraphValue, NodeExecuteContext } from './types'
-import { gamePlayDshError } from '../../gamePlayDshJob'
+import { gamePlayJobError } from '../../gamePlayJob'
 
 function readStoredHtml(ctx: NodeExecuteContext): string {
   const fromParams = ctx.node.params.gamePlayHtml?.trim() || ctx.node.params.text?.trim() || ''
@@ -135,7 +135,7 @@ export async function executeGamePlayAssetNode(
   const projectDir = await resolveIncomingProjectDir(ctx)
   if (projectDir) {
     if (!ctx.buildGamePlayProject) {
-      throw new Error(gamePlayDshError('BUILD'))
+      throw new Error(gamePlayJobError('BUILD'))
     }
     ctx.log?.(`cook: ${projectDir}`)
     const built = await ctx.buildGamePlayProject({

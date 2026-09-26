@@ -430,7 +430,6 @@ async function executeOneNode(
     composeComicPageImage: options.composeComicPageImage,
     inspectModelSkeleton: options.inspectModelSkeleton,
     runBlenderDshJob: options.runBlenderDshJob,
-    runGamePlayDshJob: options.runGamePlayDshJob,
     buildGamePlayProject: options.buildGamePlayProject,
     runBlenderMcpTool: options.runBlenderMcpTool,
     normalizeImageAspectRatio: options.normalizeImageAspectRatio,

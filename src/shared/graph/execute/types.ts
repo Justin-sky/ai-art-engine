@@ -800,28 +800,10 @@ export interface NodeExecuteContext {
     result: import('../../blenderDshJob').BlenderJobResult
   }>
   /**
-   * 可玩 HTML：dsh 多轮生成纯 Node（esbuild）工程（仅写盘；构建见 buildGamePlayProject）。
+   * 可玩 HTML：主进程 npm + node build.mjs 构建并内联单文件。
+   * 游戏生成已改由 AI 对话面板驱动（MCP gameplay_*），这里只保留旧 `asset.gamePlay`
+   * 节点（兼容层）cook 既有工程所需的能力。
    */
-  runGamePlayDshJob?: (input: {
-    node: GraphNode
-    instruction: string
-    preferredMode?: '2d' | '3d' | 'auto'
-    locale?: string
-    referenceNote?: string
-    timeoutMs?: number
-    model?: string
-    providerInstanceId?: string
-    signal?: AbortSignal
-    /** true：不跑 dsh，只写样例工程（冒烟） */
-    seedOnly?: boolean
-    /** 续跑：已有工程相对路径；缺省时读 node.params.gamePlayProjectDir */
-    projectRelativeDir?: string
-    log?: (message: string, level?: 'info' | 'warn' | 'error') => void
-  }) => Promise<{
-    projectRelativeDir: string
-    gameMode: '2d' | '3d'
-  }>
-  /** 可玩 HTML：主进程 npm + node build.mjs 构建并内联单文件 */
   buildGamePlayProject?: (input: {
     projectRelativeDir: string
     log?: (message: string, level?: 'info' | 'warn' | 'error') => void
@@ -1026,7 +1008,6 @@ export interface GraphRunOptions {
   composeComicPageImage?: NodeExecuteContext['composeComicPageImage']
   inspectModelSkeleton?: NodeExecuteContext['inspectModelSkeleton']
   runBlenderDshJob?: NodeExecuteContext['runBlenderDshJob']
-  runGamePlayDshJob?: NodeExecuteContext['runGamePlayDshJob']
   buildGamePlayProject?: NodeExecuteContext['buildGamePlayProject']
   runBlenderMcpTool?: NodeExecuteContext['runBlenderMcpTool']
   normalizeImageAspectRatio?: NodeExecuteContext['normalizeImageAspectRatio']

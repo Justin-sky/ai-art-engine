@@ -54,8 +54,6 @@ const presetKind = computed((): InstructionPresetKind | null => {
       return 'uiSplit'
     case 'svg.gen':
       return 'svgGen'
-    case 'game.htmlGen':
-      return 'gameHtmlGen'
     case 'asset.screenplay':
       return 'screenplay'
     case 'asset.image':

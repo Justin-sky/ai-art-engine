@@ -293,14 +293,12 @@ export const IpcChannels = {
   BLENDER_DSH_FINALIZE: 'blender-dsh:finalize',
   /** 图节点：清理作业目录 */
   BLENDER_DSH_CLEANUP: 'blender-dsh:cleanup',
-  /** 可玩 HTML：准备纯 Node（esbuild）dsh 作业目录 */
-  GAMEPLAY_DSH_PREPARE: 'gameplay-dsh:prepare',
-  /** 可玩 HTML：无 dsh 时写入样例工程 */
-  GAMEPLAY_DSH_SEED: 'gameplay-dsh:seed',
-  /** 可玩 HTML：校验 dsh 交付 */
-  GAMEPLAY_DSH_VALIDATE: 'gameplay-dsh:validate',
-  /** 可玩 HTML：npm + node build.mjs 构建并内联单文件 */
-  GAMEPLAY_DSH_BUILD: 'gameplay-dsh:build',
+  /**
+   * 可玩 HTML：npm + node build.mjs 构建并内联单文件。
+   * 游戏生成已改由 AI 对话面板驱动（MCP gameplay_*）；这条通道只剩兼容层的
+   * `asset.gamePlay` 节点 cook 既有工程在用。
+   */
+  GAMEPLAY_BUILD: 'gameplay:build',
   /** Harness：删除会话在磁盘上的持久化记录（对应前端 ChatSession.id） */
   HARNESS_DELETE_SESSION: 'harness:delete-session',
   /** Git：采集工程当前变更（对话「变更预览」用；只读，不写仓库） */
@@ -868,38 +866,6 @@ export interface FinalizeBlenderDshJobInput {
   key: string
   /** 仅当硬 QA PASS 后调用；pose/anim 忽略 */
   requireRigQaPass?: boolean
-}
-
-export interface PrepareGamePlayDshJobInput {
-  instruction: string
-  preferredMode?: string
-  locale?: string
-  referenceNote?: string
-  /**
-   * 已有工程相对路径（Cache/GamePlayJobs/<id>/project）。
-   * 若目录仍有效则原地续写 brief/result，不新建 job、不覆盖脚手架。
-   */
-  projectRelativeDir?: string
-}
-
-export interface PrepareGamePlayDshJobResult {
-  jobId: string
-  projectAbs: string
-  resultAbs: string
-  briefAbs: string
-  /** 相对工程根，如 Cache/GamePlayJobs/<id>/project */
-  projectRelativeDir: string
-}
-
-export interface ValidateGamePlayDshJobInput {
-  projectAbs: string
-  resultAbs: string
-}
-
-export interface ValidateGamePlayDshJobResult {
-  ok: boolean
-  error?: string
-  gameMode?: '2d' | '3d'
 }
 
 export interface BuildGamePlayProjectInput {
@@ -1485,18 +1451,10 @@ export interface StudioApi {
   /** 清理 Blender dsh 作业目录 */
   cleanupBlenderDshJob: (jobId: string) => Promise<void>
 
-  /** 准备可玩 HTML 纯 Node（esbuild）dsh 作业目录 */
-  prepareGamePlayDshJob: (input: PrepareGamePlayDshJobInput) => Promise<PrepareGamePlayDshJobResult>
-
-  /** 无 dsh 时写入样例工程（冒烟） */
-  seedGamePlayProject: (input: PrepareGamePlayDshJobInput) => Promise<PrepareGamePlayDshJobResult>
-
-  /** 校验 dsh 交付的 result.json + 入口 */
-  validateGamePlayDshJob: (
-    input: ValidateGamePlayDshJobInput
-  ) => Promise<ValidateGamePlayDshJobResult>
-
-  /** 主进程 npm + node build.mjs 构建并内联为单 HTML */
+  /**
+   * 主进程 npm + node build.mjs 构建并内联为单 HTML。
+   * 仅剩兼容层的 `asset.gamePlay` 节点 cook 既有工程在用（游戏生成走 MCP gameplay_*）。
+   */
   buildGamePlayProject: (input: BuildGamePlayProjectInput) => Promise<BuildGamePlayProjectResult>
 
   /** Harness：中止当前任务 */
