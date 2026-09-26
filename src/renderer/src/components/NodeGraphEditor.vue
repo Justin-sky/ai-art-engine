@@ -209,13 +209,13 @@
           {{ t('graph.episodePipeline.open') }}
         </button>
         <button
-          v-if="isAgentPipelineGraph"
+          v-if="isQcOverviewGraph"
           type="button"
           class="episode-pipeline-btn"
-          :title="t('graph.agentPipeline.openTitle')"
-          @click="openAgentPipeline"
+          :title="t('graph.qcOverview.openTitle')"
+          @click="openQcOverview"
         >
-          {{ t('graph.agentPipeline.open') }}
+          {{ t('graph.qcOverview.open') }}
         </button>
         <span ref="zoomLabelEl" class="zoom">100%</span>
       </div>
@@ -623,20 +623,20 @@
       <EpisodePipelineView :frame-key="'episode-pipeline'" :host-asset-id="props.assetId ?? ''" />
     </StudioFloatingWindow>
 
-    <!-- Agent 流水线独立窗口：质检 / 返工节点总览 -->
+    <!-- 质检返工独立窗口：质检 / 返工节点总览 -->
     <StudioFloatingWindow
-      v-if="agentPipelineOpen"
+      v-if="qcOverviewOpen"
       :open="true"
-      :title="agentPipelineTitle"
+      :title="qcOverviewTitle"
       :z-index="1200"
       :default-width="760"
       :default-height="560"
       :min-width="520"
       :min-height="360"
       body-class="pad-none"
-      @close="closeAgentPipeline"
+      @close="closeQcOverview"
     >
-      <AgentPipelineView :frame-key="'agent-pipeline'" :host-asset-id="props.assetId ?? ''" />
+      <QcOverviewView :frame-key="'qc-overview'" :host-asset-id="props.assetId ?? ''" />
     </StudioFloatingWindow>
   </div>
 </template>
@@ -976,9 +976,7 @@ const editor = useEditorKernel()
 const EpisodePipelineView = defineAsyncComponent(
   () => import('./dive/EditorDiveEpisodePipelineView.vue')
 )
-const AgentPipelineView = defineAsyncComponent(
-  () => import('./dive/EditorDiveAgentPipelineView.vue')
-)
+const QcOverviewView = defineAsyncComponent(() => import('./dive/EditorDiveQcOverviewView.vue'))
 /** 挂载时绑定的工程根路径；切换工程后卸载时禁止写回旧图 */
 const boundRootPath = project.rootPath
 const props = withDefaults(
@@ -2115,8 +2113,8 @@ const isEpisodePipelineGraph = computed(() =>
   )
 )
 
-/** 当前画布是否含 Agent 流水线节点（质检 media.review / 返工 media.rework） */
-const isAgentPipelineGraph = computed(() =>
+/** 当前画布是否含质检 / 返工节点（media.review / media.rework） */
+const isQcOverviewGraph = computed(() =>
   graph.nodes.some((n) => n.typeId === 'media.review' || n.typeId === 'media.rework')
 )
 
@@ -2162,10 +2160,8 @@ const episodePipelineOpen = ref(false)
 const episodePipelineTitle = computed(
   () => graphAsset.value?.name?.trim() || t('graph.episodePipeline.open')
 )
-const agentPipelineOpen = ref(false)
-const agentPipelineTitle = computed(
-  () => graphAsset.value?.name?.trim() || t('graph.agentPipeline.open')
-)
+const qcOverviewOpen = ref(false)
+const qcOverviewTitle = computed(() => graphAsset.value?.name?.trim() || t('graph.qcOverview.open'))
 
 /** 打开剧集流水线独立窗口：画布全局控制，不挂在任何节点上 */
 function openEpisodePipeline(): void {
@@ -2178,15 +2174,15 @@ function closeEpisodePipeline(): void {
   episodePipelineOpen.value = false
 }
 
-/** 打开 Agent 流水线独立窗口：投影质检 / 返工节点 */
-function openAgentPipeline(): void {
+/** 打开质检返工独立窗口：投影质检 / 返工节点 */
+function openQcOverview(): void {
   const assetId = props.assetId?.trim()
   if (!assetId) return
-  agentPipelineOpen.value = true
+  qcOverviewOpen.value = true
 }
 
-function closeAgentPipeline(): void {
-  agentPipelineOpen.value = false
+function closeQcOverview(): void {
+  qcOverviewOpen.value = false
 }
 
 // 从宿主节点返回上级（dive 栈回退）时自动关闭流水线窗口
@@ -2195,7 +2191,7 @@ watch(
   (length, prev) => {
     if (length < prev) {
       closeEpisodePipeline()
-      closeAgentPipeline()
+      closeQcOverview()
     }
   }
 )
@@ -3347,7 +3343,7 @@ type ResourceMenuGroupId =
   | 'motionFx'
   | 'model3d'
   | 'comic'
-  | 'agent'
+  | 'qc'
   | 'ad'
 
 /** 菜单分组：影视父级 id 不是资产类型，只作二级入口，故不进 ResourceMenuGroupId（否则文案窄化会漏到 assetTypeLabel） */
@@ -3462,7 +3458,7 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
     typeIds: ['comic.page']
   },
   {
-    id: 'agent',
+    id: 'qc',
     typeIds: ['media.review', 'media.rework']
   },
   {
@@ -3617,7 +3613,7 @@ const resourceMenuGroups = computed((): ResourceMenuGroup[] => {
               group.id === 'motionFx' ||
               group.id === 'model3d' ||
               group.id === 'comic' ||
-              group.id === 'agent' ||
+              group.id === 'qc' ||
               group.id === 'ad'
             ? t(`graph.context.groups.${group.id}`)
             : assetTypeLabel(group.id),
@@ -3640,7 +3636,7 @@ const resourceMenuGroups = computed((): ResourceMenuGroup[] => {
                         ? '🧊'
                         : group.id === 'comic'
                           ? '💬'
-                          : group.id === 'agent'
+                          : group.id === 'qc'
                             ? '🤖'
                             : group.id === 'ad'
                               ? '📢'

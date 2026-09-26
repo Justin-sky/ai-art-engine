@@ -1,21 +1,24 @@
 /**
- * 通用 Agent 流水线编排总览：把图中的 media.review（质检）/ media.rework（返工）节点
+ * 质检 / 返工总览：把图中的 media.review（质检）/ media.rework（返工）节点
  * 投影成「规划 → 生成 → 质检 → 返工」流水线的可渲染视图。纯函数、无渲染环境依赖，
- * 供 NodeGraphEditor 顶栏「Agent 流水线」总览窗口消费。
+ * 供 NodeGraphEditor 顶栏「质检返工总览」窗口消费。
+ *
+ * 注意与 `agentPipeline.ts`（episode 导演流水线的 Agent 状态机）区分：那个是叙事层，
+ * 这个是媒体画面层的质检返工视图。
  */
 import type { GraphNode, GraphPersistedRunState } from './types'
 import { parseMediaReworkState, type MediaReworkStatus } from './mediaRework'
 
-export type AgentReviewStatus = 'pending' | 'PASS' | 'FAIL'
+export type QcReviewStatus = 'pending' | 'PASS' | 'FAIL'
 
-export interface AgentReviewRow {
+export interface QcReviewRow {
   nodeId: string
   title: string
-  status: AgentReviewStatus
+  status: QcReviewStatus
   reason: string
 }
 
-export interface AgentReworkRow {
+export interface QcReworkRow {
   nodeId: string
   title: string
   status: MediaReworkStatus
@@ -28,20 +31,20 @@ export interface AgentReworkRow {
   finalResult: 'PASS' | 'FAIL' | ''
 }
 
-export type AgentErrorStatus = 'error' | 'degraded'
+export type QcErrorStatus = 'error' | 'degraded'
 
-export interface AgentErrorRow {
+export interface QcErrorRow {
   nodeId: string
   title: string
-  status: AgentErrorStatus
+  status: QcErrorStatus
   reason: string
 }
 
-export interface AgentPipelineOverview {
-  reviewRows: AgentReviewRow[]
-  reworkRows: AgentReworkRow[]
+export interface QcOverview {
+  reviewRows: QcReviewRow[]
+  reworkRows: QcReworkRow[]
   /** 最近一次运行的失败/降级节点（runStates 投影） */
-  errorRows: AgentErrorRow[]
+  errorRows: QcErrorRow[]
   /** 待审核（质检 pending + 返工 running）节点数 */
   pendingCount: number
   /** 质检 FAIL 节点数 */
@@ -54,18 +57,18 @@ export interface AgentPipelineOverview {
   degradedCount: number
   /** 最近一次 FAIL / exhausted 原因（顶栏展示） */
   lastFailReason: string
-  /** 图中是否存在 Agent 流水线节点（media.review / media.rework） */
+  /** 图中是否存在质检 / 返工节点（media.review / media.rework） */
   hasPipeline: boolean
   /** 是否存在运行失败 / 降级节点 */
   hasIssues: boolean
 }
 
-/** 是否 Agent 流水线节点（质检 / 返工） */
-export function isAgentPipelineNode(node: GraphNode): boolean {
+/** 是否质检 / 返工节点 */
+export function isQcOverviewNode(node: GraphNode): boolean {
   return node.typeId === 'media.review' || node.typeId === 'media.rework'
 }
 
-function reviewStatusOf(node: GraphNode): AgentReviewStatus {
+function reviewStatusOf(node: GraphNode): QcReviewStatus {
   if (node.params.mediaReviewPending === true) return 'pending'
   if (node.params.mediaReviewStatus === 'PASS' || node.params.mediaReviewStatus === 'FAIL') {
     return node.params.mediaReviewStatus
@@ -74,7 +77,7 @@ function reviewStatusOf(node: GraphNode): AgentReviewStatus {
 }
 
 /** 收集图中 media.review 质检节点 → 质检行 */
-export function collectAgentReviewRows(nodes: readonly GraphNode[]): AgentReviewRow[] {
+export function collectQcReviewRows(nodes: readonly GraphNode[]): QcReviewRow[] {
   return nodes
     .filter((node) => node.typeId === 'media.review')
     .map((node) => ({
@@ -86,7 +89,7 @@ export function collectAgentReviewRows(nodes: readonly GraphNode[]): AgentReview
 }
 
 /** 收集图中 media.rework 返工节点 → 返工行（回退解析序列化状态） */
-export function collectAgentReworkRows(nodes: readonly GraphNode[]): AgentReworkRow[] {
+export function collectQcReworkRows(nodes: readonly GraphNode[]): QcReworkRow[] {
   return nodes
     .filter((node) => node.typeId === 'media.rework')
     .map((node) => {
@@ -115,10 +118,10 @@ export function collectAgentReworkRows(nodes: readonly GraphNode[]): AgentRework
 }
 
 /** 收集最近一次运行中的失败 / 降级节点（runStates 投影） */
-export function collectAgentErrorRows(
+export function collectQcErrorRows(
   nodes: readonly GraphNode[],
   runStates?: Record<string, GraphPersistedRunState>
-): AgentErrorRow[] {
+): QcErrorRow[] {
   if (!runStates) return []
   return nodes
     .filter((node) => {
@@ -137,13 +140,13 @@ export function collectAgentErrorRows(
 }
 
 /** 汇总质检 + 返工节点为流水线总览 */
-export function buildAgentPipelineOverview(
+export function buildQcOverview(
   nodes: readonly GraphNode[],
   runStates?: Record<string, GraphPersistedRunState>
-): AgentPipelineOverview {
-  const reviewRows = collectAgentReviewRows(nodes)
-  const reworkRows = collectAgentReworkRows(nodes)
-  const errorRows = collectAgentErrorRows(nodes, runStates)
+): QcOverview {
+  const reviewRows = collectQcReviewRows(nodes)
+  const reworkRows = collectQcReworkRows(nodes)
+  const errorRows = collectQcErrorRows(nodes, runStates)
 
   let pendingCount = 0
   let failCount = 0

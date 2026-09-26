@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
-  buildAgentPipelineOverview,
-  collectAgentReviewRows,
-  collectAgentReworkRows,
+  buildQcOverview,
+  collectQcReviewRows,
+  collectQcReworkRows,
   createNodeFromType,
-  isAgentPipelineNode,
+  isQcOverviewNode,
   serializeMediaReworkState,
   type GraphNode
 } from '../src/shared/graph'
@@ -21,12 +21,12 @@ function reworkNode(overrides: Record<string, unknown> = {}): GraphNode {
   return node
 }
 
-describe('agent pipeline overview', () => {
+describe('qc overview', () => {
   it('recognizes media.review / media.rework as pipeline nodes', () => {
-    expect(isAgentPipelineNode(reviewNode())).toBe(true)
-    expect(isAgentPipelineNode(reworkNode())).toBe(true)
-    expect(isAgentPipelineNode(createNodeFromType('asset.image', { x: 0, y: 0 }))).toBe(false)
-    expect(isAgentPipelineNode(createNodeFromType('note.text', { x: 0, y: 0 }))).toBe(false)
+    expect(isQcOverviewNode(reviewNode())).toBe(true)
+    expect(isQcOverviewNode(reworkNode())).toBe(true)
+    expect(isQcOverviewNode(createNodeFromType('asset.image', { x: 0, y: 0 }))).toBe(false)
+    expect(isQcOverviewNode(createNodeFromType('note.text', { x: 0, y: 0 }))).toBe(false)
   })
 
   it('collects review rows with pending / PASS / FAIL statuses', () => {
@@ -39,7 +39,7 @@ describe('agent pipeline overview', () => {
         mediaReviewReason: '糊脸'
       })
     ]
-    const rows = collectAgentReviewRows(nodes)
+    const rows = collectQcReviewRows(nodes)
     expect(rows.map((r) => r.status)).toEqual(['pending', 'PASS', 'FAIL'])
     expect(rows[2]!.reason).toBe('糊脸')
   })
@@ -60,7 +60,7 @@ describe('agent pipeline overview', () => {
         mediaReviewReason: '手指畸形'
       })
     ]
-    const rows = collectAgentReworkRows(nodes)
+    const rows = collectQcReworkRows(nodes)
     expect(rows[0]!.status).toBe('running')
     expect(rows[0]!.attempt).toBe(0)
     expect(rows[1]!.status).toBe('exhausted')
@@ -78,7 +78,7 @@ describe('agent pipeline overview', () => {
       lastReason: '多手指',
       iterations: []
     })
-    const overview = buildAgentPipelineOverview([
+    const overview = buildQcOverview([
       reviewNode(),
       reviewNode({
         mediaReviewPending: false,
@@ -101,7 +101,7 @@ describe('agent pipeline overview', () => {
   })
 
   it('reports empty pipeline when no agent nodes present', () => {
-    const overview = buildAgentPipelineOverview([createNodeFromType('asset.image', { x: 0, y: 0 })])
+    const overview = buildQcOverview([createNodeFromType('asset.image', { x: 0, y: 0 })])
     expect(overview.hasPipeline).toBe(false)
     expect(overview.pendingCount).toBe(0)
     expect(overview.lastFailReason).toBe('')
@@ -113,7 +113,7 @@ describe('agent pipeline overview', () => {
       createNodeFromType('asset.image', { x: 0, y: 0 }, { id: 'n2' }),
       createNodeFromType('media.review', { x: 0, y: 0 }, { id: 'n3', title: '质检' })
     ]
-    const overview = buildAgentPipelineOverview(nodes, {
+    const overview = buildQcOverview(nodes, {
       n1: { status: 'error', error: '模型限流' },
       n2: { status: 'degraded', error: 'GRAPH_LOCK_NO_CACHE' }
     })
@@ -135,7 +135,7 @@ describe('agent pipeline overview', () => {
   })
 
   it('reports no issues when runStates are absent', () => {
-    const overview = buildAgentPipelineOverview([createNodeFromType('asset.image', { x: 0, y: 0 })])
+    const overview = buildQcOverview([createNodeFromType('asset.image', { x: 0, y: 0 })])
     expect(overview.errorRows).toEqual([])
     expect(overview.errorCount).toBe(0)
     expect(overview.degradedCount).toBe(0)

@@ -2380,8 +2380,8 @@ export default {
         backFromToolbar: '顶部工具栏的「剧集流水线」按钮可随时回到本视图；图片/视频在节点图中运行。'
       }
     },
-    agent: {
-      title: 'Agent 流水线',
+    qc: {
+      title: '质检返工',
       summary: {
         pending: '待处理 {n}',
         pendingTitle: '待处理：质检 pending + 返工 running',
@@ -2776,9 +2776,9 @@ export default {
       open: '剧集流水线',
       openTitle: '打开剧集流水线总览（当前画布全局控制）'
     },
-    agentPipeline: {
-      open: 'Agent 流水线',
-      openTitle: '打开 Agent 流水线总览（质检 / 返工）'
+    qcOverview: {
+      open: '质检返工总览',
+      openTitle: '打开质检返工总览（质检 / 返工节点）'
     },
     minimap: {
       title: '节点小地图（点击或拖拽定位）',
@@ -2829,7 +2829,7 @@ export default {
         motionFx: '2D',
         model3d: '3D',
         comic: '漫画',
-        agent: 'Agent',
+        qc: '质检返工',
         ad: '广告'
       }
     },

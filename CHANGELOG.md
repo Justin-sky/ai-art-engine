@@ -32,6 +32,8 @@
 
 修掉上一轮修复引入的死锁：预设**按钮**曾被改成 `v-if="presetKind && presets.length"`，但预设是按需动态加载的（`ensurePresetsLoaded()` 只在点击按钮后 `import('@shared/graph/instructionPresets')`），于是「点开才加载」与「加载了才显示」互锁——**所有节点的预设按钮全部消失**。现在回到 `v-if="presetKind"`（按钮常驻），空预设改为在菜单里给一行说明（`presets.empty`：该节点没有指令模板，指令框是自由文本，直接填写即可），`openPresetMenu` 也不再因空预设提前 return；菜单本体改为 `v-if="menuOpen"`，有 `visiblePresets` 才渲染卡片网格，否则渲染 `.preset-empty`。`tests/meshOpInstructionPresets.test.ts` 的对应断言跟着改写，并新增两条防回归：按钮判定不得依赖 `presets.length`（写成 `v-if="presetKind"\n ref="presetBtnEl"` 的精确匹配）、`openPresetMenu` 不得有「空预设直接 return」。全量 327 文件 / 2535 例通过。
 
+把媒体质检总览从「Agent 流水线」正名为**「质检返工」**（`QC & rework`）：同一个 `AgentPipeline` 词此前同时指代两件不相干的东西——`shared/graph/agentPipeline.ts` 那条**剧集/短剧的 Agent 状态机**（`episodeAgentState.ts` / `episodeAgentPrompts.ts` / 剧集分组预设，是真的多角色 Agent 编排，保留原名）与 `shared/graph/agentPipelineOverview.ts` 这个**看板**（把 `media.review` / `media.rework` 的结论按镜头聚合成待复检 / 待返工两列，本身没有 Agent）。现在看板侧全面改名：`shared/graph/agentPipelineOverview.ts` → `qcOverview.ts`（导出 `buildQcOverview` / `isQcOverviewNode` / `collectQcReviewRows` / `collectQcReworkRows` 与 `Qc*` 类型），`EditorDiveAgentPipelineView.vue` → `EditorDiveQcOverviewView.vue`（根类名 `.qc-overview-view`、文案键 `divePipeline.qc.*`），`tests/agentPipelineOverview.test.ts` → `tests/qcOverview.test.ts`，节点图编辑器内局部变量 / 注释 / frame key 统一为 `qcOverview`，分组 id `agent` → `qc`、分组名与总览标题在两种语言下都改为「质检返工」/「QC & rework」；手册（`website/manual.html` / `manual.en.html`）同步。剧集那条 Agent 流水线的命名与行为一律未动。全量 327 文件 / 2535 例通过，typecheck / cjk 门禁 / prettier 干净。
+
 ## [6.6.0] — 2026-09-24
 
 6.6.0 功能版：可玩 HTML 改为 dsh 多轮纯 Node（esbuild）工程再 cook 成单文件；新增 Anthropic（Claude）提供商与导演台多光源；节点执行日志实时进度；并修好沙盒读盘 CSP、cook 误校验与卡片拖拽卡顿。

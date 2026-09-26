@@ -1,45 +1,43 @@
 <template>
-  <div class="agent-pipeline-view">
+  <div class="qc-overview-view">
     <div class="pipeline-header">
       <div class="pipeline-title">
         <span class="title-text">{{ assetTitle }}</span>
-        <span class="stage-chip">{{ t('divePipeline.agent.title') }}</span>
+        <span class="stage-chip">{{ t('divePipeline.qc.title') }}</span>
       </div>
       <div class="header-actions">
-        <span class="summary-chip pending" :title="t('divePipeline.agent.summary.pendingTitle')">{{
-          t('divePipeline.agent.summary.pending', { n: overview.pendingCount })
+        <span class="summary-chip pending" :title="t('divePipeline.qc.summary.pendingTitle')">{{
+          t('divePipeline.qc.summary.pending', { n: overview.pendingCount })
         }}</span>
-        <span class="summary-chip fail" :title="t('divePipeline.agent.summary.failTitle')">{{
-          t('divePipeline.agent.summary.fail', { n: overview.failCount })
+        <span class="summary-chip fail" :title="t('divePipeline.qc.summary.failTitle')">{{
+          t('divePipeline.qc.summary.fail', { n: overview.failCount })
         }}</span>
-        <span
-          class="summary-chip exhausted"
-          :title="t('divePipeline.agent.summary.exhaustedTitle')"
-          >{{ t('divePipeline.agent.summary.exhausted', { n: overview.exhaustedCount }) }}</span
-        >
+        <span class="summary-chip exhausted" :title="t('divePipeline.qc.summary.exhaustedTitle')">{{
+          t('divePipeline.qc.summary.exhausted', { n: overview.exhaustedCount })
+        }}</span>
         <span
           v-if="overview.errorCount"
           class="summary-chip fail"
-          :title="t('divePipeline.agent.summary.errorTitle')"
-          >{{ t('divePipeline.agent.summary.error', { n: overview.errorCount }) }}</span
+          :title="t('divePipeline.qc.summary.errorTitle')"
+          >{{ t('divePipeline.qc.summary.error', { n: overview.errorCount }) }}</span
         >
         <span
           v-if="overview.degradedCount"
           class="summary-chip degraded"
-          :title="t('divePipeline.agent.summary.degradedTitle')"
-          >{{ t('divePipeline.agent.summary.degraded', { n: overview.degradedCount }) }}</span
+          :title="t('divePipeline.qc.summary.degradedTitle')"
+          >{{ t('divePipeline.qc.summary.degraded', { n: overview.degradedCount }) }}</span
         >
       </div>
     </div>
 
     <div v-if="overview.lastFailReason" class="fail-row">
-      <span class="fail-chip" :title="t('divePipeline.agent.fail.latestTitle')"
-        >{{ t('divePipeline.agent.fail.latestPrefix') }}{{ overview.lastFailReason }}</span
+      <span class="fail-chip" :title="t('divePipeline.qc.fail.latestTitle')"
+        >{{ t('divePipeline.qc.fail.latestPrefix') }}{{ overview.lastFailReason }}</span
       >
     </div>
 
     <div v-if="!overview.hasPipeline" class="empty-hint">
-      {{ t('divePipeline.agent.empty.noNodes') }}
+      {{ t('divePipeline.qc.empty.noNodes') }}
     </div>
 
     <div v-else class="pipeline-body">
@@ -47,7 +45,7 @@
       <section class="panel">
         <div class="panel-head">
           <h3>
-            {{ t('divePipeline.agent.panel.review') }}
+            {{ t('divePipeline.qc.panel.review') }}
             <span class="count-badge">{{ overview.reviewRows.length }}</span>
           </h3>
         </div>
@@ -57,7 +55,7 @@
             :key="row.nodeId"
             class="row-item"
             :class="row.status"
-            :title="t('divePipeline.agent.panel.locateHint')"
+            :title="t('divePipeline.qc.panel.locateHint')"
             @click="selectNode(row.nodeId)"
           >
             <span class="row-title">{{ row.title }}</span>
@@ -67,7 +65,7 @@
             <span v-if="row.reason" class="reason">{{ row.reason }}</span>
           </li>
           <li v-if="!overview.reviewRows.length" class="empty-row">
-            {{ t('divePipeline.agent.panel.noReview') }}
+            {{ t('divePipeline.qc.panel.noReview') }}
           </li>
         </ul>
       </section>
@@ -76,7 +74,7 @@
       <section class="panel">
         <div class="panel-head">
           <h3>
-            {{ t('divePipeline.agent.panel.rework') }}
+            {{ t('divePipeline.qc.panel.rework') }}
             <span class="count-badge">{{ overview.reworkRows.length }}</span>
           </h3>
         </div>
@@ -86,7 +84,7 @@
             :key="row.nodeId"
             class="row-item"
             :class="row.status"
-            :title="t('divePipeline.agent.panel.locateHint')"
+            :title="t('divePipeline.qc.panel.locateHint')"
             @click="selectNode(row.nodeId)"
           >
             <span class="row-title">{{ row.title }}</span>
@@ -94,7 +92,7 @@
               reworkStatusLabel(row.status)
             }}</span>
             <span class="attempt">{{
-              t('divePipeline.agent.row.attempt', {
+              t('divePipeline.qc.row.attempt', {
                 attempt: row.attempt,
                 maxAttempts: row.maxAttempts
               })
@@ -102,7 +100,7 @@
             <span v-if="row.lastReason" class="reason">{{ row.lastReason }}</span>
           </li>
           <li v-if="!overview.reworkRows.length" class="empty-row">
-            {{ t('divePipeline.agent.panel.noRework') }}
+            {{ t('divePipeline.qc.panel.noRework') }}
           </li>
         </ul>
       </section>
@@ -111,7 +109,7 @@
       <section class="panel">
         <div class="panel-head">
           <h3>
-            {{ t('divePipeline.agent.panel.errors') }}
+            {{ t('divePipeline.qc.panel.errors') }}
             <span class="count-badge">{{ overview.errorRows.length }}</span>
           </h3>
         </div>
@@ -121,7 +119,7 @@
             :key="row.nodeId"
             class="row-item"
             :class="row.status"
-            :title="t('divePipeline.agent.panel.locateHint')"
+            :title="t('divePipeline.qc.panel.locateHint')"
             @click="selectNode(row.nodeId)"
           >
             <span class="row-title">{{ row.title }}</span>
@@ -129,7 +127,7 @@
             <span v-if="row.reason" class="reason">{{ row.reason }}</span>
           </li>
           <li v-if="!overview.errorRows.length" class="empty-row">
-            {{ t('divePipeline.agent.panel.noErrors') }}
+            {{ t('divePipeline.qc.panel.noErrors') }}
           </li>
         </ul>
       </section>
@@ -139,11 +137,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import {
-  buildAgentPipelineOverview,
-  type AgentReviewStatus,
-  type GraphDocument
-} from '@shared/graph'
+import { buildQcOverview, type QcReviewStatus, type GraphDocument } from '@shared/graph'
 import { graphEditorHosts } from '../../features/graph/model/graphEditorHosts'
 import { useProjectStore } from '../../stores/project'
 import { useWorkspaceStore } from '../../stores/workspace'
@@ -159,9 +153,7 @@ const workspace = useWorkspaceStore()
 const { t } = useStudioI18n()
 
 const asset = computed(() => project.assets.find((item) => item.id === props.hostAssetId) ?? null)
-const assetTitle = computed(
-  () => asset.value?.name?.trim() || String(t('divePipeline.agent.title'))
-)
+const assetTitle = computed(() => asset.value?.name?.trim() || String(t('divePipeline.qc.title')))
 
 /** 优先取当前打开画布的实时文档（含未落盘的连线与运行结果） */
 const graphDoc = computed<GraphDocument | null>(() => {
@@ -177,7 +169,7 @@ const graphDoc = computed<GraphDocument | null>(() => {
 })
 
 const overview = computed(() =>
-  buildAgentPipelineOverview(graphDoc.value?.nodes ?? [], graphDoc.value?.runStates)
+  buildQcOverview(graphDoc.value?.nodes ?? [], graphDoc.value?.runStates)
 )
 
 function selectNode(nodeId: string): void {
@@ -185,27 +177,27 @@ function selectNode(nodeId: string): void {
 }
 
 /** PASS / FAIL 为内检结论原样展示；其余状态 id 在渲染时映射为当前语言文案 */
-function reviewStatusLabel(status: AgentReviewStatus): string {
+function reviewStatusLabel(status: QcReviewStatus): string {
   if (status === 'PASS') return 'PASS'
   if (status === 'FAIL') return 'FAIL'
-  return String(t('divePipeline.agent.status.review.pending'))
+  return String(t('divePipeline.qc.status.review.pending'))
 }
 
 function reworkStatusLabel(status: string): string {
-  if (status === 'passed') return String(t('divePipeline.agent.status.rework.passed'))
-  if (status === 'exhausted') return String(t('divePipeline.agent.status.rework.exhausted'))
-  return String(t('divePipeline.agent.status.rework.running'))
+  if (status === 'passed') return String(t('divePipeline.qc.status.rework.passed'))
+  if (status === 'exhausted') return String(t('divePipeline.qc.status.rework.exhausted'))
+  return String(t('divePipeline.qc.status.rework.running'))
 }
 
 function errorStatusLabel(status: string): string {
-  if (status === 'error') return String(t('divePipeline.agent.status.error'))
-  if (status === 'degraded') return String(t('divePipeline.agent.status.degraded'))
+  if (status === 'error') return String(t('divePipeline.qc.status.error'))
+  if (status === 'degraded') return String(t('divePipeline.qc.status.degraded'))
   return status
 }
 </script>
 
 <style scoped>
-.agent-pipeline-view {
+.qc-overview-view {
   flex: 1;
   height: 100%;
   min-height: 0;

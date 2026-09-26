@@ -2444,8 +2444,8 @@ export default {
           'Use the "Episode Pipeline" button on the top toolbar to return to this view anytime; images/videos run in the node graph.'
       }
     },
-    agent: {
-      title: 'Agent pipeline',
+    qc: {
+      title: 'QC & rework',
       summary: {
         pending: 'Pending {n}',
         pendingTitle: 'Pending: review pending + rework running',
@@ -2843,9 +2843,9 @@ export default {
       open: 'Episode pipeline',
       openTitle: 'Open the episode pipeline overview (global control for the current canvas)'
     },
-    agentPipeline: {
-      open: 'Agent pipeline',
-      openTitle: 'Open the agent pipeline overview (review / rework)'
+    qcOverview: {
+      open: 'QC & rework overview',
+      openTitle: 'Open the QC & rework overview (quality-check / rework nodes)'
     },
     minimap: {
       title: 'Node minimap (click or drag to navigate)',
@@ -2896,7 +2896,7 @@ export default {
         motionFx: '2D',
         model3d: '3D',
         comic: 'Comic',
-        agent: 'Agent',
+        qc: 'QC & rework',
         ad: 'Ads'
       }
     },
