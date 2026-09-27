@@ -687,7 +687,7 @@ const project = useProjectStore()
 const mcpActivities = useMcpActivitiesStore()
 const workspace = useWorkspaceStore()
 const editor = useEditorKernel()
-const { createAsset, openAssetEditor } = useAssetCreation()
+const { createAsset, createMotion2dActionAsset, openAssetEditor } = useAssetCreation()
 const { t, assetTypeLabel, assetCreateName, toolbarCreateLabel } = useStudioI18n()
 const { openSettingsPanel } = useSettingsPanelNavigator()
 
@@ -2325,7 +2325,12 @@ async function createToolbarItemHere(item: ResolvedWorkspaceToolbarItem): Promis
       placeholder: assetTypeLabel(item.assetType)
     })
     if (!name) return
-    await createAsset(item.assetType, folderId, { name })
+    // 2D 动作走统一入口：建好 + 选中 + 资产库定位 + 预览弹窗（三个「新建」入口口径一致）
+    if (item.assetType === 'motion2d') {
+      await createMotion2dActionAsset({ folderId, name })
+    } else {
+      await createAsset(item.assetType, folderId, { name })
+    }
   }
   if (folderId !== currentFolderId.value) selectFolder(folderId)
 }

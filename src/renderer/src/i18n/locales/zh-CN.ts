@@ -1066,7 +1066,6 @@ export default {
       subgraph: '新建宿主资产',
       model3d: '新建 3D 模型',
       motion2d: '新建 2D 动作',
-      gamePlay: '新建可玩 HTML',
       default: '新建资产',
       freeCanvasNameTitle: '新建自由画布',
       freeCanvasNameMessage: '请输入画布名称。将创建空白节点画布，可自由添加节点与资产。',

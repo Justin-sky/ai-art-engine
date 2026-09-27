@@ -52,7 +52,7 @@ const props = withDefaults(
 
 const displayItems = computed(() => props.items ?? listRegisteredToolbarItems({ toolbar: true }))
 
-const { createAsset } = useAssetCreation()
+const { createAsset, createMotion2dActionAsset } = useAssetCreation()
 const { createDraftAndOpen } = useDraftSave()
 const { t, toolbarCreateLabel } = useStudioI18n()
 const busyId = ref<string | null>(null)
@@ -114,6 +114,11 @@ async function onCreate(item: ResolvedWorkspaceToolbarItem): Promise<void> {
   try {
     if (item.id === 'freeCanvas') {
       await createFreeCanvas()
+      return
+    }
+    // 2D 动作没有编辑页：既不能开编辑页，也不能落在草稿里等 Ctrl+S（草稿那条会开出空编辑页）
+    if (item.assetType === 'motion2d') {
+      await createMotion2dActionAsset({ folderId: props.folderId ?? null })
       return
     }
     if (props.deferSave) {

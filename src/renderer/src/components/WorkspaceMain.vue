@@ -82,7 +82,7 @@ const CREATE_IDS = new Set(['freeCanvas', 'subgraph', 'screenplay', 'motion'])
 const RECENT_LIMIT = 8
 
 const project = useProjectStore()
-const { openAssetEditor } = useAssetCreation()
+const { openAssetEditor, createMotion2dActionAsset } = useAssetCreation()
 const { createDraftAndOpen } = useDraftSave()
 const { t, assetTypeLabel, assetDisplayTypeLabel, assetCreateName, toolbarCreateLabel } =
   useStudioI18n()
@@ -157,6 +157,11 @@ async function onCreate(item: ResolvedWorkspaceToolbarItem): Promise<void> {
       placeholder: assetTypeLabel(item.assetType)
     })
     if (!name) return
+    // 2D 动作没有编辑页：草稿那条会开出一个空编辑页，看起来像「点了没反应」
+    if (item.assetType === 'motion2d') {
+      await createMotion2dActionAsset({ name })
+      return
+    }
     createDraftAndOpen(item.assetType, { name })
   } finally {
     busyId.value = null

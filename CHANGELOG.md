@@ -74,6 +74,12 @@
 - 面向模型的三处说明同步：`gameplay_build` / `gameplay_job_status` 工具描述、dsh 技能 `gameplay-proc-assets`（`smoke.ok === false` 要先按 errors 改一轮再交付）、studio 系统提示块；`docs/MCP.md` 新增「试玩门禁（`smoke`）」小节，`website/guide-gameplay.html` / `.en.html` 的构建步骤与黑屏 FAQ 改写（FAQ 从「不保证任意着色器一次通过」改成「先看 smoke，跑不起来就按报告再改一轮」）。
 - 测试：新增 `tests/gamePlaySmoke.test.ts` 9 例（在动即 pass、未捕获异常 fail、整屏黑按最亮帧判、一帧未采到 fail、指纹全同 warn、单帧不做静止判定、错误优先于静止、错误去重、亮度统计），`tests/gamePlayJob.test.ts` 断言 `done` 时已带 `smoke`（隐藏窗口依赖 Electron，测试里把门禁换桩）。全量 334 文件 / 2587 例通过，typecheck（node + web）/ cjk 门禁 / prettier 干净。
 
+修掉「新建 2D 动作点了没反应」，并撤掉「新建可玩 HTML」的两个入口：
+
+- **2D 动作没有编辑页**（纯 JSON 文档，由 `stage.2d` 节点对话框保存 / 载入），于是三个新建入口各自踩坑：左侧工具栏条目标着 `openOnCreate: false`（建完什么也不开）、左栏与工作区首页都走 `createDraftAndOpen`（草稿 + 空编辑页）、资产窗口那条虽然靠 `openEditorForAssetId` 的「无编辑页类型」兜底能选中，但三条口径不一致。现在统一到 `useAssetCreation.createMotion2dActionAsset`：建好 → 选中 → 在资产库定位 → 打开资产库同款预览弹窗（空动作时弹窗自带「骨架可看、不可播」的引导），三个入口共用一条路径。
+- **`gamePlay` 从「新建」里撤掉**（`WORKSPACE_TOOLBAR_EXCLUDED_ASSET_TYPES` + 条目清单删项）：工具栏与资产右键菜单共用同一份条目清单，所以一处即两处；排除按**资产类型**而不是按条目，将来谁把条目塞回来也照样过滤。理由写在代码注释里——图内已无可编排入口，手工新建出来的空壳没有编辑器能挂上真实游戏（这正是 MCP 白名单「避免造出界面上无从编辑的空资产」那条规则），想要游戏在对话里说一句玩法即可。同步：`MCP_CREATABLE_ASSET_TYPES` 去掉 `gamePlay`、`asset_create` 工具描述改成指路对话链路、`projectService.createAsset` 删掉只服务空壳的样例 HTML 播种（对话路径登记的资产自带工程目录与单文件路径，不播种）、两侧语言的 `asset.create.gamePlay`（「新建可玩 HTML」）文案键一并清掉。
+- 测试：新增 `tests/workspaceCreateEntries.test.ts` 7 例（工具栏与资产菜单两种视图都不含 gamePlay、条目被塞回也按类型排除、MCP 白名单与工具描述口径、三个入口都接统一入口、统一入口的反馈三件套、`onCreate` 里 motion2d 分支必须在 deferSave 之前）。全量 335 文件 / 2594 例通过，typecheck（node + web）/ cjk 门禁 / prettier 干净。
+
 ## [6.6.0] — 2026-09-24
 
 6.6.0 功能版：可玩 HTML 改为 dsh 多轮纯 Node（esbuild）工程再 cook 成单文件；新增 Anthropic（Claude）提供商与导演台多光源；节点执行日志实时进度；并修好沙盒读盘 CSP、cook 误校验与卡片拖拽卡顿。

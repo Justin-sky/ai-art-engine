@@ -1086,7 +1086,6 @@ export default {
       subgraph: 'New Host Asset',
       model3d: 'New 3D Model',
       motion2d: 'New 2D Motion',
-      gamePlay: 'New Playable HTML',
       default: 'New Asset',
       freeCanvasNameTitle: 'New Free Canvas',
       freeCanvasNameMessage:

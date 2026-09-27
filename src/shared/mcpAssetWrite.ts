@@ -7,6 +7,9 @@ import { type AssetType } from './domain'
  * `graph_edit` 编排内图、或由后续生成节点产出内容。刻意排除 `motion`（3D
  * 导演台姿势）/ `model3d` / `model` 等需要专用编辑器写入的资产类型，避免造出
  * 界面上无从编辑的空资产。
+ *
+ * `gamePlay` 同样排除：游戏已改由对话里的 `gameplay_* 工具链生成并自动登记
+ * （带工程目录与单文件路径），手工建出来的空壳没有编辑器能挂上真实游戏。
  */
 export const MCP_CREATABLE_ASSET_TYPES: readonly AssetType[] = [
   'screenplay',
@@ -18,8 +21,7 @@ export const MCP_CREATABLE_ASSET_TYPES: readonly AssetType[] = [
   'image',
   'video',
   'voice',
-  'motion2d',
-  'gamePlay'
+  'motion2d'
 ]
 
 export function isMcpCreatableAssetType(value: string): value is AssetType {

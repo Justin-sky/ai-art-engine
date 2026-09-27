@@ -29,12 +29,24 @@ export const WORKSPACE_TOOLBAR_ITEMS: WorkspaceToolbarItem[] = [
   { id: 'world', assetType: 'world', openOnCreate: true },
   { id: 'beat', assetType: 'beat', openOnCreate: true },
   { id: 'motion', assetType: 'motion', openOnCreate: true },
+  // 2D 动作没有独立编辑页（纯 JSON 文档，由 stage.2d 节点对话框保存 / 载入）：
+  // 三个「新建」入口都走 useAssetCreation 的 createMotion2dActionAsset（建好 + 选中 +
+  // 资产库定位 + 预览弹窗），否则点击看起来毫无反应
   { id: 'motion2d', assetType: 'motion2d', openOnCreate: false },
-  { id: 'gamePlay', assetType: 'gamePlay', openOnCreate: true },
   { id: 'image', assetType: 'image', openOnCreate: true },
   { id: 'video', assetType: 'video', openOnCreate: true },
   { id: 'voice', assetType: 'voice', openOnCreate: true }
 ]
+
+/**
+ * 刻意不在「新建」里出现的资产类型。
+ *
+ * `gamePlay`：游戏生成已改由 AI 对话面板驱动（MCP `gameplay_*` + cook 成功后自动登记），
+ * 图内也没有可编排的入口，手工新建出来的只是一个没有工程目录的空壳——没有编辑器能挂上
+ * 真实游戏，双击只能看内置样例。列表里留着它就等于给用户挖坑：说的是「新建游戏」，
+ * 实际拿到的是一个死资产。想要游戏直接在对话里说一句玩法即可。
+ */
+export const WORKSPACE_TOOLBAR_EXCLUDED_ASSET_TYPES: readonly AssetType[] = ['gamePlay']
 
 export interface ResolvedWorkspaceToolbarItem extends WorkspaceToolbarItem {
   label: string
@@ -61,6 +73,7 @@ export function listWorkspaceToolbarItems(
   options?: { toolbar?: boolean; assetMenu?: boolean }
 ): ResolvedWorkspaceToolbarItem[] {
   return items
+    .filter((item) => !WORKSPACE_TOOLBAR_EXCLUDED_ASSET_TYPES.includes(item.assetType))
     .filter((item) => item.enabled !== false)
     .filter((item) => {
       if (options?.toolbar && item.showInToolbar === false) return false
