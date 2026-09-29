@@ -384,7 +384,7 @@ export default {
       downloaded: '新版本 {version} 已下载完成，可重启安装',
       error: '更新失败：{message}',
       disabled: '开发模式不检查更新',
-      idle: '可检查 GitHub Releases 上的新版本'
+      idle: '可检查 GitHub Releases 上的新版本（下载支持断点续传）'
     },
     mcp: {
       title: 'MCP 接入',

@@ -488,6 +488,8 @@ const appVersion = ref('…')
 const updateStatus = ref('')
 const updateBusy = ref(false)
 const updateReady = ref(false)
+/** 下载进度取历史峰值，避免底层短暂回拨时 UI 像「下完又重来」 */
+const updatePercentPeak = ref(0)
 const mcpInfo = ref<McpServerInfo | null>(null)
 const tokenVisible = ref(false)
 const tokenEditing = ref(false)
@@ -694,26 +696,33 @@ function applyUpdateEvent(event: AppUpdateEvent): void {
     case 'checking':
       updateBusy.value = true
       updateReady.value = false
+      updatePercentPeak.value = 0
       updateStatus.value = t('settings.about.checking')
       break
     case 'available':
       updateBusy.value = true
+      updatePercentPeak.value = 0
       updateStatus.value = t('settings.about.available', { version: event.version })
       break
     case 'not-available':
       updateBusy.value = false
       updateReady.value = false
+      updatePercentPeak.value = 0
       updateStatus.value = t('settings.about.notAvailable')
       break
-    case 'progress':
+    case 'progress': {
       updateBusy.value = true
+      const raw = Math.max(0, Math.min(100, Math.round(event.percent)))
+      updatePercentPeak.value = Math.max(updatePercentPeak.value, raw)
       updateStatus.value = t('settings.about.progress', {
-        percent: Math.max(0, Math.min(100, Math.round(event.percent)))
+        percent: updatePercentPeak.value
       })
       break
+    }
     case 'downloaded':
       updateBusy.value = false
       updateReady.value = true
+      updatePercentPeak.value = 100
       updateStatus.value = t('settings.about.downloaded', { version: event.version })
       break
     case 'error':

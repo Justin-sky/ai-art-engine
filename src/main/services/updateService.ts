@@ -3,6 +3,7 @@ import { autoUpdater } from 'electron-updater'
 import { IpcChannels } from '@shared/ipc'
 import type { AppUpdateCheckResult, AppUpdateEvent } from '@shared/update'
 import { defErrSimple, fail } from '@shared/errors/appError'
+import { installResumableUpdaterDownload } from './updateResumableDownload'
 
 // ── 更新服务个性错误（electron-updater 原生报错保持透传）──
 const E_UPDATE_DEV_CHECK_DISABLED = defErrSimple(
@@ -21,6 +22,8 @@ const STARTUP_DELAY_MS = 8_000
 class UpdateService {
   private started = false
   private downloading = false
+  /** 已下载待安装的版本；再次检查时直接回放，避免整包重下 */
+  private downloadedVersion: string | null = null
 
   getCurrentVersion(): string {
     return app.getVersion()
@@ -45,6 +48,11 @@ class UpdateService {
 
     autoUpdater.autoDownload = true
     autoUpdater.autoInstallOnAppQuit = true
+    // GitHub Releases 上差分 blockmap 经常失败，失败后会「进度到 100% → 再整包从 0%」；
+    // 直接整包下载一次，进度单调，设置页不会看起来像卡死重下。
+    autoUpdater.disableDifferentialDownload = true
+    // 整包下载改为 Range 断点续传（partial 不放在会被 emptyDir 的 pending 里）
+    installResumableUpdaterDownload(autoUpdater)
 
     autoUpdater.on('checking-for-update', () => {
       this.broadcast({ type: 'checking' })
@@ -70,6 +78,7 @@ class UpdateService {
 
     autoUpdater.on('update-downloaded', (info) => {
       this.downloading = false
+      this.downloadedVersion = info.version
       this.broadcast({ type: 'downloaded', version: info.version })
     })
 
@@ -92,6 +101,17 @@ class UpdateService {
       const message = fail(E_UPDATE_DEV_CHECK_DISABLED).message
       this.broadcast({ type: 'disabled', message })
       return { enabled: false, started: false, currentVersion, message }
+    }
+
+    // 已下完：回放 downloaded，避免再走一遍检查→下载
+    if (this.downloadedVersion) {
+      this.broadcast({ type: 'downloaded', version: this.downloadedVersion })
+      return { enabled: true, started: false, currentVersion }
+    }
+
+    // 下载中：复用进行中的任务，勿再触发 check（部分环境下会打断后重下）
+    if (this.downloading) {
+      return { enabled: true, started: true, currentVersion }
     }
 
     try {

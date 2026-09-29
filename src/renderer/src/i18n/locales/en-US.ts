@@ -389,7 +389,7 @@ export default {
       downloaded: 'Update {version} ready — restart to install',
       error: 'Update failed: {message}',
       disabled: 'Updates are disabled in development',
-      idle: 'Check GitHub Releases for a newer build'
+      idle: 'Check GitHub Releases for a newer build (resumable download)'
     },
     mcp: {
       title: 'MCP access',
