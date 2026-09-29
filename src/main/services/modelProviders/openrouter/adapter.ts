@@ -265,9 +265,13 @@ export const openRouterAdapter: ModelProviderAdapter = {
       }>('/videos', body, { validateStatus: (s) => s === 200 || s === 202 })
 
       if (!data?.id) throw fail(PROVIDER_ERRORS.noVideoTaskId)
+      // 不落盘 vendor 的 polling_url：
+      // - 相对路径常为 `/api/v1/videos/{id}`，拼到 baseUrl（已含 /api/v1）会双前缀 404
+      // - 绝对 URL 指向 openrouter.ai，会绕过用户配置的代理 Base URL
+      const pollingUrl = `${trimBaseUrl(provider.baseUrl)}/videos/${encodeURIComponent(data.id)}`
       return {
         jobId: data.id,
-        pollingUrl: data.polling_url || `${trimBaseUrl(provider.baseUrl)}/videos/${data.id}`,
+        pollingUrl,
         status: data.status ?? 'pending',
         model: modelId
       }
@@ -284,14 +288,30 @@ export const openRouterAdapter: ModelProviderAdapter = {
     job: { jobId: string; pollingUrl: string }
   ): Promise<VideoPollResult> {
     const client = createProviderHttpClient(provider)
+    const jobPath = `/videos/${encodeURIComponent(job.jobId)}`
     try {
+      // 始终经配置的 baseUrl 查询，忽略可能绕过代理 / 双前缀的 pollingUrl
       const { data } = await client.get<{
         status?: string
         error?: string | { message?: string }
         unsigned_urls?: string[]
-      }>(job.pollingUrl.startsWith('http') ? job.pollingUrl : `/videos/${job.jobId}`)
+      }>(jobPath)
 
-      const status = (data.status ?? 'pending') as VideoPollResult['status']
+      const raw = String(data.status ?? 'pending').toLowerCase()
+      let status: VideoPollResult['status'] = 'pending'
+      if (raw === 'in_progress' || raw === 'processing' || raw === 'running') {
+        status = 'in_progress'
+      } else if (raw === 'completed' || raw === 'succeeded' || raw === 'success') {
+        status = 'completed'
+      } else if (
+        raw === 'failed' ||
+        raw === 'cancelled' ||
+        raw === 'canceled' ||
+        raw === 'expired'
+      ) {
+        status = 'failed'
+      }
+
       const error =
         typeof data.error === 'string'
           ? data.error
@@ -301,14 +321,24 @@ export const openRouterAdapter: ModelProviderAdapter = {
 
       let progress = 15
       if (status === 'in_progress') progress = 55
-      if (status === 'completed') progress = 100
-      if (status === 'failed') progress = 100
+      if (status === 'completed' || status === 'failed') progress = 100
+
+      // 优先相对 content（带鉴权走 baseUrl）。unsigned_urls 若是第三方 CDN 可作备选。
+      let downloadUrl: string | undefined
+      if (status === 'completed') {
+        const unsigned = data.unsigned_urls?.[0]?.trim()
+        const looksOpenRouterContent =
+          !unsigned ||
+          /openrouter\.ai\/api\/v1\/videos\//i.test(unsigned) ||
+          /\/videos\/[^/]+\/content/i.test(unsigned)
+        downloadUrl = looksOpenRouterContent ? `${jobPath}/content` : unsigned
+      }
 
       return {
         status,
         progress,
         error,
-        downloadUrl: data.unsigned_urls?.[0]
+        downloadUrl
       }
     } catch (err) {
       throw fail(PROVIDER_ERRORS.actionFailed, {

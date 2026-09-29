@@ -381,13 +381,14 @@ class ModelProviderFacade {
     downloadUrl: string,
     destPath: string
   ): Promise<void> {
-    const absolute = /^https?:\/\//i.test(downloadUrl)
-    const client = absolute
-      ? axios.create({ timeout: 300_000, responseType: 'stream' })
-      : createProviderHttpClient(provider)
-    const response = absolute
-      ? await client.get(downloadUrl)
-      : await client.get(downloadUrl, { responseType: 'stream', timeout: 300_000 })
+    // 绝对 / 相对 URL 都走供应商客户端：OpenRouter 的 `/videos/{id}/content` 与
+    // unsigned_urls（同域 content 链）需要 Bearer；旧实现对绝对地址用裸 axios，
+    // 完成后 401，再被 videoJob 误计成「轮询连续失败」。
+    const client = createProviderHttpClient(provider, 300_000)
+    const response = await client.get(downloadUrl, {
+      responseType: 'stream',
+      timeout: 300_000
+    })
     await pipeline(response.data as Readable, createWriteStream(destPath))
   }
 

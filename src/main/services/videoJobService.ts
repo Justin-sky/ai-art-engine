@@ -53,12 +53,19 @@ const E_VIDEOJOB_PROJECT_CLOSED = defErrSimple(
   '工程已关闭',
   'Project has been closed'
 )
-const E_VIDEOJOB_POLL_UNSTABLE = defErr<{ count: number }>(
+const E_VIDEOJOB_POLL_UNSTABLE = defErr<{ count: number; detail?: string }>(
   'videoJob.pollUnstable',
-  ({ count }) =>
-    `轮询供应商状态连续失败 ${count} 次，已停止。远端任务可能仍在进行，可稍后重试；若反复出现请检查网络与提供商 Base URL`,
-  ({ count }) =>
-    `Polling the provider failed ${count} consecutive times; stopped. The remote task may still be running — retry later, and check the network and provider Base URL if this repeats`
+  ({ count, detail }) =>
+    `轮询供应商状态连续失败 ${count} 次，已停止。远端任务可能仍在进行，可稍后重试；若反复出现请检查网络与提供商 Base URL` +
+    (detail?.trim() ? `（最近错误：${detail.trim()}）` : ''),
+  ({ count, detail }) =>
+    `Polling the provider failed ${count} consecutive times; stopped. The remote task may still be running — retry later, and check the network and provider Base URL if this repeats` +
+    (detail?.trim() ? ` (last error: ${detail.trim()})` : '')
+)
+const E_VIDEOJOB_DOWNLOAD_FAILED = defErr<{ detail: string }>(
+  'videoJob.downloadFailed',
+  ({ detail }) => `视频已生成但下载失败：${detail}`,
+  ({ detail }) => `Video finished but download failed: ${detail}`
 )
 
 /** 按当前语言取消息（任务记录里存的文案在调用时刻固化） */
@@ -332,7 +339,16 @@ class VideoJobService {
           await this.failJob(localJobId, new Error(msg(E_VIDEOJOB_MISSING_DOWNLOAD_URL)))
           return
         }
-        await this.completeJob(job, provider, result.downloadUrl)
+        // 下载失败与轮询瞬时错误分开：否则 OpenRouter content 401 会被凑满 20 次误报成「轮询失败」
+        try {
+          await this.completeJob(job, provider, result.downloadUrl)
+        } catch (downloadErr) {
+          const detail = downloadErr instanceof Error ? downloadErr.message : String(downloadErr)
+          await this.failJob(
+            localJobId,
+            new Error(fail(E_VIDEOJOB_DOWNLOAD_FAILED, { detail }).message)
+          )
+        }
         return
       }
 
@@ -360,7 +376,10 @@ class VideoJobService {
       const count = (this.pollFailures.get(localJobId) ?? 0) + 1
       if (count >= pollTransientMaxFor(kind)) {
         this.pollFailures.delete(localJobId)
-        await this.failJob(localJobId, new Error(fail(E_VIDEOJOB_POLL_UNSTABLE, { count }).message))
+        await this.failJob(
+          localJobId,
+          new Error(fail(E_VIDEOJOB_POLL_UNSTABLE, { count, detail: error.message }).message)
+        )
         return
       }
       this.pollFailures.set(localJobId, count)
