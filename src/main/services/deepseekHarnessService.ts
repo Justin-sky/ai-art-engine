@@ -154,12 +154,19 @@ function emit(event: HarnessEvent): void {
   broadcastToAllWindows(IpcChannels.HARNESS_EVENT, event)
 }
 
-/** 下发一条状态行；与上一行完全相同的文本会被合并，只保留一次 */
-function emitStatus(text: string): void {
+/**
+ * 下发一条状态行；与上一行完全相同的文本会被合并，只保留一次。
+ *
+ * tone 由这里按语义给出：状态文案随语言与上游措辞变化，渲染层不该靠关键字猜。
+ * 缺省 waiting，只报错与降级两种情形需要显式指定。
+ */
+type StatusTone = 'waiting' | 'warn' | 'error'
+
+function emitStatus(text: string, tone: StatusTone = 'waiting'): void {
   if (!text) return
   if (text === lastStatusText) return
   lastStatusText = text
-  emit({ type: 'status', text })
+  emit({ type: 'status', text, tone })
 }
 
 /** 剥离 ANSI 颜色码 / 控制字符，保留可读文本 */
@@ -1521,7 +1528,8 @@ function attachWorkerIo(opts: {
           if (line.startsWith('[aiart-runner] model_set ')) {
             continue
           }
-          if (/error|fail|abort/i.test(line)) emitStatus(line)
+          // stderr 里的报错行：语气按内容归类，渲染层按 tone 上色，不再自行解析文案
+          if (/error|fail|abort/i.test(line)) emitStatus(line, 'error')
           continue
         }
         emitStatus(line)
@@ -1572,7 +1580,7 @@ function attachWorkerIo(opts: {
       const message = `dsh 异常退出（code ${code}）${onlyTools}。${hint}。`
       finishTurn({ ok: false, error: message, finalText }, rid)
     } else {
-      if (code !== 0) emitStatus(`dsh 退出码 ${code}（本轮已有输出，未受影响）`)
+      if (code !== 0) emitStatus(`dsh 退出码 ${code}（本轮已有输出，未受影响）`, 'warn')
       finishTurn({ ok: true, finalText }, rid)
     }
   })
@@ -1580,7 +1588,7 @@ function attachWorkerIo(opts: {
   if (!dshEntry) {
     const timeout = setTimeout(() => {
       if (child !== proc) return
-      emitStatus('dsh 响应超时，正在中止（可重试）')
+      emitStatus('dsh 响应超时，正在中止（可重试）', 'error')
       proc.kill()
     }, NPX_TIMEOUT_MS)
     const progress = setInterval(() => {

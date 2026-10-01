@@ -65,7 +65,8 @@ describe('对话里的可玩 HTML 卡片', () => {
     expect(play).toMatch(
       /openGamePlaySandboxDialog\(\{ htmlPath: msg\.htmlPath, title: msg\.title \}\)/
     )
-    expect(play).toMatch(/pushStatus\(t\(reasonKey\)\)/)
+    // 兜底原因按「降级」语气上报（pushStatus 第二参为相位，见 HarnessEvent.tone）
+    expect(play).toMatch(/pushStatus\(t\(reasonKey\), 'warn'\)/)
     expect(play).toMatch(/studio\.chat\.gamePlay\.fallbackModule/)
     expect(play).toMatch(/studio\.chat\.gamePlay\.fallbackRelative/)
     expect(play).toMatch(/studio\.chat\.gamePlay\.openFailed/)

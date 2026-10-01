@@ -937,7 +937,16 @@ export interface SkillImportResult {
 /** Harness：任务事件流（main → 渲染层） */
 export type HarnessEvent =
   | { type: 'assistant'; text: string }
-  | { type: 'status'; text: string }
+  | {
+      type: 'status'
+      text: string
+      /**
+       * 状态语气，决定顶部状态栏的配色。由主进程按语义给出，
+       * 渲染层不去猜文案（文案随语言与上游措辞变化，猜法必然漂移）。
+       * 缺省视为 'waiting'，兼容旧数据。
+       */
+      tone?: 'waiting' | 'warn' | 'error'
+    }
   | {
       type: 'tool'
       /** 工具调用实例 ID（dsh 的 callId）：同一工具多次调用可区分；旧数据可能缺失 */

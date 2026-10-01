@@ -198,7 +198,7 @@ async function onClearCommand(): Promise<void> {
       window.studio.deleteHarnessSession(oldId).catch(() => undefined)
     }
     loadActiveMessages()
-    pushStatus(t('studio.chat.cleared'))
+    pushStatus(t('studio.chat.cleared'), 'warn')
     commitMessages([...messages.value])
     persistHistory()
     composing.value = false
@@ -292,7 +292,7 @@ async function applySlashCommand(cmd: SlashCommandDef): Promise<void> {
 async function onModelCommand(): Promise<void> {
   await loadModels()
   if (!modelOptions.value.length) {
-    pushStatus(t('studio.chat.noModel'))
+    pushStatus(t('studio.chat.noModel'), 'error')
     return
   }
   modeOpen.value = false
@@ -908,7 +908,7 @@ const status = ref<HarnessStatus | null>(null)
 const listRef = ref<HTMLElement | null>(null)
 
 /** 瞬时状态的配色相位；idle 表示当前没有状态要显示 */
-type ActivityPhase = 'idle' | 'waiting' | 'ok' | 'error'
+type ActivityPhase = 'idle' | 'waiting' | 'warn' | 'error'
 
 /**
  * 瞬时状态（正在启动 / 已提交给模型 / 仍在等待…）：只出现在顶部状态栏，
@@ -1355,13 +1355,18 @@ function pushAssistant(text: string, replace = false): void {
   scrollToBottom()
 }
 
-function pushStatus(text: string): void {
+/**
+ * 显示一条瞬时状态。
+ *
+ * phase 由调用方按语义给出（或来自主进程事件里的 tone），**不解析文案**：
+ * 文案随语言与上游措辞变化，靠关键字归类必然漂移（英文界面还会整片失效）。
+ */
+function pushStatus(text: string, phase: Exclude<ActivityPhase, 'idle'> = 'waiting'): void {
   if (!text) return
-  // 相邻重复的整句直接忽略，避免同一条反复刷新计时
-  if (text === activity.value && activityPhase.value !== 'error') return
+  // 相邻重复的整句直接忽略（错误除外：重复报错也值得让用户看见），避免同一条反复刷新计时
+  if (text === activity.value && phase !== 'error') return
 
-  // 相位只降不升：运行中出现的错误不会被后续等待类文案盖成中性，等用户看到再自然过期
-  const phase = classifyActivity(text)
+  // 相位只降不升：运行中出过的错不会被后续等待类文案盖掉，等它自然过期
   activityPhase.value = activityPhase.value === 'error' && phase !== 'error' ? 'error' : phase
   activity.value = text
 
@@ -1372,17 +1377,6 @@ function pushStatus(text: string): void {
     activityPhase.value = 'idle'
     activityTimer = null
   }, ACTIVITY_TTL_MS)
-}
-
-/**
- * 瞬时状态的相位：只影响配色与图标，不影响文案。
- * 上游文案是中文/英文混排的历史包袱，这里按关键词做宽松归类，认不出就当中性。
- */
-function classifyActivity(text: string): ActivityPhase {
-  if (/失败|错误|不可用|未配置|中止|超时|error|fail|abort|unavailable/i.test(text)) return 'error'
-  if (/等待|排队|启动|正在|准备|提交|接手|waiting|starting|queued|running/i.test(text))
-    return 'waiting'
-  return 'ok'
 }
 
 /** 重新拉取 harness 状态；失败时保留上一次状态，不影响会话本身 */
@@ -1401,7 +1395,8 @@ function onHarnessEvent(event: HarnessEvent): void {
       pushAssistant(event.text)
       break
     case 'status':
-      pushStatus(event.text)
+      // 相位由主进程给出（见 HarnessEvent.tone），这里不解析文案
+      pushStatus(event.text, event.tone ?? 'waiting')
       break
     case 'tool': {
       // dsh-agent 等 harness 工具卡：同一会话内按 key 去重（优先 callId 实例，无则按名字回退），
@@ -1458,7 +1453,7 @@ function onHarnessEvent(event: HarnessEvent): void {
       void captureRoundOutputs()
       break
     case 'error':
-      pushStatus(event.message)
+      pushStatus(event.message, 'error')
       running.value = false
       // 失败前可能已经有产物落盘：同样扫一遍，别让「跑到一半报错」这一轮彻底没有卡
       void captureRoundOutputs()
@@ -1510,7 +1505,8 @@ async function captureGitChanges(): Promise<void> {
             status.reason === 'no-git'
               ? 'studio.chat.gitChangesNoGit'
               : 'studio.chat.gitChangesNotRepo'
-          )
+          ),
+          'warn'
         )
       }
       return
@@ -1610,7 +1606,7 @@ async function captureRoundOutputs(): Promise<void> {
       )
     })
     const hidden = overflow + folded
-    if (hidden > 0) pushStatus(t('studio.chat.roundOutputsMore', { count: hidden }))
+    if (hidden > 0) pushStatus(t('studio.chat.roundOutputsMore', { count: hidden }), 'warn')
   } catch {
     // 扫盘是旁路能力：读不到就跳过，不打断会话
   } finally {
@@ -1707,7 +1703,7 @@ function upsertGameCard(activity: McpActivity, htmlPath: string): void {
 async function playGame(msg: ChatMsg & { kind: 'game' }): Promise<void> {
   const fallback = (reasonKey?: string): void => {
     openGamePlaySandboxDialog({ htmlPath: msg.htmlPath, title: msg.title })
-    if (reasonKey) pushStatus(t(reasonKey))
+    if (reasonKey) pushStatus(t(reasonKey), 'warn')
   }
   let html = ''
   try {
@@ -1996,7 +1992,7 @@ async function runTask(text: string, options: { sourceIndex?: number } = {}): Pr
   await refreshStatus()
   // 环境未就绪时不静默丢弃：把原因作为状态消息告知用户
   if (!ready.value) {
-    pushStatus(status.value?.message ?? t('studio.chat.unavailable'))
+    pushStatus(status.value?.message ?? t('studio.chat.unavailable'), 'error')
     return
   }
   const task = buildTask(text)
@@ -2031,7 +2027,7 @@ async function runTask(text: string, options: { sourceIndex?: number } = {}): Pr
     mode: mode.value
   })
   if (!result.started) {
-    pushStatus(result.message ?? 'failed to start')
+    pushStatus(result.message ?? 'failed to start', 'error')
     running.value = false
     // 启动被主进程预检查拒绝（如 MCP 已停、Node 不达标），同步状态栏
     void refreshStatus()
@@ -2091,7 +2087,7 @@ async function drainQueue(): Promise<void> {
   // 环境未就绪时把队首留在队列里并说明原因，避免静默丢弃整条队列
   await refreshStatus()
   if (!ready.value) {
-    pushStatus(status.value?.message ?? t('studio.chat.unavailable'))
+    pushStatus(status.value?.message ?? t('studio.chat.unavailable'), 'error')
     return
   }
   sendQueue.value.shift()
@@ -3091,8 +3087,8 @@ onBeforeUnmount(() => {
   margin-right: 6px;
 }
 
-.chat-status .chat-activity.ok {
-  color: var(--success);
+.chat-status .chat-activity.warn {
+  color: var(--warning);
 }
 
 .chat-status .chat-activity.error {
