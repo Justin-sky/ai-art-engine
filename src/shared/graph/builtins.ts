@@ -1902,7 +1902,9 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
       generateProviderInstanceId: '',
       mediaReviewPending: true
     }),
-    addable: true,
+    // 已下线（不再出现在「添加节点」菜单与 graph_node_types）：保留类型注册当兼容层，
+    // 旧工程里的质检节点仍能显示、开 Inspector、执行。同 asset.gamePlay 的处理方式。
+    addable: false,
     deletable: true,
     inspector: 'none',
     inspectorId: 'studio.graph.mediaReview',
@@ -1929,7 +1931,8 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
       generateProviderInstanceId: '',
       mediaReworkMaxAttempts: 3
     }),
-    addable: true,
+    // 已下线，同 media.review：保留类型与执行器，旧工程里的返工链照旧能跑。
+    addable: false,
     deletable: true,
     inspector: 'none',
     inspectorId: 'studio.graph.mediaRework',

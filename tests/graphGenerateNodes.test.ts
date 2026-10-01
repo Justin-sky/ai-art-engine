@@ -40,8 +40,6 @@ const CANVAS_ADDABLE_NODE_TYPES = [
   'image.redraw',
   'image.select',
   'media.bundle',
-  'media.review',
-  'media.rework',
   'video.select',
   'voice.select',
   'video.lipSync',

@@ -212,9 +212,9 @@ export default {
       },
       ecomAdDeep: {
         title: 'E-commerce ads',
-        desc: 'Hero image → ad variants → rework → review',
+        desc: 'Hero image → ad variants → layer split',
         prompt:
-          'Create an e-commerce ad workflow: text for selling points, image nodes for the product hero and usage scene; an ad-variants node on the hero image produces multiple ad versions in batch; a media-rework node auto-retries failing images per review feedback; a media-review node outputs the final verdict; plus a layer-split node to break the hero image into layers for editing detail-page text.'
+          'Create an e-commerce ad workflow: text for selling points, image nodes for the product hero and usage scene; an ad-variants node on the hero image produces multiple ad versions in batch; plus a layer-split node to break the hero image into layers for editing detail-page text.'
       },
       game3dAsset: {
         title: 'Game 3D assets',

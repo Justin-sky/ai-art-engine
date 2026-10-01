@@ -118,8 +118,6 @@ describe('graph policy', () => {
         'image.redraw',
         'image.select',
         'media.bundle',
-        'media.review',
-        'media.rework',
         'video.select',
         'voice.select',
         'video.lipSync',

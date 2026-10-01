@@ -1137,8 +1137,8 @@
               consistent.
             </li>
             <li>
-              Industry templates and capability nodes: “E-commerce livestream” chains ad variant matrix → media
-              rework → media QC plus layer separation; “Game 3D assets” chains 3D model generation → director
+              Industry templates and capability nodes: “E-commerce livestream” chains ad variant matrix plus
+              layer separation; “Game 3D assets” chains 3D model generation → director
               stage → blocking shots → showcase video; “Comic publishing” chains storyboard images ×3 → comic
               page (panels / balloons / transparent-background export); “Knowledge talking-head” chains script →
               voice-over + talking-head video → lip sync; “3D blockout previz” chains panorama reference →
@@ -1453,7 +1453,7 @@
             <li>
               Note · text · select image / video / audio / text · grid select · motion cell select · prompt
               optimizer · image-to-prompt · UI screen breakdown / UI screen generation · frame animation sheet ·
-              comic page · ad variant matrix · media QC · media rework · bundle
+              comic page · ad variant matrix · bundle
             </li>
             <li>
               <strong>Bundle</strong>: gather several upstream outputs (image / video / audio, …) into one
@@ -1495,19 +1495,14 @@
             </li>
           </ul>
 
-          <h4>QC &amp; rework (under the “QC &amp; rework” group)</h4>
-          <ul>
-            <li>
-              <strong>Media QC</strong>: connect an upstream image (or a video, reviewed by its first frame) and
-              let a vision model give a director PASS / FAIL verdict; you can add review points, or leave it
-              empty to use the built-in QC bundle.
-            </li>
-            <li>
-              <strong>Media rework</strong>: generate → QC → on failure automatically inject the FAIL reason and
-              regenerate until it PASSes or the attempt limit is reached; the top bar's “QC &amp; rework
-              overview” shows QC / rework run status centrally.
-            </li>
-          </ul>
+          <h4>QC &amp; rework (retired)</h4>
+          <div class="tip">
+            <strong>Media QC</strong> and <strong>Media rework</strong> have been retired from the “Add node”
+            menu — you can no longer create them. Nodes already placed in existing projects keep working: they
+            render, open their inspector and execute, and the top bar's “QC &amp; rework overview” still
+            reports them. For review, use the generate node's own review instruction, or re-pick the output
+            from the gallery by hand.
+          </div>
 
           <h4>Image editing (under the image group)</h4>
           <div class="shot-grid">

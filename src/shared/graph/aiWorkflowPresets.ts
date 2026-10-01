@@ -728,7 +728,7 @@ const PRESET_PLANS: Record<Exclude<AiWorkflowPresetId, 'custom'>, GraphPlan> = {
     ]
   },
   ecomAdDeep: {
-    title: '电商带货·变体与质检',
+    title: '电商带货·变体',
     nodes: [
       {
         key: 'copy',
@@ -749,30 +749,13 @@ const PRESET_PLANS: Record<Exclude<AiWorkflowPresetId, 'custom'>, GraphPlan> = {
         params: { generateInstruction: '产品真实使用场景，突出人群与使用氛围' }
       },
       { key: 'adVariants', typeId: 'image.adVariants', title: '广告变体矩阵' },
-      {
-        key: 'rework',
-        typeId: 'media.rework',
-        title: '媒体返工',
-        params: {
-          generateInstruction: '保持产品形态与卖点信息一致，优化构图、清晰度与画面合规性'
-        }
-      },
-      {
-        key: 'review',
-        typeId: 'media.review',
-        title: '媒体质检',
-        params: {
-          generateInstruction:
-            '检查电商广告图：卖点是否清晰、有无违禁夸大表述、构图是否完整、文字是否可读，输出通过或修改意见'
-        }
-      },
       { key: 'split', typeId: 'image.layerSplit', title: '图层分离' },
       {
         key: 'note',
         typeId: 'note.text',
         title: '使用说明',
         params: {
-          text: '流程：运行「产品主视觉 / 使用场景图」→ 双击「广告变体矩阵」配置产品描述与变体维度，批量生成多版本 → 「媒体返工」按意见自动重试不达标结果 → 「媒体质检」输出最终审查结论。需要改详情页文字层时，把主视觉接入「图层分离」分层导出（PSD / PNG）。'
+          text: '流程：运行「产品主视觉 / 使用场景图」→ 双击「广告变体矩阵」配置产品描述与变体维度，批量生成多版本 → 需要改详情页文字层时，把主视觉接入「图层分离」分层导出（PSD / PNG）。'
         }
       }
     ],
@@ -780,8 +763,6 @@ const PRESET_PLANS: Record<Exclude<AiWorkflowPresetId, 'custom'>, GraphPlan> = {
       { from: 'copy', to: 'hero' },
       { from: 'copy', to: 'scene' },
       { from: 'hero', to: 'adVariants' },
-      { from: 'adVariants', to: 'rework', fromPort: 'out', toPort: 'in-image' },
-      { from: 'rework', to: 'review', fromPort: 'out', toPort: 'in-image' },
       { from: 'hero', to: 'split', fromPort: 'out', toPort: 'in' }
     ]
   },
