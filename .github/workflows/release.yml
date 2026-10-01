@@ -290,8 +290,14 @@ jobs:
             fi
             # 记录实际耗时：就绪时间持续贴近上限时能提前发现（而不是等它某天压线失败）
             echo "SMOKE_OK[$LABEL] app ready in $((SECONDS - STARTED))s: $(cat "$READY")"
+            # 收尾等到主进程真正退出：后续 dmg / zip 冒烟要重新启动同一应用，
+            # 残留实例持有 userData 的单实例锁会让下一次启动直接 app.quit()（表现为早退 code 0）
             kill "$PID" 2>/dev/null || true
             wait "$PID" 2>/dev/null || true
+            local EXIT_DEADLINE=$((SECONDS + 10))
+            while [ "$SECONDS" -lt "$EXIT_DEADLINE" ] && kill -0 "$PID" 2>/dev/null; do
+              sleep 1
+            done
           }
 
           run_dmg_smoke() {
@@ -374,31 +380,88 @@ jobs:
               echo 'WARN: apt GUI libs unavailable; proceeding and relying on preinstalled deps'
           fi
           # 就绪探活：主进程在首个窗口加载完成后写就绪文件（src/main/smokeReady.ts）。
-          READY="$RUNNER_TEMP/aiartengine-ready-linux.json"
-          LOG="$RUNNER_TEMP/aiartengine-smoke-linux.log"
-          rm -f "$READY"
-          AIART_SMOKE_READY_FILE="$READY" xvfb-run -a env APPIMAGE_EXTRACT_AND_RUN=1 "$IMG" --no-sandbox >"$LOG" 2>&1 &
-          PID=$!
-          DEADLINE=$((SECONDS + 60))
-          while [ "$SECONDS" -lt "$DEADLINE" ]; do
-            if ! kill -0 "$PID" 2>/dev/null; then
-              RC=0
-              wait "$PID" 2>/dev/null || RC=$?
-              echo "SMOKE_FAIL app exited early (code $RC)" >&2
-              cat "$LOG" >&2 || true
-              exit 1
+          # 启动 / 等待 / 收尾封装成函数，AppImage 与 deb 两条腿共用同一套语义。
+          #
+          # 收尾必须等到进程**真正退出**：命令是 `xvfb-run -a <bin>`，$! 拿到的是包装脚本，
+          # 直接 kill 它会让真正的应用进程变成孤儿 —— 它会继续持有 userData 的单实例锁，
+          # 后面的 deb 冒烟就会因抢不到锁而 app.quit()（表现为 exited early (code 0)，不是崩溃）。
+          # 单实例锁见 src/main/index.ts。
+          cat > "$RUNNER_TEMP/aiartengine-smoke-linux.sh" <<'SMOKE_EOF'
+          #!/usr/bin/env bash
+
+          # 收尾：按「二进制全路径」找残留进程，SIGTERM 后轮询等它真正退出（最多 30s），
+          # 再补 SIGKILL。只杀本仓库产物的路径，避免误伤 runner 上的其它进程。
+          smoke_stop() {
+            local bin="$1"
+            pkill -f -- "$bin" 2>/dev/null || true
+            local deadline=$((SECONDS + 30))
+            while [ "$SECONDS" -lt "$deadline" ]; do
+              pgrep -f -- "$bin" >/dev/null 2>&1 || return 0
+              sleep 0.5
+            done
+            pkill -9 -f -- "$bin" 2>/dev/null || true
+            deadline=$((SECONDS + 10))
+            while [ "$SECONDS" -lt "$deadline" ]; do
+              pgrep -f -- "$bin" >/dev/null 2>&1 || return 0
+              sleep 0.5
+            done
+            return 1
+          }
+
+          # 失败诊断：日志 + 残留进程 + userData 单实例锁，一眼看出是不是锁没释放
+          smoke_dump() {
+            local log="$1"
+            echo '--- app output ---' >&2
+            cat "$log" >&2 2>/dev/null || true
+            echo '--- leftover processes ---' >&2
+            pgrep -af -- 'aiartengine|AppImage|AIArtEngine' >&2 2>/dev/null || echo '(none)' >&2
+            echo '--- userData singleton lock ---' >&2
+            ls -la "$HOME/.config/aiartengine/Singleton"* >&2 2>/dev/null || echo '(no lock files)' >&2
+          }
+
+          # $1 二进制；$2 退出诊断前缀；$3 超时秒数（默认 60）；$4 环境变量前缀（默认空）
+          smoke_launch() {
+            local bin="$1" label="$2" timeout="${3:-60}" envprefix="${4:-}"
+            local ready="$RUNNER_TEMP/aiartengine-ready-$label.json"
+            local log="$RUNNER_TEMP/aiartengine-smoke-$label.log"
+            if [ ! -x "$bin" ]; then
+              echo "SMOKE_FAIL[$label] binary missing or not executable: $bin" >&2
+              return 1
             fi
-            if [ -f "$READY" ]; then break; fi
-            sleep 1
-          done
-          if [ ! -f "$READY" ]; then
-            echo 'SMOKE_FAIL app did not reach ready state within 60s' >&2
-            tail -n 80 "$LOG" >&2 || true
-            exit 1
-          fi
-          echo "SMOKE_OK app ready: $(cat "$READY")"
-          kill "$PID" 2>/dev/null || true
-          wait "$PID" 2>/dev/null || true
+            smoke_stop "$bin" || echo "WARN[$label] leftover process did not exit in time" >&2
+            rm -f "$ready" "$log"
+            local started=$SECONDS
+            AIART_SMOKE_READY_FILE="$ready" ${envprefix:+env $envprefix} xvfb-run -a "$bin" --no-sandbox >"$log" 2>&1 &
+            local pid=$!
+            local deadline=$((SECONDS + timeout))
+            while [ "$SECONDS" -lt "$deadline" ]; do
+              if ! kill -0 "$pid" 2>/dev/null; then
+                local rc=0
+                wait "$pid" 2>/dev/null || rc=$?
+                echo "SMOKE_FAIL[$label] app exited early (code $rc)" >&2
+                smoke_dump "$log"
+                smoke_stop "$bin" || true
+                return 1
+              fi
+              if [ -f "$ready" ]; then
+                # 记录实际耗时：就绪时间持续贴近上限时能提前发现（而不是等它某天压线失败）
+                echo "SMOKE_OK[$label] app ready in $((SECONDS - started))s: $(cat "$ready")"
+                smoke_stop "$bin" || echo "WARN[$label] cleanup incomplete" >&2
+                return 0
+              fi
+              sleep 1
+            done
+            echo "SMOKE_FAIL[$label] app did not reach ready state within ${timeout}s" >&2
+            smoke_dump "$log"
+            smoke_stop "$bin" || true
+            return 1
+          }
+          SMOKE_EOF
+          chmod +x "$RUNNER_TEMP/aiartengine-smoke-linux.sh"
+
+          # AppImage 在无 FUSE 的 runner 上必须走解包运行
+          source "$RUNNER_TEMP/aiartengine-smoke-linux.sh"
+          smoke_launch "$IMG" appimage 60 'APPIMAGE_EXTRACT_AND_RUN=1'
 
       # deb 走「真实安装 → 启动 → 卸载」全链路：这是 Fedora 之外的 Linux 桌面主路径，
       # AppImage 免安装运行无法覆盖（安装目录、desktop 入口、依赖、卸载器）。
@@ -444,31 +507,14 @@ jobs:
           fi
           echo "SMOKE installed binary: $BIN"
 
-          READY="$RUNNER_TEMP/aiartengine-ready-deb.json"
-          LOG="$RUNNER_TEMP/aiartengine-smoke-deb.log"
-          rm -f "$READY"
-          AIART_SMOKE_READY_FILE="$READY" xvfb-run -a "$BIN" --no-sandbox >"$LOG" 2>&1 &
-          PID=$!
-          DEADLINE=$((SECONDS + 60))
-          while [ "$SECONDS" -lt "$DEADLINE" ]; do
-            if ! kill -0 "$PID" 2>/dev/null; then
-              RC=0
-              wait "$PID" 2>/dev/null || RC=$?
-              echo "SMOKE_FAIL deb app exited early (code $RC)" >&2
-              cat "$LOG" >&2 || true
-              exit 1
-            fi
-            if [ -f "$READY" ]; then break; fi
-            sleep 1
-          done
-          if [ ! -f "$READY" ]; then
-            echo 'SMOKE_FAIL deb app did not reach ready state within 60s' >&2
-            tail -n 80 "$LOG" >&2 || true
-            exit 1
+          # 启动冒烟：复用 AppImage 步骤定义的 smoke_launch（含「等到进程真正退出」的收尾，
+          # 否则残留实例会持有单实例锁，导致下一条腿抢不到锁而以 code 0 早退）
+          source "$RUNNER_TEMP/aiartengine-smoke-linux.sh"
+          LAUNCH_OK=0
+          smoke_launch "$BIN" deb 60 || LAUNCH_OK=$?
+          if [ "$LAUNCH_OK" != 0 ]; then
+            echo 'SMOKE_WARN 启动冒烟失败，仍继续执行卸载冒烟（安装/卸载链路本身需要验证）' >&2
           fi
-          echo "SMOKE_OK deb app ready: $(cat "$READY")"
-          kill "$PID" 2>/dev/null || true
-          wait "$PID" 2>/dev/null || true
 
           # 卸载冒烟：安装包必须能被干净移除（用户卸载路径同样是交付质量的一部分）
           echo "SMOKE removing package: $PKG"
@@ -478,6 +524,13 @@ jobs:
             exit 1
           fi
           echo 'SMOKE_OK deb uninstall clean'
+
+          # 启动冒烟失败不即时中断（要留给卸载冒烟跑），但**最终仍必须让这一步失败**：
+          # 否则「装得上 / 卸得掉」会掩盖「装完起不来」。
+          if [ "$LAUNCH_OK" != 0 ]; then
+            echo 'SMOKE_FAIL deb 启动冒烟未通过（详见上方 SMOKE_FAIL 与诊断输出）' >&2
+            exit 1
+          fi
 
   release:
     name: GitHub Release
