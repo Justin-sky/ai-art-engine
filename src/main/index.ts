@@ -12,6 +12,12 @@ import { handleStudioMediaRequest } from './studioMediaProtocol'
 import { handleStudioGameplayRequest } from './studioGameplayProtocol'
 import { resolveAppIconPath } from './appIcon'
 import { markSmokeRuntimeStarted, signalSmokeReady } from './smokeReady'
+import { gpuShaderCacheSwitches } from './services/gpuShaderCachePolicy'
+
+// 必须在 app ready 之前追加，否则 Chromium 已经建完缓存（见 gpuShaderCachePolicy 注释）
+for (const gpuSwitch of gpuShaderCacheSwitches()) {
+  app.commandLine.appendSwitch(gpuSwitch)
+}
 
 protocol.registerSchemesAsPrivileged([
   {
