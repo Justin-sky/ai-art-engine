@@ -835,29 +835,6 @@ button {
 .community-body {
   width: min(var(--max), 100%);
   margin: 40px auto 0;
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: clamp(28px, 5vw, 56px);
-  align-items: center;
-}
-
-.community-qr {
-  margin: 0;
-  width: min(220px, 56vw);
-}
-
-.community-qr img {
-  width: 100%;
-  height: auto;
-  border: 1px solid var(--line);
-  background: #fff;
-}
-
-.community-qr figcaption {
-  margin-top: 12px;
-  color: var(--mute);
-  font-size: 0.88rem;
-  text-align: center;
 }
 
 .community-meta {
@@ -1148,11 +1125,6 @@ button {
 
   .dl-go {
     grid-row: 1 / span 2;
-  }
-
-  .community-body {
-    grid-template-columns: 1fr;
-    justify-items: start;
   }
 
   .foot-row {

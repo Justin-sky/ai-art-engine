@@ -68,7 +68,9 @@ npm run site
 | `assets/demo/demo.png` | 示例：节点连接（参考图 → 设定图 → 视频） |
 | `assets/demo/video-output.mp4` | 示例：输出视频 |
 | `assets/demo/video-poster.jpg` | 示例：视频封面帧 |
-| `assets/qq-group.png` | QQ 交流群二维码（群号 647306826） |
+
+社区入口在首页 `#community` 区块与根 README 页脚以文字列出（交流 QQ 群
+`346340389` · `647306826`），不用二维码图片。
 
 重新压缩截图（需已安装 `sharp`）：
 
