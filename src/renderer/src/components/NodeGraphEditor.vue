@@ -692,8 +692,6 @@ import { detectImportAssetType, isImportablePath } from '@shared/import'
 import { compareNames } from '@shared/folderTree'
 import { persistAssetRecord, useAssetRecord } from '../composables/useAssetRecord'
 import {
-  ANIM2D_ASSET_ICON,
-  ASSET_TYPE_ICONS,
   isDraftAssetId,
   isImportedMediaRefAsset,
   normalizeProjectStyleImages,
@@ -965,7 +963,9 @@ import { useGraphRunLogsStore } from '../stores/graphRunLogs'
 import { toPlain } from '../utils/toPlain'
 import { measureSubmenuFlip, placeFixedMenu } from '../utils/clampFixedMenuPosition'
 import {
+  CONTEXT_MENU_FILM_TV_ICON,
   CONTEXT_MENU_NESTED_PARENT_ID,
+  contextMenuResourceGroupIcon,
   nestContextMenuResourceGroups,
   type ContextMenuResourceGroup
 } from '../features/graph/contextMenuGroups'
@@ -3649,28 +3649,7 @@ const resourceMenuGroups = computed((): ResourceMenuGroup[] => {
               group.id === 'ad'
             ? t(`graph.context.groups.${group.id}`)
             : assetTypeLabel(group.id),
-      icon:
-        group.id === 'episode'
-          ? '📽️'
-          : group.id === 'imageRefine'
-            ? '🎨'
-            : group.id === 'imageEdit'
-              ? '🛠️'
-              : group.id === 'text'
-                ? '📝'
-                : group.id === 'game'
-                  ? '🕹️'
-                  : group.id === 'motionFx'
-                    ? ANIM2D_ASSET_ICON
-                    : group.id === 'model3d'
-                      ? '🧊'
-                      : group.id === 'comic'
-                        ? '💬'
-                        : group.id === 'qc'
-                          ? '🤖'
-                          : group.id === 'ad'
-                            ? '📢'
-                            : (ASSET_TYPE_ICONS[group.id] ?? '◇'),
+      icon: contextMenuResourceGroupIcon(group.id),
       items
     }
   })
@@ -3684,9 +3663,8 @@ const resourceMenuGroups = computed((): ResourceMenuGroup[] => {
  */
 const resourceAddableMenuGroups = computed((): ResourceMenuGroup[] =>
   nestContextMenuResourceGroups(resourceMenuGroups.value, {
-    // 胶片图标：不用 🎬（motion 图标会被 WorkspaceItemIcon 放大渲染）
     label: t('graph.context.groups.filmTv'),
-    icon: '🎞️'
+    icon: CONTEXT_MENU_FILM_TV_ICON
   }).sort((a, b) => compareNames(a.label, b.label))
 )
 

@@ -16,12 +16,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import {
-  ANIM2D_ASSET_ICON,
-  ASSET_TYPE_ICONS,
-  FRAME_ANIM_GEN_ASSET_ICON,
-  FREE_CANVAS_ICON,
-  VIDEO_ASSET_ICON
-} from '@shared/domain'
+  resolveWorkspaceIconKind,
+  workspaceIconIsEnlarged
+} from '../features/media/workspaceIconKind'
 import Anim2dIcon from './icons/Anim2dIcon.vue'
 import FrameAnimGenIcon from './icons/FrameAnimGenIcon.vue'
 import FreeCanvasIcon from './icons/FreeCanvasIcon.vue'
@@ -37,33 +34,14 @@ const props = withDefaults(
   { icon: '', itemId: '', size: 18 }
 )
 
-const FREE_CANVAS_ICON_KEYS = new Set([FREE_CANVAS_ICON, `icon:${FREE_CANVAS_ICON}`, '⬜'])
-const VIDEO_ICON_KEYS = new Set([VIDEO_ASSET_ICON, `icon:${VIDEO_ASSET_ICON}`, '🎞️'])
-const ANIM2D_ICON_KEYS = new Set([ANIM2D_ASSET_ICON, `icon:${ANIM2D_ASSET_ICON}`])
-const FRAME_ANIM_GEN_ICON_KEYS = new Set([
-  FRAME_ANIM_GEN_ASSET_ICON,
-  `icon:${FRAME_ANIM_GEN_ASSET_ICON}`
-])
-const MOTION_ICON_KEYS = new Set([ASSET_TYPE_ICONS.motion, '🎬'])
-const WORLD_ICON_KEYS = new Set([ASSET_TYPE_ICONS.world, '🤺'])
+const kind = computed(() => resolveWorkspaceIconKind(props.icon, props.itemId))
 
-const isFreeCanvas = computed(
-  () => props.itemId === 'freeCanvas' || FREE_CANVAS_ICON_KEYS.has(props.icon || '')
-)
+const isFreeCanvas = computed(() => kind.value === 'freeCanvas')
+const isVideo = computed(() => kind.value === 'video')
+const isAnim2d = computed(() => kind.value === 'anim2d')
+const isFrameAnimGen = computed(() => kind.value === 'frameAnimGen')
 
-const isVideo = computed(() => props.itemId === 'video' || VIDEO_ICON_KEYS.has(props.icon || ''))
-
-const isAnim2d = computed(() => ANIM2D_ICON_KEYS.has(props.icon || ''))
-
-const isFrameAnimGen = computed(() => FRAME_ANIM_GEN_ICON_KEYS.has(props.icon || ''))
-
-const isEnlargedEmoji = computed(
-  () =>
-    props.itemId === 'motion' ||
-    props.itemId === 'world' ||
-    MOTION_ICON_KEYS.has(props.icon || '') ||
-    WORLD_ICON_KEYS.has(props.icon || '')
-)
+const isEnlargedEmoji = computed(() => workspaceIconIsEnlarged(props.icon, props.itemId))
 
 const emojiStyle = computed(() => {
   if (!isEnlargedEmoji.value) return undefined

@@ -3,8 +3,10 @@
  *
  * 分组声明（id → typeIds）仍在 `NodeGraphEditor.vue`：可添加节点随画布作用域变化，
  * 声明必须挨着 `addableMenuItems` 才看得清。这里只做纯数据搬运——把影视相关的四个
- * 分组收进「影视」父级，便于单测锁住层级与顺序。
+ * 分组收进「影视」父级，并把分组图标收成一处纯函数，便于单测锁住层级、顺序与图标。
  */
+
+import { ANIM2D_ASSET_ICON, ASSET_TYPE_ICONS } from '@shared/domain'
 
 export type ContextMenuResourceGroup<TItem, TId extends string = string> = {
   id: TId
@@ -17,6 +19,50 @@ export type ContextMenuResourceGroup<TItem, TId extends string = string> = {
 
 /** 影视父级 id（不是资产类型，仅作菜单分组标识） */
 export const CONTEXT_MENU_NESTED_PARENT_ID = 'filmTv'
+
+/**
+ * 「影视」父级图标。
+ *
+ * 不用 🎬（motion 图标会被 WorkspaceItemIcon 放大渲染），也不用 🎞️（「逐帧拉片」
+ * 「3D 动画」节点在用这个胶片 emoji，重复会分不清）。🎦 是影院屏，语义贴「影视」。
+ */
+export const CONTEXT_MENU_FILM_TV_ICON = '🎦'
+
+/**
+ * 分组图标：按分组 id 取固定 emoji，资产类型分组回落到该类型的资产图标。
+ *
+ * 注意 `video` 是唯一不回落到资产图标的分组：视频资产图标（专用 SVG）与
+ * 「视频生成」节点是同一个，分组若也用它，右键菜单里「视频」与「视频生成」
+ * 就长得一模一样 —— 分组用 📹 区分开，节点侧保持视频资产图标不变。
+ */
+export function contextMenuResourceGroupIcon(groupId: string): string {
+  switch (groupId) {
+    case 'episode':
+      return '📽️'
+    case 'imageRefine':
+      return '🎨'
+    case 'imageEdit':
+      return '🛠️'
+    case 'video':
+      return '📹'
+    case 'text':
+      return '📝'
+    case 'game':
+      return '🕹️'
+    case 'motionFx':
+      return ANIM2D_ASSET_ICON
+    case 'model3d':
+      return '🧊'
+    case 'comic':
+      return '💬'
+    case 'qc':
+      return '🤖'
+    case 'ad':
+      return '📢'
+    default:
+      return ASSET_TYPE_ICONS[groupId as keyof typeof ASSET_TYPE_ICONS] ?? '◇'
+  }
+}
 
 /** 收进影视父级的分组 id；数组顺序＝二级菜单展示顺序（剧本 → 剧集 → 世界元素 → 场） */
 export const CONTEXT_MENU_NESTED_CHILD_GROUP_IDS = [
