@@ -4624,6 +4624,7 @@ export default {
             hook: '钩子'
           },
           titleScreenplay: '生成剧本模板',
+          titleGameSystem: '策划案模板',
           titleOptimize: '提示词优化模板',
           titleWorldExtract: '世界元素提取模板',
           titleBeatSplit: '场拆解模板',
@@ -4763,6 +4764,16 @@ export default {
             twists: '增加爽点和反转',
             dialogue: '优化台词',
             hooks: '强化结尾钩子'
+          },
+          gameSystem: {
+            outline: '系统策划案框架',
+            inventory: '背包与道具系统',
+            mainUi: '主界面与 HUD',
+            levelUp: '升级与成长系统',
+            shop: '商城与内购',
+            recharge: '充值流程',
+            custom: '自定义游戏系统',
+            align: '与现有策划案对齐'
           },
           image: {
             styleTransfer: '风格迁移',

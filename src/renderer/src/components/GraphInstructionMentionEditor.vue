@@ -532,6 +532,8 @@ const visiblePresets = computed(() => {
 const presetMenuTitle = computed(() => {
   if (props.presetKind === 'screenplay')
     return t('graph.inspector.generate.presets.titleScreenplay')
+  if (props.presetKind === 'gameSystem')
+    return t('graph.inspector.generate.presets.titleGameSystem')
   if (props.presetKind === 'optimize') return t('graph.inspector.generate.presets.titleOptimize')
   if (props.presetKind === 'toPrompt') return t('graph.inspector.generate.presets.titleToPrompt')
   if (props.presetKind === 'worldExtract')

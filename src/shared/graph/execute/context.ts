@@ -18,6 +18,7 @@ import {
   resolveVideoSystemPrompt,
   resolveOptimizeSystemPrompt,
   resolveScreenplaySystemPrompt,
+  resolveGameSystemSystemPrompt,
   resolveWorldExtractSystemPrompt,
   resolveBeatSplitSystemPrompt,
   resolveBeatUnitGenSystemPrompt,
@@ -37,6 +38,7 @@ import {
   buildVideoPrompt,
   buildOptimizePrompt,
   buildScreenplayPrompt,
+  buildGameSystemPrompt,
   buildWorldExtractPrompt,
   buildBeatSplitPrompt,
   buildBeatUnitGenPrompt,
@@ -60,6 +62,7 @@ export function normalizeLocalScreenplayText(raw: string | undefined): string {
 
 export type InstructionFinalPreviewKind =
   | 'screenplay'
+  | 'gameSystem'
   | 'image'
   | 'video'
   | 'reshoot'
@@ -104,6 +107,11 @@ export function resolveInstructionFinalPreviewKind(
   if (typeId === 'asset.video' || assetType === 'video' || presetKind === 'video') return 'video'
   if (typeId === 'asset.voice' || assetType === 'voice' || presetKind === 'voice') return 'voice'
   if (typeId === 'asset.image' || assetType === 'image' || presetKind === 'image') return 'image'
+  // 策划案生成必须排在 screenplay 之前：它的 typeId 是 asset.gameSystem / assetType 是 gameSystem，
+  // 但两者都认不出时会兜底成 screenplay，导致指令窗口显示剧本规范（曾是该 bug 的来源）
+  if (typeId === 'asset.gameSystem' || assetType === 'gameSystem') {
+    return 'gameSystem'
+  }
   if (typeId === 'asset.screenplay' || assetType === 'screenplay' || presetKind === 'screenplay') {
     return 'screenplay'
   }
@@ -136,6 +144,8 @@ function resolveSystemPromptForPreviewKind(
       return resolveBeatUnitGenSystemPrompt(raw, locale)
     case 'uiSplit':
       return resolveUiSplitSystemPrompt(raw, locale)
+    case 'gameSystem':
+      return resolveGameSystemSystemPrompt(raw, locale)
     case 'frameAnimGen':
       return resolveFrameAnimGenSystemPrompt(raw, locale)
     case 'svgGen':
@@ -175,6 +185,8 @@ function buildUserPromptForPreviewKind(
       return buildBeatUnitGenPrompt(instruction, locale)
     case 'uiSplit':
       return buildUiSplitPrompt(instruction, locale)
+    case 'gameSystem':
+      return buildGameSystemPrompt(instruction, locale)
     case 'frameAnimGen':
       return buildFrameAnimGenPrompt(instruction, locale)
     case 'svgGen':

@@ -4746,6 +4746,7 @@ export default {
             hook: 'Hook'
           },
           titleScreenplay: 'Screenplay templates',
+          titleGameSystem: 'Design-doc templates',
           titleOptimize: 'Prompt optimize templates',
           titleWorldExtract: 'World extract templates',
           titleBeatSplit: 'Beat split templates',
@@ -4885,6 +4886,16 @@ export default {
             twists: 'Add payoffs & twists',
             dialogue: 'Polish dialogue',
             hooks: 'Strengthen ending hooks'
+          },
+          gameSystem: {
+            outline: 'System design outline',
+            inventory: 'Inventory & items',
+            mainUi: 'Main screen & HUD',
+            levelUp: 'Level-up & progression',
+            shop: 'Shop & in-app purchase',
+            recharge: 'Top-up flow',
+            custom: 'Custom game system',
+            align: 'Align with the existing design doc'
           },
           image: {
             styleTransfer: 'Style transfer',

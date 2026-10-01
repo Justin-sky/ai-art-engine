@@ -945,7 +945,8 @@ const instructionKind = computed((): InstructionPresetKind | null => {
     case 'asset.screenplay':
       return isProcessingNode.value ? 'screenplay' : null
     case 'asset.gameSystem':
-      return isProcessingNode.value ? 'screenplay' : null
+      // 策划案有自己的预设与预览规范，不能再借用剧本那套
+      return isProcessingNode.value ? 'gameSystem' : null
     case 'asset.image':
       return isProcessingNode.value ? 'image' : null
     case 'asset.video':
@@ -1694,7 +1695,10 @@ const previewOpenHint = computed(() => {
   if (props.node.typeId === 'comic.page') {
     return t('graph.inspector.comicPage.cardHint')
   }
-  if (instructionKind.value === 'screenplay') return t('graph.generateNode.instructionHint')
+  // 生成剧本 / 策划案：双击开的是生成指令面板，不是正文记事本（与上方双击分发同顺序）
+  if (instructionKind.value === 'screenplay' || instructionKind.value === 'gameSystem') {
+    return t('graph.generateNode.instructionHint')
+  }
   if (isScreenplayOutputNode.value) return t('graph.textsPreview.hint')
   if (isSelectTextNode(props.node)) return t('graph.selectText.hint')
   if (isSelectBeatNode(props.node)) return t('graph.selectBeat.hint')
@@ -2539,8 +2543,8 @@ function onPreviewDblClick(): void {
       return
     }
 
-    // 生成剧本：双击展开生成指令面板（勿被正文预览抢成记事本）
-    if (instructionKind.value === 'screenplay') {
+    // 生成剧本 / 策划案：双击展开生成指令面板（勿被正文预览抢成记事本）
+    if (instructionKind.value === 'screenplay' || instructionKind.value === 'gameSystem') {
       instructionOpen.value = !instructionOpen.value
       return
     }

@@ -53,6 +53,14 @@ export function defaultGameSystemUserPrompt(locale?: string): string {
   )
 }
 
+/**
+ * 最终用户提示词：仅生成指令（已展开 @），不自动拼接上游/本节点正文。
+ * 与 execute/generateText.ts 的 executeGameSystemGenerateNode 同口径。
+ */
+export function buildGameSystemPrompt(instruction: string, locale?: string): string {
+  return buildOrDefault(instruction, locale, defaultGameSystemUserPrompt)
+}
+
 // ——— 图片 ———
 
 export const DEFAULT_IMAGE_USER_PROMPT_EN =
