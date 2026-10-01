@@ -119,7 +119,7 @@ npm run dist:linux  # Linux
 - **宿主资产** — 外层暴露边界口，内图可 Dive；多汇点各建独立出口
 - **导演台** — 3D 站位截图与动作录制（写入 `Cache/Videos`）；方形口 `out-shots` / `out-actions`；3D 模型输入端口，dive 自动实例化到舞台；全景图输入自动设为背景；AI 白模搭场景、20+ 种基础几何体、材质贴图覆盖（基础 / 法线贴图）、着色模式与线框模式
 - **成片时间线** — 素材分组与上轨编排；画中画叠加（位置 / 尺寸 / 不透明度 / 音量）与视频轨转场；预览播选中 / 时间线整轨联播；导出成片
-- **多模型提供商** — OpenRouter、OpenAI（GPT 文本 / gpt-image 图片）、DeepSeek（文本）、智谱（GLM 文本 / CogView 图片）、Kimi / 月之暗面（文本）、xAI / Grok（文本 / 图片 / 视频）、Google / Gemini（文本 / 图片 / 视频）、本地 vLLM（文本 / Wan 视频）、Ollama / LM Studio（文本，OpenAI 兼容，无需 API Key）、火山方舟（Seedream / Seedance / 声音）、可灵、MiniMax、通义千问（DashScope）、魔塔（ModelScope）、ComfyUI（API 2：图片 / 视频 / 声音，本机或云端 Base URL）、MagicRouter（聚合网关：文本 / 图片 / 视频）、Meshy / Tripo / Rodin（Hyper3D） / Luma AI / Lux3D（3D 模型生成，文生 3D / 图生 3D）、自定义提供商（自选 OpenAI 兼容 / Anthropic / Gemini 端点类型，填 Base URL 与 API Key 拉取文本模型）
+- **多模型提供商** — OpenRouter、OpenAI（GPT 文本 / gpt-image 图片）、DeepSeek（文本）、智谱（GLM 文本 / CogView 图片）、Kimi / 月之暗面（文本）、xAI / Grok（文本 / 图片 / 视频）、Google / Gemini（文本 / 图片 / 视频）、本地 vLLM（文本 / Wan 视频）、Ollama / LM Studio（文本，OpenAI 兼容，无需 API Key）、火山方舟（Seedream / Seedance / 声音）、可灵、MiniMax、通义千问（DashScope）、魔塔（ModelScope）、ComfyUI（API 2：图片 / 视频 / 声音，本机或云端 Base URL）、MagicRouter（聚合网关：文本 / 图片 / 视频）、Meshy / Tripo / Rodin（Hyper3D） / Luma AI / Lux3D（3D 模型生成，文生 3D / 图生 3D）、自定义提供商（自选 OpenAI 兼容 / Anthropic / Gemini 端点类型，填 Base URL 与 API Key 接 NewAPI / one-api 等中转网关；文本 + 图片，图片模型需手动填 id，见 [NewAPI 教程](https://justin-sky.github.io/ai-art-engine/guide-newapi.html)）
 - **3D 模型蒙皮与骨骼** — 生成节点只出几何 GLB（6.4.1 起不再内联「生成骨骼」），蒙皮改为图节点 **3D 骨骼蒙皮** 调用云端 Rigging API：**Meshy** `POST /openapi/v1/rigging`、**Tripo** `POST /v3/animations/rig`（可选骨架命名 Mixamo / Tripo 与输出 GLB / FBX）；**Luma AI / Lux3D 不支持蒙皮**，卡片里不会出现
 - **3D 模型加工（节点）** — 加上蒙皮共 8 个加工节点：**绑骨检查**（免费，给 `riggable` + 推荐骨架类型）、**动画重定向**（Tripo 预设 `preset:walk` / Meshy 动作库 `action_id`，面板内可直接拉动作库）、**模型拆分**（网格分割 / 智能分割，拆完列出部件名）、**部件补全**、**重拓扑**（Tripo 智能 / 基础档、Meshy remesh）、**贴图**（含 Meshy retexture）、**格式转换**（GLTF / FBX / USDZ / OBJ / STL / 3MF，可带 FBX 预设、pivot 归底、UV 打包、四边面、按部件子集导出）。能力按供应商矩阵过滤 UI：**Tripo 支持 8 项、Meshy 支持 5 项**，卡片下拉只列能做该动作的供应商，Inspector 按能力位隐藏对面不识的参数；**部件补全只吃拆件任务 id、动画重定向只吃绑骨任务 id**，task id 属于别家时自动退回「上传模型换公网 URL」
 - **联网搜索 provider（设置面板配置）** — DeepSeek Search（默认）/ Tavily / Brave / SerpAPI / Mock 五种适配器并行可用，每个独立开关、Base URL、API Key、搜索深度与时间窗；面板自带连通性测试；与模型 provider 体系刻意分离（数量少、无上下文注入）
@@ -129,31 +129,31 @@ npm run dist:linux  # Linux
 
 ### 模型与对象存储一览
 
-| 类型     | 提供商                             | 能力概要                                                                       |
-| -------- | ---------------------------------- | ------------------------------------------------------------------------------ |
-| 模型     | OpenRouter                         | 文本 / 图片 / 视频（聚合目录）                                                 |
-| 模型     | OpenAI                             | 文本 / 图片（需可访问 api.openai.com 的网络与账号）                            |
-| 模型     | DeepSeek                           | 文本（deepseek-chat / deepseek-reasoner）                                      |
-| 模型     | 智谱                               | GLM 文本 / CogView 文生图                                                      |
-| 模型     | Kimi（月之暗面）                   | 文本（kimi-k2 系列 / moonshot-v1 系列）                                        |
-| 模型     | xAI（Grok）                        | 文本 / Grok Imagine 图片 / Grok Imagine Video（异步轮询）                      |
-| 模型     | Google（Gemini）                   | 文本 / Nano Banana 图片 / Veo 3.1 视频（异步轮询，官方 OpenAI 兼容层）         |
-| 模型     | vLLM                               | 本地文本 / 视频（Wan T2V / I2V，OpenAI 兼容，无需 API Key）                    |
-| 模型     | Ollama / LM Studio                 | 本地文本（OpenAI 兼容，无需 API Key）                                          |
-| 模型     | 火山方舟                           | 文本 / Seedream 图 / Seedance 视频 / 声音设计                                  |
-| 模型     | 可灵                               | 图片 / 视频（API Key）                                                         |
-| 模型     | MiniMax                            | 文本 / 图片 / 视频 / 音色设计                                                  |
-| 模型     | 通义千问                           | 文本（兼容模式）/ 万相图 / 万相视频（含 HappyHorse 等）                        |
-| 模型     | 魔塔                               | 文本 / 文生图（访问令牌）                                                      |
-| 模型     | ComfyUI                            | 图片 / 视频 / 声音（API 2；本机 8189 或云端 Base URL）                         |
-| 模型     | MagicRouter                        | 文本 / 图片 / 视频（OpenAI 兼容聚合网关，视频异步轮询）                        |
-| 模型     | Meshy                              | 文生 3D / 图生 3D（含多图生 3D，API Key）                                      |
-| 模型     | Tripo                              | 文生 3D / 图生 3D（API Key）                                                   |
-| 模型     | Rodin（Hyper3D）                   | 文生 3D / 图生 3D（API Key）                                                   |
-| 模型     | Luma AI                            | 文生 3D / 图生 3D（API Key）                                                   |
-| 模型     | 自定义                             | 文本（自选端点类型：OpenAI 兼容 / Anthropic / Gemini，填 Base URL 与 API Key） |
-| 模型     | Lux3D                              | 文生 3D / 图生 3D（含多图生 3D，G1 / G1-Turbo，API Key）                       |
-| 对象存储 | 火山 TOS / 阿里云 OSS / 腾讯云 COS | 参考媒体上传与签名 URL；设置中互斥启用                                         |
+| 类型     | 提供商                             | 能力概要                                                                                                                                                                                   |
+| -------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 模型     | OpenRouter                         | 文本 / 图片 / 视频（聚合目录）                                                                                                                                                             |
+| 模型     | OpenAI                             | 文本 / 图片（需可访问 api.openai.com 的网络与账号）                                                                                                                                        |
+| 模型     | DeepSeek                           | 文本（deepseek-chat / deepseek-reasoner）                                                                                                                                                  |
+| 模型     | 智谱                               | GLM 文本 / CogView 文生图                                                                                                                                                                  |
+| 模型     | Kimi（月之暗面）                   | 文本（kimi-k2 系列 / moonshot-v1 系列）                                                                                                                                                    |
+| 模型     | xAI（Grok）                        | 文本 / Grok Imagine 图片 / Grok Imagine Video（异步轮询）                                                                                                                                  |
+| 模型     | Google（Gemini）                   | 文本 / Nano Banana 图片 / Veo 3.1 视频（异步轮询，官方 OpenAI 兼容层）                                                                                                                     |
+| 模型     | vLLM                               | 本地文本 / 视频（Wan T2V / I2V，OpenAI 兼容，无需 API Key）                                                                                                                                |
+| 模型     | Ollama / LM Studio                 | 本地文本（OpenAI 兼容，无需 API Key）                                                                                                                                                      |
+| 模型     | 火山方舟                           | 文本 / Seedream 图 / Seedance 视频 / 声音设计                                                                                                                                              |
+| 模型     | 可灵                               | 图片 / 视频（API Key）                                                                                                                                                                     |
+| 模型     | MiniMax                            | 文本 / 图片 / 视频 / 音色设计                                                                                                                                                              |
+| 模型     | 通义千问                           | 文本（兼容模式）/ 万相图 / 万相视频（含 HappyHorse 等）                                                                                                                                    |
+| 模型     | 魔塔                               | 文本 / 文生图（访问令牌）                                                                                                                                                                  |
+| 模型     | ComfyUI                            | 图片 / 视频 / 声音（API 2；本机 8189 或云端 Base URL）                                                                                                                                     |
+| 模型     | MagicRouter                        | 文本 / 图片 / 视频（OpenAI 兼容聚合网关，视频异步轮询）                                                                                                                                    |
+| 模型     | Meshy                              | 文生 3D / 图生 3D（含多图生 3D，API Key）                                                                                                                                                  |
+| 模型     | Tripo                              | 文生 3D / 图生 3D（API Key）                                                                                                                                                               |
+| 模型     | Rodin（Hyper3D）                   | 文生 3D / 图生 3D（API Key）                                                                                                                                                               |
+| 模型     | Luma AI                            | 文生 3D / 图生 3D（API Key）                                                                                                                                                               |
+| 模型     | 自定义                             | 文本 / 图片（自选端点类型：OpenAI 兼容 / Anthropic / Gemini，填 Base URL 与 API Key；图片模型需手动填 id，见 [NewAPI 教程](https://justin-sky.github.io/ai-art-engine/guide-newapi.html)） |
+| 模型     | Lux3D                              | 文生 3D / 图生 3D（含多图生 3D，G1 / G1-Turbo，API Key）                                                                                                                                   |
+| 对象存储 | 火山 TOS / 阿里云 OSS / 腾讯云 COS | 参考媒体上传与签名 URL；设置中互斥启用                                                                                                                                                     |
 
 配置入口：**设置 → 模型** / **设置 → 对象存储**。本机 ComfyUI 需先装 [comfy-api-proxy](https://justin-sky.github.io/ai-art-engine/guide-comfyui.html)（默认 8189），不要直连 8188。
 
@@ -204,6 +204,7 @@ npm run pack                    # 未封装目录，便于自测
 ## 文档
 
 - [使用手册](https://justin-sky.github.io/ai-art-engine/manual.html)（源码 `website/manual.html`）
+- [ComfyUI 教程](https://justin-sky.github.io/ai-art-engine/guide-comfyui.html) · [NewAPI 教程](https://justin-sky.github.io/ai-art-engine/guide-newapi.html) · [MCP 接入](https://justin-sky.github.io/ai-art-engine/guide-mcp.html)
 - [架构](./docs/ARCHITECTURE.md) · [节点图插件](./docs/GRAPH_PLUGINS.md) · [文档目录](./docs/README.md)
 - [资产模型](./docs/ASSET_MODEL.md) · [AssetRef](./docs/ASSET_REF.md) · [素材包](./docs/ASSET_PACKAGE.md)
 - [路线图](./docs/ROADMAP.md) · [变更记录](./CHANGELOG.md)

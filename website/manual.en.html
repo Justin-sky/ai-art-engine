@@ -70,7 +70,7 @@
         <a href="quickstart.en.html">Quickstart</a>
         <a href="manual.en.html" aria-current="page">Manual</a>
         <a href="guide-video.en.html">Video Guide</a>
-        <a href="guide-short-video.en.html">Short Video</a>
+        <a href="guide-short-video.en.html">Short Drama</a>
         <a href="guide-comfyui.en.html">ComfyUI</a>
         <a href="guide-mcp.en.html">MCP Setup</a>
         <a href="guide-gameplay.en.html">Playable HTML</a>
@@ -79,7 +79,7 @@
           href="https://space.bilibili.com/3707036976024122"
           target="_blank"
           rel="noopener noreferrer"
-          >Video tutorials</a
+          >bilibili</a
         >
         <a href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine" target="_blank" rel="noopener noreferrer"
           >Gitee</a
@@ -97,7 +97,7 @@
           <a href="quickstart.en.html">Quickstart</a>
           <a href="manual.en.html" aria-current="page">Manual</a>
           <a href="guide-video.en.html">Video Guide</a>
-          <a href="guide-short-video.en.html">Short Video</a>
+          <a href="guide-short-video.en.html">Short Drama</a>
           <a href="guide-comfyui.en.html">ComfyUI</a>
           <a href="guide-mcp.en.html">MCP Setup</a>
           <a href="guide-gameplay.en.html">Playable HTML</a>
@@ -106,7 +106,7 @@
             href="https://space.bilibili.com/3707036976024122"
             target="_blank"
             rel="noopener noreferrer"
-            >Video tutorials</a
+            >bilibili</a
           >
           <a
             href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
@@ -155,6 +155,7 @@
           <li><a href="guide-short-video.en.html">Short drama / short video pipeline</a></li>
           <li><a href="guide-video.en.html">Free canvas · video &amp; reference video</a></li>
           <li><a href="guide-comfyui.en.html">ComfyUI guide</a></li>
+          <li><a href="guide-newapi.en.html">NewAPI guide</a></li>
           <li><a href="guide-mcp.en.html">MCP setup guide</a></li>
         </ol>
       </aside>
@@ -537,6 +538,13 @@
                   <strong>Lux3D</strong>: text-to-3D / image-to-3D / multi-image to 3D (API Key; G1 /
                   G1-Turbo; default Base URL <code>https://api.aholo3d.cn</code>).
                 </li>
+                <li>
+                  <strong>Custom</strong>: pick an endpoint type (OpenAI compatible / Anthropic / Gemini) and
+                  supply your own Base URL and API key &mdash; for relays such as NewAPI and one-api, or a
+                  self-hosted service. Text and images are supported, and models often cannot be fetched from
+                  the catalog, so you type their ids by hand &mdash; see the
+                  <a href="guide-newapi.en.html">NewAPI guide</a> for the full walkthrough.
+                </li>
               </ul>
             </li>
             <li>
@@ -730,7 +738,10 @@
               Ollama / LM Studio are text only, though multimodal understanding can pass images into text nodes;
               ModelScope supports text and image with async text-to-image jobs; ComfyUI supports image / video /
               audio and has no text tab; MagicRouter supports text / image / video; Meshy / Tripo / Rodin
-              (Hyper3D) / Luma AI / Lux3D only expose a 3D model tab).
+              (Hyper3D) / Luma AI / Lux3D only expose a 3D model tab; a custom provider's tabs follow its
+              endpoint type &mdash; OpenAI compatible / Gemini give text + image, Anthropic gives text only,
+              and image models must always be typed in by hand (see the
+              <a href="guide-newapi.en.html">NewAPI guide</a>).
             </li>
             <li>
               Set the default generation model and default voice if needed. Provider cards can be collapsed to
@@ -2485,7 +2496,7 @@
           <a href="quickstart.en.html">Quickstart</a>
           <a href="manual.en.html">Manual</a>
           <a href="guide-video.en.html">Video Guide</a>
-          <a href="guide-short-video.en.html">Short Video</a>
+          <a href="guide-short-video.en.html">Short Drama</a>
           <a href="guide-comfyui.en.html">ComfyUI</a>
           <a href="guide-mcp.en.html">MCP Setup</a>
           <a href="guide-gameplay.en.html">Playable HTML</a>
@@ -2494,7 +2505,7 @@
             href="https://space.bilibili.com/3707036976024122"
             target="_blank"
             rel="noopener noreferrer"
-            >Video tutorials</a
+            >bilibili</a
           >
           <a
             href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"

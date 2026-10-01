@@ -1,0 +1,586 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+
+    <script>
+      // 提前应用本地主题选择，避免加载闪烁
+      ;(function () {
+        try {
+          var pref = localStorage.getItem('site.theme')
+          if (
+            pref !== 'light' &&
+            (pref === 'dark' || pref == null || (pref === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches))
+          ) {
+            document.documentElement.classList.add('dark')
+          }
+        } catch (e) {}
+      })()
+    </script>
+    <meta
+      name="description"
+      content="AIArtEngine guide: connect NewAPI (or any OpenAI-compatible relay) as a custom provider, then fetch or hand-add text and image models."
+    />
+    <title>Connecting to NewAPI — AIArtEngine</title>
+    <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/guide-newapi.en.html" />
+    <meta property="og:site_name" content="AIArtEngine" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:title" content="Connecting to NewAPI — AIArtEngine" />
+    <meta property="og:description" content="AIArtEngine guide: connect NewAPI (or any OpenAI-compatible relay) as a custom provider, then fetch or hand-add text and image models." />
+    <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/guide-newapi.en.html" />
+    <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Connecting to NewAPI — AIArtEngine" />
+    <meta name="twitter:description" content="AIArtEngine guide: connect NewAPI (or any OpenAI-compatible relay) as a custom provider, then fetch or hand-add text and image models." />
+    <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-newapi.html" />
+    <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-newapi.en.html" />
+    <link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/guide-newapi.html" />
+    <link rel="icon" href="assets/logo-mark.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Syne:wght@500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="manual.css?v=20260829-4" />
+      <link rel="stylesheet" href="site.css?v=20260829" />
+  </head>
+  <body>
+    <a class="skip" href="#manual">Skip to content</a>
+
+    <header class="top">
+      <a class="brand" href="index.en.html">
+        <img src="assets/logo-mark.png" alt="" width="30" height="30" />
+        <span>AI Art Engine</span>
+      </a>
+      <nav class="nav" aria-label="Main navigation">
+        <a href="index.en.html">Home</a>
+        <a href="quickstart.en.html">Quickstart</a>
+        <a href="manual.en.html">Manual</a>
+        <a href="guide-video.en.html">Video Guide</a>
+        <a href="guide-short-video.en.html">Short Drama</a>
+        <a href="guide-comfyui.en.html">ComfyUI</a>
+        <a href="guide-mcp.en.html">MCP Setup</a>
+        <a href="guide-gameplay.en.html">Playable HTML</a>
+        <a href="index.en.html#download">Download</a>
+        <a
+          href="https://space.bilibili.com/3707036976024122"
+          target="_blank"
+          rel="noopener noreferrer"
+          >bilibili</a
+        >
+        <a href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine" target="_blank" rel="noopener noreferrer"
+          >Gitee</a
+        >
+        <a class="nav-src" href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"
+          >GitHub</a
+        >
+      </nav>
+      <a class="nav-lang" href="guide-newapi.html" hreflang="zh-CN" lang="zh-CN">中文</a>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme">◐</button>
+      <details class="mobile-menu">
+        <summary aria-label="Open navigation menu"><span aria-hidden="true">☰</span> Menu</summary>
+        <nav class="mobile-nav" aria-label="Mobile navigation">
+          <a href="index.en.html">Home</a>
+          <a href="quickstart.en.html">Quickstart</a>
+          <a href="manual.en.html">Manual</a>
+          <a href="guide-video.en.html">Video Guide</a>
+          <a href="guide-short-video.en.html">Short Drama</a>
+          <a href="guide-comfyui.en.html">ComfyUI</a>
+          <a href="guide-mcp.en.html">MCP Setup</a>
+          <a href="guide-gameplay.en.html">Playable HTML</a>
+          <a href="index.en.html#download">Download</a>
+          <a
+            href="https://space.bilibili.com/3707036976024122"
+            target="_blank"
+            rel="noopener noreferrer"
+            >bilibili</a
+          >
+          <a
+            href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Gitee</a
+          >
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"
+            >GitHub</a
+          >
+        </nav>
+      </details>
+    </header>
+
+    <div class="manual-shell">
+      <aside class="toc" aria-label="Table of contents">
+        <h2>Contents</h2>
+        <ol>
+          <li><a href="#overview">How it connects</a></li>
+          <li><a href="#prepare">Prepare three things on NewAPI</a></li>
+          <li><a href="#add-provider">Add the custom provider</a></li>
+          <li><a href="#fetch-text">Fetch text models</a></li>
+          <li><a href="#manual-model">Add models by hand</a></li>
+          <li><a href="#use">Use it in nodes</a></li>
+          <li><a href="#faq">FAQ</a></li>
+        </ol>
+        <p style="margin-top: 1.25rem; font-size: 12px; color: var(--mute)">
+          <a href="manual.en.html#settings">← Back to the manual · Settings</a>
+        </p>
+      </aside>
+
+      <article class="manual" id="manual">
+        <header class="manual-hero">
+          <p class="eyebrow">Guide · NewAPI</p>
+          <h1>Connecting to NewAPI</h1>
+          <p class="lede">
+            NewAPI is an OpenAI-compatible relay that puts many models behind one address. This app connects
+            to it through a <strong>custom provider with the OpenAI-compatible endpoint type</strong>: text
+            goes to <code>/chat/completions</code>, images go to <code>/images/generations</code>. Image
+            models are never auto-detected &mdash; <strong>you must type the id yourself</strong>, which is
+            the most important section below.
+          </p>
+        </header>
+
+        <section id="overview">
+          <h2>1. How it connects</h2>
+          <p>
+            NewAPI is not a built-in provider here. You add it under
+            <strong>Settings &rarr; Models &rarr; Add model provider &rarr; Custom</strong>: you tell the app
+            the endpoint type, the Base URL and the API key, and it speaks the OpenAI-compatible protocol.
+          </p>
+          <table>
+            <thead>
+              <tr>
+                <th>Scenario</th>
+                <th>API Base URL</th>
+                <th>API Key</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Hosted NewAPI (recommended)</td>
+                <td><code>https://your-host/v1</code></td>
+                <td>Required (a NewAPI token starting with <code>sk-</code>)</td>
+              </tr>
+              <tr>
+                <td>Self-hosted NewAPI</td>
+                <td><code>http://127.0.0.1:3000/v1</code></td>
+                <td>Required (same)</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="tip">
+            <strong>The Base URL must include <code>/v1</code> yourself.</strong> The app only strips a
+            trailing slash; it never appends <code>/v1</code> for you. Enter
+            <code>https://host/v1</code> and requests go to
+            <code>https://host/v1/chat/completions</code>. If NewAPI lives under a sub-path, put the
+            sub-path in too, e.g. <code>https://host/gateway/v1</code>.
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Capability</th>
+                <th>Actual request</th>
+                <th>Model catalog</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Text</td>
+                <td><code>POST {Base URL}/chat/completions</code></td>
+                <td>Fetched automatically from <code>GET {Base URL}/models</code></td>
+              </tr>
+              <tr>
+                <td>Image</td>
+                <td>
+                  <code>POST {Base URL}/images/generations</code>; with a reference image,
+                  <code>POST {Base URL}/images/edits</code> (multipart, one image max)
+                </td>
+                <td><strong>Always empty &mdash; type the id by hand</strong> (see section 5)</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="tip">
+            A custom provider has <strong>only two tabs: Text and Image</strong>. Video / audio / 3D model
+            nodes cannot select it; even if a model id gets in by other means, execution fails with
+            &ldquo;video generation / speech synthesis / 3D model generation is not supported yet&rdquo;.
+          </div>
+        </section>
+
+        <section id="prepare">
+          <h2>2. Prepare three things on the NewAPI side</h2>
+          <ol>
+            <li>
+              <strong>The site address</strong>: the domain you normally open the NewAPI panel on (for
+              example <code>https://your-newapi.example.com</code>). Its OpenAI-compatible entry point is
+              <code>/v1</code>.
+            </li>
+            <li>
+              <strong>A token</strong>: NewAPI panel &rarr; <strong>Tokens</strong> &rarr; add a token, then
+              copy the string starting with <code>sk-</code>. Tokens carry <strong>quota and model-group
+              limits</strong>; with the wrong group you can list models but generation returns a permission
+              error.
+            </li>
+            <li>
+              <strong>Model names</strong>: NewAPI panel &rarr; <strong>Channels / Models</strong>, and note
+              the <strong>exact model ids</strong> you want (such as <code>gpt-4o-mini</code>,
+              <code>deepseek-chat</code>, <code>flux.1-schnell</code>, <code>gpt-image-1</code>). When typing
+              a model by hand it must match <strong>character for character</strong>, including case and
+              hyphens.
+            </li>
+          </ol>
+          <p>Before filling anything into the app, confirm these two endpoints work from a shell:</p>
+          <pre><code># model list (auth + catalog)
+curl -H "Authorization: Bearer sk-YOUR-TOKEN" https://your-host/v1/models
+
+# text completion
+curl -X POST https://your-host/v1/chat/completions \
+  -H "Authorization: Bearer sk-YOUR-TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}]}'</code></pre>
+        </section>
+
+        <section id="add-provider">
+          <h2>3. Add the custom provider in this app</h2>
+          <ol>
+            <li>Open <strong>Settings &rarr; Models</strong> (models and keys are global, shared by every project).</li>
+            <li>
+              In the &ldquo;Add model provider&rdquo; dropdown pick <strong>Custom</strong>, then click
+              <strong>Add</strong>. The new card expands and scrolls into view automatically.
+            </li>
+            <li><strong>Display name</strong>: something recognisable, for example <code>NewAPI</code>.</li>
+            <li>
+              <strong>Endpoint type</strong>: choose <strong>OpenAI compatible</strong> (NewAPI is an
+              OpenAI-compatible relay). The note under the dropdown echoes which protocol is active.
+            </li>
+            <li>
+              <strong>API Base URL</strong>: enter <code>https://your-host/v1</code> (see the reminder in
+              section 1).
+            </li>
+            <li>
+              <strong>API Key</strong>: paste the NewAPI token. The eye button reveals it temporarily so you
+              can double-check.
+            </li>
+            <li>
+              Tick <strong>Enabled</strong> &mdash; a disabled provider never shows up in any node's model
+              dropdown.
+            </li>
+          </ol>
+          <div class="tip">
+            There is nothing to save: settings <strong>persist automatically</strong> after a 500&nbsp;ms
+            debounce. Below the API key you will see &ldquo;Custom provider: pick an endpoint type, then fill
+            in the Base URL and API key to fetch the model list; there is no central sign-up page.&rdquo;
+            Custom providers have no sign-up page, and do not need one.
+          </div>
+        </section>
+
+        <section id="fetch-text">
+          <h2>4. Fetch text models</h2>
+          <ol>
+            <li>Switch to the <strong>Text</strong> tab.</li>
+            <li>
+              Click <strong>Fetch available models</strong>. The button briefly reads &ldquo;Verifying API
+              key&hellip;&rdquo; &mdash; that step doubles as the key and connectivity check.
+            </li>
+            <li>
+              On success the count appears next to the button. The list is <strong>not filtered by
+              modality</strong>: if NewAPI's <code>/models</code> includes image models they show up on the
+              Text tab too &mdash; just tick the chat models you want.
+            </li>
+            <li>Use the filter box and &ldquo;Select all in list&rdquo; / &ldquo;Clear selection&rdquo;, then tick your models.</li>
+            <li>
+              To pin a default, pick one in the <strong>Default generation model</strong> dropdown (it lists
+              only the ticked models).
+            </li>
+          </ol>
+          <p>
+            Editing a generation node now shows <code>NewAPI · model name</code> in the model dropdown. If the
+            dropdown is empty the inspector says &ldquo;configure an available text model in settings first (an
+            API key plus at least one ticked model)&rdquo; &mdash; come back to this step.
+          </p>
+        </section>
+
+        <section id="manual-model">
+          <h2>5. Adding models by hand (the important part)</h2>
+          <p>
+            Every provider card has a free-text field labelled <strong>&ldquo;Model / endpoint / Resource ID
+            (type it in)&rdquo;</strong> with an <strong>&ldquo;Add &amp; select&rdquo;</strong> button next to
+            it (Enter works too). Type an id, click the button, and the model joins the current tab's list
+            <strong>already ticked</strong>; the field clears itself afterwards.
+          </p>
+          <div class="tip">
+            <strong>The field is per tab.</strong> An id typed on the Text tab only lands in the text list, and
+            one typed on the Image tab only lands in the image list &mdash; the two do not share input. Do not
+            type an image model on the Text tab.
+          </div>
+
+          <h3>5.1 When you have to type it by hand</h3>
+          <ul>
+            <li>
+              <strong>Image models: always.</strong> The app does not auto-detect image models
+              (<code>/models</code> only returns names and cannot tell whether a model can draw), so the image
+              tab's catalog endpoint deliberately returns nothing.
+            </li>
+            <li>
+              <strong>Fetching returns 404 / 405</strong>: the gateway does not implement
+              <code>/models</code>. The list comes back empty <strong>without an error</strong> (expected).
+              Type the ids instead &mdash; generation is unaffected.
+            </li>
+            <li>
+              <strong>Fetching reports &ldquo;the endpoint returned no model list&rdquo;</strong>: the address
+              or key is wrong, or the token is not bound to any channel.
+            </li>
+            <li><strong>You only want a few</strong>: skip scrolling through hundreds of models and type the ids you need.</li>
+            <li><strong>A model was renamed on NewAPI</strong>: type the new id; un-tick the stale entry.</li>
+          </ul>
+
+          <h3>5.2 Typing a text model</h3>
+          <ol>
+            <li>Stay on the <strong>Text</strong> tab.</li>
+            <li>
+              Type the <strong>exact model id</strong> from NewAPI into the &ldquo;model / endpoint /
+              Resource ID&rdquo; field, for example <code>deepseek-chat</code>.
+            </li>
+            <li>Click <strong>Add &amp; select</strong> (or press Enter).</li>
+            <li>Optionally set it as the default in &ldquo;Default generation model&rdquo;.</li>
+          </ol>
+
+          <h3>5.3 Typing an image model</h3>
+          <ol>
+            <li>
+              Switch to the <strong>Image</strong> tab. Its note reads: &ldquo;Image generation uses the
+              OpenAI-compatible <code>/images/generations</code> endpoint (gpt-image-1 / dall-e-3 / FLUX and
+              friends); reference images go through <code>/images/edits</code>. The catalog does not detect
+              image models, so type the image model id below and tick it.&rdquo;
+            </li>
+            <li>
+              Type the <strong>image model id</strong> in the field at that same spot, for example
+              <code>gpt-image-1</code>, <code>flux.1-schnell</code> or <code>dall-e-3</code>. Use a name that
+              really exists on NewAPI &mdash; not a description such as &ldquo;image model&rdquo;.
+            </li>
+            <li>Click <strong>Add &amp; select</strong>.</li>
+            <li>Make it the default in the &ldquo;Default generation model&rdquo; dropdown (ticked entries only).</li>
+          </ol>
+          <div class="tip">
+            Clicking &ldquo;Fetch available models&rdquo; on the Image tab <strong>will not</strong> produce a
+            list &mdash; that is by design; it only verifies the Base URL and key.<br />
+            The first click shows &ldquo;The catalog is empty. Type a model ID by hand, or check the provider
+            and API key.&rdquo;; a later click shows &ldquo;The remote returned an empty list; the previous
+            result was kept. Try again later.&rdquo; <strong>Neither is a failure</strong>, and your hand-typed
+            entries are not lost.
+          </div>
+
+          <h3>5.4 Are hand-typed entries ever overwritten?</h3>
+          <ul>
+            <li>
+              <strong>No.</strong> When you fetch again, models that are ticked but absent from the remote
+              catalog are kept and added back to the list (an occasionally empty remote list also keeps the
+              previous result).
+            </li>
+            <li><strong>Duplicate ids are not added twice</strong> &mdash; an id already in the list is simply re-ticked.</li>
+            <li>
+              <strong>Only ticked models are persisted.</strong> Ticking writes them into the settings file;
+              un-ticking removes the model together with its capability snapshot.
+            </li>
+            <li>
+              <strong>Only ticked models can be picked in nodes.</strong> A node's dropdown lists ticked
+              entries only; if a model id reaches a node by another route (MCP, a template, an older project)
+              without being ticked here, execution silently falls back to the default model or the first ticked
+              one.
+            </li>
+          </ul>
+        </section>
+
+        <section id="use">
+          <h2>6. Using it in nodes</h2>
+          <ol>
+            <li>
+              <strong>Text generation node</strong>: pick <code>NewAPI · your text model</code> in the model
+              dropdown, write an instruction, run it.
+            </li>
+            <li>
+              <strong>Image generation node</strong>: pick <code>NewAPI · your image model</code>. To use a
+              reference image, wire an image into that node's image input &mdash; with a reference present the
+              request switches to <code>/images/edits</code>.
+            </li>
+            <li>
+              <strong>Resolution and quality</strong>: the request carries <code>size</code> /
+              <code>quality</code> / <code>n</code> when applicable; <code>size</code> is sent only when it maps
+              to <code>1024x1024 / 1536x1024 / 1024x1536</code>, otherwise it is omitted. Some relayed models
+              accept only their own sizes &mdash; when a request fails, check the actual request in the run log
+              first.
+            </li>
+            <li>
+              Progress and failure reasons live in the <strong>run log</strong>; authentication failures come
+              with &ldquo;check that the API key in settings is correct and saved, and that the provider Base
+              URL matches&rdquo;.
+            </li>
+          </ol>
+        </section>
+
+        <section id="faq">
+          <h2>7. FAQ</h2>
+          <ul>
+            <li>
+              <strong>&ldquo;Fetch available models&rdquo; is greyed out</strong>: a custom provider needs an
+              API key before that button enables. Fill in the key (and make sure Enabled is ticked).
+            </li>
+            <li>
+              <strong>&ldquo;Invalid API key, model fetching blocked: &hellip;&rdquo;</strong>: the key was
+              copied wrong, the token is disabled or expired, or its group is not allowed for this request.
+            </li>
+            <li>
+              <strong>&ldquo;Connection test failed: code=ENOTFOUND &hellip;&rdquo;</strong>: the domain does
+              not resolve &mdash; a typo, or a local network or proxy problem. A domain that opens in a browser
+              is not proof: the app connects from the main process and does not use system proxy settings.
+            </li>
+            <li>
+              <strong>Fetching returns 404 / 405, or an empty list</strong>: the gateway has no
+              <code>/models</code>. Type the model ids as in section 5; generation still works.
+            </li>
+            <li>
+              <strong>The list fetches fine but the Image tab is always empty</strong>: expected. Image models
+              must be typed by hand (section 5.3).
+            </li>
+            <li>
+              <strong>The Image tab fetch says &ldquo;the remote returned an empty list; the previous result
+              was kept&rdquo;</strong>: normal. Your hand-typed entry is still there and usable.
+            </li>
+            <li>
+              <strong>Generation fails with &ldquo;video generation / speech synthesis / 3D model generation is
+              not supported yet&rdquo;</strong>: custom providers only do text and images. For video use a
+              built-in video provider or ComfyUI (see the
+              <a href="guide-comfyui.en.html">ComfyUI guide</a>).
+            </li>
+            <li>
+              <strong>Classic wrong-Base-URL symptoms</strong>: omitting <code>/v1</code>, or including
+              <code>/chat/completions</code> as well, both end in 404.
+            </li>
+            <li>
+              <strong>After switching Endpoint type, fetching seems to use the old one</strong>: settings are
+              debounce-saved; wait for the settings page to confirm it saved before fetching. Also note an
+              Anthropic endpoint offers text only, so the Image tab disappears.
+            </li>
+            <li>
+              <strong>Model name does not match</strong>: always copy the id shown in the NewAPI panel and
+              check it character by character; relays often add prefixes or suffixes such as
+              <code>-free</code> or <code>-thinking</code>.
+            </li>
+            <li>
+              <strong>Where is the API key stored</strong>: in the local settings file (on Windows, for
+              example, <code>%APPDATA%\AIArtEngine\aiartengine-settings.json</code>), in plain text. It is
+              never uploaded to the app's own servers, but do take care of that file on this machine.
+            </li>
+          </ul>
+          <p>
+            Further reading:
+            <a href="https://docs.newapi.pro/" target="_blank" rel="noopener noreferrer">NewAPI docs</a>
+            ·
+            <a
+              href="https://www.cherryai.com.cn/docs/zh-cn/pre-basic/providers/newapi/"
+              target="_blank"
+              rel="noopener noreferrer"
+              >Cherry Studio &times; NewAPI</a
+            >
+            ·
+            <a href="manual.en.html#settings">Manual &middot; Settings</a>.
+          </p>
+        </section>
+        <nav class="doc-pager" aria-label="Document navigation">
+          <a href="guide-comfyui.en.html">
+            <span class="pager-dir">Related</span>
+            <span class="pager-title">&larr; ComfyUI Integration Guide</span>
+          </a>
+          <a href="manual.en.html#settings">
+            <span class="pager-dir">Next</span>
+            <span class="pager-title">Manual &middot; Settings &rarr;</span>
+          </a>
+        </nav>
+      </article>
+    </div>
+
+    <footer class="foot">
+      <div class="foot-row">
+        <a class="foot-brand" href="index.en.html">
+          <img src="assets/logo-mark.png" alt="" width="22" height="22" />
+          AI Art Engine
+        </a>
+        <nav class="foot-links" aria-label="Footer">
+          <a href="index.en.html">Home</a>
+          <a href="quickstart.en.html">Quickstart</a>
+          <a href="manual.en.html">Manual</a>
+          <a href="guide-video.en.html">Video Guide</a>
+          <a href="guide-short-video.en.html">Short Drama</a>
+          <a href="guide-comfyui.en.html">ComfyUI</a>
+          <a href="guide-mcp.en.html">MCP Setup</a>
+          <a href="guide-gameplay.en.html">Playable HTML</a>
+          <a href="index.en.html#download">Download</a>
+          <a
+            href="https://space.bilibili.com/3707036976024122"
+            target="_blank"
+            rel="noopener noreferrer"
+            >bilibili</a
+          >
+          <a
+            href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Gitee</a
+          >
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a>
+        </nav>
+        <span>GPL-3.0</span>
+      </div>
+    </footer>
+    <script>
+      document.querySelectorAll('.mobile-nav a').forEach((link) => {
+        link.addEventListener('click', () => link.closest('.mobile-menu')?.removeAttribute('open'))
+      })
+    </script>
+    <script>
+      // 主题切换：跟随系统 → 浅色 → 深色
+      ;(function () {
+        var KEY = 'site.theme'
+        var btn = document.querySelector('.theme-toggle')
+        if (!btn) return
+        var root = document.documentElement
+        var en = (root.getAttribute('lang') || '').indexOf('en') === 0
+        var query = window.matchMedia('(prefers-color-scheme: dark)')
+        var META = {
+          auto: { icon: '◐', label: en ? 'Theme: system' : '主题：跟随系统' },
+          light: { icon: '☀', label: en ? 'Theme: light' : '主题：浅色' },
+          dark: { icon: '☾', label: en ? 'Theme: dark' : '主题：深色' }
+        }
+        function readPref() {
+          try {
+            var v = localStorage.getItem(KEY)
+            return v === 'light' || v === 'dark' || v === 'auto' ? v : 'dark'
+          } catch (e) { return 'auto' }
+        }
+        function apply() {
+          var pref = readPref()
+          root.classList.toggle('dark', pref === 'dark' || (pref !== 'light' && query.matches))
+          root.classList.toggle('light', pref === 'light')
+          var meta = META[pref]
+          btn.textContent = meta.icon
+          btn.title = meta.label + (en ? ' (click to switch)' : '（点击切换）')
+          btn.setAttribute('aria-label', meta.label)
+        }
+        query.addEventListener('change', apply)
+        btn.addEventListener('click', function () {
+          var cur = readPref()
+          var next = cur === 'dark' ? 'light' : cur === 'light' ? 'auto' : 'dark'
+          try { localStorage.setItem(KEY, next) } catch (e) {}
+          apply()
+        })
+        apply()
+      })()
+    </script>
+      <script src="site-search.js" defer></script>
+    <script src="site-enhance.js" defer></script>
+  </body>
+</html>

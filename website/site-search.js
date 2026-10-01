@@ -46,7 +46,10 @@
         { url: 'manual.en.html', label: 'Manual' },
         { url: 'guide-video.en.html', label: 'Video Guide' },
         { url: 'guide-short-video.en.html', label: 'Short Video' },
-        { url: 'guide-comfyui.en.html', label: 'ComfyUI' }
+        { url: 'guide-comfyui.en.html', label: 'ComfyUI' },
+        { url: 'guide-newapi.en.html', label: 'NewAPI' },
+        { url: 'guide-mcp.en.html', label: 'MCP Setup' },
+        { url: 'guide-gameplay.en.html', label: 'Playable HTML' }
       ]
     : [
         { url: 'index.html', label: '首页' },
@@ -54,7 +57,10 @@
         { url: 'manual.html', label: '使用手册' },
         { url: 'guide-video.html', label: '视频生成指南' },
         { url: 'guide-short-video.html', label: '短视频教程' },
-        { url: 'guide-comfyui.html', label: 'ComfyUI 教程' }
+        { url: 'guide-comfyui.html', label: 'ComfyUI 教程' },
+        { url: 'guide-newapi.html', label: 'NewAPI 教程' },
+        { url: 'guide-mcp.html', label: 'MCP 接入' },
+        { url: 'guide-gameplay.html', label: '可玩 HTML' }
       ]
 
   var MAX_RESULTS = 24

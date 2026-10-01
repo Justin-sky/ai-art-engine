@@ -1,0 +1,556 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+
+    <script>
+      // 提前应用本地主题选择，避免加载闪烁
+      ;(function () {
+        try {
+          var pref = localStorage.getItem('site.theme')
+          if (
+            pref !== 'light' &&
+            (pref === 'dark' || pref == null || (pref === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches))
+          ) {
+            document.documentElement.classList.add('dark')
+          }
+        } catch (e) {}
+      })()
+    </script>
+    <meta
+      name="description"
+      content="AIArtEngine 教程：用自定义提供商接入 NewAPI 等 OpenAI 兼容中转网关，拉取与手动添加文本 / 图片模型。"
+    />
+    <title>NewAPI 接入教程 — AIArtEngine</title>
+    <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/guide-newapi.html" />
+    <meta property="og:site_name" content="AIArtEngine" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="zh_CN" />
+    <meta property="og:title" content="NewAPI 接入教程 — AIArtEngine" />
+    <meta property="og:description" content="AIArtEngine 教程：用自定义提供商接入 NewAPI 等 OpenAI 兼容中转网关，拉取与手动添加文本 / 图片模型。" />
+    <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/guide-newapi.html" />
+    <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="NewAPI 接入教程 — AIArtEngine" />
+    <meta name="twitter:description" content="AIArtEngine 教程：用自定义提供商接入 NewAPI 等 OpenAI 兼容中转网关，拉取与手动添加文本 / 图片模型。" />
+    <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-newapi.html" />
+    <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-newapi.en.html" />
+    <link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/guide-newapi.html" />
+    <link rel="icon" href="assets/logo-mark.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Syne:wght@500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="manual.css?v=20260829-4" />
+      <link rel="stylesheet" href="site.css?v=20260829" />
+  </head>
+  <body>
+    <a class="skip" href="#manual">跳到正文</a>
+
+    <header class="top">
+      <a class="brand" href="index.html">
+        <img src="assets/logo-mark.png" alt="" width="30" height="30" />
+        <span>AI Art Engine</span>
+      </a>
+      <nav class="nav" aria-label="主导航">
+        <a href="index.html">首页</a>
+        <a href="quickstart.html">快速上手</a>
+        <a href="manual.html">使用手册</a>
+        <a href="guide-video.html">视频生成指南</a>
+        <a href="guide-short-video.html">短剧教程</a>
+        <a href="guide-comfyui.html">ComfyUI 教程</a>
+        <a href="guide-mcp.html">MCP 接入</a>
+        <a href="guide-gameplay.html">可玩 HTML</a>
+        <a href="index.html#download">下载</a>
+        <a
+          href="https://space.bilibili.com/3707036976024122"
+          target="_blank"
+          rel="noopener noreferrer"
+          >bilibili</a
+        >
+        <a
+          href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
+          target="_blank"
+          rel="noopener noreferrer"
+          >Gitee</a
+        >
+        <a
+          class="nav-src"
+          href="https://github.com/Justin-sky/ai-art-engine"
+          target="_blank"
+          rel="noopener noreferrer"
+          >GitHub</a
+        >
+      </nav>
+      <a class="nav-lang" href="guide-newapi.en.html" hreflang="en" lang="en">EN</a>
+      <button class="theme-toggle" type="button" aria-label="切换主题">◐</button>
+      <details class="mobile-menu">
+        <summary aria-label="打开导航菜单"><span aria-hidden="true">☰</span> 菜单</summary>
+        <nav class="mobile-nav" aria-label="移动端导航">
+          <a href="index.html">首页</a>
+          <a href="quickstart.html">快速上手</a>
+          <a href="manual.html">使用手册</a>
+          <a href="guide-video.html">视频生成指南</a>
+          <a href="guide-short-video.html">短剧教程</a>
+          <a href="guide-comfyui.html">ComfyUI 教程</a>
+          <a href="guide-mcp.html">MCP 接入</a>
+          <a href="guide-gameplay.html">可玩 HTML</a>
+          <a href="index.html#download">下载</a>
+          <a
+            href="https://space.bilibili.com/3707036976024122"
+            target="_blank"
+            rel="noopener noreferrer"
+            >bilibili</a
+          >
+          <a
+            href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Gitee</a
+          >
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"
+            >GitHub</a
+          >
+        </nav>
+      </details>
+    </header>
+
+    <div class="manual-shell">
+      <aside class="toc" aria-label="目录">
+        <h2>目录</h2>
+        <ol>
+          <li><a href="#overview">它怎么接</a></li>
+          <li><a href="#prepare">在 NewAPI 侧准备</a></li>
+          <li><a href="#add-provider">添加自定义提供商</a></li>
+          <li><a href="#fetch-text">拉取文本模型</a></li>
+          <li><a href="#manual-model">手动添加模型（重点）</a></li>
+          <li><a href="#use">在节点里用起来</a></li>
+          <li><a href="#faq">常见问题</a></li>
+        </ol>
+        <p style="margin-top: 1.25rem; font-size: 12px; color: var(--mute)">
+          <a href="manual.html#settings">← 返回手册 · 设置</a>
+        </p>
+      </aside>
+
+      <article class="manual" id="manual">
+        <header class="manual-hero">
+          <p class="eyebrow">Guide · NewAPI</p>
+          <h1>NewAPI 接入教程</h1>
+          <p class="lede">
+            NewAPI 是 OpenAI 兼容的中转网关，把多家模型聚合成一个地址。本软件用
+            <strong>自定义提供商 + OpenAI 兼容端点类型</strong>接它：文本走
+            <code>/chat/completions</code>，图片走 <code>/images/generations</code>。
+            图片模型不会被自动识别，<strong>必须手动填 id</strong> —— 这是本文最重要的一节。
+          </p>
+        </header>
+
+        <section id="overview">
+          <h2>1. 它怎么接</h2>
+          <p>
+            NewAPI 在本软件里不是一个内置提供商，而是走
+            <strong>设置 → 模型 → 添加模型提供商 → 自定义</strong>：你告诉它端点类型、Base URL 与
+            API Key，它按 OpenAI 兼容协议发请求。
+          </p>
+          <table>
+            <thead>
+              <tr>
+                <th>场景</th>
+                <th>API Base URL</th>
+                <th>API Key</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>NewAPI 站点（推荐）</td>
+                <td><code>https://你的域名/v1</code></td>
+                <td>必填（NewAPI 令牌，<code>sk-</code> 开头）</td>
+              </tr>
+              <tr>
+                <td>本机自建 NewAPI</td>
+                <td><code>http://127.0.0.1:3000/v1</code></td>
+                <td>必填（同上）</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="tip">
+            <strong>Base URL 必须自己带上 <code>/v1</code>。</strong>本软件只去掉结尾多余的斜杠，
+            不会替你补 <code>/v1</code>：填 <code>https://host/v1</code> 才会打到
+            <code>https://host/v1/chat/completions</code>。NewAPI 挂在子路径时把子路径一起写进去，
+            例如 <code>https://host/gateway/v1</code>。
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>能力</th>
+                <th>实际请求</th>
+                <th>模型目录</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>文本</td>
+                <td><code>POST {Base URL}/chat/completions</code></td>
+                <td><code>GET {Base URL}/models</code> 自动拉取</td>
+              </tr>
+              <tr>
+                <td>图片</td>
+                <td>
+                  <code>POST {Base URL}/images/generations</code>；有参考图时走
+                  <code>POST {Base URL}/images/edits</code>（multipart，一次最多 1 张）
+                </td>
+                <td><strong>恒为空，必须手动填 id</strong>（见第 5 节）</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="tip">
+            自定义提供商目前<strong>只有「文本」与「图片」两个页签</strong>。视频 / 声音 / 3D 模型节点
+            选不到它；即使用别的办法塞进模型 id，执行时也会直接报「暂不支持视频生成 / 语音合成 / 3D 模型生成」。
+          </div>
+        </section>
+
+        <section id="prepare">
+          <h2>2. 在 NewAPI 侧准备三样东西</h2>
+          <ol>
+            <li>
+              <strong>站点地址</strong>：你平时打开 NewAPI 面板的域名（形如
+              <code>https://your-newapi.example.com</code>）。OpenAI 兼容入口是它的
+              <code>/v1</code>。
+            </li>
+            <li>
+              <strong>令牌</strong>：NewAPI 面板 → <strong>令牌</strong> → 添加令牌，复制
+              <code>sk-</code> 开头的那串。注意令牌有<strong>额度与模型分组</strong>限制，
+              分组不对会出现「拉得到列表、生成却报无权限」。
+            </li>
+            <li>
+              <strong>模型名</strong>：NewAPI 面板 → <strong>渠道 / 模型</strong>，记下你要用的
+              <strong>模型 id 原文</strong>（如 <code>gpt-4o-mini</code>、<code>deepseek-chat</code>、
+              <code>flux.1-schnell</code>、<code>gpt-image-1</code>）。手填模型时<strong>必须一字不差</strong>，
+              大小写与连字符都要对。
+            </li>
+          </ol>
+          <p>填进本软件之前，建议先用命令行确认这两个接口是通的：</p>
+          <pre><code># 模型列表（认证 + 目录）
+curl -H "Authorization: Bearer sk-你的令牌" https://你的域名/v1/models
+
+# 文本对话
+curl -X POST https://你的域名/v1/chat/completions \
+  -H "Authorization: Bearer sk-你的令牌" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}]}'</code></pre>
+        </section>
+
+        <section id="add-provider">
+          <h2>3. 在本软件里添加自定义提供商</h2>
+          <ol>
+            <li>打开<strong>设置 → 模型</strong>（模型与密钥是全局设置，对所有工程生效）。</li>
+            <li>
+              顶部「添加模型提供商」下拉选 <strong>自定义</strong>，点 <strong>添加</strong>。
+              新卡片会自动展开并滚到眼前。
+            </li>
+            <li><strong>显示名称</strong>：填一个好认的名字，例如 <code>NewAPI</code>。</li>
+            <li>
+              <strong>端点类型</strong>：选 <strong>OpenAI 兼容</strong>（NewAPI 就是 OpenAI 兼容中转）。
+              下拉下方的说明会同步告诉你当前选的是哪套协议。
+            </li>
+            <li>
+              <strong>API Base URL</strong>：填 <code>https://你的域名/v1</code>（见第 1 节的提醒）。
+            </li>
+            <li>
+              <strong>API Key</strong>：粘贴 NewAPI 令牌。右侧眼睛按钮可临时显示明文核对。
+            </li>
+            <li>勾上 <strong>启用</strong> —— 不启用的提供商不会出现在任何节点的模型下拉里。</li>
+          </ol>
+          <div class="tip">
+            改完不用点保存：设置页 500 ms 防抖后<strong>自动落盘</strong>。填完 Base URL 与 Key 后，
+            卡片下方会显示「自定义提供商：选择端点类型后，填写端点 Base URL 与 API Key 即可拉取模型列表；无统一申请页。」——
+            自定义提供商没有统一的密钥申请页，也不需要。
+          </div>
+        </section>
+
+        <section id="fetch-text">
+          <h2>4. 拉取文本模型</h2>
+          <ol>
+            <li>切到 <strong>文本</strong> 页签。</li>
+            <li>
+              点 <strong>拉取可用模型</strong>（按钮会短暂显示「正在验证 API Key…」，这一步同时就是
+              密钥与连通性检查）。
+            </li>
+            <li>
+              成功时按钮右侧显示 <strong>共 N 个模型</strong>。列表<strong>不做模态过滤</strong>：
+              NewAPI 的 <code>/models</code> 里如果有图片模型，它也会出现在「文本」页签里 —— 只勾选对话模型即可。
+            </li>
+            <li>用筛选框搜、用「全选当前列表 / 清空选择」批量操作，勾选你要用的模型。</li>
+            <li>需要指定默认时，在 <strong>默认生成模型</strong> 下拉里选一个（该下拉只列已勾选项）。</li>
+          </ol>
+          <p>
+            编辑生成节点时，模型下拉里就会出现 <code>NewAPI · 模型名</code> 这一项。下拉为空时，
+            检查器会提示「请先在设置中配置可用的文本模型（需 API Key 并勾选模型）」，回到这一步补齐即可。
+          </p>
+        </section>
+
+        <section id="manual-model">
+          <h2>5. 手动添加模型（重点）</h2>
+          <p>
+            每张提供商卡片都有一个手填输入框 <strong>「手动填写模型 / 接入点 / Resource ID」</strong>，
+            旁边是 <strong>「添加并勾选」</strong> 按钮（按回车等效）。填 id → 点按钮，模型立刻加入当前页签的
+            列表<strong>并自动勾选</strong>，输入框随后清空。
+          </p>
+          <div class="tip">
+            <strong>输入框按页签分槽。</strong>在「文本」页签里输入的 id 只进文本列表，在「图片」页签里输入的
+            只进图片列表 —— 两个页签互不相通，别在文本页签填图片模型。
+          </div>
+
+          <h3>5.1 什么时候必须手填</h3>
+          <ul>
+            <li>
+              <strong>图片模型：永远要手填。</strong>本软件不自动识别图片模型（<code>/models</code>
+              只给模型名，区分不出它能不能画图），所以图片页签的目录接口固定返回空。
+            </li>
+            <li>
+              <strong>拉取返回 404 / 405</strong>：网关没有实现 <code>/models</code>。列表会是空的但
+              <strong>不报错</strong>（这是预期行为），直接手填即可，不影响生成。
+            </li>
+            <li><strong>拉取报「端点未返回模型列表」</strong>：地址或 Key 有问题，或者令牌没绑任何渠道。</li>
+            <li><strong>只想用其中几个</strong>：懒得在几百个模型里翻，直接手填想要的 id。</li>
+            <li><strong>NewAPI 上换了模型名</strong>：重新手填新 id，旧的手填项可以取消勾选。</li>
+          </ul>
+
+          <h3>5.2 手填文本模型</h3>
+          <ol>
+            <li>停在 <strong>文本</strong> 页签。</li>
+            <li>
+              在「手动填写模型 / 接入点 / Resource ID」输入框里填 NewAPI 上的
+              <strong>模型 id 原文</strong>，例如 <code>deepseek-chat</code>。
+            </li>
+            <li>点 <strong>添加并勾选</strong>（或回车）。</li>
+            <li>如需默认，在「默认生成模型」里选它。</li>
+          </ol>
+
+          <h3>5.3 手填图片模型</h3>
+          <ol>
+            <li>
+              切到 <strong>图片</strong> 页签。页签下方会写：「图片生成走 OpenAI 兼容
+              <code>/images/generations</code> 接口（如 gpt-image-1 / dall-e-3 / FLUX 等），参考图走
+              <code>/images/edits</code>。目录不自动识别图片模型，请在下方手动填写图片模型 id 并勾选。」
+            </li>
+            <li>
+              在同一个位置的输入框里填<strong>图片模型 id</strong>，例如 <code>gpt-image-1</code>、
+              <code>flux.1-schnell</code>、<code>dall-e-3</code>。填 NewAPI 上真实存在的名字，不要写
+              「图片模型」这类描述。
+            </li>
+            <li>点 <strong>添加并勾选</strong>。</li>
+            <li>在「默认生成模型」下拉里把它设为默认（该下拉只列已勾选项）。</li>
+          </ol>
+          <div class="tip">
+            在图片页签点「拉取可用模型」<strong>不会</strong>得到列表，这是设计如此：它只用来验证
+            Base URL / Key 通不通。<br />
+            首次点会看到「目录为空。可手动填写模型 ID，或检查提供商与 API Key。」；已经手填过再点时显示
+            「远端返回空列表，已保留上次拉取结果。可稍后重试。」—— <strong>两者都不是故障</strong>，
+            你的手填项不会丢。
+          </div>
+
+          <h3>5.4 手填项会不会被覆盖</h3>
+          <ul>
+            <li>
+              <strong>不会。</strong>重新点「拉取可用模型」时，已勾选但不在远端目录里的模型会被保留并补回
+              列表（远端偶发空列表时同样保留上次结果）。
+            </li>
+            <li><strong>重复 id 不会重复添加</strong>：已经在列表里的 id 只会被重新勾选一次。</li>
+            <li>
+              <strong>只有勾选才会落盘。</strong>勾上才写进设置文件；取消勾选会连同它的能力快照一起移除。
+            </li>
+            <li>
+              <strong>只有勾选过的模型能被节点选到。</strong>节点下拉只列已勾选项；若模型 id 从别的途径
+              （MCP、模板、旧工程）写进了节点但没在这里勾选，执行时会被静默回退到默认模型或第一个已勾选模型。
+            </li>
+          </ul>
+        </section>
+
+        <section id="use">
+          <h2>6. 在节点里用起来</h2>
+          <ol>
+            <li>
+              <strong>文本生成节点</strong>：模型下拉选 <code>NewAPI · 你的文本模型</code>，写指令，执行。
+            </li>
+            <li>
+              <strong>图片生成节点</strong>：模型下拉选 <code>NewAPI · 你的图片模型</code>。
+              需要参考图时，把图片连到该节点的图片输入口 —— 有参考图时会自动改走
+              <code>/images/edits</code>。
+            </li>
+            <li>
+              <strong>分辨率与画质</strong>：请求体按需带 <code>size</code> / <code>quality</code> /
+              <code>n</code>；<code>size</code> 只在能映射到
+              <code>1024x1024 / 1536x1024 / 1024x1536</code> 时才发送，映射不了就不带。
+              有些中转模型只认自己的尺寸，报错时先看执行日志里的实际请求。
+            </li>
+            <li>
+              执行过程与失败原因都在<strong>执行日志</strong>里：认证类失败会附带
+              「请检查设置中的 API Key 是否正确、已保存，且提供商 Base URL 匹配」。
+            </li>
+          </ol>
+        </section>
+
+        <section id="faq">
+          <h2>7. 常见问题</h2>
+          <ul>
+            <li>
+              <strong>「拉取可用模型」是灰的</strong>：自定义提供商必须有 API Key 才会启用该按钮。
+              先填 Key（并确认「启用」已勾选）。
+            </li>
+            <li>
+              <strong>报「API Key 无效，已禁止拉取模型：…」</strong>：Key 复制错、令牌被禁用 / 过期，
+              或该令牌的分组不允许这个请求。
+            </li>
+            <li>
+              <strong>报「连接测试失败：code=ENOTFOUND …」</strong>：域名解析不了 —— 拼错域名、
+              本地网络或代理问题。域名能被浏览器打开不代表本软件能连（本软件在主进程直连，不走系统代理设置）。
+            </li>
+            <li>
+              <strong>拉取 404 / 405，或返回空列表</strong>：网关没实现 <code>/models</code>。
+              直接在第 5 节手填模型 id，生成不受影响。
+            </li>
+            <li>
+              <strong>列表拉到了，但图片页签永远是空的</strong>：预期行为。图片模型必须手填（第 5.3 节）。
+            </li>
+            <li>
+              <strong>图片页签点了拉取，出现「远端返回空列表，已保留上次拉取结果」</strong>：正常提示，
+              手填项还在，可以直接用。
+            </li>
+            <li>
+              <strong>生成时报「暂不支持视频生成 / 语音合成 / 3D 模型生成」</strong>：自定义提供商只有文本
+              与图片。视频请用内置的视频提供商或 ComfyUI（见
+              <a href="guide-comfyui.html">ComfyUI 接入教程</a>）。
+            </li>
+            <li>
+              <strong>Base URL 填错的典型症状</strong>：少写 <code>/v1</code> 或把
+              <code>/chat/completions</code> 也写进去，都会 404。
+            </li>
+            <li>
+              <strong>切了「端点类型」后拉取好像还按旧的走</strong>：设置是防抖自动保存的，
+              改完等设置页提示「已保存」再点拉取。另外 Anthropic 端点只提供文本，图片页签会消失。
+            </li>
+            <li>
+              <strong>模型名对不上</strong>：请以 NewAPI 面板上显示的 id 为准，手填时逐字符核对；
+              中转站常给模型加前缀或后缀（如 <code>-free</code>、<code>-thinking</code>）。
+            </li>
+            <li>
+              <strong>API Key 存在哪</strong>：本机设置文件（Windows 示例：
+              <code>%APPDATA%\AIArtEngine\aiartengine-settings.json</code>），明文保存，
+              不会上传到应用官方服务器；请自行保管好这台机器上的设置文件。
+            </li>
+          </ul>
+          <p>
+            延伸阅读：
+            <a href="https://docs.newapi.pro/" target="_blank" rel="noopener noreferrer">NewAPI 官方文档</a>
+            ·
+            <a
+              href="https://www.cherryai.com.cn/docs/zh-cn/pre-basic/providers/newapi/"
+              target="_blank"
+              rel="noopener noreferrer"
+              >Cherry Studio 接入 NewAPI</a
+            >
+            ·
+            <a href="manual.html#settings">使用手册 · 设置</a>。
+          </p>
+        </section>
+        <nav class="doc-pager" aria-label="文档导航">
+          <a href="guide-comfyui.html">
+            <span class="pager-dir">相关</span>
+            <span class="pager-title">← ComfyUI 接入教程</span>
+          </a>
+          <a href="manual.html#settings">
+            <span class="pager-dir">下一步</span>
+            <span class="pager-title">使用手册 · 设置 →</span>
+          </a>
+        </nav>
+      </article>
+    </div>
+
+    <footer class="foot">
+      <div class="foot-row">
+        <a class="foot-brand" href="index.html">
+          <img src="assets/logo-mark.png" alt="" width="22" height="22" />
+          AI Art Engine
+        </a>
+        <nav class="foot-links" aria-label="页脚">
+          <a href="index.html">首页</a>
+          <a href="quickstart.html">快速上手</a>
+          <a href="manual.html">使用手册</a>
+          <a href="guide-video.html">视频生成指南</a>
+          <a href="guide-short-video.html">短剧教程</a>
+          <a href="guide-comfyui.html">ComfyUI 教程</a>
+          <a href="guide-mcp.html">MCP 接入</a>
+          <a href="guide-gameplay.html">可玩 HTML</a>
+          <a href="index.html#download">下载</a>
+          <a
+            href="https://space.bilibili.com/3707036976024122"
+            target="_blank"
+            rel="noopener noreferrer"
+            >bilibili</a
+          >
+          <a
+            href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Gitee</a
+          >
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a>
+        </nav>
+        <span>GPL-3.0</span>
+      </div>
+    </footer>
+    <script>
+      document.querySelectorAll('.mobile-nav a').forEach((link) => {
+        link.addEventListener('click', () => link.closest('.mobile-menu')?.removeAttribute('open'))
+      })
+    </script>
+    <script>
+      // 主题切换：跟随系统 → 浅色 → 深色
+      ;(function () {
+        var KEY = 'site.theme'
+        var btn = document.querySelector('.theme-toggle')
+        if (!btn) return
+        var root = document.documentElement
+        var en = (root.getAttribute('lang') || '').indexOf('en') === 0
+        var query = window.matchMedia('(prefers-color-scheme: dark)')
+        var META = {
+          auto: { icon: '◐', label: en ? 'Theme: system' : '主题：跟随系统' },
+          light: { icon: '☀', label: en ? 'Theme: light' : '主题：浅色' },
+          dark: { icon: '☾', label: en ? 'Theme: dark' : '主题：深色' }
+        }
+        function readPref() {
+          try {
+            var v = localStorage.getItem(KEY)
+            return v === 'light' || v === 'dark' || v === 'auto' ? v : 'dark'
+          } catch (e) { return 'auto' }
+        }
+        function apply() {
+          var pref = readPref()
+          root.classList.toggle('dark', pref === 'dark' || (pref !== 'light' && query.matches))
+          root.classList.toggle('light', pref === 'light')
+          var meta = META[pref]
+          btn.textContent = meta.icon
+          btn.title = meta.label + (en ? ' (click to switch)' : '（点击切换）')
+          btn.setAttribute('aria-label', meta.label)
+        }
+        query.addEventListener('change', apply)
+        btn.addEventListener('click', function () {
+          var cur = readPref()
+          var next = cur === 'dark' ? 'light' : cur === 'light' ? 'auto' : 'dark'
+          try { localStorage.setItem(KEY, next) } catch (e) {}
+          apply()
+        })
+        apply()
+      })()
+    </script>
+      <script src="site-search.js" defer></script>
+    <script src="site-enhance.js" defer></script>
+  </body>
+</html>

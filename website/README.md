@@ -17,7 +17,8 @@ npm run site
 | `guide-short-video.html` | 短视频制作教程 |
 | `guide-video.html` | 自由画布 · 视频与参考视频 |
 | `guide-comfyui.html` | ComfyUI 接入教程（API 2、本机安装 comfy-api-proxy、API 格式 workflow） |
-| `*.en.html` | 以上 6 个页面各有英文版（统一 `.en.html` 后缀） |
+| `guide-newapi.html` | NewAPI 接入教程（自定义提供商、OpenAI 兼容端点、拉取与手动添加文本 / 图片模型） |
+| `*.en.html` | 以上 7 个页面各有英文版（统一 `.en.html` 后缀） |
 | `manual.css` | 手册与教程页样式（中英文共用） |
 | `styles.css` | 首页样式（中英文共用） |
 | `site.css` | 全站共享组件样式（搜索面板、复制按钮、目录分组、概念卡、排查折叠、路径卡） |
@@ -31,13 +32,13 @@ npm run site
 | 层 | 落点 | 回答的问题 |
 |----|------|-----------|
 | Tutorial 教程 | `quickstart.html` | 带新手走完一遍，5 分钟出片 |
-| How-to 操作指南 | 三个 `guide-*.html` | 怎么做某件具体的事 |
+| How-to 操作指南 | 四个 `guide-*.html` | 怎么做某件具体的事 |
 | Reference 参考 | `manual.html` | 这个界面 / 组件是什么 |
 | Explanation 解释 | 手册 §2 核心概念 | 这些术语到底指什么 |
 
 手册目录分四组：`入门`（概述、核心概念、快速上手）→ `基础`（工程、设置、工作区、资产库）
 → `核心能力`（一键工作流、节点图、剧本与场、时间线、画布、导演台）
-→ `参考`（资产包、快捷键、故障排查、关于与更新），另有独立的 `专题教程` 组外链三个 guide 页。
+→ `参考`（资产包、快捷键、故障排查、关于与更新），另有独立的 `专题教程` 组外链五个 guide 页。
 
 新增内容时请对号入座：教人做事写 How-to，罗列界面写 Reference，解释术语写 Explanation，**不要混在一起**。
 
