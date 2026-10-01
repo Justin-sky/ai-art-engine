@@ -256,7 +256,49 @@ export function wireDanglingOutsToBoundaryOutputs(
     }
   }
 
-  return { ...document, nodes, edges }
+  // 跨口错接收尾：单个源同时喂多个不同边界口时，只有它的同名口才是配对目标。
+  //
+  // 上面的选源只保证「池内不被重复选」，但悬空池按「有没有非边界出边」划分，
+  // 链内串联（如 ui.split 内图「带字图 → 底图 → 底图边界」）会把整类链末端挤出池外，
+  // 端口于是从池里另一类节点里补接，产出 A 屏底图 → B 屏图片口这种跨口错接。
+  // 这里只删「同一源喂了多个边界口、且标题唯一指向其中一个口」的多余边：
+  // - 只处理目标为边界口的边：源到普通节点的连线（如 ui.split 的「带字图 → 底图」参考线）不在此列；
+  // - 合法的一源多口（如三视图同时喂图片组与底图口）标题无法唯一指向某个口，不受影响；
+  // - 多个源喂同一个口（边界双源）不是本规则的范围，仍按原行为保留。
+  const boundaryPortOf = (nodeId: string): string | undefined => {
+    const target = byId.get(nodeId)
+    if (!target || !isBoundaryOutputNode(target)) return undefined
+    return target.params?.hostBoundaryPort?.portId?.trim() || undefined
+  }
+  const portsBySource = new Map<string, Set<string>>()
+  for (const edge of edges) {
+    const portId = boundaryPortOf(edge.target)
+    if (!portId) continue
+    const set = portsBySource.get(edge.source) ?? new Set<string>()
+    set.add(portId)
+    portsBySource.set(edge.source, set)
+  }
+  const dropIds = new Set<string>()
+  for (const [sourceId, portIds] of portsBySource) {
+    if (portIds.size < 2) continue
+    const title = byId.get(sourceId)?.title?.trim()
+    if (!title) continue
+    const matched = [...portIds].filter((pid) => {
+      const port = iface.outputs.find((p) => p.id === pid)
+      return !!port && port.label?.trim() === title
+    })
+    if (matched.length !== 1) continue
+    const keepPort = matched[0]
+    for (const edge of edges) {
+      if (edge.source !== sourceId) continue
+      // 只删接在边界口上的错接边；到普通节点的连线不动
+      const edgePort = boundaryPortOf(edge.target)
+      if (!edgePort || edgePort === keepPort) continue
+      dropIds.add(edge.id)
+    }
+  }
+
+  return { ...document, nodes, edges: edges.filter((edge) => !dropIds.has(edge.id)) }
 }
 
 /**

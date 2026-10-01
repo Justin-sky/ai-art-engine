@@ -135,9 +135,10 @@ describe('ui.split', () => {
       { id: 'ui-shop', title: '商店', prompt: '商店界面生图提示词' }
     ]
     const doc = buildUiSplitInnerGraph(screens)
-    // 每屏：输入边界 + 带字图 + 带字输出 + 底图 + 底图输出 = 5 节点 / 3 边
+    // 每屏：输入边界 + 带字图 + 带字输出 + 底图 + 底图输出 = 5 节点 / 4 边
+    // （3 条轨内连线 + 1 条「带字图 → 底图」默认参考线）
     expect(doc.nodes).toHaveLength(10)
-    expect(doc.edges).toHaveLength(6)
+    expect(doc.edges).toHaveLength(8)
     const inId = boundaryInputNodeId('in-1')
     const outId = boundaryOutputNodeId('out-1')
     const outIdClean = boundaryOutputNodeId('out-1-clean')
@@ -145,6 +146,16 @@ describe('ui.split', () => {
     expect(chain).toHaveLength(1)
     expect(chain[0]?.target).toBe('ui-img-1')
     expect(doc.edges.some((e) => e.source === 'ui-img-1' && e.target === outId)).toBe(true)
+    // 默认参考线：同屏带字精修图接到底图节点的图片输入，底图据此去字
+    // （与空字提示词的「与本图带字版完全一致」措辞对应），避免两条轨各画各的布局
+    expect(
+      doc.edges.some(
+        (e) =>
+          e.source === 'ui-img-1' &&
+          e.target === 'ui-img-clean-1' &&
+          (e.targetPort ?? '') === 'in-image'
+      )
+    ).toBe(true)
     const inNode = doc.nodes.find((n) => n.id === inId)
     expect(inNode?.params?.text).toBe('主界面 HUD 生图提示词')
     const imgNode = doc.nodes.find((n) => n.id === 'ui-img-1')
@@ -234,6 +245,35 @@ describe('ui.split', () => {
       normalized.edges.some((e) => e.source === 'ui-img-clean-1' && e.target === out1Clean)
     ).toBe(true)
     expect(normalized.edges.filter((e) => e.source === 'ui-img-clean-1')).toHaveLength(1)
+  })
+
+  it('同屏配对：规范化后每个图片节点只喂自己那一屏的边界口，不跨屏错接', () => {
+    const screens = [
+      { id: 'ui-main', title: '主界面', prompt: '主界面提示词' },
+      { id: 'ui-shop', title: '商店', prompt: '商店提示词' }
+    ]
+    const doc = buildUiSplitInnerGraph(screens)
+    const normalized = ensureBoundaryProxyNodes(doc, buildUiSplitHostInterface(screens))
+
+    // 源 → 它喂到的所有边界口
+    const portsBySource = new Map<string, string[]>()
+    for (const edge of normalized.edges) {
+      const target = normalized.nodes.find((n) => n.id === edge.target)
+      if (target?.typeId !== 'graph.boundary.output') continue
+      const portId = String(target.params?.hostBoundaryPort?.portId ?? '')
+      portsBySource.set(edge.source, [...(portsBySource.get(edge.source) ?? []), portId])
+    }
+
+    // 1:1 槽位：每屏两个图片节点各喂一个口，且没有跨屏（不出现同源喂多口）
+    expect(portsBySource.get('ui-img-1')).toEqual(['out-1'])
+    expect(portsBySource.get('ui-img-clean-1')).toEqual(['out-1-clean'])
+    expect(portsBySource.get('ui-img-2')).toEqual(['out-2'])
+    expect(portsBySource.get('ui-img-clean-2')).toEqual(['out-2-clean'])
+
+    // 默认参考线在规范化后仍然保留：底图以本屏带字图为基准
+    expect(
+      normalized.edges.some((e) => e.source === 'ui-img-1' && e.target === 'ui-img-clean-1')
+    ).toBe(true)
   })
 
   it('exposes text in and texts out ports', () => {

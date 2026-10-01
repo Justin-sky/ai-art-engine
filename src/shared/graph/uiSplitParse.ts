@@ -87,8 +87,9 @@ export const UI_SPLIT_SLOT_CAP = 12
  * dive 内图结构版本：边界节点/连线结构变化时递增，
  * 使已存在的内图资产在下一次 dive 时按新结构重建。
  * v5：每屏从单轨升级为双轨——带字精修链 + 空字底图链（cleanPrompt）。
+ * v6：底图节点默认接本屏带字精修图的输出（in-image），底图以带字图为基准去字。
  */
-export const UI_SPLIT_INNER_GRAPH_VERSION = 5
+export const UI_SPLIT_INNER_GRAPH_VERSION = 6
 
 /** 带字轨输出口 id：out-<slot>（保持既有槽位语义，旧数据兼容） */
 export function uiSplitOutPortId(slot: number): string {
@@ -259,6 +260,15 @@ export function buildUiSplitInnerGraph(
       target: outId,
       sourcePort: 'out',
       targetPort: 'in'
+    })
+    // 带字精修图默认接到同屏底图节点的图片输入：底图以本屏带字图为基准去字，
+    // 与 buildTextlessUiPrompt 的「与本图带字版完全一致」措辞对应，避免两条轨各画各的布局
+    edges.push({
+      id: `ui-e-clean-ref-${slot}`,
+      source: imgId,
+      target: cleanImgId,
+      sourcePort: 'out',
+      targetPort: 'in-image'
     })
     edges.push({
       id: `ui-e-clean-${slot}`,
