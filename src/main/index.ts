@@ -19,6 +19,34 @@ for (const gpuSwitch of gpuShaderCacheSwitches()) {
   app.commandLine.appendSwitch(gpuSwitch)
 }
 
+/** 当前主窗口；second-instance 时要把它顶到前面，故需在模块级持有 */
+let mainWindow: BrowserWindow | null = null
+
+const hasSingleInstanceLock = app.requestSingleInstanceLock()
+
+/**
+ * 第二个实例只负责把已有窗口顶到前面，然后自行退出。
+ *
+ * 不加锁时两个实例会共用同一个 <userData> 抢缓存目录：先启动的实例已经打开并持有
+ * Cache / Network / GPU 相关目录，后启动的那个要移动或重建它们，于是刷
+ *
+ *   Unable to move the cache: 拒绝访问。(0x5)
+ *   Unable to create cache / Gpu Cache Creation failed: -2
+ *
+ * 单实例锁是 Electron 的标准做法，也是桌面应用该有的行为；锁要在 app ready 之前拿，
+ * 否则此时第二个实例已经把缓存目录动过一遍了。
+ */
+if (!hasSingleInstanceLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (!mainWindow) return
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.show()
+    mainWindow.focus()
+  })
+}
+
 protocol.registerSchemesAsPrivileged([
   {
     scheme: 'studio-media',
@@ -71,7 +99,7 @@ function parseWindowFeatures(features: string): {
 }
 
 function createWindow(): void {
-  const mainWindow = new BrowserWindow({
+  const window = new BrowserWindow({
     width: 1440,
     height: 900,
     minWidth: 1100,
@@ -88,37 +116,39 @@ function createWindow(): void {
     }
   })
 
-  mainWindow.on('ready-to-show', () => {
-    mainWindow.show()
-    mainWindow.focus()
+  mainWindow = window
+
+  window.on('ready-to-show', () => {
+    window.show()
+    window.focus()
     signalSmokeReady('window-ready-to-show')
   })
 
   // Fallback: ensure window becomes visible even if ready-to-show is missed
   setTimeout(() => {
-    if (!mainWindow.isDestroyed() && !mainWindow.isVisible()) {
-      mainWindow.show()
-      mainWindow.focus()
+    if (!window.isDestroyed() && !window.isVisible()) {
+      window.show()
+      window.focus()
     }
   }, 2500)
 
-  mainWindow.webContents.on('did-fail-load', (_e, code, desc, url) => {
+  window.webContents.on('did-fail-load', (_e, code, desc, url) => {
     console.error('[did-fail-load]', code, desc, url)
   })
 
   // 渲染主文档加载完成即视为可服务（比 ready-to-show 更可靠，headless/CI 下同样触发）
-  mainWindow.webContents.on('did-finish-load', () => {
+  window.webContents.on('did-finish-load', () => {
     signalSmokeReady('renderer-loaded')
   })
 
-  mainWindow.webContents.on('console-message', (event) => {
+  window.webContents.on('console-message', (event) => {
     const level = typeof event.level === 'number' ? event.level : 0
     if (level >= 2) {
       console.error('[renderer]', event.message)
     }
   })
 
-  mainWindow.webContents.setWindowOpenHandler((details) => {
+  window.webContents.setWindowOpenHandler((details) => {
     // Allow dockview popout windows (about:blank / same-origin)
     const isPopout =
       details.url === 'about:blank' ||
@@ -156,9 +186,9 @@ function createWindow(): void {
   })
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
+    window.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    window.loadFile(join(__dirname, '../renderer/index.html'))
   }
 }
 
