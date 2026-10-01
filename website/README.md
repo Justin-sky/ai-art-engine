@@ -14,7 +14,7 @@ npm run site
 | `index.html` | 官网首页（含按目标划分的三条入口路径） |
 | `quickstart.html` | 快速上手：安装 → 接入模型 → 模板生成 → 出片，新手主入口 |
 | `manual.html` | 使用手册（16 章，分入门 / 基础 / 核心能力 / 参考四组） |
-| `guide-short-video.html` | 短视频制作教程 |
+| `guide-short-video.html` | 短剧制作教程 |
 | `guide-video.html` | 自由画布 · 视频与参考视频 |
 | `guide-comfyui.html` | ComfyUI 接入教程（API 2、本机安装 comfy-api-proxy、API 格式 workflow） |
 | `guide-newapi.html` | NewAPI 接入教程（自定义提供商、OpenAI 兼容端点、拉取与手动添加文本 / 图片模型） |

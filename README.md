@@ -31,10 +31,10 @@
   <p>
     <a href="https://justin-sky.github.io/ai-art-engine/"><b>官网</b></a> ·
     <a href="https://justin-sky.github.io/ai-art-engine/manual.html"><b>使用手册</b></a> ·
-    <a href="https://justin-sky.github.io/ai-art-engine/guide-video.html"><b>视频生成指南</b></a> ·
-    <a href="https://justin-sky.github.io/ai-art-engine/guide-short-video.html"><b>短视频教程</b></a> ·
+    <a href="https://justin-sky.github.io/ai-art-engine/guide-video.html"><b>视频教程</b></a> ·
+    <a href="https://justin-sky.github.io/ai-art-engine/guide-short-video.html"><b>短剧教程</b></a> ·
     <a href="https://justin-sky.github.io/ai-art-engine/guide-comfyui.html"><b>ComfyUI 教程</b></a> · <a href="https://justin-sky.github.io/ai-art-engine/guide-mcp.html"><b>MCP 接入</b></a> ·
-    <a href="https://space.bilibili.com/3707036976024122"><b>视频教程</b></a> ·
+    <a href="https://space.bilibili.com/3707036976024122"><b>bilibili</b></a> ·
     <a href="https://github.com/Justin-sky/ai-art-engine/releases"><b>Download</b></a> ·
     <a href="https://github.com/Justin-sky/ai-art-engine"><b>GitHub</b></a> ·
     <a href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"><b>Gitee</b></a> ·

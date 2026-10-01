@@ -4,16 +4,16 @@
 
 ## 用户
 
-| 文档                                                                            | 说明                                                                                                  |
-| ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| [快速上手](https://justin-sky.github.io/ai-art-engine/quickstart.html)          | 新用户 5 分钟跑通首条生成链路                                                                         |
-| [使用手册](https://justin-sky.github.io/ai-art-engine/manual.html)              | 工程、设置（含 MCP 工具服务）、工作区（含 AI 对话面板与技能系统）、一键工作流、节点图、时间线、导演台 |
-| [视频生成指南](https://justin-sky.github.io/ai-art-engine/guide-video.html)     | 自由画布 · 视频生成与参考视频                                                                         |
-| [短视频教程](https://justin-sky.github.io/ai-art-engine/guide-short-video.html) | 短视频一键工作流                                                                                      |
-| [ComfyUI 接入](https://justin-sky.github.io/ai-art-engine/guide-comfyui.html)   | API 2 与本机 comfy-api-proxy                                                                          |
-| [NewAPI 接入](https://justin-sky.github.io/ai-art-engine/guide-newapi.html)     | 自定义提供商 + OpenAI 兼容中转网关；拉取与手动添加文本 / 图片模型                                     |
-| [MCP 接入教程](https://justin-sky.github.io/ai-art-engine/guide-mcp.html)       | 外部 Agent 接入（stdio 桥 / HTTP 直连）                                                               |
-| [CHANGELOG.md](../CHANGELOG.md)                                                 | 版本变更                                                                                              |
+| 文档                                                                          | 说明                                                                                                  |
+| ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| [快速上手](https://justin-sky.github.io/ai-art-engine/quickstart.html)        | 新用户 5 分钟跑通首条生成链路                                                                         |
+| [使用手册](https://justin-sky.github.io/ai-art-engine/manual.html)            | 工程、设置（含 MCP 工具服务）、工作区（含 AI 对话面板与技能系统）、一键工作流、节点图、时间线、导演台 |
+| [视频教程](https://justin-sky.github.io/ai-art-engine/guide-video.html)       | 自由画布 · 视频生成与参考视频                                                                         |
+| [短剧教程](https://justin-sky.github.io/ai-art-engine/guide-short-video.html) | 短剧一键工作流                                                                                        |
+| [ComfyUI 接入](https://justin-sky.github.io/ai-art-engine/guide-comfyui.html) | API 2 与本机 comfy-api-proxy                                                                          |
+| [NewAPI 接入](https://justin-sky.github.io/ai-art-engine/guide-newapi.html)   | 自定义提供商 + OpenAI 兼容中转网关；拉取与手动添加文本 / 图片模型                                     |
+| [MCP 接入教程](https://justin-sky.github.io/ai-art-engine/guide-mcp.html)     | 外部 Agent 接入（stdio 桥 / HTTP 直连）                                                               |
+| [CHANGELOG.md](../CHANGELOG.md)                                               | 版本变更                                                                                              |
 
 源码：`website/manual.html` 等。本地预览：`npm run site`。
 
