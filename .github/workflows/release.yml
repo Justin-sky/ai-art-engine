@@ -269,35 +269,43 @@ jobs:
             rm -f "$READY"
             echo "SMOKE[$LABEL] launching (timeout ${TIMEOUT}s): $BIN"
             local STARTED=$SECONDS
-            AIART_SMOKE_READY_FILE="$READY" "$BIN" >"$LOG" 2>&1 &
+            # AIART_SMOKE_EXIT_AFTER_READY=1：应用写完就绪标记后自行优雅退出。
+            # 与 Linux 腿同一套理由——由外部 kill 只能终结进程，主进程若因故没被带走会继续
+            # 持有 userData 单实例锁，后续 dmg / zip 冒烟启动同一应用时会直接 app.quit()
+            # （表现为「exited early (code 0)」）；顺便把优雅退出路径纳入冒烟。
+            AIART_SMOKE_READY_FILE="$READY" AIART_SMOKE_EXIT_AFTER_READY=1 "$BIN" >"$LOG" 2>&1 &
             local PID=$!
             local DEADLINE=$((SECONDS + TIMEOUT))
+            local REQUESTED=0
             while [ "$SECONDS" -lt "$DEADLINE" ]; do
               if ! kill -0 "$PID" 2>/dev/null; then
                 local RC=0
                 wait "$PID" 2>/dev/null || RC=$?
+                if [ -f "$READY" ]; then
+                  echo "SMOKE_OK[$LABEL] app became ready then exited itself in $((SECONDS - STARTED))s: $(cat "$READY")"
+                  return 0
+                fi
                 echo "SMOKE_FAIL[$LABEL] app exited early (code $RC)" >&2
                 cat "$LOG" >&2 || true
                 exit 1
               fi
-              if [ -f "$READY" ]; then break; fi
+              if [ -f "$READY" ] && [ "$REQUESTED" -eq 0 ]; then
+                REQUESTED=1
+                echo "SMOKE[$LABEL] ready after $((SECONDS - STARTED))s: $(cat "$READY")"
+                # 给优雅退出留预算；Rosetta 下收尾可能较慢
+                DEADLINE=$((SECONDS + 30))
+              fi
               sleep 1
             done
-            if [ ! -f "$READY" ]; then
-              echo "SMOKE_FAIL[$LABEL] app did not reach ready state within ${TIMEOUT}s" >&2
+            if [ -f "$READY" ]; then
+              echo "SMOKE_FAIL[$LABEL] app became ready but did not exit within 30s（优雅退出路径有问题）" >&2
               tail -n 80 "$LOG" >&2 || true
+              kill "$PID" 2>/dev/null || true
               exit 1
             fi
-            # 记录实际耗时：就绪时间持续贴近上限时能提前发现（而不是等它某天压线失败）
-            echo "SMOKE_OK[$LABEL] app ready in $((SECONDS - STARTED))s: $(cat "$READY")"
-            # 收尾等到主进程真正退出：后续 dmg / zip 冒烟要重新启动同一应用，
-            # 残留实例持有 userData 的单实例锁会让下一次启动直接 app.quit()（表现为早退 code 0）
-            kill "$PID" 2>/dev/null || true
-            wait "$PID" 2>/dev/null || true
-            local EXIT_DEADLINE=$((SECONDS + 10))
-            while [ "$SECONDS" -lt "$EXIT_DEADLINE" ] && kill -0 "$PID" 2>/dev/null; do
-              sleep 1
-            done
+            echo "SMOKE_FAIL[$LABEL] app did not reach ready state within ${TIMEOUT}s" >&2
+            tail -n 80 "$LOG" >&2 || true
+            exit 1
           }
 
           run_dmg_smoke() {
@@ -536,31 +544,44 @@ jobs:
             # setsid --wait --fork：让应用自成进程组（PGID = $!），且 setsid 自身等应用结束再退出。
             # --wait 不能省：setsid 默认 fork 后父进程立即退出，$! 会指向一个立刻变成僵尸的父进程，
             # 而僵尸在本脚本里算「已退出」——会把正常启动误判成 early exit。
-            # 有了进程组，收尾就能用 kill -- -PGID 一次带走主进程与全部子进程（只杀主进程会让
-            # gpu / utility 子进程变孤儿继续持有单实例锁）。
-            AIART_SMOKE_READY_FILE="$ready" setsid --wait --fork ${envprefix:+env $envprefix} xvfb-run -a "$bin" --no-sandbox >"$log" 2>&1 &
+            # AIART_SMOKE_EXIT_AFTER_READY=1 让应用写完就绪标记后自行优雅退出：
+            # 由外部 kill 只能终结进程，主进程若因故没被带走会继续持有单实例锁，
+            # 下一条腿启动时抢不到锁、以 code 0 静默早退（本 bug 的根源就在这里）。
+            AIART_SMOKE_READY_FILE="$ready" AIART_SMOKE_EXIT_AFTER_READY=1 \
+              setsid --wait --fork ${envprefix:+env $envprefix} xvfb-run -a "$bin" --no-sandbox >"$log" 2>&1 &
             local pid=$!
             local pgid="$pid"
             local deadline=$((SECONDS + timeout))
+            local requested=0
             while [ "$SECONDS" -lt "$deadline" ]; do
               # 僵尸态视为已退出：xvfb-run 中途被其它因素收掉时，kill -0 会一直为真而白等
               if ! smoke_alive "$pid"; then
                 local rc=0
                 wait "$pid" 2>/dev/null || rc=$?
+                if [ -f "$ready" ]; then
+                  echo "SMOKE_OK[$label] app became ready then exited itself in $((SECONDS - started))s: $(cat "$ready")"
+                  smoke_stop "$USER_DATA" "post-$label" "$pgid" || echo "WARN[$label] cleanup incomplete" >&2
+                  return 0
+                fi
                 echo "SMOKE_FAIL[$label] app exited early (code $rc)" >&2
                 smoke_dump "$log" "$USER_DATA"
                 smoke_stop "$USER_DATA" "post-$label" "$pgid" || true
                 return 1
               fi
-              if [ -f "$ready" ]; then
-                # 记录实际耗时：就绪时间持续贴近上限时能提前发现（而不是等它某天压线失败）
-                echo "SMOKE_OK[$label] app ready in $((SECONDS - started))s: $(cat "$ready")"
-                # 收尾必须确认进程真的退出：只发信号不等退出，会让残留实例跨腿占着单实例锁
-                smoke_stop "$USER_DATA" "post-$label" "$pgid" || echo "WARN[$label] cleanup incomplete" >&2
-                return 0
+              if [ -f "$ready" ] && [ "$requested" -eq 0 ]; then
+                requested=1
+                echo "SMOKE[$label] ready after $((SECONDS - started))s: $(cat "$ready")"
+                # 给优雅退出留一段预算（应用要收尾 MCP 服务与 dsh 常驻进程）
+                deadline=$((SECONDS + 25))
               fi
               sleep 1
             done
+            if [ -f "$ready" ]; then
+              echo "SMOKE_FAIL[$label] app became ready but did not exit within 25s（优雅退出路径有问题）" >&2
+              smoke_dump "$log" "$USER_DATA"
+              smoke_stop "$USER_DATA" "post-$label" "$pgid" || true
+              return 1
+            fi
             echo "SMOKE_FAIL[$label] app did not reach ready state within ${timeout}s" >&2
             smoke_dump "$log" "$USER_DATA"
             smoke_stop "$USER_DATA" "post-$label" "$pgid" || true
