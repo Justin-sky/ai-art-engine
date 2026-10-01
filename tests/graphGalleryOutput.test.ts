@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { GraphNode, GraphNodeParams, GraphNodeRunState } from '../src/shared/graph'
 import { graphEditorHosts } from '../src/renderer/src/features/graph/model/graphEditorHosts'
@@ -55,6 +55,8 @@ function registerHosts(node: GraphNode): {
     runStates,
     isRunning: ref(false),
     runningTargetNodeId: ref(null),
+    blockedNodeIds: computed(() => new Set<string>()),
+    activeRunNodeIds: computed(() => new Set<string>()),
     runToNode: async () => undefined,
     stopWorkflow: () => {},
     toggleNodeRun: () => {}

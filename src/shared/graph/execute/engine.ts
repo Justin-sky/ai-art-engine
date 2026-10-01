@@ -8,11 +8,11 @@ import {
 import { expandIncomingThroughBundles, isBundleNode } from '../bundleExpand'
 import { isAssetHostNode, isGenerateLocked } from '../nodeRole'
 import { getNodePorts } from '../ports'
-import { findOutputNode } from '../query'
 import { resolveNodeType } from '../registry'
 import type { GraphDocument, GraphNode, GraphPersistedRunState } from '../types'
 import { isVideoFramePortId } from '../videoGenerateParams'
-import { collectUpstreamNodeIds, topologicalSort, topologicalWaves } from './topo'
+import { resolveGraphRunTargeting } from './targeting'
+import { topologicalSort, topologicalWaves } from './topo'
 import type {
   GraphNodeRunState,
   GraphOutputValue,
@@ -555,40 +555,16 @@ export async function runGraph(
     states[node.id] = emptyState('idle')
   }
 
-  const multiTargets =
-    options.targetNodeIds
-      ?.map((id) => graph.nodes.find((n) => n.id === id))
-      .filter((n): n is GraphNode => !!n) ?? []
-  const target =
-    multiTargets[0] ??
-    (options.targetNodeId
-      ? graph.nodes.find((n) => n.id === options.targetNodeId)
-      : findOutputNode(graph)) ??
-    null
-
-  if (!target) {
+  const targeting = resolveGraphRunTargeting(graph, options)
+  if (!targeting) {
     return { ok: false, order: [], states, error: 'GRAPH_NO_OUTPUT' }
   }
-
-  const onlyTarget =
-    options.onlyTargetNode === true && !!options.targetNodeId && !multiTargets.length
-  const subset = onlyTarget
-    ? new Set<string>([target.id])
-    : multiTargets.length
-      ? (() => {
-          const ids = new Set<string>()
-          for (const t of multiTargets) {
-            for (const id of collectUpstreamNodeIds(graph, t.id)) ids.add(id)
-          }
-          return ids
-        })()
-      : collectUpstreamNodeIds(graph, target.id)
+  const { target, onlyTarget } = targeting
+  const subset = targeting.subset
 
   const skipCompleted = options.skipCompletedNodes === true && !onlyTarget
   /** 所有汇点都必须执行；仅复用其上游 done 节点 */
-  const forceRunIds = new Set(
-    multiTargets.length ? multiTargets.map((node) => node.id) : [target.id]
-  )
+  const forceRunIds = targeting.forceRunIds
   const canSkipNode = (nodeId: string): boolean =>
     skipCompleted &&
     !forceRunIds.has(nodeId) &&

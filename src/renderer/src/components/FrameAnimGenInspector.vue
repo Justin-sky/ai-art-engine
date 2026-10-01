@@ -166,7 +166,8 @@ function persistSystemPrompt(): void {
 function onClearOutput(): void {
   if (!node.value || !hostId.value) return
   const host = graphRunHosts.get(hostId.value)
-  if (host && !host.isRunning.value) {
+  // 只避让正在执行该节点的运行；画布上并行的其它链不应阻止清空
+  if (host && !host.activeRunNodeIds.value.has(node.value.id)) {
     delete host.runStates[node.value.id]
   }
   graphEditorHosts.updateNode(hostId.value, node.value.id, {

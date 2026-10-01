@@ -101,7 +101,8 @@
           compact
           :status="runStatus"
           :is-running="isGraphRunning"
-          :blocked="isGraphRunning || isMissingLinkedAsset"
+          :blocked="runBlocked || isMissingLinkedAsset"
+          :blocked-hint="runBlocked ? t('graph.nodeRun.blockedByRunning') : ''"
           @toggle="emit('runToggle', node.id)"
         />
       </div>
@@ -714,6 +715,8 @@ const props = defineProps<{
   runError?: string
   runState?: GraphNodeRunState | null
   isGraphRunning?: boolean
+  /** 该节点与画布上进行中的运行冲突（共用上游）→ 禁用执行按钮 */
+  runBlocked?: boolean
   hostId?: string
 }>()
 

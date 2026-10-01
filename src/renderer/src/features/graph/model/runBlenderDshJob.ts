@@ -26,12 +26,13 @@ function failedCode(kind: 'rig' | 'pose' | 'anim'): string {
   return 'GRAPH_MODEL_POSE_FAILED'
 }
 
-function appendHarnessLog(nodeId: string, event: HarnessEvent): void {
+function appendHarnessLog(nodeId: string, event: HarnessEvent, logRunId?: string): void {
   const phase = phaseFromHarnessEvent(event)
   if (phase) useBlenderDshLiveStore().set(nodeId, phase)
 
   const store = useGraphRunLogsStore()
-  const runId = store.activeRunId
+  // 并行执行的画布上「当前运行」是被多趟共享的全局指针，必须优先用本趟 runId
+  const runId = logRunId?.trim() || store.activeRunId
   if (!runId) return
   const text = summarizeHarnessLogLine(event)
   if (!text) return
@@ -65,7 +66,7 @@ async function runPoseOrAnimJob(
   }
   input.signal?.addEventListener('abort', onAbort, { once: true })
   const stopHarnessLog = window.studio.onHarnessEvent((event) =>
-    appendHarnessLog(input.node.id, event)
+    appendHarnessLog(input.node.id, event, input.logRunId)
   )
 
   let waitOk = false
@@ -128,7 +129,7 @@ async function runRigIterativeJob(
   }
   input.signal?.addEventListener('abort', onAbort, { once: true })
   const stopHarnessLog = window.studio.onHarnessEvent((event) =>
-    appendHarnessLog(input.node.id, event)
+    appendHarnessLog(input.node.id, event, input.logRunId)
   )
 
   let lastQa: RigQaReport | undefined

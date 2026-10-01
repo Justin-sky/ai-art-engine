@@ -92,5 +92,7 @@ export {
   executeBundleNode
 } from './output'
 export * from './engine'
+export * from './targeting'
+export * from './lanes'
 export * from './runSummary'
 export * from './runLog'

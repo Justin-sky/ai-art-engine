@@ -2770,7 +2770,8 @@ export default {
     nodeRun: {
       execute: '执行当前节点',
       rerun: '重新执行当前节点',
-      stop: '停止执行'
+      stop: '停止执行',
+      blockedByRunning: '该节点与正在执行的链共用上游，请先停止或等待它跑完'
     },
     link: {
       start: '连线',
@@ -3774,6 +3775,9 @@ export default {
       modelDshResult: '作业未写出有效 result.json',
       modelDshExport: '作业未导出 GLB',
       modelDshStart: 'dsh 未能启动',
+      blockedTitle: '无法开始执行',
+      blockedMessage:
+        '这条链与画布上正在执行的链共用上游节点。请等它跑完或先停止它；互不重叠的链可以并行执行。',
       dismissHint: '点击关闭提示'
     },
     types: {

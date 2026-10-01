@@ -43,7 +43,8 @@ function writeRunOutputs(
 /** 图库清空后运行态不应再留旧 out，否则预览与下游仍拿到已删条目 */
 function dropRunState(hostId: string, nodeId: string): void {
   const host = graphRunHosts.get(hostId)
-  if (!host || host.isRunning.value) return
+  // 只避让正在执行该节点的运行；画布上并行的其它链不应阻止清空
+  if (!host || host.activeRunNodeIds.value.has(nodeId)) return
   delete host.runStates[nodeId]
 }
 

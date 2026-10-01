@@ -1,12 +1,15 @@
-import { nextTick, reactive, ref } from 'vue'
+import { computed, nextTick, reactive, ref, shallowRef } from 'vue'
 import type { ProjectStyleImage } from '@shared/domain'
 import type { GraphImageReferenceMeta } from '@shared/modelProvider'
 import {
   applyEpisodeReviewMarks,
   exportPersistedRunStates,
+  findConflictingGraphRunLane,
   importPersistedRunStates,
   isBoundaryOutputNode,
+  listGraphRunLaneOverlap,
   pickGraphRunSuccessMessageKey,
+  resolveGraphRunTargeting,
   runGraph,
   summarizeGraphRunOutput,
   summarizeMediaUrlForLog,
@@ -15,6 +18,7 @@ import {
   type GraphNodeParams,
   type GraphNodeRunState,
   type GraphNodeRunStatus,
+  type GraphRunLane,
   type GraphRunLogMode,
   type GraphRunResult
 } from '@shared/graph'
@@ -333,23 +337,88 @@ export interface GraphRunSessionOptions {
   importBeatCatalogJson?: (jsonText: string) => void | Promise<void>
   /** 宿主内图整链：入队任务列表 */
   runHostInnerGraph?: import('@shared/graph').NodeExecuteContext['runHostInnerGraph']
+  /**
+   * 请求的运行与画布上进行中的链重叠时的回调（重叠即拒绝启动，不做排队）。
+   * 用于给用户明确提示，而不是静默失败。
+   */
+  onRunBlocked?: (info: {
+    targetNodeId?: string
+    onlyTargetNode?: boolean
+    /** 与进行中运行重叠、因而冲突的节点（整图运行时可能为空） */
+    conflictNodeIds: string[]
+  }) => void
+}
+
+/**
+ * 画布上的一趟运行（泳道）。
+ * 每趟独立持有失控开关与执行日志，因而互不重叠的链可以并行执行。
+ */
+interface ActiveRun {
+  runId: string
+  abort: AbortController
+  logBridge: ReturnType<typeof createGraphRunLogBridge>
+  /** 本趟会写 runStates 的节点 */
+  nodeIds: ReadonlySet<string>
+  /** 会写子集外节点态（整图运行）→ 与任何并行运行互斥 */
+  exclusive: boolean
+  targetNodeId?: string
+  onlyTargetNode?: boolean
 }
 
 export function useGraphRunSession(options: GraphRunSessionOptions) {
   const runStates = reactive<Record<string, GraphNodeRunState>>({})
+  /**
+   * 进行中的运行趟次。互不重叠的链各自成趟并行执行；
+   * 重叠（共用上游）或整图运行时按下标冲突拒绝新趟。
+   */
+  const activeRuns = shallowRef<ActiveRun[]>([])
+  /** 画布上任一趟在跑（工具栏「停止全部」/ 关闭编辑器守卫仍按整画布判断） */
   const isRunning = ref(false)
   const runMessage = ref('')
   const runFailed = ref(false)
   const runSucceeded = ref(false)
   const lastRunResult = ref<GraphRunResult | null>(null)
-  /** 本次运行的目标节点；整图运行为 null */
+  /** 最近启动那趟的目标节点；整图运行为 null */
   const runningTargetNodeId = ref<string | null>(null)
   /** 当前 / 最近一次前台运行的日志 runId */
   const lastLogRunId = ref<string | null>(null)
-  let abortController: AbortController | null = null
-  /** 递增使过期运行的结果写回失效 */
-  let runToken = 0
-  let activeLogBridge: ReturnType<typeof createGraphRunLogBridge> | null = null
+
+  /** 进行中运行对应的泳道 */
+  const activeLanes = computed<GraphRunLane[]>(() =>
+    activeRuns.value.map((run) => ({ nodeIds: run.nodeIds, exclusive: run.exclusive }))
+  )
+  /** 进行中运行正在写状态的节点并集 */
+  const activeRunNodeIds = computed<ReadonlySet<string>>(() => {
+    const ids = new Set<string>()
+    for (const run of activeRuns.value) {
+      for (const id of run.nodeIds) ids.add(id)
+    }
+    return ids
+  })
+
+  function isRunActive(run: ActiveRun): boolean {
+    return activeRuns.value.includes(run)
+  }
+
+  /** 该趟是否已作废（被停止 / 已收尾）——等价于旧实现的 token 失效判断 */
+  function isRunStale(run: ActiveRun): boolean {
+    return !isRunActive(run) || run.abort.signal.aborted
+  }
+
+  function commitActiveRuns(next: ActiveRun[]): void {
+    activeRuns.value = next
+    isRunning.value = next.length > 0
+    runningTargetNodeId.value = next.length ? (next[next.length - 1].targetNodeId ?? null) : null
+  }
+
+  function addActiveRun(run: ActiveRun): void {
+    commitActiveRuns([...activeRuns.value, run])
+  }
+
+  function removeActiveRun(run: ActiveRun): void {
+    if (!isRunActive(run)) return
+    commitActiveRuns(activeRuns.value.filter((item) => item !== run))
+  }
 
   function message(code: string | undefined): string {
     const keys: Record<string, string> = {
@@ -426,8 +495,11 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
     runSucceeded.value = false
   }
 
-  function markInterrupted(): void {
+  /** 收尾未完成节点；给定 nodeIds 时只处理该趟的节点，避免打断并行的其它链 */
+  function markInterrupted(nodeIds?: Iterable<string>): void {
+    const scope = nodeIds ? new Set(nodeIds) : null
     for (const id of Object.keys(runStates)) {
+      if (scope && !scope.has(id)) continue
       const state = runStates[id]
       if (state?.status === 'running' || state?.status === 'pending') {
         runStates[id] = {
@@ -438,23 +510,34 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
     }
   }
 
-  function stopWorkflow(): void {
-    if (!isRunning.value && !abortController) return
-    abortController?.abort()
-    runToken += 1
-    isRunning.value = false
-    runningTargetNodeId.value = null
+  /** 停止单趟运行；同画布并行的其它链不受影响 */
+  function stopRun(run: ActiveRun): void {
+    if (!isRunActive(run)) return
+    run.abort.abort()
+    removeActiveRun(run)
+    markInterrupted(run.nodeIds)
+    run.logBridge.endStopped(options.t('graph.run.stopped'))
     runMessage.value = options.t('graph.run.stopped')
     runFailed.value = false
     runSucceeded.value = false
-    markInterrupted()
-    activeLogBridge?.endStopped(options.t('graph.run.stopped'))
-    activeLogBridge = null
   }
 
-  function applyNodeUpdate(token: number, nodeId: string, state: GraphNodeRunState): void {
-    if (token !== runToken) return
-    activeLogBridge?.onNodeUpdate(nodeId, state)
+  /** 停止画布上全部运行（工具栏 / 关画布 / 圆形菜单停止） */
+  function stopWorkflow(): void {
+    const runs = activeRuns.value
+    if (!runs.length) return
+    for (const run of runs) run.abort.abort()
+    commitActiveRuns([])
+    markInterrupted()
+    for (const run of runs) run.logBridge.endStopped(options.t('graph.run.stopped'))
+    runMessage.value = options.t('graph.run.stopped')
+    runFailed.value = false
+    runSucceeded.value = false
+  }
+
+  function applyNodeUpdate(run: ActiveRun, nodeId: string, state: GraphNodeRunState): void {
+    if (!isRunActive(run)) return
+    run.logBridge.onNodeUpdate(nodeId, state)
     if (state.status === 'skipped') {
       // 子集外 skipped 不抹掉其它节点；本趟 pending/running → skipped 需写回
       const prev = runStates[nodeId]
@@ -479,14 +562,15 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
     return 'workflow'
   }
 
-  function withAbortSignal<T>(promise: Promise<T>, token: number, signal: AbortSignal): Promise<T> {
+  function withAbortSignal<T>(promise: Promise<T>, run: ActiveRun): Promise<T> {
+    const { signal } = run.abort
     return new Promise<T>((resolve, reject) => {
       const onAbort = (): void => reject(new DOMException('Aborted', 'AbortError'))
       signal.addEventListener('abort', onAbort, { once: true })
       promise.then(
         (result) => {
           signal.removeEventListener('abort', onAbort)
-          if (token !== runToken || signal.aborted) {
+          if (isRunStale(run)) {
             reject(new DOMException('Aborted', 'AbortError'))
             return
           }
@@ -500,7 +584,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
     })
   }
 
-  function wrapGenerateText(token: number, signal: AbortSignal) {
+  function wrapGenerateText(run: ActiveRun) {
     const generateText = options.generateText
     if (!generateText) return undefined
     return async (input: {
@@ -510,7 +594,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       providerInstanceId?: string
       images?: string[]
     }) => {
-      if (token !== runToken || signal.aborted) {
+      if (isRunStale(run)) {
         throw new DOMException('Aborted', 'AbortError')
       }
       const startedAt = Date.now()
@@ -522,10 +606,10 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         imageCount: input.images?.length || undefined,
         inputReferenceUrls: summarizeReferenceListForLog(input.images)
       }
-      activeLogBridge?.appendMessage(options.t('graph.logs.submitText'))
+      run.logBridge.appendMessage(options.t('graph.logs.submitText'))
       try {
-        const value = await withAbortSignal(generateText(input), token, signal)
-        activeLogBridge?.recordApiCall({
+        const value = await withAbortSignal(generateText(input), run)
+        run.logBridge.recordApiCall({
           kind: 'generateText',
           request,
           response: { text: value.text, model: value.model },
@@ -534,7 +618,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         return value
       } catch (err) {
         if (!(err instanceof DOMException && err.name === 'AbortError')) {
-          activeLogBridge?.recordApiCall({
+          run.logBridge.recordApiCall({
             kind: 'generateText',
             request,
             error: err instanceof Error ? err.message : String(err),
@@ -546,7 +630,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
     }
   }
 
-  function wrapGenerateImage(token: number, signal: AbortSignal) {
+  function wrapGenerateImage(run: ActiveRun) {
     const generateImage = options.generateImage
     if (!generateImage) return undefined
     return async (input: {
@@ -562,7 +646,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       inputReferenceMeta?: GraphImageReferenceMeta[]
       layerDecomposition?: boolean
     }) => {
-      if (token !== runToken || signal.aborted) {
+      if (isRunStale(run)) {
         throw new DOMException('Aborted', 'AbortError')
       }
       const startedAt = Date.now()
@@ -580,10 +664,10 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         inputReferenceUrls: summarizeReferenceListForLog(input.inputReferences),
         layerDecomposition: input.layerDecomposition || undefined
       }
-      activeLogBridge?.appendMessage(options.t('graph.logs.submitImage'))
+      run.logBridge.appendMessage(options.t('graph.logs.submitImage'))
       try {
-        const value = await withAbortSignal(generateImage(input), token, signal)
-        activeLogBridge?.recordApiCall({
+        const value = await withAbortSignal(generateImage(input), run)
+        run.logBridge.recordApiCall({
           kind: 'generateImage',
           request,
           response: { model: value.model, imageCount: value.images?.length ?? 0 },
@@ -594,13 +678,13 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         if (!(err instanceof DOMException && err.name === 'AbortError')) {
           const raw = err instanceof Error ? err.message : String(err)
           const error = formatProviderErrorForLog(raw, options.locale?.())
-          activeLogBridge?.recordApiCall({
+          run.logBridge.recordApiCall({
             kind: 'generateImage',
             request,
             error,
             durationMs: Math.max(0, Date.now() - startedAt)
           })
-          activeLogBridge?.appendMessage(error, 'error')
+          run.logBridge.appendMessage(error, 'error')
           throw new Error(error)
         }
         throw err
@@ -608,7 +692,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
     }
   }
 
-  function wrapGenerateVideo(token: number, signal: AbortSignal) {
+  function wrapGenerateVideo(run: ActiveRun) {
     const generateVideo = options.generateVideo
     if (!generateVideo) return undefined
     return async (input: {
@@ -633,7 +717,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         canvasField?: string
       }
     }) => {
-      if (token !== runToken || signal.aborted) {
+      if (isRunStale(run)) {
         throw new DOMException('Aborted', 'AbortError')
       }
       const startedAt = Date.now()
@@ -674,16 +758,16 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
           ? summarizeMediaUrlForLog(input.lastFrameImageUrl)
           : undefined
       }
-      activeLogBridge?.appendMessage(options.t('graph.logs.submitVideo'))
+      run.logBridge.appendMessage(options.t('graph.logs.submitVideo'))
       const progressNodeId =
-        input.graphBinding?.nodeId?.trim() || activeLogBridge?.currentRunningNodeId() || undefined
+        input.graphBinding?.nodeId?.trim() || run.logBridge.currentRunningNodeId() || undefined
       const stopProgress = subscribeVideoJobProgress({
         nodeId: progressNodeId,
-        onMessage: (message) => activeLogBridge?.appendMessage(message),
+        onMessage: (message) => run.logBridge.appendMessage(message),
         format: (job) => formatVideoJobProgressMessage(job, options.t)
       })
       try {
-        const value = await withAbortSignal(generateVideo(input), token, signal)
+        const value = await withAbortSignal(generateVideo(input), run)
         if (value.uploads?.length) {
           request.uploads = value.uploads.map((item) => ({
             sourceLabel: item.sourceLabel,
@@ -693,11 +777,11 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
           }))
           for (const item of value.uploads) {
             for (const log of item.logs) {
-              activeLogBridge?.appendMessage(`[ObjectStorage] ${log.message}`, log.level)
+              run.logBridge.appendMessage(`[ObjectStorage] ${log.message}`, log.level)
             }
           }
         }
-        activeLogBridge?.recordApiCall({
+        run.logBridge.recordApiCall({
           kind: 'generateVideo',
           request,
           response: {
@@ -710,7 +794,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         return value
       } catch (err) {
         if (!(err instanceof DOMException && err.name === 'AbortError')) {
-          activeLogBridge?.recordApiCall({
+          run.logBridge.recordApiCall({
             kind: 'generateVideo',
             request,
             error: err instanceof Error ? err.message : String(err),
@@ -724,7 +808,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
     }
   }
 
-  function wrapGenerateSpeech(token: number, signal: AbortSignal) {
+  function wrapGenerateSpeech(run: ActiveRun) {
     const generateSpeech = options.generateSpeech
     if (!generateSpeech) return undefined
     return async (input: {
@@ -735,7 +819,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       name?: string
       images?: string[]
     }) => {
-      if (token !== runToken || signal.aborted) {
+      if (isRunStale(run)) {
         throw new DOMException('Aborted', 'AbortError')
       }
       const startedAt = Date.now()
@@ -748,10 +832,10 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         imageCount: input.images?.length,
         inputReferenceUrls: summarizeReferenceListForLog(input.images)
       }
-      activeLogBridge?.appendMessage(options.t('graph.logs.submitSpeech'))
+      run.logBridge.appendMessage(options.t('graph.logs.submitSpeech'))
       try {
-        const value = await withAbortSignal(generateSpeech(input), token, signal)
-        activeLogBridge?.recordApiCall({
+        const value = await withAbortSignal(generateSpeech(input), run)
+        run.logBridge.recordApiCall({
           kind: 'generateSpeech',
           request,
           response: {
@@ -765,7 +849,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         return value
       } catch (err) {
         if (!(err instanceof DOMException && err.name === 'AbortError')) {
-          activeLogBridge?.recordApiCall({
+          run.logBridge.recordApiCall({
             kind: 'generateSpeech',
             request,
             error: err instanceof Error ? err.message : String(err),
@@ -777,7 +861,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
     }
   }
 
-  function wrapGenerateModel3d(token: number, signal: AbortSignal) {
+  function wrapGenerateModel3d(run: ActiveRun) {
     const generateModel3d = options.generateModel3d
     if (!generateModel3d) return undefined
     return async (input: {
@@ -796,7 +880,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         canvasField?: string
       }
     }) => {
-      if (token !== runToken || signal.aborted) {
+      if (isRunStale(run)) {
         throw new DOMException('Aborted', 'AbortError')
       }
       const startedAt = Date.now()
@@ -821,16 +905,16 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         inputReferenceCount: input.inputReferences?.length || undefined,
         inputReferenceUrls: summarizeReferenceListForLog(input.inputReferences)
       }
-      activeLogBridge?.appendMessage(options.t('graph.logs.submitModel3d'))
+      run.logBridge.appendMessage(options.t('graph.logs.submitModel3d'))
       const progressNodeId =
-        input.graphBinding?.nodeId?.trim() || activeLogBridge?.currentRunningNodeId() || undefined
+        input.graphBinding?.nodeId?.trim() || run.logBridge.currentRunningNodeId() || undefined
       const stopProgress = subscribeVideoJobProgress({
         nodeId: progressNodeId,
-        onMessage: (message) => activeLogBridge?.appendMessage(message),
+        onMessage: (message) => run.logBridge.appendMessage(message),
         format: (job) => formatVideoJobProgressMessage(job, options.t)
       })
       try {
-        const value = await withAbortSignal(generateModel3d(input), token, signal)
+        const value = await withAbortSignal(generateModel3d(input), run)
         if (value.uploads?.length) {
           request.uploads = value.uploads.map((item) => ({
             sourceLabel: item.sourceLabel,
@@ -840,11 +924,11 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
           }))
           for (const item of value.uploads) {
             for (const log of item.logs) {
-              activeLogBridge?.appendMessage(`[ObjectStorage] ${log.message}`, log.level)
+              run.logBridge.appendMessage(`[ObjectStorage] ${log.message}`, log.level)
             }
           }
         }
-        activeLogBridge?.recordApiCall({
+        run.logBridge.recordApiCall({
           kind: 'generateModel3d',
           request,
           response: {
@@ -857,7 +941,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         return value
       } catch (err) {
         if (!(err instanceof DOMException && err.name === 'AbortError')) {
-          activeLogBridge?.recordApiCall({
+          run.logBridge.recordApiCall({
             kind: 'generateModel3d',
             request,
             error: err instanceof Error ? err.message : String(err),
@@ -871,7 +955,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
     }
   }
 
-  function wrapRigModel3d(token: number, signal: AbortSignal) {
+  function wrapRigModel3d(run: ActiveRun) {
     const rigModel3d = options.rigModel3d
     if (!rigModel3d) return undefined
     return async (input: {
@@ -892,15 +976,15 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         canvasField?: string
       }
     }) => {
-      if (token !== runToken || signal.aborted) {
+      if (isRunStale(run)) {
         throw new DOMException('Aborted', 'AbortError')
       }
-      activeLogBridge?.appendMessage(options.t('graph.logs.submitRig'))
-      return withAbortSignal(rigModel3d(input), token, signal)
+      run.logBridge.appendMessage(options.t('graph.logs.submitRig'))
+      return withAbortSignal(rigModel3d(input), run)
     }
   }
 
-  function wrapSegmentModel3d(token: number, signal: AbortSignal) {
+  function wrapSegmentModel3d(run: ActiveRun) {
     const segmentModel3d = options.segmentModel3d
     if (!segmentModel3d) return undefined
     return async (input: {
@@ -923,15 +1007,15 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         canvasField?: string
       }
     }) => {
-      if (token !== runToken || signal.aborted) {
+      if (isRunStale(run)) {
         throw new DOMException('Aborted', 'AbortError')
       }
-      activeLogBridge?.appendMessage(options.t('graph.logs.submitSegment'))
-      return withAbortSignal(segmentModel3d(input), token, signal)
+      run.logBridge.appendMessage(options.t('graph.logs.submitSegment'))
+      return withAbortSignal(segmentModel3d(input), run)
     }
   }
 
-  function wrapPostProcessModel3d(token: number, signal: AbortSignal) {
+  function wrapPostProcessModel3d(run: ActiveRun) {
     const postProcessModel3d = options.postProcessModel3d
     if (!postProcessModel3d) return undefined
     return async (input: {
@@ -978,11 +1062,11 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         canvasField?: string
       }
     }) => {
-      if (token !== runToken || signal.aborted) {
+      if (isRunStale(run)) {
         throw new DOMException('Aborted', 'AbortError')
       }
-      activeLogBridge?.appendMessage(options.t('graph.logs.submitPostProcess'))
-      return withAbortSignal(postProcessModel3d(input), token, signal)
+      run.logBridge.appendMessage(options.t('graph.logs.submitPostProcess'))
+      return withAbortSignal(postProcessModel3d(input), run)
     }
   }
 
@@ -994,22 +1078,34 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
     skipCompletedNodes?: boolean
     cookHostInnerGraph?: boolean
   }): Promise<GraphRunResult | null> {
-    if (isRunning.value) return null
+    // 先算本趟泳道：重叠（共用上游）或整图运行与进行中的链冲突时拒绝启动。
+    // 拒绝而非排队，与任务清单的重复入队语义一致。
+    const planningGraph = options.buildGraph()
+    const targeting = resolveGraphRunTargeting(planningGraph, {
+      targetNodeId: opts.targetNodeId,
+      onlyTargetNode: opts.onlyTargetNode
+    })
+    const planLane: GraphRunLane = {
+      nodeIds: targeting?.subset ?? new Set(planningGraph.nodes.map((node) => node.id)),
+      // 与 runGraph 的 skipped 发布条件一致：子集外写状态 → 与任何并行运行互斥
+      exclusive: !opts.preserveOutsideSubset && !targeting?.onlyTarget
+    }
+    const conflictIndex = findConflictingGraphRunLane(planLane, activeLanes.value)
+    if (conflictIndex >= 0) {
+      options.onRunBlocked?.({
+        targetNodeId: opts.targetNodeId,
+        onlyTargetNode: opts.onlyTargetNode,
+        conflictNodeIds: listGraphRunLaneOverlap(planLane, activeLanes.value[conflictIndex])
+      })
+      return null
+    }
+
     options.commitLocal()
     if (opts.clearAll) clear()
-    const token = ++runToken
-    isRunning.value = true
-    runningTargetNodeId.value = opts.targetNodeId ?? null
-    abortController?.abort()
-    abortController = new AbortController()
-    const signal = abortController.signal
-    await nextTick()
-    const graph = options.buildGraph()
     const runId = `graph-run-${crypto.randomUUID()}`
     lastLogRunId.value = runId
-    const mode = resolveLogMode(opts)
     const targetNode = opts.targetNodeId
-      ? graph.nodes.find((n) => n.id === opts.targetNodeId)
+      ? planningGraph.nodes.find((n) => n.id === opts.targetNodeId)
       : undefined
     const targetLabel = opts.targetNodeId
       ? options.resolveNodeTitle?.(targetNode, opts.targetNodeId) ||
@@ -1025,14 +1121,27 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       runId,
       title: options.runTitle?.() || options.t('graph.logs.defaultTitle'),
       hostId: options.hostId?.(),
-      mode,
-      graph,
+      mode: resolveLogMode(opts),
+      graph: planningGraph,
       targetNodeId: opts.targetNodeId,
       resolveErrorMessage: (code) => message(code),
       resolveNodeTitle: options.resolveNodeTitle,
       startMessage
     })
-    activeLogBridge = logBridge
+    const run: ActiveRun = {
+      runId,
+      abort: new AbortController(),
+      logBridge,
+      nodeIds: planLane.nodeIds,
+      exclusive: planLane.exclusive,
+      targetNodeId: opts.targetNodeId,
+      onlyTargetNode: opts.onlyTargetNode
+    }
+    // 先登记再 await：冲突判断与 UI 状态必须同步生效，避免连点开出两趟重叠运行
+    addActiveRun(run)
+    const signal = run.abort.signal
+    await nextTick()
+    const graph = options.buildGraph()
     try {
       const result = await runGraph(graph, {
         signal,
@@ -1045,19 +1154,19 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         cookHostInnerGraph: opts.cookHostInnerGraph,
         priorNodeStates: { ...runStates },
         preserveOutsideSubset: opts.preserveOutsideSubset,
-        onNodeUpdate: (nodeId, state) => applyNodeUpdate(token, nodeId, state),
+        onNodeUpdate: (nodeId, state) => applyNodeUpdate(run, nodeId, state),
         onLog: (_nodeId, message, level) => {
-          if (token !== runToken || signal.aborted) return
-          activeLogBridge?.appendMessage(message, level)
+          if (isRunStale(run)) return
+          run.logBridge.appendMessage(message, level)
         },
-        generateText: wrapGenerateText(token, signal),
-        generateImage: wrapGenerateImage(token, signal),
-        generateVideo: wrapGenerateVideo(token, signal),
-        generateSpeech: wrapGenerateSpeech(token, signal),
-        generateModel3d: wrapGenerateModel3d(token, signal),
-        rigModel3d: wrapRigModel3d(token, signal),
-        segmentModel3d: wrapSegmentModel3d(token, signal),
-        postProcessModel3d: wrapPostProcessModel3d(token, signal),
+        generateText: wrapGenerateText(run),
+        generateImage: wrapGenerateImage(run),
+        generateVideo: wrapGenerateVideo(run),
+        generateSpeech: wrapGenerateSpeech(run),
+        generateModel3d: wrapGenerateModel3d(run),
+        rigModel3d: wrapRigModel3d(run),
+        segmentModel3d: wrapSegmentModel3d(run),
+        postProcessModel3d: wrapPostProcessModel3d(run),
         locale: options.locale?.(),
         resolveAssetGenParams: options.resolveAssetGenParams,
         resolveLiveAssetGraph: options.resolveLiveAssetGraph,
@@ -1103,7 +1212,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         composeImageLayerStack,
         composeComicPageImage,
         inspectModelSkeleton,
-        runBlenderDshJob,
+        runBlenderDshJob: (input) => runBlenderDshJob({ ...input, logRunId: run.runId }),
         buildGamePlayProject: buildGamePlayProjectForNode,
         runBlenderMcpTool: (input) =>
           window.studio.runBlenderMcpTool({
@@ -1113,7 +1222,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
           }),
         normalizeImageAspectRatio,
         onNodePatch: (nodeId, patch) => {
-          if (token !== runToken || signal.aborted) return
+          if (isRunStale(run)) return
           options.onNodePatch?.(nodeId, patch)
         },
         saveRunMedia: options.saveRunMedia,
@@ -1125,15 +1234,16 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       if (result) {
         // 导演审核回标：把 PASS/FAIL 与原因写到审核节点和对应生成节点
         applyEpisodeReviewMarks(graph.nodes, (nodeId, params) => {
-          if (token !== runToken || signal.aborted) return
+          if (isRunStale(run)) return
           options.onNodePatch?.(nodeId, { params })
         })
       }
-      if (token !== runToken) return null
+      // 被停止的趟已由 stopRun 收尾；此处不再写横幅与状态
+      if (!isRunActive(run)) return null
       lastRunResult.value = result
       if (signal.aborted || result.error === 'GRAPH_CANCELLED') {
         runMessage.value = options.t('graph.run.stopped')
-        markInterrupted()
+        markInterrupted(run.nodeIds)
         logBridge.endFromResult(result, {
           aborted: true,
           message: options.t('graph.run.stopped')
@@ -1158,10 +1268,10 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       }
       return result
     } catch (error) {
-      if (token !== runToken) return null
+      if (!isRunActive(run)) return null
       if (signal.aborted) {
         runMessage.value = options.t('graph.run.stopped')
-        markInterrupted()
+        markInterrupted(run.nodeIds)
         logBridge.endFromResult(null, {
           aborted: true,
           message: options.t('graph.run.stopped')
@@ -1173,7 +1283,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       logBridge.endFromResult(null, { message: runMessage.value })
       return null
     } finally {
-      if (token === runToken) {
+      if (isRunActive(run)) {
         // 把最新 runStates / 节点写回宿主图，避免只跑图未改结构时关窗丢失
         options.commitLocal()
         const settledGraph = options.buildGraph()
@@ -1184,9 +1294,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
             result: lastRunResult.value
           })
         ).catch(() => undefined)
-        isRunning.value = false
-        runningTargetNodeId.value = null
-        if (activeLogBridge === logBridge) activeLogBridge = null
+        removeActiveRun(run)
       }
     }
   }
@@ -1252,17 +1360,25 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
   }
 
   function isNodeActivelyRunning(nodeId: string): boolean {
-    if (!isRunning.value) return false
+    if (!activeRunNodeIds.value.has(nodeId)) return false
     const status = nodeStatus(nodeId)
     return status === 'pending' || status === 'running'
   }
 
-  /** 节点卡 / Inspector：只跑当前节点 */
+  /** 节点属于哪一趟进行中的运行（不属于任何趟返回 undefined） */
+  function activeRunForNode(nodeId: string): ActiveRun | undefined {
+    return activeRuns.value.find((run) => run.nodeIds.has(nodeId))
+  }
+
+  /**
+   * 节点卡 / Inspector：只跑当前节点。
+   * 该趟正在跑这个节点（或它本就是这趟的目标）→ 停止那趟，不影响并行的其它链；
+   * 其余情况启动新的一趟，重叠时由 executeRun 拒绝并提示。
+   */
   function toggleNodeRun(nodeId: string): void {
-    if (isRunning.value) {
-      if (isNodeActivelyRunning(nodeId) || runningTargetNodeId.value === nodeId) {
-        stopWorkflow()
-      }
+    const owner = activeRunForNode(nodeId)
+    if (owner && (isNodeActivelyRunning(nodeId) || owner.targetNodeId === nodeId)) {
+      stopRun(owner)
       return
     }
     void runNodeOnly(nodeId)
@@ -1270,7 +1386,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
 
   /**
    * 窗口工具栏：有选中节点 → 当前+上游；无选中 → 整图到输出。
-   * 由宿主传入 selectedNodeId。
+   * 由宿主传入 selectedNodeId。工具栏保持全局语义：任一趟在跑即「停止全部」。
    */
   function togglePlayStop(selectedNodeId?: string | null): void {
     if (isRunning.value) {
@@ -1311,6 +1427,10 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
     toggleNodeRun,
     nodeStatus,
     isNodeActivelyRunning,
+    /** 进行中运行的泳道（供画布计算「哪些节点会冲突」） */
+    activeLanes,
+    /** 进行中运行正在写状态的节点并集 */
+    activeRunNodeIds,
     exportRunStatesSnapshot,
     importRunStatesSnapshot
   }

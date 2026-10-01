@@ -795,6 +795,11 @@ export interface NodeExecuteContext {
     model?: string
     providerInstanceId?: string
     signal?: AbortSignal
+    /**
+     * 所属运行趟次的执行日志 runId。并行执行时全局「当前运行」会被后启动的趟抢走，
+     * 由运行会话注入以保证 harness 日志落回本趟。
+     */
+    logRunId?: string
   }) => Promise<{
     relativePath: string
     result: import('../../blenderDshJob').BlenderJobResult

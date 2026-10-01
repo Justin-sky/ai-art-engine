@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import type { GraphNodeRunState } from '../src/shared/graph'
 import { graphRunHosts } from '../src/renderer/src/features/graph/model/graphRunHosts'
 import type { GraphNode } from '../src/shared/graph'
@@ -19,6 +19,8 @@ describe('mcpGraphLiveCanvas', () => {
       runStates,
       isRunning: ref(false),
       runningTargetNodeId: ref(null),
+      blockedNodeIds: computed(() => new Set<string>()),
+      activeRunNodeIds: computed(() => new Set<string>()),
       runToNode: async () => null,
       stopWorkflow: () => {},
       toggleNodeRun: () => {}
@@ -49,6 +51,8 @@ describe('mcpGraphLiveCanvas', () => {
       runStates,
       isRunning: ref(true),
       runningTargetNodeId: ref('n1'),
+      blockedNodeIds: computed(() => new Set<string>()),
+      activeRunNodeIds: computed(() => new Set<string>()),
       runToNode: async () => null,
       stopWorkflow: () => {},
       toggleNodeRun: () => {}
@@ -151,6 +155,8 @@ describe('mcpGraphLiveCanvas', () => {
       runStates,
       isRunning: ref(false),
       runningTargetNodeId: ref(null),
+      blockedNodeIds: computed(() => new Set<string>()),
+      activeRunNodeIds: computed(() => new Set<string>()),
       runToNode: async () => null,
       stopWorkflow: () => {},
       toggleNodeRun: () => {}
@@ -171,6 +177,8 @@ describe('mcpGraphLiveCanvas', () => {
       runStates,
       isRunning: ref(false),
       runningTargetNodeId: ref(null),
+      blockedNodeIds: computed(() => new Set<string>()),
+      activeRunNodeIds: computed(() => new Set<string>()),
       runToNode: async () => null,
       stopWorkflow: () => {},
       toggleNodeRun: () => {}

@@ -2838,7 +2838,9 @@ export default {
     nodeRun: {
       execute: 'Run current node',
       rerun: 'Re-run current node',
-      stop: 'Stop'
+      stop: 'Stop',
+      blockedByRunning:
+        'This node shares upstream with a running chain. Stop it or wait for it to finish first.'
     },
     link: {
       start: 'Link',
@@ -3859,6 +3861,9 @@ export default {
       modelDshResult: 'The job did not write a valid result.json',
       modelDshExport: 'The job did not export a GLB',
       modelDshStart: 'dsh failed to start',
+      blockedTitle: 'Cannot start',
+      blockedMessage:
+        'This chain shares upstream nodes with a chain already running on this canvas. Wait for it to finish or stop it first. Chains that do not overlap can run in parallel.',
       dismissHint: 'Click to dismiss'
     },
     types: {

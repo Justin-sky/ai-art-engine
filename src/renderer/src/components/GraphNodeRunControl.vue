@@ -27,14 +27,17 @@ const props = withDefaults(
     isRunning?: boolean
     /** true 时仅图标，用于节点卡片头部 */
     compact?: boolean
-    /** 其它节点正在跑时禁用本按钮 */
+    /** 该节点与画布上进行中的运行冲突（共用上游）时禁用本按钮 */
     blocked?: boolean
+    /** 禁用原因提示；缺省用默认执行文案 */
+    blockedHint?: string
   }>(),
   {
     status: 'idle',
     isRunning: false,
     compact: false,
-    blocked: false
+    blocked: false,
+    blockedHint: ''
   }
 )
 
@@ -57,6 +60,7 @@ const mode = computed<'run' | 'rerun' | 'stop'>(() => {
 const disabled = computed(() => props.blocked && !activelyRunning.value)
 
 const title = computed(() => {
+  if (disabled.value && props.blockedHint) return props.blockedHint
   if (mode.value === 'stop') return t('graph.nodeRun.stop')
   if (mode.value === 'rerun') return t('graph.nodeRun.rerun')
   return t('graph.nodeRun.execute')

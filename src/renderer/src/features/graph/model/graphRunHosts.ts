@@ -6,6 +6,13 @@ export interface GraphRunHostApi {
   runStates: Record<string, GraphNodeRunState>
   isRunning: Ref<boolean>
   runningTargetNodeId: Ref<string | null>
+  /**
+   * 与画布上进行中运行冲突、因而不能单独启动新运行的节点。
+   * 并行的其它链上的节点不在此集合内。
+   */
+  blockedNodeIds: Ref<ReadonlySet<string>>
+  /** 进行中运行此刻正在写状态的节点并集（含待执行）；这些节点的状态不可被外部覆盖 */
+  activeRunNodeIds: Ref<ReadonlySet<string>>
   runToNode: (nodeId: string) => Promise<unknown>
   stopWorkflow: () => void
   toggleNodeRun: (nodeId: string) => void

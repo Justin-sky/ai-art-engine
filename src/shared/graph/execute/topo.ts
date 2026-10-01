@@ -22,6 +22,14 @@ export function collectUpstreamNodeIds(graph: GraphDocument, targetId: string): 
 
 /** 收集自 source 出发沿出边可达的全部下游节点（含 source） */
 export function collectDownstreamNodeIds(graph: GraphDocument, sourceId: string): Set<string> {
+  return collectDownstreamNodeIdsFrom(graph, [sourceId])
+}
+
+/** 收集自 seeds 任一点出发沿出边可达的全部下游节点（含 seeds 自身） */
+export function collectDownstreamNodeIdsFrom(
+  graph: GraphDocument,
+  seedIds: Iterable<string>
+): Set<string> {
   const outgoing = new Map<string, string[]>()
   for (const edge of graph.edges) {
     const list = outgoing.get(edge.source) ?? []
@@ -30,7 +38,7 @@ export function collectDownstreamNodeIds(graph: GraphDocument, sourceId: string)
   }
 
   const visited = new Set<string>()
-  const stack = [sourceId]
+  const stack = [...seedIds]
   while (stack.length) {
     const id = stack.pop()!
     if (visited.has(id)) continue

@@ -29,7 +29,15 @@ export function useGraphNodeRun(node: Ref<GraphNode | null | undefined>) {
 
   const isGraphRunning = computed(() => runHost.value?.isRunning.value === true)
 
-  const blocked = computed(() => isGraphRunning.value)
+  /**
+   * 该节点与画布上进行中的运行冲突（共用上游）→ 禁用执行按钮。
+   * 仅「别的链在跑」不再禁用：互不重叠的链可以并行启动。
+   */
+  const blocked = computed(() => {
+    const id = node.value?.id
+    if (!id) return false
+    return runHost.value?.blockedNodeIds.value.has(id) === true
+  })
 
   function toggleRun(): void {
     const id = node.value?.id

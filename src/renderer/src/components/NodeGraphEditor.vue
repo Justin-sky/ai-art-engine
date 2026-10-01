@@ -365,6 +365,7 @@
           :run-error="runStates[node.id]?.error"
           :run-state="runStates[node.id]"
           :is-graph-running="isRunning"
+          :run-blocked="blockedNodeIds.has(node.id)"
           :host-id="graphHostId"
           @drag-start="onNodeDragStart"
           @text-change="onNoteTextChange"
@@ -825,6 +826,7 @@ import {
   type GraphEdge,
   type GraphNode,
   type GraphNodeParams,
+  type GraphNodeRunState,
   type GraphNodeTextField,
   type GraphNodeTypeId,
   type GraphPortDataType,
@@ -897,7 +899,8 @@ import {
   summarizeReferenceListForLog,
   GraphPortType,
   GRAPH_OUT_ALL_PORT_ID,
-  WORLD_ELEMENT_KINDS
+  WORLD_ELEMENT_KINDS,
+  collectBlockedNodeIds
 } from '@shared/graph'
 import { isVideoJobActive, jobKind, type VideoJobRecord } from '@shared/videoJob'
 import { SHARED_ERRORS } from '@shared/errors/catalog'
@@ -1703,6 +1706,8 @@ const {
   stopWorkflow,
   toggleNodeRun,
   nodeStatus,
+  activeLanes,
+  activeRunNodeIds,
   exportRunStatesSnapshot,
   importRunStatesSnapshot
 } = useGraphRunSession({
@@ -1922,8 +1927,29 @@ const {
     // 通知 Inspector 输出预览等订阅方刷新（如 beat.split 写回 params.text）
     graphEditorHosts.bumpRevision()
     scheduleSave()
+  },
+  // 与进行中的链重叠（共用上游）→ 拒绝启动并提示，避免同一节点被两趟同时写状态
+  onRunBlocked: () => {
+    void promptAlert({
+      title: t('graph.run.blockedTitle'),
+      message: t('graph.run.blockedMessage')
+    })
   }
 })
+
+/**
+ * 与进行中运行冲突、因而不能单独启动的节点：
+ * 目标节点的上游若与某趟运行的节点重叠，二者会同时写同一节点状态。
+ * 泳道自身节点也在其中——执行中/待执行的仍然可点（按钮切为「停止」），
+ * 点击即停止那一趟，不影响并行的其它链。
+ */
+const blockedNodeIds = computed(() =>
+  collectBlockedNodeIds(
+    graph,
+    activeLanes.value,
+    graph.nodes.map((node) => node.id)
+  )
+)
 
 function openRunLog(runId: string): void {
   runLogsStore.openDialog(runId)
@@ -1931,10 +1957,21 @@ function openRunLog(runId: string): void {
 
 runStateBridge.exportForDocument = (nodeIds) => exportRunStatesSnapshot(nodeIds)
 runStateBridge.importFromDocument = (doc) => {
+  // 外部文档同步（任务写回 / 内图抬升 / 应用外部图）会整表重建 runStates；
+  // 本画布正在执行的节点状态由运行引擎持有，不能被落盘快照覆盖掉，
+  // 否则并行执行的链会被外部同步「打断」成 Interrupted。
+  const inFlight: Record<string, GraphNodeRunState> = {}
+  for (const id of activeRunNodeIds.value) {
+    const state = runStates[id]
+    if (state?.status === 'pending' || state?.status === 'running') {
+      inFlight[id] = { ...state }
+    }
+  }
   importRunStatesSnapshot(
     doc.runStates,
     doc.nodes.map((n) => n.id)
   )
+  for (const [id, state] of Object.entries(inFlight)) runStates[id] = state
 }
 // 首次加载可能发生在 session 接线前，这里用当前图再灌一次
 importRunStatesSnapshot(
@@ -1970,8 +2007,9 @@ function buildJobDoneOutputs(job: VideoJobRecord): Record<string, GraphValue> {
 }
 
 function applyVideoJobToNode(job: VideoJobRecord): void {
-  // 前台运行由 runGraph 自身维护节点状态，避免并发回写冲突
-  if (isRunning.value) return
+  // 本画布正在执行该节点时由 runGraph 自身维护节点状态，避免并发回写冲突；
+  // 不影响并行执行的其它链
+  if (activeRunNodeIds.value.has(job.graphBinding?.nodeId ?? '')) return
   const assetId = props.assetId?.trim()
   if (!assetId) return
   if (job.graphBinding?.assetId !== assetId || !job.graphBinding.nodeId) return
@@ -8797,6 +8835,8 @@ onMounted(() => {
     runStates,
     isRunning,
     runningTargetNodeId,
+    blockedNodeIds,
+    activeRunNodeIds,
     runToNode: guardedRunToNode,
     stopWorkflow,
     toggleNodeRun: onNodeRunToggle
