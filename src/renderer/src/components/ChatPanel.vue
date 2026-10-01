@@ -45,6 +45,7 @@ import { gameHtmlBrowserIssue } from '@shared/gamePlay'
 import ChatAssetPreview from './ChatAssetPreview.vue'
 import ChatChangesCard from './ChatChangesCard.vue'
 import ChatAssetPicker from './ChatAssetPicker.vue'
+import ChatCopyIcon from './ChatCopyIcon.vue'
 import SaveAssetDialog from './SaveAssetDialog.vue'
 
 const CHAT_MODEL_KEY = 'studio.chat.model'
@@ -155,6 +156,8 @@ function onSessionChange(id: string): void {
   commitContextUsed(harnessContextUsed.value)
   activateSession(id)
   loadActiveMessages()
+  // 队列属于「当前这段对话」：切走时清掉，避免排队中的消息发进另一个会话
+  clearSendQueue()
   // 切换可能打断输入法组合（compositionend 丢失时 composing 残留，导致 Enter 无法发送），复位之
   composing.value = false
   scrollToBottom()
@@ -165,6 +168,8 @@ function onNewSession(): void {
   commitContextUsed(harnessContextUsed.value)
   createSession()
   loadActiveMessages()
+  // 新会话不应继承上一段对话的排队消息
+  clearSendQueue()
   resetEditor()
   composing.value = false
   scrollToBottom()
@@ -186,6 +191,8 @@ async function onClearCommand(): Promise<void> {
     resetEditor()
     referenced.value = []
     pendingReasoning = ''
+    // 换 session 后队列里的消息已无归属，一并清掉
+    clearSendQueue()
     const oldId = rotateActiveSession()
     if (oldId && typeof window.studio?.deleteHarnessSession === 'function') {
       window.studio.deleteHarnessSession(oldId).catch(() => undefined)
@@ -355,6 +362,8 @@ async function onDeleteSession(): Promise<void> {
   // 同步清理磁盘上的 dsh 持久化记录，避免同 id 会话被「幽灵恢复」
   window.studio.deleteHarnessSession(session.id).catch(() => undefined)
   loadActiveMessages()
+  // 删除会话后落到了别的会话：队列同样不该跟着过来
+  clearSendQueue()
   resetEditor()
   composing.value = false
   scrollToBottom()
@@ -898,6 +907,20 @@ let ignoreHarnessEvents = false
 const status = ref<HarnessStatus | null>(null)
 const listRef = ref<HTMLElement | null>(null)
 
+/** 瞬时状态的配色相位；idle 表示当前没有状态要显示 */
+type ActivityPhase = 'idle' | 'waiting' | 'ok' | 'error'
+
+/**
+ * 瞬时状态（正在启动 / 已提交给模型 / 仍在等待…）：只出现在顶部状态栏，
+ * 不进消息流、不落盘 —— 它们是「此刻在做什么」，状态一变就作废，
+ * 混进对话只会把真正的内容往下推。结果类信息走会话消息本身。
+ */
+const activity = ref('')
+const activityPhase = ref<ActivityPhase>('idle')
+let activityTimer: number | null = null
+/** 状态在顶部保留多久后自动消失；够读完一句较长的等待/错误提示 */
+const ACTIVITY_TTL_MS = 6000
+
 /**
  * 任务清单：内嵌在消息流中，跟随各自任务的 user 消息展示（agent 风格 todo 卡）。
  * 返回第 userIndex 条 user 消息之后、下一条 user 消息之前的工具/生成活动卡；
@@ -912,6 +935,16 @@ function taskToolsAt(userIndex: number): Array<ChatMsg & { kind: 'tool' }> {
     if (m.kind === 'tool') out.push(m)
   }
   return out
+}
+
+/**
+ * 折叠态摘要：任务清单默认收起，标题旁给出「已完成/总数」，
+ * 否则收起后完全看不出这轮跑到哪一步了。
+ */
+function taskToolsSummary(userIndex: number): string {
+  const tools = taskToolsAt(userIndex)
+  const done = tools.filter((tm) => tm.state === 'done').length
+  return t('studio.chat.taskListSummary', { done, total: tools.length })
 }
 
 /** 任务清单里展示的一条工具参数（键值对） */
@@ -973,6 +1006,50 @@ async function copyMessage(index: number, text: string): Promise<void> {
   copyTimer = window.setTimeout(() => {
     copiedIndex.value = null
   }, 1500)
+}
+
+/** 队列项：执行中点「发送」或「重发」入队，等本轮结束后按序发出 */
+interface QueueItem {
+  id: number
+  text: string
+  /** 来源消息下标（重发时用于按钮反馈）；手输的消息为 null */
+  sourceIndex: number | null
+  /** 用户点了「立即发送」：等当前轮真正停下来后必须发出去，不再回队 */
+  forcing: boolean
+}
+
+const sendQueue = ref<QueueItem[]>([])
+let queueSeq = 0
+/** 出队中标记：中断是异步的，避免重入时把同一条重复发出 */
+let draining = false
+/** 重发反馈：最近一条加入队列的消息索引 */
+const resendIndex = ref<number | null>(null)
+let resendTimer: number | null = null
+
+/** 队首：要发出的下一条 */
+const firstQueued = computed(() => sendQueue.value[0] ?? null)
+
+function queuePreview(text: string): string {
+  const oneLine = text.replace(/\s+/g, ' ').trim()
+  return oneLine.length > 72 ? `${oneLine.slice(0, 72)}…` : oneLine
+}
+
+function enqueueSend(text: string, sourceIndex: number | null = null): void {
+  sendQueue.value.push({
+    id: ++queueSeq,
+    text,
+    sourceIndex,
+    forcing: false
+  })
+  scrollToBottom()
+}
+
+function removeQueued(id: number): void {
+  sendQueue.value = sendQueue.value.filter((item) => item.id !== id)
+}
+
+function clearSendQueue(): void {
+  sendQueue.value = []
 }
 
 /** 一个可选的文本模型（来自任一已启用且带密钥的 provider 的 text 模态） */
@@ -1279,19 +1356,33 @@ function pushAssistant(text: string, replace = false): void {
 }
 
 function pushStatus(text: string): void {
-  // 合并「仍在等待模型响应」类心跳：只更新最后一条，避免刷屏
-  const last = messages.value[messages.value.length - 1]
-  if (
-    last?.kind === 'status' &&
-    /仍在等待|尚未返回|已提交给模型|接手任务|Still waiting|Waiting for/.test(last.text) &&
-    /仍在等待|尚未返回|已提交给模型|接手任务|Still waiting|Waiting for/.test(text)
-  ) {
-    last.text = text
-    scrollToBottom()
-    return
-  }
-  messages.value.push({ kind: 'status', text })
-  scrollToBottom()
+  if (!text) return
+  // 相邻重复的整句直接忽略，避免同一条反复刷新计时
+  if (text === activity.value && activityPhase.value !== 'error') return
+
+  // 相位只降不升：运行中出现的错误不会被后续等待类文案盖成中性，等用户看到再自然过期
+  const phase = classifyActivity(text)
+  activityPhase.value = activityPhase.value === 'error' && phase !== 'error' ? 'error' : phase
+  activity.value = text
+
+  // 定时清除：状态只描述「此刻」，跑完/失败后不该永久占着顶部
+  if (activityTimer !== null) window.clearTimeout(activityTimer)
+  activityTimer = window.setTimeout(() => {
+    activity.value = ''
+    activityPhase.value = 'idle'
+    activityTimer = null
+  }, ACTIVITY_TTL_MS)
+}
+
+/**
+ * 瞬时状态的相位：只影响配色与图标，不影响文案。
+ * 上游文案是中文/英文混排的历史包袱，这里按关键词做宽松归类，认不出就当中性。
+ */
+function classifyActivity(text: string): ActivityPhase {
+  if (/失败|错误|不可用|未配置|中止|超时|error|fail|abort|unavailable/i.test(text)) return 'error'
+  if (/等待|排队|启动|正在|准备|提交|接手|waiting|starting|queued|running/i.test(text))
+    return 'waiting'
+  return 'ok'
 }
 
 /** 重新拉取 harness 状态；失败时保留上一次状态，不影响会话本身 */
@@ -1895,19 +1986,11 @@ async function answerPrompt(msg: ChatMsg & { kind: 'prompt' }, option: string): 
   }
 }
 
-async function onSend(): Promise<void> {
-  if (composing.value) return
-  const raw = draft.value.trim()
-  if (!raw) return
-  // 本地指令：不消耗模型、不依赖 MCP 就绪
-  const slash = isLocalSlashCommand(raw)
-  if (slash) {
-    resetEditor()
-    if (slash === 'clear') await onClearCommand()
-    else if (slash === 'model') await onModelCommand()
-    return
-  }
-  if (running.value) return
+/**
+ * 真正起一轮：把 task 作为用户消息落盘并交给 harness。
+ * 手输 / 重发 / 队列出队都走这里，保证三种入口的行为完全一致。
+ */
+async function runTask(text: string, options: { sourceIndex?: number } = {}): Promise<void> {
   // 发送前重新预检一次（Node 版本 / dsh 运行体 / MCP 服务 / 模型），
   // 不用挂载时的旧快照判断，避免按过期的“就绪”放行后才发现环境缺失
   await refreshStatus()
@@ -1916,8 +1999,7 @@ async function onSend(): Promise<void> {
     pushStatus(status.value?.message ?? t('studio.chat.unavailable'))
     return
   }
-  const task = buildTask(raw)
-  resetEditor()
+  const task = buildTask(text)
   referenced.value = []
   pendingReasoning = ''
   // 发送前记录 git 变更基线：运行结束后据此对比出「这一轮改了什么」
@@ -1931,6 +2013,13 @@ async function onSend(): Promise<void> {
   // 发送即落盘，避免依赖防抖窗口导致会话丢失
   commitMessages([...messages.value])
   persistHistory()
+  if (options.sourceIndex !== undefined) {
+    resendIndex.value = options.sourceIndex
+    if (resendTimer !== null) window.clearTimeout(resendTimer)
+    resendTimer = window.setTimeout(() => {
+      resendIndex.value = null
+    }, 1500)
+  }
   const { providerId, modelId } = splitModelKey(selectedKey.value)
   const result = await window.studio.runHarnessTask({
     task,
@@ -1949,11 +2038,118 @@ async function onSend(): Promise<void> {
   }
 }
 
+async function onSend(): Promise<void> {
+  if (composing.value) return
+  const raw = draft.value.trim()
+  if (!raw) return
+  // 本地指令：不消耗模型、不依赖 MCP 就绪
+  const slash = isLocalSlashCommand(raw)
+  if (slash) {
+    resetEditor()
+    if (slash === 'clear') await onClearCommand()
+    else if (slash === 'model') await onModelCommand()
+    return
+  }
+  // 正在执行：不丢弃输入，转入发送队列，等本轮结束后按序发出
+  if (running.value) {
+    enqueueSend(raw)
+    resetEditor()
+    return
+  }
+  resetEditor()
+  await runTask(raw)
+}
+
 async function onAbort(): Promise<void> {
   // 先本地退出 running，避免主进程杀进程慢时按钮一直停在「停止」
   running.value = false
   await window.studio.abortHarnessTask()
 }
+
+/**
+ * 重发：把已发出的用户消息再发一遍。
+ * 执行中同样入队（与输入框发送一致），执行空闲则直接发出。
+ */
+async function onResend(index: number): Promise<void> {
+  const msg = messages.value[index]
+  if (!msg || msg.kind !== 'user' || !msg.text.trim()) return
+  if (running.value) {
+    enqueueSend(msg.text, index)
+    return
+  }
+  await runTask(msg.text, { sourceIndex: index })
+}
+
+/**
+ * 出队：本轮结束后按序发出队首。
+ * 只能在本轮真正停止时调用（watch running / 中断流程），否则会打乱正在跑的一轮。
+ */
+async function drainQueue(): Promise<void> {
+  if (draining || running.value) return
+  const item = sendQueue.value[0]
+  if (!item) return
+  // 环境未就绪时把队首留在队列里并说明原因，避免静默丢弃整条队列
+  await refreshStatus()
+  if (!ready.value) {
+    pushStatus(status.value?.message ?? t('studio.chat.unavailable'))
+    return
+  }
+  sendQueue.value.shift()
+  // 出队即重置全部强制标记：forcing 只决定「出队时要不要中断」，用过即失效
+  for (const q of sendQueue.value) q.forcing = false
+  await runTask(item.text, item.sourceIndex === null ? {} : { sourceIndex: item.sourceIndex })
+  // runTask 可能提前返回（预检未就绪 / 主进程拒绝启动）：这一轮没跑起来就放回队首，
+  // 否则用户排队的那句话会凭空消失
+  if (!running.value && !sendQueue.value.some((q) => q.id === item.id)) {
+    sendQueue.value.unshift(item)
+  }
+}
+
+async function startQueuedSend(item: QueueItem, force: boolean): Promise<void> {
+  if (draining) return
+  // 这条已经被前面的流程排掉了
+  if (!sendQueue.value.some((q) => q.id === item.id)) return
+  item.forcing = force
+  const isFirst = firstQueued.value?.id === item.id
+  // 非队首：只标记强制，等前面几条发完自然轮到它
+  if (!isFirst) return
+  // 队首且此刻空闲：直接发，无需中断
+  if (!running.value) {
+    await drainQueue()
+    return
+  }
+  if (!force) return
+  draining = true
+  try {
+    // 先让出队首位置再中断：running 会在 await 期间变 false，
+    // 因此必须在 await 之前就把该条从队列里摘掉，避免被 watch 再取一次
+    sendQueue.value = sendQueue.value.filter((q) => q.id !== item.id)
+    await onAbort()
+    await runTask(item.text, item.sourceIndex === null ? {} : { sourceIndex: item.sourceIndex })
+    // 同上：中断后若这一轮没跑起来，把消息放回队首而不是丢掉
+    if (!running.value && !sendQueue.value.some((q) => q.id === item.id)) {
+      sendQueue.value.unshift(item)
+    }
+  } finally {
+    draining = false
+  }
+}
+
+/** 立即发送：中断当前执行，马上发这条 */
+function forceQueuedSend(id: number): void {
+  const item = sendQueue.value.find((q) => q.id === id)
+  if (!item) return
+  void startQueuedSend(item, true)
+}
+
+/**
+ * 本轮结束（正常 done / 报错 / 用户中断）后自动发出队首。
+ * running 的每个 false 落点都会触发一次，队列空时是空操作；
+ * 只有用户点了「立即发送」才会在运行中中断当前轮去插队。
+ */
+watch(running, (isRunning) => {
+  if (!isRunning) void drainQueue()
+})
 
 onMounted(async () => {
   // 恢复历史会话（上次会话或新建），再订阅事件流
@@ -1988,6 +2184,7 @@ onBeforeUnmount(() => {
   document.removeEventListener('keydown', onModeOutside)
   if (copyTimer !== null) window.clearTimeout(copyTimer)
   if (historyTimer !== null) window.clearTimeout(historyTimer)
+  if (activityTimer !== null) window.clearTimeout(activityTimer)
   // 卸载前把当前消息与上下文用量落盘，避免切换面板丢失最后一段对话与真实用量
   commitMessages([...messages.value])
   commitContextUsed(harnessContextUsed.value)
@@ -2000,6 +2197,16 @@ onBeforeUnmount(() => {
     <div class="chat-status" :class="{ warn: statusWarn }">
       <span class="dot" />
       <span class="status-text">{{ statusText }}</span>
+      <!-- 瞬时状态：正在启动 / 已提交给模型 / 仍在等待…，只在状态栏出现，不进消息流 -->
+      <span
+        v-if="activity"
+        class="chat-activity"
+        :class="activityPhase"
+        :title="activity"
+        aria-live="polite"
+      >
+        {{ activity }}
+      </span>
       <span v-if="workspace" class="chat-workspace" :title="workspace">{{ workspaceLabel }}</span>
     </div>
 
@@ -2014,21 +2221,44 @@ onBeforeUnmount(() => {
         <template v-for="(msg, i) in messages" :key="i">
           <template v-if="msg.kind === 'user'">
             <div class="msg-row user">
-              <div class="bubble user">
-                <div class="bubble-text" v-chat-img v-html="renderInlineChatRefs(msg.text)" />
+              <!-- 操作条：常显在气泡上方，两个动作都用图标 -->
+              <div class="bubble-actions">
+                <ChatCopyIcon :copied="copiedIndex === i" @copy="copyMessage(i, msg.text)" />
+                <!-- 重发本条：执行中入队（见 onResend），空闲时直接再发一轮 -->
                 <button
-                  class="copy-btn"
-                  :class="{ copied: copiedIndex === i }"
-                  :title="t('studio.chat.copyTitle')"
-                  @click.stop="copyMessage(i, msg.text)"
+                  class="bubble-action"
+                  :class="{ done: resendIndex === i }"
+                  :title="
+                    resendIndex === i ? t('studio.chat.resendQueued') : t('studio.chat.resendTitle')
+                  "
+                  @click.stop="onResend(i)"
                 >
-                  {{ copiedIndex === i ? t('studio.chat.copied') : t('studio.chat.copy') }}
+                  <svg
+                    viewBox="0 0 16 16"
+                    width="13"
+                    height="13"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.6"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M13 8 A5 5 0 1 1 11 4" />
+                    <path d="M13 2.4 V5 H10.4" />
+                  </svg>
                 </button>
               </div>
+              <div class="bubble user">
+                <div class="bubble-text" v-chat-img v-html="renderInlineChatRefs(msg.text)" />
+              </div>
             </div>
-            <!-- 任务清单：跟随任务消息内嵌展示（agent 风格），状态实时更新 -->
-            <div v-if="taskToolsAt(i).length" class="task-list-card">
-              <div class="task-list-title">{{ t('studio.chat.taskList') }}</div>
+            <!-- 任务清单：跟随任务消息内嵌展示（agent 风格），默认折叠，点标题展开看每一步 -->
+            <details v-if="taskToolsAt(i).length" class="task-list-card">
+              <summary class="task-list-title">
+                {{ t('studio.chat.taskList') }}
+                <span class="task-list-summary">{{ taskToolsSummary(i) }}</span>
+              </summary>
               <ul class="task-list">
                 <li
                   v-for="tm in taskToolsAt(i)"
@@ -2079,10 +2309,13 @@ onBeforeUnmount(() => {
                   />
                 </li>
               </ul>
-            </div>
+            </details>
           </template>
           <div v-else-if="msg.kind === 'assistant'" class="msg-row assistant">
             <div class="bubble assistant">
+              <div class="bubble-actions">
+                <ChatCopyIcon :copied="copiedIndex === i" @copy="copyMessage(i, msg.text)" />
+              </div>
               <details v-if="msg.reasoning" class="reasoning">
                 <summary>{{ t('studio.chat.thinking') }}</summary>
                 <pre>{{ msg.reasoning }}</pre>
@@ -2093,14 +2326,6 @@ onBeforeUnmount(() => {
                 @click="onCodeCopyClick"
                 v-html="renderChatBody(msg.text)"
               />
-              <button
-                class="copy-btn"
-                :class="{ copied: copiedIndex === i }"
-                :title="t('studio.chat.copyTitle')"
-                @click.stop="copyMessage(i, msg.text)"
-              >
-                {{ copiedIndex === i ? t('studio.chat.copied') : t('studio.chat.copy') }}
-              </button>
             </div>
           </div>
           <!-- 可玩 HTML 产物卡：只有一个「试玩」按钮，点击直接开试玩窗口 -->
@@ -2191,15 +2416,12 @@ onBeforeUnmount(() => {
             />
           </div>
           <div v-else-if="msg.kind === 'status'" class="msg-status">
+            <ChatCopyIcon
+              class="status-copy"
+              :copied="copiedIndex === i"
+              @copy="copyMessage(i, msg.text)"
+            />
             <div class="bubble-text" v-chat-img v-html="renderInlineChatRefs(msg.text)" />
-            <button
-              class="copy-btn"
-              :class="{ copied: copiedIndex === i }"
-              :title="t('studio.chat.copyTitle')"
-              @click.stop="copyMessage(i, msg.text)"
-            >
-              {{ copiedIndex === i ? t('studio.chat.copied') : t('studio.chat.copy') }}
-            </button>
           </div>
           <div v-else-if="msg.kind === 'prompt'" class="msg-prompt">
             <div class="prompt-question" v-chat-img v-html="renderInlineChatRefs(msg.question)" />
@@ -2267,6 +2489,72 @@ onBeforeUnmount(() => {
         @pointerup="onComposerResizePointerUp"
         @pointercancel="onComposerResizePointerUp"
       />
+      <!-- 发送队列：置于工具栏之上，执行中排队的消息在此列出，可立即发送（中断当前轮）或移除 -->
+      <div v-if="sendQueue.length" class="send-queue">
+        <div class="send-queue-head">
+          <span class="send-queue-title">{{ t('studio.chat.queueTitle') }}</span>
+          <span class="send-queue-count">{{ sendQueue.length }}</span>
+          <span class="send-queue-hint">{{ t('studio.chat.queueHint') }}</span>
+        </div>
+        <ul class="send-queue-list">
+          <li
+            v-for="item in sendQueue"
+            :key="item.id"
+            class="send-queue-item"
+            :class="{ forcing: item.forcing }"
+          >
+            <span class="send-queue-text" :title="item.text">{{ queuePreview(item.text) }}</span>
+            <span v-if="item.forcing" class="send-queue-forcing">
+              {{ t('studio.chat.queueForcing') }}
+            </span>
+            <span class="send-queue-actions">
+              <!-- 立即发送：中断当前轮，马上发这条。向上箭头与输入框的发送按钮同一隐喻 -->
+              <button
+                type="button"
+                class="queue-btn"
+                :disabled="item.forcing"
+                :title="t('studio.chat.queueSendNowTitle')"
+                @click.stop="forceQueuedSend(item.id)"
+              >
+                <svg
+                  viewBox="0 0 16 16"
+                  width="13"
+                  height="13"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M8 13 V3.5" />
+                  <path d="M4 7.5 L8 3.5 L12 7.5" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                class="queue-btn danger"
+                :title="t('studio.chat.queueRemoveTitle')"
+                @click.stop="removeQueued(item.id)"
+              >
+                <svg
+                  viewBox="0 0 16 16"
+                  width="13"
+                  height="13"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.7"
+                  stroke-linecap="round"
+                  aria-hidden="true"
+                >
+                  <path d="M4.5 4.5 L11.5 11.5" />
+                  <path d="M11.5 4.5 L4.5 11.5" />
+                </svg>
+              </button>
+            </span>
+          </li>
+        </ul>
+      </div>
       <div class="chat-toolbar">
         <!-- 技能调试视图：展示会话可用技能清单与已加载命中次数 -->
         <div ref="skillsDropdownRef" class="skills-dropdown" :class="{ open: skillsOpen }">
@@ -2788,6 +3076,29 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
+/* 瞬时状态段：夹在「就绪度」与工作区之间，长文案截断而不是换行撑高状态栏 */
+.chat-status .chat-activity {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
+/* 等待类：与就绪度同色，靠左侧分隔点划开 */
+.chat-status .chat-activity.waiting::before {
+  content: '·';
+  margin-right: 6px;
+}
+
+.chat-status .chat-activity.ok {
+  color: var(--success);
+}
+
+.chat-status .chat-activity.error {
+  color: var(--danger);
+}
+
 .chat-status .chat-workspace {
   flex: none;
   margin-left: auto;
@@ -2812,13 +3123,54 @@ onBeforeUnmount(() => {
   background: var(--bg-panel);
 }
 
+/* 默认折叠：标题行即 summary，可点开看每一步；收起时底部留白由 padding 收掉 */
+.task-list-card:not([open]) {
+  padding-bottom: 8px;
+}
+
 .task-list-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 11px;
   font-weight: 600;
   color: var(--text-muted);
   margin-bottom: 4px;
+  cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
+}
+
+.task-list-card:not([open]) .task-list-title {
+  margin-bottom: 0;
+}
+
+/* 原生 summary 的三角标记换成自绘，与卡片风格统一 */
+.task-list-title::marker,
+.task-list-title::-webkit-details-marker {
+  display: none;
+  content: '';
+}
+
+.task-list-title::before {
+  content: '';
+  flex: none;
+  width: 0;
+  height: 0;
+  border-left: 4px solid currentColor;
+  border-top: 3.5px solid transparent;
+  border-bottom: 3.5px solid transparent;
+  transition: transform 0.12s ease;
+}
+
+.task-list-card[open] .task-list-title::before {
+  transform: rotate(90deg);
+}
+
+.task-list-summary {
+  font-weight: 400;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .task-list {
@@ -3027,6 +3379,9 @@ onBeforeUnmount(() => {
 }
 
 .msg-row.user {
+  /* 纵向排列：操作条在上，气泡在下；两者都靠右对齐 */
+  flex-direction: column;
+  align-items: flex-end;
   justify-content: flex-end;
 }
 
@@ -3251,35 +3606,70 @@ onBeforeUnmount(() => {
   overflow-y: auto;
 }
 
-.copy-btn {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  padding: 2px 8px;
-  font-size: 11px;
-  line-height: 1.5;
+/* 气泡上方的操作条：复制 / 重发等图标按钮，默认隐藏，鼠标移到该条消息上才浮现 */
+.bubble-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 3px;
+}
+
+/* 图标按钮：正方形，尺寸与气泡内文字协调 */
+.bubble-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--bg-elevated);
   color: var(--text-muted);
   cursor: pointer;
+  /* 默认隐身；隐藏时不接收点击，避免看不见的地方误触 */
   opacity: 0;
-  transition: opacity 0.12s ease;
+  pointer-events: none;
+  transition:
+    opacity 0.12s ease,
+    color 0.12s ease,
+    border-color 0.12s ease,
+    background 0.12s ease;
 }
 
-.msg-row:hover .copy-btn {
-  opacity: 1;
-}
-
-.copy-btn:hover {
+.bubble-action:hover {
   background: var(--bg-hover);
   color: var(--text);
 }
 
-.copy-btn.copied {
+/* hover 该条消息：浮现其操作按钮。三种消息类型各自的悬停容器不同 */
+.msg-row.user:hover .bubble-action,
+.bubble.assistant:hover .bubble-action,
+.msg-status:hover .bubble-action {
   opacity: 1;
+  pointer-events: auto;
+}
+
+/* 动作已生效（复制成功 / 已加入发送队列）：常显高亮，让用户看到反馈。
+   放在 hover 规则之后，避免鼠标移开时反馈态被盖掉 */
+.bubble-action.done {
+  opacity: 1;
+  pointer-events: auto;
   color: var(--success);
   border-color: var(--success);
+}
+
+/* 助手气泡的操作条：绝对定位到气泡右上角，不占正文流。
+   正文留出右侧空间，避免长段落顶到按钮底下。 */
+.bubble.assistant > .bubble-actions {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  margin: 0;
+}
+
+.bubble.assistant > .bubble-actions ~ .md-body {
+  padding-right: 26px;
 }
 
 .msg-status {
@@ -3288,20 +3678,24 @@ onBeforeUnmount(() => {
   color: var(--text-muted);
   text-align: center;
   line-height: 1.6;
+  /* 给右上角常显的复制图标留位，长文本不会顶到它下面 */
   padding-right: 28px;
   user-select: text;
   -webkit-user-select: text;
   cursor: text;
 }
 
+/* 状态行右上角的复制图标：表格行内绝对定位，不参与居中排版 */
+.msg-status > .status-copy {
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+
 .msg-status.running {
   display: flex;
   justify-content: center;
   padding: 2px 0;
-}
-
-.msg-status:hover .copy-btn {
-  opacity: 1;
 }
 
 .dots i {
@@ -3972,6 +4366,130 @@ onBeforeUnmount(() => {
 
 .mention-chip .chip-remove:hover {
   background: color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+/* 发送队列：执行中排队的消息，位于输入框上方 */
+.send-queue {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+}
+
+.send-queue-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.send-queue-title {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.send-queue-count {
+  min-width: 16px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: var(--accent-18);
+  color: var(--text);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.send-queue-hint {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.send-queue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.send-queue-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.send-queue-item:hover {
+  background: var(--bg-hover);
+}
+
+/* 强制插队中：这一条正在等当前轮中断，给出进行态提示 */
+.send-queue-item.forcing {
+  border: 1px solid var(--accent);
+  background: var(--accent-18);
+}
+
+.send-queue-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.send-queue-forcing {
+  flex: none;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.send-queue-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 队列行内的操作按钮：纯图标正方形，提示走 title */
+.queue-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    color 0.12s ease,
+    border-color 0.12s ease,
+    background 0.12s ease;
+}
+
+.queue-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.queue-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.queue-btn.danger:hover:not(:disabled) {
+  border-color: var(--danger);
+  color: var(--danger);
 }
 
 /* 输入区：contenteditable 富文本，支持文本与图片内联引用混排 */
