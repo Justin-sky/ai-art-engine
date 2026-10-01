@@ -4,6 +4,30 @@ import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import vue from '@vitejs/plugin-vue'
 import type { Plugin } from 'vite'
 
+/**
+ * 跳过 Vite 内置的 `vite:esbuild-transpile`（renderChunk 阶段）。
+ *
+ * 起因：esbuild 对「大于 1MB 的 transform 输入」会把内容先落盘成
+ * %TEMP%\esbuild-<64位hex>、由子进程读走后再删除（见 esbuild/lib/main.js:774）。
+ * 本机有程序会偶发扣住新建文件，删除失败时 esbuild 直接以
+ * `remove <path>: Access is denied` 硬崩整个构建（实测偶发，同一输入连跑 10 次成功 10 次）。
+ * 主进程 bundle 已超 1MB，正好每次都走这条临时文件路径。
+ *
+ * 这里的构建目标本来就是 node（electron-vite 校验 build.target 必须以 "node" 开头）、
+ * 运行时是 Node 20+，这层 downlevel 转译没有实际收益；跳过即可从源头避免临时文件。
+ * 若将来确需按目标降级语法，删掉本插件，或改成只对超大 chunk 跳过。
+ */
+function skipEsbuildTranspile(): Plugin {
+  return {
+    name: 'aiart-skip-esbuild-transpile',
+    renderChunk(_code, _chunk, opts) {
+      // __vite_skip_esbuild__ 是 Vite 内部约定，未出现在 NormalizedOutputOptions 类型里
+      ;(opts as { __vite_skip_esbuild__?: boolean }).__vite_skip_esbuild__ = true
+      return null
+    }
+  }
+}
+
 /** 沙盒 iframe 注入用：绕过 three package exports，提供 module + core 源码（r163+ 拆包） */
 function threeModuleRawPlugin(): Plugin {
   const virtualModuleId = 'virtual:three-module-source'
@@ -59,7 +83,11 @@ export default defineConfig({
     // （dsh 运行时自带一份），外置时打包版会在 asar 内 require 不到 → 启动即
     // "Cannot find module 'chokidar'"，主进程弹错误框、窗口永不出现（CI 冒烟只报「未就绪」）。
     // 它是纯 ESM（type: module）、无顶层 await，直接打进 bundle 最稳，与 asar 规则解耦。
-    plugins: [externalizeDepsPlugin({ exclude: ['chokidar'] }), aiartRunnerTemplatePlugin()],
+    plugins: [
+      externalizeDepsPlugin({ exclude: ['chokidar'] }),
+      aiartRunnerTemplatePlugin(),
+      skipEsbuildTranspile()
+    ],
     resolve: {
       alias: {
         '@shared': resolve('src/shared')
@@ -84,7 +112,7 @@ export default defineConfig({
     }
   },
   preload: {
-    plugins: [externalizeDepsPlugin()],
+    plugins: [externalizeDepsPlugin(), skipEsbuildTranspile()],
     resolve: {
       alias: {
         '@shared': resolve('src/shared')
