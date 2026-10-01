@@ -430,10 +430,46 @@ jobs:
             return 1
           }
 
-          # $1 userData；$2 日志前缀（可选）
+          # 进程组剩余成员（排除僵尸态）：组长退出后子进程可能被 reparent 但仍留在组内，
+          # 所以必须按组枚举，不能只看组长
+          smoke_group_pids() {
+            local pgid="$1"
+            ps -eo pgid=,pid=,stat= 2>/dev/null | awk -v g="$pgid" \
+              '$1 == g && $3 !~ /^Z/ { print $2 }' || true
+          }
+
+          smoke_wait_group_gone() {
+            local pgid="$1" timeout="$2"
+            local deadline=$((SECONDS + timeout))
+            while [ "$SECONDS" -lt "$deadline" ]; do
+              smoke_group_pids "$pgid" | grep -q . || return 0
+              sleep 0.5
+            done
+            return 1
+          }
+
+          # $1 userData；$2 日志前缀（可选）；$3 进程组 id（可选，优先按组整组收尾）
           smoke_stop() {
-            local userdata="$1" label="${2:-cleanup}"
+            local userdata="$1" label="${2:-cleanup}" pgid="${3:-}"
             local pids=() pid
+
+            # 首选按进程组收尾：启动时用 setsid 让应用自成一组，-PGID 一次带走主进程与
+            # 全部子进程（gpu / utility / renderer）。只杀主进程会让子进程变成孤儿继续
+            # 持有 userData 单实例锁 —— 实测 v6.8.0 release 第三轮就是 gpu 与 utility
+            # 两个子进程活了下来，导致下一条腿的实例抢不到锁而以 code 0 早退。
+            if [ -n "$pgid" ]; then
+              if kill -TERM -- "-$pgid" 2>/dev/null; then
+                echo "SMOKE[$label] SIGTERM to process group $pgid"
+                if smoke_wait_group_gone "$pgid" 20; then
+                  return 0
+                fi
+                echo "SMOKE[$label] group $pgid still has members, sending SIGKILL" >&2
+                kill -KILL -- "-$pgid" 2>/dev/null || true
+                smoke_wait_group_gone "$pgid" 10 && return 0
+              fi
+            fi
+
+            # 兜底：按 userData 扫一遍漏网进程（进程组之外的残留、或未用 setsid 启动的情形）
             while read -r pid; do
               [ -n "$pid" ] && pids+=("$pid")
             done < <(smoke_pids "$userdata")
@@ -443,8 +479,6 @@ jobs:
             fi
             echo "SMOKE[$label] leftover pids: ${pids[*]}"
             kill -TERM "${pids[@]}" 2>/dev/null || true
-
-            # 第一轮等 15s：给足优雅退出的时间（Electron 要收尾 MCP 服务与子进程）
             if smoke_wait_gone 15 "${pids[@]}"; then
               # 幂等补一轮：第一次枚举之后才 fork 出来的子进程（Electron 启动期很常见）
               # 不在原列表里，再枚举一次确保没有漏网
@@ -499,8 +533,14 @@ jobs:
             smoke_stop "$USER_DATA" "pre-$label" || echo "WARN[$label] leftover process did not exit in time" >&2
             rm -f "$ready" "$log"
             local started=$SECONDS
-            AIART_SMOKE_READY_FILE="$ready" ${envprefix:+env $envprefix} xvfb-run -a "$bin" --no-sandbox >"$log" 2>&1 &
+            # setsid --wait --fork：让应用自成进程组（PGID = $!），且 setsid 自身等应用结束再退出。
+            # --wait 不能省：setsid 默认 fork 后父进程立即退出，$! 会指向一个立刻变成僵尸的父进程，
+            # 而僵尸在本脚本里算「已退出」——会把正常启动误判成 early exit。
+            # 有了进程组，收尾就能用 kill -- -PGID 一次带走主进程与全部子进程（只杀主进程会让
+            # gpu / utility 子进程变孤儿继续持有单实例锁）。
+            AIART_SMOKE_READY_FILE="$ready" setsid --wait --fork ${envprefix:+env $envprefix} xvfb-run -a "$bin" --no-sandbox >"$log" 2>&1 &
             local pid=$!
+            local pgid="$pid"
             local deadline=$((SECONDS + timeout))
             while [ "$SECONDS" -lt "$deadline" ]; do
               # 僵尸态视为已退出：xvfb-run 中途被其它因素收掉时，kill -0 会一直为真而白等
@@ -509,21 +549,21 @@ jobs:
                 wait "$pid" 2>/dev/null || rc=$?
                 echo "SMOKE_FAIL[$label] app exited early (code $rc)" >&2
                 smoke_dump "$log" "$USER_DATA"
-                smoke_stop "$USER_DATA" "post-$label" || true
+                smoke_stop "$USER_DATA" "post-$label" "$pgid" || true
                 return 1
               fi
               if [ -f "$ready" ]; then
                 # 记录实际耗时：就绪时间持续贴近上限时能提前发现（而不是等它某天压线失败）
                 echo "SMOKE_OK[$label] app ready in $((SECONDS - started))s: $(cat "$ready")"
                 # 收尾必须确认进程真的退出：只发信号不等退出，会让残留实例跨腿占着单实例锁
-                smoke_stop "$USER_DATA" "post-$label" || echo "WARN[$label] cleanup incomplete" >&2
+                smoke_stop "$USER_DATA" "post-$label" "$pgid" || echo "WARN[$label] cleanup incomplete" >&2
                 return 0
               fi
               sleep 1
             done
             echo "SMOKE_FAIL[$label] app did not reach ready state within ${timeout}s" >&2
             smoke_dump "$log" "$USER_DATA"
-            smoke_stop "$USER_DATA" "post-$label" || true
+            smoke_stop "$USER_DATA" "post-$label" "$pgid" || true
             return 1
           }
           SMOKE_EOF
