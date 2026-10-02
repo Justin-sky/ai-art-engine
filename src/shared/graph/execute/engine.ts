@@ -390,6 +390,7 @@ async function executeOneNode(
     mentionSources,
     incomingByIndex,
     generateText: options.generateText,
+    generateDecisions: options.generateDecisions,
     generateImage: options.generateImage,
     generateVideo: options.generateVideo,
     generateModel3d: options.generateModel3d,

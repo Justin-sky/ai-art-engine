@@ -1,5 +1,7 @@
 import axios from 'axios'
 import type {
+  DecisionRequestInput,
+  DecisionResponse,
   GenerateImageInput,
   GenerateImageResult,
   GenerateModel3dInput,
@@ -15,7 +17,11 @@ import type {
   OpenRouterTextModel,
   OpenRouterVideoModel
 } from '@shared/modelProvider'
-import { isTextCatalogModel, toOpenRouterInputReferenceBody } from '@shared/modelProvider'
+import {
+  isTextCatalogModel,
+  resolveOpenRouterDecisionsUrl,
+  toOpenRouterInputReferenceBody
+} from '@shared/modelProvider'
 import { rewriteAtMentionsForImagePrompt } from '@shared/modelProviders/imagePromptMentions'
 import type { ModelProviderAdapter, VideoPollResult } from '../types'
 import { PROVIDER_ERRORS } from '../catalog'
@@ -29,6 +35,7 @@ import {
   trimBaseUrl
 } from '../http'
 import { generateOpenAiCompatibleSpeech, generateOpenAiCompatibleText } from '../openaiCompat'
+import { normalizeDecisionResponse } from '../decisions'
 
 /** OpenRouter 目录接口偶发返回裸数组或 { data / models }，统一拆成行列表 */
 function asCatalogRows<T extends { id?: string }>(body: unknown): T[] {
@@ -134,6 +141,28 @@ export const openRouterAdapter: ModelProviderAdapter = {
           }
         }))
       }
+
+      if (modality === 'decisions') {
+        // Decisions 模型（TypeSafe Jev / Liquid D1 等）：输出模态标为 decisions，
+        // 与 output_modalities=text 的常规对话模型互不重叠。
+        const { data } = await client.get('/models', {
+          params: { output_modalities: 'decisions' }
+        })
+        return asCatalogRows<OpenRouterTextModel>(data).map((m) => ({
+          id: m.id,
+          name: m.name || m.id,
+          description: m.description,
+          modality: 'decisions' as const,
+          capabilities: {
+            architecture: m.architecture,
+            context_length: m.context_length,
+            pricing: m.pricing,
+            supported_parameters: m.supported_parameters
+          }
+        }))
+      }
+
+      if (modality !== 'text') return []
 
       const { data } = await client.get('/models', {
         params: { output_modalities: 'text' }
@@ -354,6 +383,39 @@ export const openRouterAdapter: ModelProviderAdapter = {
     input: GenerateSpeechInput
   ): Promise<GenerateSpeechResult> {
     return generateOpenAiCompatibleSpeech(provider, modelId, input)
+  },
+
+  /**
+   * Decisions API（`POST https://openrouter.ai/api/alpha/decisions`）。
+   * 不走 /chat/completions：决策模型返回 typed answer，没有文本可解析。
+   * 端点不在 /v1 下，因此这里用绝对 URL（见 resolveOpenRouterDecisionsUrl）。
+   */
+  async generateDecisions(
+    provider: ModelProviderInstance,
+    modelId: string,
+    input: DecisionRequestInput
+  ): Promise<DecisionResponse> {
+    const client = createProviderHttpClient(provider)
+    const body: Record<string, unknown> = {
+      model: modelId,
+      state: input.state,
+      questions: input.questions
+    }
+    if (input.sessionId) body.session_id = input.sessionId
+    if (input.user) body.user = input.user
+
+    try {
+      const { data } = await client.post<unknown>(
+        resolveOpenRouterDecisionsUrl(provider.baseUrl),
+        body
+      )
+      return normalizeDecisionResponse(data, modelId)
+    } catch (err) {
+      throw fail(PROVIDER_ERRORS.actionFailed, {
+        action: 'decisionsGenerate',
+        detail: await readHttpError(err)
+      })
+    }
   },
 
   submitModel3d(

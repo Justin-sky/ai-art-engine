@@ -335,6 +335,13 @@ export interface NodeExecuteContext {
     /** 视觉多模态：data URL / http(s) */
     images?: string[]
   }) => Promise<{ text: string; model: string }>
+  /**
+   * 可选：调用设置中的决策模型（OpenRouter Decisions API）。
+   * 未注入时决策节点报错说明未接通提供商。须走适配器，禁止直连 HTTP。
+   */
+  generateDecisions?: (
+    input: import('../../modelProvider').GenerateDecisionsInput
+  ) => Promise<import('../../modelProvider').GenerateDecisionsResult>
   /** 可选：调用设置中的图片模型；未注入时图片生成退回上游透传。须走适配器，禁止直连 HTTP。 */
   generateImage?: (input: {
     prompt: string
@@ -970,6 +977,7 @@ export interface GraphRunOptions {
   readEpisodeAgentState?: NodeExecuteContext['readEpisodeAgentState']
   writeEpisodeAgentState?: NodeExecuteContext['writeEpisodeAgentState']
   generateText?: NodeExecuteContext['generateText']
+  generateDecisions?: NodeExecuteContext['generateDecisions']
   generateImage?: NodeExecuteContext['generateImage']
   generateVideo?: NodeExecuteContext['generateVideo']
   generateModel3d?: NodeExecuteContext['generateModel3d']

@@ -7,6 +7,8 @@ import { Readable } from 'stream'
 import type {
   CatalogModel,
   CustomApiStyle,
+  GenerateDecisionsInput,
+  GenerateDecisionsResult,
   GenerateImageInput,
   GenerateImageResult,
   GenerateModel3dInput,
@@ -43,6 +45,8 @@ import {
   supportsModel3dRig,
   supportsModel3dSegment
 } from '@shared/modelProvider'
+import { describeDecisionVerdicts, resolveDecisionVerdicts } from '@shared/decisionQuestion'
+import { buildDecisionsRequest } from './decisions'
 import { meshOpSupported } from '@shared/meshOps'
 import { createProviderHttpClient, sleep } from './http'
 import { PROVIDER_ERRORS } from './catalog'
@@ -139,6 +143,13 @@ const E_TRANSCRIBE_NO_MODEL = defErrSimple(
   'provider.facade.transcribe-no-model',
   '请为音频转写指定模型（如 whisper-1）',
   'Please specify a transcription model (e.g. whisper-1)'
+)
+const E_DECISIONS_UNSUPPORTED = defErr<{ provider: string }>(
+  'provider.facade.decisions-unsupported',
+  ({ provider }) =>
+    `${provider} 暂不支持决策判定（Decisions API）：请在设置中添加 OpenRouter 提供商，并在「决策」页签勾选决策模型（如 typesafe/jev-1.13）`,
+  ({ provider }) =>
+    `${provider} does not support the Decisions API yet: add an OpenRouter provider in Settings and pick a decisions model (e.g. typesafe/jev-1.13) on the Decisions tab`
 )
 
 /** 支持转写的提供商 kind → 默认转写模型；未知 kind 返回空（由调用方/适配器兜底） */
@@ -255,6 +266,32 @@ class ModelProviderFacade {
       ...input,
       images
     })
+  }
+
+  /**
+   * 决策判定（OpenRouter Decisions API）。
+   * 走 `decisions` 模态选型；适配器只负责 HTTP，结论与摘要在这里统一算好，
+   * 便于图节点 / MCP 工具直接分支，不用各自解析答案形状。
+   */
+  async generateDecisions(input: GenerateDecisionsInput): Promise<GenerateDecisionsResult> {
+    const { provider, modelId } = resolveActiveProvider(
+      'decisions',
+      input.providerInstanceId,
+      input.model
+    )
+    const adapter = getProviderAdapter(provider.providerKind)
+    if (typeof adapter.generateDecisions !== 'function') {
+      throw fail(E_DECISIONS_UNSUPPORTED, { provider: provider.label })
+    }
+    const request = buildDecisionsRequest(input, modelId)
+    const response = await adapter.generateDecisions(provider, modelId, {
+      state: request.state,
+      questions: request.questions,
+      sessionId: request.sessionId,
+      user: request.user
+    })
+    const verdicts = resolveDecisionVerdicts(response.answers, input.thresholds)
+    return { ...response, verdicts, summary: describeDecisionVerdicts(verdicts) }
   }
 
   async generateImage(input: GenerateImageInput): Promise<GenerateImageResult> {

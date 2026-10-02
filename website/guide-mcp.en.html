@@ -407,7 +407,7 @@
                 <td>Read a host asset graph structure (ids / edges; prerequisite of graph_edit)</td>
               </tr>
               <tr>
-                <td rowspan="3">Generation</td>
+                <td rowspan="4">Generation</td>
                 <td><code>generate_image</code></td>
                 <td>Text-to-image / image-to-image, saved as a project asset</td>
               </tr>
@@ -420,6 +420,14 @@
                 <td>Text/image-to-3D producing a GLB asset</td>
               </tr>
               <tr>
+                <td><code>decide</code></td>
+                <td>
+                  Ask an OpenRouter decision model typed questions about a given state (noul yes/no, choice
+                  one-of, score on an ordered scale) and get branchable, probability-carrying verdicts; the
+                  three primitives can be mixed in one request and nothing is written to disk
+                </td>
+              </tr>
+              <tr>
                 <td rowspan="4">Editing &amp; queries</td>
                 <td><code>graph_edit</code></td>
                 <td>Apply node / edge edit batches to a host asset graph (validated in-app)</td>
@@ -430,7 +438,7 @@
               </tr>
               <tr>
                 <td><code>models_list</code></td>
-                <td>Enabled providers and per-modality models (no secrets)</td>
+                <td>Enabled providers and per-modality models (incl. OpenRouter <code>decisions</code> models; no secrets)</td>
               </tr>
               <tr>
                 <td><code>video_job_list</code> / <code>video_job_get</code></td>
@@ -551,8 +559,8 @@
               project root (the single exception is <code>asset_import</code>, which reads absolute paths you pass in
               and copies them into the project); secrets are never exposed.</li>
             <li>Concurrency gate: <code>generate_image</code> / <code>generate_speech</code> /
-              <code>workflow_plan</code> run at most 3 concurrently (<code>AIAE_MCP_GEN_LIMIT</code> tunable);
-              excess queue is rejected with a friendly error.</li>
+              <code>decide</code> / <code>workflow_plan</code> run at most 3 concurrently
+              (<code>AIAE_MCP_GEN_LIMIT</code> tunable); excess queue is rejected with a friendly error.</li>
             <li>Audit trail: every tool call is appended to
               <code>&lt;userData&gt;/logs/mcp-audit.jsonl</code> (args truncated, 5MB rotation) so generation and
               writes can be audited.</li>

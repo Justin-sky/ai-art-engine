@@ -565,6 +565,8 @@ export default {
         'Catalog is empty. Enter a model ID manually, or check the provider and API key.',
       emptyRemoteKeepPrevious:
         'Remote returned an empty list; kept the previous catalog. Try again later.',
+      providerDisabledNotice:
+        'This provider is disabled: you can still fetch and tick models here, but the node-side model dropdown skips disabled providers (so it stays empty). Tick “Enabled” in the card header.',
       filterNoMatch: 'No models match this filter. Clear the filter and try again.',
       clearFilter: 'Clear filter',
       emptySpeakers: 'No speakers yet. Enter a purchased speaker_id and select it.',
@@ -576,14 +578,17 @@ export default {
         image: 'Image',
         video: 'Video',
         audio: 'Voice',
-        model3d: '3D Model'
+        model3d: '3D Model',
+        decisions: 'Decisions'
       },
       modalityHint: {
         text: 'Script and chat generation via OpenRouter /api/v1/models.',
         image: 'Image generation via /api/v1/images/models.',
         video: 'Shot video generation via /api/v1/videos/models.',
         audio: 'TTS via /api/v1/models?output_modalities=speech and /api/v1/audio/speech.',
-        model3d: '3D model generation from text and/or reference images, producing GLB assets.'
+        model3d: '3D model generation from text and/or reference images, producing GLB assets.',
+        decisions:
+          'Decision models (TypeSafe Jev, Liquid D1, …) return typed judgments with probabilities instead of text — noul yes/no, choice one-of, score on an ordered scale. Catalog: /api/v1/models?output_modalities=decisions; calls: POST /api/alpha/decisions (note: not under /v1). Pick one here to branch on thresholds in the decisions node.'
       },
       arkModalityHint: {
         text: 'Volcengine Ark chat models (Doubao, etc.). Default Base URL https://ark.cn-beijing.volces.com/api/v3 via /chat/completions.',
@@ -2742,6 +2747,7 @@ export default {
         generate_speech: 'Voice',
         generate_music: 'Music',
         generate_model3d: '3D model',
+        decide: 'Decisions',
         graph_icon_refine: 'Icon refine',
         task_run: 'Workflow',
         asset_import: 'Import',
@@ -2767,6 +2773,7 @@ export default {
       startToNode: 'Started run to node {name}',
       startNodeOnly: 'Started node {name}',
       submitText: 'Submitting text generation…',
+      submitDecisions: 'Submitting decision request…',
       submitImage: 'Submitting image generation…',
       submitVideo: 'Submitting video generation…',
       submitSpeech: 'Submitting speech generation…',
@@ -3810,6 +3817,10 @@ export default {
       hostNoGraph: 'Host asset has no runnable inner graph',
       hostEnqueueFailed: 'Failed to enqueue the host inner graph',
       noInput: 'Enter a generation instruction, or connect an upstream input',
+      decisionsNoQuestions:
+        'Add at least one judgement question first (one per line: name | noul/choice/score | question | notes)',
+      decisionsUnavailable:
+        'The decisions node is not connected to a model at runtime: reload the UI and retry; if it still fails, this run entry point is missing the decisions capability seam',
       lipSyncNoVisual: 'Connect a character image or reference video first',
       lipSyncNoAudio: 'Connect a voice (speech) input first',
       noMask: 'Paint a mask in the redraw editor first',
@@ -3950,6 +3961,9 @@ export default {
       prompt: {
         optimize: 'Prompt optimize'
       },
+      decisions: {
+        judge: 'Decisions'
+      },
       text: {
         select: 'Select text'
       },
@@ -4078,6 +4092,75 @@ export default {
       assetRef: 'Referenced media',
       assetHost: 'Host asset',
       unselected: 'Not selected',
+      decisions: {
+        hint: 'Ask an OpenRouter decision model typed questions about upstream text or context (noul yes/no, choice one-of, score on an ordered scale). The verdict summary is passed downstream as text.',
+        questions: 'Questions',
+        questionsPlaceholder:
+          'One per line: name | type(noul/choice/score) | question | judgement notes\nis_ok | noul | Is the plan sound? | meets the brief / has gaps\nteam | choice | Who owns it? | a:Alice; b:Bob\nquality | score | How good is it? | rework; usable; ship it',
+        questionsHint:
+          'Lines starting with # or // are comments. For noul write the notes as “holds / does not hold”; for choice separate options with `;` (optionally `value:description`); for score separate the ordered scale (low→high) with `;`.',
+        noulThreshold: 'noul yes threshold',
+        choiceConfidence: 'choice min confidence',
+        scoreMin: 'score min position',
+        model: 'Decision model',
+        noModel: 'No decision model selected',
+        modelHint:
+          'Fetch and select a decision model in Settings → OpenRouter → the Decisions tab (e.g. typesafe/jev-1.13)',
+        modelEmpty: {
+          noProvider:
+            'No OpenRouter provider yet: add one in Settings → Models → Add provider, then paste your API key.',
+          providerDisabled:
+            'The OpenRouter provider is disabled: tick “Enabled” in that card’s header in Settings and the decision models will show up here.',
+          missingApiKey:
+            'The OpenRouter provider has no API key: paste a key starting with sk-or-v1- in Settings.',
+          noSelection:
+            'No decision model is selected on that provider yet: open Settings → OpenRouter → the Decisions tab, click “Fetch models” and tick the ones you want.'
+        },
+        lastVerdicts: 'Last verdicts',
+        servedBy: 'Served by {model}',
+        yes: 'yes',
+        no: 'no',
+        /** Judgement-question editor (form + text modes) */
+        editor: {
+          formMode: 'Form',
+          textMode: 'Text',
+          failedLines:
+            'Line {lines} could not be parsed and was skipped (switch to Text to fix it)',
+          empty: 'No questions yet. Add one by type below — no separators to memorise.',
+          type: 'Judgement type',
+          typeNoul: 'Yes / no (noul)',
+          typeChoice: 'One of (choice)',
+          typeScore: 'Ordered score (score)',
+          key: 'Question name',
+          keyPlaceholder: 'Name',
+          question: 'Question',
+          questionPlaceholder: 'What to judge (e.g. Does this plan hold up?)',
+          yesWhen: 'Counts as “yes” when',
+          noWhen: 'Counts as “no” when',
+          yesPlaceholder: 'e.g. it satisfies the brief and the logic',
+          noPlaceholder: 'e.g. it has an obvious hole',
+          optionValue: 'Option value',
+          optionDescription: 'Option description',
+          addOption: 'Add option',
+          levelLabel: 'Level',
+          levelDescription: 'Level description',
+          addLevel: 'Add level',
+          levelOrderHint:
+            'Ordered low → high; the position is the level in the result (first item = 0).',
+          addNoul: 'Add yes/no',
+          addChoice: 'Add one-of',
+          addScore: 'Add score',
+          moveUp: 'Move up',
+          moveDown: 'Move down',
+          remove: 'Remove',
+          droppedCount:
+            '{n} question(s) will not be sent (missing name or options) — click “Preview final prompt”',
+          questionsPlaceholder:
+            'name | noul/choice/score | question | judgement notes\nis_ok | noul | Does this plan hold up? | meets the brief / has a hole\nteam | choice | Who owns it? | a:Alice; b:Bob\nquality | score | How good is it? | rework; usable; ship it',
+          textHint:
+            'One per line: name | type | question | judgement notes. For noul write the notes as “yes / no”; for choice and score separate items with `;`. Lines starting with # or // are comments.'
+        }
+      },
       assetTaken: '(already used by another node)',
       displayName: 'Display name',
       weight: 'Reference strength',

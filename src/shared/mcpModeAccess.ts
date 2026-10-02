@@ -92,6 +92,7 @@ const GENERATE_TOOLS = new Set([
   'generate_model3d',
   'generate_speech',
   'generate_music',
+  'decide',
   'workflow_plan',
   'transcribe_audio',
   'gameplay_build'

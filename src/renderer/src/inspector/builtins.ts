@@ -23,6 +23,7 @@ import GridSplitInspector from '../components/GridSplitInspector.vue'
 import IconPackInspector from '../components/IconPackInspector.vue'
 import LayerSplitInspector from '../components/LayerSplitInspector.vue'
 import PromptOptimizeInspector from '../components/PromptOptimizeInspector.vue'
+import DecisionsJudgeInspector from '../components/DecisionsJudgeInspector.vue'
 import MediaReviewInspector from '../components/MediaReviewInspector.vue'
 import MediaReworkInspector from '../components/MediaReworkInspector.vue'
 import AdVariantsInspector from '../components/AdVariantsInspector.vue'
@@ -203,6 +204,11 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     id: 'studio.graph.imageToPrompt',
     component: PromptOptimizeInspector,
     nodeTypeId: 'image.toPrompt'
+  },
+  {
+    id: 'studio.graph.decisionsJudge',
+    component: DecisionsJudgeInspector,
+    nodeTypeId: 'decisions.judge'
   },
   {
     id: 'studio.graph.worldExtract',

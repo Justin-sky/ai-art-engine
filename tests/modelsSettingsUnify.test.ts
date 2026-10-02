@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   classifyVolcengineArkModelModality,
+  createEmptyModalityMap,
   createEmptyModelsSettings,
   createProviderInstance,
   findProviderById,
@@ -212,6 +213,46 @@ describe('normalizeModelsSettings', () => {
     })
     expect(next).toEqual(createEmptyModelsSettings())
   })
+
+  it('keeps decisions selections across a settings round-trip', () => {
+    const first = normalizeModelsSettings({
+      providers: [
+        {
+          id: 'p1',
+          providerKind: 'openrouter',
+          apiKey: 'sk',
+          modalities: {
+            decisions: {
+              selectedModelIds: ['typesafe/jev-1.13'],
+              defaultModelId: 'typesafe/jev-1.13',
+              catalog: {
+                'typesafe/jev-1.13': {
+                  id: 'typesafe/jev-1.13',
+                  name: 'TypeSafe: Jev 1.13',
+                  capabilities: { architecture: { output_modalities: ['decisions'] } }
+                }
+              }
+            }
+          } as never
+        }
+      ]
+    })
+
+    // 落盘 → 读回：normalizeModalityMap 必须逐键填充，否则 decisions 会被静默丢掉
+    const second = normalizeModelsSettings(JSON.parse(JSON.stringify(first)))
+    const decisions = second.providers[0].modalities.decisions
+    expect(decisions.selectedModelIds).toEqual(['typesafe/jev-1.13'])
+    expect(decisions.defaultModelId).toBe('typesafe/jev-1.13')
+    expect(decisions.catalog?.['typesafe/jev-1.13']?.name).toBe('TypeSafe: Jev 1.13')
+  })
+
+  it('defaults every modality key including decisions', () => {
+    const empty = createEmptyModalityMap()
+    expect(Object.keys(empty).sort()).toEqual(
+      ['audio', 'decisions', 'image', 'model3d', 'text', 'video'].sort()
+    )
+    expect(empty.decisions).toEqual({ selectedModelIds: [], defaultModelId: '' })
+  })
 })
 
 describe('volcengine ark helpers', () => {
@@ -265,5 +306,30 @@ describe('pickActiveProvider', () => {
     expect(pickActiveProvider([kling], 'image')).toBeNull()
     kling.apiKey = 'key'
     expect(pickActiveProvider([kling], 'image')?.modelId).toBe('kling-v2')
+  })
+
+  it('routes the decisions modality to the decisions selection only', () => {
+    const p = createProviderInstance('openrouter', {
+      id: 'p-dec',
+      apiKey: 'sk',
+      modalities: {
+        text: { selectedModelIds: ['deepseek/deepseek-v4-flash'], defaultModelId: '' },
+        decisions: {
+          selectedModelIds: ['typesafe/jev-1.13'],
+          defaultModelId: 'typesafe/jev-1.13'
+        }
+      }
+    })
+    expect(pickActiveProvider([p], 'decisions')?.modelId).toBe('typesafe/jev-1.13')
+    // 文本路由不受 decisions 勾选影响
+    expect(pickActiveProvider([p], 'text')?.modelId).toBe('deepseek/deepseek-v4-flash')
+    // 只有 decisions 勾选时，文本模态不应命中该提供商
+    const onlyDecisions = createProviderInstance('openrouter', {
+      id: 'p-only-dec',
+      apiKey: 'sk',
+      modalities: { decisions: { selectedModelIds: ['liquid/d1'], defaultModelId: '' } }
+    })
+    expect(pickActiveProvider([onlyDecisions], 'text')).toBeNull()
+    expect(pickActiveProvider([onlyDecisions], 'decisions')?.modelId).toBe('liquid/d1')
   })
 })

@@ -1142,6 +1142,34 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             throw err
           }
         },
+        generateDecisions: async (input) => {
+          const startedAt = Date.now()
+          const request = {
+            questions: input.questions.map((q) => ({ key: q.key, type: q.type })),
+            model: input.model,
+            providerInstanceId: input.providerInstanceId,
+            evidenceCount: input.evidence?.length || undefined
+          }
+          logBridge.appendMessage(String(i18n.global.t('graph.logs.submitDecisions')))
+          try {
+            const value = await window.studio.generateDecisions(input)
+            logBridge.recordApiCall({
+              kind: 'generateDecisions',
+              request,
+              response: { text: value.summary, model: value.model },
+              durationMs: Math.max(0, Date.now() - startedAt)
+            })
+            return value
+          } catch (err) {
+            logBridge.recordApiCall({
+              kind: 'generateDecisions',
+              request,
+              error: err instanceof Error ? err.message : String(err),
+              durationMs: Math.max(0, Date.now() - startedAt)
+            })
+            throw err
+          }
+        },
         generateImage: async (input) => {
           const startedAt = Date.now()
           const request = {

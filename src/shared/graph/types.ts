@@ -237,6 +237,7 @@ export type GraphNodeTypeId =
   | 'image.gridSplit'
   | 'image.layerSplit'
   | 'image.toPrompt'
+  | 'decisions.judge'
   | 'svg.gen'
   | 'model.pose'
   | 'model.rigSkin'
@@ -263,6 +264,24 @@ export interface GraphNodeParams {
   generateInstruction?: string
   /** 加工节点系统提示词（可编辑；空则用该类型内置默认） */
   generateSystemPrompt?: string
+  /**
+   * 决策节点（decisions.judge）问题清单，每行一条：
+   * `问题名 | noul|choice|score | 问题 | 判定说明`。
+   * 解析规则见 @shared/decisionQuestion 的 parseDecisionQuestions。
+   */
+  decisionQuestions?: string
+  /** 决策节点：noul 判「是」的概率阈值（缺省 0.5） */
+  decisionNoulYesThreshold?: number
+  /** 决策节点：choice 视为可信的最低置信度（低于该值时 confident=false） */
+  decisionChoiceMinConfidence?: number
+  /** 决策节点：score 视为达标的最低分位 */
+  decisionScoreMin?: number
+  /** 决策节点：上次执行的判定结论快照（卡片 / 检查器展示用） */
+  decisionVerdicts?: import('../modelProvider').DecisionVerdict[]
+  /** 决策节点：实际服务的模型（上游可能回带日期快照） */
+  decisionModelUsed?: string
+  /** 决策节点：上游 provider 名（如 TypeSafe） */
+  decisionProvider?: string
   /**
    * GraphSkill id（快照绑定，非运行时引用）。
    * 套预设时写入，并同时烤入 generateInstruction / generateSystemPrompt；执行只读这两份文案。

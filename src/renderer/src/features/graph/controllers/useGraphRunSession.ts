@@ -80,6 +80,10 @@ export interface GraphRunSessionOptions {
     providerInstanceId?: string
     images?: string[]
   }) => Promise<{ text: string; model: string }>
+  /** 决策判定：OpenRouter Decisions API（noul / choice / score） */
+  generateDecisions?: (
+    input: import('@shared/modelProvider').GenerateDecisionsInput
+  ) => Promise<import('@shared/modelProvider').GenerateDecisionsResult>
   generateImage?: (input: {
     prompt: string
     model?: string
@@ -433,6 +437,8 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       GRAPH_HOST_INNER_NO_OUTPUT: 'graph.run.noOutput',
       GRAPH_HOST_INNER_ENQUEUE_FAILED: 'graph.run.hostEnqueueFailed',
       GRAPH_PROCESS_NO_INPUT: 'graph.run.noInput',
+      GRAPH_DECISIONS_NO_QUESTIONS: 'graph.run.decisionsNoQuestions',
+      GRAPH_DECISIONS_UNAVAILABLE: 'graph.run.decisionsUnavailable',
       GRAPH_LIPSYNC_NO_IMAGE: 'graph.run.lipSyncNoVisual',
       GRAPH_LIPSYNC_NO_VISUAL: 'graph.run.lipSyncNoVisual',
       GRAPH_LIPSYNC_NO_AUDIO: 'graph.run.lipSyncNoAudio',
@@ -620,6 +626,48 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         if (!(err instanceof DOMException && err.name === 'AbortError')) {
           run.logBridge.recordApiCall({
             kind: 'generateText',
+            request,
+            error: err instanceof Error ? err.message : String(err),
+            durationMs: Math.max(0, Date.now() - startedAt)
+          })
+        }
+        throw err
+      }
+    }
+  }
+
+  /**
+   * 决策判定：与文本同构（同步一次调用），日志里记成独立的 generateDecisions 调用，
+   * 便于在「执行日志 · API 调用」里和文本生成区分开。
+   */
+  function wrapGenerateDecisions(run: ActiveRun) {
+    const generateDecisions = options.generateDecisions
+    if (!generateDecisions) return undefined
+    return async (input: Parameters<NonNullable<typeof generateDecisions>>[0]) => {
+      if (isRunStale(run)) {
+        throw new DOMException('Aborted', 'AbortError')
+      }
+      const startedAt = Date.now()
+      const request = {
+        questions: input.questions.map((q) => ({ key: q.key, type: q.type })),
+        model: input.model,
+        providerInstanceId: input.providerInstanceId,
+        evidenceCount: input.evidence?.length || undefined
+      }
+      run.logBridge.appendMessage(options.t('graph.logs.submitDecisions'))
+      try {
+        const value = await withAbortSignal(generateDecisions(input), run)
+        run.logBridge.recordApiCall({
+          kind: 'generateDecisions',
+          request,
+          response: { text: value.summary, model: value.model },
+          durationMs: Math.max(0, Date.now() - startedAt)
+        })
+        return value
+      } catch (err) {
+        if (!(err instanceof DOMException && err.name === 'AbortError')) {
+          run.logBridge.recordApiCall({
+            kind: 'generateDecisions',
             request,
             error: err instanceof Error ? err.message : String(err),
             durationMs: Math.max(0, Date.now() - startedAt)
@@ -1160,6 +1208,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
           run.logBridge.appendMessage(message, level)
         },
         generateText: wrapGenerateText(run),
+        generateDecisions: wrapGenerateDecisions(run),
         generateImage: wrapGenerateImage(run),
         generateVideo: wrapGenerateVideo(run),
         generateSpeech: wrapGenerateSpeech(run),

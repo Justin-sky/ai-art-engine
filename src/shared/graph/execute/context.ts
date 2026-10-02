@@ -76,6 +76,8 @@ export type InstructionFinalPreviewKind =
   | 'frameAnimGen'
   | 'svgGen'
   | 'model3d'
+  /** 决策判定：预览的是「发给决策模型的 state」，不套任何生成模板 */
+  | 'decisions'
 
 /** 按节点 typeId / assetType / 编辑器 preset 解析预览种类 */
 export function resolveInstructionFinalPreviewKind(
@@ -83,6 +85,9 @@ export function resolveInstructionFinalPreviewKind(
   presetKind?: InstructionPresetKind | null
 ): InstructionFinalPreviewKind {
   const typeId = node?.typeId
+  // 决策判定必须早于 screenplay 兜底：它既不是剧本也不是图片，
+  // 落进兜底会把「剧本规范」当成发给决策模型的提示词展示出来
+  if (typeId === 'decisions.judge') return 'decisions'
   if (typeId === 'prompt.optimize' || presetKind === 'optimize') return 'optimize'
   if (typeId === 'image.toPrompt' || presetKind === 'toPrompt') return 'toPrompt'
   if (typeId === 'world.extract' || presetKind === 'worldExtract') return 'worldExtract'
@@ -192,6 +197,9 @@ function buildUserPromptForPreviewKind(
     case 'svgGen':
       // 与 execute/svgGen.ts 同口径：用户提示词就是指令本身（画布约束在下面单独追加），不套默认模板
       return instruction
+    case 'decisions':
+      // 决策判定没有提示词模板：展开 @ 引用后的「问题清单」就是发给模型的问题定义
+      return instruction
     case 'model3d':
       return buildModel3dPrompt(instruction, locale)
     case 'screenplay':
@@ -254,6 +262,8 @@ export function buildInstructionFinalPromptPreview(input: {
     const canvas = buildSvgGenCanvasInstruction(input.svgGen, input.locale)
     userPrompt = userPrompt.trim() ? `${userPrompt.trim()}\n\n${canvas}` : canvas
   }
+  // 决策判定：没有系统提示词，也没有生成模板——预览的就是「发给决策模型的 state / 问题」
+  if (input.kind === 'decisions') return userPrompt
   if (input.includeSystem === false) return userPrompt
   const system = resolveSystemPromptForPreviewKind(input.kind, input.systemPrompt, input.locale)
   const labels = previewSectionLabels(input.locale)

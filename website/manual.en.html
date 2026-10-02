@@ -207,8 +207,9 @@
             runs through the model providers you configure (OpenRouter, OpenAI, DeepSeek, Zhipu, Kimi, xAI,
             Google, vLLM, Ollama, LM Studio, Volcengine Ark, Kling, MiniMax, Tongyi Qianwen, ModelScope,
             ComfyUI, MagicRouter, …), and 3D model generation supports Meshy, Tripo, Rodin (Hyper3D), Luma AI
-            and Lux3D. Use <strong>One-Click Workflow</strong> to turn a template or a plain-language request
-            into a reusable host asset, then drag it onto the canvas to keep building.
+            and Lux3D. OpenRouter additionally offers decision models (the Decisions API), configured per modality
+            like text / image / video. Use <strong>One-Click Workflow</strong> to turn a template or a
+            plain-language request into a reusable host asset, then drag it onto the canvas to keep building.
           </p>
           <h3>First-time setup</h3>
           <ol>
@@ -432,7 +433,7 @@
             <li>
               Click <strong>Add model provider</strong>. Options include:
               <ul>
-                <li><strong>OpenRouter</strong>: text / image / video (aggregated catalog, single API Key).</li>
+                <li><strong>OpenRouter</strong>: text / image / video / decisions (aggregated catalog, single API Key).</li>
                 <li>
                   <strong>OpenAI</strong>: text (GPT family) / images (gpt-image-1 / gpt-image-2); requires
                   network access to api.openai.com and a non-mainland account. Text-to-image uses
@@ -729,8 +730,10 @@
               manually.
             </li>
             <li>
-              Configure per modality: text / image / video / audio / 3D model (the Ark audio tab also links the
-              speech console and asks for a manual <code>speaker_id</code>; Kling has only image and video tabs;
+              Configure per modality: text / image / video / audio / 3D model / decisions (OpenRouter supports
+              text / image / video / decisions; its Decisions tab lists models via
+              <code>output_modalities=decisions</code> and no other provider has that tab; the Ark audio tab also
+              links the speech console and asks for a manual <code>speaker_id</code>; Kling has only image and video tabs;
               MiniMax supports text / image / video / voice design; OpenAI supports text and image; DeepSeek is
               text only; Kimi (Moonshot) is text only; xAI (Grok) supports text / image / video with async
               polling for video; Google (Gemini) supports text / Nano Banana images / Veo 3.1 video with async
@@ -1405,7 +1408,8 @@
               Image generation · video generation · audio generation · script generation · shot generation ·
               world element extraction · planning doc generation · director stage edit · canvas edit · 3D model
               generation · 3D mesh processing (rigging / rig check / animation retarget / split / part completion
-              / retopology / texture / format convert) · 2D frame animation · model (reference) · host asset
+              / retopology / texture / format convert) · 2D frame animation · decisions · model (reference) ·
+              host asset
             </li>
             <li>
               <strong>3D model generation</strong>: text / upstream reference images → a 3D model asset (Meshy,
@@ -1437,6 +1441,15 @@
               director stage, …) into the current canvas as a node — the output port type is that asset's port
               type; double-click a host asset node to dive into its internal workflow (see
               <a href="#host">8.6 Host assets and Dive</a>).
+            </li>
+            <li>
+              <strong>Decisions</strong>: takes upstream text and asks an OpenRouter decision model a set of typed
+              questions (<code>noul</code> yes/no, <code>choice</code> one-of, <code>score</code> on an ordered
+              scale). It has one text output — the verdict summary (e.g.
+              <code>is_bug=yes(0.96) team=payments(0.84)</code>) — so downstream text nodes keep working; the full
+              verdicts (per-option probabilities, confidence, thresholds) stay on the node and show up as
+              probability bars under “Last verdicts” in the Inspector. The question list and the thresholds (noul
+              yes threshold / choice min confidence / score min position) are edited there too.
             </li>
           </ul>
 

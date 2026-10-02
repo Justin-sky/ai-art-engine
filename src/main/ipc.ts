@@ -328,6 +328,11 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.GEN_TEXT, (input: GenerateTextInput) =>
     modelProviderFacade.generateText(input)
   )
+  handle(
+    IpcChannels.GEN_DECISIONS,
+    (input: import('@shared/modelProvider').GenerateDecisionsInput) =>
+      modelProviderFacade.generateDecisions(input)
+  )
   handle(IpcChannels.GEN_AI_WORKFLOW_PLAN, (input: PlanAiWorkflowInput) => planAiWorkflow(input))
   handle(IpcChannels.GEN_AI_WORKFLOW_COMMIT, async (input: CommitAiWorkflowInput) => {
     const result = await commitAiWorkflow(input)

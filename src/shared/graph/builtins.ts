@@ -37,6 +37,7 @@ import {
   executeBoundaryInputNode,
   executeBoundaryOutputNode,
   executeBundleNode,
+  executeDecisionsJudgeNode,
   executeImageToPromptNode,
   executePromptOptimizeNode,
   executeScreenplayGenerateNode,
@@ -1866,6 +1867,41 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     card: 'media',
     contributeToGeneration: false,
     execute: executeImageToPromptNode
+  },
+  {
+    typeId: 'decisions.judge',
+    category: 'note',
+    label: 'Decisions',
+    icon: '⚖️',
+    defaultTitle: 'Decisions',
+    description:
+      '决策判定：用 OpenRouter 决策模型（TypeSafe Jev / Liquid D1 等）对上游文本或上下文回答一组带概率的类型化问题（noul 是/否、choice 多选一、score 有序打分），结论摘要落成文本产物。本节点用于把判定**留在图里**（可复跑、用户可在画布上看到概率条）；只需一次性结论的 Agent 请改用 decide 工具（MCP，不落盘、不必跑整张图）。需先在设置里添加 OpenRouter 提供商并在「决策」页签勾选决策模型。',
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'In' },
+      ...galleryOutPorts(GraphPortType.text)
+    ],
+    defaultParams: () => ({
+      text: '',
+      generatedTexts: [],
+      selectedTextId: '',
+      /**
+       * 默认**不预置示例问题**：以前塞了 3 条示例，用户分不清哪些是真在跑的，
+       * 现在留空并由编辑器给出「加一条」的入口；格式说明放 hint，不放进数据。
+       */
+      decisionQuestions: '',
+      decisionNoulYesThreshold: 0.5,
+      generateModel: '',
+      generateProviderInstanceId: ''
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.decisionsJudge',
+    card: 'media',
+    contributeToGeneration: false,
+    execute: executeDecisionsJudgeNode
   },
   {
     typeId: 'media.review',

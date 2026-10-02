@@ -65,13 +65,13 @@ Scope 配置项（`GraphScopeDefinition`）：
 
 节点图是唯一执行引擎。一种生成能力只在一处实现，节点只消费：
 
-| 层     | 含义                                       | 代码                                                                  |
-| ------ | ------------------------------------------ | --------------------------------------------------------------------- |
-| 定义   | `typeId` + `ports` + `execute`             | `registerNodeType` / `NodeTypeDefinition`                             |
-| 提供商 | 文本 / 图 / 视频 / 语音生成                | `NodeExecuteContext.generateText` / `generateImage` / `generateVideo` |
-| 消费   | 边两端 `dataType` 相同（单数与复数不互通） | `portsCompatible`                                                     |
+| 层     | 含义                                       | 代码                                                                                        |
+| ------ | ------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| 定义   | `typeId` + `ports` + `execute`             | `registerNodeType` / `NodeTypeDefinition`                                                   |
+| 提供商 | 文本 / 图 / 视频 / 语音 / 决策判定生成     | `NodeExecuteContext.generateText` / `generateImage` / `generateVideo` / `generateDecisions` |
+| 消费   | 边两端 `dataType` 相同（单数与复数不互通） | `portsCompatible`                                                                           |
 
-新节点继续 `registerNodeType`。`execute` **必须**走已注入的 `generate*` 适配器，禁止在 execute 里直连 HTTP。
+新节点继续 `registerNodeType`。`execute` **必须**走已注入的 `generate*` 适配器，禁止在 execute 里直连 HTTP。内置的**决策判定**节点（`decisions.judge`）就是这条缝的消费者：上游文本进、`generateDecisions` 出带概率的判定；它只出**文本**口（`out` 人类可读摘要 / `out-all` 历史），完整结论（含各档概率）落在 `node.params.decisionVerdicts` 供 Inspector 与卡片读取 —— 与 `ui.split`（JSON 留自身 params）、`media.review`（PASS/FAIL 回标 `mediaReviewStatus` 供下游读）同属「结构化数据走节点参数」的惯例，不要为结构化结论额外开一条文本口。
 
 执行器可与类型定义分离：插件用 `ctx.editor.executor(typeId, fn)` 覆盖某 typeId 的实现，`fork.dispose()` 后回落到 `NodeTypeDefinition.execute`。引擎查找顺序：覆盖栈 → 类型定义 → `executePassthrough`。内置类型仍由 `ensureBuiltinNodeTypes()` 注册（主进程规范化 / 测试共用），不要把节点类型只挂在渲染进程 Cordis 上。
 

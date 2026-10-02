@@ -400,7 +400,7 @@
                 <td>读取宿主资产图结构（节点 id / 连线，graph_edit 前置）</td>
               </tr>
               <tr>
-                <td rowspan="3">生成</td>
+                <td rowspan="4">生成</td>
                 <td><code>generate_image</code></td>
                 <td>文生图 / 图生图，落盘为工程资产</td>
               </tr>
@@ -413,6 +413,13 @@
                 <td>文生 / 图生 3D，产出 GLB 资产</td>
               </tr>
               <tr>
+                <td><code>decide</code></td>
+                <td>
+                  用 OpenRouter 决策模型对给定状态做类型化判定（noul 是/否、choice 多选一、score
+                  有序打分），返回带概率、可直接分支的结论；三种原语可混用，判定不落盘
+                </td>
+              </tr>
+              <tr>
                 <td rowspan="4">编辑与查询</td>
                 <td><code>graph_edit</code></td>
                 <td>对宿主资产图应用节点 / 连线编辑操作批（端口兼容性在应用内校验）</td>
@@ -423,7 +430,7 @@
               </tr>
               <tr>
                 <td><code>models_list</code></td>
-                <td>已启用模型提供商与各模态勾选模型（不含密钥）</td>
+                <td>已启用模型提供商与各模态勾选模型（含 OpenRouter 的 <code>decisions</code> 决策模型；不含密钥）</td>
               </tr>
               <tr>
                 <td><code>video_job_list</code> / <code>video_job_get</code></td>
@@ -561,7 +568,8 @@
           <ul>
             <li>服务只监听 <code>127.0.0.1</code>，token 鉴权；文件读写被限制在工程根目录内（唯一例外是
               <code>asset_import</code>：按你给出的绝对路径读取工程外文件并复制进工程）；密钥信息不对外暴露。</li>
-            <li>并发闸门：<code>generate_image</code> / <code>generate_speech</code> / <code>workflow_plan</code>
+            <li>并发闸门：<code>generate_image</code> / <code>generate_speech</code> /
+              <code>decide</code> / <code>workflow_plan</code>
               同时最多 3 个（<code>AIAE_MCP_GEN_LIMIT</code> 可调），排队满直接报错，防止 Agent 失控消耗额度。</li>
             <li>操作审计：每次工具调用追加写
               <code>&lt;userData&gt;/logs/mcp-audit.jsonl</code>（参数截断、5MB 滚动），生成与写入可回查。</li>

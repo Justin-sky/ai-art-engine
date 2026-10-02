@@ -1,5 +1,7 @@
 import type {
   CatalogModel,
+  DecisionRequestInput,
+  DecisionResponse,
   GenerateImageInput,
   GenerateImageResult,
   GenerateModel3dInput,
@@ -154,6 +156,15 @@ export interface ModelProviderAdapter {
     modelId: string,
     input: GenerateSpeechInput
   ): Promise<GenerateSpeechResult>
+  /**
+   * 决策判定（OpenRouter Decisions API：noul / choice / score）。
+   * 可选：未实现时门面提示该提供商不支持决策模型。
+   */
+  generateDecisions?(
+    provider: ModelProviderInstance,
+    modelId: string,
+    input: DecisionRequestInput
+  ): Promise<DecisionResponse>
   /**
    * 音乐 / BGM 生成。可选：未实现时门面提示该提供商不支持。
    * 同步返回音频下载地址，由门面统一下载并登记资产。

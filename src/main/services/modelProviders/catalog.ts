@@ -111,6 +111,7 @@ export type ProviderAction =
   | 'connectionTest'
   | 'transcribe'
   | 'musicGenerate'
+  | 'decisionsGenerate'
 
 const ACTION_ZH: Record<ProviderAction, string> = {
   listModels: '拉取模型列表',
@@ -120,7 +121,8 @@ const ACTION_ZH: Record<ProviderAction, string> = {
   videoPolling: '轮询视频任务',
   connectionTest: '连接测试',
   transcribe: '音频转写',
-  musicGenerate: '音乐生成'
+  musicGenerate: '音乐生成',
+  decisionsGenerate: '决策判定'
 }
 const ACTION_EN: Record<ProviderAction, string> = {
   listModels: 'Listing models',
@@ -130,5 +132,6 @@ const ACTION_EN: Record<ProviderAction, string> = {
   videoPolling: 'Polling video task',
   connectionTest: 'Connection test',
   transcribe: 'Audio transcription',
-  musicGenerate: 'Music generation'
+  musicGenerate: 'Music generation',
+  decisionsGenerate: 'Decision request'
 }

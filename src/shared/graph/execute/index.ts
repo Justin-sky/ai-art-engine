@@ -50,6 +50,7 @@ export * from './host'
 export * from './generateMedia'
 export * from './generateModel3d'
 export * from './generateText'
+export * from './decisions'
 export * from './mediaReview'
 export * from './mediaRework'
 export {

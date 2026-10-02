@@ -131,6 +131,10 @@ export function buildModelOptions(
     if (modality === 'model3d' && !isModel3dProviderKind(provider.providerKind)) {
       continue
     }
+    // 决策：只有 OpenRouter 提供 Decisions API（其余供应商没有该端点）
+    if (modality === 'decisions' && provider.providerKind !== 'openrouter') {
+      continue
+    }
     const sel = modalityConfig(provider, modality)
     const models =
       sel.selectedModelIds.length > 0
@@ -175,7 +179,7 @@ export function preferredModelKey(providerInstanceId?: string, model?: string): 
   return modelKey(providerInstanceId, model)
 }
 
-export type GenerateModelModality = 'text' | 'image' | 'video' | 'audio' | 'model3d'
+export type GenerateModelModality = 'text' | 'image' | 'video' | 'audio' | 'model3d' | 'decisions'
 
 /** 打开编辑窗时会连打 getSettings；短缓存避免同一次打开多 Dialog 重复 IPC */
 let settingsCache: {
@@ -198,23 +202,71 @@ async function getSettingsCached(): Promise<Awaited<ReturnType<typeof window.stu
   return value
 }
 
+/** 可选项为空的成因：用于在选择器旁说明「为什么是空的」，而不是干瞪一个空下拉 */
+export type EmptyModelOptionsReason =
+  'noProvider' | 'providerDisabled' | 'missingApiKey' | 'noSelection' | 'unknown'
+
+/**
+ * 未产出任何选项时判定成因。
+ *
+ * `buildModelOptions` 会跳过「未启用 / 缺 Key / 该模态没勾模型」的提供商，
+ * 所以空列表有三种完全不同的解释；这里按最可操作的一条给出结论。
+ * 只考虑**支持该模态**的提供商（例如 decisions 仅 OpenRouter），
+ * 否则别的提供商的启用状态会把结论带偏。
+ */
+export function resolveEmptyModelOptionsReason(
+  providers: ModelProviderInstance[],
+  modality: ModelModality
+): EmptyModelOptionsReason {
+  const supports = (kind: ModelProviderKind): boolean => {
+    if (kind === 'openrouter') return true
+    if (kind === 'comfyui')
+      return modality === 'image' || modality === 'video' || modality === 'audio'
+    if (isVllmProvider(kind)) return modality === 'text' || modality === 'video'
+    if (isLocalOpenAiProvider(kind)) return modality === 'text'
+    if (isModel3dProviderKind(kind)) return modality === 'model3d'
+    if (kind === 'volcengine-ark' || kind === 'dashscope' || kind === 'minimax') {
+      return modality !== 'model3d' && modality !== 'decisions'
+    }
+    if (kind === 'kling') return modality === 'image' || modality === 'video'
+    if (kind === 'custom') return modality === 'text' || modality === 'image'
+    // 其余（openai / deepseek / moonshot / anthropic / zhipu / google / xai / modelscope …）：文本 + 部分图片
+    return modality === 'text' || modality === 'image'
+  }
+
+  const candidates = providers.filter((p) => supports(p.providerKind))
+  if (!candidates.length) return 'noProvider'
+  if (candidates.every((p) => !p.enabled)) return 'providerDisabled'
+  if (candidates.some((p) => !p.apiKey.trim() && !allowsEmptyApiKey(p))) return 'missingApiKey'
+  return 'noSelection'
+}
+
 export async function loadGenerateModelOptions(
   modality: GenerateModelModality,
   preferredKey?: string,
   currentKey?: string
-): Promise<{ options: GenerateModelOption[]; selectedKey: string }> {
+): Promise<{
+  options: GenerateModelOption[]
+  selectedKey: string
+  emptyReason: EmptyModelOptionsReason | null
+}> {
   try {
     const settings = await getSettingsCached()
     const providers = settings.models?.providers ?? []
     const options = buildModelOptions(providers, modality)
+    const done = (selectedKey: string) => ({
+      options,
+      selectedKey,
+      emptyReason: options.length ? null : resolveEmptyModelOptionsReason(providers, modality)
+    })
     if (preferredKey && options.some((o) => o.key === preferredKey)) {
-      return { options, selectedKey: preferredKey }
+      return done(preferredKey)
     }
     if (currentKey && options.some((o) => o.key === currentKey)) {
-      return { options, selectedKey: currentKey }
+      return done(currentKey)
     }
-    return { options, selectedKey: pickDefaultModelKey(providers, modality, options) }
+    return done(pickDefaultModelKey(providers, modality, options))
   } catch {
-    return { options: [], selectedKey: '' }
+    return { options: [], selectedKey: '', emptyReason: 'unknown' }
   }
 }

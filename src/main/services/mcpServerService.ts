@@ -135,11 +135,14 @@ import {
   type ObjectStorageProviderInstance
 } from '@shared/objectStorage'
 import {
+  type DecisionEvidenceItem,
+  type GenerateDecisionsInput,
   type GenerateImageInput,
   type GenerateModel3dInput,
   type GenerateVideoInput,
   type TranscribeAudioSegment
 } from '@shared/modelProvider'
+import { parseDecisionQuestions } from '@shared/decisionQuestion'
 import { modelProviderFacade } from './modelProviders'
 import {
   blenderAddonLink,
@@ -199,6 +202,7 @@ const GATED_TOOLS = new Set([
   'generate_image',
   'generate_speech',
   'generate_music',
+  'decide',
   'workflow_plan'
 ])
 
@@ -2403,7 +2407,7 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'models_list',
     title: '可用模型列表',
     description:
-      '列出应用设置中已启用的模型提供商与各模态（text/image/video/audio/model3d）勾选的模型。generate_* 工具的 model / providerInstanceId 参数从这里取。',
+      '列出应用设置中已启用的模型提供商与各模态（text/image/video/audio/model3d/decisions）勾选的模型。generate_* 工具的 model / providerInstanceId 参数从这里取；decisions 是 OpenRouter 决策模型（decide 工具用）。',
     inputSchema: { type: 'object', properties: {} },
     handler: () => ({
       providers: settingsService
@@ -2414,13 +2418,15 @@ const TOOL_DEFS: McpToolDef[] = [
           label: provider.label,
           providerKind: provider.providerKind,
           modalities: Object.fromEntries(
-            (['text', 'image', 'video', 'audio', 'model3d'] as const).map((modality) => [
-              modality,
-              {
-                selected: provider.modalities[modality]?.selectedModelIds ?? [],
-                default: provider.modalities[modality]?.defaultModelId ?? ''
-              }
-            ])
+            (['text', 'image', 'video', 'audio', 'model3d', 'decisions'] as const).map(
+              (modality) => [
+                modality,
+                {
+                  selected: provider.modalities[modality]?.selectedModelIds ?? [],
+                  default: provider.modalities[modality]?.defaultModelId ?? ''
+                }
+              ]
+            )
           )
         }))
     })
@@ -2444,6 +2450,100 @@ const TOOL_DEFS: McpToolDef[] = [
           ? null
           : '未配置可用的对象存储：图片参考会内联为 data URL（无需上传）；视频/3D 参考需先在设置 → 对象存储中配置 TOS/OSS/COS'
       }
+    }
+  },
+  {
+    name: 'decide',
+    title: '决策判定',
+    description:
+      '用 OpenRouter 决策模型（TypeSafe Jev / Liquid D1 等，不生成文本）对给定状态回答一组带概率的类型化问题，返回可直接分支的结论：noul 是/否概率、choice 选中项与置信度、score 加权位置。三种原语一次请求可混用；同一状态的多条问题并行作答、互不可见。判定不落盘、不进资产库，只回结果 —— agent 想要一次判定用本工具；只有需要把判定**留在图里**（可复跑 / 用户在画布上可视化）时才改走 graph_edit 建 decisions.judge 节点，那条要配 task_run **跑整张图**（可能重跑上游生图等昂贵节点），代价高得多。需先在设置里添加 OpenRouter 提供商并在「决策」页签勾选决策模型（models_list 查看）。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        questions: {
+          type: 'string',
+          description:
+            '问题清单，每行一条：`问题名 | 类型 | 问题 | 判定说明`。类型为 noul / choice / score。noul 的判定说明写「是的情形 / 否的情形」；choice 写选项（`;` 分隔，可用 `值:说明`）；score 写有序量表（低→高，`;` 分隔）。以 # 或 // 开头的行是注释。例：`is_bug | noul | 是缺陷吗？ | 描述了异常行为 / 只是在提问`、`team | choice | 哪个团队？ | payments:支付; frontend:前端`、`urgency | score | 多紧急？ | 可等; 本周修; 阻塞收入`'
+        },
+        state: {
+          type: 'string',
+          description: '待判定的状态文本（如工单正文 / 剧本片段）。与 assetId / assetIds 至少给一个'
+        },
+        assetId: {
+          type: 'string',
+          description: '把某份工程内文本资产作为 state（asset_list 查询）'
+        },
+        assetIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '把多份文本资产按顺序拼成 state，每条带来源标题'
+        },
+        noulYesThreshold: {
+          type: 'number',
+          description: 'noul 判「是」的概率阈值，缺省 0.5'
+        },
+        choiceMinConfidence: {
+          type: 'number',
+          description: 'choice 视为可信的最低置信度；低于该值时结论 confident=false'
+        },
+        scoreMin: { type: 'number', description: 'score 视为达标的最低分位' },
+        model: { type: 'string', description: '决策模型 id（models_list 的 decisions 模态）' },
+        providerInstanceId: { type: 'string', description: '提供商实例 id（models_list 查询）' }
+      },
+      required: ['questions']
+    },
+    handler: async (args) => {
+      const questions = parseDecisionQuestions(readString(args, 'questions'))
+      if (!questions.length) {
+        throw new Error(
+          '未解析出任何问题：每行格式为「问题名 | noul|choice|score | 问题 | 判定说明」'
+        )
+      }
+
+      // 只给 state 时不要求打开工程（判定本身不落盘）；读资产才需要工程
+      const inlineState = optionalString(args, 'state')
+      const wantsAssets =
+        Boolean(optionalString(args, 'assetId')) || readStringList(args, 'assetIds').length > 0
+      if (wantsAssets) assertProjectOpen()
+      const evidence = wantsAssets ? await readDecisionEvidence(args) : []
+      if (!evidence.length && !inlineState) {
+        throw new Error('请给出 state 或 assetId / assetIds（要判定的内容）')
+      }
+
+      const thresholds = {
+        noulYes: optionalNumber(args, 'noulYesThreshold'),
+        choiceMinConfidence: optionalNumber(args, 'choiceMinConfidence'),
+        scoreMin: optionalNumber(args, 'scoreMin')
+      }
+      const model = optionalString(args, 'model')
+      const input: GenerateDecisionsInput = {
+        ...(inlineState ? { state: inlineState } : {}),
+        ...(evidence.length ? { evidence } : {}),
+        questions,
+        ...(Object.values(thresholds).some((value) => value != null) ? { thresholds } : {}),
+        model,
+        providerInstanceId: optionalString(args, 'providerInstanceId')
+      }
+
+      return runGenActivity(
+        'decide',
+        questions.map((q) => q.key).join(', '),
+        model,
+        () => modelProviderFacade.generateDecisions(input),
+        () => ({}),
+        undefined,
+        (r) => ({
+          kind: 'generateDecisions',
+          nodeId: 'mcp',
+          request: {
+            questions: questions.map((q) => ({ key: q.key, type: q.type })),
+            model: r.model,
+            thresholds
+          },
+          // response 字段是定形摘要（text/model/...）：判定结论拼成一行摘要便于日志阅读
+          response: { model: r.model, text: r.summary, ok: true }
+        })
+      )
     }
   },
   {
@@ -2724,6 +2824,48 @@ function readStringList(args: Record<string, unknown>, key: string): string[] {
         .map((item) => item.trim())
     )
   ]
+}
+
+/** 读取可选数字参数；非有限数值返回 undefined */
+function optionalNumber(args: Record<string, unknown>, key: string): number | undefined {
+  const value = args[key]
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim() && Number.isFinite(Number(value))) {
+    return Number(value)
+  }
+  return undefined
+}
+
+/**
+ * decide 工具的证据来源：把工程内文本资产读成 state。
+ * 单份（assetId）与多份（assetIds）合并；先 assetId，再 assetIds 的顺序，
+ * 每条带资产名与相对路径，便于决策模型引用来源。读不到正文的资产直接跳过。
+ */
+async function readDecisionEvidence(
+  args: Record<string, unknown>
+): Promise<DecisionEvidenceItem[]> {
+  const ids = [optionalString(args, 'assetId')?.trim(), ...readStringList(args, 'assetIds')].filter(
+    (id): id is string => Boolean(id)
+  )
+  if (!ids.length) return []
+
+  const evidence: DecisionEvidenceItem[] = []
+  const seen = new Set<string>()
+  for (const assetId of ids) {
+    if (seen.has(assetId)) continue
+    seen.add(assetId)
+    const asset = findAssetOrThrow(assetId)
+    const relativePath = asset.relativePath?.trim()
+    if (!relativePath) continue
+    const content = await projectService.readProjectFile(relativePath)
+    if (!content?.trim()) continue
+    evidence.push({
+      title: asset.name?.trim() || asset.id,
+      path: relativePath,
+      text: content
+    })
+  }
+  return evidence
 }
 
 /**

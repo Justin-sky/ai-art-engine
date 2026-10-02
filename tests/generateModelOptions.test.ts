@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildModelOptions,
-  pickDefaultModelKey
+  pickDefaultModelKey,
+  resolveEmptyModelOptionsReason
 } from '../src/renderer/src/features/graph/model/generateModelOptions'
 import { createEmptyModalityMap, type ModelProviderInstance } from '../src/shared/modelProvider'
-
 function baseProvider(
   overrides: Partial<ModelProviderInstance> & Pick<ModelProviderInstance, 'id' | 'providerKind'>
 ): ModelProviderInstance {
@@ -102,5 +102,66 @@ describe('buildModelOptions', () => {
       'MiniMax-Hailuo-2.3'
     ])
     expect(buildModelOptions(providers, 'audio').map((o) => o.model)).toEqual(['voice-design'])
+  })
+})
+
+/**
+ * 空列表成因：决策模型下拉为空时，界面上要能说清是「没添加提供商 / 提供商停用 /
+ * 缺 Key / 该模态没勾模型」中的哪一种 —— 这四种都表现为「列表是空的」，
+ * 实际踩过的坑是 OpenRouter 卡片处于「停用」状态，选择器只是静默为空。
+ */
+describe('resolveEmptyModelOptionsReason', () => {
+  function decisionsProvider(
+    overrides: Partial<ModelProviderInstance> = {}
+  ): ModelProviderInstance {
+    const modalities = createEmptyModalityMap()
+    modalities.decisions.selectedModelIds = ['typesafe/jev-1.13']
+    modalities.decisions.defaultModelId = 'typesafe/jev-1.13'
+    return baseProvider({ id: 'or1', providerKind: 'openrouter', modalities, ...overrides })
+  }
+
+  it('reports noProvider when nothing is configured', () => {
+    expect(resolveEmptyModelOptionsReason([], 'decisions')).toBe('noProvider')
+  })
+
+  it('reports providerDisabled when the OpenRouter card is switched off', () => {
+    // 就是这个场景：决策模型已勾选，但提供商停用 → 选择器为空
+    const providers = [decisionsProvider({ enabled: false })]
+    expect(buildModelOptions(providers, 'decisions')).toEqual([])
+    expect(resolveEmptyModelOptionsReason(providers, 'decisions')).toBe('providerDisabled')
+  })
+
+  it('reports missingApiKey when the key is cleared', () => {
+    const providers = [decisionsProvider({ apiKey: '' })]
+    expect(resolveEmptyModelOptionsReason(providers, 'decisions')).toBe('missingApiKey')
+  })
+
+  it('reports noSelection when the provider is ready but nothing is ticked', () => {
+    const modalities = createEmptyModalityMap()
+    const providers = [
+      baseProvider({ id: 'or2', providerKind: 'openrouter', modalities, apiKey: 'sk-or-v1-x' })
+    ]
+    expect(resolveEmptyModelOptionsReason(providers, 'decisions')).toBe('noSelection')
+  })
+
+  it('reports noProvider for modalities no configured provider can serve', () => {
+    // 只有一家 OpenAI（不支持 decisions）→ 对 decisions 而言等于没提供商
+    const providers = [baseProvider({ id: 'oa', providerKind: 'openai', apiKey: 'sk-x' })]
+    expect(resolveEmptyModelOptionsReason(providers, 'decisions')).toBe('noProvider')
+  })
+
+  it('does not blame an unrelated provider that merely lacks a key', () => {
+    // OpenRouter 本身就绪（只是没勾模型），另一家 DeepSeek 没 Key 不该影响结论
+    const modalities = createEmptyModalityMap()
+    const providers = [
+      baseProvider({
+        id: 'or3',
+        providerKind: 'openrouter',
+        apiKey: 'sk-or-v1-x',
+        modalities
+      }),
+      baseProvider({ id: 'ds', providerKind: 'deepseek', apiKey: '' })
+    ]
+    expect(resolveEmptyModelOptionsReason(providers, 'decisions')).toBe('noSelection')
   })
 })

@@ -242,7 +242,7 @@ save_project_asset（用户点「保存到资产库」）   入 Assets/<folder>/
 | `task_run`              | 运行已落盘的工作流（整图拓扑序执行，输出写回资产），返回 `mcpTaskId`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | 已打开工程 + 应用界面运行          |
 | `task_status`           | 按 `mcpTaskId` 查运行状态（running / done / error / stopped）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | 应用运行中                         |
 
-### ③ 内容生成（图片 / 视频 / 3D / 语音 / 音乐）
+### ③ 内容生成（图片 / 视频 / 3D / 语音 / 音乐 / 决策）
 
 | 工具                               | 作用                                                                                                                              | 前置条件                                |
 | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
@@ -251,7 +251,20 @@ save_project_asset（用户点「保存到资产库」）   入 Assets/<folder>/
 | `generate_model3d`                 | 文生 3D / 图生 3D，产出几何 GLB 落 `Cache/Models`（异步；不自动进资产库）；**不含蒙皮等加工**——请用图节点（见下）                 | 已打开工程 + 3D 模型                    |
 | `generate_speech`                  | 台词转 MP3，落盘 `Cache/Voices`（不自动进资产库）                                                                                 | 已打开工程 + 音频模型                   |
 | `generate_music`                   | 按情绪 / 场景描述生成 BGM 并落盘 `Cache/Music`（同步；不自动进资产库），返回 `relativePath` / `durationMs`，可铺到时间线 music 轨 | 已打开工程 + 音乐模型（如 `music-3.0`） |
+| `decide`                           | 用 OpenRouter 决策模型对给定状态做类型化判定（noul / choice / score），返回带概率、可直接分支的结论；不落盘、不写资产             | 已打开工程 + OpenRouter 决策模型        |
 | `video_job_list` / `video_job_get` | 查询异步视频生成任务的状态                                                                                                        | 应用运行中                              |
+
+`decide` 的入参：多行 `questions`（每行 `问题名 | noul|choice|score | 问题 | 判定说明`，`#` / `//` 开头的行是注释；choice 的选项与 score 的有序量表用 `;` 分隔，可写 `值:说明`）+ `state` 或 `assetId` / `assetIds`（把工程内文本资产按顺序拼成待判定的状态），可选阈值 `noulYesThreshold` / `choiceMinConfidence` / `scoreMin`、`model`、`providerInstanceId`；返回每条问题的答案与可直接分支的结论（noul → 是概率、choice → 选中项 + 置信度、score → 加权分位 + 各档概率），**不写资产**。属生成类工具（Ask 不返回，Plan 在用户确认计划前不返回）。
+
+**与图节点「决策判定」（`decisions.judge`）的分工**：两者调同一个决策模型，但代价差一个数量级 ——
+
+|            | `decide` 工具                                    | `decisions.judge` 节点                                                                                                                     |
+| ---------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| 何时用     | Agent 现在就要一个判定（自己决策 / 把关 / 分类） | 把判定**留在图里**：可复跑、用户在画布与 Inspector 上看得到概率条                                                                          |
+| 代价       | 一次调用                                         | `graph_edit` 建节点 + 连线，再 `task_run` **跑整张图**（可能连带重跑上游生图等昂贵节点；已完成节点走缓存，但没有「只跑这一个节点」的入口） |
+| 结果怎么回 | 直接回给 Agent                                   | `graph_read({ includeParams: true })` 读 `node.params.decisionVerdicts`，或用户自己看 Inspector                                            |
+
+Agent 两条路都够得着：`decisions.judge` 随 `graph_node_types` 自动可见（与 `graph_edit` 同一白名单），其 `description` 里也写了这条分工。
 
 ### ④ 可玩 HTML（一句话小游戏，程序化资产生成）
 
@@ -282,10 +295,10 @@ gameplay_job_status({ jobId })                →  { status: "done", buildHtmlRe
 
 ### ⑤ 环境查询
 
-| 工具          | 作用                                                   | 前置条件   |
-| ------------- | ------------------------------------------------------ | ---------- |
-| `app_status`  | 版本、当前工程、资产数量                               | 应用运行中 |
-| `models_list` | 已启用的模型提供商与各模态勾选模型（**不含任何密钥**） | 无         |
+| 工具          | 作用                                                                                                       | 前置条件   |
+| ------------- | ---------------------------------------------------------------------------------------------------------- | ---------- |
+| `app_status`  | 版本、当前工程、资产数量                                                                                   | 应用运行中 |
+| `models_list` | 已启用的模型提供商与各模态勾选模型（含 OpenRouter 的 `decisions` 决策模型，`decide` 用；**不含任何密钥**） | 无         |
 
 ### ⑥ Blender 工具集（可选，需要本机 Blender）
 
@@ -388,7 +401,7 @@ claude mcp add --transport http blender http://127.0.0.1:43110/mcp/blender --hea
   `model.meshComplete` / `model.retopology` / `model.texture` / `model.convert`，供应商在卡片里选，能力按供应商
   矩阵过滤），由用户在画布上编排；外部 Agent 可用 `graph_edit` 增删这些节点与连线。上游是否支持某项加工与
   3D 模型提供商一致，可用 `models_list` 查已启用的 3D 提供商。
-- **并发闸门**：`generate_image` / `generate_speech` / `generate_music` / `workflow_plan` 同时最多 3 个（可用环境变量 `AIAE_MCP_GEN_LIMIT` 调整），排队超限直接返回错误；`generate_video` / `generate_model3d` 提交即返回，不受闸门限制。
+- **并发闸门**：`generate_image` / `generate_speech` / `generate_music` / `decide` / `workflow_plan` 同时最多 3 个（可用环境变量 `AIAE_MCP_GEN_LIMIT` 调整），排队超限直接返回错误；`generate_video` / `generate_model3d` 提交即返回，不受闸门限制。
 - **取消粒度**：客户端断开连接，或发送 `notifications/cancelled`，会中止进行中的长任务（如 `workflow_plan` 在两次模型调用之间）；单次模型调用内部不可中断。
 - **状态报告有 TTL**：`task_status` 的成功/失败终态保留 10 分钟后自动清理，过期查询返回「未知任务 id」。
 - **环境变量覆盖**：`AIAE_MCP_CONFIG` 指定应用侧 mcp.json 路径；`AIAE_MCP_PORT` + `AIAE_MCP_TOKEN` 直接指定端口与 token（优先于文件）。

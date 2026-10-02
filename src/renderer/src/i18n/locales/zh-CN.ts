@@ -552,6 +552,8 @@ export default {
       manualSpeakerAdd: '添加并勾选',
       emptyCatalog: '目录为空。可手动填写模型 ID，或检查提供商与 API Key。',
       emptyRemoteKeepPrevious: '远端返回空列表，已保留上次拉取结果。可稍后重试。',
+      providerDisabledNotice:
+        '该提供商当前处于「停用」状态：这里仍可拉取并勾选模型，但节点里的生成模型下拉会跳过停用的提供商（勾选后仍显示为空）。请在卡片标题栏勾上「启用」。',
       filterNoMatch: '没有匹配的模型，请清空筛选后再试。',
       clearFilter: '清空筛选',
       emptySpeakers: '尚未添加声音。请手填控制台购买的 speaker_id 并勾选。',
@@ -566,7 +568,8 @@ export default {
         image: '图片',
         video: '视频',
         audio: '声音',
-        model3d: '3D 模型'
+        model3d: '3D 模型',
+        decisions: '决策'
       },
       modalityHint: {
         text: '用于剧本与对话生成，对应 OpenRouter /api/v1/models。',
@@ -574,7 +577,9 @@ export default {
         video: '用于分镜视频生成，对应 /api/v1/videos/models。',
         audio:
           '用于 TTS 语音合成，对应 /api/v1/models?output_modalities=speech 与 /api/v1/audio/speech。',
-        model3d: '用于 3D 模型生成，从文本和/或参考图生成 GLB 模型。'
+        model3d: '用于 3D 模型生成，从文本和/或参考图生成 GLB 模型。',
+        decisions:
+          '决策模型（TypeSafe Jev、Liquid D1 等）不生成文本，而是对问题返回带概率的类型化判定（noul 是/否、choice 多选一、score 有序打分），对应 /api/v1/models?output_modalities=decisions 与 POST /api/alpha/decisions（注意不在 /v1 下）。勾选后可在决策节点里按阈值直接分支。'
       },
       arkModalityHint: {
         text: '火山方舟对话模型（豆包等），Base URL 默认 https://ark.cn-beijing.volces.com/api/v3，对应 /chat/completions。',
@@ -2676,6 +2681,7 @@ export default {
         generate_speech: '语音',
         generate_music: '音乐',
         generate_model3d: '3D 模型',
+        decide: '决策判定',
         graph_icon_refine: '图标精修',
         task_run: '工作流',
         asset_import: '素材导入',
@@ -2701,6 +2707,7 @@ export default {
       startToNode: '开始执行至节点 {name}',
       startNodeOnly: '开始执行节点 {name}',
       submitText: '提交文本生成…',
+      submitDecisions: '提交决策判定…',
       submitImage: '提交图片生成…',
       submitVideo: '提交视频生成…',
       submitSpeech: '提交语音生成…',
@@ -3727,6 +3734,10 @@ export default {
       hostNoGraph: '宿主资产没有可执行的内图',
       hostEnqueueFailed: '宿主内图未能加入任务列表',
       noInput: '请填写生成指令，或连接上游输入',
+      decisionsNoQuestions:
+        '请先填写判定问题（每行：问题名 | noul/choice/score | 问题 | 判定说明）',
+      decisionsUnavailable:
+        '决策判定未接通模型（画布运行时不可用）：请刷新界面后重试；若仍报错，说明该运行入口没有接上决策能力缝',
       lipSyncNoVisual: '请先连接角色图片或参考视频',
       lipSyncNoAudio: '请先连接声音（语音）输入',
       noMask: '请先在重绘编辑器中涂抹蒙版',
@@ -3864,6 +3875,9 @@ export default {
       prompt: {
         optimize: '提示词优化'
       },
+      decisions: {
+        judge: '决策判定'
+      },
       text: {
         select: '选择文本'
       },
@@ -3990,6 +4004,71 @@ export default {
       assetRef: '引用素材',
       assetHost: '宿主资产',
       unselected: '未选择',
+      decisions: {
+        hint: '用 OpenRouter 决策模型对上游文本 / 上下文做类型化判定（noul 是/否、choice 多选一、score 有序打分），结论摘要作为文本输出往下游传。',
+        questions: '判定问题',
+        questionsPlaceholder:
+          '每行一条：问题名 | 类型(noul/choice/score) | 问题 | 判定说明\nis_ok | noul | 方案成立吗？ | 满足设定 / 存在漏洞\nteam | choice | 谁负责？ | a:甲; b:乙\nquality | score | 质量如何？ | 需返工; 可用; 直接用',
+        questionsHint:
+          '以 # 或 // 开头的行是注释。noul 的判定说明写成「是的情形 / 否的情形」；choice 用 `;` 分隔选项，可写 `值:说明`；score 用 `;` 分隔有序量表（低→高）。',
+        noulThreshold: 'noul 判是阈值',
+        choiceConfidence: 'choice 最低置信度',
+        scoreMin: 'score 最低分位',
+        model: '决策模型',
+        noModel: '未选择决策模型',
+        modelHint:
+          '请先在设置 → OpenRouter → 「决策」页签拉取并勾选决策模型（如 typesafe/jev-1.13）',
+        modelEmpty: {
+          noProvider:
+            '还没有添加 OpenRouter 提供商：请到设置 → 模型 → 添加提供商，选择 OpenRouter 并填入 API Key。',
+          providerDisabled:
+            'OpenRouter 提供商当前处于「停用」状态：在设置里勾上该卡片标题栏的「启用」，决策模型才会出现在这里。',
+          missingApiKey: 'OpenRouter 提供商缺少 API Key：请在设置里填入以 sk-or-v1- 开头的密钥。',
+          noSelection:
+            '该提供商还没有勾选任何决策模型：请到设置 → OpenRouter → 「决策」页签点「拉取可用模型」并勾选。'
+        },
+        lastVerdicts: '上次判定结论',
+        servedBy: '实际服务模型：{model}',
+        yes: '是',
+        no: '否',
+        /** 判定问题编辑器（表单 + 文本两种模式） */
+        editor: {
+          formMode: '表单',
+          textMode: '文本',
+          failedLines: '第 {lines} 行没读懂，已跳过（切到「文本」可修）',
+          empty: '还没有问题。下面按类型加一条即可，不需要记分隔符。',
+          type: '判定类型',
+          typeNoul: '是/否（noul）',
+          typeChoice: '多选一（choice）',
+          typeScore: '有序打分（score）',
+          key: '问题名',
+          keyPlaceholder: '问题名',
+          question: '问题',
+          questionPlaceholder: '要判定的问题（如：这个方案成立吗？）',
+          yesWhen: '判「是」的情形',
+          noWhen: '判「否」的情形',
+          yesPlaceholder: '例如：满足设定与逻辑',
+          noPlaceholder: '例如：存在明显漏洞',
+          optionValue: '选项值',
+          optionDescription: '选项说明',
+          addOption: '加一个选项',
+          levelLabel: '档位',
+          levelDescription: '档位说明',
+          addLevel: '加一个档位',
+          levelOrderHint: '按从低到高排列，序号即结果里的档位（第 1 项 = 0）。',
+          addNoul: '加一条是/否',
+          addChoice: '加一条多选一',
+          addScore: '加一条打分',
+          moveUp: '上移',
+          moveDown: '下移',
+          remove: '删除',
+          droppedCount: '{n} 条问题不会发出（缺问题名或选项），点「预览最终提示词」查看',
+          questionsPlaceholder:
+            '问题名 | noul/choice/score | 问题 | 判定说明\nis_ok | noul | 这个方案成立吗？ | 满足设定与逻辑 / 存在明显漏洞\npick | choice | 选哪个方案？ | a:方案A; b:方案B\nquality | score | 质量如何？ | 需要返工; 基本可用; 可直接用',
+          textHint:
+            '每行一条：问题名 | 类型 | 问题 | 判定说明。noul 的说明写「是 / 否」，choice 与 score 用 `;` 分隔多项；以 # 或 // 开头是注释。'
+        }
+      },
       assetTaken: '（已被其他节点使用）',
       displayName: '显示名称',
       weight: '参考强度',

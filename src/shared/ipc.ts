@@ -12,6 +12,8 @@ import type {
 import type { McpToolCallOutcome } from './mcpProtocol'
 import type {
   CatalogModel,
+  GenerateDecisionsInput,
+  GenerateDecisionsResult,
   GenerateImageInput,
   GenerateImageResult,
   GenerateMusicAssetResult,
@@ -111,6 +113,8 @@ export const IpcChannels = {
 
   // Generation
   GEN_TEXT: 'gen:text',
+  /** OpenRouter Decisions API：noul / choice / score 结构化判定 */
+  GEN_DECISIONS: 'gen:decisions',
   GEN_IMAGE: 'gen:image',
   GEN_VIDEO: 'gen:video',
   GEN_SPEECH: 'gen:speech',
@@ -531,6 +535,8 @@ export type McpActivityTool =
   | 'generate_speech'
   | 'generate_music'
   | 'generate_model3d'
+  /** OpenRouter 决策模型：noul / choice / score 结构化判定 */
+  | 'decide'
   | 'graph_icon_refine'
   | 'task_run'
   | 'asset_import'
@@ -1236,6 +1242,8 @@ export interface StudioApi {
   moveFolder: (input: MoveFolderInput) => Promise<AssetFolder>
 
   generateText: (input: GenerateTextInput) => Promise<GenerateTextResult>
+  /** 决策判定：OpenRouter Decisions API（noul / choice / score），返回答案与可直接分支的结论 */
+  generateDecisions: (input: GenerateDecisionsInput) => Promise<GenerateDecisionsResult>
   generateImage: (input: GenerateImageInput) => Promise<GenerateImageResult & { assetId?: string }>
   generateVideo: (input: GenerateVideoInput & { name?: string }) => Promise<GenerateVideoResult>
   generateSpeech: (input: GenerateSpeechInput) => Promise<GenerateSpeechResult>

@@ -381,6 +381,12 @@
       </template>
     </div>
 
+    <DecisionsQuestionsPanel
+      v-if="instructionOpen && node.typeId === 'decisions.judge' && hostId"
+      :node="node"
+      :host-id="hostId"
+    />
+
     <div
       v-if="instructionOpen && instructionKind && hostId"
       class="instruction-panel"
@@ -532,6 +538,7 @@ import LockIcon from './icons/LockIcon.vue'
 import WorkspaceItemIcon from './WorkspaceItemIcon.vue'
 import GraphInstructionMentionEditor from './GraphInstructionMentionEditor.vue'
 import GraphInstructionEditorDialog from './GraphInstructionEditorDialog.vue'
+import DecisionsQuestionsPanel from './DecisionsQuestionsPanel.vue'
 import InstructionModelSelect from './InstructionModelSelect.vue'
 import Model3dStyleSelect from './Model3dStyleSelect.vue'
 import Model3dRigControls from './Model3dRigControls.vue'
@@ -1695,6 +1702,10 @@ const previewOpenHint = computed(() => {
   if (props.node.typeId === 'media.review' || props.node.typeId === 'media.rework') {
     return t('graph.generateNode.instructionHint')
   }
+  // 决策判定：双击开的是「判定问题」面板，不是正文记事本（与双击分发同顺序）
+  if (props.node.typeId === 'decisions.judge') {
+    return t('graph.generateNode.instructionHint')
+  }
   if (props.node.typeId === 'comic.page') {
     return t('graph.inspector.comicPage.cardHint')
   }
@@ -2367,6 +2378,13 @@ function onPreviewDblClick(): void {
     // 2D帧动画 / SVG 烘焙：双击播放/暂停烘焙帧，勿走 note 分类的记事本
     if (isCardAnimNode.value) {
       await toggleCardAnimPreview()
+      return
+    }
+
+    // 决策判定：双击展开/收起「判定问题」面板（问题清单 + 决策模型），
+    // 不能落到下面的记事本分支——那是只读预览，编辑不了问题
+    if (props.node.typeId === 'decisions.judge') {
+      instructionOpen.value = !instructionOpen.value
       return
     }
 

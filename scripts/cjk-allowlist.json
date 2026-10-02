@@ -467,7 +467,12 @@
       "defaultTitle: '3D 动画',",
       "label: '可玩 HTML',",
       "label: '可玩 HTML 生成',",
-      "defaultTitle: '可玩 HTML 生成',"
+      "defaultTitle: '可玩 HTML 生成',",
+      "'决策判定：用 OpenRouter 决策模型（TypeSafe Jev / Liquid D1 等）对上游文本或上下文回答一组带概率的类型化问题（noul 是/否、choice 多选一、score 有序打分），结论摘要落成文本产物。本节点用于把判定**留在图里**（可复跑、用户可在画布上看到概率条）；只需一次性结论的 Agent 请改用 decide 工具（MCP，不落盘、不必跑整张图）。需先在设置里添加 OpenRouter 提供商并在「决策」页签勾选决策模型。',",
+      "'# 每行一条：问题名 | 类型(noul/choice/score) | 问题 | 判定说明',",
+      "'is_ok | noul | 这个方案成立吗？ | 满足设定与逻辑 / 存在明显漏洞',",
+      "'pick | choice | 选哪个方案？ | a:方案A; b:方案B; c:方案C',",
+      "'quality | score | 质量如何？ | 需要返工; 基本可用; 可直接用'"
     ],
     "src/shared/graph/create.ts": ["gameSystem: '策划案生成',", "gamePlay: '可玩 HTML',"],
     "src/shared/graph/episodeBoardParse.ts": [
@@ -490,6 +495,9 @@
       "const BEAT_ROW_RE = /^\\|\\s*#?\\s*(\\d+)\\s*\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|\\s*(是|否|YES|NO)\\s*\\|/i"
     ],
     "src/shared/graph/execute/context.ts": ["return { system: '系统提示词', user: '用户提示词' }"],
+    "src/shared/graph/execute/decisions.ts": [
+      "const head = ctx.locale?.startsWith('en') ? 'Decisions' : '决策判定'"
+    ],
     "src/shared/graph/execute/generateMedia.ts": [
       "userPrompt = `${userPrompt.trim()}\\n\\n【导演上次 FAIL 原因，必须针对性地修改】${failReason}`"
     ],

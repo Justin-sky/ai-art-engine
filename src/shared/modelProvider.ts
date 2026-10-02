@@ -269,14 +269,16 @@ export function modelProviderCredentialsUrl(kind: ModelProviderKind): string {
   )
 }
 
-export type ModelModality = 'text' | 'image' | 'video' | 'audio' | 'model3d'
+export type ModelModality = 'text' | 'image' | 'video' | 'audio' | 'model3d' | 'decisions'
 
 export const MODEL_MODALITIES: readonly ModelModality[] = [
   'text',
   'image',
   'video',
   'audio',
-  'model3d'
+  'model3d',
+  /** OpenRouter Decisions API（TypeSafe Jev 等）：输出结构化判定而非文本 */
+  'decisions'
 ] as const
 
 /** 拉取目录时缓存的模型元数据（随设置持久化，供生成参数 UI 离线使用） */
@@ -573,7 +575,8 @@ export function createEmptyModalityMap(): ProviderModalityMap {
     image: createEmptyModalityConfig(),
     video: createEmptyModalityConfig(),
     audio: createEmptyModalityConfig(),
-    model3d: createEmptyModalityConfig()
+    model3d: createEmptyModalityConfig(),
+    decisions: createEmptyModalityConfig()
   }
 }
 
@@ -948,6 +951,184 @@ export interface GenerateVideoJob {
   pollingUrl: string
   status: string
   model: string
+}
+
+// ── 决策（OpenRouter Decisions API）────────────────────────
+
+/** OpenRouter Decisions 端点路径（挂在 `https://openrouter.ai/api` 下，注意不在 /v1 下） */
+export const OPENROUTER_DECISIONS_PATH = '/alpha/decisions'
+
+/**
+ * Decisions 端点的实际 URL。
+ *
+ * 协议文档给出的端点是 `https://openrouter.ai/api/alpha/decisions`——**不在 `/v1` 下**，
+ * 而本应用 OpenRouter 的 Base URL 默认是 `https://openrouter.ai/api/v1`（`/models`、`/videos`
+ * 都挂在 v1 下）。实测 `POST /api/v1/alpha/decisions` 返回 404，`/api/alpha/decisions` 返回 401
+ * （缺鉴权），所以这里去掉末尾的 `/v1` 再拼 `/alpha/decisions`：
+ * - `https://openrouter.ai/api/v1` → `https://openrouter.ai/api/alpha/decisions`
+ * - `https://openrouter.ai/api`    → `https://openrouter.ai/api/alpha/decisions`
+ * - 非 openrouter.ai 的 OpenAI 兼容中转站：保留用户填的 Base URL 原样拼接，
+ *   由中转站自己决定 alpha 路由挂在哪里。
+ */
+export function resolveOpenRouterDecisionsUrl(baseUrl: string): string {
+  const base = (baseUrl || OPENROUTER_DEFAULT_BASE_URL).trim().replace(/\/+$/, '')
+  const root = isOpenRouterHost(base) ? base.replace(/\/v1$/i, '') : base
+  return `${root}${OPENROUTER_DECISIONS_PATH}`
+}
+
+function isOpenRouterHost(url: string): boolean {
+  try {
+    return /(^|\.)openrouter\.ai$/i.test(new URL(url).hostname)
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 决策证据条目：随请求一等下发（`state`），顺序即拼接顺序。
+ * 用于把工程上下文按来源稳定喂给决策模型——文档建议 state 只放相关片段。
+ */
+export interface DecisionEvidenceItem {
+  /** 证据来源（文件名 / 资产名），仅用于拼接出的标题行 */
+  title?: string
+  /** 来源的工程内相对路径 */
+  path: string
+  /** 证据正文 */
+  text: string
+}
+
+/** 决策原语：noul=是/否概率；choice=多选一；score=有序量表 */
+export type DecisionQuestionType = 'noul' | 'choice' | 'score'
+
+/** 判定阈值：>= 视为“是”（noul 默认 0.5，choice 默认取最高概率项） */
+export interface DecisionThresholds {
+  noulYes?: number
+  choiceMinConfidence?: number
+  scoreMin?: number
+}
+
+/** 一条待判定问题（以问题名为 key 下发） */
+export interface DecisionQuestionInput {
+  /** 问题名：响应 answers 以此为 key，判定结果与它一一对应 */
+  key: string
+  type: DecisionQuestionType
+  instructions: string
+  /** noul：true/false 两种情形的判定说明（完整下发，不能省） */
+  noulCriteria?: { yes: string; no: string }
+  /** choice：选项名 → 选项说明；结果与 probabilities 的 key 一致 */
+  choices?: Array<{ value: string; description?: string }>
+  /** score：有序量表，index 0 = 最低档；响应 legend 同序 */
+  scale?: Array<{ label: string; description?: string }>
+}
+
+/** 组装好的单条问题（OpenRouter 请求体里 questions 的元素形状） */
+export type DecisionQuestionBody =
+  | { type: 'noul'; instructions: string; criteria: { true: string; false: string } }
+  | { type: 'choice'; instructions: string; criteria: Record<string, string> }
+  | { type: 'score'; instructions: string; criteria: string[] }
+
+export interface DecisionRequestInput {
+  /** 待判定内容：字符串，或对象 / 数组形式的相关上下文 */
+  state: string | Record<string, unknown> | unknown[]
+  /** 问题名 → 问题定义（响应 answers 以同一批 key 返回） */
+  questions: Record<string, DecisionQuestionBody>
+  /** 观测分组 id（响应不返回；仅上游日志用），≤256 字符 */
+  sessionId?: string
+  /** 终端用户标识，≤256 字符 */
+  user?: string
+}
+
+/** 归一化后的判定答案：三种原语共用一张结构，字段按 type 取值 */
+export interface DecisionAnswer {
+  question: string
+  type: DecisionQuestionType
+  /** noul：判“是”的概率（0–1） */
+  noul?: number
+  /** choice：选中的选项名（probabilities 中概率最高者，上游未给 choice 时本地兜底） */
+  choice?: string
+  /** score：概率加权位置（index 0 = 量表最低档） */
+  score?: number
+  /** choice / score：分布集中度 */
+  confidence?: number
+  /** 各项 / 各档概率；score 的 key 是档位序号的字符串 */
+  probabilities?: Record<string, number>
+  /** score：档位序号 → 量表标签 */
+  legend?: Record<string, string>
+}
+
+export interface DecisionResponse {
+  /** 上游生成 id，便于对账 */
+  id?: string
+  /** 实际服务的模型（常为带日期快照，如 typesafe/jev-1.13-20260917） */
+  model: string
+  provider?: string
+  answers: DecisionAnswer[]
+  usage?: { inputTokens: number; outputTokens: number; cost?: number }
+}
+
+/** noul 判定结论 */
+export interface NoulDecisionVerdict {
+  type: 'noul'
+  question: string
+  /** 判“是”的概率（0–1） */
+  probability: number
+  /** probability >= 阈值 */
+  verdict: boolean
+  threshold: number
+}
+
+/** choice 判定结论 */
+export interface ChoiceDecisionVerdict {
+  type: 'choice'
+  question: string
+  /** 选中的选项名（与概率最高项一致；上游未给 choice 时本地兜底） */
+  choice: string
+  confidence: number
+  /** confidence >= choiceMinConfidence（未设阈值时恒 true） */
+  confident: boolean
+  probabilities: Record<string, number>
+  threshold?: number
+}
+
+/** score 判定结论 */
+export interface ScoreDecisionVerdict {
+  type: 'score'
+  question: string
+  /** 概率加权位置，index 0 = 量表最低档 */
+  score: number
+  confidence?: number
+  /** score >= scoreMin（未设阈值时恒 true） */
+  aboveThreshold: boolean
+  probabilities: Record<string, number>
+  legend: Record<string, string>
+  threshold?: number
+}
+
+export type DecisionVerdict = NoulDecisionVerdict | ChoiceDecisionVerdict | ScoreDecisionVerdict
+
+export interface GenerateDecisionsInput {
+  /** 待判定状态；与 evidence 二选一，evidence 非空时按证据拼装 */
+  state?: string | Record<string, unknown> | unknown[]
+  /** 工程内上下文证据（按顺序拼接为 state 文本） */
+  evidence?: DecisionEvidenceItem[]
+  /** 问题清单（至少一条） */
+  questions: DecisionQuestionInput[]
+  /** 判定阈值；缺省 noulYes=0.5，choice / score 不设阈值时恒判为通过 */
+  thresholds?: DecisionThresholds
+  model?: string
+  /** 不传则取设置里 decisions 模态首个已启用且有密钥的实例 */
+  providerInstanceId?: string
+  /** 观测分组 id；缺省由调用方生成 */
+  sessionId?: string
+  user?: string
+}
+
+/** 门面返回：上游原始答案 + 按阈值算好的判定结论 */
+export interface GenerateDecisionsResult extends DecisionResponse {
+  /** 与 answers 同序、可直接分支的结论（noul 的是/否、choice 的选中项、score 的位置） */
+  verdicts: DecisionVerdict[]
+  /** 一句话摘要，便于日志 / 节点输出展示 */
+  summary: string
 }
 
 // ── 3D 模型生成 ──────────────────────────────────────────
@@ -1506,7 +1687,8 @@ function normalizeModalityMap(
     image: normalizeModalityConfig(raw.image, kind),
     video: normalizeModalityConfig(raw.video, kind),
     audio: normalizeModalityConfig(raw.audio, kind),
-    model3d: normalizeModalityConfig(raw.model3d, kind)
+    model3d: normalizeModalityConfig(raw.model3d, kind),
+    decisions: normalizeModalityConfig(raw.decisions, kind)
   }
 }
 

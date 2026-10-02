@@ -196,6 +196,13 @@
         <p class="meta">
           {{ modalityHintText(provider) }}
         </p>
+        <!--
+          停用状态下这里仍能拉取/勾选，但运行时选择器会跳过停用的提供商：
+          不说明的话，用户在节点里只会看到一个空下拉，以为功能坏了。
+        -->
+        <p v-if="!provider.enabled" class="meta disabled-notice">
+          {{ t('settings.models.providerDisabledNotice') }}
+        </p>
         <p
           v-if="provider.providerKind === 'volcengine-ark' && isArkVoiceModality(provider)"
           class="meta credentials-hint"
@@ -450,7 +457,12 @@ const CUSTOM_API_STYLES: ReadonlyArray<{ value: CustomApiStyle }> = [
   { value: 'gemini' }
 ]
 
-/** OpenRouter 不展示音频；方舟展示「声音」；可灵图片/视频；MiniMax 文本/图片/视频/音色；魔塔文本+图片；xAI 与 Google 文本/图片/视频 */
+/**
+ * 各提供商可用的模态页签。
+ * OpenRouter 多一个「决策」页签：decisions 是独立输出模态（Decisions API，非 /chat/completions），
+ * 目录走 /models?output_modalities=decisions，与文本模型互不重叠。
+ * 其余 provider 的 decisions 一律不开放：它们没有 Decisions API，拉取只会拿到错目录。
+ */
 function settingsModalitiesFor(provider: ModelProviderInstance): ModelModality[] {
   if (isCustomProvider(provider)) {
     // Anthropic Messages API 无统一图片生成协议，仅开放文本；OpenAI 兼容 / Gemini 走 /images/generations
@@ -499,7 +511,7 @@ function settingsModalitiesFor(provider: ModelProviderInstance): ModelModality[]
     return ['text', 'image', 'video', 'audio']
   }
   if (provider.providerKind === 'volcengine-ark') {
-    return MODEL_MODALITIES.filter((m) => m !== 'model3d')
+    return ['text', 'image', 'video', 'audio']
   }
   if (provider.providerKind === 'magicrouter') {
     return ['text', 'image', 'video']
@@ -507,7 +519,10 @@ function settingsModalitiesFor(provider: ModelProviderInstance): ModelModality[]
   if (isModel3dProviderKind(provider.providerKind)) {
     return ['model3d']
   }
-  return MODEL_MODALITIES.filter((m) => m !== 'audio' && m !== 'model3d')
+  if (provider.providerKind === 'openrouter') {
+    return ['text', 'image', 'video', 'decisions']
+  }
+  return MODEL_MODALITIES.filter((m) => m !== 'audio' && m !== 'model3d' && m !== 'decisions')
 }
 
 function modalityTabLabel(provider: ModelProviderInstance, mod: ModelModality): string {
@@ -969,6 +984,12 @@ function capabilitySummary(model: CatalogModel): string {
 
 .credentials-hint {
   margin-top: -4px;
+}
+
+/* 停用提示：用告警色，避免和上方的模态说明混成一段被忽略 */
+.disabled-notice {
+  margin-top: -2px;
+  color: #d9a441;
 }
 
 .add-feedback {

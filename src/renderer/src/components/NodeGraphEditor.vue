@@ -1736,6 +1736,12 @@ const {
       fallbackId
     }),
   generateText: (input) => window.studio.generateText(input),
+  /**
+   * 决策判定能力缝：画布直接跑节点（nodeOnly / toNode）走的是这份 options，
+   * 不与 graphTasks 那条队列共用，所以每加一条生成能力缝两边都要接，
+   * 漏接的表现是节点报 GRAPH_DECISIONS_UNAVAILABLE。
+   */
+  generateDecisions: (input) => window.studio.generateDecisions(input),
   generateImage: (input) => window.studio.generateImage(input),
   saveRunMedia: (input) =>
     saveGraphRunMediaForNode({
