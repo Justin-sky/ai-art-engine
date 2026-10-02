@@ -732,7 +732,9 @@
             <li>
               Configure per modality: text / image / video / audio / 3D model / decisions (OpenRouter supports
               text / image / video / decisions; its Decisions tab lists models via
-              <code>output_modalities=decisions</code> and no other provider has that tab; the Ark audio tab also
+              <code>output_modalities=decisions</code>. TypeSafe direct has a Decisions tab only — its catalog comes
+              from <code>GET /v1/models</code> and judgements go to <code>POST /v1/systemone</code>, the same
+              decision protocol as OpenRouter but without the hop. The Ark audio tab also
               links the speech console and asks for a manual <code>speaker_id</code>; Kling has only image and video tabs;
               MiniMax supports text / image / video / voice design; OpenAI supports text and image; DeepSeek is
               text only; Kimi (Moonshot) is text only; xAI (Grok) supports text / image / video with async

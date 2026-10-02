@@ -157,7 +157,8 @@ export interface ModelProviderAdapter {
     input: GenerateSpeechInput
   ): Promise<GenerateSpeechResult>
   /**
-   * 决策判定（OpenRouter Decisions API：noul / choice / score）。
+   * 决策判定（noul / choice / score）。OpenRouter 走 Decisions API、TypeSafe 走 System One，
+   * 两家协议一致（请求 `{ state, questions }`、响应按问题名返回 typed answer）。
    * 可选：未实现时门面提示该提供商不支持决策模型。
    */
   generateDecisions?(

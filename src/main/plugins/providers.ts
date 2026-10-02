@@ -2,6 +2,7 @@ import type { Context } from '@cordisjs/core'
 import { MODEL_PROVIDER_KINDS, type ModelProviderKindMeta } from '@shared/modelProvider'
 import type { ModelProviderAdapter } from '../services/modelProviders/types'
 import { openRouterAdapter } from '../services/modelProviders/openrouter/adapter'
+import { typeSafeAdapter } from '../services/modelProviders/typesafe/adapter'
 import { openAiAdapter } from '../services/modelProviders/openai/adapter'
 import { anthropicAdapter } from '../services/modelProviders/anthropic/adapter'
 import { deepSeekAdapter } from '../services/modelProviders/deepseek/adapter'
@@ -56,6 +57,7 @@ export function createProviderPlugin(adapter: ModelProviderAdapter, meta?: Model
 
 export const builtinProviderPlugins = [
   createProviderPlugin(openRouterAdapter),
+  createProviderPlugin(typeSafeAdapter),
   createProviderPlugin(openAiAdapter),
   createProviderPlugin(anthropicAdapter),
   createProviderPlugin(deepSeekAdapter),

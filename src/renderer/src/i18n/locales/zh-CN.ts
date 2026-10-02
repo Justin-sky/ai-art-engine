@@ -509,6 +509,7 @@ export default {
       hideApiKey: '隐藏 API Key',
       credentialsHint: {
         openrouter: '获取 API Key：',
+        typesafe: '获取 TypeSafe（Jev）API Key：',
         openai: '获取 OpenAI API Key：',
         anthropic: '获取 Anthropic API Key：',
         deepseek: '获取 DeepSeek API Key：',
@@ -579,7 +580,7 @@ export default {
           '用于 TTS 语音合成，对应 /api/v1/models?output_modalities=speech 与 /api/v1/audio/speech。',
         model3d: '用于 3D 模型生成，从文本和/或参考图生成 GLB 模型。',
         decisions:
-          '决策模型（TypeSafe Jev、Liquid D1 等）不生成文本，而是对问题返回带概率的类型化判定（noul 是/否、choice 多选一、score 有序打分），对应 /api/v1/models?output_modalities=decisions 与 POST /api/alpha/decisions（注意不在 /v1 下）。勾选后可在决策节点里按阈值直接分支。'
+          '决策模型（TypeSafe Jev、Liquid D1 等）不生成文本，而是对问题返回带概率的类型化判定（noul 是/否、choice 多选一、score 有序打分）。OpenRouter 走 /api/v1/models?output_modalities=decisions 与 POST /api/alpha/decisions（注意不在 /v1 下）；TypeSafe 直连走 GET /v1/models 与 POST /v1/systemone（两家协议一致）。勾选后可在决策节点里按阈值直接分支。'
       },
       arkModalityHint: {
         text: '火山方舟对话模型（豆包等），Base URL 默认 https://ark.cn-beijing.volces.com/api/v3，对应 /chat/completions。',
@@ -664,6 +665,10 @@ export default {
           'MagicRouter 文生图 / 图生编辑，调用 /images/generations（参考图走 image / images 字段）；目录由 /models/live 拉取。',
         video:
           'MagicRouter 视频（happyhorse / wan2.7）：异步 POST /videos/generations 后轮询 GET /videos/generations/{id}；支持 t2v / i2v / r2v / videoedit。'
+      },
+      typesafeModalityHint: {
+        decisions:
+          'TypeSafe 直连（Jev / System One）：目录由 GET /v1/models 拉取，判定走 POST /v1/systemone，Bearer 鉴权。它与 OpenRouter 的决策协议一致（noul / choice / score 原语与概率答案形状相同），只是不经过 OpenRouter 中转；本提供商只做决策判定，没有文本 / 图片 / 视频生成。'
       },
       localModalityHint: {
         text: '本地 OpenAI 兼容服务（vLLM / Ollama / LM Studio）：无需 API Key，文本对话走 /chat/completions，模型目录由 /models 拉取；多模态理解可在文本节点传入图片。',

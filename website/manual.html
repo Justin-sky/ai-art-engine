@@ -665,7 +665,8 @@
             <li>用筛选、全选/清空勾选需要的模型；也可手动添加模型 ID。</li>
             <li>
               按模态配置：文本 / 图片 / 视频 / 声音 / 3D 模型 / 决策（OpenRouter 支持文本 / 图片 / 视频 / 决策，决策页签走
-              <code>output_modalities=decisions</code> 拉取，且仅 OpenRouter 有这一个页签；方舟声音页签会提示语音控制台链接，并手填
+              <code>output_modalities=decisions</code> 拉取；TypeSafe 直连仅「决策」页签，目录走 <code>GET /v1/models</code>、判定走
+              <code>POST /v1/systemone</code>，与 OpenRouter 的决策协议一致但不经其中转；方舟声音页签会提示语音控制台链接，并手填
               <code>speaker_id</code>；可灵仅图片与视频页签；MiniMax 支持文本 / 图片 / 视频 / 音色设计；OpenAI 支持文本与图片；
               DeepSeek 仅文本；Kimi（月之暗面）仅文本；xAI（Grok）支持文本 / 图片 / 视频（视频为异步轮询）；Google（Gemini）支持文本 / Nano Banana 图片 / Veo 3.1 视频（异步轮询）；智谱支持 GLM 文本与 CogView 图片；vLLM 支持文本与视频（Wan T2V / I2V）；Ollama / LM Studio 仅文本（多模态理解可在文本节点传图）；
               魔塔仅文本与图片，文生图为异步任务；ComfyUI 支持图片 / 视频 / 声音，无文本页签；MagicRouter 支持文本 / 图片 / 视频；Meshy / Tripo / Rodin（Hyper3D） / Luma AI / Lux3D 仅 3D 模型页签；自定义提供商的页签由端点类型决定 —— OpenAI 兼容 / Gemini 为文本 + 图片，Anthropic 仅文本，且图片模型必须手动填 id，见

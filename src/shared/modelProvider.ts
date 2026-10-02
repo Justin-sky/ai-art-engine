@@ -45,9 +45,23 @@ export const HYPER3D_DEFAULT_BASE_URL = 'https://api.hyper3d.com/api/v2'
 export const LUMA_DEFAULT_BASE_URL = 'https://api.lumalabs.ai/dream-machine/v1'
 /** AHOLO 开放平台 Lux3D（3D 模型生成；cn 区域，com 区域走 https://api.aholo3d.com） */
 export const LUX3D_DEFAULT_BASE_URL = 'https://api.aholo3d.cn'
+/** TypeSafe（Jev 等 System One 决策模型）：直连 `https://api.typesafe.ai`，Bearer 鉴权 */
+export const TYPESAFE_DEFAULT_BASE_URL = 'https://api.typesafe.ai'
+/** TypeSafe System One 端点（含 /v1，与 Base URL 直接拼接） */
+export const TYPESAFE_SYSTEMONE_PATH = '/v1/systemone'
+
+/**
+ * TypeSafe System One 端点 URL：用户填的是 API 根（`https://api.typesafe.ai`），
+ * 端点挂在其下的 `/v1/systemone`。设置页里若有人多填了 `/v1`，这里去掉避免出现 `/v1/v1/...`。
+ */
+export function resolveTypeSafeSystemOneUrl(baseUrl: string): string {
+  const base = (baseUrl || TYPESAFE_DEFAULT_BASE_URL).trim().replace(/\/+$/, '')
+  return `${base.replace(/\/v1$/i, '')}${TYPESAFE_SYSTEMONE_PATH}`
+}
 
 export type ModelProviderKind =
   | 'openrouter'
+  | 'typesafe'
   | 'openai'
   | 'anthropic'
   | 'deepseek'
@@ -117,6 +131,12 @@ export const MODEL_PROVIDER_KINDS: readonly ModelProviderKindMeta[] = [
     label: 'OpenRouter',
     defaultBaseUrl: OPENROUTER_DEFAULT_BASE_URL,
     credentialsUrl: 'https://openrouter.ai/keys'
+  },
+  {
+    id: 'typesafe',
+    label: 'TypeSafe（Jev）',
+    defaultBaseUrl: TYPESAFE_DEFAULT_BASE_URL,
+    credentialsUrl: 'https://docs.typesafe.ai/'
   },
   {
     id: 'openai',
@@ -455,6 +475,22 @@ export function isMagicRouterProvider(
   if (!provider) return false
   if (typeof provider === 'string') return provider === 'magicrouter'
   return provider.providerKind === 'magicrouter'
+}
+
+/**
+ * 提供决策判定协议（noul / choice / score）的供应商 kind。
+ * 两家的请求与应答实测一致，只是端点与鉴权不同：
+ * OpenRouter `/api/alpha/decisions`、TypeSafe `/v1/systemone`。
+ */
+export const DECISION_PROVIDER_KINDS: readonly ModelProviderKind[] = ['openrouter', 'typesafe']
+
+/** 该供应商 kind 是否提供决策判定 */
+export function isDecisionProviderKind(
+  provider: Pick<ModelProviderInstance, 'providerKind'> | ModelProviderKind | undefined | null
+): boolean {
+  if (!provider) return false
+  const kind = typeof provider === 'string' ? provider : provider.providerKind
+  return (DECISION_PROVIDER_KINDS as readonly string[]).includes(kind)
 }
 
 /** 支持 3D 模型生成（model3d）的提供商 kind */

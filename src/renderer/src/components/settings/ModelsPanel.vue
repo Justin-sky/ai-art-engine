@@ -522,6 +522,10 @@ function settingsModalitiesFor(provider: ModelProviderInstance): ModelModality[]
   if (provider.providerKind === 'openrouter') {
     return ['text', 'image', 'video', 'decisions']
   }
+  if (provider.providerKind === 'typesafe') {
+    // 决策模型厂商：只做决策判定，没有文本 / 图片 / 视频生成
+    return ['decisions']
+  }
   return MODEL_MODALITIES.filter((m) => m !== 'audio' && m !== 'model3d' && m !== 'decisions')
 }
 
@@ -664,6 +668,9 @@ function modalityHintText(provider: ModelProviderInstance): string {
   }
   if (provider.providerKind === 'magicrouter') {
     return t(`settings.models.magicrouterModalityHint.${mod}`)
+  }
+  if (provider.providerKind === 'typesafe') {
+    return t(`settings.models.typesafeModalityHint.${mod}`)
   }
   return t(`settings.models.modalityHint.${mod}`)
 }

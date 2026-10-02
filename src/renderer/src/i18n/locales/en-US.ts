@@ -517,6 +517,7 @@ export default {
       hideApiKey: 'Hide API key',
       credentialsHint: {
         openrouter: 'Get API key:',
+        typesafe: 'Get TypeSafe (Jev) API key:',
         openai: 'Get OpenAI API key:',
         anthropic: 'Get Anthropic API key:',
         deepseek: 'Get DeepSeek API key:',
@@ -588,7 +589,7 @@ export default {
         audio: 'TTS via /api/v1/models?output_modalities=speech and /api/v1/audio/speech.',
         model3d: '3D model generation from text and/or reference images, producing GLB assets.',
         decisions:
-          'Decision models (TypeSafe Jev, Liquid D1, …) return typed judgments with probabilities instead of text — noul yes/no, choice one-of, score on an ordered scale. Catalog: /api/v1/models?output_modalities=decisions; calls: POST /api/alpha/decisions (note: not under /v1). Pick one here to branch on thresholds in the decisions node.'
+          'Decision models (TypeSafe Jev, Liquid D1, …) return typed judgments with probabilities instead of text — noul yes/no, choice one-of, score on an ordered scale. OpenRouter uses /api/v1/models?output_modalities=decisions plus POST /api/alpha/decisions (note: not under /v1); TypeSafe direct uses GET /v1/models plus POST /v1/systemone (same protocol). Pick one here to branch on thresholds in the decisions node.'
       },
       arkModalityHint: {
         text: 'Volcengine Ark chat models (Doubao, etc.). Default Base URL https://ark.cn-beijing.volces.com/api/v3 via /chat/completions.',
@@ -675,6 +676,10 @@ export default {
           'MagicRouter text-to-image / image editing via /images/generations (reference images use the image / images fields); the catalog is fetched from /models/live.',
         video:
           'MagicRouter video (happyhorse / wan2.7): async POST /videos/generations, poll GET /videos/generations/{id}; supports t2v / i2v / r2v / videoedit.'
+      },
+      typesafeModalityHint: {
+        decisions:
+          'TypeSafe direct (Jev / System One): the catalog comes from GET /v1/models and judgements go to POST /v1/systemone with Bearer auth. It speaks the same decision protocol as OpenRouter (same noul / choice / score primitives and probability answers), just without the OpenRouter hop; this provider does decision judgements only — no text / image / video generation.'
       },
       localModalityHint: {
         text: 'Local OpenAI-compatible servers (vLLM / Ollama / LM Studio): no API key needed. Chat via /chat/completions; the model catalog is fetched from /models. Multimodal understanding works by passing images into a text node.',

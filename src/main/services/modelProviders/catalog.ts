@@ -86,15 +86,17 @@ export const PROVIDER_ERRORS = {
   )
 } satisfies Record<string, BiDef<never> | BiDef<undefined>>
 
-export type ModalityKind = 'video' | 'voice' | 'speech' | 'image'
+export type ModalityKind = 'text' | 'video' | 'voice' | 'speech' | 'image'
 
 const MODALITY_ZH: Record<ModalityKind, string> = {
+  text: '文本生成',
   video: '视频生成',
   voice: '语音生成',
   speech: '语音合成',
   image: '图片生成'
 }
 const MODALITY_EN: Record<ModalityKind, string> = {
+  text: 'text generation',
   video: 'video generation',
   voice: 'voice generation',
   speech: 'speech synthesis',

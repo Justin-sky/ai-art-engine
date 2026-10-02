@@ -6,6 +6,7 @@ import type {
 } from '@shared/modelProvider'
 import {
   allowsEmptyApiKey,
+  isDecisionProviderKind,
   isLocalOpenAiProvider,
   isModel3dProviderKind,
   isVllmProvider,
@@ -131,8 +132,8 @@ export function buildModelOptions(
     if (modality === 'model3d' && !isModel3dProviderKind(provider.providerKind)) {
       continue
     }
-    // 决策：只有 OpenRouter 提供 Decisions API（其余供应商没有该端点）
-    if (modality === 'decisions' && provider.providerKind !== 'openrouter') {
+    // 决策：只有提供决策协议的供应商（OpenRouter Decisions API / TypeSafe System One）
+    if (modality === 'decisions' && !isDecisionProviderKind(provider.providerKind)) {
       continue
     }
     const sel = modalityConfig(provider, modality)
@@ -211,7 +212,7 @@ export type EmptyModelOptionsReason =
  *
  * `buildModelOptions` 会跳过「未启用 / 缺 Key / 该模态没勾模型」的提供商，
  * 所以空列表有三种完全不同的解释；这里按最可操作的一条给出结论。
- * 只考虑**支持该模态**的提供商（例如 decisions 仅 OpenRouter），
+ * 只考虑**支持该模态**的提供商（例如 decisions 只有 OpenRouter 与 TypeSafe），
  * 否则别的提供商的启用状态会把结论带偏。
  */
 export function resolveEmptyModelOptionsReason(
@@ -219,14 +220,16 @@ export function resolveEmptyModelOptionsReason(
   modality: ModelModality
 ): EmptyModelOptionsReason {
   const supports = (kind: ModelProviderKind): boolean => {
-    if (kind === 'openrouter') return true
+    // 决策协议供应商（OpenRouter / TypeSafe）：支持 decisions，且各自另有能力
+    if (isDecisionProviderKind(kind)) return modality === 'decisions' || kind === 'openrouter'
+    if (modality === 'decisions') return false
     if (kind === 'comfyui')
       return modality === 'image' || modality === 'video' || modality === 'audio'
     if (isVllmProvider(kind)) return modality === 'text' || modality === 'video'
     if (isLocalOpenAiProvider(kind)) return modality === 'text'
     if (isModel3dProviderKind(kind)) return modality === 'model3d'
     if (kind === 'volcengine-ark' || kind === 'dashscope' || kind === 'minimax') {
-      return modality !== 'model3d' && modality !== 'decisions'
+      return modality !== 'model3d'
     }
     if (kind === 'kling') return modality === 'image' || modality === 'video'
     if (kind === 'custom') return modality === 'text' || modality === 'image'

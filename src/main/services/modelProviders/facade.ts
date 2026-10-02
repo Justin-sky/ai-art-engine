@@ -147,9 +147,9 @@ const E_TRANSCRIBE_NO_MODEL = defErrSimple(
 const E_DECISIONS_UNSUPPORTED = defErr<{ provider: string }>(
   'provider.facade.decisions-unsupported',
   ({ provider }) =>
-    `${provider} 暂不支持决策判定（Decisions API）：请在设置中添加 OpenRouter 提供商，并在「决策」页签勾选决策模型（如 typesafe/jev-1.13）`,
+    `${provider} 暂不支持决策判定：请在设置中添加 OpenRouter 或 TypeSafe 提供商，并在「决策」页签勾选决策模型（如 typesafe/jev-1.13、jev-latest）`,
   ({ provider }) =>
-    `${provider} does not support the Decisions API yet: add an OpenRouter provider in Settings and pick a decisions model (e.g. typesafe/jev-1.13) on the Decisions tab`
+    `${provider} does not support decision requests yet: add an OpenRouter or TypeSafe provider in Settings and pick a decisions model (e.g. typesafe/jev-1.13, jev-latest) on the Decisions tab`
 )
 
 /** 支持转写的提供商 kind → 默认转写模型；未知 kind 返回空（由调用方/适配器兜底） */

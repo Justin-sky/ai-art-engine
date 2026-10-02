@@ -244,15 +244,15 @@ save_project_asset（用户点「保存到资产库」）   入 Assets/<folder>/
 
 ### ③ 内容生成（图片 / 视频 / 3D / 语音 / 音乐 / 决策）
 
-| 工具                               | 作用                                                                                                                              | 前置条件                                |
-| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
-| `generate_image`                   | 文生图 / 图生图，落盘 `Cache/Images`（不自动进资产库），返回工程内相对路径                                                        | 已打开工程 + 图片模型                   |
-| `generate_video`                   | 提交视频生成，落盘 `Cache/Videos`（异步，用 `video_job_*` 跟踪；不自动进资产库）                                                  | 已打开工程 + 视频模型                   |
-| `generate_model3d`                 | 文生 3D / 图生 3D，产出几何 GLB 落 `Cache/Models`（异步；不自动进资产库）；**不含蒙皮等加工**——请用图节点（见下）                 | 已打开工程 + 3D 模型                    |
-| `generate_speech`                  | 台词转 MP3，落盘 `Cache/Voices`（不自动进资产库）                                                                                 | 已打开工程 + 音频模型                   |
-| `generate_music`                   | 按情绪 / 场景描述生成 BGM 并落盘 `Cache/Music`（同步；不自动进资产库），返回 `relativePath` / `durationMs`，可铺到时间线 music 轨 | 已打开工程 + 音乐模型（如 `music-3.0`） |
-| `decide`                           | 用 OpenRouter 决策模型对给定状态做类型化判定（noul / choice / score），返回带概率、可直接分支的结论；不落盘、不写资产             | 已打开工程 + OpenRouter 决策模型        |
-| `video_job_list` / `video_job_get` | 查询异步视频生成任务的状态                                                                                                        | 应用运行中                              |
+| 工具                               | 作用                                                                                                                              | 前置条件                                            |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| `generate_image`                   | 文生图 / 图生图，落盘 `Cache/Images`（不自动进资产库），返回工程内相对路径                                                        | 已打开工程 + 图片模型                               |
+| `generate_video`                   | 提交视频生成，落盘 `Cache/Videos`（异步，用 `video_job_*` 跟踪；不自动进资产库）                                                  | 已打开工程 + 视频模型                               |
+| `generate_model3d`                 | 文生 3D / 图生 3D，产出几何 GLB 落 `Cache/Models`（异步；不自动进资产库）；**不含蒙皮等加工**——请用图节点（见下）                 | 已打开工程 + 3D 模型                                |
+| `generate_speech`                  | 台词转 MP3，落盘 `Cache/Voices`（不自动进资产库）                                                                                 | 已打开工程 + 音频模型                               |
+| `generate_music`                   | 按情绪 / 场景描述生成 BGM 并落盘 `Cache/Music`（同步；不自动进资产库），返回 `relativePath` / `durationMs`，可铺到时间线 music 轨 | 已打开工程 + 音乐模型（如 `music-3.0`）             |
+| `decide`                           | 用决策模型对给定状态做类型化判定（noul / choice / score），返回带概率、可直接分支的结论；不落盘、不写资产                         | 已打开工程 + 决策模型（OpenRouter / TypeSafe 直连） |
+| `video_job_list` / `video_job_get` | 查询异步视频生成任务的状态                                                                                                        | 应用运行中                                          |
 
 `decide` 的入参：多行 `questions`（每行 `问题名 | noul|choice|score | 问题 | 判定说明`，`#` / `//` 开头的行是注释；choice 的选项与 score 的有序量表用 `;` 分隔，可写 `值:说明`）+ `state` 或 `assetId` / `assetIds`（把工程内文本资产按顺序拼成待判定的状态），可选阈值 `noulYesThreshold` / `choiceMinConfidence` / `scoreMin`、`model`、`providerInstanceId`；返回每条问题的答案与可直接分支的结论（noul → 是概率、choice → 选中项 + 置信度、score → 加权分位 + 各档概率），**不写资产**。属生成类工具（Ask 不返回，Plan 在用户确认计划前不返回）。
 
