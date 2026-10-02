@@ -14,7 +14,9 @@
     "url": "https://github.com/Justin-sky/ai-art-engine/issues"
   },
   "scripts": {
-    "dev": "electron-vite dev",
+    "dev": "node scripts/dev-launcher.mjs",
+    "dev:raw": "electron-vite dev",
+    "fix:integrity": "node scripts/fix-workspace-integrity.mjs",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",

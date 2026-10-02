@@ -199,6 +199,25 @@ npm run typecheck && npm test   # 检查
 npm run pack                    # 未封装目录，便于自测
 ```
 
+`npm run dev` 走 [`scripts/dev-launcher.mjs`](./scripts/dev-launcher.mjs)，它在启动前处理两类会让窗口永不出现的问题（需要原始行为时用 `npm run dev:raw`）：
+
+1. **清掉继承来的 `ELECTRON_RUN_AS_NODE`**：本应用自带的终端 / dsh 运行时会设这个变量，继承下来会让 Electron 以「纯 Node」模式执行主进程，表现为打印完 `start electron app...` 就回到命令行并报 `Cannot read properties of undefined (reading 'isPackaged')`。
+2. **修工作区的低完整性级别标签**：工作区被打上 `Mandatory Label\Low`（常见于强沙箱的 agent 宿主）时，该标签 ACE 带 `(OI)(CI)` 可继承标志，工作区内**新建文件**都会继承「低完整性」；而低完整性的 Electron 无法建立 Chromium 沙箱，会在启动阶段以 `0x80000003` 中止，不执行任何 JS、不打印任何错误（`electron.exe --version` 也一样）。启动器先修工作区根目录（Windows 会重新计算子对象的继承 ACE，整棵树一起刷新，因此不必 `/T` 递归），再单独确认 electron 解包目录。`/setintegritylevel` 在没有标签时是空操作，所以普通机器上不会改动任何东西。
+
+标签问题也可以单独修：
+
+```powershell
+npm run fix:integrity              # 重置工作区根目录（+ electron 解包目录）为中等完整性
+npm run fix:integrity -- --check   # 只查看当前标签，不做修改
+```
+
+两者共用 [`scripts/lib/integrity-label.mjs`](./scripts/lib/integrity-label.mjs) / [`scripts/lib/repair-integrity.mjs`](./scripts/lib/repair-integrity.mjs)，避免逻辑漂移。自动重置失败（权限不足）时会打印手动命令：
+
+```powershell
+icacls "<工作区根目录或 electron 解包目录>" /setintegritylevel M /T /C
+# 或者把 electron 解包目录放到工作区之外，再设 ELECTRON_OVERRIDE_DIST_PATH 指向它
+```
+
 ---
 
 ## 文档
