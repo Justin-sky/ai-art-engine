@@ -4,6 +4,8 @@ import { app } from 'electron'
 const READY_FILE_ENV = 'AIART_SMOKE_READY_FILE'
 /** 冒烟测试：写完就绪文件后让应用自行退出（置为 1 生效） */
 const EXIT_AFTER_READY_ENV = 'AIART_SMOKE_EXIT_AFTER_READY'
+/** 退出请求后的打点间隔：日志里要能看出「退得慢」还是「根本没退」 */
+const EXIT_WATCHDOG_INTERVAL_MS = 10_000
 
 let readyWritten = false
 let runtimeStarted = false
@@ -34,6 +36,20 @@ export function signalSmokeReady(stage: string): void {
     console.error('[smoke] failed to write ready file', err)
   }
   if (process.env[EXIT_AFTER_READY_ENV] === '1') {
+    /*
+     * 退出请求本身也打点：x64 产物在 arm64 runner 上走 Rosetta，整条链路（含收尾）都被
+     * 逐进程翻译拖慢 —— 6.9.0 的 dmg-x64 就是「就绪后 30s 内没退」被判失败，而同一份
+     * 代码在原生腿 1s 内退完。有这条打点，日志才能区分「退得慢」（性能）与「卡住不退」
+     * （缺陷），否则两种情形在 CI 里长得一模一样。
+     */
+    console.log('[smoke] exit-after-ready: requesting graceful quit')
+    let waitedSeconds = 0
+    const tick = setInterval(() => {
+      waitedSeconds += EXIT_WATCHDOG_INTERVAL_MS / 1000
+      console.log(`[smoke] graceful quit still pending after ${waitedSeconds}s`)
+    }, EXIT_WATCHDOG_INTERVAL_MS)
+    // unref：这个打点绝不能自己拖住退出（进程真的退干净时它会随之消失）
+    tick.unref?.()
     app.quit()
   }
 }

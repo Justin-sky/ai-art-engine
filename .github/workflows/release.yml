@@ -257,8 +257,10 @@ jobs:
           # 第 3 参 TIMEOUT 默认 60s。原生架构下 6.0.0 实测 dmg/zip 均数秒就绪，60s 足够；
           # 但 arm64 runner 上跑 x64 产物要走 Rosetta 2，首次翻译整个 Electron 框架、
           # 并逐个 dylib 过代码签名校验，冷启动远超原生，必须单独放宽（见下方 x64 分支）。
+          # 第 4 参 EXIT_TIMEOUT 默认 30s：就绪后等应用自行优雅退出的预算。原生腿 1s 内退完；
+          # Rosetta 腿整条链路都被翻译拖慢，同一个退出要按同样倍率放宽（见下方 x64 分支）。
           launch_app_smoke() {
-            local APP="$1" LABEL="$2" TIMEOUT="${3:-60}"
+            local APP="$1" LABEL="$2" TIMEOUT="${3:-60}" EXIT_TIMEOUT="${4:-30}"
             local BIN="$APP/Contents/MacOS/AIArtEngine"
             local READY="$RUNNER_TEMP/aiartengine-ready-$LABEL.json"
             local LOG="$RUNNER_TEMP/aiartengine-smoke-$LABEL.log"
@@ -292,13 +294,13 @@ jobs:
               if [ -f "$READY" ] && [ "$REQUESTED" -eq 0 ]; then
                 REQUESTED=1
                 echo "SMOKE[$LABEL] ready after $((SECONDS - STARTED))s: $(cat "$READY")"
-                # 给优雅退出留预算；Rosetta 下收尾可能较慢
-                DEADLINE=$((SECONDS + 30))
+                # 给优雅退出留预算；原生腿 1s 内退完，Rosetta 腿按第 4 参放宽
+                DEADLINE=$((SECONDS + EXIT_TIMEOUT))
               fi
               sleep 1
             done
             if [ -f "$READY" ]; then
-              echo "SMOKE_FAIL[$LABEL] app became ready but did not exit within 30s（优雅退出路径有问题）" >&2
+              echo "SMOKE_FAIL[$LABEL] app became ready but did not exit within ${EXIT_TIMEOUT}s（优雅退出路径有问题）" >&2
               tail -n 80 "$LOG" >&2 || true
               kill "$PID" 2>/dev/null || true
               exit 1
@@ -309,7 +311,7 @@ jobs:
           }
 
           run_dmg_smoke() {
-            local DMG="$1" LABEL="$2" TIMEOUT="${3:-60}"
+            local DMG="$1" LABEL="$2" TIMEOUT="${3:-60}" EXIT_TIMEOUT="${4:-30}"
             local MNT="$RUNNER_TEMP/aiartengine-dmg-$LABEL"
             local OUT="$RUNNER_TEMP/aiartengine-dmg-out-$LABEL"
             echo "SMOKE[$LABEL] dmg: $DMG"
@@ -318,18 +320,18 @@ jobs:
             hdiutil attach "$DMG" -nobrowse -readonly -mountpoint "$MNT" >/dev/null
             cp -R "$MNT"/*.app "$OUT/"
             hdiutil detach "$MNT" >/dev/null
-            launch_app_smoke "$(ls -d "$OUT"/*.app | head -n1)" "$LABEL" "$TIMEOUT"
+            launch_app_smoke "$(ls -d "$OUT"/*.app | head -n1)" "$LABEL" "$TIMEOUT" "$EXIT_TIMEOUT"
           }
 
           # electron-updater 的增量/全量更新走 zip 通道：解包结构应与 dmg 内 .app 一致
           run_zip_smoke() {
-            local ZIP="$1" LABEL="$2" TIMEOUT="${3:-60}"
+            local ZIP="$1" LABEL="$2" TIMEOUT="${3:-60}" EXIT_TIMEOUT="${4:-30}"
             local OUT="$RUNNER_TEMP/aiartengine-zip-out-$LABEL"
             echo "SMOKE[$LABEL] zip: $ZIP"
             rm -rf "$OUT"
             mkdir -p "$OUT"
             ditto -x -k "$ZIP" "$OUT"
-            launch_app_smoke "$(ls -d "$OUT"/*.app | head -n1)" "$LABEL" "$TIMEOUT"
+            launch_app_smoke "$(ls -d "$OUT"/*.app | head -n1)" "$LABEL" "$TIMEOUT" "$EXIT_TIMEOUT"
           }
 
           # arm64（本机架构）：产物必带，缺失即视为打包异常
@@ -359,7 +361,12 @@ jobs:
               # 60s 内未就绪（进程存活、只是没启动完，故报 did not reach ready state）。
               # 这是翻译 + 签名校验的一次性冷启动开销，不是应用缺陷；放宽只影响上限，
               # 「启动即崩」仍由循环里的 kill -0 立刻抓到。
-              run_dmg_smoke "$X64_DMG" 'dmg-x64' 300
+              #
+              # 第 4 参 180s 而非默认 30s：6.9.0 实测这条腿就绪用了 146s（原生 4s，约 36×），
+              # 收尾同样被逐进程翻译拖慢 —— 原生腿 1s 退完，x64 腿在 30s 预算里报
+              # 「became ready but did not exit」。退出本身没问题（同一条 will-quit 路径，
+              # arm64 两条腿都秒退），差的只是 Rosetta 的量级，故按同样倍率放宽。
+              run_dmg_smoke "$X64_DMG" 'dmg-x64' 300 180
             else
               echo 'WARN: no x64 .dmg found, skipping Intel smoke'
             fi

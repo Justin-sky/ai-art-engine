@@ -100,6 +100,40 @@ describe('smokeReady', () => {
     expect(quit).not.toHaveBeenCalled()
   })
 
+  it('退出请求本身要留日志：Rosetta 腿靠它区分「退得慢」与「根本没退」', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    try {
+      const { signalSmokeReady } = await loadModule()
+      process.env[READY_ENV] = readyFile
+      process.env[EXIT_ENV] = '1'
+      signalSmokeReady('renderer-loaded')
+      expect(log.mock.calls.flat().join(' ')).toContain('exit-after-ready')
+      expect(quit).toHaveBeenCalledTimes(1)
+    } finally {
+      log.mockRestore()
+    }
+  })
+
+  it('退出请求后每 10s 打一次等待点，便于看出收尾被拖了多久', async () => {
+    vi.useFakeTimers()
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    try {
+      const { signalSmokeReady } = await loadModule()
+      process.env[READY_ENV] = readyFile
+      process.env[EXIT_ENV] = '1'
+      signalSmokeReady('renderer-loaded')
+      expect(log.mock.calls.flat().join(' ')).not.toContain('still pending')
+
+      vi.advanceTimersByTime(20_000)
+      const text = log.mock.calls.flat().join(' ')
+      expect(text).toContain('still pending after 10s')
+      expect(text).toContain('still pending after 20s')
+    } finally {
+      log.mockRestore()
+      vi.useRealTimers()
+    }
+  })
+
   it('markSmokeRuntimeStarted 的上报会写进标记（供 CI 判定运行体是否拉起）', async () => {
     const { markSmokeRuntimeStarted, signalSmokeReady } = await loadModule()
     process.env[READY_ENV] = readyFile
