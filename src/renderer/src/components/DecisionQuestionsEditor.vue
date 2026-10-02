@@ -514,15 +514,22 @@ function removeLevel(index: number, levelIndex: number): void {
   gap: 4px;
 }
 
+/*
+ * 三种类型（noul / choice / score）的标签本身带括号后缀，最长是「有序打分（score）」，
+ * 英文 Ordered score (score) 还要更长：定宽 88px 一定截断。这里改成按内容取宽
+ * （select 的固有宽度就是最宽那个选项），min-width 只负责同一份表单里各行仍对齐。
+ */
 .dq-type {
   flex: none;
-  width: 88px;
+  width: auto;
+  min-width: 128px;
   font-size: 11px;
 }
 
+/* 可收缩：类型下拉按内容变宽后，窄卡片上让出空间给下拉框，而不是把行挤出面板 */
 .dq-key {
-  flex: none;
-  width: 84px;
+  flex: 0 1 84px;
+  min-width: 56px;
   font-size: 11px;
 }
 
@@ -554,11 +561,22 @@ function removeLevel(index: number, levelIndex: number): void {
   border-color: #c45c5c;
 }
 
+/*
+ * 这里只统一下字号，宽度交给各自的类决定 —— `.dq-item input` 这种「类+类型」选择器
+ * 权重高于 `.dq-item-key`（单类），一旦在这里给 width，下面的 78px 就永远不生效：
+ * 选项名 / 档位名输入框被撑满整行，把说明输入框压成 0 宽（看着就是一段空白）、
+ * 再顺序把 × 挤出卡片边框。选项行超出边框就是这么来的。
+ */
 .dq-question,
 .dq-field input,
 .dq-item input {
-  width: 100%;
   font-size: 11px;
+}
+
+/* noul 的是 / 否两格、问题本身：整行铺满 */
+.dq-question,
+.dq-field input {
+  width: 100%;
 }
 
 .dq-criteria,
