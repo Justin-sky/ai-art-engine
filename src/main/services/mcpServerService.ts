@@ -20,7 +20,6 @@ import {
   blenderToolSpec
 } from '@shared/blenderMcp'
 import type { AssetInfo } from '@shared/domain'
-import { UI_KIT_PART_KINDS } from '@shared/gameAssets'
 import {
   denialReasonForTool,
   isToolVisible,
@@ -1085,83 +1084,6 @@ const TOOL_DEFS: McpToolDef[] = [
         assetId,
         ...(nodeId ? { nodeId } : {}),
         ...(baseName ? { baseName } : {})
-      })
-    }
-  },
-  {
-    name: 'ui_kit_extract',
-    title: '提取 UI 部件（九宫格）',
-    description:
-      '把整屏 UI 效果图按框选矩形逐部件裁成透明 PNG 落资产库（Assets/UIKits/<源图名>/），同目录写出 ui-kit.json 九宫格清单（含每部件 border / safe 边距，可直接给引擎做九宫格拉伸）。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        assetId: { type: 'string', description: '整屏 UI 图片资产 id' },
-        parts: {
-          type: 'array',
-          description: '部件列表（源图像素坐标；面板 / 按钮 / 输入框 / 页签 / 弹窗）',
-          items: {
-            type: 'object',
-            properties: {
-              kind: { type: 'string', enum: [...UI_KIT_PART_KINDS], description: '部件类型' },
-              name: {
-                type: 'string',
-                description: '部件名（同时作为落盘文件名，建议 kebab-case）'
-              },
-              rect: {
-                type: 'object',
-                description: '源图内的像素矩形（左上角坐标 + 宽高）',
-                properties: {
-                  x: { type: 'number' },
-                  y: { type: 'number' },
-                  width: { type: 'number' },
-                  height: { type: 'number' }
-                },
-                required: ['x', 'y', 'width', 'height']
-              },
-              border: {
-                type: 'object',
-                description: '九宫格边距（像素，可选）',
-                properties: {
-                  left: { type: 'number' },
-                  top: { type: 'number' },
-                  right: { type: 'number' },
-                  bottom: { type: 'number' }
-                }
-              },
-              safe: {
-                type: 'object',
-                description: '安全区（像素，可选）',
-                properties: {
-                  left: { type: 'number' },
-                  top: { type: 'number' },
-                  right: { type: 'number' },
-                  bottom: { type: 'number' }
-                }
-              }
-            },
-            required: ['kind', 'name', 'rect']
-          }
-        },
-        outputDir: {
-          type: 'string',
-          description:
-            '输出目录（工程内相对路径，必须落在资产库内、以 Assets/ 开头，默认 Assets/UIKits/<源图名>；部件需入库才能在素材库看到）'
-        }
-      },
-      required: ['assetId', 'parts']
-    },
-    handler: async (args) => {
-      assertProjectOpen()
-      const assetId = readString(args, 'assetId').trim()
-      findAssetOrThrow(assetId)
-      const parts = Array.isArray(args.parts) ? args.parts : []
-      if (!parts.length) throw new Error('请给出至少一个部件（parts）')
-      const outputDir = optionalString(args, 'outputDir')?.trim()
-      return runRenderJob('ui-kit-extract', {
-        assetId,
-        parts,
-        ...(outputDir ? { outputDir } : {})
       })
     }
   },

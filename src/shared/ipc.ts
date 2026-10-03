@@ -645,7 +645,6 @@ export interface McpGraphIconRefineResultPayload {
 /** 渲染层能力作业清单（新增能力在此登记，主进程与渲染层共用同一份） */
 export const MCP_RENDER_JOB_KINDS = [
   'stage2d-spine-export',
-  'ui-kit-extract',
   'asset-qc',
   'svg-raster',
   'timeline-document-apply'

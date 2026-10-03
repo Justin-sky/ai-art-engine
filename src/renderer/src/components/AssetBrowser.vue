@@ -447,14 +447,6 @@
             <span class="ctx-label">{{ t('asset.browser.context.sheetPlay') }}</span>
           </button>
           <button
-            v-if="contextMenuUiKitAsset"
-            type="button"
-            @click="openUiKitExtractForContextAsset"
-          >
-            <span class="ctx-icon" aria-hidden="true">🧩</span>
-            <span class="ctx-label">{{ t('uiKitExtract.action') }}</span>
-          </button>
-          <button
             v-if="contextMenuMotion2dPreviewAsset"
             type="button"
             @click="openMotion2dPlayForContextAsset"
@@ -606,7 +598,6 @@ import {
 } from '../features/media/openFullImagePreview'
 import { openMotion2dActionPreviewDialog } from '../features/media/motion2dActionPreviewDialog'
 import { openGamePlaySandboxDialog } from '../features/media/gamePlaySandboxDialog'
-import { openUiKitExtractDialog } from '../features/uiKit/uiKitExtractDialog'
 import { isLayeredSourceImageFilePath, isVectorImageFilePath } from '@shared/import'
 import { thumbRelativePathFor } from '@shared/media/thumbnailPath'
 import { isWeakVisionTag } from '@shared/visionTags'
@@ -1337,17 +1328,6 @@ const contextMenuGamePlayAsset = computed<AssetInfo | null>(() => {
   return asset
 })
 
-/** 可「提取 UI 部件」的右键目标：带原图文件的本机图片资产（与帧试播同门槛） */
-const contextMenuUiKitAsset = computed<AssetInfo | null>(() => {
-  const asset = contextMenuTargetAsset()
-  if (!asset || asset.type !== 'image') return null
-  if (isDraftAssetId(asset.id)) return null
-  if (!asset.relativePath?.trim()) return null
-  // PSD 等分层源文件：像素要经合成解码才有，不提供 UI 部件提取
-  if (isLayeredSourceImageFilePath(asset.relativePath)) return null
-  return asset
-})
-
 const contextMenuVideoBeatBusy = computed(() => {
   const asset = contextMenuVideoBeatAsset.value
   return asset != null && analyzingVideoBeatIds.value.has(asset.id)
@@ -1509,20 +1489,6 @@ function openGamePlayForContextAsset(): void {
   closeMenu()
   if (!asset) return
   openGamePlaySandboxDialog({ gamePlayAssetId: asset.id, title: asset.name })
-}
-
-async function openUiKitExtractForContextAsset(): Promise<void> {
-  const asset = contextMenuUiKitAsset.value
-  closeMenu()
-  if (!asset) return
-  const url = await resolveAssetFileUrl(asset.relativePath)
-  if (!url) return
-  openUiKitExtractDialog({
-    url,
-    name: asset.name,
-    relativePath: asset.relativePath,
-    assetId: asset.id
-  })
 }
 
 watch(

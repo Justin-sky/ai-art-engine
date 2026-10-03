@@ -27,13 +27,9 @@ import {
   SVG_RASTER_MAX_IMAGES
 } from '@shared/graph/svgAnim'
 import {
-  UI_KIT_PART_KINDS,
-  UI_KIT_PART_KIND_PREFIXES,
   analyzeAssetQc,
   applyAssetQcFringeFix,
-  buildUiKitManifest,
   checkAssetQcNaming,
-  normalizeUiKitDocument,
   suggestAssetQcName,
   summarizeAssetQc,
   type AssetQcIssue,
@@ -46,7 +42,6 @@ import { useProjectStore } from '../../stores/project'
 import { composeStage2dSpineExport } from '../graph/model/composeStage2dSpineExport'
 import { renderSvgFrames } from '../graph/model/renderSvgFrames'
 import { resolveAssetPreviewUrl } from '../media/assetUrlCache'
-import { cropUiKitPartPng, loadUiKitSourceImage } from '../uiKit/uiKitRender'
 import { isGraphEditorOpen } from './openGraphEditors'
 import { isTimelineEditorOpen } from './openTimelineEditors'
 
@@ -189,86 +184,6 @@ async function handleStage2dSpineExport(args: Record<string, unknown>): Promise<
     atlasPath,
     partCount: files.length,
     files
-  }
-}
-
-/**
- * UI 部件提取：把整屏 UI 图按给定的框选矩形逐部件裁成透明 PNG 落资产库
- * （`Assets/UIKits/<源图名>/`），并同目录写出 `ui-kit.json` 九宫格清单。
- *
- * 入参部件是宽松 JSON（kind / name / rect / border / safe），归一化与命名规范
- * 全走共享层 `normalizeUiKitDocument`——非法部件被剔除并在返回值里报数量。
- */
-async function handleUiKitExtract(args: Record<string, unknown>): Promise<unknown> {
-  const project = useProjectStore()
-  const assetId = readString(args.assetId).trim()
-  const asset = project.assets.find((item) => item.id === assetId)
-  if (!asset) throw new Error(`资产不存在：${assetId}`)
-  if (asset.type !== 'image') throw new Error('ui_kit_extract 只支持图片资产（整屏 UI 效果图）')
-  const relativePath = asset.relativePath.trim()
-  if (!relativePath) throw new Error('该资产还没有媒体文件（占位资产无法提取部件）')
-
-  const rawParts = Array.isArray(args.parts) ? args.parts : []
-  if (!rawParts.length) {
-    throw new Error('请给出至少一个部件（parts：kind / name / rect，可选 border / safe）')
-  }
-
-  const img = await loadUiKitSourceImage(await resolveAssetPreviewUrl(relativePath))
-  const width = img.naturalWidth || img.width
-  const height = img.naturalHeight || img.height
-  const doc = normalizeUiKitDocument({ parts: rawParts }, { name: asset.name, width, height })
-  if (!doc.parts.length) {
-    throw new Error(
-      `没有合法部件：kind 需为 ${UI_KIT_PART_KINDS.join(' / ')}，rect 需为源图内的有限像素矩形`
-    )
-  }
-
-  const outDir = resolveLibraryOutDir(readString(args.outputDir), `Assets/UIKits/${doc.sourceName}`)
-
-  const saved: string[] = []
-  for (const part of doc.parts) {
-    const dataUrl = cropUiKitPartPng(img, part)
-    saved.push(
-      await window.studio.saveGraphRunMedia({
-        dataUrl,
-        key: `${UI_KIT_PART_KIND_PREFIXES[part.kind]}-${part.name}`,
-        outputDir: outDir
-      })
-    )
-  }
-
-  const manifest = buildUiKitManifest({
-    sourceName: doc.sourceName,
-    sourceWidth: doc.sourceWidth,
-    sourceHeight: doc.sourceHeight,
-    parts: doc.parts
-  })
-  // 让清单 fileName 与实际落盘文件一致（同名二次导出时 uniqueFileName 会追加序号）
-  for (let i = 0; i < manifest.parts.length; i += 1) {
-    const rel = saved[i]
-    const fileName = rel ? rel.slice(rel.lastIndexOf('/') + 1) : ''
-    if (fileName) manifest.parts[i]!.fileName = fileName
-  }
-  const manifestPath = `${outDir}/ui-kit.json`
-  await window.studio.writeProjectFile({
-    relativePath: manifestPath,
-    content: JSON.stringify(manifest, null, 2)
-  })
-  await assertPartsImported(project, saved, outDir)
-
-  return {
-    assetId,
-    dir: outDir,
-    manifestPath,
-    count: saved.length,
-    /** 被归一化剔除的部件数（rect 越界 / kind 非法 / 尺寸为 0） */
-    skipped: rawParts.length - doc.parts.length,
-    parts: manifest.parts.map((part, index) => ({
-      kind: part.kind,
-      name: part.name,
-      fileName: part.fileName,
-      path: saved[index] ?? ''
-    }))
   }
 }
 
@@ -539,7 +454,6 @@ const RENDER_JOB_HANDLERS: Record<
   (args: Record<string, unknown>) => Promise<unknown>
 > = {
   'stage2d-spine-export': handleStage2dSpineExport,
-  'ui-kit-extract': handleUiKitExtract,
   'asset-qc': handleAssetQc,
   'svg-raster': handleSvgRaster,
   'timeline-document-apply': handleTimelineDocumentApply
