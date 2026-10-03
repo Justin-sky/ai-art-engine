@@ -107,6 +107,19 @@ jobs:
       - name: Bundle dsh runtime
         run: npm run bundle:dsh
 
+      # 拉取随包内置的 YOLO 模型到 resources/yolo-models（detect / segment / pose，约 33MB）。
+      # models 不进 git，npm 脚本 dist / pack 里都带了这一步，但 CI 直接调 electron-builder，
+      # 少这一步会让 extraResources 的 `from: resources/yolo-models` 落空：安装包无内置模型，
+      # 用户在「设置 → 模型 → YOLO」看到未就绪，得自己往 <userData>/yolo-models 放 .onnx。
+      # 该步骤对三个平台都执行（打包动作各自不同，模型是共用的）。
+      - name: Fetch bundled YOLO models
+        run: npm run fetch:yolo-models
+
+      # 打包资源自检：上面那步若因网络等原因没落盘，这里直接失败，而不是让
+      # electron-builder 只打印一行 "file source doesn't exist" 后照常产出缺模型的安装包。
+      - name: Check pack resources
+        run: npm run check:pack
+
       - name: Package (Windows)
         if: matrix.platform == 'win'
         env:
