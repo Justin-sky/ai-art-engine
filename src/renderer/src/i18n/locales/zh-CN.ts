@@ -484,9 +484,9 @@ export default {
       collapseProvider: '收起提供商',
       expandProvider: '展开提供商',
       emptyProviders:
-        '尚未添加提供商。可添加 OpenRouter、OpenAI、DeepSeek、智谱、Kimi（月之暗面）、xAI（Grok）、Google（Gemini）、vLLM、Ollama、LM Studio、火山方舟、可灵、MiniMax、通义千问、魔塔、ComfyUI、MagicRouter 或自定义提供商（自选端点类型并填写 Base URL / API Key）；本地服务无需密钥，云端服务填写密钥后在各模态下勾选模型。',
+        '尚未添加提供商。可添加 OpenRouter、OpenAI、DeepSeek、智谱、Kimi（月之暗面）、xAI（Grok）、Google（Gemini）、vLLM、Ollama、LM Studio、火山方舟、可灵、MiniMax、通义千问、魔塔、ComfyUI、MagicRouter、NewAPI 或自定义提供商（自选端点类型并填写 Base URL / API Key）；本地服务无需密钥，云端服务填写密钥后在各模态下勾选模型。',
       unifiedHint:
-        '同一提供商只需填写一次密钥 / Base URL；文本、图片、视频、声音分别拉取并勾选。火山方舟声音为手填已购 speaker_id；可灵 / MiniMax / 通义千问用 API Key；魔塔用访问令牌（文本/文生图）；OpenAI 官方仅支持文本与图片，需要可访问 api.openai.com 的网络环境与账号；DeepSeek 仅支持文本；智谱支持 GLM 文本与 CogView 图片；Kimi（月之暗面）仅支持文本；xAI（Grok）支持文本 / 图片 / 视频；Google（Gemini）仅支持文本；vLLM / Ollama / LM Studio 为本地 OpenAI 兼容服务，无需 API Key；ComfyUI 走 API 2（本机 8189 或云端 Base URL），图片 / 视频 / 声音，本机可空 Key；MagicRouter 为多供应商聚合（OpenAI 兼容），支持文本 / 图片 / 视频，需 mr- 开头 API Key。',
+        '同一提供商只需填写一次密钥 / Base URL；文本、图片、视频、声音分别拉取并勾选。火山方舟声音为手填已购 speaker_id；可灵 / MiniMax / 通义千问用 API Key；魔塔用访问令牌（文本/文生图）；OpenAI 官方仅支持文本与图片，需要可访问 api.openai.com 的网络环境与账号；DeepSeek 仅支持文本；智谱支持 GLM 文本与 CogView 图片；Kimi（月之暗面）仅支持文本；xAI（Grok）支持文本 / 图片 / 视频；Google（Gemini）仅支持文本；vLLM / Ollama / LM Studio 为本地 OpenAI 兼容服务，无需 API Key；ComfyUI 走 API 2（本机 8189 或云端 Base URL），图片 / 视频 / 声音，本机可空 Key；MagicRouter 为多供应商聚合（OpenAI 兼容），支持文本 / 图片 / 视频，需 mr- 开头 API Key。NewAPI 为自建 OpenAI 兼容中转网关：填自己的网关地址，模型按网关的端点元数据拆分到文本 / 图片页签。',
       enabled: '启用',
       remove: '移除',
       label: '显示名称',
@@ -528,6 +528,7 @@ export default {
         modelscope: '获取访问令牌：',
         comfyui: '本机可空 Key；云端 API Key：',
         magicrouter: '获取 MagicRouter API Key（mr- 开头）：',
+        newapi: 'NewAPI 面板 → 令牌 → 添加令牌，复制 sk- 开头的那串：',
         tripo: '获取 Tripo API Key：',
         hyper3d: '获取 Rodin（Hyper3D）API Key：',
         luma: '获取 Luma AI API Key：',

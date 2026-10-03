@@ -21,7 +21,7 @@
     </script>
     <meta
       name="description"
-      content="AIArtEngine 教程：用自定义提供商接入 NewAPI 等 OpenAI 兼容中转网关，拉取与手动添加文本 / 图片模型。"
+      content="AIArtEngine 教程：用内置 NewAPI 提供商接入自建中转网关，按网关端点元数据自动区分文本与图片模型。"
     />
     <title>NewAPI 接入教程 — AIArtEngine</title>
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/guide-newapi.html" />
@@ -29,14 +29,14 @@
     <meta property="og:type" content="website" />
     <meta property="og:locale" content="zh_CN" />
     <meta property="og:title" content="NewAPI 接入教程 — AIArtEngine" />
-    <meta property="og:description" content="AIArtEngine 教程：用自定义提供商接入 NewAPI 等 OpenAI 兼容中转网关，拉取与手动添加文本 / 图片模型。" />
+    <meta property="og:description" content="AIArtEngine 教程：用内置 NewAPI 提供商接入自建中转网关，按网关端点元数据自动区分文本与图片模型。" />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/guide-newapi.html" />
     <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="NewAPI 接入教程 — AIArtEngine" />
-    <meta name="twitter:description" content="AIArtEngine 教程：用自定义提供商接入 NewAPI 等 OpenAI 兼容中转网关，拉取与手动添加文本 / 图片模型。" />
+    <meta name="twitter:description" content="AIArtEngine 教程：用内置 NewAPI 提供商接入自建中转网关，按网关端点元数据自动区分文本与图片模型。" />
     <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-newapi.html" />
     <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-newapi.en.html" />
@@ -128,7 +128,7 @@
         <ol>
           <li><a href="#overview">它怎么接</a></li>
           <li><a href="#prepare">在 NewAPI 侧准备</a></li>
-          <li><a href="#add-provider">添加自定义提供商</a></li>
+          <li><a href="#add-provider">添加 NewAPI 提供商</a></li>
           <li><a href="#fetch-text">拉取文本模型</a></li>
           <li><a href="#manual-model">手动添加模型（重点）</a></li>
           <li><a href="#use">在节点里用起来</a></li>
@@ -144,19 +144,18 @@
           <p class="eyebrow">Guide · NewAPI</p>
           <h1>NewAPI 接入教程</h1>
           <p class="lede">
-            NewAPI 是 OpenAI 兼容的中转网关，把多家模型聚合成一个地址。本软件用
-            <strong>自定义提供商 + OpenAI 兼容端点类型</strong>接它：文本走
-            <code>/chat/completions</code>，图片走 <code>/images/generations</code>。
-            图片模型不会被自动识别，<strong>必须手动填 id</strong> —— 这是本文最重要的一节。
+            NewAPI 是开源的 OpenAI 兼容中转网关，把多家渠道的模型聚合成一个地址。本软件内置了
+            <strong>NewAPI 提供商</strong>：文本走 <code>/chat/completions</code>，图片走
+            <code>/images/generations</code>，并且会读网关公开的端点元数据，
+            <strong>自动把模型分到「文本」和「图片」两个页签</strong>。
           </p>
         </header>
 
         <section id="overview">
           <h2>1. 它怎么接</h2>
           <p>
-            NewAPI 在本软件里不是一个内置提供商，而是走
-            <strong>设置 → 模型 → 添加模型提供商 → 自定义</strong>：你告诉它端点类型、Base URL 与
-            API Key，它按 OpenAI 兼容协议发请求。
+            设置 → 模型 → 添加模型提供商 → 选 <strong>NewAPI</strong>：填你的网关地址与 NewAPI
+            令牌即可，不需要再选端点类型。
           </p>
           <table>
             <thead>
@@ -168,7 +167,7 @@
             </thead>
             <tbody>
               <tr>
-                <td>NewAPI 站点（推荐）</td>
+                <td>NewAPI 站点</td>
                 <td><code>https://origingateway.com/v1</code></td>
                 <td>必填（NewAPI 令牌，<code>sk-</code> 开头）</td>
               </tr>
@@ -197,7 +196,7 @@
               <tr>
                 <td>文本</td>
                 <td><code>POST {Base URL}/chat/completions</code></td>
-                <td><code>GET {Base URL}/models</code> 自动拉取</td>
+                <td><code>GET {Base URL}/models</code> 自动拉取；能出图的模型不会出现在这里</td>
               </tr>
               <tr>
                 <td>图片</td>
@@ -205,12 +204,30 @@
                   <code>POST {Base URL}/images/generations</code>；有参考图时走
                   <code>POST {Base URL}/images/edits</code>（multipart，一次最多 1 张）
                 </td>
-                <td><strong>恒为空，必须手动填 id</strong>（见第 5 节）</td>
+                <td>
+                  <strong>自动列出</strong>：读网关的端点元数据挑出能出图的模型；
+                  元数据取不到时退回按 id 命名判断，仍判不出来的可以手动填 id
+                </td>
               </tr>
             </tbody>
           </table>
+          <p>
+            端点元数据来自网关公开的 <code>GET /api/pricing</code>：它有一张端点字典，把端点类型
+            映射到真实路径，例如
+          </p>
+          <pre><code>{
+  "image-generation": { "path": "/v1/images/generations" },
+  "image-edit":       { "path": "/v1/images/edits" },
+  "openai":           { "path": "/v1/chat/completions" }
+}</code></pre>
+          <p>
+            每个模型条目还带 <code>supported_endpoint_types</code>，所以「这个模型能不能出图」
+            不用猜命名（例如 <code>grok-imagine-image</code> 这种名字里没有 image 语义的也能认出来）。
+            <strong>列出哪些模型仍以令牌可见的 <code>/v1/models</code> 为准</strong> —— 元数据只用来
+            判定模态与端点，不会把令牌用不了的模型塞进列表。
+          </p>
           <div class="tip">
-            自定义提供商目前<strong>只有「文本」与「图片」两个页签</strong>。视频 / 声音 / 3D 模型节点
+            NewAPI 提供商目前<strong>只有「文本」与「图片」两个页签</strong>。视频 / 声音 / 3D 模型节点
             选不到它；即使用别的办法塞进模型 id，执行时也会直接报「暂不支持视频生成 / 语音合成 / 3D 模型生成」。
           </div>
         </section>
@@ -219,48 +236,60 @@
           <h2>2. 在 NewAPI 侧准备三样东西</h2>
           <ol>
             <li>
-              <strong>站点地址</strong>：你平时打开 NewAPI 面板的域名（形如
-              <code>https://your-newapi.example.com</code>）。OpenAI 兼容入口是它的
-              <code>/v1</code>。
+              <strong>站点地址</strong>：你平时打开 NewAPI 面板的域名（本教程用它做示例：
+              <code>https://origingateway.com</code>）。OpenAI 兼容入口是它的 <code>/v1</code>，
+              所以 Base URL 填 <code>https://origingateway.com/v1</code>。
             </li>
             <li>
               <strong>令牌</strong>：NewAPI 面板 → <strong>令牌</strong> → 添加令牌，复制
-              <code>sk-</code> 开头的那串。注意令牌有<strong>额度与模型分组</strong>限制，
-              分组不对会出现「拉得到列表、生成却报无权限」。
+              <code>sk-</code> 开头的那串。令牌的<strong>分组决定你能用哪些模型</strong>，这是最容易踩的坑：
+              <div class="tip" style="margin: 0.6rem 0 0">
+                应用里拉到的目录是 <code>GET /v1/models</code>，它<strong>只列你这个令牌分组下可用的模型</strong>；
+                而网页面板上的价目表（<code>/pricing</code>、<code>GET /api/pricing</code>）列的是
+                <strong>全站所有分组</strong>的模型，两者数量经常不一样。<br />
+                典型现象：价目表有 13 个模型、令牌目录只有 3 个 —— 另外 10 个挂在别的分组
+                （如 <code>GPT-Image-4K</code>、<code>Nano Banana</code>、<code>Grok-imagine-image</code>），
+                拿这个令牌去调会直接 503：
+                <code>No available channel for model … under group GPT-Image</code>。<br />
+                要用那些模型，就在面板里给令牌换一个覆盖目标模型的分组，或新建一个对应分组的令牌。
+              </div>
             </li>
             <li>
               <strong>模型名</strong>：NewAPI 面板 → <strong>渠道 / 模型</strong>，记下你要用的
               <strong>模型 id 原文</strong>（如 <code>gpt-4o-mini</code>、<code>deepseek-chat</code>、
-              <code>flux.1-schnell</code>、<code>gpt-image-1</code>）。手填模型时<strong>必须一字不差</strong>，
+              <code>flux.1-schnell</code>、<code>gpt-image-2.5-flare</code>）。手填模型时<strong>必须一字不差</strong>，
               大小写与连字符都要对。
             </li>
           </ol>
-          <p>填进本软件之前，建议先用命令行确认这两个接口是通的：</p>
-          <pre><code># 模型列表（认证 + 目录）
+          <p>填进本软件之前，建议先用命令行确认这几个接口是通的：</p>
+          <pre><code># 模型列表（令牌可见的目录 + 认证检查）
 curl -H "Authorization: Bearer sk-你的令牌" https://origingateway.com/v1/models
 
 # 文本对话
 curl -X POST https://origingateway.com/v1/chat/completions \
   -H "Authorization: Bearer sk-你的令牌" \
   -H "Content-Type: application/json" \
-  -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}]}'</code></pre>
+  -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}]}'
+
+# 出图（图片模型 id 换成你目录里的那个）
+curl -X POST https://origingateway.com/v1/images/generations \
+  -H "Authorization: Bearer sk-你的令牌" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gpt-image-2.5-flare","prompt":"a red ball","n":1}'</code></pre>
         </section>
 
         <section id="add-provider">
-          <h2>3. 在本软件里添加自定义提供商</h2>
+          <h2>3. 在本软件里添加 NewAPI 提供商</h2>
           <ol>
             <li>打开<strong>设置 → 模型</strong>（模型与密钥是全局设置，对所有工程生效）。</li>
             <li>
-              顶部「添加模型提供商」下拉选 <strong>自定义</strong>，点 <strong>添加</strong>。
+              顶部「添加模型提供商」下拉选 <strong>NewAPI</strong>，点 <strong>添加</strong>。
               新卡片会自动展开并滚到眼前。
             </li>
-            <li><strong>显示名称</strong>：填一个好认的名字，例如 <code>NewAPI</code>。</li>
+            <li><strong>显示名称</strong>：保持默认的 <code>NewAPI</code> 即可，也可以改成你的站名。</li>
             <li>
-              <strong>端点类型</strong>：选 <strong>OpenAI 兼容</strong>（NewAPI 就是 OpenAI 兼容中转）。
-              下拉下方的说明会同步告诉你当前选的是哪套协议。
-            </li>
-            <li>
-              <strong>API Base URL</strong>：填 <code>https://origingateway.com/v1</code>（见第 1 节的提醒）。
+              <strong>API Base URL</strong>：把默认的占位地址换成你自己的网关，例如
+              <code>https://origingateway.com/v1</code>（见第 1 节的提醒）。
             </li>
             <li>
               <strong>API Key</strong>：粘贴 NewAPI 令牌。右侧眼睛按钮可临时显示明文核对。
@@ -268,9 +297,9 @@ curl -X POST https://origingateway.com/v1/chat/completions \
             <li>勾上 <strong>启用</strong> —— 不启用的提供商不会出现在任何节点的模型下拉里。</li>
           </ol>
           <div class="tip">
-            改完不用点保存：设置页 500 ms 防抖后<strong>自动落盘</strong>。填完 Base URL 与 Key 后，
-            卡片下方会显示「自定义提供商：选择端点类型后，填写端点 Base URL 与 API Key 即可拉取模型列表；无统一申请页。」——
-            自定义提供商没有统一的密钥申请页，也不需要。
+            改完不用点保存：设置页 500 ms 防抖后<strong>自动落盘</strong>。
+            内置的 NewAPI 提供商<strong>不需要选端点类型</strong>（固定走 OpenAI 兼容协议），
+            也没有统一的密钥申请页 —— 令牌在你自己网关的面板里建。
           </div>
         </section>
 
@@ -283,8 +312,8 @@ curl -X POST https://origingateway.com/v1/chat/completions \
               密钥与连通性检查）。
             </li>
             <li>
-              成功时按钮右侧显示 <strong>共 N 个模型</strong>。列表<strong>不做模态过滤</strong>：
-              NewAPI 的 <code>/models</code> 里如果有图片模型，它也会出现在「文本」页签里 —— 只勾选对话模型即可。
+              成功时按钮右侧显示 <strong>共 N 个模型</strong>。列表已按模态过滤：
+              <strong>能出图的模型会被归到「图片」页签</strong>，不会出现在这里。
             </li>
             <li>用筛选框搜、用「全选当前列表 / 清空选择」批量操作，勾选你要用的模型。</li>
             <li>需要指定默认时，在 <strong>默认生成模型</strong> 下拉里选一个（该下拉只列已勾选项）。</li>
@@ -293,6 +322,10 @@ curl -X POST https://origingateway.com/v1/chat/completions \
             编辑生成节点时，模型下拉里就会出现 <code>NewAPI · 模型名</code> 这一项。下拉为空时，
             检查器会提示「请先在设置中配置可用的文本模型（需 API Key 并勾选模型）」，回到这一步补齐即可。
           </p>
+          <div class="tip">
+            如果拉取后一个模型都没有，说明你的<strong>令牌分组下没有对话渠道</strong>（不是地址或密钥错）：
+            这种情况应用会直接提示「返回的模型都是图片生成模型」，去「图片」页签把它们勾上即可。
+          </div>
         </section>
 
         <section id="manual-model">
@@ -307,17 +340,24 @@ curl -X POST https://origingateway.com/v1/chat/completions \
             只进图片列表 —— 两个页签互不相通，别在文本页签填图片模型。
           </div>
 
-          <h3>5.1 什么时候必须手填</h3>
+          <h3>5.1 什么时候需要手填</h3>
           <ul>
             <li>
-              <strong>图片模型：永远要手填。</strong>本软件不自动识别图片模型（<code>/models</code>
-              只给模型名，区分不出它能不能画图），所以图片页签的目录接口固定返回空。
+              <strong>图片模型通常不用手填</strong>：拉取时会读网关的端点元数据，自动把能出图的模型
+              放进「图片」页签（见第 1 节）。只有元数据取不到、或某个模型的 id 看不出图片语义时才需要手填
+              —— 手填项与自动拉到的项会合并进同一个列表。
             </li>
             <li>
               <strong>拉取返回 404 / 405</strong>：网关没有实现 <code>/models</code>。列表会是空的但
               <strong>不报错</strong>（这是预期行为），直接手填即可，不影响生成。
             </li>
-            <li><strong>拉取报「端点未返回模型列表」</strong>：地址或 Key 有问题，或者令牌没绑任何渠道。</li>
+            <li>
+              <strong>「端点返回的 N 个模型都是图片生成模型」</strong>：令牌分组下只有图片渠道，
+              文本页签自然没有可用模型 —— 去「图片」页签勾选，或去网关给令牌换一个含对话渠道的分组。
+            </li>
+            <li>
+              <strong>拉取报「网关未返回模型列表」</strong>：地址或令牌有问题，或者令牌没绑任何渠道。
+            </li>
             <li><strong>只想用其中几个</strong>：懒得在几百个模型里翻，直接手填想要的 id。</li>
             <li><strong>NewAPI 上换了模型名</strong>：重新手填新 id，旧的手填项可以取消勾选。</li>
           </ul>
@@ -336,24 +376,21 @@ curl -X POST https://origingateway.com/v1/chat/completions \
           <h3>5.3 手填图片模型</h3>
           <ol>
             <li>
-              切到 <strong>图片</strong> 页签。页签下方会写：「图片生成走 OpenAI 兼容
-              <code>/images/generations</code> 接口（如 gpt-image-1 / dall-e-3 / FLUX 等），参考图走
-              <code>/images/edits</code>。目录不自动识别图片模型，请在下方手动填写图片模型 id 并勾选。」
+              切到 <strong>图片</strong> 页签，先点一次 <strong>拉取可用模型</strong> —— 正常情况下
+              能出图的模型会直接列出来（图片目录按网关端点元数据挑选，不是恒为空）。
             </li>
             <li>
-              在同一个位置的输入框里填<strong>图片模型 id</strong>，例如 <code>gpt-image-1</code>、
-              <code>flux.1-schnell</code>、<code>dall-e-3</code>。填 NewAPI 上真实存在的名字，不要写
-              「图片模型」这类描述。
+              没列出来的，在同一个位置的输入框里填<strong>图片模型 id</strong>，例如
+              <code>gpt-image-2.5-flare</code>、<code>flux.1-schnell</code>。填 NewAPI 上真实存在的名字，
+              不要写「图片模型」这类描述。
             </li>
             <li>点 <strong>添加并勾选</strong>。</li>
             <li>在「默认生成模型」下拉里把它设为默认（该下拉只列已勾选项）。</li>
           </ol>
           <div class="tip">
-            在图片页签点「拉取可用模型」<strong>不会</strong>得到列表，这是设计如此：它只用来验证
-            Base URL / Key 通不通。<br />
-            首次点会看到「目录为空。可手动填写模型 ID，或检查提供商与 API Key。」；已经手填过再点时显示
-            「远端返回空列表，已保留上次拉取结果。可稍后重试。」—— <strong>两者都不是故障</strong>，
-            你的手填项不会丢。
+            如果图片页签拉取后为空，而你的令牌分组下确实有图片渠道，再看一眼那句提示：
+            「远端返回空列表，已保留上次拉取结果。可稍后重试。」表示网关目录里没有可判定的图片模型，
+            此时手填即可，<strong>不是故障</strong>，你的手填项也不会丢。
           </div>
 
           <h3>5.4 手填项会不会被覆盖</h3>
@@ -401,7 +438,7 @@ curl -X POST https://origingateway.com/v1/chat/completions \
           <h2>7. 常见问题</h2>
           <ul>
             <li>
-              <strong>「拉取可用模型」是灰的</strong>：自定义提供商必须有 API Key 才会启用该按钮。
+              <strong>「拉取可用模型」是灰的</strong>：NewAPI 提供商必须填了令牌才会启用该按钮。
               先填 Key（并确认「启用」已勾选）。
             </li>
             <li>
@@ -417,14 +454,11 @@ curl -X POST https://origingateway.com/v1/chat/completions \
               直接在第 5 节手填模型 id，生成不受影响。
             </li>
             <li>
-              <strong>列表拉到了，但图片页签永远是空的</strong>：预期行为。图片模型必须手填（第 5.3 节）。
+              <strong>图片页签拉取后为空</strong>：先确认令牌分组里有图片渠道；若提示「远端返回空列表，
+              已保留上次拉取结果」，说明网关目录里没有可判定的图片模型，手填即可（第 5.3 节）。
             </li>
             <li>
-              <strong>图片页签点了拉取，出现「远端返回空列表，已保留上次拉取结果」</strong>：正常提示，
-              手填项还在，可以直接用。
-            </li>
-            <li>
-              <strong>生成时报「暂不支持视频生成 / 语音合成 / 3D 模型生成」</strong>：自定义提供商只有文本
+              <strong>生成时报「暂不支持视频生成 / 语音合成 / 3D 模型生成」</strong>：NewAPI 提供商只有文本
               与图片。视频请用内置的视频提供商或 ComfyUI（见
               <a href="guide-comfyui.html">ComfyUI 接入教程</a>）。
             </li>
@@ -433,12 +467,21 @@ curl -X POST https://origingateway.com/v1/chat/completions \
               <code>/chat/completions</code> 也写进去，都会 404。
             </li>
             <li>
-              <strong>切了「端点类型」后拉取好像还按旧的走</strong>：设置是防抖自动保存的，
-              改完等设置页提示「已保存」再点拉取。另外 Anthropic 端点只提供文本，图片页签会消失。
+              <strong>面板价目表有十几个模型，应用里只拉到几个</strong>：应用读的是
+              <code>GET /v1/models</code>，<strong>只列你这个令牌分组下可用的模型</strong>；
+              面板价目表列的是全站所有分组。要用价目表里的其它模型，去面板给令牌换分组（见第 2 节）。
+            </li>
+            <li>
+              <strong>拉取报 503 / <code>No available channel</code></strong>：该模型在你的令牌分组下
+              没有可用渠道，不是软件的问题；换分组，或改用同分组里别的模型。
+            </li>
+            <li>
+              <strong>文本页签一个模型都没有、图片页签有</strong>：令牌分组下只有图片渠道，属于正常情况，
+              应用会明确提示「返回的模型都是图片生成模型」。
             </li>
             <li>
               <strong>模型名对不上</strong>：请以 NewAPI 面板上显示的 id 为准，手填时逐字符核对；
-              中转站常给模型加前缀或后缀（如 <code>-free</code>、<code>-thinking</code>）。
+              中转站常给模型加前缀或后缀（如 <code>-free</code>、<code>-thinking</code>、<code>-4k</code>）。
             </li>
             <li>
               <strong>API Key 存在哪</strong>：本机设置文件（Windows 示例：

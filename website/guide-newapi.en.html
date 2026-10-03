@@ -21,7 +21,7 @@
     </script>
     <meta
       name="description"
-      content="AIArtEngine guide: connect NewAPI (or any OpenAI-compatible relay) as a custom provider, then fetch or hand-add text and image models."
+      content="AIArtEngine guide: connect a self-hosted NewAPI relay with the built-in NewAPI provider, which sorts text and image models using the gateway's endpoint metadata."
     />
     <title>Connecting to NewAPI — AIArtEngine</title>
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/guide-newapi.en.html" />
@@ -29,14 +29,14 @@
     <meta property="og:type" content="website" />
     <meta property="og:locale" content="en_US" />
     <meta property="og:title" content="Connecting to NewAPI — AIArtEngine" />
-    <meta property="og:description" content="AIArtEngine guide: connect NewAPI (or any OpenAI-compatible relay) as a custom provider, then fetch or hand-add text and image models." />
+    <meta property="og:description" content="AIArtEngine guide: connect a self-hosted NewAPI relay with the built-in NewAPI provider, which sorts text and image models using the gateway's endpoint metadata." />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/guide-newapi.en.html" />
     <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Connecting to NewAPI — AIArtEngine" />
-    <meta name="twitter:description" content="AIArtEngine guide: connect NewAPI (or any OpenAI-compatible relay) as a custom provider, then fetch or hand-add text and image models." />
+    <meta name="twitter:description" content="AIArtEngine guide: connect a self-hosted NewAPI relay with the built-in NewAPI provider, which sorts text and image models using the gateway's endpoint metadata." />
     <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-newapi.html" />
     <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-newapi.en.html" />
@@ -121,7 +121,7 @@
         <ol>
           <li><a href="#overview">How it connects</a></li>
           <li><a href="#prepare">Prepare three things on NewAPI</a></li>
-          <li><a href="#add-provider">Add the custom provider</a></li>
+          <li><a href="#add-provider">Add the NewAPI provider</a></li>
           <li><a href="#fetch-text">Fetch text models</a></li>
           <li><a href="#manual-model">Add models by hand</a></li>
           <li><a href="#use">Use it in nodes</a></li>
@@ -137,20 +137,19 @@
           <p class="eyebrow">Guide · NewAPI</p>
           <h1>Connecting to NewAPI</h1>
           <p class="lede">
-            NewAPI is an OpenAI-compatible relay that puts many models behind one address. This app connects
-            to it through a <strong>custom provider with the OpenAI-compatible endpoint type</strong>: text
-            goes to <code>/chat/completions</code>, images go to <code>/images/generations</code>. Image
-            models are never auto-detected &mdash; <strong>you must type the id yourself</strong>, which is
-            the most important section below.
+            NewAPI is an open-source OpenAI-compatible relay that puts many channels' models behind one
+            address. This app ships a <strong>built-in NewAPI provider</strong>: text goes to
+            <code>/chat/completions</code>, images go to <code>/images/generations</code>, and it reads the
+            gateway's public endpoint metadata to <strong>sort models into the Text and Image tabs
+            automatically</strong>.
           </p>
         </header>
 
         <section id="overview">
           <h2>1. How it connects</h2>
           <p>
-            NewAPI is not a built-in provider here. You add it under
-            <strong>Settings &rarr; Models &rarr; Add model provider &rarr; Custom</strong>: you tell the app
-            the endpoint type, the Base URL and the API key, and it speaks the OpenAI-compatible protocol.
+            Settings &rarr; Models &rarr; Add model provider &rarr; pick <strong>NewAPI</strong>: enter your
+            gateway address and NewAPI token. There is no endpoint type to choose.
           </p>
           <table>
             <thead>
@@ -162,7 +161,7 @@
             </thead>
             <tbody>
               <tr>
-                <td>Hosted NewAPI (recommended)</td>
+                <td>Hosted NewAPI</td>
                 <td><code>https://origingateway.com/v1</code></td>
                 <td>Required (a NewAPI token starting with <code>sk-</code>)</td>
               </tr>
@@ -192,7 +191,9 @@
               <tr>
                 <td>Text</td>
                 <td><code>POST {Base URL}/chat/completions</code></td>
-                <td>Fetched automatically from <code>GET {Base URL}/models</code></td>
+                <td>
+                  Fetched from <code>GET {Base URL}/models</code>; image-capable models never show up here
+                </td>
               </tr>
               <tr>
                 <td>Image</td>
@@ -200,12 +201,31 @@
                   <code>POST {Base URL}/images/generations</code>; with a reference image,
                   <code>POST {Base URL}/images/edits</code> (multipart, one image max)
                 </td>
-                <td><strong>Always empty &mdash; type the id by hand</strong> (see section 5)</td>
+                <td>
+                  <strong>Listed automatically</strong> from the gateway's endpoint metadata; falls back to
+                  id-name heuristics when metadata is unavailable, and you can still add ids by hand
+                </td>
               </tr>
             </tbody>
           </table>
+          <p>
+            The endpoint metadata comes from the gateway's public <code>GET /api/pricing</code>, which carries
+            an endpoint dictionary mapping endpoint types to real paths:
+          </p>
+          <pre><code>{
+  "image-generation": { "path": "/v1/images/generations" },
+  "image-edit":       { "path": "/v1/images/edits" },
+  "openai":           { "path": "/v1/chat/completions" }
+}</code></pre>
+          <p>
+            Each model entry also carries <code>supported_endpoint_types</code>, so &ldquo;can this model
+            generate images&rdquo; does not rely on guessing names (even something like
+            <code>grok-imagine-image</code> is detected). <strong>The list of models still comes from the
+            token-visible <code>/v1/models</code></strong> &mdash; metadata only decides modality and endpoint,
+            it never adds models your token cannot use.
+          </p>
           <div class="tip">
-            A custom provider has <strong>only two tabs: Text and Image</strong>. Video / audio / 3D model
+            The NewAPI provider has <strong>only two tabs: Text and Image</strong>. Video / audio / 3D model
             nodes cannot select it; even if a model id gets in by other means, execution fails with
             &ldquo;video generation / speech synthesis / 3D model generation is not supported yet&rdquo;.
           </div>
@@ -215,51 +235,66 @@
           <h2>2. Prepare three things on the NewAPI side</h2>
           <ol>
             <li>
-              <strong>The site address</strong>: the domain you normally open the NewAPI panel on (for
-              example <code>https://your-newapi.example.com</code>). Its OpenAI-compatible entry point is
-              <code>/v1</code>.
+              <strong>The site address</strong>: the domain you normally open the NewAPI panel on (this guide
+              uses <code>https://origingateway.com</code> as the example). Its OpenAI-compatible entry point is
+              <code>/v1</code>, so the Base URL is <code>https://origingateway.com/v1</code>.
             </li>
             <li>
               <strong>A token</strong>: NewAPI panel &rarr; <strong>Tokens</strong> &rarr; add a token, then
-              copy the string starting with <code>sk-</code>. Tokens carry <strong>quota and model-group
-              limits</strong>; with the wrong group you can list models but generation returns a permission
-              error.
+              copy the string starting with <code>sk-</code>. The token's <strong>group decides which models
+              you can use</strong> &mdash; this is the easiest trap:
+              <div class="tip" style="margin: 0.6rem 0 0">
+                The catalog the app fetches is <code>GET /v1/models</code>, which
+                <strong>only lists models available to your token's group</strong>; the panel's price list
+                (<code>/pricing</code>, <code>GET /api/pricing</code>) lists <strong>every group on the
+                site</strong>, so the two counts often differ.<br />
+                Typical: the price list has 13 models while the token catalog has 3 &mdash; the other 10 sit
+                in other groups (such as <code>GPT-Image-4K</code>, <code>Nano Banana</code>,
+                <code>Grok-imagine-image</code>) and calling them with this token returns 503:
+                <code>No available channel for model … under group GPT-Image</code>.<br />
+                To use those models, switch the token to a group that covers them, or create a token for that
+                group.
+              </div>
             </li>
             <li>
               <strong>Model names</strong>: NewAPI panel &rarr; <strong>Channels / Models</strong>, and note
               the <strong>exact model ids</strong> you want (such as <code>gpt-4o-mini</code>,
-              <code>deepseek-chat</code>, <code>flux.1-schnell</code>, <code>gpt-image-1</code>). When typing
-              a model by hand it must match <strong>character for character</strong>, including case and
+              <code>deepseek-chat</code>, <code>flux.1-schnell</code>, <code>gpt-image-2.5-flare</code>). When
+              typing a model by hand it must match <strong>character for character</strong>, including case and
               hyphens.
             </li>
           </ol>
-          <p>Before filling anything into the app, confirm these two endpoints work from a shell:</p>
-          <pre><code># model list (auth + catalog)
+          <p>Before filling anything into the app, confirm these endpoints work from a shell:</p>
+          <pre><code># model list (token-visible catalog + auth check)
 curl -H "Authorization: Bearer sk-YOUR-TOKEN" https://origingateway.com/v1/models
 
 # text completion
 curl -X POST https://origingateway.com/v1/chat/completions \
   -H "Authorization: Bearer sk-YOUR-TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}]}'</code></pre>
+  -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}]}'
+
+# image generation (use an image model id from your catalog)
+curl -X POST https://origingateway.com/v1/images/generations \
+  -H "Authorization: Bearer sk-YOUR-TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gpt-image-2.5-flare","prompt":"a red ball","n":1}'</code></pre>
         </section>
 
         <section id="add-provider">
-          <h2>3. Add the custom provider in this app</h2>
+          <h2>3. Add the NewAPI provider in this app</h2>
           <ol>
             <li>Open <strong>Settings &rarr; Models</strong> (models and keys are global, shared by every project).</li>
             <li>
-              In the &ldquo;Add model provider&rdquo; dropdown pick <strong>Custom</strong>, then click
+              In the &ldquo;Add model provider&rdquo; dropdown pick <strong>NewAPI</strong>, then click
               <strong>Add</strong>. The new card expands and scrolls into view automatically.
             </li>
-            <li><strong>Display name</strong>: something recognisable, for example <code>NewAPI</code>.</li>
             <li>
-              <strong>Endpoint type</strong>: choose <strong>OpenAI compatible</strong> (NewAPI is an
-              OpenAI-compatible relay). The note under the dropdown echoes which protocol is active.
+              <strong>Display name</strong>: the default <code>NewAPI</code> is fine, or rename it to your site.
             </li>
             <li>
-              <strong>API Base URL</strong>: enter <code>https://origingateway.com/v1</code> (see the reminder in
-              section 1).
+              <strong>API Base URL</strong>: replace the placeholder with your own gateway, e.g.
+              <code>https://origingateway.com/v1</code> (see the reminder in section 1).
             </li>
             <li>
               <strong>API Key</strong>: paste the NewAPI token. The eye button reveals it temporarily so you
@@ -272,9 +307,9 @@ curl -X POST https://origingateway.com/v1/chat/completions \
           </ol>
           <div class="tip">
             There is nothing to save: settings <strong>persist automatically</strong> after a 500&nbsp;ms
-            debounce. Below the API key you will see &ldquo;Custom provider: pick an endpoint type, then fill
-            in the Base URL and API key to fetch the model list; there is no central sign-up page.&rdquo;
-            Custom providers have no sign-up page, and do not need one.
+            debounce. The built-in NewAPI provider <strong>has no endpoint type to choose</strong> (it always
+            speaks the OpenAI-compatible protocol) and no central sign-up page &mdash; you create tokens in your
+            own gateway's panel.
           </div>
         </section>
 
@@ -287,9 +322,8 @@ curl -X POST https://origingateway.com/v1/chat/completions \
               key&hellip;&rdquo; &mdash; that step doubles as the key and connectivity check.
             </li>
             <li>
-              On success the count appears next to the button. The list is <strong>not filtered by
-              modality</strong>: if NewAPI's <code>/models</code> includes image models they show up on the
-              Text tab too &mdash; just tick the chat models you want.
+              On success the count appears next to the button. The list <strong>is filtered by modality</strong>:
+              <strong>image-capable models are sorted into the Image tab</strong> and never show up here.
             </li>
             <li>Use the filter box and &ldquo;Select all in list&rdquo; / &ldquo;Clear selection&rdquo;, then tick your models.</li>
             <li>
@@ -302,6 +336,11 @@ curl -X POST https://origingateway.com/v1/chat/completions \
             dropdown is empty the inspector says &ldquo;configure an available text model in settings first (an
             API key plus at least one ticked model)&rdquo; &mdash; come back to this step.
           </p>
+          <div class="tip">
+            If the fetch returns nothing at all, your <strong>token's group has no chat channel</strong> (it is
+            not an address or key problem): the app then says &ldquo;all models returned are image-generation
+            models&rdquo;. Tick them on the Image tab instead.
+          </div>
         </section>
 
         <section id="manual-model">
@@ -321,9 +360,10 @@ curl -X POST https://origingateway.com/v1/chat/completions \
           <h3>5.1 When you have to type it by hand</h3>
           <ul>
             <li>
-              <strong>Image models: always.</strong> The app does not auto-detect image models
-              (<code>/models</code> only returns names and cannot tell whether a model can draw), so the image
-              tab's catalog endpoint deliberately returns nothing.
+              <strong>Image models usually need no hand-typing.</strong> Fetching reads the gateway's endpoint
+              metadata and puts image-capable models on the Image tab (see section 1). You only type them when
+              that metadata is unavailable or when an id gives no hint of being an image model &mdash; hand-typed
+              entries merge into the same list as fetched ones.
             </li>
             <li>
               <strong>Fetching returns 404 / 405</strong>: the gateway does not implement
@@ -331,8 +371,13 @@ curl -X POST https://origingateway.com/v1/chat/completions \
               Type the ids instead &mdash; generation is unaffected.
             </li>
             <li>
-              <strong>Fetching reports &ldquo;the endpoint returned no model list&rdquo;</strong>: the address
-              or key is wrong, or the token is not bound to any channel.
+              <strong>&ldquo;All N models returned by the endpoint are image-generation models&rdquo;</strong>:
+              the token's group only has image channels, so the Text tab has nothing to show &mdash; tick them on
+              the Image tab, or switch the token to a group that includes chat channels.
+            </li>
+            <li>
+              <strong>Fetching reports &ldquo;the gateway returned no models&rdquo;</strong>: the address or
+              token is wrong, or the token is not bound to any channel.
             </li>
             <li><strong>You only want a few</strong>: skip scrolling through hundreds of models and type the ids you need.</li>
             <li><strong>A model was renamed on NewAPI</strong>: type the new id; un-tick the stale entry.</li>
@@ -352,26 +397,23 @@ curl -X POST https://origingateway.com/v1/chat/completions \
           <h3>5.3 Typing an image model</h3>
           <ol>
             <li>
-              Switch to the <strong>Image</strong> tab. Its note reads: &ldquo;Image generation uses the
-              OpenAI-compatible <code>/images/generations</code> endpoint (gpt-image-1 / dall-e-3 / FLUX and
-              friends); reference images go through <code>/images/edits</code>. The catalog does not detect
-              image models, so type the image model id below and tick it.&rdquo;
+              Switch to the <strong>Image</strong> tab and click <strong>Fetch available models</strong> once
+              &mdash; normally the image-capable models are listed right away (the image catalog is picked by
+              gateway endpoint metadata, not hard-wired to be empty).
             </li>
             <li>
-              Type the <strong>image model id</strong> in the field at that same spot, for example
-              <code>gpt-image-1</code>, <code>flux.1-schnell</code> or <code>dall-e-3</code>. Use a name that
-              really exists on NewAPI &mdash; not a description such as &ldquo;image model&rdquo;.
+              For anything not listed, type the <strong>image model id</strong> into the field, for example
+              <code>gpt-image-2.5-flare</code> or <code>flux.1-schnell</code>. Use a name that really exists on
+              NewAPI &mdash; not a description such as &ldquo;image model&rdquo;.
             </li>
             <li>Click <strong>Add &amp; select</strong>.</li>
             <li>Make it the default in the &ldquo;Default generation model&rdquo; dropdown (ticked entries only).</li>
           </ol>
           <div class="tip">
-            Clicking &ldquo;Fetch available models&rdquo; on the Image tab <strong>will not</strong> produce a
-            list &mdash; that is by design; it only verifies the Base URL and key.<br />
-            The first click shows &ldquo;The catalog is empty. Type a model ID by hand, or check the provider
-            and API key.&rdquo;; a later click shows &ldquo;The remote returned an empty list; the previous
-            result was kept. Try again later.&rdquo; <strong>Neither is a failure</strong>, and your hand-typed
-            entries are not lost.
+            If the Image tab comes back empty even though your token's group does have image channels, read the
+            note again: &ldquo;The remote returned an empty list; the previous result was kept. Try again
+            later.&rdquo; means the gateway catalog held no model that could be classified as an image model
+            &mdash; type the id by hand. <strong>Not a failure</strong>, and your hand-typed entries are not lost.
           </div>
 
           <h3>5.4 Are hand-typed entries ever overwritten?</h3>
@@ -426,8 +468,8 @@ curl -X POST https://origingateway.com/v1/chat/completions \
           <h2>7. FAQ</h2>
           <ul>
             <li>
-              <strong>&ldquo;Fetch available models&rdquo; is greyed out</strong>: a custom provider needs an
-              API key before that button enables. Fill in the key (and make sure Enabled is ticked).
+              <strong>&ldquo;Fetch available models&rdquo; is greyed out</strong>: the NewAPI provider needs a
+              token before that button enables. Fill in the token (and make sure Enabled is ticked).
             </li>
             <li>
               <strong>&ldquo;Invalid API key, model fetching blocked: &hellip;&rdquo;</strong>: the key was
@@ -443,16 +485,29 @@ curl -X POST https://origingateway.com/v1/chat/completions \
               <code>/models</code>. Type the model ids as in section 5; generation still works.
             </li>
             <li>
-              <strong>The list fetches fine but the Image tab is always empty</strong>: expected. Image models
-              must be typed by hand (section 5.3).
+              <strong>The panel price list shows a dozen models but the app only fetches a few</strong>: the app
+              reads <code>GET /v1/models</code>, which <strong>only lists models available to your token's
+              group</strong>; the panel price list covers every group on the site. Switch the token's group (see
+              section 2) to reach the others.
+            </li>
+            <li>
+              <strong>Fetching or generating returns 503 / <code>No available channel</code></strong>: that model
+              has no usable channel under your token's group &mdash; not a bug in the app. Switch groups, or use
+              another model in the same group.
+            </li>
+            <li>
+              <strong>The Text tab has no models at all while Image does</strong>: the token's group only has
+              image channels. That is expected, and the app says so: &ldquo;all models returned are
+              image-generation models&rdquo;.
             </li>
             <li>
               <strong>The Image tab fetch says &ldquo;the remote returned an empty list; the previous result
-              was kept&rdquo;</strong>: normal. Your hand-typed entry is still there and usable.
+              was kept&rdquo;</strong>: the gateway catalog held no classifiable image model. Type the id by hand
+              &mdash; not a failure, and your entry stays.
             </li>
             <li>
               <strong>Generation fails with &ldquo;video generation / speech synthesis / 3D model generation is
-              not supported yet&rdquo;</strong>: custom providers only do text and images. For video use a
+              not supported yet&rdquo;</strong>: the NewAPI provider only does text and images. For video use a
               built-in video provider or ComfyUI (see the
               <a href="guide-comfyui.en.html">ComfyUI guide</a>).
             </li>
@@ -461,14 +516,9 @@ curl -X POST https://origingateway.com/v1/chat/completions \
               <code>/chat/completions</code> as well, both end in 404.
             </li>
             <li>
-              <strong>After switching Endpoint type, fetching seems to use the old one</strong>: settings are
-              debounce-saved; wait for the settings page to confirm it saved before fetching. Also note an
-              Anthropic endpoint offers text only, so the Image tab disappears.
-            </li>
-            <li>
               <strong>Model name does not match</strong>: always copy the id shown in the NewAPI panel and
               check it character by character; relays often add prefixes or suffixes such as
-              <code>-free</code> or <code>-thinking</code>.
+              <code>-free</code>, <code>-thinking</code> or <code>-4k</code>.
             </li>
             <li>
               <strong>Where is the API key stored</strong>: in the local settings file (on Windows, for

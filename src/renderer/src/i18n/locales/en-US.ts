@@ -492,9 +492,9 @@ export default {
       collapseProvider: 'Collapse provider',
       expandProvider: 'Expand provider',
       emptyProviders:
-        'No providers yet. Add OpenRouter, OpenAI, DeepSeek, Zhipu, Kimi (Moonshot), xAI (Grok), Google (Gemini), vLLM, Ollama, LM Studio, Volcengine Ark, Kling, MiniMax, Tongyi Qianwen, ModelScope, ComfyUI, MagicRouter, or a custom provider (pick an endpoint type, then enter Base URL / API key). Local servers need no API key; cloud providers need credentials, then select models per modality.',
+        'No providers yet. Add OpenRouter, OpenAI, DeepSeek, Zhipu, Kimi (Moonshot), xAI (Grok), Google (Gemini), vLLM, Ollama, LM Studio, Volcengine Ark, Kling, MiniMax, Tongyi Qianwen, ModelScope, ComfyUI, MagicRouter, NewAPI, or a custom provider (pick an endpoint type, then enter Base URL / API key). Local servers need no API key; cloud providers need credentials, then select models per modality.',
       unifiedHint:
-        'One credential set / Base URL per provider. Fetch text, image, video, and audio models. Ark Voice uses purchased speaker_ids; Kling, MiniMax, and Qianwen use an API Key; ModelScope uses an access token (text/image). OpenAI official supports text and image only and requires network access to api.openai.com. DeepSeek supports text only. Zhipu supports GLM text and CogView image. Kimi (Moonshot) supports text only. xAI (Grok) supports text, image, and video. Google (Gemini) supports text only. vLLM / Ollama / LM Studio are local OpenAI-compatible servers and need no API key. ComfyUI uses API v2 (local :8189 or a cloud Base URL) for image / video / audio; local can omit the key. MagicRouter is a multi-provider aggregator (OpenAI-compatible) for text / image / video, using an mr- API key.',
+        'One credential set / Base URL per provider. Fetch text, image, video, and audio models. Ark Voice uses purchased speaker_ids; Kling, MiniMax, and Qianwen use an API Key; ModelScope uses an access token (text/image). OpenAI official supports text and image only and requires network access to api.openai.com. DeepSeek supports text only. Zhipu supports GLM text and CogView image. Kimi (Moonshot) supports text only. xAI (Grok) supports text, image, and video. Google (Gemini) supports text only. vLLM / Ollama / LM Studio are local OpenAI-compatible servers and need no API key. ComfyUI uses API v2 (local :8189 or a cloud Base URL) for image / video / audio; local can omit the key. MagicRouter is a multi-provider aggregator (OpenAI-compatible) for text / image / video, using an mr- API key. NewAPI is a self-hosted OpenAI-compatible relay: enter your own gateway address, and models are split into text and image by the gateway endpoint metadata.',
       enabled: 'Enabled',
       remove: 'Remove',
       label: 'Display name',
@@ -536,6 +536,7 @@ export default {
         modelscope: 'Get access token:',
         comfyui: 'Local can omit the key; cloud API key:',
         magicrouter: 'Get MagicRouter API key (starts with mr-):',
+        newapi: 'NewAPI panel → Tokens → add a token, then copy the string starting with sk-:',
         tripo: 'Get Tripo API key:',
         hyper3d: 'Get Rodin (Hyper3D) API key:',
         luma: 'Get Luma AI API key:',

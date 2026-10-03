@@ -47,6 +47,15 @@ export const LUMA_DEFAULT_BASE_URL = 'https://api.lumalabs.ai/dream-machine/v1'
 export const LUX3D_DEFAULT_BASE_URL = 'https://api.aholo3d.cn'
 /** TypeSafe（Jev 等 System One 决策模型）：直连 `https://api.typesafe.ai`，Bearer 鉴权 */
 export const TYPESAFE_DEFAULT_BASE_URL = 'https://api.typesafe.ai'
+/**
+ * NewAPI 中转网关（自建，OpenAI 兼容）。
+ *
+ * NewAPI 是自托管软件，没有官方公共域名，所以这里给的是占位地址，用户必须改成自己的网关。
+ * 与「自定义提供商」的区别：NewAPI 会公开 `GET /api/pricing` 端点字典，模型条目带
+ * `supported_endpoint_types`，可据此精确判定模型走对话还是出图端点（见
+ * `shared/modelProviders/newapi/modelCapabilities.ts`），不必只靠 id 命名猜。
+ */
+export const NEWAPI_DEFAULT_BASE_URL = 'https://your-newapi.example.com/v1'
 /** TypeSafe System One 端点（含 /v1，与 Base URL 直接拼接） */
 export const TYPESAFE_SYSTEMONE_PATH = '/v1/systemone'
 
@@ -79,6 +88,8 @@ export type ModelProviderKind =
   | 'modelscope'
   | 'comfyui'
   | 'magicrouter'
+  /** NewAPI 中转网关（自建，OpenAI 兼容；按 /api/pricing 端点元数据区分对话与出图） */
+  | 'newapi'
   | 'tripo'
   | 'meshy'
   | 'hyper3d'
@@ -239,6 +250,13 @@ export const MODEL_PROVIDER_KINDS: readonly ModelProviderKindMeta[] = [
     label: 'MagicRouter',
     defaultBaseUrl: MAGICROUTER_DEFAULT_BASE_URL,
     credentialsUrl: 'https://www.magicrouter.ai/docs/api'
+  },
+  {
+    id: 'newapi',
+    label: 'NewAPI',
+    /** 自建网关，默认地址是占位值，必须改成用户自己的站；出图按 /api/pricing 元数据判定 */
+    defaultBaseUrl: NEWAPI_DEFAULT_BASE_URL,
+    credentialsUrl: 'https://docs.newapi.pro/zh/docs'
   },
   {
     id: 'tripo',

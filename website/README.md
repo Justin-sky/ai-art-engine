@@ -17,7 +17,7 @@ npm run site
 | `guide-short-video.html` | 短剧制作教程 |
 | `guide-video.html` | 自由画布 · 视频与参考视频 |
 | `guide-comfyui.html` | ComfyUI 接入教程（API 2、本机安装 comfy-api-proxy、API 格式 workflow） |
-| `guide-newapi.html` | NewAPI 接入教程（自定义提供商、OpenAI 兼容端点、拉取与手动添加文本 / 图片模型） |
+| `guide-newapi.html` | NewAPI 接入教程（内置 NewAPI 提供商、按网关端点元数据区分文本 / 图片模型、令牌分组注意事项） |
 | `*.en.html` | 以上 7 个页面各有英文版（统一 `.en.html` 后缀） |
 | `manual.css` | 手册与教程页样式（中英文共用） |
 | `styles.css` | 首页样式（中英文共用） |

@@ -11,7 +11,7 @@
 | [视频教程](https://justin-sky.github.io/ai-art-engine/guide-video.html)       | 自由画布 · 视频生成与参考视频                                                                         |
 | [短剧教程](https://justin-sky.github.io/ai-art-engine/guide-short-video.html) | 短剧一键工作流                                                                                        |
 | [ComfyUI 接入](https://justin-sky.github.io/ai-art-engine/guide-comfyui.html) | API 2 与本机 comfy-api-proxy                                                                          |
-| [NewAPI 接入](https://justin-sky.github.io/ai-art-engine/guide-newapi.html)   | 自定义提供商 + OpenAI 兼容中转网关；拉取与手动添加文本 / 图片模型                                     |
+| [NewAPI 接入](https://justin-sky.github.io/ai-art-engine/guide-newapi.html)   | 内置 NewAPI 提供商 + 自建 OpenAI 兼容中转网关；端点元数据区分文本 / 图片模型                          |
 | [MCP 接入教程](https://justin-sky.github.io/ai-art-engine/guide-mcp.html)     | 外部 Agent 接入（stdio 桥 / HTTP 直连）                                                               |
 | [CHANGELOG.md](../CHANGELOG.md)                                               | 版本变更                                                                                              |
 

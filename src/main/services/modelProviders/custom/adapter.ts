@@ -14,6 +14,7 @@ import type {
   ModelProviderInstance
 } from '@shared/modelProvider'
 import { resolveCustomApiStyle } from '@shared/modelProvider'
+import { isCustomTextModelId } from '@shared/modelProviders/custom/modelCapabilities'
 import type { ModelProviderAdapter, VideoPollResult } from '../types'
 import { PROVIDER_ERRORS } from '../catalog'
 import { fail, defErr, defErrSimple } from '@shared/errors/appError'
@@ -39,6 +40,15 @@ const E_CUSTOM_EMPTY_CATALOG = defErrSimple(
   'provider.custom.empty-catalog',
   '端点未返回模型列表。请确认 Base URL 与 API Key 正确；目录接口不可用时，可在下方手动填写模型 id 并勾选。',
   'The endpoint returned no models. Check the Base URL and API Key; if the catalog API is unavailable, add model ids manually below.'
+)
+
+/** 网关目录里只有图片生成模型时的专门提示：不是密钥 / 地址错，重试也不会变 */
+const E_CUSTOM_IMAGE_ONLY_CATALOG = defErr<{ count: number }>(
+  'provider.custom.image-only-catalog',
+  ({ count }) =>
+    `端点返回的 ${count} 个模型都是图片生成模型（中转网关会把图片渠道一并列在 /models 里），文本页签没有可用模型。图片模型请在「图片」页签手动填写 id 并勾选。`,
+  ({ count }) =>
+    `All ${count} models returned by the endpoint are image-generation models (relays list image channels in /models too), so there is no text model to show. Add image models by hand on the Image tab instead.`
 )
 
 const FEATURE_LABELS: Record<'image' | 'video' | 'audio' | 'model3d', { zh: string; en: string }> =
@@ -86,20 +96,32 @@ async function assertOpenAiCompatAuth(provider: ModelProviderInstance): Promise<
   }
 }
 
-/** OpenAI 兼容（openai / gemini）：GET /models 全量返回（自定义网关不过滤模型） */
-async function listOpenAiCompatModels(provider: ModelProviderInstance): Promise<CatalogModel[]> {
+/**
+ * OpenAI 兼容（openai / gemini）：GET /models 全量返回，再按 id 剔除图片生成模型。
+ *
+ * 中转网关（NewAPI / one-api 等）会把图片渠道一并列进 /models（实测某网关只返回
+ * `gpt-image-*`），这些模型出现在「文本」页签里是误导：勾了拿去对话只会 503 或
+ * 返回一段 markdown 图片链接。官方 OpenAI 同样是先过滤（见 isOpenAiTextModelId）。
+ *
+ * 返回值把「目录命中数」一并带出：全部被过滤时上层要能区分
+ * 「网关没配文本模型」和「地址 / 密钥不对」。
+ */
+async function listOpenAiCompatModels(
+  provider: ModelProviderInstance
+): Promise<{ rows: CatalogModel[]; catalogCount: number }> {
   requireBaseUrl(provider)
   const client = createProviderHttpClient(provider)
   try {
     const { data } = await client.get<{ data?: Array<{ id?: string }> }>('/models')
-    return (data.data ?? [])
-      .map((m) => String(m.id ?? '').trim())
-      .filter(Boolean)
+    const ids = (data.data ?? []).map((m) => String(m.id ?? '').trim()).filter(Boolean)
+    const rows = ids
+      .filter(isCustomTextModelId)
       .map((id) => ({ id, name: id, modality: 'text' as const }))
+    return { rows, catalogCount: ids.length }
   } catch (err) {
     const status = axios.isAxiosError(err) ? err.response?.status : undefined
     // 网关不提供 /models（如某些纯 chat 代理）时回退空目录（用户可手填模型 id）
-    if (status === 404 || status === 405) return []
+    if (status === 404 || status === 405) return { rows: [], catalogCount: 0 }
     throw fail(PROVIDER_ERRORS.actionFailed, {
       action: 'listModels',
       detail: await readHttpError(err)
@@ -117,16 +139,19 @@ export const customAdapter: ModelProviderAdapter = {
   },
 
   async fetchCatalog(provider, modality) {
-    // 图片模态不自动识别模型（/models 无法区分图片能力），由用户手填图片模型 id
+    // 图片模态不自动识别模型（/models 无法区分图片能力），由用户手填图片模型 id；
+    // 图片模型 id 只在「图片」页签出现，不会混进文本页签（文本侧按下表剔除）。
     if (modality === 'image') return []
     if (modality !== 'text') return []
     const style = resolveCustomApiStyle(provider)
-    const rows =
+    const { rows, catalogCount } =
       style === 'anthropic'
-        ? await listAnthropicModels(provider)
+        ? { rows: await listAnthropicModels(provider), catalogCount: -1 }
         : await listOpenAiCompatModels(provider)
     // 目录为空但连接正常：给出可操作提示（手填模型 id）
     if (!rows.length && provider.apiKey.trim()) {
+      // 目录非空但全是图片模型：不是「地址 / 密钥不对」，重试也不会变，文案要说清楚
+      if (catalogCount > 0) throw fail(E_CUSTOM_IMAGE_ONLY_CATALOG, { count: catalogCount })
       throw fail(E_CUSTOM_EMPTY_CATALOG)
     }
     return rows

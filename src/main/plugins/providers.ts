@@ -18,6 +18,7 @@ import { dashscopeAdapter } from '../services/modelProviders/dashscope/adapter'
 import { modelScopeAdapter } from '../services/modelProviders/modelscope/adapter'
 import { comfyUiAdapter } from '../services/modelProviders/comfyui/adapter'
 import { magicRouterAdapter } from '../services/modelProviders/magicrouter/adapter'
+import { newApiAdapter } from '../services/modelProviders/newapi/adapter'
 import { tripoAdapter } from '../services/modelProviders/tripo/adapter'
 import { meshyAdapter } from '../services/modelProviders/meshy/adapter'
 import { hyper3dAdapter } from '../services/modelProviders/hyper3d/adapter'
@@ -75,6 +76,7 @@ export const builtinProviderPlugins = [
   createProviderPlugin(modelScopeAdapter),
   createProviderPlugin(comfyUiAdapter),
   createProviderPlugin(magicRouterAdapter),
+  createProviderPlugin(newApiAdapter),
   createProviderPlugin(tripoAdapter),
   createProviderPlugin(meshyAdapter),
   createProviderPlugin(hyper3dAdapter),
