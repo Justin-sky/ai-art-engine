@@ -38,16 +38,17 @@
 
 ## 3. 关键设计决策
 
-| 决策                                             | 理由                                                                                    |
-| ------------------------------------------------ | --------------------------------------------------------------------------------------- |
-| `utilityProcess.fork()` 跑推理                   | Electron 官方推荐；崩溃隔离、可重启、不阻塞主进程；`process.parentPort` 提供消息通道    |
-| `onnxruntime-node`（N-API）                      | **无需 electron-rebuild**，符合项目 `npmRebuild:false` 约束；N-API 对 Electron ABI 稳定 |
-| 动态 `require('onnxruntime-node')`               | 包缺失时 worker 仍能启动并返回明确错误，而不是启动即崩                                  |
-| 纯 JS 解码（`jpeg-js` / `pngjs`）                | 保持"主应用纯 JS"约定，零原生依赖、零编译；WebP 走渲染层 canvas → raw 兜底              |
-| 输入三形态 `file / dataUrl / raw`                | file 适配资产库路径，dataUrl 通用，raw 适配渲染层 canvas（webp）                        |
-| 模型目录 `<userData>/yolo-models`                | 用户可放置任意 YOLO ONNX；设置页可改目录；文件名推断任务类型                            |
-| sigmoid 兼容 + 退化框过滤                        | 部分导出变体输出 logits（值 >1），检测后统一 sigmoid；面积≈0 的框直接丢弃               |
-| `electron-builder` `asarUnpack` onnxruntime-node | `.node` 原生模块不能直接从 asar 内 dlopen，需解包到 `app.asar.unpacked`                 |
+| 决策                                             | 理由                                                                                                                                               |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `utilityProcess.fork()` 跑推理                   | Electron 官方推荐；崩溃隔离、可重启、不阻塞主进程；`process.parentPort` 提供消息通道                                                               |
+| `onnxruntime-node`（N-API）                      | **无需 electron-rebuild**，符合项目 `npmRebuild:false` 约束；N-API 对 Electron ABI 稳定                                                            |
+| 动态 `require('onnxruntime-node')`               | 包缺失时 worker 仍能启动并返回明确错误，而不是启动即崩                                                                                             |
+| 纯 JS 解码（`jpeg-js` / `pngjs`）                | 保持"主应用纯 JS"约定，零原生依赖、零编译；WebP 走渲染层 canvas → raw 兜底                                                                         |
+| JPEG 解码上限 4096MB / 160MP                     | jpeg-js 默认 512MB 是按「不可信内容」设的，实测约 21 字节/像素 → 30MP 出头就误伤相机原图；上限只放宽到「覆盖最大画幅」，解压炸弹仍由分辨率上限拒掉 |
+| 输入三形态 `file / dataUrl / raw`                | file 适配资产库路径，dataUrl 通用，raw 适配渲染层 canvas（webp）                                                                                   |
+| 模型目录 `<userData>/yolo-models`                | 用户可放置任意 YOLO ONNX；设置页可改目录；文件名推断任务类型                                                                                       |
+| sigmoid 兼容 + 退化框过滤                        | 部分导出变体输出 logits（值 >1），检测后统一 sigmoid；面积≈0 的框直接丢弃                                                                          |
+| `electron-builder` `asarUnpack` onnxruntime-node | `.node` 原生模块不能直接从 asar 内 dlopen，需解包到 `app.asar.unpacked`                                                                            |
 
 ## 4. 模块清单
 
