@@ -168,7 +168,7 @@
             <tbody>
               <tr>
                 <td>NewAPI 站点</td>
-                <td><code>https://origingateway.com/v1</code></td>
+                <td><code>https://your-newapi.example.com/v1</code></td>
                 <td>必填（NewAPI 令牌，<code>sk-</code> 开头）</td>
               </tr>
               <tr>
@@ -180,9 +180,9 @@
           </table>
           <div class="tip">
             <strong>Base URL 必须自己带上 <code>/v1</code>。</strong>本软件只去掉结尾多余的斜杠，
-            不会替你补 <code>/v1</code>：填 <code>https://origingateway.com/v1</code> 才会打到
-            <code>https://origingateway.com/v1/chat/completions</code>。NewAPI 挂在子路径时把子路径一起写进去，
-            例如 <code>https://origingateway.com/gateway/v1</code>。
+            不会替你补 <code>/v1</code>：填 <code>https://your-newapi.example.com/v1</code> 才会打到
+            <code>https://your-newapi.example.com/v1/chat/completions</code>。NewAPI 挂在子路径时把子路径一起写进去，
+            例如 <code>https://your-newapi.example.com/gateway/v1</code>。
           </div>
           <table>
             <thead>
@@ -236,9 +236,10 @@
           <h2>2. 在 NewAPI 侧准备三样东西</h2>
           <ol>
             <li>
-              <strong>站点地址</strong>：你平时打开 NewAPI 面板的域名（本教程用它做示例：
-              <code>https://origingateway.com</code>）。OpenAI 兼容入口是它的 <code>/v1</code>，
-              所以 Base URL 填 <code>https://origingateway.com/v1</code>。
+              <strong>站点地址</strong>：你平时打开 NewAPI 面板的域名（本教程用
+              <code>https://your-newapi.example.com</code> 做占位示例，请换成你自己的站）。
+              OpenAI 兼容入口是它的 <code>/v1</code>，所以 Base URL 填
+              <code>https://your-newapi.example.com/v1</code>。
             </li>
             <li>
               <strong>令牌</strong>：NewAPI 面板 → <strong>令牌</strong> → 添加令牌，复制
@@ -263,16 +264,16 @@
           </ol>
           <p>填进本软件之前，建议先用命令行确认这几个接口是通的：</p>
           <pre><code># 模型列表（令牌可见的目录 + 认证检查）
-curl -H "Authorization: Bearer sk-你的令牌" https://origingateway.com/v1/models
+curl -H "Authorization: Bearer sk-你的令牌" https://your-newapi.example.com/v1/models
 
 # 文本对话
-curl -X POST https://origingateway.com/v1/chat/completions \
+curl -X POST https://your-newapi.example.com/v1/chat/completions \
   -H "Authorization: Bearer sk-你的令牌" \
   -H "Content-Type: application/json" \
   -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}]}'
 
 # 出图（图片模型 id 换成你目录里的那个）
-curl -X POST https://origingateway.com/v1/images/generations \
+curl -X POST https://your-newapi.example.com/v1/images/generations \
   -H "Authorization: Bearer sk-你的令牌" \
   -H "Content-Type: application/json" \
   -d '{"model":"gpt-image-2.5-flare","prompt":"a red ball","n":1}'</code></pre>
@@ -289,7 +290,7 @@ curl -X POST https://origingateway.com/v1/images/generations \
             <li><strong>显示名称</strong>：保持默认的 <code>NewAPI</code> 即可，也可以改成你的站名。</li>
             <li>
               <strong>API Base URL</strong>：把默认的占位地址换成你自己的网关，例如
-              <code>https://origingateway.com/v1</code>（见第 1 节的提醒）。
+              <code>https://your-newapi.example.com/v1</code>（见第 1 节的提醒）。
             </li>
             <li>
               <strong>API Key</strong>：粘贴 NewAPI 令牌。右侧眼睛按钮可临时显示明文核对。

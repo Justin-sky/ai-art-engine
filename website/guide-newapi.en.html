@@ -162,7 +162,7 @@
             <tbody>
               <tr>
                 <td>Hosted NewAPI</td>
-                <td><code>https://origingateway.com/v1</code></td>
+                <td><code>https://your-newapi.example.com/v1</code></td>
                 <td>Required (a NewAPI token starting with <code>sk-</code>)</td>
               </tr>
               <tr>
@@ -175,9 +175,9 @@
           <div class="tip">
             <strong>The Base URL must include <code>/v1</code> yourself.</strong> The app only strips a
             trailing slash; it never appends <code>/v1</code> for you. Enter
-            <code>https://origingateway.com/v1</code> and requests go to
-            <code>https://origingateway.com/v1/chat/completions</code>. If NewAPI lives under a sub-path, put the
-            sub-path in too, e.g. <code>https://origingateway.com/gateway/v1</code>.
+            <code>https://your-newapi.example.com/v1</code> and requests go to
+            <code>https://your-newapi.example.com/v1/chat/completions</code>. If NewAPI lives under a sub-path, put the
+            sub-path in too, e.g. <code>https://your-newapi.example.com/gateway/v1</code>.
           </div>
           <table>
             <thead>
@@ -236,8 +236,9 @@
           <ol>
             <li>
               <strong>The site address</strong>: the domain you normally open the NewAPI panel on (this guide
-              uses <code>https://origingateway.com</code> as the example). Its OpenAI-compatible entry point is
-              <code>/v1</code>, so the Base URL is <code>https://origingateway.com/v1</code>.
+              uses <code>https://your-newapi.example.com</code> as a placeholder &mdash; substitute your own
+              site). Its OpenAI-compatible entry point is <code>/v1</code>, so the Base URL is
+              <code>https://your-newapi.example.com/v1</code>.
             </li>
             <li>
               <strong>A token</strong>: NewAPI panel &rarr; <strong>Tokens</strong> &rarr; add a token, then
@@ -266,16 +267,16 @@
           </ol>
           <p>Before filling anything into the app, confirm these endpoints work from a shell:</p>
           <pre><code># model list (token-visible catalog + auth check)
-curl -H "Authorization: Bearer sk-YOUR-TOKEN" https://origingateway.com/v1/models
+curl -H "Authorization: Bearer sk-YOUR-TOKEN" https://your-newapi.example.com/v1/models
 
 # text completion
-curl -X POST https://origingateway.com/v1/chat/completions \
+curl -X POST https://your-newapi.example.com/v1/chat/completions \
   -H "Authorization: Bearer sk-YOUR-TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}]}'
 
 # image generation (use an image model id from your catalog)
-curl -X POST https://origingateway.com/v1/images/generations \
+curl -X POST https://your-newapi.example.com/v1/images/generations \
   -H "Authorization: Bearer sk-YOUR-TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"model":"gpt-image-2.5-flare","prompt":"a red ball","n":1}'</code></pre>
@@ -294,7 +295,7 @@ curl -X POST https://origingateway.com/v1/images/generations \
             </li>
             <li>
               <strong>API Base URL</strong>: replace the placeholder with your own gateway, e.g.
-              <code>https://origingateway.com/v1</code> (see the reminder in section 1).
+              <code>https://your-newapi.example.com/v1</code> (see the reminder in section 1).
             </li>
             <li>
               <strong>API Key</strong>: paste the NewAPI token. The eye button reveals it temporarily so you
