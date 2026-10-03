@@ -2,6 +2,18 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [6.11.0] — 2026-10-03
+
+6.11.0 功能版：素材库支持整目录拖入，按源目录结构镜像导入并带进度条（上千个文件不再冻住主进程）；下线价值不足的「提取 UI 部件」（三个入口与共享层一并拆除）。出图链路修好两个实际会卡流程的问题——参考图超限被上游以含糊报错拒掉（现在发送前自动压缩），以及指令框 `@` 引用回车后光标落在正文中间。
+
+- **整目录导入素材**：拖目录进素材库不再报「不是常规文件」—— 递归收集支持的媒体文件，按源目录结构镜像出资产目录（顶层用被拖入目录的名字，子目录逐层对应）；同父目录下同名目录复用（重复拖入是合并，不再长出「名称 2」），子目录按需创建（目录里没有可导入文件就不会落成空目录）。隐藏项（`.` 开头，含 `.asset.json` / `.folder.json`）与符号链接一律忽略；单次上限 2000 个文件 / 32 层深度，命中上限只导入前 2000 个并在结果里提示。目录内的 `.aipackage` 不在本链路处理（导入包要逐个勾选条目），只在结果里计数提示、需单独拖入。
+- **导入进度与批量性能**：主进程按作业 id 推 `asset:import-progress`（phase / processed / total / currentFile），素材库内浮层显示「已处理 N / 总数 · 当前文件」，扫描阶段先显示不确定条（不谎报百分比），浮层延迟 250ms 出现（只拖一两个文件不闪一下），并发导入被挡下并提示。导入改为两趟（先扫出分母再落文件）、异步化并在每个文件之间让出事件循环，去掉每个文件 3 次全树扫描（目录绝对路径一路下传、新增 `assetRepository.writeNewMedia`、视频自动打点不再回读资产），上千个文件不再把主进程冻住；目录级汇总与文件级跳过原因一起本地化显示。
+- **下线「提取 UI 部件」**：该功能（整屏 UI 效果图框选切成部件 PNG 并写九宫格清单）实际使用中价值不足，三个入口一起移除 —— 资产检查器的「提取 UI 部件」区块、素材库右键菜单项、MCP 工具 `ui_kit_extract`；功能专属的 `UiKitExtractDialog.vue`、`features/uiKit/`、`InsetEditor.vue`、`shared/gameAssets/uiKit.ts`、`tests/uiKit.test.ts` 与中英两侧 i18n 文案块随之删除，`docs/MCP.md` 与官网 MCP 指南的工具表行同步去掉。该功能只产出资产、不参与图执行，旧工程零影响。
+- **修复 · 参考图超限被拒**：20MB 相机 JPEG 走图生图，被上游按「文件、参数或调用方式不符合要求」拒掉，而那句报错里完全看不出是「单图超限」。现在参考图发送前压缩：超过 6MB 触发，目标 ≤ 4MB 且长边 ≤ 4096；先保原格式（PNG / WebP 保透明）再逐级降边长与质量，最后退 JPEG；压不小（源图本就高压缩比）或解不出画面（SVG / PSD / 损坏文件）一律原样发送，不在本地武断拦截素材。策略是纯函数（`shared/media/referenceImage.ts`，可单测），Electron 编码在 `main/services/referenceImageService.ts`；远端 http(s) 图不下载不压缩。
+- **修复 · OpenAI 兼容链路多参考图**：`gpt-image` 系列原先只发 `inputReferences[0]`，提示词里的 `@2` 从来没有发出去；现按官方多图 multipart 约定用 `image[]` 一次提交全部参考图（单图仍走 `image` 字段不变），`prompt` 统一把 `@n` 改写为 `图n`（模型不认识应用内的编号约定），与火山方舟 / Gemini / OpenRouter 三条链路同口径，否则多参考图无法与 `image[]` 顺序对齐。其余老模型（`dall-e-2` 一类）仍只发 1 张，但把「另外 N 张未发送、`@2` 之后不会被参考」写进 `referenceNotes` 进运行日志，不再静默丢图；`referenceNotes` 打通节点运行 / 会话运行 / 图层拆分 / MCP 四条链路的 API 调用日志，facade 里压缩说明与适配器说明合并而不是互相覆盖。
+- **修复 · 指令框 `@` 引用光标**：回车选中引用后光标跳到正文中间，而不是落在刚插入的 `@N` 之后 —— `pickOption` 先 `closeMenu()`（把 `mentionStart` 重置成 -1），`nextTick` 回调里才读它算光标，于是 `cursor = -1 + token.length + 1`。改为插入那一刻由纯函数 `insertMentionToken` 返回 `text` + `cursor`（并对下标做夹取），`nextTick` 只负责落光标、不再延后从会被重置的组件状态里取值；回车与鼠标点选走同一条路径一并修好，`insertText` 比 token 长的情形（图片束插入「名称 严格参考@N」）也按实际插入文本算落点。
+- **排查体验与文档**：运行日志的 data URL 摘要改成带单位的可读形式（`~19.5MB (b64 27.2M chars)`），原先只打整串字符数再加 `B` 后缀，排查时会被误读成「27MB 的二进制」甚至坏掉的 base64；官网 MCP 指南（`website/guide-mcp.html` / `.en.html`）去掉已下线的 `ui_kit_extract` 工具行。新增回归测试 `tests/referenceImageLimit.test.ts`、`tests/runLogMediaSummary.test.ts`、`tests/mentionInsert.test.ts`、`tests/assetImport.test.ts`（真实临时磁盘 + 真实 folderRepository）。
+
 ## [6.10.0] — 2026-10-02
 
 6.10.0 功能版：新增内置 NewAPI 提供商（自建 OpenAI 兼容中转网关，按网关端点元数据自动把模型分到文本 / 图片页签）；顺带修正自定义提供商把图片模型混进文本页签的问题。开发侧修好一个会让 `npm run dev` 静默退出的环境问题。
