@@ -17,6 +17,10 @@ import type {
   LightingSetupState,
   MultiAngleCameraState,
   PortraitQualityState,
+  PortraitRetouchState,
+  PortraitBrushStroke,
+  PortraitAiLayer,
+  PortraitFaceAnalysis,
   Stage2dPose,
   Stage2dRig,
   Stage2dSceneState,
@@ -100,6 +104,30 @@ export type GraphEditorDialogsApi = {
     sourceLoading: boolean
     generateModel: string
     generateProviderInstanceId: string
+  }
+  /**
+   * 人像处理（`image.portrait`）：PixCake 式本地精修编辑器。
+   * 编辑态比其它工具重：参数 + 笔刷笔画 + 人脸关键点 + AI 版本栈都挂在宿主状态里，
+   * 编辑器本体保持无状态（受控组件），这样 dive 回退 / 主界面撤销都不会丢编辑。
+   */
+  portrait: {
+    open: boolean
+    setup: PortraitRetouchState | null
+    strokes: PortraitBrushStroke[]
+    /** 当前选中的人脸（含关键点）；无脸时编辑器退化为手动 5 点模式 */
+    face: PortraitFaceAnalysis | null
+    /** 编辑器内 AI 处理产出的版本栈 */
+    layers: PortraitAiLayer[]
+    /** 当前底图版本 id（'' = 上游原图） */
+    baseLayerId: string
+    sourceUrl: string
+    sourceLoading: boolean
+    generateModel: string
+    generateProviderInstanceId: string
+    /** AI 处理进行中（编辑器据此禁用按钮并显示进度） */
+    aiRunning: boolean
+    /** 最近一次 AI 处理的失败原因（成功时清空） */
+    aiError: string
   }
   emotion: {
     open: boolean
@@ -226,6 +254,16 @@ export type GraphEditorDialogsApi = {
   closePortraitTexture: () => void
   previewPortraitTexture: (payload: unknown) => void
   savePortraitTexture: (payload: unknown) => void
+  closePortrait: () => void
+  previewPortrait: (payload: unknown) => void
+  savePortrait: (payload: unknown) => void
+  /** dive 面包屑回退前提交人像精修的实时预览编辑，补充撤销命令 */
+  flushPortrait: () => void
+  /**
+   * 编辑器内 AI 处理（智能消除 / 换背景 / 妆容增强…）：
+   * 跑图 → 落盘为工程资产 → 追加到 `portrait.layers` 并把底图切到新版本。
+   */
+  runPortraitAi: (payload: unknown) => void
   closeEmotion: () => void
   previewEmotion: (payload: unknown) => void
   saveEmotion: (payload: unknown) => void

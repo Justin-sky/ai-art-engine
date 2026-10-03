@@ -122,6 +122,28 @@
       @save="api.savePortraitTexture as never"
     />
 
+    <PortraitEditorDialog
+      v-else-if="viewId === 'node.portrait' && api.portrait.open"
+      :open="true"
+      :host-id="hostId"
+      :node-id="nodeId"
+      :setup="api.portrait.setup"
+      :strokes="api.portrait.strokes"
+      :face="api.portrait.face"
+      :layers="api.portrait.layers"
+      :base-layer-id="api.portrait.baseLayerId"
+      :source-url="api.portrait.sourceUrl"
+      :source-loading="api.portrait.sourceLoading"
+      :generate-model="api.portrait.generateModel"
+      :generate-provider-instance-id="api.portrait.generateProviderInstanceId"
+      :ai-running="api.portrait.aiRunning"
+      :ai-error="api.portrait.aiError"
+      @close="onClose(api.closePortrait)"
+      @update="api.previewPortrait as never"
+      @save="api.savePortrait as never"
+      @ai="api.runPortraitAi as never"
+    />
+
     <EmotionEditorDialog
       v-else-if="viewId === 'node.emotion' && api.emotion.open"
       :open="true"
@@ -314,6 +336,7 @@ import LightingEditorDialog from '../LightingEditorDialog.vue'
 import FramePullEditorDialog from '../FramePullEditorDialog.vue'
 import ReshootEditorDialog from '../ReshootEditorDialog.vue'
 import PortraitTextureEditorDialog from '../PortraitTextureEditorDialog.vue'
+import PortraitEditorDialog from '../PortraitEditorDialog.vue'
 import EmotionEditorDialog from '../EmotionEditorDialog.vue'
 import ExpandEditorDialog from '../ExpandEditorDialog.vue'
 import RedrawEditorDialog from '../RedrawEditorDialog.vue'
@@ -400,6 +423,8 @@ const toolOpen = computed(() => {
       return current.compose.open
     case 'node.align':
       return current.align.open
+    case 'node.portrait':
+      return current.portrait.open
     case 'node.stage2d':
       return current.stage2d.open
     default:
@@ -421,6 +446,9 @@ useEditorDiveFrameFlush(
         break
       case 'node.crop':
         current.flushCrop()
+        break
+      case 'node.portrait':
+        current.flushPortrait()
         break
       case 'node.gridSplit':
         current.flushGridSplit()
@@ -521,6 +549,9 @@ function closeCurrent(): void {
       break
     case 'node.portraitTexture':
       current.closePortraitTexture()
+      break
+    case 'node.portrait':
+      current.closePortrait()
       break
     case 'node.emotion':
       current.closeEmotion()

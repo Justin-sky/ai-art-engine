@@ -8,6 +8,7 @@ const ANIM2D_ASSET_ICON = 'anim2d'
 const FRAME_ANIM_GEN_ASSET_ICON = 'frame-anim-gen'
 
 import { DEFAULT_SVG_ANIM_STATE, SVG_ANIM_GIF_OUT_PORT_ID } from './svgAnim'
+import { defaultPortraitRetouch } from './portraitRetouch'
 import { DEFAULT_SVG_GEN_STATE } from './svgGen'
 import { bindEnsureBuiltinNodeTypes, builtinRegistrationState } from './builtinState'
 import { registerNodeType, type NodeTypeDefinition } from './registry'
@@ -67,6 +68,7 @@ import {
   executeStage2dNode,
   executeGridSplitNode,
   executeIconPackNode,
+  executePortraitNode,
   executeLayerSplitNode,
   executeMediaReviewNode,
   executeMediaReworkNode,
@@ -1239,6 +1241,41 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     assetType: 'image',
     contributeToGeneration: false,
     execute: executePortraitTextureNode
+  },
+  {
+    typeId: 'image.portrait',
+    category: 'note',
+    label: 'Portrait retouch',
+    icon: '🪄',
+    defaultTitle: 'Portrait retouch',
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      // in 允许多连：一条链喂 N 张图 = 同一套参数批量精修（逐张烘焙、图库出口按张输出）
+      { id: 'in', direction: 'in', dataType: GraphPortType.image, multiple: true, label: 'In' },
+      ...galleryOutPorts(GraphPortType.image)
+    ],
+    defaultParams: () => ({
+      portraitRetouch: defaultPortraitRetouch(),
+      portraitStrokes: [],
+      portraitLayers: [],
+      portraitBaseLayerId: '',
+      portraitBakedRelativePath: '',
+      generateModel: '',
+      generateProviderInstanceId: ''
+    }),
+    // 能力说明随 graph_node_types 返回给外部 Agent：点出「参数在 params.portraitRetouch、
+    // 笔画在 params.portraitStrokes、本地烘焙不调模型」这三条，Agent 才不用猜。
+    description:
+      '人像处理：本地确定性精修（磨皮 / 修复 / 肤色 / 五官液化 / 妆容 / 牙齿 / 光影 / 调色 / 质感 / 背景 / 证件照），不调用图片模型，按节点参数在本地烘焙出图。参数写在 params.portraitRetouch（无破坏性，可反复重编辑），笔刷笔画写在 params.portraitStrokes（修复 / 液化 / 局部磨皮 / 背景蒙版）；证件照设 portraitRetouch.idPhotoSpecId + idPhotoBg 后运行即按规格裁切，portraitRetouch.idPhotoSheet 打开时额外产出整张拼版。人脸关键点缺失时五官 / 妆容 / 证件照类工具自动跳过。编辑器内可另接图片模型做智能消除 / 换背景等 AI 增强，结果作为版本存进 params.portraitLayers。', // cjk-ok（MCP / Agent 集成文本：随 graph_node_types 返回给外部 Agent，非 UI 文案）
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.portrait',
+    card: 'media',
+    assetType: 'image',
+    contributeToGeneration: false,
+    execute: executePortraitNode
   },
   {
     typeId: 'image.emotion',

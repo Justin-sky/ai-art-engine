@@ -782,6 +782,42 @@ export interface NodeExecuteContext {
     resolveImage?: (imageUrl: string) => Promise<string>
   }) => Promise<{ dataUrl: string; width: number; height: number }>
   /**
+   * 人像处理：本地精修烘焙（渲染层实现：解码 → 纯内核流水线 → 编码）。
+   * 这是 `image.portrait` 的核心能力，**未注入时执行器直接报错**而不是透传上游 ——
+   * 透传会让用户以为精修生效了，实际拿到的是一张没修过的图。
+   */
+  bakePortraitRetouch?: (input: {
+    sourceDataUrl: string
+    state: import('../portraitRetouch').PortraitRetouchState
+    strokes: import('../portraitRetouch').PortraitBrushStroke[]
+    /** 选中的人脸分析（含关键点）；无脸时为 null */
+    face: import('../portraitFace').PortraitFaceAnalysis | null
+    /** 颗粒种子：同一份参数重复 Cook 必须得到同一张图 */
+    seed: number
+    /** 证件照输出（null = 不做证件照处理） */
+    idPhoto: {
+      dpi?: number
+      paper?: import('../idPhoto').IdPhotoPaperId
+      sheet?: boolean
+    } | null
+    signal?: AbortSignal | null
+    /** 流水线阶段回调（逐阶段写运行日志，让长烘焙有进度可看） */
+    onStage?: (info: { stage: string; index: number; total: number }) => void
+  }) => Promise<{
+    dataUrl: string
+    /** 证件照拼版（未开启拼版为 null） */
+    sheetDataUrl: string | null
+    width: number
+    height: number
+    /** 变形后的关键点（回写节点缓存，供编辑器叠加层复用） */
+    landmarks: Array<[number, number]> | null
+  }>
+  /** 人像处理：人脸关键点检测（渲染层经 IPC 调主进程 `yolo:face`）。 */
+  detectPortraitFaces?: (input: {
+    sourceDataUrl: string
+    signal?: AbortSignal | null
+  }) => Promise<import('../portraitFace').PortraitFaceAnalysis[]>
+  /**
    * 读取 3D 模型骨骼层级（蒙皮主链）。预览 / 导演台 FK 用。
    */
   inspectModelSkeleton?: (input: {
@@ -1019,6 +1055,8 @@ export interface GraphRunOptions {
   composeImageIconPackSheet?: NodeExecuteContext['composeImageIconPackSheet']
   composeImageLayerStack?: NodeExecuteContext['composeImageLayerStack']
   composeComicPageImage?: NodeExecuteContext['composeComicPageImage']
+  bakePortraitRetouch?: NodeExecuteContext['bakePortraitRetouch']
+  detectPortraitFaces?: NodeExecuteContext['detectPortraitFaces']
   inspectModelSkeleton?: NodeExecuteContext['inspectModelSkeleton']
   runBlenderDshJob?: NodeExecuteContext['runBlenderDshJob']
   buildGamePlayProject?: NodeExecuteContext['buildGamePlayProject']

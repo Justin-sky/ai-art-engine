@@ -137,3 +137,32 @@ Main      返回 YoloDetectResult 给 Renderer
 - **真深度估计**：Depth Anything v2 ONNX 可复用同一 worker 通道（新增 `depth` 方法）。
 - **视频分镜 / 打标 / 动捕**：基于 `detect` / `pose` 的上层管线（见 `PLAN_SPINE_YOLO.md` 5.4）。
 - **模型下载器**：`yolo:install-model` 从 CDN 拉取模型（预留，本期未做）。
+- **人脸关键点（`face` 任务类型）**：见下节，`image.portrait` 已按可插拔方式预留。
+
+## 11. 人像处理节点（`image.portrait`）用到的本地视觉
+
+`image.portrait` 是纯本地烘焙节点（不调图片模型），它把本地视觉能力当作**可选依赖**：
+
+| 能力              | 现状               | 用途                                                     | 缺失时的降级                                                                    |
+| ----------------- | ------------------ | -------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `segment` 主体    | 已内置可跑         | 背景虚化 / 换底色 / 证件照换底 / 边缘去杂边              | 背景与证件照换底整组跳过（不动背景，不猜蒙版）                                  |
+| `pose` 姿态       | 已内置可跑         | 身形（瘦身 / 收腰 / 提臀 / 瘦手臂 / 美肩 / 美颈 / 长腿） | 身形整组跳过                                                                    |
+| `face` 人脸关键点 | **待接入**（见下） | 五官微调 / 液化定点 / 妆容 / 牙齿 / 证件照头肩裁切       | 编辑器提供「手动人脸锚点」（标 5 点拟合 68 点），五官与妆容功能不残，仅精度下降 |
+
+接线口径（渲染层 `features/graph/model/portraitBake.ts`）：
+
+- 主体蒙版经 `yoloSegment({ softMask: true })` + `buildCutoutAlpha`（`shared/yoloCutout.ts`）还原到工作分辨率；
+- 姿态关键点经 `yoloPose` 取第一具骨架，按结果尺寸归一化（与分辨率无关）；
+- 两者都包在 `tryLoad` 里：模型缺失 / 推理失败一律退化为 `null`，**不让整次烘焙失败**；
+- 是否需要它们由参数决定（`needsSubjectMask` / `needsPose`）：只开磨皮调色时不跑任何模型。
+
+### 接入 `face` 任务类型要改的地方（尚未实现）
+
+1. `src/shared/yolo.ts`：`YoloTaskKind` 增 `'face'`，加 `YoloFaceResult`（内部统一成 **canonical-68** iBUG 顺序，见 `src/shared/graph/portraitFace.ts` 的索引约定）；
+2. `src/main/yolo/postprocess.ts`：新增 face 输出解析（两种常见导出：`[1,N,3]` 直接回归 / `[1,N,5]` 热图 argmax），并把模型原生点数映射到 68 点；
+3. `src/main/yolo/{yoloWorker,protocol,yoloService}.ts`：`kindOfModelId` 识别 `face` / `landmark` 文件名，新增 `yolo:face` 通道；
+4. `src/shared/yoloCatalog.ts` + `src/renderer/src/components/settings/YoloModelsPanel.vue`：加「人脸关键点」档位与下载项；
+5. `scripts/fetch-yolo-models.mjs`：**必须同时固定 URL 与 SHA-256**（该模型不在当前内置清单里，未固定就不要加入 `MODELS`，否则 `pack` / `dist` 会因下载失败整体失败）；
+6. `src/renderer/src/features/graph/model/portraitBake.ts` 的 `detectPortraitFaces` 改为调用 `yolo:face`，把结果转成 `PortraitFaceAnalysis`（`schema: 'canonical68'`）。
+
+**许可证闸门（必须先行确认）**：模型必须可商用、可再分发。候选：MediaPipe Face Mesh（Apache-2.0，需 TFLite→ONNX 转换并自测精度）、PIPNet 68/98 点（Apache-2.0）。**排除**：InsightFace `2d106det`（非商用研究许可）、YOLO11n-face 派生（AGPL-3.0，与包内 YOLO 同源但风险更高 —— 现有 YOLO 权重的 AGPL 风险见第 6 节末的许可提示）。确认后把仓库 URL、版本、许可证与 SHA-256 一并写进 fetch 脚本注释与本文件。

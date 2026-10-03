@@ -4,6 +4,7 @@ import GraphOutputInspector from '../components/GraphOutputInspector.vue'
 import MultiAngleInspector from '../components/MultiAngleInspector.vue'
 import LightingInspector from '../components/LightingInspector.vue'
 import PortraitTextureInspector from '../components/PortraitTextureInspector.vue'
+import PortraitInspector from '../components/PortraitInspector.vue'
 import EmotionInspector from '../components/EmotionInspector.vue'
 import UpscaleInspector from '../components/UpscaleInspector.vue'
 import FramePullInspector from '../components/FramePullInspector.vue'
@@ -295,6 +296,11 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     id: 'studio.graph.portraitTexture',
     component: PortraitTextureInspector,
     nodeTypeId: 'image.portraitTexture'
+  },
+  {
+    id: 'studio.graph.portrait',
+    component: PortraitInspector,
+    nodeTypeId: 'image.portrait'
   },
   {
     id: 'studio.graph.emotion',

@@ -840,6 +840,16 @@ import {
   type PortraitQualityState,
   portraitQualityToNodePatch,
   readPortraitQualityFromNode,
+  type PortraitRetouchState,
+  type PortraitBrushStroke,
+  type PortraitAiLayer,
+  type PortraitFaceAnalysis,
+  type PortraitFacesPayload,
+  buildPortraitAiPrompt,
+  normalizePortraitStrokes,
+  normalizePortraitAiLayers,
+  portraitRetouchToNodePatch,
+  readPortraitRetouchFromNode,
   type EmotionPadState,
   emotionPadToNodePatch,
   readEmotionPadFromNode,
@@ -3406,7 +3416,13 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
   },
   {
     id: 'imageRefine',
-    typeIds: ['image.multiAngle', 'image.lighting', 'image.emotion', 'image.portraitTexture']
+    typeIds: [
+      'image.multiAngle',
+      'image.lighting',
+      'image.emotion',
+      'image.portraitTexture',
+      'image.portrait'
+    ]
   },
   {
     id: 'imageEdit',
@@ -6789,6 +6805,321 @@ function savePortraitTexture(
   closePortraitTexture()
 }
 
+/**
+ * 人像处理（image.portrait）：PixCake 式本地精修。
+ *
+ * 编辑态比其它工具重（参数 + 笔刷笔画 + 人脸关键点 + AI 版本栈），全部挂在宿主状态里，
+ * 编辑器本体保持受控无状态 —— dive 回退、主界面撤销、MCP 改写都不会丢编辑。
+ * 实时预览沿用 crop 的口径：开窗记 `historyBefore`，预览直接改写 params，
+ * `flushPortrait` 在回退前补记撤销命令。
+ */
+const portrait = reactive({
+  open: false,
+  nodeId: '' as string,
+  setup: null as PortraitRetouchState | null,
+  strokes: [] as PortraitBrushStroke[],
+  face: null as PortraitFaceAnalysis | null,
+  layers: [] as PortraitAiLayer[],
+  baseLayerId: '' as string,
+  sourceUrl: '' as string,
+  sourceLoading: false,
+  generateModel: '' as string,
+  generateProviderInstanceId: '' as string,
+  aiRunning: false,
+  aiError: '',
+  historyBefore: null as GraphDocument | null
+})
+
+/** 从节点参数里取「当前选中的那张脸」（多人的话按 picked） */
+function readPortraitFace(node: GraphNode): PortraitFaceAnalysis | null {
+  const faces = node.params.portraitFaces?.faces
+  if (!Array.isArray(faces) || !faces.length) return null
+  const picked = node.params.portraitFaces?.picked
+  const index = typeof picked === 'number' ? Math.min(faces.length - 1, Math.max(0, picked)) : 0
+  return (faces[index] ?? faces[0]) as PortraitFaceAnalysis
+}
+
+/** 底图 URL：优先 AI 版本（编辑器里换过底图），否则上游原图 */
+async function resolvePortraitBaseUrl(nodeId: string): Promise<string> {
+  const layer = portrait.layers.find((item) => item.id === portrait.baseLayerId)
+  if (layer?.relativePath) {
+    try {
+      const url = await window.studio.getAssetFileUrl(layer.relativePath)
+      if (url) return url
+    } catch {
+      /* 落盘文件不可用时退回上游原图 */
+    }
+  }
+  return resolveNodeEditorSourceUrl(nodeId, { preferUpstream: true })
+}
+
+async function onPortraitOpen(nodeId: string): Promise<void> {
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  if (!node) return
+  portrait.nodeId = nodeId
+  portrait.setup = readPortraitRetouchFromNode(node.params)
+  portrait.strokes = normalizePortraitStrokes(node.params.portraitStrokes)
+  portrait.face = readPortraitFace(node)
+  portrait.layers = normalizePortraitAiLayers(node.params.portraitLayers)
+  portrait.baseLayerId = node.params.portraitBaseLayerId?.trim() ?? ''
+  portrait.sourceUrl = ''
+  portrait.sourceLoading = true
+  portrait.generateModel = node.params.generateModel ?? ''
+  portrait.generateProviderInstanceId = node.params.generateProviderInstanceId ?? ''
+  portrait.aiRunning = false
+  portrait.aiError = ''
+  portrait.historyBefore = buildGraphJson()
+  portrait.open = true
+
+  const seq = ++editorSourceLoadSeq
+  const isCurrent = (): boolean =>
+    portrait.open && portrait.nodeId === nodeId && seq === editorSourceLoadSeq
+  try {
+    const url = await resolvePortraitBaseUrl(nodeId)
+    if (isCurrent()) {
+      portrait.sourceUrl = url
+      portrait.sourceLoading = false
+    }
+  } catch {
+    if (isCurrent()) {
+      portrait.sourceUrl = ''
+      portrait.sourceLoading = false
+    }
+  }
+}
+
+function closePortrait(): void {
+  portrait.open = false
+  portrait.nodeId = ''
+  portrait.setup = null
+  portrait.strokes = []
+  portrait.face = null
+  portrait.layers = []
+  portrait.baseLayerId = ''
+  portrait.sourceUrl = ''
+  portrait.sourceLoading = false
+  portrait.generateModel = ''
+  portrait.generateProviderInstanceId = ''
+  portrait.aiRunning = false
+  portrait.aiError = ''
+  portrait.historyBefore = null
+}
+
+interface PortraitEditorPayload {
+  portraitRetouch?: PortraitRetouchState
+  portraitStrokes?: PortraitBrushStroke[]
+  /** 手动 5 点标定的人脸分析（写进节点，Cook 与后续编辑都复用） */
+  portraitFaces?: PortraitFacesPayload
+  generateModel?: string
+  generateProviderInstanceId?: string
+}
+
+/** 预览与保存共用的写回（实时预览也走这里，参数变化即时落盘） */
+function applyPortraitParams(payload: PortraitEditorPayload): void {
+  const node = graph.nodes.find((n) => n.id === portrait.nodeId)
+  if (!node) return
+  const patch = payload.portraitRetouch ? portraitRetouchToNodePatch(payload.portraitRetouch) : {}
+  node.params = {
+    ...node.params,
+    ...patch,
+    ...(payload.portraitStrokes ? { portraitStrokes: payload.portraitStrokes } : {}),
+    ...(payload.portraitFaces ? { portraitFaces: payload.portraitFaces } : {}),
+    ...(payload.generateModel !== undefined ? { generateModel: payload.generateModel } : {}),
+    ...(payload.generateProviderInstanceId !== undefined
+      ? { generateProviderInstanceId: payload.generateProviderInstanceId }
+      : {})
+  }
+  scheduleSave()
+  graphEditorHosts.bumpRevision()
+}
+
+function previewPortrait(payload: PortraitEditorPayload): void {
+  applyPortraitParams(payload)
+  if (payload.portraitRetouch) portrait.setup = payload.portraitRetouch
+  if (payload.portraitStrokes) portrait.strokes = payload.portraitStrokes
+  if (payload.portraitFaces) {
+    const picked = payload.portraitFaces.picked ?? 0
+    portrait.face = payload.portraitFaces.faces[picked] ?? null
+  }
+}
+
+function savePortrait(payload: PortraitEditorPayload): void {
+  const nodeId = portrait.nodeId
+  if (!graph.nodes.some((n) => n.id === nodeId)) return
+  // 实时预览已改写参数：before 必须取开窗快照，否则 before≈after 会被判等跳过
+  const before = portrait.historyBefore ?? buildGraphJson()
+  applyPortraitParams(payload)
+  if (payload.generateModel !== undefined) portrait.generateModel = payload.generateModel
+  if (payload.generateProviderInstanceId !== undefined) {
+    portrait.generateProviderInstanceId = payload.generateProviderInstanceId
+  }
+  portrait.historyBefore = null
+  recordGraphChange('portrait', before)
+  closePortrait()
+}
+
+/** dive 面包屑回退前补记撤销命令（嵌入式下没有关闭按钮，弹窗被直接卸载） */
+function flushPortrait(): void {
+  if (!portrait.open) return
+  const before = portrait.historyBefore
+  if (!before) return
+  portrait.historyBefore = null
+  recordGraphChange('portrait', before)
+}
+
+/**
+ * 编辑器内 AI 处理：以当前画面为参考跑一次图片模型，结果落盘成工程资产并记为
+ * 一个新版本（params.portraitLayers），底图切到该版本。与 layerSplit 的嵌套拆分
+ * 同一套口径：跑图前记 before、写运行日志与 API 调用记录、结束后进撤销栈。
+ */
+async function runPortraitAi(payload: {
+  tool: Parameters<typeof buildPortraitAiPrompt>[0]
+  prompt: string
+  model: string
+  providerInstanceId: string
+  sourceDataUrl: string
+  maskDataUrl?: string
+}): Promise<void> {
+  const nodeId = portrait.nodeId
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  if (!node || portrait.aiRunning) return
+  const sourceUrl = payload.sourceDataUrl.trim() || portrait.sourceUrl
+  if (!sourceUrl) {
+    portrait.aiError = t('graph.portrait.aiNoSource')
+    return
+  }
+
+  const before = portrait.historyBefore ?? buildGraphJson()
+  portrait.aiRunning = true
+  portrait.aiError = ''
+  node.params = {
+    ...node.params,
+    generateModel: payload.model,
+    generateProviderInstanceId: payload.providerInstanceId
+  }
+
+  const nodeTitle = resolveGraphNodeDisplayTitle(node, {
+    scope: graphScope.value,
+    t: (key, params) => t(key, params ?? {}),
+    graphTypeLabel,
+    fallbackId: node.id
+  })
+  const logBridge = createGraphRunLogBridge({
+    runId: `portrait-ai-${crypto.randomUUID()}`,
+    title: t('graph.portrait.aiLogTitle', { name: nodeTitle }),
+    hostId: graphHostId.value,
+    mode: 'nodeOnly',
+    graph: buildGraphJson(),
+    targetNodeId: node.id,
+    resolveNodeTitle: (item, fallbackId) =>
+      resolveGraphNodeDisplayTitle(item, {
+        scope: graphScope.value,
+        t: (key, params) => t(key, params ?? {}),
+        graphTypeLabel,
+        fallbackId
+      }),
+    startMessage: t('graph.portrait.aiLogStart', { tool: payload.tool })
+  })
+  let logClosed = false
+  const finishLog = (ok: boolean, message?: string): void => {
+    if (logClosed) return
+    logClosed = true
+    logBridge.onNodeUpdate(node.id, ok ? { status: 'done' } : { status: 'error', error: message })
+    logBridge.endFromResult(
+      ok
+        ? { ok: true, order: [node.id], states: {} }
+        : { ok: false, order: [node.id], states: {}, error: message },
+      { message }
+    )
+  }
+
+  const prompt = buildPortraitAiPrompt(payload.tool, payload.prompt)
+  try {
+    logBridge.onNodeUpdate(node.id, { status: 'running' })
+    const apiStarted = Date.now()
+    let result: { images: string[]; model: string }
+    try {
+      const inputReferences = payload.maskDataUrl ? [sourceUrl, payload.maskDataUrl] : [sourceUrl]
+      result = await window.studio.generateImage({
+        prompt,
+        model: payload.model || undefined,
+        providerInstanceId: payload.providerInstanceId || undefined,
+        inputReferences
+      })
+      logBridge.recordApiCall({
+        kind: 'generateImage',
+        request: {
+          prompt,
+          model: payload.model || undefined,
+          providerInstanceId: payload.providerInstanceId || undefined,
+          inputReferenceCount: inputReferences.length,
+          inputReferences: inputReferences.map((_, index) => ({
+            source: 'port' as const,
+            name: index === 0 ? 'portrait' : 'mask'
+          })),
+          inputReferenceUrls: summarizeReferenceListForLog(inputReferences)
+        },
+        response: { model: result.model, imageCount: result.images?.length ?? 0 },
+        durationMs: Math.max(0, Date.now() - apiStarted)
+      })
+    } catch (err) {
+      const raw = err instanceof Error ? err.message : String(err)
+      const message = formatProviderErrorForLog(raw, String(locale.value))
+      logBridge.recordApiCall({
+        kind: 'generateImage',
+        request: { prompt, model: payload.model || undefined },
+        error: message,
+        durationMs: Math.max(0, Date.now() - apiStarted)
+      })
+      throw new Error(message)
+    }
+
+    const dataUrl = result.images?.[0]?.trim()
+    if (!dataUrl) throw fail(SHARED_ERRORS.noModelImage)
+
+    const stamp = Date.now()
+    const relativePath = await saveGraphRunMediaForNode({
+      dataUrl,
+      key: `portrait-ai-${node.id}-${stamp}`,
+      node,
+      hostAssetId: props.assetId ?? null
+    })
+
+    // 编辑器可能已关闭 / 切换到别的节点：结果照样写进节点（别丢用户的一次生成）
+    const layer: PortraitAiLayer = {
+      id: `portrait-ai-${stamp}`,
+      tool: payload.tool,
+      prompt,
+      model: result.model || payload.model,
+      providerInstanceId: payload.providerInstanceId,
+      relativePath,
+      at: new Date().toISOString()
+    }
+    const layers = normalizePortraitAiLayers([...(node.params.portraitLayers ?? []), layer])
+    node.params = { ...node.params, portraitLayers: layers, portraitBaseLayerId: layer.id }
+    scheduleSave()
+    graphEditorHosts.bumpRevision()
+    recordGraphChange('portrait-ai', before)
+
+    if (portrait.open && portrait.nodeId === nodeId) {
+      portrait.layers = layers
+      portrait.baseLayerId = layer.id
+      const url = await window.studio.getAssetFileUrl(relativePath).catch(() => '')
+      if (portrait.open && portrait.nodeId === nodeId) {
+        portrait.sourceUrl = url || dataUrl
+        portrait.sourceLoading = false
+      }
+    }
+    finishLog(true, t('graph.portrait.aiLogDone', { tool: payload.tool }))
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    portrait.aiError = message
+    finishLog(false, message)
+  } finally {
+    portrait.aiRunning = false
+  }
+}
+
 const emotion = reactive({
   open: false,
   nodeId: '' as string,
@@ -8251,6 +8582,7 @@ const graphDialogsApi = {
   framePull,
   reshoot,
   portraitTexture,
+  portrait,
   emotion,
   expand,
   redraw,
@@ -8288,6 +8620,11 @@ const graphDialogsApi = {
   closePortraitTexture,
   previewPortraitTexture,
   savePortraitTexture,
+  closePortrait,
+  previewPortrait,
+  savePortrait,
+  flushPortrait,
+  runPortraitAi,
   closeEmotion,
   previewEmotion,
   saveEmotion,
@@ -8667,6 +9004,7 @@ function registerNodeToolHost(): void {
       'node.framePull': (nodeId) => onFramePullOpen(nodeId),
       'node.reshoot': (nodeId) => onReshootOpen(nodeId),
       'node.portraitTexture': (nodeId) => onPortraitTextureOpen(nodeId),
+      'node.portrait': (nodeId) => onPortraitOpen(nodeId),
       'node.emotion': (nodeId) => onEmotionOpen(nodeId),
       'node.expand': (nodeId) => onExpandOpen(nodeId),
       'node.redraw': (nodeId) => onRedrawOpen(nodeId),

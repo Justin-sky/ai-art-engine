@@ -12,6 +12,8 @@ import type {
 import type { MultiAngleCameraState } from './multiAngleCamera'
 import type { LightingSetupState } from './lightingSetup'
 import type { PortraitTextureState } from './portraitTexture'
+import type { PortraitAiLayer, PortraitBrushStroke, PortraitRetouchState } from './portraitRetouch'
+import type { PortraitFacesPayload } from './portraitFace'
 import type { EmotionPadState } from './emotionPad'
 import type { ImageUpscaleState } from './imageUpscale'
 import type { ImageExpandState } from './imageExpand'
@@ -224,6 +226,7 @@ export type GraphNodeTypeId =
   | 'image.multiAngle'
   | 'image.lighting'
   | 'image.portraitTexture'
+  | 'image.portrait'
   | 'image.emotion'
   | 'image.upscale'
   | 'video.lipSync'
@@ -818,6 +821,18 @@ export interface GraphNodeParams {
   portraitTexture?: Partial<PortraitTextureState>
   /** 人像质感调节：最终提示词 */
   portraitTexturePrompt?: string
+  /** 人像处理：精修参数（无破坏性，随时可重编辑） */
+  portraitRetouch?: Partial<PortraitRetouchState>
+  /** 人像处理：笔刷笔画（修复 / 液化 / 局部磨皮 / 背景蒙版） */
+  portraitStrokes?: PortraitBrushStroke[]
+  /** 人像处理：人脸分析缓存（关键点 + 源图指纹，避免每次 Cook 重新检测） */
+  portraitFaces?: Partial<PortraitFacesPayload>
+  /** 人像处理：编辑器内 AI 处理产出的版本栈 */
+  portraitLayers?: PortraitAiLayer[]
+  /** 人像处理：当前底图版本 id（缺省 = 上游原图） */
+  portraitBaseLayerId?: string
+  /** 人像处理：最近一次 Cook 的烘焙产物相对路径 */
+  portraitBakedRelativePath?: string
   /** 情绪调节：坐标盘 */
   emotionPad?: Partial<EmotionPadState>
   /** 情绪调节：定位短名 */

@@ -99,6 +99,7 @@ const viewRegistry: Record<string, Component> = {
   'node.framePull': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
   'node.reshoot': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
   'node.portraitTexture': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
+  'node.portrait': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
   'node.emotion': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
   'node.expand': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
   'node.redraw': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),

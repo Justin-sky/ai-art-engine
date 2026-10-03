@@ -200,6 +200,11 @@ export function isPortraitTextureEditorNode(node: Pick<GraphNode, 'typeId'>): bo
   return node.typeId === 'image.portraitTexture'
 }
 
+/** 人像处理（PixCake 式本地精修，双击 dive 进编辑器） */
+export function isPortraitEditorNode(node: Pick<GraphNode, 'typeId'>): boolean {
+  return node.typeId === 'image.portrait'
+}
+
 export function isEmotionEditorNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === 'image.emotion'
 }

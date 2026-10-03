@@ -229,6 +229,7 @@
               isMultiAngleEditorNode(node) ||
               isLightingEditorNode(node) ||
               isPortraitTextureEditorNode(node) ||
+              isPortraitEditorNode(node) ||
               isEmotionEditorNode(node) ||
               isUpscaleEditorNode(node) ||
               isExpandEditorNode(node) ||
@@ -615,6 +616,7 @@ import {
   isAdVariantsNode,
   isLightingEditorNode,
   isPortraitTextureEditorNode,
+  isPortraitEditorNode,
   isEmotionEditorNode,
   isUpscaleEditorNode,
   isLipSyncNode,
@@ -1432,6 +1434,7 @@ watch(
         isMultiAngleEditorNode(props.node) ||
         isLightingEditorNode(props.node) ||
         isPortraitTextureEditorNode(props.node) ||
+        isPortraitEditorNode(props.node) ||
         isEmotionEditorNode(props.node) ||
         isUpscaleEditorNode(props.node) ||
         isExpandEditorNode(props.node) ||
@@ -1674,6 +1677,7 @@ const previewHint = computed(() => {
   if (isMultiAngleEditorNode(props.node)) return t('graph.multiAngle.hint')
   if (isLightingEditorNode(props.node)) return t('graph.lighting.hint')
   if (isPortraitTextureEditorNode(props.node)) return t('graph.portraitTexture.hint')
+  if (isPortraitEditorNode(props.node)) return t('graph.portrait.hint')
   if (isEmotionEditorNode(props.node)) return t('graph.emotion.hint')
   if (isLipSyncNode(props.node)) return t('graph.lipSync.hint')
   if (isExpandEditorNode(props.node)) return t('graph.expand.hint')
@@ -2477,6 +2481,10 @@ function onPreviewDblClick(): void {
     }
     if (isPortraitTextureEditorNode(props.node)) {
       await diveNodeTool('node.portraitTexture', title)
+      return
+    }
+    if (isPortraitEditorNode(props.node)) {
+      await diveNodeTool('node.portrait', title)
       return
     }
     if (isEmotionEditorNode(props.node)) {

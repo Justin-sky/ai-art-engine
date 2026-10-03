@@ -1564,8 +1564,24 @@
           </div>
           <ul>
             <li>
-              Multi-angle edit · lighting effects · portrait texture adjust · mood adjust · HD upscale ·
+              Multi-angle edit · lighting effects · portrait texture adjust · portrait retouch · mood adjust · HD upscale ·
               outpainting · repaint · erase · cutout · crop · grid split · layer separation
+            </li>
+            <li>
+              <strong>Portrait retouch</strong> (<code>image.portrait</code>): PixCake-style local retouching.
+              Double-click the node to open a full-screen editor with 17 tool groups: heal (blemish removal / dark
+              circles / nasolabial folds / shine / stray hair / red eye), skin smoothing (with pore retention and
+              evenness), skin tone (whiten / rosy / de-yellow), face reshaping (19 sliders across face, eyes, nose,
+              mouth and brows), liquify (push / bloat / pinch brushes), eyes (catchlight / whitening / pupils),
+              teeth, makeup (8 looks with per-region strength), body (slim / waist / leg length, driven by local
+              pose keypoints), lighting, colour (13 groups plus 12 filters), texture (sharpen / clarity / grain /
+              soft focus / vignette), background (blur / replace / edge decontamination), AI enhance (smart erase /
+              new background / makeup boost through the configured image model, stored back as node versions),
+              ID photo (10 sizes plus sheet layout), presets (12 built-in plus import/export) and export. The editor
+              offers live preview, before/after comparison (hold or split) and undo/redo; running the node bakes
+              locally and saves assets <strong>without calling an image model</strong>, and wiring several images
+              into one node retouches them in one batch with the same settings. Without a face-landmark model you can
+              place 5 manual face anchors and still use every face, makeup and ID-photo tool.
             </li>
             <li>
               <strong>Layer separation</strong> (Seedream 5.0 Pro <code>layer_decomposition</code>): split an

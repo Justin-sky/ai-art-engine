@@ -115,6 +115,7 @@ describe('graph policy', () => {
         'image.matte',
         'image.multiAngle',
         'image.portraitTexture',
+        'image.portrait',
         'image.redraw',
         'image.select',
         'media.bundle',

@@ -429,6 +429,8 @@ async function executeOneNode(
     composeImageIconPackSheet: options.composeImageIconPackSheet,
     composeImageLayerStack: options.composeImageLayerStack,
     composeComicPageImage: options.composeComicPageImage,
+    bakePortraitRetouch: options.bakePortraitRetouch,
+    detectPortraitFaces: options.detectPortraitFaces,
     inspectModelSkeleton: options.inspectModelSkeleton,
     runBlenderDshJob: options.runBlenderDshJob,
     buildGamePlayProject: options.buildGamePlayProject,
