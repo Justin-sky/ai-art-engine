@@ -34,6 +34,9 @@ export const CONTEXT_MENU_FILM_TV_ICON = '🎦'
  * 注意 `video` 是唯一不回落到资产图标的分组：视频资产图标（专用 SVG）与
  * 「视频生成」节点是同一个，分组若也用它，右键菜单里「视频」与「视频生成」
  * 就长得一模一样 —— 分组用 📹 区分开，节点侧保持视频资产图标不变。
+ *
+ * 同理 `text` 分组用 📚（一叠文稿＝一组文本），因为组内的「备注」节点是 📝：
+ * 分组若也用 📝，菜单里「文本分组」与「备注」会分不清。
  */
 export function contextMenuResourceGroupIcon(groupId: string): string {
   switch (groupId) {
@@ -46,7 +49,7 @@ export function contextMenuResourceGroupIcon(groupId: string): string {
     case 'video':
       return '📹'
     case 'text':
-      return '📝'
+      return '📚'
     case 'game':
       return '🕹️'
     case 'motionFx':
