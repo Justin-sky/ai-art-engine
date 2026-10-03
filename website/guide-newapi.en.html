@@ -163,7 +163,7 @@
             <tbody>
               <tr>
                 <td>Hosted NewAPI (recommended)</td>
-                <td><code>https://your-host/v1</code></td>
+                <td><code>https://origingateway.com/v1</code></td>
                 <td>Required (a NewAPI token starting with <code>sk-</code>)</td>
               </tr>
               <tr>
@@ -176,9 +176,9 @@
           <div class="tip">
             <strong>The Base URL must include <code>/v1</code> yourself.</strong> The app only strips a
             trailing slash; it never appends <code>/v1</code> for you. Enter
-            <code>https://host/v1</code> and requests go to
-            <code>https://host/v1/chat/completions</code>. If NewAPI lives under a sub-path, put the
-            sub-path in too, e.g. <code>https://host/gateway/v1</code>.
+            <code>https://origingateway.com/v1</code> and requests go to
+            <code>https://origingateway.com/v1/chat/completions</code>. If NewAPI lives under a sub-path, put the
+            sub-path in too, e.g. <code>https://origingateway.com/gateway/v1</code>.
           </div>
           <table>
             <thead>
@@ -235,10 +235,10 @@
           </ol>
           <p>Before filling anything into the app, confirm these two endpoints work from a shell:</p>
           <pre><code># model list (auth + catalog)
-curl -H "Authorization: Bearer sk-YOUR-TOKEN" https://your-host/v1/models
+curl -H "Authorization: Bearer sk-YOUR-TOKEN" https://origingateway.com/v1/models
 
 # text completion
-curl -X POST https://your-host/v1/chat/completions \
+curl -X POST https://origingateway.com/v1/chat/completions \
   -H "Authorization: Bearer sk-YOUR-TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}]}'</code></pre>
@@ -258,7 +258,7 @@ curl -X POST https://your-host/v1/chat/completions \
               OpenAI-compatible relay). The note under the dropdown echoes which protocol is active.
             </li>
             <li>
-              <strong>API Base URL</strong>: enter <code>https://your-host/v1</code> (see the reminder in
+              <strong>API Base URL</strong>: enter <code>https://origingateway.com/v1</code> (see the reminder in
               section 1).
             </li>
             <li>
