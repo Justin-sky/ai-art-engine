@@ -18,6 +18,7 @@ import type {
 import type {
   AttachAssetFileInput,
   AttachAssetRelativeInput,
+  AssetImportProgress,
   CreateAssetInput,
   CreateFolderInput,
   CreateProjectInput,
@@ -54,6 +55,13 @@ const api: StudioApi = {
 
   listAssets: () => ipcRenderer.invoke(IpcChannels.ASSET_LIST),
   importAssets: (input: ImportAssetsInput) => ipcRenderer.invoke(IpcChannels.ASSET_IMPORT, input),
+  onAssetImportProgress: (callback) => {
+    const listener = (_event: unknown, payload: AssetImportProgress): void => {
+      callback(payload)
+    }
+    ipcRenderer.on(IpcChannels.ASSET_IMPORT_PROGRESS, listener)
+    return () => ipcRenderer.removeListener(IpcChannels.ASSET_IMPORT_PROGRESS, listener)
+  },
   reimportAssets: (input: ReimportAssetsInput) =>
     ipcRenderer.invoke(IpcChannels.ASSET_REIMPORT, input),
   createAsset: (input: CreateAssetInput) => ipcRenderer.invoke(IpcChannels.ASSET_CREATE, input),

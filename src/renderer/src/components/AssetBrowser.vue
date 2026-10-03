@@ -317,6 +317,35 @@
       </div>
     </div>
 
+    <div v-if="importOverlayVisible" class="import-progress-overlay" aria-live="polite">
+      <div class="import-panel">
+        <div class="import-title">{{ t('asset.import.progressTitle') }}</div>
+        <div
+          class="import-track"
+          :class="{ indeterminate: !importJob || importJob.total <= 0 }"
+          role="progressbar"
+          :aria-valuenow="importJob && importJob.total > 0 ? importPercent : undefined"
+          aria-valuemin="0"
+          aria-valuemax="100"
+        >
+          <div class="import-fill" :style="{ width: `${importPercent}%` }" />
+        </div>
+        <div class="import-progress-meta">
+          <span>{{ importProgressLabel }}</span>
+          <span v-if="importJob && importJob.total > 0" class="import-progress-pct">
+            {{ importPercent }}%
+          </span>
+        </div>
+        <div
+          v-if="importJob?.currentFile"
+          class="import-progress-file"
+          :title="importJob.currentFile"
+        >
+          {{ importJob.currentFile }}
+        </div>
+      </div>
+    </div>
+
     <Teleport to="body">
       <div
         v-if="menu"
@@ -566,6 +595,7 @@ import {
   normalizeFolders
 } from '@shared/folderTree'
 import type { ResolvedWorkspaceToolbarItem } from '@shared/workspaceToolbar'
+import type { ImportAssetsResult, ImportedFolderSummary } from '@shared/ipc'
 import { useAssetCreation } from '../composables/useAssetCreation'
 import { listRegisteredToolbarItems } from '../editor/extensions'
 import { useEditorKernel } from '../editor/kernel'
@@ -598,7 +628,11 @@ import {
 } from '../features/media/openFullImagePreview'
 import { openMotion2dActionPreviewDialog } from '../features/media/motion2dActionPreviewDialog'
 import { openGamePlaySandboxDialog } from '../features/media/gamePlaySandboxDialog'
-import { isLayeredSourceImageFilePath, isVectorImageFilePath } from '@shared/import'
+import {
+  isAssetPackagePath,
+  isLayeredSourceImageFilePath,
+  isVectorImageFilePath
+} from '@shared/import'
 import { thumbRelativePathFor } from '@shared/media/thumbnailPath'
 import { isWeakVisionTag } from '@shared/visionTags'
 import type { VideoBeatTags } from '@shared/videoBeats'
@@ -2578,10 +2612,6 @@ function onImportPackageMenu(): void {
   void openImportPackageDialog(undefined, folderId)
 }
 
-function isAipackagePath(filePath: string): boolean {
-  return filePath.replace(/\\/g, '/').toLowerCase().endsWith('.aipackage')
-}
-
 async function importAssetPackages(packPaths: string[], folderId: string | null): Promise<void> {
   if (!project.isOpen) {
     await showImportAlert(t('asset.import.needProject'))
@@ -2637,31 +2667,154 @@ async function showImportAlert(message: string, asError = false): Promise<void> 
   })
 }
 
+/** 进度条延迟出现的毫秒数：只拖进一两个文件时不该闪一下进度条 */
+const IMPORT_OVERLAY_DELAY_MS = 250
+
+/** 进行中的导入作业进度（null = 没有导入） */
+const importJob = ref<{
+  phase: 'scan' | 'import'
+  processed: number
+  total: number
+  currentFile: string
+} | null>(null)
+const importOverlayVisible = ref(false)
+let importOverlayTimer: ReturnType<typeof setTimeout> | null = null
+let stopImportProgress: (() => void) | null = null
+
+const importPercent = computed(() => {
+  const job = importJob.value
+  if (!job || job.total <= 0) return 0
+  return Math.max(0, Math.min(100, Math.round((job.processed / job.total) * 100)))
+})
+
+const importProgressLabel = computed(() => {
+  const job = importJob.value
+  if (!job) return ''
+  // total=0：还在扫描被拖入的目录，总数未知
+  if (job.total <= 0) return t('asset.import.progressScanning')
+  return t('asset.import.progressCount', { done: job.processed, total: job.total })
+})
+
+/** 订阅本次导入作业的进度事件（按 jobId 过滤，避免多窗口 / 多作业串台） */
+function beginImportJob(jobId: string): void {
+  importJob.value = { phase: 'scan', processed: 0, total: 0, currentFile: '' }
+  importOverlayVisible.value = false
+  if (importOverlayTimer) clearTimeout(importOverlayTimer)
+  importOverlayTimer = setTimeout(() => {
+    importOverlayTimer = null
+    if (importJob.value) importOverlayVisible.value = true
+  }, IMPORT_OVERLAY_DELAY_MS)
+  stopImportProgress?.()
+  stopImportProgress = null
+  // 旧 preload 可能没有这个方法：没有进度事件也照常导入，只是不显示百分比
+  if (typeof window.studio?.onAssetImportProgress !== 'function') return
+  stopImportProgress = window.studio.onAssetImportProgress((payload) => {
+    if (payload.jobId !== jobId || !importJob.value) return
+    importJob.value = {
+      phase: payload.phase,
+      processed: payload.processed,
+      total: payload.total,
+      currentFile: payload.currentFile ?? ''
+    }
+  })
+}
+
+function endImportJob(): void {
+  stopImportProgress?.()
+  stopImportProgress = null
+  if (importOverlayTimer) {
+    clearTimeout(importOverlayTimer)
+    importOverlayTimer = null
+  }
+  importOverlayVisible.value = false
+  importJob.value = null
+}
+
+/**
+ * 目录导入里需要用户知晓的异常（全成功时静默，与文件导入一致）：
+ * 一个文件都没进来、或目录里还有被跳过 / 未处理的资产包 / 读不到的条目 / 超上限。
+ */
+function folderNeedsAttention(folder: ImportedFolderSummary): boolean {
+  return (
+    folder.importedCount === 0 ||
+    folder.unsupportedCount > 0 ||
+    folder.packageCount > 0 ||
+    folder.unreadableCount > 0 ||
+    folder.truncated
+  )
+}
+
+/** 单个被拖入目录的结果行：成功的文件数 + 各类需要提示的备注 */
+function folderSummaryLine(folder: ImportedFolderSummary): string {
+  const notes: string[] = []
+  if (folder.unsupportedCount > 0) {
+    notes.push(t('asset.import.folderNoteUnsupported', { count: folder.unsupportedCount }))
+  }
+  if (folder.packageCount > 0) {
+    notes.push(t('asset.import.folderNotePackages', { count: folder.packageCount }))
+  }
+  if (folder.unreadableCount > 0) {
+    notes.push(t('asset.import.folderNoteUnreadable', { count: folder.unreadableCount }))
+  }
+  if (folder.truncated) {
+    notes.push(t('asset.import.folderNoteTruncated', { count: folder.importedCount }))
+  }
+  const head = folder.importedCount
+    ? t('asset.import.folderLine', { name: folder.folderName, ok: folder.importedCount })
+    : t('asset.import.folderLineEmpty', { name: folder.folderName })
+  if (!notes.length) return head
+  const joined = notes.join(t('asset.import.noteSeparator'))
+  return t('asset.import.folderLineNotes', { head, notes: joined })
+}
+
 async function importFilePaths(filePaths: string[], folderId: string | null): Promise<void> {
   if (!project.isOpen) {
     await showImportAlert(t('asset.import.needProject'))
     return
   }
   if (!filePaths.length) return
+  if (importJob.value) {
+    // 并发导入会在同一目录里抢重名，且进度条只能表达一个作业：先挡掉
+    await showImportAlert(t('asset.import.busy'))
+    return
+  }
 
+  const jobId = crypto.randomUUID()
+  beginImportJob(jobId)
+  let result: ImportAssetsResult
   try {
-    const result = await window.studio.importAssets({ filePaths, folderId })
-    project.patchAssets(result.imported)
-
-    if (!result.imported.length && result.skipped.length) {
-      const detail = result.skipped.map((s) => `${fileBaseName(s.path)}：${s.reason}`).join('\n')
-      await showImportAlert(`${t('asset.import.noneImported')}\n\n${detail}`)
-      return
-    }
-
-    if (result.skipped.length) {
-      const detail = result.skipped.map((s) => `${fileBaseName(s.path)}：${s.reason}`).join('\n')
-      await showImportAlert(
-        `${t('asset.import.partial', { ok: result.imported.length, skip: result.skipped.length })}\n\n${detail}`
-      )
-    }
+    result = await window.studio.importAssets({ filePaths, folderId, jobId })
   } catch (e) {
+    endImportJob()
     await showImportAlert(e instanceof Error ? e.message : String(e), true)
+    return
+  }
+  endImportJob()
+
+  const folderSummaries = result.folders ?? []
+  if (folderSummaries.length) {
+    // 目录导入会新建资产目录，整库刷新才能拿到新的 folders
+    await project.refreshLibrary()
+  } else {
+    project.patchAssets(result.imported)
+  }
+
+  const details = result.skipped.map((s) => `${fileBaseName(s.path)}：${s.reason}`)
+  details.push(...folderSummaries.filter(folderNeedsAttention).map(folderSummaryLine))
+
+  if (!result.imported.length) {
+    await showImportAlert([t('asset.import.noneImported'), ...details].filter(Boolean).join('\n\n'))
+    return
+  }
+
+  if (details.length) {
+    const head = result.skipped.length
+      ? t('asset.import.partial', {
+          ok: result.imported.length,
+          skip: result.skipped.length
+        })
+      : t('asset.import.importedOk', { ok: result.imported.length })
+    await showImportAlert(`${head}\n\n${details.join('\n')}`)
   }
 }
 
@@ -2706,8 +2859,9 @@ async function importDroppedFiles(e: DragEvent, folderId: string | null): Promis
     await showImportAlert(t('asset.import.dropPathFailed'))
     return
   }
-  const packages = paths.filter(isAipackagePath)
-  const media = paths.filter((p) => !isAipackagePath(p))
+  // 目录路径按扩展名归到媒体这一侧：主进程 stat 出目录后走目录镜像导入
+  const packages = paths.filter(isAssetPackagePath)
+  const media = paths.filter((p) => !isAssetPackagePath(p))
   if (packages.length) {
     await importAssetPackages(packages, folderId)
   }
@@ -3149,6 +3303,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   stopAutoVideoBeatBusy?.()
   stopAutoVideoBeatBusy = null
+  endImportJob()
   window.removeEventListener('mousedown', onGlobalPointerDown)
   window.removeEventListener('keydown', onKeyDown)
   isSplitterDragging.value = false
@@ -4062,6 +4217,78 @@ onBeforeUnmount(() => {
 
 .import-types {
   margin-top: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.import-progress-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 21;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--overlay);
+}
+
+.import-progress-overlay .import-panel {
+  min-width: 240px;
+  max-width: 80%;
+}
+
+.import-track {
+  position: relative;
+  height: 6px;
+  margin-top: 12px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--accent-18);
+}
+
+.import-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: width 0.12s linear;
+}
+
+/* 总数未知（正在扫描目录）：来回滑动的条，不谎报百分比 */
+.import-track.indeterminate .import-fill {
+  width: 35%;
+  animation: importSlide 1.1s ease-in-out infinite;
+}
+
+@keyframes importSlide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}
+
+.import-progress-meta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.import-progress-pct {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.import-progress-file {
+  margin-top: 4px;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 11px;
   color: var(--text-muted);
 }

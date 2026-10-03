@@ -1,4 +1,5 @@
 import type { AssetType } from './domain'
+import { AIPACKAGE_EXTENSION } from './assetPackage/types'
 
 const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.psd', '.svg'])
 /** 动画图片：预览必须读原文件，静态缩略图只剩首帧 */
@@ -118,6 +119,14 @@ export function isImportablePath(filePath: string): boolean {
   } catch {
     return false
   }
+}
+
+/**
+ * 是否为 `.aipackage` 资产包路径。
+ * 拖入资产库时分流：媒体走 `importAssets`，资产包走导入包对话框。
+ */
+export function isAssetPackagePath(filePath: string): boolean {
+  return fileExt(filePath) === `.${AIPACKAGE_EXTENSION}`
 }
 
 export function importFileFilter(): { name: string; extensions: string[] }[] {

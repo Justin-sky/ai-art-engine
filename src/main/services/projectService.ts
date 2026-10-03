@@ -52,11 +52,13 @@ import {
   type GraphDocument
 } from '@shared/graph'
 import type {
+  AssetImportProgress,
   AttachAssetFileInput,
   AttachAssetRelativeInput,
   CreateAssetInput,
   CreateFolderInput,
   CreateProjectInput,
+  ImportedFolderSummary,
   OpenProjectResult,
   SaveGraphRunMediaInput,
   SaveGraphRunTextInput,
@@ -104,6 +106,7 @@ import {
   uniqueFileName
 } from '../repositories/assetTreeStore'
 import { assetWatchService } from './assetWatchService'
+import { importFolderTree, planAssetImport } from './assetImportService'
 import { closeMediaStreamsUnder } from '../studioMediaProtocol'
 
 import {
@@ -138,6 +141,17 @@ import { IpcChannels } from '@shared/ipc'
 
 function nowIso(): string {
   return new Date().toISOString()
+}
+
+/** 导入进度推送间隔：更密只会刷屏，更疏进度条会一顿一顿 */
+const ASSET_IMPORT_PROGRESS_INTERVAL_MS = 40
+
+/**
+ * 让出事件循环。批量导入（几百上千个文件）中间必须喘气：
+ * 主进程被同步占满时，进度推送、资产监听与其他 IPC 都排在后面，界面会整个卡住。
+ */
+function yieldEventLoop(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve))
 }
 
 // ── 本服务个性错误（双语条目；跨服务共性条目见 errors/messages.ts）──
@@ -490,26 +504,100 @@ class ProjectService {
     return assetRepository.list(this.getRoot())
   }
 
-  importAssets(
+  /**
+   * 导入媒体文件。入参可为文件，也可为目录：目录会按源目录结构镜像成资产目录
+   * （同父目录下同名目录复用，子目录按需创建），再递归导入其中支持的媒体文件；
+   * 目录内的 `.aipackage` 资产包不在本链路处理，仅在结果里计数提示，
+   * 需要用户单独拖入（导入包要逐个勾选条目）。
+   *
+   * 两趟：先 `planAssetImport` 扫出待导入清单（进度条的分母），再逐个导入。导入过程中
+   * 每个文件之间让出事件循环并回报进度 —— 一次拖入上千个文件时，主进程若被同步占满，
+   * 界面（含进度条本身）就没法刷新了。
+   */
+  async importAssets(
     filePaths: string[],
-    folderId: string | null = null
-  ): { imported: AssetInfo[]; skipped: { path: string; reason: string }[] } {
+    folderId: string | null = null,
+    options?: { onProgress?: (progress: Omit<AssetImportProgress, 'jobId'>) => void }
+  ): Promise<{
+    imported: AssetInfo[]
+    skipped: { path: string; reason: string }[]
+    folders: ImportedFolderSummary[]
+  }> {
     const imported: AssetInfo[] = []
     const skipped: { path: string; reason: string }[] = []
+    const folders: ImportedFolderSummary[] = []
     if (folderId) this.readFolder(folderId)
+    const root = this.getRoot()
 
-    for (const src of filePaths) {
+    const report = options?.onProgress
+    let lastReportAt = 0
+    /** 进度节流：高频小文件导入时避免每个文件都推一次事件 */
+    const reportProgress = (progress: Omit<AssetImportProgress, 'jobId'>, force = false): void => {
+      if (!report) return
+      const now = Date.now()
+      if (!force && now - lastReportAt < ASSET_IMPORT_PROGRESS_INTERVAL_MS) return
+      lastReportAt = now
+      report(progress)
+    }
+
+    reportProgress({ phase: 'scan', processed: 0, total: 0 }, true)
+    const plan = planAssetImport(filePaths)
+    skipped.push(...plan.skipped)
+    let processed = 0
+    reportProgress({ phase: 'import', processed, total: plan.total }, true)
+
+    const importFile = async (
+      src: string,
+      targetFolderId: string | null,
+      targetDirAbs?: string
+    ): Promise<boolean> => {
+      let ok = false
       try {
-        imported.push(this.importOneMediaFile(src, folderId))
+        imported.push(this.importOneMediaFile(src, targetFolderId, targetDirAbs))
+        ok = true
       } catch (err) {
         skipped.push({
           path: src,
           reason: err instanceof Error ? err.message : String(err)
         })
       }
+      processed += 1
+      reportProgress(
+        { phase: 'import', processed, total: plan.total, currentFile: basename(src) },
+        processed >= plan.total
+      )
+      await yieldEventLoop()
+      return ok
     }
 
-    return { imported, skipped }
+    for (const entry of plan.entries) {
+      if (entry.kind === 'file') {
+        await importFile(entry.path, folderId)
+        continue
+      }
+      const processedBefore = processed
+      try {
+        folders.push(
+          await importFolderTree({
+            root,
+            sourceDir: entry.path,
+            parentFolderId: folderId,
+            scan: entry.scan,
+            importFile,
+            onEntryError: (absolutePath, reason) => skipped.push({ path: absolutePath, reason })
+          })
+        )
+      } catch (err) {
+        // 目录整体导入失败（落点目录不存在 / 盘上异常）：记成一条跳过，不让同批文件一起丢；
+        // 该目录的文件数照旧计入进度，否则进度条会停在中途
+        skipped.push({ path: entry.path, reason: err instanceof Error ? err.message : String(err) })
+        processed = Math.max(processed, processedBefore + entry.scan.files.length)
+        reportProgress({ phase: 'import', processed, total: plan.total })
+      }
+    }
+
+    reportProgress({ phase: 'import', processed: plan.total, total: plan.total }, true)
+    return { imported, skipped, folders }
   }
 
   /**
@@ -634,27 +722,34 @@ class ProjectService {
       },
       {
         label: 'write asset metadata',
-        forward: () => assetRepository.write(root, asset),
+        // 全新资产：meta 路径由 relativePath 决定，无需为写 meta 再扫一遍全树
+        forward: () => assetRepository.writeNewMedia(root, asset),
         rollback: () => assetRepository.removeMetadata(root, asset.id)
       }
     ])
     // 入库后对图片 / 视频异步做本地视觉打标（fire-and-forget，失败不影响入库）
     this.queueVisionTagWriteBack(asset.id, asset.type, asset.relativePath)
     // 视频入库后低优先级自动打点：抽帧逐帧检测出空镜 / 单人 / 群像时间线（静默失败，不影响入库）
-    this.queueAutoVideoBeatsIfDue(asset.id)
+    this.queueAutoVideoBeatsIfDue(asset)
     return asset
   }
 
-  private importOneMediaFile(src: string, folderId: string | null): AssetInfo {
+  /**
+   * 导入单个媒体文件。
+   *
+   * `dirAbs` 由拖入目录的批量导入链路传入（目录刚由它建好），省掉这里为解析目录
+   * 再扫一遍资产树 —— 批量导入时每个文件两次全树扫描是平方级开销，主进程会卡死。
+   */
+  private importOneMediaFile(src: string, folderId: string | null, dirAbs?: string): AssetInfo {
     const root = this.getRoot()
-    if (folderId) this.readFolder(folderId)
-    const dirAbs = resolveFolderDirAbs(root, folderId)
+    if (folderId && !dirAbs) this.readFolder(folderId)
+    const targetDirAbs = dirAbs ?? resolveFolderDirAbs(root, folderId)
     const type = detectAssetType(src)
     const id = randomUUID()
     const ext = extname(src).toLowerCase()
     const base = normalizePathSegment(basename(src, ext) || type)
-    const fileName = uniqueFileName(dirAbs, `${base}${ext}`)
-    const dest = join(dirAbs, fileName)
+    const fileName = uniqueFileName(targetDirAbs, `${base}${ext}`)
+    const dest = join(targetDirAbs, fileName)
     const ts = nowIso()
     const relativePath = toPosix(relative(root, dest))
     const asset: AssetInfo = {
@@ -685,14 +780,15 @@ class ProjectService {
       },
       {
         label: 'write asset metadata',
-        forward: () => assetRepository.write(root, asset),
+        // 全新资产：meta 路径由 relativePath 决定，无需为写 meta 再扫一遍全树
+        forward: () => assetRepository.writeNewMedia(root, asset),
         rollback: () => assetRepository.removeMetadata(root, asset.id)
       }
     ])
     // 入库后对图片 / 视频异步做本地视觉打标（fire-and-forget，失败不影响导入）
     this.queueVisionTagWriteBack(asset.id, asset.type, asset.relativePath)
     // 视频导入后低优先级自动打点：抽帧逐帧检测出空镜 / 单人 / 群像时间线（静默失败，不影响导入）
-    this.queueAutoVideoBeatsIfDue(asset.id)
+    this.queueAutoVideoBeatsIfDue(asset)
     return asset
   }
 
@@ -1337,16 +1433,13 @@ class ProjectService {
    * - 已有完成结果 / 最近失败在节流窗口内 / 自动队列已满 → 本次跳过（右键仍可手动触发）；
    * - 入队即广播 busy（素材卡角标显示打点中），结束写回 meta 并广播资产更新。
    * 自动任务与手动打点共用同一排队，且只在没有手动任务等待时执行（tagger 内 low-priority 语义）。
+   *
+   * 入参是**刚落盘的那个资产对象**（调用方刚写完盘），不必再扫全树回读一次。
    */
-  private queueAutoVideoBeatsIfDue(assetId: string): void {
+  private queueAutoVideoBeatsIfDue(asset: AssetInfo): void {
+    const assetId = asset.id
     if (this.autoVideoBeatBusy.has(assetId)) return
     if (this.autoVideoBeatBusy.size >= AUTO_VIDEO_BEAT_MAX_PENDING) return
-    let asset: AssetInfo
-    try {
-      asset = this.readAsset(assetId)
-    } catch {
-      return // 资产已被移除 / 工程切换
-    }
     if (asset.type !== 'video') return
     const rel = asset.relativePath?.trim()
     if (!rel) return

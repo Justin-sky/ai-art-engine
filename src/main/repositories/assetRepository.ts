@@ -29,6 +29,21 @@ export class AssetRepository {
     writeAssetToTree(root, this.normalize(asset), { scan, mediaAbs })
   }
 
+  /**
+   * 写「全新媒体资产」的 meta：路径完全由 `relativePath` 决定，不必先扫全树。
+   *
+   * 只适用于**此前不存在**的资产（导入 / 另存）。更新既有资产仍走 `write`：
+   * 那里的全树扫描用于把旧位置的 meta 清掉，跳过会留下孤儿元数据。
+   */
+  writeNewMedia(root: string, asset: AssetInfo): void {
+    const rel = asset.relativePath?.trim()
+    if (!rel) {
+      this.write(root, asset)
+      return
+    }
+    writeAssetToTree(root, this.normalize(asset), { mediaAbs: join(root, rel) })
+  }
+
   removeMetadata(root: string, assetId: string): void {
     removeAssetFromTree(root, assetId)
   }

@@ -27,9 +27,14 @@ export class FolderRepository {
     return folder
   }
 
-  /** 在父目录下创建真实子目录并写入 .folder.json */
-  create(root: string, folder: AssetFolder): void {
-    const parentAbs = resolveFolderDirAbs(root, folder.parentId ?? null)
+  /**
+   * 在父目录下创建真实子目录并写入 `.folder.json`。
+   *
+   * `parentDirAbs` 供批量导入链路传入（调用方已持有父目录的绝对路径），
+   * 省掉为解析父目录再扫一遍资产树。
+   */
+  create(root: string, folder: AssetFolder, parentDirAbs?: string): string {
+    const parentAbs = parentDirAbs ?? resolveFolderDirAbs(root, folder.parentId ?? null)
     const dirName = normalizePathSegment(folder.name)
     let dirAbs = join(parentAbs, dirName)
     if (!reclaimAssetDirPath(dirAbs)) {
@@ -42,6 +47,7 @@ export class FolderRepository {
     }
     mkdirSync(dirAbs, { recursive: true })
     writeFolderMeta(dirAbs, folder)
+    return dirAbs
   }
 
   write(root: string, folder: AssetFolder): void {

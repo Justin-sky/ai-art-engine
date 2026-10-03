@@ -172,9 +172,16 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.AD_VARIANT_EXPORT, (input: ExportAdVariantsInput) => exportAdVariants(input))
 
   handle(IpcChannels.ASSET_LIST, () => projectService.listAssets())
-  handle(IpcChannels.ASSET_IMPORT, (input: ImportAssetsInput) =>
-    projectService.importAssets(input.filePaths, input.folderId ?? null)
-  )
+  handle(IpcChannels.ASSET_IMPORT, async (input: ImportAssetsInput) => {
+    const jobId = input.jobId?.trim()
+    return projectService.importAssets(input.filePaths, input.folderId ?? null, {
+      // 只有带了 jobId 的作业才推事件：拖入文件夹的进度条据此对账，多窗口互不串台
+      onProgress: jobId
+        ? (progress) =>
+            broadcastToAllWindows(IpcChannels.ASSET_IMPORT_PROGRESS, { ...progress, jobId })
+        : undefined
+    })
+  })
   handle(IpcChannels.ASSET_SAVE_PROJECT_FILE, (input: SaveProjectAssetInput) => {
     const asset = projectService.saveProjectAsset(input)
     broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)

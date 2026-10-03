@@ -58,6 +58,8 @@ export const IpcChannels = {
   // Assets
   ASSET_LIST: 'asset:list',
   ASSET_IMPORT: 'asset:import',
+  /** 主进程推送：资产导入进度（按 `jobId` 区分作业） */
+  ASSET_IMPORT_PROGRESS: 'asset:import-progress',
   ASSET_REIMPORT: 'asset:reimport',
   ASSET_CREATE: 'asset:create',
   ASSET_DELETE: 'asset:delete',
@@ -346,11 +348,55 @@ export interface OpenProjectResult {
 export interface ImportAssetsInput {
   filePaths: string[]
   folderId?: string | null
+  /**
+   * 导入作业 id（渲染层生成）。给了就为该作业推送
+   * `ASSET_IMPORT_PROGRESS` 进度事件，多窗口/多作业互不串台。
+   */
+  jobId?: string
+}
+
+/** 主进程推送：资产导入进度（拖入文件夹时按文件推进） */
+export interface AssetImportProgress {
+  /** 与 `ImportAssetsInput.jobId` 对应 */
+  jobId: string
+  /** scan = 还在统计待导入文件（`total` 未知），import = 逐文件导入中 */
+  phase: 'scan' | 'import'
+  /** 已处理文件数（含导入失败的） */
+  processed: number
+  /** 待导入文件总数；0 表示总数未知 */
+  total: number
+  /** 当前处理的文件名（import 阶段） */
+  currentFile?: string
+}
+
+/**
+ * 拖入目录的导入汇总：目录本身先按源目录结构镜像成资产目录，
+ * 再把支持的媒体文件逐个登记为资产。
+ */
+export interface ImportedFolderSummary {
+  /** 被拖入的源目录绝对路径 */
+  sourcePath: string
+  /** 资产库中镜像出的顶层目录名（与已有同名目录合并复用） */
+  folderName: string
+  /** 顶层目录 id；目录内没有任何可导入文件时为 null */
+  folderId: string | null
+  /** 成功导入的文件数 */
+  importedCount: number
+  /** 因扩展名不支持而跳过的文件数（隐藏项不计） */
+  unsupportedCount: number
+  /** 目录内的 `.aipackage` 资产包数（不在目录导入里处理，需单独拖入） */
+  packageCount: number
+  /** 因权限等原因读取失败的条目数 */
+  unreadableCount: number
+  /** 命中单次导入的文件数上限，未导入目录内全部文件 */
+  truncated: boolean
 }
 
 export interface ImportAssetsResult {
   imported: AssetInfo[]
   skipped: { path: string; reason: string }[]
+  /** 仅当入参含目录路径时出现 */
+  folders?: ImportedFolderSummary[]
 }
 
 export interface ReimportAssetsInput {
@@ -1151,6 +1197,8 @@ export interface StudioApi {
 
   listAssets: () => Promise<AssetInfo[]>
   importAssets: (input: ImportAssetsInput) => Promise<ImportAssetsResult>
+  /** 订阅资产导入进度（拖入文件夹时按文件推进；`jobId` 对齐 `importAssets` 入参） */
+  onAssetImportProgress: (callback: (payload: AssetImportProgress) => void) => () => void
   /** 重新导入：从工程磁盘上的媒体文件刷新资产元数据与缓存（类似 Unity Reimport） */
   reimportAssets: (input: ReimportAssetsInput) => Promise<ReimportAssetsResult>
   createAsset: (input: CreateAssetInput) => Promise<AssetInfo>
