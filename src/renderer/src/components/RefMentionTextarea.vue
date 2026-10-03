@@ -41,6 +41,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import type { RefMentionOption } from '@shared/graph'
 import { useStudioI18n } from '../composables/useStudioI18n'
+import { insertMentionToken } from '../utils/mentionInsert'
 import { getTextareaCaretClientRect } from '../utils/textareaCaretCoords'
 
 const { t, assetTypeLabel } = useStudioI18n()
@@ -226,16 +227,19 @@ function onKeydown(e: KeyboardEvent): void {
 function pickOption(opt: RefMentionOption): void {
   const el = textareaEl.value
   if (!el || mentionStart.value < 0) return
+  const start = mentionStart.value
   const pos = el.selectionStart ?? 0
-  const inserted = opt.insertText ?? opt.token
-  const next = `${el.value.slice(0, mentionStart.value)}${inserted} ${el.value.slice(pos)}`
-  emit('update:modelValue', next)
+  const token = opt.insertText ?? opt.token
+  // 光标位置必须在这里算好：closeMenu() 会把 mentionStart 重置成 -1，
+  // 放到 nextTick 里再读就会得到「-1 + 长度」，光标跳到正文中间而不是引用后面
+  const { text, cursor } = insertMentionToken(el.value, start, pos, token)
+  emit('update:modelValue', text)
   emit('change')
   closeMenu()
   void nextTick(() => {
-    const cursor = mentionStart.value + inserted.length + 1
-    el.focus()
-    el.setSelectionRange(cursor, cursor)
+    const target = textareaEl.value ?? el
+    target.focus()
+    target.setSelectionRange(cursor, cursor)
   })
 }
 
