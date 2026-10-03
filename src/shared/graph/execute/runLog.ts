@@ -122,6 +122,8 @@ export interface GraphRunLogApiCall {
     imageCount?: number
     assetId?: string
     relativePath?: string
+    /** 参考图处理说明（如超大参考图被自动压缩：19.5MB → 2.3MB） */
+    referenceNotes?: string[]
     /** blenderMcp：仅记录是否成功执行；不落 stdout（可能很大） */
     ok?: boolean
   }
@@ -177,17 +179,40 @@ export interface GraphRunLogMeta {
 
 const URL_PREVIEW_MAX = 240
 
+/** 日志可读性：字节数按 KB/MB 显示（避免 20424401 这种裸数字） */
+function formatBytesForLog(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`
+}
+
+/** 日志可读性：字符数按 K/M 显示 */
+function formatCountForLog(count: number): string {
+  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`
+  if (count >= 1_000) return `${(count / 1_000).toFixed(1)}K`
+  return String(count)
+}
+
 /**
- * 日志用媒体 URL 摘要：data URL 记类型 + 字节数，其余（http(s)/本地路径/相对路径）
+ * 日志用媒体 URL 摘要：data URL 记类型 + **解码后体积**，其余（http(s)/本地路径/相对路径）
  * 保留可追踪内容并截断，避免日志膨胀。
+ *
+ * 体积必须自带单位：早期实现打印的是「整个 data URL 的字符数」却只加了个 `B` 后缀
+ * （`data:image/jpeg;base64,27232535B`），读起来像 27MB 的二进制、又像一串坏 base64，
+ * 排查时极易误判成「载荷损坏」。现在明确写成 `~19.5MB (b64 27.2M chars)`。
  */
 export function summarizeMediaUrlForLog(url: string): string {
   const trimmed = url?.trim() ?? ''
   if (!trimmed) return ''
   if (trimmed.startsWith('data:')) {
     const comma = trimmed.indexOf(',')
-    const head = comma > 0 ? trimmed.slice(0, Math.min(comma, 80)) : 'data:'
-    return `${head},${trimmed.length}B`
+    if (comma < 0) return trimmed.slice(0, 80)
+    const head = trimmed.slice(0, Math.min(comma, 80))
+    const payloadChars = trimmed.length - comma - 1
+    if (!/;base64/i.test(head)) return `${head},~${formatCountForLog(payloadChars)} chars`
+    // base64：4 字符 → 3 字节（等号补位忽略不计，量级足够）
+    const bytes = Math.floor((payloadChars * 3) / 4)
+    return `${head},~${formatBytesForLog(bytes)} (b64 ${formatCountForLog(payloadChars)} chars)`
   }
   return trimmed.length > URL_PREVIEW_MAX
     ? `${trimmed.slice(0, URL_PREVIEW_MAX)}…(${trimmed.length})`

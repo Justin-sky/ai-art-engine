@@ -93,7 +93,7 @@ export interface GraphRunSessionOptions {
     quality?: string
     n?: number
     inputReferences?: string[]
-  }) => Promise<{ images: string[]; model: string }>
+  }) => Promise<{ images: string[]; model: string; referenceNotes?: string[] }>
   generateVideo?: (input: {
     prompt: string
     model?: string
@@ -718,7 +718,11 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         run.logBridge.recordApiCall({
           kind: 'generateImage',
           request,
-          response: { model: value.model, imageCount: value.images?.length ?? 0 },
+          response: {
+            model: value.model,
+            imageCount: value.images?.length ?? 0,
+            referenceNotes: value.referenceNotes
+          },
           durationMs: Math.max(0, Date.now() - startedAt)
         })
         return value

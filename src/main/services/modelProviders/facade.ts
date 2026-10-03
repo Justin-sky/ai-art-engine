@@ -55,7 +55,7 @@ import { buildProviderSnapshot, resolveActiveProvider } from './resolve'
 import { settingsService } from '../settingsService'
 import { getProviderAdapter } from './registry'
 import { prepareVideoInputReferencesForApi } from './videoRefs'
-import { ensureApiImageUrl, ensureApiImageUrls } from './apiImageUrl'
+import { ensureApiImageUrl, ensureApiImageUrls, ensureApiImageUrlsWithNotes } from './apiImageUrl'
 import {
   deleteUploads,
   ensureRemoteMediaUrl,
@@ -300,11 +300,22 @@ class ModelProviderFacade {
       input.providerInstanceId,
       input.model
     )
-    const inputReferences = ensureApiImageUrls(input.inputReferences)
-    return getProviderAdapter(provider.providerKind).generateImage(provider, modelId, {
-      ...input,
-      inputReferences
-    })
+    // 参考图统一在这里落地为 API 可用形态，并顺手压掉超限的大图（相机原图动辄 20MB，
+    // 会被上游按「文件不符合要求」拒掉）；压缩说明与适配器自己的说明（如某模型只收 1 张
+    // 参考图、其余未发送）合并后回传给运行日志，两者不能互相覆盖。
+    const { urls: inputReferences, notes: shrinkNotes } = ensureApiImageUrlsWithNotes(
+      input.inputReferences
+    )
+    const result = await getProviderAdapter(provider.providerKind).generateImage(
+      provider,
+      modelId,
+      {
+        ...input,
+        inputReferences
+      }
+    )
+    const referenceNotes = [...shrinkNotes, ...(result.referenceNotes ?? [])]
+    return referenceNotes.length ? { ...result, referenceNotes } : result
   }
 
   async submitVideo(input: GenerateVideoInput): Promise<GenerateVideoJob> {
@@ -877,6 +888,8 @@ class ModelProviderFacade {
     assetId: string
     model: string
     relativePath: string
+    /** 参考图处理说明（如超限自动压缩），随结果回传给运行日志 */
+    referenceNotes?: string[]
   }> {
     if (!projectService.isOpen()) throw fail(E_NO_PROJECT)
     const result = await this.generateImage(input)
@@ -911,7 +924,12 @@ class ModelProviderFacade {
         kind: 'image'
       })
     })
-    return { assetId: asset.id, model: result.model, relativePath: asset.relativePath }
+    return {
+      assetId: asset.id,
+      model: result.model,
+      relativePath: asset.relativePath,
+      referenceNotes: result.referenceNotes
+    }
   }
 
   async generateSpeech(input: GenerateSpeechInput): Promise<GenerateSpeechResult> {

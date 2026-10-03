@@ -126,6 +126,56 @@ describe('openAiAdapter', () => {
     expect(result.images[0]).toBe('https://cdn.example.com/out.png')
   })
 
+  it('多参考图：gpt-image 系列全部提交（image[]）并把 @n 改写成图n', async () => {
+    postMock.mockResolvedValueOnce({
+      data: { data: [{ url: 'https://cdn.example.com/two.png' }] }
+    })
+    const result = await openAiAdapter.generateImage(provider(), 'gpt-image-2.5-sunburst', {
+      prompt: '将@1中的人物替换成@2中的人物',
+      aspectRatio: '1:1',
+      inputReferences: ['data:image/png;base64,aGVsbG8=', 'data:image/jpeg;base64,d29ybGQ=']
+    })
+
+    const [path, form] = postMock.mock.calls[0] as [string, FormData, unknown]
+    expect(path).toBe('/images/edits')
+    // 模型不认识应用内的 @n：与方舟 / Gemini / OpenRouter 同口径改成「图n」
+    expect(form.get('prompt')).toBe('将图1中的人物替换成图2中的人物')
+    // 两张都发出去了，且用官方多图约定的 image[] 重复字段
+    expect(form.getAll('image[]')).toHaveLength(2)
+    expect(form.get('image')).toBeNull()
+    // 没有丢图就不该有提示
+    expect(result.referenceNotes).toBeUndefined()
+  })
+
+  it('只吃单图的老模型：多余参考图不发，但要在运行日志里说清楚', async () => {
+    postMock.mockResolvedValueOnce({
+      data: { data: [{ url: 'https://cdn.example.com/one.png' }] }
+    })
+    const result = await openAiAdapter.generateImage(provider(), 'dall-e-2', {
+      prompt: '把@2的人换成@1的人',
+      aspectRatio: '1:1',
+      inputReferences: ['data:image/png;base64,aGVsbG8=', 'data:image/jpeg;base64,d29ybGQ=']
+    })
+
+    const [, form] = postMock.mock.calls[0] as [string, FormData, unknown]
+    expect(form.getAll('image')).toHaveLength(1)
+    expect(form.getAll('image[]')).toHaveLength(0)
+    expect(result.referenceNotes?.[0]).toContain('dall-e-2')
+    expect(result.referenceNotes?.[0]).toContain('1 张参考图')
+  })
+
+  it('纯文生图也把 @n 改写成图n（提示词口径统一）', async () => {
+    postMock.mockResolvedValueOnce({
+      data: { data: [{ b64_json: 'QUJD' }] }
+    })
+    await openAiAdapter.generateImage(provider(), 'gpt-image-1', {
+      prompt: '参考@1的风格画一只猫'
+    })
+    const [path, body] = postMock.mock.calls[0] as [string, { prompt: string }, unknown]
+    expect(path).toBe('/images/generations')
+    expect(body.prompt).toBe('参考图1的风格画一只猫')
+  })
+
   it('rejects video and speech with a clear message', async () => {
     await expect(
       openAiAdapter.generateSpeech(provider(), 'tts-1', { input: 'hi' })

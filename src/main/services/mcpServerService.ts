@@ -2534,7 +2534,8 @@ const TOOL_DEFS: McpToolDef[] = [
           response: {
             model: r.model,
             assetId: r.assetId,
-            relativePath: liveAssetRelativePath(r)
+            relativePath: liveAssetRelativePath(r),
+            referenceNotes: r.referenceNotes
           }
         })
       )

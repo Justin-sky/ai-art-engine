@@ -8120,7 +8120,8 @@ async function splitSelectedLayerSplit(payload: ImageLayerSplitNestedRequest): P
         request: apiRequest,
         response: {
           model: result.model,
-          imageCount: result.layers?.length || result.images?.length || 0
+          imageCount: result.layers?.length || result.images?.length || 0,
+          referenceNotes: result.referenceNotes
         },
         durationMs: Math.max(0, Date.now() - apiStarted)
       })

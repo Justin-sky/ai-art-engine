@@ -935,6 +935,11 @@ export interface GenerateImageResult {
   model: string
   /** layer_decomposition 时与 images 对齐的图层元数据 */
   layers?: GenerateImageLayer[]
+  /**
+   * 调用前对参考图做过的处理说明（如超出上游单图上限时的自动压缩）。
+   * 只进运行日志与结果提示，不参与出图逻辑。
+   */
+  referenceNotes?: string[]
 }
 
 /** OpenRouter `/videos` 的 `input_references` 条目类型 */

@@ -1192,7 +1192,11 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             logBridge.recordApiCall({
               kind: 'generateImage',
               request,
-              response: { model: value.model, imageCount: value.images?.length ?? 0 },
+              response: {
+                model: value.model,
+                imageCount: value.images?.length ?? 0,
+                referenceNotes: value.referenceNotes
+              },
               durationMs: Math.max(0, Date.now() - startedAt)
             })
             return value

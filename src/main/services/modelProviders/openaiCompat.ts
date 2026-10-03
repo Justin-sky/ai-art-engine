@@ -21,8 +21,19 @@ import {
   sleep
 } from './http'
 import { PROVIDER_ERRORS } from './catalog'
-import { fail, defErr, defErrSimple } from '@shared/errors/appError'
+import { fail, defErr, defErrSimple, formatBi } from '@shared/errors/appError'
+import { rewriteAtMentionsForImagePrompt } from '@shared/modelProviders/imagePromptMentions'
 import { projectService } from '../projectService'
+
+// ── 本文件个性化错误条目 ──
+/** 非 throw：多张参考图里有没发出去的，随结果回传给运行日志 */
+const E_OPENAI_COMPAT_SINGLE_REFERENCE = defErr<{ model: string; dropped: number }>(
+  'provider.openaiCompat.singleReference',
+  ({ model, dropped }) =>
+    `${model} 一次只提交 1 张参考图，另外 ${dropped} 张没有发送（提示词里 @2 及之后的指代不会被参考）`,
+  ({ model, dropped }) =>
+    `${model} accepts a single reference image per call; ${dropped} more were not sent (@2 and later references in the prompt have no effect)`
+)
 
 type ChatMessage = { role: string; content: unknown }
 
@@ -495,7 +506,9 @@ export async function generateOpenAiCompatibleSpeech(
   }
 }
 
-/** data URL / http(s) URL → Blob，供 /images/edits 的 multipart 表单使用 */
+/**
+ * data URL / http(s) URL → Blob，供 /images/edits 的 multipart 表单使用
+ */
 async function referenceToBlob(ref: string): Promise<{ blob: Blob; filename: string }> {
   const dataUrl = /^data:([^;,]+)?(;base64)?,(.*)$/s.exec(ref.trim())
   if (dataUrl) {
@@ -524,6 +537,16 @@ async function referenceToBlob(ref: string): Promise<{ blob: Blob; filename: str
   }
 }
 
+/**
+ * 该模型是否支持一次提交多张参考图。
+ *
+ * `gpt-image` 系列（含中转网关的 `gpt-image-2.5-*` 这类别名）官方最多 16 张；
+ * 老模型（`dall-e-2`）的 /images/edits 只吃 1 张，多传会被直接拒。
+ */
+function supportsMultipleEditImages(modelId: string): boolean {
+  return /gpt-image|chatgpt-image/i.test(modelId)
+}
+
 function parseGeneratedImages(
   data: { data?: Array<{ b64_json?: string; url?: string }> },
   modelId: string
@@ -539,7 +562,7 @@ function parseGeneratedImages(
   return { images, model: modelId }
 }
 
-/** OpenAI 兼容：POST /images/generations；有参考图时走 /images/edits（multipart，一次最多 1 张） */
+/** OpenAI 兼容：POST /images/generations；有参考图时走 /images/edits（multipart） */
 export async function generateOpenAiCompatibleImage(
   provider: ModelProviderInstance,
   modelId: string,
@@ -548,14 +571,24 @@ export async function generateOpenAiCompatibleImage(
   const quality =
     input.quality?.trim().toLowerCase() === 'standard' ? 'medium' : input.quality?.trim()
   const size = resolveOpenAiImageSize(input.resolution, input.aspectRatio)
+  // 模型不认 `@n`（那是应用内的编号约定），发出去之前转成「图n」与 image[] 顺序对齐；
+  // 与火山方舟 / Gemini / OpenRouter 三条链路同一口径（见 shared/modelProviders/imagePromptMentions）
+  const prompt = rewriteAtMentionsForImagePrompt(input.prompt)
 
   try {
     if (input.inputReferences?.length) {
-      const { blob, filename } = await referenceToBlob(input.inputReferences[0])
+      const refs = input.inputReferences.map((ref) => ref.trim()).filter(Boolean)
+      const multi = refs.length > 1 && supportsMultipleEditImages(modelId)
+      const used = multi ? refs : refs.slice(0, 1)
+
       const form = new FormData()
       form.append('model', modelId)
-      form.append('prompt', input.prompt)
-      form.append('image', blob, filename)
+      form.append('prompt', prompt)
+      for (const ref of used) {
+        const { blob, filename } = await referenceToBlob(ref)
+        // 单图用 `image`（各网关都认）；多图用官方约定的 `image[]` 重复字段
+        form.append(multi ? 'image[]' : 'image', blob, filename)
+      }
       if (quality) form.append('quality', quality)
       if (size) form.append('size', size)
       if (input.n && input.n >= 1) form.append('n', String(Math.floor(input.n)))
@@ -564,13 +597,26 @@ export async function generateOpenAiCompatibleImage(
       const { data } = await client.post<{
         data?: Array<{ b64_json?: string; url?: string }>
       }>('/images/edits', form, { headers: { 'Content-Type': undefined } })
-      return parseGeneratedImages(data, modelId)
+      const result = parseGeneratedImages(data, modelId)
+      // 多带的参考图没发出去就得说出来：否则用户看到的是「@2 完全没生效」而没有任何线索
+      if (used.length < refs.length) {
+        return {
+          ...result,
+          referenceNotes: [
+            formatBi(E_OPENAI_COMPAT_SINGLE_REFERENCE, {
+              model: modelId,
+              dropped: refs.length - used.length
+            })
+          ]
+        }
+      }
+      return result
     }
 
     const client = createProviderHttpClient(provider, LONG_GENERATE_TIMEOUT_MS)
     const body: Record<string, unknown> = {
       model: modelId,
-      prompt: input.prompt
+      prompt
     }
     if (size) body.size = size
     if (quality) body.quality = quality

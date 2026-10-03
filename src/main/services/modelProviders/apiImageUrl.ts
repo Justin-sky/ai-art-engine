@@ -3,6 +3,7 @@ import { fileURLToPath } from 'url'
 import { fail, defErr, defErrSimple } from '@shared/errors/appError'
 import { toMediaUrl } from './mediaUrl'
 import { projectService } from '../projectService'
+import { shrinkReferenceImageDataUrl } from '../referenceImageService'
 
 // ── 本文件错误条目（catalog 未覆盖的个性文案）──
 const E_IMAGE_FILE_NOT_FOUND = defErr<{ path: string }>(
@@ -45,7 +46,7 @@ function dataUrlFromAbsPath(absPath: string): string {
  * 将本地预览协议（studio-media / file）转为远端 API 可接受的 data URL / http(s)。
  * OpenRouter / OpenAI 兼容接口不接受 studio-media:// 或裸本地路径。
  */
-export function ensureApiImageUrl(pathOrUrl: string): string {
+function resolveApiImageUrl(pathOrUrl: string): string {
   const trimmed = pathOrUrl.trim()
   if (!trimmed) throw fail(E_EMPTY_REFERENCE)
 
@@ -75,7 +76,37 @@ export function ensureApiImageUrl(pathOrUrl: string): string {
   return toMediaUrl(trimmed, root)
 }
 
+/**
+ * 解析 + 发送前压缩：超过参考图体积预算的本地/内联图会被降采样重编码，
+ * 并返回一句可进运行日志的说明（如「参考图已压缩：19.5MB → 2.3MB（4096×2731）」）。
+ * 远端 http(s) 图不下载、不压缩（我们不下别人的图，也无法判断其体积）。
+ */
+export function ensureApiImageUrlWithNote(pathOrUrl: string): { url: string; note?: string } {
+  const resolved = resolveApiImageUrl(pathOrUrl)
+  if (/^https?:\/\//i.test(resolved)) return { url: resolved }
+  return shrinkReferenceImageDataUrl(resolved)
+}
+
+export function ensureApiImageUrl(pathOrUrl: string): string {
+  return ensureApiImageUrlWithNote(pathOrUrl).url
+}
+
 export function ensureApiImageUrls(urls: string[] | undefined): string[] | undefined {
   if (!urls?.length) return urls
   return urls.map((url) => ensureApiImageUrl(url))
+}
+
+/** 批量解析并收集压缩说明（供结果 / 运行日志展示） */
+export function ensureApiImageUrlsWithNotes(urls: string[] | undefined): {
+  urls: string[] | undefined
+  notes: string[]
+} {
+  if (!urls?.length) return { urls, notes: [] }
+  const notes: string[] = []
+  const resolved = urls.map((url) => {
+    const { url: next, note } = ensureApiImageUrlWithNote(url)
+    if (note) notes.push(note)
+    return next
+  })
+  return { urls: resolved, notes }
 }
