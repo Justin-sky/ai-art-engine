@@ -1595,6 +1595,10 @@
               model renders the whole frame, then the result is feathered back onto the original through the face
               (with neck) / person / manual-region-box mask, so everything else keeps the exact original pixels —
               smoothing no longer blurs the clothes and background, and slimming no longer warps the scene.
+              <strong>Solid / gradient backgrounds are flattened locally by default</strong>: after generation the
+              local person segmentation forces everything outside the subject to the target background, so the
+              result is guaranteed clean (residue the model forgot is wiped) — ID-photo background colours work the
+              same way, and you can switch it off in the Background group.
               Background swaps, ID photos and colour grading are whole-frame by nature and stay whole-frame
               (otherwise the mask would crop those global effects); when face landmarks or the segmentation model
               are missing, that part falls back to the whole frame with a line in the <strong>run log</strong> —
