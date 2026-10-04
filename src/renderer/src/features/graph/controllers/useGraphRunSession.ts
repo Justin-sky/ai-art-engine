@@ -57,6 +57,7 @@ import {
   composePortraitIdPhoto,
   composePortraitScopedRetouch,
   detectPortraitFaces,
+  fitPortraitToSourceSize,
   inspectImageSize
 } from '../model/portraitCapabilities'
 import { inspectModelSkeleton } from '../model/inspectModelSkeleton'
@@ -1274,6 +1275,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         composePortraitScopedRetouch,
         detectPortraitFaces,
         inspectImageSize,
+        fitPortraitToSourceSize,
         inspectModelSkeleton,
         runBlenderDshJob: (input) => runBlenderDshJob({ ...input, logRunId: run.runId }),
         buildGamePlayProject: buildGamePlayProjectForNode,

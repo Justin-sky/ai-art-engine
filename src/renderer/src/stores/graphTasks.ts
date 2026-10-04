@@ -77,6 +77,7 @@ import {
   composePortraitIdPhoto,
   composePortraitScopedRetouch,
   detectPortraitFaces,
+  fitPortraitToSourceSize,
   inspectImageSize
 } from '../features/graph/model/portraitCapabilities'
 import { inspectModelSkeleton } from '../features/graph/model/inspectModelSkeleton'
@@ -1594,6 +1595,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         composePortraitScopedRetouch,
         detectPortraitFaces,
         inspectImageSize,
+        fitPortraitToSourceSize,
         inspectModelSkeleton,
         runBlenderDshJob,
         buildGamePlayProject: buildGamePlayProjectForNode,

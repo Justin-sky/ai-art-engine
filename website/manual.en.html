@@ -1573,9 +1573,9 @@
               (blemish / under-eye / wrinkles / shine / red eye / stray hair), skin (smoothing / pore texture /
               evenness / denoise), tone (whiten / rosy / de-yellow / warmth), face reshaping (slim / jawline /
               chin / eye size / eye spacing / double eyelid / nose / lips / brows), eyes (catchlight / whitening /
-              pupils), makeup (8 looks with intensity and tone), body (shoulder-neck / waist / leg length),
+              pupils), makeup (7 looks with intensity and tone), body (shoulder-neck / waist / leg length),
               lighting (fill / rim / contour / ratio / light temperature / tone grade), colour (saturation /
-              temperature / tint plus 12 LUTs), texture (sharpen / clarity / grain / soft focus / vignette),
+              temperature / tint plus 11 LUTs), texture (sharpen / clarity / grain / soft focus / vignette),
               region (manual boxes plus a note and the local-scope switch), background (keep / solid / gradient /
               by description / blur only), ID photo (10 specs, background colour, 5-inch sheet) and export
               (output size / DPI). Intensities are five-step segmented buttons (<code>off / light / standard /
@@ -1587,7 +1587,11 @@
               and the node <strong>calls the image model you pick</strong> (no model call means no pixel change);
               ID photos are then cropped to spec and optionally tiled to a 5-inch sheet. Wiring several images into
               one node retouches them in one batch with the same settings (up to 24) and face landmarks are cached
-              per source-image fingerprint. <strong>"Affect only the matching area" is on by default</strong>: the
+              per source-image fingerprint. <strong>Framing follows the source image</strong> (its ratio is mapped
+              to a standard aspect the model accepts, so a portrait shot never comes back square), and
+              "output size = auto" renders at the source's size and then <strong>fits the result back to the exact
+              source pixel dimensions</strong> (picking 1K / 2K / 4K instead keeps that tier's size).
+              <strong>"Affect only the matching area" is on by default</strong>: the
               model renders the whole frame, then the result is feathered back onto the original through the face
               (with neck) / person / manual-region-box mask, so everything else keeps the exact original pixels —
               smoothing no longer blurs the clothes and background, and slimming no longer warps the scene.

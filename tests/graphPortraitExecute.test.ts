@@ -118,6 +118,7 @@ function buildStub() {
   const generateCalls: GenerateImageArgs[] = []
   const detectCalls: string[] = []
   const inspectCalls: string[] = []
+  const fitCalls: Array<{ dataUrl: string; width: number; height: number }> = []
   const idPhotoCalls: ComposeIdPhotoArgs[] = []
   const logs: string[] = []
 
@@ -146,6 +147,10 @@ function buildStub() {
       inspectCalls.push(sourceDataUrl)
       return { width: 1200, height: 1600 }
     },
+    fitPortraitToSourceSize: async (input: { dataUrl: string; width: number; height: number }) => {
+      fitCalls.push(input)
+      return { dataUrl: `${input.dataUrl}#fitted`, width: input.width, height: input.height }
+    },
     composePortraitIdPhoto: async (input: ComposeIdPhotoArgs) => {
       idPhotoCalls.push(input)
       return idPhotoResult
@@ -169,6 +174,7 @@ function buildStub() {
     generateCalls,
     detectCalls,
     inspectCalls,
+    fitCalls,
     idPhotoCalls,
     logs,
     setGenerateResult: (value: typeof generateResult) => {
@@ -286,6 +292,11 @@ describe('image.portrait 执行器（全部走图片模型）', () => {
     expect(call.providerInstanceId).toBe('provider-1')
     // export.outputSize 默认 2K
     expect(call.resolution).toBe('2K')
+    // 画幅跟随原图（源图 1200×1600 → 3:4）：不发它模型会按自己的默认画幅出图，
+    // 表现就是「生成的图和原图尺寸不一致」
+    expect(call.aspectRatio).toBe('3:4')
+    // 显式档位（2K）不回贴尺寸：尺寸由用户选的档说了算
+    expect(run.fitCalls).toEqual([])
 
     // 模型图落盘一张
     expect(run.saved.map((entry) => entry.dataUrl)).toEqual([MODEL_IMAGE])
@@ -306,18 +317,57 @@ describe('image.portrait 执行器（全部走图片模型）', () => {
     expect(out && out.kind === 'image' ? out.relativePath : '').toMatch(/\.png$/)
   })
 
-  it('未选证件照规格时不碰几何能力，portraitIdPhotoPlan 显式回写 null', async () => {
+  it('未选证件照规格时不碰证件照几何，portraitIdPhotoPlan 显式回写 null', async () => {
     const run = buildStub()
     const { node, result } = await runPortrait(run, { portraitRetouch: retouchWithClause() })
 
     expect(result.ok, result.error).toBe(true)
-    expect(run.inspectCalls).toHaveLength(0)
+    // 量尺寸每次都会做：画幅（aspectRatio）必须由源图尺寸换算出来
+    expect(run.inspectCalls.length).toBeGreaterThan(0)
+    // 但证件照几何能力一次都不该碰
     expect(run.idPhotoCalls).toHaveLength(0)
 
     const patch = patchWith(run, 'portraitIdPhotoPlan')
     expect('portraitIdPhotoPlan' in patch).toBe(true)
     expect(patch.portraitIdPhotoPlan).toBeNull()
     expect(node.params.portraitIdPhotoPlan).toBeNull()
+  })
+
+  /**
+   * 线上问题回归：「输出尺寸 = 自动」原先等于「什么尺寸都不发」→ 模型按默认画幅出图，
+   * 生成的图和原图尺寸不一致。现在自动档 = 跟随原图：按源图最大边选档 + 出图后精确回贴原尺寸。
+   */
+  it('输出尺寸 = 自动：按源图选档（1200×1600 → 2K）、画幅跟随原图并回贴原尺寸', async () => {
+    const run = buildStub()
+    const { result } = await runPortrait(run, {
+      portraitRetouch: { ...retouchWithClause(), outputSize: 'auto' }
+    })
+
+    expect(result.ok, result.error).toBe(true)
+    const call = run.generateCalls[0]!
+    expect(call.resolution).toBe('2K')
+    expect(call.aspectRatio).toBe('3:4')
+    // 回贴用源图尺寸，且发生在证件照裁切之前（本用例未选规格，所以直接是主图）
+    expect(run.fitCalls).toHaveLength(1)
+    expect(run.fitCalls[0]!.width).toBe(1200)
+    expect(run.fitCalls[0]!.height).toBe(1600)
+    expect(run.saved.map((entry) => entry.dataUrl)).toEqual([`${MODEL_IMAGE}#fitted`])
+    // 日志里能查到「为什么是这个尺寸」
+    expect(run.logs.some((line) => line.includes('framing: 3:4'))).toBe(true)
+    expect(run.logs.some((line) => line.includes('fit back to source size'))).toBe(true)
+  })
+
+  it('缺少回贴能力时不失败：仍出图，只是尺寸跟模型返回的走', async () => {
+    const run = buildStub()
+    const { result } = await runPortrait(
+      run,
+      { portraitRetouch: { ...retouchWithClause(), outputSize: 'auto' } },
+      { fitPortraitToSourceSize: undefined }
+    )
+
+    expect(result.ok, result.error).toBe(true)
+    expect(run.fitCalls).toHaveLength(0)
+    expect(run.saved.map((entry) => entry.dataUrl)).toEqual([MODEL_IMAGE])
   })
 
   describe('人脸关键点', () => {

@@ -433,6 +433,7 @@ async function executeOneNode(
     detectPortraitFaces: options.detectPortraitFaces,
     composePortraitScopedRetouch: options.composePortraitScopedRetouch,
     inspectImageSize: options.inspectImageSize,
+    fitPortraitToSourceSize: options.fitPortraitToSourceSize,
     inspectModelSkeleton: options.inspectModelSkeleton,
     runBlenderDshJob: options.runBlenderDshJob,
     buildGamePlayProject: options.buildGamePlayProject,

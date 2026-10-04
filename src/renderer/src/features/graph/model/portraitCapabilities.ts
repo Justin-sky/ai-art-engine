@@ -2,10 +2,11 @@
  * 人像处理：渲染层的能力缝实现。
  *
  * 这个文件是 `image.portrait` 执行器仅剩的**本地**部分。修图与换底全部由图片模型完成
- * （见 `execute/portrait.ts`），本地只保留模型做不可靠的三件事：
+ * （见 `execute/portrait.ts`），本地只保留模型做不可靠的四件事：
  * - `detectPortraitFaces`：人脸关键点检测 → 决定「依赖人脸的组能否进提示词」；
  * - `composePortraitIdPhoto`：按规格精确裁切 + 5 寸相纸拼版（纯几何，像素对齐）；
- * - `inspectImageSize`：量源图尺寸，供裁切框换算归一化坐标。
+ * - `inspectImageSize`：量源图尺寸，供裁切框换算归一化坐标，并换算画幅与档位；
+ * - `fitPortraitToSourceSize`：出图结果精确缩放到原图尺寸（「输出尺寸 = 自动」时）；
  * - `composePortraitScopedRetouch`：把模型结果按「脸 / 人物 / 手动框」蒙版回贴，只改对应部位。
  */
 
@@ -55,6 +56,39 @@ export async function inspectImageSize(input: {
 }): Promise<{ width: number; height: number }> {
   const image = await loadImage(input.sourceDataUrl)
   return { width: Math.max(1, image.width), height: Math.max(1, image.height) }
+}
+
+/**
+ * 把出图结果精确缩放到指定像素尺寸（「输出尺寸 = 自动」时回贴到原图尺寸）。
+ *
+ * 为什么必须本地做：图片模型只接受档位 / 画幅枚举，出图尺寸由它决定 —— 修完的图和原图
+ * 尺寸不一致，人像精修的语义却是「同尺寸原地改」，下游（证件照裁切 / 批量 / 前后对比）
+ * 也都按同尺寸预期。缩放用高质量插值（`imageSmoothingQuality: 'high'`）：
+ * 常见情况是 2K/4K 结果**降采样**回原尺寸，几乎无损；只有原图远大于模型档位时才会放大，
+ * 那种情况执行器会先在日志里说明（选自动档的由来）。
+ */
+export async function fitPortraitToSourceSize(input: {
+  dataUrl: string
+  width: number
+  height: number
+  signal?: AbortSignal | null
+}): Promise<{ dataUrl: string; width: number; height: number }> {
+  const width = Math.max(1, Math.round(input.width))
+  const height = Math.max(1, Math.round(input.height))
+  const image = await loadImage(input.dataUrl)
+  if (input.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+  if (image.width === width && image.height === height) {
+    return { dataUrl: input.dataUrl, width, height }
+  }
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return { dataUrl: input.dataUrl, width: image.width, height: image.height }
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
+  ctx.drawImage(image, 0, 0, width, height)
+  return { dataUrl: canvas.toDataURL('image/png'), width, height }
 }
 
 /**

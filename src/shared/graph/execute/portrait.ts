@@ -40,6 +40,11 @@ import {
 import { idPhotoBackgroundLabel, idPhotoSpecById, planIdPhoto, type IdPhotoPlan } from '../idPhoto'
 import { portraitScopePlan, type PortraitScopePlan } from '../portraitScope'
 import {
+  describePortraitFraming,
+  portraitAspectRatioForSize,
+  portraitResolutionTierForSize
+} from '../portraitFraming'
+import {
   PORTRAIT_FACES_VERSION,
   portraitFaceArea,
   type PortraitFaceAnalysis,
@@ -319,10 +324,36 @@ export async function executePortraitNode(
 
     if (ctx.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
 
+    // ── 画幅与尺寸：源图尺寸 → 模型参数 ──
+    //
+    // 线上问题（7.0.x）：这里原先只发 resolution（档位）与 quality，**不发 aspectRatio**，
+    // 于是模型按自己的默认画幅出图（多数 1:1），修完的图和原图尺寸对不上、构图也变了。
+    // 画幅必须走接口参数（系统提示词里那句「取景与原片一致」拦不住模型）。
+    //
+    // 「输出尺寸 = 自动」的语义是**跟随原图**：按源图最大边选一个够用的档，
+    // 出图后再由本地能力缝精确缩放到原图尺寸（见下方 fitPortraitToSourceSize）。
+    // 显式选 1K/2K/4K 时不改尺寸（用户要的就是那个档），画幅仍跟随原图。
+    const frameSize = await resolveSourceSize(ctx, sourceUrl)
+    const aspectRatio = portraitAspectRatioForSize(frameSize.width, frameSize.height)
+    const resolution =
+      state.outputSize === 'auto'
+        ? portraitResolutionTierForSize(frameSize.width, frameSize.height)
+        : portraitResolution(state.outputSize)
+    if (index === 0) {
+      ctx.log?.(
+        describePortraitFraming({
+          width: frameSize.width,
+          height: frameSize.height,
+          measured: frameSize.measured,
+          outputSize: state.outputSize
+        })
+      )
+    }
+
     // ── 证件照几何计划（纯计算；模型负责出图，这里负责「怎么裁」） ──
     let plan: IdPhotoPlan | null = null
     if (spec) {
-      const size = await resolveSourceSize(ctx, sourceUrl)
+      const size = frameSize
       if (size.measured) {
         ctx.log?.(`source size: ${size.width}×${size.height}`)
       } else if (face) {
@@ -381,7 +412,9 @@ export async function executePortraitNode(
       prompt: fullPrompt,
       model: ctx.node.params.generateModel || undefined,
       providerInstanceId: ctx.node.params.generateProviderInstanceId || undefined,
-      resolution: portraitResolution(state.outputSize),
+      resolution,
+      // 画幅跟随原图：不发它模型会按自己的默认（多为 1:1）出图，回来就和原图尺寸不一致
+      aspectRatio,
       quality: 'high',
       n: 1,
       inputReferences: [sourceUrl]
@@ -405,13 +438,32 @@ export async function executePortraitNode(
         landmarks: face?.landmarks ?? null
       })
 
+      // 「输出尺寸 = 自动」= 跟随原图：把结果精确缩放到原图像素尺寸。
+      // 必须排在证件照裁切**之前** —— 证件照有自己确定的输出尺寸，那一步说了算。
+      let framed = scoped
+      if (state.outputSize === 'auto' && ctx.fitPortraitToSourceSize) {
+        try {
+          const fitted = await ctx.fitPortraitToSourceSize({
+            dataUrl: scoped,
+            width: frameSize.width,
+            height: frameSize.height,
+            signal: ctx.signal
+          })
+          framed = fitted.dataUrl
+        } catch (err) {
+          ctx.log?.(
+            `fit to source size skipped: ${err instanceof Error ? err.message : String(err)}`
+          )
+        }
+      }
+
       // 证件照：按规格精确裁切（+ 可选拼版）。几何能力缺失或失败都不影响主图落盘。
-      let mainDataUrl = scoped
+      let mainDataUrl = framed
       let sheetDataUrl: string | null = null
       if (plan && ctx.composePortraitIdPhoto) {
         try {
           const composed = await ctx.composePortraitIdPhoto({
-            sourceDataUrl: scoped,
+            sourceDataUrl: framed,
             crop: plan.crop,
             outputWidth: plan.outputWidth,
             outputHeight: plan.outputHeight,

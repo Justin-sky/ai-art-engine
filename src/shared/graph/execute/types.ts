@@ -846,6 +846,19 @@ export interface NodeExecuteContext {
     sourceDataUrl: string
   }) => Promise<{ width: number; height: number }>
   /**
+   * 把出图结果精确缩放到指定像素尺寸（人像处理「输出尺寸 = 自动」时回贴到原图尺寸）。
+   *
+   * 为什么要本地做：图片模型只接受固定的档位 / 画幅枚举，出图尺寸由它决定，
+   * 于是「修完的图和原图尺寸不一致」—— 人像精修的语义应当是同尺寸原地改，
+   * 下游（证件照裁切 / 批量 / 对比 / 视频）也都按同尺寸预期。
+   */
+  fitPortraitToSourceSize?: (input: {
+    dataUrl: string
+    width: number
+    height: number
+    signal?: AbortSignal | null
+  }) => Promise<{ dataUrl: string; width: number; height: number }>
+  /**
    * 读取 3D 模型骨骼层级（蒙皮主链）。预览 / 导演台 FK 用。
    */
   inspectModelSkeleton?: (input: {
@@ -1087,6 +1100,7 @@ export interface GraphRunOptions {
   detectPortraitFaces?: NodeExecuteContext['detectPortraitFaces']
   composePortraitScopedRetouch?: NodeExecuteContext['composePortraitScopedRetouch']
   inspectImageSize?: NodeExecuteContext['inspectImageSize']
+  fitPortraitToSourceSize?: NodeExecuteContext['fitPortraitToSourceSize']
   inspectModelSkeleton?: NodeExecuteContext['inspectModelSkeleton']
   runBlenderDshJob?: NodeExecuteContext['runBlenderDshJob']
   buildGamePlayProject?: NodeExecuteContext['buildGamePlayProject']

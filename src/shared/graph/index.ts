@@ -57,6 +57,7 @@ export * from './portraitQuality'
 export * from './portraitRetouch'
 export * from './portraitFace'
 export * from './portraitScope'
+export * from './portraitFraming'
 export * from './idPhoto'
 // `PortraitIdPhotoSpecId` 同时由 portraitRetouch 与 idPhoto 导出（同一联合类型）；
 // 显式再导出一次以消除 `export *` 的歧义，两个来源语义一致。
