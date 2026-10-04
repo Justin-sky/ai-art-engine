@@ -681,7 +681,7 @@ export default {
         face: 'Face landmarks'
       },
       facePresetHint:
-        'Face landmarks use a two-stage pipeline: a detector finds faces plus the keypoints used for alignment, and FaceMesh produces the 468 points. Both models come from a different upstream (not the Ultralytics naming scheme) which has no permanently fixed URL, so they are **bundled with the installer** (fetched from this repository\u2019s Release at build time and copied into the model directory on first launch) and work offline out of the box. If either file is missing, the face tools in the portrait editor (features, makeup, ID-photo cropping) are skipped automatically; the manual 5-point anchors still work.',
+        'Face landmarks use a two-stage pipeline: a detector finds faces plus the keypoints used for alignment, and FaceMesh produces the 468 points. Both models come from a different upstream (not the Ultralytics naming scheme) which has no permanently fixed URL, so they are **bundled with the installer** (fetched from this repository\u2019s Release at build time and copied into the model directory on first launch) and work offline out of the box. If either file is missing, the 7 face-dependent tool groups (heal / skin / tone / face / eyes / makeup / lighting) are greyed out and skipped in the prompt, and the local-scope face mask loses that part (manual region boxes still work).',
       faceSourceMissing:
         'This build has no source configured for the face models (YOLO_FACE_CATALOG_BASE_URL in @shared/yoloCatalog): drop the two .onnx files into the model directory, or set the source and rebuild.',
       faceSourcePending:

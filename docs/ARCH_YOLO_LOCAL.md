@@ -243,19 +243,25 @@ node scripts/sync-face-models.mjs --dir <目录> --upload              # 用 gh 
 6. `src/renderer/src/features/graph/model/portraitCapabilities.ts` 的 `detectPortraitFaces` 调 `yoloFace`，把结果转成 `PortraitFaceAnalysis`（`schema: 'canonical68'`，landmarks 归一化 0..1，box 由 `portraitFaceBoxFromLandmarks` 从关键点反推），按面积降序，失败 / 模型缺失返回 `[]`；
 7. `tests/portraitFaceWiring.test.ts`：源码文本断言锁住上面这条链，防止被静默删掉。
 
-### 区域蒙版（468 点稠密环）：保留，当前无消费方
+### 区域蒙版（468 点稠密环）：已随 v1 流水线删除
 
-> v1（本地像素流水线）用它把妆容 / 牙齿 / 磨皮限制在语义区域里。v2 把像素活交给图片模型后，
-> 这条链路暂时没有消费方（只有 `tests/portraitFace.test.ts` 在测），**保留给后续「精细蒙版」**：
-> 例如 provider 支持 inpainting 蒙版通道后，可以按眼 / 唇 / 牙 / 脸缘分别罩。下面保留其设计口径。
+v1（本地像素流水线）用 468 点语义稠密环把妆容 / 牙齿 / 磨皮限制在语义区域里。v2 把像素活交给
+图片模型后这条链路没有消费方，相关代码已一并删除（`faceMesh.ts` 的
+`FACE_OVAL` / `FACE_LIPS_*` / `FACE_EYE_*` / `FACE_BROW_*` / `FACE_NOSE` 常量、
+`portraitFace.ts` 的 `PortraitFaceRegion(s)` / `PORTRAIT_ALL_REGIONS` / `portraitRegionPolygon` /
+`portraitRegionFeather`、以及 `landmarks468ToTuples`）。
 
-`PortraitFaceAnalysis.regions`（可选）会带一份 **468 点语义稠密环**派生的区域多边形，唇线 / 眼 / 眉 / 脸缘 / 鼻因此贴合真实轮廓：
+**将来若要「精细蒙版」**（provider 支持 inpainting 蒙版通道后按眼 / 唇 / 牙 / 脸缘分别罩）
+需要重新引入这套环常量，口径是：
 
-1. 来源：`src/shared/faceMesh.ts` 的 MediaPipe 规范连接集常量（`FACE_OVAL` / `FACE_LIPS_OUTER` / `FACE_LIPS_INNER` / `FACE_EYE_R|L` / `FACE_BROW_R|L` / `FACE_NOSE`）。这些常量**只保证「是哪些点」**，索引顺序不可靠，使用处一律按绕质心的极角重排成有序闭合环（`faceMesh.ts` 的环排序工具），脸缘再按 127 → 152 → 365 切成下半脸与额头两段弧；
-2. 产出：`faceOval`（下半脸，保持原语义，**不含额头**）/ `faceSkin`（**整圈**脸缘 36 点）/ `forehead`（脸缘上半弧经 10，与 68 点眉高线闭合）/ 左右眼 / 左右眉 / `nose`（`FACE_NOSE ∪ {19, 94}`）/ `outerLip` / `innerLip` / `teeth`（内唇环向质心收缩）。区域清单只在 `portraitFace.ts` 的 `PORTRAIT_ALL_REGIONS` 里写一份，派生与自检都在 `portraitRegionPolygon` / `portraitRegionFeather`；
-3. **几何自检**：点数 ≥ 3、面积 > 0、且与同语义 68 点多边形面积比在 `[0.3, 4]`。不合格就**不产出该区域**，调用方回落 68 点多边形 —— 索引表写错时的表现是「少一个区域」，而不是「静默错蒙版」；
-4. `PORTRAIT_FACES_VERSION` 为 **2**：老缓存里没有 `regions`，执行器 `readCachedFaces` 除 `sourceHash` 外还校验版本，版本不符立刻重新检测；
-5. 曾经的消费方 `renderPortrait`（v1 流水线的区域蒙版 / 肤色蒙版差集）已随本地内核一起删除。
+1. 常量照抄 MediaPipe 的**规范连接集**：只保证「是哪些点」，**不保证先后顺序**，使用处必须按
+   绕质心的极角重排成有序闭合环（排序错了会得到自交多边形，肉眼看不出来）；
+2. 产出分区：`faceOval`（下半脸）/ `faceSkin`（整圈脸缘）/ `forehead`（与 68 点眉高线闭合）/
+   左右眼 / 左右眉 / 鼻（`FACE_NOSE ∪ {19, 94}`，官方集合缺 68 点鼻底两点）/ 内外唇 / `teeth`；
+3. 几何自检：点数 ≥ 3、面积 > 0、且与同语义 68 点多边形面积比在 `[0.3, 4]`，不合格就**不产出该区域**，
+   调用方回落 68 点多边形 —— 索引表写错时的表现是「少一个区域」，而不是「静默错蒙版」。
+
+`PORTRAIT_FACES_VERSION` 仍为 **2**：版本校验保证老缓存（带 `regions` 的那版）会重新检测。
 
 **仍缺**：模型的下载源（见下节许可闸门）。在此之前用户只能手动放置两个 ONNX。
 

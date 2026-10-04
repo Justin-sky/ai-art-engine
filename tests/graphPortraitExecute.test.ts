@@ -3,7 +3,6 @@ import { createNodeFromType, runGraph } from '../src/shared/graph'
 import { portraitSourceHash } from '../src/shared/graph/execute/portrait'
 import {
   PORTRAIT_FACES_VERSION,
-  PORTRAIT_MANUAL_HASH,
   PORTRAIT_TIER_PHRASES,
   canonicalFaceTemplate,
   normalizePortraitRetouch,
@@ -711,24 +710,6 @@ describe('image.portrait 执行器（全部走图片模型）', () => {
 
       expect(result.ok, result.error).toBe(true)
       expect(run.generateCalls[0]!.prompt).toContain('背景')
-    })
-  })
-
-  describe('手动锚点缓存哨兵', () => {
-    it('PORTRAIT_MANUAL_HASH 缓存被复用时原样保留，不会被改写成真实指纹', async () => {
-      const run = buildStub()
-      const { node, result } = await runPortrait(run, {
-        portraitRetouch: retouchWithClause(),
-        portraitFaces: {
-          ...cachedFaces(PORTRAIT_MANUAL_HASH),
-          at: '2026-10-03T00:00:00.000Z'
-        }
-      })
-
-      expect(result.ok, result.error).toBe(true)
-      // 手工标定的关键点「永不因换图失效」，改写哨兵等于把它作废
-      expect(run.detectCalls).toHaveLength(0)
-      expect(node.params.portraitFaces?.sourceHash).toBe(PORTRAIT_MANUAL_HASH)
     })
   })
 })

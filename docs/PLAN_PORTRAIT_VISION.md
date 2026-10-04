@@ -6,7 +6,10 @@
 > `ctx.generateImage`（`src/shared/graph/execute/portrait.ts`），本地只保留**局部回贴**的蒙版合成
 > （`src/shared/graph/portraitScope.ts` + `portraitCapabilities.composePortraitScopedRetouch`）、
 > 人脸关键点检测与证件照的纯几何裁切 / 拼版。
-> `src/shared/media/portrait/*`（pipeline / kernels / mask / warp）与 `portraitFaceRegions.ts` 已删除。
+> `src/shared/media/portrait/*`（pipeline / kernels / mask / warp）与 `portraitFaceRegions.ts` 已删除；
+> 依附它的区域多边形（`portraitRegionPolygon` / `PORTRAIT_ALL_REGIONS`）、五官 / 身形变形控制点与
+> 手动 5 点拟合（`manual5ToCanonical68`）也已一并删除，需要时按
+> [ARCH_YOLO_LOCAL.md](./ARCH_YOLO_LOCAL.md) §11 的口径重建。
 > **当前实现见 [PORTRAIT.md](./PORTRAIT.md)**；本文仅作历史决策记录保留，
 > 其中的 ONNX 本地能力清单（区域蒙版、融合、修复、超分、景深…）不再对应当前实现。
 >

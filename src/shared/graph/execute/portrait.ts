@@ -41,7 +41,6 @@ import { idPhotoBackgroundLabel, idPhotoSpecById, planIdPhoto, type IdPhotoPlan 
 import { portraitScopePlan, type PortraitScopePlan } from '../portraitScope'
 import {
   PORTRAIT_FACES_VERSION,
-  PORTRAIT_MANUAL_HASH,
   portraitFaceArea,
   type PortraitFaceAnalysis,
   type PortraitFacesPayload
@@ -116,8 +115,8 @@ function readCachedFaces(
   const cached = params.portraitFaces
   if (!cached || !Array.isArray(cached.faces) || !cached.faces.length) return null
   if (cached.v !== PORTRAIT_FACES_VERSION) return null
-  // 手动锚点（PORTRAIT_MANUAL_HASH）不参与「源图变了就失效」：它由用户手工标定
-  if (cached.sourceHash !== sourceHash && cached.sourceHash !== PORTRAIT_MANUAL_HASH) return null
+  // 源图换了就重算：关键点是相对这张图的，换图后原坐标没有意义
+  if (cached.sourceHash !== sourceHash) return null
   return {
     faces: cached.faces as PortraitFaceAnalysis[],
     picked: typeof cached.picked === 'number' ? cached.picked : 0
@@ -450,9 +449,8 @@ export async function executePortraitNode(
 
     if (index === 0) {
       firstPlan = plan
-      // 关键点回写：编辑器叠加层与下一次 Cook 直接复用（模型不改变关键点，无需重算）。
-      // 原样搬运缓存里的 sourceHash / picked，尤其 `PORTRAIT_MANUAL_HASH` 这个
-      // 「用户手工标定、永不因换图失效」的哨兵值——改写成真实指纹就等于把它作废了。
+      // 关键点回写：下一次 Cook 与其它消费方直接复用（模型不改变关键点，无需重算）。
+      // 原样搬运缓存里的 sourceHash / picked，避免把当前的源图指纹改写成别的值。
       if (face) {
         const cached = readCachedFaces(ctx.node.params, sourceHash)
         if (cached) {

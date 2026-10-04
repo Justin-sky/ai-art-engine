@@ -68,13 +68,9 @@ const ANCHOR_CONFIG = {
   reduceBoxesInLowestLayer: false
 } as const
 
-export const BLAZEFACE_INPUT_SIZE = 128
 export const BLAZEFACE_ANCHOR_COUNT = 896
 /** 检测框宽高缩放（xScale=yScale=wScale=hScale）；与输入边长一致 */
 const BLAZEFACE_BOX_SCALE = 128
-
-/** 官方锚点配置的只读视图（单测用来断言「总锚点数 = 格子数 × 每格锚点数」这一自洽条件） */
-export const BLAZEFACE_ANCHOR_CONFIG = ANCHOR_CONFIG
 
 function calculateScale(
   minScale: number,
@@ -395,9 +391,6 @@ export const FACEMESH_TO_68: readonly number[] = [
   312, 308, 317, 14, 87
 ]
 
-/** 表长（canonical-68 点数） */
-export const FACEMESH_TO_68_COUNT = 68
-
 /** 按 `FACEMESH_TO_68` 取点，输出顺序即 canonical-68 */
 export function landmarksTo68(landmarks468: ReadonlyArray<FaceKeypoint>): FaceKeypoint[] {
   return FACEMESH_TO_68.map((index) => {
@@ -428,77 +421,3 @@ export function boxFromLandmarks68(landmarks68: ReadonlyArray<FaceKeypoint>): {
   }
   return { x: minX, y: minY, w: maxX - minX, h: maxY - minY }
 }
-
-/** 68 点 → portraitFace 的 `[x, y]` 元组数组（下游 portrait 系列只认这个格式） */
-export function landmarks68ToTuples(
-  landmarks68: ReadonlyArray<FaceKeypoint>
-): Array<[number, number]> {
-  return landmarks68.map((point) => [point.x, point.y] as [number, number])
-}
-
-/** 468 点 → portraitFace 的 `[x, y]` 元组数组（一步到位，省掉中间对象） */
-export function landmarks468ToTuples(
-  landmarks468: ReadonlyArray<FaceKeypoint>
-): Array<[number, number]> {
-  return FACEMESH_TO_68.map((index) => {
-    const point = landmarks468[index]
-    return [point.x, point.y] as [number, number]
-  })
-}
-
-// ── 468 点语义稠密环（MediaPipe 规范连接集） ────────────────────
-
-/**
- * 下面这组常量照抄 MediaPipe FaceMesh 的**规范连接集**（canonical face mesh connections），
- * 用途是把 68 点语义组（jaw / 眉 / 眼 / 内外唇 / 鼻）升级成 468 点上的稠密语义区域，
- * 让唇线 / 眼 / 眉 / 脸缘 / 鼻的蒙版贴合真实轮廓。构造与使用有三条硬约定：
- *
- * 1. **只保证「是哪些点」，不保证先后顺序**：这些常量来自官方连接集，索引在集合里
- *    的排列顺序不可靠（既不是沿轮廓成环的顺序，也不保证首尾相接）。使用处一律先按
- *    「绕质心的极角」重排成有序闭合环（`src/shared/graph/portraitFaceRegions.ts` 的
- *    `orderRing`），所以这里不做人工排序 —— 排序错了会得到自交多边形，而且肉眼看不出来。
- * 2. **不变式**：除 `FACE_NOSE` 外，每个集合都必须**严格包含** `FACEMESH_TO_68` 里
- *    对应语义组的索引（jaw 0–16 / 左右眉 / 左右眼 / 内外唇）。表写错时下游只会静默产出
- *    错蒙版，所以 `tests/portraitFaceRegions.test.ts` 直接锁这条包含关系。
- *    `FACE_NOSE` 是本条不变式的唯一例外：它缺 68 点鼻底的两个点 `19` / `94`，
- *    使用处必须取并集补齐（见 `portraitFaceRegions.ts` 的 `FACE_NOSE_EXTRA`）。
- * 3. **左右命名以「索引集包含哪个 68 组」为准**，不按字面左右猜：`FACE_EYE_R` 对应的
- *    是 `PortraitFaceRegion.leftEye`（68 点 36–41），`FACE_BROW_R` 对应 `leftBrow`。
- */
-
-/** 脸缘整圈（自额头正中 10 起绕一圈）；使用处会按 127 / 152 / 365 切成下半脸与额头两段弧 */
-export const FACE_OVAL: readonly number[] = [
-  10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148,
-  176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109
-]
-
-/** 外唇环（20 点，含唇峰与嘴角）；语义组 = 68 点的 48–59 */
-export const FACE_LIPS_OUTER: readonly number[] = [
-  61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 409, 270, 269, 267, 0, 37, 39, 40, 185
-]
-
-/** 内唇环（20 点）；语义组 = 68 点的 60–67 */
-export const FACE_LIPS_INNER: readonly number[] = [
-  78, 95, 88, 178, 87, 14, 317, 402, 318, 324, 308, 415, 310, 311, 312, 13, 82, 81, 80, 191
-]
-
-/** 图像左侧那只眼（16 点）；语义组 = 68 点的 36–41（`PortraitFaceRegion.leftEye`） */
-export const FACE_EYE_R: readonly number[] = [
-  33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246
-]
-
-/** 图像右侧那只眼（16 点）；语义组 = 68 点的 42–47（`PortraitFaceRegion.rightEye`） */
-export const FACE_EYE_L: readonly number[] = [
-  362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398
-]
-
-/** 眉（10 点，上下缘各一半）；语义组 = 68 点的 17–21（`PortraitFaceRegion.leftBrow`） */
-export const FACE_BROW_R: readonly number[] = [46, 53, 52, 65, 55, 70, 63, 105, 66, 107]
-
-/** 眉（10 点）；语义组 = 68 点的 22–26（`PortraitFaceRegion.rightBrow`） */
-export const FACE_BROW_L: readonly number[] = [276, 283, 282, 295, 285, 300, 293, 334, 296, 336]
-
-/** 鼻（19 点，鼻梁 + 鼻翼 + 鼻小柱）；**不含** 68 点鼻底的 19 / 94，使用处取并集 */
-export const FACE_NOSE: readonly number[] = [
-  1, 2, 98, 327, 168, 6, 197, 195, 5, 4, 45, 220, 115, 48, 275, 440, 344, 278, 439
-]
