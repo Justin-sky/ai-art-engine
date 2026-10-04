@@ -100,7 +100,7 @@ Main      返回 YoloDetectResult 给 Renderer
   - 缺失的内置模型 → 安装；
   - 清单（`.bundled-models.json`）中已记录过的 → 不再重复落地，因此**用户主动删除后不会被"复活"**；
   - 后续新增的内置模型（升级版本）→ 只装新增的那些。
-- 模型体积大，不进 git：`.gitignore` 忽略 `resources/yolo-models/*.onnx`，拉取命令 `npm run fetch:yolo-models`（`pack` / `dist` 会自动调用，本地已有模型时跳过）。
+- 模型体积大（三个合计约 33MB），但**已入库**：`resources/yolo-models/*.onnx` 虽在 `.gitignore` 里，五份随包模型（含人脸两个）是显式 `git add -f` 提交的，本地与 CI 构建**零下载**。`npm run fetch:yolo-models` 保留为恢复路径（文件缺失 / 被截断时拉回），`pack` / `dist` 仍会调用它，已有文件时直接跳过。新增的 `.onnx` 默认不进库，确需随包再 `git add -f`。
 
 ### 用户自定义
 
@@ -161,15 +161,17 @@ Main      返回 YoloDetectResult 给 Renderer
 绝不让整张图失败。模型文件名即模型 id（`face-detect.onnx` / `face-landmark.onnx`），
 放进模型目录即被识别。
 
-**托管与分发方式**：这两个模型来自另一套上游，上游没有可长期固定的直链，因此由
-**本仓 GitHub Release**（tag 固定为 `face-models-v1`）分发，地址写在 `@shared/yoloCatalog`
-的 `YOLO_FACE_CATALOG_BASE_URL`。同一份资产有两条通路：
+**托管与分发方式**：这两个模型来自另一套上游，上游没有可长期固定的直链，因此
+①**随包内置**（模型文件已提交进 `resources/face-models/`，见下）②本仓 GitHub Release
+（tag `face-models-v1`，prerelease）作为**换模型与兜底下载**的通路，地址写在 `@shared/yoloCatalog`
+的 `YOLO_FACE_CATALOG_BASE_URL`。两条通路：
 
-1. **随包内置（默认路径）**：`npm run fetch:yolo-models` 在构建期把它拉进
-   `resources/yolo-models/`，随安装包分发；用户首次启动时 `YoloService.ensureBundledModels()`
-   会把内置的 .onnx 拷进模型目录 —— 开箱即用、无需联网。打包前
-   `npm run check:pack` 会**硬失败**在缺失的人脸模型上（逐文件给下限：Ultralytics 那批 1MB、
-   人脸两个 256KB，人脸检测器比 YOLO 小一个量级，统一门槛会误判），避免安装包悄悄少东西。
+1. **随包内置（默认路径）**：`resources/face-models/face-detect.onnx` 与 `face-landmark.onnx`
+   都在 git 里（显式 `git add -f`，`.gitignore` 规则只挡以后新加的 `.onnx`），所以构建**不联网**；
+   随安装包分发后，用户首次启动时 `YoloService.ensureBundledModels()` 会把内置的 .onnx 拷进
+   模型目录 —— 开箱即用。打包前 `npm run check:pack` 会**硬失败**在缺失 / 被截断的模型上
+   （逐文件给下限：Ultralytics 那批 1MB、人脸两个 256KB，人脸检测器比 YOLO 小一个量级，
+   统一门槛会误判），避免安装包悄悄少东西。
 2. **兜底下载**：用户删掉了内置副本时，设置页仍可按需下载（走 `yolo:model-download`）。
 
 下载链路的两个安全点：
@@ -188,7 +190,17 @@ node scripts/sync-face-models.mjs --dir <目录> --upload              # 用 gh 
 
 脚本按约定名找文件（认不出时退化为名字特征匹配，与主进程 `pickFaceModel` 同一套口径），
 输出 `RAW_FACE_ENTRIES` 里可直接粘贴的 `{ id, approxMb, minBytes, sha256 }`。
-上传完成后 `npm run fetch:yolo-models` 才能拉到这两个文件并一起打进安装包。
+
+**换模型 / 更新模型的完整流程**（三处一起改，否则校验会对不上）：
+
+```bash
+node scripts/sync-face-models.mjs --dir <含两个 onnx 的目录>          # 1. 算 sha256，打印可粘贴的条目
+node scripts/sync-face-models.mjs --dir <目录> --upload              # 2. 用 gh CLI 更新 release 资产
+                                                                     #    （脚本按 prerelease 建，避免抢 Latest）
+# 3. 把新 sha256 粘进 src/shared/yoloCatalog.ts -> RAW_FACE_ENTRIES
+# 4. 把新 .onnx 覆盖进 resources/face-models/ 并提交（已入库，不再依赖下载）
+npm run check:pack && npm test                                       # 5. 体积自检 + 回归
+```
 
 ### ⚠️ 待解决：转换出来的两个模型还不能入库（实测记录）
 

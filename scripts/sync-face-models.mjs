@@ -126,8 +126,8 @@ const main = async () => {
     console.log(`  https://github.com/${repo}/releases/download/${args.tag}/${item.entry.id}.onnx`)
   }
   console.log(
-    `\nDrop the two .onnx into ${join(PROJECT_ROOT, 'resources', 'face-models')} (or use --upload)\n` +
-      'so that `npm run fetch:yolo-models` finds them and they ship inside the installer.'
+    `\n覆盖进 ${join(PROJECT_ROOT, 'resources', 'face-models')}（已入库，构建不再依赖下载）\n` +
+      '并确认 `npm run check:pack` 通过，安装包里就是这两个模型。'
   )
 
   console.log('\nPaste into src/shared/yoloCatalog.ts -> RAW_FACE_ENTRIES:')
@@ -153,7 +153,10 @@ const main = async () => {
           '--title',
           `Face models ${args.tag}`,
           '--notes',
-          'BlazeFace short-range detector + MediaPipe FaceMesh (468 landmarks) exported to ONNX. Consumed by the YOLO face pipeline; exact SHA-256 values are pinned in src/shared/yoloCatalog.ts.'
+          'BlazeFace short-range detector + MediaPipe FaceMesh (468 landmarks) exported to ONNX. Consumed by the YOLO face pipeline; exact SHA-256 values are pinned in src/shared/yoloCatalog.ts.',
+          // 必须是 prerelease：否则这个「模型资产宿主」会变成仓库的 Latest release，
+          // 把 electron-updater 的 release 源（latest.yml / latest-mac.yml …）顶掉。
+          '--prerelease'
         ],
         { stdio: 'inherit' }
       )

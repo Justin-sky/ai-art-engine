@@ -2,6 +2,10 @@
 * text=auto eol=lf
 
 # 二进制文件不做行尾转换与 diff
+# `.onnx` 必须列在这里：随包模型已入库（resources/{yolo,face}-models），而 `* text=auto eol=lf`
+# 一旦把 protobuf 当文本做了行尾转换，字节就变了 —— `@shared/yoloCatalog` 里钉死的 sha256 会对不上，
+# 安装包里的模型也直接损坏，而且不会有任何报错，只表现为推理结果变差。
+*.onnx binary
 *.png binary
 *.jpg binary
 *.jpeg binary

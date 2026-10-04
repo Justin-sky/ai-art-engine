@@ -1,14 +1,18 @@
 /**
- * 拉取随包内置的本地视觉模型：
+ * 随包内置的本地视觉模型：**已随仓库提交**（`resources/yolo-models/` 三个 + `resources/face-models/`
+ * 两个，合计约 36MB，见 .gitignore 里的说明），因此本地与 CI 构建都不需要联网 —— 本脚本现在只是
+ * **恢复路径**：某份文件缺失或被截断（误删、检出异常、换模型前的空目录）时把它拉回来，
+ * 否则 `npm run check:pack` 会硬失败。
  *   - Ultralytics yolo11n 系（detect / segment / pose）-> resources/yolo-models/
  *   - 人脸两段式（face-detect / face-landmark）        -> resources/face-models/
- * 模型体积较大，不进 git；构建/打包前执行：
+ * 模型中已存在且体积达标时会直接跳过（打印 `= … already present`）：
  *   npm run fetch:yolo-models
  *
- * 人脸两个模型托管在本仓 GitHub Release（tag face-models-v1），与 @shared/yoloCatalog 的
- * YOLO_FACE_CATALOG_BASE_URL 同源；先把资产上传到该 Release：
- *   npm run sync:face-models -- --dir <含两个 onnx 的目录> --upload
- * 否则这里会报 404。也可以手动把两个 onnx 放进 resources/face-models/ 跳过这一步。
+ * 人脸两个模型另有一条对外分发通路：本仓 GitHub Release（tag face-models-v1，prerelease），
+ * 与 @shared/yoloCatalog 的 YOLO_FACE_CATALOG_BASE_URL 同源 —— 应用内「设置 → 模型」
+ * 的兜底下载也走它。换模型时的流程：
+ *   npm run sync:face-models -- --dir <含两个 onnx 的目录> --upload   # 上传资产 + 打印新 sha256
+ *   把新 sha256 填进 src/shared/yoloCatalog.ts，并把新 .onnx 提交进 resources/face-models/
  */
 import { mkdir, stat, writeFile } from 'fs/promises'
 import { join, dirname } from 'path'

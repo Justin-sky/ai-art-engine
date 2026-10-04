@@ -318,12 +318,11 @@ class YoloService {
    * 内置模型源目录（可能多个）：打包后 `<resourcesPath>/<name>`；开发期 `项目/resources/<name>`。
    *
    * 两个目录分开只是为了「体积与许可口径不同、可以各自替换」：
-   * - `yolo-models`：Ultralytics 的 yolo11n 系（detect / segment / pose），构建期由
-   *   `npm run fetch:yolo-models` 拉取；
-   * - `face-models`：人脸两段式（face-detect / face-landmark），来自另一套上游，构建期
-   *   同样由该脚本从本仓 Release 拉取，也可以手动把两个 .onnx 放进来。
+   * - `yolo-models`：Ultralytics 的 yolo11n 系（detect / segment / pose）；
+   * - `face-models`：人脸两段式（face-detect / face-landmark），来自另一套上游。
    *
-   * 两份都会在首次启动时按文件名落进模型目录，扫描逻辑完全一致。
+   * 五份 .onnx 都已随仓库提交（构建零下载），`npm run fetch:yolo-models` 只是缺文件时的
+   * 恢复路径。两份目录都会在首次启动时按文件名落进模型目录，扫描逻辑完全一致。
    */
   private bundledModelDirs(): string[] {
     const names = ['yolo-models', 'face-models']

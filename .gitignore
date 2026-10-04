@@ -15,9 +15,9 @@ oss-website.local.json
 .aiartengine-tmp/
 .claude/
 *.stackdump
-# 随包内置的 YOLO 模型（约 33MB），构建前用 npm run fetch:yolo-models 拉取
+# 随包内置的本地视觉模型（约 36MB：yolo11n detect/segment/pose + 人脸两段式 detect/landmark）
+# 已用 `git add -f` 显式入库，本地与 CI 构建**零下载**（fetch 脚本见到文件即跳过）。
+# 规则保留是刻意的：以后新加的 .onnx 默认不入库，确需随包再 `git add -f` 并跑一次
+# `npm run check:pack` 看体积阈值。换模型后记得同步 @shared/yoloCatalog 的 sha256。
 resources/yolo-models/*.onnx
-# 随包内置的人脸两段式模型（face-detect / face-landmark）：来自另一套上游，单独目录便于替换。
-# 构建前由 npm run fetch:yolo-models 从本仓 Release 拉取（或手动把两个 .onnx 放进来），
-# 随安装包分发、首次启动同步到模型目录；不进 git。
 resources/face-models/*.onnx
