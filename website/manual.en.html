@@ -1565,7 +1565,16 @@
           <ul>
             <li>
               Multi-angle edit · lighting effects · portrait texture adjust · portrait retouch · mood adjust · HD upscale ·
-              outpainting · repaint · erase · cutout · crop · grid split · layer separation
+              outpainting · repaint · erase · cutout · crop · image transform · grid split · layer separation
+            </li>
+            <li>
+              <strong>Image transform</strong> (<code>image.transform</code>): purely local pixel work, <strong>no model
+              call</strong>. Double-click the node card to open the editor: drag to move, scroll to scale, a rotation
+              slider plus ±90° buttons, and horizontal / vertical mirroring, with an output frame (match source / 1:1 /
+              4:3 / 3:4 / 3:2 / 2:3 / 16:9 / 9:16), an output size (match source / 1K / 2K / 4K) and a fill for the
+              exposed areas (transparent / white / black) — all previewed live. Closing the window writes the
+              parameters; run the node to render locally. With "match source" frame and size, rotating grows the canvas
+              to the rotated bounding box, so nothing gets cropped at any angle.
             </li>
             <li>
               <strong>Portrait retouch</strong> (<code>image.portrait</code>): PixCake-style retouching.
