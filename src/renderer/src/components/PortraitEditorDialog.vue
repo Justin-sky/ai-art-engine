@@ -591,6 +591,7 @@ import {
 import type { YoloTaskKind } from '@shared/yolo'
 import { getYoloStatus } from '../features/yolo/api'
 import { diveEditorHistory } from '../features/graph/ui/diveEditorHistory'
+import { viewportPointToImage } from '../features/graph/model/portraitViewportTransform'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import ImageGenerateModelField from './ImageGenerateModelField.vue'
 import StudioFloatingWindow from './StudioFloatingWindow.vue'
@@ -1142,35 +1143,37 @@ const draftBox = computed(() => currentDraftBox())
 /**
  * 指针 → 图像归一化坐标。
  *
- * 不能直接用 `getBoundingClientRect()`：叠了 `rotate(...)` 之后它返回的是**旋转后的外接框**，
- * 不是图像本身的四边形，于是「转个角度之后区域框落点整体偏掉」。
- * 这里把指针在视口坐标系里逆变换回未变换的图像，再按**自然尺寸**归一化：
- * 外接框在缩放 / 旋转之后已经不是图像本身的大小，拿它当分母会整体偏移。
- * 平移也已经在 rect 里（变换挂在这个 img 的父层上），不能再减一次。
+ * 不能用 `getBoundingClientRect()` 除一除：
+ * - 那个框是**变换后**的外接框，叠了 zoom 之后拿它当分母会整体偏移；叠了 `rotate(...)`
+ *   之后它还是「旋转后的外接框」而不是图像本身的四边形，越靠边越偏；
+ * - 分母必须是**未变换的布局尺寸**（`offsetWidth/offsetHeight`），既不是外接框，
+ *   更不是 `naturalWidth`（原始像素）—— 用原始像素当分母的表现就是「拖分割线时线跟不上指针」
+ *   （图片布局 800px、原图 3000px 时，指针横穿全图只让比例在 0.37~0.63 之间移动）。
+ *
+ * 公式见 `portraitViewportTransform.ts`（纯函数，带数值单测）。
  */
 function mapPointerToImage(event: PointerEvent): { x: number; y: number } | null {
   const img = imageEl.value
   if (!img) return null
-  const imageRect = img.getBoundingClientRect()
-  if (imageRect.width <= 0 || imageRect.height <= 0) return null
-  const naturalW = img.naturalWidth || imageRect.width
-  const naturalH = img.naturalHeight || imageRect.height
-  if (naturalW <= 0 || naturalH <= 0) return null
-
-  // 指针相对「图像视觉中心」的位移（外接框的中心就是旋转中心）
-  const x = event.clientX - (imageRect.left + imageRect.width / 2)
-  const y = event.clientY - (imageRect.top + imageRect.height / 2)
-  const rad = (rotationDeg.value * Math.PI) / 180
-  const cos = Math.cos(rad)
-  const sin = Math.sin(rad)
-  const scale = zoom.value || 1
-  // 逆变换：先反旋转、再反缩放，得到未变换图像上的像素偏移
-  const localX = (x * cos + y * sin) / scale
-  const localY = (-x * sin + y * cos) / scale
-
+  const layoutWidth = img.offsetWidth
+  const layoutHeight = img.offsetHeight
+  if (layoutWidth <= 0 || layoutHeight <= 0) return null
+  // 旋转 / 缩放都绕图片中心，所以外接框的中心就是图片的视觉中心
+  const rect = img.getBoundingClientRect()
+  const point = viewportPointToImage(
+    { x: event.clientX, y: event.clientY },
+    {
+      layoutWidth,
+      layoutHeight,
+      centerX: rect.left + rect.width / 2,
+      centerY: rect.top + rect.height / 2,
+      zoom: zoom.value || 1,
+      rotationDeg: rotationDeg.value
+    }
+  )
   return {
-    x: Math.min(1, Math.max(0, localX / naturalW + 0.5)),
-    y: Math.min(1, Math.max(0, localY / naturalH + 0.5))
+    x: Math.min(1, Math.max(0, point.x)),
+    y: Math.min(1, Math.max(0, point.y))
   }
 }
 

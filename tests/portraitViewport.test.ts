@@ -6,10 +6,13 @@ import { describe, expect, it } from 'vitest'
  * 人像处理面板视口变换（缩放 / 旋转 / 平移）的接线锁。
  *
  * 为什么用源码文本断言：这些接线**坏掉时不报错**——
- * 指针映射一旦退回 `getBoundingClientRect()`（叠加 `rotate()` 后它给的是外接框，
+ * 指针映射退回 `getBoundingClientRect()`（叠加 `rotate()` 后它给的是外接框，
  * 不是图像四边形），表现是「转个角度之后区域框落点整体偏掉」；
  * 缩放 / 旋转少接一路则是「滚轮越滚画面越跑」。两种都要人对着屏幕才发现，
  * 所以在这里锁住关键几行。
+ *
+ * 注意：公式本身不在这里锁（文本断言锁不住公式，第一版甚至把错误的分母
+ * `naturalWidth` 当成正确写法锁了进来），数值锁在 `portraitViewportTransform.test.ts`。
  */
 
 const ROOT = join(__dirname, '..')
@@ -18,18 +21,23 @@ const read = (relative: string): string => readFileSync(join(ROOT, relative), 'u
 describe('人像处理面板视口变换', () => {
   const source = read('src/renderer/src/components/PortraitEditorDialog.vue')
 
-  it('指针映射走视口逆变换，按自然尺寸归一化', () => {
+  it('指针映射走视口逆变换，分母取未变换的布局尺寸', () => {
     const match = /function mapPointerToImage\([\s\S]*?\n\}/.exec(source)
     expect(match, 'mapPointerToImage 不见了').toBeTruthy()
-    // 逆变换必须真的用到旋转角与缩放
+    // 逆变换公式在纯函数里（有数值单测），组件只负责量出参数并夹取
+    expect(match![0]).toContain('viewportPointToImage(')
     expect(match![0]).toContain('rotationDeg.value')
     expect(match![0]).toContain('zoom.value')
     expect(match![0]).not.toContain('(event.clientX - rect.left)')
-    // 外接框在缩放 / 旋转后已经不是图像本身的大小：归一化必须除自然尺寸
-    expect(match![0]).toContain('localX / naturalW')
-    expect(match![0]).toContain('localY / naturalH')
-    expect(match![0]).not.toMatch(/\/ imageRect\.(width|height) \+ 0\.5/)
-    // 平移已含在 rect 里（变换挂在父层），再减一次会让落点整体偏移
+    // 分母必须是布局尺寸（offsetWidth/offsetHeight）：原始像素会让指针走满全图、
+    // 比例只动一点（拖分割线时线跟不上指针），外接框则会随缩放 / 旋转整体偏移
+    expect(match![0]).toContain('img.offsetWidth')
+    expect(match![0]).toContain('img.offsetHeight')
+    expect(match![0]).not.toContain('naturalWidth')
+    expect(match![0]).not.toMatch(/\/ rect\.(width|height)/)
+    // 视觉中心取外接框中心（旋转 / 缩放绕中心，中心不变），平移已含在 rect 里不再减一次
+    expect(match![0]).toContain('rect.left + rect.width / 2')
+    expect(match![0]).toContain('rect.top + rect.height / 2')
     expect(match![0]).not.toContain('panOffset')
   })
 
