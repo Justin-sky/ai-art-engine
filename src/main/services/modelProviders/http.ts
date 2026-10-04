@@ -2,6 +2,7 @@ import axios, { type AxiosInstance } from 'axios'
 import type { ModelProviderInstance } from '@shared/modelProvider'
 import { OPENROUTER_DEFAULT_BASE_URL } from '@shared/modelProvider'
 import { resolveAppErrorLocale } from '@shared/errors/appError'
+import { withGenericUpstreamFailureHint } from '@shared/modelProviders/providerFailureDiagnostics'
 
 export function trimBaseUrl(url: string): string {
   return (url || OPENROUTER_DEFAULT_BASE_URL).replace(/\/$/, '')
@@ -75,15 +76,15 @@ export async function readHttpError(err: unknown): Promise<string> {
   if (axios.isAxiosError(err)) {
     const data = err.response?.data as
       { error?: { message?: string } | string; message?: string } | undefined
-    if (typeof data?.error === 'string') return data.error
+    if (typeof data?.error === 'string') return withGenericUpstreamFailureHint(data.error)
     if (data?.error && typeof data.error === 'object' && data.error.message)
-      return data.error.message
-    if (data?.message) return data.message
+      return withGenericUpstreamFailureHint(data.error.message)
+    if (data?.message) return withGenericUpstreamFailureHint(data.message)
     // 网络层错（DNS / TCP / TLS 握手前 socket 被断 / 超时）：err.response 缺失，
     // 只能靠 err.message + err.code + err.cause 给出可定位的诊断串。
     return annotateAxiosNetworkError(err)
   }
-  return err instanceof Error ? err.message : String(err)
+  return withGenericUpstreamFailureHint(err instanceof Error ? err.message : String(err))
 }
 
 /**

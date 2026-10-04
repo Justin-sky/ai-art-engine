@@ -23,6 +23,7 @@ import {
 import { PROVIDER_ERRORS } from './catalog'
 import { fail, defErr, defErrSimple, formatBi } from '@shared/errors/appError'
 import { rewriteAtMentionsForImagePrompt } from '@shared/modelProviders/imagePromptMentions'
+import { annotateProviderTarget } from '@shared/modelProviders/providerFailureDiagnostics'
 import { projectService } from '../projectService'
 
 // ── 本文件个性化错误条目 ──
@@ -627,9 +628,15 @@ export async function generateOpenAiCompatibleImage(
     }>('/images/generations', body)
     return parseGeneratedImages(data, modelId)
   } catch (err) {
+    // 缀上「打到哪个网关的哪个端点」：同一张图在两个不同模型上都失败、且回同一段兜底文案时，
+    // 「这两个模型是不是同一个网关」是判断方向的关键，而日志里原先只有 providerInstanceId。
     throw fail(PROVIDER_ERRORS.actionFailed, {
       action: 'imageGenerate',
-      detail: formatAuthError(await readHttpError(err), provider)
+      detail: annotateProviderTarget(
+        formatAuthError(await readHttpError(err), provider),
+        provider.baseUrl,
+        input.inputReferences?.length ? '/images/edits' : '/images/generations'
+      )
     })
   }
 }

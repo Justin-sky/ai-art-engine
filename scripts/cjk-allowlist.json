@@ -1,6 +1,10 @@
 {
   "mode": "enforce",
   "files": {
+    "src/shared/modelProviders/providerFailureDiagnostics.ts": [
+      "const CJK_CANNOT_GENERATE = /无法生成|生成失败|暂时无法/",
+      "const CJK_CAUSE = /内容违规|违规内容|参数错误|未知原因|内容策略/"
+    ],
     "src/main/services/assetPackageService.ts": ["title: '导出资产包',", "title: '导入资产包',"],
     "src/main/services/ffmpegInstallService.ts": [
       "message: 'ffmpeg 已下载但校验失败，请稍后重试；或打开下载页手动安装。',",
