@@ -373,7 +373,30 @@ describe('人像处理「对比原图」', () => {
     expect(source).toMatch(
       /const splitCounterScale = computed\(\(\) => \(zoom\.value > 0 \? 1 \/ zoom\.value : 1\)\)/
     )
-    expect(source).toContain('scaleX(${splitCounterScale.value})')
+    // 必须是**均匀** scale（不是 scaleX）：手柄里的圆点与命中区随之一起抵消；
+    // 位移也要按 k 走，否则放大后线中心会偏离分割边界（写死 -1px 时 4 倍下偏 3px）
+    const handleStyle = /const splitHandleStyle = computed\(\(\) => \(\{[\s\S]*?\}\)\)/.exec(source)
+    expect(handleStyle, 'splitHandleStyle 不见了').toBeTruthy()
+    expect(handleStyle![0]).toContain(
+      'transform: `translateX(${-splitCounterScale.value}px) scale(${splitCounterScale.value})`'
+    )
+    expect(handleStyle![0]).not.toContain('scaleX(')
+    // 圆点在手柄内部：尺寸抵消由手柄统一负责，自己再乘一次会双重抵消
+    // （放大时缩成 5px、缩小时胀成 40px，且因为只抵消 X 轴会被纵向拉成竖条）
+    expect(source).not.toContain('splitGripStyle')
+    const gripRule = /^\.split-grip\s*\{([\s\S]*?)\n\}/m.exec(source)
+    expect(gripRule, '.split-grip 规则不见了').toBeTruthy()
+    expect(gripRule![1]).toContain('transform: translate(-50%, -50%);')
+    expect(gripRule![1]).not.toContain('scale')
+
+    // 线要铺满舞台而不是只贴住图片高度；上下伸出的是**屏幕 px**（手柄自身的 scale(1/zoom)
+    // 与父级 scale(zoom) 相乘为 1），所以任何缩放下都盖得住视口，超出部分由舞台裁掉
+    const handleRule = /^\.split-handle \{([\s\S]*?)\n\}/m.exec(source)
+    expect(handleRule, '.split-handle 规则不见了').toBeTruthy()
+    expect(handleRule![1]).toMatch(/top: -\d{3,}px;/)
+    expect(handleRule![1]).toMatch(/bottom: -\d{3,}px;/)
+    expect(handleRule![1]).not.toMatch(/top: 0;/)
+    expect(source).toContain('overflow: hidden')
 
     // 拖动走视口逆变换：旋转 / 缩放之后分割线仍落在指针下（不用外接框）
     expect(source).toMatch(/function onSplitPointerMove\([\s\S]*?mapPointerToImage\(event\)/)

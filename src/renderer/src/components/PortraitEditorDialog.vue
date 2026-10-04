@@ -121,7 +121,8 @@
               @pointercancel="onSplitPointerUp"
               @keydown="onSplitKeydown"
             >
-              <span class="split-grip" :style="splitGripStyle" aria-hidden="true">⇆</span>
+              <!-- 圆点的反向缩放已由手柄的 transform 统一抵消，这里不再自己乘一次 -->
+              <span class="split-grip" aria-hidden="true">⇆</span>
             </div>
 
             <span v-if="activeGroup === 'region'" class="draw-hint">
@@ -868,18 +869,21 @@ const splitDragSurface = computed(() => splitActive.value && activeGroup.value !
 const splitPercent = computed(() => Math.round(splitRatio.value * 100))
 /**
  * 中缝与标签都在 `.canvas-stack` 里，跟着 `scale(zoom)` 一起被缩放 ——
- * 不反向缩放的话，放大到 400% 时这条 2px 细线会变成 8px 宽、手柄胀成一个圆饼。
+ * 不反向缩放的话，放大到 400% 时这条 2px 细线会变成 8px 宽、圆点手柄被拉成 80px 高的竖条。
  * UI 装饰应当与缩放无关，所以这里按 1/zoom 抵消。
+ *
+ * 两个细节都不是可选的：
+ * - 抵消必须是**均匀** `scale(k)`（不是 `scaleX`）：手柄里的圆点与命中区随之一起抵消，
+ *   只压 X 轴会让圆点在放大时被纵向拉长；
+ * - 位移也按 `k` 走（`translateX(-k px)`）：线宽 2px、反向缩放后在原图坐标系里是 2k，
+ *   左沿再左移 k 才让线**中心**正好压在分割边界上（写死 -1px 时放大 4 倍会偏 3px）。
  */
 const splitCounterScale = computed(() => (zoom.value > 0 ? 1 / zoom.value : 1))
 const splitHandleStyle = computed(() => ({
   left: `${splitRatio.value * 100}%`,
-  transform: `translateX(-1px) scaleX(${splitCounterScale.value})`
+  transform: `translateX(${-splitCounterScale.value}px) scale(${splitCounterScale.value})`
 }))
 const splitTagStyle = computed(() => ({ transform: `scale(${splitCounterScale.value})` }))
-const splitGripStyle = computed(() => ({
-  transform: `translate(-50%, -50%) scale(${splitCounterScale.value})`
-}))
 /** 左侧压着原图，所以裁掉右边（1 - ratio） */
 const splitClipStyle = computed(() => ({
   clipPath: `inset(0 ${(1 - splitRatio.value) * 100}% 0 0)`
@@ -1965,15 +1969,23 @@ watch(
 
 .split-handle {
   position: absolute;
-  top: 0;
-  bottom: 0;
+  /*
+   * 分割线铺满整个舞台，而不是只贴住图片高度（放大后图片比舞台高、缩小后比舞台矮，
+   * 贴图片高度会出现「线只有画面一半长」或「线比画面长出一截」）。
+   *
+   * 上下各伸出 3000px 就够覆盖任何视口：手柄自身的 `scale(1/zoom)` 行内变换与
+   * 父级 `.canvas-stack` 的 `scale(zoom)` 相乘恰好为 1，所以**这里的 px 就是屏幕 px**，
+   * 与缩放无关；多出来的部分被 `.canvas-wrap` 的 `overflow: hidden` 裁掉，不会撑出滚动条。
+   */
+  top: -3000px;
+  bottom: -3000px;
   z-index: 2;
   width: 2px;
   background: var(--accent);
   cursor: col-resize;
   touch-action: none;
   outline: none;
-  /* 线宽在 zoom 下由行内 transform 的 scaleX 抵消 */
+  /* 线宽 / 圆点尺寸在 zoom 下由行内 transform 的均匀 scale 抵消，这里只定锚点 */
   transform-origin: left center;
 }
 
@@ -2002,7 +2014,7 @@ watch(
   justify-content: center;
   width: 20px;
   height: 20px;
-  /* translate / scale 都在行内（scale 按 1/zoom 抵消），这里只兜底居中 */
+  /* 居中即可：尺寸的 1/zoom 抵消由父级手柄的 transform 统一负责，这里再乘一次会双重抵消 */
   transform: translate(-50%, -50%);
   border-radius: 50%;
   background: var(--accent);
