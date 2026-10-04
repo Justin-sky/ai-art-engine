@@ -2,6 +2,16 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [7.0.1] — 2026-10-04
+
+7.0.1 构建链路补丁：**随包内置的五份本地视觉模型（YOLO detect / segment / pose + 人脸 detect / landmark，约 36MB）改为随仓库提交**，本地与 CI 构建都不再联网抓取。对最终用户来说安装包内容与 7.0.0 一致（7.0.0 的包是构建期从 Release 拉取后打进去的），本次改的是「怎么拿到这些文件」——此前全新检出的构建**必须先成功下载**才能出包，而人脸那两个模型依赖一个需要手工维护的本仓 Release：7.0.0 发布时就因为该 Release 不存在，`fetch:yolo-models` 直接 404、`check:pack` 条件性硬失败，整条发布链路卡住（临时补建 Release 才通过）。顺带修掉模型分发里的两个坑，并给「模型必须在库里、且字节不能被改动」加了回归锁。
+
+- **五份模型入库**：`resources/yolo-models/*.onnx` 与 `resources/face-models/*.onnx` 虽仍在 `.gitignore` 里（规则保留，只挡以后新加的 `.onnx`），但这五份是显式 `git add -f` 提交的；`npm run fetch:yolo-models` 降级为**恢复路径**（文件缺失 / 被截断时联网拉回，齐备时只打印 `= … already present`），CI 里那一步因此通常是空操作，保留着当兜底。换模型请按 `docs/ARCH_YOLO_LOCAL.md` §11 的五步流程一起改三处（Release 资产 / `yoloCatalog` 的 sha256 / 入库的 `.onnx`）。
+- **`.gitattributes` 标 `*.onnx binary`**：仓库有 `* text=auto eol=lf`，protobuf 一旦被当文本做行尾转换，字节就变了 —— `@shared/yoloCatalog` 钉死的 sha256 会对不上、安装包里的模型直接损坏，而且**不会有任何报错**，只表现为推理结果变差。`binary` 宏写在 `text=auto` 之后（同属性后者优先），提交进库的 blob 已逐个校验与工作区文件字节一致。
+- **`sync-face-models --upload` 补 `--prerelease`**：模型 Release 只是资产宿主，不标 prerelease 会变成仓库的 Latest release，把 electron-updater 的发布源（`latest.yml` / `latest-mac.yml` / `latest-linux.yml`）顶掉。
+- **清掉 `resources/face-models/.gitkeep`**：目录里已有真模型；该文件是早前用错编码写入的（GBK 中文，git 与编辑器里都是乱码）。
+- **回归锁（`tests/bundledModelFiles.test.ts`）**：五份模型必须在工作区且体积达标；`.gitattributes` 必须把 `*.onnx` 标成 binary 且排在 `* text=auto` 之后；人脸两个文件的 sha256 必须与 `yoloCatalog` 钉死的值一致（应用内兜底下载就按它校验）。
+
 ## [7.0.0] — 2026-10-04
 
 7.0.0 主版本：新增「人像处理」节点（`image.portrait`）—— 像素蛋糕式精修，参数直接合成提示词交给图片模型出图，并首次把「只改请求的部位」做成默认开启的局部回贴；人脸关键点走本地两段式模型（BlazeFace 检测 + FaceMesh 468 点 → canonical-68）且**随安装包内置**，开箱即用。同时修好 40MP+ 相机原图视觉打标整条失败的问题。版本号跳到 7 是因为人像节点的执行语义整体换掉了（v1 的本地像素烘焙 → v2 调图片模型），旧工程的参数会自动折算成档位、不会打不开，但同一份参数在新版下出图结果与旧版不可比。
