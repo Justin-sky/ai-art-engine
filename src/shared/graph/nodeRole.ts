@@ -237,6 +237,11 @@ export function isCropEditorNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === 'image.crop'
 }
 
+/** 图片变换：缩放 / 旋转 / 镜像 / 平移（纯本地像素，双击进 dive 编辑器） */
+export function isTransformEditorNode(node: Pick<GraphNode, 'typeId'>): boolean {
+  return node.typeId === 'image.transform'
+}
+
 export function isGridSplitEditorNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === 'image.gridSplit'
 }

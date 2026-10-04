@@ -60,6 +60,11 @@ export const SHARED_ERRORS = {
   ),
   /** 图片裁剪（编辑器 compose）失败 */
   imageCropEmpty: defErrSimple('graphExec.imageCrop.empty', '裁剪失败', 'Image crop failed'),
+  imageTransformEmpty: defErrSimple(
+    'graphExec.imageTransform.empty',
+    '图片变换失败',
+    'Image transform failed'
+  ),
   /** 图层堆叠合成：无有效图层 / 缺少底图 */
   imageComposeNoLayers: defErrSimple(
     'graphExec.imageCompose.noLayers',

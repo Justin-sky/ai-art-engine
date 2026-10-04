@@ -5,6 +5,7 @@ import type {
   ImageAlignState,
   ImageComposeState,
   ImageCropState,
+  ImageTransformState,
   ImageExpandState,
   ImageEraseState,
   ImageGridSplitState,
@@ -187,6 +188,13 @@ export type GraphEditorDialogsApi = {
     sourceUrl: string
     sourceLoading: boolean
   }
+  /** 图片变换（缩放 / 旋转 / 镜像 / 平移）：setup 为空 = 尚未载入 */
+  transform: {
+    open: boolean
+    setup: ImageTransformState | null
+    sourceUrl: string
+    sourceLoading: boolean
+  }
   gridSplit: {
     open: boolean
     setup: ImageGridSplitState | null
@@ -301,6 +309,11 @@ export type GraphEditorDialogsApi = {
   closeCrop: () => void
   previewCrop: (payload: unknown) => void
   saveCrop: (payload: unknown) => void
+  closeTransform: () => void
+  previewTransform: (payload: unknown) => void
+  saveTransform: (payload: unknown) => void
+  /** dive 面包屑回退前提交图片变换的实时预览编辑，补撤销命令 */
+  flushTransform: () => void
   /** dive 面包屑回退前提交裁剪的实时预览编辑，补记撤销命令 */
   flushCrop: () => void
   closeGridSplit: () => void

@@ -3615,6 +3615,31 @@ export default {
         custom: 'Custom'
       }
     },
+    transform: {
+      appMark: 'Image transform',
+      hint: 'Double-click the node to scale / rotate / mirror / move the image; the node renders locally without calling a model.',
+      noSource: 'Nothing to transform yet: connect an upstream image first',
+      aspect: 'Output frame',
+      size: 'Output size',
+      fill: 'Fill empty areas',
+      scale: 'Scale',
+      rotate: 'Rotate',
+      rotateLeft: 'Rotate left 90°',
+      rotateRight: 'Rotate right 90°',
+      flipH: 'Flip horizontally',
+      flipV: 'Flip vertically',
+      reset: 'Reset',
+      original: 'Match source',
+      fills: {
+        transparent: 'Transparent',
+        white: 'White',
+        black: 'Black'
+      },
+      identity: 'Nothing is transformed yet: adjust, close the window, then run the node',
+      dirtyHint:
+        'Closing the window writes the parameters; run the node to render locally (no model call)',
+      canvasHint: 'Drag to move · scroll to scale'
+    },
     cutout: {
       appMark: 'Cutout',
       hint: 'Run the node to detect subjects locally and cut out a transparent PNG (no model call)',
@@ -4239,6 +4264,7 @@ export default {
         erase: 'Erase',
         matte: 'Matte',
         crop: 'Crop',
+        transform: 'Image transform',
         gridSplit: 'Grid split',
         iconPack: 'Icon pack',
         layerSplit: 'Layer split',

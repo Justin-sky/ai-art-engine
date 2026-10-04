@@ -670,6 +670,23 @@ export interface NodeExecuteContext {
     state: import('../imageCrop').ImageCropState
   }) => Promise<{ dataUrl: string; width: number; height: number }>
   /** 本地抠图：YOLO 实例分割 → 透明通道 PNG（personOnly 只留 person 实例）。 */
+  /**
+   * 图片变换（`image.transform`）：本地像素缩放 / 旋转 / 镜像 / 平移。
+   *
+   * 几何由 `@shared/graph/imageTransform` 的 `planImageTransform` 统一给出 —— 编辑器预览
+   * 与这里必须共用同一份计划，否则会出现「预览和出图不一样」。返回值带上源尺寸，
+   * 让执行器能打出与预览同口径的日志。
+   */
+  composeImageTransformCanvas?: (input: {
+    sourceDataUrl: string
+    state: import('../imageTransform').ImageTransformState
+  }) => Promise<{
+    dataUrl: string
+    width: number
+    height: number
+    sourceWidth: number
+    sourceHeight: number
+  }>
   composeImageCutoutCanvas?: (input: {
     sourceDataUrl: string
     state: import('../imageCutout').ImageCutoutState
@@ -1104,6 +1121,7 @@ export interface GraphRunOptions {
   composeImageExpandCanvas?: NodeExecuteContext['composeImageExpandCanvas']
   composeImageRedrawCanvas?: NodeExecuteContext['composeImageRedrawCanvas']
   composeImageCropCanvas?: NodeExecuteContext['composeImageCropCanvas']
+  composeImageTransformCanvas?: NodeExecuteContext['composeImageTransformCanvas']
   composeImageCutoutCanvas?: NodeExecuteContext['composeImageCutoutCanvas']
   composeImageAlignCanvas?: NodeExecuteContext['composeImageAlignCanvas']
   composeImageComposeCanvas?: NodeExecuteContext['composeImageComposeCanvas']

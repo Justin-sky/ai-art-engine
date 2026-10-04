@@ -229,6 +229,17 @@
       @save="api.saveCrop as never"
     />
 
+    <ImageTransformEditorDialog
+      v-else-if="viewId === 'node.transform' && api.transform.open"
+      :open="true"
+      :setup="api.transform.setup"
+      :source-url="api.transform.sourceUrl"
+      :source-loading="api.transform.sourceLoading"
+      @close="onClose(api.closeTransform)"
+      @update="api.previewTransform as never"
+      @save="api.saveTransform as never"
+    />
+
     <GridSplitEditorDialog
       v-else-if="viewId === 'node.gridSplit' && api.gridSplit.open"
       :open="true"
@@ -348,6 +359,7 @@ import EmotionEditorDialog from '../EmotionEditorDialog.vue'
 import ExpandEditorDialog from '../ExpandEditorDialog.vue'
 import RedrawEditorDialog from '../RedrawEditorDialog.vue'
 import CropEditorDialog from '../CropEditorDialog.vue'
+import ImageTransformEditorDialog from '../ImageTransformEditorDialog.vue'
 import GridSplitEditorDialog from '../GridSplitEditorDialog.vue'
 import IconPackEditorDialog from '../IconPackEditorDialog.vue'
 import LayerSplitEditorDialog from '../LayerSplitEditorDialog.vue'
@@ -418,6 +430,8 @@ const toolOpen = computed(() => {
       return current.matte.open
     case 'node.crop':
       return current.crop.open
+    case 'node.transform':
+      return current.transform.open
     case 'node.gridSplit':
       return current.gridSplit.open
     case 'node.iconPack':
@@ -453,6 +467,9 @@ useEditorDiveFrameFlush(
         break
       case 'node.crop':
         current.flushCrop()
+        break
+      case 'node.transform':
+        current.flushTransform()
         break
       case 'node.portrait':
         current.flushPortrait()
@@ -577,6 +594,9 @@ function closeCurrent(): void {
       break
     case 'node.crop':
       current.closeCrop()
+      break
+    case 'node.transform':
+      current.closeTransform()
       break
     case 'node.gridSplit':
       current.closeGridSplit()

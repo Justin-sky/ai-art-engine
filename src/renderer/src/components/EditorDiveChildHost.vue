@@ -106,6 +106,7 @@ const viewRegistry: Record<string, Component> = {
   'node.erase': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
   'node.matte': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
   'node.crop': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
+  'node.transform': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
   'node.gridSplit': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
   'node.iconPack': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
   'node.layerSplit': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),

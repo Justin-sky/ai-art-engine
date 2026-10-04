@@ -125,6 +125,7 @@ describe('graph policy', () => {
         'video.framePull',
         'video.reshoot',
         'image.toPrompt',
+        'image.transform',
         'image.upscale',
         'decisions.judge',
         'prompt.optimize',

@@ -858,6 +858,7 @@ import {
   type ImageMatteState,
   type ImageComposeState,
   type ImageCropState,
+  type ImageTransformState,
   type ImageCutoutState,
   type ImageAlignState,
   type ImageGridSplitState,
@@ -882,6 +883,7 @@ import {
   readImageMatteFromNode,
   readImageComposeFromNode,
   readImageCropFromNode,
+  readImageTransformFromNode,
   readImageCutoutFromNode,
   readImageGridSplitFromNode,
   readIconPackFromNode,
@@ -3432,6 +3434,7 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
       'image.erase',
       'image.matte',
       'image.crop',
+      'image.transform',
       'image.gridSplit',
       'image.iconPack',
       'image.layerSplit',
@@ -7994,6 +7997,76 @@ function flushCrop(): void {
   recordGraphChange('crop', before)
 }
 
+const transform = reactive({
+  open: false,
+  nodeId: '' as string,
+  setup: null as ImageTransformState | null,
+  historyBefore: null as GraphDocument | null,
+  sourceUrl: '',
+  sourceLoading: false
+})
+
+async function onTransformOpen(nodeId: string): Promise<void> {
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  if (!node) return
+  transform.nodeId = nodeId
+  transform.setup = readImageTransformFromNode(node.params)
+  transform.sourceUrl = ''
+  transform.sourceLoading = true
+  transform.historyBefore = buildGraphJson()
+  transform.open = true
+  await fillEditorSourceUrl(
+    nodeId,
+    (url) => {
+      transform.sourceUrl = url
+      transform.sourceLoading = false
+    },
+    () => transform.open && transform.nodeId === nodeId,
+    { preferUpstream: true }
+  )
+  if (transform.open && transform.nodeId === nodeId) transform.sourceLoading = false
+}
+
+function closeTransform(): void {
+  transform.open = false
+  transform.nodeId = ''
+  transform.setup = null
+  transform.historyBefore = null
+  transform.sourceUrl = ''
+  transform.sourceLoading = false
+}
+
+function previewTransform(payload: { imageTransform: ImageTransformState }): void {
+  const node = graph.nodes.find((n) => n.id === transform.nodeId)
+  if (!node) return
+  node.params = { ...node.params, ...payload }
+  scheduleSave()
+  graphEditorHosts.bumpRevision()
+}
+
+function saveTransform(payload: { imageTransform: ImageTransformState }): void {
+  const nodeId = transform.nodeId
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  if (!node) return
+  // 实时预览：before 必须取开窗快照，否则预览已改写参数、before≈after 会被判等跳过
+  const before = transform.historyBefore ?? buildGraphJson()
+  node.params = { ...node.params, ...payload }
+  transform.setup = payload.imageTransform
+  scheduleSave()
+  graphEditorHosts.bumpRevision()
+  recordGraphChange('transform', before)
+  closeTransform()
+}
+
+/** dive 面包屑回退前提交图片变换的实时预览编辑，补记撤销命令。详见 flushLayerSplit。 */
+function flushTransform(): void {
+  if (!transform.open) return
+  const before = transform.historyBefore
+  if (!before) return
+  transform.historyBefore = null
+  recordGraphChange('transform', before)
+}
+
 const cutout = reactive({
   open: false,
   nodeId: '' as string,
@@ -8890,6 +8963,7 @@ const graphDialogsApi = {
   erase,
   matte,
   crop,
+  transform,
   gridSplit,
   iconPack,
   layerSplit,
@@ -8948,6 +9022,10 @@ const graphDialogsApi = {
   previewCrop,
   saveCrop,
   flushCrop,
+  closeTransform,
+  previewTransform,
+  saveTransform,
+  flushTransform,
   closeGridSplit,
   previewGridSplit,
   saveGridSplit,
@@ -9315,6 +9393,7 @@ function registerNodeToolHost(): void {
       'node.erase': (nodeId) => onEraseOpen(nodeId),
       'node.matte': (nodeId) => onMatteOpen(nodeId),
       'node.crop': (nodeId) => onCropOpen(nodeId),
+      'node.transform': (nodeId) => onTransformOpen(nodeId),
       'node.gridSplit': (nodeId) => onGridSplitOpen(nodeId),
       'node.iconPack': (nodeId) => onIconPackOpen(nodeId),
       'node.layerSplit': (nodeId) => onLayerSplitOpen(nodeId),

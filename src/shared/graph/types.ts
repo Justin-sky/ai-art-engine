@@ -237,6 +237,7 @@ export type GraphNodeTypeId =
   | 'image.erase'
   | 'image.matte'
   | 'image.crop'
+  | 'image.transform'
   | 'image.gridSplit'
   | 'image.layerSplit'
   | 'image.toPrompt'
@@ -898,6 +899,8 @@ export interface GraphNodeParams {
   imageMatte?: Partial<ImageMatteState>
   /** 裁剪参数 */
   imageCrop?: Partial<ImageCropState>
+  /** 图片变换参数（缩放 / 旋转 / 镜像 / 平移；纯本地像素，不调模型） */
+  imageTransform?: Partial<import('./imageTransform').ImageTransformState>
   /** 本地抠图参数（节点图版一键抠图） */
   imageCutout?: Partial<ImageCutoutState>
   /** 智能构图参数（节点图版一键构图） */

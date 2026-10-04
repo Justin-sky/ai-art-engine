@@ -47,6 +47,7 @@ const CANVAS_ADDABLE_NODE_TYPES = [
   'video.framePull',
   'video.reshoot',
   'image.toPrompt',
+  'image.transform',
   'image.upscale',
   'decisions.judge',
   'prompt.optimize',

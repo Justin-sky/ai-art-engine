@@ -1,10 +1,10 @@
 /**
- * 本地图像处理节点执行器（节点图版「一键抠图 / 智能构图」）。
+ * 本地图像处理节点执行器（节点图版「一键抠图 / 智能构图 / 图片变换」）。
  *
  * 与 imageEdit.ts 的 crop/gridSplit 一致：本文件只负责
  * 收集上游图片 → 请求渲染层合成 → 物化落盘 → 写回图库；
  * 真正推理（YOLO）与像素合成由宿主注入的
- * `composeImageCutoutCanvas` / `composeImageComposeCanvas` 提供。
+ * `composeImageCutoutCanvas` / `composeImageComposeCanvas` / `composeImageTransformCanvas` 提供。
  */
 import type { GraphImageItem, GraphValue, NodeExecuteContext } from './types'
 import { collectIncomingValues } from './incoming'
@@ -19,6 +19,11 @@ import { SHARED_ERRORS } from '../../errors/catalog'
 import { readImageCutoutFromNode } from '../imageCutout'
 import { readImageComposeFromNode } from '../imageCompose'
 import { readImageAlignFromNode } from '../imageAlign'
+import {
+  describeImageTransform,
+  planImageTransform,
+  readImageTransformFromNode
+} from '../imageTransform'
 
 /** 解析可合成的首张上游图 url；无 resolveImageUrls 时退回 dataUrl / 资产引用 */
 async function resolveFirstSourceUrl(
@@ -246,5 +251,76 @@ export async function executeComposeNode(
   )
   return commitGeneratedImages(ctx, generatedImages, materializedBatch[0]?.relativePath?.trim(), {
     imageCompose: nextState
+  })
+}
+
+/**
+ * 图片变换：缩放 / 旋转 / 镜像 / 平移（纯本地像素，**不调模型**）。
+ *
+ * 「所见即所得」的关键是编辑器与这里共用同一份几何（`planImageTransform`）：
+ * 这里只负责把状态交给渲染层 canvas 并按图库口径落盘，画法顺序与预览完全一致。
+ * 什么都没做（`isIdentityImageTransform`）时也会重画一遍 —— 这样「输出尺寸 = 2K + 不旋转」
+ * 这类**只改尺寸**的诉求同样成立，不会被当成空操作跳过。
+ */
+export async function executeImageTransformNode(
+  ctx: NodeExecuteContext
+): Promise<Record<string, GraphValue>> {
+  const sourceItems = await collectIncomingImageItems(ctx)
+  if (!sourceItems.length) {
+    throw new Error('GRAPH_PROCESS_NO_INPUT')
+  }
+
+  const state = readImageTransformFromNode(ctx.node.params)
+  const sourceUrl = await resolveFirstSourceUrl(ctx, sourceItems)
+  await ensureAlive(ctx)
+
+  if (!ctx.composeImageTransformCanvas) {
+    // 无合成注入时透传，便于离线
+    const picked = sourceItems[0]!
+    ctx.node.params = { ...ctx.node.params, imageTransform: state }
+    ctx.patchNode?.({ params: { imageTransform: state } })
+    return commitGeneratedImages(
+      ctx,
+      [{ ...picked, id: picked.id?.trim() || 'passthrough:0' }],
+      picked.relativePath?.trim()
+    )
+  }
+
+  const composed = await ctx.composeImageTransformCanvas({
+    sourceDataUrl: sourceUrl,
+    state
+  })
+  if (!composed.dataUrl) {
+    throw fail(SHARED_ERRORS.imageTransformEmpty)
+  }
+  await ensureAlive(ctx)
+
+  // 与预览共用同一份几何：日志里的尺寸 / 角度 / 位移就是编辑器里看到的那一套
+  ctx.log?.(
+    describeImageTransform(planImageTransform(composed.sourceWidth, composed.sourceHeight, state))
+  )
+
+  const createdAt = new Date().toISOString()
+  const stamp = Date.now()
+  const item: GraphImageItem = {
+    id: `transform:${ctx.node.id}:${stamp}`,
+    dataUrl: composed.dataUrl,
+    createdAt
+  }
+  const materializedBatch = await materializeGeneratedBatch(
+    ctx,
+    [item],
+    `transform:${ctx.node.id}:${stamp}`
+  )
+  if (!materializedBatch.length) {
+    throw fail(SHARED_ERRORS.persistImageFailed, { detail: '' })
+  }
+  const generatedImages = mergeGeneratedImages(
+    ctx,
+    materializedBatch,
+    `transform:${ctx.node.id}:${stamp}:keep`
+  )
+  return commitGeneratedImages(ctx, generatedImages, materializedBatch[0]?.relativePath?.trim(), {
+    imageTransform: state
   })
 }

@@ -26,6 +26,7 @@ import {
   type GraphPortDef
 } from './types'
 import type { NodeExecuteContext } from './execute/types'
+import { DEFAULT_IMAGE_TRANSFORM } from './imageTransform'
 import {
   executeAssetNode,
   executeCamera3dNode,
@@ -62,6 +63,7 @@ import {
   executeEraseNode,
   executeMatteNode,
   executeCropNode,
+  executeImageTransformNode,
   executeCutoutNode,
   executeAlignNode,
   executeComposeNode,
@@ -1591,6 +1593,32 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     assetType: 'image',
     contributeToGeneration: false,
     execute: executeMatteNode
+  },
+  {
+    typeId: 'image.transform',
+    category: 'note',
+    label: 'Image transform',
+    icon: '🔄',
+    defaultTitle: 'Image transform',
+    description:
+      '图片变换：纯本地像素变换（缩放 / 旋转 / 镜像 / 平移），**不调用任何模型**。参数写在 params.imageTransform：scale（0.1–4，1 = 原像素）、rotate（-180…180 度，绕画布中心）、flipH / flipV、offsetX / offsetY（占画布比例，-1…1）、aspectId（original / 1:1 / 4:3 / 3:4 / 3:2 / 2:3 / 16:9 / 9:16）、sizeId（original / 1K / 2K / 4K，长边像素）、fill（transparent / white / black，旋转后露出的空白怎么填）。画布规则：aspectId 与 sizeId 都为 original 时画布取源图**旋转后的外接框**（旋转不裁内容）；选了档位或画幅则按该尺寸出图。执行器把状态交给渲染层 canvas 合成后按图库口径落盘；编辑器（双击卡片进入）与执行器共用同一份几何，所以预览即所得。', // cjk-ok（MCP / Agent 集成文本：随 graph_node_types 返回给外部 Agent，非 UI 文案）
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      { id: 'in', direction: 'in', dataType: GraphPortType.image, multiple: false, label: 'In' },
+      ...galleryOutPorts(GraphPortType.image)
+    ],
+    defaultParams: () => ({
+      imageTransform: { ...DEFAULT_IMAGE_TRANSFORM }
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.transform',
+    card: 'media',
+    assetType: 'image',
+    contributeToGeneration: false,
+    execute: executeImageTransformNode
   },
   {
     typeId: 'image.crop',

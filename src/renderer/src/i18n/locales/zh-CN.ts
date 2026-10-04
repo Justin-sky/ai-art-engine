@@ -3537,6 +3537,30 @@ export default {
         custom: '自定义'
       }
     },
+    transform: {
+      appMark: '图片变换',
+      hint: '双击节点做缩放 / 旋转 / 镜像 / 平移；运行节点在本地出图，不调用大模型',
+      noSource: '没有可变换的图片：请先把图片接到节点的输入口',
+      aspect: '输出画幅',
+      size: '输出尺寸',
+      fill: '空白填充',
+      scale: '缩放',
+      rotate: '旋转',
+      rotateLeft: '左转 90°',
+      rotateRight: '右转 90°',
+      flipH: '水平镜像',
+      flipV: '垂直镜像',
+      reset: '重置',
+      original: '跟随原图',
+      fills: {
+        transparent: '透明',
+        white: '白色',
+        black: '黑色'
+      },
+      identity: '当前没有任何变换：调整后关闭窗口，运行节点即可按此出图',
+      dirtyHint: '关闭窗口即写入节点参数；运行节点在本地出图（不调用大模型）',
+      canvasHint: '拖拽平移 · 滚轮缩放'
+    },
     cutout: {
       appMark: '本地抠图',
       hint: '运行节点：本地识别主体并抠成透明 PNG（不调模型）',
@@ -4145,6 +4169,7 @@ export default {
         erase: '擦除',
         matte: '抠图',
         crop: '裁剪',
+        transform: '图片变换',
         gridSplit: '宫格切分',
         iconPack: '图标包',
         layerSplit: '图层分离',

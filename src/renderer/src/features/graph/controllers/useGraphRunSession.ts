@@ -43,6 +43,7 @@ import { resolveAssetText as resolveAssetTextById } from '../../media/resolveAss
 import { composeImageExpandCanvas } from '../model/composeImageExpandCanvas'
 import { composeImageRedrawCanvas } from '../model/composeImageRedrawCanvas'
 import { composeImageCropCanvas } from '../model/composeImageCropCanvas'
+import { composeImageTransformCanvas } from '../model/composeImageTransformCanvas'
 import { composeImageCutoutCanvas } from '../model/composeImageCutoutCanvas'
 import { composeImageAlignCanvas } from '../model/composeImageAlignCanvas'
 import { composeImageComposeCanvas } from '../model/composeImageComposeCanvas'
@@ -1264,6 +1265,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         composeImageExpandCanvas,
         composeImageRedrawCanvas,
         composeImageCropCanvas,
+        composeImageTransformCanvas,
         composeImageCutoutCanvas,
         composeImageAlignCanvas,
         composeImageComposeCanvas,

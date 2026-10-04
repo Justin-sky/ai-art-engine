@@ -237,6 +237,7 @@
               isEraseEditorNode(node) ||
               isMatteEditorNode(node) ||
               isCropEditorNode(node) ||
+              isTransformEditorNode(node) ||
               isGridSplitEditorNode(node) ||
               isIconPackEditorNode(node) ||
               isLayerSplitEditorNode(node) ||
@@ -625,6 +626,7 @@ import {
   isEraseEditorNode,
   isMatteEditorNode,
   isCropEditorNode,
+  isTransformEditorNode,
   isGridSplitEditorNode,
   isIconPackEditorNode,
   isLayerSplitEditorNode,
@@ -1442,6 +1444,7 @@ watch(
         isEraseEditorNode(props.node) ||
         isMatteEditorNode(props.node) ||
         isCropEditorNode(props.node) ||
+        isTransformEditorNode(props.node) ||
         isGridSplitEditorNode(props.node) ||
         isIconPackEditorNode(props.node) ||
         isLayerSplitEditorNode(props.node) ||
@@ -1685,6 +1688,7 @@ const previewHint = computed(() => {
   if (isEraseEditorNode(props.node)) return t('graph.erase.hint')
   if (isMatteEditorNode(props.node)) return t('graph.matte.hint')
   if (isCropEditorNode(props.node)) return t('graph.crop.hint')
+  if (isTransformEditorNode(props.node)) return t('graph.transform.hint')
   if (isGridSplitEditorNode(props.node)) return t('graph.gridSplit.hint')
   if (isIconPackEditorNode(props.node)) return t('graph.iconPack.hint')
   if (isLayerSplitEditorNode(props.node)) return t('graph.layerSplit.hint')
@@ -2509,6 +2513,10 @@ function onPreviewDblClick(): void {
     }
     if (isCropEditorNode(props.node)) {
       await diveNodeTool('node.crop', title)
+      return
+    }
+    if (isTransformEditorNode(props.node)) {
+      await diveNodeTool('node.transform', title)
       return
     }
     if (isGridSplitEditorNode(props.node)) {
