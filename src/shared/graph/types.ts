@@ -12,7 +12,7 @@ import type {
 import type { MultiAngleCameraState } from './multiAngleCamera'
 import type { LightingSetupState } from './lightingSetup'
 import type { PortraitTextureState } from './portraitTexture'
-import type { PortraitAiLayer, PortraitBrushStroke, PortraitRetouchState } from './portraitRetouch'
+import type { PortraitAiLayer, PortraitRetouchState } from './portraitRetouch'
 import type { PortraitFacesPayload } from './portraitFace'
 import type { EmotionPadState } from './emotionPad'
 import type { ImageUpscaleState } from './imageUpscale'
@@ -821,18 +821,41 @@ export interface GraphNodeParams {
   portraitTexture?: Partial<PortraitTextureState>
   /** 人像质感调节：最终提示词 */
   portraitTexturePrompt?: string
-  /** 人像处理：精修参数（无破坏性，随时可重编辑） */
+  /** 人像处理：精修参数（档位枚举 + 自由描述，无破坏性） */
   portraitRetouch?: Partial<PortraitRetouchState>
-  /** 人像处理：笔刷笔画（修复 / 液化 / 局部磨皮 / 背景蒙版） */
-  portraitStrokes?: PortraitBrushStroke[]
   /** 人像处理：人脸分析缓存（关键点 + 源图指纹，避免每次 Cook 重新检测） */
   portraitFaces?: Partial<PortraitFacesPayload>
   /** 人像处理：编辑器内 AI 处理产出的版本栈 */
   portraitLayers?: PortraitAiLayer[]
   /** 人像处理：当前底图版本 id（缺省 = 上游原图） */
   portraitBaseLayerId?: string
-  /** 人像处理：最近一次 Cook 的烘焙产物相对路径 */
+  /** 人像处理：最近一次 Cook 的产物相对路径 */
   portraitBakedRelativePath?: string
+  /**
+   * 人像处理：局部回贴开关。'local'（默认）= 模型结果按脸/人物/手动框蒙版贴回原图，
+   * 未请求部位保持原图像素；'global' = 整图生效（旧行为）。
+   */
+  portraitScopeMode?: 'local' | 'global'
+  /** 人像处理：最近一次 Cook **实际发给模型**的完整提示词（含系统提示词与负面提示） */
+  portraitPrompt?: string
+  /** 人像处理：最近一次证件照几何计划（规格 / 裁切框 / 拼版） */
+  portraitIdPhotoPlan?: {
+    specId: string
+    outputWidth: number
+    outputHeight: number
+    crop: { x: number; y: number; w: number; h: number }
+    sheet: {
+      cols: number
+      rows: number
+      cellWidth: number
+      cellHeight: number
+      gapPx: number
+      width: number
+      height: number
+      count: number
+      paper: string
+    } | null
+  } | null
   /** 情绪调节：坐标盘 */
   emotionPad?: Partial<EmotionPadState>
   /** 情绪调节：定位短名 */

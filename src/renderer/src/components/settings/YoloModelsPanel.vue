@@ -170,6 +170,48 @@
       </ul>
     </div>
 
+    <!--
+      人脸关键点（两段式：BlazeFace 检测器 + FaceMesh）：上游没有可长期固定的官方直链，
+      因此不在 Ultralytics 目录里，改由**本仓 GitHub Release**（tag 固定）托管。
+      源已配置时与其它模型一样给下载按钮；未配置时只引导手动放置。
+    -->
+    <div class="cat-group">
+      <h3>{{ t('settings.yoloModels.kind.face') }}</h3>
+      <p class="hint">
+        {{ t('settings.yoloModels.facePresetHint') }}
+      </p>
+      <p v-if="!faceCatalogReady" class="hint warn">
+        {{ t('settings.yoloModels.faceSourceMissing') }}
+      </p>
+      <p v-else class="hint">
+        {{ t('settings.yoloModels.faceSourcePending') }}
+      </p>
+      <ul class="model-list catalog-list">
+        <li v-for="model in catalogByKind('face')" :key="model.id">
+          <span class="model-id">{{ model.fileName }}</span>
+          <span class="meta size">≈ {{ model.sizeMb }} MB</span>
+          <span v-if="isInstalled(model.id)" class="ok-chip">{{
+            t('settings.yoloModels.installedTag')
+          }}</span>
+          <span v-else-if="downloadingId === model.id" class="ok-chip busy">{{
+            activeProgress?.phase === 'verifying'
+              ? t('settings.yoloModels.verifyingTag')
+              : t('settings.yoloModels.downloadingTag')
+          }}</span>
+          <button
+            v-else-if="faceCatalogReady"
+            type="button"
+            class="download-btn"
+            :disabled="!!downloadingId || loading"
+            @click="startDownload(model)"
+          >
+            {{ t('settings.yoloModels.download') }}
+          </button>
+          <span v-else class="kind-chip">{{ t('settings.yoloModels.facePresetMissing') }}</span>
+        </li>
+      </ul>
+    </div>
+
     <p v-if="feedback" class="msg" :class="{ error: feedbackError }">
       {{ feedback }}
     </p>
@@ -179,15 +221,22 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { YoloSettings } from '@shared/domain'
-import { YOLO_KIND_ORDER } from '@shared/yoloCatalog'
-import type {
-  YoloCatalogModel,
-  YoloModelDownloadProgress,
-  YoloModelInfo,
-  YoloStatus,
-  YoloTaskKind
+import { YOLO_KIND_ORDER, yoloFaceCatalogReady } from '@shared/yoloCatalog'
+import {
+  type YoloCatalogModel,
+  type YoloModelDownloadProgress,
+  type YoloModelInfo,
+  type YoloStatus,
+  type YoloTaskKind
 } from '@shared/yolo'
 import { useStudioI18n } from '../../composables/useStudioI18n'
+
+/**
+ * 人脸关键点两段式模型（`face-detect` / `face-landmark`）现在有了自己的下载源
+ * （本仓 GitHub Release，tag 固定），条目直接来自 catalog 的 `kind === 'face'`。
+ * 源没配好时（见 @shared/yoloCatalog 的 base url）只做放置引导，不显示必然 404 的按钮。
+ */
+const faceCatalogReady = yoloFaceCatalogReady()
 
 /**
  * 双向绑定整个 YoloSettings 设置对象（父层传 form.yolo）。

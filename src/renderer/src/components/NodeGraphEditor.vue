@@ -841,12 +841,11 @@ import {
   portraitQualityToNodePatch,
   readPortraitQualityFromNode,
   type PortraitRetouchState,
-  type PortraitBrushStroke,
+  type PortraitManualRegion,
   type PortraitAiLayer,
   type PortraitFaceAnalysis,
-  type PortraitFacesPayload,
   buildPortraitAiPrompt,
-  normalizePortraitStrokes,
+  normalizePortraitManualRegions,
   normalizePortraitAiLayers,
   portraitRetouchToNodePatch,
   readPortraitRetouchFromNode,
@@ -6817,16 +6816,23 @@ const portrait = reactive({
   open: false,
   nodeId: '' as string,
   setup: null as PortraitRetouchState | null,
-  strokes: [] as PortraitBrushStroke[],
+  regions: [] as PortraitManualRegion[],
   face: null as PortraitFaceAnalysis | null,
   layers: [] as PortraitAiLayer[],
   baseLayerId: '' as string,
   sourceUrl: '' as string,
+  /** 上游原图 URL（「对比原图」按住时切过去看的那张） */
+  upstreamUrl: '' as string,
   sourceLoading: false,
   generateModel: '' as string,
   generateProviderInstanceId: '' as string,
+  /** 局部回贴开关：'local' = 只改对应部位（默认），'global' = 整图生效 */
+  scopeMode: 'local' as 'local' | 'global',
   aiRunning: false,
   aiError: '',
+  /** 「保存并出图」进行中：窗口保持打开，就地显示状态 */
+  runRunning: false,
+  runError: '',
   historyBefore: null as GraphDocument | null
 })
 
@@ -6839,17 +6845,96 @@ function readPortraitFace(node: GraphNode): PortraitFaceAnalysis | null {
   return (faces[index] ?? faces[0]) as PortraitFaceAnalysis
 }
 
-/** 底图 URL：优先 AI 版本（编辑器里换过底图），否则上游原图 */
-async function resolvePortraitBaseUrl(nodeId: string): Promise<string> {
-  const layer = portrait.layers.find((item) => item.id === portrait.baseLayerId)
-  if (layer?.relativePath) {
-    try {
-      const url = await window.studio.getAssetFileUrl(layer.relativePath)
-      if (url) return url
-    } catch {
-      /* 落盘文件不可用时退回上游原图 */
-    }
+/** 选中的 AI 版本底图 URL；没选 / 落盘文件不可用时返回 ''（交给下一级兜底） */
+async function resolvePortraitLayerUrl(): Promise<string> {
+  const relativePath = portrait.layers
+    .find((item) => item.id === portrait.baseLayerId)
+    ?.relativePath?.trim()
+  if (!relativePath) return ''
+  try {
+    return (await window.studio.getAssetFileUrl(relativePath)) || ''
+  } catch {
+    return ''
   }
+}
+
+/** 上次出图产物（执行器写回的 `portraitBakedRelativePath`）的 URL；没有 / 取不到返回 '' */
+async function resolvePortraitBakedUrl(nodeId: string): Promise<string> {
+  const relativePath = graph.nodes.find((n) => n.id === nodeId)?.params.portraitBakedRelativePath
+  return resolveAssetFileUrl(relativePath)
+}
+
+/**
+ * 节点当前「预览指针」：Inspector 的「输出预览」里换选中图 / 删条目时会被改写
+ * （见 `features/graph/model/graphGalleryOutput.ts` 的 commitImages）。
+ */
+function readPortraitPreviewPointer(nodeId: string): { relativePath: string; dataUrl: string } {
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  return {
+    relativePath: node?.params.previewRelativePath?.trim() ?? '',
+    dataUrl: node?.params.previewDataUrl?.trim() ?? ''
+  }
+}
+
+/** 节点「当前输出」的 URL（输出预览里选中的那张）；没有产物指针时返回 '' */
+async function resolvePortraitOutputUrl(nodeId: string): Promise<string> {
+  const { relativePath, dataUrl } = readPortraitPreviewPointer(nodeId)
+  if (dataUrl) return dataUrl
+  return resolveAssetFileUrl(relativePath)
+}
+
+/**
+ * AI 版本是否比「当前输出」更新 —— 刚在编辑器里做完 AI 处理、还没重新出图。
+ *
+ * 两个来源都会改写「当前画面」：出图写 `previewRelativePath`，AI 处理写 `portraitBaseLayerId`。
+ * 只看其中一个都会出错：出图后重进看到的是 AI 版本（丢了最新产物），
+ * AI 处理后重进看到的又是出图产物（刚做的效果像是没了）—— 所以按时间取新的那张。
+ */
+function portraitAiLayerIsNewerThanOutput(nodeId: string): boolean {
+  const layerAt = Date.parse(
+    portrait.layers.find((item) => item.id === portrait.baseLayerId)?.at ?? ''
+  )
+  if (!Number.isFinite(layerAt)) return false
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  const selectedId = node?.params.selectedImageId?.trim() ?? ''
+  const outputAt = Date.parse(
+    (node?.params.generatedImages ?? []).find((entry) => entry.id === selectedId)?.createdAt ?? ''
+  )
+  // 产物没带时间戳（老数据）时按「AI 版本更新」处理：那是用户刚做过的动作
+  return Number.isFinite(outputAt) ? layerAt > outputAt : true
+}
+
+/**
+ * 明确的版本切换：选中哪个版本就给哪个版本 —— 选「原图（上游）」就真的给上游，
+ * 不掺上次产物，否则那颗按钮会像点不动。
+ */
+async function resolvePortraitVersionUrl(nodeId: string): Promise<string> {
+  return (
+    (await resolvePortraitLayerUrl()) ||
+    resolveNodeEditorSourceUrl(nodeId, { preferUpstream: true })
+  )
+}
+
+/**
+ * 进入编辑器时的默认底图：**当前输出** → 刚用过的 AI 版本（比当前输出更新时）→
+ * 上次出图产物 → 上游原图。
+ *
+ * 「当前输出」就是节点上 `selectedImageId` / `previewRelativePath` 指向的那张 ——
+ * 与输出预览里点选的那张、卡片缩略图、下游拿到的都是同一张；
+ * 一次都没出过图（也没有手动选过）才退回输入的原图。
+ */
+async function resolvePortraitBaseUrl(nodeId: string): Promise<string> {
+  const [layerUrl, outputUrl] = await Promise.all([
+    resolvePortraitLayerUrl(),
+    resolvePortraitOutputUrl(nodeId)
+  ])
+  if (layerUrl && outputUrl) {
+    return portraitAiLayerIsNewerThanOutput(nodeId) ? layerUrl : outputUrl
+  }
+  if (outputUrl) return outputUrl
+  if (layerUrl) return layerUrl
+  const baked = await resolvePortraitBakedUrl(nodeId)
+  if (baked) return baked
   return resolveNodeEditorSourceUrl(nodeId, { preferUpstream: true })
 }
 
@@ -6858,18 +6943,24 @@ async function onPortraitOpen(nodeId: string): Promise<void> {
   if (!node) return
   portrait.nodeId = nodeId
   portrait.setup = readPortraitRetouchFromNode(node.params)
-  portrait.strokes = normalizePortraitStrokes(node.params.portraitStrokes)
+  portrait.regions = normalizePortraitManualRegions(portrait.setup.manualRegions)
   portrait.face = readPortraitFace(node)
   portrait.layers = normalizePortraitAiLayers(node.params.portraitLayers)
   portrait.baseLayerId = node.params.portraitBaseLayerId?.trim() ?? ''
   portrait.sourceUrl = ''
+  portrait.upstreamUrl = ''
   portrait.sourceLoading = true
   portrait.generateModel = node.params.generateModel ?? ''
   portrait.generateProviderInstanceId = node.params.generateProviderInstanceId ?? ''
+  portrait.scopeMode = node.params.portraitScopeMode === 'global' ? 'global' : 'local'
   portrait.aiRunning = false
   portrait.aiError = ''
+  portrait.runRunning = false
+  portrait.runError = ''
   portrait.historyBefore = buildGraphJson()
   portrait.open = true
+  // 开窗瞬间的预览指针只作基线，不算「用户在输出预览里换了图」（见下面的 watch）
+  portraitPreviewBaseline = portraitPreviewPointerKey()
 
   const seq = ++editorSourceLoadSeq
   const isCurrent = (): boolean =>
@@ -6886,48 +6977,119 @@ async function onPortraitOpen(nodeId: string): Promise<void> {
       portrait.sourceLoading = false
     }
   }
+  // 「对比原图」要的是真正的上游原图，跟底图版本无关，单独解析一次（失败就留空）
+  try {
+    const upstream = await resolveNodeUpstreamPreviewUrl(nodeId)
+    if (isCurrent() && upstream && upstream !== portrait.sourceUrl) portrait.upstreamUrl = upstream
+  } catch {
+    /* 上游不可用时对比按钮自动隐藏 */
+  }
 }
 
 function closePortrait(): void {
   portrait.open = false
   portrait.nodeId = ''
   portrait.setup = null
-  portrait.strokes = []
+  portrait.regions = []
   portrait.face = null
   portrait.layers = []
   portrait.baseLayerId = ''
   portrait.sourceUrl = ''
+  portrait.upstreamUrl = ''
   portrait.sourceLoading = false
   portrait.generateModel = ''
   portrait.generateProviderInstanceId = ''
+  portrait.scopeMode = 'local'
   portrait.aiRunning = false
   portrait.aiError = ''
+  portrait.runRunning = false
+  portrait.runError = ''
   portrait.historyBefore = null
+  portraitPreviewBaseline = ''
 }
+
+/**
+ * 节点当前「预览指针」的观测值（'' = 编辑器没开 / 节点上还没有产物指针）。
+ *
+ * 指针本体与 URL 解析在 `readPortraitPreviewPointer` / `resolvePortraitOutputUrl`
+ * （底图解析那几个函数那边），这里只做同名的「值比较」。
+ */
+function portraitPreviewPointerKey(): string {
+  if (!portrait.open || !portrait.nodeId) return ''
+  // params 是普通对象，变化靠 revision 通知（updateNode / patchNode 都会 bump）
+  void graphEditorHosts.revision.value
+  const { relativePath, dataUrl } = readPortraitPreviewPointer(portrait.nodeId)
+  return `${relativePath}\u0000${dataUrl}`
+}
+
+/**
+ * 把编辑器左边换成节点当前指针指向的那张图。
+ *
+ * 「输出预览」里选图片改的是节点上的 `selectedImageId` / `previewRelativePath`，
+ * 而编辑器底图原本只在开窗 / 版本切换 / 出图完成时解析一次 ——
+ * 于是「在预览里点一下」看起来像没生效。
+ */
+async function syncPortraitStageFromNodePreview(nodeId: string): Promise<void> {
+  if (!isPortraitEditorCurrent(nodeId)) return
+  const previousSourceUrl = portrait.sourceUrl
+  const url = await resolvePortraitOutputUrl(nodeId)
+  if (!url || !isPortraitEditorCurrent(nodeId)) return
+  if (url === portrait.sourceUrl) return
+  // 换图前那张留给「对比原图」（已经有真上游时不覆盖）
+  if (!portrait.upstreamUrl && previousSourceUrl) portrait.upstreamUrl = previousSourceUrl
+  portrait.sourceUrl = url
+}
+
+/**
+ * 开窗那一刻的预览指针基线。
+ *
+ * 开窗时这个指针本来就会从空变成节点当前值 —— 那不是用户的换图动作。
+ * 不设基线的话，开窗会立刻把刚解析好的底图（可能是显式选中的 AI 版本）顶掉。
+ */
+let portraitPreviewBaseline = ''
+
+/** 输出预览里换「当前输出」时，编辑器左边跟着换（版本切换 / 参数实时写回都不会误触发） */
+watch(portraitPreviewPointerKey, (key) => {
+  if (!portrait.open) {
+    portraitPreviewBaseline = ''
+    return
+  }
+  if (!key || key === portraitPreviewBaseline) return
+  portraitPreviewBaseline = key
+  void syncPortraitStageFromNodePreview(portrait.nodeId)
+})
 
 interface PortraitEditorPayload {
   portraitRetouch?: PortraitRetouchState
-  portraitStrokes?: PortraitBrushStroke[]
-  /** 手动 5 点标定的人脸分析（写进节点，Cook 与后续编辑都复用） */
-  portraitFaces?: PortraitFacesPayload
+  /** 手动标注区域；随参数一起存进 portraitRetouch.manualRegions */
+  manualRegions?: PortraitManualRegion[]
   generateModel?: string
   generateProviderInstanceId?: string
+  /** 局部回贴开关：只改对应部位（'local'，默认）还是整图生效（'global'） */
+  scopeMode?: 'local' | 'global'
 }
 
-/** 预览与保存共用的写回（实时预览也走这里，参数变化即时落盘） */
+/** 预览与保存共用的写回（参数变化即时落盘到节点） */
 function applyPortraitParams(payload: PortraitEditorPayload): void {
   const node = graph.nodes.find((n) => n.id === portrait.nodeId)
   if (!node) return
-  const patch = payload.portraitRetouch ? portraitRetouchToNodePatch(payload.portraitRetouch) : {}
+  const retouch = payload.portraitRetouch
+    ? {
+        ...payload.portraitRetouch,
+        ...(payload.manualRegions ? { manualRegions: payload.manualRegions } : {})
+      }
+    : payload.manualRegions
+      ? { ...readPortraitRetouchFromNode(node.params), manualRegions: payload.manualRegions }
+      : null
+  const patch = retouch ? portraitRetouchToNodePatch(retouch) : {}
   node.params = {
     ...node.params,
     ...patch,
-    ...(payload.portraitStrokes ? { portraitStrokes: payload.portraitStrokes } : {}),
-    ...(payload.portraitFaces ? { portraitFaces: payload.portraitFaces } : {}),
     ...(payload.generateModel !== undefined ? { generateModel: payload.generateModel } : {}),
     ...(payload.generateProviderInstanceId !== undefined
       ? { generateProviderInstanceId: payload.generateProviderInstanceId }
-      : {})
+      : {}),
+    ...(payload.scopeMode !== undefined ? { portraitScopeMode: payload.scopeMode } : {})
   }
   scheduleSave()
   graphEditorHosts.bumpRevision()
@@ -6935,12 +7097,16 @@ function applyPortraitParams(payload: PortraitEditorPayload): void {
 
 function previewPortrait(payload: PortraitEditorPayload): void {
   applyPortraitParams(payload)
-  if (payload.portraitRetouch) portrait.setup = payload.portraitRetouch
-  if (payload.portraitStrokes) portrait.strokes = payload.portraitStrokes
-  if (payload.portraitFaces) {
-    const picked = payload.portraitFaces.picked ?? 0
-    portrait.face = payload.portraitFaces.faces[picked] ?? null
+  if (payload.portraitRetouch) {
+    portrait.setup = payload.portraitRetouch
+    if (payload.manualRegions) portrait.regions = payload.manualRegions
   }
+  // 模型选择也是即时写回的：宿主状态跟着节点走，免得编辑器里的 props 停在旧模型上
+  if (payload.generateModel !== undefined) portrait.generateModel = payload.generateModel
+  if (payload.generateProviderInstanceId !== undefined) {
+    portrait.generateProviderInstanceId = payload.generateProviderInstanceId
+  }
+  if (payload.scopeMode !== undefined) portrait.scopeMode = payload.scopeMode
 }
 
 function savePortrait(payload: PortraitEditorPayload): void {
@@ -6953,6 +7119,7 @@ function savePortrait(payload: PortraitEditorPayload): void {
   if (payload.generateProviderInstanceId !== undefined) {
     portrait.generateProviderInstanceId = payload.generateProviderInstanceId
   }
+  if (payload.scopeMode !== undefined) portrait.scopeMode = payload.scopeMode
   portrait.historyBefore = null
   recordGraphChange('portrait', before)
   closePortrait()
@@ -6965,6 +7132,119 @@ function flushPortrait(): void {
   if (!before) return
   portrait.historyBefore = null
   recordGraphChange('portrait', before)
+}
+
+/**
+ * 切换底图版本：把 `portraitBaseLayerId` 写进节点并让编辑器换图。
+ *
+ * 版本栈的意义就在这里 —— 下一次 Cook 会拿这一版当上游图（`execute/portrait.ts`
+ * 的 `resolveBaseUrl`），用户因此可以「在某一版基础上继续修」而不是每次从原图重来。
+ */
+async function selectPortraitVersion(layerId: string): Promise<void> {
+  const node = graph.nodes.find((n) => n.id === portrait.nodeId)
+  if (!node) return
+  const layers = normalizePortraitAiLayers(node.params.portraitLayers)
+  const next = layerId && layers.some((item) => item.id === layerId) ? layerId : ''
+  portrait.baseLayerId = next
+  node.params = { ...node.params, portraitBaseLayerId: next }
+  scheduleSave()
+  graphEditorHosts.bumpRevision()
+  try {
+    portrait.sourceLoading = true
+    // 版本切换走「明确选择」那一档：选上游就显示上游，不拿上次产物顶替
+    portrait.sourceUrl = await resolvePortraitVersionUrl(portrait.nodeId)
+  } catch {
+    portrait.sourceUrl = ''
+  } finally {
+    portrait.sourceLoading = false
+  }
+}
+
+/** 编辑器是否还停在这次出图的节点上（跑图期间用户可能已退出 / 换节点） */
+function isPortraitEditorCurrent(nodeId: string): boolean {
+  return portrait.open && portrait.nodeId === nodeId
+}
+
+/**
+ * 出图成功后把左边底图换成这次的产物。
+ *
+ * 产物由执行器写进 `params.portraitBakedRelativePath`（相对工程路径），
+ * 这里换成 `studio-media://` 地址喂给编辑器 —— 用户点完「保存并出图」最想看到的
+ * 就是「这次模型到底出了什么」，不该让他关窗去卡片上看缩略图。
+ *
+ * `previousSourceUrl` 是出图前画面上的那张：正好就是「对比原图」想比的对象
+ * （开窗时底图等于上游原图，那时按钮是灰的，现在有产物了才第一次可比）。
+ */
+async function showPortraitRunResult(nodeId: string, previousSourceUrl: string): Promise<void> {
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  const relativePath = node?.params.portraitBakedRelativePath?.trim() ?? ''
+  if (!relativePath) return
+  try {
+    const url = await window.studio.getAssetFileUrl(relativePath)
+    if (!url || !isPortraitEditorCurrent(nodeId)) return
+    if (!portrait.upstreamUrl && previousSourceUrl && previousSourceUrl !== url) {
+      portrait.upstreamUrl = previousSourceUrl
+    }
+    portrait.sourceUrl = url
+  } catch {
+    /* 产物地址取不到就维持原图：参数与提示词已经落盘，不影响下一次 Cook */
+  }
+}
+
+/**
+ * 编辑器内直接出图：先保存参数（含提示词派生），**留在窗口里**跑这一个节点，
+ * 跑完把左边的底图换成这次的产物。
+ *
+ * 「保存并出图」是这个节点的主用法 —— 参数面板的作用就是拼提示词，
+ * 用户改完参数最想看到的就是模型结果。窗口不关，进度与失败原因都在原地可见。
+ *
+ * ⚠️ 载荷缺失时**不能**直接返回：曾经的接线是先 `save`（关窗 + 清空 nodeId）再 `run`，
+ * 结果这里读到空 nodeId 就静默空跑，表现是「窗口关了但没出图」。
+ * 现在 run 一定带载荷；万一没有，也退回节点上已经实时写回的参数继续出图。
+ */
+async function runPortrait(payload?: PortraitEditorPayload): Promise<void> {
+  const nodeId = portrait.nodeId
+  if (!graph.nodes.some((n) => n.id === nodeId)) return
+  // 连点保护：同一次出图只跑一趟
+  if (portrait.runRunning) return
+  const before = portrait.historyBefore ?? buildGraphJson()
+  if (payload) applyPortraitParams(payload)
+  if (payload?.generateModel !== undefined) portrait.generateModel = payload.generateModel
+  if (payload?.generateProviderInstanceId !== undefined) {
+    portrait.generateProviderInstanceId = payload.generateProviderInstanceId
+  }
+  if (payload?.scopeMode !== undefined) portrait.scopeMode = payload.scopeMode
+
+  portrait.runRunning = true
+  portrait.runError = ''
+  // 出图前画面上的那张：成功换图后它就是「对比原图」的对象
+  const previousSourceUrl = portrait.sourceUrl
+  try {
+    try {
+      await graphEditorHosts.flush(graphHostId.value)
+    } catch (err) {
+      console.error('[NodeGraphEditor] flush before portrait run failed', err)
+    }
+    const result = await guardedRunNodeOnly(nodeId)
+    if (!isPortraitEditorCurrent(nodeId)) return
+    if (result?.ok) {
+      await showPortraitRunResult(nodeId, previousSourceUrl)
+    } else if (result) {
+      portrait.runError = runStates[nodeId]?.error?.trim() || t('graph.run.failed')
+    }
+  } catch (err) {
+    if (isPortraitEditorCurrent(nodeId)) {
+      portrait.runError = err instanceof Error ? err.message : String(err)
+    }
+  } finally {
+    portrait.runRunning = false
+    if (isPortraitEditorCurrent(nodeId)) {
+      // 窗口不关，所以这里才收口：把「改参数 + 这次出图」折叠成一条撤销命令，
+      // 然后把锚点移到跑完之后的现状 —— 用户接着改档位，回退时还会再补记一条。
+      recordGraphChange('portrait', before)
+      portrait.historyBefore = buildGraphJson()
+    }
+  }
 }
 
 /**
@@ -8623,6 +8903,8 @@ const graphDialogsApi = {
   closePortrait,
   previewPortrait,
   savePortrait,
+  runPortrait,
+  selectPortraitVersion,
   flushPortrait,
   runPortraitAi,
   closeEmotion,

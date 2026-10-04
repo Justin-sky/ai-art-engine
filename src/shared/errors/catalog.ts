@@ -55,20 +55,8 @@ export const SHARED_ERRORS = {
   ),
   capabilityImageGenerate: defErrSimple(
     'graphExec.capability.imageGenerate',
-    '未注入图片生成能力，无法图层分离',
-    'Image generation capability not injected; cannot run layer separation'
-  ),
-  /** 人像处理：渲染层烘焙能力未注入（该节点的核心能力，不能透传上游） */
-  capabilityPortraitBake: defErrSimple(
-    'graphExec.capability.portraitBake',
-    '人像处理烘焙能力未注入，无法运行人像处理节点',
-    'Portrait retouch bake capability not injected; cannot run the portrait node'
-  ),
-  /** 人像处理：烘焙结果为空 */
-  portraitBakeEmpty: defErrSimple(
-    'graphExec.portrait.empty',
-    '人像处理未产出图片',
-    'Portrait retouch produced no image'
+    '未注入图片生成能力，无法调用图片模型',
+    'Image generation capability not injected; cannot call the image model'
   ),
   /** 图片裁剪（编辑器 compose）失败 */
   imageCropEmpty: defErrSimple('graphExec.imageCrop.empty', '裁剪失败', 'Image crop failed'),

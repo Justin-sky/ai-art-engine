@@ -85,7 +85,7 @@ import {
 import { runBlenderTool } from './services/blenderMcpService'
 import { blenderToolSpec } from '@shared/blenderMcp'
 import { modelProviderFacade, toMediaUrl } from './services/modelProviders'
-import { YOLO_CATALOG } from '@shared/yoloCatalog'
+import { YOLO_CATALOG_ALL } from '@shared/yoloCatalog'
 import {
   cancelYoloModelDownload,
   chooseYoloModelDir,
@@ -449,9 +449,13 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.YOLO_DETECT, (input: YoloInferenceInput) => yoloService.detect(input))
   handle(IpcChannels.YOLO_SEGMENT, (input: YoloInferenceInput) => yoloService.segment(input))
   handle(IpcChannels.YOLO_POSE, (input: YoloInferenceInput) => yoloService.pose(input))
+  handle(IpcChannels.YOLO_FACE, (input: YoloInferenceInput) => yoloService.face(input))
   handle(IpcChannels.YOLO_OPEN_MODEL_DIR, () => yoloService.openModelDir())
-  handle(IpcChannels.YOLO_MODEL_CATALOG, () => YOLO_CATALOG)
-  handle(IpcChannels.YOLO_MODEL_DOWNLOAD, (modelId: string) => downloadYoloModel(modelId))
+  handle(IpcChannels.YOLO_MODEL_CATALOG, () => YOLO_CATALOG_ALL)
+  // sourceUrl 可选：人脸两段式托管在本仓 Release，渲染层把最终地址传下来（主进程白名单校验）
+  handle(IpcChannels.YOLO_MODEL_DOWNLOAD, (modelId: string, sourceUrl?: string) =>
+    downloadYoloModel(modelId, sourceUrl)
+  )
   handle(IpcChannels.YOLO_MODEL_DOWNLOAD_CANCEL, () => cancelYoloModelDownload())
   handle(IpcChannels.YOLO_MODEL_DELETE, (modelId: string) => deleteYoloModel(modelId))
   handle(IpcChannels.YOLO_MODEL_DIR_CHOOSE, () => chooseYoloModelDir())

@@ -35,6 +35,7 @@ import type { ObjectStorageKindMeta } from './objectStorage'
 import type {
   YoloCatalogModel,
   YoloDetectResult,
+  YoloFaceResult,
   YoloInferenceInput,
   YoloModelDownloadProgress,
   YoloModelOperationResult,
@@ -157,6 +158,8 @@ export const IpcChannels = {
   YOLO_DETECT: 'yolo:detect',
   YOLO_SEGMENT: 'yolo:segment',
   YOLO_POSE: 'yolo:pose',
+  /** 人脸关键点（两段式：BlazeFace 检测器 + FaceMesh 468 点），返回 canonical-68 映射 */
+  YOLO_FACE: 'yolo:face',
   YOLO_OPEN_MODEL_DIR: 'yolo:open-model-dir',
   /** 官方模型下载目录（detect/segment/pose × s/m/l/x） */
   YOLO_MODEL_CATALOG: 'yolo:model-catalog',
@@ -1345,12 +1348,22 @@ export interface StudioApi {
   yoloSegment: (input: YoloInferenceInput) => Promise<YoloSegmentResult>
   /** 人体姿态估计：本地 ONNX CPU 推理，输出 COCO 17 关键点 */
   yoloPose: (input: YoloInferenceInput) => Promise<YoloPoseResult>
+  /**
+   * 人脸关键点：本地两段式推理（BlazeFace 检测器 + FaceMesh 468 点），
+   * 输出 468 点与 canonical-68 映射；两个模型缺一即抛错（调用方按能力可选处理）。
+   */
+  yoloFace: (input: YoloInferenceInput) => Promise<YoloFaceResult>
   /** 在系统文件管理器中打开 YOLO 模型目录（不存在则创建）；返回目录路径 */
   openYoloModelDir: () => Promise<string | null>
-  /** 官方可下载模型目录（detect/segment/pose × s/m/l/x，数据见 @shared/yoloCatalog） */
+  /**
+   * 官方可下载模型目录（detect/segment/pose × s/m/l/x + 人脸两段式，数据见 @shared/yoloCatalog）
+   */
   getYoloModelCatalog: () => Promise<YoloCatalogModel[]>
-  /** 下载目录模型到模型目录（单任务；耗时取决于体积与网络，进度经 onYoloModelDownloadProgress 推送） */
-  downloadYoloModel: (modelId: string) => Promise<YoloModelOperationResult>
+  /**
+   * 下载目录模型到模型目录（单任务；耗时取决于体积与网络，进度经 onYoloModelDownloadProgress 推送）。
+   * `sourceUrl` 可选：覆盖目录里的地址（人脸两段式托管在本仓 Release），主进程按白名单校验。
+   */
+  downloadYoloModel: (modelId: string, sourceUrl?: string) => Promise<YoloModelOperationResult>
   /** 取消进行中的模型下载 */
   cancelYoloModelDownload: () => Promise<void>
   /** 删除模型目录中的某模型文件（内置随包模型删除后不会自动复活） */

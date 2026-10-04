@@ -223,6 +223,10 @@ extraResources:
   # 随包内置的 YOLO 模型（detect / segment / pose），首次启动同步到模型目录
   - from: resources/yolo-models
     to: yolo-models
+  # 随包内置的人脸两段式模型（face-detect / face-landmark）：来自另一套上游，单独目录便于
+  # 替换；同样在首次启动同步到模型目录（YoloService.ensureBundledModels 扫这两个目录）
+  - from: resources/face-models
+    to: face-models
   # 注意：ffmpeg/ffprobe 不再随安装包分发（减小体积）——用户在「设置 → 通用工具 ffmpeg」
   # 面板按需下载到应用私有目录，或自行安装后由 PATH / 环境变量供视频打点、取帧、导出使用。
   - from: scripts/mcp-bridge.mjs

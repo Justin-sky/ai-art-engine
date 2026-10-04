@@ -4,6 +4,7 @@
  */
 import type {
   YoloDetectResult,
+  YoloFaceResult,
   YoloImageInput,
   YoloInferenceInput,
   YoloPoseResult,
@@ -27,6 +28,14 @@ export function yoloPose(input: YoloInferenceInput): Promise<YoloPoseResult> {
   return window.studio.yoloPose(input)
 }
 
+/**
+ * 人脸关键点（两段式：BlazeFace 检测器 + FaceMesh 468 点）。
+ * 两个模型缺一即 reject —— 调用方按「可选能力」处理（如人像烘焙退化为空脸）。
+ */
+export function yoloFace(input: YoloInferenceInput): Promise<YoloFaceResult> {
+  return window.studio.yoloFace(input)
+}
+
 export function openYoloModelDir(): Promise<string | null> {
   return window.studio.openYoloModelDir()
 }
@@ -41,6 +50,9 @@ export async function dataUrlToRawInput(
 ): Promise<Extract<YoloImageInput, { kind: 'raw' }>> {
   const img = await new Promise<HTMLImageElement>((resolve, reject) => {
     const el = new Image()
+    // studio-media:// 带 ACAO:*，以 CORS 模式加载才可读像素（否则 canvas 被标记跨源污染，
+    // getImageData 抛 SecurityError，姿态 / 蒙版类本地视觉能力会静默失效）
+    el.crossOrigin = 'anonymous'
     el.onload = () => resolve(el)
     el.onerror = () => reject(new Error('YOLO: failed to decode image'))
     el.src = dataUrl

@@ -11,43 +11,48 @@
       <span class="stat-label">{{ t('graph.portrait.inspectorChanged') }}</span>
       <span class="stat-value">{{ changedCount }}</span>
     </div>
-    <div v-if="strokeCount" class="stat">
-      <span class="stat-label">{{ t('graph.portrait.inspectorStrokes') }}</span>
-      <span class="stat-value">{{ strokeCount }}</span>
+    <div v-if="regionCount" class="stat">
+      <span class="stat-label">{{ t('graph.portrait.inspectorRegions') }}</span>
+      <span class="stat-value">{{ regionCount }}</span>
     </div>
     <div v-if="idPhotoSpec" class="stat">
       <span class="stat-label">{{ t('graph.portrait.fields.idPhotoSpecId') }}</span>
       <span class="stat-value">{{ t(`graph.portrait.options.${idPhotoSpec}`) }}</span>
+    </div>
+    <div v-if="riskCount" class="stat">
+      <span class="stat-label">{{ t('graph.portrait.inspectorRisk') }}</span>
+      <span class="stat-value warn">{{ riskCount }}</span>
     </div>
     <div v-if="bakedPath" class="stat">
       <span class="stat-label">{{ t('graph.portrait.inspectorBaked') }}</span>
       <span class="stat-value path" :title="bakedPath">{{ bakedPath }}</span>
     </div>
 
-    <div class="actions">
-      <button type="button" class="primary" @click="openEditor">
-        {{ t('graph.portrait.inspectorOpen') }}
-      </button>
-      <button type="button" class="ghost" :disabled="changedCount === 0" @click="resetParams">
-        {{ t('graph.portrait.reset') }}
-      </button>
+    <!-- 输出预览：与其它节点共用同一套（缩略图 / 全屏 / 存资产库 / 多版本点选） -->
+    <GraphNodeOutputPreview v-if="node && hostId" :node="node" :host-id="hostId" />
+
+    <div v-if="prompt" class="prompt-box">
+      <span class="stat-label">{{ t('graph.portrait.promptPreview') }}</span>
+      <p class="prompt-text">{{ prompt }}</p>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, inject } from 'vue'
-import { changedPortraitParamCount, normalizePortraitRetouch } from '@shared/graph'
+import { computed } from 'vue'
+import {
+  changedPortraitParamCount,
+  normalizePortraitRetouch,
+  portraitHighRiskTierCount
+} from '@shared/graph'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useNodeDisplayTitle } from '../composables/useNodeDisplayTitle'
 import { useEditorKernel } from '../editor/kernel'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
-import { editorDiveKey } from '../features/graph/model/editorDive'
-import { graphEditorNodeTools } from '../features/graph/ui/graphEditorNodeTools'
+import GraphNodeOutputPreview from './GraphNodeOutputPreview.vue'
 
 const { t, graphTypeLabel } = useStudioI18n()
 const editor = useEditorKernel()
-const editorDive = inject(editorDiveKey, null)
 
 const node = computed(() => {
   void graphEditorHosts.revision.value
@@ -58,6 +63,7 @@ const node = computed(() => {
   return current?.typeId === 'image.portrait' ? current : null
 })
 
+/** 选中节点所属的图宿主：输出预览要按它去取 runStates / 图库 */
 const hostId = computed(() => {
   const selection = editor.selection.current.value
   return selection.kind === 'graph.node' ? (selection.hostId ?? '') : ''
@@ -72,36 +78,22 @@ const changedCount = computed(() => {
   return changedPortraitParamCount(normalizePortraitRetouch(current.params.portraitRetouch))
 })
 
-const strokeCount = computed(() => node.value?.params.portraitStrokes?.length ?? 0)
+const riskCount = computed(() => {
+  const current = node.value
+  if (!current) return 0
+  return portraitHighRiskTierCount(normalizePortraitRetouch(current.params.portraitRetouch))
+})
+
+const regionCount = computed(
+  () => normalizePortraitRetouch(node.value?.params.portraitRetouch).manualRegions.length
+)
 const idPhotoSpec = computed(() => {
   const value = node.value?.params.portraitRetouch?.idPhotoSpecId
   return value && value !== 'none' ? value : ''
 })
 const bakedPath = computed(() => node.value?.params.portraitBakedRelativePath?.trim() ?? '')
-
-async function openEditor(): Promise<void> {
-  const current = node.value
-  if (!current || !hostId.value) return
-  try {
-    await graphEditorHosts.flush(hostId.value)
-  } catch (err) {
-    console.error('[PortraitInspector] flush before dive failed', err)
-  }
-  await graphEditorNodeTools.open(hostId.value, 'node.portrait', current.id)
-  await editorDive?.diveView(
-    { viewId: 'node.portrait', hostId: hostId.value, nodeId: current.id },
-    current.title || typeLabel.value
-  )
-}
-
-function resetParams(): void {
-  const current = node.value
-  if (!current || !hostId.value) return
-  graphEditorHosts.updateNode(hostId.value, current.id, {
-    portraitRetouch: normalizePortraitRetouch(),
-    portraitStrokes: []
-  })
-}
+/** 最近一次 Cook 实际发给模型的提示词：让用户在节点上就能核对模型收到了什么 */
+const prompt = computed(() => node.value?.params.portraitPrompt?.trim() ?? '')
 </script>
 
 <style scoped>
@@ -152,35 +144,24 @@ function resetParams(): void {
   text-overflow: ellipsis;
 }
 
-.actions {
+.stat-value.warn {
+  color: #f59e0b;
+}
+
+.prompt-box {
   display: flex;
-  gap: 8px;
-  margin-top: 4px;
-}
-
-.primary {
-  flex: 1;
-  padding: 6px 10px;
-  border: 1px solid var(--accent);
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
-  color: var(--accent);
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.ghost {
-  padding: 6px 10px;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
   border: 1px solid var(--border);
   border-radius: 4px;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 12px;
-  cursor: pointer;
 }
 
-.ghost:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.prompt-text {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.7;
+  word-break: break-word;
 }
 </style>

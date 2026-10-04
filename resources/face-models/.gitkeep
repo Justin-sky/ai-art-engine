@@ -1,0 +1,1 @@
+# 人脸两段式模型（face-detect.onnx / face-landmark.onnx）在构建前由 npm run fetch:yolo-models 拉取；详见 docs/ARCH_YOLO_LOCAL.md

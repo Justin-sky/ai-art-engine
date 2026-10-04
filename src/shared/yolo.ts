@@ -3,8 +3,53 @@
  * 数据面协议（worker 内部）见 src/main/yolo/protocol.ts，本文件只定义对外契约。
  */
 
-/** 推理任务类型：目标检测 / 实例分割 / 人体姿态估计 */
-export type YoloTaskKind = 'detect' | 'segment' | 'pose'
+/** 推理任务类型：目标检测 / 实例分割 / 人体姿态估计 / 人脸关键点 */
+export type YoloTaskKind = 'detect' | 'segment' | 'pose' | 'face'
+
+/**
+ * 内置人脸模型（两份：检测器给对齐用的框与 6 关键点，FaceMesh 出 468 点）。
+ *
+ * 两段式管线要两个模型文件同时就位，文件名约定即模型 id（去 .onnx）：
+ * `<模型目录>/face-detect.onnx` 与 `<模型目录>/face-landmark.onnx`；
+ * 主进程按这两个 id 精确定位（`YoloService.face`），模型目录扫描据此标 kind='face'。
+ * 这两个模型来自另一套来源（非 Ultralytics 命名体系），因此**不在** @shared/yoloCatalog
+ * 的下载目录里：没有固定的官方直链与 SHA-256 之前不提供下载，只在设置面板引导手动放置。
+ */
+export const YOLO_FACE_DETECT_MODEL_ID = 'face-detect'
+export const YOLO_FACE_LANDMARK_MODEL_ID = 'face-landmark'
+/** BlazeFace short-range 输入边长 */
+export const YOLO_FACE_DETECT_INPUT = 128
+/** MediaPipe FaceMesh 输入边长 */
+export const YOLO_FACE_LANDMARK_INPUT = 192
+/** 468 点的可视化/下游所需：canonical-68 的索引语义见 shared/graph/portraitFace.ts */
+
+/** 人脸关键点（原图像素；z 是 MediaPipe 的相对深度，量纲与 x 同） */
+export interface YoloFaceLandmark {
+  x: number
+  y: number
+  z: number
+}
+
+export interface YoloFace {
+  /** 检测置信度 0..1 */
+  score: number
+  /** 人脸框（原图像素） */
+  box: { x: number; y: number; width: number; height: number }
+  /** 检测器的 6 个关键点（原图像素）：0 右眼 1 左眼 2 鼻尖 3 嘴中心 4 右耳屏 5 左耳屏 */
+  keypoints: Array<{ x: number; y: number }>
+  /** FaceMesh 全量 468 点（原图像素） */
+  landmarks468: YoloFaceLandmark[]
+  /** 映射到 canonical-68 的点（原图像素），顺序与 graph/portraitFace.ts 一致 */
+  landmarks68: Array<{ x: number; y: number }>
+}
+
+/** 人脸关键点结果 */
+export interface YoloFaceResult {
+  width: number
+  height: number
+  faces: YoloFace[]
+  inferenceMs: number
+}
 
 /** 像素坐标系下的检测框（相对原图，未裁剪） */
 export interface YoloBox {
@@ -337,6 +382,17 @@ export interface YoloCatalogModel {
   url: string
   /** 估算体积 MB（fp32 ONNX 约值；精确值以下载 content-length 为准） */
   sizeMb: number
+  /**
+   * 期望的 SHA-256（小写十六进制）。声明了就**必须**校验通过才落盘；
+   * 缺席时只做「文件不是空/截断」的粗检 —— 自家 Release 的资产应当尽早补上这个值
+   * （`npm run sync:face-models` 会算出来）。
+   */
+  sha256?: string
+  /**
+   * 完整性粗检下限（字节）：小于它一律判为「错误页 / 截断响应」。
+   * 按模型给值而不是写死常量 —— 人脸检测器只有几百 KB，用 1MB 的门槛会把它误杀。
+   */
+  minBytes: number
 }
 
 /** 模型下载 / 删除等操作的统一结果（message 为用户可见文案，透传渲染层） */

@@ -26,6 +26,7 @@ const LANDMARKS = canonicalFaceTemplate()
 
 const REGIONS: PortraitFaceRegion[] = [
   'faceOval',
+  'faceSkin',
   'forehead',
   'leftEye',
   'rightEye',

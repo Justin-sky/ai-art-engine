@@ -15,12 +15,14 @@
  *   用户可放心清理不需要的大文件。
  */
 import { BrowserWindow, dialog } from 'electron'
-import { createWriteStream, existsSync } from 'fs'
+import { createHash } from 'crypto'
+import { createWriteStream, existsSync, readFileSync } from 'fs'
 import { mkdir, rename, stat, unlink } from 'fs/promises'
 import { join } from 'path'
 import { IpcChannels } from '@shared/ipc'
 import type { YoloModelDownloadProgress, YoloModelOperationResult } from '@shared/yolo'
-import { YOLO_CATALOG } from '@shared/yoloCatalog'
+import { YOLO_CATALOG_ALL } from '@shared/yoloCatalog'
+import { isAllowedYoloDownloadUrl } from '@shared/yoloDownload'
 import { broadcastToAllWindows } from '../broadcast'
 import { settingsService } from '../services/settingsService'
 import { yoloService } from './yoloService'
@@ -46,12 +48,34 @@ function fail(message: string): YoloModelOperationResult {
 }
 
 /**
+ * 允许的下载源主机（白名单）见 `@shared/yoloDownload`。
+ *
+ * 渲染层可以带 `sourceUrl` 覆盖目录里的地址（人脸两段式托管在本仓 Release，tag 变了
+ * 不必重新打包）。主进程不能因此变成任意 URL 下载器，所以只放行自家 Release 会用到
+ * 的主机。
+ */
+async function sha256OfFile(path: string): Promise<string> {
+  const hash = createHash('sha256')
+  hash.update(readFileSync(path))
+  return hash.digest('hex')
+}
+
+/**
  * 下载官方目录模型到模型目录。耗时取决于体积与网络（s ~40MB → x ~250MB）；
  * 全程可被 cancelYoloModelDownload 中止，成功后 yolo:status 即时可见。
+ *
+ * `sourceUrl`（可选）：覆盖目录地址，仅接受白名单内的 https 主机。
  */
-export async function downloadYoloModel(modelId: string): Promise<YoloModelOperationResult> {
-  const entry = YOLO_CATALOG.find((m) => m.id === modelId)
+export async function downloadYoloModel(
+  modelId: string,
+  sourceUrl?: string
+): Promise<YoloModelOperationResult> {
+  const entry = YOLO_CATALOG_ALL.find((m) => m.id === modelId)
   if (!entry) return fail(`模型目录中不存在 ${modelId}。`) // cjk-ok 透传 UI
+  const url = sourceUrl?.trim() || entry.url
+  if (!isAllowedYoloDownloadUrl(url)) {
+    return fail(`下载地址不被允许（只支持 https 且来源在白名单内）：${url}`) // cjk-ok
+  }
   if (activeModelId) {
     return fail(`已有模型正在下载（${activeModelId}），请先完成或取消后再试。`) // cjk-ok
   }
@@ -70,7 +94,7 @@ export async function downloadYoloModel(modelId: string): Promise<YoloModelOpera
   try {
     if (!existsSync(dir)) await mkdir(dir, { recursive: true })
 
-    const response = await fetch(entry.url, { signal: controller.signal })
+    const response = await fetch(url, { signal: controller.signal })
     if (!response.ok || !response.body) {
       throw new Error(
         `HTTP ${response.status}（网络不可达或下载地址失效，请检查网络后重试）` // cjk-ok
@@ -131,16 +155,25 @@ export async function downloadYoloModel(modelId: string): Promise<YoloModelOpera
       if (!writer.writableFinished) writer.destroy()
     }
 
-    // 落盘前做个基本完整性检查（最小官方模型 ~6MB，防止拿到空/截断文件）
+    // 落盘前做个基本完整性检查（防住「错误页 / 截断响应」被当成模型存下来）
     broadcastProgress({ modelId, phase: 'verifying' })
     try {
       const size = (await stat(partPath)).size
-      if (size < 1024 * 1024) {
+      if (size < entry.minBytes) {
         throw new Error('下载文件异常过小，已中止（可能为错误页/不完整响应）') // cjk-ok
       }
     } catch (err) {
       if (err instanceof Error && err.message.includes('已中止')) throw err // cjk-ok
       throw new Error(`落盘校验失败：${errDetail(err)}`) // cjk-ok
+    }
+
+    // 目录声明了 sha256 就必须校验通过：自家 Release 的资产被替换/损坏要当场拦住，
+    // 而不是等推理时维度不符、静默降级成「五官悄悄不生效」。
+    if (entry.sha256) {
+      const actual = await sha256OfFile(partPath)
+      if (actual !== entry.sha256.toLowerCase()) {
+        throw new Error(`SHA-256 校验不通过（期望 ${entry.sha256}，实际 ${actual}）`) // cjk-ok
+      }
     }
 
     await rename(partPath, destPath)

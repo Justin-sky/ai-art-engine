@@ -15,6 +15,9 @@ const ERR_PREVIEW_LOAD_FAILED = defErrSimple(
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image()
+    // 与 portraitBake 同一口径：studio-media:// 必须以 CORS 模式取图，
+    // 否则 drawImage 后读像素会被判为跨源污染并抛 SecurityError
+    img.crossOrigin = 'anonymous'
     img.onload = () => resolve(img)
     img.onerror = () => reject(fail(ERR_PREVIEW_LOAD_FAILED))
     img.src = src

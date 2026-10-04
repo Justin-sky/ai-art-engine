@@ -1257,17 +1257,20 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     ],
     defaultParams: () => ({
       portraitRetouch: defaultPortraitRetouch(),
-      portraitStrokes: [],
       portraitLayers: [],
       portraitBaseLayerId: '',
       portraitBakedRelativePath: '',
+      portraitPrompt: '',
+      /** 局部回贴开关：'local'（默认，只改对应部位）| 'global'（整图生效） */
+      portraitScopeMode: 'local',
       generateModel: '',
-      generateProviderInstanceId: ''
+      generateProviderInstanceId: '',
+      generateSystemPrompt: ''
     }),
-    // 能力说明随 graph_node_types 返回给外部 Agent：点出「参数在 params.portraitRetouch、
-    // 笔画在 params.portraitStrokes、本地烘焙不调模型」这三条，Agent 才不用猜。
+    // 能力说明随 graph_node_types 返回给外部 Agent：点明「参数是档位枚举、执行就是调模型、
+    // 提示词由参数派生」这三条，Agent 才不用猜。
     description:
-      '人像处理：本地确定性精修（磨皮 / 修复 / 肤色 / 五官液化 / 妆容 / 牙齿 / 光影 / 调色 / 质感 / 背景 / 证件照），不调用图片模型，按节点参数在本地烘焙出图。参数写在 params.portraitRetouch（无破坏性，可反复重编辑），笔刷笔画写在 params.portraitStrokes（修复 / 液化 / 局部磨皮 / 背景蒙版）；证件照设 portraitRetouch.idPhotoSpecId + idPhotoBg 后运行即按规格裁切，portraitRetouch.idPhotoSheet 打开时额外产出整张拼版。人脸关键点缺失时五官 / 妆容 / 证件照类工具自动跳过。编辑器内可另接图片模型做智能消除 / 换背景等 AI 增强，结果作为版本存进 params.portraitLayers。', // cjk-ok（MCP / Agent 集成文本：随 graph_node_types 返回给外部 Agent，非 UI 文案）
+      '人像处理：全部功能走图片模型（修复 / 肤质 / 肤色 / 五官 / 眼睛 / 妆容 / 身形 / 光影 / 调色 / 质感 / 换背景 / 证件照）。参数写在 params.portraitRetouch，**全部是分段档位枚举**（off / light / standard / strong / max，另有 makeupStyle、bgMode、lutId 等具名选项），没有连续数值；执行器按参数合成提示词后调用图片模型，不调用本地像素实现。手动区域写在 portraitRetouch.manualRegions（kind + 归一化 box + note，替代旧笔刷笔画）。证件照设 portraitRetouch.idPhotoSpecId + idPhotoBg 后由模型按规格出图，节点再做纯几何的规格裁切；idPhotoSheet 打开时额外产出 5 寸相纸拼版。人脸关键点缺失时依赖人脸的组自动不进提示词（宁可少修不可改错）。合成后的提示词回写在 params.portraitPrompt，便于外部 Agent 与用户核对模型到底收到了什么。', // cjk-ok（MCP / Agent 集成文本：随 graph_node_types 返回给外部 Agent，非 UI 文案）
     addable: true,
     deletable: true,
     inspector: 'none',

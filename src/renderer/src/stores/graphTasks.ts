@@ -73,7 +73,12 @@ import { renderSvgFrames } from '../features/graph/model/renderSvgFrames'
 import { composeImageIconPackSheet } from '../features/graph/model/composeImageIconPackSheet'
 import { composeImageLayerStack } from '../features/graph/model/composeImageLayerStack'
 import { composeComicPageImage } from '../features/comic/composeComicPageImage'
-import { bakePortraitRetouch, detectPortraitFaces } from '../features/graph/model/portraitBake'
+import {
+  composePortraitIdPhoto,
+  composePortraitScopedRetouch,
+  detectPortraitFaces,
+  inspectImageSize
+} from '../features/graph/model/portraitCapabilities'
 import { inspectModelSkeleton } from '../features/graph/model/inspectModelSkeleton'
 import { runBlenderDshJob } from '../features/graph/model/runBlenderDshJob'
 import { buildGamePlayProjectForNode } from '../features/graph/model/runGamePlayBuild'
@@ -1585,8 +1590,10 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         composeImageIconPackSheet,
         composeImageLayerStack,
         composeComicPageImage,
-        bakePortraitRetouch,
+        composePortraitIdPhoto,
+        composePortraitScopedRetouch,
         detectPortraitFaces,
+        inspectImageSize,
         inspectModelSkeleton,
         runBlenderDshJob,
         buildGamePlayProject: buildGamePlayProjectForNode,

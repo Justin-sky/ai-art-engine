@@ -19,6 +19,7 @@ import { isAbsolute, join } from 'path'
 import {
   YOLO_INFER_TIMEOUT_MS,
   type YoloDetectResult,
+  type YoloFaceResult,
   type YoloImageInput,
   type YoloInferenceInput,
   type YoloModelInfo,
@@ -27,9 +28,16 @@ import {
   type YoloStatus,
   type YoloTaskKind
 } from '@shared/yolo'
+import {
+  faceModelAliases,
+  pickFaceModel,
+  type FaceModelPick,
+  type FaceModelRole
+} from '@shared/yoloFaceModels'
 import { settingsService } from '../services/settingsService'
 import { projectService } from '../services/projectService'
 import type {
+  YoloWorkerFaceParams,
   YoloWorkerInferParams,
   YoloWorkerRequest,
   YoloWorkerResponse,
@@ -91,6 +99,59 @@ class YoloService {
 
   async pose(input: YoloInferenceInput): Promise<YoloPoseResult> {
     return (await this.infer(input, 'pose')) as YoloPoseResult
+  }
+
+  /**
+   * 人脸关键点（两段式：BlazeFace 检测器 + FaceMesh 468 点）。
+   *
+   * 两个模型是**成对**依赖：任一缺失都直接抛错（错误信息里带上缺哪个、目录里有什么），
+   * 由调用方按可选能力降级 —— 只装检测器时人脸工具整组跳过，而不是拿半条管线乱修。
+   * `input.modelId` 只在显式指定检测器时生效（FaceMesh 一律按约定名解析）。
+   *
+   * 挑选规则在 `@shared/yoloFaceModels`（纯函数 + 单测）：名字明显属于另一角色的文件
+   * 不会被顶替使用，同一个文件也不会被两段复用。
+   */
+  async face(input: YoloInferenceInput): Promise<YoloFaceResult> {
+    this.ensureBundledModels()
+    await this.ensureStarted()
+    const models = this.scanModels()
+    // 先定 FaceMesh 再定检测器：检测器一侧要把已选中的 FaceMesh 文件排除掉
+    const landmark = pickFaceModel({ models, role: 'landmark' })
+    const detector = pickFaceModel({
+      models,
+      role: 'detector',
+      explicit: input.modelId,
+      excludePath: landmark.model?.path
+    })
+    const landmarkPath = this.requireFaceModel(landmark, 'landmark')
+    const detectorPath = this.requireFaceModel(detector, 'detector', input.modelId)
+    const params: YoloWorkerFaceParams = {
+      ...input,
+      image: resolveImageInput(input.image),
+      detectorPath,
+      landmarkPath
+    }
+    return (await this.call('face', params, YOLO_INFER_TIMEOUT_MS)) as YoloFaceResult
+  }
+
+  /** 挑不到人脸模型时的报错：说清缺哪个角色、该放什么名字、目录里现在有什么 */
+  private requireFaceModel(pick: FaceModelPick, role: FaceModelRole, explicit?: string): string {
+    if (pick.model) return pick.model.path
+    if (explicit) {
+      throw new Error(
+        `YOLO: face model "${explicit}" not found; available face models: ${
+          pick.available.join(', ') || '(none)'
+        }`
+      )
+    }
+    const expected = faceModelAliases(role)
+      .map((id) => `${id}.onnx`)
+      .join(' or ')
+    const found = pick.available.length ? `; face models found: ${pick.available.join(', ')}` : ''
+    throw new Error(
+      `YOLO: face "${role}" model not found in ${this.modelDir()}; expected ${expected}${found} ` +
+        '(place the ONNX file there or change the dir in settings)'
+    )
   }
 
   async openModelDir(): Promise<string | null> {
@@ -253,12 +314,27 @@ class YoloService {
 
   // ── 随包内置模型同步 ───────────────────────────────────────────
 
-  /** 内置模型源目录：打包后 <resourcesPath>/yolo-models；开发期 项目 resources/yolo-models */
-  private bundledModelDir(): string | null {
-    const dir = app.isPackaged
-      ? join(process.resourcesPath, 'yolo-models')
-      : join(app.getAppPath(), 'resources', 'yolo-models')
-    return existsSync(dir) ? dir : null
+  /**
+   * 内置模型源目录（可能多个）：打包后 `<resourcesPath>/<name>`；开发期 `项目/resources/<name>`。
+   *
+   * 两个目录分开只是为了「体积与许可口径不同、可以各自替换」：
+   * - `yolo-models`：Ultralytics 的 yolo11n 系（detect / segment / pose），构建期由
+   *   `npm run fetch:yolo-models` 拉取；
+   * - `face-models`：人脸两段式（face-detect / face-landmark），来自另一套上游，构建期
+   *   同样由该脚本从本仓 Release 拉取，也可以手动把两个 .onnx 放进来。
+   *
+   * 两份都会在首次启动时按文件名落进模型目录，扫描逻辑完全一致。
+   */
+  private bundledModelDirs(): string[] {
+    const names = ['yolo-models', 'face-models']
+    const dirs: string[] = []
+    for (const name of names) {
+      const dir = app.isPackaged
+        ? join(process.resourcesPath, name)
+        : join(app.getAppPath(), 'resources', name)
+      if (existsSync(dir)) dirs.push(dir)
+    }
+    return dirs
   }
 
   /**
@@ -269,27 +345,29 @@ class YoloService {
   private ensureBundledModels(): void {
     if (this.bundledSynced) return
     this.bundledSynced = true
-    const src = this.bundledModelDir()
-    if (!src) return
+    const sources = this.bundledModelDirs()
+    if (!sources.length) return
     const target = this.modelDir()
     if (!existsSync(target)) mkdirSync(target, { recursive: true })
     const manifest = this.readManifest(target)
     let changed = false
-    for (const file of readdirSync(src)) {
-      if (!file.toLowerCase().endsWith('.onnx') || manifest.includes(file)) continue
-      const dest = join(target, file)
-      if (existsSync(dest)) {
-        manifest.push(file)
-        changed = true
-        continue
-      }
-      try {
-        copyFileSync(join(src, file), dest)
-        manifest.push(file)
-        changed = true
-        console.log(`[yolo] installed bundled model: ${file}`)
-      } catch (err) {
-        console.error(`[yolo] failed to install bundled model ${file}:`, err)
+    for (const src of sources) {
+      for (const file of readdirSync(src)) {
+        if (!file.toLowerCase().endsWith('.onnx') || manifest.includes(file)) continue
+        const dest = join(target, file)
+        if (existsSync(dest)) {
+          manifest.push(file)
+          changed = true
+          continue
+        }
+        try {
+          copyFileSync(join(src, file), dest)
+          manifest.push(file)
+          changed = true
+          console.log(`[yolo] installed bundled model: ${file}`)
+        } catch (err) {
+          console.error(`[yolo] failed to install bundled model ${file}:`, err)
+        }
       }
     }
     if (changed) this.writeManifest(target, manifest)
@@ -333,9 +411,17 @@ class YoloService {
   }
 }
 
-/** 按模型文件名推断任务类型：含 seg → 分割；含 pose → 姿态；否则检测 */
+/**
+ * 按模型文件名推断任务类型：
+ * - 人脸两段式（`face-detect` 检测器 / `face-landmark` FaceMesh）→ face；
+ * - 含 seg → 分割；含 pose → 姿态；否则检测。
+ *
+ * 人脸必须排在 pose / seg 之前判断：约定名里没有 seg/pose 子串，但用户可能把
+ * FaceMesh 存成 `face-landmark-pose.onnx` 之类的变体，先认 face 才不会掉进姿态档。
+ */
 export function kindOfModelId(id: string): YoloTaskKind {
   const lower = id.toLowerCase()
+  if (lower.includes('face')) return 'face'
   if (lower.includes('seg')) return 'segment'
   if (lower.includes('pose')) return 'pose'
   return 'detect'

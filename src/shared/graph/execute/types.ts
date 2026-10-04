@@ -782,41 +782,69 @@ export interface NodeExecuteContext {
     resolveImage?: (imageUrl: string) => Promise<string>
   }) => Promise<{ dataUrl: string; width: number; height: number }>
   /**
-   * 人像处理：本地精修烘焙（渲染层实现：解码 → 纯内核流水线 → 编码）。
-   * 这是 `image.portrait` 的核心能力，**未注入时执行器直接报错**而不是透传上游 ——
-   * 透传会让用户以为精修生效了，实际拿到的是一张没修过的图。
+   * 人像处理：证件照的**纯几何输出**（按规格裁切 + 5 寸相纸拼版）。
+   *
+   * 修图本身全部由 `ctx.generateImage` 完成 —— 模型负责出「构图正确、底色正确」的图；
+   * 这里只做模型做不可靠的两件事：精确裁到确定像素尺寸、把单张铺成相纸拼版。
+   * **未注入时不影响主图落盘**，只是不产出拼版与规格裁切，节点照常成功。
    */
-  bakePortraitRetouch?: (input: {
+  composePortraitIdPhoto?: (input: {
+    /** 待裁切的源图（通常是模型输出的证件照底图） */
     sourceDataUrl: string
-    state: import('../portraitRetouch').PortraitRetouchState
-    strokes: import('../portraitRetouch').PortraitBrushStroke[]
-    /** 选中的人脸分析（含关键点）；无脸时为 null */
-    face: import('../portraitFace').PortraitFaceAnalysis | null
-    /** 颗粒种子：同一份参数重复 Cook 必须得到同一张图 */
-    seed: number
-    /** 证件照输出（null = 不做证件照处理） */
-    idPhoto: {
-      dpi?: number
-      paper?: import('../idPhoto').IdPhotoPaperId
-      sheet?: boolean
+    /** 源图归一化裁切框（0..1，由 shared 层按关键点算好） */
+    crop: { x: number; y: number; w: number; h: number }
+    /** 目标单张像素尺寸 */
+    outputWidth: number
+    outputHeight: number
+    /** 拼版（null = 不拼版） */
+    sheet: {
+      cols: number
+      rows: number
+      cellWidth: number
+      cellHeight: number
+      gapPx: number
+      width: number
+      height: number
+      count: number
     } | null
     signal?: AbortSignal | null
-    /** 流水线阶段回调（逐阶段写运行日志，让长烘焙有进度可看） */
-    onStage?: (info: { stage: string; index: number; total: number }) => void
-  }) => Promise<{
-    dataUrl: string
-    /** 证件照拼版（未开启拼版为 null） */
-    sheetDataUrl: string | null
-    width: number
-    height: number
-    /** 变形后的关键点（回写节点缓存，供编辑器叠加层复用） */
-    landmarks: Array<[number, number]> | null
-  }>
+  }) => Promise<{ dataUrl: string; sheetDataUrl: string | null }>
   /** 人像处理：人脸关键点检测（渲染层经 IPC 调主进程 `yolo:face`）。 */
   detectPortraitFaces?: (input: {
     sourceDataUrl: string
     signal?: AbortSignal | null
   }) => Promise<import('../portraitFace').PortraitFaceAnalysis[]>
+  /**
+   * 人像处理：局部回贴。
+   *
+   * 图片模型接口没有蒙版通道，一次调用必定重绘整张图；这里把模型结果按
+   * 「脸 / 人物 / 手动区域框」的羽化蒙版贴回原图，未请求部位保持像素级不变。
+   * 蒙版来源缺一块就用剩下的（缺关键点=只有手动框，缺分割=只有脸），
+   * **全都没有时返回 applied:false**，调用方沿用整张结果。
+   */
+  composePortraitScopedRetouch?: (input: {
+    /** 原图（回贴的底） */
+    sourceDataUrl: string
+    /** 模型重绘结果（回贴的源） */
+    generatedDataUrl: string
+    /** 蒙版构成（由 shared 的 `portraitScopePlan` 决定） */
+    mask: import('../portraitScope').PortraitScopeMask
+    /** canonical-68 归一化关键点；缺省时脸这一块做不出来 */
+    landmarks?: ReadonlyArray<readonly [number, number]> | null
+    signal?: AbortSignal | null
+  }) => Promise<{
+    dataUrl: string
+    /** false = 没有可用的蒙版来源，调用方应沿用整张结果 */
+    applied: boolean
+    /** 蒙版覆盖率 0..1（进运行日志） */
+    coverRatio: number
+    /** 降级说明（缺关键点 / 缺分割模型 / 没检出人物…） */
+    notes: string[]
+  }>
+  /** 读取图片的像素尺寸（人像处理按规格裁切时要算归一化框）。 */
+  inspectImageSize?: (input: {
+    sourceDataUrl: string
+  }) => Promise<{ width: number; height: number }>
   /**
    * 读取 3D 模型骨骼层级（蒙皮主链）。预览 / 导演台 FK 用。
    */
@@ -1055,8 +1083,10 @@ export interface GraphRunOptions {
   composeImageIconPackSheet?: NodeExecuteContext['composeImageIconPackSheet']
   composeImageLayerStack?: NodeExecuteContext['composeImageLayerStack']
   composeComicPageImage?: NodeExecuteContext['composeComicPageImage']
-  bakePortraitRetouch?: NodeExecuteContext['bakePortraitRetouch']
+  composePortraitIdPhoto?: NodeExecuteContext['composePortraitIdPhoto']
   detectPortraitFaces?: NodeExecuteContext['detectPortraitFaces']
+  composePortraitScopedRetouch?: NodeExecuteContext['composePortraitScopedRetouch']
+  inspectImageSize?: NodeExecuteContext['inspectImageSize']
   inspectModelSkeleton?: NodeExecuteContext['inspectModelSkeleton']
   runBlenderDshJob?: NodeExecuteContext['runBlenderDshJob']
   buildGamePlayProject?: NodeExecuteContext['buildGamePlayProject']

@@ -18,9 +18,8 @@ import type {
   MultiAngleCameraState,
   PortraitQualityState,
   PortraitRetouchState,
-  PortraitBrushStroke,
+  PortraitManualRegion,
   PortraitAiLayer,
-  PortraitFaceAnalysis,
   Stage2dPose,
   Stage2dRig,
   Stage2dSceneState,
@@ -106,28 +105,40 @@ export type GraphEditorDialogsApi = {
     generateProviderInstanceId: string
   }
   /**
-   * 人像处理（`image.portrait`）：PixCake 式本地精修编辑器。
-   * 编辑态比其它工具重：参数 + 笔刷笔画 + 人脸关键点 + AI 版本栈都挂在宿主状态里，
-   * 编辑器本体保持无状态（受控组件），这样 dive 回退 / 主界面撤销都不会丢编辑。
+   * 人像处理（`image.portrait`）：参数面板 + 提示词预览编辑器。
+   *
+   * 节点本身已经没有本地像素实现（执行器直接调图片模型），因此编辑器不再做实时烘焙预览，
+   * 而是把「参数 → 提示词」这一步显性化：右栏底部实时显示最终提示词，用户看到的就是
+   * 模型会收到的东西。编辑态仍挂在宿主（受控组件），dive 回退 / 主界面撤销都不会丢编辑。
    */
   portrait: {
     open: boolean
     setup: PortraitRetouchState | null
-    strokes: PortraitBrushStroke[]
-    /** 当前选中的人脸（含关键点）；无脸时编辑器退化为手动 5 点模式 */
-    face: PortraitFaceAnalysis | null
+    /** 手动标注区域（发丝级没法自动定位的局部诉求） */
+    regions: PortraitManualRegion[]
     /** 编辑器内 AI 处理产出的版本栈 */
     layers: PortraitAiLayer[]
     /** 当前底图版本 id（'' = 上游原图） */
     baseLayerId: string
     sourceUrl: string
+    /** 上游原图 URL：只给「对比原图」按住对比用，与所选的底图版本无关 */
+    upstreamUrl: string
     sourceLoading: boolean
     generateModel: string
     generateProviderInstanceId: string
+    /** 局部回贴开关：'local'（默认，只改对应部位）| 'global'（整图生效） */
+    scopeMode: 'local' | 'global'
     /** AI 处理进行中（编辑器据此禁用按钮并显示进度） */
     aiRunning: boolean
     /** 最近一次 AI 处理的失败原因（成功时清空） */
     aiError: string
+    /**
+     * 「保存并出图」进行中：编辑器**不关窗**，就地显示进度；
+     * 跑完左边底图换成这次的产物。
+     */
+    runRunning: boolean
+    /** 最近一次「保存并出图」的失败原因（成功时清空） */
+    runError: string
   }
   emotion: {
     open: boolean
@@ -257,6 +268,10 @@ export type GraphEditorDialogsApi = {
   closePortrait: () => void
   previewPortrait: (payload: unknown) => void
   savePortrait: (payload: unknown) => void
+  /** 保存参数后关闭编辑器并运行该节点（按当前提示词调一次图片模型） */
+  runPortrait: (payload: unknown) => void
+  /** 切换人像底图版本（AI 版本栈）；`''` = 上游原图 */
+  selectPortraitVersion: (layerId: string) => void
   /** dive 面包屑回退前提交人像精修的实时预览编辑，补充撤销命令 */
   flushPortrait: () => void
   /**

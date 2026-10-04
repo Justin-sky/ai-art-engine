@@ -32,6 +32,12 @@ export interface PortraitFaceAnalysis {
   schema: PortraitFaceSchema
   /** 归一化 0..1（相对原图宽高）的 68 点 */
   landmarks: Array<[number, number]>
+  /**
+   * 468 点派生的稠密区域蒙版（归一化 0..1）。
+   * 只在 `schema: 'canonical68'`（真检出 FaceMesh）时才有；缺项表示该区域没通过几何自检，
+   * 调用方回落到 `portraitRegionPolygon` 的 68 点多边形。
+   */
+  regions?: PortraitFaceRegions
   /** 归一化人脸框 */
   box: PortraitFaceBox
   /** 检出置信度 0..1（手动模式恒为 1） */
@@ -50,7 +56,7 @@ export interface PortraitFacesPayload {
   at: string
 }
 
-export const PORTRAIT_FACES_VERSION = 1
+export const PORTRAIT_FACES_VERSION = 2
 
 /**
  * 手动锚点的指纹哨兵：用户在哪张图上拖的点只有他自己知道，
@@ -334,6 +340,7 @@ export function portraitFaceArea(face: PortraitFaceAnalysis): number {
 
 export type PortraitFaceRegion =
   | 'faceOval'
+  | 'faceSkin'
   | 'forehead'
   | 'leftEye'
   | 'rightEye'
@@ -347,6 +354,12 @@ export type PortraitFaceRegion =
   | 'rightCheek'
   | 'jaw'
 
+/**
+ * 稠密区域多边形集合（468 点派生）：缺项 = 该区域没通过几何自检，
+ * 调用方一律回落到 `portraitRegionPolygon` 的 68 点多边形。
+ */
+export type PortraitFaceRegions = Partial<Record<PortraitFaceRegion, Array<[number, number]>>>
+
 const REGION_INDICES: Partial<Record<PortraitFaceRegion, readonly number[]>> = {
   faceOval: Array.from({ length: 17 }, (_, i) => i),
   leftEye: [36, 37, 38, 39, 40, 41],
@@ -357,6 +370,53 @@ const REGION_INDICES: Partial<Record<PortraitFaceRegion, readonly number[]>> = {
   outerLip: [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59],
   innerLip: [60, 61, 62, 63, 64, 65, 66, 67],
   jaw: [4, 5, 6, 7, 8, 9, 10, 11, 12]
+}
+
+/** 靠几何构造的派生区域（没有 68 点索引表），与 `portraitRegionPolygon` 的 switch 分支一一对应 */
+const DERIVED_REGIONS: readonly PortraitFaceRegion[] = [
+  'faceSkin',
+  'forehead',
+  'teeth',
+  'leftCheek',
+  'rightCheek'
+]
+
+/**
+ * 全部区域的**单一事实来源**。
+ *
+ * 管线的蒙版清单（`pipeline.ts`）与编辑器调试叠加清单（`PortraitEditorDialog.vue`）
+ * 都从这里派生，加区域只要改这一处 —— 以前两处各有一份手写列表，
+ * 漏改一处的表现是「管线算了但看不见」或「看得见但没算」，都很难发现。
+ *
+ * 组成 = `REGION_INDICES` 的直接索引区域 + 上面的派生区域；
+ * 顺序即调试叠加层的描边顺序（`REGION_INDICES` 的键按字面量插入序，稳定）。
+ */
+export const PORTRAIT_ALL_REGIONS: readonly PortraitFaceRegion[] = [
+  ...(Object.keys(REGION_INDICES) as PortraitFaceRegion[]),
+  ...DERIVED_REGIONS
+]
+
+/**
+ * 额头矩形口径：底边 = 眉高线（`portraitFaceMetrics.browY`），左右 = 太阳穴内收
+ * （耳侧轮廓点向中轴收 10%），顶边 = 由「眉线 → 下巴」的纵向距离外推的发际线。
+ *
+ * **单一事实来源**：`forehead` 与 `faceSkin` 的上沿共用这一份，避免两处口径漂移。
+ */
+function foreheadBounds(
+  landmarks: Array<[number, number]>,
+  m: PortraitFaceMetrics
+): { left: number; right: number; top: number; browY: number } {
+  const chinY = landmarks[8][1]
+  return {
+    left: landmarks[0][0] * 0.9 + m.center[0] * 0.1,
+    right: landmarks[16][0] * 0.9 + m.center[0] * 0.1,
+    // 旧口径 `min(jaw0.y, jaw16.y) − jawHeight × 0.28` 在 `canonicalFaceTemplate()` 上
+    // 实测 top = 0.4649，比 browY = 0.395 还**低**（矩形高度为负、朝下翻过去），
+    // 拿到的是眉骨 / 上睑那一条，根本不是额头。改成按「眉线 → 下巴」等比外推：
+    // 模板上 top = 0.0953、高 0.2998、面积 0.1599，与 `faceOval` 多边形面积 0.1652 同量级。
+    top: m.browY - (chinY - m.browY) * 0.55,
+    browY: m.browY
+  }
 }
 
 /** 区域多边形（归一化坐标）；派生区域用几何构造 */
@@ -377,15 +437,23 @@ export function portraitRegionPolygon(
       return inner.map((p) => [cx + (p[0] - cx) * 0.85, cy + (p[1] - cy) * 0.8] as [number, number])
     }
     case 'forehead': {
-      const top = Math.min(landmarks[0][1], landmarks[16][1]) - m.height * 0.28
-      const left = landmarks[0][0] * 0.9 + m.center[0] * 0.1
-      const right = landmarks[16][0] * 0.9 + m.center[0] * 0.1
+      const { left, right, top, browY } = foreheadBounds(landmarks, m)
       return [
-        [left, m.browY],
+        [left, browY],
         [left, top],
         [right, top],
-        [right, m.browY]
+        [right, browY]
       ]
+    }
+    case 'faceSkin': {
+      // 整张脸：下颌 0..16（左耳侧 → 下巴 → 右耳侧）+ 右太阳穴 → 顶边 → 左太阳穴 → 回到 jaw0。
+      // 上沿的 x 与额头矩形同口径（太阳穴内收）、顶边同高，因此这个多边形
+      // 是「下半脸 ∪ 额头 ∪ 两者之间那条原本没人管的带」的**简单多边形**外包络。
+      const { left, right, top, browY } = foreheadBounds(landmarks, m)
+      const ring: Array<[number, number]> = []
+      for (let i = 0; i <= 16; i++) ring.push([landmarks[i][0], landmarks[i][1]])
+      ring.push([right, browY], [right, top], [left, top], [left, browY])
+      return ring
     }
     case 'leftCheek': {
       return [
@@ -416,6 +484,8 @@ export function portraitRegionPolygon(
 export function portraitRegionFeather(region: PortraitFaceRegion): number {
   switch (region) {
     case 'faceOval':
+    // `faceSkin` 与 `faceOval` 同档：都是脸缘级别的软过渡，硬边会在下巴/太阳穴留下色块
+    case 'faceSkin':
       return 0.18
     case 'forehead':
     case 'jaw':

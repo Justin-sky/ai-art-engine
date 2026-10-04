@@ -13,14 +13,17 @@ import {
   YOLO_DEFAULT_IOU,
   YOLO_INPUT_SIZE,
   type YoloDetectResult,
+  type YoloFaceResult,
   type YoloPoseResult,
   type YoloSegmentResult,
   type YoloTaskKind
 } from '@shared/yolo'
 import { decodeImage } from './imageDecoder'
+import { disposeFaceSessions, inferFaces } from './faceInfer'
 import { rgbaToLetterboxTensor } from './preprocess'
 import { composeMask, parseSegOutput, parseYoloOutput, type Candidate } from './postprocess'
 import type {
+  YoloWorkerFaceParams,
   YoloWorkerInferParams,
   YoloWorkerRequest,
   YoloWorkerResponse,
@@ -54,21 +57,39 @@ interface CachedSession {
   session: import('onnxruntime-node').InferenceSession
 }
 
-let cachedSession: CachedSession | null = null
+/**
+ * 会话缓存：按「路径 + 任务类型」缓存。
+ *
+ * 人脸的**两个**模型不走这里（`faceInfer` 自带按路径的会话缓存），这里只服务
+ * `infer` 的单模型请求。按 kind 分开缓存的价值：一次 Cook 里 detect → segment → pose
+ * 交替跑时不必反复 create；同时**同一个 kind 只保留最新一份** —— 切换 s/m/l/x 档位时
+ * 旧会话立刻失去引用，内存上界与原来的单槽实现一致（最多每 kind 一份）。
+ */
+const sessionCache = new Map<string, CachedSession>()
+/** 最近一次创建/命中的会话，供 status 展示 */
+let lastSession: CachedSession | null = null
 
 async function getSession(
   mod: OrtModule,
   modelPath: string,
   kind: YoloTaskKind
 ): Promise<import('onnxruntime-node').InferenceSession> {
-  if (cachedSession && cachedSession.path === modelPath && cachedSession.kind === kind) {
-    return cachedSession.session
+  const key = `${kind}\u0000${modelPath}`
+  const cached = sessionCache.get(key)
+  if (cached) {
+    lastSession = cached
+    return cached.session
   }
   const session = await mod.InferenceSession.create(modelPath, {
     executionProviders: ['cpu'],
     graphOptimizationLevel: 'all'
   })
-  cachedSession = { path: modelPath, kind, session }
+  const entry: CachedSession = { path: modelPath, kind, session }
+  sessionCache.set(key, entry)
+  for (const [otherKey, other] of [...sessionCache]) {
+    if (otherKey !== key && other.kind === kind) sessionCache.delete(otherKey)
+  }
+  lastSession = entry
   return session
 }
 
@@ -203,6 +224,11 @@ function toBox(
   }
 }
 
+/** 人脸关键点（两段式）：数学与张量装配全在 ./faceInfer，这里只做出口收敛 */
+async function runFace(params: YoloWorkerFaceParams): Promise<YoloFaceResult> {
+  return inferFaces(loadOrt(), params)
+}
+
 function currentStatus(): YoloWorkerStatus {
   if (!ort) {
     // 主动探测 onnxruntime，使 status 能如实反映就绪状态（而非等首次推理）
@@ -216,8 +242,8 @@ function currentStatus(): YoloWorkerStatus {
     ready: !!ort,
     ortVersion: ort?.env?.versions?.node,
     backend: 'cpu',
-    loadedSession: cachedSession
-      ? { modelId: basename(cachedSession.path), kind: cachedSession.kind }
+    loadedSession: lastSession
+      ? { modelId: basename(lastSession.path), kind: lastSession.kind }
       : undefined,
     error: ort ? undefined : (ortLoadError ?? 'onnxruntime-node not loaded yet')
   }
@@ -235,6 +261,9 @@ async function handleRequest(req: YoloWorkerRequest): Promise<void> {
         break
       case 'infer':
         result = await runInfer(req.params as YoloWorkerInferParams)
+        break
+      case 'face':
+        result = await runFace(req.params as YoloWorkerFaceParams)
         break
       default:
         throw new Error(
@@ -260,4 +289,16 @@ process.parentPort?.on('message', (messageEvent: { data: unknown }) => {
     return
   }
   void handleRequest(req)
+})
+
+/**
+ * 退出前回收：
+ * - 通用 YOLO 会话随进程结束自然释放（缓存表只存引用，无效化即可）；
+ * - 人脸两段式会话由 faceInfer 内部持有，显式 dispose 与既有回收口径一致
+ *   （`disposeFaceSessions` 是 faceInfer 唯一的释放入口）。
+ */
+process.on('exit', () => {
+  sessionCache.clear()
+  lastSession = null
+  disposeFaceSessions()
 })

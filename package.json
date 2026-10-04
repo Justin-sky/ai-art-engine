@@ -30,6 +30,7 @@
     "precommit": "npx prettier --write . && npm run typecheck && npm test",
     "bundle:dsh": "node scripts/bundle-dsh.mjs",
     "fetch:yolo-models": "node scripts/fetch-yolo-models.mjs",
+    "sync:face-models": "node scripts/sync-face-models.mjs",
     "check:pack": "node scripts/check-pack-resources.mjs",
     "lock:update": "npm install --package-lock-only --no-audit --no-fund",
     "pack": "npm run build && npm run bundle:dsh && npm run fetch:yolo-models && npm run check:pack && electron-builder --dir",

@@ -6,7 +6,7 @@
 
 import type { YoloInferenceInput, YoloStatus, YoloTaskKind } from '@shared/yolo'
 
-export type YoloWorkerMethod = 'ping' | 'status' | 'infer'
+export type YoloWorkerMethod = 'ping' | 'status' | 'infer' | 'face'
 
 /** infer 的参数：模型路径由 service 解析为绝对路径后下发 */
 export interface YoloWorkerInferParams extends YoloInferenceInput {
@@ -15,6 +15,12 @@ export interface YoloWorkerInferParams extends YoloInferenceInput {
   modelPath: string
   /** 模型名（错误信息用） */
   modelId: string
+}
+
+/** face 的参数：两段式人脸管线要两个模型（检测器 + FaceMesh） */
+export interface YoloWorkerFaceParams extends YoloInferenceInput {
+  detectorPath: string
+  landmarkPath: string
 }
 
 export interface YoloWorkerRequest {

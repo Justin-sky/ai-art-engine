@@ -17,3 +17,7 @@ oss-website.local.json
 *.stackdump
 # 随包内置的 YOLO 模型（约 33MB），构建前用 npm run fetch:yolo-models 拉取
 resources/yolo-models/*.onnx
+# 随包内置的人脸两段式模型（face-detect / face-landmark）：来自另一套上游，单独目录便于替换。
+# 构建前由 npm run fetch:yolo-models 从本仓 Release 拉取（或手动把两个 .onnx 放进来），
+# 随安装包分发、首次启动同步到模型目录；不进 git。
+resources/face-models/*.onnx

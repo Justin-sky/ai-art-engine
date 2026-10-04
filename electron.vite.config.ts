@@ -28,6 +28,24 @@ function skipEsbuildTranspile(): Plugin {
   }
 }
 
+/**
+ * 忽略代码编辑器「原子写」留下的临时目录。
+ *
+ * 症状：`npm run dev` 会在保存某些文件后整个崩掉，日志是
+ *   Error: EBUSY: resource busy or locked, watch '…\.<file>.ts.<pid>.<uuid>.tmpdir\<file>.ts.tmp'
+ * 起因：写入方（实测 Cursor / VS Code 一类）先写 `.<name>.ts.<pid>.<uuid>.tmpdir/<name>.ts.tmp`
+ * 再 rename 覆盖目标文件。chokidar 跟到了这个临时文件，而它随即被删除/仍被占用，
+ * 于是 `fs.watch` 抛 EBUSY，Vite 的 FSWatcher 把它当致命错误直接结束进程 —— 与源码无关。
+ *
+ * 这些临时目录永远不会是需要参与构建的源码，直接不进监听即可。
+ */
+const WATCH_IGNORE = ['**/.*.tmpdir/**', '**/*.tmpdir/**', '**/.*.tmp']
+
+/** 三个构建都监听同一棵源码树，统一应用同一份忽略规则 */
+function watchIgnore() {
+  return { server: { watch: { ignored: WATCH_IGNORE } } }
+}
+
 /** 沙盒 iframe 注入用：绕过 three package exports，提供 module + core 源码（r163+ 拆包） */
 function threeModuleRawPlugin(): Plugin {
   const virtualModuleId = 'virtual:three-module-source'
@@ -83,6 +101,7 @@ export default defineConfig({
     // （dsh 运行时自带一份），外置时打包版会在 asar 内 require 不到 → 启动即
     // "Cannot find module 'chokidar'"，主进程弹错误框、窗口永不出现（CI 冒烟只报「未就绪」）。
     // 它是纯 ESM（type: module）、无顶层 await，直接打进 bundle 最稳，与 asar 规则解耦。
+    ...watchIgnore(),
     plugins: [
       externalizeDepsPlugin({ exclude: ['chokidar'] }),
       aiartRunnerTemplatePlugin(),
@@ -112,6 +131,7 @@ export default defineConfig({
     }
   },
   preload: {
+    ...watchIgnore(),
     plugins: [externalizeDepsPlugin(), skipEsbuildTranspile()],
     resolve: {
       alias: {
@@ -120,6 +140,7 @@ export default defineConfig({
     }
   },
   renderer: {
+    ...watchIgnore(),
     resolve: {
       alias: {
         '@renderer': resolve('src/renderer/src'),

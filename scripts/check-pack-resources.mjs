@@ -32,10 +32,31 @@ const REQUIRED = [
     /** 对应 electron-builder.yml 的 `- from: resources/yolo-models` */
     dir: join(root, 'resources', 'yolo-models'),
     label: '资源/yolo-models（内置 YOLO 模型）',
-    /** 至少要有这些文件，且每个不小于 minBytes（半截文件也算未就绪） */
-    minBytes: 1024 * 1024,
-    files: ['yolo11n.onnx', 'yolo11n-seg.onnx', 'yolo11n-pose.onnx'],
+    files: [
+      { name: 'yolo11n.onnx', minBytes: 1024 * 1024 },
+      { name: 'yolo11n-seg.onnx', minBytes: 1024 * 1024 },
+      { name: 'yolo11n-pose.onnx', minBytes: 1024 * 1024 }
+    ],
     howToFix: 'npm run fetch:yolo-models'
+  },
+  {
+    /**
+     * 对应 electron-builder.yml 的 `- from: resources/face-models`。
+     *
+     * 逐文件给下限而不是统一 1MB：人脸检测器只有 1MB 量级，统一门槛会把正常模型误判成
+     * 「下载未完成」；这两个文件缺失时人像编辑的五官 / 妆容 / 证件照裁切会静默降级，
+     * 所以打包前必须硬失败。
+     */
+    dir: join(root, 'resources', 'face-models'),
+    label: '资源/face-models（内置人脸两段式模型）',
+    files: [
+      { name: 'face-detect.onnx', minBytes: 256 * 1024 },
+      { name: 'face-landmark.onnx', minBytes: 256 * 1024 }
+    ],
+    howToFix:
+      'npm run fetch:yolo-models（人脸两个模型需先把资产传到本仓 Release：' +
+      'npm run sync:face-models -- --dir <含两个 onnx 的目录> --upload；' +
+      '或手动把两个 .onnx 放进 resources/face-models/）'
   }
 ]
 
@@ -48,14 +69,14 @@ for (const entry of REQUIRED) {
   }
   const present = new Set(readdirSync(entry.dir).map((f) => f.toLowerCase()))
   for (const file of entry.files) {
-    if (!present.has(file.toLowerCase())) {
-      problems.push(`${entry.label}：缺少 ${file}`)
+    if (!present.has(file.name.toLowerCase())) {
+      problems.push(`${entry.label}：缺少 ${file.name}`)
       continue
     }
-    const size = statSync(join(entry.dir, file)).size
-    if (size < entry.minBytes) {
+    const size = statSync(join(entry.dir, file.name)).size
+    if (size < file.minBytes) {
       problems.push(
-        `${entry.label}：${file} 只有 ${(size / 1024).toFixed(0)} KB，疑似下载未完成（应 ≥ ${entry.minBytes / 1024 / 1024} MB）`
+        `${entry.label}：${file.name} 只有 ${(size / 1024).toFixed(0)} KB，疑似下载未完成（应 ≥ ${Math.round(file.minBytes / 1024)} KB）`
       )
     }
   }

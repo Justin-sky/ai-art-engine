@@ -53,7 +53,12 @@ import { renderSvgFrames } from '../model/renderSvgFrames'
 import { composeImageIconPackSheet } from '../model/composeImageIconPackSheet'
 import { composeImageLayerStack } from '../model/composeImageLayerStack'
 import { composeComicPageImage } from '../../comic/composeComicPageImage'
-import { bakePortraitRetouch, detectPortraitFaces } from '../model/portraitBake'
+import {
+  composePortraitIdPhoto,
+  composePortraitScopedRetouch,
+  detectPortraitFaces,
+  inspectImageSize
+} from '../model/portraitCapabilities'
 import { inspectModelSkeleton } from '../model/inspectModelSkeleton'
 import { runBlenderDshJob } from '../model/runBlenderDshJob'
 import { buildGamePlayProjectForNode } from '../model/runGamePlayBuild'
@@ -1265,8 +1270,10 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         composeImageIconPackSheet,
         composeImageLayerStack,
         composeComicPageImage,
-        bakePortraitRetouch,
+        composePortraitIdPhoto,
+        composePortraitScopedRetouch,
         detectPortraitFaces,
+        inspectImageSize,
         inspectModelSkeleton,
         runBlenderDshJob: (input) => runBlenderDshJob({ ...input, logRunId: run.runId }),
         buildGamePlayProject: buildGamePlayProjectForNode,
