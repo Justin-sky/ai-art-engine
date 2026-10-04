@@ -138,20 +138,28 @@ Main      返回 YoloDetectResult 给 Renderer
 - **真深度估计**：Depth Anything v2 ONNX 可复用同一 worker 通道（新增 `depth` 方法）。
 - **视频分镜 / 打标 / 动捕**：基于 `detect` / `pose` 的上层管线（见 `PLAN_SPINE_YOLO.md` 5.4）。
 - **模型下载器**：`yolo:install-model` 从 CDN 拉取模型（预留，本期未做）。
-- **人脸关键点（`face` 任务类型）**：见下节，`image.portrait` 已按可插拔方式预留。
+- **人脸关键点（`face` 任务类型）**：见下节，`image.portrait` 已按可插拔方式接入。
 
 ## 11. 人像处理节点（`image.portrait`）用到的本地视觉
 
-`image.portrait` 是纯本地烘焙节点（不调图片模型），它把本地视觉能力当作**可选依赖**：
+`image.portrait` 的像素活**全部交给图片模型**（节点只有一条执行路径：参数 → 提示词 →
+`ctx.generateImage`），本地视觉能力在这个节点里只承担两件事（完整说明见
+[PORTRAIT.md](./PORTRAIT.md)）：
 
-| 能力              | 现状                   | 用途                                                     | 缺失时的降级                                                                    |
-| ----------------- | ---------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| `segment` 主体    | 已内置可跑             | 背景虚化 / 换底色 / 证件照换底 / 边缘去杂边              | 背景与证件照换底整组跳过（不动背景，不猜蒙版）                                  |
-| `pose` 姿态       | 已内置可跑             | 身形（瘦身 / 收腰 / 提臀 / 瘦手臂 / 美肩 / 美颈 / 长腿） | 身形整组跳过                                                                    |
-| `face` 人脸关键点 | **随包内置**，开箱可用 | 五官微调 / 液化定点 / 妆容 / 牙齿 / 证件照头肩裁切       | 编辑器提供「手动人脸锚点」（标 5 点拟合 68 点），五官与妆容功能不残，仅精度下降 |
+1. **提示词门禁**：拿不到依赖的组整组不进提示词（宁可少修，不可改错）；
+2. **局部回贴的蒙版**：模型接口没有蒙版通道，出图后按「脸 / 人物 / 手动框」蒙版把结果贴回原图，
+   只改请求的部位。
 
-`face` 两段式（BlazeFace short-range 检测器 + MediaPipe FaceMesh 468 点）：
-模型文件名即模型 id（`face-detect.onnx` / `face-landmark.onnx`），放进模型目录即被识别。
+| 能力              | 现状                   | 用途                                                | 缺失时的降级                                                                                                    |
+| ----------------- | ---------------------- | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `face` 人脸关键点 | **随包内置**，开箱可用 | 7 个面部类组的提示词门禁；局部回贴的脸 + 颈蒙版几何 | 这 7 组（修复 / 磨皮 / 肤色 / 五官 / 眼睛 / 妆容 / 光影）不进提示词；脸蒙版缺一块（只画了手动区域框时仍可局部） |
+| `mask` 实例分割   | 随包内置               | 「背景」组的提示词门禁；身形类请求的人物蒙版        | 背景组置灰、不进提示词；人物蒙版缺一块（只有脸 / 手动框时继续，全缺则整图）                                     |
+| `pose` 姿态       | 随包内置               | 「身形」组的提示词门禁                              | 身形组置灰、不进提示词                                                                                          |
+
+`face` 两段式（BlazeFace short-range 检测器 + MediaPipe FaceMesh 468 点），
+渲染层把 468 点映射成 canonical-68 后归一化；检测失败一律降级为「没有人脸」，
+绝不让整张图失败。模型文件名即模型 id（`face-detect.onnx` / `face-landmark.onnx`），
+放进模型目录即被识别。
 
 **托管与分发方式**：这两个模型来自另一套上游，上游没有可长期固定的直链，因此由
 **本仓 GitHub Release**（tag 固定为 `face-models-v1`）分发，地址写在 `@shared/yoloCatalog`
@@ -214,12 +222,16 @@ node scripts/sync-face-models.mjs --dir <目录> --upload              # 用 gh 
 **验证入口**：`scripts/convert-face-models.py --verify-only <dir>` 只做形状自检；数值验收必须
 跑真实人脸照并与 MediaPipe 参考值对照（上面的基准值可直接复用）。
 
-接线口径（渲染层 `portraitQualityPreview.ts` 与 `features/graph/execute/portrait.ts`）：
+接线口径（现状：像素活已全部交给图片模型，本地视觉只做门禁与蒙版）：
 
-- 主体蒙版经 `yoloSegment({ softMask: true })` + `buildCutoutAlpha`（`shared/yoloCutout.ts`）还原到工作分辨率；
-- 姿态关键点经 `yoloPose` 取第一具骨架，按结果尺寸归一化（与分辨率无关）；
-- 两者都包在 `tryLoad` 里：模型缺失 / 推理失败一律退化为 `null`，**不让整次烘焙失败**；
-- 是否需要它们由参数决定（`needsSubjectMask` / `needsPose`）：只开磨皮调色时不跑任何模型。
+- **人脸关键点**是唯一仍在生产链路里的本地视觉：`portraitCapabilities.detectPortraitFaces`
+  （见下节）。执行器用它做两件事 —— 依赖人脸的组能否进提示词、局部回贴的脸 + 颈蒙版几何；
+- **实例分割**有两条消费路径：智能构图 / 抠图，以及人像处理局部回贴的**人物蒙版**
+  （`composePortraitScopedRetouch` 取面积最大的 `person`，`buildCutoutAlpha` 做 letterbox 反算 + 羽化）；
+- **姿态**当前只作为「身形」组的可用性门禁（`PORTRAIT_TOOL_GROUPS` 的 `needs: ['pose']`），
+  生产链路里没有第二个消费点 —— 身形同样由图片模型按提示词完成；
+- 所有本地视觉调用都包在 try/catch 里：模型缺失 / 推理失败一律退化为「没有这项能力」，
+  **不让整次出图失败**（依赖它的组整组不进提示词）。
 
 ### `face` 任务类型的实际接线（已实现）
 
@@ -228,18 +240,22 @@ node scripts/sync-face-models.mjs --dir <目录> --upload              # 用 gh 
 3. `src/main/yolo/{yoloWorker,yoloService}.ts`：worker 分发 `face` 并在退出时 `disposeFaceSessions()`；`kindOfModelId` 认得出人脸文件，`resolveFaceModelPath` 解析两段式路径；对外通道 `yolo:face`；
 4. `src/shared/ipc.ts` + `src/preload/index.ts` + `src/main/ipc.ts` + `src/renderer/src/features/yolo/api.ts`：`yoloFace` 一路到渲染层；
 5. `src/renderer/src/components/settings/YoloModelsPanel.vue` + 两套 locale：加「人脸关键点」档位（**只给放置引导，不编造下载源**）；
-6. `src/renderer/src/features/graph/model/portraitBake.ts` 的 `detectPortraitFaces` 调 `yoloFace`，把结果转成 `PortraitFaceAnalysis`（`schema: 'canonical68'`，landmarks 归一化 0..1，box 由 `portraitFaceBoxFromLandmarks` 从关键点反推），按面积降序，失败 / 模型缺失返回 `[]`；
+6. `src/renderer/src/features/graph/model/portraitCapabilities.ts` 的 `detectPortraitFaces` 调 `yoloFace`，把结果转成 `PortraitFaceAnalysis`（`schema: 'canonical68'`，landmarks 归一化 0..1，box 由 `portraitFaceBoxFromLandmarks` 从关键点反推），按面积降序，失败 / 模型缺失返回 `[]`；
 7. `tests/portraitFaceWiring.test.ts`：源码文本断言锁住上面这条链，防止被静默删掉。
 
-### 区域蒙版：68 点多边形 → 468 点稠密环
+### 区域蒙版（468 点稠密环）：保留，当前无消费方
 
-`PortraitFaceAnalysis.regions`（可选）现在会带一份 **468 点语义稠密环**派生的区域多边形，唇线 / 眼 / 眉 / 脸缘 / 鼻因此贴合真实轮廓（妆容、牙齿、眼睛、磨皮都跟着变准）：
+> v1（本地像素流水线）用它把妆容 / 牙齿 / 磨皮限制在语义区域里。v2 把像素活交给图片模型后，
+> 这条链路暂时没有消费方（只有 `tests/portraitFace.test.ts` 在测），**保留给后续「精细蒙版」**：
+> 例如 provider 支持 inpainting 蒙版通道后，可以按眼 / 唇 / 牙 / 脸缘分别罩。下面保留其设计口径。
 
-1. 来源：`src/shared/faceMesh.ts` 新增的 MediaPipe 规范连接集常量（`FACE_OVAL` / `FACE_LIPS_OUTER` / `FACE_LIPS_INNER` / `FACE_EYE_R|L` / `FACE_BROW_R|L` / `FACE_NOSE`）。这些常量**只保证「是哪些点」**，索引顺序不可靠，使用处一律按绕质心的极角重排成有序闭合环（`src/shared/graph/portraitFaceRegions.ts` 的 `orderRing` / `orderRingIndices`），脸缘再用 `splitRingAt` 按 127 → 152 → 365 切成下半脸与额头两段弧；
-2. 产出：`faceOval`（下半脸，保持原语义，**不含额头**）/ `faceSkin`（**整圈**脸缘 36 点，只服务肤色蒙版）/ `forehead`（脸缘上半弧经 10，与 68 点眉高线闭合）/ 左右眼 / 左右眉 / `nose`（`FACE_NOSE ∪ {19, 94}`）/ `outerLip` / `innerLip` / `teeth`（内唇环向质心收缩）。区域清单只在 `portraitFace.ts` 的 `PORTRAIT_ALL_REGIONS` 里写一份，管线蒙版清单与编辑器调试叠加清单都从它派生；
-3. **几何自检**：点数 ≥ 3、面积 > 0、且与同语义 68 点多边形面积比在 `[0.3, 4]`（`forehead` 的 68 点参照**有意**取 `faceOval` 多边形而非同区域矩形）。不合格就**不产出该区域**，下游 `portraitRegionPolygon` 照常回落 —— 索引表写错时的表现是「少一个区域」，而不是「静默错蒙版」；
-4. `PORTRAIT_FACES_VERSION` 提到 **2**：老缓存里没有 `regions`，执行器 `readCachedFaces` 除 `sourceHash` 外还校验版本，版本不符立刻重新检测（否则用户得等到换图才升级到稠密蒙版）；
-5. 消费方 `renderPortrait`：区域蒙版优先取 `faces.regions`，并**与关键点一起过同一张变形网格**（瘦脸 / 液化后蒙版不会错位）；肤色蒙版在有稠密区域时用**整圈 `faceSkin`** 减五官（眼 ∪ 眉 ∪ 外唇 ∪ 鼻）的几何差集，拿不到稠密区域（手动 5 点锚点 / 模型缺失 / 自检丢弃）时保持 `buildSkinMask` 的 YCbCr 阈值。用整圈而不是 `faceOval ∪ forehead`：后者漏掉「眉线 → 耳位闭合弦」之间那条带（太阳穴 / 上颊 / 眼周），磨皮会漏一块皮肤；`faceOval` 仍是**下半脸**语义（`faceContour` 修容的轮廓带与去碎发都靠它，不能改成整脸），`forehead` 只给额头纹 / 高光用。
+`PortraitFaceAnalysis.regions`（可选）会带一份 **468 点语义稠密环**派生的区域多边形，唇线 / 眼 / 眉 / 脸缘 / 鼻因此贴合真实轮廓：
+
+1. 来源：`src/shared/faceMesh.ts` 的 MediaPipe 规范连接集常量（`FACE_OVAL` / `FACE_LIPS_OUTER` / `FACE_LIPS_INNER` / `FACE_EYE_R|L` / `FACE_BROW_R|L` / `FACE_NOSE`）。这些常量**只保证「是哪些点」**，索引顺序不可靠，使用处一律按绕质心的极角重排成有序闭合环（`faceMesh.ts` 的环排序工具），脸缘再按 127 → 152 → 365 切成下半脸与额头两段弧；
+2. 产出：`faceOval`（下半脸，保持原语义，**不含额头**）/ `faceSkin`（**整圈**脸缘 36 点）/ `forehead`（脸缘上半弧经 10，与 68 点眉高线闭合）/ 左右眼 / 左右眉 / `nose`（`FACE_NOSE ∪ {19, 94}`）/ `outerLip` / `innerLip` / `teeth`（内唇环向质心收缩）。区域清单只在 `portraitFace.ts` 的 `PORTRAIT_ALL_REGIONS` 里写一份，派生与自检都在 `portraitRegionPolygon` / `portraitRegionFeather`；
+3. **几何自检**：点数 ≥ 3、面积 > 0、且与同语义 68 点多边形面积比在 `[0.3, 4]`。不合格就**不产出该区域**，调用方回落 68 点多边形 —— 索引表写错时的表现是「少一个区域」，而不是「静默错蒙版」；
+4. `PORTRAIT_FACES_VERSION` 为 **2**：老缓存里没有 `regions`，执行器 `readCachedFaces` 除 `sourceHash` 外还校验版本，版本不符立刻重新检测；
+5. 曾经的消费方 `renderPortrait`（v1 流水线的区域蒙版 / 肤色蒙版差集）已随本地内核一起删除。
 
 **仍缺**：模型的下载源（见下节许可闸门）。在此之前用户只能手动放置两个 ONNX。
 

@@ -22,6 +22,8 @@
 | 文档                                                              | 说明                                                                           |
 | ----------------------------------------------------------------- | ------------------------------------------------------------------------------ |
 | [ARCHITECTURE.md](./ARCHITECTURE.md)                              | 进程边界、Editor Kernel、Cordis 运行时、注册表                                 |
+| [PORTRAIT.md](./PORTRAIT.md)                                      | 人像处理节点（`image.portrait`）：参数契约、提示词派生、局部回贴、编辑器与依赖 |
+| [ARCH_YOLO_LOCAL.md](./ARCH_YOLO_LOCAL.md)                        | 本地 YOLO（检测 / 分割 / 姿态）与人脸两段式模型：worker、目录、分发、依赖门禁  |
 | [GRAPH_PLUGINS.md](./GRAPH_PLUGINS.md)                            | 节点类型、Scope、Policy、卡片、Skill、端口连线                                 |
 | [ASSET_MODEL.md](./ASSET_MODEL.md)                                | 工程内资产目录与旁挂 meta                                                      |
 | [ASSET_REF.md](./ASSET_REF.md)                                    | `{ $type: "AssetRef", guid }` 引用                                             |

@@ -3,10 +3,12 @@
 > **状态：已废弃。**
 > `image.portrait` 的内部实现已全部改为**调用图片模型**，不再有本地像素流水线：
 > 参数是分段档位枚举（`src/shared/graph/portraitRetouch.ts`），执行器按参数合成提示词后调
-> `ctx.generateImage`（`src/shared/graph/execute/portrait.ts`），本地只保留人脸关键点检测与
-> 证件照的纯几何裁切 / 拼版（`src/renderer/src/features/graph/model/portraitCapabilities.ts`）。
+> `ctx.generateImage`（`src/shared/graph/execute/portrait.ts`），本地只保留**局部回贴**的蒙版合成
+> （`src/shared/graph/portraitScope.ts` + `portraitCapabilities.composePortraitScopedRetouch`）、
+> 人脸关键点检测与证件照的纯几何裁切 / 拼版。
 > `src/shared/media/portrait/*`（pipeline / kernels / mask / warp）与 `portraitFaceRegions.ts` 已删除。
-> 本文仅作历史决策记录保留，其中的 ONNX 本地能力清单不再对应当前实现。
+> **当前实现见 [PORTRAIT.md](./PORTRAIT.md)**；本文仅作历史决策记录保留，
+> 其中的 ONNX 本地能力清单（区域蒙版、融合、修复、超分、景深…）不再对应当前实现。
 >
 > 原始状态：草案。468 稠密区域实现中；人脸解析 / 抠像 / 景深 / 修复 / 超分待接入。
 > 范围：`image.portrait` 节点的**本地**视觉能力。全部走开源 ONNX + 现有 `onnxruntime-node` 通道，

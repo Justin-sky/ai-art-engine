@@ -1568,20 +1568,51 @@
               outpainting · repaint · erase · cutout · crop · grid split · layer separation
             </li>
             <li>
-              <strong>Portrait retouch</strong> (<code>image.portrait</code>): PixCake-style local retouching.
-              Double-click the node to open a full-screen editor with 17 tool groups: heal (blemish removal / dark
-              circles / nasolabial folds / shine / stray hair / red eye), skin smoothing (with pore retention and
-              evenness), skin tone (whiten / rosy / de-yellow), face reshaping (19 sliders across face, eyes, nose,
-              mouth and brows), liquify (push / bloat / pinch brushes), eyes (catchlight / whitening / pupils),
-              teeth, makeup (8 looks with per-region strength), body (slim / waist / leg length, driven by local
-              pose keypoints), lighting, colour (13 groups plus 12 filters), texture (sharpen / clarity / grain /
-              soft focus / vignette), background (blur / replace / edge decontamination), AI enhance (smart erase /
-              new background / makeup boost through the configured image model, stored back as node versions),
-              ID photo (10 sizes plus sheet layout), presets (12 built-in plus import/export) and export. The editor
-              offers live preview, before/after comparison (hold or split) and undo/redo; running the node bakes
-              locally and saves assets <strong>without calling an image model</strong>, and wiring several images
-              into one node retouches them in one batch with the same settings. Without a face-landmark model you can
-              place 5 manual face anchors and still use every face, makeup and ID-photo tool.
+              <strong>Portrait retouch</strong> (<code>image.portrait</code>): PixCake-style retouching.
+              Double-click the node card to open a dive editor with 14 tool groups along the top rail: heal
+              (blemish / under-eye / wrinkles / shine / red eye / stray hair), skin (smoothing / pore texture /
+              evenness / denoise), tone (whiten / rosy / de-yellow / warmth), face reshaping (slim / jawline /
+              chin / eye size / eye spacing / double eyelid / nose / lips / brows), eyes (catchlight / whitening /
+              pupils), makeup (8 looks with intensity and tone), body (shoulder-neck / waist / leg length),
+              lighting (fill / rim / contour / ratio / light temperature / tone grade), colour (saturation /
+              temperature / tint plus 12 LUTs), texture (sharpen / clarity / grain / soft focus / vignette),
+              region (manual boxes plus a note and the local-scope switch), background (keep / solid / gradient /
+              by description / blur only), ID photo (10 specs, background colour, 5-inch sheet) and export
+              (output size / DPI). Intensities are five-step segmented buttons (<code>off / light / standard /
+              strong / max</code>); makeup looks, LUTs, background handling and ID-photo specs are named options.
+              The editor shows the <strong>exact prompt sent to the model</strong> live, copyable and collapsible.
+            </li>
+            <li>
+              <strong>How portrait retouch runs, and how it stays local:</strong> the parameters compose a prompt
+              and the node <strong>calls the image model you pick</strong> (no model call means no pixel change);
+              ID photos are then cropped to spec and optionally tiled to a 5-inch sheet. Wiring several images into
+              one node retouches them in one batch with the same settings (up to 24) and face landmarks are cached
+              per source-image fingerprint. <strong>"Affect only the matching area" is on by default</strong>: the
+              model renders the whole frame, then the result is feathered back onto the original through the face
+              (with neck) / person / manual-region-box mask, so everything else keeps the exact original pixels —
+              smoothing no longer blurs the clothes and background, and slimming no longer warps the scene.
+              Background swaps, ID photos and colour grading are whole-frame by nature and stay whole-frame
+              (otherwise the mask would crop those global effects); when face landmarks or the segmentation model
+              are missing, that part falls back to the whole frame with a line in the <strong>run log</strong> —
+              never silently. The switch sits at the top of the Region group; turn it off to go back to
+              whole-frame.
+            </li>
+            <li>
+              <strong>Portrait editor:</strong> before/after comparison (<code>⇆</code> hold to see the upstream
+              source; <code>◐</code> split compare with a draggable divider), wheel zoom, view rotation with
+              Shift+wheel or <code>[</code> <code>]</code>, Space / middle-drag panning (double-click empty space
+              or click the zoom percentage to fit, click the angle readout to reset rotation) and undo/redo. In the
+              Region group you draw boxes right on the image (six kinds: blemish / smoothing / brightening /
+              slimming / background / erase); each box becomes a positional phrase such as "a small patch in the
+              upper left" in the prompt. <strong>"Save &amp; generate" no longer closes the window</strong>: the
+              button and the canvas show progress, failures stay in the window, and when it finishes the left image
+              switches to the product so you can compare it with the previous one.
+              <strong>Tool groups with an unmet dependency are greyed out</strong> with an explanation in the
+              tooltip and the parameter panel (7 groups need face landmarks, Background needs the segmentation
+              model, Body needs the pose model). The in-editor AI enhance actions (smart erase / new background /
+              makeup boost / upscale) call the image model directly and store their results as rollback-able node
+              versions; the inspector carries the shared output preview (thumbnails / full screen / save to
+              library / pick a version), and reopening the panel defaults to the node's current output.
             </li>
             <li>
               <strong>Layer separation</strong> (Seedream 5.0 Pro <code>layer_decomposition</code>): split an
