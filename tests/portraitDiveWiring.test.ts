@@ -1,7 +1,12 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { BUILTIN_NODE_TYPES, getNodePorts, listAddableNodeTypes } from '../src/shared/graph'
+import {
+  BUILTIN_NODE_TYPES,
+  getNodePorts,
+  listAddableNodeTypes,
+  PORTRAIT_TOOL_GROUPS
+} from '../src/shared/graph'
 
 /**
  * `image.portrait` 的 dive 接线完整性（源码文本断言）。
@@ -53,6 +58,48 @@ describe('image.portrait dive 接线', () => {
     expect(source).toMatch(/case 'node\.portrait':\s*\n\s*current\.flushPortrait\(\)/)
   })
 
+  /**
+   * 面板可达性：编辑器按 `activeGroup === '<id>'` 渲染各面板，而导轨只渲染 `PORTRAIT_TOOL_GROUPS`
+   * —— **面板 id 必须在导轨列表里**，否则那个面板永远点不开。
+   *
+   * 线上真实故障：v2 重写时把 `aiErase` / `preset` 从导轨列表里删掉，面板分支却还按旧 id 渲染，
+   * 于是「AI 增强」（含版本选择、智能消除等四个动作）与「预设」（12 套预设 + 导入导出）
+   * 整组不可达 —— 直到有人问「开关在哪」才被发现。
+   */
+  it('每个面板 id 都有对应的导轨条目（缺一个就是点不开的面板）', () => {
+    const dialog = read('src/renderer/src/components/PortraitEditorDialog.vue')
+    const panelIds = new Set(
+      [...dialog.matchAll(/activeGroup === '([A-Za-z0-9]+)'/g)].map((match) => match[1]!)
+    )
+    expect(panelIds.size).toBeGreaterThanOrEqual(3)
+    // 显式点名这三个，防止「正则没匹配到」造成假通过（尤其那两个曾被删掉导轨入口的面板）
+    expect([...panelIds]).toEqual(expect.arrayContaining(['region', 'aiErase', 'preset']))
+
+    const railIds = new Set(PORTRAIT_TOOL_GROUPS.map((group) => group.id as string))
+    const unreachable = [...panelIds].filter((id) => !railIds.has(id))
+    expect(unreachable, `这些面板没有导轨入口，永远打不开：${unreachable.join(', ')}`).toEqual([])
+
+    for (const group of PORTRAIT_TOOL_GROUPS) {
+      expect(group.icon, `${group.id} 缺图标`).toBeTruthy()
+    }
+    // 导轨文案走 groups.<labelKey>，缺文案就是空标签。
+    // 注意：i18n 里不止一个 `groups:` 块（图片精修等也有），必须挑「人像工具组」那一个 ——
+    // 用 `idPhoto:` 成员定位，别用第一处匹配（踩过：匹配到别的功能的组文案，报出假失败）。
+    for (const file of ['zh-CN.ts', 'en-US.ts']) {
+      const locale = read(`src/renderer/src/i18n/locales/${file}`)
+      const portraitStart = locale.indexOf('portrait: {')
+      const scoped = portraitStart >= 0 ? locale.slice(portraitStart) : locale
+      const block =
+        [...scoped.matchAll(/groups: \{([\s\S]*?)\n {6}\}/g)]
+          .map((match) => match[1]!)
+          .find((text) => text.includes('idPhoto:')) ?? ''
+      expect(block, `${file} 找不到人像工具组的 groups 文案块`).toBeTruthy()
+      for (const group of PORTRAIT_TOOL_GROUPS) {
+        expect(block, `${file} 的 groups 缺 ${group.labelKey}`).toContain(`${group.labelKey}:`)
+      }
+    }
+  })
+
   it('GraphEditorDialogsApi 有 portrait 状态块与全部方法', () => {
     const source = read('src/renderer/src/features/graph/ui/graphEditorDialogsKey.ts')
     expect(source).toMatch(
@@ -64,10 +111,63 @@ describe('image.portrait dive 接线', () => {
       'savePortrait: (payload: unknown) => void',
       'runPortrait: (payload: unknown) => void',
       'selectPortraitVersion: (layerId: string) => void',
+      'setPortraitChainFromOutput: (value: boolean) => void',
       'flushPortrait: () => void',
       'runPortraitAi: (payload: unknown) => void'
     ]) {
       expect(source, `缺少 ${method}`).toContain(method)
+    }
+  })
+
+  /**
+   * 出图底图来源：默认上游原图，可选「以上次出图结果为底继续精修」。
+   * 这条链路要四处对齐（dialog → dive host → dialogs API → 编辑器写参），漏一处就是"勾了没反应"。
+   */
+  it('「以上次出图结果为底」的开关四处接线完整', () => {
+    const dialog = read('src/renderer/src/components/PortraitEditorDialog.vue')
+    expect(dialog).toContain('chainFromOutput?: boolean')
+    expect(dialog).toContain("'chain-output': [value: boolean]")
+    expect(dialog).toContain("emit('chain-output', (event.target as HTMLInputElement).checked)")
+    expect(dialog).toContain("t('graph.portrait.chainFromOutput')")
+    expect(dialog).toContain("t('graph.portrait.chainFromOutputHint')")
+    // 位置：面板底部（`panel-foot`）里、排在「图片模型」字段**之前** —— 它是整次出图的设置，
+    // 必须在任何工具组下都可见；各工具组的面板分支里不许再出现第二份
+    const foot = /<div class="panel-foot">([\s\S]*?)<\/div>\s*<\/aside>/.exec(dialog)?.[1] ?? ''
+    expect(foot, '找不到面板底部区').toBeTruthy()
+    expect(foot).toContain('chain-toggle')
+    expect(foot.indexOf('chain-toggle')).toBeLessThan(foot.indexOf('ImageGenerateModelField'))
+    const groupBranches = dialog.slice(
+      dialog.indexOf('<template v-if="activeGroup === \'preset\'">'),
+      dialog.indexOf('<div class="panel-foot">')
+    )
+    expect(groupBranches, '工具组面板里不该再有一份底图来源开关').not.toContain('chain-toggle')
+
+    const host = read('src/renderer/src/components/dive/EditorDiveNodeToolHost.vue')
+    expect(host).toContain(':chain-from-output="api.portrait.chainFromOutput"')
+    expect(host).toContain('@chain-output="api.setPortraitChainFromOutput"')
+
+    const key = read('src/renderer/src/features/graph/ui/graphEditorDialogsKey.ts')
+    expect(key).toMatch(/chainFromOutput: boolean/)
+    expect(key).toContain('setPortraitChainFromOutput: (value: boolean) => void')
+
+    const editor = read('src/renderer/src/components/NodeGraphEditor.vue')
+    expect(editor).toContain('setPortraitChainFromOutput,')
+    expect(editor).toMatch(/function setPortraitChainFromOutput\(value: boolean\)/)
+    expect(editor).toContain('portraitChainFromOutput: value')
+    // 开窗时从节点参数读回来
+    expect(editor).toContain(
+      'portrait.chainFromOutput = node.params.portraitChainFromOutput === true'
+    )
+
+    const shared = read('src/shared/graph/execute/portrait.ts')
+    expect(shared).toContain('portraitChainFromOutput')
+    expect(shared).toContain('no usable baked image: using upstream')
+    expect(shared).toContain('base image: last output (chained)')
+
+    for (const file of ['zh-CN.ts', 'en-US.ts']) {
+      const locale = read(`src/renderer/src/i18n/locales/${file}`)
+      expect(locale, `${file} 缺 chainFromOutput`).toContain('chainFromOutput:')
+      expect(locale, `${file} 缺 chainFromOutputHint`).toContain('chainFromOutputHint:')
     }
   })
 
@@ -81,6 +181,7 @@ describe('image.portrait dive 接线', () => {
       'savePortrait,',
       'runPortrait,',
       'selectPortraitVersion,',
+      'setPortraitChainFromOutput,',
       'flushPortrait,',
       'runPortraitAi,'
     ]) {

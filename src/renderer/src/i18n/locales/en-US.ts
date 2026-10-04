@@ -3185,6 +3185,9 @@ export default {
       aiUpscale: 'AI upscale',
       aiHistory: 'Versions',
       aiBaseOriginal: 'Source (upstream)',
+      chainFromOutput: 'Chain from the last output',
+      chainFromOutputHint:
+        'By default every "Save & generate" starts again from the upstream source image, so repeating a run never stacks up. Turn this on to keep working on top of the previous result — repeated passes do compound quality loss, and with several upstream images only the first uses it.',
       aiLogTitle: 'Portrait retouch · AI enhance ({name})',
       aiLogStart: 'AI enhance started: {tool}',
       aiLogDone: 'AI enhance finished: {tool}',
@@ -3212,6 +3215,8 @@ export default {
         erase: 'Erase objects'
       },
       idPhotoOff: 'No spec selected: the model only does regular portrait retouching',
+      backgroundInactiveHint:
+        '"Background handling" is still "Keep original": the background colour / gradient / description you entered is not used. Switch it to Solid / Gradient / By description to replace the background.',
       idPhotoSpecHint:
         'Spec {mm}: the model frames to it, then the node crops to exact pixels. Enabling the sheet also outputs a print-sheet copy',
       groups: {
@@ -3228,6 +3233,7 @@ export default {
         region: 'Regions',
         background: 'Background',
         idPhoto: 'ID photo',
+        aiErase: 'AI enhance',
         preset: 'Presets',
         export: 'Export'
       },
@@ -3426,6 +3432,7 @@ export default {
         bgColorTo: 'Gradient end',
         bgPrompt: 'Background description',
         bgBlur: 'Background blur',
+        bgFlatten: 'Local background flatten (forces the target background outside the subject)',
         idPhotoSpecId: 'Spec',
         idPhotoBg: 'Background',
         idPhotoSheet: 'Print sheet (5-inch paper)',

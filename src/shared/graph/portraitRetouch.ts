@@ -39,7 +39,12 @@ export const PORTRAIT_TIERS: readonly PortraitTier[] = [
 /** 参数依赖：人脸关键点 / 人像分割 / 人体姿态 */
 export type PortraitNeed = 'face' | 'mask' | 'pose'
 
-/** 工具分组 id：与编辑器左侧工具轨一一对应 */
+/**
+ * 工具分组 id：与编辑器左侧工具轨一一对应。
+ *
+ * `aiErase`（AI 增强：智能消除 / 换背景 / 妆容增强 / 超分 + 版本栈）与 `preset`（预设）
+ * 是**非参数面板**：不产出提示词，但必须有导轨条目，否则面板点不开。
+ */
 export type PortraitToolGroupId =
   | 'heal'
   | 'skin'
@@ -54,6 +59,8 @@ export type PortraitToolGroupId =
   | 'region'
   | 'background'
   | 'idPhoto'
+  | 'aiErase'
+  | 'preset'
   | 'export'
 
 export interface PortraitToolGroup {
@@ -79,6 +86,11 @@ export const PORTRAIT_TOOL_GROUPS: readonly PortraitToolGroup[] = [
   { id: 'region', labelKey: 'region', icon: '🎯' },
   { id: 'background', labelKey: 'background', icon: '🏞️', needs: ['mask'] },
   { id: 'idPhoto', labelKey: 'idPhoto', icon: '🪪' },
+  // 两个「非参数」面板：不产出提示词（`buildPortraitPrompt` 的 groupOrder 里没有它们），
+  // 但**必须留在导轨列表里** —— 编辑器按 `activeGroup === 'aiErase' / 'preset'` 渲染这两个面板，
+  // 少了这两个条目就等于面板点不开（v2 重写时踩过：AI 增强与预设整组消失，连带版本选择一起不可达）。
+  { id: 'aiErase', labelKey: 'aiErase', icon: '🪄' },
+  { id: 'preset', labelKey: 'preset', icon: '📚' },
   { id: 'export', labelKey: 'export', icon: '💾' }
 ] as const
 
@@ -231,6 +243,14 @@ export interface PortraitRetouchState {
   idPhotoBg: PortraitIdPhotoBg
   /** 额外产出 5 寸相纸拼版（纯几何，不调模型） */
   idPhotoSheet: boolean
+
+  /**
+   * 本地强制清底：用人物蒙版反相当背景，把纯色 / 渐变背景**钉死**（默认开）。
+   *
+   * 换底属于全局项 → 局部回贴让位 → 出图完全由模型决定，而模型对柔焦 / 低对比的原背景
+   * 容易判定成「内容」而保留（线上实测过一大团残留）。开着它就由本机实例分割兜住。
+   */
+  bgFlatten: boolean
 
   // ── 14 导出 ──────────────────────────────────────────────
   /** 模型输出尺寸偏好 */
@@ -630,6 +650,8 @@ export interface PortraitTierSpec {
   group: PortraitToolGroupId
   /** i18n key suffix under graph.portrait.fields.* */
   labelKey: string
+  /** 面板可见性：缺省恒显。背景组用它挡掉「改了颜色却没换模式」的误判 */
+  visibleWhen?: (state: PortraitRetouchState) => boolean
   tiers: readonly string[]
   /** i18n key suffix under graph.portrait.hints.* —— 一句话说清「往哪改」 */
   hintKey: string
@@ -642,6 +664,8 @@ export interface PortraitEnumSpec {
   key: PortraitEnumKey
   group: PortraitToolGroupId
   labelKey: string
+  /** 面板可见性：缺省恒显 */
+  visibleWhen?: (state: PortraitRetouchState) => boolean
   default: string
   /** i18n key suffix under graph.portrait.options.* */
   options: readonly string[]
@@ -655,6 +679,8 @@ export interface PortraitTextSpec {
   key: PortraitTextKey
   group: PortraitToolGroupId
   labelKey: string
+  /** 面板可见性：缺省恒显 */
+  visibleWhen?: (state: PortraitRetouchState) => boolean
   /** i18n key suffix under graph.portrait.placeholders.* */
   placeholderKey: string
   maxLength: number
@@ -666,6 +692,8 @@ export interface PortraitColorSpec {
   key: PortraitColorKey
   group: PortraitToolGroupId
   labelKey: string
+  /** 面板可见性：缺省恒显 */
+  visibleWhen?: (state: PortraitRetouchState) => boolean
   default: string
   needs?: readonly PortraitNeed[]
 }
@@ -675,6 +703,8 @@ export interface PortraitBoolSpec {
   key: PortraitBooleanKey
   group: PortraitToolGroupId
   labelKey: string
+  /** 面板可见性：缺省恒显 */
+  visibleWhen?: (state: PortraitRetouchState) => boolean
   default: boolean
   needs?: readonly PortraitNeed[]
 }
@@ -684,6 +714,8 @@ export interface PortraitNumberSpec {
   key: PortraitNumberKey
   group: PortraitToolGroupId
   labelKey: string
+  /** 面板可见性：缺省恒显 */
+  visibleWhen?: (state: PortraitRetouchState) => boolean
   default: number
   min: number
   max: number
@@ -711,7 +743,8 @@ function tier(
   hintKey: string,
   needs?: readonly PortraitNeed[],
   tiers: readonly string[] = ALL_TIERS,
-  phrases?: PortraitTierPhrases
+  phrases?: PortraitTierPhrases,
+  visibleWhen?: (state: PortraitRetouchState) => boolean
 ): PortraitTierSpec {
   return {
     kind: 'tier',
@@ -721,7 +754,8 @@ function tier(
     tiers,
     hintKey,
     ...(phrases ? { phrases } : {}),
-    needs
+    needs,
+    ...(visibleWhen ? { visibleWhen } : {})
   }
 }
 
@@ -968,13 +1002,21 @@ export const PORTRAIT_PARAM_SPECS: readonly PortraitParamSpec[] = [
       prompt: '按描述替换背景，人物边缘自然融合'
     }
   },
-  { kind: 'color', key: 'bgColor', group: 'background', labelKey: 'bgColor', default: '#ffffff' },
+  {
+    kind: 'color',
+    key: 'bgColor',
+    group: 'background',
+    labelKey: 'bgColor',
+    default: '#ffffff',
+    visibleWhen: (state) => state.bgMode === 'color' || state.bgMode === 'gradient'
+  },
   {
     kind: 'color',
     key: 'bgColorTo',
     group: 'background',
     labelKey: 'bgColorTo',
-    default: '#dbeafe'
+    default: '#dbeafe',
+    visibleWhen: (state) => state.bgMode === 'gradient'
   },
   {
     kind: 'text',
@@ -982,9 +1024,29 @@ export const PORTRAIT_PARAM_SPECS: readonly PortraitParamSpec[] = [
     group: 'background',
     labelKey: 'bgPrompt',
     placeholderKey: 'bgPrompt',
-    maxLength: 300
+    maxLength: 300,
+    visibleWhen: (state) => state.bgMode === 'prompt'
   },
-  tier('bgBlur', 'background', 'bgBlur', ['mask']),
+  tier(
+    'bgBlur',
+    'background',
+    'bgBlur',
+    ['mask'],
+    undefined,
+    undefined,
+    (state) => state.bgMode === 'blur'
+  ),
+  {
+    kind: 'boolean',
+    key: 'bgFlatten',
+    group: 'background',
+    labelKey: 'bgFlatten',
+    default: true,
+    // 纯色 / 渐变换底，以及选了证件照规格（底色必须准）时才有意义；
+    // 「按描述换背景」的背景是内容，本地合成不出来，所以此时不显示
+    visibleWhen: (state) =>
+      state.bgMode === 'color' || state.bgMode === 'gradient' || state.idPhotoSpecId !== 'none'
+  },
 
   // ── 13 证件照 ──
   {
@@ -1075,6 +1137,41 @@ export function defaultPortraitRetouch(): PortraitRetouchState {
 
 export function portraitSpecsForGroup(group: PortraitToolGroupId): PortraitParamSpec[] {
   return PORTRAIT_PARAM_SPECS.filter((spec) => spec.group === group)
+}
+
+/**
+ * 面板该显示哪些字段：在「本组全部字段」之上按 `visibleWhen` 过滤。
+ *
+ * 为什么需要它（线上误判）：背景组的「背景色 / 渐变终点 / 背景描述 / 背景虚化」原先**恒显**，
+ * 于是「改了背景色但没把『背景处理』从『保留原背景』改成『纯色』」看起来像 bug（其实颜色不参与出图）。
+ * 现在只显示当前做法用得上的字段，配合面板上的提示一起消掉这类误判。
+ */
+export function visiblePortraitSpecs(
+  state: PortraitRetouchState,
+  group: PortraitToolGroupId
+): PortraitParamSpec[] {
+  return portraitSpecsForGroup(group).filter((spec) => !spec.visibleWhen || spec.visibleWhen(state))
+}
+
+/** 该字段在当前参数下是否显示（面板与测试共用同一份判定） */
+export function portraitSpecVisible(spec: PortraitParamSpec, state: PortraitRetouchState): boolean {
+  return !spec.visibleWhen || spec.visibleWhen(state)
+}
+
+/** 取值是否为该字段的默认值（提示「已填但不参与出图」时用） */
+export function portraitSpecIsDefault(
+  spec: PortraitParamSpec,
+  state: PortraitRetouchState
+): boolean {
+  const raw = (state as unknown as Record<string, unknown>)[spec.key]
+  const def = portraitSpecDefault(spec)
+  if (typeof raw !== 'string' || typeof def !== 'string') return raw === def
+  const a = raw.trim()
+  const b = def.trim()
+  // 颜色按大小写无关比较：#FFFFFF 与默认 #ffffff 是同一个颜色，不该被当成「填过」
+  return /^#[0-9a-f]{6}$/i.test(a) && /^#[0-9a-f]{6}$/i.test(b)
+    ? a.toLowerCase() === b.toLowerCase()
+    : a === b
 }
 
 export function portraitTierSpecsForGroup(group: PortraitToolGroupId): PortraitTierSpec[] {
@@ -1389,6 +1486,7 @@ function portraitRetouchFromV1(raw: Record<string, unknown>): PortraitRetouchSta
   assignIfValid(out, 'idPhotoSpecId', raw.idPhotoSpecId)
   assignIfValid(out, 'idPhotoBg', raw.idPhotoBg)
   if (typeof raw.idPhotoSheet === 'boolean') out.idPhotoSheet = raw.idPhotoSheet
+  if (typeof raw.bgFlatten === 'boolean') out.bgFlatten = raw.bgFlatten
   if (typeof raw.makeupSaturation === 'number' && raw.makeupSaturation > 50) {
     assignIfValid(out, 'makeupTone', 'rosy')
   }
@@ -1859,16 +1957,22 @@ function regionClauses(state: PortraitRetouchState): string[] {
 
 function backgroundClauses(state: PortraitRetouchState): string[] {
   const parts: string[] = []
+  // 换底的措辞刻意写满：只说一句「背景替换为纯色」时，参考图驱动的模型很容易选择「保留原背景」
+  // （线上实测：日志里指令在、出图背景没变），所以这里明确「轮廓以外全部替换 + 不得保留原内容」。
   if (state.bgMode === 'color') {
-    parts.push(`背景替换为纯色 ${state.bgColor.toUpperCase()}，人物边缘干净`)
+    parts.push(
+      `背景整体替换为纯色 ${state.bgColor.toUpperCase()}：人物轮廓以外的画面必须全部是该纯色，不得保留原背景的景物、纹理、渐变或投影；人物边缘干净、发丝自然、无光晕` // cjk-ok（提示词数据：发给图片模型的中文指令，非 UI 文案）
+    )
   } else if (state.bgMode === 'gradient') {
     parts.push(
-      `背景替换为 ${state.bgColor.toUpperCase()} 到 ${state.bgColorTo.toUpperCase()} 的柔和渐变`
+      `背景整体替换为 ${state.bgColor.toUpperCase()} 到 ${state.bgColorTo.toUpperCase()} 的柔和渐变：人物轮廓以外的画面必须全部是该渐变，不得保留原背景的景物、纹理或投影；人物边缘干净、无光晕` // cjk-ok（提示词数据）
     )
   } else if (state.bgMode === 'prompt' && state.bgPrompt.trim()) {
-    parts.push(`背景替换为：${state.bgPrompt.trim()}，人物边缘自然融合，保留原人物光影与肤色`)
+    parts.push(
+      `背景整体替换为：${state.bgPrompt.trim()}。人物轮廓以外的画面必须完全替换，不得保留原背景的景物或纹理；保留原人物光影与肤色，人物边缘自然融合` // cjk-ok（提示词数据）
+    )
   } else if (state.bgMode === 'blur') {
-    parts.push('保留原背景内容但整体虚化，虚化程度由背景虚化档位决定')
+    parts.push('保留原背景内容但整体虚化，虚化程度由背景虚化档位决定') // cjk-ok（提示词数据）
   }
   return parts
 }
@@ -1921,7 +2025,9 @@ function groupNegativeClauses(
   }
   if (heavy('grain')) put('texture', ['噪点过重'])
   if (heavy('sharpness') || heavy('clarity')) put('texture', ['锐化过度', '边缘白边'])
-  if (state.bgMode !== 'keep') put('background', ['人物边缘出现光晕', '背景与人物割裂'])
+  if (state.bgMode !== 'keep') {
+    put('background', ['背景残留原景物或纹理', '人物边缘出现光晕', '背景与人物割裂']) // cjk-ok（提示词数据：负面提示词）
+  }
   if (state.idPhotoSpecId !== 'none') {
     put('idPhoto', ['歪头', '表情夸张', '侧脸', '额头或下巴被裁切'])
   }

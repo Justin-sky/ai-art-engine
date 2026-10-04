@@ -25,10 +25,12 @@ import {
   portraitRegionWhere,
   portraitRetouchToNodePatch,
   portraitSpecDefault,
+  portraitSpecIsDefault,
   portraitSpecsForGroup,
   portraitTierPhrase,
   portraitTierSpecsForGroup,
   readPortraitRetouchFromNode,
+  visiblePortraitSpecs,
   type PortraitManualRegion,
   type PortraitNeeds,
   type PortraitParamSpec,
@@ -678,7 +680,10 @@ describe('portraitRetouch 提示词合成', () => {
       needs: NO_NEEDS,
       idPhoto: null
     })
-    expect(color.main).toContain('背景替换为纯色 #438EDB')
+    // 换底的措辞写满：只说「背景替换为纯色」时，参考图驱动的模型容易选择保留原背景
+    expect(color.main).toContain('背景整体替换为纯色 #438EDB')
+    expect(color.main).toContain('人物轮廓以外的画面必须全部是该纯色')
+    expect(color.main).toContain('不得保留原背景的景物')
     expect(color.appliedGroups).toContain('background')
 
     const gradient = buildPortraitPrompt({
@@ -686,7 +691,8 @@ describe('portraitRetouch 提示词合成', () => {
       needs: ALL_NEEDS,
       idPhoto: null
     })
-    expect(gradient.main).toContain('背景替换为 #FFFFFF 到 #DBEAFE 的柔和渐变')
+    expect(gradient.main).toContain('背景整体替换为 #FFFFFF 到 #DBEAFE 的柔和渐变')
+    expect(gradient.main).toContain('人物轮廓以外的画面必须全部是该渐变')
 
     const prompted = buildPortraitPrompt({
       state: { ...defaultPortraitRetouch(), bgMode: 'prompt', bgPrompt: '海边日落' },
@@ -694,6 +700,7 @@ describe('portraitRetouch 提示词合成', () => {
       idPhoto: null
     })
     expect(prompted.main).toContain('海边日落')
+    expect(prompted.main).toContain('人物轮廓以外的画面必须完全替换')
     expect(prompted.appliedGroups).toContain('background')
 
     const blank = buildPortraitPrompt({
@@ -787,7 +794,10 @@ describe('portraitRetouch 负面提示词', () => {
   })
 
   it('背景替换与黑白 LUT 各自追加负面词', () => {
-    expect(negativeOf({ ...defaultPortraitRetouch(), bgMode: 'color' })).toContain('背景与人物割裂')
+    const bg = negativeOf({ ...defaultPortraitRetouch(), bgMode: 'color' })
+    expect(bg).toContain('背景与人物割裂')
+    // 「换了底色但出图背景没变」是线上真实故障形态，负面词里点明「不许残留原背景」
+    expect(bg).toContain('背景残留原景物或纹理')
     expect(negativeOf({ ...defaultPortraitRetouch(), lutId: 'bw' })).toContain('残留彩色')
   })
 })
@@ -822,6 +832,70 @@ describe('portraitRetouch 预设', () => {
     const patch = PORTRAIT_PRESETS.find((preset) => preset.id === 'hongkong')!.patch
     expect(patch.colorTemp).toBe('warm')
     expect(applyPortraitPreset('hongkong').colorTemp).toBe('warm')
+  })
+})
+
+/**
+ * 面板字段可见性（`visibleWhen`）。
+ *
+ * 线上误判：背景组的「背景色 / 渐变终点 / 描述 / 虚化档」原先恒显，用户改了背景色却没把
+ * 「背景处理」从「保留原背景」改掉 —— 颜色根本不参与出图，看起来像 bug。
+ * 现在按做法只显示用得上的字段；面板另有一行提示说明「已填的值当前不生效」。
+ */
+describe('portraitRetouch 面板字段可见性', () => {
+  const visibleKeys = (state: Partial<PortraitRetouchState>): string[] =>
+    visiblePortraitSpecs({ ...defaultPortraitRetouch(), ...state }, 'background').map(
+      (spec) => spec.key
+    )
+
+  it('保留原背景：只显示「背景处理」自己，换底参数全部收起', () => {
+    expect(visibleKeys({ bgMode: 'keep' })).toEqual(['bgMode'])
+  })
+
+  it('纯色显示背景色；渐变显示两个色；按描述显示描述；仅虚化显示档位', () => {
+    // 「本地清底」跟着纯色/渐变一起出现（证件照规格另见下一条）
+    expect(visibleKeys({ bgMode: 'color' })).toEqual(['bgMode', 'bgColor', 'bgFlatten'])
+    expect(visibleKeys({ bgMode: 'gradient' })).toEqual([
+      'bgMode',
+      'bgColor',
+      'bgColorTo',
+      'bgFlatten'
+    ])
+    expect(visibleKeys({ bgMode: 'prompt' })).toEqual(['bgMode', 'bgPrompt'])
+    expect(visibleKeys({ bgMode: 'blur' })).toEqual(['bgMode', 'bgBlur'])
+  })
+
+  it('本地清底默认开；选了证件照规格时也显示（底色必须准）', () => {
+    expect(defaultPortraitRetouch().bgFlatten).toBe(true)
+    // 默认「保留原背景」+ 未选规格 → 清底开关没意义，不显示
+    expect(visibleKeys({})).toEqual(['bgMode'])
+    expect(visibleKeys({ bgMode: 'keep', idPhotoSpecId: 'oneInch' })).toEqual([
+      'bgMode',
+      'bgFlatten'
+    ])
+    // 旧工程没有该字段时按默认（开）处理
+    expect(normalizePortraitRetouch({ v: 2 } as never).bgFlatten).toBe(true)
+    expect(normalizePortraitRetouch({ v: 2, bgFlatten: false } as never).bgFlatten).toBe(false)
+  })
+
+  it('其它组不受影响（可见性只声明在背景组）', () => {
+    expect(visiblePortraitSpecs(defaultPortraitRetouch(), 'skin').length).toBeGreaterThan(0)
+    expect(visiblePortraitSpecs(defaultPortraitRetouch(), 'skin')).toEqual(
+      portraitSpecsForGroup('skin')
+    )
+  })
+
+  it('「已填但不参与出图」判定：值 ≠ 默认值才算填过', () => {
+    const specs = portraitSpecsForGroup('background')
+    const bgColor = specs.find((spec) => spec.key === 'bgColor')!
+    expect(portraitSpecIsDefault(bgColor, defaultPortraitRetouch())).toBe(true)
+    expect(
+      portraitSpecIsDefault(bgColor, { ...defaultPortraitRetouch(), bgColor: '#9d88cc' })
+    ).toBe(false)
+    // 大小写与首尾空白不该算作「填过」
+    expect(
+      portraitSpecIsDefault(bgColor, { ...defaultPortraitRetouch(), bgColor: ' #FFFFFF ' })
+    ).toBe(true)
   })
 
   it('未知预设 id 退化为默认值，不留 presetId', () => {

@@ -7,6 +7,7 @@
  * - `composePortraitIdPhoto`：按规格精确裁切 + 5 寸相纸拼版（纯几何，像素对齐）；
  * - `inspectImageSize`：量源图尺寸，供裁切框换算归一化坐标，并换算画幅与档位；
  * - `fitPortraitToSourceSize`：出图结果精确缩放到原图尺寸（「输出尺寸 = 自动」时）；
+ * - `flattenPortraitBackground`：人物蒙版反相当背景，把纯色/渐变背景强制合成干净（本地保证）；
  * - `composePortraitScopedRetouch`：把模型结果按「脸 / 人物 / 手动框」蒙版回贴，只改对应部位。
  */
 
@@ -344,6 +345,81 @@ export async function composePortraitScopedRetouch(input: {
   outCtx.drawImage(layer, 0, 0)
 
   return { dataUrl: out.toDataURL('image/png'), applied: true, coverRatio, notes }
+}
+
+/**
+ * 本地强制清底：用人物蒙版**反相**当作背景区域，把背景强制合成纯色 / 渐变。
+ *
+ * 为什么需要它（线上实测）：换底属于全局项，局部回贴会主动让位 → 出图完全由模型决定，
+ * 而模型对**柔焦、低对比、边界模糊**的原背景容易判定成「内容」而保留（实测左边一大团粉色残留，
+ * 其余部分已经是白底）。提示词只能提高概率，保证不了；这里用本机实例分割把"人物以外"钉死。
+ *
+ * 做法与局部回贴同一套蒙版机器（`buildPersonMaskCanvas` + 羽化），但合成方向相反：
+ * 先铺满目标背景，再把**人物**按蒙版 alpha 叠回去 —— 蒙版为 0 的地方一律是目标背景，
+ * 蒙版为 1 的地方保留模型给的像素，羽化带内自然过渡（模型做好的发丝边缘因此不被硬切）。
+ *
+ * 只对纯色 / 渐变有意义：「按描述换背景」的背景是**内容**，本地合成不出来。
+ */
+export async function flattenPortraitBackground(input: {
+  dataUrl: string
+  mode: 'color' | 'gradient'
+  color: string
+  colorTo?: string
+  signal?: AbortSignal | null
+}): Promise<{ dataUrl: string; applied: boolean; personRatio: number; notes: string[] }> {
+  const notes: string[] = []
+  const image = await loadImage(input.dataUrl)
+  if (input.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+  const width = Math.max(1, image.width)
+  const height = Math.max(1, image.height)
+
+  // 蒙版分辨率与局部回贴同一口径（长边 ≤ PORTRAIT_MASK_MAX_EDGE，再放大回原图）
+  const maskScale = Math.min(1, PORTRAIT_MASK_MAX_EDGE / Math.max(width, height))
+  const maskWidth = Math.max(1, Math.round(width * maskScale))
+  const maskHeight = Math.max(1, Math.round(height * maskScale))
+  const personMask = await buildPersonMaskCanvas(image, maskWidth, maskHeight, notes)
+  if (!personMask) return { dataUrl: input.dataUrl, applied: false, personRatio: 0, notes }
+  const personRatio = maskCoverRatio(personMask)
+  if (personRatio <= 0) {
+    notes.push('person mask empty')
+    return { dataUrl: input.dataUrl, applied: false, personRatio: 0, notes }
+  }
+
+  const out = document.createElement('canvas')
+  out.width = width
+  out.height = height
+  const ctx = out.getContext('2d')
+  if (!ctx) {
+    notes.push('canvas 2d context unavailable')
+    return { dataUrl: input.dataUrl, applied: false, personRatio, notes }
+  }
+
+  // 1) 先把「背景」铺满：纯色，或自上而下的柔和渐变
+  if (input.mode === 'gradient' && input.colorTo) {
+    const gradient = ctx.createLinearGradient(0, 0, 0, height)
+    gradient.addColorStop(0, input.color)
+    gradient.addColorStop(1, input.colorTo)
+    ctx.fillStyle = gradient
+  } else {
+    ctx.fillStyle = input.color
+  }
+  ctx.fillRect(0, 0, width, height)
+
+  // 2) 再把「人物」按蒙版叠回去：蒙版之外（= 背景）保持上一步的颜色，残留因此被抹掉
+  const personLayer = document.createElement('canvas')
+  personLayer.width = width
+  personLayer.height = height
+  const layerCtx = personLayer.getContext('2d')
+  if (!layerCtx) {
+    notes.push('canvas 2d context unavailable')
+    return { dataUrl: input.dataUrl, applied: false, personRatio, notes }
+  }
+  layerCtx.drawImage(image, 0, 0, width, height)
+  layerCtx.globalCompositeOperation = 'destination-in'
+  layerCtx.drawImage(personMask, 0, 0, width, height)
+  ctx.drawImage(personLayer, 0, 0)
+
+  return { dataUrl: out.toDataURL('image/png'), applied: true, personRatio, notes }
 }
 
 /** 蒙版覆盖率（alpha > 0.5 的像素占比）：用来判断「蒙版是不是空得没意义」 */

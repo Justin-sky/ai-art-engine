@@ -829,6 +829,14 @@ export interface GraphNodeParams {
   portraitLayers?: PortraitAiLayer[]
   /** 人像处理：当前底图版本 id（缺省 = 上游原图） */
   portraitBaseLayerId?: string
+  /**
+   * 「以上次出图结果为底继续精修」（默认关）。
+   *
+   * 默认每次 Cook 都从**上游原图**重来，避免反复叠加导致画质逐轮劣化；打开它则以
+   * `portraitBakedRelativePath`（上一次「保存并出图」的产物）为底图。
+   * 优先级：显式选中的 AI 版本（`portraitBaseLayerId`）> 上次出图 > 上游原图。
+   */
+  portraitChainFromOutput?: boolean
   /** 人像处理：最近一次 Cook 的产物相对路径 */
   portraitBakedRelativePath?: string
   /**

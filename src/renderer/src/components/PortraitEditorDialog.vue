@@ -418,6 +418,10 @@
 
           <!-- 分段档位 / 选项 / 文本 / 数字 -->
           <template v-else>
+            <!-- 「保留原背景」时已填写的换底色/描述不参与出图 —— 这是最常见的误判，明说 -->
+            <p v-if="backgroundValuesInactive" class="spec-warning">
+              {{ t('graph.portrait.backgroundInactiveHint') }}
+            </p>
             <div v-for="spec in groupSpecs" :key="spec.key" class="spec-block">
               <div class="spec-head">
                 <span class="spec-label">{{ t(`graph.portrait.fields.${spec.labelKey}`) }}</span>
@@ -525,8 +529,17 @@
           </section>
         </div>
 
-        <!-- 底部：生图模型 + 风险提示 + 保存并出图（贴住面板底边） -->
+        <!-- 底部：出图底图来源 + 生图模型 + 风险提示 + 保存并出图（贴住面板底边） -->
         <div class="panel-foot">
+          <!--
+            出图底图来源放在这里（而不是某个工具组里）：它是**整次出图**的设置，
+            必须切到任何工具组都看得见 —— 关掉时每次从上游原图重来，打开则以上一版产物为底。
+          -->
+          <label class="chain-toggle">
+            <input type="checkbox" :checked="chainFromOutput" @change="onChainToggle" />
+            <span>{{ t('graph.portrait.chainFromOutput') }}</span>
+          </label>
+          <p class="hint">{{ t('graph.portrait.chainFromOutputHint') }}</p>
           <!-- 出图用哪张图片模型：选中即写回节点 generateModel，与节点参数同源 -->
           <ImageGenerateModelField
             ref="modelFieldEl"
@@ -576,7 +589,9 @@ import {
   normalizePortraitManualRegions,
   normalizePortraitRetouch,
   portraitHighRiskTierCount,
+  portraitSpecIsDefault,
   portraitSpecsForGroup,
+  visiblePortraitSpecs,
   type PortraitAiLayer,
   type PortraitAiTool,
   type PortraitManualRegion,
@@ -613,6 +628,8 @@ const props = withDefaults(
     generateProviderInstanceId?: string
     /** 局部回贴开关：'local' = 只改对应部位（默认），'global' = 整图生效 */
     scopeMode?: 'local' | 'global'
+    /** 以上次「保存并出图」的产物为底继续精修（默认关：每次从上游原图重来，避免叠加劣化） */
+    chainFromOutput?: boolean
     aiRunning?: boolean
     aiError?: string
     /** 「保存并出图」进行中：窗口不关，就地显示进度并把结果换到左边预览 */
@@ -633,6 +650,7 @@ const props = withDefaults(
     generateModel: '',
     generateProviderInstanceId: '',
     scopeMode: 'local',
+    chainFromOutput: false,
     aiRunning: false,
     aiError: '',
     runRunning: false,
@@ -655,6 +673,8 @@ const emit = defineEmits<{
   save: [payload: PortraitEditorPayload]
   /** 切底图版本（AI 版本栈） */
   'ai-version': [layerId: string]
+  /** 以上次出图产物为底继续精修（出图底图来源） */
+  'chain-output': [value: boolean]
   /** 保存并出图：载荷与 save 同一份，宿主落盘后关窗只跑这一个节点 */
   run: [payload: PortraitEditorPayload]
   ai: [
@@ -965,8 +985,23 @@ const activeGroupMeta = computed<PortraitToolGroup | undefined>(() =>
 )
 const activeGroupLabelKey = computed(() => activeGroupMeta.value?.labelKey ?? 'skin')
 const groupSpecs = computed<PortraitParamSpec[]>(() =>
-  portraitSpecsForGroup(activeGroup.value as PortraitToolGroupId)
+  visiblePortraitSpecs(draft, activeGroup.value as PortraitToolGroupId)
 )
+
+/**
+ * 背景组的「已填但不参与出图」判定：`背景处理` 仍是「保留原背景」，却填了颜色 / 渐变 / 描述。
+ *
+ * 线上误判就出在这里 —— 面板原先恒显这些字段，用户改了颜色却以为已经换底。
+ * 现在按 `visibleWhen` 只显示用得上的字段，并在这里把「你填的值当前不参与出图」明说一次。
+ */
+const backgroundValuesInactive = computed(() => {
+  if (activeGroup.value !== 'background' || draft.bgMode !== 'keep') return false
+  return portraitSpecsForGroup('background').some(
+    // 只看颜色 / 描述这类「填了却用不上」的值：布尔开关（本地清底）不算
+    (spec) =>
+      spec.key !== 'bgMode' && spec.kind !== 'boolean' && !portraitSpecIsDefault(spec, draft)
+  )
+})
 const riskCount = computed(() => portraitHighRiskTierCount(draft))
 
 const idPhotoSpecHint = computed(() => {
@@ -1541,6 +1576,11 @@ function runAi(tool: PortraitAiTool): void {
 
 function selectVersion(layerId: string): void {
   emit('ai-version', layerId)
+}
+
+/** 出图底图来源：以上次出图产物为底（宿主写回节点参数，下一次「保存并出图」按它取底图） */
+function onChainToggle(event: Event): void {
+  emit('chain-output', (event.target as HTMLInputElement).checked)
 }
 
 // ── 生命周期 ───────────────────────────────────────────────────
@@ -2307,6 +2347,18 @@ watch(
   line-height: 1.5;
 }
 
+/* 「已填但不参与出图」的提示：比普通说明更显眼，但不用报错红 */
+.spec-warning {
+  margin: 0 0 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  background: var(--bg-input, transparent);
+  border-left: 2px solid var(--accent);
+}
+
 .segmented {
   display: flex;
   gap: 2px;
@@ -2391,6 +2443,20 @@ select,
 .scope-check {
   color: var(--text);
   font-weight: 600;
+}
+
+/*
+ * 出图底图来源（面板底部、图片模型上方）：整次出图的设置，任何工具组下都常显。
+ * 与「局部回贴」同口径 —— 它决定「这次拿哪张当底」，比普通勾选项更值得看见。
+ */
+.chain-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
 }
 
 .hint {

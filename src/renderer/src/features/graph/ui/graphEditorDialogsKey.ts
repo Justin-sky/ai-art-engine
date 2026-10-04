@@ -128,6 +128,8 @@ export type GraphEditorDialogsApi = {
     generateProviderInstanceId: string
     /** 局部回贴开关：'local'（默认，只改对应部位）| 'global'（整图生效） */
     scopeMode: 'local' | 'global'
+    /** 出图底图来源：true = 以上次「保存并出图」的产物为底（默认 false = 上游原图） */
+    chainFromOutput: boolean
     /** AI 处理进行中（编辑器据此禁用按钮并显示进度） */
     aiRunning: boolean
     /** 最近一次 AI 处理的失败原因（成功时清空） */
@@ -272,6 +274,8 @@ export type GraphEditorDialogsApi = {
   runPortrait: (payload: unknown) => void
   /** 切换人像底图版本（AI 版本栈）；`''` = 上游原图 */
   selectPortraitVersion: (layerId: string) => void
+  /** 出图底图来源：以上次「保存并出图」的产物为底（默认关） */
+  setPortraitChainFromOutput: (value: boolean) => void
   /** dive 面包屑回退前提交人像精修的实时预览编辑，补充撤销命令 */
   flushPortrait: () => void
   /**

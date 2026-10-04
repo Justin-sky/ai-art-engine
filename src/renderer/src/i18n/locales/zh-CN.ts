@@ -3109,6 +3109,9 @@ export default {
       aiUpscale: 'AI 超分',
       aiHistory: '版本',
       aiBaseOriginal: '原图（上游）',
+      chainFromOutput: '以上次出图结果为底继续精修',
+      chainFromOutputHint:
+        '默认每次「保存并出图」都从上游原图重来（连点不会叠加、不会越修越糊）。打开后以上一版产物为底图继续处理 —— 反复叠加会累积劣化；上游接多张时只有第一张用它。',
       aiLogTitle: '人像处理 · AI 增强（{name}）',
       aiLogStart: 'AI 处理开始：{tool}',
       aiLogDone: 'AI 处理完成：{tool}',
@@ -3136,6 +3139,8 @@ export default {
         erase: '消除杂物'
       },
       idPhotoOff: '未选规格：模型只做常规人像处理',
+      backgroundInactiveHint:
+        '「背景处理」仍是「保留原背景」：你填的背景色 / 渐变 / 描述当前不参与出图。想换底请把它改成 纯色 / 渐变 / 按描述。',
       idPhotoSpecHint: '规格 {mm}：模型按此构图，节点随后裁切到精确像素；打开拼版会额外产出相纸版',
       groups: {
         heal: '修复',
@@ -3151,6 +3156,7 @@ export default {
         region: '区域',
         background: '背景',
         idPhoto: '证件照',
+        aiErase: 'AI 增强',
         preset: '预设',
         export: '导出'
       },
@@ -3348,6 +3354,7 @@ export default {
         bgColorTo: '渐变终点',
         bgPrompt: '背景描述',
         bgBlur: '背景虚化',
+        bgFlatten: '本地清底（人物以外强制成目标背景，保证干净）',
         idPhotoSpecId: '规格',
         idPhotoBg: '底色',
         idPhotoSheet: '拼版（5 寸相纸）',

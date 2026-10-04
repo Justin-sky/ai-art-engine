@@ -511,7 +511,7 @@ Preserve believable edges, hair strands, fabric weave, and jewellery detail.
 When a shape change is requested, apply it as a subtle photographic-lens-level adjustment: reshape only the local contour, and let surrounding structure, lighting, and shading follow naturally. Identity must survive the change. If a request would require a different person's proportions, under-apply it rather than distorting the face.
 
 ## Background
-If a background change is requested, keep the subject's own lighting, colour cast, and edge detail intact so the composite is seamless. If no background change is requested, do not repaint the background.
+If a background change is requested, the **entire frame outside the subject's outline must be replaced** with the requested background — no trace of the original scenery, texture, gradient, or shadows may remain — while keeping the subject's own lighting, colour cast, and edge detail (including hair strands) intact so the composite is seamless and halo-free. If no background change is requested, do not repaint the background.
 
 ## ID photo specs
 When an ID-photo spec is requested: front-facing, head and shoulders, no hat and no heavy hair over the forehead, level head, neutral expression, eyes open and visible, full head from crown to chin inside the frame, subject centred, and the requested background colour. Do not crop the top of the head or the chin.
@@ -537,7 +537,7 @@ export const DEFAULT_PORTRAIT_RETOUCH_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的
 若某个请求需要换一颗头才能做到，宁可**少做**也不要扭曲面部。
 
 ## 背景
-请求换背景时，保留人物自身的光线、色偏与边缘细节，使合成自然无缝；未请求换背景时不得重绘背景。
+请求换背景时：**人物轮廓以外的整幅画面必须完全替换成请求的背景**，不得保留原背景的景物、纹理、渐变或投影；同时保留人物自身的光线、色偏与边缘细节（含发丝），使合成自然无缝、无光晕。未请求换背景时不得重绘背景。
 
 ## 证件照规格
 按规格出图时：正面免冠、双肩入画、不戴帽子、头发不遮挡额头、头部摆正、表情自然、双眼睁开可见，颅顶到下巴完整入画并居中，底色按要求。不得裁掉头顶或下巴。

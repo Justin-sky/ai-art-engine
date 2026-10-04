@@ -119,6 +119,12 @@ function buildStub() {
   const detectCalls: string[] = []
   const inspectCalls: string[] = []
   const fitCalls: Array<{ dataUrl: string; width: number; height: number }> = []
+  const flatCalls: Array<{
+    dataUrl: string
+    mode: 'color' | 'gradient'
+    color: string
+    colorTo?: string
+  }> = []
   const idPhotoCalls: ComposeIdPhotoArgs[] = []
   const logs: string[] = []
 
@@ -151,6 +157,20 @@ function buildStub() {
       fitCalls.push(input)
       return { dataUrl: `${input.dataUrl}#fitted`, width: input.width, height: input.height }
     },
+    flattenPortraitBackground: async (input: {
+      dataUrl: string
+      mode: 'color' | 'gradient'
+      color: string
+      colorTo?: string
+    }) => {
+      flatCalls.push(input)
+      return {
+        dataUrl: `${input.dataUrl}#flat`,
+        applied: true,
+        personRatio: 0.42,
+        notes: []
+      }
+    },
     composePortraitIdPhoto: async (input: ComposeIdPhotoArgs) => {
       idPhotoCalls.push(input)
       return idPhotoResult
@@ -175,6 +195,7 @@ function buildStub() {
     detectCalls,
     inspectCalls,
     fitCalls,
+    flatCalls,
     idPhotoCalls,
     logs,
     setGenerateResult: (value: typeof generateResult) => {
@@ -368,6 +389,180 @@ describe('image.portrait 执行器（全部走图片模型）', () => {
     expect(result.ok, result.error).toBe(true)
     expect(run.fitCalls).toHaveLength(0)
     expect(run.saved.map((entry) => entry.dataUrl)).toEqual([MODEL_IMAGE])
+  })
+
+  /**
+   * 本地清底：换底是全局项 → 局部回贴让位 → 出图完全由模型决定，而模型对柔焦/低对比的
+   * 原背景容易保留（线上实测过一大团残留）。开关默认开，由本机实例分割钉死背景。
+   */
+  it('纯色背景默认本地清底：把目标色交给能力缝，且排在回贴原尺寸之前', async () => {
+    const run = buildStub()
+    const { result } = await runPortrait(run, {
+      portraitRetouch: {
+        ...retouchWithClause(),
+        bgMode: 'color',
+        bgColor: '#9d88cc',
+        outputSize: 'auto'
+      }
+    })
+
+    expect(result.ok, result.error).toBe(true)
+    expect(run.flatCalls).toHaveLength(1)
+    expect(run.flatCalls[0]!.mode).toBe('color')
+    expect(run.flatCalls[0]!.color).toBe('#9d88cc')
+    // 顺序：清底 → 回贴原尺寸（清底后的图作为回贴输入）
+    expect(run.fitCalls[0]!.dataUrl).toBe(`${MODEL_IMAGE}#flat`)
+    expect(run.saved.map((entry) => entry.dataUrl)).toEqual([`${MODEL_IMAGE}#flat#fitted`])
+    expect(run.logs.some((line) => line.includes('flat background enforced'))).toBe(true)
+  })
+
+  it('渐变背景传两个色；保留原背景 / 按描述换背景都不本地清底', async () => {
+    const run = buildStub()
+    await runPortrait(run, {
+      portraitRetouch: {
+        ...retouchWithClause(),
+        bgMode: 'gradient',
+        bgColor: '#438edb',
+        bgColorTo: '#dbeafe'
+      }
+    })
+    expect(run.flatCalls).toHaveLength(1)
+    expect(run.flatCalls[0]!.mode).toBe('gradient')
+    expect(run.flatCalls[0]!.colorTo).toBe('#dbeafe')
+
+    const keep = buildStub()
+    await runPortrait(keep, { portraitRetouch: { ...retouchWithClause(), bgMode: 'keep' } })
+    expect(keep.flatCalls).toHaveLength(0)
+
+    const described = buildStub()
+    await runPortrait(described, {
+      portraitRetouch: { ...retouchWithClause(), bgMode: 'prompt', bgPrompt: '海边日落' }
+    })
+    // 按描述换背景 = 背景是内容，本地合成不出来 → 只让模型做
+    expect(described.flatCalls).toHaveLength(0)
+  })
+
+  it('关掉开关 / 缺能力缝时都不本地清底，也不失败', async () => {
+    const off = buildStub()
+    const offResult = await runPortrait(off, {
+      portraitRetouch: { ...retouchWithClause(), bgMode: 'color', bgFlatten: false }
+    })
+    expect(offResult.result.ok, offResult.result.error).toBe(true)
+    expect(off.flatCalls).toHaveLength(0)
+    expect(off.logs.some((line) => line.includes('flat background off (switch)'))).toBe(true)
+
+    const missing = buildStub()
+    const missingResult = await runPortrait(
+      missing,
+      { portraitRetouch: { ...retouchWithClause(), bgMode: 'color' } },
+      { flattenPortraitBackground: undefined }
+    )
+    expect(missingResult.result.ok, missingResult.result.error).toBe(true)
+    expect(missing.flatCalls).toHaveLength(0)
+    expect(missing.saved.map((entry) => entry.dataUrl)).toEqual([MODEL_IMAGE])
+  })
+
+  describe('出图底图来源（上游 / AI 版本 / 上次产物）', () => {
+    const BAKED = 'Cache/Images/baked-1.png'
+    const LAYER_URL = 'studio-media://layer-1.png'
+
+    function withBaseUrls(run: RunStub, bakedUrl = 'studio-media://baked.png') {
+      // 每个用例各自一份调用记录：共享数组会在用例之间互相污染（实测踩过）
+      const calls: string[] = []
+      return {
+        calls,
+        stub: {
+          ...run.stub,
+          resolveProjectMediaUrl: async (relativePath: string) => {
+            calls.push(relativePath)
+            return relativePath === BAKED ? bakedUrl : undefined
+          },
+          resolveAssetMediaUrl: async (assetId: string) => (assetId ? LAYER_URL : undefined)
+        }
+      }
+    }
+
+    it('默认从上游原图重来（连点不叠加）', async () => {
+      const run = buildStub()
+      const base = withBaseUrls(run)
+      const { result } = await runPortrait(
+        run,
+        { portraitRetouch: retouchWithClause(), portraitBakedRelativePath: BAKED },
+        base.stub
+      )
+
+      expect(result.ok, result.error).toBe(true)
+      expect(run.generateCalls[0]!.inputReferences).toEqual([SOURCE_URL])
+      expect(base.calls).toEqual([])
+      expect(run.logs.some((line) => line.includes('base image:'))).toBe(false)
+    })
+
+    it('打开「以上次出图结果为底」后，用 portraitBakedRelativePath 那张当输入', async () => {
+      const run = buildStub()
+      const base = withBaseUrls(run)
+      const { result } = await runPortrait(
+        run,
+        {
+          portraitRetouch: retouchWithClause(),
+          portraitBakedRelativePath: BAKED,
+          portraitChainFromOutput: true
+        },
+        base.stub
+      )
+
+      expect(result.ok, result.error).toBe(true)
+      expect(base.calls).toEqual([BAKED])
+      expect(run.generateCalls[0]!.inputReferences).toEqual(['studio-media://baked.png'])
+      expect(run.logs.some((line) => line.includes('base image: last output (chained)'))).toBe(true)
+    })
+
+    it('显式选中的 AI 版本优先于「上次产物」', async () => {
+      const run = buildStub()
+      const base = withBaseUrls(run)
+      const { result } = await runPortrait(
+        run,
+        {
+          portraitRetouch: retouchWithClause(),
+          portraitBakedRelativePath: BAKED,
+          portraitChainFromOutput: true,
+          portraitBaseLayerId: 'layer-1',
+          portraitLayers: [
+            {
+              id: 'layer-1',
+              tool: 'erase',
+              prompt: '',
+              model: '',
+              providerInstanceId: '',
+              relativePath: 'Assets/Portrait/layer-1.png',
+              assetId: 'asset-1',
+              at: '2026-10-04T00:00:00.000Z'
+            }
+          ]
+        },
+        base.stub
+      )
+
+      expect(result.ok, result.error).toBe(true)
+      expect(base.calls).toEqual([])
+      expect(run.generateCalls[0]!.inputReferences).toEqual([LAYER_URL])
+      expect(run.logs.some((line) => line.includes('base image: AI version'))).toBe(true)
+    })
+
+    it('开了开关但没有产物时明确回落到上游并记日志', async () => {
+      const run = buildStub()
+      const base = withBaseUrls(run)
+      const { result } = await runPortrait(
+        run,
+        { portraitRetouch: retouchWithClause(), portraitChainFromOutput: true },
+        base.stub
+      )
+
+      expect(result.ok, result.error).toBe(true)
+      expect(run.generateCalls[0]!.inputReferences).toEqual([SOURCE_URL])
+      expect(run.logs.some((line) => line.includes('no usable baked image: using upstream'))).toBe(
+        true
+      )
+    })
   })
 
   describe('人脸关键点', () => {
@@ -659,7 +854,8 @@ describe('image.portrait 执行器（全部走图片模型）', () => {
       // 25×35mm @ 默认 300dpi
       expect(call.outputWidth).toBe(295)
       expect(call.outputHeight).toBe(413)
-      expect(call.sourceDataUrl).toBe(MODEL_IMAGE)
+      // 证件照底色也会走本地清底（保证底色准确），所以裁切拿到的是清底后的图
+      expect(call.sourceDataUrl).toBe(`${MODEL_IMAGE}#flat`)
       expect(call.sheet).toBeNull()
       expect(call.crop.x).toBeGreaterThanOrEqual(0)
       expect(call.crop.y).toBeGreaterThanOrEqual(0)
@@ -713,7 +909,8 @@ describe('image.portrait 执行器（全部走图片模型）', () => {
       })
 
       expect(result.ok, result.error).toBe(true)
-      expect(run.saved.map((entry) => entry.dataUrl)).toEqual([MODEL_IMAGE])
+      // 几何能力挂了不影响主图；底色仍已本地清干净（#flat）
+      expect(run.saved.map((entry) => entry.dataUrl)).toEqual([`${MODEL_IMAGE}#flat`])
     })
 
     it('几何能力未注入时整图仍然成功，模型图原样落盘', async () => {
@@ -723,7 +920,7 @@ describe('image.portrait 执行器（全部走图片模型）', () => {
       })
 
       expect(result.ok, result.error).toBe(true)
-      expect(run.saved.map((entry) => entry.dataUrl)).toEqual([MODEL_IMAGE])
+      expect(run.saved.map((entry) => entry.dataUrl)).toEqual([`${MODEL_IMAGE}#flat`])
       expect(run.inspectCalls).toHaveLength(1)
     })
   })

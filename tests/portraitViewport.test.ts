@@ -482,4 +482,27 @@ describe('人像处理参数面板拖动滑块', () => {
     expect(source).toContain('resizable.value = width > 820')
     expect(source).toMatch(/@container \(max-width:\s*820px\)/)
   })
+
+  /**
+   * 背景组：字段按做法显示 + 「已填但不参与出图」提示。
+   *
+   * 线上误判：改了「背景色」却没把「背景处理」从「保留原背景」改成「纯色」，颜色根本不进提示词，
+   * 看起来像「纯色背景没生效」。现在把用不上的字段收起，并在填过值时明说。
+   */
+  it('背景组按做法显示字段，并提示「已填但不参与出图」', () => {
+    // 面板走可见性过滤，而不是把整组字段全摆出来
+    expect(source).toContain('visiblePortraitSpecs(draft, activeGroup.value')
+    expect(source).toContain('backgroundValuesInactive')
+    expect(source).toContain("t('graph.portrait.backgroundInactiveHint')")
+    expect(source).toContain('.spec-warning')
+    // 提示只在「背景组 + 仍是保留原背景」时出现
+    expect(source).toMatch(/activeGroup\.value !== 'background' \|\| draft\.bgMode !== 'keep'/)
+    // 判定复用 shared 的默认值比较（大小写无关），不在组件里另写一套
+    expect(source).toContain('portraitSpecIsDefault(spec, draft)')
+
+    for (const file of ['zh-CN.ts', 'en-US.ts']) {
+      const locale = read(`src/renderer/src/i18n/locales/${file}`)
+      expect(locale, `${file} 缺 backgroundInactiveHint`).toContain('backgroundInactiveHint:')
+    }
+  })
 })

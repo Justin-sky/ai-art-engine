@@ -113,17 +113,42 @@ describe('能力缝接线（缺一处就报「能力未注入」或静默不生�
 
     const engine = readFileSync(join(ROOT, 'src/shared/graph/execute/engine.ts'), 'utf8')
     expect(engine).toContain('fitPortraitToSourceSize: options.fitPortraitToSourceSize')
+    expect(engine).toContain('flattenPortraitBackground: options.flattenPortraitBackground')
+    expect(types).toMatch(
+      /flattenPortraitBackground\?: NodeExecuteContext\['flattenPortraitBackground'\]/
+    )
 
     for (const file of [
       'src/renderer/src/features/graph/controllers/useGraphRunSession.ts',
       'src/renderer/src/stores/graphTasks.ts'
     ]) {
       const src = readFileSync(join(ROOT, file), 'utf8')
-      expect(src, `${file} 缺少 fitPortraitToSourceSize`).toContain('fitPortraitToSourceSize')
-      expect(src, `${file} 没从 portraitCapabilities 引入`).toMatch(
-        /import \{[\s\S]{0,400}fitPortraitToSourceSize[\s\S]{0,400}\} from '.*portraitCapabilities'/
-      )
+      for (const seam of ['fitPortraitToSourceSize', 'flattenPortraitBackground']) {
+        expect(src, `${file} 缺少 ${seam}`).toContain(seam)
+        expect(src, `${file} 没从 portraitCapabilities 引入 ${seam}`).toMatch(
+          new RegExp(
+            `import \\{[\\s\\S]{0,600}${seam}[\\s\\S]{0,600}\\} from '.*portraitCapabilities'`
+          )
+        )
+      }
     }
+  })
+
+  it('本地清底的合成方向是「先铺背景、再把人物按蒙版叠回」', () => {
+    const caps = readFileSync(
+      join(ROOT, 'src/renderer/src/features/graph/model/portraitCapabilities.ts'),
+      'utf8'
+    )
+    const fn =
+      /export async function flattenPortraitBackground\([\s\S]*?\n\}\n/.exec(caps)?.[0] ?? ''
+    expect(fn).toBeTruthy()
+    expect(fn).toContain('buildPersonMaskCanvas')
+    // 蒙版之外（= 背景）必须是目标背景色：先铺满背景，再 destination-in 出人物层叠回去
+    expect(fn).toMatch(/fillRect\(0, 0, width, height\)/)
+    expect(fn).toContain("globalCompositeOperation = 'destination-in'")
+    expect(fn).toContain('createLinearGradient')
+    // 缺人物蒙版时如实返回 applied:false，调用方沿用原图
+    expect(fn).toContain('applied: false')
   })
 
   it('执行器把画幅与档位真的发给了模型（画幅不发就是默认 1:1）', () => {

@@ -55,6 +55,7 @@ import {
   resolveGraphImageUrls,
   resolveVideoFirstFrameImageUrls
 } from '../features/graph/model/resolveGraphImageUrls'
+import { resolveAssetFileUrl } from '../features/media/assetUrlCache'
 import { resolveAssetText } from '../features/media/resolveAssetText'
 import { enrichStyleImagesWithLibraryPrompts } from '../features/stylePresets/defaultLibrary'
 import { resolveStyleImageUrls } from '../features/stylePresets/resolveStyleImageUrls'
@@ -78,6 +79,7 @@ import {
   composePortraitScopedRetouch,
   detectPortraitFaces,
   fitPortraitToSourceSize,
+  flattenPortraitBackground,
   inspectImageSize
 } from '../features/graph/model/portraitCapabilities'
 import { inspectModelSkeleton } from '../features/graph/model/inspectModelSkeleton'
@@ -1577,6 +1579,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         resolveVideoGenerateCapabilities: resolveVideoGenerateCapabilitiesForRun,
         resolveAssetImageUrl,
         resolveAssetMediaUrl: resolveAssetMediaDataUrl,
+        resolveProjectMediaUrl: (relativePath: string) => resolveAssetFileUrl(relativePath),
         composeImageExpandCanvas,
         composeImageRedrawCanvas,
         composeImageCropCanvas,
@@ -1596,6 +1599,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         detectPortraitFaces,
         inspectImageSize,
         fitPortraitToSourceSize,
+        flattenPortraitBackground,
         inspectModelSkeleton,
         runBlenderDshJob,
         buildGamePlayProject: buildGamePlayProjectForNode,

@@ -38,6 +38,7 @@ import {
   resolveVideoFirstFrameImageUrls,
   resolveVideoReviewFrameImageUrls
 } from '../model/resolveGraphImageUrls'
+import { resolveAssetFileUrl } from '../../media/assetUrlCache'
 import { resolveAssetText as resolveAssetTextById } from '../../media/resolveAssetText'
 import { composeImageExpandCanvas } from '../model/composeImageExpandCanvas'
 import { composeImageRedrawCanvas } from '../model/composeImageRedrawCanvas'
@@ -58,6 +59,7 @@ import {
   composePortraitScopedRetouch,
   detectPortraitFaces,
   fitPortraitToSourceSize,
+  flattenPortraitBackground,
   inspectImageSize
 } from '../model/portraitCapabilities'
 import { inspectModelSkeleton } from '../model/inspectModelSkeleton'
@@ -1257,6 +1259,8 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         resolveVideoGenerateCapabilities: resolveVideoGenerateCapabilitiesForRun,
         resolveAssetImageUrl,
         resolveAssetMediaUrl: resolveAssetMediaDataUrl,
+        // 人像处理「以上次出图结果为底」需要按工程相对路径取图（产物是相对路径，不是 assetId）
+        resolveProjectMediaUrl: (relativePath: string) => resolveAssetFileUrl(relativePath),
         composeImageExpandCanvas,
         composeImageRedrawCanvas,
         composeImageCropCanvas,
@@ -1276,6 +1280,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         detectPortraitFaces,
         inspectImageSize,
         fitPortraitToSourceSize,
+        flattenPortraitBackground,
         inspectModelSkeleton,
         runBlenderDshJob: (input) => runBlenderDshJob({ ...input, logRunId: run.runId }),
         buildGamePlayProject: buildGamePlayProjectForNode,

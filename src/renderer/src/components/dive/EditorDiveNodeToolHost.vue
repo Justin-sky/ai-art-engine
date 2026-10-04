@@ -137,6 +137,7 @@
       :generate-model="api.portrait.generateModel"
       :generate-provider-instance-id="api.portrait.generateProviderInstanceId"
       :scope-mode="api.portrait.scopeMode"
+      :chain-from-output="api.portrait.chainFromOutput"
       :ai-running="api.portrait.aiRunning"
       :ai-error="api.portrait.aiError"
       :run-running="api.portrait.runRunning"
@@ -146,6 +147,7 @@
       @save="api.savePortrait as never"
       @run="api.runPortrait as never"
       @ai-version="api.selectPortraitVersion"
+      @chain-output="api.setPortraitChainFromOutput"
       @ai="api.runPortraitAi as never"
     />
 

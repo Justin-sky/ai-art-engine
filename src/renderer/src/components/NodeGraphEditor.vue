@@ -6828,6 +6828,8 @@ const portrait = reactive({
   generateProviderInstanceId: '' as string,
   /** 局部回贴开关：'local' = 只改对应部位（默认），'global' = 整图生效 */
   scopeMode: 'local' as 'local' | 'global',
+  /** 出图底图来源：true = 以上次「保存并出图」的产物为底（默认 false = 上游原图） */
+  chainFromOutput: false,
   aiRunning: false,
   aiError: '',
   /** 「保存并出图」进行中：窗口保持打开，就地显示状态 */
@@ -6953,6 +6955,7 @@ async function onPortraitOpen(nodeId: string): Promise<void> {
   portrait.generateModel = node.params.generateModel ?? ''
   portrait.generateProviderInstanceId = node.params.generateProviderInstanceId ?? ''
   portrait.scopeMode = node.params.portraitScopeMode === 'global' ? 'global' : 'local'
+  portrait.chainFromOutput = node.params.portraitChainFromOutput === true
   portrait.aiRunning = false
   portrait.aiError = ''
   portrait.runRunning = false
@@ -7163,6 +7166,24 @@ async function selectPortraitVersion(layerId: string): Promise<void> {
 /** 编辑器是否还停在这次出图的节点上（跑图期间用户可能已退出 / 换节点） */
 function isPortraitEditorCurrent(nodeId: string): boolean {
   return portrait.open && portrait.nodeId === nodeId
+}
+
+/**
+ * 出图底图来源：以上次「保存并出图」的产物为底继续精修。
+ *
+ * 默认关闭（每次从上游原图重来，避免反复叠加导致劣化）；打开后执行器的 `resolveBaseUrl`
+ * 会优先用 `portraitBakedRelativePath` —— 但它只对第一张图有意义（批量其余各用上游）。
+ * 优先级：显式选中的 AI 版本 > 上次出图 > 上游原图。
+ */
+function setPortraitChainFromOutput(value: boolean): void {
+  const node = graph.nodes.find((n) => n.id === portrait.nodeId)
+  if (!node) return
+  const before = buildGraphJson()
+  portrait.chainFromOutput = value
+  node.params = { ...node.params, portraitChainFromOutput: value }
+  scheduleSave()
+  graphEditorHosts.bumpRevision()
+  recordGraphChange('portrait-chain', before)
 }
 
 /**
@@ -8905,6 +8926,7 @@ const graphDialogsApi = {
   savePortrait,
   runPortrait,
   selectPortraitVersion,
+  setPortraitChainFromOutput,
   flushPortrait,
   runPortraitAi,
   closeEmotion,

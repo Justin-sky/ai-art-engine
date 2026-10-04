@@ -37,7 +37,13 @@ import {
   type PortraitOutputSize,
   type PortraitRetouchState
 } from '../portraitRetouch'
-import { idPhotoBackgroundLabel, idPhotoSpecById, planIdPhoto, type IdPhotoPlan } from '../idPhoto'
+import {
+  idPhotoBackgroundColors,
+  idPhotoBackgroundLabel,
+  idPhotoSpecById,
+  planIdPhoto,
+  type IdPhotoPlan
+} from '../idPhoto'
 import { portraitScopePlan, type PortraitScopePlan } from '../portraitScope'
 import {
   describePortraitFraming,
@@ -58,6 +64,40 @@ function describePortraitScope(plan: PortraitScopePlan): string {
   if (plan.person) parts.push('person')
   if (plan.regions.length) parts.push(`regions:${plan.regions.length}`)
   return parts.join('+') || 'none'
+}
+
+/**
+ * 本地清底的目标背景：证件照规格优先（底色必须准），否则用背景组的纯色 / 渐变。
+ *
+ * 返回 `null` = 这次没有「能用本地合成」的背景诉求（保留原背景，或按描述换背景 ——
+ * 后者的背景是内容，本地合成不出来，只能交给模型）。
+ */
+function resolveFlatBackgroundPlan(
+  state: PortraitRetouchState,
+  spec: ReturnType<typeof idPhotoSpecById>
+): { mode: 'color' | 'gradient'; color: string; colorTo?: string; label: string } | null {
+  if (spec) {
+    const colors = idPhotoBackgroundColors(state.idPhotoBg)
+    const mode = state.idPhotoBg === 'gradient' ? 'gradient' : 'color'
+    return {
+      mode,
+      color: colors.from,
+      ...(mode === 'gradient' ? { colorTo: colors.to } : {}),
+      label: `id photo ${state.idPhotoBg}`
+    }
+  }
+  if (state.bgMode === 'color') {
+    return { mode: 'color', color: state.bgColor, label: `color ${state.bgColor.toUpperCase()}` }
+  }
+  if (state.bgMode === 'gradient') {
+    return {
+      mode: 'gradient',
+      color: state.bgColor,
+      colorTo: state.bgColorTo,
+      label: `gradient ${state.bgColor.toUpperCase()} to ${state.bgColorTo.toUpperCase()}`
+    }
+  }
+  return null
 }
 
 /**
@@ -172,25 +212,43 @@ function portraitResolution(outputSize: PortraitOutputSize): string | undefined 
 }
 
 /**
- * 编辑器的 AI 版本栈底图：当前版本的资产 URL；取不到则回退上游原图。
+ * 编辑器的 AI 版本栈底图 / 上次产物：取哪一张当这次 Cook 的输入。
  *
- * 版本栈在 v2 里仍然有意义 —— 节点每次 Cook 只调**一次**模型，
- * 而用户在编辑器里可能反复试了多个版本；`portraitBaseLayerId` 决定拿哪一张当上游。
+ * 优先级（刻意的）：**显式选中的 AI 版本** > **上次出图产物**（`portraitChainFromOutput`）> **上游原图**。
+ *
+ * 默认一律回到上游原图：每点一次「保存并出图」都从原图重来，避免反复叠加导致画质逐轮劣化。
+ * 想「在上一轮结果上接着修」时打开 `portraitChainFromOutput`，以 `portraitBakedRelativePath`
+ * （上次产物，相对工程路径）为底 —— 它只对第一张图有意义（批量时其余各用各自的上游）。
  */
 async function resolveBaseUrl(
   ctx: NodeExecuteContext,
   fallbackUrl: string
-): Promise<{ url: string; layer: PortraitAiLayer | null }> {
+): Promise<{ url: string; layer: PortraitAiLayer | null; chained: boolean }> {
   const baseId = ctx.node.params.portraitBaseLayerId?.trim()
-  if (!baseId) return { url: fallbackUrl, layer: null }
-  const layers = normalizePortraitAiLayers(ctx.node.params.portraitLayers)
-  const layer = layers.find((item) => item.id === baseId) ?? null
-  if (!layer) return { url: fallbackUrl, layer: null }
-  if (layer.assetId && ctx.resolveAssetMediaUrl) {
-    const url = await ctx.resolveAssetMediaUrl(layer.assetId)
-    if (url) return { url, layer }
+  if (baseId) {
+    const layers = normalizePortraitAiLayers(ctx.node.params.portraitLayers)
+    const layer = layers.find((item) => item.id === baseId) ?? null
+    if (layer?.assetId && ctx.resolveAssetMediaUrl) {
+      const url = await ctx.resolveAssetMediaUrl(layer.assetId)
+      if (url) return { url, layer, chained: false }
+    }
   }
-  return { url: fallbackUrl, layer: null }
+
+  if (ctx.node.params.portraitChainFromOutput) {
+    const baked = ctx.node.params.portraitBakedRelativePath?.trim()
+    if (baked && ctx.resolveProjectMediaUrl) {
+      try {
+        const url = await ctx.resolveProjectMediaUrl(baked)
+        if (url) return { url, layer: null, chained: true }
+      } catch {
+        /* 取不到就落到上游 */
+      }
+    }
+    // 打开了开关却没有可用产物：明确说出来，别让人以为"以产物为底"生效了
+    ctx.log?.('chain from last output requested but no usable baked image: using upstream')
+  }
+
+  return { url: fallbackUrl, layer: null, chained: false }
 }
 
 /** 解析人脸（缓存优先，缺失则检测并回写节点参数） */
@@ -306,12 +364,19 @@ export async function executePortraitNode(
   for (const [index, rawSourceUrl] of sourceUrls.entries()) {
     if (ctx.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
 
-    // AI 版本栈的底图只对第一张图有意义（版本是在编辑器里针对某一张图生成的）
-    const { url: sourceUrl, layer } =
-      index === 0 ? await resolveBaseUrl(ctx, rawSourceUrl) : { url: rawSourceUrl, layer: null }
+    // AI 版本栈 / 上次产物只对第一张图有意义（版本与产物都是在编辑器里针对某一张图生成的）
+    const {
+      url: sourceUrl,
+      layer,
+      chained
+    } = index === 0
+      ? await resolveBaseUrl(ctx, rawSourceUrl)
+      : { url: rawSourceUrl, layer: null, chained: false }
     const sourceHash = portraitSourceHash(sourceUrl)
     if (layer) {
       ctx.log?.(`base image: AI version (${layer.tool}${layer.model ? ` / ${layer.model}` : ''})`)
+    } else if (chained) {
+      ctx.log?.('base image: last output (chained)')
     }
     if (sourceUrls.length > 1) ctx.log?.(`image ${index + 1}/${sourceUrls.length}`)
 
@@ -438,13 +503,49 @@ export async function executePortraitNode(
         landmarks: face?.landmarks ?? null
       })
 
+      // ── 本地强制清底（开关默认开）──────────────────────────────
+      //
+      // 换底是全局项 → 上面那步让位 → 出图完全由模型决定，而模型对柔焦 / 低对比的原背景
+      // 容易判定成「内容」而保留（线上实测：其余部分已换成白底，左边留了一大团粉色）。
+      // 提示词只能提高概率；这里用本机实例分割把「人物以外」钉死：蒙版反相 = 背景，
+      // 铺满目标色/渐变后把人物按蒙版叠回，蒙版之外一律是目标背景，模型做好的发丝边缘保留。
+      let flattened = scoped
+      const flatPlan = resolveFlatBackgroundPlan(state, spec)
+      if (flatPlan && state.bgFlatten !== false && ctx.flattenPortraitBackground) {
+        try {
+          const flat = await ctx.flattenPortraitBackground({
+            dataUrl: scoped,
+            mode: flatPlan.mode,
+            color: flatPlan.color,
+            ...(flatPlan.colorTo ? { colorTo: flatPlan.colorTo } : {}),
+            signal: ctx.signal
+          })
+          if (flat.applied) {
+            flattened = flat.dataUrl
+            if (index === 0) {
+              ctx.log?.(
+                `flat background enforced (${flatPlan.label}, person ${Math.round(flat.personRatio * 100)}% of frame)`
+              )
+            }
+          } else if (index === 0) {
+            ctx.log?.(
+              `flat background skipped: ${flat.notes.join('; ') || 'no usable person mask'}`
+            )
+          }
+        } catch (err) {
+          ctx.log?.(`flat background skipped: ${err instanceof Error ? err.message : String(err)}`)
+        }
+      } else if (flatPlan && state.bgFlatten === false && index === 0) {
+        ctx.log?.('flat background off (switch): model result kept as-is')
+      }
+
       // 「输出尺寸 = 自动」= 跟随原图：把结果精确缩放到原图像素尺寸。
       // 必须排在证件照裁切**之前** —— 证件照有自己确定的输出尺寸，那一步说了算。
-      let framed = scoped
+      let framed = flattened
       if (state.outputSize === 'auto' && ctx.fitPortraitToSourceSize) {
         try {
           const fitted = await ctx.fitPortraitToSourceSize({
-            dataUrl: scoped,
+            dataUrl: flattened,
             width: frameSize.width,
             height: frameSize.height,
             signal: ctx.signal

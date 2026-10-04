@@ -634,6 +634,11 @@ export interface NodeExecuteContext {
   /** 按资产 id 解析任意媒体 data URL（视频参考等） */
   resolveAssetMediaUrl?: (assetId: string) => Promise<string | undefined>
   /**
+   * 按**工程相对路径**解析媒体 URL（人像处理「以上次出图结果为底继续精修」要用：
+   * `portraitBakedRelativePath` 是相对路径，不是 assetId）。
+   */
+  resolveProjectMediaUrl?: (relativePath: string) => Promise<string | undefined>
+  /**
    * 扩图：将原图按锚点合成到扩展画布（透明底），返回 PNG data URL。
    * 未注入时退回直接用原图作参考。
    */
@@ -859,6 +864,19 @@ export interface NodeExecuteContext {
     signal?: AbortSignal | null
   }) => Promise<{ dataUrl: string; width: number; height: number }>
   /**
+   * 本地强制清底：人物蒙版反相当背景，把纯色 / 渐变背景钉死（人像处理「本地清底」开关）。
+   *
+   * 为什么需要：换底是全局项 → 局部回贴让位 → 出图完全由模型决定，而模型对柔焦 / 低对比的
+   * 原背景容易保留（线上实测过大团残留）。缺分割模型时 `applied: false`，调用方沿用原图。
+   */
+  flattenPortraitBackground?: (input: {
+    dataUrl: string
+    mode: 'color' | 'gradient'
+    color: string
+    colorTo?: string
+    signal?: AbortSignal | null
+  }) => Promise<{ dataUrl: string; applied: boolean; personRatio: number; notes: string[] }>
+  /**
    * 读取 3D 模型骨骼层级（蒙皮主链）。预览 / 导演台 FK 用。
    */
   inspectModelSkeleton?: (input: {
@@ -1082,6 +1100,7 @@ export interface GraphRunOptions {
   resolveVideoGenerateCapabilities?: NodeExecuteContext['resolveVideoGenerateCapabilities']
   resolveAssetImageUrl?: NodeExecuteContext['resolveAssetImageUrl']
   resolveAssetMediaUrl?: NodeExecuteContext['resolveAssetMediaUrl']
+  resolveProjectMediaUrl?: NodeExecuteContext['resolveProjectMediaUrl']
   composeImageExpandCanvas?: NodeExecuteContext['composeImageExpandCanvas']
   composeImageRedrawCanvas?: NodeExecuteContext['composeImageRedrawCanvas']
   composeImageCropCanvas?: NodeExecuteContext['composeImageCropCanvas']
@@ -1101,6 +1120,7 @@ export interface GraphRunOptions {
   composePortraitScopedRetouch?: NodeExecuteContext['composePortraitScopedRetouch']
   inspectImageSize?: NodeExecuteContext['inspectImageSize']
   fitPortraitToSourceSize?: NodeExecuteContext['fitPortraitToSourceSize']
+  flattenPortraitBackground?: NodeExecuteContext['flattenPortraitBackground']
   inspectModelSkeleton?: NodeExecuteContext['inspectModelSkeleton']
   runBlenderDshJob?: NodeExecuteContext['runBlenderDshJob']
   buildGamePlayProject?: NodeExecuteContext['buildGamePlayProject']

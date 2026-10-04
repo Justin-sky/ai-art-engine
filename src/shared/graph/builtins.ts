@@ -1259,6 +1259,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
       portraitRetouch: defaultPortraitRetouch(),
       portraitLayers: [],
       portraitBaseLayerId: '',
+      portraitChainFromOutput: false,
       portraitBakedRelativePath: '',
       portraitPrompt: '',
       /** 局部回贴开关：'local'（默认，只改对应部位）| 'global'（整图生效） */
