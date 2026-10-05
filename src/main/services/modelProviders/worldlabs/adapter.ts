@@ -142,7 +142,8 @@ const E_WORLDLABS_NO_PROMPT = defErrSimple(
  *   - `imagery.pano_url`：360 等距柱状全景图（2560×1280）
  * 后两者**随 world 一起返回、不额外扣积分**，由 videoJobService 作为「附加产物」下载到主产物旁边。
  * 需要 PLY 泼溅或 HQ 贴图网格时官方另有 `worlds/{id}:export`（PLY 同步、HQ 网格异步且最长约 1 小时、
- * 限速 4 次/小时、单独计费）：当前版本没接，按需再加。
+ * 限速 4 次/小时、单独计费）：已由图节点「空间世界导出」（`spatialWorld.export`）接入，
+ * 默认走网格（HQ GLB，可选带贴图 / 顶点色），另一模式走 PLY。
  */
 
 /** marble 模型 id 白名单：目录 id 即 API model 参数（官方 4 档，1.0 两档为上一代） */

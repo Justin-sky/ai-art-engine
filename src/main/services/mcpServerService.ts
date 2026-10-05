@@ -2724,7 +2724,7 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'generate_world',
     title: '生成空间世界',
     description:
-      '文生世界 / 图生世界 / 多图生世界 / 视频生世界（World Labs Marble），产出可漫游 3D 世界的 GLB 网格并落盘到工程缓存目录 Cache/Models（不自动进资产库）。单次生成约 5 分钟，模型只有 marble-1.1（标准）与 marble-1.1-plus（更大世界，更贵）。参考输入四选一：文本、1 张图、2–4 张同场景多视角图、或 1 段参考视频（同时给了视频与图片时以视频为准；视频推荐 mp4 / webm / mov / avi，单条不超过 100MB）；相对/本地路径会自动上传到已配置的对象存储转换为公网 URL（未配置对象存储时报错，可用 storage_status 查询）。需要进资产库时由用户在对话卡上点「保存到资产库」按钮。返回工程内相对路径。',
+      '文生世界 / 图生世界 / 多图生世界 / 视频生世界（World Labs Marble），产出可漫游 3D 世界的 GLB 网格并落盘到工程缓存目录 Cache/Models（不自动进资产库）。单次生成约 5 分钟，共 4 档模型：marble-1.1（标准）/ marble-1.1-plus（更大世界，更贵），以及上一代 marble-1.0 / marble-1.0-draft。参考输入四选一：文本、1 张图、2–4 张同场景多视角图、或 1 段参考视频（同时给了视频与图片时以视频为准；视频推荐 mp4 / webm / mov / avi，单条不超过 100MB）；相对 / 本地路径的参考**默认上传 World Labs 托管存储**（官方 media-asset，不占用对象存储配额；上传失败才回退到对象存储换成公网 URL，两条都失败时把两条原因一起写进报错）。需要 PLY 泼溅或 HQ 贴图网格时用图节点「空间世界导出」（spatialWorld.export）。需要进资产库时由用户在对话卡上点「保存到资产库」按钮。返回工程内相对路径。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -2735,7 +2735,8 @@ const TOOL_DEFS: McpToolDef[] = [
         name: { type: 'string', description: '文件显示名' },
         model: {
           type: 'string',
-          description: '空间世界 id：marble-1.1（标准）/ marble-1.1-plus（更大世界，更贵）'
+          description:
+            '空间世界 id：marble-1.1（标准）/ marble-1.1-plus（更大世界，更贵）/ marble-1.0 / marble-1.0-draft（上一代）'
         },
         providerInstanceId: { type: 'string', description: '提供商实例 id' },
         displayName: {

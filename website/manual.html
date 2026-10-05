@@ -1482,6 +1482,46 @@
             </li>
           </ul>
 
+          <h4>音频（声音分组下）</h4>
+          <ul>
+            <li>
+              声音 · 多说话人对话 · 音效 · 音乐 · 选择声音
+            </li>
+            <li>
+              <strong>声音</strong>（<code>asset.voice</code>）：TTS 配音。指令框里的文本就是<strong>要朗读的内容</strong>，
+              所以这个节点<strong>不显示系统提示词</strong>（否则那句指令会被一起念出来）。上游可接文本与参考图
+              （方舟声音设计用首图）；音色在节点的指令面板里按节点选择，留空走模型默认。
+            </li>
+            <li>
+              <strong>多说话人对话</strong>（<code>asset.dialogue</code>）：一次合成整段对白（ElevenLabs
+              <code>/v1/text-to-dialogue</code>）。指令框按行写 <code>说话人: 台词</code>（中英文冒号都认），
+              没有冒号的行沿用上一段的说话人（旁白 / 连续独白）；在 Inspector 的「说话人音色」里为每位说话人绑定音色，
+              未绑定的回退到节点默认音色。缺音色会<strong>点名是第几段、哪个说话人</strong>，不会静默用错音色。
+              产出的是一整段对话音频（声音资产）。
+            </li>
+            <li>
+              <strong>音效</strong>（<code>asset.sfx</code>）：走<strong>专用音效端点</strong>
+              （ElevenLabs <code>/v1/sound-generation</code>），描述的是<strong>声音本身</strong>
+              （如「雨落在铁皮屋顶上」），不是台词。Inspector 提供「可无缝循环」（环境音常用）与「期望时长」
+              （规范范围 0.5–30 秒）、「提示词影响力」（0–1，默认 0.3）。落盘到 <code>Cache/Sfx</code>。
+              该端点的模型是唯一取值（<code>eleven_text_to_sound_v2</code>），所以卡片上的下拉实际是选
+              <strong>用哪个提供商实例</strong>。没有可用提供商时会明确提示，不会退回语音合成。
+            </li>
+            <li>
+              <strong>音乐</strong>（<code>asset.music</code>）：编曲 / BGM。只吃文本（编曲描述 + 可选歌词），
+              不吃音色。模型来自设置页的<strong>「音乐」页签</strong>（与「声音」页签分开）：
+              OpenRouter（Google Lyria 3）、ElevenLabs（<code>music_v2_5</code> 等）、
+              MiniMax（<code>music-3.0</code> / <code>music-2.6</code>）、通义千问 · 百炼（<code>fun-music-v1</code>）。
+              Inspector 提供「纯音乐（无人声）」开关与歌词输入（支持 <code>[Intro]</code> / <code>[Verse]</code> 等结构标签）。
+              落盘到 <code>Cache/Music</code>。它与<strong>声音</strong>是两个模态：
+              下拉里不会出现 TTS 模型，反之亦然。
+            </li>
+            <li>
+              <strong>选择声音</strong>（<code>voice.select</code>）：从上游多个声音里挑一个作为当前输出，
+              常用于多分支配音流程。
+            </li>
+          </ul>
+
           <h4>视频编辑（视频分组下）</h4>
           <ul>
             <li>
@@ -1507,6 +1547,44 @@
             </li>
           </ul>
 
+          <h4>世界模型（世界分组下）</h4>
+          <ul>
+            <li>空间世界生成 · 空间世界导出 · 世界元素提取 / 世界元素表 / 世界元素生成</li>
+            <li>
+              <strong>空间世界生成</strong>（<code>asset.spatialWorld</code>）：文本、1–4 张参考图或 1 段参考视频 →
+              可漫游 3D 世界（World Labs Marble，1.1 / 1.1-plus / 1.0 / 1.0-draft 四档）。
+              详见本章「生成 / 资产类」里的详细说明与下面的典型工作流。
+            </li>
+            <li>
+              <strong>空间世界导出</strong>（<code>spatialWorld.export</code>，World Labs
+              <code>worlds/{id}:export</code>）：把世界导成下游能吃的网格。
+              <strong>空间世界端口是严格同类型的</strong>（<code>spatialWorld</code> 只连
+              <code>spatialWorld</code>，不隐式兼容 <code>model</code>），所以「世界 → 导演台 / 3D 加工」
+              <strong>必须经过这个节点</strong>。两种模式：
+              <ul>
+                <li>
+                  <strong>网格（默认）</strong>：HQ 网格 → GLB。档位可选<strong>带贴图</strong>（约 600k 面）
+                  或<strong>顶点色</strong>（约 1M 面），产物按<strong>模型资产</strong>登记，
+                  可直接接导演台或 3D 加工节点；上游是异步服务、<strong>最长约 1 小时</strong>、
+                  限速 4 次/小时、单独计费。
+                </li>
+                <li>
+                  <strong>高斯泼溅（PLY）</strong>：官方同步转换出 PLY，落在世界产物的<strong>同目录同名</strong>文件里
+                  （<code>world.ply</code>），可选分辨率（full_res / 500k / 150k / 100k）。PLY 在应用内没有预览通道、
+                  也没有对应资产类型，所以<strong>不登记资产</strong>，只写回路径与日志，并把上游世界产物透传下去
+                  （避免这条链在画布上断掉）。
+                </li>
+              </ul>
+              world_id 只能由「空间世界生成」节点给出，上游没接该节点时直接报错，不会猜；
+              出口值缺失时会按产出该模型的节点去任务记录里找回（生成本身已花过积分，不逼用户重生成）。
+            </li>
+            <li>
+              世界元素相关：<strong>世界元素提取</strong>（<code>world.extract</code>，从世界 / 全景图里抽出可复用的元素）、
+              <strong>世界元素表格</strong>（<code>world.table</code>，目录表格节点，只透传并存进 <code>params.text</code>，不调用生成模型）、
+              <strong>世界元素生成</strong>（<code>world.gen</code>，按元素逐项出图），配合画布与世界元素流程使用。
+            </li>
+          </ul>
+
           <h4>其它</h4>
           <ul>
             <li>图插件示例（仅本地调试可加载，正式安装包默认不出现）</li>
@@ -1528,6 +1606,31 @@
             </li>
             <li>
               <strong>成片</strong>：场 / 视频节点输出 → 打开剧本资产的成片时间线 → 拖入轨道拼装与导出。
+            </li>
+            <li>
+              <strong>配音（单角色）</strong>：文本 / 剧本 →「声音生成」→ 在指令面板选音色、填要朗读的文本 →
+              执行 →「声音输出」。指令框里写的就是要念的内容，不要在这里写「请用温柔的语气」这类指令。
+            </li>
+            <li>
+              <strong>配音（多角色对白）</strong>：「多说话人对话」→ 按行写
+              <code>角色A: 台词</code> / <code>角色B: 台词</code> → Inspector 里为每个说话人绑音色 →
+              执行得整段对话音频。一个节点出一整段，比逐句拼接更自然（语气连贯）。
+            </li>
+            <li>
+              <strong>音效</strong>：「音效生成」→ 选提供商实例 → 描述声音本身（「雨落在铁皮屋顶上」）→
+              需要环境音就勾「可无缝循环」、按需设时长 → 执行，产物落 <code>Cache/Sfx</code>，
+              可直接拖进成片时间线的音效轨（时间线的「生成音效」按钮走同一端点）。
+            </li>
+            <li>
+              <strong>配乐 / BGM</strong>：「音乐生成」→ 在设置页的「音乐」页签里勾好音乐模型 →
+              填编曲描述（风格 / 情绪 / 场景），要人声就关掉「纯音乐」并填歌词 → 执行，
+              产物落 <code>Cache/Music</code>，可拖进成片时间线的音乐轨。
+            </li>
+            <li>
+              <strong>可漫游世界</strong>：「空间世界生成」（文本 / 1–4 张参考图 / 1 段参考视频）→
+              「空间世界导出」→ 取导出的网格接「导演台」排机位，或接 3D 加工节点继续处理。
+              <strong>不能跳过导出节点</strong>——空间世界端口不隐式兼容模型端口。
+              世界里的元素可用「世界元素提取」抽出来复用，配「世界元素表」管理、再逐项「世界元素生成」出图。
             </li>
             <li>
               <strong>一键工作流</strong>：顶栏创建宿主 → 拖入画布接线 → Dive 微调 → 加入任务。

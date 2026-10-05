@@ -1759,6 +1759,52 @@
             </li>
           </ul>
 
+          <h4>Audio (under the voice group)</h4>
+          <ul>
+            <li>Voice · multi-speaker dialogue · sound effect · music · select voice</li>
+            <li>
+              <strong>Voice</strong> (<code>asset.voice</code>): TTS dubbing. The text in the
+              instruction box is <strong>what gets read aloud</strong>, so this node <strong>shows no system
+              prompt</strong> (otherwise that instruction would be read out too). It accepts text and a reference
+              image upstream (Ark voice design uses the first image); the voice is picked per node in the
+              instruction panel, and an empty voice falls back to the model default.
+            </li>
+            <li>
+              <strong>Multi-speaker dialogue</strong> (<code>asset.dialogue</code>): synthesize a whole dialogue in
+              one call (ElevenLabs <code>/v1/text-to-dialogue</code>). Write one
+              <code>speaker: line</code> per line (both ASCII and full-width colons work); lines without a colon
+              keep the previous speaker (narration / continuous monologue). Bind a voice per speaker under
+              “speaker voices” in the Inspector; unbound speakers fall back to the node default. A missing voice is
+              reported <strong>naming the segment index and the speaker</strong> — it never silently uses the wrong
+              voice. The output is one dialogue audio file (a voice asset).
+            </li>
+            <li>
+              <strong>Sound effect</strong> (<code>asset.sfx</code>): uses the
+              <strong>dedicated sound-effect endpoint</strong> (ElevenLabs <code>/v1/sound-generation</code>).
+              Describe the <strong>sound itself</strong> (“rain falling on a tin roof”), not a spoken line. The
+              Inspector offers “seamlessly loopable” (common for ambience), “expected duration” (spec range
+              0.5–30 s) and “prompt influence” (0–1, default 0.3). Files land in <code>Cache/Sfx</code>. The
+              endpoint’s model is a single fixed value (<code>eleven_text_to_sound_v2</code>), so the dropdown on
+              the card actually picks <strong>which provider instance</strong> to use. With no provider available it
+              says so explicitly instead of falling back to speech synthesis.
+            </li>
+            <li>
+              <strong>Music</strong> (<code>asset.music</code>): composition / BGM. Text only (a
+              composition brief plus optional lyrics) — it does not use voices. Models come from the
+              <strong>“Music” tab</strong> in Settings (kept separate from the “Audio” tab): OpenRouter (Google
+              Lyria 3), ElevenLabs (<code>music_v2_5</code> and friends), MiniMax (<code>music-3.0</code> /
+              <code>music-2.6</code>), DashScope (<code>fun-music-v1</code>). The Inspector offers an
+              “instrumental (no vocals)” toggle and a lyrics box (supports structure tags such as
+              <code>[Intro]</code> / <code>[Verse]</code>). Files land in <code>Cache/Music</code>. Music and voice
+              are <strong>two separate modalities</strong>: the music dropdown never lists TTS models and
+              vice versa.
+            </li>
+            <li>
+              <strong>Select voice</strong> (<code>voice.select</code>): pick one voice from several upstream voices
+              as the current output — commonly used in multi-branch dubbing flows.
+            </li>
+          </ul>
+
           <h4>Video editing (under the video group)</h4>
           <ul>
             <li>
@@ -1790,6 +1836,52 @@
             </li>
           </ul>
 
+          <h4>World models (under the world group)</h4>
+          <ul>
+            <li>Spatial world generation · spatial world export · world element extraction / world element table / world element generation</li>
+            <li>
+              <strong>Spatial world generation</strong> (<code>asset.spatialWorld</code>): text, 1–4 reference
+              images or one reference video → a walkable 3D world (World Labs Marble; 1.1 / 1.1-plus / 1.0 /
+              1.0-draft). See the detailed notes under “Generation / asset nodes” above and the worked flow below.
+            </li>
+            <li>
+              <strong>Spatial world export</strong> (<code>spatialWorld.export</code>, World Labs
+              <code>worlds/{id}:export</code>): turns a world into a mesh that downstream nodes accept.
+              <strong>Spatial-world ports are strictly typed</strong> (a <code>spatialWorld</code> port only
+              connects to <code>spatialWorld</code> and does not implicitly accept <code>model</code>), so going
+              “world → Director Stage / 3D processing” <strong>must pass through this node</strong>. Two modes:
+              <ul>
+                <li>
+                  <strong>Mesh (default)</strong>: HQ mesh → GLB, either <strong>textured</strong> (about 600k
+                  faces) or <strong>vertex-coloured</strong> (about 1M faces). The result is registered as a
+                  <strong>model asset</strong> that feeds the Director Stage or the 3D processing nodes directly.
+                  The upstream service is asynchronous, takes <strong>up to about an hour</strong>, is rate-limited
+                  to 4 calls per hour and is billed separately.
+                </li>
+                <li>
+                  <strong>Gaussian splat (PLY)</strong>: the official synchronous conversion writes a PLY next to the
+                  world output <strong>in the same directory and under the same name</strong> (<code>world.ply</code>),
+                  with an optional resolution (full_res / 500k / 150k / 100k). PLY has no preview channel and no
+                  matching asset type in the app, so it is <strong>not registered as an asset</strong> — only the
+                  path and a log line are written back, and the upstream world output is passed through so the chain
+                  does not break on the canvas.
+                </li>
+              </ul>
+              The world_id can only come from the “spatial world generation” node; with no such node upstream it
+              errors out rather than guessing. If the outgoing value is missing, the id is recovered from the task
+              record of the node that produced the model (generation already cost credits, so you are not forced to
+              regenerate).
+            </li>
+            <li>
+              World element nodes: <strong>world element extraction</strong> (<code>world.extract</code> — pull
+              reusable elements out of a world or a panorama), <strong>world element table</strong>
+              (<code>world.table</code> — a catalog/table node that only passes data through and stores it in
+              <code>params.text</code>, calling no generation model) and <strong>world element generation</strong>
+              (<code>world.gen</code> — render images element by element), used together with the canvas and
+              world-element flows.
+            </li>
+          </ul>
+
           <h4>Others</h4>
           <ul>
             <li>Graph plugin sample (loaded only for local debugging; absent from official installers)</li>
@@ -1815,6 +1907,37 @@
             <li>
               <strong>Final cut</strong>: shot / video node outputs → open the script asset's final timeline →
               drag clips onto tracks, assemble and export.
+            </li>
+            <li>
+              <strong>Dubbing (single character)</strong>: text / script → “voice generation” → pick a voice in the
+              instruction panel and enter the text to read → run → “voice output”. What you type in that box is
+              spoken verbatim, so do not put instructions like “use a gentle tone” there.
+            </li>
+            <li>
+              <strong>Dubbing (multi-character dialogue)</strong>: “multi-speaker dialogue” → write
+              <code>Alice: line</code> / <code>Bob: line</code> one per line → bind a voice per speaker in the
+              Inspector → run to get the whole dialogue as one audio file. One node produces the entire exchange,
+              which sounds more natural than stitching line by line (the delivery stays continuous).
+            </li>
+            <li>
+              <strong>Sound effects</strong>: “sound effect generation” → pick a provider instance → describe the
+              sound itself (“rain falling on a tin roof”) → tick “seamlessly loopable” for ambience and set the
+              duration as needed → run. Files land in <code>Cache/Sfx</code> and can be dragged straight onto the
+              SFX track of the final timeline (the timeline's “generate SFX” button hits the same endpoint).
+            </li>
+            <li>
+              <strong>Score / BGM</strong>: “music generation” → first tick your music models on the “Music” tab in
+              Settings → write a composition brief (style / mood / setting); for vocals turn off “instrumental” and
+              add lyrics → run. Files land in <code>Cache/Music</code> and can be dragged onto the timeline's music
+              track.
+            </li>
+            <li>
+              <strong>Walkable world</strong>: “spatial world generation” (text / 1–4 reference images / one
+              reference video) → “spatial world export” → feed the exported mesh into the Director Stage to block
+              camera moves, or into the 3D processing nodes to keep working on it.
+              <strong>You cannot skip the export node</strong> — spatial-world ports do not implicitly accept model
+              ports. Elements inside a world can be pulled out with “world element extraction”, managed with “world
+              element table” and rendered one by one with “world element generation”.
             </li>
             <li>
               <strong>One-Click Workflow</strong>: create a host from the top bar → drag it onto the canvas and
