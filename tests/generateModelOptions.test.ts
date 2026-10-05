@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest'
 import {
   buildModelOptions,
   buildModelVoiceOptions,
+  buildSoundEffectOptions,
   pickDefaultModelKey,
-  resolveEmptyModelOptionsReason
+  resolveEmptyModelOptionsReason,
+  supportsSoundEffect
 } from '../src/renderer/src/features/graph/model/generateModelOptions'
 import { createEmptyModalityMap, type ModelProviderInstance } from '../src/shared/modelProvider'
 function baseProvider(
@@ -171,6 +173,48 @@ describe('buildModelOptions', () => {
     // 关键：它只有音频，所以在文本模态等于「没有可用提供商」，
     // 不能掉进末尾的「文本 + 图片」默认分支被误判为支持
     expect(resolveEmptyModelOptionsReason(providers, 'text')).toBe('noProvider')
+  })
+
+  /**
+   * 音效节点的提供商下拉。
+   *
+   * 端点 `/v1/sound-generation` 的 `model_id` 是单值 enum，所以「选模型」没有意义；
+   * 但那个下拉同时是**选提供商实例**的入口（key 是 providerId::model）——
+   * 多 Key / 多账号时它是唯一入口，不能因为只有一个模型就整个删掉。
+   */
+  it('音效：每个可用提供商一项，模型固定为唯一取值', () => {
+    const providers = [
+      baseProvider({ id: 'el1', providerKind: 'elevenlabs', label: '主账号' }),
+      baseProvider({ id: 'el2', providerKind: 'elevenlabs', label: '备用号' }),
+      baseProvider({ id: 'or1', providerKind: 'openrouter' }),
+      baseProvider({ id: 'oa1', providerKind: 'openai' })
+    ]
+    const options = buildSoundEffectOptions(providers)
+    // 只有 ElevenLabs 能出音效；两个实例各一项，便于按 Key 选用哪个
+    expect(options.map((o) => o.key)).toEqual([
+      'el1::eleven_text_to_sound_v2',
+      'el2::eleven_text_to_sound_v2'
+    ])
+    expect(options.every((o) => o.model === 'eleven_text_to_sound_v2')).toBe(true)
+    expect(options.map((o) => o.providerInstanceId)).toEqual(['el1', 'el2'])
+  })
+
+  it('音效：停用 / 缺 Key 的实例不进下拉；能力判定与适配器一致', () => {
+    expect(supportsSoundEffect('elevenlabs')).toBe(true)
+    expect(supportsSoundEffect('openai')).toBe(false)
+    expect(supportsSoundEffect('openrouter')).toBe(false)
+
+    const disabled = baseProvider({
+      id: 'el1',
+      providerKind: 'elevenlabs',
+      enabled: false
+    })
+    expect(buildSoundEffectOptions([disabled])).toEqual([])
+    // ElevenLabs 目录公开可读，空 Key 也应可选（生成时才报缺密钥）
+    const noKey = baseProvider({ id: 'el2', providerKind: 'elevenlabs', apiKey: '' })
+    expect(buildSoundEffectOptions([noKey]).map((o) => o.key)).toEqual([
+      'el2::eleven_text_to_sound_v2'
+    ])
   })
 })
 

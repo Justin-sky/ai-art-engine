@@ -5483,6 +5483,7 @@ export default {
         dialogueSpeakersEmpty:
           '还没解析出说话人。请在上方指令框里按行写「说话人: 台词」，例如：A: 你终于来了。',
         soundEffectOptions: '音效参数',
+        soundEffectProvider: '音效提供商（模型固定为 eleven_text_to_sound_v2）',
         sfxInstructionPlaceholder:
           '描述要生成的声音本身，例如「雨落在铁皮屋顶上，远处有闷雷」；不需要写台词',
         soundEffectOptionsHint:

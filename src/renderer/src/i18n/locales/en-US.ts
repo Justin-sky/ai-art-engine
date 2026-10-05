@@ -5625,6 +5625,7 @@ export default {
         dialogueSpeakersEmpty:
           'No speakers parsed yet. Write one utterance per line in the instruction box above, e.g. A: You finally made it.',
         soundEffectOptions: 'Sound effect options',
+        soundEffectProvider: 'Sound effect provider (model is fixed to eleven_text_to_sound_v2)',
         sfxInstructionPlaceholder:
           'Describe the sound itself, e.g. "rain on a tin roof with distant thunder"; no dialogue needed',
         soundEffectOptionsHint:

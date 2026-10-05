@@ -411,7 +411,6 @@
       >
         <template #footer>
           <InstructionModelSelect
-            v-if="!isSoundEffectNode"
             v-model="selectedModelKey"
             :options="modelOptions"
             :title="instructionModelTitle"
@@ -578,6 +577,8 @@ import ImageGenerateParamsSelect from './ImageGenerateParamsSelect.vue'
 import VideoGenerateParamsSelect from './VideoGenerateParamsSelect.vue'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import {
+  buildSoundEffectOptions,
+  loadAllProviders,
   loadGenerateModelOptions,
   parseModelKey,
   preferredModelKey,
@@ -1237,7 +1238,12 @@ const instructionModelTitle = computed(() => {
   if (instructionKind.value === 'video' || instructionKind.value === 'lipSync') {
     return t('graph.inspector.generate.videoModel')
   }
-  if (instructionKind.value === 'voice') return t('graph.inspector.generate.voiceModel')
+  if (instructionKind.value === 'voice') {
+    // 音效端点的模型是固定的，下拉实际在选「用哪个提供商实例」
+    return isSoundEffectNode.value
+      ? t('graph.inspector.generate.soundEffectProvider')
+      : t('graph.inspector.generate.voiceModel')
+  }
   if (instructionKind.value === 'model3d') return t('graph.inspector.generate.model3dModel')
   if (instructionKind.value === 'spatialWorld')
     return t('graph.inspector.generate.spatialSpatialWorld')
@@ -2170,6 +2176,20 @@ function meshOpForInstructionKind(kind: InstructionPresetKind | null): MeshOp | 
 
 async function refreshModelOptions(): Promise<void> {
   if (!instructionKind.value) return
+  // 音效节点：模型固定（端点 model_id 是单值 enum），下拉只用来选提供商实例。
+  // 不能因为「只有一个模型」就删掉下拉 —— 多 Key / 多账号时它是唯一入口。
+  if (isSoundEffectNode.value) {
+    const options = buildSoundEffectOptions(await loadAllProviders())
+    modelOptions.value = options
+    modelVoices.value = {}
+    modelVoiceLabels.value = {}
+    modelVoiceRequired.value = false
+    // 保持当前选中的提供商；它已不可用（被停用 / 删掉）时才退回第一个
+    const currentProviderId = parseModelKey(selectedModelKey.value)?.providerInstanceId
+    selectedModelKey.value =
+      options.find((o) => o.providerInstanceId === currentProviderId)?.key ?? options[0]?.key ?? ''
+    return
+  }
   const preferred = preferredModelKey(
     props.node.params.generateProviderInstanceId,
     props.node.params.generateModel

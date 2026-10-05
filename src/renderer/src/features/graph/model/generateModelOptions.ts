@@ -4,7 +4,7 @@ import type {
   ModelProviderInstance,
   ModelProviderKind
 } from '@shared/modelProvider'
-import { elevenModelKind } from '@shared/modelProviders/elevenlabs/voice'
+import { elevenModelKind, ELEVEN_SOUND_MODEL } from '@shared/modelProviders/elevenlabs/voice'
 import {
   allowsEmptyApiKey,
   isDecisionProviderKind,
@@ -53,6 +53,56 @@ export function parseModelKey(key: string): { providerInstanceId: string; model:
   const idx = key.indexOf('::')
   if (idx <= 0) return null
   return { providerInstanceId: key.slice(0, idx), model: key.slice(idx + 2) }
+}
+
+/**
+ * 音效节点的模型选项：**每个可用提供商一项，模型固定**。
+ *
+ * 音效端点 `POST /v1/sound-generation` 的 `model_id` 是单值 enum
+ * （只有 `eleven_text_to_sound_v2`），所以「选模型」没有意义；
+ * 但那个下拉同时是**选提供商实例**（key 是 `providerId::model`）——
+ * 多个 Key / 多账号时它是唯一入口，不能因为「只有一个模型」就整个删掉。
+ * 所以这里保留下拉，只把模型名固定成规范里那个唯一取值。
+ *
+ * 模型串照常写进 params：主进程的 resolveActiveProvider 用它做**偏好**匹配，
+ * 命中不了就退回该提供商在声音页签里的默认模型（音效适配器本就忽略模型入参）。
+ */
+export function buildSoundEffectOptions(providers: ModelProviderInstance[]): GenerateModelOption[] {
+  const options: GenerateModelOption[] = []
+  for (const provider of providers) {
+    if (!provider.enabled) continue
+    // 目前只有 ElevenLabs 实现了 /v1/sound-generation（facade 见适配器无此方法即明确报错）
+    if (!supportsSoundEffect(provider.providerKind)) continue
+    if (!provider.apiKey.trim() && !allowsEmptyApiKey(provider)) continue
+    options.push({
+      key: modelKey(provider.id, ELEVEN_SOUND_MODEL),
+      model: ELEVEN_SOUND_MODEL,
+      providerInstanceId: provider.id,
+      providerKind: provider.providerKind,
+      label: providerModelDisplayName(provider.providerKind, ELEVEN_SOUND_MODEL)
+    })
+  }
+  return options
+}
+
+/**
+ * 当前设置里的全部提供商实例。
+ *
+ * 给音效节点用：它的模型是固定的，需要的是**提供商清单**本身
+ * （走 loadGenerateModelOptions 会被音频模态的模型过滤挡掉）。
+ */
+export async function loadAllProviders(): Promise<ModelProviderInstance[]> {
+  try {
+    const settings = await getSettingsCached()
+    return settings.models?.providers ?? []
+  } catch {
+    return []
+  }
+}
+
+/** 谁能做音效生成（与主进程适配器能力一一对应） */
+export function supportsSoundEffect(kind: ModelProviderKind): boolean {
+  return kind === 'elevenlabs'
 }
 
 export function buildModelOptions(

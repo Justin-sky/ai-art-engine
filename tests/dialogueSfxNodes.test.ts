@@ -84,12 +84,15 @@ describe('多说话人对话 / 音效节点', () => {
     expect(mainIpc).toContain('generateSoundEffectAsset')
   })
 
-  it('音效节点不再长得像文本转语音：卡片上没有模型选择器与音色选择器', () => {
+  it('音效节点的提供商下拉**保留**，但模型固定成唯一取值', () => {
     const card = readFileSync('src/renderer/src/components/GraphNodeCard.vue', 'utf8')
-    // 音效端点没有可选模型（model_id 单值 enum），复用声音节点的模型下拉只会误导
+    // 下拉同时是「选提供商实例」的入口（key 是 providerId::model），
+    // 多 Key / 多账号时删掉它就等于没得选 —— 所以必须保留
+    expect(card).not.toContain('v-if="!isSoundEffectNode"')
+    expect(card).toContain('buildSoundEffectOptions(await loadAllProviders())')
+    // 固定模型+每提供商一项由纯函数负责（单测见 generateModelOptions.test.ts）
     expect(card).toContain('const isSoundEffectNode = computed')
-    expect(card).toContain('v-if="!isSoundEffectNode"')
-    // 音色选择器也必须排除音效节点（音效没有「音色」这个概念）
+    // 音色选择器仍必须排除音效节点（音效没有「音色」这个概念）
     const selectBlock = card.slice(
       card.indexOf('const showSpeechVoice = computed'),
       card.indexOf('const speechVoice = computed')
@@ -97,6 +100,8 @@ describe('多说话人对话 / 音效节点', () => {
     expect(selectBlock).toContain('!isSoundEffectNode.value')
     // 有音效专用的指令占位文案（否则仍写着「描述要生成的声音/视频」那套）
     expect(card).toContain("t('graph.inspector.generate.sfxInstructionPlaceholder')")
+    // 下拉标题点明「模型固定」，免得又像在选 TTS 模型
+    expect(card).toContain("t('graph.inspector.generate.soundEffectProvider')")
   })
 
   it('音效请求恒用唯一 model_id（节点上的 TTS 模型不会透传成坏请求）', () => {
