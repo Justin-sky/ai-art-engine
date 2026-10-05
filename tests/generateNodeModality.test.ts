@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { generateNodeModality } from '../src/shared/graph/generateNodeModality'
+import { generateNodeModality, usesVoiceProfile } from '../src/shared/graph/generateNodeModality'
 
 /**
  * 生成节点该读哪个模态的模型。
@@ -45,6 +45,31 @@ describe('generateNodeModality', () => {
 })
 
 /**
+ * 角色音色档案（generateSpeechCharacter）该不该出现在这个节点上。
+ *
+ * 只有走语音合成的节点才会用到它：`facade.generateSpeech` 里的 `applyVoiceProfile`
+ * 会把档案解析成 voice / referenceAudio。`generateMusic` **不解析档案**
+ * （`GenerateMusicInput` 连 voiceProfile 字段都没有），音效端点也不吃音色 ——
+ * 在这两类节点上放这个下拉，用户选了不会生效。
+ */
+describe('usesVoiceProfile', () => {
+  it('音乐与音效节点不显示角色音色（选了不生效）', () => {
+    expect(usesVoiceProfile({ typeId: 'asset.music', assetType: 'voice' })).toBe(false)
+    expect(usesVoiceProfile({ typeId: 'asset.sfx', assetType: 'voice' })).toBe(false)
+  })
+
+  it('声音与多说话人对话节点显示（对话按说话人绑的音色也来自档案体系）', () => {
+    expect(usesVoiceProfile({ typeId: 'asset.voice', assetType: 'voice' })).toBe(true)
+    expect(usesVoiceProfile({ typeId: 'asset.dialogue', assetType: 'voice' })).toBe(true)
+  })
+
+  it('非声音资产一律不显示', () => {
+    expect(usesVoiceProfile({ typeId: 'asset.image', assetType: 'image' })).toBe(false)
+    expect(usesVoiceProfile({})).toBe(false)
+  })
+})
+
+/**
  * 源码级守卫：两处 UI 都必须把音乐节点路由到 music 模态。
  *
  * 这段判定原先在 GraphNodeCard 与 ShotNodeInspector 里各写了一遍 `'audio'`，
@@ -73,5 +98,13 @@ describe('模态路由的接线', () => {
     expect(src).not.toContain(
       '// 声音节点没有系统提示词字段（TTS 会把指令一起念出来），只加载音频模型'
     )
+  })
+
+  it('ShotNodeInspector：角色音色行由 usesVoiceProfile 决定，不再按 assetType 手写排除', () => {
+    const src = readFileSync('src/renderer/src/components/ShotNodeInspector.vue', 'utf8')
+    expect(src).toContain('v-if="showsVoiceProfile"')
+    expect(src).toContain('usesVoiceProfile(node.value)')
+    // 旧的按 assetType / typeId 手写排除的写法（漏掉音乐就是这个原因）
+    expect(src).not.toContain('v-if="isVoice && !isSoundEffect"')
   })
 })

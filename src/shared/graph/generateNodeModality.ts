@@ -48,3 +48,16 @@ export function generateNodeModality(node: GenerateNodeIdentity): GenerateNodeMo
       return 'text'
   }
 }
+
+/**
+ * 该生成节点是否**真的会用到「角色音色档案」**（generateSpeechCharacter）。
+ *
+ * 只有走语音合成的节点才会：`facade.generateSpeech` 里 `applyVoiceProfile`
+ * 会把档案解析成 voice / referenceAudio。
+ * `generateMusic` **不解析档案**（`GenerateMusicInput` 都没有 voiceProfile 字段），
+ * 音效端点也不吃音色 —— 在这两类节点上放这个下拉，用户选了不会生效。
+ */
+export function usesVoiceProfile(node: GenerateNodeIdentity): boolean {
+  if (node.typeId === 'asset.music' || node.typeId === 'asset.sfx') return false
+  return node.assetType === 'voice'
+}

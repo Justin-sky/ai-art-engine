@@ -105,7 +105,10 @@
           />
         </div>
         <!-- 音效节点没有「角色音色」可言：它是音效端点，不吃音色档案 -->
-        <div v-if="isVoice && !isSoundEffect" class="voice-profile-row">
+        <!-- 角色音色只在**真的会用到**它的节点上出现（见 usesVoiceProfile）：
+             音乐端点的入参里没有 voiceProfile，facade 也不解析档案，
+             放在这里就是个选了不生效的下拉。音效端点同样不吃音色。 -->
+        <div v-if="showsVoiceProfile" class="voice-profile-row">
           <label class="voice-profile-label">
             {{ t('graph.inspector.generate.voiceProfile') }}
             <select :value="generateSpeechCharacter || ''" @change="onVoiceCharacterChange">
@@ -691,7 +694,7 @@ import {
   type GenerateModelOption
 } from '../features/graph/model/generateModelOptions'
 import { dialogueSpeakers, parseDialogueScript } from '@shared/graph/dialogueScript'
-import { generateNodeModality } from '@shared/graph/generateNodeModality'
+import { generateNodeModality, usesVoiceProfile } from '@shared/graph/generateNodeModality'
 import { useProjectStore } from '../stores/project'
 import { openFullImagePreview } from '../features/media/openFullImagePreview'
 import { invalidateAssetUrlCache } from '../features/media/assetUrlCache'
@@ -839,6 +842,8 @@ const isDialogue = computed(() => node.value?.typeId === 'asset.dialogue')
 const isSoundEffect = computed(() => node.value?.typeId === 'asset.sfx')
 /** 音乐生成节点：只吃编曲描述（+ 可选歌词），不吃音色 */
 const isMusic = computed(() => node.value?.typeId === 'asset.music')
+/** 该节点是否真的会用角色音色档案（音乐 / 音效都不会，选了不生效） */
+const showsVoiceProfile = computed(() => (node.value ? usesVoiceProfile(node.value) : false))
 
 /**
  * 对话稿里出现的说话人（按首次出现顺序）。
