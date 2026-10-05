@@ -108,11 +108,12 @@ export function toVoiceDesignImagePrompt(url: string): {
   return { image_url: u }
 }
 
-async function persistSpeechBuffer(
-  buf: Buffer,
-  input: GenerateSpeechInput,
-  speakerId: string
-): Promise<GenerateSpeechResult> {
+/**
+ * 只写临时文件并返回路径：落盘目录与资产登记由 facade 的 generateSpeechAsset
+ * 统一负责。这里**不要**再 attachExternalGeneratedFile —— 那会与 facade
+ * 各登记一次，同一段音频出现两条资产，且落点绕过了 resolveMediaOutputDir。
+ */
+async function persistSpeechBuffer(buf: Buffer, speakerId: string): Promise<GenerateSpeechResult> {
   if (!buf.length) throw fail(PROVIDER_ERRORS.noAudioResult)
   const stamp = Date.now()
 
@@ -120,24 +121,6 @@ async function persistSpeechBuffer(
   if (!existsSync(tmpDir)) mkdirSync(tmpDir, { recursive: true })
   const tmpPath = join(tmpDir, `audio-${stamp}.mp3`)
   writeFileSync(tmpPath, buf)
-
-  if (projectService.isOpen()) {
-    const asset = projectService.attachExternalGeneratedFile({
-      type: 'voice',
-      sourceFilePath: tmpPath,
-      name: input.name ?? `声音 ${new Date().toLocaleString()}`,
-      prompt: input.input,
-      outputDir: input.outputDir?.trim() || undefined
-    })
-    return {
-      model: speakerId,
-      voice: speakerId,
-      format: 'mp3',
-      filePath: tmpPath,
-      assetId: asset.id,
-      relativePath: asset.relativePath
-    }
-  }
 
   return { model: speakerId, voice: speakerId, format: 'mp3', filePath: tmpPath }
 }
@@ -224,7 +207,7 @@ export async function generateOpenspeechVoiceDesign(
     }
 
     const buf = await downloadAudioUrl(data.demo_audio.trim())
-    return persistSpeechBuffer(buf, input, speakerId)
+    return persistSpeechBuffer(buf, speakerId)
   } catch (err) {
     if (
       (err instanceof AppError && err.code.startsWith('provider.volcengine.voiceDesign.')) ||
@@ -344,7 +327,7 @@ export async function cloneOpenspeechVoice(
     if (!data?.demo_audio?.trim()) throw fail(E_OS_CLONE_NO_DEMO)
 
     const buf = await downloadAudioUrl(data.demo_audio.trim())
-    const result = await persistSpeechBuffer(buf, input, speakerId)
+    const result = await persistSpeechBuffer(buf, speakerId)
     return result
   } catch (err) {
     if (err instanceof AppError) throw err

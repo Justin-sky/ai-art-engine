@@ -7,7 +7,6 @@ import type {
 } from '@shared/modelProvider'
 import { isAppError, fail, defErr, defErrSimple } from '@shared/errors/appError'
 import { PROVIDER_ERRORS } from '../catalog'
-import { projectService } from '../../projectService'
 import {
   assertMiniMaxBaseResp,
   createMiniMaxHttpClient,
@@ -61,11 +60,12 @@ function hexToBuffer(hex: string): Buffer {
   return Buffer.from(cleaned, 'hex')
 }
 
-async function persistSpeechBuffer(
-  buf: Buffer,
-  input: GenerateSpeechInput,
-  voiceId: string
-): Promise<GenerateSpeechResult> {
+/**
+ * 只写临时文件并返回路径：落盘目录与资产登记由 facade 的 generateSpeechAsset
+ * 统一负责。这里**不要**再 attachExternalGeneratedFile —— 那会与 facade
+ * 各登记一次，同一段音频出现两条资产，且落点绕过了 resolveMediaOutputDir。
+ */
+async function persistSpeechBuffer(buf: Buffer, voiceId: string): Promise<GenerateSpeechResult> {
   if (!buf.length) throw fail(PROVIDER_ERRORS.noAudioResult)
   const stamp = Date.now()
 
@@ -73,24 +73,6 @@ async function persistSpeechBuffer(
   if (!existsSync(tmpDir)) mkdirSync(tmpDir, { recursive: true })
   const tmpPath = join(tmpDir, `audio-${stamp}.mp3`)
   writeFileSync(tmpPath, buf)
-
-  if (projectService.isOpen()) {
-    const asset = projectService.attachExternalGeneratedFile({
-      type: 'voice',
-      sourceFilePath: tmpPath,
-      name: input.name ?? `声音 ${new Date().toLocaleString()}`,
-      prompt: input.input,
-      outputDir: input.outputDir?.trim() || undefined
-    })
-    return {
-      model: voiceId,
-      voice: voiceId,
-      format: 'mp3',
-      filePath: tmpPath,
-      assetId: asset.id,
-      relativePath: asset.relativePath
-    }
-  }
 
   return { model: voiceId, voice: voiceId, format: 'mp3', filePath: tmpPath }
 }
@@ -134,7 +116,7 @@ export async function generateMiniMaxVoiceDesign(
     if (!trial) throw fail(E_MMVD_NO_PREVIEW_AUDIO)
     if (!voiceId) throw fail(E_MMVD_NO_VOICE_ID)
     const buf = hexToBuffer(trial)
-    return persistSpeechBuffer(buf, input, voiceId)
+    return persistSpeechBuffer(buf, voiceId)
   } catch (err) {
     if (
       isAppError(err) &&

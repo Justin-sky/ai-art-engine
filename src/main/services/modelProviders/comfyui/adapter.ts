@@ -33,7 +33,6 @@ import type { ModelProviderAdapter, VideoPollResult } from '../types'
 import { PROVIDER_ERRORS } from '../catalog'
 import { fail, defErr, defErrSimple, isAppError } from '@shared/errors/appError'
 import { sleep } from '../http'
-import { projectService } from '../../projectService'
 import {
   comfyUiBaseUrl,
   createComfyUiFormClient,
@@ -856,23 +855,15 @@ export const comfyUiAdapter: ModelProviderAdapter = {
       const tmpPath = join(tmpDir, `audio-${Date.now()}.${ext}`)
       writeFileSync(tmpPath, Buffer.from(data))
 
-      if (projectService.isOpen()) {
-        const asset = projectService.attachExternalGeneratedFile({
-          type: 'voice',
-          sourceFilePath: tmpPath,
-          name: input.name ?? `声音 ${new Date().toLocaleString()}`,
-          prompt: input.input,
-          outputDir: input.outputDir?.trim() || undefined
-        })
-        return {
-          model: modelId,
-          voice: input.voice || modelId,
-          format,
-          filePath: tmpPath,
-          assetId: asset.id,
-          relativePath: asset.relativePath
-        }
-      }
+      /**
+       * 只写临时文件并返回路径：落盘目录与资产登记由 facade 的
+       * generateSpeechAsset 统一负责（`outputDir` 由它解析）。
+       *
+       * 这里**不要**再 attachExternalGeneratedFile：那会与 facade 各登记一次，
+       * 同一段音频出现两条资产，而且适配器自己用的 `input.outputDir` 没经过
+       * resolveMediaOutputDir，落点也和别处不一致。
+       * OpenAI 兼容 / 火山方舟等语音实现都已经是这个形状。
+       */
       return { model: modelId, voice: input.voice || modelId, format, filePath: tmpPath }
     } catch (err) {
       throw fail(E_COMFY_SPEECH_FAILED, { detail: await readComfyUiError(err) })

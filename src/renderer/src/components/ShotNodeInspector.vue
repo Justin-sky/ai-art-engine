@@ -72,7 +72,12 @@
 
     <template v-if="isImage || isScreenplay || isVoice || isVideo || isGameSystem">
       <section class="gen-config">
-        <label>
+        <!--
+          系统提示词只给「文本类」节点：图片 / 剧本 / 视频 / 策划案会把它拼进 prompt 或
+          作为 system 角色发给对话模型。声音节点不给 —— TTS 的 input 是「要被朗读的文本」，
+          给模型的指令会被一并念出来（详见 generateMedia 声音分支的说明）。
+        -->
+        <label v-if="!isVoice">
           {{ t('graph.inspector.generate.systemPrompt') }}
           <ExpandableTextarea
             :key="`sys-${node.id}`"
@@ -514,14 +519,11 @@ import {
   DEFAULT_SCREENPLAY_SYSTEM_PROMPT_ZH,
   DEFAULT_VIDEO_SYSTEM_PROMPT_EN,
   DEFAULT_VIDEO_SYSTEM_PROMPT_ZH,
-  DEFAULT_VOICE_SYSTEM_PROMPT_EN,
-  DEFAULT_VOICE_SYSTEM_PROMPT_ZH,
   defaultGameSystemSystemPrompt,
   defaultGameSystemUserPrompt,
   defaultImageSystemPrompt,
   defaultScreenplaySystemPrompt,
   defaultVideoSystemPrompt,
-  defaultTimbreSystemPrompt,
   imageGenerateParamsToNodePatch,
   isProcessingAssetNode,
   readImageGenerateParamsFromNode,
@@ -530,7 +532,6 @@ import {
   resolveNodeType,
   resolveScreenplaySystemPrompt,
   resolveVideoSystemPrompt,
-  resolveVoiceSystemPrompt,
   type ImageGenerateParams
 } from '@shared/graph'
 import GraphNodeRunControl from './GraphNodeRunControl.vue'
@@ -1425,10 +1426,7 @@ function loadGenerateConfig(current: NonNullable<typeof node.value>): void {
   }
 
   if (current.assetType === 'voice') {
-    systemPrompt.value = resolveVoiceSystemPrompt(
-      current.params.generateSystemPrompt,
-      String(locale.value)
-    )
+    // 声音节点没有系统提示词字段（TTS 会把指令一起念出来），只加载音频模型
     void loadModels('audio', preferred)
     return
   }
@@ -1582,12 +1580,6 @@ watch(locale, (next) => {
       cur === DEFAULT_GAME_SYSTEM_SYSTEM_PROMPT_ZH
     ) {
       systemPrompt.value = defaultGameSystemSystemPrompt(String(next))
-    }
-    return
-  }
-  if (isVoice.value) {
-    if (!cur || cur === DEFAULT_VOICE_SYSTEM_PROMPT_EN || cur === DEFAULT_VOICE_SYSTEM_PROMPT_ZH) {
-      systemPrompt.value = defaultTimbreSystemPrompt(String(next))
     }
     return
   }
