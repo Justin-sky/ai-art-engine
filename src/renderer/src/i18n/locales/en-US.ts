@@ -330,7 +330,7 @@ export default {
     },
     stageControls: {
       title: '3D viewport control sensitivity',
-      hint: 'How the Director Stage viewport feels. Drag and save to apply immediately — no need to reopen the viewport; the defaults match the previously hard-coded feel.',
+      hint: 'How the Director Stage viewport feels. Changes apply as you drag — no need to reopen the viewport; the defaults match the previously hard-coded feel.',
       flyLook: 'Look / fly rotation',
       flyMove: 'Fly move speed',
       orbitRotate: 'Orbit rotate speed',
@@ -1910,7 +1910,7 @@ export default {
     },
     hint: {
       stage:
-        'LMB select · MMB pan · RMB look/fly (WASD) · Q/R/S move/rotate/scale · sensitivity in the viewport toolbar (or Settings → General)',
+        'LMB select · MMB pan · RMB look/fly (WASD) · Q/R/S move/rotate/scale · sensitivity in the viewport toolbar',
       graph: 'Double-click director deck edit · connect to director output'
     },
     error: {

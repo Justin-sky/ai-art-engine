@@ -130,11 +130,12 @@ describe('导演台读的是设置而不是写死常量', () => {
     expect(scene).toMatch(/watch\([\s\S]{0,400}applyStageControlSpeeds\(orbit\)/)
   })
 
-  it('设置页与导演台浮层共用同一份滑块定义', () => {
+  it('滑块只在导演台浮层里（设置页那份已按要求移除，避免两处入口漂移）', () => {
     const view = readFileSync('src/renderer/src/views/SettingsView.vue', 'utf8')
-    expect(view).toContain('STAGE_CONTROL_ITEMS')
-    expect(view).toContain('form.editor.stage[item.key]')
-    // 条目表本身只有一处定义（复制两份必然漂移）
+    expect(view).not.toContain('stageControlItems')
+    expect(view).not.toContain('form.editor.stage[')
+    expect(view).not.toContain('stageControls.title')
+    // 条目表只剩一处定义，范围与读盘钳制同源
     const items = readFileSync('src/renderer/src/features/director/stageControlItems.ts', 'utf8')
     expect(items).toContain('STAGE_CONTROL_RANGES[key]')
     expect(items).toContain('STAGE_CONTROL_DEFAULTS')

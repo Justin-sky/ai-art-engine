@@ -35,6 +35,7 @@
       <div class="ratio-title">
         {{ t('settings.stageControls.title') }}
       </div>
+      <p class="sens-hint">{{ t('settings.stageControls.hint') }}</p>
       <label v-for="item in sensItems" :key="item.key" class="sens-row">
         <span class="sens-label">
           {{ t(item.labelKey) }}
@@ -393,6 +394,14 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocumentPoin
   gap: 3px;
   font-size: 12px;
   color: var(--text);
+}
+
+/* 「拖动即时生效」的说明：浮层里没有保存按钮，不说清楚会让人以为没生效 */
+.sens-hint {
+  margin: -2px 0 2px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-muted);
 }
 
 .sens-label {
