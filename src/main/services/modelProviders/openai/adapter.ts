@@ -19,24 +19,28 @@ import {
   isOpenAiTextModelId,
   listOpenAiCatalogModels
 } from '@shared/modelProviders/openai/modelCapabilities'
+import { listOpenAiTtsCatalogModels } from '@shared/modelProviders/openai/ttsModels'
 import type { ModelProviderAdapter, VideoPollResult } from '../types'
 import { PROVIDER_ERRORS } from '../catalog'
 import { fail, defErr, defErrSimple } from '@shared/errors/appError'
 import { createProviderHttpClient, formatAuthError, isAuthFailure, readHttpError } from '../http'
-import { generateOpenAiCompatibleImage, generateOpenAiCompatibleText } from '../openaiCompat'
+import {
+  generateOpenAiCompatibleImage,
+  generateOpenAiCompatibleSpeech,
+  generateOpenAiCompatibleText
+} from '../openaiCompat'
 import { transcribeAudioViaOpenAiCompatible } from '../transcribe'
 
 // ── 本文件错误条目（catalog 未覆盖的个性文案）──
 const NOT_SUPPORTED_FEATURES = {
-  soraVideo: { zh: '视频（Sora）', en: 'video (Sora)' },
-  speech: { zh: '语音合成', en: 'speech synthesis' }
+  soraVideo: { zh: '视频（Sora）', en: 'video (Sora)' }
 } as const
 
 const E_NOT_SUPPORTED = defErr<{ kind: keyof typeof NOT_SUPPORTED_FEATURES }>(
   'provider.openai.unsupported-modality',
-  ({ kind }) => `OpenAI 提供商暂未接入${NOT_SUPPORTED_FEATURES[kind].zh}，当前仅支持文本与图片`,
+  ({ kind }) => `OpenAI 提供商暂未接入${NOT_SUPPORTED_FEATURES[kind].zh}，当前支持文本、图片与语音`,
   ({ kind }) =>
-    `OpenAI does not support ${NOT_SUPPORTED_FEATURES[kind].en} yet; text and image only`
+    `OpenAI does not support ${NOT_SUPPORTED_FEATURES[kind].en} yet; text, image and speech only`
 )
 
 function notSupported(kind: keyof typeof NOT_SUPPORTED_FEATURES): Promise<never> {
@@ -84,6 +88,8 @@ export const openAiAdapter: ModelProviderAdapter = {
 
   async fetchCatalog(provider, modality) {
     if (modality === 'image') return listOpenAiCatalogModels('image')
+    // TTS：/models 只给 id、不给声音列表，用本地静态表（含 supported_voices）
+    if (modality === 'audio') return listOpenAiTtsCatalogModels()
     if (modality === 'text') return fetchTextCatalog(provider)
     return []
   },
@@ -119,12 +125,16 @@ export const openAiAdapter: ModelProviderAdapter = {
     return notSupported('soraVideo')
   },
 
+  /**
+   * 语音合成：走 OpenAI 的 `POST /audio/speech`（model + input + voice）。
+   * 同一个形状通用于 OpenAI 官方与所有 OpenAI 兼容聚合器，所以直接复用共享实现。
+   */
   generateSpeech(
-    _provider: ModelProviderInstance,
-    _modelId: string,
-    _input: GenerateSpeechInput
+    provider: ModelProviderInstance,
+    modelId: string,
+    input: GenerateSpeechInput
   ): Promise<GenerateSpeechResult> {
-    return notSupported('speech')
+    return generateOpenAiCompatibleSpeech(provider, modelId, input)
   },
 
   async transcribeAudio(

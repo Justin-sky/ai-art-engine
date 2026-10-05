@@ -10,6 +10,7 @@ import type {
   ModelProviderInstance
 } from '@shared/modelProvider'
 import { isVolcengineArkProvider } from '@shared/modelProvider'
+import { resolveOpenAiTtsVoice } from '@shared/modelProviders/openai/ttsModels'
 import { resolveOpenAiImageSize } from '@shared/modelProviders/openai/imageSize'
 import axios from 'axios'
 import {
@@ -24,7 +25,6 @@ import { PROVIDER_ERRORS } from './catalog'
 import { fail, defErr, defErrSimple, formatBi } from '@shared/errors/appError'
 import { rewriteAtMentionsForImagePrompt } from '@shared/modelProviders/imagePromptMentions'
 import { annotateProviderTarget } from '@shared/modelProviders/providerFailureDiagnostics'
-import { projectService } from '../projectService'
 
 // ── 本文件个性化错误条目 ──
 /** 非 throw：多张参考图里有没发出去的，随结果回传给运行日志 */
@@ -446,14 +446,21 @@ export function extractChatCompletionToolCalls(data: ChatCompletionResponse): Ar
   return out
 }
 
-/** OpenAI 兼容：POST /audio/speech */
+/**
+ * OpenAI 兼容：POST /audio/speech
+ *
+ * 请求体形状（model + input + voice）就是 OpenAI 的 TTS 协议，聚合器（OpenRouter、
+ * new-api、各类 OpenAI 兼容网关）通按这个对接。只写临时文件并返回路径：
+ * 最终落盘目录与资产登记由 facade 的 generateSpeechAsset 统一处理
+ * （`outputDir` 由此生效，也避免这里和 facade 各登记一次资产）。
+ */
 export async function generateOpenAiCompatibleSpeech(
   provider: ModelProviderInstance,
   modelId: string,
   input: GenerateSpeechInput
 ): Promise<GenerateSpeechResult> {
   const format = input.responseFormat ?? 'mp3'
-  const voice = input.voice?.trim() || 'alloy'
+  const voice = input.voice?.trim() || resolveOpenAiTtsVoice(modelId)
   const client = createProviderHttpClient(provider)
 
   try {
@@ -474,29 +481,6 @@ export async function generateOpenAiCompatibleSpeech(
 
     const ext = format === 'pcm' ? 'pcm' : 'mp3'
     const stamp = Date.now()
-
-    if (projectService.isOpen()) {
-      const root = projectService.getRoot()
-      const dir = join(root, 'assets', 'generated', 'voice')
-      if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-      const absPath = join(dir, `tts-${stamp}.${ext}`)
-      writeFileSync(absPath, buf)
-      const asset = projectService.attachExternalGeneratedFile({
-        type: 'voice',
-        sourceFilePath: absPath,
-        name: input.name ?? `TTS ${new Date().toLocaleString()}`,
-        prompt: input.input
-      })
-      return {
-        model: modelId,
-        voice,
-        format,
-        filePath: absPath,
-        assetId: asset.id,
-        relativePath: asset.relativePath
-      }
-    }
-
     const tmpDir = join(process.cwd(), '.aiartengine-tmp', 'tts')
     if (!existsSync(tmpDir)) mkdirSync(tmpDir, { recursive: true })
     const filePath = join(tmpDir, `tts-${stamp}.${ext}`)

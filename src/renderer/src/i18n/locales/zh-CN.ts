@@ -515,6 +515,11 @@ export default {
       emptySpeakers: '尚未添加声音。请手填控制台购买的 speaker_id 并勾选。',
       filterSpeakerPlaceholder: '筛选 speaker_id',
       defaultSpeaker: '默认声音',
+      ttsVoice: '默认音色',
+      ttsVoiceAuto: '自动（模型首选音色）',
+      ttsVoicePlaceholder: '音色名，如 alloy / nova',
+      ttsVoiceHint:
+        'TTS 的 voice 字段，直接作为请求体发给上游。留空表示用模型自己的默认音色；节点里填了声音则以节点为准。聚合器的音色名不一定在下拉候选里，直接输入即可。',
       selectedSpeakerCount: '已选择 {n} 个声音',
       defaultModel: '默认生成模型',
       selectedCount: '已选择 {n} 个模型',
@@ -579,7 +584,13 @@ export default {
       openaiModalityHint: {
         text: 'OpenAI 官方对话模型（GPT 系列），默认 Base URL 为 api.openai.com/v1，对应 /chat/completions；文本目录由 GET /models 拉取。',
         image:
-          'OpenAI 图片模型（gpt-image-1 / gpt-image-2）：文生图走 /images/generations，参考图编辑走 /images/edits（最多 1 张）；固定 size 为 1024x1024 / 1536x1024 / 1024x1536 / auto。'
+          'OpenAI 图片模型（gpt-image-1 / gpt-image-2）：文生图走 /images/generations，参考图编辑走 /images/edits（最多 1 张）；固定 size 为 1024x1024 / 1536x1024 / 1024x1536 / auto。',
+        audio:
+          '语音合成走 POST /audio/speech，请求体为 model + input + voice（可选 response_format / speed）——这就是 OpenAI 的 TTS 协议，绝大多数聚合器（new-api、one-api 等）都按这个形状对接，所以换成自建网关地址也能直接用。模型目录为本地静态表（GET /models 只给 id、不给声音列表），勾选后可在这里选默认声音；节点里填了声音则以节点为准。'
+      },
+      openrouterModalityHint: {
+        audio:
+          '语音合成走 POST /api/v1/audio/speech（model + input + voice），模型目录走 /api/v1/models?output_modalities=speech；OpenRouter 返回的 supported_voices 会填进下方声音下拉。聚合器上模型的音色名各异，节点里填了声音则以节点为准。'
       },
       deepseekModalityHint: {
         text: 'DeepSeek 对话模型（deepseek-flash = V4.1 Flash / deepseek-v4-pro），OpenAI 兼容，默认 Base URL 为 api.deepseek.com，对应 /chat/completions；文本目录由 GET /models 拉取。'

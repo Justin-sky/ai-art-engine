@@ -385,6 +385,24 @@
             </option>
           </select>
         </label>
+        <label v-if="isTtsVoiceModality(provider)">
+          {{ t('settings.models.ttsVoice') }}
+          <input
+            :value="modalityConfig(provider, 'audio').defaultVoice ?? ''"
+            type="text"
+            spellcheck="false"
+            :list="voiceDatalistId(provider)"
+            :placeholder="voicePlaceholder(provider)"
+            @change="setDefaultVoice(provider, ($event.target as HTMLInputElement).value)"
+          />
+          <!-- 模型声明的声音做成候选：聚合器上总有表里没有的音色，所以这里是自由输入 -->
+          <datalist :id="voiceDatalistId(provider)">
+            <option v-for="voice in voiceOptions(provider)" :key="voice" :value="voice" />
+          </datalist>
+        </label>
+        <p v-if="isTtsVoiceModality(provider)" class="meta">
+          {{ t('settings.models.ttsVoiceHint') }}
+        </p>
         <p
           v-if="modalityConfig(provider, currentModality(provider)).selectedModelIds.length"
           class="meta"
@@ -422,6 +440,7 @@ import {
   isWorldProviderKind,
   isVllmProvider,
   modalityConfig,
+  resolveModelSupportedVoices,
   modelProviderCredentialsUrl,
   resolveCustomApiStyle,
   syncModalityCatalogEntries,
@@ -497,7 +516,8 @@ function settingsModalitiesFor(provider: ModelProviderInstance): ModelModality[]
     return ['text']
   }
   if (provider.providerKind === 'openai') {
-    return ['text', 'image']
+    // OpenAI 与各类 OpenAI 兼容聚合器都走 POST /audio/speech（model + input + voice）
+    return ['text', 'image', 'audio']
   }
   if (provider.providerKind === 'kling') {
     return ['image', 'video']
@@ -524,7 +544,8 @@ function settingsModalitiesFor(provider: ModelProviderInstance): ModelModality[]
     return ['spatialWorld']
   }
   if (provider.providerKind === 'openrouter') {
-    return ['text', 'image', 'video', 'decisions']
+    // audio：TTS 走 /audio/speech，目录走 /models?output_modalities=speech
+    return ['text', 'image', 'video', 'audio', 'decisions']
   }
   if (provider.providerKind === 'typesafe') {
     // 决策模型厂商：只做决策判定，没有文本 / 图片 / 视频生成
@@ -653,6 +674,9 @@ function modalityHintText(provider: ModelProviderInstance): string {
   }
   if (provider.providerKind === 'openai') {
     return t(`settings.models.openaiModalityHint.${mod}`)
+  }
+  if (provider.providerKind === 'openrouter') {
+    return t(`settings.models.openrouterModalityHint.${mod}`)
   }
   if (provider.providerKind === 'volcengine-ark') {
     return t(`settings.models.arkModalityHint.${mod}`)
@@ -944,6 +968,41 @@ function setDefaultModel(
   modelId: string
 ): void {
   modalityConfig(provider, modality).defaultModelId = modelId
+}
+
+/**
+ * 默认音色输入框：只在「当前停在 audio 页签、且该提供商有 audio 模态」时出现。
+ * 用自由输入 + datalist 而不是下拉：聚合器上的音色名不可能穷举，
+ * 模型声明的声音只当候选。
+ */
+function isTtsVoiceModality(provider: ModelProviderInstance): boolean {
+  return currentModality(provider) === 'audio' && settingsModalitiesFor(provider).includes('audio')
+}
+
+/** 当前默认 TTS 模型声明的声音（拿不到就是空，此时只有自由输入） */
+function voiceOptions(provider: ModelProviderInstance): string[] {
+  const config = modalityConfig(provider, 'audio')
+  const modelId = config.defaultModelId || config.selectedModelIds[0]
+  if (!modelId) return []
+  return resolveModelSupportedVoices(provider, 'audio', modelId)
+}
+
+function voicePlaceholder(provider: ModelProviderInstance): string {
+  const config = modalityConfig(provider, 'audio')
+  const modelId = config.defaultModelId || config.selectedModelIds[0]
+  return modelId ? t('settings.models.ttsVoiceAuto') : t('settings.models.ttsVoicePlaceholder')
+}
+
+/** datalist 的 id 要能安全进 DOM：声音都是标识符，过滤一遍保险 */
+function voiceDatalistId(provider: ModelProviderInstance): string {
+  return `tts-voices-${provider.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`
+}
+
+function setDefaultVoice(provider: ModelProviderInstance, voice: string): void {
+  const config = modalityConfig(provider, 'audio')
+  const trimmed = voice.trim()
+  if (trimmed) config.defaultVoice = trimmed
+  else delete config.defaultVoice
 }
 
 function capabilitySummary(model: CatalogModel): string {

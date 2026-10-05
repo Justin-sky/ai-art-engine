@@ -745,12 +745,13 @@
             </li>
             <li>
               Configure per modality: text / image / video / audio / 3D model / spatial world / decisions (OpenRouter supports
-              text / image / video / decisions; its Decisions tab lists models via
+              text / image / video / audio / decisions; its Decisions tab lists models via
               <code>output_modalities=decisions</code>. TypeSafe direct has a Decisions tab only — its catalog comes
               from <code>GET /v1/models</code> and judgements go to <code>POST /v1/systemone</code>, the same
               decision protocol as OpenRouter but without the hop. The Ark audio tab also
               links the speech console and asks for a manual <code>speaker_id</code>; Kling has only image and video tabs;
-              MiniMax supports text / image / video / voice design; OpenAI supports text and image; DeepSeek is
+              MiniMax supports text / image / video / voice design;
+              <strong>OpenAI supports text / image / audio</strong>; DeepSeek is
               text only; Kimi (Moonshot) is text only; xAI (Grok) supports text / image / video with async
               polling for video; Google (Gemini) supports text / Nano Banana images / Veo 3.1 video with async
               polling; Zhipu supports GLM text and CogView images; vLLM supports text and video (Wan T2V / I2V);
@@ -762,6 +763,19 @@
               endpoint type &mdash; OpenAI compatible / Gemini give text + image, Anthropic gives text only,
               and image models must always be typed in by hand (see the
               <a href="guide-newapi.en.html">NewAPI guide</a>).
+            </li>
+            <li>
+              <strong>Audio (TTS)</strong>: the audio tab on OpenAI and OpenRouter posts to
+              <code>POST /audio/speech</code> with a body of <code>model</code> + <code>input</code> +
+              <code>voice</code> (optional <code>response_format</code> / <code>speed</code>) — the OpenAI TTS
+              protocol shape that aggregators (new-api / one-api / self-hosted gateways) implement, so pointing
+              the Base URL at a gateway works as-is. Catalog: OpenRouter uses
+              <code>/models?output_modalities=speech</code> (which carries <code>supported_voices</code>), while
+              OpenAI uses a local static table (<code>GET /models</code> returns ids without voice lists);
+              aggregator-only models can be typed in by hand.
+              After picking models, set a <strong>default voice</strong> below: suggestions come from the model's
+              declared voices, but any voice name can be typed. Empty means the model's own default, and a voice
+              set on the node overrides this.
             </li>
             <li>
               Set the default generation model and default voice if needed. Provider cards can be collapsed to

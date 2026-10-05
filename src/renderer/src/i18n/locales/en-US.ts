@@ -527,6 +527,11 @@ export default {
       emptySpeakers: 'No speakers yet. Enter a purchased speaker_id and select it.',
       filterSpeakerPlaceholder: 'Filter speaker_id',
       defaultSpeaker: 'Default speaker',
+      ttsVoice: 'Default voice',
+      ttsVoiceAuto: 'Auto (model’s first voice)',
+      ttsVoicePlaceholder: 'Voice name, e.g. alloy / nova',
+      ttsVoiceHint:
+        'The TTS voice field, sent to the upstream as-is. Leave it empty to use the model’s own default; a voice set on the node overrides this. Aggregator voice names may not be in the suggestions — just type one.',
       selectedSpeakerCount: '{n} speakers selected',
       modality: {
         text: 'Text',
@@ -589,7 +594,13 @@ export default {
       openaiModalityHint: {
         text: 'OpenAI official chat models (GPT family). Default Base URL is api.openai.com/v1 via /chat/completions; the text catalog is fetched from GET /models.',
         image:
-          'OpenAI image models (gpt-image-1 / gpt-image-2). Text-to-image via /images/generations; reference-image edits via /images/edits (max 1). Fixed sizes: 1024x1024 / 1536x1024 / 1024x1536 / auto.'
+          'OpenAI image models (gpt-image-1 / gpt-image-2). Text-to-image via /images/generations; reference-image edits via /images/edits (max 1). Fixed sizes: 1024x1024 / 1536x1024 / 1024x1536 / auto.',
+        audio:
+          'Speech synthesis posts to /audio/speech with model + input + voice (optional response_format / speed) — the OpenAI TTS protocol that most aggregators (new-api, one-api, …) implement, so a self-hosted gateway base URL works too. The catalog is a local static table because GET /models returns ids without voice lists; pick the default voice here after selecting models, and a voice set on the node overrides it.'
+      },
+      openrouterModalityHint: {
+        audio:
+          'Speech synthesis posts to /api/v1/audio/speech (model + input + voice), and the catalog comes from /api/v1/models?output_modalities=speech; OpenRouter’s supported_voices fills the voice dropdown below. Voice names differ per upstream model, and a voice set on the node overrides this.'
       },
       deepseekModalityHint: {
         text: 'DeepSeek chat models (deepseek-flash = V4.1 Flash / deepseek-v4-pro), OpenAI-compatible. Default Base URL is api.deepseek.com via /chat/completions; the text catalog is fetched from GET /models.'

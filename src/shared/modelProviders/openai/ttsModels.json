@@ -1,0 +1,39 @@
+{
+  "meta": {
+    "endpoint": "POST /audio/speech",
+    "docs": [
+      "https://platform.openai.com/docs/api-reference/audio/createSpeech",
+      "https://platform.openai.com/docs/guides/text-to-speech"
+    ],
+    "note": "OpenAI 官方不提供 TTS 模型目录接口（GET /models 只给 id、不给声音列表），所以这份表在本地维护；/audio/speech 的请求体是 model + input + voice（+ response_format / speed），任何 OpenAI 兼容网关（聚合器）都按这个形状对接。"
+  },
+  "models": [
+    {
+      "id": "gpt-4o-mini-tts",
+      "name": "GPT-4o mini TTS",
+      "voices": [
+        "alloy",
+        "ash",
+        "ballad",
+        "coral",
+        "echo",
+        "fable",
+        "nova",
+        "onyx",
+        "sage",
+        "shimmer",
+        "verse"
+      ]
+    },
+    {
+      "id": "tts-1",
+      "name": "TTS 1",
+      "voices": ["alloy", "ash", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer"]
+    },
+    {
+      "id": "tts-1-hd",
+      "name": "TTS 1 HD",
+      "voices": ["alloy", "ash", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer"]
+    }
+  ]
+}

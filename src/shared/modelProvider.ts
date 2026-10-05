@@ -344,6 +344,12 @@ export interface SavedCatalogModelEntry {
 export interface ModalityModelConfig {
   selectedModelIds: string[]
   defaultModelId: string
+  /**
+   * 该模态的默认声音（仅 audio 模态使用）。
+   * TTS 的 `voice` 是必需请求字段，不填只能靠厂商默认值——聚合器上各家默认音色名不同，
+   * 所以允许在设置里显式指定；生成时若节点/参数没给 voice 就取它。
+   */
+  defaultVoice?: string
   /** 已勾选模型的目录快照（拉取/勾选时写入） */
   catalog?: Record<string, SavedCatalogModelEntry>
 }
@@ -1836,6 +1842,34 @@ export function pickActiveProvider(
   return { provider, modelId }
 }
 
+/**
+ * 该模型在目录快照里声明的声音（OpenRouter 的 `supported_voices`）。
+ * 各家 TTS 的声音名不通用，所以只信「模型自己声明的」，拉不到就让用户手填。
+ */
+export function resolveModelSupportedVoices(
+  provider: ModelProviderInstance,
+  modality: ModelModality,
+  modelId: string
+): string[] {
+  const entry = modalityConfig(provider, modality).catalog?.[modelId.trim()]
+  const raw = entry?.capabilities?.supported_voices
+  if (!Array.isArray(raw)) return []
+  return raw
+    .filter((voice): voice is string => typeof voice === 'string')
+    .map((voice) => voice.trim())
+    .filter(Boolean)
+}
+
+/**
+ * audio 模态的默认声音：设置里显式指定的优先，否则取该模型目录快照的第一个声音。
+ * 都没有时返回空串，交给各适配器用自己的兜底。
+ */
+export function resolveDefaultVoice(provider: ModelProviderInstance, modelId: string): string {
+  const configured = modalityConfig(provider, 'audio').defaultVoice?.trim()
+  if (configured) return configured
+  return resolveModelSupportedVoices(provider, 'audio', modelId)[0] ?? ''
+}
+
 export function normalizeModelsSettings(raw?: unknown): ModelsSettings {
   if (!raw || typeof raw !== 'object') return createEmptyModelsSettings()
   const providers = (raw as { providers?: unknown }).providers
@@ -1891,9 +1925,11 @@ function normalizeModalityConfig(
       ? raw.defaultModelId
       : (selected[0] ?? '')
   const catalog = normalizeSavedCatalog(raw?.catalog, selected, kind)
+  const defaultVoice = typeof raw?.defaultVoice === 'string' ? raw.defaultVoice.trim() : ''
   return {
     selectedModelIds: selected,
     defaultModelId,
+    ...(defaultVoice ? { defaultVoice } : {}),
     ...(catalog ? { catalog } : {})
   }
 }

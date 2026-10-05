@@ -49,6 +49,7 @@ import {
   allowsEmptyApiKey,
   findProviderById,
   normalizeVideoInputReference,
+  resolveDefaultVoice,
   supportsModel3dRig,
   supportsModel3dSegment
 } from '@shared/modelProvider'
@@ -1432,7 +1433,12 @@ class ModelProviderFacade {
       resolved.providerInstanceId,
       resolved.model
     )
-    return getProviderAdapter(provider.providerKind).generateSpeech(provider, modelId, resolved)
+    // 声音没显式给：用设置里 audio 页签选定的默认声音，再退回模型目录里声明的第一个
+    const voice = resolved.voice?.trim() || resolveDefaultVoice(provider, modelId)
+    return getProviderAdapter(provider.providerKind).generateSpeech(provider, modelId, {
+      ...resolved,
+      ...(voice ? { voice } : {})
+    })
   }
 
   /** 按角色音色档案解析语音参数：角色已建档 → 未显式传的 voice / referenceAudio 取自档案 */

@@ -74,9 +74,17 @@ describe('openAiAdapter', () => {
     expect(models.map((m) => m.id).sort()).toEqual(['gpt-4o-mini', 'gpt-5.5', 'o3'])
   })
 
+  it('returns static TTS catalog for the audio modality (with voices)', async () => {
+    const models = await openAiAdapter.fetchCatalog(provider(), 'audio')
+    expect(models.map((m) => m.id)).toEqual(['gpt-4o-mini-tts', 'tts-1', 'tts-1-hd'])
+    const tts1 = models.find((m) => m.id === 'tts-1')!
+    expect(tts1.modality).toBe('audio')
+    expect((tts1.capabilities?.supported_voices as string[]).length).toBeGreaterThan(5)
+  })
+
   it('returns empty catalog for unsupported modalities', async () => {
     expect(await openAiAdapter.fetchCatalog(provider(), 'video')).toEqual([])
-    expect(await openAiAdapter.fetchCatalog(provider(), 'audio')).toEqual([])
+    expect(await openAiAdapter.fetchCatalog(provider(), 'model3d')).toEqual([])
   })
 
   it('delegates text generation to OpenAI compatible client', async () => {
@@ -176,12 +184,78 @@ describe('openAiAdapter', () => {
     expect(body.prompt).toBe('参考图1的风格画一只猫')
   })
 
-  it('rejects video and speech with a clear message', async () => {
+  it('语音合成：POST /audio/speech，body 为 model + input + voice', async () => {
+    postMock.mockResolvedValueOnce({ data: new Uint8Array([1, 2, 3, 4]) })
+    const result = await openAiAdapter.generateSpeech(provider(), 'tts-1', {
+      input: '你好，世界',
+      voice: 'nova'
+    })
+
+    const [path, body, config] = postMock.mock.calls[0] as [
+      string,
+      Record<string, unknown>,
+      { responseType?: string }
+    ]
+    expect(path).toBe('/audio/speech')
+    expect(body).toEqual({
+      model: 'tts-1',
+      input: '你好，世界',
+      voice: 'nova',
+      response_format: 'mp3'
+    })
+    // 音频必须以二进制收，否则 axios 会按文本解码把 mp3 弄坏
+    expect(config.responseType).toBe('arraybuffer')
+    expect(result.voice).toBe('nova')
+    expect(result.format).toBe('mp3')
+    expect(result.filePath).toBeTruthy()
+  })
+
+  it('语音合成：未指定声音时用该模型自己声明的首个音色（不是硬编码 alloy）', async () => {
+    postMock.mockResolvedValueOnce({ data: new Uint8Array([1, 2]) })
+    await openAiAdapter.generateSpeech(provider(), 'tts-1', { input: 'hi' })
+    const [, body] = postMock.mock.calls[0] as [string, Record<string, unknown>]
+    expect(body.voice).toBe('alloy')
+
+    postMock.mockResolvedValueOnce({ data: new Uint8Array([1, 2]) })
+    // 聚合器上的模型不在静态表里：退回全局兜底音色，但请求仍然照发
+    await openAiAdapter.generateSpeech(provider(), 'some-aggregator-tts', { input: 'hi' })
+    const [, unknownBody] = postMock.mock.calls[1] as [string, Record<string, unknown>]
+    expect(unknownBody.voice).toBe('alloy')
+    expect(unknownBody.model).toBe('some-aggregator-tts')
+  })
+
+  it('语音合成：pcm 用 .pcm 后缀，speed 透传', async () => {
+    postMock.mockResolvedValueOnce({ data: new Uint8Array([9]) })
+    const result = await openAiAdapter.generateSpeech(provider(), 'tts-1-hd', {
+      input: 'hi',
+      responseFormat: 'pcm',
+      speed: 1.25
+    })
+    const [, body] = postMock.mock.calls[0] as [string, Record<string, unknown>]
+    expect(body.response_format).toBe('pcm')
+    expect(body.speed).toBe(1.25)
+    expect(result.format).toBe('pcm')
+    expect(result.filePath?.endsWith('.pcm')).toBe(true)
+  })
+
+  it('语音合成：空音频要报错，上游错误要带出原文', async () => {
+    postMock.mockResolvedValueOnce({ data: new Uint8Array(0) })
     await expect(
       openAiAdapter.generateSpeech(provider(), 'tts-1', { input: 'hi' })
-    ).rejects.toThrow(/仅支持文本与图片/)
+    ).rejects.toThrow()
+
+    postMock.mockRejectedValueOnce({
+      isAxiosError: true,
+      response: { data: { error: { message: 'model not found' } } }
+    })
+    await expect(openAiAdapter.generateSpeech(provider(), 'nope', { input: 'hi' })).rejects.toThrow(
+      /model not found/
+    )
+  })
+
+  it('rejects video (Sora) with a clear message', async () => {
     await expect(openAiAdapter.submitVideo(provider(), 'sora-2', { prompt: 'x' })).rejects.toThrow(
-      /仅支持文本与图片/
+      /暂未接入视频/
     )
   })
 })
