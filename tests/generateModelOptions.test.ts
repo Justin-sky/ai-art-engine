@@ -216,6 +216,42 @@ describe('buildModelOptions', () => {
       'el2::eleven_text_to_sound_v2'
     ])
   })
+  /**
+   * 时间线的 BGM / 音效按钮与音乐节点都用这个。
+   *
+   * 踩过的坑：音乐模型从 audio 模态拆出去之后，时间线还在读 `audio` + 按模型类别
+   * 过滤 —— 那套过滤只认 ElevenLabs 的 `elevenKind`，于是 MiniMax `music-3.0`
+   * 与百炼 `fun-music-*` **一个都取不到**（它们已经在 music 模态下了）。
+   */
+  it('音乐选择器读 music 模态：三家的音乐模型都取得到', () => {
+    const providers = [
+      baseProvider({ id: 'el', providerKind: 'elevenlabs', label: 'ElevenLabs' }),
+      baseProvider({ id: 'mm', providerKind: 'minimax', label: 'MiniMax' }),
+      baseProvider({ id: 'ds', providerKind: 'dashscope', label: '百炼' }),
+      baseProvider({ id: 'oa', providerKind: 'openai', label: 'OpenAI' })
+    ]
+    for (const p of providers) {
+      p.modalities.music.selectedModelIds = ['m-music']
+      p.modalities.music.defaultModelId = 'm-music'
+    }
+    const keys = buildModelOptions(providers, 'music').map((o) => o.key)
+    expect(keys).toContain('el::m-music')
+    expect(keys).toContain('mm::m-music')
+    expect(keys).toContain('ds::m-music')
+    // OpenAI 有 TTS 但没有音乐端点，不能进音乐下拉
+    expect(keys).not.toContain('oa::m-music')
+  })
+
+  it('音乐模态的空列表成因判定认得 ElevenLabs（否则音乐节点误报没提供商）', () => {
+    const providers = [baseProvider({ id: 'el', providerKind: 'elevenlabs' })]
+    // 有提供商但该模态没勾模型
+    expect(resolveEmptyModelOptionsReason(providers, 'music')).toBe('noSelection')
+  })
+
+  it('OpenAI 不在音乐提供商之列', () => {
+    const providers = [baseProvider({ id: 'oa', providerKind: 'openai' })]
+    expect(resolveEmptyModelOptionsReason(providers, 'music')).toBe('noProvider')
+  })
 })
 
 /**

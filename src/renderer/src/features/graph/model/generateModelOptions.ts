@@ -4,7 +4,7 @@ import type {
   ModelProviderInstance,
   ModelProviderKind
 } from '@shared/modelProvider'
-import { elevenModelKind, ELEVEN_SOUND_MODEL } from '@shared/modelProviders/elevenlabs/voice'
+import { ELEVEN_SOUND_MODEL } from '@shared/modelProviders/elevenlabs/voice'
 import {
   allowsEmptyApiKey,
   isDecisionProviderKind,
@@ -16,7 +16,8 @@ import {
   providerModelDisplayName,
   requiresSpeechVoice,
   resolveAvailableVoices,
-  supportsAudioModality
+  supportsAudioModality,
+  supportsMusicModality
 } from '@shared/modelProvider'
 
 export interface GenerateModelOption {
@@ -112,8 +113,10 @@ export function buildModelOptions(
   const options: GenerateModelOption[] = []
   for (const provider of providers) {
     if (!provider.enabled) continue
-    // 声音：ElevenLabs 只有音频模态，模型/音色目录公开可读（无 Key 也能配）
-    if (provider.providerKind === 'elevenlabs' && modality !== 'audio') continue
+    // 声音与音乐：ElevenLabs 的模型 / 音色目录公开可读（无 Key 也能先配）
+    if (provider.providerKind === 'elevenlabs' && modality !== 'audio' && modality !== 'music') {
+      continue
+    }
     // 本地 OpenAI 兼容服务与 ComfyUI 无需 API Key
     if (!provider.apiKey.trim() && !allowsEmptyApiKey(provider)) continue
     // 本地服务仅文本（多模态理解可在文本节点传图）
@@ -128,16 +131,22 @@ export function buildModelOptions(
     if (modality === 'audio' && !supportsAudioModality(provider.providerKind)) {
       continue
     }
+    // 音乐（music）同理，走同一份事实来源：OpenAI 有 TTS 但**没有**音乐端点，
+    // 不放行的话它会掉进末尾的「文本 + 图片」默认分支，音乐下拉里出现不能编曲的模型
+    if (modality === 'music' && !supportsMusicModality(provider.providerKind)) {
+      continue
+    }
     if (provider.providerKind === 'comfyui' && modality === 'text') continue
     // 可灵仅图片/视频
     if (provider.providerKind === 'kling' && modality !== 'image' && modality !== 'video') continue
-    // MiniMax：文本 / 图片 / 视频 / 声音设计
+    // MiniMax：文本 / 图片 / 视频 / 声音设计 / 音乐
     if (
       provider.providerKind === 'minimax' &&
       modality !== 'text' &&
       modality !== 'image' &&
       modality !== 'video' &&
-      modality !== 'audio'
+      modality !== 'audio' &&
+      modality !== 'music'
     ) {
       continue
     }
@@ -249,7 +258,7 @@ export function preferredModelKey(providerInstanceId?: string, model?: string): 
 }
 
 export type GenerateModelModality =
-  'text' | 'image' | 'video' | 'audio' | 'model3d' | 'spatialWorld' | 'decisions'
+  'text' | 'image' | 'video' | 'audio' | 'music' | 'model3d' | 'spatialWorld' | 'decisions'
 
 /** 打开编辑窗时会连打 getSettings；短缓存避免同一次打开多 Dialog 重复 IPC */
 let settingsCache: {
@@ -296,7 +305,10 @@ export function resolveEmptyModelOptionsReason(
       return modality === 'image' || modality === 'video' || modality === 'audio'
     // 声音按同一份事实来源判定：否则设置里勾好了，节点还在说「没有可用提供商」
     if (modality === 'audio') return supportsAudioModality(kind)
-    // ElevenLabs 只有语音合成 —— 非音频模态到不了上面那行，必须显式否掉，
+    // 音乐同理，且**必须排在下面那条 elevenlabs 否掉之前** ——
+    // ElevenLabs 有音乐端点（/v1/music），音乐节点不能因为「它只有语音合成」而被判成没提供商
+    if (modality === 'music') return supportsMusicModality(kind)
+    // ElevenLabs 只有语音合成与音乐 —— 其它模态到不了上面两行，必须显式否掉，
     // 否则会掉进末尾的「文本 + 图片」默认分支被误判为支持
     if (kind === 'elevenlabs') return false
     if (isVllmProvider(kind)) return modality === 'text' || modality === 'video'
@@ -371,38 +383,10 @@ function voiceRequiredFor(kind: ModelProviderKind | undefined): boolean {
   return kind ? requiresSpeechVoice(kind) : false
 }
 
-export type GenerateModelKindFilter = 'tts' | 'music' | 'stt' | 'sfx'
-
-/**
- * 按用途过滤模型（目前只有 ElevenLabs 需要区分）。
- *
- * 它的 `GET /v1/models` 混着 TTS / 转写 / 音乐三类且都挂在 audio 模态：
- * 不过滤的话声音节点会列出 `music_v2_5`、BGM 选择器会列出 `eleven_v3`，
- * 选中后必定失败。类别来自 `capabilities.elevenKind`（见 elevenlabs/voice.ts），
- * 没有标注的供应商原样通过 —— 它们的 audio 目录只有一类。
- */
-function matchesModelKind(
-  option: GenerateModelOption,
-  providers: ModelProviderInstance[],
-  kind: GenerateModelKindFilter
-): boolean {
-  if (option.providerKind !== 'elevenlabs') return true
-  const provider = providers.find((p) => p.id === option.providerInstanceId)
-  const declared = provider ? modalityConfig(provider, 'audio').catalog?.[option.model] : undefined
-  const marker = declared?.capabilities?.elevenKind
-  if (typeof marker === 'string') return marker === kind
-  return elevenModelKind(option.model) === kind
-}
-
 export async function loadGenerateModelOptions(
   modality: GenerateModelModality,
   preferredKey?: string,
-  currentKey?: string,
-  /**
-   * 只要某一类别的模型（转写 / 音乐 / 音效这类用途各自的选择器用）。
-   * 省略即不按类别过滤（声音节点用；它的目录已由 fetchCatalog 滤成 TTS）。
-   */
-  modelKind?: GenerateModelKindFilter
+  currentKey?: string
 ): Promise<{
   options: GenerateModelOption[]
   selectedKey: string
@@ -424,10 +408,9 @@ export async function loadGenerateModelOptions(
   try {
     const settings = await getSettingsCached()
     const providers = settings.models?.providers ?? []
-    const allOptions = buildModelOptions(providers, modality)
-    const options = modelKind
-      ? allOptions.filter((option) => matchesModelKind(option, providers, modelKind))
-      : allOptions
+    // 不再按模型类别二次过滤：类别已经由**模态**表达
+    // （TTS 在 audio 模态、音乐在 music 模态），目录侧也按类别滤过一遍
+    const options = buildModelOptions(providers, modality)
     const voicesByModelKey = buildModelVoiceOptions(providers, modality, options)
     const voiceLabels = buildVoiceLabels(providers, options)
     // voiceRequired 按最终选中的那个模型判定（入参 preferred/current 可能都没命中）

@@ -3896,13 +3896,10 @@ async function probeDuration(src: string, media: 'video' | 'audio' = 'video'): P
  */
 /** 一键生成音效：描述 → 音乐模型 instrumental 产出 → 落盘 Cache/Sfx → 铺到音效轨。 */
 async function onGenerateSfx(): Promise<void> {
-  // 音效也走 /v1/music（instrumental）；列 ElevenLabs 的音乐模型，别让人选到 TTS
-  const { options, selectedKey } = await loadGenerateModelOptions(
-    'audio',
-    undefined,
-    undefined,
-    'music'
-  )
+  // 音效按钮也走音乐端点（instrumental）。
+  // 读 **music 模态**（不是 audio + 类别过滤）：音乐模型现在归在 music 页签下，
+  // 走 audio 会让 MiniMax / 百炼的音乐模型取不到（它们已从 audio 迁走）
+  const { options, selectedKey } = await loadGenerateModelOptions('music')
   const result = await promptTextWithModel({
     title: t('script.timeline.generateSfx'),
     message: t('script.timeline.generateSfxPrompt'),
@@ -4066,13 +4063,9 @@ function mixMasterGainDbLabel(): string {
 }
 
 async function onGenerateBgm(): Promise<void> {
-  // 只列音乐模型：ElevenLabs 的 /v1/models 里还有 TTS 与转写模型，选错必失败
-  const { options, selectedKey } = await loadGenerateModelOptions(
-    'audio',
-    undefined,
-    undefined,
-    'music'
-  )
+  // 读 music 模态：三家的音乐模型（MiniMax music-3.0 / 百炼 fun-music-* / ElevenLabs music_*）
+  // 都在这个模态下，不再需要按模型类别过滤
+  const { options, selectedKey } = await loadGenerateModelOptions('music')
   const result = await promptTextWithModel({
     title: t('script.timeline.generateBgm'),
     message: t('script.timeline.generateBgmPrompt'),
