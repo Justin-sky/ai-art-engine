@@ -1910,7 +1910,7 @@ export default {
     },
     hint: {
       stage:
-        'LMB select · MMB pan · RMB look/fly (WASD) · Q/R/S move/rotate/scale · sensitivity in Settings → General',
+        'LMB select · MMB pan · RMB look/fly (WASD) · Q/R/S move/rotate/scale · sensitivity in the viewport toolbar (or Settings → General)',
       graph: 'Double-click director deck edit · connect to director output'
     },
     error: {
@@ -2188,6 +2188,7 @@ export default {
       alignWithViewShortcut: 'Ctrl+Shift+F',
       alignViewToSelected: 'Align View to Selected',
       resetView: 'Reset view',
+      sensitivity: 'Control sensitivity',
       viewOrientation: 'View orientation',
       viewTop: 'Top view',
       viewBottom: 'Bottom view',

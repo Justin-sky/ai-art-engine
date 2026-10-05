@@ -130,11 +130,42 @@ describe('导演台读的是设置而不是写死常量', () => {
     expect(scene).toMatch(/watch\([\s\S]{0,400}applyStageControlSpeeds\(orbit\)/)
   })
 
-  it('设置页的滑块范围与读盘钳制共用 STAGE_CONTROL_RANGES', () => {
+  it('设置页与导演台浮层共用同一份滑块定义', () => {
     const view = readFileSync('src/renderer/src/views/SettingsView.vue', 'utf8')
-    expect(view).toContain('STAGE_CONTROL_RANGES[key]')
-    expect(view).toContain('STAGE_CONTROL_DEFAULTS')
+    expect(view).toContain('STAGE_CONTROL_ITEMS')
     expect(view).toContain('form.editor.stage[item.key]')
+    // 条目表本身只有一处定义（复制两份必然漂移）
+    const items = readFileSync('src/renderer/src/features/director/stageControlItems.ts', 'utf8')
+    expect(items).toContain('STAGE_CONTROL_RANGES[key]')
+    expect(items).toContain('STAGE_CONTROL_DEFAULTS')
+  })
+
+  it('导演台视口工具栏里有可调的浮层（在视口里调，不用跳设置页）', () => {
+    const toolbar = readFileSync('src/renderer/src/components/DirectorViewportToolbar.vue', 'utf8')
+    // 有按钮与浮层
+    expect(toolbar).toContain('toggleSensMenu')
+    expect(toolbar).toContain('sens-menu')
+    expect(toolbar).toContain('v-model.number="local[item.key]"')
+    expect(toolbar).toContain("t('director.stage.sensitivity')")
+    // 拖动即时生效（改偏好），停手后再落盘
+    expect(toolbar).toContain('setStageControls(next)')
+    expect(toolbar).toContain('persistStageControls(next)')
+    // 落盘返回值回填，避免「滑块显示 3 实际 2」
+    expect(toolbar).toMatch(
+      /persistStageControls\(next\)[\s\S]{0,180}Object\.assign\(local, saved\)/
+    )
+  })
+
+  it('导演台落盘走「读现有设置 → 只改 stage → 整体写回」', () => {
+    const helper = readFileSync(
+      'src/renderer/src/features/director/persistStageControls.ts',
+      'utf8'
+    )
+    // setSettings 是整体替换语义：不先读盘会把其它字段清掉
+    expect(helper).toContain('await window.studio.getSettings()')
+    expect(helper).toContain('normalizeStageControls(stage)')
+    // 落盘后再把主进程钳制后的值回灌偏好
+    expect(helper).toContain('applyEditorPreferences(saved)')
   })
 
   it('落盘前也做钳制（主进程侧不能只信渲染层的值）', () => {

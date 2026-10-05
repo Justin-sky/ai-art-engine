@@ -459,12 +459,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, toRaw, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { DEFAULT_SETTINGS, STAGE_CONTROL_DEFAULTS, type AppSettings } from '@shared/domain'
 import {
-  DEFAULT_SETTINGS,
-  STAGE_CONTROL_DEFAULTS,
-  STAGE_CONTROL_RANGES,
-  type AppSettings
-} from '@shared/domain'
+  STAGE_CONTROL_ITEMS,
+  formatStageControlValue
+} from '../features/director/stageControlItems'
 import { normalizeModelsSettings } from '@shared/modelProvider'
 import { normalizeObjectStorageSettings } from '@shared/objectStorage'
 import { normalizeSearchSettings } from '@shared/searchProvider'
@@ -492,24 +491,13 @@ const message = ref('')
 /**
  * 3D 视口（导演台）灵敏度滑块。
  *
- * 范围取自 `STAGE_CONTROL_RANGES`（与读盘钳制同一份来源），所以滑块拖得到的地方
- * 一定存得下、不会被归一化悄悄改回去。
+ * 条目定义已提到 `features/director/stageControlItems`，与导演台视口工具栏的浮层
+ * **共用同一份**（范围也与读盘钳制同源），所以两处不会漂移。
  */
-const stageControlItems = (
-  [
-    ['flyLookSpeed', 'settings.stageControls.flyLook'],
-    ['flyMoveSpeed', 'settings.stageControls.flyMove'],
-    ['orbitRotateSpeed', 'settings.stageControls.orbitRotate'],
-    ['orbitPanSpeed', 'settings.stageControls.orbitPan'],
-    ['orbitZoomSpeed', 'settings.stageControls.orbitZoom']
-  ] as const
-).map(([key, labelKey]) => ({ key, labelKey, ...STAGE_CONTROL_RANGES[key] }))
+const stageControlItems = STAGE_CONTROL_ITEMS
 
-/** 飞行转向很小（0.0022），直接显示会是一串 0；按量级换单位 */
 function formatStageValue(item: (typeof stageControlItems)[number]): string {
-  const value = Number(form.editor.stage[item.key])
-  if (item.key === 'flyLookSpeed') return value.toFixed(4)
-  return Number.isInteger(item.step) ? value.toFixed(0) : value.toFixed(1)
+  return formatStageControlValue(item.key, Number(form.editor.stage[item.key]))
 }
 
 function resetStageControls(): void {

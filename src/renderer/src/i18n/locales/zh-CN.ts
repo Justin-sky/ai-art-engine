@@ -1863,7 +1863,7 @@ export default {
     },
     hint: {
       stage:
-        '左键选物体 · 中键平移 · 右键环视/飞行（WASD）· Q/R/S 移动/旋转/缩放 · 灵敏度在设置→通用',
+        '左键选物体 · 中键平移 · 右键环视/飞行（WASD）· Q/R/S 移动/旋转/缩放 · 灵敏度在视口工具栏（或设置→通用）',
       graph: '双击导演台编辑 · 连线至导演台输出'
     },
     error: {
@@ -2131,6 +2131,7 @@ export default {
       alignWithViewShortcut: 'Ctrl+Shift+F',
       alignViewToSelected: '视图对齐到选中项',
       resetView: '重置视角',
+      sensitivity: '操控灵敏度',
       viewOrientation: '视角方位',
       viewTop: '顶视图',
       viewBottom: '底视图',

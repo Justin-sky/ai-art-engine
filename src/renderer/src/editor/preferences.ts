@@ -24,8 +24,18 @@ export const editorPreferences = {
   autoSaveIntervalSec: readonly(autoSaveIntervalSec)
 }
 
-/** 3D 视口灵敏度（响应式；见上方说明，别把 `.value` 缓存到模块级常量里） */
+/** 3D 视口灵敏度（只读；见上方说明，别把 `.value` 缓存到模块级常量里） */
 export const stageControls = readonly(stageControlPreferences)
+
+/**
+ * 预览式更新（只改内存里的偏好，不落盘）。
+ *
+ * 导演台浮层拖动滑块时用它：导演台是实时读偏好的，所以这边一改、下一次拖拽/滚轮
+ * 就按新灵敏度走 —— 不用等写盘。落盘另走 `persistStageControls`。
+ */
+export function setStageControls(next: StageControlPreferences): void {
+  stageControlPreferences.value = normalizeStageControls(next)
+}
 
 export const themePreference = readonly(appTheme)
 
