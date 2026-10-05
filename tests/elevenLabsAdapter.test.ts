@@ -388,7 +388,7 @@ describe('ElevenLabs provider 接线（走真实 SDK）', () => {
     expect(captured).toHaveLength(0)
   })
 
-  it('音频目录接口返回全量（TTS + 转写 + 音乐），fetchCatalog 只给 TTS', async () => {
+  it('音频目录接口返回全量（TTS + 转写 + 音乐），fetchCatalog 按模态分流', async () => {
     nextResponse = () =>
       new Response(
         JSON.stringify([
@@ -402,6 +402,33 @@ describe('ElevenLabs provider 接线（走真实 SDK）', () => {
     expect(all?.map((m) => m.id)).toEqual(['eleven_v3', 'scribe_v2', 'music_v2_5'])
     const ttsOnly = await elevenLabsAdapter.fetchCatalog(provider(), 'audio')
     expect(ttsOnly.map((m) => m.id)).toEqual(['eleven_v3'])
+    // 音乐页签要拿到 music_*（混进 TTS / 转写会让人选到不能编曲的模型）
+    const musicOnly = await elevenLabsAdapter.fetchCatalog(provider(), 'music')
+    expect(musicOnly.map((m) => m.id)).toEqual(['music_v2_5'])
+  })
+
+  it('音乐目录拉不到时退回本地表，且本地表里有音乐模型（页签不能是空的）', async () => {
+    // 两个失败口：接口报错、接口返回的形状不是数组
+    nextResponse = () =>
+      new Response(JSON.stringify({ detail: { message: 'nope' } }), {
+        status: 400,
+        headers: { 'content-type': 'application/json' }
+      })
+    const onError = await elevenLabsAdapter.fetchCatalog(provider(), 'music')
+    expect(onError.length).toBeGreaterThan(0)
+    expect(onError.every((m) => m.capabilities?.elevenKind === 'music')).toBe(true)
+
+    nextResponse = () =>
+      new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      })
+    const onOddShape = await elevenLabsAdapter.fetchCatalog(provider(), 'music')
+    expect(onOddShape.map((m) => m.id)).toContain('music_v2_5')
+
+    // 不支持该模态时不返回别的类别顶数
+    const unsupported = await elevenLabsAdapter.fetchCatalog(provider(), 'model3d')
+    expect(unsupported).toEqual([])
   })
 
   it('音色标签：voiceId → 名字，供声音节点显示', async () => {
