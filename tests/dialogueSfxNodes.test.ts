@@ -105,13 +105,14 @@ describe('多说话人对话 / 音效节点', () => {
   })
 
   it('音效请求恒用唯一 model_id（节点上的 TTS 模型不会透传成坏请求）', () => {
-    // 请求体构造层不接受外部 modelId：单值 enum 被坏值覆盖就是上游 400
+    // 请求体构造层不接受外部 modelId：SDK 的类型是字面量 SfxModelId，
+    // 被坏值覆盖就是上游 400
     const voice = readFileSync('src/shared/modelProviders/elevenlabs/voice.ts', 'utf8')
-    const start = voice.indexOf('export function buildElevenSoundBody')
+    const start = voice.indexOf('export function buildElevenSoundRequest')
     // 只取这一个函数体（到下一个顶层 export 为止），否则会把别的函数的 input.modelId 算进来
     const nextExport = voice.indexOf('\nexport ', start + 1)
     const block = voice.slice(start, nextExport > start ? nextExport : undefined)
-    expect(block).toContain('body.model_id = ELEVEN_SOUND_MODEL')
+    expect(block).toContain('modelId: ELEVEN_SOUND_MODEL')
     expect(block).not.toContain('input.modelId')
     // 适配器也不认入参 modelId
     const adapter = readFileSync('src/main/services/modelProviders/elevenlabs/adapter.ts', 'utf8')

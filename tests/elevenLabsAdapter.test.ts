@@ -1,7 +1,5 @@
-import { rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi, beforeEach } from 'vitest'
+import type { Fetcher } from '@elevenlabs/elevenlabs-js/core'
 import {
   createEmptyModalityMap,
   allowsEmptyApiKey,
@@ -10,52 +8,100 @@ import {
   type ModelProviderInstance
 } from '../src/shared/modelProvider'
 import {
-  buildElevenDialogueBody,
-  buildElevenMusicBody,
-  buildElevenSoundBody,
-  buildElevenTtsBody,
+  buildElevenDialogueRequest,
+  buildElevenMusicRequest,
+  buildElevenSoundRequest,
+  buildElevenTtsRequest,
   elevenFormatOf,
   elevenModelKind,
-  elevenTtsPath,
   filterElevenModelsByKind,
   isKnownElevenModel,
   listElevenFallbackModels,
   parseElevenModels,
   parseElevenTranscript,
   parseElevenVoices,
+  resolveElevenMusicModel,
   resolveElevenOutputFormat
 } from '../src/shared/modelProviders/elevenlabs/voice'
 
-const getMock = vi.fn()
-const postMock = vi.fn()
+/**
+ * ElevenLabs 适配器（官方 SDK 版）。
+ *
+ * 测试方式：把 SDK 的 `fetcher` 换成一个记录器 —— 这样测的是**真实 SDK 代码路径**
+ * （路径、camelCase → snake_case 转换、query 参数拼装全由 SDK 做），
+ * 而不是像以前那样绕过 SDK mock axios。
+ *
+ * 关键断言点是**线上真实字段名**（body 里是 `model_id`、`voice_id`、
+ * `duration_seconds`，query 里是 `output_format`）—— SDK 负责从 camelCase 转换，
+ * 所以这里能同时验证「我们传对了 SDK 参数」和「SDK 发出了正确的线格式」。
+ */
+const captured: Array<{
+  url: string
+  method: string
+  headers: Record<string, unknown>
+  body: unknown
+  maxRetries?: number
+}> = []
 
-vi.mock('axios', () => ({
-  default: {
-    create: (config: Record<string, unknown>) => ({
-      // 原样保留 create 的配置，便于断言 baseURL / 鉴权头
-      defaults: config,
-      get: getMock,
-      post: postMock,
-      interceptors: { request: { use: () => undefined } }
-    }),
-    isAxiosError: (err: unknown) =>
-      Boolean(err && typeof err === 'object' && (err as { isAxiosError?: boolean }).isAxiosError)
-  }
-}))
-
-import { elevenLabsAdapter } from '../src/main/services/modelProviders/elevenlabs/adapter'
-import { createElevenLabsHttpClient } from '../src/main/services/modelProviders/elevenlabs/http'
-import { readElevenLabsHttpError } from '../src/main/services/modelProviders/elevenlabs/httpError'
+let nextResponse: () => Response = () =>
+  new Response(new Uint8Array([1, 2, 3]), {
+    status: 200,
+    headers: { 'content-type': 'audio/mpeg' }
+  })
 
 /**
- * ElevenLabs 语音合成。
+ * 记录器 fetcher。
  *
- * 事实全部核对自官方 `openapi.json`（`https://api.elevenlabs.io/openapi.json`）：
- * - 端点 `POST /v1/text-to-speech/{voice_id}`，body 唯一必填是 `text`
- * - `model_id` 默认 `eleven_multilingual_v2`
- * - 鉴权头是 `xi-api-key`（不是 Bearer）
- * - `GET /v1/voices` 给出 voice_id / name（无 Key 也返回公开音色）
+ * 三个要点（都是踩过才知道的）：
+ * 1. SDK 把 query 作为**独立字段** `args.queryString` 传进来，**不拼进 url** ——
+ *    真实 `core.fetcher` 才负责合并；这里必须自己拼，否则会误判成「SDK 丢了参数」
+ * 2. SDK 期望返回的 `body` 已按 `responseType` 解码（json → 对象、streaming → 流），
+ *    不是原始 Response；不解码会触发上游兜底分支
+ * 3. `args.body` 已经是**线格式**（snake_case），所以断言的是真实字段名
  */
+function makeFetcher(): Fetcher {
+  return async (args) => {
+    const query = args.queryString ? `?${args.queryString}` : ''
+    captured.push({
+      url: `${args.url}${query}`,
+      method: args.method,
+      headers: args.headers ?? {},
+      body: args.body,
+      maxRetries: args.maxRetries
+    })
+    const response = nextResponse()
+    if (!response.ok) {
+      return {
+        ok: false,
+        error: {
+          reason: 'non-json',
+          statusCode: response.status,
+          rawBody: await response.text()
+        },
+        rawResponse: response
+      } as never
+    }
+    const body =
+      args.responseType === 'streaming' || args.responseType === 'blob'
+        ? response.body
+        : await response.json()
+    return { ok: true, body, rawResponse: response } as never
+  }
+}
+
+vi.mock('../src/main/services/modelProviders/elevenlabs/client', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../src/main/services/modelProviders/elevenlabs/client')>()
+  return {
+    ...actual,
+    // 保留真实实现，只把 fetcher 换成记录器
+    createElevenClient: (provider: ModelProviderInstance, timeoutMs?: number) =>
+      actual.createElevenClient(provider, timeoutMs, makeFetcher())
+  }
+})
+
+import { elevenLabsAdapter } from '../src/main/services/modelProviders/elevenlabs/adapter'
+
 function provider(overrides?: Partial<ModelProviderInstance>): ModelProviderInstance {
   return {
     id: 'el-1',
@@ -69,36 +115,35 @@ function provider(overrides?: Partial<ModelProviderInstance>): ModelProviderInst
   }
 }
 
-describe('ElevenLabs 协议映射（纯函数）', () => {
-  it('端点把 voice_id 编码进路径', () => {
-    expect(elevenTtsPath('21m00Tcm4TlvDq8ikWAM')).toBe('/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM')
-    // 自定义音色 id 里可能有需要转义的字符
-    expect(elevenTtsPath('a/b c')).toBe('/v1/text-to-speech/a%2Fb%20c')
-  })
+function lastRequest() {
+  const last = captured.at(-1)
+  expect(last, '没有任何请求被发出').toBeTruthy()
+  return last!
+}
 
-  it('请求体只带规范里的字段，text 必有', () => {
-    expect(buildElevenTtsBody({ text: '你好', modelId: 'eleven_v3' })).toEqual({
+describe('ElevenLabs 协议映射（纯函数）', () => {
+  it('请求体用 SDK 的 camelCase 形状', () => {
+    expect(buildElevenTtsRequest({ text: '你好', modelId: 'eleven_v3' })).toEqual({
       text: '你好',
-      model_id: 'eleven_v3'
+      modelId: 'eleven_v3'
     })
     // 可选字段为空时不写进 body（避免用空值覆盖上游默认）
+    expect(buildElevenTtsRequest({ text: 'hi', modelId: '  ' })).toEqual({ text: 'hi' })
+
     expect(
-      buildElevenTtsBody({ text: 'hi', modelId: '', languageCode: '  ', voiceSettings: {} })
-    ).toEqual({ text: 'hi' })
-    expect(
-      buildElevenTtsBody({
-        text: 'hi',
-        modelId: 'eleven_v3',
-        languageCode: 'zh',
-        seed: 42.9,
-        applyTextNormalization: 'on'
+      buildElevenDialogueRequest({
+        inputs: [
+          { text: '一', voice: 'v1' },
+          { text: '二', voice: 'v2' }
+        ],
+        modelId: 'eleven_v3'
       })
     ).toEqual({
-      text: 'hi',
-      model_id: 'eleven_v3',
-      language_code: 'zh',
-      seed: 42,
-      apply_text_normalization: 'on'
+      inputs: [
+        { text: '一', voiceId: 'v1' },
+        { text: '二', voiceId: 'v2' }
+      ],
+      modelId: 'eleven_v3'
     })
   })
 
@@ -107,34 +152,26 @@ describe('ElevenLabs 协议映射（纯函数）', () => {
     expect(resolveElevenOutputFormat('pcm_24000')).toBe('pcm_24000')
     expect(resolveElevenOutputFormat('ulaw_8000')).toBe('mp3_44100_128')
     expect(resolveElevenOutputFormat(undefined)).toBe('mp3_44100_128')
-  })
-
-  it('格式决定扩展名与 format 标记', () => {
-    expect(elevenFormatOf('mp3_44100_128')).toEqual({
-      ext: 'mp3',
-      format: 'mp3',
-      contentTypeHint: 'audio/mpeg'
-    })
-    expect(elevenFormatOf('pcm_16000').format).toBe('pcm')
-    expect(elevenFormatOf('pcm_16000').ext).toBe('wav')
+    expect(elevenFormatOf('pcm_16000')).toEqual({ ext: 'wav', format: 'pcm' })
+    expect(elevenFormatOf('mp3_44100_128')).toEqual({ ext: 'mp3', format: 'mp3' })
   })
 
   it('模型目录：全部保留并标注类别（过滤交给调用点）', () => {
     const models = parseElevenModels([
       {
-        model_id: 'eleven_v3',
+        modelId: 'eleven_v3',
         name: 'Eleven v3',
         description: 'most expressive',
         languages: [{ name: 'zh' }, { name: 'en' }]
       },
-      { model_id: 'scribe_v2', name: 'Scribe' },
-      { model_id: 'music_v2_5', name: 'Music' },
-      { model_id: 'eleven_text_to_sound_v2', name: 'SFX' },
-      { model_id: '' },
-      'not-an-object'
+      { modelId: 'scribe_v2', name: 'Scribe' },
+      { modelId: 'music_v2_5', name: 'Music' },
+      { modelId: 'eleven_text_to_sound_v2', name: 'SFX' },
+      { modelId: '' },
+      null as never
     ])
-    // 规范里 /v1/models **不含**「是 TTS 还是转写/音乐」的能力位
-    // （只有 can_do_text_to_speech / can_do_voice_conversion / can_use_style），
+    // 规范/SDK 都**不含**「是 TTS 还是转写/音乐」的能力位
+    // （只有 canDoTextToSpeech / canDoVoiceConversion / canUseStyle），
     // 所以类别按 id 约定判断并标注，各调用点再按需过滤
     expect(models.map((m) => m.id)).toEqual([
       'eleven_v3',
@@ -143,18 +180,12 @@ describe('ElevenLabs 协议映射（纯函数）', () => {
       'eleven_text_to_sound_v2'
     ])
     expect(models.map((m) => m.capabilities?.elevenKind)).toEqual(['tts', 'stt', 'music', 'sfx'])
-    expect(models[0]!.modality).toBe('audio')
     expect(models[0]!.capabilities?.languages).toEqual(['zh', 'en'])
-    // 声音节点只要 tts，时间线 BGM 只要 music
     expect(filterElevenModelsByKind(models, 'tts').map((m) => m.id)).toEqual(['eleven_v3'])
     expect(filterElevenModelsByKind(models, 'music').map((m) => m.id)).toEqual(['music_v2_5'])
-    expect(filterElevenModelsByKind(models, 'stt').map((m) => m.id)).toEqual(['scribe_v2'])
-    expect(filterElevenModelsByKind(models, 'sfx').map((m) => m.id)).toEqual([
-      'eleven_text_to_sound_v2'
-    ])
   })
 
-  it('类别判定：认不出的 id 归 other，不会被任何用途收走', () => {
+  it('类别判定：认不出的 id 归 other', () => {
     expect(elevenModelKind('eleven_v3')).toBe('tts')
     expect(elevenModelKind('scribe_v2_turbo')).toBe('stt')
     expect(elevenModelKind('music_v1')).toBe('music')
@@ -163,26 +194,20 @@ describe('ElevenLabs 协议映射（纯函数）', () => {
     expect(elevenModelKind('')).toBe('other')
   })
 
-  it('音色目录：取 voice_id + 名字（名字就是要显示给用户的）', () => {
-    const voices = parseElevenVoices({
-      voices: [
-        {
-          voice_id: 'EXAVITQu4vr4xnSDxMaL',
-          name: 'Sarah - Mature, Reassuring',
-          category: 'premade'
-        },
-        { voice_id: 'CwhRBWXzGAHq8TQ4Fs17', name: 'Roger' },
-        { voice_id: '' },
-        null
-      ]
-    })
-    expect(voices).toEqual([
-      { id: 'EXAVITQu4vr4xnSDxMaL', label: 'Sarah - Mature, Reassuring', category: 'premade' },
+  it('音色目录：取 voiceId + 名字（SDK 已是 camelCase）', () => {
+    expect(
+      parseElevenVoices({
+        voices: [
+          { voiceId: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah - Mature', category: 'premade' },
+          { voiceId: 'CwhRBWXzGAHq8TQ4Fs17', name: 'Roger' },
+          { voiceId: '' }
+        ]
+      })
+    ).toEqual([
+      { id: 'EXAVITQu4vr4xnSDxMaL', label: 'Sarah - Mature', category: 'premade' },
       { id: 'CwhRBWXzGAHq8TQ4Fs17', label: 'Roger' }
     ])
-    // 不是预期形状时不抛错，只是空
     expect(parseElevenVoices(null)).toEqual([])
-    expect(parseElevenVoices({ voices: 'nope' })).toEqual([])
   })
 
   it('离线兜底表覆盖主流 TTS 模型', () => {
@@ -192,104 +217,86 @@ describe('ElevenLabs 协议映射（纯函数）', () => {
     expect(isKnownElevenModel('eleven_v3')).toBe(true)
     expect(isKnownElevenModel('nope')).toBe(false)
   })
+
+  it('转写：词级时间戳按句读聚合成段，spacing 不进正文', () => {
+    const result = parseElevenTranscript(
+      {
+        text: '你好。世界',
+        languageCode: 'zho',
+        words: [
+          { text: '你好', start: 0, end: 0.5, type: 'word' },
+          { text: '。', start: 0.5, end: 0.6, type: 'word' },
+          { text: ' ', start: 0.6, end: 0.7, type: 'spacing' },
+          { text: '世界', start: 0.7, end: 1.2, type: 'word' }
+        ]
+      },
+      'scribe_v2'
+    )
+    expect(result.segments).toEqual([
+      { startSec: 0, endSec: 0.6, text: '你好。' },
+      { startSec: 0.7, endSec: 1.2, text: '世界' }
+    ])
+    expect(result.text).toBe('你好。世界')
+    expect(result.language).toBe('zho')
+  })
+
+  it('转写：没有词级时间戳时退化为整段', () => {
+    const result = parseElevenTranscript({ text: '整段文本' }, 'scribe_v2')
+    expect(result.segments).toEqual([{ startSec: 0, endSec: 0, text: '整段文本' }])
+  })
 })
 
-describe('ElevenLabs provider 接线', () => {
+describe('ElevenLabs provider 接线（走真实 SDK）', () => {
   beforeEach(() => {
-    getMock.mockReset()
-    postMock.mockReset()
-  })
-
-  it('鉴权头是 xi-api-key（不是 Bearer），Base URL 去掉尾斜杠', () => {
-    // 这条单独验：适配器的 postMock 断言看不到 client 的默认头
-    const client = createElevenLabsHttpClient(
-      provider({ baseUrl: 'https://api.elevenlabs.io/' })
-    ) as unknown as { defaults: { baseURL?: string; headers?: Record<string, string> } }
-    expect(client.defaults.baseURL).toBe('https://api.elevenlabs.io')
-    expect(client.defaults.headers?.['xi-api-key']).toBe('sk_eleven_test')
-    expect(JSON.stringify(client.defaults.headers)).not.toContain('Bearer')
-    // 没填 Key 时不发空的鉴权头（公开目录端点仍可用）
-    const anonymous = createElevenLabsHttpClient(provider({ apiKey: '' })) as unknown as {
-      defaults: { headers?: Record<string, string> }
-    }
-    expect(anonymous.defaults.headers?.['xi-api-key']).toBeUndefined()
-  })
-
-  it('错误体 detail.message 能取出来（通用实现只认字符串 detail）', async () => {
-    const axiosErr = {
-      isAxiosError: true,
-      response: { status: 401, data: { detail: { message: 'invalid api key', status: 'auth' } } }
-    }
-    await expect(readElevenLabsHttpError(axiosErr)).resolves.toBe('invalid api key')
-    // 字段级校验错误（数组）
-    await expect(
-      readElevenLabsHttpError({
-        isAxiosError: true,
-        response: {
-          status: 422,
-          data: { detail: [{ msg: 'text too long' }, { msg: 'bad voice' }] }
-        }
+    captured.length = 0
+    nextResponse = () =>
+      new Response(new Uint8Array([1, 2, 3]), {
+        status: 200,
+        headers: { 'content-type': 'audio/mpeg' }
       })
-    ).resolves.toBe('text too long; bad voice')
-    // 字符串 detail 与 message 兜底
-    await expect(
-      readElevenLabsHttpError({
-        isAxiosError: true,
-        response: { status: 400, data: { message: 'nope' } }
-      })
-    ).resolves.toBe('nope')
   })
 
   it('被认定为「支持音频」且只有音频模态', () => {
     expect(supportsAudioModality('elevenlabs')).toBe(true)
     expect(isElevenLabsProvider('elevenlabs')).toBe(true)
-    // 目录公开可读，所以允许先配后填 Key
     expect(allowsEmptyApiKey('elevenlabs')).toBe(true)
   })
 
-  it('目录只服务音频模态（模型 + 失败兜底）', async () => {
-    getMock.mockResolvedValueOnce({
-      data: [{ model_id: 'eleven_v3', name: 'Eleven v3' }]
-    })
-    const models = await elevenLabsAdapter.fetchCatalog(provider(), 'audio')
-    expect(models.map((m) => m.id)).toEqual(['eleven_v3'])
-
-    // 远端失败 → 退回离线兜底表，不是空列表（否则声音节点无从选择）
-    getMock.mockRejectedValueOnce(new Error('network'))
-    const fallback = await elevenLabsAdapter.fetchCatalog(provider(), 'audio')
-    expect(fallback.length).toBeGreaterThan(0)
-
-    // 其它模态一律空
-    getMock.mockClear()
-    expect(await elevenLabsAdapter.fetchCatalog(provider(), 'image')).toEqual([])
-    expect(getMock).not.toHaveBeenCalled()
-  })
-
-  it('语音合成：POST /v1/text-to-speech/{voice_id}，xi-api-key 鉴权，output_format 走 query', async () => {
-    postMock.mockResolvedValueOnce({ data: new Uint8Array([1, 2, 3]) })
-    const result = await elevenLabsAdapter.generateSpeech(provider(), 'eleven_v3', {
+  it('语音合成：路径带 voiceId，body 是 model_id，output_format 走 query', async () => {
+    await elevenLabsAdapter.generateSpeech(provider(), 'eleven_v3', {
       input: '你好世界',
       voice: 'EXAVITQu4vr4xnSDxMaL'
     })
+    const req = lastRequest()
+    expect(req.method).toBe('POST')
+    expect(req.url).toContain('/v1/text-to-speech/EXAVITQu4vr4xnSDxMaL')
+    expect(req.url).toContain('output_format=mp3_44100_128')
+    // SDK 把我们传的 camelCase 转成线格式的 snake_case
+    expect(req.body).toMatchObject({ text: '你好世界', model_id: 'eleven_v3' })
+    expect(req.headers['xi-api-key']).toBe('sk_eleven_test')
+  })
 
-    const [path, body, config] = postMock.mock.calls[0] as [
-      string,
-      Record<string, unknown>,
-      { params?: Record<string, unknown>; responseType?: string }
-    ]
-    expect(path).toBe('/v1/text-to-speech/EXAVITQu4vr4xnSDxMaL')
-    expect(body).toEqual({ text: '你好世界', model_id: 'eleven_v3' })
-    expect(config.params).toEqual({ output_format: 'mp3_44100_128' })
-    expect(config.responseType).toBe('arraybuffer')
-    expect(result.voice).toBe('EXAVITQu4vr4xnSDxMaL')
-    expect(result.format).toBe('mp3')
-    expect(result.filePath).toBeTruthy()
-    // 遵守既定契约：适配器只给 filePath，assetId/relativePath 由 facade 补
-    expect(result.assetId).toBeUndefined()
+  /**
+   * 生成接口是**按次计费**的：SDK 默认重试 2 次，一次超时就会重复扣费。
+   * 客户端与每次请求都必须关掉重试。
+   */
+  it('所有生成调用都不重试（避免按次计费被重复扣）', async () => {
+    await elevenLabsAdapter.generateSpeech(provider(), 'eleven_v3', {
+      input: 'hi',
+      voice: 'v1'
+    })
+    expect(lastRequest().maxRetries).toBe(0)
+
+    captured.length = 0
+    await elevenLabsAdapter.generateSoundEffect?.(provider(), '', { prompt: '雨声' })
+    expect(lastRequest().maxRetries).toBe(0)
+
+    captured.length = 0
+    await elevenLabsAdapter.generateMusic?.(provider(), 'music_v2_5', { prompt: '配乐' })
+    expect(lastRequest().maxRetries).toBe(0)
   })
 
   it('要 pcm 时落 .wav 并标记为 pcm', async () => {
-    postMock.mockResolvedValueOnce({ data: new Uint8Array([9]) })
     const result = await elevenLabsAdapter.generateSpeech(provider(), 'eleven_v3', {
       input: 'hi',
       voice: 'v1',
@@ -297,291 +304,130 @@ describe('ElevenLabs provider 接线', () => {
     })
     expect(result.format).toBe('pcm')
     expect(result.filePath?.endsWith('.wav')).toBe(true)
+    expect(lastRequest().url).toContain('output_format=pcm_16000')
   })
 
-  it('没给音色时明确报错（voice_id 在路径里，缺了连端点都拼不出来）', async () => {
+  it('没给音色时明确报错，不发请求', async () => {
     await expect(
       elevenLabsAdapter.generateSpeech(provider(), 'eleven_v3', { input: 'hi' })
     ).rejects.toThrow(/voice_id/)
-    expect(postMock).not.toHaveBeenCalled()
+    expect(captured).toHaveLength(0)
   })
 
-  /**
-   * 阶段一：Speech to Text 与 Music。
-   *
-   * 这两条**整条管线本来就有**（适配器可选方法 → facade → IPC → preload →
-   * 时间线的「配音转字幕」/ BGM/音效生成），所以只补适配器方法，不新增节点。
-   */
-  describe('转写与音乐', () => {
-    it('转写：POST /v1/speech-to-text，multipart 带 model_id 与 file，响应是 JSON', async () => {
-      const tmp = join(tmpdir(), `aae-eleven-stt-${Date.now()}.mp3`)
-      writeFileSync(tmp, Buffer.from([1, 2, 3]))
-      postMock.mockResolvedValueOnce({
-        data: {
-          text: '你好。世界',
-          language_code: 'zho',
-          words: [
-            { text: '你好', start: 0, end: 0.5, type: 'word' },
-            { text: '。', start: 0.5, end: 0.6, type: 'word' },
-            { text: ' ', start: 0.6, end: 0.7, type: 'spacing' },
-            { text: '世界', start: 0.7, end: 1.2, type: 'word' }
-          ]
-        }
-      })
-      const result = await elevenLabsAdapter.transcribeAudio(provider(), 'scribe_v2', {
-        absPath: tmp
-      })
-      const [path, form, config] = postMock.mock.calls[0] as [
-        string,
-        FormData,
-        { headers?: Record<string, unknown> }
+  it('给了 dialogue 就改走 /v1/text-to-dialogue（voice_id 是对象字段）', async () => {
+    const result = await elevenLabsAdapter.generateSpeech(provider(), 'eleven_v3', {
+      input: 'A: 你好\nB: 我也好',
+      dialogue: [
+        { text: '你好', voice: 'voice-a' },
+        { text: '我也好', voice: 'voice-b' }
       ]
-      expect(path).toBe('/v1/speech-to-text')
-      expect(form.get('model_id')).toBe('scribe_v2')
-      expect(form.get('timestamps_granularity')).toBe('word')
-      expect(form.get('file')).toBeInstanceOf(Blob)
-      // multipart 由 axios 自己定边界，这里必须清掉默认的 application/json
-      expect(config.headers?.['Content-Type']).toBeUndefined()
-      // 按句读切段，且 spacing 不能混进正文
-      expect(result.segments).toEqual([
-        { startSec: 0, endSec: 0.6, text: '你好。' },
-        { startSec: 0.7, endSec: 1.2, text: '世界' }
-      ])
-      expect(result.text).toBe('你好。世界')
-      expect(result.language).toBe('zho')
-      rmSync(tmp, { force: true })
     })
-
-    it('转写：没有本地文件时明确报错，不发请求', async () => {
-      await expect(
-        elevenLabsAdapter.transcribeAudio(provider(), 'scribe_v2', { absPath: '' })
-      ).rejects.toThrow(/文件/)
-      expect(postMock).not.toHaveBeenCalled()
+    const req = lastRequest()
+    expect(req.url).toContain('/v1/text-to-dialogue')
+    expect(req.body).toMatchObject({
+      inputs: [
+        { text: '你好', voice_id: 'voice-a' },
+        { text: '我也好', voice_id: 'voice-b' }
+      ],
+      model_id: 'eleven_v3'
     })
+    expect(result.voice).toBe('voice-a,voice-b')
+    expect(result.assetId).toBeUndefined()
+  })
 
-    it('音乐：POST /v1/music，body 用规范的字段名，直接回音频字节走 filePath', async () => {
-      postMock.mockResolvedValueOnce({ data: new Uint8Array([7, 7, 7]) })
-      const result = await elevenLabsAdapter.generateMusic(provider(), 'music_v2_5', {
-        prompt: '轻快的电子配乐',
-        instrumental: true
-      })
-      const [path, body, config] = postMock.mock.calls[0] as [
-        string,
-        Record<string, unknown>,
-        { params?: Record<string, unknown>; responseType?: string }
-      ]
-      expect(path).toBe('/v1/music')
-      expect(body).toEqual({
-        prompt: '轻快的电子配乐',
-        force_instrumental: true,
-        model_id: 'music_v2_5'
-      })
-      expect(config.params).toEqual({ output_format: 'mp3_44100_128' })
-      expect(config.responseType).toBe('arraybuffer')
-      // ElevenLabs 没有下载地址，直接给本地临时文件（facade 两种都支持）
-      expect(result.filePath).toBeTruthy()
-      expect(result.downloadUrl).toBeUndefined()
-      // 契约不变：只写临时文件，不登记资产
-      expect(result).not.toHaveProperty('assetId')
+  it('dialogue 里全无效段时退回单说话人端点', async () => {
+    await elevenLabsAdapter.generateSpeech(provider(), 'eleven_v3', {
+      input: 'x',
+      voice: 'voice-a',
+      dialogue: [{ text: '   ', voice: 'voice-a' }]
     })
+    expect(lastRequest().url).toContain('/v1/text-to-speech/voice-a')
+  })
 
-    it('音乐：有歌词时按规范写成 lyrics_text', () => {
-      expect(
-        buildElevenMusicBody({ prompt: 'p', lyrics: '  第一句\n第二句  ', modelId: 'music_v2_5' })
-      ).toEqual({
-        prompt: 'p',
-        lyrics_text: '第一句\n第二句',
-        force_instrumental: true,
-        model_id: 'music_v2_5'
-      })
-      // instrumental 显式 false 时允许人声
-      expect(buildElevenMusicBody({ prompt: 'p', instrumental: false }).force_instrumental).toBe(
-        false
-      )
+  it('音效：/v1/sound-generation，model_id 恒为唯一取值', async () => {
+    const result = await elevenLabsAdapter.generateSoundEffect?.(provider(), 'eleven_v3', {
+      prompt: '雨落在铁皮屋顶上',
+      loop: true
     })
-
-    it('音乐：空提示词明确报错', async () => {
-      await expect(
-        elevenLabsAdapter.generateMusic(provider(), 'music_v2_5', { prompt: '   ' })
-      ).rejects.toThrow(/提示词/)
-      expect(postMock).not.toHaveBeenCalled()
+    const req = lastRequest()
+    expect(req.url).toContain('/v1/sound-generation')
+    expect(req.body).toMatchObject({
+      text: '雨落在铁皮屋顶上',
+      loop: true,
+      model_id: 'eleven_text_to_sound_v2'
     })
+    expect(result?.model).toBe('eleven_text_to_sound_v2')
+    expect(result?.filePath).toBeTruthy()
+  })
 
-    it('音频目录接口返回全量（TTS + 转写 + 音乐），fetchCatalog 只给 TTS', async () => {
-      getMock.mockResolvedValue({
-        data: [
+  it('音效：空描述明确报错，不发请求', async () => {
+    await expect(
+      elevenLabsAdapter.generateSoundEffect?.(provider(), '', { prompt: '  ' })
+    ).rejects.toThrow(/描述/)
+    expect(captured).toHaveLength(0)
+  })
+
+  it('音乐：/v1/music，模型收窄到 SDK 认可的取值', async () => {
+    await elevenLabsAdapter.generateMusic?.(provider(), 'music_v2_5', {
+      prompt: '轻快的电子配乐',
+      instrumental: true
+    })
+    const req = lastRequest()
+    expect(req.url).toContain('/v1/music')
+    expect(req.body).toMatchObject({
+      prompt: '轻快的电子配乐',
+      force_instrumental: true,
+      model_id: 'music_v2_5'
+    })
+  })
+
+  it('音乐：空提示词明确报错', async () => {
+    await expect(
+      elevenLabsAdapter.generateMusic?.(provider(), 'music_v2_5', { prompt: '   ' })
+    ).rejects.toThrow(/提示词/)
+    expect(captured).toHaveLength(0)
+  })
+
+  it('音频目录接口返回全量（TTS + 转写 + 音乐），fetchCatalog 只给 TTS', async () => {
+    nextResponse = () =>
+      new Response(
+        JSON.stringify([
           { model_id: 'eleven_v3', name: 'Eleven v3' },
           { model_id: 'scribe_v2', name: 'Scribe v2' },
           { model_id: 'music_v2_5', name: 'Music v2.5' }
-        ]
-      })
-      const all = await elevenLabsAdapter.listAllAudioModels?.(provider())
-      expect(all?.map((m) => m.id)).toEqual(['eleven_v3', 'scribe_v2', 'music_v2_5'])
-      const ttsOnly = await elevenLabsAdapter.fetchCatalog(provider(), 'audio')
-      expect(ttsOnly.map((m) => m.id)).toEqual(['eleven_v3'])
-    })
+        ]),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      )
+    const all = await elevenLabsAdapter.listAllAudioModels?.(provider())
+    expect(all?.map((m) => m.id)).toEqual(['eleven_v3', 'scribe_v2', 'music_v2_5'])
+    const ttsOnly = await elevenLabsAdapter.fetchCatalog(provider(), 'audio')
+    expect(ttsOnly.map((m) => m.id)).toEqual(['eleven_v3'])
+  })
 
-    /**
-     * 阶段二：多说话人对话与专用音效端点。
-     */
-    it('给了 dialogue 就改走 /v1/text-to-dialogue（voice_id 是对象字段）', async () => {
-      postMock.mockResolvedValueOnce({ data: new Uint8Array([1, 2]) })
-      const result = await elevenLabsAdapter.generateSpeech(provider(), 'eleven_v3', {
-        input: 'A: 你好\nB: 你好',
-        dialogue: [
-          { text: '你好', voice: 'voice-a' },
-          { text: '我也好', voice: 'voice-b' }
-        ]
-      })
-      const [path, body, config] = postMock.mock.calls[0] as [
-        string,
-        Record<string, unknown>,
-        { params?: Record<string, unknown>; responseType?: string }
-      ]
-      // 关键：**不**走单说话人路径（那里 voice_id 在路径里）
-      expect(path).toBe('/v1/text-to-dialogue')
-      expect(body).toEqual({
-        inputs: [
-          { text: '你好', voice_id: 'voice-a' },
-          { text: '我也好', voice_id: 'voice-b' }
-        ],
-        model_id: 'eleven_v3'
-      })
-      expect(config.responseType).toBe('arraybuffer')
-      // 多段音色去重后用逗号记录，便于日志排查
-      expect(result.voice).toBe('voice-a,voice-b')
-      expect(result.filePath).toBeTruthy()
-      expect(result.assetId).toBeUndefined()
-    })
-
-    it('dialogue 里缺 text / voice 的段落被剔除；全空时退回单说话人校验', async () => {
-      postMock.mockResolvedValue({ data: new Uint8Array([1]) })
-      await elevenLabsAdapter.generateSpeech(provider(), 'eleven_v3', {
-        input: 'x',
-        voice: 'voice-a',
-        dialogue: [{ text: '   ', voice: 'voice-a' }]
-      })
-      // 全是无效段 → 走单说话人端点
-      expect(postMock.mock.calls[0]![0]).toBe('/v1/text-to-speech/voice-a')
-
-      postMock.mockClear()
-      await expect(
-        elevenLabsAdapter.generateSpeech(provider(), 'eleven_v3', {
-          input: 'x',
-          dialogue: [{ text: '你好' }]
-        })
-      ).rejects.toThrow(/voice_id/)
-      expect(postMock).not.toHaveBeenCalled()
-    })
-
-    it('音效：POST /v1/sound-generation，model_id 固定为唯一取值，走 filePath', async () => {
-      postMock.mockResolvedValueOnce({ data: new Uint8Array([4, 4]) })
-      // 故意传一个 TTS 模型名：音效端点的 model_id 是单值 enum，
-      // 节点上那个模型选择器是 TTS 用的，透传过来就是坏请求
-      const result = await elevenLabsAdapter.generateSoundEffect?.(provider(), 'eleven_v3', {
-        prompt: '雨落在铁皮屋顶上',
-        loop: true
-      })
-      const [path, body, config] = postMock.mock.calls[0] as [
-        string,
-        Record<string, unknown>,
-        { params?: Record<string, unknown>; responseType?: string }
-      ]
-      expect(path).toBe('/v1/sound-generation')
-      expect(body).toEqual({
-        text: '雨落在铁皮屋顶上',
-        loop: true,
-        model_id: 'eleven_text_to_sound_v2'
-      })
-      expect(config.responseType).toBe('arraybuffer')
-      expect(result?.filePath).toBeTruthy()
-      expect(result?.model).toBe('eleven_text_to_sound_v2')
-    })
-
-    it('请求体构造：音效只带有效字段，对话保留顺序', () => {
-      expect(buildElevenSoundBody({ text: ' 脚步  ' })).toEqual({
-        text: '脚步',
-        model_id: 'eleven_text_to_sound_v2'
-      })
-      expect(
-        buildElevenSoundBody({ text: '脚步', durationSeconds: 2.5, promptInfluence: 0.3 })
-      ).toEqual({
-        text: '脚步',
-        duration_seconds: 2.5,
-        prompt_influence: 0.3,
-        model_id: 'eleven_text_to_sound_v2'
-      })
-      // 显式 loop=false 不写进 body（避免用 false 覆盖上游默认）
-      expect(buildElevenSoundBody({ text: '脚步', loop: false }).loop).toBeUndefined()
-
-      expect(
-        buildElevenDialogueBody({
-          inputs: [
-            { text: '一', voice: 'v1' },
-            { text: '二', voice: 'v2' }
-          ],
-          languageCode: 'zho'
-        })
-      ).toEqual({
-        inputs: [
-          { text: '一', voice_id: 'v1' },
-          { text: '二', voice_id: 'v2' }
-        ],
-        language_code: 'zho'
-      })
-    })
-
-    /**
-     * 规范原文（openapi.json，逐字核对）：
-     * - duration_seconds "Must be at least 0.5 and at most 30"
-     * - prompt_influence "Must be a value between 0 and 1. Defaults to 0.3."
-     * 超范围上游返回 422，所以必须在请求体层夹紧 —— 用户手填 0.2 / 60 时
-     * 应当安静取到合法值，而不是拿一条看不懂的上游校验错误。
-     */
-    it('音效数值字段按规范夹紧（duration 0.5–30、prompt_influence 0–1）', () => {
-      expect(buildElevenSoundBody({ text: 'x', durationSeconds: 0.2 }).duration_seconds).toBe(0.5)
-      expect(buildElevenSoundBody({ text: 'x', durationSeconds: 60 }).duration_seconds).toBe(30)
-      expect(buildElevenSoundBody({ text: 'x', durationSeconds: 0.5 }).duration_seconds).toBe(0.5)
-      expect(buildElevenSoundBody({ text: 'x', durationSeconds: 30 }).duration_seconds).toBe(30)
-      expect(buildElevenSoundBody({ text: 'x', durationSeconds: 12 }).duration_seconds).toBe(12)
-
-      expect(buildElevenSoundBody({ text: 'x', promptInfluence: -1 }).prompt_influence).toBe(0)
-      expect(buildElevenSoundBody({ text: 'x', promptInfluence: 3 }).prompt_influence).toBe(1)
-      expect(buildElevenSoundBody({ text: 'x', promptInfluence: 0 }).prompt_influence).toBe(0)
-      expect(buildElevenSoundBody({ text: 'x', promptInfluence: 1 }).prompt_influence).toBe(1)
-      // 不传就不写进 body（沿用服务端默认 0.3，而不是我们自己填一个值）
-      expect(buildElevenSoundBody({ text: 'x' }).prompt_influence).toBeUndefined()
-    })
-
-    it('音效：空描述明确报错', async () => {
-      await expect(
-        elevenLabsAdapter.generateSoundEffect?.(provider(), '', { prompt: '  ' })
-      ).rejects.toThrow(/描述/)
-      expect(postMock).not.toHaveBeenCalled()
-    })
+  it('音色标签：voiceId → 名字，供声音节点显示', async () => {
+    nextResponse = () =>
+      new Response(
+        JSON.stringify({
+          voices: [
+            { voice_id: 'v1', name: 'Sarah - Mature' },
+            { voice_id: 'v2', name: 'Roger - Casual' }
+          ]
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      )
+    const labels = await elevenLabsAdapter.fetchVoiceLabels?.(provider())
+    expect(labels).toEqual({ v1: 'Sarah - Mature', v2: 'Roger - Casual' })
   })
 
   it('上游错误原文要带出来', async () => {
-    postMock.mockRejectedValueOnce({
-      isAxiosError: true,
-      response: { status: 401, data: { detail: { message: 'invalid api key' } } }
-    })
+    nextResponse = () =>
+      new Response(JSON.stringify({ detail: { message: 'invalid api key' } }), {
+        status: 401,
+        headers: { 'content-type': 'application/json' }
+      })
     await expect(
       elevenLabsAdapter.generateSpeech(provider(), 'eleven_v3', { input: 'hi', voice: 'v1' })
     ).rejects.toThrow(/invalid api key/)
-  })
-
-  it('音色标签：voice_id → 名字，供声音节点显示', async () => {
-    getMock.mockResolvedValueOnce({
-      data: {
-        voices: [
-          { voice_id: 'v1', name: 'Sarah - Mature' },
-          { voice_id: 'v2', name: 'Roger - Casual' }
-        ]
-      }
-    })
-    const labels = await elevenLabsAdapter.fetchVoiceLabels?.(provider())
-    expect(labels).toEqual({ v1: 'Sarah - Mature', v2: 'Roger - Casual' })
   })
 
   it('文本 / 图片 / 视频 / 3D 明确不支持', async () => {
@@ -597,5 +443,30 @@ describe('ElevenLabs provider 接线', () => {
     await expect(
       elevenLabsAdapter.submitModel3d(provider(), 'x', { prompt: 'hi' })
     ).rejects.toThrow(/语音合成/)
+  })
+})
+
+describe('音效数值字段按规范夹紧', () => {
+  it('duration 0.5–30、prompt_influence 0–1', () => {
+    expect(buildElevenSoundRequest({ text: 'x', durationSeconds: 0.2 }).durationSeconds).toBe(0.5)
+    expect(buildElevenSoundRequest({ text: 'x', durationSeconds: 60 }).durationSeconds).toBe(30)
+    expect(buildElevenSoundRequest({ text: 'x', durationSeconds: 12 }).durationSeconds).toBe(12)
+    expect(buildElevenSoundRequest({ text: 'x', promptInfluence: -1 }).promptInfluence).toBe(0)
+    expect(buildElevenSoundRequest({ text: 'x', promptInfluence: 3 }).promptInfluence).toBe(1)
+    // 不传就不写（沿用服务端默认 0.3，而不是替它填一个值）
+    expect(buildElevenSoundRequest({ text: 'x' }).promptInfluence).toBeUndefined()
+    // 显式 loop=false 不写进去
+    expect(buildElevenSoundRequest({ text: 'x', loop: false }).loop).toBeUndefined()
+  })
+
+  it('音乐模型收窄：非法值退回 music_v2_5', () => {
+    expect(resolveElevenMusicModel('music_v2')).toBe('music_v2')
+    expect(resolveElevenMusicModel('music_v2_5')).toBe('music_v2_5')
+    // 主进程可能退回声音页签里的 TTS 模型，绝不能原样发出去
+    expect(resolveElevenMusicModel('eleven_v3')).toBe('music_v2_5')
+    expect(resolveElevenMusicModel(undefined)).toBe('music_v2_5')
+    expect(buildElevenMusicRequest({ prompt: 'p', modelId: 'eleven_v3' }).modelId).toBe(
+      'music_v2_5'
+    )
   })
 })

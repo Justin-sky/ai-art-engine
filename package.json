@@ -47,6 +47,7 @@
     "@deepseek-ai/dsh": "0.1.5-rc.2",
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
+    "@elevenlabs/elevenlabs-js": "^2.71.0",
     "@sparkjsdev/spark": "^2.3.1",
     "@volcengine/tos-sdk": "^2.9.1",
     "ag-psd": "^31.0.2",
