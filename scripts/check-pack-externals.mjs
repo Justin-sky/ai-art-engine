@@ -15,6 +15,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { builtinModules } from 'node:module'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { findPackConflicts, readAsarExcluded } from './lib/pack-externals.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -35,13 +36,7 @@ if (bundles.length === 0) {
 
 // 1) electron-builder.yml 里的 asar 排除清单（形如 - '!node_modules/foo/**'）
 const builderConfig = readFileSync(join(root, 'electron-builder.yml'), 'utf8')
-const excluded = new Set(
-  [
-    ...builderConfig.matchAll(
-      /^\s*-\s*'!node_modules\/((?:@[^/'"]+\/[^/'"]+)|(?:[^/'"]+))\/\*\*'/gm
-    )
-  ].map((match) => match[1])
-)
+const excluded = readAsarExcluded(builderConfig)
 
 // 2) bundle 里 require 到的第三方包（排除相对路径、内置模块）
 const externals = new Set()
@@ -59,19 +54,13 @@ for (const file of bundles) {
   }
 }
 
-// 3) 沿 package-lock 的生产依赖闭包展开（只看 dependencies，跳过 optional / peer / dev）
+// 3) 沿 package-lock 展开依赖闭包，找真的会踩坑的包
+//
+// 判据是「按 Node 的解析顺序落在**顶层** `node_modules/<name>`」——
+// 只有这个位置会被 `!node_modules/<pkg>/**` 覆盖；嵌套副本会照常打进 asar，
+// 运行时 require 得到。逻辑与原因见 scripts/lib/pack-externals.mjs（那里有单测）。
 const lock = JSON.parse(readFileSync(join(root, 'package-lock.json'), 'utf8'))
-const queue = [...externals]
-const visited = new Set()
-const conflicts = []
-while (queue.length > 0) {
-  const name = queue.shift()
-  if (visited.has(name)) continue
-  visited.add(name)
-  if (excluded.has(name)) conflicts.push(name)
-  const dependencies = lock.packages?.[`node_modules/${name}`]?.dependencies
-  if (dependencies) queue.push(...Object.keys(dependencies))
-}
+const { conflicts, visited } = findPackConflicts(externals, excluded, lock.packages ?? {})
 
 if (conflicts.length > 0) {
   console.error(
@@ -89,5 +78,5 @@ if (conflicts.length > 0) {
 }
 
 console.log(
-  `[check-pack-externals] OK：${externals.size} 个外置包、依赖闭包共 ${visited.size} 个包，均未被 asar 排除`
+  `[check-pack-externals] OK：${externals.size} 个外置包、依赖闭包共 ${visited} 个包，均未被 asar 排除`
 )
