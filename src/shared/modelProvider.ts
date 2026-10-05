@@ -394,6 +394,22 @@ export function isKlingProvider(
   return provider.providerKind === 'kling'
 }
 
+/**
+ * 哪些提供商能做「声音（TTS / 语音合成）」。
+ *
+ * 单一事实来源：设置页的模态页签、生成节点的模型下拉、以及「下拉为空」的成因解释
+ * 都调它。这三处历史上各写了一份判断，接完 OpenAI / OpenRouter 的 TTS 之后
+ * 设置里能勾模型、声音节点却显示「暂无可用模型」——就是因为节点侧那份没同步。
+ * 新增一家 TTS 提供商时只改这里。
+ */
+export function supportsAudioModality(kind: ModelProviderKind): boolean {
+  // 走 OpenAI 兼容 POST /audio/speech（model + input + voice）：OpenAI 官方与 OpenRouter
+  // （以及它们背后那些同样实现该协议的聚合器）
+  if (kind === 'openai' || kind === 'openrouter') return true
+  // 各家私有协议：方舟 openspeech 声音设计 / MiniMax 音色设计 / ComfyUI 音频工作流
+  return kind === 'volcengine-ark' || kind === 'minimax' || kind === 'comfyui'
+}
+
 export function isMiniMaxProvider(
   provider: Pick<ModelProviderInstance, 'providerKind'> | ModelProviderKind | undefined | null
 ): boolean {

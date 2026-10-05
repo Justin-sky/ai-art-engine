@@ -441,6 +441,7 @@ import {
   isVllmProvider,
   modalityConfig,
   resolveModelSupportedVoices,
+  supportsAudioModality,
   modelProviderCredentialsUrl,
   resolveCustomApiStyle,
   syncModalityCatalogEntries,
@@ -516,7 +517,7 @@ function settingsModalitiesFor(provider: ModelProviderInstance): ModelModality[]
     return ['text']
   }
   if (provider.providerKind === 'openai') {
-    // OpenAI 与各类 OpenAI 兼容聚合器都走 POST /audio/speech（model + input + voice）
+    // 声音：POST /audio/speech（model + input + voice），聚合器同协议
     return ['text', 'image', 'audio']
   }
   if (provider.providerKind === 'kling') {
@@ -551,8 +552,13 @@ function settingsModalitiesFor(provider: ModelProviderInstance): ModelModality[]
     // 决策模型厂商：只做决策判定，没有文本 / 图片 / 视频生成
     return ['decisions']
   }
+  // 兜底：按「能不能做声音」的事实来源决定是否给 audio 页签，避免各处白名单漂移
   return MODEL_MODALITIES.filter(
-    (m) => m !== 'audio' && m !== 'model3d' && m !== 'spatialWorld' && m !== 'decisions'
+    (m) =>
+      m !== 'model3d' &&
+      m !== 'spatialWorld' &&
+      m !== 'decisions' &&
+      (m !== 'audio' || supportsAudioModality(provider.providerKind))
   )
 }
 

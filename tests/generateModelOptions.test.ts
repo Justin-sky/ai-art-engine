@@ -122,6 +122,77 @@ describe('buildModelOptions', () => {
     ])
     expect(buildModelOptions(providers, 'audio').map((o) => o.model)).toEqual(['voice-design'])
   })
+
+  /**
+   * 真实踩过的坑：OpenAI 与 OpenRouter 的 TTS 接入（POST /audio/speech）做完、
+   * 设置页也勾好了模型，声音生成节点却依然显示「暂无可用模型」——
+   * 因为这份白名单没同步，节点侧把这两家直接过滤掉了。
+   */
+  it('includes OpenAI for audio (it has /audio/speech)', () => {
+    const modalities = createEmptyModalityMap()
+    modalities.audio.selectedModelIds = ['tts-1']
+    modalities.audio.defaultModelId = 'tts-1'
+    const providers = [baseProvider({ id: 'oa1', providerKind: 'openai', modalities })]
+    expect(buildModelOptions(providers, 'audio').map((o) => o.key)).toEqual(['oa1::tts-1'])
+  })
+
+  it('includes OpenRouter for audio (aggregator TTS)', () => {
+    const modalities = createEmptyModalityMap()
+    modalities.audio.selectedModelIds = ['openai/gpt-4o-mini-tts']
+    modalities.audio.defaultModelId = 'openai/gpt-4o-mini-tts'
+    const providers = [baseProvider({ id: 'or9', providerKind: 'openrouter', modalities })]
+    expect(buildModelOptions(providers, 'audio').map((o) => o.key)).toEqual([
+      'or9::openai/gpt-4o-mini-tts'
+    ])
+  })
+
+  it('does not offer audio for providers that cannot synthesise speech', () => {
+    const modalities = createEmptyModalityMap()
+    modalities.audio.selectedModelIds = ['whatever']
+    modalities.audio.defaultModelId = 'whatever'
+    for (const kind of ['deepseek', 'anthropic', 'moonshot', 'kling', 'zhipu'] as const) {
+      const providers = [baseProvider({ id: `x-${kind}`, providerKind: kind, modalities })]
+      expect(buildModelOptions(providers, 'audio'), kind).toEqual([])
+    }
+  })
+})
+
+describe('声音模态的空列表成因', () => {
+  function audioProvider(
+    kind: 'openai' | 'openrouter',
+    overrides: Partial<ModelProviderInstance> = {}
+  ): ModelProviderInstance {
+    const modalities = createEmptyModalityMap()
+    modalities.audio.selectedModelIds = ['tts-1']
+    modalities.audio.defaultModelId = 'tts-1'
+    return baseProvider({ id: `p-${kind}`, providerKind: kind, modalities, ...overrides })
+  }
+
+  it('配置就绪时不会误报 noProvider（白名单漏了就会误报）', () => {
+    expect(resolveEmptyModelOptionsReason([audioProvider('openai')], 'audio')).toBe('noSelection')
+    expect(resolveEmptyModelOptionsReason([audioProvider('openrouter')], 'audio')).toBe(
+      'noSelection'
+    )
+  })
+
+  it('仍能分辨停用与缺 Key', () => {
+    expect(
+      resolveEmptyModelOptionsReason([audioProvider('openai', { enabled: false })], 'audio')
+    ).toBe('providerDisabled')
+    expect(resolveEmptyModelOptionsReason([audioProvider('openai', { apiKey: '' })], 'audio')).toBe(
+      'missingApiKey'
+    )
+  })
+
+  it('没有支持声音的提供商时报 noProvider', () => {
+    // 只配了 DeepSeek（纯文本）：对声音模态而言等于没提供商
+    expect(
+      resolveEmptyModelOptionsReason(
+        [baseProvider({ id: 'ds', providerKind: 'deepseek', apiKey: 'sk-x' })],
+        'audio'
+      )
+    ).toBe('noProvider')
+  })
 })
 
 /**

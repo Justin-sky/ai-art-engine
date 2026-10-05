@@ -12,7 +12,8 @@ import {
   isVllmProvider,
   isWorldProviderKind,
   modalityConfig,
-  providerModelDisplayName
+  providerModelDisplayName,
+  supportsAudioModality
 } from '@shared/modelProvider'
 
 export interface GenerateModelOption {
@@ -65,13 +66,11 @@ export function buildModelOptions(
     if (isLocalOpenAiProvider(provider) && !isVllmProvider(provider) && modality !== 'text') {
       continue
     }
-    // 声音（audio）：火山方舟 voice_design / MiniMax 音色设计；排除 OpenRouter 等
-    if (
-      modality === 'audio' &&
-      provider.providerKind !== 'volcengine-ark' &&
-      provider.providerKind !== 'minimax' &&
-      provider.providerKind !== 'comfyui'
-    ) {
+    // 声音（audio）一家一家认：火山方舟 voice_design / MiniMax 音色设计 /
+    // ComfyUI 音频工作流，以及走 OpenAI 兼容 `POST /audio/speech` 的 OpenAI 与 OpenRouter
+    // （聚合器）。**不要**退回成「只认某几家」的白名单：新增 TTS 提供商时这里必须同步，
+    // 否则设置里勾了模型、声音节点的下拉依然是空的。
+    if (modality === 'audio' && !supportsAudioModality(provider.providerKind)) {
       continue
     }
     if (provider.providerKind === 'comfyui' && modality === 'text') continue
@@ -91,8 +90,13 @@ export function buildModelOptions(
     if (provider.providerKind === 'modelscope' && modality !== 'text' && modality !== 'image') {
       continue
     }
-    // OpenAI：仅文本 + 图片
-    if (provider.providerKind === 'openai' && modality !== 'text' && modality !== 'image') {
+    // OpenAI：文本 + 图片 + 声音（POST /audio/speech）
+    if (
+      provider.providerKind === 'openai' &&
+      modality !== 'text' &&
+      modality !== 'image' &&
+      modality !== 'audio'
+    ) {
       continue
     }
     // DeepSeek：仅文本
@@ -235,6 +239,8 @@ export function resolveEmptyModelOptionsReason(
     if (modality === 'decisions') return false
     if (kind === 'comfyui')
       return modality === 'image' || modality === 'video' || modality === 'audio'
+    // 声音按同一份事实来源判定：否则设置里勾好了，节点还在说「没有可用提供商」
+    if (modality === 'audio') return supportsAudioModality(kind)
     if (isVllmProvider(kind)) return modality === 'text' || modality === 'video'
     if (isLocalOpenAiProvider(kind)) return modality === 'text'
     if (isWorldProviderKind(kind)) return modality === 'spatialWorld'
