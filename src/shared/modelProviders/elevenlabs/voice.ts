@@ -204,15 +204,18 @@ export function buildElevenDialogueBody(input: {
  * 音效生成请求体。
  *
  * 与音乐不同：`text` 是唯一必填，`duration_seconds` / `prompt_influence` 可选，
- * `model_id` 按规范固定为 `eleven_text_to_sound_v2`。
  * `loop` 是「可无缝循环」开关（脚步、雨声这类环境音常用）。
+ *
+ * `model_id` **恒为唯一取值**：规范里该字段是单值 enum（`eleven_text_to_sound_v2`），
+ * 调用方传什么都得覆盖掉 —— 踩过的坑：音效节点复用了声音节点的模型选择器，
+ * 用户选的是 TTS 模型（`eleven_v3`），透传过去直接被上游拒。
+ * 所以这里不接受外部 modelId，只认 `ELEVEN_SOUND_MODEL`。
  */
 export function buildElevenSoundBody(input: {
   text: string
   loop?: boolean
   durationSeconds?: number
   promptInfluence?: number
-  modelId?: string
 }): Record<string, unknown> {
   const body: Record<string, unknown> = { text: input.text.trim() }
   if (input.loop) body.loop = true
@@ -222,7 +225,7 @@ export function buildElevenSoundBody(input: {
   if (typeof input.promptInfluence === 'number' && Number.isFinite(input.promptInfluence)) {
     body.prompt_influence = input.promptInfluence
   }
-  body.model_id = input.modelId?.trim() || ELEVEN_SOUND_MODEL
+  body.model_id = ELEVEN_SOUND_MODEL
   return body
 }
 

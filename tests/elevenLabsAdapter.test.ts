@@ -476,7 +476,9 @@ describe('ElevenLabs provider 接线', () => {
 
     it('音效：POST /v1/sound-generation，model_id 固定为唯一取值，走 filePath', async () => {
       postMock.mockResolvedValueOnce({ data: new Uint8Array([4, 4]) })
-      const result = await elevenLabsAdapter.generateSoundEffect?.(provider(), '', {
+      // 故意传一个 TTS 模型名：音效端点的 model_id 是单值 enum，
+      // 节点上那个模型选择器是 TTS 用的，透传过来就是坏请求
+      const result = await elevenLabsAdapter.generateSoundEffect?.(provider(), 'eleven_v3', {
         prompt: '雨落在铁皮屋顶上',
         loop: true
       })

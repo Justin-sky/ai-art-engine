@@ -5625,6 +5625,8 @@ export default {
         dialogueSpeakersEmpty:
           'No speakers parsed yet. Write one utterance per line in the instruction box above, e.g. A: You finally made it.',
         soundEffectOptions: 'Sound effect options',
+        sfxInstructionPlaceholder:
+          'Describe the sound itself, e.g. "rain on a tin roof with distant thunder"; no dialogue needed',
         soundEffectOptionsHint:
           'A sound effect describes the sound itself (e.g. "rain on a tin roof"), not a line of dialogue. These options apply to the sound effect node only.',
         soundEffectLoop: 'Seamless loop (common for ambience)',

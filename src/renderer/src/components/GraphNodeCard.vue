@@ -411,6 +411,7 @@
       >
         <template #footer>
           <InstructionModelSelect
+            v-if="!isSoundEffectNode"
             v-model="selectedModelKey"
             :options="modelOptions"
             :title="instructionModelTitle"
@@ -954,6 +955,14 @@ function toggleLock(): void {
  * - 生成节点：剧本 / 图片 / 视频 / 声音 / 全景
  * - 工具节点：图片反推提示词（对齐图片生成）/ 提示词优化（对齐剧本生成）
  */
+/**
+ * 音效节点本身没有模型可选：`/v1/sound-generation` 的 `model_id` 是单值 enum
+ * （只有 `eleven_text_to_sound_v2`）。它复用声音节点的那套模型下拉只会误导 ——
+ * 「音效生成为什么也是文本转语音」，而且选中的 TTS 模型会被当成音效模型发出去。
+ * 所以卡片上不给模型选择器与音色选择器，只留指令框。
+ */
+const isSoundEffectNode = computed(() => props.node.typeId === 'asset.sfx')
+
 const instructionKind = computed((): InstructionPresetKind | null => {
   switch (props.node.typeId) {
     case 'image.toPrompt':
@@ -1154,6 +1163,9 @@ const instructionPlaceholder = computed(() => {
   }
   if (instructionKind.value === 'video') {
     return t('graph.inspector.generate.videoInstructionPlaceholder')
+  }
+  if (isSoundEffectNode.value) {
+    return t('graph.inspector.generate.sfxInstructionPlaceholder')
   }
   if (instructionKind.value === 'voice') {
     return t('graph.inspector.generate.voiceInstructionPlaceholder')
@@ -2295,7 +2307,10 @@ const selectedProviderKind = computed(
  * 同一张图里不同配音节点本就该用不同音色；挂在提供商上会变成全局一刀切。
  */
 const showSpeechVoice = computed(
-  () => instructionKind.value === 'voice' && speechVoiceOptions.value.length > 0
+  () =>
+    !isSoundEffectNode.value &&
+    instructionKind.value === 'voice' &&
+    speechVoiceOptions.value.length > 0
 )
 
 const speechVoice = computed(() => {

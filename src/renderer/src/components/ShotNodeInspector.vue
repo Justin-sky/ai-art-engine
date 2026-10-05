@@ -104,7 +104,8 @@
             @change="persistImageGenerateParams"
           />
         </div>
-        <div v-if="isVoice" class="voice-profile-row">
+        <!-- 音效节点没有「角色音色」可言：它是音效端点，不吃音色档案 -->
+        <div v-if="isVoice && !isSoundEffect" class="voice-profile-row">
           <label class="voice-profile-label">
             {{ t('graph.inspector.generate.voiceProfile') }}
             <select :value="generateSpeechCharacter || ''" @change="onVoiceCharacterChange">

@@ -378,10 +378,14 @@ export const elevenLabsAdapter: ModelProviderAdapter = {
    *
    * 与音乐同形：直接回音频、没有下载地址，所以走 `filePath`。
    * 该端点只能出一个音效，`loop` 控制是否可无缝循环（环境音常用）。
+   *
+   * **忽略入参 modelId**：音效端点的 `model_id` 是单值 enum，只有
+   * `eleven_text_to_sound_v2`。节点上那个模型选择器是 TTS 用的（音效与其无关），
+   * 透传过来就是坏请求 —— 所以这里只认唯一取值。
    */
   async generateSoundEffect(
     provider: ModelProviderInstance,
-    modelId: string,
+    _modelId: string,
     input: GenerateSoundEffectInput
   ): Promise<GenerateMusicResult> {
     if (!input.prompt.trim()) throw fail(E_ELEVEN_SOUND_NO_PROMPT)
@@ -394,8 +398,7 @@ export const elevenLabsAdapter: ModelProviderAdapter = {
         buildElevenSoundBody({
           text: input.prompt,
           loop: input.loop,
-          durationSeconds: input.durationSeconds,
-          modelId
+          durationSeconds: input.durationSeconds
         }),
         {
           params: { output_format: outputFormat },
@@ -406,7 +409,7 @@ export const elevenLabsAdapter: ModelProviderAdapter = {
       const buf = Buffer.from(response.data as ArrayBuffer)
       if (!buf.length) throw fail(PROVIDER_ERRORS.noAudioResult)
       return {
-        model: modelId || ELEVEN_SOUND_MODEL,
+        model: ELEVEN_SOUND_MODEL,
         filePath: writeElevenTemp('sfx', 'eleven-sfx', ext, buf)
       }
     } catch (err) {

@@ -84,6 +84,38 @@ describe('多说话人对话 / 音效节点', () => {
     expect(mainIpc).toContain('generateSoundEffectAsset')
   })
 
+  it('音效节点不再长得像文本转语音：卡片上没有模型选择器与音色选择器', () => {
+    const card = readFileSync('src/renderer/src/components/GraphNodeCard.vue', 'utf8')
+    // 音效端点没有可选模型（model_id 单值 enum），复用声音节点的模型下拉只会误导
+    expect(card).toContain('const isSoundEffectNode = computed')
+    expect(card).toContain('v-if="!isSoundEffectNode"')
+    // 音色选择器也必须排除音效节点（音效没有「音色」这个概念）
+    const selectBlock = card.slice(
+      card.indexOf('const showSpeechVoice = computed'),
+      card.indexOf('const speechVoice = computed')
+    )
+    expect(selectBlock).toContain('!isSoundEffectNode.value')
+    // 有音效专用的指令占位文案（否则仍写着「描述要生成的声音/视频」那套）
+    expect(card).toContain("t('graph.inspector.generate.sfxInstructionPlaceholder')")
+  })
+
+  it('音效请求恒用唯一 model_id（节点上的 TTS 模型不会透传成坏请求）', () => {
+    // 请求体构造层不接受外部 modelId：单值 enum 被坏值覆盖就是上游 400
+    const voice = readFileSync('src/shared/modelProviders/elevenlabs/voice.ts', 'utf8')
+    const start = voice.indexOf('export function buildElevenSoundBody')
+    // 只取这一个函数体（到下一个顶层 export 为止），否则会把别的函数的 input.modelId 算进来
+    const nextExport = voice.indexOf('\nexport ', start + 1)
+    const block = voice.slice(start, nextExport > start ? nextExport : undefined)
+    expect(block).toContain('body.model_id = ELEVEN_SOUND_MODEL')
+    expect(block).not.toContain('input.modelId')
+    // 适配器也不认入参 modelId
+    const adapter = readFileSync('src/main/services/modelProviders/elevenlabs/adapter.ts', 'utf8')
+    const sfxStart = adapter.indexOf('async generateSoundEffect')
+    const sfxBlock = adapter.slice(sfxStart, adapter.indexOf('submitModel3d', sfxStart))
+    expect(sfxBlock).toContain('_modelId')
+    expect(sfxBlock).toContain('model: ELEVEN_SOUND_MODEL')
+  })
+
   it('音效落盘走 sfx 目录（与 BGM 的 music 目录分开）', () => {
     const facade = readFileSync('src/main/services/modelProviders/facade.ts', 'utf8')
     const block = facade.slice(facade.indexOf('async generateSoundEffectAsset'))
