@@ -32,12 +32,14 @@ describe('dashscope modelCapabilities', () => {
       )
     ).toBe(true)
     expect(listDashScopeCatalogModels('video').some((m) => m.id.includes('i2v'))).toBe(true)
-    expect(listDashScopeCatalogModels('audio').some((m) => m.id === 'fun-music-v1')).toBe(true)
-    expect(listDashScopeCatalogModels('audio').some((m) => m.id === 'fun-music-preview')).toBe(true)
+    // 音乐已从 audio 拆成独立模态：fun-music-* 现在出现在 music 页签
+    expect(listDashScopeCatalogModels('music').some((m) => m.id === 'fun-music-v1')).toBe(true)
+    expect(listDashScopeCatalogModels('music').some((m) => m.id === 'fun-music-preview')).toBe(true)
+    expect(listDashScopeCatalogModels('audio').some((m) => m.id === 'fun-music-v1')).toBe(false)
   })
 
   it('resolves audio music capabilities', () => {
-    const music = resolveDashScopeModelCapabilities('fun-music-v1', 'audio')
+    const music = resolveDashScopeModelCapabilities('fun-music-v1', 'music')
     expect(music?.music).toBe(true)
     expect(music?.instrumental).toBe(true)
     expect(music?.lyrics).toBe(true)

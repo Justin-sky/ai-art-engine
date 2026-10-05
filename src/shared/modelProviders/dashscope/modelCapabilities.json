@@ -199,13 +199,13 @@
     {
       "id": "fun-music-v1",
       "name": "Fun-Music V1",
-      "modality": "audio",
+      "modality": "music",
       "profile": "audio-music"
     },
     {
       "id": "fun-music-preview",
       "name": "Fun-Music Preview",
-      "modality": "audio",
+      "modality": "music",
       "profile": "audio-music"
     }
   ],

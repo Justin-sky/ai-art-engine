@@ -64,8 +64,13 @@ describe('miniMaxAdapter', () => {
 
     const audios = await miniMaxAdapter.fetchCatalog(provider(), 'audio')
     expect(audios.some((m) => m.id === 'voice-design')).toBe(true)
-    expect(audios.some((m) => m.id === 'music-3.0')).toBe(true)
-    expect(audios.some((m) => m.id === 'music-2.6')).toBe(true)
+
+    // 音乐已从 audio 拆成独立模态（音乐生成 ≠ 语音合成）
+    const music = await miniMaxAdapter.fetchCatalog(provider(), 'music')
+    expect(music.some((m) => m.id === 'music-3.0')).toBe(true)
+    expect(music.some((m) => m.id === 'music-2.6')).toBe(true)
+    // 拆开后不该再出现在声音页签
+    expect(audios.some((m) => m.id === 'music-3.0')).toBe(false)
 
     getMock.mockRejectedValueOnce(new Error('network'))
     const texts = await miniMaxAdapter.fetchCatalog(provider(), 'text')

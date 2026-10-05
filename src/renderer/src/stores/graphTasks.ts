@@ -1403,6 +1403,47 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             throw err
           }
         },
+        generateMusic: async (input) => {
+          const startedAt = Date.now()
+          const request = {
+            prompt: input.prompt,
+            lyricsLength: input.lyrics?.length,
+            instrumental: input.instrumental,
+            model: input.model,
+            providerInstanceId: input.providerInstanceId
+          }
+          try {
+            const project = useProjectStore()
+            const outputDir = resolveMediaOutputDir({
+              mediaOutputDir: input.outputDir,
+              cacheOutputDir: project.config?.cacheOutputDir,
+              kind: 'music'
+            })
+            const value = await window.studio.generateMusic({ ...input, outputDir })
+            if (outputDir === 'Assets' || outputDir.startsWith('Assets/')) {
+              await project.refreshAssets()
+            }
+            logBridge.recordApiCall({
+              kind: 'generateMusic',
+              request,
+              response: {
+                model: value.model,
+                assetId: value.assetId,
+                relativePath: value.relativePath
+              },
+              durationMs: Math.max(0, Date.now() - startedAt)
+            })
+            return value
+          } catch (err) {
+            logBridge.recordApiCall({
+              kind: 'generateMusic',
+              request,
+              error: err instanceof Error ? err.message : String(err),
+              durationMs: Math.max(0, Date.now() - startedAt)
+            })
+            throw err
+          }
+        },
         generateModel3d: async (input) => {
           const startedAt = Date.now()
           const request: {

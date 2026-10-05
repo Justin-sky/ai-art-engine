@@ -147,6 +147,18 @@ export const SHARED_ERRORS = {
     '当前执行环境没有音效生成能力：请确认已配置 ElevenLabs 提供商（音效走 /v1/sound-generation）',
     'Sound effect generation is unavailable in this run: configure an ElevenLabs provider (sound effects use /v1/sound-generation)'
   ),
+  /** 音乐节点缺音乐能力（同上：明确失败，不换成别的生成能力） */
+  musicUnsupported: defErrSimple(
+    'graphExec.music.unsupported',
+    '当前执行环境没有音乐生成能力：请在设置里配置 MiniMax / 通义千问（百炼 Fun-Music）/ ElevenLabs，并在「音乐」页签勾选音乐模型',
+    'Music generation is unavailable in this run: configure a MiniMax / DashScope (Bailian Fun-Music) / ElevenLabs provider and select a music model on the Music tab in Settings'
+  ),
+  /** 音乐节点：没写编曲描述 */
+  musicNoPrompt: defErrSimple(
+    'graphExec.music.noPrompt',
+    '音乐生成需要描述（风格 / 情绪 / 场景，如「轻快明亮的电子配乐，适合 Vlog 背景」）',
+    'Music generation needs a description (style / mood / scene, e.g. "bright upbeat electronic bed for a vlog")'
+  ),
   /** 多说话人对话：某几段没能确定音色（说话人没绑定音色，节点也没设默认音色） */
   dialogueVoiceMissing: defErr<{ lines: string; speakers: string }>(
     'graphExec.dialogue.voiceMissing',

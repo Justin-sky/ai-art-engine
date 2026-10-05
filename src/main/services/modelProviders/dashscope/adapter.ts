@@ -214,6 +214,8 @@ export const dashscopeAdapter: ModelProviderAdapter = {
 
   async fetchCatalog(provider, modality: ModelModality): Promise<CatalogModel[]> {
     if (modality === 'audio') return listDashScopeCatalogModels('audio')
+    // 音乐模态独立于 audio：设置页「音乐」页签从这里拿 fun-music-*
+    if (modality === 'music') return listDashScopeCatalogModels('music')
 
     if (modality === 'image' || modality === 'video') {
       return listDashScopeCatalogModels(modality)

@@ -67,6 +67,7 @@ const presetKind = computed((): InstructionPresetKind | null => {
     case 'asset.voice':
     case 'asset.dialogue':
     case 'asset.sfx':
+    case 'asset.music':
       return 'voice'
     case 'model.pose':
       return 'modelPose'

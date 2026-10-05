@@ -284,6 +284,38 @@
     </section>
 
     <section
+      v-if="isMusic"
+      class="generated-voices"
+      :aria-label="t('graph.inspector.generate.musicOptions')"
+    >
+      <div class="section-head">
+        <span class="section-title">{{ t('graph.inspector.generate.musicOptions') }}</span>
+      </div>
+      <p class="section-hint">
+        {{ t('graph.inspector.generate.musicOptionsHint') }}
+      </p>
+      <div class="voice-profile-row">
+        <label class="voice-profile-label">
+          <input
+            type="checkbox"
+            :checked="node?.params.generateMusicInstrumental !== false"
+            @change="persistMusicInstrumental(($event.target as HTMLInputElement).checked)"
+          />
+          {{ t('graph.inspector.generate.musicInstrumental') }}
+        </label>
+      </div>
+      <label class="voice-profile-label music-lyrics">
+        {{ t('graph.inspector.generate.musicLyrics') }}
+        <textarea
+          rows="4"
+          :value="node?.params.generateMusicLyrics ?? ''"
+          :placeholder="t('graph.inspector.generate.musicLyricsPlaceholder')"
+          @change="onMusicLyricsChange"
+        />
+      </label>
+    </section>
+
+    <section
       v-if="isDialogue"
       class="generated-voices"
       :aria-label="t('graph.inspector.generate.dialogueVoices')"
@@ -804,6 +836,8 @@ const isVoice = computed(() => assetType.value === 'voice')
 const isDialogue = computed(() => node.value?.typeId === 'asset.dialogue')
 /** 音效节点：描述的是声音本身，且多两个音效专用开关 */
 const isSoundEffect = computed(() => node.value?.typeId === 'asset.sfx')
+/** 音乐生成节点：只吃编曲描述（+ 可选歌词），不吃音色 */
+const isMusic = computed(() => node.value?.typeId === 'asset.music')
 
 /**
  * 对话稿里出现的说话人（按首次出现顺序）。
@@ -878,6 +912,15 @@ function onSoundPromptInfluenceChange(event: Event): void {
     generateSoundPromptInfluence:
       input.value !== '' && Number.isFinite(raw) ? Math.min(1, Math.max(0, raw)) : undefined
   })
+}
+
+function persistMusicInstrumental(instrumental: boolean): void {
+  persistNodeParams({ generateMusicInstrumental: instrumental })
+}
+
+function onMusicLyricsChange(event: Event): void {
+  const value = (event.target as HTMLTextAreaElement).value.trim()
+  persistNodeParams({ generateMusicLyrics: value })
 }
 
 const isScreenplay = computed(() => assetType.value === 'screenplay')

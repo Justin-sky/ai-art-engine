@@ -964,6 +964,12 @@ function toggleLock(): void {
  */
 const isSoundEffectNode = computed(() => props.node.typeId === 'asset.sfx')
 
+/**
+ * 音乐节点：模型要选（MiniMax music-3.0 / 百炼 fun-music-v1 / ElevenLabs music_v2_5
+ * 都是不同模型），但没有「音色」——音乐端点不吃 voice。
+ */
+const isMusicNode = computed(() => props.node.typeId === 'asset.music')
+
 const instructionKind = computed((): InstructionPresetKind | null => {
   switch (props.node.typeId) {
     case 'image.toPrompt':
@@ -1026,6 +1032,7 @@ const instructionKind = computed((): InstructionPresetKind | null => {
     // 声音资产的变体节点：预设面板与声音节点同一套（都只是「生成音频」）
     case 'asset.dialogue':
     case 'asset.sfx':
+    case 'asset.music':
       return isProcessingNode.value ? 'voice' : null
     case 'asset.model3d':
       return isProcessingNode.value ? 'model3d' : null
@@ -1167,6 +1174,9 @@ const instructionPlaceholder = computed(() => {
   }
   if (isSoundEffectNode.value) {
     return t('graph.inspector.generate.sfxInstructionPlaceholder')
+  }
+  if (isMusicNode.value) {
+    return t('graph.inspector.generate.musicInstructionPlaceholder')
   }
   if (instructionKind.value === 'voice') {
     return t('graph.inspector.generate.voiceInstructionPlaceholder')
@@ -2329,6 +2339,7 @@ const selectedProviderKind = computed(
 const showSpeechVoice = computed(
   () =>
     !isSoundEffectNode.value &&
+    !isMusicNode.value &&
     instructionKind.value === 'voice' &&
     speechVoiceOptions.value.length > 0
 )

@@ -40,11 +40,12 @@ function voiceGroupTypeIds(): string[] {
 }
 
 describe('右键菜单声音分组', () => {
-  it('三个生成节点与声音选择同组（对话 / 音效不再散在根菜单）', () => {
+  it('三个生成节点与声音选择同组（对话 / 音效 / 音乐不再散在根菜单）', () => {
     expect(voiceGroupTypeIds()).toEqual([
       'asset.voice',
       'asset.dialogue',
       'asset.sfx',
+      'asset.music',
       'voice.select'
     ])
   })
@@ -55,13 +56,13 @@ describe('右键菜单声音分组', () => {
     const grouped = new Set(
       [...groupsBlock().matchAll(/'([a-z][a-zA-Z0-9]*\.[a-zA-Z0-9.]+)'/g)].map((m) => m[1]!)
     )
-    for (const typeId of ['asset.dialogue', 'asset.sfx']) {
+    for (const typeId of ['asset.dialogue', 'asset.sfx', 'asset.music']) {
       expect(grouped.has(typeId), `${typeId} 未归入任何分组`).toBe(true)
     }
   })
 
   it('两个节点在默认策略下可添加（否则分组里也看不到它们）', () => {
-    for (const typeId of ['asset.dialogue', 'asset.sfx'] as const) {
+    for (const typeId of ['asset.dialogue', 'asset.sfx', 'asset.music'] as const) {
       const def = BUILTIN_NODE_TYPES.find((d) => d.typeId === typeId)
       expect(def?.addable, typeId).toBe(true)
       expect(isNodeAddableInScope('workflow', typeId), typeId).toBe(true)

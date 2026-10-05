@@ -83,13 +83,13 @@
     {
       "id": "music-3.0",
       "name": "MiniMax Music 3.0",
-      "modality": "audio",
+      "modality": "music",
       "profile": "audio-music"
     },
     {
       "id": "music-2.6",
       "name": "MiniMax Music 2.6",
-      "modality": "audio",
+      "modality": "music",
       "profile": "audio-music"
     },
     {

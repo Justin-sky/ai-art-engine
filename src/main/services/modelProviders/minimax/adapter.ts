@@ -316,7 +316,12 @@ export const miniMaxAdapter: ModelProviderAdapter = {
   },
 
   async fetchCatalog(provider, modality: ModelModality): Promise<CatalogModel[]> {
-    if (modality === 'video' || modality === 'image' || modality === 'audio') {
+    if (
+      modality === 'video' ||
+      modality === 'image' ||
+      modality === 'audio' ||
+      modality === 'music'
+    ) {
       return listMiniMaxCatalogModels(modality)
     }
     if (modality !== 'text') return []

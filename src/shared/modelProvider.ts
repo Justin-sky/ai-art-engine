@@ -334,13 +334,28 @@ export function modelProviderCredentialsUrl(kind: ModelProviderKind): string {
 }
 
 export type ModelModality =
-  'text' | 'image' | 'video' | 'audio' | 'model3d' | 'spatialWorld' | 'decisions'
+  | 'text'
+  | 'image'
+  | 'video'
+  | 'audio'
+  /** 音乐生成（BGM / 配乐）：与「声音（TTS）」分开，模型与端点都不同 */
+  | 'music'
+  | 'model3d'
+  | 'spatialWorld'
+  | 'decisions'
 
 export const MODEL_MODALITIES: readonly ModelModality[] = [
   'text',
   'image',
   'video',
   'audio',
+  /**
+   * 音乐生成（BGM / 配乐）。
+   * 与 audio 分开：audio 是语音合成（TTS，`text` + `voice`），音乐是编曲
+   * （`prompt` + 歌词 / 纯音乐），端点和模型体系都不一样 ——
+   * 混在一个页签里会让「声音节点的模型下拉」出现 music_v2_5 这种不能合成的模型。
+   */
+  'music',
   'model3d',
   /** 空间世界（World Labs Marble）：从文本 / 图片生成可交互 3D 世界 */
   'spatialWorld',
@@ -435,6 +450,21 @@ export function supportsAudioModality(kind: ModelProviderKind): boolean {
   if (kind === 'elevenlabs') return true
   // 各家私有协议：方舟 openspeech 声音设计 / MiniMax 音色设计 / ComfyUI 音频工作流
   return kind === 'volcengine-ark' || kind === 'minimax' || kind === 'comfyui'
+}
+
+/**
+ * 谁支持**音乐生成**（BGM / 配乐）。
+ *
+ * 与 `supportsAudioModality` 分开：音乐是编曲（prompt + 歌词 / 纯音乐），
+ * 语音合成是 TTS（text + voice）—— 两边的端点和模型体系都不同，
+ * 一家支持 TTS 不代表支持音乐（OpenAI 就没有音乐端点）。
+ * 设置页「音乐」页签、音乐节点的选型、空列表成因判定都只认这一处。
+ */
+export function supportsMusicModality(kind: ModelProviderKind): boolean {
+  // ElevenLabs `/v1/music`（music_v1 | music_v2 | music_v2_5）
+  if (kind === 'elevenlabs') return true
+  // MiniMax music-3.0 / 通义千问（百炼）Fun-Music：各家私有音乐端点
+  return kind === 'minimax' || kind === 'dashscope'
 }
 
 export function isMiniMaxProvider(
@@ -714,6 +744,7 @@ export function createEmptyModalityMap(): ProviderModalityMap {
     image: createEmptyModalityConfig(),
     video: createEmptyModalityConfig(),
     audio: createEmptyModalityConfig(),
+    music: createEmptyModalityConfig(),
     model3d: createEmptyModalityConfig(),
     spatialWorld: createEmptyModalityConfig(),
     decisions: createEmptyModalityConfig()
@@ -2070,6 +2101,40 @@ function normalizeVoiceLabels(raw: unknown): Record<string, string> | undefined 
   return Object.keys(out).length ? out : undefined
 }
 
+/**
+ * 从旧的 audio 桶里捞出音乐模型（music 拆成独立模态前的存量数据）。
+ *
+ * 当时音乐借用音频模态，用户勾的 `music-3.0` / `music_v2_5` 都落在 audio 桶。
+ * 拆出 music 后如果不迁移，这些用户打开设置会看到音乐页签是空的、以为选择丢了。
+ *
+ * **故意保留 audio 桶里的原样**：万一某个模型其实是用户特意在声音页签勾的，
+ * 移除会让它彻底不可选；留在两处无害（音乐模型本就会被声音节点的目录过滤掉，
+ * 那是按 TTS 类别过滤的，不靠勾选项）。
+ */
+function inferLegacyMusicModality(
+  rawAudio: Partial<ModalityModelConfig> | undefined
+): Partial<ModalityModelConfig> | undefined {
+  if (!rawAudio || typeof rawAudio !== 'object') return undefined
+  const ids = Array.isArray(rawAudio.selectedModelIds)
+    ? rawAudio.selectedModelIds.filter(
+        (id): id is string => typeof id === 'string' && isLikelyMusicModelId(id)
+      )
+    : []
+  if (!ids.length) return undefined
+  // selectedModelIds 非空但 defaultModelId 是空串时也要给出非空默认值
+  // （normalizeModalityConfig 会回退到 selected[0]，但显式给出更清楚）
+  const rawDefault = typeof rawAudio.defaultModelId === 'string' ? rawAudio.defaultModelId : ''
+  return {
+    selectedModelIds: ids,
+    defaultModelId: ids.includes(rawDefault) ? rawDefault : ids[0]!
+  }
+}
+
+/** 按 id 命名判断是不是音乐模型（仅用于旧数据迁移，不参与运行时选型） */
+function isLikelyMusicModelId(modelId: string): boolean {
+  return /(^|[/_-])music/i.test(modelId.trim()) || /^fun-music/i.test(modelId.trim())
+}
+
 function normalizeModalityMap(
   raw: Partial<ProviderModalityMap> | null | undefined,
   kind: ModelProviderKind
@@ -2081,6 +2146,10 @@ function normalizeModalityMap(
     image: normalizeModalityConfig(raw.image, kind),
     video: normalizeModalityConfig(raw.video, kind),
     audio: normalizeModalityConfig(raw.audio, kind),
+    // 兼容旧工程：music 是后来从 audio 里拆出来的独立模态。
+    // 老设置里音乐模型可能被勾在 audio 桶下（当时音乐借用音频模态），
+    // 直接读 music 桶会是空的 —— 让用户以为勾过的模型丢了。
+    music: normalizeModalityConfig(raw.music ?? inferLegacyMusicModality(raw.audio), kind),
     model3d: normalizeModalityConfig(raw.model3d, kind),
     // 兼容旧工程：改名前的模态桶是 world（世界模型），读回来别把用户已选的模型丢掉
     spatialWorld: normalizeModalityConfig(

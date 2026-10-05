@@ -524,6 +524,7 @@ export default {
         image: '图片',
         video: '视频',
         audio: '声音',
+        music: '音乐',
         model3d: '3D 模型',
         spatialWorld: '空间世界',
         decisions: '决策'
@@ -534,6 +535,8 @@ export default {
         video: '用于分镜视频生成，对应 /api/v1/videos/models。',
         audio:
           '用于 TTS 语音合成，对应 /api/v1/models?output_modalities=speech 与 /api/v1/audio/speech。',
+        music:
+          '用于 BGM / 配乐生成（与「声音」的语音合成分开）：MiniMax music-3.0、百炼 Fun-Music、ElevenLabs music_v2_5。勾选后可在「音乐生成」节点与时间线的 BGM 生成里选用。',
         model3d: '用于 3D 模型生成，从文本和/或参考图生成 GLB 模型。',
         world:
           '用于空间世界生成（World Labs Marble）：从文本或参考图生成可交互 3D 世界（高斯泼溅 + 网格）。',
@@ -4193,6 +4196,7 @@ export default {
         voice: '声音生成',
         dialogue: '多说话人对话',
         sfx: '音效生成',
+        music: '音乐生成',
         motion: '3D导演台',
         model: '模型',
         screenplay: '剧本生成',
@@ -5493,6 +5497,14 @@ export default {
         soundEffectPromptInfluence: '提示词影响力',
         soundEffectRangesHint:
           '按 ElevenLabs 规范：时长 0.5–30 秒、提示词影响力 0–1（默认 0.3，越高越贴合描述）。留空即由服务端决定。',
+        musicOptions: '音乐参数',
+        musicOptionsHint:
+          '音乐生成只吃编曲描述（+ 可选歌词），不吃音色。模型在设置页「音乐」页签勾选（MiniMax music-3.0 / 百炼 Fun-Music / ElevenLabs music_v2_5）。',
+        musicInstrumental: '纯音乐（无人声）',
+        musicLyrics: '歌词（可选）',
+        musicLyricsPlaceholder: '多段用换行分隔，可用 [Intro] / [Verse] / [Chorus] 等结构标签',
+        musicInstructionPlaceholder:
+          '描述编曲本身，例如「轻快明亮的电子配乐，适合 Vlog 背景，节奏稳定不抢人声」',
         generatedVoicesHint: '每次执行追加新音频并自动选中最新；单击设为当前输出（out），× 删除',
         generatedVoicesEmpty: '暂无生成结果。执行本节点后会显示在这里',
         generatedVoicesDelete: '删除此声音',

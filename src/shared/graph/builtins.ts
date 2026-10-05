@@ -30,6 +30,7 @@ import { DEFAULT_IMAGE_TRANSFORM } from './imageTransform'
 import {
   executeAssetNode,
   executeDialogueGenerateNode,
+  executeMusicGenerateNode,
   executeSoundEffectNode,
   executeCamera3dNode,
   executeMotionAssetRefNode,
@@ -309,6 +310,51 @@ const VOICE_HOST_VARIANTS = [
     icon: '💥'
   }
 ] as const
+
+/**
+ * 音乐生成节点（BGM / 配乐）。
+ *
+ * 与声音 / 音效节点的区别：**只吃文本**（编曲描述 + 可选歌词）。
+ * 不复用 voiceProcessingPorts：那个带 `in-image`（方舟声音设计要参考图），
+ * 音乐端点没有图片输入，留着会让人以为能接图。
+ */
+function musicProcessingPorts(): GraphPortDef[] {
+  return [
+    { id: 'in-text', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'Text' },
+    ...galleryOutPorts(GraphPortType.voice)
+  ]
+}
+
+function musicNodeDef(): NodeTypeDefinition {
+  return {
+    typeId: 'asset.music',
+    category: 'asset',
+    label: 'Music',
+    icon: '🎵',
+    defaultTitle: 'Music',
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: musicProcessingPorts(),
+    defaultParams: () => ({
+      generateModel: '',
+      generateProviderInstanceId: '',
+      weight: 0.85,
+      volume: 1,
+      muted: false,
+      // BGM 通常整段循环铺底
+      loop: true,
+      generateMusicInstrumental: true
+    }),
+    addable: true,
+    // 产物是声音资产：宿主接口、图库、落盘目录都按 voice 走（Cache/Music）
+    assetType: 'voice',
+    deletable: true,
+    inspector: 'asset',
+    card: 'media',
+    contributeToGeneration: true,
+    execute: (ctx: NodeExecuteContext) => executeMusicGenerateNode(ctx)
+  }
+}
 
 function voiceHostVariantDef(variant: (typeof VOICE_HOST_VARIANTS)[number]): NodeTypeDefinition {
   return {
@@ -850,6 +896,7 @@ function specializedOutputDef(
 export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
   ...ASSET_META.map(assetDef),
   ...VOICE_HOST_VARIANTS.map(voiceHostVariantDef),
+  musicNodeDef(),
   outputDef('video', 'Video output', VIDEO_ASSET_ICON),
   outputDef('image', 'Image output', '🖼️'),
   outputDef('voice', 'Audio output', '🔊'),

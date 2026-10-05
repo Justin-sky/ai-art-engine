@@ -40,7 +40,7 @@ function profileCapabilities(profileId: string): Record<string, unknown> | null 
 /** 按模型 id 解析静态能力；未收录时按型号/模态启发式回退 */
 export function resolveMiniMaxModelCapabilities(
   modelId: string,
-  modality?: 'text' | 'image' | 'video' | 'audio'
+  modality?: 'text' | 'image' | 'video' | 'audio' | 'music'
 ): Record<string, unknown> | null {
   const id = modelId.trim()
   const entry = data.models.find((m) => m.id === id)
@@ -52,13 +52,15 @@ export function resolveMiniMaxModelCapabilities(
       ? 'video'
       : /image-/i.test(id)
         ? 'image'
-        : /voice|speech|tts/i.test(id)
-          ? 'audio'
-          : /music/i.test(id)
+        : /music/i.test(id)
+          ? 'music'
+          : /voice|speech|tts/i.test(id)
             ? 'audio'
             : 'text')
 
   if (mod === 'text' || /^MiniMax-M/i.test(id)) return profileCapabilities('text-base')
+  // 音乐与音色设计共用 audio 系列档位，但模态已经分开（音乐不再借用 audio）
+  if (mod === 'music') return profileCapabilities('audio-music')
   if (mod === 'audio') {
     return /music/i.test(id)
       ? profileCapabilities('audio-music')
@@ -75,7 +77,13 @@ export function resolveMiniMaxModelCapabilities(
 
 /** 设置页「拉取模型」：返回静态目录 */
 export function listMiniMaxCatalogModels(modality: ModelModality): CatalogModel[] {
-  if (modality !== 'text' && modality !== 'image' && modality !== 'video' && modality !== 'audio') {
+  if (
+    modality !== 'text' &&
+    modality !== 'image' &&
+    modality !== 'video' &&
+    modality !== 'audio' &&
+    modality !== 'music'
+  ) {
     return []
   }
   return data.models

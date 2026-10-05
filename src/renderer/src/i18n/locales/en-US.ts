@@ -533,6 +533,7 @@ export default {
         image: 'Image',
         video: 'Video',
         audio: 'Voice',
+        music: 'Music',
         model3d: '3D Model',
         spatialWorld: 'Spatial world',
         decisions: 'Decisions'
@@ -542,6 +543,8 @@ export default {
         image: 'Image generation via /api/v1/images/models.',
         video: 'Shot video generation via /api/v1/videos/models.',
         audio: 'TTS via /api/v1/models?output_modalities=speech and /api/v1/audio/speech.',
+        music:
+          'BGM / score generation (separate from the Voice TTS tab): MiniMax music-3.0, Bailian Fun-Music, ElevenLabs music_v2_5. Selected music models become available in the Music generation node and the timeline BGM action.',
         model3d: '3D model generation from text and/or reference images, producing GLB assets.',
         world:
           'Spatial world generation (World Labs Marble): interactive 3D worlds (gaussian splats + mesh) from text or reference images.',
@@ -4289,6 +4292,7 @@ export default {
         voice: 'Voice generation',
         dialogue: 'Multi-speaker dialogue',
         sfx: 'Sound effect generation',
+        music: 'Music generation',
         motion: '3D Director Deck',
         model: 'Model',
         screenplay: 'Screenplay generation',
@@ -5635,6 +5639,15 @@ export default {
         soundEffectPromptInfluence: 'Prompt influence',
         soundEffectRangesHint:
           'Per the ElevenLabs spec: duration 0.5–30 seconds, prompt influence 0–1 (default 0.3; higher follows the prompt more closely). Leave empty to let the service decide.',
+        musicOptions: 'Music options',
+        musicOptionsHint:
+          'Music generation takes a composition description (plus optional lyrics) and no voice. Pick models on the Music tab in Settings (MiniMax music-3.0 / Bailian Fun-Music / ElevenLabs music_v2_5).',
+        musicInstrumental: 'Instrumental (no vocals)',
+        musicLyrics: 'Lyrics (optional)',
+        musicLyricsPlaceholder:
+          'Separate sections with newlines; [Intro] / [Verse] / [Chorus] structure tags are supported',
+        musicInstructionPlaceholder:
+          'Describe the composition itself, e.g. "bright upbeat electronic bed for a vlog, steady groove that stays out of the way of narration"',
         generatedVoicesHint:
           'Each run appends audio and selects the newest. Click to set as current out; × to delete.',
         generatedVoicesEmpty: 'No generations yet. Run this node to see results here.',

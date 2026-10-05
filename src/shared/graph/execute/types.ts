@@ -654,7 +654,7 @@ export interface NodeExecuteContext {
   }>
   /**
    * 可选：音效生成（ElevenLabs `/v1/sound-generation`）。
-   * 未注入时音效节点退回声音节点（用提示词合成语音），不阻断整图。
+   * 未注入时音效节点**明确报错**（不回退到 TTS —— 那会把描述念出来）。
    */
   generateSoundEffect?: (input: {
     prompt: string
@@ -663,6 +663,19 @@ export interface NodeExecuteContext {
     loop?: boolean
     durationSeconds?: number
     promptInfluence?: number
+    name?: string
+    outputDir?: string
+  }) => Promise<{ assetId?: string; relativePath?: string; model: string }>
+  /**
+   * 可选：音乐 / BGM 生成（MiniMax / 百炼 Fun-Music / ElevenLabs `/v1/music`）。
+   * 未注入时音乐节点明确报错。
+   */
+  generateMusic?: (input: {
+    prompt: string
+    lyrics?: string
+    instrumental?: boolean
+    model?: string
+    providerInstanceId?: string
     name?: string
     outputDir?: string
   }) => Promise<{ assetId?: string; relativePath?: string; model: string }>
@@ -1209,7 +1222,7 @@ export interface GraphRunOptions {
   generateSpeech?: NodeExecuteContext['generateSpeech']
   /**
    * 可选：音效生成（ElevenLabs `/v1/sound-generation`）。
-   * 未注入时音效节点退回声音节点（用提示词合成语音），不阻断整图。
+   * 未注入时音效节点**明确报错**（不回退到 TTS —— 那会把描述念出来）。
    */
   generateSoundEffect?: (input: {
     prompt: string
@@ -1218,6 +1231,16 @@ export interface GraphRunOptions {
     loop?: boolean
     durationSeconds?: number
     promptInfluence?: number
+    name?: string
+    outputDir?: string
+  }) => Promise<{ assetId?: string; relativePath?: string; model: string }>
+  /** 可选：音乐 / BGM 生成（MiniMax / 百炼 Fun-Music / ElevenLabs `/v1/music`） */
+  generateMusic?: (input: {
+    prompt: string
+    lyrics?: string
+    instrumental?: boolean
+    model?: string
+    providerInstanceId?: string
     name?: string
     outputDir?: string
   }) => Promise<{ assetId?: string; relativePath?: string; model: string }>

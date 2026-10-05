@@ -340,6 +340,75 @@ export async function executeSoundEffectNode(
   })
 }
 
+/**
+ * 音乐生成节点（BGM / 配乐）。
+ *
+ * 与声音 / 音效节点同形（产出声音资产），但走**音乐端点**：
+ * 只吃编曲描述（+ 可选歌词），不吃音色、也不吃音效参数。
+ *
+ * 没有音乐能力时**明确报错**，不回退到其它生成能力 ——
+ * 与音效节点同一原则：换成别的能力会产出「听起来成功、其实不对」的产物。
+ */
+export async function executeMusicGenerateNode(
+  ctx: NodeExecuteContext
+): Promise<Record<string, GraphValue>> {
+  const { node } = ctx
+  if (!ctx.generateMusic) throw fail(SHARED_ERRORS.musicUnsupported)
+
+  const instructionRaw = node.params.generateInstruction?.trim() || ''
+  const mentionSources = resolveMentionSources(ctx)
+  const selected = selectIncomingValuesForInstruction(ctx, instructionRaw)
+  const localNotes = expandInstructionMentions(instructionRaw, mentionSources) || undefined
+  const incomingText = autoIncomingTextForInstruction(instructionRaw, selected, mentionSources)
+
+  if (ctx.signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError')
+  }
+
+  // 编曲描述就是要发给上游的文本；**不拼系统提示词**（那是给对话模型的指令，
+  // 拼进去会被当成歌词/描述的一部分影响生成）
+  const prompt = [localNotes, incomingText].filter(Boolean).join('\n').trim()
+  if (!prompt) throw fail(SHARED_ERRORS.musicNoPrompt)
+
+  const lyrics =
+    typeof node.params.generateMusicLyrics === 'string'
+      ? node.params.generateMusicLyrics.trim()
+      : ''
+
+  const result = await ctx.generateMusic({
+    prompt,
+    ...(lyrics ? { lyrics } : {}),
+    instrumental: node.params.generateMusicInstrumental !== false,
+    model: node.params.generateModel || undefined,
+    providerInstanceId: node.params.generateProviderInstanceId || undefined,
+    name: buildGeneratedMediaFileKey({
+      hostAssetName: ctx.resolveHostAssetName?.(),
+      nodeTitle: node.title || node.typeId || 'music',
+      stamp: formatGeneratedMediaStamp()
+    }),
+    outputDir: node.params.mediaOutputDir?.trim() || undefined
+  })
+
+  if (ctx.signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError')
+  }
+  if (!result.assetId || !result.relativePath) {
+    throw fail(SHARED_ERRORS.ttsNoAsset)
+  }
+
+  const notes = [localNotes, incomingText].filter(Boolean).join('\n') || undefined
+  if (notes) {
+    ctx.node.params = { ...ctx.node.params, notes }
+    ctx.patchNode?.({ params: { notes } })
+  }
+
+  return persistVoiceGeneration(ctx, {
+    id: result.assetId,
+    createdAt: new Date().toISOString(),
+    relativePath: result.relativePath
+  })
+}
+
 /** 节点参数里的说话人→音色映射：丢掉空值与非字符串 */
 function normalizeDialogueVoiceMap(raw: unknown): Record<string, string> {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}

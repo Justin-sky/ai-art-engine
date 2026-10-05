@@ -423,6 +423,7 @@ import {
   isVllmProvider,
   modalityConfig,
   supportsAudioModality,
+  supportsMusicModality,
   modelProviderCredentialsUrl,
   resolveCustomApiStyle,
   syncModalityCatalogEntries,
@@ -537,13 +538,14 @@ function settingsModalitiesFor(provider: ModelProviderInstance): ModelModality[]
     // 决策模型厂商：只做决策判定，没有文本 / 图片 / 视频生成
     return ['decisions']
   }
-  // 兜底：按「能不能做声音」的事实来源决定是否给 audio 页签，避免各处白名单漂移
+  // 兜底：按「能不能做声音 / 音乐」的事实来源决定是否给对应页签，避免各处白名单漂移
   return MODEL_MODALITIES.filter(
     (m) =>
       m !== 'model3d' &&
       m !== 'spatialWorld' &&
       m !== 'decisions' &&
-      (m !== 'audio' || supportsAudioModality(provider.providerKind))
+      (m !== 'audio' || supportsAudioModality(provider.providerKind)) &&
+      (m !== 'music' || supportsMusicModality(provider.providerKind))
   )
 }
 

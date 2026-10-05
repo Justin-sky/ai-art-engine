@@ -155,6 +155,17 @@ export interface GraphRunSessionOptions {
     providerInstanceId?: string
     loop?: boolean
     durationSeconds?: number
+    promptInfluence?: number
+    name?: string
+    outputDir?: string
+  }) => Promise<{ assetId?: string; relativePath?: string; model: string }>
+  /** 可选：音乐 / BGM 生成（MiniMax / 百炼 Fun-Music / ElevenLabs `/v1/music`） */
+  generateMusic?: (input: {
+    prompt: string
+    lyrics?: string
+    instrumental?: boolean
+    model?: string
+    providerInstanceId?: string
     name?: string
     outputDir?: string
   }) => Promise<{ assetId?: string; relativePath?: string; model: string }>
@@ -1065,6 +1076,57 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
     }
   }
 
+  function wrapGenerateMusic(run: ActiveRun) {
+    const generateMusic = options.generateMusic
+    if (!generateMusic) return undefined
+    return async (input: {
+      prompt: string
+      lyrics?: string
+      instrumental?: boolean
+      model?: string
+      providerInstanceId?: string
+      name?: string
+      outputDir?: string
+    }) => {
+      if (isRunStale(run)) {
+        throw new DOMException('Aborted', 'AbortError')
+      }
+      const startedAt = Date.now()
+      const request = {
+        prompt: input.prompt,
+        lyricsLength: input.lyrics?.length,
+        instrumental: input.instrumental,
+        model: input.model,
+        providerInstanceId: input.providerInstanceId
+      }
+      run.logBridge.appendMessage(options.t('graph.logs.submitSpeech'))
+      try {
+        const value = await withAbortSignal(generateMusic(input), run)
+        run.logBridge.recordApiCall({
+          kind: 'generateMusic',
+          request,
+          response: {
+            model: value.model,
+            assetId: value.assetId,
+            relativePath: value.relativePath
+          },
+          durationMs: Math.max(0, Date.now() - startedAt)
+        })
+        return value
+      } catch (err) {
+        if (!(err instanceof DOMException && err.name === 'AbortError')) {
+          run.logBridge.recordApiCall({
+            kind: 'generateMusic',
+            request,
+            error: err instanceof Error ? err.message : String(err),
+            durationMs: Math.max(0, Date.now() - startedAt)
+          })
+        }
+        throw err
+      }
+    }
+  }
+
   function wrapGenerateModel3d(run: ActiveRun) {
     const generateModel3d = options.generateModel3d
     if (!generateModel3d) return undefined
@@ -1550,6 +1612,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         generateVideo: wrapGenerateVideo(run),
         generateSpeech: wrapGenerateSpeech(run),
         generateSoundEffect: wrapGenerateSoundEffect(run),
+        generateMusic: wrapGenerateMusic(run),
         generateModel3d: wrapGenerateModel3d(run),
         generateSpatialWorld: wrapGenerateSpatialWorld(run),
         lookupSpatialWorldId: options.lookupSpatialWorldId,

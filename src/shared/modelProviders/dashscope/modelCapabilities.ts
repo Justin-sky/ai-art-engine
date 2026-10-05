@@ -53,8 +53,10 @@ export function resolveDashScopeModelCapabilities(
       : /t2v|i2v|video/i.test(id)
         ? 'video'
         : /fun-music|music/i.test(id)
-          ? 'audio'
+          ? 'music'
           : 'text')
+  // 音乐模态独立于 audio（audio 在本家是语音合成）；两者都落到 audio-music 档
+  if (mod === 'music') return profileCapabilities('audio-music')
   if (mod === 'audio') return profileCapabilities('audio-music')
   if (mod === 'image') return profileCapabilities('image-t2i')
   if (mod === 'video') {
@@ -84,7 +86,13 @@ export function resolveDashScopeModelCapabilities(
 }
 
 export function listDashScopeCatalogModels(modality: ModelModality): CatalogModel[] {
-  if (modality !== 'text' && modality !== 'image' && modality !== 'video' && modality !== 'audio') {
+  if (
+    modality !== 'text' &&
+    modality !== 'image' &&
+    modality !== 'video' &&
+    modality !== 'audio' &&
+    modality !== 'music'
+  ) {
     return []
   }
   return data.models

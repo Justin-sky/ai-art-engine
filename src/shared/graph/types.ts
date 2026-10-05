@@ -653,6 +653,10 @@ export interface GraphNodeParams {
   generateSoundDurationSec?: number
   /** 音效生成：提示词影响力 0–1（越高越贴合描述） */
   generateSoundPromptInfluence?: number
+  /** 音乐生成：歌词（多段用 \n 分隔，支持 [Intro]/[Verse] 等结构标签）；纯音乐时留空 */
+  generateMusicLyrics?: string
+  /** 音乐生成：是否纯音乐（无人声）；缺省 true */
+  generateMusicInstrumental?: boolean
   /** 「生成剧本」等输出节点：最近一次执行汇总的结果文本 */
   resultText?: string
   outputKind?: GraphOutputKind

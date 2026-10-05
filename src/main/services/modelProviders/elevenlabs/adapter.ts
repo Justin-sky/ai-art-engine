@@ -236,13 +236,15 @@ export const elevenLabsAdapter: ModelProviderAdapter = {
   /**
    * 目录：`GET /v1/models`（SDK models.list），失败或拿不到时退回本地表。
    *
-   * 只返回 **TTS** 类模型：该端点同时返回 `scribe_*`（转写）与 `music_*`（音乐），
-   * 混进声音节点的下拉会让人选到根本不能合成的模型。
+   * 按模态分流（同一端点混着三类模型）：
+   * - `audio`（语音合成）→ 只给 TTS，否则声音节点的下拉会出现 `music_v2_5` / `scribe_v2`
+   * - `music`（音乐生成）→ 只给 `music_*`，设置页的音乐页签才有模型可勾
    * 其它模态返回空数组 —— 本适配器不支持，避免设置页出现选不了的页签。
    */
   async fetchCatalog(provider: ModelProviderInstance, modality: ModelModality) {
-    if (modality !== 'audio') return []
-    return filterElevenModelsByKind(await listElevenModels(provider), 'tts')
+    if (modality !== 'audio' && modality !== 'music') return []
+    const all = await listElevenModels(provider)
+    return filterElevenModelsByKind(all, modality === 'music' ? 'music' : 'tts')
   },
 
   /**

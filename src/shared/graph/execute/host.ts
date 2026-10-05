@@ -1,6 +1,7 @@
 import {
   executeDialogueGenerateNode,
   executeImageGenerateNode,
+  executeMusicGenerateNode,
   executeSoundEffectNode,
   executeVideoGenerateNode,
   executeVoiceGenerateNode
@@ -352,6 +353,11 @@ export function executeAssetNode(
   // （踩过：音效节点生成出来的是把描述读一遍的语音）
   if (node.typeId === 'asset.sfx') {
     return executeSoundEffectNode(ctx)
+  }
+
+  // 音乐生成：assetType 同样是 voice，理由同上
+  if (node.typeId === 'asset.music') {
+    return executeMusicGenerateNode(ctx)
   }
 
   // 声音生成：文生语音；无 API 时透传上游声音或输出文本

@@ -1801,6 +1801,18 @@ const {
     }
     return value
   },
+  generateMusic: async (input) => {
+    const outputDir = resolveMediaOutputDir({
+      mediaOutputDir: input.outputDir,
+      cacheOutputDir: project.config?.cacheOutputDir,
+      kind: 'music'
+    })
+    const value = await window.studio.generateMusic({ ...input, outputDir })
+    if (outputDir === 'Assets' || outputDir.startsWith('Assets/')) {
+      await project.refreshAssets()
+    }
+    return value
+  },
   generateModel3d: async (input) => {
     const value = await window.studio.generateModel3d(input)
     if (value.relativePath === 'Assets' || value.relativePath.startsWith('Assets/')) {
@@ -3471,9 +3483,9 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
   },
   {
     id: 'voice',
-    // 声音组：配音 / 多说话人对话 / 音效 / 声音选择
-    // （对话与音效是声音资产的变体节点，产物同类，归在同组才符合直觉）
-    typeIds: ['asset.voice', 'asset.dialogue', 'asset.sfx', 'voice.select']
+    // 声音组：配音 / 多说话人对话 / 音效 / 音乐 / 声音选择
+    // （对话、音效、音乐都是声音资产的变体节点，产物同类，归在同组才符合直觉）
+    typeIds: ['asset.voice', 'asset.dialogue', 'asset.sfx', 'asset.music', 'voice.select']
   },
   {
     id: 'screenplay',
