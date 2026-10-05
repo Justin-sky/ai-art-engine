@@ -15,7 +15,10 @@
       />
     </svg>
     <span class="field">
-      <!-- 自由输入 + datalist：聚合器的音色名穷举不完，候选只作提示 -->
+      <!-- 自由输入 + datalist：聚合器的音色名穷举不完，候选只作提示。
+           箭头用浏览器原生的那个：本代码库的下拉框一律如此（见 InstructionModelSelect
+           的 select），自绘一个反而会出现"两个三角"—— appearance: none 并不能关掉
+           datalist 的原生指示器。 -->
       <input
         :value="modelValue ?? ''"
         type="text"
@@ -26,20 +29,6 @@
         @keydown.stop
         @pointerdown.stop
       />
-      <!-- 自绘箭头：原生 datalist 指示器由浏览器画、颜色/位置不受主题控制，
-           和面板里其它控件对不齐；这里固定成与图标同色的细 chevron -->
-      <span class="caret" aria-hidden="true">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 6" width="8" height="5">
-          <path
-            d="M1 1l4 4 4-4"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.4"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-        </svg>
-      </span>
       <datalist :id="datalistId">
         <option v-for="voice in options" :key="voice" :value="voice" />
       </datalist>
@@ -74,13 +63,18 @@ function onChange(event: Event): void {
 </script>
 
 <style scoped>
+/*
+ * 尺寸与内边距刻意对齐 InstructionModelSelect 的 select（同一个 footer 里并排的两个
+ * 下拉）：高度 24、字号 11、max-width 90、padding 0 4px。
+ * 箭头交给浏览器原生绘制 —— 本代码库所有下拉框都这样，自绘会出现两个三角。
+ */
 .voice-select {
   display: inline-flex;
   flex-direction: row;
   align-items: center;
   gap: 5px;
   flex: none;
-  max-width: 170px;
+  max-width: 124px;
   margin: 0;
   cursor: default;
 }
@@ -92,7 +86,7 @@ function onChange(event: Event): void {
   pointer-events: none;
 }
 
-/* 输入框与箭头共用一个定位上下文 */
+/* 输入框与原生箭头共用一个定位上下文（宽度跟 select 一致，视觉才齐） */
 .field {
   position: relative;
   display: block;
@@ -104,9 +98,9 @@ input {
   display: block;
   width: 100%;
   min-width: 0;
+  max-width: 90px;
   height: 24px;
-  /* 右侧给箭头留位，避免长音色名（zh-CN-Mei:MAI-Voice-2.1）压在箭头上 */
-  padding: 0 20px 0 6px;
+  padding: 0 4px;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--bg-input);
@@ -114,9 +108,6 @@ input {
   font-size: 11px;
   line-height: 22px;
   text-overflow: ellipsis;
-  /* 关掉浏览器自带的 datalist 指示器，改用下面的 .caret */
-  -webkit-appearance: none;
-  appearance: none;
 }
 
 input:hover,
@@ -127,21 +118,5 @@ input:focus {
 
 input::placeholder {
   color: var(--text-muted);
-}
-
-.caret {
-  position: absolute;
-  right: 5px;
-  top: 50%;
-  transform: translateY(-50%);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-muted);
-  pointer-events: none;
-}
-
-.caret svg {
-  display: block;
 }
 </style>
