@@ -266,17 +266,19 @@ export async function executeDialogueGenerateNode(
 }
 
 /**
- * 音效生成节点（ElevenLabs `POST /v1/sound-generation`）。
+ * 音效生成节点（ElevenLabs `textToSoundEffects`）。
  *
  * 与声音节点的区别：描述的是**声音本身**（「雨落在铁皮屋顶上」），
  * 显式走音效端点而不是让 TTS 去念这句话。
- * 没有音效能力时退回声音节点，别把图跑挂。
+ *
+ * 没有音效能力时**明确报错**，不回退到声音节点 —— 回退会把描述念出来，
+ * 产出「听起来成功、其实完全不对」的语音（踩过这个坑）。
  */
 export async function executeSoundEffectNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
   const { node } = ctx
-  if (!ctx.generateSoundEffect) return executeVoiceGenerateNode(ctx)
+  if (!ctx.generateSoundEffect) throw fail(SHARED_ERRORS.soundEffectUnsupported)
 
   const instructionRaw = node.params.generateInstruction?.trim() || ''
   const mentionSources = resolveMentionSources(ctx)

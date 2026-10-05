@@ -1,6 +1,7 @@
 import {
   executeDialogueGenerateNode,
   executeImageGenerateNode,
+  executeSoundEffectNode,
   executeVideoGenerateNode,
   executeVoiceGenerateNode
 } from './generateMedia'
@@ -344,6 +345,13 @@ export function executeAssetNode(
   // 它的 assetType 同为 voice，先判 voice 就会被当成单说话人 TTS 读整篇稿子
   if (node.typeId === 'asset.dialogue') {
     return executeDialogueGenerateNode(ctx)
+  }
+
+  // 音效生成（ElevenLabs textToSoundEffects）：同样必须排在声音节点之前 ——
+  // 它的 assetType 也是 voice，漏了这一步就会走 TTS 去「念出」音效描述
+  // （踩过：音效节点生成出来的是把描述读一遍的语音）
+  if (node.typeId === 'asset.sfx') {
+    return executeSoundEffectNode(ctx)
   }
 
   // 声音生成：文生语音；无 API 时透传上游声音或输出文本

@@ -136,6 +136,17 @@ export const SHARED_ERRORS = {
     '对话稿是空的：每行写成「说话人: 台词」（如「A: 你终于来了。」）',
     'The dialogue script is empty: write one line per utterance as "Speaker: line"'
   ),
+  /**
+   * 音效节点缺音效能力。
+   *
+   * 这里必须**明确失败**：早先的实现是静默退回声音节点（TTS），
+   * 结果把音效描述「念」了一遍 —— 产出的是语音而不是音效，用户还以为成功了。
+   */
+  soundEffectUnsupported: defErrSimple(
+    'graphExec.soundEffect.unsupported',
+    '当前执行环境没有音效生成能力：请确认已配置 ElevenLabs 提供商（音效走 /v1/sound-generation）',
+    'Sound effect generation is unavailable in this run: configure an ElevenLabs provider (sound effects use /v1/sound-generation)'
+  ),
   /** 多说话人对话：某几段没能确定音色（说话人没绑定音色，节点也没设默认音色） */
   dialogueVoiceMissing: defErr<{ lines: string; speakers: string }>(
     'graphExec.dialogue.voiceMissing',

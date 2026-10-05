@@ -30,16 +30,20 @@ describe('多说话人对话 / 音效节点', () => {
     }
   })
 
-  it('host 路由先判 dialogue 再判 voice（否则对话稿会被当单说话人念出来）', () => {
+  it('host 路由：dialogue 与 sfx 都必须排在 voice 之前', () => {
     const host = readFileSync('src/shared/graph/execute/host.ts', 'utf8')
     const dialogueAt = host.indexOf("node.typeId === 'asset.dialogue'")
+    const sfxAt = host.indexOf("node.typeId === 'asset.sfx'")
     const voiceAt = host.indexOf("node.typeId === 'asset.voice'")
     expect(dialogueAt).toBeGreaterThanOrEqual(0)
+    expect(sfxAt).toBeGreaterThanOrEqual(0)
     expect(voiceAt).toBeGreaterThanOrEqual(0)
+    // 两者的 assetType 都是 voice：先判 voice 就会把对话稿当单说话人念、
+    // 把音效描述当台词念（踩过后者）
     expect(dialogueAt).toBeLessThan(voiceAt)
+    expect(sfxAt).toBeLessThan(voiceAt)
     expect(host).toContain('executeDialogueGenerateNode(ctx)')
-    // 音效**不**走 host 路由：它由节点 def 的 execute 直接派发（见下一例）
-    expect(host).not.toContain('executeSoundEffectNode')
+    expect(host).toContain('executeSoundEffectNode(ctx)')
   })
 
   it('节点 def 的 execute 按 typeId 派发到各自的执行器', () => {
@@ -65,10 +69,12 @@ describe('多说话人对话 / 音效节点', () => {
     expect(dialogueBlock).not.toContain('resolveVoiceSystemPrompt')
   })
 
-  it('音效节点在没有音效能力时退回声音节点，不阻断整图', () => {
+  it('音效节点在没有音效能力时**明确报错**，不回退到声音节点', () => {
     const src = readFileSync('src/shared/graph/execute/generateMedia.ts', 'utf8')
     const block = src.slice(src.indexOf('export async function executeSoundEffectNode'))
-    expect(block).toContain('if (!ctx.generateSoundEffect) return executeVoiceGenerateNode(ctx)')
+    // 静默回退会把音效描述「念」一遍，产出听起来成功但其实完全不对的语音
+    expect(block).not.toContain('return executeVoiceGenerateNode(ctx)')
+    expect(block).toContain('throw fail(SHARED_ERRORS.soundEffectUnsupported)')
     expect(block).toContain('ctx.generateSoundEffect(')
   })
 
