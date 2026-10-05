@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>splat inspect</title>
+    <!--
+      裸模块 specifier 必须靠 import map 指到真实文件：Spark 内部 import "three"。
+      import map 必须出现在任何 module script 之前才会生效。
+    -->
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "__THREE_URL__",
+          "three/addons/": "__THREE_ADDONS_URL__",
+          "@sparkjsdev/spark": "__SPARK_URL__"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <canvas id="c" width="512" height="512"></canvas>
+    <pre id="log">running…</pre>
+    <script type="module">
+      const logs = []
+      const log = (message) => {
+        logs.push(message)
+        const el = document.getElementById('log')
+        if (el) el.textContent = logs.join('\n')
+      }
+      window.__probe = { ok: false, logs }
+
+      const race = (promise, ms, label) =>
+        Promise.race([
+          promise.then((value) => ({ ok: true, value })),
+          new Promise((resolve) => setTimeout(() => resolve({ ok: false, label }), ms))
+        ])
+
+      async function run() {
+        try {
+          const THREE = await import('three')
+          log('three ok')
+          const spark = await import('@sparkjsdev/spark')
+          log('spark ok')
+          const response = await race(fetch('./splat.bin'), 15000, 'fetch')
+          log('fetch: ' + (response.ok ? response.value.status : 'TIMEOUT'))
+          if (!response.ok) throw new Error('fetch failed')
+          const bytes = new Uint8Array(await response.value.arrayBuffer())
+          log('bytes=' + bytes.length)
+
+          // 逐个变体试：找出「能让泼溅真的累加进渲染」的配置
+          const variants = window.__variants && window.__variants.length ? window.__variants : [{}]
+          for (const variant of variants) {
+            await runVariant(THREE, spark, bytes, variant)
+          }
+          window.__probe.ok = true
+        } catch (err) {
+          log('ERR ' + (err && err.message ? err.message : String(err)))
+        }
+      }
+
+      async function runVariant(THREE, spark, bytes, variant) {
+        const name = variant.name || 'default'
+        const canvas = document.getElementById('c')
+        const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false })
+        renderer.setPixelRatio(1)
+        renderer.setSize(512, 512, false)
+        renderer.setClearColor(0x16191d, 1)
+        const scene = new THREE.Scene()
+        scene.background = new THREE.Color(0x16191d)
+        // 对照物：一个纯色立方体。它都画不出来 ⇒ 是 headless GL 的问题，不是泼溅的问题
+        const probeCube = new THREE.Mesh(
+          new THREE.BoxGeometry(4, 4, 4),
+          new THREE.MeshBasicMaterial({ color: 0xff0000 })
+        )
+        scene.add(probeCube)
+        const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 200)
+        const sparkRenderer = new spark.SparkRenderer({
+          renderer,
+          ...(variant.rendererOptions || {})
+        })
+        scene.add(sparkRenderer)
+        const mesh = new spark.SplatMesh({
+          fileBytes: bytes,
+          fileName: window.__splatName || 'splat.spz',
+          raycastable: true,
+          ...(variant.meshOptions || {})
+        })
+        const init = await race(mesh.initialized, 120000, 'mesh.initialized')
+        if (!init.ok) {
+          log(`[${name}] mesh.initialized TIMEOUT`)
+          renderer.dispose()
+          return
+        }
+        scene.add(mesh)
+        const numSplats = mesh.packedSplats ? mesh.packedSplats.numSplats : 0
+        const box = mesh.getBoundingBox(false)
+        const center = box.getCenter(new THREE.Vector3())
+        const size = box.getSize(new THREE.Vector3())
+        const maxDim = Math.max(size.x, size.y, size.z, 0.001)
+        const distance = maxDim * 2.2
+        camera.near = Math.max(distance / 100, 0.01)
+        camera.far = Math.max(distance * 20, 100)
+        camera.position.set(
+          center.x + distance * 0.7,
+          center.y + distance * 0.45,
+          center.z + distance * 0.9
+        )
+        camera.lookAt(center)
+        camera.updateProjectionMatrix()
+        let error = ''
+        try {
+          if (variant.explicitUpdate) {
+            // 先显式把累加器更新一次（Spark 内部靠渲染回调懒更新，某些时序下可能不触发）
+            await sparkRenderer.update({ scene, camera })
+          }
+          for (let i = 0; i < 8; i++) renderer.render(scene, camera)
+        } catch (err) {
+          error = err && err.message ? err.message : String(err)
+        }
+        const gl = renderer.getContext()
+        const pixels = new Uint8Array(512 * 512 * 4)
+        gl.readPixels(0, 0, 512, 512, gl.RGBA, gl.UNSIGNED_BYTE, pixels)
+        let nonBackground = 0
+        let cubePixels = 0
+        for (let i = 0; i < pixels.length; i += 4) {
+          const isBackground =
+            Math.abs(pixels[i] - 0x16) <= 6 &&
+            Math.abs(pixels[i + 1] - 0x19) <= 6 &&
+            Math.abs(pixels[i + 2] - 0x1d) <= 6
+          if (isBackground) continue
+          nonBackground++
+          // 对照立方体是纯红：把它扣掉，剩下的才算泼溅画出来的
+          if (pixels[i] > 180 && pixels[i + 1] < 80 && pixels[i + 2] < 80) cubePixels++
+        }
+        log(
+          `[${name}] numSplats=${numSplats} size=${size.toArray().map((v) => v.toFixed(1)).join(',')} ` +
+            `activeSplats=${sparkRenderer.activeSplats} maxSplats=${sparkRenderer.maxSplats} ` +
+            `nonBackground=${nonBackground} cubePixels=${cubePixels} ` +
+            `splatPixels=${nonBackground - cubePixels}` +
+            `${error ? ' ERROR=' + error : ''}`
+        )
+        window.__probe.shots = window.__probe.shots || {}
+        window.__probe.shots[name] = canvas.toDataURL('image/png')
+        renderer.dispose()
+      }
+      void run()
+    </script>
+  </body>
+</html>

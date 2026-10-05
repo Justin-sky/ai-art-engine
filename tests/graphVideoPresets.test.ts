@@ -119,7 +119,7 @@ describe('video instruction presets', () => {
       'lipSync',
       'optimize',
       'shotSplit',
-      'worldExtract',
+      'spatialWorldExtract',
       'beatSplit'
     ] as const
     for (const kind of kinds) {

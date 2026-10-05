@@ -486,6 +486,8 @@ export default {
         hyper3d: 'Get Rodin (Hyper3D) API key:',
         luma: 'Get Luma AI API key:',
         lux3d: 'Get Lux3D API key:',
+        worldlabs:
+          'Get World Labs API key (top up credits at platform.worldlabs.ai/billing first):',
         custom:
           'Custom provider: pick an endpoint type, then enter the endpoint Base URL and API key to fetch the model list; there is no single signup page.'
       },
@@ -526,6 +528,7 @@ export default {
         video: 'Video',
         audio: 'Voice',
         model3d: '3D Model',
+        spatialWorld: 'Spatial world',
         decisions: 'Decisions'
       },
       modalityHint: {
@@ -534,6 +537,8 @@ export default {
         video: 'Shot video generation via /api/v1/videos/models.',
         audio: 'TTS via /api/v1/models?output_modalities=speech and /api/v1/audio/speech.',
         model3d: '3D model generation from text and/or reference images, producing GLB assets.',
+        world:
+          'Spatial world generation (World Labs Marble): interactive 3D worlds (gaussian splats + mesh) from text or reference images.',
         decisions:
           'Decision models (TypeSafe Jev, Liquid D1, …) return typed judgments with probabilities instead of text — noul yes/no, choice one-of, score on an ordered scale. OpenRouter uses /api/v1/models?output_modalities=decisions plus POST /api/alpha/decisions (note: not under /v1); TypeSafe direct uses GET /v1/models plus POST /v1/systemone (same protocol). Pick one here to branch on thresholds in the decisions node.'
       },
@@ -626,6 +631,10 @@ export default {
       typesafeModalityHint: {
         decisions:
           'TypeSafe direct (Jev / System One): the catalog comes from GET /v1/models and judgements go to POST /v1/systemone with Bearer auth. It speaks the same decision protocol as OpenRouter (same noul / choice / score primitives and probability answers), just without the OpenRouter hop; this provider does decision judgements only — no text / image / video generation.'
+      },
+      worldlabsModalityHint: {
+        world:
+          'World Labs (Marble): interactive 3D worlds from text / single image / multi-image. Default Base URL is api.worldlabs.ai, auth header WLT-Api-Key; generation goes POST /marble/v1/worlds:generate then polls operations/{id} (about 5 minutes). Models are marble-1.1 (standard) and marble-1.1-plus (larger worlds, more credits); the finished world contains gaussian splats (SPZ) and a GLB mesh. Top up credits at platform.worldlabs.ai/billing.'
       },
       localModalityHint: {
         text: 'Local OpenAI-compatible servers (vLLM / Ollama / LM Studio): no API key needed. Chat via /chat/completions; the model catalog is fetched from /models. Multimodal understanding works by passing images into a text node.',
@@ -1043,6 +1052,7 @@ export default {
       beat: 'Beat Units',
       subgraph: 'Host Asset',
       model3d: '3D Model',
+      spatialWorld: 'World Model',
       motion2d: '2D Motion',
       gamePlay: 'Playable HTML'
     },
@@ -1059,6 +1069,7 @@ export default {
       beat: 'New Beat Units',
       subgraph: 'New Host Asset',
       model3d: 'New 3D Model',
+      spatialWorld: 'New World Model',
       motion2d: 'New 2D Motion',
       default: 'New Asset',
       freeCanvasNameTitle: 'New Free Canvas',
@@ -2669,6 +2680,10 @@ export default {
       videoUntitled: 'Video job',
       model3dKind: '3D model',
       model3dUntitled: '3D model job',
+      spatialWorldKind: 'Spatial world',
+      spatialWorldUntitled: 'Spatial world job',
+      spatialWorldExportKind: 'World export',
+      spatialWorldExportUntitled: 'World export job',
       videoStopConfirmMessage:
         'Cancel this video job? The provider may still continue and bill the request.',
       stop: 'Stop',
@@ -2720,6 +2735,7 @@ export default {
         generate_speech: 'Voice',
         generate_music: 'Music',
         generate_model3d: '3D model',
+        generate_world: 'Spatial world',
         decide: 'Decisions',
         graph_icon_refine: 'Icon refine',
         task_run: 'Workflow',
@@ -2751,11 +2767,14 @@ export default {
       submitVideo: 'Submitting video generation…',
       submitSpeech: 'Submitting speech generation…',
       submitModel3d: 'Submitting 3D model generation…',
+      submitSpatialWorld: 'Submitting spatial world generation…',
+      submitSpatialWorldExport: 'Submitting world export…',
       submitRig: 'Submitting 3D rig…',
       submitSegment: 'Submitting 3D segmentation…',
       submitPostProcess: 'Submitting 3D mesh post-process…',
       videoProgress: 'Video generation {progress}% · {status}',
       model3dProgress: '3D model generation {progress}% · {status}',
+      worldProgress: 'Spatial world generation {progress}% · {status}',
       sessionStatus: {
         running: 'Running',
         done: 'Succeeded',
@@ -2888,6 +2907,7 @@ export default {
         game: 'Game',
         motionFx: '2D',
         model3d: '3D',
+        spatialWorld: 'Spatial world',
         comic: 'Comic',
         qc: 'QC & rework',
         ad: 'Ads'
@@ -3927,6 +3947,7 @@ export default {
         voice: 'Audio in',
         video: 'Video in',
         model: 'Model in',
+        spatialWorld: 'Spatial world in',
         worldEntities: 'World entities'
       },
       placeholderByType: {
@@ -3935,6 +3956,7 @@ export default {
         voice: 'Waiting for outer audio…',
         video: 'Waiting for outer video…',
         model: 'Waiting for outer model…',
+        spatialWorld: 'Waiting for an outer spatial world…',
         worldEntities: 'Waiting for outer world entities…'
       }
     },
@@ -3995,6 +4017,35 @@ export default {
     },
     worldGenNode: {
       hint: 'Double-click to open world element gen canvas'
+    },
+    spatialWorldExport: {
+      mode: 'Export',
+      modes: {
+        mesh: 'High-quality mesh (GLB)',
+        splats: 'PLY splats'
+      },
+      variant: 'Mesh variant',
+      variants: {
+        textured: 'Textured (~600k triangles)',
+        vertexColored: 'Vertex colors (~1M triangles)'
+      },
+      resolution: 'Splat resolution',
+      resolutions: {
+        fullRes: 'Full resolution (~2M splats)',
+        k500: '500k splats',
+        k150: '150k splats',
+        k100: '100k splats'
+      },
+      meshHint:
+        'The upstream mesh export is asynchronous: up to ~1 hour, rate limited to 4 requests per hour, billed separately. The result is registered as a model asset and can feed the director stage or downstream 3D processing nodes.',
+      splatsHint:
+        'The upstream PLY conversion is synchronous and lands as a same-name sibling of the world artifact (world.glb → world.ply). It is not registered as an asset (you can import it into the asset library, or wire its relative path straight into the director stage 3D model input port — gaussian splats are rendered on the stage by the bundled Spark renderer); for engine imports prefer the SPZ saved automatically with the world.',
+      lastOutput: 'Last output:',
+      /** Free extras that ship with the upstream world (display names) */
+      worldExtras: {
+        splats: "The world's own gaussian splats (SPZ)",
+        pano: "The world's own 360 panorama"
+      }
     },
     beatTableNode: {
       hint: 'Double-click to open beat unit table'
@@ -4070,6 +4121,8 @@ export default {
       convertedMeshAll: 'All converted models',
       texturedMesh: 'Textured model',
       texturedMeshAll: 'All textured models',
+      exportedMesh: 'Exported result',
+      exportedMeshAll: 'All exported results',
       pose: 'Pose',
       poseAll: 'All poses',
       animation: 'Animation',
@@ -4097,6 +4150,7 @@ export default {
         worldEntities: 'World entities',
         beat: 'Beat',
         model: 'Model',
+        spatialWorld: 'Spatial world',
         project: 'Project'
       }
     },
@@ -4123,6 +4177,13 @@ export default {
       rotateCcw: 'Rotate left 90° (shortcut [)',
       rotateCw: 'Rotate right 90° (shortcut ])',
       rotateReset: 'Reset rotation (shortcut 0)'
+    },
+    modelPreview: {
+      title: '3D preview',
+      reset: 'Reset view',
+      loading: 'Loading 3D preview…',
+      error: 'Failed to load the 3D preview',
+      unsupported: 'WebGL is unavailable here, so the 3D preview cannot start'
     },
     run: {
       stopped: 'Stopped',
@@ -4188,6 +4249,8 @@ export default {
       modelAnimMcp: 'Start Blender and enable Blender MCP first',
       modelAnimNoMatch: 'Blender did not write a usable animation',
       modelAnimFailed: '3D keyframe animation did not finish',
+      worldExportNoWorld:
+        'The upstream model carries no world_id: the export endpoint only accepts a world produced by the spatial world generation node. Check that the upstream really is "Spatial world generation" (not 3D model generation / processing); if the world was generated by an older version that never recorded the world_id, the only way forward is to generate the world again.',
       modelAnimExport: 'Blender did not export an animated GLB',
       modelAnimDsh: 'Could not start the dsh job (animation)',
       modelDshTimeout:
@@ -4328,6 +4391,9 @@ export default {
         extract: 'World extract',
         table: 'World element review',
         gen: 'World element gen'
+      },
+      spatialWorld: {
+        export: 'Spatial world export'
       },
       plugin: {
         example: {
@@ -5029,6 +5095,7 @@ export default {
         videoModel: 'Video model',
         voiceModel: 'Purchased speaker',
         model3dModel: '3D model',
+        spatialSpatialWorld: 'Spatial world',
         voiceProfile: 'Character voice',
         voiceProfileNone: 'None (describe the voice)',
         voiceProfileManage: 'Manage voice profiles',
@@ -5042,6 +5109,23 @@ export default {
         voiceProfileSave: 'Save profile',
         modelPreview: 'Model preview',
         modelPreviewEmpty: 'The generated 3D model appears here',
+        spatialWorldSeedHint:
+          'World generation seed (0 or empty = let the provider pick; same seed and brief reproduces the same world)',
+        spatialWorldSeedPlaceholder: 'Random',
+        spatialWorldPanoHint:
+          'Panorama handling for reference images (upstream is_pano; single-image form only): auto-detect a 2:1 equirect panorama / force panorama / treat as a plain image',
+        spatialWorldPanoModes: {
+          auto: 'Pano · auto',
+          always: 'Pano · force',
+          never: 'Pano · off'
+        },
+        spatialWorldLiteralPrompt: 'Verbatim',
+        spatialWorldLiteralPromptHint:
+          'Disable upstream recaptioning: send the brief as written instead of letting the provider rewrite it (pair with a fixed seed for reproducibility)',
+        spatialWorldExtraKinds: {
+          splats: 'Splats',
+          pano: '360 pano'
+        },
         model3dStyle: '3D style',
         model3dStyleHint: 'Lux3D text-to-3D style (ignored for image-to-3D)',
         model3dStyles: {
@@ -5112,7 +5196,9 @@ export default {
           "Describe the voice in text; connect an image for visual prompt; use {'@'} to cite inputs",
         model3dInstructionPlaceholder:
           "Describe the 3D model to generate; connect reference images for image-to-3D; use {'@'} to cite inputs",
-        worldExtractInstructionPlaceholder:
+        spatialWorldInstructionPlaceholder:
+          "Describe the explorable 3D world (layout, what the starting viewpoint sees, lighting mood); connect 1-4 reference images or one reference video (video wins when both are connected); use {'@'} to cite inputs",
+        spatialWorldExtractInstructionPlaceholder:
           "Extract characters / scenes / props / weapons; use {'@'} to cite connected inputs",
         beatSplitInstructionPlaceholder:
           "Decompose the screenplay into beat units; use {'@'} to cite connected inputs",
@@ -5174,6 +5260,7 @@ export default {
           titleModelSegment: 'Split hint templates',
           titleModelRetarget: 'Animation combo templates',
           titleModelTexture: 'Texture style templates',
+          titleSpatialWorld: 'World generation templates',
           tabGeneral: 'General',
           tabGame: 'Game',
           tabFilm: 'Film',
@@ -5186,6 +5273,12 @@ export default {
             uiButton: 'UI button',
             animIcon: 'Icon motion',
             illustFlat: 'Flat illustration'
+          },
+          spatialWorld: {
+            interior: 'Interior scene',
+            outdoor: 'Outdoor nature',
+            stylized: 'Stylized town',
+            scifi: 'Sci-fi station'
           },
           modelPose: {
             idle: 'Idle stand',
@@ -5405,7 +5498,7 @@ export default {
             filmCostume: 'Costume / makeup',
             filmCamera: 'Camera language'
           },
-          worldExtract: {
+          spatialWorldExtract: {
             create: 'Extract world elements',
             refine: 'Refine element catalog'
           },

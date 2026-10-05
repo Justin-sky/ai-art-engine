@@ -126,7 +126,7 @@
     </template>
 
     <section
-      v-if="isModel3d"
+      v-if="showsModelResult"
       class="model-preview-section"
       :aria-label="t('graph.inspector.generate.modelPreview')"
     >
@@ -142,6 +142,14 @@
         {{ t('graph.inspector.generate.modelPreviewEmpty') }}
       </p>
       <GeneratedModelsGallery v-if="node && hostId" :node="node" :host-id="hostId" />
+      <ul v-if="spatialWorldExtras.length" class="spatial-world-extras">
+        <li v-for="item in spatialWorldExtras" :key="item.kind">
+          <span class="extra-kind">{{
+            t(`graph.inspector.generate.spatialWorldExtraKinds.${item.kind}`)
+          }}</span>
+          <code :title="item.relativePath">{{ item.relativePath }}</code>
+        </li>
+      </ul>
     </section>
 
     <GraphNodeOutputPreview
@@ -694,11 +702,27 @@ const isScreenplay = computed(() => assetType.value === 'screenplay')
 const isGameSystem = computed(() => assetType.value === 'gameSystem')
 // 3D 生成节点类型为 model3d（GraphValue 里产物资产类型是 model，两者不同）
 const isModel3d = computed(() => assetType.value === 'model3d')
+// 空间世界生成节点同理：节点 assetType 是 spatialWorld，产物资产类型同样是 model
+const isSpatialWorld = computed(() => assetType.value === 'spatialWorld')
+/** 产物是 GLB 网格的生成节点：3D 模型 / 空间世界共用同一套模型预览与历史画廊 */
+const showsModelResult = computed(() => isModel3d.value || isSpatialWorld.value)
 
-/** 3D 节点最近一次生成的模型文件：run 输出 > 后台任务回写 previewRelativePath */
+/**
+ * 空间世界随世界一起落盘的附加产物（高斯泼溅 SPZ / 360 全景图）。
+ * 它们是导入引擎时真正要用的文件，所以在模型预览下直接列出工程相对路径。
+ */
+const spatialWorldExtras = computed((): Array<{ kind: string; relativePath: string }> => {
+  if (!isSpatialWorld.value) return []
+  return (node.value?.params.spatialWorldExtras ?? []).filter(
+    (item): item is { kind: string; relativePath: string } =>
+      Boolean(item?.kind && item?.relativePath?.trim())
+  )
+})
+
+/** 3D / 世界节点最近一次生成的模型文件：run 输出 > 后台任务回写 previewRelativePath */
 const modelPreviewPath = computed((): string | null => {
   const current = node.value
-  if (!current || !isModel3d.value) return null
+  if (!current || !showsModelResult.value) return null
   // 触达 revision / 资产列表，保证 runStates 与回写参数变化时刷新
   void graphEditorHosts.revision.value
   void project.assets.length
@@ -2175,6 +2199,36 @@ textarea,
   margin: 0;
   font-size: 11px;
   color: var(--text-muted);
+}
+
+/* 空间世界的附加产物（SPZ / 全景图）：只要路径，可选中复制给引擎导入用 */
+.spatial-world-extras {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.spatial-world-extras li {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.spatial-world-extras .extra-kind {
+  flex: none;
+  color: var(--text-muted);
+}
+
+.spatial-world-extras code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: text;
 }
 
 .empty-shots {

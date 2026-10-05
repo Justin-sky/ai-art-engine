@@ -2,32 +2,32 @@
   <section class="generated-models" :aria-label="t('graph.inspector.generate.generatedModels')">
     <div class="section-head">
       <span class="section-title">{{ t('graph.inspector.generate.generatedModels') }}</span>
-      <span v-if="items.length" class="section-count">
-        {{ t('graph.inspector.generate.generatedModelsCount', { n: items.length }) }}
+      <span v-if="entries.length" class="section-count">
+        {{ t('graph.inspector.generate.generatedModelsCount', { n: entries.length }) }}
       </span>
     </div>
     <p class="section-hint">
       {{ t('graph.inspector.generate.generatedModelsHint') }}
     </p>
-    <div v-if="!items.length" class="empty-shots">
+    <div v-if="!entries.length" class="empty-shots">
       {{ t('graph.inspector.generate.generatedModelsEmpty') }}
     </div>
     <div v-else class="shot-grid">
       <div
-        v-for="(item, index) in items"
-        :key="item.id || `index:${index}`"
+        v-for="(entry, index) in entries"
+        :key="entry.key"
         class="shot-card"
-        :class="{ selected: isSelected(item.id || `index:${index}`) }"
+        :class="{ selected: entry.selectable && isSelected(entry.key) }"
       >
         <button
           type="button"
           class="shot-thumb"
-          :title="t('graph.inspector.generate.setAsOutput')"
-          @click="selectItem(item.id || `index:${index}`)"
+          :title="entry.selectable ? t('graph.inspector.generate.setAsOutput') : entry.label"
+          @click="selectEntry(entry)"
         >
           <img
-            v-if="thumbs[item.id || `index:${index}`]"
-            :src="thumbs[item.id || `index:${index}`]"
+            v-if="thumbs[entry.key]"
+            :src="thumbs[entry.key]"
             alt=""
             loading="lazy"
             decoding="async"
@@ -36,19 +36,20 @@
           <span class="shot-index">{{ index + 1 }}</span>
         </button>
         <PreviewSaveToLibraryButton
-          v-if="canSave(item.relativePath)"
+          v-if="canSave(entry.relativePath)"
           compact
           class="shot-save"
           :can-save="true"
-          :saved="isSaved(item.relativePath)"
-          :saving="isSaving(item.relativePath)"
-          @save="openSave(item.relativePath!)"
+          :saved="isSaved(entry.relativePath)"
+          :saving="isSaving(entry.relativePath)"
+          @save="openSave(entry.relativePath)"
         />
         <button
+          v-if="entry.selectable"
           type="button"
           class="shot-delete"
           :title="t('graph.inspector.generate.generatedModelsDelete')"
-          @click.stop="removeItem(item.id)"
+          @click.stop="removeItem(entry.key)"
         >
           ×
         </button>
@@ -80,12 +81,21 @@ import {
   deleteGalleryOutput,
   selectGalleryOutput
 } from '../features/graph/model/graphGalleryOutput'
+import {
+  buildGalleryEntries,
+  type GalleryExtraItem
+} from '../features/graph/model/modelGalleryEntries'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import { invalidateAssetUrlCache } from '../features/media/assetUrlCache'
 
 const props = defineProps<{
   node: GraphNode
   hostId: string
+  /**
+   * 额外要一并展示的产物（如空间世界随世界免费返回的 SPZ 泼溅 / 全景图）。
+   * 这些不是本节点 Cook 出来的，所以不进 `generatedModels`，但用户同样需要看到 / 打开它们。
+   */
+  extraItems?: GalleryExtraItem[]
 }>()
 
 const { t } = useStudioI18n()
@@ -109,6 +119,19 @@ const items = computed(() => {
   )
 })
 
+type GalleryEntry = {
+  key: string
+  /** 本节点 Cook 出来的产物（可选中当出口 / 可删）；额外产物不可选 */
+  selectable: boolean
+  relativePath: string
+  label?: string
+}
+
+/** 图库条目 + 额外产物（如世界随附的 SPZ / 全景图）合成一份渲染列表 */
+const entries = computed((): GalleryEntry[] =>
+  buildGalleryEntries({ own: items.value, extras: props.extraItems })
+)
+
 const thumbs = ref<Record<string, string>>({})
 let resolveToken = 0
 
@@ -116,13 +139,10 @@ async function resolveThumbs(): Promise<void> {
   const token = ++resolveToken
   const next: Record<string, string> = {}
   await Promise.all(
-    items.value.map(async (item, index) => {
-      const key = item.id || `index:${index}`
-      const relativePath = item.relativePath?.trim()
-      if (!relativePath) return
+    entries.value.map(async (entry) => {
       try {
-        const url = await ensureModelPreviewUrl({ relativePath })
-        if (url) next[key] = url
+        const url = await ensureModelPreviewUrl({ relativePath: entry.relativePath })
+        if (url) next[entry.key] = url
       } catch {
         /* skip */
       }
@@ -132,13 +152,19 @@ async function resolveThumbs(): Promise<void> {
   thumbs.value = next
 }
 
-watch(items, () => void resolveThumbs(), { immediate: true, deep: true })
+watch(entries, () => void resolveThumbs(), { immediate: true, deep: true })
 
 function isSelected(key: string): boolean {
   const selected = props.node.params.selectedModelId?.trim()
   if (selected) return selected === key
   const last = items.value[items.value.length - 1]
   return Boolean(last && (last.id || '') === key)
+}
+
+/** 额外产物不可作为出口，点击不改变选中态 */
+function selectEntry(entry: GalleryEntry): void {
+  if (!entry.selectable) return
+  selectItem(entry.key)
 }
 
 function selectItem(key: string): void {

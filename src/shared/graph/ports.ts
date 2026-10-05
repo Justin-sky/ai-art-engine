@@ -41,6 +41,11 @@ function shouldHideAssetRefInputs(
  * 例外：`image → svg`。SVG 在资产库里仍是 image 家族（图库 SVG 资产的引用节点只出 image 口），
  * 而 SVG 烘焙等矢量消费口要能接它们；若不兼容，既有工程里那条连线会被 normalize 直接清掉。
  * 内容是否真是矢量交给执行期判定（不是 SVG 时明确报「SVG 源不可读」）。
+ *
+ * `spatialWorld` **严格同类型，不参与任何隐式兼容**：世界产物是「世界」（带 world_id、
+ * 含网格 + 高斯泼溅 + 全景），不是通用模型。要让世界变成可继续编排的模型，
+ * 必须先过「空间世界导出」节点 —— 它的出口是 `model`（HQ 网格 GLB），从那里接导演台 / 3D 加工。
+ * 反过来 `model` 也进不了 `spatialWorld` 口：普通模型没有 world_id。
  */
 export function portsCompatible(source: GraphPortDataType, target: GraphPortDataType): boolean {
   if (source === target) return true

@@ -243,3 +243,23 @@ export function defaultModel3dUserPrompt(locale?: string): string {
 export function buildModel3dPrompt(instruction: string, locale?: string): string {
   return buildOrDefault(instruction, locale, defaultModel3dUserPrompt)
 }
+
+// ——— 空间世界生成（World Labs Marble）———
+
+export const DEFAULT_WORLD_MODEL_USER_PROMPT_EN =
+  'Generate an explorable 3D world according to the brief (text and/or reference images).'
+
+export const DEFAULT_WORLD_MODEL_USER_PROMPT_ZH =
+  '根据创作意图（文本和/或参考图）生成可漫游的 3D 世界。'
+
+export function defaultSpatialWorldUserPrompt(locale?: string): string {
+  return pickByLocale(
+    locale,
+    DEFAULT_WORLD_MODEL_USER_PROMPT_EN,
+    DEFAULT_WORLD_MODEL_USER_PROMPT_ZH
+  )
+}
+
+export function buildSpatialWorldPrompt(instruction: string, locale?: string): string {
+  return buildOrDefault(instruction, locale, defaultSpatialWorldUserPrompt)
+}

@@ -10,6 +10,7 @@ import { graphOutputNodeId } from '../src/shared/graph/types'
 const CANVAS_ADDABLE_NODE_TYPES = [
   'asset.image',
   'asset.model3d',
+  'asset.spatialWorld',
   'asset.motion',
   'asset.screenplay',
   'asset.gameSystem',
@@ -74,7 +75,8 @@ const CANVAS_ADDABLE_NODE_TYPES = [
   'text.select',
   'world.gen',
   'world.extract',
-  'world.table'
+  'world.table',
+  'spatialWorld.export'
 ] as const
 
 describe('graph canvas menu nodes', () => {

@@ -83,6 +83,8 @@ export type AssetType =
   | 'motion2d'
   | 'model'
   | 'model3d'
+  /** 空间世界（World Labs Marble）：生成可交互 3D 世界，产物仍是 GLB 网格 */
+  | 'spatialWorld'
   | 'screenplay'
   | 'gameSystem'
   | 'gamePlay'
@@ -563,6 +565,7 @@ export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   motion2d: '2D Motion',
   model: 'Model',
   model3d: '3D Model',
+  spatialWorld: 'World Model',
   screenplay: 'Screenplay',
   gameSystem: 'Game System Plan',
   gamePlay: 'Playable HTML',
@@ -581,6 +584,7 @@ export const ASSET_TYPE_LABELS_ZH: Record<AssetType, string> = {
   motion2d: '2D 动作',
   model: '模型',
   model3d: '3D 模型',
+  spatialWorld: '空间世界',
   screenplay: '剧本',
   gameSystem: '游戏系统策划案',
   gamePlay: '可玩 HTML',
@@ -615,6 +619,7 @@ export const ASSET_TYPE_ICONS: Record<AssetType, string> = {
   motion2d: '🏃',
   model: '🧊',
   model3d: '🧊',
+  spatialWorld: '🌍',
   screenplay: '📜',
   gameSystem: '🕹️',
   gamePlay: '🎮',

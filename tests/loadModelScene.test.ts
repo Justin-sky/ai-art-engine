@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { modelFileExt } from '../src/renderer/src/features/director/loadModelScene'
+import {
+  isSplatModelPath,
+  modelFileExt
+} from '../src/renderer/src/features/director/loadModelScene'
 import { detectImportAssetType, isModelFilePath } from '../src/shared/import'
 
 describe('modelFileExt', () => {
@@ -9,6 +12,15 @@ describe('modelFileExt', () => {
     expect(modelFileExt('https://example.com/a.gltf?token=1')).toBe('.gltf')
     // studio-media URLs put the real path in query; callers pass relativePath as hint
     expect(modelFileExt('studio-media://local?path=C%3A%2FModels%2Fhero.fbx')).toBe('')
+  })
+})
+
+describe('isSplatModelPath', () => {
+  it('is the shared "this model is a splat" predicate (loader routing + skeleton short-circuit)', () => {
+    expect(isSplatModelPath('Cache/Models/world.spz')).toBe(true)
+    expect(isSplatModelPath('Cache/Models/world.ply')).toBe(true)
+    expect(isSplatModelPath('Cache/Models/world.glb')).toBe(false)
+    expect(isSplatModelPath('Cache/Models/world.pano.png')).toBe(false)
   })
 })
 

@@ -88,6 +88,7 @@ describe('graph policy', () => {
       [
         'asset.image',
         'asset.model3d',
+        'asset.spatialWorld',
         'asset.motion',
         'asset.screenplay',
         'asset.gameSystem',
@@ -152,7 +153,8 @@ describe('graph policy', () => {
         'text.select',
         'world.gen',
         'world.extract',
-        'world.table'
+        'world.table',
+        'spatialWorld.export'
       ].sort()
     )
   })

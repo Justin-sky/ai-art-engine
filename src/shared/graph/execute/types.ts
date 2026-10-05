@@ -28,6 +28,11 @@ export interface GraphAssetValue {
    * 供只吃 task_id 的下游端点（部件补全 / 动画重定向）链式调用。
    */
   providerTaskId?: string
+  /**
+   * World Labs 世界 id。空间世界生成节点的输出带上它，
+   * 供「空间世界导出」节点调 `worlds/{id}:export`（官方导出端点只认 world_id）。
+   */
+  spatialWorldId?: string
   label?: string
   weight?: number
   volume?: number
@@ -180,6 +185,8 @@ export interface GraphModelItem {
   relativePath?: string
   assetId?: string
   providerTaskId?: string
+  /** World Labs 世界 id（空间世界生成节点的产物带上，供「空间世界导出」节点使用） */
+  spatialWorldId?: string
   rigMeta?: GraphAssetValue['rigMeta']
   rigQa?: GraphAssetValue['rigQa']
   bonePose?: GraphAssetValue['bonePose']
@@ -411,6 +418,81 @@ export interface NodeExecuteContext {
       canvasField?: string
     }
   }) => Promise<{ assetId: string; relativePath: string; model: string }>
+  /**
+   * 可选：调用设置中的空间世界生成（World Labs Marble）；未注入时退回上游透传。
+   */
+  generateSpatialWorld?: (input: {
+    prompt: string
+    model?: string
+    providerInstanceId?: string
+    inputReferences?: Array<{ kind: 'image_url' | 'video_url' | 'audio_url'; url: string }>
+    outputDir?: string
+    name?: string
+    /** 世界展示名（World Labs display_name，最长 64 字符） */
+    displayName?: string
+    /** 随机种子（0–4294967295；0 / 缺省表示由上游随机） */
+    seed?: number
+    /** 单图参考按全景处理：auto（默认）/ always / never（官方 is_pano） */
+    panoMode?: 'auto' | 'always' | 'never'
+    /** 关闭上游 recaption：指令原文直送（可复现性更好） */
+    disableRecaption?: boolean
+    /** 图节点回写绑定 */
+    graphBinding?: {
+      hostId?: string
+      nodeId?: string
+      assetId?: string
+      shotId?: string
+      canvasField?: string
+    }
+  }) => Promise<{
+    assetId: string
+    relativePath: string
+    model: string
+    /** 参考处理说明（如「已上传 N 个托管媒体资产」） */
+    referenceNotes?: string[]
+    /** 随世界返回的附加产物（高斯泼溅 SPZ / 360 全景图），已落盘在主产物旁边 */
+    extras?: Array<{ kind: string; relativePath?: string }>
+    /** World Labs 世界 id（下游「空间世界导出」节点只认它） */
+    spatialWorldId?: string
+  }>
+  /**
+   * 可选：找回空间世界的 world_id。
+   *
+   * 出口值里丢了这个 id 时（旧版本生成的图、记录被历史版本洗过），
+   * 还能按生成它的节点去任务记录里补回来 —— 生成本身已经花过积分，
+   * 不该因为一个字段丢了就逼用户重新生成一次世界。
+   * 未注入 / 查不到时返回空串，由调用方照常报错。
+   */
+  lookupSpatialWorldId?: (input: {
+    nodeId?: string
+    assetId?: string
+  }) => Promise<string | undefined>
+  /**
+   * 可选：空间世界导出（World Labs `worlds/{id}:export`）：HQ 贴图 / 顶点色网格（GLB）
+   * 或 PLY 泼溅（按上游世界产物同目录同名落盘）。未注入时节点报能力未注入。
+   */
+  exportWorld?: (input: {
+    spatialWorldId: string
+    assetType: 'splats' | 'mesh'
+    format: 'ply' | 'glb'
+    /** 仅 mesh：网格变体（textured 约 600k 面 / vertex_colored 约 1M 面） */
+    meshVariant?: 'textured' | 'vertex_colored'
+    /** 仅 splats：PLY 分辨率档 */
+    resolution?: 'full_res' | '500k' | '150k' | '100k'
+    providerInstanceId?: string
+    model?: string
+    /** 上游世界产物相对路径（PLY 泼溅按它同目录同名落盘） */
+    sourceRelativePath?: string
+    outputDir?: string
+    name?: string
+    graphBinding?: {
+      hostId?: string
+      nodeId?: string
+      assetId?: string
+      shotId?: string
+      canvasField?: string
+    }
+  }) => Promise<{ assetId?: string; relativePath: string; model: string }>
   /**
    * 可选：对已有模型调用 Meshy/Tripo 独立 Rigging API（`model.rigSkin`）。
    */
@@ -1093,6 +1175,10 @@ export interface GraphRunOptions {
   generateImage?: NodeExecuteContext['generateImage']
   generateVideo?: NodeExecuteContext['generateVideo']
   generateModel3d?: NodeExecuteContext['generateModel3d']
+  generateSpatialWorld?: NodeExecuteContext['generateSpatialWorld']
+  /** 找回 world_id（出口值丢了 id 时按生成节点查任务记录） */
+  lookupSpatialWorldId?: NodeExecuteContext['lookupSpatialWorldId']
+  exportWorld?: NodeExecuteContext['exportWorld']
   rigModel3d?: NodeExecuteContext['rigModel3d']
   segmentModel3d?: NodeExecuteContext['segmentModel3d']
   postProcessModel3d?: NodeExecuteContext['postProcessModel3d']

@@ -32,6 +32,7 @@ const OUT_TYPE_PRIORITY: GraphPortDataType[] = [
   GraphPortType.texts,
   GraphPortType.worldEntities,
   GraphPortType.beat,
+  GraphPortType.spatialWorld,
   GraphPortType.model
 ]
 

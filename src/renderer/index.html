@@ -4,9 +4,15 @@
     <meta charset="UTF-8" />
     <title>AIArtEngine</title>
     <link rel="icon" type="image/png" href="./src/assets/logo-mark.png" />
+    <!--
+      script-src 必须带 'wasm-unsafe-eval'：高斯泼溅的解析走 Spark 内置的 wasm
+      （构建期以 base64 内联，运行时 WebAssembly.compile）。缺这一项时 Chromium 直接拒绝编译，
+      而 Spark 那条初始化 promise 不会把失败暴露出来 —— 表现就是泼溅永远「正在加载」、
+      既不报错也不结束（画廊缩略图与 3D 预览一起卡住）。
+    -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: file: blob: studio-media:; media-src 'self' file: blob: studio-media:; connect-src 'self' https: http: blob: studio-media:; worker-src 'self' blob:; frame-src 'self' studio-gameplay:;"
+      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: file: blob: studio-media:; media-src 'self' file: blob: studio-media:; connect-src 'self' https: http: blob: studio-media:; worker-src 'self' blob:; frame-src 'self' studio-gameplay:;"
     />
   </head>
   <body>

@@ -148,6 +148,10 @@ const api: StudioApi = {
   generateMusic: (input) => ipcRenderer.invoke(IpcChannels.GEN_MUSIC, input),
   generateDecisions: (input) => ipcRenderer.invoke(IpcChannels.GEN_DECISIONS, input),
   generateModel3d: (input) => ipcRenderer.invoke(IpcChannels.GEN_MODEL3D, input),
+  generateSpatialWorld: (input) => ipcRenderer.invoke(IpcChannels.GEN_SPATIAL_WORLD, input),
+  exportWorld: (input) => ipcRenderer.invoke(IpcChannels.GEN_SPATIAL_WORLD_EXPORT, input),
+  recoverSpatialWorldId: (input) =>
+    ipcRenderer.invoke(IpcChannels.GEN_SPATIAL_WORLD_RECOVER_ID, input),
   rigModel3d: (input) => ipcRenderer.invoke(IpcChannels.RIG_MODEL3D, input),
   segmentModel3d: (input) => ipcRenderer.invoke(IpcChannels.SEGMENT_MODEL3D, input),
   postProcessModel3d: (input) => ipcRenderer.invoke(IpcChannels.POST_PROCESS_MODEL3D, input),

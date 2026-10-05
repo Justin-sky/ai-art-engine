@@ -536,7 +536,7 @@ const presetMenuTitle = computed(() => {
     return t('graph.inspector.generate.presets.titleGameSystem')
   if (props.presetKind === 'optimize') return t('graph.inspector.generate.presets.titleOptimize')
   if (props.presetKind === 'toPrompt') return t('graph.inspector.generate.presets.titleToPrompt')
-  if (props.presetKind === 'worldExtract')
+  if (props.presetKind === 'spatialWorldExtract')
     return t('graph.inspector.generate.presets.titleWorldExtract')
   if (props.presetKind === 'beatSplit') {
     return t('graph.inspector.generate.presets.titleBeatSplit')
@@ -557,6 +557,8 @@ const presetMenuTitle = computed(() => {
     return t('graph.inspector.generate.presets.titleModelRetarget')
   if (props.presetKind === 'modelTexture')
     return t('graph.inspector.generate.presets.titleModelTexture')
+  if (props.presetKind === 'spatialWorld')
+    return t('graph.inspector.generate.presets.titleSpatialWorld')
   return t('graph.inspector.generate.presets.title')
 })
 

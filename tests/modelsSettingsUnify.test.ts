@@ -249,7 +249,7 @@ describe('normalizeModelsSettings', () => {
   it('defaults every modality key including decisions', () => {
     const empty = createEmptyModalityMap()
     expect(Object.keys(empty).sort()).toEqual(
-      ['audio', 'decisions', 'image', 'model3d', 'text', 'video'].sort()
+      ['audio', 'decisions', 'image', 'model3d', 'text', 'video', 'spatialWorld'].sort()
     )
     expect(empty.decisions).toEqual({ selectedModelIds: [], defaultModelId: '' })
   })

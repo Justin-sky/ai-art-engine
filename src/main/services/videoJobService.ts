@@ -1,9 +1,10 @@
 import { randomUUID } from 'crypto'
-import { existsSync, mkdirSync } from 'fs'
-import { join } from 'path'
+import { existsSync, mkdirSync, rmSync } from 'fs'
+import { basename, dirname, join } from 'path'
 import type { AssetInfo } from '@shared/domain'
 import { resolveMediaOutputDir, shouldRegisterOutputInAssetLibrary } from '@shared/domain'
 import type {
+  VideoJobExtra,
   VideoJobGraphBinding,
   VideoJobKind,
   VideoJobRecord,
@@ -62,11 +63,32 @@ const E_VIDEOJOB_POLL_UNSTABLE = defErr<{ count: number; detail?: string }>(
     `Polling the provider failed ${count} consecutive times; stopped. The remote task may still be running — retry later, and check the network and provider Base URL if this repeats` +
     (detail?.trim() ? ` (last error: ${detail.trim()})` : '')
 )
-const E_VIDEOJOB_DOWNLOAD_FAILED = defErr<{ detail: string }>(
-  'videoJob.downloadFailed',
-  ({ detail }) => `视频已生成但下载失败：${detail}`,
-  ({ detail }) => `Video finished but download failed: ${detail}`
-)
+/**
+ * 产物下载失败：按任务类型说清是什么产物 —— 世界 / 3D 模型不是视频，文案不能串台
+ * （实测世界生成失败时曾报「视频已生成但下载失败」）。
+ */
+const DOWNLOAD_FAILED_BY_KIND: Record<VideoJobKind, BiDef<{ detail: string }>> = {
+  video: defErr<{ detail: string }>(
+    'videoJob.downloadFailed.video',
+    ({ detail }) => `视频已生成但下载失败：${detail}`,
+    ({ detail }) => `Video finished but download failed: ${detail}`
+  ),
+  model3d: defErr<{ detail: string }>(
+    'videoJob.downloadFailed.model3d',
+    ({ detail }) => `3D 模型已生成但下载失败：${detail}`,
+    ({ detail }) => `The 3D model finished but download failed: ${detail}`
+  ),
+  spatialWorld: defErr<{ detail: string }>(
+    'videoJob.downloadFailed.spatialWorld',
+    ({ detail }) => `空间世界已生成但下载失败：${detail}`,
+    ({ detail }) => `The spatial world finished but download failed: ${detail}`
+  ),
+  spatialWorldExport: defErr<{ detail: string }>(
+    'videoJob.downloadFailed.spatialWorldExport',
+    ({ detail }) => `空间世界导出已完成但下载失败：${detail}`,
+    ({ detail }) => `The spatial world export finished but download failed: ${detail}`
+  )
+}
 
 /** 按当前语言取消息（任务记录里存的文案在调用时刻固化） */
 function msg(def: BiDef<undefined>): string {
@@ -83,16 +105,33 @@ const POLL_INTERVAL_MS = 5000
  * 3D 模型生成通常比视频更慢（Tripo/Meshy/Rodin 动辄 10~30 分钟），
  * 同样 20 次连续失败≈8 分钟，对 3D 来说太容易误判。故 3D 单独放宽到 120 次，
  * 按退避策略≈58 分钟，覆盖绝大多数慢任务而不致无限等待。
+ * 空间世界（World Labs Marble）单次生成约 5 分钟，且上游没有流式进度，
+ * 轮询抖动同样不该判死，与 3D 用同一档预算。
  */
 const POLL_TRANSIENT_MAX = 20
 const POLL_TRANSIENT_MAX_MODEL3D = 120
 /** 产物下载重试：vendor 刚完成时 CDN 偶发 5xx / 超时，一次失败不应判死 */
 const DOWNLOAD_MAX_ATTEMPTS = 3
 const DOWNLOAD_RETRY_DELAY_MS = 5000
+/**
+ * 一次下载彻底失败后，最多再自动补取几次（每次打开工程算一次机会）。
+ * 下载失败几乎都是瞬时故障（CDN 5xx / 断网 / 代理），而生成本身已经花过积分，
+ * 值得再试；但也不能无限重试，取一个够用的上限。
+ */
+const JOB_RECOVERY_MAX_ATTEMPTS = 3
+/** 补取的退避：第 n 次补取等 n × 该间隔，避免和刚失败的那次挤在同一时间窗 */
+const JOB_RECOVERY_BACKOFF_MS = 15_000
 
-/** 按任务类型取瞬时失败容忍上限 */
-function pollTransientMaxFor(kind: VideoJobKind | 'model3d' | 'video'): number {
-  return kind === 'model3d' ? POLL_TRANSIENT_MAX_MODEL3D : POLL_TRANSIENT_MAX
+/** 慢任务（3D 模型 / 空间世界 / 空间世界导出）：按任务类型取瞬时失败容忍上限 */
+function pollTransientMaxFor(kind: VideoJobKind): number {
+  return kind === 'model3d' || kind === 'spatialWorld' || kind === 'spatialWorldExport'
+    ? POLL_TRANSIENT_MAX_MODEL3D
+    : POLL_TRANSIENT_MAX
+}
+
+/** 产物是 3D 网格文件（而非视频）的任务类型：3D 模型 / 空间世界 / 空间世界导出共用下载与登记口径 */
+function isMeshJobKind(kind: VideoJobKind): boolean {
+  return kind === 'model3d' || kind === 'spatialWorld' || kind === 'spatialWorldExport'
 }
 
 /**
@@ -102,8 +141,84 @@ function pollTransientMaxFor(kind: VideoJobKind | 'model3d' | 'video'): number {
  */
 export function resolveModel3dDownloadName(downloadUrl: string): string {
   const path = (downloadUrl ?? '').split(/[?#]/)[0] ?? ''
-  const hit = /\.(glb|gltf|fbx|obj|stl|usdz)$/i.exec(path)
+  const hit = /\.(glb|gltf|fbx|obj|stl|usdz|ply)$/i.exec(path)
   return `output.${hit?.[1]?.toLowerCase() ?? 'glb'}`
+}
+
+/** 附加产物（空间世界）在主产物旁边的文件名后缀：高斯泼溅 SPZ / 360 全景图 */
+export function extraDownloadSuffix(kind: string): string {
+  if (kind === 'splats') return '.spz'
+  if (kind === 'pano') return '.pano.png'
+  return `.${kind.replace(/[^a-z0-9]/gi, '') || 'extra'}`
+}
+
+/**
+ * 直链自身的扩展名（小写、带点）；路径里没有可用后缀时返回空串。
+ * 上游按哈希命名、或直链没有后缀，此时由调用方退回按类型的约定后缀。
+ */
+export function extraDownloadUrlExt(url: string): string {
+  const clean = (url ?? '').split(/[?#]/)[0] ?? ''
+  const base = clean.slice(clean.lastIndexOf('/') + 1)
+  const hit = /\.([a-z0-9]{1,8})$/i.exec(base)
+  return hit?.[1] ? `.${hit[1].toLowerCase()}` : ''
+}
+
+/**
+ * 附加产物是否还没取全：记录里留了条目但没有 `relativePath`（下载失败时只保留直链）。
+ * 成功的任务据此判断要不要补取，不必去读磁盘。
+ */
+export function hasPendingExtras(job: Pick<VideoJobRecord, 'extras'>): boolean {
+  return (job.extras ?? []).some((item) => !item.relativePath?.trim())
+}
+
+/**
+ * 是否值得「补取产物」：只有**上游已经生成好、积分已经花掉、只是文件没下回来**的任务才够格。
+ *
+ * 判据是记录里存着 `resourceId`（拿到它说明上游 operation 已经 done），而不是去猜 error 文案：
+ * - 视频任务没有 resourceId 概念，这条救济通路暂不覆盖；
+ * - 正在跑的 / 用户主动取消的不动；
+ * - 重试预算用尽后不再打扰（避免每次打开工程都重下一遍）。
+ */
+export function shouldRecoverJob(
+  job: Pick<
+    VideoJobRecord,
+    | 'status'
+    | 'kind'
+    | 'resourceId'
+    | 'providerJobId'
+    | 'pollingUrl'
+    | 'recoveryAttempts'
+    | 'extras'
+  >,
+  maxAttempts: number = JOB_RECOVERY_MAX_ATTEMPTS
+): boolean {
+  if (isVideoJobActive(job.status) || job.status === 'cancelled') return false
+  if (jobKind(job as VideoJobRecord) === 'video') return false
+  if (!job.resourceId?.trim()) return false
+  if (!job.providerJobId?.trim() && !job.pollingUrl?.trim()) return false
+  if ((job.recoveryAttempts ?? 0) >= maxAttempts) return false
+  // 失败的任务，或「主产物在、附加产物缺项」的任务
+  return job.status === 'failed' || hasPendingExtras(job)
+}
+
+/** 第 n 次补取的延迟：与刚失败的那次错开，避免挤在同一个时间窗 */
+export function recoveryDelayMs(attempt: number): number {
+  const n = Math.max(1, Math.trunc(attempt) || 1)
+  return JOB_RECOVERY_BACKOFF_MS * n
+}
+
+/**
+ * 主产物相对路径 → 同目录同名的附加产物相对路径（换后缀）。
+ * 与主产物放在一起是刻意的：导入 Blender / Unreal 时一整个文件夹搬过去即可。
+ */
+export function siblingOutputPath(mainRelativePath: string, suffix: string): string {
+  const posix = mainRelativePath.replace(/\\/g, '/')
+  const slash = posix.lastIndexOf('/')
+  const dir = slash >= 0 ? posix.slice(0, slash + 1) : ''
+  const base = slash >= 0 ? posix.slice(slash + 1) : posix
+  const dot = base.lastIndexOf('.')
+  const stem = dot > 0 ? base.slice(0, dot) : base
+  return `${dir}${stem}${suffix}`
 }
 
 /** 瞬时失败退避：前 2 次 5s，3-5 次 15s，之后 30s */
@@ -139,7 +254,7 @@ function resolveJobOutputDir(job: VideoJobRecord): string {
   return resolveMediaOutputDir({
     mediaOutputDir: job.outputDir,
     cacheOutputDir: projectService.isOpen() ? projectService.getConfig().cacheOutputDir : undefined,
-    kind: jobKind(job) === 'model3d' ? 'model' : 'video'
+    kind: isMeshJobKind(jobKind(job)) ? 'model' : 'video'
   })
 }
 
@@ -267,6 +382,24 @@ class VideoJobService {
       }
       this.schedulePoll(job.localJobId, 500)
     }
+    // 上次因为下载失败判死的任务：产物在上游已经生成好了（积分已经花掉），
+    // 只差把文件取回来 —— 拿 resourceId 重新轮询一次即可，不必重新生成。
+    // 也覆盖「主产物下回来了、附加产物（泼溅 / 全景）没取全」的补取
+    for (const job of this.list()) {
+      if (!shouldRecoverJob(job)) continue
+      const attempts = (job.recoveryAttempts ?? 0) + 1
+      const retried = videoJobRepository.write(root, {
+        ...job,
+        status: 'submitted',
+        progress: 15,
+        error: undefined,
+        uploads: undefined,
+        recoveryAttempts: attempts
+      })
+      if (job.uploads?.length) void this.cleanupUploads(job)
+      this.emitUpdated(retried)
+      this.schedulePoll(retried.localJobId, recoveryDelayMs(attempts))
+    }
   }
 
   /** 关闭工程时停止本地 timer（磁盘任务保留） */
@@ -322,9 +455,13 @@ class VideoJobService {
       const { modelProviderFacade } = await import('./modelProviders')
       const pollJob = { jobId: job.providerJobId, pollingUrl: job.pollingUrl }
       const result =
-        kind === 'model3d'
-          ? await modelProviderFacade.pollModel3d(provider, pollJob)
-          : await modelProviderFacade.pollVideo(provider, pollJob)
+        kind === 'spatialWorldExport'
+          ? await modelProviderFacade.pollSpatialWorldExport(provider, pollJob)
+          : kind === 'spatialWorld'
+            ? await modelProviderFacade.pollWorld(provider, pollJob)
+            : kind === 'model3d'
+              ? await modelProviderFacade.pollModel3d(provider, pollJob)
+              : await modelProviderFacade.pollVideo(provider, pollJob)
 
       job = videoJobRepository.get(root, localJobId)
       if (!job || !isVideoJobActive(job.status)) return
@@ -341,12 +478,18 @@ class VideoJobService {
         }
         // 下载失败与轮询瞬时错误分开：否则 OpenRouter content 401 会被凑满 20 次误报成「轮询失败」
         try {
-          await this.completeJob(job, provider, result.downloadUrl)
+          await this.completeJob(
+            job,
+            provider,
+            result.downloadUrl,
+            result.extraDownloads,
+            result.resourceId
+          )
         } catch (downloadErr) {
           const detail = downloadErr instanceof Error ? downloadErr.message : String(downloadErr)
           await this.failJob(
             localJobId,
-            new Error(fail(E_VIDEOJOB_DOWNLOAD_FAILED, { detail }).message)
+            new Error(fail(DOWNLOAD_FAILED_BY_KIND[job.kind ?? 'video'], { detail }).message)
           )
         }
         return
@@ -392,66 +535,207 @@ class VideoJobService {
   private async completeJob(
     job: VideoJobRecord,
     provider: import('@shared/modelProvider').ModelProviderInstance,
-    downloadUrl: string
+    downloadUrl: string,
+    extraDownloads?: Array<{ kind: string; url: string }>,
+    resourceId?: string
   ): Promise<void> {
     const { modelProviderFacade } = await import('./modelProviders')
     const root = projectService.getRoot()
-    const isModel3d = jobKind(job) === 'model3d'
-    const tmpDir = join(
+    const kind = jobKind(job)
+    const isMeshJob = isMeshJobKind(kind)
+    // 与视频一致：显式 outputDir > 缓存根下 {Videos|Models}（3D 模型 / 空间世界缺省 Cache/Models）
+    const outputDir = resolveJobOutputDir(job)
+    const pendingExtras = extraDownloads?.length
+      ? extraDownloads.map((item) => ({ kind: item.kind, url: item.url }))
+      : undefined
+
+    /**
+     * 先把「上游资源 id + 主产物落点 + 待取附加产物」落盘，再开始下载文件。
+     * 下载失败时这三样是重新取回产物的钥匙：凭 resourceId 重轮询就能再拿一次直链；
+     * 主产物落点先用计划值占位，登记成功后再回写真实相对路径。
+     */
+    const checkpoint = videoJobRepository.write(root, {
+      ...job,
+      status: 'submitted',
+      progress: 96,
+      error: undefined,
+      uploads: undefined,
+      ...(resourceId?.trim() ? { resourceId: resourceId.trim() } : {}),
+      ...(extraDownloads !== undefined ? { extras: pendingExtras } : {})
+    })
+
+    const dest = join(
       root,
       '.aiartengine',
-      isModel3d ? 'model3d-download' : 'video-download',
-      job.localJobId
+      isMeshJob ? 'model3d-download' : 'video-download',
+      job.localJobId,
+      isMeshJob ? resolveModel3dDownloadName(downloadUrl) : 'output.mp4'
     )
-    if (!existsSync(tmpDir)) mkdirSync(tmpDir, { recursive: true })
-    const dest = join(tmpDir, isModel3d ? resolveModel3dDownloadName(downloadUrl) : 'output.mp4')
-    // 下载重试：vendor 刚完成时 CDN 偶发 5xx / 超时，一次失败不应判死整条任务
-    let downloadErr: unknown
-    for (let attempt = 1; attempt <= DOWNLOAD_MAX_ATTEMPTS; attempt++) {
-      try {
-        await modelProviderFacade.downloadVideoToFile(provider, downloadUrl, dest)
-        downloadErr = undefined
-        break
-      } catch (err) {
-        downloadErr = err
-        if (attempt < DOWNLOAD_MAX_ATTEMPTS) await sleep(DOWNLOAD_RETRY_DELAY_MS)
-      }
-    }
-    if (downloadErr) throw downloadErr
 
-    // 与视频一致：显式 outputDir > 缓存根下 {Videos|Models}（3D 模型缺省 Cache/Models）
-    const outputDir = resolveJobOutputDir(job)
-    const asset = projectService.attachExternalGeneratedFile({
-      type: isModel3d ? 'model' : 'video',
-      sourceFilePath: dest,
-      name:
-        job.name ??
-        (isModel3d
-          ? `生成 3D 模型 ${new Date().toLocaleString()}`
-          : `生成视频 ${new Date().toLocaleString()}`),
-      prompt: job.prompt,
-      outputDir
-    })
-    this.bestEffortPatchGraph(job, asset)
+    // ── 主产物 ──
+    // 已经在磁盘上（上一次运行下成功过、只是附加产物没取全）就不再下一遍：
+    // 本次只需补齐缺的那几项，末段照常重新登记，登记语义是「就地覆盖同名文件」
+    const mainOnDisk = checkpoint.relativePath?.trim()
+      ? existsSync(join(root, checkpoint.relativePath.trim()))
+      : false
+    let asset: AssetInfo
+    if (mainOnDisk) {
+      // 走一遍登记：产物文件就在原处，等于把上次没写完的记录补全（不改名、不换目录）
+      asset = projectService.attachExternalGeneratedFile({
+        type: isMeshJob ? 'model' : 'video',
+        sourceFilePath: join(root, checkpoint.relativePath!.trim()),
+        // 复用已落盘文件的文件名当缺省名（产物就在原处，不改名）
+        name: job.name ?? basename(checkpoint.relativePath!.trim()),
+        prompt: job.prompt,
+        outputDir
+      })
+    } else {
+      if (!existsSync(dirname(dest))) mkdirSync(dirname(dest), { recursive: true })
+      // 下载重试：vendor 刚完成时 CDN 偶发 5xx / 超时，一次失败不应判死整条任务
+      let downloadErr: unknown
+      for (let attempt = 1; attempt <= DOWNLOAD_MAX_ATTEMPTS; attempt++) {
+        try {
+          await modelProviderFacade.downloadVideoToFile(provider, downloadUrl, dest)
+          downloadErr = undefined
+          break
+        } catch (err) {
+          downloadErr = err
+          if (attempt < DOWNLOAD_MAX_ATTEMPTS) await sleep(DOWNLOAD_RETRY_DELAY_MS)
+        }
+      }
+      if (downloadErr) throw downloadErr
+      asset = projectService.attachExternalGeneratedFile({
+        type: isMeshJob ? 'model' : 'video',
+        sourceFilePath: dest,
+        name:
+          job.name ??
+          (kind === 'spatialWorldExport'
+            ? `空间世界导出 ${new Date().toLocaleString()}`
+            : kind === 'spatialWorld'
+              ? `生成空间世界 ${new Date().toLocaleString()}`
+              : kind === 'model3d'
+                ? `生成 3D 模型 ${new Date().toLocaleString()}`
+                : `生成视频 ${new Date().toLocaleString()}`),
+        prompt: job.prompt,
+        outputDir
+      })
+    }
+    this.bestEffortPatchGraph(checkpoint, asset)
 
     this.pollFailures.delete(job.localJobId)
+    // 主产物已登记：先把终态落盘，再补附加产物 —— 附加产物失败或中途崩溃都不会丢主产物
     const next = videoJobRepository.write(root, {
-      ...job,
+      ...checkpoint,
       status: 'succeeded',
       progress: 100,
       assetId: asset.id,
       relativePath: asset.relativePath,
       error: undefined,
-      uploads: undefined
+      uploads: undefined,
+      extras: pendingExtras
     })
-    await this.cleanupUploads(job)
-    this.finishWaiters(next)
     this.emitUpdated(next)
+
+    const settled =
+      (await this.downloadExtras(next, provider, asset.relativePath, pendingExtras, job.extras)) ??
+      next
+    await this.cleanupUploads(checkpoint)
+    this.finishWaiters(settled)
+    this.emitUpdated(settled)
     // 只有真的登记进资产库的产物才广播（Cache/ 与库外目录只返回内存 AssetInfo）
     if (shouldRegisterOutputInAssetLibrary(outputDir, projectService.getConfig().cacheOutputDir)) {
       broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
     }
     videoJobRepository.pruneTerminal(root)
+  }
+
+  /**
+   * 下载附加产物（空间世界的高斯泼溅 SPZ / 360 全景图）到**主产物旁边的同名文件**，
+   * 并把相对路径回写进任务记录。
+   *
+   * 逐项独立容错：附加产物是锦上添花，任何一项失败都只记 warn 并清掉半截文件，
+   * 绝不让整条已成功的生成任务翻成失败；返回带路径的新记录（没有附加产物时返回 null）。
+   */
+  /**
+   * 泼溅产物（SPZ）登记为模型资产：世界生成随世界**免费**返回高斯泼溅，
+   * 导演台据此直接做泼溅渲染，不必再跑一次付费的 PLY 导出。
+   * 复用主产物的登记口径；失败只记 warn —— 附加产物是锦上添花，不能反噬已成功的任务。
+   */
+  private registerSplatAsset(
+    job: VideoJobRecord,
+    absPath: string
+  ): ReturnType<typeof projectService.attachExternalGeneratedFile> | null {
+    try {
+      const asset = projectService.attachExternalGeneratedFile({
+        type: 'model',
+        sourceFilePath: absPath,
+        name: job.name ?? `生成空间世界 ${new Date().toLocaleString()}`,
+        prompt: job.prompt,
+        outputDir: job.outputDir
+      })
+      if (
+        shouldRegisterOutputInAssetLibrary(job.outputDir, projectService.getConfig().cacheOutputDir)
+      ) {
+        broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
+      }
+      return asset
+    } catch (err) {
+      console.warn(`[videoJob] 附加产物登记资产失败（不影响主产物）: ${job.localJobId}`, err)
+      return null
+    }
+  }
+
+  private async downloadExtras(
+    job: VideoJobRecord,
+    provider: import('@shared/modelProvider').ModelProviderInstance,
+    mainRelativePath: string,
+    extraDownloads?: Array<{ kind: string; url: string }>,
+    /** 上一次已经取回来的那些（补取时只处理缺的，别把已有的覆盖一遍） */
+    alreadyDownloaded?: VideoJobExtra[]
+  ): Promise<VideoJobRecord | null> {
+    if (!extraDownloads?.length || !mainRelativePath) return null
+    const { modelProviderFacade } = await import('./modelProviders')
+    const root = projectService.getRoot()
+
+    // 只把**上次真的落盘了**的那些带过来；上次失败留下的「只有直链」条目要重新下
+    const resolved: VideoJobExtra[] = (alreadyDownloaded ?? []).filter((entry) =>
+      Boolean(entry.relativePath?.trim())
+    )
+    for (const item of extraDownloads) {
+      // 泼溅只认 .ply / .spz 扩展名：优先按上游直链实际给的后缀落盘，拿不到再按类型约定
+      const suffix = extraDownloadUrlExt(item.url) || extraDownloadSuffix(item.kind)
+      const relativePath = siblingOutputPath(mainRelativePath, suffix)
+      const existing = resolved.find((entry) => entry.kind === item.kind)
+      if (existing) {
+        // 已经取回来过：只更新本次的直链（直链会过期，记录里留最新的那条）
+        existing.url = item.url
+        continue
+      }
+      const absPath = join(root, relativePath)
+      try {
+        await modelProviderFacade.downloadVideoToFile(provider, item.url, absPath)
+        // 泼溅（SPZ）额外登记为模型资产：导演台可直接用它做高斯泼溅渲染，
+        // 不必再跑一次付费的 PLY 导出；登记失败不影响附加产物本身
+        const extraAsset = item.kind === 'splats' ? this.registerSplatAsset(job, absPath) : null
+        resolved.push({
+          kind: item.kind,
+          url: item.url,
+          relativePath,
+          ...(extraAsset ? { assetId: extraAsset.id } : {})
+        })
+      } catch (err) {
+        // 半截文件不能留在产物目录里冒充成品
+        try {
+          if (existsSync(absPath)) rmSync(absPath, { force: true })
+        } catch {
+          // 清理失败不追加报错
+        }
+        console.warn(`[videoJob] 附加产物下载失败（不影响主产物）: ${item.kind}`, err)
+        resolved.push({ kind: item.kind, url: item.url })
+      }
+    }
+
+    return videoJobRepository.write(root, { ...job, extras: resolved })
   }
 
   private bestEffortPatchGraph(job: VideoJobRecord, asset: AssetInfo): void {

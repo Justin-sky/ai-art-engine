@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { createI18n } from 'vue-i18n'
 import zhCN from '../src/renderer/src/i18n/locales/zh-CN'
+import enUS from '../src/renderer/src/i18n/locales/en-US'
+import { BUILTIN_NODE_TYPES } from '../src/shared/graph/builtins'
+import { GRAPH_PORT_DATA_TYPES } from '../src/shared/graph'
 
 describe('graph processing menu labels', () => {
   const i18n = createI18n({
@@ -72,6 +75,73 @@ describe('graph processing menu labels', () => {
     expect(t('graph.port.types.worldEntities')).toBe('世界元素实体')
     expect(t('graph.port.types.beat')).toBe('场')
     expect(t('graph.port.types.model')).toBe('模型')
+    expect(t('graph.port.types.spatialWorld')).toBe('空间世界')
     expect(t('graph.port.types.project')).toBe('工程')
+  })
+
+  /**
+   * 运行失败码 → 文案的映射（useGraphRunSession 的 keys 表）是**按 code 精确查表**的，
+   * 少一条就在画布上把 GRAPH_XXX 这种原始码直接摆给用户看。这里锁住本次新增的那条。
+   */
+  it('resolves the world export failure message', () => {
+    expect(i18n.global.t('graph.run.worldExportNoWorld')).toContain('world_id')
+  })
+})
+
+/**
+ * 端口自带的显示名（`labelKey`）优先于类型名（GraphNodeCard 的 outPortTypeLabel /
+ * inPortTypeLabel 都这么取），所以**每个 labelKey 都必须两侧语言都有文案** ——
+ * 漏了就会在卡片上把 `graph.port.exportedMesh` 这种原始键直接画出来。
+ * 这里按内置节点定义遍历所有端口，锁住这条不变量（新增节点时自动纳入）。
+ */
+describe('节点端口 labelKey 文案', () => {
+  const i18n = createI18n({
+    legacy: false,
+    locale: 'zh-CN',
+    messages: { 'zh-CN': zhCN, 'en-US': enUS }
+  })
+
+  function readMessage(messages: unknown, key: string): string | null {
+    let cursor: unknown = messages
+    for (const part of key.split('.')) {
+      if (!cursor || typeof cursor !== 'object') return null
+      cursor = (cursor as Record<string, unknown>)[part]
+    }
+    return typeof cursor === 'string' && cursor.trim() ? cursor : null
+  }
+
+  const portLabelKeys = [
+    ...new Set(
+      BUILTIN_NODE_TYPES.flatMap((def) =>
+        (def.ports ?? []).map((port) => port.labelKey).filter((key): key is string => Boolean(key))
+      )
+    )
+  ].sort()
+
+  it('内置节点至少有一批 labelKey（防止遍历失效后空跑通过）', () => {
+    expect(portLabelKeys.length).toBeGreaterThan(5)
+    expect(portLabelKeys).toContain('graph.port.exportedMesh')
+  })
+
+  it('每个 labelKey 中英文案都齐（缺哪个就用原始键显示）', () => {
+    const missing: string[] = []
+    for (const key of portLabelKeys) {
+      if (!readMessage(zhCN, key)) missing.push(`zh:${key}`)
+      if (!readMessage(enUS, key)) missing.push(`en:${key}`)
+      // vue-i18n 在缺键时返回键本身：解析成功也不该等于键
+      if (i18n.global.t(key) === key) missing.push(`resolve:${key}`)
+    }
+    expect(missing).toEqual([])
+  })
+
+  it('每个端口类型都有类型名文案（卡片端口与「添加并连接」菜单都按它显示）', () => {
+    const missing: string[] = []
+    for (const dataType of GRAPH_PORT_DATA_TYPES) {
+      const key = `graph.port.types.${dataType}`
+      if (!readMessage(zhCN, key)) missing.push(`zh:${key}`)
+      if (!readMessage(enUS, key)) missing.push(`en:${key}`)
+      if (i18n.global.t(key) === key) missing.push(`resolve:${key}`)
+    }
+    expect(missing).toEqual([])
   })
 })

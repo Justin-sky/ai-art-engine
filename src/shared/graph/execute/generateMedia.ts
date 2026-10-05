@@ -206,7 +206,7 @@ export async function executeVideoGenerateNode(
   })
   const prompt = system.trim() ? `${system.trim()}\n\n${userPrompt}` : userPrompt
 
-  const portReferences = await collectVideoGenerateInputReferences(ctx, selected)
+  const portReferences = await collectMediaInputReferences(ctx, selected)
   const styleUrls = await resolveStyleReferenceUrls(ctx, styleImages)
   // 风格图优先占图片槽位，再拼端口参考（与图片口上限共享额度；@n 与此顺序一致）
   const inputReferences = [
@@ -310,14 +310,14 @@ export async function executeLipSyncNode(
   const { node } = ctx
 
   const audioInputValues = [...(ctx.inputs['in-voice'] ?? []), ...(ctx.inputs.in ?? [])]
-  const audioRefs = await collectVideoGenerateInputReferences(ctx, audioInputValues)
+  const audioRefs = await collectMediaInputReferences(ctx, audioInputValues)
   const audioUrl = audioRefs.find((ref) => ref.kind === 'audio_url')?.url?.trim()
   if (!audioUrl) {
     throw new Error('GRAPH_LIPSYNC_NO_AUDIO')
   }
 
   const videoValues = ctx.inputs['in-video'] ?? []
-  const videoRefs = await collectVideoGenerateInputReferences(ctx, videoValues)
+  const videoRefs = await collectMediaInputReferences(ctx, videoValues)
   const videoUrl = videoRefs.find((ref) => ref.kind === 'video_url')?.url?.trim()
 
   let imageUrl: string | undefined
@@ -447,7 +447,7 @@ export async function executeVideoReshootNode(
   const { node } = ctx
 
   const videoValues = [...(ctx.inputs['in-video'] ?? []), ...(ctx.inputs.in ?? [])]
-  const videoRefs = await collectVideoGenerateInputReferences(ctx, videoValues)
+  const videoRefs = await collectMediaInputReferences(ctx, videoValues)
   const videoUrl = videoRefs.find((ref) => ref.kind === 'video_url')?.url?.trim()
   if (!videoUrl) {
     throw new Error('GRAPH_RESHOOT_NO_VIDEO')
@@ -500,7 +500,7 @@ export async function executeVideoReshootNode(
 
   // 源视频必须是第一个视频参考（@视频1）；随后拼图片 / 音频参考
   const referenceValues = [...(ctx.inputs['in-image'] ?? []), ...(ctx.inputs['in-voice'] ?? [])]
-  const otherRefs = await collectVideoGenerateInputReferences(ctx, referenceValues)
+  const otherRefs = await collectMediaInputReferences(ctx, referenceValues)
   const inputReferences: Array<{
     kind: 'image_url' | 'video_url' | 'audio_url'
     url: string
@@ -625,11 +625,18 @@ async function resolveVideoFramePortImageUrl(
 ): Promise<string | undefined> {
   const values = ctx.inputs[portId] ?? []
   if (!values.length) return undefined
-  const refs = await collectVideoGenerateInputReferences(ctx, values)
+  const refs = await collectMediaInputReferences(ctx, values)
   return refs.find((ref) => ref.kind === 'image_url')?.url
 }
 
-async function collectVideoGenerateInputReferences(
+/**
+ * 端口值 → 带类型的 URL 引用（image_url / video_url / audio_url）。
+ *
+ * 视频与音频给的是**工程相对路径**（生成前由主进程门面上传对象存储换成公网 URL），
+ * 图片优先走 `resolveImageUrls`。视频生成 / 对口型 / 镜头重拍等视频节点共用，
+ * 空间世界生成节点也用它取「参考视频」（见 generateSpatialWorld.ts）。
+ */
+export async function collectMediaInputReferences(
   ctx: NodeExecuteContext,
   selected: GraphValue[]
 ): Promise<Array<{ kind: VideoRefKind; url: string }>> {

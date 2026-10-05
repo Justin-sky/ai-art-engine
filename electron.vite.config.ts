@@ -61,12 +61,12 @@ function threeModuleRawPlugin(): Plugin {
     },
     load(id) {
       if (id === resolvedModuleId) {
-        const abs = resolve('node_modules/three/build/three.module.min.js')
+        const abs = resolve('node_modules/three/build/three.module.js')
         const source = readFileSync(abs, 'utf-8')
         return `export default ${JSON.stringify(source)}`
       }
       if (id === resolvedCoreId) {
-        const abs = resolve('node_modules/three/build/three.core.min.js')
+        const abs = resolve('node_modules/three/build/three.core.js')
         const source = readFileSync(abs, 'utf-8')
         return `export default ${JSON.stringify(source)}`
       }

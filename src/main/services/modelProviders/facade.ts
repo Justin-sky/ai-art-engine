@@ -1,6 +1,6 @@
 import axios from 'axios'
-import { createWriteStream, existsSync, mkdtempSync, writeFileSync } from 'fs'
-import { join } from 'path'
+import { createWriteStream, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'fs'
+import { basename, join } from 'path'
 import { tmpdir } from 'os'
 import { pipeline } from 'stream/promises'
 import { Readable } from 'stream'
@@ -24,6 +24,12 @@ import type {
   GenerateVideoInput,
   GenerateVideoJob,
   GenerateVideoResult,
+  GenerateSpatialWorldInput,
+  GenerateSpatialWorldJob,
+  GenerateSpatialWorldResult,
+  ExportWorldInput,
+  ExportWorldResult,
+  SpatialWorldExportRequest,
   Model3dSegmentMode,
   Model3dPostProcessInput,
   Model3dPostProcessResult,
@@ -42,10 +48,12 @@ import type {
 import {
   allowsEmptyApiKey,
   findProviderById,
+  normalizeVideoInputReference,
   supportsModel3dRig,
   supportsModel3dSegment
 } from '@shared/modelProvider'
 import { describeDecisionVerdicts, resolveDecisionVerdicts } from '@shared/decisionQuestion'
+import { pickSpatialWorldJobs } from '@shared/videoJob'
 import { buildDecisionsRequest } from './decisions'
 import { meshOpSupported } from '@shared/meshOps'
 import { createProviderHttpClient, sleep } from './http'
@@ -62,7 +70,8 @@ import {
   type ObjectStorageUploadResult
 } from '../objectStorageUploadService'
 import { projectService } from '../projectService'
-import { videoJobService } from '../videoJobService'
+import { siblingOutputPath, videoJobService } from '../videoJobService'
+import { videoJobRepository } from '../../repositories/videoJobRepository'
 import { resolveMediaOutputDir } from '@shared/domain'
 import { pollCloudModel3dRig, submitCloudModel3dRig } from './model3dRig'
 import {
@@ -72,6 +81,7 @@ import {
 } from './model3dSegment'
 import { readGlbPartNames } from './glbParts'
 import { parseMeshOpsJobToken } from './meshOpsJob'
+import { uploadWorldlabsMediaAsset } from './worldlabs/mediaAssets'
 import { meshOpsDialectFor, requireMeshOpsDialect } from './meshOpsDialect'
 import type { MeshOpsDialect } from './types'
 import {
@@ -105,6 +115,110 @@ const E_MODEL3D_GEN_FAILED = defErrSimple(
   '3D 模型生成失败',
   '3D model generation failed'
 )
+const E_WORLD_GEN_FAILED = defErrSimple(
+  'provider.facade.world-generation-failed',
+  '世界生成失败',
+  'World generation failed'
+)
+const E_WORLD_UNSUPPORTED = defErrSimple(
+  'provider.facade.world-unsupported',
+  '该提供商暂不支持空间世界生成',
+  'This provider does not support world generation yet'
+)
+const E_WORLD_REF_NOT_FOUND = defErr<{ path: string }>(
+  'provider.facade.worldRefNotFound',
+  ({ path }) => `世界生成的参考文件不存在: ${path}`,
+  ({ path }) => `The world generation reference file does not exist: ${path}`
+)
+const E_WORLD_REF_BAD_DATA_URL = defErrSimple(
+  'provider.facade.worldRefBadDataUrl',
+  '无法解析参考媒体的 data URL',
+  'Could not parse the reference media data URL'
+)
+const E_WORLD_REF_UPLOAD_FAILED = defErr<{ media: string; storage: string }>(
+  'provider.facade.worldRefUploadFailed',
+  ({ media, storage }) =>
+    `参考媒体上传失败。World Labs 托管媒体：${media}；对象存储回退：${storage}`,
+  ({ media, storage }) =>
+    `Uploading the reference media failed. World Labs media asset: ${media}; object storage fallback: ${storage}`
+)
+const E_WORLD_EXPORT_NO_SOURCE = defErrSimple(
+  'provider.facade.spatialWorldExportNoSource',
+  'PLY 泼溅导出需要上游世界产物的路径（把它落在世界 GLB 旁边）；请把「空间世界生成」节点的模型口接进来',
+  'Exporting PLY splats needs the upstream world artifact path (they land next to the world GLB); connect the model port of a world generation node'
+)
+const E_WORLD_EXPORT_TIMEOUT = defErrSimple(
+  'provider.facade.spatialWorldExportTimeout',
+  '空间世界导出超时：任务仍未完成（HQ 网格最长约 1 小时，请稍后重试）',
+  'World export timed out: the job is still unfinished (an HQ mesh can take up to an hour; retry later)'
+)
+
+/** PLY 泼溅官方为同步转换；万一上游给了进行中的 operation，就地轮询的兜底上限 */
+const WORLD_EXPORT_POLL_TIMEOUT_MS = 10 * 60 * 1000
+
+/** 扩展名 → MIME（World Labs 只认常规图 / 视频类型，缺省按二进制流） */
+const EXT_TO_MIME: Record<string, string> = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  gif: 'image/gif',
+  bmp: 'image/bmp',
+  mp4: 'video/mp4',
+  mov: 'video/quicktime',
+  webm: 'video/webm',
+  avi: 'video/x-msvideo',
+  mkv: 'video/x-matroska'
+}
+
+const MIME_TO_EXT: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+  'image/bmp': 'bmp',
+  'video/mp4': 'mp4',
+  'video/quicktime': 'mov',
+  'video/webm': 'webm',
+  'video/x-msvideo': 'avi',
+  'video/x-matroska': 'mkv'
+}
+
+/**
+ * 读取参考媒体原始字节（供托管媒体上传用）。
+ * data URL 直接解码；其余按「工程相对路径 / 本地绝对路径」解析后读盘——
+ * 与 `ensureRemoteMediaUrl` 同一套路径口径（非绝对路径一律视为工程相对）。
+ */
+function readWorldReferenceMedia(
+  rawUrl: string,
+  projectRoot?: string
+): { bytes: Buffer; extension: string; contentType: string; fileName: string } {
+  const trimmed = rawUrl.trim()
+  if (trimmed.startsWith('data:')) {
+    const match = /^data:([^;,]*)(;base64)?,([\s\S]*)$/.exec(trimmed)
+    if (!match) throw fail(E_WORLD_REF_BAD_DATA_URL)
+    const contentType = match[1]?.trim() || 'application/octet-stream'
+    const payload = match[3] ?? ''
+    const bytes = match[2]
+      ? Buffer.from(payload, 'base64')
+      : Buffer.from(decodeURIComponent(payload), 'utf8')
+    const extension = MIME_TO_EXT[contentType] ?? 'bin'
+    return { bytes, extension, contentType, fileName: `reference.${extension}` }
+  }
+
+  const abs =
+    projectRoot && !/^[A-Za-z]:[\\/]/.test(trimmed) && !trimmed.startsWith('/')
+      ? join(projectRoot, trimmed)
+      : trimmed
+  if (!existsSync(abs)) throw fail(E_WORLD_REF_NOT_FOUND, { path: abs })
+  const extension = (abs.toLowerCase().split('.').pop() ?? '').replace(/[^a-z0-9]/g, '')
+  return {
+    bytes: readFileSync(abs),
+    extension,
+    contentType: EXT_TO_MIME[extension] ?? 'application/octet-stream',
+    fileName: basename(abs)
+  }
+}
 /** 绑骨检查（免费、无产物）就地轮询上限 */
 const RIG_CHECK_TIMEOUT_MS = 180_000
 const E_BAD_IMAGE_DATA_URL = defErrSimple(
@@ -432,7 +546,14 @@ class ModelProviderFacade {
     // 绝对 / 相对 URL 都走供应商客户端：OpenRouter 的 `/videos/{id}/content` 与
     // unsigned_urls（同域 content 链）需要 Bearer；旧实现对绝对地址用裸 axios，
     // 完成后 401，再被 videoJob 误计成「轮询连续失败」。
-    const client = createProviderHttpClient(provider, 300_000)
+    // World Labs（Marble）的产物地址是自签名 CDN 直链（世界网格 GLB / 高斯泼溅 SPZ / PLY 都走它），
+    // 且鉴权是自定义头 WLT-Api-Key 而非 Bearer：带上通用客户端的 Bearer 头会被 CDN 判 401
+    // （实测报错「视频已生成但下载失败：Request failed with status code 401」）。
+    // 因此对 worldlabs 用裸客户端直连，不附加任何鉴权头 —— 直链自带签名。
+    const client =
+      provider.providerKind === 'worldlabs'
+        ? axios.create({ timeout: 300_000 })
+        : createProviderHttpClient(provider, 300_000)
     const response = await client.get(downloadUrl, {
       responseType: 'stream',
       timeout: 300_000
@@ -879,6 +1000,378 @@ class ModelProviderFacade {
         sourceLabel: item.sourceLabel,
         logs: []
       }))
+    }
+  }
+
+  /**
+   * 提交世界生成（World Labs Marble）。未实现 submitSpatialWorld 的适配器直接给出「不支持」错误，
+   * 避免落到「未配置提供商」这种误导性提示（用户其实配了别的模态的提供商）。
+   */
+  async submitSpatialWorld(input: GenerateSpatialWorldInput): Promise<GenerateSpatialWorldJob> {
+    const { provider, modelId } = resolveActiveProvider(
+      'spatialWorld',
+      input.providerInstanceId,
+      input.model
+    )
+    const adapter = getProviderAdapter(provider.providerKind)
+    if (!adapter.submitSpatialWorld) throw fail(E_WORLD_UNSUPPORTED)
+    return adapter.submitSpatialWorld(provider, modelId, input)
+  }
+
+  async pollWorld(
+    provider: ModelProviderInstance,
+    job: { jobId: string; pollingUrl: string }
+  ): Promise<import('./types').VideoPollResult> {
+    const adapter = getProviderAdapter(provider.providerKind)
+    if (!adapter.pollWorld) throw fail(E_WORLD_UNSUPPORTED)
+    return adapter.pollWorld(provider, job)
+  }
+
+  /** 轮询空间世界导出 operation（HQ 网格导出走 videoJobService，这里只做分发） */
+  async pollSpatialWorldExport(
+    provider: ModelProviderInstance,
+    job: { jobId: string; pollingUrl: string }
+  ): Promise<import('./types').VideoPollResult> {
+    const adapter = getProviderAdapter(provider.providerKind)
+    if (!adapter.pollSpatialWorldExport) throw fail(E_WORLD_UNSUPPORTED)
+    return adapter.pollSpatialWorldExport(provider, job)
+  }
+
+  /**
+   * 参考媒体准备（图 / 视频通用）：
+   * - 已是公网 http(s) → 原样保留为 `uri` 形态（上游自行抓取；注意上游抓取不带 cookie / referer，
+   *   防盗链地址会 400，此时应改用本地文件走托管上传）；
+   * - data URL / 工程相对路径 / 本地绝对路径 → **优先**走官方托管媒体（`media-assets:prepare_upload`
+   *   + 签名地址 PUT），这样**不需要用户配置对象存储**；
+   * - 托管媒体失败时退回对象存储公网 URL（老路径），两条都失败则把两条原因一起抛出，
+   *   不留「只报一条、另一条猜」的坑。
+   */
+  async prepareWorldInputReferencesForApi(
+    provider: ModelProviderInstance,
+    input: GenerateSpatialWorldInput
+  ): Promise<{
+    input: GenerateSpatialWorldInput
+    uploads: ObjectStorageUploadResult[]
+    notes: string[]
+  }> {
+    const refs = input.inputReferences ?? []
+    const seeded = input.mediaAssets ?? []
+    if (!refs.length) return { input, uploads: [], notes: [] }
+
+    const uploads: ObjectStorageUploadResult[] = []
+    const notes: string[] = []
+    const nextRefs: NonNullable<GenerateSpatialWorldInput['inputReferences']> = []
+    const mediaAssets = [...seeded]
+    const root = projectService.isOpen() ? projectService.getRoot() : undefined
+    let hostedCount = 0
+
+    try {
+      for (let i = 0; i < refs.length; i++) {
+        const normalized = normalizeVideoInputReference(refs[i]!)
+        const rawUrl = normalized.url.trim()
+        if (!rawUrl) continue
+        if (/^https?:\/\//i.test(rawUrl)) {
+          nextRefs.push({ kind: normalized.kind, url: rawUrl })
+          continue
+        }
+
+        const kind = normalized.kind === 'video_url' ? 'video' : 'image'
+        const media = readWorldReferenceMedia(rawUrl, root)
+        try {
+          mediaAssets.push(
+            await uploadWorldlabsMediaAsset({
+              provider,
+              bytes: media.bytes,
+              kind,
+              fileName: media.fileName,
+              extension: media.extension,
+              contentType: media.contentType
+            })
+          )
+          hostedCount++
+        } catch (mediaErr) {
+          const mediaDetail = mediaErr instanceof Error ? mediaErr.message : String(mediaErr)
+          notes.push(
+            `world reference: World Labs media asset upload failed (${mediaDetail}); falling back to object storage`
+          )
+          try {
+            const { url, uploaded } = await ensureRemoteMediaUrl(rawUrl, {
+              sourceLabel: `world-ref-${i + 1}`,
+              projectRoot: root
+            })
+            if (uploaded) uploads.push(uploaded)
+            nextRefs.push({ kind: normalized.kind, url })
+          } catch (storageErr) {
+            throw fail(E_WORLD_REF_UPLOAD_FAILED, {
+              media: mediaDetail,
+              storage: storageErr instanceof Error ? storageErr.message : String(storageErr)
+            })
+          }
+        }
+      }
+    } catch (err) {
+      await deleteUploads(uploads)
+      throw err
+    }
+
+    if (hostedCount > 0) {
+      notes.push(
+        `world reference: uploaded ${hostedCount} file(s) to World Labs media assets (no object storage needed)`
+      )
+    }
+
+    return { input: { ...input, inputReferences: nextRefs, mediaAssets }, uploads, notes }
+  }
+
+  /**
+   * 找回某个节点产出的空间世界的 world_id。
+   *
+   * `world_id` 只活在节点出口值与任务记录（`resourceId`）两处，两边都可能在旧版本里缺；
+   * 而世界生成的积分**已经花过**，不能因为一个字段没存住就逼用户重新生成一次世界。
+   * 两条通道，都不猜：
+   * 1. 任务记录里已经存了 `resourceId` → 直接用（含「修好之后再问一次」的情况）；
+   * 2. 记录里有 **operation id**（`providerJobId` / `pollingUrl`）→ 重新 GET 一次
+   *    `/operations/{id}`：operation 的响应里带 World 对象，顺手把 id 补写回记录，
+   *    以后就不用再问上游了。
+   *
+   * 只有「同一条世界生成任务」才认（按生成节点 / 模型资产匹配），找不到返回 undefined。
+   */
+  async recoverSpatialWorldId(input: {
+    nodeId?: string
+    assetId?: string
+  }): Promise<string | undefined> {
+    if (!projectService.isOpen()) return undefined
+
+    // 候选记录的挑选规则与渲染端同一份实现（先按生成节点、再按模型资产）
+    const candidates = pickSpatialWorldJobs(videoJobService.list(), input)
+    if (!candidates.length) return undefined
+
+    const stored = candidates.find((job) => job.resourceId?.trim())
+    if (stored) return stored.resourceId!.trim()
+
+    // 记录里没存住：拿 operation id 再问上游一次
+    for (const job of candidates) {
+      const operationId = job.providerJobId?.trim() || job.pollingUrl?.trim()
+      if (!operationId) continue
+      const provider = findProviderById(
+        settingsService.get().models.providers,
+        job.providerInstanceId
+      )
+      if (!provider) continue
+      try {
+        const result = await this.pollWorld(provider, {
+          jobId: operationId,
+          pollingUrl: job.pollingUrl?.trim() || operationId
+        })
+        const recovered = result.resourceId?.trim()
+        if (!recovered) continue
+        try {
+          videoJobRepository.patch(projectService.getRoot(), job.localJobId, {
+            resourceId: recovered
+          })
+        } catch (err) {
+          // 补写只是省下一次上游往返，失败不影响本次结果
+          console.warn('[worldlabs] failed to persist the recovered world id:', err)
+        }
+        return recovered
+      } catch (err) {
+        console.warn('[worldlabs] re-polling the operation for a world id failed:', err)
+      }
+    }
+    return undefined
+  }
+
+  /**
+   * 图节点空间世界生成：参考媒体上传（World Labs 托管媒体优先，对象存储兜底）→ 提交 → 持久化 job
+   * → 轮询 → 下载 GLB → 登记资产。结束后删除对象存储临时对象；
+   * 与 3D 模型同一套 videoJobService 续跑机制（关软件后可恢复轮询）。
+   */
+  async generateSpatialWorld(
+    input: GenerateSpatialWorldInput
+  ): Promise<GenerateSpatialWorldResult> {
+    // 图节点绑定只用于任务服务回写，不进入供应商提交载荷
+    const { graphBinding, ...genInput } = input
+    if (!projectService.isOpen()) throw fail(E_NO_PROJECT)
+
+    let uploads: ObjectStorageUploadResult[] = []
+
+    try {
+      // 参考媒体的托管上传需要 provider（鉴权头与 baseURL），所以先解析提供商
+      const { provider } = resolveActiveProvider(
+        'spatialWorld',
+        genInput.providerInstanceId,
+        genInput.model
+      )
+      const prepared = await this.prepareWorldInputReferencesForApi(provider, genInput)
+      uploads = prepared.uploads
+      const job = await this.submitSpatialWorld(prepared.input)
+
+      const persisted = videoJobService.create({
+        kind: 'spatialWorld',
+        providerJobId: job.jobId,
+        pollingUrl: job.pollingUrl,
+        providerInstanceId: provider.id,
+        model: job.model,
+        prompt: genInput.prompt,
+        name: genInput.name,
+        source: 'graph',
+        outputDir: genInput.outputDir,
+        graphBinding,
+        uploads: uploads.map((item) => ({
+          objectKey: item.objectKey,
+          url: item.url,
+          bytes: item.bytes,
+          bucket: item.bucket,
+          providerId: item.providerId,
+          providerLabel: item.providerLabel,
+          sourceLabel: item.sourceLabel
+        }))
+      })
+      // 已移交 videoJobService 管理对象清理，避免双重删除
+      uploads = []
+
+      const settled = await videoJobService.waitUntilSettled(persisted.localJobId)
+      if (settled.status !== 'succeeded' || !settled.assetId || !settled.relativePath) {
+        throw new Error(settled.error ?? fail(E_WORLD_GEN_FAILED).message)
+      }
+
+      return {
+        assetId: settled.assetId,
+        relativePath: settled.relativePath,
+        model: settled.model,
+        uploads: persisted.uploads?.map((item) => ({
+          objectKey: item.objectKey,
+          url: item.url,
+          bytes: item.bytes,
+          sourceLabel: item.sourceLabel,
+          logs: []
+        })),
+        referenceNotes: prepared.notes.length ? prepared.notes : undefined,
+        extras: settled.extras?.length
+          ? settled.extras.map((item) => ({ kind: item.kind, relativePath: item.relativePath }))
+          : undefined,
+        // 世界 id 透给下游「空间世界导出」节点（导出端点只认它）
+        spatialWorldId: settled.resourceId?.trim() || undefined
+      }
+    } catch (err) {
+      if (uploads.length) await deleteUploads(uploads)
+      throw err
+    }
+  }
+
+  /**
+   * 空间世界导出（官方 `worlds/{id}:export`），按官方两种资产族分成两条路：
+   * - `mesh`（HQ 贴图 / 顶点色网格，GLB）：异步、最长约 1 小时 → 走 videoJobService
+   *   （持久化任务、可续拉、进度与取消都在任务列表里），产物**登记为模型资产**；
+   * - `splats`（PLY 泼溅）：官方同步转换、提交即完成 → 就地轮询兜底，直接落到上游世界的
+   *   同目录同名文件（`world.glb` → `world.ply`），**不登记资产**（PLY 在应用内没有预览通道）。
+   */
+  async exportWorld(input: ExportWorldInput): Promise<ExportWorldResult> {
+    const { graphBinding, ...exportInput } = input
+    if (!projectService.isOpen()) throw fail(E_NO_PROJECT)
+
+    const { provider, modelId } = resolveActiveProvider(
+      'spatialWorld',
+      exportInput.providerInstanceId,
+      exportInput.model
+    )
+    const adapter = getProviderAdapter(provider.providerKind)
+    if (!adapter.submitSpatialWorldExport || !adapter.pollSpatialWorldExport)
+      throw fail(E_WORLD_UNSUPPORTED)
+
+    const request: SpatialWorldExportRequest = {
+      spatialWorldId: exportInput.spatialWorldId,
+      assetType: exportInput.assetType,
+      format: exportInput.format,
+      ...(exportInput.assetType === 'mesh' && exportInput.meshVariant
+        ? { meshVariant: exportInput.meshVariant }
+        : {}),
+      ...(exportInput.assetType === 'splats' && exportInput.resolution
+        ? { resolution: exportInput.resolution }
+        : {})
+    }
+
+    if (exportInput.assetType === 'splats') {
+      return this.#exportWorldSplats(provider, request, exportInput)
+    }
+
+    const job = await adapter.submitSpatialWorldExport(provider, request.spatialWorldId, request)
+    const persisted = videoJobService.create({
+      kind: 'spatialWorldExport',
+      providerJobId: job.jobId,
+      pollingUrl: job.pollingUrl,
+      providerInstanceId: provider.id,
+      model: modelId || 'marble-1.1',
+      prompt: `export:mesh:${request.meshVariant ?? 'textured'}`,
+      name: exportInput.name,
+      source: 'graph',
+      outputDir: exportInput.outputDir,
+      graphBinding
+    })
+
+    const settled = await videoJobService.waitUntilSettled(persisted.localJobId)
+    if (settled.status !== 'succeeded' || !settled.assetId || !settled.relativePath) {
+      throw new Error(settled.error ?? fail(E_WORLD_GEN_FAILED).message)
+    }
+    return {
+      assetId: settled.assetId,
+      relativePath: settled.relativePath,
+      model: settled.model,
+      assetType: 'mesh',
+      format: 'glb'
+    }
+  }
+
+  /** PLY 泼溅导出：同步转换 → 落到上游世界旁边（没有可注册的资产类型） */
+  async #exportWorldSplats(
+    provider: ModelProviderInstance,
+    request: SpatialWorldExportRequest,
+    input: Omit<ExportWorldInput, 'graphBinding'>
+  ): Promise<ExportWorldResult> {
+    const adapter = getProviderAdapter(provider.providerKind)
+    if (!adapter.submitSpatialWorldExport || !adapter.pollSpatialWorldExport)
+      throw fail(E_WORLD_UNSUPPORTED)
+
+    const source = input.sourceRelativePath?.trim() ?? ''
+    if (!source) throw fail(E_WORLD_EXPORT_NO_SOURCE)
+
+    const job = await adapter.submitSpatialWorldExport(provider, request.spatialWorldId, request)
+    let downloadUrl = job.downloadUrl?.trim() ?? ''
+    if (!downloadUrl) {
+      // 官方文档说 PLY 是同步转换；万一上游仍给进行中的 operation，就在就地轮询里等它
+      const deadline = Date.now() + WORLD_EXPORT_POLL_TIMEOUT_MS
+      for (;;) {
+        const poll = await adapter.pollSpatialWorldExport(provider, job)
+        if (poll.status === 'failed') {
+          throw new Error(poll.error ?? fail(E_WORLD_GEN_FAILED).message)
+        }
+        if (poll.status === 'completed' && poll.downloadUrl) {
+          downloadUrl = poll.downloadUrl
+          break
+        }
+        if (Date.now() > deadline) throw fail(E_WORLD_EXPORT_TIMEOUT)
+        await sleep(3000)
+      }
+    }
+
+    const relativePath = siblingOutputPath(source, '.ply')
+    const root = projectService.getRoot()
+    const absPath = join(root, relativePath)
+    await this.downloadVideoToFile(provider, downloadUrl, absPath)
+    // 与模型 / 网格导出同一口径：泼溅也要进资产库，否则导演台的 in-model 口接不到
+    const asset = projectService.attachExternalGeneratedFile({
+      type: 'model',
+      sourceFilePath: absPath,
+      name: input.name ?? `空间世界泼溅 ${new Date().toLocaleString()}`,
+      prompt: `export:splats:${request.resolution ?? 'full_res'}`,
+      outputDir: input.outputDir
+    })
+    return {
+      assetId: asset.id,
+      relativePath: asset.relativePath ?? relativePath,
+      model: input.model?.trim() || 'marble-1.1',
+      assetType: 'splats',
+      format: 'ply'
     }
   }
 

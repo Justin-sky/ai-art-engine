@@ -207,7 +207,8 @@
             runs through the model providers you configure (OpenRouter, OpenAI, DeepSeek, Zhipu, Kimi, xAI,
             Google, vLLM, Ollama, LM Studio, Volcengine Ark, Kling, MiniMax, Tongyi Qianwen, ModelScope,
             ComfyUI, MagicRouter, …), and 3D model generation supports Meshy, Tripo, Rodin (Hyper3D), Luma AI
-            and Lux3D. OpenRouter additionally offers decision models (the Decisions API), configured per modality
+            and Lux3D. Spatial world generation (turning text or reference images into an explorable 3D world)
+            supports World Labs (Marble). OpenRouter additionally offers decision models (the Decisions API), configured per modality
             like text / image / video. Use <strong>One-Click Workflow</strong> to turn a template or a
             plain-language request into a reusable host asset, then drag it onto the canvas to keep building.
           </p>
@@ -540,6 +541,13 @@
                   G1-Turbo; default Base URL <code>https://api.aholo3d.cn</code>).
                 </li>
                 <li>
+                  <strong>World Labs (Marble)</strong>: spatial world generation &mdash; text-to-world /
+                  image-to-world / multi-image to world / video-to-world (API Key; default Base URL
+                  <code>https://api.worldlabs.ai</code>, auth header <code>WLT-Api-Key</code>; models
+                  marble-1.1, marble-1.1-plus, plus the previous-generation marble-1.0 and marble-1.0-draft.
+                  Reference media uses the official managed upload, so no object storage is needed).
+                </li>
+                <li>
                   <strong>Custom</strong>: pick an endpoint type (OpenAI compatible / Anthropic / Gemini) and
                   supply your own Base URL and API key &mdash; for relays such as NewAPI and one-api, or a
                   self-hosted service. Text and images are supported, and models often cannot be fetched from
@@ -712,6 +720,12 @@
                   >
                 </li>
                 <li>
+                  World Labs API Key (top up credits on the platform's billing page first):
+                  <a href="https://platform.worldlabs.ai/api-keys" target="_blank" rel="noopener noreferrer"
+                    >https://platform.worldlabs.ai/api-keys</a
+                  >
+                </li>
+                <li>
                   MagicRouter API Key (starts with <code>mr-</code>):
                   <a href="https://www.magicrouter.ai/docs/api" target="_blank" rel="noopener noreferrer"
                     >https://www.magicrouter.ai/docs/api</a
@@ -730,7 +744,7 @@
               manually.
             </li>
             <li>
-              Configure per modality: text / image / video / audio / 3D model / decisions (OpenRouter supports
+              Configure per modality: text / image / video / audio / 3D model / spatial world / decisions (OpenRouter supports
               text / image / video / decisions; its Decisions tab lists models via
               <code>output_modalities=decisions</code>. TypeSafe direct has a Decisions tab only — its catalog comes
               from <code>GET /v1/models</code> and judgements go to <code>POST /v1/systemone</code>, the same
@@ -743,7 +757,8 @@
               Ollama / LM Studio are text only, though multimodal understanding can pass images into text nodes;
               ModelScope supports text and image with async text-to-image jobs; ComfyUI supports image / video /
               audio and has no text tab; MagicRouter supports text / image / video; Meshy / Tripo / Rodin
-              (Hyper3D) / Luma AI / Lux3D only expose a 3D model tab; a custom provider's tabs follow its
+              (Hyper3D) / Luma AI / Lux3D only expose a 3D model tab, while World Labs (Marble) only exposes
+              a spatial world tab; a custom provider's tabs follow its
               endpoint type &mdash; OpenAI compatible / Gemini give text + image, Anthropic gives text only,
               and image models must always be typed in by hand (see the
               <a href="guide-newapi.en.html">NewAPI guide</a>).
@@ -1409,7 +1424,7 @@
             <li>
               Image generation · video generation · audio generation · script generation · shot generation ·
               world element extraction · planning doc generation · director stage edit · canvas edit · 3D model
-              generation · 3D mesh processing (rigging / rig check / animation retarget / split / part completion
+              generation · spatial world generation · 3D mesh processing (rigging / rig check / animation retarget / split / part completion
               / retopology / texture / format convert) · 2D frame animation · decisions · model (reference) ·
               host asset
             </li>
@@ -1420,6 +1435,55 @@
               with write-back binding persistence and cancellation. <strong>Generation nodes output geometry
               only</strong> — rigging and the rest moved to the 3D processing nodes below (no inline
               “Generate rig” since 6.4.1).
+            </li>
+            <li>
+              <strong>Spatial world generation</strong> (<code>asset.spatialWorld</code>): text, 1&ndash;4
+              reference images or one reference video → an explorable 3D world (World Labs Marble; four
+              models &mdash; 1.1 / 1.1-plus / 1.0 / 1.0-draft, the last two from the previous generation). The four
+              input kinds are
+              mutually exclusive (text / single image / multi-image of one scene / video), and
+              <strong>when both a video and images are connected the video wins</strong> (same rule as lip
+              sync); reference videos should be mp4 / webm / mov / avi and are <strong>capped at 100MB each</strong>
+              (an upstream hard limit). The node card also offers a <strong>panorama mode</strong>
+              (<code>is_pano</code>: auto-detect a 2:1 equirect panorama / force / off &mdash; single image only,
+              and a panorama gives the model complete spatial information, usually more accurate than a plain
+              photo), <strong>verbatim</strong> (disables upstream recaptioning so your brief is sent as written)
+              and a <strong>seed</strong>.
+              Without instructions the upstream recaptions the input itself, so the same reference image can
+              yield slightly different worlds twice; tick “verbatim” and pin the seed to keep it
+              reproducible. It uses the same async submit → poll → download path as 3D
+              generation, and the world's GLB mesh is registered as a <strong>model asset</strong> (landing in
+              <code>Cache/Models</code> by default, exactly like 3D generation) &mdash; but to feed the director
+              stage or downstream 3D processing nodes you <strong>must go through the “World export” node</strong>:
+              the world port is <strong>strictly typed</strong> (<code>spatialWorld</code> connects only to
+              <code>spatialWorld</code> and is not implicitly compatible with <code>model</code>), so wire the world
+              into the export node first and use its exported mesh from there. Multi-image references are capped at 4, and local
+              images / videos are <strong>uploaded to World Labs managed storage by default</strong> (the official
+              media-asset flow: <code>/marble/v1/media-assets:prepare_upload</code> then a PUT to the signed
+              URL), so <strong>no object storage is required</strong>; object storage is only a fallback when the
+              hosted upload fails, and if both fail the error carries both reasons. One
+              generation takes about 5 minutes and is billed in credits. As for the artifacts: the
+              <strong>main output is the world's GLB mesh</strong> (the coarse collider mesh, 100–200k triangles),
+              and the two assets that ship with the world are written as <strong>same-name siblings</strong>:
+              <code>*.spz</code> <strong>gaussian splats</strong> (about 2M splats, Marble's native format &mdash; the
+              preferred import for Unreal / Unity / Blender / Houdini) and <code>*.pano.png</code> a
+              <strong>360 equirectangular panorama</strong> (2560&times;1280, reusable as a 2D panorama input).
+              Both are free of extra credits, and their paths appear in the run log and the node inspector
+              (select the node to copy a path). <strong>PLY splats or the HQ textured mesh</strong> come from the
+              <strong>“World export” node</strong> (<code>spatialWorld.export</code>): wire the spatial world node's output
+              (its port type is <strong>spatial world</strong>, distinct from the world-elements catalog port) into
+              its <code>in-world</code> and pick what to export in the inspector &mdash;
+              <strong>high-quality mesh</strong> (GLB: textured ~600k triangles / vertex colors ~1M triangles; an
+              asynchronous upstream export that takes <strong>up to about an hour, is rate limited to 4 requests per
+              hour, and is billed separately</strong>; the result is registered as a model asset whose output port is
+              <code>model</code> &mdash; feed the director stage or downstream 3D processing nodes from there) or
+              <strong>PLY splats</strong> (a synchronous upstream
+              conversion written as a same-name sibling of the world GLB, <code>world.ply</code>; it is not
+              registered as an asset &mdash; but you can import it into the asset library, or wire its relative path
+              straight into the director stage's 3D model input port, where the bundled Spark renders it on the
+              stage: see <a href="#director">12.7 Gaussian splats</a>; for engine imports still prefer the
+              SPZ saved automatically). The export node only accepts the <code>world_id</code> produced by an upstream
+              world generation node; without it the node fails loudly rather than exporting someone else's world.
             </li>
             <li>
               <strong>3D mesh processing (nodes)</strong>: <strong>3D rigging</strong> (Meshy / Tripo Rigging
@@ -2072,6 +2136,69 @@
               The red dot button in the animation panel is <strong>record motion</strong>: it records the
               current animation to WebM, saves it to the cache directory automatically and adds it to the
               Motion list.
+            </li>
+          </ul>
+
+          <h3>12.7 Gaussian splats (.spz / .ply)</h3>
+          <p>
+            Splats come from the <strong>spatial world</strong> chain, and they can also enter the stage as model
+            assets — rendered, positioned, and included in blocking shots and motion recordings:
+          </p>
+          <ul>
+            <li>
+              Two sources: the <code>*.spz</code> that <strong>spatial world generation</strong> writes next to
+              the world automatically (free, preferred), or the <code>*.ply</code> converted synchronously by the
+              <strong>“World export”</strong> node (billed separately, written as a same-name sibling of the world
+              GLB). PLY is not registered as an asset — connect its relative path straight to the director stage's
+              3D model input port, or import it into the asset library first.
+            </li>
+            <li>
+              It enters the stage like any other model: <strong>drag the splat model asset onto the stage
+              viewport</strong>, or wire it into the director stage node's <strong>3D model input port</strong>
+              (diving into the stage instantiates it automatically).
+            </li>
+            <li>
+              Rendering is handled by the bundled <strong>Spark</strong> renderer: a splat is an ordinary object in
+              the scene hierarchy — selectable, movable / rotatable / scalable, parentable, hideable and
+              renameable, using the same transform tools and selection bounds as a GLB character. The asset
+              inspector's <strong>3D preview</strong> and the asset card <strong>thumbnail</strong> render splats
+              too.
+            </li>
+            <li>
+              The <strong>World export</strong> node's inspector carries the same 3D preview pane plus an artifact
+              list: after exporting the HQ mesh or the PLY splats you can orbit the result, and the list also shows
+              the world's own gaussian splats (SPZ) and 360 panorama.
+            </li>
+            <li>
+              The “Skeleton” tab is meaningless for a splat: there are no bones and it takes no part in
+              retargeting, so an empty bone list is expected.
+            </li>
+            <li>
+              The splat renderer loads on demand: previews and stages without splats never load it. Splats are
+              read in asynchronously, so a freshly opened stage may show nothing for a moment before they
+              appear.
+            </li>
+          </ul>
+          <p><strong>What works</strong></p>
+          <ul>
+            <li>Transforms, visibility, renaming, reparenting and locking — exactly like any other object.</li>
+            <li>
+              <strong>Colour</strong> in the properties tints the whole splat (it shifts the splat's own hue),
+              rather than swapping a material's base colour as it does for regular models.
+            </li>
+            <li>Blocking shots and motion recordings render it into the frame like anything else.</li>
+          </ul>
+          <p>
+            <strong>What does not work</strong> (a splat has no triangle mesh and no texture materials, so these
+            tools do not apply)
+          </p>
+          <ul>
+            <li>Pose and skeletal animation: there are no bones, it takes no part in retargeting, and the animation
+              panel lists no skeleton clips for it.</li>
+            <li>Material texture override: no replaceable texture slots appear.</li>
+            <li>
+              The <strong>wireframe</strong> / <strong>shaded wireframe</strong> shading modes: splats always shade
+              their own way.
             </li>
           </ul>
         </section>

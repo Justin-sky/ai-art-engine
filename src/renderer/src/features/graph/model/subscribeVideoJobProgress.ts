@@ -19,6 +19,8 @@ export function subscribeVideoJobProgress(input: {
   let lastProgress = -1
   let lastAt = 0
   let lastStatus = ''
+  /** 上一次已写入日志的整行文案：进度长时间不动时据此去重 */
+  let lastText = ''
 
   return window.studio.onVideoJobUpdated((job) => {
     const boundNode = job.graphBinding?.nodeId?.trim() || ''
@@ -42,7 +44,12 @@ export function subscribeVideoJobProgress(input: {
     lastAt = now
     lastStatus = status
     const text = input.format(job)
-    if (text.trim()) input.onMessage(text)
+    if (!text.trim()) return
+    // 进度长时间不变时不要重复写同一行：世界生成会停在 50% 好几分钟，
+    // 每 1.5s 一条会把运行日志刷爆（实测 5 分钟刷了 40+ 行相同内容）
+    if (text === lastText) return
+    lastText = text
+    input.onMessage(text)
   })
 }
 
@@ -52,6 +59,12 @@ export function formatVideoJobProgressMessage(
 ): string {
   const progress = Math.max(0, Math.min(100, Math.round(Number(job.progress) || 0)))
   const status = String(job.status || 'running')
-  const key = jobKind(job) === 'model3d' ? 'graph.logs.model3dProgress' : 'graph.logs.videoProgress'
+  const kind = jobKind(job)
+  const key =
+    kind === 'spatialWorld'
+      ? 'graph.logs.worldProgress'
+      : kind === 'model3d'
+        ? 'graph.logs.model3dProgress'
+        : 'graph.logs.videoProgress'
   return t(key, { progress, status })
 }

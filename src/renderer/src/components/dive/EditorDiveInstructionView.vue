@@ -47,7 +47,7 @@ const presetKind = computed((): InstructionPresetKind | null => {
     case 'beat.unitGen':
       return 'beatUnitGen'
     case 'world.extract':
-      return 'worldExtract'
+      return 'spatialWorldExtract'
     case 'beat.split':
       return 'beatSplit'
     case 'ui.split':

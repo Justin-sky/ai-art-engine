@@ -376,7 +376,10 @@ function videoStatusLabel(status: VideoJobStatus): string {
 }
 
 function jobKindLabel(job: VideoJobRecord): string {
-  return jobKind(job) === 'model3d' ? t('graph.tasks.model3dKind') : t('graph.tasks.videoKind')
+  const kind = jobKind(job)
+  if (kind === 'spatialWorld') return t('graph.tasks.spatialWorldKind')
+  if (kind === 'spatialWorldExport') return t('graph.tasks.spatialWorldExportKind')
+  return kind === 'model3d' ? t('graph.tasks.model3dKind') : t('graph.tasks.videoKind')
 }
 
 function mcpKindLabel(tool: McpActivityTool): string {
@@ -390,9 +393,10 @@ function mcpStatusLabel(status: McpActivityStatus): string {
 function videoJobTitle(job: VideoJobRecord): string {
   if (job.name?.trim()) return job.name.trim()
   if (job.prompt.trim()) return job.prompt.trim().slice(0, 48)
-  return jobKind(job) === 'model3d'
-    ? t('graph.tasks.model3dUntitled')
-    : t('graph.tasks.videoUntitled')
+  const kind = jobKind(job)
+  if (kind === 'spatialWorld') return t('graph.tasks.spatialWorldUntitled')
+  if (kind === 'spatialWorldExport') return t('graph.tasks.spatialWorldExportUntitled')
+  return kind === 'model3d' ? t('graph.tasks.model3dUntitled') : t('graph.tasks.videoUntitled')
 }
 
 function flowTitle(task: GraphTask): string {
@@ -555,6 +559,12 @@ h2 {
   color: #b48cff;
   border-color: rgba(180, 140, 255, 0.4);
   background: rgba(180, 140, 255, 0.1);
+}
+
+.task-kind[data-kind='spatialWorld'] {
+  color: #6fd0c8;
+  border-color: rgba(111, 208, 200, 0.4);
+  background: rgba(111, 208, 200, 0.1);
 }
 
 .task-kind[data-kind='graph_icon_refine'] {

@@ -14,6 +14,8 @@ import type {
   GenerateTextResult,
   GenerateVideoInput,
   GenerateVideoJob,
+  GenerateSpatialWorldInput,
+  GenerateSpatialWorldJob,
   Model3dPostProcessInput,
   Model3dPostProcessOp,
   Model3dAnimationAction,
@@ -21,7 +23,9 @@ import type {
   ModelProviderInstance,
   ModelProviderKind,
   TranscribeAudioInput,
-  TranscribeAudioResult
+  TranscribeAudioResult,
+  SpatialWorldExportJob,
+  SpatialWorldExportRequest
 } from '@shared/modelProvider'
 import type { MeshOp } from '@shared/meshOps'
 import type { MeshOpsJobOp } from './meshOpsJob'
@@ -37,6 +41,16 @@ export type VideoPollResult = {
    * videoJobService 会持久化到 VideoJobRecord.pollingUrl。
    */
   pollingUrl?: string
+  /**
+   * 上游资源 id（空间世界：World.id）。空间世界导出端点 `worlds/{id}:export` 只认它，
+   * 所以生成阶段就要把它带回来，落进任务记录并透给下游「空间世界导出」节点。
+   */
+  resourceId?: string
+  /**
+   * 主产物之外的附加下载（空间世界：`splats` 高斯泼溅 SPZ、`pano` 360 全景图）。
+   * 随主产物一起落盘在主文件旁边（同名 + 类型后缀），失败只记 warn、不影响主产物。
+   */
+  extraDownloads?: Array<{ kind: string; url: string }>
 }
 
 /** 供应商方言返回的「端点 + 请求体」（纯数据，便于单测） */
@@ -190,6 +204,32 @@ export interface ModelProviderAdapter {
     input: GenerateModel3dInput
   ): Promise<GenerateModel3dJob>
   pollModel3d(
+    provider: ModelProviderInstance,
+    job: { jobId: string; pollingUrl: string }
+  ): Promise<VideoPollResult>
+  /**
+   * 空间世界生成（World Labs Marble）。可选：未实现时门面提示该提供商不支持世界生成。
+   * 提交返回 operation id 供轮询；完成时 downloadUrl 返回世界网格 GLB。
+   */
+  submitSpatialWorld?(
+    provider: ModelProviderInstance,
+    modelId: string,
+    input: GenerateSpatialWorldInput
+  ): Promise<GenerateSpatialWorldJob>
+  pollWorld?(
+    provider: ModelProviderInstance,
+    job: { jobId: string; pollingUrl: string }
+  ): Promise<VideoPollResult>
+  /**
+   * 空间世界导出（World Labs `worlds/{id}:export`）：PLY 泼溅同步返回、HQ 网格异步。
+   * 可选：未实现时门面提示该提供商不支持空间世界导出。
+   */
+  submitSpatialWorldExport?(
+    provider: ModelProviderInstance,
+    spatialWorldId: string,
+    request: SpatialWorldExportRequest
+  ): Promise<SpatialWorldExportJob>
+  pollSpatialWorldExport?(
     provider: ModelProviderInstance,
     job: { jobId: string; pollingUrl: string }
   ): Promise<VideoPollResult>

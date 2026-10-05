@@ -25,7 +25,8 @@ import {
   resolveUiSplitSystemPrompt,
   resolveToPromptSystemPrompt,
   resolveVoiceSystemPrompt,
-  resolveModel3dSystemPrompt
+  resolveModel3dSystemPrompt,
+  resolveSpatialWorldSystemPrompt
 } from '../systemPromptSchemes'
 import { resolveReshootSystemPrompt, buildReshootPrompt } from '../reshoot'
 import {
@@ -46,7 +47,8 @@ import {
   buildToPromptUserPrompt,
   buildVoicePrompt,
   buildFrameAnimGenPrompt,
-  buildModel3dPrompt
+  buildModel3dPrompt,
+  buildSpatialWorldPrompt
 } from '../userPromptSchemes'
 import { buildAnim2dGridInstruction, resolveFrameAnimGenSystemPrompt } from '../anim2d'
 import { expandIncomingThroughBundles } from '../bundleExpand'
@@ -69,13 +71,15 @@ export type InstructionFinalPreviewKind =
   | 'voice'
   | 'optimize'
   | 'toPrompt'
-  | 'worldExtract'
+  | 'spatialWorldExtract'
   | 'beatSplit'
   | 'beatUnitGen'
   | 'uiSplit'
   | 'frameAnimGen'
   | 'svgGen'
   | 'model3d'
+  /** 空间世界生成（World Labs Marble）：语义同 3D，但吃的是场景级世界描述 */
+  | 'spatialWorld'
   /** 决策判定：预览的是「发给决策模型的 state」，不套任何生成模板 */
   | 'decisions'
 
@@ -90,7 +94,8 @@ export function resolveInstructionFinalPreviewKind(
   if (typeId === 'decisions.judge') return 'decisions'
   if (typeId === 'prompt.optimize' || presetKind === 'optimize') return 'optimize'
   if (typeId === 'image.toPrompt' || presetKind === 'toPrompt') return 'toPrompt'
-  if (typeId === 'world.extract' || presetKind === 'worldExtract') return 'worldExtract'
+  if (typeId === 'world.extract' || presetKind === 'spatialWorldExtract')
+    return 'spatialWorldExtract'
   if (typeId === 'beat.split' || presetKind === 'beatSplit') {
     return 'beatSplit'
   }
@@ -107,6 +112,12 @@ export function resolveInstructionFinalPreviewKind(
   if (typeId === 'video.reshoot' || presetKind === 'reshoot') return 'reshoot'
 
   const assetType = node?.assetType
+  if (
+    typeId === 'asset.spatialWorld' ||
+    assetType === 'spatialWorld' ||
+    presetKind === 'spatialWorld'
+  )
+    return 'spatialWorld'
   if (typeId === 'asset.model3d' || assetType === 'model3d' || presetKind === 'model3d')
     return 'model3d'
   if (typeId === 'asset.video' || assetType === 'video' || presetKind === 'video') return 'video'
@@ -141,7 +152,7 @@ function resolveSystemPromptForPreviewKind(
       return resolveOptimizeSystemPrompt(raw, locale)
     case 'toPrompt':
       return resolveToPromptSystemPrompt(raw, locale)
-    case 'worldExtract':
+    case 'spatialWorldExtract':
       return resolveWorldExtractSystemPrompt(raw, locale)
     case 'beatSplit':
       return resolveBeatSplitSystemPrompt(raw, locale)
@@ -157,6 +168,8 @@ function resolveSystemPromptForPreviewKind(
       return resolveSvgGenSystemPrompt(raw, locale)
     case 'model3d':
       return resolveModel3dSystemPrompt(raw, locale)
+    case 'spatialWorld':
+      return resolveSpatialWorldSystemPrompt(raw, locale)
     case 'screenplay':
     default:
       return resolveScreenplaySystemPrompt(raw, locale)
@@ -182,7 +195,7 @@ function buildUserPromptForPreviewKind(
       return buildOptimizePrompt(instruction, locale)
     case 'toPrompt':
       return buildToPromptUserPrompt(instruction, locale)
-    case 'worldExtract':
+    case 'spatialWorldExtract':
       return buildWorldExtractPrompt(instruction, locale)
     case 'beatSplit':
       return buildBeatSplitPrompt(instruction, locale)
@@ -202,6 +215,8 @@ function buildUserPromptForPreviewKind(
       return instruction
     case 'model3d':
       return buildModel3dPrompt(instruction, locale)
+    case 'spatialWorld':
+      return buildSpatialWorldPrompt(instruction, locale)
     case 'screenplay':
     default:
       return buildScreenplayPrompt(instruction, locale)

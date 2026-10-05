@@ -4,6 +4,7 @@ import {
   executeVoiceGenerateNode
 } from './generateMedia'
 import { executeModel3dGenerateNode } from './generateModel3d'
+import { executeSpatialWorldGenerateNode } from './generateSpatialWorld'
 import { executeScreenplayGenerateNode, executeTextAssetRefNode } from './generateText'
 import type { GraphDocument } from '../types'
 import { GraphPortType, isPluralGraphPortDataType } from '../types'
@@ -331,6 +332,11 @@ export function executeAssetNode(
   // 3D 模型生成：文本 / 图片均可入
   if (node.assetType === 'model3d' || node.typeId === 'asset.model3d') {
     return executeModel3dGenerateNode(ctx)
+  }
+
+  // 空间世界生成（World Labs Marble）：文本 / 单图 / 多图入，产物同 3D 模型走 GLB
+  if (node.assetType === 'spatialWorld' || node.typeId === 'asset.spatialWorld') {
+    return executeSpatialWorldGenerateNode(ctx)
   }
 
   // 声音生成：文生语音；无 API 时透传上游声音或输出文本

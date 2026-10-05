@@ -27,7 +27,8 @@ const LAYERED_SOURCE_IMAGE_EXT = new Set(['.psd'])
 const VECTOR_IMAGE_EXT = new Set(['.svg'])
 const VIDEO_EXT = new Set(['.mp4', '.mov', '.webm'])
 const AUDIO_EXT = new Set(['.mp3', '.wav', '.ogg', '.m4a'])
-const MODEL_EXT = new Set(['.glb', '.gltf', '.fbx'])
+// .ply / .spz：高斯泼溅（Gaussian Splatting）。导演台用 Spark 渲染，按模型资产口径登记
+const MODEL_EXT = new Set(['.glb', '.gltf', '.fbx', '.ply', '.spz'])
 /** 剧本文本文件：导入为 screenplay 引用资产 */
 const TEXT_EXT = new Set(['.txt', '.md'])
 
@@ -50,6 +51,8 @@ export const IMPORTABLE_EXTENSIONS = [
   'glb',
   'gltf',
   'fbx',
+  'ply',
+  'spz',
   'txt',
   'md'
 ] as const

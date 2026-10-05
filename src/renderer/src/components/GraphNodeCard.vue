@@ -423,6 +423,20 @@
             :title="t('graph.inspector.generate.model3dStyleHint')"
             @update:model-value="persistModel3dStyle"
           />
+          <SpatialWorldSeedInput
+            v-if="showWorldSeed"
+            :model-value="spatialWorldSeed"
+            :title="t('graph.inspector.generate.spatialWorldSeedHint')"
+            :placeholder="t('graph.inspector.generate.spatialWorldSeedPlaceholder')"
+            @update:model-value="persistWorldSeed"
+          />
+          <SpatialWorldPromptControls
+            v-if="showWorldSeed"
+            :pano-mode="spatialWorldPanoMode"
+            :disable-recaption="spatialWorldDisableRecaption"
+            @update:pano-mode="persistWorldPanoMode"
+            @update:disable-recaption="persistWorldDisableRecaption"
+          />
           <Model3dRigControls
             v-if="showModel3dRigType"
             :rig-type="model3dRigType"
@@ -543,6 +557,8 @@ import GraphInstructionEditorDialog from './GraphInstructionEditorDialog.vue'
 import DecisionsQuestionsPanel from './DecisionsQuestionsPanel.vue'
 import InstructionModelSelect from './InstructionModelSelect.vue'
 import Model3dStyleSelect from './Model3dStyleSelect.vue'
+import SpatialWorldSeedInput from './SpatialWorldSeedInput.vue'
+import SpatialWorldPromptControls from './SpatialWorldPromptControls.vue'
 import Model3dRigControls from './Model3dRigControls.vue'
 import Model3dSegmentControls from './Model3dSegmentControls.vue'
 import ImageGenerateParamsSelect from './ImageGenerateParamsSelect.vue'
@@ -819,6 +835,8 @@ function portDataTypeClass(port: GraphPortDef): string {
       return 'port-world-entities'
     case GraphPortType.beat:
       return 'port-beat'
+    case GraphPortType.spatialWorld:
+      return 'port-world-model'
     default:
       return ''
   }
@@ -927,7 +945,7 @@ const instructionKind = computed((): InstructionPresetKind | null => {
     case 'beat.unitGen':
       return 'beatUnitGen'
     case 'world.extract':
-      return 'worldExtract'
+      return 'spatialWorldExtract'
     case 'beat.split':
       return 'beatSplit'
     case 'ui.split':
@@ -979,6 +997,8 @@ const instructionKind = computed((): InstructionPresetKind | null => {
       return isProcessingNode.value ? 'voice' : null
     case 'asset.model3d':
       return isProcessingNode.value ? 'model3d' : null
+    case 'asset.spatialWorld':
+      return isProcessingNode.value ? 'spatialWorld' : null
     default:
       return null
   }
@@ -1096,6 +1116,7 @@ const instructionModality = computed((): GenerateModelModality => {
   if (instructionKind.value === 'voice') return 'audio'
   if (instructionKind.value === 'model3d' || instructionKind.value === 'modelRigSkin')
     return 'model3d'
+  if (instructionKind.value === 'spatialWorld') return 'spatialWorld'
   return 'text'
 })
 
@@ -1118,14 +1139,17 @@ const instructionPlaceholder = computed(() => {
   if (instructionKind.value === 'model3d') {
     return t('graph.inspector.generate.model3dInstructionPlaceholder')
   }
+  if (instructionKind.value === 'spatialWorld') {
+    return t('graph.inspector.generate.spatialWorldInstructionPlaceholder')
+  }
   if (instructionKind.value === 'mediaReview') {
     return t('graph.inspector.mediaReview.instructionPlaceholder')
   }
   if (instructionKind.value === 'mediaRework') {
     return t('graph.inspector.mediaRework.instructionPlaceholder')
   }
-  if (instructionKind.value === 'worldExtract') {
-    return t('graph.inspector.generate.worldExtractInstructionPlaceholder')
+  if (instructionKind.value === 'spatialWorldExtract') {
+    return t('graph.inspector.generate.spatialWorldExtractInstructionPlaceholder')
   }
   if (instructionKind.value === 'beatSplit') {
     return t('graph.inspector.generate.beatSplitInstructionPlaceholder')
@@ -1181,6 +1205,8 @@ const instructionModelTitle = computed(() => {
   }
   if (instructionKind.value === 'voice') return t('graph.inspector.generate.voiceModel')
   if (instructionKind.value === 'model3d') return t('graph.inspector.generate.model3dModel')
+  if (instructionKind.value === 'spatialWorld')
+    return t('graph.inspector.generate.spatialSpatialWorld')
   if (instructionKind.value === 'modelRigSkin') return t('graph.inspector.generate.model3dModel')
   if (instructionKind.value === 'modelSegment') return t('graph.inspector.generate.model3dModel')
   if (
@@ -2191,6 +2217,40 @@ const showModel3dStyle = computed(
     modelOptions.value.find((o) => o.key === selectedModelKey.value)?.providerKind === 'lux3d'
 )
 
+/** 空间世界随机种子：仅世界生成节点展示（0 = 不传 seed，上游随机） */
+const showWorldSeed = computed(() => instructionKind.value === 'spatialWorld')
+
+const spatialWorldSeed = computed(() => {
+  const raw = props.node.params.spatialWorldSeed
+  return typeof raw === 'number' && Number.isFinite(raw) && raw > 0 ? Math.trunc(raw) : 0
+})
+
+function persistWorldSeed(value: number): void {
+  if (!props.hostId || !instructionKind.value) return
+  graphEditorHosts.updateNode(props.hostId, props.node.id, { spatialWorldSeed: value })
+}
+
+/** 世界生成：单图参考的全景模式（官方 is_pano），缺省 auto 自动识别等距柱状全景 */
+const spatialWorldPanoMode = computed((): 'auto' | 'always' | 'never' => {
+  const raw = props.node.params.spatialWorldPanoMode
+  return raw === 'always' || raw === 'never' ? raw : 'auto'
+})
+
+function persistWorldPanoMode(value: 'auto' | 'always' | 'never'): void {
+  if (!props.hostId || !instructionKind.value) return
+  graphEditorHosts.updateNode(props.hostId, props.node.id, { spatialWorldPanoMode: value })
+}
+
+/** 世界生成：关闭上游 recaption（指令原文直送，可复现性更好） */
+const spatialWorldDisableRecaption = computed(
+  () => props.node.params.spatialWorldDisableRecaption === true
+)
+
+function persistWorldDisableRecaption(value: boolean): void {
+  if (!props.hostId || !instructionKind.value) return
+  graphEditorHosts.updateNode(props.hostId, props.node.id, { spatialWorldDisableRecaption: value })
+}
+
 /** 3D 骨骼蒙皮：骨架类型（Meshy/Tripo Rigging API） */
 const showModel3dRigType = computed(() => instructionKind.value === 'modelRigSkin')
 
@@ -2615,7 +2675,13 @@ function onPreviewDblClick(): void {
       return
     }
     // 有文本输出 / 剧本文档的节点：双击打开记事本弹窗（引用节点除外）
-    if (!isAssetRef.value && isNodeTextCapable(props.node)) {
+    // 空间世界导出：note 分类但没有指令面板、也没有正文，双击应走下面的模型预览，
+    // 不能落进记事本分支（否则双击只会弹一个空的记事本）
+    if (
+      !isAssetRef.value &&
+      isNodeTextCapable(props.node) &&
+      props.node.typeId !== 'spatialWorld.export'
+    ) {
       emit('textOpen', props.node.id)
       return
     }
@@ -4033,6 +4099,12 @@ function formatTime(sec: number): string {
 .port.port-beat {
   border-color: #7eb6ff;
   background: color-mix(in srgb, #7eb6ff 28%, var(--graph-port-bg));
+}
+
+/* 空间世界口：与 model（默认灰）和世界元素目录口（绿）都区分开 */
+.port.port-world-model {
+  border-color: #b48cff;
+  background: color-mix(in srgb, #b48cff 28%, var(--graph-port-bg));
 }
 
 .port.port-shots {

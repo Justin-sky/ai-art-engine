@@ -102,6 +102,7 @@ import {
   executeModelRigCheckNode,
   executeModelRetargetNode,
   executeModelConvertNode,
+  executeSpatialWorldExportNode,
   executeModelTextureNode,
   executeModelAnimationNode
 } from './execute'
@@ -231,6 +232,14 @@ const ASSET_META: Array<{
     type: 'model3d',
     label: '3D Model',
     icon: '🧊',
+    outType: GraphPortType.model,
+    addable: true,
+    weight: 0.85
+  },
+  {
+    type: 'spatialWorld',
+    label: 'World Model',
+    icon: '🌍',
     outType: GraphPortType.model,
     addable: true,
     weight: 0.85
@@ -411,6 +420,35 @@ function model3dProcessingPorts(): GraphPortDef[] {
   ]
 }
 
+/**
+ * 空间世界生成（World Labs Marble）：文本提示 + 参考图（单图 / 多图同场景）+ 参考视频。
+ * 出口是 `spatialWorld`（严格同类型，不隐式兼容 `model`）：产物是「世界」（带 world_id、
+ * 含网格 + 高斯泼溅 + 全景），只能接「空间世界导出」；要变成可继续编排的模型，
+ * 先过空间世界导出（它的出口是 `model`）。
+ * 上游的 world_prompt 四选一（text / image / multi-image / video），执行时按
+ * 视频 > 参考图 的优先级取一种（见 execute/generateSpatialWorld.ts）。
+ */
+function spatialWorldProcessingPorts(): GraphPortDef[] {
+  return [
+    { id: 'in-text', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'Text' },
+    {
+      id: 'in-image',
+      direction: 'in',
+      dataType: GraphPortType.image,
+      multiple: true,
+      label: 'Image'
+    },
+    {
+      id: 'in-video',
+      direction: 'in',
+      dataType: GraphPortType.video,
+      multiple: true,
+      label: 'Video'
+    },
+    ...galleryOutPorts(GraphPortType.spatialWorld)
+  ]
+}
+
 /** 世界元素宿主：剧本文本入；出口为世界元素实体 */
 function worldHostPorts(): GraphPortDef[] {
   return [
@@ -469,34 +507,36 @@ function assetDef(meta: (typeof ASSET_META)[number]): NodeTypeDefinition {
               ? voiceProcessingPorts()
               : meta.type === 'model3d'
                 ? model3dProcessingPorts()
-                : meta.type === 'world'
-                  ? worldHostPorts()
-                  : meta.type === 'beat'
-                    ? beatHostPorts()
-                    : meta.type === 'gamePlay'
-                      ? [
-                          {
-                            id: 'in',
-                            direction: 'in' as const,
-                            dataType: GraphPortType.project,
-                            multiple: true,
-                            label: 'In'
-                          }
-                        ]
-                      : [
-                          ...(meta.processingIn
-                            ? [
-                                {
-                                  id: 'in',
-                                  direction: 'in' as const,
-                                  dataType: meta.processingIn,
-                                  multiple: true,
-                                  label: 'In'
-                                }
-                              ]
-                            : []),
-                          ...galleryOutPorts(meta.outType)
-                        ]
+                : meta.type === 'spatialWorld'
+                  ? spatialWorldProcessingPorts()
+                  : meta.type === 'world'
+                    ? worldHostPorts()
+                    : meta.type === 'beat'
+                      ? beatHostPorts()
+                      : meta.type === 'gamePlay'
+                        ? [
+                            {
+                              id: 'in',
+                              direction: 'in' as const,
+                              dataType: GraphPortType.project,
+                              multiple: true,
+                              label: 'In'
+                            }
+                          ]
+                        : [
+                            ...(meta.processingIn
+                              ? [
+                                  {
+                                    id: 'in',
+                                    direction: 'in' as const,
+                                    dataType: meta.processingIn,
+                                    multiple: true,
+                                    label: 'In'
+                                  }
+                                ]
+                              : []),
+                            ...galleryOutPorts(meta.outType)
+                          ]
 
   const defaultViewer = {
     position: { x: 0, y: 2.2, z: 10 },
@@ -550,6 +590,22 @@ function assetDef(meta: (typeof ASSET_META)[number]): NodeTypeDefinition {
           generateModel: '',
           generateProviderInstanceId: '',
           generateStyle: '',
+          weight: meta.weight,
+          volume: 1,
+          muted: false,
+          loop: true
+        }
+      }
+      if (meta.type === 'spatialWorld') {
+        return {
+          generateModel: '',
+          generateProviderInstanceId: '',
+          /** 世界生成随机种子（0 = 不传，交给上游随机） */
+          spatialWorldSeed: 0,
+          /** 单图参考的全景判定（官方 is_pano）：auto 自动识别 / always 强制 / never 关闭 */
+          spatialWorldPanoMode: 'auto',
+          /** 关闭上游 recaption（指令原文直送） */
+          spatialWorldDisableRecaption: false,
           weight: meta.weight,
           volume: 1,
           muted: false,
@@ -2512,7 +2568,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     addable: true,
     deletable: true,
     inspector: 'none',
-    inspectorId: 'studio.graph.worldExtract',
+    inspectorId: 'studio.graph.spatialWorldExtract',
     card: 'media',
     contributeToGeneration: false,
     execute: executeWorldExtractNode
@@ -2926,6 +2982,44 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     assetType: 'model',
     contributeToGeneration: false,
     execute: executeModelConvertNode
+  },
+  {
+    typeId: 'spatialWorld.export',
+    category: 'note',
+    label: 'World export',
+    icon: '🌐',
+    defaultTitle: 'World export',
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      {
+        id: 'in-world',
+        direction: 'in',
+        dataType: GraphPortType.spatialWorld,
+        multiple: false,
+        label: 'World'
+      },
+      ...galleryOutPorts(GraphPortType.model, {
+        out: 'graph.port.exportedMesh',
+        outAll: 'graph.port.exportedMeshAll'
+      })
+    ],
+    defaultParams: () => ({
+      /** mesh：HQ 网格（GLB，登记模型资产）；splats：PLY 泼溅（落文件） */
+      spatialWorldExportMode: 'mesh',
+      spatialWorldExportVariant: 'textured',
+      spatialWorldExportResolution: 'full_res',
+      generateModel: '',
+      generateProviderInstanceId: ''
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.spatialWorldExport',
+    card: 'media',
+    assetType: 'model',
+    contributeToGeneration: false,
+    execute: executeSpatialWorldExportNode
   },
   {
     typeId: 'model.texture',

@@ -88,6 +88,14 @@ export function resolveGalleryOutputsFromNodeParams(
       relativePath: item.relativePath,
       createdAt: item.createdAt,
       assetId: item.assetId,
+      // 只吃 task_id 的下游端点（部件补全 / 动画重定向）同样指望这一步别把 task id 丢掉
+      providerTaskId: item.providerTaskId,
+      /**
+       * 空间世界 id 必须一起带回来：单节点执行 / soft-resolve 时上游不 cook，
+       * 下游「空间世界导出」只能从这份重建结果里拿 world_id。
+       * 漏了就直接报 GRAPH_WORLD_EXPORT_NO_WORLD —— 明明刚生成过世界，却说没有世界。
+       */
+      spatialWorldId: item.spatialWorldId,
       rigMeta: item.rigMeta,
       rigQa: item.rigQa,
       bonePose: item.bonePose,

@@ -374,6 +374,12 @@ export function dualModelGalleryOutputs(
       ? { providerTaskId: picked.providerTaskId }
       : base?.providerTaskId
         ? { providerTaskId: base.providerTaskId }
+        : {}),
+    // World Labs 世界 id 同理：下游「空间世界导出」节点只认 world_id
+    ...(picked?.spatialWorldId
+      ? { spatialWorldId: picked.spatialWorldId }
+      : base?.spatialWorldId
+        ? { spatialWorldId: base.spatialWorldId }
         : {})
   }
   return { out: value, [GRAPH_OUT_ALL_PORT_ID]: value }

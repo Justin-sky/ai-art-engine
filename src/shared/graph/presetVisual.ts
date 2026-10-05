@@ -178,7 +178,7 @@ export function resolveInstructionVisual(input: {
       ]
     }
   }
-  if (id.startsWith('world.') || id.includes('worldExtract')) {
+  if (id.startsWith('world.') || id.includes('spatialWorldExtract')) {
     return { kind: 'chips', chips: ['角', '景', '道'] }
   }
   if (id.startsWith('beat.') || id.includes('beat')) {

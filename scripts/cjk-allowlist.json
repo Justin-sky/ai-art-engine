@@ -41,7 +41,8 @@
       "name: input.name ?? `生成图片 ${new Date().toLocaleString()}`,",
       "const LUX3D_BUSY_MARKERS = ['进行中的生成任务', '已有进行中', 'busy']",
       "name: input.name ?? `生成语音 ${new Date().toLocaleString()}`,",
-      "name: input.name ?? `生成音乐 ${new Date().toLocaleString()}`,"
+      "name: input.name ?? `生成音乐 ${new Date().toLocaleString()}`,",
+      "name: input.name ?? `空间世界泼溅 ${new Date().toLocaleString()}`,"
     ],
     "src/main/services/modelProviders/http.ts": [
       ": `${message}（当前 Key 不像 OpenRouter 密钥：请到 openrouter.ai/keys 复制以 sk-or-v1- 开头的密钥，并确认已保存设置）`",
@@ -63,6 +64,12 @@
     "src/main/services/modelProviders/lux3d/adapter.ts": [
       "description: 'Lux3D G1 3D 模型生成（文本/图片/多图，质量优先）'",
       "description: 'Lux3D G1-Turbo 3D 模型生成（文本/图片，速度优先）'"
+    ],
+    "src/main/services/modelProviders/worldlabs/adapter.ts": [
+      "description: 'World Labs Marble 1.1 世界生成（文本/单图/多图/视频，标准世界尺寸）'",
+      "'World Labs Marble 1.1 Plus 世界生成（更大世界：户外或大型室内空间，消耗更多积分）'",
+      "description: 'World Labs Marble 1.0 世界生成（上一代模型；上游仍支持，后续版本会移除）'",
+      "description: 'World Labs Marble 1.0 Draft 草稿档（上一代；上游仍支持，后续版本会移除）'"
     ],
     "src/main/services/modelProviders/magicrouter/http.ts": [
       "const MAGICROUTER_AUTH_HINT_ZH = '请检查 MagicRouter API Key 是否正确、已保存'"
@@ -121,10 +128,18 @@
       "'视频打点需要 ffmpeg：当前系统未检测到 ffmpeg/ffprobe，安装后重试',"
     ],
     "src/main/services/videoJobService.ts": [
+      "? `生成空间世界 ${new Date().toLocaleString()}`",
+      "? `空间世界导出 ${new Date().toLocaleString()}`",
       "? `生成 3D 模型 ${new Date().toLocaleString()}`",
       ": `生成视频 ${new Date().toLocaleString()}`),",
       "console.warn('[videoJob] 回写图节点失败（已落盘资产）:', err)",
-      "console.warn('[videoJob] 清理对象存储失败:', err)"
+      "console.warn('[videoJob] 清理对象存储失败:', err)",
+      "console.warn(`[videoJob] 附加产物下载失败（不影响主产物）: ${item.kind}`, err)",
+      "name: job.name ?? `生成空间世界 ${new Date().toLocaleString()}`,",
+      "console.warn(`[videoJob] 附加产物登记资产失败（不影响主产物）: ${job.localJobId}`, err)",
+      "({ detail }) => `3D 模型已生成但下载失败：${detail}`,",
+      "({ detail }) => `空间世界已生成但下载失败：${detail}`,",
+      "({ detail }) => `空间世界导出已完成但下载失败：${detail}`,"
     ],
     "src/renderer/src/components/AssetBrowser.vue": [
       "if ((includes('空镜', '空镜头', '无人', '没人') || is('empty')) && kinds.has('empty'))"
@@ -194,6 +209,7 @@
       "motion2d: '2D 动作',",
       "model: '模型',",
       "model3d: '3D 模型',",
+      "spatialWorld: '空间世界',",
       "screenplay: '剧本',",
       "gameSystem: '游戏系统策划案',",
       "canvas: '剧集',",
@@ -1081,7 +1097,8 @@
       "'请基于上游场参考，按系统提示词对主题、故事脉络与环境氛围做深度细化；仅输出生产级正文，不要 JSON。'",
       "'根据现有内容（上游输入与 @ 引用）扩写、整理为完整的 2D 帧动画序列描述：角色/主体执行一个连贯动作，帧序从左到右、从上到下排布成等尺寸格子，所有帧外观与画风完全一致、仅动作变化；画面干净，不加多余装饰。'",
       "'请将策划案中的 UI 拆分为独立界面，并仅输出系统提示词要求的 JSON 数组本身——不要用对象包裹，不要用 markdown 列表。每一项对应一个界面，包含 id、title、可用于生图的详细带字提示词 prompt，以及同界面的空字底图提示词 cleanPrompt（布局一致但无可读文字）。提示词禁止出现任何视觉风格/材质/光影/配色描述，策划案中的风格描述也要一并剔除；所有视觉细节都交给风格参考图，且每条 prompt 必须以风格锁定语结尾，明确要求图像模型参考风格参考图中的 UI 元素、界面风格、控件、配色等所有细节。'",
-      "export const DEFAULT_MODEL3D_USER_PROMPT_ZH = '根据创作意图（文本和/或参考图）生成 3D 模型。'"
+      "export const DEFAULT_MODEL3D_USER_PROMPT_ZH = '根据创作意图（文本和/或参考图）生成 3D 模型。'",
+      "'根据创作意图（文本和/或参考图）生成可漫游的 3D 世界。'"
     ],
     "src/shared/graph/worldElementParse.ts": [
       "角色: 'characters',",

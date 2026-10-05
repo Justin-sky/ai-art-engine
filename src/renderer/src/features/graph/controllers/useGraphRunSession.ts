@@ -174,6 +174,73 @@ export interface GraphRunSessionOptions {
       logs: Array<{ level: 'info' | 'warn' | 'error'; message: string; ts: number }>
     }>
   }>
+  generateSpatialWorld?: (input: {
+    prompt: string
+    model?: string
+    providerInstanceId?: string
+    inputReferences?: Array<{ kind: 'image_url' | 'video_url' | 'audio_url'; url: string }>
+    outputDir?: string
+    name?: string
+    /** 世界展示名（World Labs display_name） */
+    displayName?: string
+    /** 随机种子 */
+    seed?: number
+    /** 单图参考按全景处理（官方 is_pano） */
+    panoMode?: 'auto' | 'always' | 'never'
+    /** 关闭上游 recaption */
+    disableRecaption?: boolean
+    graphBinding?: {
+      hostId?: string
+      nodeId?: string
+      assetId?: string
+      shotId?: string
+      canvasField?: string
+    }
+  }) => Promise<{
+    assetId: string
+    relativePath: string
+    model: string
+    uploads?: Array<{
+      objectKey: string
+      url: string
+      bytes: number
+      sourceLabel: string
+      logs: Array<{ level: 'info' | 'warn' | 'error'; message: string; ts: number }>
+    }>
+    /** 参考处理说明（如「已上传 N 个托管媒体资产」） */
+    referenceNotes?: string[]
+    /** 随世界一起免费返回的附加产物（SPZ 泼溅 / 全景图），已落盘在主产物旁边 */
+    extras?: Array<{ kind: string; relativePath?: string }>
+    /** World Labs 世界 id：下游「空间世界导出」只认它 */
+    spatialWorldId?: string
+  }>
+  /**
+   * 出口值丢了 world_id 时的兜底：按产出该模型的节点去任务记录里找回来。
+   * 世界生成的积分已经花过，不该因为一个字段丢了就逼用户重新生成。
+   */
+  lookupSpatialWorldId?: (input: {
+    nodeId?: string
+    assetId?: string
+  }) => Promise<string | undefined>
+  exportWorld?: (input: {
+    spatialWorldId: string
+    assetType: 'splats' | 'mesh'
+    format: 'ply' | 'glb'
+    meshVariant?: 'textured' | 'vertex_colored'
+    resolution?: 'full_res' | '500k' | '150k' | '100k'
+    providerInstanceId?: string
+    model?: string
+    sourceRelativePath?: string
+    outputDir?: string
+    name?: string
+    graphBinding?: {
+      hostId?: string
+      nodeId?: string
+      assetId?: string
+      shotId?: string
+      canvasField?: string
+    }
+  }) => Promise<{ assetId?: string; relativePath: string; model: string }>
   rigModel3d?: (input: {
     modelRelativePath?: string
     modelUrl?: string
@@ -493,7 +560,9 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       GRAPH_MODEL_DSH_START: 'graph.run.modelDshStart',
       GRAPH_MODEL_DSH_NO_MODEL: 'graph.run.modelPoseNoModel',
       GRAPH_MODEL_ANIM_NO_MATCH: 'graph.run.modelAnimNoMatch',
-      GRAPH_MODEL_ANIM_FAILED: 'graph.run.modelAnimFailed'
+      GRAPH_MODEL_ANIM_FAILED: 'graph.run.modelAnimFailed',
+      // 空间世界导出只认 world_id（上游不是空间世界生成节点 / 世界是旧版本生成的）
+      GRAPH_WORLD_EXPORT_NO_WORLD: 'graph.run.worldExportNoWorld'
     }
     if (!code) return options.t('graph.run.failed')
     if (keys[code]) return options.t(keys[code])
@@ -1017,6 +1086,187 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
     }
   }
 
+  function wrapGenerateSpatialWorld(run: ActiveRun) {
+    const generateSpatialWorld = options.generateSpatialWorld
+    if (!generateSpatialWorld) return undefined
+    return async (input: {
+      prompt: string
+      model?: string
+      providerInstanceId?: string
+      inputReferences?: Array<{ kind: 'image_url' | 'video_url' | 'audio_url'; url: string }>
+      outputDir?: string
+      name?: string
+      displayName?: string
+      seed?: number
+      panoMode?: 'auto' | 'always' | 'never'
+      disableRecaption?: boolean
+      graphBinding?: {
+        hostId?: string
+        nodeId?: string
+        assetId?: string
+        shotId?: string
+        canvasField?: string
+      }
+    }) => {
+      if (isRunStale(run)) {
+        throw new DOMException('Aborted', 'AbortError')
+      }
+      const startedAt = Date.now()
+      const request: {
+        prompt: string
+        model?: string
+        providerInstanceId?: string
+        seed?: number
+        panoMode?: 'auto' | 'always' | 'never'
+        disableRecaption?: boolean
+        inputReferenceCount?: number
+        inputReferenceUrls?: Array<{ kind?: string; url: string }>
+        uploads?: Array<{
+          sourceLabel: string
+          objectKey: string
+          bytes: number
+          urlPreview: string
+        }>
+      } = {
+        prompt: input.prompt,
+        model: input.model,
+        providerInstanceId: input.providerInstanceId,
+        seed: input.seed,
+        panoMode: input.panoMode,
+        disableRecaption: input.disableRecaption || undefined,
+        inputReferenceCount: input.inputReferences?.length || undefined,
+        inputReferenceUrls: summarizeReferenceListForLog(input.inputReferences)
+      }
+      run.logBridge.appendMessage(options.t('graph.logs.submitSpatialWorld'))
+      const progressNodeId =
+        input.graphBinding?.nodeId?.trim() || run.logBridge.currentRunningNodeId() || undefined
+      const stopProgress = subscribeVideoJobProgress({
+        nodeId: progressNodeId,
+        onMessage: (message) => run.logBridge.appendMessage(message),
+        format: (job) => formatVideoJobProgressMessage(job, options.t)
+      })
+      try {
+        const value = await withAbortSignal(generateSpatialWorld(input), run)
+        if (value.uploads?.length) {
+          request.uploads = value.uploads.map((item) => ({
+            sourceLabel: item.sourceLabel,
+            objectKey: item.objectKey,
+            bytes: item.bytes,
+            urlPreview: item.url.slice(0, 120)
+          }))
+          for (const item of value.uploads) {
+            for (const log of item.logs) {
+              run.logBridge.appendMessage(`[ObjectStorage] ${log.message}`, log.level)
+            }
+          }
+        }
+        // 参考媒体的托管上传 / 回退说明（不依赖对象存储那条路也在这里留痕）
+        for (const note of value.referenceNotes ?? []) {
+          run.logBridge.appendMessage(note, 'info')
+        }
+        run.logBridge.recordApiCall({
+          kind: 'generateSpatialWorld',
+          request,
+          response: {
+            model: value.model,
+            assetId: value.assetId,
+            relativePath: value.relativePath
+          },
+          durationMs: Math.max(0, Date.now() - startedAt)
+        })
+        return value
+      } catch (err) {
+        if (!(err instanceof DOMException && err.name === 'AbortError')) {
+          run.logBridge.recordApiCall({
+            kind: 'generateSpatialWorld',
+            request,
+            error: err instanceof Error ? err.message : String(err),
+            durationMs: Math.max(0, Date.now() - startedAt)
+          })
+        }
+        throw err
+      } finally {
+        stopProgress()
+      }
+    }
+  }
+
+  /**
+   * 空间世界导出（`spatialWorld.export` 节点）：HQ 网格导出可能等上一小时，
+   * 与其它长任务一致地记运行日志 + 复用 videoJob 进度订阅。
+   */
+  function wrapExportWorld(run: ActiveRun) {
+    const exportWorld = options.exportWorld
+    if (!exportWorld) return undefined
+    return async (input: {
+      spatialWorldId: string
+      assetType: 'splats' | 'mesh'
+      format: 'ply' | 'glb'
+      meshVariant?: 'textured' | 'vertex_colored'
+      resolution?: 'full_res' | '500k' | '150k' | '100k'
+      providerInstanceId?: string
+      model?: string
+      sourceRelativePath?: string
+      outputDir?: string
+      name?: string
+      graphBinding?: {
+        hostId?: string
+        nodeId?: string
+        assetId?: string
+        shotId?: string
+        canvasField?: string
+      }
+    }) => {
+      if (isRunStale(run)) {
+        throw new DOMException('Aborted', 'AbortError')
+      }
+      const startedAt = Date.now()
+      const request = {
+        spatialWorldId: input.spatialWorldId,
+        assetType: input.assetType,
+        format: input.format,
+        meshVariant: input.meshVariant,
+        resolution: input.resolution,
+        providerInstanceId: input.providerInstanceId,
+        model: input.model
+      }
+      run.logBridge.appendMessage(options.t('graph.logs.submitSpatialWorldExport'))
+      const progressNodeId =
+        input.graphBinding?.nodeId?.trim() || run.logBridge.currentRunningNodeId() || undefined
+      const stopProgress = subscribeVideoJobProgress({
+        nodeId: progressNodeId,
+        onMessage: (message) => run.logBridge.appendMessage(message),
+        format: (job) => formatVideoJobProgressMessage(job, options.t)
+      })
+      try {
+        const value = await withAbortSignal(exportWorld(input), run)
+        run.logBridge.recordApiCall({
+          kind: 'exportWorld',
+          request,
+          response: {
+            model: value.model,
+            assetId: value.assetId,
+            relativePath: value.relativePath
+          },
+          durationMs: Math.max(0, Date.now() - startedAt)
+        })
+        return value
+      } catch (err) {
+        if (!(err instanceof DOMException && err.name === 'AbortError')) {
+          run.logBridge.recordApiCall({
+            kind: 'exportWorld',
+            request,
+            error: err instanceof Error ? err.message : String(err),
+            durationMs: Math.max(0, Date.now() - startedAt)
+          })
+        }
+        throw err
+      } finally {
+        stopProgress()
+      }
+    }
+  }
+
   function wrapRigModel3d(run: ActiveRun) {
     const rigModel3d = options.rigModel3d
     if (!rigModel3d) return undefined
@@ -1227,6 +1477,9 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         generateVideo: wrapGenerateVideo(run),
         generateSpeech: wrapGenerateSpeech(run),
         generateModel3d: wrapGenerateModel3d(run),
+        generateSpatialWorld: wrapGenerateSpatialWorld(run),
+        lookupSpatialWorldId: options.lookupSpatialWorldId,
+        exportWorld: wrapExportWorld(run),
         rigModel3d: wrapRigModel3d(run),
         segmentModel3d: wrapSegmentModel3d(run),
         postProcessModel3d: wrapPostProcessModel3d(run),

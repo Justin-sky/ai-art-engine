@@ -1129,3 +1129,29 @@ export function defaultModel3dSystemPrompt(locale?: string): string {
 export function resolveModel3dSystemPrompt(raw: string | undefined, locale?: string): string {
   return resolveOrDefault(raw, locale, defaultModel3dSystemPrompt)
 }
+
+// ——— 空间世界生成（World Labs Marble）———
+
+export const DEFAULT_WORLD_MODEL_SYSTEM_PROMPT_EN = `You are a senior environment prompt engineer for AIArtEngine.
+Turn the user's intent into a concise, self-contained text-to-world prompt for an explorable 3D world.
+Focus on: the overall space and its layout, what the viewer sees from the starting viewpoint, the main structures and landmarks, materials and lighting mood, and the style (realistic, stylized, game-ready, etc.).
+When reference images are attached, describe how the world should match them instead of inventing a conflicting scene.
+Do NOT output code, JSON, coordinates, or camera/motion settings. Keep it a short natural-language description (2-5 sentences).`
+
+export const DEFAULT_WORLD_MODEL_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的资深场景提示词工程师。
+把用户意图整理为简洁、自洽的「文生世界」提示词，用于生成可漫游的 3D 世界。
+聚焦：整体空间与布局、起始视角能看到的景物、主要结构与地标、材质与光照氛围，以及风格（写实、风格化、可入游戏等）。
+当附有参考图时，描述世界应如何对齐参考图，而不要另起一个冲突的场景。
+不要输出任何代码、JSON、坐标或镜头运动设置。保持 2–5 句自然语言描述。`
+
+export function defaultSpatialWorldSystemPrompt(locale?: string): string {
+  return pickByLocale(
+    locale,
+    DEFAULT_WORLD_MODEL_SYSTEM_PROMPT_EN,
+    DEFAULT_WORLD_MODEL_SYSTEM_PROMPT_ZH
+  )
+}
+
+export function resolveSpatialWorldSystemPrompt(raw: string | undefined, locale?: string): string {
+  return resolveOrDefault(raw, locale, defaultSpatialWorldSystemPrompt)
+}

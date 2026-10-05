@@ -828,7 +828,6 @@ import {
   type GraphNodeTextField,
   type GraphNodeTypeId,
   type GraphPortDataType,
-  type GraphValue,
   type MultiAngleCameraState,
   multiAngleCameraToNodePatch,
   readMultiAngleCameraFromNode,
@@ -907,11 +906,10 @@ import {
   isGraphOutputTerminalNode,
   summarizeReferenceListForLog,
   GraphPortType,
-  GRAPH_OUT_ALL_PORT_ID,
   WORLD_ELEMENT_KINDS,
   collectBlockedNodeIds
 } from '@shared/graph'
-import { isVideoJobActive, jobKind, type VideoJobRecord } from '@shared/videoJob'
+import { isVideoJobActive, type VideoJobRecord } from '@shared/videoJob'
 import { SHARED_ERRORS } from '@shared/errors/catalog'
 import { fail } from '@shared/errors/appError'
 import { useStudioI18n } from '../composables/useStudioI18n'
@@ -965,6 +963,7 @@ import {
   removeNodeStagesFromGenParams
 } from '../features/director/directorStageBinding'
 import { graphRunHosts } from '../features/graph/model/graphRunHosts'
+import { buildJobDoneOutputs } from '../features/graph/model/graphGalleryOutput'
 import { liftHostOutputsFromInnerGraph } from '../features/graph/model/liftHostOutputsFromInner'
 import { resolveGraphNodeDisplayTitle } from '../features/graph/model/graphNodeDisplayTitle'
 import { useGraphRunSession } from '../features/graph/controllers/useGraphRunSession'
@@ -1797,6 +1796,33 @@ const {
     }
     return value
   },
+  generateSpatialWorld: async (input) => {
+    const value = await window.studio.generateSpatialWorld(input)
+    if (value.relativePath === 'Assets' || value.relativePath.startsWith('Assets/')) {
+      await project.refreshAssets()
+    }
+    return value
+  },
+  /**
+   * 出口值丢了 world_id 时的兜底：交给主进程去任务记录里找，
+   * 记录里也没存住就**拿 operation id 重新问一次上游**（世界生成的积分已经花过，
+   * 不该因为一个字段没落盘就逼用户重新生成一次世界）。
+   */
+  lookupSpatialWorldId: async (input) => {
+    if (typeof window.studio?.recoverSpatialWorldId !== 'function') return undefined
+    try {
+      return await window.studio.recoverSpatialWorldId(input)
+    } catch {
+      return undefined
+    }
+  },
+  exportWorld: async (input) => {
+    const value = await window.studio.exportWorld(input)
+    if (value.relativePath === 'Assets' || value.relativePath.startsWith('Assets/')) {
+      await project.refreshAssets()
+    }
+    return value
+  },
   rigModel3d: async (input) => {
     const value = await window.studio.rigModel3d(input)
     if (value.relativePath === 'Assets' || value.relativePath.startsWith('Assets/')) {
@@ -1998,30 +2024,6 @@ importRunStatesSnapshot(
 
 // —— 后台生成任务与节点状态对齐：退出重启后任务仍在轮询时，节点不应停留在「失败」 ——
 let stopVideoJobUpdated: (() => void) | null = null
-
-function buildJobDoneOutputs(job: VideoJobRecord): Record<string, GraphValue> {
-  const assetId = job.assetId!
-  const createdAt = job.updatedAt
-  if (jobKind(job) === 'model3d') {
-    const modelValue: GraphValue = {
-      kind: 'asset',
-      assetId,
-      assetType: 'model',
-      ...(job.relativePath ? { relativePath: job.relativePath } : {})
-    }
-    return { out: modelValue, [GRAPH_OUT_ALL_PORT_ID]: modelValue }
-  }
-  const item = {
-    id: assetId,
-    dataUrl: '',
-    createdAt,
-    ...(job.relativePath ? { relativePath: job.relativePath } : {})
-  }
-  return {
-    out: { kind: 'video', ...item },
-    [GRAPH_OUT_ALL_PORT_ID]: { kind: 'videos', items: [item] }
-  }
-}
 
 function applyVideoJobToNode(job: VideoJobRecord): void {
   // 本画布正在执行该节点时由 runGraph 自身维护节点状态，避免并发回写冲突；
@@ -3396,6 +3398,8 @@ type ResourceMenuGroupId =
   | 'game'
   | 'motionFx'
   | 'model3d'
+  /** 空间世界生成（World Labs Marble）：独立分组，与 3D 模型生成分开 */
+  | 'spatialWorld'
   | 'comic'
   | 'qc'
   | 'ad'
@@ -3509,6 +3513,10 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
       'model.texture',
       'model.animation'
     ]
+  },
+  {
+    id: 'spatialWorld',
+    typeIds: ['asset.spatialWorld', 'spatialWorld.export']
   },
   {
     id: 'comic',
@@ -3655,7 +3663,16 @@ const resourceMenuGroups = computed((): ResourceMenuGroup[] => {
     const items = group.typeIds
       .map((typeId) => byTypeId.get(typeId as GraphNodeTypeId))
       .filter((item): item is AddableMenuItem => item != null)
-      .concat(group.id === 'episode' ? EPISODE_AGENT_PRESET_ITEMS : [])
+      .concat(
+        // 剧集 Agent 预设项自带预设参数，不能简单换成 byTypeId 里的普通项；
+        // 但必须过同一道类型过滤（byTypeId 已按当前连线类型筛过），
+        // 否则从任何端口拉线都会冒出剧集节点 —— 例如「空间世界导出」的模型口
+        group.id === 'episode'
+          ? EPISODE_AGENT_PRESET_ITEMS.filter((item) =>
+              byTypeId.has(item.typeId as GraphNodeTypeId)
+            )
+          : []
+      )
       .sort((a, b) => compareNames(a.label, b.label))
     return {
       id: group.id,
@@ -3668,6 +3685,7 @@ const resourceMenuGroups = computed((): ResourceMenuGroup[] => {
               group.id === 'game' ||
               group.id === 'motionFx' ||
               group.id === 'model3d' ||
+              group.id === 'spatialWorld' ||
               group.id === 'comic' ||
               group.id === 'qc' ||
               group.id === 'ad'

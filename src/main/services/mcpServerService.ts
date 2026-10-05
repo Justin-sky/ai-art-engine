@@ -139,6 +139,7 @@ import {
   type GenerateImageInput,
   type GenerateModel3dInput,
   type GenerateVideoInput,
+  type GenerateSpatialWorldInput,
   type TranscribeAudioSegment
 } from '@shared/modelProvider'
 import { parseDecisionQuestions } from '@shared/decisionQuestion'
@@ -2329,7 +2330,7 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'models_list',
     title: '可用模型列表',
     description:
-      '列出应用设置中已启用的模型提供商与各模态（text/image/video/audio/model3d/decisions）勾选的模型。generate_* 工具的 model / providerInstanceId 参数从这里取；decisions 是 OpenRouter 决策模型（decide 工具用）。',
+      '列出应用设置中已启用的模型提供商与各模态（text/image/video/audio/model3d/world/decisions）勾选的模型。generate_* 工具的 model / providerInstanceId 参数从这里取；world 是 World Labs Marble 空间世界（generate_world 工具用）；decisions 是 OpenRouter 决策模型（decide 工具用）。',
     inputSchema: { type: 'object', properties: {} },
     handler: () => ({
       providers: settingsService
@@ -2340,7 +2341,7 @@ const TOOL_DEFS: McpToolDef[] = [
           label: provider.label,
           providerKind: provider.providerKind,
           modalities: Object.fromEntries(
-            (['text', 'image', 'video', 'audio', 'model3d', 'decisions'] as const).map(
+            (['text', 'image', 'video', 'audio', 'model3d', 'world', 'decisions'] as const).map(
               (modality) => [
                 modality,
                 {
@@ -2715,6 +2716,142 @@ const TOOL_DEFS: McpToolDef[] = [
       broadcastAsset(result.assetId)
       return {
         ...result,
+        relativePath: liveAssetRelativePath(result)
+      }
+    }
+  },
+  {
+    name: 'generate_world',
+    title: '生成空间世界',
+    description:
+      '文生世界 / 图生世界 / 多图生世界 / 视频生世界（World Labs Marble），产出可漫游 3D 世界的 GLB 网格并落盘到工程缓存目录 Cache/Models（不自动进资产库）。单次生成约 5 分钟，模型只有 marble-1.1（标准）与 marble-1.1-plus（更大世界，更贵）。参考输入四选一：文本、1 张图、2–4 张同场景多视角图、或 1 段参考视频（同时给了视频与图片时以视频为准；视频推荐 mp4 / webm / mov / avi，单条不超过 100MB）；相对/本地路径会自动上传到已配置的对象存储转换为公网 URL（未配置对象存储时报错，可用 storage_status 查询）。需要进资产库时由用户在对话卡上点「保存到资产库」按钮。返回工程内相对路径。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        prompt: {
+          type: 'string',
+          description: '世界描述：空间格局、起始视角能看到的景物、光照与风格'
+        },
+        name: { type: 'string', description: '文件显示名' },
+        model: {
+          type: 'string',
+          description: '空间世界 id：marble-1.1（标准）/ marble-1.1-plus（更大世界，更贵）'
+        },
+        providerInstanceId: { type: 'string', description: '提供商实例 id' },
+        displayName: {
+          type: 'string',
+          description: '世界展示名（上游 display_name，最长 64 字符）'
+        },
+        seed: {
+          type: 'number',
+          description: '随机种子 0–4294967295（同种子同描述可复现同一世界；省略则由上游随机）'
+        },
+        panoMode: {
+          type: 'string',
+          enum: ['auto', 'always', 'never'],
+          description:
+            '仅单图参考生效：auto（默认，自动识别 2:1 等距柱状全景）/ always 强制当全景 / never 当普通图片。全景能给出完整空间信息，通常比普通图更准'
+        },
+        disableRecaption: {
+          type: 'boolean',
+          description:
+            '关闭上游 recaption：true 时指令原文直送（配合 seed 更可复现）；缺省由上游自动补写画面描述'
+        },
+        tags: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '世界标签（官方 tags，最多 10 个、每个 ≤32 字符；仅供 World Labs 侧检索）'
+        },
+        publicWorld: {
+          type: 'boolean',
+          description: '把生成的世界设为公开（官方 permission.public，默认 false 仅自己可见）'
+        },
+        referenceImageUrls: {
+          type: 'array',
+          items: { type: 'string' },
+          description:
+            '参考图（图生世界 / 多图生世界，最多 4 张）：支持 http(s) 地址、data URL、工程内相对路径或本地绝对路径。与 referenceVideoUrl 同时给出时以视频为准'
+        },
+        referenceVideoUrl: {
+          type: 'string',
+          description:
+            '参考视频（视频生世界，只取 1 条）：支持 http(s) 地址、工程内相对路径或本地绝对路径；相对/本地路径会自动上传对象存储换公网 URL。推荐 mp4 / webm / mov / avi，单条不超过 100MB（上游硬限制）'
+        },
+        extraParams: {
+          type: 'object',
+          description:
+            '低频参数透传（模型特有字段），合并进底层生成输入；显式入参优先于这里的同名字段'
+        }
+      },
+      required: ['prompt']
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const referenceVideoUrl = optionalString(args, 'referenceVideoUrl')
+      const input: GenerateSpatialWorldInput & { name?: string } = {
+        ...cacheOnlyGenExtraParams(args),
+        prompt: readString(args, 'prompt'),
+        name: optionalString(args, 'name'),
+        model: optionalString(args, 'model'),
+        providerInstanceId: optionalString(args, 'providerInstanceId'),
+        displayName: optionalString(args, 'displayName'),
+        seed: typeof args.seed === 'number' && Number.isFinite(args.seed) ? args.seed : undefined,
+        panoMode:
+          args.panoMode === 'always' || args.panoMode === 'never' || args.panoMode === 'auto'
+            ? args.panoMode
+            : undefined,
+        disableRecaption: args.disableRecaption === true ? true : undefined,
+        tags: Array.isArray(args.tags)
+          ? args.tags.filter((tag): tag is string => typeof tag === 'string')
+          : undefined,
+        publicWorld: args.publicWorld === true ? true : undefined,
+        // 图片与视频都留在同一份引用列表里：适配器按 kind 决定 world_prompt 形态（视频优先）
+        inputReferences: [
+          ...(Array.isArray(args.referenceImageUrls)
+            ? args.referenceImageUrls
+                .filter((item): item is string => typeof item === 'string')
+                .map((url) => ({ kind: 'image_url' as const, url }))
+            : []),
+          ...(referenceVideoUrl ? [{ kind: 'video_url' as const, url: referenceVideoUrl }] : [])
+        ]
+      }
+      // 与 3D 模型同口径：对话生成的世界只落 Cache、不入资产库（避免重复卡）
+      const result = await runGenActivity(
+        'generate_world',
+        activityTitle(input.name, input.prompt),
+        input.model,
+        () => modelProviderFacade.generateSpatialWorld(input),
+        (r) => ({ assetId: r.assetId, relativePath: liveAssetRelativePath(r) }),
+        undefined,
+        (r) => ({
+          kind: 'generateSpatialWorld',
+          nodeId: 'mcp',
+          request: {
+            prompt: input.prompt,
+            model: input.model,
+            providerInstanceId: input.providerInstanceId,
+            seed: input.seed,
+            inputReferenceCount: input.inputReferences?.length || undefined,
+            inputReferenceUrls: summarizeReferenceListForLog(input.inputReferences),
+            uploads: r.uploads?.map((item) => ({
+              sourceLabel: item.sourceLabel,
+              objectKey: item.objectKey,
+              bytes: item.bytes,
+              urlPreview: item.url.slice(0, 120)
+            }))
+          },
+          response: {
+            model: r.model,
+            assetId: r.assetId,
+            relativePath: liveAssetRelativePath(r)
+          }
+        })
+      )
+      broadcastAsset(result.assetId)
+      return {
+        ...result,
+        // 附加产物（高斯泼溅 SPZ / 360 全景图）随世界落盘在主产物旁边，路径一并回报
+        extras: result.extras?.filter((item) => item.relativePath?.trim()),
         relativePath: liveAssetRelativePath(result)
       }
     }

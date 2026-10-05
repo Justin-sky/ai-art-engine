@@ -47,6 +47,8 @@ export interface GraphRunLogApiCall {
     | 'generateSpeech'
     | 'generateMusic'
     | 'generateModel3d'
+    | 'generateSpatialWorld'
+    | 'exportWorld'
     | 'generateDecisions'
     | 'rigModel3d'
     | 'segmentModel3d'

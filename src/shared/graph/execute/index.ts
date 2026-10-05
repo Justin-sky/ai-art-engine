@@ -49,6 +49,8 @@ export {
 export * from './host'
 export * from './generateMedia'
 export * from './generateModel3d'
+export * from './generateSpatialWorld'
+export * from './spatialWorldExport'
 export * from './generateText'
 export * from './decisions'
 export * from './mediaReview'

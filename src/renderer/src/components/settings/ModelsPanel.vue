@@ -419,6 +419,7 @@ import {
   isCustomProvider,
   isLocalOpenAiProvider,
   isModel3dProviderKind,
+  isWorldProviderKind,
   isVllmProvider,
   modalityConfig,
   modelProviderCredentialsUrl,
@@ -519,6 +520,9 @@ function settingsModalitiesFor(provider: ModelProviderInstance): ModelModality[]
   if (isModel3dProviderKind(provider.providerKind)) {
     return ['model3d']
   }
+  if (isWorldProviderKind(provider.providerKind)) {
+    return ['spatialWorld']
+  }
   if (provider.providerKind === 'openrouter') {
     return ['text', 'image', 'video', 'decisions']
   }
@@ -526,7 +530,9 @@ function settingsModalitiesFor(provider: ModelProviderInstance): ModelModality[]
     // 决策模型厂商：只做决策判定，没有文本 / 图片 / 视频生成
     return ['decisions']
   }
-  return MODEL_MODALITIES.filter((m) => m !== 'audio' && m !== 'model3d' && m !== 'decisions')
+  return MODEL_MODALITIES.filter(
+    (m) => m !== 'audio' && m !== 'model3d' && m !== 'spatialWorld' && m !== 'decisions'
+  )
 }
 
 function modalityTabLabel(provider: ModelProviderInstance, mod: ModelModality): string {
@@ -671,6 +677,9 @@ function modalityHintText(provider: ModelProviderInstance): string {
   }
   if (provider.providerKind === 'typesafe') {
     return t(`settings.models.typesafeModalityHint.${mod}`)
+  }
+  if (provider.providerKind === 'worldlabs') {
+    return t(`settings.models.worldlabsModalityHint.${mod}`)
   }
   return t(`settings.models.modalityHint.${mod}`)
 }

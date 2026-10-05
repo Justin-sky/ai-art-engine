@@ -56,6 +56,12 @@ export function contextMenuResourceGroupIcon(groupId: string): string {
       return ANIM2D_ASSET_ICON
     case 'model3d':
       return '🧊'
+    /**
+     * 「空间世界」分组不用 🌍：组内节点（`asset.spatialWorld`）就是 🌍，
+     * 分组与节点长得一样就分不清谁是组、谁是节点（同 video / text 分组的教训）。
+     */
+    case 'spatialWorld':
+      return '🗺️'
     case 'comic':
       return '💬'
     case 'qc':

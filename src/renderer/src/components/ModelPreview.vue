@@ -41,6 +41,13 @@ import SaveAssetDialog from './SaveAssetDialog.vue'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { loadModelScene } from '../features/director/loadModelScene'
+import {
+  disposeSparkLayer,
+  ensureSparkLayer,
+  isGaussianSplatObject,
+  primeSparkLayer,
+  splatObjectBounds
+} from '../features/director/splatMesh'
 import { skeletonClipLabel } from '../features/director/skeletonAnim'
 import { collectSkinningBones, isSkinningBone } from '../features/director/skeletonRetarget'
 import { useStudioI18n } from '../composables/useStudioI18n'
@@ -672,7 +679,13 @@ function clearRoot(): void {
   emit('meta', detectModelPreviewMeta(false, false, 0))
   if (!scene || !rootObject) return
   scene.remove(rootObject)
-  disposeObject(rootObject)
+  if (isGaussianSplatObject(rootObject)) {
+    // 泼溅不是材质网格，交给 Spark 自己的 dispose，并摘掉只服务泼溅的渲染层
+    ;(rootObject as unknown as { dispose?: () => void }).dispose?.()
+    disposeSparkLayer(scene)
+  } else {
+    disposeObject(rootObject)
+  }
   rootObject = null
 }
 
@@ -719,6 +732,12 @@ function sceneHasRenderableMesh(object: THREE.Object3D): boolean {
   let found = false
   object.traverse((child) => {
     if (found) return
+    // 泼溅没有 position 属性（几何体在渲染前由 Spark 构造），但它确实是可渲染内容，
+    // 否则预览会被判成「只剩骨骼的动画资产」
+    if (isGaussianSplatObject(child)) {
+      found = true
+      return
+    }
     if (!(child instanceof THREE.Mesh) && !(child instanceof THREE.SkinnedMesh)) return
     const geom = child.geometry
     const count = geom?.getAttribute('position')?.count ?? 0
@@ -780,10 +799,32 @@ function fitCameraToBox(box: THREE.Box3): void {
   controls.update()
 }
 
+/**
+ * 预览取景用的包围盒。
+ *
+ * 普通模型走 three 的 `setFromObject`；**泼溅**那一步拿到的是空盒
+ *（几何体由 Spark 在渲染前构造），回退到 `splatObjectBounds`，
+ * 否则机位会贴到原点、泼溅看起来像没加载出来。
+ */
+function previewBounds(object: THREE.Object3D): THREE.Box3 {
+  const box = new THREE.Box3().setFromObject(object)
+  if (!box.isEmpty()) return box
+  const splatBox = splatObjectBounds(object)
+  return splatBox.isEmpty() ? box : splatBox
+}
+
+/** 泼溅要挂在场景上的 Spark 渲染层才会出画（与导演台同一套懒加载） */
+function mountSparkLayerForScene(): void {
+  if (!scene || !renderer) return
+  void ensureSparkLayer({ scene, renderer }).catch((err) => {
+    console.warn('[model-preview] failed to mount Spark splat renderer:', err)
+  })
+}
+
 function fitCameraToObject(object: THREE.Object3D, preferBones = false): void {
   if (preferBones && fitCameraToBones(object)) return
   if (!camera || !controls) return
-  const box = new THREE.Box3().setFromObject(object)
+  const box = previewBounds(object)
   const size = box.getSize(new THREE.Vector3())
   const center = box.getCenter(new THREE.Vector3())
   const maxDim = Math.max(size.x, size.y, size.z, 0.001)
@@ -908,6 +949,7 @@ async function loadModel(relativePath: string | null | undefined): Promise<void>
     clips = loaded.animations.slice()
     mixer = clips.length ? new THREE.AnimationMixer(rootObject) : null
     scene.add(rootObject)
+    if (isGaussianSplatObject(rootObject)) mountSparkLayerForScene()
     captureBoneRotationSnapshot(rootObject)
     applyBonePoseToRoot(rootObject, props.bonePose)
     const sceneDefaults = extractModelSceneDefaults(rootObject)
@@ -917,6 +959,10 @@ async function loadModel(relativePath: string | null | undefined): Promise<void>
     const hasBones = sceneHasBones(rootObject)
     const meta = detectModelPreviewMeta(hasMesh, hasBones, clips.length)
     fitCameraToObject(rootObject, meta.animationOnly)
+    // 泼溅必须显式喂一次累加器，否则 activeSplats 恒为 0（模型加载完了却看不见）
+    if (isGaussianSplatObject(rootObject) && scene && camera) {
+      await primeSparkLayer({ scene, camera })
+    }
     emit(
       'clips',
       clips.map((clip, index) => skeletonClipLabel(clip.name, index))
@@ -944,6 +990,8 @@ function disposeThree(): void {
   timer = null
   renderer?.domElement.removeEventListener('pointerdown', onPointerDown)
   clearRoot()
+  // clearRoot 已按泼溅与否释放过，这里兜住「根对象为空但渲染层还在」的情况（幂等）
+  if (scene) disposeSparkLayer(scene)
   controls?.dispose()
   controls = null
   if (renderer) {

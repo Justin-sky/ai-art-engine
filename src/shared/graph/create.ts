@@ -21,6 +21,7 @@ const ASSET_NODE_TITLES: Record<AssetType, string> = {
   motion2d: '2D Motion',
   model: 'Model',
   model3d: '3D Model',
+  spatialWorld: 'World Model',
   screenplay: 'Screenplay',
   gameSystem: '策划案生成',
   gamePlay: '可玩 HTML',

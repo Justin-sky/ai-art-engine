@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { collectPoseEditBones, findNearestPoseBoneParent } from '../../director/skeletonRetarget'
-import { loadModelScene } from '../../director/loadModelScene'
+import { isSplatModelPath, loadModelScene } from '../../director/loadModelScene'
 import { useProjectStore } from '../../../stores/project'
 
 function disposeObject(root: THREE.Object3D): void {
@@ -30,6 +30,9 @@ export async function inspectModelSkeleton(input: {
     relativePath = asset?.relativePath?.trim() || ''
   }
   if (!relativePath) return []
+  // 高斯泼溅（.ply / .spz）没有骨骼，而且是一份几十到几百 MB 的大文件：
+  // 直接给空结果，别为了拿一个必然为空的列表把它整个读进来
+  if (isSplatModelPath(relativePath)) return []
   const url = await window.studio.getAssetFileUrl(relativePath)
   if (!url) return []
   const loaded = await loadModelScene(url, relativePath)

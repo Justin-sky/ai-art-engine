@@ -45,6 +45,8 @@ export const HYPER3D_DEFAULT_BASE_URL = 'https://api.hyper3d.com/api/v2'
 export const LUMA_DEFAULT_BASE_URL = 'https://api.lumalabs.ai/dream-machine/v1'
 /** AHOLO 开放平台 Lux3D（3D 模型生成；cn 区域，com 区域走 https://api.aholo3d.com） */
 export const LUX3D_DEFAULT_BASE_URL = 'https://api.aholo3d.cn'
+/** World Labs Marble（空间世界生成；WLT-Api-Key 鉴权，异步 operation 轮询） */
+export const WORLDLABS_DEFAULT_BASE_URL = 'https://api.worldlabs.ai'
 /** TypeSafe（Jev 等 System One 决策模型）：直连 `https://api.typesafe.ai`，Bearer 鉴权 */
 export const TYPESAFE_DEFAULT_BASE_URL = 'https://api.typesafe.ai'
 /**
@@ -95,6 +97,8 @@ export type ModelProviderKind =
   | 'hyper3d'
   | 'luma'
   | 'lux3d'
+  /** World Labs（Marble 空间世界生成） */
+  | 'worldlabs'
   /** 自定义提供商：端点类型由实例级 apiStyle 决定 */
   | 'custom'
 
@@ -290,6 +294,12 @@ export const MODEL_PROVIDER_KINDS: readonly ModelProviderKindMeta[] = [
     credentialsUrl: 'https://labs.aholo3d.cn/'
   },
   {
+    id: 'worldlabs',
+    label: 'World Labs（Marble）',
+    defaultBaseUrl: WORLDLABS_DEFAULT_BASE_URL,
+    credentialsUrl: 'https://platform.worldlabs.ai/api-keys'
+  },
+  {
     id: 'custom',
     label: '自定义', // cjk-ok 落盘默认实例名（用户可改）；下拉与列表显示走 labelKey → vue-i18n
     labelKey: 'settings.models.providerCustom',
@@ -307,7 +317,8 @@ export function modelProviderCredentialsUrl(kind: ModelProviderKind): string {
   )
 }
 
-export type ModelModality = 'text' | 'image' | 'video' | 'audio' | 'model3d' | 'decisions'
+export type ModelModality =
+  'text' | 'image' | 'video' | 'audio' | 'model3d' | 'spatialWorld' | 'decisions'
 
 export const MODEL_MODALITIES: readonly ModelModality[] = [
   'text',
@@ -315,6 +326,8 @@ export const MODEL_MODALITIES: readonly ModelModality[] = [
   'video',
   'audio',
   'model3d',
+  /** 空间世界（World Labs Marble）：从文本 / 图片生成可交互 3D 世界 */
+  'spatialWorld',
   /** OpenRouter Decisions API（TypeSafe Jev 等）：输出结构化判定而非文本 */
   'decisions'
 ] as const
@@ -522,6 +535,17 @@ export function isModel3dProviderKind(kind: ModelProviderKind): boolean {
   )
 }
 
+/** 支持空间世界生成（world）的提供商 kind */
+export const WORLD_PROVIDER_KINDS: readonly ModelProviderKind[] = ['worldlabs']
+
+export function isWorldProviderKind(
+  provider: Pick<ModelProviderInstance, 'providerKind'> | ModelProviderKind | undefined | null
+): boolean {
+  if (!provider) return false
+  const kind = typeof provider === 'string' ? provider : provider.providerKind
+  return (WORLD_PROVIDER_KINDS as readonly string[]).includes(kind)
+}
+
 /** 本机服务允许空 Key：vLLM / Ollama / LM Studio / ComfyUI（云端仍可填 Key） */
 export function allowsEmptyApiKey(
   provider: Pick<ModelProviderInstance, 'providerKind'> | ModelProviderKind | undefined | null
@@ -630,6 +654,7 @@ export function createEmptyModalityMap(): ProviderModalityMap {
     video: createEmptyModalityConfig(),
     audio: createEmptyModalityConfig(),
     model3d: createEmptyModalityConfig(),
+    spatialWorld: createEmptyModalityConfig(),
     decisions: createEmptyModalityConfig()
   }
 }
@@ -1512,6 +1537,144 @@ export interface GenerateModel3dJob {
   model: string
 }
 
+// ── 空间世界（World Labs Marble）────────────────────────
+
+/** World Labs 托管媒体引用：门面把本地参考传到 `/media-assets:prepare_upload` 后拿到 id */
+export interface GenerateSpatialWorldMediaAsset {
+  kind: 'image' | 'video'
+  /** 官方 media_asset_id */
+  id: string
+  /** 来源标签（日志用，如工程相对路径） */
+  sourceLabel?: string
+}
+
+/** 世界生成输入：文本 / 参考图（1–4 张）/ 参考视频（1 条）生成可交互 3D 世界 */
+export interface GenerateSpatialWorldInput {
+  prompt: string
+  model?: string
+  providerInstanceId?: string
+  /**
+   * 参考输入（公网 http(s) URL）。本地文件与 data URL 由门面上传后改写：
+   * 优先走官方托管媒体（`mediaAssets`），失败才退回对象存储公网 URL（本字段）。
+   */
+  inputReferences?: GenerateVideoInputReference[]
+  /** 已上传到 World Labs 托管存储的参考（官方 media_asset 形态，不依赖对象存储） */
+  mediaAssets?: GenerateSpatialWorldMediaAsset[]
+  /** 上游展示名（World Labs display_name，最长 64 字符，可选） */
+  displayName?: string
+  /** 随机种子（0–4294967295，可选） */
+  seed?: number
+  /**
+   * 单图参考是否按等距柱状全景处理（官方 `is_pano`，仅单图形态生效）：
+   * `auto`（默认，自动识别 2:1 equirect）/ `always` 强制 / `never` 当普通图片。
+   */
+  panoMode?: 'auto' | 'always' | 'never'
+  /**
+   * 关闭上游 recaption：为 true 时指令原文直送（可复现性更好）。
+   * 缺省由上游自动补一段画面描述——同一份输入两次结果可能不同。
+   */
+  disableRecaption?: boolean
+  /** 世界标签（官方 tags，最多 10 个、每个 ≤32 字符） */
+  tags?: string[]
+  /** 世界可见性（官方 `permission.public`；缺省 false = 仅自己可见） */
+  publicWorld?: boolean
+  /** 落盘目录（相对工程根） */
+  outputDir?: string
+  /** MCP：生成资产挂到的资产库文件夹 id */
+  folderId?: string
+  /** 落盘文件名 stem */
+  name?: string
+  /** 图节点回写绑定 */
+  graphBinding?: GenerateGraphBinding
+}
+
+export interface GenerateSpatialWorldJob {
+  /** World Labs operation id（轮询用） */
+  jobId: string
+  pollingUrl: string
+  status: string
+  model: string
+}
+
+// ── 空间世界导出（World Labs `worlds/{id}:export`）────────────────
+
+/** 导出资产族：`splats` 高斯泼溅（PLY）/ `mesh` 高质量网格（GLB） */
+export type SpatialWorldExportAssetType = 'splats' | 'mesh'
+/** HQ 网格变体：`textured` 贴图网格（约 600k 面）/ `vertex_colored` 顶点色网格（约 1M 面） */
+export type SpatialWorldExportMeshVariant = 'textured' | 'vertex_colored'
+/** PLY 泼溅分辨率档（官方 enum） */
+export type SpatialWorldExportResolution = 'full_res' | '500k' | '150k' | '100k'
+
+/** 空间世界导出请求（官方 ExportWorldRequest 的应用侧形态） */
+export interface SpatialWorldExportRequest {
+  spatialWorldId: string
+  assetType: SpatialWorldExportAssetType
+  format: 'ply' | 'glb'
+  /** 仅 `mesh`：网格变体；缺省由上游按 textured 处理 */
+  meshVariant?: SpatialWorldExportMeshVariant
+  /** 仅 `splats`：PLY 分辨率档；缺省由上游按 full_res 处理 */
+  resolution?: SpatialWorldExportResolution
+}
+
+/** 导出提交结果：PLY 同步（提交即带 downloadUrl），HQ 网格为进行中的 operation */
+export interface SpatialWorldExportJob {
+  jobId: string
+  pollingUrl: string
+  status: string
+  downloadUrl?: string
+}
+
+/** 空间世界导出执行输入：请求 + 落盘/绑定信息 */
+export interface ExportWorldInput extends SpatialWorldExportRequest {
+  providerInstanceId?: string
+  model?: string
+  /** 参考：上游世界产物（PLY 泼溅按它的同目录同名落盘） */
+  sourceRelativePath?: string
+  /** 落盘目录（相对工程根） */
+  outputDir?: string
+  /** 落盘文件名 stem */
+  name?: string
+  /** 图节点回写绑定 */
+  graphBinding?: GenerateGraphBinding
+}
+
+/** 空间世界导出执行结果：网格导出登记为模型资产，泼溅导出只落文件 */
+export interface ExportWorldResult {
+  /** `mesh` 导出登记后的资产 id；`splats` 导出为空 */
+  assetId?: string
+  /** 产物的工程相对路径（注册资产时与资产一致） */
+  relativePath: string
+  /** 导出用到的 model 名（任务记录用） */
+  model: string
+  assetType: SpatialWorldExportAssetType
+  format: 'ply' | 'glb'
+}
+
+/**
+ * 世界生成结果：与 3D 模型同口径（已登记的 GLB 资产）。
+ * 世界产物同时含高斯泼溅（SPZ）与全景图，本版本只落网格，后续版本再接导出。
+ */
+export interface GenerateSpatialWorldResult {
+  /** 已登记的模型资产 id */
+  assetId: string
+  relativePath: string
+  model: string
+  /** 参考图上传到对象存储的记录（便于日志展示） */
+  uploads?: GenerateModel3dResult['uploads']
+  /** 参考处理说明（如「已上传 N 个托管媒体资产」），随结果回传给运行日志 */
+  referenceNotes?: string[]
+  /**
+   * 随世界一起返回、已落盘在主产物旁边的附加产物：
+   * `splats`（高斯泼溅 SPZ）/ `pano`（360 全景图）。下载失败时 `relativePath` 缺省。
+   */
+  extras?: Array<{ kind: string; relativePath?: string }>
+  /**
+   * World Labs 世界 id（官方 World.id）。下游「空间世界导出」节点只认它，
+   * 所以生成结果必须带上。
+   */
+  spatialWorldId?: string
+}
+
 export function normalizeVideoInputReference(
   ref: GenerateVideoInputReference
 ): VideoInputReference {
@@ -1747,6 +1910,12 @@ function normalizeModalityMap(
     video: normalizeModalityConfig(raw.video, kind),
     audio: normalizeModalityConfig(raw.audio, kind),
     model3d: normalizeModalityConfig(raw.model3d, kind),
+    // 兼容旧工程：改名前的模态桶是 world（世界模型），读回来别把用户已选的模型丢掉
+    spatialWorld: normalizeModalityConfig(
+      raw.spatialWorld ??
+        ((raw as Record<string, unknown>).world as Partial<ModalityModelConfig> | undefined),
+      kind
+    ),
     decisions: normalizeModalityConfig(raw.decisions, kind)
   }
 }

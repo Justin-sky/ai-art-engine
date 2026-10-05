@@ -40,6 +40,7 @@ export function isBundleAcceptableDataType(dataType: GraphPortDataType): boolean
     case GraphPortType.world:
     case GraphPortType.worldEntities:
     case GraphPortType.model:
+    case GraphPortType.spatialWorld:
     case GraphPortType.project:
       return true
     default:

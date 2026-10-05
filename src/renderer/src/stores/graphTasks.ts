@@ -430,7 +430,7 @@ function isWorldPipelineAssetType(type: string | undefined | null): boolean {
   return type === 'world' || type === 'subgraph'
 }
 
-function worldKindNeedsBatch(doc: GraphDocument, onlyMissing: boolean): boolean {
+function spatialWorldKindNeedsBatch(doc: GraphDocument, onlyMissing: boolean): boolean {
   const hasElements = doc.nodes.some((node) => !!readWorldElementIdFromNodeParams(node.params))
   if (!hasElements) return false
   if (!onlyMissing) return true
@@ -747,7 +747,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         assetType: 'world',
         hostInterface: inferElementWorkflowHostInterface(raw)
       })
-      if (!worldKindNeedsBatch(graph, onlyMissing)) {
+      if (!spatialWorldKindNeedsBatch(graph, onlyMissing)) {
         skipped += 1
         continue
       }
@@ -1434,6 +1434,129 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             stopProgress()
           }
         },
+        generateSpatialWorld: async (input) => {
+          const startedAt = Date.now()
+          const request: {
+            prompt: string
+            model?: string
+            providerInstanceId?: string
+            seed?: number
+            inputReferenceCount?: number
+            inputReferenceUrls?: Array<{ kind?: string; url: string }>
+            uploads?: Array<{
+              sourceLabel: string
+              objectKey: string
+              bytes: number
+              urlPreview: string
+            }>
+          } = {
+            prompt: input.prompt,
+            model: input.model,
+            providerInstanceId: input.providerInstanceId,
+            seed: input.seed,
+            inputReferenceCount: input.inputReferences?.length || undefined,
+            inputReferenceUrls: summarizeReferenceListForLog(input.inputReferences)
+          }
+          logBridge.appendMessage(String(i18n.global.t('graph.logs.submitSpatialWorld')))
+          const progressNodeId =
+            input.graphBinding?.nodeId?.trim() || logBridge.currentRunningNodeId() || undefined
+          const stopProgress = subscribeVideoJobProgress({
+            nodeId: progressNodeId,
+            onMessage: (message) => logBridge.appendMessage(message),
+            format: (job) =>
+              formatVideoJobProgressMessage(job, (key, params) =>
+                String(i18n.global.t(key, params ?? {}))
+              )
+          })
+          try {
+            const value = await window.studio.generateSpatialWorld(input)
+            if (value.uploads?.length) {
+              request.uploads = value.uploads.map((item) => ({
+                sourceLabel: item.sourceLabel,
+                objectKey: item.objectKey,
+                bytes: item.bytes,
+                urlPreview: item.url.slice(0, 120)
+              }))
+              for (const item of value.uploads) {
+                for (const log of item.logs) {
+                  logBridge.appendMessage(`[ObjectStorage] ${log.message}`, log.level)
+                }
+              }
+            }
+            // 参考媒体的托管上传 / 回退说明（不依赖对象存储那条路也在这里留痕）
+            for (const note of value.referenceNotes ?? []) {
+              logBridge.appendMessage(note, 'info')
+            }
+            logBridge.recordApiCall({
+              kind: 'generateSpatialWorld',
+              request,
+              response: {
+                model: value.model,
+                assetId: value.assetId,
+                relativePath: value.relativePath
+              },
+              durationMs: Math.max(0, Date.now() - startedAt)
+            })
+            return value
+          } catch (err) {
+            logBridge.recordApiCall({
+              kind: 'generateSpatialWorld',
+              request,
+              error: err instanceof Error ? err.message : String(err),
+              durationMs: Math.max(0, Date.now() - startedAt)
+            })
+            throw err
+          } finally {
+            stopProgress()
+          }
+        },
+        exportWorld: async (input) => {
+          const startedAt = Date.now()
+          const request = {
+            spatialWorldId: input.spatialWorldId,
+            assetType: input.assetType,
+            format: input.format,
+            meshVariant: input.meshVariant,
+            resolution: input.resolution,
+            providerInstanceId: input.providerInstanceId,
+            model: input.model
+          }
+          logBridge.appendMessage(String(i18n.global.t('graph.logs.submitSpatialWorldExport')))
+          const progressNodeId =
+            input.graphBinding?.nodeId?.trim() || logBridge.currentRunningNodeId() || undefined
+          const stopProgress = subscribeVideoJobProgress({
+            nodeId: progressNodeId,
+            onMessage: (message) => logBridge.appendMessage(message),
+            format: (job) =>
+              formatVideoJobProgressMessage(job, (key, params) =>
+                String(i18n.global.t(key, params ?? {}))
+              )
+          })
+          try {
+            const value = await window.studio.exportWorld(input)
+            logBridge.recordApiCall({
+              kind: 'exportWorld',
+              request,
+              response: {
+                model: value.model,
+                assetId: value.assetId,
+                relativePath: value.relativePath
+              },
+              durationMs: Math.max(0, Date.now() - startedAt)
+            })
+            return value
+          } catch (err) {
+            logBridge.recordApiCall({
+              kind: 'exportWorld',
+              request,
+              error: err instanceof Error ? err.message : String(err),
+              durationMs: Math.max(0, Date.now() - startedAt)
+            })
+            throw err
+          } finally {
+            stopProgress()
+          }
+        },
         rigModel3d: async (input) => {
           const startedAt = Date.now()
           const request = {
@@ -1614,35 +1737,35 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         normalizeImageAspectRatio,
         resolveWorldCatalogJson: () => {
           if (task.target.kind !== 'asset') return null
-          const worldId = task.target.assetId
-          if (isDraftAssetId(worldId)) {
-            const draft = useDraftStore().getDraft(worldId)
+          const spatialWorldId = task.target.assetId
+          if (isDraftAssetId(spatialWorldId)) {
+            const draft = useDraftStore().getDraft(spatialWorldId)
             if (!isWorldPipelineAssetType(draft?.type)) return null
           } else {
             const project = useProjectStore()
-            const asset = project.assets.find((a) => a.id === worldId)
+            const asset = project.assets.find((a) => a.id === spatialWorldId)
             if (!isWorldPipelineAssetType(asset?.type)) return null
           }
-          const catalog = loadWorldCatalog(worldId)
+          const catalog = loadWorldCatalog(spatialWorldId)
           const total = WORLD_ELEMENT_KINDS.reduce((sum, kind) => sum + catalog[kind].length, 0)
           if (!total) return null
           return stringifyWorldElementCatalog(catalog)
         },
         importWorldCatalogJson: async (jsonText, sourceNodeId) => {
           if (task.target.kind !== 'asset') return
-          const worldId = task.target.assetId
-          if (isDraftAssetId(worldId)) {
-            const draft = useDraftStore().getDraft(worldId)
+          const spatialWorldId = task.target.assetId
+          if (isDraftAssetId(spatialWorldId)) {
+            const draft = useDraftStore().getDraft(spatialWorldId)
             if (!isWorldPipelineAssetType(draft?.type)) return
           } else {
             const project = useProjectStore()
-            const asset = project.assets.find((a) => a.id === worldId)
+            const asset = project.assets.find((a) => a.id === spatialWorldId)
             if (!isWorldPipelineAssetType(asset?.type)) return
           }
           if (sourceNodeId) {
             const source = task.graph?.nodes.find((node) => node.id === sourceNodeId)
             if (source?.typeId === 'world.gen') {
-              await applyWorldCatalog(worldId, jsonText, sourceNodeId)
+              await applyWorldCatalog(spatialWorldId, jsonText, sourceNodeId)
               return
             }
             // 表格/提取运行：目录沿边流入其下游 world.gen 节点
@@ -1651,11 +1774,11 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
               .map((edge) => task.graph?.nodes.find((node) => node.id === edge.target))
               .filter((node): node is GraphNode => !!node && node.typeId === 'world.gen')
             for (const gen of downstreamGens) {
-              await applyWorldCatalog(worldId, jsonText, gen.id)
+              await applyWorldCatalog(spatialWorldId, jsonText, gen.id)
             }
             if (downstreamGens.length) return
           }
-          await applyWorldCatalog(worldId, jsonText)
+          await applyWorldCatalog(spatialWorldId, jsonText)
         },
         collectBeatUnitTexts: async (signal) => {
           if (task.target.kind !== 'asset') return null
@@ -1708,55 +1831,55 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         },
         collectWorldElementOutputs: async (signal, options) => {
           if (task.target.kind !== 'asset') return null
-          const worldId = task.target.assetId
-          if (isDraftAssetId(worldId)) {
-            const draft = useDraftStore().getDraft(worldId)
+          const spatialWorldId = task.target.assetId
+          if (isDraftAssetId(spatialWorldId)) {
+            const draft = useDraftStore().getDraft(spatialWorldId)
             if (!isWorldPipelineAssetType(draft?.type)) return null
             // Cook / 整链：缺图补跑后再收集；执行当前只收集已有结果
             if (options?.cookBatch) {
               const batch = enqueueWorldElementBatch({
-                worldAssetId: worldId,
+                worldAssetId: spatialWorldId,
                 nodeId: options?.nodeId,
                 onlyMissing: true
               })
               await waitForTaskIds(batch.taskIds)
             }
             return collectWorldElementOutputs({
-              worldAssetId: worldId,
+              worldAssetId: spatialWorldId,
               nodeId: options?.nodeId,
               signal
             })
           }
           const project = useProjectStore()
-          const asset = project.assets.find((a) => a.id === worldId)
+          const asset = project.assets.find((a) => a.id === spatialWorldId)
           if (!isWorldPipelineAssetType(asset?.type)) return null
           if (options?.cookBatch) {
             const batch = enqueueWorldElementBatch({
-              worldAssetId: worldId,
+              worldAssetId: spatialWorldId,
               nodeId: options?.nodeId,
               onlyMissing: true
             })
             await waitForTaskIds(batch.taskIds)
           }
           return collectWorldElementOutputs({
-            worldAssetId: worldId,
+            worldAssetId: spatialWorldId,
             nodeId: options?.nodeId,
             signal
           })
         },
         resolveWorldElementOutputs: (node) => {
           if (task.target.kind !== 'asset') return []
-          const worldId = task.target.assetId
-          if (isDraftAssetId(worldId)) {
-            const draft = useDraftStore().getDraft(worldId)
+          const spatialWorldId = task.target.assetId
+          if (isDraftAssetId(spatialWorldId)) {
+            const draft = useDraftStore().getDraft(spatialWorldId)
             if (!isWorldPipelineAssetType(draft?.type)) return []
           } else {
             const project = useProjectStore()
-            const asset = project.assets.find((a) => a.id === worldId)
+            const asset = project.assets.find((a) => a.id === spatialWorldId)
             if (!isWorldPipelineAssetType(asset?.type)) return []
           }
           return previewWorldElementOutputsFromSubgraphs({
-            worldAssetId: worldId,
+            worldAssetId: spatialWorldId,
             nodeId: node?.id
           })
         },

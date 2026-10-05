@@ -380,6 +380,30 @@ export function registerIpcHandlers(): void {
     return result
   })
   handle(
+    IpcChannels.GEN_SPATIAL_WORLD,
+    async (input: import('@shared/modelProvider').GenerateSpatialWorldInput) => {
+      const result = await modelProviderFacade.generateSpatialWorld(input)
+      const asset = projectService.listAssets().find((item) => item.id === result.assetId)
+      if (asset) broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
+      return result
+    }
+  )
+  handle(
+    IpcChannels.GEN_SPATIAL_WORLD_EXPORT,
+    async (input: import('@shared/modelProvider').ExportWorldInput) => {
+      const result = await modelProviderFacade.exportWorld(input)
+      // PLY 泼溅导出不登记资产，没有可广播的 asset
+      const asset = result.assetId
+        ? projectService.listAssets().find((item) => item.id === result.assetId)
+        : undefined
+      if (asset) broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
+      return result
+    }
+  )
+  handle(IpcChannels.GEN_SPATIAL_WORLD_RECOVER_ID, (input: { nodeId?: string; assetId?: string }) =>
+    modelProviderFacade.recoverSpatialWorldId(input)
+  )
+  handle(
     IpcChannels.RIG_MODEL3D,
     async (input: import('@shared/modelProvider').RigModel3dInput) => {
       const result = await modelProviderFacade.rigModel3d(input)

@@ -123,6 +123,15 @@ export const IpcChannels = {
   GEN_SPEECH: 'gen:speech',
   GEN_MUSIC: 'gen:music',
   GEN_MODEL3D: 'gen:model3d',
+  /** 空间世界生成（World Labs Marble）：异步 operation 轮询，产物为世界网格 GLB */
+  GEN_SPATIAL_WORLD: 'gen:world',
+  /** 空间世界导出（World Labs `worlds/{id}:export`）：HQ 网格 / PLY 泼溅 */
+  GEN_SPATIAL_WORLD_EXPORT: 'gen:world-export',
+  /**
+   * 找回某个节点产出的世界 id：记录里没存住时，拿 operation id 重新轮询一次上游。
+   * 世界生成的积分已经花过，不该因为一个字段没落盘就逼用户重新生成。
+   */
+  GEN_SPATIAL_WORLD_RECOVER_ID: 'gen:world-recover-id',
   RIG_MODEL3D: 'gen:model3d-rig',
   SEGMENT_MODEL3D: 'gen:model3d-segment',
   /** Tripo 网格后处理 / 骨骼动画：部件补全 / 重拓扑 / 绑骨检查 / 动画重定向 */
@@ -584,6 +593,8 @@ export type McpActivityTool =
   | 'generate_speech'
   | 'generate_music'
   | 'generate_model3d'
+  /** 空间世界生成（World Labs Marble）：文/图生世界，产物同 3D 走 GLB */
+  | 'generate_world'
   /** OpenRouter 决策模型：noul / choice / score 结构化判定 */
   | 'decide'
   | 'graph_icon_refine'
@@ -1299,6 +1310,22 @@ export interface StudioApi {
   generateSpeech: (input: GenerateSpeechInput) => Promise<GenerateSpeechResult>
   generateMusic: (input: GenerateMusicInput) => Promise<GenerateMusicAssetResult>
   generateModel3d: (input: GenerateModel3dInput) => Promise<GenerateModel3dResult>
+  /** 空间世界生成（World Labs Marble）：文本 / 单图 / 多图生成可交互 3D 世界（GLB 网格） */
+  generateSpatialWorld: (
+    input: import('./modelProvider').GenerateSpatialWorldInput
+  ) => Promise<import('./modelProvider').GenerateSpatialWorldResult>
+  /** 空间世界导出：HQ 贴图 / 顶点色网格（GLB，登记为模型资产）或 PLY 泼溅（落文件） */
+  exportWorld: (
+    input: import('./modelProvider').ExportWorldInput
+  ) => Promise<import('./modelProvider').ExportWorldResult>
+  /**
+   * 找回某个节点产出的世界 id（记录里的 `resourceId` 缺失时，按 operation id 重新问一次上游）。
+   * 找不到返回 undefined —— 调用方据此照常报「没有 world_id」，不猜。
+   */
+  recoverSpatialWorldId: (input: {
+    nodeId?: string
+    assetId?: string
+  }) => Promise<string | undefined>
   /** 对已有模型调用 Meshy/Tripo 独立 Rigging API */
   rigModel3d: (
     input: import('./modelProvider').RigModel3dInput

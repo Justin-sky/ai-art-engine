@@ -2,7 +2,13 @@ import { computed, nextTick, onBeforeUnmount, ref, watch, type Ref } from 'vue'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js'
-import { loadModelScene } from './loadModelScene'
+import { isSplatModelPath, loadModelScene } from './loadModelScene'
+import {
+  disposeSparkLayer,
+  ensureSparkLayer,
+  isGaussianSplatObject,
+  primeSparkLayer
+} from './splatMesh'
 import { collectStageMaterialSlots } from './stageMaterialSlots'
 import { Line2 } from 'three/examples/jsm/lines/Line2.js'
 import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
@@ -253,6 +259,11 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   let renderer: THREE.WebGLRenderer | null = null
   let labelRenderer: CSS2DRenderer | null = null
   let scene: THREE.Scene | null = null
+  /**
+   * 泼溅渲染层（Spark 动态加载）：场景里出现泼溅网格时才挂上，
+   * 首个泼溅进场景后由 ensureSparkLayer 触发，disposeThree 释放。
+   */
+  let sparkLayerPromise: Promise<unknown> | null = null
   /** ?? / ?? / ?? / ?????????????????? */
   let contentRoot: THREE.Group | null = null
   let camera: THREE.PerspectiveCamera | null = null
@@ -4818,6 +4829,46 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     lastRenderAt = 0
   }
 
+  /**
+   * 场景里出现泼溅网格时挂上 Spark 渲染层（幂等；动态 import，未用到泼溅就不加载）。
+   * 加载失败只记日志：泼溅不显示，其它物体照常。
+   */
+  function ensureSparkForScene(): void {
+    if (!scene || !renderer) return
+    if (sparkLayerPromise) return
+    const target = scene
+    sparkLayerPromise = ensureSparkLayer({
+      scene: target,
+      renderer,
+      onDirty: () => requestRender(400)
+    })
+      .then(() => {
+        requestRender(600)
+        // 泼溅累加器必须显式喂一次（否则 activeSplats 恒为 0，泼溅进场景却看不见）
+        primeSparkForStage()
+      })
+      .catch((err) => {
+        console.warn('[director-stage] failed to mount Spark splat renderer:', err)
+      })
+  }
+
+  /** 喂一次累加器，并在取景/动画期间隔几帧再喂（相机变了要重排重累积） */
+  function primeSparkForStage(): void {
+    if (!scene || !camera) return
+    void primeSparkLayer({ scene, camera })
+  }
+
+  function primeSparkForStageSoon(): void {
+    requestRender(600)
+    window.setTimeout(() => primeSparkForStage(), 120)
+    window.setTimeout(() => primeSparkForStage(), 400)
+  }
+
+  function disposeSparkForScene(): void {
+    sparkLayerPromise = null
+    disposeSparkLayer()
+  }
+
   function ensurePoseSkeletonOverlay(): PoseSkeletonOverlay | null {
     if (!scene) return null
     if (!poseSkeletonOverlay) poseSkeletonOverlay = createPoseSkeletonOverlay(scene)
@@ -5089,6 +5140,8 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     restoreShadingMaterials(root)
     const mode = shadingMode.value
     if (mode === 'shaded') return
+    // 泼溅不是三角网格，线框 / 着色线框对它无意义（换材质还会让它不出画）
+    if (isGaussianSplatObject(root)) return
     const wireMat = mode === 'wireframe' ? getShadingWireframeMaterial() : null
     const overlayMat = mode === 'shadedWireframe' ? getShadingWireMaterial() : null
     root.traverse((child) => {
@@ -5319,6 +5372,12 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     const light = mesh.userData.stageLight as THREE.Light | undefined
     if (light && 'color' in light && light.color instanceof THREE.Color) {
       light.color.setHex(hex)
+    }
+    // 泼溅没有可写的材质色，用 Spark 的 recolor 做整体染色
+    if (isGaussianSplatObject(mesh)) {
+      const recolor = (mesh as unknown as { recolor?: THREE.Color }).recolor
+      if (recolor instanceof THREE.Color) recolor.setHex(hex)
+      return
     }
     mesh.traverse((child) => {
       if (child instanceof THREE.Mesh) {
@@ -5615,6 +5674,8 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
    * ?????????????????????????????
    */
   function instantiateObjectMaterials(root: THREE.Object3D): void {
+    // 泼溅走 Spark 自己的着色器，克隆材质会让它不出画
+    if (isGaussianSplatObject(root)) return
     const instances = new Map<THREE.Material, THREE.Material>()
     const instantiate = (material: THREE.Material): THREE.Material => {
       const existing = instances.get(material)
@@ -6378,26 +6439,31 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     let xf = readModelAssetTransform(model.genParams)
     let color = readModelAssetColor(model.genParams) ?? '#ffffff'
 
-    try {
-      const url = await window.studio.getAssetFileUrl(model.relativePath)
-      const loaded = await loadModelScene(url, model.relativePath)
-      const extracted = extractModelSceneDefaults(loaded.scene)
-      xf = extracted.transform
-      color = extracted.color
-      if (libraryModel) {
-        const nextGen: Record<string, unknown> = {
-          ...(model.genParams ?? {}),
-          transform: { ...xf },
-          color
+    // 泼溅（.ply / .spz）没有 glTF 那套默认变换 / 颜色：跳过提取，
+    // 也避免为了读一份 2M 泼溅而多下载一次大文件（真正加载由 rebuildObjects 统一做）
+    const isSplatProduct = isSplatModelPath(model.relativePath)
+    if (!isSplatProduct) {
+      try {
+        const url = await window.studio.getAssetFileUrl(model.relativePath)
+        const loaded = await loadModelScene(url, model.relativePath)
+        const extracted = extractModelSceneDefaults(loaded.scene)
+        xf = extracted.transform
+        color = extracted.color
+        if (libraryModel) {
+          const nextGen: Record<string, unknown> = {
+            ...(model.genParams ?? {}),
+            transform: { ...xf },
+            color
+          }
+          project.patchAssets([{ ...libraryModel, genParams: nextGen }])
+          void persistAssetRecord(libraryModel.id, { genParams: nextGen }).catch(() => {
+            /* ????????? patch */
+          })
         }
-        project.patchAssets([{ ...libraryModel, genParams: nextGen }])
-        void persistAssetRecord(libraryModel.id, { genParams: nextGen }).catch(() => {
-          /* ????????? patch */
-        })
+      } catch (err) {
+        // 仅跳过 transform / 颜色提取，物体仍按模型类型创建
+        console.warn('[director-stage] failed to extract model defaults:', model.relativePath, err)
       }
-    } catch (err) {
-      // 仅跳过 transform / 颜色提取，物体仍按模型类型创建
-      console.warn('[director-stage] failed to extract model defaults:', model.relativePath, err)
     }
 
     const id = `model:${crypto.randomUUID()}`
@@ -7696,6 +7762,26 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     return group
   }
 
+  /**
+   * 物体外观收尾：泼溅只做整层染色（Spark 自己管材质），普通模型照旧实例化材质再按需改色。
+   * 「颜色是否与资产默认色一致」的比较口径与建对象时保持一致，重建 / 属性改色才能落到同一结果。
+   */
+  function applyStageMeshAppearance(
+    root: THREE.Object3D,
+    obj: StageObjectState,
+    assetColor?: string
+  ): void {
+    if (isGaussianSplatObject(root)) {
+      if (!obj.color) return
+      applyObjectColor(root, obj.color)
+      return
+    }
+    instantiateObjectMaterials(root)
+    if (obj.color && (!assetColor || obj.color.toLowerCase() !== assetColor.toLowerCase())) {
+      applyObjectColor(root, obj.color)
+    }
+  }
+
   async function buildMeshForObject(
     obj: StageObjectState
   ): Promise<{ mesh: THREE.Object3D; clips: THREE.AnimationClip[] }> {
@@ -7719,11 +7805,10 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
           const loaded = await loadModelScene(url, rel)
           const root = loaded.scene
           root.name = obj.name
-          instantiateObjectMaterials(root)
-          // ??????????????????????????????
-          const assetColor = readModelAssetColor(modelAsset?.genParams)
-          if (obj.color && (!assetColor || obj.color.toLowerCase() !== assetColor.toLowerCase())) {
-            applyObjectColor(root, obj.color)
+          applyStageMeshAppearance(root, obj, readModelAssetColor(modelAsset?.genParams))
+          if (isGaussianSplatObject(root)) {
+            ensureSparkForScene()
+            primeSparkForStageSoon()
           }
           return { mesh: root, clips: loaded.animations.slice() }
         } catch (err) {
@@ -7741,13 +7826,18 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   }
 
   function disposeObject(obj: THREE.Object3D): void {
+    // 泼溅网格不是材质网格（没有 geometry / 普通材质），交给 Spark 自己的 dispose
+    if (isGaussianSplatObject(obj)) {
+      ;(obj as unknown as { dispose?: () => void }).dispose?.()
+      return
+    }
     restoreShadingMaterials(obj)
     disposeStageLightGizmo(obj)
     obj.traverse((child) => {
       if (child instanceof THREE.Mesh) {
-        child.geometry.dispose()
+        child.geometry?.dispose()
         if (Array.isArray(child.material)) child.material.forEach((m) => m.dispose())
-        else child.material.dispose()
+        else child.material?.dispose()
       } else if (child instanceof THREE.LineSegments || child instanceof THREE.Line) {
         if (child.userData?.[SHADING_WIRE_OVERLAY_FLAG] || child.userData?.stageLightHelper) {
           child.geometry.dispose()
@@ -7807,6 +7897,12 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       mesh.userData.stageId = obj.id
       applyTransform(mesh, obj)
       mesh.visible = obj.visible !== false
+      // 泼溅：重建时同样要挂渲染层，并按舞台颜色整体染色
+      if (isGaussianSplatObject(mesh)) {
+        applyStageMeshAppearance(mesh, obj)
+        ensureSparkForScene()
+        primeSparkForStageSoon()
+      }
       attachObjectNameLabel(obj, mesh)
       objectMeshes.set(obj.id, mesh)
       applyObjectTextureOverrides(obj.id, obj)
@@ -8938,6 +9034,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     clearSelectionHelper()
     clearLabels()
     for (const id of [...shotVisuals.keys()]) disposeShotCameraVisual(id)
+    disposeSparkForScene()
     if (poseBoneTransformHelper && scene) scene.remove(poseBoneTransformHelper)
     poseBoneTransform?.dispose()
     poseBoneTransform = null

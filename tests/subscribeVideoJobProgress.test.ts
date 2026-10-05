@@ -81,5 +81,11 @@ describe('subscribeVideoJobProgress', () => {
         t
       )
     ).toBe('graph.logs.model3dProgress:7:submitted')
+    expect(
+      formatVideoJobProgressMessage(
+        sampleJob({ localJobId: 'w', kind: 'spatialWorld', progress: 50, status: 'running' }),
+        t
+      )
+    ).toBe('graph.logs.worldProgress:50:running')
   })
 })

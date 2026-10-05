@@ -21,3 +21,5 @@ oss-website.local.json
 # `npm run check:pack` 看体积阈值。换模型后记得同步 @shared/yoloCatalog 的 sha256。
 resources/yolo-models/*.onnx
 resources/face-models/*.onnx
+
+scripts/splat-inspect/.runtime/

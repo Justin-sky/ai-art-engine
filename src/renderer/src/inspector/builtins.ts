@@ -40,6 +40,7 @@ import FrameAnimGenInspector from '../components/FrameAnimGenInspector.vue'
 import SvgGenInspector from '../components/SvgGenInspector.vue'
 import TablePassThroughInspector from '../components/TablePassThroughInspector.vue'
 import WorldGenInspector from '../components/WorldGenInspector.vue'
+import SpatialWorldExportInspector from '../components/SpatialWorldExportInspector.vue'
 import BeatInspector from '../components/BeatInspector.vue'
 import ProjectGlobalsInspector from '../components/ProjectGlobalsInspector.vue'
 import ShotNodeInspector from '../components/ShotNodeInspector.vue'
@@ -212,7 +213,7 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     nodeTypeId: 'decisions.judge'
   },
   {
-    id: 'studio.graph.worldExtract',
+    id: 'studio.graph.spatialWorldExtract',
     component: PromptOptimizeInspector,
     nodeTypeId: 'world.extract'
   },
@@ -281,6 +282,11 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     id: 'studio.graph.worldGen',
     component: WorldGenInspector,
     nodeTypeId: 'world.gen'
+  },
+  {
+    id: 'studio.graph.spatialWorldExport',
+    component: SpatialWorldExportInspector,
+    nodeTypeId: 'spatialWorld.export'
   },
   {
     id: 'studio.graph.multiAngle',

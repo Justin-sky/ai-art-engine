@@ -21,6 +21,8 @@ const SOURCE_TYPE_RANK: Record<string, number> = {
   'model.texture': 2,
   'model.rigCheck': 1,
   'asset.model3d': 1,
+  // 空间世界生成的产物同样是可直接实例化的 GLB，与 3D 生成节点同级
+  'asset.spatialWorld': 1,
   'asset.model': 1
 }
 

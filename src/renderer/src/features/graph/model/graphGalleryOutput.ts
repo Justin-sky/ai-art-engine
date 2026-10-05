@@ -4,6 +4,9 @@
  * 保证 Inspector 预览、节点卡片与下游取值一致。
  */
 import type { GraphNode, GraphNodeParams, GraphValue } from '@shared/graph'
+import { GRAPH_OUT_ALL_PORT_ID } from '@shared/graph/ports'
+import { jobKind } from '@shared/videoJob'
+import type { VideoJobRecord } from '@shared/videoJob'
 import { graphEditorHosts } from './graphEditorHosts'
 import { graphRunHosts } from './graphRunHosts'
 
@@ -46,6 +49,39 @@ function dropRunState(hostId: string, nodeId: string): void {
   // 只避让正在执行该节点的运行；画布上并行的其它链不应阻止清空
   if (!host || host.activeRunNodeIds.value.has(nodeId)) return
   delete host.runStates[nodeId]
+}
+
+/**
+ * 后台生成任务落定后重建节点出口值（重进工程时的对账走这条路）。
+ *
+ * 这里的值会**覆盖**节点运行态的 out / out-all，所以任务记录里带的 id 必须原样带上：
+ * - 空间世界的 `resourceId`（World.id）→ `spatialWorldId`：
+ *   单节点执行时上游不 cook，下游「空间世界导出」只能从这个出口值里拿 world_id，
+ *   漏了就会在重进工程后报 GRAPH_WORLD_EXPORT_NO_WORLD（世界明明已经生成好了）。
+ */
+export function buildJobDoneOutputs(job: VideoJobRecord): Record<string, GraphValue> {
+  const assetId = job.assetId!
+  const createdAt = job.updatedAt
+  if (jobKind(job) === 'model3d' || jobKind(job) === 'spatialWorld') {
+    const modelValue: GraphValue = {
+      kind: 'asset',
+      assetId,
+      assetType: 'model',
+      ...(job.relativePath ? { relativePath: job.relativePath } : {}),
+      ...(job.resourceId?.trim() ? { spatialWorldId: job.resourceId.trim() } : {})
+    }
+    return { out: modelValue, [GRAPH_OUT_ALL_PORT_ID]: modelValue }
+  }
+  const item = {
+    id: assetId,
+    dataUrl: '',
+    createdAt,
+    ...(job.relativePath ? { relativePath: job.relativePath } : {})
+  }
+  return {
+    out: { kind: 'video', ...item },
+    [GRAPH_OUT_ALL_PORT_ID]: { kind: 'videos', items: [item] }
+  }
 }
 
 function pickEntry<T extends { id?: string }>(list: T[], selectedId: string): T | undefined {
@@ -161,6 +197,10 @@ function commitModels(hostId: string, node: GraphNode, list: ModelList, selected
       assetId: picked.assetId?.trim() || picked.id,
       assetType: 'model',
       ...(relativePath ? { relativePath } : {}),
+      // 只吃 id 的下游端点（部件补全 / 动画重定向吃 task_id、「空间世界导出」吃 world_id）
+      // 在单节点执行时只能从这个记录里拿 —— 这里有选择地重写节点出口，别把 id 洗掉
+      ...(picked.providerTaskId ? { providerTaskId: picked.providerTaskId } : {}),
+      ...(picked.spatialWorldId ? { spatialWorldId: picked.spatialWorldId } : {}),
       ...(picked.rigMeta ? { rigMeta: picked.rigMeta } : {}),
       ...(picked.rigQa ? { rigQa: picked.rigQa } : {}),
       ...(picked.bonePose ? { bonePose: picked.bonePose } : {}),

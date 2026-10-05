@@ -14,7 +14,7 @@ export type InstructionPresetKind =
   | 'voice'
   | 'toPrompt'
   | 'optimize'
-  | 'worldExtract'
+  | 'spatialWorldExtract'
   | 'beatSplit'
   | 'beatUnitGen'
   | 'uiSplit'
@@ -22,6 +22,7 @@ export type InstructionPresetKind =
   | 'svgGen'
   | 'gameHtmlGen'
   | 'model3d'
+  | 'spatialWorld'
   | 'modelPose'
   | 'modelRigSkin'
   | 'modelSegment'
@@ -1533,13 +1534,13 @@ const WORLD_EXTRACT_REFINE_BODY = `请优化下列世界元素目录，并严格
 
 const WORLD_EXTRACT_PRESETS: InstructionPreset[] = [
   {
-    id: 'worldExtract.create',
-    titleKey: 'graph.inspector.generate.presets.worldExtract.create',
+    id: 'spatialWorldExtract.create',
+    titleKey: 'graph.inspector.generate.presets.spatialWorldExtract.create',
     body: WORLD_EXTRACT_CREATE_BODY
   },
   {
-    id: 'worldExtract.refine',
-    titleKey: 'graph.inspector.generate.presets.worldExtract.refine',
+    id: 'spatialWorldExtract.refine',
+    titleKey: 'graph.inspector.generate.presets.spatialWorldExtract.refine',
     body: WORLD_EXTRACT_REFINE_BODY
   }
 ]
@@ -2184,6 +2185,37 @@ const MODEL_ANIMATION_PRESETS: InstructionPreset[] = [
   }
 ]
 
+/**
+ * 空间世界常用预设：只当指令模板写入 generateInstruction。
+ * 世界生成吃的是「空间 + 起始视角景物」，与 3D 单体资产的描述口径不同，故单独成套。
+ */
+const WORLD_MODEL_PRESETS: InstructionPreset[] = [
+  {
+    id: 'interior',
+    titleKey: 'graph.inspector.generate.presets.spatialWorld.interior',
+    tab: 'general',
+    body: '一间温暖的中世纪木屋室内：起始视角站在门口向内看，可见壁炉、木桌、吊灯与窗外雪景，暖黄烛光为主光源，木质与织物材质细节清晰，写实风格。'
+  },
+  {
+    id: 'outdoor',
+    titleKey: 'graph.inspector.generate.presets.spatialWorld.outdoor',
+    tab: 'general',
+    body: '一片开阔的山谷户外场景：起始视角在草坡上，可见远处雪山、蜿蜒溪流、成片针叶林与散落的巨石，午后偏暖阳光、体积光穿过树冠，写实自然风格。'
+  },
+  {
+    id: 'stylized',
+    titleKey: 'graph.inspector.generate.presets.spatialWorld.stylized',
+    tab: 'general',
+    body: '风格化卡通小镇广场：低多边形建筑围绕中央喷泉，色彩明快饱和，边缘干净、材质简化，明亮日光与柔和阴影，适合游戏关卡漫游。'
+  },
+  {
+    id: 'scifi',
+    titleKey: 'graph.inspector.generate.presets.spatialWorld.scifi',
+    tab: 'fx',
+    body: '未来感空间站内部走廊：起始视角面向环形舷窗，可见金属舱壁、管线、指示灯与舱外行星，冷蓝主光加暖色点缀，硬表面材质与柔和反射，科幻写实风格。'
+  }
+]
+
 const PRESET_PACKS: Record<InstructionPresetKind, InstructionPreset[]> = {
   screenplay: SCREENPLAY_PRESETS,
   gameSystem: GAME_SYSTEM_PRESETS,
@@ -2194,7 +2226,7 @@ const PRESET_PACKS: Record<InstructionPresetKind, InstructionPreset[]> = {
   voice: VOICE_PRESETS,
   toPrompt: TO_PROMPT_PRESETS,
   optimize: OPTIMIZE_PRESETS,
-  worldExtract: WORLD_EXTRACT_PRESETS,
+  spatialWorldExtract: WORLD_EXTRACT_PRESETS,
   beatSplit: BEAT_SPLIT_PRESETS,
   // 规则在系统提示词；指令窗口仅作临时焦点，暂无成套预设
   beatUnitGen: [],
@@ -2203,6 +2235,7 @@ const PRESET_PACKS: Record<InstructionPresetKind, InstructionPreset[]> = {
   svgGen: SVG_GEN_PRESETS,
   gameHtmlGen: GAME_HTML_GEN_PRESETS,
   model3d: [],
+  spatialWorld: WORLD_MODEL_PRESETS,
   modelPose: MODEL_POSE_PRESETS,
   modelRigSkin: MODEL_RIG_SKIN_PRESETS,
   // 拆分节点的指令框是智能分割的部件点名提示

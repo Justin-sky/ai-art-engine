@@ -449,7 +449,7 @@ const BUILTIN_SKILLS: GraphSkill[] = [
   ),
   fromSystemDefault('system.voice', '声音', 'Voice', defaultTimbreSystemPrompt),
   fromSystemDefault(
-    'system.worldExtract',
+    'system.spatialWorldExtract',
     '世界提取',
     'World extract',
     defaultWorldExtractSystemPrompt

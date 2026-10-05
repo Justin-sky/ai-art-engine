@@ -480,6 +480,7 @@ export default {
         hyper3d: '获取 Rodin（Hyper3D）API Key：',
         luma: '获取 Luma AI API Key：',
         lux3d: '获取 Lux3D API Key：',
+        worldlabs: '获取 World Labs API Key（需先在 platform.worldlabs.ai/billing 充值积分）：',
         custom:
           '自定义提供商：选择端点类型后，填写端点 Base URL 与 API Key 即可拉取模型列表；无统一申请页。'
       },
@@ -518,6 +519,7 @@ export default {
         video: '视频',
         audio: '声音',
         model3d: '3D 模型',
+        spatialWorld: '空间世界',
         decisions: '决策'
       },
       modalityHint: {
@@ -527,6 +529,8 @@ export default {
         audio:
           '用于 TTS 语音合成，对应 /api/v1/models?output_modalities=speech 与 /api/v1/audio/speech。',
         model3d: '用于 3D 模型生成，从文本和/或参考图生成 GLB 模型。',
+        world:
+          '用于空间世界生成（World Labs Marble）：从文本或参考图生成可交互 3D 世界（高斯泼溅 + 网格）。',
         decisions:
           '决策模型（TypeSafe Jev、Liquid D1 等）不生成文本，而是对问题返回带概率的类型化判定（noul 是/否、choice 多选一、score 有序打分）。OpenRouter 走 /api/v1/models?output_modalities=decisions 与 POST /api/alpha/decisions（注意不在 /v1 下）；TypeSafe 直连走 GET /v1/models 与 POST /v1/systemone（两家协议一致）。勾选后可在决策节点里按阈值直接分支。'
       },
@@ -617,6 +621,10 @@ export default {
       typesafeModalityHint: {
         decisions:
           'TypeSafe 直连（Jev / System One）：目录由 GET /v1/models 拉取，判定走 POST /v1/systemone，Bearer 鉴权。它与 OpenRouter 的决策协议一致（noul / choice / score 原语与概率答案形状相同），只是不经过 OpenRouter 中转；本提供商只做决策判定，没有文本 / 图片 / 视频生成。'
+      },
+      worldlabsModalityHint: {
+        world:
+          'World Labs（Marble）：从文本 / 单图 / 多图生成可交互 3D 世界。默认 Base URL 为 api.worldlabs.ai，鉴权头 WLT-Api-Key；生成走 POST /marble/v1/worlds:generate 后轮询 operations/{id}（约 5 分钟）。模型 marble-1.1（标准）与 marble-1.1-plus（更大世界，消耗更多积分）；完成产物含高斯泼溅（SPZ）与 GLB 网格，需在 platform.worldlabs.ai/billing 充值积分。'
       },
       localModalityHint: {
         text: '本地 OpenAI 兼容服务（vLLM / Ollama / LM Studio）：无需 API Key，文本对话走 /chat/completions，模型目录由 /models 拉取；多模态理解可在文本节点传入图片。',
@@ -1025,6 +1033,7 @@ export default {
       beat: '场',
       subgraph: '宿主资产',
       model3d: '3D 模型',
+      spatialWorld: '空间世界',
       motion2d: '2D 动作',
       gamePlay: '可玩 HTML'
     },
@@ -1041,6 +1050,7 @@ export default {
       beat: '新建场',
       subgraph: '新建宿主资产',
       model3d: '新建 3D 模型',
+      spatialWorld: '新建空间世界',
       motion2d: '新建 2D 动作',
       default: '新建资产',
       freeCanvasNameTitle: '新建自由画布',
@@ -2606,6 +2616,10 @@ export default {
       videoUntitled: '视频任务',
       model3dKind: '3D 模型',
       model3dUntitled: '3D 模型任务',
+      spatialWorldKind: '空间世界',
+      spatialWorldUntitled: '空间世界任务',
+      spatialWorldExportKind: '空间世界导出',
+      spatialWorldExportUntitled: '空间世界导出任务',
       videoStopConfirmMessage: '确定取消该视频生成？供应商侧任务可能仍会继续计费。',
       stop: '停止',
       remove: '移除',
@@ -2656,6 +2670,7 @@ export default {
         generate_speech: '语音',
         generate_music: '音乐',
         generate_model3d: '3D 模型',
+        generate_world: '空间世界',
         decide: '决策判定',
         graph_icon_refine: '图标精修',
         task_run: '工作流',
@@ -2687,11 +2702,14 @@ export default {
       submitVideo: '提交视频生成…',
       submitSpeech: '提交语音生成…',
       submitModel3d: '提交 3D 模型生成…',
+      submitSpatialWorld: '提交空间世界生成…',
+      submitSpatialWorldExport: '提交空间世界导出…',
       submitRig: '提交 3D 绑骨…',
       submitSegment: '提交 3D 拆件…',
       submitPostProcess: '提交 3D 网格后处理…',
       videoProgress: '视频生成 {progress}% · {status}',
       model3dProgress: '3D 模型生成 {progress}% · {status}',
+      worldProgress: '空间世界生成 {progress}% · {status}',
       sessionStatus: {
         running: '执行中',
         done: '成功',
@@ -2821,6 +2839,7 @@ export default {
         game: '游戏',
         motionFx: '2D',
         model3d: '3D',
+        spatialWorld: '空间世界',
         comic: '漫画',
         qc: '质检返工',
         ad: '广告'
@@ -3838,6 +3857,7 @@ export default {
         voice: '声音输入',
         video: '视频输入',
         model: '模型输入',
+        spatialWorld: '空间世界输入',
         worldEntities: '世界元素实体'
       },
       placeholderByType: {
@@ -3846,6 +3866,7 @@ export default {
         voice: '等待外层声音…',
         video: '等待外层视频…',
         model: '等待外层模型…',
+        spatialWorld: '等待外层空间世界…',
         worldEntities: '等待外层世界元素实体…'
       }
     },
@@ -3905,6 +3926,35 @@ export default {
     },
     worldGenNode: {
       hint: '双击打开世界元素生成画布'
+    },
+    spatialWorldExport: {
+      mode: '导出内容',
+      modes: {
+        mesh: '高质量网格（GLB）',
+        splats: 'PLY 泼溅'
+      },
+      variant: '网格变体',
+      variants: {
+        textured: '带贴图（约 60 万面）',
+        vertexColored: '顶点色（约 100 万面）'
+      },
+      resolution: '泼溅分辨率',
+      resolutions: {
+        fullRes: '全分辨率（约 200 万点）',
+        k500: '50 万点',
+        k150: '15 万点',
+        k100: '10 万点'
+      },
+      meshHint:
+        '上游异步导出网格：最长约 1 小时、限速 4 次/小时、单独计费。产物登记为模型资产，可接导演台或下游 3D 加工节点。',
+      splatsHint:
+        '上游同步转换 PLY：落在上游世界产物的同目录同名文件（world.glb → world.ply），不登记资产（可导入资产库，或直接把相对路径接到导演台的 3D 模型输入口——进舞台的高斯泼溅用内置 Spark 渲染）。引擎导入优先用随世界自动落盘的 SPZ。',
+      lastOutput: '上次产物：',
+      /** 上游世界随世界免费返回的附加产物（展示名） */
+      worldExtras: {
+        splats: '世界自带的高斯泼溅（SPZ）',
+        pano: '世界自带的 360 全景图'
+      }
     },
     beatTableNode: {
       hint: '双击打开场表格'
@@ -3979,6 +4029,8 @@ export default {
       convertedMeshAll: '全部转换后模型',
       texturedMesh: '贴图后模型',
       texturedMeshAll: '全部贴图后模型',
+      exportedMesh: '导出结果',
+      exportedMeshAll: '全部导出结果',
       pose: '姿势',
       poseAll: '全部姿势',
       animation: '动画',
@@ -4006,6 +4058,7 @@ export default {
         worldEntities: '世界元素实体',
         beat: '场',
         model: '模型',
+        spatialWorld: '空间世界',
         project: '工程'
       }
     },
@@ -4031,6 +4084,13 @@ export default {
       rotateCcw: '逆时针旋转 90°（快捷键 [）',
       rotateCw: '顺时针旋转 90°（快捷键 ]）',
       rotateReset: '复位旋转角（快捷键 0）'
+    },
+    modelPreview: {
+      title: '3D 预览',
+      reset: '重置视角',
+      loading: '正在加载 3D 预览…',
+      error: '3D 预览加载失败',
+      unsupported: '当前环境无法初始化 WebGL，3D 预览不可用'
     },
     run: {
       stopped: '已停止',
@@ -4094,6 +4154,8 @@ export default {
       modelAnimMcp: '请先启动 Blender 并启用 Blender MCP',
       modelAnimNoMatch: 'Blender 未写入可用动画',
       modelAnimFailed: '3D 关键帧动画未完成',
+      worldExportNoWorld:
+        '上游模型没有 world_id：导出端点只认空间世界生成节点给出的世界。请确认上游是「空间世界生成」节点（而不是 3D 模型生成 / 加工节点）；若这个世界是旧版本生成的、记录里从未存过 world_id，只能重新生成一次世界。',
       modelAnimExport: 'Blender 未导出动画 GLB',
       modelAnimDsh: '无法启动 dsh 作业（动画）',
       modelDshTimeout: 'dsh / Blender 作业超时（绑骨约 100 分钟、姿势约 60 分钟、动画约 120 分钟）',
@@ -4233,6 +4295,9 @@ export default {
         extract: '世界元素提取',
         table: '世界元素审核',
         gen: '世界元素生成'
+      },
+      spatialWorld: {
+        export: '空间世界导出'
       },
       plugin: {
         example: {
@@ -4901,6 +4966,7 @@ export default {
         videoModel: '视频模型',
         voiceModel: '已购声音',
         model3dModel: '3D 模型',
+        spatialSpatialWorld: '空间世界',
         modelPreview: '模型预览',
         voiceProfile: '角色音色',
         voiceProfileNone: '无（按描述生成）',
@@ -4913,6 +4979,22 @@ export default {
         voiceProfileDescription: '音色描述',
         voiceProfileSave: '保存档案',
         modelPreviewEmpty: '生成完成后在此预览 3D 模型',
+        spatialWorldSeedHint: '世界生成随机种子（0 或留空 = 上游随机；同种子同描述可复现同一世界）',
+        spatialWorldSeedPlaceholder: '随机',
+        spatialWorldPanoHint:
+          '参考图全景判定（官方 is_pano，仅单图形态生效）：自动识别 2:1 等距柱状全景 / 强制当全景 / 当普通图片',
+        spatialWorldPanoModes: {
+          auto: '全景·自动',
+          always: '全景·强制',
+          never: '全景·关闭'
+        },
+        spatialWorldLiteralPrompt: '按原文',
+        spatialWorldLiteralPromptHint:
+          '关闭上游 recaption：指令原话直送、不再由上游补写画面描述（配合固定种子更可复现）',
+        spatialWorldExtraKinds: {
+          splats: '高斯泼溅',
+          pano: '360 全景'
+        },
         model3dStyle: '3D 风格',
         model3dStyleHint: 'Lux3D 文生 3D 风格（图生 3D 不生效）',
         model3dStyles: {
@@ -4978,7 +5060,9 @@ export default {
         voiceInstructionPlaceholder: "描述声音（文本）；可接图片参考；可用 {'@'} 引用连线资源",
         model3dInstructionPlaceholder:
           "描述要生成的 3D 模型；可接参考图进行图生 3D；可用 {'@'} 引用连线资源",
-        worldExtractInstructionPlaceholder:
+        spatialWorldInstructionPlaceholder:
+          "描述要生成的可漫游 3D 世界（空间格局、起始视角景物、光照氛围）；可接 1–4 张参考图或 1 段参考视频（同时接时以视频为准）；可用 {'@'} 引用连线资源",
+        spatialWorldExtractInstructionPlaceholder:
           "从文本提取角色/场景/道具/武器；可用 {'@'} 引用上方连线资源",
         beatSplitInstructionPlaceholder: "将剧本拆解为场；可用 {'@'} 引用上方连线资源",
         uiSplitInstructionPlaceholder:
@@ -5038,6 +5122,7 @@ export default {
           titleModelSegment: '拆分点名模板',
           titleModelRetarget: '动画组合模板',
           titleModelTexture: '贴图材质模板',
+          titleSpatialWorld: '世界生成模板',
           tabGeneral: '通用',
           tabGame: '游戏',
           tabFilm: '影视',
@@ -5050,6 +5135,12 @@ export default {
             uiButton: 'UI 按钮',
             animIcon: '图标动效',
             illustFlat: '扁平插画'
+          },
+          spatialWorld: {
+            interior: '室内场景',
+            outdoor: '户外自然',
+            stylized: '风格化小镇',
+            scifi: '科幻空间站'
           },
           modelPose: {
             idle: '自然站立',
@@ -5269,7 +5360,7 @@ export default {
             filmCostume: '服化道造型',
             filmCamera: '镜头语言'
           },
-          worldExtract: {
+          spatialWorldExtract: {
             create: '提取世界元素',
             refine: '优化元素目录'
           },

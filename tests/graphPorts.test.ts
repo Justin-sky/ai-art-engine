@@ -26,6 +26,7 @@ describe('GraphPortType', () => {
       GraphPortType.worldEntities,
       GraphPortType.beat,
       GraphPortType.model,
+      GraphPortType.spatialWorld,
       GraphPortType.project
     ])
     expect(isGraphPortDataType('image')).toBe(true)
@@ -39,6 +40,7 @@ describe('GraphPortType', () => {
     expect(isGraphPortDataType('world')).toBe(true)
     expect(isGraphPortDataType('worldEntities')).toBe(true)
     expect(isGraphPortDataType('beat')).toBe(true)
+    expect(isGraphPortDataType('spatialWorld')).toBe(true)
     expect(isGraphPortDataType('voice')).toBe(true)
     expect(isGraphPortDataType('voices')).toBe(true)
     expect(isGraphPortDataType('camera')).toBe(false)

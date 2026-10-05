@@ -204,6 +204,7 @@
             图片 / 视频 / 声音生成通过你配置的模型提供商完成（OpenRouter、OpenAI、DeepSeek、智谱、Kimi、xAI、Google、vLLM、Ollama、LM Studio、火山方舟、可灵、MiniMax、通义千问、魔塔、ComfyUI、MagicRouter 等），
             其中 OpenRouter 另提供决策模型（Decisions API），与文本 / 图片 / 视频一样按模态配置。
             3D 模型生成支持 Meshy、Tripo、Rodin（Hyper3D）、Luma AI 与 Lux3D。
+            空间世界生成（从文本 / 参考图生成可漫游 3D 世界）支持 World Labs（Marble）。
             可用<strong>一键工作流</strong>从模板或自然语言快速生成可复用宿主资产，再拖入画布继续编排。
           </p>
           <h3>首次使用建议</h3>
@@ -478,6 +479,12 @@
                   默认 Base URL <code>https://api.aholo3d.cn</code>）。
                 </li>
                 <li>
+                  <strong>World Labs（Marble）</strong>：空间世界生成 —— 文生世界 / 图生世界 / 多图生世界 /
+                  视频生世界（API Key，默认 Base URL <code>https://api.worldlabs.ai</code>，鉴权头为
+                  <code>WLT-Api-Key</code>；模型 marble-1.1 标准、marble-1.1-plus 更大世界、marble-1.0 与
+                  marble-1.0-draft 上一代。参考媒体走官方托管上传，无需对象存储）。
+                </li>
+                <li>
                   <strong>自定义</strong>：自选端点类型（OpenAI 兼容 / Anthropic / Gemini）并填写 Base URL 与
                   API Key，用于 NewAPI、one-api 等中转网关或自建服务；支持文本与图片，模型常在目录里拉不到，
                   需手动填 id —— 完整步骤见
@@ -653,6 +660,12 @@
                   >
                 </li>
                 <li>
+                  World Labs API Key（需先在平台的 billing 页充值积分）：
+                  <a href="https://platform.worldlabs.ai/api-keys" target="_blank" rel="noopener noreferrer"
+                    >https://platform.worldlabs.ai/api-keys</a
+                  >
+                </li>
+                <li>
                   MagicRouter API Key（<code>mr-</code> 开头）：
                   <a href="https://www.magicrouter.ai/docs/api" target="_blank" rel="noopener noreferrer"
                     >https://www.magicrouter.ai/docs/api</a
@@ -664,12 +677,12 @@
             <li>启用该提供商后，点击「拉取可用模型」（可灵 / MiniMax 部分模态 / 百炼图视频 / OpenAI 与智谱图片等为本地静态目录；vLLM / Ollama / LM Studio / ComfyUI 等本地服务无需密钥，直接拉取）。</li>
             <li>用筛选、全选/清空勾选需要的模型；也可手动添加模型 ID。</li>
             <li>
-              按模态配置：文本 / 图片 / 视频 / 声音 / 3D 模型 / 决策（OpenRouter 支持文本 / 图片 / 视频 / 决策，决策页签走
+              按模态配置：文本 / 图片 / 视频 / 声音 / 3D 模型 / 空间世界 / 决策（OpenRouter 支持文本 / 图片 / 视频 / 决策，决策页签走
               <code>output_modalities=decisions</code> 拉取；TypeSafe 直连仅「决策」页签，目录走 <code>GET /v1/models</code>、判定走
               <code>POST /v1/systemone</code>，与 OpenRouter 的决策协议一致但不经其中转；方舟声音页签会提示语音控制台链接，并手填
               <code>speaker_id</code>；可灵仅图片与视频页签；MiniMax 支持文本 / 图片 / 视频 / 音色设计；OpenAI 支持文本与图片；
               DeepSeek 仅文本；Kimi（月之暗面）仅文本；xAI（Grok）支持文本 / 图片 / 视频（视频为异步轮询）；Google（Gemini）支持文本 / Nano Banana 图片 / Veo 3.1 视频（异步轮询）；智谱支持 GLM 文本与 CogView 图片；vLLM 支持文本与视频（Wan T2V / I2V）；Ollama / LM Studio 仅文本（多模态理解可在文本节点传图）；
-              魔塔仅文本与图片，文生图为异步任务；ComfyUI 支持图片 / 视频 / 声音，无文本页签；MagicRouter 支持文本 / 图片 / 视频；Meshy / Tripo / Rodin（Hyper3D） / Luma AI / Lux3D 仅 3D 模型页签；自定义提供商的页签由端点类型决定 —— OpenAI 兼容 / Gemini 为文本 + 图片，Anthropic 仅文本，且图片模型必须手动填 id，见
+              魔塔仅文本与图片，文生图为异步任务；ComfyUI 支持图片 / 视频 / 声音，无文本页签；MagicRouter 支持文本 / 图片 / 视频；Meshy / Tripo / Rodin（Hyper3D） / Luma AI / Lux3D 仅 3D 模型页签；World Labs（Marble）仅空间世界页签；自定义提供商的页签由端点类型决定 —— OpenAI 兼容 / Gemini 为文本 + 图片，Anthropic 仅文本，且图片模型必须手动填 id，见
               <a href="guide-newapi.html">NewAPI 接入教程</a>）。
             </li>
             <li>设置默认生成模型与默认声音（如需要）。提供商卡片可折叠以节省空间。</li>
@@ -1213,13 +1226,45 @@
           <ul>
             <li>
               图片生成 · 视频生成 · 声音生成 · 剧本生成 · 场生成 · 世界元素提取 · 策划案生成 ·
-              导演台编辑 · 画布编辑 · 3D 模型生成 · 3D 模型加工（蒙皮 / 绑骨检查 / 动画重定向 / 拆分 / 部件补全 /
+              导演台编辑 · 画布编辑 · 3D 模型生成 · 空间世界生成 · 3D 模型加工（蒙皮 / 绑骨检查 / 动画重定向 / 拆分 / 部件补全 /
               重拓扑 / 贴图 / 格式转换）· 2D 帧动画 · 决策判定 · 模型（引用）· 宿主资产
             </li>
             <li>
               <strong>3D 模型生成</strong>：文本 / 上游参考图 → 3D 模型资产（Meshy、Tripo、Rodin（Hyper3D）、Luma AI、Lux3D，文生 3D / 图生 3D，部分支持多图生 3D）；
               异步提交 → 轮询 → 下载，结果可接入导演台或下游继续加工，支持回写绑定持久化与取消。
               <strong>生成节点只出几何 GLB</strong>，蒙皮等加工交给下面的 3D 加工节点（6.4.1 起不再内联「生成骨骼」）。
+            </li>
+            <li>
+              <strong>空间世界生成</strong>（<code>asset.spatialWorld</code>）：文本、1–4 张参考图或 1 段参考视频 →
+              可漫游 3D 世界（World Labs Marble，1.1 / 1.1-plus / 1.0 / 1.0-draft 四档，后两档为上一代）。四种输入互斥
+              （文本 / 单图 / 多图同场景 / 视频），<strong>同时接了视频与图片时以视频为准</strong>（与「对口型」同口径）；
+              参考视频推荐 mp4 / webm / mov / avi，<strong>单条不超过 100MB</strong>（上游硬限制）。
+              节点卡片上还有<strong>全景判定</strong>（<code>is_pano</code>：自动识别 2:1 等距柱状全景 / 强制 / 关闭，仅单图生效——
+              全景给出完整空间信息，通常比普通图更准）、<strong>按原文</strong>（关闭上游 recaption，指令原话直送）与<strong>随机种子</strong>；
+              不给指令时上游会自己补一段画面描述（recaption），所以同一张参考图两次结果可能不完全一致，要可复现就勾「按原文」+ 固定种子。
+              与 3D 生成同一套异步提交 →
+              轮询 → 下载，产物是世界的 GLB 网格、按<strong>模型资产</strong>登记（缺省落
+              <code>Cache/Models</code>，与 3D 生成一致），可直接接导演台或下游 3D 加工节点 —— 但
+              <strong>必须经过「空间世界导出」节点</strong>：空间世界端口是<strong>严格同类型</strong>的
+              （<code>spatialWorld</code> 只连 <code>spatialWorld</code>，不隐式兼容 <code>model</code>），
+              先接空间世界导出、再用它导出的网格接导演台 / 3D 加工；参考图的「多图同场景」
+              最多 4 张。本地图 / 本地视频的参考<strong>默认上传到 World Labs 托管存储</strong>（官方 media-asset，流程见
+              <code>/marble/v1/media-assets:prepare_upload</code> → 签名地址 PUT），因此<strong>不需要配置对象存储</strong>；
+              托管上传失败时才回退到对象存储换公网 URL，两条都失败会把两条原因一起写进报错。单次生成约
+              5 分钟、按积分计费。产物方面，<strong>主产物是世界的 GLB 网格</strong>（粗网格，10–20 万面），
+              同时把随世界一起返回的两份「附加产物」落在<strong>同目录同名</strong>文件里：<code>*.spz</code>
+              <strong>高斯泼溅</strong>（约 2M splats，Marble 原生格式，Unreal / Unity / Blender / Houdini 导入首选）与
+              <code>*.pano.png</code> <strong>360 等距柱状全景图</strong>（2560×1280，可直接当 2D 全景输入再生成一次）。
+              这两份不额外扣积分，路径会写进运行日志与节点检查器（选中节点即可复制路径）；
+              <strong>需要 PLY 泼溅或 HQ 贴图网格</strong>时用<strong>「空间世界导出」节点</strong>（<code>spatialWorld.export</code>）：
+              把空间世界节点的输出（端口类型是<strong>空间世界</strong>，与世界元素目录口区分）接进它的
+              <code>in-world</code>，在检查器里选导出内容 ——
+              <strong>高质量网格</strong>（GLB：带贴图约 60 万面 / 顶点色约 100 万面，官方异步导出，<strong>最长约 1 小时、限速 4 次/小时、单独计费</strong>；
+              产物登记为模型资产，出口是 <code>model</code> —— 从这里接导演台或下游 3D 加工节点）或 <strong>PLY 泼溅</strong>
+              （官方同步转换，落在世界 GLB 旁边同名文件 <code>world.ply</code>，不登记资产 —— 但可以把它导进资产库，
+              或直接把相对路径接到导演台的 3D 模型输入口，进舞台用内置 Spark 渲染，见
+              <a href="#director">12.7 高斯泼溅</a>；引擎导入仍优先用自动落盘的 SPZ）。导出节点只认上游世界生成节点给出的 <code>world_id</code>，
+              拿不到就直接报错，不会拿别的世界去导。
             </li>
             <li>
               <strong>3D 模型加工（节点）</strong>：<strong>3D 骨骼蒙皮</strong>（Meshy / Tripo Rigging
@@ -1707,6 +1752,51 @@
             <li>
               动画面板红色圆点按钮为<strong>录制动作</strong>：按当前动画内容录成 WebM，自动保存到缓存目录并进入「动作」列表。
             </li>
+          </ul>
+
+          <h3>12.7 高斯泼溅（.spz / .ply）</h3>
+          <p>
+            泼溅是<strong>空间世界</strong>那条链路的产物，也能当模型资产直接进舞台渲染、摆位、参与站位图与动作录制：
+          </p>
+          <ul>
+            <li>
+              取两种来源：<strong>空间世界生成</strong>随世界自动落盘的 <code>*.spz</code>（免费，推荐）；或
+              <strong>「空间世界导出」</strong>节点同步转出的 <code>*.ply</code>（单独计费，落在世界 GLB 旁边同名文件）。
+              PLY 不登记资产，要用它的相对路径可直接连导演台的 3D 模型输入口，或先导入资产库。
+            </li>
+            <li>
+              进舞台的两种方式与其他模型一致：把泼溅模型资产<strong>拖到舞台视口</strong>，或接入导演台节点的
+              <strong>3D 模型输入端口</strong>（dive 进入舞台时自动实例化）。
+            </li>
+            <li>
+              渲染由内置的 <strong>Spark</strong> 承担：泼溅网格是场景层级里的普通对象，可选中、可拖动 / 旋转 /
+              缩放、可挂父子、可显隐、可改显示名——与 GLB 角色走同一套变换工具与包围盒框。
+              <strong>资产检查器的 3D 预览</strong>与资产卡<strong>缩略图</strong>同样能渲染泼溅。
+            </li>
+            <li>
+              <strong>空间世界导出</strong>节点的检查器里同样有 3D 预览窗与产物区：导出 HQ 网格 / PLY
+              泼溅后可以直接转着看，产物区里也会列出世界自带的高斯泼溅（SPZ）与 360 全景图。
+            </li>
+            <li>
+              「骨骼」页签对泼溅没有意义：没有骨骼，也不参与动画重定向，动画面板不会为它列出骨骼片段，
+              骨骼列表为空属正常。
+            </li>
+            <li>
+              泼溅网格按需加载：预览 / 舞台里没有泼溅时不会加载这套渲染器；泼溅是异步读入的，
+              刚进舞台时可能还看不到，等一会儿即出现。
+            </li>
+          </ul>
+          <p><strong>可以做什么</strong></p>
+          <ul>
+            <li>整体变换、显隐、改名、改父级、锁定，与普通对象完全一致。</li>
+            <li>属性里的<strong>颜色</strong>对该物体是整体染色（改变泼溅本身色相），不像普通模型那样只换材质底色。</li>
+            <li>站位截图与动作录制照常把它渲染进画面。</li>
+          </ul>
+          <p><strong>不能做什么</strong>（泼溅没有三角网格与材质贴图，以下工具对它无效）</p>
+          <ul>
+            <li>姿势与骨骼动画：没有骨骼，也不参与动画重定向，动画面板不会为它列出骨骼片段。</li>
+            <li>材质贴图覆盖：不会出现可替换的贴图槽。</li>
+            <li>着色模式里的<strong>线框</strong> / <strong>着色线框</strong>：泼溅始终按自身方式着色。</li>
           </ul>
         </section>
 

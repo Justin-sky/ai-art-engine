@@ -78,6 +78,25 @@ describe('buildModelOptions', () => {
     ])
   })
 
+  it('includes worldlabs for world only and carries providerKind', () => {
+    const modalities = createEmptyModalityMap()
+    modalities.spatialWorld.selectedModelIds = ['marble-1.1-plus']
+    modalities.spatialWorld.defaultModelId = 'marble-1.1-plus'
+    const providers = [baseProvider({ id: 'wl1', providerKind: 'worldlabs', modalities })]
+    expect(buildModelOptions(providers, 'spatialWorld')).toEqual([
+      {
+        key: 'wl1::marble-1.1-plus',
+        label: 'worldlabs · marble-1.1-plus',
+        providerInstanceId: 'wl1',
+        providerKind: 'worldlabs',
+        model: 'marble-1.1-plus'
+      }
+    ])
+    // 空间世界供应商不进 3D / 图片下拉：它的目录只在 world 模态里
+    expect(buildModelOptions(providers, 'model3d')).toEqual([])
+    expect(buildModelOptions(providers, 'image')).toEqual([])
+  })
+
   it('includes minimax for text, image, video and audio', () => {
     const modalities = createEmptyModalityMap()
     modalities.text.selectedModelIds = ['MiniMax-M3']

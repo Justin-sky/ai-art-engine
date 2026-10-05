@@ -125,6 +125,16 @@ export const GraphPortType = {
   worldEntities: 'worldEntities',
   beat: 'beat',
   model: 'model',
+  /**
+   * 空间世界（World Labs Marble）产物口：产物在磁盘上仍是一个 GLB 模型资产，
+   * 但它**带 world_id、还可能是「世界」而非单个模型**（网格 + 高斯泼溅 + 全景），
+   * 与空间世界导出（`worlds/{id}:export` 只认 world_id）在语义上是一对。
+   *
+   * 连接规则是**单向**的：`spatialWorld → model` 允许（世界产物就是网格，
+   * 照旧能接 3D 加工节点与导演台模型口），反向不允许 —— 普通模型没有 world_id，
+   * 接进空间世界导出只会得到一个说不清的失败。
+   */
+  spatialWorld: 'spatialWorld',
   /** 可玩 HTML 等：磁盘上的工程目录（相对工程根） */
   project: 'project'
 } as const
@@ -311,6 +321,36 @@ export interface GraphNodeParams {
   generateCount?: number
   /** 3D 模型生成：风格（Lux3D 文生3D photorealistic/cartoon/anime/hand_painted/cyberpunk/fantasy/glass） */
   generateStyle?: string
+  /**
+   * 空间世界生成（World Labs Marble）：随机种子 0–4294967295。
+   * 0 / 未设置表示不传 seed，由上游随机；同种子同参数可复现同一世界。
+   */
+  spatialWorldSeed?: number
+  /**
+   * 空间世界生成：单图参考是否按等距柱状全景处理（官方 `is_pano`）。
+   * auto（默认，自动识别 2:1 equirect）/ always 强制 / never 当普通图片。
+   */
+  spatialWorldPanoMode?: 'auto' | 'always' | 'never'
+  /**
+   * 空间世界生成：关闭上游 recaption（用指令原文，不再由上游补写画面描述）。
+   * 缺省 false：上游会自行 recaption，同一份输入两次结果可能不同。
+   */
+  spatialWorldDisableRecaption?: boolean
+  /**
+   * 空间世界生成：随世界一起落盘的附加产物（高斯泼溅 SPZ / 360 全景图），
+   * 相对路径与主产物同目录同名，仅后缀不同（`splats` → `.spz`、`pano` → `.pano.png`）。
+   */
+  spatialWorldExtras?: Array<{ kind: string; relativePath: string }>
+  /** 空间世界导出：导出哪一族（mesh 高质量网格 GLB / splats PLY 泼溅） */
+  spatialWorldExportMode?: 'mesh' | 'splats'
+  /** 空间世界导出（mesh）：网格变体，textured 约 600k 面带贴图 / vertex_colored 约 1M 面顶点色 */
+  spatialWorldExportVariant?: 'textured' | 'vertex_colored'
+  /** 空间世界导出（splats）：PLY 分辨率档 */
+  spatialWorldExportResolution?: 'full_res' | '500k' | '150k' | '100k'
+  /** 空间世界导出：最近一次产物的工程相对路径（PLY 泼溅没有资产，路径只能记在这里） */
+  spatialWorldExportRelativePath?: string
+  /** 空间世界导出：最近一次导出的资产族 */
+  spatialWorldExportAssetType?: 'mesh' | 'splats'
   /** 3D 模型生成：是否要求上游附加骨骼蒙皮（rig）；仅 Tripo / Meshy / Rodin 支持 */
   generateRig?: boolean
   /** 3D 模型生成：骨架类型（humanoid / quadruped / bipedal / creature…）；未启 rig 时忽略 */
@@ -726,6 +766,13 @@ export interface GraphNodeParams {
     createdAt?: string
     relativePath?: string
     assetId?: string
+    /**
+     * 上游供应商任务 id（Tripo / Meshy…）。只吃 task_id 的下游端点
+     *（部件补全 / 动画重定向）在单节点执行时要靠它链式调用，别在落盘 / 重建时丢掉。
+     */
+    providerTaskId?: string
+    /** World Labs 世界 id：下游「空间世界导出」只认它，落盘与重建都必须带上 */
+    spatialWorldId?: string
     rigMeta?: GraphNodeParams['rigMeta']
     rigQa?: GraphNodeParams['rigQa']
     bonePose?: GraphNodeParams['bonePose']

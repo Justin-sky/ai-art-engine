@@ -10,6 +10,7 @@ import {
   isLocalOpenAiProvider,
   isModel3dProviderKind,
   isVllmProvider,
+  isWorldProviderKind,
   modalityConfig,
   providerModelDisplayName
 } from '@shared/modelProvider'
@@ -132,6 +133,14 @@ export function buildModelOptions(
     if (modality === 'model3d' && !isModel3dProviderKind(provider.providerKind)) {
       continue
     }
+    // 空间世界生成：仅支持空间世界供应商（World Labs Marble）
+    if (modality === 'spatialWorld' && !isWorldProviderKind(provider.providerKind)) {
+      continue
+    }
+    // 反向约束：空间世界供应商只做世界生成，不出现在图片 / 视频 / 文本等其它模态的下拉里
+    if (isWorldProviderKind(provider.providerKind) && modality !== 'spatialWorld') {
+      continue
+    }
     // 决策：只有提供决策协议的供应商（OpenRouter Decisions API / TypeSafe System One）
     if (modality === 'decisions' && !isDecisionProviderKind(provider.providerKind)) {
       continue
@@ -180,7 +189,8 @@ export function preferredModelKey(providerInstanceId?: string, model?: string): 
   return modelKey(providerInstanceId, model)
 }
 
-export type GenerateModelModality = 'text' | 'image' | 'video' | 'audio' | 'model3d' | 'decisions'
+export type GenerateModelModality =
+  'text' | 'image' | 'video' | 'audio' | 'model3d' | 'spatialWorld' | 'decisions'
 
 /** 打开编辑窗时会连打 getSettings；短缓存避免同一次打开多 Dialog 重复 IPC */
 let settingsCache: {
@@ -227,6 +237,7 @@ export function resolveEmptyModelOptionsReason(
       return modality === 'image' || modality === 'video' || modality === 'audio'
     if (isVllmProvider(kind)) return modality === 'text' || modality === 'video'
     if (isLocalOpenAiProvider(kind)) return modality === 'text'
+    if (isWorldProviderKind(kind)) return modality === 'spatialWorld'
     if (isModel3dProviderKind(kind)) return modality === 'model3d'
     if (kind === 'volcengine-ark' || kind === 'dashscope' || kind === 'minimax') {
       return modality !== 'model3d'
