@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   createEmptyModalityMap,
   modalityConfig,
+  requiresSpeechVoice,
+  resolveAvailableVoices,
   resolveDefaultVoice,
   resolveModelSupportedVoices,
   type ModelProviderInstance
@@ -140,6 +142,36 @@ describe('默认声音解析（设置 → 生成）', () => {
     }
     expect(resolveModelSupportedVoices(p, 'audio', 'or-tts')).toEqual(['mika'])
     expect(resolveModelSupportedVoices(p, 'audio', 'broken')).toEqual([])
+  })
+
+  /**
+   * ElevenLabs 的音色属于**账号**而不是模型（voice_id 也不透明），
+   * 所以「模型声明的音色」这一路它永远是空的。原先只看那一路，
+   * 结果生成时报 `voiceRequired` —— 而面板里明明列着音色。
+   */
+  it('模型没声明音色时回退到供应商级音色目录（ElevenLabs）', () => {
+    const p = provider({ providerKind: 'elevenlabs', id: 'el-1' })
+    modalityConfig(p, 'audio').voiceLabels = { v1: 'Sarah', v2: 'Roger' }
+    expect(resolveModelSupportedVoices(p, 'audio', 'eleven_v3')).toEqual([])
+    expect(resolveAvailableVoices(p, 'eleven_v3')).toEqual(['v1', 'v2'])
+    // 没显式设默认音色时取列表第一个，否则 voice_id 缺失会直接报错
+    expect(resolveDefaultVoice(p, 'eleven_v3')).toBe('v1')
+  })
+
+  it('模型声明的音色优先于供应商级目录（OpenAI / OpenRouter 行为不变）', () => {
+    const p = provider()
+    modalityConfig(p, 'audio').voiceLabels = { v1: 'Sarah' }
+    modalityConfig(p, 'audio').catalog = {
+      'or-tts': { id: 'or-tts', name: 'OR TTS', capabilities: { supported_voices: ['mika'] } }
+    }
+    expect(resolveAvailableVoices(p, 'or-tts')).toEqual(['mika'])
+  })
+
+  it('ElevenLabs 必须带音色，其它供应商不必须', () => {
+    expect(requiresSpeechVoice('elevenlabs')).toBe(true)
+    expect(requiresSpeechVoice('openai')).toBe(false)
+    expect(requiresSpeechVoice('openrouter')).toBe(false)
+    expect(requiresSpeechVoice('comfyui')).toBe(false)
   })
 })
 

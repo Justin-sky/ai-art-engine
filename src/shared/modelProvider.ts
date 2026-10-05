@@ -1919,13 +1919,37 @@ export function resolveModelSupportedVoices(
 }
 
 /**
- * audio 模态的默认声音：设置里显式指定的优先，否则取该模型目录快照的第一个声音。
+ * audio 模态可用的声音：优先该模型声明的，其次供应商级音色目录。
+ *
+ * 与 `buildModelVoiceOptions`（渲染进程）同一套优先级 —— 两边不一致就会出现
+ * 「面板里列出了音色、生成时说没音色」这类错位。
+ * 供应商级目录（`voiceLabels`）是给 ElevenLabs 这种「音色属于账号、不属于模型」的。
+ */
+export function resolveAvailableVoices(provider: ModelProviderInstance, modelId: string): string[] {
+  const declared = resolveModelSupportedVoices(provider, 'audio', modelId)
+  if (declared.length) return declared
+  return Object.keys(modalityConfig(provider, 'audio').voiceLabels ?? {})
+}
+
+/**
+ * 该提供商的语音合成是否**必须**带音色。
+ *
+ * ElevenLabs 把 voice_id 放在请求路径里，没有它连端点都拼不出来，
+ * 不存在「留空用厂商默认」这种可能 —— 面板必须据此收起「默认音色」选项，
+ * 否则用户选了它、生成时才报错。
+ */
+export function requiresSpeechVoice(kind: ModelProviderKind): boolean {
+  return kind === 'elevenlabs'
+}
+
+/**
+ * audio 模态的默认声音：设置里显式指定的优先，否则取可用音色的第一个。
  * 都没有时返回空串，交给各适配器用自己的兜底。
  */
 export function resolveDefaultVoice(provider: ModelProviderInstance, modelId: string): string {
   const configured = modalityConfig(provider, 'audio').defaultVoice?.trim()
   if (configured) return configured
-  return resolveModelSupportedVoices(provider, 'audio', modelId)[0] ?? ''
+  return resolveAvailableVoices(provider, modelId)[0] ?? ''
 }
 
 export function normalizeModelsSettings(raw?: unknown): ModelsSettings {

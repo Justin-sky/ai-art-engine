@@ -13,7 +13,8 @@ import {
   isWorldProviderKind,
   modalityConfig,
   providerModelDisplayName,
-  resolveModelSupportedVoices,
+  requiresSpeechVoice,
+  resolveAvailableVoices,
   supportsAudioModality
 } from '@shared/modelProvider'
 
@@ -287,16 +288,10 @@ export function buildModelVoiceOptions(
   for (const option of options) {
     const provider = providers.find((p) => p.id === option.providerInstanceId)
     if (!provider) continue
-    const config = modalityConfig(provider, 'audio')
-    // 优先模型自己声明的（OpenRouter / OpenAI 静态表）
-    const declared = resolveModelSupportedVoices(provider, 'audio', option.model)
-    if (declared.length) {
-      out[option.key] = declared
-      continue
-    }
-    // 退回供应商级音色目录（ElevenLabs：音色属于账号，不属于模型）
-    const fromProvider = Object.keys(config.voiceLabels ?? {})
-    if (fromProvider.length) out[option.key] = fromProvider
+    // 与主进程的 resolveDefaultVoice 共用同一套优先级（模型声明 → 供应商音色目录），
+    // 两边不一致就会出现「面板列出音色、生成说没音色」的错位
+    const voices = resolveAvailableVoices(provider, option.model)
+    if (voices.length) out[option.key] = voices
   }
   return out
 }
@@ -320,6 +315,11 @@ export function buildVoiceLabels(
   return out
 }
 
+/** 供应商 kind 可能拿不到（选中项不在列表里），此时按「不必须」处理 */
+function voiceRequiredFor(kind: ModelProviderKind | undefined): boolean {
+  return kind ? requiresSpeechVoice(kind) : false
+}
+
 export async function loadGenerateModelOptions(
   modality: GenerateModelModality,
   preferredKey?: string,
@@ -336,6 +336,11 @@ export async function loadGenerateModelOptions(
   voicesByModelKey: Record<string, string[]>
   /** 音色 id → 展示名（仅不透明 id 的供应商有内容，如 ElevenLabs） */
   voiceLabels: Record<string, string>
+  /**
+   * 所选模型是否**必须**带音色（ElevenLabs 的 voice_id 在请求路径里）。
+   * 为真时面板收起「默认音色」选项 —— 对这类供应商它等于「不选」，选了必然报错。
+   */
+  voiceRequired: boolean
 }> {
   try {
     const settings = await getSettingsCached()
@@ -343,12 +348,14 @@ export async function loadGenerateModelOptions(
     const options = buildModelOptions(providers, modality)
     const voicesByModelKey = buildModelVoiceOptions(providers, modality, options)
     const voiceLabels = buildVoiceLabels(providers, options)
+    // voiceRequired 按最终选中的那个模型判定（入参 preferred/current 可能都没命中）
     const done = (selectedKey: string) => ({
       options,
       selectedKey,
       emptyReason: options.length ? null : resolveEmptyModelOptionsReason(providers, modality),
       voicesByModelKey,
-      voiceLabels
+      voiceLabels,
+      voiceRequired: voiceRequiredFor(options.find((o) => o.key === selectedKey)?.providerKind)
     })
     if (preferredKey && options.some((o) => o.key === preferredKey)) {
       return done(preferredKey)
@@ -363,7 +370,8 @@ export async function loadGenerateModelOptions(
       selectedKey: '',
       emptyReason: 'unknown',
       voicesByModelKey: {},
-      voiceLabels: {}
+      voiceLabels: {},
+      voiceRequired: false
     }
   }
 }

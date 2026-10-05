@@ -422,6 +422,7 @@
             :model-value="speechVoice"
             :options="speechVoiceOptions"
             :labels="modelVoiceLabels"
+            :required="modelVoiceRequired"
             :voice-title="t('graph.inspector.generate.speechVoiceHint')"
             :default-label="t('graph.inspector.generate.speechVoiceDefault')"
             @change="persistSpeechVoice"
@@ -812,6 +813,8 @@ const selectedModelKey = ref('')
 const modelVoices = ref<Record<string, string[]>>({})
 /** 音色 id → 展示名（ElevenLabs 的 voice_id 不透明，必须显示名字） */
 const modelVoiceLabels = ref<Record<string, string>>({})
+/** 所选模型是否必须带音色（ElevenLabs）：此时不给「默认音色」选项 */
+const modelVoiceRequired = ref(false)
 const imageGenerateParams = ref<ImageGenerateParams>(
   readImageGenerateParamsFromNode(props.node.params)
 )
@@ -2155,11 +2158,8 @@ async function refreshModelOptions(): Promise<void> {
     props.node.params.generateProviderInstanceId,
     props.node.params.generateModel
   )
-  const { options, selectedKey, voicesByModelKey, voiceLabels } = await loadGenerateModelOptions(
-    instructionModality.value,
-    preferred,
-    selectedModelKey.value
-  )
+  const { options, selectedKey, voicesByModelKey, voiceLabels, voiceRequired } =
+    await loadGenerateModelOptions(instructionModality.value, preferred, selectedModelKey.value)
   // 3D 加工节点按能力矩阵过滤供应商（谁能做这个 op 就留谁）：
   // 见 @shared/meshOps 的 MESH_OPS_CAPS，不再在卡片里维护白名单。
   const meshOp = meshOpForInstructionKind(instructionKind.value)
@@ -2169,6 +2169,7 @@ async function refreshModelOptions(): Promise<void> {
   modelOptions.value = filtered
   modelVoices.value = voicesByModelKey
   modelVoiceLabels.value = voiceLabels
+  modelVoiceRequired.value = voiceRequired
   selectedModelKey.value = filtered.some((o) => o.key === selectedKey)
     ? selectedKey
     : (filtered[0]?.key ?? '')

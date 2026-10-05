@@ -52,14 +52,19 @@ const props = withDefaults(
     voiceTitle: string
     /** 未选任何音色时的首项文案 */
     defaultLabel: string
+    /**
+     * 该供应商是否**必须**带音色（ElevenLabs 把 voice_id 放在请求路径里）。
+     * 为真时不给「默认音色」选项 —— 对它而言那等于「不选」，选了生成必然报错。
+     */
+    required?: boolean
   }>(),
-  { modelValue: '', labels: () => ({}) }
+  { modelValue: '', labels: () => ({}), required: false }
 )
 
 const emit = defineEmits<{ change: [value: string] }>()
 
-/** 只有一个候选时不给「默认」项，否则等于一个只有占位符的下拉 */
-const showDefaultOption = computed(() => props.options.length > 1)
+/** 只有一个候选、或该供应商必须带音色时，不给「默认」项 */
+const showDefaultOption = computed(() => !props.required && props.options.length > 1)
 
 function onChange(event: Event): void {
   emit('change', (event.target as HTMLSelectElement).value)
