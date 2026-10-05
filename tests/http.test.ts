@@ -104,6 +104,73 @@ describe('readHttpError', () => {
     await expect(readHttpError(err)).resolves.toBe('upstream said no')
   })
 
+  /**
+   * 二进制响应体（语音合成 / 音频图片下载都带 responseType: 'arraybuffer'）：
+   * axios 把**错误体也**按二进制交付。不解码的话上游明明回了原因，
+   * 用户只能看到 `Request failed with status code 400`，完全没法定位。
+   */
+  describe('responseType=arraybuffer 的错误体', () => {
+    const bytesOf = (text: string): ArrayBuffer =>
+      new TextEncoder().encode(text).buffer as ArrayBuffer
+
+    it('ArrayBuffer 里的 JSON 错误体能解出原因（OpenAI 风格）', async () => {
+      const axios = (await import('axios')).default
+      const body = JSON.stringify({ error: { message: 'voice must be one of: zh_female_1' } })
+      const err = new axios.AxiosError('ignored', 'ERR_BAD_REQUEST', undefined, undefined, {
+        status: 400,
+        data: bytesOf(body)
+      } as never)
+      await expect(readHttpError(err)).resolves.toBe('voice must be one of: zh_female_1')
+    })
+
+    it('Uint8Array 视图（axios 在不同运行时会交出视图）同样能解', async () => {
+      const axios = (await import('axios')).default
+      const err = new axios.AxiosError('ignored', 'ERR_BAD_REQUEST', undefined, undefined, {
+        status: 400,
+        data: new TextEncoder().encode('{"message":"model not found"}')
+      } as never)
+      await expect(readHttpError(err)).resolves.toBe('model not found')
+    })
+
+    it('非 JSON 的纯文本错误体（网关直出）原样带出', async () => {
+      const axios = (await import('axios')).default
+      const err = new axios.AxiosError('ignored', 'ERR_BAD_REQUEST', undefined, undefined, {
+        status: 502,
+        data: bytesOf('upstream connect error or disconnect/reset before headers')
+      } as never)
+      await expect(readHttpError(err)).resolves.toContain('upstream connect error')
+    })
+
+    it('detail / msg 字段也能取到（部分网关的写法）', async () => {
+      const axios = (await import('axios')).default
+      const detailErr = new axios.AxiosError('ignored', 'ERR_BAD_REQUEST', undefined, undefined, {
+        status: 400,
+        data: bytesOf('{"detail":"invalid voice"}')
+      } as never)
+      await expect(readHttpError(detailErr)).resolves.toBe('invalid voice')
+
+      const msgErr = new axios.AxiosError('ignored', 'ERR_BAD_REQUEST', undefined, undefined, {
+        status: 400,
+        data: bytesOf('{"msg":"bad request"}')
+      } as never)
+      await expect(readHttpError(msgErr)).resolves.toBe('bad request')
+    })
+
+    it('空二进制体不编造原因，但至少留下状态码（且不吐出 axios 的通用串）', async () => {
+      const axios = (await import('axios')).default
+      const err = new axios.AxiosError('status 400', 'ERR_BAD_REQUEST', undefined, undefined, {
+        status: 400,
+        data: new Uint8Array(0)
+      } as never)
+      const message = await readHttpError(err)
+      expect(message).toContain('400')
+      expect(message).not.toContain('undefined')
+      // axios 的 `code=ERR_BAD_REQUEST | Request failed with status code 400` 没信息量，
+      // 还会被 isAuthFailure 之类的关键字判断误伤，不该透出
+      expect(message).not.toContain('ERR_BAD_REQUEST')
+    })
+  })
+
   it('axios 网络错（ECONNRESET + cause）走 annotateAxiosNetworkError 诊断路径', async () => {
     const axios = (await import('axios')).default
     const err = new axios.AxiosError(

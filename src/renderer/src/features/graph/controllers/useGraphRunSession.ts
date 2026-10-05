@@ -958,6 +958,9 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         input: input.input,
         model: input.model,
         providerInstanceId: input.providerInstanceId,
+        // 节点上填的声音。真正发出去的声音由主进程补齐（设置里的默认音色 →
+        // 模型目录声明的第一个 → 适配器兜底），所以这里可能是 undefined，
+        // 排查 400 时要连着响应里的 voice 一起看。
         voice: input.voice,
         name: input.name,
         imageCount: input.images?.length,

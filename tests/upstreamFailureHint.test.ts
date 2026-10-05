@@ -136,11 +136,17 @@ describe('接线', () => {
   it('所有读上游错误的地方都过一遍提示（读 HTTP 错误的唯一入口）', () => {
     const http = readFileSync(join(ROOT, 'src/main/services/modelProviders/http.ts'), 'utf8')
     expect(http).toContain("from '@shared/modelProviders/providerFailureDiagnostics'")
-    // readHttpError 的四个返回分支：三个带 message 的都要加提示，网络错分支不加（自身已有诊断串）
+    // readHttpError 的出口：网络错分支走 annotateAxiosNetworkError（自带诊断串，不再叠提示），
+    // 其余一律经 withGenericUpstreamFailureHint —— 出口是收口的，就没有「漏加提示」的可能。
+    // 这里不用「等于若干个」断言：上游错误体形状（error / message / detail / msg）会随网关增加，
+    // 按数量钉会把测试本身变成改代码的阻碍。
     const readFn = /export async function readHttpError\([\s\S]*?\n\}/.exec(http)?.[0] ?? ''
     expect(readFn).toBeTruthy()
-    expect((readFn.match(/withGenericUpstreamFailureHint\(/g) ?? []).length).toBe(4)
     expect(readFn).toContain('annotateAxiosNetworkError(err)')
+    expect(readFn).toContain('withGenericUpstreamFailureHint(')
+    // 归一化放在独立函数里，出口只剩一条：调用它就够了
+    expect(readFn).toContain('normalizeUpstreamErrorBody(')
+    expect(http).toContain('function normalizeUpstreamErrorBody(')
   })
 
   it('OpenAI 兼容出图失败带上网关与端点（自定义 / NewAPI / OpenAI / 本地都走这一条）', () => {

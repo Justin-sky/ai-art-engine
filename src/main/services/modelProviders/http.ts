@@ -74,17 +74,87 @@ export function isAuthFailure(status: number | undefined, message: string): bool
 
 export async function readHttpError(err: unknown): Promise<string> {
   if (axios.isAxiosError(err)) {
-    const data = err.response?.data as
-      { error?: { message?: string } | string; message?: string } | undefined
-    if (typeof data?.error === 'string') return withGenericUpstreamFailureHint(data.error)
-    if (data?.error && typeof data.error === 'object' && data.error.message)
-      return withGenericUpstreamFailureHint(data.error.message)
-    if (data?.message) return withGenericUpstreamFailureHint(data.message)
     // 网络层错（DNS / TCP / TLS 握手前 socket 被断 / 超时）：err.response 缺失，
     // 只能靠 err.message + err.code + err.cause 给出可定位的诊断串。
-    return annotateAxiosNetworkError(err)
+    if (!err.response) return annotateAxiosNetworkError(err)
+    // 上游业务错：归一化出原因，统一在出口补一次可操作提示
+    return withGenericUpstreamFailureHint(
+      normalizeUpstreamErrorBody(err.response.data, err.response.status)
+    )
   }
   return withGenericUpstreamFailureHint(err instanceof Error ? err.message : String(err))
+}
+
+/**
+ * 从上游错误体里取最可操作的原文。
+ *
+ * 兼容三种形状：已解析对象、JSON 文本、纯文本（网关直出）。
+ * `responseType: 'arraybuffer'` 的请求（语音合成、音频 / 图片下载）拿到的是二进制体，
+ * 经 decodeErrorPayload 解回来 —— 否则上游原因会被整段丢掉。
+ */
+function normalizeUpstreamErrorBody(raw: unknown, status?: number): string {
+  const data = decodeErrorPayload(raw)
+  if (typeof data?.error === 'string') return data.error
+  if (data?.error && typeof data.error === 'object' && data.error.message) {
+    return data.error.message
+  }
+  if (data?.message) return data.message
+  // 部分网关把原因放在 detail / msg 上
+  if (typeof data?.detail === 'string' && data.detail.trim()) return data.detail
+  if (data?.msg) return data.msg
+  // 体里确实没有原因：至少把状态码留下。不要把 axios 的
+  // `code=ERR_BAD_REQUEST | Request failed with status code 400` 原样带出：
+  // 那串既没信息量，又会被 isAuthFailure 之类的关键字判断误伤。
+  return status
+    ? `upstream returned HTTP ${status} without an error message`
+    : 'upstream returned an error without a message'
+}
+
+/**
+ * 归一化上游错误体。
+ *
+ * 关键场景：请求带 `responseType: 'arraybuffer'` 时（语音合成、音频/图片下载），
+ * axios 把**错误响应体也**按二进制交付，于是 `err.response.data` 是 ArrayBuffer，
+ * 原来按对象读 `.error.message` 直接落空 —— 上游明明回了具体原因
+ * （「voice 不支持 / model 不存在 / 参数非法」），用户却只看到
+ * `Request failed with status code 400`，完全没法定位。
+ * 这里把二进制体按 UTF-8 解回文本再试一次 JSON。
+ */
+function decodeErrorPayload(raw: unknown): ErrorPayload | null {
+  if (!raw) return null
+  if (typeof raw === 'string') return parseErrorText(raw)
+  if (raw instanceof ArrayBuffer || ArrayBuffer.isView(raw)) {
+    const view =
+      raw instanceof ArrayBuffer
+        ? new Uint8Array(raw)
+        : new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength)
+    return parseErrorText(new TextDecoder('utf-8', { fatal: false }).decode(view))
+  }
+  if (typeof raw === 'object') return raw as ErrorPayload
+  return null
+}
+
+/** 文本错误体：可能是 JSON（多数聚合器），也可能是纯文本（nginx/网关） */
+function parseErrorText(text: string): ErrorPayload | null {
+  const trimmed = text.trim()
+  if (!trimmed) return null
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(trimmed) as unknown
+      if (parsed && typeof parsed === 'object') return parsed as ErrorPayload
+    } catch {
+      /* 不是合法 JSON：退回纯文本 */
+    }
+  }
+  return { message: trimmed }
+}
+
+interface ErrorPayload {
+  error?: { message?: string } | string
+  message?: string
+  /** 部分网关用 detail / msg 承载原因 */
+  detail?: string
+  msg?: string
 }
 
 /**
