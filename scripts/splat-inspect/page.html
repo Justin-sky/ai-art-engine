@@ -133,7 +133,10 @@
           if (pixels[i] > 180 && pixels[i + 1] < 80 && pixels[i + 2] < 80) cubePixels++
         }
         log(
-          `[${name}] numSplats=${numSplats} size=${size.toArray().map((v) => v.toFixed(1)).join(',')} ` +
+          `[${name}] numSplats=${numSplats} size=${size
+            .toArray()
+            .map((v) => v.toFixed(1))
+            .join(',')} ` +
             `activeSplats=${sparkRenderer.activeSplats} maxSplats=${sparkRenderer.maxSplats} ` +
             `nonBackground=${nonBackground} cubePixels=${cubePixels} ` +
             `splatPixels=${nonBackground - cubePixels}` +
