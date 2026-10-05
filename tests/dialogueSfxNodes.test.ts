@@ -136,4 +136,20 @@ describe('多说话人对话 / 音效节点', () => {
     expect(block).toContain('result.filePath')
     expect(block).toContain('result.downloadUrl')
   })
+
+  /**
+   * 时间线的「生成音效」按钮过去借用音乐端点（`generateMusic` + instrumental），
+   * 描述会被当成编曲需求，出来的是配乐而不是音效。
+   */
+  it('时间线音效按钮走专用音效端点，不再借音乐', () => {
+    const timeline = readFileSync('src/renderer/src/components/ScriptTimelineEditor.vue', 'utf8')
+    const start = timeline.indexOf('async function generateSfxCore')
+    const block = timeline.slice(start, timeline.indexOf('function ', start + 10))
+    expect(block).toContain('window.studio.generateSoundEffect(')
+    // 退回音乐端点就是把音效描述当编曲需求
+    expect(block).not.toContain('window.studio.generateMusic(')
+    // 音效选择器读的是「支持音效的提供商实例」，不是音乐模型
+    expect(timeline).toContain('buildSoundEffectOptions(await loadAllProviders())')
+    expect(timeline).toContain("t('script.timeline.generateSfxNoProvider')")
+  })
 })

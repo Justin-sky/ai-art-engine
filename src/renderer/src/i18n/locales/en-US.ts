@@ -1620,8 +1620,10 @@ export default {
       generateBgmFailed: 'BGM generation failed: {error}',
       generateSfx: 'Generate SFX',
       generateSfxPrompt:
-        'Describe the sound effect you want (e.g. rain / door / impact / birds); it will be placed on the SFX track',
+        'Describe the sound itself (e.g. rain / door / impact / birds). It uses the dedicated sound-effect endpoint and lands on the SFX track',
       generateSfxPlaceholder: 'Rain tapping on a window pane, close-up',
+      generateSfxNoProvider:
+        'No sound-effect provider available: configure ElevenLabs in Settings (dedicated sound-effect endpoint /v1/sound-generation)',
       generateSfxDone: 'Generated "{name}" and placed it on the SFX track',
       generateSfxFailed: 'SFX generation failed: {error}',
       smartCut: 'Smart cut',

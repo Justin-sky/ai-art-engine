@@ -80,7 +80,9 @@ export function buildSoundEffectOptions(providers: ModelProviderInstance[]): Gen
       model: ELEVEN_SOUND_MODEL,
       providerInstanceId: provider.id,
       providerKind: provider.providerKind,
-      label: providerModelDisplayName(provider.providerKind, ELEVEN_SOUND_MODEL)
+      // 标签就是**提供商名**：音效端点的模型是唯一取值，这个下拉实际在选「用哪个实例」。
+      // 用 "ElevenLabs · eleven_text_to_sound_v2" 这种模型名只会让人以为在选模型。
+      label: provider.label.trim() || provider.providerKind
     })
   }
   return options

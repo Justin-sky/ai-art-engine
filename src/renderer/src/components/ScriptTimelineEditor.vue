@@ -1734,6 +1734,8 @@ import {
   promptTextWithModel
 } from '../composables/useStudioPrompt'
 import {
+  buildSoundEffectOptions,
+  loadAllProviders,
   loadGenerateModelOptions,
   parseModelKey,
   preferredModelKey,
@@ -3894,18 +3896,30 @@ async function probeDuration(src: string, media: 'video' | 'audio' = 'video'): P
  * 一键生成 BGM：描述音乐 → MiniMax 音乐模型产出 → 落盘 Cache/Music → 铺到音乐轨。
  * 复用 generateMusic 的同步管线（与图片/语音一致），失败给出引导文案。
  */
-/** 一键生成音效：描述 → 音乐模型 instrumental 产出 → 落盘 Cache/Sfx → 铺到音效轨。 */
+/**
+ * 一键生成音效：描述 → **专用音效端点**（`/v1/sound-generation`）产出 →
+ * 落盘 Cache/Sfx → 铺到音效轨。
+ *
+ * 早先这里借用音乐端点（`generateMusic` + instrumental），
+ * 描述会被当成编曲需求，出来的是配乐而不是音效。
+ */
 async function onGenerateSfx(): Promise<void> {
-  // 音效按钮也走音乐端点（instrumental）。
-  // 读 **music 模态**（不是 audio + 类别过滤）：音乐模型现在归在 music 页签下，
-  // 走 audio 会让 MiniMax / 百炼的音乐模型取不到（它们已从 audio 迁走）
-  const { options, selectedKey } = await loadGenerateModelOptions('music')
+  // 音效端点目前只有 ElevenLabs 实现，所以下拉实际在选「用哪个提供商实例」，
+  // 模型固定为 eleven_text_to_sound_v2（buildSoundEffectOptions 负责这一点）
+  const options = buildSoundEffectOptions(await loadAllProviders())
+  if (!options.length) {
+    await promptAlert({
+      title: t('script.timeline.generateSfx'),
+      message: t('script.timeline.generateSfxNoProvider')
+    })
+    return
+  }
   const result = await promptTextWithModel({
     title: t('script.timeline.generateSfx'),
     message: t('script.timeline.generateSfxPrompt'),
     placeholder: t('script.timeline.generateSfxPlaceholder'),
     modelOptions: options,
-    initialModelKey: selectedKey
+    initialModelKey: options[0]!.key
   })
   if (!result || !result.text.trim()) return
   await generateSfxCore(result.text.trim(), result.text.trim().slice(0, 24), result.modelKey)
@@ -3920,12 +3934,13 @@ async function generateSfxCore(
   sfxBusy.value = true
   try {
     const parsed = modelKey ? parseModelKey(modelKey) : undefined
-    const result = await window.studio.generateMusic({
+    // 专用音效端点：上游按「声音本身」生成，不是编曲。
+    // 落盘目录由主进程按 kind='sfx' 解析（Cache/Sfx），这里只给模型覆盖
+    const result = await window.studio.generateSoundEffect({
       prompt,
-      instrumental: true,
-      outputDir: 'Cache/Sfx',
       ...(parsed ? { providerInstanceId: parsed.providerInstanceId, model: parsed.model } : {})
     })
+    // 音效端点不返回 durationMs（音乐才返回），时长交给播放器 / 波形自己算
     const durationSec =
       result.durationMs && result.durationMs > 0 ? Math.round(result.durationMs / 1000) : undefined
     const source: ScriptTimelineSource = {

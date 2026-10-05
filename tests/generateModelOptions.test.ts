@@ -216,6 +216,20 @@ describe('buildModelOptions', () => {
       'el2::eleven_text_to_sound_v2'
     ])
   })
+
+  it('音效选项的标签是**提供商名**，不是模型名（下拉实际在选实例）', () => {
+    const options = buildSoundEffectOptions([
+      baseProvider({ id: 'el1', providerKind: 'elevenlabs', label: '主账号' }),
+      baseProvider({ id: 'el2', providerKind: 'elevenlabs', label: '备用号' })
+    ])
+    // 模型是唯一取值，把 eleven_text_to_sound_v2 显示出来只会让人以为在选模型
+    expect(options.map((o) => o.label)).toEqual(['主账号', '备用号'])
+    // 标签缺失时退回 kind，不能是空串（否则下拉里是一条空选项）
+    const unnamed = buildSoundEffectOptions([
+      baseProvider({ id: 'el3', providerKind: 'elevenlabs', label: '   ' })
+    ])
+    expect(unnamed[0]!.label).toBe('elevenlabs')
+  })
   /**
    * 时间线的 BGM / 音效按钮与音乐节点都用这个。
    *

@@ -1583,8 +1583,11 @@ export default {
       generateBgmDone: '已生成「{name}」并铺到音乐轨',
       generateBgmFailed: 'BGM 生成失败：{error}',
       generateSfx: '生成音效',
-      generateSfxPrompt: '描述想要的音效（如雨声 / 开门 / 撞击 / 鸟鸣），生成后自动铺到音效轨',
+      generateSfxPrompt:
+        '描述想要的声音本身（如雨声 / 开门 / 撞击 / 鸟鸣），走专用音效生成，生成后自动铺到音效轨',
       generateSfxPlaceholder: '雨滴打在窗玻璃上的声音，近景',
+      generateSfxNoProvider:
+        '没有可用的音效生成提供商：请在设置里配置 ElevenLabs（专用音效端点 /v1/sound-generation）',
       generateSfxDone: '已生成「{name}」并铺到音效轨',
       generateSfxFailed: '音效生成失败：{error}',
       smartCut: '智能粗剪',
