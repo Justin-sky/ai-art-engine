@@ -5071,7 +5071,7 @@ export default {
           '可选：补充表演/镜头说明（图→图片1+音频1；视频→视频1+音频1）；推荐 Seedance 2.0',
         voiceInstructionPlaceholder: "描述声音（文本）；可接图片参考；可用 {'@'} 引用连线资源",
         speechVoiceHint: '声音生成：音色（供应商声音 ID，对应 API 的 voice 字段）',
-        speechVoicePlaceholder: '音色',
+        speechVoiceDefault: '默认音色',
         model3dInstructionPlaceholder:
           "描述要生成的 3D 模型；可接参考图进行图生 3D；可用 {'@'} 引用连线资源",
         spatialWorldInstructionPlaceholder:

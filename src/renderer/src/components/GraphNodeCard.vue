@@ -421,8 +421,8 @@
             v-if="showSpeechVoice"
             :model-value="speechVoice"
             :options="speechVoiceOptions"
-            :title="t('graph.inspector.generate.speechVoiceHint')"
-            :placeholder="t('graph.inspector.generate.speechVoicePlaceholder')"
+            :voice-title="t('graph.inspector.generate.speechVoiceHint')"
+            :default-label="t('graph.inspector.generate.speechVoiceDefault')"
             @change="persistSpeechVoice"
           />
           <Model3dStyleSelect
