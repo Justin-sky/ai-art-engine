@@ -1149,7 +1149,8 @@
               <strong>Preset templates</strong> (covering the main capability nodes by industry): game user
               acquisition, game UI, character design, storyboard-to-film, product ads,
               <strong>e-commerce livestream</strong>, <strong>game 3D assets</strong>,
-              <strong>comic publishing</strong>, <strong>knowledge talking-head</strong>,
+              <strong>world model</strong>, <strong>comic publishing</strong>,
+              <strong>knowledge talking-head</strong>,
               <strong>3D blockout previz</strong>, short-drama storyboard, custom, and more. Presets with a
               fixed topology can be previewed directly with “Preview template”. “Game UI” builds a full chain of
               planning document → UI screen breakdown → UI screen generation, where UI generation can dive into
@@ -1159,7 +1160,10 @@
             <li>
               Industry templates and capability nodes: “E-commerce livestream” chains ad variant matrix plus
               layer separation; “Game 3D assets” chains 3D model generation → director
-              stage → blocking shots → showcase video; “Comic publishing” chains storyboard images ×3 → comic
+              stage → blocking shots → showcase video; <strong>“World model”</strong> chains
+              <strong>spatial world generation → world export → 3D director stage</strong> (the world node's output
+              is the strictly typed <code>spatialWorld</code>, so it has to go through the export node to become a
+              model before it can feed the stage); “Comic publishing” chains storyboard images ×3 → comic
               page (panels / balloons / transparent-background export); “Knowledge talking-head” chains script →
               voice-over + talking-head video → lip sync; “3D blockout previz” chains panorama reference →
               director stage AI blockout → blocking shots → previz film. Each template's note node documents its

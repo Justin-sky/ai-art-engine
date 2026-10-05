@@ -338,6 +338,7 @@ export const AI_WORKFLOW_PRESET_IDS = [
   'gameIcons',
   'ecomAdDeep',
   'game3dAsset',
+  'worldModel',
   'comicPublish',
   'courseNarrate',
   'directorPreviz',
@@ -814,6 +815,75 @@ const PRESET_PLANS: Record<Exclude<AiWorkflowPresetId, 'custom'>, GraphPlan> = {
       { from: 'modelMain', to: 'motion', fromPort: 'out', toPort: 'in-model' },
       { from: 'motion', to: 'select', fromPort: 'out-shots', toPort: 'in' },
       { from: 'select', to: 'video', fromPort: 'out', toPort: 'in-image' }
+    ]
+  },
+  /**
+   * 世界模型：一条从「文字/参考图」到「可漫游世界」再到「导演台」的直链。
+   *
+   * 注意端口的严格同类型：世界生成节点出口是 `spatialWorld`，**只能**接「空间世界导出」，
+   * 不能直接接导演台（`model` 口不隐式兼容）。导出后的产物才是 `model`，
+   * 从这里接导演台的 `in-model` —— 这也是这条链必须存在导出节点的原因。
+   */
+  worldModel: {
+    title: '世界模型（空间世界 → 导演台）',
+    nodes: [
+      {
+        key: 'brief',
+        typeId: 'play.script',
+        title: '世界设定与漫游意图',
+        params: {
+          text: '（描述场景：环境、时代、天气、光线、材质氛围，以及镜头想怎么走）'
+        }
+      },
+      {
+        key: 'world',
+        typeId: 'asset.spatialWorld',
+        title: '空间世界生成',
+        params: {
+          generateInstruction: '按设定生成可漫游的 3D 世界，空间结构完整、光线方向明确',
+          // 单图参考是否按等距柱状全景处理；关掉 recaption 让指令原文直送（可复现）
+          spatialWorldPanoMode: 'auto',
+          spatialWorldDisableRecaption: false
+        }
+      },
+      {
+        key: 'export',
+        typeId: 'spatialWorld.export',
+        title: '空间世界导出',
+        params: {
+          // mesh：HQ 贴图网格（GLB，登记模型资产）→ 导演台能直接用；splats：PLY 泼溅
+          spatialWorldExportMode: 'mesh',
+          spatialWorldExportVariant: 'textured',
+          spatialWorldExportResolution: 'full_res'
+        }
+      },
+      { key: 'motion', typeId: 'asset.motion', title: '导演台预演' },
+      { key: 'select', typeId: 'image.select', title: '选站位图' },
+      {
+        key: 'video',
+        typeId: 'asset.video',
+        title: '漫游成片',
+        params: {
+          generateInstruction: '按站位图在世界里做一次漫游运镜，保持景别与光线方向',
+          generateDuration: 8
+        }
+      },
+      {
+        key: 'note',
+        typeId: 'note.text',
+        title: '使用说明',
+        params: {
+          text: '流程：运行「空间世界生成」（约 5 分钟，需在设置里配好 World Labs）→ 世界落盘为 GLB 模型资产，随世界的 SPZ 泼溅与 360 全景图一并落在同目录 → 「空间世界导出」把世界转成可编排的网格（HQ 贴图网格较慢且单独计费；只想拿泼溅就把它切成「PLY 泼溅」）→ 导出的网格接「导演台预演」的模型口，双击进入舞台自动实例化，摆机位截站位图 → 「选站位图」后生成漫游成片。\n\n端口是严格同类型的：世界生成节点的出口只能接「空间世界导出」，不能直接接导演台；导出节点产出的才是模型。\n\n世界里自带的全景图可以单独连到导演台的「全景」口当舞台背景（选节点检查器里的路径，用图片节点引入）。'
+        }
+      }
+    ],
+    edges: [
+      { from: 'brief', to: 'world', fromPort: 'out', toPort: 'in-text' },
+      { from: 'world', to: 'export', fromPort: 'out', toPort: 'in-world' },
+      { from: 'export', to: 'motion', fromPort: 'out', toPort: 'in-model' },
+      { from: 'motion', to: 'select', fromPort: 'out-shots', toPort: 'in' },
+      { from: 'select', to: 'video', fromPort: 'out', toPort: 'in-image' },
+      { from: 'brief', to: 'video', fromPort: 'out', toPort: 'in-text' }
     ]
   },
   comicPublish: {

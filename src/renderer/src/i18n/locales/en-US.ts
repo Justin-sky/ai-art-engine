@@ -167,6 +167,12 @@ export default {
         prompt:
           'Create a game 3D asset workflow: text holds the asset design; two 3D-model nodes generate the hero and prop GLB models; a director-deck node takes the model and dive auto-instances it on stage, where primitives flesh out the scene and cameras are staged; shots (out-shots) go through a select node, and image-to-video renders the showcase clip.'
       },
+      worldModel: {
+        title: 'World model',
+        desc: 'Spatial world generation → world export → 3D director stage',
+        prompt:
+          'Create a world model workflow: a text node holds the world brief and roaming intent; a spatial-world generation node (World Labs Marble) turns it into an explorable 3D world whose artifact carries a world_id (GLB mesh + gaussian splats + 360 panorama); because ports are strictly typed, the world must go through a world-export node to become a model before it can feed the director stage model port; dive auto-instances the world on stage, cameras are staged and shots captured; a select node picks a shot and renders one roaming clip inside the world.'
+      },
       comicPublish: {
         title: 'Comic publishing',
         desc: 'Script → 3 panels → comic page layout & export',

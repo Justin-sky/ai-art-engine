@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  AI_WORKFLOW_PRESET_IDS,
   applyDefaultGenerateModels,
   ensureBoundaryProxyNodes,
   getAiWorkflowPresetPlan,
@@ -322,21 +323,9 @@ describe('graphPlan materialize', () => {
   })
 
   it('materializes every curated preset seed plan', () => {
-    for (const id of [
-      'gameUaVideo',
-      'characterSheet',
-      'storyboardVideo',
-      'productAd',
-      'gameUi',
-      'gameIcons',
-      'ecomAdDeep',
-      'game3dAsset',
-      'comicPublish',
-      'courseNarrate',
-      'directorPreviz',
-      'shortDrama',
-      'shortDrama9'
-    ] as const) {
+    // 直接遍历导出清单：新增预设自动纳入，避免「加了预设但漏了这条测试」
+    for (const id of AI_WORKFLOW_PRESET_IDS) {
+      if (id === 'custom') continue
       const plan = getAiWorkflowPresetPlan(id)
       expect(plan, id).toBeTruthy()
       const result = materializeGraphPlan(plan!, {
