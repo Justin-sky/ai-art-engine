@@ -200,16 +200,28 @@ export function buildElevenDialogueBody(input: {
   return body
 }
 
+/** 音效时长范围（规范原文：at least 0.5 and at most 30；超范围上游 422） */
+export const ELEVEN_SOUND_DURATION_MIN = 0.5
+export const ELEVEN_SOUND_DURATION_MAX = 30
+/** 音效提示词影响力范围（规范原文：between 0 and 1，默认 0.3） */
+export const ELEVEN_SOUND_PROMPT_INFLUENCE_MIN = 0
+export const ELEVEN_SOUND_PROMPT_INFLUENCE_MAX = 1
+export const ELEVEN_SOUND_PROMPT_INFLUENCE_DEFAULT = 0.3
+
 /**
  * 音效生成请求体。
  *
- * 与音乐不同：`text` 是唯一必填，`duration_seconds` / `prompt_influence` 可选，
- * `loop` 是「可无缝循环」开关（脚步、雨声这类环境音常用）。
+ * 与音乐不同：`text` 是唯一必填，`loop` / `duration_seconds` / `prompt_influence` 可选。
+ *
+ * 两个数值字段都有**硬范围**（duration 0.5–30、prompt_influence 0–1），
+ * 超出去上游直接 422，所以这里夹紧而不是原样透传 —— 用户手填 0.2 或 60 时
+ * 应该安静地取到合法值，而不是拿到一条看不懂的上游校验错误。
  *
  * `model_id` **恒为唯一取值**：规范里该字段是单值 enum（`eleven_text_to_sound_v2`），
  * 调用方传什么都得覆盖掉 —— 踩过的坑：音效节点复用了声音节点的模型选择器，
  * 用户选的是 TTS 模型（`eleven_v3`），透传过去直接被上游拒。
  * 所以这里不接受外部 modelId，只认 `ELEVEN_SOUND_MODEL`。
+ * 另外 `loop` 规范里注明「仅 eleven_text_to_sound_v2 可用」—— 我们恒用它，所以可直接开。
  */
 export function buildElevenSoundBody(input: {
   text: string
@@ -220,13 +232,25 @@ export function buildElevenSoundBody(input: {
   const body: Record<string, unknown> = { text: input.text.trim() }
   if (input.loop) body.loop = true
   if (typeof input.durationSeconds === 'number' && Number.isFinite(input.durationSeconds)) {
-    body.duration_seconds = Math.max(0, input.durationSeconds)
+    body.duration_seconds = clampNumber(
+      input.durationSeconds,
+      ELEVEN_SOUND_DURATION_MIN,
+      ELEVEN_SOUND_DURATION_MAX
+    )
   }
   if (typeof input.promptInfluence === 'number' && Number.isFinite(input.promptInfluence)) {
-    body.prompt_influence = input.promptInfluence
+    body.prompt_influence = clampNumber(
+      input.promptInfluence,
+      ELEVEN_SOUND_PROMPT_INFLUENCE_MIN,
+      ELEVEN_SOUND_PROMPT_INFLUENCE_MAX
+    )
   }
   body.model_id = ELEVEN_SOUND_MODEL
   return body
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value))
 }
 
 /** 转写默认模型：规范里 `scribe_v2` 是当前基线 */

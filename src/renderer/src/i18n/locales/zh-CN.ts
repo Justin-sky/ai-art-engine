@@ -5488,7 +5488,10 @@ export default {
         soundEffectOptionsHint:
           '音效描述的是声音本身（如「雨落在铁皮屋顶上」），不是台词；这些参数只对音效节点生效。',
         soundEffectLoop: '可无缝循环（环境音常用）',
-        soundEffectDuration: '期望时长（秒，留空由服务端决定）',
+        soundEffectDuration: '期望时长（秒）',
+        soundEffectPromptInfluence: '提示词影响力',
+        soundEffectRangesHint:
+          '按 ElevenLabs 规范：时长 0.5–30 秒、提示词影响力 0–1（默认 0.3，越高越贴合描述）。留空即由服务端决定。',
         generatedVoicesHint: '每次执行追加新音频并自动选中最新；单击设为当前输出（out），× 删除',
         generatedVoicesEmpty: '暂无生成结果。执行本节点后会显示在这里',
         generatedVoicesDelete: '删除此声音',

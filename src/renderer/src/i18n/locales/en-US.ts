@@ -5630,7 +5630,10 @@ export default {
         soundEffectOptionsHint:
           'A sound effect describes the sound itself (e.g. "rain on a tin roof"), not a line of dialogue. These options apply to the sound effect node only.',
         soundEffectLoop: 'Seamless loop (common for ambience)',
-        soundEffectDuration: 'Target duration (seconds; leave empty to let the service decide)',
+        soundEffectDuration: 'Target duration (seconds)',
+        soundEffectPromptInfluence: 'Prompt influence',
+        soundEffectRangesHint:
+          'Per the ElevenLabs spec: duration 0.5–30 seconds, prompt influence 0–1 (default 0.3; higher follows the prompt more closely). Leave empty to let the service decide.',
         generatedVoicesHint:
           'Each run appends audio and selects the newest. Click to set as current out; × to delete.',
         generatedVoicesEmpty: 'No generations yet. Run this node to see results here.',

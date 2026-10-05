@@ -662,6 +662,7 @@ export interface NodeExecuteContext {
     providerInstanceId?: string
     loop?: boolean
     durationSeconds?: number
+    promptInfluence?: number
     name?: string
     outputDir?: string
   }) => Promise<{ assetId?: string; relativePath?: string; model: string }>
@@ -1216,6 +1217,7 @@ export interface GraphRunOptions {
     providerInstanceId?: string
     loop?: boolean
     durationSeconds?: number
+    promptInfluence?: number
     name?: string
     outputDir?: string
   }) => Promise<{ assetId?: string; relativePath?: string; model: string }>

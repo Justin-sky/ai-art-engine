@@ -398,7 +398,8 @@ export const elevenLabsAdapter: ModelProviderAdapter = {
         buildElevenSoundBody({
           text: input.prompt,
           loop: input.loop,
-          durationSeconds: input.durationSeconds
+          durationSeconds: input.durationSeconds,
+          promptInfluence: input.promptInfluence
         }),
         {
           params: { output_format: outputFormat },

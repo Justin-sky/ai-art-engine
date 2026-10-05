@@ -297,6 +297,11 @@ export async function executeSoundEffectNode(
     Number.isFinite(node.params.generateSoundDurationSec)
       ? node.params.generateSoundDurationSec
       : undefined
+  const promptInfluence =
+    typeof node.params.generateSoundPromptInfluence === 'number' &&
+    Number.isFinite(node.params.generateSoundPromptInfluence)
+      ? node.params.generateSoundPromptInfluence
+      : undefined
 
   const result = await ctx.generateSoundEffect({
     prompt,
@@ -304,6 +309,7 @@ export async function executeSoundEffectNode(
     providerInstanceId: node.params.generateProviderInstanceId || undefined,
     loop: node.params.generateSoundLoop === true,
     durationSeconds: durationSec,
+    promptInfluence,
     name: buildGeneratedMediaFileKey({
       hostAssetName: ctx.resolveHostAssetName?.(),
       nodeTitle: node.title || node.typeId || 'sfx',

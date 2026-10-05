@@ -1862,8 +1862,13 @@ export interface GenerateSoundEffectInput {
   prompt: string
   /** 是否生成可无缝循环的音频（环境音常用） */
   loop?: boolean
-  /** 期望时长（秒）；服务端未支持时忽略 */
+  /** 期望时长（秒）；规范范围 0.5–30，超出会被夹到边界 */
   durationSeconds?: number
+  /**
+   * 提示词影响力 0–1（默认 0.3）：越高越贴合描述、随机性越低。
+   * 未传即沿用服务端默认。
+   */
+  promptInfluence?: number
   model?: string
   providerInstanceId?: string
   /** 输出目录（相对工程根）；缺省 Cache/Sfx */

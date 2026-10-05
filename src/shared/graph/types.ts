@@ -649,8 +649,10 @@ export interface GraphNodeParams {
   generateDialogueVoices?: Record<string, string>
   /** 音效生成：是否生成可无缝循环的音频（环境音常用） */
   generateSoundLoop?: boolean
-  /** 音效生成：期望时长（秒） */
+  /** 音效生成：期望时长（秒）；规范范围 0.5–30 */
   generateSoundDurationSec?: number
+  /** 音效生成：提示词影响力 0–1（越高越贴合描述） */
+  generateSoundPromptInfluence?: number
   /** 「生成剧本」等输出节点：最近一次执行汇总的结果文本 */
   resultText?: string
   outputKind?: GraphOutputKind

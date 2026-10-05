@@ -356,13 +356,30 @@
           {{ t('graph.inspector.generate.soundEffectDuration') }}
           <input
             type="number"
-            min="0"
+            min="0.5"
+            max="30"
             step="0.5"
             :value="node?.params.generateSoundDurationSec ?? ''"
             @change="onSoundDurationChange"
           />
         </label>
       </div>
+      <div class="voice-profile-row">
+        <label class="voice-profile-label">
+          {{ t('graph.inspector.generate.soundEffectPromptInfluence') }}
+          <input
+            type="number"
+            min="0"
+            max="1"
+            step="0.05"
+            :value="node?.params.generateSoundPromptInfluence ?? ''"
+            @change="onSoundPromptInfluenceChange"
+          />
+        </label>
+      </div>
+      <p class="section-hint">
+        {{ t('graph.inspector.generate.soundEffectRangesHint') }}
+      </p>
     </section>
 
     <section
@@ -846,10 +863,23 @@ function persistSoundLoop(loop: boolean): void {
 
 function onSoundDurationChange(event: Event): void {
   const raw = Number((event.target as HTMLInputElement).value)
+  // 规范范围 0.5–30：请求体层还会再夹一次，这里先拦住免得落盘一个假值
   persistNodeParams({
-    generateSoundDurationSec: Number.isFinite(raw) && raw > 0 ? raw : undefined
+    generateSoundDurationSec:
+      Number.isFinite(raw) && raw > 0 ? Math.min(30, Math.max(0.5, raw)) : undefined
   })
 }
+
+function onSoundPromptInfluenceChange(event: Event): void {
+  const input = event.target as HTMLInputElement
+  const raw = Number(input.value)
+  // 规范范围 0–1（默认 0.3）
+  persistNodeParams({
+    generateSoundPromptInfluence:
+      input.value !== '' && Number.isFinite(raw) ? Math.min(1, Math.max(0, raw)) : undefined
+  })
+}
+
 const isScreenplay = computed(() => assetType.value === 'screenplay')
 const isGameSystem = computed(() => assetType.value === 'gameSystem')
 // 3D 生成节点类型为 model3d（GraphValue 里产物资产类型是 model，两者不同）

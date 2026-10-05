@@ -531,6 +531,28 @@ describe('ElevenLabs provider 接线', () => {
       })
     })
 
+    /**
+     * 规范原文（openapi.json，逐字核对）：
+     * - duration_seconds "Must be at least 0.5 and at most 30"
+     * - prompt_influence "Must be a value between 0 and 1. Defaults to 0.3."
+     * 超范围上游返回 422，所以必须在请求体层夹紧 —— 用户手填 0.2 / 60 时
+     * 应当安静取到合法值，而不是拿一条看不懂的上游校验错误。
+     */
+    it('音效数值字段按规范夹紧（duration 0.5–30、prompt_influence 0–1）', () => {
+      expect(buildElevenSoundBody({ text: 'x', durationSeconds: 0.2 }).duration_seconds).toBe(0.5)
+      expect(buildElevenSoundBody({ text: 'x', durationSeconds: 60 }).duration_seconds).toBe(30)
+      expect(buildElevenSoundBody({ text: 'x', durationSeconds: 0.5 }).duration_seconds).toBe(0.5)
+      expect(buildElevenSoundBody({ text: 'x', durationSeconds: 30 }).duration_seconds).toBe(30)
+      expect(buildElevenSoundBody({ text: 'x', durationSeconds: 12 }).duration_seconds).toBe(12)
+
+      expect(buildElevenSoundBody({ text: 'x', promptInfluence: -1 }).prompt_influence).toBe(0)
+      expect(buildElevenSoundBody({ text: 'x', promptInfluence: 3 }).prompt_influence).toBe(1)
+      expect(buildElevenSoundBody({ text: 'x', promptInfluence: 0 }).prompt_influence).toBe(0)
+      expect(buildElevenSoundBody({ text: 'x', promptInfluence: 1 }).prompt_influence).toBe(1)
+      // 不传就不写进 body（沿用服务端默认 0.3，而不是我们自己填一个值）
+      expect(buildElevenSoundBody({ text: 'x' }).prompt_influence).toBeUndefined()
+    })
+
     it('音效：空描述明确报错', async () => {
       await expect(
         elevenLabsAdapter.generateSoundEffect?.(provider(), '', { prompt: '  ' })
