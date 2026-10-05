@@ -1,0 +1,11 @@
+{
+  "meta": {
+    "note": "记录目录里有条目、但没有声音列表的语音模型。这类模型的音色由提示词描述决定，没有 voice 参数；不能把别的模型的音色名发过去（实测会 400：speaker xxx not found）。"
+  },
+  "models": [
+    {
+      "id": "bytedance-seed/seed-audio-1-0",
+      "note": "Seed Audio 1.0：非流式音频生成，音色由自然语言提示描述（description 原文：a natural-language text prompt that can describe the desired voice, tone, and sound）。supported_voices 为 null。"
+    }
+  ]
+}

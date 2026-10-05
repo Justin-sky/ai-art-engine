@@ -8,6 +8,7 @@ import {
 } from '../src/shared/modelProvider'
 import {
   isKnownOpenAiTtsModel,
+  isKnownVoicelessTtsModel,
   listOpenAiTtsCatalogModels,
   listOpenAiTtsVoices,
   resolveOpenAiTtsVoice
@@ -72,6 +73,26 @@ describe('OpenAI TTS 静态目录', () => {
     expect(resolveOpenAiTtsVoice('aggregator-custom-tts', 'zh_female_1')).toBe('zh_female_1')
     expect(resolveOpenAiTtsVoice('tts-1', 'my-custom-voice')).toBe('my-custom-voice')
     expect(resolveOpenAiTtsVoice('tts-1', '  nova  ')).toBe('nova')
+  })
+
+  /**
+   * 已知「不使用音色参数」的模型：音色由提示词描述决定。
+   * 实测踩过：节点里残留的微软音色被发给了 seed-audio-1-0 →
+   * `speaker da-DK-Harper:MAI-Voice-2.1-Flash not found in speaker_map`
+   */
+  it('已知没有音色表的模型：连显式指定的音色也不发', () => {
+    expect(isKnownVoicelessTtsModel('bytedance-seed/seed-audio-1-0')).toBe(true)
+    expect(resolveOpenAiTtsVoice('bytedance-seed/seed-audio-1-0')).toBeUndefined()
+    // 这条最反直觉但必须如此：发出去就是 400，省略才是唯一可用行为
+    expect(
+      resolveOpenAiTtsVoice('bytedance-seed/seed-audio-1-0', 'da-DK-Harper:MAI-Voice-2.1-Flash')
+    ).toBeUndefined()
+  })
+
+  it('认错人不会发生：有音色表的模型不受影响', () => {
+    expect(isKnownVoicelessTtsModel('tts-1')).toBe(false)
+    expect(isKnownVoicelessTtsModel('')).toBe(false)
+    expect(resolveOpenAiTtsVoice('tts-1', 'nova')).toBe('nova')
   })
 })
 

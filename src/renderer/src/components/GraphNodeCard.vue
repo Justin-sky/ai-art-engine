@@ -2295,13 +2295,31 @@ const speechVoice = computed(() => {
 })
 
 /**
- * 该模型声明的声音；取不到就是空 —— 输入框仍可自由填，聚合器的音色名穷举不完。
+ * 该模型声明的声音；取不到就是空（没有选择器可给）。
  * 按应用语言排序：实测有模型给 97 个音色（微软 MAI Voice），
  * 不排序的话中文用户要在 pt-PT / ru-RU 里翻半天才见到 zh-CN-*。
  */
 const speechVoiceOptions = computed((): string[] =>
   sortVoicesForLocale(modelVoices.value[selectedModelKey.value] ?? [], String(locale.value))
 )
+
+/**
+ * 换模型时清掉该模型不认识的音色。
+ *
+ * 踩过的坑：节点里存着微软的音色（`da-DK-Harper:MAI-Voice-2.1-Flash`），
+ * 后来换成 seed-audio-1-0（该模型没有音色表），那个名字照样被发了出去 →
+ * `speaker ... not found in speaker_map`。音色是随模型变的，模型换了就必须重新校验。
+ *
+ * 只监听模型 key（不监听 options 那个每次重排都是新引用的数组），
+ * 配合读取当时的 options，既不会漏也不会反复触发。
+ */
+watch(selectedModelKey, () => {
+  if (!props.hostId) return
+  const current = speechVoice.value
+  if (!current) return
+  if (speechVoiceOptions.value.includes(current)) return
+  graphEditorHosts.updateNode(props.hostId, props.node.id, { generateSpeechVoice: undefined })
+})
 
 function persistSpeechVoice(value: string): void {
   if (!props.hostId || !instructionKind.value) return

@@ -462,10 +462,12 @@ export async function generateOpenAiCompatibleSpeech(
   const format = input.responseFormat ?? 'mp3'
   const voice = resolveOpenAiTtsVoice(modelId, input.voice)
   if (!voice) {
-    // 模型未知又没显式指定声音：宁可省略 voice 让上游用自己的默认音色。
-    // 硬塞一个 OpenAI 音色名会被第三方直接拒（speaker xxx not found）。
+    // 省略 voice 让上游用自己的默认音色。两种情形都实测踩过：
+    // - 目录不认识这个模型：硬塞 OpenAI 音色名 → `speaker alloy not found`；
+    // - 模型已知没有音色表（如 seed-audio-1-0，音色靠提示词描述）：
+    //   节点里残留的别的模型的音色名照样会被拒。
     console.warn(
-      `[tts] no voice resolved for model "${modelId}" — omitting the voice field so the upstream picks its own default; set a default voice in Settings → provider → audio to pin one`
+      `[tts] omitting the voice field for model "${modelId}" so the upstream uses its own default`
     )
   }
   const client = createProviderHttpClient(provider)

@@ -1,5 +1,6 @@
 import type { CatalogModel } from '@shared/modelProvider'
 import catalog from './ttsModels.json'
+import noVoiceManifest from './ttsModelsNoVoice.json'
 
 /**
  * OpenAI 兼容 TTS（`POST /audio/speech`）的静态模型表。
@@ -41,6 +42,22 @@ export function isKnownOpenAiTtsModel(modelId: string): boolean {
   return data.models.some((model) => model.id === id)
 }
 
+/**
+ * 已知「不接受 voice 参数」的语音模型。
+ *
+ * 这些模型在目录里有条目，但 `supported_voices` 是 null —— 音色由提示词描述决定。
+ * 我们**必须**能把它和「目录不认识这个模型」区分开：
+ * 前者绝不能发 voice（发什么都错），后者可以按用户填的照发。
+ * 实测：给 seed-audio-1-0 发微软的音色名，上游回
+ * `speaker da-DK-Harper:... not found in speaker_map`。
+ */
+export function isKnownVoicelessTtsModel(modelId: string): boolean {
+  const id = modelId.trim()
+  if (!id) return false
+  const rows = (noVoiceManifest as { models?: Array<{ id?: string }> }).models ?? []
+  return rows.some((row) => row.id === id)
+}
+
 export function getOpenAiTtsCatalog(): OpenAiTtsCatalog {
   return data
 }
@@ -70,11 +87,16 @@ export function listOpenAiTtsVoices(modelId: string): string[] {
  *
  * 优先级：用户显式指定 → 该模型自己声明的首个声音 → OpenAI 官方 TTS 兜底 → **不发**。
  *
- * 最后那条「不发」是要害：模型未知时我们没有任何可靠信息，硬塞一个 OpenAI 音色名
- * 会被上游直接拒（实测第三方语音：`speaker alloy not found in speaker_map`）。
- * 省略 voice 让上游用自己的默认音色，功能可用；瞎猜一个名字则必然报错。
+ * 两条「不发」都有实测依据：
+ * - 模型未知（目录里没有条目）：我们没有任何可靠信息，硬塞一个 OpenAI 音色名会被拒
+ *   （实测第三方语音：`speaker alloy not found in speaker_map`）；
+ * - 模型已知没有声音：目录明确说了它不用音色 ID（音色靠提示词描述），
+ *   发任何音色名都必然错，连用户填的也不发 —— 这是最反直觉的一条，
+ *   但如果发出去就是 400，省略反而是唯一可用的行为。
  */
 export function resolveOpenAiTtsVoice(modelId: string, requested?: string): string | undefined {
+  // 已知不使用音色参数的模型：谁来都不发
+  if (isKnownVoicelessTtsModel(modelId)) return undefined
   const wanted = requested?.trim()
   if (wanted) return wanted
   const declared = listOpenAiTtsVoices(modelId)[0]
