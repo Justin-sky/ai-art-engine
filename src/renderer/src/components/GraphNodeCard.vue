@@ -565,6 +565,7 @@ import GraphInstructionEditorDialog from './GraphInstructionEditorDialog.vue'
 import DecisionsQuestionsPanel from './DecisionsQuestionsPanel.vue'
 import InstructionModelSelect from './InstructionModelSelect.vue'
 import SpeechVoiceSelect from './SpeechVoiceSelect.vue'
+import { sortVoicesForLocale } from '../utils/voiceOptions'
 import Model3dStyleSelect from './Model3dStyleSelect.vue'
 import SpatialWorldSeedInput from './SpatialWorldSeedInput.vue'
 import SpatialWorldPromptControls from './SpatialWorldPromptControls.vue'
@@ -2293,8 +2294,14 @@ const speechVoice = computed(() => {
   return typeof raw === 'string' ? raw : ''
 })
 
-/** 该模型声明的声音；取不到就是空 —— 输入框仍可自由填，聚合器的音色名穷举不完 */
-const speechVoiceOptions = computed((): string[] => modelVoices.value[selectedModelKey.value] ?? [])
+/**
+ * 该模型声明的声音；取不到就是空 —— 输入框仍可自由填，聚合器的音色名穷举不完。
+ * 按应用语言排序：实测有模型给 97 个音色（微软 MAI Voice），
+ * 不排序的话中文用户要在 pt-PT / ru-RU 里翻半天才见到 zh-CN-*。
+ */
+const speechVoiceOptions = computed((): string[] =>
+  sortVoicesForLocale(modelVoices.value[selectedModelKey.value] ?? [], String(locale.value))
+)
 
 function persistSpeechVoice(value: string): void {
   if (!props.hostId || !instructionKind.value) return

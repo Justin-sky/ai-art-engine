@@ -693,8 +693,12 @@
               模型目录：OpenRouter 走 <code>/models?output_modalities=speech</code>（能拿到 <code>supported_voices</code>），
               OpenAI 用本地静态表（<code>GET /models</code> 只给 id、不给音色列表）；聚合器上的模型也可手填 id。
               <strong>音色在声音生成节点的指令面板里填</strong>（不在这里）：音色是按节点生效的参数，
-              同一张图里不同配音节点本就该用不同音色；候选来自该模型声明的音色，也可以直接输入任意音色名。
+              同一张图里不同配音节点本就该用不同音色；候选来自接口返回的 <code>supported_voices</code>
+              （OpenRouter 文档页不列，但 <code>/models?output_modalities=speech</code> 会返回，实测 23 个语音模型里 18 个有，
+              最长的微软 MAI Voice 有 97 个），可按应用语言优先排序，也可以直接输入任意音色名。
               留空则用模型自己的默认音色（我们不会替你猜一个音色名发给上游 —— 各家的音色命名并不通用）。
+              少数模型（如 <code>bytedance-seed/seed-audio-1-0</code>）<strong>没有音色列表</strong>：
+              它的音色由提示词描述决定，留空即可。
             </li>
             <li>设置默认生成模型（如需要）。提供商卡片可折叠以节省空间。</li>
           </ol>

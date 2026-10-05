@@ -774,9 +774,13 @@
               OpenAI uses a local static table (<code>GET /models</code> returns ids without voice lists);
               aggregator-only models can be typed in by hand.
               <strong>The voice is set in the voice node's instruction panel</strong>, not here: it is a per-node
-              parameter, so different voice-over nodes in one graph can use different voices. Suggestions come
-              from the model's declared voices, but any voice name can be typed. Leaving it empty uses the model's
-              own default — we never guess a voice name for the upstream, because voice naming is not portable.
+              parameter, so different voice-over nodes in one graph can use different voices. Suggestions come from
+              the <code>supported_voices</code> returned by the API (OpenRouter's docs page does not list them, but
+              <code>/models?output_modalities=speech</code> returns them — 18 of 23 speech models in a live check,
+              with Microsoft MAI Voice carrying 97), sorted so your app language comes first, and any voice name can
+              be typed. Leaving it empty uses the model's own default — we never guess a voice name for the upstream,
+              because voice naming is not portable. A few models (e.g. <code>bytedance-seed/seed-audio-1-0</code>)
+              have <strong>no voice list at all</strong>: their voice comes from the prompt text, so just leave it empty.
             </li>
             <li>
               Set the default generation model if needed. Provider cards can be collapsed to
