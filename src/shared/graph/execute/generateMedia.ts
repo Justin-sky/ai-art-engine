@@ -7,11 +7,7 @@ import type { GraphImageReferenceMeta } from '../../modelProvider'
 import { expandInstructionMentions } from '../instructionMentions'
 import { resolveCharacterReferenceUrls } from '../characterConsistency'
 import { episodeFailReasonForStep, parseEpisodeAgentState } from '../episodeAgentState'
-import {
-  resolveImageSystemPrompt,
-  resolveVideoSystemPrompt,
-  resolveVoiceSystemPrompt
-} from '../systemPromptSchemes'
+import { resolveImageSystemPrompt, resolveVideoSystemPrompt } from '../systemPromptSchemes'
 import { buildLipSyncPrompt, resolveLipSyncSystemPrompt } from '../lipSync'
 import {
   buildReshootPrompt,
@@ -104,8 +100,22 @@ export async function executeVoiceGenerateNode(
   if (incomingText) {
     userPrompt = userPrompt.trim() ? `${userPrompt.trim()}\n\n${incomingText}` : incomingText
   }
-  const system = resolveVoiceSystemPrompt(node.params.generateSystemPrompt, ctx.locale)
-  const prompt = system.trim() ? `${system.trim()}\n\n${userPrompt}` : userPrompt
+  /**
+   * 这里**刻意不拼系统提示词**。
+   *
+   * 声音节点的 `input` 是「要被合成的内容」，不是给对话模型的指令：下游三种实现
+   * 都是原样当内容读（ComfyUI `prompt: input.input`、方舟 openspeech 的 `text_prompt`、
+   * MiniMax 音色设计的 `prompt`），OpenAI 兼容的 `POST /audio/speech` 更是明确规定
+   * `input` 就是要朗读的文本。
+   *
+   * 而声音节点的默认系统提示词是「你是一名专业声音导演。请产出清晰自然的配音或声音设计
+   * 说明…」——把它拼在最前面，TTS 模型会**把这句指令也念出来**，产出的音频开头就是一段
+   * 与内容无关的话。
+   *
+   * 若将来要给「声音设计」类模型（靠提示词描述音色）加设计指令，应当走独立的
+   * 入口/字段，而不是复用 TTS 的内容字段。
+   */
+  const prompt = userPrompt
 
   let images: string[] = []
   if (sourceImages.length) {
