@@ -9175,22 +9175,21 @@ function onKeyDown(e: KeyboardEvent): void {
     }
   }
   if (e.code === 'Space' && !e.repeat) {
-    if (!isEditableKeyTarget(e.target)) {
-      // 菜单已开时再次空格关闭；否则在画布空白处打开
-      if (ctxMenu.value) {
-        e.preventDefault()
-        closeCtxMenu()
-        return
-      }
-      if (radialMenu.value) {
-        e.preventDefault()
-        closeRadialMenu()
-        return
-      }
-      if (tryOpenCtxMenuAtPointer()) {
-        e.preventDefault()
-        return
-      }
+    if (isEditableKeyTarget(e.target)) return
+    // 菜单已开时再次空格关闭；否则在画布空白处打开
+    if (ctxMenu.value) {
+      e.preventDefault()
+      closeCtxMenu()
+      return
+    }
+    if (radialMenu.value) {
+      e.preventDefault()
+      closeRadialMenu()
+      return
+    }
+    if (tryOpenCtxMenuAtPointer()) {
+      e.preventDefault()
+      return
     }
     spacePan = true
     syncViewportPanningClass()

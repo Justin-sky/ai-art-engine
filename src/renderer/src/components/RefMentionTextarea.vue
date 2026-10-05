@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="mention-wrap">
     <textarea
       ref="textareaEl"
@@ -257,6 +257,11 @@ function focus(): void {
   textareaEl.value?.focus()
 }
 
+/** 供宿主做「点编辑区就聚焦」这类焦点接管：需要真实 DOM 节点 */
+function element(): HTMLTextAreaElement | null {
+  return textareaEl.value
+}
+
 function getSelection(): { start: number; end: number } {
   const el = textareaEl.value
   return {
@@ -274,7 +279,7 @@ function setSelection(start: number, end = start): void {
   })
 }
 
-defineExpose({ focus, getSelection, setSelection })
+defineExpose({ focus, getSelection, setSelection, element })
 </script>
 
 <style scoped>

@@ -270,6 +270,7 @@ import WorkspaceItemIcon from './WorkspaceItemIcon.vue'
 import PresetVisualGlyph from './PresetVisualGlyph.vue'
 import GraphTextNotepadDialog, { type NotepadPreviewImage } from './GraphTextNotepadDialog.vue'
 import RefMentionTextarea from './RefMentionTextarea.vue'
+import { resolveEditorFocusIntent } from '../utils/editorFocusIntent'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useProjectStore } from '../stores/project'
 import { loadBeatCatalog } from '../features/beat/applyBeatCatalogOnOpen'
@@ -373,6 +374,7 @@ const editorRef = ref<{
   focus: () => void
   getSelection: () => { start: number; end: number }
   setSelection: (start: number, end?: number) => void
+  element: () => HTMLTextAreaElement | null
 } | null>(null)
 const dragFromId = ref<string | null>(null)
 const dragOverId = ref<string | null>(null)
@@ -1259,11 +1261,36 @@ function openPromptPreview(): void {
   previewOpen.value = true
 }
 
+/** 真实 textarea 节点：焦点接管需要它，而不是组件暴露的 focus() */
+function textareaElement(): HTMLTextAreaElement | null {
+  return editorRef.value?.element() ?? null
+}
+
+/**
+ * 点击编辑区时保证焦点落在输入框。
+ *
+ * 关键在「盒子外的那一圈」：编辑区有内边距，点在 padding 上时浏览器不会把焦点给
+ * textarea（那里不是它的命中区），于是焦点留在画布上——**第一下按键就被画布吃掉了，
+ * 第二下才正常**（因为那时已经点进过 textarea）。
+ * 判定见 utils/editorFocusIntent：盒子外接管（preventDefault + 显式聚焦），
+ * 盒子内保持浏览器原生行为（光标定位、按住拖动选文本）。
+ */
 function onEditorMouseDown(e: MouseEvent): void {
   const target = e.target as HTMLElement | null
-  // 点在编辑区内空白处时聚焦输入框
-  if (target?.closest('textarea') || target?.closest('.mention-menu')) return
-  editorRef.value?.focus()
+  // 菜单在 body 上（Teleport）：点它不算点编辑区
+  if (target?.closest('.mention-menu')) return
+  const el = textareaElement()
+  if (!el) return
+  const intent = resolveEditorFocusIntent({
+    alreadyFocused: document.activeElement === el,
+    rect: el.getBoundingClientRect(),
+    point: { clientX: e.clientX, clientY: e.clientY }
+  })
+  if (intent === 'native') return
+  e.preventDefault()
+  el.focus()
+  const end = el.value.length
+  el.setSelectionRange(end, end)
 }
 
 function onWindowPointerDown(e: PointerEvent): void {
