@@ -460,7 +460,14 @@ export async function generateOpenAiCompatibleSpeech(
   input: GenerateSpeechInput
 ): Promise<GenerateSpeechResult> {
   const format = input.responseFormat ?? 'mp3'
-  const voice = input.voice?.trim() || resolveOpenAiTtsVoice(modelId)
+  const voice = resolveOpenAiTtsVoice(modelId, input.voice)
+  if (!voice) {
+    // 模型未知又没显式指定声音：宁可省略 voice 让上游用自己的默认音色。
+    // 硬塞一个 OpenAI 音色名会被第三方直接拒（speaker xxx not found）。
+    console.warn(
+      `[tts] no voice resolved for model "${modelId}" — omitting the voice field so the upstream picks its own default; set a default voice in Settings → provider → audio to pin one`
+    )
+  }
   const client = createProviderHttpClient(provider)
 
   try {
@@ -469,7 +476,7 @@ export async function generateOpenAiCompatibleSpeech(
       {
         model: modelId,
         input: input.input,
-        voice,
+        ...(voice ? { voice } : {}),
         response_format: format,
         ...(input.speed != null ? { speed: input.speed } : {})
       },
@@ -485,7 +492,8 @@ export async function generateOpenAiCompatibleSpeech(
     if (!existsSync(tmpDir)) mkdirSync(tmpDir, { recursive: true })
     const filePath = join(tmpDir, `tts-${stamp}.${ext}`)
     writeFileSync(filePath, buf)
-    return { model: modelId, voice, format, filePath }
+    // 上游用自己的默认音色时我们并不知道最终用的是哪个，如实留空
+    return { model: modelId, voice: voice ?? '', format, filePath }
   } catch (err) {
     throw fail(E_VOICE_GENERATE_FAILED, { detail: await readHttpError(err) })
   }

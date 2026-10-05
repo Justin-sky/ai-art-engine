@@ -7,6 +7,7 @@ import {
   type ModelProviderInstance
 } from '../src/shared/modelProvider'
 import {
+  isKnownOpenAiTtsModel,
   listOpenAiTtsCatalogModels,
   listOpenAiTtsVoices,
   resolveOpenAiTtsVoice
@@ -54,9 +55,21 @@ describe('OpenAI TTS 静态目录', () => {
     expect(listOpenAiTtsVoices('')).toEqual([])
   })
 
-  it('未知模型也能拿到兜底音色（否则 voice 字段会空着发出去）', () => {
-    expect(resolveOpenAiTtsVoice('aggregator-custom-tts')).toBe('alloy')
-    // 显式给了就用给的，不做校验：聚合器的音色表我们不可能穷举
+  it('未知模型不编造声音：宁可不发 voice，也不要发一个上游不认的名字', () => {
+    // 实测踩过：第三方语音把 voice 映射成自己的 speaker 后校验，
+    // 收到 alloy 直接 400（speaker alloy not found in speaker_map）
+    expect(resolveOpenAiTtsVoice('aggregator-custom-tts')).toBeUndefined()
+    expect(isKnownOpenAiTtsModel('aggregator-custom-tts')).toBe(false)
+    expect(isKnownOpenAiTtsModel('tts-1')).toBe(true)
+  })
+
+  it('已知模型才用兜底音色', () => {
+    expect(resolveOpenAiTtsVoice('tts-1')).toBe('alloy')
+    expect(resolveOpenAiTtsVoice('gpt-4o-mini-tts')).toBe('alloy')
+  })
+
+  it('显式给了就用给的，不做校验：聚合器的音色表我们不可能穷举', () => {
+    expect(resolveOpenAiTtsVoice('aggregator-custom-tts', 'zh_female_1')).toBe('zh_female_1')
     expect(resolveOpenAiTtsVoice('tts-1', 'my-custom-voice')).toBe('my-custom-voice')
     expect(resolveOpenAiTtsVoice('tts-1', '  nova  ')).toBe('nova')
   })

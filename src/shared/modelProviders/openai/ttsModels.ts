@@ -26,10 +26,20 @@ export interface OpenAiTtsCatalog {
 const data = catalog as OpenAiTtsCatalog
 
 /**
- * TTS 模型的兜底声音。取静态表里任一模型的首个声音：
- * 各家实现都以 alloy 为首（OpenAI 的默认音色），盲选它最不容易被拒。
+ * 兜底声音名。**只在模型确实是 OpenAI 官方 TTS 时使用**。
+ *
+ * 各家 TTS 的音色名完全不通用：OpenAI 是 alloy / nova / …，第三方（火山 Seed Audio
+ * 之类）是 speaker_id。把 alloy 当「通用默认值」发给第三方模型，上游会直接拒绝
+ * —— 实测报错 `speaker alloy not found in speaker_map, speaker_audio, or mega_info`。
  */
 export const OPENAI_TTS_FALLBACK_VOICE = data.models.flatMap((model) => model.voices)[0] ?? 'alloy'
+
+/** 该模型是否是本地表里的 OpenAI 官方 TTS（只有它们才认 alloy 那套音色名） */
+export function isKnownOpenAiTtsModel(modelId: string): boolean {
+  const id = modelId.trim()
+  if (!id) return false
+  return data.models.some((model) => model.id === id)
+}
 
 export function getOpenAiTtsCatalog(): OpenAiTtsCatalog {
   return data
@@ -56,12 +66,19 @@ export function listOpenAiTtsVoices(modelId: string): string[] {
 }
 
 /**
- * 未指定声音时的兜底：模型已知就用它自己的首个声音，否则用全局兜底。
- * 声音名各家并不通用（OpenAI 是 alloy/nova/…，别家可能是别的），
- * 所以优先取「该模型自己声明的」，而不是硬编码 alloy 送给所有聚合器。
+ * 解析实际要发出去的 voice。
+ *
+ * 优先级：用户显式指定 → 该模型自己声明的首个声音 → OpenAI 官方 TTS 兜底 → **不发**。
+ *
+ * 最后那条「不发」是要害：模型未知时我们没有任何可靠信息，硬塞一个 OpenAI 音色名
+ * 会被上游直接拒（实测第三方语音：`speaker alloy not found in speaker_map`）。
+ * 省略 voice 让上游用自己的默认音色，功能可用；瞎猜一个名字则必然报错。
  */
-export function resolveOpenAiTtsVoice(modelId: string, requested?: string): string {
+export function resolveOpenAiTtsVoice(modelId: string, requested?: string): string | undefined {
   const wanted = requested?.trim()
   if (wanted) return wanted
-  return listOpenAiTtsVoices(modelId)[0] ?? OPENAI_TTS_FALLBACK_VOICE
+  const declared = listOpenAiTtsVoices(modelId)[0]
+  if (declared) return declared
+  // 只有确实是 OpenAI 官方 TTS 才认 alloy 这套名字
+  return isKnownOpenAiTtsModel(modelId) ? OPENAI_TTS_FALLBACK_VOICE : undefined
 }

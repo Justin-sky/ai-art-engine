@@ -210,18 +210,30 @@ describe('openAiAdapter', () => {
     expect(result.filePath).toBeTruthy()
   })
 
-  it('语音合成：未指定声音时用该模型自己声明的首个音色（不是硬编码 alloy）', async () => {
+  it('语音合成：已知模型用它的兜底音色，未知模型不猜声音', async () => {
     postMock.mockResolvedValueOnce({ data: new Uint8Array([1, 2]) })
     await openAiAdapter.generateSpeech(provider(), 'tts-1', { input: 'hi' })
     const [, body] = postMock.mock.calls[0] as [string, Record<string, unknown>]
     expect(body.voice).toBe('alloy')
 
     postMock.mockResolvedValueOnce({ data: new Uint8Array([1, 2]) })
-    // 聚合器上的模型不在静态表里：退回全局兜底音色，但请求仍然照发
+    // 聚合器上的未知模型：**不猜声音**，省略 voice 让上游用自己的默认音色。
+    // 猜一个 OpenAI 的名字会被第三方拒（实测 speaker alloy not found）
     await openAiAdapter.generateSpeech(provider(), 'some-aggregator-tts', { input: 'hi' })
     const [, unknownBody] = postMock.mock.calls[1] as [string, Record<string, unknown>]
-    expect(unknownBody.voice).toBe('alloy')
+    expect(unknownBody).not.toHaveProperty('voice')
     expect(unknownBody.model).toBe('some-aggregator-tts')
+    expect(unknownBody.input).toBe('hi')
+  })
+
+  it('语音合成：显式指定的声音照发（哪怕模型未知）', async () => {
+    postMock.mockResolvedValueOnce({ data: new Uint8Array([1, 2]) })
+    await openAiAdapter.generateSpeech(provider(), 'some-aggregator-tts', {
+      input: 'hi',
+      voice: 'zh_female_1'
+    })
+    const [, body] = postMock.mock.calls[0] as [string, Record<string, unknown>]
+    expect(body.voice).toBe('zh_female_1')
   })
 
   it('语音合成：pcm 用 .pcm 后缀，speed 透传', async () => {
