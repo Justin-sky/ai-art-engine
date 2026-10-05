@@ -359,9 +359,20 @@ export function registerIpcHandlers(): void {
     if (asset) broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
     return result
   })
-  handle(IpcChannels.GEN_SPEECH, (input: GenerateSpeechInput) =>
-    modelProviderFacade.generateSpeech(input)
-  )
+  /**
+   * 语音合成 → 工程声音资产。
+   *
+   * 必须走 generateSpeechAsset 而不是 generateSpeech：后者的返回类型里
+   * **没有 assetId / relativePath**（落盘与资产登记都由 Asset 版本完成），
+   * 图节点拿到这样的结果会直接报「语音合成未返回资产」。
+   * 与下面的 GEN_MUSIC 用 generateMusicAsset 是同一个道理。
+   */
+  handle(IpcChannels.GEN_SPEECH, async (input: GenerateSpeechInput) => {
+    const result = await modelProviderFacade.generateSpeechAsset(input)
+    const asset = projectService.listAssets().find((item) => item.id === result.assetId)
+    if (asset) broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
+    return result
+  })
   handle(IpcChannels.GEN_MUSIC, async (input: GenerateMusicInput & { name?: string }) => {
     const result = await modelProviderFacade.generateMusicAsset(input)
     const asset = projectService.listAssets().find((item) => item.id === result.assetId)
