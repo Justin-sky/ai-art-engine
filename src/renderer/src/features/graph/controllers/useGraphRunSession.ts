@@ -1021,6 +1021,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       providerInstanceId?: string
       loop?: boolean
       durationSeconds?: number
+      promptInfluence?: number
       name?: string
       outputDir?: string
     }) => {
@@ -1033,7 +1034,8 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         model: input.model,
         providerInstanceId: input.providerInstanceId,
         loop: input.loop,
-        durationSeconds: input.durationSeconds
+        durationSeconds: input.durationSeconds,
+        promptInfluence: input.promptInfluence
       }
       run.logBridge.appendMessage(options.t('graph.logs.submitSpeech'))
       try {

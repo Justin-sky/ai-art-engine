@@ -401,6 +401,9 @@ async function executeOneNode(
     segmentModel3d: options.segmentModel3d,
     postProcessModel3d: options.postProcessModel3d,
     generateSpeech: options.generateSpeech,
+    // 逐字段白名单：新增能力必须在这里显式接一次，否则 session 传了也到不了节点
+    // （踩过：音效节点一直报「执行环境没有音效生成能力」，而 session 侧接线其实是对的）
+    generateSoundEffect: options.generateSoundEffect,
     locale: options.locale,
     signal: options.signal,
     resolveAssetGenParams: options.resolveAssetGenParams,
