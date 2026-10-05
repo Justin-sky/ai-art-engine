@@ -473,6 +473,15 @@ export function registerIpcHandlers(): void {
       apiStyle: input.apiStyle
     })
   )
+  handle(IpcChannels.LIST_ALL_AUDIO_MODELS, (input: SpeechVoiceLabelsInput) =>
+    modelProviderFacade.listAllAudioModels(input.providerInstanceId, {
+      apiKey: input.apiKey,
+      baseUrl: input.baseUrl,
+      nativeBaseUrl: input.nativeBaseUrl,
+      providerKind: input.providerKind,
+      apiStyle: input.apiStyle
+    })
+  )
 
   handle(IpcChannels.SETTINGS_GET, () => settingsService.get())
   handle(IpcChannels.SETTINGS_SET, (settings: AppSettings) => settingsService.set(settings))

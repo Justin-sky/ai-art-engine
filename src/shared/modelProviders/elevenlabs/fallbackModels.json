@@ -1,18 +1,39 @@
 {
   "meta": {
-    "note": "离线兜底：能做 TTS 的模型。正常路径是拉 GET /v1/models（官方提供），此处仅在目录拉取失败时用于展示与音色解析，避免离线状态下声音节点无可选项。id 取自官方 openapi.json 中出现过的 model_id 字符串。",
-    "source": "https://api.elevenlabs.io/v1/models"
+    "note": "ElevenLabs 模型表（离线兜底 + 模型类别的事实来源）。正常路径是拉 GET /v1/models，但该端点**不含**「这个模型是 TTS 还是转写/音乐」的能力位（规范里只有 can_do_text_to_speech / can_do_voice_conversion / can_use_style），所以类别只能按 model_id 约定判断；这份表就是那个约定的登记处。id 全部取自官方 openapi.json 中出现过的 model_id 字符串。",
+    "source": "https://api.elevenlabs.io/openapi.json"
   },
   "models": [
-    { "id": "eleven_v3", "name": "Eleven v3", "note": "最新一代，表达力最强" },
+    { "id": "eleven_v3", "name": "Eleven v3", "kind": "tts", "note": "最新一代，表达力最强" },
     {
       "id": "eleven_multilingual_v2",
       "name": "Eleven Multilingual v2",
+      "kind": "tts",
       "note": "规范中的默认模型，29 种语言"
     },
-    { "id": "eleven_turbo_v2_5", "name": "Eleven Turbo v2.5", "note": "低延迟，质量与时延折中" },
-    { "id": "eleven_flash_v2_5", "name": "Eleven Flash v2.5", "note": "最低延迟" },
-    { "id": "eleven_turbo_v2", "name": "Eleven Turbo v2", "note": "上一代 turbo" },
-    { "id": "eleven_flash_v2", "name": "Eleven Flash v2", "note": "上一代 flash" }
+    { "id": "eleven_turbo_v2_5", "name": "Eleven Turbo v2.5", "kind": "tts", "note": "低延迟" },
+    { "id": "eleven_flash_v2_5", "name": "Eleven Flash v2.5", "kind": "tts", "note": "最低延迟" },
+    { "id": "eleven_turbo_v2", "name": "Eleven Turbo v2", "kind": "tts", "note": "上一代 turbo" },
+    { "id": "eleven_flash_v2", "name": "Eleven Flash v2", "kind": "tts", "note": "上一代 flash" },
+    {
+      "id": "eleven_v3_conversational",
+      "name": "Eleven v3 Conversational",
+      "kind": "tts",
+      "note": "对话场景优化"
+    },
+    { "id": "eleven_v4", "name": "Eleven v4", "kind": "tts" },
+    { "id": "eleven_v4_turbo", "name": "Eleven v4 Turbo", "kind": "tts" },
+    { "id": "scribe_v2", "name": "Scribe v2", "kind": "stt", "note": "语音转文字" },
+    { "id": "scribe_v2_turbo", "name": "Scribe v2 Turbo", "kind": "stt", "note": "低延迟转写" },
+    { "id": "scribe_v2_medical", "name": "Scribe v2 Medical", "kind": "stt", "note": "医学场景" },
+    { "id": "music_v2_5", "name": "Music v2.5", "kind": "music", "note": "音乐生成" },
+    { "id": "music_v2", "name": "Music v2", "kind": "music" },
+    { "id": "music_v1", "name": "Music v1", "kind": "music" },
+    {
+      "id": "eleven_text_to_sound_v2",
+      "name": "Text to Sound v2",
+      "kind": "sfx",
+      "note": "音效生成（规范里 model_id 只有这一个取值）"
+    }
   ]
 }

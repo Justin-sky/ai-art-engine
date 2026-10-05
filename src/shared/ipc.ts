@@ -127,6 +127,12 @@ export const IpcChannels = {
    * 有些供应商的音色是不透明 id（ElevenLabs），不取名字选择器只能显示乱码般的 id。
    */
   LIST_SPEECH_VOICE_LABELS: 'models:voice-labels',
+  /**
+   * 音频模态的全量模型（TTS + 转写 + 音乐）。
+   * ElevenLabs 的 /v1/models 混着三类，声音节点只要 TTS，而 BGM / 转写需要另外两类，
+   * 所以设置页勾选时用这个入口把全部能力写进目录快照。
+   */
+  LIST_ALL_AUDIO_MODELS: 'models:audio-all',
   GEN_MUSIC: 'gen:music',
   GEN_MODEL3D: 'gen:model3d',
   /** 空间世界生成（World Labs Marble）：异步 operation 轮询，产物为世界网格 GLB */
@@ -1363,6 +1369,8 @@ export interface StudioApi {
   listModels: (input: ListModelsInput) => Promise<CatalogModel[]>
   /** 音色 id → 展示名（仅音色为不透明 id 的供应商有内容；其余返回空对象） */
   listSpeechVoiceLabels: (input: SpeechVoiceLabelsInput) => Promise<Record<string, string>>
+  /** 音频模态全量模型（设置页勾选时把 TTS / 转写 / 音乐的能力一并写进快照） */
+  listAllAudioModels: (input: SpeechVoiceLabelsInput) => Promise<CatalogModel[]>
   listProviderKinds: () => Promise<ModelProviderKindMeta[]>
   listObjectStorageKinds: () => Promise<ObjectStorageKindMeta[]>
 

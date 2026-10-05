@@ -1,5 +1,12 @@
 import axios from 'axios'
-import { createWriteStream, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'fs'
+import {
+  copyFileSync,
+  createWriteStream,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync
+} from 'fs'
 import { basename, join } from 'path'
 import { tmpdir } from 'os'
 import { pipeline } from 'stream/promises'
@@ -241,8 +248,14 @@ const E_NO_VOICE_PROFILE = defErr<{ character: string }>(
 )
 const E_MUSIC_UNSUPPORTED = defErrSimple(
   'provider.facade.music-unsupported',
-  '当前模型提供商不支持音乐生成，请在设置中配置 MiniMax 或通义千问（百炼 Fun-Music）提供商并勾选音乐模型（如 music-3.0 / fun-music-v1）',
-  'The selected provider does not support music generation; configure a MiniMax or DashScope (Bailian Fun-Music) provider with a music model (e.g. music-3.0 / fun-music-v1) in Settings'
+  '当前模型提供商不支持音乐生成，请在设置中配置 MiniMax / 通义千问（百炼 Fun-Music）/ ElevenLabs 提供商并勾选音乐模型（如 music-3.0 / fun-music-v1 / music_v2_5）',
+  'The selected provider does not support music generation; configure a MiniMax / DashScope (Bailian Fun-Music) / ElevenLabs provider with a music model (e.g. music-3.0 / fun-music-v1 / music_v2_5) in Settings'
+)
+/** 上游既没给下载地址也没给本地文件：两种取回方式都落空，没法登记资产 */
+const E_MUSIC_NO_AUDIO = defErrSimple(
+  'provider.facade.music-no-audio',
+  '音乐生成未返回音频（既没有下载地址也没有本地文件）',
+  'Music generation returned no audio (neither a download URL nor a local file)'
 )
 const E_TRANSCRIBE_NO_FILE = defErrSimple(
   'provider.facade.transcribe-file-missing',
@@ -270,6 +283,8 @@ const E_DECISIONS_UNSUPPORTED = defErr<{ provider: string }>(
 /** 支持转写的提供商 kind → 默认转写模型；未知 kind 返回空（由调用方/适配器兜底） */
 function defaultTranscribeModelId(kind: ModelProviderKind): string {
   if (kind === 'openai') return 'whisper-1'
+  // ElevenLabs Scribe：当前基线是 v2（规范里 model_id 的取值之一）
+  if (kind === 'elevenlabs') return 'scribe_v2'
   return ''
 }
 
@@ -319,6 +334,35 @@ class ModelProviderFacade {
     modality: ModelModality
   ): Promise<CatalogModel[]> {
     return getProviderAdapter(provider.providerKind).fetchCatalog(provider, modality)
+  }
+
+  /**
+   * 音频模态的**全量**模型（不按类别过滤），供设置页把 TTS / 转写 / 音乐的能力
+   * 一并写进目录快照。适配器没实现时退回 `fetchCatalog`（单一类别的供应商行为不变）。
+   */
+  async listAllAudioModels(
+    providerInstanceId: string,
+    overrides?: {
+      apiKey?: string
+      baseUrl?: string
+      nativeBaseUrl?: string
+      providerKind?: ModelProviderKind
+      apiStyle?: CustomApiStyle
+    }
+  ): Promise<CatalogModel[]> {
+    const provider = buildProviderSnapshot({
+      providerInstanceId,
+      apiKey: overrides?.apiKey,
+      baseUrl: overrides?.baseUrl,
+      nativeBaseUrl: overrides?.nativeBaseUrl,
+      providerKind: overrides?.providerKind,
+      apiStyle: overrides?.apiStyle
+    })
+    const adapter = getProviderAdapter(provider.providerKind)
+    if (typeof adapter.listAllAudioModels !== 'function') {
+      return adapter.fetchCatalog(provider, 'audio')
+    }
+    return adapter.listAllAudioModels(provider)
   }
 
   async listModels(
@@ -1542,7 +1586,14 @@ class ModelProviderFacade {
     // 中间文件始终写系统临时目录，由 attachExternalGeneratedFile 统一拷入最终目录
     const dir = mkdtempSync(join(tmpdir(), 'aiae-music-'))
     const dest = join(dir, `music-${Date.now()}.mp3`)
-    await this.downloadVideoToFile(provider, result.downloadUrl, dest)
+    if (result.filePath?.trim()) {
+      // 上游直接回音频字节（ElevenLabs /v1/music）：它已落在临时目录，拷进本轮中间目录即可
+      copyFileSync(result.filePath.trim(), dest)
+    } else if (result.downloadUrl?.trim()) {
+      await this.downloadVideoToFile(provider, result.downloadUrl.trim(), dest)
+    } else {
+      throw fail(E_MUSIC_NO_AUDIO)
+    }
 
     const outputDir = resolveMediaOutputDir({
       mediaOutputDir: input.outputDir,

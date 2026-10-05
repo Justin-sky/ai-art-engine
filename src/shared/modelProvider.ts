@@ -1820,11 +1820,17 @@ export interface GenerateMusicInput {
   folderId?: string
 }
 
-/** 门面层音乐生成原始结果（尚未落盘；downloadUrl 由门面下载后登记资产） */
+/** 门面层音乐生成原始结果（尚未落盘；由门面取回音频后登记资产） */
 export interface GenerateMusicResult {
   model: string
-  /** 音频下载地址（http(s)） */
-  downloadUrl: string
+  /** 音频下载地址（http(s)）。ElevenLabs 之外都是这一种（服务端给 URL） */
+  downloadUrl?: string
+  /**
+   * 已落临时目录的音频绝对路径。
+   * ElevenLabs 的 `/v1/music` 直接回音频字节、没有下载地址，所以走这一种；
+   * 门面两种都支持（下载 URL 或直接用本地文件），登记资产的方式一致。
+   */
+  filePath?: string
   /** 音频时长（毫秒；服务端未返回时缺省） */
   durationMs?: number
 }

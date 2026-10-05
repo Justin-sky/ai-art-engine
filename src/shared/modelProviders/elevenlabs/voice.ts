@@ -84,12 +84,43 @@ export function buildElevenTtsBody(input: {
 }
 
 /**
+ * 模型类别。
+ *
+ * `GET /v1/models` **不含**「是 TTS 还是转写 / 音乐 / 音效」的能力位 ——
+ * 规范里只有 `can_do_text_to_speech` / `can_do_voice_conversion` / `can_use_style`。
+ * 所以类别只能按 model_id 约定判断，本文件的 `elevenModelKind` 就是那个约定的唯一登记处。
+ */
+export type ElevenModelKind = 'tts' | 'stt' | 'music' | 'sfx' | 'other'
+
+/**
+ * 按 id 判断模型类别。
+ *
+ * 依据是官方 openapi.json 里出现过的 model_id 命名：
+ * - `scribe_*`（scribe_v2 / _turbo / _medical）→ 语音转文字
+ * - `music_*`（music_v1 / v2 / v2_5）→ 音乐生成
+ * - `eleven_text_to_sound_*` → 音效
+ * - 其余 `eleven_*`（v3 / multilingual_v2 / turbo / flash …）→ TTS
+ * 认不出的返回 'other'，由调用方决定要不要收。
+ */
+export function elevenModelKind(modelId: string): ElevenModelKind {
+  const id = modelId.trim().toLowerCase()
+  if (!id) return 'other'
+  if (id.startsWith('scribe')) return 'stt'
+  if (id.startsWith('music_')) return 'music'
+  if (id.includes('sound_effects') || id.startsWith('eleven_text_to_sound')) return 'sfx'
+  if (id.startsWith('eleven_')) return 'tts'
+  return 'other'
+}
+
+/**
  * 把 `GET /v1/models` 的响应归一成目录条目。
  *
- * 规范里的模型条目带 `model_id` / `name` / `description` / `languages` / `can_do_text_to_speech`，
- * 我们只要「能做 TTS」的那些 —— 同一端点也返回语音转文字、音效等非 TTS 模型。
+ * 保留**所有**条目并在 capabilities 里带上类别：各调用点按需分流
+ * （声音节点要 tts、时间线转写要 stt、BGM 要 music）。
+ * 之前只留 TTS 会让这三条各自缺选项。
  */
 export function parseElevenModels(body: unknown): CatalogModel[] {
+  // 实测：无 Key 时该端点的响应体不是数组（拿不到目录），这种情况交给兜底表
   const rows = Array.isArray(body) ? body : []
   const out: CatalogModel[] = []
   for (const row of rows) {
@@ -97,8 +128,6 @@ export function parseElevenModels(body: unknown): CatalogModel[] {
     const item = row as Record<string, unknown>
     const id = typeof item.model_id === 'string' ? item.model_id.trim() : ''
     if (!id) continue
-    // 明确标了不能做 TTS 的直接排除；没标的保留（规范里该字段可选）
-    if (item.can_do_text_to_speech === false) continue
     const name = typeof item.name === 'string' && item.name.trim() ? item.name.trim() : id
     const description = typeof item.description === 'string' ? item.description.trim() : undefined
     const languages = Array.isArray(item.languages)
@@ -111,10 +140,124 @@ export function parseElevenModels(body: unknown): CatalogModel[] {
       name,
       ...(description ? { description } : {}),
       modality: 'audio',
-      capabilities: languages.length ? { languages } : undefined
+      capabilities: {
+        ...(languages.length ? { languages } : {}),
+        elevenKind: elevenModelKind(id),
+        // 规范里确实有这一位，用它同时校验 id 约定（认不出的 TTS 才算数）
+        ...(item.can_do_text_to_speech === false ? { canDoTextToSpeech: false } : {})
+      }
     })
   }
   return out
+}
+
+/** 按类别筛模型（选型时用） */
+export function filterElevenModelsByKind(
+  models: CatalogModel[],
+  kind: ElevenModelKind
+): CatalogModel[] {
+  return models.filter((model) => {
+    const declared = model.capabilities?.elevenKind
+    if (typeof declared === 'string') return declared === kind
+    return elevenModelKind(model.id) === kind
+  })
+}
+
+/** 语音转文字端点（multipart/form-data；响应是 JSON） */
+export const ELEVEN_STT_PATH = '/v1/speech-to-text'
+/** 音乐生成端点（JSON；响应是音频字节） */
+export const ELEVEN_MUSIC_PATH = '/v1/music'
+
+/** 转写默认模型：规范里 `scribe_v2` 是当前基线 */
+export const ELEVEN_DEFAULT_STT_MODEL = 'scribe_v2'
+/** 音乐默认模型：规范里 `music_v2_5` 是最新 */
+export const ELEVEN_DEFAULT_MUSIC_MODEL = 'music_v2_5'
+
+/**
+ * 音乐生成请求体。
+ *
+ * 规范里 `required: []`（可只给 prompt），字段名与取值都按 openapi.json 来：
+ * `prompt` / `lyrics_text` / `force_instrumental` / `model_id`(music_v1|v2|v2_5)。
+ */
+export function buildElevenMusicBody(input: {
+  prompt: string
+  lyrics?: string
+  instrumental?: boolean
+  modelId?: string
+}): Record<string, unknown> {
+  const body: Record<string, unknown> = { prompt: input.prompt.trim() }
+  const lyrics = input.lyrics?.trim()
+  if (lyrics) body.lyrics_text = lyrics
+  // 缺省纯音乐（与 GenerateMusicInput.instrumental 的语义一致）
+  body.force_instrumental = input.instrumental !== false
+  const modelId = input.modelId?.trim()
+  if (modelId) body.model_id = modelId
+  return body
+}
+
+/** 转写响应里的词级时间戳 */
+interface ElevenTranscriptWord {
+  text?: unknown
+  start?: unknown
+  end?: unknown
+  type?: unknown
+}
+
+/**
+ * 把 `POST /v1/speech-to-text` 的响应映射成既有的转写结果。
+ *
+ * 只用 `type === 'word'` 的词：规范里该数组也会混入 `spacing` / `audio_event`，
+ * 把它们当正文会把「空格」拼进字幕。
+ * 按**句读**切段（词级时间戳直接当分段会碎成一个个词，时间线没法用）。
+ */
+export function parseElevenTranscript(
+  body: unknown,
+  modelId: string
+): {
+  segments: Array<{ startSec: number; endSec: number; text: string }>
+  text?: string
+  model: string
+  language?: string
+} {
+  const item = (body ?? {}) as Record<string, unknown>
+  const words = (Array.isArray(item.words) ? item.words : []) as ElevenTranscriptWord[]
+  const fullText = typeof item.text === 'string' ? item.text.trim() : ''
+  const language = typeof item.language_code === 'string' ? item.language_code.trim() : ''
+  const segments: Array<{ startSec: number; endSec: number; text: string }> = []
+  // 句读边界：中文句号/问号/叹号/分号 + 西文 .!?;
+  const boundary = /[。！？；!?;]/
+
+  let bucket = ''
+  let startSec = 0
+  let endSec = 0
+  const flush = (): void => {
+    const text = bucket.trim()
+    if (text) segments.push({ startSec, endSec, text })
+    bucket = ''
+  }
+  for (const word of words) {
+    if (word.type !== 'word') continue
+    const text = typeof word.text === 'string' ? word.text : ''
+    if (!text) continue
+    if (!bucket.trim()) startSec = Number(word.start) || 0
+    endSec = Number.isFinite(Number(word.end)) ? Number(word.end) : endSec
+    bucket += text
+    if (boundary.test(text)) flush()
+  }
+  flush()
+
+  if (!segments.length && fullText) {
+    // 没有词级时间戳（如请求未要 timestamps）时退化为整段
+    segments.push({ startSec: 0, endSec: 0, text: fullText })
+  }
+  return {
+    segments,
+    ...(fullText || segments.length
+      ? { text: fullText || segments.map((s) => s.text).join('') }
+      : {}),
+    model: modelId,
+    ...(language ? { language } : {})
+  }
 }
 
 /** 音色目录条目：选择器要显示名字，生成时用 voice_id */
@@ -126,25 +269,34 @@ export interface ElevenVoiceEntry {
 }
 
 /**
- * 离线兜底的 TTS 模型表。
+ * 离线兜底的模型表（同时是「模型类别」的事实来源）。
  *
- * 正常路径是拉 `GET /v1/models`（官方有该端点，实测可用）；
- * 这里只在拉取失败时兜底，避免离线状态下声音节点一个模型都选不了。
+ * 正常路径是拉 `GET /v1/models`（官方有该端点），但该端点不含类别能力位，
+ * 所以类别靠 id 约定；这份表把约定显式登记下来，拉取失败时也仍有可用选项。
  */
 export function listElevenFallbackModels(): CatalogModel[] {
-  const rows = (fallback as { models?: Array<{ id?: string; name?: string; note?: string }> })
-    .models
+  const rows = (
+    fallback as {
+      models?: Array<{ id?: string; name?: string; note?: string; kind?: string }>
+    }
+  ).models
   return (rows ?? [])
-    .filter((row): row is { id: string; name?: string; note?: string } => Boolean(row.id?.trim()))
-    .map((row) => ({
-      id: row.id.trim(),
-      name: row.name?.trim() || row.id.trim(),
-      modality: 'audio' as const,
-      ...(row.note ? { description: row.note } : {})
-    }))
+    .filter((row): row is { id: string; name?: string; note?: string; kind?: string } =>
+      Boolean(row.id?.trim())
+    )
+    .map((row) => {
+      const id = row.id.trim()
+      return {
+        id,
+        name: row.name?.trim() || id,
+        modality: 'audio' as const,
+        ...(row.note ? { description: row.note } : {}),
+        capabilities: { elevenKind: row.kind ?? elevenModelKind(id) }
+      }
+    })
 }
 
-/** 是否是我们已知的 ElevenLabs TTS 模型（用于音色兜底解析） */
+/** 该 id 是否是本地表里的 TTS 模型（音色兜底解析用） */
 export function isKnownElevenModel(modelId: string): boolean {
   const id = modelId.trim()
   if (!id) return false

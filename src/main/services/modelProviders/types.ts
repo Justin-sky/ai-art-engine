@@ -234,6 +234,16 @@ export interface ModelProviderAdapter {
     job: { jobId: string; pollingUrl: string }
   ): Promise<VideoPollResult>
   /**
+   * 音频模态的**全量**模型目录（不按类别过滤）。
+   *
+   * 有些供应商的音频端点混着多种模型：ElevenLabs 的 `GET /v1/models` 同时返回
+   * TTS（`eleven_v3`）、转写（`scribe_v2`）、音乐（`music_v2_5`）。
+   * 而 `fetchCatalog` 只能返回一类 —— 声音节点的下拉不该出现 music 模型，
+   * 但时间线的 BGM / 音效生成需要它们。所以另给一个不带过滤的入口：
+   * 设置页勾选模型时用它把全部能力写进目录快照，各处再按 `capabilities` 自行分流。
+   */
+  listAllAudioModels?(provider: ModelProviderInstance): Promise<CatalogModel[]>
+  /**
    * 音色 id → 展示名（仅音色是**不透明 id** 的供应商需要）。
    *
    * ElevenLabs 的 voice_id 形如 `21m00Tcm4TlvDq8ikWAM`，光看 id 没法选；

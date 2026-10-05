@@ -4,6 +4,7 @@ import type {
   ModelProviderInstance,
   ModelProviderKind
 } from '@shared/modelProvider'
+import { elevenModelKind } from '@shared/modelProviders/elevenlabs/voice'
 import {
   allowsEmptyApiKey,
   isDecisionProviderKind,
@@ -320,10 +321,38 @@ function voiceRequiredFor(kind: ModelProviderKind | undefined): boolean {
   return kind ? requiresSpeechVoice(kind) : false
 }
 
+export type GenerateModelKindFilter = 'tts' | 'music' | 'stt' | 'sfx'
+
+/**
+ * 按用途过滤模型（目前只有 ElevenLabs 需要区分）。
+ *
+ * 它的 `GET /v1/models` 混着 TTS / 转写 / 音乐三类且都挂在 audio 模态：
+ * 不过滤的话声音节点会列出 `music_v2_5`、BGM 选择器会列出 `eleven_v3`，
+ * 选中后必定失败。类别来自 `capabilities.elevenKind`（见 elevenlabs/voice.ts），
+ * 没有标注的供应商原样通过 —— 它们的 audio 目录只有一类。
+ */
+function matchesModelKind(
+  option: GenerateModelOption,
+  providers: ModelProviderInstance[],
+  kind: GenerateModelKindFilter
+): boolean {
+  if (option.providerKind !== 'elevenlabs') return true
+  const provider = providers.find((p) => p.id === option.providerInstanceId)
+  const declared = provider ? modalityConfig(provider, 'audio').catalog?.[option.model] : undefined
+  const marker = declared?.capabilities?.elevenKind
+  if (typeof marker === 'string') return marker === kind
+  return elevenModelKind(option.model) === kind
+}
+
 export async function loadGenerateModelOptions(
   modality: GenerateModelModality,
   preferredKey?: string,
-  currentKey?: string
+  currentKey?: string,
+  /**
+   * 只要某一类别的模型（转写 / 音乐 / 音效这类用途各自的选择器用）。
+   * 省略即不按类别过滤（声音节点用；它的目录已由 fetchCatalog 滤成 TTS）。
+   */
+  modelKind?: GenerateModelKindFilter
 ): Promise<{
   options: GenerateModelOption[]
   selectedKey: string
@@ -345,7 +374,10 @@ export async function loadGenerateModelOptions(
   try {
     const settings = await getSettingsCached()
     const providers = settings.models?.providers ?? []
-    const options = buildModelOptions(providers, modality)
+    const allOptions = buildModelOptions(providers, modality)
+    const options = modelKind
+      ? allOptions.filter((option) => matchesModelKind(option, providers, modelKind))
+      : allOptions
     const voicesByModelKey = buildModelVoiceOptions(providers, modality, options)
     const voiceLabels = buildVoiceLabels(providers, options)
     // voiceRequired 按最终选中的那个模型判定（入参 preferred/current 可能都没命中）

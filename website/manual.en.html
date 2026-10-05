@@ -779,6 +779,9 @@
               <code>GET /v1/models</code> and voices from <code>GET /v1/voices</code>. Its <code>voice_id</code> is an
               opaque string, so the panel shows voice <em>names</em> instead (e.g. <code>Sarah - Mature, Reassuring</code>);
               the voice catalog is publicly readable, so you can browse models and voices before setting a key.
+              The same key also powers two existing pipelines: <strong>speech-to-text</strong> (Scribe, the timeline's
+              “audio to subtitles”) and <strong>music generation</strong> (BGM / SFX). All three share one model
+              catalog; the voice node's dropdown lists TTS models only.
               <strong>The voice is set in the voice node's instruction panel</strong>, not here: it is a per-node
               parameter, so different voice-over nodes in one graph can use different voices. Suggestions come from
               the <code>supported_voices</code> returned by the API (OpenRouter's docs page does not list them, but

@@ -589,8 +589,9 @@ export default {
       },
       elevenLabsModalityHint: {
         audio:
-          'ElevenLabs 语音合成走 POST /v1/text-to-speech/{voice_id}（鉴权头为 xi-api-key），模型目录走 GET /v1/models；音色目录走 GET /v1/voices（无需 Key 也能拿到公开音色，带 Key 会带上你自己的克隆音色）。音色是 voice_id（不透明字符串），面板里会显示成音色名。' +
-          '注意：ElevenLabs 的 input 就是要朗读的文本，音色与模型之外没有「说话风格」参数。'
+          'ElevenLabs：语音合成走 POST /v1/text-to-speech/{voice_id}（鉴权头 xi-api-key），模型目录 GET /v1/models，音色目录 GET /v1/voices（无 Key 也能拿到公开音色，带 Key 会带上你自己的克隆音色）。音色是 voice_id（不透明字符串），选择器里显示的是音色名。' +
+          '同一把 Key 还提供两条既有管线：语音转文字（Scribe，供时间线「配音转字幕」）与音乐生成（供 BGM / 音效）。这三个端点混在同一份模型目录里，本页只列 TTS 模型。' +
+          '注意：ElevenLabs 的 input 就是要朗读的文本，模型与音色之外没有「说话风格」参数。'
       },
       deepseekModalityHint: {
         text: 'DeepSeek 对话模型（deepseek-flash = V4.1 Flash / deepseek-v4-pro），OpenAI 兼容，默认 Base URL 为 api.deepseek.com，对应 /chat/completions；文本目录由 GET /models 拉取。'

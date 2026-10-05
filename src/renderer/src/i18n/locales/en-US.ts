@@ -599,7 +599,8 @@ export default {
       },
       elevenLabsModalityHint: {
         audio:
-          'ElevenLabs speech synthesis posts to /v1/text-to-speech/{voice_id} (auth header: xi-api-key), with models from GET /v1/models and voices from GET /v1/voices (public voices work without a key; your cloned voices appear once a key is set). A voice is an opaque voice_id, shown by name in the panel. ' +
+          'ElevenLabs: speech synthesis posts to POST /v1/text-to-speech/{voice_id} (auth header xi-api-key), models come from GET /v1/models and voices from GET /v1/voices (public voices work without a key; your cloned voices appear once a key is set). A voice is an opaque voice_id, shown by name in the picker. ' +
+          "The same key also powers two existing pipelines: speech-to-text (Scribe, used by the timeline's “audio to subtitles”) and music generation (for BGM / SFX). All three endpoints share one model catalog; this tab lists TTS models only. " +
           'Note: with ElevenLabs the input *is* the text to speak — beyond model and voice there is no separate speaking-style parameter.'
       },
       deepseekModalityHint: {

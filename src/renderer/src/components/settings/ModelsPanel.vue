@@ -821,9 +821,13 @@ async function refreshModels(
     catalogs[key] = next
     // 把分辨率 / 时长 / supported_frame_images 等能力写入设置快照
     syncModalityCatalogEntries(sel, next)
-    // 音频页签顺带取音色名：ElevenLabs 的 voice_id 是不透明字符串，
-    // 不取名字的话声音节点里只能显示乱码般的 id 供人选择。
-    if (modality === 'audio') await refreshVoiceLabels(latest)
+    // 音频页签还要两样：
+    // - 音色名（ElevenLabs 的 voice_id 是不透明字符串，不取名字选择器只能显示 id）
+    // - 全量音频模型的能力（TTS / 转写 / 音乐混在同一端点，各处按 capabilities 分流）
+    if (modality === 'audio') {
+      await refreshVoiceLabels(latest)
+      await syncAllAudioModels(latest)
+    }
     clearImageGenerateCapabilitiesCache()
     clearVideoGenerateCapabilitiesCache()
     if (sel.defaultModelId && !sel.selectedModelIds.includes(sel.defaultModelId)) {
@@ -862,6 +866,45 @@ async function refreshVoiceLabels(provider: ModelProviderInstance): Promise<void
     else delete sel.voiceLabels
   } catch {
     /* 音色名是锦上添花：失败不影响目录与生成 */
+  }
+}
+
+/**
+ * 把**全量**音频模型（TTS + 转写 + 音乐）的能力写进目录快照。
+ *
+ * 有些供应商的音频端点混着三类模型（ElevenLabs 的 /v1/models 同时返回
+ * eleven_v3 / scribe_v2 / music_v2_5）：声音节点的下拉只该出现 TTS，
+ * 但时间线的 BGM / 音效与「配音转字幕」需要另外两类 ——
+ * 它们的 `capabilities.elevenKind` 只在这个入口才会落盘。
+ * 取不到就跳过（适配器没实现时 facade 会退回 fetchCatalog，行为不变）。
+ */
+async function syncAllAudioModels(provider: ModelProviderInstance): Promise<void> {
+  if (typeof window.studio?.listAllAudioModels !== 'function') return
+  try {
+    const models = await window.studio.listAllAudioModels({
+      providerInstanceId: provider.id,
+      apiKey: provider.apiKey,
+      baseUrl: provider.baseUrl,
+      nativeBaseUrl: provider.nativeBaseUrl,
+      providerKind: provider.providerKind,
+      apiStyle: provider.apiStyle
+    })
+    if (!Array.isArray(models) || !models.length) return
+    const sel = modalityConfig(provider, 'audio')
+    // 只补目录快照，不动 selectedModelIds（是否启用由用户勾选决定）
+    const catalog = { ...(sel.catalog ?? {}) }
+    for (const model of models) {
+      if (!model?.id) continue
+      const entry = catalogEntryFromModel(model)
+      // 已有条目时合并能力，避免把 supported_voices 等已有信息冲掉
+      catalog[model.id] = {
+        ...entry,
+        capabilities: { ...(catalog[model.id]?.capabilities ?? {}), ...(entry.capabilities ?? {}) }
+      }
+    }
+    sel.catalog = catalog
+  } catch {
+    /* 目录快照不全会退化成「只显示 TTS」，不影响生成 */
   }
 }
 

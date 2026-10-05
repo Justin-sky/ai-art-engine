@@ -3896,7 +3896,13 @@ async function probeDuration(src: string, media: 'video' | 'audio' = 'video'): P
  */
 /** 一键生成音效：描述 → 音乐模型 instrumental 产出 → 落盘 Cache/Sfx → 铺到音效轨。 */
 async function onGenerateSfx(): Promise<void> {
-  const { options, selectedKey } = await loadGenerateModelOptions('audio')
+  // 音效也走 /v1/music（instrumental）；列 ElevenLabs 的音乐模型，别让人选到 TTS
+  const { options, selectedKey } = await loadGenerateModelOptions(
+    'audio',
+    undefined,
+    undefined,
+    'music'
+  )
   const result = await promptTextWithModel({
     title: t('script.timeline.generateSfx'),
     message: t('script.timeline.generateSfxPrompt'),
@@ -4060,7 +4066,13 @@ function mixMasterGainDbLabel(): string {
 }
 
 async function onGenerateBgm(): Promise<void> {
-  const { options, selectedKey } = await loadGenerateModelOptions('audio')
+  // 只列音乐模型：ElevenLabs 的 /v1/models 里还有 TTS 与转写模型，选错必失败
+  const { options, selectedKey } = await loadGenerateModelOptions(
+    'audio',
+    undefined,
+    undefined,
+    'music'
+  )
   const result = await promptTextWithModel({
     title: t('script.timeline.generateBgm'),
     message: t('script.timeline.generateBgmPrompt'),
