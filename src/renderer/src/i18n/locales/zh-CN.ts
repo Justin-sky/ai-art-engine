@@ -4191,6 +4191,8 @@ export default {
         canvas: '画布编辑',
         video: '视频生成',
         voice: '声音生成',
+        dialogue: '多说话人对话',
+        sfx: '音效生成',
         motion: '3D导演台',
         model: '模型',
         screenplay: '剧本生成',
@@ -5474,6 +5476,17 @@ export default {
         generatedTextsOpen: '双击打开记事本',
         generatedVoices: '已生成声音',
         generatedVoicesCount: '{n} 条',
+        dialogueVoices: '说话人音色',
+        dialogueSpeakerCount: '{n} 位说话人',
+        dialogueVoicesHint:
+          '在指令框里按行写「说话人: 台词」（如 A: 你终于来了。），这里为每位说话人绑定音色；未绑定的回退到节点默认音色。',
+        dialogueSpeakersEmpty:
+          '还没解析出说话人。请在上方指令框里按行写「说话人: 台词」，例如：A: 你终于来了。',
+        soundEffectOptions: '音效参数',
+        soundEffectOptionsHint:
+          '音效描述的是声音本身（如「雨落在铁皮屋顶上」），不是台词；这些参数只对音效节点生效。',
+        soundEffectLoop: '可无缝循环（环境音常用）',
+        soundEffectDuration: '期望时长（秒，留空由服务端决定）',
         generatedVoicesHint: '每次执行追加新音频并自动选中最新；单击设为当前输出（out），× 删除',
         generatedVoicesEmpty: '暂无生成结果。执行本节点后会显示在这里',
         generatedVoicesDelete: '删除此声音',

@@ -29,6 +29,8 @@ import type { NodeExecuteContext } from './execute/types'
 import { DEFAULT_IMAGE_TRANSFORM } from './imageTransform'
 import {
   executeAssetNode,
+  executeDialogueGenerateNode,
+  executeSoundEffectNode,
   executeCamera3dNode,
   executeMotionAssetRefNode,
   executeNoteNode,
@@ -284,6 +286,61 @@ const ASSET_META: Array<{
     processingIn: GraphPortType.text
   }
 ]
+
+/**
+ * 声音宿主节点的**变体**（同一资产类型，不同生成端点 / 执行分支）。
+ *
+ * 为什么不往 ASSET_META 里加：那张表的 `type` 是 `AssetType`，加新值会牵动资产类型、
+ * 落盘目录、类型推导（`inferNodeTypeId`）等一大片；而这两个节点的产物本就是
+ * 声音资产，只是走了不同的上游端点：
+ * - `asset.dialogue` → ElevenLabs `POST /v1/text-to-dialogue`（多说话人一次合成）
+ * - `asset.sfx` → ElevenLabs `POST /v1/sound-generation`（专用音效端点）
+ * 所以只加 typeId 变体，端口与声音节点一致（音频入 / 音频出）。
+ */
+const VOICE_HOST_VARIANTS = [
+  {
+    typeId: 'asset.dialogue',
+    label: 'Dialogue',
+    icon: '🗣️'
+  },
+  {
+    typeId: 'asset.sfx',
+    label: 'Sound effect',
+    icon: '💥'
+  }
+] as const
+
+function voiceHostVariantDef(variant: (typeof VOICE_HOST_VARIANTS)[number]): NodeTypeDefinition {
+  return {
+    typeId: variant.typeId,
+    category: 'asset',
+    label: variant.label,
+    icon: variant.icon,
+    defaultTitle: variant.label,
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: voiceProcessingPorts(),
+    defaultParams: () => ({
+      generateModel: '',
+      generateProviderInstanceId: '',
+      weight: 0.85,
+      volume: 1,
+      muted: false,
+      loop: false
+    }),
+    addable: true,
+    // 产物是声音资产：宿主接口、图库、落盘目录都按 voice 走
+    assetType: 'voice',
+    deletable: true,
+    inspector: 'asset',
+    card: 'media',
+    contributeToGeneration: true,
+    execute: (ctx: NodeExecuteContext) =>
+      variant.typeId === 'asset.dialogue'
+        ? executeDialogueGenerateNode(ctx)
+        : executeSoundEffectNode(ctx)
+  }
+}
 
 /** 导演台编辑：全景背景图（单图）与 3D 模型输入 + 站位（images）与动作（videos）输出 */
 function motionProcessingPorts(): GraphPortDef[] {
@@ -792,6 +849,7 @@ function specializedOutputDef(
 
 export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
   ...ASSET_META.map(assetDef),
+  ...VOICE_HOST_VARIANTS.map(voiceHostVariantDef),
   outputDef('video', 'Video output', VIDEO_ASSET_ICON),
   outputDef('image', 'Image output', '🖼️'),
   outputDef('voice', 'Audio output', '🔊'),

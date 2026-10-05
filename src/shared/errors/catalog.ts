@@ -130,6 +130,20 @@ export const SHARED_ERRORS = {
     '语音合成未返回资产',
     'Speech synthesis returned no asset'
   ),
+  /** 多说话人对话：对话稿解析后没有任何有效台词 */
+  dialogueEmpty: defErrSimple(
+    'graphExec.dialogue.empty',
+    '对话稿是空的：每行写成「说话人: 台词」（如「A: 你终于来了。」）',
+    'The dialogue script is empty: write one line per utterance as "Speaker: line"'
+  ),
+  /** 多说话人对话：某几段没能确定音色（说话人没绑定音色，节点也没设默认音色） */
+  dialogueVoiceMissing: defErr<{ lines: string; speakers: string }>(
+    'graphExec.dialogue.voiceMissing',
+    ({ lines, speakers }) =>
+      `对话第 ${lines} 段缺少音色：请为说话人「${speakers}」在节点指令面板里绑定音色，或给节点设置一个默认音色`,
+    ({ lines, speakers }) =>
+      `Dialogue lines ${lines} have no voice: bind a voice for speaker "${speakers}" in the node instruction panel, or set a default voice on the node`
+  ),
   /** GraphPlan 解析（parseGraphPlanJson） */
   planInvalidJson: defErrSimple(
     'graphPlan.invalidJson',

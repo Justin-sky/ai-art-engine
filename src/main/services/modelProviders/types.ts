@@ -8,6 +8,7 @@ import type {
   GenerateModel3dJob,
   GenerateMusicInput,
   GenerateMusicResult,
+  GenerateSoundEffectInput,
   GenerateSpeechInput,
   GenerateSpeechResult,
   GenerateTextInput,
@@ -182,12 +183,21 @@ export interface ModelProviderAdapter {
   ): Promise<DecisionResponse>
   /**
    * 音乐 / BGM 生成。可选：未实现时门面提示该提供商不支持。
-   * 同步返回音频下载地址，由门面统一下载并登记资产。
+   * 同步返回音频下载地址（或已落临时目录的 filePath），由门面取回并登记资产。
    */
   generateMusic?(
     provider: ModelProviderInstance,
     modelId: string,
     input: GenerateMusicInput
+  ): Promise<GenerateMusicResult>
+  /**
+   * 音效生成（ElevenLabs `/v1/sound-generation`）。可选：未实现时门面提示不支持。
+   * 与音乐结果同形（都是音频字节 / 下载地址 + 由门面登记），所以复用同一个结果类型。
+   */
+  generateSoundEffect?(
+    provider: ModelProviderInstance,
+    modelId: string,
+    input: GenerateSoundEffectInput
   ): Promise<GenerateMusicResult>
   /**
    * 音频转写（语音识别）。可选：未实现时「配音转字幕」会提示该提供商不支持。

@@ -792,6 +792,25 @@
               have <strong>no voice list at all</strong>: their voice comes from the prompt text, so just leave it empty.
             </li>
             <li>
+              Two more audio nodes (ElevenLabs-specific endpoints; both produce voice assets):
+              <ul>
+                <li>
+                  <strong>Multi-speaker dialogue</strong>: synthesises a whole conversation in one call.
+                  Write one utterance per line as <code>Speaker: line</code> (either colon style works), e.g.
+                  <code>A: You finally made it.</code> / <code>B: Traffic was awful.</code>.
+                  Lines without a colon keep the previous speaker (narration / monologue).
+                  Bind a voice per speaker in the node's instruction panel (unbound speakers fall back
+                  to the node's default voice); a missing voice reports exactly which line and speaker.
+                </li>
+                <li>
+                  <strong>Sound effect</strong>: uses <code>POST /v1/sound-generation</code> and describes the
+                  <em>sound itself</em> (e.g. "rain on a tin roof"), with an optional seamless-loop flag and
+                  target duration; the file lands in <code>Cache/Sfx</code>.
+                </li>
+              </ul>
+              Both reuse the same ElevenLabs key as “audio to subtitles” and BGM generation.
+            </li>
+            <li>
               Set the default generation model if needed. Provider cards can be collapsed to
               save space.
             </li>

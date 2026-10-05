@@ -4287,6 +4287,8 @@ export default {
         canvas: 'Canvas edit',
         video: 'Video generation',
         voice: 'Voice generation',
+        dialogue: 'Multi-speaker dialogue',
+        sfx: 'Sound effect generation',
         motion: '3D Director Deck',
         model: 'Model',
         screenplay: 'Screenplay generation',
@@ -5616,6 +5618,17 @@ export default {
         generatedTextsOpen: 'Double-click to open notepad',
         generatedVoices: 'Generated voices',
         generatedVoicesCount: '{n}',
+        dialogueVoices: 'Speaker voices',
+        dialogueSpeakerCount: '{n} speakers',
+        dialogueVoicesHint:
+          'Write one utterance per line in the instruction box as "Speaker: line" (e.g. A: You finally made it.), then bind a voice per speaker here. Unbound speakers fall back to the node default voice.',
+        dialogueSpeakersEmpty:
+          'No speakers parsed yet. Write one utterance per line in the instruction box above, e.g. A: You finally made it.',
+        soundEffectOptions: 'Sound effect options',
+        soundEffectOptionsHint:
+          'A sound effect describes the sound itself (e.g. "rain on a tin roof"), not a line of dialogue. These options apply to the sound effect node only.',
+        soundEffectLoop: 'Seamless loop (common for ambience)',
+        soundEffectDuration: 'Target duration (seconds; leave empty to let the service decide)',
         generatedVoicesHint:
           'Each run appends audio and selects the newest. Click to set as current out; × to delete.',
         generatedVoicesEmpty: 'No generations yet. Run this node to see results here.',

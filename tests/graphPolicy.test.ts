@@ -99,6 +99,9 @@ describe('graph policy', () => {
         'frame.animGen',
         'asset.video',
         'asset.voice',
+        // 声音资产的变体节点（ElevenLabs 对话 / 音效端点）
+        'asset.dialogue',
+        'asset.sfx',
         'note.text',
         'play.script',
         'image.adVariants',

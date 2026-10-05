@@ -283,6 +283,88 @@
     </section>
 
     <section
+      v-if="isDialogue"
+      class="generated-voices"
+      :aria-label="t('graph.inspector.generate.dialogueVoices')"
+    >
+      <div class="section-head">
+        <span class="section-title">{{ t('graph.inspector.generate.dialogueVoices') }}</span>
+        <span v-if="dialogueSpeakerList.length" class="section-count">
+          {{
+            t('graph.inspector.generate.dialogueSpeakerCount', { n: dialogueSpeakerList.length })
+          }}
+        </span>
+      </div>
+      <p class="section-hint">
+        {{ t('graph.inspector.generate.dialogueVoicesHint') }}
+      </p>
+      <div v-if="!dialogueSpeakerList.length" class="empty-shots">
+        {{ t('graph.inspector.generate.dialogueSpeakersEmpty') }}
+      </div>
+      <div v-else class="dialogue-speaker-list">
+        <label v-for="speaker in dialogueSpeakerList" :key="speaker" class="voice-profile-label">
+          <span class="dialogue-speaker-name">{{ speaker }}</span>
+          <select
+            :value="dialogueVoiceFor(speaker)"
+            @change="persistDialogueVoice(speaker, ($event.target as HTMLSelectElement).value)"
+          >
+            <option value="">
+              {{ t('graph.inspector.generate.speechVoiceDefault') }}
+            </option>
+            <option v-for="voice in dialogueVoiceOptions" :key="voice" :value="voice">
+              {{ voiceLabelMap[voice] ?? voice }}
+            </option>
+            <!-- 音色目录可能还没拉到（未填 Key / 离线）：保留已绑定值，别让人看不出绑了什么 -->
+            <option
+              v-if="
+                dialogueVoiceFor(speaker) &&
+                !dialogueVoiceOptions.includes(dialogueVoiceFor(speaker))
+              "
+              :value="dialogueVoiceFor(speaker)"
+            >
+              {{ voiceLabelMap[dialogueVoiceFor(speaker)] ?? dialogueVoiceFor(speaker) }}
+            </option>
+          </select>
+        </label>
+      </div>
+    </section>
+
+    <section
+      v-if="isSoundEffect"
+      class="generated-voices"
+      :aria-label="t('graph.inspector.generate.soundEffectOptions')"
+    >
+      <div class="section-head">
+        <span class="section-title">{{ t('graph.inspector.generate.soundEffectOptions') }}</span>
+      </div>
+      <p class="section-hint">
+        {{ t('graph.inspector.generate.soundEffectOptionsHint') }}
+      </p>
+      <div class="voice-profile-row">
+        <label class="voice-profile-label">
+          <input
+            type="checkbox"
+            :checked="node?.params.generateSoundLoop === true"
+            @change="persistSoundLoop(($event.target as HTMLInputElement).checked)"
+          />
+          {{ t('graph.inspector.generate.soundEffectLoop') }}
+        </label>
+      </div>
+      <div class="voice-profile-row">
+        <label class="voice-profile-label">
+          {{ t('graph.inspector.generate.soundEffectDuration') }}
+          <input
+            type="number"
+            min="0"
+            step="0.5"
+            :value="node?.params.generateSoundDurationSec ?? ''"
+            @change="onSoundDurationChange"
+          />
+        </label>
+      </div>
+    </section>
+
+    <section
       v-if="isVoice"
       class="generated-voices"
       :aria-label="t('graph.inspector.generate.generatedVoices')"
@@ -558,6 +640,7 @@ import {
   type GenerateModelModality,
   type GenerateModelOption
 } from '../features/graph/model/generateModelOptions'
+import { dialogueSpeakers, parseDialogueScript } from '@shared/graph/dialogueScript'
 import { useProjectStore } from '../stores/project'
 import { openFullImagePreview } from '../features/media/openFullImagePreview'
 import { invalidateAssetUrlCache } from '../features/media/assetUrlCache'
@@ -699,6 +782,73 @@ const displayTitle = useNodeDisplayTitle(node, typeLabel)
 const isImage = computed(() => assetType.value === 'image')
 const isVideo = computed(() => assetType.value === 'video')
 const isVoice = computed(() => assetType.value === 'voice')
+/** 多说话人对话节点（声音资产的变体）：需要按说话人绑音色 */
+const isDialogue = computed(() => node.value?.typeId === 'asset.dialogue')
+/** 音效节点：描述的是声音本身，且多两个音效专用开关 */
+const isSoundEffect = computed(() => node.value?.typeId === 'asset.sfx')
+
+/**
+ * 对话稿里出现的说话人（按首次出现顺序）。
+ *
+ * 与执行层解析同一份规则（`parseDialogueScript`）—— 两边不一致就会出现
+ * 「UI 里列出的说话人」与「实际发送的说话人」对不上。
+ */
+const dialogueSpeakerList = computed((): string[] => {
+  if (!isDialogue.value) return []
+  return dialogueSpeakers(parseDialogueScript(instruction.value ?? ''))
+})
+
+/** 该对话节点可选的音色：当前所选模型声明的 + 供应商级音色目录 */
+const dialogueVoiceOptions = computed((): string[] => {
+  const list = voiceOptionsByModelKey.value[selectedModelKey.value] ?? []
+  return [...new Set(list)]
+})
+
+/** 模型 key → 音色候选；音色 id → 展示名（loadModels 时写入） */
+const voiceOptionsByModelKey = ref<Record<string, string[]>>({})
+const voiceLabelMap = ref<Record<string, string>>({})
+
+/** 节点参数写回：透传图编辑器宿主（与 onVoiceCharacterChange 同一入口） */
+function persistNodeParams(params: Record<string, unknown>): void {
+  const current = node.value
+  const hid = hostId.value
+  if (!current || !hid) return
+  graphEditorHosts.updateNode(hid, current.id, params)
+}
+
+/** 说话人 → 已绑定的音色（空串表示未绑定，执行时回退到节点默认音色） */
+function dialogueVoiceFor(speaker: string): string {
+  const map = node.value?.params.generateDialogueVoices
+  if (!map || typeof map !== 'object') return ''
+  const value = (map as Record<string, unknown>)[speaker]
+  return typeof value === 'string' ? value : ''
+}
+
+function persistDialogueVoice(speaker: string, voice: string): void {
+  const current = node.value
+  if (!current) return
+  const previous =
+    current.params.generateDialogueVoices &&
+    typeof current.params.generateDialogueVoices === 'object'
+      ? { ...(current.params.generateDialogueVoices as Record<string, string>) }
+      : {}
+  const next = { ...previous }
+  const trimmed = voice.trim()
+  if (trimmed) next[speaker] = trimmed
+  else delete next[speaker]
+  persistNodeParams({ generateDialogueVoices: next })
+}
+
+function persistSoundLoop(loop: boolean): void {
+  persistNodeParams({ generateSoundLoop: loop })
+}
+
+function onSoundDurationChange(event: Event): void {
+  const raw = Number((event.target as HTMLInputElement).value)
+  persistNodeParams({
+    generateSoundDurationSec: Number.isFinite(raw) && raw > 0 ? raw : undefined
+  })
+}
 const isScreenplay = computed(() => assetType.value === 'screenplay')
 const isGameSystem = computed(() => assetType.value === 'gameSystem')
 // 3D 生成节点类型为 model3d（GraphValue 里产物资产类型是 model，两者不同）
@@ -1370,13 +1520,17 @@ const modelsHint = computed(() => {
 })
 
 async function loadModels(modality: GenerateModelModality, preferredKey?: string): Promise<void> {
-  const { options, selectedKey } = await loadGenerateModelOptions(
+  const { options, selectedKey, voicesByModelKey, voiceLabels } = await loadGenerateModelOptions(
     modality,
     preferredKey,
     selectedModelKey.value
   )
   modelOptions.value = options
   selectedModelKey.value = selectedKey
+  // 多说话人对话要按说话人绑音色：候选与声音节点同一套来源
+  // （模型声明的 supported_voices → 供应商级音色目录）
+  voiceOptionsByModelKey.value = voicesByModelKey
+  voiceLabelMap.value = voiceLabels
 }
 
 function loadGenerateConfig(current: NonNullable<typeof node.value>): void {

@@ -1,4 +1,5 @@
 import {
+  executeDialogueGenerateNode,
   executeImageGenerateNode,
   executeVideoGenerateNode,
   executeVoiceGenerateNode
@@ -337,6 +338,12 @@ export function executeAssetNode(
   // 空间世界生成（World Labs Marble）：文本 / 单图 / 多图入，产物同 3D 模型走 GLB
   if (node.assetType === 'spatialWorld' || node.typeId === 'asset.spatialWorld') {
     return executeSpatialWorldGenerateNode(ctx)
+  }
+
+  // 多说话人对话（ElevenLabs Text to Dialogue）：必须排在声音节点之前 ——
+  // 它的 assetType 同为 voice，先判 voice 就会被当成单说话人 TTS 读整篇稿子
+  if (node.typeId === 'asset.dialogue') {
+    return executeDialogueGenerateNode(ctx)
   }
 
   // 声音生成：文生语音；无 API 时透传上游声音或输出文本

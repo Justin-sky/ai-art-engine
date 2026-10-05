@@ -138,6 +138,8 @@ export interface GraphRunSessionOptions {
     model?: string
     providerInstanceId?: string
     voice?: string
+    /** 多说话人对话（ElevenLabs Text to Dialogue）；与 input 二选一 */
+    dialogue?: Array<{ text: string; voice?: string }>
     name?: string
     images?: string[]
     outputDir?: string
@@ -147,6 +149,15 @@ export interface GraphRunSessionOptions {
     model: string
     voice: string
   }>
+  generateSoundEffect?: (input: {
+    prompt: string
+    model?: string
+    providerInstanceId?: string
+    loop?: boolean
+    durationSeconds?: number
+    name?: string
+    outputDir?: string
+  }) => Promise<{ assetId?: string; relativePath?: string; model: string }>
   generateModel3d?: (input: {
     prompt: string
     model?: string
@@ -947,8 +958,11 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       model?: string
       providerInstanceId?: string
       voice?: string
+      /** 多说话人对话（ElevenLabs Text to Dialogue）；与 input 二选一 */
+      dialogue?: Array<{ text: string; voice?: string }>
       name?: string
       images?: string[]
+      outputDir?: string
     }) => {
       if (isRunStale(run)) {
         throw new DOMException('Aborted', 'AbortError')
@@ -962,6 +976,9 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         // 模型目录声明的第一个 → 适配器兜底），所以这里可能是 undefined，
         // 排查 400 时要连着响应里的 voice 一起看。
         voice: input.voice,
+        // 多说话人：段数与每段音色一起记，便于对照上游报错定位是哪一段
+        dialogueLines: input.dialogue?.length,
+        dialogueVoices: input.dialogue?.map((line) => line.voice ?? ''),
         name: input.name,
         imageCount: input.images?.length,
         inputReferenceUrls: summarizeReferenceListForLog(input.images)
@@ -985,6 +1002,57 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         if (!(err instanceof DOMException && err.name === 'AbortError')) {
           run.logBridge.recordApiCall({
             kind: 'generateSpeech',
+            request,
+            error: err instanceof Error ? err.message : String(err),
+            durationMs: Math.max(0, Date.now() - startedAt)
+          })
+        }
+        throw err
+      }
+    }
+  }
+
+  function wrapGenerateSoundEffect(run: ActiveRun) {
+    const generateSoundEffect = options.generateSoundEffect
+    if (!generateSoundEffect) return undefined
+    return async (input: {
+      prompt: string
+      model?: string
+      providerInstanceId?: string
+      loop?: boolean
+      durationSeconds?: number
+      name?: string
+      outputDir?: string
+    }) => {
+      if (isRunStale(run)) {
+        throw new DOMException('Aborted', 'AbortError')
+      }
+      const startedAt = Date.now()
+      const request = {
+        prompt: input.prompt,
+        model: input.model,
+        providerInstanceId: input.providerInstanceId,
+        loop: input.loop,
+        durationSeconds: input.durationSeconds
+      }
+      run.logBridge.appendMessage(options.t('graph.logs.submitSpeech'))
+      try {
+        const value = await withAbortSignal(generateSoundEffect(input), run)
+        run.logBridge.recordApiCall({
+          kind: 'generateSoundEffect',
+          request,
+          response: {
+            model: value.model,
+            assetId: value.assetId,
+            relativePath: value.relativePath
+          },
+          durationMs: Math.max(0, Date.now() - startedAt)
+        })
+        return value
+      } catch (err) {
+        if (!(err instanceof DOMException && err.name === 'AbortError')) {
+          run.logBridge.recordApiCall({
+            kind: 'generateSoundEffect',
             request,
             error: err instanceof Error ? err.message : String(err),
             durationMs: Math.max(0, Date.now() - startedAt)
@@ -1479,6 +1547,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         generateImage: wrapGenerateImage(run),
         generateVideo: wrapGenerateVideo(run),
         generateSpeech: wrapGenerateSpeech(run),
+        generateSoundEffect: wrapGenerateSoundEffect(run),
         generateModel3d: wrapGenerateModel3d(run),
         generateSpatialWorld: wrapGenerateSpatialWorld(run),
         lookupSpatialWorldId: options.lookupSpatialWorldId,

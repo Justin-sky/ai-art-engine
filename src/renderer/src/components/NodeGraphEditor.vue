@@ -1789,6 +1789,18 @@ const {
     }
     return value
   },
+  generateSoundEffect: async (input) => {
+    const outputDir = resolveMediaOutputDir({
+      mediaOutputDir: input.outputDir,
+      cacheOutputDir: project.config?.cacheOutputDir,
+      kind: 'sfx'
+    })
+    const value = await window.studio.generateSoundEffect({ ...input, outputDir })
+    if (outputDir === 'Assets' || outputDir.startsWith('Assets/')) {
+      await project.refreshAssets()
+    }
+    return value
+  },
   generateModel3d: async (input) => {
     const value = await window.studio.generateModel3d(input)
     if (value.relativePath === 'Assets' || value.relativePath.startsWith('Assets/')) {

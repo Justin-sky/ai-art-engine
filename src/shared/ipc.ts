@@ -123,6 +123,11 @@ export const IpcChannels = {
   GEN_VIDEO: 'gen:video',
   GEN_SPEECH: 'gen:speech',
   /**
+   * 音效生成（ElevenLabs /v1/sound-generation）。
+   * 与 GEN_MUSIC 分开：音效端点只吃一段描述 + 循环开关，没有歌词 / 段落结构。
+   */
+  GEN_SOUND_EFFECT: 'gen:sfx',
+  /**
    * 音色 id → 展示名（设置页拉目录时一并取回）。
    * 有些供应商的音色是不透明 id（ElevenLabs），不取名字选择器只能显示乱码般的 id。
    */
@@ -1321,6 +1326,10 @@ export interface StudioApi {
   generateVideo: (input: GenerateVideoInput & { name?: string }) => Promise<GenerateVideoResult>
   generateSpeech: (input: GenerateSpeechInput) => Promise<GenerateSpeechResult>
   generateMusic: (input: GenerateMusicInput) => Promise<GenerateMusicAssetResult>
+  /** 音效生成（声音资产；落盘 Cache/Sfx） */
+  generateSoundEffect: (
+    input: import('./modelProvider').GenerateSoundEffectInput
+  ) => Promise<GenerateMusicAssetResult>
   generateModel3d: (input: GenerateModel3dInput) => Promise<GenerateModel3dResult>
   /** 空间世界生成（World Labs Marble）：文本 / 单图 / 多图生成可交互 3D 世界（GLB 网格） */
   generateSpatialWorld: (

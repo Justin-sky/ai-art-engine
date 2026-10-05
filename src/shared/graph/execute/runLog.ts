@@ -45,6 +45,7 @@ export interface GraphRunLogApiCall {
     | 'generateImage'
     | 'generateVideo'
     | 'generateSpeech'
+    | 'generateSoundEffect'
     | 'generateMusic'
     | 'generateModel3d'
     | 'generateSpatialWorld'

@@ -706,6 +706,25 @@
               少数模型（如 <code>bytedance-seed/seed-audio-1-0</code>）<strong>没有音色列表</strong>：
               它的音色由提示词描述决定，留空即可。
             </li>
+            <li>
+              另外两个声音类节点（ElevenLabs 专属端点，产物同样是声音资产）：
+              <ul>
+                <li>
+                  <strong>多说话人对话</strong>：一次合成整段对白。指令框里按行写
+                  <code>说话人: 台词</code>（中英文冒号都认），例如
+                  <code>A: 你终于来了。</code> / <code>B: 路上堵车。</code>；
+                  没有冒号的行沿用上一段的说话人（旁白 / 连续独白）。
+                  每个说话人在节点指令面板里绑定一个音色（未绑定的回退到节点默认音色），
+                  缺音色会明确报出是第几段、哪个说话人。
+                </li>
+                <li>
+                  <strong>音效生成</strong>：走 <code>POST /v1/sound-generation</code>，
+                  描述的是<strong>声音本身</strong>（如「雨落在铁皮屋顶上」），
+                  可勾选「可无缝循环」并指定期望时长；落盘到 <code>Cache/Sfx</code>。
+                </li>
+              </ul>
+              这两个节点与「配音转字幕」「BGM 生成」一样，都复用同一把 ElevenLabs Key。
+            </li>
             <li>设置默认生成模型（如需要）。提供商卡片可折叠以节省空间。</li>
           </ol>
           <div class="tip">

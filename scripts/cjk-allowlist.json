@@ -42,6 +42,7 @@
       "const LUX3D_BUSY_MARKERS = ['进行中的生成任务', '已有进行中', 'busy']",
       "name: input.name ?? `生成语音 ${new Date().toLocaleString()}`,",
       "name: input.name ?? `生成音乐 ${new Date().toLocaleString()}`,",
+      "name: input.name ?? `生成音效 ${new Date().toLocaleString()}`,",
       "name: input.name ?? `空间世界泼溅 ${new Date().toLocaleString()}`,"
     ],
     "src/main/services/modelProviders/http.ts": [

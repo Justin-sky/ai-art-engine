@@ -167,6 +167,64 @@ export function filterElevenModelsByKind(
 export const ELEVEN_STT_PATH = '/v1/speech-to-text'
 /** 音乐生成端点（JSON；响应是音频字节） */
 export const ELEVEN_MUSIC_PATH = '/v1/music'
+/** 多说话人对话端点（JSON；响应是音频字节；必填 `inputs:[{text,voice_id}]`） */
+export const ELEVEN_DIALOGUE_PATH = '/v1/text-to-dialogue'
+/** 音效生成端点（JSON；必填 text） */
+export const ELEVEN_SOUND_PATH = '/v1/sound-generation'
+
+/** 音效模型的唯一取值（规范里是单值 enum） */
+export const ELEVEN_SOUND_MODEL = 'eleven_text_to_sound_v2'
+
+/**
+ * 多说话人对话请求体。
+ *
+ * 规范里必填是 `inputs`，每项形如 `{ text, voice_id }` ——
+ * **voice_id 在这里是对象字段**（下划线命名），与单说话人端点路径里的 voice_id 同名不同位。
+ */
+export function buildElevenDialogueBody(input: {
+  inputs: Array<{ text: string; voice: string }>
+  modelId?: string
+  languageCode?: string
+  seed?: number
+}): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    inputs: input.inputs.map((row) => ({ text: row.text, voice_id: row.voice }))
+  }
+  const modelId = input.modelId?.trim()
+  if (modelId) body.model_id = modelId
+  const language = input.languageCode?.trim()
+  if (language) body.language_code = language
+  if (typeof input.seed === 'number' && Number.isFinite(input.seed)) {
+    body.seed = Math.trunc(input.seed)
+  }
+  return body
+}
+
+/**
+ * 音效生成请求体。
+ *
+ * 与音乐不同：`text` 是唯一必填，`duration_seconds` / `prompt_influence` 可选，
+ * `model_id` 按规范固定为 `eleven_text_to_sound_v2`。
+ * `loop` 是「可无缝循环」开关（脚步、雨声这类环境音常用）。
+ */
+export function buildElevenSoundBody(input: {
+  text: string
+  loop?: boolean
+  durationSeconds?: number
+  promptInfluence?: number
+  modelId?: string
+}): Record<string, unknown> {
+  const body: Record<string, unknown> = { text: input.text.trim() }
+  if (input.loop) body.loop = true
+  if (typeof input.durationSeconds === 'number' && Number.isFinite(input.durationSeconds)) {
+    body.duration_seconds = Math.max(0, input.durationSeconds)
+  }
+  if (typeof input.promptInfluence === 'number' && Number.isFinite(input.promptInfluence)) {
+    body.prompt_influence = input.promptInfluence
+  }
+  body.model_id = input.modelId?.trim() || ELEVEN_SOUND_MODEL
+  return body
+}
 
 /** 转写默认模型：规范里 `scribe_v2` 是当前基线 */
 export const ELEVEN_DEFAULT_STT_MODEL = 'scribe_v2'

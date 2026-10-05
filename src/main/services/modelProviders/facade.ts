@@ -23,6 +23,7 @@ import type {
   GenerateModel3dResult,
   GenerateMusicAssetResult,
   GenerateMusicInput,
+  GenerateSoundEffectInput,
   GenerateMusicResult,
   GenerateSpeechInput,
   GenerateSpeechResult,
@@ -256,6 +257,11 @@ const E_MUSIC_NO_AUDIO = defErrSimple(
   'provider.facade.music-no-audio',
   '音乐生成未返回音频（既没有下载地址也没有本地文件）',
   'Music generation returned no audio (neither a download URL nor a local file)'
+)
+const E_SOUND_EFFECT_UNSUPPORTED = defErrSimple(
+  'provider.facade.sound-effect-unsupported',
+  '当前模型提供商不支持音效生成，请在设置中配置 ElevenLabs 提供商（音效走 /v1/sound-generation）',
+  'The selected provider does not support sound effect generation; configure an ElevenLabs provider in Settings (sound effects use /v1/sound-generation)'
 )
 const E_TRANSCRIBE_NO_FILE = defErrSimple(
   'provider.facade.transcribe-file-missing',
@@ -1558,6 +1564,54 @@ class ModelProviderFacade {
       })
     })
     return { ...result, assetId: asset.id, relativePath: asset.relativePath }
+  }
+
+  /**
+   * 音效生成 → 工程声音资产（ElevenLabs `/v1/sound-generation`）。
+   * 与音乐同一条落盘模式，但目录类型是 `sfx`（Cache/Sfx），便于时间线音效轨直接取用。
+   */
+  async generateSoundEffectAsset(
+    input: GenerateSoundEffectInput & { outputDir?: string }
+  ): Promise<GenerateMusicAssetResult> {
+    if (!projectService.isOpen()) throw fail(E_NO_PROJECT)
+    const { provider, modelId } = resolveActiveProvider(
+      'audio',
+      input.providerInstanceId,
+      input.model
+    )
+    const adapter = getProviderAdapter(provider.providerKind)
+    if (!adapter.generateSoundEffect) throw fail(E_SOUND_EFFECT_UNSUPPORTED)
+    const result = await adapter.generateSoundEffect(provider, modelId, input)
+
+    // 与音乐同形：两种取回方式（本地临时文件 / 下载地址）
+    const dir = mkdtempSync(join(tmpdir(), 'aiae-sfx-'))
+    const dest = join(dir, `sfx-${Date.now()}.mp3`)
+    if (result.filePath?.trim()) {
+      copyFileSync(result.filePath.trim(), dest)
+    } else if (result.downloadUrl?.trim()) {
+      await this.downloadVideoToFile(provider, result.downloadUrl.trim(), dest)
+    } else {
+      throw fail(E_MUSIC_NO_AUDIO)
+    }
+
+    const outputDir = resolveMediaOutputDir({
+      mediaOutputDir: input.outputDir,
+      cacheOutputDir: projectService.getConfig().cacheOutputDir,
+      kind: 'sfx'
+    })
+    const asset = projectService.attachExternalGeneratedFile({
+      type: 'voice',
+      sourceFilePath: dest,
+      name: input.name ?? `生成音效 ${new Date().toLocaleString()}`,
+      prompt: input.prompt,
+      outputDir
+    })
+    return {
+      assetId: asset.id,
+      relativePath: asset.relativePath,
+      model: result.model,
+      durationMs: result.durationMs
+    }
   }
 
   /**

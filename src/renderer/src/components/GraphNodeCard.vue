@@ -1013,6 +1013,10 @@ const instructionKind = computed((): InstructionPresetKind | null => {
       return 'image'
     case 'asset.voice':
       return isProcessingNode.value ? 'voice' : null
+    // 声音资产的变体节点：预设面板与声音节点同一套（都只是「生成音频」）
+    case 'asset.dialogue':
+    case 'asset.sfx':
+      return isProcessingNode.value ? 'voice' : null
     case 'asset.model3d':
       return isProcessingNode.value ? 'model3d' : null
     case 'asset.spatialWorld':

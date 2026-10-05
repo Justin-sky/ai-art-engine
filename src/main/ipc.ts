@@ -39,7 +39,8 @@ import type {
   GenerateVideoInput,
   GenerateModel3dInput,
   ListModelsInput,
-  SpeechVoiceLabelsInput
+  SpeechVoiceLabelsInput,
+  GenerateSoundEffectInput
 } from '@shared/modelProvider'
 import { listRegisteredObjectStorageKinds, listRegisteredProviderKinds } from './runtime'
 import { projectService } from './services/projectService'
@@ -376,6 +377,12 @@ export function registerIpcHandlers(): void {
   })
   handle(IpcChannels.GEN_MUSIC, async (input: GenerateMusicInput & { name?: string }) => {
     const result = await modelProviderFacade.generateMusicAsset(input)
+    const asset = projectService.listAssets().find((item) => item.id === result.assetId)
+    if (asset) broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
+    return result
+  })
+  handle(IpcChannels.GEN_SOUND_EFFECT, async (input: GenerateSoundEffectInput) => {
+    const result = await modelProviderFacade.generateSoundEffectAsset(input)
     const asset = projectService.listAssets().find((item) => item.id === result.assetId)
     if (asset) broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
     return result

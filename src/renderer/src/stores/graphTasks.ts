@@ -1362,6 +1362,47 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             throw err
           }
         },
+        generateSoundEffect: async (input) => {
+          const startedAt = Date.now()
+          const request = {
+            prompt: input.prompt,
+            model: input.model,
+            providerInstanceId: input.providerInstanceId,
+            loop: input.loop,
+            durationSeconds: input.durationSeconds
+          }
+          try {
+            const project = useProjectStore()
+            const outputDir = resolveMediaOutputDir({
+              mediaOutputDir: input.outputDir,
+              cacheOutputDir: project.config?.cacheOutputDir,
+              kind: 'sfx'
+            })
+            const value = await window.studio.generateSoundEffect({ ...input, outputDir })
+            if (outputDir === 'Assets' || outputDir.startsWith('Assets/')) {
+              await project.refreshAssets()
+            }
+            logBridge.recordApiCall({
+              kind: 'generateSoundEffect',
+              request,
+              response: {
+                model: value.model,
+                assetId: value.assetId,
+                relativePath: value.relativePath
+              },
+              durationMs: Math.max(0, Date.now() - startedAt)
+            })
+            return value
+          } catch (err) {
+            logBridge.recordApiCall({
+              kind: 'generateSoundEffect',
+              request,
+              error: err instanceof Error ? err.message : String(err),
+              durationMs: Math.max(0, Date.now() - startedAt)
+            })
+            throw err
+          }
+        },
         generateModel3d: async (input) => {
           const startedAt = Date.now()
           const request: {

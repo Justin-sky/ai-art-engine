@@ -21,6 +21,9 @@ const CANVAS_ADDABLE_NODE_TYPES = [
   'frame.animGen',
   'asset.video',
   'asset.voice',
+  // 声音资产的变体节点（ElevenLabs 对话 / 音效端点）
+  'asset.dialogue',
+  'asset.sfx',
   'note.text',
   'play.script',
   'image.adVariants',
@@ -115,6 +118,9 @@ describe('graph canvas menu nodes', () => {
       'asset.image',
       'asset.video',
       'asset.voice',
+      // 声音资产的变体节点：端口与声音节点一致（音频入 / 音频出）
+      'asset.dialogue',
+      'asset.sfx',
       'asset.screenplay'
     ] as const) {
       const node = createNodeFromType(typeId, { x: 0, y: 0 })

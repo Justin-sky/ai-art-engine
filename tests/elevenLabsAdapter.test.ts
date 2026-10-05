@@ -10,7 +10,9 @@ import {
   type ModelProviderInstance
 } from '../src/shared/modelProvider'
 import {
+  buildElevenDialogueBody,
   buildElevenMusicBody,
+  buildElevenSoundBody,
   buildElevenTtsBody,
   elevenFormatOf,
   elevenModelKind,
@@ -417,6 +419,121 @@ describe('ElevenLabs provider 接线', () => {
       expect(all?.map((m) => m.id)).toEqual(['eleven_v3', 'scribe_v2', 'music_v2_5'])
       const ttsOnly = await elevenLabsAdapter.fetchCatalog(provider(), 'audio')
       expect(ttsOnly.map((m) => m.id)).toEqual(['eleven_v3'])
+    })
+
+    /**
+     * 阶段二：多说话人对话与专用音效端点。
+     */
+    it('给了 dialogue 就改走 /v1/text-to-dialogue（voice_id 是对象字段）', async () => {
+      postMock.mockResolvedValueOnce({ data: new Uint8Array([1, 2]) })
+      const result = await elevenLabsAdapter.generateSpeech(provider(), 'eleven_v3', {
+        input: 'A: 你好\nB: 你好',
+        dialogue: [
+          { text: '你好', voice: 'voice-a' },
+          { text: '我也好', voice: 'voice-b' }
+        ]
+      })
+      const [path, body, config] = postMock.mock.calls[0] as [
+        string,
+        Record<string, unknown>,
+        { params?: Record<string, unknown>; responseType?: string }
+      ]
+      // 关键：**不**走单说话人路径（那里 voice_id 在路径里）
+      expect(path).toBe('/v1/text-to-dialogue')
+      expect(body).toEqual({
+        inputs: [
+          { text: '你好', voice_id: 'voice-a' },
+          { text: '我也好', voice_id: 'voice-b' }
+        ],
+        model_id: 'eleven_v3'
+      })
+      expect(config.responseType).toBe('arraybuffer')
+      // 多段音色去重后用逗号记录，便于日志排查
+      expect(result.voice).toBe('voice-a,voice-b')
+      expect(result.filePath).toBeTruthy()
+      expect(result.assetId).toBeUndefined()
+    })
+
+    it('dialogue 里缺 text / voice 的段落被剔除；全空时退回单说话人校验', async () => {
+      postMock.mockResolvedValue({ data: new Uint8Array([1]) })
+      await elevenLabsAdapter.generateSpeech(provider(), 'eleven_v3', {
+        input: 'x',
+        voice: 'voice-a',
+        dialogue: [{ text: '   ', voice: 'voice-a' }]
+      })
+      // 全是无效段 → 走单说话人端点
+      expect(postMock.mock.calls[0]![0]).toBe('/v1/text-to-speech/voice-a')
+
+      postMock.mockClear()
+      await expect(
+        elevenLabsAdapter.generateSpeech(provider(), 'eleven_v3', {
+          input: 'x',
+          dialogue: [{ text: '你好' }]
+        })
+      ).rejects.toThrow(/voice_id/)
+      expect(postMock).not.toHaveBeenCalled()
+    })
+
+    it('音效：POST /v1/sound-generation，model_id 固定为唯一取值，走 filePath', async () => {
+      postMock.mockResolvedValueOnce({ data: new Uint8Array([4, 4]) })
+      const result = await elevenLabsAdapter.generateSoundEffect?.(provider(), '', {
+        prompt: '雨落在铁皮屋顶上',
+        loop: true
+      })
+      const [path, body, config] = postMock.mock.calls[0] as [
+        string,
+        Record<string, unknown>,
+        { params?: Record<string, unknown>; responseType?: string }
+      ]
+      expect(path).toBe('/v1/sound-generation')
+      expect(body).toEqual({
+        text: '雨落在铁皮屋顶上',
+        loop: true,
+        model_id: 'eleven_text_to_sound_v2'
+      })
+      expect(config.responseType).toBe('arraybuffer')
+      expect(result?.filePath).toBeTruthy()
+      expect(result?.model).toBe('eleven_text_to_sound_v2')
+    })
+
+    it('请求体构造：音效只带有效字段，对话保留顺序', () => {
+      expect(buildElevenSoundBody({ text: ' 脚步  ' })).toEqual({
+        text: '脚步',
+        model_id: 'eleven_text_to_sound_v2'
+      })
+      expect(
+        buildElevenSoundBody({ text: '脚步', durationSeconds: 2.5, promptInfluence: 0.3 })
+      ).toEqual({
+        text: '脚步',
+        duration_seconds: 2.5,
+        prompt_influence: 0.3,
+        model_id: 'eleven_text_to_sound_v2'
+      })
+      // 显式 loop=false 不写进 body（避免用 false 覆盖上游默认）
+      expect(buildElevenSoundBody({ text: '脚步', loop: false }).loop).toBeUndefined()
+
+      expect(
+        buildElevenDialogueBody({
+          inputs: [
+            { text: '一', voice: 'v1' },
+            { text: '二', voice: 'v2' }
+          ],
+          languageCode: 'zho'
+        })
+      ).toEqual({
+        inputs: [
+          { text: '一', voice_id: 'v1' },
+          { text: '二', voice_id: 'v2' }
+        ],
+        language_code: 'zho'
+      })
+    })
+
+    it('音效：空描述明确报错', async () => {
+      await expect(
+        elevenLabsAdapter.generateSoundEffect?.(provider(), '', { prompt: '  ' })
+      ).rejects.toThrow(/描述/)
+      expect(postMock).not.toHaveBeenCalled()
     })
   })
 

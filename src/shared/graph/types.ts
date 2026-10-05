@@ -639,6 +639,18 @@ export interface GraphNodeParams {
   styleReferenceSubject?: StyleReferenceSubject
   /** 声音 TTS：供应商声音 ID（对应 API 字段 voice） */
   generateSpeechVoice?: string
+  /**
+   * 多说话人对话节点：说话人 → 音色 id 的映射。
+   *
+   * 对话稿里写 `A: 台词`、`B: 台词`，这里给 A / B 各绑定一个音色
+   * （ElevenLabs Text to Dialogue 一次合成整段对话）。
+   * 没绑定的说话人沿用节点音色 `generateSpeechVoice`。
+   */
+  generateDialogueVoices?: Record<string, string>
+  /** 音效生成：是否生成可无缝循环的音频（环境音常用） */
+  generateSoundLoop?: boolean
+  /** 音效生成：期望时长（秒） */
+  generateSoundDurationSec?: number
   /** 「生成剧本」等输出节点：最近一次执行汇总的结果文本 */
   resultText?: string
   outputKind?: GraphOutputKind

@@ -6,6 +6,7 @@ import type {
   GenerateModel3dJob,
   GenerateMusicInput,
   GenerateMusicResult,
+  GenerateSoundEffectInput,
   GenerateSpeechInput,
   GenerateSpeechResult,
   GenerateTextInput,
@@ -28,11 +29,16 @@ import {
   ELEVEN_DEFAULT_MUSIC_MODEL,
   ELEVEN_DEFAULT_OUTPUT_FORMAT,
   ELEVEN_DEFAULT_STT_MODEL,
+  ELEVEN_DIALOGUE_PATH,
   ELEVEN_MODELS_PATH,
   ELEVEN_MUSIC_PATH,
+  ELEVEN_SOUND_MODEL,
+  ELEVEN_SOUND_PATH,
   ELEVEN_STT_PATH,
   ELEVEN_VOICES_PATH,
+  buildElevenDialogueBody,
   buildElevenMusicBody,
+  buildElevenSoundBody,
   buildElevenTtsBody,
   elevenFormatOf,
   elevenTtsPath,
@@ -45,6 +51,20 @@ import {
   type ElevenVoiceEntry
 } from '@shared/modelProviders/elevenlabs/voice'
 import { createElevenLabsHttpClient } from './http'
+
+/**
+ * 写 ElevenLabs 返回的音频字节到系统临时目录，返回绝对路径。
+ *
+ * 统一在这里做：各方法（TTS / 对话 / 音乐 / 音效）都只写临时文件，
+ * 落盘目录与资产登记由 facade 负责 —— 与其它供应商的契约一致。
+ */
+function writeElevenTemp(dir: string, prefix: string, ext: string, buf: Buffer): string {
+  const tmpDir = join(process.cwd(), '.aiartengine-tmp', dir)
+  if (!existsSync(tmpDir)) mkdirSync(tmpDir, { recursive: true })
+  const filePath = join(tmpDir, `${prefix}-${Date.now()}.${ext}`)
+  writeFileSync(filePath, buf)
+  return filePath
+}
 
 /** 上传音频的 MIME：与 OpenAI 兼容转写同一套映射（按扩展名猜） */
 function audioMimeForPath(path: string): string {
@@ -97,6 +117,21 @@ const E_ELEVEN_MUSIC_NO_PROMPT = defErrSimple(
   'provider.elevenlabs.musicNoPrompt',
   '音乐生成需要提示词（风格 / 情绪 / 场景描述）',
   'Music generation requires a prompt (style / mood / scene description)'
+)
+const E_ELEVEN_DIALOGUE_FAILED = defErr<{ detail: string }>(
+  'provider.elevenlabs.dialogueFailed',
+  ({ detail }) => `多说话人对话生成失败: ${detail}`,
+  ({ detail }) => `Multi-speaker dialogue generation failed: ${detail}`
+)
+const E_ELEVEN_SOUND_FAILED = defErr<{ detail: string }>(
+  'provider.elevenlabs.soundEffectFailed',
+  ({ detail }) => `音效生成失败: ${detail}`,
+  ({ detail }) => `Sound effect generation failed: ${detail}`
+)
+const E_ELEVEN_SOUND_NO_PROMPT = defErrSimple(
+  'provider.elevenlabs.soundNoPrompt',
+  '音效生成需要描述（如「雨落在铁皮屋顶上」）',
+  'Sound effect generation requires a description (e.g. "rain on a tin roof")'
 )
 
 // 该供应商只有语音合成，其余模态逐一给明确文案
@@ -154,6 +189,46 @@ async function listElevenModels(provider: ModelProviderInstance): Promise<Catalo
     return models.length ? models : listElevenFallbackModels()
   } catch {
     return listElevenFallbackModels()
+  }
+}
+
+/**
+ * 多说话人对话：`POST /v1/text-to-dialogue`（JSON，响应音频字节）。
+ *
+ * 每段的 voice_id 由执行层解析好后传入（说话人 → 音色），这里只管发请求。
+ * 放模块级而不是适配器方法：接口上多一个方法等于给所有供应商加实现负担，
+ * 而它与单说话人 TTS 产物同形、落盘与登记完全一致。
+ * 返回的 `voice` 是**多段**音色去重后用逗号连起来，便于日志排查。
+ */
+async function generateDialogueSpeech(
+  provider: ModelProviderInstance,
+  modelId: string,
+  dialogue: Array<{ text: string; voice?: string }>
+): Promise<GenerateSpeechResult> {
+  const inputs = dialogue.map((line) => ({ text: line.text.trim(), voice: line.voice!.trim() }))
+  const outputFormat = resolveElevenOutputFormat(undefined)
+  const { ext, format } = elevenFormatOf(outputFormat)
+  const client = createElevenLabsHttpClient(provider)
+  try {
+    const response = await client.post(
+      ELEVEN_DIALOGUE_PATH,
+      buildElevenDialogueBody({ inputs, modelId }),
+      {
+        params: { output_format: outputFormat },
+        responseType: 'arraybuffer',
+        timeout: 180_000
+      }
+    )
+    const buf = Buffer.from(response.data as ArrayBuffer)
+    if (!buf.length) throw fail(PROVIDER_ERRORS.noAudioResult)
+    return {
+      model: modelId,
+      voice: [...new Set(inputs.map((row) => row.voice))].join(','),
+      format,
+      filePath: writeElevenTemp('dialogue', 'eleven-dialogue', ext, buf)
+    }
+  } catch (err) {
+    throw fail(E_ELEVEN_DIALOGUE_FAILED, { detail: await readElevenLabsHttpError(err) })
   }
 }
 
@@ -236,7 +311,11 @@ export const elevenLabsAdapter: ModelProviderAdapter = {
   },
 
   /**
-   * 语音合成：`POST /v1/text-to-speech/{voice_id}`。
+   * 语音合成：单说话人走 `POST /v1/text-to-speech/{voice_id}`，
+   * 多说话人（给了 `input.dialogue`）走 `POST /v1/text-to-dialogue`。
+   *
+   * 两个端点产物同为音频字节、落盘与登记方式完全一致，所以合在一个方法里按入参分流；
+   * 拆成两个适配器方法只会把整条链路复制一遍。
    *
    * 只写临时文件并返回 `filePath`：落盘目录与资产登记由 facade 的
    * generateSpeechAsset 统一负责（与 OpenAI 兼容 / ComfyUI / 方舟 / MiniMax 一致）。
@@ -248,6 +327,10 @@ export const elevenLabsAdapter: ModelProviderAdapter = {
     modelId: string,
     input: GenerateSpeechInput
   ): Promise<GenerateSpeechResult> {
+    const dialogue = input.dialogue?.filter((line) => line.text.trim() && line.voice?.trim())
+    if (dialogue?.length) {
+      return generateDialogueSpeech(provider, modelId, dialogue)
+    }
     const voiceId = input.voice?.trim()
     if (!voiceId) {
       // 音色走路径参数，没有它连端点都拼不出来 —— 明确报错而不是发一个坏请求
@@ -277,13 +360,57 @@ export const elevenLabsAdapter: ModelProviderAdapter = {
       const buf = Buffer.from(response.data as ArrayBuffer)
       if (!buf.length) throw fail(PROVIDER_ERRORS.noAudioResult)
 
-      const tmpDir = join(process.cwd(), '.aiartengine-tmp', 'tts')
-      if (!existsSync(tmpDir)) mkdirSync(tmpDir, { recursive: true })
-      const filePath = join(tmpDir, `eleven-${Date.now()}.${ext}`)
-      writeFileSync(filePath, buf)
+      const filePath = writeElevenTemp('tts', 'eleven', ext, buf)
       return { model: modelId, voice: voiceId, format, filePath }
     } catch (err) {
       throw fail(E_ELEVEN_SPEECH_FAILED, { detail: await readElevenLabsHttpError(err) })
+    }
+  },
+
+  /**
+   * 多说话人对话（`input.dialogue`）。
+   *
+   * 每段的 voice_id 由执行层解析好后传进来（说话人 → 音色），这里只管发请求。
+   * 返回的 `voice` 是**多段**，用逗号连起来记录，便于日志与排查。
+   */
+  /**
+   * 音效生成：`POST /v1/sound-generation`（JSON，响应音频字节）。
+   *
+   * 与音乐同形：直接回音频、没有下载地址，所以走 `filePath`。
+   * 该端点只能出一个音效，`loop` 控制是否可无缝循环（环境音常用）。
+   */
+  async generateSoundEffect(
+    provider: ModelProviderInstance,
+    modelId: string,
+    input: GenerateSoundEffectInput
+  ): Promise<GenerateMusicResult> {
+    if (!input.prompt.trim()) throw fail(E_ELEVEN_SOUND_NO_PROMPT)
+    const outputFormat = ELEVEN_DEFAULT_OUTPUT_FORMAT
+    const { ext } = elevenFormatOf(outputFormat)
+    const client = createElevenLabsHttpClient(provider, LONG_GENERATE_TIMEOUT_MS)
+    try {
+      const response = await client.post(
+        ELEVEN_SOUND_PATH,
+        buildElevenSoundBody({
+          text: input.prompt,
+          loop: input.loop,
+          durationSeconds: input.durationSeconds,
+          modelId
+        }),
+        {
+          params: { output_format: outputFormat },
+          responseType: 'arraybuffer',
+          timeout: LONG_GENERATE_TIMEOUT_MS
+        }
+      )
+      const buf = Buffer.from(response.data as ArrayBuffer)
+      if (!buf.length) throw fail(PROVIDER_ERRORS.noAudioResult)
+      return {
+        model: modelId || ELEVEN_SOUND_MODEL,
+        filePath: writeElevenTemp('sfx', 'eleven-sfx', ext, buf)
+      }
+    } catch (err) {
+      throw fail(E_ELEVEN_SOUND_FAILED, { detail: await readElevenLabsHttpError(err) })
     }
   },
 
@@ -360,11 +487,11 @@ export const elevenLabsAdapter: ModelProviderAdapter = {
       )
       const buf = Buffer.from(response.data as ArrayBuffer)
       if (!buf.length) throw fail(PROVIDER_ERRORS.noAudioResult)
-      const tmpDir = join(process.cwd(), '.aiartengine-tmp', 'music')
-      if (!existsSync(tmpDir)) mkdirSync(tmpDir, { recursive: true })
-      const filePath = join(tmpDir, `eleven-music-${Date.now()}.mp3`)
-      writeFileSync(filePath, buf)
-      return { model: modelId || ELEVEN_DEFAULT_MUSIC_MODEL, filePath }
+      const { ext } = elevenFormatOf(ELEVEN_DEFAULT_OUTPUT_FORMAT)
+      return {
+        model: modelId || ELEVEN_DEFAULT_MUSIC_MODEL,
+        filePath: writeElevenTemp('music', 'eleven-music', ext, buf)
+      }
     } catch (err) {
       throw fail(E_ELEVEN_MUSIC_FAILED, { detail: await readElevenLabsHttpError(err) })
     }

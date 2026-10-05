@@ -65,6 +65,8 @@ const presetKind = computed((): InstructionPresetKind | null => {
     case 'video.reshoot':
       return 'reshoot'
     case 'asset.voice':
+    case 'asset.dialogue':
+    case 'asset.sfx':
       return 'voice'
     case 'model.pose':
       return 'modelPose'

@@ -627,6 +627,16 @@ export interface NodeExecuteContext {
     providerInstanceId?: string
     /** TTS 供应商声音 ID（API 字段名 voice）/ 方舟 speaker_id */
     voice?: string
+    /**
+     * 多说话人对话（ElevenLabs Text to Dialogue）。
+     *
+     * 与 `input` 二选一：给了它就发 `POST /v1/text-to-dialogue`，
+     * 由上游一次合成出整段对话音频。每个元素是一段台词 + 该段用的音色
+     * （音色是 voice_id，缺省时用段主音色 `voice`）。
+     * 之所以复用同一个方法而不是新增 `generateDialogue`：产物同为声音，
+     * 落盘 / 资产登记 / 打点整条链路完全一致，新增方法只是复制一遍。
+     */
+    dialogue?: Array<{ text: string; voice?: string }>
     /** 角色音色档案中的角色名（按档案解析 voice / referenceAudio） */
     voiceProfile?: string
     /** 声音克隆参考音频（工程内相对路径或 http(s) URL） */
@@ -642,6 +652,19 @@ export interface NodeExecuteContext {
     model: string
     voice: string
   }>
+  /**
+   * 可选：音效生成（ElevenLabs `/v1/sound-generation`）。
+   * 未注入时音效节点退回声音节点（用提示词合成语音），不阻断整图。
+   */
+  generateSoundEffect?: (input: {
+    prompt: string
+    model?: string
+    providerInstanceId?: string
+    loop?: boolean
+    durationSeconds?: number
+    name?: string
+    outputDir?: string
+  }) => Promise<{ assetId?: string; relativePath?: string; model: string }>
   /** 软件界面语言，用于默认系统提示词等 */
   locale?: string
   /** 工作流中止信号；长时间操作应监听并尽快退出 */
@@ -1183,6 +1206,19 @@ export interface GraphRunOptions {
   segmentModel3d?: NodeExecuteContext['segmentModel3d']
   postProcessModel3d?: NodeExecuteContext['postProcessModel3d']
   generateSpeech?: NodeExecuteContext['generateSpeech']
+  /**
+   * 可选：音效生成（ElevenLabs `/v1/sound-generation`）。
+   * 未注入时音效节点退回声音节点（用提示词合成语音），不阻断整图。
+   */
+  generateSoundEffect?: (input: {
+    prompt: string
+    model?: string
+    providerInstanceId?: string
+    loop?: boolean
+    durationSeconds?: number
+    name?: string
+    outputDir?: string
+  }) => Promise<{ assetId?: string; relativePath?: string; model: string }>
   /** 软件界面语言，用于默认系统提示词等 */
   locale?: string
   resolveAssetGenParams?: NodeExecuteContext['resolveAssetGenParams']

@@ -39,6 +39,7 @@ import {
   newestVideoSelectedId
 } from './gallery'
 import { autoIncomingTextForInstruction, selectIncomingValuesForInstruction } from './incoming'
+import { buildDialogueInputs, parseDialogueScript } from '../dialogueScript'
 import {
   commitGeneratedImages,
   materializeGeneratedBatch,
@@ -177,6 +178,171 @@ export async function executeVoiceGenerateNode(
     createdAt: new Date().toISOString(),
     relativePath: result.relativePath
   })
+}
+
+/**
+ * 多说话人对话生成（ElevenLabs Text to Dialogue）。
+ *
+ * 与声音节点的区别只在「谁说什么」：对话稿按行解析（`A: 台词`），
+ * 每段绑一个音色（节点参数 `generateDialogueVoices`），整段一次合成。
+ * 产物与声音节点同形（单个声音资产），所以复用 persistVoiceGeneration。
+ */
+export async function executeDialogueGenerateNode(
+  ctx: NodeExecuteContext
+): Promise<Record<string, GraphValue>> {
+  const { node } = ctx
+  const instructionRaw = node.params.generateInstruction?.trim() || ''
+  const mentionSources = resolveMentionSources(ctx)
+  const selected = selectIncomingValuesForInstruction(ctx, instructionRaw)
+  const localNotes = expandInstructionMentions(instructionRaw, mentionSources) || undefined
+  const incomingText = autoIncomingTextForInstruction(instructionRaw, selected, mentionSources)
+
+  if (!ctx.generateSpeech) {
+    // 没有语音合成能力时退回文本输出，别把图跑挂
+    const text = [localNotes, incomingText].filter(Boolean).join('\n').trim()
+    return { out: { kind: 'text', text: text || '(dialogue)' } }
+  }
+  if (ctx.signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError')
+  }
+
+  const script = [localNotes, incomingText].filter(Boolean).join('\n').trim()
+  if (!script) throw new Error('GRAPH_PROCESS_NO_INPUT')
+
+  const lines = parseDialogueScript(script)
+  if (!lines.length) throw fail(SHARED_ERRORS.dialogueEmpty)
+
+  const nodeVoice =
+    typeof node.params.generateSpeechVoice === 'string'
+      ? node.params.generateSpeechVoice.trim()
+      : ''
+  const voiceBySpeaker = normalizeDialogueVoiceMap(node.params.generateDialogueVoices)
+  const { inputs, missingVoiceAt } = buildDialogueInputs(lines, voiceBySpeaker, nodeVoice)
+
+  if (missingVoiceAt.length) {
+    // 明确点名是第几段缺音色：对话稿长起来时只报「缺音色」没法定位
+    const speakers = [
+      ...new Set(missingVoiceAt.map((index) => lines[index]?.speaker).filter(Boolean))
+    ] as string[]
+    throw fail(SHARED_ERRORS.dialogueVoiceMissing, {
+      lines: missingVoiceAt.map((index) => index + 1).join('、'),
+      speakers: speakers.join('、')
+    })
+  }
+
+  const result = await ctx.generateSpeech({
+    // input 只作为日志/兜底内容，真正发出去的是 dialogue
+    input: script,
+    dialogue: inputs,
+    model: node.params.generateModel || undefined,
+    providerInstanceId: node.params.generateProviderInstanceId || undefined,
+    voice: nodeVoice || undefined,
+    name: buildGeneratedMediaFileKey({
+      hostAssetName: ctx.resolveHostAssetName?.(),
+      nodeTitle: node.title || node.typeId || 'dialogue',
+      stamp: formatGeneratedMediaStamp()
+    }),
+    outputDir: node.params.mediaOutputDir?.trim() || undefined
+  })
+
+  if (ctx.signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError')
+  }
+  if (!result.assetId || !result.relativePath) {
+    throw fail(SHARED_ERRORS.ttsNoAsset)
+  }
+
+  const notes = [localNotes, incomingText].filter(Boolean).join('\n') || undefined
+  if (notes) {
+    ctx.node.params = { ...ctx.node.params, notes }
+    ctx.patchNode?.({ params: { notes } })
+  }
+
+  return persistVoiceGeneration(ctx, {
+    id: result.assetId,
+    createdAt: new Date().toISOString(),
+    relativePath: result.relativePath
+  })
+}
+
+/**
+ * 音效生成节点（ElevenLabs `POST /v1/sound-generation`）。
+ *
+ * 与声音节点的区别：描述的是**声音本身**（「雨落在铁皮屋顶上」），
+ * 显式走音效端点而不是让 TTS 去念这句话。
+ * 没有音效能力时退回声音节点，别把图跑挂。
+ */
+export async function executeSoundEffectNode(
+  ctx: NodeExecuteContext
+): Promise<Record<string, GraphValue>> {
+  const { node } = ctx
+  if (!ctx.generateSoundEffect) return executeVoiceGenerateNode(ctx)
+
+  const instructionRaw = node.params.generateInstruction?.trim() || ''
+  const mentionSources = resolveMentionSources(ctx)
+  const selected = selectIncomingValuesForInstruction(ctx, instructionRaw)
+  const localNotes = expandInstructionMentions(instructionRaw, mentionSources) || undefined
+  const incomingText = autoIncomingTextForInstruction(instructionRaw, selected, mentionSources)
+
+  if (ctx.signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError')
+  }
+
+  // 音效的描述就是要发给上游的文本；**不拼系统提示词**（同上：那是给对话模型的指令）
+  const prompt = [localNotes, incomingText].filter(Boolean).join('\n').trim()
+  if (!prompt) throw new Error('GRAPH_PROCESS_NO_INPUT')
+
+  const durationSec =
+    typeof node.params.generateSoundDurationSec === 'number' &&
+    Number.isFinite(node.params.generateSoundDurationSec)
+      ? node.params.generateSoundDurationSec
+      : undefined
+
+  const result = await ctx.generateSoundEffect({
+    prompt,
+    model: node.params.generateModel || undefined,
+    providerInstanceId: node.params.generateProviderInstanceId || undefined,
+    loop: node.params.generateSoundLoop === true,
+    durationSeconds: durationSec,
+    name: buildGeneratedMediaFileKey({
+      hostAssetName: ctx.resolveHostAssetName?.(),
+      nodeTitle: node.title || node.typeId || 'sfx',
+      stamp: formatGeneratedMediaStamp()
+    }),
+    outputDir: node.params.mediaOutputDir?.trim() || undefined
+  })
+
+  if (ctx.signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError')
+  }
+  if (!result.assetId || !result.relativePath) {
+    throw fail(SHARED_ERRORS.ttsNoAsset)
+  }
+
+  const notes = [localNotes, incomingText].filter(Boolean).join('\n') || undefined
+  if (notes) {
+    ctx.node.params = { ...ctx.node.params, notes }
+    ctx.patchNode?.({ params: { notes } })
+  }
+
+  return persistVoiceGeneration(ctx, {
+    id: result.assetId,
+    createdAt: new Date().toISOString(),
+    relativePath: result.relativePath
+  })
+}
+
+/** 节点参数里的说话人→音色映射：丢掉空值与非字符串 */
+function normalizeDialogueVoiceMap(raw: unknown): Record<string, string> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  const out: Record<string, string> = {}
+  for (const [speaker, voice] of Object.entries(raw as Record<string, unknown>)) {
+    const key = speaker.trim()
+    if (!key || typeof voice !== 'string') continue
+    const value = voice.trim()
+    if (value) out[key] = value
+  }
+  return out
 }
 
 /** 视频生成：无 API 时透传上游；有 API 时调用视频模型并输出资产 */

@@ -1772,6 +1772,13 @@ export interface GenerateSpeechInput {
   providerInstanceId?: string
   /** 声音；未传时取模型 supported_voices[0] 或 alloy；方舟声音设计为 speaker_id */
   voice?: string
+  /**
+   * 多说话人对话（ElevenLabs Text to Dialogue）：给了它就发
+   * `POST /v1/text-to-dialogue`，一次合成整段对话音频；与 `input` 二选一。
+   * 每个元素是一段台词 + 该段音色（voice_id）。不支持该端点的供应商会明确报错，
+   * 执行层也不会把 `generateDialogue` 注入到这类供应商上（见 graph 执行上下文）。
+   */
+  dialogue?: Array<{ text: string; voice?: string }>
   responseFormat?: 'mp3' | 'pcm'
   speed?: number
   name?: string
@@ -1842,6 +1849,27 @@ export interface GenerateMusicAssetResult {
   relativePath: string
   model: string
   durationMs?: number
+}
+
+/**
+ * 音效生成输入（ElevenLabs `POST /v1/sound-generation`）。
+ *
+ * 与音乐分开：音效端点只接受一段描述文本，且没有歌词 / 时长结构，
+ * 但多了「可无缝循环」与「描述影响力」两个音效专用开关。
+ */
+export interface GenerateSoundEffectInput {
+  /** 音效描述（如「雨落在铁皮屋顶上」） */
+  prompt: string
+  /** 是否生成可无缝循环的音频（环境音常用） */
+  loop?: boolean
+  /** 期望时长（秒）；服务端未支持时忽略 */
+  durationSeconds?: number
+  model?: string
+  providerInstanceId?: string
+  /** 输出目录（相对工程根）；缺省 Cache/Sfx */
+  outputDir?: string
+  /** 落盘文件名 stem */
+  name?: string
 }
 
 /** 音频转写（语音识别）输入：工程内音频文件 + 可选模型/提供商 */
