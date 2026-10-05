@@ -5207,7 +5207,7 @@ export default {
         voiceInstructionPlaceholder:
           "Describe the voice in text; connect an image for visual prompt; use {'@'} to cite inputs",
         speechVoiceHint: 'Voice generation: voice (provider voice id, sent as the API voice field)',
-        speechVoicePlaceholder: 'Voice, e.g. alloy',
+        speechVoicePlaceholder: 'Voice',
         model3dInstructionPlaceholder:
           "Describe the 3D model to generate; connect reference images for image-to-3D; use {'@'} to cite inputs",
         spatialWorldInstructionPlaceholder:
