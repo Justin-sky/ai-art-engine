@@ -415,17 +415,10 @@ import {
   catalogEntryFromModel,
   createProviderInstance,
   allowsEmptyApiKey,
-  isComfyUiProvider,
   isCustomProvider,
   isLocalOpenAiProvider,
-  isModel3dProviderKind,
-  isWorldProviderKind,
-  isVllmProvider,
   modalityConfig,
-  supportsAudioModality,
-  supportsMusicModality,
   modelProviderCredentialsUrl,
-  resolveCustomApiStyle,
   syncModalityCatalogEntries,
   type CatalogModel,
   type CustomApiStyle,
@@ -434,6 +427,7 @@ import {
   type ModelProviderKindMeta,
   type ModelProviderKind
 } from '@shared/modelProvider'
+import { settingsModalitiesFor } from '@shared/modelProviders/settingsModalities'
 import { resolveVolcengineArkModelCapabilities } from '@shared/modelProviders/volcengineArk/modelCapabilities'
 import { resolveKlingModelCapabilities } from '@shared/modelProviders/kling/modelCapabilities'
 import { resolveComfyUiModelCapabilities } from '@shared/modelProviders/comfyui/modelCapabilities'
@@ -466,88 +460,6 @@ const CUSTOM_API_STYLES: ReadonlyArray<{ value: CustomApiStyle }> = [
  * 目录走 /models?output_modalities=decisions，与文本模型互不重叠。
  * 其余 provider 的 decisions 一律不开放：它们没有 Decisions API，拉取只会拿到错目录。
  */
-function settingsModalitiesFor(provider: ModelProviderInstance): ModelModality[] {
-  if (isCustomProvider(provider)) {
-    // Anthropic Messages API 无统一图片生成协议，仅开放文本；OpenAI 兼容 / Gemini 走 /images/generations
-    return resolveCustomApiStyle(provider) === 'anthropic' ? ['text'] : ['text', 'image']
-  }
-  if (provider.providerKind === 'moonshot') {
-    return ['text']
-  }
-  if (provider.providerKind === 'google') {
-    return ['text', 'image', 'video']
-  }
-  if (provider.providerKind === 'xai') {
-    return ['text', 'image', 'video']
-  }
-  if (isComfyUiProvider(provider)) {
-    return ['image', 'video', 'audio']
-  }
-  if (isVllmProvider(provider)) {
-    return ['text', 'video']
-  }
-  if (isLocalOpenAiProvider(provider)) {
-    return ['text']
-  }
-  if (provider.providerKind === 'zhipu') {
-    return ['text', 'image']
-  }
-  if (provider.providerKind === 'deepseek') {
-    return ['text']
-  }
-  if (provider.providerKind === 'anthropic') {
-    return ['text']
-  }
-  if (provider.providerKind === 'openai') {
-    // 声音：POST /audio/speech（model + input + voice），聚合器同协议
-    return ['text', 'image', 'audio']
-  }
-  if (provider.providerKind === 'elevenlabs') {
-    // ElevenLabs 只有语音合成：POST /v1/text-to-speech/{voice_id}
-    return ['audio']
-  }
-  if (provider.providerKind === 'kling') {
-    return ['image', 'video']
-  }
-  if (provider.providerKind === 'minimax') {
-    return ['text', 'image', 'video', 'audio']
-  }
-  if (provider.providerKind === 'modelscope') {
-    return ['text', 'image']
-  }
-  if (provider.providerKind === 'dashscope') {
-    return ['text', 'image', 'video', 'audio']
-  }
-  if (provider.providerKind === 'volcengine-ark') {
-    return ['text', 'image', 'video', 'audio']
-  }
-  if (provider.providerKind === 'magicrouter') {
-    return ['text', 'image', 'video']
-  }
-  if (isModel3dProviderKind(provider.providerKind)) {
-    return ['model3d']
-  }
-  if (isWorldProviderKind(provider.providerKind)) {
-    return ['spatialWorld']
-  }
-  if (provider.providerKind === 'openrouter') {
-    // audio：TTS 走 /audio/speech，目录走 /models?output_modalities=speech
-    return ['text', 'image', 'video', 'audio', 'decisions']
-  }
-  if (provider.providerKind === 'typesafe') {
-    // 决策模型厂商：只做决策判定，没有文本 / 图片 / 视频生成
-    return ['decisions']
-  }
-  // 兜底：按「能不能做声音 / 音乐」的事实来源决定是否给对应页签，避免各处白名单漂移
-  return MODEL_MODALITIES.filter(
-    (m) =>
-      m !== 'model3d' &&
-      m !== 'spatialWorld' &&
-      m !== 'decisions' &&
-      (m !== 'audio' || supportsAudioModality(provider.providerKind)) &&
-      (m !== 'music' || supportsMusicModality(provider.providerKind))
-  )
-}
 
 function modalityTabLabel(provider: ModelProviderInstance, mod: ModelModality): string {
   if (
