@@ -29,14 +29,16 @@ function provider(kind: ModelProviderKind, overrides?: Partial<ModelProviderInst
 }
 
 describe('设置页模态页签', () => {
-  it('有音乐端点的三家都给出「音乐」页签', () => {
-    for (const kind of ['elevenlabs', 'minimax', 'dashscope'] as const) {
+  it('有音乐能力的商家都给出「音乐」页签', () => {
+    // OpenRouter 也在此列：它聚合了 Google Lyria 3 音乐生成
+    // （走 /audio/speech，没有 /v1/music 端点）
+    for (const kind of ['elevenlabs', 'minimax', 'dashscope', 'openrouter'] as const) {
       expect(settingsModalitiesFor(provider(kind)), kind).toContain('music')
     }
   })
 
-  it('没有音乐端点的商家不给「音乐」页签（OpenAI 只有 TTS）', () => {
-    for (const kind of ['openrouter', 'openai', 'anthropic', 'deepseek', 'custom'] as const) {
+  it('没有音乐能力的商家不给「音乐」页签（OpenAI 只有 TTS）', () => {
+    for (const kind of ['openai', 'anthropic', 'deepseek', 'google', 'xai', 'custom'] as const) {
       expect(settingsModalitiesFor(provider(kind)), kind).not.toContain('music')
     }
   })
@@ -55,6 +57,17 @@ describe('设置页模态页签', () => {
   it('ElevenLabs 同时有声音与音乐（此前只有声音）', () => {
     const tabs = settingsModalitiesFor(provider('elevenlabs'))
     expect(tabs).toEqual(['audio', 'music'])
+  })
+
+  it('OpenRouter 的声音与音乐都在（音乐走 /audio/speech，不是 /v1/music）', () => {
+    expect(settingsModalitiesFor(provider('openrouter'))).toEqual([
+      'text',
+      'image',
+      'video',
+      'audio',
+      'music',
+      'decisions'
+    ])
   })
 
   it('页签顺序跟 MODEL_MODALITIES 一致（不因合并而乱序）', () => {

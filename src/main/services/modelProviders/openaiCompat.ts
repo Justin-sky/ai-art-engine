@@ -3,12 +3,15 @@ import { join } from 'path'
 import type {
   GenerateImageInput,
   GenerateImageResult,
+  GenerateMusicInput,
+  GenerateMusicResult,
   GenerateSpeechInput,
   GenerateSpeechResult,
   GenerateTextInput,
   GenerateTextResult,
   ModelProviderInstance
 } from '@shared/modelProvider'
+import { buildOpenRouterMusicInput } from '@shared/modelProviders/openrouter/music'
 import { isVolcengineArkProvider } from '@shared/modelProvider'
 import { resolveOpenAiTtsVoice } from '@shared/modelProviders/openai/ttsModels'
 import { resolveOpenAiImageSize } from '@shared/modelProviders/openai/imageSize'
@@ -138,6 +141,12 @@ const E_VOICE_GENERATE_FAILED = defErr<{ detail: string }>(
   'provider.openai-compat.voice-generate-failed',
   ({ detail }) => `语音生成失败: ${detail}`,
   ({ detail }) => `Voice generation failed: ${detail}`
+)
+/** 音乐走同一个 /audio/speech 端点，但报错文案要说音乐，否则用户看不懂 */
+const E_MUSIC_GENERATE_FAILED = defErr<{ detail: string }>(
+  'provider.openai-compat.music-generate-failed',
+  ({ detail }) => `音乐生成失败: ${detail}`,
+  ({ detail }) => `Music generation failed: ${detail}`
 )
 
 function normalizeMessageContent(content: unknown): string {
@@ -498,6 +507,53 @@ export async function generateOpenAiCompatibleSpeech(
     return { model: modelId, voice: voice ?? '', format, filePath }
   } catch (err) {
     throw fail(E_VOICE_GENERATE_FAILED, { detail: await readHttpError(err) })
+  }
+}
+
+/**
+ * OpenRouter 音乐生成：与 TTS 共用 `POST /audio/speech`，但**不发 `voice`**。
+ *
+ * OpenRouter 没有 `/v1/music`（实测 `/audio/generations`、`/audio/music`、
+ * `/v1/music` 全 404）；音乐模型（Google Lyria 3）挂在 `output_modalities=audio` 下，
+ * 走的就是语音那个端点。它的 `supported_voices` 是 null —— 不吃音色。
+ *
+ * 为什么必须在这里显式挡掉 voice：`audio`（音乐）与 `speech`（TTS）同属音频域，
+ * facade 的音色兜底会从**同一个 audio 模态**的目录里挑第一个音色
+ * （往往是微软 TTS 的 `cs-CZ-...:MAI-Voice-2.1-Flash`），塞给音乐模型就是坏请求。
+ * 实测给无音色模型发音色会回 `speaker ... not found in speaker_map`。
+ *
+ * 旋律描述就是 `input`；歌词拼在后面（OpenRouter 的音乐条目没有独立歌词字段）。
+ */
+export async function generateOpenAiCompatibleMusic(
+  provider: ModelProviderInstance,
+  modelId: string,
+  input: GenerateMusicInput
+): Promise<GenerateMusicResult> {
+  const client = createProviderHttpClient(provider)
+  const body = buildOpenRouterMusicInput({
+    prompt: input.prompt,
+    lyrics: input.lyrics,
+    instrumental: input.instrumental
+  })
+
+  try {
+    const response = await client.post(
+      '/audio/speech',
+      { model: modelId, input: body.input, response_format: 'mp3' },
+      { responseType: 'arraybuffer', timeout: 300_000 }
+    )
+
+    const buf = Buffer.from(response.data as ArrayBuffer)
+    if (!buf.length) throw fail(PROVIDER_ERRORS.noAudioResult)
+
+    const tmpDir = join(process.cwd(), '.aiartengine-tmp', 'music')
+    if (!existsSync(tmpDir)) mkdirSync(tmpDir, { recursive: true })
+    const filePath = join(tmpDir, `music-${Date.now()}.mp3`)
+    writeFileSync(filePath, buf)
+    // 直接回音频字节、没有下载地址：走 filePath（facade 两种都支持）
+    return { model: modelId, filePath }
+  } catch (err) {
+    throw fail(E_MUSIC_GENERATE_FAILED, { detail: await readHttpError(err) })
   }
 }
 

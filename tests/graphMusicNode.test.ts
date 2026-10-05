@@ -48,9 +48,11 @@ describe('音乐模态', () => {
     expect(supportsMusicModality(kind('elevenlabs'))).toBe(true)
     expect(supportsMusicModality(kind('minimax'))).toBe(true)
     expect(supportsMusicModality(kind('dashscope'))).toBe(true)
-    // OpenAI 有 TTS 但没有音乐端点 —— 两个模态必须能区分开
+    // OpenRouter 聚合了 Google Lyria 3 音乐生成（走 /audio/speech，没有 /v1/music）
+    expect(supportsMusicModality(kind('openrouter'))).toBe(true)
+    // OpenAI 有 TTS 但没有音乐模型/端点 —— 两个模态必须能区分开
     expect(supportsMusicModality(kind('openai'))).toBe(false)
-    expect(supportsMusicModality(kind('openrouter'))).toBe(false)
+    expect(supportsMusicModality(kind('google'))).toBe(false)
   })
 
   it('音乐模型已从 audio 迁到 music 模态（否则音乐页签会是空的）', () => {

@@ -68,7 +68,7 @@ import { meshOpSupported } from '@shared/meshOps'
 import { createProviderHttpClient, sleep } from './http'
 import { PROVIDER_ERRORS } from './catalog'
 import { fail, defErrSimple, isAppError } from '@shared/errors/appError'
-import { buildProviderSnapshot, resolveActiveProvider } from './resolve'
+import { buildProviderSnapshot, resolveActiveMusicProvider, resolveActiveProvider } from './resolve'
 import { settingsService } from '../settingsService'
 import { getProviderAdapter } from './registry'
 import { prepareVideoInputReferencesForApi } from './videoRefs'
@@ -1619,11 +1619,7 @@ class ModelProviderFacade {
    * 未配置支持音乐的提供商/模型时给出引导文案。
    */
   async generateMusic(input: GenerateMusicInput): Promise<GenerateMusicResult> {
-    const { provider, modelId } = resolveActiveProvider(
-      'audio',
-      input.providerInstanceId,
-      input.model
-    )
+    const { provider, modelId } = resolveActiveMusicProvider(input.providerInstanceId, input.model)
     const adapter = getProviderAdapter(provider.providerKind)
     if (!adapter.generateMusic) throw fail(E_MUSIC_UNSUPPORTED)
     return adapter.generateMusic(provider, modelId, input)
@@ -1634,7 +1630,7 @@ class ModelProviderFacade {
     input: GenerateMusicInput & { outputDir?: string }
   ): Promise<GenerateMusicAssetResult> {
     if (!projectService.isOpen()) throw fail(E_NO_PROJECT)
-    const { provider } = resolveActiveProvider('audio', input.providerInstanceId, input.model)
+    const { provider } = resolveActiveMusicProvider(input.providerInstanceId, input.model)
     const result = await this.generateMusic(input)
 
     // 中间文件始终写系统临时目录，由 attachExternalGeneratedFile 统一拷入最终目录

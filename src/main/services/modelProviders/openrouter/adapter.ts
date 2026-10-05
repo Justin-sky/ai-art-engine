@@ -6,6 +6,8 @@ import type {
   GenerateImageResult,
   GenerateModel3dInput,
   GenerateModel3dJob,
+  GenerateMusicInput,
+  GenerateMusicResult,
   GenerateSpeechInput,
   GenerateSpeechResult,
   GenerateTextInput,
@@ -23,6 +25,7 @@ import {
   toOpenRouterInputReferenceBody
 } from '@shared/modelProvider'
 import { rewriteAtMentionsForImagePrompt } from '@shared/modelProviders/imagePromptMentions'
+import { isOpenRouterMusicModel } from '@shared/modelProviders/openrouter/audioModality'
 import type { ModelProviderAdapter, VideoPollResult } from '../types'
 import { PROVIDER_ERRORS } from '../catalog'
 import { fail } from '@shared/errors/appError'
@@ -34,7 +37,11 @@ import {
   readHttpError,
   trimBaseUrl
 } from '../http'
-import { generateOpenAiCompatibleSpeech, generateOpenAiCompatibleText } from '../openaiCompat'
+import {
+  generateOpenAiCompatibleMusic,
+  generateOpenAiCompatibleSpeech,
+  generateOpenAiCompatibleText
+} from '../openaiCompat'
 import { normalizeDecisionResponse } from '../decisions'
 
 /** OpenRouter 目录接口偶发返回裸数组或 { data / models }，统一拆成行列表 */
@@ -140,6 +147,32 @@ export const openRouterAdapter: ModelProviderAdapter = {
             supported_parameters: m.supported_parameters
           }
         }))
+      }
+
+      /**
+       * 音乐生成：OpenRouter 没有 `/v1/music`，音乐模型挂在
+       * `output_modalities=audio`（**不是** `speech`）下 —— Google Lyria 3。
+       * 该组还混着对话式音频模型（openai/gpt-audio），所以按 supported_parameters
+       * 过滤（详见 shared/modelProviders/openrouter/audioModality.ts）。
+       * 它们走的端点是 `POST /audio/speech`，与 TTS 相同。
+       */
+      if (modality === 'music') {
+        const { data } = await client.get('/models', {
+          params: { output_modalities: 'audio' }
+        })
+        return asCatalogRows<OpenRouterTextModel>(data)
+          .filter((m) => isOpenRouterMusicModel(m))
+          .map((m) => ({
+            id: m.id,
+            name: m.name || m.id,
+            description: m.description,
+            modality: 'music' as const,
+            capabilities: {
+              architecture: m.architecture,
+              pricing: m.pricing,
+              supported_parameters: m.supported_parameters
+            }
+          }))
       }
 
       if (modality === 'decisions') {
@@ -383,6 +416,23 @@ export const openRouterAdapter: ModelProviderAdapter = {
     input: GenerateSpeechInput
   ): Promise<GenerateSpeechResult> {
     return generateOpenAiCompatibleSpeech(provider, modelId, input)
+  },
+
+  /**
+   * 音乐生成：OpenRouter 把音乐模型（Google Lyria 3）挂在 `output_modalities=audio`
+   * 下，但**端点与 TTS 相同** —— `POST /audio/speech`（实测 `/audio/generations`
+   * 与 `/music` 都是 404）。所以这里复用同一套 OpenAI 兼容语音请求。
+   *
+   * **不发 voice**：Lyria 的 `supported_voices` 是 null，它不吃音色；
+   * 而 `audio` 与 `speech` 两个目录同属音频域，facade 的默认音色兜底可能
+   * 从目录里挑到微软 TTS 的音色名塞进来 —— 对音乐模型就是坏请求。
+   */
+  generateMusic(
+    provider: ModelProviderInstance,
+    modelId: string,
+    input: GenerateMusicInput
+  ): Promise<GenerateMusicResult> {
+    return generateOpenAiCompatibleMusic(provider, modelId, input)
   },
 
   /**

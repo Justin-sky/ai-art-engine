@@ -464,7 +464,14 @@ export function supportsMusicModality(kind: ModelProviderKind): boolean {
   // ElevenLabs `/v1/music`（music_v1 | music_v2 | music_v2_5）
   if (kind === 'elevenlabs') return true
   // MiniMax music-3.0 / 通义千问（百炼）Fun-Music：各家私有音乐端点
-  return kind === 'minimax' || kind === 'dashscope'
+  if (kind === 'minimax' || kind === 'dashscope') return true
+  /**
+   * OpenRouter：聚合了 Google Lyria 3 音乐生成（`google/lyria-3-*`）。
+   * 它**没有** `/v1/music` 端点，音乐走的是 `POST /audio/speech`（与 TTS 同端点）——
+   * 所以不能按「有没有音乐端点」判断，要看目录里有没有音乐模型
+   * （见 shared/modelProviders/openrouter/audioModality.ts）。
+   */
+  return kind === 'openrouter'
 }
 
 export function isMiniMaxProvider(
