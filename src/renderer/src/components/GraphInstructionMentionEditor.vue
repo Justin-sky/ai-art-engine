@@ -1279,6 +1279,11 @@ function onEditorMouseDown(e: MouseEvent): void {
   const target = e.target as HTMLElement | null
   // 菜单在 body 上（Teleport）：点它不算点编辑区
   if (target?.closest('.mention-menu')) return
+  focusEditorFromPoint(e)
+}
+
+/** 把焦点交给输入框；盒子外需要接管，盒子内交给浏览器原生 */
+function focusEditorFromPoint(e: MouseEvent): void {
   const el = textareaElement()
   if (!el) return
   const intent = resolveEditorFocusIntent({
@@ -1292,6 +1297,21 @@ function onEditorMouseDown(e: MouseEvent): void {
   const end = el.value.length
   el.setSelectionRange(end, end)
 }
+
+/**
+ * 面板刚打开就聚焦输入框。
+ *
+ * 否则「点一下卡片展开面板、紧接着敲字」这一下会落空：焦点还在画布上，
+ * 第一下按键（英文或输入法的第一个字母）就被画布吃掉了。
+ * 展开即聚焦，点开就能直接输入，不必再点一次输入框。
+ */
+onMounted(() => {
+  if (props.variant !== 'inline') return
+  void nextTick(() => {
+    const el = textareaElement()
+    if (el && document.activeElement !== el) el.focus()
+  })
+})
 
 function onWindowPointerDown(e: PointerEvent): void {
   if (!menuOpen.value) return
@@ -1326,6 +1346,13 @@ watch(activePresetTab, () => {
 
 onMounted(() => {
   window.addEventListener('pointerdown', onWindowPointerDown, true)
+  // 面板刚展开就聚焦输入框：否则「点开卡片紧接着敲字」的第一下会落到画布上
+  // （英文和输入法的第一个字母都算），用户必须再点一次输入框才能打字。
+  if (props.variant !== 'inline') return
+  void nextTick(() => {
+    const el = textareaElement()
+    if (el && document.activeElement !== el) el.focus()
+  })
 })
 
 onBeforeUnmount(() => {

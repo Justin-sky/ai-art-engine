@@ -11,6 +11,8 @@
       @scroll="onTextareaScroll"
       @blur="onBlur"
       @focus="$emit('focus')"
+      @compositionstart="onCompositionStart"
+      @compositionend="onCompositionEnd"
     />
     <!-- Teleport 到 body：画布 transform 会改变 fixed 包含块，导致节点上定位错位 -->
     <Teleport to="body">
@@ -43,6 +45,7 @@ import type { RefMentionOption } from '@shared/graph'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { insertMentionToken } from '../utils/mentionInsert'
 import { getTextareaCaretClientRect } from '../utils/textareaCaretCoords'
+import { isCompositionInput } from '../utils/imeComposition'
 
 const { t, assetTypeLabel } = useStudioI18n()
 
@@ -75,6 +78,8 @@ const textareaEl = ref<HTMLTextAreaElement | null>(null)
 const menuEl = ref<HTMLUListElement | null>(null)
 const menuOpen = ref(false)
 const menuIndex = ref(0)
+/** 输入法组词中：此时绝不回写宿主，否则会打断组词（中文第一个字母丢失） */
+const composing = ref(false)
 const menuStyle = ref<Record<string, string>>({})
 const mentionQuery = ref('')
 const mentionStart = ref(-1)
@@ -94,6 +99,26 @@ const filteredOptions = computed(() => {
 })
 
 function onInput(e: Event): void {
+  const el = e.target as HTMLTextAreaElement
+  // 输入法组合中（拼音还没上屏）：**绝不能**把值写回宿主。
+  // 宿主每次 change 都会更新节点参数并 bumpRevision，回写会重建 textarea 的 value，
+  // 而改写 value 会让浏览器丢弃正在进行的组词 —— 表现就是「中文第一个字母无效」。
+  if (isCompositionInput(composing.value, e as InputEvent)) {
+    composing.value = true
+    return
+  }
+  emit('update:modelValue', el.value)
+  detectMention(el)
+  emit('change')
+}
+
+function onCompositionStart(): void {
+  composing.value = true
+}
+
+/** 组词结束才上屏：此时才把最终文本写回宿主，并重新判定 @ 引用 */
+function onCompositionEnd(e: CompositionEvent): void {
+  composing.value = false
   const el = e.target as HTMLTextAreaElement
   emit('update:modelValue', el.value)
   detectMention(el)
@@ -208,6 +233,8 @@ onBeforeUnmount(() => {
 })
 
 function onKeydown(e: KeyboardEvent): void {
+  // 组词中：方向键/回车/空格属于输入法候选框，不能抢
+  if (composing.value || e.isComposing) return
   if (!menuOpen.value || !filteredOptions.value.length) return
   if (e.key === 'ArrowDown') {
     e.preventDefault()
