@@ -5642,6 +5642,7 @@ export default {
         soundEffectRangesHint:
           'Per the ElevenLabs spec: duration 0.5–30 seconds, prompt influence 0–1 (default 0.3; higher follows the prompt more closely). Leave empty to let the service decide.',
         musicOptions: 'Music options',
+        musicModel: 'Music model',
         musicOptionsHint:
           'Music generation takes a composition description (plus optional lyrics) and no voice. Pick models on the Music tab in Settings (MiniMax music-3.0 / Bailian Fun-Music / ElevenLabs music_v2_5).',
         musicInstrumental: 'Instrumental (no vocals)',

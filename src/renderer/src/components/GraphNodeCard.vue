@@ -1144,6 +1144,14 @@ function inPortTitle(port: GraphPortDef): string {
 }
 
 const instructionModality = computed((): GenerateModelModality => {
+  /**
+   * 音乐节点必须**排在 `instructionKind === 'voice'` 之前**：
+   * 它的 instructionKind 也是 'voice'（沿用声音节点的预设/指令面板），
+   * 但模型来自 **music 模态**（MiniMax music-* / 百炼 fun-music-* /
+   * ElevenLabs music_* / OpenRouter 的 Google Lyria）。
+   * 不拦住就会读到音频模态，下拉里出现 TTS 模型。
+   */
+  if (isMusicNode.value) return 'music'
   if (
     instructionKind.value === 'image' ||
     instructionKind.value === 'frameAnimGen' ||
@@ -1152,6 +1160,7 @@ const instructionModality = computed((): GenerateModelModality => {
     return 'image'
   }
   if (instructionKind.value === 'video' || instructionKind.value === 'lipSync') return 'video'
+  // 声音节点，以及沿用它的对话 / 音效变体，都读音频模态
   if (instructionKind.value === 'voice') return 'audio'
   if (instructionKind.value === 'model3d' || instructionKind.value === 'modelRigSkin')
     return 'model3d'
@@ -1250,9 +1259,12 @@ const instructionModelTitle = computed(() => {
   }
   if (instructionKind.value === 'voice') {
     // 音效端点的模型是固定的，下拉实际在选「用哪个提供商实例」
-    return isSoundEffectNode.value
-      ? t('graph.inspector.generate.soundEffectProvider')
-      : t('graph.inspector.generate.voiceModel')
+    if (isSoundEffectNode.value) {
+      return t('graph.inspector.generate.soundEffectProvider')
+    }
+    // 音乐是独立模态：它的下拉列的是音乐模型，不该写「声音模型」
+    if (isMusicNode.value) return t('graph.inspector.generate.musicModel')
+    return t('graph.inspector.generate.voiceModel')
   }
   if (instructionKind.value === 'model3d') return t('graph.inspector.generate.model3dModel')
   if (instructionKind.value === 'spatialWorld')

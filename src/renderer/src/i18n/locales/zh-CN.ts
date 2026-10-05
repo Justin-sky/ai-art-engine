@@ -5501,6 +5501,7 @@ export default {
         soundEffectRangesHint:
           '按 ElevenLabs 规范：时长 0.5–30 秒、提示词影响力 0–1（默认 0.3，越高越贴合描述）。留空即由服务端决定。',
         musicOptions: '音乐参数',
+        musicModel: '音乐模型',
         musicOptionsHint:
           '音乐生成只吃编曲描述（+ 可选歌词），不吃音色。模型在设置页「音乐」页签勾选（MiniMax music-3.0 / 百炼 Fun-Music / ElevenLabs music_v2_5）。',
         musicInstrumental: '纯音乐（无人声）',

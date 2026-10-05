@@ -691,6 +691,7 @@ import {
   type GenerateModelOption
 } from '../features/graph/model/generateModelOptions'
 import { dialogueSpeakers, parseDialogueScript } from '@shared/graph/dialogueScript'
+import { generateNodeModality } from '@shared/graph/generateNodeModality'
 import { useProjectStore } from '../stores/project'
 import { openFullImagePreview } from '../features/media/openFullImagePreview'
 import { invalidateAssetUrlCache } from '../features/media/assetUrlCache'
@@ -1654,8 +1655,9 @@ function loadGenerateConfig(current: NonNullable<typeof node.value>): void {
   }
 
   if (current.assetType === 'voice') {
-    // 声音节点没有系统提示词字段（TTS 会把指令一起念出来），只加载音频模型
-    void loadModels('audio', preferred)
+    // 声音节点没有系统提示词字段（TTS 会把指令一起念出来）。
+    // 但音乐是**独立模态**：它的模型来自 music 目录，按 voice 读会拿到 TTS 模型。
+    void loadModels(generateNodeModality(current), preferred)
     return
   }
 
@@ -1768,7 +1770,9 @@ watch(isGameSystem, (yes) => {
 })
 
 watch(isVoice, (yes) => {
-  if (yes) void loadModels('audio', selectedModelKey.value)
+  // 同 loadGenerateConfig：音乐节点要读 music 模态，不能一律 audio
+  const current = node.value
+  if (yes && current) void loadModels(generateNodeModality(current), selectedModelKey.value)
 })
 
 watch(isVideo, (yes) => {
