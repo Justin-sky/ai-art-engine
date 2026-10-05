@@ -1279,6 +1279,9 @@ function onEditorMouseDown(e: MouseEvent): void {
   const target = e.target as HTMLElement | null
   // 菜单在 body 上（Teleport）：点它不算点编辑区
   if (target?.closest('.mention-menu')) return
+  // 页面里自带的交互控件（如音色输入框）：点它们不能被拉回输入框，
+  // 否则用户没法在面板里选音色 —— 焦点刚落到控件上就被抢走
+  if (target?.closest('[data-no-focus-steal]')) return
   focusEditorFromPoint(e)
 }
 

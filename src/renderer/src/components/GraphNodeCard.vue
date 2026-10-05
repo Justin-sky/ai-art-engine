@@ -417,6 +417,14 @@
             :empty-label="t('graph.inspector.generate.noModels')"
             @change="persistGenerateModel"
           />
+          <SpeechVoiceSelect
+            v-if="showSpeechVoice"
+            :model-value="speechVoice"
+            :options="speechVoiceOptions"
+            :title="t('graph.inspector.generate.speechVoiceHint')"
+            :placeholder="t('graph.inspector.generate.speechVoicePlaceholder')"
+            @change="persistSpeechVoice"
+          />
           <Model3dStyleSelect
             v-if="showModel3dStyle"
             :model-value="model3dStyle"
@@ -556,6 +564,7 @@ import GraphInstructionMentionEditor from './GraphInstructionMentionEditor.vue'
 import GraphInstructionEditorDialog from './GraphInstructionEditorDialog.vue'
 import DecisionsQuestionsPanel from './DecisionsQuestionsPanel.vue'
 import InstructionModelSelect from './InstructionModelSelect.vue'
+import SpeechVoiceSelect from './SpeechVoiceSelect.vue'
 import Model3dStyleSelect from './Model3dStyleSelect.vue'
 import SpatialWorldSeedInput from './SpatialWorldSeedInput.vue'
 import SpatialWorldPromptControls from './SpatialWorldPromptControls.vue'
@@ -797,6 +806,8 @@ const instructionDialogOpen = ref(false)
 const instruction = ref('')
 const modelOptions = ref<GenerateModelOption[]>([])
 const selectedModelKey = ref('')
+/** 模型 key → 该模型声明的声音（loadGenerateModelOptions 顺带带回，仅音频模态非空） */
+const modelVoices = ref<Record<string, string[]>>({})
 const imageGenerateParams = ref<ImageGenerateParams>(
   readImageGenerateParamsFromNode(props.node.params)
 )
@@ -2140,7 +2151,7 @@ async function refreshModelOptions(): Promise<void> {
     props.node.params.generateProviderInstanceId,
     props.node.params.generateModel
   )
-  const { options, selectedKey } = await loadGenerateModelOptions(
+  const { options, selectedKey, voicesByModelKey } = await loadGenerateModelOptions(
     instructionModality.value,
     preferred,
     selectedModelKey.value
@@ -2152,6 +2163,7 @@ async function refreshModelOptions(): Promise<void> {
     ? options.filter((o) => meshOpSupported(o.providerKind ?? '', meshOp))
     : options
   modelOptions.value = filtered
+  modelVoices.value = voicesByModelKey
   selectedModelKey.value = filtered.some((o) => o.key === selectedKey)
     ? selectedKey
     : (filtered[0]?.key ?? '')
@@ -2265,6 +2277,32 @@ function persistModel3dRigType(value: string): void {
 const selectedProviderKind = computed(
   () => modelOptions.value.find((o) => o.key === selectedModelKey.value)?.providerKind ?? ''
 )
+
+/**
+ * 音色选择器：只给声音生成节点，且只在所选提供商声明了可用音色时出现。
+ *
+ * 放在指令面板而不是设置页：音色是**按节点**生效的参数（`generateSpeechVoice`），
+ * 同一张图里不同配音节点本就该用不同音色；挂在提供商上会变成全局一刀切。
+ */
+const showSpeechVoice = computed(
+  () => instructionKind.value === 'voice' && speechVoiceOptions.value.length > 0
+)
+
+const speechVoice = computed(() => {
+  const raw = props.node.params.generateSpeechVoice
+  return typeof raw === 'string' ? raw : ''
+})
+
+/** 该模型声明的声音；取不到就是空 —— 输入框仍可自由填，聚合器的音色名穷举不完 */
+const speechVoiceOptions = computed((): string[] => modelVoices.value[selectedModelKey.value] ?? [])
+
+function persistSpeechVoice(value: string): void {
+  if (!props.hostId || !instructionKind.value) return
+  const next = value.trim()
+  graphEditorHosts.updateNode(props.hostId, props.node.id, {
+    generateSpeechVoice: next || undefined
+  })
+}
 
 const model3dRigSpec = computed(() =>
   props.node.params.generateRigSpec === 'tripo' ? 'tripo' : 'mixamo'

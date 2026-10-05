@@ -13,6 +13,7 @@ import {
   isWorldProviderKind,
   modalityConfig,
   providerModelDisplayName,
+  resolveModelSupportedVoices,
   supportsAudioModality
 } from '@shared/modelProvider'
 
@@ -261,6 +262,27 @@ export function resolveEmptyModelOptionsReason(
   return 'noSelection'
 }
 
+/**
+ * 每个模型选项可用的声音（仅 audio 模态非空）。
+ *
+ * 单独成函数：调用方（指令面板）需要它，而这层的输入就是 providers + options，
+ * 不需要再碰 window.studio —— 也就能脱离渲染环境单测。
+ */
+export function buildModelVoiceOptions(
+  providers: ModelProviderInstance[],
+  modality: GenerateModelModality,
+  options: GenerateModelOption[]
+): Record<string, string[]> {
+  if (modality !== 'audio') return {}
+  const out: Record<string, string[]> = {}
+  for (const option of options) {
+    const provider = providers.find((p) => p.id === option.providerInstanceId)
+    const voices = provider ? resolveModelSupportedVoices(provider, 'audio', option.model) : []
+    if (voices.length) out[option.key] = voices
+  }
+  return out
+}
+
 export async function loadGenerateModelOptions(
   modality: GenerateModelModality,
   preferredKey?: string,
@@ -269,15 +291,23 @@ export async function loadGenerateModelOptions(
   options: GenerateModelOption[]
   selectedKey: string
   emptyReason: EmptyModelOptionsReason | null
+  /**
+   * 每个模型选项可用的声音（仅 audio 模态非空）。
+   * 只在这里算：providers 已经从设置里取出来了，再让调用方自己去查一遍
+   * 等于重复读设置，还会把「模型 key → 提供商的 audio 目录」这层耦合漏到 UI 里。
+   */
+  voicesByModelKey: Record<string, string[]>
 }> {
   try {
     const settings = await getSettingsCached()
     const providers = settings.models?.providers ?? []
     const options = buildModelOptions(providers, modality)
+    const voicesByModelKey = buildModelVoiceOptions(providers, modality, options)
     const done = (selectedKey: string) => ({
       options,
       selectedKey,
-      emptyReason: options.length ? null : resolveEmptyModelOptionsReason(providers, modality)
+      emptyReason: options.length ? null : resolveEmptyModelOptionsReason(providers, modality),
+      voicesByModelKey
     })
     if (preferredKey && options.some((o) => o.key === preferredKey)) {
       return done(preferredKey)
@@ -287,6 +317,6 @@ export async function loadGenerateModelOptions(
     }
     return done(pickDefaultModelKey(providers, modality, options))
   } catch {
-    return { options: [], selectedKey: '', emptyReason: 'unknown' }
+    return { options: [], selectedKey: '', emptyReason: 'unknown', voicesByModelKey: {} }
   }
 }

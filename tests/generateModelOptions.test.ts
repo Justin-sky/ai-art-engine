@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildModelOptions,
+  buildModelVoiceOptions,
   pickDefaultModelKey,
   resolveEmptyModelOptionsReason
 } from '../src/renderer/src/features/graph/model/generateModelOptions'
@@ -154,6 +155,46 @@ describe('buildModelOptions', () => {
       const providers = [baseProvider({ id: `x-${kind}`, providerKind: kind, modalities })]
       expect(buildModelOptions(providers, 'audio'), kind).toEqual([])
     }
+  })
+})
+
+/**
+ * 指令面板的音色候选来源：模型目录里声明的 supported_voices。
+ * 这里只验证「模型 key → 可用音色」的映射；面板本身在组件里。
+ */
+describe('buildModelVoiceOptions', () => {
+  function audioProviderWithVoices(
+    id: string,
+    model: string,
+    voices: unknown
+  ): ModelProviderInstance {
+    const modalities = createEmptyModalityMap()
+    modalities.audio.selectedModelIds = [model]
+    modalities.audio.defaultModelId = model
+    modalities.audio.catalog = {
+      [model]: { id: model, name: model, capabilities: { supported_voices: voices } }
+    }
+    return baseProvider({ id, providerKind: 'openrouter', modalities })
+  }
+
+  it('把模型声明的声音挂到它的选项 key 上', () => {
+    const providers = [audioProviderWithVoices('or1', 'or-tts', ['mika', 'yuki'])]
+    const options = buildModelOptions(providers, 'audio')
+    expect(buildModelVoiceOptions(providers, 'audio', options)).toEqual({
+      'or1::or-tts': ['mika', 'yuki']
+    })
+  })
+
+  it('没有声明声音的模型不进映射（面板此时只给自由输入）', () => {
+    const providers = [audioProviderWithVoices('or1', 'or-tts', undefined)]
+    const options = buildModelOptions(providers, 'audio')
+    expect(buildModelVoiceOptions(providers, 'audio', options)).toEqual({})
+  })
+
+  it('非 audio 模态不产出声音映射', () => {
+    const providers = [audioProviderWithVoices('or1', 'or-tts', ['mika'])]
+    const options = buildModelOptions(providers, 'audio')
+    expect(buildModelVoiceOptions(providers, 'text', options)).toEqual({})
   })
 })
 

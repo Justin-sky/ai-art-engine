@@ -527,11 +527,6 @@ export default {
       emptySpeakers: 'No speakers yet. Enter a purchased speaker_id and select it.',
       filterSpeakerPlaceholder: 'Filter speaker_id',
       defaultSpeaker: 'Default speaker',
-      ttsVoice: 'Default voice',
-      ttsVoiceAuto: 'Auto (model’s first voice)',
-      ttsVoicePlaceholder: 'Voice name, e.g. alloy / nova',
-      ttsVoiceHint:
-        'The TTS voice field, sent to the upstream as-is. Leave it empty to use the model’s own default; a voice set on the node overrides this. Aggregator voice names may not be in the suggestions — just type one.',
       selectedSpeakerCount: '{n} speakers selected',
       modality: {
         text: 'Text',
@@ -596,11 +591,11 @@ export default {
         image:
           'OpenAI image models (gpt-image-1 / gpt-image-2). Text-to-image via /images/generations; reference-image edits via /images/edits (max 1). Fixed sizes: 1024x1024 / 1536x1024 / 1024x1536 / auto.',
         audio:
-          'Speech synthesis posts to /audio/speech with model + input + voice (optional response_format / speed) — the OpenAI TTS protocol that most aggregators (new-api, one-api, …) implement, so a self-hosted gateway base URL works too. The catalog is a local static table because GET /models returns ids without voice lists; pick the default voice here after selecting models, and a voice set on the node overrides it.'
+          'Speech synthesis posts to /audio/speech with model + input + voice (optional response_format / speed) — the OpenAI TTS protocol that most aggregators (new-api, one-api, …) implement, so a self-hosted gateway base URL works too. The catalog is a local static table because GET /models returns ids without voice lists. The voice is set in the voice node’s instruction panel, not here.'
       },
       openrouterModalityHint: {
         audio:
-          'Speech synthesis posts to /api/v1/audio/speech (model + input + voice), and the catalog comes from /api/v1/models?output_modalities=speech; OpenRouter’s supported_voices fills the voice dropdown below. Voice names differ per upstream model, and a voice set on the node overrides this.'
+          'Speech synthesis posts to /api/v1/audio/speech (model + input + voice), and the catalog comes from /api/v1/models?output_modalities=speech; OpenRouter’s supported_voices become the voice suggestions in the voice node’s instruction panel. The voice is set on the node, not here.'
       },
       deepseekModalityHint: {
         text: 'DeepSeek chat models (deepseek-flash = V4.1 Flash / deepseek-v4-pro), OpenAI-compatible. Default Base URL is api.deepseek.com via /chat/completions; the text catalog is fetched from GET /models.'
@@ -5211,6 +5206,8 @@ export default {
           'Optional performance / camera notes (image→图片1+音频1; video→视频1+音频1); Seedance 2.0 recommended',
         voiceInstructionPlaceholder:
           "Describe the voice in text; connect an image for visual prompt; use {'@'} to cite inputs",
+        speechVoiceHint: 'Voice generation: voice (provider voice id, sent as the API voice field)',
+        speechVoicePlaceholder: 'Voice, e.g. alloy',
         model3dInstructionPlaceholder:
           "Describe the 3D model to generate; connect reference images for image-to-3D; use {'@'} to cite inputs",
         spatialWorldInstructionPlaceholder:
