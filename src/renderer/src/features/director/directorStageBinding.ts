@@ -113,9 +113,18 @@ export function patchGenParamsWithNodeStage(
 ): Record<string, unknown> {
   const base = { ...(genParams ?? {}) }
   const prevMap = readStagesByNodeId(base, base.graphJson)
-  // 只保留仍存在于图中的导演台节点舞台，避免删除/重建节点后孤儿数据残留
-  const liveNodes = listDirectorProcessingNodes(base.graphJson)
-  const liveNodeIds = liveNodes.length ? new Set(liveNodes.map((node) => node.id)) : null
+  /**
+   * 只保留仍存在于图中的导演台节点舞台，避免删除/重建节点后孤儿数据残留。
+   *
+   * 判据是「**有没有图信息**」，不是「图里有没有节点」：
+   * 早先写成 `liveNodes.length ? new Set(...) : null`，于是**空图（节点被删光）
+   * 被当成拿不到图**，孤儿全部保留下来 —— 表现是删掉导演台节点后它的参数
+   * 依旧留在 genParams 里，重建同名节点时会串回旧参数。
+   */
+  const hasGraph = Array.isArray((base.graphJson as { nodes?: unknown } | undefined)?.nodes)
+  const liveNodeIds = hasGraph
+    ? new Set(listDirectorProcessingNodes(base.graphJson).map((node) => node.id))
+    : null
   const nextMap: Record<string, DirectorStageState> = {}
   for (const [id, stored] of Object.entries(prevMap)) {
     if (!liveNodeIds || liveNodeIds.has(id)) nextMap[id] = stored
