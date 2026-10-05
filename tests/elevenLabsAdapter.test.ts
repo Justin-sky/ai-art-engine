@@ -431,6 +431,31 @@ describe('ElevenLabs provider 接线（走真实 SDK）', () => {
     expect(unsupported).toEqual([])
   })
 
+  /**
+   * 用户实际遇到的情况：`/v1/models` 返回的是**账号可用模型**，
+   * 实测不含音乐模型（音乐是按 model_id 直接调 `/v1/music` 用的）。
+   * 所以「响应里有 TTS」不代表「音乐也拿得到」—— 兜底必须**按类别**做，
+   * 只在整条响应为空时兜底会让音乐页签永远为空。
+   */
+  it('账号目录里只有 TTS、没有音乐时，音乐仍然给得出来（按类别兜底）', async () => {
+    nextResponse = () =>
+      new Response(
+        JSON.stringify([
+          { model_id: 'eleven_v3', name: 'Eleven v3', can_do_text_to_speech: true },
+          { model_id: 'eleven_flash_v2_5', name: 'Eleven Flash v2.5' }
+        ]),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      )
+
+    const tts = await elevenLabsAdapter.fetchCatalog(provider(), 'audio')
+    expect(tts.map((m) => m.id)).toEqual(['eleven_v3', 'eleven_flash_v2_5'])
+
+    // 关键断言：这一类在远端为空 → 用本地表补上，而不是返回空
+    const music = await elevenLabsAdapter.fetchCatalog(provider(), 'music')
+    expect(music.map((m) => m.id)).toContain('music_v2_5')
+    expect(music.every((m) => m.capabilities?.elevenKind === 'music')).toBe(true)
+  })
+
   it('音色标签：voiceId → 名字，供声音节点显示', async () => {
     nextResponse = () =>
       new Response(

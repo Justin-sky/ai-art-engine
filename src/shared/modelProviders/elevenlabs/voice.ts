@@ -300,6 +300,32 @@ export function filterElevenModelsByKind(
 }
 
 /**
+ * 取某一类别的模型；**这一类为空时用本地表补齐**（按 id 去重）。
+ *
+ * 为什么按类别兜底、而不是「整个列表为空才兜底」：
+ * `GET /v1/models` 并不列举所有能力 —— 实测账号返回的是 TTS 等模型，
+ * **音乐模型不在其中**（音乐是按 `model_id` 直接调 `/v1/music` 用的）。
+ * 早先只在「整条响应为空」时兜底，于是响应里只要有 TTS，音乐这一类就被过滤成空、
+ * 且不会再兜底 —— 表现就是「音乐页签拉取为空」。
+ *
+ * 拿本地表里的音乐模型去请求是安全的：音乐端点不挑 `music_*` 的具体版本。
+ */
+export function listElevenModelsOfKind(
+  models: CatalogModel[],
+  kind: ElevenModelKind
+): CatalogModel[] {
+  const matched = filterElevenModelsByKind(models, kind)
+  if (matched.length) return matched
+  const seen = new Set(matched.map((m) => m.id))
+  for (const fallbackModel of filterElevenModelsByKind(listElevenFallbackModels(), kind)) {
+    if (seen.has(fallbackModel.id)) continue
+    seen.add(fallbackModel.id)
+    matched.push(fallbackModel)
+  }
+  return matched
+}
+
+/**
  * 离线兜底的模型表（同时是「模型类别」的事实来源）。
  *
  * 正常路径是拉 `GET /v1/models`（官方有该端点），但该端点不含类别能力位，

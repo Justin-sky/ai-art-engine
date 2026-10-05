@@ -34,8 +34,8 @@ import {
   buildElevenSoundRequest,
   buildElevenTtsRequest,
   elevenFormatOf,
-  filterElevenModelsByKind,
   listElevenFallbackModels,
+  listElevenModelsOfKind,
   parseElevenModels,
   parseElevenTranscript,
   parseElevenVoices,
@@ -234,17 +234,22 @@ export const elevenLabsAdapter: ModelProviderAdapter = {
   },
 
   /**
-   * 目录：`GET /v1/models`（SDK models.list），失败或拿不到时退回本地表。
+   * 目录：`GET /v1/models`（SDK models.list），失败或缺失时退回本地表。
    *
-   * 按模态分流（同一端点混着三类模型）：
+   * 按模态分流（同一端点混着三类模型），且**按类别兜底**：
    * - `audio`（语音合成）→ 只给 TTS，否则声音节点的下拉会出现 `music_v2_5` / `scribe_v2`
-   * - `music`（音乐生成）→ 只给 `music_*`，设置页的音乐页签才有模型可勾
+   * - `music`（音乐生成）→ 只给 `music_*`
+   *
+   * 「按类别兜底」很关键：`/v1/models` 实测**不列举音乐模型**（音乐按 model_id
+   * 直接调 `/v1/music`），所以响应里有 TTS 不代表音乐也拿得到 ——
+   * 只在「整条为空」时兜底会让音乐页签永远为空。
+   *
    * 其它模态返回空数组 —— 本适配器不支持，避免设置页出现选不了的页签。
    */
   async fetchCatalog(provider: ModelProviderInstance, modality: ModelModality) {
     if (modality !== 'audio' && modality !== 'music') return []
     const all = await listElevenModels(provider)
-    return filterElevenModelsByKind(all, modality === 'music' ? 'music' : 'tts')
+    return listElevenModelsOfKind(all, modality === 'music' ? 'music' : 'tts')
   },
 
   /**
