@@ -1,0 +1,18 @@
+{
+  "meta": {
+    "note": "离线兜底：能做 TTS 的模型。正常路径是拉 GET /v1/models（官方提供），此处仅在目录拉取失败时用于展示与音色解析，避免离线状态下声音节点无可选项。id 取自官方 openapi.json 中出现过的 model_id 字符串。",
+    "source": "https://api.elevenlabs.io/v1/models"
+  },
+  "models": [
+    { "id": "eleven_v3", "name": "Eleven v3", "note": "最新一代，表达力最强" },
+    {
+      "id": "eleven_multilingual_v2",
+      "name": "Eleven Multilingual v2",
+      "note": "规范中的默认模型，29 种语言"
+    },
+    { "id": "eleven_turbo_v2_5", "name": "Eleven Turbo v2.5", "note": "低延迟，质量与时延折中" },
+    { "id": "eleven_flash_v2_5", "name": "Eleven Flash v2.5", "note": "最低延迟" },
+    { "id": "eleven_turbo_v2", "name": "Eleven Turbo v2", "note": "上一代 turbo" },
+    { "id": "eleven_flash_v2", "name": "Eleven Flash v2", "note": "上一代 flash" }
+  ]
+}

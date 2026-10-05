@@ -597,6 +597,11 @@ export default {
         audio:
           'Speech synthesis posts to /api/v1/audio/speech (model + input + voice), and the catalog comes from /api/v1/models?output_modalities=speech; OpenRouter’s supported_voices become the voice suggestions in the voice node’s instruction panel. The voice is set on the node, not here.'
       },
+      elevenLabsModalityHint: {
+        audio:
+          'ElevenLabs speech synthesis posts to /v1/text-to-speech/{voice_id} (auth header: xi-api-key), with models from GET /v1/models and voices from GET /v1/voices (public voices work without a key; your cloned voices appear once a key is set). A voice is an opaque voice_id, shown by name in the panel. ' +
+          'Note: with ElevenLabs the input *is* the text to speak — beyond model and voice there is no separate speaking-style parameter.'
+      },
       deepseekModalityHint: {
         text: 'DeepSeek chat models (deepseek-flash = V4.1 Flash / deepseek-v4-pro), OpenAI-compatible. Default Base URL is api.deepseek.com via /chat/completions; the text catalog is fetched from GET /models.'
       },

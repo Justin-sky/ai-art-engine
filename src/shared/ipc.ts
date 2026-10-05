@@ -27,6 +27,7 @@ import type {
   GenerateModel3dInput,
   GenerateModel3dResult,
   ListModelsInput,
+  SpeechVoiceLabelsInput,
   ModelProviderKindMeta,
   TranscribeAudioInput,
   TranscribeAudioResult
@@ -121,6 +122,11 @@ export const IpcChannels = {
   GEN_IMAGE: 'gen:image',
   GEN_VIDEO: 'gen:video',
   GEN_SPEECH: 'gen:speech',
+  /**
+   * 音色 id → 展示名（设置页拉目录时一并取回）。
+   * 有些供应商的音色是不透明 id（ElevenLabs），不取名字选择器只能显示乱码般的 id。
+   */
+  LIST_SPEECH_VOICE_LABELS: 'models:voice-labels',
   GEN_MUSIC: 'gen:music',
   GEN_MODEL3D: 'gen:model3d',
   /** 空间世界生成（World Labs Marble）：异步 operation 轮询，产物为世界网格 GLB */
@@ -1355,6 +1361,8 @@ export interface StudioApi {
   getVideoJob: (localJobId: string) => Promise<import('./videoJob').VideoJobRecord | null>
   cancelVideoJob: (localJobId: string) => Promise<import('./videoJob').VideoJobRecord | null>
   listModels: (input: ListModelsInput) => Promise<CatalogModel[]>
+  /** 音色 id → 展示名（仅音色为不透明 id 的供应商有内容；其余返回空对象） */
+  listSpeechVoiceLabels: (input: SpeechVoiceLabelsInput) => Promise<Record<string, string>>
   listProviderKinds: () => Promise<ModelProviderKindMeta[]>
   listObjectStorageKinds: () => Promise<ObjectStorageKindMeta[]>
 

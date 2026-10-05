@@ -145,6 +145,7 @@ const api: StudioApi = {
   generateImage: (input) => ipcRenderer.invoke(IpcChannels.GEN_IMAGE, input),
   generateVideo: (input) => ipcRenderer.invoke(IpcChannels.GEN_VIDEO, input),
   generateSpeech: (input) => ipcRenderer.invoke(IpcChannels.GEN_SPEECH, input),
+  listSpeechVoiceLabels: (input) => ipcRenderer.invoke(IpcChannels.LIST_SPEECH_VOICE_LABELS, input),
   generateMusic: (input) => ipcRenderer.invoke(IpcChannels.GEN_MUSIC, input),
   generateDecisions: (input) => ipcRenderer.invoke(IpcChannels.GEN_DECISIONS, input),
   generateModel3d: (input) => ipcRenderer.invoke(IpcChannels.GEN_MODEL3D, input),

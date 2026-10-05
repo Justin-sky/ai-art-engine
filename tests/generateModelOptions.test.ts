@@ -156,6 +156,22 @@ describe('buildModelOptions', () => {
       expect(buildModelOptions(providers, 'audio'), kind).toEqual([])
     }
   })
+
+  it('ElevenLabs 只出现在 audio 下拉；其它模态的成因判定不该算上它', () => {
+    const modalities = createEmptyModalityMap()
+    modalities.audio.selectedModelIds = ['eleven_v3']
+    modalities.audio.defaultModelId = 'eleven_v3'
+    // 目录公开可读：没填 Key 也要能配（生成时才报缺密钥）
+    const providers = [
+      baseProvider({ id: 'el1', providerKind: 'elevenlabs', modalities, apiKey: '' })
+    ]
+    expect(buildModelOptions(providers, 'audio').map((o) => o.key)).toEqual(['el1::eleven_v3'])
+    expect(buildModelOptions(providers, 'text')).toEqual([])
+    expect(buildModelOptions(providers, 'image')).toEqual([])
+    // 关键：它只有音频，所以在文本模态等于「没有可用提供商」，
+    // 不能掉进末尾的「文本 + 图片」默认分支被误判为支持
+    expect(resolveEmptyModelOptionsReason(providers, 'text')).toBe('noProvider')
+  })
 })
 
 /**

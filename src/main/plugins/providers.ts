@@ -25,6 +25,7 @@ import { hyper3dAdapter } from '../services/modelProviders/hyper3d/adapter'
 import { lumaAdapter } from '../services/modelProviders/luma/adapter'
 import { lux3dAdapter } from '../services/modelProviders/lux3d/adapter'
 import { worldlabsAdapter } from '../services/modelProviders/worldlabs/adapter'
+import { elevenLabsAdapter } from '../services/modelProviders/elevenlabs/adapter'
 import { customAdapter } from '../services/modelProviders/custom/adapter'
 
 function resolveProviderMeta(
@@ -84,5 +85,6 @@ export const builtinProviderPlugins = [
   createProviderPlugin(lumaAdapter),
   createProviderPlugin(lux3dAdapter),
   createProviderPlugin(worldlabsAdapter),
+  createProviderPlugin(elevenLabsAdapter),
   createProviderPlugin(customAdapter)
 ] as const

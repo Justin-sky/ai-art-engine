@@ -50,6 +50,14 @@ export const WORLDLABS_DEFAULT_BASE_URL = 'https://api.worldlabs.ai'
 /** TypeSafe（Jev 等 System One 决策模型）：直连 `https://api.typesafe.ai`，Bearer 鉴权 */
 export const TYPESAFE_DEFAULT_BASE_URL = 'https://api.typesafe.ai'
 /**
+ * ElevenLabs（语音合成）。
+ *
+ * 鉴权是 `xi-api-key` 请求头（不是 Bearer）；语音合成走
+ * `POST /v1/text-to-speech/{voice_id}`，音色与模型各有目录端点
+ * （`GET /v1/voices`、`GET /v1/models`），详见 `shared/modelProviders/elevenlabs`。
+ */
+export const ELEVENLABS_DEFAULT_BASE_URL = 'https://api.elevenlabs.io'
+/**
  * NewAPI 中转网关（自建，OpenAI 兼容）。
  *
  * NewAPI 是自托管软件，没有官方公共域名，所以这里给的是占位地址，用户必须改成自己的网关。
@@ -99,6 +107,8 @@ export type ModelProviderKind =
   | 'lux3d'
   /** World Labs（Marble 空间世界生成） */
   | 'worldlabs'
+  /** ElevenLabs（语音合成；xi-api-key 鉴权，音色/模型各有目录端点） */
+  | 'elevenlabs'
   /** 自定义提供商：端点类型由实例级 apiStyle 决定 */
   | 'custom'
 
@@ -300,6 +310,12 @@ export const MODEL_PROVIDER_KINDS: readonly ModelProviderKindMeta[] = [
     credentialsUrl: 'https://platform.worldlabs.ai/api-keys'
   },
   {
+    id: 'elevenlabs',
+    label: 'ElevenLabs',
+    defaultBaseUrl: ELEVENLABS_DEFAULT_BASE_URL,
+    credentialsUrl: 'https://elevenlabs.io/app/settings/api-keys'
+  },
+  {
     id: 'custom',
     label: '自定义', // cjk-ok 落盘默认实例名（用户可改）；下拉与列表显示走 labelKey → vue-i18n
     labelKey: 'settings.models.providerCustom',
@@ -350,6 +366,15 @@ export interface ModalityModelConfig {
    * 所以允许在设置里显式指定；生成时若节点/参数没给 voice 就取它。
    */
   defaultVoice?: string
+  /**
+   * 音色 id → 展示名（仅 audio 模态使用）。
+   *
+   * ElevenLabs 这类供应商的音色是**不透明 id**（`21m00Tcm4TlvDq8ikWAM`），
+   * 光看 id 用户没法选；目录端点能给出 `Sarah - Mature, Reassuring` 这样的名字。
+   * 名字不随模型变（音色属于账号而不是模型），所以与 catalog 并列存一份即可，
+   * 不必在每个模型条目里各存一遍。
+   */
+  voiceLabels?: Record<string, string>
   /** 已勾选模型的目录快照（拉取/勾选时写入） */
   catalog?: Record<string, SavedCatalogModelEntry>
 }
@@ -406,6 +431,8 @@ export function supportsAudioModality(kind: ModelProviderKind): boolean {
   // 走 OpenAI 兼容 POST /audio/speech（model + input + voice）：OpenAI 官方与 OpenRouter
   // （以及它们背后那些同样实现该协议的聚合器）
   if (kind === 'openai' || kind === 'openrouter') return true
+  // ElevenLabs 自己的协议：POST /v1/text-to-speech/{voice_id}，音色是 voice_id
+  if (kind === 'elevenlabs') return true
   // 各家私有协议：方舟 openspeech 声音设计 / MiniMax 音色设计 / ComfyUI 音频工作流
   return kind === 'volcengine-ark' || kind === 'minimax' || kind === 'comfyui'
 }
@@ -572,7 +599,19 @@ export function isWorldProviderKind(
 export function allowsEmptyApiKey(
   provider: Pick<ModelProviderInstance, 'providerKind'> | ModelProviderKind | undefined | null
 ): boolean {
-  return isLocalOpenAiProvider(provider) || isComfyUiProvider(provider)
+  if (isLocalOpenAiProvider(provider) || isComfyUiProvider(provider)) return true
+  // ElevenLabs 的模型与音色目录都是公开可读的（实测 /v1/voices 无 Key 返回 200），
+  // 允许先配置、看目录、再补 Key —— 真正生成时 assertAuth / 上游会明确报缺密钥。
+  return isElevenLabsProvider(provider)
+}
+
+/** ElevenLabs（语音合成；xi-api-key 鉴权，目录端点公开可读） */
+export function isElevenLabsProvider(
+  provider: Pick<ModelProviderInstance, 'providerKind'> | ModelProviderKind | undefined | null
+): boolean {
+  if (!provider) return false
+  const kind = typeof provider === 'string' ? provider : provider.providerKind
+  return kind === 'elevenlabs'
 }
 
 /** 本地 OpenAI 兼容推理服务：无需 API Key，允许空密钥使用 */
@@ -879,6 +918,9 @@ export interface ListModelsInput {
   /** 自定义提供商的端点类型；未保存时由设置页传入 */
   apiStyle?: CustomApiStyle
 }
+
+/** 音色标签查询：字段与 ListModelsInput 一致（同一套「未保存覆盖」口径） */
+export type SpeechVoiceLabelsInput = Omit<ListModelsInput, 'modality'>
 
 export interface GenerateTextInput {
   prompt: string
@@ -1942,12 +1984,27 @@ function normalizeModalityConfig(
       : (selected[0] ?? '')
   const catalog = normalizeSavedCatalog(raw?.catalog, selected, kind)
   const defaultVoice = typeof raw?.defaultVoice === 'string' ? raw.defaultVoice.trim() : ''
+  const voiceLabels = normalizeVoiceLabels(raw?.voiceLabels)
   return {
     selectedModelIds: selected,
     defaultModelId,
     ...(defaultVoice ? { defaultVoice } : {}),
+    ...(voiceLabels ? { voiceLabels } : {}),
     ...(catalog ? { catalog } : {})
   }
+}
+
+/** 音色 id → 展示名：丢掉非字符串与空值，全空时返回 undefined（不落盘空对象） */
+function normalizeVoiceLabels(raw: unknown): Record<string, string> | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
+  const out: Record<string, string> = {}
+  for (const [id, label] of Object.entries(raw as Record<string, unknown>)) {
+    const key = id.trim()
+    if (!key || typeof label !== 'string') continue
+    const value = label.trim()
+    if (value) out[key] = value
+  }
+  return Object.keys(out).length ? out : undefined
 }
 
 function normalizeModalityMap(

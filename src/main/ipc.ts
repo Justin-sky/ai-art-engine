@@ -38,7 +38,8 @@ import type {
   GenerateTextInput,
   GenerateVideoInput,
   GenerateModel3dInput,
-  ListModelsInput
+  ListModelsInput,
+  SpeechVoiceLabelsInput
 } from '@shared/modelProvider'
 import { listRegisteredObjectStorageKinds, listRegisteredProviderKinds } from './runtime'
 import { projectService } from './services/projectService'
@@ -456,6 +457,15 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.OBJECT_STORAGE_LIST_KINDS, () => listRegisteredObjectStorageKinds())
   handle(IpcChannels.MODELS_LIST, (input: ListModelsInput) =>
     modelProviderFacade.listModels(input.modality, input.providerInstanceId, {
+      apiKey: input.apiKey,
+      baseUrl: input.baseUrl,
+      nativeBaseUrl: input.nativeBaseUrl,
+      providerKind: input.providerKind,
+      apiStyle: input.apiStyle
+    })
+  )
+  handle(IpcChannels.LIST_SPEECH_VOICE_LABELS, (input: SpeechVoiceLabelsInput) =>
+    modelProviderFacade.listSpeechVoiceLabels(input.providerInstanceId, {
       apiKey: input.apiKey,
       baseUrl: input.baseUrl,
       nativeBaseUrl: input.nativeBaseUrl,

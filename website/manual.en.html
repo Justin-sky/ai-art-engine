@@ -751,7 +751,8 @@
               decision protocol as OpenRouter but without the hop. The Ark audio tab also
               links the speech console and asks for a manual <code>speaker_id</code>; Kling has only image and video tabs;
               MiniMax supports text / image / video / voice design;
-              <strong>OpenAI supports text / image / audio</strong>; DeepSeek is
+              <strong>OpenAI supports text / image / audio</strong>; <strong>ElevenLabs exposes an audio tab only</strong>
+              (speech synthesis); DeepSeek is
               text only; Kimi (Moonshot) is text only; xAI (Grok) supports text / image / video with async
               polling for video; Google (Gemini) supports text / Nano Banana images / Veo 3.1 video with async
               polling; Zhipu supports GLM text and CogView images; vLLM supports text and video (Wan T2V / I2V);
@@ -773,12 +774,17 @@
               <code>/models?output_modalities=speech</code> (which carries <code>supported_voices</code>), while
               OpenAI uses a local static table (<code>GET /models</code> returns ids without voice lists);
               aggregator-only models can be typed in by hand.
+              <strong>ElevenLabs</strong> speaks its own protocol:
+              <code>POST /v1/text-to-speech/{voice_id}</code> (auth header <code>xi-api-key</code>), with models from
+              <code>GET /v1/models</code> and voices from <code>GET /v1/voices</code>. Its <code>voice_id</code> is an
+              opaque string, so the panel shows voice <em>names</em> instead (e.g. <code>Sarah - Mature, Reassuring</code>);
+              the voice catalog is publicly readable, so you can browse models and voices before setting a key.
               <strong>The voice is set in the voice node's instruction panel</strong>, not here: it is a per-node
               parameter, so different voice-over nodes in one graph can use different voices. Suggestions come from
               the <code>supported_voices</code> returned by the API (OpenRouter's docs page does not list them, but
               <code>/models?output_modalities=speech</code> returns them — 18 of 23 speech models in a live check,
-              with Microsoft MAI Voice carrying 97), sorted so your app language comes first, and any voice name can
-              be typed. Leaving it empty uses the model's own default — we never guess a voice name for the upstream,
+              with Microsoft MAI Voice carrying 97), sorted so your app language comes first.
+              Leaving it empty uses the model's own default — we never guess a voice name for the upstream,
               because voice naming is not portable. A few models (e.g. <code>bytedance-seed/seed-audio-1-0</code>)
               have <strong>no voice list at all</strong>: their voice comes from the prompt text, so just leave it empty.
             </li>

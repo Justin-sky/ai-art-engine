@@ -60,6 +60,8 @@ export function buildModelOptions(
   const options: GenerateModelOption[] = []
   for (const provider of providers) {
     if (!provider.enabled) continue
+    // 声音：ElevenLabs 只有音频模态，模型/音色目录公开可读（无 Key 也能配）
+    if (provider.providerKind === 'elevenlabs' && modality !== 'audio') continue
     // 本地 OpenAI 兼容服务与 ComfyUI 无需 API Key
     if (!provider.apiKey.trim() && !allowsEmptyApiKey(provider)) continue
     // 本地服务仅文本（多模态理解可在文本节点传图）
@@ -242,6 +244,9 @@ export function resolveEmptyModelOptionsReason(
       return modality === 'image' || modality === 'video' || modality === 'audio'
     // 声音按同一份事实来源判定：否则设置里勾好了，节点还在说「没有可用提供商」
     if (modality === 'audio') return supportsAudioModality(kind)
+    // ElevenLabs 只有语音合成 —— 非音频模态到不了上面那行，必须显式否掉，
+    // 否则会掉进末尾的「文本 + 图片」默认分支被误判为支持
+    if (kind === 'elevenlabs') return false
     if (isVllmProvider(kind)) return modality === 'text' || modality === 'video'
     if (isLocalOpenAiProvider(kind)) return modality === 'text'
     if (isWorldProviderKind(kind)) return modality === 'spatialWorld'
@@ -281,8 +286,36 @@ export function buildModelVoiceOptions(
   const out: Record<string, string[]> = {}
   for (const option of options) {
     const provider = providers.find((p) => p.id === option.providerInstanceId)
-    const voices = provider ? resolveModelSupportedVoices(provider, 'audio', option.model) : []
-    if (voices.length) out[option.key] = voices
+    if (!provider) continue
+    const config = modalityConfig(provider, 'audio')
+    // 优先模型自己声明的（OpenRouter / OpenAI 静态表）
+    const declared = resolveModelSupportedVoices(provider, 'audio', option.model)
+    if (declared.length) {
+      out[option.key] = declared
+      continue
+    }
+    // 退回供应商级音色目录（ElevenLabs：音色属于账号，不属于模型）
+    const fromProvider = Object.keys(config.voiceLabels ?? {})
+    if (fromProvider.length) out[option.key] = fromProvider
+  }
+  return out
+}
+
+/**
+ * 音色 id → 展示名（跨模型，来自 provider 的 audio.voiceLabels）。
+ *
+ * 与 buildModelVoiceOptions 分开：候选列表按模型变，音色名不变
+ * （ElevenLabs 的音色属于账号），所以标签不需要按模型各存一份。
+ */
+export function buildVoiceLabels(
+  providers: ModelProviderInstance[],
+  options: GenerateModelOption[]
+): Record<string, string> {
+  const providerIds = new Set(options.map((o) => o.providerInstanceId))
+  const out: Record<string, string> = {}
+  for (const provider of providers) {
+    if (!providerIds.has(provider.id)) continue
+    Object.assign(out, modalityConfig(provider, 'audio').voiceLabels ?? {})
   }
   return out
 }
@@ -301,17 +334,21 @@ export async function loadGenerateModelOptions(
    * 等于重复读设置，还会把「模型 key → 提供商的 audio 目录」这层耦合漏到 UI 里。
    */
   voicesByModelKey: Record<string, string[]>
+  /** 音色 id → 展示名（仅不透明 id 的供应商有内容，如 ElevenLabs） */
+  voiceLabels: Record<string, string>
 }> {
   try {
     const settings = await getSettingsCached()
     const providers = settings.models?.providers ?? []
     const options = buildModelOptions(providers, modality)
     const voicesByModelKey = buildModelVoiceOptions(providers, modality, options)
+    const voiceLabels = buildVoiceLabels(providers, options)
     const done = (selectedKey: string) => ({
       options,
       selectedKey,
       emptyReason: options.length ? null : resolveEmptyModelOptionsReason(providers, modality),
-      voicesByModelKey
+      voicesByModelKey,
+      voiceLabels
     })
     if (preferredKey && options.some((o) => o.key === preferredKey)) {
       return done(preferredKey)
@@ -321,6 +358,12 @@ export async function loadGenerateModelOptions(
     }
     return done(pickDefaultModelKey(providers, modality, options))
   } catch {
-    return { options: [], selectedKey: '', emptyReason: 'unknown', voicesByModelKey: {} }
+    return {
+      options: [],
+      selectedKey: '',
+      emptyReason: 'unknown',
+      voicesByModelKey: {},
+      voiceLabels: {}
+    }
   }
 }

@@ -421,6 +421,7 @@
             v-if="showSpeechVoice"
             :model-value="speechVoice"
             :options="speechVoiceOptions"
+            :labels="modelVoiceLabels"
             :voice-title="t('graph.inspector.generate.speechVoiceHint')"
             :default-label="t('graph.inspector.generate.speechVoiceDefault')"
             @change="persistSpeechVoice"
@@ -809,6 +810,8 @@ const modelOptions = ref<GenerateModelOption[]>([])
 const selectedModelKey = ref('')
 /** 模型 key → 该模型声明的声音（loadGenerateModelOptions 顺带带回，仅音频模态非空） */
 const modelVoices = ref<Record<string, string[]>>({})
+/** 音色 id → 展示名（ElevenLabs 的 voice_id 不透明，必须显示名字） */
+const modelVoiceLabels = ref<Record<string, string>>({})
 const imageGenerateParams = ref<ImageGenerateParams>(
   readImageGenerateParamsFromNode(props.node.params)
 )
@@ -2152,7 +2155,7 @@ async function refreshModelOptions(): Promise<void> {
     props.node.params.generateProviderInstanceId,
     props.node.params.generateModel
   )
-  const { options, selectedKey, voicesByModelKey } = await loadGenerateModelOptions(
+  const { options, selectedKey, voicesByModelKey, voiceLabels } = await loadGenerateModelOptions(
     instructionModality.value,
     preferred,
     selectedModelKey.value
@@ -2165,6 +2168,7 @@ async function refreshModelOptions(): Promise<void> {
     : options
   modelOptions.value = filtered
   modelVoices.value = voicesByModelKey
+  modelVoiceLabels.value = voiceLabels
   selectedModelKey.value = filtered.some((o) => o.key === selectedKey)
     ? selectedKey
     : (filtered[0]?.key ?? '')

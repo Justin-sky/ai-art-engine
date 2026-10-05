@@ -233,4 +233,13 @@ export interface ModelProviderAdapter {
     provider: ModelProviderInstance,
     job: { jobId: string; pollingUrl: string }
   ): Promise<VideoPollResult>
+  /**
+   * 音色 id → 展示名（仅音色是**不透明 id** 的供应商需要）。
+   *
+   * ElevenLabs 的 voice_id 形如 `21m00Tcm4TlvDq8ikWAM`，光看 id 没法选；
+   * 自家音色目录端点能给出 `Sarah - Mature, Reassuring`。这些名字不属于任何模型，
+   * 所以不能塞进 CatalogModel.capabilities，单列一个入口。
+   * 未实现即该供应商的音色名就是 id（OpenAI 兼容那套本来就给可读名字）。
+   */
+  fetchVoiceLabels?(provider: ModelProviderInstance): Promise<Record<string, string>>
 }

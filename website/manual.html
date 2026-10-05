@@ -681,21 +681,25 @@
               <code>output_modalities=decisions</code> 拉取；TypeSafe 直连仅「决策」页签，目录走 <code>GET /v1/models</code>、判定走
               <code>POST /v1/systemone</code>，与 OpenRouter 的决策协议一致但不经其中转；方舟声音页签会提示语音控制台链接，并手填
               <code>speaker_id</code>；可灵仅图片与视频页签；MiniMax 支持文本 / 图片 / 视频 / 音色设计；
-              <strong>OpenAI 支持文本 / 图片 / 声音</strong>；
+              <strong>OpenAI 支持文本 / 图片 / 声音</strong>；<strong>ElevenLabs 仅声音页签</strong>（语音合成）；
               DeepSeek 仅文本；Kimi（月之暗面）仅文本；xAI（Grok）支持文本 / 图片 / 视频（视频为异步轮询）；Google（Gemini）支持文本 / Nano Banana 图片 / Veo 3.1 视频（异步轮询）；智谱支持 GLM 文本与 CogView 图片；vLLM 支持文本与视频（Wan T2V / I2V）；Ollama / LM Studio 仅文本（多模态理解可在文本节点传图）；
               魔塔仅文本与图片，文生图为异步任务；ComfyUI 支持图片 / 视频 / 声音，无文本页签；MagicRouter 支持文本 / 图片 / 视频；Meshy / Tripo / Rodin（Hyper3D） / Luma AI / Lux3D 仅 3D 模型页签；World Labs（Marble）仅空间世界页签；自定义提供商的页签由端点类型决定 —— OpenAI 兼容 / Gemini 为文本 + 图片，Anthropic 仅文本，且图片模型必须手动填 id，见
               <a href="guide-newapi.html">NewAPI 接入教程</a>）。
             </li>
             <li>
-              <strong>声音（TTS）</strong>：OpenAI 与 OpenRouter 的「声音」页签走 <code>POST /audio/speech</code>，
-              请求体就是 <code>model</code> + <code>input</code> + <code>voice</code>（可选 <code>response_format</code> / <code>speed</code>）——
+              <strong>声音（TTS）</strong>：OpenAI / OpenRouter 的声音页签走 <code>POST /audio/speech</code>，
+              请求体是 <code>model</code> + <code>input</code> + <code>voice</code>（可选 <code>response_format</code> / <code>speed</code>）——
               这是 OpenAI 的 TTS 协议形状，各类聚合器（new-api / one-api / 自建网关）都按它对接，把 Base URL 换成网关地址即可直接使用。
               模型目录：OpenRouter 走 <code>/models?output_modalities=speech</code>（能拿到 <code>supported_voices</code>），
               OpenAI 用本地静态表（<code>GET /models</code> 只给 id、不给音色列表）；聚合器上的模型也可手填 id。
+              <strong>ElevenLabs</strong> 走自己的协议：<code>POST /v1/text-to-speech/{voice_id}</code>
+              （鉴权头 <code>xi-api-key</code>），模型目录 <code>GET /v1/models</code>、音色目录 <code>GET /v1/voices</code>。
+              它的 <code>voice_id</code> 是不透明字符串，所以面板里显示的是音色名
+              （如 <code>Sarah - Mature, Reassuring</code>）；音色目录公开可读，没填 Key 也能先看模型与音色。
               <strong>音色在声音生成节点的指令面板里填</strong>（不在这里）：音色是按节点生效的参数，
               同一张图里不同配音节点本就该用不同音色；候选来自接口返回的 <code>supported_voices</code>
               （OpenRouter 文档页不列，但 <code>/models?output_modalities=speech</code> 会返回，实测 23 个语音模型里 18 个有，
-              最长的微软 MAI Voice 有 97 个），可按应用语言优先排序，也可以直接输入任意音色名。
+              最长的微软 MAI Voice 有 97 个），可按应用语言优先排序。
               留空则用模型自己的默认音色（我们不会替你猜一个音色名发给上游 —— 各家的音色命名并不通用）。
               少数模型（如 <code>bytedance-seed/seed-audio-1-0</code>）<strong>没有音色列表</strong>：
               它的音色由提示词描述决定，留空即可。

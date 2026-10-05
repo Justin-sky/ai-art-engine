@@ -501,6 +501,10 @@ function settingsModalitiesFor(provider: ModelProviderInstance): ModelModality[]
     // 声音：POST /audio/speech（model + input + voice），聚合器同协议
     return ['text', 'image', 'audio']
   }
+  if (provider.providerKind === 'elevenlabs') {
+    // ElevenLabs 只有语音合成：POST /v1/text-to-speech/{voice_id}
+    return ['audio']
+  }
   if (provider.providerKind === 'kling') {
     return ['image', 'video']
   }
@@ -665,6 +669,9 @@ function modalityHintText(provider: ModelProviderInstance): string {
   if (provider.providerKind === 'openrouter') {
     return t(`settings.models.openrouterModalityHint.${mod}`)
   }
+  if (provider.providerKind === 'elevenlabs') {
+    return t(`settings.models.elevenLabsModalityHint.${mod}`)
+  }
   if (provider.providerKind === 'volcengine-ark') {
     return t(`settings.models.arkModalityHint.${mod}`)
   }
@@ -814,6 +821,9 @@ async function refreshModels(
     catalogs[key] = next
     // 把分辨率 / 时长 / supported_frame_images 等能力写入设置快照
     syncModalityCatalogEntries(sel, next)
+    // 音频页签顺带取音色名：ElevenLabs 的 voice_id 是不透明字符串，
+    // 不取名字的话声音节点里只能显示乱码般的 id 供人选择。
+    if (modality === 'audio') await refreshVoiceLabels(latest)
     clearImageGenerateCapabilitiesCache()
     clearVideoGenerateCapabilitiesCache()
     if (sel.defaultModelId && !sel.selectedModelIds.includes(sel.defaultModelId)) {
@@ -827,6 +837,31 @@ async function refreshModels(
     catalogErrors[key] = e instanceof Error ? e.message : String(e)
   } finally {
     if (seq === refreshSeqByKey[key]) loadingKey.value = null
+  }
+}
+
+/**
+ * 取音色名并写进 provider 的 audio.voiceLabels（供声音节点的选择器显示）。
+ *
+ * 只在音频页签拉目录时顺带做一次：这些名字不属于任何模型，拿不到时保持原样
+ * （选择器退化为显示 id），所以失败只记 debug、不打扰用户。
+ */
+async function refreshVoiceLabels(provider: ModelProviderInstance): Promise<void> {
+  if (typeof window.studio?.listSpeechVoiceLabels !== 'function') return
+  try {
+    const labels = await window.studio.listSpeechVoiceLabels({
+      providerInstanceId: provider.id,
+      apiKey: provider.apiKey,
+      baseUrl: provider.baseUrl,
+      nativeBaseUrl: provider.nativeBaseUrl,
+      providerKind: provider.providerKind,
+      apiStyle: provider.apiStyle
+    })
+    const sel = modalityConfig(provider, 'audio')
+    if (labels && Object.keys(labels).length) sel.voiceLabels = labels
+    else delete sel.voiceLabels
+  } catch {
+    /* 音色名是锦上添花：失败不影响目录与生成 */
   }
 }
 

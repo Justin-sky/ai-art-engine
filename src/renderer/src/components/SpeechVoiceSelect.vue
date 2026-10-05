@@ -29,7 +29,9 @@
     >
       <!-- 只有多个音色时才给「默认」项：候选里没这一项就等于没有可选项 -->
       <option v-if="showDefaultOption" value="">{{ defaultLabel }}</option>
-      <option v-for="voice in options" :key="voice" :value="voice">{{ voice }}</option>
+      <option v-for="voice in options" :key="voice" :value="voice">
+        {{ labels?.[voice] ?? voice }}
+      </option>
     </select>
   </label>
 </template>
@@ -41,12 +43,17 @@ const props = withDefaults(
   defineProps<{
     modelValue?: string
     options: string[]
+    /**
+     * 音色 id → 展示名。ElevenLabs 的 voice_id 是不透明字符串，
+     * 不显示名字用户根本没法选（OpenAI 兼容那套本来就是可读名字，无需映射）。
+     */
+    labels?: Record<string, string>
     /** 无障碍名（不用同名 title：长音色名会弹系统 tooltip，与主题脱节） */
     voiceTitle: string
     /** 未选任何音色时的首项文案 */
     defaultLabel: string
   }>(),
-  { modelValue: '' }
+  { modelValue: '', labels: () => ({}) }
 )
 
 const emit = defineEmits<{ change: [value: string] }>()

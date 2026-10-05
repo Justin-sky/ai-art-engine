@@ -349,6 +349,35 @@ class ModelProviderFacade {
     return adapter.fetchCatalog(provider, modality)
   }
 
+  /**
+   * 音色 id → 展示名（设置页拉目录时一并取回，落进 provider 的 voiceLabels）。
+   *
+   * 适配器没实现该能力时返回空对象 —— 调用方据此保留原有行为（音色名即 id），
+   * 不用区分「不支持」与「暂时取不到」。
+   */
+  async listSpeechVoiceLabels(
+    providerInstanceId: string,
+    overrides?: {
+      apiKey?: string
+      baseUrl?: string
+      nativeBaseUrl?: string
+      providerKind?: ModelProviderKind
+      apiStyle?: CustomApiStyle
+    }
+  ): Promise<Record<string, string>> {
+    const provider = buildProviderSnapshot({
+      providerInstanceId,
+      apiKey: overrides?.apiKey,
+      baseUrl: overrides?.baseUrl,
+      nativeBaseUrl: overrides?.nativeBaseUrl,
+      providerKind: overrides?.providerKind,
+      apiStyle: overrides?.apiStyle
+    })
+    const adapter = getProviderAdapter(provider.providerKind)
+    if (typeof adapter.fetchVoiceLabels !== 'function') return {}
+    return adapter.fetchVoiceLabels(provider)
+  }
+
   async testConnection(input: {
     providerInstanceId: string
     modality?: ModelModality
