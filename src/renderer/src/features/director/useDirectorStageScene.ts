@@ -164,7 +164,7 @@ import { persistAssetRecord, useAssetRecord } from '../../composables/useAssetRe
 import { useEditorDocumentSession } from '../../composables/useEditorDocumentSession'
 import { useStudioI18n } from '../../composables/useStudioI18n'
 import { useEditorKernel } from '../../editor/kernel'
-import { themePreference } from '../../editor/preferences'
+import { themePreference, stageControls } from '../../editor/preferences'
 import { useProjectStore } from '../../stores/project'
 import { graphEditorHosts } from '../graph/model/graphEditorHosts'
 import unityCameraIconUrl from '../../assets/unity-camera-icon.png'
@@ -237,8 +237,8 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   const flyRight = new THREE.Vector3()
   const flyMove = new THREE.Vector3()
   const flyWorldUp = new THREE.Vector3(0, 1, 0)
-  const FLY_LOOK_SPEED = 0.0022
-  const FLY_MOVE_SPEED = 5
+  // 灵敏度不再写死：读设置 → 通用里的滑块（响应式，保存后下一次拖拽即生效）。
+  // 取值与区间见 @shared/domain 的 STAGE_CONTROL_*。
   const FLY_BOOST_MULT = 2.5
   const FLY_ORBIT_TARGET_DIST = 3
   const stage = ref<DirectorStageState>(createDefaultDirectorStage())
@@ -8350,9 +8350,10 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
 
   function applyFlyLook(dx: number, dy: number): void {
     if (!camera || (!dx && !dy)) return
+    const lookSpeed = stageControls.value.flyLookSpeed
     flyEuler.setFromQuaternion(camera.quaternion)
-    flyEuler.y -= dx * FLY_LOOK_SPEED
-    flyEuler.x -= dy * FLY_LOOK_SPEED
+    flyEuler.y -= dx * lookSpeed
+    flyEuler.x -= dy * lookSpeed
     const limit = Math.PI / 2 - 0.01
     flyEuler.x = Math.max(-limit, Math.min(limit, flyEuler.x))
     camera.quaternion.setFromEuler(flyEuler)
@@ -8362,7 +8363,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   function tickFlyNavigate(deltaSeconds: number): boolean {
     if (!flyNavigateActive || !camera) return false
     const speed =
-      FLY_MOVE_SPEED *
+      stageControls.value.flyMoveSpeed *
       (flyKeys.boost ? FLY_BOOST_MULT : 1) *
       Math.max(0, Math.min(0.1, deltaSeconds))
     camera.getWorldDirection(flyForward)
@@ -8791,6 +8792,29 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     if (e.button === 2 || flyNavigateActive) endFlyNavigate(e)
   }
 
+  /**
+   * 把设置里的三个 OrbitControls 灵敏度写进控制器。
+   *
+   * three 在每次交互时读这几个属性，所以**改完立刻生效**，不必重建控制器；
+   * 设置页保存 → 偏好 ref 变化 → 下面的 watch 调这里。
+   */
+  function applyStageControlSpeeds(target: OrbitControls): void {
+    target.rotateSpeed = stageControls.value.orbitRotateSpeed
+    target.panSpeed = stageControls.value.orbitPanSpeed
+    target.zoomSpeed = stageControls.value.orbitZoomSpeed
+  }
+
+  watch(
+    () => [
+      stageControls.value.orbitRotateSpeed,
+      stageControls.value.orbitPanSpeed,
+      stageControls.value.orbitZoomSpeed
+    ],
+    () => {
+      if (orbit) applyStageControlSpeeds(orbit)
+    }
+  )
+
   function initThree(): void {
     const el = options.viewportEl.value
     if (!el) return
@@ -8827,6 +8851,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     orbit.enableDamping = true
     orbit.enablePan = true
     orbit.screenSpacePanning = true
+    applyStageControlSpeeds(orbit)
     // 最小缩放距离再缩小 10 倍：0.05 → 0.005，小模型也能推得更近
     orbit.minDistance = 0.005
     // 无全景时放开拉远上限；若后续加载全景，syncCameraClipPlanes 会收回到球体内

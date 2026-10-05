@@ -1,6 +1,11 @@
 import { BrowserWindow, type BrowserWindowConstructorOptions } from 'electron'
 import Store from 'electron-store'
-import { DEFAULT_SETTINGS, normalizeBlenderMcpSettings, type AppSettings } from '@shared/domain'
+import {
+  DEFAULT_SETTINGS,
+  normalizeBlenderMcpSettings,
+  normalizeStageControls,
+  type AppSettings
+} from '@shared/domain'
 import { normalizeModelsSettings } from '@shared/modelProvider'
 import { normalizeObjectStorageSettings } from '@shared/objectStorage'
 import { normalizeSearchSettings } from '@shared/searchProvider'
@@ -65,7 +70,9 @@ class SettingsService {
       ...saved,
       editor: {
         ...DEFAULT_SETTINGS.editor,
-        ...(saved.editor ?? {})
+        ...(saved.editor ?? {}),
+        // 读盘也钳一次：手改过 settings.json 的脏值不该直接进渲染层
+        stage: normalizeStageControls(saved.editor?.stage)
       },
       models: normalizeModelsSettings(saved.models ?? DEFAULT_SETTINGS.models),
       search: normalizeSearchSettings(saved.search ?? DEFAULT_SETTINGS.search),
@@ -96,7 +103,9 @@ class SettingsService {
         autoSaveIntervalSec: Math.min(
           3600,
           Math.max(1, Math.round(settings.editor?.autoSaveIntervalSec || 30))
-        )
+        ),
+        // 落盘前钳到合法区间：脏值（手改 settings.json / 旧版本缺字段）不该让视口拖不动
+        stage: normalizeStageControls(settings.editor?.stage)
       },
       models: normalizeModelsSettings(settings.models),
       search: normalizeSearchSettings(settings.search),

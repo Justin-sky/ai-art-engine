@@ -325,6 +325,16 @@ export default {
       enabled: '启用自动保存',
       interval: '自动保存间隔'
     },
+    stageControls: {
+      title: '3D 视口操控灵敏度',
+      hint: '导演台视口的手感。拖动后保存即生效，不用重开视口；默认值等于旧版写死的手感。',
+      flyLook: '环视 / 飞行转向',
+      flyMove: '飞行移动速度',
+      orbitRotate: '环绕旋转速度',
+      orbitPan: '平移速度（含中键拖拽）',
+      orbitZoom: '滚轮缩放速度',
+      reset: '恢复默认灵敏度'
+    },
     about: {
       title: '关于与更新',
       version: '当前版本',
@@ -1852,7 +1862,8 @@ export default {
       scale: '缩放 (S)'
     },
     hint: {
-      stage: '左键选物体 · 中键平移 · 右键环视 · Q/R/S 移动/旋转/缩放',
+      stage:
+        '左键选物体 · 中键平移 · 右键环视/飞行（WASD）· Q/R/S 移动/旋转/缩放 · 灵敏度在设置→通用',
       graph: '双击导演台编辑 · 连线至导演台输出'
     },
     error: {

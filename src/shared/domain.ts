@@ -487,6 +487,68 @@ export interface YoloSettings {
   iouThreshold: number
 }
 
+/**
+ * 3D 视口（导演台）的操控灵敏度。
+ *
+ * 这几个值历史上是写死在 `useDirectorStageScene.ts` 里的常数，用户无从调节。
+ * 默认值**刻意等于当年的写死值**：升级后手感不变，只有主动拖动才改变。
+ * 数值都是「绝对档位」（1 = three 的默认灵敏度），不是相对倍率。
+ */
+export interface StageControlPreferences {
+  /** 右键拖拽环视 / 第一人称飞行的转向灵敏度（每像素弧度），原写死 0.0022 */
+  flyLookSpeed: number
+  /** WASD 飞行移动速度（米/秒），原写死 5 */
+  flyMoveSpeed: number
+  /** 环绕（OrbitControls.rotateSpeed），three 默认 1 */
+  orbitRotateSpeed: number
+  /** 平移，含中键拖拽（OrbitControls.panSpeed），three 默认 1 */
+  orbitPanSpeed: number
+  /** 滚轮缩放（OrbitControls.zoomSpeed），three 默认 1 */
+  orbitZoomSpeed: number
+}
+
+/** 灵敏度档位范围：两端都刻意留出「很慢」与「很快」，中间 1 附近是常态 */
+export const STAGE_CONTROL_DEFAULTS: StageControlPreferences = {
+  flyLookSpeed: 0.0022,
+  flyMoveSpeed: 5,
+  orbitRotateSpeed: 1,
+  orbitPanSpeed: 1,
+  orbitZoomSpeed: 1
+}
+
+/** 每个档位的取值区间（设置页滑块与读盘钳制共用，避免出现 0 或负值让视口「不动」） */
+export const STAGE_CONTROL_RANGES = {
+  flyLookSpeed: { min: 0.0002, max: 0.02, step: 0.0002 },
+  flyMoveSpeed: { min: 0.5, max: 40, step: 0.5 },
+  orbitRotateSpeed: { min: 0.2, max: 3, step: 0.1 },
+  orbitPanSpeed: { min: 0.2, max: 3, step: 0.1 },
+  orbitZoomSpeed: { min: 0.2, max: 3, step: 0.1 }
+} as const satisfies Record<
+  keyof StageControlPreferences,
+  { min: number; max: number; step: number }
+>
+
+/**
+ * 把任意来源的值钳到合法区间。
+ *
+ * 只有**真正的有限数字**才接受；其它一律回退默认值。
+ * 注意不能直接 `Number(raw)` 再判有限性 —— `Number(null) === 0`、`Number('') === 0`
+ * 都是有限数，那样 `null` 会被钳成下界（表现为「视口慢得几乎不动」）而不是回退默认。
+ */
+export function normalizeStageControls(
+  raw: Partial<StageControlPreferences> | undefined
+): StageControlPreferences {
+  const out = { ...STAGE_CONTROL_DEFAULTS }
+  if (!raw || typeof raw !== 'object') return out
+  for (const key of Object.keys(STAGE_CONTROL_DEFAULTS) as Array<keyof StageControlPreferences>) {
+    const value = raw[key]
+    if (typeof value !== 'number' || !Number.isFinite(value)) continue
+    const { min, max } = STAGE_CONTROL_RANGES[key]
+    out[key] = Math.min(max, Math.max(min, value))
+  }
+  return out
+}
+
 export interface AppSettings {
   language: 'zh-CN' | 'en-US'
   theme: 'dark' | 'light'
@@ -494,6 +556,8 @@ export interface AppSettings {
   editor: {
     autoSaveEnabled: boolean
     autoSaveIntervalSec: number
+    /** 3D 视口（导演台）操控灵敏度；缺省与历史写死值一致，老设置升级后手感不变 */
+    stage: StageControlPreferences
   }
   /**
    * 模型提供商配置（文本 / 图片 / 视频 / 音频）。
@@ -2195,7 +2259,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   defaultProjectPath: '',
   editor: {
     autoSaveEnabled: false,
-    autoSaveIntervalSec: 30
+    autoSaveIntervalSec: 30,
+    stage: { ...STAGE_CONTROL_DEFAULTS }
   },
   models: createEmptyModelsSettings(),
   search: createEmptySearchSettings(),

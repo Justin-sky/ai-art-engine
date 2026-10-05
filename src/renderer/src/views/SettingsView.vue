@@ -115,6 +115,25 @@
           </div>
         </label>
 
+        <h2 class="about-heading">{{ t('settings.stageControls.title') }}</h2>
+        <p class="meta">{{ t('settings.stageControls.hint') }}</p>
+        <label v-for="item in stageControlItems" :key="item.key" class="stage-slider">
+          <span class="stage-slider-label">
+            {{ t(item.labelKey) }}
+            <em class="stage-slider-value">{{ formatStageValue(item) }}</em>
+          </span>
+          <input
+            v-model.number="form.editor.stage[item.key]"
+            type="range"
+            :min="item.min"
+            :max="item.max"
+            :step="item.step"
+          />
+        </label>
+        <button type="button" class="mini-btn" @click="resetStageControls">
+          {{ t('settings.stageControls.reset') }}
+        </button>
+
         <h2 class="about-heading">
           {{ t('settings.about.title') }}
         </h2>
@@ -440,7 +459,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, toRaw, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { DEFAULT_SETTINGS, type AppSettings } from '@shared/domain'
+import {
+  DEFAULT_SETTINGS,
+  STAGE_CONTROL_DEFAULTS,
+  STAGE_CONTROL_RANGES,
+  type AppSettings
+} from '@shared/domain'
 import { normalizeModelsSettings } from '@shared/modelProvider'
 import { normalizeObjectStorageSettings } from '@shared/objectStorage'
 import { normalizeSearchSettings } from '@shared/searchProvider'
@@ -464,6 +488,33 @@ const router = useRouter()
 const form = reactive<AppSettings>(cloneSettings(DEFAULT_SETTINGS))
 const saving = ref(false)
 const message = ref('')
+
+/**
+ * 3D 视口（导演台）灵敏度滑块。
+ *
+ * 范围取自 `STAGE_CONTROL_RANGES`（与读盘钳制同一份来源），所以滑块拖得到的地方
+ * 一定存得下、不会被归一化悄悄改回去。
+ */
+const stageControlItems = (
+  [
+    ['flyLookSpeed', 'settings.stageControls.flyLook'],
+    ['flyMoveSpeed', 'settings.stageControls.flyMove'],
+    ['orbitRotateSpeed', 'settings.stageControls.orbitRotate'],
+    ['orbitPanSpeed', 'settings.stageControls.orbitPan'],
+    ['orbitZoomSpeed', 'settings.stageControls.orbitZoom']
+  ] as const
+).map(([key, labelKey]) => ({ key, labelKey, ...STAGE_CONTROL_RANGES[key] }))
+
+/** 飞行转向很小（0.0022），直接显示会是一串 0；按量级换单位 */
+function formatStageValue(item: (typeof stageControlItems)[number]): string {
+  const value = Number(form.editor.stage[item.key])
+  if (item.key === 'flyLookSpeed') return value.toFixed(4)
+  return Number.isInteger(item.step) ? value.toFixed(0) : value.toFixed(1)
+}
+
+function resetStageControls(): void {
+  Object.assign(form.editor.stage, STAGE_CONTROL_DEFAULTS)
+}
 
 /** Blender 工具集：v-model 直接绑 form.blenderMcp，「应用并重连」按钮统一提交 */
 const blenderBusy = ref(false)
@@ -1032,6 +1083,30 @@ label {
 
 .number-row span {
   color: var(--text-muted);
+}
+
+/* 导演台灵敏度滑块：标签在上、滑杆占满整宽，数值跟在标签后面 */
+.stage-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stage-slider-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.stage-slider-value {
+  color: var(--text-muted);
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
+
+.stage-slider input[type='range'] {
+  width: 100%;
 }
 
 .actions {

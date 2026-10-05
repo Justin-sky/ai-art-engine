@@ -328,6 +328,16 @@ export default {
       enabled: 'Enable autosave',
       interval: 'Autosave interval'
     },
+    stageControls: {
+      title: '3D viewport control sensitivity',
+      hint: 'How the Director Stage viewport feels. Drag and save to apply immediately — no need to reopen the viewport; the defaults match the previously hard-coded feel.',
+      flyLook: 'Look / fly rotation',
+      flyMove: 'Fly move speed',
+      orbitRotate: 'Orbit rotate speed',
+      orbitPan: 'Pan speed (incl. middle-drag)',
+      orbitZoom: 'Wheel zoom speed',
+      reset: 'Reset to default sensitivity'
+    },
     about: {
       title: 'About & updates',
       version: 'Current version',
@@ -1899,7 +1909,8 @@ export default {
       scale: 'Scale (S)'
     },
     hint: {
-      stage: 'LMB select · MMB pan · RMB orbit · Q/R/S move/rotate/scale',
+      stage:
+        'LMB select · MMB pan · RMB look/fly (WASD) · Q/R/S move/rotate/scale · sensitivity in Settings → General',
       graph: 'Double-click director deck edit · connect to director output'
     },
     error: {
