@@ -650,6 +650,14 @@ export interface McpActivity {
   relativePath?: string
   /** 一次运行产出多件媒体时的完整清单（relativePath 为其中首条，兼容单产物消费方） */
   relativePaths?: string[]
+  /**
+   * 与**主产物同批**、应折叠进同一张对话卡的产物。
+   *
+   * 与 `relativePaths` 的区别是「是不是独立作品」：GIF 与成片是两件作品（各出一张卡），
+   * 而世界生成随包返回的高斯泼溅 / 360 全景是**主产物的附件**（同一件作品的一部分），
+   * 该收在同一张卡里。卡上的预览仍取 `relativePath`。
+   */
+  relatedPaths?: string[]
   error?: string
   /** 本次生成调用传入供应商的详细参数与结果摘要（终态时写入，桥接到执行日志 API 详情；id/ts 由日志会话生成） */
   apiCall?: Omit<GraphRunLogApiCall, 'id' | 'ts'>

@@ -1665,8 +1665,15 @@ function onMcpActivity(activity: McpActivity): void {
   // 仅在任务卡存在或任务仍运行时插入，避免产生孤立的预览卡；
   // 一次运行产出多件（如工作流同时出 GIF 与成片）时逐条出卡
   if (mediaPaths.length && (prev || running.value)) {
+    // 与主产物同批的**附件**（世界随包返回的泼溅 / 全景）折叠进第一张卡，
+    // 它们不是独立作品，逐条出卡会把「一次生成」拆成三张几乎相同的卡
+    const attachments = (activity.relatedPaths ?? []).filter((path) => !!path?.trim())
     mediaPaths.forEach((path, index) => {
-      void pushAsset(index === 0 ? `asset:${activity.id}` : `asset:${activity.id}:${index}`, path)
+      void pushAsset(
+        index === 0 ? `asset:${activity.id}` : `asset:${activity.id}:${index}`,
+        path,
+        index === 0 ? attachments : []
+      )
     })
   }
 }

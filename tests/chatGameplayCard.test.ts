@@ -19,9 +19,13 @@ const sandboxDialogState = (): string =>
 describe('对话里的可玩 HTML 卡片', () => {
   it('gameplay_build 活动走独立游戏卡，不再落通用资产卡', () => {
     const src = chatPanel()
-    // 分支必须存在且在通用 pushAsset 之前 return（否则会多出一张带「保存到资产库」的资产卡）
+    // 分支必须存在且在通用 pushAsset 之前 return（否则会多出一张带「保存到资产库」的资产卡）。
+    //
+    // 锚点用该分支**独有的注释**，不要用 `void pushAsset(`：文件里更早的
+    // `captureRoundOutputs` 也调 pushAsset，按它找会命中错位置；
+    // 也别绑带参数的整行 —— 那段后来为了「同批附件折叠」拆成了多行。
     const branch = src.indexOf("activity.tool === 'gameplay_build'")
-    const generic = src.indexOf('void pushAsset(index === 0 ?')
+    const generic = src.indexOf('生成完成且产出了资产：在对话末尾追加独立预览卡')
     expect(branch).toBeGreaterThan(-1)
     expect(generic).toBeGreaterThan(-1)
     expect(branch).toBeLessThan(generic)

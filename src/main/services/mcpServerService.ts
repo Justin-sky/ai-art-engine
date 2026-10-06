@@ -162,6 +162,7 @@ import { mcpActivityService } from './mcpActivityService'
 import { broadcastToAllWindows } from '../broadcast'
 import { SHARED_ERRORS } from '@shared/errors/catalog'
 import { fail } from '@shared/errors/appError'
+import { splitPrimaryAndRelated } from '@shared/outputScan'
 import type {
   ExportWorldInput,
   Model3dConvertFormat,
@@ -314,6 +315,8 @@ async function runGenActivity<T>(
     relativePath?: string
     /** 一次调用产出多件产物时的完整清单（relativePath 取首条，兼容单产物消费方） */
     relativePaths?: string[]
+    /** 与主产物同批、折叠进同一张卡的附件（如世界随包返回的泼溅 / 全景） */
+    relatedPaths?: string[]
   },
   settle?: (result: T) => void | Promise<void>,
   apiCall?: (result: T) => Omit<GraphRunLogApiCall, 'id' | 'ts'> | undefined,
@@ -3081,7 +3084,19 @@ const TOOL_DEFS: McpToolDef[] = [
         activityTitle(input.name, input.prompt),
         input.model,
         () => modelProviderFacade.generateSpatialWorld(input),
-        (r) => ({ assetId: r.assetId, relativePath: liveAssetRelativePath(r) }),
+        // 世界产物除主产物 GLB 外，还随包返回高斯泼溅（.spz）与 360 全景。
+        // 它们是**主产物的附件**而非独立作品，所以走 relatedPaths 折叠进同一张卡，
+        // 由 splitPrimaryAndRelated 决定谁当封面（有泼溅就用泼溅）。
+        (r) => {
+          const primary = liveAssetRelativePath(r) ?? r.relativePath
+          const extras = (r.extras ?? []).map((item) => item.relativePath)
+          const split = splitPrimaryAndRelated(primary, extras)
+          return {
+            assetId: r.assetId,
+            relativePath: split.primary,
+            ...(split.related.length ? { relatedPaths: split.related } : {})
+          }
+        },
         undefined,
         (r) => ({
           kind: 'generateSpatialWorld',

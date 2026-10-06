@@ -54,6 +54,8 @@ class McpActivityService {
       relativePath?: string
       /** 多件产物时的完整清单（relativePath 通常取其首条） */
       relativePaths?: string[]
+      /** 与主产物同批、折叠进同一张卡的附件（如世界随包返回的泼溅 / 全景） */
+      relatedPaths?: string[]
       error?: string
       apiCall?: Omit<GraphRunLogApiCall, 'id' | 'ts'>
     }
@@ -64,6 +66,7 @@ class McpActivityService {
     if (prev.status !== 'running') return
     const finishedAt = Date.now()
     const relativePaths = input.relativePaths?.filter((path) => !!path?.trim())
+    const relatedPaths = input.relatedPaths?.filter((path) => !!path?.trim())
     const next: McpActivity = {
       ...prev,
       status: input.ok ? 'done' : 'error',
@@ -71,6 +74,7 @@ class McpActivityService {
       assetId: input.assetId,
       relativePath: input.relativePath,
       relativePaths: relativePaths?.length ? [...relativePaths] : undefined,
+      relatedPaths: relatedPaths?.length ? [...relatedPaths] : undefined,
       error: input.error,
       apiCall: input.apiCall
         ? {

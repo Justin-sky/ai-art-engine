@@ -271,6 +271,38 @@ export function isSplatMediaPath(relativePath: string): boolean {
   return SPLAT_EXTENSIONS.some((ext) => clean.endsWith(ext))
 }
 
+/**
+ * 把「主产物 + 同批附件」拆成卡片的**代表**（预览用）与**成员**（卡内折叠）。
+ *
+ * 世界生成随包返回 `.spz` 高斯泼溅与 360 全景，它们是主产物 GLB 的附件。
+ * 规则与扫盘链（`pickGroupRepresentative`）保持一致：**有泼溅就用泼溅当代表** ——
+ * 泼溅才是那个可漫游世界的直观形态，用网格当封面基本看不出生成结果。
+ *
+ * 用于 MCP 工具链（扫盘链在 `groupRoundOutputs` 内部自行挑选）。
+ */
+export function splitPrimaryAndRelated(
+  primary: string,
+  extras: readonly (string | undefined | null)[]
+): { primary: string; related: string[] } {
+  const main = normalizeOutputPathKey(primary)
+  const attachments: string[] = []
+  const seen = new Set<string>([main].filter(Boolean))
+  for (const item of extras) {
+    const path = normalizeOutputPathKey(item ?? '')
+    if (!path || seen.has(path)) continue
+    seen.add(path)
+    attachments.push(path)
+  }
+  if (!main) return { primary: main, related: attachments }
+
+  const preview = attachments.find((path) => isSplatMediaPath(path)) ?? main
+  return {
+    primary: preview,
+    // 被挑去当代表的那份不再重复出现在成员里
+    related: attachments.filter((path) => path !== preview)
+  }
+}
+
 /** 顺序归并时的入组判定：同源给宽窗口，附带产物只给紧窗口，间距拉开即开新卡 */
 function joinsGroup(
   group: { assetKey: string | null; lastMtimeMs: number },

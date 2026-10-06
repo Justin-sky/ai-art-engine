@@ -153,3 +153,43 @@ describe('generate_world 必须把世界 id 回给 Agent（否则下游拿不到
     expect(world).toMatch(/return \{\s*\n\s*\.\.\.result,/)
   })
 })
+
+/**
+ * 世界生成随包返回的高斯泼溅 / 360 全景要**折叠进同一张对话卡**。
+ *
+ * 两条链入口不同，都必须覆盖：
+ * - 图运行 / 一键工作流 → 扫盘链（`groupRoundOutputs` 的代表挑选）
+ * - 对话里直接生成 → MCP 工具链（`relatedPaths` + `splitPrimaryAndRelated`）
+ *
+ * 这条守的是**工具链**：extras 必须从工具返回值一路透到对话卡。
+ */
+describe('世界附加产物：MCP 工具链的接线', () => {
+  const world = toolBlock('generate_world')
+  const chatPanel = readFileSync(resolve('src/renderer/src/components/ChatPanel.vue'), 'utf8')
+
+  it('generate_world 用 splitPrimaryAndRelated 拆「代表 + 附件」', () => {
+    expect(world).toContain('splitPrimaryAndRelated(')
+    expect(world).toContain('relatedPaths: split.related')
+  })
+
+  it('附件取自 result.extras 的 relativePath', () => {
+    expect(world).toMatch(/r\.extras \?\? \[\]\)\.map\(\(item\) => item\.relativePath\)/)
+  })
+
+  it('McpActivity 与活动服务都支持 relatedPaths', () => {
+    const ipc = readFileSync(resolve('src/shared/ipc.ts'), 'utf8')
+    const service = readFileSync(resolve('src/main/services/mcpActivityService.ts'), 'utf8')
+    expect(ipc).toMatch(/relatedPaths\?: string\[\]/)
+    expect(service).toContain('relatedPaths')
+    expect(service).toMatch(/relatedPaths: relatedPaths\?\.length/)
+  })
+
+  it('runGenActivity 的 describe 允许返回 relatedPaths（否则类型不过）', () => {
+    expect(SRC).toMatch(/describe: \(result: T\) => \{[\s\S]{0,420}relatedPaths\?: string\[\]/)
+  })
+
+  it('ChatPanel 把附件折叠进第一张卡，而不是逐条出卡', () => {
+    expect(chatPanel).toContain('activity.relatedPaths')
+    expect(chatPanel).toMatch(/index === 0 \? attachments : \[\]/)
+  })
+})

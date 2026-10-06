@@ -9,6 +9,7 @@ import {
   isSplatMediaPath,
   normalizeOutputPathKey,
   selectRoundOutputs,
+  splitPrimaryAndRelated,
   type ProjectOutputFile
 } from '@shared/outputScan'
 
@@ -380,7 +381,6 @@ describe('产物扫盘：世界附加产物（高斯泼溅 / 全景）也要进�
     expect(isSplatMediaPath('Cache/Models/world.glb')).toBe(false)
     expect(isSplatMediaPath('Cache/Models/world.pano.png')).toBe(false)
   })
-
   it('selectRoundOutputs 能选中 .spz（本轮写入且体积达标）', () => {
     const at = 1_700_000_000_000
     const { picked } = selectRoundOutputs(
@@ -394,5 +394,75 @@ describe('产物扫盘：世界附加产物（高斯泼溅 / 全景）也要进�
       'Cache/Models/world.spz',
       'Cache/Models/world.ply'
     ])
+  })
+})
+
+/**
+ * MCP 工具链（对话里直接生成世界）的「主产物 + 附件」拆分。
+ *
+ * 扫盘链在 `groupRoundOutputs` 内部挑代表；工具链没有扫盘那一步，
+ * 卡片来自工具的返回值，所以要用 `splitPrimaryAndRelated` 做同一件事 ——
+ * 规则必须与扫盘链一致（有泼溅就用泼溅当封面）。
+ */
+describe('splitPrimaryAndRelated：世界主产物与其附件', () => {
+  it('有泼溅时泼溅当代表，其余附件进成员（与扫盘链同一规则）', () => {
+    const split = splitPrimaryAndRelated('Cache/Models/world.glb', [
+      'Cache/Models/world.spz',
+      'Cache/Models/world.pano.png'
+    ])
+    // 有泼溅 → 泼溅当封面（它就是那个可漫游世界）
+    expect(split.primary).toBe('Cache/Models/world.spz')
+    // 主产物（GLB）不算附件 —— 附件是"主产物之外的同批产物"
+    expect(split.related).toEqual(['Cache/Models/world.pano.png'])
+  })
+
+  it('没有泼溅时代表就是主产物', () => {
+    const split = splitPrimaryAndRelated('Cache/Models/world.glb', ['Cache/Models/world.pano.png'])
+    expect(split.primary).toBe('Cache/Models/world.glb')
+    expect(split.related).toEqual(['Cache/Models/world.pano.png'])
+  })
+
+  it('没有附件时代表是主产物、成员为空', () => {
+    expect(splitPrimaryAndRelated('Cache/Models/world.glb', [])).toEqual({
+      primary: 'Cache/Models/world.glb',
+      related: []
+    })
+  })
+
+  it('附件与主产物同路径时不算附件（不重复出现）', () => {
+    const split = splitPrimaryAndRelated('Cache/Models/world.glb', ['Cache/Models/world.glb'])
+    expect(split.primary).toBe('Cache/Models/world.glb')
+    expect(split.related).toEqual([])
+  })
+
+  it('代表不重复出现在成员里', () => {
+    const split = splitPrimaryAndRelated('Cache/Models/world.glb', [
+      'Cache/Models/world.spz',
+      'Cache/Models/world.spz'
+    ])
+    expect(split.primary).toBe('Cache/Models/world.spz')
+    expect(split.related).toEqual([])
+  })
+
+  it('附件里的空值被丢掉', () => {
+    const split = splitPrimaryAndRelated('Cache/Models/world.glb', [
+      'Cache/Models/world.spz',
+      undefined,
+      null,
+      '  '
+    ])
+    expect(split.primary).toBe('Cache/Models/world.spz')
+    expect(split.related).toEqual([])
+  })
+
+  it('路径写法归一（反斜杠 / 前导斜杠不影响判重）', () => {
+    const split = splitPrimaryAndRelated('Cache/Models/world.glb', [
+      'Cache\\Models\\world.spz',
+      '/Cache/Models/world.pano.png',
+      // 与主产物同路径但写法不同 → 仍应被认成主产物，不当附件
+      'Cache\\Models\\world.glb'
+    ])
+    expect(split.primary).toBe('Cache/Models/world.spz')
+    expect(split.related).toEqual(['Cache/Models/world.pano.png'])
   })
 })
