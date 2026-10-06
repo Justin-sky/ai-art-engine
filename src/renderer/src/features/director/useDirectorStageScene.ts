@@ -151,13 +151,8 @@ import {
   resolveDirectorStageForNode,
   shouldResetDirectorStage
 } from './directorStageBinding'
-import { pickDirectorIncomingModels } from './pickDirectorIncomingModel'
-import {
-  flattenAssetValues,
-  flattenImagesValues,
-  isDirectorProcessingNode,
-  type GraphValue
-} from '@shared/graph'
+import { resolveDirectorIncomingModels } from './pickDirectorIncomingModel'
+import { flattenImagesValues, isDirectorProcessingNode } from '@shared/graph'
 import { resolveAssetFileUrl } from '../media/assetUrlCache'
 import { extractModelSceneDefaults } from './modelSceneDefaults'
 import { persistAssetRecord, useAssetRecord } from '../../composables/useAssetRecord'
@@ -8116,63 +8111,10 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     if (!nodeId) return []
     const doc = graphEditorHosts.getDocument(graphHostId.value)
     if (!doc) return []
-    const edges = (doc.edges ?? []).filter(
-      (item) => item.target === nodeId && (item.targetPort ?? 'in') === 'in-model'
-    )
-    if (!edges.length) return []
-
-    const fromValue = (value: GraphValue, sourceTypeId?: string): IncomingModelInfo | null => {
-      if (
-        value.kind !== 'asset' ||
-        (value.assetType !== 'model' && value.assetType !== 'model3d')
-      ) {
-        return null
-      }
-      if (!value.assetId) return null
-      return {
-        assetId: value.assetId,
-        sourceTypeId,
-        ...(value.relativePath?.trim() ? { relativePath: value.relativePath.trim() } : {}),
-        ...(value.title?.trim() ? { name: value.title.trim() } : {}),
-        ...(value.bonePose && Object.keys(value.bonePose).length
-          ? { bonePose: value.bonePose }
-          : {}),
-        ...(value.clip?.name?.trim()
-          ? {
-              clip: {
-                name: value.clip.name.trim(),
-                fps: value.clip.fps,
-                frameRange: value.clip.frameRange
-              }
-            }
-          : {})
-      }
-    }
-
-    const candidates: IncomingModelInfo[] = []
-    for (const edge of edges) {
-      const source = (doc.nodes ?? []).find((item) => item.id === edge.source)
-      if (!source) continue
-      const runOut = doc.runStates?.[source.id]?.outputs?.out
-      const direct = runOut ? fromValue(runOut, source.typeId) : null
-      if (direct) {
-        candidates.push(direct)
-        continue
-      }
-      let found = false
-      for (const item of flattenAssetValues(runOut ? [runOut] : [])) {
-        const info = fromValue(item, source.typeId)
-        if (info) {
-          candidates.push(info)
-          found = true
-          break
-        }
-      }
-      if (!found && source.assetType === 'model' && source.assetId) {
-        candidates.push({ assetId: source.assetId, sourceTypeId: source.typeId })
-      }
-    }
-    return pickDirectorIncomingModels(candidates)
+    // 候选解析抽在 shared feature 里（纯函数、可测）：这段以前内联在此处，
+    // 而本文件依赖 three.js / Electron，测试跑不起来 —— 于是
+    // 「兜底只认 assetType === 'model'、漏掉生成节点的 'model3d'」这个缺陷一直没被发现。
+    return resolveDirectorIncomingModels(doc, nodeId)
   }
 
   let appliedIncomingModelKey = ''
