@@ -474,6 +474,22 @@ export function supportsMusicModality(kind: ModelProviderKind): boolean {
   return kind === 'openrouter'
 }
 
+/**
+ * 谁支持**音效生成**（`POST /v1/sound-generation`）。
+ *
+ * 与 `supportsAudioModality` 分开，理由和音乐一样：一家能做 TTS 不代表能做音效，
+ * 这张表的粒度是「**具体端点**」而不是「音频这一大类」。
+ *
+ * 为什么必须单独有一张表：音效节点的提供商解析如果只看「audio 桶里勾了模型」，
+ * 就会选中一家**不会做音效**的（OpenAI / MiniMax / 方舟都有 TTS），
+ * 然后才在适配器那层报「不支持」—— 用户看到的是「我配了 ElevenLabs 却说我不支持」。
+ * 设置页的音效选择器、节点下拉、主进程解析、空列表成因解释都只认这一处。
+ */
+export function supportsSoundEffect(kind: ModelProviderKind): boolean {
+  // 目前只有 ElevenLabs 实现了该端点（唯一模型 eleven_text_to_sound_v2）
+  return kind === 'elevenlabs'
+}
+
 export function isMiniMaxProvider(
   provider: Pick<ModelProviderInstance, 'providerKind'> | ModelProviderKind | undefined | null
 ): boolean {

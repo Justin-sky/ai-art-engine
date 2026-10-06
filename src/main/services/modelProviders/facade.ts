@@ -68,7 +68,12 @@ import { meshOpSupported } from '@shared/meshOps'
 import { createProviderHttpClient, sleep } from './http'
 import { PROVIDER_ERRORS } from './catalog'
 import { fail, defErrSimple, isAppError } from '@shared/errors/appError'
-import { buildProviderSnapshot, resolveActiveMusicProvider, resolveActiveProvider } from './resolve'
+import {
+  buildProviderSnapshot,
+  resolveActiveMusicProvider,
+  resolveActiveProvider,
+  resolveActiveSoundEffectProvider
+} from './resolve'
 import { settingsService } from '../settingsService'
 import { getProviderAdapter } from './registry'
 import { prepareVideoInputReferencesForApi } from './videoRefs'
@@ -1574,11 +1579,10 @@ class ModelProviderFacade {
     input: GenerateSoundEffectInput & { outputDir?: string }
   ): Promise<GenerateMusicAssetResult> {
     if (!projectService.isOpen()) throw fail(E_NO_PROJECT)
-    const { provider, modelId } = resolveActiveProvider(
-      'audio',
-      input.providerInstanceId,
-      input.model
-    )
+    // 按**能力**解析（不是按 audio 模态）：音效只有 ElevenLabs 实现了该端点，
+    // 用 resolveActiveProvider('audio', …) 会选中一家只会 TTS 的（OpenAI / MiniMax /
+    // 方舟都算），然后在下一行报「不支持」—— 用户看到的是「我配了 ElevenLabs 却说不支持」
+    const { provider, modelId } = resolveActiveSoundEffectProvider(input.providerInstanceId)
     const adapter = getProviderAdapter(provider.providerKind)
     if (!adapter.generateSoundEffect) throw fail(E_SOUND_EFFECT_UNSUPPORTED)
     const result = await adapter.generateSoundEffect(provider, modelId, input)

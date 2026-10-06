@@ -7,11 +7,15 @@ import type {
 import {
   DEFAULT_CUSTOM_API_STYLE,
   MODEL_PROVIDER_KINDS,
+  allowsEmptyApiKey,
   createEmptyModalityMap,
   findProviderById,
   isCustomApiStyle,
-  pickActiveProvider
+  modalityConfig,
+  pickActiveProvider,
+  supportsSoundEffect
 } from '@shared/modelProvider'
+import { ELEVEN_SOUND_MODEL } from '@shared/modelProviders/elevenlabs/voice'
 import { settingsService } from '../settingsService'
 import { fail } from '@shared/errors/appError'
 import { PROVIDER_ERRORS } from './catalog'
@@ -70,8 +74,46 @@ export function resolveActiveMusicProvider(
   return picked
 }
 
-/** 列表/测连时：合并已保存实例与 UI 未保存 overrides */
-export function buildProviderSnapshot(input: {
+/**
+ * 音效生成的提供商解析（`POST /v1/sound-generation`）。
+ *
+ * **必须先按能力筛**：通用的 `resolveActiveProvider('audio', …)` 只要求
+ * 「这家在 audio 桶里勾了模型」，于是只要用户勾过任何 TTS 模型（OpenAI / MiniMax /
+ * 方舟都算），它就会选中一家**不会做音效**的，然后在适配器那层报「不支持」——
+ * 用户看到的是「我明明配了 ElevenLabs，它却说我不支持」。
+ *
+ * 也不能按「有没有勾选模型」筛：ElevenLabs 的音效节点只用到实例，用户完全可能
+ * 没在「声音」页签勾任何模型。**能做，就是候选**。
+ *
+ * @param providerInstanceId 节点上选的实例；给了但它不会做音效时**不会**退化到别家
+ *   （宁可用同一家的另一个实例，也不要偷偷换提供商）
+ */
+export function resolveActiveSoundEffectProvider(providerInstanceId?: string): {
+  provider: ModelProviderInstance
+  modelId: string
+} {
+  const settings = settingsService.get()
+  const providers = settings.models.providers
+  const capable = providers.filter(
+    (p) =>
+      p.enabled &&
+      supportsSoundEffect(p.providerKind) &&
+      (p.apiKey.trim().length > 0 || allowsEmptyApiKey(p))
+  )
+  if (!capable.length) throw fail(PROVIDER_ERRORS.soundEffectUnsupported)
+
+  const requested = providerInstanceId?.trim()
+  const picked = (requested ? capable.find((p) => p.id === requested) : undefined) ?? capable[0]
+
+  // 音效适配器忽略模型入参（端点只有一个模型），这里给个明确值只是为了让类型完整
+  const config = modalityConfig(picked, 'audio')
+  return {
+    provider: picked,
+    modelId: config.defaultModelId || config.selectedModelIds[0] || ELEVEN_SOUND_MODEL
+  }
+}
+
+/** 列表/测连时：合并已保存实例与 UI 未保存 overrides */ export function buildProviderSnapshot(input: {
   providerInstanceId: string
   apiKey?: string
   baseUrl?: string

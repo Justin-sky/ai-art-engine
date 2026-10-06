@@ -29,6 +29,17 @@ export const PROVIDER_ERRORS = {
     ({ modality }) =>
       `No available ${modality} provider configured (needs an API key or a local service with at least one model enabled)`
   ),
+  /**
+   * 音效生成没有可用提供商。
+   *
+   * 与 `noActiveProvider` 分开：那一刻确实"没有能用的"，但原因不是"没勾模型"——
+   * 音效只用到提供商实例，不看勾选。写成"未勾选模型"会把人引到错误的排查方向。
+   */
+  soundEffectUnsupported: defErrSimple(
+    'provider.soundEffectUnsupported',
+    '没有可用的音效生成提供商：请到「设置 → 模型」添加 ElevenLabs 并填好 API Key（音效走 /v1/sound-generation，端点只有它实现了）',
+    'No sound-effect provider available: add ElevenLabs under Settings → Models with an API key (sound effects use /v1/sound-generation, which only ElevenLabs implements)'
+  ),
   connectionTestFailed: defErr<{ detail: string }>(
     'provider.connectionTestFailed',
     ({ detail }) => `连接测试失败：${detail}`,

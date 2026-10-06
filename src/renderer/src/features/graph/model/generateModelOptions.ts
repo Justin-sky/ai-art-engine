@@ -17,7 +17,8 @@ import {
   requiresSpeechVoice,
   resolveAvailableVoices,
   supportsAudioModality,
-  supportsMusicModality
+  supportsMusicModality,
+  supportsSoundEffect
 } from '@shared/modelProvider'
 
 export interface GenerateModelOption {
@@ -103,10 +104,14 @@ export async function loadAllProviders(): Promise<ModelProviderInstance[]> {
   }
 }
 
-/** 谁能做音效生成（与主进程适配器能力一一对应） */
-export function supportsSoundEffect(kind: ModelProviderKind): boolean {
-  return kind === 'elevenlabs'
-}
+/**
+ * 谁能做音效生成 —— 事实来源已上移到 `@shared/modelProvider`。
+ *
+ * 原先这里各写了一份（渲染层 `kind === 'elevenlabs'`、主进程按 audio 模态猜），
+ * 两边不一致的直接后果是「节点下拉能选 ElevenLabs，主进程却挑到别家然后报不支持」。
+ * 这里只做转发，**不要再往里加判断**。
+ */
+export { supportsSoundEffect }
 
 export function buildModelOptions(
   providers: ModelProviderInstance[],
