@@ -19,6 +19,7 @@ import {
   AUDIO_FILE_EXTENSIONS,
   IMAGE_FILE_EXTENSIONS,
   MODEL_FILE_EXTENSIONS,
+  SPLAT_EXTENSIONS,
   VIDEO_FILE_EXTENSIONS
 } from './mediaFileExtensions'
 
@@ -234,12 +235,40 @@ export function groupRoundOutputs(
       hidden += group.files.length
       continue
     }
-    const primary = group.files[0]!
-    const related = group.files.slice(1, maxMembers)
-    hidden += group.files.length - 1 - related.length
+    const primary = pickGroupRepresentative(group.files)
+    // 代表被挑出来后要从成员里排除：默认代表是首个，但泼溅当代表时它在中间，
+    // 直接 slice(1) 会让同一个文件既是代表又是成员（卡上出现重复项）。
+    // 注意 `maxMembers` 是**卡内总数**（代表 + 成员），所以成员留 maxMembers - 1 个。
+    const rest = group.files.filter((file) => file !== primary)
+    const related = rest.slice(0, Math.max(0, maxMembers - 1))
+    hidden += rest.length - related.length
     cards.push({ primary, related })
   }
   return { cards, hidden }
+}
+
+/**
+ * 取一批产物的**代表文件**（卡上预览的就是它）。
+ *
+ * 默认取最早写入的一份（成员本就按写入时间升序），但**有泼溅时优先泼溅**：
+ * 世界生成会产出「网格 GLB + 高斯泼溅 SPZ」（前者先落盘、后者后补），
+ * 而泼溅才是那个可漫游世界的直观形态 —— 用 GLB 当代表，用户看到的是白模网格，
+ * 完全看不出生成结果长什么样。泼溅与网格同属 `model` 资产、都能预览，
+ * 这里只是挑更有信息量的那个。
+ *
+ * 该选择**不改变 `related` 的成员顺序**（仍是写入时间升序），
+ * 所以卡内展开的排列与之前一致。
+ */
+function pickGroupRepresentative(files: ProjectOutputFile[]): ProjectOutputFile {
+  const first = files[0]!
+  const splat = files.find((file) => isSplatMediaPath(file.relativePath))
+  return splat ?? first
+}
+
+/** 是否高斯泼溅产物（扩展名大小写不敏感；带查询串也能判） */
+export function isSplatMediaPath(relativePath: string): boolean {
+  const clean = normalizeOutputPathKey(relativePath).split(/[?#]/)[0]?.toLowerCase() ?? ''
+  return SPLAT_EXTENSIONS.some((ext) => clean.endsWith(ext))
 }
 
 /** 顺序归并时的入组判定：同源给宽窗口，附带产物只给紧窗口，间距拉开即开新卡 */

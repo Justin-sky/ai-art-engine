@@ -12,6 +12,14 @@
  * 本模块只负责「哪些扩展名属于哪类资产」。
  */
 
+/**
+ * 高斯泼溅（Gaussian Splatting）扩展名（**带点**，与 `splatMesh` 原有写法一致）。
+ *
+ * 放在 shared 而不是渲染层：`outputScan`（扫盘出卡）也要用它决定「同一批里谁当代表」，
+ * 而它不能引 three.js。渲染层的 `splatMesh` 从这里 re-export，保持单一来源。
+ */
+export const SPLAT_EXTENSIONS = ['.ply', '.spz'] as const
+
 /** 3D 模型类：网格（可进 DCC 的 fbx 也算）+ 高斯泼溅（Spark 渲染） */
 export const MODEL_FILE_EXTENSIONS = ['glb', 'gltf', 'fbx', 'ply', 'spz'] as const
 

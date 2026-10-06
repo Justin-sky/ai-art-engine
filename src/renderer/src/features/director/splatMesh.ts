@@ -18,8 +18,15 @@ import type { Object3D } from 'three'
  *   该渲染层与泼溅网格一样按需动态 import，不进首屏 bundle。
  */
 
-/** 泼溅文件扩展名（模型资产口径，与 assetImport 的 MODEL_EXT 对齐） */
-export const SPLAT_EXTENSIONS = ['.ply', '.spz'] as const
+/**
+ * 泼溅文件扩展名（模型资产口径，与 assetImport 的 MODEL_EXT 对齐）。
+ *
+ * 定义已移到 `@shared/mediaFileExtensions`（扫盘也要用它决定同批谁当代表，
+ * 而那边不能引 three.js）；这里 import 后 re-export，保持既有 import 路径可用。
+ */
+import { SPLAT_EXTENSIONS } from '@shared/mediaFileExtensions'
+
+export { SPLAT_EXTENSIONS }
 
 /**
  * 加载「无进展」上限：连续这么久没有任何字节进展就判定卡死。

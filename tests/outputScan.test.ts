@@ -6,6 +6,7 @@ import {
   groupRoundOutputs,
   isLibraryRelativePath,
   isScannedOutputPath,
+  isSplatMediaPath,
   normalizeOutputPathKey,
   selectRoundOutputs,
   type ProjectOutputFile
@@ -313,10 +314,10 @@ describe('产物扫盘：世界附加产物（高斯泼溅 / 全景）也要进�
     expect(isScannedOutputPath('Cache/Models/world.pano.png')).toBe(true)
   })
 
-  it('泼溅与世界主产物落在同一批，聚合成一张卡（用户选的「挂成同批次产物」）', () => {
+  it('泼溅与世界主产物落在同一批，且**代表取泼溅**（卡上预览可漫游世界，不是白模网格）', () => {
     const at = 1_700_000_000_000
     const files: ProjectOutputFile[] = [
-      // 世界 GLB 用生成媒体命名（有资产名前缀）
+      // 世界 GLB 先落盘（videoJobService：先登记主产物，再补附加产物）
       { relativePath: 'Cache/Models/世界_空间世界_20260913-151235371.glb', mtimeMs: at, size: 10 },
       // 附加产物由下载器命名，没有资产名前缀 → 走紧窗口（2s）挂进同批
       { relativePath: 'Cache/Models/world.spz', mtimeMs: at + 400, size: 2_000_000 },
@@ -324,17 +325,40 @@ describe('产物扫盘：世界附加产物（高斯泼溅 / 全景）也要进�
     ]
     const { cards } = groupRoundOutputs(files)
     expect(cards).toHaveLength(1)
-    expect(cards[0].primary.relativePath).toBe('Cache/Models/世界_空间世界_20260913-151235371.glb')
+    // 代表是泼溅，**尽管 GLB 写得更早** —— 泼溅才是那个世界的直观形态
+    expect(cards[0].primary.relativePath).toBe('Cache/Models/world.spz')
+    // 成员仍是写入时间升序，且不重复包含代表
     expect(cards[0].related.map((f) => f.relativePath)).toEqual([
-      'Cache/Models/world.spz',
+      'Cache/Models/世界_空间世界_20260913-151235371.glb',
       'Cache/Models/world.pano.png'
     ])
+  })
+
+  it('没有泼溅时代表仍是首个（不改变既有行为）', () => {
+    const at = 1_700_000_000_000
+    const files: ProjectOutputFile[] = [
+      { relativePath: 'Cache/Models/世界_空间世界_20260913-151235371.glb', mtimeMs: at, size: 10 },
+      { relativePath: 'Cache/Models/world.pano.png', mtimeMs: at + 400, size: 900_000 }
+    ]
+    const { cards } = groupRoundOutputs(files)
+    expect(cards[0].primary.relativePath).toBe('Cache/Models/世界_空间世界_20260913-151235371.glb')
+  })
+
+  it('只有泼溅时它既是代表，也不重复出现在成员里', () => {
+    const at = 1_700_000_000_000
+    const files: ProjectOutputFile[] = [
+      { relativePath: 'Cache/Models/world.spz', mtimeMs: at, size: 2_000_000 },
+      { relativePath: 'Cache/Models/world.pano.png', mtimeMs: at + 400, size: 900_000 }
+    ]
+    const { cards } = groupRoundOutputs(files)
+    expect(cards[0].primary.relativePath).toBe('Cache/Models/world.spz')
+    expect(cards[0].related.map((f) => f.relativePath)).toEqual(['Cache/Models/world.pano.png'])
   })
 
   it('附加产物先落盘时，仍由随后的同源主产物补上批次身份', () => {
     const at = 1_700_000_000_000
     const files: ProjectOutputFile[] = [
-      { relativePath: 'Cache/Models/world.spz', mtimeMs: at, size: 2_000_000 },
+      { relativePath: 'Cache/Models/world.ply', mtimeMs: at, size: 2_000_000 },
       {
         relativePath: 'Cache/Models/世界_空间世界_20260913-151235371.glb',
         mtimeMs: at + 300,
@@ -343,12 +367,18 @@ describe('产物扫盘：世界附加产物（高斯泼溅 / 全景）也要进�
     ]
     const { cards } = groupRoundOutputs(files)
     expect(cards).toHaveLength(1)
-    // 卡的代表文件是**最早写入**的那份（既有语义：成员按写入时间升序，首个当代表）
-    expect(cards[0].primary.relativePath).toBe('Cache/Models/world.spz')
-    // 后到的同源主产物补上批次身份并成为成员
+    expect(cards[0].primary.relativePath).toBe('Cache/Models/world.ply')
     expect(cards[0].related.map((f) => f.relativePath)).toEqual([
       'Cache/Models/世界_空间世界_20260913-151235371.glb'
     ])
+  })
+
+  it('isSplatMediaPath：只认泼溅，大小写与查询串都能判', () => {
+    expect(isSplatMediaPath('Cache/Models/world.spz')).toBe(true)
+    expect(isSplatMediaPath('Cache/Models/world.PLY')).toBe(true)
+    expect(isSplatMediaPath('Cache/Models/world.spz?v=2')).toBe(true)
+    expect(isSplatMediaPath('Cache/Models/world.glb')).toBe(false)
+    expect(isSplatMediaPath('Cache/Models/world.pano.png')).toBe(false)
   })
 
   it('selectRoundOutputs 能选中 .spz（本轮写入且体积达标）', () => {
