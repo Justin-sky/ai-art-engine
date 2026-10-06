@@ -451,7 +451,7 @@ export interface NodeExecuteContext {
     /** 参考处理说明（如「已上传 N 个托管媒体资产」） */
     referenceNotes?: string[]
     /** 随世界返回的附加产物（高斯泼溅 SPZ / 360 全景图），已落盘在主产物旁边 */
-    extras?: Array<{ kind: string; relativePath?: string }>
+    extras?: Array<{ kind: string; relativePath?: string; assetId?: string }>
     /** World Labs 世界 id（下游「空间世界导出」节点只认它） */
     spatialWorldId?: string
   }>

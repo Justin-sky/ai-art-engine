@@ -11,6 +11,8 @@ import type {
   VideoJobUpload
 } from '@shared/videoJob'
 import { isVideoJobActive, jobKind } from '@shared/videoJob'
+import { mergeSpatialWorldMeta } from '@shared/spatialWorldMeta'
+import { setWorldMetaJobResolver } from './projectService'
 import { IpcChannels } from '@shared/ipc'
 import { findProviderById } from '@shared/modelProvider'
 import { fail, defErr, defErrSimple, type BiDef } from '@shared/errors/appError'
@@ -735,7 +737,47 @@ class VideoJobService {
       }
     }
 
+    // 世界的身份与附件**落进资产记录**：此前它们只存在于图的节点参数（运行态），
+    // 于是重启应用、或只把产物保存到资产库之后，导出端点拿不到 world_id
+    //（再也导不出网格），泼溅 / 全景也没有任何记录说明它们属于这个世界。
+    this.persistWorldMetaOnAsset(job, resolved)
+
     return videoJobRepository.write(root, { ...job, extras: resolved })
+  }
+
+  /**
+   * 把世界 id 与附件写进主产物资产的 `genParams`（尽力而为，失败只记日志）。
+   *
+   * 读一次最新资产再合并：资产在任务期间可能被改名 / 移动 / 保存进资产库，
+   * 直接拿任务里的快照会覆盖掉这些改动。
+   */
+  private persistWorldMetaOnAsset(job: VideoJobRecord, extras: VideoJobExtra[]): void {
+    if (job.kind !== 'spatialWorld') return
+    const assetId = job.assetId?.trim()
+    const relativePath = job.relativePath?.trim()
+    if (!assetId && !relativePath) return
+    try {
+      const asset = projectService
+        .listAssets()
+        .find(
+          (item) => item.id === assetId || (!!relativePath && item.relativePath === relativePath)
+        )
+      if (!asset) return
+      const merged = mergeSpatialWorldMeta(asset.genParams, {
+        spatialWorldId: job.resourceId,
+        spatialWorldExtras: extras
+          .filter((item) => !!item.relativePath?.trim())
+          .map((item) => ({
+            kind: item.kind,
+            relativePath: item.relativePath!.trim(),
+            ...(item.assetId?.trim() ? { assetId: item.assetId.trim() } : {})
+          }))
+      })
+      const updated = projectService.updateAsset({ ...asset, genParams: merged })
+      broadcastToAllWindows(IpcChannels.ASSET_UPDATED, updated)
+    } catch (err) {
+      console.warn('[videoJob] 世界元数据写回资产失败（不影响产物）:', err) // cjk-ok：主进程开发日志
+    }
   }
 
   private bestEffortPatchGraph(job: VideoJobRecord, asset: AssetInfo): void {
@@ -817,6 +859,14 @@ class VideoJobService {
 }
 
 export const videoJobService = new VideoJobService()
+
+/**
+ * 把「取任务记录」的能力交给 `projectService`，供它做世界附件入库时回查世界 id 与附件。
+ *
+ * 走注册而不是让 `projectService` 直接 import 本模块：本模块依赖它（读工程、登记资产），
+ * 反向再依赖一次就成环；注册发生在**两个模块都定义完成之后**，环断在这里。
+ */
+setWorldMetaJobResolver(() => videoJobService.list())
 
 /** 供测试读取常量 */
 export const __videoJobTest = {

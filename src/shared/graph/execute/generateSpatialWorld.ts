@@ -189,7 +189,13 @@ export async function executeSpatialWorldGenerateNode(
   // 写回节点参数（Inspector 列路径）并各记一行运行日志 —— 这两份是导入引擎时真正要用的文件
   const extras = (result.extras ?? [])
     .filter((item) => item.relativePath?.trim())
-    .map((item) => ({ kind: item.kind, relativePath: item.relativePath!.trim() }))
+    .map((item) => ({
+      kind: item.kind,
+      relativePath: item.relativePath!.trim(),
+      // 泼溅会登记为模型资产（导演台可直接拿它做泼溅渲染）：记下 id，
+      // 下游不必再按路径反查，保存到资产库时也知道该带上哪一份
+      ...(item.assetId?.trim() ? { assetId: item.assetId.trim() } : {})
+    }))
   if (extras.length) {
     ctx.node.params = { ...ctx.node.params, spatialWorldExtras: extras }
     ctx.patchNode?.({ params: { spatialWorldExtras: extras } })

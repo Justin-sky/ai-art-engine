@@ -10,6 +10,7 @@ import type {
   StageVec3
 } from '../domain'
 import type { MultiAngleCameraState } from './multiAngleCamera'
+import type { SpatialWorldExtra } from '../spatialWorldMeta'
 import type { LightingSetupState } from './lightingSetup'
 import type { PortraitTextureState } from './portraitTexture'
 import type { PortraitAiLayer, PortraitRetouchState } from './portraitRetouch'
@@ -339,8 +340,13 @@ export interface GraphNodeParams {
   /**
    * 空间世界生成：随世界一起落盘的附加产物（高斯泼溅 SPZ / 360 全景图），
    * 相对路径与主产物同目录同名，仅后缀不同（`splats` → `.spz`、`pano` → `.pano.png`）。
+   *
+   * 形状见 `@shared/spatialWorldMeta`（与资产 `genParams` 共用同一组键名）——
+   * 这里不再单独声明一份，否则又是两处口径。
    */
-  spatialWorldExtras?: Array<{ kind: string; relativePath: string }>
+  spatialWorldExtras?: SpatialWorldExtra[]
+  /** 空间世界生成：World Labs 的 `World.id`（导出端点只认它；与资产 `genParams` 同名） */
+  spatialWorldId?: string
   /** 空间世界导出：导出哪一族（mesh 高质量网格 GLB / splats PLY 泼溅） */
   spatialWorldExportMode?: 'mesh' | 'splats'
   /** 空间世界导出（mesh）：网格变体，textured 约 600k 面带贴图 / vertex_colored 约 1M 面顶点色 */

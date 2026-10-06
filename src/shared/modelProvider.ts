@@ -1785,7 +1785,7 @@ export interface GenerateSpatialWorldResult {
    * 随世界一起返回、已落盘在主产物旁边的附加产物：
    * `splats`（高斯泼溅 SPZ）/ `pano`（360 全景图）。下载失败时 `relativePath` 缺省。
    */
-  extras?: Array<{ kind: string; relativePath?: string }>
+  extras?: Array<{ kind: string; relativePath?: string; assetId?: string }>
   /**
    * World Labs 世界 id（官方 World.id）。下游「空间世界导出」节点只认它，
    * 所以生成结果必须带上。

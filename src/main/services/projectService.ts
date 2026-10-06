@@ -66,6 +66,14 @@ import type {
   WriteAssetTextInput
 } from '@shared/ipc'
 import { buildInitialMemoryContent, PROJECT_MEMORY_RELATIVE_PATH } from '@shared/projectMemory'
+import { normalizeOutputPathKey } from '@shared/outputScan'
+import {
+  findWorldMetaByJob,
+  mergeSpatialWorldMeta,
+  type SpatialWorldExtra,
+  type SpatialWorldJobLike,
+  type SpatialWorldMeta
+} from '@shared/spatialWorldMeta'
 import { renameReplaceSync } from '../persistence/atomicRename'
 import { fail, defErr, defErrSimple } from '@shared/errors/appError'
 import { MAIN_ERRORS } from '../errors/messages'
@@ -307,6 +315,19 @@ function detectAssetType(filePath: string): AssetType {
 
 /** 自动视频打点同时「排队 + 执行」的上限：超出则本次放弃（低优先级静默任务，避免大批量导入打满推理） */
 const AUTO_VIDEO_BEAT_MAX_PENDING = 12
+
+/**
+ * 世界附件入库时用来回查任务记录的钩子。
+ *
+ * 为什么用注入而不是直接 `import { videoJobService }`：那个模块**已经**依赖本模块
+ * （它要读工程、登记资产），反向再 import 一次就成环。这里只登记一个「取记录」的函数，
+ * 由 `videoJobService` 在自己**定义完成后**注册，环就断在注册时机上。
+ */
+let worldMetaJobResolver: (() => readonly SpatialWorldJobLike[]) | null = null
+
+export function setWorldMetaJobResolver(resolver: () => readonly SpatialWorldJobLike[]): void {
+  worldMetaJobResolver = resolver
+}
 
 class ProjectService {
   private rootPath: string | null = null
@@ -731,7 +752,119 @@ class ProjectService {
     this.queueVisionTagWriteBack(asset.id, asset.type, asset.relativePath)
     // 视频入库后低优先级自动打点：抽帧逐帧检测出空镜 / 单人 / 群像时间线（静默失败，不影响入库）
     this.queueAutoVideoBeatsIfDue(asset)
-    return asset
+    // 空间世界：把随世界落盘的附件（高斯泼溅 / 全景）一并带进资产库并建立关联。
+    // 只对世界产物生效 —— 其余调用方（SVG 烘焙 / 2D 动画 / 合成对话框等）行为不变。
+    return this.attachSpatialWorldExtras(asset, input.relativePath, folderId) ?? asset
+  }
+
+  /**
+   * 世界产物入库时，把它的附件（`.spz` 高斯泼溅 / 360 全景）也复制进同一个资产库文件夹，
+   * 各自登记为资产，并把**关联关系**写进主产物资产的 `genParams`。
+   *
+   * 为什么必须做：泼溅才是那个世界的漫游形态，而它原先留在 `Cache/Models/` ——
+   * 缓存被清理、或换一台机器打开工程之后，这个「可漫游世界」就只剩网格了。
+   *
+   * 尽力而为：任一附件复制失败都只记日志，不回滚主产物的入库
+   *（与 `videoJobService` 里"附加产物失败不丢主产物"同一口径）。
+   *
+   * @returns 更新后的主产物资产；没有可处理的世界元数据时返回 null（调用方回落到原资产）
+   */
+  private attachSpatialWorldExtras(
+    main: AssetInfo,
+    sourceRelativePath: string,
+    folderId: string | null
+  ): AssetInfo | null {
+    try {
+      const sourceParams = this.findWorldMetaForSaved({ assetId: main.id, sourceRelativePath })
+      const mainParams = mergeSpatialWorldMeta(main.genParams, sourceParams ?? {})
+      if (!sourceParams?.spatialWorldExtras?.length) {
+        // 没有附件也要把 world_id 落库：导出的唯一钥匙，丢了就再也导不出网格
+        if (!sourceParams?.spatialWorldId) return null
+        return this.updateAsset({ ...main, genParams: mainParams })
+      }
+
+      const root = this.getRoot()
+      const dirAbs = resolveFolderDirAbs(root, folderId)
+      const mainStem = basename(main.relativePath, extname(main.relativePath))
+      const linked: SpatialWorldExtra[] = []
+
+      for (const extra of sourceParams.spatialWorldExtras) {
+        const srcAbs = join(root, extra.relativePath)
+        if (!existsSync(srcAbs)) {
+          // 源文件不在（缓存被清 / 手工删过）：保留原路径记录，用户至少知道它本该在哪
+          linked.push(extra)
+          continue
+        }
+        const type = detectAssetType(srcAbs)
+        const ext = extname(srcAbs).toLowerCase()
+        const fileName = uniqueFileName(dirAbs, `${normalizePathSegment(mainStem)}${ext}`)
+        const destAbs = join(dirAbs, fileName)
+        const ts = nowIso()
+        const record: AssetInfo = {
+          id: randomUUID(),
+          type,
+          name: `${mainStem}·${extra.kind}`,
+          relativePath: toPosix(relative(root, destAbs)),
+          folderId,
+          version: 1,
+          createdAt: ts,
+          updatedAt: ts,
+          ...(isImportableFileRefAssetType(type) ? { genParams: withImportedMediaRefParams() } : {})
+        }
+        runTransactionSync([
+          {
+            label: `copy world ${extra.kind} attachment`,
+            forward: () => copyFileAtomic(srcAbs, destAbs),
+            rollback: () => removeIfExists(destAbs)
+          },
+          {
+            label: `write world ${extra.kind} asset metadata`,
+            forward: () => assetRepository.writeNewMedia(root, record),
+            rollback: () => assetRepository.removeMetadata(root, record.id)
+          }
+        ])
+        linked.push({ ...extra, relativePath: record.relativePath, assetId: record.id })
+      }
+
+      return this.updateAsset({
+        ...main,
+        genParams: mergeSpatialWorldMeta(main.genParams, {
+          spatialWorldId: sourceParams.spatialWorldId,
+          spatialWorldExtras: linked
+        })
+      })
+    } catch (err) {
+      console.warn('[project] 世界附件入库失败（主产物已入库）:', err) // cjk-ok：主进程开发日志
+      return null
+    }
+  }
+
+  /**
+   * 找世界产物入库前的身份来源。
+   *
+   * **先查任务记录**：世界产物登记资产时附件还没下载完，所以那条资产记录的 `genParams`
+   * 里没有 extras；`world_id` 与附件是下载完成后由 `videoJobService` 补写进资产记录的，
+   * 而缓存产物的记录可能已经不在列表里了 —— 任务记录才是这一刻最可靠的来源。
+   *
+   * 兜底查资产记录：覆盖「附件早就写进 `genParams`」的情形（例如再次入库同一份产物）。
+   */
+  private findWorldMetaForSaved(input: {
+    assetId: string
+    sourceRelativePath: string
+  }): SpatialWorldMeta | null {
+    const fromJob = findWorldMetaByJob(worldMetaJobResolver?.() ?? [], {
+      assetId: input.assetId,
+      relativePath: input.sourceRelativePath
+    })
+    if (fromJob) return fromJob
+    const existing = this.listAssets().find(
+      (item) =>
+        item.id === input.assetId ||
+        normalizeOutputPathKey(item.relativePath) ===
+          normalizeOutputPathKey(input.sourceRelativePath)
+    )
+    const fromAsset = mergeSpatialWorldMeta(existing?.genParams, {})
+    return fromAsset.spatialWorldId || fromAsset.spatialWorldExtras?.length ? fromAsset : null
   }
 
   /**

@@ -26,6 +26,11 @@ export interface VideoJobExtra {
   kind: string
   url: string
   relativePath?: string
+  /**
+   * 已登记为资产时的 id（目前只有 `splats` 会登记：泼溅作为模型资产登记后，
+   * 导演台可以直接拿它做泼溅渲染，不必再跑一次付费的 PLY 导出）。
+   */
+  assetId?: string
 }
 
 export interface VideoJobGraphBinding {

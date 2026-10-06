@@ -52,6 +52,9 @@ vi.mock('../src/main/repositories/videoJobRepository', () => ({
 }))
 
 vi.mock('../src/main/services/projectService', () => ({
+  // videoJobService 在模块加载时就把「取任务记录」的能力注册给 projectService
+  // （用来打断两者的循环依赖），所以 mock 里也必须提供这个导出
+  setWorldMetaJobResolver: () => undefined,
   projectService: {
     isOpen: () => true,
     getRoot: () => h.state.root,
