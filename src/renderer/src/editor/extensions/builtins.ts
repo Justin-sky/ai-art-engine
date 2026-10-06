@@ -1,5 +1,6 @@
 import { defineAsyncComponent, defineComponent, h, markRaw } from 'vue'
 import type { VueComponent } from 'dockview-vue'
+import { modelFileExtensions } from '@shared/mediaFileExtensions'
 import { WORKSPACE_TOOLBAR_ITEMS } from '@shared/workspaceToolbar'
 import AssetBrowser from '../../components/AssetBrowser.vue'
 import AssetCanvasEditor from '../../components/AssetCanvasEditor.vue'
@@ -149,7 +150,7 @@ export const BUILTIN_IMPORTERS: AssetImporterDefinition[] = [
     label: 'voice',
     extensions: ['mp3', 'wav', 'ogg', 'm4a']
   },
-  { id: 'core.model', assetType: 'model', label: 'Models', extensions: ['glb', 'gltf', 'fbx'] }
+  { id: 'core.model', assetType: 'model', label: 'Models', extensions: modelFileExtensions() }
 ]
 
 export const CORE_EDITOR_PLUGIN_ID = 'aiartengine.core'

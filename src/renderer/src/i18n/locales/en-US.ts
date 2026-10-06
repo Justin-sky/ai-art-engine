@@ -1264,6 +1264,7 @@ export default {
       image: 'Images',
       video: 'Videos / Motion',
       voice: 'Voice',
+      model: '3D models',
       all: 'All'
     },
     inspector: {

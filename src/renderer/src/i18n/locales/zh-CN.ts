@@ -1241,6 +1241,7 @@ export default {
       image: '图片',
       video: '视频/动作',
       voice: '声音',
+      model: '3D 模型',
       all: '全部'
     },
     inspector: {

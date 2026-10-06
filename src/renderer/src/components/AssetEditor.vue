@@ -113,6 +113,13 @@ import {
   isSubgraphAsset,
   type AssetType
 } from '@shared/domain'
+import {
+  ANY_FILE_EXTENSIONS,
+  AUDIO_FILE_EXTENSIONS,
+  IMAGE_FILE_EXTENSIONS,
+  MOTION_FILE_EXTENSIONS,
+  modelFileExtensions
+} from '@shared/mediaFileExtensions'
 import { persistAssetRecord, useAssetRecord } from '../composables/useAssetRecord'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useEditorDocumentSession } from '../composables/useEditorDocumentSession'
@@ -252,23 +259,30 @@ function persist(): void {
 function filtersForType(type: AssetType): { name: string; extensions: string[] }[] {
   switch (type) {
     case 'image':
-      return [
-        { name: t('asset.fileFilter.image'), extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }
-      ]
+      return [{ name: t('asset.fileFilter.image'), extensions: [...IMAGE_FILE_EXTENSIONS] }]
     case 'video':
     case 'motion':
       return [
         {
           name: t('asset.fileFilter.video'),
-          extensions: ['mp4', 'mov', 'webm', 'glb', 'gltf', 'png', 'jpg']
+          extensions: [...MOTION_FILE_EXTENSIONS]
         }
       ]
     case 'voice':
-      return [{ name: t('asset.fileFilter.voice'), extensions: ['mp3', 'wav', 'ogg', 'm4a'] }]
+      return [{ name: t('asset.fileFilter.voice'), extensions: [...AUDIO_FILE_EXTENSIONS] }]
+    /**
+     * 3D 模型资产（含高斯泼溅：它登记的就是 `model`）。
+     *
+     * 这个 case 原先**不存在** —— 模型资产落到 `default` 分支的
+     * `['png','jpg','mp4','mp3','txt','md']`，于是模型资产的文件选择器里
+     * **一个模型格式都没有**。扩展名清单走 `@shared/mediaFileExtensions` 单一来源。
+     */
+    case 'model':
+    case 'model3d':
+    case 'spatialWorld':
+      return [{ name: t('asset.fileFilter.model'), extensions: modelFileExtensions() }]
     default:
-      return [
-        { name: t('asset.fileFilter.all'), extensions: ['png', 'jpg', 'mp4', 'mp3', 'txt', 'md'] }
-      ]
+      return [{ name: t('asset.fileFilter.all'), extensions: [...ANY_FILE_EXTENSIONS] }]
   }
 }
 
