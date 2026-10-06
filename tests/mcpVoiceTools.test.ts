@@ -179,3 +179,57 @@ describe('活动名已登记（否则 runGenActivity 传新名字会类型报错
     expect(ipc).toContain("| 'generate_sound_effect'")
   })
 })
+
+/**
+ * 回归：用户说「生成一段雨声，要能无缝循环」，Agent 却调了 `generate_speech`
+ * 把描述**念**了出来（产出语音而不是音效，而且照样计费）。
+ *
+ * 工具当时**是存在的**（已确认运行中的应用暴露了 generate_sound_effect），
+ * 所以问题出在**区分度**：
+ * 1. 两个工具的 description 各说各话，没有互相点名
+ * 2. 系统提示里那句「Always create media through studio MCP tools
+ *    (generate_image / generate_video / generate_speech / generate_music / …)」
+ *    枚举了语音与音乐却**漏掉音效**，等于固化"要音频 → generate_speech"
+ *
+ * 这几条断言就是为了让这两处**再也不能**各说各话。
+ */
+describe('音效 / 语音的区分度（防"雨声被念出来"复发）', () => {
+  const speech = toolBlock('generate_speech')
+  const sfx = toolBlock('generate_sound_effect')
+  const harness = readFileSync(resolve('src/main/services/deepseekHarnessService.ts'), 'utf8')
+
+  it('generate_speech 明确指向 generate_sound_effect 处理非人声音效', () => {
+    expect(speech).toMatch(/只做人声/)
+    expect(speech).toMatch(/generate_sound_effect/)
+    // 要点出"用错会怎样"，否则模型体会不到代价
+    expect(speech).toMatch(/念出来|产出的?是语音/)
+  })
+
+  it('generate_sound_effect 明确拒绝被 generate_speech 顶替', () => {
+    expect(sfx).toMatch(/雨声/)
+    expect(sfx).toMatch(/不要用 `generate_speech`/)
+  })
+
+  it('两个工具互相点名了对方（单向指引不够，模型可能只看其中一个）', () => {
+    expect(speech).toMatch(/generate_dialogue/)
+    expect(sfx).toMatch(/generate_dialogue/)
+    expect(sfx).toMatch(/generate_speech/)
+  })
+
+  it('系统提示的生成工具枚举里含 generate_sound_effect（原句漏了它）', () => {
+    expect(harness).toMatch(
+      /generate_image \/ generate_video \/ generate_speech \/ generate_sound_effect \/ generate_music/
+    )
+  })
+
+  it('系统提示按"音频是什么"给分流规则，而不是按"audio"这个词', () => {
+    expect(harness).toMatch(/Pick the audio tool by what the audio IS/)
+    expect(harness).toMatch(/generate_sound_effect/)
+    // 明确禁止用 TTS 顶替音效请求
+    expect(harness).toMatch(/Never satisfy a sound-effect or ambience request with generate_speech/)
+  })
+
+  it('系统提示提醒无缝循环要传 loop（否则接缝有咔嗒声）', () => {
+    expect(harness).toMatch(/loop: true/)
+  })
+})
