@@ -90,7 +90,7 @@
         </label>
         <div class="gen-model-row">
           <InstructionModelSelect
-            v-if="modelOptions.length > 0"
+            v-if="supportsModelPicker && modelOptions.length > 0"
             v-model="selectedModelKey"
             :options="modelOptions"
             :title="generateModelTitle"
@@ -128,7 +128,7 @@
             {{ t('graph.inspector.generate.voiceProfileManage') }}
           </button>
         </div>
-        <p v-if="modelOptions.length === 0" class="hint">
+        <p v-if="supportsModelPicker && modelOptions.length === 0" class="hint">
           {{ modelsHint }}
         </p>
       </section>
@@ -964,6 +964,24 @@ const modelPreviewPath = computed((): string | null => {
   }
   return current.params.previewRelativePath?.trim() || null
 })
+/**
+ * 音效节点还有一个**别处没有的**陷阱：它的 `assetType` 也是 `voice`，
+ * 于是会走进 `isVoice` 分支去 `loadModels('audio')`，把**音频（TTS）模态**的模型
+ * 拉进 Inspector 的通用下拉 —— 那个列表里的模型（eleven_v3 / 微软音色那些）
+ * 对音效端点毫无意义（选了也不会发出去），属于"看着能选、选了没用"，
+ * 还和节点卡片上真正的「音效提供商」选择器重复。
+ *
+ * `generateNodeModality` 对 `asset.sfx` 有意返回 `'audio'` 只作安全默认
+ * （见 @shared/graph/generateNodeModality），所以这里必须显式兜住。
+ */
+const supportsModelPicker = computed(
+  () =>
+    isImage.value ||
+    isScreenplay.value || //
+    isGameSystem.value ||
+    isVideo.value ||
+    (isVoice.value && !isSoundEffect.value)
+)
 const generateModelTitle = computed(() => {
   if (isImage.value) return t('graph.inspector.generate.imageModel')
   if (isVideo.value) return t('graph.inspector.generate.videoModel')
@@ -1600,6 +1618,20 @@ const modelsHint = computed(() => {
 })
 
 async function loadModels(modality: GenerateModelModality, preferredKey?: string): Promise<void> {
+  /**
+   * 音效节点不加载任何模型目录：它的提供商在**节点卡片**上选（那个下拉列的是
+   * 能做音效的实例，模型固定），这里再拉一份音频模态的 TTS 列表既无意义又会误导。
+   *
+   * 清空是必须的 —— 否则从别的节点切到音效节点时，上一份列表会留在 `modelOptions`
+   * 里继续显示。门禁在 `supportsModelPicker`（模板不再渲染），这里是不去拉数据。
+   */
+  if (isSoundEffect.value) {
+    modelOptions.value = []
+    selectedModelKey.value = ''
+    voiceOptionsByModelKey.value = {}
+    voiceLabelMap.value = {}
+    return
+  }
   const { options, selectedKey, voicesByModelKey, voiceLabels } = await loadGenerateModelOptions(
     modality,
     preferredKey,

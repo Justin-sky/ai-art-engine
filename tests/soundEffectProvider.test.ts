@@ -9,6 +9,7 @@
  * 于是只要用户勾过任何 TTS 模型（OpenAI / MiniMax / 方舟都算），
  * 它就会选中一家不会做音效的，然后才在适配器那层报「不支持」。
  */
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { supportsSoundEffect, type ModelProviderKind } from '../src/shared/modelProvider'
 
@@ -81,5 +82,37 @@ describe('音效提供商解析', () => {
   it('不看「有没有勾选模型」—— 音效只用到实例', () => {
     // 这里刻意不给 selectedModelIds 概念：ElevenLabs 一个模型都没勾也应可用
     expect(pickSoundEffectProvider([eleven])?.id).toBe('el')
+  })
+})
+
+/**
+ * 音效节点的模型 UI 到底该出现在哪。
+ *
+ * 用户报过一个困惑：**指令面板里已经有提供商下拉了，为什么 Inspector 里还有一个**。
+ * 查下来是真问题 —— 音效节点的 `assetType` 也是 `voice`，于是 Inspector 走进
+ * `isVoice` 分支去 `loadModels('audio')`，把**音频（TTS）模态**的模型拉进右侧下拉：
+ * 那些模型对音效端点毫无意义（选了也不会发出去），还和卡片上真正的选择器重复。
+ */
+describe('音效节点的模型 UI 位置', () => {
+  const inspector = readFileSync('src/renderer/src/components/ShotNodeInspector.vue', 'utf8')
+  const card = readFileSync('src/renderer/src/components/GraphNodeCard.vue', 'utf8')
+
+  it('Inspector 不显示模型下拉，也不去拉音频目录', () => {
+    // 门禁：音效节点被排除在「有模型可选」之外
+    expect(inspector).toContain('supportsModelPicker')
+    expect(inspector).toMatch(/isVoice\.value && !isSoundEffect\.value/)
+    // 模板两处（下拉本体与空列表提示）都走这个门禁
+    expect(inspector).toContain('v-if="supportsModelPicker && modelOptions.length > 0"')
+    expect(inspector).toContain('v-if="supportsModelPicker && modelOptions.length === 0"')
+    // 数据层也要拦：否则从别的节点切过来会留着上一份列表
+    expect(inspector).toMatch(/if \(isSoundEffect\.value\) \{\s*modelOptions\.value = \[\]/)
+  })
+
+  it('卡片上的提供商选择器不能被删（多账号时是唯一入口）', () => {
+    expect(card).toContain('buildSoundEffectOptions(await loadAllProviders())')
+    expect(card).toContain("t('graph.inspector.generate.soundEffectProvider')")
+    // 标签必须说清它选的不是模型
+    const zh = readFileSync('src/renderer/src/i18n/locales/zh-CN.ts', 'utf8')
+    expect(zh).toContain('音效提供商（模型固定为 eleven_text_to_sound_v2）')
   })
 })
