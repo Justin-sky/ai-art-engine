@@ -44,3 +44,19 @@ export function chatPreviewKind(relativePath: string): ChatPreviewKind {
   if (MODEL_EXTS.has(ext)) return 'model'
   return 'file'
 }
+
+/**
+ * 产物卡左上角类型徽标用的 **`AssetType`**（交给 `assetTypeLabel()` 转文案）。
+ *
+ * 3D 要**区分网格与泼溅**：两者登记的都是 `model` 资产，但一个是可进 DCC 的网格，
+ * 一个是只在 Spark 里能看的高斯泼溅 —— 用同一个「模型」标签会让人以为拿到的
+ * 是能直接用的网格资产。泼溅归到 `asset.type.splat`。
+ *
+ * 未知类型返回 `null`（卡上不显示徽标，而不是显示一个没意义的词）。
+ */
+export function chatPreviewAssetType(relativePath: string): string | null {
+  const kind = chatPreviewKind(relativePath)
+  if (kind === 'file') return null
+  if (kind === 'model' && isSplatPreviewPath(relativePath)) return 'splat'
+  return kind
+}

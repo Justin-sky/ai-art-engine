@@ -1054,6 +1054,7 @@ export default {
       screenplayRef: '引用剧本',
       motion: '导演台',
       model: '模型',
+      splat: '高斯泼溅',
       modelAnimation: '动画片段',
       modelPose: '姿势',
       screenplay: '剧本',

@@ -1073,6 +1073,7 @@ export default {
       screenplayRef: 'Screenplay Reference',
       motion: 'Director Deck',
       model: 'Model',
+      splat: 'Gaussian splat',
       modelAnimation: 'Animation Clip',
       modelPose: 'Pose',
       screenplay: 'Screenplay',

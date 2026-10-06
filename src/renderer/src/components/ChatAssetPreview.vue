@@ -8,9 +8,16 @@ import {
 } from '../features/media/animatedImagePlayback'
 import { resolveAssetFileUrl, resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
 import { openFullImagePreview } from '../features/media/openFullImagePreview'
-import { chatPreviewKind, type ChatPreviewKind } from '../features/media/chatPreviewKind'
+import {
+  chatPreviewAssetType,
+  chatPreviewKind,
+  type ChatPreviewKind
+} from '../features/media/chatPreviewKind'
+import { useStudioI18n } from '../composables/useStudioI18n'
 
 const props = defineProps<{ relativePath: string }>()
+
+const { assetTypeLabel } = useStudioI18n()
 
 /**
  * 按文件扩展名推断预览类型（未知类型降级为纯文本路径）。
@@ -22,6 +29,18 @@ const props = defineProps<{ relativePath: string }>()
  * `ModelPreview`，所以扩展名清单必须与它支持的格式保持一致。
  */
 const kind = computed<ChatPreviewKind>(() => chatPreviewKind(props.relativePath))
+
+/**
+ * 左上角类型徽标文案（图片 / 视频 / 声音 / 3D 模型 / 高斯泼溅 …）。
+ *
+ * 从扩展名派生而不是读资产记录：`ChatMsg`（`kind: 'asset'`）本就没有 `assetType` 字段，
+ * 且旧会话历史也没存 —— 走扩展名才能让**刷新后的历史卡也显示徽标**。
+ * 未知类型返回空串，此时模板不渲染徽标（而不是显示一个没意义的词）。
+ */
+const typeBadge = computed(() => {
+  const assetType = chatPreviewAssetType(props.relativePath)
+  return assetType ? assetTypeLabel(assetType) : ''
+})
 
 const fileUrl = ref('')
 const previewUrl = ref('')
@@ -91,6 +110,8 @@ async function onImageClick(): Promise<void> {
 
 <template>
   <div class="chat-asset-preview">
+    <!-- 左上角类型徽标：产物卡只看画面时不容易分清拿到的是网格、泼溅还是图，标一下省一次点开 -->
+    <span v-if="typeBadge" class="chat-asset-type">{{ typeBadge }}</span>
     <template v-if="kind === 'image'">
       <img
         v-if="fileUrl"
@@ -122,6 +143,30 @@ async function onImageClick(): Promise<void> {
   align-items: flex-start;
   gap: 4px;
   min-width: 0;
+  /* 徽标要贴在预览图左上角，所以这里做定位上下文 */
+  position: relative;
+}
+
+/**
+ * 类型徽标：压在预览左上角。
+ *
+ * 用半透明深底 + 白字，保证在亮图 / 暗图上都可读（不依赖主题变量，
+ * 因为它叠在**用户生成的内容**上，而主题只保证应用自身的对比度）。
+ */
+.chat-asset-type {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 1;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  line-height: 16px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .chat-asset-media {
