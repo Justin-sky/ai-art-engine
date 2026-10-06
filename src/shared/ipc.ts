@@ -614,6 +614,12 @@ export type McpActivityTool =
   | 'generate_sound_effect'
   | 'generate_music'
   | 'generate_model3d'
+  /** 3D 骨骼蒙皮（云端 Rigging API：Meshy / Tripo） */
+  | 'rig_model3d'
+  /** 3D 模型拆分（网格分割 / 智能分割） */
+  | 'segment_model3d'
+  /** 3D 加工（补全 / 重拓扑 / 绑骨检查 / 重定向 / 格式转换 / 贴图） */
+  | 'post_process_model3d'
   /** 空间世界生成（World Labs Marble）：文/图生世界，产物同 3D 走 GLB */
   | 'generate_world'
   /** 空间世界导出：把世界导成可编排网格（GLB）或 PLY 泼溅 */

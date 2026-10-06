@@ -164,6 +164,10 @@ import { SHARED_ERRORS } from '@shared/errors/catalog'
 import { fail } from '@shared/errors/appError'
 import type {
   ExportWorldInput,
+  Model3dConvertFormat,
+  Model3dPostProcessInput,
+  Model3dPostProcessOp,
+  Model3dPostProcessResult,
   SpatialWorldExportAssetType,
   SpatialWorldExportMeshVariant,
   SpatialWorldExportResolution
@@ -220,9 +224,37 @@ const GATED_TOOLS = new Set([
   'generate_music',
   'generate_world',
   'export_spatial_world',
+  'rig_model3d',
+  'segment_model3d',
+  'post_process_model3d',
   'decide',
   'workflow_plan'
 ])
+
+/**
+ * 3D 加工的全部 op（与 `Model3dPostProcessOp` 同集合）。
+ *
+ * 这里显式列一份而不是从类型反推：`op` 是**必填字符串**，进来的是不可信的模型输出，
+ * 不在白名单时给一条能读懂的错误（列出可选值），比让 facade 走到深处再报错好得多。
+ */
+const POST_PROCESS_OPS: readonly Model3dPostProcessOp[] = [
+  'rigCheck',
+  'retopology',
+  'meshComplete',
+  'retarget',
+  'convert',
+  'texture'
+] as const
+
+/** 格式转换的目标格式（与 `Model3dConvertFormat` 同集合） */
+const MODEL3D_CONVERT_FORMATS: readonly Model3dConvertFormat[] = [
+  'GLTF',
+  'FBX',
+  'USDZ',
+  'OBJ',
+  'STL',
+  '3MF'
+] as const
 
 interface McpToolDef {
   name: string
@@ -2849,7 +2881,8 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'generate_model3d',
     title: '生成 3D 模型',
     description:
-      '文生 3D / 图生 3D（Meshy / Tripo / Rodin / Luma / Lux3D），产出 GLB 模型并落盘到工程缓存目录 Cache/Models（不自动进资产库）。骨骼蒙皮请用图节点「3D 骨骼蒙皮」（Meshy/Tripo Rigging API），不要在本工具传 rig。需要进资产库时由用户在对话卡上点「保存到资产库」按钮。返回工程内相对路径。',
+      '文生 3D / 图生 3D（Meshy / Tripo / Rodin / Luma / Lux3D），产出 GLB 模型并落盘到工程缓存目录 Cache/Models（不自动进资产库）。需要进资产库时由用户在对话卡上点「保存到资产库」按钮。返回工程内相对路径。' +
+      '**本工具只负责生成，不要传 rig**：骨骼蒙皮（Meshy/Tripo Rigging API）用 `rig_model3d`、拆件用 `segment_model3d`、重拓扑 / 补全 / 重定向 / 转换格式 / 贴图用 `post_process_model3d` —— 它们都吃本工具返回的模型资产。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -3192,6 +3225,406 @@ const TOOL_DEFS: McpToolDef[] = [
         ...(result.assetId ? {} : { note: 'PLY 泼溅落在世界产物同目录同名的 .ply 文件里' })
       }
     }
+  },
+  {
+    name: 'rig_model3d',
+    title: '3D 骨骼蒙皮',
+    description:
+      '给现有 3D 模型绑骨架（云端 Rigging API），产物 GLB（或 FBX）落 `Cache/Models`（不自动进资产库）。**只有 Meshy 与 Tripo 提供该能力**，别的 3D 供应商会明确报错。' +
+      '输出会返回 `taskId` —— 做**动画重定向**（`post_process_model3d` 的 `op: retarget`）时要把它作为 `providerTaskId` 传回去。' +
+      '源模型给 `assetId`（工程内模型资产）或 `modelUrl`（公网直链）。**给工程内文件需要先配置对象存储**：模型要先换成公网 URL 才能提交给上游；`modelUrl` 则不需要。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        assetId: { type: 'string', description: '源 3D 模型资产 id（与 modelUrl 二选一）' },
+        modelUrl: { type: 'string', description: '公网可访问的模型直链（与 assetId 二选一）' },
+        rigType: {
+          type: 'string',
+          description: '骨架类型（humanoid / quadruped 等，缺省 humanoid）'
+        },
+        spec: {
+          type: 'string',
+          enum: ['tripo', 'mixamo'],
+          description:
+            '骨架命名规范：mixamo（默认，兼容 Mixamo 动作库）/ tripo（原生命名）；Meshy 忽略'
+        },
+        outFormat: {
+          type: 'string',
+          enum: ['glb', 'fbx'],
+          description: '输出格式：glb（默认，可直接预览）/ fbx（DCC / 游戏引擎）；Meshy 固定 glb'
+        },
+        model: { type: 'string', description: '3D 模型 id（models_list 查询）' },
+        providerInstanceId: { type: 'string', description: '提供商实例 id' },
+        name: { type: 'string', description: '产物显示名' },
+        extraParams: { type: 'object', description: '低频参数透传，合并进底层生成输入' }
+      },
+      required: []
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const input = {
+        ...cacheOnlyGenExtraParams(args),
+        ...resolveModel3dSourceInput(args),
+        model: optionalString(args, 'model'),
+        providerInstanceId: optionalString(args, 'providerInstanceId'),
+        rigType: optionalString(args, 'rigType'),
+        spec: readEnumArg(args, 'spec', ['tripo', 'mixamo'] as const),
+        outFormat: readEnumArg(args, 'outFormat', ['glb', 'fbx'] as const),
+        name: optionalString(args, 'name')
+      }
+      const result = await runGenActivity(
+        'rig_model3d',
+        activityTitle(input.name, `3D 骨骼蒙皮（${input.rigType || 'humanoid'}）`),
+        input.model,
+        () => modelProviderFacade.rigModel3d(input),
+        (r) => ({ assetId: r.assetId, relativePath: liveAssetRelativePath(r) }),
+        undefined,
+        (r) => ({
+          kind: 'rigModel3d',
+          nodeId: 'mcp',
+          request: {
+            model: input.model,
+            providerInstanceId: input.providerInstanceId,
+            rigType: input.rigType,
+            name: input.name
+          },
+          response: {
+            model: r.model,
+            assetId: r.assetId,
+            relativePath: liveAssetRelativePath(r)
+          }
+        })
+      )
+      broadcastAsset(result.assetId)
+      return {
+        assetId: result.assetId,
+        relativePath: liveAssetRelativePath(result),
+        model: result.model,
+        // 下游重定向要用它，必须回给 agent
+        taskId: result.taskId
+      }
+    }
+  },
+  {
+    name: 'segment_model3d',
+    title: '3D 模型拆分',
+    description:
+      '把 3D 模型拆成部件，产物 GLB 落 `Cache/Models`（不自动进资产库），并返回**部件名清单**（拆分后 GLB 的各 node 名，可用于后续「部件补全」点名）。' +
+      '两种模式：`mesh`（网格分割，默认；可给 `granularity` 走语义 + 几何的 v2 算法）与 `smart`（智能分割，按语义拆，可用 `hint` 点名要拆哪些部件，如「带剑与盔甲的游戏角色」）。' +
+      '源模型给 `assetId` 或 `modelUrl`；**给工程内文件需要先配置对象存储**（要先换成公网 URL）。输出含 `taskId`，可作为「部件补全」的 `providerTaskId`。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        assetId: { type: 'string', description: '源 3D 模型资产 id（与 modelUrl 二选一）' },
+        modelUrl: { type: 'string', description: '公网可访问的模型直链（与 assetId 二选一）' },
+        mode: {
+          type: 'string',
+          enum: ['mesh', 'smart'],
+          description: '拆分模式：mesh（网格分割，默认）/ smart（智能分割，按语义）'
+        },
+        granularity: {
+          type: 'string',
+          description: 'mesh 模式的分割粒度（传入即用 v2.0 语义 + 几何算法）'
+        },
+        splitByConnectivity: {
+          type: 'boolean',
+          description: 'mesh v2：是否按连通域拆分（默认 true）'
+        },
+        smartGranularity: {
+          type: 'string',
+          description: 'smart 模式的粒度（缺省 medium）'
+        },
+        hint: { type: 'string', description: 'smart 模式：点名要拆哪些部件' },
+        model: { type: 'string', description: '3D 模型 id（models_list 查询）' },
+        providerInstanceId: { type: 'string', description: '提供商实例 id' },
+        name: { type: 'string', description: '产物显示名' },
+        extraParams: { type: 'object', description: '低频参数透传，合并进底层生成输入' }
+      },
+      required: []
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const input = {
+        ...cacheOnlyGenExtraParams(args),
+        ...resolveModel3dSourceInput(args),
+        model: optionalString(args, 'model'),
+        providerInstanceId: optionalString(args, 'providerInstanceId'),
+        mode: readEnumArg(args, 'mode', ['mesh', 'smart'] as const),
+        granularity: readEnumArg(args, 'granularity', ['simple', 'balanced', 'detailed'] as const),
+        splitByConnectivity:
+          typeof args.splitByConnectivity === 'boolean' ? args.splitByConnectivity : undefined,
+        smartGranularity: readEnumArg(args, 'smartGranularity', [
+          'coarse',
+          'medium',
+          'fine'
+        ] as const),
+        hint: optionalString(args, 'hint'),
+        name: optionalString(args, 'name')
+      }
+      const result = await runGenActivity(
+        'segment_model3d',
+        activityTitle(input.name, `3D 模型拆分（${input.mode || 'mesh'}）`),
+        input.model,
+        () => modelProviderFacade.segmentModel3d(input),
+        (r) => ({ assetId: r.assetId, relativePath: liveAssetRelativePath(r) }),
+        undefined,
+        (r) => ({
+          kind: 'segmentModel3d',
+          nodeId: 'mcp',
+          request: {
+            model: input.model,
+            providerInstanceId: input.providerInstanceId,
+            name: input.name
+          },
+          response: {
+            model: r.model,
+            assetId: r.assetId,
+            relativePath: liveAssetRelativePath(r)
+          }
+        })
+      )
+      broadcastAsset(result.assetId)
+      return {
+        assetId: result.assetId,
+        relativePath: liveAssetRelativePath(result),
+        model: result.model,
+        taskId: result.taskId,
+        mode: result.mode,
+        parts: result.parts
+      }
+    }
+  },
+  {
+    name: 'post_process_model3d',
+    title: '3D 模型加工',
+    description:
+      '对 3D 模型做后续加工，产物落 `Cache/Models`（不自动进资产库）。按 `op` 分流：' +
+      '`rigCheck`（**免费**，检查能否绑骨 + 推荐骨架类型，**无产物**）、' +
+      '`retopology`（重拓扑：`smart` v2 智能 / `basic` v1 减面，可给 `faceLimit` 目标面数、`quad` 四边面、`bake` 烘焙贴图）、' +
+      '`meshComplete`（部件补全：`partNames` 点名要补的部件、省略=全部；`completionMode` 为 ai_completion / quick_cap）、' +
+      '`retarget`（动画重定向：给 `animation` 单个或 `animations` 多个预设动作 id，动作用 `list_model3d_animations` 查；**必须传上一个绑骨或拆件任务的 `providerTaskId`**）、' +
+      '`convert`（格式转换：`format` 必填 GLTF / FBX / USDZ / OBJ / STL / 3MF，另有贴图尺寸与格式、FBX 预设、pivot 归底、UV 打包、朝向、压平底部等）、' +
+      '`texture`（重绘贴图）。' +
+      '**能力按供应商矩阵过滤**：Tripo 支持 8 项、Meshy 支持 5 项，做不到的组合上游会明确报错。**部件补全只吃拆件任务 id、动画重定向只吃绑骨任务 id**，task id 属于别家时会退回「上传模型换公网 URL」。' +
+      '源模型给 `assetId` 或 `modelUrl`；**给工程内文件需要先配置对象存储**。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        op: {
+          type: 'string',
+          enum: ['rigCheck', 'retopology', 'meshComplete', 'retarget', 'convert', 'texture'],
+          description: '要做的加工类型'
+        },
+        assetId: { type: 'string', description: '源 3D 模型资产 id（与 modelUrl 二选一）' },
+        modelUrl: { type: 'string', description: '公网可访问的模型直链（与 assetId 二选一）' },
+        providerTaskId: {
+          type: 'string',
+          description:
+            '上游任务 id：meshComplete 用拆件任务的、retarget 用绑骨任务的（见 rig_model3d / segment_model3d 返回的 taskId）'
+        },
+        partNames: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'meshComplete：要补全的部件名（省略 = 全部）'
+        },
+        completionMode: {
+          type: 'string',
+          enum: ['ai_completion', 'quick_cap'],
+          description: 'meshComplete：补全模式（缺省 ai_completion）'
+        },
+        retopologyMode: {
+          type: 'string',
+          enum: ['smart', 'basic'],
+          description: 'retopology：算法档位（缺省 smart = v2.0 智能；basic = v1.0 基础减面）'
+        },
+        faceLimit: { type: 'number', description: 'retopology：目标面数' },
+        quad: { type: 'boolean', description: 'retopology：输出四边面' },
+        bake: { type: 'boolean', description: 'retopology：把贴图烘焙到低模（默认 true）' },
+        animation: {
+          type: 'string',
+          description: 'retarget：单个预设动作 id（与 animations 互斥）'
+        },
+        animations: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'retarget：多个预设动作 id（与 animation 互斥）'
+        },
+        actionIds: {
+          type: 'array',
+          items: { type: 'number' },
+          description: 'retarget：Meshy 动作库的 action id'
+        },
+        outFormat: {
+          type: 'string',
+          enum: ['glb', 'fbx'],
+          description: 'retarget：输出格式（缺省 glb）'
+        },
+        bakeAnimation: { type: 'boolean', description: 'retarget：把动画烘焙进模型（仅 glb）' },
+        exportWithGeometry: {
+          type: 'boolean',
+          description: 'retarget：是否带几何导出（默认 true）'
+        },
+        animateInPlace: { type: 'boolean', description: 'retarget：原地播放（默认 false）' },
+        format: {
+          type: 'string',
+          enum: ['GLTF', 'FBX', 'USDZ', 'OBJ', 'STL', '3MF'],
+          description: 'convert：目标格式（必填）'
+        },
+        textureSize: { type: 'number', description: 'convert：输出贴图尺寸（默认 4096）' },
+        textureFormat: { type: 'string', description: 'convert：贴图图片格式（默认 JPEG）' },
+        fbxPreset: {
+          type: 'string',
+          enum: ['blender', '3dsmax', 'mixamo', 'bake_scale'],
+          description: 'convert：FBX 兼容预设（默认 blender）'
+        },
+        pivotToCenterBottom: { type: 'boolean', description: 'convert：pivot 移到模型底部中心' },
+        packUv: { type: 'boolean', description: 'convert：统一打包 UV' },
+        exportVertexColors: {
+          type: 'boolean',
+          description: 'convert：导出顶点色（仅 OBJ / GLTF）'
+        },
+        exportOrientation: {
+          type: 'string',
+          enum: ['+x', '-x', '+y', '-y'],
+          description: 'convert：导出朝向（前向轴）'
+        },
+        flattenBottom: { type: 'boolean', description: 'convert：压平底部（打印件常用）' },
+        scaleFactor: { type: 'number', description: 'convert：导出缩放系数' },
+        withAnimation: { type: 'boolean', description: 'convert：保留骨骼与动画数据' },
+        model: { type: 'string', description: '3D 模型 id（models_list 查询）' },
+        providerInstanceId: { type: 'string', description: '提供商实例 id' },
+        name: { type: 'string', description: '产物显示名' },
+        extraParams: { type: 'object', description: '低频参数透传，合并进底层生成输入' }
+      },
+      required: ['op']
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const op = readString(args, 'op')
+      if (!POST_PROCESS_OPS.includes(op as Model3dPostProcessOp)) {
+        throw new Error(`不支持的 op：「${op}」（可选 ${POST_PROCESS_OPS.join(' / ')}）`)
+      }
+      const input: Model3dPostProcessInput = {
+        ...cacheOnlyGenExtraParams(args),
+        ...resolveModel3dSourceInput(args),
+        op: op as Model3dPostProcessOp,
+        providerTaskId: optionalString(args, 'providerTaskId'),
+        model: optionalString(args, 'model'),
+        providerInstanceId: optionalString(args, 'providerInstanceId'),
+        partNames: readStringList(args, 'partNames'),
+        completionMode: readEnumArg(args, 'completionMode', [
+          'ai_completion',
+          'quick_cap'
+        ] as const),
+        retopologyMode: readEnumArg(args, 'retopologyMode', ['smart', 'basic'] as const),
+        faceLimit: optionalNumber(args, 'faceLimit'),
+        quad: typeof args.quad === 'boolean' ? args.quad : undefined,
+        bake: typeof args.bake === 'boolean' ? args.bake : undefined,
+        animation: optionalString(args, 'animation'),
+        animations: readStringList(args, 'animations'),
+        actionIds: readNumberList(args, 'actionIds'),
+        outFormat: readEnumArg(args, 'outFormat', ['glb', 'fbx'] as const),
+        bakeAnimation: typeof args.bakeAnimation === 'boolean' ? args.bakeAnimation : undefined,
+        exportWithGeometry:
+          typeof args.exportWithGeometry === 'boolean' ? args.exportWithGeometry : undefined,
+        animateInPlace: typeof args.animateInPlace === 'boolean' ? args.animateInPlace : undefined,
+        format: readEnumArg(args, 'format', MODEL3D_CONVERT_FORMATS),
+        textureSize: optionalNumber(args, 'textureSize'),
+        textureFormat: readEnumArg(args, 'textureFormat', [
+          'JPEG',
+          'PNG',
+          'WEBP',
+          'BMP',
+          'DPX',
+          'HDR',
+          'OPEN_EXR',
+          'TARGA',
+          'TIFF'
+        ] as const),
+        fbxPreset: readEnumArg(args, 'fbxPreset', [
+          'blender',
+          '3dsmax',
+          'mixamo',
+          'bake_scale'
+        ] as const),
+        pivotToCenterBottom:
+          typeof args.pivotToCenterBottom === 'boolean' ? args.pivotToCenterBottom : undefined,
+        packUv: typeof args.packUv === 'boolean' ? args.packUv : undefined,
+        exportVertexColors:
+          typeof args.exportVertexColors === 'boolean' ? args.exportVertexColors : undefined,
+        exportOrientation: readEnumArg(args, 'exportOrientation', [
+          '+x',
+          '-x',
+          '+y',
+          '-y'
+        ] as const),
+        flattenBottom: typeof args.flattenBottom === 'boolean' ? args.flattenBottom : undefined,
+        scaleFactor: optionalNumber(args, 'scaleFactor'),
+        withAnimation: typeof args.withAnimation === 'boolean' ? args.withAnimation : undefined,
+        name: optionalString(args, 'name')
+      }
+      const result = await runGenActivity(
+        'post_process_model3d',
+        activityTitle(input.name, `3D 加工（${op}）`),
+        input.model,
+        () => modelProviderFacade.postProcessModel3d(input),
+        // 绑骨检查没有产物，不报 assetId（否则活动卡会指向不存在的资产）
+        (r) =>
+          isProducingPostProcess(r)
+            ? { assetId: r.assetId, relativePath: liveAssetRelativePath(r) }
+            : {},
+        undefined,
+        (r) => ({
+          kind: 'postProcessModel3d',
+          nodeId: 'mcp',
+          request: {
+            model: input.model,
+            providerInstanceId: input.providerInstanceId,
+            name: input.name,
+            // 复用 input 字段记录 op，便于运行日志复盘（该调用没有 prompt）
+            input: op
+          },
+          response: isProducingPostProcess(r)
+            ? {
+                model: r.model,
+                assetId: r.assetId,
+                relativePath: liveAssetRelativePath(r)
+              }
+            : {}
+        })
+      )
+      // rigCheck 无产物，不广播
+      if (isProducingPostProcess(result)) {
+        broadcastAsset(result.assetId)
+        return { ...result, relativePath: liveAssetRelativePath(result) }
+      }
+      return result
+    }
+  },
+  {
+    name: 'list_model3d_animations',
+    title: '3D 动作库',
+    description:
+      '列出当前 3D 供应商可用的**预设动作**（Meshy 动作库），供 `post_process_model3d` 的 `op: retarget` 选动作。只读操作，不产生费用、不写资产。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        search: {
+          type: 'string',
+          description: '按动作名 / key 子串过滤（Meshy 服务端支持），不传则返回全部'
+        },
+        providerInstanceId: { type: 'string', description: '提供商实例 id' }
+      },
+      required: []
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const actions = await modelProviderFacade.listModel3dAnimations({
+        search: optionalString(args, 'search'),
+        providerInstanceId: optionalString(args, 'providerInstanceId')
+      })
+      return { total: actions.length, actions }
+    }
   }
 ]
 
@@ -3231,6 +3664,77 @@ function optionalNumber(args: Record<string, unknown>, key: string): number | un
     return Number(value)
   }
   return undefined
+}
+
+/**
+ * 读取数字数组参数（去重）；非数组返回空数组。
+ *
+ * 与 `readStringList` 同形，但用于 Meshy 动作库的 `actionIds`（数字 id）。
+ * 接受数字字符串，因为不少 MCP 客户端会把 JSON 数字序列化成字符串。
+ */
+function readNumberList(args: Record<string, unknown>, key: string): number[] {
+  const value = args[key]
+  if (!Array.isArray(value)) return []
+  const out: number[] = []
+  for (const item of value) {
+    const n = typeof item === 'number' ? item : typeof item === 'string' ? Number(item) : NaN
+    if (Number.isFinite(n) && !out.includes(n)) out.push(n)
+  }
+  return out
+}
+
+/**
+ * 读取枚举参数；不在白名单内（含缺省）返回 undefined，让上游用自己的默认值。
+ *
+ * 不用 `readString` 那套"必填报错"：这些枚举几乎都有服务端默认值，
+ * 传错时**回落到默认**比报错更符合生成工具的既有体验（数值仍由上游夹紧）。
+ */
+function readEnumArg<T extends string>(
+  args: Record<string, unknown>,
+  key: string,
+  allowed: readonly T[]
+): T | undefined {
+  const value = args[key]
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  return (allowed as readonly string[]).includes(trimmed) ? (trimmed as T) : undefined
+}
+
+/**
+ * 读取 3D 加工类工具的源模型入参。
+ *
+ * 上游只认**公网 URL**：给 `assetId` 时取它的工程内相对路径，由 facade 走
+ * `ensureRemoteMediaUrl` 上传对象存储（未配置会明确报错）；给 `modelUrl` 则直接用，
+ * **不需要对象存储** —— 这条差别对用户是真金白银的配置成本，所以工具描述里都写明了。
+ */
+function resolveModel3dSourceInput(args: Record<string, unknown>): {
+  modelUrl?: string
+  modelRelativePath?: string
+} {
+  const modelUrl = optionalString(args, 'modelUrl')
+  if (modelUrl) return { modelUrl }
+  const assetId = optionalString(args, 'assetId')
+  if (!assetId) return {}
+  const asset = findAssetOrThrow(assetId)
+  const relativePath = asset.relativePath?.trim()
+  if (!relativePath) throw new Error(`资产没有可用的文件路径：${assetId}`)
+  return { modelRelativePath: relativePath }
+}
+
+/**
+ * 判断一次 3D 加工是否产出了资产。
+ *
+ * `Model3dPostProcessResult` 是联合类型：`rigCheck` 只回检测结论（可绑骨？推荐骨架？），
+ * **没有 assetId / relativePath / model**；其余 op 才有。
+ *
+ * 谓词不能写成 `Extract<..., { assetId: string }>` —— `op` 在产出分支里本身就是联合
+ * （`meshComplete | retopology | ...`），`Extract` 会求成 `never`，于是守卫失效、
+ * 后面的字段访问依旧报错（踩过）。写成"排除 rigCheck"才真正收窄。
+ */
+function isProducingPostProcess(
+  result: Model3dPostProcessResult
+): result is Exclude<Model3dPostProcessResult, { op: 'rigCheck' }> {
+  return result.op !== 'rigCheck'
 }
 
 /**

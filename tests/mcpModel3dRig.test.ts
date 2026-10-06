@@ -61,10 +61,13 @@ describe('MCP generate_model3d 不再暴露生成侧蒙皮', () => {
     expect(schema).not.toMatch(/['"]?rigAnimation['"]?\s*:\s*{/)
   })
 
-  it('描述引导改用 3D 骨骼蒙皮节点', () => {
+  it('描述把蒙皮引导到 MCP 专工具 rig_model3d', () => {
     const block = extractToolBlock(MCP_SRC, 'generate_model3d')
-    expect(block).toMatch(/3D 骨骼蒙皮/)
+    // 蒙皮能力本身仍在（Rigging API），但入口从"图节点"变成了 MCP 专工具 rig_model3d：
+    // Agent 反复建图跑任务只为蒙皮一个模型，既绕又容易漏步骤
+    expect(block).toMatch(/骨骼蒙皮/)
     expect(block).toMatch(/Rigging API/)
+    expect(block).toMatch(/rig_model3d/)
     expect(block).not.toMatch(/applyModel3dRigArgs/)
   })
 
