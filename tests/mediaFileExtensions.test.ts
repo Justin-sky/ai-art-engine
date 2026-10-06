@@ -2,10 +2,14 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { SPLAT_EXTENSIONS } from '../src/renderer/src/features/director/splatMesh'
+import { isScannedOutputPath } from '../src/shared/outputScan'
 import {
   ANY_FILE_EXTENSIONS,
+  AUDIO_FILE_EXTENSIONS,
+  IMAGE_FILE_EXTENSIONS,
   MODEL_FILE_EXTENSIONS,
   MOTION_FILE_EXTENSIONS,
+  VIDEO_FILE_EXTENSIONS,
   modelFileExtensions
 } from '../src/shared/mediaFileExtensions'
 
@@ -99,5 +103,46 @@ describe('i18n：新增的模型过滤标签中英都有', () => {
     const en = readFileSync(resolve('src/renderer/src/i18n/locales/en-US.ts'), 'utf8')
     expect(zh).toMatch(/fileFilter: \{[^}]*model: '[^']+'/s)
     expect(en).toMatch(/fileFilter: \{[^}]*model: '[^']+'/s)
+  })
+})
+
+/**
+ * 第四个漂移点：对话**扫盘**白名单。
+ *
+ * `outputScan.ts` 里那份 `SCANNED_MEDIA_EXTS` 的注释一直写着
+ * 「与 ChatAssetPreview 的预览白名单一致」，实际早已不一致 ——
+ * 泼溅（`.ply` / `.spz`）不在里面，于是世界生成随包免费返回的 SPZ
+ * **扫不出来**，对话流里根本看不到（而 `ModelPreview` 明明能渲染它）。
+ *
+ * 现已改为从 `mediaFileExtensions` 派生。这条断言把「能预览」与「扫得出」
+ * 绑在一起：任何一边漏了扩展名都会失败。
+ */
+describe('扫盘白名单与预览白名单不漂移', () => {
+  it('每一种可预览的模型格式（含泼溅）都能被扫出卡', () => {
+    for (const ext of MODEL_FILE_EXTENSIONS) {
+      expect(
+        isScannedOutputPath(`Cache/Models/world.${ext}`),
+        `.${ext} 可预览但扫不出来 —— 对话流里会看不到它`
+      ).toBe(true)
+    }
+  })
+
+  it('图片 / 视频 / 声音格式同样一一对应', () => {
+    for (const ext of IMAGE_FILE_EXTENSIONS) {
+      expect(isScannedOutputPath(`Cache/Images/a.${ext}`), `.${ext}`).toBe(true)
+    }
+    for (const ext of VIDEO_FILE_EXTENSIONS) {
+      expect(isScannedOutputPath(`Cache/Videos/a.${ext}`), `.${ext}`).toBe(true)
+    }
+    for (const ext of AUDIO_FILE_EXTENSIONS) {
+      expect(isScannedOutputPath(`Cache/Voices/a.${ext}`), `.${ext}`).toBe(true)
+    }
+  })
+
+  it('扫盘清单不再是手写数组（源码级防复发）', () => {
+    const scan = readFileSync(resolve('src/shared/outputScan.ts'), 'utf8')
+    expect(scan).toContain('...MODEL_FILE_EXTENSIONS')
+    expect(scan).toContain('...IMAGE_FILE_EXTENSIONS')
+    expect(scan).not.toMatch(/const SCANNED_MEDIA_EXTS = new Set\(\[\s*\n\s*'png'/)
   })
 })

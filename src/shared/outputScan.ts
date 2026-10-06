@@ -15,6 +15,12 @@
  * 矢量源 / 烘焙位图 / 帧序列，再叠上节点参数预览的物化副本，逐文件出卡会在对话
  * 流里连排多张几乎相同的图——因此一张卡代表一批产物，成员在卡内展开。
  */
+import {
+  AUDIO_FILE_EXTENSIONS,
+  IMAGE_FILE_EXTENSIONS,
+  MODEL_FILE_EXTENSIONS,
+  VIDEO_FILE_EXTENSIONS
+} from './mediaFileExtensions'
 
 /** 出卡范围内的一级目录名（工程根下，大小写不敏感） */
 export const SCANNED_OUTPUT_DIRS = ['Output', 'Cache'] as const
@@ -41,28 +47,20 @@ export const ROUND_OUTPUT_GROUP_GAP_MS = 10_000
 /** 无资产名前缀的附带产物（如节点参数预览 `node-<id>_param-preview.svg`）挂进当前批次的时间窗口 */
 export const ROUND_OUTPUT_ATTACH_GAP_MS = 2_000
 
-/** 可出卡的媒体扩展名（与 `ChatAssetPreview` 的预览白名单一致） */
-const SCANNED_MEDIA_EXTS = new Set([
-  'png',
-  'jpg',
-  'jpeg',
-  'gif',
-  'webp',
-  'bmp',
-  'svg',
-  'mp4',
-  'webm',
-  'mov',
-  'mkv',
-  'm4v',
-  'mp3',
-  'wav',
-  'ogg',
-  'm4a',
-  'aac',
-  'flac',
-  'glb',
-  'gltf'
+/**
+ * 可出卡的媒体扩展名（与 `ChatAssetPreview` 的预览白名单一致）。
+ *
+ * **从 `mediaFileExtensions` 派生，不再手写**：这份清单原先自写一份，注释还写着
+ * 「与预览白名单一致」，实际早已漂移 —— 例如高斯泼溅（`.ply` / `.spz`）不在里面，
+ * 于是世界生成随包免费返回的 SPZ **扫不出来**，对话流里看不到（`ModelPreview`
+ * 明明能渲染它）。同一个格式在多处各写一份清单，是这个仓库反复踩的坑。
+ */
+const SCANNED_MEDIA_EXTS = new Set<string>([
+  ...IMAGE_FILE_EXTENSIONS,
+  ...VIDEO_FILE_EXTENSIONS,
+  ...AUDIO_FILE_EXTENSIONS,
+  // 3D：网格 + 高斯泼溅（泼溅登记为 model 资产，也能预览）
+  ...MODEL_FILE_EXTENSIONS
 ])
 
 /** 扫盘命中的单个产物文件 */

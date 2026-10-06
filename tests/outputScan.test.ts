@@ -290,3 +290,79 @@ describe('产物扫盘：批次聚合键', () => {
     expect(generatedAssetKeyOf('Output/_20260913-151235371.svg')).toBeNull()
   })
 })
+
+/**
+ * 「AI 对话流里看不到世界生成的 SPZ 泼溅」的回归。
+ *
+ * 世界生成会**随包免费返回**两份附加产物：`.spz` 高斯泼溅与 360 全景图，
+ * 都落在世界 GLB 旁边（`Cache/Models/`）。它们此前只被写进节点参数
+ * （`spatialWorldExtras`，供世界节点检视器展示），而对话扫盘的
+ * `SCANNED_MEDIA_EXTS` 白名单里**没有 `spz` / `ply`** —— 于是扫不出来、对话里看不到。
+ *
+ * 白名单的注释还写着「与 ChatAssetPreview 的预览白名单一致」，实际早已漂移。
+ * 现已改为从 `mediaFileExtensions` 派生（单一来源）。
+ */
+describe('产物扫盘：世界附加产物（高斯泼溅 / 全景）也要进对话流', () => {
+  it('.spz / .ply 泼溅可出卡（原先不在白名单）', () => {
+    expect(isScannedOutputPath('Cache/Models/world.spz')).toBe(true)
+    expect(isScannedOutputPath('Cache/Models/world.ply')).toBe(true)
+    expect(isScannedOutputPath('Cache/Models/world.SPZ')).toBe(true)
+  })
+
+  it('360 全景图本来就能出卡（.png），保持', () => {
+    expect(isScannedOutputPath('Cache/Models/world.pano.png')).toBe(true)
+  })
+
+  it('泼溅与世界主产物落在同一批，聚合成一张卡（用户选的「挂成同批次产物」）', () => {
+    const at = 1_700_000_000_000
+    const files: ProjectOutputFile[] = [
+      // 世界 GLB 用生成媒体命名（有资产名前缀）
+      { relativePath: 'Cache/Models/世界_空间世界_20260913-151235371.glb', mtimeMs: at, size: 10 },
+      // 附加产物由下载器命名，没有资产名前缀 → 走紧窗口（2s）挂进同批
+      { relativePath: 'Cache/Models/world.spz', mtimeMs: at + 400, size: 2_000_000 },
+      { relativePath: 'Cache/Models/world.pano.png', mtimeMs: at + 800, size: 900_000 }
+    ]
+    const { cards } = groupRoundOutputs(files)
+    expect(cards).toHaveLength(1)
+    expect(cards[0].primary.relativePath).toBe('Cache/Models/世界_空间世界_20260913-151235371.glb')
+    expect(cards[0].related.map((f) => f.relativePath)).toEqual([
+      'Cache/Models/world.spz',
+      'Cache/Models/world.pano.png'
+    ])
+  })
+
+  it('附加产物先落盘时，仍由随后的同源主产物补上批次身份', () => {
+    const at = 1_700_000_000_000
+    const files: ProjectOutputFile[] = [
+      { relativePath: 'Cache/Models/world.spz', mtimeMs: at, size: 2_000_000 },
+      {
+        relativePath: 'Cache/Models/世界_空间世界_20260913-151235371.glb',
+        mtimeMs: at + 300,
+        size: 10
+      }
+    ]
+    const { cards } = groupRoundOutputs(files)
+    expect(cards).toHaveLength(1)
+    // 卡的代表文件是**最早写入**的那份（既有语义：成员按写入时间升序，首个当代表）
+    expect(cards[0].primary.relativePath).toBe('Cache/Models/world.spz')
+    // 后到的同源主产物补上批次身份并成为成员
+    expect(cards[0].related.map((f) => f.relativePath)).toEqual([
+      'Cache/Models/世界_空间世界_20260913-151235371.glb'
+    ])
+  })
+
+  it('selectRoundOutputs 能选中 .spz（本轮写入且体积达标）', () => {
+    const at = 1_700_000_000_000
+    const { picked } = selectRoundOutputs(
+      [
+        { relativePath: 'Cache/Models/world.spz', mtimeMs: at, size: 2_000_000 },
+        { relativePath: 'Cache/Models/world.ply', mtimeMs: at + 1, size: 1_000 }
+      ],
+      { sinceMs: at - 1000 }
+    )
+    expect(picked.map((f) => f.relativePath)).toEqual([
+      'Cache/Models/world.spz',
+      'Cache/Models/world.ply'
+    ])
+  })
+})
