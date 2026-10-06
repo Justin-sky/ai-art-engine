@@ -48,6 +48,8 @@ const GEN_TOOLS = [
   'generate_video',
   'generate_model3d',
   'generate_speech',
+  'generate_dialogue',
+  'generate_sound_effect',
   'generate_music'
 ] as const
 
@@ -69,8 +71,13 @@ describe('MCP 对话生成工具 inputSchema 收紧', () => {
     expect(schema).not.toMatch(/['"]?folderId['"]?\s*:/)
   })
 
-  it('generate_speech / generate_music：不再含 outputDir / folderId', () => {
-    for (const toolName of ['generate_speech', 'generate_music']) {
+  it('generate_speech / generate_dialogue / generate_sound_effect / generate_music：不再含 outputDir / folderId', () => {
+    for (const toolName of [
+      'generate_speech',
+      'generate_dialogue',
+      'generate_sound_effect',
+      'generate_music'
+    ]) {
       const schema = extractInputSchemaBlock(toolName)
       expect(schema, `${toolName} 仍暴露 outputDir`).not.toMatch(/['"]?outputDir['"]?\s*:/)
       expect(schema, `${toolName} 仍暴露 folderId`).not.toMatch(/['"]?folderId['"]?\s*:/)
@@ -83,6 +90,9 @@ describe('MCP 对话生成工具 inputSchema 收紧', () => {
       generate_video: /Cache\/Videos/,
       generate_model3d: /Cache\/Models/,
       generate_speech: /Cache\/Voices/,
+      // 多说话人对话产物是声音资产，与语音同目录
+      generate_dialogue: /Cache\/Voices/,
+      generate_sound_effect: /Cache\/Sfx/,
       generate_music: /Cache\/Music/
     }
     for (const [toolName, cacheDir] of Object.entries(cacheDirs)) {

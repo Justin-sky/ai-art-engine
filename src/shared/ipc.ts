@@ -608,6 +608,10 @@ export type McpActivityTool =
   | 'generate_image'
   | 'generate_video'
   | 'generate_speech'
+  /** 多说话人对话（ElevenLabs Text to Dialogue）：一次合成整段对白 */
+  | 'generate_dialogue'
+  /** 音效生成（ElevenLabs `POST /v1/sound-generation`）：描述声音本身，不是台词 */
+  | 'generate_sound_effect'
   | 'generate_music'
   | 'generate_model3d'
   /** 空间世界生成（World Labs Marble）：文/图生世界，产物同 3D 走 GLB */

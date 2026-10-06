@@ -751,8 +751,8 @@
               decision protocol as OpenRouter but without the hop. The Ark audio tab also
               links the speech console and asks for a manual <code>speaker_id</code>; Kling has only image and video tabs;
               MiniMax supports text / image / video / voice design;
-              <strong>OpenAI supports text / image / audio</strong>; <strong>ElevenLabs exposes an audio tab only</strong>
-              (speech synthesis); DeepSeek is
+              <strong>OpenAI supports text / image / audio</strong>; <strong>ElevenLabs exposes both the Audio and Music tabs</strong>
+              (speech synthesis / multi-speaker dialogue / sound effects live under Audio, music generation under Music); DeepSeek is
               text only; Kimi (Moonshot) is text only; xAI (Grok) supports text / image / video with async
               polling for video; Google (Gemini) supports text / Nano Banana images / Veo 3.1 video with async
               polling; Zhipu supports GLM text and CogView images; vLLM supports text and video (Wan T2V / I2V);
@@ -804,11 +804,27 @@
                 </li>
                 <li>
                   <strong>Sound effect</strong>: uses <code>POST /v1/sound-generation</code> and describes the
-                  <em>sound itself</em> (e.g. "rain on a tin roof"), with an optional seamless-loop flag and
-                  target duration; the file lands in <code>Cache/Sfx</code>.
+                  <em>sound itself</em> (e.g. "rain on a tin roof"), not a spoken line. The instruction panel offers
+                  “seamlessly loopable” (turn it on for long-playing ambience — no more clicks at the loop seam),
+                  “expected duration” (spec range <strong>0.5–30 s</strong>) and “prompt influence”
+                  (<strong>0–1</strong>, default 0.3); the file lands in <code>Cache/Sfx</code>.
+                  <strong>That endpoint's model is a single fixed value</strong>
+                  (<code>eleven_text_to_sound_v2</code>), so the dropdown on the card actually picks
+                  <strong>which provider instance</strong> to use (only meaningful with multiple accounts / keys) —
+                  its title already says “model is fixed to …”. With no provider available it errors out explicitly
+                  instead of falling back to speech synthesis.
                 </li>
               </ul>
-              Both reuse the same ElevenLabs key as “audio to subtitles” and BGM generation.
+              Both reuse the same ElevenLabs key as “audio to subtitles”.
+            </li>
+            <li>
+              <strong>Music (BGM) lives on its own tab</strong>: ElevenLabs' <code>POST /v1/music</code> is filed
+              under the <strong>Music</strong> tab (kept separate from Audio) — music is composition
+              (prompt + lyrics / instrumental) while speech synthesis is TTS (text + voice), and the two use
+              different endpoints and model families. The same tab also lists music models from OpenRouter
+              (Google Lyria 3), MiniMax (<code>music-3.0</code>) and DashScope (<code>fun-music-v1</code>);
+              the music node's dropdown lists music models only and never shows TTS models. Settings that stored
+              music models under the Audio tab are migrated automatically.
             </li>
             <li>
               Set the default generation model if needed. Provider cards can be collapsed to

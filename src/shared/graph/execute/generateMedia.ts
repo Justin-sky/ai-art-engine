@@ -39,7 +39,11 @@ import {
   newestVideoSelectedId
 } from './gallery'
 import { autoIncomingTextForInstruction, selectIncomingValuesForInstruction } from './incoming'
-import { buildDialogueInputs, parseDialogueScript } from '../dialogueScript'
+import {
+  buildDialogueInputs,
+  normalizeDialogueVoiceMap,
+  parseDialogueScript
+} from '../dialogueScript'
 import {
   commitGeneratedImages,
   materializeGeneratedBatch,
@@ -407,19 +411,6 @@ export async function executeMusicGenerateNode(
     createdAt: new Date().toISOString(),
     relativePath: result.relativePath
   })
-}
-
-/** 节点参数里的说话人→音色映射：丢掉空值与非字符串 */
-function normalizeDialogueVoiceMap(raw: unknown): Record<string, string> {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
-  const out: Record<string, string> = {}
-  for (const [speaker, voice] of Object.entries(raw as Record<string, unknown>)) {
-    const key = speaker.trim()
-    if (!key || typeof voice !== 'string') continue
-    const value = voice.trim()
-    if (value) out[key] = value
-  }
-  return out
 }
 
 /** 视频生成：无 API 时透传上游；有 API 时调用视频模型并输出资产 */

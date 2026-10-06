@@ -66,6 +66,26 @@ export function dialogueSpeakers(lines: DialogueLine[]): string[] {
 }
 
 /**
+ * 说话人 → 音色的映射：丢掉空值与非法项。
+ *
+ * 放在这里而不是执行器里，是因为**图节点与 MCP 工具都要用它**：
+ * 两边各写一份的话，宽容度会慢慢漂移（一边认全角冒号另一边不认这类）。
+ *
+ * @param raw 节点参数 `generateDialogueVoices` 或 MCP 工具入参 `voices`
+ */
+export function normalizeDialogueVoiceMap(raw: unknown): Record<string, string> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  const out: Record<string, string> = {}
+  for (const [speaker, voice] of Object.entries(raw as Record<string, unknown>)) {
+    const key = speaker.trim()
+    if (!key || typeof voice !== 'string') continue
+    const value = voice.trim()
+    if (value) out[key] = value
+  }
+  return out
+}
+
+/**
  * 把解析出的行映射成端点的 `inputs`。
  *
  * @param voiceBySpeaker 说话人 → 音色 id（来自节点参数；单说话人节点用 `fallbackVoice`）

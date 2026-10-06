@@ -681,7 +681,7 @@
               <code>output_modalities=decisions</code> 拉取；TypeSafe 直连仅「决策」页签，目录走 <code>GET /v1/models</code>、判定走
               <code>POST /v1/systemone</code>，与 OpenRouter 的决策协议一致但不经其中转；方舟声音页签会提示语音控制台链接，并手填
               <code>speaker_id</code>；可灵仅图片与视频页签；MiniMax 支持文本 / 图片 / 视频 / 音色设计；
-              <strong>OpenAI 支持文本 / 图片 / 声音</strong>；<strong>ElevenLabs 仅声音页签</strong>（语音合成）；
+              <strong>OpenAI 支持文本 / 图片 / 声音</strong>；<strong>ElevenLabs 支持「声音」与「音乐」两个页签</strong>（语音合成 / 多说话人对话 / 音效生成走「声音」，音乐生成走「音乐」）；
               DeepSeek 仅文本；Kimi（月之暗面）仅文本；xAI（Grok）支持文本 / 图片 / 视频（视频为异步轮询）；Google（Gemini）支持文本 / Nano Banana 图片 / Veo 3.1 视频（异步轮询）；智谱支持 GLM 文本与 CogView 图片；vLLM 支持文本与视频（Wan T2V / I2V）；Ollama / LM Studio 仅文本（多模态理解可在文本节点传图）；
               魔塔仅文本与图片，文生图为异步任务；ComfyUI 支持图片 / 视频 / 声音，无文本页签；MagicRouter 支持文本 / 图片 / 视频；Meshy / Tripo / Rodin（Hyper3D） / Luma AI / Lux3D 仅 3D 模型页签；World Labs（Marble）仅空间世界页签；自定义提供商的页签由端点类型决定 —— OpenAI 兼容 / Gemini 为文本 + 图片，Anthropic 仅文本，且图片模型必须手动填 id，见
               <a href="guide-newapi.html">NewAPI 接入教程</a>）。
@@ -719,11 +719,24 @@
                 </li>
                 <li>
                   <strong>音效生成</strong>：走 <code>POST /v1/sound-generation</code>，
-                  描述的是<strong>声音本身</strong>（如「雨落在铁皮屋顶上」），
-                  可勾选「可无缝循环」并指定期望时长；落盘到 <code>Cache/Sfx</code>。
+                  描述的是<strong>声音本身</strong>（如「雨落在铁皮屋顶上」），而不是台词。
+                  指令面板里可选「可无缝循环」（环境音长播时必开：接缝不再咔嗒）、
+                  「期望时长」（规范范围 <strong>0.5–30 秒</strong>）与「提示词影响力」
+                  （<strong>0–1</strong>，默认 0.3）；落盘到 <code>Cache/Sfx</code>。
+                  <strong>那个端点的模型是唯一取值</strong>（<code>eleven_text_to_sound_v2</code>），
+                  所以卡片上的下拉实际是在选<strong>用哪个提供商实例</strong>（多账号 / 多 Key 时才有意义），
+                  标题已写明「模型固定为 …」。没有可用提供商时会明确报错，不会退回语音合成。
                 </li>
               </ul>
-              这两个节点与「配音转字幕」「BGM 生成」一样，都复用同一把 ElevenLabs Key。
+              这两个节点与「配音转字幕」一样，都复用同一把 ElevenLabs Key。
+            </li>
+            <li>
+              <strong>音乐（BGM）走另一个页签</strong>：ElevenLabs 的 <code>POST /v1/music</code>
+              归在「<strong>音乐</strong>」页签下（与「声音」分开）—— 音乐是编曲（prompt + 歌词 / 纯音乐），
+              语音合成是 TTS（text + voice），两边的端点与模型体系都不同。
+              同一页签下还能勾 OpenRouter（Google Lyria 3）、MiniMax（<code>music-3.0</code>）与
+              通义千问 · 百炼（<code>fun-music-v1</code>）的音乐模型；音乐节点下拉只列音乐模型，
+              不会出现 TTS 模型。升级前把音乐模型勾在「声音」页签的旧设置会自动迁移过来。
             </li>
             <li>设置默认生成模型（如需要）。提供商卡片可折叠以节省空间。</li>
           </ol>

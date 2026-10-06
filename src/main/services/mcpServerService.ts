@@ -40,6 +40,12 @@ import {
   type McpToolImage
 } from '@shared/mcpProtocol'
 import {
+  buildDialogueInputs,
+  dialogueSpeakers,
+  normalizeDialogueVoiceMap,
+  parseDialogueScript
+} from '@shared/graph/dialogueScript'
+import {
   AI_WORKFLOW_PRESET_IDS,
   MCP_GRAPH_EDIT_SCOPE,
   getAiWorkflowPresetPlan,
@@ -154,6 +160,8 @@ import {
 } from './blenderMcpService'
 import { mcpActivityService } from './mcpActivityService'
 import { broadcastToAllWindows } from '../broadcast'
+import { SHARED_ERRORS } from '@shared/errors/catalog'
+import { fail } from '@shared/errors/appError'
 import { commitAiWorkflow, planAiWorkflow } from './graphPlanService'
 import { projectService } from './projectService'
 import { assetPackageService } from './assetPackageService'
@@ -201,6 +209,8 @@ const MCP_AUDIT_MAX_BYTES = 5 * 1024 * 1024
 const GATED_TOOLS = new Set([
   'generate_image',
   'generate_speech',
+  'generate_dialogue',
+  'generate_sound_effect',
   'generate_music',
   'decide',
   'workflow_plan'
@@ -2323,6 +2333,197 @@ const TOOL_DEFS: McpToolDef[] = [
         relativePath: liveAssetRelativePath(result),
         model: result.model,
         durationMs: result.durationMs
+      }
+    }
+  },
+  {
+    name: 'generate_dialogue',
+    title: '生成多说话人对话',
+    description:
+      '把一段多说话人对白一次合成为单个音频（ElevenLabs Text to Dialogue，`POST /v1/text-to-dialogue`）并落盘到工程缓存目录 Cache/Voices（不自动进资产库，避免在对话流里出重复卡）；需要进资产库时由用户在对话产物卡上点「保存到资产库」按钮。返回工程内相对路径。' +
+      '脚本按行写「说话人: 台词」，中英文冒号都认；不含冒号的行沿用上一段的说话人（旁白 / 连续独白）。每个说话人要绑定音色（`voices` 映射，或全局 `voice` 兜底），缺音色会报出是第几段、哪个说话人。' +
+      '**为什么要用这个工具而不是逐句调 generate_speech**：整段一次合成能保住语气连贯，逐句拼接会在句间丢情绪；而且它走的是专门的对话端点。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        script: {
+          type: 'string',
+          description: '对白脚本，按行写；多段用 \\n 分隔。例：「A: 你终于来了。\\nB: 路上堵车。」'
+        },
+        voices: {
+          type: 'object',
+          description:
+            '说话人 → 音色 id 的映射（如 {"A":"<voice_id>","B":"<voice_id>"}）；音色 id 见模型的 supported_voices，或先用 voice_profile_upsert 给角色建档'
+        },
+        voice: { type: 'string', description: '兜底音色（某段没匹配到说话人时用它）' },
+        voiceProfile: {
+          type: 'string',
+          description: '角色音色档案名：按档案解析音色，与显式 voice 二选一'
+        },
+        model: { type: 'string', description: '音频模型 id（models_list 查询）' },
+        providerInstanceId: { type: 'string', description: '提供商实例 id' },
+        name: { type: 'string', description: '资产显示名' },
+        extraParams: {
+          type: 'object',
+          description: '低频参数透传，合并进底层生成输入'
+        }
+      },
+      required: ['script']
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const script = readString(args, 'script')
+      const lines = parseDialogueScript(script)
+      if (!lines.length) throw fail(SHARED_ERRORS.dialogueEmpty)
+
+      const fallbackVoice = optionalString(args, 'voice')
+      const voiceBySpeaker = normalizeDialogueVoiceMap(args.voices)
+      const { inputs, missingVoiceAt } = buildDialogueInputs(lines, voiceBySpeaker, fallbackVoice)
+      if (missingVoiceAt.length) {
+        // 与图节点同一条报错口径：点名第几段、哪个说话人 —— 对白一长只报「缺音色」没法定位
+        const speakers = [
+          ...new Set(missingVoiceAt.map((index) => lines[index]?.speaker).filter(Boolean))
+        ] as string[]
+        throw fail(SHARED_ERRORS.dialogueVoiceMissing, {
+          lines: missingVoiceAt.map((index) => index + 1).join('、'),
+          speakers: speakers.join('、')
+        })
+      }
+
+      const input = {
+        ...cacheOnlyGenExtraParams(args),
+        // input 只作为日志/兜底内容，真正发出去的是 dialogue
+        input: script,
+        dialogue: inputs,
+        model: optionalString(args, 'model'),
+        providerInstanceId: optionalString(args, 'providerInstanceId'),
+        voice: fallbackVoice,
+        voiceProfile: optionalString(args, 'voiceProfile'),
+        name: optionalString(args, 'name')
+      }
+      const result = await runGenActivity(
+        'generate_dialogue',
+        activityTitle(input.name, script),
+        input.model,
+        () => modelProviderFacade.generateSpeechAsset(input),
+        (r) => ({ assetId: r.assetId, relativePath: liveAssetRelativePath(r) }),
+        undefined,
+        // 对话走的是语音端点，日志类别沿用 generateSpeech（没有独立的 dialogue 类别）
+        (r) => ({
+          kind: 'generateSpeech',
+          nodeId: 'mcp',
+          request: {
+            input: input.input,
+            model: input.model,
+            providerInstanceId: input.providerInstanceId,
+            voice: input.voice,
+            name: input.name
+          },
+          response: {
+            model: r.model,
+            voice: r.voice,
+            assetId: r.assetId,
+            relativePath: liveAssetRelativePath(r)
+          }
+        })
+      )
+      broadcastAsset(result.assetId)
+      return {
+        assetId: result.assetId,
+        relativePath: liveAssetRelativePath(result),
+        model: result.model,
+        segments: inputs.length,
+        speakers: dialogueSpeakers(lines)
+      }
+    }
+  },
+  {
+    name: 'generate_sound_effect',
+    title: '生成音效',
+    description:
+      '按描述生成**音效本身**（ElevenLabs `POST /v1/sound-generation`）并落盘到工程缓存目录 Cache/Sfx（不自动进资产库，避免在对话流里出重复卡）；需要进资产库时由用户在对话产物卡上点「保存到资产库」按钮。返回工程内相对路径。' +
+      '要描述**声音听起来是什么样**（「雨落在铁皮屋顶上」「清脆短促的按钮点击」），而不是「我要一个按钮音效」这类**用途**——用途模型听不懂。' +
+      '环境音（雨 / 风 / 海浪 / 机器嗡鸣）请把 `loop` 设为 true：否则长循环时接缝处会有可听见的咔嗒声。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        prompt: {
+          type: 'string',
+          description: '音效描述：音色质感 + 时间形态 + 空间感 + 排除项'
+        },
+        loop: {
+          type: 'boolean',
+          description: '生成可无缝循环的音频（环境音常用）；缺省 false'
+        },
+        durationSeconds: {
+          type: 'number',
+          description: '期望时长（秒），规范范围 0.5–30；超出会被夹到边界'
+        },
+        promptInfluence: {
+          type: 'number',
+          description: '提示词影响力 0–1（默认 0.3）：越高越贴合描述、随机性越低'
+        },
+        model: { type: 'string', description: '音效模型 id（通常留空，端点只有一个模型）' },
+        providerInstanceId: { type: 'string', description: '提供商实例 id' },
+        name: { type: 'string', description: '资产显示名' },
+        extraParams: {
+          type: 'object',
+          description: '低频参数透传，合并进底层生成输入'
+        }
+      },
+      required: ['prompt']
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const prompt = readString(args, 'prompt')
+      const input = {
+        ...cacheOnlyGenExtraParams(args),
+        prompt,
+        // 越界值不用在这里夹：适配器 buildElevenSoundRequest 统一走 clampNumber，
+        // 这里是**上游唯一入口**，重复夹一次只会让两处规则有机会漂移
+        loop: typeof args.loop === 'boolean' ? args.loop : undefined,
+        durationSeconds:
+          typeof args.durationSeconds === 'number' && Number.isFinite(args.durationSeconds)
+            ? args.durationSeconds
+            : undefined,
+        promptInfluence:
+          typeof args.promptInfluence === 'number' && Number.isFinite(args.promptInfluence)
+            ? args.promptInfluence
+            : undefined,
+        model: optionalString(args, 'model'),
+        providerInstanceId: optionalString(args, 'providerInstanceId'),
+        name: optionalString(args, 'name')
+      }
+      const result = await runGenActivity(
+        'generate_sound_effect',
+        activityTitle(input.name, prompt),
+        input.model,
+        () => modelProviderFacade.generateSoundEffectAsset(input),
+        (r) => ({ assetId: r.assetId, relativePath: liveAssetRelativePath(r) }),
+        undefined,
+        (r) => ({
+          kind: 'generateSoundEffect',
+          nodeId: 'mcp',
+          request: {
+            prompt: input.prompt,
+            model: input.model,
+            providerInstanceId: input.providerInstanceId,
+            // duration 是日志里的既有字段（音效的"期望时长"语义最接近它）
+            duration: input.durationSeconds,
+            name: input.name
+          },
+          response: {
+            model: r.model,
+            assetId: r.assetId,
+            relativePath: liveAssetRelativePath(r)
+          }
+        })
+      )
+      broadcastAsset(result.assetId)
+      return {
+        assetId: result.assetId,
+        relativePath: liveAssetRelativePath(result),
+        model: result.model
       }
     }
   },
