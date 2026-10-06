@@ -158,8 +158,8 @@ const E_WORLD_REF_UPLOAD_FAILED = defErr<{ media: string; storage: string }>(
 )
 const E_WORLD_EXPORT_NO_SOURCE = defErrSimple(
   'provider.facade.spatialWorldExportNoSource',
-  'PLY 泼溅导出需要上游世界产物的路径（把它落在世界 GLB 旁边）；请把「空间世界生成」节点的模型口接进来',
-  'Exporting PLY splats needs the upstream world artifact path (they land next to the world GLB); connect the model port of a world generation node'
+  'PLY 泼溅导出需要上游世界产物的路径（它们要落在世界 GLB 旁边）；图节点请把「空间世界生成」的模型口接进来，MCP 调用请给 spatialWorldAssetId / sourceRelativePath',
+  'Exporting PLY splats needs the upstream world artifact path (they land next to the world GLB); connect the model port of a world generation node, or pass spatialWorldAssetId / sourceRelativePath from MCP'
 )
 const E_WORLD_EXPORT_TIMEOUT = defErrSimple(
   'provider.facade.spatialWorldExportTimeout',

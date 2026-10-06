@@ -616,6 +616,8 @@ export type McpActivityTool =
   | 'generate_model3d'
   /** 空间世界生成（World Labs Marble）：文/图生世界，产物同 3D 走 GLB */
   | 'generate_world'
+  /** 空间世界导出：把世界导成可编排网格（GLB）或 PLY 泼溅 */
+  | 'export_spatial_world'
   /** OpenRouter 决策模型：noul / choice / score 结构化判定 */
   | 'decide'
   | 'graph_icon_refine'

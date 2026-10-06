@@ -162,6 +162,12 @@ import { mcpActivityService } from './mcpActivityService'
 import { broadcastToAllWindows } from '../broadcast'
 import { SHARED_ERRORS } from '@shared/errors/catalog'
 import { fail } from '@shared/errors/appError'
+import type {
+  ExportWorldInput,
+  SpatialWorldExportAssetType,
+  SpatialWorldExportMeshVariant,
+  SpatialWorldExportResolution
+} from '@shared/modelProvider'
 import { commitAiWorkflow, planAiWorkflow } from './graphPlanService'
 import { projectService } from './projectService'
 import { assetPackageService } from './assetPackageService'
@@ -212,6 +218,8 @@ const GATED_TOOLS = new Set([
   'generate_dialogue',
   'generate_sound_effect',
   'generate_music',
+  'generate_world',
+  'export_spatial_world',
   'decide',
   'workflow_plan'
 ])
@@ -3057,6 +3065,133 @@ const TOOL_DEFS: McpToolDef[] = [
         relativePath: liveAssetRelativePath(result)
       }
     }
+  },
+  {
+    name: 'export_spatial_world',
+    title: '导出空间世界',
+    description:
+      '把 `generate_world` 产出的**世界**导出成能继续编排的产物。**这是世界的唯一出口** —— 世界端口严格同类型（不隐式兼容模型），不导出就拿不到可用的网格。' +
+      '两种模式：`mesh`（默认）出 HQ 网格 GLB 并**登记为模型资产**，可接 3D 加工 / 导演台，`textured`（约 60 万面，带贴图）或 `vertex_colored`（约 100 万面）；' +
+      '`splats` 出 PLY 泼溅，**落在世界产物同目录同名文件里、不登记资产**（PLY 在应用内没有预览通道），可带分辨率 `full_res` / `500k` / `150k` / `100k`。' +
+      '**计费与耗时**：两者都单独计费；`mesh` 是上游异步服务，**最长约 1 小时**、限速 4 次/小时，所以这个调用会等很久。' +
+      '**只想进去看看就不必导出**：世界生成时随包免费返回的 `.spz` 泼溅已经能直接浏览。' +
+      '必须给 `spatialWorldId`（generate_world 的返回值里有）或 `spatialWorldAssetId`（世界 GLB 的资产 id，可反查）；`splats` 还需要能定位世界产物的路径。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        spatialWorldId: {
+          type: 'string',
+          description: 'World Labs 世界 id（generate_world 返回的 spatialWorldId）'
+        },
+        spatialWorldAssetId: {
+          type: 'string',
+          description:
+            '世界 GLB 的资产 id（generate_world 返回的 assetId）：没给 spatialWorldId 时用它反查，同时作为 splats 的落盘参照'
+        },
+        sourceRelativePath: {
+          type: 'string',
+          description:
+            '世界产物的工程内相对路径（splats 模式在自己的同目录同名落文件用）；缺省时从 spatialWorldAssetId 取'
+        },
+        assetType: {
+          type: 'string',
+          enum: ['mesh', 'splats'],
+          description: 'mesh（默认，HQ 网格 GLB、登记模型资产）或 splats（PLY、只落文件）'
+        },
+        meshVariant: {
+          type: 'string',
+          enum: ['textured', 'vertex_colored'],
+          description: '仅 mesh：带贴图（约 60 万面）或顶点色（约 100 万面），缺省 textured'
+        },
+        resolution: {
+          type: 'string',
+          enum: ['full_res', '500k', '150k', '100k'],
+          description: '仅 splats：PLY 分辨率档，缺省 full_res'
+        },
+        model: { type: 'string', description: '空间世界模型 id（models_list 查询）' },
+        providerInstanceId: { type: 'string', description: '提供商实例 id' },
+        name: { type: 'string', description: '产物显示名' },
+        extraParams: {
+          type: 'object',
+          description: '低频参数透传，合并进底层生成输入'
+        }
+      },
+      required: []
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const assetId = optionalString(args, 'spatialWorldAssetId')
+      const asset = assetId ? findAssetOrThrow(assetId) : undefined
+
+      // 世界 id：显式给最好；否则用世界资产反查生成任务记录（生成本身已花过积分，不该逼用户重生成）
+      const explicitWorldId = optionalString(args, 'spatialWorldId')
+      const spatialWorldId =
+        explicitWorldId ??
+        (assetId
+          ? (await modelProviderFacade.recoverSpatialWorldId({ assetId }))?.trim() || undefined
+          : undefined)
+      if (!spatialWorldId) {
+        throw fail(SHARED_ERRORS.worldExportNoWorldId)
+      }
+
+      const assetType: SpatialWorldExportAssetType = args.assetType === 'splats' ? 'splats' : 'mesh'
+      const sourceRelativePath =
+        optionalString(args, 'sourceRelativePath') ?? asset?.relativePath?.trim() ?? undefined
+
+      const input: ExportWorldInput = {
+        ...cacheOnlyGenExtraParams(args),
+        spatialWorldId,
+        assetType,
+        format: assetType === 'splats' ? 'ply' : 'glb',
+        ...(assetType === 'mesh'
+          ? {
+              meshVariant: (args.meshVariant === 'vertex_colored'
+                ? 'vertex_colored'
+                : 'textured') satisfies SpatialWorldExportMeshVariant
+            }
+          : {}),
+        ...(assetType === 'splats' ? { resolution: readExportResolution(args) } : {}),
+        model: optionalString(args, 'model'),
+        providerInstanceId: optionalString(args, 'providerInstanceId'),
+        sourceRelativePath,
+        name: optionalString(args, 'name')
+      }
+      const result = await runGenActivity(
+        'export_spatial_world',
+        activityTitle(input.name, `导出世界（${assetType}）`),
+        input.model,
+        () => modelProviderFacade.exportWorld(input),
+        (r) => ({ assetId: r.assetId, relativePath: liveAssetRelativePath(r) }),
+        undefined,
+        (r) => ({
+          kind: 'exportWorld',
+          nodeId: 'mcp',
+          request: {
+            model: input.model,
+            providerInstanceId: input.providerInstanceId,
+            name: input.name,
+            // 世界导出没有 prompt；借 input 记录导出规格，便于运行日志复盘
+            input: `export:${assetType}${assetType === 'mesh' ? `:${input.meshVariant}` : ''}`
+          },
+          response: {
+            model: r.model,
+            assetId: r.assetId,
+            relativePath: liveAssetRelativePath(r)
+          }
+        })
+      )
+      // splats 不登记资产（没有可广播的卡），mesh 才有
+      if (result.assetId) broadcastAsset(result.assetId)
+      return {
+        assetId: result.assetId,
+        relativePath: liveAssetRelativePath(result),
+        model: result.model,
+        assetType: result.assetType,
+        format: result.format,
+        // splats 的 PLY 落在世界产物旁边；相对路径一并回报，否则 agent 不知道文件在哪
+        ...(result.assetId ? {} : { note: 'PLY 泼溅落在世界产物同目录同名的 .ply 文件里' })
+      }
+    }
   }
 ]
 
@@ -3096,6 +3231,17 @@ function optionalNumber(args: Record<string, unknown>, key: string): number | un
     return Number(value)
   }
   return undefined
+}
+
+/**
+ * 读取 PLY 泼溅的分辨率档。
+ *
+ * 与图节点 `spatialWorldExportResolution` 同一组取值；非法值一律回落 `full_res`
+ * （与执行器里那段判断同口径，见 shared/graph/execute/spatialWorldExport.ts）。
+ */
+function readExportResolution(args: Record<string, unknown>): SpatialWorldExportResolution {
+  const raw = args.resolution
+  return raw === '500k' || raw === '150k' || raw === '100k' ? raw : 'full_res'
 }
 
 /**

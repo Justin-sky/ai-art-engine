@@ -159,6 +159,18 @@ export const SHARED_ERRORS = {
     '音乐生成需要描述（风格 / 情绪 / 场景，如「轻快明亮的电子配乐，适合 Vlog 背景」）',
     'Music generation needs a description (style / mood / scene, e.g. "bright upbeat electronic bed for a vlog")'
   ),
+  /**
+   * 空间世界导出拿不到世界 id。
+   *
+   * 世界 id 只能由「空间世界生成」给出（导出端点只认它）。图节点靠上游连线，
+   * MCP 靠 generate_world 的返回值或按世界资产反查 —— 两条都拿不到时明确报错，
+   * **不做任何猜测**：猜错就是拿别人的世界去导出。
+   */
+  worldExportNoWorldId: defErrSimple(
+    'graphExec.worldExport.noWorldId',
+    '空间世界导出需要世界 id：图节点请把「空间世界生成」接进来；MCP 请传 generate_world 返回的 spatialWorldId，或传世界资产的 id 作为 spatialWorldAssetId',
+    'Exporting a world needs its world id: connect a world generation node, or pass the spatialWorldId returned by generate_world (or the world asset id as spatialWorldAssetId)'
+  ),
   /** 多说话人对话：某几段没能确定音色（说话人没绑定音色，节点也没设默认音色） */
   dialogueVoiceMissing: defErr<{ lines: string; speakers: string }>(
     'graphExec.dialogue.voiceMissing',
