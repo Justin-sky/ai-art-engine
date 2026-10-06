@@ -8,25 +8,20 @@ import {
 } from '../features/media/animatedImagePlayback'
 import { resolveAssetFileUrl, resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
 import { openFullImagePreview } from '../features/media/openFullImagePreview'
-
-const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'])
-const VIDEO_EXTS = new Set(['mp4', 'webm', 'mov', 'mkv', 'm4v'])
-const AUDIO_EXTS = new Set(['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac'])
-const MODEL_EXTS = new Set(['glb', 'gltf'])
-
-type PreviewKind = 'image' | 'video' | 'audio' | 'model' | 'file'
+import { chatPreviewKind, type ChatPreviewKind } from '../features/media/chatPreviewKind'
 
 const props = defineProps<{ relativePath: string }>()
 
-/** 按文件扩展名推断预览类型；未知类型降级为纯文本路径 */
-const kind = computed<PreviewKind>(() => {
-  const ext = (props.relativePath.split('.').pop() ?? '').toLowerCase()
-  if (IMAGE_EXTS.has(ext)) return 'image'
-  if (VIDEO_EXTS.has(ext)) return 'video'
-  if (AUDIO_EXTS.has(ext)) return 'audio'
-  if (MODEL_EXTS.has(ext)) return 'model'
-  return 'file'
-})
+/**
+ * 按文件扩展名推断预览类型（未知类型降级为纯文本路径）。
+ *
+ * 判据抽在 `features/media/chatPreviewKind.ts` 里，因为它踩过一个坑：
+ * 原先这里只认 `['glb', 'gltf']`，而**泼溅（`.ply` / `.spz`）也能预览**
+ * （`ModelPreview` → `loadModelScene` 内部按 `isSplatPath` 交给 Spark），
+ * 结果泼溅产物在对话里只显示一行路径文本。所有 3D 格式都走同一个
+ * `ModelPreview`，所以扩展名清单必须与它支持的格式保持一致。
+ */
+const kind = computed<ChatPreviewKind>(() => chatPreviewKind(props.relativePath))
 
 const fileUrl = ref('')
 const previewUrl = ref('')

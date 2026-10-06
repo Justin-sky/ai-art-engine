@@ -57,6 +57,15 @@ function mediaPathOf(value: GraphValue | undefined): string | undefined {
     // SVG 生成节点的 out 出 .svg 源码 + 落盘路径，与位图同为「可放给人看」的产物
     case 'svg':
       return value.relativePath?.trim() || undefined
+    /**
+     * 3D 产物（GLB 网格 / PLY·SPZ 高斯泼溅）是 `kind: 'asset'`。
+     *
+     * 这里早先没有这个分支，于是**3D 产物连一条路径都不回报** —— 对话流里既不显示
+     * 预览、也不显示路径文本，产物等于没出现（导演台 / 世界模型 / 3D 加工都受影响）。
+     * 它与图片一样有 `relativePath`，理当和位图同等待遇。
+     */
+    case 'asset':
+      return value.relativePath?.trim() || undefined
     case 'images':
     case 'videos':
     case 'voices':
@@ -67,7 +76,9 @@ function mediaPathOf(value: GraphValue | undefined): string | undefined {
       return (
         lastRelativePath(value.images ?? []) ??
         lastRelativePath(value.videos ?? []) ??
-        lastRelativePath(value.voices ?? [])
+        lastRelativePath(value.voices ?? []) ??
+        // 输出节点的 3D 产物在 items 里（images / videos / voices 都没有时才轮到它）
+        lastRelativePath(value.items ?? [])
       )
     default:
       return undefined

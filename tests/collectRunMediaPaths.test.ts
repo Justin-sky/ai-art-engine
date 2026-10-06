@@ -225,4 +225,113 @@ describe('collectRunMediaPaths', () => {
 
     expect(paths).toEqual(['Cache/Anim/anim.gif', 'Cache/SvgAnim/bake.gif'])
   })
+
+  /**
+   * 「AI 对话流里没有预览生成的 splat 结果」的回归（第一层）。
+   *
+   * 3D 产物（GLB 网格 / PLY·SPZ 泼溅）在运行态里是 `kind: 'asset'`，而
+   * `mediaPathOf` 的 switch **早先没有 `asset` 分支** → 落到 `default` 返回 undefined
+   * → 3D 产物**连一条路径都不回报**：对话里既不显示预览、也不显示路径文本。
+   *
+   * 第二层是产物卡的扩展名判据（见 tests/chatSplatPreview.test.ts）。
+   */
+  describe('3D 产物（含高斯泼溅）也要进会话', () => {
+    it('3D 生成节点：asset 值按 relativePath 收集', () => {
+      const gen = createNodeFromType('asset.model3d', { x: 0, y: 0 }, { id: 'model-gen' })
+      const paths = collectRunMediaPaths(
+        makeGraph([gen]),
+        statesOf({
+          'model-gen': {
+            out: {
+              kind: 'asset',
+              assetType: 'model',
+              assetId: 'asset-1',
+              relativePath: 'Cache/Models/char.glb'
+            }
+          }
+        })
+      )
+
+      expect(paths).toEqual(['Cache/Models/char.glb'])
+    })
+
+    it('泼溅产物（.ply / .spz）同样被收集 —— 它们在对话里也走 ModelPreview', () => {
+      const exp = createNodeFromType('spatialWorld.export', { x: 0, y: 0 }, { id: 'exp' })
+      for (const relativePath of ['Cache/Models/world.ply', 'Cache/Models/world.spz']) {
+        const paths = collectRunMediaPaths(
+          makeGraph([exp]),
+          statesOf({
+            exp: {
+              out: { kind: 'asset', assetType: 'model', assetId: 'a', relativePath }
+            }
+          })
+        )
+        expect(paths).toEqual([relativePath])
+      }
+    })
+
+    it('输出节点的 3D 产物在 items 里，兜底也能取到', () => {
+      const out = createNodeFromType('output.image', { x: 0, y: 0 }, { id: 'out' })
+      const paths = collectRunMediaPaths(
+        makeGraph([out]),
+        statesOf({
+          out: {
+            out: {
+              kind: 'output',
+              outputKind: 'image',
+              params: {},
+              notes: [],
+              items: [
+                { kind: 'asset', assetType: 'model', assetId: 'm1', relativePath: 'Cache/M/a.glb' },
+                {
+                  kind: 'asset',
+                  assetType: 'model',
+                  assetId: 'm2',
+                  relativePath: 'Cache/M/latest.ply'
+                }
+              ]
+            }
+          }
+        })
+      )
+
+      // 末条 = 最新（与图片数组同一语义）
+      expect(paths).toEqual(['Cache/M/latest.ply'])
+    })
+
+    it('图片优先于 items：两者都在时仍取图片，不改变既有行为', () => {
+      const out = createNodeFromType('output.image', { x: 0, y: 0 }, { id: 'out' })
+      const paths = collectRunMediaPaths(
+        makeGraph([out]),
+        statesOf({
+          out: {
+            out: {
+              kind: 'output',
+              outputKind: 'image',
+              params: {},
+              notes: [],
+              images: [{ dataUrl: '', relativePath: 'Assets/Out/shot.png' }],
+              items: [
+                { kind: 'asset', assetType: 'model', assetId: 'm1', relativePath: 'Cache/M/a.glb' }
+              ]
+            }
+          }
+        })
+      )
+
+      expect(paths).toEqual(['Assets/Out/shot.png'])
+    })
+
+    it('没有 relativePath 的 asset 值不进会话（未物化）', () => {
+      const gen = createNodeFromType('asset.model3d', { x: 0, y: 0 }, { id: 'model-gen' })
+      const paths = collectRunMediaPaths(
+        makeGraph([gen]),
+        statesOf({
+          'model-gen': { out: { kind: 'asset', assetType: 'model', assetId: 'asset-1' } }
+        })
+      )
+
+      expect(paths).toEqual([])
+    })
+  })
 })
