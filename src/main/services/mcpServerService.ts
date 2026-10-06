@@ -256,6 +256,18 @@ const MODEL3D_CONVERT_FORMATS: readonly Model3dConvertFormat[] = [
   '3MF'
 ] as const
 
+/**
+ * 一次最多回给客户端几张视频帧。
+ *
+ * 帧是以 base64 内联进**单次响应**的，几 MB 的 data URL 会挤爆上下文；
+ * 而且这些帧只是给 agent "看一眼"，不是交付物（要交付就走 `extract_video_frames` 落盘）。
+ * 超出的部分丢弃并明确告知 —— 静默截断会让 agent 以为看到的就是全部。
+ */
+const VIDEO_FRAME_MAX_IMAGES = 6
+
+/** 抽帧数量的上限（均匀抽帧会逐帧跑 ffmpeg，给太大等于让用户干等） */
+const VIDEO_FRAME_EXTRACT_MAX = 24
+
 interface McpToolDef {
   name: string
   title: string
@@ -3625,6 +3637,149 @@ const TOOL_DEFS: McpToolDef[] = [
       })
       return { total: actions.length, actions }
     }
+  },
+  {
+    name: 'extract_video_frames',
+    title: '视频抽帧落盘',
+    description:
+      '把视频按时间**均匀**抽帧并**落盘为工程内图片**，返回相对路径清单（可直接当参考图喂给图片 / 视频工具）。' +
+      `帧数上限 ${VIDEO_FRAME_EXTRACT_MAX}。**只想看一眼请用 grab_video_frames** —— 它把画面直接回给你，不占工程文件。` +
+      '源视频给 `assetId`（视频资产）或 `relativePath`（工程内视频）。**依赖 ffmpeg**：缺失时返回空数组（不报错），可用 `app_status` 查运行时状态。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        assetId: { type: 'string', description: '视频资产 id（与 relativePath 二选一）' },
+        relativePath: { type: 'string', description: '工程内视频相对路径（与 assetId 二选一）' },
+        count: {
+          type: 'number',
+          description: `抽帧数量（默认 4，上限 ${VIDEO_FRAME_EXTRACT_MAX}）；给 1 时直接取首帧`
+        }
+      },
+      required: []
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const relativePath = resolveVideoRelativePath(args)
+      const rawCount = optionalNumber(args, 'count')
+      const count = Math.min(
+        Math.max(1, rawCount === undefined ? 4 : Math.floor(rawCount)),
+        VIDEO_FRAME_EXTRACT_MAX
+      )
+      const frames = await projectService.extractVideoFrames(relativePath, count)
+      return {
+        relativePath,
+        requestedCount: count,
+        frameCount: frames.length,
+        frames,
+        ...(frames.length
+          ? {}
+          : {
+              note: '没有抽到帧：通常是 ffmpeg 缺失或视频文件不可读（可用 app_status 查 ffmpeg 状态）'
+            })
+      }
+    }
+  },
+  {
+    name: 'grab_video_frames',
+    title: '视频按时间点取帧看画面',
+    description:
+      '按**指定时间点**取视频画面并**随本次响应回给你看**（不需要落盘、不产生工程文件）。' +
+      `一次最多回 ${VIDEO_FRAME_MAX_IMAGES} 张，超出的会丢弃并在返回里说明。` +
+      '这是 agent 做视觉判断的正路（甄别时间段发生了什么、找可用镜头、印证字幕与画面对不对得上）；' +
+      '要拿到**可复用的图片文件**请用 extract_video_frames。**依赖 ffmpeg**，缺失时返回空数组。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        assetId: { type: 'string', description: '视频资产 id（与 relativePath 二选一）' },
+        relativePath: { type: 'string', description: '工程内视频相对路径（与 assetId 二选一）' },
+        timestamps: {
+          type: 'array',
+          items: { type: 'number' },
+          description: `要取画面的时间点（秒），如 [0, 2.5, 7]。最多 ${VIDEO_FRAME_MAX_IMAGES} 个`
+        },
+        width: { type: 'number', description: '取帧宽度（像素，缺省由服务决定）；调小可省带宽' }
+      },
+      required: ['timestamps']
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const relativePath = resolveVideoRelativePath(args)
+      const timestamps = readNumberList(args, 'timestamps').filter((t) => t >= 0)
+      if (!timestamps.length) throw new Error('需要至少一个非负的时间点（秒）')
+      const width = optionalNumber(args, 'width')
+      const grabbed = await projectService.grabVideoFramesAtTimestamps(relativePath, timestamps, {
+        ...(width !== undefined ? { width } : {})
+      })
+      const kept = grabbed.slice(0, VIDEO_FRAME_MAX_IMAGES)
+      return {
+        relativePath,
+        requestedCount: timestamps.length,
+        frameCount: kept.length,
+        frames: kept.map((frame) => ({ timeSec: frame.timeSec })),
+        ...(kept.length < grabbed.length
+          ? {
+              note: `只回前 ${VIDEO_FRAME_MAX_IMAGES} 张（共取到 ${grabbed.length} 张）：多帧会挤爆上下文，剩余时间点请分批再取`
+            }
+          : {}),
+        ...(grabbed.length
+          ? {}
+          : { note: '没有取到画面：通常是时间点超出视频时长，或 ffmpeg 缺失' }),
+        mcpImages: kept.map((frame) => frame.dataUrl)
+      }
+    }
+  },
+  {
+    name: 'detect_video_keyframes',
+    title: '视频关键帧时间点',
+    description:
+      '列出视频的**关键帧时间点**（秒），用于挑「切点」附近的位置再做精确取帧（配合 `grab_video_frames`）。' +
+      '只读轻量操作（走 ffprobe，不逐帧解码），不产生文件、不写资产。**依赖 ffprobe**，缺失或文件不可读时返回空数组。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        assetId: { type: 'string', description: '视频资产 id（与 relativePath 二选一）' },
+        relativePath: { type: 'string', description: '工程内视频相对路径（与 assetId 二选一）' }
+      },
+      required: []
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const relativePath = resolveVideoRelativePath(args)
+      const keyframes = await projectService.detectVideoKeyframes(relativePath)
+      return {
+        relativePath,
+        count: keyframes?.length ?? 0,
+        keyframes: keyframes ?? [],
+        ...(keyframes?.length ? {} : { note: '没有读到关键帧：ffprobe 缺失或视频不可读' })
+      }
+    }
+  },
+  {
+    name: 'analyze_video_beats',
+    title: '视频人/物打点',
+    description:
+      '对视频抽帧做**逐帧目标检测**，产出人 / 物出现的时间段（beat tags：总时长、逐帧样本、聚合片段、各类别摘要），' +
+      '并把结果写回该视频资产的 meta（应用界面同步显示）。用于按"谁在什么时候出现"来粗剪 —— 比让模型看完整条视频便宜得多。' +
+      '**只吃视频资产 id**（结果要写回资产，工程内相对路径没有可写的落点）。' +
+      '**耗时且依赖 ffmpeg + 检测模型**：缺失时返回 `status: skipped` 与 `error` / `install` 说明，而不是抛错。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        assetId: { type: 'string', description: '视频资产 id（必填）' }
+      },
+      required: ['assetId']
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const assetId = readString(args, 'assetId')
+      const tags = await projectService.analyzeVideoBeats(assetId)
+      if (!tags) {
+        throw new Error(
+          `打点失败：${assetId} 不是视频资产、没有可用文件路径，或分析被跳过（可用 app_status 查 ffmpeg / 检测模型状态）`
+        )
+      }
+      return { assetId, ...tags }
+    }
   }
 ]
 
@@ -3735,6 +3890,23 @@ function isProducingPostProcess(
   result: Model3dPostProcessResult
 ): result is Exclude<Model3dPostProcessResult, { op: 'rigCheck' }> {
   return result.op !== 'rigCheck'
+}
+
+/**
+ * 解析视频帧类工具的源视频：优先 `relativePath`，其次 `assetId` 反查资产路径。
+ *
+ * 三个取帧 / 关键帧工具都同时接受两者（与 `transcribe_audio` / `audio_separate`
+ * 的既有口径一致：给 assetId 更方便，给路径更直接）。
+ */
+function resolveVideoRelativePath(args: Record<string, unknown>): string {
+  const relativePath = optionalString(args, 'relativePath')
+  if (relativePath) return relativePath
+  const assetId = optionalString(args, 'assetId')
+  if (!assetId) throw new Error('需要 assetId 或 relativePath 指定一个视频')
+  const asset = findAssetOrThrow(assetId)
+  const resolved = asset.relativePath?.trim()
+  if (!resolved) throw new Error(`资产没有可用的文件路径：${assetId}`)
+  return resolved
 }
 
 /**
