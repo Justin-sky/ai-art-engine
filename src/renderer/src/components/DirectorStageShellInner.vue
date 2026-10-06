@@ -320,6 +320,13 @@
           @set-orientation="scene.setViewOrientation"
           @reset-view="scene.resetViewer"
         />
+        <!--
+          「模型口接了线却没实例化」的原因提示。
+          压在视口内而不是状态栏：这种情况下画面本来就是空的，用户不会去看底栏。
+        -->
+        <div v-if="incomingModelNoticeText" class="incoming-model-notice">
+          {{ incomingModelNoticeText }}
+        </div>
       </div>
     </div>
 
@@ -383,6 +390,24 @@ const viewportEl = inject<Ref<HTMLDivElement | null>>('directorViewportEl')!
 const localViewport = ref<HTMLDivElement | null>(null)
 const viewportSize = ref({ width: 0, height: 0 })
 const viewportAssetDragOver = ref(false)
+
+/**
+ * 模型口问题的可读文案。
+ *
+ * 三种原因分开说：用户能据此判断是自己该去资产库确认、还是上游压根没产出 ——
+ * 此前这三条路都静默失败，界面只呈现"空的导演台"。
+ */
+const incomingModelNoticeText = computed(() => {
+  const notice = scene.incomingModelNotice.value
+  if (!notice) return ''
+  const key =
+    notice.kind === 'noCandidate'
+      ? 'director.incomingModel.noCandidate'
+      : notice.kind === 'missingPath'
+        ? 'director.incomingModel.missingPath'
+        : 'director.incomingModel.notPlaceable'
+  return t(key)
+})
 const viewMenuOpen = ref(false)
 const viewMenuEl = ref<HTMLElement | null>(null)
 const presetMenuOpen = ref(false)
@@ -1154,5 +1179,27 @@ async function onViewportDrop(event: DragEvent): Promise<void> {
 
 .status-error {
   color: #ff8f8f;
+}
+
+/**
+ * 模型口问题提示：压在视口下方居中，不挡取景也不随视口旋转。
+ * 用主题变量（它叠在应用自己的画布上，与生成内容不同）。
+ */
+.incoming-model-notice {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  max-width: min(560px, calc(100% - 32px));
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.18));
+  background: var(--panel-bg, rgba(0, 0, 0, 0.72));
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: center;
+  pointer-events: none;
+  z-index: 2;
 }
 </style>

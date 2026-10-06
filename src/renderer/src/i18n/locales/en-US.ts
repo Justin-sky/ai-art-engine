@@ -1918,6 +1918,20 @@ export default {
     error: {
       panoramaLoad: 'Failed to load panorama'
     },
+    /*
+     * The three ways a wired model port can still put nothing on the stage.
+     * All three used to fail silently (`createModelObject` returned null),
+     * leaving the user with an empty stage and no way to tell whether the
+     * asset was missing or the upstream node had simply never produced one.
+     */
+    incomingModel: {
+      noCandidate:
+        'The model port is wired, but the upstream node offers no usable 3D output yet: run that node once so it produces a model.',
+      missingPath:
+        'The wired asset is not in the library and has no usable file path, so it cannot be loaded: drag the model in from the library again.',
+      notPlaceable:
+        'The model port received an animation clip or pose asset — those are not meshes and by design cannot be placed on the stage as objects; wire the model itself instead.'
+    },
     stageWindow: {
       loading: 'Opening stage…',
       missingAsset: 'Missing director asset',

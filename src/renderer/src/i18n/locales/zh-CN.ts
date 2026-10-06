@@ -1871,6 +1871,20 @@ export default {
     error: {
       panoramaLoad: '全景加载失败'
     },
+    /*
+     * 「模型口接了线却没实例化」的三种原因。
+     *
+     * 这三条以前都是静默失败（`createModelObject` 直接 return null），界面只呈现
+     * 一个空的导演台，用户无法判断该去资产库确认还是上游没产出。
+     */
+    incomingModel: {
+      noCandidate:
+        '模型口接了线，但上游没有可用的 3D 产物：请确认上游节点已经跑过（运行过一次才会产出模型）。',
+      missingPath:
+        '模型口接到的资产不在资产库，也没有可用的文件路径，无法载入：请从资产库重新拖入该模型。',
+      notPlaceable:
+        '模型口接到的是动画片段或姿势资产 —— 它们不是网格，按设计不能作为物体放到舞台上；请改接模型本体。'
+    },
     stageWindow: {
       loading: '正在打开舞台…',
       missingAsset: '缺少导演台资产',

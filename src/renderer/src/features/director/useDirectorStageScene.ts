@@ -36,7 +36,6 @@ import {
   directorViewerRotationFromLook,
   gridDensityToCellSize,
   isAnimationModelAsset,
-  isNonPlaceableModelAsset,
   isPoseModelAsset,
   buildPoseAssetGenParams,
   readPoseAssetData,
@@ -151,7 +150,9 @@ import {
   resolveDirectorStageForNode,
   shouldResetDirectorStage
 } from './directorStageBinding'
-import { resolveDirectorIncomingModels } from './pickDirectorIncomingModel'
+import { DIRECTOR_MODEL_IN_PORT, resolveDirectorIncomingModels } from './pickDirectorIncomingModel'
+import type { DirectorIncomingModelIssue } from './incomingModelIssue'
+import { reasonNotPlaceable } from './incomingModelIssue'
 import { flattenImagesValues, isDirectorProcessingNode } from '@shared/graph'
 import { resolveAssetFileUrl } from '../media/assetUrlCache'
 import { extractModelSceneDefaults } from './modelSceneDefaults'
@@ -6428,8 +6429,17 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
             genParams: {}
           }
         : null)
-    if (!model?.relativePath) return null
-    if (isNonPlaceableModelAsset(model)) return null
+    if (!model?.relativePath) {
+      // 静默返回过 null 很久：界面上什么都不显示，用户无从知道卡在哪
+      incomingModelNotice.value = { kind: 'missingPath', assetId: modelAssetId }
+      return null
+    }
+    // 原因判定走纯函数（可测）：这里只负责把它变成可见提示
+    const notPlaceable = reasonNotPlaceable(model)
+    if (notPlaceable) {
+      incomingModelNotice.value = { kind: notPlaceable, assetId: modelAssetId }
+      return null
+    }
 
     let xf = readModelAssetTransform(model.genParams)
     let color = readModelAssetColor(model.genParams) ?? '#ffffff'
@@ -8119,6 +8129,18 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
 
   let appliedIncomingModelKey = ''
 
+  /**
+   * `in-model` 端口的问题提示（接了线却没实例化时给用户一个可见原因）。
+   *
+   * 这份"什么都不显示"的体验此前只能靠翻代码排查：`createModelObject` 有两条
+   * 静默 `return null`（资产不在库 + 无文件路径 / 动画·姿势资产），
+   * 还有一条更隐蔽的 —— 上游没产出候选（运行态没留住）时整条链直接空转。
+   */
+  const incomingModelNotice = ref<{
+    kind: DirectorIncomingModelIssue
+    assetId?: string
+  } | null>(null)
+
   function incomingModelKey(info: IncomingModelInfo): string {
     const pose = info.bonePose ? JSON.stringify(info.bonePose) : ''
     const clip = info.clip
@@ -8175,6 +8197,8 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
 
   async function applyIncomingModel(incoming: IncomingModelInfo): Promise<void> {
     const key = incomingModelKey(incoming)
+    // 成功接上就不再提示（上一次的失败原因不该跟着到下一次）
+    incomingModelNotice.value = null
     const existing = stage.value.objects.find(
       (o) => o.kind === 'model' && o.modelAssetId === incoming.assetId
     )
@@ -8207,6 +8231,9 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     const incomingList = await resolveIncomingModels()
     if (!incomingList.length) {
       appliedIncomingModelKey = ''
+      // 分了两种：接了线却解析不出候选（运行态没留住 / 节点没挂模型资产），
+      // 与压根没接线。前者必须告诉用户，否则他只会看到"导演台空的"。
+      incomingModelNotice.value = hasIncomingModelEdge() ? { kind: 'noCandidate' } : null
       return
     }
     const key = incomingList.map((item) => incomingModelKey(item)).join('|')
@@ -8214,6 +8241,17 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       await applyIncomingModel(incoming)
     }
     appliedIncomingModelKey = key
+  }
+
+  /** `in-model` 端口上是否挂了线（只判有无，不解析候选） */
+  function hasIncomingModelEdge(): boolean {
+    const nodeId = boundProcessingNodeId()
+    if (!nodeId) return false
+    const doc = graphEditorHosts.getDocument(graphHostId.value)
+    if (!doc) return false
+    return (doc.edges ?? []).some(
+      (edge) => edge.target === nodeId && (edge.targetPort ?? 'in') === DIRECTOR_MODEL_IN_PORT
+    )
   }
 
   let incomingModelSyncTail = Promise.resolve()
@@ -9279,6 +9317,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
 
   return {
     error,
+    incomingModelNotice,
     stage,
     linkedPanoramaId,
     transformMode,
