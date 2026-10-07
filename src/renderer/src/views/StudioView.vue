@@ -25,15 +25,6 @@
         ↷
       </button>
       <button
-        type="button"
-        class="tasks-btn"
-        :title="t('aiWorkflow.title')"
-        :aria-label="t('aiWorkflow.title')"
-        @click="openAiWorkflowDialog()"
-      >
-        {{ t('aiWorkflow.shortAction') }}
-      </button>
-      <button
         ref="tasksBtnEl"
         type="button"
         class="tasks-btn"
@@ -259,6 +250,7 @@ import AiCreateWorkflowDialog from '../components/AiCreateWorkflowDialog.vue'
 import EditorDockTab from '../components/EditorDockTab.vue'
 import StudioSideToolBar from '../components/StudioSideToolBar.vue'
 import { useAiCreateWorkflow } from '../composables/useAiCreateWorkflow'
+import { aiWorkflowOpenRequest } from '../features/aiWorkflow/openRequest'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { placeFixedMenu } from '../utils/clampFixedMenuPosition'
 import {
@@ -1168,6 +1160,15 @@ function onReady(event: DockviewReadyEvent): void {
 watch(locale, () => {
   const api = dockApi.value
   if (api) applyCorePanelTitles(api)
+})
+
+/**
+ * 「一键工作流」的入口现在在工作区的「新建」列表里（见 `WorkspaceMain.vue`），
+ * 但它要打开的对话框与全部状态都在这里 —— 因此由那边发一个请求信号，这里打开。
+ * 对话框保持单实例、单份状态。
+ */
+watch(aiWorkflowOpenRequest, () => {
+  openAiWorkflowDialog()
 })
 
 function resetLayout(): void {

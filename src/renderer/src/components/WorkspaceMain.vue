@@ -19,17 +19,18 @@
         </h2>
         <div class="create-grid">
           <button
-            v-for="item in createItems"
-            :key="item.id"
+            v-for="entry in createItems"
+            :key="entry.id"
             type="button"
             class="create-btn"
-            :disabled="busyId === item.id"
-            @click="onCreate(item)"
+            :disabled="busyId === entry.id"
+            :title="createItemTooltip(entry)"
+            @click="onCreate(entry)"
           >
             <span class="create-icon" aria-hidden="true">
-              <WorkspaceItemIcon :icon="item.icon" :item-id="item.id" :size="18" />
+              <WorkspaceItemIcon :icon="createItemIcon(entry)" :item-id="entry.id" :size="18" />
             </span>
-            <span class="create-label">{{ createItemLabel(item) }}</span>
+            <span class="create-label">{{ createItemLabel(entry) }}</span>
           </button>
         </div>
       </section>
@@ -71,6 +72,7 @@ import type { ResolvedWorkspaceToolbarItem } from '@shared/workspaceToolbar'
 import { buildCanvasStarterGraph } from '@shared/graph'
 import { useAssetCreation } from '../composables/useAssetCreation'
 import { useDraftSave } from '../composables/useDraftSave'
+import { requestAiWorkflowDialog } from '../features/aiWorkflow/openRequest'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { promptAlert, promptText } from '../composables/useStudioPrompt'
 import { listRegisteredToolbarItems } from '../editor/extensions'
@@ -81,6 +83,19 @@ import WorkspaceItemIcon from './WorkspaceItemIcon.vue'
 const CREATE_IDS = new Set(['freeCanvas', 'subgraph', 'screenplay', 'motion'])
 const RECENT_LIMIT = 8
 
+/**
+ * 「一键工作流」入口。
+ *
+ * 它**不创建资产**（而是打开预设选择对话框），所以不走工具栏注册表 ——
+ * 注册表里的条目都带 `assetType`，硬塞一个占位类型迟早会被别的消费方当成真资产类型用。
+ * 这里用判别联合显式区分两种条目。
+ */
+const AI_WORKFLOW_ENTRY_ID = 'aiWorkflow'
+
+type CreateEntry =
+  | { kind: 'asset'; id: string; item: ResolvedWorkspaceToolbarItem }
+  | { kind: 'aiWorkflow'; id: typeof AI_WORKFLOW_ENTRY_ID }
+
 const project = useProjectStore()
 const { openAssetEditor, createMotion2dActionAsset } = useAssetCreation()
 const { createDraftAndOpen } = useDraftSave()
@@ -88,9 +103,16 @@ const { t, assetTypeLabel, assetDisplayTypeLabel, assetCreateName, toolbarCreate
   useStudioI18n()
 const busyId = ref<string | null>(null)
 
-const createItems = computed(() =>
-  listRegisteredToolbarItems({ toolbar: true }).filter((item) => CREATE_IDS.has(item.id))
-)
+const createItems = computed<CreateEntry[]>(() => [
+  /**
+   * 排在最前：「一键工作流」是最省事的一条起步路径（选模板 → 出可复用宿主资产），
+   * 与手册把它当作首要入口的说法一致。
+   */
+  { kind: 'aiWorkflow', id: AI_WORKFLOW_ENTRY_ID },
+  ...listRegisteredToolbarItems({ toolbar: true })
+    .filter((item) => CREATE_IDS.has(item.id))
+    .map((item) => ({ kind: 'asset' as const, id: item.id, item }))
+])
 
 const recentAssets = computed(() => {
   return [...project.assets]
@@ -104,8 +126,17 @@ function recentTypeLabel(asset: AssetInfo): string {
   return assetDisplayTypeLabel(asset)
 }
 
-function createItemLabel(item: ResolvedWorkspaceToolbarItem): string {
-  return toolbarCreateLabel(item.id, item.assetType)
+function createItemLabel(entry: CreateEntry): string {
+  if (entry.kind === 'aiWorkflow') return t('aiWorkflow.shortAction')
+  return toolbarCreateLabel(entry.item.id, entry.item.assetType)
+}
+
+function createItemIcon(entry: CreateEntry): string {
+  return entry.kind === 'aiWorkflow' ? '⚡' : entry.item.icon
+}
+
+function createItemTooltip(entry: CreateEntry): string {
+  return entry.kind === 'aiWorkflow' ? t('aiWorkflow.title') : entry.item.tooltip
 }
 
 async function promptCreateName(options: {
@@ -132,8 +163,17 @@ async function promptCreateName(options: {
   return name
 }
 
-async function onCreate(item: ResolvedWorkspaceToolbarItem): Promise<void> {
+async function onCreate(entry: CreateEntry): Promise<void> {
   if (busyId.value) return
+  /**
+   * 「一键工作流」不建资产：它打开预设选择对话框，由那边规划并落盘。
+   * 必须在 `busyId` 之前分支掉 —— 否则会把 `entry.item` 当成资产条目用。
+   */
+  if (entry.kind === 'aiWorkflow') {
+    requestAiWorkflowDialog()
+    return
+  }
+  const item = entry.item
   busyId.value = item.id
   try {
     if (item.id === 'freeCanvas') {

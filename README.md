@@ -175,7 +175,7 @@ npm run dist:linux  # Linux
 1. 从 [Releases](https://github.com/Justin-sky/ai-art-engine/releases) 下载对应平台包
 2. 安装启动 → 新建工程
 3. 设置里添加模型提供商并填写密钥；可选配置对象存储
-4. 顶栏「一键工作流」快速出宿主资产，或在分镜 / 节点图中手搭链路
+4. 工作区「新建」里的「一键工作流」快速出宿主资产，或在分镜 / 节点图中手搭链路
 5. 点左侧窄栏「◈」打开 AI 对话，`@` 引用资产让助手直接生成；或按 [MCP 接入教程](https://justin-sky.github.io/ai-art-engine/guide-mcp.html) 接入 Claude Code 等外部 Agent
 
 完整操作说明见 [使用手册](https://justin-sky.github.io/ai-art-engine/manual.html)（源码在 `website/manual.html`）。本机 ComfyUI 需先装 [comfy-api-proxy](https://justin-sky.github.io/ai-art-engine/guide-comfyui.html)（默认 8189），不要直连 8188。
