@@ -19,19 +19,19 @@
 
 ## 开发
 
-| 文档                                                              | 说明                                                                               |
-| ----------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| [ARCHITECTURE.md](./ARCHITECTURE.md)                              | 进程边界、Editor Kernel、Cordis 运行时、注册表                                     |
-| [PORTRAIT.md](./PORTRAIT.md)                                      | 人像处理节点（`image.portrait`）：参数契约、提示词派生、局部回贴、编辑器与依赖     |
-| [ARCH_YOLO_LOCAL.md](./ARCH_YOLO_LOCAL.md)                        | 本地 YOLO（检测 / 分割 / 姿态）与人脸两段式模型：worker、目录、分发、依赖门禁      |
-| [GRAPH_PLUGINS.md](./GRAPH_PLUGINS.md)                            | 节点类型、Scope、Policy、卡片、Skill、端口连线                                     |
-| [ASSET_MODEL.md](./ASSET_MODEL.md)                                | 工程内资产目录与旁挂 meta                                                          |
-| [ASSET_REF.md](./ASSET_REF.md)                                    | `{ $type: "AssetRef", guid }` 引用                                                 |
-| [ASSET_PACKAGE.md](./ASSET_PACKAGE.md)                            | `.aipackage` 跨工程素材包                                                          |
-| [ROADMAP.md](./ROADMAP.md)                                        | 路线图                                                                             |
-| [MCP.md](./MCP.md)                                                | MCP Server 接入：外部 Agent 驱动应用                                               |
-| [DEEPSEEK_HARNESS.md](./DEEPSEEK_HARNESS.md)                      | AI 对话面板（DeepSeek Harness 运行时）用户指南：像跟同事聊天一样指挥创作流水线     |
-| [MARKETPLACE.md](./MARKETPLACE.md)                                | **插件市场开发者文档**：发布内容、技能包契约、脚本同意流与审批、派生索引、交付链路 |
-| [examples/graph-extension](../examples/graph-extension/README.md) | 图插件骨架                                                                         |
+| 文档                                                              | 说明                                                                                                                                                                     |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [ARCHITECTURE.md](./ARCHITECTURE.md)                              | 进程边界、Editor Kernel、Cordis 运行时、注册表                                                                                                                           |
+| [PORTRAIT.md](./PORTRAIT.md)                                      | 人像处理节点（`image.portrait`）：参数契约、提示词派生、局部回贴、编辑器与依赖                                                                                           |
+| [ARCH_YOLO_LOCAL.md](./ARCH_YOLO_LOCAL.md)                        | 本地 YOLO（检测 / 分割 / 姿态）与人脸两段式模型：worker、目录、分发、依赖门禁                                                                                            |
+| [GRAPH_PLUGINS.md](./GRAPH_PLUGINS.md)                            | 节点类型、Scope、Policy、卡片、Skill、端口连线                                                                                                                           |
+| [ASSET_MODEL.md](./ASSET_MODEL.md)                                | 工程内资产目录与旁挂 meta                                                                                                                                                |
+| [ASSET_REF.md](./ASSET_REF.md)                                    | `{ $type: "AssetRef", guid }` 引用                                                                                                                                       |
+| [ASSET_PACKAGE.md](./ASSET_PACKAGE.md)                            | `.aipackage` 跨工程素材包                                                                                                                                                |
+| [ROADMAP.md](./ROADMAP.md)                                        | 路线图                                                                                                                                                                   |
+| [MCP.md](./MCP.md)                                                | MCP Server 接入：外部 Agent 驱动应用                                                                                                                                     |
+| [DEEPSEEK_HARNESS.md](./DEEPSEEK_HARNESS.md)                      | AI 对话面板（DeepSeek Harness 运行时）用户指南：像跟同事聊天一样指挥创作流水线                                                                                           |
+| [MARKETPLACE.md](./MARKETPLACE.md)                                | **插件市场开发者文档**：发布内容、技能包契约、脚本同意流与审批、派生索引、交付链路（[官网版](https://justin-sky.github.io/ai-art-engine/developers.html)，改需两处同步） |
+| [examples/graph-extension](../examples/graph-extension/README.md) | 图插件骨架                                                                                                                                                               |
 
 连线规则（与手册 §7.1 一致）：两端 `dataType` 必须相同；单数与复数不互通；选取节点只收列表口。

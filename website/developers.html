@@ -1,0 +1,619 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+
+    <script>
+      // 提前应用本地主题选择，避免加载闪烁
+      ;(function () {
+        try {
+          var pref = localStorage.getItem('site.theme')
+          if (
+            pref !== 'light' &&
+            (pref === 'dark' || pref == null || (pref === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches))
+          ) {
+            document.documentElement.classList.add('dark')
+          }
+        } catch (e) {}
+      })()
+    </script>
+    <meta
+      name="description"
+      content="AIArtEngine 插件市场开发者文档：市场里有什么、工作流与技能包的交付链路、客户端安装契约、脚本同意流、兼容性与版本、本地调试与常见退回原因。"
+    />
+    <title>插件市场开发者文档 — AIArtEngine</title>
+    <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/developers.html" />
+    <meta property="og:site_name" content="AIArtEngine" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="zh_CN" />
+    <meta property="og:title" content="插件市场开发者文档 — AIArtEngine" />
+    <meta property="og:description" content="AIArtEngine 插件市场开发者文档：市场里有什么、工作流与技能包的交付链路、客户端安装契约、脚本同意流、兼容性与版本、本地调试与常见退回原因。" />
+    <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/developers.html" />
+    <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="插件市场开发者文档 — AIArtEngine" />
+    <meta name="twitter:description" content="AIArtEngine 插件市场开发者文档：市场里有什么、工作流与技能包的交付链路、客户端安装契约、脚本同意流、兼容性与版本、本地调试与常见退回原因。" />
+    <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/developers.html" />
+    <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/developers.en.html" />
+    <link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/developers.html" />
+    <link rel="icon" href="assets/logo-mark.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="manual.css?v=20260829-4" />
+      <link rel="stylesheet" href="site.css?v=20260829" />
+    <style>
+      pre.mcp-code {
+        background: var(--bg-soft);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 12px 14px;
+        overflow-x: auto;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.86rem;
+        line-height: 1.55;
+        margin: 0 0 14px;
+      }
+      pre.mcp-code code {
+        background: none;
+        border: none;
+        padding: 0;
+        color: var(--ink);
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip" href="#manual">跳到正文</a>
+
+    <header class="top">
+      <a class="brand" href="index.html">
+        <img src="assets/logo-mark.png" alt="" width="30" height="30" />
+        <span>AI Art Engine</span>
+      </a>
+      <nav class="nav" aria-label="主导航">
+        <a href="index.html">首页</a>
+        <a href="quickstart.html">快速上手</a>
+        <a href="manual.html">使用手册</a>
+        <a href="guide-video.html">视频教程</a>
+        <a href="guide-short-video.html">短剧教程</a>
+        <a href="guide-comfyui.html">ComfyUI 教程</a>
+        <a href="guide-mcp.html">MCP 接入</a>
+        <a href="guide-gameplay.html">可玩 HTML</a>
+        <a href="developers.html" aria-current="page">开发者文档</a>
+        <a href="index.html#download">下载</a>
+        <a
+          href="https://space.bilibili.com/3707036976024122"
+          target="_blank"
+          rel="noopener noreferrer"
+          >bilibili</a
+        >
+        <a
+          href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
+          target="_blank"
+          rel="noopener noreferrer"
+          >Gitee</a
+        >
+        <a
+          class="nav-src"
+          href="https://github.com/Justin-sky/ai-art-engine"
+          target="_blank"
+          rel="noopener noreferrer"
+          >GitHub</a
+        >
+      </nav>
+      <a class="nav-lang" href="developers.en.html" hreflang="en" lang="en">EN</a>
+      <button class="theme-toggle" type="button" aria-label="切换主题">◐</button>
+      <details class="mobile-menu">
+        <summary aria-label="打开导航菜单"><span aria-hidden="true">☰</span> 菜单</summary>
+        <nav class="mobile-nav" aria-label="移动端导航">
+          <a href="index.html">首页</a>
+          <a href="quickstart.html">快速上手</a>
+          <a href="manual.html">使用手册</a>
+          <a href="guide-video.html">视频教程</a>
+          <a href="guide-short-video.html">短剧教程</a>
+          <a href="guide-comfyui.html">ComfyUI 教程</a>
+          <a href="guide-mcp.html">MCP 接入</a>
+          <a href="guide-gameplay.html">可玩 HTML</a>
+          <a href="developers.html" aria-current="page">开发者文档</a>
+          <a href="index.html#download">下载</a>
+          <a
+            href="https://space.bilibili.com/3707036976024122"
+            target="_blank"
+            rel="noopener noreferrer"
+            >bilibili</a
+          >
+          <a
+            href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Gitee</a
+          >
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"
+            >GitHub</a
+          >
+        </nav>
+      </details>
+    </header>
+
+    <div class="manual-shell">
+      <aside class="toc" aria-label="目录">
+        <h2>目录</h2>
+        <ol>
+          <li><a href="#contents">1. 市场里有什么</a></li>
+          <li><a href="#pipeline">2. 交付链路</a></li>
+          <li><a href="#install-contract">3. 客户端安装契约</a></li>
+          <li><a href="#scripts-consent">4. 脚本与同意流</a></li>
+          <li><a href="#compatibility">5. 兼容性与版本</a></li>
+          <li><a href="#debugging">6. 本地调试</a></li>
+          <li><a href="#rejections">7. 常见退回原因</a></li>
+        </ol>
+        <p style="margin-top: 1.25rem; font-size: 12px; color: var(--mute)">
+          <a href="manual.html">← 返回使用手册</a>
+        </p>
+      </aside>
+
+      <article class="manual" id="manual">
+        <header class="manual-hero">
+          <p class="eyebrow">Developers · Marketplace</p>
+          <h1>插件市场开发者文档</h1>
+          <p class="lede">
+            面向<strong>往插件市场发布内容</strong>的开发者：市场里有什么、内容长什么样、怎么被校验与分发、
+            客户端拿到之后会做什么。作者侧的逐字段写作规范在内容仓库里（见下方「内容仓库」），
+            这里讲的是<strong>客户端契约</strong>与<strong>交付链路</strong>——那部分只有在应用侧才能看到。
+          </p>
+          <p class="lede">
+            用户视角怎么用市场，见<a href="manual.html#marketplace">使用手册 §5.7 插件市场</a>。
+          </p>
+          <div class="tip">
+            <strong>相关的客户端实现：</strong><code>src/shared/workflowMarket.ts</code>（契约与解析）、
+            <code>src/main/services/marketPipeline.ts</code>（下载 / 缓存 / 原子安装）、
+            <code>src/main/services/workflowMarketService.ts</code>（目录、兼容性、安装记账）、
+            <code>src/renderer/src/views/MarketplaceView.vue</code>（界面）。
+          </div>
+        </header>
+
+        <section id="contents">
+          <h2>1. 市场里有什么</h2>
+          <p>
+            市场是一个<strong>独立窗口</strong>（顶栏「插件市场」按钮打开，紧挨「设置」左边），分四个页签：
+          </p>
+          <table>
+            <thead>
+              <tr>
+                <th>页签</th>
+                <th>内容</th>
+                <th>托管位置</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>MCP</strong></td>
+                <td>
+                  内置 <code>aiartengine</code> 工具服务、Blender 工具面，以及用户自己添加的第三方 MCP
+                  服务（http / stdio）
+                </td>
+                <td>应用内 + 用户本地配置</td>
+              </tr>
+              <tr>
+                <td><strong>技能</strong></td>
+                <td>
+                  应用内置技能快照、用户放进技能目录的自定义技能、<strong>随工作流安装的技能包</strong>
+                </td>
+                <td><code>$DSH_HOME/skills</code></td>
+              </tr>
+              <tr>
+                <td><strong>工作流</strong></td>
+                <td>远端工作流仓库里的条目（可随包附带技能包）</td>
+                <td><strong>内容仓库</strong>（见下）</td>
+              </tr>
+              <tr>
+                <td>全部</td>
+                <td>以上三类混排，带搜索框</td>
+                <td>—</td>
+              </tr>
+            </tbody>
+          </table>
+          <p>
+            只有<strong>工作流</strong>这一类是从远端仓库分发的；MCP 与技能是本地 / 内置来源。
+            工作流条目本身<strong>可以附带一个技能包</strong>，这是本市场区别于「一个下载站」的地方：
+            装工作流时把「给 Agent 看的操作手册」一起装上。
+          </p>
+
+          <h3>内容仓库</h3>
+          <ul>
+            <li>
+              主源：<code>https://github.com/Justin-sky/ai-art-engine-workflow</code>（raw 路径
+              <code>/main</code>）
+            </li>
+            <li>
+              镜像：<code>https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine-workflow</code>（raw
+              路径 <code>/main</code>）
+            </li>
+          </ul>
+          <p>
+            两个仓库的<strong>内容必须逐字节一致</strong>——不一致会造成「同一版本号、不同内容」，
+            这是最难排查的一类状态。同步方式见仓库 README。
+          </p>
+          <p>
+            作者侧的字段规范、审核标准、逐条拒绝原因在内容仓库的 <code>CONTRIBUTING.md</code>；
+            目录结构、<code>workflow.json</code> 各字段含义在同仓库 <code>README.md</code>。
+            <strong>这里不重复那份规范</strong>，只讲它没覆盖的客户端行为。
+          </p>
+        </section>
+
+        <section id="pipeline">
+          <h2>2. 交付链路：一步都不能省</h2>
+          <pre class="mcp-code"><code>贡献者提交 workflows/&lt;id&gt;/{workflow.json, cover.png, skill/**}
+   ↓  CI 校验（validate.mjs + 单测）
+   ↓  build-index.mjs 从磁盘派生 index.json（含技能文件清单）
+客户端拉 index.json（先主源，失败降级镜像）
+   ↓  用户点「安装」
+下载 workflow.json + cover.png（+ 技能文件）
+   ↓  原子安装（staging → rename，失败不留半成品）
+&lt;userData&gt;/workflows/&lt;id&gt;/            工作流本体
+   ↓  同一次安装内
+$DSH_HOME/skills/&lt;skill.name&gt;/        技能包（随工作流一起）
+   ↓
+dsh 下次对话扫到该技能 → 注入 &lt;available_skills&gt; → Agent 按需加载</code></pre>
+
+          <h3>2.1 索引里的<strong>派生字段</strong>由脚本生成，贡献者不要手写</h3>
+          <p>
+            <code>index.json</code> 里这些字段全部由 <code>scripts/build-index.mjs</code> 从磁盘派生：
+          </p>
+          <ul>
+            <li>
+              <code>requires.nodeTypes</code>（该工作流用到哪些节点类型）、<code>requires.appMinVersion</code>
+            </li>
+            <li><code>nodeCount</code> / <code>edgeCount</code> / <code>sizeBytes</code></li>
+            <li>
+              <strong><code>skill</code></strong>：技能包的名字、描述、是否含脚本、<strong>文件清单</strong>、整包体积
+            </li>
+          </ul>
+          <p>最后一项尤其关键，原因值得写下来：</p>
+          <div class="tip">
+            <strong>raw 源没有目录列表 API。</strong>客户端必须先知道<strong>每个文件的路径</strong>才能逐个下载，
+            所以技能包的文件清单只能由服务端（仓库脚本）派生。把清单交给脚本从磁盘生成，
+            就<strong>不可能出现「清单与磁盘漂移」</strong>——而这正是手写清单必然发生的故障。
+          </div>
+          <p>
+            <code>workflow.json</code> 里<strong>不写技能文件清单</strong>，只靠「<code>skill/SKILL.md</code>
+            是否存在」这一事实作为声明。CI 会比对索引与磁盘派生结果，手改索引会被拒。
+          </p>
+
+          <h3>2.2 技能包为什么要带 <code>wf-</code> 前缀</h3>
+          <p>
+            技能包落地目录是 <code>$DSH_HOME/skills/&lt;name&gt;</code>，而<strong>应用内置技能也在同一个目录</strong>
+            （扁平 <code>&lt;kebab-id&gt;.md</code>），两者 dsh 扫描的 rank 也相同。所以市场技能包的
+            <code>name</code> 强制为 <strong><code>wf-&lt;工作流 id&gt;</code></strong>，从源头避免与内置技能重名。
+            仓库校验器逐条拦这件事。
+          </p>
+
+          <h3>2.3 技能包文件布局</h3>
+          <pre class="mcp-code"><code>workflows/&lt;id&gt;/skill/
+  SKILL.md          必需。frontmatter: name(wf-&lt;id&gt;) / description / workflow: &lt;id&gt;
+  references/       可选。端口与参数速查、长契约、示例
+  scripts/          可选。见 §4
+  assets/           可选</code></pre>
+          <ul>
+            <li>只允许上面三个子目录；不允许符号链接。</li>
+            <li>单文件 ≤ 128KB，整包 ≤ 512KB，文件数 ≤ 40（客户端<strong>逐个下载</strong>，不能没有天花板）。</li>
+            <li>
+              <code>description</code> ≤ 500 字符：dsh 的技能目录会截断它，而<strong>它是 Agent
+              决定是否加载这份技能之前唯一能看到的东西</strong>——请写成「什么时候该加载它」，而不是功能罗列。
+            </li>
+          </ul>
+
+          <h3>2.4 正文里提到的节点类型必须真实存在</h3>
+          <p>
+            仓库校验器会检查技能正文里<strong>反引号包裹的 <code>x.y</code> 记号</strong>：若 <code>x</code>
+            是已知节点命名空间（<code>asset</code> / <code>image</code> / <code>play</code> / <code>ui</code> /
+            <code>model</code> / <code>spatialWorld</code> / <code>frame</code> / <code>note</code> /
+            <code>beat</code> / <code>episode</code> / <code>anim</code> / <code>comic</code> /
+            <code>svg</code> / <code>video</code> / <code>voice</code> / <code>media</code> /
+            <code>output</code> / <code>graph</code> / <code>prompt</code> / <code>decisions</code> …），
+            则该记号必须是<strong>真实节点类型</strong>。
+          </p>
+          <p>
+            为什么值得单独一条：技能是写给 Agent 的<strong>操作手册</strong>，它会照着里面的 <code>typeId</code> 去
+            <code>graph_edit</code> 建图。编一个不存在的类型（<code>asset.pic</code> 之类），Agent 就会写出一张坏图，
+            <strong>而运行时没有任何兜底会报出来</strong>——只会表现为「工作流莫名其妙不跑」。
+            按命名空间过滤是为了不误伤 <code>cover.png</code> / <code>references/ports.md</code> /
+            <code>SKILL.md</code> 这类写法。
+            参数名请<strong>单独</strong>用反引号写（如 <code>generateAspectRatio</code>），不要写成
+            <code>type.param</code> 的点号形式。
+          </p>
+        </section>
+
+        <section id="install-contract">
+          <h2>3. 客户端安装契约</h2>
+
+          <h3>3.1 卡片与动作</h3>
+          <p>
+            工作流卡片上直接有 安装 / 更新 / 重新安装 / 卸载 与 详情，不必先进详情页。
+            卡片徽标会显示 <strong>含技能</strong> 或 <strong>含技能 · 含脚本</strong>——<strong>装之前</strong>就让用户知道
+            Agent 那边会多拿到一份手册（含脚本时更要说清）。
+          </p>
+          <p>
+            装好的技能包出现在市场的<strong>技能</strong>页签里（来源标为「技能包」）。技能的管理动作
+            （打开目录 / 生成示例模板 / 导入自定义技能）<strong>也在市场窗口里</strong>——市场改版时它们从设置页
+            搬了过来，设置页不再有独立的技能区块。
+          </p>
+
+          <h3>3.2 原子性与回滚</h3>
+          <p>
+            安装走 <code>marketPipeline</code>：先下到 staging，全部就位后再 rename 换入，失败清理。
+            <strong>技能包与工作流本体同生共死</strong>：技能装失败（或校验不通过）会把工作流本体一并卸掉并返回
+            失败原因。理由很直接——卡片写着「含技能」而技能没落地，等于界面在骗人；
+            安装是幂等的，重试即可。
+          </p>
+
+          <h3>3.3 安装前校验（否则「装上了却看不见」）</h3>
+          <p>
+            dsh 对<strong>不合法</strong>的技能是<strong>静默忽略</strong>（只写一行日志然后跳过）。所以客户端在 staging
+            阶段就校验 <code>SKILL.md</code>：frontmatter 是否存在、<code>name</code> 是否等于清单里的名字、
+            <code>description</code> 是否非空、是否用了 dsh 会直接抛错的 camelCase 旧键（<code>disableModelInvocation</code>
+            等）。不通过就<strong>安装失败并给出具体原因</strong>，绝不会留下一个装了却不生效的技能包。
+          </p>
+
+          <h3>3.4 卸装</h3>
+          <p>
+            卸载工作流会连带删除<strong>它装上的那个技能包</strong>——只按记账里记着的那一个目录名删，
+            绝不按前缀批量删（用户可能自建了同名技能）。技能包不是独立可卸载的产物。
+          </p>
+
+          <h3>3.5 目录刷新</h3>
+          <p>
+            打开市场窗口即<strong>强制刷新目录</strong>（这样往仓库推了新内容，重开窗口就能看到，不必等缓存 TTL）。
+            刷新失败但手上已有内容时<strong>保留旧列表</strong>并给软提示，不用错误顶掉已有内容。
+            缓存按<strong>源</strong>分别落盘：主源与镜像各存一份，避免把镜像的缓存当成主源的数据。
+          </p>
+        </section>
+
+        <section id="scripts-consent">
+          <h2>4. 脚本（<code>scripts/</code>）与同意流</h2>
+          <p>
+            技能包可以带脚本，但<strong>默认不装</strong>：它属于「会在用户机器上运行的代码」，
+            必须由用户明示同意。
+          </p>
+
+          <h3>4.1 安装时：每次都要问</h3>
+          <ul>
+            <li>
+              含脚本时，安装前弹出确认框，<strong>逐条列出脚本路径</strong>，并说明这是 Agent
+              可以在本机运行的代码。
+            </li>
+            <li>
+              <strong>确定</strong> = 写入脚本；<strong>取消</strong> = 只装 <code>SKILL.md</code> 与
+              <code>references/</code>（工作流照常可用）。
+            </li>
+            <li>
+              <strong>每次安装 / 重新安装都会再问一次</strong>，不记住同意——同意是每次安装的独立决定，
+              不是一个装过一次就永久生效的开关。
+            </li>
+            <li>主进程只认<strong>字面量</strong> <code>skillScriptsConsent === true</code>，不做真值 coercion。</li>
+            <li>脚本文件同样受路径白名单与体积上限约束。</li>
+          </ul>
+
+          <h3>4.2 运行时：一次授权只对一次调用有效</h3>
+          <p>
+            Agent 真正去跑脚本时，走的是 harness 的通用 shell（Windows 上是 <code>pwsh</code>），
+            受沙箱约束。一旦某一步需要越出沙箱，就由<strong>审批应答器</strong>把决定权交给用户：
+          </p>
+          <table>
+            <thead>
+              <tr>
+                <th>用户选择</th>
+                <th>结果</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>允许一次</td>
+                <td>该次调用放行（<strong>唯一放行路径</strong>）</td>
+              </tr>
+              <tr>
+                <td>拒绝</td>
+                <td>工具调用被拒</td>
+              </tr>
+              <tr>
+                <td>无人应答 / 超时 / 载荷读不懂 / 读文件出错 / 任何异常</td>
+                <td><strong>失败即关闭</strong>（工具调用失败，绝不放行）</td>
+              </tr>
+              <tr>
+                <td>请求被中止（本轮结束）</td>
+                <td>取消，不放行</td>
+              </tr>
+            </tbody>
+          </table>
+          <p>
+            界面上是一张对话内授权卡：工具名 + 原因，只有 <strong>允许一次 / 拒绝</strong>，
+            <strong>没有「总是允许」</strong>——一次性授权是刻意的，持久授予等于悄悄放宽 Agent 能跑的东西。
+          </p>
+          <div class="tip">
+            写技能时请据此设计：<strong>脚本必须是可选的</strong>。用户拒绝脚本时，仅凭说明与 references
+            也要能用；不要把关键步骤只放在脚本里。
+          </div>
+        </section>
+
+        <section id="compatibility">
+          <h2>5. 兼容性与版本</h2>
+          <ul>
+            <li>
+              索引 <code>schemaVersion</code> 目前是 <strong>1</strong>；比客户端更新的索引会让客户端明确报「请先更新应用」，
+              而不是半渲染出一个误导性的空市场。
+            </li>
+            <li>
+              条目可声明 <code>requires.appMinVersion</code>：应用版本低于它时卡片会被禁用并给出原因。
+            </li>
+            <li>
+              <code>requires.nodeTypes</code> 由脚本从 <code>plan</code> 派生：旧版应用缺某个节点类型时会提前判定并在安装前提示，
+              而不是等物化时才落出一张残图。
+            </li>
+            <li><strong>同内容必须升版本</strong>：同一 <code>version</code> 的内容不得再改。</li>
+          </ul>
+        </section>
+
+        <section id="debugging">
+          <h2>6. 本地调试</h2>
+
+          <h3>6.1 在内容仓库里</h3>
+          <pre class="mcp-code"><code>node scripts/validate.mjs          # 格式 / 依赖 / 索引一致性 / 技能包全部规则
+node scripts/build-index.mjs       # 重建 index.json（派生字段）
+node scripts/build-index.mjs --check   # CI 用：索引是否与磁盘一致
+node --test scripts/validate.test.mjs  # 校验器自身的单测</code></pre>
+          <p>
+            <code>validate.mjs</code> 与 CI 跑的是<strong>同一份代码</strong>——本地过、CI 不过这种事不该发生。
+          </p>
+
+          <h3>6.2 在应用侧</h3>
+          <ul>
+            <li>
+              <strong>自建源</strong>：数据层支持把 <code>workflowMarket.source</code> 设成一个或多个地址
+              （空白 / 逗号分隔；填了就<strong>只用填的</strong>，不混入官方源，避免回退把排查带偏）。
+              ⚠️ <strong>当前设置界面还没有暴露这个输入项</strong>，属于数据层能力。
+            </li>
+            <li>
+              想验证「Agent 到底有没有真的加载技能」，最可靠的证据是 dsh 的会话日志
+              （<code>$DSH_HOME/sessions/&lt;workspace&gt;/&lt;session&gt;/session.v3.jsonl.zstd</code>）：
+              里面能查到 <code>tool/call</code>，<code>name: "skill"</code>、<code>arguments: {"name": "wf-&lt;id&gt;"}</code>，
+              以及紧随其后的 <code>&lt;skill_content&gt;</code> 结果。<strong>别只看界面</strong>——技能是否被加载，
+              界面是看不出来的。
+            </li>
+          </ul>
+        </section>
+
+        <section id="rejections">
+          <h2>7. 常见退回原因（客户端视角）</h2>
+          <p>
+            除内容仓库 <code>CONTRIBUTING.md</code> 列的那些之外，这几条会直接导致<strong>装上了却不生效</strong>：
+          </p>
+          <table>
+            <thead>
+              <tr>
+                <th>现象</th>
+                <th>原因</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>装完 Agent 那边没有这份技能</td>
+                <td>
+                  <code>SKILL.md</code> 的 frontmatter 不合法（dsh <strong>静默忽略</strong>）。客户端的安装前校验
+                  就是为了把这种失败提前成一句可读的报错
+                </td>
+              </tr>
+              <tr>
+                <td>技能名与内置技能冲突</td>
+                <td><code>name</code> 没带 <code>wf-</code> 前缀</td>
+              </tr>
+              <tr>
+                <td>描述在 Agent 那里被截断</td>
+                <td><code>description</code> 超过 500 字符</td>
+              </tr>
+              <tr>
+                <td>更新后文件对不上</td>
+                <td>手改了 <code>index.json</code>；它必须由 <code>build-index.mjs</code> 派生</td>
+              </tr>
+              <tr>
+                <td>技能里写的节点类型建不出图</td>
+                <td>
+                  正文里出现了不存在的 <code>typeId</code>（仓库校验器会拦，但改写正文后请重跑）
+                </td>
+              </tr>
+              <tr>
+                <td>用户拒绝脚本后功能不可用</td>
+                <td>技能把关键步骤只写在 <code>scripts/</code> 里；脚本必须是可选的</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+      </article>
+    </div>
+
+    <footer class="foot">
+      <div class="foot-row">
+        <a class="foot-brand" href="index.html">
+          <img src="assets/logo-mark.png" alt="" width="22" height="22" />
+          AI Art Engine
+        </a>
+        <nav class="foot-links" aria-label="页脚">
+          <a href="index.html">首页</a>
+          <a href="quickstart.html">快速上手</a>
+          <a href="manual.html">使用手册</a>
+          <a href="guide-video.html">视频教程</a>
+          <a href="guide-short-video.html">短剧教程</a>
+          <a href="guide-comfyui.html">ComfyUI 教程</a>
+          <a href="guide-mcp.html">MCP 接入</a>
+          <a href="guide-gameplay.html">可玩 HTML</a>
+          <a href="index.html#download">下载</a>
+          <a
+            href="https://space.bilibili.com/3707036976024122"
+            target="_blank"
+            rel="noopener noreferrer"
+            >bilibili</a
+          >
+          <a
+            href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Gitee</a
+          >
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a>
+        </nav>
+        <span>GPL-3.0</span>
+      </div>
+    </footer>
+
+    <script>
+      document.querySelectorAll('.mobile-nav a').forEach((link) => {
+        link.addEventListener('click', () => link.closest('.mobile-menu')?.removeAttribute('open'))
+      })
+      ;(function () {
+        var KEY = 'site.theme'
+        var btn = document.querySelector('.theme-toggle')
+        if (!btn) return
+        var root = document.documentElement
+        var en = (root.getAttribute('lang') || '').indexOf('en') === 0
+        var query = window.matchMedia('(prefers-color-scheme: dark)')
+        var META = {
+          auto: { icon: '◐', label: en ? 'Theme: system' : '主题：跟随系统' },
+          light: { icon: '☀', label: en ? 'Theme: light' : '主题：浅色' },
+          dark: { icon: '☾', label: en ? 'Theme: dark' : '主题：深色' }
+        }
+        function readPref() {
+          try {
+            var v = localStorage.getItem(KEY)
+            return v === 'light' || v === 'dark' || v === 'auto' ? v : 'dark'
+          } catch (e) { return 'dark' }
+        }
+        function apply() {
+          var pref = readPref()
+          root.classList.toggle('dark', pref === 'dark' || (pref !== 'light' && query.matches))
+          root.classList.toggle('light', pref === 'light')
+          var meta = META[pref]
+          btn.textContent = meta.icon
+          btn.title = meta.label + (en ? ' (click to switch)' : '（点击切换）')
+          btn.setAttribute('aria-label', meta.label)
+        }
+        query.addEventListener('change', apply)
+        btn.addEventListener('click', function () {
+          var cur = readPref()
+          var next = cur === 'dark' ? 'light' : cur === 'light' ? 'auto' : 'dark'
+          try { localStorage.setItem(KEY, next) } catch (e) {}
+          apply()
+        })
+        apply()
+      })()
+    </script>
+      <script src="site-search.js" defer></script>
+    <script src="site-enhance.js" defer></script>
+  </body>
+</html>

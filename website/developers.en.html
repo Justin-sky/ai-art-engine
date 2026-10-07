@@ -1,0 +1,683 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+
+    <script>
+      // 提前应用本地主题选择，避免加载闪烁
+      ;(function () {
+        try {
+          var pref = localStorage.getItem('site.theme')
+          if (
+            pref !== 'light' &&
+            (pref === 'dark' || pref == null || (pref === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches))
+          ) {
+            document.documentElement.classList.add('dark')
+          }
+        } catch (e) {}
+      })()
+    </script>
+    <meta
+      name="description"
+      content="AIArtEngine plugin marketplace developer docs: what the marketplace contains, the delivery pipeline for workflows and skill bundles, the client install contract, script consent, compatibility and versions, local debugging, and common rejection reasons."
+    />
+    <title>Plugin Marketplace Developer Docs — AIArtEngine</title>
+    <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/developers.en.html" />
+    <meta property="og:site_name" content="AIArtEngine" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="zh_CN" />
+    <meta property="og:title" content="Plugin Marketplace Developer Docs — AIArtEngine" />
+    <meta property="og:description" content="AIArtEngine plugin marketplace developer docs: what the marketplace contains, the delivery pipeline for workflows and skill bundles, the client install contract, script consent, compatibility and versions, local debugging, and common rejection reasons." />
+    <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/developers.en.html" />
+    <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Plugin Marketplace Developer Docs — AIArtEngine" />
+    <meta name="twitter:description" content="AIArtEngine plugin marketplace developer docs: what the marketplace contains, the delivery pipeline for workflows and skill bundles, the client install contract, script consent, compatibility and versions, local debugging, and common rejection reasons." />
+    <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/developers.html" />
+    <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/developers.en.html" />
+    <link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/developers.en.html" />
+    <link rel="icon" href="assets/logo-mark.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="manual.css?v=20260829-4" />
+      <link rel="stylesheet" href="site.css?v=20260829" />
+    <style>
+      pre.mcp-code {
+        background: var(--bg-soft);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 12px 14px;
+        overflow-x: auto;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.86rem;
+        line-height: 1.55;
+        margin: 0 0 14px;
+      }
+      pre.mcp-code code {
+        background: none;
+        border: none;
+        padding: 0;
+        color: var(--ink);
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip" href="#manual">Skip to content</a>
+
+    <header class="top">
+      <a class="brand" href="index.en.html">
+        <img src="assets/logo-mark.png" alt="" width="30" height="30" />
+        <span>AI Art Engine</span>
+      </a>
+      <nav class="nav" aria-label="Main navigation">
+        <a href="index.en.html">Home</a>
+        <a href="quickstart.en.html">Quick Start</a>
+        <a href="manual.en.html">Manual</a>
+        <a href="guide-video.en.html">Video Tutorials</a>
+        <a href="guide-short-video.en.html">Short Drama</a>
+        <a href="guide-comfyui.en.html">ComfyUI Guide</a>
+        <a href="guide-mcp.en.html">MCP Setup</a>
+        <a href="guide-gameplay.en.html">Playable HTML</a>
+        <a href="developers.en.html" aria-current="page">Developer Docs</a>
+        <a href="index.en.html#download">Download</a>
+        <a
+          href="https://space.bilibili.com/3707036976024122"
+          target="_blank"
+          rel="noopener noreferrer"
+          >bilibili</a
+        >
+        <a
+          href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
+          target="_blank"
+          rel="noopener noreferrer"
+          >Gitee</a
+        >
+        <a
+          class="nav-src"
+          href="https://github.com/Justin-sky/ai-art-engine"
+          target="_blank"
+          rel="noopener noreferrer"
+          >GitHub</a
+        >
+      </nav>
+      <a class="nav-lang" href="developers.html" hreflang="zh-CN" lang="zh-CN">中文</a>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme">◐</button>
+      <details class="mobile-menu">
+        <summary aria-label="Open navigation menu"><span aria-hidden="true">☰</span> Menu</summary>
+        <nav class="mobile-nav" aria-label="Mobile navigation">
+          <a href="index.en.html">Home</a>
+          <a href="quickstart.en.html">Quick Start</a>
+          <a href="manual.en.html">Manual</a>
+          <a href="guide-video.en.html">Video Tutorials</a>
+          <a href="guide-short-video.en.html">Short Drama</a>
+          <a href="guide-comfyui.en.html">ComfyUI Guide</a>
+          <a href="guide-mcp.en.html">MCP Setup</a>
+          <a href="guide-gameplay.en.html">Playable HTML</a>
+          <a href="developers.en.html" aria-current="page">Developer Docs</a>
+          <a href="index.en.html#download">Download</a>
+          <a
+            href="https://space.bilibili.com/3707036976024122"
+            target="_blank"
+            rel="noopener noreferrer"
+            >bilibili</a
+          >
+          <a
+            href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Gitee</a
+          >
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"
+            >GitHub</a
+          >
+        </nav>
+      </details>
+    </header>
+
+    <div class="manual-shell">
+      <aside class="toc" aria-label="Table of contents">
+        <h2>Contents</h2>
+        <ol>
+          <li><a href="#contents">1. What the marketplace contains</a></li>
+          <li><a href="#pipeline">2. The delivery pipeline</a></li>
+          <li><a href="#install-contract">3. Client install contract</a></li>
+          <li><a href="#scripts-consent">4. Scripts and consent</a></li>
+          <li><a href="#compatibility">5. Compatibility and versions</a></li>
+          <li><a href="#debugging">6. Local debugging</a></li>
+          <li><a href="#rejections">7. Common rejection reasons</a></li>
+        </ol>
+        <p style="margin-top: 1.25rem; font-size: 12px; color: var(--mute)">
+          <a href="manual.en.html">← Back to the manual</a>
+        </p>
+      </aside>
+
+      <article class="manual" id="manual">
+        <header class="manual-hero">
+          <p class="eyebrow">Developers · Marketplace</p>
+          <h1>Plugin Marketplace Developer Docs</h1>
+          <p class="lede">
+            For developers <strong>publishing content to the plugin marketplace</strong>: what the
+            marketplace contains, what the content looks like, how it is validated and distributed, and
+            what the client does with it after install. The author-side, field-by-field writing rules
+            live in the content repository (see “Content repository” below); what follows is the
+            <strong>client contract</strong> and the <strong>delivery pipeline</strong> — the part you can
+            only see on the app side.
+          </p>
+          <p class="lede">
+            For the user-facing side of the marketplace, see
+            <a href="manual.en.html#marketplace">the manual §5.7 Plugin marketplace</a>.
+          </p>
+          <div class="tip">
+            <strong>Related client implementations:</strong>
+            <code>src/shared/workflowMarket.ts</code> (contract and parsing),
+            <code>src/main/services/marketPipeline.ts</code> (download / cache / atomic install),
+            <code>src/main/services/workflowMarketService.ts</code> (catalog, compatibility, install
+            bookkeeping), <code>src/renderer/src/views/MarketplaceView.vue</code> (the UI).
+          </div>
+        </header>
+
+        <section id="contents">
+          <h2>1. What the marketplace contains</h2>
+          <p>
+            The marketplace is a <strong>separate window</strong> (opened by the “Marketplace” button in
+            the top bar, immediately to the left of “Settings”) with four tabs:
+          </p>
+          <table>
+            <thead>
+              <tr>
+                <th>Tab</th>
+                <th>Content</th>
+                <th>Hosted at</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>MCP</strong></td>
+                <td>
+                  The built-in <code>aiartengine</code> tool service, the Blender tool surface, and
+                  third-party MCP servers the user adds themselves (http / stdio)
+                </td>
+                <td>In-app + the user’s local config</td>
+              </tr>
+              <tr>
+                <td><strong>Skills</strong></td>
+                <td>
+                  Built-in skill snapshots, custom skills the user drops into the skills directory, and
+                  <strong>skill bundles installed together with a workflow</strong>
+                </td>
+                <td><code>$DSH_HOME/skills</code></td>
+              </tr>
+              <tr>
+                <td><strong>Workflows</strong></td>
+                <td>Entries from the remote workflow repository (may ship a skill bundle)</td>
+                <td><strong>Content repository</strong> (below)</td>
+              </tr>
+              <tr>
+                <td>All</td>
+                <td>The three kinds above mixed together, with a search box</td>
+                <td>—</td>
+              </tr>
+            </tbody>
+          </table>
+          <p>
+            Only <strong>Workflows</strong> are distributed from a remote repository; MCP and Skills come
+            from local / built-in sources. A workflow entry itself <strong>may ship one skill bundle</strong>
+            — that is what sets this marketplace apart from “a download site”: installing a workflow also
+            installs the “operator’s manual for the Agent”.
+          </p>
+
+          <h3>Content repository</h3>
+          <ul>
+            <li>
+              Primary source: <code>https://github.com/Justin-sky/ai-art-engine-workflow</code> (raw path
+              <code>/main</code>)
+            </li>
+            <li>
+              Mirror: <code>https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine-workflow</code>
+              (raw path <code>/main</code>)
+            </li>
+          </ul>
+          <p>
+            The two repositories <strong>must be byte-for-byte identical</strong> — any difference produces
+            “same version number, different content”, the hardest class of state to debug. Syncing is
+            described in the repository README.
+          </p>
+          <p>
+            The author-side field rules, review criteria and per-item rejection reasons live in the content
+            repository’s <code>CONTRIBUTING.md</code>; the directory layout and the meaning of each
+            <code>workflow.json</code> field are in that repository’s <code>README.md</code>.
+            <strong>Those rules are not repeated here</strong> — this page only covers the client behaviour
+            they don’t.
+          </p>
+        </section>
+
+        <section id="pipeline">
+          <h2>2. The delivery pipeline: no step can be skipped</h2>
+          <pre class="mcp-code"><code>Contributor submits workflows/&lt;id&gt;/{workflow.json, cover.png, skill/**}
+   ↓  CI validation (validate.mjs + unit tests)
+   ↓  build-index.mjs derives index.json from disk (including the skill file list)
+Client fetches index.json (primary source first, falls back to the mirror on failure)
+   ↓  user clicks “Install”
+Downloads workflow.json + cover.png (+ skill files)
+   ↓  atomic install (staging → rename; a failure leaves nothing half-installed)
+&lt;userData&gt;/workflows/&lt;id&gt;/            the workflow itself
+   ↓  within that same install
+$DSH_HOME/skills/&lt;skill.name&gt;/        skill bundle (installed together with the workflow)
+   ↓
+the next dsh conversation picks up the skill → injects &lt;available_skills&gt; → the Agent loads it on demand</code></pre>
+
+          <h3>2.1 Derived fields in the index are generated by scripts — never hand-write them</h3>
+          <p>
+            Every one of these fields in <code>index.json</code> is derived from disk by
+            <code>scripts/build-index.mjs</code>:
+          </p>
+          <ul>
+            <li>
+              <code>requires.nodeTypes</code> (which node types the workflow uses),
+              <code>requires.appMinVersion</code>
+            </li>
+            <li><code>nodeCount</code> / <code>edgeCount</code> / <code>sizeBytes</code></li>
+            <li>
+              <strong><code>skill</code></strong>: the skill bundle’s name, description, whether it contains
+              scripts, its <strong>file list</strong>, and its total size
+            </li>
+          </ul>
+          <p>The last one matters most, and the reason is worth writing down:</p>
+          <div class="tip">
+            <strong>A raw source has no directory-listing API.</strong> The client must know
+            <strong>every file’s path</strong> up front in order to download them one by one, so the skill
+            bundle’s file list can only be derived server-side (by the repository scripts). Having the script
+            generate that list from disk makes <strong>“list drifts from disk” impossible</strong> — and that
+            drift is exactly the failure a hand-written list is guaranteed to hit.
+          </div>
+          <p>
+            <code>workflow.json</code> <strong>does not carry the skill file list</strong>: the only
+            declaration is the fact that <code>skill/SKILL.md</code> exists. CI compares the index against the
+            disk-derived result, and a hand-edited index is rejected.
+          </p>
+
+          <h3>2.2 Why skill bundles carry the <code>wf-</code> prefix</h3>
+          <p>
+            A skill bundle lands in <code>$DSH_HOME/skills/&lt;name&gt;</code>, and the
+            <strong>app’s built-in skills live in that same directory</strong> (flat
+            <code>&lt;kebab-id&gt;.md</code>), scanned at the same rank by dsh. So a marketplace skill
+            bundle’s <code>name</code> is forced to <strong><code>wf-&lt;workflow id&gt;</code></strong>,
+            ruling out a name clash with built-in skills at the source. The repository validator blocks this
+            item by item.
+          </p>
+
+          <h3>2.3 Skill bundle file layout</h3>
+          <pre class="mcp-code"><code>workflows/&lt;id&gt;/skill/
+  SKILL.md          required. frontmatter: name(wf-&lt;id&gt;) / description / workflow: &lt;id&gt;
+  references/       optional. port and parameter cheat sheets, long contracts, examples
+  scripts/          optional. see §4
+  assets/           optional</code></pre>
+          <ul>
+            <li>Only the three subdirectories above are allowed; symbolic links are not.</li>
+            <li>
+              Single file ≤ 128KB, whole bundle ≤ 512KB, file count ≤ 40 (the client
+              <strong>downloads file by file</strong>, so there has to be a ceiling).
+            </li>
+            <li>
+              <code>description</code> ≤ 500 characters: dsh’s skill catalog truncates it, and
+              <strong>it is the only thing the Agent can see before deciding whether to load this
+              skill</strong> — write “when should this be loaded”, not a feature list.
+            </li>
+          </ul>
+
+          <h3>2.4 Node types mentioned in the body must actually exist</h3>
+          <p>
+            The repository validator checks the <strong>backtick-wrapped <code>x.y</code> tokens</strong> in a
+            skill’s body: if <code>x</code> is a known node namespace (<code>asset</code> / <code>image</code> /
+            <code>play</code> / <code>ui</code> / <code>model</code> / <code>spatialWorld</code> /
+            <code>frame</code> / <code>note</code> / <code>beat</code> / <code>episode</code> /
+            <code>anim</code> / <code>comic</code> / <code>svg</code> / <code>video</code> /
+            <code>voice</code> / <code>media</code> / <code>output</code> / <code>graph</code> /
+            <code>prompt</code> / <code>decisions</code> …), that token must be a
+            <strong>real node type</strong>.
+          </p>
+          <p>
+            Why it deserves its own rule: a skill is an <strong>operator’s manual</strong> written for the
+            Agent, and the Agent will follow the <code>typeId</code> values in it when it builds a graph with
+            <code>graph_edit</code>. Invent a type that doesn’t exist (<code>asset.pic</code> and the like)
+            and the Agent writes a broken graph, <strong>with nothing at runtime to catch it</strong> — it
+            only shows up as “the workflow mysteriously won’t run”. Filtering by namespace is there so that
+            spellings like <code>cover.png</code> / <code>references/ports.md</code> / <code>SKILL.md</code>
+            are not caught by mistake. Write parameter names in <strong>their own</strong> backticks (for
+            example <code>generateAspectRatio</code>) rather than as the dotted form <code>type.param</code>.
+          </p>
+        </section>
+
+        <section id="install-contract">
+          <h2>3. Client install contract</h2>
+
+          <h3>3.1 Cards and actions</h3>
+          <p>
+            Workflow cards carry Install / Update / Reinstall / Uninstall and Details directly, with no need
+            to open the details page first. Card badges show <strong>Includes skill</strong> or
+            <strong>Includes skill · Includes scripts</strong> — so the user knows <strong>before
+            installing</strong> that the Agent side will receive an extra manual (and the same applies, more
+            so, when scripts are involved).
+          </p>
+          <p>
+            An installed skill bundle appears in the marketplace’s <strong>Skills</strong> tab (its source is
+            labelled “Skill bundle”). Skill management actions (open directory / generate an example template
+            / import a custom skill) are <strong>also in the marketplace window</strong> — they moved there
+            from the settings page when the marketplace was redesigned, and the settings page no longer has a
+            separate skills section.
+          </p>
+
+          <h3>3.2 Atomicity and rollback</h3>
+          <p>
+            Installation goes through <code>marketPipeline</code>: download into staging first, rename into
+            place only once everything is ready, clean up on failure.
+            <strong>A skill bundle and the workflow it belongs to live and die together</strong>: if the skill
+            fails to install (or fails validation), the workflow itself is uninstalled as well and the failure
+            reason is returned. The reasoning is direct — a card that says “Includes skill” while the skill
+            never landed means the UI is lying. Install is idempotent, so retrying is all it takes.
+          </p>
+
+          <h3>3.3 Pre-install validation (otherwise “installed but invisible”)</h3>
+          <p>
+            dsh <strong>silently ignores</strong> an <strong>invalid</strong> skill (it writes one log line and
+            skips it). So the client validates <code>SKILL.md</code> during the staging phase: does the
+            frontmatter exist, does <code>name</code> equal the name in the list, is
+            <code>description</code> non-empty, did it use one of the legacy camelCase keys that make dsh
+            throw outright (<code>disableModelInvocation</code> and friends). If it fails, the
+            <strong>install fails with a concrete reason</strong> and never leaves behind a skill bundle that
+            is installed but does nothing.
+          </p>
+
+          <h3>3.4 Uninstall</h3>
+          <p>
+            Uninstalling a workflow also deletes <strong>the skill bundle that workflow installed</strong> —
+            only the one directory name recorded in the bookkeeping, never a bulk delete by prefix (the user
+            may have created a skill with the same name). A skill bundle is not a separately uninstallable
+            artifact.
+          </p>
+
+          <h3>3.5 Catalog refresh</h3>
+          <p>
+            Opening the marketplace window <strong>force-refreshes the catalog</strong> (so pushing new
+            content to the repository shows up just by reopening the window, with no need to wait for a cache
+            TTL). When a refresh fails but content is already on hand, the client
+            <strong>keeps the previous list</strong> and shows a soft hint instead of replacing existing
+            content with an error. The cache is written to disk <strong>per source</strong>: primary and mirror
+            each get their own copy, so mirror cache is never mistaken for primary data.
+          </p>
+        </section>
+
+        <section id="scripts-consent">
+          <h2>4. Scripts (<code>scripts/</code>) and consent</h2>
+          <p>
+            A skill bundle may carry scripts, but they are <strong>not installed by default</strong>: they are
+            “code that runs on the user’s machine” and require the user’s explicit consent.
+          </p>
+
+          <h3>4.1 At install time: asked every single time</h3>
+          <ul>
+            <li>
+              When scripts are present, a confirmation dialog appears before install,
+              <strong>listing every script path one by one</strong> and explaining that this is code the Agent
+              can run on this machine.
+            </li>
+            <li>
+              <strong>Confirm</strong> = write the scripts; <strong>Cancel</strong> = install only
+              <code>SKILL.md</code> and <code>references/</code> (the workflow still works as usual).
+            </li>
+            <li>
+              <strong>Every install / reinstall asks again</strong>; consent is never remembered — it is a
+              per-install decision, not a switch that stays on once it has been flipped.
+            </li>
+            <li>
+              The main process only accepts the <strong>literal</strong>
+              <code>skillScriptsConsent === true</code>, with no truthiness coercion.
+            </li>
+            <li>Script files are subject to the same path allowlist and size limits.</li>
+          </ul>
+
+          <h3>4.2 At run time: one approval covers exactly one call</h3>
+          <p>
+            When the Agent actually runs a script, it goes through the harness’s general shell
+            (<code>pwsh</code> on Windows) and is bounded by the sandbox. As soon as a step needs to go beyond
+            the sandbox, the <strong>approval responder</strong> hands the decision to the user:
+          </p>
+          <table>
+            <thead>
+              <tr>
+                <th>User choice</th>
+                <th>Result</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Allow once</td>
+                <td>That call is allowed through (<strong>the only path that allows it</strong>)</td>
+              </tr>
+              <tr>
+                <td>Deny</td>
+                <td>The tool call is rejected</td>
+              </tr>
+              <tr>
+                <td>No answer / timeout / unreadable payload / file read error / any exception</td>
+                <td><strong>Fail closed</strong> (the tool call fails; it is never allowed through)</td>
+              </tr>
+              <tr>
+                <td>Request aborted (the turn ended)</td>
+                <td>Cancelled, not allowed through</td>
+              </tr>
+            </tbody>
+          </table>
+          <p>
+            In the UI it is an in-conversation approval card: tool name + reason, offering only
+            <strong>Allow once / Deny</strong>, with <strong>no “always allow”</strong> — one-shot approval is
+            deliberate, because persistent grants silently widen what the Agent can run.
+          </p>
+          <div class="tip">
+            Design your skills accordingly: <strong>scripts must be optional</strong>. When a user declines
+            scripts, the skill still has to be usable from its description and references alone; never put the
+            critical steps only in scripts.
+          </div>
+        </section>
+
+        <section id="compatibility">
+          <h2>5. Compatibility and versions</h2>
+          <ul>
+            <li>
+              The index <code>schemaVersion</code> is currently <strong>1</strong>; an index newer than the
+              client makes the client report plainly “please update the app” rather than half-render a
+              misleading empty marketplace.
+            </li>
+            <li>
+              An entry may declare <code>requires.appMinVersion</code>: when the app version is below it, the
+              card is disabled and the reason is shown.
+            </li>
+            <li>
+              <code>requires.nodeTypes</code> is derived by the script from the <code>plan</code>: when an
+              older app is missing a node type, that is determined up front and surfaced before install,
+              instead of materialising into a broken graph later.
+            </li>
+            <li>
+              <strong>The same content must bump its version</strong>: content at an existing
+              <code>version</code> must not be changed again.
+            </li>
+          </ul>
+        </section>
+
+        <section id="debugging">
+          <h2>6. Local debugging</h2>
+
+          <h3>6.1 In the content repository</h3>
+          <pre class="mcp-code"><code>node scripts/validate.mjs          # format / dependencies / index consistency / all skill bundle rules
+node scripts/build-index.mjs       # rebuild index.json (the derived fields)
+node scripts/build-index.mjs --check   # what CI runs: is the index consistent with disk?
+node --test scripts/validate.test.mjs  # unit tests for the validator itself</code></pre>
+          <p>
+            <code>validate.mjs</code> and CI run <strong>the very same code</strong> — passing locally while
+            failing in CI is not something that should happen.
+          </p>
+
+          <h3>6.2 On the app side</h3>
+          <ul>
+            <li>
+              <strong>Custom sources</strong>: the data layer supports setting
+              <code>workflowMarket.source</code> to one or more addresses (blank / comma-separated; once set,
+              <strong>only what you set is used</strong>, with no official source mixed in, so fallback can’t
+              lead your debugging astray). ⚠️ <strong>The settings UI does not expose this input yet</strong> —
+              it is a data-layer capability.
+            </li>
+            <li>
+              To verify “did the Agent really load the skill”, the most reliable evidence is the dsh session log
+              (<code>$DSH_HOME/sessions/&lt;workspace&gt;/&lt;session&gt;/session.v3.jsonl.zstd</code>): it shows
+              the <code>tool/call</code> with <code>name: "skill"</code> and
+              <code>arguments: {"name": "wf-&lt;id&gt;"}</code>, followed immediately by the
+              <code>&lt;skill_content&gt;</code> result. <strong>Don’t just look at the UI</strong> — the UI
+              cannot tell you whether a skill was loaded.
+            </li>
+          </ul>
+        </section>
+
+        <section id="rejections">
+          <h2>7. Common rejection reasons (client-side view)</h2>
+          <p>
+            Beyond the ones listed in the content repository’s <code>CONTRIBUTING.md</code>, these directly
+            produce <strong>“installed but not in effect”</strong>:
+          </p>
+          <table>
+            <thead>
+              <tr>
+                <th>Symptom</th>
+                <th>Cause</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>The Agent side has no such skill after install</td>
+                <td>
+                  The <code>SKILL.md</code> frontmatter is invalid (dsh <strong>silently ignores</strong> it).
+                  The client’s pre-install validation exists to turn this failure into one readable error
+                  ahead of time
+                </td>
+              </tr>
+              <tr>
+                <td>The skill name clashes with a built-in skill</td>
+                <td><code>name</code> is missing the <code>wf-</code> prefix</td>
+              </tr>
+              <tr>
+                <td>The description gets truncated on the Agent side</td>
+                <td><code>description</code> exceeds 500 characters</td>
+              </tr>
+              <tr>
+                <td>Files don’t match after an update</td>
+                <td>
+                  <code>index.json</code> was hand-edited; it must be derived by
+                  <code>build-index.mjs</code>
+                </td>
+              </tr>
+              <tr>
+                <td>A node type written in the skill can’t build a graph</td>
+                <td>
+                  The body contains a <code>typeId</code> that doesn’t exist (the repository validator
+                  catches it, but re-run it after editing the body)
+                </td>
+              </tr>
+              <tr>
+                <td>Features unavailable after the user declines scripts</td>
+                <td>
+                  The skill put its critical steps only in <code>scripts/</code>; scripts must be optional
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+      </article>
+    </div>
+
+    <footer class="foot">
+      <div class="foot-row">
+        <a class="foot-brand" href="index.en.html">
+          <img src="assets/logo-mark.png" alt="" width="22" height="22" />
+          AI Art Engine
+        </a>
+        <nav class="foot-links" aria-label="Footer">
+          <a href="index.en.html">Home</a>
+          <a href="quickstart.en.html">Quick Start</a>
+          <a href="manual.en.html">Manual</a>
+          <a href="guide-video.en.html">Video Tutorials</a>
+          <a href="guide-short-video.en.html">Short Drama</a>
+          <a href="guide-comfyui.en.html">ComfyUI Guide</a>
+          <a href="guide-mcp.en.html">MCP Setup</a>
+          <a href="guide-gameplay.en.html">Playable HTML</a>
+          <a href="index.en.html#download">Download</a>
+          <a
+            href="https://space.bilibili.com/3707036976024122"
+            target="_blank"
+            rel="noopener noreferrer"
+            >bilibili</a
+          >
+          <a
+            href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Gitee</a
+          >
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a>
+        </nav>
+        <span>GPL-3.0</span>
+      </div>
+    </footer>
+
+    <script>
+      document.querySelectorAll('.mobile-nav a').forEach((link) => {
+        link.addEventListener('click', () => link.closest('.mobile-menu')?.removeAttribute('open'))
+      })
+      ;(function () {
+        var KEY = 'site.theme'
+        var btn = document.querySelector('.theme-toggle')
+        if (!btn) return
+        var root = document.documentElement
+        var en = (root.getAttribute('lang') || '').indexOf('en') === 0
+        var query = window.matchMedia('(prefers-color-scheme: dark)')
+        var META = {
+          auto: { icon: '◐', label: en ? 'Theme: system' : '主题：跟随系统' },
+          light: { icon: '☀', label: en ? 'Theme: light' : '主题：浅色' },
+          dark: { icon: '☾', label: en ? 'Theme: dark' : '主题：深色' }
+        }
+        function readPref() {
+          try {
+            var v = localStorage.getItem(KEY)
+            return v === 'light' || v === 'dark' || v === 'auto' ? v : 'dark'
+          } catch (e) { return 'dark' }
+        }
+        function apply() {
+          var pref = readPref()
+          root.classList.toggle('dark', pref === 'dark' || (pref !== 'light' && query.matches))
+          root.classList.toggle('light', pref === 'light')
+          var meta = META[pref]
+          btn.textContent = meta.icon
+          btn.title = meta.label + (en ? ' (click to switch)' : '（点击切换）')
+          btn.setAttribute('aria-label', meta.label)
+        }
+        query.addEventListener('change', apply)
+        btn.addEventListener('click', function () {
+          var cur = readPref()
+          var next = cur === 'dark' ? 'light' : cur === 'light' ? 'auto' : 'dark'
+          try { localStorage.setItem(KEY, next) } catch (e) {}
+          apply()
+        })
+        apply()
+      })()
+    </script>
+      <script src="site-search.js" defer></script>
+    <script src="site-enhance.js" defer></script>
+  </body>
+</html>

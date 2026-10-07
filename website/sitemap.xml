@@ -84,4 +84,16 @@
     <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-mcp.en.html"/>
     <lastmod>2026-08-29</lastmod>
   </url>
+  <url>
+    <loc>https://justin-sky.github.io/ai-art-engine/developers.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/developers.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/developers.en.html"/>
+    <lastmod>2026-10-07</lastmod>
+  </url>
+  <url>
+    <loc>https://justin-sky.github.io/ai-art-engine/developers.en.html</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/developers.en.html"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/developers.html"/>
+    <lastmod>2026-10-07</lastmod>
+  </url>
 </urlset>

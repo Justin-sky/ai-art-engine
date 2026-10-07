@@ -49,7 +49,8 @@
         { url: 'guide-comfyui.en.html', label: 'ComfyUI' },
         { url: 'guide-newapi.en.html', label: 'NewAPI' },
         { url: 'guide-mcp.en.html', label: 'MCP Setup' },
-        { url: 'guide-gameplay.en.html', label: 'Playable HTML' }
+        { url: 'guide-gameplay.en.html', label: 'Playable HTML' },
+        { url: 'developers.en.html', label: 'Developer Docs' }
       ]
     : [
         { url: 'index.html', label: '首页' },
@@ -60,7 +61,8 @@
         { url: 'guide-comfyui.html', label: 'ComfyUI 教程' },
         { url: 'guide-newapi.html', label: 'NewAPI 教程' },
         { url: 'guide-mcp.html', label: 'MCP 接入' },
-        { url: 'guide-gameplay.html', label: '可玩 HTML' }
+        { url: 'guide-gameplay.html', label: '可玩 HTML' },
+        { url: 'developers.html', label: '开发者文档' }
       ]
 
   var MAX_RESULTS = 24

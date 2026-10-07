@@ -450,14 +450,15 @@ import {
 const { t } = useStudioI18n()
 
 /**
- * 「开发者文档」按钮的目标：**插件市场开发者文档**（`docs/MARKETPLACE.md`），不是用户手册。
+ * 「开发者文档」按钮的目标：官网的**插件市场开发者文档**页（`website/developers.html`），
+ * 不是用户手册。
  *
- * 作者要的是发布格式、技能包契约、脚本同意流、索引派生规则 —— 那些只在开发文档里；
- * 用户手册讲的是「怎么用市场」。指向仓库源码页是因为文档就在仓库里：
- * 跟随 `main` 分支，不另建站点副本，避免两处内容各说各话。
+ * 作者要的是发布格式、技能包契约、脚本同意流、索引派生规则 —— 那些只在开发者文档里；
+ * 用户手册讲的是「怎么用市场」。指向官网而不是 GitHub 源码页：文档已发布到站点，
+ * 读者不必先会翻仓库；仓库里的 `docs/MARKETPLACE.md` 是同一份内容的源头（改要改两处）。
  * （这里没有「网页市场」：本仓库没有远端注册表，不做假入口。）
  */
-const DEV_DOCS_URL = 'https://github.com/Justin-sky/ai-art-engine/blob/main/docs/MARKETPLACE.md'
+const DEV_DOCS_URL = 'https://justin-sky.github.io/ai-art-engine/developers.html'
 const TABS: MarketplaceFilter[] = ['all', 'mcp', 'skills', 'workflows']
 const SAVE_DEBOUNCE_MS = 500
 
