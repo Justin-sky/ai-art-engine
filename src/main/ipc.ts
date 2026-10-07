@@ -26,7 +26,8 @@ import type {
   PlanAiWorkflowInput,
   CommitAiWorkflowInput,
   ProjectScanOutputsInput,
-  InstalledWorkflowRecordView
+  InstalledWorkflowRecordView,
+  ExportWorkflowToMarketInput
 } from '@shared/ipc'
 import type { GitFileDiffInput } from '@shared/git'
 import type { TimelineExportInput, TimelineTransitionPreviewInput } from '@shared/graph'
@@ -122,6 +123,7 @@ import {
   uninstallWorkflow
 } from './services/workflowMarketService'
 import type { WorkflowSkillManifest } from '@shared/workflowMarket'
+import { exportWorkflowToMarket } from './services/workflowExportService'
 import { broadcastToAllWindows } from './broadcast'
 
 function handle<T>(channel: string, fn: (...args: never[]) => Promise<T> | T): void {
@@ -537,6 +539,9 @@ export function registerIpcHandlers(): void {
     listInstalledWorkflowDetails()
   )
   handle(IpcChannels.WORKFLOW_MARKET_BUNDLE, (id: string) => readInstalledWorkflowPlan(id))
+  handle(IpcChannels.WORKFLOW_EXPORT_TO_MARKET, (input: ExportWorkflowToMarketInput) =>
+    exportWorkflowToMarket(input)
+  )
 
   // 插件市场窗口（单例：已开着则聚焦）
   handle(IpcChannels.MARKETPLACE_OPEN_WINDOW, () => {

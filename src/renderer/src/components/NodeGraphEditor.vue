@@ -591,6 +591,17 @@
           >
             {{ t('graph.context.noCompatibleNodes') }}
           </div>
+          <!--
+            根画布动作（与「添加节点」分组分开）：把这张图导出成可发布的市场工作流。
+            只在**已落盘的资产图**上出现 —— 草稿 id（draft:）在主进程里查不到图文档。
+          -->
+          <template v-if="canExportWorkflow">
+            <div class="ctx-sep" aria-hidden="true" />
+            <button type="button" @click="runCtxAction(() => openWorkflowExport())">
+              <span class="ctx-icon">📤</span>
+              <span class="ctx-label">{{ t('workflowExport.menu.export') }}</span>
+            </button>
+          </template>
         </template>
       </div>
     </Teleport>
@@ -606,6 +617,15 @@
       :subtitle="t('graph.hostInterface.saveMessage')"
       @confirm="onEncapsulateSaveConfirm"
       @cancel="closeEncapsulateSaveDialog"
+    />
+
+    <!-- 导出为市场工作流：元数据表单 → 主进程写进用户选定的市场仓库目录 -->
+    <WorkflowExportDialog
+      :open="workflowExportOpen"
+      :asset-id="props.assetId ?? ''"
+      :default-title="graphAsset?.name ?? ''"
+      :prepare="prepareWorkflowExport"
+      @close="workflowExportOpen = false"
     />
 
     <!-- 剧集流水线独立窗口：不占画布，可同时操作节点 -->
@@ -661,6 +681,7 @@ import GraphMinimap from './GraphMinimap.vue'
 import EditorDiveBar from './EditorDiveBar.vue'
 import NodeGraphEditorDialogLayer from './NodeGraphEditorDialogLayer.vue'
 import SaveAssetDialog from './SaveAssetDialog.vue'
+import WorkflowExportDialog from './WorkflowExportDialog.vue'
 import StudioFloatingWindow from './StudioFloatingWindow.vue'
 import { editorDiveKey, isEditorDiveAssetFrame } from '../features/graph/model/editorDive'
 import {
@@ -1698,6 +1719,16 @@ type CtxMenuState = {
   linkToPortId?: string
 }
 const ctxMenu = ref<CtxMenuState | null>(null)
+/**
+ * 「导出为市场工作流」对话框是否打开。
+ *
+ * 只在**已落盘的资产图**（不是 draft: 草稿 id）上开放：主进程按 assetId 读落盘图，
+ * 草稿在主进程里根本查不到，点开也只会得到「找不到资产」。
+ */
+const workflowExportOpen = ref(false)
+const canExportWorkflow = computed(
+  () => isAssetGraph.value && !!graphAsset.value && !isDraftAssetId(props.assetId ?? '')
+)
 const nodeTypeRevision = ref(0)
 const {
   runStates,
@@ -4194,6 +4225,20 @@ function closeCtxMenu(): void {
 function runCtxAction(action: () => unknown): void {
   void action()
   closeCtxMenu()
+}
+
+function openWorkflowExport(): void {
+  workflowExportOpen.value = true
+}
+
+/**
+ * 导出前的落盘钩子（对话框在调 IPC 之前 await 它）。
+ *
+ * 主进程读的是**落盘图** —— 与 MCP `graph_read` / `task_run` 同一份，所以必须先把画布当前
+ * 状态（用户刚拖过的线、刚改的参数）写完，否则导出的会是上一次保存的图。
+ */
+async function prepareWorkflowExport(): Promise<void> {
+  await persistGraph()
 }
 
 async function showCtxMenu(next: CtxMenuState): Promise<void> {

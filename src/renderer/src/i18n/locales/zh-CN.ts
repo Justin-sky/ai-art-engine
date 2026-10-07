@@ -765,6 +765,84 @@ export default {
     saved: '已自动保存',
     saving: '正在保存…'
   },
+  workflowExport: {
+    menu: {
+      export: '导出为市场工作流'
+    },
+    dialog: {
+      title: '导出为市场工作流',
+      subtitle: '把当前画布写成市场仓库里的 workflows/<id>/workflow.json',
+      id: 'id',
+      idHint: 'kebab-case，等于市场里的目录名；不能与内置一键工作流的 id 相同',
+      titleField: '标题',
+      titleEn: '英文标题（可选）',
+      summary: '一句话简介',
+      summaryHint: '最多 {max} 字（市场卡片只有一行）',
+      category: '分类',
+      tags: '标签',
+      tagsHint: '用逗号分隔；可留空',
+      version: '版本',
+      authorName: '作者',
+      authorUrl: '作者链接（可选）',
+      license: '许可',
+      cover: '封面图',
+      coverHint: '必填：PNG，建议 800x450、不超过 300KB（落进包里叫 cover.png）',
+      coverEmpty: '还没有选择',
+      chooseCover: '选择图片',
+      pickDirectoryTitle: '选择工作流市场仓库目录（含 workflows/ 的那一层）',
+      export: '导出',
+      exporting: '导出中…',
+      overwrite: '覆盖并重新导出',
+      close: '关闭',
+      done: '已导出到 {dir}',
+      warnings: '提示',
+      nextSteps: '下一步（在市场仓库里执行）'
+    },
+    reason: {
+      canceled: '已取消',
+      unknown: '导出失败：{message}',
+      idRequired: 'id 不能为空',
+      idFormat: 'id 必须是小写 kebab-case（字母、数字与连字符）',
+      idTooLong: 'id 太长（最多 {max} 个字符）',
+      idPresetReserved:
+        '「{presetId}」是内置「一键工作流」预设的 id：官方工作流的 plan 由预设导出生成，改官方工作流的图要改预设，不能再导一份同名工作流；请换一个 id',
+      titleRequired: '标题不能为空',
+      summaryRequired: '一句话简介不能为空',
+      summaryTooLong: '简介超过 {max} 字（市场卡片只有一行，会被截断）',
+      categoryInvalid: '分类必须是 {categories} 之一',
+      versionInvalid: '版本必须是 semver（如 1.0.0）',
+      authorRequired: '作者署名必填（审核底线）',
+      licenseRequired: '许可必填（缺许可一律退回）',
+      projectNotOpen: '没有打开的工程',
+      assetNotFound: '找不到这个资产，或它不含图文档',
+      emptyPlan: '画布里没有可发布的节点（宿主引用、边界节点与输出节点不会导出）',
+      unknownNodeTypes: '画布用到了本版本不认识的节点类型：{typeIds}',
+      coverRequired: '必须选一张封面图：市场校验器要求包里有 cover.png',
+      coverNotPng: '封面必须是 PNG（包里的文件名固定是 cover.png）',
+      coverNotFound: '读不到这个封面文件',
+      coverTooLarge: '封面超过 {maxKb}KB，请先压缩',
+      repoMissing:
+        '所选目录里没有 workflows/ 子目录。请选工作流市场仓库的根目录（含 workflows/ 与 index.json 的那一层）',
+      targetExists: '目标目录已存在：{dir}。确认覆盖后再试一次',
+      unsafeTarget: '目标路径越出了所选目录，已拒绝写入'
+    },
+    warn: {
+      skippedNodes:
+        '跳过了 {count} 个无法发布的节点（{typeIds}）：宿主实例 / 边界节点 / 输出节点带的是本工程内的引用，导出后无法在别人机器上复现',
+      droppedParams: '丢弃了 {count} 个未声明的参数（{keys}）——多为上次运行的产物，发布包里不该带',
+      localRefParams:
+        '丢弃了 {count} 个指向本工程资产的参数（{keys}）——换个工程这些 id 就是悬空引用',
+      droppedEdges: '丢弃了 {count} 条连线：端点被跳过或端口不兼容',
+      coverSize: '封面是 {width}x{height}，建议 {suggested}',
+      longTextParams: '有 {count} 个文本参数超过 {max} 字符，市场校验器会拒',
+      tooManyNodes: '节点数 {count} 超过上限 {max}'
+    },
+    nextStep: {
+      rebuildIndex:
+        '在仓库 {dir} 里执行：node scripts/build-index.mjs && node scripts/validate.mjs',
+      commit: '确认无误后提交 workflows/{id}/（同一个 version 的内容不得再改，改了请升版本）'
+    }
+  },
   marketplace: {
     title: '插件市场',
     eyebrow: '能力与插件',

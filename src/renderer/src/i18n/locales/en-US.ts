@@ -778,6 +778,90 @@ export default {
     saved: 'Saved automatically',
     saving: 'Saving…'
   },
+  workflowExport: {
+    menu: {
+      export: 'Export as marketplace workflow'
+    },
+    dialog: {
+      title: 'Export as marketplace workflow',
+      subtitle: 'Write this canvas into the market repo as workflows/<id>/workflow.json',
+      id: 'id',
+      idHint: 'kebab-case, equal to the folder name; must not collide with a built-in preset id',
+      titleField: 'Title',
+      titleEn: 'English title (optional)',
+      summary: 'One-line summary',
+      summaryHint: 'At most {max} characters (the market card shows a single line)',
+      category: 'Category',
+      tags: 'Tags',
+      tagsHint: 'Comma separated; may be empty',
+      version: 'Version',
+      authorName: 'Author',
+      authorUrl: 'Author URL (optional)',
+      license: 'License',
+      cover: 'Cover image',
+      coverHint: 'Required: PNG, ideally 800x450 and at most 300KB (stored as cover.png)',
+      coverEmpty: 'Nothing selected yet',
+      chooseCover: 'Choose image',
+      pickDirectoryTitle:
+        'Select the workflow market repository (the folder containing workflows/)',
+      export: 'Export',
+      exporting: 'Exporting…',
+      overwrite: 'Overwrite and export again',
+      close: 'Close',
+      done: 'Exported to {dir}',
+      warnings: 'Notes',
+      nextSteps: 'Next steps (run them in the market repo)'
+    },
+    reason: {
+      canceled: 'Cancelled',
+      unknown: 'Export failed: {message}',
+      idRequired: 'id is required',
+      idFormat: 'id must be lower-case kebab-case (letters, digits and hyphens)',
+      idTooLong: 'id is too long (at most {max} characters)',
+      idPresetReserved:
+        '"{presetId}" is a built-in one-click workflow preset id: the plan of the official workflows is generated from those presets, so changing an official workflow means changing the preset — pick another id',
+      titleRequired: 'Title is required',
+      summaryRequired: 'A one-line summary is required',
+      summaryTooLong: 'The summary exceeds {max} characters (the market card shows one line)',
+      categoryInvalid: 'Category must be one of {categories}',
+      versionInvalid: 'Version must be semver (for example 1.0.0)',
+      authorRequired: 'An author name is required (a review baseline)',
+      licenseRequired: 'A license is required (missing licenses are rejected)',
+      projectNotOpen: 'No project is open',
+      assetNotFound: 'This asset does not exist, or it holds no graph document',
+      emptyPlan:
+        'The canvas has no publishable node (host instances, boundary nodes and output nodes are not exported)',
+      unknownNodeTypes: 'The canvas uses node types this build does not know: {typeIds}',
+      coverRequired:
+        'A cover image is required: the market validator expects cover.png in the pack',
+      coverNotPng: 'The cover must be a PNG (the file inside the pack is always cover.png)',
+      coverNotFound: 'This cover file cannot be read',
+      coverTooLarge: 'The cover exceeds {maxKb}KB — please compress it first',
+      repoMissing:
+        'The selected folder has no workflows/ subfolder. Pick the root of the workflow market repository (the folder holding workflows/ and index.json)',
+      targetExists: 'The target folder already exists: {dir}. Confirm the overwrite and try again',
+      unsafeTarget: 'The target path escapes the selected folder — write refused'
+    },
+    warn: {
+      skippedNodes:
+        'Skipped {count} unpublishable node(s) ({typeIds}): host instances, boundary nodes and output nodes reference this project and cannot be reproduced on someone else machine',
+      droppedParams:
+        'Dropped {count} undeclared parameter(s) ({keys}) — mostly outputs of the last run, which must not travel inside a published pack',
+      localRefParams:
+        'Dropped {count} parameter(s) pointing at assets of this project ({keys}) — those ids dangle in any other project',
+      droppedEdges:
+        'Dropped {count} edge(s): an endpoint was skipped, or the ports are incompatible',
+      coverSize: 'The cover is {width}x{height}; {suggested} is recommended',
+      longTextParams:
+        '{count} text parameter(s) exceed {max} characters; the market validator rejects those',
+      tooManyNodes: 'Node count {count} exceeds the limit of {max}'
+    },
+    nextStep: {
+      rebuildIndex: 'In {dir} run: node scripts/build-index.mjs && node scripts/validate.mjs',
+      commit:
+        'Once it looks right, commit workflows/{id}/ (never change the content of an existing version — bump it instead)'
+    }
+  },
   marketplace: {
     title: 'Plugin marketplace',
     eyebrow: 'Capabilities & plugins',

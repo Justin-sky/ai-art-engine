@@ -283,7 +283,11 @@ npm run check:market-plans   # 只校验，不一致退出码 1（CI 就在跑�
             </li>
             <li>
               因此<strong>改官方工作流的图要改应用预设</strong>，再导出；直接改市场那侧的 <code>plan</code> 会被判为漂移。
-              第三方工作流没有内置预设，仍然手写 <code>plan</code>（画布导出功能仍未做）。
+              第三方工作流没有内置预设：在画布上右键<strong>「导出为市场工作流」</strong>，填好元数据与封面，应用会把当前图写成
+              <code>workflows/&lt;id&gt;/{workflow.json, cover.png}</code>（<code>requires.nodeTypes</code> 由 plan 派生，
+              运行时写回字段与节点类型没声明过的参数一律不进包）；导出完成后按提示到仓库里跑
+              <code>node scripts/build-index.mjs &amp;&amp; node scripts/validate.mjs</code>。内置预设占用的市场 id（那 15 条）会被拒绝导出
+              —— 它们的 <code>plan</code> 只能来自预设。
             </li>
           </ul>
           <div class="tip">

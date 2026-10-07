@@ -296,8 +296,14 @@ npm run check:market-plans   # verify only; exit code 1 on any mismatch (this is
             </li>
             <li>
               So to change an official workflow's graph, change the <strong>app preset</strong> and re-export; editing the
-              <code>plan</code> on the marketplace side is treated as drift. Third-party workflows have no built-in preset
-              and still hand-write their <code>plan</code> (canvas export does not exist yet).
+              <code>plan</code> on the marketplace side is treated as drift. Third-party workflows have no built-in preset:
+              right-click the canvas and pick <strong>“Export as marketplace workflow”</strong>, fill in the metadata and a
+              cover, and the app writes the current graph as
+              <code>workflows/&lt;id&gt;/{workflow.json, cover.png}</code> (<code>requires.nodeTypes</code> is derived from
+              the plan; runtime write-back fields and any parameter the node type does not declare are kept out of the
+              pack). When it finishes, run <code>node scripts/build-index.mjs &amp;&amp; node scripts/validate.mjs</code> in the
+              repo as prompted. The market ids used by the built-in presets (those 15) are refused — their
+              <code>plan</code> can only come from a preset.
             </li>
           </ul>
           <div class="tip">

@@ -216,6 +216,13 @@ export const IpcChannels = {
   WORKFLOW_MARKET_INSTALLED: 'workflow-market:installed',
   /** 读取已安装工作流的 plan（「使用」时物化） */
   WORKFLOW_MARKET_BUNDLE: 'workflow-market:bundle',
+  /**
+   * 把当前画布导出成市场仓库里的 `workflows/<id>/{workflow.json, cover.png}`。
+   *
+   * 与市场那几条通道方向相反（那几条是**拉**远端内容，这条是**写**用户本地的市场仓库），
+   * 所以不复用它们的服务：导出要读工程内的图、要弹目录选择器、还要拒绝误改官方那 15 条。
+   */
+  WORKFLOW_EXPORT_TO_MARKET: 'workflow-export:to-market',
 
   // Local vision (YOLO): onnxruntime 本地推理，数据不出机
   YOLO_STATUS: 'yolo:status',
@@ -1192,6 +1199,47 @@ export interface WorkflowBundleResult {
   error?: string
 }
 
+// ─────────────────────────────────────────────────────────────
+// 画布 → 市场工作流（导出）
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * 导出请求。
+ *
+ * 图文档**不由渲染层传**：主进程按 `assetId` 从工程里读（与 MCP `graph_read` 同一个访问器），
+ * 于是「导出的是不是用户眼前那张图」只有一处口径 —— 渲染层负责在调用前落盘。
+ */
+export interface ExportWorkflowToMarketInput {
+  assetId: string
+  /** 表单元数据（id / 标题 / 简介 / 分类 / 标签 / 版本 / 作者 / 许可） */
+  meta: import('./workflowExport').WorkflowExportMetaInput
+  /** 封面图绝对路径（必须是 PNG；落进包里的名字固定 `cover.png`） */
+  coverPath?: string
+  /** `workflows/<id>/` 已存在时必须显式传 true 才覆盖 */
+  overwrite?: boolean
+  /** 目录选择器的标题（渲染层按当前语言给，主进程不产出成品文案） */
+  directoryTitle?: string
+}
+
+/**
+ * 导出结果。
+ *
+ * 失败**不抛异常**：目录选错、同名目录已存在、封面不合规都是贡献流程里的家常事，
+ * 界面需要把原因稳定地渲染出来；`reasonKey` 由渲染层拼成 i18n 键。
+ * 非预期错误（磁盘不可写等）仍抛，由 IPC 层透传原始 message。
+ */
+export interface ExportWorkflowToMarketResult {
+  ok: boolean
+  /** 成功时：写好的 `workflows/<id>/` 绝对路径 */
+  dir?: string
+  /** 导出过程中的提示（跳过节点 / 丢弃的运行时参数 / 上限），渲染层出文案 */
+  warnings: import('./workflowExport').WorkflowExportNote[]
+  /** 成功后要用户做的事（重建索引 / 提交），渲染层出文案 */
+  nextSteps: import('./workflowExport').WorkflowExportNote[]
+  reasonKey?: string
+  reasonParams?: Record<string, string | number>
+}
+
 /** Skills：写入示例模板结果 */
 export interface DshSkillsTemplateResult {
   /** 写入（或已存在）的文件路径 */
@@ -1642,6 +1690,14 @@ export interface StudioApi {
   listInstalledWorkflows: () => Promise<InstalledWorkflowRecordView[]>
   /** 读取已安装工作流的本体（「使用」时物化用） */
   readWorkflowBundle: (id: string) => Promise<WorkflowBundleResult>
+  /**
+   * 把当前画布导出成可发布的市场工作流（写进用户选定的市场仓库目录）。
+   *
+   * 先 `await` 画布的落盘（编辑器暴露的 `flushSave`），再调这条 —— 主进程读的是落盘图。
+   */
+  exportWorkflowToMarket: (
+    input: ExportWorkflowToMarketInput
+  ) => Promise<ExportWorkflowToMarketResult>
   /**
    * 测试设置中指定 id 的 search provider 连通性；
    * 走该 provider 内置 adapter 的 assertAuth（一次轻量探测）。

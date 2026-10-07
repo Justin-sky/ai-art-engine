@@ -187,6 +187,8 @@ const api: StudioApi = {
   uninstallWorkflowMarket: (id) => ipcRenderer.invoke(IpcChannels.WORKFLOW_MARKET_UNINSTALL, id),
   listInstalledWorkflows: () => ipcRenderer.invoke(IpcChannels.WORKFLOW_MARKET_INSTALLED),
   readWorkflowBundle: (id) => ipcRenderer.invoke(IpcChannels.WORKFLOW_MARKET_BUNDLE, id),
+  exportWorkflowToMarket: (input) =>
+    ipcRenderer.invoke(IpcChannels.WORKFLOW_EXPORT_TO_MARKET, input),
   testSearchProvider: (input: { id: string }) =>
     ipcRenderer.invoke(IpcChannels.SEARCH_TEST_CONNECTION, input),
 

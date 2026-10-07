@@ -55,8 +55,12 @@ export interface GraphPlanCatalogEntry {
  * 跨节点的通用参数键（不经节点类型声明也要放行）。
  * 节点私有参数不在这里登记——由 declaredParamKeys 从 defaultParams() 自动识别；
  * 加新节点/新通用参数时若漏了本表，物化会给出 warning（见 pickAllowedParams），不会静默丢参。
+ *
+ * 导出为市场工作流（`shared/workflowExport`）复用同一张表 + `declaredParamKeys`：
+ * 「哪些参数是内容、哪些是运行时写回」只允许有一个判定处，否则导出会把上次运行的产物
+ * （generatedImages / animGifRelativePath 之类）一起发布出去。
  */
-const ALLOWED_PARAM_KEYS = new Set<keyof GraphNodeParams | string>([
+export const ALLOWED_PARAM_KEYS = new Set<keyof GraphNodeParams | string>([
   'text',
   'generateInstruction',
   'generateSystemPrompt',
@@ -195,12 +199,24 @@ export function buildGraphPlanCatalog(
  * ALLOWED_PARAM_KEYS 是公共生成参数，覆盖不到节点私有参数（如 anim.2d 的
  * animCols / animGifFps），两者取并集才不会误杀合法参数。
  */
-function declaredParamKeys(def: NodeTypeDefinition): Set<string> {
+export function declaredParamKeys(def: NodeTypeDefinition): Set<string> {
   try {
     return new Set(Object.keys(def.defaultParams() ?? {}))
   } catch {
     return new Set()
   }
+}
+
+/**
+ * 某个参数键是否属于「该节点类型声明的 / 全局通用」的合法计划参数。
+ *
+ * 物化（`pickAllowedParams`）与导出（`shared/workflowExport`）共用本判定：
+ * 运行时写回字段（`generatedImages` / `animGifRelativePath` / `episodeReviewStatus` …）
+ * 既不在 defaultParams 也不在 ALLOWED_PARAM_KEYS 里，因此两边都会丢掉它们 ——
+ * 这正是我们要的「只保留节点类型自己声明的参数」。
+ */
+export function isAllowedPlanParamKey(key: string, declaredKeys: ReadonlySet<string>): boolean {
+  return ALLOWED_PARAM_KEYS.has(key) || declaredKeys.has(key)
 }
 
 /**
@@ -216,7 +232,7 @@ function pickAllowedParams(
   const dropped: string[] = []
   for (const [key, value] of Object.entries(raw)) {
     if (value === undefined) continue
-    if (!ALLOWED_PARAM_KEYS.has(key) && !declaredKeys.has(key)) {
+    if (!isAllowedPlanParamKey(key, declaredKeys)) {
       dropped.push(key)
       continue
     }

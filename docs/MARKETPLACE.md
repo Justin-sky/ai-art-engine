@@ -79,7 +79,11 @@ npm run check:market-plans   # 只校验，不一致退出码 1（CI 就在跑�
 - 市场仓库在 `../ai-art-engine-workflow`，可用 `--dir <path>` 或 `AAE_WORKFLOW_MARKET_DIR` 指定；
   CI 里是临时 clone 一份再 `--check`。
 - 因此**改官方工作流的图要改应用预设**，再导出；直接改市场那侧的 `plan` 会被判为漂移。
-  第三方工作流没有内置预设，仍然手写 `plan`（画布导出功能仍未做）。
+  第三方工作流没有内置预设：在画布上右键**「导出为市场工作流」**，填好元数据与封面，
+  应用会把当前图写成 `workflows/<id>/{workflow.json, cover.png}`（`requires.nodeTypes` 由 plan
+  派生，运行时写回字段与节点类型没声明过的参数一律不进包）；导出完成后按提示到仓库里跑
+  `node scripts/build-index.mjs && node scripts/validate.mjs`。内置预设占用的市场 id（那 15 条）
+  会被拒绝导出 —— 它们的 `plan` 只能来自预设。
 
 没有这道检查时的失败形态值得写下来：内置「一键工作流」和市场装出来的工作流会**同名同版本、
 却是两张不同的图**，而两边都不报错 —— 用户只会以为模型不稳定。

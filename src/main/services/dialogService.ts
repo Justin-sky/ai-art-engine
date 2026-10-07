@@ -12,8 +12,21 @@ const E_SELECT_PROJECT_JSON = defErrSimple(
 )
 
 class DialogService {
-  async selectDirectory(): Promise<string | null> {
+  /**
+   * 选择目录。
+   *
+   * `title` / `defaultPath` 可选：调用方（如导出为市场工作流）需要说清「选哪一层目录」，
+   * 而文案由渲染层按当前语言给 —— 主进程不产出成品文案。不传就是系统默认标题。
+   */
+  async selectDirectory(options?: {
+    title?: string
+    defaultPath?: string
+  }): Promise<string | null> {
+    const title = options?.title?.trim()
+    const defaultPath = options?.defaultPath?.trim()
     const result = await dialog.showOpenDialog({
+      ...(title ? { title } : {}),
+      ...(defaultPath ? { defaultPath } : {}),
       properties: ['openDirectory', 'createDirectory']
     })
     return result.canceled ? null : (result.filePaths[0] ?? null)
