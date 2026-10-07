@@ -214,6 +214,32 @@ describe('会话管理与模型同一行', () => {
   })
 })
 
+describe('模型上下文环紧挨引用资产按钮', () => {
+  it('用量环在 chat-toolbar 内，且排在引用资产按钮**之前**', () => {
+    const toolbarAt = CHAT.indexOf('class="chat-toolbar"')
+    const ringAt = CHAT.indexOf('class="context-usage"')
+    const mentionAt = CHAT.indexOf('class="tool-btn mention"')
+    expect(toolbarAt).toBeGreaterThan(0)
+    expect(ringAt).toBeGreaterThan(toolbarAt)
+    expect(mentionAt).toBeGreaterThan(ringAt)
+  })
+
+  it('**只此一处**（移走时不能留下旧的）', () => {
+    expect(CHAT.split('class="context-usage"').length - 1).toBe(1)
+  })
+
+  it('不再出现在 composer 下面的那一行（模型选择器 / 发送键之间）', () => {
+    const actionsAt = CHAT.indexOf('class="chat-actions"')
+    const actions = CHAT.slice(actionsAt, CHAT.indexOf('</template>', actionsAt))
+    expect(actions).not.toContain('class="context-usage"')
+  })
+
+  it('工具栏里的尺寸按按钮尺度收一档（否则把工具栏顶高）', () => {
+    const scoped = CHAT.slice(CHAT.indexOf('.chat-toolbar .ctx-ring'))
+    expect(scoped.slice(0, 300)).toMatch(/width:\s*24px/)
+  })
+})
+
 describe('Agent 工具：能精确使用已安装工作流', () => {
   it('两个工具都注册了', () => {
     expect(MCP).toContain("name: 'workflow_list_installed'")

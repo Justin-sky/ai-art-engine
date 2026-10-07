@@ -2935,6 +2935,18 @@ onBeforeUnmount(() => {
           </ul>
         </div>
         <span class="toolbar-spacer" />
+        <!--
+          模型上下文（环形用量）紧挨在引用资产按钮左边：
+          两者都在回答「这条消息会带什么上下文」，放在一起比拆到两行更好读。
+        -->
+        <div
+          v-if="contextUsageText"
+          class="context-usage"
+          :class="{ warn: usageRatio >= 0.85, active: running }"
+          :title="contextUsageText"
+        >
+          <div class="ctx-ring" :style="{ '--ctx-pct': ringPct }" aria-hidden="true" />
+        </div>
         <button
           class="tool-btn mention"
           :title="t('studio.chat.mentionTitle')"
@@ -3153,14 +3165,6 @@ onBeforeUnmount(() => {
           <span v-if="!modelOptions.length" class="model-empty">{{
             t('studio.chat.noModel')
           }}</span>
-        </div>
-        <div
-          v-if="contextUsageText"
-          class="context-usage"
-          :class="{ warn: usageRatio >= 0.85, active: running }"
-          :title="contextUsageText"
-        >
-          <div class="ctx-ring" :style="{ '--ctx-pct': ringPct }" aria-hidden="true" />
         </div>
         <button
           v-if="running"
@@ -5142,6 +5146,18 @@ onBeforeUnmount(() => {
   background: conic-gradient(var(--accent) var(--ctx-pct), var(--accent-12) 0);
   -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 5px));
   mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 5px));
+}
+
+/*
+  工具栏里的用量环按工具栏的按钮尺度收一档。
+  28px 是照着发送按钮定的；工具栏按钮只有 ~24px，照搬会让它成为整行最高的元素、
+  把工具栏顶高，看起来也不像「引用资产」的同伴。
+*/
+.chat-toolbar .ctx-ring {
+  width: 24px;
+  height: 24px;
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 4px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 4px));
 }
 
 .context-usage.warn {
