@@ -1062,6 +1062,7 @@ export default {
       slashMenu: '指令',
       slashClearDesc: '清除上下文，开启全新会话',
       slashModelDesc: '打开模型选择列表',
+      slashWorkflowDesc: '打开已安装工作流列表',
       slashEmpty: '没有匹配的指令',
       // 注意：vue-i18n 会把消息开头（token 起始）的 @ 解析为 linked format，须用 {'@'} 转义
       // 按钮仅保留 @ 符号，完整说明放 title（mentionTitle）

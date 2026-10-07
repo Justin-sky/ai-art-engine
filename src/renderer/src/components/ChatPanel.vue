@@ -222,15 +222,16 @@ function isLocalSlashCommand(text: string): 'clear' | 'model' | null {
 
 /** 对话面板支持的斜杠指令（输入 `/` 时弹出） */
 type SlashCommandDef = {
-  id: 'clear' | 'model'
+  id: 'clear' | 'model' | 'workflow'
   name: string
   /** i18n 描述键（相对 studio.chat） */
-  descKey: 'slashClearDesc' | 'slashModelDesc'
+  descKey: 'slashClearDesc' | 'slashModelDesc' | 'slashWorkflowDesc'
 }
 
 const SLASH_COMMANDS: readonly SlashCommandDef[] = [
   { id: 'clear', name: '/clear', descKey: 'slashClearDesc' },
-  { id: 'model', name: '/model', descKey: 'slashModelDesc' }
+  { id: 'model', name: '/model', descKey: 'slashModelDesc' },
+  { id: 'workflow', name: '/workflow', descKey: 'slashWorkflowDesc' }
 ]
 
 const slashOpen = ref(false)
@@ -286,7 +287,35 @@ async function applySlashCommand(cmd: SlashCommandDef): Promise<void> {
   }
   if (cmd.id === 'model') {
     await onModelCommand()
+    return
   }
+  if (cmd.id === 'workflow') {
+    await onWorkflowCommand()
+  }
+}
+
+/**
+ * `/workflow`：打开「已安装工作流」列表（与工具栏那个按钮同一个面板）。
+ *
+ * 选中即把引用插入输入框 —— 与点击面板条目完全同一条路径，
+ * 因此不会出现「从斜杠进和从按钮进行为不一样」的分叉。
+ */
+async function onWorkflowCommand(): Promise<void> {
+  await refreshInstalledWorkflows()
+  if (!installedWorkflows.value.length) {
+    // 静默打开一个空面板会让人以为功能坏了，明确说清去哪儿装
+    pushStatus(t('studio.chat.workflowsEmpty'), 'error')
+    return
+  }
+  modeOpen.value = false
+  sessionOpen.value = false
+  skillsOpen.value = false
+  modelOpen.value = false
+  workflowsOpen.value = true
+  void nextTick(() => {
+    const trigger = workflowsDropdownRef.value?.querySelector('button.skills-trigger')
+    if (trigger instanceof HTMLElement) trigger.focus()
+  })
 }
 
 /** `/model`：打开底部模型下拉列表 */

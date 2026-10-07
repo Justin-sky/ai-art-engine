@@ -280,6 +280,55 @@ describe('技能 / 工作流触发器只显示图标', () => {
   })
 })
 
+describe('/workflow 斜杠指令', () => {
+  it('指令已注册且带 i18n 描述键', () => {
+    expect(CHAT).toMatch(/id: 'workflow', name: '\/workflow', descKey: 'slashWorkflowDesc'/)
+    // 类型联合也要放开，否则 TS 会拒绝新增的 id / descKey
+    expect(CHAT).toMatch(/id: 'clear' \| 'model' \| 'workflow'/)
+    expect(CHAT).toMatch(/'slashClearDesc' \| 'slashModelDesc' \| 'slashWorkflowDesc'/)
+  })
+
+  it('applySlashCommand 会分发到 onWorkflowCommand', () => {
+    const at = CHAT.indexOf('async function applySlashCommand')
+    const fn = CHAT.slice(at, at + 700)
+    expect(fn).toMatch(/cmd\.id === 'workflow'/)
+    expect(fn).toContain('onWorkflowCommand()')
+  })
+
+  it('**复用同一个已安装工作流面板**，不另造一份列表', () => {
+    const at = CHAT.indexOf('async function onWorkflowCommand')
+    expect(at, 'onWorkflowCommand 应当存在').toBeGreaterThan(0)
+    const fn = CHAT.slice(at, at + 900)
+    expect(fn).toContain('refreshInstalledWorkflows()')
+    expect(fn).toMatch(/workflowsOpen\.value = true/)
+    // 不该出现第二套列表数据源
+    expect(CHAT).not.toContain('slashWorkflows')
+  })
+
+  it('没有已装工作流时给出提示，而不是静默打开空面板', () => {
+    const at = CHAT.indexOf('async function onWorkflowCommand')
+    const fn = CHAT.slice(at, at + 900)
+    expect(fn).toMatch(/if \(!installedWorkflows\.value\.length\)/)
+    expect(fn).toContain('pushStatus(')
+    expect(fn).toContain('studio.chat.workflowsEmpty')
+  })
+
+  it('打开前会收起其它下拉（避免两个面板叠着）', () => {
+    const at = CHAT.indexOf('async function onWorkflowCommand')
+    const fn = CHAT.slice(at, at + 900)
+    for (const menu of ['modeOpen', 'sessionOpen', 'skillsOpen', 'modelOpen']) {
+      expect(fn, `应当收起 ${menu}`).toMatch(new RegExp(`${menu}\\.value = false`))
+    }
+  })
+
+  it('两个语言都有该描述键', () => {
+    const zh = read('src/renderer/src/i18n/locales/zh-CN.ts')
+    const en = read('src/renderer/src/i18n/locales/en-US.ts')
+    expect(zh).toContain('slashWorkflowDesc:')
+    expect(en).toContain('slashWorkflowDesc:')
+  })
+})
+
 describe('模型上下文环与引用资产按钮同行', () => {
   it('两者在同一个 `.toolbar-end` 单元里（因此不会被折到两行）', () => {
     const groupAt = CHAT.indexOf('class="toolbar-end"')
