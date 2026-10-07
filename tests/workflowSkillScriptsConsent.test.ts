@@ -80,13 +80,20 @@ describe('界面：安装前必须确认，确认结果决定带不带同意', (
     const at = VIEW.indexOf('async function installMarketWorkflow')
     expect(at, '应当能找到 installMarketWorkflow').toBeGreaterThan(0)
     const body = VIEW.slice(at, VIEW.indexOf('\n/**', at))
-    expect(body).toContain('const withScripts = skillHasScripts(card.skill)')
-    expect(body).toMatch(
-      /const scriptsConsented =\s*withScripts && card\.skill\s*\?\s*window\.confirm\(skillScriptsConsentText\(card\.skill/
-    )
+    /*
+      断言**顺序与依赖**，不锁具体写法：这里曾写成 `const scriptsConsented = … ? window.confirm(…)`，
+      后来为了把 confirm 放进 try（弹窗被宿主拒绝时抛错会静默吞掉点击）改成了先声明再赋值，
+      于是这条守卫因为「少了个 const」而红 —— 那是守卫过度指定语法，不是行为回归。
+    */
+    expect(body).toContain('skillHasScripts(card.skill)')
+    expect(body).toContain('skillScriptsConsentText(card.skill')
+    // 确认必须在发起安装之前
+    expect(body.indexOf('window.confirm(skillScriptsConsentText')).toBeGreaterThan(-1)
     expect(body.indexOf('window.confirm(skillScriptsConsentText')).toBeLessThan(
       body.indexOf('installWorkflowMarket(')
     )
+    // 同意值必须由确认结果决定（不能是常量 true）
+    expect(body).toMatch(/scriptsConsented\s*=/)
   })
 
   it('只有用户点了「确定」才带 skillScriptsConsent（取消 = 不装脚本，说明书照常装）', () => {

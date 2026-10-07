@@ -852,27 +852,53 @@ async function loadVisibleCovers(): Promise<void> {
 /** 安装（或更新）：缺依赖时先拦一次，含脚本时再要一次明示同意，之后才带逃生门重试 */
 async function installMarketWorkflow(card: MarketplaceCard): Promise<void> {
   const id = card.marketId
-  if (!id || installingId.value) return
-  const missing = card.missingNodeTypes ?? []
-  if (missing.length > 0) {
-    const ok = window.confirm(
-      t('marketplace.workflows.missingConfirm', { types: missing.join(', ') })
-    )
-    if (!ok) return
-  }
+  if (!id) return
   /**
-   * 含脚本的技能包必须**逐次**确认（哪怕上次同意过、哪怕只是「重新安装」）：
-   * `scripts/` 是会被 agent 在本机执行起来的代码，同意应当是每次安装的独立决定，
-   * 而不是一个装过一次就永久生效的开关。
+   * 只挡**同一张卡**的重复点击。
    *
-   * 确认框里的「取消」= **不装脚本**（说明书与 references 照常装上，工作流可用）——
-   * 这正是主进程在缺少 `skillScriptsConsent` 时的行为，因此不需要再走一条分支。
+   * 早先是 `if (installingId.value) return` —— 于是任何一张卡在装（尤其卡在安装后重新拉目录
+   * 那一步，最坏要等两个源各自超时）时，**其它所有卡的安装按钮都会静默失效**：
+   * 点了没有任何反应、也没有任何提示，看起来就是「按钮坏了」。
    */
-  const withScripts = skillHasScripts(card.skill)
-  const scriptsConsented =
-    withScripts && card.skill
-      ? window.confirm(skillScriptsConsentText(card.skill, (key, named) => t(key, named)))
-      : false
+  if (installingId.value === id) return
+
+  let missing: string[] = []
+  let withScripts = false
+  let scriptsConsented = false
+  try {
+    /**
+     * 两个确认框都必须**在 try 里**。
+     *
+     * 它们原先在 try 之外：`window.confirm` 一旦抛错（弹窗被宿主环境拒绝就会），
+     * 异常会直接从 async 函数逃出去 —— 按钮不变、没有提示、连 `installingId` 都没设上，
+     * 表现就是「点了完全没反应」。宁可报一句错，也不要静默。
+     */
+    missing = card.missingNodeTypes ?? []
+    if (missing.length > 0) {
+      const ok = window.confirm(
+        t('marketplace.workflows.missingConfirm', { types: missing.join(', ') })
+      )
+      if (!ok) return
+    }
+    /**
+     * 含脚本的技能包必须**逐次**确认（哪怕上次同意过、哪怕只是「重新安装」）：
+     * `scripts/` 是会被 agent 在本机执行起来的代码，同意应当是每次安装的独立决定，
+     * 而不是一个装过一次就永久生效的开关。
+     *
+     * 确认框里的「取消」= **不装脚本**（说明书与 references 照常装上，工作流可用）——
+     * 这正是主进程在缺少 `skillScriptsConsent` 时的行为，因此不需要再走一条分支。
+     */
+    withScripts = skillHasScripts(card.skill)
+    scriptsConsented =
+      withScripts && card.skill
+        ? window.confirm(skillScriptsConsentText(card.skill, (key, named) => t(key, named)))
+        : false
+  } catch (e) {
+    isError.value = true
+    message.value = e instanceof Error ? e.message : String(e)
+    return
+  }
+
   installingId.value = id
   try {
     const result = await window.studio.installWorkflowMarket({
@@ -895,19 +921,38 @@ async function installMarketWorkflow(card: MarketplaceCard): Promise<void> {
         ? t('marketplace.workflows.installedWithoutScripts', { title: card.title ?? id })
         : t('marketplace.workflows.installed', { title: card.title ?? id })
     isError.value = false
-    await loadWorkflowCatalog(true)
   } catch (e) {
     isError.value = true
     message.value = e instanceof Error ? e.message : String(e)
   } finally {
     installingId.value = null
   }
+  /**
+   * 重新拉目录放在 finally **之后**：这一步要依次试所有市场源，最坏会等各自超时，
+   * 放在 try 里会让安装按钮在整个等待期间都处于「安装中…」不可点状态。
+   * 刷新失败也不该把「已安装」翻成报错 —— 主进程确实装好了，失败的只是列表刷新。
+   */
+  try {
+    await loadWorkflowCatalog(true)
+  } catch {
+    // 忽略：卡片状态会在下次刷新时自行纠正
+  }
 }
 
 async function uninstallMarketWorkflow(card: MarketplaceCard): Promise<void> {
   const id = card.marketId
   if (!id) return
-  if (!window.confirm(t('marketplace.workflows.uninstallConfirm', { title: card.title ?? id }))) {
+  /**
+   * confirm 也放在 try 里：与安装同理 —— 弹窗被宿主拒绝时抛出的异常会从 async 函数
+   * 直接逃出去，表现为「点了没反应」，而不是一句可读的报错。
+   */
+  try {
+    if (!window.confirm(t('marketplace.workflows.uninstallConfirm', { title: card.title ?? id }))) {
+      return
+    }
+  } catch (e) {
+    isError.value = true
+    message.value = e instanceof Error ? e.message : String(e)
     return
   }
   const result = await window.studio.uninstallWorkflowMarket(id)
