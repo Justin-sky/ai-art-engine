@@ -3094,13 +3094,27 @@ onBeforeUnmount(() => {
             </li>
           </ul>
         </div>
+        <!-- 新建会话：纯图标（+），省下文字宽度；含义靠 title / aria-label 说明 -->
         <button
-          class="tool-btn"
+          class="tool-btn icon-only"
           :title="t('studio.chat.newSession')"
+          :aria-label="t('studio.chat.newSession')"
           :disabled="running"
           @click="onNewSession"
         >
-          {{ t('studio.chat.newSession') }}
+          <svg
+            viewBox="0 0 16 16"
+            width="12"
+            height="12"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            aria-hidden="true"
+          >
+            <path d="M8 3.5 V12.5" />
+            <path d="M3.5 8 H12.5" />
+          </svg>
         </button>
         <div class="model-select-wrap">
           <span class="model-label">{{ t('studio.chat.model') }}</span>
@@ -4593,7 +4607,12 @@ onBeforeUnmount(() => {
   color: var(--accent);
 }
 
-.chat-toolbar .tool-btn {
+/*
+  基础规则不再限定在 `.chat-toolbar` 下（样式块是 scoped，只影响本组件）。
+  原先只写了 `.chat-toolbar .tool-btn`，导致「新建会话」按钮落在 `.chat-actions` 里
+  完全没有样式 —— 一直是浏览器默认按钮外观。
+*/
+.tool-btn {
   flex: none;
   padding: 3px 8px;
   border: 1px solid var(--border);
@@ -4605,14 +4624,24 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
-.chat-toolbar .tool-btn:hover:not(:disabled) {
+.tool-btn:hover:not(:disabled) {
   background: var(--bg-hover);
   color: var(--text);
 }
 
-.chat-toolbar .tool-btn:disabled {
+.tool-btn:disabled {
   opacity: 0.45;
   cursor: default;
+}
+
+/* 纯图标按钮：正方、居中，与图标按钮同一尺度 */
+.tool-btn.icon-only {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
 }
 
 .chat-toolbar .tool-btn.mention {

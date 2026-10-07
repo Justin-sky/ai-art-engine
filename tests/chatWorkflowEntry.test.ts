@@ -101,6 +101,27 @@ describe('会话管理与模型同一行', () => {
     expect(CHAT).not.toContain('v-if="sessions.length > 1"')
   })
 
+  it('新建会话是**纯图标**按钮，且仍有无障碍名称', () => {
+    const at = CHAT.indexOf('class="tool-btn icon-only"')
+    expect(at, '新建会话应当用 icon-only 样式').toBeGreaterThan(0)
+    const button = CHAT.slice(at, at + 500)
+    expect(button).toContain('onNewSession')
+    // 图标按钮没有可见文字，含义只能靠 title / aria-label —— 两者都必须有
+    expect(button).toMatch(/:title="t\('studio\.chat\.newSession'\)"/)
+    expect(button).toMatch(/:aria-label="t\('studio\.chat\.newSession'\)"/)
+    // 不该再渲染文字
+    expect(button).not.toMatch(/\{\{\s*t\('studio\.chat\.newSession'\)\s*\}\}/)
+  })
+
+  it('**基础 .tool-btn 规则不得再限定在 chat-toolbar 下**', () => {
+    // 原先只有 `.chat-toolbar .tool-btn`，于是落在 chat-actions 里的「新建」
+    // 完全没有样式，一直是浏览器默认按钮外观
+    expect(CHAT).toMatch(/\n\.tool-btn \{/)
+    expect(CHAT).not.toMatch(/\n\.chat-toolbar \.tool-btn \{/)
+    // icon-only 的尺寸规则也要在
+    expect(CHAT).toMatch(/\n\.tool-btn\.icon-only \{/)
+  })
+
   it('删除做成会话列表里每一项后面的 ×', () => {
     const menuStart = CHAT.indexOf('class="session-menu"')
     const menuEnd = CHAT.indexOf('</ul>', menuStart)
