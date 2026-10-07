@@ -348,9 +348,22 @@ function onComposerEscape(): void {
   if (mentionOpen.value) mentionOpen.value = false
 }
 
-async function onDeleteSession(): Promise<void> {
-  const session = activeSession.value
-  if (!session) return
+/**
+ * 删除**指定**会话（下拉列表里每一项后面的 ×）。
+ *
+ * 与旧版「删当前会话」按钮的区别：这里能删任意一条，因此要区分两种情形 ——
+ * 删的是当前会话时要重载消息与草稿；删的是别的会话则**不动当前视图**
+ * （否则删一条旁支会话会把正在编辑的内容清掉）。
+ */
+async function onDeleteSessionById(id: string): Promise<void> {
+  const target = sessions.value.find((s) => s.id === id)
+  if (!target) return
+  /**
+   * 记住当前的展开状态：确认弹窗在 `sessionDropdownRef` 之外，点它会命中
+   * document 上的「点击外部即收起」监听，于是**确认/取消后列表都会自己关掉**。
+   * 想连着删几条就得每次重新展开 —— 这里在弹窗结束后恢复原状态。
+   */
+  const wasOpen = sessionOpen.value
   // 用自绘确认弹窗替代 window.confirm：Windows 上原生 confirm/alert 关闭后主窗口会丢失
   // 键盘焦点（Electron 已知问题），导致输入框点击也无法聚焦，表现为「输入框不可输入」
   const ok = await promptConfirm({
@@ -358,16 +371,22 @@ async function onDeleteSession(): Promise<void> {
     message: t('studio.chat.deleteConfirm'),
     confirmLabel: t('common.delete')
   })
+  sessionOpen.value = wasOpen
   if (!ok) return
-  removeSession(session.id)
+
+  const wasActive = id === activeId.value
+  removeSession(id)
   // 同步清理磁盘上的 dsh 持久化记录，避免同 id 会话被「幽灵恢复」
-  window.studio.deleteHarnessSession(session.id).catch(() => undefined)
-  loadActiveMessages()
-  // 删除会话后落到了别的会话：队列同样不该跟着过来
-  clearSendQueue()
-  resetEditor()
-  composing.value = false
-  scrollToBottom()
+  window.studio.deleteHarnessSession(id).catch(() => undefined)
+
+  if (wasActive) {
+    loadActiveMessages()
+    // 删除会话后落到了别的会话：队列同样不该跟着过来
+    clearSendQueue()
+    resetEditor()
+    composing.value = false
+    scrollToBottom()
+  }
   // 确认弹窗关闭后重新聚焦输入框，双保险规避焦点丢失
   void nextTick(() => inputRef.value?.focus())
 }
@@ -3024,7 +3043,7 @@ onBeforeUnmount(() => {
             </svg>
           </button>
           <ul v-show="sessionOpen" class="session-menu">
-            <li v-for="s in sessions" :key="s.id">
+            <li v-for="s in sessions" :key="s.id" class="session-list-item">
               <button
                 type="button"
                 class="session-item"
@@ -3045,6 +3064,21 @@ onBeforeUnmount(() => {
                   <path d="M20 6 9 17l-5-5" />
                 </svg>
               </button>
+              <!--
+                删除做成每项后面的 ×，而不是工具栏上一个「删当前会话」按钮 ——
+                后者只能删当前那条，要先切过去才能删，且分不清删的是哪一个。
+                注意：按钮不能嵌套，所以这一项是 li 里的两个并排按钮。
+              -->
+              <button
+                type="button"
+                class="session-item-remove"
+                :title="t('studio.chat.deleteSession')"
+                :aria-label="t('studio.chat.deleteSession')"
+                :disabled="running"
+                @click.stop="onDeleteSessionById(s.id)"
+              >
+                ×
+              </button>
             </li>
           </ul>
         </div>
@@ -3055,15 +3089,6 @@ onBeforeUnmount(() => {
           @click="onNewSession"
         >
           {{ t('studio.chat.newSession') }}
-        </button>
-        <button
-          v-if="sessions.length > 1"
-          class="tool-btn"
-          :title="t('studio.chat.deleteSession')"
-          :disabled="running"
-          @click="onDeleteSession"
-        >
-          {{ t('studio.chat.deleteSession') }}
         </button>
         <div class="model-select-wrap">
           <span class="model-label">{{ t('studio.chat.model') }}</span>
@@ -4467,6 +4492,50 @@ onBeforeUnmount(() => {
   border: 1px solid var(--border);
   border-radius: 10px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32);
+}
+
+/*
+  列表项 = 「选择」按钮 + 「删除 ×」并排（按钮不能嵌套，所以是两个兄弟按钮）。
+  选择按钮吃掉宽度，× 固定大小。
+*/
+.session-list-item {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.session-list-item .session-item {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+}
+
+.session-item-remove {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--text-muted);
+  border: none;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.session-item-remove:hover:not(:disabled) {
+  color: var(--danger, #ff5c5c);
+  background: var(--bg-hover);
+}
+
+.session-item-remove:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .session-item {

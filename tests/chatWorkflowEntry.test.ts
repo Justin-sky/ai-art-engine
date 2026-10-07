@@ -89,12 +89,62 @@ describe('会话管理与模型同一行', () => {
     expect(composerAt).toBeLessThan(actionsAt)
   })
 
-  it('新建 / 删除 也在同一行内', () => {
-    const start = CHAT.indexOf('class="chat-actions"')
-    const end = CHAT.indexOf('class="model-select-wrap"', start)
-    const row = CHAT.slice(start, end)
-    expect(row).toContain('onNewSession')
-    expect(row).toContain('onDeleteSession')
+  it('删除不再占工具栏位置（那一行只剩 新建）', () => {
+    // 会话下拉**之后**到模型选择器之间，就是原来放删除按钮的位置
+    const afterDropdown = CHAT.slice(
+      CHAT.indexOf("t('studio.chat.newSession')"),
+      CHAT.indexOf('class="model-select-wrap"')
+    )
+    expect(afterDropdown).toContain('onNewSession')
+    expect(afterDropdown).not.toContain('onDeleteSessionById')
+    // 旧按钮独有的显式标记不该残留
+    expect(CHAT).not.toContain('v-if="sessions.length > 1"')
+  })
+
+  it('删除做成会话列表里每一项后面的 ×', () => {
+    const menuStart = CHAT.indexOf('class="session-menu"')
+    const menuEnd = CHAT.indexOf('</ul>', menuStart)
+    const menu = CHAT.slice(menuStart, menuEnd)
+    expect(menu).toContain('session-item-remove')
+    expect(menu).toMatch(/onDeleteSessionById\(s\.id\)/)
+  })
+
+  it('**按钮不能嵌套**：列表项是 li 里的两个并排按钮', () => {
+    const menuStart = CHAT.indexOf('class="session-menu"')
+    const menuEnd = CHAT.indexOf('</ul>', menuStart)
+    const menu = CHAT.slice(menuStart, menuEnd)
+    const liStart = menu.indexOf('class="session-list-item"')
+    const liEnd = menu.indexOf('</li>', liStart)
+    const li = menu.slice(liStart, liEnd)
+    // 一个 li 里恰好两个 <button，且互不包含（靠 </button> 的出现顺序与数量判断）
+    const opens = li.split('<button').length - 1
+    const closes = li.split('</button>').length - 1
+    expect(opens, '列表项里应当是两个按钮').toBe(2)
+    expect(closes).toBe(2)
+    // `button` 内不得再出现 `button`：以第一个 </button> 为界，其后才轮到第二个 <button
+    const firstClose = li.indexOf('</button>')
+    const secondOpen = li.indexOf('<button', li.indexOf('<button') + 1)
+    expect(secondOpen).toBeGreaterThan(firstClose)
+  })
+
+  it('删的是当前会话才重载视图（删旁支不该清掉正在编辑的内容）', () => {
+    const fn = CHAT.slice(
+      CHAT.indexOf('async function onDeleteSessionById'),
+      CHAT.indexOf('async function onDeleteSessionById') + 1400
+    )
+    expect(fn).toMatch(/const wasActive = id === activeId\.value/)
+    expect(fn).toMatch(/if \(wasActive\) \{/)
+    // 仍然要清理磁盘上的 dsh 持久化记录，避免幽灵恢复
+    expect(fn).toContain('deleteHarnessSession')
+  })
+
+  it('确认弹窗后恢复列表展开状态（否则连着删几条每次都要重新展开）', () => {
+    const fn = CHAT.slice(
+      CHAT.indexOf('async function onDeleteSessionById'),
+      CHAT.indexOf('async function onDeleteSessionById') + 1400
+    )
+    expect(fn).toMatch(/const wasOpen = sessionOpen\.value/)
+    expect(fn).toMatch(/sessionOpen\.value = wasOpen/)
   })
 
   it('工具栏里不再残留会话控件（防止两处都有）', () => {
