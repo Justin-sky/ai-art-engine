@@ -5,6 +5,7 @@ import { useGraphTaskStore } from '../../stores/graphTasks'
 import { useProjectStore } from '../../stores/project'
 import { persistAssetRecord } from '../../composables/useAssetRecord'
 import { IconRefineError, runIconRefine } from '../graph/model/runIconRefine'
+import { graphEditorHosts } from '../graph/model/graphEditorHosts'
 import { isGraphEditorOpen } from './openGraphEditors'
 import { openMcpWorkflowAssetEditor } from './mcpGraphLiveCanvas'
 
@@ -117,16 +118,41 @@ async function handleGraphEdit(payload: McpGraphEditPayload): Promise<void> {
   try {
     const project = useProjectStore()
     const asset = project.assets.find((item) => item.id === payload.assetId)
+
+    /**
+     * 编辑器打开时**也能改**，但基准必须是编辑器里的**实时文档**。
+     *
+     * store 里那份 `graphJson` 可能落后于编辑器（用户刚拖过线 / 改过参数还没落盘）；
+     * 在它上面套用 ops 再写回，就会把编辑器里那些改动抹掉 —— 那正是原先一律拒绝的原因。
+     * 改用实时文档后不存在这个问题：改动叠加在编辑器当前状态之上，再由编辑器自己的落盘链路
+     * 写回（`applyExternalGraph` → `commitAssetGraph` → `persistAssetRecord`）。
+     *
+     * 顺序上先判断「编辑器是否打开」、再取 store 副本：草稿资产的图只存在于编辑器里，
+     * 先走 store 那条会误报「资产不存在或不含图文档」。
+     */
+    if (isGraphEditorOpen(payload.assetId)) {
+      const hostId = `asset:${payload.assetId}`
+      const live = graphEditorHosts.getLiveAssetDocument(payload.assetId)
+      if (!live) {
+        reply(false, { error: '编辑器已打开但暂时取不到实时图，请稍后重试' })
+        return
+      }
+      const liveResult = applyGraphEditOps(live, payload.ops)
+      if (!liveResult.applied.length && liveResult.warnings.length) {
+        reply(false, { applied: [], warnings: liveResult.warnings, error: '全部操作未生效' })
+        return
+      }
+      // 整图替换（保留用户视口）+ 编辑器自身落盘；等落盘完成再回报，对调用方才是持久的
+      graphEditorHosts.applyExternalGraph(hostId, liveResult.graph)
+      await graphEditorHosts.flush(hostId)
+      reply(true, { applied: liveResult.applied, warnings: liveResult.warnings })
+      return
+    }
+
     const graphJson = (asset?.genParams as Record<string, unknown> | undefined)?.graphJson as
       GraphDocument | undefined
     if (!asset || !graphJson || !Array.isArray(graphJson.nodes)) {
       reply(false, { error: '资产不存在或不含图文档（graph_edit 仅支持宿主资产子图）' })
-      return
-    }
-    if (isGraphEditorOpen(payload.assetId)) {
-      reply(false, {
-        error: '该资产的图编辑器正在界面中打开，为避免互相覆盖请先关闭编辑器再远程编辑'
-      })
       return
     }
     const result = applyGraphEditOps(graphJson, payload.ops)
