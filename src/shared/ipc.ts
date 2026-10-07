@@ -176,8 +176,18 @@ export const IpcChannels = {
   // Settings
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
+  /**
+   * 主进程推送：设置已保存（**广播给所有窗口**）。
+   *
+   * 插件市场是**独立窗口**，它改设置时主窗口并不知道 —— 而编辑器偏好与生成模型下拉
+   * 都是按窗口缓存的（`applyEditorPreferences` / `invalidateGenerateModelSettingsCache`）。
+   * 缺这条广播时，主窗口会一直用旧值。
+   */
+  SETTINGS_UPDATED: 'settings:updated',
   /** 测试指定 search provider 的连通性（凭鉴权探测；返回断言结果） */
   SEARCH_TEST_CONNECTION: 'search:test-connection',
+  /** 打开插件市场窗口（单例：已开着则聚焦，不叠加） */
+  MARKETPLACE_OPEN_WINDOW: 'marketplace:open-window',
 
   // Local vision (YOLO): onnxruntime 本地推理，数据不出机
   YOLO_STATUS: 'yolo:status',
@@ -1405,6 +1415,17 @@ export interface StudioApi {
 
   getSettings: () => Promise<AppSettings>
   setSettings: (settings: AppSettings) => Promise<AppSettings>
+  /**
+   * 订阅「设置已保存」广播（任何窗口保存都会触发）。
+   *
+   * 返回取消订阅函数；调用方必须在卸载时调用它 —— 窗口级监听不清会随重挂载累积。
+   */
+  onSettingsUpdated: (callback: (settings: AppSettings) => void) => () => void
+  /**
+   * 打开插件市场窗口（应用级功能，不需要打开工程）。
+   * 单例语义：窗口已存在时聚焦它而不是再开一个。
+   */
+  openMarketplaceWindow: () => Promise<void>
   /**
    * 测试设置中指定 id 的 search provider 连通性；
    * 走该 provider 内置 adapter 的 assertAuth（一次轻量探测）。

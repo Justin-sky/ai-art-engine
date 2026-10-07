@@ -251,9 +251,6 @@ export default {
       yolo: 'Local vision',
       ffmpeg: 'ffmpeg tools',
       objectStorage: 'Object storage',
-      mcp: 'MCP',
-      skills: 'Custom skills',
-      plugins: 'Extensions',
       search: 'Web search'
     },
     search: {
@@ -778,13 +775,56 @@ export default {
         publicBaseUrlPlaceholder: 'e.g. https://cdn.example.com or the default CDN domain'
       }
     },
-    plugins: {
-      hint: 'The editor runtime is Cordis. Controlled declarative extensions in the user-data plugins folder contribute toolbar items only; external scripts are not executed.',
-      declarative: 'Declarative',
-      empty: 'No extensions found'
-    },
     saved: 'Saved automatically',
     saving: 'Saving…'
+  },
+  marketplace: {
+    title: 'Plugin marketplace',
+    open: 'Marketplace',
+    loading: 'Reading installed content…',
+    webMarket: 'Web marketplace',
+    devDocs: 'Developer docs',
+    readOnlyHint:
+      'This entry is read-only: its content comes from a manifest on disk, and the app only loads it — external scripts are never executed.',
+    searchPlaceholder: 'Search plugins',
+    clearSearch: 'Clear',
+    noMatch: 'No matching plugins',
+    empty: 'No plugins installed',
+    toggleTemplates: 'Built-in skill templates',
+    detail: 'Details',
+    collapse: 'Collapse',
+    exportSkill: 'Export',
+    skillNoTemplate: 'This skill has no built-in template to export',
+    skillsTools: 'Skills folder',
+    category: {
+      all: 'All',
+      mcp: 'MCP',
+      skills: 'Skills',
+      plugins: 'Extensions'
+    },
+    card: {
+      mcpServer: 'MCP tool server',
+      mcpBlender: 'Blender toolset',
+      mcpServerHint: 'The local tool server that external agents (Claude Code, Codex, …) call',
+      mcpBlenderHint: 'Lets external agents drive Blender modelling and animation directly'
+    },
+    state: {
+      running: 'Running',
+      stopped: 'Stopped',
+      connected: 'Connected',
+      disconnected: 'Not connected'
+    },
+    source: {
+      skill: {
+        builtin: 'Built-in',
+        custom: 'Custom',
+        template: 'Template'
+      },
+      plugin: {
+        toolbar: 'Declarative · toolbar',
+        declarative: 'Declarative'
+      }
+    }
   },
   studio: {
     noProject: 'No project open',

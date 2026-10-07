@@ -171,6 +171,12 @@ const api: StudioApi = {
 
   getSettings: () => ipcRenderer.invoke(IpcChannels.SETTINGS_GET),
   setSettings: (settings: AppSettings) => ipcRenderer.invoke(IpcChannels.SETTINGS_SET, settings),
+  onSettingsUpdated: (callback: (settings: AppSettings) => void) => {
+    const listener = (_event: unknown, settings: AppSettings): void => callback(settings)
+    ipcRenderer.on(IpcChannels.SETTINGS_UPDATED, listener)
+    return () => ipcRenderer.removeListener(IpcChannels.SETTINGS_UPDATED, listener)
+  },
+  openMarketplaceWindow: () => ipcRenderer.invoke(IpcChannels.MARKETPLACE_OPEN_WINDOW),
   testSearchProvider: (input: { id: string }) =>
     ipcRenderer.invoke(IpcChannels.SEARCH_TEST_CONNECTION, input),
 

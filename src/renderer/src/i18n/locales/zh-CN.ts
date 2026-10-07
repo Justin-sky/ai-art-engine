@@ -248,9 +248,6 @@ export default {
       yolo: '本地视觉',
       ffmpeg: 'ffmpeg 工具',
       objectStorage: '对象存储',
-      mcp: 'MCP',
-      skills: '自定义技能',
-      plugins: '扩展',
       search: '联网搜索'
     },
     search: {
@@ -765,13 +762,56 @@ export default {
         publicBaseUrlPlaceholder: '如 https://cdn.example.com 或默认加速域名'
       }
     },
-    plugins: {
-      hint: '编辑器运行时为 Cordis。用户数据目录 plugins 下的受控声明式扩展只贡献工具栏等数据，不执行外部脚本。',
-      declarative: '声明式',
-      empty: '未发现扩展'
-    },
     saved: '已自动保存',
     saving: '正在保存…'
+  },
+  marketplace: {
+    title: '插件市场',
+    open: '插件市场',
+    loading: '正在读取已安装内容…',
+    webMarket: '网页市场',
+    devDocs: '开发者文档',
+    readOnlyHint:
+      '该条目为只读展示：它的内容来自磁盘上的清单文件，应用只负责装载，不执行外部脚本。',
+    searchPlaceholder: '搜索插件',
+    clearSearch: '清除',
+    noMatch: '没有匹配的插件',
+    empty: '未安装任何插件',
+    toggleTemplates: '内置技能模板',
+    detail: '详情',
+    collapse: '收起',
+    exportSkill: '导出',
+    skillNoTemplate: '该技能没有对应的内置模板，无法导出',
+    skillsTools: '技能目录',
+    category: {
+      all: '全部',
+      mcp: 'MCP',
+      skills: '技能',
+      plugins: '扩展'
+    },
+    card: {
+      mcpServer: 'MCP 工具服务',
+      mcpBlender: 'Blender 工具集',
+      mcpServerHint: '给外部 Agent（Claude Code / Codex 等）调用的本地工具服务',
+      mcpBlenderHint: '让外部 Agent 直接驱动 Blender 建模与动画'
+    },
+    state: {
+      running: '运行中',
+      stopped: '未启动',
+      connected: '已连接',
+      disconnected: '未连接'
+    },
+    source: {
+      skill: {
+        builtin: '内置',
+        custom: '自定义',
+        template: '模板'
+      },
+      plugin: {
+        toolbar: '声明式 · 工具栏',
+        declarative: '声明式'
+      }
+    }
   },
   studio: {
     noProject: '尚未打开工程',

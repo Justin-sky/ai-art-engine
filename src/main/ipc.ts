@@ -103,6 +103,7 @@ import { getBuiltinSearchProvider } from './plugins/searchProviders'
 import { autosaveRepository } from './repositories/autosaveRepository'
 import { pluginRepository } from './repositories/pluginRepository'
 import { dialogService } from './services/dialogService'
+import { openMarketplaceWindow } from './services/marketplaceWindow'
 import { broadcastToAllWindows } from './broadcast'
 
 function handle<T>(channel: string, fn: (...args: never[]) => Promise<T> | T): void {
@@ -491,7 +492,18 @@ export function registerIpcHandlers(): void {
   )
 
   handle(IpcChannels.SETTINGS_GET, () => settingsService.get())
-  handle(IpcChannels.SETTINGS_SET, (settings: AppSettings) => settingsService.set(settings))
+  handle(IpcChannels.SETTINGS_SET, (settings: AppSettings) => {
+    const saved = settingsService.set(settings)
+    // 广播给所有窗口：插件市场是独立窗口，它保存后主窗口必须知道 ——
+    // 编辑器偏好与生成模型下拉都是按窗口缓存的，不广播就会一直用旧值。
+    broadcastToAllWindows(IpcChannels.SETTINGS_UPDATED, saved)
+    return saved
+  })
+
+  // 插件市场窗口（单例：已开着则聚焦）
+  handle(IpcChannels.MARKETPLACE_OPEN_WINDOW, () => {
+    openMarketplaceWindow()
+  })
 
   // 联网搜索：测试指定 provider 连通性（按 providerKind 取内置 adapter 做一次轻量探测）
   handle(IpcChannels.SEARCH_TEST_CONNECTION, async (input: { id?: string } | undefined) => {

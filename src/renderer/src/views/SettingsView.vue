@@ -50,30 +50,6 @@
         <button
           type="button"
           class="top-tab"
-          :class="{ active: mainTab === 'mcp' }"
-          @click="mainTab = 'mcp'"
-        >
-          {{ t('settings.section.mcp') }}
-        </button>
-        <button
-          type="button"
-          class="top-tab"
-          :class="{ active: mainTab === 'skills' }"
-          @click="mainTab = 'skills'"
-        >
-          {{ t('settings.section.skills') }}
-        </button>
-        <button
-          type="button"
-          class="top-tab"
-          :class="{ active: mainTab === 'plugins' }"
-          @click="mainTab = 'plugins'"
-        >
-          {{ t('settings.section.plugins') }}
-        </button>
-        <button
-          type="button"
-          class="top-tab"
           :class="{ active: mainTab === 'search' }"
           @click="mainTab = 'search'"
         >
@@ -160,267 +136,6 @@
         <ObjectStoragePanel :object-storage="form.objectStorage" />
       </section>
 
-      <nav v-show="mainTab === 'mcp'" class="top-tabs">
-        <button
-          type="button"
-          class="top-tab"
-          :class="{ active: mcpTab === 'server' }"
-          @click="mcpTab = 'server'"
-        >
-          {{ t('settings.mcp.title') }}
-        </button>
-        <button
-          type="button"
-          class="top-tab"
-          :class="{ active: mcpTab === 'blender' }"
-          @click="mcpTab = 'blender'"
-        >
-          {{ t('settings.mcp.blender.title') }}
-        </button>
-      </nav>
-
-      <section v-show="mainTab === 'mcp' && mcpTab === 'server'" class="models-section">
-        <p class="hint">
-          <template v-if="mcpInfo">
-            <span class="mcp-running">{{ t('settings.mcp.running', { port: mcpInfo.port }) }}</span>
-            · {{ mcpInfo.endpoint }}
-          </template>
-          <template v-else>
-            {{ t('settings.mcp.notRunning') }}
-          </template>
-        </p>
-
-        <label>
-          {{ t('settings.mcp.port') }}
-          <div class="number-row">
-            <input
-              v-model.number="portInput"
-              type="number"
-              min="1"
-              max="65535"
-              :disabled="mcpBusy"
-            />
-            <button
-              type="button"
-              class="about-btn primary"
-              :disabled="mcpBusy"
-              @click="applyMcpRestart(false)"
-            >
-              {{
-                mcpBusy
-                  ? t('settings.mcp.restarting')
-                  : mcpInfo
-                    ? t('settings.mcp.restart')
-                    : t('settings.mcp.start')
-              }}
-            </button>
-          </div>
-        </label>
-        <p class="hint">
-          {{ t('settings.mcp.portHint') }}
-        </p>
-
-        <div class="mcp-row">
-          <span class="about-label">{{ t('settings.mcp.token') }}</span>
-          <code class="mcp-value">{{
-            tokenVisible && mcpInfo ? mcpInfo.token : '••••••••••••••••'
-          }}</code>
-          <button
-            v-if="mcpInfo"
-            type="button"
-            class="about-btn"
-            @click="tokenVisible = !tokenVisible"
-          >
-            {{ t(tokenVisible ? 'settings.mcp.hide' : 'settings.mcp.show') }}
-          </button>
-          <button v-if="mcpInfo" type="button" class="about-btn" @click="copyMcp(mcpInfo.token)">
-            {{ t('settings.mcp.copy') }}
-          </button>
-          <button
-            v-if="mcpInfo"
-            type="button"
-            class="about-btn"
-            :disabled="mcpBusy"
-            @click="applyMcpRestart(true)"
-          >
-            {{ t('settings.mcp.resetToken') }}
-          </button>
-          <button
-            v-if="mcpInfo && !tokenEditing"
-            type="button"
-            class="about-btn"
-            :disabled="mcpBusy"
-            @click="startTokenEdit"
-          >
-            {{ t('settings.mcp.editToken') }}
-          </button>
-        </div>
-
-        <div v-if="tokenEditing" class="mcp-row">
-          <span class="about-label">{{ t('settings.mcp.token') }}</span>
-          <input
-            v-model="tokenInput"
-            type="text"
-            class="mcp-token-input"
-            spellcheck="false"
-            :placeholder="t('settings.mcp.tokenPlaceholder')"
-            :disabled="mcpBusy"
-          />
-          <button type="button" class="about-btn" :disabled="mcpBusy" @click="applyTokenEdit">
-            {{ t('settings.mcp.saveToken') }}
-          </button>
-          <button type="button" class="about-btn" :disabled="mcpBusy" @click="tokenEditing = false">
-            {{ t('settings.mcp.cancelEdit') }}
-          </button>
-        </div>
-
-        <div v-if="mcpInfo" class="mcp-row">
-          <span class="about-label">{{ t('settings.mcp.endpoint') }}</span>
-          <code class="mcp-value">{{ mcpInfo.endpoint }}</code>
-          <button type="button" class="about-btn" @click="copyMcp(mcpInfo.endpoint)">
-            {{ t('settings.mcp.copy') }}
-          </button>
-        </div>
-
-        <div v-if="mcpInfo" class="mcp-row">
-          <span class="about-label">{{ t('settings.mcp.command') }}</span>
-          <code class="mcp-value mcp-cmd">{{ claudeCommand }}</code>
-          <button type="button" class="about-btn" @click="copyMcp(claudeCommand)">
-            {{ t('settings.mcp.copy') }}
-          </button>
-        </div>
-
-        <p v-if="mcpInfo" class="hint">
-          {{ t('settings.mcp.hint') }}
-        </p>
-      </section>
-
-      <section v-show="mainTab === 'mcp' && mcpTab === 'blender'" class="models-section">
-        <p class="hint">{{ t('settings.mcp.blender.subtitle') }}</p>
-
-        <div class="mcp-row">
-          <label class="check">
-            <input v-model="form.blenderMcp.enabled" type="checkbox" :disabled="blenderBusy" />
-            <span>{{ t('settings.mcp.blender.enabled') }}</span>
-          </label>
-          <span v-if="!form.blenderMcp.enabled" class="hint-inline">
-            {{ t('settings.mcp.blender.notEnabledHint') }}
-          </span>
-          <span v-else-if="mcpInfo?.blenderBridge?.connected" class="mcp-running">
-            {{ t('settings.mcp.blender.connected') }}
-          </span>
-          <span v-else-if="mcpInfo?.blenderBridge?.lastError" class="hint-inline error">
-            {{ t('settings.mcp.blender.connectError', { error: mcpInfo.blenderBridge.lastError }) }}
-          </span>
-          <span v-else class="hint-inline">
-            {{ t('settings.mcp.blender.notConnected') }}
-          </span>
-        </div>
-
-        <div v-if="mcpInfo?.blenderBridge" class="mcp-row">
-          <span class="about-label">{{ t('settings.mcp.blender.endpoint') }}</span>
-          <code class="mcp-value mcp-cmd">{{ mcpInfo.blenderBridge.endpoint || '—' }}</code>
-          <button
-            v-if="mcpInfo.blenderBridge.endpoint"
-            type="button"
-            class="about-btn"
-            @click="copyBlenderEndpoint(mcpInfo.blenderBridge.endpoint)"
-          >
-            {{ t('settings.mcp.blender.copyEndpoint') }}
-          </button>
-        </div>
-
-        <div class="number-row">
-          <label>
-            {{ t('settings.mcp.blender.addonType') }}
-            <select v-model="form.blenderMcp.addonType" :disabled="blenderBusy">
-              <option value="community">{{ t('settings.mcp.blender.addonTypeCommunity') }}</option>
-              <option value="official">{{ t('settings.mcp.blender.addonTypeOfficial') }}</option>
-            </select>
-            <span class="hint">{{ t('settings.mcp.blender.addonTypeHint') }}</span>
-          </label>
-          <label>
-            {{ t('settings.mcp.blender.serverHost') }}
-            <input
-              v-model="form.blenderMcp.serverHost"
-              type="text"
-              spellcheck="false"
-              :disabled="blenderBusy"
-            />
-            <span class="hint">{{ t('settings.mcp.blender.serverHostHint') }}</span>
-          </label>
-          <label>
-            {{ t('settings.mcp.blender.serverPort') }}
-            <input
-              v-model.number="form.blenderMcp.serverPort"
-              type="number"
-              min="1"
-              max="65535"
-              :disabled="blenderBusy"
-            />
-            <span class="hint">{{ t('settings.mcp.blender.serverPortHint') }}</span>
-          </label>
-        </div>
-
-        <div class="mcp-row">
-          <button
-            type="button"
-            class="about-btn primary"
-            :disabled="blenderBusy"
-            @click="applyBlenderRestart"
-          >
-            {{
-              blenderBusy
-                ? t('settings.mcp.blender.restartBusy')
-                : t('settings.mcp.blender.applyAndReconnect')
-            }}
-          </button>
-        </div>
-
-        <template v-if="mcpInfo?.blenderBridge?.connected">
-          <div class="mcp-row">
-            <span class="about-label">{{ t('settings.mcp.blender.blenderVersion') }}</span>
-            <code class="mcp-value">{{ mcpInfo.blenderBridge.blenderVersion || '—' }}</code>
-          </div>
-          <div class="mcp-row">
-            <span class="about-label">{{ t('settings.mcp.blender.addonVersion') }}</span>
-            <code class="mcp-value">{{ mcpInfo.blenderBridge.addonVersion || '—' }}</code>
-          </div>
-          <div class="mcp-row">
-            <span class="about-label">{{ t('settings.mcp.blender.protocolVersion') }}</span>
-            <code class="mcp-value">{{ mcpInfo.blenderBridge.protocolVersion || '—' }}</code>
-          </div>
-          <div class="mcp-row">
-            <span class="about-label">{{ t('settings.mcp.blender.lastCheckedAt') }}</span>
-            <code class="mcp-value">{{ mcpInfo.blenderBridge.lastCheckedAt || '—' }}</code>
-          </div>
-        </template>
-
-        <p class="hint">{{ t('settings.mcp.blender.addonSetup') }}</p>
-      </section>
-
-      <section v-show="mainTab === 'skills'" class="models-section">
-        <h2>{{ t('settings.section.skills') }}</h2>
-        <SkillsPanel />
-      </section>
-
-      <section v-show="mainTab === 'plugins'">
-        <h2>{{ t('settings.section.plugins') }}</h2>
-        <p class="hint">
-          {{ t('settings.plugins.hint') }}
-        </p>
-        <div v-for="plugin in plugins" :key="plugin.id" class="plugin-row">
-          <div>
-            <strong>{{ plugin.displayName }}</strong>
-            <span>{{ plugin.id }} · v{{ plugin.version }}</span>
-          </div>
-          <span>{{ t('settings.plugins.declarative') }}</span>
-        </div>
-        <p v-if="plugins.length === 0" class="hint">
-          {{ t('settings.plugins.empty') }}
-        </p>
-      </section>
-
       <section v-show="mainTab === 'search'" class="models-section">
         <SearchProvidersPanel :search="form.search" @test-message="onSearchTestMessage" />
       </section>
@@ -444,7 +159,6 @@ import { DEFAULT_SETTINGS, type AppSettings } from '@shared/domain'
 import { normalizeModelsSettings } from '@shared/modelProvider'
 import { normalizeObjectStorageSettings } from '@shared/objectStorage'
 import { normalizeSearchSettings } from '@shared/searchProvider'
-import type { ExternalPluginManifest, McpServerInfo } from '@shared/ipc'
 import type { AppUpdateEvent } from '@shared/update'
 import { setAppLocale } from '../i18n'
 import { useStudioI18n } from '../composables/useStudioI18n'
@@ -452,7 +166,6 @@ import { applyAppTheme, applyEditorPreferences } from '../editor/preferences'
 import { invalidateGenerateModelSettingsCache } from '../features/graph/model/generateModelOptions'
 import ModelsPanel from '../components/settings/ModelsPanel.vue'
 import ObjectStoragePanel from '../components/settings/ObjectStoragePanel.vue'
-import SkillsPanel from '../components/settings/SkillsPanel.vue'
 import YoloModelsPanel from '../components/settings/YoloModelsPanel.vue'
 import FfmpegPanel from '../components/settings/FfmpegPanel.vue'
 import SearchProvidersPanel from '../components/settings/SearchProvidersPanel.vue'
@@ -466,36 +179,16 @@ const saving = ref(false)
 const message = ref('')
 
 /** Blender 工具集：v-model 直接绑 form.blenderMcp，「应用并重连」按钮统一提交 */
-const blenderBusy = ref(false)
-/** 状态轮询定时器：addon 是否可达只有主进程知道，靠它把连接状态驱动到 UI */
-let blenderPollTimer: ReturnType<typeof setInterval> | null = null
 const isError = ref(false)
-const plugins = ref<ExternalPluginManifest[]>([])
-const mainTab = ref<
-  | 'general'
-  | 'models'
-  | 'yolo'
-  | 'ffmpeg'
-  | 'objectStorage'
-  | 'mcp'
-  | 'skills'
-  | 'plugins'
-  | 'search'
->('general')
-/** MCP 区内二级 tab：「MCP 接入」（主服务）与「Blender 工具集」分开显示 */
-const mcpTab = ref<'server' | 'blender'>('server')
+const mainTab = ref<'general' | 'models' | 'yolo' | 'ffmpeg' | 'objectStorage' | 'search'>(
+  'general'
+)
 const appVersion = ref('…')
 const updateStatus = ref('')
 const updateBusy = ref(false)
 const updateReady = ref(false)
 /** 下载进度取历史峰值，避免底层短暂回拨时 UI 像「下完又重来」 */
 const updatePercentPeak = ref(0)
-const mcpInfo = ref<McpServerInfo | null>(null)
-const tokenVisible = ref(false)
-const tokenEditing = ref(false)
-const tokenInput = ref('')
-const portInput = ref<number | null>(null)
-const mcpBusy = ref(false)
 
 /** search provider 测试连接结果写到顶部消息条，便于用户感知 */
 function onSearchTestMessage(payload: { ok: boolean; message: string }): void {
@@ -510,9 +203,6 @@ const SETTINGS_TAB_QUERY_VALUES = new Set([
   'yolo',
   'ffmpeg',
   'objectStorage',
-  'mcp',
-  'skills',
-  'plugins',
   'search'
 ])
 const route = useRoute()
@@ -530,121 +220,6 @@ watch(
   },
   { immediate: true }
 )
-
-/** Claude Code HTTP 直连注册命令（一键复制） */
-const claudeCommand = computed(() => {
-  if (!mcpInfo.value) return ''
-  return `claude mcp add --transport http aiartengine ${mcpInfo.value.endpoint} --header "Authorization: Bearer ${mcpInfo.value.token}"`
-})
-
-async function copyMcp(text: string): Promise<void> {
-  await window.studio.writeClipboardText(text)
-  message.value = t('settings.mcp.copied')
-  isError.value = false
-}
-
-/** 应用端口修改（resetToken=true 时同时重置 token）并重启/启动 MCP 服务 */
-async function applyMcpRestart(resetToken: boolean): Promise<void> {
-  if (mcpBusy.value) return
-  mcpBusy.value = true
-  message.value = t('settings.mcp.restarting')
-  isError.value = false
-  try {
-    const next = await window.studio.restartMcpServer({
-      ...(portInput.value ? { port: portInput.value } : {}),
-      resetToken
-    })
-    mcpInfo.value = next
-    portInput.value = next?.port ?? null
-    message.value = resetToken ? t('settings.mcp.tokenReset') : t('settings.mcp.restarted')
-    isError.value = false
-  } catch (e) {
-    isError.value = true
-    message.value = e instanceof Error ? e.message : String(e)
-  } finally {
-    mcpBusy.value = false
-  }
-}
-
-function startTokenEdit(): void {
-  tokenInput.value = mcpInfo.value?.token ?? ''
-  tokenEditing.value = true
-}
-
-/** 保存自定义 token：校验后经 MCP_RESTART 应用（服务热重启，旧 token 立即失效） */
-async function applyTokenEdit(): Promise<void> {
-  if (mcpBusy.value) return
-  const token = tokenInput.value.trim()
-  if (!/^\S{8,128}$/.test(token)) {
-    message.value = t('settings.mcp.tokenInvalid')
-    isError.value = true
-    return
-  }
-  mcpBusy.value = true
-  message.value = t('settings.mcp.restarting')
-  isError.value = false
-  try {
-    const next = await window.studio.restartMcpServer({ token })
-    mcpInfo.value = next
-    portInput.value = next?.port ?? null
-    tokenEditing.value = false
-    message.value = t('settings.mcp.tokenSaved')
-  } catch (e) {
-    isError.value = true
-    message.value = e instanceof Error ? e.message : String(e)
-  } finally {
-    mcpBusy.value = false
-  }
-}
-
-/**
- * 提交当前 form.blenderMcp 到主进程并重连。
- * 主进程会落盘 + 断开旧 TCP + 立即探活，返回探活后的完整状态，所以这一次调用就把
- * 「配置生效」和「连上了没有」一起拿到，不需要用户再点一次「刷新」。
- */
-async function applyBlenderRestart(): Promise<void> {
-  if (blenderBusy.value) return
-  const cfg = form.blenderMcp
-  blenderBusy.value = true
-  message.value = t('settings.mcp.blender.restartBusy')
-  isError.value = false
-  try {
-    const next = await window.studio.restartBlenderMcp({
-      enabled: cfg.enabled,
-      serverHost: cfg.serverHost,
-      serverPort: cfg.serverPort,
-      safeMode: cfg.safeMode,
-      addonType: cfg.addonType
-    })
-    if (mcpInfo.value) mcpInfo.value = { ...mcpInfo.value, blenderBridge: next }
-    message.value = cfg.enabled
-      ? t('settings.mcp.blender.restartOk')
-      : t('settings.mcp.blender.restartDisabled')
-  } catch (e) {
-    isError.value = true
-    message.value = e instanceof Error ? e.message : String(e)
-  } finally {
-    blenderBusy.value = false
-  }
-}
-
-/** 拉一次 Blender 工具面状态。主进程侧探活按 5s TTL 缓存，这里只取缓存值，开销可忽略 */
-async function refreshBlenderStatus(): Promise<void> {
-  if (blenderBusy.value) return
-  try {
-    const info = await window.studio.getBlenderMcpInfo()
-    if (info && mcpInfo.value) mcpInfo.value = { ...mcpInfo.value, blenderBridge: info }
-  } catch {
-    // 状态刷新失败不打扰用户：真正的连接问题会由主进程写进 lastError 展示
-  }
-}
-
-/** 复制 Blender 工具面端点（外部 MCP 客户端接入用） */
-async function copyBlenderEndpoint(text: string): Promise<void> {
-  await window.studio.writeClipboardText(text)
-  message.value = t('settings.mcp.blender.endpointCopied')
-  isError.value = false
-}
 
 const updateStatusDefault = computed(() => t('settings.about.idle'))
 
@@ -872,32 +447,19 @@ watch(
 onMounted(async () => {
   updateStatus.value = updateStatusDefault.value
   stopUpdateListen = window.studio.onUpdateEvent(applyUpdateEvent)
-  const [s, installedPlugins, version, mcp] = await Promise.all([
+  const [s, version] = await Promise.all([
     window.studio.getSettings(),
-    window.studio.listPlugins(),
-    window.studio.getAppVersion(),
-    window.studio.getMcpInfo()
+    window.studio.getAppVersion()
   ])
   appVersion.value = version
   applyToForm(cloneSettings(s))
-  plugins.value = installedPlugins
-  mcpInfo.value = mcp
-  portInput.value = mcp?.port ?? null
   await nextTick()
   suppressPersist.value = false
-  // Blender addon 的连接状态是外部事实（用户可能中途才打开 Blender），只读一次会误导人
-  blenderPollTimer = setInterval(() => {
-    void refreshBlenderStatus()
-  }, 4000)
 })
 
 onBeforeUnmount(() => {
   stopUpdateListen?.()
   stopUpdateListen = null
-  if (blenderPollTimer) {
-    clearInterval(blenderPollTimer)
-    blenderPollTimer = null
-  }
   if (debounceTimer) {
     clearTimeout(debounceTimer)
     debounceTimer = null

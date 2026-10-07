@@ -57,6 +57,15 @@
         {{ t('studio.toolbar.logs') }}
         <span v-if="runLogsStore.activeRunId" class="tasks-badge live">·</span>
       </button>
+      <button
+        type="button"
+        class="tasks-btn"
+        :title="t('marketplace.open')"
+        :aria-label="t('marketplace.open')"
+        @click="openMarketplace"
+      >
+        {{ t('marketplace.open') }}
+      </button>
       <div class="layout-menu">
         <button
           ref="layoutMenuBtnEl"
@@ -602,6 +611,16 @@ function exportActiveLayout(): void {
 
 function triggerImportLayout(): void {
   importInputEl.value?.click()
+}
+
+/**
+ * 打开插件市场窗口（MCP / 技能 / 扩展）。
+ *
+ * 走主进程建窗而不是 `window.open`：主进程侧能保证单例（重复点只聚焦，不叠加），
+ * 也能让新窗口自动套用同一套窗口外观（`browser-window-created` 统一处理）。
+ */
+function openMarketplace(): void {
+  void window.studio.openMarketplaceWindow()
 }
 
 async function onImportFile(event: Event): Promise<void> {

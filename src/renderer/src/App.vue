@@ -1,25 +1,29 @@
 <template>
   <div class="app-shell">
-    <header class="topbar">
-      <ProjectOpenMenu />
-      <div v-if="project.isOpen" class="topbar-meta">
-        <span class="muted">{{ project.config?.name }}</span>
-        <span class="path" :title="project.rootPath ?? ''">{{ shortPath }}</span>
-      </div>
-      <nav class="topbar-actions">
-        <button type="button" class="topbar-btn" @click="goSettings">
-          {{ t('app.nav.settings') }}
-        </button>
-      </nav>
-    </header>
-    <main class="content">
-      <!-- 设置打开时仍保留主界面，半透明遮罩才能透出后面内容 -->
-      <KeepAlive :include="['HomeView', 'StudioView']">
-        <HomeView v-if="mainView === 'home'" key="home" />
-        <StudioView v-else-if="mainView === 'studio'" key="studio" />
-      </KeepAlive>
-      <SettingsView v-if="isSettings" />
-    </main>
+    <!-- 插件市场是主进程单独开的窗口：该窗口只放市场视图，不挂主界面与顶栏 -->
+    <MarketplaceView v-if="isMarketplace" />
+    <template v-else>
+      <header class="topbar">
+        <ProjectOpenMenu />
+        <div v-if="project.isOpen" class="topbar-meta">
+          <span class="muted">{{ project.config?.name }}</span>
+          <span class="path" :title="project.rootPath ?? ''">{{ shortPath }}</span>
+        </div>
+        <nav class="topbar-actions">
+          <button type="button" class="topbar-btn" @click="goSettings">
+            {{ t('app.nav.settings') }}
+          </button>
+        </nav>
+      </header>
+      <main class="content">
+        <!-- 设置打开时仍保留主界面，半透明遮罩才能透出后面内容 -->
+        <KeepAlive :include="['HomeView', 'StudioView']">
+          <HomeView v-if="mainView === 'home'" key="home" />
+          <StudioView v-else-if="mainView === 'studio'" key="studio" />
+        </KeepAlive>
+        <SettingsView v-if="isSettings" />
+      </main>
+    </template>
     <StudioPromptDialog />
     <GraphTaskListDialog />
     <GraphRunLogDialog />
@@ -44,6 +48,7 @@ import { useStudioI18n } from './composables/useStudioI18n'
 import HomeView from './views/HomeView.vue'
 import StudioView from './views/StudioView.vue'
 import SettingsView from './views/SettingsView.vue'
+import MarketplaceView from './views/MarketplaceView.vue'
 import StudioPromptDialog from './components/StudioPromptDialog.vue'
 import GraphTaskListDialog from './components/GraphTaskListDialog.vue'
 import GraphRunLogDialog from './components/GraphRunLogDialog.vue'
@@ -56,6 +61,8 @@ import GamePlaySandboxDialog from './components/GamePlaySandboxDialog.vue'
 import ProjectOpenMenu from './components/ProjectOpenMenu.vue'
 import { useEditorKernel } from './editor/kernel'
 import { executeEditorCommand } from './editor/extensions'
+import { applyEditorPreferences } from './editor/preferences'
+import { invalidateGenerateModelSettingsCache } from './features/graph/model/generateModelOptions'
 
 const { t } = useStudioI18n()
 const router = useRouter()
@@ -66,11 +73,14 @@ const editor = useEditorKernel()
 const mcpActivities = useMcpActivitiesStore()
 
 const isSettings = computed(() => route.name === 'settings')
+/** 插件市场窗口：该路由下不渲染主界面（窗口是主进程单独开的） */
+const isMarketplace = computed(() => route.name === 'marketplace')
 const mainView = ref<'home' | 'studio'>('home')
 let stopAssetUpdated: (() => void) | null = null
 let stopAssetRemoved: (() => void) | null = null
 let stopFoldersUpdated: (() => void) | null = null
 let stopVideoJobUpdated: (() => void) | null = null
+let stopSettingsUpdated: (() => void) | null = null
 
 watch(
   () => route.name,
@@ -150,6 +160,18 @@ onMounted(() => {
       if (job.status === 'succeeded') void project.scheduleRefreshLibrary()
     })
   }
+  /**
+   * 设置被**任意窗口**保存时同步本窗口。
+   *
+   * 插件市场是独立窗口，它改 MCP 与 Blender 配置后主窗口不会自动知道 ——
+   * 而编辑器偏好与生成模型下拉都是按窗口缓存的，不同步就会一直用旧值。
+   */
+  if (typeof window.studio?.onSettingsUpdated === 'function') {
+    stopSettingsUpdated = window.studio.onSettingsUpdated((settings) => {
+      applyEditorPreferences(settings)
+      invalidateGenerateModelSettingsCache()
+    })
+  }
 })
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onEditorShortcut)
@@ -161,6 +183,8 @@ onBeforeUnmount(() => {
   stopFoldersUpdated = null
   stopVideoJobUpdated?.()
   stopVideoJobUpdated = null
+  stopSettingsUpdated?.()
+  stopSettingsUpdated = null
   mcpActivities.teardown()
 })
 </script>
