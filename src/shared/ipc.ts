@@ -1,4 +1,5 @@
 import type { AppSettings, AssetFolder, AssetInfo, AssetType, ProjectConfig } from './domain'
+import type { ExternalMcpServer } from './externalMcp'
 import type { GitFileDiffInput, GitFileDiffResult, GitStatusResult } from './git'
 import type { ProjectOutputFile } from './outputScan'
 import type { WorkspaceToolbarItem } from './workspaceToolbar'
@@ -188,6 +189,14 @@ export const IpcChannels = {
   SEARCH_TEST_CONNECTION: 'search:test-connection',
   /** 打开插件市场窗口（单例：已开着则聚焦，不叠加） */
   MARKETPLACE_OPEN_WINDOW: 'marketplace:open-window',
+  /**
+   * 探测一个**外部** MCP 服务：连一次、取回工具清单。
+   *
+   * 用于「添加服务」的预检与卡片上的「测试连接」—— 不预检就保存，用户只会在
+   * 下次对话里看到「工具没出现」，而原因（地址错 / 401 / 命令不存在）在这一层才知道。
+   * 有意**不落盘**：探测只读入参，设置由渲染层经 `setSettings` 保存。
+   */
+  MCP_EXTERNAL_PROBE: 'mcp:external-probe',
 
   // Local vision (YOLO): onnxruntime 本地推理，数据不出机
   YOLO_STATUS: 'yolo:status',
@@ -998,6 +1007,28 @@ export interface DshSkillsFile {
   kind: 'builtin' | 'custom' | 'template'
 }
 
+/**
+ * 外部 MCP 服务探测结果。
+ *
+ * 失败刻意**不抛异常**：地址填错 / 命令不存在 / 401 都是配置阶段的家常事，
+ * 调用方需要把原因稳稳地显示在卡片上，而不是套一层 try/catch 再猜错误类型。
+ */
+export interface ExternalMcpProbeResult {
+  ok: boolean
+  /** ok=true 时：服务端声明的工具清单（名字已含命名空间前缀，可直接展示） */
+  tools?: Array<{ name: string; description?: string }>
+  /** ok=false 时：原始原因（可能来自外部服务，保留原文便于排查） */
+  error?: string
+  /**
+   * ok=false 时：**可翻译的原因键**。
+   *
+   * 主进程不该产出给人看的成品文案（那会变成第二份文案来源，与 locale 各说各话）。
+   * 能归类的原因走这个键由渲染层 `t()` 解析；归不了类的（外部服务自己吐的错）
+   * 才落到 `error` 原文。
+   */
+  reasonKey?: string
+}
+
 /** Skills：dsh 技能目录信息（渲染层设置页展示用） */
 export interface DshSkillsInfo {
   /** skills 目录绝对路径 */
@@ -1426,6 +1457,11 @@ export interface StudioApi {
    * 单例语义：窗口已存在时聚焦它而不是再开一个。
    */
   openMarketplaceWindow: () => Promise<void>
+  /**
+   * 探测外部 MCP 服务并取回工具清单。失败时返回 `ok: false` 与原因，
+   * **不抛异常** —— 连不上是配置阶段的家常事，调用方需要把原因显示在卡片上。
+   */
+  probeExternalMcp: (server: ExternalMcpServer) => Promise<ExternalMcpProbeResult>
   /**
    * 测试设置中指定 id 的 search provider 连通性；
    * 走该 provider 内置 adapter 的 assertAuth（一次轻量探测）。

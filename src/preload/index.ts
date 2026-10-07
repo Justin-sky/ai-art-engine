@@ -177,6 +177,7 @@ const api: StudioApi = {
     return () => ipcRenderer.removeListener(IpcChannels.SETTINGS_UPDATED, listener)
   },
   openMarketplaceWindow: () => ipcRenderer.invoke(IpcChannels.MARKETPLACE_OPEN_WINDOW),
+  probeExternalMcp: (server) => ipcRenderer.invoke(IpcChannels.MCP_EXTERNAL_PROBE, server),
   testSearchProvider: (input: { id: string }) =>
     ipcRenderer.invoke(IpcChannels.SEARCH_TEST_CONNECTION, input),
 

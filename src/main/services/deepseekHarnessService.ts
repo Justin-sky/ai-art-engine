@@ -52,6 +52,11 @@ import {
 } from './mcpServerService'
 import { projectService } from './projectService'
 import { settingsService } from './settingsService'
+import {
+  EXTERNAL_MCP_PATH_PREFIX,
+  externalMcpUnusableReason,
+  normalizeExternalMcpServer
+} from '@shared/externalMcp'
 import AIART_RUNNER_TEMPLATE from 'virtual:aiart-headless-runner-template'
 
 /**
@@ -408,11 +413,23 @@ function getBlenderClientForHarness(): { endpoint: string } | null {
   const endpoint = getBlenderMcpEndpoint()
   return endpoint ? { endpoint } : null
 }
+
+/**
+ * 第三方 MCP 服务的中转端点（与 Blender 工具面同端口、按路径分流）。
+ *
+ * 端口由调用方传入而不是读模块级 `mcpPort`：那个变量没有对外导出，而这里的调用点
+ * 本来就持有 `McpServerInfo`（含 port），显式传参也免掉一层隐式全局状态。
+ */
+function externalMcpEndpoint(port: number, id: string): string {
+  return `http://127.0.0.1:${port}${EXTERNAL_MCP_PATH_PREFIX}${id}`
+}
 function writeDshConfig(
   endpoint: string,
   mode: ChatMode,
   runId: string,
   blenderClient: { endpoint: string } | null,
+  /** 主 MCP 服务端口：第三方工具面的中转端点按 `http://127.0.0.1:<port>/mcp/ext/<id>` 拼 */
+  port: number,
   llm?: {
     baseUrl?: string
     modelId: string
@@ -469,6 +486,38 @@ function writeDshConfig(
       '        Authorization: !!js "`Bearer ${process.env.STUDIO_MCP_TOKEN}`"',
       // 模式与 runId 同样下发：Blender 侧会改场景（execute_blender_code 等属 write），
       // 必须和主工具面一样受面板模式约束，而不是成为绕过 Plan/Ask 的后门。
+      ...Object.entries(accessHeaders(mode, runId)).map(
+        ([key, value]) => `        ${key}: ${yamlScalar(value)}`
+      )
+    )
+  }
+
+  /**
+   * 第三方 MCP 服务：每条一个 mcp-client 实例，指向**本应用的中转端点**
+   * （`/mcp/ext/<id>`），而不是外部服务本身。
+   *
+   * 为什么不直连外部服务：dsh 每轮下发的模式 / runId 头只有本应用的端点看得见。
+   * 直连时那些头会被发给外部服务（多半直接忽略），Ask / Plan 的护栏就形同虚设；
+   * 而且外部工具名可能与内建重名 —— 经应用中转这两件事都归位。
+   */
+  for (const server of settingsService.get().externalMcp) {
+    const configured = normalizeExternalMcpServer(server)
+    if (!configured || !configured.enabled) continue
+    // 配置还不完好的（没填地址 / 命令）不挂：挂上去只会变成每次调用的报错
+    if (externalMcpUnusableReason(configured)) continue
+    patch.push(
+      '- insert:',
+      '  - id: mcp-ext-' + configured.id,
+      "    name: '@deepseek-ai/dsh-mcp-client'",
+      '    config:',
+      `      serverName: ${yamlScalar('ext-' + configured.id)}`,
+      '      transport: streamable-http',
+      `      url: ${yamlScalar(externalMcpEndpoint(port, configured.id))}`,
+      // 超时用该服务自己的值（内建那两条固定 2 小时是因为有长任务；第三方按用户配置）
+      `      toolCallTimeoutMs: ${configured.timeoutMs}`,
+      '      headers:',
+      '        Authorization: !!js "`Bearer ${process.env.STUDIO_MCP_TOKEN}`"',
+      // 与内建工具面同样受面板模式约束：这是「第三方工具不成为绕过 Plan/Ask 后门」的关键
       ...Object.entries(accessHeaders(mode, runId)).map(
         ([key, value]) => `        ${key}: ${yamlScalar(value)}`
       )
@@ -1261,6 +1310,14 @@ function workerFingerprintOf(input: {
   workspace: string
   mcpEndpoint: string
   blenderOn: boolean
+  /**
+   * 已挂载的第三方 MCP 服务指纹（id / 地址 / 命令 / 是否启用）。
+   *
+   * 必须进指纹：常驻 worker 只在自己这份配置上建工具面，用户新加一个第三方服务后
+   * 若复用旧进程，新工具**这轮不会出现**，表现是「加了服务但对话里调不到」。
+   * 只取影响挂载的字段，凭据（headers / env）不参与比较也不落盘。
+   */
+  externalMcpFp: string
   baseUrl?: string
   apiKey?: string
 }): string {
@@ -1272,9 +1329,26 @@ function workerFingerprintOf(input: {
     input.workspace,
     input.mcpEndpoint,
     input.blenderOn ? '1' : '0',
+    input.externalMcpFp,
     input.baseUrl?.trim() || '',
     keyFp
   ].join('\u0000')
+}
+
+/** 第三方 MCP 服务中**影响工具面挂载**的那部分指纹（不含凭据） */
+function externalMcpFingerprint(): string {
+  const parts = settingsService
+    .get()
+    .externalMcp.map((raw) => {
+      const server = normalizeExternalMcpServer(raw)
+      if (!server) return ''
+      const usable = server.enabled && !externalMcpUnusableReason(server)
+      return usable
+        ? `${server.id}|${server.transport}|${server.transport === 'http' ? server.url : server.command}|${server.args.join(' ')}`
+        : ''
+    })
+    .filter(Boolean)
+  return parts.join(';')
 }
 
 /**
@@ -1768,6 +1842,7 @@ async function ensurePersistentWorkerUnlocked(opts: {
     workspace,
     mcpEndpoint: mcp.endpoint,
     blenderOn: !!blender,
+    externalMcpFp: externalMcpFingerprint(),
     baseUrl: opts.provider.baseUrl,
     apiKey: opts.provider.apiKey
   })
@@ -1799,7 +1874,7 @@ async function ensurePersistentWorkerUnlocked(opts: {
   const modelName = opts.modelName?.trim() || textCatalog?.name?.trim() || modelId
 
   // 常驻连接用 craft 占位头拿全量 tools/list；每轮授权走 activeHarnessRun
-  writeDshConfig(mcp.endpoint, 'craft', '0', blender, {
+  writeDshConfig(mcp.endpoint, 'craft', '0', blender, mcp.port, {
     baseUrl: opts.provider.baseUrl,
     modelId,
     modelName,
@@ -1914,7 +1989,7 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
 
   if (!canPersist) {
     // npx / 无 runner：保持 one-shot
-    writeDshConfig(mcp.endpoint, mode, runId, getBlenderClientForHarness(), {
+    writeDshConfig(mcp.endpoint, mode, runId, getBlenderClientForHarness(), mcp.port, {
       baseUrl: provider.baseUrl,
       modelId,
       modelName,

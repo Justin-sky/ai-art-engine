@@ -362,7 +362,13 @@ function cloneSettings(source: AppSettings): AppSettings {
     blenderMcp: {
       ...DEFAULT_SETTINGS.blenderMcp,
       ...toRaw(raw.blenderMcp)
-    }
+    },
+    /**
+     * 第三方 MCP 由**插件市场**管理，设置页只负责原样带走。
+     * 这里若丢掉，设置页一次自动保存就会把用户添加的外部服务整表清空
+     * （`setSettings` 是整对象替换）。
+     */
+    externalMcp: toRaw(raw.externalMcp ?? []).map((server) => ({ ...toRaw(server) }))
   }
 }
 
@@ -385,6 +391,8 @@ function applyToForm(cloned: AppSettings): void {
   )
   // 同上：不回填会让「打开设置页 → 自动保存」把用户已存的主机 / 端口 / 护栏状态写回默认值
   Object.assign(form.blenderMcp, cloned.blenderMcp)
+  // 第三方 MCP 同上：不回填会把用户添加的外部服务整表清空（改由市场管理，设置页只带走）
+  form.externalMcp.splice(0, form.externalMcp.length, ...cloned.externalMcp)
 }
 
 function schedulePersist(): void {

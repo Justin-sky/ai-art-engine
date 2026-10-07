@@ -158,6 +158,18 @@ import {
   runBlenderTool,
   stopBlenderMcp
 } from './blenderMcpService'
+import {
+  normalizeExternalMcpServer,
+  externalMcpIdFromPath,
+  namespaceExternalMcpTool,
+  stripExternalMcpToolPrefix,
+  type ExternalMcpServer
+} from '@shared/externalMcp'
+import {
+  closeAllExternalMcpSessions,
+  dropExternalMcpSession,
+  getExternalMcpSession
+} from './externalMcpClient'
 import { mcpActivityService } from './mcpActivityService'
 import { broadcastToAllWindows } from '../broadcast'
 import { SHARED_ERRORS } from '@shared/errors/catalog'
@@ -4769,8 +4781,140 @@ function auditDeniedToolCall(name: string, args: Record<string, unknown>, reason
   console.log(`[mcp] tool ${name} denied by chat mode: ${reason}`)
 }
 
-/** MCP 协议处理（streamable HTTP /mcp 端点与 stdio 桥共用同一工具面） */
+/**
+ * 本服务对外声明的版本号（启动时从 package 版本填入）。
+ *
+ * 声明在协议处理器**之前**：处理器在模块加载时创建，其 `serverInfo` 的 getter 会闭包引用
+ * 这个绑定；若把它写在处理器之后，`const` 的暂时性死区会让模块加载直接抛错。
+ */
 let mcpServerVersion = '0.0.0'
+
+/**
+ * 第三方 MCP 服务的中转协议处理器（每个外部服务一份，按需创建）。
+ *
+ * 为什么不让 dsh **直连**外部服务：直连会绕开既有护栏。dsh 每轮下发的
+ * `X-AIArt-Mode` / `X-AIArt-Run-Id` 只有在本应用的端点上才看得见，Ask / Plan 的
+ * 工具收窄与拒绝因此才管得住第三方工具；直连时那些头会被发给外部服务（对方多半
+ * 直接忽略），护栏等于不存在。
+ *
+ * 另外两件事也必须在应用侧做：
+ * - **工具名命名空间**：外部工具名可能与本应用内建的工具重名，重名后模型调的是谁不确定
+ * - **超时与错误归一**：外部服务的失败要变成一句人话，而不是把栈信息丢给模型
+ */
+const externalMcpHandlers = new Map<string, ReturnType<typeof createMcpProtocolHandler>>()
+/**
+ * 建处理器时用的那份配置的指纹。
+ *
+ * 为什么要记：用户在插件市场里改地址 / 命令只走 `setSettings`，**不会重启 MCP 服务**。
+ * 若一直复用旧处理器，改完的地址要等下次重启才生效 —— 表现是「测试连接通过了，
+ * 对话里却还连着旧地址」。所以命中缓存前先比对，变了就把处理器与会话一起丢掉重建。
+ */
+const externalMcpHandlerConfig = new Map<string, string>()
+
+/** 影响连接本身的字段（凭据也算：换了 token 必须重连） */
+function externalMcpConfigKey(server: ExternalMcpServer): string {
+  return JSON.stringify([
+    server.transport,
+    server.url,
+    server.command,
+    server.args,
+    server.env,
+    server.headers,
+    server.timeoutMs
+  ])
+}
+
+function externalMcpHandlerFor(
+  server: ExternalMcpServer
+): ReturnType<typeof createMcpProtocolHandler> {
+  const configKey = externalMcpConfigKey(server)
+  const cached = externalMcpHandlers.get(server.id)
+  if (cached && externalMcpHandlerConfig.get(server.id) === configKey) return cached
+  if (cached) {
+    // 配置变了：连会话一起丢，否则仍会用旧地址 / 旧凭据
+    dropExternalMcpSession(server.id)
+    externalMcpHandlers.delete(server.id)
+    externalMcpHandlerConfig.delete(server.id)
+  }
+  const handler = createMcpProtocolHandler({
+    serverInfo: {
+      name: `aiartengine-${server.id}`,
+      title: server.name,
+      get version() {
+        return mcpServerVersion
+      }
+    },
+    listTools: async (ctx) => {
+      const view = accessViewFor(ctx)
+      const session = getExternalMcpSession(server)
+      const tools = await session.listTools()
+      return (
+        tools
+          .map((tool) => ({
+            ...tool,
+            name: namespaceExternalMcpTool(server.id, tool.name)
+          }))
+          // 同一套可见性规则：Ask 模式外部服务也一个工具都看不到
+          .filter((tool) => isToolVisible(toolAccessOf(tool.name), view))
+      )
+    },
+    callTool: async (name, args, callCtx) => {
+      /**
+       * 第三方工具的副作用等级：名字必带 `<id>__` 前缀，不可能命中内建的只读 / 生成清单，
+       * 因此 `toolAccessOf` 会把它归为 **write** —— 这正是想要的保守取值。
+       * 外部服务到底只读与否本应用无从得知，按 write 归类意味着：
+       * Ask 模式全禁、Plan 模式在用户确认计划前不放行。
+       * （将来若要放开外部只读工具，得让用户显式声明该工具只读，而不是在这里猜。）
+       */
+      const denial = denialReasonForTool(toolAccessOf(name), accessViewFor(callCtx))
+      if (denial) {
+        auditDeniedToolCall(name, args, denial)
+        return { error: denial }
+      }
+      const bare = stripExternalMcpToolPrefix(server.id, name)
+      if (bare === null) {
+        return { error: `工具名不属于该服务：${name}` }
+      }
+      try {
+        const result = await getExternalMcpSession(server).callTool(bare, args)
+        return { result: normalizeExternalToolResult(result) }
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : String(err) }
+      }
+    }
+  })
+  externalMcpHandlers.set(server.id, handler)
+  externalMcpHandlerConfig.set(server.id, configKey)
+  return handler
+}
+
+/**
+ * 外部工具结果归一：`{content:[…]}` 摊平成模型好读的文本。
+ *
+ * 外部服务返回的是 MCP 的 content 数组（可能混着 text / image / resource）。
+ * 整段 JSON 丢给模型会浪费上下文且难读，所以文本项直接拼接，非文本项标注类型。
+ */
+function normalizeExternalToolResult(result: unknown): unknown {
+  if (!result || typeof result !== 'object') return result ?? null
+  const content = (result as { content?: unknown }).content
+  if (!Array.isArray(content)) return result
+  const texts: string[] = []
+  const others: string[] = []
+  for (const item of content) {
+    if (!item || typeof item !== 'object') continue
+    const entry = item as Record<string, unknown>
+    if (entry.type === 'text' && typeof entry.text === 'string') {
+      texts.push(entry.text)
+    } else if (typeof entry.type === 'string') {
+      others.push(`[${entry.type}]`)
+    }
+  }
+  const text = texts.join('\n').trim()
+  if (others.length === 0) return text || null
+  return [text, `（另有非文本内容：${others.join(' ')}）`].filter(Boolean).join('\n')
+}
+
+/** MCP 协议处理（streamable HTTP /mcp 端点与 stdio 桥共用同一工具面） */
 const handleMcpProtocolMessage = createMcpProtocolHandler({
   serverInfo: {
     name: 'aiartengine',
@@ -5038,6 +5182,10 @@ async function closeMcpServer(): Promise<void> {
   if (!server) return
   // 先断 addon 连接：Blender 工具面挂在同一个 server 上，避免它比 server 活得久
   stopBlenderMcp()
+  // 第三方会话同理：并进来的 stdio 子进程不能比 server 活得久，否则重启会留下孤儿进程
+  closeAllExternalMcpSessions()
+  externalMcpHandlers.clear()
+  externalMcpHandlerConfig.clear()
   const closing = server
   server = null
   ipcMain.removeHandler(IpcChannels.MCP_TASK_REPORT)
@@ -5105,6 +5253,10 @@ export async function restartMcpServer(input: McpRestartInput): Promise<McpServe
 export function stopMcpServer(): void {
   if (!server) return
   stopBlenderMcp()
+  // 关掉第三方会话：不关的话并进来的 stdio 子进程会变成孤儿，应用退出后仍留在系统里
+  closeAllExternalMcpSessions()
+  externalMcpHandlers.clear()
+  externalMcpHandlerConfig.clear()
   const closing = server
   server = null
   ipcMain.removeHandler(IpcChannels.MCP_TASK_REPORT)
@@ -5160,6 +5312,28 @@ async function onRequest(req: IncomingMessage, res: ServerResponse): Promise<voi
       return
     }
     await serveMcpEndpoint(req, res, handleBlenderMcpProtocolMessage)
+    return
+  }
+
+  /**
+   * 第三方 MCP 服务中转：`/mcp/ext/<id>`，与 Blender 工具面同一个套路（同端口、按路径分流）。
+   *
+   * 走应用自己的端点而不是让 dsh 直连外部服务，是为了让模式护栏与工具命名空间
+   * 都留在应用侧（见 externalMcpHandlerFor 的说明）。
+   */
+  const externalId = externalMcpIdFromPath(url)
+  if (externalId) {
+    const found = settingsService.get().externalMcp.find((item) => item.id === externalId)
+    const configured = found ? normalizeExternalMcpServer(found) : null
+    if (!configured) {
+      sendJson(res, 404, { ok: false, error: `未配置的外部 MCP 服务：${externalId}` })
+      return
+    }
+    if (!configured.enabled) {
+      sendJson(res, 403, { ok: false, error: `外部 MCP 服务「${configured.name}」已停用` })
+      return
+    }
+    await serveMcpEndpoint(req, res, externalMcpHandlerFor(configured))
     return
   }
 

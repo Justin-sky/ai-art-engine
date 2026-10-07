@@ -256,6 +256,120 @@ describe('来源键助手：未知值不产生不存在的键', () => {
   })
 })
 
+describe('第三方 MCP 服务卡', () => {
+  const external = [
+    {
+      id: 'maps',
+      name: '高德地图',
+      transport: 'http' as const,
+      enabled: true,
+      url: 'https://api.example.com/mcp',
+      headers: {},
+      command: '',
+      args: [],
+      env: {},
+      timeoutMs: 60000
+    },
+    {
+      id: 'notes',
+      name: 'Notes',
+      transport: 'stdio' as const,
+      enabled: true,
+      url: '',
+      headers: {},
+      command: 'npx',
+      args: ['-y', 'notes-mcp'],
+      env: {},
+      timeoutMs: 30000
+    },
+    {
+      id: 'broken',
+      name: 'Broken',
+      transport: 'http' as const,
+      enabled: true,
+      url: '',
+      headers: {},
+      command: '',
+      args: [],
+      env: {},
+      timeoutMs: 60000
+    },
+    {
+      id: 'off',
+      name: 'Off',
+      transport: 'http' as const,
+      enabled: false,
+      url: 'https://off.example.com/mcp',
+      headers: {},
+      command: '',
+      args: [],
+      env: {},
+      timeoutMs: 60000
+    }
+  ]
+
+  it('每条一张卡，且排在内建 MCP 两条之后', () => {
+    const cards = buildMarketplaceCards(sources({ external }))
+    expect(cards.filter((c) => c.category === 'mcp').map((c) => c.key)).toEqual([
+      'mcp:server',
+      'mcp:ext:maps',
+      'mcp:ext:notes',
+      'mcp:ext:broken',
+      'mcp:ext:off'
+    ])
+    expect(cards.find((c) => c.key === 'mcp:ext:maps')?.serverId).toBe('maps')
+  })
+
+  it('标题用用户起的名字；标识按接入方式显示地址或命令', () => {
+    const cards = buildMarketplaceCards(sources({ external }))
+    const maps = cards.find((c) => c.serverId === 'maps')
+    expect(maps?.title).toBe('高德地图')
+    expect(maps?.identifier).toBe('https://api.example.com/mcp')
+    expect(maps?.subtitleKey).toBe('marketplace.card.externalHttpHint')
+
+    const notes = cards.find((c) => c.serverId === 'notes')
+    expect(notes?.identifier).toBe('npx')
+    expect(notes?.subtitleKey).toBe('marketplace.card.externalStdioHint')
+  })
+
+  it('配置不可用时标出原因键，且状态点不是「生效中」', () => {
+    const broken = buildMarketplaceCards(sources({ external })).find((c) => c.serverId === 'broken')
+    expect(broken?.unusableKey).toBe('missingUrl')
+    expect(broken?.active).toBe(false)
+  })
+
+  it('停用的服务状态键为 disabled 且 active=false', () => {
+    const off = buildMarketplaceCards(sources({ external })).find((c) => c.serverId === 'off')
+    expect(off?.sourceKey).toBe('marketplace.state.disabled')
+    expect(off?.active).toBe(false)
+  })
+
+  it('启用的服务状态键为 enabled 且 active=true', () => {
+    const maps = buildMarketplaceCards(sources({ external })).find((c) => c.serverId === 'maps')
+    expect(maps?.sourceKey).toBe('marketplace.state.enabled')
+    expect(maps?.active).toBe(true)
+  })
+
+  it('没有 external 字段时不产生外部卡（旧设置兼容）', () => {
+    const cards = buildMarketplaceCards({ mcp: sources().mcp, skills: null, plugins: [] })
+    expect(cards.some((c) => c.serverId)).toBe(false)
+  })
+
+  it('外部卡也参与分类计数与关键词搜索', () => {
+    const cards = buildMarketplaceCards(sources({ external }))
+    expect(countByCategory(cards).mcp).toBe(5) // 内建 1（无 Blender 桥）+ 外部 4
+    expect(filterMarketplaceCards(cards, { category: 'mcp', query: 'notes' })).toHaveLength(1)
+  })
+
+  it('外部卡上模块自产的文案一律是 i18n 键（用户名字除外，那是数据）', () => {
+    for (const card of buildMarketplaceCards(sources({ external }))) {
+      if (!card.serverId) continue
+      expect(card.subtitleKey).toMatch(/^marketplace\./)
+      expect(card.sourceKey).toMatch(/^marketplace\./)
+    }
+  })
+})
+
 describe('marketplaceCardHeading：标题栏文案', () => {
   const translate = (key: string): string => `T:${key}`
 

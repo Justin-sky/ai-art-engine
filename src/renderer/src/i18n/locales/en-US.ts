@@ -807,13 +807,77 @@ export default {
       mcpServer: 'MCP tool server',
       mcpBlender: 'Blender toolset',
       mcpServerHint: 'The local tool server that external agents (Claude Code, Codex, …) call',
-      mcpBlenderHint: 'Lets external agents drive Blender modelling and animation directly'
+      mcpBlenderHint: 'Lets external agents drive Blender modelling and animation directly',
+      externalHttpHint: 'A remote MCP server added by you (HTTP)',
+      externalStdioHint: 'A local MCP server added by you (stdio child process)'
     },
     state: {
       running: 'Running',
       stopped: 'Stopped',
       connected: 'Connected',
-      disconnected: 'Not connected'
+      disconnected: 'Not connected',
+      enabled: 'Enabled',
+      disabled: 'Disabled'
+    },
+    ext: {
+      add: 'Add MCP server',
+      addHint: 'Once connected, the AI chat panel can call this server’s tools',
+      cancelAdd: 'Cancel',
+      confirmAdd: 'Add and test',
+      adding: 'Connecting…',
+      name: 'Name',
+      namePlaceholder: 'e.g. Maps',
+      transport: 'Transport',
+      transportHttp: 'HTTP service (remote)',
+      transportStdio: 'Local command (stdio)',
+      url: 'Server URL',
+      invalidUrl: 'The server URL must be a full http:// or https:// address',
+      missingCommand: 'Enter the command to run',
+      command: 'Command',
+      commandHint:
+        'On Windows scripts like npx must be written as npx.cmd, matching the rest of the app',
+      args: 'Arguments (one per line)',
+      argsPlaceholder: 'One argument per line; paths with spaces need no quotes',
+      argsHint: 'Split into an argument list, one per line',
+      headers: 'Headers (KEY=VALUE per line)',
+      headersPlaceholder: 'Authorization=Bearer sk-…',
+      headersHint:
+        'Put credentials for authenticated servers here; blank lines and # lines are ignored',
+      env: 'Environment (KEY=VALUE per line)',
+      envPlaceholder: 'API_KEY=…',
+      envHint: 'Only these variables are passed to the child process; nothing else is inherited',
+      timeout: 'Call timeout (ms)',
+      timeoutHint: 'Default 60000; raise it for generation-style tools, up to 7200000',
+      enabled: 'Enabled (uncheck to keep it out of the chat panel)',
+      test: 'Test connection',
+      testing: 'Testing…',
+      probeOk: 'Connected — {count} tools found',
+      probeEmpty: 'Connected, but the server declares no tools',
+      probeFailed: 'Connection failed',
+      invalidIdShort:
+        'Invalid configuration (the internal id must be 1–32 lowercase letters, digits or hyphens)',
+      reason: {
+        timeout: 'Connection timed out',
+        httpStatus: 'The server returned an error status',
+        rpcError: 'The server returned a protocol error',
+        noReason: 'The server returned an error without a reason',
+        emptyResponse: 'The server returned an empty response',
+        noSseData: 'The server’s SSE response contained no data frame',
+        badJson: 'The server did not return valid JSON (often a gateway or proxy error page)',
+        spawnFailed: 'Could not start the local command',
+        processExited: 'The local command exited',
+        stdinFailed: 'Could not write the request to the local command',
+        closed: 'The connection is closed',
+        badToolName: 'That tool does not belong to this server'
+      },
+      remove: 'Delete',
+      removeConfirm: 'Delete “{name}”? Its address and credentials are removed with it.',
+      removed: 'Deleted “{name}”',
+      added: 'Added “{name}” — {count} tools found',
+      httpWarning:
+        'This server’s tools can be called by the AI chat panel. Requests are relayed through the app, so Ask / Plan mode still applies.',
+      stdioWarning:
+        'Note: this configuration runs third-party code on this machine (stdio child process). Only add servers you trust.'
     },
     source: {
       skill: {

@@ -37,6 +37,66 @@
         </button>
       </nav>
 
+      <!-- 添加第三方 MCP：只在 MCP 页签出现（属于该分类的动作） -->
+      <div v-if="category === 'mcp'" class="mp-add-row">
+        <button type="button" class="mp-btn primary" @click="startAdd">
+          {{ addOpen ? t('marketplace.ext.cancelAdd') : t('marketplace.ext.add') }}
+        </button>
+        <span class="mp-hint">{{ t('marketplace.ext.addHint') }}</span>
+      </div>
+
+      <div v-if="addOpen" class="mp-add-form">
+        <label class="mp-add-field">
+          <span>{{ t('marketplace.ext.name') }}</span>
+          <input
+            v-model="draft.name"
+            type="text"
+            spellcheck="false"
+            :placeholder="t('marketplace.ext.namePlaceholder')"
+          />
+        </label>
+        <label class="mp-add-field">
+          <span>{{ t('marketplace.ext.transport') }}</span>
+          <select v-model="draft.transport">
+            <option value="http">{{ t('marketplace.ext.transportHttp') }}</option>
+            <option value="stdio">{{ t('marketplace.ext.transportStdio') }}</option>
+          </select>
+        </label>
+        <label v-if="draft.transport === 'http'" class="mp-add-field">
+          <span>{{ t('marketplace.ext.url') }}</span>
+          <input
+            v-model="draft.url"
+            type="text"
+            spellcheck="false"
+            placeholder="https://example.com/mcp"
+          />
+        </label>
+        <template v-else>
+          <label class="mp-add-field">
+            <span>{{ t('marketplace.ext.command') }}</span>
+            <input v-model="draft.command" type="text" spellcheck="false" placeholder="npx" />
+          </label>
+          <label class="mp-add-field">
+            <span>{{ t('marketplace.ext.args') }}</span>
+            <textarea
+              v-model="draft.argsText"
+              rows="2"
+              spellcheck="false"
+              :placeholder="t('marketplace.ext.argsPlaceholder')"
+            />
+          </label>
+        </template>
+        <div class="mp-add-actions">
+          <button type="button" class="mp-btn primary" :disabled="adding" @click="confirmAdd">
+            {{ adding ? t('marketplace.ext.adding') : t('marketplace.ext.confirmAdd') }}
+          </button>
+          <button type="button" class="mp-btn" @click="addOpen = false">
+            {{ t('marketplace.ext.cancelAdd') }}
+          </button>
+        </div>
+        <p v-if="addError" class="mp-hint error">{{ addError }}</p>
+      </div>
+
       <div class="mp-search">
         <input
           v-model="query"
@@ -88,6 +148,13 @@
               :blender-mcp="blenderMcp"
               @update="onBlenderPatch"
               @updated="onBlenderUpdated"
+            />
+            <!-- 第三方服务卡：用户自己加的，要能改能测能删 -->
+            <ExternalMcpConfig
+              v-else-if="card.serverId && serverOf(card.serverId)"
+              :server="serverOf(card.serverId)!"
+              @patch="patchServer(card.serverId!, $event)"
+              @remove="removeServer(card.serverId!)"
             />
             <template v-else>
               <p class="mp-hint">{{ t('marketplace.readOnlyHint') }}</p>
@@ -178,9 +245,17 @@ import type {
 } from '@shared/ipc'
 import type { AppSettings } from '@shared/domain'
 import { DEFAULT_SETTINGS } from '@shared/domain'
+import {
+  createDefaultExternalMcpServer,
+  deriveExternalMcpId,
+  isUsableHttpUrl,
+  type ExternalMcpServer,
+  type ExternalMcpTransport
+} from '@shared/externalMcp'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import McpServerCard from '../components/marketplace/McpServerCard.vue'
 import McpBlenderCard from '../components/marketplace/McpBlenderCard.vue'
+import ExternalMcpConfig from '../components/marketplace/ExternalMcpConfig.vue'
 import {
   buildMarketplaceCards,
   countByCategory,
@@ -226,15 +301,163 @@ const isError = ref(false)
 
 /** 本窗口负责的设置片段；其余字段一律保留主进程里的现值 */
 const blenderMcp = reactive<AppSettings['blenderMcp']>(structuredClone(DEFAULT_SETTINGS.blenderMcp))
+/**
+ * 第三方 MCP 服务列表（本窗口也负责这一段）。
+ *
+ * 与 blenderMcp 同一口径：落盘前先 `getSettings()` 再只替换自己这一段，
+ * 否则会把另一个窗口刚改的模型 / 主题等字段整表覆盖。
+ */
+const externalMcp = ref<ExternalMcpServer[]>([])
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 
+/** 「添加 MCP 服务」表单的草稿 */
+const addOpen = ref(false)
+const adding = ref(false)
+const addError = ref('')
+const draft = reactive({
+  name: '',
+  transport: 'http' as ExternalMcpTransport,
+  url: '',
+  command: '',
+  argsText: ''
+})
+
 const allCards = computed<MarketplaceCard[]>(() =>
-  buildMarketplaceCards({ mcp: mcp.value, skills: skills.value, plugins: plugins.value })
+  buildMarketplaceCards({
+    mcp: mcp.value,
+    skills: skills.value,
+    plugins: plugins.value,
+    external: externalMcp.value
+  })
 )
 const counts = computed(() => countByCategory(allCards.value))
 const cards = computed(() =>
   filterMarketplaceCards(allCards.value, { category: category.value, query: query.value })
 )
+
+function serverOf(id: string): ExternalMcpServer | undefined {
+  return externalMcp.value.find((server) => server.id === id)
+}
+
+function startAdd(): void {
+  addOpen.value = !addOpen.value
+  addError.value = ''
+  if (!addOpen.value) return
+  Object.assign(draft, { name: '', transport: 'http', url: '', command: '', argsText: '' })
+}
+
+/**
+ * 落盘第三方 MCP 列表。
+ *
+ * 先读最新设置再合并：`setSettings` 是整对象替换，直接提交本地副本会覆盖另一窗口的改动。
+ */
+async function persistExternal(): Promise<void> {
+  try {
+    const latest = await window.studio.getSettings()
+    const saved = await window.studio.setSettings({
+      ...latest,
+      externalMcp: externalMcp.value.map((server) => ({ ...server }))
+    })
+    externalMcp.value = saved.externalMcp ?? []
+  } catch (e) {
+    isError.value = true
+    message.value = e instanceof Error ? e.message : String(e)
+  }
+}
+
+/** 用户在表单里点了「添加」：校验 → 预检 → 落盘 */
+async function confirmAdd(): Promise<void> {
+  if (adding.value) return
+  addError.value = ''
+  const trimmedUrl = draft.url.trim()
+  const trimmedCommand = draft.command.trim()
+  if (draft.transport === 'http' && !isUsableHttpUrl(trimmedUrl)) {
+    addError.value = t('marketplace.ext.invalidUrl')
+    return
+  }
+  if (draft.transport === 'stdio' && !trimmedCommand) {
+    addError.value = t('marketplace.ext.missingCommand')
+    return
+  }
+
+  const name = draft.name.trim()
+  const id = deriveExternalMcpId(
+    name || trimmedUrl || trimmedCommand,
+    externalMcp.value.map((server) => server.id)
+  )
+  const server: ExternalMcpServer = {
+    ...createDefaultExternalMcpServer(draft.transport),
+    id,
+    name: name || id,
+    url: draft.transport === 'http' ? trimmedUrl : '',
+    command: draft.transport === 'stdio' ? trimmedCommand : '',
+    args:
+      draft.transport === 'stdio'
+        ? draft.argsText
+            .split('\n')
+            .map((line) => line.trim())
+            .filter(Boolean)
+        : []
+  }
+
+  adding.value = true
+  try {
+    /**
+     * 添加时先探测一次：连不上就**别保存**。
+     *
+     * 保存一条连不上的配置，用户只会在下次对话里发现「工具没出现」，而真正的原因
+     * （地址错 / 401 / 命令不存在）只有这一层才知道。探测失败时把原因留在表单上，
+     * 用户改完再试 —— 而不是让一条坏配置悄悄进列表。
+     */
+    const probe = await window.studio.probeExternalMcp(server)
+    if (!probe.ok) {
+      addError.value = probe.error ?? t('marketplace.ext.probeFailed')
+      return
+    }
+    externalMcp.value = [...externalMcp.value, server]
+    await persistExternal()
+    addOpen.value = false
+    message.value = t('marketplace.ext.added', {
+      name: server.name,
+      count: probe.tools?.length ?? 0
+    })
+    isError.value = false
+    // 直接展开刚加的卡：用户下一步多半就是核对工具清单
+    openKey.value = `mcp:ext:${server.id}`
+  } catch (e) {
+    addError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    adding.value = false
+  }
+}
+
+/** 卡片里改了某个字段：就地更新并防抖落盘（打字过程中不逐字符写盘） */
+function patchServer(id: string, patch: Partial<ExternalMcpServer>): void {
+  externalMcp.value = externalMcp.value.map((server) =>
+    server.id === id ? { ...server, ...patch, id: server.id } : server
+  )
+  scheduleExternalSave()
+}
+
+function scheduleExternalSave(): void {
+  if (saveTimer) clearTimeout(saveTimer)
+  saveTimer = setTimeout(() => {
+    saveTimer = null
+    void persistExternal()
+  }, SAVE_DEBOUNCE_MS)
+}
+
+async function removeServer(id: string): Promise<void> {
+  const target = serverOf(id)
+  if (!target) return
+  // 删除是不可逆的（凭据一起没了），当场确认一次
+  if (!window.confirm(t('marketplace.ext.removeConfirm', { name: target.name }))) return
+  externalMcp.value = externalMcp.value.filter((server) => server.id !== id)
+  if (openKey.value === `mcp:ext:${id}`) openKey.value = ''
+  await persistExternal()
+  message.value = t('marketplace.ext.removed', { name: target.name })
+  isError.value = false
+}
 
 function selectCategory(next: MarketplaceFilter): void {
   category.value = next
@@ -418,6 +641,7 @@ onMounted(async () => {
     plugins.value = pluginList
     templates.value = templateList
     Object.assign(blenderMcp, settings.blenderMcp)
+    externalMcp.value = settings.externalMcp ?? []
   } catch (e) {
     loadError.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -685,6 +909,59 @@ onMounted(async () => {
 
 .mp-btn:hover:not(:disabled) {
   background: var(--bg-hover);
+}
+
+.mp-btn.primary {
+  background: rgba(47, 107, 255, 0.22);
+  border-color: rgba(47, 107, 255, 0.45);
+}
+
+/* 添加第三方 MCP：按钮 + 内联表单（只在 MCP 页签出现） */
+.mp-add-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.mp-add-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.mp-add-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.mp-add-field input,
+.mp-add-field select,
+.mp-add-field textarea {
+  padding: 6px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  color: var(--text);
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.mp-add-field textarea {
+  font-family: var(--mono);
+  resize: vertical;
+}
+
+.mp-add-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .mp-btn:disabled {

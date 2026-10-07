@@ -9,6 +9,7 @@ import {
 import { normalizeModelsSettings } from '@shared/modelProvider'
 import { normalizeObjectStorageSettings } from '@shared/objectStorage'
 import { normalizeSearchSettings } from '@shared/searchProvider'
+import { normalizeExternalMcpServers } from '@shared/externalMcp'
 
 export type WindowChromeColors = {
   background: string
@@ -91,7 +92,9 @@ class SettingsService {
         ...DEFAULT_SETTINGS.yolo,
         ...(saved.yolo ?? {})
       },
-      blenderMcp: normalizeBlenderMcpSettings(saved.blenderMcp)
+      blenderMcp: normalizeBlenderMcpSettings(saved.blenderMcp),
+      // 读盘也归一：手改 settings.json 的脏值（非法 id / 重复 id / 越界超时）不该进渲染层
+      externalMcp: normalizeExternalMcpServers(saved.externalMcp)
     }
   }
 
@@ -114,7 +117,8 @@ class SettingsService {
         ...DEFAULT_SETTINGS.yolo,
         ...(settings.yolo ?? {})
       },
-      blenderMcp: normalizeBlenderMcpSettings(settings.blenderMcp)
+      blenderMcp: normalizeBlenderMcpSettings(settings.blenderMcp),
+      externalMcp: normalizeExternalMcpServers(settings.externalMcp)
     }
     this.ensure().set('settings', normalized)
     this.syncWindowChrome()

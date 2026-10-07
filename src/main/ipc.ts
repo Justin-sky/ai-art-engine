@@ -104,6 +104,13 @@ import { autosaveRepository } from './repositories/autosaveRepository'
 import { pluginRepository } from './repositories/pluginRepository'
 import { dialogService } from './services/dialogService'
 import { openMarketplaceWindow } from './services/marketplaceWindow'
+import {
+  normalizeExternalMcpServer,
+  externalMcpUnusableReason,
+  namespaceExternalMcpTool,
+  type ExternalMcpServer
+} from '@shared/externalMcp'
+import { describeExternalMcpError, probeExternalMcpServer } from './services/externalMcpClient'
 import { broadcastToAllWindows } from './broadcast'
 
 function handle<T>(channel: string, fn: (...args: never[]) => Promise<T> | T): void {
@@ -503,6 +510,36 @@ export function registerIpcHandlers(): void {
   // 插件市场窗口（单例：已开着则聚焦）
   handle(IpcChannels.MARKETPLACE_OPEN_WINDOW, () => {
     openMarketplaceWindow()
+  })
+
+  /**
+   * 探测外部 MCP 服务（添加时的预检 / 卡片上的测试连接）。
+   * 有意不落盘：设置由渲染层经 setSettings 保存，这条只负责「能不能连上、有哪些工具」。
+   * 失败返回 ok:false 而不是抛错 —— 连不上是配置阶段的常态，原因要能稳定显示在卡片上。
+   */
+  handle(IpcChannels.MCP_EXTERNAL_PROBE, async (input: ExternalMcpServer) => {
+    const server = normalizeExternalMcpServer(input)
+    if (!server) {
+      return { ok: false, error: 'invalidId', reasonKey: 'marketplace.ext.invalidIdShort' }
+    }
+    const unusable = externalMcpUnusableReason(server)
+    if (unusable) {
+      // 配置不全：原因是可翻译的键，交给渲染层出文案
+      return { ok: false, error: unusable, reasonKey: `marketplace.ext.${unusable}` }
+    }
+    try {
+      const { tools } = await probeExternalMcpServer(server)
+      return {
+        ok: true,
+        // 名字加命名空间前缀：与 dsh 实际看到的工具名一致，用户对照时不会困惑
+        tools: tools.map((tool) => ({
+          name: namespaceExternalMcpTool(server.id, tool.name),
+          ...(tool.description ? { description: tool.description } : {})
+        }))
+      }
+    } catch (err) {
+      return { ok: false, ...describeExternalMcpError(err) }
+    }
   })
 
   // 联网搜索：测试指定 provider 连通性（按 providerKind 取内置 adapter 做一次轻量探测）

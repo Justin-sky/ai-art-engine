@@ -139,6 +139,72 @@ describe('入口与设置页迁移', () => {
   })
 })
 
+describe('第三方 MCP：中继与注入', () => {
+  const MCP_SERVICE = read('src/main/services/mcpServerService.ts')
+  const HARNESS = read('src/main/services/deepseekHarnessService.ts')
+
+  it('MCP 服务路由 /mcp/ext/<id>，且停用的服务直接 403', () => {
+    expect(MCP_SERVICE).toContain('externalMcpIdFromPath(url)')
+    expect(MCP_SERVICE).toMatch(/configured\.enabled[\s\S]{0,160}403/)
+  })
+
+  it('中继给外部工具名加命名空间（防与内建 72 个工具撞名）', () => {
+    expect(MCP_SERVICE).toMatch(/namespaceExternalMcpTool\(server\.id, tool\.name\)/)
+    expect(MCP_SERVICE).toMatch(/stripExternalMcpToolPrefix\(server\.id, name\)/)
+  })
+
+  it('中继沿用同一套模式护栏（Ask 全禁 / Plan 未确认只放行只读）', () => {
+    // 这是「第三方工具不成为绕过 Plan/Ask 的后门」的关键：拒绝逻辑必须在应用侧
+    expect(MCP_SERVICE).toMatch(
+      /denialReasonForTool\(toolAccessOf\(name\), accessViewFor\(callCtx\)\)/
+    )
+    expect(MCP_SERVICE).toMatch(/isToolVisible\(toolAccessOf\(tool\.name\), view\)/)
+  })
+
+  it('配置一变就重建处理器与会话（否则改完地址要等重启才生效）', () => {
+    expect(MCP_SERVICE).toContain('externalMcpHandlerConfig')
+    expect(MCP_SERVICE).toMatch(/dropExternalMcpSession\(server\.id\)/)
+  })
+
+  it('关闭 MCP 服务时关掉外部会话（防 stdio 孤儿进程）', () => {
+    const closes = MCP_SERVICE.match(/closeAllExternalMcpSessions\(\)/g) ?? []
+    expect(closes.length).toBeGreaterThanOrEqual(2) // closeMcpServer 与 stopMcpServer
+    expect(MCP_SERVICE).toMatch(/externalMcpHandlers\.clear\(\)/)
+  })
+
+  it('dsh 每轮配置注入每条可用的外部服务，指向应用中继端点', () => {
+    expect(HARNESS).toMatch(/settingsService\.get\(\)\.externalMcp/)
+    expect(HARNESS).toMatch(/externalMcpEndpoint\(port, configured\.id\)/)
+    // 未启用 / 未配好的不挂：挂上去只会变成每次调用的报错
+    expect(HARNESS).toMatch(/if \(!configured \|\| !configured\.enabled\) continue/)
+    expect(HARNESS).toMatch(/if \(externalMcpUnusableReason\(configured\)\) continue/)
+  })
+
+  it('注入的 mcp-client 带上模式 / runId 头（与内建工具面同等受约束）', () => {
+    expect(HARNESS).toMatch(/mcp-ext-[\s\S]{0,900}accessHeaders\(mode, runId\)/)
+  })
+
+  it('超时用该服务自己的配置，而不是内建那两条的 2 小时', () => {
+    expect(HARNESS).toMatch(/toolCallTimeoutMs: \$\{configured\.timeoutMs\}/)
+  })
+
+  it('第三方服务变化会重建常驻 worker（否则新工具这轮不出现）', () => {
+    expect(HARNESS).toContain('externalMcpFp: externalMcpFingerprint()')
+    expect(HARNESS).toMatch(/function externalMcpFingerprint/)
+  })
+
+  it('IPC 探测失败返回 ok:false 而不是抛错（原因要能显示在卡片上）', () => {
+    expect(MAIN_IPC).toMatch(/MCP_EXTERNAL_PROBE[\s\S]{0,1400}return \{ ok: false, error:/)
+    expect(MAIN_IPC).toMatch(/namespaceExternalMcpTool\(server\.id, tool\.name\)/)
+  })
+
+  it('设置页保存时必须原样带走 externalMcp（否则一次自动保存就清空）', () => {
+    // setSettings 是整对象替换：设置页表单里没这一段就会把它写没
+    expect(SETTINGS).toContain('externalMcp')
+    expect(SETTINGS).toMatch(/form\.externalMcp\.splice/)
+  })
+})
+
 describe('市场视图：窗口样式与任务列表一致', () => {
   it('标题区用同一套 eyebrow + 标题写法', () => {
     expect(MARKETPLACE).toContain('marketplace.eyebrow')

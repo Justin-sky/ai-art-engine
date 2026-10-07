@@ -1,4 +1,5 @@
 import type { DshSkillsInfo, ExternalPluginManifest, McpServerInfo } from '@shared/ipc'
+import { externalMcpUnusableReason, type ExternalMcpServer } from '@shared/externalMcp'
 
 /**
  * 插件市场的**统一卡片模型**与筛选规则（纯函数，可测）。
@@ -40,12 +41,21 @@ export interface MarketplaceCard {
   sourceKey?: string
   /** 是否处于启用（运行中）状态；用于卡片上的状态点 */
   active?: boolean
+  /**
+   * 外部 MCP 服务卡：对应的服务 id（`mcp:ext:<id>` 之类）。
+   * 有它时详情区渲染编辑表单 —— 这类卡片是**用户自己加的**，必须能改能删。
+   */
+  serverId?: string
+  /** 外部 MCP 服务卡：配置不可用时的原因键（缺地址 / 地址非法 / 缺命令） */
+  unusableKey?: string
 }
 
 export interface MarketplaceSources {
   mcp: McpServerInfo | null
   skills: DshSkillsInfo | null
   plugins: ExternalPluginManifest[]
+  /** 用户添加的第三方 MCP 服务 */
+  external?: readonly ExternalMcpServer[]
 }
 
 /** MCP 两条固定卡片的 i18n 标题键 */
@@ -116,6 +126,27 @@ export function buildMarketplaceCards(sources: MarketplaceSources): MarketplaceC
         active: mcp.blenderBridge.enabled && mcp.blenderBridge.mounted
       })
     }
+  }
+
+  // ── 第三方 MCP：用户自己添加的外部服务，每条一张卡（排在内建两条之后）
+  for (const server of sources.external ?? []) {
+    const unusable = externalMcpUnusableReason(server)
+    cards.push({
+      key: `mcp:ext:${server.id}`,
+      category: 'mcp',
+      title: server.name || server.id,
+      identifier: server.transport === 'http' ? server.url || server.id : server.command,
+      subtitleKey:
+        server.transport === 'http'
+          ? 'marketplace.card.externalHttpHint'
+          : 'marketplace.card.externalStdioHint',
+      meta: `${server.timeoutMs}ms`,
+      sourceKey: server.enabled ? 'marketplace.state.enabled' : 'marketplace.state.disabled',
+      // 不可用的配置不算「生效中」，状态点不该是绿的
+      active: server.enabled && !unusable,
+      serverId: server.id,
+      ...(unusable ? { unusableKey: unusable } : {})
+    })
   }
 
   // ── 技能：目录里每个文件一张卡（内置项由应用自动管理，不铺成卡片）

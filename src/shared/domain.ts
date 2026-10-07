@@ -8,6 +8,7 @@ import {
 import { createEmptyModelsSettings, type ModelsSettings } from './modelProvider'
 import { createEmptyObjectStorageSettings, type ObjectStorageSettings } from './objectStorage'
 import { createEmptySearchSettings, type SearchSettings } from './searchProvider'
+import { type ExternalMcpServer } from './externalMcp'
 import type { ProjectStyleImage } from './stylePresets'
 import type { VideoBeatTags } from './videoBeats'
 import type { VisionAssetTags } from './visionTags'
@@ -593,6 +594,16 @@ export interface AppSettings {
    * normalizeSettings 写入磁盘前会兜底默认值并忽略未知字段。
    */
   blenderMcp: BlenderMcpSettings
+  /**
+   * 第三方 MCP 服务列表：由**用户添加**、供 AI 对话面板消费的外部工具面。
+   *
+   * 与 `blenderMcp` 的区别：Blender 那一份是**应用内建**的（固定一个端点、一套凭据），
+   * 这里是任意多条、各自带凭据，且会在本机执行（stdio 形态起子进程）。
+   *
+   * 一律经应用自己的 `/mcp/ext/<id>` 中转，而不是让 dsh 直连外部服务 —— 只有这样才能
+   * 让 Ask / Plan 的模式护栏管住第三方工具（见 shared/externalMcp.ts 顶部说明）。
+   */
+  externalMcp: ExternalMcpServer[]
 }
 
 /** Blender 工具面配置；实现见 main/services/blenderMcpService.ts 顶部 JSDoc。 */
@@ -2283,7 +2294,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     confThreshold: 0.25,
     iouThreshold: 0.45
   },
-  blenderMcp: createDefaultBlenderMcpSettings()
+  blenderMcp: createDefaultBlenderMcpSettings(),
+  externalMcp: []
 }
 
 /** Blender 工具面默认值：addon.py 的默认监听地址 */
