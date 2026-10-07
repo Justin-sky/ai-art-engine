@@ -59,7 +59,13 @@ export interface WorkflowSkillManifest {
   description: string
   /** 相对 `skill/` 的入口文件，固定 `SKILL.md` */
   entry: string
-  /** 含 `scripts/` 时为 true —— 客户端本轮**不安装**脚本，只用于界面提示 */
+  /**
+   * 含 `scripts/` 时为 true。
+   *
+   * 用途有两个：界面上标「含技能 · 含脚本」，以及**驱动同意流** —— 客户端只在用户
+   * 逐次明示同意（`skillScriptsConsent === true`，每次安装都问、不记忆）时才落盘脚本，
+   * 不同意也照常安装 `SKILL.md` 与 `references/`。
+   */
   hasScripts: boolean
   /** 相对 `skill/` 的文件清单 */
   files: WorkflowSkillFile[]
