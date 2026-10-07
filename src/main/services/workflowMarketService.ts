@@ -382,12 +382,15 @@ export function listInstalledWorkflows(): InstalledWorkflowRecord[] {
           : {})
       })
     }
-    // 与磁盘对账：目录被手删的记录不该继续显示「已安装」
-    const reconciled = out.filter((item) =>
-      existsSync(join(installedWorkflowsDir(), item.id, 'workflow.json'))
-    )
-    if (reconciled.length !== out.length) writeRecords(reconciled)
-    return reconciled
+    /**
+     * 与磁盘对账：目录被手删的记录不该继续显示「已安装」。
+     *
+     * **只过滤、不落盘。** 这里曾经顺手 `writeRecords(reconciled)`，结果把一个读函数
+     * 变成了写函数：`uninstallWorkflow` 先删工作流目录、再调本函数取记录，于是对账
+     * 立刻把 `skillName` 一起抹掉，紧接着的 `removeInstalledSkill` 拿到 `undefined`
+     * —— 技能目录永远删不掉。**读函数写盘是个陷阱**，清理交给写路径做。
+     */
+    return out.filter((item) => existsSync(join(installedWorkflowsDir(), item.id, 'workflow.json')))
   } catch {
     return []
   }
@@ -680,12 +683,16 @@ function removeInstalledSkill(record: InstalledWorkflowRecord | undefined): void
 
 export function uninstallWorkflow(input: { id: string }): WorkflowMarketActionResult {
   const targetDir = join(installedWorkflowsDir(), input.id)
+  /**
+   * **先取记录，再删目录。** 记录本身也被磁盘对账过滤（目录不在就不返回），
+   * 所以顺序反了就拿不到 `skillName`，随工作流一起装上的技能包就留在 dsh 技能根里
+   * 变成孤儿 —— 卸载界面说"已卸载"，agent 那边却还挂着一份说明书。
+   */
+  const record = listInstalledWorkflows().find((item) => item.id === input.id)
   const result = getPipeline().uninstall(targetDir)
   if (!result.ok) return { ok: false, reasonKey: 'removeFailed', error: result.error }
-  const records = listInstalledWorkflows()
-  // 先按记录删技能，再落盘新记录 —— 顺序反了就拿不到 skillName 了
-  removeInstalledSkill(records.find((item) => item.id === input.id))
-  writeRecords(records.filter((item) => item.id !== input.id))
+  removeInstalledSkill(record)
+  writeRecords(listInstalledWorkflows().filter((item) => item.id !== input.id))
   coverMemo.delete(input.id)
   return { ok: true }
 }
