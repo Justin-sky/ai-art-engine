@@ -152,7 +152,56 @@
           </div>
 
           <div class="mp-card-actions">
-            <button type="button" class="mp-btn" @click="toggle(card.key)">
+            <!--
+              工作流的安装 / 使用 / 卸载**直接放在卡片上**，不必先展开详情。
+              这些是卡片最常见的动作，藏进详情等于每次操作都要多点一下。
+            -->
+            <template v-if="card.marketId">
+              <button
+                type="button"
+                class="mp-btn primary"
+                :disabled="installingId === card.marketId || card.blockReason === 'appTooOld'"
+                @click="installMarketWorkflow(card)"
+              >
+                {{
+                  installingId === card.marketId
+                    ? t('marketplace.workflows.installing')
+                    : card.installed
+                      ? card.updatable
+                        ? t('marketplace.workflows.update')
+                        : t('marketplace.workflows.reinstall')
+                      : t('marketplace.workflows.install')
+                }}
+              </button>
+              <button
+                v-if="card.installed"
+                type="button"
+                class="mp-btn"
+                :disabled="usingId === card.marketId || !!card.blockReason"
+                @click="useMarketWorkflow(card)"
+              >
+                {{
+                  usingId === card.marketId
+                    ? t('marketplace.workflows.using')
+                    : t('marketplace.workflows.use')
+                }}
+              </button>
+              <button
+                v-if="card.installed"
+                type="button"
+                class="mp-btn danger"
+                @click="uninstallMarketWorkflow(card)"
+              >
+                {{ t('marketplace.workflows.uninstall') }}
+              </button>
+            </template>
+            <!-- 详情是次要动作：往右推，与安装 / 使用 / 卸载分开，避免误点 -->
+            <button
+              type="button"
+              class="mp-btn"
+              :class="{ 'mp-btn-push-end': !!card.marketId }"
+              @click="toggle(card.key)"
+            >
               {{ openKey === card.key ? t('marketplace.collapse') : t('marketplace.detail') }}
             </button>
           </div>
@@ -244,48 +293,14 @@
               <p v-else-if="card.missingNodeTypes?.length" class="mp-hint error">
                 {{ t('marketplace.workflows.missingHint') }}
               </p>
-              <div class="mp-card-actions">
-                <button
-                  type="button"
-                  class="mp-btn primary"
-                  :disabled="installingId === card.marketId || card.blockReason === 'appTooOld'"
-                  @click="installMarketWorkflow(card)"
-                >
-                  {{
-                    installingId === card.marketId
-                      ? t('marketplace.workflows.installing')
-                      : card.installed
-                        ? card.updatable
-                          ? t('marketplace.workflows.update')
-                          : t('marketplace.workflows.reinstall')
-                        : t('marketplace.workflows.install')
-                  }}
-                </button>
-                <button
-                  v-if="card.installed"
-                  type="button"
-                  class="mp-btn"
-                  :disabled="usingId === card.marketId || !!card.blockReason"
-                  @click="useMarketWorkflow(card)"
-                >
-                  {{
-                    usingId === card.marketId
-                      ? t('marketplace.workflows.using')
-                      : t('marketplace.workflows.use')
-                  }}
-                </button>
-                <button
-                  v-if="card.installed"
-                  type="button"
-                  class="mp-btn danger"
-                  @click="uninstallMarketWorkflow(card)"
-                >
-                  {{ t('marketplace.workflows.uninstall') }}
-                </button>
-              </div>
               <p v-if="card.installed && !project.isOpen" class="mp-hint">
                 {{ t('marketplace.workflows.needsProject') }}
               </p>
+              <!--
+                安装 / 使用 / 卸载已移到卡片上（见 `.mp-card-actions`）。
+                这里只保留**说明性内容**：事实、依赖缺失、版本过低 —— 详情是「看清楚」的地方，
+                不是「唯一能操作」的地方。动作只留一处，避免两个位置各说各话。
+              -->
             </template>
             <template v-else>
               <p class="mp-hint">{{ t('marketplace.readOnlyHint') }}</p>
@@ -1214,6 +1229,14 @@ onMounted(async () => {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+/*
+  把「详情 / 收起」推到行尾，与安装 / 使用 / 卸载拉开距离。
+  卸载紧挨着使用容易误点（虽然卸载有二次确认，但误点本身就不该发生）。
+*/
+.mp-btn-push-end {
+  margin-left: auto;
 }
 
 .mp-detail {

@@ -191,6 +191,38 @@ describe('渲染层：「使用」走既有落盘链路', () => {
     expect(VIEW).toContain('marketplace.workflows.refreshFailed')
     expect(VIEW).toMatch(/if \(workflowEntries\.value\.length > 0\)/)
   })
+
+  it('**安装 / 使用 / 卸载在卡片上**，不必展开详情即可操作', () => {
+    const detailAt = VIEW.indexOf('class="mp-detail"')
+    expect(detailAt, '模板里应当有详情块').toBeGreaterThan(0)
+
+    for (const action of [
+      'installMarketWorkflow(card)',
+      'useMarketWorkflow(card)',
+      'uninstallMarketWorkflow(card)'
+    ]) {
+      const at = VIEW.indexOf(action)
+      expect(at, `${action} 应当出现在卡片动作行里`).toBeGreaterThan(0)
+      expect(at, `${action} 必须在详情块**之前**（即卡片上）`).toBeLessThan(detailAt)
+    }
+  })
+
+  it('同一动作只留一处（详情里不再重复一套按钮）', () => {
+    // 两处各有一套会让「界面显示的状态」与「实际能点的」出现分叉。
+    //
+    // 注意用词边界计数：`installMarketWorkflow` 是 `uninstallMarketWorkflow` 的**子串**，
+    // 直接 `split().length - 1` 会把卸载按钮也算成安装按钮（这个坑真的踩了一次）。
+    const countWord = (needle: string): number =>
+      VIEW.match(new RegExp(`(?<![A-Za-z])${needle.replace(/[()]/g, '\\$&')}`, 'g'))?.length ?? 0
+
+    for (const action of [
+      'installMarketWorkflow(card)',
+      'useMarketWorkflow(card)',
+      'uninstallMarketWorkflow(card)'
+    ]) {
+      expect(countWord(action), `${action} 应当只出现 1 次`).toBe(1)
+    }
+  })
 })
 
 describe('远端缓存按源隔离', () => {
