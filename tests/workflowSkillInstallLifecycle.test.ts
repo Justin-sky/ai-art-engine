@@ -89,6 +89,12 @@ const SKILL_MD = `---\nname: ${SKILL_NAME}\ndescription: 演示技能\nworkflow:
 const PORTS_MD = '# ports\n'
 
 const PNG = Buffer.from('89504e470d0a1a0a', 'hex')
+/**
+ * 服务端这一份封面是**可变**的：下面「重装带来新封面」那条测试要模拟远端换了图。
+ * 内容与体积都刻意不同，才能区分「拿到了新图」与「拿到了缓存里的旧图」。
+ */
+let coverPayload: Buffer = PNG
+const REAL_COVER = Buffer.concat([PNG, Buffer.alloc(3000, 7)])
 
 beforeAll(async () => {
   userDataDir = mkdtempSync(join(tmpdir(), 'aae-skill-lifecycle-'))
@@ -102,7 +108,7 @@ beforeAll(async () => {
     if (url === `/workflows/${ID}/workflow.json`) return json(BUNDLE)
     if (url === `/workflows/${ID}/cover.png`) {
       res.writeHead(200, { 'content-type': 'image/png' })
-      return res.end(PNG)
+      return res.end(coverPayload)
     }
     if (url === `/workflows/${ID}/skill/SKILL.md`) {
       res.writeHead(200, { 'content-type': 'text/markdown' })
@@ -185,5 +191,52 @@ describe('技能包：安装 → 卸载', () => {
     expect(existsSync(join(userDataDir, 'workflows', ID))).toBe(false)
     const records = JSON.parse(readFileSync(recordPath(), 'utf8')) as unknown[]
     expect(records).toEqual([])
+  }, 30_000)
+})
+
+/**
+ * 封面缓存：官方那 15 张封面从 68 字节的 1×1 占位图换成真图之后，用户那边
+ * 「重装了还是没有封面」—— 根因在两份缓存（主进程 memo + 渲染层 map）都不会因为
+ * **安装**而失效，加上「已安装优先用本地」会把旧的占位图一直用下去。
+ */
+describe('封面：memo 失效与占位图', () => {
+  const localCover = (): string => join(userDataDir, 'workflows', ID, 'cover.png')
+
+  it('重装带来新封面时，封面不会停在缓存里的旧图', async () => {
+    const svc = await service()
+    coverPayload = PNG
+
+    // 第一次安装 + 取封面：memo 里从此存着 PNG
+    expect((await svc.installWorkflow({ id: ID })).ok).toBe(true)
+    const before = await svc.fetchWorkflowCover(ID)
+    expect(before.ok).toBe(true)
+    expect(before.dataUrl).toContain(PNG.toString('base64'))
+
+    // 远端换了一张明显不同的封面，用户重装
+    coverPayload = REAL_COVER
+    expect((await svc.installWorkflow({ id: ID })).ok).toBe(true)
+    expect(readFileSync(localCover())).toEqual(REAL_COVER)
+
+    // 关键：拿到的必须是新的那张。memo 没清的话这里仍是旧图
+    const after = await svc.fetchWorkflowCover(ID)
+    expect(after.ok).toBe(true)
+    expect(after.dataUrl).toBe(`data:image/png;base64,${REAL_COVER.toString('base64')}`)
+  }, 30_000)
+
+  it('本地只是占位图时不采用它，而是回远端取（否则永远停在装机那一版）', async () => {
+    const svc = await service()
+    coverPayload = REAL_COVER
+
+    // 装好之后本地是真实封面；把它换成占位图，模拟「封面更新之前装的」那批
+    expect((await svc.installWorkflow({ id: ID })).ok).toBe(true)
+    writeFileSync(localCover(), Buffer.alloc(68, 1))
+    // 清掉 memo，强制走到「本地 vs 远端」的判定（否则 memo 会先返回，测不到这条规则）
+    svc.resetWorkflowMarketCache()
+
+    const result = await svc.fetchWorkflowCover(ID)
+    expect(result.ok).toBe(true)
+    expect(result.dataUrl, '占位图不该被当成封面用').toBe(
+      `data:image/png;base64,${REAL_COVER.toString('base64')}`
+    )
   }, 30_000)
 })

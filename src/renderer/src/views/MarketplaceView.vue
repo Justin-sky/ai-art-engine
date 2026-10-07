@@ -48,7 +48,7 @@
           type="button"
           class="mp-btn"
           :disabled="workflowRefreshing"
-          @click="loadWorkflowCatalog(true)"
+          @click="refreshWorkflowCatalog()"
         >
           {{
             workflowRefreshing
@@ -863,6 +863,36 @@ async function loadWorkflowCatalog(
   }
 }
 
+/**
+ * 丢掉某条（或全部）已缓存的封面，让下次 `loadVisibleCovers()` 重新去取。
+ *
+ * 两份缓存都要清才有效：本文件的 `workflowCovers` **只拉还没有封面的条目**，
+ * 而主进程那边还有一份 `coverMemo`（安装 / 卸载时由主进程自己失效）。
+ * 装完 / 卸完 / 手动刷新目录之后不清这里，界面上会继续显示旧封面 ——
+ * 用户看到的现象就是「重装了还是没有封面」。
+ */
+function invalidateCovers(ids?: string[]): void {
+  if (!ids) {
+    workflowCovers.value = {}
+    return
+  }
+  const next = { ...workflowCovers.value }
+  for (const id of ids) delete next[id]
+  workflowCovers.value = next
+}
+
+/**
+ * 手动「刷新目录」：**连同封面缓存一起丢**。
+ *
+ * 用户按这个按钮就是要「重新去远端拿一遍」—— 目录拉新的而封面还用旧的，
+ * 会出现「目录里明明换了封面，界面上还是老图」这种说不清的状态。
+ * 后台刷新（安装 / 卸载后的静默刷新）不走这里，只丢受影响的那一条。
+ */
+async function refreshWorkflowCatalog(): Promise<void> {
+  invalidateCovers()
+  await loadWorkflowCatalog(true)
+}
+
 /** 懒加载封面：只拉还没有封面且在当前筛选结果里的条目 */
 async function loadVisibleCovers(): Promise<void> {
   const pending = cards.value
@@ -970,6 +1000,8 @@ async function installMarketWorkflow(card: MarketplaceCard): Promise<void> {
      *    安装动作的进度该由安装按钮表达，而不是借刷新按钮表达。
      */
     try {
+      // 刚装上的那条会把新的 cover.png 落到本地，缓存里的旧封面必须丢掉才会重取
+      invalidateCovers([id])
       await loadWorkflowCatalog(true, { silent: true })
     } catch {
       // 列表刷新失败不该把「已安装」翻成报错：主进程确实装好了，失败的只是刷新
@@ -1012,6 +1044,8 @@ async function uninstallMarketWorkflow(card: MarketplaceCard): Promise<void> {
   }
   message.value = t('marketplace.workflows.uninstalled', { title: card.title ?? id })
   isError.value = false
+  // 卸掉本地副本后封面要重新走远端（否则会一直用那份已经删掉的本地图），同样不点亮刷新按钮
+  invalidateCovers([id])
   // 后台刷新，同样不点亮「刷新目录」按钮（理由见 installMarketWorkflow）
   await loadWorkflowCatalog(true, { silent: true })
 }

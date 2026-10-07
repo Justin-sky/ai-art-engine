@@ -298,6 +298,16 @@ export async function fetchWorkflowCatalog(input?: {
 const coverMemo = new Map<string, string>()
 const COVER_MEMO_MAX = 64
 
+/**
+ * 本地封面小于这个字节数就当成**占位图**，不当真封面用。
+ *
+ * 市场上最早那批官方封面是 68 字节的 1×1 PNG（校验器只查「存在 + ≤300KB」，
+ * 所以一直没人拦）。而 `fetchWorkflowCover` 对**已安装**的工作流是本地优先 ——
+ * 于是**在封面更新之前装过**的每一条，本地都留着那张占位图，即使联网也永远显示不出来。
+ * 2KB 远低于任何真实的 800×450 封面（实际都在 100KB 以上），不会误伤。
+ */
+const MIN_REAL_COVER_BYTES = 2048
+
 export async function fetchWorkflowCover(id: string): Promise<WorkflowCoverResult> {
   const cached = coverMemo.get(id)
   if (cached) return { ok: true, dataUrl: cached }
@@ -305,11 +315,18 @@ export async function fetchWorkflowCover(id: string): Promise<WorkflowCoverResul
   const local = join(installedWorkflowsDir(), id, 'cover.png')
   try {
     let bytes: Uint8Array | null = null
-    if (existsSync(local)) {
-      // 已安装的优先用本地：断网也能看到封面
+    /**
+     * 本地那份**能不能当真封面用**：存在且不是占位图。
+     *
+     * 已安装的仍然优先用本地（断网也能看到封面），但占位图例外 —— 见
+     * `MIN_REAL_COVER_BYTES`：那种情况必须回远端取，否则封面永远停在装的时候那一版。
+     */
+    const localUsable =
+      existsSync(local) && (statSync(local).size >= MIN_REAL_COVER_BYTES ? true : false)
+    if (localUsable) {
       bytes = new Uint8Array(readFileSync(local))
     } else {
-      // 未安装的按源顺序尝试（与目录同序，避免只因为主源不通就没有封面）
+      // 未安装（或本地只是占位图）的按源顺序尝试（与目录同序，避免只因为主源不通就没有封面）
       let lastError: unknown = null
       for (const source of orderedSources()) {
         const coverUrl = workflowMarketUrls(source).cover({ id, cover: 'cover.png' })
@@ -321,6 +338,8 @@ export async function fetchWorkflowCover(id: string): Promise<WorkflowCoverResul
           lastError = err
         }
       }
+      // 远端也拿不到时，宁可显示本地那张占位图，也不能什么都不显示（断网路径）
+      if (!bytes && existsSync(local)) bytes = new Uint8Array(readFileSync(local))
       if (!bytes) {
         return {
           ok: false,
@@ -600,6 +619,14 @@ async function installFromSource(
     ...(skillScripts ? { skillScripts: true, skillScriptsConsentAt: new Date().toISOString() } : {})
   })
   writeRecords(records)
+  /**
+   * 装上/更新之后必须丢掉这个 id 的封面内存缓存。
+   *
+   * 不丢的话「重装一次让封面刷新」这条自救路走不通：`fetchWorkflowCover` **先查 memo 再读本地**，
+   * 而 memo 只在**卸载**时按 id 失效 —— 于是刚下载进 `<installed>/<id>/cover.png` 的新封面
+   * 也显示不出来（用户看到的现象就是「这张卡没有封面」，重启应用才恢复）。
+   */
+  coverMemo.delete(bundle.id)
   return { ok: true }
 }
 

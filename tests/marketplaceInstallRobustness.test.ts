@@ -21,11 +21,34 @@ import { describe, expect, it } from 'vitest'
 const VIEW = readFileSync(resolve('src/renderer/src/views/MarketplaceView.vue'), 'utf8')
 
 /** 截取一个顶层函数体（到下一个顶层注释块为止） */
+/**
+ * 取一个函数的**完整函数体**。
+ *
+ * 早先是切到下一个 `/**` 为止 —— 两个函数之间没有文档注释时，它会把**下一个函数**也切进来，
+ * 于是「断言 A 里有 X」可能被 B 里的 X 满足：给 `installMarketWorkflow` 断言封面缓存失效时，
+ * 就真的被 `uninstallMarketWorkflow` 里那一句骗过去了（变异测试才发现的）。
+ * 现在按花括号配对取，并跳过字符串/模板串里的括号。
+ */
 function fnBody(name: string): string {
   const at = VIEW.indexOf(`async function ${name}`)
   expect(at, `应当能找到 ${name}`).toBeGreaterThan(-1)
-  const end = VIEW.indexOf('\n/**', at)
-  return VIEW.slice(at, end > at ? end : undefined)
+  let depth = 0
+  let quote: string | null = null
+  for (let i = VIEW.indexOf('{', at); i < VIEW.length; i += 1) {
+    const c = VIEW[i]
+    if (quote) {
+      if (c === '\\') i += 1
+      else if (c === quote) quote = null
+      continue
+    }
+    if (c === "'" || c === '"' || c === '`') quote = c
+    else if (c === '{') depth += 1
+    else if (c === '}') {
+      depth -= 1
+      if (depth === 0) return VIEW.slice(at, i + 1)
+    }
+  }
+  return VIEW.slice(at)
 }
 
 describe('安装：点击不会被静默吞掉', () => {
@@ -64,11 +87,38 @@ describe('安装：点击不会被静默吞掉', () => {
   })
 
   it('「刷新目录」按钮自己仍然走非静默刷新', () => {
-    // 用户手动刷新时，按钮该转就要转 —— 静默只用于后台刷新
-    expect(VIEW).toContain('@click="loadWorkflowCatalog(true)"')
+    /*
+      用户手动刷新时，按钮该转就要转 —— 静默只用于后台刷新。
+      手动那次现在多走一层 `refreshWorkflowCatalog()`（它顺手丢掉封面缓存，见下一条），
+      所以这里断言的是**那条路径**，而不是模板里直接写 loadWorkflowCatalog。
+    */
+    expect(VIEW).toContain('@click="refreshWorkflowCatalog()"')
+    const refresh = VIEW.slice(VIEW.indexOf('async function refreshWorkflowCatalog'))
+    const refreshBody = refresh.slice(0, refresh.indexOf('\n}'))
+    expect(refreshBody, '手动刷新必须是非静默的').toContain('loadWorkflowCatalog(true)')
+    expect(refreshBody, '手动刷新不能走 silent').not.toContain('silent')
+
     const body = VIEW.slice(VIEW.indexOf('async function loadWorkflowCatalog'))
     expect(body).toContain('if (!options.silent) workflowRefreshing.value = true')
     expect(body).toContain('if (!options.silent) workflowRefreshing.value = false')
+  })
+
+  it('封面缓存有失效路径：装 / 卸 / 手动刷新都不该继续显示旧封面', () => {
+    /*
+      两份缓存都要清才有效：渲染层 `workflowCovers` 只拉「还没有封面」的条目，
+      主进程另有 `coverMemo`。只清一边，用户看到的现象就是「重装了还是没有封面」
+      —— 而这正是 15 条官方封面从 1×1 占位图换成真图之后踩到的。
+    */
+    expect(VIEW).toContain('function invalidateCovers(')
+    expect(fnBody('installMarketWorkflow'), '装完要丢掉这条的封面缓存').toContain(
+      'invalidateCovers([id])'
+    )
+    expect(fnBody('uninstallMarketWorkflow'), '卸完要丢掉这条的封面缓存').toContain(
+      'invalidateCovers([id])'
+    )
+    // 手动刷新要丢全部：用户按这个按钮就是要重新去远端拿一遍
+    const refresh = VIEW.slice(VIEW.indexOf('async function refreshWorkflowCatalog'))
+    expect(refresh.slice(0, refresh.indexOf('\n}'))).toContain('invalidateCovers()')
   })
 
   it('卸载后的刷新同样是静默的', () => {

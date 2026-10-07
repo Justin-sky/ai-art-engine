@@ -120,6 +120,7 @@ import {
   installWorkflow,
   listInstalledWorkflowDetails,
   readInstalledWorkflowPlan,
+  resetWorkflowMarketCache,
   uninstallWorkflow
 } from './services/workflowMarketService'
 import type { WorkflowSkillManifest } from '@shared/workflowMarket'
@@ -513,7 +514,16 @@ export function registerIpcHandlers(): void {
 
   handle(IpcChannels.SETTINGS_GET, () => settingsService.get())
   handle(IpcChannels.SETTINGS_SET, (settings: AppSettings) => {
+    /**
+     * 记住了改之前的市场源：改了源就必须清市场缓存。
+     *
+     * `resetWorkflowMarketCache()` 的注释一直写着「设置里改了源地址后清缓存」，但**从来没有
+     * 任何调用点**（死导出）—— 于是换源之后内存里还是旧源的目录与封面，
+     * 看起来像「换了地址却没生效」。
+     */
+    const previousSource = settingsService.get().workflowMarket?.source ?? ''
     const saved = settingsService.set(settings)
+    if ((saved.workflowMarket?.source ?? '') !== previousSource) resetWorkflowMarketCache()
     // 广播给所有窗口：插件市场是独立窗口，它保存后主窗口必须知道 ——
     // 编辑器偏好与生成模型下拉都是按窗口缓存的，不广播就会一直用旧值。
     broadcastToAllWindows(IpcChannels.SETTINGS_UPDATED, saved)
