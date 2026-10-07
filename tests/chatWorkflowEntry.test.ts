@@ -112,9 +112,26 @@ describe('会话管理与模型同一行', () => {
 
   it('会话下拉限宽，把剩余宽度让给模型名', () => {
     const css = CHAT.slice(CHAT.indexOf('.chat-actions .session-dropdown'))
-    const block = css.slice(0, 200)
+    const block = css.slice(0, 240)
     expect(block).toMatch(/flex:\s*0 1 /)
     expect(block).toMatch(/min-width:/)
+
+    /**
+     * 宽度上限刻意钉住：用户明确要求「小点」（220px → 160px）。
+     * 断言上限而不是精确值，既守住意图，又不妨碍以后微调。
+     */
+    const basis = Number(block.match(/flex:\s*0 1 (\d+)px/)?.[1] ?? 0)
+    expect(basis).toBeGreaterThan(0)
+    expect(basis, '会话下拉不该被改回更宽').toBeLessThanOrEqual(180)
+  })
+
+  it('会话菜单的 min-width 不超过触发器宽度（否则会横向溢出到面板外）', () => {
+    const trigger = CHAT.slice(CHAT.indexOf('.chat-actions .session-dropdown'))
+    const basis = Number(trigger.match(/flex:\s*0 1 (\d+)px/)?.[1] ?? 0)
+    const menu = CHAT.slice(CHAT.indexOf('.session-menu {'))
+    const minWidth = Number(menu.match(/min-width:\s*(\d+)px/)?.[1] ?? 0)
+    expect(minWidth).toBeGreaterThan(0)
+    expect(minWidth, '菜单最小宽度不该超过触发器').toBeLessThanOrEqual(basis)
   })
 
   it('spacer 仍必须是 flex: 1（会话下拉移走后它是唯一撑开「@」的元素）', () => {

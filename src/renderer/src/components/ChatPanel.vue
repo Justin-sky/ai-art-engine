@@ -4456,7 +4456,8 @@ onBeforeUnmount(() => {
   right: 0;
   left: 0;
   z-index: 30;
-  min-width: 180px;
+  /* 跟随收窄后的触发器：默认与它同宽，标题过长时靠 ellipsis 而不是撑宽面板 */
+  min-width: 150px;
   max-height: 280px;
   overflow-y: auto;
   margin: 0;
@@ -4554,8 +4555,12 @@ onBeforeUnmount(() => {
   会话限宽（可收缩到 140px），把剩余宽度让给模型名；两者都能 ellipsis，因此压缩不会溢出。
 */
 .chat-actions .session-dropdown {
-  flex: 0 1 220px;
-  min-width: 140px;
+  /*
+    刻意偏窄：会话标题截断后还能猜出是哪个，而模型名截断会直接选错，
+    因此把宽度优先让给右边。`flex-basis` 是上限，空间不够时继续收缩到 min-width。
+  */
+  flex: 0 1 160px;
+  min-width: 120px;
 }
 
 .chat-toolbar .toolbar-spacer {
