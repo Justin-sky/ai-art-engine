@@ -264,6 +264,33 @@ $DSH_HOME/skills/&lt;skill.name&gt;/        技能包（随工作流一起）
    ↓
 dsh 下次对话扫到该技能 → 注入 &lt;available_skills&gt; → Agent 按需加载</code></pre>
 
+          <h3>2.0 官方那 15 条的 <code>plan</code> 是<strong>导出</strong>的，不是手写的</h3>
+          <p>
+            应用内置的一键工作流预设（<code>src/shared/graph/aiWorkflowPresets.ts</code>）与市场上官方那 15 条
+            （<code>game-ua-video</code> … <code>anim2d-gif</code>）是<strong>同一张图的两份拷贝</strong>。市场要能独立分发、
+            内置预设又要离线可用，两份就都得在 —— 但<strong>不能靠人手同步</strong>：
+          </p>
+          <pre class="mcp-code"><code>npm run export:market        # 由内置预设生成各 workflow.json 的 plan 与 requires.nodeTypes
+npm run check:market-plans   # 只校验，不一致退出码 1（CI 就在跑：拉市场仓库后核对）</code></pre>
+          <ul>
+            <li>
+              只写 <code>plan</code> 与 <code>requires.nodeTypes</code> 两个字段（前者是内容，后者是它的派生值 ——
+              市场校验器要求两者一致）。元数据、封面、<code>skill/</code> 全部保持手写，一个字节都不碰。
+            </li>
+            <li>
+              市场仓库默认在 <code>../ai-art-engine-workflow</code>，可用 <code>--dir &lt;path&gt;</code> 或
+              <code>AAE_WORKFLOW_MARKET_DIR</code> 指定。
+            </li>
+            <li>
+              因此<strong>改官方工作流的图要改应用预设</strong>，再导出；直接改市场那侧的 <code>plan</code> 会被判为漂移。
+              第三方工作流没有内置预设，仍然手写 <code>plan</code>（画布导出功能仍未做）。
+            </li>
+          </ul>
+          <div class="tip">
+            没有这道检查时的失败形态值得写下来：内置「一键工作流」和市场装出来的工作流会<strong>同名同版本、却是两张不同的图</strong>，
+            而两边都不报错 —— 用户只会以为模型不稳定。
+          </div>
+
           <h3>2.1 索引里的<strong>派生字段</strong>由脚本生成，贡献者不要手写</h3>
           <p>
             <code>index.json</code> 里这些字段全部由 <code>scripts/build-index.mjs</code> 从磁盘派生：

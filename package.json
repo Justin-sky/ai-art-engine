@@ -24,6 +24,8 @@
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "test": "vitest run",
     "check:cjk": "node scripts/check-hardcoded-cjk.mjs --enforce",
+    "export:market": "node scripts/export-market-workflows.mjs",
+    "check:market-plans": "node scripts/export-market-workflows.mjs --check",
     "lint": "eslint . && npm run check:cjk",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

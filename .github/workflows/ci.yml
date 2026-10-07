@@ -50,6 +50,26 @@ jobs:
       - name: Check hardcoded CJK strings
         run: node scripts/check-hardcoded-cjk.mjs --enforce
 
+      # 官方那 15 条市场工作流的 plan 是从应用内置预设**导出**的（两份拷贝）。这里拉市场
+      # 仓库核对平价：只改一边就会红。没有这道检查，内置「一键工作流」与市场装出来的会是
+      # **同名同版本却不同的图**，而且两边都不报错 —— 用户只会以为模型不稳定。
+      # 与上面的 npm ci 同理：网络步骤做有限次重试，避免偶发抖动把整条腿弄红。
+      - name: Check workflow market plan parity
+        shell: bash
+        run: |
+          MARKET_DIR="$RUNNER_TEMP/ai-art-engine-workflow"
+          for attempt in 1 2 3; do
+            if git clone --depth 1 https://github.com/Justin-sky/ai-art-engine-workflow "$MARKET_DIR"; then break; fi
+            if [ "$attempt" = 3 ]; then
+              echo '::error::cloning ai-art-engine-workflow failed after 3 attempts'
+              exit 1
+            fi
+            rm -rf "$MARKET_DIR"
+            echo "clone failed (attempt $attempt), retrying in 15s..."
+            sleep 15
+          done
+          node scripts/export-market-workflows.mjs --check --dir "$MARKET_DIR"
+
       - name: Build renderer & main bundles
         run: npm run build
 
