@@ -787,15 +787,15 @@ export default {
     readOnlyHint:
       'This entry is read-only: its content comes from a manifest on disk, and the app only loads it — external scripts are never executed.',
     searchPlaceholder: {
-      all: 'Search MCP, skills or extensions',
+      all: 'Search MCP, skills or workflows',
       mcp: 'Search MCP server name or URL',
       skills: 'Search skill file name',
-      plugins: 'Search extension name or id'
+      workflows: 'Search workflow title or author'
     },
     searchAria: 'Search the current tab',
     clearSearch: 'Clear',
-    noMatch: 'No matching plugins',
-    empty: 'No plugins installed',
+    noMatch: 'No matching items',
+    empty: 'Nothing here yet',
     toggleTemplates: 'Built-in skill templates',
     detail: 'Details',
     collapse: 'Collapse',
@@ -812,7 +812,74 @@ export default {
       all: 'All',
       mcp: 'MCP',
       skills: 'Skills',
-      plugins: 'Extensions'
+      workflows: 'Workflows'
+    },
+    workflows: {
+      refresh: 'Refresh catalog',
+      refreshing: 'Refreshing…',
+      sourceHint: '{count} workflows in the remote market',
+      offline: 'Offline: showing the last cached catalog, data may be stale',
+      dropped: '{count} catalog entries were malformed and ignored',
+      categoryAll: 'All',
+      category: {
+        film: 'Film',
+        ad: 'Advertising',
+        game: 'Games',
+        character: 'Characters & scenes',
+        comic: 'Illustration',
+        utility: 'Utility'
+      },
+      author: 'Author',
+      license: 'License',
+      size: 'Size',
+      nodes: '{count} nodes',
+      edges: '{count} edges',
+      status: 'Status',
+      installedTag: 'Installed',
+      updatable: 'Update available',
+      missing: 'Missing node types',
+      missingHint:
+        'This build does not have the node types this workflow needs. Installing it will not work (you would get a broken graph) — update the app first.',
+      missingConfirm:
+        'This workflow needs node types this build does not have:\n\n{types}\n\nIt will not run properly. Install anyway?',
+      install: 'Install',
+      installing: 'Installing…',
+      installed: 'Installed “{title}”',
+      reinstall: 'Reinstall',
+      update: 'Update',
+      uninstall: 'Uninstall',
+      uninstallConfirm: 'Uninstall “{title}”? The locally installed files are removed.',
+      uninstalled: 'Uninstalled “{title}”',
+      use: 'Use',
+      using: 'Creating…',
+      used: 'Created workflow: {title}',
+      needsProject: 'Open a project first — a workflow has to land inside one',
+      reason: {
+        network: 'Cannot reach the remote market (check your network or use another source)',
+        schemaTooNew: 'The catalog format is newer than this app — please update',
+        notAnObject: 'The remote catalog is not a valid JSON object',
+        noWorkflows: 'The remote catalog has no workflow list',
+        notInstalled: 'This workflow is not installed',
+        badBundle: 'The workflow file is malformed',
+        badId: 'Invalid workflow id',
+        badNode: 'A node is missing its key or typeId',
+        badEdges: 'The workflow edges are malformed',
+        danglingEdge: 'An edge points at a node that does not exist',
+        duplicateNodeKey: 'The workflow has a duplicate node key',
+        missingMeta: 'The workflow is missing title / summary / license / author',
+        noPlan: 'The workflow file has no plan',
+        noNodes: 'The workflow has no nodes',
+        idMismatch: 'The catalog and the workflow file disagree on the id (repo content bug)',
+        download: 'Download failed',
+        removeFailed: 'Delete failed',
+        readFailed: 'Read failed',
+        cover: 'Could not fetch the cover',
+        missingNodeTypes: 'This workflow needs node types this build lacks',
+        appTooOld: 'Update the app to use this workflow',
+        planFailed: 'Could not build the workflow plan',
+        commitFailed: 'Could not save the workflow',
+        unknown: 'Unknown error'
+      }
     },
     card: {
       mcpServer: 'MCP tool server',
@@ -896,10 +963,6 @@ export default {
         builtin: 'Built-in',
         custom: 'Custom',
         template: 'Template'
-      },
-      plugin: {
-        toolbar: 'Declarative · toolbar',
-        declarative: 'Declarative'
       }
     }
   },

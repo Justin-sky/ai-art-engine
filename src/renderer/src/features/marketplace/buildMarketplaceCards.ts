@@ -1,4 +1,4 @@
-import type { DshSkillsInfo, ExternalPluginManifest, McpServerInfo } from '@shared/ipc'
+import type { DshSkillsInfo, McpServerInfo, WorkflowMarketEntryView } from '@shared/ipc'
 import {
   EXTERNAL_MCP_CONFIG_REASON,
   createDefaultExternalMcpServer,
@@ -24,7 +24,7 @@ import { skillFileStem } from '@shared/skillDisplay'
  * 由视图层 `t()` 解析。否则这里会变成第二份文案来源，与 locale 文件各说各话。
  */
 
-export type MarketplaceCategory = 'mcp' | 'skills' | 'plugins'
+export type MarketplaceCategory = 'mcp' | 'skills' | 'workflows'
 
 /** 分类页签：`all` 是视图概念，不属于任何卡片的类别 */
 export type MarketplaceFilter = MarketplaceCategory | 'all'
@@ -34,11 +34,11 @@ export interface MarketplaceCard {
   key: string
   category: MarketplaceCategory
   /**
-   * 标题：**数据自带**的显示名（技能文件名 / 扩展 displayName）。
+   * 标题：**数据自带**的显示名（技能文件名 / 工作流标题）。
    * MCP 两条卡没有数据自带的显示名，留空 → 视图层按 `key` 取标题键。
    */
   title?: string
-  /** 等宽小字展示的标识（如 `aiartengine` / 文件名 / 扩展 id） */
+  /** 等宽小字展示的标识（如 `aiartengine` / 文件名 / 工作流 id） */
   identifier: string
   /** 副标题 / 描述，可能为空 */
   subtitle?: string
@@ -57,12 +57,31 @@ export interface MarketplaceCard {
   serverId?: string
   /** 外部 MCP 服务卡：配置不可用时的原因键（缺地址 / 地址非法 / 缺命令） */
   unusableKey?: string
+  /**
+   * 工作流市场卡：对应的市场 id。有它时详情区渲染「安装 / 使用」与依赖状态，
+   * 封面也按这个 id 拉。
+   */
+  marketId?: string
+  /** 工作流市场卡：作者与许可（社区内容必须能看出是谁的、什么许可） */
+  author?: string
+  license?: string
+  /** 工作流市场卡：节点数 / 连线数（纯数据） */
+  nodeCount?: number
+  edgeCount?: number
+  /** 工作流市场卡：本应用缺哪些节点类型（空 = 可用） */
+  missingNodeTypes?: string[]
+  /** 工作流市场卡：不可用原因键（missingNodeTypes / appTooOld） */
+  blockReason?: string | null
+  /** 工作流市场卡：是否已安装 / 是否有更新 */
+  installed?: boolean
+  updatable?: boolean
 }
 
 export interface MarketplaceSources {
   mcp: McpServerInfo | null
   skills: DshSkillsInfo | null
-  plugins: ExternalPluginManifest[]
+  /** 远端工作流市场的条目（由主进程带回，含兼容性结论） */
+  workflows: readonly WorkflowMarketEntryView[]
   /** 用户添加的第三方 MCP 服务 */
   external?: readonly ExternalMcpServer[]
 }
@@ -93,13 +112,6 @@ export function skillSourceKey(kind: string): string {
   // 未知 kind 当作自定义（历史上只有 builtin / custom / template 三种）
   const known = kind === 'builtin' || kind === 'template' ? kind : 'custom'
   return `marketplace.source.skill.${known}`
-}
-
-/** 扩展卡片的来源标签键 */
-export function pluginSourceKey(hasToolbarItems: boolean): string {
-  return hasToolbarItems
-    ? 'marketplace.source.plugin.toolbar'
-    : 'marketplace.source.plugin.declarative'
 }
 
 /**
@@ -179,17 +191,26 @@ export function buildMarketplaceCards(sources: MarketplaceSources): MarketplaceC
     }
   }
 
-  // ── 扩展：每条 manifest 一张卡
-  for (const plugin of sources.plugins) {
-    const toolbarCount = plugin.contributions?.toolbarItems?.length ?? 0
+  // ── 工作流：来自远端市场（`ai-art-engine-workflow`），每条一张卡
+  for (const entry of sources.workflows) {
     cards.push({
-      key: `plugins:${plugin.id}`,
-      category: 'plugins',
-      title: plugin.displayName || plugin.id,
-      identifier: plugin.id,
-      subtitle: plugin.permissions?.length ? plugin.permissions.join(' · ') : undefined,
-      meta: `v${plugin.version}`,
-      sourceKey: pluginSourceKey(toolbarCount > 0)
+      key: `workflows:${entry.id}`,
+      category: 'workflows',
+      title: entry.title,
+      identifier: entry.id,
+      subtitle: entry.summary,
+      meta: `v${entry.version}`,
+      author: entry.author?.name,
+      license: entry.license,
+      nodeCount: entry.nodeCount,
+      edgeCount: entry.edgeCount,
+      marketId: entry.id,
+      missingNodeTypes: entry.missingNodeTypes,
+      blockReason: entry.blockReason,
+      installed: entry.installed,
+      updatable: entry.updatable,
+      // 状态点：可用且已装 = 绿；可用未装 = 灰（不是「运行中」）
+      active: entry.installed && !entry.blockReason
     })
   }
 
@@ -211,7 +232,18 @@ export function filterMarketplaceCards(
   return cards.filter((card) => {
     if (options.category !== 'all' && card.category !== options.category) return false
     if (!query) return true
-    const haystack = [card.title, card.identifier, card.subtitle, card.sourceKey, card.subtitleKey]
+    /**
+     * 可搜索字段刻意包含 `author`：市场是社区内容，**按作者找**是主要发现路径之一
+     * （「我记得是某某做的那条」）。漏掉它会让这类查找无解。
+     */
+    const haystack = [
+      card.title,
+      card.identifier,
+      card.subtitle,
+      card.sourceKey,
+      card.subtitleKey,
+      card.author
+    ]
       .filter((part): part is string => typeof part === 'string')
       .join('\n')
       .toLowerCase()
@@ -227,7 +259,7 @@ export function countByCategory(
     all: cards.length,
     mcp: 0,
     skills: 0,
-    plugins: 0
+    workflows: 0
   }
   for (const card of cards) counts[card.category] += 1
   return counts

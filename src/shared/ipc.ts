@@ -197,6 +197,23 @@ export const IpcChannels = {
    * 有意**不落盘**：探测只读入参，设置由渲染层经 `setSettings` 保存。
    */
   MCP_EXTERNAL_PROBE: 'mcp:external-probe',
+  /**
+   * 工作流市场：拉取远端目录。
+   *
+   * 失败返回 `ok:false` + reasonKey，**不抛异常** —— 断网是常态，界面需要把原因渲染在
+   * 卡片区，并在有磁盘缓存时提示「离线，数据可能过期」。
+   */
+  WORKFLOW_MARKET_FETCH: 'workflow-market:fetch',
+  /** 拉某条工作流的封面（主进程转 data URL：渲染层 CSP 不允许 https 图片直连） */
+  WORKFLOW_MARKET_COVER: 'workflow-market:cover',
+  /** 安装（或更新）一条工作流 */
+  WORKFLOW_MARKET_INSTALL: 'workflow-market:install',
+  /** 卸载 */
+  WORKFLOW_MARKET_UNINSTALL: 'workflow-market:uninstall',
+  /** 已安装清单（含版本，界面据此显示「已安装 / 可更新」） */
+  WORKFLOW_MARKET_INSTALLED: 'workflow-market:installed',
+  /** 读取已安装工作流的 plan（「使用」时物化） */
+  WORKFLOW_MARKET_BUNDLE: 'workflow-market:bundle',
 
   // Local vision (YOLO): onnxruntime 本地推理，数据不出机
   YOLO_STATUS: 'yolo:status',
@@ -1048,6 +1065,86 @@ export interface DshSkillsInfo {
   files: DshSkillsFile[]
 }
 
+// ─────────────────────────────────────────────────────────────
+// 工作流市场（远端 `ai-art-engine-workflow`）
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * 目录里一条工作流的界面视图。
+ *
+ * 除仓库给的元数据外，还带上**本应用算出来的**兼容性结论：
+ * 缺哪些节点类型、是否因此不可用、已装版本与是否可更新。这些结论必须在主进程算，
+ * 因为只有它知道本版本注册了哪些节点类型。
+ */
+export interface WorkflowMarketEntryView {
+  id: string
+  title: string
+  titleEn?: string
+  summary: string
+  category: string
+  tags: string[]
+  version: string
+  author: { name: string; url?: string }
+  license: string
+  cover?: string
+  nodeCount: number
+  edgeCount: number
+  sizeBytes?: number
+  /** 本应用缺哪些节点类型（空 = 可用） */
+  missingNodeTypes: string[]
+  /** 不可用原因键（null = 可用）：missingNodeTypes / appTooOld */
+  blockReason: string | null
+  installed: boolean
+  installedVersion: string | null
+  updatable: boolean
+}
+
+export interface WorkflowMarketFetchResult {
+  ok: boolean
+  entries?: WorkflowMarketEntryView[]
+  /** 被丢弃的非法条目数（界面提示「N 条被忽略」） */
+  dropped?: number
+  /** 目录来自磁盘缓存且本次刷新失败 → 界面提示「离线，数据可能过期」 */
+  stale?: boolean
+  cachedAt?: string
+  reasonKey?: string
+  error?: string
+}
+
+export interface WorkflowCoverResult {
+  ok: boolean
+  /** `data:image/png;base64,…` */
+  dataUrl?: string
+  reasonKey?: string
+  error?: string
+}
+
+export interface WorkflowMarketActionResult {
+  ok: boolean
+  reasonKey?: string
+  error?: string
+}
+
+export interface InstalledWorkflowRecordView {
+  id: string
+  version: string
+  installedAt: string
+}
+
+export interface WorkflowBundleResult {
+  ok: boolean
+  /** 工作流本体（含 plan） */
+  bundle?: {
+    id: string
+    title: string
+    summary: string
+    version: string
+    plan: unknown
+  }
+  reasonKey?: string
+  error?: string
+}
+
 /** Skills：写入示例模板结果 */
 export interface DshSkillsTemplateResult {
   /** 写入（或已存在）的文件路径 */
@@ -1471,6 +1568,21 @@ export interface StudioApi {
    * **不抛异常** —— 连不上是配置阶段的家常事，调用方需要把原因显示在卡片上。
    */
   probeExternalMcp: (server: ExternalMcpServer) => Promise<ExternalMcpProbeResult>
+
+  /** 拉取工作流市场目录（`force` 跳过 1 小时 TTL，用于用户手动刷新） */
+  fetchWorkflowMarket: (input?: { force?: boolean }) => Promise<WorkflowMarketFetchResult>
+  /** 拉某条工作流的封面并转成 data URL（渲染层 CSP 不允许 https 图片直连） */
+  fetchWorkflowCover: (id: string) => Promise<WorkflowCoverResult>
+  /** 安装（或更新）一条工作流；`acceptMissingTypes` 是「缺依赖也要装」的逃生门 */
+  installWorkflowMarket: (input: {
+    id: string
+    acceptMissingTypes?: boolean
+  }) => Promise<WorkflowMarketActionResult>
+  uninstallWorkflowMarket: (id: string) => Promise<WorkflowMarketActionResult>
+  /** 已安装清单 */
+  listInstalledWorkflows: () => Promise<InstalledWorkflowRecordView[]>
+  /** 读取已安装工作流的本体（「使用」时物化用） */
+  readWorkflowBundle: (id: string) => Promise<WorkflowBundleResult>
   /**
    * 测试设置中指定 id 的 search provider 连通性；
    * 走该 provider 内置 adapter 的 assertAuth（一次轻量探测）。

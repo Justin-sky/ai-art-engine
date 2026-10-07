@@ -7,7 +7,6 @@ import {
   draftToExternalMcpServer,
   filterMarketplaceCards,
   marketplaceCardHeading,
-  pluginSourceKey,
   searchPlaceholderKey,
   skillSourceKey,
   type ExternalMcpDraft,
@@ -15,14 +14,37 @@ import {
   type MarketplaceSources
 } from '../src/renderer/src/features/marketplace/buildMarketplaceCards'
 import { normalizeExternalMcpServer } from '../src/shared/externalMcp'
+import type { WorkflowMarketEntryView } from '../src/shared/ipc'
 
 /**
  * 插件市场的卡片归一与筛选（纯函数）。
  *
- * 市场的三类内容来源完全不同（MCP 是运行中的本地端点、技能是磁盘文件、扩展是声明式
- * manifest），视图层要一套网格 + 筛选就够 —— 前提是归一后的卡片模型稳定。
+ * 三类内容来源完全不同（MCP 是运行中的本地端点、技能是磁盘文件、工作流来自远端仓库），
+ * 视图层要一套网格 + 筛选就够 —— 前提是归一后的卡片模型稳定。
  * 组件依赖 Electron / three.js 无法挂载，所以判定逻辑刻意放在这里以便测试。
  */
+
+function workflowEntry(over: Partial<WorkflowMarketEntryView> = {}): WorkflowMarketEntryView {
+  return {
+    id: 'short-drama',
+    title: '短剧分镜',
+    summary: '剧本 → 分镜 → 视频',
+    category: 'film',
+    tags: [],
+    version: '1.0.0',
+    author: { name: 'AIArtEngine' },
+    license: 'CC-BY-4.0',
+    nodeCount: 7,
+    edgeCount: 6,
+    missingNodeTypes: [],
+    blockReason: null,
+    installed: false,
+    installedVersion: null,
+    updatable: false,
+    ...over
+  }
+}
+
 function sources(over: Partial<MarketplaceSources> = {}): MarketplaceSources {
   return {
     mcp: {
@@ -46,26 +68,17 @@ function sources(over: Partial<MarketplaceSources> = {}): MarketplaceSources {
         { fileName: 'my-skill.md', kind: 'custom', title: 'my skill' }
       ]
     },
-    plugins: [
-      {
-        id: 'acme.tools',
-        version: '1.2.3',
-        apiVersion: 1,
-        displayName: 'Acme Tools',
-        permissions: ['workspace.read'],
-        contributions: { toolbarItems: [] }
-      }
-    ],
+    workflows: [workflowEntry()],
     ...over
   }
 }
 
 describe('buildMarketplaceCards：三份来源归一成一种卡片', () => {
-  it('顺序固定为 MCP → 技能 → 扩展', () => {
+  it('顺序固定为 MCP → 技能 → 工作流', () => {
     const cards = buildMarketplaceCards(sources())
-    expect(cards.map((card) => card.category)).toEqual(['mcp', 'skills', 'skills', 'plugins'])
+    expect(cards.map((card) => card.category)).toEqual(['mcp', 'skills', 'skills', 'workflows'])
     expect(cards[0]?.key).toBe('mcp:server')
-    expect(cards[3]?.key).toBe('plugins:acme.tools')
+    expect(cards[3]?.key).toBe('workflows:short-drama')
   })
 
   it('key 带类别前缀，跨类不会撞名', () => {
@@ -168,45 +181,50 @@ describe('buildMarketplaceCards：三份来源归一成一种卡片', () => {
     expect(card?.title).toBe('no-title')
   })
 
-  it('扩展卡片带 displayName / id / 版本与权限', () => {
-    const card = buildMarketplaceCards(sources()).find((c) => c.category === 'plugins')
-    expect(card?.title).toBe('Acme Tools')
-    expect(card?.identifier).toBe('acme.tools')
-    expect(card?.meta).toBe('v1.2.3')
-    expect(card?.subtitle).toBe('workspace.read')
-    expect(card?.sourceKey).toBe('marketplace.source.plugin.declarative')
+  it('工作流卡片带标题 / id / 版本 / 简介 / 作者 / 许可 / 规模', () => {
+    const card = buildMarketplaceCards(sources()).find((c) => c.category === 'workflows')
+    expect(card?.title).toBe('短剧分镜')
+    expect(card?.identifier).toBe('short-drama')
+    expect(card?.meta).toBe('v1.0.0')
+    expect(card?.subtitle).toBe('剧本 → 分镜 → 视频')
+    expect(card?.marketId).toBe('short-drama')
+    expect(card?.author).toBe('AIArtEngine')
+    expect(card?.license).toBe('CC-BY-4.0')
+    expect(card?.nodeCount).toBe(7)
+    expect(card?.edgeCount).toBe(6)
   })
 
-  it('带工具栏贡献的扩展来源键不同', () => {
+  it('已安装且可用时状态点为「生效」；未安装为灰', () => {
+    const installed = buildMarketplaceCards(
+      sources({ workflows: [workflowEntry({ installed: true, installedVersion: '1.0.0' })] })
+    ).find((c) => c.category === 'workflows')
+    expect(installed?.installed).toBe(true)
+    expect(installed?.active).toBe(true)
+
+    const notInstalled = buildMarketplaceCards(sources()).find((c) => c.category === 'workflows')
+    expect(notInstalled?.installed).toBe(false)
+    expect(notInstalled?.active).toBe(false)
+  })
+
+  it('**缺依赖的工作流即便已安装也不算生效**（状态点不该是绿的）', () => {
     const card = buildMarketplaceCards(
       sources({
-        plugins: [
-          {
-            id: 'acme.bar',
-            version: '2.0.0',
-            apiVersion: 1,
-            displayName: 'Bar',
-            contributions: {
-              toolbarItems: [{ id: 'x', label: 'X', title: 'X' } as never]
-            }
-          }
+        workflows: [
+          workflowEntry({
+            installed: true,
+            missingNodeTypes: ['future.node'],
+            blockReason: 'missingNodeTypes'
+          })
         ]
       })
-    ).find((c) => c.category === 'plugins')
-    expect(card?.sourceKey).toBe('marketplace.source.plugin.toolbar')
-  })
-
-  it('没有 displayName 时回落到 id（不出现空标题）', () => {
-    const card = buildMarketplaceCards(
-      sources({
-        plugins: [{ id: 'anon.ext', version: '0.1.0', apiVersion: 1, displayName: '' }]
-      })
-    ).find((c) => c.category === 'plugins')
-    expect(card?.title).toBe('anon.ext')
+    ).find((c) => c.category === 'workflows')
+    expect(card?.active).toBe(false)
+    expect(card?.missingNodeTypes).toEqual(['future.node'])
+    expect(card?.blockReason).toBe('missingNodeTypes')
   })
 
   it('空数据源不产生卡片（不抛错）', () => {
-    expect(buildMarketplaceCards({ mcp: null, skills: null, plugins: [] })).toEqual([])
+    expect(buildMarketplaceCards({ mcp: null, skills: null, workflows: [] })).toEqual([])
   })
 
   it('技能目录存在但没有文件时不产生技能卡片', () => {
@@ -229,20 +247,26 @@ describe('filterMarketplaceCards：分类 + 关键词', () => {
       'skills:system-image.md',
       'skills:my-skill.md'
     ])
-    expect(filterMarketplaceCards(cards, { category: 'plugins' })).toHaveLength(1)
+    expect(filterMarketplaceCards(cards, { category: 'workflows' })).toHaveLength(1)
   })
 
-  it('关键词匹配标题 / 标识 / 副标题 / 来源键，且不区分大小写', () => {
-    expect(filterMarketplaceCards(cards, { category: 'all', query: 'ACME' })).toHaveLength(1)
+  it('关键词匹配标题 / 标识 / 副标题 / 作者 / 来源键，且不区分大小写', () => {
+    // 『短剧分镜』命中标题；`short-drama` 命中标识；`剧本` 命中副标题
+    expect(filterMarketplaceCards(cards, { category: 'all', query: '短剧' })).toHaveLength(1)
+    expect(filterMarketplaceCards(cards, { category: 'all', query: 'SHORT-DRAMA' })).toHaveLength(1)
+    expect(filterMarketplaceCards(cards, { category: 'all', query: '剧本' })).toHaveLength(1)
+    // 作者（社区内容的发现路径之一）。
+    // 注意：'aiartengine' 同时命中 MCP 主服务卡的 identifier，所以这里断言
+    // **工作流卡在其中**，而不是断言总数 —— 后者会把「MCP 也叫这个名」变成假失败。
+    const byAuthor = filterMarketplaceCards(cards, { category: 'all', query: 'aiartengine' })
+    expect(byAuthor.some((card) => card.category === 'workflows')).toBe(true)
     expect(filterMarketplaceCards(cards, { category: 'all', query: 'my-skill' })).toHaveLength(1)
     // 命中来源键（sourceKey 里含 'skill'）
     expect(
       filterMarketplaceCards(cards, { category: 'all', query: 'source.skill.custom' })
     ).toHaveLength(1)
-    // 命中副标题（扩展的权限串）
-    expect(
-      filterMarketplaceCards(cards, { category: 'all', query: 'workspace.read' })
-    ).toHaveLength(1)
+    // 命中副标题（工作流的简介里含「剧本」）
+    expect(filterMarketplaceCards(cards, { category: 'all', query: '剧本' })).toHaveLength(1)
   })
 
   it('空查询 / 全空白查询返回该类别全部', () => {
@@ -266,11 +290,13 @@ describe('countByCategory：页签角标', () => {
     expect(counts.all).toBe(4)
     expect(counts.mcp).toBe(1)
     expect(counts.skills).toBe(2)
-    expect(counts.plugins).toBe(1)
+    // 分类枚举已换成 workflows：旧的 plugins 计数不该再存在
+    expect('plugins' in counts).toBe(false)
+    expect(counts.workflows).toBe(1)
   })
 
   it('空输入时各项为 0（all 也是 0，不是 undefined）', () => {
-    expect(countByCategory([])).toEqual({ all: 0, mcp: 0, skills: 0, plugins: 0 })
+    expect(countByCategory([])).toEqual({ all: 0, mcp: 0, skills: 0, workflows: 0 })
   })
 })
 
@@ -280,11 +306,6 @@ describe('来源键助手：未知值不产生不存在的键', () => {
     expect(skillSourceKey('template')).toBe('marketplace.source.skill.template')
     expect(skillSourceKey('custom')).toBe('marketplace.source.skill.custom')
     expect(skillSourceKey('whatever')).toBe('marketplace.source.skill.custom')
-  })
-
-  it('pluginSourceKey 按是否有工具栏贡献区分', () => {
-    expect(pluginSourceKey(true)).toBe('marketplace.source.plugin.toolbar')
-    expect(pluginSourceKey(false)).toBe('marketplace.source.plugin.declarative')
   })
 })
 
@@ -383,7 +404,7 @@ describe('第三方 MCP 服务卡', () => {
   })
 
   it('没有 external 字段时不产生外部卡（旧设置兼容）', () => {
-    const cards = buildMarketplaceCards({ mcp: sources().mcp, skills: null, plugins: [] })
+    const cards = buildMarketplaceCards({ mcp: sources().mcp, skills: null, workflows: [] })
     expect(cards.some((c) => c.serverId)).toBe(false)
   })
 
@@ -515,18 +536,23 @@ describe('searchPlaceholderKey：搜索框占位跟着页签走', () => {
     expect(searchPlaceholderKey('all')).toBe('marketplace.searchPlaceholder.all')
     expect(searchPlaceholderKey('mcp')).toBe('marketplace.searchPlaceholder.mcp')
     expect(searchPlaceholderKey('skills')).toBe('marketplace.searchPlaceholder.skills')
-    expect(searchPlaceholderKey('plugins')).toBe('marketplace.searchPlaceholder.plugins')
+    expect(searchPlaceholderKey('workflows')).toBe('marketplace.searchPlaceholder.workflows')
   })
 
   it('四个键互不相同（不能把某两个页签指到同一句）', () => {
-    const keys = (['all', 'mcp', 'skills', 'plugins'] as const).map(searchPlaceholderKey)
+    const keys = (['all', 'mcp', 'skills', 'workflows'] as const).map(searchPlaceholderKey)
     expect(new Set(keys).size).toBe(4)
   })
 
   it('键都落在 marketplace.searchPlaceholder.* 下（与 locale 层级一致）', () => {
-    for (const category of ['all', 'mcp', 'skills', 'plugins'] as const) {
+    for (const category of ['all', 'mcp', 'skills', 'workflows'] as const) {
       expect(searchPlaceholderKey(category)).toMatch(/^marketplace\.searchPlaceholder\./)
     }
+  })
+
+  it('分类枚举里不再有 plugins', () => {
+    const keys = (['all', 'mcp', 'skills', 'workflows'] as const).map(searchPlaceholderKey)
+    expect(keys.some((key) => key.includes('plugins'))).toBe(false)
   })
 })
 
@@ -542,16 +568,16 @@ describe('marketplaceCardHeading：标题栏文案', () => {
     )
   })
 
-  it('数据自带标题优先于 i18n（技能 / 扩展）', () => {
+  it('数据自带标题优先于 i18n（技能 / 工作流）', () => {
     expect(
       marketplaceCardHeading({ key: 'skills:my.md', identifier: 'my.md', title: 'my' }, translate)
     ).toBe('my')
     expect(
       marketplaceCardHeading(
-        { key: 'plugins:acme.tools', identifier: 'acme.tools', title: 'Acme Tools' },
+        { key: 'workflows:short-drama', identifier: 'short-drama', title: '短剧分镜' },
         translate
       )
-    ).toBe('Acme Tools')
+    ).toBe('短剧分镜')
   })
 
   it('既不认识 key 又没有标题时回落到标识（不出现空标题）', () => {

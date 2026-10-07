@@ -111,6 +111,14 @@ import {
   type ExternalMcpServer
 } from '@shared/externalMcp'
 import { describeExternalMcpError, probeExternalMcpServer } from './services/externalMcpClient'
+import {
+  fetchWorkflowCatalog,
+  fetchWorkflowCover,
+  installWorkflow,
+  listInstalledWorkflows,
+  readInstalledWorkflowPlan,
+  uninstallWorkflow
+} from './services/workflowMarketService'
 import { broadcastToAllWindows } from './broadcast'
 
 function handle<T>(channel: string, fn: (...args: never[]) => Promise<T> | T): void {
@@ -505,6 +513,44 @@ export function registerIpcHandlers(): void {
     // 编辑器偏好与生成模型下拉都是按窗口缓存的，不广播就会一直用旧值。
     broadcastToAllWindows(IpcChannels.SETTINGS_UPDATED, saved)
     return saved
+  })
+
+  // 工作流市场（远端 ai-art-engine-workflow）
+  handle(IpcChannels.WORKFLOW_MARKET_FETCH, (input?: { force?: boolean }) =>
+    fetchWorkflowCatalog(input)
+  )
+  handle(IpcChannels.WORKFLOW_MARKET_COVER, (id: string) => fetchWorkflowCover(id))
+  handle(
+    IpcChannels.WORKFLOW_MARKET_INSTALL,
+    (input: { id: string; acceptMissingTypes?: boolean }) => installWorkflow(input)
+  )
+  handle(IpcChannels.WORKFLOW_MARKET_UNINSTALL, (id: string) => uninstallWorkflow({ id }))
+  handle(IpcChannels.WORKFLOW_MARKET_INSTALLED, () =>
+    listInstalledWorkflows().map((item) => ({
+      id: item.id,
+      version: item.version,
+      installedAt: item.installedAt
+    }))
+  )
+  handle(IpcChannels.WORKFLOW_MARKET_BUNDLE, (id: string) => {
+    const result = readInstalledWorkflowPlan(id)
+    if (!result.ok) {
+      return {
+        ok: false,
+        reasonKey: result.reasonKey,
+        ...(result.error ? { error: result.error } : {})
+      }
+    }
+    return {
+      ok: true,
+      bundle: {
+        id: result.bundle.id,
+        title: result.bundle.title,
+        summary: result.bundle.summary,
+        version: result.bundle.version,
+        plan: result.bundle.plan
+      }
+    }
   })
 
   // 插件市场窗口（单例：已开着则聚焦）

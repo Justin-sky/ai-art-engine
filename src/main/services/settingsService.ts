@@ -94,7 +94,11 @@ class SettingsService {
       },
       blenderMcp: normalizeBlenderMcpSettings(saved.blenderMcp),
       // 读盘也归一：手改 settings.json 的脏值（非法 id / 重复 id / 越界超时）不该进渲染层
-      externalMcp: normalizeExternalMcpServers(saved.externalMcp)
+      externalMcp: normalizeExternalMcpServers(saved.externalMcp),
+      workflowMarket: {
+        source:
+          typeof saved.workflowMarket?.source === 'string' ? saved.workflowMarket.source.trim() : ''
+      }
     }
   }
 
@@ -118,7 +122,13 @@ class SettingsService {
         ...(settings.yolo ?? {})
       },
       blenderMcp: normalizeBlenderMcpSettings(settings.blenderMcp),
-      externalMcp: normalizeExternalMcpServers(settings.externalMcp)
+      externalMcp: normalizeExternalMcpServers(settings.externalMcp),
+      workflowMarket: {
+        source:
+          typeof settings.workflowMarket?.source === 'string'
+            ? settings.workflowMarket.source.trim()
+            : ''
+      }
     }
     this.ensure().set('settings', normalized)
     this.syncWindowChrome()

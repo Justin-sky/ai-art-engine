@@ -10,6 +10,7 @@ import {
   isUsableHttpUrl
 } from '../src/shared/externalMcp'
 import { searchPlaceholderKey } from '../src/renderer/src/features/marketplace/buildMarketplaceCards'
+import { WORKFLOW_MARKET_CATEGORIES, workflowCategoryKey } from '../src/shared/workflowMarket'
 
 /**
  * 插件市场的 i18n 键**完备性**守卫。
@@ -132,8 +133,37 @@ describe('动态拼出的 i18n 键也必须存在', () => {
    * 这里按产出侧逐个断言，堵住「代码会请求但文案没加」这类只打 warn 的静默缺口。
    */
   it('四个页签的搜索占位文案都在', () => {
-    for (const category of ['all', 'mcp', 'skills', 'plugins'] as const) {
+    for (const category of ['all', 'mcp', 'skills', 'workflows'] as const) {
       const key = searchPlaceholderKey(category)
+      expect(typeof lookup(zh, key), `zh 缺 ${key}`).toBe('string')
+      expect(typeof lookup(en, key), `en 缺 ${key}`).toBe('string')
+    }
+  })
+
+  it('工作流的二级分类枚举都有文案（远端索引里的分类不能没词）', () => {
+    for (const category of WORKFLOW_MARKET_CATEGORIES) {
+      const key = workflowCategoryKey(category)
+      expect(typeof lookup(zh, key), `zh 缺 ${key}`).toBe('string')
+      expect(typeof lookup(en, key), `en 缺 ${key}`).toBe('string')
+    }
+  })
+
+  it('工作流失败原因键都有文案（每个 reasonKey 都不能是键名本身）', () => {
+    const WORKFLOW_SERVICE = readFileSync(
+      resolve('src/main/services/workflowMarketService.ts'),
+      'utf8'
+    )
+    // 从服务与共享契约里抽出所有可能回给渲染层的 reasonKey 字面量
+    const keys = new Set<string>()
+    for (const source of [
+      WORKFLOW_SERVICE,
+      readFileSync(resolve('src/shared/workflowMarket.ts'), 'utf8')
+    ]) {
+      for (const match of source.matchAll(/reasonKey:\s*'([A-Za-z]+)'/g)) keys.add(match[1]!)
+    }
+    expect(keys.size).toBeGreaterThan(5)
+    for (const reason of keys) {
+      const key = `marketplace.workflows.reason.${reason}`
       expect(typeof lookup(zh, key), `zh 缺 ${key}`).toBe('string')
       expect(typeof lookup(en, key), `en 缺 ${key}`).toBe('string')
     }

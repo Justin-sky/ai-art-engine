@@ -604,6 +604,17 @@ export interface AppSettings {
    * 让 Ask / Plan 的模式护栏管住第三方工具（见 shared/externalMcp.ts 顶部说明）。
    */
   externalMcp: ExternalMcpServer[]
+  /**
+   * 远端工作流市场。
+   *
+   * `source` 是仓库的 raw 根地址（默认官方仓库）；改它即可换镜像或指向自建市场 ——
+   * 之所以做成可配置，是因为 GitHub raw 在部分网络下不可达，而自建/镜像市场是
+   * 社区内容分发的正常需求。
+   */
+  workflowMarket: {
+    /** 留空则用官方仓库 */
+    source: string
+  }
 }
 
 /** Blender 工具面配置；实现见 main/services/blenderMcpService.ts 顶部 JSDoc。 */
@@ -2295,7 +2306,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     iouThreshold: 0.45
   },
   blenderMcp: createDefaultBlenderMcpSettings(),
-  externalMcp: []
+  externalMcp: [],
+  workflowMarket: { source: '' }
 }
 
 /** Blender 工具面默认值：addon.py 的默认监听地址 */

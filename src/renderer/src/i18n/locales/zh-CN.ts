@@ -774,15 +774,15 @@ export default {
     readOnlyHint:
       '该条目为只读展示：它的内容来自磁盘上的清单文件，应用只负责装载，不执行外部脚本。',
     searchPlaceholder: {
-      all: '搜索 MCP、技能或扩展',
+      all: '搜索 MCP、技能或工作流',
       mcp: '搜索 MCP 服务名或地址',
       skills: '搜索技能文件名',
-      plugins: '搜索扩展名或 id'
+      workflows: '搜索工作流标题或作者'
     },
     searchAria: '搜索当前页签内容',
     clearSearch: '清除',
-    noMatch: '没有匹配的插件',
-    empty: '未安装任何插件',
+    noMatch: '没有匹配的内容',
+    empty: '暂无内容',
     toggleTemplates: '内置技能模板',
     detail: '详情',
     collapse: '收起',
@@ -799,7 +799,74 @@ export default {
       all: '全部',
       mcp: 'MCP',
       skills: '技能',
-      plugins: '扩展'
+      workflows: '工作流'
+    },
+    workflows: {
+      refresh: '刷新目录',
+      refreshing: '刷新中…',
+      sourceHint: '远端市场共 {count} 个工作流',
+      offline: '离线：显示的是上次缓存的目录，数据可能过期',
+      dropped: '有 {count} 条目录条目格式不合法，已忽略',
+      categoryAll: '全部',
+      category: {
+        film: '影视',
+        ad: '广告',
+        game: '游戏',
+        character: '角色与场景',
+        comic: '图文',
+        utility: '通用'
+      },
+      author: '作者',
+      license: '许可',
+      size: '规模',
+      nodes: '{count} 个节点',
+      edges: '{count} 条连线',
+      status: '状态',
+      installedTag: '已安装',
+      updatable: '有更新',
+      missing: '缺少节点类型',
+      missingHint:
+        '本版本没有这个工作流依赖的节点类型。装上也没法用（会落出一张残图），建议先更新应用。',
+      missingConfirm:
+        '这个工作流依赖本版本没有的节点类型：\n\n{types}\n\n装上是没法正常运行的。仍要安装吗？',
+      install: '安装',
+      installing: '安装中…',
+      installed: '已安装「{title}」',
+      reinstall: '重新安装',
+      update: '更新',
+      uninstall: '卸载',
+      uninstallConfirm: '确定卸载「{title}」？本地已装的文件会被删除。',
+      uninstalled: '已卸载「{title}」',
+      use: '使用',
+      using: '创建中…',
+      used: '已创建工作流：{title}',
+      needsProject: '请先打开一个工程 —— 工作流要落进工程里',
+      reason: {
+        network: '连不上远端市场（检查网络或换一个源地址）',
+        schemaTooNew: '目录格式比本应用新，请先更新应用',
+        notAnObject: '远端目录不是合法 JSON 对象',
+        noWorkflows: '远端目录里没有工作流列表',
+        notInstalled: '这条工作流还没安装',
+        badBundle: '工作流文件格式不合法',
+        badId: '工作流 id 不合法',
+        badNode: '工作流里有节点缺少 key 或 typeId',
+        badEdges: '工作流的连线格式不合法',
+        danglingEdge: '工作流的连线指向了不存在的节点',
+        duplicateNodeKey: '工作流里有重复的节点 key',
+        missingMeta: '工作流缺少标题 / 简介 / 许可 / 署名等必填信息',
+        noPlan: '工作流文件里没有计划',
+        noNodes: '工作流里没有节点',
+        idMismatch: '目录与工作流文件里的 id 不一致（仓库内容有误）',
+        download: '下载失败',
+        removeFailed: '删除失败',
+        readFailed: '读取失败',
+        cover: '封面获取失败',
+        missingNodeTypes: '缺少这个工作流依赖的节点类型',
+        appTooOld: '需要更新应用后才能使用',
+        planFailed: '工作流计划生成失败',
+        commitFailed: '工作流落盘失败',
+        unknown: '未知错误'
+      }
     },
     card: {
       mcpServer: 'MCP 工具服务',
@@ -879,10 +946,6 @@ export default {
         builtin: '内置',
         custom: '自定义',
         template: '模板'
-      },
-      plugin: {
-        toolbar: '声明式 · 工具栏',
-        declarative: '声明式'
       }
     }
   },

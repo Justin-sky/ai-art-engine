@@ -42,6 +42,52 @@
         <span class="mp-hint">{{ t('marketplace.ext.addHint') }}</span>
       </div>
 
+      <!-- 工作流页签：远端市场来源行（含手动刷新与离线提示） -->
+      <div v-if="category === 'workflows'" class="mp-add-row">
+        <button
+          type="button"
+          class="mp-btn"
+          :disabled="workflowRefreshing"
+          @click="loadWorkflowCatalog(true)"
+        >
+          {{
+            workflowRefreshing
+              ? t('marketplace.workflows.refreshing')
+              : t('marketplace.workflows.refresh')
+          }}
+        </button>
+        <span v-if="workflowError" class="mp-hint error">{{ workflowError }}</span>
+        <span v-else class="mp-hint">
+          {{ t('marketplace.workflows.sourceHint', { count: workflowEntries.length }) }}
+        </span>
+      </div>
+
+      <!-- 工作流二级分类：只列数据里真实出现过的分类 -->
+      <nav v-if="category === 'workflows'" class="mp-tabs mp-subtabs" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          class="mp-tab"
+          :class="{ active: workflowCategory === '' }"
+          :aria-selected="workflowCategory === ''"
+          @click="workflowCategory = ''"
+        >
+          {{ t('marketplace.workflows.categoryAll') }}
+        </button>
+        <button
+          v-for="key in workflowCategories"
+          :key="key"
+          type="button"
+          role="tab"
+          class="mp-tab"
+          :class="{ active: workflowCategory === key }"
+          :aria-selected="workflowCategory === key"
+          @click="workflowCategory = key"
+        >
+          {{ t(workflowCategoryKey(key)) }}
+        </button>
+      </nav>
+
       <div class="mp-search">
         <input
           v-model="query"
@@ -61,7 +107,14 @@
       <ul v-else-if="cards.length" class="mp-grid">
         <li v-for="card in cards" :key="card.key" class="mp-card">
           <div class="mp-card-head">
-            <span class="mp-card-icon" aria-hidden="true">{{ categoryIcon(card) }}</span>
+            <!-- 工作流卡有封面就显示封面（封面来自远端，缺失时回落图标，不造假图） -->
+            <img
+              v-if="card.marketId && workflowCovers[card.marketId]"
+              class="mp-card-cover"
+              :src="workflowCovers[card.marketId]"
+              alt=""
+            />
+            <span v-else class="mp-card-icon" aria-hidden="true">{{ categoryIcon(card) }}</span>
             <div class="mp-card-title-wrap">
               <strong class="mp-card-title">{{ cardHeading(card) }}</strong>
               <code class="mp-card-id">{{ card.identifier }}</code>
@@ -75,6 +128,13 @@
             <span v-if="card.sourceKey" class="mp-card-state" :class="{ on: card.active }">
               <span class="mp-dot" aria-hidden="true" />
               {{ t(card.sourceKey) }}
+            </span>
+            <!-- 工作流卡：作者 · 节点数（作者是署名，必须能看出来源） -->
+            <span v-if="card.marketId" class="mp-card-byline">
+              {{ card.author }}
+              <template v-if="card.nodeCount"
+                >· {{ t('marketplace.workflows.nodes', { count: card.nodeCount }) }}</template
+              >
             </span>
             <span class="mp-card-meta">{{ card.meta }}</span>
           </div>
@@ -129,6 +189,91 @@
                   {{ t('marketplace.exportSkill') }}
                 </button>
               </div>
+            </template>
+            <!--
+              工作流详情：作者 / 许可 / 节点数 + **依赖缺失清单**。
+              缺节点类型必须在「使用」之前说清楚 —— 否则用户会落进一个残图。
+            -->
+            <template v-else-if="card.category === 'workflows'">
+              <dl class="mp-facts">
+                <div class="mp-fact">
+                  <dt>{{ t('marketplace.workflows.author') }}</dt>
+                  <dd>{{ card.author || '—' }}</dd>
+                </div>
+                <div class="mp-fact">
+                  <dt>{{ t('marketplace.workflows.license') }}</dt>
+                  <dd>{{ card.license || '—' }}</dd>
+                </div>
+                <div class="mp-fact">
+                  <dt>{{ t('marketplace.workflows.size') }}</dt>
+                  <dd>
+                    {{ t('marketplace.workflows.nodes', { count: card.nodeCount ?? 0 }) }} ·
+                    {{ t('marketplace.workflows.edges', { count: card.edgeCount ?? 0 }) }}
+                  </dd>
+                </div>
+                <div v-if="card.installed" class="mp-fact">
+                  <dt>{{ t('marketplace.workflows.status') }}</dt>
+                  <dd>
+                    {{
+                      card.updatable
+                        ? t('marketplace.workflows.updatable')
+                        : t('marketplace.workflows.installedTag')
+                    }}
+                  </dd>
+                </div>
+                <div v-if="card.missingNodeTypes?.length" class="mp-fact">
+                  <dt>{{ t('marketplace.workflows.missing') }}</dt>
+                  <dd class="mp-missing">{{ card.missingNodeTypes.join(', ') }}</dd>
+                </div>
+              </dl>
+              <p v-if="card.blockReason === 'appTooOld'" class="mp-hint error">
+                {{ t('marketplace.workflows.reason.appTooOld') }}
+              </p>
+              <p v-else-if="card.missingNodeTypes?.length" class="mp-hint error">
+                {{ t('marketplace.workflows.missingHint') }}
+              </p>
+              <div class="mp-card-actions">
+                <button
+                  type="button"
+                  class="mp-btn primary"
+                  :disabled="installingId === card.marketId || card.blockReason === 'appTooOld'"
+                  @click="installMarketWorkflow(card)"
+                >
+                  {{
+                    installingId === card.marketId
+                      ? t('marketplace.workflows.installing')
+                      : card.installed
+                        ? card.updatable
+                          ? t('marketplace.workflows.update')
+                          : t('marketplace.workflows.reinstall')
+                        : t('marketplace.workflows.install')
+                  }}
+                </button>
+                <button
+                  v-if="card.installed"
+                  type="button"
+                  class="mp-btn"
+                  :disabled="usingId === card.marketId || !!card.blockReason"
+                  @click="useMarketWorkflow(card)"
+                >
+                  {{
+                    usingId === card.marketId
+                      ? t('marketplace.workflows.using')
+                      : t('marketplace.workflows.use')
+                  }}
+                </button>
+                <button
+                  v-if="card.installed"
+                  type="button"
+                  class="mp-btn danger"
+                  @click="uninstallMarketWorkflow(card)"
+                >
+                  {{ t('marketplace.workflows.uninstall') }}
+                </button>
+              </div>
+              <p v-if="card.installed && !project.isOpen" class="mp-hint">
+                {{ t('marketplace.workflows.needsProject') }}
+              </p>
             </template>
             <template v-else>
               <p class="mp-hint">{{ t('marketplace.readOnlyHint') }}</p>
@@ -210,15 +355,17 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import type {
   DshSkillsInfo,
-  ExternalPluginManifest,
   McpBlenderBridgeInfo,
   McpServerInfo,
-  SkillTemplate
+  SkillTemplate,
+  WorkflowMarketEntryView
 } from '@shared/ipc'
 import type { AppSettings } from '@shared/domain'
 import { DEFAULT_SETTINGS } from '@shared/domain'
 import type { ExternalMcpServer } from '@shared/externalMcp'
+import { workflowCategoryKey } from '@shared/workflowMarket'
 import { useStudioI18n } from '../composables/useStudioI18n'
+import { useProjectStore } from '../stores/project'
 import McpServerCard from '../components/marketplace/McpServerCard.vue'
 import McpBlenderCard from '../components/marketplace/McpBlenderCard.vue'
 import ExternalMcpConfig from '../components/marketplace/ExternalMcpConfig.vue'
@@ -236,26 +383,44 @@ import {
 /**
  * 插件市场（独立窗口）。
  *
- * 承载原先散在设置页的 MCP / 技能 / 扩展三块：市场是**应用级**功能，不依赖工程，
- * 因此这里刻意不碰 project store —— 窗口在主界面未开工程时也能用。
+ * 四个页签：MCP / 技能 / 工作流，以及跨类的「全部」。其中**工作流来自远端市场**
+ *（`ai-art-engine-workflow`），其余是本地信息。
+ *
+ * 窗口本身是**应用级**（不依赖工程）；只有「使用工作流」会落到当前工程上，
+ * 因此那一处会检查工程是否打开。
  *
  * 设置落盘要点：`setSettings` 是**整对象替换**，所以这里只把自己负责的片段
- * （`blenderMcp`）合并进「先读回来的最新设置」再写回；直接提交本地表单会覆盖掉
- * 另一个窗口刚改的模型 / 主题等字段。MCP 的端口与 token 不走这条路 ——
+ * （`blenderMcp` / `externalMcp`）合并进「先读回来的最新设置」再写回；直接提交本地副本
+ * 会覆盖掉另一个窗口刚改的模型 / 主题等字段。MCP 的端口与 token 不走这条路 ——
  * 它们由 `restartMcpServer` 独立热重启，不经过 `setSettings`。
  */
 
 const { t } = useStudioI18n()
+const project = useProjectStore()
 
 /** 开发者文档（本站指南页）。这里没有「网页市场」：本仓库没有远端注册表，不做假入口 */
 const DEV_DOCS_URL = 'https://justin-sky.github.io/ai-art-engine/manual.html'
-const TABS: MarketplaceFilter[] = ['all', 'mcp', 'skills', 'plugins']
+const TABS: MarketplaceFilter[] = ['all', 'mcp', 'skills', 'workflows']
 const SAVE_DEBOUNCE_MS = 500
 
 const mcp = ref<McpServerInfo | null>(null)
 const skills = ref<DshSkillsInfo | null>(null)
-const plugins = ref<ExternalPluginManifest[]>([])
 const templates = ref<SkillTemplate[]>([])
+
+/** 远端工作流市场（`ai-art-engine-workflow`） */
+const workflowEntries = ref<WorkflowMarketEntryView[]>([])
+/** 目录来自磁盘缓存且本次刷新失败 → 界面提示「离线，数据可能过期」 */
+const workflowStale = ref(false)
+const workflowError = ref('')
+/** 工作流页签内的二级分类（'' = 全部） */
+const workflowCategory = ref('')
+/** 封面 data URL（按 id 懒加载） */
+const workflowCovers = ref<Record<string, string>>({})
+/** 一次最多预取多少张封面：避免一屏几十张一起发请求 */
+const COVER_LAZY_LIMIT = 24
+const workflowRefreshing = ref(false)
+const installingId = ref<string | null>(null)
+const usingId = ref<string | null>(null)
 
 const category = ref<MarketplaceFilter>('all')
 const query = ref('')
@@ -281,18 +446,38 @@ let saveTimer: ReturnType<typeof setTimeout> | null = null
 /** 「添加 MCP 服务」对话框的开关（表单状态在对话框内部，关掉即重置） */
 const addOpen = ref(false)
 
+/** 工作流页签下可选的二级分类：只列数据里真实出现过的（不摆空分类） */
+const workflowCategories = computed(() => {
+  const seen = new Set<string>()
+  for (const entry of workflowEntries.value) seen.add(entry.category)
+  return [...seen].sort()
+})
+
+/** 市场 id → 分类（二级筛选用；索引里已带，这里查本地副本） */
+function categoryOfMarketId(marketId: string): string {
+  return workflowEntries.value.find((entry) => entry.id === marketId)?.category ?? ''
+}
+
 const allCards = computed<MarketplaceCard[]>(() =>
   buildMarketplaceCards({
     mcp: mcp.value,
     skills: skills.value,
-    plugins: plugins.value,
+    workflows: workflowEntries.value,
     external: externalMcp.value
   })
 )
 const counts = computed(() => countByCategory(allCards.value))
-const cards = computed(() =>
-  filterMarketplaceCards(allCards.value, { category: category.value, query: query.value })
-)
+const cards = computed(() => {
+  const filtered = filterMarketplaceCards(allCards.value, {
+    category: category.value,
+    query: query.value
+  })
+  // 二级分类只在工作流页签生效；其余页签不受影响
+  if (category.value !== 'workflows' || !workflowCategory.value) return filtered
+  return filtered.filter(
+    (card) => card.marketId && categoryOfMarketId(card.marketId) === workflowCategory.value
+  )
+})
 /** 搜索框占位跟着页签走：在技能页签下说「搜索插件」是误导 */
 const searchPlaceholder = computed(() => t(searchPlaceholderKey(category.value)))
 
@@ -391,7 +576,8 @@ function cardSubtitle(card: MarketplaceCard): string {
 function categoryIcon(card: MarketplaceCard): string {
   if (card.category === 'mcp') return '⚙'
   if (card.category === 'skills') return '✦'
-  return '⬡'
+  // 工作流：封面缺失时的回落图标
+  return '⛓'
 }
 
 /**
@@ -537,18 +723,161 @@ async function refreshSkills(): Promise<void> {
   }
 }
 
+/** 拉工作流市场目录。`force` 用于用户手动刷新（跳过 1 小时 TTL）。 */
+async function loadWorkflowCatalog(force = false): Promise<void> {
+  workflowRefreshing.value = true
+  try {
+    const result = await window.studio.fetchWorkflowMarket({ force })
+    if (!result.ok) {
+      // 失败**不清空**已有条目：断网时应当还能看到上次的目录
+      workflowError.value = t(`marketplace.workflows.reason.${result.reasonKey ?? 'network'}`)
+      return
+    }
+    workflowEntries.value = result.entries ?? []
+    workflowStale.value = !!result.stale
+    workflowError.value = result.stale
+      ? t('marketplace.workflows.offline')
+      : result.dropped
+        ? t('marketplace.workflows.dropped', { count: result.dropped })
+        : ''
+    // 封面按需拉（只拉当前可见分类的前若干张，避免一次性打几百个请求）
+    void loadVisibleCovers()
+  } catch (e) {
+    workflowError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    workflowRefreshing.value = false
+  }
+}
+
+/** 懒加载封面：只拉还没有封面且在当前筛选结果里的条目 */
+async function loadVisibleCovers(): Promise<void> {
+  const pending = cards.value
+    .filter((card) => card.marketId && !workflowCovers.value[card.marketId])
+    .slice(0, COVER_LAZY_LIMIT)
+  await Promise.all(
+    pending.map(async (card) => {
+      const id = card.marketId!
+      const result = await window.studio.fetchWorkflowCover(id)
+      if (result.ok && result.dataUrl) {
+        workflowCovers.value = { ...workflowCovers.value, [id]: result.dataUrl }
+      }
+    })
+  )
+}
+
+/** 安装（或更新）：缺依赖时先拦一次，用户确认后才带逃生门重试 */
+async function installMarketWorkflow(card: MarketplaceCard): Promise<void> {
+  const id = card.marketId
+  if (!id || installingId.value) return
+  const missing = card.missingNodeTypes ?? []
+  if (missing.length > 0) {
+    const ok = window.confirm(
+      t('marketplace.workflows.missingConfirm', { types: missing.join(', ') })
+    )
+    if (!ok) return
+  }
+  installingId.value = id
+  try {
+    const result = await window.studio.installWorkflowMarket({
+      id,
+      acceptMissingTypes: missing.length > 0
+    })
+    if (!result.ok) {
+      isError.value = true
+      message.value = t(`marketplace.workflows.reason.${result.reasonKey ?? 'download'}`)
+      return
+    }
+    message.value = t('marketplace.workflows.installed', { title: card.title ?? id })
+    isError.value = false
+    await loadWorkflowCatalog(true)
+  } catch (e) {
+    isError.value = true
+    message.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    installingId.value = null
+  }
+}
+
+async function uninstallMarketWorkflow(card: MarketplaceCard): Promise<void> {
+  const id = card.marketId
+  if (!id) return
+  if (!window.confirm(t('marketplace.workflows.uninstallConfirm', { title: card.title ?? id }))) {
+    return
+  }
+  const result = await window.studio.uninstallWorkflowMarket(id)
+  if (!result.ok) {
+    isError.value = true
+    message.value = t(`marketplace.workflows.reason.${result.reasonKey ?? 'download'}`)
+    return
+  }
+  message.value = t('marketplace.workflows.uninstalled', { title: card.title ?? id })
+  isError.value = false
+  await loadWorkflowCatalog(true)
+}
+
+/**
+ * 「使用」：把已安装的工作流落进当前工程。
+ *
+ * 走既有链路（`planAiWorkflow(useSeedOnly)` + `commitAiWorkflow`）—— **不调用模型**，
+ * 因此零额度、零延迟。刻意不自己造物化逻辑：那条链已经处理了参数白名单与 warnings。
+ */
+async function useMarketWorkflow(card: MarketplaceCard): Promise<void> {
+  const id = card.marketId
+  if (!id || usingId.value) return
+  if (!project.isOpen) {
+    isError.value = true
+    message.value = t('marketplace.workflows.needsProject')
+    return
+  }
+  usingId.value = id
+  try {
+    const bundle = await window.studio.readWorkflowBundle(id)
+    if (!bundle.ok || !bundle.bundle) {
+      isError.value = true
+      message.value = t(`marketplace.workflows.reason.${bundle.reasonKey ?? 'readFailed'}`)
+      return
+    }
+    const planned = await window.studio.planAiWorkflow({
+      prompt: bundle.bundle.summary,
+      seedPlan: bundle.bundle.plan as never,
+      useSeedOnly: true
+    })
+    if (!planned.ok || !planned.plan) {
+      isError.value = true
+      message.value = planned.error ?? t('marketplace.workflows.reason.planFailed')
+      return
+    }
+    const committed = await window.studio.commitAiWorkflow({
+      plan: planned.plan,
+      name: bundle.bundle.title
+    })
+    if (!committed.ok) {
+      isError.value = true
+      message.value = committed.warnings?.[0] ?? t('marketplace.workflows.reason.commitFailed')
+      return
+    }
+    message.value = t('marketplace.workflows.used', {
+      title: committed.title ?? bundle.bundle.title
+    })
+    isError.value = false
+  } catch (e) {
+    isError.value = true
+    message.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    usingId.value = null
+  }
+}
+
 onMounted(async () => {
   try {
-    const [mcpInfo, skillsData, pluginList, templateList, settings] = await Promise.all([
+    const [mcpInfo, skillsData, templateList, settings] = await Promise.all([
       window.studio.getMcpInfo(),
       window.studio.getDshSkillsInfo(),
-      window.studio.listPlugins(),
       window.studio.listSkillTemplates(),
       window.studio.getSettings()
     ])
     mcp.value = mcpInfo
     skills.value = skillsData
-    plugins.value = pluginList
     templates.value = templateList
     Object.assign(blenderMcp, settings.blenderMcp)
     externalMcp.value = settings.externalMcp ?? []
@@ -557,6 +886,8 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
+  // 目录单独拉：它依赖网络，不该把其余本地信息一起拖住（本地部分先渲染出来）
+  await loadWorkflowCatalog()
 })
 </script>
 
@@ -723,6 +1054,42 @@ onMounted(async () => {
   font-size: 16px;
   line-height: 1.3;
   color: var(--text-muted);
+}
+
+/*
+  封面：固定 16:9 尺寸盒，避免图片到达时撑开卡片（CLS）。
+  object-fit: cover 让不同比例的封面都不变形。
+*/
+.mp-card-cover {
+  flex-shrink: 0;
+  width: 88px;
+  aspect-ratio: 16 / 9;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-hover);
+  object-fit: cover;
+}
+
+/* 工作流二级分类条：与一级页签同一视觉，只是间距更紧 */
+.mp-subtabs {
+  margin-top: -4px;
+}
+
+.mp-card-byline {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mp-missing {
+  color: var(--danger-muted);
+}
+
+.mp-btn.danger {
+  color: var(--danger-muted);
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
 }
 
 .mp-card-title-wrap {

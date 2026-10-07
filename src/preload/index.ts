@@ -178,6 +178,13 @@ const api: StudioApi = {
   },
   openMarketplaceWindow: () => ipcRenderer.invoke(IpcChannels.MARKETPLACE_OPEN_WINDOW),
   probeExternalMcp: (server) => ipcRenderer.invoke(IpcChannels.MCP_EXTERNAL_PROBE, server),
+
+  fetchWorkflowMarket: (input) => ipcRenderer.invoke(IpcChannels.WORKFLOW_MARKET_FETCH, input),
+  fetchWorkflowCover: (id) => ipcRenderer.invoke(IpcChannels.WORKFLOW_MARKET_COVER, id),
+  installWorkflowMarket: (input) => ipcRenderer.invoke(IpcChannels.WORKFLOW_MARKET_INSTALL, input),
+  uninstallWorkflowMarket: (id) => ipcRenderer.invoke(IpcChannels.WORKFLOW_MARKET_UNINSTALL, id),
+  listInstalledWorkflows: () => ipcRenderer.invoke(IpcChannels.WORKFLOW_MARKET_INSTALLED),
+  readWorkflowBundle: (id) => ipcRenderer.invoke(IpcChannels.WORKFLOW_MARKET_BUNDLE, id),
   testSearchProvider: (input: { id: string }) =>
     ipcRenderer.invoke(IpcChannels.SEARCH_TEST_CONNECTION, input),
 
