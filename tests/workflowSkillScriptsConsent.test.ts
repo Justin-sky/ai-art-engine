@@ -88,8 +88,8 @@ describe('界面：安装前必须确认，确认结果决定带不带同意', (
     expect(body).toContain('skillHasScripts(card.skill)')
     expect(body).toContain('skillScriptsConsentText(card.skill')
     // 确认必须在发起安装之前
-    expect(body.indexOf('window.confirm(skillScriptsConsentText')).toBeGreaterThan(-1)
-    expect(body.indexOf('window.confirm(skillScriptsConsentText')).toBeLessThan(
+    expect(body.indexOf('skillScriptsConsentText(card.skill')).toBeGreaterThan(-1)
+    expect(body.indexOf('skillScriptsConsentText(card.skill')).toBeLessThan(
       body.indexOf('installWorkflowMarket(')
     )
     // 同意值必须由确认结果决定（不能是常量 true）

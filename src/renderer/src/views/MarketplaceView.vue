@@ -413,6 +413,7 @@ import { DEFAULT_SETTINGS } from '@shared/domain'
 import type { ExternalMcpServer } from '@shared/externalMcp'
 import { workflowCategoryKey } from '@shared/workflowMarket'
 import { useStudioI18n } from '../composables/useStudioI18n'
+import { promptConfirm } from '../composables/useStudioPrompt'
 import McpServerCard from '../components/marketplace/McpServerCard.vue'
 import McpBlenderCard from '../components/marketplace/McpBlenderCard.vue'
 import ExternalMcpConfig from '../components/marketplace/ExternalMcpConfig.vue'
@@ -605,8 +606,13 @@ function scheduleExternalSave(): void {
 async function removeServer(id: string): Promise<void> {
   const target = serverOf(id)
   if (!target) return
-  // 删除是不可逆的（凭据一起没了），当场确认一次
-  if (!window.confirm(t('marketplace.ext.removeConfirm', { name: target.name }))) return
+  // 删除是不可逆的（凭据一起没了），当场确认一次；用应用自己的弹窗，别用原生的系统对话框
+  const ok = await promptConfirm({
+    title: t('marketplace.ext.remove'),
+    message: t('marketplace.ext.removeConfirm', { name: target.name }),
+    confirmLabel: t('marketplace.ext.remove')
+  })
+  if (!ok) return
   externalMcp.value = externalMcp.value.filter((server) => server.id !== id)
   if (openKey.value === `mcp:ext:${id}`) openKey.value = ''
   await persistExternal()
@@ -867,17 +873,22 @@ async function installMarketWorkflow(card: MarketplaceCard): Promise<void> {
   let scriptsConsented = false
   try {
     /**
-     * 两个确认框都必须**在 try 里**。
+     * 确认框一律用应用自己的 `promptConfirm`，**不要用 `window.confirm`**。
      *
-     * 它们原先在 try 之外：`window.confirm` 一旦抛错（弹窗被宿主环境拒绝就会），
-     * 异常会直接从 async 函数逃出去 —— 按钮不变、没有提示、连 `installingId` 都没设上，
-     * 表现就是「点了完全没反应」。宁可报一句错，也不要静默。
+     * 原生弹窗是 Chromium 的系统对话框，与应用完全不是一个样式（也不跟主题走），
+     * 在市场窗口里尤其突兀。`promptConfirm` 的正文是 `white-space: pre-wrap`，
+     * 所以下面那份逐行列出的脚本清单能原样换行显示。
+     *
+     * 两个确认都在 `try` 里：弹窗实现一旦抛错（或宿主拒绝弹窗），异常不能从 async
+     * 事件处理器直接逃出去 —— 那样表现为「点了完全没反应」，连原因都看不到。
      */
     missing = card.missingNodeTypes ?? []
     if (missing.length > 0) {
-      const ok = window.confirm(
-        t('marketplace.workflows.missingConfirm', { types: missing.join(', ') })
-      )
+      const ok = await promptConfirm({
+        title: t('marketplace.workflows.missing'),
+        message: t('marketplace.workflows.missingConfirm', { types: missing.join(', ') }),
+        confirmLabel: t('marketplace.workflows.install')
+      })
       if (!ok) return
     }
     /**
@@ -891,7 +902,11 @@ async function installMarketWorkflow(card: MarketplaceCard): Promise<void> {
     withScripts = skillHasScripts(card.skill)
     scriptsConsented =
       withScripts && card.skill
-        ? window.confirm(skillScriptsConsentText(card.skill, (key, named) => t(key, named)))
+        ? await promptConfirm({
+            title: t('marketplace.workflows.skillWithScripts'),
+            message: skillScriptsConsentText(card.skill, (key, named) => t(key, named)),
+            confirmLabel: t('marketplace.workflows.install')
+          })
         : false
   } catch (e) {
     isError.value = true
@@ -943,18 +958,24 @@ async function uninstallMarketWorkflow(card: MarketplaceCard): Promise<void> {
   const id = card.marketId
   if (!id) return
   /**
-   * confirm 也放在 try 里：与安装同理 —— 弹窗被宿主拒绝时抛出的异常会从 async 函数
-   * 直接逃出去，表现为「点了没反应」，而不是一句可读的报错。
+   * 用应用自己的 `promptConfirm`，**不用 `window.confirm`**：原生弹窗是 Chromium 的系统
+   * 对话框，样式与应用无关（也不跟主题走），卸载这种带副作用的操作更应该用一致的样式说清楚。
+   *
+   * 仍放在 `try` 里：弹窗一旦抛错，异常会从 async 函数直接逃出去，表现为「点了没反应」。
    */
+  let ok = false
   try {
-    if (!window.confirm(t('marketplace.workflows.uninstallConfirm', { title: card.title ?? id }))) {
-      return
-    }
+    ok = await promptConfirm({
+      title: t('marketplace.workflows.uninstall'),
+      message: t('marketplace.workflows.uninstallConfirm', { title: card.title ?? id }),
+      confirmLabel: t('marketplace.workflows.uninstall')
+    })
   } catch (e) {
     isError.value = true
     message.value = e instanceof Error ? e.message : String(e)
     return
   }
+  if (!ok) return
   const result = await window.studio.uninstallWorkflowMarket(id)
   if (!result.ok) {
     isError.value = true

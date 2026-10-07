@@ -36,10 +36,10 @@ describe('安装：点击不会被静默吞掉', () => {
     expect(body).not.toContain('if (!id || installingId.value) return')
   })
 
-  it('两个确认框都在 try 里（弹窗抛错要变成一句报错，而不是消失）', () => {
+  it('两个确认框都在 try 里（弹窗实现抛错要变成一句报错，而不是消失）', () => {
     const body = fnBody('installMarketWorkflow')
     const tryAt = body.indexOf('try {')
-    const confirmAt = body.indexOf('window.confirm(')
+    const confirmAt = body.indexOf('await promptConfirm(')
     const ipcAt = body.indexOf('installWorkflowMarket(')
     expect(tryAt, '应当有 try').toBeGreaterThan(-1)
     expect(confirmAt).toBeGreaterThan(-1)
@@ -68,8 +68,28 @@ describe('安装：点击不会被静默吞掉', () => {
   it('卸载的确认框同样在 try 里', () => {
     const body = fnBody('uninstallMarketWorkflow')
     const tryAt = body.indexOf('try {')
-    const confirmAt = body.indexOf('window.confirm(')
+    const confirmAt = body.indexOf('await promptConfirm(')
     expect(tryAt).toBeGreaterThan(-1)
     expect(confirmAt).toBeGreaterThan(tryAt)
+  })
+})
+
+describe('市场一律用应用自己的弹窗，不用原生的系统对话框', () => {
+  it('视图里没有 window.confirm（原生弹窗样式与应用无关，也不跟主题走）', () => {
+    // 卸载（删除）曾用 window.confirm，弹出来是 Chromium 的系统对话框，与卡片完全不是一个样式
+    const code = VIEW.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
+    expect(code).not.toContain('window.confirm')
+    expect(code).not.toContain('window.alert')
+  })
+
+  it('确认统一走 promptConfirm（它的正文支持换行，脚本清单才列得下）', () => {
+    expect(VIEW).toContain("import { promptConfirm } from '../composables/useStudioPrompt'")
+    expect(VIEW).toContain('await promptConfirm({')
+  })
+
+  it('删除类操作都确认过：卸载工作流 / 删除外部服务', () => {
+    for (const fn of ['uninstallMarketWorkflow', 'removeServer']) {
+      expect(fnBody(fn), `${fn} 应当有确认`).toContain('await promptConfirm({')
+    }
   })
 })
