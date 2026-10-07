@@ -2915,6 +2915,22 @@ onBeforeUnmount(() => {
             </li>
           </ul>
         </div>
+        <span class="toolbar-spacer" />
+        <button
+          class="tool-btn mention"
+          :title="t('studio.chat.mentionTitle')"
+          :disabled="running"
+          @click="mentionOpen = true"
+        >
+          {{ t('studio.chat.mentionButton') }}
+        </button>
+      </div>
+      <!--
+        会话管理单独一行。
+        它的触发按钮要显示当前会话标题（宽度需求大），和工具按钮挤在一行时，
+        `flex: 1` 会把它压到只剩几个字，同时把其余按钮也挤紧 —— 分开各自都好读。
+      -->
+      <div class="session-row">
         <div
           ref="sessionDropdownRef"
           class="session-dropdown"
@@ -2984,15 +3000,6 @@ onBeforeUnmount(() => {
           @click="onDeleteSession"
         >
           {{ t('studio.chat.deleteSession') }}
-        </button>
-        <span class="toolbar-spacer" />
-        <button
-          class="tool-btn mention"
-          :title="t('studio.chat.mentionTitle')"
-          :disabled="running"
-          @click="mentionOpen = true"
-        >
-          {{ t('studio.chat.mentionButton') }}
         </button>
       </div>
       <div v-if="referenced.length" class="mention-chips">
@@ -3998,6 +4005,8 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 6px;
+  /* 窄面板下换行，而不是把按钮压扁 */
+  flex-wrap: wrap;
 }
 
 /* 技能调试视图下拉：会话可用技能清单 + 已加载命中次数 */
@@ -4538,9 +4547,23 @@ onBeforeUnmount(() => {
   text-align: center;
 }
 
+/*
+  会话管理独占一行。
+  会话下拉 `flex: 1` 撑满剩余宽度（标题需要空间），新建 / 删除靠右紧跟其后。
+*/
+.session-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .chat-toolbar .toolbar-spacer {
-  flex: none;
-  width: 1px;
+  /*
+    必须是真的可伸缩：会话下拉移出这一行后，若这里还是固定 1px，
+    工具行就没有任何元素吸收剩余空间，「@」再也不会靠右。
+  */
+  flex: 1;
+  width: auto;
 }
 
 /* 已引用资产 chips（输入框上方） */

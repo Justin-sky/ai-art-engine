@@ -76,6 +76,44 @@ describe('对话面板：工作流入口', () => {
   })
 })
 
+describe('会话管理独占一行', () => {
+  it('session-row 是 chat-toolbar 的**兄弟**节点（不在同一行内）', () => {
+    const toolbarAt = CHAT.indexOf('class="chat-toolbar"')
+    const sessionRowAt = CHAT.indexOf('class="session-row"')
+    const mentionAt = CHAT.indexOf('class="tool-btn mention"')
+    expect(toolbarAt).toBeGreaterThan(0)
+    expect(mentionAt).toBeGreaterThan(toolbarAt)
+    // session-row 必须排在工具栏**之后**（即不在工具栏内部）
+    expect(sessionRowAt).toBeGreaterThan(mentionAt)
+  })
+
+  it('会话下拉 + 新建 + 删除三者都在 session-row 里', () => {
+    const start = CHAT.indexOf('class="session-row"')
+    // 取到下一个同级块（引用 chips）为止
+    const end = CHAT.indexOf('class="mention-chips"', start)
+    expect(end).toBeGreaterThan(start)
+    const row = CHAT.slice(start, end)
+    expect(row).toContain('sessionDropdownRef')
+    expect(row).toContain("t('studio.chat.newSession')")
+    expect(row).toContain("t('studio.chat.deleteSession')")
+  })
+
+  it('工具栏里不再残留会话控件（否则等于两处都有）', () => {
+    const toolbar = CHAT.slice(
+      CHAT.indexOf('class="chat-toolbar"'),
+      CHAT.indexOf('class="session-row"')
+    )
+    expect(toolbar).not.toContain('sessionDropdownRef')
+    expect(toolbar).not.toContain('onNewSession')
+    expect(toolbar).not.toContain('onDeleteSession')
+  })
+
+  it('spacer 必须真的可伸缩 —— 会话下拉移走后它是唯一撑开「@」的元素', () => {
+    const css = CHAT.slice(CHAT.indexOf('.chat-toolbar .toolbar-spacer'))
+    expect(css.slice(0, 200)).toMatch(/flex:\s*1/)
+  })
+})
+
 describe('Agent 工具：能精确使用已安装工作流', () => {
   it('两个工具都注册了', () => {
     expect(MCP).toContain("name: 'workflow_list_installed'")
