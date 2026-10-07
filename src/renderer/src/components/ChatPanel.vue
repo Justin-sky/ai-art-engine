@@ -2280,6 +2280,17 @@ onBeforeUnmount(() => {
 <template>
   <div class="chat-panel">
     <div class="chat-status" :class="{ warn: statusWarn }">
+      <!--
+        当前会话标题放在面板最上方：它回答的是「我在看哪段对话」，
+        属于整块面板的上下文，而不该被塞进输入框旁边一个小按钮里。
+      -->
+      <span
+        v-if="activeSession"
+        class="chat-session-title"
+        :title="activeSession.title || t('studio.chat.newChat')"
+      >
+        {{ activeSession.title || t('studio.chat.newChat') }}
+      </span>
       <span class="dot" />
       <span class="status-text">{{ statusText }}</span>
       <!-- 瞬时状态：正在启动 / 已提交给模型 / 仍在等待…，只在状态栏出现，不进消息流 -->
@@ -3021,9 +3032,9 @@ onBeforeUnmount(() => {
         />
       </div>
       <!--
-        会话管理与「模型」同一行：两者都是窄长的下拉选择器（都会 ellipsis），
-        并排一行比各占一行省下一整行高度。会话下拉限宽，把剩余宽度让给模型名
-        —— `provider · model` 通常比会话标题更长。
+        会话管理与「模型」同一行。触发器是「历史」按钮而不是当前会话标题 ——
+        标题已移到面板最上方的状态栏（那里才是「我在看哪段对话」该出现的位置），
+        按钮因此可以做得紧凑，把宽度让给模型名。
       -->
       <div class="chat-actions">
         <div
@@ -3034,12 +3045,14 @@ onBeforeUnmount(() => {
         >
           <button
             type="button"
-            class="session-trigger"
+            class="tool-btn"
+            :title="t('studio.chat.sessionSelect')"
+            :aria-label="t('studio.chat.sessionSelect')"
             :disabled="running || !sessions.length"
             @click.stop="sessionOpen = !sessionOpen"
           >
             <span class="session-trigger-label">
-              {{ activeSession?.title || t('studio.chat.newChat') }}
+              {{ t('studio.chat.sessionSelect') }}
             </span>
             <svg
               class="session-chevron"
@@ -3262,6 +3275,23 @@ onBeforeUnmount(() => {
   border-radius: 50%;
   flex: none;
   background: var(--success);
+}
+
+/*
+  顶部会话标题：可收缩 + ellipsis，右侧一条细分隔线把它和「就绪度 / 活动」区分开。
+  `max-width` 防止长标题把状态信息挤没。
+*/
+.chat-status .chat-session-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 45%;
+  padding-right: 6px;
+  border-right: 1px solid var(--border);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-weight: 600;
 }
 
 .chat-status.warn .dot {
@@ -4451,34 +4481,12 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
-.session-trigger {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  min-width: 0;
-  padding: 3px 6px;
-  background: var(--bg-input);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.session-trigger:disabled {
-  opacity: 0.55;
-  cursor: default;
-}
-
+/*
+  触发器现在是 `.tool-btn`（固定四字「历史会话」+ 箭头），
+  原先那套 `width: 100%` / `flex: 1` / ellipsis 的规则是给「显示长标题」用的，已无用。
+*/
 .session-trigger-label {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
-  text-align: left;
 }
 
 .session-chevron {
@@ -4496,14 +4504,14 @@ onBeforeUnmount(() => {
 .session-menu {
   position: absolute;
   bottom: calc(100% + 6px);
-  right: 0;
-  left: 0;
-  z-index: 30;
   /*
-    跟随收窄后的触发器：默认与它同宽，标题过长时靠 ellipsis 而不是撑宽面板。
-    这里必须 ≤ 触发器宽度，否则 `left/right: 0` 与更大的 min-width 会打架、横向溢出。
+    宽度必须**脱离触发器**独立指定：触发器现在是紧凑的「历史」按钮（约 60px），
+    若继续用 `left: 0; right: 0` 跟随它，列表会被压成 60px 宽、标题全被截掉。
+    `left: 0` + 固定宽度 = 从按钮左缘向右展开（它在行首，右侧有空间）。
   */
-  min-width: 140px;
+  left: 0;
+  width: 140px;
+  z-index: 30;
   max-height: 280px;
   overflow-y: auto;
   margin: 0;
@@ -4613,6 +4621,11 @@ onBeforeUnmount(() => {
   完全没有样式 —— 一直是浏览器默认按钮外观。
 */
 .tool-btn {
+  /* flex 布局：按钮里普遍是「图标 + 文字」或「纯图标」，用行内块会出现基线错位 */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
   flex: none;
   padding: 3px 8px;
   border: 1px solid var(--border);
@@ -4661,13 +4674,12 @@ onBeforeUnmount(() => {
   会话下拉与模型选择器共用一行。
   会话限宽（可收缩到 140px），把剩余宽度让给模型名；两者都能 ellipsis，因此压缩不会溢出。
 */
+/*
+  会话下拉现在是「历史」按钮，宽度由内容决定，不再吸收剩余空间
+  （剩余宽度归模型选择器）。
+*/
 .chat-actions .session-dropdown {
-  /*
-    刻意偏窄：会话标题截断后还能猜出是哪个，而模型名截断会直接选错，
-    因此把宽度优先让给右边。`flex-basis` 是上限，空间不够时继续收缩到 min-width。
-  */
-  flex: 0 1 140px;
-  min-width: 112px;
+  flex: none;
 }
 
 .chat-toolbar .toolbar-spacer {

@@ -181,19 +181,22 @@ describe('会话管理与模型同一行', () => {
     expect(CHAT).not.toContain('session-row')
   })
 
-  it('会话下拉限宽，把剩余宽度让给模型名', () => {
-    const css = CHAT.slice(CHAT.indexOf('.chat-actions .session-dropdown'))
-    const block = css.slice(0, 240)
-    expect(block).toMatch(/flex:\s*0 1 /)
-    expect(block).toMatch(/min-width:/)
+  it('触发器是紧凑的「历史」按钮，不再吸收剩余宽度（那部分让给模型名）', () => {
+    const block = CHAT.slice(
+      CHAT.indexOf('.chat-actions .session-dropdown'),
+      CHAT.indexOf('.chat-actions .session-dropdown') + 240
+    )
+    expect(block).toMatch(/flex:\s*none/)
+    // 不该再有「按标题撑开」的宽度设定 —— 标题已经移到面板顶部
+    expect(block).not.toMatch(/flex:\s*0 1 \d+px/)
+  })
 
-    /**
-     * 宽度上限刻意钉住：用户先后要求 220px → 160px → 140px。
-     * 断言上限而不是精确值，既守住意图，又不妨碍以后微调。
-     */
-    const basis = Number(block.match(/flex:\s*0 1 (\d+)px/)?.[1] ?? 0)
-    expect(basis).toBeGreaterThan(0)
-    expect(basis, '会话下拉不该被改回更宽').toBeLessThanOrEqual(150)
+  it('触发器显示的是「历史会话」而不是当前标题', () => {
+    const at = CHAT.indexOf('class="session-trigger-label"')
+    const block = CHAT.slice(at, at + 200)
+    expect(block).toContain("t('studio.chat.sessionSelect')")
+    // 当前标题不该再出现在触发器里
+    expect(block).not.toContain('activeSession?.title')
   })
 
   it('窄宽度要靠收紧内边距补偿 —— × 固定占 22px，不收紧标题就只剩几个字', () => {
@@ -220,13 +223,18 @@ describe('会话管理与模型同一行', () => {
     expect(gap, '列表项间距应当收紧').toBeLessThanOrEqual(8)
   })
 
-  it('会话菜单的 min-width 不超过触发器宽度（否则会横向溢出到面板外）', () => {
-    const trigger = CHAT.slice(CHAT.indexOf('.chat-actions .session-dropdown'))
-    const basis = Number(trigger.match(/flex:\s*0 1 (\d+)px/)?.[1] ?? 0)
+  it('**菜单宽度必须独立于触发器**（跟随它会缩成按钮那么窄）', () => {
     const menu = CHAT.slice(CHAT.indexOf('.session-menu {'))
-    const minWidth = Number(menu.match(/min-width:\s*(\d+)px/)?.[1] ?? 0)
-    expect(minWidth).toBeGreaterThan(0)
-    expect(minWidth, '菜单最小宽度不该超过触发器').toBeLessThanOrEqual(basis)
+    // 必须剥掉注释再匹配：注释里为了说明这个陷阱，恰好写了 `right: 0` 这几个字
+    const block = menu.slice(0, 400).replace(/\/\*[\s\S]*?\*\//g, '')
+    // 必须有显式宽度
+    expect(block).toMatch(/width:\s*\d+px/)
+    /*
+      且**不能**同时用 `right: 0`：触发器现在只有约 60px 宽（「历史会话」+ 箭头），
+      `left: 0; right: 0` 会把列表压到和按钮一样窄，标题全被截掉。
+      这是本次改动最容易回归的点。
+    */
+    expect(block).not.toMatch(/right:\s*0/)
   })
 
   it('spacer 仍必须是 flex: 1（会话下拉移走后它是唯一撑开「@」的元素）', () => {
@@ -258,6 +266,46 @@ describe('模型上下文环紧挨引用资产按钮', () => {
   it('工具栏里的尺寸按按钮尺度收一档（否则把工具栏顶高）', () => {
     const scoped = CHAT.slice(CHAT.indexOf('.chat-toolbar .ctx-ring'))
     expect(scoped.slice(0, 300)).toMatch(/width:\s*24px/)
+  })
+})
+
+describe('当前会话标题显示在面板最上方', () => {
+  it('标题在 chat-status 内，且排在状态点之前（即面板顶部最左）', () => {
+    const statusAt = CHAT.indexOf('class="chat-status"')
+    const titleAt = CHAT.indexOf('class="chat-session-title"')
+    const dotAt = CHAT.indexOf('class="dot"')
+    expect(statusAt).toBeGreaterThan(0)
+    expect(titleAt).toBeGreaterThan(statusAt)
+    expect(dotAt).toBeGreaterThan(titleAt)
+  })
+
+  it('在消息区**之前**（确实是面板顶部，不是底部工具栏）', () => {
+    const titleAt = CHAT.indexOf('class="chat-session-title"')
+    const messagesAt = CHAT.indexOf('class="chat-messages-wrap"')
+    expect(messagesAt).toBeGreaterThan(titleAt)
+  })
+
+  it('长标题可收缩 + ellipsis，且有 max-width 不挤掉状态信息', () => {
+    const css = CHAT.slice(CHAT.indexOf('.chat-status .chat-session-title'))
+    const block = css.slice(0, 400)
+    expect(block).toMatch(/text-overflow:\s*ellipsis/)
+    expect(block).toMatch(/min-width:\s*0/)
+    expect(block).toMatch(/max-width:\s*\d+%/)
+  })
+
+  it('只此一处显示当前标题（触发器里不再重复）', () => {
+    // 模板里标题只渲染一次
+    expect(CHAT.split('class="chat-session-title"').length - 1).toBe(1)
+
+    const at = CHAT.indexOf('class="chat-session-title"')
+    const block = CHAT.slice(at, at + 260)
+    // `v-if="activeSession"` 守着，所以这里用的是非可选链访问
+    expect(block).toContain('activeSession.title')
+
+    // 触发器里不得再出现当前标题（它只显示「历史会话」）
+    const triggerAt = CHAT.indexOf('class="session-trigger-label"')
+    const trigger = CHAT.slice(triggerAt, triggerAt + 200)
+    expect(trigger).not.toContain('activeSession')
   })
 })
 
