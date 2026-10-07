@@ -134,20 +134,20 @@ describe('渲染层：「使用」走既有落盘链路', () => {
     )
   })
 
-  it('「使用」必须经 planAiWorkflow(useSeedOnly) + commitAiWorkflow', () => {
-    expect(VIEW).toMatch(/planAiWorkflow\(/)
-    expect(VIEW).toMatch(/useSeedOnly: true/)
-    expect(VIEW).toMatch(/commitAiWorkflow\(/)
-    // 顺序：先规划再落盘
-    const planAt = VIEW.indexOf('planAiWorkflow(')
-    const commitAt = VIEW.indexOf('commitAiWorkflow(')
-    expect(planAt).toBeGreaterThan(0)
-    expect(commitAt).toBeGreaterThan(planAt)
+  it('**市场不再负责「使用」**：落盘动作归 AI 对话（那里才有要做什么的上下文）', () => {
+    // 市场只做安装 / 卸载；落盘链路不该留在这里
+    expect(VIEW).not.toMatch(/planAiWorkflow\(/)
+    expect(VIEW).not.toMatch(/commitAiWorkflow\(/)
+    expect(VIEW).not.toContain('useMarketWorkflow')
+    expect(VIEW).not.toContain('readWorkflowBundle')
+    // 但要留下「去哪儿用」的指引，不能删得无声无息
+    expect(VIEW).toContain('marketplace.workflows.useInChatHint')
   })
 
-  it('未打开工程时拦下「使用」（落盘需要工程）', () => {
-    expect(VIEW).toMatch(/if \(!project\.isOpen\)/)
-    expect(VIEW).toContain('marketplace.workflows.needsProject')
+  it('市场窗口彻底不依赖工程（应用级功能）', () => {
+    // 「使用」需要在工程内落盘，因此原先要判断 project.isOpen；该动作移走后不再需要
+    expect(VIEW).not.toContain('useProjectStore')
+    expect(VIEW).not.toMatch(/project\.isOpen/)
   })
 
   it('缺依赖时先确认再装（acceptMissingTypes 是显式逃生门）', () => {
@@ -196,11 +196,7 @@ describe('渲染层：「使用」走既有落盘链路', () => {
     const detailAt = VIEW.indexOf('class="mp-detail"')
     expect(detailAt, '模板里应当有详情块').toBeGreaterThan(0)
 
-    for (const action of [
-      'installMarketWorkflow(card)',
-      'useMarketWorkflow(card)',
-      'uninstallMarketWorkflow(card)'
-    ]) {
+    for (const action of ['installMarketWorkflow(card)', 'uninstallMarketWorkflow(card)']) {
       const at = VIEW.indexOf(action)
       expect(at, `${action} 应当出现在卡片动作行里`).toBeGreaterThan(0)
       expect(at, `${action} 必须在详情块**之前**（即卡片上）`).toBeLessThan(detailAt)
@@ -215,11 +211,7 @@ describe('渲染层：「使用」走既有落盘链路', () => {
     const countWord = (needle: string): number =>
       VIEW.match(new RegExp(`(?<![A-Za-z])${needle.replace(/[()]/g, '\\$&')}`, 'g'))?.length ?? 0
 
-    for (const action of [
-      'installMarketWorkflow(card)',
-      'useMarketWorkflow(card)',
-      'uninstallMarketWorkflow(card)'
-    ]) {
+    for (const action of ['installMarketWorkflow(card)', 'uninstallMarketWorkflow(card)']) {
       expect(countWord(action), `${action} 应当只出现 1 次`).toBe(1)
     }
   })

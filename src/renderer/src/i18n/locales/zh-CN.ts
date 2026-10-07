@@ -843,10 +843,8 @@ export default {
       uninstall: '卸载',
       uninstallConfirm: '确定卸载「{title}」？本地已装的文件会被删除。',
       uninstalled: '已卸载「{title}」',
-      use: '使用',
-      using: '创建中…',
-      used: '已创建工作流：{title}',
-      needsProject: '请先打开一个工程 —— 工作流要落进工程里',
+      /** 市场只负责「装到本机」；用起来在 AI 对话里（那里才有要做什么的上下文） */
+      useInChatHint: '已装好 —— 到 AI 对话的「工作流」入口里使用它',
       reason: {
         network: '连不上远端市场（检查网络或换一个源地址）',
         schemaTooNew: '目录格式比本应用新，请先更新应用',
@@ -869,8 +867,6 @@ export default {
         cover: '封面获取失败',
         missingNodeTypes: '缺少这个工作流依赖的节点类型',
         appTooOld: '需要更新应用后才能使用',
-        planFailed: '工作流计划生成失败',
-        commitFailed: '工作流落盘失败',
         unknown: '未知错误'
       }
     },

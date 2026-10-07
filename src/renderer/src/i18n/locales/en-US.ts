@@ -856,10 +856,8 @@ export default {
       uninstall: 'Uninstall',
       uninstallConfirm: 'Uninstall “{title}”? The locally installed files are removed.',
       uninstalled: 'Uninstalled “{title}”',
-      use: 'Use',
-      using: 'Creating…',
-      used: 'Created workflow: {title}',
-      needsProject: 'Open a project first — a workflow has to land inside one',
+      /** 市场只负责「装到本机」；用起来在 AI 对话里 */
+      useInChatHint: 'Installed — use it from the “Workflows” entry in the AI chat',
       reason: {
         network: 'Cannot reach the remote market (check your network or use another source)',
         schemaTooNew: 'The catalog format is newer than this app — please update',
@@ -882,8 +880,6 @@ export default {
         cover: 'Could not fetch the cover',
         missingNodeTypes: 'This workflow needs node types this build lacks',
         appTooOld: 'Update the app to use this workflow',
-        planFailed: 'Could not build the workflow plan',
-        commitFailed: 'Could not save the workflow',
         unknown: 'Unknown error'
       }
     },

@@ -176,26 +176,13 @@
               <button
                 v-if="card.installed"
                 type="button"
-                class="mp-btn"
-                :disabled="usingId === card.marketId || !!card.blockReason"
-                @click="useMarketWorkflow(card)"
-              >
-                {{
-                  usingId === card.marketId
-                    ? t('marketplace.workflows.using')
-                    : t('marketplace.workflows.use')
-                }}
-              </button>
-              <button
-                v-if="card.installed"
-                type="button"
                 class="mp-btn danger"
                 @click="uninstallMarketWorkflow(card)"
               >
                 {{ t('marketplace.workflows.uninstall') }}
               </button>
             </template>
-            <!-- 详情是次要动作：往右推，与安装 / 使用 / 卸载分开，避免误点 -->
+            <!-- 详情是次要动作：往右推，与安装 / 卸载分开，避免误点 -->
             <button
               type="button"
               class="mp-btn"
@@ -293,13 +280,17 @@
               <p v-else-if="card.missingNodeTypes?.length" class="mp-hint error">
                 {{ t('marketplace.workflows.missingHint') }}
               </p>
-              <p v-if="card.installed && !project.isOpen" class="mp-hint">
-                {{ t('marketplace.workflows.needsProject') }}
+              <p v-if="card.installed" class="mp-hint">
+                {{ t('marketplace.workflows.useInChatHint') }}
               </p>
               <!--
-                安装 / 使用 / 卸载已移到卡片上（见 `.mp-card-actions`）。
-                这里只保留**说明性内容**：事实、依赖缺失、版本过低 —— 详情是「看清楚」的地方，
-                不是「唯一能操作」的地方。动作只留一处，避免两个位置各说各话。
+                安装 / 卸载在卡片上（见 `.mp-card-actions`）。
+                这里只保留**说明性内容**：事实、依赖缺失、版本过低、以及「去哪儿用」——
+                详情是「看清楚」的地方，不是「唯一能操作」的地方。
+
+                「使用」按钮已移除：落盘动作放在 AI 对话里（工具栏的工作流入口），
+                那里才有「要做哪条、还要补什么要求」的上下文。
+              -->
               -->
             </template>
             <template v-else>
@@ -392,7 +383,6 @@ import { DEFAULT_SETTINGS } from '@shared/domain'
 import type { ExternalMcpServer } from '@shared/externalMcp'
 import { workflowCategoryKey } from '@shared/workflowMarket'
 import { useStudioI18n } from '../composables/useStudioI18n'
-import { useProjectStore } from '../stores/project'
 import McpServerCard from '../components/marketplace/McpServerCard.vue'
 import McpBlenderCard from '../components/marketplace/McpBlenderCard.vue'
 import ExternalMcpConfig from '../components/marketplace/ExternalMcpConfig.vue'
@@ -423,7 +413,6 @@ import {
  */
 
 const { t } = useStudioI18n()
-const project = useProjectStore()
 
 /** 开发者文档（本站指南页）。这里没有「网页市场」：本仓库没有远端注册表，不做假入口 */
 const DEV_DOCS_URL = 'https://justin-sky.github.io/ai-art-engine/manual.html'
@@ -460,7 +449,6 @@ const workflowLoading = ref(false)
 /** 刷新失败但有旧内容可看：给软提示，不要用错误把已有内容顶掉 */
 const workflowRefreshFailed = ref(false)
 const installingId = ref<string | null>(null)
-const usingId = ref<string | null>(null)
 
 const category = ref<MarketplaceFilter>('all')
 const query = ref('')
@@ -471,7 +459,6 @@ const loadError = ref('')
 const busy = ref(false)
 const message = ref('')
 const isError = ref(false)
-
 /** 本窗口负责的设置片段；其余字段一律保留主进程里的现值 */
 const blenderMcp = reactive<AppSettings['blenderMcp']>(structuredClone(DEFAULT_SETTINGS.blenderMcp))
 /**
@@ -880,57 +867,10 @@ async function uninstallMarketWorkflow(card: MarketplaceCard): Promise<void> {
 }
 
 /**
- * 「使用」：把已安装的工作流落进当前工程。
- *
- * 走既有链路（`planAiWorkflow(useSeedOnly)` + `commitAiWorkflow`）—— **不调用模型**，
- * 因此零额度、零延迟。刻意不自己造物化逻辑：那条链已经处理了参数白名单与 warnings。
+ * 市场的职责到「装到本机」为止：**使用**（把工作流落进工程）放在 AI 对话里 ——
+ * 那里才有「要做哪条工作流、还要补什么要求」的上下文。
+ * 因此卡片上只有 安装 / 卸载，没有「使用」按钮。
  */
-async function useMarketWorkflow(card: MarketplaceCard): Promise<void> {
-  const id = card.marketId
-  if (!id || usingId.value) return
-  if (!project.isOpen) {
-    isError.value = true
-    message.value = t('marketplace.workflows.needsProject')
-    return
-  }
-  usingId.value = id
-  try {
-    const bundle = await window.studio.readWorkflowBundle(id)
-    if (!bundle.ok || !bundle.bundle) {
-      isError.value = true
-      message.value = t(`marketplace.workflows.reason.${bundle.reasonKey ?? 'readFailed'}`)
-      return
-    }
-    const planned = await window.studio.planAiWorkflow({
-      prompt: bundle.bundle.summary,
-      seedPlan: bundle.bundle.plan as never,
-      useSeedOnly: true
-    })
-    if (!planned.ok || !planned.plan) {
-      isError.value = true
-      message.value = planned.error ?? t('marketplace.workflows.reason.planFailed')
-      return
-    }
-    const committed = await window.studio.commitAiWorkflow({
-      plan: planned.plan,
-      name: bundle.bundle.title
-    })
-    if (!committed.ok) {
-      isError.value = true
-      message.value = committed.warnings?.[0] ?? t('marketplace.workflows.reason.commitFailed')
-      return
-    }
-    message.value = t('marketplace.workflows.used', {
-      title: committed.title ?? bundle.bundle.title
-    })
-    isError.value = false
-  } catch (e) {
-    isError.value = true
-    message.value = e instanceof Error ? e.message : String(e)
-  } finally {
-    usingId.value = null
-  }
-}
 
 onMounted(async () => {
   try {
