@@ -2945,10 +2945,10 @@ onBeforeUnmount(() => {
             </li>
           </ul>
         </div>
-        <span class="toolbar-spacer" />
         <!--
-          模型上下文（环形用量）紧挨在引用资产按钮左边：
-          两者都在回答「这条消息会带什么上下文」，放在一起比拆到两行更好读。
+          模型上下文（环形用量）放在**左侧工具组末尾**。
+          它原先在 spacer 之后、贴着引用资产按钮，于是被推到整行最右；
+          移到 spacer 之前即可归入左侧工具组，位置稳定不再随行宽浮动。
         -->
         <div
           v-if="contextUsageText"
@@ -2958,6 +2958,7 @@ onBeforeUnmount(() => {
         >
           <div class="ctx-ring" :style="{ '--ctx-pct': ringPct }" aria-hidden="true" />
         </div>
+        <span class="toolbar-spacer" />
         <button
           class="tool-btn mention"
           :title="t('studio.chat.mentionTitle')"

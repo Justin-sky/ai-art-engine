@@ -243,7 +243,7 @@ describe('会话管理与模型同一行', () => {
   })
 })
 
-describe('模型上下文环紧挨引用资产按钮', () => {
+describe('模型上下文环在左侧工具组', () => {
   it('用量环在 chat-toolbar 内，且排在引用资产按钮**之前**', () => {
     const toolbarAt = CHAT.indexOf('class="chat-toolbar"')
     const ringAt = CHAT.indexOf('class="context-usage"')
@@ -251,6 +251,15 @@ describe('模型上下文环紧挨引用资产按钮', () => {
     expect(toolbarAt).toBeGreaterThan(0)
     expect(ringAt).toBeGreaterThan(toolbarAt)
     expect(mentionAt).toBeGreaterThan(ringAt)
+  })
+
+  it('**排在 spacer 之前** —— 否则会被推到整行最右（这就是「靠左点」要解决的问题）', () => {
+    const ringAt = CHAT.indexOf('class="context-usage"')
+    const spacerAt = CHAT.indexOf('class="toolbar-spacer"')
+    expect(ringAt).toBeGreaterThan(0)
+    expect(spacerAt).toBeGreaterThan(0)
+    // spacer 是 `flex: 1` 的弹性空白；放在它之后的元素都会被顶到右边
+    expect(ringAt, '用量环必须在 spacer 之前，才归入左侧工具组').toBeLessThan(spacerAt)
   })
 
   it('**只此一处**（移走时不能留下旧的）', () => {
