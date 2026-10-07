@@ -2,6 +2,7 @@ import type { AppSettings, AssetFolder, AssetInfo, AssetType, ProjectConfig } fr
 import type { ExternalMcpServer } from './externalMcp'
 import type { GitFileDiffInput, GitFileDiffResult, GitStatusResult } from './git'
 import type { ProjectOutputFile } from './outputScan'
+import type { WorkflowSkillManifest } from './workflowMarket'
 import type { WorkspaceToolbarItem } from './workspaceToolbar'
 import type {
   TimelineExportInput,
@@ -1020,8 +1021,11 @@ export interface BuildGamePlayProjectResult {
 /** Skills：dsh 技能目录中的一个文件 */
 export interface DshSkillsFile {
   fileName: string
-  /** builtin=应用内置技能快照生成；custom=用户自定义技能(.md)；template=示例模板 */
-  kind: 'builtin' | 'custom' | 'template'
+  /**
+   * builtin=应用内置技能快照生成；custom=用户自定义技能(.md)；
+   * template=示例模板；bundle=目录型技能包（`<name>/SKILL.md`，通常随市场工作流安装）
+   */
+  kind: 'builtin' | 'custom' | 'template' | 'bundle'
   /**
    * 展示标题（内置项取 GraphSkill 的中文标题，如「图片生成」）。
    *
@@ -1031,6 +1035,15 @@ export interface DshSkillsFile {
   title: string
   /** 展示描述；取不到时省略（调用方不渲染这一行） */
   description?: string
+  /**
+   * 技能包内是否含 `scripts/`。
+   *
+   * dsh 的技能层**没有脚本沙箱也没有同意流**，脚本能否执行取决于通用 shell；
+   * 应用当前也还没实现审批应答。所以界面必须让用户看见这一点，而不是装作无事发生。
+   */
+  hasScripts?: boolean
+  /** 技能包内的文件数（不含 SKILL.md 自身） */
+  extraFileCount?: number
 }
 
 /**
@@ -1097,6 +1110,8 @@ export interface WorkflowMarketEntryView {
   installed: boolean
   installedVersion: string | null
   updatable: boolean
+  /** 随包附带的 dsh 技能包清单；有它时界面显示「含技能 / 含脚本」 */
+  skill?: WorkflowSkillManifest
 }
 
 export interface WorkflowMarketFetchResult {
@@ -1593,6 +1608,11 @@ export interface StudioApi {
   installWorkflowMarket: (input: {
     id: string
     acceptMissingTypes?: boolean
+    /**
+     * 随包附带的技能包清单（来自索引条目）。主进程会重新校验路径与 SKILL.md，
+     * 因此这里传的是「用户点的那一条条目」而不是一份需要被信任的数据。
+     */
+    skill?: WorkflowSkillManifest
   }) => Promise<WorkflowMarketActionResult>
   uninstallWorkflowMarket: (id: string) => Promise<WorkflowMarketActionResult>
   /** 已安装清单 */

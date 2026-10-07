@@ -40,6 +40,35 @@ export interface WorkflowMarketEntry {
   edgeCount: number
   /** 工作流文件体积（下载前可预判） */
   sizeBytes?: number
+  /** 可选：随本条工作流一起安装的 dsh 技能包（清单由仓库脚本从磁盘派生） */
+  skill?: WorkflowSkillManifest
+}
+
+/**
+ * 工作流附带的 dsh 技能包（`workflows/<id>/skill/`）。
+ *
+ * 技能是**给 AI 对话 agent 的操作手册**，绑定到这条工作流：`plan` 表达不了的循环、
+ * 分支、"先看结果再决定下一步"由 agent 承担。用户装上工作流，agent 也就学会了怎么用它。
+ *
+ * 清单**只存在于索引里**：raw 源没有目录列表 API，客户端必须先知道每个文件路径才能下载；
+ * 而这份清单由仓库脚本从磁盘派生，所以不可能与磁盘漂移。
+ */
+export interface WorkflowSkillManifest {
+  /** 技能名，仓库侧强制为 `wf-<工作流 id>`（`wf-` 前缀用于避开内置技能） */
+  name: string
+  description: string
+  /** 相对 `skill/` 的入口文件，固定 `SKILL.md` */
+  entry: string
+  /** 含 `scripts/` 时为 true —— 客户端本轮**不安装**脚本，只用于界面提示 */
+  hasScripts: boolean
+  /** 相对 `skill/` 的文件清单 */
+  files: WorkflowSkillFile[]
+  sizeBytes: number
+}
+
+export interface WorkflowSkillFile {
+  path: string
+  sizeBytes?: number
 }
 
 /** 工作流对应用的要求 */
@@ -180,8 +209,120 @@ export function parseWorkflowMarketEntry(raw: unknown): WorkflowMarketEntry | nu
     requires: asRequirement(obj.requires),
     nodeCount: asCount(obj.nodeCount),
     edgeCount: asCount(obj.edgeCount),
-    ...(sizeBytes > 0 ? { sizeBytes } : {})
+    ...(sizeBytes > 0 ? { sizeBytes } : {}),
+    ...(() => {
+      const skill = parseWorkflowSkillManifest(obj.skill)
+      return skill ? { skill } : {}
+    })()
   }
+}
+
+/**
+ * 技能包相对路径白名单校验。
+ *
+ * 这些路径会被拼进本地目录再写入，因此必须挡住穿越与绝对路径 —— 索引是**远端内容**，
+ * 不能假定它善意。反斜杠一并拒绝：Windows 上 `..\\..` 与 `../..` 等价。
+ */
+export function isSafeSkillFilePath(path: string): boolean {
+  if (!path || path.length > 200) return false
+  if (path.includes('\\') || path.includes('\0')) return false
+  if (path.startsWith('/') || /^[a-zA-Z]:/.test(path)) return false
+  const segments = path.split('/')
+  if (segments.some((segment) => !segment || segment === '.' || segment === '..')) return false
+  // 只允许 SKILL.md 与三个约定子目录下的文件（与仓库 validator 同一口径）
+  if (path === 'SKILL.md') return true
+  return /^(references|scripts|assets)\/[^/]+$/.test(path)
+}
+
+/**
+ * 解析索引条目里的技能包段。
+ *
+ * 非法时返回 `null` —— 调用方据此**只丢掉技能段、保留整条工作流**：
+ * 一个坏技能不该让整条工作流从市场里消失。
+ */
+export function parseWorkflowSkillManifest(raw: unknown): WorkflowSkillManifest | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const obj = raw as Record<string, unknown>
+  const name = asString(obj.name)
+  const description = asString(obj.description)
+  const entry = asString(obj.entry) || 'SKILL.md'
+  if (!ID_RE.test(name) || !description || entry !== 'SKILL.md') return null
+  if (!Array.isArray(obj.files)) return null
+
+  const files: WorkflowSkillFile[] = []
+  const seen = new Set<string>()
+  for (const item of obj.files) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return null
+    const filePath = asString((item as Record<string, unknown>).path)
+    if (!isSafeSkillFilePath(filePath) || seen.has(filePath)) return null
+    seen.add(filePath)
+    const sizeBytes = asCount((item as Record<string, unknown>).sizeBytes)
+    files.push({ path: filePath, ...(sizeBytes > 0 ? { sizeBytes } : {}) })
+  }
+  // 没有入口文件就装不出可用技能 —— 与其装个残缺包，不如当它没带技能
+  if (!files.some((file) => file.path === entry)) return null
+
+  const sizeBytes = asCount(obj.sizeBytes)
+  return {
+    name,
+    description,
+    entry,
+    hasScripts: obj.hasScripts === true,
+    files,
+    sizeBytes: sizeBytes > 0 ? sizeBytes : files.reduce((sum, f) => sum + (f.sizeBytes ?? 0), 0)
+  }
+}
+
+/** 扁平 frontmatter 解析（与仓库 validator 同一口径：只认 `key: value`） */
+export function parseSkillFrontmatter(text: string): Record<string, string> | null {
+  const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(text)
+  if (!match) return null
+  const data: Record<string, string> = {}
+  for (const rawLine of match[1]!.split(/\r?\n/)) {
+    const line = rawLine.trim()
+    if (!line || line.startsWith('#')) continue
+    const kv = /^([A-Za-z][\w-]*):\s*(.*)$/.exec(line)
+    if (!kv) return null
+    let value = kv[2]!.trim()
+    if (
+      (value.startsWith('"') && value.endsWith('"') && value.length > 1) ||
+      (value.startsWith("'") && value.endsWith("'") && value.length > 1)
+    ) {
+      value = value.slice(1, -1)
+    }
+    data[kv[1]!] = value
+  }
+  return data
+}
+
+/** dsh 会对这些 camelCase 旧键直接抛错（并被它自己降级为"忽略该技能"） */
+const LEGACY_SKILL_INVOCATION_KEYS = [
+  'disableModelInvocation',
+  'modelInvocable',
+  'userInvocable'
+] as const
+
+/**
+ * 安装前校验下载到的 `SKILL.md`。
+ *
+ * **为什么必须在安装时校验**：dsh 对不合法的技能是**静默忽略**（只写一行日志）。
+ * 不做这一步，用户会看到「安装成功」而 agent 那里什么都没有 —— 这是最难排查的一类故障。
+ * 宁可安装失败并给出明确原因，也不要留下一个装了却不生效的技能包。
+ */
+export function validateSkillEntryText(
+  text: string,
+  expectedName: string
+): { ok: true } | { ok: false; reasonKey: string } {
+  const data = parseSkillFrontmatter(text)
+  if (!data) return { ok: false, reasonKey: 'skillNoFrontmatter' }
+  for (const key of LEGACY_SKILL_INVOCATION_KEYS) {
+    if (Object.hasOwn(data, key)) return { ok: false, reasonKey: 'skillLegacyInvocationKey' }
+  }
+  const name = (data.name ?? '').trim()
+  if (!ID_RE.test(name)) return { ok: false, reasonKey: 'skillBadName' }
+  if (name !== expectedName) return { ok: false, reasonKey: 'skillNameMismatch' }
+  if (!(data.description ?? '').trim()) return { ok: false, reasonKey: 'skillNoDescription' }
+  return { ok: true }
 }
 
 /**
@@ -433,12 +574,20 @@ export function workflowMarketUrls(source: string): {
   index: string
   bundle: (id: string) => string
   cover: (entry: Pick<WorkflowMarketEntry, 'id' | 'cover'>) => string | null
+  /** 技能包内单个文件；路径不合法时返回 null（不发出请求） */
+  skillFile: (id: string, filePath: string) => string | null
 } {
   const base = source.replace(/\/+$/, '')
   return {
     index: `${base}/index.json`,
     bundle: (id: string) => `${base}/workflows/${id}/workflow.json`,
-    cover: (entry) => (entry.cover ? `${base}/workflows/${entry.id}/${entry.cover}` : null)
+    cover: (entry) => (entry.cover ? `${base}/workflows/${entry.id}/${entry.cover}` : null),
+    /**
+     * 技能包内单个文件。路径来自索引清单（远端内容），因此**先过白名单**再拼 URL：
+     * 这条 URL 会交给下载器，不能让远端用 `../` 把请求引到别处。
+     */
+    skillFile: (id: string, filePath: string) =>
+      isSafeSkillFilePath(filePath) ? `${base}/workflows/${id}/skill/${filePath}` : null
   }
 }
 

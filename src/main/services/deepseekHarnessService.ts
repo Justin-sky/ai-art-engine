@@ -41,6 +41,7 @@ import {
 } from './dshHideChildWindowsHook'
 import { patchBrowserGuard } from './dshBrowserGuardPatch'
 import { patchAclSandboxConsole } from './dshSandboxConsolePatch'
+import { dshHome, dshSkillsDir } from './dshPaths'
 import {
   clearActiveHarnessRun,
   confirmHarnessRunAccess,
@@ -178,11 +179,6 @@ function emitStatus(text: string, tone: StatusTone = 'waiting'): void {
 /** 剥离 ANSI 颜色码 / 控制字符，保留可读文本 */
 function stripAnsi(text: string): string {
   return text.replace(/\u001b\[[0-9;]*m/g, '').replace(/\r/g, '')
-}
-
-/** dsh 配置根目录（userData 下，避免污染工程目录） */
-function dshHome(): string {
-  return join(app.getPath('userData'), 'dsh-harness')
 }
 
 /**
@@ -663,7 +659,7 @@ function writeDshSkills(): void {
   try {
     const home = dshHome()
     mkdirSync(home, { recursive: true })
-    const skillsDir = join(home, 'skills')
+    const skillsDir = dshSkillsDir()
     mkdirSync(skillsDir, { recursive: true })
     const manifestPath = join(skillsDir, DSH_SKILLS_MANIFEST)
     const { previous, signature: lastSignature } = readDshSkillsManifest()
@@ -724,15 +720,35 @@ function readDshSkillsManifest(): { previous: string[]; signature: string } {
 const DSH_SKILLS_TEMPLATE_FILE = 'my-skill.example'
 
 /** 查询 dsh 技能目录信息（插件市场展示用） */
+/**
+ * dsh 技能目录（`$DSH_HOME/skills`）。
+ *
+ * 实现是 `./dshPaths` 里的：市场安装工作流附带的技能包也落在这里，必须与快照/列举/清理
+ * 用同一个路径，但市场服务**不能**反向 import 本文件（本文件有 `virtual:` 构建期依赖，
+ * 被测试引用会整个模块加载失败）。所以路径抽到独立小文件共享。
+ */
 export function getDshSkillsInfo(): DshSkillsInfo {
-  const skillsDir = join(dshHome(), 'skills')
+  const skillsDir = dshSkillsDir()
   const files: DshSkillsFile[] = []
   // 内置项的文件名是 GraphSkill id 的 kebab-case 化，反查回标题与描述给界面用
   const builtinDisplay = builtinSkillDisplayMap(listGraphSkills())
   if (existsSync(skillsDir)) {
     const builtin = new Set(readDshSkillsManifest().previous)
     for (const entry of readdirSync(skillsDir, { withFileTypes: true })) {
-      if (!entry.isFile() || entry.name === DSH_SKILLS_MANIFEST) continue
+      if (entry.name === DSH_SKILLS_MANIFEST) continue
+      /**
+       * 目录型技能包（`<name>/SKILL.md`）。
+       *
+       * dsh 本身**认这种布局**（`skill-filesystem` 遇到目录就找 `<dir>/SKILL.md`，深度 1），
+       * 所以它一直对 agent 生效 —— 但早先这里只认文件，于是「agent 看得见、界面看不见」。
+       * 市场工作流附带的技能包正是这种形态，不认它就会让用户装了却找不到任何痕迹。
+       */
+      if (entry.isDirectory()) {
+        const bundle = readSkillBundleInfo(skillsDir, entry.name)
+        if (bundle) files.push(bundle)
+        continue
+      }
+      if (!entry.isFile()) continue
       const kind: DshSkillsFile['kind'] = builtin.has(entry.name)
         ? 'builtin'
         : entry.name.endsWith('.md')
@@ -768,9 +784,43 @@ function readSkillFileSafe(filePath: string): string | undefined {
   }
 }
 
+/**
+ * 把一个目录型技能包读成界面条目；不是合法技能包时返回 null。
+ *
+ * 判据与 dsh 一致：目录下必须有 `SKILL.md`（只认深度 1，不做递归 —— dsh 也只扫一层，
+ * 递归会让界面显示出 dsh 根本不会加载的东西）。
+ */
+function readSkillBundleInfo(skillsDir: string, name: string): DshSkillsFile | null {
+  const content = readSkillFileSafe(join(skillsDir, name, 'SKILL.md'))
+  if (content === undefined) return null
+  let hasScripts = false
+  let extraFileCount = 0
+  try {
+    for (const entry of readdirSync(join(skillsDir, name), { withFileTypes: true })) {
+      if (entry.name === 'SKILL.md') continue
+      if (entry.isDirectory()) {
+        if (entry.name === 'scripts') hasScripts = true
+        continue
+      }
+      extraFileCount += 1
+    }
+  } catch {
+    // 读不到内部结构不影响「这是一个技能包」这个结论
+  }
+  const front = parseDshSkillFrontmatter(content)
+  return {
+    fileName: name,
+    kind: 'bundle',
+    title: front.name ?? name,
+    ...(front.description ? { description: front.description } : {}),
+    hasScripts,
+    extraFileCount
+  }
+}
+
 /** 在系统文件管理器中打开 dsh 技能目录（不存在则先创建） */
 export async function openDshSkillsDir(): Promise<void> {
-  const skillsDir = join(dshHome(), 'skills')
+  const skillsDir = dshSkillsDir()
   mkdirSync(skillsDir, { recursive: true })
   const error = await shell.openPath(skillsDir)
   if (error) throw new Error(error)
@@ -778,7 +828,7 @@ export async function openDshSkillsDir(): Promise<void> {
 
 /** 写入一个示例 SKILL.md 模板；同名文件已存在时跳过（不覆盖用户可能改动过的内容） */
 export function writeDshSkillsTemplate(): DshSkillsTemplateResult {
-  const skillsDir = join(dshHome(), 'skills')
+  const skillsDir = dshSkillsDir()
   mkdirSync(skillsDir, { recursive: true })
   const filePath = join(skillsDir, DSH_SKILLS_TEMPLATE_FILE)
   if (existsSync(filePath)) return { filePath, skipped: true }
@@ -808,7 +858,7 @@ export function listSkillTemplates(): SkillTemplate[] {
 export function exportSkillTemplate(id: string): DshSkillsTemplateResult {
   const template = listSkillTemplates().find((item) => item.id === id)
   if (!template) throw new Error(`Unknown skill template: ${id}`)
-  const skillsDir = join(dshHome(), 'skills')
+  const skillsDir = dshSkillsDir()
   mkdirSync(skillsDir, { recursive: true })
   const filePath = join(skillsDir, `${template.name}.example`)
   if (existsSync(filePath)) return { filePath, skipped: true }
@@ -871,10 +921,30 @@ export function getSessionSkills(): SessionSkill[] {
       description: `${skill.titleEn} — ${skill.titleZh}`
     })
   }
-  const skillsDir = join(dshHome(), 'skills')
+  const skillsDir = dshSkillsDir()
   const builtinFiles = new Set(readDshSkillsManifest().previous)
   if (existsSync(skillsDir)) {
     for (const entry of readdirSync(skillsDir, { withFileTypes: true })) {
+      /**
+       * 目录型技能包同样要进会话技能清单 —— 它**对 agent 是生效的**（dsh 认这种布局）。
+       * 不列出来的话，用户在对话里看不到自己刚随工作流装上的技能，会以为没装上。
+       */
+      if (entry.isDirectory()) {
+        try {
+          const content = readFileSync(join(skillsDir, entry.name, 'SKILL.md'), 'utf8')
+          const frontmatter = parseDshSkillFrontmatter(content)
+          const name = frontmatter.name || entry.name
+          if (builtinNames.has(name)) continue
+          skills.push({
+            name,
+            kind: 'custom',
+            description: frontmatter.description || name
+          })
+        } catch {
+          // 没有 SKILL.md 就不是技能包（普通目录不该出现在清单里）
+        }
+        continue
+      }
       if (!entry.isFile() || !entry.name.endsWith('.md') || builtinFiles.has(entry.name)) continue
       try {
         const content = readFileSync(join(skillsDir, entry.name), 'utf8')
@@ -908,10 +978,22 @@ export function importCustomSkillsToGraph(): SkillImportResult {
     }
   }
   importedSkillDisposes.clear()
-  const skillsDir = join(dshHome(), 'skills')
+  const skillsDir = dshSkillsDir()
   const builtinFiles = new Set(readDshSkillsManifest().previous)
   if (existsSync(skillsDir)) {
     for (const entry of readdirSync(skillsDir, { withFileTypes: true })) {
+      /**
+       * 目录型技能包（`<name>/SKILL.md`）**不参与反向导入**，且刻意**不记入 `skipped`**。
+       *
+       * 不导入：这是"本来就不该导入"，不是"读不懂"。反向导入是把技能正文变成 GraphSkill
+       * 的提示词段（给节点用 `skillId` 绑定），而技能包是给 agent 的操作手册、还带
+       * references 与可能的脚本，绑到节点的系统提示词上是错的。
+       *
+       * 不记 skipped：`skipped` 在界面上是**失败**通道（无导入项时会以红色报错列出这些名字）。
+       * 把技能包塞进去，会在用户只装了市场技能时弹出一个假的失败提示。
+       * 技能包的可见性由技能清单负责（见 getDshSkillsInfo / getSessionSkills），那里才是它该出现的地方。
+       */
+      if (entry.isDirectory()) continue
       if (!entry.isFile() || !entry.name.endsWith('.md') || builtinFiles.has(entry.name)) continue
       try {
         const content = readFileSync(join(skillsDir, entry.name), 'utf8')

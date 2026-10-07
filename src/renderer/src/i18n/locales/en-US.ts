@@ -858,6 +858,13 @@ export default {
       uninstalled: 'Uninstalled “{title}”',
       /** 市场只负责「装到本机」；用起来在 AI 对话里 */
       useInChatHint: 'Installed — use it from the “Workflows” entry in the AI chat',
+      /** Card badge: tell the user, before installing, that the agent gains a playbook */
+      skillIncluded: 'Includes skill',
+      skillWithScripts: 'Includes skill + scripts',
+      skillDetail:
+        'Ships a skill “{name}”: once installed, the agent in AI chat uses it to operate this workflow.',
+      skillScriptsNote:
+        'This skill bundle contains scripts. For safety, only the instructions and references are installed this round — no scripts are written to disk.',
       reason: {
         network: 'Cannot reach the remote market (check your network or use another source)',
         schemaTooNew: 'The catalog format is newer than this app — please update',
@@ -880,6 +887,16 @@ export default {
         cover: 'Could not fetch the cover',
         missingNodeTypes: 'This workflow needs node types this build lacks',
         appTooOld: 'Update the app to use this workflow',
+        skillBadPath: 'The skill bundle contains an invalid file path',
+        skillMissingEntry: 'The skill bundle is missing SKILL.md',
+        skillNoFrontmatter:
+          'The skill bundle SKILL.md is missing its frontmatter (must start with ---)',
+        skillBadName:
+          'The skill bundle name is invalid (lowercase letters / digits / hyphens only)',
+        skillNameMismatch: 'The skill bundle name does not match what the directory declares',
+        skillNoDescription: 'The skill bundle SKILL.md is missing its description',
+        skillLegacyInvocationKey:
+          'The skill bundle uses a form dsh rejects (disableModelInvocation and friends) — ask the author to use kebab-case',
         unknown: 'Unknown error'
       }
     },
@@ -964,7 +981,8 @@ export default {
       skill: {
         builtin: 'Built-in',
         custom: 'Custom',
-        template: 'Template'
+        template: 'Template',
+        bundle: 'Skill bundle'
       }
     }
   },

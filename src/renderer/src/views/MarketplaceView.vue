@@ -148,6 +148,22 @@
                 >· {{ t('marketplace.workflows.nodes', { count: card.nodeCount }) }}</template
               >
             </span>
+            <!--
+              随包附带技能时必须在**装之前**就看得见：装完 agent 手里会多一份操作手册，
+              这是用户判断「要不要装」的信息；含脚本则更要提前说清。
+            -->
+            <span
+              v-if="card.skill"
+              class="mp-card-state"
+              :title="card.skill.description"
+              :class="{ warn: card.skill.hasScripts }"
+            >
+              {{
+                card.skill.hasScripts
+                  ? t('marketplace.workflows.skillWithScripts')
+                  : t('marketplace.workflows.skillIncluded')
+              }}
+            </span>
             <span class="mp-card-meta">{{ card.meta }}</span>
           </div>
 
@@ -284,13 +300,22 @@
                 {{ t('marketplace.workflows.useInChatHint') }}
               </p>
               <!--
+                技能包说明：让「装之前」和「装之后」都能看清 agent 会拿到什么。
+                含脚本时**必须**明说本轮不装脚本 —— 否则用户会以为那些脚本已经能跑了。
+              -->
+              <p v-if="card.skill" class="mp-hint">
+                {{ t('marketplace.workflows.skillDetail', { name: card.skill.name }) }}
+              </p>
+              <p v-if="card.skill?.hasScripts" class="mp-hint error">
+                {{ t('marketplace.workflows.skillScriptsNote') }}
+              </p>
+              <!--
                 安装 / 卸载在卡片上（见 `.mp-card-actions`）。
                 这里只保留**说明性内容**：事实、依赖缺失、版本过低、以及「去哪儿用」——
                 详情是「看清楚」的地方，不是「唯一能操作」的地方。
 
                 「使用」按钮已移除：落盘动作放在 AI 对话里（工具栏的工作流入口），
                 那里才有「要做哪条、还要补什么要求」的上下文。
-              -->
               -->
             </template>
             <template v-else>
@@ -831,7 +856,10 @@ async function installMarketWorkflow(card: MarketplaceCard): Promise<void> {
   try {
     const result = await window.studio.installWorkflowMarket({
       id,
-      acceptMissingTypes: missing.length > 0
+      acceptMissingTypes: missing.length > 0,
+      // 把用户点的这条条目里的技能清单原样带过去：主进程会重新校验，
+      // 但「装哪个技能」必须与卡片上写的一致，否则界面就在骗人
+      ...(card.skill ? { skill: card.skill } : {})
     })
     if (!result.ok) {
       isError.value = true
@@ -1163,6 +1191,11 @@ onMounted(async () => {
 
 .mp-card-state.on .mp-dot {
   background: var(--success);
+}
+
+/* 含脚本的技能包：需要用户留意，不能与普通状态一样是灰的 */
+.mp-card-state.warn {
+  color: var(--warning);
 }
 
 .mp-card-actions {

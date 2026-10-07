@@ -845,6 +845,12 @@ export default {
       uninstalled: '已卸载「{title}」',
       /** 市场只负责「装到本机」；用起来在 AI 对话里（那里才有要做什么的上下文） */
       useInChatHint: '已装好 —— 到 AI 对话的「工作流」入口里使用它',
+      /** 卡片上的技能标记：装之前就要让用户知道 agent 会多拿到一份操作手册 */
+      skillIncluded: '含技能',
+      skillWithScripts: '含技能 · 含脚本',
+      skillDetail: '随包附带技能「{name}」，装好后 AI 对话里的 agent 会用它来操作这条工作流。',
+      skillScriptsNote:
+        '这个技能包含脚本。出于安全考虑，本轮只安装说明书与 references，脚本不会落盘。',
       reason: {
         network: '连不上远端市场（检查网络或换一个源地址）',
         schemaTooNew: '目录格式比本应用新，请先更新应用',
@@ -867,6 +873,14 @@ export default {
         cover: '封面获取失败',
         missingNodeTypes: '缺少这个工作流依赖的节点类型',
         appTooOld: '需要更新应用后才能使用',
+        skillBadPath: '技能包里有不合法的文件路径',
+        skillMissingEntry: '技能包里缺少 SKILL.md',
+        skillNoFrontmatter: '技能包的 SKILL.md 缺少 frontmatter（必须以 --- 开头）',
+        skillBadName: '技能包的名称不合法（须为小写字母 / 数字 / 连字符）',
+        skillNameMismatch: '技能包的名称与目录里声明的不一致',
+        skillNoDescription: '技能包的 SKILL.md 缺少 description',
+        skillLegacyInvocationKey:
+          '技能包用了 dsh 不接受的旧写法（disableModelInvocation 等），请让作者改用 kebab-case',
         unknown: '未知错误'
       }
     },
@@ -947,7 +961,8 @@ export default {
       skill: {
         builtin: '内置',
         custom: '自定义',
-        template: '模板'
+        template: '模板',
+        bundle: '技能包'
       }
     }
   },

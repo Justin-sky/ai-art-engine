@@ -18,7 +18,7 @@
  */
 
 import { app } from 'electron'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { listNodeTypes } from '@shared/graph'
 import type {
@@ -33,12 +33,15 @@ import {
   parseWorkflowBundle,
   parseWorkflowMarketIndex,
   resolveWorkflowMarketSources,
+  validateSkillEntryText,
   workflowEntryBlockReason,
   workflowMarketUrls,
   type WorkflowBundle,
-  type WorkflowMarketEntry
+  type WorkflowMarketEntry,
+  type WorkflowSkillManifest
 } from '@shared/workflowMarket'
 import { MarketPipeline, sha256OfBytes } from './marketPipeline'
+import { dshSkillsDir } from './dshPaths'
 import { settingsService } from './settingsService'
 import { updateService } from './updateService'
 
@@ -51,6 +54,13 @@ export interface InstalledWorkflowRecord {
   source: string
   /** 安装时的内容哈希，用于判断「已装的是不是当前索引那一份」 */
   contentHash?: string
+  /**
+   * 随本条工作流装上的技能名（`wf-<id>`）。
+   *
+   * 卸载时**只按这个名字删**，绝不按前缀批量删 —— 用户可能自己建了同名/同前缀的目录，
+   * 批量删会把用户的东西一起带走。
+   */
+  skillName?: string
 }
 
 const KIND = 'workflow-market'
@@ -429,6 +439,14 @@ export function listInstalledWorkflowDetails(): Array<
 export async function installWorkflow(input: {
   id: string
   acceptMissingTypes?: boolean
+  /**
+   * 索引条目里的技能包清单（界面点安装时把它一并传进来）。
+   *
+   * 由界面传入而非在主进程重取索引：用户点的就是那一条条目，两者必须是同一个对象，
+   * 否则会出现「卡片说含技能、装的却是另一份」的漂移。主进程仍会**重新校验**全部字段
+   *（路径白名单 + SKILL.md frontmatter），所以这不等于信任界面。
+   */
+  skill?: WorkflowSkillManifest
 }): Promise<WorkflowMarketActionResult> {
   const sources = orderedSources()
   const failures: string[] = []
@@ -457,7 +475,7 @@ export async function installWorkflow(input: {
 async function installFromSource(
   source: string,
   urls: ReturnType<typeof workflowMarketUrls>,
-  input: { id: string; acceptMissingTypes?: boolean },
+  input: { id: string; acceptMissingTypes?: boolean; skill?: WorkflowSkillManifest },
   failures: string[]
 ): Promise<WorkflowMarketActionResult | null> {
   let bundleRaw: unknown
@@ -511,6 +529,24 @@ async function installFromSource(
     return null
   }
 
+  /**
+   * 技能包：**与工作流同生共死**。
+   *
+   * 卡片上写着「含技能」，若技能没装上而工作流留着，用户会以为 agent 拿到了说明书 ——
+   * 能力缺失却是静默的，正是最难排查的一类问题。所以技能装失败就把工作流一并卸掉，
+   * 宁可整体失败并给出明确原因，也不留半成品。安装是幂等的，重试即可。
+   */
+  const skillResult = await installSkillBundle(urls, bundle.id, input.skill)
+  if (skillResult && !skillResult.ok) {
+    getPipeline().uninstall(targetDir)
+    return {
+      ok: false,
+      reasonKey: skillResult.reasonKey,
+      error: skillResult.error ?? input.skill?.name
+    }
+  }
+  const skillName = skillResult?.ok ? skillResult.name : null
+
   // 记下成功安装的源，后续 bundle / cover 优先走它
   activeSource = source
   const records = listInstalledWorkflows().filter((item) => item.id !== bundle.id)
@@ -519,17 +555,87 @@ async function installFromSource(
     version: bundle.version,
     installedAt: new Date().toISOString(),
     source,
-    contentHash: sha256OfBytes(new TextEncoder().encode(JSON.stringify(bundle.plan))).slice(0, 16)
+    contentHash: sha256OfBytes(new TextEncoder().encode(JSON.stringify(bundle.plan))).slice(0, 16),
+    ...(typeof skillName === 'string' ? { skillName } : {})
   })
   writeRecords(records)
   return { ok: true }
+}
+
+/**
+ * 安装技能包到 dsh 技能根（`$DSH_HOME/skills/<name>`）。
+ *
+ * 返回装上的技能名；没有技能返回 `null`；失败返回 `false`（调用方据此回滚工作流）。
+ *
+ * 两点刻意的取舍：
+ * - **不安装 `scripts/`**：dsh 技能层没有脚本沙箱也没有同意流，应用也还没实现审批应答，
+ *   默认策略下脚本会「失败即关闭」。本轮先只装说明书与 references，等同意流做好再放。
+ * - **安装前校验 SKILL.md**：dsh 对不合法的技能是**静默忽略**，不校验就会「装上了却看不见」。
+ */
+async function installSkillBundle(
+  urls: ReturnType<typeof workflowMarketUrls>,
+  workflowId: string,
+  manifest: WorkflowSkillManifest | undefined
+): Promise<{ ok: true; name: string } | { ok: false; reasonKey: string; error?: string } | null> {
+  if (!manifest) return null
+  const skillDir = join(dshSkillsDir(), manifest.name)
+  const files: Array<{ path: string; url: string }> = []
+  for (const file of manifest.files) {
+    if (file.path.startsWith('scripts/')) continue
+    const url = urls.skillFile(workflowId, file.path)
+    // 白名单在契约层已校验过；这里再挡一次，避免把非法路径交给下载器
+    if (!url) return { ok: false, reasonKey: 'skillBadPath', error: file.path }
+    files.push({ path: file.path, url })
+  }
+  if (!files.some((file) => file.path === manifest.entry)) {
+    return { ok: false, reasonKey: 'skillMissingEntry', error: manifest.entry }
+  }
+
+  const result = await getPipeline().install({
+    targetDir: skillDir,
+    files,
+    verify: (staged) => {
+      const entry = staged.find((item) => item.path === manifest.entry)
+      if (!entry) return { ok: false, reasonKey: 'skillMissingEntry' }
+      const check = validateSkillEntryText(Buffer.from(entry.bytes).toString('utf8'), manifest.name)
+      return check.ok ? { ok: true } : { ok: false, reasonKey: check.reasonKey }
+    }
+  })
+  if (result.ok) return { ok: true, name: manifest.name }
+  // 具体原因（缺 description / 名字不符 / 旧键…）比一句「技能安装失败」有用得多，原样带回
+  return {
+    ok: false,
+    reasonKey: result.reasonKey,
+    ...(result.error ? { error: result.error } : {})
+  }
+}
+
+/**
+ * 删除随工作流装上的技能。
+ *
+ * 只删记账里记着的那个目录名，且**只在它确实是目录时**才删 —— 用户自建的技能
+ *（哪怕是同名）不该被卸载工作流这件事牵连。
+ */
+function removeInstalledSkill(record: InstalledWorkflowRecord | undefined): void {
+  const name = record?.skillName
+  if (!name) return
+  const dir = join(dshSkillsDir(), name)
+  try {
+    if (existsSync(dir) && statSync(dir).isDirectory())
+      rmSync(dir, { recursive: true, force: true })
+  } catch {
+    // 技能删不掉不该让「卸载工作流」失败：工作流本体已经移除，残留技能下次安装会覆盖
+  }
 }
 
 export function uninstallWorkflow(input: { id: string }): WorkflowMarketActionResult {
   const targetDir = join(installedWorkflowsDir(), input.id)
   const result = getPipeline().uninstall(targetDir)
   if (!result.ok) return { ok: false, reasonKey: 'removeFailed', error: result.error }
-  writeRecords(listInstalledWorkflows().filter((item) => item.id !== input.id))
+  const records = listInstalledWorkflows()
+  // 先按记录删技能，再落盘新记录 —— 顺序反了就拿不到 skillName 了
+  removeInstalledSkill(records.find((item) => item.id === input.id))
+  writeRecords(records.filter((item) => item.id !== input.id))
   coverMemo.delete(input.id)
   return { ok: true }
 }

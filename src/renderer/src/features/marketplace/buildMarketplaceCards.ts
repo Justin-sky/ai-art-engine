@@ -1,4 +1,5 @@
 import type { DshSkillsInfo, McpServerInfo, WorkflowMarketEntryView } from '@shared/ipc'
+import type { WorkflowSkillManifest } from '@shared/workflowMarket'
 import {
   EXTERNAL_MCP_CONFIG_REASON,
   createDefaultExternalMcpServer,
@@ -75,6 +76,14 @@ export interface MarketplaceCard {
   /** 工作流市场卡：是否已安装 / 是否有更新 */
   installed?: boolean
   updatable?: boolean
+  /**
+   * 工作流市场卡：随包附带的 dsh 技能包清单。
+   *
+   * 安装时要把它**原样传回主进程**（用户点的就是这条条目，两者必须是同一个对象），
+   * 界面也用它显示「含技能 / 含脚本」——不显示的话，用户不会知道装完之后
+   * agent 手里多了一份操作手册。
+   */
+  skill?: WorkflowSkillManifest
 }
 
 export interface MarketplaceSources {
@@ -109,9 +118,24 @@ export function marketplaceCardHeading(
 
 /** 技能文件 kind → 来源标签的 i18n 键 */
 export function skillSourceKey(kind: string): string {
-  // 未知 kind 当作自定义（历史上只有 builtin / custom / template 三种）
-  const known = kind === 'builtin' || kind === 'template' ? kind : 'custom'
+  // 未知 kind 当作自定义；bundle 是目录型技能包（通常随市场工作流安装），要单独标出来，
+  // 否则会被显示成「自定义」——那是用户自己放进 .md 的东西，来源完全不同
+  const known = kind === 'builtin' || kind === 'template' || kind === 'bundle' ? kind : 'custom'
   return `marketplace.source.skill.${known}`
+}
+
+/**
+ * 技能包卡片的附加信息。
+ *
+ * 刻意用**纯数据**（不走 i18n）：`+N files` 与 `scripts` 都是技术标识，
+ * 中文界面里保持原样比翻译成"含 N 个文件"更好核对。含脚本必须出现 ——
+ * 脚本本轮不落盘，用户有权在卡片上就看出来。
+ */
+export function skillBundleMeta(file: { hasScripts?: boolean; extraFileCount?: number }): string {
+  const parts: string[] = []
+  if (file.extraFileCount) parts.push(`+${file.extraFileCount} files`)
+  if (file.hasScripts) parts.push('scripts · not installed')
+  return parts.join(' · ')
 }
 
 /**
@@ -186,7 +210,13 @@ export function buildMarketplaceCards(sources: MarketplaceSources): MarketplaceC
         title: file.title || skillFileStem(file.fileName),
         identifier: file.fileName,
         ...(file.description ? { subtitle: file.description } : {}),
-        sourceKey: skillSourceKey(file.kind)
+        sourceKey: skillSourceKey(file.kind),
+        /**
+         * 技能包额外信息：含脚本必须显眼（脚本本轮不安装），文件数让用户知道包里有什么。
+         * 技能包**没有卸载按钮** —— 它跟着所属工作流走，卸载入口在那张卡片上，
+         * 否则会留下孤儿技能。
+         */
+        ...(file.kind === 'bundle' ? { meta: skillBundleMeta(file) } : {})
       })
     }
   }
@@ -209,6 +239,7 @@ export function buildMarketplaceCards(sources: MarketplaceSources): MarketplaceC
       blockReason: entry.blockReason,
       installed: entry.installed,
       updatable: entry.updatable,
+      ...(entry.skill ? { skill: entry.skill } : {}),
       // 状态点：可用且已装 = 绿；可用未装 = 灰（不是「运行中」）
       active: entry.installed && !entry.blockReason
     })

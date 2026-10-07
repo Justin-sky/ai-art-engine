@@ -120,6 +120,7 @@ import {
   readInstalledWorkflowPlan,
   uninstallWorkflow
 } from './services/workflowMarketService'
+import type { WorkflowSkillManifest } from '@shared/workflowMarket'
 import { broadcastToAllWindows } from './broadcast'
 
 function handle<T>(channel: string, fn: (...args: never[]) => Promise<T> | T): void {
@@ -523,7 +524,8 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.WORKFLOW_MARKET_COVER, (id: string) => fetchWorkflowCover(id))
   handle(
     IpcChannels.WORKFLOW_MARKET_INSTALL,
-    (input: { id: string; acceptMissingTypes?: boolean }) => installWorkflow(input)
+    (input: { id: string; acceptMissingTypes?: boolean; skill?: WorkflowSkillManifest }) =>
+      installWorkflow(input)
   )
   handle(IpcChannels.WORKFLOW_MARKET_UNINSTALL, (id: string) => uninstallWorkflow({ id }))
   handle(IpcChannels.WORKFLOW_MARKET_INSTALLED, (): InstalledWorkflowRecordView[] =>
