@@ -770,7 +770,6 @@ export default {
     eyebrow: '能力与插件',
     open: '插件市场',
     loading: '正在读取已安装内容…',
-    webMarket: '网页市场',
     devDocs: '开发者文档',
     readOnlyHint:
       '该条目为只读展示：它的内容来自磁盘上的清单文件，应用只负责装载，不执行外部脚本。',

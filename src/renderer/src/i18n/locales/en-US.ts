@@ -783,7 +783,6 @@ export default {
     eyebrow: 'Capabilities & plugins',
     open: 'Marketplace',
     loading: 'Reading installed content…',
-    webMarket: 'Web marketplace',
     devDocs: 'Developer docs',
     readOnlyHint:
       'This entry is read-only: its content comes from a manifest on disk, and the app only loads it — external scripts are never executed.',

@@ -11,9 +11,6 @@
         <h2>{{ t('marketplace.title') }}</h2>
       </div>
       <div class="mp-title-actions">
-        <button type="button" class="mp-link" @click="openExternal(WEB_MARKET_URL)">
-          ↗ {{ t('marketplace.webMarket') }}
-        </button>
         <button type="button" class="mp-link" @click="openExternal(DEV_DOCS_URL)">
           ↗ {{ t('marketplace.devDocs') }}
         </button>
@@ -231,7 +228,7 @@ import {
 
 const { t } = useStudioI18n()
 
-const WEB_MARKET_URL = 'https://justin-sky.github.io/ai-art-engine/'
+/** 开发者文档（本站指南页）。这里没有「网页市场」：本仓库没有远端注册表，不做假入口 */
 const DEV_DOCS_URL = 'https://justin-sky.github.io/ai-art-engine/manual.html'
 const TABS: MarketplaceFilter[] = ['all', 'mcp', 'skills', 'plugins']
 const SAVE_DEBOUNCE_MS = 500

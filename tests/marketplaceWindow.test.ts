@@ -286,4 +286,11 @@ describe('市场视图：设置落盘不做整表覆盖', () => {
   it('外部链接走 window.open（主进程 setWindowOpenHandler 转 shell.openExternal）', () => {
     expect(MARKETPLACE).toMatch(/window\.open\(url, '_blank'/)
   })
+
+  it('没有「网页市场」入口（本仓库没有远端注册表，不做假入口）', () => {
+    expect(MARKETPLACE).not.toContain('webMarket')
+    expect(MARKETPLACE).not.toContain('WEB_MARKET_URL')
+    // 只保留开发者文档这一个外链
+    expect(MARKETPLACE).toContain('DEV_DOCS_URL')
+  })
 })
