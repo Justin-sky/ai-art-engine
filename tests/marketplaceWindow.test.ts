@@ -310,6 +310,19 @@ describe('市场视图：设置落盘不做整表覆盖', () => {
     expect(MARKETPLACE).toContain('DEV_DOCS_URL')
   })
 
+  it('「开发者文档」按钮指向插件市场开发者文档，而不是用户手册', () => {
+    /*
+      按钮文案是「开发者文档」，作者要的是发布格式 / 技能包契约 / 脚本同意流 / 索引派生规则
+      —— 那些只在 `docs/MARKETPLACE.md` 里；用户手册讲的是「怎么用市场」。
+      指错了不会报错，只会让开发者找不到该看的东西，所以钉一下。
+    */
+    const at = MARKETPLACE.indexOf('const DEV_DOCS_URL')
+    expect(at, '应当能找到 DEV_DOCS_URL').toBeGreaterThan(-1)
+    const line = MARKETPLACE.slice(at, MARKETPLACE.indexOf('\n', at))
+    expect(line).toContain('docs/MARKETPLACE.md')
+    expect(line).not.toContain('/manual.html')
+  })
+
   it('外链策略收在一处，两个窗口共用（只装一处就会出现按窗口而异的行为）', () => {
     const POLICY = read('src/main/windowOpenPolicy.ts')
     const MAIN = read('src/main/index.ts')

@@ -419,7 +419,7 @@ export default {
       }
     },
     skills: {
-      hint: "The AI chat agent discovers skills through dsh's skill system: drop a .md file in dsh SKILL.md format (frontmatter name / description + body) into the folder below and it takes effect on the next chat. Built-in skills are managed automatically — please don't edit them.",
+      hint: "The AI chat agent discovers skills through dsh's skill system: drop a .md file in dsh SKILL.md format (frontmatter name / description + body) into the folder below and it takes effect on the next chat. Skill bundles installed from the **plugin marketplace** use the directory form (`<name>/SKILL.md`) and show up here too — but they belong to their workflow, so uninstalling that workflow removes them; please don't edit them by hand. Built-in skills are managed automatically.",
       dirPath: 'Skills directory',
       builtinCount: '{count} built-in skills (managed automatically)',
       kind: {

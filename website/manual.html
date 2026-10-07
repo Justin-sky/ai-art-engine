@@ -22,7 +22,7 @@
     </script>
     <meta
       name="description"
-      content="AIArtEngine 使用手册：工程、设置、AI 对话与技能、一键工作流、宿主资产、节点图、漫画页与广告变体矩阵、3D 模型生成、任务队列、场与剧集、成片时间线、导演台与快捷键。"
+      content="AIArtEngine 使用手册：工程、设置、AI 对话与技能、插件市场、一键工作流、宿主资产、节点图、漫画页与广告变体矩阵、3D 模型生成、任务队列、场与剧集、成片时间线、导演台与快捷键。"
     />
     <title>使用手册 — AIArtEngine</title>
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/manual.html" />
@@ -30,14 +30,14 @@
     <meta property="og:type" content="website" />
     <meta property="og:locale" content="zh_CN" />
     <meta property="og:title" content="使用手册 — AIArtEngine" />
-    <meta property="og:description" content="AIArtEngine 使用手册：工程、设置、一键工作流、宿主资产、节点图、漫画页与广告变体矩阵、3D 模型生成、任务队列、场与剧集、成片时间线、导演台与快捷键。" />
+    <meta property="og:description" content="AIArtEngine 使用手册：工程、设置、插件市场、一键工作流、宿主资产、节点图、漫画页与广告变体矩阵、3D 模型生成、任务队列、场与剧集、成片时间线、导演台与快捷键。" />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/manual.html" />
     <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="使用手册 — AIArtEngine" />
-    <meta name="twitter:description" content="AIArtEngine 使用手册：工程、设置、一键工作流、宿主资产、节点图、漫画页与广告变体矩阵、3D 模型生成、任务队列、场与剧集、成片时间线、导演台与快捷键。" />
+    <meta name="twitter:description" content="AIArtEngine 使用手册：工程、设置、插件市场、一键工作流、宿主资产、节点图、漫画页与广告变体矩阵、3D 模型生成、任务队列、场与剧集、成片时间线、导演台与快捷键。" />
     <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual.html" />
     <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual.en.html" />
@@ -135,6 +135,7 @@
           <li><a href="#home">3. 首页与工程</a></li>
           <li><a href="#settings">4. 设置</a></li>
           <li><a href="#workspace">5. 工作区</a></li>
+          <li><a href="#marketplace">5.7 插件市场</a></li>
           <li><a href="#assets">6. 资产库</a></li>
 
           <li class="toc-group">核心能力</li>
@@ -166,7 +167,7 @@
           <p class="eyebrow">Docs · Operations</p>
           <h1>使用手册</h1>
           <p class="lede">
-            覆盖当前版本（<strong>5.0</strong>）主要界面与组件：工程与模型配置、AI 对话与 MCP 接入、一键工作流、短剧分镜 Agent
+            覆盖当前版本（<strong>5.0</strong>）主要界面与组件：工程与模型配置、AI 对话与 MCP 接入、插件市场、一键工作流、短剧分镜 Agent
             流水线、宿主资产、节点图与任务队列、漫画页与广告变体矩阵、3D 模型生成与导演台、场与剧集、成片时间线、资产包。
             文案以应用内中文界面为准；视频演示见
             <a
@@ -217,7 +218,8 @@
             <li>回到首页<strong>新建工程</strong>，进入工作区；可先试工作区「新建」里的「一键工作流」，或按传统流程新建剧本 / 场。</li>
           </ol>
           <div class="tip">
-            应用无传统菜单栏。顶栏 Logo 回首页；「设置」打开设置面板。关闭设置可点遮罩空白或「返回」。
+            应用无传统菜单栏。顶栏 Logo 回首页；「设置」打开设置面板；<strong>「插件市场」</strong>就在「设置」左边，
+            打开的是一个独立窗口（见 <a href="#marketplace">§5.7</a>）。关闭设置可点遮罩空白或「返回」。
           </div>
         </section>
 
@@ -844,6 +846,10 @@
             它们的工具 —— 不再需要它们额外暴露 socket 端口。详见
             <a href="guide-mcp.html">MCP 接入教程</a>里的反向桥段。
           </p>
+          <p>
+            另外，第三方 MCP 服务（HTTP 远程 / stdio 本地命令）也可以在 <a href="#marketplace">插件市场</a>的
+            <strong>MCP</strong> 页签里添加与管理。
+          </p>
         </section>
 
         <h3 id="web-search">4.6 联网搜索</h3>
@@ -970,6 +976,12 @@
               官方）；选择会记住，下次打开沿用。</li>
             <li><strong>多会话</strong>：输入框上方工具栏可新建 / 切换 / 删除会话，历史消息本地持久化。</li>
             <li><strong>取消与状态</strong>：执行中可停止；dsh 的状态行与工具活动实时回显在面板中。</li>
+            <li>
+              <strong>越界需授权</strong>：Agent 需要越过沙箱边界时，对话里会出现<strong>「需要你授权这一步」</strong>授权卡，
+              写明工具名与申请原因，只提供<strong>「允许一次」</strong>与<strong>「拒绝」</strong>两个选项。
+              授权<strong>只对这一次调用有效</strong>——应用刻意不提供「总是允许」，避免一次点击悄悄放宽 Agent 之后能跑的东西。
+              没有人能应答这条请求时（例如兜底的一次性执行路径），请求按<strong>失败即拒绝</strong>处理：它会被拒掉，绝不会默认放行。
+            </li>
           </ul>
           <div class="tip">
             <strong>前提：</strong>AI 对话已内置 Node.js 运行时与 dsh 运行体，开箱即用、无需安装任何环境
@@ -980,26 +992,103 @@
           <h3 id="skills">5.6 技能（Skills）</h3>
           <p>
             AI 对话的 Agent 携带一套<strong>创作技能</strong>（来自应用内置的分镜 / 导演台能力，对话时自动注入）；
-            你也可以在 <strong>设置 → 自定义技能</strong> 中添加自己的技能，让助手具备专属的工作方法。
+            你也可以在<a href="#marketplace">插件市场</a>的<strong>「技能」页签</strong>里放入自己的技能，让助手具备专属的工作方法。
           </p>
           <ul>
             <li><strong>内置技能</strong>：分镜 / 动画（9 宫格分镜表、节拍拆解表、动态提示词表、4 宫格动态分镜表等）、
               导演审核（分镜 / 节拍 / 动态提示词）、系统创作（剧本、图生提示词、图片 / 视频生成、声音、情绪、灯光、
               多角度、扩图、重绘、抠图、高清放大、界面图、界面拆分、世界提取、节拍拆分、节拍单元生成、策划案、
               肖像贴图、提示词优化、擦除）。程序自动管理，请勿手动修改。</li>
-            <li><strong>自定义技能</strong>：在 <strong>设置 → 自定义技能</strong> 中「打开目录」，把符合
+            <li><strong>自定义技能</strong>：在<strong>插件市场 → 技能</strong>页签里「打开目录」，把符合
               dsh SKILL.md 格式（frontmatter <code>name</code> / <code>description</code> + Markdown 正文）的
               <code>.md</code> 文件放进技能目录（文件名用小写字母 + 连字符，如 <code>my-skill.md</code>），
-              下次对话自动生效；可点击「生成示例模板」快速获得一份可用的写法参考。</li>
+              下次对话自动生效；同一页签的「生成示例模板」可给出一份可用的写法参考。</li>
             <li><strong>技能如何生效</strong>：技能清单以 <code>&lt;available_skills&gt;</code> 注入对话上下文，
               Agent 判断任务匹配时按需加载技能文件作为指令——技能告诉它流程与规范（怎么做），
               MCP 工具负责真正动手（生成图片、跑工作流），两者配合才能「说到做到」。</li>
             <li>节点图节点使用同一套技能定义节点行为；API 调用日志中会标注节点所用的技能。</li>
+            <li>
+              <strong>技能包</strong>：从<a href="#marketplace">插件市场</a>安装工作流时可能随包附带技能包。它会在市场的
+              <strong>技能</strong>页签里列出，来源标记为<strong>「技能包」</strong>；它跟着所属工作流走，
+              <strong>卸载那条工作流时会一并删除</strong>，因此不是可以单独管理的产物。
+            </li>
           </ul>
           <div class="tip">
             <strong>技能 vs 工具：</strong>技能是「职业手册」，工具是「手脚」。例如说
             「用分镜技能把这段剧本拆成 9 宫格分镜表」——技能提供专业流程（节拍 → 机位 → 动态 → 提示词），
             生成动作由工具执行。
+          </div>
+
+          <h3 id="marketplace">5.7 插件市场（Plugin Marketplace）</h3>
+          <p>
+            顶栏「设置」左边的<strong>「插件市场」</strong>打开一个<strong>独立窗口</strong>：MCP 服务、技能与工作流都在这里安装。
+            它是<strong>应用级入口</strong>——不需要先打开工程；窗口是<strong>单例</strong>，再点一次只会把已经开着的窗口聚焦到前台。
+          </p>
+          <p>
+            页签为 <strong>全部 / MCP / 技能 / 工作流</strong>。每次打开窗口都会<strong>强制刷新</strong>工作流目录，
+            所以刚发布的工作流重开窗口就能看到，不必等缓存过期；刷新失败时会<strong>保留上一次读到的列表</strong>并给一句软提示，
+            不会把市场显示成空的。目录有两个来源：官方主源（GitHub raw）与 Gitee 镜像，按顺序尝试、失败自动降级，
+            窗口顶部会说明当前读到多少条（切到镜像时提示「主源不可达，已切换到镜像」），离线时提示显示的是上次缓存的目录。
+          </p>
+          <h4>安装、更新与卸载</h4>
+          <ul>
+            <li>
+              工作流卡片上直接带 <strong>安装 / 更新 / 重新安装 / 卸载</strong> 与 <strong>详情</strong>；
+              已安装的条目会标出状态，有新版本时显示「有更新」。
+            </li>
+            <li>
+              卸载走应用自己的确认框；确认后<strong>本地已装的文件会被删除</strong>。如果这条工作流还带了技能包，
+              卸载时会<strong>一并移除</strong>它装下的技能。
+            </li>
+            <li>市场只负责「装到本机」：装好的工作流在 <a href="#ai-chat">AI 对话</a>里使用（见下）。</li>
+          </ul>
+          <h4>含技能的条目与脚本同意</h4>
+          <ul>
+            <li>
+              一条工作流可以<strong>随包附带技能包</strong>：卡片上标<strong>「含技能」</strong>，包里还有脚本时标
+              <strong>「含技能 · 含脚本」</strong>——装之前就能看到。
+            </li>
+            <li>
+              技能包里的脚本是<strong>AI agent 可以在这台机器上跑起来的代码</strong>，因此只有在你明确同意时才会写入：
+              安装前会弹确认框，<strong>逐条列出每一个脚本路径</strong>，并说明这些脚本的性质。点「确定」写入脚本；
+              点「取消」则只安装说明书与 references，脚本不落盘——<strong>工作流照常可用</strong>。
+            </li>
+            <li>这份同意<strong>每次都问</strong>：应用不会记住「以后都允许」。</li>
+            <li>
+              装好的技能包同时出现在市场的<strong>技能</strong>页签里（来源标记为<strong>「技能包」</strong>），
+              AI 对话的 Agent 可以直接加载使用。它跟着所属工作流走：<strong>卸载那条工作流会一并删除它</strong>，
+              不是可以单独管理的产物。
+            </li>
+          </ul>
+          <h4>MCP 页签</h4>
+          <ul>
+            <li>
+              内置 <strong>MCP 工具服务</strong>（<code>aiartengine</code>）与 <strong>Blender 工具集</strong>的查看入口，
+              详见 <a href="#settings">§4.5</a> 与 <a href="guide-mcp.html">MCP 接入教程</a>。
+            </li>
+            <li>
+              也可以<strong>添加第三方 MCP 服务</strong>：HTTP（远程）填服务地址与请求头，stdio（本地命令）填命令、参数与环境变量；
+              保存前可「测试连接」，直接看到能发现多少个工具。stdio 会在本机执行第三方程序，只添加你信任来源的服务。
+            </li>
+          </ul>
+          <h4>在 AI 对话里使用已安装的工作流</h4>
+          <ul>
+            <li>
+              入口有两个：AI 对话输入框上方工具栏的<strong>「工作流」</strong>按钮，或直接输入 <code>/workflow</code>。
+            </li>
+            <li>
+              选中一条工作流后，输入框里插入的是一个<strong>引用块</strong>（图标 + 标题的胶囊），而不是把标题 / id / 简介
+              摊成一段文字；悬停可以看到<strong>含 id 的完整引用</strong>。
+            </li>
+            <li>
+              发送时 Agent 按 <strong>id</strong> 调用这条已安装的工作流（<code>workflow_use_installed</code>），
+              <strong>精确复现</strong>它，而不是重新规划一个相似的东西。
+            </li>
+          </ul>
+          <div class="tip">
+            <strong>两道闸：</strong>安装时的脚本同意解决的是「代码会不会落盘」；Agent 运行时真正要越过沙箱边界时还有第二道闸——
+            对话里的<strong>「需要你授权这一步」</strong>授权卡，只有「允许一次 / 拒绝」，没有「总是允许」，
+            无人应答的路径按失败即拒绝处理（见 <a href="#ai-chat">§5.5</a>）。
           </div>
         </section>
 
@@ -1053,7 +1142,10 @@
             <li>打开任意工程进入工作区。</li>
             <li>在工作区的「新建」里点击<strong>一键工作流</strong>。</li>
           </ol>
-          <div class="tip">需已配置至少一个可用的文本模型（AI 规划时）；纯模板预览可不依赖 AI。</div>
+          <div class="tip">
+            需已配置至少一个可用的文本模型（AI 规划时）；纯模板预览可不依赖 AI。
+            想要更多链路，可以在<strong>插件市场</strong>里安装社区工作流（见 <a href="#marketplace">§5.7</a>）。
+          </div>
 
           <h3>7.2 预设与描述</h3>
           <ul>

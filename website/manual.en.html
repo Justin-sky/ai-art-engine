@@ -21,7 +21,7 @@
     </script>
     <meta
       name="description"
-      content="AIArtEngine manual: projects, settings, AI chat and skills, One-Click Workflow, host assets, node graph, comic pages and the ad variant matrix, 3D model generation, task queue, shots and episodes, final timeline, director stage and shortcuts."
+      content="AIArtEngine manual: projects, settings, AI chat and skills, the plugin marketplace, One-Click Workflow, host assets, node graph, comic pages and the ad variant matrix, 3D model generation, task queue, shots and episodes, final timeline, director stage and shortcuts."
     />
     <title>Manual — AIArtEngine</title>
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/manual.en.html" />
@@ -29,14 +29,14 @@
     <meta property="og:type" content="website" />
     <meta property="og:locale" content="en_US" />
     <meta property="og:title" content="Manual — AIArtEngine" />
-    <meta property="og:description" content="AIArtEngine manual: projects, settings, One-Click Workflow, host assets, node graph, comic pages and the ad variant matrix, 3D model generation, task queue, shots and episodes, final timeline, director stage and shortcuts." />
+    <meta property="og:description" content="AIArtEngine manual: projects, settings, the plugin marketplace, One-Click Workflow, host assets, node graph, comic pages and the ad variant matrix, 3D model generation, task queue, shots and episodes, final timeline, director stage and shortcuts." />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/manual.en.html" />
     <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Manual — AIArtEngine" />
-    <meta name="twitter:description" content="AIArtEngine manual: projects, settings, One-Click Workflow, host assets, node graph, comic pages and the ad variant matrix, 3D model generation, task queue, shots and episodes, final timeline, director stage and shortcuts." />
+    <meta name="twitter:description" content="AIArtEngine manual: projects, settings, the plugin marketplace, One-Click Workflow, host assets, node graph, comic pages and the ad variant matrix, 3D model generation, task queue, shots and episodes, final timeline, director stage and shortcuts." />
     <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual.html" />
     <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual.en.html" />
@@ -134,6 +134,7 @@
           <li><a href="#home">3. Home &amp; projects</a></li>
           <li><a href="#settings">4. Settings</a></li>
           <li><a href="#workspace">5. Workspace</a></li>
+          <li><a href="#marketplace">5.7 Plugin marketplace</a></li>
           <li><a href="#assets">6. Asset library</a></li>
 
           <li class="toc-group">Core features</li>
@@ -166,7 +167,8 @@
           <h1>Manual</h1>
           <p class="lede">
             Covers the main screens and components of the current release (<strong>5.0</strong>): project and
-            model configuration, AI chat &amp; MCP setup, one-click workflows, the short-drama agent pipeline
+            model configuration, AI chat &amp; MCP setup, the plugin marketplace, one-click workflows, the
+            short-drama agent pipeline
             model setup, One-Click Workflow, the short-drama Agent pipeline, host assets, the node graph and
             task queue, comic pages and the ad variant matrix, 3D model generation and the director stage,
             shots and episodes, the final timeline, and asset packages. Wording follows the in-app UI — switch
@@ -228,7 +230,9 @@
           </ol>
           <div class="tip">
             There is no traditional menu bar. The top-left logo returns to the home page; “Settings” opens the
-            settings panel. Close the settings by clicking the empty overlay or “Back”.
+            settings panel, and <strong>“Marketplace”</strong> sits immediately to its left, opening a separate
+            window (see <a href="#marketplace">§5.7</a>). Close the settings by clicking the empty overlay or
+            “Back”.
           </div>
         </section>
 
@@ -946,6 +950,10 @@
             Harness / dsh) can consume its tools directly — no need to expose a separate socket port. See the
             <a href="guide-mcp.en.html">MCP setup guide</a>, reverse-bridge section.
           </p>
+          <p>
+            Third-party MCP servers (remote HTTP or local stdio commands) can also be added and managed from the
+            <strong>MCP</strong> tab of the <a href="#marketplace">plugin marketplace</a>.
+          </p>
         </section>
 
         <h3 id="web-search">4.6 Web search</h3>
@@ -1101,6 +1109,13 @@
               sessions; message history persists locally.</li>
             <li><strong>Cancel &amp; status</strong>: you can stop a running turn; dsh status lines and tool
               activity stream back into the panel in real time.</li>
+            <li><strong>Approval when the agent needs to go past the sandbox</strong>: a consent card appears in
+              the conversation — “This step needs your approval” — naming the tool and the reason, and offering
+              only <strong>Allow once</strong> / <strong>Reject</strong>. A grant applies to
+              <strong>that single call</strong>: the app deliberately offers no “always allow”, so one click
+              can never quietly widen what the agent may run later. When no one is available to answer (for
+              example fallback one-shot execution paths) the request <strong>fails closed</strong>: it is
+              rejected, never silently allowed.</li>
           </ul>
           <div class="tip">
             <strong>Prerequisites:</strong> AI chat bundles both the Node.js runtime and the dsh runtime —
@@ -1113,8 +1128,8 @@
           <p>
             The chat agent ships with a set of <strong>creation skills</strong> (derived from the app’s built-in
             storyboard / director capabilities, injected automatically on each conversation); you can also add
-            your own skills under <strong>Settings → Custom skills</strong> to give the assistant a tailored way
-            of working.
+            your own skills in the <strong>Skills</strong> tab of the
+            <a href="#marketplace">plugin marketplace</a> to give the assistant a tailored way of working.
           </p>
           <ul>
             <li><strong>Built-in skills</strong>: storyboard / animation (9-grid storyboard table, beat breakdown
@@ -1123,22 +1138,120 @@
               emotion, lighting, multi-angle, upscale, redraw, erase, HD enhance, UI image, UI split, world
               extraction, beat split, beat unit generation, plan, portrait texture, prompt optimization).
               These are managed automatically — please don’t edit them.</li>
-            <li><strong>Custom skills</strong>: under <strong>Settings → Custom skills</strong> click
+            <li><strong>Custom skills</strong>: in the <strong>Marketplace → Skills</strong> tab click
               “Open folder” and drop in a <code>.md</code> file in dsh SKILL.md format (frontmatter
               <code>name</code> / <code>description</code> + Markdown body; kebab-case filename such as
-              <code>my-skill.md</code>). It takes effect on the next conversation. “Create sample template”
-              gives you a ready-to-use reference.</li>
+              <code>my-skill.md</code>). It takes effect on the next conversation. “Create sample template” in
+              the same tab gives you a ready-to-use reference.</li>
             <li><strong>How skills work</strong>: the skill catalog is injected into the conversation context as
               <code>&lt;available_skills&gt;</code>; when the agent judges a task matches, it loads the skill
               file on demand as instructions — the skill defines the process and conventions (how to do it),
               while MCP tools do the actual work (generate images, run workflows).</li>
             <li>Node-graph nodes use the same skill system to define their behavior; API run logs annotate the
               skill used by each node.</li>
+            <li><strong>Skill bundles</strong>: installing a workflow from the
+              <a href="#marketplace">plugin marketplace</a> may bring a skill bundle with it. It is listed in the
+              marketplace’s <strong>Skills</strong> tab with its source marked as a
+              <strong>skill bundle</strong>, and it belongs to the workflow that shipped it —
+              <strong>uninstalling that workflow deletes it</strong>, so it is not something you manage on its
+              own.</li>
           </ul>
           <div class="tip">
             <strong>Skills vs tools:</strong> skills are the “job manual”, tools are the “hands”. Say “use the
             storyboard skill to split this script into a 9-grid storyboard table” — the skill provides the
             professional workflow (beat → framing → motion → prompt) and tools execute the generation.
+          </div>
+
+          <h3 id="marketplace">5.7 Plugin marketplace</h3>
+          <p>
+            <strong>“Marketplace”</strong> sits immediately to the left of “Settings” in the top bar and opens a
+            <strong>separate window</strong> where MCP servers, skills and workflows are all installed from. It
+            is an <strong>app-level entry</strong> — no project needs to be open — and the window is a
+            <strong>singleton</strong>: clicking again only focuses the window that is already open.
+          </p>
+          <p>
+            Its tabs are <strong>All / MCP / Skills / Workflows</strong>. Every time the window opens it
+            <strong>force-refreshes</strong> the workflow catalog, so a newly published workflow shows up
+            without waiting for a cache TTL; if that refresh fails it <strong>keeps the list it last read</strong>
+            and shows a soft hint rather than an empty market. The catalog has two sources — the official primary
+            (GitHub raw) and a Gitee mirror — tried in order with automatic fallback. The top of the window says
+            how many entries were read (when it fell back it says “Primary source unreachable — switched to the
+            mirror”), and offline it says the cached catalog is being shown.
+          </p>
+          <h4>Install, update and uninstall</h4>
+          <ul>
+            <li>
+              Workflow cards carry <strong>Install / Update / Reinstall / Uninstall</strong> and
+              <strong>Details</strong> right on the card; installed entries show their status, and “Update
+              available” appears when a newer version exists.
+            </li>
+            <li>
+              Uninstall goes through the app’s own confirmation dialog; once confirmed, the
+              <strong>locally installed files are removed</strong>. If the workflow shipped a skill bundle, the
+              uninstall <strong>removes that skill too</strong>.
+            </li>
+            <li>The market only installs onto this machine: use the workflow in
+              <a href="#ai-chat">AI chat</a> (below).</li>
+          </ul>
+          <h4>Entries that include a skill, and script consent</h4>
+          <ul>
+            <li>
+              A workflow may <strong>ship a skill bundle</strong>: the card shows an
+              <strong>“Includes skill”</strong> badge, or <strong>“Includes skill + scripts”</strong> when the
+              bundle also carries scripts — visible before you install.
+            </li>
+            <li>
+              Scripts in a skill bundle are <strong>code the AI agent can run on this machine</strong>, so they
+              are written only with your explicit consent: installing asks first, <strong>listing every script
+              path</strong> and stating plainly what these scripts are. Confirming writes them; cancelling
+              installs the instructions and references only — no scripts on disk, and the
+              <strong>workflow still works</strong>.
+            </li>
+            <li>That consent is asked <strong>every time</strong>: the app never remembers an “always allow”.</li>
+            <li>
+              Installed skill bundles show up in the marketplace’s <strong>Skills</strong> tab, with their source
+              marked as a <strong>skill bundle</strong>; the AI chat agent can load them directly. A bundle
+              belongs to the workflow that shipped it — <strong>uninstalling that workflow deletes it too</strong>
+              — so it is not something you manage on its own.
+            </li>
+          </ul>
+          <h4>The MCP tab</h4>
+          <ul>
+            <li>
+              The built-in <strong>MCP tool server</strong> (<code>aiartengine</code>) and the
+              <strong>Blender toolset</strong> are inspected here — see <a href="#settings">§4.5</a> and the
+              <a href="guide-mcp.en.html">MCP setup guide</a>.
+            </li>
+            <li>
+              You can also <strong>add third-party MCP servers</strong>: for HTTP (remote) enter the service URL
+              and headers; for stdio (local command) enter the command, arguments and environment variables.
+              “Test connection” before saving shows how many tools the server exposes. stdio runs a third-party
+              program on your machine, so only add services from sources you trust.
+            </li>
+          </ul>
+          <h4>Using an installed workflow in AI chat</h4>
+          <ul>
+            <li>
+              Two entry points: the <strong>“Workflows”</strong> button in the chat composer toolbar, or by
+              typing <code>/workflow</code>.
+            </li>
+            <li>
+              Selecting a workflow inserts a <strong>reference block</strong> (a pill with icon + title) into the
+              input box — it deliberately does not paste the title / id / summary as a paragraph. Hovering shows
+              the <strong>full reference including the id</strong>.
+            </li>
+            <li>
+              On send, the agent uses the installed workflow <strong>by id</strong>
+              (<code>workflow_use_installed</code>), reproducing that exact workflow rather than re-planning
+              something similar.
+            </li>
+          </ul>
+          <div class="tip">
+            <strong>Two gates:</strong> script consent at install time decides whether code is written to disk;
+            when the agent actually needs to go past the sandbox there is a second gate — the
+            <strong>“This step needs your approval”</strong> card in the conversation, offering only “Allow once /
+            Reject”, with no “always allow” and with unanswered requests failing closed (see
+            <a href="#ai-chat">§5.5</a>).
           </div>
         </section>
 
@@ -1203,7 +1316,8 @@
           </ol>
           <div class="tip">
             You need at least one working text model for AI planning; a pure template preview doesn't depend on
-            AI.
+            AI. For more chains, install community workflows from the
+            <strong>plugin marketplace</strong> (see <a href="#marketplace">§5.7</a>).
           </div>
 
           <h3>7.2 Presets and description</h3>

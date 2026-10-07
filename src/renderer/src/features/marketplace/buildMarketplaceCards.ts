@@ -256,9 +256,9 @@ export function buildMarketplaceCards(sources: MarketplaceSources): MarketplaceC
         ...(file.description ? { subtitle: file.description } : {}),
         sourceKey: skillSourceKey(file.kind),
         /**
-         * 技能包额外信息：含脚本必须显眼（脚本本轮不安装），文件数让用户知道包里有什么。
-         * 技能包**没有卸载按钮** —— 它跟着所属工作流走，卸载入口在那张卡片上，
-         * 否则会留下孤儿技能。
+         * 技能包额外信息：含脚本必须显眼 —— 脚本只有在用户逐次明示同意后才会落盘，
+         * 文件数则让用户知道包里有什么。技能包**没有卸载按钮** ——
+         * 它跟着所属工作流走，卸载入口在那张卡片上，否则会留下孤儿技能。
          */
         ...(file.kind === 'bundle' ? { meta: skillBundleMeta(file) } : {})
       })

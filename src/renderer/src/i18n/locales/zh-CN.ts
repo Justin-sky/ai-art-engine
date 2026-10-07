@@ -413,7 +413,7 @@ export default {
       }
     },
     skills: {
-      hint: 'AI 对话的 agent 通过 dsh 技能机制感知技能：把符合 dsh SKILL.md 格式（frontmatter name / description + 正文）的 .md 文件放进下方目录，下次对话自动生效。应用内置技能由程序自动管理，请勿手动修改。',
+      hint: 'AI 对话的 agent 通过 dsh 技能机制感知技能：把符合 dsh SKILL.md 格式（frontmatter name / description + 正文）的 .md 文件放进下方目录，下次对话自动生效；**插件市场**装上的技能包是目录形态（`<name>/SKILL.md`），也会出现在这里，但它们跟着所属工作流走 —— 卸载工作流时会一并删除，请勿手动改。应用内置技能由程序自动管理。',
       dirPath: '技能目录',
       builtinCount: '内置技能 {count} 个（程序自动管理）',
       kind: {

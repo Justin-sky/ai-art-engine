@@ -80,6 +80,8 @@
 - [ ] **9.4 NPC / 剧情 Agent**：对话树 + 任务图（与 `gameSystem` 合流）
 - [ ] **9.5 HTML 原型升级**：沙盒 HTML ↔ 引擎导出中间层（仍非自研完整引擎）
 - [ ] **9.6 Marketplace**：LoRA / Character / Motion / Workflow / Node / Skill；V7 先规范化 pack 清单格式
+  - 已落地（Workflow + Skill 两格）：远端工作流仓库 + 应用内市场窗口；**工作流条目可随包附带技能包**（目录形态 `skill/SKILL.md` + `references/`），装工作流时一并进 `$DSH_HOME/skills`，AI 对话的 Agent 按需加载；文件清单由仓库脚本从磁盘**派生**进索引（raw 无目录列表 API，手写清单必然漂移），客户端安装前校验 frontmatter（dsh 对不合法技能是**静默忽略**）；**脚本（`scripts/`）需用户逐次明示同意**才落盘，运行时越出沙箱由**审批应答器**交用户一次性授权（无应答器则失败即关闭）。规范与客户端契约见 [MARKETPLACE.md](./MARKETPLACE.md)。
+  - 未做：LoRA / Character / Motion / Node 四格；技能包目前只作为**工作流的附件**，没有独立的技能市场。
 - [ ] **9.7 Studio Server**：团队角色、云工程、GPU 队列；Desktop 变客户端（Frame.io + 审片心智）；V8 末可做只读云同步试点
 
 ### Workflow Compiler（持续技术壁垒）
