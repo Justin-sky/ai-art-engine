@@ -9,6 +9,7 @@ import {
   externalMcpUnusableReason,
   isUsableHttpUrl
 } from '../src/shared/externalMcp'
+import { searchPlaceholderKey } from '../src/renderer/src/features/marketplace/buildMarketplaceCards'
 
 /**
  * 插件市场的 i18n 键**完备性**守卫。
@@ -121,6 +122,33 @@ describe('连接层原因键：主进程会回传的键都必须有文案', () =
       expect(typeof lookup(zh, key), `zh 缺 ${key}`).toBe('string')
       expect(typeof lookup(en, key), `en 缺 ${key}`).toBe('string')
     }
+  })
+})
+
+describe('动态拼出的 i18n 键也必须存在', () => {
+  /**
+   * 组件里有几处键是**函数产出**的（不是模板里的静态字面量），静态扫描看不到：
+   * `searchPlaceholderKey(category)`、`marketplace.ext.${reason}` 等。
+   * 这里按产出侧逐个断言，堵住「代码会请求但文案没加」这类只打 warn 的静默缺口。
+   */
+  it('四个页签的搜索占位文案都在', () => {
+    for (const category of ['all', 'mcp', 'skills', 'plugins'] as const) {
+      const key = searchPlaceholderKey(category)
+      expect(typeof lookup(zh, key), `zh 缺 ${key}`).toBe('string')
+      expect(typeof lookup(en, key), `en 缺 ${key}`).toBe('string')
+    }
+  })
+
+  it('搜索占位不再残留旧的那句扁平字符串', () => {
+    // 改了一半的典型症状：加了新结构但旧键还留着（两者并存会让人不知道哪个在生效）
+    // 现在 searchPlaceholder 必须是「按页签分组」的对象，本身不能是字符串
+    expect(typeof lookup(zh, 'marketplace.searchPlaceholder')).toBe('object')
+    expect(typeof lookup(en, 'marketplace.searchPlaceholder')).toBe('object')
+  })
+
+  it('搜索框有无障碍标签（视觉上只有占位，读屏器读不到占位）', () => {
+    expect(typeof lookup(zh, 'marketplace.searchAria')).toBe('string')
+    expect(typeof lookup(en, 'marketplace.searchAria')).toBe('string')
   })
 })
 

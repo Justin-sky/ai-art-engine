@@ -786,7 +786,13 @@ export default {
     devDocs: 'Developer docs',
     readOnlyHint:
       'This entry is read-only: its content comes from a manifest on disk, and the app only loads it — external scripts are never executed.',
-    searchPlaceholder: 'Search plugins',
+    searchPlaceholder: {
+      all: 'Search MCP, skills or extensions',
+      mcp: 'Search MCP server name or URL',
+      skills: 'Search skill file name',
+      plugins: 'Search extension name or id'
+    },
+    searchAria: 'Search the current tab',
     clearSearch: 'Clear',
     noMatch: 'No matching plugins',
     empty: 'No plugins installed',

@@ -8,6 +8,7 @@ import {
   filterMarketplaceCards,
   marketplaceCardHeading,
   pluginSourceKey,
+  searchPlaceholderKey,
   skillSourceKey,
   type ExternalMcpDraft,
   type MarketplaceCard,
@@ -479,6 +480,26 @@ describe('draftToExternalMcpServer：添加对话框的业务规则', () => {
     )
     // 能原样通过 normalizeExternalMcpServer 才说明这份配置真的存得进去
     expect(normalizeExternalMcpServer(server)).toEqual(server)
+  })
+})
+
+describe('searchPlaceholderKey：搜索框占位跟着页签走', () => {
+  it('每个页签都有自己的键', () => {
+    expect(searchPlaceholderKey('all')).toBe('marketplace.searchPlaceholder.all')
+    expect(searchPlaceholderKey('mcp')).toBe('marketplace.searchPlaceholder.mcp')
+    expect(searchPlaceholderKey('skills')).toBe('marketplace.searchPlaceholder.skills')
+    expect(searchPlaceholderKey('plugins')).toBe('marketplace.searchPlaceholder.plugins')
+  })
+
+  it('四个键互不相同（不能把某两个页签指到同一句）', () => {
+    const keys = (['all', 'mcp', 'skills', 'plugins'] as const).map(searchPlaceholderKey)
+    expect(new Set(keys).size).toBe(4)
+  })
+
+  it('键都落在 marketplace.searchPlaceholder.* 下（与 locale 层级一致）', () => {
+    for (const category of ['all', 'mcp', 'skills', 'plugins'] as const) {
+      expect(searchPlaceholderKey(category)).toMatch(/^marketplace\.searchPlaceholder\./)
+    }
   })
 })
 

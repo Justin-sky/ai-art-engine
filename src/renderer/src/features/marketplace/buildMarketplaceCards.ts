@@ -225,6 +225,17 @@ export function countByCategory(
   return counts
 }
 
+/**
+ * 搜索框占位文案的 i18n 键 —— **跟着当前页签走**。
+ *
+ * 原先是一句写死的「搜索插件」，但搜的其实是当前页签下的内容：在 MCP / 技能 / 扩展
+ * 页签下说「搜索插件」直接误导 —— 技能不是插件、MCP 是服务。改成按页签给出具体对象，
+ * 用户在哪个页签就知道自己在搜什么。
+ */
+export function searchPlaceholderKey(category: MarketplaceFilter): string {
+  return `marketplace.searchPlaceholder.${category}`
+}
+
 // ─────────────────────────────────────────────────────────────
 // 添加对话框：草稿 → 服务配置
 // ─────────────────────────────────────────────────────────────

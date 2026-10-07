@@ -47,7 +47,8 @@
           v-model="query"
           type="search"
           autocomplete="off"
-          :placeholder="t('marketplace.searchPlaceholder')"
+          :aria-label="t('marketplace.searchAria')"
+          :placeholder="searchPlaceholder"
         />
         <button v-if="query.trim()" type="button" class="mp-link" @click="query = ''">
           {{ t('marketplace.clearSearch') }}
@@ -210,6 +211,7 @@ import {
   countByCategory,
   filterMarketplaceCards,
   marketplaceCardHeading,
+  searchPlaceholderKey,
   type MarketplaceCard,
   type MarketplaceFilter
 } from '../features/marketplace/buildMarketplaceCards'
@@ -274,6 +276,8 @@ const counts = computed(() => countByCategory(allCards.value))
 const cards = computed(() =>
   filterMarketplaceCards(allCards.value, { category: category.value, query: query.value })
 )
+/** 搜索框占位跟着页签走：在技能页签下说「搜索插件」是误导 */
+const searchPlaceholder = computed(() => t(searchPlaceholderKey(category.value)))
 
 function serverOf(id: string): ExternalMcpServer | undefined {
   return externalMcp.value.find((server) => server.id === id)

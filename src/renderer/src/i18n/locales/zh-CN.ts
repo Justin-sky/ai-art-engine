@@ -773,7 +773,13 @@ export default {
     devDocs: '开发者文档',
     readOnlyHint:
       '该条目为只读展示：它的内容来自磁盘上的清单文件，应用只负责装载，不执行外部脚本。',
-    searchPlaceholder: '搜索插件',
+    searchPlaceholder: {
+      all: '搜索 MCP、技能或扩展',
+      mcp: '搜索 MCP 服务名或地址',
+      skills: '搜索技能文件名',
+      plugins: '搜索扩展名或 id'
+    },
+    searchAria: '搜索当前页签内容',
     clearSearch: '清除',
     noMatch: '没有匹配的插件',
     empty: '未安装任何插件',
