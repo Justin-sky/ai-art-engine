@@ -2659,6 +2659,7 @@ onBeforeUnmount(() => {
             class="skills-trigger"
             :class="{ active: skillsOpen }"
             :title="t('studio.chat.skillsTitle')"
+            :aria-label="t('studio.chat.skills')"
             @click.stop="skillsOpen = !skillsOpen"
           >
             <svg
@@ -2677,7 +2678,6 @@ onBeforeUnmount(() => {
               <circle cx="19" cy="15" r="4" />
               <path d="M3 21l3-3" />
             </svg>
-            <span class="skills-label">{{ t('studio.chat.skills') }}</span>
             <span v-if="loadedSkillCount > 0" class="skills-badge">{{ loadedSkillTotal }}</span>
           </button>
           <div v-show="skillsOpen" class="skills-menu">
@@ -2730,6 +2730,7 @@ onBeforeUnmount(() => {
             class="skills-trigger"
             :class="{ active: workflowsOpen }"
             :title="t('studio.chat.workflowsTitle')"
+            :aria-label="t('studio.chat.workflows')"
             @click.stop="toggleWorkflows()"
           >
             <svg
@@ -2747,7 +2748,6 @@ onBeforeUnmount(() => {
               <path d="M14 17.5h7" />
               <path d="M17.5 14v7" />
             </svg>
-            <span class="skills-label">{{ t('studio.chat.workflows') }}</span>
             <span v-if="installedWorkflows.length" class="skills-badge">
               {{ installedWorkflows.length }}
             </span>
@@ -4091,11 +4091,18 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
 }
 
+/*
+  技能 / 工作流触发器只显示图标（文字由 title / aria-label 承担）。
+  因此内边距左右对称、并收到最小 —— 有徽标时宽度自然被徽标撑开。
+*/
 .skills-trigger {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 9px 4px 7px;
+  justify-content: center;
+  gap: 5px;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
   background: var(--bg-elevated, var(--bg-panel));
   color: var(--text);
   border: 1px solid var(--border);
@@ -4119,11 +4126,6 @@ onBeforeUnmount(() => {
   height: 14px;
   color: var(--text-muted);
   flex: none;
-}
-
-.skills-label {
-  font-weight: 600;
-  letter-spacing: 0.01em;
 }
 
 .skills-badge {

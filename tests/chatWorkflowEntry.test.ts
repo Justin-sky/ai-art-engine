@@ -243,6 +243,43 @@ describe('会话管理与模型同一行', () => {
   })
 })
 
+describe('技能 / 工作流触发器只显示图标', () => {
+  it('两个触发器都不再渲染文字标签', () => {
+    expect(CHAT).not.toContain('skills-label')
+    // 也不该用其它方式把可见文案塞进触发器
+    for (const key of ["t('studio.chat.skills')", "t('studio.chat.workflows')"]) {
+      const at = CHAT.indexOf(key)
+      expect(at, `${key} 仍应作为无障碍名称存在`).toBeGreaterThan(0)
+      // 只出现在 :aria-label 里，不出现在可见文本插值中
+      expect(CHAT.slice(at - 20, at), `${key} 不该出现在可见文本里（应改为 aria-label）`).toContain(
+        'aria-label'
+      )
+    }
+  })
+
+  it('图标按钮必须有无障碍名称（否则读屏只会念「按钮」）', () => {
+    expect(CHAT).toMatch(/:aria-label="t\('studio\.chat\.skills'\)"/)
+    expect(CHAT).toMatch(/:aria-label="t\('studio\.chat\.workflows'\)"/)
+    // 悬浮说明也保留
+    expect(CHAT).toContain('studio.chat.skillsTitle')
+    expect(CHAT).toContain('studio.chat.workflowsTitle')
+  })
+
+  it('`.skills-label` 样式规则已删除（不留死规则）', () => {
+    expect(CHAT).not.toMatch(/\n\.skills-label\s*\{/)
+  })
+
+  it('触发器按图标按钮设尺寸，且徽标宽度不撑破', () => {
+    const css = CHAT.slice(CHAT.indexOf('\n.skills-trigger {'))
+    const block = css.slice(0, 400).replace(/\/\*[\s\S]*?\*\//g, '')
+    expect(block).toMatch(/min-width:\s*26px/)
+    expect(block).toMatch(/height:\s*26px/)
+    // 徽标用 min-width 而不是固定宽，多位数也不会撑歪
+    const badge = CHAT.slice(CHAT.indexOf('\n.skills-badge {'))
+    expect(badge.slice(0, 200)).toMatch(/min-width:/)
+  })
+})
+
 describe('模型上下文环与引用资产按钮同行', () => {
   it('两者在同一个 `.toolbar-end` 单元里（因此不会被折到两行）', () => {
     const groupAt = CHAT.indexOf('class="toolbar-end"')
