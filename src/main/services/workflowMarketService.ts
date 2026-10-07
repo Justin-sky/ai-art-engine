@@ -21,14 +21,19 @@ import { app } from 'electron'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { listNodeTypes } from '@shared/graph'
+import type {
+  WorkflowBundleResult,
+  WorkflowCoverResult,
+  WorkflowMarketActionResult,
+  WorkflowMarketFetchResult
+} from '@shared/ipc'
 import {
   missingNodeTypes,
   parseWorkflowBundle,
   parseWorkflowMarketIndex,
   workflowEntryBlockReason,
   workflowMarketUrls,
-  type WorkflowBundle,
-  type WorkflowMarketEntry
+  type WorkflowBundle
 } from '@shared/workflowMarket'
 import { MarketPipeline, sha256OfBytes } from './marketPipeline'
 import { settingsService } from './settingsService'
@@ -89,31 +94,19 @@ export function knownNodeTypeIds(): string[] {
 // 目录
 // ─────────────────────────────────────────────────────────────
 
-export interface WorkflowCatalogView {
-  entries: Array<
-    WorkflowMarketEntry & {
-      /** 本应用缺哪些节点类型（空数组 = 可用） */
-      missingNodeTypes: string[]
-      /** 不可用原因键（null = 可用） */
-      blockReason: string | null
-      installedVersion: string | null
-      /** 索引版本比已装的新 */
-      updatable: boolean
-      installed: boolean
-    }
-  >
-  /** 被丢弃的非法条目数（界面提示「N 条被忽略」） */
-  dropped: number
-  stale: boolean
-  cachedAt?: string
-  error?: string
-}
-
+/**
+ * 返回类型**直接复用 IPC 契约**（`WorkflowMarketFetchResult`），而不是在这里另立一个视图类型。
+ *
+ * 这里曾经返回 `{ ok, catalog: { entries } }` 而契约声明的是顶层 `entries`，渲染层读
+ * `result.entries` 得到 `undefined`，界面于是显示「0 个工作流」——**主进程日志却显示 15 条**，
+ * 因为日志打在返回之前。
+ *
+ * 这个 bug 能溜过类型检查，是因为 `handle()` 是泛型 `<T>`、`ipcRenderer.invoke` 返回 `any`，
+ * 两端之间没有任何类型约束。现在服务端与契约共用同一个类型，形状漂移会**直接编译报错**。
+ */
 export async function fetchWorkflowCatalog(input?: {
   force?: boolean
-}): Promise<
-  { ok: true; catalog: WorkflowCatalogView } | { ok: false; reasonKey: string; error?: string }
-> {
+}): Promise<WorkflowMarketFetchResult> {
   const urls = workflowMarketUrls(sourceUrl())
   const result = await getPipeline().fetchCatalog({
     url: urls.index,
@@ -153,26 +146,14 @@ export async function fetchWorkflowCatalog(input?: {
     }
   })
 
-  /**
-   * 诊断日志：这条链横跨「远端 → 解析 → 依赖判定 → IPC → 卡片」，出问题时**从界面看不出
-   * 断在哪一层**（「0 个工作流」既可能是没网、可能是解析器拒了、也可能是被过滤掉了）。
-   * 把每层的数字打出来，排查时不必逐个加断点。
-   */
-  console.log(
-    `[workflowMarket] catalog url=${urls.index} entries=${entries.length} ` +
-      `dropped=${result.catalog.dropped} stale=${!!result.stale} ` +
-      `knownNodeTypes=${known.length}`
-  )
-
+  // 顶层字段与 `WorkflowMarketFetchResult` 一一对应（见上方注释：嵌套一层曾导致界面全空）
   return {
     ok: true,
-    catalog: {
-      entries,
-      dropped: result.catalog.dropped,
-      stale: !!result.stale,
-      ...(result.cachedAt ? { cachedAt: result.cachedAt } : {}),
-      ...(result.error ? { error: result.error } : {})
-    }
+    entries,
+    dropped: result.catalog.dropped,
+    stale: !!result.stale,
+    ...(result.cachedAt ? { cachedAt: result.cachedAt } : {}),
+    ...(result.error ? { error: result.error } : {})
   }
 }
 
@@ -184,9 +165,7 @@ export async function fetchWorkflowCatalog(input?: {
 const coverMemo = new Map<string, string>()
 const COVER_MEMO_MAX = 64
 
-export async function fetchWorkflowCover(
-  id: string
-): Promise<{ ok: true; dataUrl: string } | { ok: false; reasonKey: string; error?: string }> {
+export async function fetchWorkflowCover(id: string): Promise<WorkflowCoverResult> {
   const cached = coverMemo.get(id)
   if (cached) return { ok: true, dataUrl: cached }
 
@@ -270,7 +249,7 @@ function writeRecords(records: InstalledWorkflowRecord[]): void {
 export async function installWorkflow(input: {
   id: string
   acceptMissingTypes?: boolean
-}): Promise<{ ok: true } | { ok: false; reasonKey: string; error?: string }> {
+}): Promise<WorkflowMarketActionResult> {
   const urls = workflowMarketUrls(sourceUrl())
   let bundleRaw: unknown
   try {
@@ -333,9 +312,7 @@ export async function installWorkflow(input: {
   return { ok: true }
 }
 
-export function uninstallWorkflow(input: {
-  id: string
-}): { ok: true } | { ok: false; reasonKey?: string; error?: string } {
+export function uninstallWorkflow(input: { id: string }): WorkflowMarketActionResult {
   const targetDir = join(installedWorkflowsDir(), input.id)
   const result = getPipeline().uninstall(targetDir)
   if (!result.ok) return { ok: false, reasonKey: 'removeFailed', error: result.error }
@@ -345,16 +322,26 @@ export function uninstallWorkflow(input: {
 }
 
 /** 读取已安装的工作流本体的 plan，供界面「使用」时物化 */
-export function readInstalledWorkflowPlan(
-  id: string
-): { ok: true; bundle: WorkflowBundle } | { ok: false; reasonKey: string; error?: string } {
+export function readInstalledWorkflowPlan(id: string): WorkflowBundleResult {
   const file = join(installedWorkflowsDir(), id, 'workflow.json')
   try {
     if (!existsSync(file)) return { ok: false, reasonKey: 'notInstalled' }
     const parsed = parseWorkflowBundle(JSON.parse(readFileSync(file, 'utf8')))
-    return parsed.ok
-      ? { ok: true, bundle: parsed.bundle }
-      : { ok: false, reasonKey: parsed.reasonKey }
+    if (!parsed.ok) return { ok: false, reasonKey: parsed.reasonKey }
+    /**
+     * 只回传界面需要的字段（`plan` 透传为 `unknown`）—— 契约里 `WorkflowBundleResult.bundle`
+     * 就是按这个用途定义的，直接把整个 WorkflowBundle 塞进去会让两边的类型再次分叉。
+     */
+    return {
+      ok: true,
+      bundle: {
+        id: parsed.bundle.id,
+        title: parsed.bundle.title,
+        summary: parsed.bundle.summary,
+        version: parsed.bundle.version,
+        plan: parsed.bundle.plan
+      }
+    }
   } catch (err) {
     return {
       ok: false,

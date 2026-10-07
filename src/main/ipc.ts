@@ -25,7 +25,8 @@ import type {
   WriteAssetTextInput,
   PlanAiWorkflowInput,
   CommitAiWorkflowInput,
-  ProjectScanOutputsInput
+  ProjectScanOutputsInput,
+  InstalledWorkflowRecordView
 } from '@shared/ipc'
 import type { GitFileDiffInput } from '@shared/git'
 import type { TimelineExportInput, TimelineTransitionPreviewInput } from '@shared/graph'
@@ -525,33 +526,14 @@ export function registerIpcHandlers(): void {
     (input: { id: string; acceptMissingTypes?: boolean }) => installWorkflow(input)
   )
   handle(IpcChannels.WORKFLOW_MARKET_UNINSTALL, (id: string) => uninstallWorkflow({ id }))
-  handle(IpcChannels.WORKFLOW_MARKET_INSTALLED, () =>
+  handle(IpcChannels.WORKFLOW_MARKET_INSTALLED, (): InstalledWorkflowRecordView[] =>
     listInstalledWorkflows().map((item) => ({
       id: item.id,
       version: item.version,
       installedAt: item.installedAt
     }))
   )
-  handle(IpcChannels.WORKFLOW_MARKET_BUNDLE, (id: string) => {
-    const result = readInstalledWorkflowPlan(id)
-    if (!result.ok) {
-      return {
-        ok: false,
-        reasonKey: result.reasonKey,
-        ...(result.error ? { error: result.error } : {})
-      }
-    }
-    return {
-      ok: true,
-      bundle: {
-        id: result.bundle.id,
-        title: result.bundle.title,
-        summary: result.bundle.summary,
-        version: result.bundle.version,
-        plan: result.bundle.plan
-      }
-    }
-  })
+  handle(IpcChannels.WORKFLOW_MARKET_BUNDLE, (id: string) => readInstalledWorkflowPlan(id))
 
   // 插件市场窗口（单例：已开着则聚焦）
   handle(IpcChannels.MARKETPLACE_OPEN_WINDOW, () => {
