@@ -76,41 +76,50 @@ describe('对话面板：工作流入口', () => {
   })
 })
 
-describe('会话管理独占一行', () => {
-  it('session-row 是 chat-toolbar 的**兄弟**节点（不在同一行内）', () => {
-    const toolbarAt = CHAT.indexOf('class="chat-toolbar"')
-    const sessionRowAt = CHAT.indexOf('class="session-row"')
-    const mentionAt = CHAT.indexOf('class="tool-btn mention"')
-    expect(toolbarAt).toBeGreaterThan(0)
-    expect(mentionAt).toBeGreaterThan(toolbarAt)
-    // session-row 必须排在工具栏**之后**（即不在工具栏内部）
-    expect(sessionRowAt).toBeGreaterThan(mentionAt)
+describe('会话管理与模型同一行', () => {
+  it('会话控件在 chat-actions（模型所在的那一行）内，且在模型之前', () => {
+    const actionsAt = CHAT.indexOf('class="chat-actions"')
+    const sessionAt = CHAT.indexOf('class="session-dropdown"')
+    const modelAt = CHAT.indexOf('class="model-select-wrap"')
+    expect(actionsAt).toBeGreaterThan(0)
+    expect(sessionAt).toBeGreaterThan(actionsAt)
+    expect(modelAt).toBeGreaterThan(sessionAt)
+    // 与模型同属一行：两者之间不能再有行容器（composer 之后才轮到这一行）
+    const composerAt = CHAT.indexOf('class="composer"')
+    expect(composerAt).toBeLessThan(actionsAt)
   })
 
-  it('会话下拉 + 新建 + 删除三者都在 session-row 里', () => {
-    const start = CHAT.indexOf('class="session-row"')
-    // 取到下一个同级块（引用 chips）为止
-    const end = CHAT.indexOf('class="mention-chips"', start)
-    expect(end).toBeGreaterThan(start)
+  it('新建 / 删除 也在同一行内', () => {
+    const start = CHAT.indexOf('class="chat-actions"')
+    const end = CHAT.indexOf('class="model-select-wrap"', start)
     const row = CHAT.slice(start, end)
-    expect(row).toContain('sessionDropdownRef')
-    expect(row).toContain("t('studio.chat.newSession')")
-    expect(row).toContain("t('studio.chat.deleteSession')")
+    expect(row).toContain('onNewSession')
+    expect(row).toContain('onDeleteSession')
   })
 
-  it('工具栏里不再残留会话控件（否则等于两处都有）', () => {
+  it('工具栏里不再残留会话控件（防止两处都有）', () => {
     const toolbar = CHAT.slice(
       CHAT.indexOf('class="chat-toolbar"'),
-      CHAT.indexOf('class="session-row"')
+      CHAT.indexOf('class="mention-chips"')
     )
+    // 工具栏到 composer 之间不该再有会话下拉
     expect(toolbar).not.toContain('sessionDropdownRef')
-    expect(toolbar).not.toContain('onNewSession')
-    expect(toolbar).not.toContain('onDeleteSession')
   })
 
-  it('spacer 必须真的可伸缩 —— 会话下拉移走后它是唯一撑开「@」的元素', () => {
+  it('**旧的独立行包装已移除**（否则会多出一整行高度）', () => {
+    expect(CHAT).not.toContain('session-row')
+  })
+
+  it('会话下拉限宽，把剩余宽度让给模型名', () => {
+    const css = CHAT.slice(CHAT.indexOf('.chat-actions .session-dropdown'))
+    const block = css.slice(0, 200)
+    expect(block).toMatch(/flex:\s*0 1 /)
+    expect(block).toMatch(/min-width:/)
+  })
+
+  it('spacer 仍必须是 flex: 1（会话下拉移走后它是唯一撑开「@」的元素）', () => {
     const css = CHAT.slice(CHAT.indexOf('.chat-toolbar .toolbar-spacer'))
-    expect(css.slice(0, 200)).toMatch(/flex:\s*1/)
+    expect(css.slice(0, 240)).toMatch(/flex:\s*1/)
   })
 })
 

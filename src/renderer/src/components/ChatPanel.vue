@@ -2925,12 +2925,76 @@ onBeforeUnmount(() => {
           {{ t('studio.chat.mentionButton') }}
         </button>
       </div>
+      <div v-if="referenced.length" class="mention-chips">
+        <span v-for="item in referenced" :key="item.path" class="mention-chip" :title="item.path">
+          <img v-if="item.thumbUrl" class="chip-thumb" :src="item.thumbUrl" alt="" />
+          <span v-else-if="item.type === 'voice'" class="chip-icon">🎵</span>
+          <span v-else-if="item.type === 'model' || item.type === 'model3d'" class="chip-icon"
+            >🧊</span
+          >
+          <span v-else class="chip-icon">📄</span>
+          <span class="chip-name">{{ item.name }}</span>
+          <button
+            class="chip-remove"
+            :title="t('studio.chat.removeMention')"
+            @click="removeMention(item.path)"
+          >
+            ×
+          </button>
+        </span>
+      </div>
+      <div class="composer">
+        <div
+          v-show="slashOpen"
+          class="slash-menu"
+          role="listbox"
+          :aria-label="t('studio.chat.slashMenu')"
+        >
+          <div class="slash-menu-title">{{ t('studio.chat.slashMenu') }}</div>
+          <button
+            v-for="(cmd, i) in slashItems"
+            :key="cmd.id"
+            type="button"
+            class="slash-item"
+            role="option"
+            :class="{ active: i === slashIndex }"
+            :aria-selected="i === slashIndex"
+            @mousedown.prevent="applySlashCommand(cmd)"
+            @mouseenter="slashIndex = i"
+          >
+            <span class="slash-name">{{ cmd.name }}</span>
+            <span class="slash-desc">{{ t(`studio.chat.${cmd.descKey}`) }}</span>
+          </button>
+          <div v-if="!slashItems.length" class="slash-empty">{{ t('studio.chat.slashEmpty') }}</div>
+        </div>
+        <div
+          ref="inputRef"
+          class="composer-editor"
+          :class="{ composing }"
+          :style="{ height: `${composerHeight}px` }"
+          :contenteditable="!running"
+          role="textbox"
+          :aria-label="t('studio.chat.placeholder')"
+          :data-placeholder="t('studio.chat.placeholder')"
+          @input="onComposerInput"
+          @paste="onComposerPaste"
+          @drop.prevent="onComposerDrop"
+          @dragover.prevent
+          @compositionstart="composing = true"
+          @compositionend="onCompositionEnd"
+          @keydown.enter.exact.prevent="onComposerEnter"
+          @keydown.escape.prevent="onComposerEscape"
+          @keydown.arrow-down.exact="onSlashArrowKey($event, 1)"
+          @keydown.arrow-up.exact="onSlashArrowKey($event, -1)"
+          @keydown.tab.exact="onComposerTabKey"
+        />
+      </div>
       <!--
-        会话管理单独一行。
-        它的触发按钮要显示当前会话标题（宽度需求大），和工具按钮挤在一行时，
-        `flex: 1` 会把它压到只剩几个字，同时把其余按钮也挤紧 —— 分开各自都好读。
+        会话管理与「模型」同一行：两者都是窄长的下拉选择器（都会 ellipsis），
+        并排一行比各占一行省下一整行高度。会话下拉限宽，把剩余宽度让给模型名
+        —— `provider · model` 通常比会话标题更长。
       -->
-      <div class="session-row">
+      <div class="chat-actions">
         <div
           ref="sessionDropdownRef"
           class="session-dropdown"
@@ -3001,72 +3065,6 @@ onBeforeUnmount(() => {
         >
           {{ t('studio.chat.deleteSession') }}
         </button>
-      </div>
-      <div v-if="referenced.length" class="mention-chips">
-        <span v-for="item in referenced" :key="item.path" class="mention-chip" :title="item.path">
-          <img v-if="item.thumbUrl" class="chip-thumb" :src="item.thumbUrl" alt="" />
-          <span v-else-if="item.type === 'voice'" class="chip-icon">🎵</span>
-          <span v-else-if="item.type === 'model' || item.type === 'model3d'" class="chip-icon"
-            >🧊</span
-          >
-          <span v-else class="chip-icon">📄</span>
-          <span class="chip-name">{{ item.name }}</span>
-          <button
-            class="chip-remove"
-            :title="t('studio.chat.removeMention')"
-            @click="removeMention(item.path)"
-          >
-            ×
-          </button>
-        </span>
-      </div>
-      <div class="composer">
-        <div
-          v-show="slashOpen"
-          class="slash-menu"
-          role="listbox"
-          :aria-label="t('studio.chat.slashMenu')"
-        >
-          <div class="slash-menu-title">{{ t('studio.chat.slashMenu') }}</div>
-          <button
-            v-for="(cmd, i) in slashItems"
-            :key="cmd.id"
-            type="button"
-            class="slash-item"
-            role="option"
-            :class="{ active: i === slashIndex }"
-            :aria-selected="i === slashIndex"
-            @mousedown.prevent="applySlashCommand(cmd)"
-            @mouseenter="slashIndex = i"
-          >
-            <span class="slash-name">{{ cmd.name }}</span>
-            <span class="slash-desc">{{ t(`studio.chat.${cmd.descKey}`) }}</span>
-          </button>
-          <div v-if="!slashItems.length" class="slash-empty">{{ t('studio.chat.slashEmpty') }}</div>
-        </div>
-        <div
-          ref="inputRef"
-          class="composer-editor"
-          :class="{ composing }"
-          :style="{ height: `${composerHeight}px` }"
-          :contenteditable="!running"
-          role="textbox"
-          :aria-label="t('studio.chat.placeholder')"
-          :data-placeholder="t('studio.chat.placeholder')"
-          @input="onComposerInput"
-          @paste="onComposerPaste"
-          @drop.prevent="onComposerDrop"
-          @dragover.prevent
-          @compositionstart="composing = true"
-          @compositionend="onCompositionEnd"
-          @keydown.enter.exact.prevent="onComposerEnter"
-          @keydown.escape.prevent="onComposerEscape"
-          @keydown.arrow-down.exact="onSlashArrowKey($event, 1)"
-          @keydown.arrow-up.exact="onSlashArrowKey($event, -1)"
-          @keydown.tab.exact="onComposerTabKey"
-        />
-      </div>
-      <div class="chat-actions">
         <div class="model-select-wrap">
           <span class="model-label">{{ t('studio.chat.model') }}</span>
           <div
@@ -4551,15 +4549,18 @@ onBeforeUnmount(() => {
   会话管理独占一行。
   会话下拉 `flex: 1` 撑满剩余宽度（标题需要空间），新建 / 删除靠右紧跟其后。
 */
-.session-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+/*
+  会话下拉与模型选择器共用一行。
+  会话限宽（可收缩到 140px），把剩余宽度让给模型名；两者都能 ellipsis，因此压缩不会溢出。
+*/
+.chat-actions .session-dropdown {
+  flex: 0 1 220px;
+  min-width: 140px;
 }
 
 .chat-toolbar .toolbar-spacer {
   /*
-    必须是真的可伸缩：会话下拉移出这一行后，若这里还是固定 1px，
+    必须是真的可伸缩：会话下拉已不在工具行里，若这里还是固定 1px，
     工具行就没有任何元素吸收剩余空间，「@」再也不会靠右。
   */
   flex: 1;
