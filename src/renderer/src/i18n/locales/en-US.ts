@@ -831,6 +831,7 @@ export default {
       transportHttp: 'HTTP service (remote)',
       transportStdio: 'Local command (stdio)',
       url: 'Server URL',
+      missingUrl: 'Enter the server URL',
       invalidUrl: 'The server URL must be a full http:// or https:// address',
       missingCommand: 'Enter the command to run',
       command: 'Command',

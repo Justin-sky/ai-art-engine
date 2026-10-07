@@ -818,6 +818,7 @@ export default {
       transportHttp: 'HTTP 服务（远程）',
       transportStdio: '本地命令（stdio）',
       url: '服务地址',
+      missingUrl: '请填写服务地址',
       invalidUrl: '服务地址需为 http:// 或 https:// 开头的完整地址',
       missingCommand: '请填写要执行的命令',
       command: '命令',

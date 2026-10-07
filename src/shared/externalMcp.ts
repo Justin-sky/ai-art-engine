@@ -269,10 +269,29 @@ export function isUsableHttpUrl(url: string): boolean {
 /** 配置为何不可用（写给用户看的原因）；可用时返回 null */
 export function externalMcpUnusableReason(server: ExternalMcpServer): string | null {
   if (server.transport === 'http') {
-    if (!server.url.trim()) return 'missingUrl'
-    if (!isUsableHttpUrl(server.url)) return 'invalidUrl'
+    if (!server.url.trim()) return EXTERNAL_MCP_CONFIG_REASON.missingUrl
+    if (!isUsableHttpUrl(server.url)) return EXTERNAL_MCP_CONFIG_REASON.invalidUrl
     return null
   }
-  if (!server.command.trim()) return 'missingCommand'
+  if (!server.command.trim()) return EXTERNAL_MCP_CONFIG_REASON.missingCommand
   return null
 }
+
+/**
+ * 配置层「不可用」的原因 —— **单一来源**。
+ *
+ * 这些值会被直接拼成 i18n 键（`marketplace.ext.<reason>`）由渲染层翻译，所以它们
+ * 必须与 locale 里的键一一对应。用常量而不是散落的字面量，配合
+ * `tests/marketplaceI18nKeys.test.ts` 的全量比对，就不会再出现
+ * 「加了一种原因却忘了加文案」→ 界面上显示原始键名的情形（实测踩过一次）。
+ */
+export const EXTERNAL_MCP_CONFIG_REASON = {
+  missingUrl: 'missingUrl',
+  invalidUrl: 'invalidUrl',
+  missingCommand: 'missingCommand'
+} as const
+
+/** 全部配置层原因键（测试与 UI 断言用） */
+export const EXTERNAL_MCP_CONFIG_REASONS: readonly string[] = Object.values(
+  EXTERNAL_MCP_CONFIG_REASON
+)

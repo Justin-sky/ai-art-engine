@@ -1,5 +1,6 @@
 import type { DshSkillsInfo, ExternalPluginManifest, McpServerInfo } from '@shared/ipc'
 import {
+  EXTERNAL_MCP_CONFIG_REASON,
   createDefaultExternalMcpServer,
   deriveExternalMcpId,
   externalMcpUnusableReason,
@@ -258,10 +259,10 @@ export function draftToExternalMcpServer(
   const url = draft.url.trim()
   const command = draft.command.trim()
   if (draft.transport === 'http') {
-    if (!url) return { reason: 'missingUrl' }
-    if (!isUsableHttpUrl(url)) return { reason: 'invalidUrl' }
+    if (!url) return { reason: EXTERNAL_MCP_CONFIG_REASON.missingUrl }
+    if (!isUsableHttpUrl(url)) return { reason: EXTERNAL_MCP_CONFIG_REASON.invalidUrl }
   } else if (!command) {
-    return { reason: 'missingCommand' }
+    return { reason: EXTERNAL_MCP_CONFIG_REASON.missingCommand }
   }
 
   const name = draft.name.trim()
