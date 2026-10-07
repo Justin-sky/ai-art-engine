@@ -108,10 +108,20 @@ describe('渲染层：路由与 App 外壳', () => {
 })
 
 describe('入口与设置页迁移', () => {
-  it('工作室工具栏有插件市场按钮并调用 IPC', () => {
-    expect(STUDIO).toMatch(/@click="openMarketplace"/)
-    expect(STUDIO).toMatch(/window\.studio\.openMarketplaceWindow\(\)/)
-    expect(STUDIO).toContain("t('marketplace.open')")
+  it('顶栏有插件市场按钮并调用 IPC（放在设置左边）', () => {
+    /*
+      市场原先挂在工作室工具栏里 —— 那样只有**开了工程**才够得着，而它和设置一样是
+      应用级入口（装工作流/技能、改偏好），都不依赖当前工程。现在两者同在顶栏，
+      市场在设置左边。位置本身由 topbarMarketplacePlacement.test.ts 钉住。
+    */
+    expect(APP).toMatch(/@click="openMarketplace"/)
+    expect(APP).toMatch(/window\.studio\.openMarketplaceWindow\(\)/)
+    expect(APP).toContain("t('marketplace.open')")
+  })
+
+  it('工作室工具栏不再有市场按钮（移动而非复制）', () => {
+    expect(STUDIO).not.toContain('openMarketplace')
+    expect(STUDIO).not.toContain("t('marketplace.open')")
   })
 
   it('设置页不再有 mcp / skills / plugins 三个页签与区块', () => {

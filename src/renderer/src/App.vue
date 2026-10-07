@@ -10,6 +10,19 @@
           <span class="path" :title="project.rootPath ?? ''">{{ shortPath }}</span>
         </div>
         <nav class="topbar-actions">
+          <!--
+            插件市场与设置同属「应用级」入口（装工作流/技能、改偏好），都不依赖当前工程，
+            所以放在同一个顶栏分组里、紧挨设置左边；原先它挂在工作室工具栏里，只有开了工程才够得着。
+          -->
+          <button
+            type="button"
+            class="topbar-btn"
+            :title="t('marketplace.open')"
+            :aria-label="t('marketplace.open')"
+            @click="openMarketplace"
+          >
+            {{ t('marketplace.open') }}
+          </button>
           <button type="button" class="topbar-btn" @click="goSettings">
             {{ t('app.nav.settings') }}
           </button>
@@ -105,6 +118,16 @@ async function goSettings(): Promise<void> {
     if (isNavigationFailure(error)) return
     throw error
   }
+}
+
+/**
+ * 打开插件市场窗口（MCP / 技能 / 工作流 / 扩展）。
+ *
+ * 走主进程建窗而不是 `window.open`：主进程侧能保证单例（重复点只聚焦，不叠加），
+ * 也能让新窗口自动套用同一套窗口外观（`browser-window-created` 统一处理）。
+ */
+function openMarketplace(): void {
+  void window.studio.openMarketplaceWindow()
 }
 
 function onEditorShortcut(event: KeyboardEvent): void {
