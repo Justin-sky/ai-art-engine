@@ -1109,6 +1109,15 @@ export interface WorkflowMarketFetchResult {
   cachedAt?: string
   reasonKey?: string
   error?: string
+  /** 实际取到数据的源地址（可能是镜像） */
+  source?: string
+  /**
+   * 是否用了非首选源（主源不通、降级到镜像）。
+   * 界面据此说明「当前用的是镜像」—— 用户有权知道数据从哪来。
+   */
+  usedFallback?: boolean
+  /** 尝试过的全部源（失败时用于说明「哪些源都不通」） */
+  attempted?: Array<{ source: string; reasonKey: string; error?: string }>
 }
 
 export interface WorkflowCoverResult {

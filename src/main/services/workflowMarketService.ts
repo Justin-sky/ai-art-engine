@@ -28,9 +28,11 @@ import type {
   WorkflowMarketFetchResult
 } from '@shared/ipc'
 import {
+  DEFAULT_WORKFLOW_MARKET_SOURCE,
   missingNodeTypes,
   parseWorkflowBundle,
   parseWorkflowMarketIndex,
+  resolveWorkflowMarketSources,
   workflowEntryBlockReason,
   workflowMarketUrls,
   type WorkflowBundle
@@ -76,18 +78,39 @@ function getPipeline(): MarketPipeline {
   return pipelineInstance
 }
 
-/** 市场源地址（设置可覆盖；留空用官方仓库） */
-export const DEFAULT_WORKFLOW_MARKET_SOURCE =
-  'https://raw.githubusercontent.com/Justin-sky/ai-art-engine-workflow/main'
+/**
+ * 当前生效的数据源。
+ *
+ * **索引、包、封面必须同源**。否则会出现「索引从镜像读到、点安装却去打已经不通的 GitHub」
+ * 这种难查的失败。所以目录取成功后把生效源记下来，后续的 bundle / cover 优先走它。
+ */
+let activeSource: string | null = null
 
-function sourceUrl(): string {
-  const configured = settingsService.get().workflowMarket?.source?.trim()
-  return configured || DEFAULT_WORKFLOW_MARKET_SOURCE
+/** 候选源：用户配置的地址（可多个），留空则为官方主源 + 镜像 */
+function candidateSources(): string[] {
+  const configured = settingsService.get().workflowMarket?.source ?? ''
+  return resolveWorkflowMarketSources(configured)
+}
+
+/**
+ * 按尝试顺序排列的源：**上次成功的源优先**，其余保持原顺序兜底。
+ *
+ * 这样已装内容在断网/换网后仍能从原来那个通得了的源更新，而不是每次都先撞一遍不通的主源。
+ */
+function orderedSources(): string[] {
+  const candidates = candidateSources()
+  if (!activeSource || !candidates.includes(activeSource)) return candidates
+  return [activeSource, ...candidates.filter((item) => item !== activeSource)]
 }
 
 /** 本应用已注册的节点类型（兼容性判定的依据） */
 export function knownNodeTypeIds(): string[] {
   return listNodeTypes().map((def) => def.typeId)
+}
+
+/** 当前生效源（界面展示「正在用哪个源」用） */
+export function currentWorkflowMarketSource(): string {
+  return activeSource ?? candidateSources()[0] ?? DEFAULT_WORKFLOW_MARKET_SOURCE
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -107,53 +130,81 @@ export function knownNodeTypeIds(): string[] {
 export async function fetchWorkflowCatalog(input?: {
   force?: boolean
 }): Promise<WorkflowMarketFetchResult> {
-  const urls = workflowMarketUrls(sourceUrl())
-  const result = await getPipeline().fetchCatalog({
-    url: urls.index,
-    force: input?.force,
-    parse: (raw) => {
-      const parsed = parseWorkflowMarketIndex(raw)
-      return parsed.ok
-        ? { ok: true as const, catalog: { index: parsed.index, dropped: parsed.dropped } }
-        : { ok: false as const, reasonKey: parsed.reasonKey }
+  const sources = orderedSources()
+  const attempted: Array<{ source: string; reasonKey: string; error?: string }> = []
+
+  /**
+   * 依次尝试各源。
+   *
+   * 注意 `fetchCatalog` 自己带磁盘缓存回退：某个源「网络不通但有缓存」会返回
+   * `ok:true, stale:true`。这算成功 —— 有可用目录就不必再去撞下一个源，
+   * 界面会提示「离线，数据可能过期」。
+   */
+  for (const source of sources) {
+    const urls = workflowMarketUrls(source)
+    const result = await getPipeline().fetchCatalog({
+      url: urls.index,
+      force: input?.force,
+      parse: (raw) => {
+        const parsed = parseWorkflowMarketIndex(raw)
+        return parsed.ok
+          ? { ok: true as const, catalog: { index: parsed.index, dropped: parsed.dropped } }
+          : { ok: false as const, reasonKey: parsed.reasonKey }
+      }
+    })
+
+    if (!result.ok || !result.catalog) {
+      // 索引本身不合法（仓库发坏了）也算这个源失败 —— 换镜像可能拿到一份好的
+      attempted.push({
+        source,
+        reasonKey: result.reasonKey ?? 'unknown',
+        ...(result.error ? { error: result.error } : {})
+      })
+      continue
     }
-  })
-  if (!result.ok || !result.catalog) {
+
+    activeSource = source
+    const known = knownNodeTypeIds()
+    const appVersion = updateService.getCurrentVersion()
+    const installed = listInstalledWorkflows()
+
+    const entries = result.catalog.index.workflows.map((entry) => {
+      const record = installed.find((item) => item.id === entry.id)
+      const blockReason = workflowEntryBlockReason(entry, {
+        knownNodeTypes: known,
+        appVersion
+      })
+      return {
+        ...entry,
+        missingNodeTypes: missingNodeTypes(entry, known),
+        blockReason,
+        installedVersion: record?.version ?? null,
+        updatable: !!record && !!record.version && record.version !== entry.version,
+        installed: !!record
+      }
+    })
+
+    // 顶层字段与 `WorkflowMarketFetchResult` 一一对应（见上方注释：嵌套一层曾导致界面全空）
     return {
-      ok: false,
-      reasonKey: result.reasonKey ?? 'unknown',
+      ok: true,
+      entries,
+      dropped: result.catalog.dropped,
+      stale: !!result.stale,
+      source,
+      usedFallback: source !== sources[0],
+      ...(result.cachedAt ? { cachedAt: result.cachedAt } : {}),
       ...(result.error ? { error: result.error } : {})
     }
   }
 
-  const known = knownNodeTypeIds()
-  const appVersion = updateService.getCurrentVersion()
-  const installed = listInstalledWorkflows()
-
-  const entries = result.catalog.index.workflows.map((entry) => {
-    const record = installed.find((item) => item.id === entry.id)
-    const blockReason = workflowEntryBlockReason(entry, {
-      knownNodeTypes: known,
-      appVersion
-    })
-    return {
-      ...entry,
-      missingNodeTypes: missingNodeTypes(entry, known),
-      blockReason,
-      installedVersion: record?.version ?? null,
-      updatable: !!record && !!record.version && record.version !== entry.version,
-      installed: !!record
-    }
-  })
-
-  // 顶层字段与 `WorkflowMarketFetchResult` 一一对应（见上方注释：嵌套一层曾导致界面全空）
+  /**
+   * 全部源都不通：把**每一个源失败的原因**都带回去。
+   * 只说「网络失败」会让人以为是自己的网络，而实际可能是某一个源在特定网络下不可达。
+   */
   return {
-    ok: true,
-    entries,
-    dropped: result.catalog.dropped,
-    stale: !!result.stale,
-    ...(result.cachedAt ? { cachedAt: result.cachedAt } : {}),
-    ...(result.error ? { error: result.error } : {})
+    ok: false,
+    reasonKey: attempted[0]?.reasonKey ?? 'network',
+    attempted
   }
 }
 
@@ -169,17 +220,34 @@ export async function fetchWorkflowCover(id: string): Promise<WorkflowCoverResul
   const cached = coverMemo.get(id)
   if (cached) return { ok: true, dataUrl: cached }
 
-  const urls = workflowMarketUrls(sourceUrl())
   const local = join(installedWorkflowsDir(), id, 'cover.png')
   try {
-    let bytes: Uint8Array
+    let bytes: Uint8Array | null = null
     if (existsSync(local)) {
       // 已安装的优先用本地：断网也能看到封面
       bytes = new Uint8Array(readFileSync(local))
     } else {
-      const coverUrl = urls.cover({ id, cover: 'cover.png' })
-      if (!coverUrl) return { ok: false, reasonKey: 'cover' }
-      bytes = await getPipeline().fetchBinary(coverUrl)
+      // 未安装的按源顺序尝试（与目录同序，避免只因为主源不通就没有封面）
+      let lastError: unknown = null
+      for (const source of orderedSources()) {
+        const coverUrl = workflowMarketUrls(source).cover({ id, cover: 'cover.png' })
+        if (!coverUrl) continue
+        try {
+          bytes = await getPipeline().fetchBinary(coverUrl)
+          break
+        } catch (err) {
+          lastError = err
+        }
+      }
+      if (!bytes) {
+        return {
+          ok: false,
+          reasonKey: 'cover',
+          ...(lastError
+            ? { error: lastError instanceof Error ? lastError.message : String(lastError) }
+            : {})
+        }
+      }
     }
     const dataUrl = `data:image/png;base64,${Buffer.from(bytes).toString('base64')}`
     if (coverMemo.size >= COVER_MEMO_MAX) {
@@ -245,21 +313,50 @@ function writeRecords(records: InstalledWorkflowRecord[]): void {
  *
  * `acceptMissingTypes` 是给「我知道缺类型但先装上」用的逃生门；默认 `false` ——
  * 缺依赖的安装应当被拦在界面层，而不是装进来一个用不了的东西。
+ *
+ * **整包（本体 + 封面）从同一个源取**：混源会出现「本体从镜像来、封面从主源来」，
+ * 一旦主源不通，封面那一步就把整次安装拖挂，而用户看到的是一个说不清原因的失败。
  */
 export async function installWorkflow(input: {
   id: string
   acceptMissingTypes?: boolean
 }): Promise<WorkflowMarketActionResult> {
-  const urls = workflowMarketUrls(sourceUrl())
+  const sources = orderedSources()
+  const failures: string[] = []
+
+  for (const source of sources) {
+    const urls = workflowMarketUrls(source)
+    const result = await installFromSource(source, urls, input, failures)
+    if (result) return result
+  }
+
+  // 全部源都失败：把每个源的原因都带上，便于区分「都不通」与「仓库发坏了」
+  return {
+    ok: false,
+    reasonKey: 'download',
+    error: failures.join(' | ')
+  }
+}
+
+/**
+ * 从单个源安装。成功或「仓库内容有错」时返回结果；**只有该源取不到文件**时才返回 `null`
+ * 让调用方换下一个源。
+ *
+ * 内容错误（id 不符、格式非法、缺依赖）不换源 —— 镜像与主源内容应当一致，
+ * 换源重试只会把同一个错误再撞一遍，还会掩盖真正的原因。
+ */
+async function installFromSource(
+  source: string,
+  urls: ReturnType<typeof workflowMarketUrls>,
+  input: { id: string; acceptMissingTypes?: boolean },
+  failures: string[]
+): Promise<WorkflowMarketActionResult | null> {
   let bundleRaw: unknown
   try {
     bundleRaw = await getPipeline().fetchJson(urls.bundle(input.id))
   } catch (err) {
-    return {
-      ok: false,
-      reasonKey: 'download',
-      error: err instanceof Error ? err.message : String(err)
-    }
+    failures.push(`${source}: ${err instanceof Error ? err.message : String(err)}`)
+    return null
   }
 
   const parsed = parseWorkflowBundle(bundleRaw)
@@ -276,12 +373,14 @@ export async function installWorkflow(input: {
     return { ok: false, reasonKey: 'missingNodeTypes', error: missing.join(', ') }
   }
 
+  const coverUrl = urls.cover({ id: bundle.id, cover: bundle.cover ?? 'cover.png' })
   const targetDir = join(installedWorkflowsDir(), bundle.id)
   const installed = await getPipeline().install({
     targetDir,
     files: [
       { path: 'workflow.json', url: urls.bundle(bundle.id) },
-      { path: 'cover.png', url: urls.cover({ id: bundle.id, cover: bundle.cover ?? 'cover.png' })! }
+      // 封面取不到不该让整次安装失败：没有封面只是卡片不好看，工作流本身是可用的
+      ...(coverUrl ? [{ path: 'cover.png', url: coverUrl }] : [])
     ],
     verify: (files) => {
       const workflowFile = files.find((item) => item.path === 'workflow.json')
@@ -298,14 +397,19 @@ export async function installWorkflow(input: {
       return { ok: true }
     }
   })
-  if (!installed.ok) return installed
+  if (!installed.ok) {
+    failures.push(`${source}: ${installed.error ?? installed.reasonKey}`)
+    return null
+  }
 
+  // 记下成功安装的源，后续 bundle / cover 优先走它
+  activeSource = source
   const records = listInstalledWorkflows().filter((item) => item.id !== bundle.id)
   records.push({
     id: bundle.id,
     version: bundle.version,
     installedAt: new Date().toISOString(),
-    source: sourceUrl(),
+    source,
     contentHash: sha256OfBytes(new TextEncoder().encode(JSON.stringify(bundle.plan))).slice(0, 16)
   })
   writeRecords(records)

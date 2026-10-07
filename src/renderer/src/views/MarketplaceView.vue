@@ -58,7 +58,11 @@
         </button>
         <span v-if="workflowError" class="mp-hint error">{{ workflowError }}</span>
         <span v-else class="mp-hint">
-          {{ t('marketplace.workflows.sourceHint', { count: workflowEntries.length }) }}
+          {{
+            workflowUsedFallback
+              ? t('marketplace.workflows.viaMirror', { count: workflowEntries.length })
+              : t('marketplace.workflows.sourceHint', { count: workflowEntries.length })
+          }}
         </span>
       </div>
 
@@ -411,6 +415,9 @@ const templates = ref<SkillTemplate[]>([])
 const workflowEntries = ref<WorkflowMarketEntryView[]>([])
 /** 目录来自磁盘缓存且本次刷新失败 → 界面提示「离线，数据可能过期」 */
 const workflowStale = ref(false)
+/** 实际取到数据的源地址与是否用了镜像（用户有权知道数据从哪来） */
+const workflowSource = ref('')
+const workflowUsedFallback = ref(false)
 const workflowError = ref('')
 /** 工作流页签内的二级分类（'' = 全部） */
 const workflowCategory = ref('')
@@ -735,6 +742,8 @@ async function loadWorkflowCatalog(force = false): Promise<void> {
     }
     workflowEntries.value = result.entries ?? []
     workflowStale.value = !!result.stale
+    workflowSource.value = result.source ?? ''
+    workflowUsedFallback.value = !!result.usedFallback
     workflowError.value = result.stale
       ? t('marketplace.workflows.offline')
       : result.dropped

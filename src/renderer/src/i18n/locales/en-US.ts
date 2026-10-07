@@ -818,6 +818,8 @@ export default {
       refresh: 'Refresh catalog',
       refreshing: 'Refreshing…',
       sourceHint: '{count} workflows in the remote market',
+      /** 主源不通、已自动降级到镜像 */
+      viaMirror: 'Primary source unreachable — switched to the mirror: {count} workflows',
       offline: 'Offline: showing the last cached catalog, data may be stale',
       dropped: '{count} catalog entries were malformed and ignored',
       categoryAll: 'All',

@@ -441,3 +441,45 @@ export function workflowMarketUrls(source: string): {
     cover: (entry) => (entry.cover ? `${base}/workflows/${entry.id}/${entry.cover}` : null)
   }
 }
+
+/**
+ * 官方主源与镜像，**按尝试顺序**排列。
+ *
+ * 为什么需要镜像：`raw.githubusercontent.com` 在部分网络下不可达，而市场打不开这件事
+ * 对用户来说和「市场是空的」没有区别。Gitee 的 raw 地址在同类网络下通常可用。
+ *
+ * 两个仓库的内容必须保持一致（逐字节）—— 不一致会造成「同一版本号、不同内容」，
+ * 这是最难排查的一类状态。同步方式见仓库 README。
+ */
+export const WORKFLOW_MARKET_SOURCES: readonly string[] = [
+  'https://raw.githubusercontent.com/Justin-sky/ai-art-engine-workflow/main',
+  'https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine-workflow/raw/main'
+]
+
+/** 默认数据源（未配置时用主源） */
+export const DEFAULT_WORKFLOW_MARKET_SOURCE = WORKFLOW_MARKET_SOURCES[0]!
+
+/**
+ * 解析候选数据源。
+ *
+ * `configured` 可以填**一个或多个**地址（空白 / 换行 / 逗号分隔），按填写顺序依次尝试 ——
+ * 于是「自建主源 + 官方镜像」这种组合不需要额外机制。
+ * 留空则用官方主源 + 镜像。
+ *
+ * 显式配置时**只**用配置的地址，不偷偷混入官方源：用户写死了一个源，就应该只打那一个，
+ * 否则排查「为什么内容不对」时会被意料之外的回退误导。
+ */
+export function resolveWorkflowMarketSources(configured: string): string[] {
+  const parts = configured
+    .split(/[\s,]+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+  return parts.length > 0 ? parts : [...WORKFLOW_MARKET_SOURCES]
+}
+
+/** 把一串地址归一到「主地址」（用于界面展示当前使用的是哪个源） */
+export function workflowMarketSourceLabel(source: string): string {
+  if (source === WORKFLOW_MARKET_SOURCES[0]) return 'github'
+  if (source === WORKFLOW_MARKET_SOURCES[1]) return 'gitee'
+  return 'custom'
+}
