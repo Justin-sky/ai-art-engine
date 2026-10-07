@@ -57,12 +57,20 @@
           }}
         </button>
         <span v-if="workflowError" class="mp-hint error">{{ workflowError }}</span>
+        <!-- 首次加载中：不要显示「共 0 个工作流」，那会被当成「市场是空的」 -->
+        <span v-else-if="workflowLoading" class="mp-hint">
+          {{ t('marketplace.workflows.loading') }}
+        </span>
         <span v-else class="mp-hint">
           {{
             workflowUsedFallback
               ? t('marketplace.workflows.viaMirror', { count: workflowEntries.length })
               : t('marketplace.workflows.sourceHint', { count: workflowEntries.length })
           }}
+        </span>
+        <!-- 刷新失败但手上还有旧内容：软提示，不用错误顶掉列表 -->
+        <span v-if="workflowRefreshFailed" class="mp-hint error">
+          {{ t('marketplace.workflows.refreshFailed') }}
         </span>
       </div>
 
@@ -426,6 +434,16 @@ const workflowCovers = ref<Record<string, string>>({})
 /** 一次最多预取多少张封面：避免一屏几十张一起发请求 */
 const COVER_LAZY_LIMIT = 24
 const workflowRefreshing = ref(false)
+/**
+ * 首次加载中（还没有任何条目）。
+ *
+ * 与 `workflowRefreshing` 分开：刷新时已经有内容可看，状态提示只需轻描淡写；
+ * 首次加载时什么都没有，此时若显示「共 0 个工作流」会让人以为市场是空的 ——
+ * 这个误解已经真实发生过一次。
+ */
+const workflowLoading = ref(false)
+/** 刷新失败但有旧内容可看：给软提示，不要用错误把已有内容顶掉 */
+const workflowRefreshFailed = ref(false)
 const installingId = ref<string | null>(null)
 const usingId = ref<string | null>(null)
 
@@ -731,19 +749,36 @@ async function refreshSkills(): Promise<void> {
 }
 
 /** 拉工作流市场目录。`force` 用于用户手动刷新（跳过 1 小时 TTL）。 */
+/**
+ * 拉工作流市场目录。
+ *
+ * **每次打开市场窗口都会强制刷新**（`onMounted` 传 `force`）—— 往仓库推了新工作流后重开窗口
+ * 就能看到，不必等 1 小时 TTL，也不必手点「刷新目录」。
+ */
 async function loadWorkflowCatalog(force = false): Promise<void> {
   workflowRefreshing.value = true
+  if (workflowEntries.value.length === 0) workflowLoading.value = true
   try {
     const result = await window.studio.fetchWorkflowMarket({ force })
     if (!result.ok) {
-      // 失败**不清空**已有条目：断网时应当还能看到上次的目录
-      workflowError.value = t(`marketplace.workflows.reason.${result.reasonKey ?? 'network'}`)
+      /**
+       * 失败时**保留已有条目**。首次加载失败给硬错误；刷新失败但手上有旧内容时只给软提示 ——
+       * 用错误把已经有内容的列表顶掉，等于把「暂时刷不到新的」夸大成「什么都没有」。
+       */
+      const reason = t(`marketplace.workflows.reason.${result.reasonKey ?? 'network'}`)
+      if (workflowEntries.value.length > 0) {
+        workflowRefreshFailed.value = true
+        workflowError.value = ''
+      } else {
+        workflowError.value = reason
+      }
       return
     }
     workflowEntries.value = result.entries ?? []
     workflowStale.value = !!result.stale
     workflowSource.value = result.source ?? ''
     workflowUsedFallback.value = !!result.usedFallback
+    workflowRefreshFailed.value = false
     workflowError.value = result.stale
       ? t('marketplace.workflows.offline')
       : result.dropped
@@ -752,9 +787,14 @@ async function loadWorkflowCatalog(force = false): Promise<void> {
     // 封面按需拉（只拉当前可见分类的前若干张，避免一次性打几百个请求）
     void loadVisibleCovers()
   } catch (e) {
-    workflowError.value = e instanceof Error ? e.message : String(e)
+    if (workflowEntries.value.length > 0) {
+      workflowRefreshFailed.value = true
+    } else {
+      workflowError.value = e instanceof Error ? e.message : String(e)
+    }
   } finally {
     workflowRefreshing.value = false
+    workflowLoading.value = false
   }
 }
 
@@ -895,8 +935,9 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
-  // 目录单独拉：它依赖网络，不该把其余本地信息一起拖住（本地部分先渲染出来）
-  await loadWorkflowCatalog()
+  // 目录单独拉：它依赖网络，不该把其余本地信息一起拖住（本地部分先渲染出来）。
+  // **强制刷新**：市场窗口每次打开都反映远端现状，不用等 TTL，也不用用户手点刷新。
+  await loadWorkflowCatalog(true)
 })
 </script>
 

@@ -35,7 +35,8 @@ import {
   resolveWorkflowMarketSources,
   workflowEntryBlockReason,
   workflowMarketUrls,
-  type WorkflowBundle
+  type WorkflowBundle,
+  type WorkflowMarketEntry
 } from '@shared/workflowMarket'
 import { MarketPipeline, sha256OfBytes } from './marketPipeline'
 import { settingsService } from './settingsService'
@@ -93,14 +94,50 @@ function candidateSources(): string[] {
 }
 
 /**
+ * 上次成功的源，**落盘**保存。
+ *
+ * 内存里的 `activeSource` 一重启就没了，于是每次启动后的第一次打开都要先撞一遍不通的主源
+ * （黑洞路由下要等到超时）。记住它就能跨重启跳过死源。
+ *
+ * 这是**派生事实**不是用户配置，所以存在缓存目录而不是 settings —— 不能去覆盖用户填的
+ * `workflowMarket.source`（那会让「我明明配了自建源」变得不可解释）。
+ */
+function preferredSourcePath(): string {
+  return join(marketCacheDir(), 'preferred-source.json')
+}
+
+function readPreferredSource(): string | null {
+  try {
+    const raw = JSON.parse(readFileSync(preferredSourcePath(), 'utf8')) as { source?: unknown }
+    return typeof raw.source === 'string' && raw.source ? raw.source : null
+  } catch {
+    return null
+  }
+}
+
+function writePreferredSource(source: string): void {
+  try {
+    mkdirSync(marketCacheDir(), { recursive: true })
+    writeFileSync(
+      preferredSourcePath(),
+      `${JSON.stringify({ source, at: new Date().toISOString() }, null, 2)}\n`,
+      'utf8'
+    )
+  } catch {
+    /* 记不住不影响本次结果 */
+  }
+}
+
+/**
  * 按尝试顺序排列的源：**上次成功的源优先**，其余保持原顺序兜底。
  *
  * 这样已装内容在断网/换网后仍能从原来那个通得了的源更新，而不是每次都先撞一遍不通的主源。
  */
 function orderedSources(): string[] {
   const candidates = candidateSources()
-  if (!activeSource || !candidates.includes(activeSource)) return candidates
-  return [activeSource, ...candidates.filter((item) => item !== activeSource)]
+  const preferred = activeSource ?? readPreferredSource()
+  if (!preferred || !candidates.includes(preferred)) return candidates
+  return [preferred, ...candidates.filter((item) => item !== preferred)]
 }
 
 /** 本应用已注册的节点类型（兼容性判定的依据） */
@@ -133,13 +170,50 @@ export async function fetchWorkflowCatalog(input?: {
   const sources = orderedSources()
   const attempted: Array<{ source: string; reasonKey: string; error?: string }> = []
 
+  /** 组装界面视图（各源共用） */
+  const viewOf = (
+    source: string,
+    index: { workflows: WorkflowMarketEntry[] },
+    dropped: number,
+    stale: boolean | undefined,
+    cachedAt: string | undefined,
+    error: string | undefined
+  ): WorkflowMarketFetchResult => {
+    const known = knownNodeTypeIds()
+    const appVersion = updateService.getCurrentVersion()
+    const installed = listInstalledWorkflows()
+    const entries = index.workflows.map((entry) => {
+      const record = installed.find((item) => item.id === entry.id)
+      return {
+        ...entry,
+        missingNodeTypes: missingNodeTypes(entry, known),
+        blockReason: workflowEntryBlockReason(entry, { knownNodeTypes: known, appVersion }),
+        installedVersion: record?.version ?? null,
+        updatable: !!record && !!record.version && record.version !== entry.version,
+        installed: !!record
+      }
+    })
+    return {
+      ok: true,
+      entries,
+      source,
+      usedFallback: source !== sources[0],
+      ...(dropped ? { dropped } : {}),
+      ...(stale ? { stale: true } : {}),
+      ...(cachedAt ? { cachedAt } : {}),
+      ...(error ? { error } : {})
+    }
+  }
+
   /**
-   * 依次尝试各源。
+   * 一个「离线但有缓存」的源**不会立刻结束循环**。
    *
-   * 注意 `fetchCatalog` 自己带磁盘缓存回退：某个源「网络不通但有缓存」会返回
-   * `ok:true, stale:true`。这算成功 —— 有可用目录就不必再去撞下一个源，
-   * 界面会提示「离线，数据可能过期」。
+   * 顺序很关键：**新鲜数据优于过期数据**。若主源只是挂着旧缓存、而镜像此刻是通的，
+   * 就该用镜像的新数据，而不是把主源的旧缓存当成成功结果直接返回 ——
+   * 那会让备用源在自己最该生效的场景下反而不生效。
    */
+  let bestStale: WorkflowMarketFetchResult | null = null
+
   for (const source of sources) {
     const urls = workflowMarketUrls(source)
     const result = await getPipeline().fetchCatalog({
@@ -163,38 +237,27 @@ export async function fetchWorkflowCatalog(input?: {
       continue
     }
 
-    activeSource = source
-    const known = knownNodeTypeIds()
-    const appVersion = updateService.getCurrentVersion()
-    const installed = listInstalledWorkflows()
-
-    const entries = result.catalog.index.workflows.map((entry) => {
-      const record = installed.find((item) => item.id === entry.id)
-      const blockReason = workflowEntryBlockReason(entry, {
-        knownNodeTypes: known,
-        appVersion
-      })
-      return {
-        ...entry,
-        missingNodeTypes: missingNodeTypes(entry, known),
-        blockReason,
-        installedVersion: record?.version ?? null,
-        updatable: !!record && !!record.version && record.version !== entry.version,
-        installed: !!record
-      }
-    })
-
-    // 顶层字段与 `WorkflowMarketFetchResult` 一一对应（见上方注释：嵌套一层曾导致界面全空）
-    return {
-      ok: true,
-      entries,
-      dropped: result.catalog.dropped,
-      stale: !!result.stale,
+    const view = viewOf(
       source,
-      usedFallback: source !== sources[0],
-      ...(result.cachedAt ? { cachedAt: result.cachedAt } : {}),
-      ...(result.error ? { error: result.error } : {})
+      result.catalog.index,
+      result.catalog.dropped,
+      result.stale,
+      result.cachedAt,
+      result.error
+    )
+    if (!result.stale) {
+      // 新鲜数据：立即采用并记住这个源
+      activeSource = source
+      writePreferredSource(source)
+      return view
     }
+    // 过期数据：先留着，继续看看有没有源能给出新鲜的
+    if (!bestStale) bestStale = view
+  }
+
+  if (bestStale) {
+    activeSource = bestStale.source ?? null
+    return bestStale
   }
 
   /**

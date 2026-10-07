@@ -817,6 +817,10 @@ export default {
     workflows: {
       refresh: 'Refresh catalog',
       refreshing: 'Refreshing…',
+      /** 首次加载（还没有任何条目） */
+      loading: 'Reading the remote catalog…',
+      /** 刷新失败但已有旧内容 */
+      refreshFailed: 'Refresh failed — showing the last catalog we read',
       sourceHint: '{count} workflows in the remote market',
       /** 主源不通、已自动降级到镜像 */
       viaMirror: 'Primary source unreachable — switched to the mirror: {count} workflows',

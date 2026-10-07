@@ -94,7 +94,10 @@ describe('fetchCatalog：缓存、离线回退与失败语义', () => {
     expect(result.ok).toBe(true)
     expect(result.catalog).toEqual({ count: 1 })
     expect(result.stale).toBeFalsy()
-    expect(existsSync(join(cacheDir, 'catalog.json'))).toBe(true)
+    // 缓存文件**按源**命名（`catalog-<指纹>.json`）—— 共用一个文件会让镜像的缓存被当成主源的
+    const cached = readdirSync(cacheDir).filter((name) => name.startsWith('catalog-'))
+    expect(cached).toHaveLength(1)
+    expect(existsSync(join(cacheDir, cached[0]!))).toBe(true)
   })
 
   it('**网络失败时回退磁盘缓存并标记 stale**（不清空市场）', async () => {

@@ -90,10 +90,6 @@ export class MarketPipeline {
     }
   }
 
-  private get catalogPath(): string {
-    return join(this.options.cacheDir, 'catalog.json')
-  }
-
   private get tempRoot(): string {
     return join(this.options.cacheDir, 'tmp')
   }
@@ -124,11 +120,11 @@ export class MarketPipeline {
         return { ok: false, reasonKey: parsed.reasonKey }
       }
       catalogMemo.set(memoKey, { at: Date.now(), raw })
-      this.writeCatalogCache(raw)
+      this.writeCatalogCache(input.url, raw)
       return { ok: true, catalog: parsed.catalog, cachedAt: new Date().toISOString() }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      const cached = this.readCatalogCache()
+      const cached = this.readCatalogCache(input.url)
       if (cached) {
         const parsed = input.parse(cached.raw)
         if (parsed.ok) {
@@ -265,19 +261,37 @@ export class MarketPipeline {
     if (hadPrevious) rmSync(backup, { recursive: true, force: true })
   }
 
-  private writeCatalogCache(raw: unknown): void {
+  /**
+   * 目录缓存**按源分文件**。
+   *
+   * 早先所有源共用一个 `catalog.json`，而内存 memo 是按 URL 分的 —— 两者口径不一致会造成：
+   * 镜像成功写入缓存后，主源失败时读到的是**镜像的内容**并返回 `stale`，
+   * 于是应用显示「离线」且**再也不会去试镜像** —— 备用源恰好在自己该生效的场景下失效。
+   * 缓存必须和 memo 一样按源区分。
+   */
+  private catalogPathFor(url: string): string {
+    const key = createHash('sha256').update(url).digest('hex').slice(0, 16)
+    return join(this.options.cacheDir, `catalog-${key}.json`)
+  }
+
+  private writeCatalogCache(url: string, raw: unknown): void {
     try {
       mkdirSync(this.options.cacheDir, { recursive: true })
-      writeFileSync(this.catalogPath, JSON.stringify({ at: new Date().toISOString(), raw }), 'utf8')
+      writeFileSync(
+        this.catalogPathFor(url),
+        JSON.stringify({ at: new Date().toISOString(), url, raw }),
+        'utf8'
+      )
     } catch {
       /* 缓存写失败不影响本次结果 */
     }
   }
 
-  private readCatalogCache(): { at: string; raw: unknown } | null {
+  private readCatalogCache(url: string): { at: string; raw: unknown } | null {
     try {
-      if (!existsSync(this.catalogPath)) return null
-      const parsed = JSON.parse(readFileSync(this.catalogPath, 'utf8')) as {
+      const path = this.catalogPathFor(url)
+      if (!existsSync(path)) return null
+      const parsed = JSON.parse(readFileSync(path, 'utf8')) as {
         at?: unknown
         raw?: unknown
       }

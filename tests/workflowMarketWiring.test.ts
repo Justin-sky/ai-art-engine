@@ -85,8 +85,9 @@ describe('主进程：安装必须走原子管道', () => {
   })
 
   it('离线回退磁盘缓存并标记 stale', () => {
+    // 按源读缓存（`readCatalogCache(url)`），回退结果必须标 stale 让界面能提示「可能过期」
+    expect(PIPELINE).toMatch(/readCatalogCache\(input\.url\)/)
     expect(PIPELINE).toMatch(/stale: true/)
-    expect(PIPELINE).toMatch(/readCatalogCache\(\)/)
   })
 
   it('**缺节点类型时默认拒绝安装**（逃生门必须显式传参）', () => {
@@ -160,12 +161,55 @@ describe('渲染层：「使用」走既有落盘链路', () => {
   })
 
   it('失败时不清空已有条目（断网仍能看到上次目录）', () => {
-    expect(VIEW).toMatch(/workflowError\.value = t\(`marketplace\.workflows\.reason/)
+    // 失败原因必须能翻译给用户（而不是主进程硬编码文案）
+    expect(VIEW).toMatch(/marketplace\.workflows\.reason\./)
     // 失败分支里不得把 workflowEntries 置空
     const failBlock = VIEW.slice(
       VIEW.indexOf('if (!result.ok) {'),
       VIEW.indexOf('workflowEntries.value = result.entries')
     )
     expect(failBlock).not.toMatch(/workflowEntries\.value = \[\]/)
+  })
+
+  it('**每次打开市场窗口都强制刷新目录**（产品要求）', () => {
+    // onMounted 里必须传 force，否则回到 1 小时 TTL、用户得等或手点刷新
+    const mountBlock = VIEW.slice(VIEW.indexOf('onMounted(async () => {'))
+    expect(mountBlock).toMatch(/await loadWorkflowCatalog\(true\)/)
+  })
+
+  it('首次加载中不显示「共 0 条」（这个误解真实发生过）', () => {
+    expect(VIEW).toContain('workflowLoading')
+    // 模板里 loading 分支必须排在计数提示之前
+    const hintAt = VIEW.indexOf('marketplace.workflows.sourceHint')
+    const loadingAt = VIEW.indexOf('marketplace.workflows.loading')
+    expect(loadingAt).toBeGreaterThan(0)
+    expect(loadingAt).toBeLessThan(hintAt)
+  })
+
+  it('刷新失败但手上有旧内容时用软提示，不把列表顶掉', () => {
+    expect(VIEW).toContain('workflowRefreshFailed')
+    expect(VIEW).toContain('marketplace.workflows.refreshFailed')
+    expect(VIEW).toMatch(/if \(workflowEntries\.value\.length > 0\)/)
+  })
+})
+
+describe('远端缓存按源隔离', () => {
+  it('磁盘缓存文件名带源指纹', () => {
+    expect(PIPELINE).toContain('catalogPathFor')
+    // 归一化的共享文件名不得再出现（它曾让镜像的缓存被当成主源的）
+    expect(PIPELINE).not.toMatch(/catalogPath\b/)
+  })
+
+  it('新鲜数据优先于过期数据（逐源试完再退回 stale）', () => {
+    expect(SERVICE).toContain('bestStale')
+    expect(SERVICE).toMatch(/if \(!result\.stale\) \{/)
+    expect(SERVICE).toMatch(/if \(!bestStale\) bestStale = view/)
+  })
+
+  it('上次成功的源落盘记住（跨重启不先撞死源）', () => {
+    expect(SERVICE).toContain('preferred-source.json')
+    expect(SERVICE).toContain('writePreferredSource')
+    // 派生事实存缓存目录，不写回用户设置
+    expect(SERVICE).not.toMatch(/settingsService\.set\(/)
   })
 })

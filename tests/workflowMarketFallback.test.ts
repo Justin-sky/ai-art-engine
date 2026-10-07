@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createServer, type Server } from 'node:http'
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { resolveWorkflowMarketSources, WORKFLOW_MARKET_SOURCES } from '../src/shared/workflowMarket'
@@ -71,13 +71,16 @@ const PNG = Buffer.from(
   'base64'
 )
 
-/** 起一个市场服务端；`mode='ok'` 正常，`mode='broken'` 只回 500 */
-function startMarket(mode: 'ok' | 'broken'): Promise<{ base: string; hits: string[] }> {
+/** 起一个市场服务端；`mode='ok'` 正常，`mode='broken'` 只回 500（可用 setMode 中途切换） */
+function startMarket(
+  mode: 'ok' | 'broken'
+): Promise<{ base: string; hits: string[]; setMode: (next: 'ok' | 'broken') => void }> {
   const hits: string[] = []
+  let current = mode
   const server = createServer((req, res) => {
     const url = req.url ?? '/'
     hits.push(url)
-    if (mode === 'broken') {
+    if (current === 'broken') {
       res.writeHead(500)
       res.end('boom')
       return
@@ -105,7 +108,13 @@ function startMarket(mode: 'ok' | 'broken'): Promise<{ base: string; hits: strin
     server.listen(0, '127.0.0.1', () => {
       const address = server.address()
       const port = typeof address === 'object' && address ? address.port : 0
-      resolve({ base: `http://127.0.0.1:${port}`, hits })
+      resolve({
+        base: `http://127.0.0.1:${port}`,
+        hits,
+        setMode: (next: 'ok' | 'broken') => {
+          current = next
+        }
+      })
     })
   })
 }
@@ -332,5 +341,100 @@ describe('安装 / 封面：与索引同源', () => {
     expect(result.ok).toBe(true)
     expect(result.source).toBe(mirror.base)
     expect(result.usedFallback).toBe(true)
+  }, 30_000)
+})
+
+describe('跨源选择：新鲜数据优于过期数据', () => {
+  it('主源只剩过期缓存、镜像新鲜 → 用镜像（不能因为主源"有缓存"就停手）', async () => {
+    const primary = await startMarket('ok')
+    const mirror = await startMarket('ok')
+    configuredSource = `${primary.base}\n${mirror.base}`
+
+    const service = await import('../src/main/services/workflowMarketService')
+    service.resetWorkflowMarketCache()
+
+    // 先让主源成功一次，留下它自己的磁盘缓存
+    const first = await service.fetchWorkflowCatalog({ force: true })
+    expect(first.source).toBe(primary.base)
+    expect(first.stale).toBeFalsy()
+
+    // 主源转为故障（它的缓存还在）；镜像仍新鲜
+    primary.setMode('broken')
+    service.resetWorkflowMarketCache()
+    const second = await service.fetchWorkflowCatalog({ force: true })
+
+    // 关键：不能拿主源的过期缓存了事，应当用镜像的新鲜数据
+    expect(second.ok).toBe(true)
+    expect(second.source).toBe(mirror.base)
+    expect(second.usedFallback).toBe(true)
+    expect(second.stale).toBeFalsy()
+  }, 30_000)
+
+  it('唯一的源故障且只有过期缓存 → 给出过期数据并标 stale（离线仍可看）', async () => {
+    const primary = await startMarket('ok')
+    configuredSource = primary.base
+
+    const service = await import('../src/main/services/workflowMarketService')
+    service.resetWorkflowMarketCache()
+    await service.fetchWorkflowCatalog({ force: true })
+
+    primary.setMode('broken')
+    service.resetWorkflowMarketCache()
+    const offline = await service.fetchWorkflowCatalog({ force: true })
+
+    expect(offline.ok).toBe(true)
+    expect(offline.stale).toBe(true)
+    expect(offline.entries).toHaveLength(1)
+  }, 30_000)
+})
+
+describe('记住上次成功的源（跨重启不撞死源）', () => {
+  it('成功后写入 preferred-source.json，供下次启动优先使用', async () => {
+    const mirror = await startMarket('ok')
+    configuredSource = `${DEAD}\n${mirror.base}`
+
+    const service = await import('../src/main/services/workflowMarketService')
+    service.resetWorkflowMarketCache()
+    const result = await service.fetchWorkflowCatalog({ force: true })
+    expect(result.source).toBe(mirror.base)
+
+    const preferred = JSON.parse(
+      readFileSync(join(userDataDir, 'workflow-market', 'preferred-source.json'), 'utf8')
+    ) as { source?: string }
+    expect(preferred.source).toBe(mirror.base)
+  }, 30_000)
+
+  it('**不改写用户配置的源**：记住的是派生事实，存在缓存目录而非设置里', async () => {
+    const mirror = await startMarket('ok')
+    configuredSource = mirror.base
+
+    const service = await import('../src/main/services/workflowMarketService')
+    service.resetWorkflowMarketCache()
+    await service.fetchWorkflowCatalog({ force: true })
+
+    expect(configuredSource).toBe(mirror.base)
+    expect(existsSync(join(userDataDir, 'workflow-market', 'preferred-source.json'))).toBe(true)
+  }, 30_000)
+})
+
+describe('每次打开都强制刷新（用户要求）', () => {
+  it('force 绕过 TTL 重新打网络；不 force 则命中缓存', async () => {
+    const market = await startMarket('ok')
+    configuredSource = market.base
+
+    const service = await import('../src/main/services/workflowMarketService')
+    service.resetWorkflowMarketCache()
+    const indexHits = (): number => market.hits.filter((url) => url === '/index.json').length
+
+    await service.fetchWorkflowCatalog({ force: true })
+    expect(indexHits()).toBe(1)
+
+    // 不 force：命中 TTL 缓存，不再打网络
+    await service.fetchWorkflowCatalog()
+    expect(indexHits()).toBe(1)
+
+    // force：重新打网络 —— 这正是「每次打开市场都刷新」依赖的行为
+    await service.fetchWorkflowCatalog({ force: true })
+    expect(indexHits()).toBe(2)
   }, 30_000)
 })
