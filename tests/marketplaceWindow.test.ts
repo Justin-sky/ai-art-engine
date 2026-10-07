@@ -66,6 +66,17 @@ describe('主进程：设置广播与市场窗口', () => {
     expect(WINDOW_SERVICE).toMatch(/sandbox: false/)
   })
 
+  it('构造参数里必须带 windowChromeOptions（否则出现原生 + 自绘两层标题栏）', () => {
+    // applyChromeToWindow 只调 setTitleBarOverlay，而叠加标题栏要求创建时就 'hidden'；
+    // 漏掉这一项时窗口会顶着原生标题栏 + 视图内自绘标题栏两层
+    expect(WINDOW_SERVICE).toMatch(/\.\.\.settingsService\.windowChromeOptions\(\)/)
+  })
+
+  it('设置服务侧说明了这个陷阱（防止有人再把构造参数删掉）', () => {
+    const settings = read('src/main/services/settingsService.ts')
+    expect(settings).toMatch(/它不能代替 `windowChromeOptions\(\)`/)
+  })
+
   it('dev 与生产两条载入路径都指向 /marketplace 路由', () => {
     expect(WINDOW_SERVICE).toMatch(/ELECTRON_RENDERER_URL[\s\S]{0,160}#\$\{MARKETPLACE_ROUTE\}/)
     expect(WINDOW_SERVICE).toMatch(/loadFile\([\s\S]{0,200}hash: MARKETPLACE_ROUTE/)

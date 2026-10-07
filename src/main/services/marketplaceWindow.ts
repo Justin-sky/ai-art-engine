@@ -1,6 +1,7 @@
 import { BrowserWindow } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
+import { settingsService } from './settingsService'
 
 /**
  * 插件市场窗口（单例）。
@@ -8,8 +9,10 @@ import { is } from '@electron-toolkit/utils'
  * 为什么做成**独立系统窗口**而不是像设置页那样内嵌浮层：市场要同时看着主界面
  * 调设置（对齐 MCP 端点、翻技能目录），盖在工作室上会把要对照的内容挡住。
  *
- * 窗口外观不在这里设置：`browser-window-created` 已经统一调
- * `settingsService.applyChromeToWindow`，两处各设一次只会让版本漂移。
+ * 窗口**外观**分两处，缺一不可：
+ * 1. 标题栏样式（`titleBarStyle: 'hidden'` + 叠加标题栏）必须在此处的构造参数里给，
+ *    见下面 `windowChromeOptions()` 的注释；
+ * 2. 主题色（底色 / 叠加色）由 `browser-window-created` 统一 `applyChromeToWindow` 维护。
  */
 
 let marketplaceWindow: BrowserWindow | null = null
@@ -34,6 +37,13 @@ export function openMarketplaceWindow(): void {
     show: false,
     title: 'AIArtEngine',
     autoHideMenuBar: true,
+    /**
+     * `titleBarStyle: 'hidden'` 与叠加标题栏**只能在这里给**：
+     * `browser-window-created` 里的 `applyChromeToWindow` 只调 `setTitleBarOverlay` /
+     * `setBackgroundColor`，而叠加标题栏要求窗口创建时就已经隐藏原生标题栏。
+     * 漏掉这一项的后果是窗口顶着**原生标题栏 + 视图内自绘标题栏**两层（实测踩过）。
+     */
+    ...settingsService.windowChromeOptions(),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,

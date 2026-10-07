@@ -155,6 +155,13 @@ class SettingsService {
   }
 
   /** 新建窗口时立即套用主题标题栏色 */
+  /**
+   * 覆盖某个窗口的底色与 Win 叠加标题栏配色。
+   *
+   * **它不能代替 `windowChromeOptions()`**：叠加标题栏要求窗口**创建时**就
+   * `titleBarStyle: 'hidden'`，创建后再调 `setTitleBarOverlay` 对已经带原生标题栏的
+   * 窗口无效（不报错，只是不生效）。新开窗口时两处都要用，见 `marketplaceWindow.ts`。
+   */
   applyChromeToWindow(win: BrowserWindow): void {
     applyChromeToWindow(win, this.windowChromeColors())
   }
