@@ -237,29 +237,36 @@ describe('会话管理与模型同一行', () => {
     expect(block).not.toMatch(/right:\s*0/)
   })
 
-  it('spacer 仍必须是 flex: 1（会话下拉移走后它是唯一撑开「@」的元素）', () => {
+  it('spacer 仍必须是 flex: 1（它把「环 + @」那一组推到行尾）', () => {
     const css = CHAT.slice(CHAT.indexOf('.chat-toolbar .toolbar-spacer'))
     expect(css.slice(0, 240)).toMatch(/flex:\s*1/)
   })
 })
 
-describe('模型上下文环在左侧工具组', () => {
-  it('用量环在 chat-toolbar 内，且排在引用资产按钮**之前**', () => {
-    const toolbarAt = CHAT.indexOf('class="chat-toolbar"')
-    const ringAt = CHAT.indexOf('class="context-usage"')
-    const mentionAt = CHAT.indexOf('class="tool-btn mention"')
-    expect(toolbarAt).toBeGreaterThan(0)
-    expect(ringAt).toBeGreaterThan(toolbarAt)
-    expect(mentionAt).toBeGreaterThan(ringAt)
+describe('模型上下文环与引用资产按钮同行', () => {
+  it('两者在同一个 `.toolbar-end` 单元里（因此不会被折到两行）', () => {
+    const groupAt = CHAT.indexOf('class="toolbar-end"')
+    expect(groupAt, '工具行末尾应当有一个不可拆分的单元').toBeGreaterThan(0)
+    // 取到该单元闭合（`</div>` 之后紧跟工具栏闭合）
+    const group = CHAT.slice(groupAt, CHAT.indexOf('</div>\n      </div>', groupAt))
+    expect(group, '用量环应在单元内').toContain('class="context-usage"')
+    expect(group, '引用资产按钮应在单元内').toContain('class="tool-btn mention"')
+    // 顺序：环在 @ 左边
+    expect(group.indexOf('class="context-usage"')).toBeLessThan(
+      group.indexOf('class="tool-btn mention"')
+    )
   })
 
-  it('**排在 spacer 之前** —— 否则会被推到整行最右（这就是「靠左点」要解决的问题）', () => {
-    const ringAt = CHAT.indexOf('class="context-usage"')
-    const spacerAt = CHAT.indexOf('class="toolbar-spacer"')
-    expect(ringAt).toBeGreaterThan(0)
-    expect(spacerAt).toBeGreaterThan(0)
-    // spacer 是 `flex: 1` 的弹性空白；放在它之后的元素都会被顶到右边
-    expect(ringAt, '用量环必须在 spacer 之前，才归入左侧工具组').toBeLessThan(spacerAt)
+  it('单元必须是 `flex: none`（自己是一个整体，不与环/@ 各自换行）', () => {
+    const css = CHAT.slice(CHAT.indexOf('.chat-toolbar .toolbar-end'))
+    const block = css.slice(0, 240)
+    expect(block).toMatch(/display:\s*flex/)
+    expect(block).toMatch(/flex:\s*none/)
+  })
+
+  it('工具栏确实会换行 —— 这正是必须包成一个单元的原因', () => {
+    const css = CHAT.slice(CHAT.indexOf('.chat-toolbar {'))
+    expect(css.slice(0, 160)).toMatch(/flex-wrap:\s*wrap/)
   })
 
   it('**只此一处**（移走时不能留下旧的）', () => {

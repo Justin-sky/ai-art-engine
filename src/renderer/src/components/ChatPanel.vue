@@ -2945,28 +2945,31 @@ onBeforeUnmount(() => {
             </li>
           </ul>
         </div>
-        <!--
-          模型上下文（环形用量）放在**左侧工具组末尾**。
-          它原先在 spacer 之后、贴着引用资产按钮，于是被推到整行最右；
-          移到 spacer 之前即可归入左侧工具组，位置稳定不再随行宽浮动。
-        -->
-        <div
-          v-if="contextUsageText"
-          class="context-usage"
-          :class="{ warn: usageRatio >= 0.85, active: running }"
-          :title="contextUsageText"
-        >
-          <div class="ctx-ring" :style="{ '--ctx-pct': ringPct }" aria-hidden="true" />
-        </div>
         <span class="toolbar-spacer" />
-        <button
-          class="tool-btn mention"
-          :title="t('studio.chat.mentionTitle')"
-          :disabled="running"
-          @click="mentionOpen = true"
-        >
-          {{ t('studio.chat.mentionButton') }}
-        </button>
+        <!--
+          用量环与引用资产按钮**合成一个不可拆分的单元**。
+          工具栏是 `flex-wrap: wrap`（面板由 dockview 承载、可拖窄），
+          两者若各占一个 flex 项，窄面板下会被折到两行去。
+          包成一个 flex 项后，要么都在第一行，要么整体折到下一行 —— 始终同行。
+        -->
+        <div class="toolbar-end">
+          <div
+            v-if="contextUsageText"
+            class="context-usage"
+            :class="{ warn: usageRatio >= 0.85, active: running }"
+            :title="contextUsageText"
+          >
+            <div class="ctx-ring" :style="{ '--ctx-pct': ringPct }" aria-hidden="true" />
+          </div>
+          <button
+            class="tool-btn mention"
+            :title="t('studio.chat.mentionTitle')"
+            :disabled="running"
+            @click="mentionOpen = true"
+          >
+            {{ t('studio.chat.mentionButton') }}
+          </button>
+        </div>
       </div>
       <div v-if="referenced.length" class="mention-chips">
         <span v-for="item in referenced" :key="item.path" class="mention-chip" :title="item.path">
@@ -4685,11 +4688,21 @@ onBeforeUnmount(() => {
 
 .chat-toolbar .toolbar-spacer {
   /*
-    必须是真的可伸缩：会话下拉已不在工具行里，若这里还是固定 1px，
-    工具行就没有任何元素吸收剩余空间，「@」再也不会靠右。
+    必须是真的可伸缩：它吸收工具行的剩余空间，把右侧那一组推到行尾。
   */
   flex: 1;
   width: auto;
+}
+
+/*
+  「用量环 + 引用资产」单元：`flex: none` 让它作为一个整体参与换行 ——
+  工具栏在窄面板下会折行，若不包起来，两者会被拆到两行。
+*/
+.chat-toolbar .toolbar-end {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
 }
 
 /* 已引用资产 chips（输入框上方） */
