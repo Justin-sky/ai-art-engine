@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { ref } from 'vue'
 import {
   buildMarketplaceCards,
   skillBundleMeta,
@@ -10,6 +11,7 @@ import {
   isSafeSkillFilePath,
   parseWorkflowMarketEntry,
   parseWorkflowSkillManifest,
+  plainSkillManifest,
   validateSkillEntryText,
   workflowMarketUrls
 } from '../src/shared/workflowMarket'
@@ -244,6 +246,7 @@ function stripComments(source: string): string {
 const SERVICE = read('src/main/services/workflowMarketService.ts')
 const SERVICE_CODE = stripComments(SERVICE)
 const HARNESS = read('src/main/services/deepseekHarnessService.ts')
+const VIEW = read('src/renderer/src/views/MarketplaceView.vue')
 
 describe('安装流程的主进程守卫', () => {
   it('技能落在 dsh 技能根，而不是工作流目录里', () => {
@@ -279,6 +282,40 @@ describe('安装流程的主进程守卫', () => {
     expect(body).toContain('statSync(dir).isDirectory()')
     // 绝不按前缀批量删（用户可能自建同名技能）
     expect(body).not.toMatch(/startsWith\(.wf-\)/)
+  })
+})
+
+describe('回传给主进程的技能清单必须是纯数据（不能是 Vue 响应式代理）', () => {
+  it('响应式代理过不了结构化克隆 —— 这就是「An object could not be cloned」的来源', () => {
+    const entries = ref([{ id: 'x', skill: validSkill }])
+    const proxied = entries.value[0]!.skill
+    // 代理本身确实克隆不了：这条成立，下面的修复才有意义
+    expect(() => structuredClone(proxied)).toThrow()
+  })
+
+  it('plainSkillManifest 产出可克隆的纯数据，且字段不丢', () => {
+    const entries = ref([{ id: 'x', skill: validSkill }])
+    const plain = plainSkillManifest(entries.value[0]!.skill)
+    expect(() => structuredClone(plain)).not.toThrow()
+    // 逐字段白名单不能悄悄丢键
+    expect(plain).toEqual(validSkill)
+  })
+
+  it('顺带丢掉远端多带的字段（索引是远端内容，不该顺手带过界）', () => {
+    const entries = ref([
+      {
+        id: 'x',
+        skill: { ...validSkill, evil: 'x', files: [{ path: 'SKILL.md', extra: 1 }] }
+      }
+    ])
+    const plain = plainSkillManifest(entries.value[0]!.skill)
+    expect(plain).not.toHaveProperty('evil')
+    expect(plain.files[0]).not.toHaveProperty('extra')
+  })
+
+  it('市场视图回传技能时走的是 plainSkillManifest（不是裸 card.skill）', () => {
+    expect(VIEW).toContain('skill: plainSkillManifest(card.skill)')
+    expect(VIEW).not.toContain('skill: card.skill')
   })
 })
 

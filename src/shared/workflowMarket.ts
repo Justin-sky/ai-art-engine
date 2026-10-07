@@ -235,6 +235,32 @@ export function isSafeSkillFilePath(path: string): boolean {
 }
 
 /**
+ * 把技能清单转成**可结构化克隆的纯数据**。
+ *
+ * 索引条目从主进程经 IPC 到了渲染层之后会被 Vue 变成**深层响应式代理**，而代理过不了
+ * IPC 的结构化克隆 —— 直接把它塞回 `ipcRenderer.invoke` 会抛
+ * `DataCloneError: #<Object> could not be cloned`（界面上就显示成
+ * "An object could not be cloned"）。所以回传前必须显式逐字段重建。
+ *
+ * 用逐字段白名单而不是 `JSON.parse(JSON.stringify(...))`：
+ * - 类型由编译器看着，字段改名时这里会跟着报错，而不是静默丢一个键；
+ * - 索引是**远端内容**，多余字段在过界时就被丢掉，不会顺手带到主进程。
+ */
+export function plainSkillManifest(skill: WorkflowSkillManifest): WorkflowSkillManifest {
+  return {
+    name: skill.name,
+    description: skill.description,
+    entry: skill.entry,
+    hasScripts: skill.hasScripts === true,
+    files: skill.files.map((file) => ({
+      path: file.path,
+      ...(file.sizeBytes ? { sizeBytes: file.sizeBytes } : {})
+    })),
+    sizeBytes: skill.sizeBytes
+  }
+}
+
+/**
  * 解析索引条目里的技能包段。
  *
  * 非法时返回 `null` —— 调用方据此**只丢掉技能段、保留整条工作流**：

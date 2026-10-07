@@ -411,7 +411,8 @@ import type {
 import type { AppSettings } from '@shared/domain'
 import { DEFAULT_SETTINGS } from '@shared/domain'
 import type { ExternalMcpServer } from '@shared/externalMcp'
-import { workflowCategoryKey } from '@shared/workflowMarket'
+import { plainSkillManifest, workflowCategoryKey } from '@shared/workflowMarket'
+import { toPlain } from '../utils/toPlain'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { promptConfirm } from '../composables/useStudioPrompt'
 import McpServerCard from '../components/marketplace/McpServerCard.vue'
@@ -556,7 +557,11 @@ async function persistExternal(): Promise<void> {
     const latest = await window.studio.getSettings()
     const saved = await window.studio.setSettings({
       ...latest,
-      externalMcp: externalMcp.value.map((server) => ({ ...server }))
+      /**
+       * 必须深拷成纯数据：`{ ...server }` 只剥掉最外层代理，`headers` / `env` 这些
+       * 嵌套对象仍是响应式代理，过 IPC 会抛 `DataCloneError`（"An object could not be cloned"）。
+       */
+      externalMcp: externalMcp.value.map((server) => toPlain(server))
     })
     externalMcp.value = saved.externalMcp ?? []
   } catch (e) {
@@ -681,7 +686,8 @@ function onBlenderPatch(patch: Partial<AppSettings['blenderMcp']>): void {
 async function persistBlender(): Promise<void> {
   try {
     const latest = await window.studio.getSettings()
-    const saved = await window.studio.setSettings({ ...latest, blenderMcp: { ...blenderMcp } })
+    // 同 persistExternal：嵌套对象也要剥成纯数据，否则过 IPC 会抛 DataCloneError
+    const saved = await window.studio.setSettings({ ...latest, blenderMcp: toPlain(blenderMcp) })
     Object.assign(blenderMcp, saved.blenderMcp)
   } catch (e) {
     isError.value = true
@@ -930,8 +936,9 @@ async function installMarketWorkflow(card: MarketplaceCard): Promise<void> {
       id,
       acceptMissingTypes: missing.length > 0,
       // 把用户点的这条条目里的技能清单原样带过去：主进程会重新校验，
-      // 但「装哪个技能」必须与卡片上写的一致，否则界面就在骗人
-      ...(card.skill ? { skill: card.skill } : {}),
+      // 但「装哪个技能」必须与卡片上写的一致，否则界面就在骗人。
+      // 必须转成纯数据：卡片上的 skill 是 Vue 响应式代理，代理过不了 IPC 的结构化克隆
+      ...(card.skill ? { skill: plainSkillManifest(card.skill) } : {}),
       // 只有用户在上面的确认框里点了「确定」才为 true；主进程只认字面量 true
       ...(scriptsConsented ? { skillScriptsConsent: true } : {})
     })
