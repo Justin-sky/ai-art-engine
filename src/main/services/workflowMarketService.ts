@@ -153,6 +153,17 @@ export async function fetchWorkflowCatalog(input?: {
     }
   })
 
+  /**
+   * 诊断日志：这条链横跨「远端 → 解析 → 依赖判定 → IPC → 卡片」，出问题时**从界面看不出
+   * 断在哪一层**（「0 个工作流」既可能是没网、可能是解析器拒了、也可能是被过滤掉了）。
+   * 把每层的数字打出来，排查时不必逐个加断点。
+   */
+  console.log(
+    `[workflowMarket] catalog url=${urls.index} entries=${entries.length} ` +
+      `dropped=${result.catalog.dropped} stale=${!!result.stale} ` +
+      `knownNodeTypes=${known.length}`
+  )
+
   return {
     ok: true,
     catalog: {
