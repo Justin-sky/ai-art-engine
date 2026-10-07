@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, protocol, shell } from 'electron'
+import { app, BrowserWindow, Menu, protocol } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerIpcHandlers } from './ipc'
@@ -13,6 +13,7 @@ import { handleStudioGameplayRequest } from './studioGameplayProtocol'
 import { resolveAppIconPath } from './appIcon'
 import { markSmokeRuntimeStarted, signalSmokeReady } from './smokeReady'
 import { gpuShaderCacheSwitches } from './services/gpuShaderCachePolicy'
+import { installWindowOpenHandler } from './windowOpenPolicy'
 
 // 必须在 app ready 之前追加，否则 Chromium 已经建完缓存（见 gpuShaderCachePolicy 注释）
 for (const gpuSwitch of gpuShaderCacheSwitches()) {
@@ -77,27 +78,6 @@ function registerMediaProtocol(): void {
   protocol.handle('studio-gameplay', (request) => handleStudioGameplayRequest(request))
 }
 
-/** 解析 window.open 的 features，让渲染层能决定弹出窗的初始尺寸与位置 */
-function parseWindowFeatures(features: string): {
-  width?: number
-  height?: number
-  left?: number
-  top?: number
-} {
-  const parsed: { width?: number; height?: number; left?: number; top?: number } = {}
-  for (const part of features.split(',')) {
-    const [rawKey, rawValue] = part.split('=')
-    const key = rawKey?.trim().toLowerCase()
-    const value = Number(rawValue)
-    if (!key || !Number.isFinite(value)) continue
-    if (key === 'width' && value > 0) parsed.width = Math.round(value)
-    else if (key === 'height' && value > 0) parsed.height = Math.round(value)
-    else if (key === 'left') parsed.left = Math.round(value)
-    else if (key === 'top') parsed.top = Math.round(value)
-  }
-  return parsed
-}
-
 function createWindow(): void {
   const window = new BrowserWindow({
     width: 1440,
@@ -148,42 +128,7 @@ function createWindow(): void {
     }
   })
 
-  window.webContents.setWindowOpenHandler((details) => {
-    // Allow dockview popout windows (about:blank / same-origin)
-    const isPopout =
-      details.url === 'about:blank' ||
-      details.url.startsWith('file:') ||
-      (is.dev &&
-        !!process.env['ELECTRON_RENDERER_URL'] &&
-        details.url.startsWith(process.env['ELECTRON_RENDERER_URL']))
-
-    if (isPopout) {
-      const requested = parseWindowFeatures(details.features)
-      return {
-        action: 'allow',
-        overrideBrowserWindowOptions: {
-          width: requested.width ?? 960,
-          height: requested.height ?? 640,
-          ...(requested.left == null ? {} : { x: requested.left }),
-          ...(requested.top == null ? {} : { y: requested.top }),
-          minWidth: 420,
-          minHeight: 280,
-          autoHideMenuBar: true,
-          title: 'AIArtEngine',
-          ...settingsService.windowChromeOptions(),
-          webPreferences: {
-            preload: join(__dirname, '../preload/index.js'),
-            sandbox: false,
-            contextIsolation: true,
-            nodeIntegration: false
-          }
-        }
-      }
-    }
-
-    void shell.openExternal(details.url)
-    return { action: 'deny' }
-  })
+  installWindowOpenHandler(window)
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     window.loadURL(process.env['ELECTRON_RENDERER_URL'])

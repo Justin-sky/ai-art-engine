@@ -2,6 +2,7 @@ import { BrowserWindow } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import { settingsService } from './settingsService'
+import { installWindowOpenHandler } from '../windowOpenPolicy'
 
 /**
  * 插件市场窗口（单例）。
@@ -53,6 +54,14 @@ export function openMarketplaceWindow(): void {
   })
 
   marketplaceWindow = window
+
+  /**
+   * 与主窗口同一套 window.open 策略。
+   *
+   * 必须装：不装的话窗口里的 `window.open('https://…')`（如标题栏的「开发者文档」）
+   * 会走 Electron 默认行为 —— **在应用内再开一个 BrowserWindow**，而不是交给系统浏览器。
+   */
+  installWindowOpenHandler(window)
 
   window.on('ready-to-show', () => {
     window.show()

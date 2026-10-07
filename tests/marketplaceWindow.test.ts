@@ -66,6 +66,12 @@ describe('主进程：设置广播与市场窗口', () => {
     expect(WINDOW_SERVICE).toMatch(/sandbox: false/)
   })
 
+  it('装了 window.open 策略，外链才会交给系统浏览器', () => {
+    // 不装的话窗口里 window.open('https://…') 会走 Electron 默认行为：
+    // 在应用内再开一个 BrowserWindow，而不是打开系统浏览器
+    expect(WINDOW_SERVICE).toContain('installWindowOpenHandler(window)')
+  })
+
   it('构造参数里必须带 windowChromeOptions（否则出现原生 + 自绘两层标题栏）', () => {
     // applyChromeToWindow 只调 setTitleBarOverlay，而叠加标题栏要求创建时就 'hidden'；
     // 漏掉这一项时窗口会顶着原生标题栏 + 视图内自绘标题栏两层
@@ -292,5 +298,20 @@ describe('市场视图：设置落盘不做整表覆盖', () => {
     expect(MARKETPLACE).not.toContain('WEB_MARKET_URL')
     // 只保留开发者文档这一个外链
     expect(MARKETPLACE).toContain('DEV_DOCS_URL')
+  })
+
+  it('外链策略收在一处，两个窗口共用（只装一处就会出现按窗口而异的行为）', () => {
+    const POLICY = read('src/main/windowOpenPolicy.ts')
+    const MAIN = read('src/main/index.ts')
+    // 策略本体只有一份：外链走 shell.openExternal，同源才放行
+    expect(POLICY).toMatch(/shell\.openExternal\(details\.url\)/)
+    expect(POLICY).toMatch(/return \{ action: 'deny' \}/)
+    expect(POLICY).toMatch(/export function installWindowOpenHandler/)
+    // 两个窗口都调用它
+    expect(MAIN).toContain('installWindowOpenHandler(window)')
+    expect(WINDOW_SERVICE).toContain('installWindowOpenHandler(window)')
+    // 主进程里不该再各自内联一份 setWindowOpenHandler
+    const inline = (MAIN.match(/setWindowOpenHandler\(/g) ?? []).length
+    expect(inline).toBe(0)
   })
 })
