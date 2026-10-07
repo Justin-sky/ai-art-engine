@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   builtinSkillDisplayMap,
@@ -112,15 +112,34 @@ describe('builtinSkillDisplayMap：内置项反查', () => {
    * 也就是反查规则（kebab-case 口径）与主进程写文件时用的是同一套。
    * 目录不存在（没跑过应用 / 非本机）时跳过，不让测试依赖运行环境。
    */
-  it('真实技能目录里的内置文件都能反查到标题', () => {
+  it('应用自己生成的技能快照文件都能反查到标题', () => {
+    /*
+      只核对**应用自己生成的那批文件**（manifest 里记着的），不再扫整个目录。
+      目录里现在还会有：
+      - 市场技能包（目录形态 `<name>/SKILL.md`，如 `wf-anim2d-gif`）—— 它们本来就不该
+        反查到内置 GraphSkill 标题，扫目录会把它们当成"反查失败"；
+      - 用户自己放进去的 .md / .example。
+      扫描整目录在这两类出现后必然误报，而这条用例真正要证明的是
+      「主进程写文件用的 kebab-case 口径与反查口径是同一套」—— 那只需要看它自己写的那些。
+    */
     const dir = join(process.env['APPDATA'] ?? '', 'aiartengine', 'dsh-harness', 'skills')
     if (!dir || !existsSync(dir)) return
+    const manifestPath = join(dir, '.aiart-skill-manifest.json')
+    if (!existsSync(manifestPath)) return
+    let manifest: unknown
+    try {
+      manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+    } catch {
+      return
+    }
+    // manifest 有两种历史形态：早期是 string[]，现在是 { files, signature }
+    const files = Array.isArray(manifest)
+      ? (manifest as string[])
+      : ((manifest as { files?: string[] }).files ?? [])
+    expect(files.length).toBeGreaterThan(0)
+
     const map = builtinSkillDisplayMap(listGraphSkills())
-    const names = readdirSync(dir).filter((name) => !name.startsWith('.'))
-    expect(names.length).toBeGreaterThan(0)
-    const unresolved = names.filter(
-      (name) => !map.has(skillFileStem(name)) && !name.startsWith('my-skill')
-    )
+    const unresolved = files.filter((name) => !map.has(skillFileStem(name)))
     expect(unresolved, `这些文件没能反查到标题：${unresolved.join(', ')}`).toEqual([])
   })
 })

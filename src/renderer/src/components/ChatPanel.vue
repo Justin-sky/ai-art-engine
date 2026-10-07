@@ -500,6 +500,15 @@ function editorText(): string {
     if (node instanceof HTMLElement && node.classList.contains('editor-mention')) {
       return node.dataset.path ? `@${node.dataset.path}` : ''
     }
+    /**
+     * 工作流引用块（span.editor-workflow-chip）→ 输出**完整引用文本**（含 id）。
+     *
+     * 输入框里它显示成一个小胶囊，但送到模型的内容与以前逐字相同 —— Agent 靠 id 调
+     * `workflow_use_installed` 精确复现这条工作流，外观可以变，这段文本不能变。
+     */
+    if (node instanceof HTMLElement && node.classList.contains('editor-workflow-chip')) {
+      return node.dataset.workflowText ?? ''
+    }
     if (node instanceof HTMLImageElement) return node.dataset.path ? `@${node.dataset.path}` : ''
     let out = ''
     for (const c of node.childNodes) out += walk(c)
@@ -606,6 +615,63 @@ function insertMentionNode(path: string): void {
   range.setEndAfter(node)
   range.insertNode(space)
   addReferencedPath(path)
+  syncDraftFromEditor()
+  const sel = window.getSelection()
+  if (sel) {
+    const r = document.createRange()
+    r.setStartAfter(space)
+    r.setEndAfter(space)
+    sel.removeAllRanges()
+    sel.addRange(r)
+  }
+}
+
+/** 工作流引用块的图标（常量，不含任何外部数据） */
+const WORKFLOW_CHIP_ICON =
+  '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false">' +
+  '<rect x="1.75" y="1.75" width="12.5" height="12.5" rx="3.5" fill="none" stroke="currentColor" stroke-width="1.5"/>' +
+  '<rect x="5" y="8.75" width="6" height="2.5" rx="1.25" fill="currentColor"/></svg>'
+
+/**
+ * 构造工作流引用块：显示成「图标 + 标题」的**胶囊**，而不是把 标题 / id / 简介整段摊在输入框里。
+ *
+ * 完整引用文本（含 id 与简介）存在 `dataset.workflowText` 上，序列化时原样取出 ——
+ * 输入框里看起来只是一个块，送给模型的内容与以前逐字相同（Agent 靠 id 精确复现工作流）。
+ * `title` 也放同一段文本：悬停就能看到 id 与简介，不至于只剩一个标题让人猜。
+ */
+function createWorkflowChipNode(workflow: InstalledWorkflowRecordView): HTMLElement {
+  const head = t('studio.chat.workflowInsert', { title: workflow.title, id: workflow.id })
+  const text = workflow.summary ? `${head}：${workflow.summary}` : head
+  const chip = document.createElement('span')
+  chip.className = 'editor-workflow-chip'
+  chip.dataset.workflowId = workflow.id
+  chip.dataset.workflowText = text
+  chip.title = text
+  chip.contentEditable = 'false'
+  const icon = document.createElement('span')
+  icon.className = 'editor-workflow-icon'
+  icon.innerHTML = WORKFLOW_CHIP_ICON
+  const label = document.createElement('span')
+  label.className = 'editor-workflow-label'
+  label.textContent = workflow.title
+  chip.append(icon, label)
+  return chip
+}
+
+/** 在光标处插入工作流引用块（与内联引用节点同样补一个不换行空格，避免与后续文字粘连） */
+function insertWorkflowChip(workflow: InstalledWorkflowRecordView): void {
+  const el = inputRef.value
+  if (!el) return
+  el.focus()
+  const range = getEditorRange()
+  if (!range) return
+  range.deleteContents()
+  const chip = createWorkflowChipNode(workflow)
+  range.insertNode(chip)
+  const space = document.createTextNode('\u00A0')
+  range.setStartAfter(chip)
+  range.setEndAfter(chip)
+  range.insertNode(space)
   syncDraftFromEditor()
   const sel = window.getSelection()
   if (sel) {
@@ -937,11 +1003,14 @@ function toggleWorkflows(): void {
 }
 
 /**
- * 选中工作流 → 把**引用**插入输入框。
+ * 选中工作流 → 把**引用块**插入输入框。
  *
- * 刻意插入「标题 + id + 简介」而不是直接执行：用户还要能补自己的要求再发送。
+ * 刻意插入引用而不是直接执行：用户还要能补自己的要求再发送。
  * id 是关键 —— Agent 靠它调 `workflow_use_installed` 精确复现这条工作流，
- * 而不是拿描述去重新规划一个「差不多的」。
+ * 而不是拿描述去重新规划一个「差不多的」；它藏在引用块里（悬停可见），发送时原样带出。
+ *
+ * 输入框里显示成一个小胶囊（图标 + 标题），不再把「标题 + id + 简介」整段摊开 ——
+ * 插一条工作流就占掉大半个输入框，剩不下地方写要求。
  */
 function insertWorkflowReference(workflow: InstalledWorkflowRecordView): void {
   /**
@@ -949,12 +1018,7 @@ function insertWorkflowReference(workflow: InstalledWorkflowRecordView): void {
    * 用户发了消息才发现不对。卡片本身已经把原因写在简介位置了。
    */
   if (workflow.broken) return
-  const head = t('studio.chat.workflowInsert', {
-    title: workflow.title,
-    id: workflow.id
-  })
-  const text = workflow.summary ? `${head}：${workflow.summary}` : head
-  insertPlainText(text)
+  insertWorkflowChip(workflow)
   workflowsOpen.value = false
 }
 
@@ -5415,6 +5479,50 @@ onBeforeUnmount(() => {
   color: var(--accent-fg);
   font-size: 12px;
   line-height: 1.6;
+  white-space: nowrap;
+}
+
+/* 输入区里的工作流引用块：同样由 DOM 动态创建，需要全局样式。
+   形状按需求做成**胶囊**（图标 + 标题），不再把标题/id/简介摊成一行文本。 */
+.editor-workflow-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  vertical-align: text-bottom;
+  max-width: 240px;
+  margin: 0 2px;
+  padding: 1px 9px 1px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.7;
+  white-space: nowrap;
+  cursor: default;
+}
+
+/* 悬停/聚焦时给出强调色边框：与截图里选中态一致，也提示"这是一整块、会一起删" */
+.editor-workflow-chip:hover,
+.editor-workflow-chip:focus-within {
+  border-color: var(--accent);
+  background: var(--bg-hover);
+}
+
+.editor-workflow-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.editor-workflow-chip:hover .editor-workflow-icon {
+  color: var(--accent);
+}
+
+.editor-workflow-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 

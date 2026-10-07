@@ -37,20 +37,31 @@ describe('对话面板：工作流入口', () => {
     expect(toggle).toMatch(/void refreshInstalledWorkflows\(\)/)
   })
 
-  it('选中后把引用插入输入框（走既有 insertPlainText，不另造插入逻辑）', () => {
+  it('选中后把引用插入输入框（走既有插入逻辑，不另造一套）', () => {
     const fn = CHAT.slice(
       CHAT.indexOf('function insertWorkflowReference'),
-      CHAT.indexOf('function insertWorkflowReference') + 700
+      CHAT.indexOf('function insertWorkflowReference') + 900
     )
-    expect(fn).toContain('insertPlainText(text)')
+    /*
+      这里曾断言 `insertPlainText(text)`。后来改成插入**引用块**（胶囊）——
+      摊开成一段文本会把「标题 + id + 简介」整段塞进输入框，剩不下地方写要求。
+      插入仍然复用既有的光标插入逻辑（`insertWorkflowChip`，与 `insertMentionNode` 同源）。
+    */
+    expect(fn).toContain('insertWorkflowChip(workflow)')
     // 插入后收起面板
     expect(fn).toMatch(/workflowsOpen\.value = false/)
   })
 
   it('引用文本带 id（Agent 靠它精确复现，而不是拿描述重新规划）', () => {
+    /*
+      id 仍在，只是**组装位置**搬到了 `createWorkflowChipNode`（引用块把完整文本存在
+      `dataset.workflowText` 上，序列化时原样取出）。断言跟着搬家，但这条不变量的分量没变：
+      id 丢了 Agent 就会改去"重新规划一个差不多的"，而界面上看不出任何异常。
+      （更完整的端到端守卫见「插入工作流显示成引用块」那组。）
+    */
     const fn = CHAT.slice(
-      CHAT.indexOf('function insertWorkflowReference'),
-      CHAT.indexOf('function insertWorkflowReference') + 700
+      CHAT.indexOf('function createWorkflowChipNode'),
+      CHAT.indexOf('function insertWorkflowChip')
     )
     expect(fn).toMatch(/id: workflow\.id/)
     expect(fn).toContain("t('studio.chat.workflowInsert'")
@@ -73,6 +84,66 @@ describe('对话面板：工作流入口', () => {
     const outside = CHAT.slice(CHAT.indexOf('function onModeOutside'))
     expect(outside).toMatch(/workflowsOpen\.value = false/)
     expect(outside).toMatch(/workflowsDropdownRef\.value/)
+  })
+})
+
+describe('插入工作流显示成引用块（胶囊），而不是摊开成一段文本', () => {
+  /** 取一个函数体（到下一个顶层注释块为止） */
+  function fnBody(name: string): string {
+    const at = CHAT.indexOf(`function ${name}`)
+    expect(at, `应当能找到 ${name}`).toBeGreaterThan(-1)
+    const end = CHAT.indexOf('\n/**', at)
+    return CHAT.slice(at, end > at ? end : undefined)
+  }
+
+  it('插入走引用块而不是纯文本', () => {
+    const body = fnBody('insertWorkflowReference')
+    expect(body).toContain('insertWorkflowChip(workflow)')
+    // 摊开成文本正是这次要改掉的形态：标题 + id + 简介会占掉大半个输入框
+    expect(body).not.toContain('insertPlainText(')
+  })
+
+  it('**序列化后端到端不变**：引用块仍还原出含 id 的完整文本', () => {
+    /*
+      这是本次改动最容易出错、也最难发现的地方：外观从一段文本变成一个小胶囊，
+      但送给模型的文本必须逐字不变 —— Agent 靠 id 调 `workflow_use_installed`
+      精确复现工作流；id 一旦丢了，它就会改去"重新规划一个差不多的"，
+      而界面上看不出任何异常。
+    */
+    const editorText = CHAT.slice(
+      CHAT.indexOf('function editorText'),
+      CHAT.indexOf('function syncDraftFromEditor')
+    )
+    expect(editorText, 'editorText 必须认识引用块').toContain(
+      "classList.contains('editor-workflow-chip')"
+    )
+    expect(editorText, '并且返回存在节点上的完整文本').toContain('dataset.workflowText')
+
+    // 那段完整文本由 workflowInsert 模板产出，模板里必须有 id
+    const chip = fnBody('createWorkflowChipNode')
+    expect(chip).toContain(
+      "t('studio.chat.workflowInsert', { title: workflow.title, id: workflow.id })"
+    )
+    expect(chip).toContain('chip.dataset.workflowText = text')
+    // 悬停要能看到 id 与简介，否则用户只看到一个标题
+    expect(chip).toContain('chip.title = text')
+  })
+
+  it('胶囊带图标与标题、且不可编辑（整块一起删）', () => {
+    const chip = fnBody('createWorkflowChipNode')
+    expect(chip).toContain("chip.className = 'editor-workflow-chip'")
+    expect(chip).toContain("icon.className = 'editor-workflow-icon'")
+    expect(chip).toContain("label.className = 'editor-workflow-label'")
+    expect(chip).toContain('label.textContent = workflow.title')
+    expect(chip).toContain("chip.contentEditable = 'false'")
+  })
+
+  it('样式是胶囊（圆角 999px），并带悬停强调', () => {
+    const css = CHAT.slice(CHAT.indexOf('.editor-workflow-chip {'))
+    const block = css.slice(0, css.indexOf('.editor-workflow-label'))
+    expect(block).toContain('border-radius: 999px')
+    expect(block).toContain('inline-flex')
+    expect(block).toContain('var(--accent)')
   })
 })
 
