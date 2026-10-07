@@ -167,12 +167,36 @@ describe('会话管理与模型同一行', () => {
     expect(block).toMatch(/min-width:/)
 
     /**
-     * 宽度上限刻意钉住：用户明确要求「小点」（220px → 160px）。
+     * 宽度上限刻意钉住：用户先后要求 220px → 160px → 140px。
      * 断言上限而不是精确值，既守住意图，又不妨碍以后微调。
      */
     const basis = Number(block.match(/flex:\s*0 1 (\d+)px/)?.[1] ?? 0)
     expect(basis).toBeGreaterThan(0)
-    expect(basis, '会话下拉不该被改回更宽').toBeLessThanOrEqual(180)
+    expect(basis, '会话下拉不该被改回更宽').toBeLessThanOrEqual(150)
+  })
+
+  it('窄宽度要靠收紧内边距补偿 —— × 固定占 22px，不收紧标题就只剩几个字', () => {
+    const menuPadding = Number(
+      CHAT.slice(CHAT.indexOf('.session-menu {')).match(/padding:\s*(\d+)px/)?.[1] ?? 99
+    )
+    expect(menuPadding, '菜单内边距应当收紧').toBeLessThanOrEqual(4)
+
+    /*
+      锚点必须带换行：`.session-item {` 也是 `.session-list-item .session-item {` 的子串，
+      直接 indexOf 会取到前者（那条规则只有 flex/width，没有 padding），断言会假失败。
+      同样性质的坑在计数 `installMarketWorkflow` 时也踩过一次。
+    */
+    const itemStart = CHAT.indexOf('\n.session-item {')
+    expect(itemStart, '应当能找到 .session-item 规则').toBeGreaterThan(0)
+    const itemBlock = CHAT.slice(itemStart, itemStart + 400)
+
+    const padMatch = itemBlock.match(/padding:\s*\d+px\s+(\d+)px/)
+    expect(padMatch, '列表项应当有横向内边距声明').toBeTruthy()
+    expect(Number(padMatch![1]), '列表项横向内边距应当收紧').toBeLessThanOrEqual(8)
+
+    // 标签与图标的间距也要收紧（原为 10px）
+    const gap = Number(itemBlock.match(/gap:\s*(\d+)px/)?.[1] ?? 99)
+    expect(gap, '列表项间距应当收紧').toBeLessThanOrEqual(8)
   })
 
   it('会话菜单的 min-width 不超过触发器宽度（否则会横向溢出到面板外）', () => {

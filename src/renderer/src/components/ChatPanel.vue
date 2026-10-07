@@ -4481,12 +4481,16 @@ onBeforeUnmount(() => {
   right: 0;
   left: 0;
   z-index: 30;
-  /* 跟随收窄后的触发器：默认与它同宽，标题过长时靠 ellipsis 而不是撑宽面板 */
-  min-width: 150px;
+  /*
+    跟随收窄后的触发器：默认与它同宽，标题过长时靠 ellipsis 而不是撑宽面板。
+    这里必须 ≤ 触发器宽度，否则 `left/right: 0` 与更大的 min-width 会打架、横向溢出。
+  */
+  min-width: 140px;
   max-height: 280px;
   overflow-y: auto;
   margin: 0;
-  padding: 4px;
+  /* 内边距压到最小，把省下的宽度留给标题（列表项里还有 × 要占位） */
+  padding: 3px;
   list-style: none;
   background: var(--bg-panel);
   border: 1px solid var(--border);
@@ -4541,9 +4545,10 @@ onBeforeUnmount(() => {
 .session-item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  /* 间距收紧：列表整体变窄后，内边距是唯一还能让给标题的空间（× 固定要占 22px） */
+  gap: 6px;
   width: 100%;
-  padding: 7px 9px;
+  padding: 6px 7px;
   background: transparent;
   color: var(--text-muted);
   border: none;
@@ -4628,8 +4633,8 @@ onBeforeUnmount(() => {
     刻意偏窄：会话标题截断后还能猜出是哪个，而模型名截断会直接选错，
     因此把宽度优先让给右边。`flex-basis` 是上限，空间不够时继续收缩到 min-width。
   */
-  flex: 0 1 160px;
-  min-width: 120px;
+  flex: 0 1 140px;
+  min-width: 112px;
 }
 
 .chat-toolbar .toolbar-spacer {
