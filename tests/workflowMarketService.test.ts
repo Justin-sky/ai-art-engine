@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createServer, type Server } from 'node:http'
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -233,5 +233,45 @@ describe('安装 → 记账 → 读取 → 卸载 全流程', () => {
     expect(Array.isArray(raw)).toBe(true)
     expect(raw[0]).toMatchObject({ id: 'demo-flow', version: '1.0.0' })
     expect(typeof raw[0].installedAt).toBe('string')
+  })
+})
+
+describe('listInstalledWorkflowDetails：供对话面板展示的已安装清单', () => {
+  it('记账文件只有 id/版本，详情把标题 / 简介 / 规模补齐', async () => {
+    const service = await import('../src/main/services/workflowMarketService')
+    await service.installWorkflow({ id: 'demo-flow' })
+
+    const details = service.listInstalledWorkflowDetails()
+    expect(details).toHaveLength(1)
+    expect(details[0]).toMatchObject({
+      id: 'demo-flow',
+      title: '演示工作流',
+      summary: '一句话简介',
+      version: '1.0.0',
+      nodeCount: 1,
+      edgeCount: 0,
+      broken: false
+    })
+    // 记账文件里没有 title —— 这正是要读包内文件的原因
+    const record = JSON.parse(
+      readFileSync(join(userDataDir, 'workflows', 'installed.json'), 'utf8')
+    )
+    expect(record[0].title).toBeUndefined()
+  })
+
+  it('包被改坏时**不隐藏**它，而是标 broken（悄悄消失会让用户以为「我明明装过」）', async () => {
+    const service = await import('../src/main/services/workflowMarketService')
+    await service.installWorkflow({ id: 'demo-flow' })
+
+    writeFileSync(join(userDataDir, 'workflows', 'demo-flow', 'workflow.json'), '{ 不是合法 JSON')
+
+    const details = service.listInstalledWorkflowDetails()
+    expect(details).toHaveLength(1)
+    expect(details[0]).toMatchObject({ id: 'demo-flow', title: 'demo-flow', broken: true })
+  })
+
+  it('没有任何安装时返回空数组（不抛错）', async () => {
+    const service = await import('../src/main/services/workflowMarketService')
+    expect(service.listInstalledWorkflowDetails()).toEqual([])
   })
 })

@@ -1046,6 +1046,18 @@ export default {
         'Skills available in this session (built-in snapshot + custom); marked as loaded when the model calls the skill tool',
       skillsMeta: 'Loaded {loaded}/{total}',
       skillsEmpty: 'No skills available',
+      workflows: 'Workflows',
+      workflowsTitle:
+        'Installed workflows: picking one inserts a reference, and the agent rebuilds that exact workflow by id',
+      workflowsMeta: '{count} total',
+      workflowsLoading: 'Reading installed workflows…',
+      workflowsEmpty: 'No workflows installed yet — add one in “Marketplace → Workflows”',
+      workflowBroken: 'This workflow file is damaged and unusable; reinstall it from the market',
+      workflowNoSummary: '(no summary)',
+      workflowNodes: '{nodes} nodes / {edges} edges',
+      workflowInsertAction: 'Insert',
+      /** 插入到输入框的引用文本 */
+      workflowInsert: 'Use workflow “{title}” ({id})',
       promptContinue: 'Continue',
       promptCancel: 'Cancel',
       promptAnswered: 'Chosen: {answer}',

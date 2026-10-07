@@ -186,6 +186,7 @@ import type {
   SpatialWorldExportResolution
 } from '@shared/modelProvider'
 import { commitAiWorkflow, planAiWorkflow } from './graphPlanService'
+import { listInstalledWorkflowDetails, readInstalledWorkflowPlan } from './workflowMarketService'
 import { projectService } from './projectService'
 import { assetPackageService } from './assetPackageService'
 import { uploadProjectMedia } from './objectStorageUploadService'
@@ -1726,6 +1727,90 @@ const TOOL_DEFS: McpToolDef[] = [
       return {
         assetId: result.assetId,
         name: asset?.name ?? input.name ?? null,
+        warnings: result.warnings
+      }
+    }
+  },
+  {
+    name: 'workflow_list_installed',
+    title: '已安装工作流列表',
+    description:
+      '列出用户从市场安装到本机的工作流（id 与标题、简介、节点数），可作为 workflow_use_installed 的 id。与 workflow_list_presets 的区别：presets 是应用内置的行业模板，这里是用户自己装的内容。',
+    inputSchema: { type: 'object', properties: {} },
+    handler: () =>
+      listInstalledWorkflowDetails().map((item) => ({
+        id: item.id,
+        title: item.title,
+        summary: item.summary,
+        version: item.version,
+        nodeCount: item.nodeCount,
+        edgeCount: item.edgeCount,
+        /** 包损坏时明确标出，调用方不该把它当成可用内容 */
+        broken: item.broken
+      }))
+  },
+  {
+    name: 'workflow_use_installed',
+    title: '使用已安装工作流',
+    description:
+      '把一条**已安装的工作流**按它自带的节点图原样落盘为工程内的宿主资产。id 来自 workflow_list_installed。这条路径不调用文本模型（拓扑已固化），因此快且结果确定 —— 想复现用户装的那条工作流就用它，而不是用 workflow_plan 重新规划。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: '已安装工作流的 id（workflow_list_installed 返回）' },
+        name: { type: 'string', description: '资产显示名，缺省用工作流标题' },
+        generateAspectRatio: { type: 'string', description: '统一宽高比，如 9:16' },
+        imageModel: { type: 'string', description: '图片模型 id（覆盖计划中未指定的图片节点）' },
+        videoModel: { type: 'string', description: '视频模型 id（覆盖计划中未指定的视频节点）' },
+        folderId: { type: 'string', description: '资产库文件夹 id（folder_list 查询）' }
+      },
+      required: ['id']
+    },
+    handler: async (args, ctx) => {
+      assertProjectOpen()
+      const id = readString(args, 'id')
+      const installed = readInstalledWorkflowPlan(id)
+      if (!installed.ok || !installed.bundle) {
+        throw new Error(`无法读取已安装工作流「${id}」：${installed.reasonKey ?? 'unknown'}`)
+      }
+      /**
+       * 用 `useSeedOnly` + `seedPlan` 走既有落盘链路：与市场窗口的「使用」是同一条路径，
+       * 因此参数白名单、warnings 语义完全一致 —— 不另造一套物化逻辑。
+       */
+      const planned = await planAiWorkflow(
+        {
+          prompt: installed.bundle.summary,
+          seedPlan: installed.bundle.plan as PlanAiWorkflowInput['seedPlan'],
+          useSeedOnly: true,
+          generateAspectRatio: optionalString(args, 'generateAspectRatio'),
+          imageModel: optionalString(args, 'imageModel'),
+          videoModel: optionalString(args, 'videoModel')
+        },
+        { signal: ctx?.signal }
+      )
+      if (!planned.ok || !planned.plan) {
+        throw new Error(planned.error ?? '无法生成工作流计划')
+      }
+      const result = await commitAiWorkflow({
+        plan: planned.plan,
+        name: optionalString(args, 'name') ?? installed.bundle.title,
+        generateAspectRatio: optionalString(args, 'generateAspectRatio'),
+        imageModel: optionalString(args, 'imageModel'),
+        videoModel: optionalString(args, 'videoModel'),
+        folderId: optionalString(args, 'folderId')
+      })
+      if (!result.ok || !result.assetId) {
+        throw new Error(result.error ?? '无法落盘工作流')
+      }
+      const asset = projectService.listAssets().find((item) => item.id === result.assetId)
+      if (asset) {
+        broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
+        broadcastToAllWindows(IpcChannels.MCP_WORKFLOW_FOCUS, { assetId: result.assetId })
+      }
+      return {
+        assetId: result.assetId,
+        name: asset?.name ?? installed.bundle.title,
+        sourceWorkflowId: installed.bundle.id,
         warnings: result.warnings
       }
     }

@@ -372,6 +372,52 @@ function writeRecords(records: InstalledWorkflowRecord[]): void {
 }
 
 /**
+ * 已安装工作流的**可直接展示**清单（标题 / 简介 / 规模）。
+ *
+ * 记账文件只有 id 与版本，界面要渲染卡片就得知道标题与规模，因此这里读一遍包内的
+ * `workflow.json` 补齐。放在主进程一次读完，避免界面按卡片数量发 N 次 IPC。
+ *
+ * 包损坏时**不隐藏它**：返回 `broken: true`，界面据此禁用「使用」并说明原因 ——
+ * 悄悄消失会让用户以为「我明明装过」。
+ */
+export function listInstalledWorkflowDetails(): Array<
+  InstalledWorkflowRecord & {
+    title: string
+    summary: string
+    nodeCount: number
+    edgeCount: number
+    broken: boolean
+  }
+> {
+  return listInstalledWorkflows().map((record) => {
+    const file = join(installedWorkflowsDir(), record.id, 'workflow.json')
+    try {
+      const parsed = parseWorkflowBundle(JSON.parse(readFileSync(file, 'utf8')))
+      if (!parsed.ok) {
+        return {
+          ...record,
+          title: record.id,
+          summary: '',
+          nodeCount: 0,
+          edgeCount: 0,
+          broken: true
+        }
+      }
+      return {
+        ...record,
+        title: parsed.bundle.title,
+        summary: parsed.bundle.summary,
+        nodeCount: parsed.bundle.plan.nodes.length,
+        edgeCount: parsed.bundle.plan.edges.length,
+        broken: false
+      }
+    } catch {
+      return { ...record, title: record.id, summary: '', nodeCount: 0, edgeCount: 0, broken: true }
+    }
+  })
+}
+
+/**
  * 安装（或更新）一条工作流。
  *
  * `acceptMissingTypes` 是给「我知道缺类型但先装上」用的逃生门；默认 `false` ——

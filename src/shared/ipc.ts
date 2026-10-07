@@ -1138,6 +1138,13 @@ export interface InstalledWorkflowRecordView {
   id: string
   version: string
   installedAt: string
+  /** 显示名（读自包内 workflow.json） */
+  title: string
+  summary: string
+  nodeCount: number
+  edgeCount: number
+  /** 包损坏（文件被删/被改坏）：界面应禁用「使用」并说明，而不是假装可用 */
+  broken: boolean
 }
 
 export interface WorkflowBundleResult {

@@ -15,6 +15,7 @@ import type {
   ChatMode,
   HarnessEvent,
   HarnessStatus,
+  InstalledWorkflowRecordView,
   McpActivity,
   SessionSkill
 } from '@shared/ipc'
@@ -858,6 +859,56 @@ async function refreshSessionSkills(): Promise<void> {
   }
 }
 
+/**
+ * 已安装工作流视图：把市场里装过的工作流作为「一键插入」入口。
+ *
+ * 与技能清单的区别：技能是 Agent 自己按需加载的，这里是**用户主动指定要做哪条工作流** ——
+ * 因此点击是插入引用而不是纯展示。
+ */
+const workflowsOpen = ref(false)
+const workflowsDropdownRef = ref<HTMLElement | null>(null)
+const installedWorkflows = ref<InstalledWorkflowRecordView[]>([])
+const workflowsLoading = ref(false)
+
+/** 拉已安装工作流（每次打开面板都拉：刚在市场装完就能立刻看到） */
+async function refreshInstalledWorkflows(): Promise<void> {
+  workflowsLoading.value = true
+  try {
+    installedWorkflows.value = await window.studio.listInstalledWorkflows()
+  } catch {
+    // 拉取失败不阻塞对话，保持上次快照
+  } finally {
+    workflowsLoading.value = false
+  }
+}
+
+function toggleWorkflows(): void {
+  workflowsOpen.value = !workflowsOpen.value
+  if (workflowsOpen.value) void refreshInstalledWorkflows()
+}
+
+/**
+ * 选中工作流 → 把**引用**插入输入框。
+ *
+ * 刻意插入「标题 + id + 简介」而不是直接执行：用户还要能补自己的要求再发送。
+ * id 是关键 —— Agent 靠它调 `workflow_use_installed` 精确复现这条工作流，
+ * 而不是拿描述去重新规划一个「差不多的」。
+ */
+function insertWorkflowReference(workflow: InstalledWorkflowRecordView): void {
+  /**
+   * 包损坏的不插入：那样只会往输入框里放一句 Agent 根本用不了的引用，
+   * 用户发了消息才发现不对。卡片本身已经把原因写在简介位置了。
+   */
+  if (workflow.broken) return
+  const head = t('studio.chat.workflowInsert', {
+    title: workflow.title,
+    id: workflow.id
+  })
+  const text = workflow.summary ? `${head}：${workflow.summary}` : head
+  insertPlainText(text)
+  workflowsOpen.value = false
+}
+
 /** skill 工具命中：detail 中带技能名（name / titleZh / titleEn）即标记为已加载 */
 function markSkillLoaded(detail?: string): void {
   if (!detail) return
@@ -874,13 +925,22 @@ function markSkillLoaded(detail?: string): void {
 
 /** 点击下拉外部或按 ESC 收起菜单：注册在 document 上避免 trigger 内 stopPropagation 误关 */
 function onModeOutside(e: MouseEvent | KeyboardEvent): void {
-  if (!modeOpen.value && !modelOpen.value && !sessionOpen.value && !skillsOpen.value) return
+  if (
+    !modeOpen.value &&
+    !modelOpen.value &&
+    !sessionOpen.value &&
+    !skillsOpen.value &&
+    !workflowsOpen.value
+  ) {
+    return
+  }
   if (e instanceof KeyboardEvent) {
     if (e.key === 'Escape') {
       modeOpen.value = false
       modelOpen.value = false
       sessionOpen.value = false
       skillsOpen.value = false
+      workflowsOpen.value = false
     }
     return
   }
@@ -895,6 +955,9 @@ function onModeOutside(e: MouseEvent | KeyboardEvent): void {
   }
   if (skillsDropdownRef.value && !skillsDropdownRef.value.contains(e.target as Node)) {
     skillsOpen.value = false
+  }
+  if (workflowsDropdownRef.value && !workflowsDropdownRef.value.contains(e.target as Node)) {
+    workflowsOpen.value = false
   }
 }
 const draft = ref('')
@@ -2626,6 +2689,90 @@ onBeforeUnmount(() => {
             </ul>
           </div>
         </div>
+        <!-- 已安装工作流：选中即把引用插入输入框，让 Agent 按 id 精确复现这条工作流 -->
+        <div
+          ref="workflowsDropdownRef"
+          class="skills-dropdown workflows-dropdown"
+          :class="{ open: workflowsOpen }"
+        >
+          <button
+            type="button"
+            class="skills-trigger"
+            :class="{ active: workflowsOpen }"
+            :title="t('studio.chat.workflowsTitle')"
+            @click.stop="toggleWorkflows()"
+          >
+            <svg
+              class="skills-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <rect x="3" y="3" width="7" height="7" rx="1.5" />
+              <rect x="14" y="3" width="7" height="7" rx="1.5" />
+              <rect x="3" y="14" width="7" height="7" rx="1.5" />
+              <path d="M14 17.5h7" />
+              <path d="M17.5 14v7" />
+            </svg>
+            <span class="skills-label">{{ t('studio.chat.workflows') }}</span>
+            <span v-if="installedWorkflows.length" class="skills-badge">
+              {{ installedWorkflows.length }}
+            </span>
+          </button>
+          <div v-show="workflowsOpen" class="skills-menu workflows-menu">
+            <div class="skills-menu-head">
+              <span>{{ t('studio.chat.workflowsTitle') }}</span>
+              <span v-if="installedWorkflows.length" class="skills-menu-meta">
+                {{ t('studio.chat.workflowsMeta', { count: installedWorkflows.length }) }}
+              </span>
+            </div>
+            <p v-if="workflowsLoading" class="skills-empty">
+              {{ t('studio.chat.workflowsLoading') }}
+            </p>
+            <p v-else-if="installedWorkflows.length === 0" class="skills-empty">
+              {{ t('studio.chat.workflowsEmpty') }}
+            </p>
+            <ul v-else class="workflow-cards">
+              <li
+                v-for="workflow in installedWorkflows"
+                :key="workflow.id"
+                class="workflow-card"
+                :class="{ broken: workflow.broken }"
+                :title="workflow.broken ? t('studio.chat.workflowBroken') : workflow.summary"
+                @click="insertWorkflowReference(workflow)"
+              >
+                <span class="workflow-card-main">
+                  <span class="workflow-card-title">
+                    {{ workflow.title }}
+                    <code>{{ workflow.id }}</code>
+                  </span>
+                  <span class="workflow-card-summary">
+                    {{
+                      workflow.broken
+                        ? t('studio.chat.workflowBroken')
+                        : workflow.summary || t('studio.chat.workflowNoSummary')
+                    }}
+                  </span>
+                  <span class="workflow-card-meta">
+                    {{
+                      t('studio.chat.workflowNodes', {
+                        nodes: workflow.nodeCount,
+                        edges: workflow.edgeCount
+                      })
+                    }}
+                    · v{{ workflow.version }}
+                  </span>
+                </span>
+                <span class="workflow-card-insert">{{
+                  t('studio.chat.workflowInsertAction')
+                }}</span>
+              </li>
+            </ul>
+          </div>
+        </div>
         <!-- 三模式选择：下拉式（Craft/Ask/Plan），触发按钮显示当前模式图标+名称+箭头 -->
         <div
           ref="modeDropdownRef"
@@ -4024,6 +4171,94 @@ onBeforeUnmount(() => {
   font-weight: 600;
   color: var(--accent, #4f7cff);
   margin-top: 1px;
+}
+
+/*
+  已安装工作流：沿用市场卡片的观感（标题 + id + 简介 + 规模），但更紧凑 ——
+  这里是输入框上方的浮层，不是主界面。
+*/
+.workflows-menu {
+  width: 360px;
+  max-height: 340px;
+}
+
+.workflow-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.workflow-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--bg-elevated, var(--bg-panel));
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.workflow-card:hover {
+  border-color: var(--accent, #4f7cff);
+}
+
+/* 包损坏：仍然列出来（用户会奇怪「我明明装过」），但不可点、并说明原因 */
+.workflow-card.broken {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.workflow-card.broken:hover {
+  border-color: var(--border);
+}
+
+.workflow-card-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+
+.workflow-card-title {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  min-width: 0;
+}
+
+.workflow-card-title code {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow-card-summary {
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.workflow-card-meta {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.workflow-card-insert {
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent, #4f7cff);
 }
 
 /* 三模式选择下拉（Craft / Ask / Plan，参考截图：图标方块 + 文字 + 箭头） */

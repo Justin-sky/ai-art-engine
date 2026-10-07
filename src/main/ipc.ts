@@ -116,7 +116,7 @@ import {
   fetchWorkflowCatalog,
   fetchWorkflowCover,
   installWorkflow,
-  listInstalledWorkflows,
+  listInstalledWorkflowDetails,
   readInstalledWorkflowPlan,
   uninstallWorkflow
 } from './services/workflowMarketService'
@@ -527,11 +527,7 @@ export function registerIpcHandlers(): void {
   )
   handle(IpcChannels.WORKFLOW_MARKET_UNINSTALL, (id: string) => uninstallWorkflow({ id }))
   handle(IpcChannels.WORKFLOW_MARKET_INSTALLED, (): InstalledWorkflowRecordView[] =>
-    listInstalledWorkflows().map((item) => ({
-      id: item.id,
-      version: item.version,
-      installedAt: item.installedAt
-    }))
+    listInstalledWorkflowDetails()
   )
   handle(IpcChannels.WORKFLOW_MARKET_BUNDLE, (id: string) => readInstalledWorkflowPlan(id))
 
