@@ -128,6 +128,35 @@ describe('入口与设置页迁移', () => {
   })
 })
 
+describe('市场视图：窗口样式与任务列表一致', () => {
+  it('标题区用同一套 eyebrow + 标题写法', () => {
+    expect(MARKETPLACE).toContain('marketplace.eyebrow')
+    expect(MARKETPLACE).toMatch(/class="eyebrow"/)
+    expect(MARKETPLACE).toMatch(/\.eyebrow \{[\s\S]{0,200}text-transform: uppercase/)
+  })
+
+  it('页签用下划线式（与任务列表一致），不是胶囊式', () => {
+    expect(MARKETPLACE).toMatch(/\.mp-tab\.active \{[\s\S]{0,120}border-bottom-color: #5a9dff/)
+  })
+
+  it('窗口无窗壳，标题栏兼作拖动条并给系统按钮留位', () => {
+    // 不设 app-region: drag 时无边框窗口完全无法拖动
+    expect(MARKETPLACE).toMatch(/\.mp-titlebar \{[\s\S]{0,600}-webkit-app-region: drag/)
+    expect(MARKETPLACE).toMatch(/\.mp-titlebar \{[\s\S]{0,600}padding-right: max\(148px/)
+    // 标题栏内的按钮必须取消拖动，否则点不动
+    expect(MARKETPLACE).toMatch(/\.mp-title-actions \{[\s\S]{0,200}-webkit-app-region: no-drag/)
+  })
+
+  it('内容区自己滚动，标题栏固定', () => {
+    expect(MARKETPLACE).toMatch(/\.mp-body \{[\s\S]{0,200}overflow: auto/)
+  })
+
+  it('只用已定义的主题变量（--bg-app 这个坑曾把窗口底色变成透明）', () => {
+    expect(MARKETPLACE).not.toContain('var(--bg-app)')
+    expect(MARKETPLACE).toMatch(/background: var\(--bg-panel\)/)
+  })
+})
+
 describe('市场视图：设置落盘不做整表覆盖', () => {
   it('先读最新设置再只替换自己负责的片段', () => {
     // setSettings 是整对象替换：不先 getSettings 会覆盖另一个窗口刚改的字段

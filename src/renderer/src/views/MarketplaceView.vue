@@ -1,8 +1,16 @@
 <template>
-  <div class="marketplace" tabindex="-1">
-    <header class="mp-head">
-      <h1>{{ t('marketplace.title') }}</h1>
-      <div class="mp-head-actions">
+  <div class="marketplace">
+    <!--
+      标题区与任务列表 / 执行日志等弹窗同一套写法：小字 eyebrow + 可读标题，
+      标识单独一行用小字。本窗口是无窗壳的独立窗口，所以标题栏本身就是拖动条
+      （见样式里的 app-region）—— 不这样做窗口就没法拖动。
+    -->
+    <header class="mp-titlebar">
+      <div class="mp-title">
+        <span class="eyebrow">{{ t('marketplace.eyebrow') }}</span>
+        <h2>{{ t('marketplace.title') }}</h2>
+      </div>
+      <div class="mp-title-actions">
         <button type="button" class="mp-link" @click="openExternal(WEB_MARKET_URL)">
           ↗ {{ t('marketplace.webMarket') }}
         </button>
@@ -12,145 +20,147 @@
       </div>
     </header>
 
-    <nav class="mp-tabs" role="tablist">
-      <button
-        v-for="tab in TABS"
-        :key="tab"
-        type="button"
-        role="tab"
-        class="mp-tab"
-        :class="{ active: category === tab }"
-        :aria-selected="category === tab"
-        @click="selectCategory(tab)"
-      >
-        {{ t(`marketplace.category.${tab}`) }}
-        <span class="mp-tab-count">{{ counts[tab] }}</span>
-      </button>
-    </nav>
-
-    <div class="mp-search">
-      <input
-        v-model="query"
-        type="search"
-        autocomplete="off"
-        :placeholder="t('marketplace.searchPlaceholder')"
-      />
-      <button v-if="query.trim()" type="button" class="mp-link" @click="query = ''">
-        {{ t('marketplace.clearSearch') }}
-      </button>
-    </div>
-
-    <p v-if="loading" class="mp-hint">{{ t('marketplace.loading') }}</p>
-    <p v-else-if="loadError" class="mp-hint error">{{ loadError }}</p>
-
-    <ul v-else-if="cards.length" class="mp-grid">
-      <li v-for="card in cards" :key="card.key" class="mp-card">
-        <div class="mp-card-head">
-          <span class="mp-card-icon" aria-hidden="true">{{ categoryIcon(card) }}</span>
-          <div class="mp-card-title-wrap">
-            <strong class="mp-card-title">{{ cardTitle(card) }}</strong>
-            <code class="mp-card-id">{{ card.identifier }}</code>
-          </div>
-          <span class="mp-card-kind">{{ t(`marketplace.category.${card.category}`) }}</span>
-        </div>
-
-        <p v-if="cardSubtitle(card)" class="mp-card-sub">{{ cardSubtitle(card) }}</p>
-
-        <div class="mp-card-foot">
-          <span v-if="card.sourceKey" class="mp-card-state" :class="{ on: card.active }">
-            <span class="mp-dot" aria-hidden="true" />
-            {{ t(card.sourceKey) }}
-          </span>
-          <span class="mp-card-meta">{{ card.meta }}</span>
-        </div>
-
-        <div class="mp-card-actions">
-          <button type="button" class="mp-btn" @click="toggle(card.key)">
-            {{ openKey === card.key ? t('marketplace.collapse') : t('marketplace.detail') }}
-          </button>
-        </div>
-
-        <!-- 详情：MCP 是配置面板；技能 / 扩展只读展示，动作在下方统一区 -->
-        <div v-if="openKey === card.key" class="mp-detail">
-          <McpServerCard v-if="card.key === 'mcp:server'" :info="mcp" @updated="onMcpUpdated" />
-          <McpBlenderCard
-            v-else-if="card.key === 'mcp:blender'"
-            :info="mcp?.blenderBridge ?? null"
-            :blender-mcp="blenderMcp"
-            @update="onBlenderPatch"
-            @updated="onBlenderUpdated"
-          />
-          <template v-else>
-            <p class="mp-hint">{{ t('marketplace.readOnlyHint') }}</p>
-            <div class="mp-card-actions">
-              <button
-                v-if="card.category === 'skills'"
-                type="button"
-                class="mp-btn"
-                :disabled="busy"
-                @click="runSkillAction(card)"
-              >
-                {{ t('marketplace.exportSkill') }}
-              </button>
-            </div>
-          </template>
-        </div>
-      </li>
-    </ul>
-
-    <p v-else class="mp-hint">
-      {{ query.trim() ? t('marketplace.noMatch') : t('marketplace.empty') }}
-    </p>
-
-    <!-- 技能目录级操作：不挂在某一卡片上，避免同一动作出现多份 -->
-    <section class="mp-section">
-      <h2>{{ t('marketplace.skillsTools') }}</h2>
-      <div class="mp-dir-row">
-        <code class="mp-dir">{{ skills?.dirPath || '…' }}</code>
-        <button type="button" class="mp-btn" :disabled="busy" @click="openSkillsDir">
-          {{ t('settings.skills.openDir') }}
-        </button>
-        <button type="button" class="mp-btn" :disabled="busy" @click="writeSkillTemplate">
-          {{ t('settings.skills.writeTemplate') }}
-        </button>
-        <button type="button" class="mp-btn" :disabled="busy" @click="importCustomSkills">
-          {{ t('settings.skills.importToGraph') }}
-        </button>
-      </div>
-      <p class="mp-hint">
-        {{ t('settings.skills.builtinCount', { count: skills?.builtinCount ?? 0 }) }}
-      </p>
-    </section>
-
-    <section class="mp-section">
-      <h2>{{ t('settings.skills.templateLibrary') }}</h2>
-      <div class="mp-dir-row">
+    <div class="mp-body">
+      <nav class="mp-tabs" role="tablist">
         <button
+          v-for="tab in TABS"
+          :key="tab"
           type="button"
-          class="mp-btn"
-          :aria-expanded="templatesOpen"
-          @click="templatesOpen = !templatesOpen"
+          role="tab"
+          class="mp-tab"
+          :class="{ active: category === tab }"
+          :aria-selected="category === tab"
+          @click="selectCategory(tab)"
         >
-          {{ templatesOpen ? '▾' : '▸' }} {{ t('marketplace.toggleTemplates') }}
+          {{ t(`marketplace.category.${tab}`) }}
+          <span class="mp-tab-count">{{ counts[tab] }}</span>
         </button>
-        <span class="mp-hint">{{ templates.length }}</span>
+      </nav>
+
+      <div class="mp-search">
+        <input
+          v-model="query"
+          type="search"
+          autocomplete="off"
+          :placeholder="t('marketplace.searchPlaceholder')"
+        />
+        <button v-if="query.trim()" type="button" class="mp-link" @click="query = ''">
+          {{ t('marketplace.clearSearch') }}
+        </button>
       </div>
-      <ul v-if="templatesOpen && templates.length" class="mp-template-list">
-        <li v-for="tpl in templates" :key="tpl.id" class="mp-template">
-          <div class="mp-template-info">
-            <code class="mp-card-id">{{ tpl.name }}</code>
-            <span class="mp-template-title">{{ tpl.titleZh }} / {{ tpl.titleEn }}</span>
-            <span class="mp-card-sub">{{ tpl.description }}</span>
+
+      <p v-if="loading" class="mp-hint">{{ t('marketplace.loading') }}</p>
+      <p v-else-if="loadError" class="mp-hint error">{{ loadError }}</p>
+
+      <ul v-else-if="cards.length" class="mp-grid">
+        <li v-for="card in cards" :key="card.key" class="mp-card">
+          <div class="mp-card-head">
+            <span class="mp-card-icon" aria-hidden="true">{{ categoryIcon(card) }}</span>
+            <div class="mp-card-title-wrap">
+              <strong class="mp-card-title">{{ cardHeading(card) }}</strong>
+              <code class="mp-card-id">{{ card.identifier }}</code>
+            </div>
+            <span class="mp-card-kind">{{ t(`marketplace.category.${card.category}`) }}</span>
           </div>
-          <button type="button" class="mp-btn" :disabled="busy" @click="exportTemplate(tpl.id)">
-            {{ t('settings.skills.exportTemplate') }}
-          </button>
+
+          <p v-if="cardSubtitle(card)" class="mp-card-sub">{{ cardSubtitle(card) }}</p>
+
+          <div class="mp-card-foot">
+            <span v-if="card.sourceKey" class="mp-card-state" :class="{ on: card.active }">
+              <span class="mp-dot" aria-hidden="true" />
+              {{ t(card.sourceKey) }}
+            </span>
+            <span class="mp-card-meta">{{ card.meta }}</span>
+          </div>
+
+          <div class="mp-card-actions">
+            <button type="button" class="mp-btn" @click="toggle(card.key)">
+              {{ openKey === card.key ? t('marketplace.collapse') : t('marketplace.detail') }}
+            </button>
+          </div>
+
+          <!-- 详情：MCP 是配置面板；技能 / 扩展只读展示，动作在统一区里 -->
+          <div v-if="openKey === card.key" class="mp-detail">
+            <McpServerCard v-if="card.key === 'mcp:server'" :info="mcp" @updated="onMcpUpdated" />
+            <McpBlenderCard
+              v-else-if="card.key === 'mcp:blender'"
+              :info="mcp?.blenderBridge ?? null"
+              :blender-mcp="blenderMcp"
+              @update="onBlenderPatch"
+              @updated="onBlenderUpdated"
+            />
+            <template v-else>
+              <p class="mp-hint">{{ t('marketplace.readOnlyHint') }}</p>
+              <div class="mp-card-actions">
+                <button
+                  v-if="card.category === 'skills'"
+                  type="button"
+                  class="mp-btn"
+                  :disabled="busy"
+                  @click="runSkillAction(card)"
+                >
+                  {{ t('marketplace.exportSkill') }}
+                </button>
+              </div>
+            </template>
+          </div>
         </li>
       </ul>
-      <p v-else-if="templatesOpen" class="mp-hint">{{ t('settings.skills.templateEmpty') }}</p>
-    </section>
 
-    <p v-if="message" class="mp-msg" :class="{ error: isError }">{{ message }}</p>
+      <p v-else class="mp-hint">
+        {{ query.trim() ? t('marketplace.noMatch') : t('marketplace.empty') }}
+      </p>
+
+      <!-- 技能目录级操作：不挂在某一卡片上，避免同一动作出现多份 -->
+      <section class="mp-section">
+        <h3 class="mp-section-title">{{ t('marketplace.skillsTools') }}</h3>
+        <div class="mp-dir-row">
+          <code class="mp-dir">{{ skills?.dirPath || '…' }}</code>
+          <button type="button" class="mp-btn" :disabled="busy" @click="openSkillsDir">
+            {{ t('settings.skills.openDir') }}
+          </button>
+          <button type="button" class="mp-btn" :disabled="busy" @click="writeSkillTemplate">
+            {{ t('settings.skills.writeTemplate') }}
+          </button>
+          <button type="button" class="mp-btn" :disabled="busy" @click="importCustomSkills">
+            {{ t('settings.skills.importToGraph') }}
+          </button>
+        </div>
+        <p class="mp-hint">
+          {{ t('settings.skills.builtinCount', { count: skills?.builtinCount ?? 0 }) }}
+        </p>
+      </section>
+
+      <section class="mp-section">
+        <h3 class="mp-section-title">{{ t('settings.skills.templateLibrary') }}</h3>
+        <div class="mp-dir-row">
+          <button
+            type="button"
+            class="mp-btn"
+            :aria-expanded="templatesOpen"
+            @click="templatesOpen = !templatesOpen"
+          >
+            {{ templatesOpen ? '▾' : '▸' }} {{ t('marketplace.toggleTemplates') }}
+          </button>
+          <span class="mp-hint">{{ templates.length }}</span>
+        </div>
+        <ul v-if="templatesOpen && templates.length" class="mp-template-list">
+          <li v-for="tpl in templates" :key="tpl.id" class="mp-template">
+            <div class="mp-template-info">
+              <code class="mp-card-id">{{ tpl.name }}</code>
+              <span class="mp-template-title">{{ tpl.titleZh }} / {{ tpl.titleEn }}</span>
+              <span class="mp-card-sub">{{ tpl.description }}</span>
+            </div>
+            <button type="button" class="mp-btn" :disabled="busy" @click="exportTemplate(tpl.id)">
+              {{ t('settings.skills.exportTemplate') }}
+            </button>
+          </li>
+        </ul>
+        <p v-else-if="templatesOpen" class="mp-hint">{{ t('settings.skills.templateEmpty') }}</p>
+      </section>
+
+      <p v-if="message" class="mp-msg" :class="{ error: isError }">{{ message }}</p>
+    </div>
   </div>
 </template>
 
@@ -169,10 +179,10 @@ import { useStudioI18n } from '../composables/useStudioI18n'
 import McpServerCard from '../components/marketplace/McpServerCard.vue'
 import McpBlenderCard from '../components/marketplace/McpBlenderCard.vue'
 import {
-  MCP_CARD_TITLE_KEYS,
   buildMarketplaceCards,
   countByCategory,
   filterMarketplaceCards,
+  marketplaceCardHeading,
   type MarketplaceCard,
   type MarketplaceFilter
 } from '../features/marketplace/buildMarketplaceCards'
@@ -232,10 +242,9 @@ function toggle(key: string): void {
   openKey.value = openKey.value === key ? '' : key
 }
 
-function cardTitle(card: MarketplaceCard): string {
-  if (card.title) return card.title
-  const key = MCP_CARD_TITLE_KEYS[card.key]
-  return key ? t(key) : card.identifier
+/** 标题 / 副标题都交给共享助手与 locale，组件里不写文案 */
+function cardHeading(card: MarketplaceCard): string {
+  return marketplaceCardHeading(card, t)
 }
 
 function cardSubtitle(card: MarketplaceCard): string {
@@ -352,7 +361,7 @@ async function importCustomSkills(): Promise<void> {
   }
 }
 
-/** 导出该技能模板（按技能文件名反查模板 id） */
+/** 导出某个内置技能模板 */
 async function exportTemplate(id: string): Promise<void> {
   busy.value = true
   isError.value = false
@@ -371,7 +380,7 @@ async function exportTemplate(id: string): Promise<void> {
   }
 }
 
-/** 技能卡片上的动作：按文件名匹配模板后导出；没有对应模板时提示用户 */
+/** 技能卡片上的动作：按文件名反查模板后导出；没有对应模板时明确告知 */
 function runSkillAction(card: MarketplaceCard): void {
   const stem = card.identifier.replace(/\.md$/i, '')
   const tpl = templates.value.find((item) => item.name === stem)
@@ -394,7 +403,7 @@ async function refreshSkills(): Promise<void> {
 
 onMounted(async () => {
   try {
-    const [mcpInfo, skillsInfo, pluginList, templateList, settings] = await Promise.all([
+    const [mcpInfo, skillsData, pluginList, templateList, settings] = await Promise.all([
       window.studio.getMcpInfo(),
       window.studio.getDshSkillsInfo(),
       window.studio.listPlugins(),
@@ -402,7 +411,7 @@ onMounted(async () => {
       window.studio.getSettings()
     ])
     mcp.value = mcpInfo
-    skills.value = skillsInfo
+    skills.value = skillsData
     plugins.value = pluginList
     templates.value = templateList
     Object.assign(blenderMcp, settings.blenderMcp)
@@ -415,68 +424,119 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+/* 铺满窗口：无窗壳的独立窗口没有 App 顶栏，整个视图就是窗口内容 */
 .marketplace {
   display: flex;
   flex-direction: column;
-  gap: 14px;
   height: 100%;
-  overflow: auto;
-  padding: 18px 20px 28px;
-  background: var(--bg-app);
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg-panel);
   color: var(--text);
 }
 
-.mp-head {
+/* 与 StudioFloatingWindow 的标题栏同一配方；本窗口无窗壳，故它兼作拖动条 */
+.mp-titlebar {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.mp-head h1 {
-  font-size: 18px;
-  margin: 0;
-}
-
-.mp-head-actions {
-  display: flex;
+  align-items: center;
   gap: 8px;
+  flex-shrink: 0;
+  min-height: 40px;
+  padding: 6px 12px 6px 12px;
+  /* Win 叠加标题栏控件占位：不预留时右侧按钮会被系统按钮压住 */
+  padding-right: max(148px, 12px);
+  user-select: none;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elevated) 80%, transparent);
+  -webkit-app-region: drag;
+  app-region: drag;
 }
 
+.mp-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  pointer-events: none;
+}
+
+.eyebrow {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.mp-title h2 {
+  margin: 2px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mp-title-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+/* 内容区自己滚动：标题栏固定，列表长时可滚 */
+.mp-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+}
+
+/* 页签与任务列表同一写法：下划线式，激活项蓝色下边框 */
 .mp-tabs {
   display: flex;
   align-items: center;
   gap: 4px;
-  border-bottom: 1px solid var(--border);
-  padding-bottom: 8px;
   flex-wrap: wrap;
+  border-bottom: 1px solid var(--border);
 }
 
 .mp-tab {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
-  border-radius: 8px;
-  border: 1px solid transparent;
+  padding: 8px 10px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
   background: transparent;
   color: var(--text-muted);
+  font-size: 12px;
   cursor: pointer;
-  font-size: 13px;
+}
+
+.mp-tab:hover {
+  color: var(--text);
 }
 
 .mp-tab.active {
   color: var(--text);
-  background: var(--bg-elevated);
-  border-color: var(--border);
+  border-bottom-color: #5a9dff;
 }
 
 .mp-tab-count {
-  font-size: 11px;
-  padding: 0 6px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  color: var(--text-muted);
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--bg-hover);
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
 }
 
 .mp-search {
@@ -488,11 +548,12 @@ onMounted(async () => {
 .mp-search input {
   flex: 1;
   min-width: 0;
-  padding: 8px 12px;
-  border-radius: 8px;
+  padding: 7px 10px;
+  border-radius: 4px;
   border: 1px solid var(--border);
   background: var(--bg-elevated);
   color: var(--text);
+  font-size: 12px;
 }
 
 .mp-grid {
@@ -501,17 +562,17 @@ onMounted(async () => {
   padding: 0;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 12px;
+  gap: 10px;
 }
 
 .mp-card {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 12px 14px;
-  border-radius: 10px;
+  padding: 12px;
+  border-radius: 4px;
   border: 1px solid var(--border);
-  background: var(--bg-panel);
+  background: var(--bg-elevated);
   min-width: 0;
 }
 
@@ -522,8 +583,9 @@ onMounted(async () => {
 }
 
 .mp-card-icon {
-  font-size: 18px;
-  line-height: 1.2;
+  font-size: 16px;
+  line-height: 1.3;
+  color: var(--text-muted);
 }
 
 .mp-card-title-wrap {
@@ -536,29 +598,30 @@ onMounted(async () => {
 
 .mp-card-title {
   font-size: 13px;
+  font-weight: 600;
   overflow-wrap: anywhere;
 }
 
 .mp-card-id {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--mono);
   font-size: 11px;
   color: var(--text-muted);
   overflow-wrap: anywhere;
 }
 
 .mp-card-kind {
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  border: 1px solid rgba(47, 107, 255, 0.45);
-  color: var(--accent);
   flex-shrink: 0;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 10px;
 }
 
 .mp-card-sub {
+  margin: 0;
   font-size: 12px;
   color: var(--text-muted);
-  margin: 0;
   overflow-wrap: anywhere;
 }
 
@@ -567,9 +630,9 @@ onMounted(async () => {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  margin-top: auto;
   font-size: 11px;
   color: var(--text-muted);
-  margin-top: auto;
 }
 
 .mp-card-state {
@@ -585,12 +648,12 @@ onMounted(async () => {
   background: var(--text-muted);
 }
 
-.mp-card-state.on .mp-dot {
-  background: var(--success);
-}
-
 .mp-card-state.on {
   color: var(--success);
+}
+
+.mp-card-state.on .mp-dot {
+  background: var(--success);
 }
 
 .mp-card-actions {
@@ -608,13 +671,17 @@ onMounted(async () => {
 }
 
 .mp-btn {
-  padding: 6px 12px;
-  border-radius: 8px;
+  padding: 5px 10px;
+  border-radius: 4px;
   border: 1px solid var(--border);
-  background: transparent;
+  background: var(--bg-panel);
   color: var(--text);
-  cursor: pointer;
   font-size: 12px;
+  cursor: pointer;
+}
+
+.mp-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
 }
 
 .mp-btn:disabled {
@@ -624,19 +691,19 @@ onMounted(async () => {
 
 .mp-link {
   padding: 4px 8px;
-  border-radius: 6px;
   border: 1px solid transparent;
+  border-radius: 4px;
   background: transparent;
-  color: var(--accent);
-  cursor: pointer;
+  color: #5a9dff;
   font-size: 12px;
+  cursor: pointer;
 }
 
 .mp-hint {
-  color: var(--text-muted);
-  font-size: 12px;
   margin: 0;
+  font-size: 12px;
   line-height: 1.5;
+  color: var(--text-muted);
 }
 
 .mp-hint.error {
@@ -651,9 +718,13 @@ onMounted(async () => {
   border-top: 1px solid var(--border);
 }
 
-.mp-section h2 {
-  font-size: 13px;
+/* 与小节标题同一写法：小字大写、加字距 */
+.mp-section-title {
   margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   color: var(--text-muted);
 }
 
@@ -665,15 +736,15 @@ onMounted(async () => {
 }
 
 .mp-dir {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12px;
-  padding: 6px 10px;
-  border-radius: 6px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  overflow-wrap: anywhere;
   flex: 1 1 260px;
   min-width: 0;
+  padding: 6px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  font-family: var(--mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
 .mp-template-list {
@@ -705,9 +776,9 @@ onMounted(async () => {
 }
 
 .mp-msg {
-  color: var(--success);
-  font-size: 12px;
   margin: 0;
+  font-size: 12px;
+  color: var(--success);
 }
 
 .mp-msg.error {

@@ -54,6 +54,21 @@ export const MCP_CARD_TITLE_KEYS: Record<string, string> = {
   'mcp:blender': 'marketplace.card.mcpBlender'
 }
 
+/**
+ * 卡片在标题栏里显示的文案。
+ *
+ * MCP 两条卡有**固定标题**（与任务列表等弹窗同一约定：标题用人类可读的名字，
+ * 标识单独一行用小字）；技能 / 扩展用数据自带的显示名。
+ */
+export function marketplaceCardHeading(
+  card: Pick<MarketplaceCard, 'key' | 'identifier' | 'title'>,
+  translate: (key: string) => string
+): string {
+  if (card.title) return card.title
+  const key = MCP_CARD_TITLE_KEYS[card.key]
+  return key ? translate(key) : card.identifier
+}
+
 /** 技能文件 kind → 来源标签的 i18n 键 */
 export function skillSourceKey(kind: string): string {
   // 未知 kind 当作自定义（历史上只有 builtin / custom / template 三种）

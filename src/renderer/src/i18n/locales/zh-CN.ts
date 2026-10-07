@@ -767,6 +767,7 @@ export default {
   },
   marketplace: {
     title: '插件市场',
+    eyebrow: '能力与插件',
     open: '插件市场',
     loading: '正在读取已安装内容…',
     webMarket: '网页市场',

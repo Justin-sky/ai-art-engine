@@ -780,6 +780,7 @@ export default {
   },
   marketplace: {
     title: 'Plugin marketplace',
+    eyebrow: 'Capabilities & plugins',
     open: 'Marketplace',
     loading: 'Reading installed content…',
     webMarket: 'Web marketplace',

@@ -4,6 +4,7 @@ import {
   buildMarketplaceCards,
   countByCategory,
   filterMarketplaceCards,
+  marketplaceCardHeading,
   pluginSourceKey,
   skillSourceKey,
   type MarketplaceCard,
@@ -252,6 +253,45 @@ describe('来源键助手：未知值不产生不存在的键', () => {
   it('pluginSourceKey 按是否有工具栏贡献区分', () => {
     expect(pluginSourceKey(true)).toBe('marketplace.source.plugin.toolbar')
     expect(pluginSourceKey(false)).toBe('marketplace.source.plugin.declarative')
+  })
+})
+
+describe('marketplaceCardHeading：标题栏文案', () => {
+  const translate = (key: string): string => `T:${key}`
+
+  it('MCP 两条卡走 i18n 固定标题', () => {
+    expect(
+      marketplaceCardHeading({ key: 'mcp:server', identifier: 'aiartengine' }, translate)
+    ).toBe('T:marketplace.card.mcpServer')
+    expect(marketplaceCardHeading({ key: 'mcp:blender', identifier: 'blender' }, translate)).toBe(
+      'T:marketplace.card.mcpBlender'
+    )
+  })
+
+  it('数据自带标题优先于 i18n（技能 / 扩展）', () => {
+    expect(
+      marketplaceCardHeading({ key: 'skills:my.md', identifier: 'my.md', title: 'my' }, translate)
+    ).toBe('my')
+    expect(
+      marketplaceCardHeading(
+        { key: 'plugins:acme.tools', identifier: 'acme.tools', title: 'Acme Tools' },
+        translate
+      )
+    ).toBe('Acme Tools')
+  })
+
+  it('既不认识 key 又没有标题时回落到标识（不出现空标题）', () => {
+    expect(marketplaceCardHeading({ key: 'skills:x.md', identifier: 'x.md' }, translate)).toBe(
+      'x.md'
+    )
+  })
+
+  it('与实际卡片产物一致：每张卡都有非空标题', () => {
+    for (const card of buildMarketplaceCards(sources())) {
+      const heading = marketplaceCardHeading(card, translate)
+      expect(heading.length).toBeGreaterThan(0)
+      expect(heading).not.toContain('undefined')
+    }
   })
 })
 
