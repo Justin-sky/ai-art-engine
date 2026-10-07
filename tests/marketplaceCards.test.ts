@@ -3,13 +3,17 @@ import {
   MCP_CARD_TITLE_KEYS,
   buildMarketplaceCards,
   countByCategory,
+  createEmptyExternalMcpDraft,
+  draftToExternalMcpServer,
   filterMarketplaceCards,
   marketplaceCardHeading,
   pluginSourceKey,
   skillSourceKey,
+  type ExternalMcpDraft,
   type MarketplaceCard,
   type MarketplaceSources
 } from '../src/renderer/src/features/marketplace/buildMarketplaceCards'
+import { normalizeExternalMcpServer } from '../src/shared/externalMcp'
 
 /**
  * 插件市场的卡片归一与筛选（纯函数）。
@@ -367,6 +371,114 @@ describe('第三方 MCP 服务卡', () => {
       expect(card.subtitleKey).toMatch(/^marketplace\./)
       expect(card.sourceKey).toMatch(/^marketplace\./)
     }
+  })
+})
+
+describe('draftToExternalMcpServer：添加对话框的业务规则', () => {
+  const draft = (over: Partial<ExternalMcpDraft> = {}): ExternalMcpDraft => ({
+    ...createEmptyExternalMcpDraft(),
+    ...over
+  })
+
+  it('http：地址合法时产出配置，id 由名称推导', () => {
+    const { server } = draftToExternalMcpServer(
+      draft({ name: 'Maps', transport: 'http', url: ' https://api.example.com/mcp ' }),
+      []
+    )
+    expect(server?.id).toBe('maps')
+    expect(server?.name).toBe('Maps')
+    expect(server?.url).toBe('https://api.example.com/mcp') // 两端空白已去
+    expect(server?.transport).toBe('http')
+    // http 形态不该带上 stdio 字段
+    expect(server?.command).toBe('')
+  })
+
+  it('http：缺地址 / 地址非法各自给出原因键', () => {
+    expect(draftToExternalMcpServer(draft({ transport: 'http', url: '  ' }), []).reason).toBe(
+      'missingUrl'
+    )
+    expect(
+      draftToExternalMcpServer(draft({ transport: 'http', url: 'not-a-url' }), []).reason
+    ).toBe('invalidUrl')
+    // file: 之类也要挡住（UI 先挡比运行时报错好）
+    expect(
+      draftToExternalMcpServer(draft({ transport: 'http', url: 'file:///etc/passwd' }), []).reason
+    ).toBe('invalidUrl')
+  })
+
+  it('stdio：命令非空即可，stdio 字段填好、http 字段清空', () => {
+    const { server } = draftToExternalMcpServer(
+      draft({
+        name: 'Notes',
+        transport: 'stdio',
+        command: ' npx ',
+        argsText: ' -y\n\n notes-mcp \n',
+        url: 'https://ignored.example.com'
+      }),
+      []
+    )
+    expect(server?.command).toBe('npx')
+    expect(server?.args).toEqual(['-y', 'notes-mcp']) // 按行拆、去空行、去空白
+    expect(server?.url).toBe('') // 换过形态后不残留地址
+  })
+
+  it('stdio：缺命令给出原因键', () => {
+    expect(draftToExternalMcpServer(draft({ transport: 'stdio', command: '   ' }), []).reason).toBe(
+      'missingCommand'
+    )
+  })
+
+  it('id 与已有列表去重（重复 id 会让后加的那条永远收不到请求）', () => {
+    const first = draftToExternalMcpServer(
+      draft({ name: 'Maps', transport: 'http', url: 'https://a.example.com/mcp' }),
+      []
+    )
+    const second = draftToExternalMcpServer(
+      draft({ name: 'Maps', transport: 'http', url: 'https://b.example.com/mcp' }),
+      [first.server!.id]
+    )
+    expect(first.server?.id).toBe('maps')
+    expect(second.server?.id).toBe('maps-2')
+    expect(second.server?.id).not.toBe(first.server?.id)
+  })
+
+  it('没有名称时用地址 / 命令推导 id，并把 id 当作显示名', () => {
+    const http = draftToExternalMcpServer(
+      draft({ transport: 'http', url: 'https://api.example.com/mcp' }),
+      []
+    )
+    expect(http.server?.id).toBe('https-api-example-com-mcp')
+    expect(http.server?.name).toBe('https-api-example-com-mcp')
+
+    const stdio = draftToExternalMcpServer(
+      draft({ name: '', transport: 'stdio', command: 'npx' }),
+      []
+    )
+    expect(stdio.server?.id).toBe('npx')
+  })
+
+  it('中文名称取不到 ASCII 时 id 回落，但显示名保留原文', () => {
+    const { server } = draftToExternalMcpServer(
+      draft({ name: '高德地图', transport: 'http', url: 'https://x.example.com/mcp' }),
+      []
+    )
+    expect(server?.id).toBe('mcp')
+    expect(server?.name).toBe('高德地图')
+  })
+
+  it('失败时不返回半成品（只有 reason，没有 server）', () => {
+    const failed = draftToExternalMcpServer(draft({ transport: 'http', url: '' }), [])
+    expect(failed.server).toBeUndefined()
+    expect(failed.reason).toBe('missingUrl')
+  })
+
+  it('产出的配置能被归一化接受（与持久化口径一致）', () => {
+    const { server } = draftToExternalMcpServer(
+      draft({ name: 'Maps', transport: 'http', url: 'https://api.example.com/mcp' }),
+      []
+    )
+    // 能原样通过 normalizeExternalMcpServer 才说明这份配置真的存得进去
+    expect(normalizeExternalMcpServer(server)).toEqual(server)
   })
 })
 

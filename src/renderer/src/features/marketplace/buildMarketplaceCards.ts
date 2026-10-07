@@ -1,5 +1,12 @@
 import type { DshSkillsInfo, ExternalPluginManifest, McpServerInfo } from '@shared/ipc'
-import { externalMcpUnusableReason, type ExternalMcpServer } from '@shared/externalMcp'
+import {
+  createDefaultExternalMcpServer,
+  deriveExternalMcpId,
+  externalMcpUnusableReason,
+  isUsableHttpUrl,
+  type ExternalMcpServer,
+  type ExternalMcpTransport
+} from '@shared/externalMcp'
 
 /**
  * 插件市场的**统一卡片模型**与筛选规则（纯函数，可测）。
@@ -215,4 +222,66 @@ export function countByCategory(
   }
   for (const card of cards) counts[card.category] += 1
   return counts
+}
+
+// ─────────────────────────────────────────────────────────────
+// 添加对话框：草稿 → 服务配置
+// ─────────────────────────────────────────────────────────────
+
+/** 添加对话框里的原始输入（都是字符串，未经校验） */
+export interface ExternalMcpDraft {
+  name: string
+  transport: ExternalMcpTransport
+  url: string
+  command: string
+  /** 参数以「每行一个」的文本形式编辑，提交时按行拆成数组 */
+  argsText: string
+}
+
+export function createEmptyExternalMcpDraft(): ExternalMcpDraft {
+  return { name: '', transport: 'http', url: '', command: '', argsText: '' }
+}
+
+/**
+ * 草稿 → 可保存的服务配置；校验不过时只回原因键。
+ *
+ * 抽成纯函数的理由：这段校验（地址合法 / 命令非空 / id 推导与去重 / 参数按行拆）就是
+ * 「添加」这个动作的**全部业务规则**，而对话框组件依赖 `StudioFloatingWindow`、无法挂载测试。
+ * 放这里可以直接覆盖，组件只剩输入与展示。
+ *
+ * **不返回半成品**：失败时只有 reason，避免把不完整的配置写进设置。
+ */
+export function draftToExternalMcpServer(
+  draft: ExternalMcpDraft,
+  existingIds: readonly string[]
+): { server: ExternalMcpServer; reason?: undefined } | { server?: undefined; reason: string } {
+  const url = draft.url.trim()
+  const command = draft.command.trim()
+  if (draft.transport === 'http') {
+    if (!url) return { reason: 'missingUrl' }
+    if (!isUsableHttpUrl(url)) return { reason: 'invalidUrl' }
+  } else if (!command) {
+    return { reason: 'missingCommand' }
+  }
+
+  const name = draft.name.trim()
+  // id 由人类可读名 / 连接目标推导：优先用名字，其次用地址或命令
+  const id = deriveExternalMcpId(name || (draft.transport === 'http' ? url : command), existingIds)
+
+  return {
+    server: {
+      ...createDefaultExternalMcpServer(draft.transport),
+      id,
+      name: name || id,
+      url: draft.transport === 'http' ? url : '',
+      command: draft.transport === 'stdio' ? command : '',
+      args:
+        draft.transport === 'stdio'
+          ? draft.argsText
+              .split('\n')
+              .map((line) => line.trim())
+              .filter(Boolean)
+          : []
+    }
+  }
 }

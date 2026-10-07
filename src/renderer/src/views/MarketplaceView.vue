@@ -37,64 +37,12 @@
         </button>
       </nav>
 
-      <!-- 添加第三方 MCP：只在 MCP 页签出现（属于该分类的动作） -->
+      <!-- 添加第三方 MCP：只在 MCP 页签出现；点按钮弹参数对话框，不占列表空间 -->
       <div v-if="category === 'mcp'" class="mp-add-row">
-        <button type="button" class="mp-btn primary" @click="startAdd">
-          {{ addOpen ? t('marketplace.ext.cancelAdd') : t('marketplace.ext.add') }}
+        <button type="button" class="mp-btn primary" @click="addOpen = true">
+          {{ t('marketplace.ext.add') }}
         </button>
         <span class="mp-hint">{{ t('marketplace.ext.addHint') }}</span>
-      </div>
-
-      <div v-if="addOpen" class="mp-add-form">
-        <label class="mp-add-field">
-          <span>{{ t('marketplace.ext.name') }}</span>
-          <input
-            v-model="draft.name"
-            type="text"
-            spellcheck="false"
-            :placeholder="t('marketplace.ext.namePlaceholder')"
-          />
-        </label>
-        <label class="mp-add-field">
-          <span>{{ t('marketplace.ext.transport') }}</span>
-          <select v-model="draft.transport">
-            <option value="http">{{ t('marketplace.ext.transportHttp') }}</option>
-            <option value="stdio">{{ t('marketplace.ext.transportStdio') }}</option>
-          </select>
-        </label>
-        <label v-if="draft.transport === 'http'" class="mp-add-field">
-          <span>{{ t('marketplace.ext.url') }}</span>
-          <input
-            v-model="draft.url"
-            type="text"
-            spellcheck="false"
-            placeholder="https://example.com/mcp"
-          />
-        </label>
-        <template v-else>
-          <label class="mp-add-field">
-            <span>{{ t('marketplace.ext.command') }}</span>
-            <input v-model="draft.command" type="text" spellcheck="false" placeholder="npx" />
-          </label>
-          <label class="mp-add-field">
-            <span>{{ t('marketplace.ext.args') }}</span>
-            <textarea
-              v-model="draft.argsText"
-              rows="2"
-              spellcheck="false"
-              :placeholder="t('marketplace.ext.argsPlaceholder')"
-            />
-          </label>
-        </template>
-        <div class="mp-add-actions">
-          <button type="button" class="mp-btn primary" :disabled="adding" @click="confirmAdd">
-            {{ adding ? t('marketplace.ext.adding') : t('marketplace.ext.confirmAdd') }}
-          </button>
-          <button type="button" class="mp-btn" @click="addOpen = false">
-            {{ t('marketplace.ext.cancelAdd') }}
-          </button>
-        </div>
-        <p v-if="addError" class="mp-hint error">{{ addError }}</p>
       </div>
 
       <div class="mp-search">
@@ -231,6 +179,15 @@
 
       <p v-if="message" class="mp-msg" :class="{ error: isError }">{{ message }}</p>
     </div>
+
+    <!-- 参数面板做成对话框：5–6 项参数塞在网格上方会把列表推下去，也容易被当成筛选区 -->
+    <ExternalMcpAddDialog
+      v-if="addOpen"
+      :open="addOpen"
+      :existing-ids="externalMcp.map((server) => server.id)"
+      @close="addOpen = false"
+      @added="onExternalAdded"
+    />
   </div>
 </template>
 
@@ -245,17 +202,12 @@ import type {
 } from '@shared/ipc'
 import type { AppSettings } from '@shared/domain'
 import { DEFAULT_SETTINGS } from '@shared/domain'
-import {
-  createDefaultExternalMcpServer,
-  deriveExternalMcpId,
-  isUsableHttpUrl,
-  type ExternalMcpServer,
-  type ExternalMcpTransport
-} from '@shared/externalMcp'
+import type { ExternalMcpServer } from '@shared/externalMcp'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import McpServerCard from '../components/marketplace/McpServerCard.vue'
 import McpBlenderCard from '../components/marketplace/McpBlenderCard.vue'
 import ExternalMcpConfig from '../components/marketplace/ExternalMcpConfig.vue'
+import ExternalMcpAddDialog from '../components/marketplace/ExternalMcpAddDialog.vue'
 import {
   buildMarketplaceCards,
   countByCategory,
@@ -310,17 +262,8 @@ const blenderMcp = reactive<AppSettings['blenderMcp']>(structuredClone(DEFAULT_S
 const externalMcp = ref<ExternalMcpServer[]>([])
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 
-/** 「添加 MCP 服务」表单的草稿 */
+/** 「添加 MCP 服务」对话框的开关（表单状态在对话框内部，关掉即重置） */
 const addOpen = ref(false)
-const adding = ref(false)
-const addError = ref('')
-const draft = reactive({
-  name: '',
-  transport: 'http' as ExternalMcpTransport,
-  url: '',
-  command: '',
-  argsText: ''
-})
 
 const allCards = computed<MarketplaceCard[]>(() =>
   buildMarketplaceCards({
@@ -337,13 +280,6 @@ const cards = computed(() =>
 
 function serverOf(id: string): ExternalMcpServer | undefined {
   return externalMcp.value.find((server) => server.id === id)
-}
-
-function startAdd(): void {
-  addOpen.value = !addOpen.value
-  addError.value = ''
-  if (!addOpen.value) return
-  Object.assign(draft, { name: '', transport: 'http', url: '', command: '', argsText: '' })
 }
 
 /**
@@ -365,70 +301,26 @@ async function persistExternal(): Promise<void> {
   }
 }
 
-/** 用户在表单里点了「添加」：校验 → 预检 → 落盘 */
-async function confirmAdd(): Promise<void> {
-  if (adding.value) return
-  addError.value = ''
-  const trimmedUrl = draft.url.trim()
-  const trimmedCommand = draft.command.trim()
-  if (draft.transport === 'http' && !isUsableHttpUrl(trimmedUrl)) {
-    addError.value = t('marketplace.ext.invalidUrl')
-    return
-  }
-  if (draft.transport === 'stdio' && !trimmedCommand) {
-    addError.value = t('marketplace.ext.missingCommand')
-    return
-  }
-
-  const name = draft.name.trim()
-  const id = deriveExternalMcpId(
-    name || trimmedUrl || trimmedCommand,
-    externalMcp.value.map((server) => server.id)
-  )
-  const server: ExternalMcpServer = {
-    ...createDefaultExternalMcpServer(draft.transport),
-    id,
-    name: name || id,
-    url: draft.transport === 'http' ? trimmedUrl : '',
-    command: draft.transport === 'stdio' ? trimmedCommand : '',
-    args:
-      draft.transport === 'stdio'
-        ? draft.argsText
-            .split('\n')
-            .map((line) => line.trim())
-            .filter(Boolean)
-        : []
-  }
-
-  adding.value = true
-  try {
-    /**
-     * 添加时先探测一次：连不上就**别保存**。
-     *
-     * 保存一条连不上的配置，用户只会在下次对话里发现「工具没出现」，而真正的原因
-     * （地址错 / 401 / 命令不存在）只有这一层才知道。探测失败时把原因留在表单上，
-     * 用户改完再试 —— 而不是让一条坏配置悄悄进列表。
-     */
-    const probe = await window.studio.probeExternalMcp(server)
-    if (!probe.ok) {
-      addError.value = probe.error ?? t('marketplace.ext.probeFailed')
-      return
-    }
-    externalMcp.value = [...externalMcp.value, server]
-    await persistExternal()
-    addOpen.value = false
-    message.value = t('marketplace.ext.added', {
-      name: server.name,
-      count: probe.tools?.length ?? 0
-    })
-    isError.value = false
-    // 直接展开刚加的卡：用户下一步多半就是核对工具清单
-    openKey.value = `mcp:ext:${server.id}`
-  } catch (e) {
-    addError.value = e instanceof Error ? e.message : String(e)
-  } finally {
-    adding.value = false
-  }
+/**
+ * 对话框预检通过 → 落盘并展开新卡片。
+ *
+ * 校验与预检都在对话框里完成（它才知道用户填了什么、连接结果如何）；
+ * 这里只管把结果合并进设置 —— `setSettings` 是整对象替换，只有本组件持有完整设置。
+ */
+async function onExternalAdded(payload: {
+  server: ExternalMcpServer
+  toolCount: number
+}): Promise<void> {
+  externalMcp.value = [...externalMcp.value, payload.server]
+  await persistExternal()
+  addOpen.value = false
+  message.value = t('marketplace.ext.added', {
+    name: payload.server.name,
+    count: payload.toolCount
+  })
+  isError.value = false
+  // 直接展开刚加的卡：用户下一步多半就是核对工具清单
+  openKey.value = `mcp:ext:${payload.server.id}`
 }
 
 /** 卡片里改了某个字段：就地更新并防抖落盘（打字过程中不逐字符写盘） */
@@ -916,52 +808,12 @@ onMounted(async () => {
   border-color: rgba(47, 107, 255, 0.45);
 }
 
-/* 添加第三方 MCP：按钮 + 内联表单（只在 MCP 页签出现） */
+/* 添加第三方 MCP：按钮行（表单在对话框里，见 ExternalMcpAddDialog） */
 .mp-add-row {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-}
-
-.mp-add-form {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 12px;
-  border-radius: 4px;
-  border: 1px solid var(--border);
-  background: var(--bg-elevated);
-}
-
-.mp-add-field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.mp-add-field input,
-.mp-add-field select,
-.mp-add-field textarea {
-  padding: 6px 10px;
-  border-radius: 4px;
-  border: 1px solid var(--border);
-  background: var(--bg-panel);
-  color: var(--text);
-  font-size: 12px;
-  font-family: inherit;
-}
-
-.mp-add-field textarea {
-  font-family: var(--mono);
-  resize: vertical;
-}
-
-.mp-add-actions {
-  display: flex;
-  gap: 8px;
 }
 
 .mp-btn:disabled {

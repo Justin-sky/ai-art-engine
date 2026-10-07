@@ -203,6 +203,30 @@ describe('第三方 MCP：中继与注入', () => {
     expect(SETTINGS).toContain('externalMcp')
     expect(SETTINGS).toMatch(/form\.externalMcp\.splice/)
   })
+
+  it('「添加 MCP 服务」弹对话框，不是页内表单', () => {
+    const DIALOG = read('src/renderer/src/components/marketplace/ExternalMcpAddDialog.vue')
+    // 按钮只负责开对话框
+    expect(MARKETPLACE).toMatch(/@click="addOpen = true"/)
+    expect(MARKETPLACE).toContain('<ExternalMcpAddDialog')
+    // 页内不能残留表单控件：参数面板整体搬进了对话框
+    expect(MARKETPLACE).not.toContain('mp-add-form')
+    expect(MARKETPLACE).not.toMatch(/v-model="draft\./)
+    // 对话框用与任务列表同一套窗口外壳
+    expect(DIALOG).toContain('StudioFloatingWindow')
+  })
+
+  it('对话框负责校验与预检，父级只负责落盘', () => {
+    const DIALOG = read('src/renderer/src/components/marketplace/ExternalMcpAddDialog.vue')
+    expect(DIALOG).toContain('draftToExternalMcpServer')
+    expect(DIALOG).toMatch(/probeExternalMcp\(converted\.server\)/)
+    // 预检失败不 emit：连不上就不保存
+    expect(DIALOG).toMatch(/if \(!result\.ok\) \{[\s\S]{0,200}return/)
+    // 表单不自己写设置：setSettings 是整对象替换，只有父级持有完整设置
+    // （只断言真正的调用形态：注释里会提到这个词）
+    expect(DIALOG).not.toMatch(/window\.studio\.setSettings\(/)
+    expect(MARKETPLACE).toMatch(/onExternalAdded[\s\S]{0,600}persistExternal\(\)/)
+  })
 })
 
 describe('市场视图：窗口样式与任务列表一致', () => {
