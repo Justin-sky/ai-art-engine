@@ -57,6 +57,7 @@ import {
   externalMcpUnusableReason,
   normalizeExternalMcpServer
 } from '@shared/externalMcp'
+import { builtinSkillDisplayMap, dshSkillNameOf, skillDisplayInfo } from '@shared/skillDisplay'
 import AIART_RUNNER_TEMPLATE from 'virtual:aiart-headless-runner-template'
 
 /**
@@ -607,14 +608,14 @@ function writeDshSettings(provider: {
 /** dsh 的 skill 快照清单文件：记录上次生成的文件，下次写入前清理，避免残留失效技能 */
 const DSH_SKILLS_MANIFEST = '.aiart-skill-manifest.json'
 
-/** GraphSkill id → dsh 合法 skill 名（kebab-case，`/^[a-z0-9]+(?:-[a-z0-9]+)*$/`） */
+/**
+ * GraphSkill id → dsh 合法 skill 名（kebab-case）。
+ *
+ * 规则本体在 `@shared/skillDisplay`：界面侧要靠同一条规则把文件名反查回标题，
+ * 两处各写一份就会「文件在目录里却显示成 id 风格的名字」。
+ */
 function toDshSkillName(id: string): string {
-  const kebab = id
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-  return kebab
+  return dshSkillNameOf(id)
 }
 
 /** 把一条 GraphSkill 渲染为 dsh 的 SKILL.md（frontmatter + 用法 + 中英双语正文） */
@@ -722,21 +723,31 @@ function readDshSkillsManifest(): { previous: string[]; signature: string } {
 /** dsh 示例技能模板文件名：不带 .md 后缀，避免被 dsh 的 skill-filesystem 扫描成真技能 */
 const DSH_SKILLS_TEMPLATE_FILE = 'my-skill.example'
 
-/** 查询 dsh 技能目录信息（渲染层设置页展示用） */
+/** 查询 dsh 技能目录信息（插件市场展示用） */
 export function getDshSkillsInfo(): DshSkillsInfo {
   const skillsDir = join(dshHome(), 'skills')
   const files: DshSkillsFile[] = []
+  // 内置项的文件名是 GraphSkill id 的 kebab-case 化，反查回标题与描述给界面用
+  const builtinDisplay = builtinSkillDisplayMap(listGraphSkills())
   if (existsSync(skillsDir)) {
     const builtin = new Set(readDshSkillsManifest().previous)
     for (const entry of readdirSync(skillsDir, { withFileTypes: true })) {
       if (!entry.isFile() || entry.name === DSH_SKILLS_MANIFEST) continue
+      const kind: DshSkillsFile['kind'] = builtin.has(entry.name)
+        ? 'builtin'
+        : entry.name.endsWith('.md')
+          ? 'custom'
+          : 'template'
       files.push({
         fileName: entry.name,
-        kind: builtin.has(entry.name)
-          ? 'builtin'
-          : entry.name.endsWith('.md')
-            ? 'custom'
-            : 'template'
+        kind,
+        // 只对非内置项读文件：内置项的信息在 GraphSkill 里，比解析生成的 md 更准
+        ...skillDisplayInfo({
+          fileName: entry.name,
+          kind,
+          builtin: builtinDisplay,
+          ...(kind === 'builtin' ? {} : { content: readSkillFileSafe(join(skillsDir, entry.name)) })
+        })
       })
     }
   }
@@ -745,6 +756,15 @@ export function getDshSkillsInfo(): DshSkillsInfo {
     dirPath: skillsDir,
     builtinCount: listGraphSkills().filter((skill) => !!toDshSkillName(skill.id)).length,
     files
+  }
+}
+
+/** 读技能文件内容；读不到返回 undefined（界面回落为只显示标题，不该为此报错） */
+function readSkillFileSafe(filePath: string): string | undefined {
+  try {
+    return readFileSync(filePath, 'utf8')
+  } catch {
+    return undefined
   }
 }
 

@@ -789,6 +789,12 @@ export default {
     exportSkill: '导出',
     skillNoTemplate: '该技能没有对应的内置模板，无法导出',
     skillsTools: '技能目录',
+    skill: {
+      file: '文件',
+      purpose: '用途',
+      source: '来源',
+      hint: '该技能由应用快照到技能目录，AI 对话时 Agent 可自行加载使用；这里只做查看与导出。'
+    },
     category: {
       all: '全部',
       mcp: 'MCP',

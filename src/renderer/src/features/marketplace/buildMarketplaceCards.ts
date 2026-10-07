@@ -8,6 +8,7 @@ import {
   type ExternalMcpServer,
   type ExternalMcpTransport
 } from '@shared/externalMcp'
+import { skillFileStem } from '@shared/skillDisplay'
 
 /**
  * 插件市场的**统一卡片模型**与筛选规则（纯函数，可测）。
@@ -164,8 +165,15 @@ export function buildMarketplaceCards(sources: MarketplaceSources): MarketplaceC
       cards.push({
         key: `skills:${file.fileName}`,
         category: 'skills',
-        title: file.fileName.replace(/\.md$/i, ''),
+        /**
+         * 用主进程给的可读标题（内置项是 GraphSkill 的中文名，如「图片生成」）。
+         *
+         * 早先这里用文件名主干，于是卡片标题是 `system-image` 这种 id 风格 ——
+         * 既分不清用途，看着还像节点。
+         */
+        title: file.title || skillFileStem(file.fileName),
         identifier: file.fileName,
+        ...(file.description ? { subtitle: file.description } : {}),
         sourceKey: skillSourceKey(file.kind)
       })
     }

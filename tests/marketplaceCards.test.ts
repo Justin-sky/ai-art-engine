@@ -37,8 +37,13 @@ function sources(over: Partial<MarketplaceSources> = {}): MarketplaceSources {
       dirPath: '/home/u/.dsh/skills',
       builtinCount: 7,
       files: [
-        { fileName: 'system-image.md', kind: 'builtin' },
-        { fileName: 'my-skill.md', kind: 'custom' }
+        {
+          fileName: 'system-image.md',
+          kind: 'builtin',
+          title: '图片生成',
+          description: 'Image — 图片生成'
+        },
+        { fileName: 'my-skill.md', kind: 'custom', title: 'my skill' }
       ]
     },
     plugins: [
@@ -133,12 +138,34 @@ describe('buildMarketplaceCards：三份来源归一成一种卡片', () => {
     expect(blender?.sourceKey).toBe('marketplace.state.disconnected')
   })
 
-  it('技能文件名去掉 .md 作为标题，原文件名留在标识位', () => {
+  it('技能标题用主进程给的可读标题，原文件名留在标识位', () => {
     const cards = buildMarketplaceCards(sources())
-    const skill = cards.find((c) => c.key === 'skills:my-skill.md')
-    expect(skill?.title).toBe('my-skill')
-    expect(skill?.identifier).toBe('my-skill.md')
-    expect(skill?.sourceKey).toBe('marketplace.source.skill.custom')
+    // 内置项：标题是 GraphSkill 的中文名，而不是 system-image 这种 id 风格主干
+    const builtin = cards.find((c) => c.key === 'skills:system-image.md')
+    expect(builtin?.title).toBe('图片生成')
+    expect(builtin?.identifier).toBe('system-image.md')
+    expect(builtin?.subtitle).toBe('Image — 图片生成')
+
+    const custom = cards.find((c) => c.key === 'skills:my-skill.md')
+    expect(custom?.title).toBe('my skill')
+    expect(custom?.identifier).toBe('my-skill.md')
+    expect(custom?.sourceKey).toBe('marketplace.source.skill.custom')
+    // 没给描述时不编造一行空的副标题
+    expect(custom?.subtitle).toBeUndefined()
+  })
+
+  it('技能标题缺失时回落到文件名主干（不出现空标题）', () => {
+    const cards = buildMarketplaceCards(
+      sources({
+        skills: {
+          dirPath: '/x',
+          builtinCount: 0,
+          files: [{ fileName: 'no-title.md', kind: 'custom', title: '' }]
+        }
+      })
+    )
+    const card = cards.find((c) => c.category === 'skills')
+    expect(card?.title).toBe('no-title')
   })
 
   it('扩展卡片带 displayName / id / 版本与权限', () => {
@@ -543,13 +570,25 @@ describe('marketplaceCardHeading：标题栏文案', () => {
 })
 
 describe('卡片模型不含展示文案（文案只在 locale 文件）', () => {
-  it('卡片上的所有文本字段都不含中文', () => {
+  it('模块自己产出的键一律是 i18n 键，且不含硬编码文案', () => {
     const cards: MarketplaceCard[] = buildMarketplaceCards(sources())
     for (const card of cards) {
-      for (const value of [card.title, card.identifier, card.subtitle, card.meta, card.sourceKey]) {
-        if (typeof value !== 'string') continue
-        expect(/[\u4e00-\u9fff]/.test(value), `${card.key} 的「${value}」含中文`).toBe(false)
+      // 模块产出的字段：必须是键，不能是成品文案
+      for (const key of [card.sourceKey, card.subtitleKey]) {
+        if (typeof key !== 'string') continue
+        expect(key, `${card.key} 的来源/副标题不是 i18n 键`).toMatch(/^marketplace\./)
       }
+      // `identifier` 是数据（文件名 / 地址 / 命令），不该被本模块塞进任何文案
+      expect(card.identifier).not.toMatch(/[\u4e00-\u9fff]/)
     }
+  })
+
+  it('title / subtitle 是**数据**，允许含中文（技能中文名就是数据，不是界面文案）', () => {
+    // 这条是刻意反向断言：早先这里断言「卡片所有文本字段都不含中文」，
+    // 那条断言在「技能标题改用 GraphSkill 中文名」之后就变成了错的约束 ——
+    // 卡片标题来自用户/内置数据，界面文案才必须走 locale。
+    const cards = buildMarketplaceCards(sources())
+    const builtin = cards.find((c) => c.key === 'skills:system-image.md')
+    expect(builtin?.title).toBe('图片生成')
   })
 })

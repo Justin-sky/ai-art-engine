@@ -1005,6 +1005,15 @@ export interface DshSkillsFile {
   fileName: string
   /** builtin=应用内置技能快照生成；custom=用户自定义技能(.md)；template=示例模板 */
   kind: 'builtin' | 'custom' | 'template'
+  /**
+   * 展示标题（内置项取 GraphSkill 的中文标题，如「图片生成」）。
+   *
+   * 早先界面只拿到 `fileName`，于是卡片标题只能是 `system-image` 这种 id 风格的主干 ——
+   * 看着像节点、也分不清是干什么的。取不到时回落为文件名主干。
+   */
+  title: string
+  /** 展示描述；取不到时省略（调用方不渲染这一行） */
+  description?: string
 }
 
 /**

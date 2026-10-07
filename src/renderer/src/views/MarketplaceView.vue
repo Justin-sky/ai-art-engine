@@ -102,19 +102,36 @@
               @patch="patchServer(card.serverId!, $event)"
               @remove="removeServer(card.serverId!)"
             />
-            <template v-else>
-              <p class="mp-hint">{{ t('marketplace.readOnlyHint') }}</p>
+            <!--
+              技能详情：按该技能自己的信息渲染。
+              早先这里对所有技能都是同一句通用提示 —— 展开哪张都一样，等于没有详情。
+            -->
+            <template v-else-if="card.category === 'skills'">
+              <dl class="mp-facts">
+                <div class="mp-fact">
+                  <dt>{{ t('marketplace.skill.file') }}</dt>
+                  <dd>
+                    <code>{{ card.identifier }}</code>
+                  </dd>
+                </div>
+                <div v-if="card.subtitle" class="mp-fact">
+                  <dt>{{ t('marketplace.skill.purpose') }}</dt>
+                  <dd>{{ card.subtitle }}</dd>
+                </div>
+                <div v-if="card.sourceKey" class="mp-fact">
+                  <dt>{{ t('marketplace.skill.source') }}</dt>
+                  <dd>{{ t(card.sourceKey) }}</dd>
+                </div>
+              </dl>
+              <p class="mp-hint">{{ t('marketplace.skill.hint') }}</p>
               <div class="mp-card-actions">
-                <button
-                  v-if="card.category === 'skills'"
-                  type="button"
-                  class="mp-btn"
-                  :disabled="busy"
-                  @click="runSkillAction(card)"
-                >
+                <button type="button" class="mp-btn" :disabled="busy" @click="runSkillAction(card)">
                   {{ t('marketplace.exportSkill') }}
                 </button>
               </div>
+            </template>
+            <template v-else>
+              <p class="mp-hint">{{ t('marketplace.readOnlyHint') }}</p>
             </template>
           </div>
         </li>
@@ -788,6 +805,38 @@ onMounted(async () => {
   gap: 10px;
   padding-top: 10px;
   border-top: 1px solid var(--border);
+}
+
+/* 详情里的键值对（技能：文件 / 用途 / 来源） */
+.mp-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+}
+
+.mp-fact {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  min-width: 0;
+}
+
+.mp-fact dt {
+  flex-shrink: 0;
+  width: 56px;
+  color: var(--text-muted);
+}
+
+.mp-fact dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.mp-fact code {
+  font-family: var(--mono);
+  font-size: 11px;
 }
 
 .mp-btn {

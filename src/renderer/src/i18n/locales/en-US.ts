@@ -802,6 +802,12 @@ export default {
     exportSkill: 'Export',
     skillNoTemplate: 'This skill has no built-in template to export',
     skillsTools: 'Skills folder',
+    skill: {
+      file: 'File',
+      purpose: 'Purpose',
+      source: 'Source',
+      hint: 'The app snapshots this skill into the skills folder so the agent can load it during chat; this view is for inspection and export only.'
+    },
     category: {
       all: 'All',
       mcp: 'MCP',
