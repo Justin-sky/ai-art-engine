@@ -2412,7 +2412,10 @@ export function handleAskUserResponse(payload: AskUserAnswer): void {
   harnessAskUserRequests.delete(payload.requestId)
   // Plan 模式：用户对计划给出任何非「取消」的选择即视为确认，本条消息内放行写 / 生成类工具
   // （MCP 侧按请求头里的 runId 回查这个标记，见 mcpServerService.confirmHarnessRunAccess）
-  if (!isCancelAnswer(payload.answer)) confirmHarnessRunAccess(entry.runId)
+  // `fromCustom`：用户自己打字的回答是任意句子，判断「是否取消」得换严格口径（见 isCancelAnswer），
+  // 否则「不要正面，要侧脸」会被当成取消，写权限悄悄不放行。
+  if (!isCancelAnswer(payload.answer, payload.fromCustom === true))
+    confirmHarnessRunAccess(entry.runId)
   try {
     mkdirSync(dirname(entry.answerFile), { recursive: true })
     writeFileSync(

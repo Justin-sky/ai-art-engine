@@ -69,6 +69,12 @@ export type ChatMsg =
       options?: string[]
       /** 附加说明（可选） */
       hint?: string
+      /**
+       * 自定义回答的草稿。
+       *
+       * 模型给的选项只有 2–6 条，覆盖不到用户意图时用户可以直接写 —— 这是输入框绑定的文本。
+       */
+      draft?: string
       /** 用户选择结果（null=未答；非 null=已答） */
       answered?: string | null
     }

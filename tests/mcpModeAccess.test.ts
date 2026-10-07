@@ -105,6 +105,30 @@ describe('对话模式的 MCP 工具授权分级（shared）', () => {
     }
   })
 
+  it('用户自己打字的回答用严格口径：整句才是取消词，句子里含「不要」不算取消', () => {
+    /*
+      宽松口径是给**选项按钮**设计的（文案由模型给、词表可控）。问答卡新增自定义输入后，
+      回答变成任意句子 —— 拿宽松口径套会误判，而后果很隐蔽：Plan 模式的写权限不放行，
+      用户只看到「我明明答了，它却不动」。所以打字回答走整句匹配。
+    */
+    for (const answer of ['取消', '取消。'.slice(0, 2), 'no', 'No', '放弃', '停止']) {
+      expect(isCancelAnswer(answer, true), `${answer} 应视为取消`).toBe(true)
+    }
+    for (const answer of [
+      '不要正面，要侧脸',
+      '不用改了，就这样',
+      'no, use the other one',
+      '否极泰来，继续做',
+      '停止使用旧的配色，换成蓝的'
+    ]) {
+      expect(isCancelAnswer(answer, true), `${answer} 不该被视为取消`).toBe(false)
+    }
+    // 空答案两边一致：取消 / 超时统一为 null，同样不放行
+    for (const answer of [null, undefined, '', '   ']) {
+      expect(isCancelAnswer(answer, true)).toBe(true)
+    }
+  })
+
   it('模式头载荷：值一律是字符串（dsh-mcp-client 的 headers schema 只收 string）', () => {
     // 曾经踩过的坑：runId 以数字写进 cordis.patch.yml，YAML 把它解析成 number，
     // mcp-client 配置校验失败 → 整棵插件树加载失败，面板上表现为每次发消息都「异常退出」。

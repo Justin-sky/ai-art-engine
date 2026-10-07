@@ -1139,6 +1139,8 @@ export default {
       promptContinue: '继续',
       promptCancel: '取消',
       promptAnswered: '已选择：{answer}',
+      promptCustomPlaceholder: '也可以直接写下你的回答…',
+      promptCustomSend: '回答',
       /**
        * 沙箱升级审批卡：agent 想突破沙箱边界时由 dsh 发起，用户必须明确同意一次。
        * 只有「允许一次」，没有「总是允许」—— 持久授权会悄悄放宽 agent 之后能跑的东西。

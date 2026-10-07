@@ -2159,14 +2159,35 @@ function promptOptions(msg: ChatMsg & { kind: 'prompt' }): string[] {
 }
 
 /** 用户点击选项：回传选择给主进程（MCP ask_user 工具继续），并锁定按钮 */
-async function answerPrompt(msg: ChatMsg & { kind: 'prompt' }, option: string): Promise<void> {
+async function answerPrompt(
+  msg: ChatMsg & { kind: 'prompt' },
+  option: string,
+  fromCustom = false
+): Promise<void> {
   if (msg.answered !== null && msg.answered !== undefined) return
   msg.answered = option
   try {
-    await window.studio.answerAskUser({ requestId: msg.requestId, answer: option })
+    await window.studio.answerAskUser({
+      requestId: msg.requestId,
+      answer: option,
+      ...(fromCustom ? { fromCustom: true } : {})
+    })
   } catch {
     // 主进程侧已超时 / 会话已结束：按钮已锁定，无副作用
   }
+}
+
+/**
+ * 自定义回答：模型给的选项不一定覆盖用户的意图（它只有 2–6 条），所以输入框始终可用。
+ *
+ * 与点选项**走同一个回传函数**，因此「未答才回传」的守卫、锁定与已答展示都一致 ——
+ * 另写一条路径就会分叉出「输入框能重复提交而按钮不能」这类差别。
+ * `fromCustom` 只影响主进程判断「是否取消」的口径（见 `AskUserAnswer.fromCustom`）。
+ */
+async function submitPromptDraft(msg: ChatMsg & { kind: 'prompt' }): Promise<void> {
+  const text = (msg.draft ?? '').trim()
+  if (!text) return
+  await answerPrompt(msg, text, true)
 }
 
 /**
@@ -2687,6 +2708,31 @@ onBeforeUnmount(() => {
                 @click="answerPrompt(msg, opt)"
               >
                 {{ opt }}
+              </button>
+            </div>
+            <!--
+              自定义回答：模型给的选项就那几条，覆盖不到用户意图时不该被迫二选一。
+              只在未答时出现；Enter 与按钮走**同一条**回传路径（含「未答才回传」的守卫）。
+              `@keydown.stop` 是必须的：面板上还有全局键盘处理（斜杠菜单、快捷键），
+              回车与方向键在输入框里不该被它们截走。
+            -->
+            <div v-if="msg.answered === null || msg.answered === undefined" class="prompt-custom">
+              <input
+                v-model="msg.draft"
+                class="prompt-custom-input"
+                type="text"
+                :placeholder="t('studio.chat.promptCustomPlaceholder')"
+                :aria-label="t('studio.chat.promptCustomPlaceholder')"
+                @keydown.stop
+                @keydown.enter.prevent="submitPromptDraft(msg)"
+              />
+              <button
+                type="button"
+                class="prompt-custom-send"
+                :disabled="!(msg.draft ?? '').trim()"
+                @click="submitPromptDraft(msg)"
+              >
+                {{ t('studio.chat.promptCustomSend') }}
               </button>
             </div>
             <div v-if="msg.answered !== null && msg.answered !== undefined" class="prompt-answered">
@@ -4220,6 +4266,56 @@ onBeforeUnmount(() => {
   color: var(--text-muted);
   user-select: none;
   -webkit-user-select: none;
+}
+
+/* 自定义回答：与选项按钮同一套视觉语言，但刻意更低调 —— 选项仍是主路径，输入框是补充 */
+.prompt-custom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.prompt-custom-input {
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  color: var(--text);
+  font-size: 12px;
+  font-family: inherit;
+  padding: 6px 10px;
+  border-radius: 6px;
+  outline: none;
+}
+
+.prompt-custom-input:focus {
+  border-color: var(--accent, var(--text-muted));
+}
+
+.prompt-custom-input::placeholder {
+  color: var(--text-muted);
+}
+
+.prompt-custom-send {
+  flex: none;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1;
+  padding: 7px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.prompt-custom-send:hover:not(:disabled) {
+  border-color: var(--accent, var(--text-muted));
+}
+
+.prompt-custom-send:disabled {
+  cursor: default;
+  opacity: 0.5;
 }
 
 /* 审批卡：与提问卡同一套骨架，但用警告色边框 —— 它拦下的是一次权限扩张 */

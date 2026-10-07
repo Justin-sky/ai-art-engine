@@ -146,7 +146,19 @@ export function denialReasonForTool(access: McpToolAccess, view: McpAccessView):
 const CANCEL_ANSWER =
   /(cancel|stop|abort|discard|reject|dismiss|^no\b|取消|放弃|停止|终止|不要|不用|否)/i
 
-export function isCancelAnswer(answer: string | null | undefined): boolean {
+/**
+ * 用户**自己打字**的回答用的严格口径：整句就是一个取消词才算取消。
+ *
+ * 宽松口径是给**选项按钮**设计的 —— 那些文案由模型给，词表可控。而自定义回答是任意句子，
+ * 拿宽松口径去套会误判：「不要正面，要侧脸」「不用改了，就这样」都会被当成取消，
+ * 于是 Plan 模式的写权限悄悄不放行，用户只看到「我明明答了，它却不动」。
+ * 反过来，用户真在输入框里只写「取消」时仍按取消处理（整句匹配）。
+ */
+const CANCEL_ANSWER_EXACT =
+  /^(cancel|stop|abort|discard|reject|dismiss|no|取消|放弃|停止|终止|不要|不用|否)$/i
+
+export function isCancelAnswer(answer: string | null | undefined, fromCustom = false): boolean {
   if (typeof answer !== 'string' || !answer.trim()) return true // 取消 / 超时统一为 null，同样不放行
-  return CANCEL_ANSWER.test(answer)
+  const text = answer.trim()
+  return fromCustom ? CANCEL_ANSWER_EXACT.test(text) : CANCEL_ANSWER.test(text)
 }

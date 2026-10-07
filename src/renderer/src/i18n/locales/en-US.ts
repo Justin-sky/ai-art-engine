@@ -1166,6 +1166,8 @@ export default {
       promptContinue: 'Continue',
       promptCancel: 'Cancel',
       promptAnswered: 'Chosen: {answer}',
+      promptCustomPlaceholder: 'Or just type your own answer…',
+      promptCustomSend: 'Answer',
       /**
        * 沙箱升级审批卡：只有「允许一次」，没有「总是允许」。
        */
