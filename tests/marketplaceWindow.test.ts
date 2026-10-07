@@ -166,6 +166,17 @@ describe('市场视图：窗口样式与任务列表一致', () => {
     expect(MARKETPLACE).not.toContain('var(--bg-app)')
     expect(MARKETPLACE).toMatch(/background: var\(--bg-panel\)/)
   })
+
+  it('技能专属段落只在「技能」页签下出现（曾挂在页签判断之外，每个分类都冒出来）', () => {
+    // 两个技能的 section 必须在同一个 `category === 'skills'` 判断里；
+    // 挂在页签判断之外时，MCP / 扩展页签底部也会出现「技能目录 / 技能模板参数」
+    const gated = MARKETPLACE.match(/<section v-if="category === 'skills'"/g) ?? []
+    expect(gated).toHaveLength(1)
+    // 除了这一个带条件的 section，不应再有其它 v-if 的 mp-section
+    const ungated =
+      MARKETPLACE.match(/<section(?![^>]*category === 'skills')[^>]*class="mp-section"/g) ?? []
+    expect(ungated).toEqual([])
+  })
 })
 
 describe('市场视图：设置落盘不做整表覆盖', () => {

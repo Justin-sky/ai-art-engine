@@ -111,8 +111,13 @@
         {{ query.trim() ? t('marketplace.noMatch') : t('marketplace.empty') }}
       </p>
 
-      <!-- 技能目录级操作：不挂在某一卡片上，避免同一动作出现多份 -->
-      <section class="mp-section">
+      <!--
+        目录级操作与模板库都是**技能专属**，只在该页签下出现。
+        放在页签判断之外会让它们在每个分类下都冒出来 —— 与当前页签无关的内容
+        比没有更糟（用户会以为它属于 MCP 或扩展）。
+        这两个段落也**不放在搜索的 empty 分支里**：搜不到技能时它们通常仍然可用。
+      -->
+      <section v-if="category === 'skills'" class="mp-section">
         <h3 class="mp-section-title">{{ t('marketplace.skillsTools') }}</h3>
         <div class="mp-dir-row">
           <code class="mp-dir">{{ skills?.dirPath || '…' }}</code>
@@ -129,9 +134,7 @@
         <p class="mp-hint">
           {{ t('settings.skills.builtinCount', { count: skills?.builtinCount ?? 0 }) }}
         </p>
-      </section>
 
-      <section class="mp-section">
         <h3 class="mp-section-title">{{ t('settings.skills.templateLibrary') }}</h3>
         <div class="mp-dir-row">
           <button
@@ -141,8 +144,8 @@
             @click="templatesOpen = !templatesOpen"
           >
             {{ templatesOpen ? '▾' : '▸' }} {{ t('marketplace.toggleTemplates') }}
+            <span class="mp-tab-count">{{ templates.length }}</span>
           </button>
-          <span class="mp-hint">{{ templates.length }}</span>
         </div>
         <ul v-if="templatesOpen && templates.length" class="mp-template-list">
           <li v-for="tpl in templates" :key="tpl.id" class="mp-template">
