@@ -150,16 +150,16 @@
             </span>
             <!--
               随包附带技能时必须在**装之前**就看得见：装完 agent 手里会多一份操作手册，
-              这是用户判断「要不要装」的信息；含脚本则更要提前说清。
+              这是用户判断「要不要装」的信息；含脚本则更要提前说清（脚本会被执行）。
             -->
             <span
               v-if="card.skill"
               class="mp-card-state"
               :title="card.skill.description"
-              :class="{ warn: card.skill.hasScripts }"
+              :class="{ warn: skillHasScripts(card.skill) }"
             >
               {{
-                card.skill.hasScripts
+                skillHasScripts(card.skill)
                   ? t('marketplace.workflows.skillWithScripts')
                   : t('marketplace.workflows.skillIncluded')
               }}
@@ -301,13 +301,18 @@
               </p>
               <!--
                 技能包说明：让「装之前」和「装之后」都能看清 agent 会拿到什么。
-                含脚本时**必须**明说本轮不装脚本 —— 否则用户会以为那些脚本已经能跑了。
+                含脚本时**必须**明说脚本是会被执行的代码、安装时会单独确认一次 ——
+                否则用户会以为脚本悄悄跟着说明书一起装进来了（或反过来以为永远不会装）。
               -->
               <p v-if="card.skill" class="mp-hint">
                 {{ t('marketplace.workflows.skillDetail', { name: card.skill.name }) }}
               </p>
-              <p v-if="card.skill?.hasScripts" class="mp-hint error">
-                {{ t('marketplace.workflows.skillScriptsNote') }}
+              <p v-if="skillHasScripts(card.skill)" class="mp-hint error">
+                {{
+                  t('marketplace.workflows.skillScriptsNote', {
+                    count: skillScriptPaths(card.skill).length
+                  })
+                }}
               </p>
               <!--
                 安装 / 卸载在卡片上（见 `.mp-card-actions`）。
@@ -418,6 +423,9 @@ import {
   filterMarketplaceCards,
   marketplaceCardHeading,
   searchPlaceholderKey,
+  skillHasScripts,
+  skillScriptPaths,
+  skillScriptsConsentText,
   type MarketplaceCard,
   type MarketplaceFilter
 } from '../features/marketplace/buildMarketplaceCards'
@@ -841,7 +849,7 @@ async function loadVisibleCovers(): Promise<void> {
   )
 }
 
-/** 安装（或更新）：缺依赖时先拦一次，用户确认后才带逃生门重试 */
+/** 安装（或更新）：缺依赖时先拦一次，含脚本时再要一次明示同意，之后才带逃生门重试 */
 async function installMarketWorkflow(card: MarketplaceCard): Promise<void> {
   const id = card.marketId
   if (!id || installingId.value) return
@@ -852,6 +860,19 @@ async function installMarketWorkflow(card: MarketplaceCard): Promise<void> {
     )
     if (!ok) return
   }
+  /**
+   * 含脚本的技能包必须**逐次**确认（哪怕上次同意过、哪怕只是「重新安装」）：
+   * `scripts/` 是会被 agent 在本机执行起来的代码，同意应当是每次安装的独立决定，
+   * 而不是一个装过一次就永久生效的开关。
+   *
+   * 确认框里的「取消」= **不装脚本**（说明书与 references 照常装上，工作流可用）——
+   * 这正是主进程在缺少 `skillScriptsConsent` 时的行为，因此不需要再走一条分支。
+   */
+  const withScripts = skillHasScripts(card.skill)
+  const scriptsConsented =
+    withScripts && card.skill
+      ? window.confirm(skillScriptsConsentText(card.skill, (key, named) => t(key, named)))
+      : false
   installingId.value = id
   try {
     const result = await window.studio.installWorkflowMarket({
@@ -859,14 +880,20 @@ async function installMarketWorkflow(card: MarketplaceCard): Promise<void> {
       acceptMissingTypes: missing.length > 0,
       // 把用户点的这条条目里的技能清单原样带过去：主进程会重新校验，
       // 但「装哪个技能」必须与卡片上写的一致，否则界面就在骗人
-      ...(card.skill ? { skill: card.skill } : {})
+      ...(card.skill ? { skill: card.skill } : {}),
+      // 只有用户在上面的确认框里点了「确定」才为 true；主进程只认字面量 true
+      ...(scriptsConsented ? { skillScriptsConsent: true } : {})
     })
     if (!result.ok) {
       isError.value = true
       message.value = t(`marketplace.workflows.reason.${result.reasonKey ?? 'download'}`)
       return
     }
-    message.value = t('marketplace.workflows.installed', { title: card.title ?? id })
+    // 明确告诉用户这次没装脚本：否则「脚本怎么没生效」会变成一条查不出来的线索
+    message.value =
+      withScripts && !scriptsConsented
+        ? t('marketplace.workflows.installedWithoutScripts', { title: card.title ?? id })
+        : t('marketplace.workflows.installed', { title: card.title ?? id })
     isError.value = false
     await loadWorkflowCatalog(true)
   } catch (e) {

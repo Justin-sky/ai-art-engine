@@ -3,6 +3,8 @@ import { electronAPI } from '@electron-toolkit/preload'
 import { IpcChannels, type StudioApi } from '@shared/ipc'
 import type { AppSettings, AssetInfo, ProjectConfig } from '@shared/domain'
 import type {
+  ApprovalAnswer,
+  ApprovalRequestView,
   AskUserAnswer,
   AskUserQuestion,
   McpGraphEditResultPayload,
@@ -350,6 +352,15 @@ const api: StudioApi = {
   },
   answerAskUser: (payload: AskUserAnswer) =>
     ipcRenderer.invoke(IpcChannels.MCP_ASK_USER_RESPONSE, payload),
+  onApprovalRequest: (callback) => {
+    const listener = (_event: unknown, request: ApprovalRequestView): void => {
+      callback(request)
+    }
+    ipcRenderer.on(IpcChannels.MCP_APPROVAL_REQUEST, listener)
+    return () => ipcRenderer.removeListener(IpcChannels.MCP_APPROVAL_REQUEST, listener)
+  },
+  answerApproval: (payload: ApprovalAnswer) =>
+    ipcRenderer.invoke(IpcChannels.MCP_APPROVAL_RESPONSE, payload),
   getMcpInfo: () => ipcRenderer.invoke(IpcChannels.MCP_GET_INFO),
   restartMcpServer: (input) => ipcRenderer.invoke(IpcChannels.MCP_RESTART, input),
   getBlenderMcpInfo: (input) => ipcRenderer.invoke(IpcChannels.MCP_BLENDER_GET_INFO, input),

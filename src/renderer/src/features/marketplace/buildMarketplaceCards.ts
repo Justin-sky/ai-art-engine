@@ -129,13 +129,57 @@ export function skillSourceKey(kind: string): string {
  *
  * 刻意用**纯数据**（不走 i18n）：`+N files` 与 `scripts` 都是技术标识，
  * 中文界面里保持原样比翻译成"含 N 个文件"更好核对。含脚本必须出现 ——
- * 脚本本轮不落盘，用户有权在卡片上就看出来。
+ * 这里读的是**磁盘上的技能目录**，所以 `scripts` 意味着脚本确实在本机（装的时候用户同意过）。
  */
 export function skillBundleMeta(file: { hasScripts?: boolean; extraFileCount?: number }): string {
   const parts: string[] = []
   if (file.extraFileCount) parts.push(`+${file.extraFileCount} files`)
-  if (file.hasScripts) parts.push('scripts · not installed')
+  if (file.hasScripts) parts.push('scripts')
   return parts.join(' · ')
+}
+
+/**
+ * 技能包清单里的脚本文件路径（按清单顺序）。
+ *
+ * 安装确认要用它把「哪些文件会被写到本机、之后可能被 agent 执行」摆到用户面前。
+ * 抽成纯函数（而不是在视图里 filter）是为了能被测试直接覆盖 —— 这段决定的是
+ * 用户在确认框里到底看见什么，少列一个文件就等于少告知一次。
+ */
+export function skillScriptPaths(
+  skill: { files?: readonly { path: string }[] } | undefined
+): string[] {
+  return (skill?.files ?? []).map((file) => file.path).filter((path) => path.startsWith('scripts/'))
+}
+
+/**
+ * 该技能包是否含脚本。
+ *
+ * 判据取「清单自述 hasScripts」**或**「文件里确实有 scripts/ 下的路径」的并集：
+ * 索引是远端内容，两者不一致时按「有脚本」处理 —— 真正决定装不装的是主进程
+ *（它对每个 scripts/ 文件单独要求同意），界面这里只是不能漏问。
+ */
+export function skillHasScripts(
+  skill: { hasScripts?: boolean; files?: readonly { path: string }[] } | undefined
+): boolean {
+  return skill?.hasScripts === true || skillScriptPaths(skill).length > 0
+}
+
+/**
+ * 安装含脚本技能包时的确认正文。
+ *
+ * 文案进 i18n（这里是**非豁免**文件，一行中文都不能留），文件清单是纯数据：
+ * 用户必须在点确认之前看到「具体哪些文件会被写到本机」。视图只负责把这段文字
+ * 放进确认框，不再自己拼路径 —— 拼漏一个文件就等于少告知一次。
+ */
+export function skillScriptsConsentText(
+  skill: { files?: readonly { path: string }[] },
+  translate: (key: string, named: Record<string, unknown>) => string
+): string {
+  const scripts = skillScriptPaths(skill)
+  return translate('marketplace.workflows.scriptsConfirm', {
+    count: scripts.length,
+    files: scripts.join('\n')
+  })
 }
 
 /**

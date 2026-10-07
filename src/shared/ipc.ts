@@ -1,4 +1,5 @@
 import type { AppSettings, AssetFolder, AssetInfo, AssetType, ProjectConfig } from './domain'
+import type { ApprovalAnswer, ApprovalRequestView } from './dshApproval'
 import type { ExternalMcpServer } from './externalMcp'
 import type { GitFileDiffInput, GitFileDiffResult, GitStatusResult } from './git'
 import type { ProjectOutputFile } from './outputScan'
@@ -345,6 +346,15 @@ export const IpcChannels = {
   MCP_ASK_USER: 'mcp:ask-user',
   /** MCP：渲染层回报用户对 ask_user 提问的选择（渲染层 → 主进程） */
   MCP_ASK_USER_RESPONSE: 'mcp:ask-user-response',
+  /**
+   * 审批：主进程派发 dsh 的沙箱升级审批请求（main → 渲染层，弹同意卡）。
+   *
+   * 与 ask_user 分成两条通道而不是复用一条：审批只有「放行一次 / 拒绝」两种决定、
+   * 且必须是**一次性**授权，混进 ask_user 的自由文本选项里迟早会被当成可持久化的偏好。
+   */
+  MCP_APPROVAL_REQUEST: 'mcp:approval-request',
+  /** 审批：渲染层回报用户的决定（渲染层 → 主进程，写入回答文件） */
+  MCP_APPROVAL_RESPONSE: 'mcp:approval-response',
   /** MCP：渲染层查询当前旁路生成活动列表 */
   MCP_ACTIVITY_LIST: 'mcp:activity-list',
   /** Harness：查询 DeepSeek Harness (dsh) 接入状态（Node / dsh / MCP / 密钥） */
@@ -826,6 +836,12 @@ export interface AskUserAnswer {
   /** 用户选中的选项文本；用户取消 / 超时 / 会话已结束为 null */
   answer: string | null
 }
+
+/**
+ * 审批：渲染层 → 主进程，用户对一条 dsh 审批请求的决定。
+ * 类型定义在 `./dshApproval`（与 dsh 侧插件共用的词表在那里，主进程与测试同一份实现）。
+ */
+export type { ApprovalAnswer, ApprovalDecision, ApprovalRequestView } from './dshApproval'
 
 /** MCP：工具服务当前状态（设置界面展示接入信息用） */
 export interface McpServerInfo {
@@ -1613,6 +1629,13 @@ export interface StudioApi {
      * 因此这里传的是「用户点的那一条条目」而不是一份需要被信任的数据。
      */
     skill?: WorkflowSkillManifest
+    /**
+     * 用户**明示同意**把技能包里的 `scripts/` 落到本机。
+     *
+     * 缺省 / false = 按老行为只装说明书与 references（脚本是会被 agent 执行的代码，
+     * 界面必须先展示脚本清单再让用户点确认）；true 也要逐条过路径白名单与体积上限。
+     */
+    skillScriptsConsent?: boolean
   }) => Promise<WorkflowMarketActionResult>
   uninstallWorkflowMarket: (id: string) => Promise<WorkflowMarketActionResult>
   /** 已安装清单 */
@@ -1762,6 +1785,15 @@ export interface StudioApi {
 
   /** MCP：回传用户对 ask_user 提问的选择 */
   answerAskUser: (payload: AskUserAnswer) => Promise<boolean>
+
+  /**
+   * 审批：订阅 dsh 的沙箱升级审批请求（界面展示工具名与原因，让用户明确同意一次）。
+   * 没有这个订阅者时 dsh 侧的请求会失败即关闭 —— 这正是缺省行为。
+   */
+  onApprovalRequest: (callback: (request: ApprovalRequestView) => void) => () => void
+
+  /** 审批：回传用户的决定（`allow-once` / `reject`），由主进程写入回答文件 */
+  answerApproval: (payload: ApprovalAnswer) => Promise<boolean>
 
   /** MCP：查询工具服务状态（端口 / token / 接入命令；未启动时返回 null） */
   getMcpInfo: () => Promise<McpServerInfo | null>

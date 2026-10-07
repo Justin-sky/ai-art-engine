@@ -250,9 +250,9 @@ describe('安装流程的主进程守卫', () => {
     expect(SERVICE_CODE).toContain('join(dshSkillsDir(), manifest.name)')
   })
 
-  it('**不安装 scripts/**：dsh 技能层没有脚本沙箱与同意流', () => {
-    // 这是刻意的分期，不是遗漏 —— 一旦有人"顺手"放开，这条会红
-    expect(SERVICE_CODE).toContain("if (file.path.startsWith('scripts/')) continue")
+  it('**缺省不安装 scripts/**：没有用户明示同意时按老行为只装说明书', () => {
+    // 这是安全底线，不是遗漏 —— 一旦有人「顺手」把同意判断去掉，这条会红
+    expect(SERVICE_CODE).toContain('if (isScript && !options.allowScripts) continue')
   })
 
   it('安装前校验 SKILL.md（否则 dsh 静默忽略，用户只看到"装上了"）', () => {
@@ -363,7 +363,7 @@ describe('市场卡片带上技能信息', () => {
     expect(skillSourceKey('bundle')).toBe('marketplace.source.skill.bundle')
   })
 
-  it('技能卡带上文件数与「含脚本但未安装」提示', () => {
+  it('技能卡带上文件数与脚本标记', () => {
     const cards = buildMarketplaceCards({
       mcp: null,
       workflows: [],
@@ -383,8 +383,8 @@ describe('市场卡片带上技能信息', () => {
     })
     const card = cards.find((item) => item.identifier === 'wf-world-model')
     expect(card?.meta).toContain('+3 files')
-    // 「不安装」必须出现：否则用户会以为脚本已经能跑了
-    expect(card?.meta).toContain('not installed')
+    // 磁盘上确实有 scripts/ 时必须出现：脚本是会被 agent 执行的代码，不能悄悄躺着
+    expect(card?.meta).toContain('scripts')
   })
 
   it('无脚本技能包只显示文件数', () => {

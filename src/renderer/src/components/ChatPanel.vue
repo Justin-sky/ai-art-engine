@@ -11,6 +11,7 @@ import {
 } from 'vue'
 import type { AssetInfo, AssetType } from '@shared/domain'
 import type {
+  ApprovalRequestView,
   AskUserQuestion,
   ChatMode,
   HarnessEvent,
@@ -1558,6 +1559,8 @@ function onHarnessEvent(event: HarnessEvent): void {
     }
     case 'done':
       running.value = false
+      // 本轮结束：未决定的审批请求已随主进程丢弃，卡片标记失效（未放行）
+      expirePendingApprovals()
       // 运行结束：采集本轮 git 变更（有改动才追加预览卡）
       void captureGitChanges()
       // 同时扫本轮直接落盘的产物（Output / Cache 下的媒体），逐条追加产物卡
@@ -1566,6 +1569,7 @@ function onHarnessEvent(event: HarnessEvent): void {
     case 'error':
       pushStatus(event.message, 'error')
       running.value = false
+      expirePendingApprovals()
       // 失败前可能已经有产物落盘：同样扫一遍，别让「跑到一半报错」这一轮彻底没有卡
       void captureRoundOutputs()
       break
@@ -2037,6 +2041,7 @@ async function onSaveAssetConfirm(payload: {
 }
 
 let stopAskUser: (() => void) | null = null
+let stopApproval: (() => void) | null = null
 
 /**
  * 主进程 ASSET_REMOVED 载荷 `{ id, path }` 到达时，把对应的「已保存」标记回退。
@@ -2097,6 +2102,56 @@ async function answerPrompt(msg: ChatMsg & { kind: 'prompt' }, option: string): 
     await window.studio.answerAskUser({ requestId: msg.requestId, answer: option })
   } catch {
     // 主进程侧已超时 / 会话已结束：按钮已锁定，无副作用
+  }
+}
+
+/**
+ * dsh 请求越过沙箱边界（沙箱升级）：在消息流里插一条同意卡。
+ *
+ * 卡片**只提供「允许一次 / 拒绝」**，没有「总是允许」：dsh 的审批是一次性授权，
+ * 持久化会静默放宽 agent 之后能跑的东西，而用户以为自己只同意过一次。
+ */
+function handleApprovalRequest(request: ApprovalRequestView): void {
+  if (messages.value.some((m) => m.kind === 'approval' && m.requestId === request.requestId)) return
+  messages.value.push({
+    kind: 'approval',
+    requestId: request.requestId,
+    toolName: request.toolName,
+    // 原因优先用 displayReason（上游若给出更贴近用户的表述），否则用 reason
+    ...(request.displayReason || request.reason
+      ? { reason: request.displayReason || request.reason }
+      : {}),
+    decision: null
+  })
+  scrollToBottom()
+}
+
+/**
+ * 用户点击「允许一次 / 拒绝」：回传决定给主进程（写进回答文件，dsh 侧据此放行或拒绝）。
+ *
+ * 先锁按钮再回传，且**回传失败也保持已决定**：主进程会按拒绝兜底（`answerApproval`
+ * 返回 false 表示这条请求已作废），卡片不该因为一次失败就重新变成可点的「允许」。
+ */
+async function answerApprovalRequest(
+  msg: ChatMsg & { kind: 'approval' },
+  decision: 'allow-once' | 'reject'
+): Promise<void> {
+  if (msg.decision !== null && msg.decision !== undefined) return
+  msg.decision = decision
+  try {
+    await window.studio.answerApproval({ requestId: msg.requestId, decision })
+  } catch {
+    // 主进程不可达：请求随本轮一起失效，未放行
+  }
+}
+
+/** 本轮结束时把未决定的审批卡标记为失效（主进程已丢弃对应请求，点也没用） */
+function expirePendingApprovals(): void {
+  for (const msg of messages.value) {
+    // 保持 decision 为 null：用户**没有**决定过，界面不该显示「已拒绝」
+    if (msg.kind === 'approval' && (msg.decision === null || msg.decision === undefined)) {
+      msg.expired = true
+    }
   }
 }
 
@@ -2273,6 +2328,7 @@ onMounted(async () => {
   stopEvent = window.studio.onHarnessEvent(onHarnessEvent)
   stopActivity = window.studio.onMcpActivityUpdated(onMcpActivity)
   stopAskUser = window.studio.onAskUser(handleAskUser)
+  stopApproval = window.studio.onApprovalRequest(handleApprovalRequest)
   // 订阅资产移除事件：用户在资产库 / MCP 删除时让对话产物卡上的「已保存」状态回退
   if (typeof window.studio?.onAssetRemoved === 'function') {
     stopAssetRemoved = window.studio.onAssetRemoved(onAssetRemoved)
@@ -2293,6 +2349,7 @@ onBeforeUnmount(() => {
   stopEvent?.()
   stopActivity?.()
   stopAskUser?.()
+  stopApproval?.()
   stopAssetRemoved?.()
   document.removeEventListener('click', onModeOutside)
   document.removeEventListener('keydown', onModeOutside)
@@ -2571,6 +2628,47 @@ onBeforeUnmount(() => {
             <div v-if="msg.answered !== null && msg.answered !== undefined" class="prompt-answered">
               {{ t('studio.chat.promptAnswered', { answer: msg.answered }) }}
             </div>
+          </div>
+          <!--
+            审批卡：dsh 请求越过沙箱边界时出现。只有「允许一次 / 拒绝」两个选项 ——
+            没有「总是允许」（dsh 的授权设计成一次性，持久化会静默放宽 agent 的权限面）。
+          -->
+          <div v-else-if="msg.kind === 'approval'" class="msg-prompt approval">
+            <div class="prompt-question">{{ t('studio.chat.approvalTitle') }}</div>
+            <div class="prompt-hint">
+              {{ t('studio.chat.approvalTool', { tool: msg.toolName }) }}
+            </div>
+            <div v-if="msg.reason" class="prompt-hint approval-reason">{{ msg.reason }}</div>
+            <div class="prompt-options">
+              <button
+                type="button"
+                class="prompt-option"
+                :class="{ chosen: msg.decision === 'allow-once' }"
+                :disabled="msg.expired || (msg.decision !== null && msg.decision !== undefined)"
+                @click="answerApprovalRequest(msg, 'allow-once')"
+              >
+                {{ t('studio.chat.approvalAllowOnce') }}
+              </button>
+              <button
+                type="button"
+                class="prompt-option"
+                :class="{ chosen: msg.decision === 'reject' }"
+                :disabled="msg.expired || (msg.decision !== null && msg.decision !== undefined)"
+                @click="answerApprovalRequest(msg, 'reject')"
+              >
+                {{ t('studio.chat.approvalReject') }}
+              </button>
+            </div>
+            <div v-if="msg.decision === 'allow-once'" class="prompt-answered">
+              {{ t('studio.chat.approvalAllowedOnce') }}
+            </div>
+            <div v-else-if="msg.decision === 'reject'" class="prompt-answered">
+              {{ t('studio.chat.approvalRejected') }}
+            </div>
+            <div v-else-if="msg.expired" class="prompt-answered">
+              {{ t('studio.chat.approvalExpired') }}
+            </div>
+            <div class="prompt-hint">{{ t('studio.chat.approvalOnceHint') }}</div>
           </div>
         </template>
         <div v-if="running" class="msg-status running">
@@ -4058,6 +4156,18 @@ onBeforeUnmount(() => {
   color: var(--text-muted);
   user-select: none;
   -webkit-user-select: none;
+}
+
+/* 审批卡：与提问卡同一套骨架，但用警告色边框 —— 它拦下的是一次权限扩张 */
+.msg-prompt.approval {
+  border-color: var(--warn, var(--accent, var(--border)));
+}
+
+.approval-reason {
+  color: var(--text);
+  font-family: var(--font-mono, monospace);
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .chat-input {

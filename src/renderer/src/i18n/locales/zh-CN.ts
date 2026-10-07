@@ -838,6 +838,8 @@ export default {
       install: '安装',
       installing: '安装中…',
       installed: '已安装「{title}」',
+      /** 用户在脚本同意框里点了「取消」：说明书装上了，脚本没落盘 —— 必须说清 */
+      installedWithoutScripts: '已安装「{title}」（按你的选择未安装脚本）',
       reinstall: '重新安装',
       update: '更新',
       uninstall: '卸载',
@@ -850,7 +852,13 @@ export default {
       skillWithScripts: '含技能 · 含脚本',
       skillDetail: '随包附带技能「{name}」，装好后 AI 对话里的 agent 会用它来操作这条工作流。',
       skillScriptsNote:
-        '这个技能包含脚本。出于安全考虑，本轮只安装说明书与 references，脚本不会落盘。',
+        '这个技能包含 {count} 个脚本。脚本是 AI agent 可以在这台机器上跑起来的代码，只有在安装时你明确同意才会写入。',
+      /**
+       * 含脚本技能包的安装确认框。必须**逐条列出**脚本文件：同意的是具体这些文件，
+       * 而不是一句笼统的「包含脚本」。
+       */
+      scriptsConfirm:
+        '这个技能包里有 {count} 个脚本文件，它们是 AI agent 可以在这台机器上跑起来的代码：\n\n{files}\n\n只有你点「确定」才会把这些脚本写入本机。点「取消」则只安装说明书与 references（脚本不落盘，工作流照常可用）。\n\n仍要安装这些脚本吗？',
       reason: {
         network: '连不上远端市场（检查网络或换一个源地址）',
         schemaTooNew: '目录格式比本应用新，请先更新应用',
@@ -1053,6 +1061,20 @@ export default {
       promptContinue: '继续',
       promptCancel: '取消',
       promptAnswered: '已选择：{answer}',
+      /**
+       * 沙箱升级审批卡：agent 想突破沙箱边界时由 dsh 发起，用户必须明确同意一次。
+       * 只有「允许一次」，没有「总是允许」—— 持久授权会悄悄放宽 agent 之后能跑的东西。
+       */
+      approvalTitle: '需要你授权这一步',
+      approvalTool: '工具：{tool}',
+      approvalReason: '原因：{reason}',
+      approvalAllowOnce: '允许一次',
+      approvalReject: '拒绝',
+      approvalAllowedOnce: '已允许一次（仅本次调用）',
+      approvalRejected: '已拒绝',
+      /** 本轮已结束 / 进程已换：这条请求失效，且**没有放行** */
+      approvalExpired: '本轮已结束，这条请求已失效（未放行）',
+      approvalOnceHint: '授权只对这一次调用有效：dsh 的审批是一次性的，应用不会记住「总是允许」。',
       thinking: '思考过程',
       copy: '复制',
       copied: '已复制',

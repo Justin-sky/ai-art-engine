@@ -60,6 +60,7 @@ import {
   getDshSkillsInfo,
   getHarnessStatus,
   getSessionSkills,
+  handleApprovalResponse,
   handleAskUserResponse,
   importCustomSkillsToGraph,
   listSkillTemplates,
@@ -524,8 +525,12 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.WORKFLOW_MARKET_COVER, (id: string) => fetchWorkflowCover(id))
   handle(
     IpcChannels.WORKFLOW_MARKET_INSTALL,
-    (input: { id: string; acceptMissingTypes?: boolean; skill?: WorkflowSkillManifest }) =>
-      installWorkflow(input)
+    (input: {
+      id: string
+      acceptMissingTypes?: boolean
+      skill?: WorkflowSkillManifest
+      skillScriptsConsent?: boolean
+    }) => installWorkflow(input)
   )
   handle(IpcChannels.WORKFLOW_MARKET_UNINSTALL, (id: string) => uninstallWorkflow({ id }))
   handle(IpcChannels.WORKFLOW_MARKET_INSTALLED, (): InstalledWorkflowRecordView[] =>
@@ -672,6 +677,14 @@ export function registerIpcHandlers(): void {
     }
     return true
   })
+
+  /**
+   * 审批决定回传：写回答文件，dsh 侧的应答插件读到后才会放行（仅一次）。
+   * 返回 false = 这条请求已作废（本轮结束 / 进程已换），界面据此把卡片标为失效。
+   */
+  handle(IpcChannels.MCP_APPROVAL_RESPONSE, (payload: import('@shared/ipc').ApprovalAnswer) =>
+    handleApprovalResponse(payload)
+  )
 
   handle(IpcChannels.APP_GET_VERSION, () => updateService.getCurrentVersion())
   handle(IpcChannels.UPDATE_CHECK, () => updateService.checkForUpdates())

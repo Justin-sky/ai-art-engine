@@ -851,6 +851,8 @@ export default {
       install: 'Install',
       installing: 'Installing…',
       installed: 'Installed “{title}”',
+      /** 用户在脚本同意框里点了「取消」：说明书装上了，脚本没落盘 */
+      installedWithoutScripts: 'Installed “{title}” (scripts not installed, as you chose)',
       reinstall: 'Reinstall',
       update: 'Update',
       uninstall: 'Uninstall',
@@ -864,7 +866,12 @@ export default {
       skillDetail:
         'Ships a skill “{name}”: once installed, the agent in AI chat uses it to operate this workflow.',
       skillScriptsNote:
-        'This skill bundle contains scripts. For safety, only the instructions and references are installed this round — no scripts are written to disk.',
+        'This skill bundle contains {count} script(s). Scripts are code the AI agent can run on this machine, and they are written to disk only when you explicitly agree during install.',
+      /**
+       * 含脚本技能包的安装确认框：必须逐条列出脚本文件。
+       */
+      scriptsConfirm:
+        'This skill bundle contains {count} script file(s) — code the AI agent can run on this machine:\n\n{files}\n\nThey are written to your machine only if you click OK. Clicking Cancel installs the instructions and references only (no scripts on disk; the workflow still works).\n\nInstall these scripts?',
       reason: {
         network: 'Cannot reach the remote market (check your network or use another source)',
         schemaTooNew: 'The catalog format is newer than this app — please update',
@@ -1075,6 +1082,20 @@ export default {
       promptContinue: 'Continue',
       promptCancel: 'Cancel',
       promptAnswered: 'Chosen: {answer}',
+      /**
+       * 沙箱升级审批卡：只有「允许一次」，没有「总是允许」。
+       */
+      approvalTitle: 'This step needs your approval',
+      approvalTool: 'Tool: {tool}',
+      approvalReason: 'Reason: {reason}',
+      approvalAllowOnce: 'Allow once',
+      approvalReject: 'Reject',
+      approvalAllowedOnce: 'Allowed once (this call only)',
+      approvalRejected: 'Rejected',
+      /** 本轮已结束 / 进程已换：请求失效且未放行 */
+      approvalExpired: 'The run ended, so this request expired (nothing was allowed)',
+      approvalOnceHint:
+        'The grant covers this one call: dsh approvals are one-shot and the app never remembers an “always allow”.',
       thinking: 'Thinking',
       copy: 'Copy',
       copied: 'Copied',

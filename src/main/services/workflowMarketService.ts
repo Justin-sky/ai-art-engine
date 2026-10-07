@@ -61,6 +61,15 @@ export interface InstalledWorkflowRecord {
    * 批量删会把用户的东西一起带走。
    */
   skillName?: string
+  /**
+   * 随包脚本**已**落盘（技能目录下存在 `scripts/`，且是用户明示同意的那一次装的）。
+   *
+   * 脚本是会被 agent 在本机执行起来的代码，所以这条必须留在记账里：日后回头看
+   * 「这个技能为什么能跑脚本」时，答案只能是「某次安装时用户同意过」。
+   */
+  skillScripts?: boolean
+  /** 上述同意的落盘时刻（ISO）；只在 `skillScripts` 为真时存在 */
+  skillScriptsConsentAt?: string
 }
 
 const KIND = 'workflow-market'
@@ -358,7 +367,19 @@ export function listInstalledWorkflows(): InstalledWorkflowRecord[] {
         version: typeof obj.version === 'string' ? obj.version : '',
         installedAt: typeof obj.installedAt === 'string' ? obj.installedAt : '',
         source: typeof obj.source === 'string' ? obj.source : '',
-        ...(typeof obj.contentHash === 'string' ? { contentHash: obj.contentHash } : {})
+        ...(typeof obj.contentHash === 'string' ? { contentHash: obj.contentHash } : {}),
+        /**
+         * 技能字段必须原样读回来。
+         *
+         * 记账是**整体重写**的（安装另一条工作流时也会重写全部记录），读的时候漏掉哪个字段，
+         * 那个字段就在下一次写入时被抹掉：`skillName` 掉了 → 卸载时技能目录没人删；
+         * 同意记录掉了 → 「脚本是怎么进来的」变成无据可查。
+         */
+        ...(typeof obj.skillName === 'string' && obj.skillName ? { skillName: obj.skillName } : {}),
+        ...(obj.skillScripts === true ? { skillScripts: true } : {}),
+        ...(typeof obj.skillScriptsConsentAt === 'string' && obj.skillScriptsConsentAt
+          ? { skillScriptsConsentAt: obj.skillScriptsConsentAt }
+          : {})
       })
     }
     // 与磁盘对账：目录被手删的记录不该继续显示「已安装」
@@ -447,6 +468,13 @@ export async function installWorkflow(input: {
    *（路径白名单 + SKILL.md frontmatter），所以这不等于信任界面。
    */
   skill?: WorkflowSkillManifest
+  /**
+   * 用户**明示同意**安装技能包里的 `scripts/`。
+   *
+   * 缺省（含 undefined / false）= 只装说明书与 references —— 与放开脚本之前的行为完全一致，
+   * 且**不算安装失败**（技能本身仍然可用，只是没有随包脚本）。
+   */
+  skillScriptsConsent?: boolean
 }): Promise<WorkflowMarketActionResult> {
   const sources = orderedSources()
   const failures: string[] = []
@@ -475,7 +503,12 @@ export async function installWorkflow(input: {
 async function installFromSource(
   source: string,
   urls: ReturnType<typeof workflowMarketUrls>,
-  input: { id: string; acceptMissingTypes?: boolean; skill?: WorkflowSkillManifest },
+  input: {
+    id: string
+    acceptMissingTypes?: boolean
+    skill?: WorkflowSkillManifest
+    skillScriptsConsent?: boolean
+  },
   failures: string[]
 ): Promise<WorkflowMarketActionResult | null> {
   let bundleRaw: unknown
@@ -536,7 +569,9 @@ async function installFromSource(
    * 能力缺失却是静默的，正是最难排查的一类问题。所以技能装失败就把工作流一并卸掉，
    * 宁可整体失败并给出明确原因，也不留半成品。安装是幂等的，重试即可。
    */
-  const skillResult = await installSkillBundle(urls, bundle.id, input.skill)
+  const skillResult = await installSkillBundle(urls, bundle.id, input.skill, {
+    allowScripts: input.skillScriptsConsent === true
+  })
   if (skillResult && !skillResult.ok) {
     getPipeline().uninstall(targetDir)
     return {
@@ -546,6 +581,7 @@ async function installFromSource(
     }
   }
   const skillName = skillResult?.ok ? skillResult.name : null
+  const skillScripts = skillResult?.ok === true && skillResult.scriptsInstalled
 
   // 记下成功安装的源，后续 bundle / cover 优先走它
   activeSource = source
@@ -556,7 +592,9 @@ async function installFromSource(
     installedAt: new Date().toISOString(),
     source,
     contentHash: sha256OfBytes(new TextEncoder().encode(JSON.stringify(bundle.plan))).slice(0, 16),
-    ...(typeof skillName === 'string' ? { skillName } : {})
+    ...(typeof skillName === 'string' ? { skillName } : {}),
+    // 只有脚本真的落了盘才记这笔账：记账说「装过脚本」而磁盘上没有，等于把审计线索写歪
+    ...(skillScripts ? { skillScripts: true, skillScriptsConsentAt: new Date().toISOString() } : {})
   })
   writeRecords(records)
   return { ok: true }
@@ -565,27 +603,39 @@ async function installFromSource(
 /**
  * 安装技能包到 dsh 技能根（`$DSH_HOME/skills/<name>`）。
  *
- * 返回装上的技能名；没有技能返回 `null`；失败返回 `false`（调用方据此回滚工作流）。
+ * 返回装上的技能名与「脚本是否落盘」；没有技能返回 `null`；失败返回 reasonKey
+ *（调用方据此回滚工作流）。
  *
- * 两点刻意的取舍：
- * - **不安装 `scripts/`**：dsh 技能层没有脚本沙箱也没有同意流，应用也还没实现审批应答，
- *   默认策略下脚本会「失败即关闭」。本轮先只装说明书与 references，等同意流做好再放。
+ * 三点刻意的取舍：
+ * - **脚本要用户明示同意**（`allowScripts`）：`scripts/` 是会被 agent 在本机执行起来的
+ *   代码，不是说明书。不同意就只装说明书与 references —— 与放开脚本之前的行为一致，
+ *   且**不算失败**（技能本身照样可用，只是少了随包脚本）。
+ * - **同意也不等于免检**：路径仍要过 `isSafeSkillFilePath`（下载器只接受白名单路径），
+ *   体积仍走管道的上限，脚本文件与说明书走同一套校验。
  * - **安装前校验 SKILL.md**：dsh 对不合法的技能是**静默忽略**，不校验就会「装上了却看不见」。
  */
 async function installSkillBundle(
   urls: ReturnType<typeof workflowMarketUrls>,
   workflowId: string,
-  manifest: WorkflowSkillManifest | undefined
-): Promise<{ ok: true; name: string } | { ok: false; reasonKey: string; error?: string } | null> {
+  manifest: WorkflowSkillManifest | undefined,
+  options: { allowScripts: boolean }
+): Promise<
+  | { ok: true; name: string; scriptsInstalled: boolean }
+  | { ok: false; reasonKey: string; error?: string }
+  | null
+> {
   if (!manifest) return null
   const skillDir = join(dshSkillsDir(), manifest.name)
   const files: Array<{ path: string; url: string }> = []
+  let scriptsInstalled = false
   for (const file of manifest.files) {
-    if (file.path.startsWith('scripts/')) continue
+    const isScript = file.path.startsWith('scripts/')
+    if (isScript && !options.allowScripts) continue
     const url = urls.skillFile(workflowId, file.path)
     // 白名单在契约层已校验过；这里再挡一次，避免把非法路径交给下载器
     if (!url) return { ok: false, reasonKey: 'skillBadPath', error: file.path }
     files.push({ path: file.path, url })
+    if (isScript) scriptsInstalled = true
   }
   if (!files.some((file) => file.path === manifest.entry)) {
     return { ok: false, reasonKey: 'skillMissingEntry', error: manifest.entry }
@@ -601,7 +651,7 @@ async function installSkillBundle(
       return check.ok ? { ok: true } : { ok: false, reasonKey: check.reasonKey }
     }
   })
-  if (result.ok) return { ok: true, name: manifest.name }
+  if (result.ok) return { ok: true, name: manifest.name, scriptsInstalled }
   // 具体原因（缺 description / 名字不符 / 旧键…）比一句「技能安装失败」有用得多，原样带回
   return {
     ok: false,

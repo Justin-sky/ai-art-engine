@@ -72,6 +72,28 @@ export type ChatMsg =
       /** 用户选择结果（null=未答；非 null=已答） */
       answered?: string | null
     }
+  | {
+      /**
+       * 审批卡：dsh 请求越过沙箱边界（沙箱升级）时插入，用户在卡上「允许一次 / 拒绝」。
+       *
+       * 与 `prompt` 分开一种消息：审批的决定词表是**闭集**且只放行一次，
+       * 混进自由文本选项里迟早会被当成可持久化的偏好。
+       */
+      kind: 'approval'
+      /** 审批请求 id（主进程生成），回传决定时使用 */
+      requestId: string
+      /** 需要审批的工具名（如 pwsh / write） */
+      toolName: string
+      /** dsh 给出的可读原因（原样展示，不做翻译） */
+      reason?: string
+      /** 用户决定（null=未决定；非 null=已决定）。缺省视为未决定（旧会话无此字段） */
+      decision?: 'allow-once' | 'reject' | null
+      /**
+       * 请求已失效（本轮结束 / 进程已换）：按钮不再可点，且**没有放行**。
+       * 与 `decision` 分开记：用户从未决定过，界面不该显示成「已拒绝」。
+       */
+      expired?: boolean
+    }
 
 export interface ChatSession {
   id: string

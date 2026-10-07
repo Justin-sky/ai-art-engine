@@ -94,6 +94,30 @@ function aiartRunnerTemplatePlugin(): Plugin {
   }
 }
 
+/**
+ * 主进程：把 dsh 审批应答插件模板同样打进 bundle。
+ *
+ * 与 runner 模板分开一个虚拟模块（而不是拼进同一份字符串）：应答器是安全关键的一小块，
+ * 单独成文件才能在测试里当普通模块导入、用假 deps 驱动真实实现。
+ */
+function aiartApprovalAnswererTemplatePlugin(): Plugin {
+  const virtualId = 'virtual:aiart-approval-answerer-template'
+  const resolvedId = '\0' + virtualId
+  return {
+    name: 'aiart-approval-answerer-template',
+    resolveId(id) {
+      if (id === virtualId) return resolvedId
+      return null
+    },
+    load(id) {
+      if (id !== resolvedId) return null
+      const abs = resolve('src/main/services/aiartApprovalAnswerer.template.mjs')
+      const source = readFileSync(abs, 'utf-8')
+      return `export default ${JSON.stringify(source)}`
+    }
+  }
+}
+
 export default defineConfig({
   main: {
     // chokidar 特意不外置：Assets 目录 watchdog 在主进程里 import 它，而 electron-builder.yml
@@ -105,6 +129,7 @@ export default defineConfig({
     plugins: [
       externalizeDepsPlugin({ exclude: ['chokidar'] }),
       aiartRunnerTemplatePlugin(),
+      aiartApprovalAnswererTemplatePlugin(),
       skipEsbuildTranspile()
     ],
     resolve: {

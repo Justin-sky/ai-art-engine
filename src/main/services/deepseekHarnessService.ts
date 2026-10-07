@@ -59,7 +59,14 @@ import {
   normalizeExternalMcpServer
 } from '@shared/externalMcp'
 import { builtinSkillDisplayMap, dshSkillNameOf, skillDisplayInfo } from '@shared/skillDisplay'
+import {
+  approvalAnswerForDecision,
+  approvalViewOf,
+  parseApprovalMarker,
+  type ApprovalAnswer
+} from '@shared/dshApproval'
 import AIART_RUNNER_TEMPLATE from 'virtual:aiart-headless-runner-template'
+import AIART_APPROVAL_ANSWERER_TEMPLATE from 'virtual:aiart-approval-answerer-template'
 
 /**
  * DeepSeek Harness (dsh) 接入服务。
@@ -155,6 +162,18 @@ let workspaceNotified = ''
 const harnessAskUserRequests = new Map<
   string,
   { runId: string; answerFile: string; questionId: string }
+>()
+
+/**
+ * 待回传的 dsh 审批请求：requestId（approval: 前缀）→ 回答文件与工具名。
+ *
+ * 与 `harnessAskUserRequests` 同一套往返机制（标记行下行、回答文件上行），但**语义更重**：
+ * 它决定 agent 能否突破沙箱边界，所以这里只记「问题」与「写回答的位置」，
+ * 放行判定一律走 `approvalAnswerFileText`（唯一能写出 `allow-once` 的地方）。
+ */
+const harnessApprovalRequests = new Map<
+  string,
+  { runId: string; answerFile: string; toolName: string }
 >()
 
 function emit(event: HarnessEvent): void {
@@ -1068,6 +1087,11 @@ const TOOL_BEGIN = '===BEGIN_TOOL==='
 const TOOL_END = '===END_TOOL==='
 /** ask_user_question 提问标记：runner 把原生 userQuestions 提问转发给主进程（单行 JSON 载荷） */
 const ASK_USER_BEGIN = '===BEGIN_ASK_USER==='
+/**
+ * 审批请求标记：审批应答插件把 dsh 的 approval/request 转发给主进程（单行 JSON 载荷）。
+ * 字面量必须与 `aiartApprovalAnswerer.template.mjs` 里的 APPROVAL_BEGIN 逐字一致（测试钉住）。
+ */
+const APPROVAL_BEGIN = '===BEGIN_APPROVAL==='
 /** 上下文用量标记：runner 每轮 LLM 请求完成后输出（单行 JSON 载荷，provider usage） */
 const CONTEXT_BEGIN = '===BEGIN_CONTEXT==='
 
@@ -1194,8 +1218,13 @@ function buildPersona(mode: ChatMode, projectMemory?: string | null): string[] {
 }
 
 /**
- * 写自定义 runner 与 overlay patch（禁用原 headless-runner、注入 aiart-runner）。
+ * 写自定义 runner、审批应答插件与 overlay patch
+ *（禁用原 headless-runner、注入 aiart-runner 与 aiart-approval）。
  * 返回 patch 文件路径；任何一步失败返回 null（回退原 headless 行为，不影响主流程）。
+ *
+ * 审批应答器单独一个补丁行而不是并进 runner：它只做一件事（approval/request → 用户），
+ * 与对话流量的生死互不牵连 —— runner 起不来时审批通道不会被一起带走，反过来也一样。
+ * 两份源码都进同一个 hash，改动任一都会重写 patch。
  */
 function writeAiartHarness(
   dshNodeModules: string,
@@ -1211,6 +1240,9 @@ function writeAiartHarness(
       JSON.stringify(resolve(dshNodeModules))
     )
     const runnerUrl = pathToFileURL(runnerPath).href
+    const approvalPath = join(home, 'aiart-approval-answerer.mjs')
+    const approvalSource = AIART_APPROVAL_ANSWERER_TEMPLATE
+    const approvalUrl = pathToFileURL(approvalPath).href
     const patch = [
       '# AIArtEngine 生成的 headless overlay：输出思考过程，请勿手改。',
       '- id: headless-runner',
@@ -1222,6 +1254,10 @@ function writeAiartHarness(
       '      inject: [headlessStartup]',
       '      config:',
       '        task: !!js ctx.headlessStartup.task',
+      // 审批应答器只挂 approval/request 事件、不 inject 任何服务，所以 dsh 里有没有
+      // approval 插件都不影响这一行挂载；没有审批请求时它是一段静止的代码。
+      '    - id: aiart-approval',
+      `      name: '${approvalUrl}'`,
       '- id: system-prompt',
       '  config:',
       // dsh 0.1.5 起 system-prompt 的配置键由 persona 改名为 personaPrefix（旧键会被 schema 丢弃）
@@ -1232,11 +1268,19 @@ function writeAiartHarness(
     const hash = createHash('sha1')
       .update(runnerSource)
       .update('\0')
+      .update(approvalSource)
+      .update('\0')
       .update(patchBody)
       .digest('hex')
     const patchPath = join(home, 'aiart.patch.yml')
-    if (hash !== lastHarnessWriteHash || !existsSync(runnerPath) || !existsSync(patchPath)) {
+    if (
+      hash !== lastHarnessWriteHash ||
+      !existsSync(runnerPath) ||
+      !existsSync(approvalPath) ||
+      !existsSync(patchPath)
+    ) {
       writeFileSync(runnerPath, runnerSource, 'utf8')
+      writeFileSync(approvalPath, approvalSource, 'utf8')
       writeFileSync(patchPath, patchBody, 'utf8')
       lastHarnessWriteHash = hash
     }
@@ -1365,6 +1409,12 @@ function resetWorkerState(): void {
   workerPersistent = false
   workerRunId = ''
   readyWaiters = []
+  /**
+   * 进程没了，等待中的审批也就无从回传（回答文件写下去也没人读）。
+   * 清空待决定表，`handleApprovalResponse` 随后的调用会返回 false —— 界面据此知道
+   * 这一条已经作废，而不是以为自己同意了什么。
+   */
+  harnessApprovalRequests.clear()
   clearIdleTimer()
 }
 
@@ -1506,6 +1556,7 @@ function attachWorkerIo(opts: {
       text.startsWith(TOOL_BEGIN) ||
       text.startsWith(TOOL_END) ||
       text.startsWith(ASK_USER_BEGIN) ||
+      text.startsWith(APPROVAL_BEGIN) ||
       text.startsWith(CONTEXT_BEGIN))
 
   const emitAssistantDelta = (delta: string): void => {
@@ -1568,6 +1619,25 @@ function attachWorkerIo(opts: {
     }
   }
 
+  /**
+   * 审批请求标记 → 待决定表 + 广播给界面。
+   *
+   * 解析失败**什么都不做**（既不登记也不广播）：dsh 侧等不到回答文件，5 分钟后收敛到
+   * `unavailable` —— 工具调用失败。这条路径上不存在「解析不出来就当同意」的可能。
+   */
+  const emitApprovalFromLine = (line: string): void => {
+    if (!turnActive) return
+    const payload = parseApprovalMarker(line)
+    if (!payload) return
+    harnessApprovalRequests.set(payload.requestId, {
+      runId: currentRunId,
+      answerFile: payload.answerFile,
+      toolName: payload.toolName
+    })
+    broadcastToAllWindows(IpcChannels.MCP_APPROVAL_REQUEST, approvalViewOf(payload))
+    sawOutput = true
+  }
+
   const emitContextFromLine = (line: string): void => {
     if (!turnActive) return
     const payload = line.slice(CONTEXT_BEGIN.length).trim()
@@ -1613,6 +1683,8 @@ function attachWorkerIo(opts: {
             emitToolFromLine(line, 'done')
           } else if (line.startsWith(ASK_USER_BEGIN)) {
             emitAskUserFromLine(line)
+          } else if (line.startsWith(APPROVAL_BEGIN)) {
+            emitApprovalFromLine(line)
           } else if (line.startsWith(CONTEXT_BEGIN)) {
             emitContextFromLine(line)
           } else {
@@ -1646,6 +1718,11 @@ function attachWorkerIo(opts: {
     releaseHarnessRunAccess(runIdForRelease)
     for (const [id, entry] of harnessAskUserRequests) {
       if (entry.runId === runIdForRelease) harnessAskUserRequests.delete(id)
+    }
+    // 本轮结束时仍未决定的审批：条目作废，界面上的同意卡随之失效（见 handleApprovalResponse）。
+    // 只是删条目、**不写任何回答文件**：dsh 侧 signal 已中止，会收敛到 cancelled。
+    for (const [id, entry] of harnessApprovalRequests) {
+      if (entry.runId === runIdForRelease) harnessApprovalRequests.delete(id)
     }
     emit({ type: 'tool', name: 'dsh-agent', state: 'done' })
     if (result.ok) {
@@ -2357,8 +2434,31 @@ export function handleAskUserResponse(payload: AskUserAnswer): void {
 }
 
 /**
- * 删除会话在磁盘上的持久化记录（`$DSH_HOME/sessions/<project>/<id>/`）。
+ * 渲染层回传 dsh 审批的用户决定：把决定写入回答文件，dsh 侧的应答插件轮询读到后
+ * 翻译成审批结果（只有 `allow-once` 会变成 `allowed-once`，且只对本次调用有效）。
  *
+ * 三条失败即关闭的规则：
+ * - 找不到待决定条目（本轮已结束 / 进程已换 / requestId 不认识）→ 返回 false，不写文件；
+ * - 决定认不出来（不是两个字面量之一）→ 由 `approvalAnswerForDecision` **按拒绝写**；
+ * - 写盘失败 → 返回 false，dsh 侧超时收敛到 unavailable。
+ */
+export function handleApprovalResponse(payload: ApprovalAnswer): boolean {
+  const requestId = typeof payload?.requestId === 'string' ? payload.requestId : ''
+  const entry = requestId ? harnessApprovalRequests.get(requestId) : undefined
+  if (!entry || !entry.answerFile) return false
+  harnessApprovalRequests.delete(requestId)
+  try {
+    mkdirSync(dirname(entry.answerFile), { recursive: true })
+    // 写盘内容由 @shared/dshApproval 决定：认不出的决定在那里按拒绝处理（不放行）
+    writeFileSync(entry.answerFile, approvalAnswerForDecision(payload?.decision), 'utf8')
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 删除会话在磁盘上的持久化记录（`$DSH_HOME/sessions/<project>/<id>/`）。
  * 前端删除会话后调用：否则 localStorage 里的会话没了，但 dsh 的 JSONL 日志仍在，
  * 下次同 id 发消息会被「幽灵恢复」成已删除的对话。路径布局与
  * dsh-session-persistence-jsonl 保持一致（root = dshHomePath('sessions')，按项目分目录）。
