@@ -843,6 +843,13 @@ export default {
       commit: '确认无误后提交 workflows/{id}/（同一个 version 的内容不得再改，改了请升版本）'
     }
   },
+  screenRecord: {
+    hud: {
+      recording: '录制中',
+      step: '第 {index} 步',
+      frames: '已录 {count} 帧'
+    }
+  },
   marketplace: {
     title: '插件市场',
     eyebrow: '能力与插件',

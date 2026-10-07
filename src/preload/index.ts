@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import { IpcChannels, type StudioApi } from '@shared/ipc'
+import type { ScreenRecordHudState } from '@shared/screenRecord'
 import type { AppSettings, AssetInfo, ProjectConfig } from '@shared/domain'
 import type {
   ApprovalAnswer,
@@ -260,6 +261,17 @@ const api: StudioApi = {
   renderTimelineTransitionPreview: (input) =>
     ipcRenderer.invoke(IpcChannels.TIMELINE_TRANSITION_PREVIEW, input),
   exportAdVariants: (input) => ipcRenderer.invoke(IpcChannels.AD_VARIANT_EXPORT, input),
+  screenRecordStart: (input) => ipcRenderer.invoke(IpcChannels.SCREEN_RECORD_START, input),
+  screenRecordStep: (input) => ipcRenderer.invoke(IpcChannels.SCREEN_RECORD_STEP, input),
+  screenRecordStop: () => ipcRenderer.invoke(IpcChannels.SCREEN_RECORD_STOP),
+  screenRecordStatus: () => ipcRenderer.invoke(IpcChannels.SCREEN_RECORD_STATUS),
+  onScreenRecordHud: (callback) => {
+    const listener = (_event: unknown, payload: ScreenRecordHudState): void => {
+      callback(payload)
+    }
+    ipcRenderer.on(IpcChannels.SCREEN_RECORD_HUD, listener)
+    return () => ipcRenderer.removeListener(IpcChannels.SCREEN_RECORD_HUD, listener)
+  },
   onTimelineExportProgress: (callback) => {
     const listener = (_event: unknown, payload: { progress: number }): void => {
       callback(payload)

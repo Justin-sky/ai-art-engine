@@ -78,6 +78,8 @@ const READ_TOOLS = new Set([
   'video_job_list',
   'video_job_get',
   'gameplay_job_status',
+  // 录制状态是只读的：Plan 模式首轮里 Agent 也想知道「有没有遗留的录制在跑」
+  'screen_record_status',
   'ask_user'
 ])
 

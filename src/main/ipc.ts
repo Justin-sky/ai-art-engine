@@ -27,7 +27,8 @@ import type {
   CommitAiWorkflowInput,
   ProjectScanOutputsInput,
   InstalledWorkflowRecordView,
-  ExportWorkflowToMarketInput
+  ExportWorkflowToMarketInput,
+  ScreenRecordStartInput
 } from '@shared/ipc'
 import type { GitFileDiffInput } from '@shared/git'
 import type { TimelineExportInput, TimelineTransitionPreviewInput } from '@shared/graph'
@@ -125,6 +126,13 @@ import {
 } from './services/workflowMarketService'
 import type { WorkflowSkillManifest } from '@shared/workflowMarket'
 import { exportWorkflowToMarket } from './services/workflowExportService'
+import {
+  screenRecordingStatus,
+  startScreenRecording,
+  stepScreenRecording,
+  stopScreenRecording
+} from './services/screenRecordService'
+import type { ScreenRecordStepInput } from '@shared/screenRecord'
 import { broadcastToAllWindows } from './broadcast'
 
 function handle<T>(channel: string, fn: (...args: never[]) => Promise<T> | T): void {
@@ -194,6 +202,16 @@ export function registerIpcHandlers(): void {
     renderTimelineTransitionPreview(input)
   )
   handle(IpcChannels.AD_VARIANT_EXPORT, (input: ExportAdVariantsInput) => exportAdVariants(input))
+
+  // 应用界面录制（教学视频的素材来源）：录制主体在主进程，渲染层只负责 HUD 显示
+  handle(IpcChannels.SCREEN_RECORD_START, (input?: ScreenRecordStartInput) =>
+    startScreenRecording(input)
+  )
+  handle(IpcChannels.SCREEN_RECORD_STEP, (input: ScreenRecordStepInput) =>
+    stepScreenRecording(input)
+  )
+  handle(IpcChannels.SCREEN_RECORD_STOP, () => stopScreenRecording())
+  handle(IpcChannels.SCREEN_RECORD_STATUS, () => screenRecordingStatus())
 
   handle(IpcChannels.ASSET_LIST, () => projectService.listAssets())
   handle(IpcChannels.ASSET_IMPORT, async (input: ImportAssetsInput) => {

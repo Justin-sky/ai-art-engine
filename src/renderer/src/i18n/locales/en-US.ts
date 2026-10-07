@@ -862,6 +862,13 @@ export default {
         'Once it looks right, commit workflows/{id}/ (never change the content of an existing version — bump it instead)'
     }
   },
+  screenRecord: {
+    hud: {
+      recording: 'Recording',
+      step: 'Step {index}',
+      frames: '{count} frames captured'
+    }
+  },
   marketplace: {
     title: 'Plugin marketplace',
     eyebrow: 'Capabilities & plugins',

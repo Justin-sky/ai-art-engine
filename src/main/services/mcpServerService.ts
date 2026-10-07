@@ -208,6 +208,17 @@ import {
 } from '@shared/gamePlayJob'
 import { defaultAssetName } from '@shared/domain'
 import { exportScriptTimeline, renderTimelineFrames } from './timelineExportService'
+import {
+  screenRecordingStatus,
+  startScreenRecording,
+  stepScreenRecording,
+  stopScreenRecording
+} from './screenRecordService'
+import {
+  SCREEN_RECORD_LIMITS,
+  type ScreenRecordCursor,
+  type ScreenRecordFocus
+} from '@shared/screenRecord'
 
 /**
  * 本地 MCP 工具服务：在 127.0.0.1 上暴露一组工具端点，供 stdio MCP 桥
@@ -3897,6 +3908,129 @@ const TOOL_DEFS: McpToolDef[] = [
       }
       return { assetId, ...tags }
     }
+  },
+  // ── 应用界面录制（教学视频的素材来源）────────────────────────────────────────
+  // 访问等级：下面三个是 **write**（录制会占用真实时间与磁盘、并把屏幕内容录进文件，
+  // 必须在 Plan 模式确认后 / Craft 模式下执行）；`screen_record_status` 是 read，见 mcpModeAccess。
+  {
+    name: 'screen_record_start',
+    title: '开始录制应用界面',
+    description:
+      '开始录制**应用自己的窗口**，用于做教学视频的「界面操作」那段画面。录的不是整个桌面（不需要系统录屏权限），' +
+      '而是这个窗口渲染出来的内容；**画面里不会有系统鼠标指针** —— 指针与高亮由应用自己画（HUD），所以要用 screen_record_step 告诉它「现在讲哪一步」。\n' +
+      '标准教学视频流程（照着做就能出一条带旁白和字幕成片）：\n' +
+      '① 先想好分几步、每步旁白文案；\n' +
+      '② screen_record_start → 每一步先 screen_record_step(title/caption)，**然后真的用现有工具把动作做一遍**（workflow_use_installed / graph_edit / task_run / generate_sound_effect …）——画面是真实操作，不是摆拍；\n' +
+      '③ screen_record_stop 拿到 MP4 资产与每步的**权威时间戳**；\n' +
+      '④ generate_speech 出旁白，timeline_edit 把录制视频铺 video 轨、旁白铺 voice 轨（按返回的 alignment 对齐）、字幕铺 subtitle 轨；\n' +
+      '⑤ timeline_export 出成片，timeline_preview 抽帧自查，不对就回 ④ 改。\n' +
+      '**只在用户明确要求录制时才调用**（录进去的内容可能包含模型名、设置页等界面信息）。' +
+      '需要系统可用 ffmpeg，缺失时直接拒绝而不是录完才发现编不了码；帧率与时长有上限，超限会如实回报。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        fps: {
+          type: 'number',
+          description: '采样帧率（1~15，默认 10）；画面没变化时不会写盘，所以高一点不等于文件更大'
+        },
+        maxSeconds: {
+          type: 'number',
+          description: `最长录制秒数（默认与上限都是 ${SCREEN_RECORD_LIMITS.maxSeconds}），到点自动停`
+        }
+      }
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const fps = optionalNumber(args, 'fps')
+      const maxSeconds = optionalNumber(args, 'maxSeconds')
+      const result = await startScreenRecording({
+        ...(typeof fps === 'number' ? { fps } : {}),
+        ...(typeof maxSeconds === 'number' ? { maxSeconds } : {})
+      })
+      if (!result.ok) throw new Error(screenRecordReasonText(result.reasonKey ?? 'badOptions'))
+      return {
+        recording: true,
+        fps: result.fps,
+        maxSeconds: result.maxSeconds,
+        adjusted: result.adjusted ?? [],
+        hint: '每一步先 screen_record_step 再执行动作；结束时 screen_record_stop。'
+      }
+    }
+  },
+  {
+    name: 'screen_record_step',
+    title: '推进录制步骤（标题 / 高亮 / 指针）',
+    description:
+      '在录制中标记「现在讲这一步」：HUD 会显示标题与字幕、可选高亮一个区域、可选把合成指针移过去（`click: true` 触发一次点击涟漪）。' +
+      '这个时间戳是**旁白与字幕的唯一权威对齐依据**（`screen_record_stop` 会把每步的起止秒数算好给你），不要用自己估的时间。' +
+      '调用它只负责「讲」，画面里的动作仍要用真实工具执行。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: '这一步在讲什么（HUD 标题条 + 字幕原文）' },
+        caption: { type: 'string', description: '可选：字幕换成这句（缺省与 title 相同）' },
+        focus: {
+          type: 'object',
+          description: '可选：高亮框（窗口内容坐标，CSS 像素）',
+          properties: {
+            x: { type: 'number' },
+            y: { type: 'number' },
+            width: { type: 'number' },
+            height: { type: 'number' }
+          },
+          required: ['x', 'y', 'width', 'height']
+        },
+        cursor: {
+          type: 'object',
+          description: '可选：把合成指针移到该坐标',
+          properties: {
+            x: { type: 'number' },
+            y: { type: 'number' },
+            click: { type: 'boolean', description: 'true 时画一次点击涟漪' }
+          },
+          required: ['x', 'y']
+        }
+      },
+      required: ['title']
+    },
+    handler: async (args) => {
+      const title = readString(args, 'title')
+      const caption = optionalString(args, 'caption')
+      const focus = readFocusArg(args, 'focus')
+      const cursor = readCursorArg(args, 'cursor')
+      const result = stepScreenRecording({
+        title,
+        ...(caption ? { caption } : {}),
+        ...(focus ? { focus } : {}),
+        ...(cursor ? { cursor } : {})
+      })
+      if (!result.ok) throw new Error(screenRecordReasonText(result.reasonKey ?? 'notRecording'))
+      return { ok: true, index: result.index }
+    }
+  },
+  {
+    name: 'screen_record_stop',
+    title: '结束录制并编码成 MP4',
+    description:
+      '结束录制、把帧序列编码成 MP4，并**登记为工程内的视频资产**（落在 Assets/Recordings，资产库可见）。' +
+      '返回 `relativePath` / `assetId`、实际写盘帧数与丢弃的空闲帧数，以及每步的 `alignment`（起止秒数）——' +
+      '拿它去 `timeline_edit`：视频铺 video 轨、`generate_speech` 的旁白铺 voice 轨并按 alignment 对齐、字幕铺 subtitle 轨，' +
+      '最后 `timeline_export` 出成片、`timeline_preview` 抽帧自查。' +
+      '空闲帧会被合并（画面没变就不重复写盘），所以录制时长与成片时长不必相等。',
+    inputSchema: { type: 'object', properties: {} },
+    handler: async () => {
+      const result = await stopScreenRecording()
+      if (!result.ok) throw new Error(screenRecordReasonText(result.reasonKey, result.params))
+      return result
+    }
+  },
+  {
+    name: 'screen_record_status',
+    title: '查询录制状态',
+    description:
+      '当前是否在录制、已采样多少帧、已经标记了哪些步骤（含各自的时间戳）。开始录制前想确认有没有遗留的录制、或中途想核对步骤，都可以查它。',
+    inputSchema: { type: 'object', properties: {} },
+    handler: async () => screenRecordingStatus()
   }
 ]
 
@@ -3936,6 +4070,53 @@ function optionalNumber(args: Record<string, unknown>, key: string): number | un
     return Number(value)
   }
   return undefined
+}
+
+/** 录制失败的原因键 → 给模型看的可执行说明（主进程不产出最终 UI 文案，这里只服务 Agent） */
+function screenRecordReasonText(
+  reasonKey: string,
+  params?: Record<string, string | number>
+): string {
+  const map: Record<string, string> = {
+    alreadyRecording: '已经在录制中：先 screen_record_stop 结束上一段，再开始新的',
+    badOptions: '录制参数不合法',
+    fpsInvalid: 'fps 不合法：给 1~15 的数字',
+    durationInvalid: `maxSeconds 不合法：给 1~${SCREEN_RECORD_LIMITS.maxSeconds} 的数字`,
+    projectNotOpen: '没有打开工程：录制产物要落进工程，请先打开或新建工程',
+    ffmpegMissing: '未找到可用的 ffmpeg：请在设置页一键安装后重试（录制结果的编码需要它）',
+    ffmpegInstalling: 'ffmpeg 正在安装中，稍等片刻再开始录制',
+    noTargetWindow: '找不到可录制的主窗口',
+    notRecording: '当前没有在录制',
+    stepTitleRequired: '步骤标题不能为空',
+    emptyRecording: '这一段没有录到有效画面（画面全程没变化），没有产出',
+    encodeFailed: `编码失败：${params?.detail ?? '未知原因'}`
+  }
+  return map[reasonKey] ?? `录制失败：${reasonKey}`
+}
+
+/** 读取高亮框参数（四个数字都要有；缺任何一个就当没给，而不是给个歪框） */
+function readFocusArg(args: Record<string, unknown>, key: string): ScreenRecordFocus | undefined {
+  const value = args[key]
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const obj = value as Record<string, unknown>
+  const nums = (['x', 'y', 'width', 'height'] as const).map((k) =>
+    typeof obj[k] === 'number' ? (obj[k] as number) : Number(obj[k])
+  )
+  if (nums.some((n) => !Number.isFinite(n))) return undefined
+  const [x, y, width, height] = nums as [number, number, number, number]
+  if (width <= 0 || height <= 0) return undefined
+  return { x, y, width, height }
+}
+
+/** 读取合成指针参数（x/y 必需；click 可选） */
+function readCursorArg(args: Record<string, unknown>, key: string): ScreenRecordCursor | undefined {
+  const value = args[key]
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const obj = value as Record<string, unknown>
+  const x = typeof obj.x === 'number' ? obj.x : Number(obj.x)
+  const y = typeof obj.y === 'number' ? obj.y : Number(obj.y)
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return undefined
+  return { x, y, ...(obj.click === true ? { click: true } : {}) }
 }
 
 /**

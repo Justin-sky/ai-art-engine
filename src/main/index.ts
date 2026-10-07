@@ -12,6 +12,8 @@ import { handleStudioMediaRequest } from './studioMediaProtocol'
 import { handleStudioGameplayRequest } from './studioGameplayProtocol'
 import { resolveAppIconPath } from './appIcon'
 import { markSmokeRuntimeStarted, signalSmokeReady } from './smokeReady'
+import { setMainWindowRef } from './mainWindowRef'
+import { abortScreenRecording } from './services/screenRecordService'
 import { gpuShaderCacheSwitches } from './services/gpuShaderCachePolicy'
 import { installWindowOpenHandler } from './windowOpenPolicy'
 
@@ -97,6 +99,12 @@ function createWindow(): void {
   })
 
   mainWindow = window
+  // 登记给服务层（界面录制要按窗口捕获）：服务不能反向 import 入口，见 mainWindowRef
+  setMainWindowRef(window)
+  window.on('closed', () => {
+    if (mainWindow === window) mainWindow = null
+    setMainWindowRef(null)
+  })
 
   window.on('ready-to-show', () => {
     window.show()
@@ -169,4 +177,6 @@ app.on('window-all-closed', () => {
 app.on('will-quit', () => {
   stopMcpServer()
   yoloService.stop()
+  // 录制中途退出：清掉定时器与临时帧目录（不留几百 MB 的孤儿文件）
+  abortScreenRecording()
 })

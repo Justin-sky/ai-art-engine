@@ -303,6 +303,19 @@ export const IpcChannels = {
   /** 音频转写（语音识别）：配音/音频文件 → 带时间戳文本 */
   TRANSCRIBE_AUDIO: 'transcribe:audio',
 
+  // 应用界面录制：把「界面上的操作过程」录成视频，供教学视频合成使用。
+  // 应用此前没有任何屏幕/窗口录制能力（desktopCapturer 零出现），这一段是教学视频唯一缺的素材来源。
+  /** 开始录制应用窗口 */
+  SCREEN_RECORD_START: 'screen-record:start',
+  /** 推进到下一步（HUD 标题/高亮/合成光标，并记下权威时间戳） */
+  SCREEN_RECORD_STEP: 'screen-record:step',
+  /** 结束录制：编码为 MP4 并登记为工程视频资产 */
+  SCREEN_RECORD_STOP: 'screen-record:stop',
+  /** 当前录制状态（是否在录、已录帧数、步骤时间戳） */
+  SCREEN_RECORD_STATUS: 'screen-record:status',
+  /** 主进程推送：HUD 状态（录制中角标 / 步骤标题 / 高亮框 / 合成光标） */
+  SCREEN_RECORD_HUD: 'screen-record:hud',
+
   /** 广告变体：导出入选单元格的生成图到用户选择目录 */
   AD_VARIANT_EXPORT: 'ad-variant:export',
 
@@ -1461,6 +1474,43 @@ export interface ExportAdVariantsInput {
   items: ExportAdVariantFileInput[]
 }
 
+// ─────────────────────────────────────────────────────────────
+// 应用界面录制（教学视频的素材来源）
+// ─────────────────────────────────────────────────────────────
+
+/** 开始录制：参数非法或已被夹紧时由主进程如实回报，不静默改小 */
+export interface ScreenRecordStartInput {
+  fps?: number
+  /** 最长录制时长（秒），超过上限会被夹紧并回报 */
+  maxSeconds?: number
+}
+
+export interface ScreenRecordStartResult {
+  ok: boolean
+  reasonKey?: string
+  params?: Record<string, string | number>
+  /** 实际生效的参数（被夹紧后） */
+  fps?: number
+  maxSeconds?: number
+  /** 被夹紧的项名，例如 `['fps']` */
+  adjusted?: string[]
+}
+
+export interface ScreenRecordStepResult {
+  ok: boolean
+  reasonKey?: string
+  /** 这一步的序号（从 0 开始） */
+  index?: number
+}
+
+export interface ScreenRecordStatusResult {
+  recording: boolean
+  startedAtMs?: number
+  /** 已捕获（含被判定为空闲而丢弃）的帧数 */
+  frames: number
+  steps: import('./screenRecord').ScreenRecordStepMark[]
+}
+
 export interface ExportAdVariantsResult {
   ok: boolean
   directory?: string
@@ -1786,6 +1836,22 @@ export interface StudioApi {
 
   /** 导出成片时间线为 MP4（需本机 ffmpeg） */
   exportScriptTimeline: (input: TimelineExportInput) => Promise<TimelineExportResult>
+
+  // ── 应用界面录制（教学视频的素材来源）──────────────────────────
+  /** 开始录制应用窗口（HUD 会显示录制指示；参数超限时如实回报） */
+  screenRecordStart: (input?: ScreenRecordStartInput) => Promise<ScreenRecordStartResult>
+  /** 推进到下一步：更新 HUD（标题 / 高亮框 / 合成光标）并记下权威时间戳 */
+  screenRecordStep: (
+    input: import('./screenRecord').ScreenRecordStepInput
+  ) => Promise<ScreenRecordStepResult>
+  /** 结束录制：编码 MP4 并登记为工程视频资产 */
+  screenRecordStop: () => Promise<import('./screenRecord').ScreenRecordStopResult>
+  /** 当前录制状态（未在录制时 recording=false） */
+  screenRecordStatus: () => Promise<ScreenRecordStatusResult>
+  /** 订阅 HUD 状态推送（录制期间持续更新） */
+  onScreenRecordHud: (
+    callback: (state: import('./screenRecord').ScreenRecordHudState) => void
+  ) => () => void
 
   /** 渲染单个转场重叠窗口为可播放预览片段（与导出同一条 xfade 流水线；需本机 ffmpeg） */
   renderTimelineTransitionPreview: (

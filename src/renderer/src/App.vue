@@ -37,6 +37,12 @@
         <SettingsView v-if="isSettings" />
       </main>
     </template>
+    <!--
+      录制 HUD 挂在**主界面这一层**（与下面那排对话框同级），不在 `isMarketplace` 分支里：
+      插件市场是主进程单独开的窗口，录制的是主窗口，那边挂一份既没用又会多一个订阅。
+      它自己按 `recording` 决定渲不渲染，未录制时不占 DOM。
+    -->
+    <RecordingHud />
     <StudioPromptDialog />
     <GraphTaskListDialog />
     <GraphRunLogDialog />
@@ -62,6 +68,7 @@ import HomeView from './views/HomeView.vue'
 import StudioView from './views/StudioView.vue'
 import SettingsView from './views/SettingsView.vue'
 import MarketplaceView from './views/MarketplaceView.vue'
+import RecordingHud from './components/RecordingHud.vue'
 import StudioPromptDialog from './components/StudioPromptDialog.vue'
 import GraphTaskListDialog from './components/GraphTaskListDialog.vue'
 import GraphRunLogDialog from './components/GraphRunLogDialog.vue'

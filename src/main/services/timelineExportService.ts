@@ -14,11 +14,12 @@ import type {
   TimelineMixGains
 } from '@shared/graph'
 import { IpcChannels } from '@shared/ipc'
-import { fail, defErr, defErrSimple } from '@shared/errors/appError'
+import { fail, defErrSimple } from '@shared/errors/appError'
 import { MAIN_ERRORS } from '../errors/messages'
 import { projectService } from './projectService'
 import { buildPreviewFramePlan } from '@shared/graph/timelinePreview'
 import { findFfmpegBin } from './videoFrameService'
+import { runFfmpeg } from './ffmpegRunner'
 import { broadcastToAllWindows } from '../broadcast'
 
 // ── 时间线导出个性错误 ──
@@ -28,16 +29,7 @@ const E_TIMELINE_FFMPEG_MISSING = defErrSimple(
   '无法启动 ffmpeg：未找到可执行文件。请安装 ffmpeg 并加入 PATH，或设置 FFMPEG_PATH。',
   'FFmpeg executable was not found; install it or configure the path in Settings'
 )
-const E_TIMELINE_FFMPEG_LAUNCH_FAILED = defErr<{ detail: string }>(
-  'timeline.ffmpegLaunchFailed',
-  ({ detail }) => `无法启动 ffmpeg：${detail}。请安装 ffmpeg 并加入 PATH，或设置 FFMPEG_PATH。`,
-  ({ detail }) => `Could not start ffmpeg: ${detail}. Install ffmpeg onto PATH or set FFMPEG_PATH.`
-)
-const E_TIMELINE_FFMPEG_EXITED = defErr<{ stderr: string; exitCode: number | null }>(
-  'timeline.ffmpegExited',
-  ({ stderr, exitCode }) => stderr || `ffmpeg 退出码 ${exitCode}`,
-  ({ stderr, exitCode }) => stderr || `ffmpeg exited with code ${exitCode}`
-)
+// 起进程与失败文案已抽到 ./ffmpegRunner（界面录制也要跑 ffmpeg，同一件事不该有两份实现）
 const E_TIMELINE_NO_EXPORTABLE_CLIPS = defErrSimple(
   'timeline.noExportableClips',
   '时间线上没有可导出的视频或音频片段',
@@ -91,37 +83,6 @@ function findDrawtextFont(): string | null {
             '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
           ]
   return candidates.find((p) => existsSync(p)) ?? null
-}
-
-function runFfmpeg(bin: string, args: string[], onTime?: (sec: number) => void): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(bin, args, { windowsHide: true })
-    let stderr = ''
-    child.stderr?.on('data', (chunk: Buffer) => {
-      const text = chunk.toString()
-      stderr += text
-      const m = text.match(/time=(\d+):(\d+):(\d+(?:\.\d+)?)/)
-      if (m && onTime) {
-        onTime(Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]))
-      }
-    })
-    child.on('error', (err) => {
-      // 保留原生 spawn 错误（ENOENT 等）作为 cause，文案保留 FFmpeg 关键字供渲染端兜底匹配
-      reject(
-        Object.assign(fail(E_TIMELINE_FFMPEG_LAUNCH_FAILED, { detail: err.message }), {
-          cause: err
-        })
-      )
-    })
-    child.on('close', (code) => {
-      // stderr 为 ffmpeg 原生输出，原样透传
-      if (code === 0) resolve()
-      else
-        reject(
-          fail(E_TIMELINE_FFMPEG_EXITED, { stderr: stderr.trim().slice(-900), exitCode: code })
-        )
-    })
-  })
 }
 
 /** 片段在源文件内的取段起点（秒）；无打点选段时为 0（从源头部整段截取） */
