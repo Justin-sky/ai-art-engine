@@ -796,8 +796,18 @@ async function refreshSkills(): Promise<void> {
  * **每次打开市场窗口都会强制刷新**（`onMounted` 传 `force`）—— 往仓库推了新工作流后重开窗口
  * 就能看到，不必等 1 小时 TTL，也不必手点「刷新目录」。
  */
-async function loadWorkflowCatalog(force = false): Promise<void> {
-  workflowRefreshing.value = true
+async function loadWorkflowCatalog(
+  force = false,
+  options: { silent?: boolean } = {}
+): Promise<void> {
+  /**
+   * `silent`：安装 / 卸载之后的**后台**刷新。
+   *
+   * 「刷新目录」按钮的文字与禁用态都由 `workflowRefreshing` 驱动，所以后台刷新一旦点亮它，
+   * 用户看到的就是「我点的是安装，怎么刷新按钮自己转起来了」——把动作归属搞错了。
+   * 后台刷新不该借用用户手动刷新的状态表达。
+   */
+  if (!options.silent) workflowRefreshing.value = true
   if (workflowEntries.value.length === 0) workflowLoading.value = true
   try {
     const result = await window.studio.fetchWorkflowMarket({ force })
@@ -834,7 +844,7 @@ async function loadWorkflowCatalog(force = false): Promise<void> {
       workflowError.value = e instanceof Error ? e.message : String(e)
     }
   } finally {
-    workflowRefreshing.value = false
+    if (!options.silent) workflowRefreshing.value = false
     workflowLoading.value = false
   }
 }
@@ -936,21 +946,24 @@ async function installMarketWorkflow(card: MarketplaceCard): Promise<void> {
         ? t('marketplace.workflows.installedWithoutScripts', { title: card.title ?? id })
         : t('marketplace.workflows.installed', { title: card.title ?? id })
     isError.value = false
+    /**
+     * 安装完刷新目录是**后台**动作，两个要点：
+     *
+     * 1. `silent: true` —— 不能点亮「刷新目录」按钮。那个按钮的文字/禁用态就是
+     *    `workflowRefreshing`，被后台刷新点亮会让用户以为「我点安装，怎么刷新被触发了」。
+     * 2. 放在 `finally` 之前 —— 让这张卡一直显示「安装中…」，直到列表真的更新完。
+     *    安装动作的进度该由安装按钮表达，而不是借刷新按钮表达。
+     */
+    try {
+      await loadWorkflowCatalog(true, { silent: true })
+    } catch {
+      // 列表刷新失败不该把「已安装」翻成报错：主进程确实装好了，失败的只是刷新
+    }
   } catch (e) {
     isError.value = true
     message.value = e instanceof Error ? e.message : String(e)
   } finally {
     installingId.value = null
-  }
-  /**
-   * 重新拉目录放在 finally **之后**：这一步要依次试所有市场源，最坏会等各自超时，
-   * 放在 try 里会让安装按钮在整个等待期间都处于「安装中…」不可点状态。
-   * 刷新失败也不该把「已安装」翻成报错 —— 主进程确实装好了，失败的只是列表刷新。
-   */
-  try {
-    await loadWorkflowCatalog(true)
-  } catch {
-    // 忽略：卡片状态会在下次刷新时自行纠正
   }
 }
 
@@ -984,7 +997,8 @@ async function uninstallMarketWorkflow(card: MarketplaceCard): Promise<void> {
   }
   message.value = t('marketplace.workflows.uninstalled', { title: card.title ?? id })
   isError.value = false
-  await loadWorkflowCatalog(true)
+  // 后台刷新，同样不点亮「刷新目录」按钮（理由见 installMarketWorkflow）
+  await loadWorkflowCatalog(true, { silent: true })
 }
 
 /**

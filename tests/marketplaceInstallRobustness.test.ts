@@ -48,21 +48,33 @@ describe('安装：点击不会被静默吞掉', () => {
     expect(confirmAt, '确认必须早于发起安装').toBeLessThan(ipcAt)
   })
 
-  it('重新拉目录在安装态清除之后（刷新慢不该锁住按钮）', () => {
+  it('安装后的目录刷新是**静默**的，不点亮「刷新目录」按钮', () => {
+    /*
+      报障：点安装/重新安装时，顶部的「刷新目录」按钮自己转起来了。
+      因为那一版把安装后的重新拉目录放在清除安装态之后，而 `loadWorkflowCatalog`
+      无条件点亮 `workflowRefreshing` —— 而那个状态**就是**刷新按钮的文字与禁用态。
+      后台刷新借用了"用户按了刷新"的状态表达，把动作归属搞错了。
+    */
     const body = fnBody('installMarketWorkflow')
-    const clearAt = body.indexOf('installingId.value = null')
-    const reloadAt = body.indexOf('await loadWorkflowCatalog(true)')
-    expect(clearAt).toBeGreaterThan(-1)
-    expect(reloadAt).toBeGreaterThan(-1)
-    expect(reloadAt, '刷新目录必须在清除安装态之后').toBeGreaterThan(clearAt)
+    expect(body).toContain('await loadWorkflowCatalog(true, { silent: true })')
+    // 静默刷新要发生在清除安装态之前：安装进度由安装按钮表达，不借刷新按钮
+    expect(body.indexOf('await loadWorkflowCatalog(true, { silent: true })')).toBeLessThan(
+      body.indexOf('installingId.value = null')
+    )
   })
 
-  it('刷新目录失败不会被当成安装失败', () => {
-    const body = fnBody('installMarketWorkflow')
-    const reloadAt = body.indexOf('await loadWorkflowCatalog(true)')
-    const tail = body.slice(reloadAt)
-    // 刷新那一步要有自己的 catch，不能落进上面的 catch（那会把「已安装」翻成报错）
-    expect(tail).toContain('catch')
+  it('「刷新目录」按钮自己仍然走非静默刷新', () => {
+    // 用户手动刷新时，按钮该转就要转 —— 静默只用于后台刷新
+    expect(VIEW).toContain('@click="loadWorkflowCatalog(true)"')
+    const body = VIEW.slice(VIEW.indexOf('async function loadWorkflowCatalog'))
+    expect(body).toContain('if (!options.silent) workflowRefreshing.value = true')
+    expect(body).toContain('if (!options.silent) workflowRefreshing.value = false')
+  })
+
+  it('卸载后的刷新同样是静默的', () => {
+    expect(fnBody('uninstallMarketWorkflow')).toContain(
+      'await loadWorkflowCatalog(true, { silent: true })'
+    )
   })
 
   it('卸载的确认框同样在 try 里', () => {
