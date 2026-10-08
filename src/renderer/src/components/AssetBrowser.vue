@@ -2093,6 +2093,15 @@ async function onAssetDblClick(assetId: string): Promise<void> {
     await openImportedMediaRefPreview(asset)
     return
   }
+  // 已有成片的视频 / 声音：双击优先预览弹窗（与导入引用一致）；进图编辑用右键或工具栏
+  if ((asset.type === 'video' || asset.type === 'voice') && asset.relativePath?.trim()) {
+    await openFullImagePreview({
+      relativePath: asset.relativePath,
+      title: asset.name,
+      assetType: asset.type
+    })
+    return
+  }
   // 2D 动作资产：用资产自带的装配快照 + 动作帧开试播浮窗（无独立编辑页）
   if (asset.type === 'motion2d') {
     openMotion2dActionPreviewDialog({ assetId: asset.id, title: asset.name })

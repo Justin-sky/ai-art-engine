@@ -3,6 +3,7 @@
     v-if="open && embedded"
     class="sfw-embedded"
     :class="{ 'sfw-window-editor': variant === 'editor' }"
+    :data-tutorial-id="resolvedTutorialId"
     :aria-label="ariaLabel"
   >
     <header v-if="showTitlebar" class="sfw-titlebar sfw-titlebar-embedded">
@@ -48,6 +49,7 @@
         role="dialog"
         :aria-modal="detached ? 'false' : 'true'"
         :aria-label="ariaLabel"
+        :data-tutorial-id="resolvedTutorialId"
         :style="windowStyle"
         @mousedown.stop="onWindowMouseDown"
       >
@@ -133,8 +135,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, ref, unref, watch } from 'vue'
 import { editorDiveEmbeddedKey } from '../features/graph/ui/editorDiveEmbeddedKey'
+import { tutorialFloatingIdKey } from '@shared/tutorialUi'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { openDetachedWindow, type DetachedWindowHandle } from '../utils/detachedWindow'
 
@@ -162,6 +165,8 @@ const props = withDefaults(
     embedded?: boolean
     /** 允许拖出主窗口 / 弹成独立系统窗口 */
     detachable?: boolean
+    /** 教学录屏定位；缺省可走 tutorialFloatingIdKey（Dive 节点工具 provide） */
+    tutorialId?: string
   }>(),
   {
     title: '',
@@ -179,7 +184,8 @@ const props = withDefaults(
     bodyClass: '',
     variant: 'default',
     embedded: undefined,
-    detachable: true
+    detachable: true,
+    tutorialId: undefined
   }
 )
 
@@ -190,6 +196,13 @@ const emit = defineEmits<{
 const { t } = useStudioI18n()
 
 const diveEmbedded = inject(editorDiveEmbeddedKey, false)
+const injectedTutorialId = inject(tutorialFloatingIdKey, undefined)
+const resolvedTutorialId = computed(() => {
+  const explicit = props.tutorialId?.trim()
+  if (explicit) return explicit
+  const injected = injectedTutorialId ? unref(injectedTutorialId) : undefined
+  return typeof injected === 'string' && injected.trim() ? injected.trim() : undefined
+})
 const embedded = computed(() => props.embedded ?? diveEmbedded)
 
 const resizeHandles: ResizeHandle[] = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']

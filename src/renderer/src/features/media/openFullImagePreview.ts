@@ -1,13 +1,82 @@
-import { isLayeredSourceImageFilePath } from '@shared/import'
-import { openMediaPreviewDialog } from './mediaPreviewDialog'
+import { isAudioFilePath, isLayeredSourceImageFilePath, isVideoFilePath } from '@shared/import'
+import { openMediaPreviewDialog, type MediaPreviewKind } from './mediaPreviewDialog'
 
-function detectMediaKind(url: string, relativePath?: string | null): 'image' | 'video' | 'audio' {
-  const path = `${relativePath || ''} ${url}`.toLowerCase()
-  if (/\.(mp4|webm|mov|mkv)(\?|$)/i.test(path) || path.includes('video')) return 'video'
-  if (/\.(mp3|wav|ogg|m4a|aac|flac)(\?|$)/i.test(path) || path.includes('audio')) return 'audio'
+function stripQueryAndHash(s: string): string {
+  return s.split(/[?#]/)[0] || s
+}
+
+function decodePathCandidate(raw: string): string {
+  const trimmed = raw.trim()
+  if (!trimmed) return ''
+  try {
+    return decodeURIComponent(trimmed)
+  } catch {
+    return trimmed
+  }
+}
+
+/** 从 relativePath / studio-media URL / data URL 抽出可判扩展名的路径候选 */
+function pathCandidates(url: string, relativePath?: string | null): string[] {
+  const out: string[] = []
+  const rel = relativePath?.trim()
+  if (rel) out.push(rel)
+
+  const u = url.trim()
+  if (!u) return out
+  out.push(u)
+  out.push(stripQueryAndHash(u))
+
+  try {
+    const parsed = new URL(u)
+    const pathParam = parsed.searchParams.get('path')
+    if (pathParam) out.push(pathParam)
+    if (parsed.pathname) out.push(stripQueryAndHash(parsed.pathname))
+  } catch {
+    /* 非绝对 URL：上面的 strip 已覆盖 */
+  }
+
+  return out.map(decodePathCandidate).filter(Boolean)
+}
+
+function detectMediaKindFromPath(
+  url: string,
+  relativePath?: string | null
+): 'image' | 'video' | 'audio' {
   if (url.startsWith('data:video')) return 'video'
   if (url.startsWith('data:audio')) return 'audio'
+
+  for (const candidate of pathCandidates(url, relativePath)) {
+    if (isVideoFilePath(candidate)) return 'video'
+    if (isAudioFilePath(candidate)) return 'audio'
+  }
   return 'image'
+}
+
+/** 资产类型优先于扩展名（成片视频的 relativePath 偶发是海报图时仍应按视频播） */
+function mediaKindFromAssetType(type?: string | null): MediaPreviewKind | null {
+  if (type === 'video' || type === 'motion') return 'video'
+  if (type === 'voice' || type === 'music' || type === 'sfx') return 'audio'
+  if (type === 'image' || type === 'canvas') return 'image'
+  return null
+}
+
+/** 供预览入口与单测共用：显式 mediaKind > assetType > 路径扩展名 */
+export function resolveMediaPreviewKind(source: {
+  url?: string | null
+  relativePath?: string | null
+  mediaKind?: MediaPreviewKind | null
+  assetType?: string | null
+}): 'image' | 'video' | 'audio' {
+  if (
+    source.mediaKind === 'image' ||
+    source.mediaKind === 'video' ||
+    source.mediaKind === 'audio'
+  ) {
+    return source.mediaKind
+  }
+  const fromType = mediaKindFromAssetType(source.assetType)
+  if (fromType === 'image' || fromType === 'video' || fromType === 'audio') return fromType
+  return detectMediaKindFromPath(source.url?.trim() || '', source.relativePath)
 }
 
 /**
@@ -19,6 +88,10 @@ export async function openFullImagePreview(source: {
   dataUrl?: string | null
   relativePath?: string | null
   title?: string | null
+  /** 已知媒体种类时直接用，跳过路径猜测 */
+  mediaKind?: MediaPreviewKind | null
+  /** 资产 type；比纯扩展名更可靠 */
+  assetType?: string | null
 }): Promise<void> {
   const relativePath = source.relativePath?.trim() || ''
   const layeredSource = isLayeredSourceImageFilePath(relativePath)
@@ -49,7 +122,13 @@ export async function openFullImagePreview(source: {
 
   if (!url && !relativePath) return
 
-  const mediaKind = detectMediaKind(url || relativePath, relativePath)
+  const mediaKind = resolveMediaPreviewKind({
+    url: url || relativePath,
+    relativePath,
+    mediaKind: source.mediaKind,
+    assetType: source.assetType
+  })
+
   openMediaPreviewDialog({
     mediaKind,
     url: url || relativePath,
@@ -67,5 +146,9 @@ export async function openImportedMediaRefPreview(asset: {
   if (asset.type === 'screenplay') return
   const relativePath = asset.relativePath?.trim()
   if (!relativePath) return
-  await openFullImagePreview({ relativePath, title: asset.name })
+  await openFullImagePreview({
+    relativePath,
+    title: asset.name,
+    assetType: asset.type
+  })
 }

@@ -2,12 +2,13 @@
   <div
     ref="rootEl"
     class="node-graph"
+    data-tutorial-id="graph-canvas"
     @wheel.prevent="onWheel"
     @dragover.prevent="onDragOver"
     @dragleave="onDragLeave"
     @drop.prevent="onDrop"
   >
-    <div v-if="!hideToolbar" class="graph-toolbar">
+    <div v-if="!hideToolbar" class="graph-toolbar" data-tutorial-id="graph-toolbar">
       <EditorDiveBar
         v-if="diveNavActive && editorDive"
         :root-title="editorDive.rootTitle"
@@ -20,6 +21,7 @@
           <button
             type="button"
             class="play-control playing"
+            data-tutorial-id="graph-run"
             :title="t('graph.play.stop')"
             :aria-label="t('graph.play.stopAria')"
             @click="stopWorkflow"
@@ -33,6 +35,7 @@
           <button
             type="button"
             class="play-control"
+            data-tutorial-id="graph-run"
             :title="toolbarCurrentNodeLabel"
             :aria-label="toolbarCurrentNodeLabel"
             @click="onToolbarRunCurrent"
@@ -391,6 +394,7 @@
         v-if="ctxMenu"
         ref="ctxMenuEl"
         class="ctx-menu"
+        data-tutorial-id="graph-ctx-menu"
         :style="{ left: `${ctxMenu.x}px`, top: `${ctxMenu.y}px` }"
         @mousedown.stop
         @click.stop
@@ -494,6 +498,7 @@
             v-for="item in rootAddableMenuItems"
             :key="`${item.typeId}:${item.title ?? ''}`"
             type="button"
+            :data-tutorial-id="tutorialCtxTypeId(item.typeId)"
             @click="addNodeFromMenu(item)"
           >
             <span class="ctx-icon"><WorkspaceItemIcon :icon="item.icon" :size="14" /></span>
@@ -514,6 +519,7 @@
                 open: ctxSubmenu === group.id,
                 pinned: ctxSubmenuPinned && ctxSubmenu === group.id
               }"
+              :data-tutorial-id="tutorialCtxGroupId(group.id)"
               @click="toggleCtxSubmenu(group.id)"
             >
               <span class="ctx-icon"><WorkspaceItemIcon :icon="group.icon" :size="14" /></span>
@@ -532,6 +538,7 @@
                 v-for="item in group.items"
                 :key="`${item.typeId}:${item.title ?? ''}`"
                 type="button"
+                :data-tutorial-id="tutorialCtxTypeId(item.typeId)"
                 @click="addNodeFromMenu(item)"
               >
                 <span class="ctx-icon"><WorkspaceItemIcon :icon="item.icon" :size="14" /></span>
@@ -555,6 +562,7 @@
                     open: ctxNestedSubmenu === child.id,
                     pinned: ctxNestedSubmenuPinned && ctxNestedSubmenu === child.id
                   }"
+                  :data-tutorial-id="tutorialCtxGroupId(child.id)"
                   @click="toggleNestedCtxSubmenu(child.id)"
                 >
                   <span class="ctx-icon"><WorkspaceItemIcon :icon="child.icon" :size="14" /></span>
@@ -573,6 +581,7 @@
                     v-for="item in child.items"
                     :key="`${item.typeId}:${item.title ?? ''}`"
                     type="button"
+                    :data-tutorial-id="tutorialCtxTypeId(item.typeId)"
                     @click="addNodeFromMenu(item)"
                   >
                     <span class="ctx-icon"><WorkspaceItemIcon :icon="item.icon" :size="14" /></span>
@@ -692,6 +701,7 @@ import { graphEditorNodeTools } from '../features/graph/ui/graphEditorNodeTools'
 import GraphRadialMenu, { type RadialMenuItem } from './GraphRadialMenu.vue'
 import MediaRunIcon from './icons/MediaRunIcon.vue'
 import WorkspaceItemIcon from './WorkspaceItemIcon.vue'
+import { tutorialCtxGroupId, tutorialCtxTypeId } from '@shared/tutorialUi'
 import { playFlyToGraphTasks } from '../features/graph/ui/flyToGraphTasks'
 import { useProjectStore } from '../stores/project'
 import {
@@ -1200,14 +1210,17 @@ function syncHostInterfaceSnapshots(doc: GraphDocument): GraphDocument {
   return next
 }
 
-function applyGraphDocument(doc: GraphDocument): void {
+function applyGraphDocument(doc: GraphDocument, options?: { skipRenderWindow?: boolean }): void {
   const synced = syncHostInterfaceSnapshots(doc)
   replaceGraphDocument(graph, synced)
   runStateBridge.importFromDocument(synced)
   syncLiveViewportFromGraph()
-  // 图整体替换（加载/撤销/重做/外部应用）后重算可见集合并重绘边
-  refreshGraphRenderWindow(true)
-  requestEdgeRender()
+  // 图整体替换（加载/撤销/重做/外部应用）后重算可见集合并重绘边。
+  // skipRenderWindow：调用方马上 fitView 时跳过，避免「新坐标 + 旧视口」中间态把节点卸掉闪一帧。
+  if (!options?.skipRenderWindow) {
+    refreshGraphRenderWindow(true)
+    requestEdgeRender()
+  }
 }
 
 function collectParentGraphsForHost(hostAssetId: string): GraphDocument[] {
@@ -4166,6 +4179,9 @@ function setAllNodePreviewsCollapsed(collapsed: boolean): void {
   requestEdgeRender()
 }
 
+/** MCP applyExternalGraph({ fitView }) 时面板尚未量到尺寸，等 ResizeObserver 再 fit */
+let pendingExternalFitView = false
+
 function fitView(): void {
   const host = viewportEl.value
   if (!host) return
@@ -4188,6 +4204,16 @@ function fitView(): void {
   applyViewportTransform(true)
   requestPreviewVisibilityUpdate()
   scheduleSave()
+}
+
+function fitViewWhenHostReady(): void {
+  const host = viewportEl.value
+  if (host && host.clientWidth > 0 && host.clientHeight > 0) {
+    pendingExternalFitView = false
+    fitView()
+    return
+  }
+  pendingExternalFitView = true
 }
 
 /** 小地图：将指定世界坐标置于视口中心（保持当前缩放） */
@@ -9520,7 +9546,11 @@ onMounted(() => {
   })
   resizeObserver = new ResizeObserver(() => {
     syncViewportHostSize()
-    refreshGraphRenderWindow(true)
+    if (pendingExternalFitView) {
+      fitViewWhenHostReady()
+    } else {
+      refreshGraphRenderWindow(true)
+    }
     resizeEdgeCanvas()
     renderEdgesNow()
     requestPreviewVisibilityUpdate()
@@ -9611,17 +9641,30 @@ onMounted(() => {
       recordGraphChange('update-group', before)
     },
     setNodeAsset: (nodeId, asset) => setNodeAsset(nodeId, asset),
-    applyExternalGraph: (document) => {
-      // 后台任务写回时 document.viewport 仍是入队快照；保留用户正在滚轮/平移的视口
+    applyExternalGraph: (document, options) => {
+      // 后台任务写回时 document.viewport 仍是入队快照；保留用户正在滚轮/平移的视口。
+      // MCP 自动布局会改世界坐标：须先适配视口再刷新虚拟化，否则 cull→fit 会闪「消失又出现」。
       const keepVp = { x: liveViewport.x, y: liveViewport.y, zoom: liveViewport.zoom }
-      applyGraphDocument(document)
-      liveViewport.x = keepVp.x
-      liveViewport.y = keepVp.y
-      liveViewport.zoom = keepVp.zoom
-      commitLiveViewportToGraph()
-      applyViewportTransform(true)
-      requestPreviewVisibilityUpdate()
+      if (options?.fitView) {
+        applyGraphDocument(document, { skipRenderWindow: true })
+        fitViewWhenHostReady()
+      } else {
+        applyGraphDocument(document)
+        liveViewport.x = keepVp.x
+        liveViewport.y = keepVp.y
+        liveViewport.zoom = keepVp.zoom
+        commitLiveViewportToGraph()
+        applyViewportTransform(true)
+        requestPreviewVisibilityUpdate()
+      }
       commitAssetGraph()
+    },
+    selectNode: (nodeId) => {
+      if (!graph.nodes.some((node) => node.id === nodeId)) return
+      setSingleNodeSelection(nodeId)
+      refreshGraphRenderWindow(true)
+      requestPreviewVisibilityUpdate()
+      requestEdgeRender()
     },
     flush: () => flushSave()
   })

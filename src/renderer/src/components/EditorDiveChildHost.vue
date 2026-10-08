@@ -1,11 +1,17 @@
 <template>
-  <div v-if="frame" class="editor-dive-child">
-    <component
-      :is="viewComponent"
+  <div
+    v-if="frame"
+    class="editor-dive-child"
+    data-tutorial-id="graph-dive"
+    :data-tutorial-view="viewFrame?.viewId"
+  >
+    <div
       v-if="viewFrame && viewComponent"
-      :key="viewFrame.key"
-      v-bind="viewBindings"
-    />
+      class="editor-dive-view"
+      :data-tutorial-id="tutorialDiveViewId(viewFrame.viewId)"
+    >
+      <component :is="viewComponent" :key="viewFrame.key" v-bind="viewBindings" />
+    </div>
     <AssetEditor
       v-else-if="assetFrame && (assetFrame.kind === 'screenplay' || assetFrame.kind === 'asset')"
       :key="assetFrame.assetId"
@@ -70,6 +76,7 @@ import {
   type EditorDiveFrame,
   type EditorDiveNodeToolViewId
 } from '../features/graph/model/editorDive'
+import { tutorialDiveViewId } from '@shared/tutorialUi'
 
 /** 异步加载，避免与各主编辑器互相静态引用形成环 */
 const AssetEditor = defineAsyncComponent(() => import('./AssetEditor.vue'))

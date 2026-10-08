@@ -54,7 +54,14 @@ describe('graph_edit 不再因编辑器打开而拒绝', () => {
     const body = graphEditBody()
     expect(body).toContain('graphEditorHosts.getLiveAssetDocument(payload.assetId)')
     // 落盘交给编辑器自身的链路（applyExternalGraph → commitAssetGraph → persistAssetRecord）
-    expect(body).toContain('graphEditorHosts.applyExternalGraph(hostId, liveResult.graph)')
+    expect(body).toContain('graphEditorHosts.applyExternalGraph(')
+    expect(body).toContain('liveResult.graph')
+    // 自动布局后必须 fitView，否则节点移出视口会被虚拟化卸掉（录屏里像消失）
+    expect(body).toContain("liveResult.applied.includes('自动布局')")
+    expect(body).toContain('fitView: true')
+    // 教学选中必须落到画布高亮
+    expect(body).toContain('selectNodeIds')
+    expect(body).toContain('graphEditorHosts.selectNode')
     // 等落盘完成再回报，对调用方才是持久的
     expect(body).toContain('await graphEditorHosts.flush(hostId)')
   })
@@ -76,8 +83,14 @@ describe('graph_edit 不再因编辑器打开而拒绝', () => {
 
   it('编辑器关闭时的原路径保持不变（仍写 store 副本）', () => {
     const body = graphEditBody()
-    expect(body).toContain('const result = applyGraphEditOps(graphJson, payload.ops)')
+    expect(body).toContain('const result = applyGraphEditOps(graphJson, payload.ops, editOptions)')
     expect(body).toContain('persistAssetRecord(payload.assetId,')
+  })
+
+  it('打开路径同样把 autoLayout 传给 applyGraphEditOps', () => {
+    const body = graphEditBody()
+    expect(body).toContain('applyGraphEditOps(live, payload.ops, editOptions)')
+    expect(body).toContain('payload.autoLayout')
   })
 })
 

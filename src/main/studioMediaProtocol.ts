@@ -15,11 +15,14 @@ function mimeForPath(filePath: string): string {
     case '.aac':
       return 'audio/mp4'
     case '.mp4':
+    case '.m4v':
       return 'video/mp4'
     case '.mov':
       return 'video/quicktime'
     case '.webm':
       return 'video/webm'
+    case '.mkv':
+      return 'video/x-matroska'
     case '.png':
       return 'image/png'
     case '.jpg':

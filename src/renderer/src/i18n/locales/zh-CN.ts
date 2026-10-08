@@ -771,7 +771,7 @@ export default {
     },
     dialog: {
       title: '导出为市场工作流',
-      subtitle: '把当前画布写成市场仓库里的 workflows/<id>/workflow.json',
+      subtitle: "把当前画布写成市场仓库里的 workflows/{'{'}id{'}'}/workflow.json",
       id: 'id',
       idHint: 'kebab-case，等于市场里的目录名；不能与内置一键工作流的 id 相同',
       titleField: '标题',
@@ -3041,7 +3041,9 @@ export default {
         graph_icon_refine: '图标精修',
         task_run: '工作流',
         asset_import: '素材导入',
-        blender_export: 'Blender 导出'
+        blender_export: 'Blender 导出',
+        screen_record_stop: '界面录制',
+        tutorial_compose: '教学成片'
       }
     },
     logs: {

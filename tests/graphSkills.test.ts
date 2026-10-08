@@ -68,6 +68,16 @@ describe('graphSkills', () => {
     expect(applyGraphSkill('svg.motion').generateInstruction).toContain('SVG')
   })
 
+  it('exposes the tutorial-recording skill for chat how-to videos', () => {
+    const skill = getGraphSkill('tutorial.recording')
+    expect(skill?.kind).toBe('tutorial')
+    expect(skill?.usageZh).toContain('tutorial_compose')
+    expect(skill?.usageEn).toContain('screen_record_stop')
+    // 只服务对话编排，不进任何节点 params
+    expect(skill?.systemPromptZh).toBeUndefined()
+    expect(skill?.instructionZh).toBeUndefined()
+  })
+
   it('exposes the procedural-assets skill for the chat game flow', () => {
     const skill = getGraphSkill('gameplay.proc-assets')
     expect(skill?.kind).toBe('gameplay')

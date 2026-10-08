@@ -80,6 +80,8 @@ const READ_TOOLS = new Set([
   'gameplay_job_status',
   // 录制状态是只读的：Plan 模式首轮里 Agent 也想知道「有没有遗留的录制在跑」
   'screen_record_status',
+  // 教学高亮定位：只读 DOM 矩形，不改工程
+  'ui_bounds',
   'ask_user'
 ])
 
@@ -97,7 +99,9 @@ const GENERATE_TOOLS = new Set([
   'decide',
   'workflow_plan',
   'transcribe_audio',
-  'gameplay_build'
+  'gameplay_build',
+  // 教学成片合成：内含 TTS + ffmpeg 导出，产物不可逆
+  'tutorial_compose'
 ])
 
 /**

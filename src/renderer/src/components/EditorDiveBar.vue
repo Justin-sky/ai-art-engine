@@ -1,6 +1,17 @@
 <template>
-  <nav v-if="frames.length" class="editor-dive-bar" :aria-label="t('studio.dive.up')">
-    <button type="button" class="dive-up" :title="t('studio.dive.up')" @click="emit('popTo', -1)">
+  <nav
+    v-if="frames.length"
+    class="editor-dive-bar"
+    data-tutorial-id="graph-dive-bar"
+    :aria-label="t('studio.dive.up')"
+  >
+    <button
+      type="button"
+      class="dive-up"
+      data-tutorial-id="graph-dive-up"
+      :title="t('studio.dive.up')"
+      @click="emit('popTo', -1)"
+    >
       {{ t('studio.dive.up') }}
     </button>
     <ol class="dive-crumbs">

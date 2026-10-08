@@ -62,6 +62,7 @@ export type GraphSkillKind =
   | 'system'
   | 'blender'
   | 'gameplay'
+  | 'tutorial'
 
 /** 解析入口指针；实现仍在 episodeBoardParse 等文件，此处不搬家 */
 export type GraphSkillParseKind =
@@ -126,6 +127,48 @@ const ANIM2D_FRAMES_USAGE_ZH =
 const ANIM2D_FRAMES_USAGE_EN =
   'Usage: add a "2D frame animation" node (typeId `anim.2d`), wire a rows×cols sprite sheet into its `in` port, and set animRows / animCols plus the action preset animPresetId (or a custom animInstruction); then set animGifFps to 8–12 and run — the node slices per-frame PNGs and additionally emits a GIF through the `out-gif` port, persisted as a project asset. When no sprite sheet exists yet, either wire an upstream image node that draws the grid, or dive into this node\'s inner graph and generate it with the image API.' +
   ' Over MCP the minimum is 3 calls, and workflow_plan is not needed first (workflow_commit takes a hand-written plan directly): (1) workflow_commit({ plan, name }) — plan is {"title":"2D frame animation","nodes":[{"key":"sheet","typeId":"asset.image","params":{"generateInstruction":"Generate a sprite sheet of the <action> action for one character: a single image divided into <rows> rows x <cols> columns, frame order left to right then top to bottom, keeping the character look, proportions and art style identical across every cell, changing only the pose"}},{"key":"anim","typeId":"anim.2d","params":{"animRows":<rows>,"animCols":<cols>,"animPresetId":"walk","animInstruction":"<action cycle description>","animGifFps":12}}],"edges":[{"from":"sheet","to":"anim"}]}, which returns assetId; (2) task_run({ assetId }) returns mcpTaskId; (3) task_status({ mcpTaskId }) fetches the outputs (generation plus encoding takes roughly 30-90 seconds, so several polls may be needed). animRows / animCols must match the actual grid of the sprite sheet, and animGifFps must be set explicitly and be greater than 0 (the default 0 slices frames without producing a GIF). Use graph_node_types / graph_read / graph_edit only when modifying an existing asset.'
+
+/**
+ * 教学视频自动录制（dsh 技能快照用法）。
+ *
+ * 文案三分法：
+ * - title：HUD 短标题（≤12 字）；
+ * - caption：详细字卡（烧进画面 + 成片字幕轨，必填，一句完整说明）；
+ * - narration：口播（tutorial_compose → TTS；可与 caption 相同，但合成时必须带上）。
+ *
+ * 编码侧会把静止段封顶到 ≤2s，但不能替代「单次连续拍完」：多轮间隙仍浪费配额、HUD 时钟乱跳。
+ * start→每步(step+短动作)→stop→compose 须在同一工具链里一口气做完，中途不 ask_user、不重录、不调长耗时工具。
+ */
+const TUTORIAL_RECORDING_USAGE_ZH =
+  '仅当用户明确要求「录制教程 / 教学视频 / 录屏讲解」时启用。' +
+  '**大纲**：用户已说清主题则不要 ask_user；含糊才问一次，确认后立刻开拍。' +
+  '文案三分法：title≤12 字；caption=完整一句；narration=口播（compose.steps 必带）。' +
+  '**口播=画面（最高优先级，禁止「嘴上说选中/点击，实际没点」）**：' +
+  'caption/narration 写到的每个操作，下一步工具必须做出**可见**动作。' +
+  '说「右键添加节点」→ step(graph-canvas, doContextMenu:true) → step(graph-ctx-group-{分组}, doClick) → step(graph-ctx-type-{typeId点改横杠}, doClick)；例图片：graph-ctx-group-image → graph-ctx-type-asset-image（禁止静默 node_upsert）；' +
+  '说「选中节点」→ graph_edit node_select；' +
+  '说「改提示词/参数」→ 指令面板节点：doDblClick → fillText(graph-instruction-input) → 可选 graph-model-select / graph-gen-params；**禁止**静默 node_update；' +
+  '说「打开记事本/正文」→ doDblClick → 高亮 graph-notepad，编辑用 fillText(graph-notepad-input)；' +
+  '说「打开漫画页/节点工具/dive」→ doDblClick → 高亮 graph-dive（或 graph-dive-view-{viewId}，如 comic-page / node-multiAngle）；返回用 graph-dive-up；' +
+  '说「点击运行/生成」→ step(graph-run, doClick:true) → screen_record_wait(graph-idle) → step(graph-selected-node) 讲结果 → screen_record_stop；**禁止点完立刻 stop**。' +
+  '**开场**：asset_create(type=canvas)+openEditor 空白自由画布，录制中右键添加；不要预热假演示。' +
+  '**单次连续拍完**：screen_record_start→screen_record_step×N→screen_record_wait→screen_record_stop→tutorial_compose。录制中允许 step/wait/node_select/ui_click；禁止 task_run/generate_*。' +
+  '高亮只用 tutorialId（固定 id + graph-ctx-* / graph-dive-view-*）。fps:10 maxSeconds:180。compose 必传 steps[{index,narration,caption}]。' +
+  '示例图片：右键→type-asset-image→双击指令面板→fillText→run→wait→compose。记事本/漫画页同用 doDblClick，随后跟 graph-notepad 或 graph-dive-view-comic-page。'
+
+const TUTORIAL_RECORDING_USAGE_EN =
+  'Use only when the user explicitly asks to record a tutorial / how-to video. ' +
+  'Outline: if the topic is clear, skip ask_user; otherwise ask once then shoot. ' +
+  'Three fields: title ≤12 chars; caption = full sentence; narration required in compose.steps. ' +
+  'SAY=SHOW (critical): every named action must be a visible tool action. ' +
+  'Right-click add: step(graph-canvas, doContextMenu) → graph-ctx-group-{group} → graph-ctx-type-{typeId with dots→dashes}; e.g. graph-ctx-group-image → graph-ctx-type-asset-image. Never silent node_upsert. ' +
+  'Select: graph_edit node_select. ' +
+  'Edit prompt/params: doDblClick → fillText graph-instruction-input (+ optional graph-model-select / graph-gen-params). Never silent node_update. ' +
+  'Notepad/text: doDblClick → graph-notepad / fillText graph-notepad-input. ' +
+  'Comic/dive/node tools: doDblClick → graph-dive or graph-dive-view-{viewId} (e.g. comic-page, node-multiAngle); back via graph-dive-up. ' +
+  'Run: doClick graph-run → screen_record_wait(graph-idle) → highlight result → screen_record_stop. Never stop right after click. ' +
+  'ONE continuous take: screen_record_start→screen_record_step×N→screen_record_wait→screen_record_stop→tutorial_compose. ' +
+  'tutorialId = fixed ids + graph-ctx-* / graph-dive-view-*. fps:10 maxSeconds:180.'
 
 /** SVG 矢量动画（svg.gen）：生成指令模板（{subject} 由 applyGraphSkill 的 vars 插值） */
 const SVG_MOTION_INSTRUCTION_ZH =
@@ -393,6 +436,15 @@ const BUILTIN_SKILLS: GraphSkill[] = [
     titleEn: 'Playable HTML (procedural assets)',
     usageZh: GAMEPLAY_PROC_ASSETS_USAGE_ZH,
     usageEn: GAMEPLAY_PROC_ASSETS_USAGE_EN
+  },
+  {
+    // 教学视频：录应用窗口 + MCP 驱动可见画面 + 旁白字幕一键合成
+    id: 'tutorial.recording',
+    kind: 'tutorial',
+    titleZh: '教学视频自动录制', // cjk-ok（技能标题）
+    titleEn: 'Tutorial screen recording',
+    usageZh: TUTORIAL_RECORDING_USAGE_ZH,
+    usageEn: TUTORIAL_RECORDING_USAGE_EN
   },
   {
     id: 'blender.rigSkin',

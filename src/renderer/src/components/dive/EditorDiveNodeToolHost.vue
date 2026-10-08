@@ -1,5 +1,5 @@
 <template>
-  <div v-if="api" class="dive-node-tool">
+  <div v-if="api" class="dive-node-tool" :data-tutorial-id="tutorialDiveViewId(viewId)">
     <GraphTextNotepadDialog
       v-if="viewId === 'node.notepad' && api.notepad.open"
       :open="true"
@@ -339,6 +339,7 @@
 import { computed, inject, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import { editorDiveKey, type EditorDiveNodeToolViewId } from '../../features/graph/model/editorDive'
 import { editorDiveEmbeddedKey } from '../../features/graph/ui/editorDiveEmbeddedKey'
+import { tutorialDiveViewId, tutorialFloatingIdKey } from '@shared/tutorialUi'
 import { graphEditorNodeTools } from '../../features/graph/ui/graphEditorNodeTools'
 import { useEditorDiveFrameFlush } from '../../composables/useEditorDiveFrameFlush'
 import { useStudioI18n } from '../../composables/useStudioI18n'
@@ -379,6 +380,9 @@ const props = defineProps<{
 const { t } = useStudioI18n()
 const editorDive = inject(editorDiveKey, null)
 provide(editorDiveEmbeddedKey, true)
+/** Teleport 浮窗仍能 inject 到当前 dive 工具 view id */
+const floatingTutorialId = computed(() => tutorialDiveViewId(props.viewId))
+provide(tutorialFloatingIdKey, floatingTutorialId)
 
 const ready = ref(false)
 const host = computed(() => {

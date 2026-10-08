@@ -146,8 +146,8 @@ export function autoLayoutNodes(
     column.sort((a, b) => (byId.get(a)?.position.y ?? 0) - (byId.get(b)?.position.y ?? 0))
   }
 
-  const columnGap = options?.columnGap ?? 72
-  const rowGap = options?.rowGap ?? 36
+  const columnGap = options?.columnGap ?? 96
+  const rowGap = options?.rowGap ?? 56
   const origin = getNodesBounds(nodes, 0) ?? { x: 0, y: 0, w: 0, h: 0 }
   let x = origin.x
 

@@ -10,10 +10,10 @@
  *
  * ## 两个必须由这里定死的口径
  *
- * 1. **空闲帧必须合并。** 对话驱动的录制里，模型与工具调用之间可能停顿十几秒；
- *    按固定帧率硬录会得到大段静止画面（文件巨大、观感很差）。这里按帧指纹判重：
- *    只有画面真的变了才留一帧，并记下这一帧要**显示多久**。
- * 2. **步骤时间戳由录制侧记录**，不靠模型自报。旁白与字幕都按它对齐。
+ * 1. **空闲帧必须合并并封顶。** 对话驱动的录制里，模型与工具调用之间可能停顿几十秒；
+ *    按固定帧率硬录会得到大段静止画面。这里按帧指纹判重：只有画面真的变了才留一帧；
+ *    静止段在成片里最多显示 `maxHoldMs`（真正缩短时长），步骤 alignment 映到压缩轴。
+ * 2. **步骤时间戳由录制侧记录**，不靠模型自报。旁白与字幕都按压缩轴对齐。
  */
 
 /** 录制上限：宁可拒绝，也不要录到一半失败、或把磁盘写满 */
@@ -26,12 +26,13 @@ export const SCREEN_RECORD_LIMITS = {
   /** 帧数上限（也就是空闲帧合并后允许写盘的最大帧数） */
   maxFrames: 2700,
   /**
-   * 单帧最长显示时长（毫秒）。
+   * 单段静止在成片里的最长显示时长（毫秒）。
    *
-   * 画面长时间不动时，若只留一帧、让它显示 30 秒，观感是「卡住了」；拆成几帧重复写
-   * 反而更像正常的静止镜头，也让编码器有机会插入关键帧（拖动进度条体验更好）。
+   * 对话驱动录制里工具间隙常 30–60s；若按墙钟留白，成片全是冻帧。
+   * 编码时把每段「画面不变」的 hold **封顶**到此值（不是拆成多段仍加总），
+   * 步骤 alignment 同步映射到压缩时间轴。
    */
-  maxHoldMs: 6000
+  maxHoldMs: 2000
 } as const
 
 /**
@@ -169,35 +170,43 @@ export interface CapturedFrame {
   fingerprint: string
 }
 
-/** 计划保留的一帧 */
+/** 计划保留的一帧（成片时间轴已按 maxHoldMs 压缩） */
 export interface PlannedFrameKeep {
   /** 在 `CapturedFrame[]` 里的下标 */
   index: number
-  /** 相对开始时间（毫秒） */
+  /** 成片时间轴上的起点（毫秒，已压缩） */
   atMs: number
-  /** 这一帧在成片里显示多久（毫秒） */
+  /** 这一帧在成片里显示多久（毫秒，≤ maxHoldMs） */
   holdMs: number
+  /** 该关键帧在录制墙钟上的时刻（步骤 alignment 映射用） */
+  wallAtMs: number
+  /** 墙钟上本段原时长（压缩前） */
+  wallHoldMs: number
 }
 
 export interface FrameKeepPlan {
   keeps: PlannedFrameKeep[]
   /** 因与上一帧相同而丢掉的帧数（如实上报，便于解释「为什么成片比录制短」） */
   droppedIdle: number
+  /** 成片总时长（毫秒，空闲已封顶） */
+  durationMs: number
 }
 
 /**
  * 由「每帧指纹」算出**要写盘的关键帧与各自显示时长**。
  *
- * 规则：第一帧必留；之后只在指纹变化时留新帧；上一帧的显示时长 = 与下一关键帧的时间差。
- * 显示时长按 `maxHoldMs` 切分（画面长期不动时拆成多帧），避免出现「一帧撑 30 秒」的卡顿观感；
- * **末帧**给一个最短停留（`tailHoldMs`）—— 否则它只剩 1ms，最后一步的动作在成片里几乎看不见。
+ * 规则：第一帧必留；之后只在指纹变化时留新帧；墙钟显示时长 = 与下一关键帧的时间差。
+ * **空闲封顶**：墙钟 hold 超过 `maxHoldMs` 时，成片只保留 maxHoldMs（真正缩短时长，
+ * 不是拆成多段仍加总）。步骤时间戳用 `wallAtMs` 映射到压缩轴。
+ * **末帧**给最短停留（`tailHoldMs`），否则最后一步在成片里几乎看不见。
  */
 export function planFrameKeeps(
   frames: CapturedFrame[],
   options?: { tailHoldMs?: number }
 ): FrameKeepPlan {
-  if (!frames.length) return { keeps: [], droppedIdle: 0 }
+  if (!frames.length) return { keeps: [], droppedIdle: 0, durationMs: 0 }
   const tailHoldMs = Math.max(1, options?.tailHoldMs ?? DEFAULT_TAIL_HOLD_MS)
+  const maxHold = SCREEN_RECORD_LIMITS.maxHoldMs
 
   const raw: Array<{ index: number; atMs: number }> = [{ index: 0, atMs: frames[0]!.atMs }]
   let droppedIdle = 0
@@ -212,20 +221,40 @@ export function planFrameKeeps(
 
   const lastAtMs = frames[frames.length - 1]!.atMs
   const keeps: PlannedFrameKeep[] = []
+  let compressedAt = 0
   for (let i = 0; i < raw.length; i += 1) {
     const current = raw[i]!
     const isLast = i + 1 >= raw.length
-    const total = isLast
+    const wallHold = isLast
       ? Math.max(tailHoldMs, lastAtMs - current.atMs)
       : Math.max(1, raw[i + 1]!.atMs - current.atMs)
-    // 长静止段拆成多帧：每段不超过 maxHoldMs
-    const parts = Math.max(1, Math.ceil(total / SCREEN_RECORD_LIMITS.maxHoldMs))
-    const each = Math.round(total / parts)
-    for (let p = 0; p < parts; p += 1) {
-      keeps.push({ index: current.index, atMs: current.atMs + p * each, holdMs: each })
+    const holdMs = Math.min(wallHold, maxHold)
+    keeps.push({
+      index: current.index,
+      atMs: compressedAt,
+      holdMs,
+      wallAtMs: current.atMs,
+      wallHoldMs: wallHold
+    })
+    compressedAt += holdMs
+  }
+  return { keeps, droppedIdle, durationMs: compressedAt }
+}
+
+/** 墙钟毫秒 → 成片压缩时间轴毫秒 */
+export function mapWallMsToCompressed(wallMs: number, keeps: PlannedFrameKeep[]): number {
+  if (!keeps.length) return 0
+  const t = Math.max(0, wallMs)
+  for (const keep of keeps) {
+    const wallEnd = keep.wallAtMs + keep.wallHoldMs
+    if (t <= keep.wallAtMs) return keep.atMs
+    if (t < wallEnd) {
+      const into = t - keep.wallAtMs
+      return keep.atMs + Math.min(into, keep.holdMs)
     }
   }
-  return { keeps, droppedIdle }
+  const last = keeps[keeps.length - 1]!
+  return last.atMs + last.holdMs
 }
 
 /**
@@ -329,25 +358,32 @@ export interface StepAlignment {
 }
 
 /**
- * 步骤时间戳 → 对齐表。
+ * 步骤时间戳 → 对齐表（映射到成片压缩时间轴）。
  *
- * 最后一步的结束时间取录制总时长；没有后续步骤时给它一个下限（1 秒），
- * 免得算出零长度区间让字幕一闪而过。
+ * `keeps` 来自 `planFrameKeeps`：把墙钟 `step.atMs` 映到压缩轴，口播/字幕才跟得上裁掉的空闲。
+ * 未传 keeps 时退回墙钟轴（兼容旧测试 / 无帧计划场景）。
  */
 export function buildAlignmentTable(
   steps: ScreenRecordStepMark[],
-  totalMs: number
+  totalMs: number,
+  keeps?: PlannedFrameKeep[]
 ): StepAlignment[] {
   const sorted = [...steps].sort((a, b) => a.atMs - b.atMs)
+  const map = (wallMs: number): number =>
+    keeps?.length ? mapWallMsToCompressed(wallMs, keeps) : wallMs
+  const compressedTotal = keeps?.length
+    ? keeps[keeps.length - 1]!.atMs + keeps[keeps.length - 1]!.holdMs
+    : totalMs
   return sorted.map((step, i) => {
     const next = sorted[i + 1]
-    const endMs = next ? next.atMs : Math.max(totalMs, step.atMs + 1000)
+    const startMs = map(step.atMs)
+    const endMs = next ? map(next.atMs) : Math.max(compressedTotal, startMs + 1000)
     return {
       index: step.index,
       title: step.title,
       caption: step.caption,
-      startSec: Number((step.atMs / 1000).toFixed(3)),
-      endSec: Number((endMs / 1000).toFixed(3))
+      startSec: Number((startMs / 1000).toFixed(3)),
+      endSec: Number((Math.max(endMs, startMs + 50) / 1000).toFixed(3))
     }
   })
 }

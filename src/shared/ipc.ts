@@ -309,7 +309,7 @@ export const IpcChannels = {
   SCREEN_RECORD_START: 'screen-record:start',
   /** 推进到下一步（HUD 标题/高亮/合成光标，并记下权威时间戳） */
   SCREEN_RECORD_STEP: 'screen-record:step',
-  /** 结束录制：编码为 MP4 并登记为工程视频资产 */
+  /** 结束录制：编码为 MP4，落盘 Cache/Videos（不自动进资产库） */
   SCREEN_RECORD_STOP: 'screen-record:stop',
   /** 当前录制状态（是否在录、已录帧数、步骤时间戳） */
   SCREEN_RECORD_STATUS: 'screen-record:status',
@@ -699,6 +699,10 @@ export type McpActivityTool =
   | 'blender_export'
   /** 可玩 HTML：宿主 cook 一个纯 Node/esbuild 游戏工程（对话路径的产物卡来源） */
   | 'gameplay_build'
+  /** 应用界面录制结束：MP4 落 Cache/Videos，对话流出预览卡 */
+  | 'screen_record_stop'
+  /** 教学视频一键合成：旁白 + 字幕 + 导出 Cache/Videos */
+  | 'tutorial_compose'
 
 export type McpActivityStatus = 'running' | 'done' | 'error'
 
@@ -756,12 +760,17 @@ export type McpGraphEditOp =
       toPort?: string
     }
   | { op: 'edge_delete'; fromNodeId: string; toNodeId: string }
+  | { op: 'node_select'; nodeId: string }
 
 /** MCP：主进程 → 渲染层，请求对宿主资产图应用一批编辑操作 */
 export interface McpGraphEditPayload {
   requestId: string
   assetId: string
   ops: McpGraphEditOp[]
+  /** true：先打开该资产编辑器再改图，保证录屏/教学时画面可见 */
+  openEditor?: boolean
+  /** true：ops 应用后按连线拓扑自动布局（创建/串联节点后避免叠在一起） */
+  autoLayout?: boolean
 }
 
 /** MCP：渲染层 → 主进程，图编辑结果 */
@@ -1844,7 +1853,7 @@ export interface StudioApi {
   screenRecordStep: (
     input: import('./screenRecord').ScreenRecordStepInput
   ) => Promise<ScreenRecordStepResult>
-  /** 结束录制：编码 MP4 并登记为工程视频资产 */
+  /** 结束录制：编码 MP4 落 Cache/Videos（不自动进资产库） */
   screenRecordStop: () => Promise<import('./screenRecord').ScreenRecordStopResult>
   /** 当前录制状态（未在录制时 recording=false） */
   screenRecordStatus: () => Promise<ScreenRecordStatusResult>

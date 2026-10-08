@@ -9,6 +9,17 @@ import { graphEditorHosts } from '../graph/model/graphEditorHosts'
 import { isGraphEditorOpen } from './openGraphEditors'
 import { openMcpWorkflowAssetEditor } from './mcpGraphLiveCanvas'
 
+const GRAPH_EDITOR_OPEN_WAIT_MS = 8_000
+const GRAPH_EDITOR_OPEN_POLL_MS = 50
+
+async function waitForGraphEditorOpen(assetId: string): Promise<boolean> {
+  for (let elapsed = 0; elapsed < GRAPH_EDITOR_OPEN_WAIT_MS; elapsed += GRAPH_EDITOR_OPEN_POLL_MS) {
+    if (isGraphEditorOpen(assetId) && graphEditorHosts.getLiveAssetDocument(assetId)) return true
+    await new Promise<void>((resolve) => window.setTimeout(resolve, GRAPH_EDITOR_OPEN_POLL_MS))
+  }
+  return isGraphEditorOpen(assetId) && !!graphEditorHosts.getLiveAssetDocument(assetId)
+}
+
 /**
  * MCP task_run 的渲染层执行入口：
  * 主进程经 broadcast 派发「运行宿主资产工作流」，这里从工程 store 读取
@@ -119,6 +130,16 @@ async function handleGraphEdit(payload: McpGraphEditPayload): Promise<void> {
     const project = useProjectStore()
     const asset = project.assets.find((item) => item.id === payload.assetId)
 
+    // 教学录屏：先打开编辑器，保证后续改图拍进画面
+    if (payload.openEditor && !isGraphEditorOpen(payload.assetId)) {
+      openMcpWorkflowAssetEditor(payload.assetId)
+      const opened = await waitForGraphEditorOpen(payload.assetId)
+      if (!opened) {
+        reply(false, { error: '无法打开图编辑器（openEditor），请确认资产可编辑' })
+        return
+      }
+    }
+
     /**
      * 编辑器打开时**也能改**，但基准必须是编辑器里的**实时文档**。
      *
@@ -130,6 +151,13 @@ async function handleGraphEdit(payload: McpGraphEditPayload): Promise<void> {
      * 顺序上先判断「编辑器是否打开」、再取 store 副本：草稿资产的图只存在于编辑器里，
      * 先走 store 那条会误报「资产不存在或不含图文档」。
      */
+    const editOptions =
+      payload.autoLayout === true
+        ? { autoLayout: true as const }
+        : payload.autoLayout === false
+          ? { autoLayout: false as const }
+          : undefined
+
     if (isGraphEditorOpen(payload.assetId)) {
       const hostId = `asset:${payload.assetId}`
       const live = graphEditorHosts.getLiveAssetDocument(payload.assetId)
@@ -137,13 +165,26 @@ async function handleGraphEdit(payload: McpGraphEditPayload): Promise<void> {
         reply(false, { error: '编辑器已打开但暂时取不到实时图，请稍后重试' })
         return
       }
-      const liveResult = applyGraphEditOps(live, payload.ops)
+      const liveResult = applyGraphEditOps(live, payload.ops, editOptions)
       if (!liveResult.applied.length && liveResult.warnings.length) {
         reply(false, { applied: [], warnings: liveResult.warnings, error: '全部操作未生效' })
         return
       }
-      // 整图替换（保留用户视口）+ 编辑器自身落盘；等落盘完成再回报，对调用方才是持久的
-      graphEditorHosts.applyExternalGraph(hostId, liveResult.graph)
+      // 整图替换 + 编辑器自身落盘；自动布局后 fitView，避免节点移出视口被虚拟化卸掉
+      const didAutoLayout = liveResult.applied.includes('自动布局')
+      const onlySelect =
+        liveResult.selectNodeIds?.length &&
+        liveResult.applied.every((item) => item === '自动布局' || item.startsWith('选中节点'))
+      if (!onlySelect) {
+        graphEditorHosts.applyExternalGraph(
+          hostId,
+          liveResult.graph,
+          didAutoLayout ? { fitView: true } : undefined
+        )
+      }
+      // 教学录屏：选中必须落到画布高亮（toolbar 运行按钮依赖选中态）
+      const selectId = liveResult.selectNodeIds?.at(-1)
+      if (selectId) graphEditorHosts.selectNode(hostId, selectId)
       await graphEditorHosts.flush(hostId)
       reply(true, { applied: liveResult.applied, warnings: liveResult.warnings })
       return
@@ -155,7 +196,7 @@ async function handleGraphEdit(payload: McpGraphEditPayload): Promise<void> {
       reply(false, { error: '资产不存在或不含图文档（graph_edit 仅支持宿主资产子图）' })
       return
     }
-    const result = applyGraphEditOps(graphJson, payload.ops)
+    const result = applyGraphEditOps(graphJson, payload.ops, editOptions)
     if (!result.applied.length && result.warnings.length) {
       reply(false, { applied: [], warnings: result.warnings, error: '全部操作未生效' })
       return

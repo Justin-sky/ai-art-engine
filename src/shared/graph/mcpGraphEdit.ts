@@ -1,5 +1,6 @@
 import { canConnectNodes, getNodePorts } from './ports'
 import { createNodeFromType } from './create'
+import { autoLayoutNodes } from './layout'
 import { REFERENCE_PARAM_KEYS, sanitizeReferenceParams } from './referenceParams'
 import { listAddableNodeTypes } from './registry'
 import type { GraphAddScope } from './scopes'
@@ -38,11 +39,15 @@ export type McpGraphEditOp =
       toPort?: string
     }
   | { op: 'edge_delete'; fromNodeId: string; toNodeId: string }
+  /** 教学录屏：在打开的编辑器里选中节点（可见高亮；不改图结构） */
+  | { op: 'node_select'; nodeId: string }
 
 export interface McpGraphEditResult {
   graph: GraphDocument
   applied: string[]
   warnings: string[]
+  /** 需在打开的编辑器里执行的选中（按 ops 顺序，后者覆盖前者） */
+  selectNodeIds?: string[]
 }
 
 /**
@@ -224,30 +229,73 @@ function applyOp(
       if (!removed) warnings.push(`连线不存在（${op.fromNodeId} → ${op.toNodeId}），已跳过`)
       return `删除连线 ${op.fromNodeId} → ${op.toNodeId}`
     }
+    case 'node_select': {
+      const node = findNode(graph, op.nodeId)
+      if (!node) {
+        warnings.push(`节点「${op.nodeId}」不存在，选中已跳过`)
+        return null
+      }
+      return `选中节点 ${op.nodeId}`
+    }
     default:
       warnings.push('未知操作，已跳过')
       return null
   }
 }
 
-export function applyGraphEditOps(graph: GraphDocument, ops: McpGraphEditOp[]): McpGraphEditResult {
-  const next: GraphDocument = {
+function cloneGraphForEdit(graph: GraphDocument): GraphDocument {
+  return {
     ...graph,
-    nodes: [...graph.nodes],
-    edges: [...graph.edges]
+    nodes: graph.nodes.map((node) => ({
+      ...node,
+      position: { ...node.position },
+      ...(node.size ? { size: { ...node.size } } : {}),
+      params: node.params ? { ...node.params } : node.params
+    })),
+    edges: graph.edges.map((edge) => ({ ...edge }))
   }
+}
+
+function shouldAutoLayoutAfterOps(applied: string[], options?: { autoLayout?: boolean }): boolean {
+  // 显式 false：尊重调用方（精细摆位）；显式 true：强制布局
+  if (options?.autoLayout === false) return false
+  if (options?.autoLayout === true) return true
+  // 默认：新建或新连线后自动拉开，避免 Agent 漏传 autoLayout 时叠在原点
+  return applied.some((desc) => desc.startsWith('新建节点') || desc.startsWith('连线 '))
+}
+
+export function applyGraphEditOps(
+  graph: GraphDocument,
+  ops: McpGraphEditOp[],
+  options?: { autoLayout?: boolean }
+): McpGraphEditResult {
+  const next = cloneGraphForEdit(graph)
   const addable = new Set(listAddableNodeTypes(MCP_GRAPH_EDIT_SCOPE).map((def) => def.typeId))
   const applied: string[] = []
   const warnings: string[] = []
+  const selectNodeIds: string[] = []
   for (const op of ops) {
     try {
       const appliedDesc = applyOp(next, op, addable, warnings)
-      if (appliedDesc) applied.push(appliedDesc)
+      if (appliedDesc) {
+        applied.push(appliedDesc)
+        if (op.op === 'node_select') selectNodeIds.push(op.nodeId)
+      }
     } catch (err) {
       warnings.push(
         `操作 ${'op' in op ? op.op : '?'} 执行失败：${err instanceof Error ? err.message : String(err)}`
       )
     }
   }
-  return { graph: next, applied, warnings }
+  // 教学录屏 / 批量建节点后：按连线拓扑左→右分层，避免节点叠在默认原点
+  if (shouldAutoLayoutAfterOps(applied, options) && next.nodes.length > 1) {
+    autoLayoutNodes(next.nodes, next.edges, { columnGap: 96, rowGap: 56 })
+    applied.push('自动布局')
+  }
+  return {
+    graph: next,
+    applied,
+    warnings,
+    ...(selectNodeIds.length ? { selectNodeIds } : {})
+  }
 }

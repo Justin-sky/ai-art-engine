@@ -784,7 +784,7 @@ export default {
     },
     dialog: {
       title: 'Export as marketplace workflow',
-      subtitle: 'Write this canvas into the market repo as workflows/<id>/workflow.json',
+      subtitle: "Write this canvas into the market repo as workflows/{'{'}id{'}'}/workflow.json",
       id: 'id',
       idHint: 'kebab-case, equal to the folder name; must not collide with a built-in preset id',
       titleField: 'Title',
@@ -3118,7 +3118,9 @@ export default {
         graph_icon_refine: 'Icon refine',
         task_run: 'Workflow',
         asset_import: 'Import',
-        blender_export: 'Blender export'
+        blender_export: 'Blender export',
+        screen_record_stop: 'Screen record',
+        tutorial_compose: 'Tutorial compose'
       }
     },
     logs: {

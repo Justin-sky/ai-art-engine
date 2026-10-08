@@ -19,6 +19,7 @@
       'preview-collapsed': previewCollapsed
     }"
     :data-node-id="node.id"
+    :data-tutorial-id="selected ? 'graph-selected-node' : undefined"
     :style="{
       left: `${node.position.x}px`,
       top: `${node.position.y}px`,
@@ -392,6 +393,7 @@
     <div
       v-if="instructionOpen && instructionKind && hostId"
       class="instruction-panel"
+      data-tutorial-id="graph-instruction-panel"
       @pointerdown.stop
       @dblclick.stop
       @wheel.stop

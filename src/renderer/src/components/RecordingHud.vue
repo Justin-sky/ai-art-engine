@@ -17,21 +17,13 @@
       <span v-if="stepLabel" class="hud-step">{{ stepLabel }}</span>
     </div>
 
-    <div v-if="title" class="hud-titlebar">
-      <span class="hud-title">{{ title }}</span>
-      <span v-if="caption" class="hud-caption">{{ caption }}</span>
+    <!-- title=短标题；caption=详细字卡（烧进画面）。旁白音频另在 tutorial_compose 生成，不在此播。 -->
+    <div v-if="title || caption" :key="captionMotionKey" class="hud-titlebar">
+      <span v-if="title" class="hud-title">{{ title }}</span>
+      <span v-if="caption && caption !== title" class="hud-caption">{{ caption }}</span>
     </div>
 
-    <div
-      v-if="focus"
-      class="hud-focus"
-      :style="{
-        left: `${focus.x}px`,
-        top: `${focus.y}px`,
-        width: `${focus.width}px`,
-        height: `${focus.height}px`
-      }"
-    />
+    <div v-if="focusBox" class="hud-focus" :style="focusBox" />
 
     <div
       v-if="cursor"
@@ -39,7 +31,16 @@
       class="hud-cursor"
       :class="{ 'hud-cursor-ready': cursorReady }"
     >
-      <span class="hud-cursor-arrow" aria-hidden="true"></span>
+      <!-- 指引用手势而非三角箭头：教学视频里更像「指给你看」 -->
+      <svg class="hud-cursor-hand" viewBox="0 0 32 32" width="32" height="32" aria-hidden="true">
+        <path
+          fill="#ffffff"
+          stroke="#111418"
+          stroke-width="1.6"
+          stroke-linejoin="round"
+          d="M13.2 3.2c.9 0 1.6.7 1.6 1.6v8.2l.4-.2c.5-1.2 1.7-1.5 2.5-.9.4.3.6.7.6 1.2v.8l.5-.3c.6-1 1.8-1.2 2.5-.5.4.3.6.8.6 1.3v1l.4-.2c.6-.9 1.8-1 2.5-.3.4.4.6.9.6 1.4v6.2c0 3.2-2.2 5.6-5.4 5.6h-2.2c-2.2 0-4.1-1-5.3-2.6L9.2 20.4c-.7-.9-.6-2.2.3-2.9.8-.6 1.9-.5 2.6.2l1.1 1.1V4.8c0-.9.7-1.6 1.6-1.6z"
+        />
+      </svg>
       <span ref="rippleEl" class="hud-ripple"></span>
     </div>
   </div>
@@ -106,6 +107,27 @@ const framesLabel = computed(() =>
     ? t('screenRecord.hud.frames', { count: frames.value })
     : ''
 )
+
+/** 步骤切换时重挂字卡，触发上滚淡入（成片字幕同款动效） */
+const captionMotionKey = computed(() => `${stepIndex.value ?? -1}|${title.value}|${caption.value}`)
+
+/** 高亮框钳进视口，避免错误坐标把框画飞出画面 */
+const focusBox = computed(() => {
+  const box = focus.value
+  if (!box) return null
+  const vw = typeof window !== 'undefined' ? window.innerWidth : 1920
+  const vh = typeof window !== 'undefined' ? window.innerHeight : 1080
+  const x = Math.max(0, Math.min(box.x, vw - 2))
+  const y = Math.max(0, Math.min(box.y, vh - 2))
+  const width = Math.max(2, Math.min(box.width, vw - x))
+  const height = Math.max(2, Math.min(box.height, vh - y))
+  return {
+    left: `${x}px`,
+    top: `${y}px`,
+    width: `${width}px`,
+    height: `${height}px`
+  }
+})
 
 function stopClock(): void {
   if (clockTimer === null) return
@@ -341,18 +363,34 @@ onUnmounted(() => {
   position: fixed;
   left: 50%;
   bottom: 28px;
-  transform: translateX(-50%);
   display: flex;
   flex-direction: column;
   gap: 4px;
   align-items: center;
-  max-width: min(960px, calc(100vw - 64px));
+  /* 留足左右边距，避免长 caption 顶出视频画面 */
+  box-sizing: border-box;
+  width: min(720px, calc(100vw - 48px));
+  max-width: calc(100vw - 48px);
   padding: 10px 18px;
   border-radius: 10px;
-  background: rgba(12, 14, 18, 0.92);
-  border: 1px solid color-mix(in srgb, #fff 30%, transparent);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.55);
+  /* 半透明：底下画布仍可见，避免成片里一块死黑遮住节点 */
+  background: rgba(12, 14, 18, 0.55);
+  border: 1px solid color-mix(in srgb, #fff 28%, transparent);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
   text-align: center;
+  /* 专业字幕：自下淡入上滚 */
+  animation: hud-caption-roll 380ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+@keyframes hud-caption-roll {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 22px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
 }
 
 .hud-title {
@@ -360,13 +398,20 @@ onUnmounted(() => {
   font-size: 20px;
   font-weight: 700;
   line-height: 1.3;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .hud-caption {
   color: #b8bfcc;
   font-size: 14px;
   font-weight: 500;
-  line-height: 1.4;
+  line-height: 1.45;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: pre-wrap;
 }
 
 /*
@@ -421,16 +466,12 @@ onUnmounted(() => {
   transition: transform 420ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
-/* 箭头用边框拼：任何缩放下都锐利，不用位图 */
-.hud-cursor-arrow {
+/* 手指指针：尖端对准目标（translate 落点 = 指尖） */
+.hud-cursor-hand {
   position: absolute;
-  top: -3px;
-  left: -2px;
-  width: 0;
-  height: 0;
-  border-left: 11px solid #ffffff;
-  border-top: 7px solid transparent;
-  border-bottom: 8px solid transparent;
+  top: -4px;
+  left: -6px;
+  display: block;
   filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.9));
 }
 

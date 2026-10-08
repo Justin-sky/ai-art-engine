@@ -63,9 +63,14 @@ export interface GraphEditorHostApi {
     asset: { assetId: string; assetType: AssetType; name: string } | null
   ) => void
   /** 后台任务结果写回时，整图替换并刷新运行状态 */
-  applyExternalGraph?: (document: GraphDocument) => void
+  applyExternalGraph?: (document: GraphDocument, options?: { fitView?: boolean }) => void
+  /** 教学录屏：选中节点（可见高亮，使工具栏运行按钮出现） */
+  selectNode?: (nodeId: string) => void
   flush: () => Promise<void>
 }
+
+/** applyExternalGraph 可选行为：MCP 自动布局后需 fitView，避免节点移出视口像「消失」 */
+export type ApplyExternalGraphOptions = { fitView?: boolean }
 
 /** 从图 edges 列出指向 target 的入边；portId 省略时返回全部入边 */
 export function buildIncomingEdgeRefs(
@@ -315,9 +320,19 @@ class GraphEditorHostRegistry {
       )
   }
 
-  applyExternalGraph(hostId: string | null | undefined, document: GraphDocument): void {
+  applyExternalGraph(
+    hostId: string | null | undefined,
+    document: GraphDocument,
+    options?: ApplyExternalGraphOptions
+  ): void {
     if (!hostId) return
-    this.hosts.get(hostId)?.applyExternalGraph?.(document)
+    this.hosts.get(hostId)?.applyExternalGraph?.(document, options)
+    this.bumpRevision()
+  }
+
+  selectNode(hostId: string | null | undefined, nodeId: string): void {
+    if (!hostId || !nodeId.trim()) return
+    this.hosts.get(hostId)?.selectNode?.(nodeId.trim())
     this.bumpRevision()
   }
 

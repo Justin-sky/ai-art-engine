@@ -209,6 +209,8 @@ import {
 import { defaultAssetName } from '@shared/domain'
 import { exportScriptTimeline, renderTimelineFrames } from './timelineExportService'
 import {
+  isScreenRecording,
+  patchScreenRecordingHud,
   screenRecordingStatus,
   startScreenRecording,
   stepScreenRecording,
@@ -217,8 +219,17 @@ import {
 import {
   SCREEN_RECORD_LIMITS,
   type ScreenRecordCursor,
-  type ScreenRecordFocus
+  type ScreenRecordFocus,
+  type StepAlignment
 } from '@shared/screenRecord'
+import { composeTutorialVideo } from './tutorialComposeService'
+import {
+  clickTutorialUi,
+  fillTutorialUi,
+  queryGraphIsRunning,
+  queryTutorialUiBounds
+} from './tutorialUiService'
+import { TUTORIAL_POST_DBLCLICK_FOCUS_IDS, TUTORIAL_UI_ID_HINT } from '@shared/tutorialUi'
 
 /**
  * 本地 MCP 工具服务：在 127.0.0.1 上暴露一组工具端点，供 stdio MCP 桥
@@ -253,7 +264,8 @@ const GATED_TOOLS = new Set([
   'segment_model3d',
   'post_process_model3d',
   'decide',
-  'workflow_plan'
+  'workflow_plan',
+  'tutorial_compose'
 ])
 
 /**
@@ -2182,11 +2194,21 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'graph_edit',
     title: '编辑节点图',
     description:
-      '对一个已落盘的宿主资产图应用一批编辑操作（node_upsert / node_update / node_delete / edge_connect / edge_delete）。端口兼容性与类型合法性在应用内校验，未通过的操作跳过并记入 warnings。**图正在编辑器中打开时同样可用**：改动叠加在编辑器当前状态之上并即时同步到界面（因此不会覆盖用户尚未落盘的编辑），落盘完成才返回。修改立即持久化并同步应用界面。可借此搭建生成链路，如「图片节点出序列图 → 2D 帧动画（anim.2d，animGifFps > 0 时运行产出 GIF 动图）」；可建节点类型清单见 graph_node_types。也用于落 Agent 撰写的 Markdown 正文（如游戏策划案底稿）：node_update 目标 asset.gameSystem 节点、把正文写入 params.text 即可（下游 ui.split 等优先读取该参数；注意该节点自身再跑生成会重写 text）。',
+      '对一个已落盘的宿主资产图应用一批编辑操作（node_upsert / node_update / node_delete / edge_connect / edge_delete）。端口兼容性与类型合法性在应用内校验，未通过的操作跳过并记入 warnings。**图正在编辑器中打开时同样可用**：改动叠加在编辑器当前状态之上并即时同步到界面（因此不会覆盖用户尚未落盘的编辑），落盘完成才返回。修改立即持久化并同步应用界面。可借此搭建生成链路，如「图片节点出序列图 → 2D 帧动画（anim.2d，animGifFps > 0 时运行产出 GIF 动图）」；可建节点类型清单见 graph_node_types。也用于落 Agent 撰写的 Markdown 正文（如游戏策划案底稿）：node_update 目标 asset.gameSystem 节点、把正文写入 params.text 即可（下游 ui.split 等优先读取该参数；注意该节点自身再跑生成会重写 text）。' +
+      '教学录屏时请传 **openEditor: true**：先打开该资产编辑器再改图，保证 `screen_record_*` 拍到可见画布变化。' +
+      '创建 / 串联节点后**默认自动布局**（左→右分层）；仅在需要保留手动坐标时传 **autoLayout: false**。',
     inputSchema: {
       type: 'object',
       properties: {
         assetId: { type: 'string', description: '宿主资产 id' },
+        openEditor: {
+          type: 'boolean',
+          description: 'true：先打开该资产的图编辑器再应用 ops（录屏 / 教学必开）'
+        },
+        autoLayout: {
+          type: 'boolean',
+          description: '缺省：新建节点或新连线后自动布局。true 强制布局；false 保留坐标（精细摆位）'
+        },
         ops: {
           type: 'array',
           description: '编辑操作批，按顺序执行',
@@ -2195,7 +2217,14 @@ const TOOL_DEFS: McpToolDef[] = [
             properties: {
               op: {
                 type: 'string',
-                enum: ['node_upsert', 'node_update', 'node_delete', 'edge_connect', 'edge_delete']
+                enum: [
+                  'node_upsert',
+                  'node_update',
+                  'node_delete',
+                  'edge_connect',
+                  'edge_delete',
+                  'node_select'
+                ]
               },
               nodeId: { type: 'string' },
               typeId: {
@@ -2222,6 +2251,9 @@ const TOOL_DEFS: McpToolDef[] = [
     handler: async (args) => {
       assertProjectOpen()
       const assetId = readString(args, 'assetId')
+      const openEditor = args.openEditor === true
+      const autoLayout =
+        args.autoLayout === true ? true : args.autoLayout === false ? false : undefined
       const asset = projectService.listAssets().find((item) => item.id === assetId)
       const graphJson = (asset?.genParams as Record<string, unknown> | undefined)?.graphJson as
         GraphDocument | undefined
@@ -2236,10 +2268,14 @@ const TOOL_DEFS: McpToolDef[] = [
       broadcastToAllWindows(IpcChannels.MCP_GRAPH_EDIT, {
         requestId,
         assetId,
-        ops: args.ops
+        ops: args.ops,
+        ...(openEditor ? { openEditor: true } : {}),
+        ...(autoLayout !== undefined ? { autoLayout } : {})
       })
+      // openEditor 时渲染层要先挂编辑器，轮询预算放宽
+      const attempts = openEditor ? 40 : 20
       try {
-        for (let i = 0; i < 20; i++) {
+        for (let i = 0; i < attempts; i++) {
           await sleep(300)
           const report = pendingMcpGraphEditResults.get(requestId)
           if (!report) continue
@@ -3916,16 +3952,12 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'screen_record_start',
     title: '开始录制应用界面',
     description:
-      '开始录制**应用自己的窗口**，用于做教学视频的「界面操作」那段画面。录的不是整个桌面（不需要系统录屏权限），' +
-      '而是这个窗口渲染出来的内容；**画面里不会有系统鼠标指针** —— 指针与高亮由应用自己画（HUD），所以要用 screen_record_step 告诉它「现在讲哪一步」。\n' +
-      '标准教学视频流程（照着做就能出一条带旁白和字幕成片）：\n' +
-      '① 先想好分几步、每步旁白文案；\n' +
-      '② screen_record_start → 每一步先 screen_record_step(title/caption)，**然后真的用现有工具把动作做一遍**（workflow_use_installed / graph_edit / task_run / generate_sound_effect …）——画面是真实操作，不是摆拍；\n' +
-      '③ screen_record_stop 拿到 MP4 资产与每步的**权威时间戳**；\n' +
-      '④ generate_speech 出旁白，timeline_edit 把录制视频铺 video 轨、旁白铺 voice 轨（按返回的 alignment 对齐）、字幕铺 subtitle 轨；\n' +
-      '⑤ timeline_export 出成片，timeline_preview 抽帧自查，不对就回 ④ 改。\n' +
-      '**只在用户明确要求录制时才调用**（录进去的内容可能包含模型名、设置页等界面信息）。' +
-      '需要系统可用 ffmpeg，缺失时直接拒绝而不是录完才发现编不了码；帧率与时长有上限，超限会如实回报。',
+      '开始录制**应用自己的窗口**（不是桌面；无系统指针——指针/高亮由 HUD+screen_record_step 画）。\n' +
+      '**单次连续拍完**：本工具之后须在同一轮工具链里连续 step→短动作→…→screen_record_wait→screen_record_stop→tutorial_compose；' +
+      '点运行后必须 wait(graph-idle) 等到结果上屏再 screen_record_stop。**禁止**录制中调 task_run / generate_*；' +
+      '演示用 step 的 doClick/doDblClick/doContextMenu/fillText（口播=画面）。**禁止**自行反复 start/stop 连出多条废片。\n' +
+      '标准流程：空白画布 → start → 右键创建→双击改参→运行→wait→讲结果 → screen_record_stop → tutorial_compose(steps 含 narration)。\n' +
+      '加载技能 tutorial-recording。只在用户明确要求录制时调用；需可用 ffmpeg。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -3953,7 +3985,7 @@ const TOOL_DEFS: McpToolDef[] = [
         fps: result.fps,
         maxSeconds: result.maxSeconds,
         adjusted: result.adjusted ?? [],
-        hint: '每一步先 screen_record_step 再执行动作；结束时 screen_record_stop。'
+        hint: '同一轮工具链里连续：step→短动作→…→stop→tutorial_compose；勿停顿等下一轮对话，勿 task_run。'
       }
     }
   },
@@ -3961,17 +3993,47 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'screen_record_step',
     title: '推进录制步骤（标题 / 高亮 / 指针）',
     description:
-      '在录制中标记「现在讲这一步」：HUD 会显示标题与字幕、可选高亮一个区域、可选把合成指针移过去（`click: true` 触发一次点击涟漪）。' +
-      '这个时间戳是**旁白与字幕的唯一权威对齐依据**（`screen_record_stop` 会把每步的起止秒数算好给你），不要用自己估的时间。' +
-      '调用它只负责「讲」，画面里的动作仍要用真实工具执行。',
+      '在录制中标记「现在讲这一步」：HUD 显示短 **title** + 详细 **caption** 字卡（都烧进画面）、可选高亮、可选合成指针（`click: true` 涟漪）。' +
+      '教学视频每步**必须**给详细 caption（一句完整操作说明）；title 只做短标签（≤12 字）。' +
+      '口播 narration 在 `tutorial_compose.steps` 里按 index 传入（可与 caption 相同）；本工具不播音频。' +
+      '调用后**立刻**执行真实 MCP 动作；编码会把静止段封顶到约 2 秒，但仍应单次连续拍完，勿跨多轮空等。' +
+      '时间戳是旁白/字幕的权威对齐依据。' +
+      '**高亮请传 tutorialId**（如 graph-selected-node / graph-toolbar）：服务端用 `ui_bounds` 自动填 focus+cursor，勿手写坐标（易偏、易超框）。',
     inputSchema: {
       type: 'object',
       properties: {
-        title: { type: 'string', description: '这一步在讲什么（HUD 标题条 + 字幕原文）' },
-        caption: { type: 'string', description: '可选：字幕换成这句（缺省与 title 相同）' },
+        title: { type: 'string', description: 'HUD 短标题（≤12 字）' },
+        caption: {
+          type: 'string',
+          description: '详细字卡（必填推荐）：烧进画面 + 写入 alignment 作字幕；缺省与 title 相同'
+        },
+        tutorialId: {
+          type: 'string',
+          description: `优先：按 data-tutorial-id 自动取高亮框与指针（${TUTORIAL_UI_ID_HINT}）`
+        },
+        /** true：在 HUD 打点后真实点击 tutorialId（字卡说「点击生成」时必开，目标 graph-run） */
+        doClick: {
+          type: 'boolean',
+          description:
+            'true：高亮后立刻真实点击 tutorialId（说「点击运行/生成」时必须 true + tutorialId=graph-run）'
+        },
+        doDblClick: {
+          type: 'boolean',
+          description:
+            'true：双击 tutorialId（打开指令面板 / 记事本 / dive 工具 / 漫画页等专属 UI；tutorialId=graph-selected-node）'
+        },
+        doContextMenu: {
+          type: 'boolean',
+          description:
+            'true：右键 tutorialId（说「右键画布添加节点」时必须 true + tutorialId=graph-canvas）'
+        },
+        fillText: {
+          type: 'string',
+          description: '写入输入框：指令用 graph-instruction-input，记事本用 graph-notepad-input'
+        },
         focus: {
           type: 'object',
-          description: '可选：高亮框（窗口内容坐标，CSS 像素）',
+          description: '可选：高亮框（窗口内容坐标，CSS 像素）；有 tutorialId 时通常不必传',
           properties: {
             x: { type: 'number' },
             y: { type: 'number' },
@@ -3982,7 +4044,7 @@ const TOOL_DEFS: McpToolDef[] = [
         },
         cursor: {
           type: 'object',
-          description: '可选：把合成指针移到该坐标',
+          description: '可选：把合成指针移到该坐标；有 tutorialId 时默认指到中心',
           properties: {
             x: { type: 'number' },
             y: { type: 'number' },
@@ -3996,8 +4058,38 @@ const TOOL_DEFS: McpToolDef[] = [
     handler: async (args) => {
       const title = readString(args, 'title')
       const caption = optionalString(args, 'caption')
-      const focus = readFocusArg(args, 'focus')
-      const cursor = readCursorArg(args, 'cursor')
+      let focus = readFocusArg(args, 'focus')
+      let cursor = readCursorArg(args, 'cursor')
+      const tutorialId = optionalString(args, 'tutorialId')
+      const doClick = args.doClick === true
+      const doDblClick = args.doDblClick === true
+      const doContextMenu = args.doContextMenu === true
+      const fillText = optionalString(args, 'fillText')
+      const actionCount = [doClick, doDblClick, doContextMenu].filter(Boolean).length
+      if (actionCount > 1) {
+        throw new Error('doClick / doDblClick / doContextMenu 同一 step 只能选一个')
+      }
+      const wantsPointer = doClick || doDblClick || doContextMenu
+      if (tutorialId) {
+        const bounds = await queryTutorialUiBounds(tutorialId)
+        if (!bounds) {
+          throw new Error(
+            `找不到教学控件「${tutorialId}」（约定：${TUTORIAL_UI_ID_HINT}；请确认对应界面已打开）`
+          )
+        }
+        if (!focus) {
+          focus = { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height }
+        }
+        if (!cursor) {
+          cursor = {
+            x: bounds.centerX,
+            y: bounds.centerY,
+            ...(wantsPointer ? { click: true as const } : {})
+          }
+        } else if (wantsPointer && !cursor.click) {
+          cursor = { ...cursor, click: true }
+        }
+      }
       const result = stepScreenRecording({
         title,
         ...(caption ? { caption } : {}),
@@ -4005,23 +4097,168 @@ const TOOL_DEFS: McpToolDef[] = [
         ...(cursor ? { cursor } : {})
       })
       if (!result.ok) throw new Error(screenRecordReasonText(result.reasonKey ?? 'notRecording'))
-      return { ok: true, index: result.index }
+      let acted: { ok: boolean; tutorialId?: string; kind?: string } | undefined
+      if (wantsPointer && tutorialId) {
+        const kind = doDblClick ? 'dblclick' : doContextMenu ? 'contextmenu' : 'click'
+        const clickResult = await clickTutorialUi(tutorialId, { kind })
+        if (!clickResult.ok) {
+          throw new Error(
+            clickResult.reasonKey === 'notFound'
+              ? `找不到可点击控件「${tutorialId}」（说点击生成前须先 node_select 让 graph-run 出现；说双击开面板须先选中节点；说右键添加须画布已打开）`
+              : `交互「${tutorialId}」失败`
+          )
+        }
+        acted = { ok: true, tutorialId, kind }
+        // 等 Vue 渲染：右键菜单 / 指令面板 / dive 异步视图 / 运行→停止钮
+        await sleep(doDblClick ? 280 : doContextMenu ? 120 : 80)
+        if (doClick && tutorialId === 'graph-run') {
+          const next = await queryTutorialUiBounds('graph-run')
+          if (next) {
+            patchScreenRecordingHud({
+              focus: { x: next.x, y: next.y, width: next.width, height: next.height },
+              cursor: { x: next.centerX, y: next.centerY }
+            })
+          }
+        }
+        if (doDblClick) {
+          // 指令面板 / 记事本 / dive（含漫画页与节点工具浮窗）
+          let focused = false
+          for (let attempt = 0; attempt < 4 && !focused; attempt++) {
+            if (attempt > 0) await sleep(150)
+            for (const id of TUTORIAL_POST_DBLCLICK_FOCUS_IDS) {
+              const panel = await queryTutorialUiBounds(id)
+              if (!panel) continue
+              patchScreenRecordingHud({
+                focus: { x: panel.x, y: panel.y, width: panel.width, height: panel.height },
+                cursor: { x: panel.centerX, y: panel.centerY }
+              })
+              focused = true
+              break
+            }
+          }
+        }
+        if (doContextMenu) {
+          const menu = await queryTutorialUiBounds('graph-ctx-menu')
+          if (menu) {
+            patchScreenRecordingHud({
+              focus: { x: menu.x, y: menu.y, width: menu.width, height: menu.height },
+              cursor: { x: menu.centerX, y: menu.centerY }
+            })
+          }
+        }
+      }
+      let filled: { ok: boolean; tutorialId?: string } | undefined
+      if (fillText != null && tutorialId) {
+        const fillResult = await fillTutorialUi(tutorialId, fillText)
+        if (!fillResult.ok) {
+          throw new Error(
+            fillResult.reasonKey === 'notFound'
+              ? `找不到可填写控件「${tutorialId}」（先双击打开指令面板或记事本）`
+              : `填写「${tutorialId}」失败：控件内没有输入框`
+          )
+        }
+        filled = { ok: true, tutorialId }
+      }
+      return {
+        ok: true,
+        index: result.index,
+        ...(acted ? { acted } : {}),
+        ...(filled ? { filled } : {})
+      }
+    }
+  },
+  {
+    name: 'screen_record_wait',
+    title: '录制中等待画面就绪',
+    description:
+      '**必须在 screen_record_start 之后、stop 之前调用**。继续录制的同时阻塞等待条件满足：' +
+      '`until:"graph-idle"` = 工具栏不再显示停止钮（节点跑完、预览上屏）。' +
+      '点运行后**禁止立刻 stop**：先 wait 等到结果出现，再 step 高亮 graph-selected-node，最后 stop。' +
+      '静止段会被编码封顶，等待本身不会把成片拖成冻帧。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        until: {
+          type: 'string',
+          enum: ['graph-idle'],
+          description: 'graph-idle：等到图运行结束（结果上屏）'
+        },
+        timeoutMs: {
+          type: 'number',
+          description: '最长等待毫秒（默认 120000，上限 180000）'
+        },
+        title: { type: 'string', description: '可选：等待期间 HUD 短标题' },
+        caption: { type: 'string', description: '可选：等待期间字卡' }
+      },
+      required: ['until']
+    },
+    handler: async (args) => {
+      if (!isScreenRecording()) {
+        throw new Error('当前没有进行中的录制：先 screen_record_start')
+      }
+      const until = readString(args, 'until')
+      if (until !== 'graph-idle') {
+        throw new Error('until 仅支持 graph-idle')
+      }
+      const rawTimeout = optionalNumber(args, 'timeoutMs')
+      const timeoutMs = Math.max(
+        1000,
+        Math.min(typeof rawTimeout === 'number' ? rawTimeout : 120_000, 180_000)
+      )
+      const title = optionalString(args, 'title')
+      const caption = optionalString(args, 'caption')
+      if (title || caption) {
+        patchScreenRecordingHud({
+          ...(title ? { title } : {}),
+          ...(caption ? { caption } : {})
+        })
+      }
+      // 点运行后状态可能尚未翻到 playing：先等到「正在跑」或短暂宽限
+      const start = Date.now()
+      let sawRunning = await queryGraphIsRunning()
+      while (!sawRunning && Date.now() - start < 2500) {
+        await sleep(120)
+        sawRunning = await queryGraphIsRunning()
+      }
+      while (await queryGraphIsRunning()) {
+        if (Date.now() - start > timeoutMs) {
+          throw new Error(`等待图运行结束超时（>${timeoutMs}ms）：结果可能未上屏`)
+        }
+        await sleep(250)
+      }
+      // 再留一点时间给预览贴图刷新进画面
+      await sleep(400)
+      return {
+        ok: true,
+        until,
+        waitedMs: Date.now() - start,
+        sawRunning
+      }
     }
   },
   {
     name: 'screen_record_stop',
     title: '结束录制并编码成 MP4',
     description:
-      '结束录制、把帧序列编码成 MP4，并**登记为工程内的视频资产**（落在 Assets/Recordings，资产库可见）。' +
-      '返回 `relativePath` / `assetId`、实际写盘帧数与丢弃的空闲帧数，以及每步的 `alignment`（起止秒数）——' +
-      '拿它去 `timeline_edit`：视频铺 video 轨、`generate_speech` 的旁白铺 voice 轨并按 alignment 对齐、字幕铺 subtitle 轨，' +
-      '最后 `timeline_export` 出成片、`timeline_preview` 抽帧自查。' +
-      '空闲帧会被合并（画面没变就不重复写盘），所以录制时长与成片时长不必相等。',
+      '结束录制、把帧序列编码成 MP4，落盘到工程缓存目录 Cache/Videos（**不自动进资产库**，与 generate_video 同一口径，避免对话流出现重复卡）。' +
+      '返回 `relativePath`、实际写盘帧数与丢弃的空闲帧数，以及每步的 `alignment`（含 title/caption 与起止秒）——' +
+      '教学成片必须接着调 **tutorial_compose**，且 **steps 里按 index 传入 narration**（可与 caption 相同），否则成片无配音；不要手排 timeline_edit。' +
+      '空闲帧会合并，静止段在成片里**封顶约 2 秒**（墙钟更长也会被裁短）；alignment 已映到压缩时间轴。',
     inputSchema: { type: 'object', properties: {} },
     handler: async () => {
-      const result = await stopScreenRecording()
-      if (!result.ok) throw new Error(screenRecordReasonText(result.reasonKey, result.params))
-      return result
+      assertProjectOpen()
+      // 走旁路活动：对话流才能收到 relativePath 并出预览卡（含「保存到资产库」）
+      return runGenActivity(
+        'screen_record_stop',
+        '界面录制',
+        undefined,
+        async () => {
+          const result = await stopScreenRecording()
+          if (!result.ok) throw new Error(screenRecordReasonText(result.reasonKey, result.params))
+          return result
+        },
+        (r) => ({ relativePath: r.relativePath })
+      )
     }
   },
   {
@@ -4031,8 +4268,196 @@ const TOOL_DEFS: McpToolDef[] = [
       '当前是否在录制、已采样多少帧、已经标记了哪些步骤（含各自的时间戳）。开始录制前想确认有没有遗留的录制、或中途想核对步骤，都可以查它。',
     inputSchema: { type: 'object', properties: {} },
     handler: async () => screenRecordingStatus()
+  },
+  {
+    name: 'ui_bounds',
+    title: '查询教学控件位置',
+    description:
+      '按稳定 `data-tutorial-id` 查询主窗口内**可见**控件的矩形（相对窗口内容区 CSS 像素）。' +
+      '通常不必手抄坐标：`screen_record_step` 直接传 `tutorialId` 即可自动填 focus/cursor。' +
+      `可用 id：${TUTORIAL_UI_ID_HINT}（讲节点时优先 graph-selected-node）。只读，不改工程。`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tutorialId: {
+          type: 'string',
+          description: `控件 id（${TUTORIAL_UI_ID_HINT}）`
+        }
+      },
+      required: ['tutorialId']
+    },
+    handler: async (args) => {
+      const tutorialId = readString(args, 'tutorialId')
+      const bounds = await queryTutorialUiBounds(tutorialId)
+      if (!bounds) {
+        throw new Error(
+          `找不到教学控件「${tutorialId}」（约定：${TUTORIAL_UI_ID_HINT}；请确认对应界面已打开）`
+        )
+      }
+      return bounds
+    }
+  },
+  {
+    name: 'ui_click',
+    title: '点击教学控件',
+    description:
+      '在 `data-tutorial-id` 控件中心派发真实 pointer 事件。' +
+      `可用 id：${TUTORIAL_UI_ID_HINT}。教学优先用 screen_record_step 的 doClick/doDblClick/doContextMenu（会同步 HUD）；本工具作补刀。`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tutorialId: {
+          type: 'string',
+          description: `控件 id（${TUTORIAL_UI_ID_HINT}）`
+        },
+        kind: {
+          type: 'string',
+          enum: ['click', 'dblclick', 'contextmenu'],
+          description: 'click=单击；dblclick=双击开指令面板；contextmenu=右键开添加菜单'
+        }
+      },
+      required: ['tutorialId']
+    },
+    handler: async (args) => {
+      const tutorialId = readString(args, 'tutorialId')
+      const kindRaw = optionalString(args, 'kind')
+      const kind =
+        kindRaw === 'dblclick' || kindRaw === 'contextmenu' || kindRaw === 'click'
+          ? kindRaw
+          : 'click'
+      const result = await clickTutorialUi(tutorialId, { kind })
+      if (!result.ok) {
+        throw new Error(
+          result.reasonKey === 'notFound'
+            ? `找不到教学控件「${tutorialId}」（约定：${TUTORIAL_UI_ID_HINT}）`
+            : `点击教学控件「${tutorialId}」失败`
+        )
+      }
+      return result
+    }
+  },
+  {
+    name: 'tutorial_compose',
+    title: '教学视频一键合成',
+    description:
+      '把 `screen_record_stop` 的录屏 MP4 + alignment 与每步口播（narration）合成带旁白/字幕的成片：' +
+      '自动 create screenplay → 铺 video/voice/subtitle 轨 → 导出到 Cache/Videos（不自动进资产库）。' +
+      '**steps 必传**：每项含 index（对齐 alignment）+ narration（口播，可与 caption 同文）；缺 narration 的步骤会用 caption/title 兜底，但教学场景应显式给口播。' +
+      '画面里已有 title/caption 字卡；本工具再加配音与字幕轨（字幕默认用 caption/narration）。' +
+      '对话流出预览卡；入库由用户点「保存到资产库」。不要手排 timeline_edit。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        recordingRelativePath: {
+          type: 'string',
+          description: 'screen_record_stop 返回的工程内相对路径'
+        },
+        alignment: {
+          type: 'array',
+          description: 'screen_record_stop 返回的 alignment 原样传入',
+          items: { type: 'object' }
+        },
+        steps: {
+          type: 'array',
+          description:
+            '每步口播：index 对齐 alignment.index；narration 口播长句；caption 字幕（缺省=narration）；可直接给 voiceRelativePath 跳过 TTS',
+          items: {
+            type: 'object',
+            properties: {
+              index: { type: 'number' },
+              narration: { type: 'string' },
+              caption: { type: 'string' },
+              voiceRelativePath: { type: 'string' },
+              voice: { type: 'string' },
+              model: { type: 'string' },
+              providerInstanceId: { type: 'string' }
+            }
+          }
+        },
+        name: { type: 'string', description: '成片显示名' },
+        export: { type: 'boolean', description: '是否导出成片（默认 true）' },
+        targetPath: {
+          type: 'string',
+          description: '成片绝对路径（缺省写 Cache/Videos/tutorial-*.mp4）'
+        }
+      },
+      required: ['recordingRelativePath', 'alignment']
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const recordingRelativePath = readString(args, 'recordingRelativePath')
+      const alignment = readTutorialAlignment(args.alignment)
+      const steps = readTutorialComposeSteps(args.steps)
+      const name = optionalString(args, 'name')
+      const targetPath = optionalString(args, 'targetPath')
+      const doExport = args.export !== false
+      return runGenActivity(
+        'tutorial_compose',
+        name || '教学视频',
+        undefined,
+        () =>
+          composeTutorialVideo({
+            recordingRelativePath,
+            alignment,
+            ...(steps.length ? { steps } : {}),
+            ...(name ? { name } : {}),
+            export: doExport,
+            ...(targetPath ? { targetPath } : {})
+          }),
+        (r) => ({
+          relativePath: r.relativePath,
+          ...(r.relativePath ? { relativePaths: [r.relativePath] } : {})
+        })
+      )
+    }
   }
 ]
+
+function readTutorialAlignment(value: unknown): StepAlignment[] {
+  if (!Array.isArray(value) || !value.length) {
+    throw new Error('缺少 alignment：请把 screen_record_stop 返回的 alignment 原样传入')
+  }
+  return value.map((item, at) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      throw new Error(`alignment[${at}] 不是对象`)
+    }
+    const row = item as Record<string, unknown>
+    const index = Number(row.index)
+    const startSec = Number(row.startSec)
+    const endSec = Number(row.endSec)
+    if (!Number.isFinite(index) || !Number.isFinite(startSec) || !Number.isFinite(endSec)) {
+      throw new Error(`alignment[${at}] 缺少合法的 index / startSec / endSec`)
+    }
+    return {
+      index,
+      title: typeof row.title === 'string' ? row.title : '',
+      caption: typeof row.caption === 'string' ? row.caption : '',
+      startSec,
+      endSec
+    }
+  })
+}
+
+function readTutorialComposeSteps(
+  value: unknown
+): import('./tutorialComposeService').TutorialComposeStepInput[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .filter((item): item is Record<string, unknown> => !!item && typeof item === 'object')
+    .map((row) => ({
+      ...(typeof row.index === 'number' && Number.isFinite(row.index) ? { index: row.index } : {}),
+      ...(typeof row.narration === 'string' ? { narration: row.narration } : {}),
+      ...(typeof row.caption === 'string' ? { caption: row.caption } : {}),
+      ...(typeof row.voiceRelativePath === 'string'
+        ? { voiceRelativePath: row.voiceRelativePath }
+        : {}),
+      ...(typeof row.voice === 'string' ? { voice: row.voice } : {}),
+      ...(typeof row.model === 'string' ? { model: row.model } : {}),
+      ...(typeof row.providerInstanceId === 'string'
+        ? { providerInstanceId: row.providerInstanceId }
+        : {})
+    }))
+}
 
 /** 校验资产库文件夹 id 存在（不存在直接报错，避免资产落进无效目录） */
 function assertFolderExists(folderId: string | null): void {

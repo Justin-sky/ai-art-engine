@@ -200,7 +200,12 @@
       </div>
     </Teleport>
 
-    <div class="editor-area" @mousedown="onEditorMouseDown" @dblclick.stop="onEditorDblClick">
+    <div
+      class="editor-area"
+      data-tutorial-id="graph-instruction-input"
+      @mousedown="onEditorMouseDown"
+      @dblclick.stop="onEditorDblClick"
+    >
       <RefMentionTextarea
         ref="editorRef"
         class="instruction-input"

@@ -64,9 +64,9 @@ describe('图片预览弹窗旋转', () => {
     expect(resetView![0]).toContain('rotationDeg.value = 0')
     // 点空白处复位走同一个 resetView
     expect(source).toMatch(/function onBackdropClick\([\s\S]*?resetView\(\)/)
-    // 弹窗是复用的：换 url / relativePath 时把视图归零
+    // 弹窗是复用的：换 url / relativePath / mediaKind 时把视图归零
     expect(source).toMatch(
-      /watch\(\s*\(\) => \[props\.url, props\.relativePath\] as const,[\s\S]*?resetView\(\)/
+      /watch\(\s*\(\) => \[props\.url, props\.relativePath, props\.mediaKind\] as const,[\s\S]*?resetView\(\)/
     )
   })
 

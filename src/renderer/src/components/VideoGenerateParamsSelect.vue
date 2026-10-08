@@ -1,5 +1,11 @@
 <template>
-  <div v-if="visible" class="video-params" @pointerdown.stop @dblclick.stop>
+  <div
+    v-if="visible"
+    class="video-params"
+    data-tutorial-id="graph-gen-params"
+    @pointerdown.stop
+    @dblclick.stop
+  >
     <button
       ref="triggerEl"
       type="button"

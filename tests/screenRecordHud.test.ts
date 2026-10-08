@@ -114,25 +114,43 @@ describe('RecordingHud：本地走秒', () => {
 })
 
 describe('RecordingHud：步骤标题 / 高亮框 / 合成光标', () => {
-  it('标题条有 title 与（可选）caption', () => {
-    expect(HUD).toMatch(/<div v-if="title" class="hud-titlebar">/)
-    expect(HUD).toMatch(/<span v-if="caption" class="hud-caption">\{\{ caption \}\}<\/span>/)
+  it('标题条烧短 title + 详细 caption 字卡（旁白音频另在 compose 生成）', () => {
+    expect(HUD).toMatch(
+      /<div v-if="title \|\| caption" :key="captionMotionKey" class="hud-titlebar">/
+    )
+    expect(HUD).toContain('class="hud-title"')
+    expect(HUD).toContain('class="hud-caption"')
+    expect(HUD).toMatch(/caption && caption !== title/)
   })
 
-  it('高亮框按窗口内容坐标落位（CSS px）', () => {
-    expect(HUD).toMatch(/<div\s+v-if="focus"\s+class="hud-focus"/)
-    expect(HUD).toMatch(/left: `\$\{focus\.x\}px`/)
-    expect(HUD).toMatch(/width: `\$\{focus\.width\}px`/)
-    expect(HUD).toMatch(/height: `\$\{focus\.height\}px`/)
+  it('高亮框按窗口内容坐标落位（CSS px），并钳进视口', () => {
+    expect(HUD).toMatch(/<div v-if="focusBox" class="hud-focus"/)
+    expect(HUD).toContain('const focusBox = computed')
+    expect(HUD).toMatch(/Math\.min\(box\.width, vw - x\)/)
     // 高亮框要有主题色描边（不是纯装饰的透明框）
     expect(ruleBodyOf(STYLE, '.hud-focus {')).toMatch(/border:\s*\d+px solid/)
   })
 
-  it('合成光标用 transform 平滑移动（transition 挂在 ready 类上）', () => {
+  it('合成光标用手指 SVG + transform 平滑移动（transition 挂在 ready 类上）', () => {
+    expect(HUD).toContain('hud-cursor-hand')
+    expect(HUD).not.toContain('hud-cursor-arrow')
     expect(HUD).toMatch(
       /el\.style\.transform = `translate\(\$\{target\.x\}px, \$\{target\.y\}px\)`/
     )
     expect(ruleBodyOf(STYLE, '.hud-cursor-ready {')).toMatch(/transition:\s*transform/)
+  })
+
+  it('字卡不超出视频宽度（titlebar 限宽 + caption 换行）', () => {
+    const titlebar = ruleBodyOf(STYLE, '.hud-titlebar {')
+    expect(titlebar).toMatch(/max-width:\s*calc\(100vw - 48px\)/)
+    expect(ruleBodyOf(STYLE, '.hud-caption {')).toMatch(/overflow-wrap:\s*anywhere/)
+  })
+
+  it('字卡切换带上滚淡入（专业字幕动效）', () => {
+    expect(HUD).toContain('captionMotionKey')
+    expect(HUD).toMatch(/:key="captionMotionKey"/)
+    expect(ruleBodyOf(STYLE, '.hud-titlebar {')).toMatch(/animation:\s*hud-caption-roll/)
+    expect(STYLE).toContain('@keyframes hud-caption-roll')
   })
 
   it('新录制第一次定位先瞬移（不让光标从上一段录制的位置滑过来）', () => {

@@ -1,5 +1,5 @@
 <template>
-  <label class="instruction-model" :title="title">
+  <label class="instruction-model" data-tutorial-id="graph-model-select" :title="title">
     <svg
       class="model-icon"
       xmlns="http://www.w3.org/2000/svg"

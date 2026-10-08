@@ -4,6 +4,7 @@ import {
   buildAlignmentTable,
   buildImageSequenceArgs,
   fingerprintOfBitmap,
+  mapWallMsToCompressed,
   normalizeScreenRecordOptions,
   planFrameKeeps,
   planFrameSequence,
@@ -68,16 +69,17 @@ describe('空闲帧合并', () => {
     expect(last.holdMs).toBeGreaterThanOrEqual(500)
   })
 
-  it('长时间静止会被拆成多帧，不会出现「一帧撑 20 秒」', () => {
+  it('长时间静止被封顶到 maxHoldMs（真正缩短成片，不是拆段加总）', () => {
     const plan = planFrameKeeps(frames([0, 'a'], [20000, 'b']))
     const forFirst = plan.keeps.filter((k) => k.index === 0)
-    expect(forFirst.length).toBe(Math.ceil(20000 / SCREEN_RECORD_LIMITS.maxHoldMs))
-    for (const keep of forFirst) {
-      expect(keep.holdMs).toBeLessThanOrEqual(SCREEN_RECORD_LIMITS.maxHoldMs)
-    }
-    // 总时长不能被拆帧改变
-    const total = plan.keeps.reduce((sum, k) => sum + k.holdMs, 0)
-    expect(total).toBeGreaterThanOrEqual(20000)
+    expect(forFirst).toHaveLength(1)
+    expect(forFirst[0]!.holdMs).toBe(SCREEN_RECORD_LIMITS.maxHoldMs)
+    expect(forFirst[0]!.wallHoldMs).toBe(20000)
+    // 成片总时长 = 封顶后的 hold 之和，远短于墙钟 20s+
+    expect(plan.durationMs).toBeLessThanOrEqual(
+      SCREEN_RECORD_LIMITS.maxHoldMs + SCREEN_RECORD_LIMITS.maxHoldMs
+    )
+    expect(plan.durationMs).toBeLessThan(5000)
   })
 
   it('全程只有一帧也不会算错', () => {
@@ -88,7 +90,7 @@ describe('空闲帧合并', () => {
   })
 
   it('空输入不炸', () => {
-    expect(planFrameKeeps([])).toEqual({ keeps: [], droppedIdle: 0 })
+    expect(planFrameKeeps([])).toEqual({ keeps: [], droppedIdle: 0, durationMs: 0 })
   })
 })
 
@@ -148,12 +150,36 @@ describe('步骤对齐表', () => {
     { index: 1, title: '第二步', caption: '加音效节点', atMs: 5000 }
   ]
 
-  it('每步的起止秒数由时间戳算出（旁白与字幕按它对）', () => {
+  it('无 keeps 时按墙钟轴（兼容）', () => {
     const table = buildAlignmentTable(steps, 12000)
     expect(table).toEqual([
       { index: 0, title: '第一步', caption: '打开节点图', startSec: 0, endSec: 5 },
       { index: 1, title: '第二步', caption: '加音效节点', startSec: 5, endSec: 12 }
     ])
+  })
+
+  it('有 keeps 时映射到压缩轴：中间 30s 空闲不拉长口播窗', () => {
+    const plan = planFrameKeeps(frames([0, 'a'], [30000, 'b'], [31000, 'c']))
+    // a 显示封顶 2s，b 显示 1s，c 末帧 ≥0.5s
+    expect(plan.keeps[0]!.holdMs).toBe(SCREEN_RECORD_LIMITS.maxHoldMs)
+    const table = buildAlignmentTable(
+      [
+        { index: 0, title: 's0', caption: 'c0', atMs: 0 },
+        { index: 1, title: 's1', caption: 'c1', atMs: 30000 }
+      ],
+      plan.durationMs,
+      plan.keeps
+    )
+    expect(table[0]!.startSec).toBe(0)
+    expect(table[1]!.startSec).toBeCloseTo(SCREEN_RECORD_LIMITS.maxHoldMs / 1000, 3)
+    expect(table[1]!.endSec).toBeLessThan(5)
+  })
+
+  it('mapWallMsToCompressed：空闲中后段钳到段末', () => {
+    const plan = planFrameKeeps(frames([0, 'a'], [20000, 'b']))
+    expect(mapWallMsToCompressed(0, plan.keeps)).toBe(0)
+    expect(mapWallMsToCompressed(1000, plan.keeps)).toBe(1000)
+    expect(mapWallMsToCompressed(15000, plan.keeps)).toBe(SCREEN_RECORD_LIMITS.maxHoldMs)
   })
 
   it('末步给下限，免得算出零长度区间让字幕一闪而过', () => {

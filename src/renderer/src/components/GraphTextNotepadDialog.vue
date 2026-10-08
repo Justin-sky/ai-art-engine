@@ -8,6 +8,7 @@
     :min-width="480"
     :min-height="420"
     :embedded="embedded"
+    tutorial-id="graph-notepad"
     body-class="pad-none"
     @close="onClose"
   >
@@ -55,6 +56,7 @@
         ref="editorEl"
         v-model="draft"
         class="editor"
+        data-tutorial-id="graph-notepad-input"
         spellcheck="false"
         :readonly="!editable"
         :style="{ fontSize: `${fontSize}px` }"

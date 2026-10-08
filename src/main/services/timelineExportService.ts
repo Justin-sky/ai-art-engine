@@ -21,6 +21,11 @@ import { buildPreviewFramePlan } from '@shared/graph/timelinePreview'
 import { findFfmpegBin } from './videoFrameService'
 import { runFfmpeg } from './ffmpegRunner'
 import { broadcastToAllWindows } from '../broadcast'
+import {
+  buildSubtitleDrawtextMotion,
+  subtitleMaxCharsForWidth,
+  wrapSubtitleLines
+} from '@shared/subtitleWrap'
 
 // ── 时间线导出个性错误 ──
 // 渲染端 ScriptTimelineEditor 按 code === 'TIMELINE_FFMPEG_MISSING' 分支；zh 文案保留 FFmpeg 关键字
@@ -379,16 +384,32 @@ function buildFilterGraph(
   const font = findDrawtextFont()
   const fontOpt = font ? `:fontfile='${font.replace(/\\/g, '/').replace(/:/g, '\\:')}'` : ''
 
+  const maxChars = subtitleMaxCharsForWidth(width, subtitleFontSize)
+  const lineHeight = Math.max(subtitleFontSize + 4, Math.round(subtitleFontSize * 1.28))
+  const risePx = Math.max(12, Math.round(subtitleFontSize * 0.55))
   for (const [i, sub] of subs.entries()) {
-    const text = escapeDrawtext((sub.text || sub.title).trim())
-    if (!text) continue
+    const raw = (sub.text || sub.title).trim()
+    if (!raw) continue
+    const lines = wrapSubtitleLines(raw, maxChars)
+    if (!lines.length) continue
     const start = Math.max(0, sub.startSec)
     const end = start + Math.max(0.05, sub.durationSec)
-    const next = `sub${i}`
-    filterParts.push(
-      `[${lastVideo}]drawtext=text='${text}'${fontOpt}:fontsize=${subtitleFontSize}:fontcolor=${subtitleColor}:borderw=2:bordercolor=black:x=(w-text_w)/2:y=h-${subtitleYOffset}:enable='between(t\\,${start.toFixed(3)}\\,${end.toFixed(3)})'[${next}]`
-    )
-    lastVideo = next
+    // 多行自下而上叠 + 淡入上滚 / 淡出（成片字幕动效）
+    for (let li = 0; li < lines.length; li++) {
+      const text = escapeDrawtext(lines[li]!)
+      const fromBottom = subtitleYOffset + (lines.length - 1 - li) * lineHeight
+      const motion = buildSubtitleDrawtextMotion({
+        startSec: start,
+        endSec: end,
+        fromBottom,
+        risePx
+      })
+      const next = `sub${i}l${li}`
+      filterParts.push(
+        `[${lastVideo}]drawtext=text='${text}'${fontOpt}:fontsize=${subtitleFontSize}:fontcolor=${subtitleColor}:borderw=2:bordercolor=black:x=(w-text_w)/2:${motion.y}:${motion.alpha}:${motion.enable}[${next}]`
+      )
+      lastVideo = next
+    }
   }
 
   if (watermark) {

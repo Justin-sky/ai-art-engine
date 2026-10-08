@@ -90,7 +90,7 @@ describe('chatPreviewAssetType：徽标用资产类型', () => {
   it('图片 / 视频 / 声音 / 模型各自映射', () => {
     expect(chatPreviewAssetType('Assets/a.png')).toBe('image')
     expect(chatPreviewAssetType('Cache/Videos/a.mp4')).toBe('video')
-    expect(chatPreviewAssetType('Cache/Voices/a.mp3')).toBe('audio')
+    expect(chatPreviewAssetType('Cache/Voices/a.mp3')).toBe('voice')
     expect(chatPreviewAssetType('Cache/Models/a.glb')).toBe('model')
     expect(chatPreviewAssetType('Cache/Models/a.fbx')).toBe('model')
   })
@@ -120,7 +120,7 @@ describe('徽标接线与文案', () => {
   it('组件渲染徽标，且文案走 assetTypeLabel（不硬编码中文）', () => {
     expect(SRC).toContain('chatPreviewAssetType(props.relativePath)')
     expect(SRC).toContain('assetTypeLabel(assetType)')
-    expect(SRC).toMatch(/v-if="typeBadge" class="chat-asset-type"/)
+    expect(SRC).toMatch(/v-if="typeBadge && kind !== 'audio'" class="chat-asset-type"/)
   })
 
   it('徽标压在预览左上角（容器需是定位上下文）', () => {

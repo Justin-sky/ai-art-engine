@@ -15,8 +15,8 @@
         :value="textContent"
         @click.stop
       />
-      <p v-else-if="!resolvedUrl" class="empty">
-        {{ emptyText }}
+      <p v-else-if="mediaError || !resolvedUrl" class="empty">
+        {{ mediaError ? mediaErrorText : emptyText }}
       </p>
       <img
         v-else-if="mediaKind === 'image'"
@@ -37,10 +37,20 @@
         :src="resolvedUrl"
         class="av-player"
         controls
-        autoplay
+        playsinline
+        preload="metadata"
+        @error="onMediaError"
         @click.stop
       />
-      <audio v-else :src="resolvedUrl" class="av-player audio" controls autoplay @click.stop />
+      <audio
+        v-else
+        :src="resolvedUrl"
+        class="av-player audio"
+        controls
+        preload="metadata"
+        @error="onMediaError"
+        @click.stop
+      />
     </div>
 
     <!--
@@ -97,6 +107,7 @@ const props = defineProps<{
 const { t } = useStudioI18n()
 const rootEl = ref<HTMLElement | null>(null)
 const resolvedUrl = ref('')
+const mediaError = ref(false)
 const scale = ref(1)
 const offsetX = ref(0)
 const offsetY = ref(0)
@@ -107,7 +118,9 @@ let didPan = false
 let panPointerId: number | null = null
 let panStart = { x: 0, y: 0, ox: 0, oy: 0 }
 
-const isImageReady = computed(() => props.mediaKind === 'image' && !!resolvedUrl.value)
+const isImageReady = computed(
+  () => props.mediaKind === 'image' && !!resolvedUrl.value && !mediaError.value
+)
 const rotationLabel = computed(() => `${Math.round(rotationDeg.value)}°`)
 
 const imageStyle = computed(() => ({
@@ -123,12 +136,26 @@ const emptyText = computed(() => {
   return t('director.stage.shotPreviewEmpty')
 })
 
+const mediaErrorText = computed(() => {
+  if (props.mediaKind === 'audio') return t('graph.preview.audioError')
+  if (props.mediaKind === 'video') return t('graph.preview.videoError')
+  return emptyText.value
+})
+
+function onMediaError(): void {
+  // 切 src / 清空时浏览器也会抛 error，勿把空态标成「编码不受支持」
+  if (!resolvedUrl.value) return
+  mediaError.value = true
+}
+
 async function resolveUrl(): Promise<void> {
+  mediaError.value = false
   const relativePath = props.relativePath?.trim()
   if (relativePath) {
     try {
       const url = await window.studio.getAssetFileUrl(relativePath)
       if (url) {
+        // 相对路径字符串不能当 <video src>；IPC 失败时宁可空态也不塞假 URL
         resolvedUrl.value = url
         return
       }
@@ -136,11 +163,16 @@ async function resolveUrl(): Promise<void> {
       /* fall through */
     }
   }
-  resolvedUrl.value = props.url?.trim() || ''
+  const fallback = props.url?.trim() || ''
+  // studio-media / http(s) / data / blob / file 才可播；裸相对路径放弃
+  resolvedUrl.value =
+    /^(studio-media:|https?:|data:|blob:|file:)/i.test(fallback) || fallback.startsWith('/')
+      ? fallback
+      : ''
 }
 
 watch(
-  () => [props.url, props.relativePath] as const,
+  () => [props.url, props.relativePath, props.mediaKind] as const,
   () => {
     // 换图不继承上一张的缩放 / 平移 / 旋转：弹窗是复用的，转过的角度会让人以为图本身是歪的
     resetView()

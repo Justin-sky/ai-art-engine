@@ -58,5 +58,7 @@ export function chatPreviewAssetType(relativePath: string): string | null {
   const kind = chatPreviewKind(relativePath)
   if (kind === 'file') return null
   if (kind === 'model' && isSplatPreviewPath(relativePath)) return 'splat'
+  // 预览 kind 叫 audio，资产域类型是 voice（i18n：asset.type.voice =「声音」）
+  if (kind === 'audio') return 'voice'
   return kind
 }

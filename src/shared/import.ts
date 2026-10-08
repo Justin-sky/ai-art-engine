@@ -25,8 +25,10 @@ const LAYERED_SOURCE_IMAGE_EXT = new Set(['.psd'])
  * SVG 退化的原因是根本没解出画面。
  */
 const VECTOR_IMAGE_EXT = new Set(['.svg'])
-const VIDEO_EXT = new Set(['.mp4', '.mov', '.webm'])
-const AUDIO_EXT = new Set(['.mp3', '.wav', '.ogg', '.m4a'])
+// 与 mediaFileExtensions.VIDEO_FILE_EXTENSIONS 对齐；漏扩展名会让 getAssetFileUrl
+// 退回 file://，CSP 下预览弹窗里的 <video> 直接播不了
+const VIDEO_EXT = new Set(['.mp4', '.mov', '.webm', '.mkv', '.m4v'])
+const AUDIO_EXT = new Set(['.mp3', '.wav', '.ogg', '.m4a', '.aac', '.flac'])
 // .ply / .spz：高斯泼溅（Gaussian Splatting）。导演台用 Spark 渲染，按模型资产口径登记
 const MODEL_EXT = new Set(['.glb', '.gltf', '.fbx', '.ply', '.spz'])
 /** 剧本文本文件：导入为 screenplay 引用资产 */
@@ -44,10 +46,14 @@ export const IMPORTABLE_EXTENSIONS = [
   'mp4',
   'mov',
   'webm',
+  'mkv',
+  'm4v',
   'mp3',
   'wav',
   'ogg',
   'm4a',
+  'aac',
+  'flac',
   'glb',
   'gltf',
   'fbx',

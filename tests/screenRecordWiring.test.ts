@@ -7,7 +7,7 @@ import { toolAccessOf } from '../src/shared/mcpModeAccess'
  * 界面录制的接线守卫。
  *
  * 这一层没有 jsdom / 没有 Electron，组件与真实录制都跑不起来，所以盯的是**接线本身**：
- * 通道三处是否齐全、工具是否登记、录制的关键动作（抓帧 / 编码 / 登记资产 / 清临时目录）
+ * 通道三处是否齐全、工具是否登记、录制的关键动作（抓帧 / 编码 / 落 Cache / 清临时目录）
  * 是否都在，以及两件**安全相关**的事：录制只能被显式触发（绝不自启），
  * 且带副作用的三个工具必须是 write 级（Plan 首轮不可用、Ask 完全不可见）。
  */
@@ -67,6 +67,7 @@ describe('界面录制：MCP 工具与访问等级', () => {
     for (const name of [
       'screen_record_start',
       'screen_record_step',
+      'screen_record_wait',
       'screen_record_stop',
       'screen_record_status'
     ]) {
@@ -81,12 +82,25 @@ describe('界面录制：MCP 工具与访问等级', () => {
 
   it('start 的工具描述写明了「只录制应用窗口」与「仅在用户明确要求时调用」', () => {
     const at = MCP.indexOf("name: 'screen_record_start'")
-    const block = MCP.slice(at, at + 2600)
+    const block = MCP.slice(at, at + 2800)
     expect(block).toContain('应用自己的窗口')
-    expect(block).toContain('只在用户明确要求录制时才调用')
+    expect(block).toContain('只在用户明确要求录制时调用')
     // 要告诉 Agent 完整链路，否则「一句话出教学视频」靠它自己猜
     expect(block).toContain('screen_record_stop')
-    expect(block).toContain('timeline_edit')
+    expect(block).toContain('tutorial_compose')
+  })
+
+  it('stop 落 Cache、不自动进资产库，并走旁路活动出对话预览卡', () => {
+    const at = MCP.indexOf("name: 'screen_record_stop'")
+    const block = MCP.slice(at, at + 1800)
+    expect(block).toContain('Cache/Videos')
+    expect(block).toContain('不自动进资产库')
+    expect(block).toContain('保存到资产库')
+    expect(block).not.toContain('Assets/Recordings')
+    // 对话预览卡的唯一来源：runGenActivity + McpActivityTool
+    expect(block).toContain('runGenActivity(')
+    expect(block).toContain("'screen_record_stop'")
+    expect(IPC).toContain("| 'screen_record_stop'")
   })
 })
 
@@ -119,20 +133,22 @@ describe('界面录制：服务侧的硬性动作', () => {
     return SERVICE.slice(at)
   }
 
-  it('抓帧、编码、登记资产、清临时目录都在', () => {
+  it('抓帧、编码、落 Cache、清临时目录都在，且不直写 Assets / 不广播入库', () => {
     expect(SERVICE).toContain('capturePage(')
     expect(SERVICE).toContain('fingerprintOfBitmap(')
     expect(SERVICE).toContain('runFfmpeg(')
     expect(SERVICE).toContain('buildImageSequenceArgs(')
-    // 登记资产要**真的是那句赋值调用**：包一层假对象也能让「字符串存在」通过
+    // 落盘要**真的是那句赋值调用**：包一层假对象也能让「字符串存在」通过
     expect(SERVICE).toMatch(
-      /const asset = projectService\.attachExternalGeneratedFile\(\{\s*type: 'video'/
+      /const saved = projectService\.attachExternalGeneratedFile\(\{\s*type: 'video'/
     )
+    // 不传 outputDir → 默认 Cache/Videos；禁止再写死 Assets/Recordings
+    expect(SERVICE).not.toContain('Assets/Recordings')
+    expect(SERVICE).not.toMatch(/outputDir:\s*RECORDING_OUTPUT_DIR/)
     const stopBody = fnBody('stopScreenRecording')
     expect(stopBody, '停止路径必须清临时帧目录').toMatch(/rmSync\(recording\.workDir/)
-    expect(stopBody, '登记完要广播给界面，否则资产库不刷新').toContain(
-      'broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)'
-    )
+    // 缓存落盘不是库内资产：广播 ASSET_UPDATED 会让资产库刷出幽灵项
+    expect(stopBody).not.toContain('ASSET_UPDATED')
   })
 
   it('重复帧用硬链接（失败退回复制），不靠平白复制撑大磁盘', () => {

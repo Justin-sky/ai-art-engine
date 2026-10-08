@@ -14,8 +14,8 @@
  * 对话驱动的录制里，模型与工具调用之间常停顿十几秒；按 10fps 硬录 3 分钟 = 1800 张 PNG
  * （数百 MB），而且成片里大半是静止画面。这里的做法是：
  * 逐帧算**指纹**（`fingerprintOfBitmap`），只有画面真的变了才写盘；每帧显示多久由
- * `planFrameKeeps` 按时间戳算出，编码用 concat + `-vsync vfr`（不是定帧率重采样，
- * 否则丢掉的帧会被又补回来）。
+ * `planFrameKeeps` 按时间戳算出，并把超过 `maxHoldMs` 的静止段**封顶**（真正缩短成片，
+ * 不是拆帧加总）。展开为 CFR 图序后用 image2 编码。
  */
 import { copyFileSync, linkSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -43,9 +43,6 @@ import { findFfmpegBin } from './videoFrameService'
 import { isFfmpegInstalling } from './ffmpegInstallService'
 import { runFfmpeg } from './ffmpegRunner'
 import { projectService } from './projectService'
-
-/** 录制产物落在资产库目录（而不是 Cache）：教学视频是**交付物**，用户要能在资产库里找到它 */
-const RECORDING_OUTPUT_DIR = 'Assets/Recordings'
 
 /** 一帧采样结果：指纹用于判重，`file` 只在**首次出现该画面**时写盘 */
 interface SampledFrame extends CapturedFrame {
@@ -225,6 +222,29 @@ export function stepScreenRecording(input: ScreenRecordStepInput): StepScreenRec
   return { ok: true, index: mark.index }
 }
 
+/**
+ * 不新增步骤，只刷新当前 HUD 的 focus/cursor（点运行后按钮换成停止、布局位移时用）。
+ */
+export function patchScreenRecordingHud(input: {
+  focus?: ScreenRecordStepInput['focus']
+  cursor?: ScreenRecordStepInput['cursor']
+  title?: string
+  caption?: string
+}): { ok: boolean; reasonKey?: string } {
+  if (!active) return { ok: false, reasonKey: 'notRecording' }
+  const last = active.steps[active.steps.length - 1]
+  pushHud(
+    hudStateOf(active, {
+      ...(last ? { stepIndex: last.index, title: last.title, caption: last.caption } : {}),
+      ...(input.title ? { title: input.title } : {}),
+      ...(input.caption ? { caption: input.caption } : {}),
+      ...(input.focus ? { focus: input.focus } : {}),
+      ...(input.cursor ? { cursor: input.cursor } : {})
+    })
+  )
+  return { ok: true }
+}
+
 export function screenRecordingStatus(): {
   recording: boolean
   startedAtMs?: number
@@ -256,11 +276,23 @@ export async function stopScreenRecording(): Promise<ScreenRecordStopResult> {
     }
 
     const plan = planFrameKeeps(recording.frames)
-    const kept = plan.keeps.filter((keep) => recording.frames[keep.index]?.file)
-    if (!kept.length) {
+    const withFile = plan.keeps.filter((keep) => recording.frames[keep.index]?.file)
+    if (!withFile.length) {
       pushHud({ recording: false })
       return { ok: false, reasonKey: 'emptyRecording' }
     }
+    // 缺文件的关键帧跳过后再压一次时间轴，保证编码与 alignment 同源
+    let packedAt = 0
+    const firstWall = recording.frames[0]!.atMs
+    const packed = withFile.map((keep) => {
+      const row = {
+        ...keep,
+        atMs: packedAt,
+        wallAtMs: Math.max(0, keep.wallAtMs - firstWall)
+      }
+      packedAt += keep.holdMs
+      return row
+    })
 
     /**
      * 把停留时长展开成重复帧（CFR 输入）。
@@ -271,7 +303,7 @@ export async function stopScreenRecording(): Promise<ScreenRecordStopResult> {
      */
     const seqDir = join(recording.workDir, 'seq')
     mkdirSync(seqDir, { recursive: true })
-    const order = planFrameSequence(kept, recording.options.fps)
+    const order = planFrameSequence(packed, recording.options.fps)
     order.forEach((sourceIndex, i) => {
       const source = recording.frames[sourceIndex]!.file!
       const dest = join(seqDir, `f-${String(i + 1).padStart(4, '0')}.png`)
@@ -294,17 +326,19 @@ export async function stopScreenRecording(): Promise<ScreenRecordStopResult> {
 
     // 成片时长以**实际帧数**为准（CFR）：这与展开出来的帧序列严格一致
     const durationSec = Number((order.length / recording.options.fps).toFixed(3))
-    const totalMs = recording.frames[recording.frames.length - 1]!.atMs
-    const firstMs = recording.frames[0]!.atMs
+    const stepsForAlign = recording.steps.map((step) => ({
+      ...step,
+      atMs: Math.max(0, step.atMs - firstWall)
+    }))
 
-    const asset = projectService.attachExternalGeneratedFile({
+    // 与对话 generate_video 同一口径：落 Cache/Videos，不自动进资产库。
+    // 对话流靠 relativePath 出预览卡；用户点「保存到资产库」再入库，避免资产库与对话卡重复。
+    const saved = projectService.attachExternalGeneratedFile({
       type: 'video',
       sourceFilePath: outPath,
-      // 资产名是**文件与资产库里的标识**，不进界面文案表；用时间戳保证可区分
-      name: `recording-${new Date(recording.startedAtMs).toISOString().slice(0, 19).replace(/[:T]/g, '')}`,
-      outputDir: RECORDING_OUTPUT_DIR
+      // 文件名标识用时间戳保证可区分；不进界面文案表
+      name: `recording-${new Date(recording.startedAtMs).toISOString().slice(0, 19).replace(/[:T]/g, '')}`
     })
-    broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
 
     const warnings: string[] = []
     if (recording.autoStopReason === 'maxSeconds') warnings.push('autoStoppedMaxSeconds')
@@ -313,14 +347,13 @@ export async function stopScreenRecording(): Promise<ScreenRecordStopResult> {
     pushHud({ recording: false })
     return {
       ok: true,
-      relativePath: asset.relativePath,
-      assetId: asset.id,
+      relativePath: saved.relativePath,
       durationSec,
       // 写盘的 PNG 数（空闲帧合并之后的唯一画面数），不是 concat 条目数
       frames: sampled.length,
       droppedIdle: plan.droppedIdle,
       steps: [...recording.steps],
-      alignment: buildAlignmentTable(recording.steps, totalMs - firstMs),
+      alignment: buildAlignmentTable(stepsForAlign, packedAt, packed),
       warnings
     }
   } catch (err) {

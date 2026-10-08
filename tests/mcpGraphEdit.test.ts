@@ -44,7 +44,8 @@ describe('applyGraphEditOps（MCP 图编辑）', () => {
     ]
     const result = applyGraphEditOps(graph, ops)
     expect(result.warnings).toEqual([])
-    expect(result.applied).toHaveLength(2)
+    expect(result.applied.filter((item) => item !== '自动布局')).toHaveLength(2)
+    expect(result.applied).toContain('自动布局')
     const node = result.graph.nodes.find((item) => item.id === 'voice-1')
     expect(node?.title).toBe('口播配音')
     expect((node?.params as Record<string, unknown>).generateInstruction).toBe('亲切清晰的口播')
@@ -73,7 +74,7 @@ describe('applyGraphEditOps（MCP 图编辑）', () => {
       { op: 'node_upsert', nodeId: 'note-1', typeId: 'note.text', title: '备注' },
       { op: 'edge_connect', fromNodeId: imgId, toNodeId: 'note-1' }
     ])
-    expect(result.applied).toHaveLength(1)
+    expect(result.applied.filter((item) => item !== '自动布局')).toHaveLength(1)
     expect(result.warnings.some((warning) => warning.includes('连线不兼容'))).toBe(true)
   })
 
@@ -142,7 +143,8 @@ describe('MCP_GRAPH_EDIT_SCOPE（清单工具与 graph_edit 同源）', () => {
       typeId: def.typeId
     }))
     const result = applyGraphEditOps(graph, ops)
-    expect(result.applied).toHaveLength(addable.length)
+    expect(result.applied.filter((item) => item !== '自动布局')).toHaveLength(addable.length)
+    expect(result.applied).toContain('自动布局')
     expect(result.warnings).toEqual([])
   })
 
@@ -153,6 +155,76 @@ describe('MCP_GRAPH_EDIT_SCOPE（清单工具与 graph_edit 同源）', () => {
     const result = applyGraphEditOps(graph, [{ op: 'node_upsert', typeId: 'output.video' }])
     expect(result.applied).toEqual([])
     expect(result.warnings.some((warning) => warning.includes('不可添加'))).toBe(true)
+  })
+
+  it('autoLayout:true 时按连线拓扑拉开节点（不叠在原点）', () => {
+    const { graph } = buildSampleGraph()
+    // 故意把节点堆到同一点，模拟 MCP 建节点未给坐标
+    for (const node of graph.nodes) {
+      node.position = { x: 0, y: 0 }
+    }
+    const result = applyGraphEditOps(graph, [], { autoLayout: true })
+    expect(result.applied).toContain('自动布局')
+    const xs = new Set(result.graph.nodes.map((node) => node.position.x))
+    expect(xs.size).toBeGreaterThan(1)
+  })
+
+  it('新建节点时默认自动布局（无需显式 autoLayout）', () => {
+    const { graph } = buildSampleGraph()
+    for (const node of graph.nodes) {
+      node.position = { x: 0, y: 0 }
+    }
+    const result = applyGraphEditOps(graph, [
+      { op: 'node_upsert', nodeId: 'voice-layout', typeId: 'asset.voice', title: '配音' }
+    ])
+    expect(result.applied).toContain('自动布局')
+    const positions = result.graph.nodes.map((node) => `${node.position.x},${node.position.y}`)
+    expect(new Set(positions).size).toBe(result.graph.nodes.length)
+  })
+
+  it('autoLayout:false 时新建节点仍可叠在原点', () => {
+    const { graph } = buildSampleGraph()
+    for (const node of graph.nodes) {
+      node.position = { x: 0, y: 0 }
+    }
+    const result = applyGraphEditOps(
+      graph,
+      [{ op: 'node_upsert', nodeId: 'voice-no-layout', typeId: 'asset.voice', title: '配音' }],
+      { autoLayout: false }
+    )
+    expect(result.applied).not.toContain('自动布局')
+    const created = result.graph.nodes.find((node) => node.id === 'voice-no-layout')
+    expect(created?.position).toEqual({ x: 0, y: 0 })
+  })
+
+  it('仅 node_update 时不触发默认自动布局', () => {
+    const { graph, byTitle } = buildSampleGraph()
+    const imgId = byTitle.get('分镜图')!
+    const before = graph.nodes.map((node) => ({
+      id: node.id,
+      x: node.position.x,
+      y: node.position.y
+    }))
+    const result = applyGraphEditOps(graph, [
+      { op: 'node_update', nodeId: imgId, title: '分镜图改名' }
+    ])
+    expect(result.applied).not.toContain('自动布局')
+    for (const prev of before) {
+      const node = result.graph.nodes.find((item) => item.id === prev.id)!
+      expect(node.position.x).toBe(prev.x)
+      expect(node.position.y).toBe(prev.y)
+    }
+  })
+
+  it('node_select 记录选中且不改图结构', () => {
+    const { graph, byTitle } = buildSampleGraph()
+    const imgId = byTitle.get('分镜图')!
+    const beforeLen = graph.nodes.length
+    const result = applyGraphEditOps(graph, [{ op: 'node_select', nodeId: imgId }])
+    expect(result.applied).toContain(`选中节点 ${imgId}`)
+    expect(result.selectNodeIds).toEqual([imgId])
+    expect(result.graph.nodes).toHaveLength(beforeLen)
+    expect(result.applied).not.toContain('自动布局')
   })
 })
 

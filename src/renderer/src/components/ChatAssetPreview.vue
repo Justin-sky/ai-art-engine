@@ -110,8 +110,11 @@ async function onImageClick(): Promise<void> {
 
 <template>
   <div class="chat-asset-preview">
-    <!-- 左上角类型徽标：产物卡只看画面时不容易分清拿到的是网格、泼溅还是图，标一下省一次点开 -->
-    <span v-if="typeBadge" class="chat-asset-type">{{ typeBadge }}</span>
+    <!--
+      左上角类型徽标：产物卡只看画面时不容易分清拿到的是网格、泼溅还是图。
+      声音走原生 <audio controls>，条很矮，叠徽标会挡住播放键 —— 声音控件本身已够辨认，不贴徽标。
+    -->
+    <span v-if="typeBadge && kind !== 'audio'" class="chat-asset-type">{{ typeBadge }}</span>
     <template v-if="kind === 'image'">
       <img
         v-if="fileUrl"
