@@ -327,7 +327,11 @@ export function planFrameSequence(keeps: PlannedFrameKeep[], fps: number): numbe
  * **`-vf` 取偶不能省**：录制尺寸直接来自 `getContentSize()`，用户随便拖一下窗口就可能拿到奇数宽/高
  * （1101×701 这种），而 libx264 + yuv420p **直接拒绝奇数尺寸** —— 实测 `width not divisible by 2`
  * 会让整段录制在最后一步作废，用户录完才发现。这里统一缩到偶数：偶数尺寸是恒等变换，
- * 奇数尺寸只裁掉 1 px；顺带把「录制中窗口被拖动、帧尺寸不一致」的序列也归一化。
+ * 奇数尺寸只裁掉 1 px。
+ *
+ * 注意它**只保证「偶」不保证「一致」**：`trunc(iw/2)*2` 对两个不同的偶数尺寸仍是各自原样，
+ * 所以录制中途拖动窗口导致的尺寸变化不是靠这里抹平的 —— 服务侧用开始时固定下来的 rect 抓帧
+ * （`capturePage({x:0,y:0,width,height})`）来保证同尺寸，这里只兜住「奇数」这一类。
  */
 export function buildImageSequenceArgs(input: {
   seqPatternPath: string
