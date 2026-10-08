@@ -865,6 +865,7 @@ export default {
   screenRecord: {
     hud: {
       recording: 'Recording',
+      encoding: 'Encoding {percent}%',
       step: 'Step {index}',
       frames: '{count} frames captured'
     }

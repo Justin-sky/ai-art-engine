@@ -1,20 +1,30 @@
 <template>
   <!--
-    录制 HUD 只在录制期间存在：`v-if` 挂在根上，未录制时连一个空 `div` 都不留在 DOM 里
-    （全屏 `pointer-events: none` 层虽然不挡点击，但留在无头截屏里会让画面指纹多一次「变化」）。
+    录制 HUD 在「录制中**或**编码中」存在：`v-if` 挂在根上，两者都不是时连一个空 `div` 都不留在
+    DOM 里（全屏 `pointer-events: none` 层虽然不挡点击，但留在无头截屏里会让画面指纹多一次「变化」）。
+
+    不能再写成 `v-if="recording"`：主进程在**编码开始时**就推 `recording: false`（编码还要几十秒），
+    只按 recording 判可见会让徽标在编码期间整段消失 —— 用户看不到「还在收尾」，反而更慌。
   -->
-  <div
-    v-if="recording"
-    class="recording-hud"
-    :aria-label="t('screenRecord.hud.recording')"
-    role="status"
-  >
-    <div class="hud-badge">
+  <div v-if="visible" class="recording-hud" :aria-label="hudAriaLabel" role="status">
+    <!--
+      录制徽标与编码徽标互斥：`recording` 在编码开始那一刻就是 false 了，此时若继续挂 `hud-badge`
+      就会一直写着「● 录制中」并继续走秒 —— 那是对用户撒谎（也是这次要修掉的 bug）。
+      编码阶段画面本身「静止」：秒表已经不再变化，重复帧会被空闲合并压掉，所以不会给成片添时长。
+    -->
+    <div v-if="phase === 'recording'" class="hud-badge">
       <span class="hud-dot" aria-hidden="true">●</span>
       <span class="hud-label">{{ t('screenRecord.hud.recording') }}</span>
       <span class="hud-clock">{{ elapsedLabel }}</span>
       <span v-if="framesLabel" class="hud-frames" :aria-label="framesLabel" />
       <span v-if="stepLabel" class="hud-step">{{ stepLabel }}</span>
+    </div>
+
+    <div v-else class="hud-badge hud-badge-encoding">
+      <span class="hud-encode-icon" aria-hidden="true">⟳</span>
+      <span class="hud-label hud-encode-label">
+        {{ t('screenRecord.hud.encoding', { percent: progressPercent }) }}
+      </span>
     </div>
 
     <!-- title=短标题；caption=详细字卡（烧进画面）。旁白音频另在 tutorial_compose 生成，不在此播。 -->
@@ -58,6 +68,13 @@ import type {
 const { t } = useI18n()
 
 const recording = ref(false)
+/**
+ * 当前阶段。主进程在编码开始时把 `recording` 推成 false 并同时给 `phase: 'encoding'`，
+ * 结束时只推 `{ recording: false }`（没有 phase）—— 所以「没有 recording 也没有 phase」
+ * 就是编码结束、HUD 该消失。缺省按 `recording` 归一，兼容编码阶段之前的老推送形状。
+ */
+const phase = ref<'recording' | 'encoding' | null>(null)
+const progress = ref(0)
 const startedAtMs = ref<number | undefined>(undefined)
 const stepIndex = ref<number | undefined>(undefined)
 const title = ref('')
@@ -84,6 +101,31 @@ let rippleTimer: number | null = null
  * 新的一步（或新坐标）一定重新触发。
  */
 let lastClickSignature = ''
+
+/**
+ * 可见性 = 录制中**或**编码中。
+ *
+ * 编码期间 `recording` 已经是 false（主进程在编码一开始就推了），这里必须再认 `phase`：
+ * 只认 recording 会让整个编码阶段没有 HUD；只认「有任意推送」的话，编码收尾那次
+ * `{ recording: false }` 又会让它一直亮着。
+ */
+const visible = computed(() => recording.value || phase.value === 'encoding')
+
+/**
+ * 进度百分比：主进程按 0~1 推，但它是走 IPC 的数字，不保证不越界；
+ * 这里夹紧并取整，只为把画面上那串数字钉在 0~100。
+ */
+const progressPercent = computed(() => {
+  const clamped = Math.min(1, Math.max(0, progress.value))
+  return Math.round(clamped * 100)
+})
+
+/** 编码中徽标的读屏文案（与画面上看到的同一句话，含百分比） */
+const hudAriaLabel = computed(() =>
+  phase.value === 'encoding'
+    ? t('screenRecord.hud.encoding', { percent: progressPercent.value })
+    : t('screenRecord.hud.recording')
+)
 
 const elapsedLabel = computed(() => {
   const total = Math.max(0, Math.floor(elapsedMs.value / 1000))
@@ -145,16 +187,25 @@ function tickClock(): void {
  * 主进程只在状态变化时推一次 `startedAtMs`（不每帧推时间：那会让每次推送都算一次状态变化，
  * 空闲帧合并直接失效）。所以已录时长只能在这里自己算 —— 没在录制时把定时器清掉，
  * 否则录制结束后它还会一直空转（这个组件在录制期间外也挂载着）。
+ *
+ * **编码阶段必须停表**：`tickClock` 是按 `Date.now() - startedAtMs` 重算的，编码要几十秒，
+ * 表一直走就会把这段编码时间也算进「已录时长」——用户看到的是他没录过的时间。
+ * 停表后不再重算读数；也因为定时器被清掉，新录制开始时 `restartClock()` 一定会重新起表
+ * （下面那个提前 return 是唯一开表条件，没起表时也不会留悬挂定时器）。
  */
 function restartClock(): void {
   stopClock()
-  if (!recording.value) return
+  // 编码中 / 已结束：不起表。此处提前 return 而不是让 tickClock 自己判，是为了不留定时器
+  if (!recording.value || phase.value !== 'recording') return
   tickClock()
   clockTimer = window.setInterval(tickClock, 1000)
 }
 
 function onHudState(state: ScreenRecordHudState): void {
   recording.value = state.recording === true
+  // 缺省（老推送形状）按 recording 归一，这样 `phase !== 'recording'` 的停表条件不会误伤正常录制
+  phase.value = state.phase ?? (state.recording === true ? 'recording' : null)
+  progress.value = typeof state.progress === 'number' ? state.progress : 0
   startedAtMs.value = typeof state.startedAtMs === 'number' ? state.startedAtMs : undefined
   stepIndex.value = typeof state.stepIndex === 'number' ? state.stepIndex : undefined
   title.value = state.title ?? ''
@@ -328,6 +379,42 @@ onUnmounted(() => {
   font-size: 13px;
   /* 只做呼吸，不做模糊光晕（模糊在视频里等于一条灰边） */
   animation: hud-blink 1.6s ease-in-out infinite;
+}
+
+/*
+  编码徽标：与录制徽标同一枚深色实底胶囊（同样的可读性理由），但不再有红点呼吸 ——
+  旋转的箭头是「在干活」，红点留给「正在录」。基类已经给了背景/描边/字色，这里只覆盖差别。
+*/
+.hud-badge-encoding {
+  background: rgba(12, 14, 18, 0.92);
+}
+
+/*
+  编码图标：`⟳` 字形本身没有旋转，靠 animation 转起来。
+  `transform-origin: center` + 只转这一层（不动父层胶囊）：转的是图标，不是整条徽标。
+  用 linear 而不是 ease：匀速转才像进度，缓动会一顿一顿。不做模糊（同上）。
+*/
+.hud-encode-icon {
+  display: inline-block;
+  color: #ffb020;
+  font-size: 14px;
+  line-height: 1;
+  transform-origin: center;
+  animation: hud-encode-spin 1.4s linear infinite;
+}
+
+/* 百分比数字用等宽 + tabular-nums：从 9% 跳到 10% 时不会让整条徽标左右抖 */
+.hud-encode-label {
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes hud-encode-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* HUD 自己的文字禁选：拖拽选中只会给录下来的画面添一条蓝色高亮（底下的内容不受影响） */

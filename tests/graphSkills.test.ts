@@ -76,6 +76,17 @@ describe('graphSkills', () => {
     // 只服务对话编排，不进任何节点 params
     expect(skill?.systemPromptZh).toBeUndefined()
     expect(skill?.instructionZh).toBeUndefined()
+    /**
+     * 这三条是审查发现「照着技能做会失败/会叠字」之后补的，必须留在技能正文里：
+     * - 影视类右键是**三层**菜单（只写两层时 type 项根本不在 DOM 里）；
+     * - 动作必须带 tutorialId（旧实现静默跳过，成片里什么都没发生）；
+     * - 默认不要再加字幕轨（HUD 已把 title/caption 烧进画面）。
+     */
+    expect(skill?.usageZh).toContain('graph-ctx-group-screenplay')
+    expect(skill?.usageZh).toContain('必须带 tutorialId')
+    expect(skill?.usageZh).toContain('别再加字幕轨')
+    expect(skill?.usageEn).toContain('graph-ctx-group-screenplay')
+    expect(skill?.usageEn).toContain('tutorialId is REQUIRED')
   })
 
   it('exposes the procedural-assets skill for the chat game flow', () => {

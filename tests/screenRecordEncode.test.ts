@@ -115,6 +115,35 @@ function probeDurationSec(file: string): number {
   )
 }
 
+/**
+ * 读成片尺寸（`宽,高`）。
+ *
+ * 全量套件并行跑时 ffprobe 偶发启动失败（资源争抢），重试一次；
+ * **断言本身不放宽** —— 重试的是「读尺寸」这个动作，不是「尺寸必须为偶」这个结论。
+ */
+function probeDims(file: string, attempt = 0): string {
+  try {
+    return execFileSync(
+      FFPROBE,
+      [
+        '-v',
+        'error',
+        '-select_streams',
+        'v:0',
+        '-show_entries',
+        'stream=width,height',
+        '-of',
+        'csv=p=0',
+        file
+      ],
+      { encoding: 'utf8' }
+    ).trim()
+  } catch (err) {
+    if (attempt >= 1) throw err
+    return probeDims(file, attempt + 1)
+  }
+}
+
 const workDir = mkdtempSync(join(tmpdir(), 'aae-screen-record-encode-'))
 afterAll(() => {
   rmSync(workDir, { recursive: true, force: true })
@@ -209,21 +238,7 @@ maybe('帧序列 → MP4（真实编码）', () => {
     expect(existsSync(outPath)).toBe(true)
     expect(statSync(outPath).size).toBeGreaterThan(512)
     // 成片尺寸被取偶（641×361 → 640×360）
-    const dims = execFileSync(
-      FFPROBE,
-      [
-        '-v',
-        'error',
-        '-select_streams',
-        'v:0',
-        '-show_entries',
-        'stream=width,height',
-        '-of',
-        'csv=p=0',
-        outPath
-      ],
-      { encoding: 'utf8' }
-    ).trim()
+    const dims = probeDims(outPath)
     expect(dims).toBe('640,360')
   }, 90_000)
 

@@ -1514,10 +1514,14 @@ export interface ScreenRecordStepResult {
 
 export interface ScreenRecordStatusResult {
   recording: boolean
+  /** 正在启动（探测 ffmpeg 等）：此时既没在录，也不该被当成「什么都没录」 */
+  starting: boolean
   startedAtMs?: number
   /** 已捕获（含被判定为空闲而丢弃）的帧数 */
   frames: number
   steps: import('./screenRecord').ScreenRecordStepMark[]
+  /** 最近一次录制（含自动收尾那种）的结果是否还留在手上可取 */
+  hasPendingResult: boolean
 }
 
 export interface ExportAdVariantsResult {

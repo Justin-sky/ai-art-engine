@@ -54,7 +54,13 @@ export function findFfprobeBin(): string {
   return exeName
 }
 
-async function probeDurationSec(fileAbs: string): Promise<number | null> {
+/**
+ * 探测媒体时长（秒）：ffprobe 首选，缺失/失败时退化到 ffmpeg -i 解析容器时长。
+ *
+ * 导出给教学合成用：旁白音频的**真实长度**必须说了算 —— 拿「步骤窗口」当声轨时长，
+ * 导出侧的 `atrim=0:dur` 会把长句口播从中间砍掉（末步窗口可能只有 1 秒）。
+ */
+export async function probeDurationSec(fileAbs: string): Promise<number | null> {
   // ffprobe 首选；缺失 / 失败时退化到 ffmpeg -i 解析容器时长（stderr 的 Duration 行）
   const ffprobeBin = findFfprobeBin()
   try {

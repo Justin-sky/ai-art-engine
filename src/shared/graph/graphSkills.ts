@@ -146,7 +146,8 @@ const TUTORIAL_RECORDING_USAGE_ZH =
   '**口播=画面（最高优先级，禁止「嘴上说选中/点击，实际没点」）**：' +
   'caption/narration 写到的每个操作，下一步工具必须做出**可见**动作。' +
   '说「右键添加节点」→ step(graph-canvas, doContextMenu:true) → step(graph-ctx-group-{分组}, doClick) → step(graph-ctx-type-{typeId点改横杠}, doClick)；例图片：graph-ctx-group-image → graph-ctx-type-asset-image（禁止静默 node_upsert）；' +
-  '说「选中节点」→ graph_edit node_select；' +
+  '**影视类要多一层**：graph-ctx-group-filmTv → graph-ctx-group-screenplay → graph-ctx-type-asset-screenplay（第二层不开，type 项根本不在 DOM 里）；' + // cjk-ok（dsh 技能正文：随技能进 SKILL.md 的提示词数据）
+  '说「选中节点」→ graph_edit node_select（编辑器没开时它会自己打开，保证画布上真的高亮）；' + // cjk-ok（dsh 技能正文：随技能进 SKILL.md 的提示词数据）
   '说「改提示词/参数」→ 指令面板节点：doDblClick → fillText(graph-instruction-input) → 可选 graph-model-select / graph-gen-params；**禁止**静默 node_update；' +
   '说「打开记事本/正文」→ doDblClick → 高亮 graph-notepad，编辑用 fillText(graph-notepad-input)；' +
   '说「打开漫画页/节点工具/dive」→ doDblClick → 高亮 graph-dive（或 graph-dive-view-{viewId}，如 comic-page / node-multiAngle）；返回用 graph-dive-up；' +
@@ -154,6 +155,9 @@ const TUTORIAL_RECORDING_USAGE_ZH =
   '**开场**：asset_create(type=canvas)+openEditor 空白自由画布，录制中右键添加；不要预热假演示。' +
   '**单次连续拍完**：screen_record_start→screen_record_step×N→screen_record_wait→screen_record_stop→tutorial_compose。录制中允许 step/wait/node_select/ui_click；禁止 task_run/generate_*。' +
   '高亮只用 tutorialId（固定 id + graph-ctx-* / graph-dive-view-*）。fps:10 maxSeconds:180。compose 必传 steps[{index,narration,caption}]。' +
+  '**动作必须带 tutorialId**：doClick / doDblClick / doContextMenu / fillText 少了它工具会直接报错（以前是静默跳过、成片里什么都没发生）。' + // cjk-ok（dsh 技能正文：随技能进 SKILL.md 的提示词数据）
+  '**别再加字幕轨**：title/caption 已由录制 HUD 烧进画面，`tutorial_compose` 默认不铺字幕（要叠字才显式 subtitles:true）。' + // cjk-ok（dsh 技能正文：随技能进 SKILL.md 的提示词数据）
+  '旁白长度由音频真实时长决定，长句不会被截断（画面会跟着延长收尾）。' + // cjk-ok（dsh 技能正文：随技能进 SKILL.md 的提示词数据）
   '示例图片：右键→type-asset-image→双击指令面板→fillText→run→wait→compose。记事本/漫画页同用 doDblClick，随后跟 graph-notepad 或 graph-dive-view-comic-page。'
 
 const TUTORIAL_RECORDING_USAGE_EN =
@@ -162,12 +166,16 @@ const TUTORIAL_RECORDING_USAGE_EN =
   'Three fields: title ≤12 chars; caption = full sentence; narration required in compose.steps. ' +
   'SAY=SHOW (critical): every named action must be a visible tool action. ' +
   'Right-click add: step(graph-canvas, doContextMenu) → graph-ctx-group-{group} → graph-ctx-type-{typeId with dots→dashes}; e.g. graph-ctx-group-image → graph-ctx-type-asset-image. Never silent node_upsert. ' +
-  'Select: graph_edit node_select. ' +
+  'Film/TV needs one more level: graph-ctx-group-filmTv → graph-ctx-group-screenplay → graph-ctx-type-asset-screenplay. ' +
+  'Select: graph_edit node_select (it opens the editor if needed, so the canvas really highlights). ' +
   'Edit prompt/params: doDblClick → fillText graph-instruction-input (+ optional graph-model-select / graph-gen-params). Never silent node_update. ' +
   'Notepad/text: doDblClick → graph-notepad / fillText graph-notepad-input. ' +
   'Comic/dive/node tools: doDblClick → graph-dive or graph-dive-view-{viewId} (e.g. comic-page, node-multiAngle); back via graph-dive-up. ' +
   'Run: doClick graph-run → screen_record_wait(graph-idle) → highlight result → screen_record_stop. Never stop right after click. ' +
   'ONE continuous take: screen_record_start→screen_record_step×N→screen_record_wait→screen_record_stop→tutorial_compose. ' +
+  'A tutorialId is REQUIRED for doClick/doDblClick/doContextMenu/fillText (without it the tool errors out; it used to silently do nothing). ' +
+  'Do NOT add a subtitle track: title/caption are already burned into the picture by the HUD, and tutorial_compose leaves subtitles off by default. ' +
+  'Narration length comes from the real audio duration, so long sentences are never cut (the picture is extended instead). ' +
   'tutorialId = fixed ids + graph-ctx-* / graph-dive-view-*. fps:10 maxSeconds:180.'
 
 /** SVG 矢量动画（svg.gen）：生成指令模板（{subject} 由 applyGraphSkill 的 vars 插值） */

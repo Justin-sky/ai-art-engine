@@ -32,7 +32,17 @@ export const SCREEN_RECORD_LIMITS = {
    * 编码时把每段「画面不变」的 hold **封顶**到此值（不是拆成多段仍加总），
    * 步骤 alignment 同步映射到压缩时间轴。
    */
-  maxHoldMs: 2000
+  maxHoldMs: 2000,
+  /**
+   * 临时帧目录的字节上限。
+   *
+   * 最坏情况（画面每帧都在变）要写 ~2700 张 PNG；1080p 的界面截图约 0.3–2MB/张，
+   * 4K 内容区还要再翻几倍。到上限就**自动收尾**（把已录的编出来）而不是继续写盘 ——
+   * 录到一半因为磁盘满而整段作废，比少录几秒糟得多。
+   */
+  maxTempBytes: 2 * 1024 * 1024 * 1024,
+  /** 编码超时（毫秒）：卡死的 ffmpeg 会把录制状态锁死到重启，必须有上限 */
+  encodeTimeoutMs: 10 * 60 * 1000
 } as const
 
 /**
@@ -80,6 +90,15 @@ export interface ScreenRecordStepMark {
 /** HUD 需要的全部状态：主进程推给渲染层，录制期间常驻显示 */
 export interface ScreenRecordHudState {
   recording: boolean
+  /**
+   * 阶段：`recording` 采样中 / `encoding` 收尾编码中（HUD 仍在，但不再装作在录）。
+   *
+   * 编码可能要几十秒（2700 帧），此前这段时间 HUD 还是「● 录制中」并在继续计时 ——
+   * 等于对用户撒谎；现在切成「编码中 x%」。
+   */
+  phase?: 'recording' | 'encoding'
+  /** 编码进度 0~1（仅 phase='encoding' 时有意义） */
+  progress?: number
   /** 录制开始的墙钟时间（渲染层自己算已录时长，避免每帧推时间） */
   startedAtMs?: number
   stepIndex?: number
@@ -369,10 +388,22 @@ export interface StepAlignment {
 }
 
 /**
+ * 末步窗口下限（毫秒）：最后一步的卡片/字幕至少显示这么久，才读得完。
+ *
+ * 它**允许超出成片末端**：录制结束时画面本来就不再变化，合成侧把最后一个画面延到窗口结束
+ * 顶多是定格/黑尾；反过来（为了「不超过成片」把窗口砍到 0.2 秒）会让最后一步一闪而过。
+ */
+export const MIN_LAST_STEP_WINDOW_MS = 1200
+
+/**
  * 步骤时间戳 → 对齐表（映射到成片压缩时间轴）。
  *
  * `keeps` 来自 `planFrameKeeps`：把墙钟 `step.atMs` 映到压缩轴，口播/字幕才跟得上裁掉的空闲。
  * 未传 keeps 时退回墙钟轴（兼容旧测试 / 无帧计划场景）。
+ *
+ * **这里返回的是「这一步在画面上的窗口」，不是「旁白该有多长」**：旁白时长由 TTS 音频的真实
+ * 长度决定（`tutorialComposeService` 会 probe 音频时长并让时间线跟着延长）。曾经把窗口当声轨
+ * 时长用，导致末步长句口播被 `atrim` 砍成 1 秒。
  */
 export function buildAlignmentTable(
   steps: ScreenRecordStepMark[],
@@ -388,7 +419,9 @@ export function buildAlignmentTable(
   return sorted.map((step, i) => {
     const next = sorted[i + 1]
     const startMs = map(step.atMs)
-    const endMs = next ? map(next.atMs) : Math.max(compressedTotal, startMs + 1000)
+    const endMs = next
+      ? map(next.atMs)
+      : Math.max(compressedTotal, startMs + MIN_LAST_STEP_WINDOW_MS)
     return {
       index: step.index,
       title: step.title,
@@ -409,7 +442,12 @@ export type ScreenRecordStopResult =
       durationSec: number
       /** 实际写盘的帧数（空闲合并之后） */
       frames: number
+      /** 因画面与上一帧相同而未写盘的采样数 */
       droppedIdle: number
+      /** 抓帧拿到空图/尺寸异常而被丢弃的采样数（窗口最小化、页面不可见、DPI 切换） */
+      droppedCaptures: number
+      /** 写盘失败的帧数：有值就说明画面缺了内容，必须让调用方知道 */
+      droppedWrites: number
       steps: ScreenRecordStepMark[]
       alignment: StepAlignment[]
       warnings: string[]

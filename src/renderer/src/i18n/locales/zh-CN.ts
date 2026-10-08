@@ -846,6 +846,7 @@ export default {
   screenRecord: {
     hud: {
       recording: '录制中',
+      encoding: '编码中 {percent}%',
       step: '第 {index} 步',
       frames: '已录 {count} 帧'
     }

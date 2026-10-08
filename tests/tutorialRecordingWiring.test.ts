@@ -12,6 +12,19 @@ import { TUTORIAL_UI_IDS } from '../src/shared/tutorialUi'
 const ROOT = resolve(__dirname, '..')
 const read = (p: string): string => readFileSync(resolve(ROOT, p), 'utf8')
 
+/**
+ * 取一个工具定义的完整文本块：从 `name: 'x'` 到**下一个工具定义**为止。
+ *
+ * 不用「固定字符数窗口」：那种窗口会因为描述正文长一句话就误红（本文件已经因此红过一次），
+ * 而守卫变红的原因应该是行为没了，不是文案变长了。
+ */
+function toolBlock(source: string, toolName: string): string {
+  const at = source.indexOf(`name: '${toolName}'`)
+  if (at < 0) return ''
+  const next = source.indexOf("    name: '", at + 10)
+  return next > at ? source.slice(at, next) : source.slice(at)
+}
+
 const MCP = read('src/main/services/mcpServerService.ts')
 const IPC = read('src/shared/ipc.ts')
 const HUD = read('src/renderer/src/components/RecordingHud.vue')
@@ -77,8 +90,7 @@ describe('教学视频：MCP 工具与访问等级', () => {
   })
 
   it('graph_edit 支持 openEditor / autoLayout / node_select', () => {
-    const at = MCP.indexOf("name: 'graph_edit'")
-    const block = MCP.slice(at, at + 3200)
+    const block = toolBlock(MCP, 'graph_edit')
     expect(block).toContain('openEditor')
     expect(block).toContain('autoLayout')
     expect(block).toContain("'node_select'")
@@ -87,9 +99,23 @@ describe('教学视频：MCP 工具与访问等级', () => {
     expect(IPC).toContain("| { op: 'node_select'; nodeId: string }")
   })
 
+  it('node_select 会自己把编辑器打开（否则「选中」只改数据、画布上什么都不高亮）', () => {
+    // 渲染层文件（Pinia/DOM 依赖重，跑不起来），只能做结构断言；
+    // 但断言必须钉住「选中类操作 → 先开编辑器 且 用 waitForGraphEditorOpen 等它就绪」这条链，
+    // 而不是「文件里存在某个词」。
+    const runner = read('src/renderer/src/features/mcp/mcpTaskRunner.ts')
+    const at = runner.indexOf('const hasSelectOp')
+    expect(at, '找不到 hasSelectOp 判定').toBeGreaterThan(-1)
+    const block = runner.slice(at, at + 500)
+    expect(block).toContain("payload.ops.some((op) => op.op === 'node_select')")
+    expect(block).toContain('openMcpWorkflowAssetEditor(payload.assetId)')
+    expect(block).toContain('await waitForGraphEditorOpen(payload.assetId)')
+    // 编辑器始终没打开时，要如实回报「画面上没体现」，不能静默说成功
+    expect(runner).toContain('选中节点未在画面上体现')
+  })
+
   it('screen_record_step 支持可见交互（click/dblclick/contextmenu/fill）', () => {
-    const at = MCP.indexOf("name: 'screen_record_step'")
-    const block = MCP.slice(at, at + 6500)
+    const block = toolBlock(MCP, 'screen_record_step')
     expect(block).toContain('doClick')
     expect(block).toContain('doDblClick')
     expect(block).toContain('doContextMenu')
@@ -97,12 +123,13 @@ describe('教学视频：MCP 工具与访问等级', () => {
     expect(block).toContain('clickTutorialUi')
     expect(block).toContain('fillTutorialUi')
     expect(block).toContain('graph-run')
+    // 动作必须带 tutorialId：块里断言**调用**（报错文案本体在 assertTutorialActionTarget，
+    // 由 tests/tutorialActionTarget.test.ts 直接跑真实实现覆盖）
+    expect(block).toContain('assertTutorialActionTarget({')
   })
 
   it('screen_record_wait 可等到 graph-idle', () => {
-    expect(MCP).toContain("name: 'screen_record_wait'")
-    const at = MCP.indexOf("name: 'screen_record_wait'")
-    const block = MCP.slice(at, at + 2000)
+    const block = toolBlock(MCP, 'screen_record_wait')
     expect(block).toContain('graph-idle')
     expect(block).toContain('queryGraphIsRunning')
   })

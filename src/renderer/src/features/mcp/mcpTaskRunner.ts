@@ -141,6 +141,19 @@ async function handleGraphEdit(payload: McpGraphEditPayload): Promise<void> {
     }
 
     /**
+     * 「选中节点」是**看得见**的动作：编辑器没开就先把编辑器打开。
+     *
+     * 否则选中只会写进 store 的图数据（画布上什么都不高亮），而教学录屏里
+     * 「说选中节点」的下一步就是靠这个高亮讲画面 —— 静默成功等于演了个空场。
+     */
+    const hasSelectOp = payload.ops.some((op) => op.op === 'node_select')
+    if (hasSelectOp && !isGraphEditorOpen(payload.assetId)) {
+      openMcpWorkflowAssetEditor(payload.assetId)
+      // 打不开就退化为只改数据，但下面会带一条 warning 如实说明「画面上没体现」
+      await waitForGraphEditorOpen(payload.assetId)
+    }
+
+    /**
      * 编辑器打开时**也能改**，但基准必须是编辑器里的**实时文档**。
      *
      * store 里那份 `graphJson` 可能落后于编辑器（用户刚拖过线 / 改过参数还没落盘）；
@@ -208,7 +221,14 @@ async function handleGraphEdit(payload: McpGraphEditPayload): Promise<void> {
       reply(false, { error: '持久化失败：资产不存在' })
       return
     }
-    reply(true, { applied: result.applied, warnings: result.warnings })
+    const warnings = [...result.warnings]
+    // 编辑器始终没开：选中只落在数据上，如实告诉调用方「画面上没体现」
+    if (result.selectNodeIds?.length && !isGraphEditorOpen(payload.assetId)) {
+      warnings.push(
+        '选中节点未在画面上体现：图编辑器未打开（教学录屏请先 openEditor 或确保编辑器已打开）'
+      )
+    }
+    reply(true, { applied: result.applied, warnings })
   } catch (err) {
     reply(false, { error: err instanceof Error ? err.message : String(err) })
   }

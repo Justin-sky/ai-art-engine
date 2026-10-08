@@ -28,6 +28,25 @@ const E_FFMPEG_EXITED = defErr<{ stderr: string; exitCode: number | null }>(
 )
 
 /**
+ * 超时被强制结束。
+ *
+ * 卡住的 ffmpeg 会把调用方的状态锁死 —— 录制尤其致命：`stopping` 永远为真，
+ * 之后 start 一直回「已在录制」、stop 一直回「没有在录制」，只能重启应用。
+ */
+const E_FFMPEG_TIMEOUT = defErr<{ timeoutMs: number; stderr: string }>(
+  'ffmpeg.timeout',
+  ({ timeoutMs, stderr }) =>
+    `ffmpeg 超时（>${timeoutMs}ms）已被结束：${stderr.slice(-300) || '无输出'}`,
+  ({ timeoutMs, stderr }) =>
+    `ffmpeg timed out after ${timeoutMs}ms and was killed: ${stderr.slice(-300) || 'no output'}`
+)
+
+export interface RunFfmpegOptions {
+  /** 超时毫秒；到点 kill 子进程并拒绝。缺省不设上限（与既有调用方行为一致） */
+  timeoutMs?: number
+}
+
+/**
  * 跑一次 ffmpeg 并等它结束。
  *
  * `onTime` 可选：从 stderr 的 `time=HH:MM:SS.mmm` 里解析进度（ffmpeg 把进度写在 stderr）。
@@ -35,11 +54,37 @@ const E_FFMPEG_EXITED = defErr<{ stderr: string; exitCode: number | null }>(
 export function runFfmpeg(
   bin: string,
   args: string[],
-  onTime?: (sec: number) => void
+  onTime?: (sec: number) => void,
+  options?: RunFfmpegOptions
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(bin, args, { windowsHide: true })
     let stderr = ''
+    let settled = false
+    let timer: ReturnType<typeof setTimeout> | null = null
+
+    const finish = (fn: () => void): void => {
+      if (settled) return
+      settled = true
+      if (timer) clearTimeout(timer)
+      fn()
+    }
+
+    const timeoutMs = options?.timeoutMs
+    if (typeof timeoutMs === 'number' && timeoutMs > 0) {
+      timer = setTimeout(() => {
+        // 先 kill 再拒绝：进程留着会继续占 CPU，还会锁住临时文件（Windows 上目录都删不掉）
+        try {
+          child.kill('SIGKILL')
+        } catch {
+          /* 已经退出 */
+        }
+        finish(() =>
+          reject(fail(E_FFMPEG_TIMEOUT, { timeoutMs, stderr: stderr.trim().slice(-900) }))
+        )
+      }, timeoutMs)
+    }
+
     child.stderr?.on('data', (chunk: Buffer) => {
       const text = chunk.toString()
       stderr += text
@@ -50,16 +95,21 @@ export function runFfmpeg(
     })
     child.on('error', (err) => {
       // 保留原生 spawn 错误（ENOENT 等）作为 cause，文案保留 FFmpeg 关键字供渲染端兜底匹配
-      reject(
-        Object.assign(fail(E_FFMPEG_LAUNCH_FAILED, { detail: err.message }), {
-          cause: err
-        })
+      finish(() =>
+        reject(
+          Object.assign(fail(E_FFMPEG_LAUNCH_FAILED, { detail: err.message }), {
+            cause: err
+          })
+        )
       )
     })
     child.on('close', (code) => {
       // stderr 为 ffmpeg 原生输出，原样透传
-      if (code === 0) resolve()
-      else reject(fail(E_FFMPEG_EXITED, { stderr: stderr.trim().slice(-900), exitCode: code }))
+      if (code === 0) finish(resolve)
+      else
+        finish(() =>
+          reject(fail(E_FFMPEG_EXITED, { stderr: stderr.trim().slice(-900), exitCode: code }))
+        )
     })
   })
 }

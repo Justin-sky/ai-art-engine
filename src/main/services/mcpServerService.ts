@@ -212,6 +212,7 @@ import {
   isScreenRecording,
   patchScreenRecordingHud,
   screenRecordingStatus,
+  setScreenRecordFinishListener,
   startScreenRecording,
   stepScreenRecording,
   stopScreenRecording
@@ -4070,6 +4071,13 @@ const TOOL_DEFS: McpToolDef[] = [
         throw new Error('doClick / doDblClick / doContextMenu 同一 step 只能选一个')
       }
       const wantsPointer = doClick || doDblClick || doContextMenu
+      /**
+       * 「口播=画面」的硬约束：这些动作都靠 `tutorialId` 定位。
+       *
+       * 不传 tutorialId 时旧实现直接跳过动作、却照样回 ok —— 于是 agent 以为点了，
+       * 成片里什么都没发生（"嘴上说点了、其实没点"）。宁可报错，让它补上 tutorialId。
+       */
+      assertTutorialActionTarget({ wantsPointer, fillText, tutorialId })
       if (tutorialId) {
         const bounds = await queryTutorialUiBounds(tutorialId)
         if (!bounds) {
@@ -4340,10 +4348,12 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'tutorial_compose',
     title: '教学视频一键合成',
     description:
-      '把 `screen_record_stop` 的录屏 MP4 + alignment 与每步口播（narration）合成带旁白/字幕的成片：' +
-      '自动 create screenplay → 铺 video/voice/subtitle 轨 → 导出到 Cache/Videos（不自动进资产库）。' +
+      '把 `screen_record_stop` 的录屏 MP4 + alignment 与每步口播（narration）合成成片：' +
+      '自动 create screenplay → 铺 video/voice 轨 → 导出到 Cache/Videos（不自动进资产库）。' +
       '**steps 必传**：每项含 index（对齐 alignment）+ narration（口播，可与 caption 同文）；缺 narration 的步骤会用 caption/title 兜底，但教学场景应显式给口播。' +
-      '画面里已有 title/caption 字卡；本工具再加配音与字幕轨（字幕默认用 caption/narration）。' +
+      '**旁白长度由音频真实时长决定**：取「步骤窗口 / 音频」较大者，长句不会被截断；画面至少铺到最后一个旁白说完（末尾定格或黑尾，但不吞口播）。' +
+      '画面里已有 title/caption 字卡，所以**默认不再加字幕轨**（`subtitles: true` 才加，加了就是同文叠字）。' +
+      '返回里带 `narration[]`（每步窗口/音频时长/延长了多少）与 `recordingDurationSec`，便于自查节奏。' +
       '对话流出预览卡；入库由用户点「保存到资产库」。不要手排 timeline_edit。',
     inputSchema: {
       type: 'object',
@@ -4376,6 +4386,11 @@ const TOOL_DEFS: McpToolDef[] = [
         },
         name: { type: 'string', description: '成片显示名' },
         export: { type: 'boolean', description: '是否导出成片（默认 true）' },
+        subtitles: {
+          type: 'boolean',
+          description:
+            '是否额外烧一条字幕轨（默认 false：录屏 HUD 已把 title/caption 烧进画面，再加就是叠字）'
+        },
         targetPath: {
           type: 'string',
           description: '成片绝对路径（缺省写 Cache/Videos/tutorial-*.mp4）'
@@ -4391,6 +4406,7 @@ const TOOL_DEFS: McpToolDef[] = [
       const name = optionalString(args, 'name')
       const targetPath = optionalString(args, 'targetPath')
       const doExport = args.export !== false
+      const withSubtitles = args.subtitles === true
       return runGenActivity(
         'tutorial_compose',
         name || '教学视频',
@@ -4402,6 +4418,7 @@ const TOOL_DEFS: McpToolDef[] = [
             ...(steps.length ? { steps } : {}),
             ...(name ? { name } : {}),
             export: doExport,
+            subtitles: withSubtitles,
             ...(targetPath ? { targetPath } : {})
           }),
         (r) => ({
@@ -4497,6 +4514,27 @@ function optionalNumber(args: Record<string, unknown>, key: string): number | un
   return undefined
 }
 
+/**
+ * 「口播=画面」的硬约束：`doClick` / `doDblClick` / `doContextMenu` / `fillText` 都靠
+ * `tutorialId` 定位，缺了它就没有任何**可见**动作。
+ *
+ * 旧实现静默跳过动作却照样回 ok：agent 以为点了，成片里什么都没发生。宁可报错让它补上。
+ * 抽成导出函数是为了能被真正测到（这段逻辑在工具 handler 深处，没法单独调用）。
+ */
+export function assertTutorialActionTarget(input: {
+  wantsPointer: boolean
+  fillText: string | null | undefined
+  tutorialId?: string | undefined
+}): void {
+  if ((input.wantsPointer || input.fillText != null) && !input.tutorialId) {
+    throw new Error(
+      'doClick / doDblClick / doContextMenu / fillText 必须同时给 tutorialId：没有它就没有任何可见动作（约定：' +
+        TUTORIAL_UI_ID_HINT +
+        '）'
+    )
+  }
+}
+
 /** 录制失败的原因键 → 给模型看的可执行说明（主进程不产出最终 UI 文案，这里只服务 Agent） */
 function screenRecordReasonText(
   reasonKey: string,
@@ -4504,16 +4542,20 @@ function screenRecordReasonText(
 ): string {
   const map: Record<string, string> = {
     alreadyRecording: '已经在录制中：先 screen_record_stop 结束上一段，再开始新的',
+    startingRecording: '正在启动录制（探测 ffmpeg），稍等一下再试',
+    stopping:
+      '上一段录制正在编码收尾：等它结束（HUD 会显示「编码中」），或稍后用 screen_record_status 取结果',
     badOptions: '录制参数不合法',
     fpsInvalid: 'fps 不合法：给 1~15 的数字',
     durationInvalid: `maxSeconds 不合法：给 1~${SCREEN_RECORD_LIMITS.maxSeconds} 的数字`,
     projectNotOpen: '没有打开工程：录制产物要落进工程，请先打开或新建工程',
     ffmpegMissing: '未找到可用的 ffmpeg：请在设置页一键安装后重试（录制结果的编码需要它）',
     ffmpegInstalling: 'ffmpeg 正在安装中，稍等片刻再开始录制',
+    lowDiskSpace: '临时目录可用空间不足：请清理磁盘后重试（最坏情况要写约 2GB 帧文件）',
     noTargetWindow: '找不到可录制的主窗口',
     notRecording: '当前没有在录制',
     stepTitleRequired: '步骤标题不能为空',
-    emptyRecording: '这一段没有录到有效画面（画面全程没变化），没有产出',
+    emptyRecording: '这一段没有录到有效画面（每次抓帧都失败或写盘全失败），没有产出',
     encodeFailed: `编码失败：${params?.detail ?? '未知原因'}`
   }
   return map[reasonKey] ?? `录制失败：${reasonKey}`
@@ -5774,6 +5816,18 @@ export async function applyBlenderMcpSettings(
 }
 export async function startMcpServer(): Promise<void> {
   if (server) return
+  // 录制自动收尾（到时长/字节上限、或窗口被关）也要出对话预览卡：
+  // 那条路径没有工具调用在等返回值，所以由服务层回调进来补一次旁路活动。
+  setScreenRecordFinishListener((result) => {
+    if (!result.ok) return
+    void runGenActivity(
+      'screen_record_stop',
+      '界面录制',
+      undefined,
+      async () => result,
+      (r) => ({ relativePath: r.relativePath })
+    )
+  })
   const stored = readStoredMcpConfig()
   mcpServerVersion = String(updateService.getCurrentVersion())
   initMcpAuditDir()

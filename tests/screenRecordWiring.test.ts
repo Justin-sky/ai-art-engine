@@ -157,7 +157,8 @@ describe('界面录制：服务侧的硬性动作', () => {
   })
 
   it('开始前先确认 ffmpeg 可用：缺它就不录（录完才发现编不了码等于白录）', () => {
-    expect(SERVICE).toContain("runFfmpeg(bin, ['-version'])")
+    // 探测本身 + 探测也要有超时（没有超时的 ffmpeg 调用能把录制状态锁死到重启）
+    expect(SERVICE).toMatch(/runFfmpeg\(\s*bin,\s*\['-version'\][\s\S]{0,120}?timeoutMs/)
     expect(SERVICE).toContain("reasonKey: 'ffmpegMissing'")
   })
 
