@@ -661,7 +661,22 @@
       "fromSystemDefault('system.emotion', '情绪', 'Emotion', defaultEmotionSystemPrompt)",
       "'提示词优化',",
       "'图生提示词',",
-      "fromSystemDefault('system.multiAngle', '多角度', 'Multi-angle', defaultMultiAngleSystemPrompt),"
+      "fromSystemDefault('system.multiAngle', '多角度', 'Multi-angle', defaultMultiAngleSystemPrompt),",
+      "'仅当用户明确要求「录制教程 / 教学视频 / 录屏讲解」时启用。' +",
+      "'**大纲**：用户已说清主题则不要 ask_user；含糊才问一次，确认后立刻开拍。' +",
+      "'文案三分法：title≤12 字；caption=完整一句；narration=口播（compose.steps 必带）。' +",
+      "'**口播=画面（最高优先级，禁止「嘴上说选中/点击，实际没点」）**：' +",
+      "'caption/narration 写到的每个操作，下一步工具必须做出**可见**动作。' +",
+      "'说「右键添加节点」→ step(graph-canvas, doContextMenu:true) → step(graph-ctx-group-{分组}, doClick) → step(graph-ctx-type-{typeId点改横杠}, doClick)；例图片：graph-ctx-group-image → graph-ctx-type-asset-image（禁止静默 node_upsert）；' +",
+      "'说「选中节点」→ graph_edit node_select；' +",
+      "'说「改提示词/参数」→ 指令面板节点：doDblClick → fillText(graph-instruction-input) → 可选 graph-model-select / graph-gen-params；**禁止**静默 node_update；' +",
+      "'说「打开记事本/正文」→ doDblClick → 高亮 graph-notepad，编辑用 fillText(graph-notepad-input)；' +",
+      "'说「打开漫画页/节点工具/dive」→ doDblClick → 高亮 graph-dive（或 graph-dive-view-{viewId}，如 comic-page / node-multiAngle）；返回用 graph-dive-up；' +",
+      "'说「点击运行/生成」→ step(graph-run, doClick:true) → screen_record_wait(graph-idle) → step(graph-selected-node) 讲结果 → screen_record_stop；**禁止点完立刻 stop**。' +",
+      "'**开场**：asset_create(type=canvas)+openEditor 空白自由画布，录制中右键添加；不要预热假演示。' +",
+      "'**单次连续拍完**：screen_record_start→screen_record_step×N→screen_record_wait→screen_record_stop→tutorial_compose。录制中允许 step/wait/node_select/ui_click；禁止 task_run/generate_*。' +",
+      "'高亮只用 tutorialId（固定 id + graph-ctx-* / graph-dive-view-*）。fps:10 maxSeconds:180。compose 必传 steps[{index,narration,caption}]。' +",
+      "'示例图片：右键→type-asset-image→双击指令面板→fillText→run→wait→compose。记事本/漫画页同用 doDblClick，随后跟 graph-notepad 或 graph-dive-view-comic-page。'"
     ],
     "src/shared/graph/hostInput.ts": [
       "? `输入·文本 ${slot.index + 1}`",

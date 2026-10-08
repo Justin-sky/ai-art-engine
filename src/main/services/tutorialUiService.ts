@@ -10,7 +10,7 @@ import { TUTORIAL_UI_ATTR, type TutorialUiBounds } from '@shared/tutorialUi'
 function assertMainWindow(): BrowserWindow {
   const win = getMainWindowRef()
   if (!win || win.isDestroyed()) {
-    throw new Error('主窗口不可用：请确认应用界面已打开')
+    throw new Error('主窗口不可用：请确认应用界面已打开') // cjk-ok（面向 Agent 的 MCP 工具诊断文案，不进界面文案表）
   }
   return win
 }
@@ -38,7 +38,7 @@ const PICK_VISIBLE_JS = `(attr, escaped) => {
     const cy = r.y + r.height / 2;
     const top = document.elementFromPoint(cx, cy);
     const hit = top && (el === top || el.contains(top) || top.contains(el));
-    // 点得中的前景控件优先；否则退回可见面积
+    // prefer the foreground control we actually hit; otherwise fall back to visible area
     const score = (hit ? 1e12 : 0) + visibleArea * 1e6 + r.width * r.height;
     if (score <= bestScore) continue;
     bestScore = score;
@@ -55,7 +55,7 @@ const PICK_VISIBLE_JS = `(attr, escaped) => {
  */
 export async function queryTutorialUiBounds(tutorialId: string): Promise<TutorialUiBounds | null> {
   const id = tutorialId.trim()
-  if (!id) throw new Error('缺少 tutorialId')
+  if (!id) throw new Error('缺少 tutorialId') // cjk-ok（面向 Agent 的 MCP 工具诊断文案，不进界面文案表）
   const win = assertMainWindow()
   const attr = TUTORIAL_UI_ATTR
   const escaped = id.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
@@ -128,7 +128,7 @@ export async function clickTutorialUi(
       const el = pickVisible(${JSON.stringify(attr)}, ${JSON.stringify(escaped)});
       if (!el) return false;
       const kind = ${JSON.stringify(kind)};
-      // 双击开指令面板挂在 .preview 上；若打在卡片根上事件到不了子级
+      // the double-click handler lives on .preview; hitting the card root never reaches it
       const target =
         kind === 'dblclick'
           ? (el.querySelector('.preview') || el)
@@ -185,7 +185,7 @@ export async function fillTutorialUi(
   text: string
 ): Promise<TutorialUiFillResult> {
   const id = tutorialId.trim()
-  if (!id) throw new Error('缺少 tutorialId')
+  if (!id) throw new Error('缺少 tutorialId') // cjk-ok（面向 Agent 的 MCP 工具诊断文案，不进界面文案表）
   const win = assertMainWindow()
   const attr = TUTORIAL_UI_ATTR
   const escaped = id.replace(/\\/g, '\\\\').replace(/"/g, '\\"')

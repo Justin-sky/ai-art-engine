@@ -89,18 +89,18 @@ function resolveAbsUnderProject(relativePath: string): string {
 export async function composeTutorialVideo(
   input: TutorialComposeInput
 ): Promise<TutorialComposeResult> {
-  if (!projectService.isOpen()) throw new Error('请先在应用中打开工程')
+  if (!projectService.isOpen()) throw new Error('请先在应用中打开工程') // cjk-ok（面向 Agent 的 MCP 工具诊断文案，不进界面文案表）
   const recordingRelativePath = input.recordingRelativePath.replace(/\\/g, '/').trim()
-  if (!recordingRelativePath) throw new Error('缺少 recordingRelativePath')
+  if (!recordingRelativePath) throw new Error('缺少 recordingRelativePath') // cjk-ok（面向 Agent 的 MCP 工具诊断文案，不进界面文案表）
   const alignment = Array.isArray(input.alignment) ? input.alignment : []
-  if (!alignment.length) throw new Error('缺少 alignment（请先 screen_record_stop）')
+  if (!alignment.length) throw new Error('缺少 alignment（请先 screen_record_stop）') // cjk-ok（面向 Agent 的 MCP 工具诊断文案，不进界面文案表）
 
   const name =
-    input.name?.trim() || `教学视频 ${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}`
+    input.name?.trim() || `教学视频 ${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}` // cjk-ok（工程内数据名：资产名 / 轨道标题 / 口播文本）
 
   const screenplay = projectService.createAsset({
     type: 'screenplay',
-    name: `${name} · 时间线`
+    name: `${name} · 时间线` // cjk-ok（工程内数据名：资产名 / 轨道标题 / 口播文本）
   })
 
   const stepByIndex = new Map<number, TutorialComposeStepInput>()
@@ -129,7 +129,7 @@ export async function composeTutorialVideo(
   for (const row of alignment) {
     const step = stepByIndex.get(row.index) ?? {}
     const narration =
-      step.narration?.trim() || row.caption?.trim() || row.title?.trim() || `步骤 ${row.index + 1}`
+      step.narration?.trim() || row.caption?.trim() || row.title?.trim() || `步骤 ${row.index + 1}` // cjk-ok（工程内数据名：资产名 / 轨道标题 / 口播文本）
     const caption = step.caption?.trim() || narration
     const startSec = Math.max(0, row.startSec)
     const durationSec = Math.max(0.1, Number((row.endSec - row.startSec).toFixed(3)))
@@ -144,20 +144,20 @@ export async function composeTutorialVideo(
         ...(step.providerInstanceId ? { providerInstanceId: step.providerInstanceId } : {})
       })
       voiceRel = speech.relativePath?.trim() || ''
-      if (!voiceRel) throw new Error(`第 ${row.index + 1} 步旁白生成失败（无相对路径）`)
+      if (!voiceRel) throw new Error(`第 ${row.index + 1} 步旁白生成失败（无相对路径）`) // cjk-ok（面向 Agent 的 MCP 工具诊断文案，不进界面文案表）
     }
     voicePaths.push(voiceRel)
 
     drafts.push({
       track: 'voice',
-      title: row.title || `旁白 ${row.index + 1}`,
+      title: row.title || `旁白 ${row.index + 1}`, // cjk-ok（工程内数据名：资产名 / 轨道标题 / 口播文本）
       relativePath: voiceRel,
       startSec,
       durationSec
     })
     drafts.push({
       track: 'subtitle',
-      title: row.title || `字幕 ${row.index + 1}`,
+      title: row.title || `字幕 ${row.index + 1}`, // cjk-ok（工程内数据名：资产名 / 轨道标题 / 口播文本）
       text: caption,
       startSec,
       durationSec
@@ -168,7 +168,7 @@ export async function composeTutorialVideo(
     makeClipId: (track, index) => makeClipId(track, index)
   })
   if (edited.failures.length) {
-    throw new Error(`时间线铺轨失败：${edited.failures.map((f) => `${f.op}/${f.code}`).join(', ')}`)
+    throw new Error(`时间线铺轨失败：${edited.failures.map((f) => `${f.op}/${f.code}`).join(', ')}`) // cjk-ok（面向 Agent 的 MCP 工具诊断文案，不进界面文案表）
   }
 
   const timelineDoc: ScriptTimelineDocument = edited.document
@@ -223,14 +223,14 @@ export async function composeTutorialVideo(
 
   const exported = await exportScriptTimeline(exportInput)
   if (!exported.ok) {
-    throw new Error(exported.error || '教学视频导出失败')
+    throw new Error(exported.error || '教学视频导出失败') // cjk-ok（面向 Agent 的 MCP 工具诊断文案，不进界面文案表）
   }
 
   const root = projectService.getRoot()
   const filePath = exported.filePath!
   const relativePath = toPosix(relative(root, filePath))
   if (!relativePath || relativePath.startsWith('..')) {
-    throw new Error(`导出路径不在工程内：${filePath}`)
+    throw new Error(`导出路径不在工程内：${filePath}`) // cjk-ok（面向 Agent 的 MCP 工具诊断文案，不进界面文案表）
   }
 
   return {
