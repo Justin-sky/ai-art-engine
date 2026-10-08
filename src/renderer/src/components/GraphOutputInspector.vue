@@ -474,6 +474,8 @@ async function exportVideo(): Promise<void> {
   exporting.value = true
   try {
     const url = await window.studio.getAssetFileUrl(asset.relativePath)
+    // 文件缺失返回 null：直接按导出失败提示，避免 fetch('') 去请求应用自身页面
+    if (!url) throw new Error(t('graph.output.exportFailedNoFile'))
     const response = await fetch(url)
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
     const buffer = new Uint8Array(await response.arrayBuffer())
@@ -509,6 +511,8 @@ async function resolveImageBytes(item: GraphImageItem): Promise<{ data: Uint8Arr
   const relativePath = item.relativePath?.trim()
   if (relativePath) {
     const url = await window.studio.getAssetFileUrl(relativePath)
+    // 文件缺失返回 null：直接按导出失败提示，避免 fetch('') 去请求应用自身页面
+    if (!url) throw new Error(t('graph.output.exportFailedNoFile'))
     const response = await fetch(url)
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
     const data = new Uint8Array(await response.arrayBuffer())

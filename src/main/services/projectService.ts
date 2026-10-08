@@ -194,6 +194,7 @@ const E_PROJECT_NO_REIMPORT_MEDIA = defErrSimple(
   '没有可重新导入的媒体文件',
   'No media file available for reimport'
 )
+/** 只剩用户主动「用默认程序打开资产」在用：那是一次显式动作，文件没了必须报错，不是可静默降级的查询 */
 const E_ASSET_FILE_MISSING = defErrSimple('asset.fileMissing', '文件不存在', 'File not found')
 const E_TEXT_WRITEBACK_SCREENPLAY_ONLY = defErrSimple(
   'project.textWritebackScreenplayOnly',
@@ -1304,10 +1305,20 @@ class ProjectService {
     return next
   }
 
-  getAssetFileUrl(relativePath: string): string {
+  /**
+   * 资产文件 → 可加载 URL；文件在磁盘上不存在时返回 **null（不抛错）**。
+   *
+   * 文件缺失是预期状态：用户会删/移文件、清缓存目录、把工程拷走却不带缓存。
+   * 此前这里直接 `throw fail(E_ASSET_FILE_MISSING)`，异常穿过 IPC handler 后变成
+   * `Error occurred in handler for 'asset:get-file-url'` 反复刷日志，调用方也拿不到可降级的结果。
+   * 返回 null 而不是空串，是为了让调用方在类型上就分得清「没有文件」与「这是一条路径」：
+   * 预览层（getAssetPreviewUrl）把 null 收口成它既有的「空串 = 无预览」约定。
+   * 越界路径（assertInsideProject）仍然抛错——那是调用方 bug，不属于预期降级。
+   */
+  getAssetFileUrl(relativePath: string): string | null {
     const root = this.getRoot()
     const abs = assertInsideProject(root, join(root, relativePath))
-    if (!existsSync(abs)) throw fail(E_ASSET_FILE_MISSING)
+    if (!existsSync(abs)) return null
 
     const mtime = statSync(abs).mtimeMs
     // 图/音/视/文本/可玩 HTML 统一走 studio-media，避免 base64 撑爆内存，并支持 fetch（CSP 不含 file:）
@@ -1362,6 +1373,9 @@ class ProjectService {
    * - 图片：缩略图已就绪则返回 thumb，否则立刻返回原图并后台生成；
    * - 视频：缩略图已就绪则返回首帧 PNG；否则等待系统提取首帧后再返回（无法用视频 URL 作 img）。
    * - 源文件缺失时返回空串（预览场景常见，避免 IPC 刷错）。
+   *
+   * 内部取 URL 一律经 `?? ''` 收口：getAssetFileUrl 现在用 null 表示「文件没了」，
+   * 预览层的契约仍是「空串 = 没有可展示的预览」，两边的缺失语义在这里对齐。
    */
   async getAssetPreviewUrl(relativePath: string): Promise<string> {
     const root = this.getRoot()
@@ -1369,13 +1383,13 @@ class ProjectService {
     if (!existsSync(abs)) return ''
     const posix = relativePath.replace(/\\/g, '/')
     if (posix.startsWith('.aiartengine/thumbs/')) {
-      return this.getAssetFileUrl(posix)
+      return this.getAssetFileUrl(posix) ?? ''
     }
 
     // 矢量图（SVG）：原文件本身就能被 Chromium 渲染，而 nativeImage 解不出它，
     // 没有可生成的位图缩略图，直接给原文件 URL
     if (isVectorImageFilePath(abs)) {
-      return this.getAssetFileUrl(relativePath)
+      return this.getAssetFileUrl(relativePath) ?? ''
     }
 
     // 分层源文件（PSD）：原文件 Chromium 解不了，预览只能走应用内合成解码出的 PNG。
@@ -1383,10 +1397,10 @@ class ProjectService {
     // 由界面按类型徽章展示。
     if (isLayeredSourceImageFilePath(abs)) {
       const existing = peekExistingImageThumbnail(root, posix)
-      if (existing) return this.getAssetFileUrl(existing)
+      if (existing) return this.getAssetFileUrl(existing) ?? ''
       try {
         const thumbRel = await scheduleEnsureThumbnail(root, posix)
-        return this.getAssetFileUrl(thumbRel)
+        return this.getAssetFileUrl(thumbRel) ?? ''
       } catch (err) {
         warnThumbnailOnce(posix, err)
         return ''
@@ -1395,10 +1409,10 @@ class ProjectService {
 
     if (isVideoFilePath(abs)) {
       const existing = peekExistingImageThumbnail(root, posix)
-      if (existing) return this.getAssetFileUrl(existing)
+      if (existing) return this.getAssetFileUrl(existing) ?? ''
       try {
         const thumbRel = await scheduleEnsureThumbnail(root, posix)
-        return this.getAssetFileUrl(thumbRel)
+        return this.getAssetFileUrl(thumbRel) ?? ''
       } catch (err) {
         warnThumbnailOnce(posix, err)
         throw err instanceof Error ? err : new Error(String(err))
@@ -1408,18 +1422,18 @@ class ProjectService {
     // 3D 模型：原文件不能当 <img>。已有离屏预览图则返回；否则空串，由渲染层拍一张再 saveModelThumbnail。
     if (isModelFilePath(abs)) {
       const existing = peekExistingImageThumbnail(root, posix)
-      return existing ? this.getAssetFileUrl(existing) : ''
+      return existing ? (this.getAssetFileUrl(existing) ?? '') : ''
     }
 
     if (!isImageFilePath(abs)) {
-      return this.getAssetFileUrl(relativePath)
+      return this.getAssetFileUrl(relativePath) ?? ''
     }
     const existing = peekExistingImageThumbnail(root, posix)
-    if (existing) return this.getAssetFileUrl(existing)
+    if (existing) return this.getAssetFileUrl(existing) ?? ''
     void scheduleEnsureThumbnail(root, posix).catch((err) => {
       warnThumbnailOnce(posix, err)
     })
-    return this.getAssetFileUrl(relativePath)
+    return this.getAssetFileUrl(relativePath) ?? ''
   }
 
   /**

@@ -943,6 +943,8 @@ async function loadModel(relativePath: string | null | undefined): Promise<void>
   try {
     const url = await window.studio.getAssetFileUrl(relativePath)
     if (token !== loadToken) return
+    // 文件缺失返回 null：按加载失败处理，走下面的 error 状态（复用同一条本地化文案）
+    if (!url) throw new Error(t('asset.inspector.modelPreviewError'))
     const loaded = await loadModelScene(url, relativePath)
     if (token !== loadToken || !scene) return
     rootObject = loaded.scene

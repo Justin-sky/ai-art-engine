@@ -214,7 +214,8 @@ watch(
           ? await resolveAssetPlaybackUrl(a.relativePath)
           : await window.studio.getAssetFileUrl(a.relativePath)
       if (token !== previewLoadToken) return
-      previewUrl.value = url
+      // 文件缺失时是 null：落回既有的空 URL 占位分支
+      previewUrl.value = url ?? ''
     } catch {
       if (token !== previewLoadToken) return
       previewUrl.value = ''

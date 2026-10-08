@@ -1326,7 +1326,8 @@ async function fileUrl(relativePath: string | undefined): Promise<string> {
   if (cached) return cached
   const url = await window.studio.getAssetFileUrl(relativePath)
   if (url) urlCache.set(relativePath, url)
-  return url
+  // 文件缺失时是 null：返回空串，调用方按「没有 URL」跳过
+  return url ?? ''
 }
 
 function anchorImageUrl(index: number): string {

@@ -4826,6 +4826,7 @@ export default {
       exportVideoSuccess: 'Video saved',
       exportImagesSuccess: 'Exported {n} images',
       exportFailed: 'Export failed: {error}',
+      exportFailedNoFile: 'The asset file no longer exists — regenerate or re-import it',
       exportFilterText: 'Text files',
       exportFilterVideo: 'Video files',
       exportFilterAll: 'All files',

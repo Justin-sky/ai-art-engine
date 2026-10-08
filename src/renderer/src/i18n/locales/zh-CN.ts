@@ -4717,6 +4717,7 @@ export default {
       exportVideoSuccess: '视频已保存',
       exportImagesSuccess: '已导出 {n} 张图片',
       exportFailed: '导出失败：{error}',
+      exportFailedNoFile: '资产文件已不存在，请重新生成或重新导入',
       exportFilterText: '文本文件',
       exportFilterVideo: '视频文件',
       exportFilterAll: '所有文件',

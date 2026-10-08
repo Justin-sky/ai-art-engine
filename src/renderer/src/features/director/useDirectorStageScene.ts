@@ -2598,6 +2598,8 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     if (!asset?.relativePath) return null
     try {
       const url = await window.studio.getAssetFileUrl(asset.relativePath)
+      // 文件缺失返回 null：当作「这份动作资产不可用」，与 catch 同口径返回 null
+      if (!url) return null
       const loaded = await loadModelScene(url, asset.relativePath)
       const entry: AnimationAssetCacheEntry = {
         clips: loaded.animations.slice(),
@@ -6450,6 +6452,8 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     if (!isSplatProduct) {
       try {
         const url = await window.studio.getAssetFileUrl(model.relativePath)
+        // 文件缺失返回 null：按提取失败处理（下面的 catch 只打日志并沿用默认 transform / 颜色）
+        if (!url) throw new Error('model file missing')
         const loaded = await loadModelScene(url, model.relativePath)
         const extracted = extractModelSceneDefaults(loaded.scene)
         xf = extracted.transform
@@ -7807,6 +7811,8 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       if (rel) {
         try {
           const url = await window.studio.getAssetFileUrl(rel)
+          // 文件缺失返回 null：按加载失败处理，退化为占位方块（下面的 catch 会打日志）
+          if (!url) throw new Error('model file missing')
           const loaded = await loadModelScene(url, rel)
           const root = loaded.scene
           root.name = obj.name
@@ -8012,6 +8018,8 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
 
     try {
       const url = await window.studio.getAssetFileUrl(sceneAsset.relativePath)
+      // 文件缺失返回 null：走与加载失败同一条用户可见报错
+      if (!url) throw new Error(t('director.error.panoramaLoad'))
       await createPanoramaSphere(url)
     } catch (e) {
       error.value = e instanceof Error ? e.message : t('director.error.panoramaLoad')

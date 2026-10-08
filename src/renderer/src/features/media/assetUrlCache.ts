@@ -28,11 +28,12 @@ export async function resolveAssetFileUrl(relativePath: string): Promise<string>
   const hit = fileUrlCache.get(key)
   if (hit) return hit
   try {
+    // 文件缺失时主进程返回 null（不再抛错）：按既有的「空串 = 无 URL」约定收口，调用方降级展示
     const url = await window.studio.getAssetFileUrl(key)
     if (url) fileUrlCache.set(key, url)
-    return url
+    return url ?? ''
   } catch {
-    // 文件缺失 / 路径已失效（如资产被搬移后残留旧路径）时返回空串，由调用方降级展示
+    // 路径越界等异常：同样返回空串，由调用方降级展示
     return ''
   }
 }

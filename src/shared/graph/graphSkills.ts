@@ -157,6 +157,7 @@ const TUTORIAL_RECORDING_USAGE_ZH =
   '高亮只用 tutorialId（固定 id + graph-ctx-* / graph-dive-view-*）。fps:10 maxSeconds:180。compose 必传 steps[{index,narration,caption}]。' +
   '**动作必须带 tutorialId**：doClick / doDblClick / doContextMenu / fillText 少了它工具会直接报错（以前是静默跳过、成片里什么都没发生）。' + // cjk-ok（dsh 技能正文：随技能进 SKILL.md 的提示词数据）
   '**别再加字幕轨**：title/caption 已由录制 HUD 烧进画面，`tutorial_compose` 默认不铺字幕（要叠字才显式 subtitles:true）。' + // cjk-ok（dsh 技能正文：随技能进 SKILL.md 的提示词数据）
+  '**把被演示的音效放进去**：讲音效/音乐的教程，每步把该步生成的音频用 `steps[].sfxRelativePath` 传给 compose（铺 sfx 轨、与口播对齐）——只铺口播等于「讲了没演示」，观众听不到那个音效。' + // cjk-ok（dsh 技能正文：随技能进 SKILL.md 的提示词数据）
   '旁白长度由音频真实时长决定，长句不会被截断（画面会跟着延长收尾）。' + // cjk-ok（dsh 技能正文：随技能进 SKILL.md 的提示词数据）
   '**口播要配得上步骤间隔**：声轨顺序排布、不会重叠，但口播比间隔长时只能往后顺延（画面落后于旁白）。' + // cjk-ok（dsh 技能正文：随技能进 SKILL.md 的提示词数据）
   '每步口播控制在 ~1–2 句、或 step 之间多留几秒；compose 返回的 narrationShiftedSec > 0 就是顺延了的信号。' + // cjk-ok（dsh 技能正文：随技能进 SKILL.md 的提示词数据）
@@ -177,6 +178,7 @@ const TUTORIAL_RECORDING_USAGE_EN =
   'ONE continuous take: screen_record_start→screen_record_step×N→screen_record_wait→screen_record_stop→tutorial_compose. ' +
   'A tutorialId is REQUIRED for doClick/doDblClick/doContextMenu/fillText (without it the tool errors out; it used to silently do nothing). ' +
   'Do NOT add a subtitle track: title/caption are already burned into the picture by the HUD, and tutorial_compose leaves subtitles off by default. ' +
+  'ALWAYS include the demonstrated audio: pass the sound effect/music generated in that step as `steps[].sfxRelativePath` (goes on the sfx track, aligned with the narration) — otherwise a sound-effect lesson never lets the viewer hear the effect. ' +
   'Narration length comes from the real audio duration, so long sentences are never cut (the picture is extended instead). ' +
   'Keep narration in proportion to the step gap: the voice track is laid out sequentially and never overlaps, so over-long narration is pushed later (the picture falls behind the voice) — `narrationShiftedSec` > 0 in the compose result is that signal. ' +
   'tutorialId = fixed ids + graph-ctx-* / graph-dive-view-*. fps:10 maxSeconds:180.'

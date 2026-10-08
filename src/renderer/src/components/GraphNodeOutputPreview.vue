@@ -1040,11 +1040,12 @@ async function resolveAssetSrc(assetId: string): Promise<string> {
   try {
     if (asset.type === 'video') {
       if (!isVideoFilePath(asset.relativePath)) return ''
-      return await window.studio.getAssetFileUrl(asset.relativePath)
+      // 文件缺失时返回 null：统一收口成空串（本组件的占位状态）
+      return (await window.studio.getAssetFileUrl(asset.relativePath)) ?? ''
     }
     if (isSoundType(asset.type)) {
       if (!isAudioFilePath(asset.relativePath)) return ''
-      return await window.studio.getAssetFileUrl(asset.relativePath)
+      return (await window.studio.getAssetFileUrl(asset.relativePath)) ?? ''
     }
     return await window.studio.getAssetPreviewUrl(asset.relativePath)
   } catch {
@@ -1056,11 +1057,11 @@ async function resolveRelSrc(relativePath: string, kind: PreviewMediaKind): Prom
   try {
     if (kind === 'video') {
       if (!isVideoFilePath(relativePath)) return ''
-      return await window.studio.getAssetFileUrl(relativePath)
+      return (await window.studio.getAssetFileUrl(relativePath)) ?? ''
     }
     if (kind === 'audio') {
       if (!isAudioFilePath(relativePath)) return ''
-      return await window.studio.getAssetFileUrl(relativePath)
+      return (await window.studio.getAssetFileUrl(relativePath)) ?? ''
     }
     return await window.studio.getAssetPreviewUrl(relativePath)
   } catch {

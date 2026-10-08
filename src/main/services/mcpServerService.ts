@@ -242,7 +242,9 @@ import { TUTORIAL_POST_DBLCLICK_FOCUS_IDS, TUTORIAL_UI_ID_HINT } from '@shared/t
  *                         通知→202 空体）；其余路径一律 404
  *
  * 鉴权：除 /health 外均需 `Authorization: Bearer <token>`；token 与端口写入
- * <userData>/mcp.json，应用退出时删除。
+ * <userData>/mcp.json，由**持有监听 socket 的主实例**在绑定成功后写（port 取 socket 实际端口、
+ * pid 为该进程），应用退出时保留——外部客户端（scripts/mcp-bridge.mjs / HTTP 直连）只认这个文件，
+ * 所以文件里的地址必须是既成事实，不能是"打算用的端口"。
  */
 
 const MCP_DEFAULT_PORT = 43110
@@ -4373,7 +4375,9 @@ const TOOL_DEFS: McpToolDef[] = [
         steps: {
           type: 'array',
           description:
-            '每步口播：index 对齐 alignment.index；narration 口播长句；caption 字幕（缺省=narration）；可直接给 voiceRelativePath 跳过 TTS',
+            '每步：index 对齐 alignment.index；narration 口播长句；caption 字幕（缺省=narration）；' +
+            'voiceRelativePath 可直接给旁白跳过 TTS；**sfxRelativePath 给「这一步被演示的那个音效」**' +
+            '（如 Cache/Sfx/xxx.mp3）—— 讲音效生成的教程不给它，观众就听不到被演示的音效',
           items: {
             type: 'object',
             properties: {
@@ -4381,6 +4385,10 @@ const TOOL_DEFS: McpToolDef[] = [
               narration: { type: 'string' },
               caption: { type: 'string' },
               voiceRelativePath: { type: 'string' },
+              sfxRelativePath: {
+                type: 'string',
+                description: '被演示的音效的工程内相对路径（铺到 sfx 轨，起点与这步口播对齐）'
+              },
               voice: { type: 'string' },
               model: { type: 'string' },
               providerInstanceId: { type: 'string' }
@@ -4471,6 +4479,7 @@ function readTutorialComposeSteps(
       ...(typeof row.voiceRelativePath === 'string'
         ? { voiceRelativePath: row.voiceRelativePath }
         : {}),
+      ...(typeof row.sfxRelativePath === 'string' ? { sfxRelativePath: row.sfxRelativePath } : {}),
       ...(typeof row.voice === 'string' ? { voice: row.voice } : {}),
       ...(typeof row.model === 'string' ? { model: row.model } : {}),
       ...(typeof row.providerInstanceId === 'string'
@@ -5285,6 +5294,35 @@ function mcpConfigFile(): string {
   return join(app.getPath('userData'), 'mcp.json')
 }
 
+/** mcp.json 载荷：外部 MCP 客户端只信这个文件（见 docs/MCP.md），每个字段都要与既成事实一致 */
+export interface McpConfigPayload {
+  port: number
+  token: string
+  pid: number
+  version: string
+}
+
+/**
+ * 由**正在监听的 socket** 生成 mcp.json 载荷，而不是由"打算用的端口"生成。
+ *
+ * 为什么必须问 `listener.address()`：候选端口会因被占用而顺延，设置里填的端口、上次用过的端口
+ * 都只是偏好；外部客户端不会去扫端口，只会照文件里写的连，写错就是连不上。
+ * `pid` 同理必须是持有该监听 socket 的进程，否则排查连接问题时会被引到一个不相干的进程上。
+ *
+ * 返回 null = 这个 socket 不是 TCP（unix socket）或已经关闭：没有任何端口可对外公布，
+ * 调用方必须放弃写文件，而不是退化成写期望端口。
+ */
+export function mcpConfigPayloadFor(
+  listener: Pick<Server, 'address'>,
+  token: string,
+  pid: number,
+  version: string
+): McpConfigPayload | null {
+  const address = listener.address()
+  if (!address || typeof address === 'string') return null
+  return { port: address.port, token, pid, version }
+}
+
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   const payload = JSON.stringify(body)
   res.writeHead(status, {
@@ -5817,8 +5855,28 @@ export async function applyBlenderMcpSettings(
   await restartBlenderMcp(input)
   return getBlenderMcpInfo()
 }
-export async function startMcpServer(): Promise<void> {
+/**
+ * 启动工具服务。
+ *
+ * @param preferredPort 调用方（设置面板热重启）指定的期望端口，仅作第一个候选；实际端口一律
+ *   以绑定结果为准（见 mcpConfigPayloadFor）。
+ */
+export async function startMcpServer(preferredPort?: number): Promise<void> {
   if (server) return
+  // 只有拿到单实例锁的主实例才有资格起工具服务、写 mcp.json（入口 src/main/index.ts 在 ready
+  // 之前就 requestSingleInstanceLock()）。
+  //
+  // 为什么必须挡这一下：单实例锁的输家（同 userData 下已有实例在跑）照样会跑完 whenReady ——
+  // 它发现首选端口被占着，就顺延到下一个空闲端口、把 mcp.json 覆盖成自己的 pid + 端口，随后
+  // app.quit() 生效、进程退出。于是文件指向一个已死进程和没人监听的端口，外部客户端照它连接
+  // 必然失败（实机复现：文件 {port:43111,pid:25344}，真正在听的却是 43110 的另一个实例）。
+  // 拿不到锁 = 本进程注定退出：不起服务，也绝不覆盖别人写好的连接信息。
+  if (!app.hasSingleInstanceLock()) {
+    console.warn(
+      '[mcp] 本进程未持有单实例锁（同 userData 下已有实例在运行），跳过工具服务启动，不写 mcp.json'
+    )
+    return
+  }
   // 录制自动收尾（到时长/字节上限、或窗口被关）也要出对话预览卡：
   // 那条路径没有工具调用在等返回值，所以由服务层回调进来补一次旁路活动。
   setScreenRecordFinishListener((result) => {
@@ -5835,10 +5893,11 @@ export async function startMcpServer(): Promise<void> {
   mcpServerVersion = String(updateService.getCurrentVersion())
   initMcpAuditDir()
   // token 持久复用：HTTP 直连模式下客户端配置的 header 才能保持有效；
-  // 要重置可删除 mcp.json 后重启应用
-  mcpToken = stored.token ?? randomUUID()
-  // 端口偏好：优先上次使用的端口（HTTP 直连配置不变），再扫默认段
-  const preferred = Number(process.env.AIAE_MCP_PORT) || stored.port
+  // 要重置可删除 mcp.json 后重启应用。进程内已有的 token 优先——设置面板换 token 时是先把新值
+  // 交给本函数，不能被文件里的旧 token 盖回去。
+  mcpToken = mcpToken || stored.token || randomUUID()
+  // 端口偏好：优先调用方指定的端口，其次上次真正绑上的端口（HTTP 直连配置不变），再扫默认段
+  const preferred = preferredPort || Number(process.env.AIAE_MCP_PORT) || stored.port
   const candidates: number[] = []
   if (preferred) candidates.push(preferred)
   for (let offset = 0; offset < MCP_PORT_RANGE; offset++) {
@@ -5904,17 +5963,24 @@ export async function startMcpServer(): Promise<void> {
       })
     })
     if (started) {
-      mcpConfigPath = mcpConfigFile()
-      mkdirSync(app.getPath('userData'), { recursive: true })
-      writeFileSync(
-        mcpConfigPath,
-        JSON.stringify(
-          { port, token: mcpToken, pid: process.pid, version: updateService.getCurrentVersion() },
-          null,
-          2
-        )
+      // 端口取 socket 的既成事实：候选端口顺延过、期望端口落空时，文件也必须说出真正在听的端口；
+      // pid 记的是本进程（就是这个监听 socket 的持有者），客户端排查时不会指向空处。
+      const payload = server
+        ? mcpConfigPayloadFor(server, mcpToken, process.pid, updateService.getCurrentVersion())
+        : null
+      if (payload) {
+        mcpConfigPath = mcpConfigFile()
+        mkdirSync(app.getPath('userData'), { recursive: true })
+        writeFileSync(mcpConfigPath, JSON.stringify(payload, null, 2))
+      } else {
+        // 理论上不可达（TCP 监听成功必有端口）。宁可服务照跑、不写文件，也不能往文件里塞一个
+        // 没验证过的端口，把外部客户端指到没人监听的地方。
+        mcpConfigPath = ''
+        console.error('[mcp] 监听 socket 没有可公布的 TCP 端口，已跳过写 mcp.json')
+      }
+      console.log(
+        `[mcp] tool server ready at http://127.0.0.1:${mcpPort} (config: ${mcpConfigPath || '未写'})`
       )
-      console.log(`[mcp] tool server ready at http://127.0.0.1:${port} (config: ${mcpConfigPath})`)
       console.log(
         `[mcp] blender tools at http://127.0.0.1:${port}${BLENDER_MCP_PATH}` +
           '（addon 连接按需建立，无需子进程）'
@@ -5925,7 +5991,7 @@ export async function startMcpServer(): Promise<void> {
   console.error(`[mcp] 候选端口均被占用（${candidates.join(', ')}），工具服务未启动`)
 }
 
-/** 关闭运行中的 MCP 服务（保留 mcp.json，供 restart 复用 token / 端口偏好） */
+/** 关闭运行中的 MCP 服务（保留 mcp.json：token 跨重启复用，端口偏好也在下次启动时被读到） */
 async function closeMcpServer(): Promise<void> {
   if (!server) return
   // 先断 addon 连接：Blender 工具面挂在同一个 server 上，避免它比 server 活得久
@@ -5977,24 +6043,13 @@ export async function restartMcpServer(input: McpRestartInput): Promise<McpServe
     : resetToken
       ? randomUUID()
       : mcpToken || readStoredMcpConfig().token || randomUUID()
-  // 先落盘再启动：startMcpServer 会从 mcp.json 读取 token 与端口偏好
-  const configPath = mcpConfigFile()
-  mkdirSync(app.getPath('userData'), { recursive: true })
-  writeFileSync(
-    configPath,
-    JSON.stringify(
-      {
-        ...(nextPort !== undefined ? { port: nextPort } : {}),
-        token: nextToken,
-        pid: process.pid,
-        version: updateService.getCurrentVersion()
-      },
-      null,
-      2
-    )
-  )
+  // token 与期望端口都在进程内交给 startMcpServer，不再"先落盘再启动"：
+  // 那时 nextPort 还只是期望值，写进 mcp.json 就等于对外公布一个尚未绑定（甚至可能绑不上）的
+  // 端口——候选顺延或全部被占时，文件说的就是假地址，外部客户端照它连必然失败。
+  // 文件只由 startMcpServer 在绑定成功后按 socket 实际端口写一次。
+  mcpToken = nextToken
   await closeMcpServer()
-  await startMcpServer()
+  await startMcpServer(nextPort)
   return getMcpServerInfo()
 }
 
@@ -6022,8 +6077,9 @@ export function stopMcpServer(): void {
   pendingMcpGraphIconRefineResults.clear()
   pendingMcpRenderJobResults.clear()
   pendingAskUserAnswers.clear()
-  // 应用退出：保留 mcp.json——token 跨重启稳定，桥 / HTTP 直连配置持续有效；
-  // pid 字段可能过期，桥只读取 port + token，不受影响
+  // 应用退出：保留 mcp.json——token 跨重启稳定，桥 / HTTP 直连配置持续有效。
+  // 文件描述的是**最近一次成功绑定**：进程退出后 port/pid 就成了历史记录（桥会先探活再连，
+  // 拿不到就提示"应用没启动或端口变了"），这里不删也不改，避免把 token 一起丢掉。
   mcpConfigPath = ''
   if (closing) {
     closing.close(() => {

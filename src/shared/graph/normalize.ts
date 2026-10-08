@@ -28,6 +28,7 @@ import { stripHostInputSlotNodes, type HostInputSlotSpec } from './hostInput'
 import { isAssetRefInputHostType } from './nodeRole'
 import { defaultHostInterfaceForAssetType, type HostInterfaceDocument } from './hostInterface'
 import { ensureBoundaryProxyNodes } from './ensureBoundary'
+import { ELEVEN_SOUND_MODEL } from '../modelProviders/elevenlabs/voice'
 import { inferElementWorkflowHostInterface } from './worldElementParams'
 
 export { ASSET_DIRECTOR_OUTPUT_TITLE, ASSET_SCREENPLAY_OUTPUT_TITLE } from './scopes'
@@ -233,6 +234,34 @@ function migrateRetiredGameHtmlGenNode(raw: GraphNode): GraphNode {
   }
 }
 
+/**
+ * 音效节点 typeId（对应 `builtins.ts` 里的 `asset.sfx`）。
+ *
+ * 仓库里其它地方也直接用字面量（如 `generateNodeModality.ts`），这里起个名字是为了
+ * 让下面那段「只碰音效节点」的约束一眼可见。
+ */
+const SOUND_EFFECT_TYPE_ID = 'asset.sfx'
+
+/**
+ * 音效节点的模型是**固定值**：端点 `POST /v1/sound-generation` 的 model_id 是单值 enum
+ * （只有 `eleven_text_to_sound_v2`），节点上那个下拉只是用来选**提供商实例**。
+ *
+ * 历史遗留：旧版解析从 `audio`（语音 / TTS）桶取默认模型，于是音效节点上被写进了
+ * `eleven_v4`、`microsoft/mai-voice-2.1-flash` 这类**语音模型** —— 用户看到的就是
+ * 「音效生成怎么又变成 TTS 了」。这里在规范化时纠回来：**打开即自愈**，不必手改工程文件。
+ *
+ * 只动 `asset.sfx` 节点，其它节点的模型（含空值）一概不碰。
+ */
+function coerceSoundEffectModel(node: GraphNode): GraphNode {
+  if (node.typeId !== SOUND_EFFECT_TYPE_ID) return node
+  const current = node.params?.generateModel
+  if (typeof current === 'string' && current.trim() === ELEVEN_SOUND_MODEL) return node
+  return {
+    ...node,
+    params: { ...(node.params ?? {}), generateModel: ELEVEN_SOUND_MODEL }
+  }
+}
+
 function finalizeGraph(
   nodes: GraphNode[],
   raw: GraphDocument,
@@ -243,11 +272,13 @@ function finalizeGraph(
   const stripped = stripClassicOutputNodes(scope, nodes, edges, runStates)
   syncCanonicalOutputNodeIds(stripped.nodes, stripped.edges, stripped.runStates)
   const sanitizedEdges = sanitizeEdges(stripped.nodes, stripped.edges, scope)
+  // 纠正音效节点上的语音模型残留（旧设置写进去的），让打开工程即自愈
+  const coercedNodes = stripped.nodes.map(coerceSoundEffectModel)
   return {
-    nodes: stripped.nodes,
+    nodes: coercedNodes,
     edges: sanitizedEdges,
     groups: sanitizeGraphGroups({
-      nodes: stripped.nodes,
+      nodes: coercedNodes,
       edges: sanitizedEdges,
       groups: raw.groups,
       viewport: raw.viewport ?? { x: 0, y: 0, zoom: 1 }
@@ -255,7 +286,7 @@ function finalizeGraph(
     viewport: raw.viewport ?? { x: 0, y: 0, zoom: 1 },
     runStates: sanitizePersistedRunStates(
       stripped.runStates,
-      stripped.nodes.map((node) => node.id)
+      coercedNodes.map((node) => node.id)
     )
   }
 }

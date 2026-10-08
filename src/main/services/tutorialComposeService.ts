@@ -38,6 +38,12 @@ export type TutorialComposeStepInput = {
   caption?: string
   /** 已生成的旁白相对路径；给出则跳过 TTS */
   voiceRelativePath?: string
+  /**
+   * 这一步**被演示的那个音效**的工程内相对路径（如 `Cache/Sfx/xxx.mp3`）。
+   *
+   * 讲音效生成的教程如果只铺口播，观众听不到被演示的音效本身 —— 这条就是给它留的轨位。
+   */
+  sfxRelativePath?: string
   voice?: string
   model?: string
   providerInstanceId?: string
@@ -76,6 +82,15 @@ export type TutorialNarrationTiming = {
   overhangSec: number
 }
 
+/** 被演示的音效在成片里的落点 */
+export type TutorialSfxTiming = {
+  index: number
+  startSec: number
+  durationSec: number
+  /** 音效音频探测到的真实时长；探测不到时为 null（此时用窗口长度） */
+  detectedSec: number | null
+}
+
 export type TutorialComposeResult = {
   screenplayAssetId: string
   recordingRelativePath: string
@@ -86,6 +101,8 @@ export type TutorialComposeResult = {
   /** 录屏视频本身的实际时长（从文件 probe；探测不到时为 null） */
   recordingDurationSec: number | null
   narration: TutorialNarrationTiming[]
+  /** 铺进 sfx 轨的音效落点（空数组 = 这一步教学里没有演示音效） */
+  sfx: TutorialSfxTiming[]
   /**
    * 最大顺延秒数：口播比步骤间隔长时，声轨只能顺序往后排（**绝不重叠**），
    * 代价是画面落后于旁白。这个值 > 0 就是在告诉调用方「缩短口播或加长步骤停顿」。
@@ -163,6 +180,8 @@ export async function composeTutorialVideo(
   let lastVoiceEndSec = videoDurationSec
   /** 声轨游标：下一条声轨最早只能从这里开始（保证不重叠） */
   let voiceCursorSec = 0
+  /** 铺进 sfx 轨的音效落点（数量即 length，回报给调用方便于自查「有没有把演示的音效放进去」） */
+  const sfxTiming: TutorialSfxTiming[] = []
 
   for (const row of alignment) {
     const step = stepByIndex.get(row.index) ?? {}
@@ -228,6 +247,32 @@ export async function composeTutorialVideo(
         durationSec: Number(voiceSec.toFixed(3))
       })
     }
+
+    /**
+     * 被演示的音效：铺在 **sfx 轨**，起点跟这一步的声轨对齐。
+     *
+     * 讲音效生成的教程，重点就是让人**听到**那个音效；只铺口播等于讲了没演示。
+     * 时长用音频真实长度（探测失败就退到窗口长度），并保证不越过下一条口播的起点 ——
+     * 音效与旁白叠在一起是正常的（一个在演示、一个在讲解），但音效之间不该互相压。
+     */
+    const sfxRel = step.sfxRelativePath?.trim() || ''
+    if (sfxRel) {
+      const probedSfxSec = await probeDurationSec(resolveAbsUnderProject(sfxRel)).catch(() => null)
+      const sfxSec = Math.max(0.2, probedSfxSec ?? windowSec)
+      drafts.push({
+        track: 'sfx',
+        title: row.title ? `${row.title} · 音效` : `音效 ${row.index + 1}`, // cjk-ok（工程内数据名：资产名 / 轨道标题 / 口播文本）
+        relativePath: sfxRel,
+        startSec: Number(startSec.toFixed(3)),
+        durationSec: Number(sfxSec.toFixed(3))
+      })
+      sfxTiming.push({
+        index: row.index,
+        startSec: Number(startSec.toFixed(3)),
+        durationSec: Number(sfxSec.toFixed(3)),
+        detectedSec: probedSfxSec === null ? null : Number(probedSfxSec.toFixed(3))
+      })
+    }
   }
 
   // 画面至少铺到「最后一个旁白说完」为止：成片末尾要么定格、要么黑尾，但绝不吞掉口播
@@ -268,6 +313,7 @@ export async function composeTutorialVideo(
       clipCount: timelineDoc.clips.length,
       recordingDurationSec: probedVideoSec === null ? null : Number(probedVideoSec.toFixed(3)),
       narration,
+      sfx: sfxTiming,
       narrationShiftedSec: Number(Math.max(0, ...narration.map((n) => n.shiftedSec)).toFixed(3))
     }
   }
@@ -321,6 +367,7 @@ export async function composeTutorialVideo(
     clipCount: timelineDoc.clips.length,
     recordingDurationSec: probedVideoSec === null ? null : Number(probedVideoSec.toFixed(3)),
     narration,
+    sfx: sfxTiming,
     narrationShiftedSec: Number(Math.max(0, ...narration.map((n) => n.shiftedSec)).toFixed(3))
   }
 }

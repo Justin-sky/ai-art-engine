@@ -11,7 +11,6 @@ import {
   createEmptyModalityMap,
   findProviderById,
   isCustomApiStyle,
-  modalityConfig,
   pickActiveProvider,
   supportsSoundEffect
 } from '@shared/modelProvider'
@@ -105,11 +104,18 @@ export function resolveActiveSoundEffectProvider(providerInstanceId?: string): {
   const requested = providerInstanceId?.trim()
   const picked = (requested ? capable.find((p) => p.id === requested) : undefined) ?? capable[0]
 
-  // 音效适配器忽略模型入参（端点只有一个模型），这里给个明确值只是为了让类型完整
-  const config = modalityConfig(picked, 'audio')
+  /**
+   * 模型**固定**为音效模型，不再从 `audio` 桶取默认值。
+   *
+   * 原来这里读的是 `modalityConfig(picked, 'audio')` —— 那是**语音/TTS 桶**
+   * （用户那里默认是 `eleven_v4`、`microsoft/mai-voice-2.1-flash` 这类语音模型）。
+   * 结果：音效节点被写上一个语音模型名，界面上看起来就像「音效生成变成了 TTS」
+   * （用户实际反馈过）。音效端点本来就是单值 enum，正确取值只有
+   * `eleven_text_to_sound_v2`。
+   */
   return {
     provider: picked,
-    modelId: config.defaultModelId || config.selectedModelIds[0] || ELEVEN_SOUND_MODEL
+    modelId: ELEVEN_SOUND_MODEL
   }
 }
 

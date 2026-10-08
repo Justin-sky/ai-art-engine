@@ -1574,7 +1574,11 @@ export interface StudioApi {
   attachAssetRelative: (input: AttachAssetRelativeInput) => Promise<AssetInfo>
   /** 将工程内文件（如 Cache 生成产物）复制到资产库并登记为资产 */
   saveProjectAsset: (input: SaveProjectAssetInput) => Promise<AssetInfo>
-  getAssetFileUrl: (relativePath: string) => Promise<string>
+  /**
+   * 资产文件的可用 URL；**文件在磁盘上已不存在时返回 null，不抛错**。
+   * null 是「没有文件」的显式标记（不是空串、也不是伪造路径），调用方据此走占位/破图分支。
+   */
+  getAssetFileUrl: (relativePath: string) => Promise<string | null>
   /** 预览级 URL（图片缩略图 / 视频首帧 / 3D 离屏预览）；列表/节点卡应优先使用 */
   getAssetPreviewUrl: (relativePath: string) => Promise<string>
   /** 把 3D 离屏预览 PNG 写入 thumbs，并回写资产 thumbnailPath */

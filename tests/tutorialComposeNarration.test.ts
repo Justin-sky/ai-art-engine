@@ -52,7 +52,14 @@ vi.mock('../src/main/services/timelineExportService', () => ({
   exportScriptTimeline: (...args: unknown[]) => exportScriptTimeline(...args)
 }))
 
-type Clip = { track: string; title: string; startSec: number; durationSec: number; text?: string }
+type Clip = {
+  track: string
+  title: string
+  startSec: number
+  durationSec: number
+  text?: string
+  relativePath?: string
+}
 
 async function compose(input: Record<string, unknown>) {
   vi.resetModules()
@@ -260,5 +267,52 @@ describe('教学合成：旁白与时间轴', () => {
     // ⑤ 被推后了多少要如实回报（口播超窗口是录制侧的问题，agent 得知道）
     expect(result.narration.some((n) => n.shiftedSec > 0)).toBe(true)
     expect(result.narrationShiftedSec).toBeGreaterThan(0)
+  })
+
+  /**
+   * 讲音效生成的教程，**必须能听到被演示的音效**。
+   *
+   * 之前 compose 只铺 video + voice（+可选字幕），于是「音效生成教学」里只有 TTS 口播、
+   * 观众听不到那个音效 —— 等于讲了没演示。
+   */
+  it('每一步的被演示音效铺进 sfx 轨（与口播对齐、时长取音频真实长度）', async () => {
+    probeDurationSec.mockImplementation(async (file: string) => {
+      const p = file.replace(/\\/g, '/')
+      if (p.endsWith('recording.mp4')) return 2.5
+      if (p.endsWith('.mp3') && !p.includes('Voices')) return 1.25 // 音效
+      return 4 // 旁白
+    })
+    generateSpeechAsset.mockResolvedValue({ relativePath: 'Cache/Voices/step.mp3' })
+
+    const result = await compose({
+      recordingRelativePath: 'Cache/Videos/recording.mp4',
+      alignment: ALIGNMENT,
+      steps: [
+        { index: 0, narration: '先听这个雨声', sfxRelativePath: 'Cache/Sfx/rain.mp3' },
+        { index: 1, narration: '再看爆炸', sfxRelativePath: 'Cache/Sfx/boom.mp3' }
+      ]
+    })
+
+    const clips = (exportScriptTimeline.mock.calls[0]![0] as { clips: Clip[] }).clips
+    const sfx = clips.filter((c) => c.track === 'sfx').sort((a, b) => a.startSec - b.startSec)
+    expect(sfx).toHaveLength(2)
+    expect(sfx[0]!.relativePath).toBe('Cache/Sfx/rain.mp3')
+    // 起点跟声轨对齐（第 2 步被顺延到 4s），时长取音效真实长度
+    expect(result.sfx.map((s) => s.startSec)).toEqual([0, 4])
+    for (const s of result.sfx) expect(s.durationSec).toBeCloseTo(1.25, 3)
+    expect(sfx[1]!.startSec).toBeCloseTo(4, 3)
+  })
+
+  it('没给 sfxRelativePath 时不铺 sfx 轨（不凭空造音轨）', async () => {
+    await compose({
+      recordingRelativePath: 'Cache/Videos/recording.mp4',
+      alignment: ALIGNMENT,
+      steps: [
+        { index: 0, narration: '开场' },
+        { index: 1, narration: '收尾' }
+      ]
+    })
+    const clips = (exportScriptTimeline.mock.calls[0]![0] as { clips: Clip[] }).clips
+    expect(clips.filter((c) => c.track === 'sfx')).toHaveLength(0)
   })
 })

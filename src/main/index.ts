@@ -146,6 +146,17 @@ function createWindow(): void {
 }
 
 app.whenReady().then(async () => {
+  /**
+   * 没抢到单实例锁的进程**必须在这里止步**。
+   *
+   * 上面那句 `app.quit()` 只是请求退出，**不会中断模块继续执行** —— 于是抢锁失败的第二个实例
+   * 照样跑完整个启动流程：注册运行时与 IPC、创建窗口（用户会看到窗口一闪）、写共享的
+   * userData，并且**启动自己的 MCP 服务**。后者是实测到的真故障：它抢占下一个空闲端口后
+   * 把 `<userData>/mcp.json` 覆写成「自己的 pid + 那个端口」，随即退出释放端口 ——
+   * 于是那个文件指向一个没人监听的地址，外部 MCP 客户端照它连必然失败。
+   */
+  if (!hasSingleInstanceLock) return
+
   electronApp.setAppUserModelId('com.aiartengine.app')
   Menu.setApplicationMenu(null)
   registerMediaProtocol()

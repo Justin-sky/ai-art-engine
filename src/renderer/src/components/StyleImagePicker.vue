@@ -273,6 +273,8 @@ async function addAssetImage(asset: AssetInfo): Promise<void> {
   }
   try {
     const url = await window.studio.getAssetFileUrl(asset.relativePath)
+    // 文件缺失返回 null：按读取失败处理（catch 里给本地化提示），避免 fetch('')
+    if (!url) throw new Error('asset file missing')
     const res = await fetch(url)
     if (!res.ok) throw new Error(`fetch asset failed: ${res.status}`)
     const blob = await res.blob()

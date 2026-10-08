@@ -1341,7 +1341,9 @@ async function resolveGeneratedVoicePreviews(): Promise<void> {
       const relativePath = item.relativePath?.trim()
       if (!relativePath) return
       try {
-        next[key] = await window.studio.getAssetFileUrl(relativePath)
+        // 文件缺失时返回 null（不再抛错）：照旧跳过该条，不留空 URL
+        const url = await window.studio.getAssetFileUrl(relativePath)
+        if (url) next[key] = url
       } catch {
         /* skip */
       }
@@ -1477,7 +1479,9 @@ async function resolveGeneratedVideoPreviews(): Promise<void> {
       const relativePath = item.relativePath?.trim()
       if (!relativePath) return
       try {
-        next[key] = await window.studio.getAssetFileUrl(relativePath)
+        // 文件缺失时返回 null（不再抛错）：照旧跳过该条，不留空 URL
+        const url = await window.studio.getAssetFileUrl(relativePath)
+        if (url) next[key] = url
       } catch {
         /* skip */
       }

@@ -278,6 +278,9 @@ export function registerIpcHandlers(): void {
     broadcastToAllWindows(IpcChannels.ASSET_UPDATED, updated)
     return updated
   })
+  // 文件缺失是预期状态（用户删/移文件、清缓存、拷贝工程不带缓存）：getAssetFileUrl 返回 null，
+  // 不再抛 E_ASSET_FILE_MISSING。若在这里抛，handler 的 catch 会把它升级成未处理异常，
+  // 日志反复刷「Error occurred in handler for 'asset:get-file-url'」，界面也拿不到可降级的结果。
   handle(IpcChannels.ASSET_GET_FILE_URL, (relativePath: string) =>
     projectService.getAssetFileUrl(relativePath)
   )

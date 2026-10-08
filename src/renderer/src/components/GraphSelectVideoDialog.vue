@@ -96,8 +96,12 @@ async function resolveThumbs(): Promise<void> {
       const relativePath = item.relativePath?.trim()
       if (relativePath) {
         try {
-          next[key] = await window.studio.getAssetFileUrl(relativePath)
-          return
+          // 文件缺失时返回 null（不再抛错）：落到下面的 dataUrl 兜底分支
+          const url = await window.studio.getAssetFileUrl(relativePath)
+          if (url) {
+            next[key] = url
+            return
+          }
         } catch {
           /* fall through */
         }

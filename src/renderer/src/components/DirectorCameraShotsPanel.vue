@@ -170,8 +170,12 @@ async function syncVideoSrc(): Promise<void> {
       const rel = video.relativePath?.trim()
       if (rel) {
         try {
-          next[video.id] = await window.studio.getAssetFileUrl(rel)
-          return
+          // 文件缺失时返回 null（不再抛错）：落到下面的 dataUrl 兜底分支
+          const url = await window.studio.getAssetFileUrl(rel)
+          if (url) {
+            next[video.id] = url
+            return
+          }
         } catch {
           /* fall through */
         }

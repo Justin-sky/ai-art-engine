@@ -255,8 +255,12 @@ async function syncActionSrc(): Promise<void> {
       const relativePath = clip.relativePath?.trim()
       if (relativePath) {
         try {
-          next[id] = await window.studio.getAssetFileUrl(relativePath)
-          return
+          // 文件缺失时返回 null（不再抛错）：落到下面的 dataUrl 兜底分支
+          const url = await window.studio.getAssetFileUrl(relativePath)
+          if (url) {
+            next[id] = url
+            return
+          }
         } catch {
           /* fall through */
         }
