@@ -170,12 +170,54 @@ export const DEFAULT_VOICE_SYSTEM_PROMPT_EN =
 export const DEFAULT_VOICE_SYSTEM_PROMPT_ZH =
   '你是一名专业声音导演。请产出清晰自然的配音或声音设计说明，匹配所需语气、节奏与角色气质。'
 
+/**
+ * 音效（`asset.sfx`）的默认系统提示词。
+ *
+ * **不能复用「声音」那条**：音效节点走的是 ElevenLabs `/v1/sound-generation`，
+ * 只吃**非人声**的声音描述；而「声音导演…匹配语气、节奏与角色气质」是配音（TTS）的口径，
+ * 会诱导模型写出台词腔的描述，端点要么理解成语音、要么给出一段人声化的效果。
+ *
+ * 这里明确三件事：只写非人声的具体声音事件；给出材质/动作/空间/时长/包络这类可落地参数；
+ * 不写台词、不写配音、不写音乐编排（那分别属于声音节点与音乐节点）。
+ */
+export const DEFAULT_SOUND_EFFECT_SYSTEM_PROMPT_EN =
+  'You are a professional sound designer. Describe one concrete non-speech sound event per generation: the material and object (metal, wood, rain, footsteps), the action causing it, the space (small room, open field, tunnel), the distance/perspective, and the character of the envelope (attack, tail, loop). Never write dialogue, voice-over, or music arrangement — this goes to a sound-effect endpoint that does not synthesise speech.'
+
+export const DEFAULT_SOUND_EFFECT_SYSTEM_PROMPT_ZH =
+  '你是一名专业音效设计师。每次生成只描述**一个具体的非人声声音事件**：材质与物体（金属、木头、雨、脚步）、发出动作、所处空间（小房间、旷野、隧道）、远近与听感位置，以及包络特征（起音、尾音、是否无缝循环）。不要写台词、配音或音乐编排 —— 这个端点合成的是音效，不是人声。'
+
 export function defaultTimbreSystemPrompt(locale?: string): string {
   return pickByLocale(locale, DEFAULT_VOICE_SYSTEM_PROMPT_EN, DEFAULT_VOICE_SYSTEM_PROMPT_ZH)
 }
 
 export function resolveVoiceSystemPrompt(raw: string | undefined, locale?: string): string {
   return resolveOrDefault(raw, locale, defaultTimbreSystemPrompt)
+}
+
+export function defaultSoundEffectSystemPrompt(locale?: string): string {
+  return pickByLocale(
+    locale,
+    DEFAULT_SOUND_EFFECT_SYSTEM_PROMPT_EN,
+    DEFAULT_SOUND_EFFECT_SYSTEM_PROMPT_ZH
+  )
+}
+
+export function resolveSoundEffectSystemPrompt(raw: string | undefined, locale?: string): string {
+  return resolveOrDefault(raw, locale, defaultSoundEffectSystemPrompt)
+}
+
+/**
+ * 旧版音效节点被灌了「声音」那条系统提示词（见 `DEFAULT_VOICE_SYSTEM_PROMPT_*`）。
+ *
+ * 迁移判据用**完全相等**：只有原封不动还是那条配音口径的才替换；用户改过的句子保留
+ * （那是他的意思，不该被规范化悄悄改掉）。
+ */
+export function isLegacyVoicePromptOnSoundEffect(raw: string | undefined): boolean {
+  const text = raw?.trim()
+  if (!text) return false
+  return (
+    text === DEFAULT_VOICE_SYSTEM_PROMPT_ZH.trim() || text === DEFAULT_VOICE_SYSTEM_PROMPT_EN.trim()
+  )
 }
 
 // ——— 图片 ———

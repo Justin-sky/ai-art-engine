@@ -29,6 +29,10 @@ import { isAssetRefInputHostType } from './nodeRole'
 import { defaultHostInterfaceForAssetType, type HostInterfaceDocument } from './hostInterface'
 import { ensureBoundaryProxyNodes } from './ensureBoundary'
 import { ELEVEN_SOUND_MODEL } from '../modelProviders/elevenlabs/voice'
+import {
+  defaultSoundEffectSystemPrompt,
+  isLegacyVoicePromptOnSoundEffect
+} from './systemPromptSchemes'
 import { inferElementWorkflowHostInterface } from './worldElementParams'
 
 export { ASSET_DIRECTOR_OUTPUT_TITLE, ASSET_SCREENPLAY_OUTPUT_TITLE } from './scopes'
@@ -254,12 +258,22 @@ const SOUND_EFFECT_TYPE_ID = 'asset.sfx'
  */
 function coerceSoundEffectModel(node: GraphNode): GraphNode {
   if (node.typeId !== SOUND_EFFECT_TYPE_ID) return node
-  const current = node.params?.generateModel
-  if (typeof current === 'string' && current.trim() === ELEVEN_SOUND_MODEL) return node
-  return {
-    ...node,
-    params: { ...(node.params ?? {}), generateModel: ELEVEN_SOUND_MODEL }
+  let params = node.params ?? {}
+
+  /**
+   * 顺带修系统提示词：旧版音效节点被灌了「声音（配音）」那条口径的提示词
+   * （「专业声音导演…匹配语气、节奏与角色气质」），而音效端点只吃非人声描述。
+   * 只在**原封不动仍是那条旧文案**时替换 —— 用户自己改过的句子不能被规范化悄悄改掉。
+   */
+  if (isLegacyVoicePromptOnSoundEffect(params.generateSystemPrompt)) {
+    params = { ...params, generateSystemPrompt: defaultSoundEffectSystemPrompt() }
   }
+
+  const current = params.generateModel
+  if (typeof current === 'string' && current.trim() === ELEVEN_SOUND_MODEL) {
+    return params === node.params ? node : { ...node, params }
+  }
+  return { ...node, params: { ...params, generateModel: ELEVEN_SOUND_MODEL } }
 }
 
 function finalizeGraph(

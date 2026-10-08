@@ -106,6 +106,32 @@ export function buildVoicePrompt(instruction: string, locale?: string): string {
   return buildOrDefault(instruction, locale, defaultTimbreUserPrompt)
 }
 
+// ——— 音效 ———
+
+/**
+ * 音效的用户提示词兜底。
+ *
+ * 与「声音」分开写：音效端点要的是**非人声的声音描述**，而『请根据创作意图生成声音』
+ * 在音效场景下会被读成「生成一段人声」。有指令时仍以指令为准（见 `buildSoundEffectPrompt`）。
+ */
+export const DEFAULT_SOUND_EFFECT_USER_PROMPT_EN =
+  'Generate the described non-speech sound effect (material, action, space, duration).'
+
+export const DEFAULT_SOUND_EFFECT_USER_PROMPT_ZH =
+  '生成所描述的音效（材质、动作、空间、时长），不要人声。' // cjk-ok（提示词模板：双语数据，随技能/SKILL 快照进入模型提示词）
+
+export function defaultSoundEffectUserPrompt(locale?: string): string {
+  return pickByLocale(
+    locale,
+    DEFAULT_SOUND_EFFECT_USER_PROMPT_EN,
+    DEFAULT_SOUND_EFFECT_USER_PROMPT_ZH
+  )
+}
+
+export function buildSoundEffectPrompt(instruction: string, locale?: string): string {
+  return buildOrDefault(instruction, locale, defaultSoundEffectUserPrompt)
+}
+
 // ——— 提示词优化 ———
 
 export const DEFAULT_OPTIMIZE_USER_PROMPT_EN =

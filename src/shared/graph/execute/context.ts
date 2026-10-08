@@ -25,6 +25,7 @@ import {
   resolveUiSplitSystemPrompt,
   resolveToPromptSystemPrompt,
   resolveVoiceSystemPrompt,
+  resolveSoundEffectSystemPrompt,
   resolveModel3dSystemPrompt,
   resolveSpatialWorldSystemPrompt
 } from '../systemPromptSchemes'
@@ -46,6 +47,7 @@ import {
   buildUiSplitPrompt,
   buildToPromptUserPrompt,
   buildVoicePrompt,
+  buildSoundEffectPrompt,
   buildFrameAnimGenPrompt,
   buildModel3dPrompt,
   buildSpatialWorldPrompt
@@ -69,6 +71,8 @@ export type InstructionFinalPreviewKind =
   | 'video'
   | 'reshoot'
   | 'voice'
+  /** 音效生成：走的是非人声的音效端点，系统提示词与「声音」不同 */
+  | 'soundEffect'
   | 'optimize'
   | 'toPrompt'
   | 'spatialWorldExtract'
@@ -121,6 +125,12 @@ export function resolveInstructionFinalPreviewKind(
   if (typeId === 'asset.model3d' || assetType === 'model3d' || presetKind === 'model3d')
     return 'model3d'
   if (typeId === 'asset.video' || assetType === 'video' || presetKind === 'video') return 'video'
+  /**
+   * 音效必须排在「声音」之前：`asset.sfx` 的 `assetType` 就是 `voice`（产物是声音资产），
+   * 按下面那条兜底走会拿到**配音**口径的系统提示词（「专业声音导演…匹配语气与角色气质」），
+   * 而音效端点只吃非人声描述 —— 这正是用户反馈的「音效生成的系统提示词不正确」。
+   */
+  if (typeId === 'asset.sfx') return 'soundEffect'
   if (typeId === 'asset.voice' || assetType === 'voice' || presetKind === 'voice') return 'voice'
   if (typeId === 'asset.image' || assetType === 'image' || presetKind === 'image') return 'image'
   // 策划案生成必须排在 screenplay 之前：它的 typeId 是 asset.gameSystem / assetType 是 gameSystem，
@@ -148,6 +158,8 @@ function resolveSystemPromptForPreviewKind(
       return resolveReshootSystemPrompt(raw, locale)
     case 'voice':
       return resolveVoiceSystemPrompt(raw, locale)
+    case 'soundEffect':
+      return resolveSoundEffectSystemPrompt(raw, locale)
     case 'optimize':
       return resolveOptimizeSystemPrompt(raw, locale)
     case 'toPrompt':
@@ -191,6 +203,12 @@ function buildUserPromptForPreviewKind(
       return buildReshootPrompt(instruction, reshootSegment ?? {}, locale)
     case 'voice':
       return buildVoicePrompt(instruction, locale)
+    /**
+     * 音效必须单独一条：走 switch 的 `default` 会落到**剧本**模板
+     * （`buildScreenplayPrompt`），而走 'voice' 是配音口径 —— 两者都不对。
+     */
+    case 'soundEffect':
+      return buildSoundEffectPrompt(instruction, locale)
     case 'optimize':
       return buildOptimizePrompt(instruction, locale)
     case 'toPrompt':
