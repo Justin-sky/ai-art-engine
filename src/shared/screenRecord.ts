@@ -323,6 +323,11 @@ export function planFrameSequence(keeps: PlannedFrameKeep[], fps: number): numbe
  *
  * `seqPatternPath` 形如 `<dir>/f-%04d.png`：image2 按序号读帧；`-framerate` 定输入帧率、
  * `-r` 定输出帧率（两者相同 → CFR，播放器与剪辑软件都友好）。
+ *
+ * **`-vf` 取偶不能省**：录制尺寸直接来自 `getContentSize()`，用户随便拖一下窗口就可能拿到奇数宽/高
+ * （1101×701 这种），而 libx264 + yuv420p **直接拒绝奇数尺寸** —— 实测 `width not divisible by 2`
+ * 会让整段录制在最后一步作废，用户录完才发现。这里统一缩到偶数：偶数尺寸是恒等变换，
+ * 奇数尺寸只裁掉 1 px；顺带把「录制中窗口被拖动、帧尺寸不一致」的序列也归一化。
  */
 export function buildImageSequenceArgs(input: {
   seqPatternPath: string
@@ -336,6 +341,8 @@ export function buildImageSequenceArgs(input: {
     fps,
     '-i',
     input.seqPatternPath,
+    '-vf',
+    'scale=trunc(iw/2)*2:trunc(ih/2)*2',
     '-c:v',
     'libx264',
     '-pix_fmt',

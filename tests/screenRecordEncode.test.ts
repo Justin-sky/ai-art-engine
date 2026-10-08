@@ -178,6 +178,55 @@ maybe('帧序列 → MP4（真实编码）', () => {
     expect(order[order.length - 1]).toBe(39)
   })
 
+  it('窗口尺寸是奇数时也能编码：libx264 拒绝奇数宽高，编码参数必须取偶', () => {
+    // 录制尺寸直接来自 getContentSize()，用户拖一下窗口就可能拿到奇数（1101×701 这种）。
+    // 不加取偶 -vf 时 ffmpeg 直接报 "width not divisible by 2"，整段录制作废。
+    const oddDir = join(workDir, 'odd')
+    mkdirSync(oddDir, { recursive: true })
+    const uniq = join(oddDir, 'u.png')
+    writeFileSync(uniq, solidPng(641, 361, [40, 160, 190]))
+    for (let i = 1; i <= 10; i += 1) {
+      const dest = join(oddDir, 'seq', `f-${String(i).padStart(4, '0')}.png`)
+      mkdirSync(join(oddDir, 'seq'), { recursive: true })
+      try {
+        linkSync(uniq, dest)
+      } catch {
+        copyFileSync(uniq, dest)
+      }
+    }
+
+    const outPath = join(oddDir, 'odd.mp4')
+    execFileSync(
+      FFMPEG,
+      buildImageSequenceArgs({
+        seqPatternPath: join(oddDir, 'seq', 'f-%04d.png'),
+        outPath,
+        fps: 10
+      }),
+      { stdio: 'pipe' }
+    )
+
+    expect(existsSync(outPath)).toBe(true)
+    expect(statSync(outPath).size).toBeGreaterThan(512)
+    // 成片尺寸被取偶（641×361 → 640×360）
+    const dims = execFileSync(
+      FFPROBE,
+      [
+        '-v',
+        'error',
+        '-select_streams',
+        'v:0',
+        '-show_entries',
+        'stream=width,height',
+        '-of',
+        'csv=p=0',
+        outPath
+      ],
+      { encoding: 'utf8' }
+    ).trim()
+    expect(dims).toBe('640,360')
+  }, 90_000)
+
   it('空闲帧合并后写盘的图确实变少，但时间轴仍覆盖整段', () => {
     const plan = planFrameKeeps(
       [
