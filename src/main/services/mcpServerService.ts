@@ -4351,7 +4351,10 @@ const TOOL_DEFS: McpToolDef[] = [
       '把 `screen_record_stop` 的录屏 MP4 + alignment 与每步口播（narration）合成成片：' +
       '自动 create screenplay → 铺 video/voice 轨 → 导出到 Cache/Videos（不自动进资产库）。' +
       '**steps 必传**：每项含 index（对齐 alignment）+ narration（口播，可与 caption 同文）；缺 narration 的步骤会用 caption/title 兜底，但教学场景应显式给口播。' +
-      '**旁白长度由音频真实时长决定**：取「步骤窗口 / 音频」较大者，长句不会被截断；画面至少铺到最后一个旁白说完（末尾定格或黑尾，但不吞口播）。' +
+      '**旁白长度由音频真实时长决定**：取「步骤窗口 / 音频」较大者，长句不会被截断；' +
+      '**声轨顺序排布、绝不重叠**：口播比步骤间隔长时，后一条会往后顺延（画面落后于旁白），' +
+      '顺延量在返回的 `narrationShiftedSec`（> 0 就说明该缩短口播、或录制时在每步之间多停留一会儿）。' +
+      '画面至少铺到最后一个旁白说完（末尾定格或黑尾，但不吞口播）。' +
       '画面里已有 title/caption 字卡，所以**默认不再加字幕轨**（`subtitles: true` 才加，加了就是同文叠字）。' +
       '返回里带 `narration[]`（每步窗口/音频时长/延长了多少）与 `recordingDurationSec`，便于自查节奏。' +
       '对话流出预览卡；入库由用户点「保存到资产库」。不要手排 timeline_edit。',

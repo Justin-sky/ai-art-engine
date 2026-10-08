@@ -158,6 +158,8 @@ const TUTORIAL_RECORDING_USAGE_ZH =
   '**动作必须带 tutorialId**：doClick / doDblClick / doContextMenu / fillText 少了它工具会直接报错（以前是静默跳过、成片里什么都没发生）。' + // cjk-ok（dsh 技能正文：随技能进 SKILL.md 的提示词数据）
   '**别再加字幕轨**：title/caption 已由录制 HUD 烧进画面，`tutorial_compose` 默认不铺字幕（要叠字才显式 subtitles:true）。' + // cjk-ok（dsh 技能正文：随技能进 SKILL.md 的提示词数据）
   '旁白长度由音频真实时长决定，长句不会被截断（画面会跟着延长收尾）。' + // cjk-ok（dsh 技能正文：随技能进 SKILL.md 的提示词数据）
+  '**口播要配得上步骤间隔**：声轨顺序排布、不会重叠，但口播比间隔长时只能往后顺延（画面落后于旁白）。' + // cjk-ok（dsh 技能正文：随技能进 SKILL.md 的提示词数据）
+  '每步口播控制在 ~1–2 句、或 step 之间多留几秒；compose 返回的 narrationShiftedSec > 0 就是顺延了的信号。' + // cjk-ok（dsh 技能正文：随技能进 SKILL.md 的提示词数据）
   '示例图片：右键→type-asset-image→双击指令面板→fillText→run→wait→compose。记事本/漫画页同用 doDblClick，随后跟 graph-notepad 或 graph-dive-view-comic-page。'
 
 const TUTORIAL_RECORDING_USAGE_EN =
@@ -176,6 +178,7 @@ const TUTORIAL_RECORDING_USAGE_EN =
   'A tutorialId is REQUIRED for doClick/doDblClick/doContextMenu/fillText (without it the tool errors out; it used to silently do nothing). ' +
   'Do NOT add a subtitle track: title/caption are already burned into the picture by the HUD, and tutorial_compose leaves subtitles off by default. ' +
   'Narration length comes from the real audio duration, so long sentences are never cut (the picture is extended instead). ' +
+  'Keep narration in proportion to the step gap: the voice track is laid out sequentially and never overlaps, so over-long narration is pushed later (the picture falls behind the voice) — `narrationShiftedSec` > 0 in the compose result is that signal. ' +
   'tutorialId = fixed ids + graph-ctx-* / graph-dive-view-*. fps:10 maxSeconds:180.'
 
 /** SVG 矢量动画（svg.gen）：生成指令模板（{subject} 由 applyGraphSkill 的 vars 插值） */

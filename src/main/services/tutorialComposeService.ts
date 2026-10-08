@@ -68,7 +68,11 @@ export type TutorialNarrationTiming = {
   narrationSec: number | null
   /** 声轨实际使用时长：取窗口与音频的较大者，避免长句被 atrim 砍掉 */
   voiceSec: number
-  /** 旁白比窗口长出的部分（秒）；> 0 表示成片末尾被延长 */
+  /** 声轨实际起点（可能因为上一条口播没说完而顺延） */
+  startSec: number
+  /** 相对画面时刻被顺延了多少秒（> 0 说明口播比步骤间隔长） */
+  shiftedSec: number
+  /** 旁白比窗口长出的部分（秒）；> 0 表示这一步口播会压到下一步的时间 */
   overhangSec: number
 }
 
@@ -82,6 +86,11 @@ export type TutorialComposeResult = {
   /** 录屏视频本身的实际时长（从文件 probe；探测不到时为 null） */
   recordingDurationSec: number | null
   narration: TutorialNarrationTiming[]
+  /**
+   * 最大顺延秒数：口播比步骤间隔长时，声轨只能顺序往后排（**绝不重叠**），
+   * 代价是画面落后于旁白。这个值 > 0 就是在告诉调用方「缩短口播或加长步骤停顿」。
+   */
+  narrationShiftedSec: number
 }
 
 function makeClipId(track: string, index: number): string {
@@ -152,13 +161,15 @@ export async function composeTutorialVideo(
   const videoDurationSec = Math.max(0.1, Number((probedVideoSec ?? alignmentEndSec).toFixed(3)))
 
   let lastVoiceEndSec = videoDurationSec
+  /** 声轨游标：下一条声轨最早只能从这里开始（保证不重叠） */
+  let voiceCursorSec = 0
 
   for (const row of alignment) {
     const step = stepByIndex.get(row.index) ?? {}
     const narrationText =
       step.narration?.trim() || row.caption?.trim() || row.title?.trim() || `步骤 ${row.index + 1}` // cjk-ok（工程内数据名：资产名 / 轨道标题 / 口播文本）
     const caption = step.caption?.trim() || narrationText
-    const startSec = Math.max(0, row.startSec)
+    const pictureStartSec = Math.max(0, row.startSec)
     const windowSec = Math.max(0.1, Number((row.endSec - row.startSec).toFixed(3)))
 
     let voiceRel = step.voiceRelativePath?.trim() || ''
@@ -175,17 +186,28 @@ export async function composeTutorialVideo(
     }
     voicePaths.push(voiceRel)
 
-    // 旁白时长说了算：探测音频真实长度，取「窗口 / 音频」较大者 —— 长句口播不再被 atrim 砍掉
+    /**
+     * 声轨顺序排布：**绝不重叠**。
+     *
+     * 真机故障：步骤间隔只有 1.2 秒、每步口播 4–13 秒，而「声轨时长取音频真实长度」
+     * 会把每条都盖到下一条头上 —— 开头三条同时出声（用户反馈「3 短配音同时，混乱了」）。
+     * 这里让起点至少落在上一条结束之后：口播比间隔长时只能顺延（画面落后于旁白），
+     * 但至少听得清；顺延量如实回报在 `narrationShiftedSec`。
+     */
+    const startSec = Math.max(pictureStartSec, voiceCursorSec)
     const probedVoiceSec = await probeDurationSec(resolveAbsUnderProject(voiceRel)).catch(
       () => null
     )
     const voiceSec = Math.max(windowSec, probedVoiceSec ?? 0)
-    lastVoiceEndSec = Math.max(lastVoiceEndSec, startSec + voiceSec)
+    voiceCursorSec = startSec + voiceSec
+    lastVoiceEndSec = Math.max(lastVoiceEndSec, voiceCursorSec)
     narration.push({
       index: row.index,
       windowSec,
       narrationSec: probedVoiceSec === null ? null : Number(probedVoiceSec.toFixed(3)),
       voiceSec: Number(voiceSec.toFixed(3)),
+      startSec: Number(startSec.toFixed(3)),
+      shiftedSec: Number(Math.max(0, startSec - pictureStartSec).toFixed(3)),
       overhangSec: Number(Math.max(0, voiceSec - windowSec).toFixed(3))
     })
 
@@ -193,16 +215,17 @@ export async function composeTutorialVideo(
       track: 'voice',
       title: row.title || `旁白 ${row.index + 1}`, // cjk-ok（工程内数据名：资产名 / 轨道标题 / 口播文本）
       relativePath: voiceRel,
-      startSec,
+      startSec: Number(startSec.toFixed(3)),
       durationSec: Number(voiceSec.toFixed(3))
     })
     if (input.subtitles === true) {
+      // 字幕跟着声轨走（观众听到哪句就看到哪句），否则画面与声音会错位
       drafts.push({
         track: 'subtitle',
         title: row.title || `字幕 ${row.index + 1}`, // cjk-ok（工程内数据名：资产名 / 轨道标题 / 口播文本）
         text: caption,
-        startSec,
-        durationSec: windowSec
+        startSec: Number(startSec.toFixed(3)),
+        durationSec: Number(voiceSec.toFixed(3))
       })
     }
   }
@@ -244,7 +267,8 @@ export async function composeTutorialVideo(
       voicePaths,
       clipCount: timelineDoc.clips.length,
       recordingDurationSec: probedVideoSec === null ? null : Number(probedVideoSec.toFixed(3)),
-      narration
+      narration,
+      narrationShiftedSec: Number(Math.max(0, ...narration.map((n) => n.shiftedSec)).toFixed(3))
     }
   }
 
@@ -296,6 +320,7 @@ export async function composeTutorialVideo(
     voicePaths,
     clipCount: timelineDoc.clips.length,
     recordingDurationSec: probedVideoSec === null ? null : Number(probedVideoSec.toFixed(3)),
-    narration
+    narration,
+    narrationShiftedSec: Number(Math.max(0, ...narration.map((n) => n.shiftedSec)).toFixed(3))
   }
 }
