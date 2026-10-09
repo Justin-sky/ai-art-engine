@@ -48,8 +48,8 @@ npm run fix:integrity -- --check   # 只查看当前标签
 2. 打 tag 并推送，CI 会校验 tag 与 `package.json` 一致后构建并发布 GitHub Release（含自动更新元数据）。
 
 ```bash
-git tag v7.3.0
-git push origin v7.3.0
+git tag v7.4.0
+git push origin v7.4.0
 ```
 
 客户端以 GitHub Release 为更新源；开发模式不检查更新。

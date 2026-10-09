@@ -1,6 +1,6 @@
 {
   "name": "aiartengine",
-  "version": "7.3.0",
+  "version": "7.4.0",
   "description": "AIArtEngine — the agent-native AI art asset engine",
   "main": "./out/main/index.js",
   "author": "AIArtEngine",
