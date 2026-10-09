@@ -70,6 +70,7 @@ npm run site
 | 路径 | 说明 |
 |------|------|
 | `assets/logo-mark.png` | 品牌图标（页面使用图标 + 文字组合） |
+| `assets/show.mp4` | 首页演示视频（首页 hero 视频） |
 | `assets/banner/node-graph.webp` | 节点图 |
 | `assets/banner/storyboard.webp` | 分镜编辑 |
 | `assets/banner/director-stage.webp` | 3D 导演台 |

@@ -173,43 +173,22 @@
           </p>
         </div>
 
-        <div class="coverflow reveal reveal-stage" style="--d: 0.2s" data-coverflow>
-          <div class="cf-stage">
-            <button type="button" class="cf-nav cf-prev" data-cf-prev aria-label="上一张">‹</button>
-            <div class="cf-track">
-              <figure class="cf-card">
-                <img src="assets/banner/node-graph.webp" alt="" width="1600" height="900" />
-                <figcaption><strong>节点图</strong><span>生成链路、资产预览与任务执行</span></figcaption>
-              </figure>
-              <figure class="cf-card">
-                <img src="assets/banner/storyboard.webp" alt="" width="1600" height="900" />
-                <figcaption><strong>剧集流水线</strong><span>节拍拆解、9 宫格 / 4 宫格分镜与导演审核</span></figcaption>
-              </figure>
-              <figure class="cf-card">
-                <img src="assets/banner/director-stage.webp" alt="" width="1600" height="900" />
-                <figcaption><strong>3D 导演台</strong><span>站位截图、动作录制与机位视角</span></figcaption>
-              </figure>
-              <figure class="cf-card">
-                <img src="assets/banner/multi-angle-editor.webp" alt="" width="1600" height="900" />
-                <figcaption><strong>多角度</strong><span>机位与构图快速切换</span></figcaption>
-              </figure>
-              <figure class="cf-card">
-                <img src="assets/banner/lighting-editor.webp" alt="" width="1600" height="900" />
-                <figcaption><strong>打光</strong><span>光影氛围精细调节</span></figcaption>
-              </figure>
-              <figure class="cf-card">
-                <img src="assets/banner/mood-editor.webp" alt="" width="1600" height="900" />
-                <figcaption><strong>情绪</strong><span>画面情绪与色调控制</span></figcaption>
-              </figure>
-              <figure class="cf-card">
-                <img src="assets/banner/image-editor.webp" alt="" width="1600" height="900" />
-                <figcaption><strong>图片修改</strong><span>局部重绘与画面修订</span></figcaption>
-              </figure>
-            </div>
-            <button type="button" class="cf-nav cf-next" data-cf-next aria-label="下一张">›</button>
-          </div>
-          <div class="cf-dots" data-cf-dots role="tablist" aria-label="幻灯片"></div>
-        </div>
+        <figure class="hero-video reveal reveal-stage" style="--d: 0.2s">
+          <video
+            src="assets/show.mp4"
+            poster="assets/banner/node-graph.webp"
+            width="854"
+            height="480"
+            autoplay
+            muted
+            loop
+            playsinline
+            controls
+            preload="metadata"
+          >
+            你的浏览器不支持视频播放。
+          </video>
+        </figure>
       </section>
 
       <section class="stats" aria-label="关键数据">
@@ -605,84 +584,6 @@
       document.querySelectorAll('.mobile-nav a').forEach((link) => {
         link.addEventListener('click', () => link.closest('.mobile-menu')?.removeAttribute('open'))
       })
-
-      function initCoverflow(root) {
-        const cards = [...root.querySelectorAll('.cf-card')]
-        const dotsEl = root.querySelector('[data-cf-dots]')
-        const prev = root.querySelector('[data-cf-prev]')
-        const next = root.querySelector('[data-cf-next]')
-        let index = 0
-        let timer = null
-
-        if (dotsEl) {
-          dotsEl.innerHTML = cards
-            .map(
-              (_, i) =>
-                `<button type="button" class="cf-dot${i === 0 ? ' is-active' : ''}" aria-label="第 ${i + 1} 张" data-i="${i}"></button>`
-            )
-            .join('')
-        }
-
-        function render() {
-          const n = cards.length
-          cards.forEach((card, i) => {
-            let offset = i - index
-            if (offset > n / 2) offset -= n
-            if (offset < -n / 2) offset += n
-            card.dataset.offset = String(offset)
-            card.classList.toggle('is-active', offset === 0)
-            card.style.zIndex = String(20 - Math.abs(offset))
-            card.setAttribute('aria-hidden', offset === 0 ? 'false' : 'true')
-          })
-          dotsEl?.querySelectorAll('.cf-dot').forEach((d, i) => d.classList.toggle('is-active', i === index))
-        }
-
-        function go(i) {
-          index = ((i % cards.length) + cards.length) % cards.length
-          render()
-          restart()
-        }
-
-        function restart() {
-          if (reduceMotion) return
-          clearInterval(timer)
-          timer = setInterval(() => go(index + 1), 4500)
-        }
-
-        prev?.addEventListener('click', () => go(index - 1))
-        next?.addEventListener('click', () => go(index + 1))
-        dotsEl?.addEventListener('click', (e) => {
-          const btn = e.target.closest('[data-i]')
-          if (btn) go(Number(btn.dataset.i))
-        })
-        cards.forEach((card, i) => {
-          card.addEventListener('click', () => {
-            if (Number(card.dataset.offset) !== 0) go(i)
-          })
-        })
-
-        let touchX = null
-        root.addEventListener('touchstart', (e) => (touchX = e.changedTouches[0].clientX), { passive: true })
-        root.addEventListener(
-          'touchend',
-          (e) => {
-            if (touchX == null) return
-            const dx = e.changedTouches[0].clientX - touchX
-            touchX = null
-            if (Math.abs(dx) < 36) return
-            go(index + (dx < 0 ? 1 : -1))
-          },
-          { passive: true }
-        )
-
-        root.addEventListener('mouseenter', () => clearInterval(timer))
-        root.addEventListener('mouseleave', restart)
-
-        render()
-        restart()
-      }
-
-      document.querySelectorAll('[data-coverflow]').forEach(initCoverflow)
 
       document.querySelectorAll('a[href="#top"]').forEach((a) => {
         a.addEventListener('click', (e) => {

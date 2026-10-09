@@ -690,16 +690,16 @@ code {
   box-shadow: 0 0 8px rgba(34, 197, 94, 0.8);
 }
 
-/* ---------- Cover Flow（产品截图） ---------- */
-.coverflow {
-  --cf-w: min(62vw, 760px);
+/* ---------- Hero video（首页演示片） ---------- */
+/* 宽度与原封面卡一致（62vw / 760px 封顶）：源片只有 854×480，按 760 展示刚好不放大 */
+.hero-video {
   position: relative;
-  width: min(1320px, 100%);
+  width: min(62vw, 760px);
   margin: clamp(48px, 7vh, 72px) auto 0;
-  padding: 0 0 8px;
+  padding: 0;
 }
 
-.coverflow::before {
+.hero-video::before {
   content: '';
   position: absolute;
   inset: 10% 18% 0;
@@ -709,189 +709,17 @@ code {
   opacity: 0.32;
 }
 
-.cf-stage {
-  position: relative;
-  height: clamp(280px, 40vw, 500px);
-  perspective: 1800px;
-  perspective-origin: 50% 45%;
-}
-
-.cf-track {
-  position: absolute;
-  inset: 0;
-  transform-style: preserve-3d;
-}
-
-.cf-card {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: var(--cf-w);
-  aspect-ratio: 16 / 10;
-  margin: 0;
-  padding-top: 28px;
+/* 画框放在视频自身上：图容器不留 overflow:hidden，否则上面那层辉光会被裁掉 */
+.hero-video video {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
   border-radius: 14px;
-  overflow: hidden;
   background: #0a0f1b;
   border: 1px solid rgba(148, 163, 255, 0.18);
-  transform-style: preserve-3d;
-  cursor: pointer;
   box-shadow: 0 30px 80px -20px rgba(2, 6, 23, 0.6);
-  opacity: 0;
-  pointer-events: none;
-  transition:
-    transform 0.6s var(--ease),
-    opacity 0.45s var(--ease),
-    filter 0.45s ease;
-}
-
-.cf-card::before {
-  content: '';
-  position: absolute;
-  inset: 0 0 auto;
-  height: 28px;
-  background:
-    radial-gradient(circle at 16px 50%, #ff5f57 4.5px, transparent 5px),
-    radial-gradient(circle at 32px 50%, #febc2e 4.5px, transparent 5px),
-    radial-gradient(circle at 48px 50%, #28c840 4.5px, transparent 5px),
-    #0e1424;
-  border-bottom: 1px solid rgba(148, 163, 255, 0.12);
-}
-
-.cf-card img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: top center;
-}
-
-.cf-card figcaption {
-  position: absolute;
-  inset: auto 0 0;
-  padding: 56px 24px 20px;
-  background: linear-gradient(180deg, transparent, rgba(5, 7, 13, 0.92) 60%);
-  color: #fff;
-  pointer-events: none;
-}
-
-.cf-card strong {
-  display: block;
-  font-family: var(--display);
-  font-size: clamp(1.1rem, 2vw, 1.5rem);
-  font-weight: 700;
-  letter-spacing: -0.02em;
-}
-
-.cf-card span {
-  display: block;
-  margin-top: 4px;
-  color: rgba(255, 255, 255, 0.72);
-  font-size: 0.9rem;
-}
-
-.cf-card[data-offset='0'] {
-  opacity: 1;
-  pointer-events: auto;
-  cursor: default;
-  transform: translate3d(-50%, -50%, 0) rotateY(0deg) scale(1);
-  box-shadow: 0 0 0 1px rgba(148, 163, 255, 0.22), 0 40px 100px -24px rgba(59, 108, 255, 0.55);
-}
-
-.cf-card[data-offset='-1'] {
-  opacity: 0.7;
-  pointer-events: auto;
-  transform: translate3d(calc(-50% - 44%), -50%, -160px) rotateY(42deg) scale(0.84);
-  filter: brightness(0.6) saturate(0.8);
-}
-
-.cf-card[data-offset='1'] {
-  opacity: 0.7;
-  pointer-events: auto;
-  transform: translate3d(calc(-50% + 44%), -50%, -160px) rotateY(-42deg) scale(0.84);
-  filter: brightness(0.6) saturate(0.8);
-}
-
-.cf-card[data-offset='-2'] {
-  opacity: 0.25;
-  transform: translate3d(calc(-50% - 72%), -50%, -320px) rotateY(54deg) scale(0.7);
-  filter: brightness(0.45);
-}
-
-.cf-card[data-offset='2'] {
-  opacity: 0.25;
-  transform: translate3d(calc(-50% + 72%), -50%, -320px) rotateY(-54deg) scale(0.7);
-  filter: brightness(0.45);
-}
-
-.cf-card[data-offset='-3'],
-.cf-card[data-offset='3'] {
-  opacity: 0;
-  transform: translate3d(-50%, -50%, -460px) scale(0.6);
-}
-
-.cf-nav {
-  position: absolute;
-  top: 50%;
-  z-index: 30;
-  display: grid;
-  place-items: center;
-  width: 46px;
-  height: 46px;
-  border: 1px solid var(--line-hi);
-  border-radius: 50%;
-  background: var(--header-bg);
-  color: var(--ink);
-  font-size: 24px;
-  line-height: 1;
-  translate: 0 -50%;
-  backdrop-filter: blur(10px);
-  transition:
-    border-color 0.2s ease,
-    transform 0.2s ease;
-}
-
-.cf-nav:hover {
-  border-color: var(--blue);
-  transform: scale(1.06);
-}
-
-.cf-prev {
-  left: max(8px, calc(50% - var(--cf-w) * 0.95));
-}
-
-.cf-next {
-  right: max(8px, calc(50% - var(--cf-w) * 0.95));
-}
-
-.cf-dots {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 4px;
-  margin-top: 22px;
-}
-
-.cf-dot {
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-}
-
-.cf-dot::after {
-  content: '';
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: var(--line-hi);
-  transition:
-    width 0.3s var(--ease),
-    background 0.25s ease;
-}
-
-.cf-dot.is-active::after {
-  width: 24px;
-  background: var(--grad);
 }
 
 /* ---------- 数据条 ---------- */
@@ -1854,16 +1682,6 @@ a.community-card:hover {
   .community-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-
-  .coverflow {
-    --cf-w: min(84vw, 620px);
-    overflow: hidden;
-  }
-
-  .cf-card:not(.is-active) {
-    opacity: 0;
-    pointer-events: none;
-  }
 }
 
 @media (max-width: 860px) {
@@ -1944,14 +1762,6 @@ a.community-card:hover {
 
   .mobile-nav {
     grid-template-columns: 1fr;
-  }
-
-  .cf-stage {
-    height: clamp(220px, 62vw, 300px);
-  }
-
-  .cf-card figcaption span {
-    display: none;
   }
 
   .bento-card {
