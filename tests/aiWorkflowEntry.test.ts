@@ -122,6 +122,8 @@ describe('文档与入口位置一致', () => {
   const DOCS = [
     'README.md',
     'website/manual.html',
+    'website/manual-workspace.html',
+    'website/manual-workflow.html',
     'website/quickstart.html',
     'website/guide-short-video.html',
     'website/tutorial-script/shortdrama-agent-tutorial-script.md',

@@ -1,0 +1,972 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      // 提前应用本地主题选择，避免加载闪烁
+      ;(function () {
+        try {
+          var pref = localStorage.getItem('site.theme')
+          if (
+            pref !== 'light' &&
+            (pref === 'dark' ||
+              pref == null ||
+              (pref === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches))
+          ) {
+            document.documentElement.classList.add('dark')
+          }
+        } catch (e) {}
+      })()
+    </script>
+    <meta
+      name="description"
+      content="用一键工作流从模板或自然语言生成可复用的宿主资产，用剧集流水线跑通短剧分镜；在节点图中添加与连线节点、执行任务队列，并查阅全部节点类型与典型工作流。"
+    />
+    <title>一键工作流与节点图 · 使用手册 — AIArtEngine</title>
+    <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/manual-workflow.html" />
+    <meta property="og:site_name" content="AIArtEngine" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="zh_CN" />
+    <meta property="og:title" content="一键工作流与节点图 · 使用手册 — AIArtEngine" />
+    <meta property="og:description" content="用一键工作流从模板或自然语言生成可复用的宿主资产，用剧集流水线跑通短剧分镜；在节点图中添加与连线节点、执行任务队列，并查阅全部节点类型与典型工作流。" />
+    <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/manual-workflow.html" />
+    <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="一键工作流与节点图 · 使用手册 — AIArtEngine" />
+    <meta name="twitter:description" content="用一键工作流从模板或自然语言生成可复用的宿主资产，用剧集流水线跑通短剧分镜；在节点图中添加与连线节点、执行任务队列，并查阅全部节点类型与典型工作流。" />
+    <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-workflow.html" />
+    <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual-workflow.en.html" />
+    <link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/manual-workflow.html" />
+    <link rel="icon" href="assets/logo-mark.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="manual.css?v=20261009d" />
+    <link rel="stylesheet" href="site.css?v=20261009d" />
+  </head>
+  <body>
+    <a class="skip" href="#manual">跳到手册正文</a>
+    <div class="progress" aria-hidden="true"></div>
+    <button class="to-top" type="button" aria-label="返回顶部" hidden>↑</button>
+    <div class="lightbox" hidden>
+      <img alt="" />
+      <p class="lightbox-cap"></p>
+    </div>
+
+    <header class="top">
+      <a class="brand" href="index.html">
+        <img src="assets/logo-mark.png" alt="" width="30" height="30" />
+        <span>AI Art Engine</span>
+      </a>
+      <nav class="nav" aria-label="主导航">
+        <a href="quickstart.html">快速上手</a>
+        <a href="manual.html" aria-current="page">使用手册</a>
+        <div class="nav-drop">
+          <button type="button" class="nav-drop-btn" aria-haspopup="true">
+            教程<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+          </button>
+          <div class="nav-drop-menu">
+            <a href="guide-short-video.html"><strong>短剧教程</strong><span>分镜 · 拼图 · 审核 · 动态视频</span></a>
+            <a href="guide-video.html"><strong>视频教程</strong><span>自由画布与参考视频</span></a>
+            <a href="guide-comfyui.html"><strong>ComfyUI 教程</strong><span>API 2 与 comfy-api-proxy</span></a>
+            <a href="guide-newapi.html"><strong>NewAPI 教程</strong><span>自建中转网关接入</span></a>
+            <a href="guide-mcp.html"><strong>MCP 接入</strong><span>Claude Code / Codex 驱动应用</span></a>
+            <a href="guide-gameplay.html"><strong>可玩 HTML</strong><span>生成可交互的玩法原型</span></a>
+            <a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer"><strong>B 站视频教程</strong><span>视频演示与更新解读</span></a>
+          </div>
+        </div>
+        <a href="developers.html">开发者</a>
+        <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">更新日志</a>
+        <a href="index.html#download">下载</a>
+        <a class="nav-src" href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.070 3.633 17.700 3.633 17.700c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.070 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.760-1.605-2.665-.3-5.466-1.332-5.466-5.930 0-1.310.465-2.380 1.235-3.220-.135-.303-.540-1.523.105-3.176 0 0 1.005-.322 3.300 1.230.960-.267 1.980-.399 3.000-.405 1.020.006 2.040.138 3.000.405 2.280-1.552 3.285-1.230 3.285-1.230.645 1.653.240 2.873.120 3.176.765.840 1.230 1.910 1.230 3.220 0 4.610-2.805 5.625-5.475 5.920.420.360.810 1.096.810 2.220 0 1.606-.015 2.896-.015 3.286 0 .315.210.690.825.570C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" /></svg>GitHub</a>
+      </nav>
+      <a class="nav-lang" href="manual-workflow.en.html" hreflang="en" lang="en">EN</a>
+      <button class="theme-toggle" type="button" aria-label="切换主题">◐</button>
+      <details class="mobile-menu">
+        <summary aria-label="打开导航菜单"><span aria-hidden="true">☰</span> 菜单</summary>
+        <nav class="mobile-nav" aria-label="移动端导航">
+          <p class="mobile-group">文档</p>
+          <a href="index.html">首页</a>
+          <a href="quickstart.html">快速上手</a>
+          <a href="manual.html" aria-current="page">使用手册</a>
+          <a href="developers.html">开发者文档</a>
+          <p class="mobile-group">专题教程</p>
+          <a href="guide-short-video.html">短剧教程</a>
+          <a href="guide-video.html">视频教程</a>
+          <a href="guide-comfyui.html">ComfyUI 教程</a>
+          <a href="guide-newapi.html">NewAPI 教程</a>
+          <a href="guide-mcp.html">MCP 接入</a>
+          <a href="guide-gameplay.html">可玩 HTML</a>
+          <p class="mobile-group">社区</p>
+          <a href="index.html#download">下载</a>
+          <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">更新日志</a>
+          <a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer">bilibili</a>
+          <a href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine" target="_blank" rel="noopener noreferrer">Gitee</a>
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a>
+        </nav>
+      </details>
+    </header>
+
+    <div class="manual-shell">
+      <aside class="toc" aria-label="目录">
+        <h2>目录</h2>
+        <ol>
+          <li class="toc-group">核心能力</li>
+          <li><a href="#ai-workflow">7. 一键工作流</a></li>
+          <li><a href="#agent-pipeline">7.5 剧集流水线 · Agent 流程窗口</a></li>
+          <li><a href="#graph">8. 节点图</a></li>
+
+          <li class="toc-group">手册章节</li>
+          <li><a href="manual.html">概述与核心概念</a></li>
+          <li><a href="manual-setup.html">工程与设置</a></li>
+          <li><a href="manual-workspace.html">工作区与资产库</a></li>
+          <li><a href="manual-production.html">剧本、成片与导演台</a></li>
+          <li><a href="manual-reference.html">参考与故障排查</a></li>
+        </ol>
+      </aside>
+
+      <article class="manual" id="manual">
+        <header class="manual-hero">
+          <p class="eyebrow">Manual · Workflow</p>
+          <h1>一键工作流与节点图</h1>
+          <p class="lede">
+            用一键工作流从模板或自然语言生成可复用的宿主资产，用剧集流水线跑通短剧分镜；在节点图中添加与连线节点、执行任务队列，并查阅全部节点类型与典型工作流。
+          </p>
+        </header>
+
+        <section id="ai-workflow">
+          <h2>7. 一键工作流</h2>
+          <p>
+            「一键工作流」用<strong>预设模板</strong>或<strong>AI 规划</strong>快速生成一张可复用的<strong>宿主资产</strong>（内含完整节点图与边界
+            I/O）。创建后可拖入任意画布，像组件一样灌入输入、取走输出。
+          </p>
+
+          <h3>7.1 打开入口</h3>
+          <ol>
+            <li>打开任意工程进入工作区。</li>
+            <li>在工作区的「新建」里点击<strong>一键工作流</strong>。</li>
+          </ol>
+          <div class="tip">
+            需已配置至少一个可用的文本模型（AI 规划时）；纯模板预览可不依赖 AI。
+            想要更多链路，可以在<strong>插件市场</strong>里安装社区工作流（见 <a href="manual-workspace.html#marketplace">§5.7</a>）。
+          </div>
+
+          <h3>7.2 预设与描述</h3>
+          <ul>
+            <li>
+              <strong>预设模板</strong>（按行业覆盖主要能力节点）：游戏买量、游戏UI界面、角色设定、分镜出片、产品广告、
+              <strong>电商带货</strong>、<strong>游戏3D资产</strong>、<strong>世界模型</strong>、<strong>漫画出版</strong>、<strong>知识口播</strong>、
+              <strong>3D白模预演</strong>、短剧分镜、自定义等。带固化拓扑的预设可直接「预览模板」。其中「游戏UI界面」会创建
+              策划案生成 → UI 界面拆分 → UI 界面生成 的完整链路，UI 界面生成可 dive 进内图逐屏出图，配合全局风格参考统一界面风格。
+            </li>
+            <li>
+              行业模板与能力节点：「电商带货」串联 广告变体矩阵 与图层分离；「游戏3D资产」串联
+              3D 模型生成 → 导演台 → 站位图 → 展示视频；<strong>「世界模型」</strong>串联
+              <strong>空间世界生成 → 空间世界导出 → 3D 导演台</strong>（世界节点的出口是严格同类型的
+              <code>spatialWorld</code>，必须经导出节点转成模型才能接导演台）；「漫画出版」串联 分镜图 ×3 → 漫画页（分格 / 气泡 / 透明底导出）；
+              「知识口播」串联 讲稿 → 配音 + 口播视频 → 口型同步；「3D白模预演」串联 全景参考 → 导演台 AI 白模 →
+              站位图 → 预演成片。每个模板的备注节点写有逐步用法。
+            </li>
+            <li>
+              <strong>工作流描述</strong>：用自然语言说明目标（例如「剧本 → 分镜图 → 竖屏短视频」）；可先选预设再改描述。
+            </li>
+            <li>
+              <strong>模型</strong>：文本模型用于 AI 规划；图片 / 视频默认模型会写入生成节点的初始参数。
+            </li>
+          </ul>
+
+          <h3>7.3 预览 → 创建</h3>
+          <ol>
+            <li>
+              点击<strong>预览模板</strong>（固化预设）或<strong>AI 生成预览</strong>（需文本模型；快捷键
+              <kbd>Ctrl</kbd>+<kbd>Enter</kbd> / <kbd>⌘</kbd>+<kbd>Enter</kbd>）。
+            </li>
+            <li>在预览区查看节点与连线拓扑；可打开执行日志查看模型规划过程。</li>
+            <li>确认后点击<strong>创建工作流</strong>，选择保存目录与名称。</li>
+            <li>资产库中出现新的宿主资产；拖入画布即可使用。</li>
+          </ol>
+          <div class="tip">
+            创建的是<strong>宿主资产</strong>：外层暴露边界输入 / 输出，内图可 Dive
+            进入编辑。多路同类型出口（如多张立绘）会各自保留独立边界输出。
+          </div>
+
+          <h3>7.4 创建后怎么用</h3>
+          <ul>
+            <li>从资产库拖到画布 → 连上上游文本 / 图片等到宿主输入口。</li>
+            <li>双击或 Dive 进入内图，微调节点、模型与指令。</li>
+            <li>选中边界输出或宿主节点，用「加入任务」跑整条内链；可与其它链并行（见
+              <a href="#graph-tasks">§8.3</a>）。</li>
+          </ul>
+
+          <h3 id="agent-pipeline">7.5 剧集流水线：Agent 流程窗口</h3>
+          <figure class="shot">
+            <img
+              src="assets/banner/storyboard.webp"
+              alt="剧集流水线窗口：节拍拆解、宫格分镜与导演审核"
+              width="1120"
+              height="760"
+              loading="lazy"
+            />
+            <figcaption><strong>剧集流水线</strong>：节拍拆解、9宫格 / 4宫格分镜与导演审核。</figcaption>
+          </figure>
+          <p>
+            通过一键工作流的「短剧分镜（Agent 流水线）」模板创建宿主资产后，可点击顶部工具栏的
+            <strong>「剧集流水线」</strong>打开独立流程窗口，集中完成分镜、拼图、审核与视频生成。
+            完整操作流程见 <a href="guide-short-video.html">短剧制作教程</a>。
+          </p>
+          <ul>
+            <li>
+              <strong>三栏布局</strong>：节拍拆解（左）、9宫格分镜表（中）、4宫格详情（右）；拖动分隔条可调整各栏宽度。
+            </li>
+            <li>
+              <strong>9宫格拼图</strong>：点击网格图标一次性生成整张 3×3 拼图并拆出全部 9 格锚点图；支持重新生成与导演审核。
+            </li>
+            <li>
+              <strong>4宫格</strong>：点击 2×2 网格图标生成当前组拼图；右侧可查看动态提示词，并生成 / 预览当前格动态视频。
+            </li>
+            <li>
+              <strong>导演审核</strong>：对应阶段「重新生成」成功写回后审核按钮才会点亮；审核默认偏 PASS，
+              仅阻断性问题才 FAIL，FAIL 原因会自动回写并附加到该阶段重跑。
+            </li>
+            <li>
+              <strong>级联失效</strong>：阶段重新生成后，其下游拼图 / 提取 / 放大 / 视频会自动失效并显示「未生成」；
+              再次点击生成会从最新文本一致补跑整条链，避免「新文本配旧图」。
+            </li>
+            <li>
+              <strong>节点 Inspector</strong>：选中「宫格选择 / 动态格选择」节点后，右侧可编辑宫格（1~9）或组 × 格
+              （1~9 × 1~4）参数。
+            </li>
+          </ul>
+        </section>
+
+        <section id="graph">
+          <h2>8. 节点图</h2>
+          <figure class="shot">
+            <img
+              src="assets/banner/node-graph.webp"
+              alt="节点图界面：节点卡片与连线组成的生成链路"
+              width="1440"
+              height="900"
+              loading="lazy"
+            />
+            <figcaption><strong>节点图</strong>：生成链路、资产预览与任务执行。</figcaption>
+          </figure>
+          <p>
+            节点图是核心生成编排界面。在剧本、场、画布、导演台、宿主资产等场景中，通过节点连线组织「输入 → 生成 →
+            输出」链路。
+          </p>
+
+          <h3>8.1 添加与连线</h3>
+          <ol>
+            <li>在画布<strong>空白处右键</strong>，或按 <kbd>Space</kbd>，选择「添加节点」。</li>
+            <li>从端口拖出连线，松开后可「选择节点并连接」。</li>
+            <li>
+              <strong>改接：</strong>按住已有连线拖动（靠近哪一端就改哪一端），或从已连线的<strong>输入口</strong>拖出，接到其他兼容端口；松在空白处则断开。
+              框选或多选连线（<kbd>Shift</kbd> / <kbd>Ctrl</kbd> 点选）后拖其中一条，可一次改接多条；从输入口拖出时会带走该口全部入边。
+            </li>
+            <li>从资产库<strong>拖入</strong>资产到画布，可快速建立引用。</li>
+            <li>选中节点或边后按 <kbd>Delete</kbd> / <kbd>Backspace</kbd> 删除。</li>
+          </ol>
+          <p>
+            图片 / 视频 / 声音 / 剧本等<strong>图库生成节点</strong>有两个输出口：
+            <code>out</code>（当前选中的单条，默认自动连线）与
+            <code>out-all</code>（全部历史，方形端口）。每次执行成功会自动选中最新一条；在右侧 Inspector
+            中单击历史项可改设当前 <code>out</code>。
+          </p>
+          <p>
+            <strong>导演台编辑</strong>节点使用两个方形输出口：
+            <code>out-shots</code>（站位图，<code>images</code>）与
+            <code>out-actions</code>（动作视频，<code>videos</code>）。旧连线
+            <code>out</code> / <code>out-all</code> 会在加载时迁移到 <code>out-shots</code>。
+          </p>
+          <p>
+            结构化目录类端口使用专用类型 <code>world</code> / <code>worldEntities</code> /
+            <code>beat</code>（界面显示为世界元素 / 世界元素实体 / 场），勿与普通 <code>text</code> 混连。
+          </p>
+          <p>
+            <strong>端口类型必须相同：</strong>单数与复数不互通。
+            <code>image</code> 不能进 <code>images</code>，<code>video</code> / <code>voice</code> /
+            <code>text</code> 同理。
+            <strong>选取图片 / 视频 / 声音 / 文本</strong>只收列表口：请从上游的
+            <code>out-all</code>（或导演台 <code>out-shots</code> / <code>out-actions</code>）连入；默认圆形
+            <code>out</code> 连不上。剧本节点的 <code>text</code> 也不能直接进「选取文本」。
+          </p>
+          <p>
+            生成类节点支持<strong>锁定</strong>：开启后跳过模型调用，直接复用图库或上次输出（节点卡锁图标与
+            Inspector 可切换）。
+          </p>
+
+          <h3>8.2 工具条与画布交互</h3>
+          <ul>
+            <li>选择 / 平移 · 适配视图 · 网格与吸附 · 对齐 / 分布 · 自动布局。</li>
+            <li>
+              <strong>连线样式</strong>：曲线 / 直角 / 不显示（偏好会记住）。
+            </li>
+            <li>
+              <strong>小地图</strong>：左下角概览与视口框；布局条收起时也可开关显示。
+            </li>
+            <li>滚轮缩放范围约 1%–1000%；点击缩放百分比可复位相关视图习惯。</li>
+            <li>执行 / 停止 / 加入任务。</li>
+            <li>
+              <strong>工程全局参数</strong>：节点图空白处右键打开「全局参数」——工程名称、画面风格（最多 4 张风格参考图，可从默认风格库选择或上传，含「UI 风格」等分类）、全局随机种子（图片 / 视频生成节点默认跟随，可在节点上单独关闭，便于同参数复现）与生成缓存根目录（结果默认写入
+              <code>Cache/Images</code>、<code>Cache/Videos</code> 等，不自动登记资产库）。
+            </li>
+            <li>
+              <strong>指令编辑器引用预览</strong>：悬停引入节点缩略图时弹出预览——图片限尺寸显示，文本显示正文前段
+              （剧本等旁挂 txt / md 内容会自动读取）。
+            </li>
+          </ul>
+          <p>
+            节点卡与 Inspector 中的图片预览按比例<strong>完整显示</strong>（letterbox），不会因画幅不同被裁切。
+          </p>
+
+          <h3 id="graph-tasks">8.3 执行方式与任务队列</h3>
+          <div class="table-scroll" role="region" aria-label="节点执行方式" tabindex="0">
+            <table>
+            <thead>
+              <tr>
+                <th>方式</th>
+                <th>说明</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>工具条「执行」</td>
+                <td>有选中时执行选中节点及其上游；无选中时确认后「执行所有节点」。</td>
+              </tr>
+              <tr>
+                <td>按住 <kbd>C</kbd></td>
+                <td>打开执行环：执行当前 / 重跑 / 跳过上游 / 强制上游 / 加入任务 / 停止。</td>
+              </tr>
+              <tr>
+                <td>节点右键</td>
+                <td>执行当前 · 重新执行 · 停止。</td>
+              </tr>
+              <tr>
+                <td>任务列表</td>
+                <td>
+                  后台工作流队列。选中<strong>输出终端</strong>再「加入任务」只跑该汇点上游；未选输出则跑图内全部输出链的并集。
+                </td>
+              </tr>
+            </tbody>
+            </table>
+          </div>
+          <div class="tip">
+            <strong>共同上游只 cook 一次：</strong>同一画布上多条输出链分别加入任务时，各任务保留独立进度；后入队的任务会等待更早任务完成重叠上游，并跳过已
+            <code>done</code> 的共同节点。汇点本身仍会各自执行。若要强制重跑某共同节点，请先清除其运行态或关闭锁定后再入队。
+          </div>
+          <p>
+            分组：<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd>；取消分组：<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>U</kbd>。
+          </p>
+
+          <h3>8.4 任务容错模式</h3>
+          <p>
+            <strong>单节点调试保持严格模式</strong>：节点失败立即中断并回报错误，便于定位问题。而
+            <strong>整图运行 / 加入任务 / Agent 流水线</strong>等长链场景会自动启用<strong>容错模式</strong>：
+            节点失败时优先用缓存或图库产物兜底，标记为 <code>degraded</code>（降级）后<strong>继续执行下游</strong>，
+            不整链中断——批跑长链路不会因单个节点抖动而全部重来。
+          </p>
+          <ul>
+            <li>降级节点在<strong>运行日志、流水线总览与节点状态</strong>中同步标出（<code>degraded</code> + 失败原因）。</li>
+            <li>适合：批量生成等「部分失败可接受」的场景；排错时请用<strong>单节点执行</strong>保持失败即停。</li>
+          </ul>
+
+          <h3>8.5 节点类型一览</h3>
+
+          <h4>生成 / 资产类</h4>
+          <ul>
+            <li>
+              图片生成 · 视频生成 · 声音生成 · 剧本生成 · 场生成 · 世界元素提取 · 策划案生成 ·
+              导演台编辑 · 画布编辑 · 3D 模型生成 · 空间世界生成 · 3D 模型加工（蒙皮 / 绑骨检查 / 动画重定向 / 拆分 / 部件补全 /
+              重拓扑 / 贴图 / 格式转换）· 2D 帧动画 · 决策判定 · 模型（引用）· 宿主资产
+            </li>
+            <li>
+              <strong>3D 模型生成</strong>：文本 / 上游参考图 → 3D 模型资产（Meshy、Tripo、Rodin（Hyper3D）、Luma AI、Lux3D，文生 3D / 图生 3D，部分支持多图生 3D）；
+              异步提交 → 轮询 → 下载，结果可接入导演台或下游继续加工，支持回写绑定持久化与取消。
+              <strong>生成节点只出几何 GLB</strong>，蒙皮等加工交给下面的 3D 加工节点（6.4.1 起不再内联「生成骨骼」）。
+            </li>
+            <li>
+              <strong>空间世界生成</strong>（<code>asset.spatialWorld</code>）：文本、1–4 张参考图或 1 段参考视频 →
+              可漫游 3D 世界（World Labs Marble，1.1 / 1.1-plus / 1.0 / 1.0-draft 四档，后两档为上一代）。四种输入互斥
+              （文本 / 单图 / 多图同场景 / 视频），<strong>同时接了视频与图片时以视频为准</strong>（与「对口型」同口径）；
+              参考视频推荐 mp4 / webm / mov / avi，<strong>单条不超过 100MB</strong>（上游硬限制）。
+              节点卡片上还有<strong>全景判定</strong>（<code>is_pano</code>：自动识别 2:1 等距柱状全景 / 强制 / 关闭，仅单图生效——
+              全景给出完整空间信息，通常比普通图更准）、<strong>按原文</strong>（关闭上游 recaption，指令原话直送）与<strong>随机种子</strong>；
+              不给指令时上游会自己补一段画面描述（recaption），所以同一张参考图两次结果可能不完全一致，要可复现就勾「按原文」+ 固定种子。
+              与 3D 生成同一套异步提交 →
+              轮询 → 下载，产物是世界的 GLB 网格、按<strong>模型资产</strong>登记（缺省落
+              <code>Cache/Models</code>，与 3D 生成一致），可直接接导演台或下游 3D 加工节点 —— 但
+              <strong>必须经过「空间世界导出」节点</strong>：空间世界端口是<strong>严格同类型</strong>的
+              （<code>spatialWorld</code> 只连 <code>spatialWorld</code>，不隐式兼容 <code>model</code>），
+              先接空间世界导出、再用它导出的网格接导演台 / 3D 加工；参考图的「多图同场景」
+              最多 4 张。本地图 / 本地视频的参考<strong>默认上传到 World Labs 托管存储</strong>（官方 media-asset，流程见
+              <code>/marble/v1/media-assets:prepare_upload</code> → 签名地址 PUT），因此<strong>不需要配置对象存储</strong>；
+              托管上传失败时才回退到对象存储换公网 URL，两条都失败会把两条原因一起写进报错。单次生成约
+              5 分钟、按积分计费。产物方面，<strong>主产物是世界的 GLB 网格</strong>（粗网格，10–20 万面），
+              同时把随世界一起返回的两份「附加产物」落在<strong>同目录同名</strong>文件里：<code>*.spz</code>
+              <strong>高斯泼溅</strong>（约 2M splats，Marble 原生格式，Unreal / Unity / Blender / Houdini 导入首选）与
+              <code>*.pano.png</code> <strong>360 等距柱状全景图</strong>（2560×1280，可直接当 2D 全景输入再生成一次）。
+              这两份不额外扣积分，路径会写进运行日志与节点检查器（选中节点即可复制路径）；
+              <strong>需要 PLY 泼溅或 HQ 贴图网格</strong>时用<strong>「空间世界导出」节点</strong>（<code>spatialWorld.export</code>）：
+              把空间世界节点的输出（端口类型是<strong>空间世界</strong>，与世界元素目录口区分）接进它的
+              <code>in-world</code>，在检查器里选导出内容 ——
+              <strong>高质量网格</strong>（GLB：带贴图约 60 万面 / 顶点色约 100 万面，官方异步导出，<strong>最长约 1 小时、限速 4 次/小时、单独计费</strong>；
+              产物登记为模型资产，出口是 <code>model</code> —— 从这里接导演台或下游 3D 加工节点）或 <strong>PLY 泼溅</strong>
+              （官方同步转换，落在世界 GLB 旁边同名文件 <code>world.ply</code>，不登记资产 —— 但可以把它导进资产库，
+              或直接把相对路径接到导演台的 3D 模型输入口，进舞台用内置 Spark 渲染，见
+              <a href="manual-production.html#director">12.7 高斯泼溅</a>；引擎导入仍优先用自动落盘的 SPZ）。导出节点只认上游世界生成节点给出的 <code>world_id</code>，
+              拿不到就直接报错，不会拿别的世界去导。
+            </li>
+            <li>
+              <strong>3D 模型加工（节点）</strong>：<strong>3D 骨骼蒙皮</strong>（Meshy / Tripo Rigging
+              API，可选骨架命名 Mixamo / Tripo 与输出 GLB / FBX）、<strong>3D 绑骨检查</strong>（免费，给
+              <code>riggable</code> + 推荐骨架类型）、<strong>3D 动画重定向</strong>（Tripo 预设
+              <code>preset:walk</code> / Meshy 动作库 <code>action_id</code>，面板内可直接拉取动作库）、<strong>3D
+              模型拆分</strong>（网格分割 / 智能分割，拆完列出部件名）、<strong>3D 部件补全</strong>、<strong>3D
+              重拓扑</strong>（Tripo 智能 / 基础档、Meshy remesh）、<strong>3D 贴图</strong>（含 Meshy
+              retexture）、<strong>3D 格式转换</strong>（GLTF / FBX / USDZ / OBJ / STL / 3MF，可带 FBX
+              预设、pivot 归底、UV 打包）。供应商能力按矩阵自动过滤：<strong>Tripo 支持全部 8 项、Meshy 支持 5
+              项</strong>，卡片下拉只列能做该动作的供应商，Inspector 按能力位隐藏对面不识的参数。
+              两条硬约束：<strong>部件补全只吃拆件任务 id、动画重定向只吃绑骨任务 id</strong>；task id
+              属于别家（如 Tripo 拆件后接 Meshy 贴图）时自动退回「上传模型换公网 URL」。
+            </li>
+            <li>
+              <strong>宿主资产</strong>：把已有资产（图片 / 视频 / 声音 / 剧本 / 场 / 导演台等）作为节点引入当前画布，
+              输出口类型即该资产端口类型；双击宿主资产节点可 dive 进入其内部工作流（详见 <a href="#host">7.6 宿主资产与 Dive</a>）。
+            </li>
+            <li>
+              <strong>决策判定</strong>：接上游文本，用 OpenRouter 决策模型回答一组类型化问题（<code>noul</code>
+              是/否、<code>choice</code> 多选一、<code>score</code> 有序打分）。输出一条文本口：结论摘要（如
+              <code>is_bug=yes(0.96) team=payments(0.84)</code>），下游文本节点照常可用；完整结论（含各档概率、置信度、阈值）留在节点上，选中节点即在 Inspector 的「上次判定结论」里看到概率条。问题清单与阈值（noul 判是阈值 / choice 最低置信度 / score
+              最低分位）也都在 Inspector 里编辑。
+            </li>
+          </ul>
+
+          <h4>输出类</h4>
+          <ul>
+            <li>图片 / 视频 / 声音 / 剧本输出 · 导演台输出 · 场输出 · 世界元素输出 · 成片时间线</li>
+          </ul>
+
+          <h4>工具类</h4>
+          <ul>
+            <li>
+              备注 · 文本 · 选取图片 / 视频 / 声音 / 文本 · 宫格选择 · 动态格选择 · 提示词优化 · 图片反推提示词 ·
+              UI 界面拆分 / UI 界面生成 · 生成帧动画序列图 · 漫画页 · 广告变体矩阵 · 束结
+            </li>
+            <li>
+              <strong>束结</strong>：把上游多路输出（图片 / 视频 / 声音等）收束为一组，便于整体接入输出或下游节点；
+              也可作为临时整理工具使用。
+            </li>
+          </ul>
+
+          <h4>动效（动效分组下）</h4>
+          <ul>
+            <li>
+              <strong>生成帧动画序列图</strong>：双击打开指令面板（角色 / 特效 / 武功预设，默认指令与系统提示词），
+              行列参数拼入提示词后用图片模型产出序列图；输出预览支持删除与选择输出图。
+            </li>
+            <li>
+              <strong>2D 帧动画</strong>：输入序列图，Inspector 设置行列参数，节点卡自动逐帧播放预览；
+              Cook 时清除上一次输出，不累积。
+            </li>
+          </ul>
+
+          <h4>漫画与广告</h4>
+          <ul>
+            <li>
+              <strong>漫画页</strong>：网格分镜格 + 台词气泡编辑器。从资产库拖图入格 / 本地导入 / 上游图片一键填入，
+              逐格可清除图片路径；分格大小用右缘 / 下缘 / 右下角手柄按单格跨数调整（连续跟手预览、松手吸附网格），
+              气泡可拖动移动、角部手柄等比缩放（0.5~4 倍）；点击空白处设置页面级与分格背景颜色。
+              导出 PNG 默认透明底；Cook 按阅读顺序回填上游图片并合成 PNG 进图库。
+            </li>
+            <li>
+              <strong>广告变体矩阵</strong>：设置产品描述与画幅比例后，双击进入变体维度配置与对比预览，
+              一次产出同主题多版本广告图。
+            </li>
+          </ul>
+
+          <h4>质检与返工（已下线）</h4>
+          <div class="tip">
+            <strong>媒体质检</strong>与<strong>媒体返工</strong>已从「添加节点」菜单下线，不再能新建。
+            原有工程里已经放下的质检 / 返工节点仍然保留：能显示、能开 Inspector、能执行，顶栏
+            「质检返工总览」也照旧统计它们；需要质检时改用生成节点自身的审核指令，或质检后人工在图库中
+            重选产物。
+          </div>
+
+          <h4>图片编辑（图片分组下）</h4>
+          <div class="shot-grid">
+            <figure class="shot">
+              <img
+                src="assets/banner/multi-angle-editor.webp"
+                alt="多角度编辑器：机位与构图快速切换"
+                width="958"
+                height="580"
+                loading="lazy"
+              />
+              <figcaption><strong>多角度编辑</strong>：机位与构图快速切换。</figcaption>
+            </figure>
+            <figure class="shot">
+              <img
+                src="assets/banner/lighting-editor.webp"
+                alt="打光效果编辑器：光影氛围精细调节"
+                width="1075"
+                height="619"
+                loading="lazy"
+              />
+              <figcaption><strong>打光效果</strong>：光影氛围精细调节。</figcaption>
+            </figure>
+            <figure class="shot">
+              <img
+                src="assets/banner/mood-editor.webp"
+                alt="情绪调节编辑器：画面情绪与色调控制"
+                width="1440"
+                height="900"
+                loading="lazy"
+              />
+              <figcaption><strong>情绪调节</strong>：画面情绪与色调控制。</figcaption>
+            </figure>
+            <figure class="shot">
+              <img
+                src="assets/banner/image-editor.webp"
+                alt="图片修改器：局部重绘与画面修订"
+                width="775"
+                height="634"
+                loading="lazy"
+              />
+              <figcaption><strong>图片修改</strong>：局部重绘与画面修订。</figcaption>
+            </figure>
+          </div>
+          <ul>
+            <li>
+              多角度编辑 · 打光效果 · 人像质感调节 · 人像处理 · 情绪调节 · 高清放大 · 扩图 · 重绘 · 擦除 · 抠图 · 裁剪 · 图片变换 · 宫格切分 · 图层分离
+            </li>
+            <li>
+              <strong>图片变换</strong>（<code>image.transform</code>）：纯本地像素变换，<strong>不调用任何模型</strong>。
+              双击节点卡片进入编辑器：拖拽平移、滚轮缩放、旋转滑杆与「±90°」快捷按钮、水平 / 垂直镜像，
+              可选输出画幅（跟随原图 / 1:1 / 4:3 / 3:4 / 3:2 / 2:3 / 16:9 / 9:16）、输出尺寸（跟随原图 / 1K / 2K / 4K）
+              与空白填充（透明 / 白 / 黑），右侧实时预览；关闭窗口即写入参数，运行节点在本地出图。
+              注意「跟随原图 + 不选档位」时，旋转会把画布按**旋转后的外接框**扩张，所以转到任何角度都不会裁掉内容。
+            </li>
+            <li>
+              <strong>人像处理</strong>（<code>image.portrait</code>）：像素蛋糕式精修。双击节点卡片进入编辑器，
+              顶部 16 组工具（横向工具轨，从左到右铺满整宽）：修复（祛痘 / 眼周 / 皱纹 / 去油光 / 去红眼 / 去碎发）、
+              磨皮（磨皮 / 毛孔纹理 / 肤色均匀 / 降噪）、肤色（美白 / 红润 / 去黄 / 肤色调）、五官（瘦脸 / 下颌线 / 下巴 /
+              眼睛大小 / 眼距 / 双眼皮 / 鼻型 / 唇形 / 眉毛）、眼睛（眼神光 / 眼白提亮 / 瞳孔）、妆容（7 套妆面 + 浓度 / 色调）、
+              身形（肩颈 / 腰身 / 腿长）、光影（补光 / 轮廓光 / 面部立体 / 光比 / 光影色温 / 影调）、调色（饱和度 / 色温 / 色调 + 11 款滤镜）、
+              质感（锐化 / 清晰度 / 颗粒 / 柔焦 / 暗角）、区域（手动画框 + 补充说明 + 局部开关）、背景（保留 / 纯色 / 渐变 / 按描述 / 仅虚化）、
+              证件照（10 种规格 + 底色 + 5 寸相纸拼版）、AI 增强（编辑器内直调模型的智能消除 / 换背景 / 妆容增强 / 超分，
+              结果作为版本存回节点，可点选任一版作为下次出图底图）与预设（12 套内置 + 导入导出）、导出（输出尺寸 / DPI）。档位是「关闭 / 轻 / 标准 / 强 / 极强」五档分段按钮，
+              妆面、滤镜、背景处理、证件照规格等走具名选项；编辑器内可实时看到<strong>发给模型的提示词原话</strong>（可复制、可折叠）。
+            </li>
+            <li>
+              <strong>人像处理的执行与局部化</strong>：参数合成提示词后<strong>调用你选的图片模型出图</strong>（不出图就没有像素改动），
+              证件照再按规格精确裁切并可选铺 5 寸相纸拼版；上游接多张图时按同一套参数逐张批量出图（上限 24 张），
+              人脸关键点按源图指纹缓存复用。<strong>画幅跟随原图</strong>（按原图比例换算成模型认的标准画幅，不会修完变方图），
+              「输出尺寸 = 自动」时按原图尺寸出图并<strong>精确回贴到原图尺寸</strong>（选 1K / 2K / 4K 则按你选的档，不改尺寸）。
+              <strong>「只处理对应部位」默认开启</strong>：模型整图出图后，按「脸（含颈）/ 人物 / 手动区域框」的
+              羽化蒙版把结果贴回原图，未请求部位保持原图像素不变 —— 磨皮不再连衣服背景一起糊、瘦脸不再带着背景一起扭。
+              <strong>纯色 / 渐变背景默认「本地清底」</strong>：出图后用本机人像分割把人物轮廓以外强制合成为目标背景，
+              背景保证干净（模型漏换的残留会被抹掉），证件照底色同理；不需要时可在「背景」组关掉。
+              换背景、证件照与调色属于整图语义，会自动按整图处理（否则全局效果会被蒙版裁掉）；缺人脸关键点或分割模型时，
+              对应部分退回整图并在<strong>运行日志</strong>里说明，不会静默降级。开关在「区域」组顶部，关掉即回到整图生效。
+            </li>
+            <li>
+              <strong>人像处理编辑器</strong>：原图对比（<code>⇆</code> 按住看上游原图；<code>◐</code> 分割对比可拖动中缝）、滚轮缩放、
+              Shift+滚轮或 <code>[</code> <code>]</code> 旋转视角、空格 / 中键拖拽平移（双击空白处或点缩放百分比回到「适应窗口」，
+              点角度读数复位旋转角）与撤销重做；「区域」组里在画面上拖拽即可画框（六类：瑕疵 / 磨皮 / 提亮 / 收窄 / 换背景 / 消除），
+              框的位置会翻译成「画面左上的小块」这类方位语写进提示词。<strong>「保存并出图」不再关窗</strong>：按钮与画面显示出图进度，
+              失败原因留在窗口里，跑完左侧画面自动换成产物并可与出图前那张对比。<strong>缺依赖的工具组会置灰</strong>，
+              悬停提示与参数面板会说明差什么（需要人脸关键点的 7 组、需要实例分割模型的「背景」、需要姿态模型的「身形」）。
+              编辑器内的 AI 增强（智能消除 / 换背景 / 妆容增强 / 超分）直接调图片模型，结果作为版本存回节点可回滚；
+              检查器提供统一「输出预览」（缩略图 / 全屏 / 存资产库 / 多版本点选），下次进面板默认显示当前输出那张图。
+            </li>
+            <li>
+              <strong>图层分离</strong>（Seedream 5.0 Pro <code>layer_decomposition</code>）：把图片拆成底图 +
+              最多 16 张透明 PNG，在 dive 编辑器中调整层级后本地重组；支持滚轮缩放与空格平移查看，
+              导出 PSD（保留层级、位置、尺寸、透明通道、名称与嵌套分组）或按分组建子目录的 PNG。
+            </li>
+            <li>
+              精修 / 图片编辑在 Dive 中操作；选项与提示词会<strong>实时写回</strong>节点
+              <code>params</code>，Inspector 同步可见。预览走弹窗，不占用 Dive 工具位。
+            </li>
+          </ul>
+
+          <h4>音频（声音分组下）</h4>
+          <ul>
+            <li>
+              声音 · 多说话人对话 · 音效 · 音乐 · 选择声音
+            </li>
+            <li>
+              <strong>声音</strong>（<code>asset.voice</code>）：TTS 配音。指令框里的文本就是<strong>要朗读的内容</strong>，
+              所以这个节点<strong>不显示系统提示词</strong>（否则那句指令会被一起念出来）。上游可接文本与参考图
+              （方舟声音设计用首图）；音色在节点的指令面板里按节点选择，留空走模型默认。
+            </li>
+            <li>
+              <strong>多说话人对话</strong>（<code>asset.dialogue</code>）：一次合成整段对白（ElevenLabs
+              <code>/v1/text-to-dialogue</code>）。指令框按行写 <code>说话人: 台词</code>（中英文冒号都认），
+              没有冒号的行沿用上一段的说话人（旁白 / 连续独白）；在 Inspector 的「说话人音色」里为每位说话人绑定音色，
+              未绑定的回退到节点默认音色。缺音色会<strong>点名是第几段、哪个说话人</strong>，不会静默用错音色。
+              产出的是一整段对话音频（声音资产）。
+            </li>
+            <li>
+              <strong>音效</strong>（<code>asset.sfx</code>）：走<strong>专用音效端点</strong>
+              （ElevenLabs <code>/v1/sound-generation</code>），描述的是<strong>声音本身</strong>
+              （如「雨落在铁皮屋顶上」），不是台词。Inspector 提供「可无缝循环」（环境音常用）与「期望时长」
+              （规范范围 0.5–30 秒）、「提示词影响力」（0–1，默认 0.3）。落盘到 <code>Cache/Sfx</code>。
+              该端点的模型是唯一取值（<code>eleven_text_to_sound_v2</code>），所以卡片上的下拉实际是选
+              <strong>用哪个提供商实例</strong>。没有可用提供商时会明确提示，不会退回语音合成。
+            </li>
+            <li>
+              <strong>音乐</strong>（<code>asset.music</code>）：编曲 / BGM。只吃文本（编曲描述 + 可选歌词），
+              不吃音色。模型来自设置页的<strong>「音乐」页签</strong>（与「声音」页签分开）：
+              OpenRouter（Google Lyria 3）、ElevenLabs（<code>music_v2_5</code> 等）、
+              MiniMax（<code>music-3.0</code> / <code>music-2.6</code>）、通义千问 · 百炼（<code>fun-music-v1</code>）。
+              Inspector 提供「纯音乐（无人声）」开关与歌词输入（支持 <code>[Intro]</code> / <code>[Verse]</code> 等结构标签）。
+              落盘到 <code>Cache/Music</code>。它与<strong>声音</strong>是两个模态：
+              下拉里不会出现 TTS 模型，反之亦然。
+            </li>
+            <li>
+              <strong>选择声音</strong>（<code>voice.select</code>）：从上游多个声音里挑一个作为当前输出，
+              常用于多分支配音流程。
+            </li>
+          </ul>
+
+          <h4>视频编辑（视频分组下）</h4>
+          <ul>
+            <li>
+              对口型 · 逐帧拉片 · 片段重拍；逐帧拉片与片段重拍双击节点进入子窗口操作（拉片台 / 重拍台），
+              与图片编辑同为「双击进子窗口」交互。
+            </li>
+            <li>
+              <strong>逐帧拉片</strong>：连接上游视频后双击打开拉片台，逐帧浏览并在关键帧上取图、批注，供分镜 / 提示词引用。
+            </li>
+            <li>
+              <strong>片段重拍</strong>：连接源视频后双击打开重拍台，标记要修改的起止时间并填写修改要求；
+              运行后仅重拍该区间（Seedance 2.5 时间戳级编辑），其余片段保持不变。指令框支持
+              <code>@</code> 引用端口素材，右侧可选视频模型。
+            </li>
+          </ul>
+
+          <h4>场 / 世界</h4>
+          <ul>
+            <li>场拆解 / 场表格 / 场生成 / 场参考 · 选择场 · 世界元素提取 / 世界元素审核 / 世界元素生成 / 世界元素实体输出</li>
+            <li>
+              <strong>选择场</strong>：从上游多个场中挑取一个（或按条件匹配）作为当前输出，
+              常用于多分支场流程中决定后续接哪一场。
+            </li>
+          </ul>
+
+          <h4>世界模型（世界分组下）</h4>
+          <ul>
+            <li>空间世界生成 · 空间世界导出 · 世界元素提取 / 世界元素表 / 世界元素生成</li>
+            <li>
+              <strong>空间世界生成</strong>（<code>asset.spatialWorld</code>）：文本、1–4 张参考图或 1 段参考视频 →
+              可漫游 3D 世界（World Labs Marble，1.1 / 1.1-plus / 1.0 / 1.0-draft 四档）。
+              详见本章「生成 / 资产类」里的详细说明与下面的典型工作流。
+            </li>
+            <li>
+              <strong>空间世界导出</strong>（<code>spatialWorld.export</code>，World Labs
+              <code>worlds/{id}:export</code>）：把世界导成下游能吃的网格。
+              <strong>空间世界端口是严格同类型的</strong>（<code>spatialWorld</code> 只连
+              <code>spatialWorld</code>，不隐式兼容 <code>model</code>），所以「世界 → 导演台 / 3D 加工」
+              <strong>必须经过这个节点</strong>。两种模式：
+              <ul>
+                <li>
+                  <strong>网格（默认）</strong>：HQ 网格 → GLB。档位可选<strong>带贴图</strong>（约 600k 面）
+                  或<strong>顶点色</strong>（约 1M 面），产物按<strong>模型资产</strong>登记，
+                  可直接接导演台或 3D 加工节点；上游是异步服务、<strong>最长约 1 小时</strong>、
+                  限速 4 次/小时、单独计费。
+                </li>
+                <li>
+                  <strong>高斯泼溅（PLY）</strong>：官方同步转换出 PLY，落在世界产物的<strong>同目录同名</strong>文件里
+                  （<code>world.ply</code>），可选分辨率（full_res / 500k / 150k / 100k）。PLY 在应用内没有预览通道、
+                  也没有对应资产类型，所以<strong>不登记资产</strong>，只写回路径与日志，并把上游世界产物透传下去
+                  （避免这条链在画布上断掉）。
+                </li>
+              </ul>
+              world_id 只能由「空间世界生成」节点给出，上游没接该节点时直接报错，不会猜；
+              出口值缺失时会按产出该模型的节点去任务记录里找回（生成本身已花过积分，不逼用户重生成）。
+            </li>
+            <li>
+              世界元素相关：<strong>世界元素提取</strong>（<code>world.extract</code>，从世界 / 全景图里抽出可复用的元素）、
+              <strong>世界元素表格</strong>（<code>world.table</code>，目录表格节点，只透传并存进 <code>params.text</code>，不调用生成模型）、
+              <strong>世界元素生成</strong>（<code>world.gen</code>，按元素逐项出图），配合画布与世界元素流程使用。
+            </li>
+          </ul>
+
+          <h4>其它</h4>
+          <ul>
+            <li>图插件示例（仅本地调试可加载，正式安装包默认不出现）</li>
+          </ul>
+
+          <h3>8.6 典型节点工作流</h3>
+          <ol>
+            <li>
+              <strong>剧本</strong>：新建剧本 → 右侧选文本模型 → 填「生成指令」→ 执行生成节点 → 接到「剧本输出」。
+            </li>
+            <li>
+              <strong>场</strong>：剧本 →「场拆解」→「场表格」（运行导入 JSON）→「场生成」/ 视频生成
+              →「场输出」；批量叙事可走一键工作流的「短剧分镜（Agent 流水线）」。
+            </li>
+            <li>
+              <strong>图片 / 视频</strong>：上游参考连入生成口 → 提示词中用 <code>@</code> 引用 → 执行 →
+              输出节点导出结果。自由画布上从零搭视频与参考视频，见
+              <a href="guide-video.html">专题指南</a>。
+            </li>
+            <li>
+              <strong>成片</strong>：场 / 视频节点输出 → 打开剧本资产的成片时间线 → 拖入轨道拼装与导出。
+            </li>
+            <li>
+              <strong>配音（单角色）</strong>：文本 / 剧本 →「声音生成」→ 在指令面板选音色、填要朗读的文本 →
+              执行 →「声音输出」。指令框里写的就是要念的内容，不要在这里写「请用温柔的语气」这类指令。
+            </li>
+            <li>
+              <strong>配音（多角色对白）</strong>：「多说话人对话」→ 按行写
+              <code>角色A: 台词</code> / <code>角色B: 台词</code> → Inspector 里为每个说话人绑音色 →
+              执行得整段对话音频。一个节点出一整段，比逐句拼接更自然（语气连贯）。
+            </li>
+            <li>
+              <strong>音效</strong>：「音效生成」→ 选提供商实例 → 描述声音本身（「雨落在铁皮屋顶上」）→
+              需要环境音就勾「可无缝循环」、按需设时长 → 执行，产物落 <code>Cache/Sfx</code>，
+              可直接拖进成片时间线的音效轨（时间线的「生成音效」按钮走同一端点）。
+            </li>
+            <li>
+              <strong>配乐 / BGM</strong>：「音乐生成」→ 在设置页的「音乐」页签里勾好音乐模型 →
+              填编曲描述（风格 / 情绪 / 场景），要人声就关掉「纯音乐」并填歌词 → 执行，
+              产物落 <code>Cache/Music</code>，可拖进成片时间线的音乐轨。
+            </li>
+            <li>
+              <strong>可漫游世界</strong>：「空间世界生成」（文本 / 1–4 张参考图 / 1 段参考视频）→
+              「空间世界导出」→ 取导出的网格接「导演台」排机位，或接 3D 加工节点继续处理。
+              <strong>不能跳过导出节点</strong>——空间世界端口不隐式兼容模型端口。
+              世界里的元素可用「世界元素提取」抽出来复用，配「世界元素表」管理、再逐项「世界元素生成」出图。
+            </li>
+            <li>
+              <strong>一键工作流</strong>：工作区「新建」创建宿主 → 拖入画布接线 → Dive 微调 → 加入任务。
+            </li>
+          </ol>
+
+          <h3 id="host">8.6 宿主资产与 Dive</h3>
+          <p>
+            宿主资产（含一键工作流产物、选区封装等）在外层只暴露<strong>边界输入 / 边界输出</strong>；双击或 Dive
+            进入内图编辑完整拓扑。
+          </p>
+          <ul>
+            <li>边界输出按汇点一一对应：多路同类型结果（如多张立绘）会各建一个出口，而不是合并成单口。</li>
+            <li>备注类文本节点默认不暴露为宿主出口。</li>
+            <li>内图整链可入队任务列表；宿主节点也可作为画布上的黑盒参与更大流程。</li>
+            <li>精修 / 图片编辑等工具在 Dive 中操作，选项写回节点参数；大图预览走弹窗。</li>
+          </ul>
+        </section>
+
+      </article>
+    </div>
+
+    <footer class="foot">
+      <div class="foot-grid">
+        <div class="foot-about-col">
+          <a class="foot-brand" href="index.html">
+            <img src="assets/logo-mark.png" alt="" width="22" height="22" />
+            AI Art Engine
+          </a>
+          <p class="foot-about">本地优先的 Agent 原生 AI 美术资产引擎。工程与素材保存在本机，模型使用你自己的密钥。</p>
+        </div>
+        <nav class="foot-col" aria-label="文档">
+          <h4>文档</h4>
+          <ul>
+            <li><a href="quickstart.html">快速上手</a></li>
+            <li><a href="manual.html">使用手册</a></li>
+            <li><a href="developers.html">开发者文档</a></li>
+            <li><a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">更新日志</a></li>
+          </ul>
+        </nav>
+        <nav class="foot-col" aria-label="专题教程">
+          <h4>专题教程</h4>
+          <ul>
+            <li><a href="guide-short-video.html">短剧教程</a></li>
+            <li><a href="guide-video.html">视频教程</a></li>
+            <li><a href="guide-comfyui.html">ComfyUI 教程</a></li>
+            <li><a href="guide-newapi.html">NewAPI 教程</a></li>
+            <li><a href="guide-mcp.html">MCP 接入</a></li>
+            <li><a href="guide-gameplay.html">可玩 HTML</a></li>
+          </ul>
+        </nav>
+        <nav class="foot-col" aria-label="社区">
+          <h4>社区</h4>
+          <ul>
+            <li><a href="index.html#download">下载</a></li>
+            <li><a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+            <li><a href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine" target="_blank" rel="noopener noreferrer">Gitee</a></li>
+            <li><a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer">bilibili</a></li>
+            <li><a href="https://github.com/Justin-sky/ai-art-engine/issues" target="_blank" rel="noopener noreferrer">问题反馈</a></li>
+          </ul>
+        </nav>
+      </div>
+      <div class="foot-bottom">
+        <span>© 2026 AI Art Engine · GPL-3.0</span>
+        <span>文档以最新版应用内界面为准</span>
+      </div>
+    </footer>
+    <script>
+      document.querySelectorAll('.mobile-nav a').forEach((link) => {
+        link.addEventListener('click', () => link.closest('.mobile-menu')?.removeAttribute('open'))
+      })
+
+      // 阅读进度条
+      const progressBar = document.querySelector('.progress')
+      if (progressBar) {
+        const updateProgress = () => {
+          const doc = document.documentElement
+          const max = doc.scrollHeight - window.innerHeight
+          progressBar.style.width = (max > 0 ? (window.scrollY / max) * 100 : 0) + '%'
+        }
+        window.addEventListener('scroll', updateProgress, { passive: true })
+        window.addEventListener('resize', updateProgress)
+        updateProgress()
+      }
+
+      // 目录滚动高亮（scrollspy）
+      const tocLinks = Array.from(document.querySelectorAll('.toc a[href^="#"]'))
+      const spyTargets = []
+      tocLinks.forEach((link) => {
+        const id = link.getAttribute('href').slice(1)
+        const el = id ? document.getElementById(id) : null
+        if (el) spyTargets.push({ el, link })
+      })
+      if (spyTargets.length) {
+        const spy = () => {
+          const y = window.scrollY + 90
+          let current = spyTargets[0]
+          for (const target of spyTargets) {
+            if (!target.el) continue
+            const top = target.el.getBoundingClientRect().top + window.scrollY
+            if (top <= y) current = target
+          }
+          if (!current) return
+          tocLinks.forEach((link) => link.classList.toggle('active', link === current.link))
+        }
+        window.addEventListener('scroll', spy, { passive: true })
+        window.addEventListener('resize', spy)
+        spy()
+      }
+
+      // 返回顶部
+      const toTop = document.querySelector('.to-top')
+      if (toTop) {
+        const toggleToTop = () => {
+          toTop.hidden = window.scrollY <= 600
+        }
+        window.addEventListener('scroll', toggleToTop, { passive: true })
+        toggleToTop()
+        toTop.addEventListener('click', () => {
+          window.scrollTo({ top: 0, behavior: 'smooth' })
+        })
+      }
+
+      // 截图点击放大
+      const lightbox = document.querySelector('.lightbox')
+      if (lightbox) {
+        const lightboxImg = lightbox.querySelector('img')
+        const lightboxCap = lightbox.querySelector('.lightbox-cap')
+        document.querySelectorAll('.manual figure.shot img').forEach((img) => {
+          img.addEventListener('click', () => {
+            if (!lightboxImg || !lightboxCap) return
+            lightboxImg.src = img.currentSrc || img.src
+            lightboxImg.alt = img.alt
+            lightboxCap.textContent =
+              img.closest('figure')?.querySelector('figcaption')?.textContent?.trim() || img.alt
+            lightbox.hidden = false
+          })
+        })
+        lightbox.addEventListener('click', () => {
+          lightbox.hidden = true
+        })
+        document.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape' && !lightbox.hidden) lightbox.hidden = true
+        })
+      }
+
+      // 章节标题点击复制链接
+      const toast = document.createElement('div')
+      toast.className = 'toast'
+      toast.setAttribute('role', 'status')
+      document.body.appendChild(toast)
+      let toastTimer = 0
+      const showToast = (message) => {
+        toast.textContent = message
+        toast.classList.add('show')
+        clearTimeout(toastTimer)
+        toastTimer = setTimeout(() => toast.classList.remove('show'), 1600)
+      }
+      document
+        .querySelectorAll('.manual section[id] > h2, .manual h3[id], .manual h4[id]')
+        .forEach((heading) => {
+          const id = heading.id || heading.parentElement?.id
+          if (!id) return
+          heading.title = '点击复制本节链接'
+          heading.addEventListener('click', () => {
+            if (window.getSelection()?.toString()) return
+            const url = location.origin + location.pathname + '#' + id
+            if (navigator.clipboard?.writeText) {
+              navigator.clipboard.writeText(url).then(
+                () => showToast('已复制本节链接'),
+                () => showToast(url)
+              )
+            } else {
+              showToast(url)
+            }
+          })
+        })
+
+      // 主题切换：跟随系统 → 浅色 → 深色
+      const themeButton = document.querySelector('.theme-toggle')
+      if (themeButton) {
+        const rootEl = document.documentElement
+        const THEME_KEY = 'site.theme'
+        const darkQuery = window.matchMedia('(prefers-color-scheme: dark)')
+        const THEME_META = {
+          auto: { icon: '◐', label: '主题：跟随系统' },
+          light: { icon: '☀', label: '主题：浅色' },
+          dark: { icon: '☾', label: '主题：深色' }
+        }
+        const readThemePref = () => {
+          try {
+            const stored = localStorage.getItem(THEME_KEY)
+            return stored === 'light' || stored === 'dark' || stored === 'auto' ? stored : 'dark'
+          } catch (e) {
+            return 'dark'
+          }
+        }
+        const applyTheme = () => {
+          const pref = readThemePref()
+          rootEl.classList.toggle('dark', pref === 'dark' || (pref !== 'light' && darkQuery.matches))
+          rootEl.classList.toggle('light', pref === 'light')
+          const meta = THEME_META[pref]
+          themeButton.textContent = meta.icon
+          themeButton.title = meta.label + '（点击切换）'
+          themeButton.setAttribute('aria-label', meta.label)
+        }
+        darkQuery.addEventListener('change', applyTheme)
+        themeButton.addEventListener('click', () => {
+          const next = readThemePref() === 'dark' ? 'light' : readThemePref() === 'light' ? 'auto' : 'dark'
+          try {
+            localStorage.setItem(THEME_KEY, next)
+          } catch (e) {}
+          applyTheme()
+          showToast(THEME_META[next].label)
+        })
+        applyTheme()
+      }
+    </script>
+      <script src="site-search.js?v=20261009d" defer></script>
+    <script src="site-enhance.js?v=20261009d" defer></script>
+  </body>
+</html>

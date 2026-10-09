@@ -1,303 +1,100 @@
-**交流 QQ 群：`346340389` · `647306826`** · <a href="https://x.com/IoKKFOvWAt12669"><img src="https://img.shields.io/badge/X-000000?style=flat-square&logo=x&logoColor=white" alt="X" /></a> · 喜欢就点个 ⭐ [Star](https://github.com/Justin-sky/ai-art-engine)
-
 <div align="center">
-  <img src="docs/assets/logo-mark.png" alt="" width="96" />
 
-  <h1>AI Art Engine</h1>
+<a href="https://justin-sky.github.io/ai-art-engine/">
+  <img src="docs/assets/logo-mark.png" alt="AI Art Engine" width="96" />
+</a>
 
-  <p><b>专业 AI 创作工具 · 短剧 · 广告 · 成片</b></p>
-  <p>
-    本地工程与素材 · 分镜与节点图驱动生成 · 内置 MCP Server 可被 Claude Code 等 AI Agent 驱动<br />
-    对接 OpenRouter · OpenAI · DeepSeek · 智谱 · Kimi · xAI · Google · vLLM · Ollama · LM Studio · 火山方舟 · 可灵 · MiniMax · 通义千问 · 魔塔 · ComfyUI · MagicRouter · Meshy · Tripo · Rodin（Hyper3D） · Luma AI · Lux3D · 自定义提供商（OpenAI 兼容 / Anthropic / Gemini 端点）<br />
-    对象存储：火山 TOS · 阿里云 OSS · 腾讯云 COS
-  </p>
+<h1>AI Art Engine</h1>
 
-  <p>
-    <a href="https://github.com/Justin-sky/ai-art-engine/stargazers"><img src="https://img.shields.io/github/stars/Justin-sky/ai-art-engine?style=social" alt="GitHub stars" /></a>
-    <a href="https://github.com/Justin-sky/ai-art-engine/network/members"><img src="https://img.shields.io/github/forks/Justin-sky/ai-art-engine?style=social" alt="GitHub forks" /></a>
-    <a href="https://x.com/IoKKFOvWAt12669"><img src="https://img.shields.io/badge/X-000000?style=flat-square&logo=x&logoColor=white" alt="Follow on X" /></a>
-    <a href="https://github.com/Justin-sky/ai-art-engine/releases"><img src="https://img.shields.io/github/v/release/Justin-sky/ai-art-engine?include_prereleases&label=release&style=flat-square" alt="release" /></a>
-    <a href="https://github.com/Justin-sky/ai-art-engine/releases"><img src="https://img.shields.io/github/downloads/Justin-sky/ai-art-engine/total?label=downloads&style=flat-square" alt="downloads" /></a>
-    <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-blue.svg?style=flat-square" alt="license" /></a>
-    <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/package.json"><img src="https://img.shields.io/github/package-json/v/Justin-sky/ai-art-engine?label=version&style=flat-square&color=orange" alt="version" /></a>
-  </p>
+<p><b>Agent 原生的 AI 美术资产引擎</b><br />图片、视频、语音、3D 模型与空间世界，在一个桌面端里生成、沉淀、复用</p>
 
-  <p>
-    <img src="https://img.shields.io/badge/Local--First-本地优先-00B894?style=for-the-badge" alt="local" />
-    <img src="https://img.shields.io/badge/Node_Graph-节点图-6C5CE7?style=for-the-badge" alt="graph" />
-    <img src="https://img.shields.io/badge/Win%20%7C%20macOS%20%7C%20Linux-多平台-0984E3?style=for-the-badge" alt="platform" />
-  </p>
+<p>
+  <a href="https://github.com/Justin-sky/ai-art-engine/releases"><img src="https://img.shields.io/github/v/release/Justin-sky/ai-art-engine?include_prereleases&style=flat-square&labelColor=0d1117&color=5b8cff&label=release" alt="release" /></a>
+  <a href="https://github.com/Justin-sky/ai-art-engine/releases"><img src="https://img.shields.io/github/downloads/Justin-sky/ai-art-engine/total?style=flat-square&labelColor=0d1117&color=8b5cf6" alt="downloads" /></a>
+  <a href="https://github.com/Justin-sky/ai-art-engine/stargazers"><img src="https://img.shields.io/github/stars/Justin-sky/ai-art-engine?style=flat-square&labelColor=0d1117&color=f5b301" alt="stars" /></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-22d3ee?style=flat-square&labelColor=0d1117" alt="license" /></a>
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-64748b?style=flat-square&labelColor=0d1117" alt="platform" />
+</p>
 
-  <p>
-    <a href="https://justin-sky.github.io/ai-art-engine/"><b>官网</b></a> ·
-    <a href="https://justin-sky.github.io/ai-art-engine/manual.html"><b>使用手册</b></a> ·
-    <a href="https://justin-sky.github.io/ai-art-engine/guide-video.html"><b>视频教程</b></a> ·
-    <a href="https://justin-sky.github.io/ai-art-engine/guide-short-video.html"><b>短剧教程</b></a> ·
-    <a href="https://justin-sky.github.io/ai-art-engine/guide-comfyui.html"><b>ComfyUI 教程</b></a> · <a href="https://justin-sky.github.io/ai-art-engine/guide-mcp.html"><b>MCP 接入</b></a> ·
-    <a href="https://space.bilibili.com/3707036976024122"><b>bilibili</b></a> ·
-    <a href="https://github.com/Justin-sky/ai-art-engine/releases"><b>Download</b></a> ·
-    <a href="https://github.com/Justin-sky/ai-art-engine"><b>GitHub</b></a> ·
-    <a href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"><b>Gitee</b></a> ·
-    <a href="#交流"><b>交流</b></a> ·
-    <a href="#features"><b>Features</b></a> ·
-    <a href="#quick-start"><b>Quick Start</b></a> ·
-    <a href="./README.en.md"><b>English</b></a>
-  </p>
+<p>
+  <a href="https://justin-sky.github.io/ai-art-engine/">官网</a> ·
+  <a href="https://justin-sky.github.io/ai-art-engine/quickstart.html">快速上手</a> ·
+  <a href="https://justin-sky.github.io/ai-art-engine/manual.html">使用手册</a> ·
+  <a href="https://github.com/Justin-sky/ai-art-engine/releases">下载</a> ·
+  <a href="./CHANGELOG.md">更新日志</a> ·
+  <a href="./README.en.md">English</a>
+</p>
+
+<img src="website/assets/banner/node-graph.webp" alt="AI Art Engine 节点图工作区" width="100%" />
+
 </div>
 
----
+## 简介
 
-## 源码仓库
+AI Art Engine 是一款开源桌面应用，把模型调用、节点编排、3D 预演与成片剪辑放进同一个本地工程，服务短剧、广告、游戏与电商内容生产。
 
-- GitHub（主仓库）：https://github.com/Justin-sky/ai-art-engine
-- Gitee（国内镜像）：https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine
+- **Agent 原生**：应用内 AI 对话可直接调用工具完成生成与编排；内置 MCP Server，Claude Code、Codex 等外部 Agent 也能操作你的工程。
+- **节点图与一键工作流**：覆盖文本、图片、视频、声音、3D、空间世界等模态；行业模板一键生成可复用的宿主资产。
+- **3D 导演台与时间线**：站位、机位与动作录制，成片时间线编排并导出。
+- **多模型、本地优先**：接入 30+ 模型提供商，自带 API Key；工程是本机目录里的 JSON 与媒体文件，不经过任何中转服务。
 
-两个仓库的 `main` 分支保持同步；Release 与客户端自动更新仍以 GitHub 为准。
+## 快速开始
 
----
+从 [Releases](https://github.com/Justin-sky/ai-art-engine/releases) 下载安装包：Windows `.exe`、macOS `.dmg`（Intel 选 `x64`，Apple Silicon 选 `arm64`）、Linux `.AppImage`。
 
-<a id="download"></a>
+1. 启动后进入 **设置 → 模型**，添加提供商并填写 API Key。
+2. 新建工程，在工作区「新建」里选择「一键工作流」生成第一组资产。
+3. 打开左侧「◈」AI 对话，用 `@` 引用资产，让助手继续生成与编排。
 
-## Download
+完整流程见 [快速上手](https://justin-sky.github.io/ai-art-engine/quickstart.html)。
 
-| Platform    | Package                   | Get it                                                                                                                                                      |
-| ----------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Windows** | `.exe`                    | [GitHub Releases](https://github.com/Justin-sky/ai-art-engine/releases)                                                                                     |
-| **macOS**   | `.dmg`（`x64` / `arm64`） | [GitHub Releases](https://github.com/Justin-sky/ai-art-engine/releases)：Intel 选 **x64**，Apple Silicon 选 **arm64**（仅 arm64 时 Intel Mac 会提示不支持） |
-| **Linux**   | `.AppImage`               | [GitHub Releases](https://github.com/Justin-sky/ai-art-engine/releases)（`chmod +x` 后运行）                                                                |
+## 接入外部 Agent
 
-推送 `v*` tag 可由 GitHub Actions 自动构建并发布多平台安装包。也可自行打包：
+应用运行时会在 `127.0.0.1` 启动带 Bearer token 的 MCP 工具服务：
 
 ```bash
-npm run dist:win    # Windows
-npm run dist:mac    # macOS
-npm run dist:linux  # Linux
+# stdio 桥（需要 Node.js 18+）
+claude mcp add aiartengine -- node <安装目录>/resources/mcp-bridge.mjs
+
+# 或 HTTP 直连（接入地址与 token 见 设置 → MCP）
+claude mcp add --transport http aiartengine <接入地址> --header "Authorization: Bearer <token>"
 ```
 
----
+工具清单与安全设计见 [`docs/MCP.md`](./docs/MCP.md)。
 
-<a id="features"></a>
+## 从源码构建
 
-## Features
-
-**AIArtEngine** 是面向短剧、广告与成片制作的专业 AI 创作工具：资产、分镜、节点图在同一桌面端完成，工程本地优先，模型调用走你自己的 API Key。
-
-### 特色功能：AI 对话 + MCP
-
-> 应用内聊天即可驱动全部生成与编排能力；Claude Code / Codex 等外部 AI Agent 也能直连操作你的工程。
-
-- **AI 对话面板** — 应用内 AI 助手（DeepSeek Harness 运行时）：在对话里 `@` 引用工程资产、让 Agent 调用 MCP 工具直接干活——生成图片 / 视频 / 3D / 语音、编辑节点图、运行工作流并查状态；多会话历史、模型可选任意已配置文本模型
-- **MCP 工具服务** — 内置 MCP Server，Claude Code / Codex 等外部 AI Agent 可经 stdio 桥或 HTTP 直连操作你的工程（规划并落盘工作流、运行生成、读写资产与节点图）；token 跨重启持久复用、操作审计、并发闸门
-
-### 特色功能：Skill 技能系统
-
-> 技能是"职业手册"——告诉 Agent 怎么做（流程、规范、输出格式）；MCP 工具是"手脚"——真正动手执行。两者配合，对话才能"说到做到"。
-
-- **内置创作技能** — 随对话自动就位，无需配置：分镜 / 动画（9 宫格分镜表、节拍拆解表、动态提示词表、4 宫格动态分镜表等）、导演审核、系统创作（剧本、图生提示词、图片 / 视频生成、声音、情绪、灯光、多角度、扩图、重绘、抠图、高清放大、界面图、界面拆分、世界提取、节拍拆分、节拍单元生成、策划案、肖像贴图、提示词优化、擦除）
-- **自定义技能** — **插件市场 → 技能**页签：把符合 dsh SKILL.md 格式（frontmatter `name` / `description` + Markdown 正文）的 `.md` 文件放进技能目录（页签内可「打开目录」），下次对话自动生效；一键「生成示例模板」可获得一份可用的写法参考
-- **技能包** — 从插件市场安装工作流时可能随包附带技能包：它在市场的「技能」页签里来源标记为**技能包**，并跟着所属工作流走 —— **卸载那条工作流会一并删除它**，不是可单独管理的产物
-- **机制** — 技能清单以 `<available_skills>` 注入对话上下文，Agent 判断任务匹配时按需加载技能文件作为指令；内置技能由程序自动管理（快照 + 指纹去重），自定义技能不受影响。节点图节点也使用同一套技能定义节点行为
-
-### 特色功能：插件市场（工作流 · 技能 · MCP 一站安装）
-
-> 顶栏「插件市场」（在「设置」左边）打开独立窗口，把社区工作流、随包技能与 MCP 服务装到本机；装好就能在 AI 对话里直接用。
-
-- **独立窗口、单例** — 「插件市场」按钮在顶栏「设置」左边，属于**应用级入口**（不依赖当前工程）；窗口已开着时再点只会把它聚焦到前台。页签为 **全部 / MCP / 技能 / 工作流**
-- **工作流目录** — 每次开窗都**强制刷新**远端目录，新发布的工作流不用等缓存过期；主源（GitHub raw）不通时自动降级到 Gitee 镜像并在窗口顶部说明（「主源不可达，已切换到镜像」），离线时显示上次缓存的目录。卡片上直接有 **安装 / 更新 / 重新安装 / 卸载 / 详情**，卸载走应用自己的确认框（本地已装文件会被删除）
-- **含技能的条目** — 工作流可**随包附带技能包**：卡片标「含技能」，包里含脚本时标「含技能 · 含脚本」。**脚本是 AI agent 能在这台机器上跑起来的代码**：安装前会**逐条列出每一个脚本路径**请你确认，点「取消」则只装说明书与 references（脚本不落盘，**工作流照常可用**）；这份同意每次都问、不会记住。卸载工作流会一并移除它带来的技能包（技能包在市场的「技能」页签里来源标记为「技能包」，不能单独管理）
-- **在 AI 对话里使用** — 输入框工具栏的「工作流」按钮或 `/workflow` 打开已安装列表；选中后插入的是**引用块（图标 + 标题）**，悬停可见含 id 的完整引用，发送时 Agent 按 id 精确复现这条工作流（`workflow_use_installed`），而不是重新规划一个相似的东西
-- **MCP 页签** — 查看内置 `aiartengine` 工具服务与 Blender 工具集，也可以添加第三方 MCP 服务（HTTP 远程 / stdio 本地命令），保存前可「测试连接」看能发现多少个工具
-- **越界执行还有第二道闸** — agent 要越过沙箱边界时，对话里出现「需要你授权这一步」卡片（含工具名与原因），只有**允许一次 / 拒绝**；刻意没有「总是允许」，无人应答的兜底路径按**失败即拒绝**处理
-
-### 特色功能：Blender MCP Server（让 AI 直接操作 Blender）
-
-> 本机 Blender 跑着，AI 就能在对话里搭场景、写材质、截图自查、导出 GLB —— **出站直连 addon，不需要 uv / Python / 子进程**。
-
-- **直接驱动 Blender** — 9 个 MCP 工具覆盖「看清现状 → 写 bpy 建模 → 截图自查 → 导出 GLB」闭环：`get_scene_info` / `get_world_state_snapshot` / `get_object_info` 查场景与选中对象，`execute_blender_code` 在 Blender 进程内执行 Python（完整访问 bpy / bmesh / mathutils），`get_viewport_screenshot` 抓视口画面回给多模态客户端，`export_scene` 出 GLB / GLTF / FBX / OBJ / USD / STL（配 `asset_import` 一键入资产库），`describe_node_type` / `bpy_api_lookup` / `get_addon_status` 查节点端口、查 bpy API、查 addon 版本
-- **双 addon 兼容** — 同时支持**社区方案** [blender-mcp](https://github.com/ahujasid/blender-mcp) 的 `addon.py` 与**官方方案** [Blender Lab「MCP Server」](https://projects.blender.org/lab/blender_mcp) 扩展，在「设置 → MCP → Blender 工具集」里切换；两种后端下工具名、入参、输出结构**完全一致**，模型侧无感
-- **零额外依赖** — 不装 uv、不起 Python 子进程、不改 Blender 配置：应用主动出站连 addon 的 `localhost:9876` 监听端口；安装包 / 仓库 / 容器环境开箱即用
-- **应用内对话 + 外部 Agent 同源** — 工作区左侧 ◈ AI 对话面板（在聊天里说「用 Blender 把这几个 Cube 拼成底座，做完截张图」）与 Claude Code / Codex 等外部 Agent 走**同一套** Blender 工具集；设置里关掉即整组从工具清单里消失，主工具集不受影响；面板的 Ask / Plan 模式同样约束 Blender 工具 —— 它不是绕过面板模式的侧门
-- **模式兜底与截图边界** — `execute_blender_code` **不再做词法护栏**（可使用完整 Python / bpy 能力）；写入仍由 Ask / Plan 在请求级收窄。截图走一次性临时文件，画面只随 MCP 响应回给多模态客户端，不落工程也不进审计日志
-
-详细工具清单、协议细节与安全设计见 [MCP 接入指南](./docs/MCP.md#⑤- blender-工具集可选需要本机-blender) / [MCP 接入教程](https://justin-sky.github.io/ai-art-engine/guide-mcp.html#blender)。
-
-### 完整能力
-
-- **本地工程** — 新建 / 打开 / 最近列表，JSON + 媒体目录落盘，数据不出本机
-- **资产库** — 图片 / 视频 / 声音 / 3D 模型；AssetRef GUID；`.aipackage` 导入导出；**多选文件 / 多选目录拖拽到其它目录**（磁盘搬移 + descendant asset.relativePath 写回 + 成环检测 + 同名追加 " 2" / " 3"）
-- **分镜与画布** — 镜头参数、Fabric 构图、可停靠布局
-- **一键工作流** — 预设模板（短剧分镜、游戏UI界面、游戏买量、产品广告、电商带货、游戏3D资产、漫画出版、知识口播、3D白模预演等）或 AI 规划拓扑，一键创建可复用宿主资产（边界 I/O + Dive 内图）
-- **插件市场** — 顶栏「插件市场」独立窗口：工作流 / 技能包 / MCP 服务一站安装与卸载，含脚本的条目会逐条列出脚本路径请你确认；装好的工作流在 AI 对话的「工作流」入口里按 id 精确复现（自建市场源在数据层支持——设置项 `workflowMarket.source` 可填多个地址、填了就只用填的这些，但设置界面暂未提供输入框）
-- **节点图生成** — 文本 / 图片 / 视频 / 声音 / 音乐 / 音效 / 3D 模型 / 空间世界 / 决策节点，指令面板与模型参数；生成锁定、图库双输出口；端口类型必须相同（单数不能进复数，选取节点只收列表口）；连线样式 / 小地图；任务队列复用共同上游、**任务容错模式**（节点失败降级不整链中断）；漫画页（分镜格 + 台词气泡，导出透明 PNG）、广告变体矩阵、2D 帧动画与帧动画序列图、图层分离（拆层后可导出 PSD）
-- **声音节点（声音分组）** — **声音**（`asset.voice`，TTS 配音；指令框里的文本就是要念的内容，所以不显示系统提示词）、**多说话人对话**（`asset.dialogue`，按行写 `说话人: 台词`，一次合成整段对白，Inspector 里逐说话人绑音色，缺音色会点名第几段哪个说话人）、**音效**（`asset.sfx`，走专用音效端点 `/v1/sound-generation`，描述声音本身而不是台词，可无缝循环 + 期望时长 0.5–30 秒 + 提示词影响力 0–1，落 `Cache/Sfx`）、**音乐**（`asset.music`，编曲 / BGM，纯音乐开关 + 歌词，落 `Cache/Music`）、**选择声音**（`voice.select`，从多个上游声音里挑一个）
-- **音乐与声音是两个模态** — 设置页各有页签，节点下拉各读各的：**音乐**支持 OpenRouter（Google Lyria 3）、ElevenLabs（`music_v2_5` 等）、MiniMax（`music-3.0` / `music-2.6`）、通义千问 · 百炼（`fun-music-v1` / preview）。两个页签不会互相串味（音乐下拉不会出现 TTS 模型），升级前把音乐模型勾在「声音」页签的旧设置会自动迁移
-- **世界模型（世界分组）** — **空间世界生成**（`asset.spatialWorld`，文本 / 1–4 张参考图 / 1 段参考视频 → 可漫游 3D 世界，World Labs Marble 四档；全景判定、按原文、随机种子；本地参考图默认上传 World Labs 托管存储，**不需要配置对象存储**；产物含 GLB 网格 + `*.spz` 高斯泼溅 + 360 全景图）、**空间世界导出**（`spatialWorld.export`，**必须经过它**才能把世界接给导演台 / 3D 加工 —— `spatialWorld` 端口严格同类型，不隐式兼容 `model`；**网格模式（默认）**出 HQ GLB 并按模型资产登记，可选带贴图 / 顶点色；**高斯泼溅模式**出 PLY 落在世界同目录同名文件、不登记资产。上游异步最长约 1 小时、限速 4 次/小时、单独计费）、**世界元素提取 / 世界元素表格 / 世界元素生成**（抽出世界里的角色 / 场景 / 道具 / 武器并逐项出图）
-- **人像处理（节点）** — 像素蛋糕式精修节点 `image.portrait`（图片精修分组），双击节点卡片进入 dive 编辑器：顶部 16 组工具（修复 / 磨皮 / 肤色 / 五官 / 眼睛 / 妆容 / 身形 / 光影 / 调色 / 质感 / 区域 / 背景 / 证件照 / AI 增强 / 预设 / 导出），档位是 `关闭 / 轻 / 标准 / 强 / 极强` 五档分段按钮，妆面 / 滤镜 / 背景处理 / 证件照规格等走具名选项；编辑器内实时提示词预览（发给模型的原话，可复制）、原图对比（按住 / 可拖中缝的分割对比）、滚轮缩放、Shift+滚轮或 `[` `]` 旋转视角、空格 / 中键拖拽平移（双击空白复位）与撤销重做。**执行只有一条路径：参数合成提示词 → 调用你选的图片模型出图**（本地不做像素滤镜），证件照再按规格精确裁切 / 5 寸相纸拼版；上游接多张图时按同一套参数逐张批量出图（上限 24 张），人脸关键点按源图指纹缓存复用，缺依赖的工具组置灰并在悬停提示与参数面板里说明差什么（7 组需要人脸关键点、背景需要实例分割、身形需要姿态模型）。**「只处理对应部位」默认开启**：模型整图出图后按「脸（含颈）/ 人物 / 手动区域框」的羽化蒙版贴回原图，未请求部位保持原图像素不变；换背景、证件照与调色属整图语义会自动按整图处理，缺关键点或分割模型时对应部分退回整图并在运行日志说明。检查器提供统一「输出预览」（缩略图 / 全屏 / 存资产库 / 多版本点选）；编辑器里的 AI 增强（智能消除 / 换背景 / 妆容增强 / 超分）直接调图片模型，结果作为版本存回节点可回滚，下次进面板默认显示当前输出那张图
-- **宿主资产** — 外层暴露边界口，内图可 Dive；多汇点各建独立出口
-- **导演台** — 3D 站位截图与动作录制（写入 `Cache/Videos`）；方形口 `out-shots` / `out-actions`；3D 模型输入端口，dive 自动实例化到舞台；全景图输入自动设为背景；AI 白模搭场景、20+ 种基础几何体、材质贴图覆盖（基础 / 法线贴图）、着色模式与线框模式；视口操控**左键选物体 · 中键平移 · 右键环视/第一人称飞行（WASD）**，**转向 / 飞行 / 环绕 / 平移 / 缩放五项灵敏度在视口底部工具栏的浮层里调节**（拖动即时生效，默认值等于旧版写死手感）
-- **成片时间线** — 素材分组与上轨编排；画中画叠加（位置 / 尺寸 / 不透明度 / 音量）与视频轨转场；预览播选中 / 时间线整轨联播；导出成片
-- **多模型提供商** — OpenRouter（文本 / 图片 / 视频 / 决策 / 语音合成 / 音乐）、OpenAI（GPT 文本 / gpt-image 图片 / 语音合成）、DeepSeek（文本）、智谱（GLM 文本 / CogView 图片）、Kimi / 月之暗面（文本）、xAI / Grok（文本 / 图片 / 视频）、Google / Gemini（文本 / 图片 / 视频）、**ElevenLabs（语音合成 / 多说话人对话 / 音效生成 / 音乐生成 / 语音转文字，走官方 SDK）**、本地 vLLM（文本 / Wan 视频）、Ollama / LM Studio（文本，OpenAI 兼容，无需 API Key）、火山方舟（Seedream / Seedance / 声音）、可灵、MiniMax（含音乐 `music-3.0`）、通义千问（DashScope，含音乐 `fun-music-v1`）、魔塔（ModelScope）、ComfyUI（API 2：图片 / 视频 / 声音，本机或云端 Base URL）、MagicRouter（聚合网关：文本 / 图片 / 视频）、**World Labs（Marble：空间世界生成）**、NewAPI（自建中转网关：文本 / 图片，按网关端点元数据自动区分）、Meshy / Tripo / Rodin（Hyper3D） / Luma AI / Lux3D（3D 模型生成，文生 3D / 图生 3D）、自定义提供商（自选 OpenAI 兼容 / Anthropic / Gemini 端点类型，填 Base URL 与 API Key 接 one-api 等中转网关；文本 + 图片，见 [NewAPI 教程](https://justin-sky.github.io/ai-art-engine/guide-newapi.html)）
-- **3D 模型蒙皮与骨骼** — 生成节点只出几何 GLB（6.4.1 起不再内联「生成骨骼」），蒙皮改为图节点 **3D 骨骼蒙皮** 调用云端 Rigging API：**Meshy** `POST /openapi/v1/rigging`、**Tripo** `POST /v3/animations/rig`（可选骨架命名 Mixamo / Tripo 与输出 GLB / FBX）；**Luma AI / Lux3D 不支持蒙皮**，卡片里不会出现
-- **3D 模型加工（节点）** — 加上蒙皮共 8 个加工节点：**绑骨检查**（免费，给 `riggable` + 推荐骨架类型）、**动画重定向**（Tripo 预设 `preset:walk` / Meshy 动作库 `action_id`，面板内可直接拉动作库）、**模型拆分**（网格分割 / 智能分割，拆完列出部件名）、**部件补全**、**重拓扑**（Tripo 智能 / 基础档、Meshy remesh）、**贴图**（含 Meshy retexture）、**格式转换**（GLTF / FBX / USDZ / OBJ / STL / 3MF，可带 FBX 预设、pivot 归底、UV 打包、四边面、按部件子集导出）。能力按供应商矩阵过滤 UI：**Tripo 支持 8 项、Meshy 支持 5 项**，卡片下拉只列能做该动作的供应商，Inspector 按能力位隐藏对面不识的参数；**部件补全只吃拆件任务 id、动画重定向只吃绑骨任务 id**，task id 属于别家时自动退回「上传模型换公网 URL」
-- **联网搜索 provider（设置面板配置）** — DeepSeek Search（默认）/ Tavily / Brave / SerpAPI / Mock 五种适配器并行可用，每个独立开关、Base URL、API Key、搜索深度与时间窗；面板自带连通性测试；与模型 provider 体系刻意分离（数量少、无上下文注入）
-- **HTTP 网络错诊断通用化** — axios 网络错 (`err.code` + `err.cause.code` / `err.cause.message`) 从 Kling 适配器抽到通用 `readHttpError`，覆盖全部 33 个 provider —— DNS / TCP / TLS 握手前 socket 被断等场景，UI 现在能直接看到 `ECONNRESET` / `UND_ERR_SOCKET` 这种稳定标签，便于一眼判断是防火墙断握手还是连接被拒
-- **对象存储** — 火山引擎 TOS、阿里云 OSS、腾讯云 COS（同时仅可启用一个，用于参考视频等公网外链）
-- **可扩展** — Editor Kernel + Cordis 内部扩展（窗口 / Inspector / 节点 / Skill / 执行器）+ 声明式外部插件清单
-
-### 模型与对象存储一览
-
-| 类型     | 提供商                             | 能力概要                                                                                                                                                              |
-| -------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 模型     | OpenRouter                         | 文本 / 图片 / 视频 / 决策 / 语音合成 / **音乐生成**（聚合目录，决策走 Decisions API；音乐为 Google Lyria 3，走 `/audio/speech`）                                      |
-| 模型     | OpenAI                             | 文本 / 图片（需可访问 api.openai.com 的网络与账号）                                                                                                                   |
-| 模型     | DeepSeek                           | 文本（deepseek-chat / deepseek-reasoner）                                                                                                                             |
-| 模型     | 智谱                               | GLM 文本 / CogView 文生图                                                                                                                                             |
-| 模型     | Kimi（月之暗面）                   | 文本（kimi-k2 系列 / moonshot-v1 系列）                                                                                                                               |
-| 模型     | xAI（Grok）                        | 文本 / Grok Imagine 图片 / Grok Imagine Video（异步轮询）                                                                                                             |
-| 模型     | Google（Gemini）                   | 文本 / Nano Banana 图片 / Veo 3.1 视频（异步轮询，官方 OpenAI 兼容层）                                                                                                |
-| 模型     | ElevenLabs                         | 语音合成（含多说话人对话）/ **音效生成**（`/v1/sound-generation`）/ **音乐生成**（`/v1/music`，`music_v2_5` 等）；走官方 SDK                                          |
-| 模型     | vLLM                               | 本地文本 / 视频（Wan T2V / I2V，OpenAI 兼容，无需 API Key）                                                                                                           |
-| 模型     | Ollama / LM Studio                 | 本地文本（OpenAI 兼容，无需 API Key）                                                                                                                                 |
-| 模型     | 火山方舟                           | 文本 / Seedream 图 / Seedance 视频 / 声音设计                                                                                                                         |
-| 模型     | 可灵                               | 图片 / 视频（API Key）                                                                                                                                                |
-| 模型     | MiniMax                            | 文本 / 图片 / 视频 / 音色设计 / **音乐生成**（`music-3.0` / `music-2.6`）                                                                                             |
-| 模型     | 通义千问                           | 文本（兼容模式）/ 万相图 / 万相视频（含 HappyHorse 等）/ **音乐生成**（`fun-music-v1` / preview）                                                                     |
-| 模型     | 魔塔                               | 文本 / 文生图（访问令牌）                                                                                                                                             |
-| 模型     | ComfyUI                            | 图片 / 视频 / 声音（API 2；本机 8189 或云端 Base URL）                                                                                                                |
-| 模型     | MagicRouter                        | 文本 / 图片 / 视频（OpenAI 兼容聚合网关，视频异步轮询）                                                                                                               |
-| 模型     | World Labs（Marble）               | **空间世界生成**（文生世界 / 图生世界 / 多图生世界 / 视频生世界，四档模型；产物含 GLB 网格 + 高斯泼溅）                                                               |
-| 模型     | Meshy                              | 文生 3D / 图生 3D（含多图生 3D，API Key）                                                                                                                             |
-| 模型     | Tripo                              | 文生 3D / 图生 3D（API Key）                                                                                                                                          |
-| 模型     | Rodin（Hyper3D）                   | 文生 3D / 图生 3D（API Key）                                                                                                                                          |
-| 模型     | Luma AI                            | 文生 3D / 图生 3D（API Key）                                                                                                                                          |
-| 模型     | NewAPI                             | 文本 / 图片（自建中转网关，填网关地址与令牌；按端点元数据自动区分，见 [NewAPI 教程](https://justin-sky.github.io/ai-art-engine/guide-newapi.html)）                   |
-| 模型     | 自定义                             | 文本 / 图片（自选端点类型：OpenAI 兼容 / Anthropic / Gemini，填 Base URL 与 API Key，见 [NewAPI 教程](https://justin-sky.github.io/ai-art-engine/guide-newapi.html)） |
-| 模型     | Lux3D                              | 文生 3D / 图生 3D（含多图生 3D，G1 / G1-Turbo，API Key）                                                                                                              |
-| 对象存储 | 火山 TOS / 阿里云 OSS / 腾讯云 COS | 参考媒体上传与签名 URL；设置中互斥启用                                                                                                                                |
-
-配置入口：**设置 → 模型** / **设置 → 对象存储**。本机 ComfyUI 需先装 [comfy-api-proxy](https://justin-sky.github.io/ai-art-engine/guide-comfyui.html)（默认 8189），不要直连 8188。
-
----
-
-<a id="quick-start"></a>
-
-## Quick Start
-
-**用安装包**
-
-1. 从 [Releases](https://github.com/Justin-sky/ai-art-engine/releases) 下载对应平台包
-2. 安装启动 → 新建工程
-3. 设置里添加模型提供商并填写密钥；可选配置对象存储
-4. 工作区「新建」里的「一键工作流」快速出宿主资产，或在分镜 / 节点图中手搭链路
-5. 点左侧窄栏「◈」打开 AI 对话，`@` 引用资产让助手直接生成；或按 [MCP 接入教程](https://justin-sky.github.io/ai-art-engine/guide-mcp.html) 接入 Claude Code 等外部 Agent
-
-完整操作说明见 [使用手册](https://justin-sky.github.io/ai-art-engine/manual.html)（源码在 `website/manual.html`）。本机 ComfyUI 需先装 [comfy-api-proxy](https://justin-sky.github.io/ai-art-engine/guide-comfyui.html)（默认 8189），不要直连 8188。
-
-**从源码**
+需要 Node.js 22+。
 
 ```bash
-# GitHub
 git clone https://github.com/Justin-sky/ai-art-engine.git
-
-# 或使用 Gitee 国内镜像
-git clone https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine.git
-
 cd ai-art-engine
 npm install
 npm run dev
 ```
 
-开发构建需要 **Node.js 22+**（运行时已内置 Node，用户无需安装）。Electron 下载失败时可：
-
-```bash
-set ELECTRON_MIRROR=https://cdn.npmmirror.com/binaries/electron/
-node node_modules/electron/install.js
-```
-
-```bash
-npm run typecheck && npm test   # 检查
-npm run pack                    # 未封装目录，便于自测
-```
-
-`npm run dev` 走 [`scripts/dev-launcher.mjs`](./scripts/dev-launcher.mjs)，它在启动前处理两类会让窗口永不出现的问题（需要原始行为时用 `npm run dev:raw`）：
-
-1. **清掉继承来的 `ELECTRON_RUN_AS_NODE`**：本应用自带的终端 / dsh 运行时会设这个变量，继承下来会让 Electron 以「纯 Node」模式执行主进程，表现为打印完 `start electron app...` 就回到命令行并报 `Cannot read properties of undefined (reading 'isPackaged')`。
-2. **修工作区的低完整性级别标签**：工作区被打上 `Mandatory Label\Low`（常见于强沙箱的 agent 宿主）时，该标签 ACE 带 `(OI)(CI)` 可继承标志，工作区内**新建文件**都会继承「低完整性」；而低完整性的 Electron 无法建立 Chromium 沙箱，会在启动阶段以 `0x80000003` 中止，不执行任何 JS、不打印任何错误（`electron.exe --version` 也一样）。启动器先修工作区根目录（Windows 会重新计算子对象的继承 ACE，整棵树一起刷新，因此不必 `/T` 递归），再单独确认 electron 解包目录。`/setintegritylevel` 在没有标签时是空操作，所以普通机器上不会改动任何东西。
-
-标签问题也可以单独修：
-
-```powershell
-npm run fix:integrity              # 重置工作区根目录（+ electron 解包目录）为中等完整性
-npm run fix:integrity -- --check   # 只查看当前标签，不做修改
-```
-
-两者共用 [`scripts/lib/integrity-label.mjs`](./scripts/lib/integrity-label.mjs) / [`scripts/lib/repair-integrity.mjs`](./scripts/lib/repair-integrity.mjs)，避免逻辑漂移。自动重置失败（权限不足）时会打印手动命令：
-
-```powershell
-icacls "<工作区根目录或 electron 解包目录>" /setintegritylevel M /T /C
-# 或者把 electron 解包目录放到工作区之外，再设 ELECTRON_OVERRIDE_DIST_PATH 指向它
-```
-
----
+技术栈为 Electron、Vue 3、TypeScript、Pinia、Three.js 与 Cordis，架构说明见 [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md)。测试、打包、发版与常见环境问题见 [`CONTRIBUTING.md`](./CONTRIBUTING.md)。
 
 ## 文档
 
-- [使用手册](https://justin-sky.github.io/ai-art-engine/manual.html)（源码 `website/manual.html`）
-- [ComfyUI 教程](https://justin-sky.github.io/ai-art-engine/guide-comfyui.html) · [NewAPI 教程](https://justin-sky.github.io/ai-art-engine/guide-newapi.html) · [MCP 接入](https://justin-sky.github.io/ai-art-engine/guide-mcp.html)
-- [架构](./docs/ARCHITECTURE.md) · [节点图插件](./docs/GRAPH_PLUGINS.md) · [文档目录](./docs/README.md)
-- [资产模型](./docs/ASSET_MODEL.md) · [AssetRef](./docs/ASSET_REF.md) · [素材包](./docs/ASSET_PACKAGE.md)
-- [路线图](./docs/ROADMAP.md) · [变更记录](./CHANGELOG.md)
+|            |                                                                                                                                                                                                           |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 用户       | [快速上手](https://justin-sky.github.io/ai-art-engine/quickstart.html) · [使用手册](https://justin-sky.github.io/ai-art-engine/manual.html) · [B 站视频教程](https://space.bilibili.com/3707036976024122) |
+| 插件发布者 | [开发者文档](https://justin-sky.github.io/ai-art-engine/developers.html) · [`docs/MARKETPLACE.md`](./docs/MARKETPLACE.md)                                                                                 |
+| 贡献者     | [`docs/`](./docs/README.md) · [路线图](./docs/ROADMAP.md) · [更新日志](./CHANGELOG.md)                                                                                                                    |
 
----
+## 参与贡献
 
-## 版本与更新
+欢迎提交 Issue 与 Pull Request，提交前请阅读 [`CONTRIBUTING.md`](./CONTRIBUTING.md)。GitHub 为主仓库，[Gitee](https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine) 为国内镜像，两边 `main` 分支保持同步。
 
-- 版本号以 [`package.json`](./package.json) 的 `version` 为准（SemVer），变更记录见 [`CHANGELOG.md`](./CHANGELOG.md)。
-- **发版**：先改 `package.json` 与 CHANGELOG，提交后打 tag 并推送，例如：
+<a href="https://github.com/Justin-sky/ai-art-engine/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=Justin-sky/ai-art-engine" alt="contributors" />
+</a>
 
-```bash
-git tag v5.0.0
-git push origin v5.0.0
-```
+## 社区
 
-CI 会校验 tag（去掉 `v`）与 `package.json` 一致，再构建并发布 [GitHub Release](https://github.com/Justin-sky/ai-art-engine/releases)（含 `latest.yml` 等更新元数据）。
+QQ 群 `346340389` · `647306826` ｜ [Bilibili](https://space.bilibili.com/3707036976024122) ｜ [X @IoKKFOvWAt12669](https://x.com/IoKKFOvWAt12669) ｜ [284139554@qq.com](mailto:284139554@qq.com)
 
-- **客户端更新**：安装包启动后会检查 Releases；也可在 **设置 → 通用 → 关于与更新** 中手动检查，下载完成后重启安装。开发模式（`npm run dev`）不检查更新。
+## 许可证
 
----
-
-## Contribute
-
-欢迎 Issue 与 Pull Request。提交前建议：
-
-```bash
-npm run typecheck && npm test
-```
-
-讨论与缺陷跟踪可使用 [GitHub Issues](https://github.com/Justin-sky/ai-art-engine/issues) 或
-[Gitee Issues](https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine/issues)。
-
----
-
-## 交流
-
-- **官网**：[GitHub Pages](https://justin-sky.github.io/ai-art-engine/) · 阿里云 OSS（见 `npm run site:deploy`）
-- **视频教程**：[Bilibili 空间](https://space.bilibili.com/3707036976024122)
-- **国内镜像**：阿里云 OSS 静态托管（自定义域名 / `publicBaseUrl`）
-- **GitHub**：[Justin-sky/ai-art-engine](https://github.com/Justin-sky/ai-art-engine)
-- **Gitee**：[beijing_blue_whale_era_zhangjian/ai-art-engine](https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine)
-- **QQ 群**：`346340389` · `647306826`
-- **X**：<a href="https://x.com/IoKKFOvWAt12669"><img src="https://img.shields.io/badge/X-%40IoKKFOvWAt12669-000000?style=flat-square&logo=x&logoColor=white" alt="X @IoKKFOvWAt12669" /></a>
-- **邮箱**：[284139554@qq.com](mailto:284139554@qq.com)
-
----
-
-## Stack
-
-`Electron` · `Vue 3` · `Pinia` · `TypeScript` · `Cordis` · `Fabric.js` · `electron-vite` · `electron-builder`
-
----
-
-## License
-
-[GPL-3.0](./LICENSE) — 修改并再分发时，衍生作品需以相同协议开源。
+[GPL-3.0](./LICENSE)

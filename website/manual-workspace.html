@@ -1,0 +1,601 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      // 提前应用本地主题选择，避免加载闪烁
+      ;(function () {
+        try {
+          var pref = localStorage.getItem('site.theme')
+          if (
+            pref !== 'light' &&
+            (pref === 'dark' ||
+              pref == null ||
+              (pref === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches))
+          ) {
+            document.documentElement.classList.add('dark')
+          }
+        } catch (e) {}
+      })()
+    </script>
+    <meta
+      name="description"
+      content="工作区的顶栏、四栏面板与新建资产入口，AI 对话面板、技能系统与插件市场，以及资产库的浏览、筛选、右键操作与快捷键。"
+    />
+    <title>工作区与资产库 · 使用手册 — AIArtEngine</title>
+    <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/manual-workspace.html" />
+    <meta property="og:site_name" content="AIArtEngine" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="zh_CN" />
+    <meta property="og:title" content="工作区与资产库 · 使用手册 — AIArtEngine" />
+    <meta property="og:description" content="工作区的顶栏、四栏面板与新建资产入口，AI 对话面板、技能系统与插件市场，以及资产库的浏览、筛选、右键操作与快捷键。" />
+    <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/manual-workspace.html" />
+    <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="工作区与资产库 · 使用手册 — AIArtEngine" />
+    <meta name="twitter:description" content="工作区的顶栏、四栏面板与新建资产入口，AI 对话面板、技能系统与插件市场，以及资产库的浏览、筛选、右键操作与快捷键。" />
+    <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-workspace.html" />
+    <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual-workspace.en.html" />
+    <link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/manual-workspace.html" />
+    <link rel="icon" href="assets/logo-mark.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="manual.css?v=20261009d" />
+    <link rel="stylesheet" href="site.css?v=20261009d" />
+  </head>
+  <body>
+    <a class="skip" href="#manual">跳到手册正文</a>
+    <div class="progress" aria-hidden="true"></div>
+    <button class="to-top" type="button" aria-label="返回顶部" hidden>↑</button>
+    <div class="lightbox" hidden>
+      <img alt="" />
+      <p class="lightbox-cap"></p>
+    </div>
+
+    <header class="top">
+      <a class="brand" href="index.html">
+        <img src="assets/logo-mark.png" alt="" width="30" height="30" />
+        <span>AI Art Engine</span>
+      </a>
+      <nav class="nav" aria-label="主导航">
+        <a href="quickstart.html">快速上手</a>
+        <a href="manual.html" aria-current="page">使用手册</a>
+        <div class="nav-drop">
+          <button type="button" class="nav-drop-btn" aria-haspopup="true">
+            教程<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+          </button>
+          <div class="nav-drop-menu">
+            <a href="guide-short-video.html"><strong>短剧教程</strong><span>分镜 · 拼图 · 审核 · 动态视频</span></a>
+            <a href="guide-video.html"><strong>视频教程</strong><span>自由画布与参考视频</span></a>
+            <a href="guide-comfyui.html"><strong>ComfyUI 教程</strong><span>API 2 与 comfy-api-proxy</span></a>
+            <a href="guide-newapi.html"><strong>NewAPI 教程</strong><span>自建中转网关接入</span></a>
+            <a href="guide-mcp.html"><strong>MCP 接入</strong><span>Claude Code / Codex 驱动应用</span></a>
+            <a href="guide-gameplay.html"><strong>可玩 HTML</strong><span>生成可交互的玩法原型</span></a>
+            <a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer"><strong>B 站视频教程</strong><span>视频演示与更新解读</span></a>
+          </div>
+        </div>
+        <a href="developers.html">开发者</a>
+        <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">更新日志</a>
+        <a href="index.html#download">下载</a>
+        <a class="nav-src" href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.070 3.633 17.700 3.633 17.700c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.070 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.760-1.605-2.665-.3-5.466-1.332-5.466-5.930 0-1.310.465-2.380 1.235-3.220-.135-.303-.540-1.523.105-3.176 0 0 1.005-.322 3.300 1.230.960-.267 1.980-.399 3.000-.405 1.020.006 2.040.138 3.000.405 2.280-1.552 3.285-1.230 3.285-1.230.645 1.653.240 2.873.120 3.176.765.840 1.230 1.910 1.230 3.220 0 4.610-2.805 5.625-5.475 5.920.420.360.810 1.096.810 2.220 0 1.606-.015 2.896-.015 3.286 0 .315.210.690.825.570C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" /></svg>GitHub</a>
+      </nav>
+      <a class="nav-lang" href="manual-workspace.en.html" hreflang="en" lang="en">EN</a>
+      <button class="theme-toggle" type="button" aria-label="切换主题">◐</button>
+      <details class="mobile-menu">
+        <summary aria-label="打开导航菜单"><span aria-hidden="true">☰</span> 菜单</summary>
+        <nav class="mobile-nav" aria-label="移动端导航">
+          <p class="mobile-group">文档</p>
+          <a href="index.html">首页</a>
+          <a href="quickstart.html">快速上手</a>
+          <a href="manual.html" aria-current="page">使用手册</a>
+          <a href="developers.html">开发者文档</a>
+          <p class="mobile-group">专题教程</p>
+          <a href="guide-short-video.html">短剧教程</a>
+          <a href="guide-video.html">视频教程</a>
+          <a href="guide-comfyui.html">ComfyUI 教程</a>
+          <a href="guide-newapi.html">NewAPI 教程</a>
+          <a href="guide-mcp.html">MCP 接入</a>
+          <a href="guide-gameplay.html">可玩 HTML</a>
+          <p class="mobile-group">社区</p>
+          <a href="index.html#download">下载</a>
+          <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">更新日志</a>
+          <a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer">bilibili</a>
+          <a href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine" target="_blank" rel="noopener noreferrer">Gitee</a>
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a>
+        </nav>
+      </details>
+    </header>
+
+    <div class="manual-shell">
+      <aside class="toc" aria-label="目录">
+        <h2>目录</h2>
+        <ol>
+          <li class="toc-group">基础</li>
+          <li><a href="#workspace">5. 工作区</a></li>
+          <li><a href="#marketplace">5.7 插件市场</a></li>
+          <li><a href="#assets">6. 资产库</a></li>
+
+          <li class="toc-group">手册章节</li>
+          <li><a href="manual.html">概述与核心概念</a></li>
+          <li><a href="manual-setup.html">工程与设置</a></li>
+          <li><a href="manual-workflow.html">一键工作流与节点图</a></li>
+          <li><a href="manual-production.html">剧本、成片与导演台</a></li>
+          <li><a href="manual-reference.html">参考与故障排查</a></li>
+        </ol>
+      </aside>
+
+      <article class="manual" id="manual">
+        <header class="manual-hero">
+          <p class="eyebrow">Manual · Workspace</p>
+          <h1>工作区与资产库</h1>
+          <p class="lede">
+            工作区的顶栏、四栏面板与新建资产入口，AI 对话面板、技能系统与插件市场，以及资产库的浏览、筛选、右键操作与快捷键。
+          </p>
+        </header>
+
+        <section id="workspace">
+          <h2>5. 工作区</h2>
+          <p>打开工程后进入工作区（应用内导航名称为「工作区」）。界面为可拖拽停靠的多面板布局。</p>
+
+          <h3>5.1 顶栏</h3>
+          <ul>
+            <li>未保存时标题旁显示 <code>*</code>；用 <kbd>Ctrl</kbd>+<kbd>S</kbd> 保存。</li>
+            <li><strong>↶ / ↷</strong>：撤销 / 重做（亦可用快捷键）。</li>
+            <li>
+              <strong>一键工作流</strong>：用预设或 AI 规划生成可复用宿主资产（见
+              <a href="manual-workflow.html#ai-workflow">§7</a>）。
+            </li>
+            <li>
+              <strong>剧集流水线</strong>：打开短剧分镜 Agent 流程窗口，集中完成 9宫格、4宫格、导演审核与视频生成（见
+              <a href="manual-workflow.html#agent-pipeline">§7.5</a>）。
+            </li>
+            <li><strong>任务列表</strong>、<strong>执行日志</strong>：后台队列与模型调用日志。</li>
+            <li>
+              <strong>布局</strong>：切换默认布局、保存当前布局、导出/导入布局 <code>.json</code>、删除自定义布局。
+            </li>
+          </ul>
+          <p>
+            提示：拖动标签可停靠到不同区域；标签右键可浮动、分离到新窗口或关闭相关标签。节点执行中不可关闭关键面板。
+          </p>
+
+          <h3>5.2 四栏面板</h3>
+          <div class="table-scroll" role="region" aria-label="四栏面板说明" tabindex="0">
+            <table>
+            <thead>
+              <tr>
+                <th>面板</th>
+                <th>作用</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>工具</td>
+                <td>左侧窄栏，快捷新建各类资产草稿。</td>
+              </tr>
+              <tr>
+                <td>AI 对话</td>
+                <td>左侧窄栏底部「◈」按钮打开；应用内 AI 助手，可在对话中调用 MCP 工具（见 <a href="#ai-chat">§5.5</a>）。</td>
+              </tr>
+              <tr>
+                <td>工作区</td>
+                <td>中心编辑器；空态显示推荐流程与最近资产，打开资产后为标签页。</td>
+              </tr>
+              <tr>
+                <td>资产</td>
+                <td>工程资产库浏览与管理。</td>
+              </tr>
+              <tr>
+                <td>参数</td>
+                <td>当前选中项的 Inspector 参数面板。</td>
+              </tr>
+            </tbody>
+            </table>
+          </div>
+
+          <h3>5.3 左侧工具栏：新建资产</h3>
+          <p>点击图标创建草稿资产，编辑后用 <kbd>Ctrl</kbd>+<kbd>S</kbd> 落盘。可新建：</p>
+          <ul>
+            <li>自由画布 · 宿主资产 · 剧本 · 世界元素 · 场 · 导演台 · 图片 · 视频 · 声音</li>
+          </ul>
+          <p>
+            空工作区推荐流程：<strong>剧本 → 场 → 节点生成</strong
+            >；也可快捷新建剧本、场、导演台，或双击最近资产打开。
+          </p>
+
+          <h3>5.4 右侧竖栏：资产 / 参数</h3>
+          <p>
+            工作区最右侧为 Rider 式竖栏，可分别展开或收起<strong>资产</strong>与<strong>参数</strong>面板（收起后不占中间布局宽度）。
+          </p>
+          <ul>
+            <li>点击竖栏按钮切换对应侧栏显示。</li>
+            <li>
+              可将「资产」拖到「参数」上方或下方叠放；拖放预览仅在上下半区出现（半屏 left/right
+              预览已禁用，避免灰框残留）。
+            </li>
+            <li>布局菜单保存的是展开几何；侧栏收起偏好单独记忆，不会把收起态写成零宽灰洞。</li>
+          </ul>
+
+          <h3 id="ai-chat">5.5 AI 对话面板</h3>
+          <p>
+            左侧窄栏底部的 <strong>◈ AI 对话</strong> 打开应用内 AI 助手。它运行 DeepSeek Harness（dsh）
+            agent 运行时，能像外部 Agent 一样调用应用自带的 <a href="guide-mcp.html">MCP 工具服务</a>——
+            相当于<strong>在聊天窗口里直接驱动生成与工程操作</strong>。
+          </p>
+          <ul>
+            <li><strong>@ 引用资产</strong>：输入 <code>@</code> 弹出资产选择器，可把工程内图片 / 视频 / 声音 / 3D 模型
+              内联引用进指令（输入区会显示缩略图预览）。dsh 直接解析文本里的 <code>@路径</code>。</li>
+            <li><strong>调用生成工具</strong>：让助手「把 @bg.png 生成一张标题图存进工程」——它会调用
+              <code>generate_image</code> 等 MCP 工具，工具执行过程以卡片形式实时显示（生成中 / 完成 / 失败）。</li>
+            <li><strong>模型选择</strong>：面板底部可选用任一<strong>已配置密钥的文本模型</strong>（不限于 DeepSeek
+              官方）；选择会记住，下次打开沿用。</li>
+            <li><strong>多会话</strong>：输入框上方工具栏可新建 / 切换 / 删除会话，历史消息本地持久化。</li>
+            <li><strong>取消与状态</strong>：执行中可停止；dsh 的状态行与工具活动实时回显在面板中。</li>
+            <li>
+              <strong>越界需授权</strong>：Agent 需要越过沙箱边界时，对话里会出现<strong>「需要你授权这一步」</strong>授权卡，
+              写明工具名与申请原因，只提供<strong>「允许一次」</strong>与<strong>「拒绝」</strong>两个选项。
+              授权<strong>只对这一次调用有效</strong>——应用刻意不提供「总是允许」，避免一次点击悄悄放宽 Agent 之后能跑的东西。
+              没有人能应答这条请求时（例如兜底的一次性执行路径），请求按<strong>失败即拒绝</strong>处理：它会被拒掉，绝不会默认放行。
+            </li>
+          </ul>
+          <div class="tip">
+            <strong>前提：</strong>AI 对话已内置 Node.js 运行时与 dsh 运行体，开箱即用、无需安装任何环境
+            （极少数特殊环境才会回退联网拉包）；另需至少一个已启用并填好密钥的文本模型；
+            未打开工程时仅可做纯对话。
+          </div>
+
+          <h3 id="skills">5.6 技能（Skills）</h3>
+          <p>
+            AI 对话的 Agent 携带一套<strong>创作技能</strong>（来自应用内置的分镜 / 导演台能力，对话时自动注入）；
+            你也可以在<a href="#marketplace">插件市场</a>的<strong>「技能」页签</strong>里放入自己的技能，让助手具备专属的工作方法。
+          </p>
+          <ul>
+            <li><strong>内置技能</strong>：分镜 / 动画（9 宫格分镜表、节拍拆解表、动态提示词表、4 宫格动态分镜表等）、
+              导演审核（分镜 / 节拍 / 动态提示词）、系统创作（剧本、图生提示词、图片 / 视频生成、声音、情绪、灯光、
+              多角度、扩图、重绘、抠图、高清放大、界面图、界面拆分、世界提取、节拍拆分、节拍单元生成、策划案、
+              肖像贴图、提示词优化、擦除）。程序自动管理，请勿手动修改。</li>
+            <li><strong>自定义技能</strong>：在<strong>插件市场 → 技能</strong>页签里「打开目录」，把符合
+              dsh SKILL.md 格式（frontmatter <code>name</code> / <code>description</code> + Markdown 正文）的
+              <code>.md</code> 文件放进技能目录（文件名用小写字母 + 连字符，如 <code>my-skill.md</code>），
+              下次对话自动生效；同一页签的「生成示例模板」可给出一份可用的写法参考。</li>
+            <li><strong>技能如何生效</strong>：技能清单以 <code>&lt;available_skills&gt;</code> 注入对话上下文，
+              Agent 判断任务匹配时按需加载技能文件作为指令——技能告诉它流程与规范（怎么做），
+              MCP 工具负责真正动手（生成图片、跑工作流），两者配合才能「说到做到」。</li>
+            <li>节点图节点使用同一套技能定义节点行为；API 调用日志中会标注节点所用的技能。</li>
+            <li>
+              <strong>技能包</strong>：从<a href="#marketplace">插件市场</a>安装工作流时可能随包附带技能包。它会在市场的
+              <strong>技能</strong>页签里列出，来源标记为<strong>「技能包」</strong>；它跟着所属工作流走，
+              <strong>卸载那条工作流时会一并删除</strong>，因此不是可以单独管理的产物。
+            </li>
+          </ul>
+          <div class="tip">
+            <strong>技能 vs 工具：</strong>技能是「职业手册」，工具是「手脚」。例如说
+            「用分镜技能把这段剧本拆成 9 宫格分镜表」——技能提供专业流程（节拍 → 机位 → 动态 → 提示词），
+            生成动作由工具执行。
+          </div>
+
+          <h3 id="marketplace">5.7 插件市场（Plugin Marketplace）</h3>
+          <p>
+            顶栏「设置」左边的<strong>「插件市场」</strong>打开一个<strong>独立窗口</strong>：MCP 服务、技能与工作流都在这里安装。
+            它是<strong>应用级入口</strong>——不需要先打开工程；窗口是<strong>单例</strong>，再点一次只会把已经开着的窗口聚焦到前台。
+          </p>
+          <p>
+            页签为 <strong>全部 / MCP / 技能 / 工作流</strong>。每次打开窗口都会<strong>强制刷新</strong>工作流目录，
+            所以刚发布的工作流重开窗口就能看到，不必等缓存过期；刷新失败时会<strong>保留上一次读到的列表</strong>并给一句软提示，
+            不会把市场显示成空的。目录有两个来源：官方主源（GitHub raw）与 Gitee 镜像，按顺序尝试、失败自动降级，
+            窗口顶部会说明当前读到多少条（切到镜像时提示「主源不可达，已切换到镜像」），离线时提示显示的是上次缓存的目录。
+          </p>
+          <p>
+            想自己发布工作流 / 技能包？见<a href="developers.html">插件市场开发者文档</a>。
+          </p>
+          <h4>安装、更新与卸载</h4>
+          <ul>
+            <li>
+              工作流卡片上直接带 <strong>安装 / 更新 / 重新安装 / 卸载</strong> 与 <strong>详情</strong>；
+              已安装的条目会标出状态，有新版本时显示「有更新」。
+            </li>
+            <li>
+              卸载走应用自己的确认框；确认后<strong>本地已装的文件会被删除</strong>。如果这条工作流还带了技能包，
+              卸载时会<strong>一并移除</strong>它装下的技能。
+            </li>
+            <li>市场只负责「装到本机」：装好的工作流在 <a href="#ai-chat">AI 对话</a>里使用（见下）。</li>
+          </ul>
+          <h4>含技能的条目与脚本同意</h4>
+          <ul>
+            <li>
+              一条工作流可以<strong>随包附带技能包</strong>：卡片上标<strong>「含技能」</strong>，包里还有脚本时标
+              <strong>「含技能 · 含脚本」</strong>——装之前就能看到。
+            </li>
+            <li>
+              技能包里的脚本是<strong>AI agent 可以在这台机器上跑起来的代码</strong>，因此只有在你明确同意时才会写入：
+              安装前会弹确认框，<strong>逐条列出每一个脚本路径</strong>，并说明这些脚本的性质。点「确定」写入脚本；
+              点「取消」则只安装说明书与 references，脚本不落盘——<strong>工作流照常可用</strong>。
+            </li>
+            <li>这份同意<strong>每次都问</strong>：应用不会记住「以后都允许」。</li>
+            <li>
+              装好的技能包同时出现在市场的<strong>技能</strong>页签里（来源标记为<strong>「技能包」</strong>），
+              AI 对话的 Agent 可以直接加载使用。它跟着所属工作流走：<strong>卸载那条工作流会一并删除它</strong>，
+              不是可以单独管理的产物。
+            </li>
+          </ul>
+          <h4>MCP 页签</h4>
+          <ul>
+            <li>
+              内置 <strong>MCP 工具服务</strong>（<code>aiartengine</code>）与 <strong>Blender 工具集</strong>的查看入口，
+              详见 <a href="manual-setup.html#settings">§4.5</a> 与 <a href="guide-mcp.html">MCP 接入教程</a>。
+            </li>
+            <li>
+              也可以<strong>添加第三方 MCP 服务</strong>：HTTP（远程）填服务地址与请求头，stdio（本地命令）填命令、参数与环境变量；
+              保存前可「测试连接」，直接看到能发现多少个工具。stdio 会在本机执行第三方程序，只添加你信任来源的服务。
+            </li>
+          </ul>
+          <h4>在 AI 对话里使用已安装的工作流</h4>
+          <ul>
+            <li>
+              入口有两个：AI 对话输入框上方工具栏的<strong>「工作流」</strong>按钮，或直接输入 <code>/workflow</code>。
+            </li>
+            <li>
+              选中一条工作流后，输入框里插入的是一个<strong>引用块</strong>（图标 + 标题的胶囊），而不是把标题 / id / 简介
+              摊成一段文字；悬停可以看到<strong>含 id 的完整引用</strong>。
+            </li>
+            <li>
+              发送时 Agent 按 <strong>id</strong> 调用这条已安装的工作流（<code>workflow_use_installed</code>），
+              <strong>精确复现</strong>它，而不是重新规划一个相似的东西。
+            </li>
+          </ul>
+          <div class="tip">
+            <strong>两道闸：</strong>安装时的脚本同意解决的是「代码会不会落盘」；Agent 运行时真正要越过沙箱边界时还有第二道闸——
+            对话里的<strong>「需要你授权这一步」</strong>授权卡，只有「允许一次 / 拒绝」，没有「总是允许」，
+            无人应答的路径按失败即拒绝处理（见 <a href="#ai-chat">§5.5</a>）。
+          </div>
+        </section>
+
+        <section id="assets">
+          <h2>6. 资产库</h2>
+          <h3>浏览与筛选</h3>
+          <ul>
+            <li>标题「资产」旁可刷新；支持搜索与类型筛选。</li>
+            <li>底部滑条在列表视图与图标视图间切换。</li>
+            <li>面包屑显示路径，如 Assets &gt; …</li>
+            <li>支持框选多选；可从系统拖入图片 / 视频 / 声音 / 模型 / <code>.aipackage</code>。</li>
+            <li>
+              <strong>多选文件 / 多选目录拖拽到其它目录</strong>：左侧目录树行与右侧资产卡片均加
+              <code>draggable</code>，可一次拖多枚文件或多个目录到目标目录（统一走
+              <code>folder_move</code> IPC + 同名落盘：磁盘搬移 + descendant asset.relativePath 写回
+              + 成环检测 + 同名追加 <code>" 2"</code> / <code>" 3"</code>）。同源目录内部拖拽仅写
+              <code>.folder.json</code>、不挪磁盘。资产库根目录不可拖出。
+            </li>
+          </ul>
+
+          <h3>空白或目录右键</h3>
+          <ul>
+            <li>新建各类资产、新建目录。</li>
+            <li><strong>导入资产包</strong> / <strong>导出资产包</strong>。</li>
+            <li>目录另有：重新导入、重命名、删除目录（内容上移）、删除目录及内容。</li>
+          </ul>
+
+          <h3>资产右键</h3>
+          <ul>
+            <li>打开编辑器 · 在文件管理器中显示 · 复制原始文件。</li>
+            <li>重新导入 · 导出资产包 · 重命名 · 查找引用 · 删除。</li>
+          </ul>
+
+          <h3>资产库焦点下快捷键</h3>
+          <ul>
+            <li><kbd>Delete</kbd> / <kbd>Backspace</kbd>：删除选中。</li>
+            <li><kbd>Ctrl</kbd>+<kbd>A</kbd>：全选。</li>
+            <li><kbd>Ctrl</kbd>+<kbd>C</kbd>：与复制原始文件相关操作。</li>
+          </ul>
+        </section>
+
+      </article>
+    </div>
+
+    <footer class="foot">
+      <div class="foot-grid">
+        <div class="foot-about-col">
+          <a class="foot-brand" href="index.html">
+            <img src="assets/logo-mark.png" alt="" width="22" height="22" />
+            AI Art Engine
+          </a>
+          <p class="foot-about">本地优先的 Agent 原生 AI 美术资产引擎。工程与素材保存在本机，模型使用你自己的密钥。</p>
+        </div>
+        <nav class="foot-col" aria-label="文档">
+          <h4>文档</h4>
+          <ul>
+            <li><a href="quickstart.html">快速上手</a></li>
+            <li><a href="manual.html">使用手册</a></li>
+            <li><a href="developers.html">开发者文档</a></li>
+            <li><a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">更新日志</a></li>
+          </ul>
+        </nav>
+        <nav class="foot-col" aria-label="专题教程">
+          <h4>专题教程</h4>
+          <ul>
+            <li><a href="guide-short-video.html">短剧教程</a></li>
+            <li><a href="guide-video.html">视频教程</a></li>
+            <li><a href="guide-comfyui.html">ComfyUI 教程</a></li>
+            <li><a href="guide-newapi.html">NewAPI 教程</a></li>
+            <li><a href="guide-mcp.html">MCP 接入</a></li>
+            <li><a href="guide-gameplay.html">可玩 HTML</a></li>
+          </ul>
+        </nav>
+        <nav class="foot-col" aria-label="社区">
+          <h4>社区</h4>
+          <ul>
+            <li><a href="index.html#download">下载</a></li>
+            <li><a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+            <li><a href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine" target="_blank" rel="noopener noreferrer">Gitee</a></li>
+            <li><a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer">bilibili</a></li>
+            <li><a href="https://github.com/Justin-sky/ai-art-engine/issues" target="_blank" rel="noopener noreferrer">问题反馈</a></li>
+          </ul>
+        </nav>
+      </div>
+      <div class="foot-bottom">
+        <span>© 2026 AI Art Engine · GPL-3.0</span>
+        <span>文档以最新版应用内界面为准</span>
+      </div>
+    </footer>
+    <script>
+      document.querySelectorAll('.mobile-nav a').forEach((link) => {
+        link.addEventListener('click', () => link.closest('.mobile-menu')?.removeAttribute('open'))
+      })
+
+      // 阅读进度条
+      const progressBar = document.querySelector('.progress')
+      if (progressBar) {
+        const updateProgress = () => {
+          const doc = document.documentElement
+          const max = doc.scrollHeight - window.innerHeight
+          progressBar.style.width = (max > 0 ? (window.scrollY / max) * 100 : 0) + '%'
+        }
+        window.addEventListener('scroll', updateProgress, { passive: true })
+        window.addEventListener('resize', updateProgress)
+        updateProgress()
+      }
+
+      // 目录滚动高亮（scrollspy）
+      const tocLinks = Array.from(document.querySelectorAll('.toc a[href^="#"]'))
+      const spyTargets = []
+      tocLinks.forEach((link) => {
+        const id = link.getAttribute('href').slice(1)
+        const el = id ? document.getElementById(id) : null
+        if (el) spyTargets.push({ el, link })
+      })
+      if (spyTargets.length) {
+        const spy = () => {
+          const y = window.scrollY + 90
+          let current = spyTargets[0]
+          for (const target of spyTargets) {
+            if (!target.el) continue
+            const top = target.el.getBoundingClientRect().top + window.scrollY
+            if (top <= y) current = target
+          }
+          if (!current) return
+          tocLinks.forEach((link) => link.classList.toggle('active', link === current.link))
+        }
+        window.addEventListener('scroll', spy, { passive: true })
+        window.addEventListener('resize', spy)
+        spy()
+      }
+
+      // 返回顶部
+      const toTop = document.querySelector('.to-top')
+      if (toTop) {
+        const toggleToTop = () => {
+          toTop.hidden = window.scrollY <= 600
+        }
+        window.addEventListener('scroll', toggleToTop, { passive: true })
+        toggleToTop()
+        toTop.addEventListener('click', () => {
+          window.scrollTo({ top: 0, behavior: 'smooth' })
+        })
+      }
+
+      // 截图点击放大
+      const lightbox = document.querySelector('.lightbox')
+      if (lightbox) {
+        const lightboxImg = lightbox.querySelector('img')
+        const lightboxCap = lightbox.querySelector('.lightbox-cap')
+        document.querySelectorAll('.manual figure.shot img').forEach((img) => {
+          img.addEventListener('click', () => {
+            if (!lightboxImg || !lightboxCap) return
+            lightboxImg.src = img.currentSrc || img.src
+            lightboxImg.alt = img.alt
+            lightboxCap.textContent =
+              img.closest('figure')?.querySelector('figcaption')?.textContent?.trim() || img.alt
+            lightbox.hidden = false
+          })
+        })
+        lightbox.addEventListener('click', () => {
+          lightbox.hidden = true
+        })
+        document.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape' && !lightbox.hidden) lightbox.hidden = true
+        })
+      }
+
+      // 章节标题点击复制链接
+      const toast = document.createElement('div')
+      toast.className = 'toast'
+      toast.setAttribute('role', 'status')
+      document.body.appendChild(toast)
+      let toastTimer = 0
+      const showToast = (message) => {
+        toast.textContent = message
+        toast.classList.add('show')
+        clearTimeout(toastTimer)
+        toastTimer = setTimeout(() => toast.classList.remove('show'), 1600)
+      }
+      document
+        .querySelectorAll('.manual section[id] > h2, .manual h3[id], .manual h4[id]')
+        .forEach((heading) => {
+          const id = heading.id || heading.parentElement?.id
+          if (!id) return
+          heading.title = '点击复制本节链接'
+          heading.addEventListener('click', () => {
+            if (window.getSelection()?.toString()) return
+            const url = location.origin + location.pathname + '#' + id
+            if (navigator.clipboard?.writeText) {
+              navigator.clipboard.writeText(url).then(
+                () => showToast('已复制本节链接'),
+                () => showToast(url)
+              )
+            } else {
+              showToast(url)
+            }
+          })
+        })
+
+      // 主题切换：跟随系统 → 浅色 → 深色
+      const themeButton = document.querySelector('.theme-toggle')
+      if (themeButton) {
+        const rootEl = document.documentElement
+        const THEME_KEY = 'site.theme'
+        const darkQuery = window.matchMedia('(prefers-color-scheme: dark)')
+        const THEME_META = {
+          auto: { icon: '◐', label: '主题：跟随系统' },
+          light: { icon: '☀', label: '主题：浅色' },
+          dark: { icon: '☾', label: '主题：深色' }
+        }
+        const readThemePref = () => {
+          try {
+            const stored = localStorage.getItem(THEME_KEY)
+            return stored === 'light' || stored === 'dark' || stored === 'auto' ? stored : 'dark'
+          } catch (e) {
+            return 'dark'
+          }
+        }
+        const applyTheme = () => {
+          const pref = readThemePref()
+          rootEl.classList.toggle('dark', pref === 'dark' || (pref !== 'light' && darkQuery.matches))
+          rootEl.classList.toggle('light', pref === 'light')
+          const meta = THEME_META[pref]
+          themeButton.textContent = meta.icon
+          themeButton.title = meta.label + '（点击切换）'
+          themeButton.setAttribute('aria-label', meta.label)
+        }
+        darkQuery.addEventListener('change', applyTheme)
+        themeButton.addEventListener('click', () => {
+          const next = readThemePref() === 'dark' ? 'light' : readThemePref() === 'light' ? 'auto' : 'dark'
+          try {
+            localStorage.setItem(THEME_KEY, next)
+          } catch (e) {}
+          applyTheme()
+          showToast(THEME_META[next].label)
+        })
+        applyTheme()
+      }
+    </script>
+      <script src="site-search.js?v=20261009d" defer></script>
+    <script src="site-enhance.js?v=20261009d" defer></script>
+  </body>
+</html>

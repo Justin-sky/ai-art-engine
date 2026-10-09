@@ -1,0 +1,879 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      // 提前应用本地主题选择，避免加载闪烁
+      ;(function () {
+        try {
+          var pref = localStorage.getItem('site.theme')
+          if (
+            pref !== 'light' &&
+            (pref === 'dark' ||
+              pref == null ||
+              (pref === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches))
+          ) {
+            document.documentElement.classList.add('dark')
+          }
+        } catch (e) {}
+      })()
+    </script>
+    <meta
+      name="description"
+      content="新建与打开工程，并在设置中完成通用偏好、模型提供商、对象存储、扩展、MCP 工具服务与联网搜索的配置。第一次使用时，建议先把这一部分走一遍。"
+    />
+    <title>工程与设置 · 使用手册 — AIArtEngine</title>
+    <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/manual-setup.html" />
+    <meta property="og:site_name" content="AIArtEngine" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="zh_CN" />
+    <meta property="og:title" content="工程与设置 · 使用手册 — AIArtEngine" />
+    <meta property="og:description" content="新建与打开工程，并在设置中完成通用偏好、模型提供商、对象存储、扩展、MCP 工具服务与联网搜索的配置。第一次使用时，建议先把这一部分走一遍。" />
+    <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/manual-setup.html" />
+    <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="工程与设置 · 使用手册 — AIArtEngine" />
+    <meta name="twitter:description" content="新建与打开工程，并在设置中完成通用偏好、模型提供商、对象存储、扩展、MCP 工具服务与联网搜索的配置。第一次使用时，建议先把这一部分走一遍。" />
+    <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-setup.html" />
+    <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual-setup.en.html" />
+    <link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/manual-setup.html" />
+    <link rel="icon" href="assets/logo-mark.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="manual.css?v=20261009d" />
+    <link rel="stylesheet" href="site.css?v=20261009d" />
+  </head>
+  <body>
+    <a class="skip" href="#manual">跳到手册正文</a>
+    <div class="progress" aria-hidden="true"></div>
+    <button class="to-top" type="button" aria-label="返回顶部" hidden>↑</button>
+    <div class="lightbox" hidden>
+      <img alt="" />
+      <p class="lightbox-cap"></p>
+    </div>
+
+    <header class="top">
+      <a class="brand" href="index.html">
+        <img src="assets/logo-mark.png" alt="" width="30" height="30" />
+        <span>AI Art Engine</span>
+      </a>
+      <nav class="nav" aria-label="主导航">
+        <a href="quickstart.html">快速上手</a>
+        <a href="manual.html" aria-current="page">使用手册</a>
+        <div class="nav-drop">
+          <button type="button" class="nav-drop-btn" aria-haspopup="true">
+            教程<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+          </button>
+          <div class="nav-drop-menu">
+            <a href="guide-short-video.html"><strong>短剧教程</strong><span>分镜 · 拼图 · 审核 · 动态视频</span></a>
+            <a href="guide-video.html"><strong>视频教程</strong><span>自由画布与参考视频</span></a>
+            <a href="guide-comfyui.html"><strong>ComfyUI 教程</strong><span>API 2 与 comfy-api-proxy</span></a>
+            <a href="guide-newapi.html"><strong>NewAPI 教程</strong><span>自建中转网关接入</span></a>
+            <a href="guide-mcp.html"><strong>MCP 接入</strong><span>Claude Code / Codex 驱动应用</span></a>
+            <a href="guide-gameplay.html"><strong>可玩 HTML</strong><span>生成可交互的玩法原型</span></a>
+            <a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer"><strong>B 站视频教程</strong><span>视频演示与更新解读</span></a>
+          </div>
+        </div>
+        <a href="developers.html">开发者</a>
+        <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">更新日志</a>
+        <a href="index.html#download">下载</a>
+        <a class="nav-src" href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.070 3.633 17.700 3.633 17.700c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.070 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.760-1.605-2.665-.3-5.466-1.332-5.466-5.930 0-1.310.465-2.380 1.235-3.220-.135-.303-.540-1.523.105-3.176 0 0 1.005-.322 3.300 1.230.960-.267 1.980-.399 3.000-.405 1.020.006 2.040.138 3.000.405 2.280-1.552 3.285-1.230 3.285-1.230.645 1.653.240 2.873.120 3.176.765.840 1.230 1.910 1.230 3.220 0 4.610-2.805 5.625-5.475 5.920.420.360.810 1.096.810 2.220 0 1.606-.015 2.896-.015 3.286 0 .315.210.690.825.570C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" /></svg>GitHub</a>
+      </nav>
+      <a class="nav-lang" href="manual-setup.en.html" hreflang="en" lang="en">EN</a>
+      <button class="theme-toggle" type="button" aria-label="切换主题">◐</button>
+      <details class="mobile-menu">
+        <summary aria-label="打开导航菜单"><span aria-hidden="true">☰</span> 菜单</summary>
+        <nav class="mobile-nav" aria-label="移动端导航">
+          <p class="mobile-group">文档</p>
+          <a href="index.html">首页</a>
+          <a href="quickstart.html">快速上手</a>
+          <a href="manual.html" aria-current="page">使用手册</a>
+          <a href="developers.html">开发者文档</a>
+          <p class="mobile-group">专题教程</p>
+          <a href="guide-short-video.html">短剧教程</a>
+          <a href="guide-video.html">视频教程</a>
+          <a href="guide-comfyui.html">ComfyUI 教程</a>
+          <a href="guide-newapi.html">NewAPI 教程</a>
+          <a href="guide-mcp.html">MCP 接入</a>
+          <a href="guide-gameplay.html">可玩 HTML</a>
+          <p class="mobile-group">社区</p>
+          <a href="index.html#download">下载</a>
+          <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">更新日志</a>
+          <a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer">bilibili</a>
+          <a href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine" target="_blank" rel="noopener noreferrer">Gitee</a>
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a>
+        </nav>
+      </details>
+    </header>
+
+    <div class="manual-shell">
+      <aside class="toc" aria-label="目录">
+        <h2>目录</h2>
+        <ol>
+          <li class="toc-group">基础</li>
+          <li><a href="#home">3. 首页与工程</a></li>
+          <li><a href="#settings">4. 设置</a></li>
+
+          <li class="toc-group">手册章节</li>
+          <li><a href="manual.html">概述与核心概念</a></li>
+          <li><a href="manual-workspace.html">工作区与资产库</a></li>
+          <li><a href="manual-workflow.html">一键工作流与节点图</a></li>
+          <li><a href="manual-production.html">剧本、成片与导演台</a></li>
+          <li><a href="manual-reference.html">参考与故障排查</a></li>
+        </ol>
+      </aside>
+
+      <article class="manual" id="manual">
+        <header class="manual-hero">
+          <p class="eyebrow">Manual · Setup</p>
+          <h1>工程与设置</h1>
+          <p class="lede">
+            新建与打开工程，并在设置中完成通用偏好、模型提供商、对象存储、扩展、MCP 工具服务与联网搜索的配置。第一次使用时，建议先把这一部分走一遍。
+          </p>
+        </header>
+
+        <section id="home">
+          <h2>3. 首页与工程</h2>
+          <h3>新建工程</h3>
+          <ol>
+            <li>点击「新建工程」。</li>
+            <li>填写「工程名称」。</li>
+            <li>点击「浏览」选择「存储目录」。</li>
+            <li>点击「创建」后进入工作区。</li>
+          </ol>
+          <h3>打开工程</h3>
+          <ul>
+            <li>点击「打开工程」，选择工程目录中的 <code>project.json</code>。</li>
+            <li>或在「最近工程」列表中点击对应路径。</li>
+          </ul>
+          <h3>最近工程</h3>
+          <ul>
+            <li>列表展示近期打开过的工程路径。</li>
+            <li>
+              右侧
+              <strong>×</strong> 表示「从最近列表移除」——<strong>不会删除</strong>磁盘上的工程文件。
+            </li>
+          </ul>
+          <div class="tip"> 当前版本没有应用内「删除工程」功能。若要彻底删除，请在文件管理器中手动删除工程目录。 </div>
+        </section>
+
+        <section id="settings">
+          <h2>4. 设置</h2>
+          <p>在首页或工作区顶栏进入「设置」。修改会自动保存。</p>
+
+          <h3>4.1 通用</h3>
+          <ul>
+            <li><strong>主题</strong>：暗色 / 亮色。</li>
+            <li><strong>语言</strong>：中文 / English。</li>
+            <li><strong>自动保存</strong>：可启用，并设置间隔（秒）。</li>
+            <li><strong>关于与更新</strong>：查看版本、检查更新（见下文）。</li>
+          </ul>
+
+          <h3>4.2 模型</h3>
+          <ol>
+            <li>
+              点击「添加模型提供商」，可选：
+              <ul>
+                <li><strong>OpenRouter</strong>：文本 / 图片 / 视频 / 决策（聚合目录，单 API Key）。</li>
+                <li>
+                  <strong>OpenAI</strong>：文本（GPT 系列）/ 图片（gpt-image-1 / gpt-image-2）；需可访问
+                  api.openai.com 的网络与境外账号，文生图走 <code>/images/generations</code>，参考图编辑走
+                  <code>/images/edits</code>（最多 1 张）。
+                </li>
+                <li><strong>DeepSeek</strong>：仅文本（deepseek-chat / deepseek-reasoner，OpenAI 兼容）。</li>
+                <li>
+                  <strong>智谱</strong>：GLM 文本（<code>/chat/completions</code>）+ CogView 文生图
+                  （glm-image / cogview-4 / cogview-3-flash，<code>/images/generations</code>）。
+                </li>
+                <li>
+                  <strong>Kimi（月之暗面）</strong>：文本（kimi-k2 系列 / moonshot-v1 系列，OpenAI
+                  兼容，默认 Base URL <code>https://api.moonshot.cn/v1</code>）。
+                </li>
+                <li>
+                  <strong>xAI（Grok）</strong>：文本（grok-* 对话，OpenAI 兼容，默认 Base URL
+                  <code>https://api.x.ai/v1</code>）+ Grok Imagine 文生图（
+                  <code>/images/generations</code>，JSON body，支持 aspect_ratio）+ Grok Imagine Video
+                  异步视频（<code>/videos/generations</code> 提交后轮询
+                  <code>GET /videos/{request_id}</code>，支持 480p / 720p、5–15 秒与首帧图生视频）。
+                </li>
+                <li>
+                  <strong>Google（Gemini）</strong>：文本（gemini-* 对话）+ Nano Banana 系列文生图 /
+                  图生图（<code>/images/generations</code>，JSON body，支持 aspect_ratio / resolution / n /
+                  response_format 与 image 参考图字段）+ Veo 3.1 异步视频（<code>/videos</code> 提交后轮询
+                  <code>GET /videos/{id}</code>，支持 720p–4K、4–8 秒与首帧图生视频），均走官方 OpenAI 兼容层
+                  （默认 Base URL <code>https://generativelanguage.googleapis.com/v1beta/openai</code>）。
+                </li>
+                <li>
+                  <strong>vLLM</strong>：本地 OpenAI 兼容服务（默认 <code>http://localhost:8000/v1</code>），无需 API Key；
+                  部署 vLLM-Omni 扩散模型（如 Wan2.2 T2V / I2V）后支持视频生成（异步任务走 <code>/v1/videos</code>，可带首帧图生视频）。
+                </li>
+                <li>
+                  <strong>Ollama</strong>：本地 OpenAI 兼容端点（默认 <code>http://localhost:11434/v1</code>），无需 API Key。
+                </li>
+                <li>
+                  <strong>LM Studio</strong>：本地 OpenAI 兼容端点（默认 <code>http://localhost:1234/v1</code>），无需 API Key。
+                </li>
+                <li>
+                  <strong>火山方舟</strong>：文本 / Seedream 图 / Seedance 视频用方舟 API Key；声音设计走豆包语音
+                  openspeech（语音控制台 API Key，可与方舟 Key 不同）+ 手填 <code>speaker_id</code>。
+                  视频模型含 Seedance 2.5（<code>doubao-seedance-2-5-260628</code>：单次最长 30s、50 个全模态参考、
+                  时间戳级片段编辑）与 Seedance 2.0 / 2.0 Fast 等。
+                </li>
+                <li><strong>可灵</strong>：图片 / 视频（API Key）。</li>
+                <li>
+                  <strong>MiniMax</strong>：文本 / 图片 / 视频 / 音色设计（同一 API Key；默认 Base URL
+                  <code>https://api.minimaxi.com</code>）。
+                </li>
+                <li>
+                  <strong>通义千问</strong>：文本（兼容模式）/ 万相图 / 万相视频（含 HappyHorse、Wan 3.0-Video
+                  等，百炼 API Key）。Wan 3.0-Video 支持单次 30s、10 图 + 5 视频 + 5 音频参考，公测 / 邀测中，
+                  Model ID 以百炼控制台为准。
+                </li>
+                <li><strong>魔塔</strong>：文本 / 文生图（ModelScope 访问令牌，如 <code>ms-…</code>）。</li>
+                <li>
+                  <strong>ComfyUI</strong>：图片 / 视频 / 声音，走 API 2（<code>POST /api/v2/jobs</code>）。
+                  模型 id = userdata 里的 <strong>API 格式 workflow 名</strong>（不是 checkpoint），模型列表由服务动态拉取。
+                  视频 workflow 支持多模态参考（r2v）、视频 / 音频参考注入与首尾帧（<code>first_frame</code> /
+                  <code>last_frame</code>）注入，视频时长上限 15s。
+                  本机默认 Base URL <code>http://127.0.0.1:8189</code>（需先装
+                  <a href="guide-comfyui.html#local-proxy">comfy-api-proxy</a>，不要直连 8188）；
+                  云端填 <code>https://cloud.comfy.org</code> 并填 Key。本机可空 Key。
+                  完整步骤见 <a href="guide-comfyui.html">ComfyUI 接入教程</a>。
+                </li>
+                <li>
+                  <strong>MagicRouter</strong>：多供应商聚合网关（OpenAI 兼容），文本 / 图片 / 视频；
+                  需 <code>mr-</code> 开头 API Key，默认 Base URL
+                  <code>https://api.magicrouter.ai/v1</code>，模型目录由 <code>/models/live</code>
+                  拉取，视频为异步提交 / 轮询。
+                </li>
+                <li>
+                  <strong>Meshy</strong>：文生 3D / 图生 3D（含多图生 3D，API Key，默认 Base URL
+                  <code>https://api.meshy.ai</code>）。
+                </li>
+                <li>
+                  <strong>Tripo</strong>：文生 3D / 图生 3D（API Key，默认 Base URL
+                  <code>https://api.tripo3d.ai</code>）。
+                </li>
+                <li>
+                  <strong>Rodin（Hyper3D）</strong>：文生 3D / 图生 3D（API Key，默认 Base URL
+                  <code>https://api.hyper3d.com/api/v2</code>）。
+                </li>
+                <li>
+                  <strong>Luma AI</strong>：文生 3D / 图生 3D（API Key，默认 Base URL
+                  <code>https://api.lumalabs.ai/dream-machine/v1</code>）。
+                </li>
+                <li>
+                  <strong>Lux3D</strong>：文生 3D / 图生 3D / 多图生 3D（API Key，G1 / G1-Turbo，
+                  默认 Base URL <code>https://api.aholo3d.cn</code>）。
+                </li>
+                <li>
+                  <strong>World Labs（Marble）</strong>：空间世界生成 —— 文生世界 / 图生世界 / 多图生世界 /
+                  视频生世界（API Key，默认 Base URL <code>https://api.worldlabs.ai</code>，鉴权头为
+                  <code>WLT-Api-Key</code>；模型 marble-1.1 标准、marble-1.1-plus 更大世界、marble-1.0 与
+                  marble-1.0-draft 上一代。参考媒体走官方托管上传，无需对象存储）。
+                </li>
+                <li>
+                  <strong>自定义</strong>：自选端点类型（OpenAI 兼容 / Anthropic / Gemini）并填写 Base URL 与
+                  API Key，用于 NewAPI、one-api 等中转网关或自建服务；支持文本与图片，模型常在目录里拉不到，
+                  需手动填 id —— 完整步骤见
+                  <a href="guide-newapi.html">NewAPI 接入教程</a>。
+                </li>
+              </ul>
+            </li>
+            <li>
+              选择或展开提供商后，设置页会显示对应<strong>密钥申请页</strong>链接（也可直接打开）：
+              <ul>
+                <li>
+                  OpenRouter：
+                  <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer"
+                    >https://openrouter.ai/keys</a
+                  >
+                </li>
+                <li>
+                  OpenAI API Key：
+                  <a
+                    href="https://platform.openai.com/api-keys"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    >https://platform.openai.com/api-keys</a
+                  >
+                </li>
+                <li>
+                  DeepSeek API Key：
+                  <a
+                    href="https://platform.deepseek.com/api_keys"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    >https://platform.deepseek.com/api_keys</a
+                  >
+                </li>
+                <li>
+                  智谱 API Key：
+                  <a
+                    href="https://open.bigmodel.cn/usercenter/apikeys"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    >https://open.bigmodel.cn/usercenter/apikeys</a
+                  >
+                </li>
+                <li>
+                  Kimi（月之暗面）API Key：
+                  <a
+                    href="https://platform.moonshot.cn/console/api-keys"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    >https://platform.moonshot.cn/console/api-keys</a
+                  >
+                </li>
+                <li>
+                  xAI API Key：
+                  <a href="https://console.x.ai/" target="_blank" rel="noopener noreferrer"
+                    >https://console.x.ai/</a
+                  >
+                </li>
+                <li>
+                  Google AI Studio API Key：
+                  <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer"
+                    >https://aistudio.google.com/apikey</a
+                  >
+                </li>
+                <li>
+                  vLLM 文档（本地服务无需密钥）：
+                  <a href="https://docs.vllm.ai" target="_blank" rel="noopener noreferrer"
+                    >https://docs.vllm.ai</a
+                  >
+                </li>
+                <li>
+                  Ollama 官网（本地服务无需密钥）：
+                  <a href="https://ollama.com" target="_blank" rel="noopener noreferrer"
+                    >https://ollama.com</a
+                  >
+                </li>
+                <li>
+                  LM Studio 官网（本地服务无需密钥）：
+                  <a href="https://lmstudio.ai" target="_blank" rel="noopener noreferrer"
+                    >https://lmstudio.ai</a
+                  >
+                </li>
+                <li>
+                  火山方舟 API Key（文本 / 图片 / 视频）：
+                  <a
+                    href="https://console.volcengine.com/ark/region:ark-cn-beijing/apiKey"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    >https://console.volcengine.com/ark/region:ark-cn-beijing/apiKey</a
+                  >
+                </li>
+                <li>
+                  豆包语音控制台（声音设计 API Key / speaker_id）：
+                  <a
+                    href="https://console.volcengine.com/speech/app"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    >https://console.volcengine.com/speech/app</a
+                  >
+                </li>
+                <li>
+                  可灵开放平台（API Key）：
+                  <a href="https://app.klingai.com/cn/dev" target="_blank" rel="noopener noreferrer"
+                    >https://app.klingai.com/cn/dev</a
+                  >
+                </li>
+                <li>
+                  MiniMax 接口密钥：
+                  <a
+                    href="https://platform.minimaxi.com/user-center/basic-information/interface-key"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    >https://platform.minimaxi.com/user-center/basic-information/interface-key</a
+                  >
+                </li>
+                <li>
+                  通义千问 / 百炼 API Key：
+                  <a
+                    href="https://bailian.console.aliyun.com/?tab=model#/api-key"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    >https://bailian.console.aliyun.com/?tab=model#/api-key</a
+                  >
+                </li>
+                <li>
+                  魔塔访问令牌：
+                  <a
+                    href="https://modelscope.cn/my/myaccesstoken"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    >https://modelscope.cn/my/myaccesstoken</a
+                  >
+                </li>
+                <li>
+                  ComfyUI：本机可空 Key；云端 API Key 见
+                  <a
+                    href="https://docs.comfy.org/development/api-development/getting-an-api-key"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    >Comfy 开发者文档</a
+                  >
+                  ；本机安装 proxy 与 workflow 见
+                  <a href="guide-comfyui.html">ComfyUI 接入教程</a>。
+                </li>
+                <li>
+                  Meshy API Key：
+                  <a href="https://www.meshy.ai/" target="_blank" rel="noopener noreferrer"
+                    >https://www.meshy.ai/</a
+                  >
+                </li>
+                <li>
+                  Tripo API Key：
+                  <a href="https://platform.tripo3d.ai/" target="_blank" rel="noopener noreferrer"
+                    >https://platform.tripo3d.ai/</a
+                  >
+                </li>
+                <li>
+                  Rodin（Hyper3D）API Key：
+                  <a href="https://hyper3d.ai/" target="_blank" rel="noopener noreferrer"
+                    >https://hyper3d.ai/</a
+                  >
+                </li>
+                <li>
+                  Luma AI API Key：
+                  <a href="https://lumalabs.ai/" target="_blank" rel="noopener noreferrer"
+                    >https://lumalabs.ai/</a
+                  >
+                </li>
+                <li>
+                  Lux3D API Key：
+                  <a href="https://labs.aholo3d.cn/" target="_blank" rel="noopener noreferrer"
+                    >https://labs.aholo3d.cn/</a
+                  >
+                </li>
+                <li>
+                  World Labs API Key（需先在平台的 billing 页充值积分）：
+                  <a href="https://platform.worldlabs.ai/api-keys" target="_blank" rel="noopener noreferrer"
+                    >https://platform.worldlabs.ai/api-keys</a
+                  >
+                </li>
+                <li>
+                  MagicRouter API Key（<code>mr-</code> 开头）：
+                  <a href="https://www.magicrouter.ai/docs/api" target="_blank" rel="noopener noreferrer"
+                    >https://www.magicrouter.ai/docs/api</a
+                  >
+                </li>
+              </ul>
+            </li>
+            <li>填写显示名称、Base URL、密钥（可显示/隐藏）。</li>
+            <li>启用该提供商后，点击「拉取可用模型」（可灵 / MiniMax 部分模态 / 百炼图视频 / OpenAI 与智谱图片等为本地静态目录；vLLM / Ollama / LM Studio / ComfyUI 等本地服务无需密钥，直接拉取）。</li>
+            <li>用筛选、全选/清空勾选需要的模型；也可手动添加模型 ID。</li>
+            <li>
+              按模态配置：文本 / 图片 / 视频 / 声音 / 3D 模型 / 空间世界 / 决策（OpenRouter 支持文本 / 图片 / 视频 / 声音 / 决策，决策页签走
+              <code>output_modalities=decisions</code> 拉取；TypeSafe 直连仅「决策」页签，目录走 <code>GET /v1/models</code>、判定走
+              <code>POST /v1/systemone</code>，与 OpenRouter 的决策协议一致但不经其中转；方舟声音页签会提示语音控制台链接，并手填
+              <code>speaker_id</code>；可灵仅图片与视频页签；MiniMax 支持文本 / 图片 / 视频 / 音色设计；
+              <strong>OpenAI 支持文本 / 图片 / 声音</strong>；<strong>ElevenLabs 支持「声音」与「音乐」两个页签</strong>（语音合成 / 多说话人对话 / 音效生成走「声音」，音乐生成走「音乐」）；
+              DeepSeek 仅文本；Kimi（月之暗面）仅文本；xAI（Grok）支持文本 / 图片 / 视频（视频为异步轮询）；Google（Gemini）支持文本 / Nano Banana 图片 / Veo 3.1 视频（异步轮询）；智谱支持 GLM 文本与 CogView 图片；vLLM 支持文本与视频（Wan T2V / I2V）；Ollama / LM Studio 仅文本（多模态理解可在文本节点传图）；
+              魔塔仅文本与图片，文生图为异步任务；ComfyUI 支持图片 / 视频 / 声音，无文本页签；MagicRouter 支持文本 / 图片 / 视频；Meshy / Tripo / Rodin（Hyper3D） / Luma AI / Lux3D 仅 3D 模型页签；World Labs（Marble）仅空间世界页签；自定义提供商的页签由端点类型决定 —— OpenAI 兼容 / Gemini 为文本 + 图片，Anthropic 仅文本，且图片模型必须手动填 id，见
+              <a href="guide-newapi.html">NewAPI 接入教程</a>）。
+            </li>
+            <li>
+              <strong>声音（TTS）</strong>：OpenAI / OpenRouter 的声音页签走 <code>POST /audio/speech</code>，
+              请求体是 <code>model</code> + <code>input</code> + <code>voice</code>（可选 <code>response_format</code> / <code>speed</code>）——
+              这是 OpenAI 的 TTS 协议形状，各类聚合器（new-api / one-api / 自建网关）都按它对接，把 Base URL 换成网关地址即可直接使用。
+              模型目录：OpenRouter 走 <code>/models?output_modalities=speech</code>（能拿到 <code>supported_voices</code>），
+              OpenAI 用本地静态表（<code>GET /models</code> 只给 id、不给音色列表）；聚合器上的模型也可手填 id。
+              <strong>ElevenLabs</strong> 走自己的协议：<code>POST /v1/text-to-speech/{voice_id}</code>
+              （鉴权头 <code>xi-api-key</code>），模型目录 <code>GET /v1/models</code>、音色目录 <code>GET /v1/voices</code>。
+              它的 <code>voice_id</code> 是不透明字符串，所以面板里显示的是音色名
+              （如 <code>Sarah - Mature, Reassuring</code>）；音色目录公开可读，没填 Key 也能先看模型与音色。
+              同一把 Key 还接了两条既有管线：<strong>语音转文字</strong>（Scribe，时间线的「配音转字幕」）与
+              <strong>音乐生成</strong>（BGM / 音效）。这三个端点混在同一份模型目录里，声音节点的下拉只列 TTS 模型。
+              <strong>音色在声音生成节点的指令面板里填</strong>（不在这里）：音色是按节点生效的参数，
+              同一张图里不同配音节点本就该用不同音色；候选来自接口返回的 <code>supported_voices</code>
+              （OpenRouter 文档页不列，但 <code>/models?output_modalities=speech</code> 会返回，实测 23 个语音模型里 18 个有，
+              最长的微软 MAI Voice 有 97 个），可按应用语言优先排序。
+              留空则用模型自己的默认音色（我们不会替你猜一个音色名发给上游 —— 各家的音色命名并不通用）。
+              少数模型（如 <code>bytedance-seed/seed-audio-1-0</code>）<strong>没有音色列表</strong>：
+              它的音色由提示词描述决定，留空即可。
+            </li>
+            <li>
+              另外两个声音类节点（ElevenLabs 专属端点，产物同样是声音资产）：
+              <ul>
+                <li>
+                  <strong>多说话人对话</strong>：一次合成整段对白。指令框里按行写
+                  <code>说话人: 台词</code>（中英文冒号都认），例如
+                  <code>A: 你终于来了。</code> / <code>B: 路上堵车。</code>；
+                  没有冒号的行沿用上一段的说话人（旁白 / 连续独白）。
+                  每个说话人在节点指令面板里绑定一个音色（未绑定的回退到节点默认音色），
+                  缺音色会明确报出是第几段、哪个说话人。
+                </li>
+                <li>
+                  <strong>音效生成</strong>：走 <code>POST /v1/sound-generation</code>，
+                  描述的是<strong>声音本身</strong>（如「雨落在铁皮屋顶上」），而不是台词。
+                  指令面板里可选「可无缝循环」（环境音长播时必开：接缝不再咔嗒）、
+                  「期望时长」（规范范围 <strong>0.5–30 秒</strong>）与「提示词影响力」
+                  （<strong>0–1</strong>，默认 0.3）；落盘到 <code>Cache/Sfx</code>。
+                  <strong>那个端点的模型是唯一取值</strong>（<code>eleven_text_to_sound_v2</code>），
+                  所以卡片上的下拉实际是在选<strong>用哪个提供商实例</strong>（多账号 / 多 Key 时才有意义），
+                  标题已写明「模型固定为 …」。没有可用提供商时会明确报错，不会退回语音合成。
+                </li>
+              </ul>
+              这两个节点与「配音转字幕」一样，都复用同一把 ElevenLabs Key。
+            </li>
+            <li>
+              <strong>音乐（BGM）走另一个页签</strong>：ElevenLabs 的 <code>POST /v1/music</code>
+              归在「<strong>音乐</strong>」页签下（与「声音」分开）—— 音乐是编曲（prompt + 歌词 / 纯音乐），
+              语音合成是 TTS（text + voice），两边的端点与模型体系都不同。
+              同一页签下还能勾 OpenRouter（Google Lyria 3）、MiniMax（<code>music-3.0</code>）与
+              通义千问 · 百炼（<code>fun-music-v1</code>）的音乐模型；音乐节点下拉只列音乐模型，
+              不会出现 TTS 模型。升级前把音乐模型勾在「声音」页签的旧设置会自动迁移过来。
+            </li>
+            <li>设置默认生成模型（如需要）。提供商卡片可折叠以节省空间。</li>
+          </ol>
+          <div class="tip">
+            API Key 保存在本机设置文件中（Windows 示例：
+            <code>%APPDATA%\AIArtEngine\aiartengine-settings.json</code>），不会上传到应用官方服务器。
+          </div>
+
+          <h3>4.3 对象存储</h3>
+          <p>用于将本地参考视频等上传为可公网访问的 URL（私有桶时使用签名链接）。</p>
+          <ul>
+            <li>
+              「添加对象存储」→ 选择其一：
+              <ul>
+                <li><strong>火山引擎 TOS</strong>：AccessKey / SecretKey、Region、Endpoint、Bucket。</li>
+                <li><strong>阿里云 OSS</strong>：AccessKey / SecretKey、Region、Endpoint、Bucket。</li>
+                <li><strong>腾讯云 COS</strong>：SecretId / SecretKey、Region、Bucket（通常为 <code>BucketName-APPID</code>）。</li>
+              </ul>
+            </li>
+            <li>
+              密钥申请页（设置中亦有外链）：
+              <ul>
+                <li>
+                  火山引擎：
+                  <a
+                    href="https://console.volcengine.com/iam/keymanage"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    >https://console.volcengine.com/iam/keymanage</a
+                  >
+                </li>
+                <li>
+                  阿里云 RAM：
+                  <a
+                    href="https://ram.console.aliyun.com/manage/ak"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    >https://ram.console.aliyun.com/manage/ak</a
+                  >
+                </li>
+                <li>
+                  腾讯云 API 密钥：
+                  <a
+                    href="https://console.cloud.tencent.com/cam/capi"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    >https://console.cloud.tencent.com/cam/capi</a
+                  >
+                </li>
+              </ul>
+            </li>
+            <li>公网访问域名（CDN / 自定义域名）可选；未填时使用签名 URL（约 24 小时有效）。</li>
+            <li><strong>同时只能启用一个</strong>对象存储；勾选启用会自动关闭其它项。卡片支持折叠。</li>
+          </ul>
+
+          <h3>4.4 扩展</h3>
+          <p>
+            应用内部扩展走 Cordis（<code>ctx.editor.*</code>），可贡献节点、卡片、检查器、Skill 与执行器覆盖等；开发说明见仓库
+            <a
+              href="https://github.com/Justin-sky/ai-art-engine/blob/main/docs/GRAPH_PLUGINS.md"
+              target="_blank"
+              rel="noopener noreferrer"
+              >GRAPH_PLUGINS.md</a
+            >。
+            设置页只读列出用户数据目录
+            <code>plugins</code> 下的<strong>声明式</strong>扩展。当前不会执行外部任意脚本，仅展示已声明的扩展信息。
+            正式安装包默认不加载「图插件示例」演示。
+          </p>
+
+          <h3>4.5 MCP 工具服务</h3>
+          <p>
+            应用内置 MCP 工具服务，供 <strong>Claude Code / Codex 等外部 AI Agent</strong>（以及内置
+            <a href="manual-workspace.html#ai-chat">AI 对话面板</a>）调用——规划并落盘工作流、运行生成、读写资产与节点图。
+            详细接入步骤见 <a href="guide-mcp.html">MCP 接入教程</a>。
+          </p>
+          <ul>
+            <li>
+              <strong>启动 / 重启</strong>：设置页显示运行状态与端口；端口默认 <code>43110</code>，被占用时依次尝试
+              43110–43119。修改端口或点击「重启」后应用工具服务会以新端口拉起。
+            </li>
+            <li>
+              <strong>Token</strong>：可显示 / 复制 / 编辑；<strong>跨重启保持不变</strong>，配置一次即可长期使用。
+              怀疑泄露时点「重置 Token」——重置后旧 token 立即失效，客户端需用新 token 重新注册。
+            </li>
+            <li>
+              <strong>接入命令</strong>：一键复制 <code>claude mcp add --transport http …</code> 命令，
+              在终端执行即可把应用注册为 Claude Code 的 MCP server（HTTP 直连，无需 Node.js）。
+            </li>
+          </ul>
+          <div class="tip">
+            工具服务只监听 <code>127.0.0.1</code> 本机回环，全部请求需带 Bearer token；文件读写限制在工程根目录内
+            （唯一例外是 <code>asset_import</code>：按你给出的绝对路径读取工程外文件并复制进工程）；
+            所有工具调用写入审计日志 <code>&lt;userData&gt;/logs/mcp-audit.jsonl</code>（5MB 滚动）。
+          </div>
+          <p>
+            设置面板另提供 <strong>「stdio 桥」</strong>可视化配置：可改 stdio 桥命令（默认仍是
+            <code>node</code> + 仓库内 <code>scripts/mcp-bridge.mjs</code> 或安装包内置
+            <code>&lt;安装目录&gt;/resources/mcp-bridge.mjs</code>）、桥 HTTP 监听端口、Blender addon
+            的 <code>BLENDER_HOST</code> / <code>BLENDER_PORT</code> 透传。
+            修改即时落盘，外部 Agent 重连即生效，不需要重启应用。
+          </p>
+          <p>
+            同一设置面板还支持 <strong>「反向桥」</strong>：注册任意外部 stdio MCP server（如 Blender
+            addon / 其它本地 MCP 服务），让应用内 ◈ AI 对话面板（DeepSeek Harness / dsh）也能直接消费
+            它们的工具 —— 不再需要它们额外暴露 socket 端口。详见
+            <a href="guide-mcp.html">MCP 接入教程</a>里的反向桥段。
+          </p>
+          <p>
+            另外，第三方 MCP 服务（HTTP 远程 / stdio 本地命令）也可以在 <a href="manual-workspace.html#marketplace">插件市场</a>的
+            <strong>MCP</strong> 页签里添加与管理。
+          </p>
+        </section>
+
+        <h3 id="web-search">4.6 联网搜索</h3>
+          <p>
+            设置页 → <strong>联网搜索</strong> Tab 配置 <strong>多 provider 并行可用</strong> 的搜索能力。
+            与模型 provider 体系刻意分离 —— 搜索适配器数量少、不需要按工程维度注入上下文，模块级注册中心
+            已够用；后续若出现大量第三方搜索服务可平滑迁移到 Cordis plugin。
+          </p>
+          <ul>
+            <li>
+              <strong>内置 5 个适配器</strong>：DeepSeek Search（默认）/ Tavily / Brave / SerpAPI / Mock
+              （Mock 仅用于本地连通性测试，不会发真请求）。每个适配器可独立启停、配 Base URL、API Key、搜索
+              深度与时间窗。
+            </li>
+            <li>
+              <strong>面板操作</strong>：工具栏「新增 provider」下拉 → 选 kind → 加；每张 provider 卡
+              折叠 / 展开、勾启用 / 禁用 / 移除；自带「连通性测试」按钮，命中响应 / 失败原因直接显示。
+            </li>
+            <li>
+              <strong>当前使用范围</strong>：设置面板里<strong>仅配置</strong>（暂未接入应用内 AI 对话面板或
+              一键工作流的联网检索调用）；如需触发联网检索，请在面板里手动测连通。后续会按 agent tool
+              形态接入对话流，届时与本面板共用同一组 provider 实例。
+            </li>
+          </ul>
+          <div class="tip">
+            Mock provider 始终返回固定样本 —— 离线开发、CI 跑通「搜索可用」状态位用；不要在生产环境勾选
+            （其它 provider 关闭时可能回落 Mock，但不会替换真实数据）。
+          </div>
+
+      </article>
+    </div>
+
+    <footer class="foot">
+      <div class="foot-grid">
+        <div class="foot-about-col">
+          <a class="foot-brand" href="index.html">
+            <img src="assets/logo-mark.png" alt="" width="22" height="22" />
+            AI Art Engine
+          </a>
+          <p class="foot-about">本地优先的 Agent 原生 AI 美术资产引擎。工程与素材保存在本机，模型使用你自己的密钥。</p>
+        </div>
+        <nav class="foot-col" aria-label="文档">
+          <h4>文档</h4>
+          <ul>
+            <li><a href="quickstart.html">快速上手</a></li>
+            <li><a href="manual.html">使用手册</a></li>
+            <li><a href="developers.html">开发者文档</a></li>
+            <li><a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">更新日志</a></li>
+          </ul>
+        </nav>
+        <nav class="foot-col" aria-label="专题教程">
+          <h4>专题教程</h4>
+          <ul>
+            <li><a href="guide-short-video.html">短剧教程</a></li>
+            <li><a href="guide-video.html">视频教程</a></li>
+            <li><a href="guide-comfyui.html">ComfyUI 教程</a></li>
+            <li><a href="guide-newapi.html">NewAPI 教程</a></li>
+            <li><a href="guide-mcp.html">MCP 接入</a></li>
+            <li><a href="guide-gameplay.html">可玩 HTML</a></li>
+          </ul>
+        </nav>
+        <nav class="foot-col" aria-label="社区">
+          <h4>社区</h4>
+          <ul>
+            <li><a href="index.html#download">下载</a></li>
+            <li><a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+            <li><a href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine" target="_blank" rel="noopener noreferrer">Gitee</a></li>
+            <li><a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer">bilibili</a></li>
+            <li><a href="https://github.com/Justin-sky/ai-art-engine/issues" target="_blank" rel="noopener noreferrer">问题反馈</a></li>
+          </ul>
+        </nav>
+      </div>
+      <div class="foot-bottom">
+        <span>© 2026 AI Art Engine · GPL-3.0</span>
+        <span>文档以最新版应用内界面为准</span>
+      </div>
+    </footer>
+    <script>
+      document.querySelectorAll('.mobile-nav a').forEach((link) => {
+        link.addEventListener('click', () => link.closest('.mobile-menu')?.removeAttribute('open'))
+      })
+
+      // 阅读进度条
+      const progressBar = document.querySelector('.progress')
+      if (progressBar) {
+        const updateProgress = () => {
+          const doc = document.documentElement
+          const max = doc.scrollHeight - window.innerHeight
+          progressBar.style.width = (max > 0 ? (window.scrollY / max) * 100 : 0) + '%'
+        }
+        window.addEventListener('scroll', updateProgress, { passive: true })
+        window.addEventListener('resize', updateProgress)
+        updateProgress()
+      }
+
+      // 目录滚动高亮（scrollspy）
+      const tocLinks = Array.from(document.querySelectorAll('.toc a[href^="#"]'))
+      const spyTargets = []
+      tocLinks.forEach((link) => {
+        const id = link.getAttribute('href').slice(1)
+        const el = id ? document.getElementById(id) : null
+        if (el) spyTargets.push({ el, link })
+      })
+      if (spyTargets.length) {
+        const spy = () => {
+          const y = window.scrollY + 90
+          let current = spyTargets[0]
+          for (const target of spyTargets) {
+            if (!target.el) continue
+            const top = target.el.getBoundingClientRect().top + window.scrollY
+            if (top <= y) current = target
+          }
+          if (!current) return
+          tocLinks.forEach((link) => link.classList.toggle('active', link === current.link))
+        }
+        window.addEventListener('scroll', spy, { passive: true })
+        window.addEventListener('resize', spy)
+        spy()
+      }
+
+      // 返回顶部
+      const toTop = document.querySelector('.to-top')
+      if (toTop) {
+        const toggleToTop = () => {
+          toTop.hidden = window.scrollY <= 600
+        }
+        window.addEventListener('scroll', toggleToTop, { passive: true })
+        toggleToTop()
+        toTop.addEventListener('click', () => {
+          window.scrollTo({ top: 0, behavior: 'smooth' })
+        })
+      }
+
+      // 截图点击放大
+      const lightbox = document.querySelector('.lightbox')
+      if (lightbox) {
+        const lightboxImg = lightbox.querySelector('img')
+        const lightboxCap = lightbox.querySelector('.lightbox-cap')
+        document.querySelectorAll('.manual figure.shot img').forEach((img) => {
+          img.addEventListener('click', () => {
+            if (!lightboxImg || !lightboxCap) return
+            lightboxImg.src = img.currentSrc || img.src
+            lightboxImg.alt = img.alt
+            lightboxCap.textContent =
+              img.closest('figure')?.querySelector('figcaption')?.textContent?.trim() || img.alt
+            lightbox.hidden = false
+          })
+        })
+        lightbox.addEventListener('click', () => {
+          lightbox.hidden = true
+        })
+        document.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape' && !lightbox.hidden) lightbox.hidden = true
+        })
+      }
+
+      // 章节标题点击复制链接
+      const toast = document.createElement('div')
+      toast.className = 'toast'
+      toast.setAttribute('role', 'status')
+      document.body.appendChild(toast)
+      let toastTimer = 0
+      const showToast = (message) => {
+        toast.textContent = message
+        toast.classList.add('show')
+        clearTimeout(toastTimer)
+        toastTimer = setTimeout(() => toast.classList.remove('show'), 1600)
+      }
+      document
+        .querySelectorAll('.manual section[id] > h2, .manual h3[id], .manual h4[id]')
+        .forEach((heading) => {
+          const id = heading.id || heading.parentElement?.id
+          if (!id) return
+          heading.title = '点击复制本节链接'
+          heading.addEventListener('click', () => {
+            if (window.getSelection()?.toString()) return
+            const url = location.origin + location.pathname + '#' + id
+            if (navigator.clipboard?.writeText) {
+              navigator.clipboard.writeText(url).then(
+                () => showToast('已复制本节链接'),
+                () => showToast(url)
+              )
+            } else {
+              showToast(url)
+            }
+          })
+        })
+
+      // 主题切换：跟随系统 → 浅色 → 深色
+      const themeButton = document.querySelector('.theme-toggle')
+      if (themeButton) {
+        const rootEl = document.documentElement
+        const THEME_KEY = 'site.theme'
+        const darkQuery = window.matchMedia('(prefers-color-scheme: dark)')
+        const THEME_META = {
+          auto: { icon: '◐', label: '主题：跟随系统' },
+          light: { icon: '☀', label: '主题：浅色' },
+          dark: { icon: '☾', label: '主题：深色' }
+        }
+        const readThemePref = () => {
+          try {
+            const stored = localStorage.getItem(THEME_KEY)
+            return stored === 'light' || stored === 'dark' || stored === 'auto' ? stored : 'dark'
+          } catch (e) {
+            return 'dark'
+          }
+        }
+        const applyTheme = () => {
+          const pref = readThemePref()
+          rootEl.classList.toggle('dark', pref === 'dark' || (pref !== 'light' && darkQuery.matches))
+          rootEl.classList.toggle('light', pref === 'light')
+          const meta = THEME_META[pref]
+          themeButton.textContent = meta.icon
+          themeButton.title = meta.label + '（点击切换）'
+          themeButton.setAttribute('aria-label', meta.label)
+        }
+        darkQuery.addEventListener('change', applyTheme)
+        themeButton.addEventListener('click', () => {
+          const next = readThemePref() === 'dark' ? 'light' : readThemePref() === 'light' ? 'auto' : 'dark'
+          try {
+            localStorage.setItem(THEME_KEY, next)
+          } catch (e) {}
+          applyTheme()
+          showToast(THEME_META[next].label)
+        })
+        applyTheme()
+      }
+    </script>
+      <script src="site-search.js?v=20261009d" defer></script>
+    <script src="site-enhance.js?v=20261009d" defer></script>
+  </body>
+</html>

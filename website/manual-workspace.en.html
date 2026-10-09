@@ -1,0 +1,663 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+
+    <script>
+      // 提前应用本地主题选择，避免加载闪烁
+      ;(function () {
+        try {
+          var pref = localStorage.getItem('site.theme')
+          if (
+            pref !== 'light' &&
+            (pref === 'dark' || pref == null || (pref === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches))
+          ) {
+            document.documentElement.classList.add('dark')
+          }
+        } catch (e) {}
+      })()
+    </script>
+    <meta
+      name="description"
+      content="The workspace top bar, four-pane layout and new-asset entry points; the AI chat panel, skills and the plugin marketplace; and browsing, filtering, context menus and shortcuts in the asset library."
+    />
+    <title>Workspace & asset library · Manual — AIArtEngine</title>
+    <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/manual-workspace.en.html" />
+    <meta property="og:site_name" content="AIArtEngine" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:title" content="Workspace & asset library · Manual — AIArtEngine" />
+    <meta property="og:description" content="The workspace top bar, four-pane layout and new-asset entry points; the AI chat panel, skills and the plugin marketplace; and browsing, filtering, context menus and shortcuts in the asset library." />
+    <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/manual-workspace.en.html" />
+    <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Workspace & asset library · Manual — AIArtEngine" />
+    <meta name="twitter:description" content="The workspace top bar, four-pane layout and new-asset entry points; the AI chat panel, skills and the plugin marketplace; and browsing, filtering, context menus and shortcuts in the asset library." />
+    <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-workspace.html" />
+    <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual-workspace.en.html" />
+    <link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/manual-workspace.html" />
+    <link rel="icon" href="assets/logo-mark.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="manual.css?v=20261009d" />
+    <link rel="stylesheet" href="site.css?v=20261009d" />
+  </head>
+  <body>
+    <a class="skip" href="#manual">Skip to content</a>
+    <div class="progress" aria-hidden="true"></div>
+    <button class="to-top" type="button" aria-label="Back to top" hidden>↑</button>
+    <div class="lightbox" hidden>
+      <img alt="" />
+      <p class="lightbox-cap"></p>
+    </div>
+
+    <header class="top">
+      <a class="brand" href="index.en.html">
+        <img src="assets/logo-mark.png" alt="" width="30" height="30" />
+        <span>AI Art Engine</span>
+      </a>
+      <nav class="nav" aria-label="Main navigation">
+        <a href="quickstart.en.html">Quickstart</a>
+        <a href="manual.en.html" aria-current="page">Manual</a>
+        <div class="nav-drop">
+          <button type="button" class="nav-drop-btn" aria-haspopup="true">
+            Guides<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+          </button>
+          <div class="nav-drop-menu">
+            <a href="guide-short-video.en.html"><strong>Short drama</strong><span>Storyboards, review, motion video</span></a>
+            <a href="guide-video.en.html"><strong>Video</strong><span>Free canvas & reference video</span></a>
+            <a href="guide-comfyui.en.html"><strong>ComfyUI</strong><span>API v2 and comfy-api-proxy</span></a>
+            <a href="guide-newapi.en.html"><strong>NewAPI</strong><span>Self-hosted relay gateways</span></a>
+            <a href="guide-mcp.en.html"><strong>MCP setup</strong><span>Drive the app from Claude Code / Codex</span></a>
+            <a href="guide-gameplay.en.html"><strong>Playable HTML</strong><span>Interactive gameplay prototypes</span></a>
+            <a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer"><strong>Video tutorials</strong><span>Walkthroughs on bilibili</span></a>
+          </div>
+        </div>
+        <a href="developers.en.html">Developers</a>
+        <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a>
+        <a href="index.en.html#download">Download</a>
+        <a class="nav-src" href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.070 3.633 17.700 3.633 17.700c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.070 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.760-1.605-2.665-.3-5.466-1.332-5.466-5.930 0-1.310.465-2.380 1.235-3.220-.135-.303-.540-1.523.105-3.176 0 0 1.005-.322 3.300 1.230.960-.267 1.980-.399 3.000-.405 1.020.006 2.040.138 3.000.405 2.280-1.552 3.285-1.230 3.285-1.230.645 1.653.240 2.873.120 3.176.765.840 1.230 1.910 1.230 3.220 0 4.610-2.805 5.625-5.475 5.920.420.360.810 1.096.810 2.220 0 1.606-.015 2.896-.015 3.286 0 .315.210.690.825.570C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" /></svg>GitHub</a>
+      </nav>
+      <a class="nav-lang" href="manual-workspace.html" hreflang="zh-CN" lang="zh-CN">中文</a>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme">◐</button>
+      <details class="mobile-menu">
+        <summary aria-label="Open navigation menu"><span aria-hidden="true">☰</span> Menu</summary>
+        <nav class="mobile-nav" aria-label="Mobile navigation">
+          <p class="mobile-group">Docs</p>
+          <a href="index.en.html">Home</a>
+          <a href="quickstart.en.html">Quickstart</a>
+          <a href="manual.en.html" aria-current="page">Manual</a>
+          <a href="developers.en.html">Developer docs</a>
+          <p class="mobile-group">Guides</p>
+          <a href="guide-short-video.en.html">Short drama</a>
+          <a href="guide-video.en.html">Video</a>
+          <a href="guide-comfyui.en.html">ComfyUI</a>
+          <a href="guide-newapi.en.html">NewAPI</a>
+          <a href="guide-mcp.en.html">MCP setup</a>
+          <a href="guide-gameplay.en.html">Playable HTML</a>
+          <p class="mobile-group">Community</p>
+          <a href="index.en.html#download">Download</a>
+          <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a>
+          <a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer">bilibili</a>
+          <a href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine" target="_blank" rel="noopener noreferrer">Gitee</a>
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a>
+        </nav>
+      </details>
+    </header>
+
+    <div class="manual-shell">
+      <aside class="toc" aria-label="Table of contents">
+        <h2>Table of contents</h2>
+        <ol>
+          <li class="toc-group">Basics</li>
+          <li><a href="#workspace">5. Workspace</a></li>
+          <li><a href="#marketplace">5.7 Plugin marketplace</a></li>
+          <li><a href="#assets">6. Asset library</a></li>
+
+          <li class="toc-group">Manual chapters</li>
+          <li><a href="manual.en.html">Overview & core concepts</a></li>
+          <li><a href="manual-setup.en.html">Projects & settings</a></li>
+          <li><a href="manual-workflow.en.html">One-Click Workflow & node graph</a></li>
+          <li><a href="manual-production.en.html">Script, timeline & director stage</a></li>
+          <li><a href="manual-reference.en.html">Reference & troubleshooting</a></li>
+        </ol>
+      </aside>
+
+      <article class="manual" id="manual">
+        <header class="manual-hero">
+          <p class="eyebrow">Manual · Workspace</p>
+          <h1>Workspace & asset library</h1>
+          <p class="lede">
+            The workspace top bar, four-pane layout and new-asset entry points; the AI chat panel, skills and the plugin marketplace; and browsing, filtering, context menus and shortcuts in the asset library.
+          </p>
+        </header>
+
+        <section id="workspace">
+          <h2>5. Workspace</h2>
+          <p>
+            Opening a project takes you to the workspace (named “Workspace” in the app navigation). The
+            interface is a dockable multi-panel layout.
+          </p>
+
+          <h3>5.1 Top bar</h3>
+          <ul>
+            <li>
+              Unsaved changes show <code>*</code> next to the title; press <kbd>Ctrl</kbd>+<kbd>S</kbd> to save.
+            </li>
+            <li><strong>↶ / ↷</strong>: undo / redo (also available as shortcuts).</li>
+            <li>
+              <strong>One-Click Workflow</strong>: generate a reusable host asset from a preset or AI planning
+              (see <a href="manual-workflow.en.html#ai-workflow">§7</a>).
+            </li>
+            <li>
+              <strong>Episode Pipeline</strong>: open the short-drama Agent pipeline window to work through
+              9-grid, 4-grid, director review and video generation (see
+              <a href="manual-workflow.en.html#agent-pipeline">§7.5</a>).
+            </li>
+            <li><strong>Task list</strong> and <strong>Run log</strong>: background queue and model call logs.</li>
+            <li>
+              <strong>Layout</strong>: switch the default layout, save the current layout, export / import a
+              layout <code>.json</code>, delete custom layouts.
+            </li>
+          </ul>
+          <p>
+            Tip: drag a tab to dock it in another area; right-click a tab to float it, detach it into a new
+            window, or close related tabs. Key panels can't be closed while nodes are running.
+          </p>
+
+          <h3>5.2 The four panels</h3>
+          <div class="table-scroll" role="region" aria-label="The four panels" tabindex="0">
+            <table>
+            <thead>
+              <tr>
+                <th>Panel</th>
+                <th>Purpose</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Tools</td>
+                <td>Narrow left column with shortcuts for creating asset drafts.</td>
+              </tr>
+              <tr>
+                <td>AI chat</td>
+                <td>Opened via the “◈” button at the bottom of the left column; an in-app AI assistant that can call MCP tools in conversation (see <a href="#ai-chat">§5.5</a>).</td>
+              </tr>
+              <tr>
+                <td>Workspace</td>
+                <td>
+                  The central editor; the empty state shows the recommended flow and recent assets, and opened
+                  assets become tabs.
+                </td>
+              </tr>
+              <tr>
+                <td>Assets</td>
+                <td>Browse and manage the project asset library.</td>
+              </tr>
+              <tr>
+                <td>Parameters</td>
+                <td>Inspector panel for the current selection.</td>
+              </tr>
+            </tbody>
+            </table>
+          </div>
+
+          <h3>5.3 Left toolbar: create assets</h3>
+          <p>
+            Click an icon to create a draft asset, then press <kbd>Ctrl</kbd>+<kbd>S</kbd> after editing to
+            write it to disk. You can create:
+          </p>
+          <ul>
+            <li>Free canvas · host asset · script · world elements · shot · director stage · image · video · audio</li>
+          </ul>
+          <p>
+            Recommended flow in an empty workspace: <strong>script → shot → node generation</strong>; you can
+            also create a script, shot or director stage directly, or double-click a recent asset to open it.
+          </p>
+
+          <h3>5.4 Right rail: assets / parameters</h3>
+          <p>
+            The far right of the workspace is a Rider-style vertical rail; the <strong>Assets</strong> and
+            <strong>Parameters</strong> panels can be expanded or collapsed independently (a collapsed panel
+            takes no width from the center layout).
+          </p>
+          <ul>
+            <li>Click a rail button to toggle the matching side panel.</li>
+            <li>
+              You can drag “Assets” above or below “Parameters”; drop previews only appear in the top / bottom
+              halves (half-screen left / right previews are disabled to avoid leftover grey frames).
+            </li>
+            <li>
+              The layout menu saves the expanded geometry, while collapse preferences are remembered
+              separately — a collapsed state is never written as a zero-width grey hole.
+            </li>
+          </ul>
+
+          <h3 id="ai-chat">5.5 AI chat panel</h3>
+          <p>
+            The <strong>◈ AI chat</strong> button at the bottom of the left column opens the in-app AI
+            assistant. It runs the DeepSeek Harness (dsh) agent runtime and can call the app’s built-in
+            <a href="guide-mcp.en.html">MCP tool server</a> exactly like an external agent — in other words,
+            <strong>drive generation and project operations right from the chat window</strong>.
+          </p>
+          <ul>
+            <li><strong>@-reference assets</strong>: type <code>@</code> to open an asset picker and inline
+              project images / videos / audio / 3D models into your instruction (the composer shows thumbnail
+              previews). dsh parses the <code>@path</code> references directly.</li>
+            <li><strong>Call generation tools</strong>: ask “generate a title image from @bg.png into the
+              project” — the assistant calls MCP tools like <code>generate_image</code>, and tool progress is
+              shown as live cards (running / done / failed).</li>
+            <li><strong>Model picker</strong>: at the bottom of the panel you can pick any
+              <strong>configured text model with a key</strong> (not limited to DeepSeek official); the choice
+              is remembered.</li>
+            <li><strong>Multi-session</strong>: the toolbar above the composer creates / switches / deletes
+              sessions; message history persists locally.</li>
+            <li><strong>Cancel &amp; status</strong>: you can stop a running turn; dsh status lines and tool
+              activity stream back into the panel in real time.</li>
+            <li><strong>Approval when the agent needs to go past the sandbox</strong>: a consent card appears in
+              the conversation — “This step needs your approval” — naming the tool and the reason, and offering
+              only <strong>Allow once</strong> / <strong>Reject</strong>. A grant applies to
+              <strong>that single call</strong>: the app deliberately offers no “always allow”, so one click
+              can never quietly widen what the agent may run later. When no one is available to answer (for
+              example fallback one-shot execution paths) the request <strong>fails closed</strong>: it is
+              rejected, never silently allowed.</li>
+          </ul>
+          <div class="tip">
+            <strong>Prerequisites:</strong> AI chat bundles both the Node.js runtime and the dsh runtime —
+            ready to use out of the box, no system Node.js required (only exotic environments fall back to
+            on-the-fly downloads). You do need at least one enabled text model with a key; without an open
+            project only pure conversation is available.
+          </div>
+
+          <h3 id="skills">5.6 Skills</h3>
+          <p>
+            The chat agent ships with a set of <strong>creation skills</strong> (derived from the app’s built-in
+            storyboard / director capabilities, injected automatically on each conversation); you can also add
+            your own skills in the <strong>Skills</strong> tab of the
+            <a href="#marketplace">plugin marketplace</a> to give the assistant a tailored way of working.
+          </p>
+          <ul>
+            <li><strong>Built-in skills</strong>: storyboard / animation (9-grid storyboard table, beat breakdown
+              table, motion prompt table, 4-grid motion storyboard table, …), director review (storyboard / beat /
+              motion prompts), and system creation (script, image-from-prompt, image / video generation, voice,
+              emotion, lighting, multi-angle, upscale, redraw, erase, HD enhance, UI image, UI split, world
+              extraction, beat split, beat unit generation, plan, portrait texture, prompt optimization).
+              These are managed automatically — please don’t edit them.</li>
+            <li><strong>Custom skills</strong>: in the <strong>Marketplace → Skills</strong> tab click
+              “Open folder” and drop in a <code>.md</code> file in dsh SKILL.md format (frontmatter
+              <code>name</code> / <code>description</code> + Markdown body; kebab-case filename such as
+              <code>my-skill.md</code>). It takes effect on the next conversation. “Create sample template” in
+              the same tab gives you a ready-to-use reference.</li>
+            <li><strong>How skills work</strong>: the skill catalog is injected into the conversation context as
+              <code>&lt;available_skills&gt;</code>; when the agent judges a task matches, it loads the skill
+              file on demand as instructions — the skill defines the process and conventions (how to do it),
+              while MCP tools do the actual work (generate images, run workflows).</li>
+            <li>Node-graph nodes use the same skill system to define their behavior; API run logs annotate the
+              skill used by each node.</li>
+            <li><strong>Skill bundles</strong>: installing a workflow from the
+              <a href="#marketplace">plugin marketplace</a> may bring a skill bundle with it. It is listed in the
+              marketplace’s <strong>Skills</strong> tab with its source marked as a
+              <strong>skill bundle</strong>, and it belongs to the workflow that shipped it —
+              <strong>uninstalling that workflow deletes it</strong>, so it is not something you manage on its
+              own.</li>
+          </ul>
+          <div class="tip">
+            <strong>Skills vs tools:</strong> skills are the “job manual”, tools are the “hands”. Say “use the
+            storyboard skill to split this script into a 9-grid storyboard table” — the skill provides the
+            professional workflow (beat → framing → motion → prompt) and tools execute the generation.
+          </div>
+
+          <h3 id="marketplace">5.7 Plugin marketplace</h3>
+          <p>
+            <strong>“Marketplace”</strong> sits immediately to the left of “Settings” in the top bar and opens a
+            <strong>separate window</strong> where MCP servers, skills and workflows are all installed from. It
+            is an <strong>app-level entry</strong> — no project needs to be open — and the window is a
+            <strong>singleton</strong>: clicking again only focuses the window that is already open.
+          </p>
+          <p>
+            Its tabs are <strong>All / MCP / Skills / Workflows</strong>. Every time the window opens it
+            <strong>force-refreshes</strong> the workflow catalog, so a newly published workflow shows up
+            without waiting for a cache TTL; if that refresh fails it <strong>keeps the list it last read</strong>
+            and shows a soft hint rather than an empty market. The catalog has two sources — the official primary
+            (GitHub raw) and a Gitee mirror — tried in order with automatic fallback. The top of the window says
+            how many entries were read (when it fell back it says “Primary source unreachable — switched to the
+            mirror”), and offline it says the cached catalog is being shown.
+          </p>
+          <p>
+            Want to publish your own workflow or skill bundle? See the
+            <a href="developers.en.html">plugin marketplace developer docs</a>.
+          </p>
+          <h4>Install, update and uninstall</h4>
+          <ul>
+            <li>
+              Workflow cards carry <strong>Install / Update / Reinstall / Uninstall</strong> and
+              <strong>Details</strong> right on the card; installed entries show their status, and “Update
+              available” appears when a newer version exists.
+            </li>
+            <li>
+              Uninstall goes through the app’s own confirmation dialog; once confirmed, the
+              <strong>locally installed files are removed</strong>. If the workflow shipped a skill bundle, the
+              uninstall <strong>removes that skill too</strong>.
+            </li>
+            <li>The market only installs onto this machine: use the workflow in
+              <a href="#ai-chat">AI chat</a> (below).</li>
+          </ul>
+          <h4>Entries that include a skill, and script consent</h4>
+          <ul>
+            <li>
+              A workflow may <strong>ship a skill bundle</strong>: the card shows an
+              <strong>“Includes skill”</strong> badge, or <strong>“Includes skill + scripts”</strong> when the
+              bundle also carries scripts — visible before you install.
+            </li>
+            <li>
+              Scripts in a skill bundle are <strong>code the AI agent can run on this machine</strong>, so they
+              are written only with your explicit consent: installing asks first, <strong>listing every script
+              path</strong> and stating plainly what these scripts are. Confirming writes them; cancelling
+              installs the instructions and references only — no scripts on disk, and the
+              <strong>workflow still works</strong>.
+            </li>
+            <li>That consent is asked <strong>every time</strong>: the app never remembers an “always allow”.</li>
+            <li>
+              Installed skill bundles show up in the marketplace’s <strong>Skills</strong> tab, with their source
+              marked as a <strong>skill bundle</strong>; the AI chat agent can load them directly. A bundle
+              belongs to the workflow that shipped it — <strong>uninstalling that workflow deletes it too</strong>
+              — so it is not something you manage on its own.
+            </li>
+          </ul>
+          <h4>The MCP tab</h4>
+          <ul>
+            <li>
+              The built-in <strong>MCP tool server</strong> (<code>aiartengine</code>) and the
+              <strong>Blender toolset</strong> are inspected here — see <a href="manual-setup.en.html#settings">§4.5</a> and the
+              <a href="guide-mcp.en.html">MCP setup guide</a>.
+            </li>
+            <li>
+              You can also <strong>add third-party MCP servers</strong>: for HTTP (remote) enter the service URL
+              and headers; for stdio (local command) enter the command, arguments and environment variables.
+              “Test connection” before saving shows how many tools the server exposes. stdio runs a third-party
+              program on your machine, so only add services from sources you trust.
+            </li>
+          </ul>
+          <h4>Using an installed workflow in AI chat</h4>
+          <ul>
+            <li>
+              Two entry points: the <strong>“Workflows”</strong> button in the chat composer toolbar, or by
+              typing <code>/workflow</code>.
+            </li>
+            <li>
+              Selecting a workflow inserts a <strong>reference block</strong> (a pill with icon + title) into the
+              input box — it deliberately does not paste the title / id / summary as a paragraph. Hovering shows
+              the <strong>full reference including the id</strong>.
+            </li>
+            <li>
+              On send, the agent uses the installed workflow <strong>by id</strong>
+              (<code>workflow_use_installed</code>), reproducing that exact workflow rather than re-planning
+              something similar.
+            </li>
+          </ul>
+          <div class="tip">
+            <strong>Two gates:</strong> script consent at install time decides whether code is written to disk;
+            when the agent actually needs to go past the sandbox there is a second gate — the
+            <strong>“This step needs your approval”</strong> card in the conversation, offering only “Allow once /
+            Reject”, with no “always allow” and with unanswered requests failing closed (see
+            <a href="#ai-chat">§5.5</a>).
+          </div>
+        </section>
+
+        <section id="assets">
+          <h2>6. Asset library</h2>
+          <h3>Browse and filter</h3>
+          <ul>
+            <li>Refresh next to the “Assets” title; search and type filters are supported.</li>
+            <li>The slider at the bottom switches between list view and icon view.</li>
+            <li>A breadcrumb shows the path, e.g. Assets &gt; …</li>
+            <li>
+              Marquee multi-select is supported; you can drag images / videos / audio / models /
+              <code>.aipackage</code> in from your system.
+            </li>
+            <li>
+              <strong>Multi-select files / folders dragged to another directory</strong>: left-side directory
+              rows and right-side asset cards are both <code>draggable</code>; drag a batch of files or
+              multiple folders onto a target directory at once (everything goes through the
+              <code>folder_move</code> IPC + the same on-disk rules: physical move + descendant asset.relativePath
+              rewrite + cycle detection + duplicate-name auto-append <code>" 2"</code> / <code>" 3"</code>).
+              Dragging within the same parent only rewrites <code>.folder.json</code> and doesn't move any
+              data on disk. The asset library root cannot be dragged out of.
+            </li>
+          </ul>
+
+          <h3>Right-click empty space or a folder</h3>
+          <ul>
+            <li>Create assets of any type, create a folder.</li>
+            <li><strong>Import asset package</strong> / <strong>Export asset package</strong>.</li>
+            <li>
+              Folders additionally offer: reimport, rename, delete folder (contents move up), delete folder with
+              contents.
+            </li>
+          </ul>
+
+          <h3>Right-click an asset</h3>
+          <ul>
+            <li>Open editor · reveal in file manager · copy original file.</li>
+            <li>Reimport · export asset package · rename · find references · delete.</li>
+          </ul>
+
+          <h3>Shortcuts with the asset library focused</h3>
+          <ul>
+            <li><kbd>Delete</kbd> / <kbd>Backspace</kbd>: delete the selection.</li>
+            <li><kbd>Ctrl</kbd>+<kbd>A</kbd>: select all.</li>
+            <li><kbd>Ctrl</kbd>+<kbd>C</kbd>: copy-original-file related action.</li>
+          </ul>
+        </section>
+
+      </article>
+    </div>
+
+    <footer class="foot">
+      <div class="foot-grid">
+        <div class="foot-about-col">
+          <a class="foot-brand" href="index.en.html">
+            <img src="assets/logo-mark.png" alt="" width="22" height="22" />
+            AI Art Engine
+          </a>
+          <p class="foot-about">A local-first, agent-native AI art asset engine. Projects stay on your machine; models run on your own keys.</p>
+        </div>
+        <nav class="foot-col" aria-label="Docs">
+          <h4>Docs</h4>
+          <ul>
+            <li><a href="quickstart.en.html">Quickstart</a></li>
+            <li><a href="manual.en.html">Manual</a></li>
+            <li><a href="developers.en.html">Developer docs</a></li>
+            <li><a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a></li>
+          </ul>
+        </nav>
+        <nav class="foot-col" aria-label="Guides">
+          <h4>Guides</h4>
+          <ul>
+            <li><a href="guide-short-video.en.html">Short drama</a></li>
+            <li><a href="guide-video.en.html">Video</a></li>
+            <li><a href="guide-comfyui.en.html">ComfyUI</a></li>
+            <li><a href="guide-newapi.en.html">NewAPI</a></li>
+            <li><a href="guide-mcp.en.html">MCP setup</a></li>
+            <li><a href="guide-gameplay.en.html">Playable HTML</a></li>
+          </ul>
+        </nav>
+        <nav class="foot-col" aria-label="Community">
+          <h4>Community</h4>
+          <ul>
+            <li><a href="index.en.html#download">Download</a></li>
+            <li><a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+            <li><a href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine" target="_blank" rel="noopener noreferrer">Gitee</a></li>
+            <li><a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer">bilibili</a></li>
+            <li><a href="https://github.com/Justin-sky/ai-art-engine/issues" target="_blank" rel="noopener noreferrer">Report an issue</a></li>
+          </ul>
+        </nav>
+      </div>
+      <div class="foot-bottom">
+        <span>© 2026 AI Art Engine · GPL-3.0</span>
+        <span>Docs follow the in-app UI of the latest release</span>
+      </div>
+    </footer>
+    <script>
+      document.querySelectorAll('.mobile-nav a').forEach((link) => {
+        link.addEventListener('click', () => link.closest('.mobile-menu')?.removeAttribute('open'))
+      })
+
+      // Reading progress bar
+      const progressBar = document.querySelector('.progress')
+      if (progressBar) {
+        const updateProgress = () => {
+          const doc = document.documentElement
+          const max = doc.scrollHeight - window.innerHeight
+          progressBar.style.width = (max > 0 ? (window.scrollY / max) * 100 : 0) + '%'
+        }
+        window.addEventListener('scroll', updateProgress, { passive: true })
+        window.addEventListener('resize', updateProgress)
+        updateProgress()
+      }
+
+      // Table of contents scrollspy
+      const tocLinks = Array.from(document.querySelectorAll('.toc a[href^="#"]'))
+      const spyTargets = []
+      tocLinks.forEach((link) => {
+        const id = link.getAttribute('href').slice(1)
+        const el = id ? document.getElementById(id) : null
+        if (el) spyTargets.push({ el, link })
+      })
+      if (spyTargets.length) {
+        const spy = () => {
+          const y = window.scrollY + 90
+          let current = spyTargets[0]
+          for (const target of spyTargets) {
+            if (!target.el) continue
+            const top = target.el.getBoundingClientRect().top + window.scrollY
+            if (top <= y) current = target
+          }
+          if (!current) return
+          tocLinks.forEach((link) => link.classList.toggle('active', link === current.link))
+        }
+        window.addEventListener('scroll', spy, { passive: true })
+        window.addEventListener('resize', spy)
+        spy()
+      }
+
+      // Back to top
+      const toTop = document.querySelector('.to-top')
+      if (toTop) {
+        const toggleToTop = () => {
+          toTop.hidden = window.scrollY <= 600
+        }
+        window.addEventListener('scroll', toggleToTop, { passive: true })
+        toggleToTop()
+        toTop.addEventListener('click', () => {
+          window.scrollTo({ top: 0, behavior: 'smooth' })
+        })
+      }
+
+      // Screenshot lightbox
+      const lightbox = document.querySelector('.lightbox')
+      if (lightbox) {
+        const lightboxImg = lightbox.querySelector('img')
+        const lightboxCap = lightbox.querySelector('.lightbox-cap')
+        document.querySelectorAll('.manual figure.shot img').forEach((img) => {
+          img.addEventListener('click', () => {
+            if (!lightboxImg || !lightboxCap) return
+            lightboxImg.src = img.currentSrc || img.src
+            lightboxImg.alt = img.alt
+            lightboxCap.textContent =
+              img.closest('figure')?.querySelector('figcaption')?.textContent?.trim() || img.alt
+            lightbox.hidden = false
+          })
+        })
+        lightbox.addEventListener('click', () => {
+          lightbox.hidden = true
+        })
+        document.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape' && !lightbox.hidden) lightbox.hidden = true
+        })
+      }
+
+      // Copy section link on heading click
+      const toast = document.createElement('div')
+      toast.className = 'toast'
+      toast.setAttribute('role', 'status')
+      document.body.appendChild(toast)
+      let toastTimer = 0
+      const showToast = (message) => {
+        toast.textContent = message
+        toast.classList.add('show')
+        clearTimeout(toastTimer)
+        toastTimer = setTimeout(() => toast.classList.remove('show'), 1600)
+      }
+      document
+        .querySelectorAll('.manual section[id] > h2, .manual h3[id], .manual h4[id]')
+        .forEach((heading) => {
+          const id = heading.id || heading.parentElement?.id
+          if (!id) return
+          heading.title = 'Click to copy a link to this section'
+          heading.addEventListener('click', () => {
+            if (window.getSelection()?.toString()) return
+            const url = location.origin + location.pathname + '#' + id
+            if (navigator.clipboard?.writeText) {
+              navigator.clipboard.writeText(url).then(
+                () => showToast('Section link copied'),
+                () => showToast(url)
+              )
+            } else {
+              showToast(url)
+            }
+          })
+        })
+    </script>
+    <script>
+      // 主题切换：跟随系统 → 浅色 → 深色
+      ;(function () {
+        var KEY = 'site.theme'
+        var btn = document.querySelector('.theme-toggle')
+        if (!btn) return
+        var root = document.documentElement
+        var en = (root.getAttribute('lang') || '').indexOf('en') === 0
+        var query = window.matchMedia('(prefers-color-scheme: dark)')
+        var META = {
+          auto: { icon: '◐', label: en ? 'Theme: system' : '主题：跟随系统' },
+          light: { icon: '☀', label: en ? 'Theme: light' : '主题：浅色' },
+          dark: { icon: '☾', label: en ? 'Theme: dark' : '主题：深色' }
+        }
+        function readPref() {
+          try {
+            var v = localStorage.getItem(KEY)
+            return v === 'light' || v === 'dark' || v === 'auto' ? v : 'dark'
+          } catch (e) { return 'auto' }
+        }
+        function apply() {
+          var pref = readPref()
+          root.classList.toggle('dark', pref === 'dark' || (pref !== 'light' && query.matches))
+          root.classList.toggle('light', pref === 'light')
+          var meta = META[pref]
+          btn.textContent = meta.icon
+          btn.title = meta.label + (en ? ' (click to switch)' : '（点击切换）')
+          btn.setAttribute('aria-label', meta.label)
+        }
+        query.addEventListener('change', apply)
+        btn.addEventListener('click', function () {
+          var cur = readPref()
+          var next = cur === 'dark' ? 'light' : cur === 'light' ? 'auto' : 'dark'
+          try { localStorage.setItem(KEY, next) } catch (e) {}
+          apply()
+        })
+        apply()
+      })()
+    </script>
+      <script src="site-search.js?v=20261009d" defer></script>
+    <script src="site-enhance.js?v=20261009d" defer></script>
+  </body>
+</html>

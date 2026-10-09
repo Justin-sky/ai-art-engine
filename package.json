@@ -1,7 +1,7 @@
 {
   "name": "aiartengine",
   "version": "7.3.0",
-  "description": "AIArtEngine — professional AI creation tool for short drama, ads, and film",
+  "description": "AIArtEngine — the agent-native AI art asset engine",
   "main": "./out/main/index.js",
   "author": "AIArtEngine",
   "license": "GPL-3.0-only",

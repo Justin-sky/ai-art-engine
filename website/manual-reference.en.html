@@ -1,0 +1,827 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+
+    <script>
+      // 提前应用本地主题选择，避免加载闪烁
+      ;(function () {
+        try {
+          var pref = localStorage.getItem('site.theme')
+          if (
+            pref !== 'light' &&
+            (pref === 'dark' || pref == null || (pref === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches))
+          ) {
+            document.documentElement.classList.add('dark')
+          }
+        } catch (e) {}
+      })()
+    </script>
+    <meta
+      name="description"
+      content="Importing and exporting asset packages, the full shortcut table, symptom-based troubleshooting, and release and update notes."
+    />
+    <title>Reference & troubleshooting · Manual — AIArtEngine</title>
+    <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/manual-reference.en.html" />
+    <meta property="og:site_name" content="AIArtEngine" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:title" content="Reference & troubleshooting · Manual — AIArtEngine" />
+    <meta property="og:description" content="Importing and exporting asset packages, the full shortcut table, symptom-based troubleshooting, and release and update notes." />
+    <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/manual-reference.en.html" />
+    <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Reference & troubleshooting · Manual — AIArtEngine" />
+    <meta name="twitter:description" content="Importing and exporting asset packages, the full shortcut table, symptom-based troubleshooting, and release and update notes." />
+    <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-reference.html" />
+    <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual-reference.en.html" />
+    <link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/manual-reference.html" />
+    <link rel="icon" href="assets/logo-mark.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="manual.css?v=20261009d" />
+    <link rel="stylesheet" href="site.css?v=20261009d" />
+  </head>
+  <body>
+    <a class="skip" href="#manual">Skip to content</a>
+    <div class="progress" aria-hidden="true"></div>
+    <button class="to-top" type="button" aria-label="Back to top" hidden>↑</button>
+    <div class="lightbox" hidden>
+      <img alt="" />
+      <p class="lightbox-cap"></p>
+    </div>
+
+    <header class="top">
+      <a class="brand" href="index.en.html">
+        <img src="assets/logo-mark.png" alt="" width="30" height="30" />
+        <span>AI Art Engine</span>
+      </a>
+      <nav class="nav" aria-label="Main navigation">
+        <a href="quickstart.en.html">Quickstart</a>
+        <a href="manual.en.html" aria-current="page">Manual</a>
+        <div class="nav-drop">
+          <button type="button" class="nav-drop-btn" aria-haspopup="true">
+            Guides<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+          </button>
+          <div class="nav-drop-menu">
+            <a href="guide-short-video.en.html"><strong>Short drama</strong><span>Storyboards, review, motion video</span></a>
+            <a href="guide-video.en.html"><strong>Video</strong><span>Free canvas & reference video</span></a>
+            <a href="guide-comfyui.en.html"><strong>ComfyUI</strong><span>API v2 and comfy-api-proxy</span></a>
+            <a href="guide-newapi.en.html"><strong>NewAPI</strong><span>Self-hosted relay gateways</span></a>
+            <a href="guide-mcp.en.html"><strong>MCP setup</strong><span>Drive the app from Claude Code / Codex</span></a>
+            <a href="guide-gameplay.en.html"><strong>Playable HTML</strong><span>Interactive gameplay prototypes</span></a>
+            <a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer"><strong>Video tutorials</strong><span>Walkthroughs on bilibili</span></a>
+          </div>
+        </div>
+        <a href="developers.en.html">Developers</a>
+        <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a>
+        <a href="index.en.html#download">Download</a>
+        <a class="nav-src" href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.070 3.633 17.700 3.633 17.700c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.070 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.760-1.605-2.665-.3-5.466-1.332-5.466-5.930 0-1.310.465-2.380 1.235-3.220-.135-.303-.540-1.523.105-3.176 0 0 1.005-.322 3.300 1.230.960-.267 1.980-.399 3.000-.405 1.020.006 2.040.138 3.000.405 2.280-1.552 3.285-1.230 3.285-1.230.645 1.653.240 2.873.120 3.176.765.840 1.230 1.910 1.230 3.220 0 4.610-2.805 5.625-5.475 5.920.420.360.810 1.096.810 2.220 0 1.606-.015 2.896-.015 3.286 0 .315.210.690.825.570C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" /></svg>GitHub</a>
+      </nav>
+      <a class="nav-lang" href="manual-reference.html" hreflang="zh-CN" lang="zh-CN">中文</a>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme">◐</button>
+      <details class="mobile-menu">
+        <summary aria-label="Open navigation menu"><span aria-hidden="true">☰</span> Menu</summary>
+        <nav class="mobile-nav" aria-label="Mobile navigation">
+          <p class="mobile-group">Docs</p>
+          <a href="index.en.html">Home</a>
+          <a href="quickstart.en.html">Quickstart</a>
+          <a href="manual.en.html" aria-current="page">Manual</a>
+          <a href="developers.en.html">Developer docs</a>
+          <p class="mobile-group">Guides</p>
+          <a href="guide-short-video.en.html">Short drama</a>
+          <a href="guide-video.en.html">Video</a>
+          <a href="guide-comfyui.en.html">ComfyUI</a>
+          <a href="guide-newapi.en.html">NewAPI</a>
+          <a href="guide-mcp.en.html">MCP setup</a>
+          <a href="guide-gameplay.en.html">Playable HTML</a>
+          <p class="mobile-group">Community</p>
+          <a href="index.en.html#download">Download</a>
+          <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a>
+          <a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer">bilibili</a>
+          <a href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine" target="_blank" rel="noopener noreferrer">Gitee</a>
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a>
+        </nav>
+      </details>
+    </header>
+
+    <div class="manual-shell">
+      <aside class="toc" aria-label="Table of contents">
+        <h2>Table of contents</h2>
+        <ol>
+          <li class="toc-group">Reference</li>
+          <li><a href="#package">13. Asset packages .aipackage</a></li>
+          <li><a href="#shortcuts">14. Shortcuts</a></li>
+          <li><a href="#troubleshooting">15. Troubleshooting</a></li>
+          <li><a href="#update">16. About &amp; updates</a></li>
+
+          <li class="toc-group">Manual chapters</li>
+          <li><a href="manual.en.html">Overview & core concepts</a></li>
+          <li><a href="manual-setup.en.html">Projects & settings</a></li>
+          <li><a href="manual-workspace.en.html">Workspace & asset library</a></li>
+          <li><a href="manual-workflow.en.html">One-Click Workflow & node graph</a></li>
+          <li><a href="manual-production.en.html">Script, timeline & director stage</a></li>
+        </ol>
+      </aside>
+
+      <article class="manual" id="manual">
+        <header class="manual-hero">
+          <p class="eyebrow">Manual · Reference</p>
+          <h1>Reference & troubleshooting</h1>
+          <p class="lede">
+            Importing and exporting asset packages, the full shortcut table, symptom-based troubleshooting, and release and update notes.
+          </p>
+        </header>
+
+        <section id="package">
+          <h2>13. Asset packages <code>.aipackage</code></h2>
+          <p>
+            The format identifier is <code>com.aiartengine.asset-package</code>; packages move media and their
+            dependencies between projects.
+          </p>
+
+          <h3>Export</h3>
+          <ol>
+            <li>Select assets, or enter the target folder.</li>
+            <li>Right-click and choose “Export asset package”.</li>
+            <li>
+              Tick the folders / assets in the dialog; optionally enable “Include dependencies” → “Export”.
+            </li>
+          </ol>
+
+          <h3>Import</h3>
+          <ol>
+            <li>
+              Right-click empty space or the root of the asset library and choose “Import asset package”, or
+              drag a <code>.aipackage</code> file straight in.
+            </li>
+            <li>Tick the entries to import (one package at a time) → “Import”.</li>
+            <li>
+              Entries support reuse and remapping; script assets can carry shot / generation result data.
+            </li>
+          </ol>
+        </section>
+
+        <section id="shortcuts">
+          <h2>14. Shortcuts</h2>
+          <div class="table-scroll" role="region" aria-label="Shortcuts" tabindex="0">
+            <table>
+            <thead>
+              <tr>
+                <th>Scope</th>
+                <th>Shortcut</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Global editing</td>
+                <td><kbd>Ctrl</kbd>+<kbd>S</kbd></td>
+                <td>Save (a draft prompts “Save asset” first)</td>
+              </tr>
+              <tr>
+                <td>Global</td>
+                <td>
+                  <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> (or
+                  <kbd>Ctrl</kbd>+<kbd>Y</kbd>)
+                </td>
+                <td>Undo / redo</td>
+              </tr>
+              <tr>
+                <td>Node graph</td>
+                <td>Hold <kbd>C</kbd></td>
+                <td>Execution ring</td>
+              </tr>
+              <tr>
+                <td>Node graph</td>
+                <td><kbd>Space</kbd></td>
+                <td>Open the menu / hold to pan (context dependent)</td>
+              </tr>
+              <tr>
+                <td>Node graph</td>
+                <td><kbd>Delete</kbd> / <kbd>Backspace</kbd></td>
+                <td>Delete a node or link</td>
+              </tr>
+              <tr>
+                <td>Node graph</td>
+                <td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd> / <kbd>U</kbd></td>
+                <td>Group / ungroup</td>
+              </tr>
+              <tr>
+                <td>Asset library</td>
+                <td> <kbd>Delete</kbd> · <kbd>Ctrl</kbd>+<kbd>A</kbd> · <kbd>Ctrl</kbd>+<kbd>C</kbd> </td>
+                <td>Delete · select all · copy-related</td>
+              </tr>
+              <tr>
+                <td>Node graph</td>
+                <td><kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>V</kbd> / <kbd>A</kbd></td>
+                <td>Copy / paste / select all nodes</td>
+              </tr>
+              <tr>
+                <td>Director stage</td>
+                <td><kbd>Q</kbd> / <kbd>R</kbd> / <kbd>S</kbd></td>
+                <td>Move / rotate / scale</td>
+              </tr>
+              <tr>
+                <td>Director stage</td>
+                <td>
+                  <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> (or
+                  <kbd>Ctrl</kbd>+<kbd>Y</kbd>) · <kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>V</kbd>
+                </td>
+                <td>Stage undo / redo · copy / paste selected objects</td>
+              </tr>
+              <tr>
+                <td>Director stage</td>
+                <td> <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>F</kbd> · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd> </td>
+                <td>Move to view · align with view</td>
+              </tr>
+              <tr>
+                <td>Director stage fly</td>
+                <td><kbd>W</kbd>/<kbd>A</kbd>/<kbd>S</kbd>/<kbd>D</kbd> · <kbd>Q</kbd>/<kbd>E</kbd> · <kbd>Shift</kbd></td>
+                <td>While holding the right button: move · descend / ascend · accelerate</td>
+              </tr>
+              <tr>
+                <td>Final timeline</td>
+                <td>
+                  <kbd>Space</kbd> · <kbd>Delete</kbd> ·
+                  <kbd>Ctrl</kbd>+<kbd>A</kbd> / <kbd>Z</kbd> / <kbd>Y</kbd> / <kbd>C</kbd> / <kbd>V</kbd>
+                </td>
+                <td>Play / pause · delete clips · select all / undo / redo / copy / paste</td>
+              </tr>
+              <tr>
+                <td>Director stage animation</td>
+                <td><kbd>K</kbd> · <kbd>Delete</kbd> · <kbd>Space</kbd></td>
+                <td>Keyframe · delete keyframe · play / pause</td>
+              </tr>
+              <tr>
+                <td>Dialogs</td>
+                <td><kbd>Esc</kbd></td>
+                <td>Close common popups</td>
+              </tr>
+            </tbody>
+            </table>
+          </div>
+          <div class="tip">
+            On macOS read <kbd>Ctrl</kbd> as <kbd>⌘ Command</kbd> (except where system conventions differ). The
+            settings panel special-cases Delete / Backspace so you don't close settings or delete model list
+            items by accident.
+          </div>
+        </section>
+
+        <section id="troubleshooting">
+          <h2>15. Troubleshooting</h2>
+          <p>
+            Find your symptom below — entries are ordered by <strong>how often they happen</strong>, and the
+            vast majority of issues are solved within the first three. If you're still stuck, reach out in QQ
+            group <strong>647306826</strong>, by email at
+            <a href="mailto:284139554@qq.com">284139554@qq.com</a>, or on
+            <a
+              href="https://github.com/Justin-sky/ai-art-engine/issues"
+              target="_blank"
+              rel="noopener noreferrer"
+              >GitHub Issues</a
+            >
+            (attaching the run log gets you an answer much faster).
+          </p>
+
+          <details class="trouble">
+            <summary>“Insufficient balance”, or everything fails as soon as it runs</summary>
+            <div class="trouble-body">
+              <p>
+                Generation calls <strong>the model provider you configured yourself</strong>, and the provider
+                bills you for it. This app never collects payment on its behalf, so errors like this almost
+                always come from the provider account.
+              </p>
+              <p><strong>What to check, in order:</strong></p>
+              <ol>
+                <li>
+                  Sign in to the provider console and confirm the <strong>balance or remaining quota</strong>
+                  is sufficient (an exhausted free tier fails just the same).
+                </li>
+                <li>
+                  Settings → Models: confirm the key is correct, not expired and not revoked.
+                </li>
+                <li>
+                  Confirm the models you need are <strong>ticked and enabled</strong>, and that default text /
+                  image / video models are each set.
+                </li>
+                <li>
+                  Run the same node with a different model — that separates “an account problem” from “a
+                  single-model problem”.
+                </li>
+              </ol>
+            </div>
+          </details>
+
+          <details class="trouble">
+            <summary>Invalid key, 401 / 403, or the model list won't load</summary>
+            <div class="trouble-body">
+              <ol>
+                <li>
+                  Check for stray spaces or line breaks around the key; copying and pasting it again usually
+                  fixes it.
+                </li>
+                <li>
+                  Confirm the key has <strong>permission for the model in question</strong> on the provider
+                  side — some models require a separate application.
+                </li>
+                <li>
+                  If you use a proxy or relay service, make sure the relay address is complete (including the
+                  <code>/v1</code> path and similar).
+                </li>
+                <li>
+                  On a restricted network, configure a proxy in settings and retry; HTTPS interception on
+                  corporate networks also breaks fetching.
+                </li>
+              </ol>
+            </div>
+          </details>
+
+          <details class="trouble">
+            <summary>Links won't connect: “port type mismatch”</summary>
+            <div class="trouble-body">
+              <p>
+                Ports <strong>strictly distinguish singular from plural</strong>: mismatched types never
+                connect, and <strong>singular can't go into plural</strong> —
+                <code>image</code> won't go into <code>images</code>, and the same goes for
+                <code>video</code> / <code>voice</code> / <code>text</code>.
+              </p>
+              <p><strong>Common fixes:</strong></p>
+              <ol>
+                <li>
+                  When a node needs a list input (e.g. “Select image / video / audio / text”), connect from
+                  the upstream <strong>square port</strong> (<code>out-all</code>, or
+                  <code>out-shots</code> / <code>out-actions</code> on the director stage); the default round
+                  <code>out</code> won't connect.
+                </li>
+                <li>
+                  Structured directory ports use <code>world</code> / <code>worldEntities</code> /
+                  <code>beat</code> (world elements / world element entities / shot) and
+                  <strong>must not be mixed with plain <code>text</code></strong>.
+                </li>
+                <li>
+                  A script node's <code>text</code> also can't go straight into “Select text” — use the
+                  matching list port.
+                </li>
+              </ol>
+              <p>See <a href="manual-workflow.en.html#graph">§8 Node graph</a>.</p>
+            </div>
+          </details>
+
+          <details class="trouble">
+            <summary>A node finished but produced nothing, or tasks stay queued</summary>
+            <div class="trouble-body">
+              <ol>
+                <li>
+                  Open the node's <strong>run log</strong> and read the actual error (most of the time the
+                  model returned an error or a parameter was invalid).
+                </li>
+                <li>
+                  Confirm <strong>upstream nodes ran successfully</strong>: if upstream never finished,
+                  downstream has no input.
+                </li>
+                <li>
+                  Check whether the task queue is saturated by another long job; pause or cancel queued tasks.
+                </li>
+                <li>
+                  Gallery generation nodes have two outputs, <code>out</code> (currently selected) and
+                  <code>out-all</code> (whole history). If you wired <code>out</code>, check in the Inspector
+                  that the item you expect is selected.
+                </li>
+              </ol>
+            </div>
+          </details>
+
+          <details class="trouble">
+            <summary>Characters “change faces”, or storyboards don't match</summary>
+            <div class="trouble-body">
+              <p>
+                This is the classic trap of pure text-to-image. Solve it with
+                <strong>references rather than repeating descriptions</strong>:
+              </p>
+              <ol>
+                <li>
+                  Use <strong>anchor images</strong>: split reference images out of a 9-grid / 4-grid sheet
+                  cell by cell, then feed them in as references for later generations to lock face, outfit and
+                  setting.
+                </li>
+                <li>
+                  Register characters, scenes and props as <strong>world elements</strong> so every shot
+                  shares one description instead of re-describing them each time.
+                </li>
+                <li>
+                  Check whether a node in the middle <strong>switched models or heavily rewrote the
+                  prompt</strong> — style drift usually comes from there.
+                </li>
+                <li>
+                  In the short-drama flow, make good use of the <strong>review1~review4</strong> review nodes
+                  to send sub-par results back in time.
+                </li>
+              </ol>
+              <p>
+                See <a href="manual.en.html#concepts">§2 Core concepts</a> and the
+                <a href="guide-short-video.en.html">Short-Drama Guide</a>.
+              </p>
+            </div>
+          </details>
+
+          <details class="trouble">
+            <summary>Images look soft, or the resolution is too low</summary>
+            <div class="trouble-body">
+              <ol>
+                <li>
+                  Append an <strong>HD upscale</strong> node at the end of the generation chain; the
+                  short-drama template already includes that step.
+                </li>
+                <li>
+                  Check the resolution setting on the generation node — some models need an explicit size.
+                </li>
+                <li>
+                  Avoid over-compression: watch the scale factor and export format when exporting.
+                </li>
+              </ol>
+            </div>
+          </details>
+
+          <details class="trouble">
+            <summary>Video doesn't move, the length is wrong, or a reference video is ignored</summary>
+            <div class="trouble-body">
+              <ol>
+                <li>
+                  Confirm the <strong>motion prompt</strong> is filled in properly; a static description
+                  produces an almost static shot.
+                </li>
+                <li>
+                  Confirm the chosen video model supports the target duration and resolution.
+                </li>
+                <li>
+                  Reference videos need a <strong>publicly reachable URL</strong>: configure object storage
+                  (TOS / OSS / COS, <strong>only one enabled at a time</strong>). You can skip it for purely
+                  local previews, but reference-video features will be limited.
+                </li>
+                <li>See the <a href="guide-video.en.html">Video Tutorials</a>.</li>
+              </ol>
+            </div>
+          </details>
+
+          <details class="trouble">
+            <summary>Object storage won't configure, or video URLs won't open</summary>
+            <div class="trouble-body">
+              <ol>
+                <li>
+                  <strong>Only one</strong> object storage can be enabled at a time (Volcengine TOS /
+                  Alibaba Cloud OSS / Tencent Cloud COS) — disable the old one before enabling a new one.
+                </li>
+                <li>
+                  Check that the bucket permission is <strong>public read</strong>; links generated for a
+                  private bucket can't be opened from outside.
+                </li>
+                <li>
+                  Verify the AccessKey has read / write permission on that bucket and that the region is
+                  correct.
+                </li>
+                <li>
+                  Make sure a reachable public domain is filled in (CDN domains need to be ICP-filed).
+                </li>
+              </ol>
+            </div>
+          </details>
+
+          <details class="trouble">
+            <summary>ComfyUI won't connect, or reports a workflow format error</summary>
+            <div class="trouble-body">
+              <ol>
+                <li>
+                  Confirm <strong>comfy-api-proxy is running</strong> locally and that the port matches the
+                  one configured in the app.
+                </li>
+                <li>Confirm ComfyUI itself is running and reachable.</li>
+                <li>
+                  You must use an <strong>API-format</strong> workflow (enable Dev Mode in ComfyUI and export
+                  with “Save (API Format)”); the UI format (which contains
+                  <code>nodes</code> / <code>links</code> arrays) won't work.
+                </li>
+                <li>See the <a href="guide-comfyui.en.html">ComfyUI guide</a>.</li>
+              </ol>
+            </div>
+          </details>
+
+          <details class="trouble">
+            <summary>Fails to start, blank screen, or update fails</summary>
+            <div class="trouble-body">
+              <ol>
+                <li>
+                  Confirm the installer matches your system architecture (on macOS, Intel vs Apple silicon).
+                </li>
+                <li>
+                  If the first launch is blocked by system security policy, allow the app to run in System
+                  Settings.
+                </li>
+                <li>
+                  If an update fails, re-check under Settings → General → <strong>About &amp; updates</strong>,
+                  or download the release manually and install over it.
+                </li>
+                <li>
+                  If it still misbehaves, back up your project directory, reset the configuration and retry —
+                  and remember to attach logs and your OS version when reporting.
+                </li>
+              </ol>
+            </div>
+          </details>
+
+          <details class="trouble">
+            <summary>How do I let Claude Code and other AI assistants operate the app? (Install MCP)</summary>
+            <div class="trouble-body">
+              <p>
+                The app ships with an MCP tool service. Once connected, Claude Code and other AI agents can
+                <strong>plan workflows, edit node graphs, run generations and query tasks</strong> from a chat.
+                The app must be running first. Pick either of the two methods:
+              </p>
+              <ol>
+                <li>
+                  <strong>stdio bridge (recommended, needs Node.js 18+)</strong>: run
+                  <code>claude mcp add aiartengine -- node &lt;install-dir&gt;/resources/mcp-bridge.mjs</code>.
+                </li>
+                <li>
+                  <strong>HTTP direct (no Node.js needed)</strong>: open Settings → MCP and copy the
+                  “Claude Code connection command”, or run it manually as
+                  <code>claude mcp add --transport http aiartengine &lt;endpoint&gt; --header "Authorization: Bearer &lt;token&gt;"</code>
+                  (endpoint and token live in the app-side mcp.json and persist across restarts).
+                </li>
+              </ol>
+              <p>
+                After registering, <strong>restart the agent session</strong> for the tools to appear. The app-side
+                mcp.json (<code>%APPDATA%/aiartengine/mcp.json</code>) is maintained by the app — do
+                <strong>not edit it by hand</strong>. If the register command errors (e.g.
+                <code>Script not found</code>), your Claude Code install is usually broken — reinstall and retry.
+                Full steps and the tool list: <a href="guide-mcp.en.html">MCP guide</a>.
+              </p>
+            </div>
+          </details>
+
+          <details class="trouble">
+            <summary>AI chat panel errors / model unavailable / spinner never ends</summary>
+            <div class="trouble-body">
+              <ol>
+                <li>
+                  <strong>Model unavailable (HTTP_404 etc.)</strong>: the chat panel uses the text model selected
+                  in the model dropdown — the model ID must match a name <strong>that actually exists at the
+                  chosen provider</strong>; switch to a model enabled on your provider account or to another
+                  provider whose key you've configured.
+                </li>
+                <li><strong>No model selected / none available</strong>: first enable at least one text model with
+                  its key under Settings → Models.</li>
+                <li><strong>Spinner never ends</strong>: make sure Node.js ≥ 22.19 on this machine (installers
+                  bundle the runtime); watch the panel status line and logs.</li>
+                <li><strong>Tool execution failed</strong>: check the error on the tool card — usually the project
+                  isn't open or the API key ran out of quota.</li>
+              </ol>
+            </div>
+          </details>
+
+          <div class="tip">
+            When diagnosing, <strong>run the same node with a different model</strong> — it's the fastest way
+            to tell “an app problem” from “a model / account problem”.
+          </div>
+        </section>
+
+        <section id="update">
+          <h2>16. About &amp; updates</h2>
+          <p>Path: Settings → General → About &amp; updates.</p>
+          <ul>
+            <li>
+              <strong>Current version</strong>: shown as <code>v{version}</code> (pre-releases such as
+              <code>4.1.0-beta.1</code> are flagged as prerelease).
+            </li>
+            <li>
+              <strong>Check for updates</strong>: queries GitHub Releases; in dev mode it reports that updates
+              aren't checked.
+            </li>
+            <li>
+              States include: checking, new version found and downloading, already up to date, download
+              progress, failure.
+            </li>
+            <li>When the download finishes you can click <strong>Restart and install</strong>.</li>
+            <li>
+              <strong>Changelog</strong>: the full version history lives in
+              <a
+                href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md"
+                target="_blank"
+                rel="noopener noreferrer"
+                >CHANGELOG</a
+              >.
+            </li>
+          </ul>
+        </section>
+
+      </article>
+    </div>
+
+    <footer class="foot">
+      <div class="foot-grid">
+        <div class="foot-about-col">
+          <a class="foot-brand" href="index.en.html">
+            <img src="assets/logo-mark.png" alt="" width="22" height="22" />
+            AI Art Engine
+          </a>
+          <p class="foot-about">A local-first, agent-native AI art asset engine. Projects stay on your machine; models run on your own keys.</p>
+        </div>
+        <nav class="foot-col" aria-label="Docs">
+          <h4>Docs</h4>
+          <ul>
+            <li><a href="quickstart.en.html">Quickstart</a></li>
+            <li><a href="manual.en.html">Manual</a></li>
+            <li><a href="developers.en.html">Developer docs</a></li>
+            <li><a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a></li>
+          </ul>
+        </nav>
+        <nav class="foot-col" aria-label="Guides">
+          <h4>Guides</h4>
+          <ul>
+            <li><a href="guide-short-video.en.html">Short drama</a></li>
+            <li><a href="guide-video.en.html">Video</a></li>
+            <li><a href="guide-comfyui.en.html">ComfyUI</a></li>
+            <li><a href="guide-newapi.en.html">NewAPI</a></li>
+            <li><a href="guide-mcp.en.html">MCP setup</a></li>
+            <li><a href="guide-gameplay.en.html">Playable HTML</a></li>
+          </ul>
+        </nav>
+        <nav class="foot-col" aria-label="Community">
+          <h4>Community</h4>
+          <ul>
+            <li><a href="index.en.html#download">Download</a></li>
+            <li><a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+            <li><a href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine" target="_blank" rel="noopener noreferrer">Gitee</a></li>
+            <li><a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer">bilibili</a></li>
+            <li><a href="https://github.com/Justin-sky/ai-art-engine/issues" target="_blank" rel="noopener noreferrer">Report an issue</a></li>
+          </ul>
+        </nav>
+      </div>
+      <div class="foot-bottom">
+        <span>© 2026 AI Art Engine · GPL-3.0</span>
+        <span>Docs follow the in-app UI of the latest release</span>
+      </div>
+    </footer>
+    <script>
+      document.querySelectorAll('.mobile-nav a').forEach((link) => {
+        link.addEventListener('click', () => link.closest('.mobile-menu')?.removeAttribute('open'))
+      })
+
+      // Reading progress bar
+      const progressBar = document.querySelector('.progress')
+      if (progressBar) {
+        const updateProgress = () => {
+          const doc = document.documentElement
+          const max = doc.scrollHeight - window.innerHeight
+          progressBar.style.width = (max > 0 ? (window.scrollY / max) * 100 : 0) + '%'
+        }
+        window.addEventListener('scroll', updateProgress, { passive: true })
+        window.addEventListener('resize', updateProgress)
+        updateProgress()
+      }
+
+      // Table of contents scrollspy
+      const tocLinks = Array.from(document.querySelectorAll('.toc a[href^="#"]'))
+      const spyTargets = []
+      tocLinks.forEach((link) => {
+        const id = link.getAttribute('href').slice(1)
+        const el = id ? document.getElementById(id) : null
+        if (el) spyTargets.push({ el, link })
+      })
+      if (spyTargets.length) {
+        const spy = () => {
+          const y = window.scrollY + 90
+          let current = spyTargets[0]
+          for (const target of spyTargets) {
+            if (!target.el) continue
+            const top = target.el.getBoundingClientRect().top + window.scrollY
+            if (top <= y) current = target
+          }
+          if (!current) return
+          tocLinks.forEach((link) => link.classList.toggle('active', link === current.link))
+        }
+        window.addEventListener('scroll', spy, { passive: true })
+        window.addEventListener('resize', spy)
+        spy()
+      }
+
+      // Back to top
+      const toTop = document.querySelector('.to-top')
+      if (toTop) {
+        const toggleToTop = () => {
+          toTop.hidden = window.scrollY <= 600
+        }
+        window.addEventListener('scroll', toggleToTop, { passive: true })
+        toggleToTop()
+        toTop.addEventListener('click', () => {
+          window.scrollTo({ top: 0, behavior: 'smooth' })
+        })
+      }
+
+      // Screenshot lightbox
+      const lightbox = document.querySelector('.lightbox')
+      if (lightbox) {
+        const lightboxImg = lightbox.querySelector('img')
+        const lightboxCap = lightbox.querySelector('.lightbox-cap')
+        document.querySelectorAll('.manual figure.shot img').forEach((img) => {
+          img.addEventListener('click', () => {
+            if (!lightboxImg || !lightboxCap) return
+            lightboxImg.src = img.currentSrc || img.src
+            lightboxImg.alt = img.alt
+            lightboxCap.textContent =
+              img.closest('figure')?.querySelector('figcaption')?.textContent?.trim() || img.alt
+            lightbox.hidden = false
+          })
+        })
+        lightbox.addEventListener('click', () => {
+          lightbox.hidden = true
+        })
+        document.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape' && !lightbox.hidden) lightbox.hidden = true
+        })
+      }
+
+      // Copy section link on heading click
+      const toast = document.createElement('div')
+      toast.className = 'toast'
+      toast.setAttribute('role', 'status')
+      document.body.appendChild(toast)
+      let toastTimer = 0
+      const showToast = (message) => {
+        toast.textContent = message
+        toast.classList.add('show')
+        clearTimeout(toastTimer)
+        toastTimer = setTimeout(() => toast.classList.remove('show'), 1600)
+      }
+      document
+        .querySelectorAll('.manual section[id] > h2, .manual h3[id], .manual h4[id]')
+        .forEach((heading) => {
+          const id = heading.id || heading.parentElement?.id
+          if (!id) return
+          heading.title = 'Click to copy a link to this section'
+          heading.addEventListener('click', () => {
+            if (window.getSelection()?.toString()) return
+            const url = location.origin + location.pathname + '#' + id
+            if (navigator.clipboard?.writeText) {
+              navigator.clipboard.writeText(url).then(
+                () => showToast('Section link copied'),
+                () => showToast(url)
+              )
+            } else {
+              showToast(url)
+            }
+          })
+        })
+    </script>
+    <script>
+      // 主题切换：跟随系统 → 浅色 → 深色
+      ;(function () {
+        var KEY = 'site.theme'
+        var btn = document.querySelector('.theme-toggle')
+        if (!btn) return
+        var root = document.documentElement
+        var en = (root.getAttribute('lang') || '').indexOf('en') === 0
+        var query = window.matchMedia('(prefers-color-scheme: dark)')
+        var META = {
+          auto: { icon: '◐', label: en ? 'Theme: system' : '主题：跟随系统' },
+          light: { icon: '☀', label: en ? 'Theme: light' : '主题：浅色' },
+          dark: { icon: '☾', label: en ? 'Theme: dark' : '主题：深色' }
+        }
+        function readPref() {
+          try {
+            var v = localStorage.getItem(KEY)
+            return v === 'light' || v === 'dark' || v === 'auto' ? v : 'dark'
+          } catch (e) { return 'auto' }
+        }
+        function apply() {
+          var pref = readPref()
+          root.classList.toggle('dark', pref === 'dark' || (pref !== 'light' && query.matches))
+          root.classList.toggle('light', pref === 'light')
+          var meta = META[pref]
+          btn.textContent = meta.icon
+          btn.title = meta.label + (en ? ' (click to switch)' : '（点击切换）')
+          btn.setAttribute('aria-label', meta.label)
+        }
+        query.addEventListener('change', apply)
+        btn.addEventListener('click', function () {
+          var cur = readPref()
+          var next = cur === 'dark' ? 'light' : cur === 'light' ? 'auto' : 'dark'
+          try { localStorage.setItem(KEY, next) } catch (e) {}
+          apply()
+        })
+        apply()
+      })()
+    </script>
+      <script src="site-search.js?v=20261009d" defer></script>
+    <script src="site-enhance.js?v=20261009d" defer></script>
+  </body>
+</html>

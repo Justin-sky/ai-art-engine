@@ -1,0 +1,643 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      // 提前应用本地主题选择，避免加载闪烁
+      ;(function () {
+        try {
+          var pref = localStorage.getItem('site.theme')
+          if (
+            pref !== 'light' &&
+            (pref === 'dark' ||
+              pref == null ||
+              (pref === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches))
+          ) {
+            document.documentElement.classList.add('dark')
+          }
+        } catch (e) {}
+      })()
+    </script>
+    <meta
+      name="description"
+      content="剧本与场资产，成片时间线的上轨编排、字幕与导出，画布与世界元素，以及 3D 导演台的站位、动画录制与高斯泼溅。"
+    />
+    <title>剧本、成片与导演台 · 使用手册 — AIArtEngine</title>
+    <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/manual-production.html" />
+    <meta property="og:site_name" content="AIArtEngine" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="zh_CN" />
+    <meta property="og:title" content="剧本、成片与导演台 · 使用手册 — AIArtEngine" />
+    <meta property="og:description" content="剧本与场资产，成片时间线的上轨编排、字幕与导出，画布与世界元素，以及 3D 导演台的站位、动画录制与高斯泼溅。" />
+    <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/manual-production.html" />
+    <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="剧本、成片与导演台 · 使用手册 — AIArtEngine" />
+    <meta name="twitter:description" content="剧本与场资产，成片时间线的上轨编排、字幕与导出，画布与世界元素，以及 3D 导演台的站位、动画录制与高斯泼溅。" />
+    <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-production.html" />
+    <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual-production.en.html" />
+    <link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/manual-production.html" />
+    <link rel="icon" href="assets/logo-mark.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="manual.css?v=20261009d" />
+    <link rel="stylesheet" href="site.css?v=20261009d" />
+  </head>
+  <body>
+    <a class="skip" href="#manual">跳到手册正文</a>
+    <div class="progress" aria-hidden="true"></div>
+    <button class="to-top" type="button" aria-label="返回顶部" hidden>↑</button>
+    <div class="lightbox" hidden>
+      <img alt="" />
+      <p class="lightbox-cap"></p>
+    </div>
+
+    <header class="top">
+      <a class="brand" href="index.html">
+        <img src="assets/logo-mark.png" alt="" width="30" height="30" />
+        <span>AI Art Engine</span>
+      </a>
+      <nav class="nav" aria-label="主导航">
+        <a href="quickstart.html">快速上手</a>
+        <a href="manual.html" aria-current="page">使用手册</a>
+        <div class="nav-drop">
+          <button type="button" class="nav-drop-btn" aria-haspopup="true">
+            教程<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+          </button>
+          <div class="nav-drop-menu">
+            <a href="guide-short-video.html"><strong>短剧教程</strong><span>分镜 · 拼图 · 审核 · 动态视频</span></a>
+            <a href="guide-video.html"><strong>视频教程</strong><span>自由画布与参考视频</span></a>
+            <a href="guide-comfyui.html"><strong>ComfyUI 教程</strong><span>API 2 与 comfy-api-proxy</span></a>
+            <a href="guide-newapi.html"><strong>NewAPI 教程</strong><span>自建中转网关接入</span></a>
+            <a href="guide-mcp.html"><strong>MCP 接入</strong><span>Claude Code / Codex 驱动应用</span></a>
+            <a href="guide-gameplay.html"><strong>可玩 HTML</strong><span>生成可交互的玩法原型</span></a>
+            <a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer"><strong>B 站视频教程</strong><span>视频演示与更新解读</span></a>
+          </div>
+        </div>
+        <a href="developers.html">开发者</a>
+        <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">更新日志</a>
+        <a href="index.html#download">下载</a>
+        <a class="nav-src" href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.070 3.633 17.700 3.633 17.700c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.070 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.760-1.605-2.665-.3-5.466-1.332-5.466-5.930 0-1.310.465-2.380 1.235-3.220-.135-.303-.540-1.523.105-3.176 0 0 1.005-.322 3.300 1.230.960-.267 1.980-.399 3.000-.405 1.020.006 2.040.138 3.000.405 2.280-1.552 3.285-1.230 3.285-1.230.645 1.653.240 2.873.120 3.176.765.840 1.230 1.910 1.230 3.220 0 4.610-2.805 5.625-5.475 5.920.420.360.810 1.096.810 2.220 0 1.606-.015 2.896-.015 3.286 0 .315.210.690.825.570C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" /></svg>GitHub</a>
+      </nav>
+      <a class="nav-lang" href="manual-production.en.html" hreflang="en" lang="en">EN</a>
+      <button class="theme-toggle" type="button" aria-label="切换主题">◐</button>
+      <details class="mobile-menu">
+        <summary aria-label="打开导航菜单"><span aria-hidden="true">☰</span> 菜单</summary>
+        <nav class="mobile-nav" aria-label="移动端导航">
+          <p class="mobile-group">文档</p>
+          <a href="index.html">首页</a>
+          <a href="quickstart.html">快速上手</a>
+          <a href="manual.html" aria-current="page">使用手册</a>
+          <a href="developers.html">开发者文档</a>
+          <p class="mobile-group">专题教程</p>
+          <a href="guide-short-video.html">短剧教程</a>
+          <a href="guide-video.html">视频教程</a>
+          <a href="guide-comfyui.html">ComfyUI 教程</a>
+          <a href="guide-newapi.html">NewAPI 教程</a>
+          <a href="guide-mcp.html">MCP 接入</a>
+          <a href="guide-gameplay.html">可玩 HTML</a>
+          <p class="mobile-group">社区</p>
+          <a href="index.html#download">下载</a>
+          <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">更新日志</a>
+          <a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer">bilibili</a>
+          <a href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine" target="_blank" rel="noopener noreferrer">Gitee</a>
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a>
+        </nav>
+      </details>
+    </header>
+
+    <div class="manual-shell">
+      <aside class="toc" aria-label="目录">
+        <h2>目录</h2>
+        <ol>
+          <li class="toc-group">核心能力</li>
+          <li><a href="#script-beat">9. 剧本与场</a></li>
+          <li><a href="#timeline">10. 成片时间线</a></li>
+          <li><a href="#canvas">11. 画布与世界元素</a></li>
+          <li><a href="#director">12. 导演台</a></li>
+
+          <li class="toc-group">手册章节</li>
+          <li><a href="manual.html">概述与核心概念</a></li>
+          <li><a href="manual-setup.html">工程与设置</a></li>
+          <li><a href="manual-workspace.html">工作区与资产库</a></li>
+          <li><a href="manual-workflow.html">一键工作流与节点图</a></li>
+          <li><a href="manual-reference.html">参考与故障排查</a></li>
+        </ol>
+      </aside>
+
+      <article class="manual" id="manual">
+        <header class="manual-hero">
+          <p class="eyebrow">Manual · Production</p>
+          <h1>剧本、成片与导演台</h1>
+          <p class="lede">
+            剧本与场资产，成片时间线的上轨编排、字幕与导出，画布与世界元素，以及 3D 导演台的站位、动画录制与高斯泼溅。
+          </p>
+        </header>
+
+        <section id="script-beat">
+          <h2>9. 剧本与场</h2>
+
+          <h3>9.1 剧本资产</h3>
+          <p>
+            通过节点图生成与编辑剧本内容。将结果连到「剧本输出」，并在参数面板选择合适的文本模型与指令。
+            可将剧本资产拖入其他图中作为上游。
+          </p>
+
+          <h3>9.2 场资产</h3>
+          <ul>
+            <li>场（beat）是旧版分镜的替代：以「场」为单元组织叙事，再拆分 / 生成为可生成镜头。</li>
+            <li>
+              <strong>场拆解</strong>（分镜师·节拍拆解表）：从剧本按节拍拆出时间 / 空间 / 角色 / 动作 / 冲突 / 氛围等列。
+            </li>
+            <li>
+              <strong>场表格</strong>：批量查看 / 编辑拆解结果；支持新建与删除行，双击节点可打开表格窗口。
+            </li>
+            <li>
+              <strong>场生成 / 场参考</strong>：按场批量生成内容，或引用指定场继续加工；结合「剧集流水线」的
+              9宫格 / 4宫格分镜表与动态视频生成完成整条短剧链路。
+            </li>
+          </ul>
+
+          <h3>9.3 分镜思维与指令预设</h3>
+          <p>
+            旧版的独立「分镜资产 / 镜头调度」已移除，分镜能力并入场与剧集流水线：由节拍拆解表负责拆场，
+            9宫格 / 4宫格分镜表负责把场落到可生成的镜头，画面与视频由生成节点完成。
+          </p>
+          <ul>
+            <li> <strong>镜头语言</strong>：英雄 / 神秘出场、双人中景、过肩反打、俯视、背面、荷兰角等。 </li>
+            <li><strong>身体朝向</strong>：全正面、45° 正面、纯侧面、45° 背面和严格背面。</li>
+            <li>
+              <strong>人物表演</strong>：把愤怒、失神、疯癫、释然、焦虑、悲伤、自信与惊讶拆成面部、呼吸、肩颈、手指和重心动作。
+            </li>
+            <li>
+              <strong>打光</strong>：顶光、正侧光、伦勃朗光、体积光、逆光和画面内有动机光源。
+            </li>
+            <li>
+              <strong>广告运镜与转场</strong>：冲击硬切、闪白、运动匹配、短叠化、匹配剪辑、前景遮挡、虚焦揭示、跳切和产品英雄揭示。
+            </li>
+          </ul>
+          <p>
+            视频与图片生成节点的指令预设（分镜师·节拍拆解表 / 9宫格分镜表 / 4宫格动态分镜表等）会把上面这些
+            镜头语言直接写入提示词；逐帧拉片节点可先从参考视频取关键帧，再用片段重拍做局部修改，详见
+            <a href="manual-workflow.html#graph">节点图</a>章节。
+          </p>
+        </section>
+
+        <section id="timeline">
+          <h2>10. 成片时间线</h2>
+          <p>
+            成片时间线用于把场 / 视频节点输出与导入素材拼成一条可预览、可导出的时间轴，通常挂在<strong>剧本资产</strong>上打开。
+          </p>
+
+          <h3>10.1 打开与布局</h3>
+          <ul>
+            <li>在剧本相关流程中打开成片时间线编辑器（左：素材库 · 中：预览 · 下：多轨时间线）。</li>
+            <li>轨道类型：视频 · 画中画 · 配音 · 字幕 · 音乐。</li>
+            <li>素材库顶部可<strong>刷新输入</strong>、<strong>自动上轨</strong>（按顺序把素材自动铺到轨道），并可调整素材显示大小。</li>
+          </ul>
+
+          <h3>10.2 左侧素材</h3>
+          <ul>
+            <li>
+              <strong>节点输入</strong>：从上游节点收集的视频 / 声音，不可从列表删除（删轨道片段不影响列表）。
+            </li>
+            <li>
+              <strong>导入素材</strong>：从资产库或系统文件拖入时间线后出现在此；可删除，并同步清掉轨道上对应片段。
+            </li>
+            <li>
+              在导入区<strong>右键</strong>可新建分组，分组支持重命名与删除（删除后组内素材回到未分组）；将导入项拖入分组或拖回「未分组」。分组会随时间线文档保存。
+            </li>
+            <li>视频素材图标使用<strong>首帧缩略图</strong>；声音素材显示通用声音图标。</li>
+          </ul>
+
+          <h3>10.3 上轨与编排</h3>
+          <ul>
+            <li>从列表拖到轨道放置；声音误拖到视频轨时会智能落到配音轨。也可用「自动上轨」一键铺开。</li>
+            <li>轨道上的片段可用指针<strong>左右拖动</strong>改时间，也可拖到其他轨道；双击片段可预览 / 定位。</li>
+            <li>
+              片段操作：在播放头处<strong>分割</strong>、<strong>复制 / 粘贴</strong>（粘贴到播放头）、移除片段；
+              属性面板可精调开始时间 / 片段时长 / 音量，声音类片段支持<strong>淡入 / 淡出</strong>。
+            </li>
+            <li>
+              轨道管理：隐藏 / 显示、锁定 / 解锁、折叠 / 展开，拖动轨道边缘可调<strong>轨道高度</strong>；
+              「总时长」可设定时间线长度（不得短于素材内容）。时间线内有独立的撤销 / 重做。
+            </li>
+            <li>字幕轨：可<strong>添加字幕</strong>并编辑文案。</li>
+          </ul>
+
+          <h3>10.4 播放</h3>
+          <ul>
+            <li>
+              <strong>中间预览区播放</strong>：只播放当前选中的视频或声音片段（未选中媒体片段时按钮禁用）。
+            </li>
+            <li>
+              <strong>下方时间线工具栏播放</strong>：按整条时间线联播（视频序列 + 声音轨），支持回到起点、暂停、循环与速度设置。
+            </li>
+          </ul>
+
+          <h3>10.5 画中画与转场</h3>
+          <ul>
+            <li>
+              <strong>画中画叠加</strong>：将视频拖到预览叠加层可叠加为画中画；属性面板可调横向 / 纵向位置、宽度 / 高度、
+              不透明度 / 音量（可一键重置），预览框比例可按原始视频或导出比例显示，导出成片时同步合成。
+            </li>
+            <li>
+              <strong>转场</strong>：视频轨上两个片段重叠处出现蓝色手柄，拖动可调整重叠 / 转场时长；
+              入场 / 出场转场效果可选：叠化、淡入淡出、A 淡出 / B 淡入、闪白、左 / 右 / 上 / 下滑动、
+              左 / 右 / 上 / 下擦除、圆形打开 / 圆形关闭，导出时一并合成。
+            </li>
+          </ul>
+
+          <h3>10.6 字幕</h3>
+          <ul>
+            <li>点击选中字幕片段，在属性面板编辑文案、<strong>字号</strong>、<strong>高度</strong>（纵向位置）、<strong>颜色</strong>与<strong>样式</strong>；选中后滚轮也可调整字号。</li>
+            <li>字幕与成片一并导出，也可单独<strong>导出字幕 SRT</strong>。</li>
+          </ul>
+
+          <h3>10.7 导出</h3>
+          <p>
+            时间线工具栏提供<strong>导出成片</strong>：可设分辨率（预设或自定义宽高）、帧率与码率，优先用本机
+            ffmpeg 合成 MP4，未安装时回退为 WebM 录制；导出进度与结果路径会提示在界面中。时间线缩放可用「适应宽度」。
+          </p>
+        </section>
+
+        <section id="canvas">
+          <h2>11. 画布与世界元素</h2>
+
+          <h3>11.1 画布资产</h3>
+          <ul>
+            <li>
+              <strong>自由画布</strong>：空白节点画布；右键添加节点，或从资产库拖入资产。多次新建会得到「自由画布
+              2」等名称。在画布上搭视频生成与参考视频，见
+              <a href="guide-video.html">自由画布：视频生成与参考视频</a>。
+            </li>
+          </ul>
+
+          <h3>11.2 世界元素 / 场</h3>
+          <ul>
+            <li>表格视图：世界元素为角色 / 场景 / 道具 / 武器；场表为时间 / 空间 / 角色 / 动作 / 冲突 / 氛围等列；支持新建与删除行。</li>
+            <li>双击对应节点：打开提取 / 拆解指令、表格或编辑窗口。</li>
+          </ul>
+        </section>
+
+        <section id="director">
+          <h2>12. 导演台</h2>
+          <figure class="shot">
+            <img
+              src="assets/banner/director-stage.webp"
+              alt="3D 导演台舞台界面：角色、机位与站位截图"
+              width="1440"
+              height="900"
+              loading="lazy"
+            />
+            <figcaption><strong>3D 导演台</strong>：站位截图、动作录制与机位视角。</figcaption>
+          </figure>
+          <p>
+            导演台用于 3D 场景摆姿、机位、动画预览与录制。节点链路一般为「导演台编辑 →（可选）选取 /
+            下游生成」。编辑节点提供两个<strong>方形</strong>输出口（站位图与动作视频），并提供两类输入端口：
+            <strong>3D 模型输入端口</strong>——连入 3D 模型生成结果后，dive 进入舞台会自动实例化到场景；
+            <strong>全景图输入端口</strong>——连入全景图后，dive 时自动设为舞台背景。
+          </p>
+
+          <h3>12.1 从节点打开</h3>
+          <ol>
+            <li>在节点图中双击「导演台编辑」节点，打开<strong>舞台窗口</strong>。</li>
+            <li>
+              关闭舞台或同步后，结果写入节点：
+              <code>out-shots</code>（站位截图，<code>images</code>）与
+              <code>out-actions</code>（动作录制，<code>videos</code>）。
+            </li>
+            <li>在节点 Inspector 中可预览站位缩略图与动作视频（双击进入媒体预览）。</li>
+          </ol>
+
+          <h3>12.2 舞台视口操作</h3>
+          <ul>
+            <li>左键选择 · 中键平移 · 按住右键进入<strong>飞行浏览</strong>：<kbd>W</kbd>/<kbd>A</kbd>/<kbd>S</kbd>/<kbd>D</kbd> 移动，<kbd>Q</kbd>/<kbd>E</kbd> 降 / 升，<kbd>Shift</kbd> 加速，移动鼠标转向。</li>
+            <li><kbd>Q</kbd> / <kbd>R</kbd> / <kbd>S</kbd>：移动 / 旋转 / 缩放工具。</li>
+            <li>
+              视口底部工具栏：全景模式 / 动画模式切换、<strong>比例</strong>（Auto 跟随视口尺寸，或固定
+              21:9 / 16:9 / 4:3 / 1:1 / 3:4 / 9:16，影响预览与截屏画幅）、<strong>选中包围盒</strong>开关、
+              <strong>截屏</strong>与<strong>重置视角</strong>。
+            </li>
+          </ul>
+
+          <h3>12.3 侧栏与对象</h3>
+          <ul>
+            <li>
+              左侧场景列表：层级、搜索、创建相机 / 空物体 / 基础几何体（Cube、Sphere、圆柱、尖拱、圆环、平面等
+              20 余种）；拖动右缘可<strong>调整列表宽度</strong>（会记住本地设置）。
+            </li>
+            <li>
+              <strong>AI 白模</strong>：提供透视 / 360 全景参考图（最多 3 张）与指令，由文本模型按基础几何体自动搭建场景白模，
+              适合快速落地透视与空间布局。
+            </li>
+            <li>对象：删除、隐藏、显示名称、锁定；支持拖拽改父子关系，层级列表支持<strong>多选</strong>批量删除与<strong>多选拖拽</strong>改父级（整组移动并保留世界变换）；机位组可整组删除（连同预设相机，可撤销）。</li>
+            <li>
+              属性 · <strong>姿势</strong>（FK / IK、AI 姿势——自然语言生成骨骼旋转、常用姿势预设）·
+              <strong>材质贴图覆盖</strong>：可为物体替换基础贴图 / 法线贴图，支持移除、隐藏贴图槽或一键还原模型自带贴图。
+            </li>
+          </ul>
+
+          <h3>12.4 站位和动作</h3>
+          <p>标题栏「站位和动作」打开面板，内含两个分类：</p>
+          <ul>
+            <li>
+              <strong>站位</strong>：视口截屏历史。用工具栏相机按钮截取；双击缩略图可预览。
+            </li>
+            <li>
+              <strong>动作</strong>：动画模式录制的视频历史。录制成功后自动写入工程
+              <code>Cache/Videos/</code>（无需另选目录），并打开动作分类。
+            </li>
+          </ul>
+
+          <h3>12.5 视图与全景</h3>
+          <ul>
+            <li>导演视角 / 机位切换；六向视图；重置。</li>
+            <li>
+              <strong>着色模式</strong>：标题栏右侧着色模式菜单，可选 <strong>着色</strong> /
+              <strong>线框</strong> / <strong>着色线框</strong>（实体叠加线框），便于检查模型布线与穿插遮挡；
+              选择会记住本地设置，默认着色。
+            </li>
+            <li>
+              <strong>Gizmos 显示</strong>：标题栏右侧 Gizmos 菜单可调 Gizmos 大小，并开关场景文字、相机
+              Gizmos、网格、选中包围盒；「截屏 / 视频包含场景文字 / 相机名称」决定站位截图与动作录制是否叠加这些标注。
+            </li>
+            <li>
+              移动到视图：<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>F</kbd>；与视图对齐：<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd>。
+            </li>
+            <li>全景：拖入背景图，调节缩放 / 平移 / 旋转、地面与天空色。</li>
+            <li>
+              也可把全景图连到导演台节点的全景输入端口（单图），dive 进入舞台时自动设为背景，无需手动拖入。
+            </li>
+          </ul>
+
+          <h3>12.6 动画模式与录制</h3>
+          <ul>
+            <li>在全景模式 / 动画模式间切换。</li>
+            <li>
+              轨迹与关键帧：<kbd>K</kbd> 添加关键帧；<kbd>Delete</kbd> 删除关键帧；<kbd>Space</kbd>
+              播放 / 暂停。
+            </li>
+            <li>
+              动画面板红色圆点按钮为<strong>录制动作</strong>：按当前动画内容录成 WebM，自动保存到缓存目录并进入「动作」列表。
+            </li>
+          </ul>
+
+          <h3>12.7 高斯泼溅（.spz / .ply）</h3>
+          <p>
+            泼溅是<strong>空间世界</strong>那条链路的产物，也能当模型资产直接进舞台渲染、摆位、参与站位图与动作录制：
+          </p>
+          <ul>
+            <li>
+              取两种来源：<strong>空间世界生成</strong>随世界自动落盘的 <code>*.spz</code>（免费，推荐）；或
+              <strong>「空间世界导出」</strong>节点同步转出的 <code>*.ply</code>（单独计费，落在世界 GLB 旁边同名文件）。
+              PLY 不登记资产，要用它的相对路径可直接连导演台的 3D 模型输入口，或先导入资产库。
+            </li>
+            <li>
+              进舞台的两种方式与其他模型一致：把泼溅模型资产<strong>拖到舞台视口</strong>，或接入导演台节点的
+              <strong>3D 模型输入端口</strong>（dive 进入舞台时自动实例化）。
+            </li>
+            <li>
+              渲染由内置的 <strong>Spark</strong> 承担：泼溅网格是场景层级里的普通对象，可选中、可拖动 / 旋转 /
+              缩放、可挂父子、可显隐、可改显示名——与 GLB 角色走同一套变换工具与包围盒框。
+              <strong>资产检查器的 3D 预览</strong>与资产卡<strong>缩略图</strong>同样能渲染泼溅。
+            </li>
+            <li>
+              <strong>空间世界导出</strong>节点的检查器里同样有 3D 预览窗与产物区：导出 HQ 网格 / PLY
+              泼溅后可以直接转着看，产物区里也会列出世界自带的高斯泼溅（SPZ）与 360 全景图。
+            </li>
+            <li>
+              「骨骼」页签对泼溅没有意义：没有骨骼，也不参与动画重定向，动画面板不会为它列出骨骼片段，
+              骨骼列表为空属正常。
+            </li>
+            <li>
+              泼溅网格按需加载：预览 / 舞台里没有泼溅时不会加载这套渲染器；泼溅是异步读入的，
+              刚进舞台时可能还看不到，等一会儿即出现。
+            </li>
+          </ul>
+          <p><strong>可以做什么</strong></p>
+          <ul>
+            <li>整体变换、显隐、改名、改父级、锁定，与普通对象完全一致。</li>
+            <li>属性里的<strong>颜色</strong>对该物体是整体染色（改变泼溅本身色相），不像普通模型那样只换材质底色。</li>
+            <li>站位截图与动作录制照常把它渲染进画面。</li>
+          </ul>
+          <p><strong>不能做什么</strong>（泼溅没有三角网格与材质贴图，以下工具对它无效）</p>
+          <ul>
+            <li>姿势与骨骼动画：没有骨骼，也不参与动画重定向，动画面板不会为它列出骨骼片段。</li>
+            <li>材质贴图覆盖：不会出现可替换的贴图槽。</li>
+            <li>着色模式里的<strong>线框</strong> / <strong>着色线框</strong>：泼溅始终按自身方式着色。</li>
+          </ul>
+        </section>
+
+      </article>
+    </div>
+
+    <footer class="foot">
+      <div class="foot-grid">
+        <div class="foot-about-col">
+          <a class="foot-brand" href="index.html">
+            <img src="assets/logo-mark.png" alt="" width="22" height="22" />
+            AI Art Engine
+          </a>
+          <p class="foot-about">本地优先的 Agent 原生 AI 美术资产引擎。工程与素材保存在本机，模型使用你自己的密钥。</p>
+        </div>
+        <nav class="foot-col" aria-label="文档">
+          <h4>文档</h4>
+          <ul>
+            <li><a href="quickstart.html">快速上手</a></li>
+            <li><a href="manual.html">使用手册</a></li>
+            <li><a href="developers.html">开发者文档</a></li>
+            <li><a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">更新日志</a></li>
+          </ul>
+        </nav>
+        <nav class="foot-col" aria-label="专题教程">
+          <h4>专题教程</h4>
+          <ul>
+            <li><a href="guide-short-video.html">短剧教程</a></li>
+            <li><a href="guide-video.html">视频教程</a></li>
+            <li><a href="guide-comfyui.html">ComfyUI 教程</a></li>
+            <li><a href="guide-newapi.html">NewAPI 教程</a></li>
+            <li><a href="guide-mcp.html">MCP 接入</a></li>
+            <li><a href="guide-gameplay.html">可玩 HTML</a></li>
+          </ul>
+        </nav>
+        <nav class="foot-col" aria-label="社区">
+          <h4>社区</h4>
+          <ul>
+            <li><a href="index.html#download">下载</a></li>
+            <li><a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+            <li><a href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine" target="_blank" rel="noopener noreferrer">Gitee</a></li>
+            <li><a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer">bilibili</a></li>
+            <li><a href="https://github.com/Justin-sky/ai-art-engine/issues" target="_blank" rel="noopener noreferrer">问题反馈</a></li>
+          </ul>
+        </nav>
+      </div>
+      <div class="foot-bottom">
+        <span>© 2026 AI Art Engine · GPL-3.0</span>
+        <span>文档以最新版应用内界面为准</span>
+      </div>
+    </footer>
+    <script>
+      document.querySelectorAll('.mobile-nav a').forEach((link) => {
+        link.addEventListener('click', () => link.closest('.mobile-menu')?.removeAttribute('open'))
+      })
+
+      // 阅读进度条
+      const progressBar = document.querySelector('.progress')
+      if (progressBar) {
+        const updateProgress = () => {
+          const doc = document.documentElement
+          const max = doc.scrollHeight - window.innerHeight
+          progressBar.style.width = (max > 0 ? (window.scrollY / max) * 100 : 0) + '%'
+        }
+        window.addEventListener('scroll', updateProgress, { passive: true })
+        window.addEventListener('resize', updateProgress)
+        updateProgress()
+      }
+
+      // 目录滚动高亮（scrollspy）
+      const tocLinks = Array.from(document.querySelectorAll('.toc a[href^="#"]'))
+      const spyTargets = []
+      tocLinks.forEach((link) => {
+        const id = link.getAttribute('href').slice(1)
+        const el = id ? document.getElementById(id) : null
+        if (el) spyTargets.push({ el, link })
+      })
+      if (spyTargets.length) {
+        const spy = () => {
+          const y = window.scrollY + 90
+          let current = spyTargets[0]
+          for (const target of spyTargets) {
+            if (!target.el) continue
+            const top = target.el.getBoundingClientRect().top + window.scrollY
+            if (top <= y) current = target
+          }
+          if (!current) return
+          tocLinks.forEach((link) => link.classList.toggle('active', link === current.link))
+        }
+        window.addEventListener('scroll', spy, { passive: true })
+        window.addEventListener('resize', spy)
+        spy()
+      }
+
+      // 返回顶部
+      const toTop = document.querySelector('.to-top')
+      if (toTop) {
+        const toggleToTop = () => {
+          toTop.hidden = window.scrollY <= 600
+        }
+        window.addEventListener('scroll', toggleToTop, { passive: true })
+        toggleToTop()
+        toTop.addEventListener('click', () => {
+          window.scrollTo({ top: 0, behavior: 'smooth' })
+        })
+      }
+
+      // 截图点击放大
+      const lightbox = document.querySelector('.lightbox')
+      if (lightbox) {
+        const lightboxImg = lightbox.querySelector('img')
+        const lightboxCap = lightbox.querySelector('.lightbox-cap')
+        document.querySelectorAll('.manual figure.shot img').forEach((img) => {
+          img.addEventListener('click', () => {
+            if (!lightboxImg || !lightboxCap) return
+            lightboxImg.src = img.currentSrc || img.src
+            lightboxImg.alt = img.alt
+            lightboxCap.textContent =
+              img.closest('figure')?.querySelector('figcaption')?.textContent?.trim() || img.alt
+            lightbox.hidden = false
+          })
+        })
+        lightbox.addEventListener('click', () => {
+          lightbox.hidden = true
+        })
+        document.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape' && !lightbox.hidden) lightbox.hidden = true
+        })
+      }
+
+      // 章节标题点击复制链接
+      const toast = document.createElement('div')
+      toast.className = 'toast'
+      toast.setAttribute('role', 'status')
+      document.body.appendChild(toast)
+      let toastTimer = 0
+      const showToast = (message) => {
+        toast.textContent = message
+        toast.classList.add('show')
+        clearTimeout(toastTimer)
+        toastTimer = setTimeout(() => toast.classList.remove('show'), 1600)
+      }
+      document
+        .querySelectorAll('.manual section[id] > h2, .manual h3[id], .manual h4[id]')
+        .forEach((heading) => {
+          const id = heading.id || heading.parentElement?.id
+          if (!id) return
+          heading.title = '点击复制本节链接'
+          heading.addEventListener('click', () => {
+            if (window.getSelection()?.toString()) return
+            const url = location.origin + location.pathname + '#' + id
+            if (navigator.clipboard?.writeText) {
+              navigator.clipboard.writeText(url).then(
+                () => showToast('已复制本节链接'),
+                () => showToast(url)
+              )
+            } else {
+              showToast(url)
+            }
+          })
+        })
+
+      // 主题切换：跟随系统 → 浅色 → 深色
+      const themeButton = document.querySelector('.theme-toggle')
+      if (themeButton) {
+        const rootEl = document.documentElement
+        const THEME_KEY = 'site.theme'
+        const darkQuery = window.matchMedia('(prefers-color-scheme: dark)')
+        const THEME_META = {
+          auto: { icon: '◐', label: '主题：跟随系统' },
+          light: { icon: '☀', label: '主题：浅色' },
+          dark: { icon: '☾', label: '主题：深色' }
+        }
+        const readThemePref = () => {
+          try {
+            const stored = localStorage.getItem(THEME_KEY)
+            return stored === 'light' || stored === 'dark' || stored === 'auto' ? stored : 'dark'
+          } catch (e) {
+            return 'dark'
+          }
+        }
+        const applyTheme = () => {
+          const pref = readThemePref()
+          rootEl.classList.toggle('dark', pref === 'dark' || (pref !== 'light' && darkQuery.matches))
+          rootEl.classList.toggle('light', pref === 'light')
+          const meta = THEME_META[pref]
+          themeButton.textContent = meta.icon
+          themeButton.title = meta.label + '（点击切换）'
+          themeButton.setAttribute('aria-label', meta.label)
+        }
+        darkQuery.addEventListener('change', applyTheme)
+        themeButton.addEventListener('click', () => {
+          const next = readThemePref() === 'dark' ? 'light' : readThemePref() === 'light' ? 'auto' : 'dark'
+          try {
+            localStorage.setItem(THEME_KEY, next)
+          } catch (e) {}
+          applyTheme()
+          showToast(THEME_META[next].label)
+        })
+        applyTheme()
+      }
+    </script>
+      <script src="site-search.js?v=20261009d" defer></script>
+    <script src="site-enhance.js?v=20261009d" defer></script>
+  </body>
+</html>

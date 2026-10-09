@@ -45,11 +45,11 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="manual.css?v=20260829-4" />
-      <link rel="stylesheet" href="site.css?v=20260829" />
+    <link rel="stylesheet" href="manual.css?v=20261009d" />
+    <link rel="stylesheet" href="site.css?v=20261009d" />
     <style>
       pre.mcp-code {
         background: var(--bg-soft);
@@ -79,66 +79,50 @@
         <span>AI Art Engine</span>
       </a>
       <nav class="nav" aria-label="主导航">
-        <a href="index.html">首页</a>
         <a href="quickstart.html">快速上手</a>
         <a href="manual.html">使用手册</a>
-        <a href="guide-video.html">视频教程</a>
-        <a href="guide-short-video.html">短剧教程</a>
-        <a href="guide-comfyui.html">ComfyUI 教程</a>
-        <a href="guide-mcp.html" aria-current="page">MCP 接入</a>
-        <a href="guide-gameplay.html">可玩 HTML</a>
-        <a href="developers.html">开发者文档</a>
+        <div class="nav-drop">
+          <button type="button" class="nav-drop-btn is-active" aria-haspopup="true">
+            教程<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+          </button>
+          <div class="nav-drop-menu">
+            <a href="guide-short-video.html"><strong>短剧教程</strong><span>分镜 · 拼图 · 审核 · 动态视频</span></a>
+            <a href="guide-video.html"><strong>视频教程</strong><span>自由画布与参考视频</span></a>
+            <a href="guide-comfyui.html"><strong>ComfyUI 教程</strong><span>API 2 与 comfy-api-proxy</span></a>
+            <a href="guide-newapi.html"><strong>NewAPI 教程</strong><span>自建中转网关接入</span></a>
+            <a href="guide-mcp.html" aria-current="page"><strong>MCP 接入</strong><span>Claude Code / Codex 驱动应用</span></a>
+            <a href="guide-gameplay.html"><strong>可玩 HTML</strong><span>生成可交互的玩法原型</span></a>
+            <a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer"><strong>B 站视频教程</strong><span>视频演示与更新解读</span></a>
+          </div>
+        </div>
+        <a href="developers.html">开发者</a>
+        <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">更新日志</a>
         <a href="index.html#download">下载</a>
-        <a
-          href="https://space.bilibili.com/3707036976024122"
-          target="_blank"
-          rel="noopener noreferrer"
-          >bilibili</a
-        >
-        <a
-          href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
-          target="_blank"
-          rel="noopener noreferrer"
-          >Gitee</a
-        >
-        <a
-          class="nav-src"
-          href="https://github.com/Justin-sky/ai-art-engine"
-          target="_blank"
-          rel="noopener noreferrer"
-          >GitHub</a
-        >
+        <a class="nav-src" href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.070 3.633 17.700 3.633 17.700c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.070 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.760-1.605-2.665-.3-5.466-1.332-5.466-5.930 0-1.310.465-2.380 1.235-3.220-.135-.303-.540-1.523.105-3.176 0 0 1.005-.322 3.300 1.230.960-.267 1.980-.399 3.000-.405 1.020.006 2.040.138 3.000.405 2.280-1.552 3.285-1.230 3.285-1.230.645 1.653.240 2.873.120 3.176.765.840 1.230 1.910 1.230 3.220 0 4.610-2.805 5.625-5.475 5.920.420.360.810 1.096.810 2.220 0 1.606-.015 2.896-.015 3.286 0 .315.210.690.825.570C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" /></svg>GitHub</a>
       </nav>
       <a class="nav-lang" href="guide-mcp.en.html" hreflang="en" lang="en">EN</a>
       <button class="theme-toggle" type="button" aria-label="切换主题">◐</button>
       <details class="mobile-menu">
         <summary aria-label="打开导航菜单"><span aria-hidden="true">☰</span> 菜单</summary>
         <nav class="mobile-nav" aria-label="移动端导航">
+          <p class="mobile-group">文档</p>
           <a href="index.html">首页</a>
           <a href="quickstart.html">快速上手</a>
           <a href="manual.html">使用手册</a>
-          <a href="guide-video.html">视频教程</a>
+          <a href="developers.html">开发者文档</a>
+          <p class="mobile-group">专题教程</p>
           <a href="guide-short-video.html">短剧教程</a>
+          <a href="guide-video.html">视频教程</a>
           <a href="guide-comfyui.html">ComfyUI 教程</a>
+          <a href="guide-newapi.html">NewAPI 教程</a>
           <a href="guide-mcp.html" aria-current="page">MCP 接入</a>
           <a href="guide-gameplay.html">可玩 HTML</a>
-          <a href="developers.html">开发者文档</a>
+          <p class="mobile-group">社区</p>
           <a href="index.html#download">下载</a>
-          <a
-            href="https://space.bilibili.com/3707036976024122"
-            target="_blank"
-            rel="noopener noreferrer"
-            >bilibili</a
-          >
-          <a
-            href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
-            target="_blank"
-            rel="noopener noreferrer"
-            >Gitee</a
-          >
-          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"
-            >GitHub</a
-          >
+          <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">更新日志</a>
+          <a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer">bilibili</a>
+          <a href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine" target="_blank" rel="noopener noreferrer">Gitee</a>
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a>
         </nav>
       </details>
     </header>
@@ -732,36 +716,48 @@ asset_import              一键入资产库</code></pre>
     </div>
 
     <footer class="foot">
-      <div class="foot-row">
-        <a class="foot-brand" href="index.html">
-          <img src="assets/logo-mark.png" alt="" width="22" height="22" />
-          AI Art Engine
-        </a>
-        <nav class="foot-links" aria-label="页脚">
-          <a href="index.html">首页</a>
-          <a href="quickstart.html">快速上手</a>
-          <a href="manual.html">使用手册</a>
-          <a href="guide-video.html">视频教程</a>
-          <a href="guide-short-video.html">短剧教程</a>
-          <a href="guide-comfyui.html">ComfyUI 教程</a>
-          <a href="guide-mcp.html">MCP 接入</a>
-          <a href="guide-gameplay.html">可玩 HTML</a>
-          <a href="index.html#download">下载</a>
-          <a
-            href="https://space.bilibili.com/3707036976024122"
-            target="_blank"
-            rel="noopener noreferrer"
-            >bilibili</a
-          >
-          <a
-            href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
-            target="_blank"
-            rel="noopener noreferrer"
-            >Gitee</a
-          >
-          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a>
+      <div class="foot-grid">
+        <div class="foot-about-col">
+          <a class="foot-brand" href="index.html">
+            <img src="assets/logo-mark.png" alt="" width="22" height="22" />
+            AI Art Engine
+          </a>
+          <p class="foot-about">本地优先的 Agent 原生 AI 美术资产引擎。工程与素材保存在本机，模型使用你自己的密钥。</p>
+        </div>
+        <nav class="foot-col" aria-label="文档">
+          <h4>文档</h4>
+          <ul>
+            <li><a href="quickstart.html">快速上手</a></li>
+            <li><a href="manual.html">使用手册</a></li>
+            <li><a href="developers.html">开发者文档</a></li>
+            <li><a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">更新日志</a></li>
+          </ul>
         </nav>
-        <span>GPL-3.0</span>
+        <nav class="foot-col" aria-label="专题教程">
+          <h4>专题教程</h4>
+          <ul>
+            <li><a href="guide-short-video.html">短剧教程</a></li>
+            <li><a href="guide-video.html">视频教程</a></li>
+            <li><a href="guide-comfyui.html">ComfyUI 教程</a></li>
+            <li><a href="guide-newapi.html">NewAPI 教程</a></li>
+            <li><a href="guide-mcp.html">MCP 接入</a></li>
+            <li><a href="guide-gameplay.html">可玩 HTML</a></li>
+          </ul>
+        </nav>
+        <nav class="foot-col" aria-label="社区">
+          <h4>社区</h4>
+          <ul>
+            <li><a href="index.html#download">下载</a></li>
+            <li><a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+            <li><a href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine" target="_blank" rel="noopener noreferrer">Gitee</a></li>
+            <li><a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer">bilibili</a></li>
+            <li><a href="https://github.com/Justin-sky/ai-art-engine/issues" target="_blank" rel="noopener noreferrer">问题反馈</a></li>
+          </ul>
+        </nav>
+      </div>
+      <div class="foot-bottom">
+        <span>© 2026 AI Art Engine · GPL-3.0</span>
+        <span>文档以最新版应用内界面为准</span>
       </div>
     </footer>
 
@@ -806,7 +802,7 @@ asset_import              一键入资产库</code></pre>
         apply()
       })()
     </script>
-      <script src="site-search.js" defer></script>
-    <script src="site-enhance.js" defer></script>
+      <script src="site-search.js?v=20261009d" defer></script>
+    <script src="site-enhance.js?v=20261009d" defer></script>
   </body>
 </html>

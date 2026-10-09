@@ -15,7 +15,7 @@
 | [MCP 接入教程](https://justin-sky.github.io/ai-art-engine/guide-mcp.html)     | 外部 Agent 接入（stdio 桥 / HTTP 直连）                                                               |
 | [CHANGELOG.md](../CHANGELOG.md)                                               | 版本变更                                                                                              |
 
-源码：`website/manual.html` 等。本地预览：`npm run site`。
+源码：`website/manual*.html`（概述页 + 五个章节子页）等。本地预览：`npm run site`。
 
 ## 开发
 

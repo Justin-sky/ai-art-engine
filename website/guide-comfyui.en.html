@@ -45,11 +45,11 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Syne:wght@500;600;700;800&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="manual.css?v=20260829-4" />
-      <link rel="stylesheet" href="site.css?v=20260829" />
+    <link rel="stylesheet" href="manual.css?v=20261009d" />
+    <link rel="stylesheet" href="site.css?v=20261009d" />
   </head>
   <body>
     <a class="skip" href="#manual">Skip to content</a>
@@ -60,59 +60,50 @@
         <span>AI Art Engine</span>
       </a>
       <nav class="nav" aria-label="Main navigation">
-        <a href="index.en.html">Home</a>
         <a href="quickstart.en.html">Quickstart</a>
         <a href="manual.en.html">Manual</a>
-        <a href="guide-video.en.html">Video Tutorials</a>
-        <a href="guide-short-video.en.html">Short Drama</a>
-        <a href="guide-comfyui.en.html" aria-current="page">ComfyUI</a>
-        <a href="guide-mcp.en.html" aria-current="page">MCP Setup</a>
-        <a href="guide-gameplay.en.html">Playable HTML</a>
-        <a href="developers.en.html">Developer Docs</a>
+        <div class="nav-drop">
+          <button type="button" class="nav-drop-btn is-active" aria-haspopup="true">
+            Guides<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+          </button>
+          <div class="nav-drop-menu">
+            <a href="guide-short-video.en.html"><strong>Short drama</strong><span>Storyboards, review, motion video</span></a>
+            <a href="guide-video.en.html"><strong>Video</strong><span>Free canvas & reference video</span></a>
+            <a href="guide-comfyui.en.html" aria-current="page"><strong>ComfyUI</strong><span>API v2 and comfy-api-proxy</span></a>
+            <a href="guide-newapi.en.html"><strong>NewAPI</strong><span>Self-hosted relay gateways</span></a>
+            <a href="guide-mcp.en.html"><strong>MCP setup</strong><span>Drive the app from Claude Code / Codex</span></a>
+            <a href="guide-gameplay.en.html"><strong>Playable HTML</strong><span>Interactive gameplay prototypes</span></a>
+            <a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer"><strong>Video tutorials</strong><span>Walkthroughs on bilibili</span></a>
+          </div>
+        </div>
+        <a href="developers.en.html">Developers</a>
+        <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a>
         <a href="index.en.html#download">Download</a>
-        <a
-          href="https://space.bilibili.com/3707036976024122"
-          target="_blank"
-          rel="noopener noreferrer"
-          >bilibili</a
-        >
-        <a href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine" target="_blank" rel="noopener noreferrer"
-          >Gitee</a
-        >
-        <a class="nav-src" href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"
-          >GitHub</a
-        >
+        <a class="nav-src" href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.070 3.633 17.700 3.633 17.700c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.070 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.760-1.605-2.665-.3-5.466-1.332-5.466-5.930 0-1.310.465-2.380 1.235-3.220-.135-.303-.540-1.523.105-3.176 0 0 1.005-.322 3.300 1.230.960-.267 1.980-.399 3.000-.405 1.020.006 2.040.138 3.000.405 2.280-1.552 3.285-1.230 3.285-1.230.645 1.653.240 2.873.120 3.176.765.840 1.230 1.910 1.230 3.220 0 4.610-2.805 5.625-5.475 5.920.420.360.810 1.096.810 2.220 0 1.606-.015 2.896-.015 3.286 0 .315.210.690.825.570C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" /></svg>GitHub</a>
       </nav>
       <a class="nav-lang" href="guide-comfyui.html" hreflang="zh-CN" lang="zh-CN">中文</a>
       <button class="theme-toggle" type="button" aria-label="Toggle theme">◐</button>
       <details class="mobile-menu">
         <summary aria-label="Open navigation menu"><span aria-hidden="true">☰</span> Menu</summary>
         <nav class="mobile-nav" aria-label="Mobile navigation">
+          <p class="mobile-group">Docs</p>
           <a href="index.en.html">Home</a>
           <a href="quickstart.en.html">Quickstart</a>
           <a href="manual.en.html">Manual</a>
-          <a href="guide-video.en.html">Video Tutorials</a>
-          <a href="guide-short-video.en.html">Short Drama</a>
+          <a href="developers.en.html">Developer docs</a>
+          <p class="mobile-group">Guides</p>
+          <a href="guide-short-video.en.html">Short drama</a>
+          <a href="guide-video.en.html">Video</a>
           <a href="guide-comfyui.en.html" aria-current="page">ComfyUI</a>
-          <a href="guide-mcp.en.html" aria-current="page">MCP Setup</a>
+          <a href="guide-newapi.en.html">NewAPI</a>
+          <a href="guide-mcp.en.html">MCP setup</a>
           <a href="guide-gameplay.en.html">Playable HTML</a>
-          <a href="developers.en.html">Developer Docs</a>
+          <p class="mobile-group">Community</p>
           <a href="index.en.html#download">Download</a>
-          <a
-            href="https://space.bilibili.com/3707036976024122"
-            target="_blank"
-            rel="noopener noreferrer"
-            >bilibili</a
-          >
-          <a
-            href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
-            target="_blank"
-            rel="noopener noreferrer"
-            >Gitee</a
-          >
-          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"
-            >GitHub</a
-          >
+          <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a>
+          <a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer">bilibili</a>
+          <a href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine" target="_blank" rel="noopener noreferrer">Gitee</a>
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a>
         </nav>
       </details>
     </header>
@@ -130,7 +121,7 @@
           <li><a href="#faq">FAQ</a></li>
         </ol>
         <p style="margin-top: 1.25rem; font-size: 12px; color: var(--mute)">
-          <a href="manual.en.html#settings">← Back to the manual · Settings</a>
+          <a href="manual-setup.en.html#settings">← Back to the manual · Settings</a>
         </p>
       </aside>
 
@@ -457,36 +448,48 @@ comfy-api-proxy</code></pre>
     </div>
 
     <footer class="foot">
-      <div class="foot-row">
-        <a class="foot-brand" href="index.en.html">
-          <img src="assets/logo-mark.png" alt="" width="22" height="22" />
-          AI Art Engine
-        </a>
-        <nav class="foot-links" aria-label="Footer">
-          <a href="index.en.html">Home</a>
-          <a href="quickstart.en.html">Quickstart</a>
-          <a href="manual.en.html">Manual</a>
-          <a href="guide-video.en.html">Video Tutorials</a>
-          <a href="guide-short-video.en.html">Short Drama</a>
-          <a href="guide-comfyui.en.html">ComfyUI</a>
-          <a href="guide-mcp.en.html">MCP Setup</a>
-          <a href="guide-gameplay.en.html">Playable HTML</a>
-          <a href="index.en.html#download">Download</a>
-          <a
-            href="https://space.bilibili.com/3707036976024122"
-            target="_blank"
-            rel="noopener noreferrer"
-            >bilibili</a
-          >
-          <a
-            href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
-            target="_blank"
-            rel="noopener noreferrer"
-            >Gitee</a
-          >
-          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a>
+      <div class="foot-grid">
+        <div class="foot-about-col">
+          <a class="foot-brand" href="index.en.html">
+            <img src="assets/logo-mark.png" alt="" width="22" height="22" />
+            AI Art Engine
+          </a>
+          <p class="foot-about">A local-first, agent-native AI art asset engine. Projects stay on your machine; models run on your own keys.</p>
+        </div>
+        <nav class="foot-col" aria-label="Docs">
+          <h4>Docs</h4>
+          <ul>
+            <li><a href="quickstart.en.html">Quickstart</a></li>
+            <li><a href="manual.en.html">Manual</a></li>
+            <li><a href="developers.en.html">Developer docs</a></li>
+            <li><a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a></li>
+          </ul>
         </nav>
-        <span>GPL-3.0</span>
+        <nav class="foot-col" aria-label="Guides">
+          <h4>Guides</h4>
+          <ul>
+            <li><a href="guide-short-video.en.html">Short drama</a></li>
+            <li><a href="guide-video.en.html">Video</a></li>
+            <li><a href="guide-comfyui.en.html">ComfyUI</a></li>
+            <li><a href="guide-newapi.en.html">NewAPI</a></li>
+            <li><a href="guide-mcp.en.html">MCP setup</a></li>
+            <li><a href="guide-gameplay.en.html">Playable HTML</a></li>
+          </ul>
+        </nav>
+        <nav class="foot-col" aria-label="Community">
+          <h4>Community</h4>
+          <ul>
+            <li><a href="index.en.html#download">Download</a></li>
+            <li><a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+            <li><a href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine" target="_blank" rel="noopener noreferrer">Gitee</a></li>
+            <li><a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer">bilibili</a></li>
+            <li><a href="https://github.com/Justin-sky/ai-art-engine/issues" target="_blank" rel="noopener noreferrer">Report an issue</a></li>
+          </ul>
+        </nav>
+      </div>
+      <div class="foot-bottom">
+        <span>© 2026 AI Art Engine · GPL-3.0</span>
+        <span>Docs follow the in-app UI of the latest release</span>
       </div>
     </footer>
     <script>
@@ -533,7 +536,7 @@ comfy-api-proxy</code></pre>
         apply()
       })()
     </script>
-      <script src="site-search.js" defer></script>
-    <script src="site-enhance.js" defer></script>
+      <script src="site-search.js?v=20261009d" defer></script>
+    <script src="site-enhance.js?v=20261009d" defer></script>
   </body>
 </html>

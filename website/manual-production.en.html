@@ -1,0 +1,755 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+
+    <script>
+      // 提前应用本地主题选择，避免加载闪烁
+      ;(function () {
+        try {
+          var pref = localStorage.getItem('site.theme')
+          if (
+            pref !== 'light' &&
+            (pref === 'dark' || pref == null || (pref === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches))
+          ) {
+            document.documentElement.classList.add('dark')
+          }
+        } catch (e) {}
+      })()
+    </script>
+    <meta
+      name="description"
+      content="Script and shot assets; arranging, subtitling and exporting on the final timeline; canvas and world elements; and blocking, animation recording and Gaussian splats on the 3D director stage."
+    />
+    <title>Script, timeline & director stage · Manual — AIArtEngine</title>
+    <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/manual-production.en.html" />
+    <meta property="og:site_name" content="AIArtEngine" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:title" content="Script, timeline & director stage · Manual — AIArtEngine" />
+    <meta property="og:description" content="Script and shot assets; arranging, subtitling and exporting on the final timeline; canvas and world elements; and blocking, animation recording and Gaussian splats on the 3D director stage." />
+    <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/manual-production.en.html" />
+    <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Script, timeline & director stage · Manual — AIArtEngine" />
+    <meta name="twitter:description" content="Script and shot assets; arranging, subtitling and exporting on the final timeline; canvas and world elements; and blocking, animation recording and Gaussian splats on the 3D director stage." />
+    <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-production.html" />
+    <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual-production.en.html" />
+    <link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/manual-production.html" />
+    <link rel="icon" href="assets/logo-mark.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="manual.css?v=20261009d" />
+    <link rel="stylesheet" href="site.css?v=20261009d" />
+  </head>
+  <body>
+    <a class="skip" href="#manual">Skip to content</a>
+    <div class="progress" aria-hidden="true"></div>
+    <button class="to-top" type="button" aria-label="Back to top" hidden>↑</button>
+    <div class="lightbox" hidden>
+      <img alt="" />
+      <p class="lightbox-cap"></p>
+    </div>
+
+    <header class="top">
+      <a class="brand" href="index.en.html">
+        <img src="assets/logo-mark.png" alt="" width="30" height="30" />
+        <span>AI Art Engine</span>
+      </a>
+      <nav class="nav" aria-label="Main navigation">
+        <a href="quickstart.en.html">Quickstart</a>
+        <a href="manual.en.html" aria-current="page">Manual</a>
+        <div class="nav-drop">
+          <button type="button" class="nav-drop-btn" aria-haspopup="true">
+            Guides<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+          </button>
+          <div class="nav-drop-menu">
+            <a href="guide-short-video.en.html"><strong>Short drama</strong><span>Storyboards, review, motion video</span></a>
+            <a href="guide-video.en.html"><strong>Video</strong><span>Free canvas & reference video</span></a>
+            <a href="guide-comfyui.en.html"><strong>ComfyUI</strong><span>API v2 and comfy-api-proxy</span></a>
+            <a href="guide-newapi.en.html"><strong>NewAPI</strong><span>Self-hosted relay gateways</span></a>
+            <a href="guide-mcp.en.html"><strong>MCP setup</strong><span>Drive the app from Claude Code / Codex</span></a>
+            <a href="guide-gameplay.en.html"><strong>Playable HTML</strong><span>Interactive gameplay prototypes</span></a>
+            <a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer"><strong>Video tutorials</strong><span>Walkthroughs on bilibili</span></a>
+          </div>
+        </div>
+        <a href="developers.en.html">Developers</a>
+        <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a>
+        <a href="index.en.html#download">Download</a>
+        <a class="nav-src" href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.070 3.633 17.700 3.633 17.700c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.070 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.760-1.605-2.665-.3-5.466-1.332-5.466-5.930 0-1.310.465-2.380 1.235-3.220-.135-.303-.540-1.523.105-3.176 0 0 1.005-.322 3.300 1.230.960-.267 1.980-.399 3.000-.405 1.020.006 2.040.138 3.000.405 2.280-1.552 3.285-1.230 3.285-1.230.645 1.653.240 2.873.120 3.176.765.840 1.230 1.910 1.230 3.220 0 4.610-2.805 5.625-5.475 5.920.420.360.810 1.096.810 2.220 0 1.606-.015 2.896-.015 3.286 0 .315.210.690.825.570C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" /></svg>GitHub</a>
+      </nav>
+      <a class="nav-lang" href="manual-production.html" hreflang="zh-CN" lang="zh-CN">中文</a>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme">◐</button>
+      <details class="mobile-menu">
+        <summary aria-label="Open navigation menu"><span aria-hidden="true">☰</span> Menu</summary>
+        <nav class="mobile-nav" aria-label="Mobile navigation">
+          <p class="mobile-group">Docs</p>
+          <a href="index.en.html">Home</a>
+          <a href="quickstart.en.html">Quickstart</a>
+          <a href="manual.en.html" aria-current="page">Manual</a>
+          <a href="developers.en.html">Developer docs</a>
+          <p class="mobile-group">Guides</p>
+          <a href="guide-short-video.en.html">Short drama</a>
+          <a href="guide-video.en.html">Video</a>
+          <a href="guide-comfyui.en.html">ComfyUI</a>
+          <a href="guide-newapi.en.html">NewAPI</a>
+          <a href="guide-mcp.en.html">MCP setup</a>
+          <a href="guide-gameplay.en.html">Playable HTML</a>
+          <p class="mobile-group">Community</p>
+          <a href="index.en.html#download">Download</a>
+          <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a>
+          <a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer">bilibili</a>
+          <a href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine" target="_blank" rel="noopener noreferrer">Gitee</a>
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a>
+        </nav>
+      </details>
+    </header>
+
+    <div class="manual-shell">
+      <aside class="toc" aria-label="Table of contents">
+        <h2>Table of contents</h2>
+        <ol>
+          <li class="toc-group">Core features</li>
+          <li><a href="#script-beat">9. Script &amp; shots</a></li>
+          <li><a href="#timeline">10. Final timeline</a></li>
+          <li><a href="#canvas">11. Canvas &amp; world elements</a></li>
+          <li><a href="#director">12. Director stage</a></li>
+
+          <li class="toc-group">Manual chapters</li>
+          <li><a href="manual.en.html">Overview & core concepts</a></li>
+          <li><a href="manual-setup.en.html">Projects & settings</a></li>
+          <li><a href="manual-workspace.en.html">Workspace & asset library</a></li>
+          <li><a href="manual-workflow.en.html">One-Click Workflow & node graph</a></li>
+          <li><a href="manual-reference.en.html">Reference & troubleshooting</a></li>
+        </ol>
+      </aside>
+
+      <article class="manual" id="manual">
+        <header class="manual-hero">
+          <p class="eyebrow">Manual · Production</p>
+          <h1>Script, timeline & director stage</h1>
+          <p class="lede">
+            Script and shot assets; arranging, subtitling and exporting on the final timeline; canvas and world elements; and blocking, animation recording and Gaussian splats on the 3D director stage.
+          </p>
+        </header>
+
+        <section id="script-beat">
+          <h2>9. Script &amp; shots</h2>
+
+          <h3>9.1 Script assets</h3>
+          <p>
+            Generate and edit script content through the node graph. Connect the result to “script output” and
+            pick a suitable text model and prompt in the parameter panel. Script assets can be dragged into
+            other graphs as upstream.
+          </p>
+
+          <h3>9.2 Shot assets</h3>
+          <ul>
+            <li>
+              A shot (beat) replaces the old storyboard: narrative is organized per shot, then broken down and
+              generated into camera-ready shots.
+            </li>
+            <li>
+              <strong>Shot breakdown</strong> (storyboard artist · beat breakdown table): splits time / space /
+              characters / action / conflict / atmosphere columns out of the script.
+            </li>
+            <li>
+              <strong>Shot table</strong>: view and edit breakdown results in bulk; rows can be added and
+              deleted, and double-clicking the node opens the table window.
+            </li>
+            <li>
+              <strong>Shot generation / shot reference</strong>: generate content per shot in bulk, or reference
+              a specific shot to keep working; combined with the Episode Pipeline's 9-grid / 4-grid storyboard
+              tables and motion video generation, this completes the whole short-drama chain.
+            </li>
+          </ul>
+
+          <h3>9.3 Storyboard thinking and prompt presets</h3>
+          <p>
+            The old standalone “storyboard asset / camera blocking” has been removed — storyboarding now lives
+            in shots and the Episode Pipeline: the beat breakdown table splits shots, the 9-grid / 4-grid
+            storyboard tables turn shots into camera setups you can generate, and images and video come from
+            generation nodes.
+          </p>
+          <ul>
+            <li>
+              <strong>Camera language</strong>: hero / mysterious entrance, two-shot medium, over-the-shoulder
+              reverse, high angle, from behind, Dutch angle, and more.
+            </li>
+            <li>
+              <strong>Body orientation</strong>: full front, 45° front, pure profile, 45° back and strict back.
+            </li>
+            <li>
+              <strong>Acting</strong>: anger, dissociation, mania, relief, anxiety, sadness, confidence and
+              surprise broken down into facial, breathing, shoulder / neck, finger and weight-shift movement.
+            </li>
+            <li>
+              <strong>Lighting</strong>: top light, frontal side light, Rembrandt, volumetric, backlight and
+              motivated light sources inside the frame.
+            </li>
+            <li>
+              <strong>Ad camera moves and transitions</strong>: impact hard cut, flash to white, motion match,
+              short dissolve, match cut, foreground occlusion, rack-focus reveal, jump cut and product hero
+              reveal.
+            </li>
+          </ul>
+          <p>
+            The prompt presets of video and image generation nodes (storyboard artist · beat breakdown table /
+            9-grid storyboard table / 4-grid motion storyboard table, …) write this camera language straight
+            into the prompt; the frame pulling node can grab key frames from a reference video first, then use
+            segment reshoot for local changes — see the <a href="manual-workflow.en.html#graph">Node graph</a> chapter.
+          </p>
+        </section>
+
+        <section id="timeline">
+          <h2>10. Final timeline</h2>
+          <p>
+            The final timeline assembles shot / video node outputs and imported media into a timeline you can
+            preview and export; it's usually opened on a <strong>script asset</strong>.
+          </p>
+
+          <h3>10.1 Opening and layout</h3>
+          <ul>
+            <li>
+              Open the final timeline editor from a script-related flow (left: media library · center: preview ·
+              bottom: multi-track timeline).
+            </li>
+            <li>Track types: video · picture-in-picture · voice-over · subtitles · music.</li>
+            <li>
+              The media library header can <strong>refresh inputs</strong> and
+              <strong>auto-place on tracks</strong> (laying media onto tracks in order), and the media display
+              size is adjustable.
+            </li>
+          </ul>
+
+          <h3>10.2 Left-side media</h3>
+          <ul>
+            <li>
+              <strong>Node inputs</strong>: video / audio collected from upstream nodes. They can't be deleted
+              from the list (deleting a track clip doesn't affect the list).
+            </li>
+            <li>
+              <strong>Imported media</strong>: appears here after being dragged into the timeline from the
+              asset library or your file system. It can be deleted, which also removes the matching clips from
+              tracks.
+            </li>
+            <li>
+              In the import area <strong>right-click</strong> to create a group; groups can be renamed and
+              deleted (deleting one returns its media to “Ungrouped”). Drag imported items into a group or back
+              to “Ungrouped”. Groups are saved with the timeline document.
+            </li>
+            <li>
+              Video media icons use the <strong>first-frame thumbnail</strong>; audio media shows a generic
+              audio icon.
+            </li>
+          </ul>
+
+          <h3>10.3 Placing and arranging</h3>
+          <ul>
+            <li>
+              Drag from the list onto a track to place it; audio dropped on a video track lands on the
+              voice-over track automatically. “Auto-place on tracks” also spreads everything out in one click.
+            </li>
+            <li>
+              Clips on tracks can be <strong>dragged left / right</strong> to change timing, or moved to another
+              track; double-click a clip to preview / locate it.
+            </li>
+            <li>
+              Clip actions: <strong>split</strong> at the playhead, <strong>copy / paste</strong> (pasted at the
+              playhead), remove clip. The properties panel fine-tunes start time / clip duration / volume, and
+              audio clips support <strong>fade in / fade out</strong>.
+            </li>
+            <li>
+              Track management: hide / show, lock / unlock, collapse / expand; drag a track edge to change its
+              <strong>height</strong>; “Total duration” sets the timeline length (it can't be shorter than the
+              content). The timeline has its own undo / redo.
+            </li>
+            <li>Subtitle track: you can <strong>add subtitles</strong> and edit their text.</li>
+          </ul>
+
+          <h3>10.4 Playback</h3>
+          <ul>
+            <li>
+              <strong>Center preview playback</strong>: plays only the currently selected video or audio clip
+              (the button is disabled when no media clip is selected).
+            </li>
+            <li>
+              <strong>Bottom timeline toolbar playback</strong>: plays the whole timeline (video sequence +
+              audio tracks) with return to start, pause, loop and speed settings.
+            </li>
+          </ul>
+
+          <h3>10.5 Picture-in-picture and transitions</h3>
+          <ul>
+            <li>
+              <strong>Picture-in-picture overlay</strong>: drag a video onto the preview overlay to layer it as
+              PiP; the properties panel adjusts horizontal / vertical position, width / height, opacity and
+              volume (resettable in one click). The preview frame can follow the original video or the export
+              aspect ratio, and PiP is composited on export.
+            </li>
+            <li>
+              <strong>Transitions</strong>: a blue handle appears where two clips overlap on a video track —
+              drag it to adjust the overlap / transition length. In / out transition effects include dissolve,
+              fade in / out, A fade out / B fade in, flash white, slide left / right / up / down, wipe left /
+              right / up / down and circle open / circle close, all composited on export.
+            </li>
+          </ul>
+
+          <h3>10.6 Subtitles</h3>
+          <ul>
+            <li>
+              Select a subtitle clip and edit the text, <strong>font size</strong>, <strong>height</strong>
+              (vertical position), <strong>color</strong> and <strong>style</strong> in the properties panel;
+              scrolling the wheel while a clip is selected also changes the font size.
+            </li>
+            <li>
+              Subtitles are exported with the film, and can also be
+              <strong>exported separately as an SRT file</strong>.
+            </li>
+          </ul>
+
+          <h3>10.7 Export</h3>
+          <p>
+            The timeline toolbar offers <strong>Export film</strong>: set the resolution (preset or custom width
+            / height), frame rate and bitrate. It prefers the local ffmpeg to mux an MP4 and falls back to WebM
+            recording when ffmpeg isn't installed. Export progress and the result path are reported in the UI.
+            Use “Fit width” to zoom the timeline.
+          </p>
+        </section>
+
+        <section id="canvas">
+          <h2>11. Canvas &amp; world elements</h2>
+
+          <h3>11.1 Canvas assets</h3>
+          <ul>
+            <li>
+              <strong>Free canvas</strong>: a blank node canvas — right-click to add nodes, or drag assets in
+              from the asset library. Creating another yields “Free Canvas 2” and so on. To build video
+              generation and reference video on a canvas, see
+              <a href="guide-video.en.html">Free canvas: video generation &amp; reference video</a>.
+            </li>
+          </ul>
+
+          <h3>11.2 World elements / shots</h3>
+          <ul>
+            <li>
+              Table view: world elements are character / scene / prop / weapon; the shot table has time / space /
+              characters / action / conflict / atmosphere columns. Rows can be added and deleted.
+            </li>
+            <li>
+              Double-clicking the matching node opens the extraction / breakdown prompt, the table or the
+              editing window.
+            </li>
+          </ul>
+        </section>
+
+        <section id="director">
+          <h2>12. Director stage</h2>
+          <figure class="shot">
+            <img
+              src="assets/banner/director-stage.webp"
+              alt="3D director stage: characters, cameras and blocking shots"
+              width="1440"
+              height="900"
+              loading="lazy"
+            />
+            <figcaption>
+              <strong>3D director stage</strong>: blocking shots, motion recording and camera views.
+            </figcaption>
+          </figure>
+          <p>
+            The director stage handles 3D posing, cameras, animation preview and recording. The node chain is
+            usually “director stage edit → (optional) select / downstream generation”. The edit node offers two
+            <strong>square</strong> outputs (blocking shots and motion captures) and two kinds of input: a
+            <strong>3D model input port</strong> — connect a 3D model generation result and diving into the
+            stage instantiates it into the scene automatically; and a <strong>panorama input port</strong> —
+            connect a panorama image and it becomes the stage background when you dive in.
+          </p>
+
+          <h3>12.1 Open from a node</h3>
+          <ol>
+            <li>Double-click a “director stage edit” node in the node graph to open the <strong>stage window</strong>.</li>
+            <li>
+              After closing the stage or syncing, results are written to the node:
+              <code>out-shots</code> (blocking shots, <code>images</code>) and <code>out-actions</code>
+              (motion captures, <code>videos</code>).
+            </li>
+            <li>
+              The node Inspector previews blocking thumbnails and motion videos (double-click for the media
+              preview).
+            </li>
+          </ol>
+
+          <h3>12.2 Viewport controls</h3>
+          <ul>
+            <li>
+              Left button selects · middle button pans · hold the right button for
+              <strong>fly-through</strong>: <kbd>W</kbd>/<kbd>A</kbd>/<kbd>S</kbd>/<kbd>D</kbd> to move,
+              <kbd>Q</kbd>/<kbd>E</kbd> to descend / ascend, <kbd>Shift</kbd> to accelerate, mouse to look.
+            </li>
+            <li><kbd>Q</kbd> / <kbd>R</kbd> / <kbd>S</kbd>: move / rotate / scale tools.</li>
+            <li>
+              Bottom viewport toolbar: panorama / animation mode switch, <strong>aspect ratio</strong> (Auto
+              follows the viewport size, or fixed 21:9 / 16:9 / 4:3 / 1:1 / 3:4 / 9:16 — it affects preview and
+              capture framing), a <strong>selection bounds</strong> toggle, <strong>screenshot</strong> and
+              <strong>reset view</strong>.
+            </li>
+          </ul>
+
+          <h3>12.3 Sidebar and objects</h3>
+          <ul>
+            <li>
+              Left scene list: hierarchy, search, create camera / empty object / primitives (cube, sphere,
+              cylinder, pointed arch, torus, plane, … 20+); drag the right edge to
+              <strong>resize the list</strong> (remembered locally).
+            </li>
+            <li>
+              <strong>AI blockout</strong>: provide perspective / 360 panorama references (up to 3) plus a
+              prompt, and a text model builds a scene blockout from primitives — a quick way to lock down
+              perspective and spatial layout.
+            </li>
+            <li>
+              Objects: delete, hide, show name, lock; drag to reparent. The hierarchy supports
+              <strong>multi-select</strong> batch delete and <strong>multi-select drag</strong> to reparent
+              (moving the whole group while preserving world transforms); camera groups can be deleted as a
+              group, preset cameras included, and it's undoable.
+            </li>
+            <li>
+              Properties · <strong>pose</strong> (FK / IK, AI pose — generate bone rotations from natural
+              language, common pose presets) · <strong>material texture override</strong>: replace an object's
+              base / normal map, with options to remove or hide a texture slot, or restore the model's own
+              textures in one click.
+            </li>
+          </ul>
+
+          <h3>12.4 Blocking and motion</h3>
+          <p>The “Blocking &amp; motion” button in the title bar opens a panel with two categories:</p>
+          <ul>
+            <li>
+              <strong>Blocking</strong>: viewport screenshot history. Capture with the toolbar camera button;
+              double-click a thumbnail to preview it.
+            </li>
+            <li>
+              <strong>Motion</strong>: videos recorded in animation mode. After a successful recording it's
+              written to the project's <code>Cache/Videos/</code> automatically (no directory picker) and the
+              Motion category opens.
+            </li>
+          </ul>
+
+          <h3>12.5 Views and panorama</h3>
+          <ul>
+            <li>Director view / camera switching; six-way views; reset.</li>
+            <li>
+              <strong>Shading mode</strong>: the shading menu at the right of the title bar offers
+              <strong>shaded</strong> / <strong>wireframe</strong> / <strong>shaded wireframe</strong> (solid
+              with a wireframe overlay) for checking topology, intersections and occlusion. The choice is
+              remembered locally; the default is shaded.
+            </li>
+            <li>
+              <strong>Gizmos display</strong>: the Gizmos menu at the right of the title bar adjusts gizmo size
+              and toggles scene text, camera gizmos, the grid and selection bounds. “Include scene text / camera
+              names in captures and video” decides whether blocking shots and motion recordings overlay those
+              labels.
+            </li>
+            <li>
+              Move to view: <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>F</kbd>; align with view:
+              <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd>.
+            </li>
+            <li>
+              Panorama: drag in a background image and adjust zoom / pan / rotation, plus ground and sky colors.
+            </li>
+            <li>
+              You can also connect a panorama to the director stage node's panorama input port (single image);
+              diving into the stage then sets it as the background automatically, with no manual drag needed.
+            </li>
+          </ul>
+
+          <h3>12.6 Animation mode and recording</h3>
+          <ul>
+            <li>Switch between panorama mode and animation mode.</li>
+            <li>
+              Tracks and keyframes: <kbd>K</kbd> adds a keyframe, <kbd>Delete</kbd> removes one, and
+              <kbd>Space</kbd> plays / pauses.
+            </li>
+            <li>
+              The red dot button in the animation panel is <strong>record motion</strong>: it records the
+              current animation to WebM, saves it to the cache directory automatically and adds it to the
+              Motion list.
+            </li>
+          </ul>
+
+          <h3>12.7 Gaussian splats (.spz / .ply)</h3>
+          <p>
+            Splats come from the <strong>spatial world</strong> chain, and they can also enter the stage as model
+            assets — rendered, positioned, and included in blocking shots and motion recordings:
+          </p>
+          <ul>
+            <li>
+              Two sources: the <code>*.spz</code> that <strong>spatial world generation</strong> writes next to
+              the world automatically (free, preferred), or the <code>*.ply</code> converted synchronously by the
+              <strong>“World export”</strong> node (billed separately, written as a same-name sibling of the world
+              GLB). PLY is not registered as an asset — connect its relative path straight to the director stage's
+              3D model input port, or import it into the asset library first.
+            </li>
+            <li>
+              It enters the stage like any other model: <strong>drag the splat model asset onto the stage
+              viewport</strong>, or wire it into the director stage node's <strong>3D model input port</strong>
+              (diving into the stage instantiates it automatically).
+            </li>
+            <li>
+              Rendering is handled by the bundled <strong>Spark</strong> renderer: a splat is an ordinary object in
+              the scene hierarchy — selectable, movable / rotatable / scalable, parentable, hideable and
+              renameable, using the same transform tools and selection bounds as a GLB character. The asset
+              inspector's <strong>3D preview</strong> and the asset card <strong>thumbnail</strong> render splats
+              too.
+            </li>
+            <li>
+              The <strong>World export</strong> node's inspector carries the same 3D preview pane plus an artifact
+              list: after exporting the HQ mesh or the PLY splats you can orbit the result, and the list also shows
+              the world's own gaussian splats (SPZ) and 360 panorama.
+            </li>
+            <li>
+              The “Skeleton” tab is meaningless for a splat: there are no bones and it takes no part in
+              retargeting, so an empty bone list is expected.
+            </li>
+            <li>
+              The splat renderer loads on demand: previews and stages without splats never load it. Splats are
+              read in asynchronously, so a freshly opened stage may show nothing for a moment before they
+              appear.
+            </li>
+          </ul>
+          <p><strong>What works</strong></p>
+          <ul>
+            <li>Transforms, visibility, renaming, reparenting and locking — exactly like any other object.</li>
+            <li>
+              <strong>Colour</strong> in the properties tints the whole splat (it shifts the splat's own hue),
+              rather than swapping a material's base colour as it does for regular models.
+            </li>
+            <li>Blocking shots and motion recordings render it into the frame like anything else.</li>
+          </ul>
+          <p>
+            <strong>What does not work</strong> (a splat has no triangle mesh and no texture materials, so these
+            tools do not apply)
+          </p>
+          <ul>
+            <li>Pose and skeletal animation: there are no bones, it takes no part in retargeting, and the animation
+              panel lists no skeleton clips for it.</li>
+            <li>Material texture override: no replaceable texture slots appear.</li>
+            <li>
+              The <strong>wireframe</strong> / <strong>shaded wireframe</strong> shading modes: splats always shade
+              their own way.
+            </li>
+          </ul>
+        </section>
+
+      </article>
+    </div>
+
+    <footer class="foot">
+      <div class="foot-grid">
+        <div class="foot-about-col">
+          <a class="foot-brand" href="index.en.html">
+            <img src="assets/logo-mark.png" alt="" width="22" height="22" />
+            AI Art Engine
+          </a>
+          <p class="foot-about">A local-first, agent-native AI art asset engine. Projects stay on your machine; models run on your own keys.</p>
+        </div>
+        <nav class="foot-col" aria-label="Docs">
+          <h4>Docs</h4>
+          <ul>
+            <li><a href="quickstart.en.html">Quickstart</a></li>
+            <li><a href="manual.en.html">Manual</a></li>
+            <li><a href="developers.en.html">Developer docs</a></li>
+            <li><a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a></li>
+          </ul>
+        </nav>
+        <nav class="foot-col" aria-label="Guides">
+          <h4>Guides</h4>
+          <ul>
+            <li><a href="guide-short-video.en.html">Short drama</a></li>
+            <li><a href="guide-video.en.html">Video</a></li>
+            <li><a href="guide-comfyui.en.html">ComfyUI</a></li>
+            <li><a href="guide-newapi.en.html">NewAPI</a></li>
+            <li><a href="guide-mcp.en.html">MCP setup</a></li>
+            <li><a href="guide-gameplay.en.html">Playable HTML</a></li>
+          </ul>
+        </nav>
+        <nav class="foot-col" aria-label="Community">
+          <h4>Community</h4>
+          <ul>
+            <li><a href="index.en.html#download">Download</a></li>
+            <li><a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+            <li><a href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine" target="_blank" rel="noopener noreferrer">Gitee</a></li>
+            <li><a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer">bilibili</a></li>
+            <li><a href="https://github.com/Justin-sky/ai-art-engine/issues" target="_blank" rel="noopener noreferrer">Report an issue</a></li>
+          </ul>
+        </nav>
+      </div>
+      <div class="foot-bottom">
+        <span>© 2026 AI Art Engine · GPL-3.0</span>
+        <span>Docs follow the in-app UI of the latest release</span>
+      </div>
+    </footer>
+    <script>
+      document.querySelectorAll('.mobile-nav a').forEach((link) => {
+        link.addEventListener('click', () => link.closest('.mobile-menu')?.removeAttribute('open'))
+      })
+
+      // Reading progress bar
+      const progressBar = document.querySelector('.progress')
+      if (progressBar) {
+        const updateProgress = () => {
+          const doc = document.documentElement
+          const max = doc.scrollHeight - window.innerHeight
+          progressBar.style.width = (max > 0 ? (window.scrollY / max) * 100 : 0) + '%'
+        }
+        window.addEventListener('scroll', updateProgress, { passive: true })
+        window.addEventListener('resize', updateProgress)
+        updateProgress()
+      }
+
+      // Table of contents scrollspy
+      const tocLinks = Array.from(document.querySelectorAll('.toc a[href^="#"]'))
+      const spyTargets = []
+      tocLinks.forEach((link) => {
+        const id = link.getAttribute('href').slice(1)
+        const el = id ? document.getElementById(id) : null
+        if (el) spyTargets.push({ el, link })
+      })
+      if (spyTargets.length) {
+        const spy = () => {
+          const y = window.scrollY + 90
+          let current = spyTargets[0]
+          for (const target of spyTargets) {
+            if (!target.el) continue
+            const top = target.el.getBoundingClientRect().top + window.scrollY
+            if (top <= y) current = target
+          }
+          if (!current) return
+          tocLinks.forEach((link) => link.classList.toggle('active', link === current.link))
+        }
+        window.addEventListener('scroll', spy, { passive: true })
+        window.addEventListener('resize', spy)
+        spy()
+      }
+
+      // Back to top
+      const toTop = document.querySelector('.to-top')
+      if (toTop) {
+        const toggleToTop = () => {
+          toTop.hidden = window.scrollY <= 600
+        }
+        window.addEventListener('scroll', toggleToTop, { passive: true })
+        toggleToTop()
+        toTop.addEventListener('click', () => {
+          window.scrollTo({ top: 0, behavior: 'smooth' })
+        })
+      }
+
+      // Screenshot lightbox
+      const lightbox = document.querySelector('.lightbox')
+      if (lightbox) {
+        const lightboxImg = lightbox.querySelector('img')
+        const lightboxCap = lightbox.querySelector('.lightbox-cap')
+        document.querySelectorAll('.manual figure.shot img').forEach((img) => {
+          img.addEventListener('click', () => {
+            if (!lightboxImg || !lightboxCap) return
+            lightboxImg.src = img.currentSrc || img.src
+            lightboxImg.alt = img.alt
+            lightboxCap.textContent =
+              img.closest('figure')?.querySelector('figcaption')?.textContent?.trim() || img.alt
+            lightbox.hidden = false
+          })
+        })
+        lightbox.addEventListener('click', () => {
+          lightbox.hidden = true
+        })
+        document.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape' && !lightbox.hidden) lightbox.hidden = true
+        })
+      }
+
+      // Copy section link on heading click
+      const toast = document.createElement('div')
+      toast.className = 'toast'
+      toast.setAttribute('role', 'status')
+      document.body.appendChild(toast)
+      let toastTimer = 0
+      const showToast = (message) => {
+        toast.textContent = message
+        toast.classList.add('show')
+        clearTimeout(toastTimer)
+        toastTimer = setTimeout(() => toast.classList.remove('show'), 1600)
+      }
+      document
+        .querySelectorAll('.manual section[id] > h2, .manual h3[id], .manual h4[id]')
+        .forEach((heading) => {
+          const id = heading.id || heading.parentElement?.id
+          if (!id) return
+          heading.title = 'Click to copy a link to this section'
+          heading.addEventListener('click', () => {
+            if (window.getSelection()?.toString()) return
+            const url = location.origin + location.pathname + '#' + id
+            if (navigator.clipboard?.writeText) {
+              navigator.clipboard.writeText(url).then(
+                () => showToast('Section link copied'),
+                () => showToast(url)
+              )
+            } else {
+              showToast(url)
+            }
+          })
+        })
+    </script>
+    <script>
+      // 主题切换：跟随系统 → 浅色 → 深色
+      ;(function () {
+        var KEY = 'site.theme'
+        var btn = document.querySelector('.theme-toggle')
+        if (!btn) return
+        var root = document.documentElement
+        var en = (root.getAttribute('lang') || '').indexOf('en') === 0
+        var query = window.matchMedia('(prefers-color-scheme: dark)')
+        var META = {
+          auto: { icon: '◐', label: en ? 'Theme: system' : '主题：跟随系统' },
+          light: { icon: '☀', label: en ? 'Theme: light' : '主题：浅色' },
+          dark: { icon: '☾', label: en ? 'Theme: dark' : '主题：深色' }
+        }
+        function readPref() {
+          try {
+            var v = localStorage.getItem(KEY)
+            return v === 'light' || v === 'dark' || v === 'auto' ? v : 'dark'
+          } catch (e) { return 'auto' }
+        }
+        function apply() {
+          var pref = readPref()
+          root.classList.toggle('dark', pref === 'dark' || (pref !== 'light' && query.matches))
+          root.classList.toggle('light', pref === 'light')
+          var meta = META[pref]
+          btn.textContent = meta.icon
+          btn.title = meta.label + (en ? ' (click to switch)' : '（点击切换）')
+          btn.setAttribute('aria-label', meta.label)
+        }
+        query.addEventListener('change', apply)
+        btn.addEventListener('click', function () {
+          var cur = readPref()
+          var next = cur === 'dark' ? 'light' : cur === 'light' ? 'auto' : 'dark'
+          try { localStorage.setItem(KEY, next) } catch (e) {}
+          apply()
+        })
+        apply()
+      })()
+    </script>
+      <script src="site-search.js?v=20261009d" defer></script>
+    <script src="site-enhance.js?v=20261009d" defer></script>
+  </body>
+</html>

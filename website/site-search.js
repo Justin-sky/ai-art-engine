@@ -44,6 +44,11 @@
         { url: 'index.en.html', label: 'Home' },
         { url: 'quickstart.en.html', label: 'Quickstart' },
         { url: 'manual.en.html', label: 'Manual' },
+        { url: 'manual-setup.en.html', label: 'Manual · Setup' },
+        { url: 'manual-workspace.en.html', label: 'Manual · Workspace' },
+        { url: 'manual-workflow.en.html', label: 'Manual · Workflow' },
+        { url: 'manual-production.en.html', label: 'Manual · Production' },
+        { url: 'manual-reference.en.html', label: 'Manual · Reference' },
         { url: 'guide-video.en.html', label: 'Video Guide' },
         { url: 'guide-short-video.en.html', label: 'Short Video' },
         { url: 'guide-comfyui.en.html', label: 'ComfyUI' },
@@ -56,6 +61,11 @@
         { url: 'index.html', label: '首页' },
         { url: 'quickstart.html', label: '快速上手' },
         { url: 'manual.html', label: '使用手册' },
+        { url: 'manual-setup.html', label: '手册 · 工程与设置' },
+        { url: 'manual-workspace.html', label: '手册 · 工作区与资产库' },
+        { url: 'manual-workflow.html', label: '手册 · 一键工作流与节点图' },
+        { url: 'manual-production.html', label: '手册 · 剧本、成片与导演台' },
+        { url: 'manual-reference.html', label: '手册 · 参考与故障排查' },
         { url: 'guide-video.html', label: '视频生成指南' },
         { url: 'guide-short-video.html', label: '短视频教程' },
         { url: 'guide-comfyui.html', label: 'ComfyUI 教程' },
@@ -403,7 +413,15 @@
     btn.className = 'nav-search'
     btn.setAttribute('aria-label', T.open)
     btn.title = T.open
-    btn.innerHTML = '<span aria-hidden="true">⌕</span>'
+    var mac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)
+    btn.innerHTML =
+      '<span class="nav-search-icon" aria-hidden="true">⌕</span>' +
+      '<span class="nav-search-label">' +
+      T.placeholder +
+      '</span>' +
+      '<kbd class="nav-search-kbd" aria-hidden="true">' +
+      (mac ? '⌘' : 'Ctrl') +
+      ' K</kbd>'
     btn.addEventListener('click', open)
     if (anchor && anchor.parentNode === header) header.insertBefore(btn, anchor)
     else header.appendChild(btn)

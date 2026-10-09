@@ -1,0 +1,938 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+
+    <script>
+      // 提前应用本地主题选择，避免加载闪烁
+      ;(function () {
+        try {
+          var pref = localStorage.getItem('site.theme')
+          if (
+            pref !== 'light' &&
+            (pref === 'dark' || pref == null || (pref === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches))
+          ) {
+            document.documentElement.classList.add('dark')
+          }
+        } catch (e) {}
+      })()
+    </script>
+    <meta
+      name="description"
+      content="Create and open projects, then configure general preferences, model providers, object storage, extensions, the MCP tool service and web search. Walk through this part first when you set up the app."
+    />
+    <title>Projects & settings · Manual — AIArtEngine</title>
+    <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/manual-setup.en.html" />
+    <meta property="og:site_name" content="AIArtEngine" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:title" content="Projects & settings · Manual — AIArtEngine" />
+    <meta property="og:description" content="Create and open projects, then configure general preferences, model providers, object storage, extensions, the MCP tool service and web search. Walk through this part first when you set up the app." />
+    <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/manual-setup.en.html" />
+    <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Projects & settings · Manual — AIArtEngine" />
+    <meta name="twitter:description" content="Create and open projects, then configure general preferences, model providers, object storage, extensions, the MCP tool service and web search. Walk through this part first when you set up the app." />
+    <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-setup.html" />
+    <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual-setup.en.html" />
+    <link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/manual-setup.html" />
+    <link rel="icon" href="assets/logo-mark.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="manual.css?v=20261009d" />
+    <link rel="stylesheet" href="site.css?v=20261009d" />
+  </head>
+  <body>
+    <a class="skip" href="#manual">Skip to content</a>
+    <div class="progress" aria-hidden="true"></div>
+    <button class="to-top" type="button" aria-label="Back to top" hidden>↑</button>
+    <div class="lightbox" hidden>
+      <img alt="" />
+      <p class="lightbox-cap"></p>
+    </div>
+
+    <header class="top">
+      <a class="brand" href="index.en.html">
+        <img src="assets/logo-mark.png" alt="" width="30" height="30" />
+        <span>AI Art Engine</span>
+      </a>
+      <nav class="nav" aria-label="Main navigation">
+        <a href="quickstart.en.html">Quickstart</a>
+        <a href="manual.en.html" aria-current="page">Manual</a>
+        <div class="nav-drop">
+          <button type="button" class="nav-drop-btn" aria-haspopup="true">
+            Guides<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+          </button>
+          <div class="nav-drop-menu">
+            <a href="guide-short-video.en.html"><strong>Short drama</strong><span>Storyboards, review, motion video</span></a>
+            <a href="guide-video.en.html"><strong>Video</strong><span>Free canvas & reference video</span></a>
+            <a href="guide-comfyui.en.html"><strong>ComfyUI</strong><span>API v2 and comfy-api-proxy</span></a>
+            <a href="guide-newapi.en.html"><strong>NewAPI</strong><span>Self-hosted relay gateways</span></a>
+            <a href="guide-mcp.en.html"><strong>MCP setup</strong><span>Drive the app from Claude Code / Codex</span></a>
+            <a href="guide-gameplay.en.html"><strong>Playable HTML</strong><span>Interactive gameplay prototypes</span></a>
+            <a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer"><strong>Video tutorials</strong><span>Walkthroughs on bilibili</span></a>
+          </div>
+        </div>
+        <a href="developers.en.html">Developers</a>
+        <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a>
+        <a href="index.en.html#download">Download</a>
+        <a class="nav-src" href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.070 3.633 17.700 3.633 17.700c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.070 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.760-1.605-2.665-.3-5.466-1.332-5.466-5.930 0-1.310.465-2.380 1.235-3.220-.135-.303-.540-1.523.105-3.176 0 0 1.005-.322 3.300 1.230.960-.267 1.980-.399 3.000-.405 1.020.006 2.040.138 3.000.405 2.280-1.552 3.285-1.230 3.285-1.230.645 1.653.240 2.873.120 3.176.765.840 1.230 1.910 1.230 3.220 0 4.610-2.805 5.625-5.475 5.920.420.360.810 1.096.810 2.220 0 1.606-.015 2.896-.015 3.286 0 .315.210.690.825.570C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" /></svg>GitHub</a>
+      </nav>
+      <a class="nav-lang" href="manual-setup.html" hreflang="zh-CN" lang="zh-CN">中文</a>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme">◐</button>
+      <details class="mobile-menu">
+        <summary aria-label="Open navigation menu"><span aria-hidden="true">☰</span> Menu</summary>
+        <nav class="mobile-nav" aria-label="Mobile navigation">
+          <p class="mobile-group">Docs</p>
+          <a href="index.en.html">Home</a>
+          <a href="quickstart.en.html">Quickstart</a>
+          <a href="manual.en.html" aria-current="page">Manual</a>
+          <a href="developers.en.html">Developer docs</a>
+          <p class="mobile-group">Guides</p>
+          <a href="guide-short-video.en.html">Short drama</a>
+          <a href="guide-video.en.html">Video</a>
+          <a href="guide-comfyui.en.html">ComfyUI</a>
+          <a href="guide-newapi.en.html">NewAPI</a>
+          <a href="guide-mcp.en.html">MCP setup</a>
+          <a href="guide-gameplay.en.html">Playable HTML</a>
+          <p class="mobile-group">Community</p>
+          <a href="index.en.html#download">Download</a>
+          <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a>
+          <a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer">bilibili</a>
+          <a href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine" target="_blank" rel="noopener noreferrer">Gitee</a>
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a>
+        </nav>
+      </details>
+    </header>
+
+    <div class="manual-shell">
+      <aside class="toc" aria-label="Table of contents">
+        <h2>Table of contents</h2>
+        <ol>
+          <li class="toc-group">Basics</li>
+          <li><a href="#home">3. Home &amp; projects</a></li>
+          <li><a href="#settings">4. Settings</a></li>
+
+          <li class="toc-group">Manual chapters</li>
+          <li><a href="manual.en.html">Overview & core concepts</a></li>
+          <li><a href="manual-workspace.en.html">Workspace & asset library</a></li>
+          <li><a href="manual-workflow.en.html">One-Click Workflow & node graph</a></li>
+          <li><a href="manual-production.en.html">Script, timeline & director stage</a></li>
+          <li><a href="manual-reference.en.html">Reference & troubleshooting</a></li>
+        </ol>
+      </aside>
+
+      <article class="manual" id="manual">
+        <header class="manual-hero">
+          <p class="eyebrow">Manual · Setup</p>
+          <h1>Projects & settings</h1>
+          <p class="lede">
+            Create and open projects, then configure general preferences, model providers, object storage, extensions, the MCP tool service and web search. Walk through this part first when you set up the app.
+          </p>
+        </header>
+
+        <section id="home">
+          <h2>3. Home &amp; projects</h2>
+          <h3>Create a project</h3>
+          <ol>
+            <li>Click <strong>New Project</strong>.</li>
+            <li>Fill in the <strong>project name</strong>.</li>
+            <li>Click <strong>Browse</strong> to choose the <strong>storage directory</strong>.</li>
+            <li>Click <strong>Create</strong> to enter the workspace.</li>
+          </ol>
+          <h3>Open a project</h3>
+          <ul>
+            <li>Click <strong>Open Project</strong> and pick <code>project.json</code> inside the project directory.</li>
+            <li>Or click a path in the <strong>Recent projects</strong> list.</li>
+          </ul>
+          <h3>Recent projects</h3>
+          <ul>
+            <li>The list shows project paths you opened recently.</li>
+            <li>
+              The <strong>×</strong> on the right means “remove from the recent list” — it does
+              <strong>not</strong> delete the project files on disk.
+            </li>
+          </ul>
+          <div class="tip">
+            This release has no in-app “Delete project” action. To remove a project entirely, delete its folder
+            in your file manager.
+          </div>
+        </section>
+
+        <section id="settings">
+          <h2>4. Settings</h2>
+          <p>Open Settings from the home page or the workspace top bar. Changes are saved automatically.</p>
+
+          <h3>4.1 General</h3>
+          <ul>
+            <li><strong>Theme</strong>: dark / light.</li>
+            <li><strong>Language</strong>: 中文 (Chinese) / English.</li>
+            <li><strong>Auto save</strong>: can be enabled, with an interval in seconds.</li>
+            <li><strong>About &amp; updates</strong>: view the version and check for updates (see below).</li>
+          </ul>
+
+          <h3>4.2 Models</h3>
+          <ol>
+            <li>
+              Click <strong>Add model provider</strong>. Options include:
+              <ul>
+                <li><strong>OpenRouter</strong>: text / image / video / decisions (aggregated catalog, single API Key).</li>
+                <li>
+                  <strong>OpenAI</strong>: text (GPT family) / images (gpt-image-1 / gpt-image-2); requires
+                  network access to api.openai.com and a non-mainland account. Text-to-image uses
+                  <code>/images/generations</code>, reference-image editing uses
+                  <code>/images/edits</code> (1 image max).
+                </li>
+                <li>
+                  <strong>DeepSeek</strong>: text only (deepseek-chat / deepseek-reasoner, OpenAI compatible).
+                </li>
+                <li>
+                  <strong>Zhipu</strong>: GLM text (<code>/chat/completions</code>) + CogView text-to-image
+                  (glm-image / cogview-4 / cogview-3-flash, <code>/images/generations</code>).
+                </li>
+                <li>
+                  <strong>Kimi (Moonshot)</strong>: text (kimi-k2 series / moonshot-v1 series, OpenAI
+                  compatible, default Base URL <code>https://api.moonshot.cn/v1</code>).
+                </li>
+                <li>
+                  <strong>xAI (Grok)</strong>: text (grok-* chat, OpenAI compatible, default Base URL
+                  <code>https://api.x.ai/v1</code>) + Grok Imagine text-to-image
+                  (<code>/images/generations</code>, JSON body, supports aspect_ratio) + Grok Imagine Video
+                  async video (<code>/videos/generations</code> submitted then polled at
+                  <code>GET /videos/{request_id}</code>; 480p / 720p, 5–15s, first-frame image-to-video).
+                </li>
+                <li>
+                  <strong>Google (Gemini)</strong>: text (gemini-* chat) + Nano Banana text-to-image /
+                  image-to-image (<code>/images/generations</code>, JSON body, supports aspect_ratio /
+                  resolution / n / response_format and image reference fields) + Veo 3.1 async video
+                  (<code>/videos</code> submitted then polled at <code>GET /videos/{id}</code>; 720p–4K, 4–8s,
+                  first-frame image-to-video) — all through the official OpenAI compatibility layer (default
+                  Base URL <code>https://generativelanguage.googleapis.com/v1beta/openai</code>).
+                </li>
+                <li>
+                  <strong>vLLM</strong>: local OpenAI-compatible service (default
+                  <code>http://localhost:8000/v1</code>), no API Key required; deploying vLLM-Omni diffusion
+                  models (e.g. Wan2.2 T2V / I2V) enables video generation (async jobs on
+                  <code>/v1/videos</code>, can carry a first-frame image).
+                </li>
+                <li>
+                  <strong>Ollama</strong>: local OpenAI-compatible endpoint (default
+                  <code>http://localhost:11434/v1</code>), no API Key required.
+                </li>
+                <li>
+                  <strong>LM Studio</strong>: local OpenAI-compatible endpoint (default
+                  <code>http://localhost:1234/v1</code>), no API Key required.
+                </li>
+                <li>
+                  <strong>Volcengine Ark</strong>: text / Seedream images / Seedance video use the Ark API Key;
+                  sound design goes through Doubao Speech openspeech (a Speech console API Key, which can differ
+                  from the Ark Key) plus a manually entered <code>speaker_id</code>. Video models include
+                  Seedance 2.5 (<code>doubao-seedance-2-5-260628</code>: up to 30s per request, 50 omni
+                  references, timestamp-level segment editing) plus Seedance 2.0 / 2.0 Fast.
+                </li>
+                <li><strong>Kling</strong>: images / video (API Key).</li>
+                <li>
+                  <strong>MiniMax</strong>: text / image / video / voice design (same API Key; default Base URL
+                  <code>https://api.minimaxi.com</code>).
+                </li>
+                <li>
+                  <strong>Tongyi Qianwen</strong>: text (compatible mode) / Wanxiang images / Wanxiang video
+                  (including HappyHorse, Wan 3.0-Video, …; Bailian API Key). Wan 3.0-Video supports 30s per
+                  request with 10 image + 5 video + 5 audio references; it is in public / invite beta, so use
+                  the Model ID from the Bailian console.
+                </li>
+                <li>
+                  <strong>ModelScope</strong>: text / text-to-image (ModelScope access token, e.g.
+                  <code>ms-…</code>).
+                </li>
+                <li>
+                  <strong>ComfyUI</strong>: images / video / audio via API 2 (<code>POST /api/v2/jobs</code>).
+                  The model id is the <strong>API-format workflow name</strong> in userdata (not a checkpoint),
+                  and the model list is pulled from the service dynamically. Video workflows support multimodal
+                  references (r2v), video / audio reference injection and first/last frame injection
+                  (<code>first_frame</code> / <code>last_frame</code>), with a 15s duration cap. The default
+                  local Base URL is <code>http://127.0.0.1:8189</code> (install
+                  <a href="guide-comfyui.en.html#local-proxy">comfy-api-proxy</a> first — don't connect to 8188
+                  directly); for the cloud enter <code>https://cloud.comfy.org</code> plus a key. The key can be
+                  empty locally. Full steps: <a href="guide-comfyui.en.html">ComfyUI guide</a>.
+                </li>
+                <li>
+                  <strong>MagicRouter</strong>: multi-provider aggregation gateway (OpenAI compatible), text /
+                  image / video; requires an API Key starting with <code>mr-</code>, default Base URL
+                  <code>https://api.magicrouter.ai/v1</code>, model catalog from <code>/models/live</code>,
+                  video submitted async then polled.
+                </li>
+                <li>
+                  <strong>Meshy</strong>: text-to-3D / image-to-3D (including multi-image to 3D; API Key;
+                  default Base URL <code>https://api.meshy.ai</code>).
+                </li>
+                <li>
+                  <strong>Tripo</strong>: text-to-3D / image-to-3D (API Key; default Base URL
+                  <code>https://api.tripo3d.ai</code>).
+                </li>
+                <li>
+                  <strong>Rodin (Hyper3D)</strong>: text-to-3D / image-to-3D (API Key; default Base URL
+                  <code>https://api.hyper3d.com/api/v2</code>).
+                </li>
+                <li>
+                  <strong>Luma AI</strong>: text-to-3D / image-to-3D (API Key; default Base URL
+                  <code>https://api.lumalabs.ai/dream-machine/v1</code>).
+                </li>
+                <li>
+                  <strong>Lux3D</strong>: text-to-3D / image-to-3D / multi-image to 3D (API Key; G1 /
+                  G1-Turbo; default Base URL <code>https://api.aholo3d.cn</code>).
+                </li>
+                <li>
+                  <strong>World Labs (Marble)</strong>: spatial world generation &mdash; text-to-world /
+                  image-to-world / multi-image to world / video-to-world (API Key; default Base URL
+                  <code>https://api.worldlabs.ai</code>, auth header <code>WLT-Api-Key</code>; models
+                  marble-1.1, marble-1.1-plus, plus the previous-generation marble-1.0 and marble-1.0-draft.
+                  Reference media uses the official managed upload, so no object storage is needed).
+                </li>
+                <li>
+                  <strong>Custom</strong>: pick an endpoint type (OpenAI compatible / Anthropic / Gemini) and
+                  supply your own Base URL and API key &mdash; for relays such as NewAPI and one-api, or a
+                  self-hosted service. Text and images are supported, and models often cannot be fetched from
+                  the catalog, so you type their ids by hand &mdash; see the
+                  <a href="guide-newapi.en.html">NewAPI guide</a> for the full walkthrough.
+                </li>
+              </ul>
+            </li>
+            <li>
+              After selecting or expanding a provider, the settings page links to its
+              <strong>key request page</strong> (you can also open these directly):
+              <ul>
+                <li>
+                  OpenRouter:
+                  <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer"
+                    >https://openrouter.ai/keys</a
+                  >
+                </li>
+                <li>
+                  OpenAI API Key:
+                  <a
+                    href="https://platform.openai.com/api-keys"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    >https://platform.openai.com/api-keys</a
+                  >
+                </li>
+                <li>
+                  DeepSeek API Key:
+                  <a
+                    href="https://platform.deepseek.com/api_keys"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    >https://platform.deepseek.com/api_keys</a
+                  >
+                </li>
+                <li>
+                  Zhipu API Key:
+                  <a
+                    href="https://open.bigmodel.cn/usercenter/apikeys"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    >https://open.bigmodel.cn/usercenter/apikeys</a
+                  >
+                </li>
+                <li>
+                  Kimi (Moonshot) API Key:
+                  <a
+                    href="https://platform.moonshot.cn/console/api-keys"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    >https://platform.moonshot.cn/console/api-keys</a
+                  >
+                </li>
+                <li>
+                  xAI API Key:
+                  <a href="https://console.x.ai/" target="_blank" rel="noopener noreferrer"
+                    >https://console.x.ai/</a
+                  >
+                </li>
+                <li>
+                  Google AI Studio API Key:
+                  <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer"
+                    >https://aistudio.google.com/apikey</a
+                  >
+                </li>
+                <li>
+                  vLLM docs (local service, no key needed):
+                  <a href="https://docs.vllm.ai" target="_blank" rel="noopener noreferrer"
+                    >https://docs.vllm.ai</a
+                  >
+                </li>
+                <li>
+                  Ollama (local service, no key needed):
+                  <a href="https://ollama.com" target="_blank" rel="noopener noreferrer">https://ollama.com</a>
+                </li>
+                <li>
+                  LM Studio (local service, no key needed):
+                  <a href="https://lmstudio.ai" target="_blank" rel="noopener noreferrer">https://lmstudio.ai</a>
+                </li>
+                <li>
+                  Volcengine Ark API Key (text / image / video):
+                  <a
+                    href="https://console.volcengine.com/ark/region:ark-cn-beijing/apiKey"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    >https://console.volcengine.com/ark/region:ark-cn-beijing/apiKey</a
+                  >
+                </li>
+                <li>
+                  Doubao Speech console (sound design API Key / speaker_id):
+                  <a
+                    href="https://console.volcengine.com/speech/app"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    >https://console.volcengine.com/speech/app</a
+                  >
+                </li>
+                <li>
+                  Kling open platform (API Key):
+                  <a href="https://app.klingai.com/cn/dev" target="_blank" rel="noopener noreferrer"
+                    >https://app.klingai.com/cn/dev</a
+                  >
+                </li>
+                <li>
+                  MiniMax API key:
+                  <a
+                    href="https://platform.minimaxi.com/user-center/basic-information/interface-key"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    >https://platform.minimaxi.com/user-center/basic-information/interface-key</a
+                  >
+                </li>
+                <li>
+                  Tongyi Qianwen / Bailian API Key:
+                  <a
+                    href="https://bailian.console.aliyun.com/?tab=model#/api-key"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    >https://bailian.console.aliyun.com/?tab=model#/api-key</a
+                  >
+                </li>
+                <li>
+                  ModelScope access token:
+                  <a
+                    href="https://modelscope.cn/my/myaccesstoken"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    >https://modelscope.cn/my/myaccesstoken</a
+                  >
+                </li>
+                <li>
+                  ComfyUI: the key can be empty locally; for the cloud API Key see the
+                  <a
+                    href="https://docs.comfy.org/development/api-development/getting-an-api-key"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    >Comfy developer docs</a
+                  >; to install the local proxy and workflows see the
+                  <a href="guide-comfyui.en.html">ComfyUI guide</a>.
+                </li>
+                <li>
+                  Meshy API Key:
+                  <a href="https://www.meshy.ai/" target="_blank" rel="noopener noreferrer"
+                    >https://www.meshy.ai/</a
+                  >
+                </li>
+                <li>
+                  Tripo API Key:
+                  <a href="https://platform.tripo3d.ai/" target="_blank" rel="noopener noreferrer"
+                    >https://platform.tripo3d.ai/</a
+                  >
+                </li>
+                <li>
+                  Rodin (Hyper3D) API Key:
+                  <a href="https://hyper3d.ai/" target="_blank" rel="noopener noreferrer"
+                    >https://hyper3d.ai/</a
+                  >
+                </li>
+                <li>
+                  Luma AI API Key:
+                  <a href="https://lumalabs.ai/" target="_blank" rel="noopener noreferrer"
+                    >https://lumalabs.ai/</a
+                  >
+                </li>
+                <li>
+                  Lux3D API Key:
+                  <a href="https://labs.aholo3d.cn/" target="_blank" rel="noopener noreferrer"
+                    >https://labs.aholo3d.cn/</a
+                  >
+                </li>
+                <li>
+                  World Labs API Key (top up credits on the platform's billing page first):
+                  <a href="https://platform.worldlabs.ai/api-keys" target="_blank" rel="noopener noreferrer"
+                    >https://platform.worldlabs.ai/api-keys</a
+                  >
+                </li>
+                <li>
+                  MagicRouter API Key (starts with <code>mr-</code>):
+                  <a href="https://www.magicrouter.ai/docs/api" target="_blank" rel="noopener noreferrer"
+                    >https://www.magicrouter.ai/docs/api</a
+                  >
+                </li>
+              </ul>
+            </li>
+            <li>Enter a display name, Base URL and key (which can be shown or hidden).</li>
+            <li>
+              After enabling the provider, click <strong>Fetch models</strong> (Kling / some MiniMax modalities
+              / Bailian image &amp; video / OpenAI and Zhipu images use local static catalogs; local services
+              such as vLLM / Ollama / LM Studio / ComfyUI need no key and are fetched directly).
+            </li>
+            <li>
+              Use filters plus select-all / clear to tick the models you want; model IDs can also be added
+              manually.
+            </li>
+            <li>
+              Configure per modality: text / image / video / audio / 3D model / spatial world / decisions (OpenRouter supports
+              text / image / video / audio / decisions; its Decisions tab lists models via
+              <code>output_modalities=decisions</code>. TypeSafe direct has a Decisions tab only — its catalog comes
+              from <code>GET /v1/models</code> and judgements go to <code>POST /v1/systemone</code>, the same
+              decision protocol as OpenRouter but without the hop. The Ark audio tab also
+              links the speech console and asks for a manual <code>speaker_id</code>; Kling has only image and video tabs;
+              MiniMax supports text / image / video / voice design;
+              <strong>OpenAI supports text / image / audio</strong>; <strong>ElevenLabs exposes both the Audio and Music tabs</strong>
+              (speech synthesis / multi-speaker dialogue / sound effects live under Audio, music generation under Music); DeepSeek is
+              text only; Kimi (Moonshot) is text only; xAI (Grok) supports text / image / video with async
+              polling for video; Google (Gemini) supports text / Nano Banana images / Veo 3.1 video with async
+              polling; Zhipu supports GLM text and CogView images; vLLM supports text and video (Wan T2V / I2V);
+              Ollama / LM Studio are text only, though multimodal understanding can pass images into text nodes;
+              ModelScope supports text and image with async text-to-image jobs; ComfyUI supports image / video /
+              audio and has no text tab; MagicRouter supports text / image / video; Meshy / Tripo / Rodin
+              (Hyper3D) / Luma AI / Lux3D only expose a 3D model tab, while World Labs (Marble) only exposes
+              a spatial world tab; a custom provider's tabs follow its
+              endpoint type &mdash; OpenAI compatible / Gemini give text + image, Anthropic gives text only,
+              and image models must always be typed in by hand (see the
+              <a href="guide-newapi.en.html">NewAPI guide</a>).
+            </li>
+            <li>
+              <strong>Audio (TTS)</strong>: the audio tab on OpenAI and OpenRouter posts to
+              <code>POST /audio/speech</code> with a body of <code>model</code> + <code>input</code> +
+              <code>voice</code> (optional <code>response_format</code> / <code>speed</code>) — the OpenAI TTS
+              protocol shape that aggregators (new-api / one-api / self-hosted gateways) implement, so pointing
+              the Base URL at a gateway works as-is. Catalog: OpenRouter uses
+              <code>/models?output_modalities=speech</code> (which carries <code>supported_voices</code>), while
+              OpenAI uses a local static table (<code>GET /models</code> returns ids without voice lists);
+              aggregator-only models can be typed in by hand.
+              <strong>ElevenLabs</strong> speaks its own protocol:
+              <code>POST /v1/text-to-speech/{voice_id}</code> (auth header <code>xi-api-key</code>), with models from
+              <code>GET /v1/models</code> and voices from <code>GET /v1/voices</code>. Its <code>voice_id</code> is an
+              opaque string, so the panel shows voice <em>names</em> instead (e.g. <code>Sarah - Mature, Reassuring</code>);
+              the voice catalog is publicly readable, so you can browse models and voices before setting a key.
+              The same key also powers two existing pipelines: <strong>speech-to-text</strong> (Scribe, the timeline's
+              “audio to subtitles”) and <strong>music generation</strong> (BGM / SFX). All three share one model
+              catalog; the voice node's dropdown lists TTS models only.
+              <strong>The voice is set in the voice node's instruction panel</strong>, not here: it is a per-node
+              parameter, so different voice-over nodes in one graph can use different voices. Suggestions come from
+              the <code>supported_voices</code> returned by the API (OpenRouter's docs page does not list them, but
+              <code>/models?output_modalities=speech</code> returns them — 18 of 23 speech models in a live check,
+              with Microsoft MAI Voice carrying 97), sorted so your app language comes first.
+              Leaving it empty uses the model's own default — we never guess a voice name for the upstream,
+              because voice naming is not portable. A few models (e.g. <code>bytedance-seed/seed-audio-1-0</code>)
+              have <strong>no voice list at all</strong>: their voice comes from the prompt text, so just leave it empty.
+            </li>
+            <li>
+              Two more audio nodes (ElevenLabs-specific endpoints; both produce voice assets):
+              <ul>
+                <li>
+                  <strong>Multi-speaker dialogue</strong>: synthesises a whole conversation in one call.
+                  Write one utterance per line as <code>Speaker: line</code> (either colon style works), e.g.
+                  <code>A: You finally made it.</code> / <code>B: Traffic was awful.</code>.
+                  Lines without a colon keep the previous speaker (narration / monologue).
+                  Bind a voice per speaker in the node's instruction panel (unbound speakers fall back
+                  to the node's default voice); a missing voice reports exactly which line and speaker.
+                </li>
+                <li>
+                  <strong>Sound effect</strong>: uses <code>POST /v1/sound-generation</code> and describes the
+                  <em>sound itself</em> (e.g. "rain on a tin roof"), not a spoken line. The instruction panel offers
+                  “seamlessly loopable” (turn it on for long-playing ambience — no more clicks at the loop seam),
+                  “expected duration” (spec range <strong>0.5–30 s</strong>) and “prompt influence”
+                  (<strong>0–1</strong>, default 0.3); the file lands in <code>Cache/Sfx</code>.
+                  <strong>That endpoint's model is a single fixed value</strong>
+                  (<code>eleven_text_to_sound_v2</code>), so the dropdown on the card actually picks
+                  <strong>which provider instance</strong> to use (only meaningful with multiple accounts / keys) —
+                  its title already says “model is fixed to …”. With no provider available it errors out explicitly
+                  instead of falling back to speech synthesis.
+                </li>
+              </ul>
+              Both reuse the same ElevenLabs key as “audio to subtitles”.
+            </li>
+            <li>
+              <strong>Music (BGM) lives on its own tab</strong>: ElevenLabs' <code>POST /v1/music</code> is filed
+              under the <strong>Music</strong> tab (kept separate from Audio) — music is composition
+              (prompt + lyrics / instrumental) while speech synthesis is TTS (text + voice), and the two use
+              different endpoints and model families. The same tab also lists music models from OpenRouter
+              (Google Lyria 3), MiniMax (<code>music-3.0</code>) and DashScope (<code>fun-music-v1</code>);
+              the music node's dropdown lists music models only and never shows TTS models. Settings that stored
+              music models under the Audio tab are migrated automatically.
+            </li>
+            <li>
+              Set the default generation model if needed. Provider cards can be collapsed to
+              save space.
+            </li>
+          </ol>
+          <div class="tip">
+            API Keys are stored in a local settings file (Windows example:
+            <code>%APPDATA%\AIArtEngine\aiartengine-settings.json</code>) and are never uploaded to any official
+            server.
+          </div>
+
+          <h3>4.3 Object storage</h3>
+          <p>
+            Used to upload local files such as reference videos into publicly reachable URLs (signed links are
+            used for private buckets).
+          </p>
+          <ul>
+            <li>
+              <strong>Add object storage</strong> → pick one:
+              <ul>
+                <li><strong>Volcengine TOS</strong>: AccessKey / SecretKey, Region, Endpoint, Bucket.</li>
+                <li><strong>Alibaba Cloud OSS</strong>: AccessKey / SecretKey, Region, Endpoint, Bucket.</li>
+                <li>
+                  <strong>Tencent Cloud COS</strong>: SecretId / SecretKey, Region, Bucket (usually
+                  <code>BucketName-APPID</code>).
+                </li>
+              </ul>
+            </li>
+            <li>
+              Key request pages (also linked inside settings):
+              <ul>
+                <li>
+                  Volcengine:
+                  <a href="https://console.volcengine.com/iam/keymanage" target="_blank" rel="noopener noreferrer"
+                    >https://console.volcengine.com/iam/keymanage</a
+                  >
+                </li>
+                <li>
+                  Alibaba Cloud RAM:
+                  <a href="https://ram.console.aliyun.com/manage/ak" target="_blank" rel="noopener noreferrer"
+                    >https://ram.console.aliyun.com/manage/ak</a
+                  >
+                </li>
+                <li>
+                  Tencent Cloud API keys:
+                  <a href="https://console.cloud.tencent.com/cam/capi" target="_blank" rel="noopener noreferrer"
+                    >https://console.cloud.tencent.com/cam/capi</a
+                  >
+                </li>
+              </ul>
+            </li>
+            <li>
+              A public access domain (CDN / custom domain) is optional; when it's empty, signed URLs are used
+              (valid for about 24 hours).
+            </li>
+            <li>
+              <strong>Only one</strong> object storage can be enabled at a time — enabling one automatically
+              turns off the others. Cards can be collapsed.
+            </li>
+          </ul>
+
+          <h3>4.4 Extensions</h3>
+          <p>
+            In-app extensions run on Cordis (<code>ctx.editor.*</code>) and can contribute nodes, cards,
+            inspectors, skills and executor overrides; see
+            <a
+              href="https://github.com/Justin-sky/ai-art-engine/blob/main/docs/GRAPH_PLUGINS.md"
+              target="_blank"
+              rel="noopener noreferrer"
+              >GRAPH_PLUGINS.md</a
+            >
+            in the repository for development notes. The settings page only lists
+            <strong>declarative</strong> extensions under the <code>plugins</code> folder in the user data
+            directory. Arbitrary external scripts are never executed — only declared extension information is
+            shown. Official installers don't load the “graph plugin sample” demo.
+          </p>
+
+          <h3>4.5 MCP tool server</h3>
+          <p>
+            The app embeds an MCP tool server for <strong>external AI agents such as Claude Code / Codex</strong>
+            (and the built-in <a href="manual-workspace.en.html#ai-chat">AI chat panel</a>) — plan &amp; commit workflows, run
+            generation, read/write assets and node graphs. See the
+            <a href="guide-mcp.en.html">MCP setup guide</a> for full steps.
+          </p>
+          <ul>
+            <li>
+              <strong>Start / restart</strong>: the settings page shows run state and port; the default port is
+              <code>43110</code>, falling back through 43110–43119 when busy. Changing the port or clicking
+              “Restart” brings the server back on the new port.
+            </li>
+            <li>
+              <strong>Token</strong>: view / copy / edit are supported; it <strong>persists across restarts</strong>,
+              so configure once. Click “Reset token” if you suspect a leak — the old token is invalidated
+              immediately and clients must re-register with the new one.
+            </li>
+            <li>
+              <strong>Connect command</strong>: one-click copy of the <code>claude mcp add --transport http …</code>
+              command; run it in a terminal to register the app as a Claude Code MCP server (HTTP direct, no
+              Node.js needed).
+            </li>
+          </ul>
+          <div class="tip">
+            The tool server only listens on <code>127.0.0.1</code> loopback and every request needs a Bearer
+            token; file access is confined to the project root; every tool call is appended to the audit log
+            <code>&lt;userData&gt;/logs/mcp-audit.jsonl</code> (5 MB rolling).
+          </div>
+          <p>
+            The settings panel also lets you <strong>configure the stdio bridge</strong> visually: change the
+            bridge command (default is still <code>node</code> + the in-repo <code>scripts/mcp-bridge.mjs</code>
+            or the installer's bundled <code>&lt;install dir&gt;/resources/mcp-bridge.mjs</code>), the bridge
+            HTTP port, the Blender addon host / port passthrough (<code>BLENDER_HOST</code> /
+            <code>BLENDER_PORT</code>). Changes persist immediately;
+            external agents just reconnect — no app restart needed.
+          </p>
+          <p>
+            The same panel supports a <strong>“reverse bridge”</strong>: register any external stdio MCP server
+            (such as the Blender addon or any local MCP service) so the in-app ◈ AI chat panel (DeepSeek
+            Harness / dsh) can consume its tools directly — no need to expose a separate socket port. See the
+            <a href="guide-mcp.en.html">MCP setup guide</a>, reverse-bridge section.
+          </p>
+          <p>
+            Third-party MCP servers (remote HTTP or local stdio commands) can also be added and managed from the
+            <strong>MCP</strong> tab of the <a href="manual-workspace.en.html#marketplace">plugin marketplace</a>.
+          </p>
+        </section>
+
+        <h3 id="web-search">4.6 Web search</h3>
+          <p>
+            Settings → <strong>Web search</strong> tab configures <strong>multiple providers running side by
+            side</strong>. Deliberately split from the model provider system — fewer adapters, no per-project
+            context injection needed; the module-level registry is sufficient, and it can be migrated to a
+            Cordis plugin cleanly once a flood of third-party search services shows up.
+          </p>
+          <ul>
+            <li>
+              <strong>5 built-in adapters</strong>: DeepSeek Search (default) / Tavily / Brave / SerpAPI / Mock
+              (Mock returns fixed samples for local connectivity testing — no real request leaves your machine).
+              Each adapter has its own enable toggle, Base URL, API key, search depth and time window.
+            </li>
+            <li>
+              <strong>Panel actions</strong>: toolbar “Add provider” dropdown → pick a kind → add; each card
+              collapses / expands, toggles enable / disable, or removes the instance; a built-in connectivity
+              test prints the raw response or failure reason inline.
+            </li>
+            <li>
+              <strong>Current scope</strong>: the panel is <strong>config only</strong> for now — not yet wired
+              into the in-app AI chat panel or one-click workflow as a web-search tool. Trigger the connectivity
+              test from the panel to verify a provider. The same instance list will be reused when web search
+              becomes an agent tool later.
+            </li>
+          </ul>
+          <div class="tip">
+            Mock always returns the same fixed payload — useful in offline dev and CI to flip the
+            “search available” bit without a real network call. Don't enable it in production (it can fall
+            through when other providers are off, but never replaces real data).
+          </div>
+
+      </article>
+    </div>
+
+    <footer class="foot">
+      <div class="foot-grid">
+        <div class="foot-about-col">
+          <a class="foot-brand" href="index.en.html">
+            <img src="assets/logo-mark.png" alt="" width="22" height="22" />
+            AI Art Engine
+          </a>
+          <p class="foot-about">A local-first, agent-native AI art asset engine. Projects stay on your machine; models run on your own keys.</p>
+        </div>
+        <nav class="foot-col" aria-label="Docs">
+          <h4>Docs</h4>
+          <ul>
+            <li><a href="quickstart.en.html">Quickstart</a></li>
+            <li><a href="manual.en.html">Manual</a></li>
+            <li><a href="developers.en.html">Developer docs</a></li>
+            <li><a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a></li>
+          </ul>
+        </nav>
+        <nav class="foot-col" aria-label="Guides">
+          <h4>Guides</h4>
+          <ul>
+            <li><a href="guide-short-video.en.html">Short drama</a></li>
+            <li><a href="guide-video.en.html">Video</a></li>
+            <li><a href="guide-comfyui.en.html">ComfyUI</a></li>
+            <li><a href="guide-newapi.en.html">NewAPI</a></li>
+            <li><a href="guide-mcp.en.html">MCP setup</a></li>
+            <li><a href="guide-gameplay.en.html">Playable HTML</a></li>
+          </ul>
+        </nav>
+        <nav class="foot-col" aria-label="Community">
+          <h4>Community</h4>
+          <ul>
+            <li><a href="index.en.html#download">Download</a></li>
+            <li><a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+            <li><a href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine" target="_blank" rel="noopener noreferrer">Gitee</a></li>
+            <li><a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer">bilibili</a></li>
+            <li><a href="https://github.com/Justin-sky/ai-art-engine/issues" target="_blank" rel="noopener noreferrer">Report an issue</a></li>
+          </ul>
+        </nav>
+      </div>
+      <div class="foot-bottom">
+        <span>© 2026 AI Art Engine · GPL-3.0</span>
+        <span>Docs follow the in-app UI of the latest release</span>
+      </div>
+    </footer>
+    <script>
+      document.querySelectorAll('.mobile-nav a').forEach((link) => {
+        link.addEventListener('click', () => link.closest('.mobile-menu')?.removeAttribute('open'))
+      })
+
+      // Reading progress bar
+      const progressBar = document.querySelector('.progress')
+      if (progressBar) {
+        const updateProgress = () => {
+          const doc = document.documentElement
+          const max = doc.scrollHeight - window.innerHeight
+          progressBar.style.width = (max > 0 ? (window.scrollY / max) * 100 : 0) + '%'
+        }
+        window.addEventListener('scroll', updateProgress, { passive: true })
+        window.addEventListener('resize', updateProgress)
+        updateProgress()
+      }
+
+      // Table of contents scrollspy
+      const tocLinks = Array.from(document.querySelectorAll('.toc a[href^="#"]'))
+      const spyTargets = []
+      tocLinks.forEach((link) => {
+        const id = link.getAttribute('href').slice(1)
+        const el = id ? document.getElementById(id) : null
+        if (el) spyTargets.push({ el, link })
+      })
+      if (spyTargets.length) {
+        const spy = () => {
+          const y = window.scrollY + 90
+          let current = spyTargets[0]
+          for (const target of spyTargets) {
+            if (!target.el) continue
+            const top = target.el.getBoundingClientRect().top + window.scrollY
+            if (top <= y) current = target
+          }
+          if (!current) return
+          tocLinks.forEach((link) => link.classList.toggle('active', link === current.link))
+        }
+        window.addEventListener('scroll', spy, { passive: true })
+        window.addEventListener('resize', spy)
+        spy()
+      }
+
+      // Back to top
+      const toTop = document.querySelector('.to-top')
+      if (toTop) {
+        const toggleToTop = () => {
+          toTop.hidden = window.scrollY <= 600
+        }
+        window.addEventListener('scroll', toggleToTop, { passive: true })
+        toggleToTop()
+        toTop.addEventListener('click', () => {
+          window.scrollTo({ top: 0, behavior: 'smooth' })
+        })
+      }
+
+      // Screenshot lightbox
+      const lightbox = document.querySelector('.lightbox')
+      if (lightbox) {
+        const lightboxImg = lightbox.querySelector('img')
+        const lightboxCap = lightbox.querySelector('.lightbox-cap')
+        document.querySelectorAll('.manual figure.shot img').forEach((img) => {
+          img.addEventListener('click', () => {
+            if (!lightboxImg || !lightboxCap) return
+            lightboxImg.src = img.currentSrc || img.src
+            lightboxImg.alt = img.alt
+            lightboxCap.textContent =
+              img.closest('figure')?.querySelector('figcaption')?.textContent?.trim() || img.alt
+            lightbox.hidden = false
+          })
+        })
+        lightbox.addEventListener('click', () => {
+          lightbox.hidden = true
+        })
+        document.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape' && !lightbox.hidden) lightbox.hidden = true
+        })
+      }
+
+      // Copy section link on heading click
+      const toast = document.createElement('div')
+      toast.className = 'toast'
+      toast.setAttribute('role', 'status')
+      document.body.appendChild(toast)
+      let toastTimer = 0
+      const showToast = (message) => {
+        toast.textContent = message
+        toast.classList.add('show')
+        clearTimeout(toastTimer)
+        toastTimer = setTimeout(() => toast.classList.remove('show'), 1600)
+      }
+      document
+        .querySelectorAll('.manual section[id] > h2, .manual h3[id], .manual h4[id]')
+        .forEach((heading) => {
+          const id = heading.id || heading.parentElement?.id
+          if (!id) return
+          heading.title = 'Click to copy a link to this section'
+          heading.addEventListener('click', () => {
+            if (window.getSelection()?.toString()) return
+            const url = location.origin + location.pathname + '#' + id
+            if (navigator.clipboard?.writeText) {
+              navigator.clipboard.writeText(url).then(
+                () => showToast('Section link copied'),
+                () => showToast(url)
+              )
+            } else {
+              showToast(url)
+            }
+          })
+        })
+    </script>
+    <script>
+      // 主题切换：跟随系统 → 浅色 → 深色
+      ;(function () {
+        var KEY = 'site.theme'
+        var btn = document.querySelector('.theme-toggle')
+        if (!btn) return
+        var root = document.documentElement
+        var en = (root.getAttribute('lang') || '').indexOf('en') === 0
+        var query = window.matchMedia('(prefers-color-scheme: dark)')
+        var META = {
+          auto: { icon: '◐', label: en ? 'Theme: system' : '主题：跟随系统' },
+          light: { icon: '☀', label: en ? 'Theme: light' : '主题：浅色' },
+          dark: { icon: '☾', label: en ? 'Theme: dark' : '主题：深色' }
+        }
+        function readPref() {
+          try {
+            var v = localStorage.getItem(KEY)
+            return v === 'light' || v === 'dark' || v === 'auto' ? v : 'dark'
+          } catch (e) { return 'auto' }
+        }
+        function apply() {
+          var pref = readPref()
+          root.classList.toggle('dark', pref === 'dark' || (pref !== 'light' && query.matches))
+          root.classList.toggle('light', pref === 'light')
+          var meta = META[pref]
+          btn.textContent = meta.icon
+          btn.title = meta.label + (en ? ' (click to switch)' : '（点击切换）')
+          btn.setAttribute('aria-label', meta.label)
+        }
+        query.addEventListener('change', apply)
+        btn.addEventListener('click', function () {
+          var cur = readPref()
+          var next = cur === 'dark' ? 'light' : cur === 'light' ? 'auto' : 'dark'
+          try { localStorage.setItem(KEY, next) } catch (e) {}
+          apply()
+        })
+        apply()
+      })()
+    </script>
+      <script src="site-search.js?v=20261009d" defer></script>
+    <script src="site-enhance.js?v=20261009d" defer></script>
+  </body>
+</html>

@@ -1,0 +1,713 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      // 提前应用本地主题选择，避免加载闪烁
+      ;(function () {
+        try {
+          var pref = localStorage.getItem('site.theme')
+          if (
+            pref !== 'light' &&
+            (pref === 'dark' ||
+              pref == null ||
+              (pref === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches))
+          ) {
+            document.documentElement.classList.add('dark')
+          }
+        } catch (e) {}
+      })()
+    </script>
+    <meta
+      name="description"
+      content="资产包的导入与导出、完整快捷键表、按现象分类的故障排查，以及版本与更新说明。"
+    />
+    <title>参考与故障排查 · 使用手册 — AIArtEngine</title>
+    <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/manual-reference.html" />
+    <meta property="og:site_name" content="AIArtEngine" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="zh_CN" />
+    <meta property="og:title" content="参考与故障排查 · 使用手册 — AIArtEngine" />
+    <meta property="og:description" content="资产包的导入与导出、完整快捷键表、按现象分类的故障排查，以及版本与更新说明。" />
+    <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/manual-reference.html" />
+    <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="参考与故障排查 · 使用手册 — AIArtEngine" />
+    <meta name="twitter:description" content="资产包的导入与导出、完整快捷键表、按现象分类的故障排查，以及版本与更新说明。" />
+    <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-reference.html" />
+    <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual-reference.en.html" />
+    <link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/manual-reference.html" />
+    <link rel="icon" href="assets/logo-mark.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="manual.css?v=20261009d" />
+    <link rel="stylesheet" href="site.css?v=20261009d" />
+  </head>
+  <body>
+    <a class="skip" href="#manual">跳到手册正文</a>
+    <div class="progress" aria-hidden="true"></div>
+    <button class="to-top" type="button" aria-label="返回顶部" hidden>↑</button>
+    <div class="lightbox" hidden>
+      <img alt="" />
+      <p class="lightbox-cap"></p>
+    </div>
+
+    <header class="top">
+      <a class="brand" href="index.html">
+        <img src="assets/logo-mark.png" alt="" width="30" height="30" />
+        <span>AI Art Engine</span>
+      </a>
+      <nav class="nav" aria-label="主导航">
+        <a href="quickstart.html">快速上手</a>
+        <a href="manual.html" aria-current="page">使用手册</a>
+        <div class="nav-drop">
+          <button type="button" class="nav-drop-btn" aria-haspopup="true">
+            教程<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+          </button>
+          <div class="nav-drop-menu">
+            <a href="guide-short-video.html"><strong>短剧教程</strong><span>分镜 · 拼图 · 审核 · 动态视频</span></a>
+            <a href="guide-video.html"><strong>视频教程</strong><span>自由画布与参考视频</span></a>
+            <a href="guide-comfyui.html"><strong>ComfyUI 教程</strong><span>API 2 与 comfy-api-proxy</span></a>
+            <a href="guide-newapi.html"><strong>NewAPI 教程</strong><span>自建中转网关接入</span></a>
+            <a href="guide-mcp.html"><strong>MCP 接入</strong><span>Claude Code / Codex 驱动应用</span></a>
+            <a href="guide-gameplay.html"><strong>可玩 HTML</strong><span>生成可交互的玩法原型</span></a>
+            <a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer"><strong>B 站视频教程</strong><span>视频演示与更新解读</span></a>
+          </div>
+        </div>
+        <a href="developers.html">开发者</a>
+        <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">更新日志</a>
+        <a href="index.html#download">下载</a>
+        <a class="nav-src" href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.070 3.633 17.700 3.633 17.700c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.070 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.760-1.605-2.665-.3-5.466-1.332-5.466-5.930 0-1.310.465-2.380 1.235-3.220-.135-.303-.540-1.523.105-3.176 0 0 1.005-.322 3.300 1.230.960-.267 1.980-.399 3.000-.405 1.020.006 2.040.138 3.000.405 2.280-1.552 3.285-1.230 3.285-1.230.645 1.653.240 2.873.120 3.176.765.840 1.230 1.910 1.230 3.220 0 4.610-2.805 5.625-5.475 5.920.420.360.810 1.096.810 2.220 0 1.606-.015 2.896-.015 3.286 0 .315.210.690.825.570C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" /></svg>GitHub</a>
+      </nav>
+      <a class="nav-lang" href="manual-reference.en.html" hreflang="en" lang="en">EN</a>
+      <button class="theme-toggle" type="button" aria-label="切换主题">◐</button>
+      <details class="mobile-menu">
+        <summary aria-label="打开导航菜单"><span aria-hidden="true">☰</span> 菜单</summary>
+        <nav class="mobile-nav" aria-label="移动端导航">
+          <p class="mobile-group">文档</p>
+          <a href="index.html">首页</a>
+          <a href="quickstart.html">快速上手</a>
+          <a href="manual.html" aria-current="page">使用手册</a>
+          <a href="developers.html">开发者文档</a>
+          <p class="mobile-group">专题教程</p>
+          <a href="guide-short-video.html">短剧教程</a>
+          <a href="guide-video.html">视频教程</a>
+          <a href="guide-comfyui.html">ComfyUI 教程</a>
+          <a href="guide-newapi.html">NewAPI 教程</a>
+          <a href="guide-mcp.html">MCP 接入</a>
+          <a href="guide-gameplay.html">可玩 HTML</a>
+          <p class="mobile-group">社区</p>
+          <a href="index.html#download">下载</a>
+          <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">更新日志</a>
+          <a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer">bilibili</a>
+          <a href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine" target="_blank" rel="noopener noreferrer">Gitee</a>
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a>
+        </nav>
+      </details>
+    </header>
+
+    <div class="manual-shell">
+      <aside class="toc" aria-label="目录">
+        <h2>目录</h2>
+        <ol>
+          <li class="toc-group">参考</li>
+          <li><a href="#package">13. 资产包 .aipackage</a></li>
+          <li><a href="#shortcuts">14. 快捷键</a></li>
+          <li><a href="#troubleshooting">15. 故障排查</a></li>
+          <li><a href="#update">16. 关于与更新</a></li>
+
+          <li class="toc-group">手册章节</li>
+          <li><a href="manual.html">概述与核心概念</a></li>
+          <li><a href="manual-setup.html">工程与设置</a></li>
+          <li><a href="manual-workspace.html">工作区与资产库</a></li>
+          <li><a href="manual-workflow.html">一键工作流与节点图</a></li>
+          <li><a href="manual-production.html">剧本、成片与导演台</a></li>
+        </ol>
+      </aside>
+
+      <article class="manual" id="manual">
+        <header class="manual-hero">
+          <p class="eyebrow">Manual · Reference</p>
+          <h1>参考与故障排查</h1>
+          <p class="lede">
+            资产包的导入与导出、完整快捷键表、按现象分类的故障排查，以及版本与更新说明。
+          </p>
+        </header>
+
+        <section id="package">
+          <h2>13. 资产包 <code>.aipackage</code></h2>
+          <p> 格式标识为 <code>com.aiartengine.asset-package</code>，用于在工程间迁移素材与相关依赖。 </p>
+
+          <h3>导出</h3>
+          <ol>
+            <li>选中资产，或进入目标文件夹。</li>
+            <li>右键选择「导出资产包」。</li>
+            <li>在对话框中勾选目录 / 资产；可选「包含依赖」→「导出」。</li>
+          </ol>
+
+          <h3>导入</h3>
+          <ol>
+            <li> 在资产库空白或根目录右键「导入资产包」，或直接拖入 <code>.aipackage</code> 文件。 </li>
+            <li>勾选要导入的条目（一次处理一个包）→「导入」。</li>
+            <li>支持条目复用与重映射；脚本类资产可携带场 / 生成结果数据。</li>
+          </ol>
+        </section>
+
+        <section id="shortcuts">
+          <h2>14. 快捷键</h2>
+          <div class="table-scroll" role="region" aria-label="快捷键表格" tabindex="0">
+            <table>
+            <thead>
+              <tr>
+                <th>范围</th>
+                <th>快捷键</th>
+                <th>作用</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>全局编辑</td>
+                <td><kbd>Ctrl</kbd>+<kbd>S</kbd></td>
+                <td>保存（草稿会先弹出「保存资产」）</td>
+              </tr>
+              <tr>
+                <td>全局</td>
+                <td>
+                  <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd>（或
+                  <kbd>Ctrl</kbd>+<kbd>Y</kbd>）
+                </td>
+                <td>撤销 / 重做</td>
+              </tr>
+              <tr>
+                <td>节点图</td>
+                <td>按住 <kbd>C</kbd></td>
+                <td>执行环</td>
+              </tr>
+              <tr>
+                <td>节点图</td>
+                <td><kbd>Space</kbd></td>
+                <td>打开菜单 / 按住可平移（依上下文）</td>
+              </tr>
+              <tr>
+                <td>节点图</td>
+                <td><kbd>Delete</kbd> / <kbd>Backspace</kbd></td>
+                <td>删除节点或连线</td>
+              </tr>
+              <tr>
+                <td>节点图</td>
+                <td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd> / <kbd>U</kbd></td>
+                <td>分组 / 取消分组</td>
+              </tr>
+              <tr>
+                <td>资产库</td>
+                <td> <kbd>Delete</kbd> · <kbd>Ctrl</kbd>+<kbd>A</kbd> · <kbd>Ctrl</kbd>+<kbd>C</kbd> </td>
+                <td>删除 · 全选 · 复制相关</td>
+              </tr>
+              <tr>
+                <td>节点图</td>
+                <td><kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>V</kbd> / <kbd>A</kbd></td>
+                <td>复制 / 粘贴 / 全选节点</td>
+              </tr>
+              <tr>
+                <td>导演台</td>
+                <td><kbd>Q</kbd> / <kbd>R</kbd> / <kbd>S</kbd></td>
+                <td>移动 / 旋转 / 缩放</td>
+              </tr>
+              <tr>
+                <td>导演台</td>
+                <td>
+                  <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd>（或
+                  <kbd>Ctrl</kbd>+<kbd>Y</kbd>）· <kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>V</kbd>
+                </td>
+                <td>舞台撤销 / 重做 · 复制 / 粘贴选中对象</td>
+              </tr>
+              <tr>
+                <td>导演台</td>
+                <td> <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>F</kbd> · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd> </td>
+                <td>移到视图 · 与视图对齐</td>
+              </tr>
+              <tr>
+                <td>导演台飞行</td>
+                <td><kbd>W</kbd>/<kbd>A</kbd>/<kbd>S</kbd>/<kbd>D</kbd> · <kbd>Q</kbd>/<kbd>E</kbd> · <kbd>Shift</kbd></td>
+                <td>按住右键时：移动 · 降 / 升 · 加速</td>
+              </tr>
+              <tr>
+                <td>成片时间线</td>
+                <td>
+                  <kbd>Space</kbd> · <kbd>Delete</kbd> ·
+                  <kbd>Ctrl</kbd>+<kbd>A</kbd> / <kbd>Z</kbd> / <kbd>Y</kbd> / <kbd>C</kbd> / <kbd>V</kbd>
+                </td>
+                <td>播放 / 暂停 · 删除片段 · 全选 / 撤销 / 重做 / 复制 / 粘贴</td>
+              </tr>
+              <tr>
+                <td>导演台动画</td>
+                <td><kbd>K</kbd> · <kbd>Delete</kbd> · <kbd>Space</kbd></td>
+                <td>关键帧 · 删关键帧 · 播放/暂停</td>
+              </tr>
+              <tr>
+                <td>对话框</td>
+                <td><kbd>Esc</kbd></td>
+                <td>关闭常见浮窗</td>
+              </tr>
+            </tbody>
+            </table>
+          </div>
+          <div class="tip">
+            macOS 上将 <kbd>Ctrl</kbd> 理解为 <kbd>⌘ Command</kbd>（与系统习惯一致处除外）。设置面板对 Delete /
+            Backspace 做了特殊处理，避免误关设置或误删模型列表项。
+          </div>
+        </section>
+
+        <section id="troubleshooting">
+          <h2>15. 故障排查</h2>
+          <p>
+            按现象对号入座，下面按<strong>出现频率</strong>排序——绝大多数问题都能在前三条里解决。
+            仍未解决可到 QQ 群 <strong>647306826</strong>、邮箱
+            <a href="mailto:284139554@qq.com">284139554@qq.com</a> 或
+            <a
+              href="https://github.com/Justin-sky/ai-art-engine/issues"
+              target="_blank"
+              rel="noopener noreferrer"
+              >GitHub Issues</a
+            >
+            反馈（附上执行日志会更快定位）。
+          </p>
+
+          <details class="trouble">
+            <summary>提示「余额不足」，或一执行就失败</summary>
+            <div class="trouble-body">
+              <p>
+                生成调用的是<strong>你自己配置的模型提供商</strong>，费用由提供商侧结算。本软件不代收任何费用，
+                因此这类报错几乎都出在提供商账户上。
+              </p>
+              <p><strong>排查顺序：</strong></p>
+              <ol>
+                <li>登录对应提供商控制台，确认<strong>余额或剩余额度</strong>充足（免费额度用尽也会直接失败）。</li>
+                <li>设置 → 模型：确认密钥填写正确、未过期、未被吊销。</li>
+                <li>确认所需模型已<strong>勾选启用</strong>，并分别设好了默认的文本 / 图片 / 视频模型。</li>
+                <li>换一个模型试跑同一节点，用于区分是「账户问题」还是「单个模型问题」。</li>
+              </ol>
+            </div>
+          </details>
+
+          <details class="trouble">
+            <summary>提示密钥无效、401 / 403，或模型列表拉不到</summary>
+            <div class="trouble-body">
+              <ol>
+                <li>检查密钥前后是否混入空格或换行；重新复制粘贴一次通常能解决。</li>
+                <li>确认该密钥在提供商侧<strong>已开通对应模型的权限</strong>，部分模型需要单独申请。</li>
+                <li>若使用代理或中转服务，确认中转地址填写完整（含 <code>/v1</code> 等路径）。</li>
+                <li>网络受限时可在设置中配置代理后重试；公司网络常见的 HTTPS 拦截也会导致拉取失败。</li>
+              </ol>
+            </div>
+          </details>
+
+          <details class="trouble">
+            <summary>连线连不上，提示端口类型不匹配</summary>
+            <div class="trouble-body">
+              <p>
+                端口<strong>严格区分单数与复数</strong>，类型不同连不上，且<strong>单数不能进复数</strong>：
+                <code>image</code> 进不了 <code>images</code>，<code>video</code> / <code>voice</code> /
+                <code>text</code> 同理。
+              </p>
+              <p><strong>常见处理方式：</strong></p>
+              <ol>
+                <li>
+                  需要列表输入时（如「选取图片 / 视频 / 声音 / 文本」），请从上游的
+                  <strong>方形口</strong>（<code>out-all</code>，导演台为 <code>out-shots</code> /
+                  <code>out-actions</code>）连线，默认圆形 <code>out</code> 连不上。
+                </li>
+                <li>
+                  结构化目录类端口使用 <code>world</code> / <code>worldEntities</code> /
+                  <code>beat</code>（世界元素 / 世界元素实体 / 场），<strong>不能与普通 <code>text</code> 混连</strong>。
+                </li>
+                <li>剧本节点的 <code>text</code> 也不能直接接进「选取文本」，需要走对应的列表口。</li>
+              </ol>
+              <p>详见 <a href="manual-workflow.html#graph">§8 节点图</a>。</p>
+            </div>
+          </details>
+
+          <details class="trouble">
+            <summary>节点执行完没有输出，或任务一直排队</summary>
+            <div class="trouble-body">
+              <ol>
+                <li>打开节点的<strong>执行日志</strong>，查看具体报错（多数是模型返回错误或参数不合法）。</li>
+                <li>确认<strong>上游节点已成功执行</strong>：上游没跑完，下游不会有输入。</li>
+                <li>检查任务队列是否被其他长任务占满；可暂停或取消排队中的任务。</li>
+                <li>
+                  图库生成节点有 <code>out</code>（当前选中）与 <code>out-all</code>（全部历史）两个出口，
+                  若接的是 <code>out</code>，请在右侧 Inspector 中确认已选中期望的那条。
+                </li>
+              </ol>
+            </div>
+          </details>
+
+          <details class="trouble">
+            <summary>角色「变脸」、分镜之间不一致</summary>
+            <div class="trouble-body">
+              <p>这是纯文生图最容易踩的坑，靠<strong>参考而非反复描述</strong>来解决：</p>
+              <ol>
+                <li>
+                  使用<strong>锚点图</strong>：先从 9 宫格 / 4 宫格拼图中按格拆出参考图，再作为后续生成的参考输入，
+                  可锁住长相、服装与场景。
+                </li>
+                <li>把角色、场景、道具登记为<strong>世界元素</strong>，让各场共用同一份设定，避免每次重新描述。</li>
+                <li>检查中途是否有节点<strong>更换了模型或大幅改写提示词</strong>，风格漂移往往来自这里。</li>
+                <li>短剧流程中善用 <strong>review1~review4</strong> 审核节点，及时打回不达标结果。</li>
+              </ol>
+              <p>详见 <a href="manual.html#concepts">§2 核心概念</a> 与 <a href="guide-short-video.html">短剧制作教程</a>。</p>
+            </div>
+          </details>
+
+          <details class="trouble">
+            <summary>图片模糊、分辨率不够</summary>
+            <div class="trouble-body">
+              <ol>
+                <li>在生成链末端接入<strong>高清放大</strong>节点；短剧模板已内置该步骤。</li>
+                <li>确认生成节点参数中的分辨率设置，部分模型需显式指定尺寸。</li>
+                <li>避免过度压缩：导出时留意缩放比例与导出格式。</li>
+              </ol>
+            </div>
+          </details>
+
+          <details class="trouble">
+            <summary>视频不动、时长不对，或参考视频没生效</summary>
+            <div class="trouble-body">
+              <ol>
+                <li>确认<strong>动态提示词</strong>已正确填写；静态描述会生成近乎静止的画面。</li>
+                <li>确认所选视频模型支持目标时长与分辨率。</li>
+                <li>
+                  参考视频需要可访问的<strong>外链</strong>：请配置对象存储（TOS / OSS / COS，
+                  <strong>同时仅可启用一个</strong>）；纯本地预览可先不配置，但参考视频功能会受限。
+                </li>
+                <li>详见 <a href="guide-video.html">视频教程</a>。</li>
+              </ol>
+            </div>
+          </details>
+
+          <details class="trouble">
+            <summary>对象存储配置失败，或视频外链打不开</summary>
+            <div class="trouble-body">
+              <ol>
+                <li>
+                  <strong>同一时间只能启用一个</strong>对象存储（火山 TOS / 阿里云 OSS / 腾讯云 COS），
+                  启用新的前请先关闭旧的。
+                </li>
+                <li>检查 Bucket 权限是否为<strong>公共读</strong>，私有桶生成的链接外部无法访问。</li>
+                <li>核对 AccessKey 是否具备该 Bucket 的读写权限，以及地域（Region）是否填对。</li>
+                <li>确认已填写可访问的公共域名（CDN 域名需完成备案）。</li>
+              </ol>
+            </div>
+          </details>
+
+          <details class="trouble">
+            <summary>ComfyUI 连不上 / 报 workflow 格式错误</summary>
+            <div class="trouble-body">
+              <ol>
+                <li>确认本机 <strong>comfy-api-proxy 已启动</strong>，且端口与软件中填写的一致。</li>
+                <li>确认 ComfyUI 本体已启动并可正常访问。</li>
+                <li>
+                  必须使用 <strong>API 格式</strong>的 workflow（在 ComfyUI 中开启 Dev Mode 后「Save (API
+                  Format)」导出），界面格式（含 <code>nodes</code> / <code>links</code> 数组）不可用。
+                </li>
+                <li>详见 <a href="guide-comfyui.html">ComfyUI 教程</a>。</li>
+              </ol>
+            </div>
+          </details>
+
+          <details class="trouble">
+            <summary>启动异常、白屏，或更新失败</summary>
+            <div class="trouble-body">
+              <ol>
+                <li>确认安装包与系统架构匹配（macOS 需区分 Intel / Apple 芯片）。</li>
+                <li>首次启动若被系统安全策略拦截，需在系统设置中允许该应用运行。</li>
+                <li>更新失败时可在设置 → 通用 → <strong>关于与更新</strong> 中重新检查，或从 Releases 手动下载覆盖安装。</li>
+                <li>
+                  仍异常时，先备份工程目录，再重置配置后重试；记得反馈时附上日志与系统版本。
+                </li>
+              </ol>
+            </div>
+          </details>
+
+          <details class="trouble">
+            <summary>如何让 Claude Code 等 AI 助手操作应用？（安装 MCP）</summary>
+            <div class="trouble-body">
+              <p>
+                应用内置 MCP 工具服务，接入后 Claude Code 等 AI Agent 可直接对话
+                <strong>规划工作流、编辑节点图、运行生成、查询任务</strong>。前提是应用处于运行状态，
+                两种方式任选其一：
+              </p>
+              <ol>
+                <li>
+                  <strong>stdio 桥（推荐，需 Node.js 18+）</strong>：执行
+                  <code>claude mcp add aiartengine -- node &lt;安装目录&gt;/resources/mcp-bridge.mjs</code>。
+                </li>
+                <li>
+                  <strong>HTTP 直连（无需 Node.js）</strong>：打开 设置 → MCP，复制「Claude Code 接入命令」后执行；
+                  或手动执行
+                  <code>claude mcp add --transport http aiartengine &lt;接入地址&gt; --header "Authorization: Bearer &lt;token&gt;"</code>
+                  （接入地址与 token 见应用侧 mcp.json，跨重启持久复用）。
+                </li>
+              </ol>
+              <p>
+                注册后需<strong>重启 Agent 会话</strong>才会出现工具；应用侧 mcp.json
+                （<code>%APPDATA%/aiartengine/mcp.json</code>）由应用自动维护，<strong>不要手改</strong>。
+                注册命令报错（如 <code>Script not found</code>）多为本机 Claude Code 安装异常，重装后再试。
+                详细步骤与工具清单见 <a href="guide-mcp.html">MCP 接入教程</a>。
+              </p>
+            </div>
+          </details>
+
+          <details class="trouble">
+            <summary>AI 对话面板报错 / 模型不可用 / 一直转圈</summary>
+            <div class="trouble-body">
+              <ol>
+                <li>
+                  <strong>模型不可用（HTTP_404 等）</strong>：对话面板的模型走「模型」下拉中选中的文本模型，
+                  模型 ID 以<strong>所选提供商实际存在的名称</strong>为准；改用已在提供商后台开通的模型，
+                  或换一家已配好 Key 的提供商。
+                </li>
+                <li><strong>未选模型 / 无可用模型</strong>：先在 设置 → 模型 中启用至少一个文本模型并填好密钥。</li>
+                <li><strong>一直转圈不执行</strong>：确认本机 Node.js ≥ 22.19（安装包已内置运行体）；查看面板状态行与日志。</li>
+                <li><strong>工具执行失败</strong>：检查工具卡片的错误信息，常见为工程未打开或 API Key 额度不足。</li>
+              </ol>
+            </div>
+          </details>
+
+          <div class="tip">
+            排查时<strong>先换一个模型跑同一节点</strong>，是区分「软件问题」和「模型 / 账户问题」最快的办法。
+          </div>
+        </section>
+
+        <section id="update">
+          <h2>16. 关于与更新</h2>
+          <p>路径：设置 → 通用 → 关于与更新。</p>
+          <ul>
+            <li><strong>当前版本</strong>：显示为 <code>v{version}</code>（预发布如 <code>4.1.0-beta.1</code> 会标为 prerelease）。</li>
+            <li><strong>检查更新</strong>：查询 GitHub Releases；开发模式下会提示不检查更新。</li>
+            <li>状态包括：正在检查、发现新版本并下载、已是最新、下载进度、失败提示。</li>
+            <li>下载完成后可点击<strong>重启并安装</strong>。</li>
+            <li>
+              <strong>更新日志</strong>：完整版本历史见
+              <a
+                href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md"
+                target="_blank"
+                rel="noopener noreferrer"
+                >CHANGELOG</a
+              >。
+            </li>
+          </ul>
+        </section>
+
+      </article>
+    </div>
+
+    <footer class="foot">
+      <div class="foot-grid">
+        <div class="foot-about-col">
+          <a class="foot-brand" href="index.html">
+            <img src="assets/logo-mark.png" alt="" width="22" height="22" />
+            AI Art Engine
+          </a>
+          <p class="foot-about">本地优先的 Agent 原生 AI 美术资产引擎。工程与素材保存在本机，模型使用你自己的密钥。</p>
+        </div>
+        <nav class="foot-col" aria-label="文档">
+          <h4>文档</h4>
+          <ul>
+            <li><a href="quickstart.html">快速上手</a></li>
+            <li><a href="manual.html">使用手册</a></li>
+            <li><a href="developers.html">开发者文档</a></li>
+            <li><a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">更新日志</a></li>
+          </ul>
+        </nav>
+        <nav class="foot-col" aria-label="专题教程">
+          <h4>专题教程</h4>
+          <ul>
+            <li><a href="guide-short-video.html">短剧教程</a></li>
+            <li><a href="guide-video.html">视频教程</a></li>
+            <li><a href="guide-comfyui.html">ComfyUI 教程</a></li>
+            <li><a href="guide-newapi.html">NewAPI 教程</a></li>
+            <li><a href="guide-mcp.html">MCP 接入</a></li>
+            <li><a href="guide-gameplay.html">可玩 HTML</a></li>
+          </ul>
+        </nav>
+        <nav class="foot-col" aria-label="社区">
+          <h4>社区</h4>
+          <ul>
+            <li><a href="index.html#download">下载</a></li>
+            <li><a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+            <li><a href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine" target="_blank" rel="noopener noreferrer">Gitee</a></li>
+            <li><a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer">bilibili</a></li>
+            <li><a href="https://github.com/Justin-sky/ai-art-engine/issues" target="_blank" rel="noopener noreferrer">问题反馈</a></li>
+          </ul>
+        </nav>
+      </div>
+      <div class="foot-bottom">
+        <span>© 2026 AI Art Engine · GPL-3.0</span>
+        <span>文档以最新版应用内界面为准</span>
+      </div>
+    </footer>
+    <script>
+      document.querySelectorAll('.mobile-nav a').forEach((link) => {
+        link.addEventListener('click', () => link.closest('.mobile-menu')?.removeAttribute('open'))
+      })
+
+      // 阅读进度条
+      const progressBar = document.querySelector('.progress')
+      if (progressBar) {
+        const updateProgress = () => {
+          const doc = document.documentElement
+          const max = doc.scrollHeight - window.innerHeight
+          progressBar.style.width = (max > 0 ? (window.scrollY / max) * 100 : 0) + '%'
+        }
+        window.addEventListener('scroll', updateProgress, { passive: true })
+        window.addEventListener('resize', updateProgress)
+        updateProgress()
+      }
+
+      // 目录滚动高亮（scrollspy）
+      const tocLinks = Array.from(document.querySelectorAll('.toc a[href^="#"]'))
+      const spyTargets = []
+      tocLinks.forEach((link) => {
+        const id = link.getAttribute('href').slice(1)
+        const el = id ? document.getElementById(id) : null
+        if (el) spyTargets.push({ el, link })
+      })
+      if (spyTargets.length) {
+        const spy = () => {
+          const y = window.scrollY + 90
+          let current = spyTargets[0]
+          for (const target of spyTargets) {
+            if (!target.el) continue
+            const top = target.el.getBoundingClientRect().top + window.scrollY
+            if (top <= y) current = target
+          }
+          if (!current) return
+          tocLinks.forEach((link) => link.classList.toggle('active', link === current.link))
+        }
+        window.addEventListener('scroll', spy, { passive: true })
+        window.addEventListener('resize', spy)
+        spy()
+      }
+
+      // 返回顶部
+      const toTop = document.querySelector('.to-top')
+      if (toTop) {
+        const toggleToTop = () => {
+          toTop.hidden = window.scrollY <= 600
+        }
+        window.addEventListener('scroll', toggleToTop, { passive: true })
+        toggleToTop()
+        toTop.addEventListener('click', () => {
+          window.scrollTo({ top: 0, behavior: 'smooth' })
+        })
+      }
+
+      // 截图点击放大
+      const lightbox = document.querySelector('.lightbox')
+      if (lightbox) {
+        const lightboxImg = lightbox.querySelector('img')
+        const lightboxCap = lightbox.querySelector('.lightbox-cap')
+        document.querySelectorAll('.manual figure.shot img').forEach((img) => {
+          img.addEventListener('click', () => {
+            if (!lightboxImg || !lightboxCap) return
+            lightboxImg.src = img.currentSrc || img.src
+            lightboxImg.alt = img.alt
+            lightboxCap.textContent =
+              img.closest('figure')?.querySelector('figcaption')?.textContent?.trim() || img.alt
+            lightbox.hidden = false
+          })
+        })
+        lightbox.addEventListener('click', () => {
+          lightbox.hidden = true
+        })
+        document.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape' && !lightbox.hidden) lightbox.hidden = true
+        })
+      }
+
+      // 章节标题点击复制链接
+      const toast = document.createElement('div')
+      toast.className = 'toast'
+      toast.setAttribute('role', 'status')
+      document.body.appendChild(toast)
+      let toastTimer = 0
+      const showToast = (message) => {
+        toast.textContent = message
+        toast.classList.add('show')
+        clearTimeout(toastTimer)
+        toastTimer = setTimeout(() => toast.classList.remove('show'), 1600)
+      }
+      document
+        .querySelectorAll('.manual section[id] > h2, .manual h3[id], .manual h4[id]')
+        .forEach((heading) => {
+          const id = heading.id || heading.parentElement?.id
+          if (!id) return
+          heading.title = '点击复制本节链接'
+          heading.addEventListener('click', () => {
+            if (window.getSelection()?.toString()) return
+            const url = location.origin + location.pathname + '#' + id
+            if (navigator.clipboard?.writeText) {
+              navigator.clipboard.writeText(url).then(
+                () => showToast('已复制本节链接'),
+                () => showToast(url)
+              )
+            } else {
+              showToast(url)
+            }
+          })
+        })
+
+      // 主题切换：跟随系统 → 浅色 → 深色
+      const themeButton = document.querySelector('.theme-toggle')
+      if (themeButton) {
+        const rootEl = document.documentElement
+        const THEME_KEY = 'site.theme'
+        const darkQuery = window.matchMedia('(prefers-color-scheme: dark)')
+        const THEME_META = {
+          auto: { icon: '◐', label: '主题：跟随系统' },
+          light: { icon: '☀', label: '主题：浅色' },
+          dark: { icon: '☾', label: '主题：深色' }
+        }
+        const readThemePref = () => {
+          try {
+            const stored = localStorage.getItem(THEME_KEY)
+            return stored === 'light' || stored === 'dark' || stored === 'auto' ? stored : 'dark'
+          } catch (e) {
+            return 'dark'
+          }
+        }
+        const applyTheme = () => {
+          const pref = readThemePref()
+          rootEl.classList.toggle('dark', pref === 'dark' || (pref !== 'light' && darkQuery.matches))
+          rootEl.classList.toggle('light', pref === 'light')
+          const meta = THEME_META[pref]
+          themeButton.textContent = meta.icon
+          themeButton.title = meta.label + '（点击切换）'
+          themeButton.setAttribute('aria-label', meta.label)
+        }
+        darkQuery.addEventListener('change', applyTheme)
+        themeButton.addEventListener('click', () => {
+          const next = readThemePref() === 'dark' ? 'light' : readThemePref() === 'light' ? 'auto' : 'dark'
+          try {
+            localStorage.setItem(THEME_KEY, next)
+          } catch (e) {}
+          applyTheme()
+          showToast(THEME_META[next].label)
+        })
+        applyTheme()
+      }
+    </script>
+      <script src="site-search.js?v=20261009d" defer></script>
+    <script src="site-enhance.js?v=20261009d" defer></script>
+  </body>
+</html>

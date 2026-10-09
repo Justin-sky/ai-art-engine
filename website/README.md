@@ -13,7 +13,12 @@ npm run site
 |------|------|
 | `index.html` | 官网首页（含按目标划分的三条入口路径） |
 | `quickstart.html` | 快速上手：安装 → 接入模型 → 模板生成 → 出片，新手主入口 |
-| `manual.html` | 使用手册（16 章，分入门 / 基础 / 核心能力 / 参考四组） |
+| `manual.html` | 使用手册概述页（§1–2 概述与核心概念 + 章节导航；旧的 `manual.html#锚点` 会自动跳转到对应子页） |
+| `manual-setup.html` | 手册 §3–4 工程与设置 |
+| `manual-workspace.html` | 手册 §5–6 工作区与资产库 |
+| `manual-workflow.html` | 手册 §7–8 一键工作流与节点图 |
+| `manual-production.html` | 手册 §9–12 剧本、成片与导演台 |
+| `manual-reference.html` | 手册 §13–16 参考与故障排查 |
 | `guide-short-video.html` | 短剧制作教程 |
 | `guide-video.html` | 自由画布 · 视频与参考视频 |
 | `guide-comfyui.html` | ComfyUI 接入教程（API 2、本机安装 comfy-api-proxy、API 格式 workflow） |
@@ -24,7 +29,7 @@ npm run site
 | `styles.css` | 首页样式（中英文共用） |
 | `site.css` | 全站共享组件样式（搜索面板、复制按钮、目录分组、概念卡、排查折叠、路径卡） |
 | `site-search.js` | 站内全文搜索（纯前端，Ctrl/Cmd+K 唤起，无需构建索引） |
-| `site-enhance.js` | 代码块一键复制、外链安全属性补全 |
+| `site-enhance.js` | 代码块一键复制、外链安全属性补全；文档页的左侧文档树（宽屏三栏布局）、面包屑、阅读时长、编辑 / 反馈入口与上一篇 / 下一篇（新增文档页需加入脚本内的 `DOCS` 列表） |
 
 ### 文档体系
 
@@ -34,7 +39,7 @@ npm run site
 |----|------|-----------|
 | Tutorial 教程 | `quickstart.html` | 带新手走完一遍，5 分钟出片 |
 | How-to 操作指南 | 四个 `guide-*.html` | 怎么做某件具体的事 |
-| Reference 参考 | `manual.html` | 这个界面 / 组件是什么 |
+| Reference 参考 | `manual*.html` | 这个界面 / 组件是什么 |
 | Explanation 解释 | 手册 §2 核心概念 | 这些术语到底指什么 |
 
 面向**插件市场发布者**的 `developers.html` 不在这四层里 —— 它换了一个读者（写工作流与技能包的

@@ -1,0 +1,1142 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+
+    <script>
+      // 提前应用本地主题选择，避免加载闪烁
+      ;(function () {
+        try {
+          var pref = localStorage.getItem('site.theme')
+          if (
+            pref !== 'light' &&
+            (pref === 'dark' || pref == null || (pref === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches))
+          ) {
+            document.documentElement.classList.add('dark')
+          }
+        } catch (e) {}
+      })()
+    </script>
+    <meta
+      name="description"
+      content="Generate reusable host assets from templates or plain language with One-Click Workflow and run short-drama storyboards through the episode pipeline; then add and wire nodes, run the task queue and look up every node type and typical workflow in the node graph."
+    />
+    <title>One-Click Workflow & node graph · Manual — AIArtEngine</title>
+    <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/manual-workflow.en.html" />
+    <meta property="og:site_name" content="AIArtEngine" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:title" content="One-Click Workflow & node graph · Manual — AIArtEngine" />
+    <meta property="og:description" content="Generate reusable host assets from templates or plain language with One-Click Workflow and run short-drama storyboards through the episode pipeline; then add and wire nodes, run the task queue and look up every node type and typical workflow in the node graph." />
+    <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/manual-workflow.en.html" />
+    <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="One-Click Workflow & node graph · Manual — AIArtEngine" />
+    <meta name="twitter:description" content="Generate reusable host assets from templates or plain language with One-Click Workflow and run short-drama storyboards through the episode pipeline; then add and wire nodes, run the task queue and look up every node type and typical workflow in the node graph." />
+    <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-workflow.html" />
+    <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual-workflow.en.html" />
+    <link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/manual-workflow.html" />
+    <link rel="icon" href="assets/logo-mark.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="manual.css?v=20261009d" />
+    <link rel="stylesheet" href="site.css?v=20261009d" />
+  </head>
+  <body>
+    <a class="skip" href="#manual">Skip to content</a>
+    <div class="progress" aria-hidden="true"></div>
+    <button class="to-top" type="button" aria-label="Back to top" hidden>↑</button>
+    <div class="lightbox" hidden>
+      <img alt="" />
+      <p class="lightbox-cap"></p>
+    </div>
+
+    <header class="top">
+      <a class="brand" href="index.en.html">
+        <img src="assets/logo-mark.png" alt="" width="30" height="30" />
+        <span>AI Art Engine</span>
+      </a>
+      <nav class="nav" aria-label="Main navigation">
+        <a href="quickstart.en.html">Quickstart</a>
+        <a href="manual.en.html" aria-current="page">Manual</a>
+        <div class="nav-drop">
+          <button type="button" class="nav-drop-btn" aria-haspopup="true">
+            Guides<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+          </button>
+          <div class="nav-drop-menu">
+            <a href="guide-short-video.en.html"><strong>Short drama</strong><span>Storyboards, review, motion video</span></a>
+            <a href="guide-video.en.html"><strong>Video</strong><span>Free canvas & reference video</span></a>
+            <a href="guide-comfyui.en.html"><strong>ComfyUI</strong><span>API v2 and comfy-api-proxy</span></a>
+            <a href="guide-newapi.en.html"><strong>NewAPI</strong><span>Self-hosted relay gateways</span></a>
+            <a href="guide-mcp.en.html"><strong>MCP setup</strong><span>Drive the app from Claude Code / Codex</span></a>
+            <a href="guide-gameplay.en.html"><strong>Playable HTML</strong><span>Interactive gameplay prototypes</span></a>
+            <a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer"><strong>Video tutorials</strong><span>Walkthroughs on bilibili</span></a>
+          </div>
+        </div>
+        <a href="developers.en.html">Developers</a>
+        <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a>
+        <a href="index.en.html#download">Download</a>
+        <a class="nav-src" href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.070 3.633 17.700 3.633 17.700c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.070 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.760-1.605-2.665-.3-5.466-1.332-5.466-5.930 0-1.310.465-2.380 1.235-3.220-.135-.303-.540-1.523.105-3.176 0 0 1.005-.322 3.300 1.230.960-.267 1.980-.399 3.000-.405 1.020.006 2.040.138 3.000.405 2.280-1.552 3.285-1.230 3.285-1.230.645 1.653.240 2.873.120 3.176.765.840 1.230 1.910 1.230 3.220 0 4.610-2.805 5.625-5.475 5.920.420.360.810 1.096.810 2.220 0 1.606-.015 2.896-.015 3.286 0 .315.210.690.825.570C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" /></svg>GitHub</a>
+      </nav>
+      <a class="nav-lang" href="manual-workflow.html" hreflang="zh-CN" lang="zh-CN">中文</a>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme">◐</button>
+      <details class="mobile-menu">
+        <summary aria-label="Open navigation menu"><span aria-hidden="true">☰</span> Menu</summary>
+        <nav class="mobile-nav" aria-label="Mobile navigation">
+          <p class="mobile-group">Docs</p>
+          <a href="index.en.html">Home</a>
+          <a href="quickstart.en.html">Quickstart</a>
+          <a href="manual.en.html" aria-current="page">Manual</a>
+          <a href="developers.en.html">Developer docs</a>
+          <p class="mobile-group">Guides</p>
+          <a href="guide-short-video.en.html">Short drama</a>
+          <a href="guide-video.en.html">Video</a>
+          <a href="guide-comfyui.en.html">ComfyUI</a>
+          <a href="guide-newapi.en.html">NewAPI</a>
+          <a href="guide-mcp.en.html">MCP setup</a>
+          <a href="guide-gameplay.en.html">Playable HTML</a>
+          <p class="mobile-group">Community</p>
+          <a href="index.en.html#download">Download</a>
+          <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a>
+          <a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer">bilibili</a>
+          <a href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine" target="_blank" rel="noopener noreferrer">Gitee</a>
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a>
+        </nav>
+      </details>
+    </header>
+
+    <div class="manual-shell">
+      <aside class="toc" aria-label="Table of contents">
+        <h2>Table of contents</h2>
+        <ol>
+          <li class="toc-group">Core features</li>
+          <li><a href="#ai-workflow">7. One-Click Workflow</a></li>
+          <li><a href="#agent-pipeline">7.5 Episode pipeline · Agent window</a></li>
+          <li><a href="#graph">8. Node graph</a></li>
+
+          <li class="toc-group">Manual chapters</li>
+          <li><a href="manual.en.html">Overview & core concepts</a></li>
+          <li><a href="manual-setup.en.html">Projects & settings</a></li>
+          <li><a href="manual-workspace.en.html">Workspace & asset library</a></li>
+          <li><a href="manual-production.en.html">Script, timeline & director stage</a></li>
+          <li><a href="manual-reference.en.html">Reference & troubleshooting</a></li>
+        </ol>
+      </aside>
+
+      <article class="manual" id="manual">
+        <header class="manual-hero">
+          <p class="eyebrow">Manual · Workflow</p>
+          <h1>One-Click Workflow & node graph</h1>
+          <p class="lede">
+            Generate reusable host assets from templates or plain language with One-Click Workflow and run short-drama storyboards through the episode pipeline; then add and wire nodes, run the task queue and look up every node type and typical workflow in the node graph.
+          </p>
+        </header>
+
+        <section id="ai-workflow">
+          <h2>7. One-Click Workflow</h2>
+          <p>
+            “One-Click Workflow” uses a <strong>preset template</strong> or <strong>AI planning</strong> to
+            produce a reusable <strong>host asset</strong> (containing a complete node graph plus boundary I/O).
+            Once created, drag it onto any canvas, feed it inputs and take its outputs like a component.
+          </p>
+
+          <h3>7.1 How to open</h3>
+          <ol>
+            <li>Open any project to enter the workspace.</li>
+            <li>Click <strong>One-Click Workflow</strong> in the top bar.</li>
+          </ol>
+          <div class="tip">
+            You need at least one working text model for AI planning; a pure template preview doesn't depend on
+            AI. For more chains, install community workflows from the
+            <strong>plugin marketplace</strong> (see <a href="manual-workspace.en.html#marketplace">§5.7</a>).
+          </div>
+
+          <h3>7.2 Presets and description</h3>
+          <ul>
+            <li>
+              <strong>Preset templates</strong> (covering the main capability nodes by industry): game user
+              acquisition, game UI, character design, storyboard-to-film, product ads,
+              <strong>e-commerce livestream</strong>, <strong>game 3D assets</strong>,
+              <strong>world model</strong>, <strong>comic publishing</strong>,
+              <strong>knowledge talking-head</strong>,
+              <strong>3D blockout previz</strong>, short-drama storyboard, custom, and more. Presets with a
+              fixed topology can be previewed directly with “Preview template”. “Game UI” builds a full chain of
+              planning document → UI screen breakdown → UI screen generation, where UI generation can dive into
+              the inner graph to render screen by screen, with a global style reference keeping the look
+              consistent.
+            </li>
+            <li>
+              Industry templates and capability nodes: “E-commerce livestream” chains ad variant matrix plus
+              layer separation; “Game 3D assets” chains 3D model generation → director
+              stage → blocking shots → showcase video; <strong>“World model”</strong> chains
+              <strong>spatial world generation → world export → 3D director stage</strong> (the world node's output
+              is the strictly typed <code>spatialWorld</code>, so it has to go through the export node to become a
+              model before it can feed the stage); “Comic publishing” chains storyboard images ×3 → comic
+              page (panels / balloons / transparent-background export); “Knowledge talking-head” chains script →
+              voice-over + talking-head video → lip sync; “3D blockout previz” chains panorama reference →
+              director stage AI blockout → blocking shots → previz film. Each template's note node documents its
+              step-by-step usage.
+            </li>
+            <li>
+              <strong>Workflow description</strong>: describe your goal in plain language (e.g. “script →
+              storyboard images → vertical short video”); you can pick a preset first and then edit the
+              description.
+            </li>
+            <li>
+              <strong>Models</strong>: the text model drives AI planning; the default image / video models are
+              written into the initial parameters of generation nodes.
+            </li>
+          </ul>
+
+          <h3>7.3 Preview → create</h3>
+          <ol>
+            <li>
+              Click <strong>Preview template</strong> (fixed presets) or <strong>Generate preview with AI</strong>
+              (needs a text model; shortcut <kbd>Ctrl</kbd>+<kbd>Enter</kbd> / <kbd>⌘</kbd>+<kbd>Enter</kbd>).
+            </li>
+            <li>
+              Inspect the nodes and link topology in the preview area; open the run log to watch the model's
+              planning process.
+            </li>
+            <li>Confirm with <strong>Create workflow</strong>, then choose a save directory and name.</li>
+            <li>The new host asset appears in the asset library; drag it onto a canvas to use it.</li>
+          </ol>
+          <div class="tip">
+            What gets created is a <strong>host asset</strong>: the outer layer exposes boundary inputs /
+            outputs, and the inner graph can be dived into for editing. Multiple same-type outlets (e.g. several
+            character sheets) each keep their own independent boundary output.
+          </div>
+
+          <h3>7.4 Using it after creation</h3>
+          <ul>
+            <li>Drag it from the asset library onto the canvas → connect upstream text / images to the host inputs.</li>
+            <li>Double-click or Dive into the inner graph to fine-tune nodes, models and prompts.</li>
+            <li>
+              Select a boundary output or the host node and use “Add to tasks” to run the whole inner chain; it
+              can run in parallel with other chains (see <a href="#graph-tasks">§8.3</a>).
+            </li>
+          </ul>
+
+          <h3 id="agent-pipeline">7.5 Episode pipeline: the Agent window</h3>
+          <figure class="shot">
+            <img
+              src="assets/banner/storyboard.webp"
+              alt="Episode pipeline window: beat breakdown, grid storyboards and director review"
+              width="1120"
+              height="760"
+              loading="lazy"
+            />
+            <figcaption>
+              <strong>Episode pipeline</strong>: beat breakdown, 9-grid / 4-grid storyboards and director
+              review.
+            </figcaption>
+          </figure>
+          <p>
+            After creating a host asset from the “Short-drama storyboard (Agent pipeline)” template, click
+            <strong>“Episode Pipeline”</strong> in the top toolbar to open a dedicated flow window and finish
+            storyboards, tiling, review and video generation in one place. See the
+            <a href="guide-short-video.en.html">Short-Drama Guide</a> for the full walkthrough.
+          </p>
+          <ul>
+            <li>
+              <strong>Three columns</strong>: beat breakdown (left), 9-grid storyboard table (center), 4-grid
+              detail (right); drag the dividers to resize each column.
+            </li>
+            <li>
+              <strong>9-grid tiling</strong>: click the grid icon to generate the entire 3×3 sheet at once and
+              split out all 9 anchor images; regeneration and director review are supported.
+            </li>
+            <li>
+              <strong>4-grid</strong>: click the 2×2 grid icon to generate the current group's sheet; the right
+              side shows the motion prompt and lets you generate / preview the current cell's motion video.
+            </li>
+            <li>
+              <strong>Director review</strong>: the review button lights up only after that stage's
+              “Regenerate” has written results back. Review defaults to PASS and only FAILs on blocking issues;
+              FAIL reasons are written back and appended to that stage's re-run.
+            </li>
+            <li>
+              <strong>Cascading invalidation</strong>: after a stage is regenerated, its downstream tiling /
+              extraction / upscale / video are invalidated and show “Not generated”; clicking generate again
+              re-runs the whole chain from the latest text, so new text never pairs with old images.
+            </li>
+            <li>
+              <strong>Node inspector</strong>: with a “grid select / motion cell select” node selected, edit the
+              cell (1~9) or group × cell (1~9 × 1~4) parameters on the right.
+            </li>
+          </ul>
+        </section>
+
+        <section id="graph">
+          <h2>8. Node graph</h2>
+          <figure class="shot">
+            <img
+              src="assets/banner/node-graph.webp"
+              alt="Node graph: generation chains built from node cards and links"
+              width="1440"
+              height="900"
+              loading="lazy"
+            />
+            <figcaption><strong>Node graph</strong>: generation chains, asset preview and task execution.</figcaption>
+          </figure>
+          <p>
+            The node graph is the core orchestration surface. In scripts, shots, canvases, the director stage,
+            host assets and similar scenes you wire nodes together into “input → generate → output” chains.
+          </p>
+
+          <h3>8.1 Add and connect</h3>
+          <ol>
+            <li>
+              Right-click <strong>empty canvas space</strong>, or press <kbd>Space</kbd>, then choose “Add node”.
+            </li>
+            <li>Drag a link out from a port; after releasing you can “select a node and connect”.</li>
+            <li>
+              <strong>Rewire:</strong> hold and drag an existing link (whichever end you grab is the one that
+              changes), or drag out from an already connected <strong>input port</strong> onto another
+              compatible port; release over empty space to disconnect. After marquee or multi-selecting links
+              (<kbd>Shift</kbd> / <kbd>Ctrl</kbd> click), dragging one of them rewires several at once; dragging
+              from an input port carries all of that port's incoming edges.
+            </li>
+            <li>
+              <strong>Drag</strong> an asset from the asset library onto the canvas to create a reference
+              quickly.
+            </li>
+            <li>Select a node or edge and press <kbd>Delete</kbd> / <kbd>Backspace</kbd> to remove it.</li>
+          </ol>
+          <p>
+            Image / video / audio / script <strong>gallery generation nodes</strong> have two outputs:
+            <code>out</code> (the currently selected single item, auto-connected by default) and
+            <code>out-all</code> (the whole history, a square port). Each successful run selects the newest item
+            automatically; click a history entry in the Inspector to change the current <code>out</code>.
+          </p>
+          <p>
+            <strong>Director stage edit</strong> nodes use two square outputs: <code>out-shots</code> (blocking
+            shots, <code>images</code>) and <code>out-actions</code> (motion captures, <code>videos</code>).
+            Legacy <code>out</code> / <code>out-all</code> links migrate to <code>out-shots</code> on load.
+          </p>
+          <p>
+            Structured directory ports use the dedicated types <code>world</code> /
+            <code>worldEntities</code> / <code>beat</code> (shown as world elements / world element entities /
+            shot) — don't mix them with plain <code>text</code>.
+          </p>
+          <p>
+            <strong>Port types must match:</strong> singular and plural don't interoperate.
+            <code>image</code> can't go into <code>images</code>, and the same applies to <code>video</code> /
+            <code>voice</code> / <code>text</code>. <strong>Select image / video / audio / text</strong> nodes
+            accept list ports only: feed them from an upstream <code>out-all</code> (or the director stage's
+            <code>out-shots</code> / <code>out-actions</code>); the default round <code>out</code> won't
+            connect. A script node's <code>text</code> also can't go straight into “Select text”.
+          </p>
+          <p>
+            Generation nodes support <strong>locking</strong>: when enabled the model call is skipped and the
+            gallery or previous output is reused (toggle it with the lock icon on the node card or in the
+            Inspector).
+          </p>
+
+          <h3>8.2 Toolbar and canvas interaction</h3>
+          <ul>
+            <li>Select / pan · fit view · grid and snapping · align / distribute · auto layout.</li>
+            <li><strong>Link style</strong>: curve / orthogonal / hidden (the preference is remembered).</li>
+            <li>
+              <strong>Minimap</strong>: bottom-left overview with a viewport box; it can also be toggled when
+              the layout bar is collapsed.
+            </li>
+            <li>Wheel zoom runs roughly 1%–1000%; clicking the zoom percentage resets related view habits.</li>
+            <li>Execute / stop / add to tasks.</li>
+            <li>
+              <strong>Project globals</strong>: right-click empty graph space and open “Global parameters” —
+              project name, visual style (up to 4 style reference images, picked from the default style library
+              or uploaded, including a “UI style” category), a global random seed (image / video generation
+              nodes follow it by default and can opt out individually, which makes runs reproducible) and the
+              generation cache root (results are written to <code>Cache/Images</code>,
+              <code>Cache/Videos</code>, etc., and aren't registered in the asset library automatically).
+            </li>
+            <li>
+              <strong>Prompt editor reference preview</strong>: hovering a referenced node's thumbnail pops a
+              preview — images are shown size-limited and text shows the opening paragraphs (sidecar txt / md
+              content such as scripts is read automatically).
+            </li>
+          </ul>
+          <p>
+            Image previews on node cards and in the Inspector are shown <strong>in full with letterboxing</strong>,
+            so they're never cropped by a different aspect ratio.
+          </p>
+
+          <h3 id="graph-tasks">8.3 Execution and the task queue</h3>
+          <div class="table-scroll" role="region" aria-label="Node execution methods" tabindex="0">
+            <table>
+            <thead>
+              <tr>
+                <th>Method</th>
+                <th>Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Toolbar “Execute”</td>
+                <td>
+                  With a selection it runs the selected nodes and their upstream; with none, it asks for
+                  confirmation before “Execute all nodes”.
+                </td>
+              </tr>
+              <tr>
+                <td>Hold <kbd>C</kbd></td>
+                <td>
+                  Opens the execution ring: run current / re-run / skip upstream / force upstream / add to tasks
+                  / stop.
+                </td>
+              </tr>
+              <tr>
+                <td>Node right-click</td>
+                <td>Run current · re-run · stop.</td>
+              </tr>
+              <tr>
+                <td>Task list</td>
+                <td>
+                  Background workflow queue. Selecting an <strong>output terminal</strong> then “Add to tasks”
+                  runs only that sink's upstream; with no output selected it runs the union of every output
+                  chain in the graph.
+                </td>
+              </tr>
+            </tbody>
+            </table>
+          </div>
+          <div class="tip">
+            <strong>Shared upstream nodes cook only once:</strong> when several output chains on the same canvas
+            are queued separately, each task keeps its own progress; tasks queued later wait for earlier ones on
+            overlapping upstream nodes and skip shared nodes already marked <code>done</code>. The sinks
+            themselves still run individually. To force a shared node to re-run, clear its run state or unlock
+            it before queueing.
+          </div>
+          <p>
+            Group: <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd>; ungroup:
+            <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>U</kbd>.
+          </p>
+
+          <h3>8.4 Fault-tolerant run mode</h3>
+          <p>
+            <strong>Single-node debugging stays strict</strong>: a failing node stops the run immediately and
+            reports the error, which is best for isolating problems. But long chains such as
+            <strong>whole-graph runs / add-to-tasks / agent pipelines</strong> automatically enable
+            <strong>fault-tolerant mode</strong>: a failing node falls back to cached or gallery outputs, is
+            marked <code>degraded</code>, and <strong>downstream keeps executing</strong> — a long batch doesn't
+            restart just because one node hiccupped.
+          </p>
+          <ul>
+            <li>Degraded nodes are flagged in the <strong>run log, pipeline overview and node state</strong>
+              (<code>degraded</code> + failure reason).</li>
+            <li>Best for “partial failure is acceptable” batch scenarios; when debugging, use
+              <strong>single-node execution</strong> to keep the strict fail-fast behavior.</li>
+          </ul>
+
+          <h3>8.5 Node types at a glance</h3>
+
+          <h4>Generation / assets</h4>
+          <ul>
+            <li>
+              Image generation · video generation · audio generation · script generation · shot generation ·
+              world element extraction · planning doc generation · director stage edit · canvas edit · 3D model
+              generation · spatial world generation · 3D mesh processing (rigging / rig check / animation retarget / split / part completion
+              / retopology / texture / format convert) · 2D frame animation · decisions · model (reference) ·
+              host asset
+            </li>
+            <li>
+              <strong>3D model generation</strong>: text / upstream reference images → a 3D model asset (Meshy,
+              Tripo, Rodin (Hyper3D), Luma AI, Lux3D; text-to-3D / image-to-3D, with multi-image to 3D on some);
+              submit async → poll → download, and the result can feed the director stage or downstream nodes,
+              with write-back binding persistence and cancellation. <strong>Generation nodes output geometry
+              only</strong> — rigging and the rest moved to the 3D processing nodes below (no inline
+              “Generate rig” since 6.4.1).
+            </li>
+            <li>
+              <strong>Spatial world generation</strong> (<code>asset.spatialWorld</code>): text, 1&ndash;4
+              reference images or one reference video → an explorable 3D world (World Labs Marble; four
+              models &mdash; 1.1 / 1.1-plus / 1.0 / 1.0-draft, the last two from the previous generation). The four
+              input kinds are
+              mutually exclusive (text / single image / multi-image of one scene / video), and
+              <strong>when both a video and images are connected the video wins</strong> (same rule as lip
+              sync); reference videos should be mp4 / webm / mov / avi and are <strong>capped at 100MB each</strong>
+              (an upstream hard limit). The node card also offers a <strong>panorama mode</strong>
+              (<code>is_pano</code>: auto-detect a 2:1 equirect panorama / force / off &mdash; single image only,
+              and a panorama gives the model complete spatial information, usually more accurate than a plain
+              photo), <strong>verbatim</strong> (disables upstream recaptioning so your brief is sent as written)
+              and a <strong>seed</strong>.
+              Without instructions the upstream recaptions the input itself, so the same reference image can
+              yield slightly different worlds twice; tick “verbatim” and pin the seed to keep it
+              reproducible. It uses the same async submit → poll → download path as 3D
+              generation, and the world's GLB mesh is registered as a <strong>model asset</strong> (landing in
+              <code>Cache/Models</code> by default, exactly like 3D generation) &mdash; but to feed the director
+              stage or downstream 3D processing nodes you <strong>must go through the “World export” node</strong>:
+              the world port is <strong>strictly typed</strong> (<code>spatialWorld</code> connects only to
+              <code>spatialWorld</code> and is not implicitly compatible with <code>model</code>), so wire the world
+              into the export node first and use its exported mesh from there. Multi-image references are capped at 4, and local
+              images / videos are <strong>uploaded to World Labs managed storage by default</strong> (the official
+              media-asset flow: <code>/marble/v1/media-assets:prepare_upload</code> then a PUT to the signed
+              URL), so <strong>no object storage is required</strong>; object storage is only a fallback when the
+              hosted upload fails, and if both fail the error carries both reasons. One
+              generation takes about 5 minutes and is billed in credits. As for the artifacts: the
+              <strong>main output is the world's GLB mesh</strong> (the coarse collider mesh, 100–200k triangles),
+              and the two assets that ship with the world are written as <strong>same-name siblings</strong>:
+              <code>*.spz</code> <strong>gaussian splats</strong> (about 2M splats, Marble's native format &mdash; the
+              preferred import for Unreal / Unity / Blender / Houdini) and <code>*.pano.png</code> a
+              <strong>360 equirectangular panorama</strong> (2560&times;1280, reusable as a 2D panorama input).
+              Both are free of extra credits, and their paths appear in the run log and the node inspector
+              (select the node to copy a path). <strong>PLY splats or the HQ textured mesh</strong> come from the
+              <strong>“World export” node</strong> (<code>spatialWorld.export</code>): wire the spatial world node's output
+              (its port type is <strong>spatial world</strong>, distinct from the world-elements catalog port) into
+              its <code>in-world</code> and pick what to export in the inspector &mdash;
+              <strong>high-quality mesh</strong> (GLB: textured ~600k triangles / vertex colors ~1M triangles; an
+              asynchronous upstream export that takes <strong>up to about an hour, is rate limited to 4 requests per
+              hour, and is billed separately</strong>; the result is registered as a model asset whose output port is
+              <code>model</code> &mdash; feed the director stage or downstream 3D processing nodes from there) or
+              <strong>PLY splats</strong> (a synchronous upstream
+              conversion written as a same-name sibling of the world GLB, <code>world.ply</code>; it is not
+              registered as an asset &mdash; but you can import it into the asset library, or wire its relative path
+              straight into the director stage's 3D model input port, where the bundled Spark renders it on the
+              stage: see <a href="manual-production.en.html#director">12.7 Gaussian splats</a>; for engine imports still prefer the
+              SPZ saved automatically). The export node only accepts the <code>world_id</code> produced by an upstream
+              world generation node; without it the node fails loudly rather than exporting someone else's world.
+            </li>
+            <li>
+              <strong>3D mesh processing (nodes)</strong>: <strong>3D rigging</strong> (Meshy / Tripo Rigging
+              API, with Mixamo or Tripo bone naming and GLB / FBX output), <strong>3D rig check</strong> (free;
+              returns <code>riggable</code> plus the recommended rig type), <strong>3D animation
+              retarget</strong> (Tripo <code>preset:walk</code> presets / Meshy action-library
+              <code>action_id</code>, with the library loadable right in the panel), <strong>3D mesh
+              split</strong> (mesh / smart segmentation, listing the resulting part names), <strong>3D part
+              completion</strong>, <strong>3D retopology</strong> (Tripo smart / basic tiers, Meshy remesh),
+              <strong>3D texture</strong> (incl. Meshy retexture) and <strong>3D format convert</strong>
+              (GLTF / FBX / USDZ / OBJ / STL / 3MF with FBX presets, pivot-to-bottom, UV packing). A
+              per-provider capability matrix filters the UI: <strong>Tripo covers all 8 ops, Meshy covers
+              5</strong>, provider dropdowns only list vendors implementing that action, and the Inspector hides
+              parameters the selected vendor does not understand. Two hard constraints: <strong>part completion
+              only accepts a segmentation task id and retarget only a rig task id</strong>; when a task id
+              belongs to another vendor (say a Tripo split feeding a Meshy texture node) the app falls back to
+              uploading the model for a public URL.
+            </li>
+            <li>
+              <strong>Host asset</strong>: bring an existing asset (image / video / audio / script / shot /
+              director stage, …) into the current canvas as a node — the output port type is that asset's port
+              type; double-click a host asset node to dive into its internal workflow (see
+              <a href="#host">8.6 Host assets and Dive</a>).
+            </li>
+            <li>
+              <strong>Decisions</strong>: takes upstream text and asks an OpenRouter decision model a set of typed
+              questions (<code>noul</code> yes/no, <code>choice</code> one-of, <code>score</code> on an ordered
+              scale). It has one text output — the verdict summary (e.g.
+              <code>is_bug=yes(0.96) team=payments(0.84)</code>) — so downstream text nodes keep working; the full
+              verdicts (per-option probabilities, confidence, thresholds) stay on the node and show up as
+              probability bars under “Last verdicts” in the Inspector. The question list and the thresholds (noul
+              yes threshold / choice min confidence / score min position) are edited there too.
+            </li>
+          </ul>
+
+          <h4>Output</h4>
+          <ul>
+            <li>
+              Image / video / audio / script output · director stage output · shot output · world element
+              output · final timeline
+            </li>
+          </ul>
+
+          <h4>Utility</h4>
+          <ul>
+            <li>
+              Note · text · select image / video / audio / text · grid select · motion cell select · prompt
+              optimizer · image-to-prompt · UI screen breakdown / UI screen generation · frame animation sheet ·
+              comic page · ad variant matrix · bundle
+            </li>
+            <li>
+              <strong>Bundle</strong>: gather several upstream outputs (image / video / audio, …) into one
+              group so they can be fed to an output or downstream node as a whole; also handy as a temporary
+              organizing tool.
+            </li>
+          </ul>
+
+          <h4>Motion (under the motion group)</h4>
+          <ul>
+            <li>
+              <strong>Frame animation sheet</strong>: double-click to open the prompt panel (character / FX /
+              martial-arts presets, default prompt and system prompt); row / column parameters are appended to
+              the prompt and an image model produces the sheet; the output preview supports deleting and
+              selecting output images.
+            </li>
+            <li>
+              <strong>2D frame animation</strong>: takes a sprite sheet, set row / column parameters in the
+              Inspector, and the node card plays a frame-by-frame preview automatically; cooking clears the
+              previous output instead of accumulating.
+            </li>
+          </ul>
+
+          <h4>Comics &amp; ads</h4>
+          <ul>
+            <li>
+              <strong>Comic page</strong>: grid panels plus a speech balloon editor. Drag images from the asset
+              library into a panel / import locally / fill from upstream in one click; each panel's image path
+              can be cleared; panel size is adjusted by span with the right / bottom / bottom-right handles
+              (continuous live preview, snapping to the grid on release); balloons can be dragged to move and
+              scaled proportionally with corner handles (0.5~4×); clicking empty space sets page-level and panel
+              background colors. PNG export defaults to a transparent background; cooking fills upstream images
+              in reading order and composites a PNG into the gallery.
+            </li>
+            <li>
+              <strong>Ad variant matrix</strong>: set the product description and aspect ratio, then
+              double-click to enter variant dimension configuration and comparison preview, producing multiple
+              ad variants on the same theme in one run.
+            </li>
+          </ul>
+
+          <h4>QC &amp; rework (retired)</h4>
+          <div class="tip">
+            <strong>Media QC</strong> and <strong>Media rework</strong> have been retired from the “Add node”
+            menu — you can no longer create them. Nodes already placed in existing projects keep working: they
+            render, open their inspector and execute, and the top bar's “QC &amp; rework overview” still
+            reports them. For review, use the generate node's own review instruction, or re-pick the output
+            from the gallery by hand.
+          </div>
+
+          <h4>Image editing (under the image group)</h4>
+          <div class="shot-grid">
+            <figure class="shot">
+              <img
+                src="assets/banner/multi-angle-editor.webp"
+                alt="Multi-angle editor: fast camera and framing switches"
+                width="958"
+                height="580"
+                loading="lazy"
+              />
+              <figcaption><strong>Multi-angle edit</strong>: fast camera and framing switches.</figcaption>
+            </figure>
+            <figure class="shot">
+              <img
+                src="assets/banner/lighting-editor.webp"
+                alt="Lighting editor: fine control of light and atmosphere"
+                width="1075"
+                height="619"
+                loading="lazy"
+              />
+              <figcaption><strong>Lighting</strong>: fine control of light and atmosphere.</figcaption>
+            </figure>
+            <figure class="shot">
+              <img
+                src="assets/banner/mood-editor.webp"
+                alt="Mood editor: control the emotion and color grade of a shot"
+                width="1440"
+                height="900"
+                loading="lazy"
+              />
+              <figcaption><strong>Mood</strong>: control the emotion and color grade of a shot.</figcaption>
+            </figure>
+            <figure class="shot">
+              <img
+                src="assets/banner/image-editor.webp"
+                alt="Image editor: local repaint and image revision"
+                width="775"
+                height="634"
+                loading="lazy"
+              />
+              <figcaption><strong>Image edit</strong>: local repaint and image revision.</figcaption>
+            </figure>
+          </div>
+          <ul>
+            <li>
+              Multi-angle edit · lighting effects · portrait texture adjust · portrait retouch · mood adjust · HD upscale ·
+              outpainting · repaint · erase · cutout · crop · image transform · grid split · layer separation
+            </li>
+            <li>
+              <strong>Image transform</strong> (<code>image.transform</code>): purely local pixel work, <strong>no model
+              call</strong>. Double-click the node card to open the editor: drag to move, scroll to scale, a rotation
+              slider plus ±90° buttons, and horizontal / vertical mirroring, with an output frame (match source / 1:1 /
+              4:3 / 3:4 / 3:2 / 2:3 / 16:9 / 9:16), an output size (match source / 1K / 2K / 4K) and a fill for the
+              exposed areas (transparent / white / black) — all previewed live. Closing the window writes the
+              parameters; run the node to render locally. With "match source" frame and size, rotating grows the canvas
+              to the rotated bounding box, so nothing gets cropped at any angle.
+            </li>
+            <li>
+              <strong>Portrait retouch</strong> (<code>image.portrait</code>): PixCake-style retouching.
+              Double-click the node card to open a dive editor with 14 tool groups along the top rail: heal
+              (blemish / under-eye / wrinkles / shine / red eye / stray hair), skin (smoothing / pore texture /
+              evenness / denoise), tone (whiten / rosy / de-yellow / warmth), face reshaping (slim / jawline /
+              chin / eye size / eye spacing / double eyelid / nose / lips / brows), eyes (catchlight / whitening /
+              pupils), makeup (7 looks with intensity and tone), body (shoulder-neck / waist / leg length),
+              lighting (fill / rim / contour / ratio / light temperature / tone grade), colour (saturation /
+              temperature / tint plus 11 LUTs), texture (sharpen / clarity / grain / soft focus / vignette),
+              region (manual boxes plus a note and the local-scope switch), background (keep / solid / gradient /
+              by description / blur only), ID photo (10 specs, background colour, 5-inch sheet) and export
+              (output size / DPI). Intensities are five-step segmented buttons (<code>off / light / standard /
+              strong / max</code>); makeup looks, LUTs, background handling and ID-photo specs are named options.
+              The editor shows the <strong>exact prompt sent to the model</strong> live, copyable and collapsible.
+            </li>
+            <li>
+              <strong>How portrait retouch runs, and how it stays local:</strong> the parameters compose a prompt
+              and the node <strong>calls the image model you pick</strong> (no model call means no pixel change);
+              ID photos are then cropped to spec and optionally tiled to a 5-inch sheet. Wiring several images into
+              one node retouches them in one batch with the same settings (up to 24) and face landmarks are cached
+              per source-image fingerprint. <strong>Framing follows the source image</strong> (its ratio is mapped
+              to a standard aspect the model accepts, so a portrait shot never comes back square), and
+              "output size = auto" renders at the source's size and then <strong>fits the result back to the exact
+              source pixel dimensions</strong> (picking 1K / 2K / 4K instead keeps that tier's size).
+              <strong>"Affect only the matching area" is on by default</strong>: the
+              model renders the whole frame, then the result is feathered back onto the original through the face
+              (with neck) / person / manual-region-box mask, so everything else keeps the exact original pixels —
+              smoothing no longer blurs the clothes and background, and slimming no longer warps the scene.
+              <strong>Solid / gradient backgrounds are flattened locally by default</strong>: after generation the
+              local person segmentation forces everything outside the subject to the target background, so the
+              result is guaranteed clean (residue the model forgot is wiped) — ID-photo background colours work the
+              same way, and you can switch it off in the Background group.
+              Background swaps, ID photos and colour grading are whole-frame by nature and stay whole-frame
+              (otherwise the mask would crop those global effects); when face landmarks or the segmentation model
+              are missing, that part falls back to the whole frame with a line in the <strong>run log</strong> —
+              never silently. The switch sits at the top of the Region group; turn it off to go back to
+              whole-frame.
+            </li>
+            <li>
+              <strong>Portrait editor:</strong> before/after comparison (<code>⇆</code> hold to see the upstream
+              source; <code>◐</code> split compare with a draggable divider), wheel zoom, view rotation with
+              Shift+wheel or <code>[</code> <code>]</code>, Space / middle-drag panning (double-click empty space
+              or click the zoom percentage to fit, click the angle readout to reset rotation) and undo/redo. In the
+              Region group you draw boxes right on the image (six kinds: blemish / smoothing / brightening /
+              slimming / background / erase); each box becomes a positional phrase such as "a small patch in the
+              upper left" in the prompt. <strong>"Save &amp; generate" no longer closes the window</strong>: the
+              button and the canvas show progress, failures stay in the window, and when it finishes the left image
+              switches to the product so you can compare it with the previous one.
+              <strong>Tool groups with an unmet dependency are greyed out</strong> with an explanation in the
+              tooltip and the parameter panel (7 groups need face landmarks, Background needs the segmentation
+              model, Body needs the pose model). The in-editor AI enhance actions (smart erase / new background /
+              makeup boost / upscale) call the image model directly and store their results as rollback-able node
+              versions; the inspector carries the shared output preview (thumbnails / full screen / save to
+              library / pick a version), and reopening the panel defaults to the node's current output.
+            </li>
+            <li>
+              <strong>Layer separation</strong> (Seedream 5.0 Pro <code>layer_decomposition</code>): split an
+              image into a base image plus up to 16 transparent PNGs, reorder layers in the dive editor and
+              recompose locally; supports wheel zoom and Space-drag panning, and exports PSD (preserving layer
+              order, position, size, alpha channel, names and nested groups) or PNGs grouped into subfolders.
+            </li>
+            <li>
+              Retouching / image editing happens in Dive; options and prompts are
+              <strong>written back</strong> to the node <code>params</code> in real time and stay visible in the
+              Inspector. Preview opens as a dialog rather than taking a Dive tool slot.
+            </li>
+          </ul>
+
+          <h4>Audio (under the voice group)</h4>
+          <ul>
+            <li>Voice · multi-speaker dialogue · sound effect · music · select voice</li>
+            <li>
+              <strong>Voice</strong> (<code>asset.voice</code>): TTS dubbing. The text in the
+              instruction box is <strong>what gets read aloud</strong>, so this node <strong>shows no system
+              prompt</strong> (otherwise that instruction would be read out too). It accepts text and a reference
+              image upstream (Ark voice design uses the first image); the voice is picked per node in the
+              instruction panel, and an empty voice falls back to the model default.
+            </li>
+            <li>
+              <strong>Multi-speaker dialogue</strong> (<code>asset.dialogue</code>): synthesize a whole dialogue in
+              one call (ElevenLabs <code>/v1/text-to-dialogue</code>). Write one
+              <code>speaker: line</code> per line (both ASCII and full-width colons work); lines without a colon
+              keep the previous speaker (narration / continuous monologue). Bind a voice per speaker under
+              “speaker voices” in the Inspector; unbound speakers fall back to the node default. A missing voice is
+              reported <strong>naming the segment index and the speaker</strong> — it never silently uses the wrong
+              voice. The output is one dialogue audio file (a voice asset).
+            </li>
+            <li>
+              <strong>Sound effect</strong> (<code>asset.sfx</code>): uses the
+              <strong>dedicated sound-effect endpoint</strong> (ElevenLabs <code>/v1/sound-generation</code>).
+              Describe the <strong>sound itself</strong> (“rain falling on a tin roof”), not a spoken line. The
+              Inspector offers “seamlessly loopable” (common for ambience), “expected duration” (spec range
+              0.5–30 s) and “prompt influence” (0–1, default 0.3). Files land in <code>Cache/Sfx</code>. The
+              endpoint’s model is a single fixed value (<code>eleven_text_to_sound_v2</code>), so the dropdown on
+              the card actually picks <strong>which provider instance</strong> to use. With no provider available it
+              says so explicitly instead of falling back to speech synthesis.
+            </li>
+            <li>
+              <strong>Music</strong> (<code>asset.music</code>): composition / BGM. Text only (a
+              composition brief plus optional lyrics) — it does not use voices. Models come from the
+              <strong>“Music” tab</strong> in Settings (kept separate from the “Audio” tab): OpenRouter (Google
+              Lyria 3), ElevenLabs (<code>music_v2_5</code> and friends), MiniMax (<code>music-3.0</code> /
+              <code>music-2.6</code>), DashScope (<code>fun-music-v1</code>). The Inspector offers an
+              “instrumental (no vocals)” toggle and a lyrics box (supports structure tags such as
+              <code>[Intro]</code> / <code>[Verse]</code>). Files land in <code>Cache/Music</code>. Music and voice
+              are <strong>two separate modalities</strong>: the music dropdown never lists TTS models and
+              vice versa.
+            </li>
+            <li>
+              <strong>Select voice</strong> (<code>voice.select</code>): pick one voice from several upstream voices
+              as the current output — commonly used in multi-branch dubbing flows.
+            </li>
+          </ul>
+
+          <h4>Video editing (under the video group)</h4>
+          <ul>
+            <li>
+              Lip sync · frame pulling · segment reshoot; frame pulling and segment reshoot open sub-windows on
+              double-click (pull station / reshoot station), sharing the “double-click to open a sub-window”
+              interaction with image editing.
+            </li>
+            <li>
+              <strong>Frame pulling</strong>: connect an upstream video and double-click to open the pull
+              station, browse frame by frame and grab / annotate key frames for storyboards or prompts.
+            </li>
+            <li>
+              <strong>Segment reshoot</strong>: connect the source video and double-click to open the reshoot
+              station, mark the start / end time to change and describe the change; running it reshoots only
+              that range (Seedance 2.5 timestamp-level editing) and leaves the rest untouched. The prompt box
+              supports <code>@</code> references to port media, and the video model can be picked on the right.
+            </li>
+          </ul>
+
+          <h4>Shot / world</h4>
+          <ul>
+            <li>
+              Shot breakdown / shot table / shot generation / shot reference · select shot · world element
+              extraction / world element review / world element generation / world element entity output
+            </li>
+            <li>
+              <strong>Select shot</strong>: pick one shot (or match by condition) from several upstream shots as
+              the current output — commonly used to decide which shot continues in a multi-branch shot flow.
+            </li>
+          </ul>
+
+          <h4>World models (under the world group)</h4>
+          <ul>
+            <li>Spatial world generation · spatial world export · world element extraction / world element table / world element generation</li>
+            <li>
+              <strong>Spatial world generation</strong> (<code>asset.spatialWorld</code>): text, 1–4 reference
+              images or one reference video → a walkable 3D world (World Labs Marble; 1.1 / 1.1-plus / 1.0 /
+              1.0-draft). See the detailed notes under “Generation / asset nodes” above and the worked flow below.
+            </li>
+            <li>
+              <strong>Spatial world export</strong> (<code>spatialWorld.export</code>, World Labs
+              <code>worlds/{id}:export</code>): turns a world into a mesh that downstream nodes accept.
+              <strong>Spatial-world ports are strictly typed</strong> (a <code>spatialWorld</code> port only
+              connects to <code>spatialWorld</code> and does not implicitly accept <code>model</code>), so going
+              “world → Director Stage / 3D processing” <strong>must pass through this node</strong>. Two modes:
+              <ul>
+                <li>
+                  <strong>Mesh (default)</strong>: HQ mesh → GLB, either <strong>textured</strong> (about 600k
+                  faces) or <strong>vertex-coloured</strong> (about 1M faces). The result is registered as a
+                  <strong>model asset</strong> that feeds the Director Stage or the 3D processing nodes directly.
+                  The upstream service is asynchronous, takes <strong>up to about an hour</strong>, is rate-limited
+                  to 4 calls per hour and is billed separately.
+                </li>
+                <li>
+                  <strong>Gaussian splat (PLY)</strong>: the official synchronous conversion writes a PLY next to the
+                  world output <strong>in the same directory and under the same name</strong> (<code>world.ply</code>),
+                  with an optional resolution (full_res / 500k / 150k / 100k). PLY has no preview channel and no
+                  matching asset type in the app, so it is <strong>not registered as an asset</strong> — only the
+                  path and a log line are written back, and the upstream world output is passed through so the chain
+                  does not break on the canvas.
+                </li>
+              </ul>
+              The world_id can only come from the “spatial world generation” node; with no such node upstream it
+              errors out rather than guessing. If the outgoing value is missing, the id is recovered from the task
+              record of the node that produced the model (generation already cost credits, so you are not forced to
+              regenerate).
+            </li>
+            <li>
+              World element nodes: <strong>world element extraction</strong> (<code>world.extract</code> — pull
+              reusable elements out of a world or a panorama), <strong>world element table</strong>
+              (<code>world.table</code> — a catalog/table node that only passes data through and stores it in
+              <code>params.text</code>, calling no generation model) and <strong>world element generation</strong>
+              (<code>world.gen</code> — render images element by element), used together with the canvas and
+              world-element flows.
+            </li>
+          </ul>
+
+          <h4>Others</h4>
+          <ul>
+            <li>Graph plugin sample (loaded only for local debugging; absent from official installers)</li>
+          </ul>
+
+          <h3>8.6 Typical node workflows</h3>
+          <ol>
+            <li>
+              <strong>Script</strong>: create a script → pick a text model on the right → fill in “generation
+              prompt” → run the generation node → connect it to “script output”.
+            </li>
+            <li>
+              <strong>Shot</strong>: script → “shot breakdown” → “shot table” (run to import JSON) → “shot
+              generation” / video generation → “shot output”; for batch storytelling use the One-Click Workflow
+              “short-drama storyboard (Agent pipeline)” template.
+            </li>
+            <li>
+              <strong>Image / video</strong>: connect upstream references into the generation port → reference
+              them with <code>@</code> in the prompt → execute → export the result with an output node. To build
+              video and reference video from scratch on a free canvas, see the
+              <a href="guide-video.en.html">dedicated guide</a>.
+            </li>
+            <li>
+              <strong>Final cut</strong>: shot / video node outputs → open the script asset's final timeline →
+              drag clips onto tracks, assemble and export.
+            </li>
+            <li>
+              <strong>Dubbing (single character)</strong>: text / script → “voice generation” → pick a voice in the
+              instruction panel and enter the text to read → run → “voice output”. What you type in that box is
+              spoken verbatim, so do not put instructions like “use a gentle tone” there.
+            </li>
+            <li>
+              <strong>Dubbing (multi-character dialogue)</strong>: “multi-speaker dialogue” → write
+              <code>Alice: line</code> / <code>Bob: line</code> one per line → bind a voice per speaker in the
+              Inspector → run to get the whole dialogue as one audio file. One node produces the entire exchange,
+              which sounds more natural than stitching line by line (the delivery stays continuous).
+            </li>
+            <li>
+              <strong>Sound effects</strong>: “sound effect generation” → pick a provider instance → describe the
+              sound itself (“rain falling on a tin roof”) → tick “seamlessly loopable” for ambience and set the
+              duration as needed → run. Files land in <code>Cache/Sfx</code> and can be dragged straight onto the
+              SFX track of the final timeline (the timeline's “generate SFX” button hits the same endpoint).
+            </li>
+            <li>
+              <strong>Score / BGM</strong>: “music generation” → first tick your music models on the “Music” tab in
+              Settings → write a composition brief (style / mood / setting); for vocals turn off “instrumental” and
+              add lyrics → run. Files land in <code>Cache/Music</code> and can be dragged onto the timeline's music
+              track.
+            </li>
+            <li>
+              <strong>Walkable world</strong>: “spatial world generation” (text / 1–4 reference images / one
+              reference video) → “spatial world export” → feed the exported mesh into the Director Stage to block
+              camera moves, or into the 3D processing nodes to keep working on it.
+              <strong>You cannot skip the export node</strong> — spatial-world ports do not implicitly accept model
+              ports. Elements inside a world can be pulled out with “world element extraction”, managed with “world
+              element table” and rendered one by one with “world element generation”.
+            </li>
+            <li>
+              <strong>One-Click Workflow</strong>: create a host from the top bar → drag it onto the canvas and
+              wire it up → Dive to fine-tune → add to tasks.
+            </li>
+          </ol>
+
+          <h3 id="host">8.6 Host assets and Dive</h3>
+          <p>
+            A host asset (including One-Click Workflow output and selection wrappers) exposes only
+            <strong>boundary inputs / boundary outputs</strong> on the outside; double-click or Dive into it to
+            edit the full inner topology.
+          </p>
+          <ul>
+            <li>
+              Boundary outputs map one-to-one onto sinks: several same-type results (e.g. multiple character
+              sheets) each get their own outlet instead of being merged into one.
+            </li>
+            <li>Note-style text nodes aren't exposed as host outlets by default.</li>
+            <li>
+              The whole inner chain can be queued in the task list; a host node also participates as a black box
+              in larger flows on the canvas.
+            </li>
+            <li>
+              Retouch / image editing tools operate inside Dive and write options back to node parameters; large
+              previews open as dialogs.
+            </li>
+          </ul>
+        </section>
+
+      </article>
+    </div>
+
+    <footer class="foot">
+      <div class="foot-grid">
+        <div class="foot-about-col">
+          <a class="foot-brand" href="index.en.html">
+            <img src="assets/logo-mark.png" alt="" width="22" height="22" />
+            AI Art Engine
+          </a>
+          <p class="foot-about">A local-first, agent-native AI art asset engine. Projects stay on your machine; models run on your own keys.</p>
+        </div>
+        <nav class="foot-col" aria-label="Docs">
+          <h4>Docs</h4>
+          <ul>
+            <li><a href="quickstart.en.html">Quickstart</a></li>
+            <li><a href="manual.en.html">Manual</a></li>
+            <li><a href="developers.en.html">Developer docs</a></li>
+            <li><a href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a></li>
+          </ul>
+        </nav>
+        <nav class="foot-col" aria-label="Guides">
+          <h4>Guides</h4>
+          <ul>
+            <li><a href="guide-short-video.en.html">Short drama</a></li>
+            <li><a href="guide-video.en.html">Video</a></li>
+            <li><a href="guide-comfyui.en.html">ComfyUI</a></li>
+            <li><a href="guide-newapi.en.html">NewAPI</a></li>
+            <li><a href="guide-mcp.en.html">MCP setup</a></li>
+            <li><a href="guide-gameplay.en.html">Playable HTML</a></li>
+          </ul>
+        </nav>
+        <nav class="foot-col" aria-label="Community">
+          <h4>Community</h4>
+          <ul>
+            <li><a href="index.en.html#download">Download</a></li>
+            <li><a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+            <li><a href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine" target="_blank" rel="noopener noreferrer">Gitee</a></li>
+            <li><a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer">bilibili</a></li>
+            <li><a href="https://github.com/Justin-sky/ai-art-engine/issues" target="_blank" rel="noopener noreferrer">Report an issue</a></li>
+          </ul>
+        </nav>
+      </div>
+      <div class="foot-bottom">
+        <span>© 2026 AI Art Engine · GPL-3.0</span>
+        <span>Docs follow the in-app UI of the latest release</span>
+      </div>
+    </footer>
+    <script>
+      document.querySelectorAll('.mobile-nav a').forEach((link) => {
+        link.addEventListener('click', () => link.closest('.mobile-menu')?.removeAttribute('open'))
+      })
+
+      // Reading progress bar
+      const progressBar = document.querySelector('.progress')
+      if (progressBar) {
+        const updateProgress = () => {
+          const doc = document.documentElement
+          const max = doc.scrollHeight - window.innerHeight
+          progressBar.style.width = (max > 0 ? (window.scrollY / max) * 100 : 0) + '%'
+        }
+        window.addEventListener('scroll', updateProgress, { passive: true })
+        window.addEventListener('resize', updateProgress)
+        updateProgress()
+      }
+
+      // Table of contents scrollspy
+      const tocLinks = Array.from(document.querySelectorAll('.toc a[href^="#"]'))
+      const spyTargets = []
+      tocLinks.forEach((link) => {
+        const id = link.getAttribute('href').slice(1)
+        const el = id ? document.getElementById(id) : null
+        if (el) spyTargets.push({ el, link })
+      })
+      if (spyTargets.length) {
+        const spy = () => {
+          const y = window.scrollY + 90
+          let current = spyTargets[0]
+          for (const target of spyTargets) {
+            if (!target.el) continue
+            const top = target.el.getBoundingClientRect().top + window.scrollY
+            if (top <= y) current = target
+          }
+          if (!current) return
+          tocLinks.forEach((link) => link.classList.toggle('active', link === current.link))
+        }
+        window.addEventListener('scroll', spy, { passive: true })
+        window.addEventListener('resize', spy)
+        spy()
+      }
+
+      // Back to top
+      const toTop = document.querySelector('.to-top')
+      if (toTop) {
+        const toggleToTop = () => {
+          toTop.hidden = window.scrollY <= 600
+        }
+        window.addEventListener('scroll', toggleToTop, { passive: true })
+        toggleToTop()
+        toTop.addEventListener('click', () => {
+          window.scrollTo({ top: 0, behavior: 'smooth' })
+        })
+      }
+
+      // Screenshot lightbox
+      const lightbox = document.querySelector('.lightbox')
+      if (lightbox) {
+        const lightboxImg = lightbox.querySelector('img')
+        const lightboxCap = lightbox.querySelector('.lightbox-cap')
+        document.querySelectorAll('.manual figure.shot img').forEach((img) => {
+          img.addEventListener('click', () => {
+            if (!lightboxImg || !lightboxCap) return
+            lightboxImg.src = img.currentSrc || img.src
+            lightboxImg.alt = img.alt
+            lightboxCap.textContent =
+              img.closest('figure')?.querySelector('figcaption')?.textContent?.trim() || img.alt
+            lightbox.hidden = false
+          })
+        })
+        lightbox.addEventListener('click', () => {
+          lightbox.hidden = true
+        })
+        document.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape' && !lightbox.hidden) lightbox.hidden = true
+        })
+      }
+
+      // Copy section link on heading click
+      const toast = document.createElement('div')
+      toast.className = 'toast'
+      toast.setAttribute('role', 'status')
+      document.body.appendChild(toast)
+      let toastTimer = 0
+      const showToast = (message) => {
+        toast.textContent = message
+        toast.classList.add('show')
+        clearTimeout(toastTimer)
+        toastTimer = setTimeout(() => toast.classList.remove('show'), 1600)
+      }
+      document
+        .querySelectorAll('.manual section[id] > h2, .manual h3[id], .manual h4[id]')
+        .forEach((heading) => {
+          const id = heading.id || heading.parentElement?.id
+          if (!id) return
+          heading.title = 'Click to copy a link to this section'
+          heading.addEventListener('click', () => {
+            if (window.getSelection()?.toString()) return
+            const url = location.origin + location.pathname + '#' + id
+            if (navigator.clipboard?.writeText) {
+              navigator.clipboard.writeText(url).then(
+                () => showToast('Section link copied'),
+                () => showToast(url)
+              )
+            } else {
+              showToast(url)
+            }
+          })
+        })
+    </script>
+    <script>
+      // 主题切换：跟随系统 → 浅色 → 深色
+      ;(function () {
+        var KEY = 'site.theme'
+        var btn = document.querySelector('.theme-toggle')
+        if (!btn) return
+        var root = document.documentElement
+        var en = (root.getAttribute('lang') || '').indexOf('en') === 0
+        var query = window.matchMedia('(prefers-color-scheme: dark)')
+        var META = {
+          auto: { icon: '◐', label: en ? 'Theme: system' : '主题：跟随系统' },
+          light: { icon: '☀', label: en ? 'Theme: light' : '主题：浅色' },
+          dark: { icon: '☾', label: en ? 'Theme: dark' : '主题：深色' }
+        }
+        function readPref() {
+          try {
+            var v = localStorage.getItem(KEY)
+            return v === 'light' || v === 'dark' || v === 'auto' ? v : 'dark'
+          } catch (e) { return 'auto' }
+        }
+        function apply() {
+          var pref = readPref()
+          root.classList.toggle('dark', pref === 'dark' || (pref !== 'light' && query.matches))
+          root.classList.toggle('light', pref === 'light')
+          var meta = META[pref]
+          btn.textContent = meta.icon
+          btn.title = meta.label + (en ? ' (click to switch)' : '（点击切换）')
+          btn.setAttribute('aria-label', meta.label)
+        }
+        query.addEventListener('change', apply)
+        btn.addEventListener('click', function () {
+          var cur = readPref()
+          var next = cur === 'dark' ? 'light' : cur === 'light' ? 'auto' : 'dark'
+          try { localStorage.setItem(KEY, next) } catch (e) {}
+          apply()
+        })
+        apply()
+      })()
+    </script>
+      <script src="site-search.js?v=20261009d" defer></script>
+    <script src="site-enhance.js?v=20261009d" defer></script>
+  </body>
+</html>
