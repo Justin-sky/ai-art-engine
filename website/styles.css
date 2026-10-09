@@ -621,12 +621,27 @@ code {
 }
 
 .hero h1 {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1em;
   margin: 0;
   font-family: var(--display);
   font-size: clamp(2.6rem, 7vw, 5.2rem);
   font-weight: 700;
-  line-height: 1.04;
-  letter-spacing: -0.045em;
+  line-height: 1.15;
+  letter-spacing: -0.04em;
+}
+
+.hero h1 .hero-lead {
+  font-size: 0.8em;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.03em;
+}
+
+.hero h1 .grad {
+  line-height: 1.15;
   text-wrap: balance;
 }
 
