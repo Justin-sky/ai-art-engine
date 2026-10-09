@@ -720,14 +720,14 @@ export default {
       facePresetMissing: '待放置'
     },
     objectStorage: {
-      hint: '配置对象存储后可用于媒体上传与公网访问。支持火山引擎 TOS、阿里云 OSS、腾讯云 COS。',
+      hint: '配置对象存储后可用于媒体上传与公网访问。支持火山引擎 TOS、阿里云 OSS、腾讯云 COS，以及兼容 Amazon S3 的服务。',
       singleEnabledHint: '同时只能启用一个对象存储；切换启用会自动关闭其它项。',
       addProvider: '添加对象存储',
       add: '添加',
       collapseProvider: '收起提供商',
       expandProvider: '展开提供商',
       emptyProviders:
-        '尚未添加对象存储。可添加火山引擎 TOS / 阿里云 OSS / 腾讯云 COS，再填写密钥与桶信息。',
+        '尚未添加对象存储。可添加火山引擎 TOS / 阿里云 OSS / 腾讯云 COS / 兼容 Amazon S3，再填写密钥与桶信息。',
       enabled: '启用',
       remove: '移除',
       label: '显示名称',
@@ -765,6 +765,18 @@ export default {
         bucketPlaceholder: '如 example-1250000000',
         publicBaseUrl: '公网访问域名（可选）',
         publicBaseUrlPlaceholder: '如 https://cdn.example.com 或默认加速域名'
+      },
+      s3: {
+        intro:
+          '任何实现 Amazon S3 API 的服务都能用：Amazon S3、Cloudflare R2、Backblaze B2、Wasabi、MinIO、DigitalOcean Spaces。填写服务商给的 Endpoint、Region、Access Key 和 Bucket。未填公网域名时使用约 24 小时有效的签名链接。',
+        endpoint: 'Endpoint',
+        region: 'Region',
+        bucket: 'Bucket 名称',
+        pathStyle: '路径样式（Path-style）',
+        pathStyleHint:
+          '开启后请求地址是 Endpoint/Bucket/对象键，MinIO 和多数自建网关需要。Amazon S3 与 Cloudflare R2 通常关掉，改用 Bucket.Endpoint/对象键。',
+        publicBaseUrl: '公网访问域名（可选）',
+        publicBaseUrlPlaceholder: '如 https://cdn.example.com 或桶的公开域名'
       }
     },
     saved: '已自动保存',
@@ -5442,6 +5454,7 @@ export default {
           "每行「说话人: 台词」，例如 A: 你来了。；可用 {'@'} 引用连线资源",
         speechVoiceHint: '声音生成：音色（供应商声音 ID，对应 API 的 voice 字段）',
         speechVoiceDefault: '默认音色',
+        speechVoiceManualPlaceholder: '填写音色 ID',
         model3dInstructionPlaceholder:
           "描述要生成的 3D 模型；可接参考图进行图生 3D；可用 {'@'} 引用连线资源",
         spatialWorldInstructionPlaceholder:

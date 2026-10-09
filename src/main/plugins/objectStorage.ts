@@ -4,6 +4,7 @@ import type { ObjectStorageAdapter } from '../services/objectStorage/types'
 import { tosAdapter } from '../services/objectStorage/tos'
 import { ossAdapter } from '../services/objectStorage/oss'
 import { cosAdapter } from '../services/objectStorage/cos'
+import { s3Adapter } from '../services/objectStorage/s3'
 
 function resolveStorageMeta(
   adapter: ObjectStorageAdapter,
@@ -38,5 +39,6 @@ export function createStoragePlugin(adapter: ObjectStorageAdapter, meta?: Object
 export const builtinStoragePlugins = [
   createStoragePlugin(tosAdapter),
   createStoragePlugin(ossAdapter),
-  createStoragePlugin(cosAdapter)
+  createStoragePlugin(cosAdapter),
+  createStoragePlugin(s3Adapter)
 ] as const

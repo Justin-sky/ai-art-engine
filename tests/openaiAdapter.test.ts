@@ -210,20 +210,30 @@ describe('openAiAdapter', () => {
     expect(result.filePath).toBeTruthy()
   })
 
-  it('语音合成：已知模型用它的兜底音色，未知模型不猜声音', async () => {
+  it('语音合成：已知模型用它的兜底音色，未知模型不猜声音也不省略 voice', async () => {
     postMock.mockResolvedValueOnce({ data: new Uint8Array([1, 2]) })
     await openAiAdapter.generateSpeech(provider(), 'tts-1', { input: 'hi' })
     const [, body] = postMock.mock.calls[0] as [string, Record<string, unknown>]
     expect(body.voice).toBe('alloy')
 
+    // 聚合器上的未知模型：不猜 alloy（第三方会回 speaker alloy not found），
+    // 也不把 voice 省掉再发出去。OpenRouter 对没有服务端默认音色的模型会拒成
+    // `Required field is not filled in (body.voice)`。那是音色 ID，不是语音样本。
+    await expect(
+      openAiAdapter.generateSpeech(provider(), 'fish-audio/s2.1-pro', { input: 'hi' })
+    ).rejects.toThrow(/音色 ID/)
+    expect(postMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('语音合成：已知不接受 voice 的模型仍然省略该字段', async () => {
     postMock.mockResolvedValueOnce({ data: new Uint8Array([1, 2]) })
-    // 聚合器上的未知模型：**不猜声音**，省略 voice 让上游用自己的默认音色。
-    // 猜一个 OpenAI 的名字会被第三方拒（实测 speaker alloy not found）
-    await openAiAdapter.generateSpeech(provider(), 'some-aggregator-tts', { input: 'hi' })
-    const [, unknownBody] = postMock.mock.calls[1] as [string, Record<string, unknown>]
-    expect(unknownBody).not.toHaveProperty('voice')
-    expect(unknownBody.model).toBe('some-aggregator-tts')
-    expect(unknownBody.input).toBe('hi')
+    await openAiAdapter.generateSpeech(provider(), 'bytedance-seed/seed-audio-1-0', {
+      input: 'a calm narrator',
+      voice: 'alloy'
+    })
+    const [, body] = postMock.mock.calls[0] as [string, Record<string, unknown>]
+    expect(body).not.toHaveProperty('voice')
+    expect(body.model).toBe('bytedance-seed/seed-audio-1-0')
   })
 
   it('语音合成：显式指定的声音照发（哪怕模型未知）', async () => {
@@ -260,9 +270,9 @@ describe('openAiAdapter', () => {
       isAxiosError: true,
       response: { data: { error: { message: 'model not found' } } }
     })
-    await expect(openAiAdapter.generateSpeech(provider(), 'nope', { input: 'hi' })).rejects.toThrow(
-      /model not found/
-    )
+    await expect(
+      openAiAdapter.generateSpeech(provider(), 'nope', { input: 'hi', voice: 'alloy' })
+    ).rejects.toThrow(/model not found/)
   })
 
   it('rejects video (Sora) with a clear message', async () => {

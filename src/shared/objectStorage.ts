@@ -1,6 +1,6 @@
 /** 对象存储提供商配置（设置页；可扩展多云） */
 
-export type ObjectStorageProviderKind = 'volcengine-tos' | 'aliyun-oss' | 'tencent-cos'
+export type ObjectStorageProviderKind = 'volcengine-tos' | 'aliyun-oss' | 'tencent-cos' | 's3'
 
 export interface ObjectStorageKindMeta {
   id: ObjectStorageProviderKind
@@ -11,7 +11,8 @@ export interface ObjectStorageKindMeta {
 export const OBJECT_STORAGE_PROVIDER_KINDS: readonly ObjectStorageKindMeta[] = [
   { id: 'volcengine-tos', label: '火山引擎 TOS' },
   { id: 'aliyun-oss', label: '阿里云 OSS' },
-  { id: 'tencent-cos', label: '腾讯云 COS' }
+  { id: 'tencent-cos', label: '腾讯云 COS' },
+  { id: 's3', label: '兼容 Amazon S3' }
 ]
 
 /** 火山引擎 TOS 常用地域与 Endpoint（公网） */
@@ -104,6 +105,26 @@ export interface TencentCosParams {
   publicBaseUrl: string
 }
 
+/**
+ * 兼容 Amazon S3 API 的对象存储。
+ * Amazon S3、Cloudflare R2、Backblaze B2、Wasabi、MinIO、DigitalOcean Spaces 都走这套字段。
+ */
+export interface S3CompatibleParams {
+  accessKeyId: string
+  secretAccessKey: string
+  /** Amazon 用 us-east-1；Cloudflare R2 用 auto */
+  region: string
+  /** 如 https://s3.amazonaws.com 或 https://<account>.r2.cloudflarestorage.com */
+  endpoint: string
+  bucket: string
+  /**
+   * true：`endpoint/bucket/key`。MinIO 和不少自建网关必须开。
+   * false：`bucket.endpoint/key`。Amazon S3 与 Cloudflare R2 常用。
+   */
+  pathStyle: boolean
+  publicBaseUrl: string
+}
+
 export interface ObjectStorageProviderInstance {
   id: string
   providerKind: ObjectStorageProviderKind
@@ -112,6 +133,7 @@ export interface ObjectStorageProviderInstance {
   tos: VolcengineTosParams
   oss: AliyunOssParams
   cos: TencentCosParams
+  s3: S3CompatibleParams
 }
 
 export interface ObjectStorageSettings {
@@ -153,6 +175,18 @@ export function createEmptyTencentCosParams(): TencentCosParams {
   }
 }
 
+export function createEmptyS3CompatibleParams(): S3CompatibleParams {
+  return {
+    accessKeyId: '',
+    secretAccessKey: '',
+    region: 'us-east-1',
+    endpoint: 'https://s3.amazonaws.com',
+    bucket: '',
+    pathStyle: true,
+    publicBaseUrl: ''
+  }
+}
+
 export function createEmptyObjectStorageSettings(): ObjectStorageSettings {
   return { providers: [] }
 }
@@ -170,7 +204,8 @@ export function createObjectStorageProvider(
     enabled: true,
     tos: createEmptyVolcengineTosParams(),
     oss: createEmptyAliyunOssParams(),
-    cos: createEmptyTencentCosParams()
+    cos: createEmptyTencentCosParams(),
+    s3: createEmptyS3CompatibleParams()
   }
   if (!overrides) return base
   return normalizeObjectStorageProvider({ ...base, ...overrides })
@@ -301,6 +336,24 @@ function normalizeAliyunOssParams(raw?: Partial<AliyunOssParams> | null): Aliyun
   }
 }
 
+function normalizeS3CompatibleParams(raw?: Partial<S3CompatibleParams> | null): S3CompatibleParams {
+  const empty = createEmptyS3CompatibleParams()
+  if (!raw || typeof raw !== 'object') return empty
+  return {
+    accessKeyId: typeof raw.accessKeyId === 'string' ? raw.accessKeyId : '',
+    secretAccessKey: typeof raw.secretAccessKey === 'string' ? raw.secretAccessKey : '',
+    region: typeof raw.region === 'string' && raw.region.trim() ? raw.region.trim() : empty.region,
+    endpoint: ensureHttpsEndpoint(
+      typeof raw.endpoint === 'string' ? raw.endpoint : '',
+      empty.endpoint
+    ),
+    bucket: typeof raw.bucket === 'string' ? raw.bucket.trim() : '',
+    pathStyle: raw.pathStyle !== false,
+    publicBaseUrl:
+      typeof raw.publicBaseUrl === 'string' ? raw.publicBaseUrl.trim().replace(/\/$/, '') : ''
+  }
+}
+
 function normalizeTencentCosParams(raw?: Partial<TencentCosParams> | null): TencentCosParams {
   const empty = createEmptyTencentCosParams()
   if (!raw || typeof raw !== 'object') return empty
@@ -317,6 +370,7 @@ function normalizeTencentCosParams(raw?: Partial<TencentCosParams> | null): Tenc
 function normalizeProviderKind(raw: unknown): ObjectStorageProviderKind {
   if (raw === 'aliyun-oss') return 'aliyun-oss'
   if (raw === 'tencent-cos') return 'tencent-cos'
+  if (raw === 's3') return 's3'
   return 'volcengine-tos'
 }
 
@@ -332,7 +386,8 @@ function normalizeObjectStorageProvider(
     enabled: item.enabled !== false,
     tos: normalizeVolcengineTosParams(item.tos),
     oss: normalizeAliyunOssParams(item.oss),
-    cos: normalizeTencentCosParams(item.cos)
+    cos: normalizeTencentCosParams(item.cos),
+    s3: normalizeS3CompatibleParams(item.s3)
   }
 }
 
@@ -357,6 +412,17 @@ function isCosReady(provider: ObjectStorageProviderInstance): boolean {
   return Boolean(secretId.trim() && secretKey.trim() && region.trim() && bucket.trim())
 }
 
+function isS3Ready(provider: ObjectStorageProviderInstance): boolean {
+  const { accessKeyId, secretAccessKey, region, endpoint, bucket } = provider.s3
+  return Boolean(
+    accessKeyId.trim() &&
+    secretAccessKey.trim() &&
+    region.trim() &&
+    endpoint.trim() &&
+    bucket.trim()
+  )
+}
+
 /** 取首个已启用且填齐必填项的对象存储提供商 */
 export function pickActiveObjectStorage(
   settings: ObjectStorageSettings
@@ -366,6 +432,7 @@ export function pickActiveObjectStorage(
     if (provider.providerKind === 'volcengine-tos' && isTosReady(provider)) return provider
     if (provider.providerKind === 'aliyun-oss' && isOssReady(provider)) return provider
     if (provider.providerKind === 'tencent-cos' && isCosReady(provider)) return provider
+    if (provider.providerKind === 's3' && isS3Ready(provider)) return provider
   }
   return null
 }
@@ -373,5 +440,13 @@ export function pickActiveObjectStorage(
 export function getObjectStorageBucket(provider: ObjectStorageProviderInstance): string {
   if (provider.providerKind === 'aliyun-oss') return provider.oss.bucket.trim()
   if (provider.providerKind === 'tencent-cos') return provider.cos.bucket.trim()
+  if (provider.providerKind === 's3') return provider.s3.bucket.trim()
   return provider.tos.bucket.trim()
+}
+
+export function getObjectStoragePublicBaseUrl(provider: ObjectStorageProviderInstance): string {
+  if (provider.providerKind === 'aliyun-oss') return provider.oss.publicBaseUrl.trim()
+  if (provider.providerKind === 'tencent-cos') return provider.cos.publicBaseUrl.trim()
+  if (provider.providerKind === 's3') return provider.s3.publicBaseUrl.trim()
+  return provider.tos.publicBaseUrl.trim()
 }

@@ -136,8 +136,8 @@ import {
 } from '@shared/mcpAssetWrite'
 import {
   getObjectStorageBucket,
-  pickActiveObjectStorage,
-  type ObjectStorageProviderInstance
+  getObjectStoragePublicBaseUrl,
+  pickActiveObjectStorage
 } from '@shared/objectStorage'
 import {
   type DecisionEvidenceItem,
@@ -2777,7 +2777,7 @@ const TOOL_DEFS: McpToolDef[] = [
         enabled: active != null,
         provider: active ? { kind: active.providerKind, label: active.label } : null,
         bucket: active ? getObjectStorageBucket(active) : null,
-        publicBaseUrl: active ? objectStoragePublicBaseUrl(active) : null,
+        publicBaseUrl: active ? getObjectStoragePublicBaseUrl(active) : null,
         note: active
           ? null
           : '未配置可用的对象存储：图片参考会内联为 data URL（无需上传）；视频/3D 参考需先在设置 → 对象存储中配置 TOS/OSS/COS'
@@ -5126,13 +5126,6 @@ async function writeVoiceProfiles(profiles: VoiceProfile[]): Promise<void> {
     content: serializeVoiceProfiles(profiles)
   })
   if (!ok) throw new Error('角色音色档案写入失败')
-}
-
-/** 取当前提供商实例的 publicBaseUrl（未填时返回空字符串） */
-function objectStoragePublicBaseUrl(provider: ObjectStorageProviderInstance): string {
-  if (provider.providerKind === 'aliyun-oss') return provider.oss.publicBaseUrl
-  if (provider.providerKind === 'tencent-cos') return provider.cos.publicBaseUrl
-  return provider.tos.publicBaseUrl
 }
 
 /** 终态报告保留时长：task_status 在此期间仍可查到结果，超时自动回收 */

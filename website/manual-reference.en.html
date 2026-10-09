@@ -465,8 +465,10 @@
                 </li>
                 <li>
                   Reference videos need a <strong>publicly reachable URL</strong>: configure object storage
-                  (TOS / OSS / COS, <strong>only one enabled at a time</strong>). You can skip it for purely
-                  local previews, but reference-video features will be limited.
+                  (TOS / OSS / COS / Amazon S3–compatible, <strong>only one enabled at a time</strong>). You can
+                  skip it for purely local previews, but reference-video features will be limited. For the S3
+                  fields, see the
+                  <a href="manual-setup.en.html#object-storage-s3">Yandex Object Storage example</a>.
                 </li>
                 <li>See the <a href="guide-video.en.html">Video Tutorials</a>.</li>
               </ol>
@@ -479,18 +481,20 @@
               <ol>
                 <li>
                   <strong>Only one</strong> object storage can be enabled at a time (Volcengine TOS /
-                  Alibaba Cloud OSS / Tencent Cloud COS) — disable the old one before enabling a new one.
+                  Alibaba Cloud OSS / Tencent Cloud COS / Amazon S3–compatible) — disable the old one before enabling a new one.
                 </li>
                 <li>
-                  Check that the bucket permission is <strong>public read</strong>; links generated for a
-                  private bucket can't be opened from outside.
+                  A private bucket can stay private. With the public base URL left empty, the app issues a
+                  signed link valid for about 24 hours that models can fetch; upload again after it expires.
                 </li>
                 <li>
                   Verify the AccessKey has read / write permission on that bucket and that the region is
-                  correct.
+                  correct. Yandex Object Storage uses region <code>ru-central1</code> — see the
+                  <a href="manual-setup.en.html#object-storage-s3">setup example</a>.
                 </li>
                 <li>
-                  Make sure a reachable public domain is filled in (CDN domains need to be ICP-filed).
+                  Fill in a public base URL only when you want a stable public address. Chinese CDN domains
+                  still need ICP filing when the provider requires it.
                 </li>
               </ol>
             </div>

@@ -122,6 +122,7 @@
           <li class="toc-group">基础</li>
           <li><a href="#home">3. 首页与工程</a></li>
           <li><a href="#settings">4. 设置</a></li>
+          <li><a href="#object-storage-s3">兼容 Amazon S3（Yandex 示例）</a></li>
 
           <li class="toc-group">手册章节</li>
           <li><a href="manual.html">概述与核心概念</a></li>
@@ -551,6 +552,10 @@
                 <li><strong>火山引擎 TOS</strong>：AccessKey / SecretKey、Region、Endpoint、Bucket。</li>
                 <li><strong>阿里云 OSS</strong>：AccessKey / SecretKey、Region、Endpoint、Bucket。</li>
                 <li><strong>腾讯云 COS</strong>：SecretId / SecretKey、Region、Bucket（通常为 <code>BucketName-APPID</code>）。</li>
+                <li>
+                  <strong>兼容 Amazon S3</strong>：Endpoint、Region、Access Key、Bucket。填写方法见
+                  <a href="#object-storage-s3">Yandex Object Storage 示例</a>。Cloudflare R2、Backblaze B2、Wasabi、MinIO、Amazon S3 用同一张表单。
+                </li>
               </ul>
             </li>
             <li>
@@ -588,6 +593,125 @@
             <li>公网访问域名（CDN / 自定义域名）可选；未填时使用签名 URL（约 24 小时有效）。</li>
             <li><strong>同时只能启用一个</strong>对象存储；勾选启用会自动关闭其它项。卡片支持折叠。</li>
           </ul>
+
+          <h4 id="object-storage-s3">以 Yandex Object Storage 为例配置兼容 Amazon S3</h4>
+          <p>
+            「兼容 Amazon S3」使用标准 Amazon S3 API（Signature V4）。下面用
+            <a href="https://yandex.cloud/en/docs/storage/" target="_blank" rel="noopener noreferrer"
+              >Yandex Object Storage</a
+            >
+            走一遍。Cloudflare R2、Backblaze B2、Wasabi、MinIO、DigitalOcean Spaces 和 Amazon S3 本身也是这一张表单，只改 Endpoint、Region 和路径样式。
+          </p>
+          <ol>
+            <li>
+              在 Yandex Cloud 控制台创建一个 Object Storage 桶。步骤见
+              <a
+                href="https://yandex.cloud/en/docs/storage/operations/buckets/create"
+                target="_blank"
+                rel="noopener noreferrer"
+                >创建桶</a
+              >。
+            </li>
+            <li>
+              创建一个服务账号，授予角色 <code>storage.editor</code>。应用会上传，也会删除对象，这个角色两项都包含。
+            </li>
+            <li>
+              为该服务账号创建<strong>静态访问密钥</strong>，记下 Access Key ID 和 Secret。Secret 只显示一次。创建入口见
+              <a
+                href="https://yandex.cloud/en/docs/iam/operations/authentication/manage-access-keys"
+                target="_blank"
+                rel="noopener noreferrer"
+                >静态密钥</a
+              >。
+            </li>
+            <li>回到应用：设置 → 对象存储 →「添加对象存储」→ 选择<strong>兼容 Amazon S3</strong>。</li>
+            <li>按下表填写，勾选启用。</li>
+          </ol>
+          <div class="table-scroll" role="region" aria-label="Yandex Object Storage 配置" tabindex="0">
+            <table>
+              <thead>
+                <tr>
+                  <th>设置项</th>
+                  <th>Yandex Object Storage</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Endpoint</td>
+                  <td><code>https://storage.yandexcloud.net</code></td>
+                </tr>
+                <tr>
+                  <td>Region</td>
+                  <td><code>ru-central1</code></td>
+                </tr>
+                <tr>
+                  <td>Access Key ID</td>
+                  <td>静态密钥的 Key ID</td>
+                </tr>
+                <tr>
+                  <td>Secret Access Key</td>
+                  <td>静态密钥的 Secret</td>
+                </tr>
+                <tr>
+                  <td>Bucket 名称</td>
+                  <td>上一步创建的桶名</td>
+                </tr>
+                <tr>
+                  <td>路径样式（Path-style）</td>
+                  <td>保持开启</td>
+                </tr>
+                <tr>
+                  <td>公网访问域名（可选）</td>
+                  <td>私有桶留空；公开桶或自定义域名再填</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="tip is-warn">
+            Region 填 <code>ru-central1</code>。输入框占位符 <code>us-east-1</code> 是 Amazon S3 的示例，原样留给 Yandex 时签名会被拒绝。
+          </div>
+          <p>
+            路径样式保持开启后，对象地址是
+            <code>https://storage.yandexcloud.net/&lt;桶名&gt;/&lt;对象键&gt;</code>。桶名里带点（例如
+            <code>example.ru</code>）时，HTTPS 也使用这个地址。
+          </p>
+          <p>
+            公网访问域名留空时，私有桶会生成约 24 小时有效的签名链接，模型可以直接拉取。桶已公开，或绑定了自己的域名时，再填写公网域名，例如
+            <code>https://&lt;桶名&gt;.storage.yandexcloud.net</code>。
+          </p>
+          <p>换到其它兼容 Amazon S3 的服务时，仍选「兼容 Amazon S3」，只改下面三项：</p>
+          <div class="table-scroll" role="region" aria-label="其它兼容 Amazon S3 的服务" tabindex="0">
+            <table>
+              <thead>
+                <tr>
+                  <th>服务</th>
+                  <th>Endpoint</th>
+                  <th>Region</th>
+                  <th>路径样式</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Amazon S3</td>
+                  <td><code>https://s3.amazonaws.com</code>，或控制台给出的区域端点</td>
+                  <td>桶所在区域，如 <code>us-east-1</code></td>
+                  <td>关闭</td>
+                </tr>
+                <tr>
+                  <td>Cloudflare R2</td>
+                  <td>控制台里的 S3 API 端点</td>
+                  <td><code>auto</code></td>
+                  <td>关闭</td>
+                </tr>
+                <tr>
+                  <td>MinIO</td>
+                  <td>自建地址，如 <code>https://minio.example.com</code></td>
+                  <td>与服务端一致，常见 <code>us-east-1</code></td>
+                  <td>开启</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
 
           <h3>4.4 扩展</h3>
           <p>

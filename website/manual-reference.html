@@ -386,8 +386,9 @@
                 <li>确认<strong>动态提示词</strong>已正确填写；静态描述会生成近乎静止的画面。</li>
                 <li>确认所选视频模型支持目标时长与分辨率。</li>
                 <li>
-                  参考视频需要可访问的<strong>外链</strong>：请配置对象存储（TOS / OSS / COS，
-                  <strong>同时仅可启用一个</strong>）；纯本地预览可先不配置，但参考视频功能会受限。
+                  参考视频需要可访问的<strong>外链</strong>：请配置对象存储（TOS / OSS / COS / 兼容 Amazon S3，
+                  <strong>同时仅可启用一个</strong>）；纯本地预览可先不配置，但参考视频功能会受限。S3 填法见
+                  <a href="manual-setup.html#object-storage-s3">Yandex Object Storage 示例</a>。
                 </li>
                 <li>详见 <a href="guide-video.html">视频教程</a>。</li>
               </ol>
@@ -399,12 +400,18 @@
             <div class="trouble-body">
               <ol>
                 <li>
-                  <strong>同一时间只能启用一个</strong>对象存储（火山 TOS / 阿里云 OSS / 腾讯云 COS），
+                  <strong>同一时间只能启用一个</strong>对象存储（火山 TOS / 阿里云 OSS / 腾讯云 COS / 兼容 Amazon S3），
                   启用新的前请先关闭旧的。
                 </li>
-                <li>检查 Bucket 权限是否为<strong>公共读</strong>，私有桶生成的链接外部无法访问。</li>
-                <li>核对 AccessKey 是否具备该 Bucket 的读写权限，以及地域（Region）是否填对。</li>
-                <li>确认已填写可访问的公共域名（CDN 域名需完成备案）。</li>
+                <li>
+                  私有桶可以保持私有。未填公网域名时，应用会给出约 24 小时有效的签名链接，模型可以拉取；过期后重新上传即可。
+                </li>
+                <li>
+                  核对 AccessKey 是否具备该 Bucket 的读写权限，以及地域（Region）是否填对。Yandex Object Storage 的 Region 是
+                  <code>ru-central1</code>，见
+                  <a href="manual-setup.html#object-storage-s3">配置示例</a>。
+                </li>
+                <li>需要固定公开地址时再填公网访问域名。国内 CDN 域名按服务商要求完成备案。</li>
               </ol>
             </div>
           </details>

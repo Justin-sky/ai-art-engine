@@ -148,7 +148,7 @@
             </li>
             <li>
               <strong>Object storage (required for reference video)</strong>: Settings → Object Storage → add
-              and enable one of Volcengine TOS / Alibaba Cloud OSS / Tencent Cloud COS. A local reference video
+              and enable one of Volcengine TOS / Alibaba Cloud OSS / Tencent Cloud COS / Amazon S3–compatible. A local reference video
               is first uploaded to a publicly reachable URL (a signed URL for private buckets) so the model can
               fetch it.
             </li>
@@ -334,7 +334,11 @@
               <tbody>
                 <tr>
                   <td>Object storage not configured</td>
-                  <td>Enable one of TOS / OSS / COS under Settings → Object Storage and fill in the keys and bucket.</td>
+                  <td>
+                    Enable one of TOS / OSS / COS / Amazon S3–compatible under Settings → Object Storage and fill
+                    in the keys and bucket. For the S3 fields, see the
+                    <a href="manual-setup.en.html#object-storage-s3">Yandex Object Storage example</a>.
+                  </td>
                 </tr>
                 <tr>
                   <td><code>insufficient balance (1008)</code></td>

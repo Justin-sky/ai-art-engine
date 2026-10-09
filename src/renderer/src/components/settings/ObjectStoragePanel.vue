@@ -380,6 +380,94 @@
             />
           </label>
         </template>
+
+        <template v-else-if="provider.providerKind === 's3'">
+          <p class="meta">
+            {{ t('settings.objectStorage.s3.intro') }}
+          </p>
+
+          <label>
+            {{ t('settings.objectStorage.s3.endpoint') }}
+            <input
+              v-model="provider.s3.endpoint"
+              spellcheck="false"
+              placeholder="https://s3.amazonaws.com"
+            />
+          </label>
+
+          <label>
+            {{ t('settings.objectStorage.s3.region') }}
+            <input v-model="provider.s3.region" spellcheck="false" placeholder="us-east-1" />
+          </label>
+
+          <label>
+            Access Key ID
+            <input v-model="provider.s3.accessKeyId" autocomplete="off" spellcheck="false" />
+          </label>
+
+          <label>
+            Secret Access Key
+            <div class="secret-field">
+              <input
+                v-model="provider.s3.secretAccessKey"
+                :type="revealedSecrets[provider.id] ? 'text' : 'password'"
+                autocomplete="off"
+                spellcheck="false"
+              />
+              <button
+                type="button"
+                class="reveal-btn"
+                :title="
+                  revealedSecrets[provider.id]
+                    ? t('settings.objectStorage.hideSecret')
+                    : t('settings.objectStorage.showSecret')
+                "
+                @click="revealedSecrets[provider.id] = !revealedSecrets[provider.id]"
+              >
+                <svg
+                  v-if="!revealedSecrets[provider.id]"
+                  viewBox="0 0 24 24"
+                  width="16"
+                  height="16"
+                  aria-hidden="true"
+                >
+                  <path
+                    fill="currentColor"
+                    d="M12 5c-5 0-9.27 3.11-11 7 1.73 3.89 6 7 11 7s9.27-3.11 11-7c-1.73-3.89-6-7-11-7zm0 12a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 .001 6.001A3 3 0 0 0 12 9z"
+                  />
+                </svg>
+                <svg v-else viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                  <path
+                    fill="currentColor"
+                    d="M2.1 3.51 3.5 2.1l18.4 18.4-1.41 1.41-3.17-3.17A12.3 12.3 0 0 1 12 19c-5 0-9.27-3.11-11-7a13.4 13.4 0 0 1 4.68-5.41L2.1 3.51zM12 7a5 5 0 0 1 4.9 4.03l-1.56-1.56A3 3 0 0 0 12 9c-.4 0-.78.08-1.13.23L9.3 7.66A4.9 4.9 0 0 1 12 7zm9.9 4.49A13.4 13.4 0 0 0 17.4 7.4l-1.5 1.5c.9.7 1.67 1.55 2.27 2.51-.9 1.72-2.4 3.2-4.3 4.2l1.55 1.55c2.2-1.2 4.02-3.05 5.18-5.27a.75.75 0 0 0 0-.4z"
+                  />
+                </svg>
+              </button>
+            </div>
+          </label>
+
+          <label>
+            {{ t('settings.objectStorage.s3.bucket') }}
+            <input v-model="provider.s3.bucket" spellcheck="false" />
+          </label>
+
+          <label class="check">
+            <input v-model="provider.s3.pathStyle" type="checkbox" />
+            {{ t('settings.objectStorage.s3.pathStyle') }}
+          </label>
+          <p class="meta">
+            {{ t('settings.objectStorage.s3.pathStyleHint') }}
+          </p>
+
+          <label>
+            {{ t('settings.objectStorage.s3.publicBaseUrl') }}
+            <input
+              v-model="provider.s3.publicBaseUrl"
+              spellcheck="false"
+              :placeholder="t('settings.objectStorage.s3.publicBaseUrlPlaceholder')"
+            />
+          </label>
+        </template>
       </div>
     </article>
   </div>

@@ -20,7 +20,21 @@
       白色浮层，不受应用主题控制（`appearance: none` 也关不掉它），
       而且鼠标悬停长音色名会弹系统 tooltip。
     -->
+    <!-- 目录没有音色列表时改成手填：Fish Audio 等模型 supported_voices 为 null，但仍要求 voice -->
+    <input
+      v-if="!options.length"
+      class="voice-manual"
+      :class="{ 'has-value': !!modelValue }"
+      :value="modelValue ?? ''"
+      :placeholder="manualPlaceholder"
+      :aria-label="voiceTitle"
+      spellcheck="false"
+      @change="onChange"
+      @keydown.enter.prevent="onChange"
+      @pointerdown.stop
+    />
     <select
+      v-else
       :value="modelValue ?? ''"
       :class="{ 'has-value': !!modelValue }"
       :aria-label="voiceTitle"
@@ -52,13 +66,15 @@ const props = withDefaults(
     voiceTitle: string
     /** 未选任何音色时的首项文案 */
     defaultLabel: string
+    /** 目录没有音色列表时，输入框的占位文案 */
+    manualPlaceholder?: string
     /**
      * 该供应商是否**必须**带音色（ElevenLabs 把 voice_id 放在请求路径里）。
      * 为真时不给「默认音色」选项 —— 对它而言那等于「不选」，选了生成必然报错。
      */
     required?: boolean
   }>(),
-  { modelValue: '', labels: () => ({}), required: false }
+  { modelValue: '', labels: () => ({}), required: false, manualPlaceholder: '' }
 )
 
 const emit = defineEmits<{ change: [value: string] }>()
@@ -89,6 +105,10 @@ function onChange(event: Event): void {
   cursor: default;
 }
 
+.voice-select:has(.voice-manual) {
+  max-width: 168px;
+}
+
 .voice-icon {
   flex: none;
   color: var(--text-muted);
@@ -96,7 +116,8 @@ function onChange(event: Event): void {
   pointer-events: none;
 }
 
-select {
+select,
+.voice-manual {
   flex: 1;
   min-width: 0;
   max-width: 90px;
@@ -110,14 +131,21 @@ select {
   line-height: 22px;
 }
 
+.voice-manual {
+  max-width: 148px;
+}
+
 select:hover,
-select:focus {
+select:focus,
+.voice-manual:hover,
+.voice-manual:focus {
   border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
   outline: none;
 }
 
 /* 已选音色时与模型下拉的 has-value 态一致（蓝字蓝框），一眼看出"这节点设了音色" */
-select.has-value {
+select.has-value,
+.voice-manual.has-value {
   color: var(--accent);
   border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
 }

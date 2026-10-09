@@ -732,7 +732,7 @@ export default {
       facePresetMissing: 'Not placed yet'
     },
     objectStorage: {
-      hint: 'Configure object storage for media upload and public access. Supports Volcengine TOS, Alibaba Cloud OSS, and Tencent Cloud COS.',
+      hint: 'Configure object storage for media upload and public access. Supports Volcengine TOS, Alibaba Cloud OSS, Tencent Cloud COS, and Amazon S3–compatible services.',
       singleEnabledHint:
         'Only one object storage provider can be enabled at a time; enabling one turns the others off.',
       addProvider: 'Add object storage',
@@ -740,7 +740,7 @@ export default {
       collapseProvider: 'Collapse provider',
       expandProvider: 'Expand provider',
       emptyProviders:
-        'No providers yet. Add Volcengine TOS / Alibaba Cloud OSS / Tencent Cloud COS, then enter credentials and bucket details.',
+        'No providers yet. Add Volcengine TOS / Alibaba Cloud OSS / Tencent Cloud COS / Amazon S3–compatible, then enter credentials and bucket details.',
       enabled: 'Enabled',
       remove: 'Remove',
       label: 'Display name',
@@ -778,6 +778,18 @@ export default {
         bucketPlaceholder: 'e.g. example-1250000000',
         publicBaseUrl: 'Public base URL (optional)',
         publicBaseUrlPlaceholder: 'e.g. https://cdn.example.com or the default CDN domain'
+      },
+      s3: {
+        intro:
+          'Any service that implements the Amazon S3 API: Amazon S3, Cloudflare R2, Backblaze B2, Wasabi, MinIO, DigitalOcean Spaces. Enter the endpoint, region, access key, and bucket from that provider. Without a public base URL, signed URLs (~24h) are used.',
+        endpoint: 'Endpoint',
+        region: 'Region',
+        bucket: 'Bucket name',
+        pathStyle: 'Path-style requests',
+        pathStyleHint:
+          'On: requests go to Endpoint/Bucket/key. Required by MinIO and most self-hosted gateways. Turn off for Amazon S3 and Cloudflare R2, which use Bucket.Endpoint/key.',
+        publicBaseUrl: 'Public base URL (optional)',
+        publicBaseUrlPlaceholder: 'e.g. https://cdn.example.com or the bucket public domain'
       }
     },
     saved: 'Saved automatically',
@@ -5590,6 +5602,7 @@ export default {
           "One line per speaker as \"Speaker: line\", e.g. A: You're here.; use {'@'} to cite inputs",
         speechVoiceHint: 'Voice generation: voice (provider voice id, sent as the API voice field)',
         speechVoiceDefault: 'Default voice',
+        speechVoiceManualPlaceholder: 'Voice id',
         model3dInstructionPlaceholder:
           "Describe the 3D model to generate; connect reference images for image-to-3D; use {'@'} to cite inputs",
         spatialWorldInstructionPlaceholder:

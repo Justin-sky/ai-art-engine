@@ -13,7 +13,10 @@ import type {
 } from '@shared/modelProvider'
 import { buildOpenRouterMusicInput } from '@shared/modelProviders/openrouter/music'
 import { isVolcengineArkProvider } from '@shared/modelProvider'
-import { resolveOpenAiTtsVoice } from '@shared/modelProviders/openai/ttsModels'
+import {
+  isKnownVoicelessTtsModel,
+  resolveOpenAiTtsVoice
+} from '@shared/modelProviders/openai/ttsModels'
 import { resolveOpenAiImageSize } from '@shared/modelProviders/openai/imageSize'
 import axios from 'axios'
 import {
@@ -141,6 +144,18 @@ const E_VOICE_GENERATE_FAILED = defErr<{ detail: string }>(
   'provider.openai-compat.voice-generate-failed',
   ({ detail }) => `语音生成失败: ${detail}`,
   ({ detail }) => `Voice generation failed: ${detail}`
+)
+/**
+ * 目录没给音色、模型也不是「已知不接受 voice」时，不能把 voice 省掉再发给上游。
+ * OpenRouter 对没有服务端默认音色的模型会直接拒：
+ * `Required field is not filled in (body.voice)`。那是音色 ID，不是语音样本。
+ */
+const E_VOICE_ID_REQUIRED = defErr<{ model: string }>(
+  'provider.openai-compat.voice-id-required',
+  ({ model }) =>
+    `模型「${model}」要求填写音色 ID（请求字段 voice）。这是音色 ID，不是语音样本。该模型没有公布音色列表，请在声音节点里填写音色 ID。`,
+  ({ model }) =>
+    `Model "${model}" requires a voice id (request field voice). That field is a voice id, not a voice sample. This model published no voice list, so type a voice id on the voice node.`
 )
 /** 音乐走同一个 /audio/speech 端点，但报错文案要说音乐，否则用户看不懂 */
 const E_MUSIC_GENERATE_FAILED = defErr<{ detail: string }>(
@@ -470,11 +485,15 @@ export async function generateOpenAiCompatibleSpeech(
 ): Promise<GenerateSpeechResult> {
   const format = input.responseFormat ?? 'mp3'
   const voice = resolveOpenAiTtsVoice(modelId, input.voice)
+  if (!voice && !isKnownVoicelessTtsModel(modelId)) {
+    // 不能省略 voice 再碰运气。OpenRouter 只在提供商自己声明了默认音色时才允许省略，
+    // 否则回 `Required field is not filled in (body.voice)`。也不要猜 alloy：
+    // 第三方 speaker 表不认这个名字（实测 `speaker alloy not found`）。
+    throw fail(E_VOICE_ID_REQUIRED, { model: modelId })
+  }
   if (!voice) {
-    // 省略 voice 让上游用自己的默认音色。两种情形都实测踩过：
-    // - 目录不认识这个模型：硬塞 OpenAI 音色名 → `speaker alloy not found`；
-    // - 模型已知没有音色表（如 seed-audio-1-0，音色靠提示词描述）：
-    //   节点里残留的别的模型的音色名照样会被拒。
+    // 模型已知没有音色表（如 seed-audio-1-0，音色靠提示词描述）：
+    // 发任何音色名都会 400，省略才是唯一可用的行为。
     console.warn(
       `[tts] omitting the voice field for model "${modelId}" so the upstream uses its own default`
     )

@@ -121,6 +121,7 @@
           <li class="toc-group">Basics</li>
           <li><a href="#home">3. Home &amp; projects</a></li>
           <li><a href="#settings">4. Settings</a></li>
+          <li><a href="#object-storage-s3">Amazon S3–compatible (Yandex example)</a></li>
 
           <li class="toc-group">Manual chapters</li>
           <li><a href="manual.en.html">Overview & core concepts</a></li>
@@ -603,6 +604,11 @@
                   <strong>Tencent Cloud COS</strong>: SecretId / SecretKey, Region, Bucket (usually
                   <code>BucketName-APPID</code>).
                 </li>
+                <li>
+                  <strong>Amazon S3–compatible</strong>: Endpoint, Region, Access Key, Bucket. See the
+                  <a href="#object-storage-s3">Yandex Object Storage example</a> for the field-by-field setup.
+                  Cloudflare R2, Backblaze B2, Wasabi, MinIO and Amazon S3 use the same form.
+                </li>
               </ul>
             </li>
             <li>
@@ -637,6 +643,134 @@
               turns off the others. Cards can be collapsed.
             </li>
           </ul>
+
+          <h4 id="object-storage-s3">Configure Amazon S3–compatible storage with Yandex Object Storage</h4>
+          <p>
+            <strong>Amazon S3–compatible</strong> speaks the standard Amazon S3 API (Signature V4). The walkthrough
+            below uses
+            <a href="https://yandex.cloud/en/docs/storage/" target="_blank" rel="noopener noreferrer"
+              >Yandex Object Storage</a
+            >. Cloudflare R2, Backblaze B2, Wasabi, MinIO, DigitalOcean Spaces and Amazon S3 itself use the same
+            form — only Endpoint, Region and path-style change.
+          </p>
+          <ol>
+            <li>
+              Create an Object Storage bucket in the Yandex Cloud console. See
+              <a
+                href="https://yandex.cloud/en/docs/storage/operations/buckets/create"
+                target="_blank"
+                rel="noopener noreferrer"
+                >Create a bucket</a
+              >.
+            </li>
+            <li>
+              Create a service account and grant it the <code>storage.editor</code> role. The app both uploads
+              and deletes objects, and this role covers both.
+            </li>
+            <li>
+              Create a <strong>static access key</strong> for that service account and save the Access Key ID and
+              Secret. The Secret is shown only once. See
+              <a
+                href="https://yandex.cloud/en/docs/iam/operations/authentication/manage-access-keys"
+                target="_blank"
+                rel="noopener noreferrer"
+                >static access keys</a
+              >.
+            </li>
+            <li>
+              Back in the app: Settings → Object storage → <strong>Add object storage</strong> →
+              <strong>Amazon S3–compatible</strong>.
+            </li>
+            <li>Fill in the fields below and enable the provider.</li>
+          </ol>
+          <div class="table-scroll" role="region" aria-label="Yandex Object Storage settings" tabindex="0">
+            <table>
+              <thead>
+                <tr>
+                  <th>Field</th>
+                  <th>Yandex Object Storage</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Endpoint</td>
+                  <td><code>https://storage.yandexcloud.net</code></td>
+                </tr>
+                <tr>
+                  <td>Region</td>
+                  <td><code>ru-central1</code></td>
+                </tr>
+                <tr>
+                  <td>Access Key ID</td>
+                  <td>Key ID from the static access key</td>
+                </tr>
+                <tr>
+                  <td>Secret Access Key</td>
+                  <td>Secret from the static access key</td>
+                </tr>
+                <tr>
+                  <td>Bucket name</td>
+                  <td>The bucket created above</td>
+                </tr>
+                <tr>
+                  <td>Path-style requests</td>
+                  <td>Leave on</td>
+                </tr>
+                <tr>
+                  <td>Public base URL (optional)</td>
+                  <td>Leave empty for a private bucket; fill in for a public bucket or a custom domain</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="tip is-warn">
+            Set Region to <code>ru-central1</code>. The placeholder <code>us-east-1</code> is an Amazon S3
+            example; leaving it in place for Yandex makes the signature fail.
+          </div>
+          <p>
+            With path-style left on, object URLs look like
+            <code>https://storage.yandexcloud.net/&lt;bucket&gt;/&lt;key&gt;</code>. Bucket names that contain a
+            dot (for example <code>example.ru</code>) use this same URL for HTTPS.
+          </p>
+          <p>
+            Leave the public base URL empty and a private bucket gets a signed link valid for about 24 hours,
+            which models can fetch directly. When the bucket is public, or you have bound your own domain, fill
+            in the public base URL, for example
+            <code>https://&lt;bucket&gt;.storage.yandexcloud.net</code>.
+          </p>
+          <p>For another Amazon S3–compatible service, keep <strong>Amazon S3–compatible</strong> and change only these three fields:</p>
+          <div class="table-scroll" role="region" aria-label="Other Amazon S3–compatible services" tabindex="0">
+            <table>
+              <thead>
+                <tr>
+                  <th>Service</th>
+                  <th>Endpoint</th>
+                  <th>Region</th>
+                  <th>Path-style</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Amazon S3</td>
+                  <td><code>https://s3.amazonaws.com</code>, or the regional endpoint from the console</td>
+                  <td>The bucket region, such as <code>us-east-1</code></td>
+                  <td>Off</td>
+                </tr>
+                <tr>
+                  <td>Cloudflare R2</td>
+                  <td>The S3 API endpoint from the dashboard</td>
+                  <td><code>auto</code></td>
+                  <td>Off</td>
+                </tr>
+                <tr>
+                  <td>MinIO</td>
+                  <td>Your server, such as <code>https://minio.example.com</code></td>
+                  <td>Whatever the server uses, often <code>us-east-1</code></td>
+                  <td>On</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
 
           <h3>4.4 Extensions</h3>
           <p>

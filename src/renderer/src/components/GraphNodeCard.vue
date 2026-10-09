@@ -420,13 +420,14 @@
             @change="persistGenerateModel"
           />
           <SpeechVoiceSelect
-            v-if="showSpeechVoice"
+            v-if="showSpeechVoice || showSpeechVoiceManual"
             :model-value="speechVoice"
             :options="speechVoiceOptions"
             :labels="modelVoiceLabels"
             :required="modelVoiceRequired"
             :voice-title="t('graph.inspector.generate.speechVoiceHint')"
             :default-label="t('graph.inspector.generate.speechVoiceDefault')"
+            :manual-placeholder="t('graph.inspector.generate.speechVoiceManualPlaceholder')"
             @change="persistSpeechVoice"
           />
           <Model3dStyleSelect
@@ -570,6 +571,7 @@ import DecisionsQuestionsPanel from './DecisionsQuestionsPanel.vue'
 import InstructionModelSelect from './InstructionModelSelect.vue'
 import SpeechVoiceSelect from './SpeechVoiceSelect.vue'
 import { sortVoicesForLocale } from '../utils/voiceOptions'
+import { isKnownVoicelessTtsModel } from '@shared/modelProviders/openai/ttsModels'
 import Model3dStyleSelect from './Model3dStyleSelect.vue'
 import SpatialWorldSeedInput from './SpatialWorldSeedInput.vue'
 import SpatialWorldPromptControls from './SpatialWorldPromptControls.vue'
@@ -2343,6 +2345,22 @@ const showSpeechVoice = computed(
     speechVoiceOptions.value.length > 0
 )
 
+/**
+ * 目录没公布音色、但请求仍然要 voice 的模型（Fish Audio 等）。
+ * 选择器会被藏起来，用户只能盲发生成，上游再回
+ * `Required field is not filled in (body.voice)`。
+ * 已知靠提示词描述音色的模型（seed-audio）不能手填：发出去就是 400。
+ */
+const showSpeechVoiceManual = computed(() => {
+  if (isSoundEffectNode.value || isMusicNode.value) return false
+  if (instructionKind.value !== 'voice' && instructionKind.value !== 'dialogue') return false
+  if (speechVoiceOptions.value.length > 0) return false
+  const kind = selectedProviderKind.value
+  if (kind !== 'openai' && kind !== 'openrouter') return false
+  const modelId = modelOptions.value.find((o) => o.key === selectedModelKey.value)?.model ?? ''
+  return !isKnownVoicelessTtsModel(modelId)
+})
+
 const speechVoice = computed(() => {
   const raw = props.node.params.generateSpeechVoice
   return typeof raw === 'string' ? raw : ''
@@ -2367,11 +2385,19 @@ const speechVoiceOptions = computed((): string[] =>
  * 只监听模型 key（不监听 options 那个每次重排都是新引用的数组），
  * 配合读取当时的 options，既不会漏也不会反复触发。
  */
-watch(selectedModelKey, () => {
+watch(selectedModelKey, (_key, prevKey) => {
   if (!props.hostId) return
   const current = speechVoice.value
   if (!current) return
-  if (speechVoiceOptions.value.includes(current)) return
+  const options = speechVoiceOptions.value
+  if (options.includes(current)) return
+  if (!options.length) {
+    // 没有音色表时，节点上的字符串可能是用户手填的音色 ID。
+    // 只有它确实属于上一个模型的列表时才清掉，避免把 Fish 的手填 ID 冲掉，
+    // 也避免把微软音色原样发给没有音色表的模型。
+    const prevVoices = prevKey ? (modelVoices.value[prevKey] ?? []) : []
+    if (!prevVoices.includes(current)) return
+  }
   graphEditorHosts.updateNode(props.hostId, props.node.id, { generateSpeechVoice: undefined })
 })
 

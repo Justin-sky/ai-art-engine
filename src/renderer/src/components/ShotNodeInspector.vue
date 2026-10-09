@@ -2314,7 +2314,8 @@ textarea,
   padding: 14px;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: var(--surface);
+  background: var(--bg-panel);
+  box-shadow: 0 12px 32px var(--shadow);
   display: flex;
   flex-direction: column;
   gap: 10px;

@@ -58,9 +58,10 @@ describe('OpenAI TTS 静态目录', () => {
     expect(listOpenAiTtsVoices('')).toEqual([])
   })
 
-  it('未知模型不编造声音：宁可不发 voice，也不要发一个上游不认的名字', () => {
+  it('未知模型不编造声音：解析结果为空，由请求层拒绝而不是猜一个名字', () => {
     // 实测踩过：第三方语音把 voice 映射成自己的 speaker 后校验，
-    // 收到 alloy 直接 400（speaker alloy not found in speaker_map）
+    // 收到 alloy 直接 400（speaker alloy not found in speaker_map）。
+    // 省略 voice 同样会被 OpenRouter 拒成 body.voice 必填，所以这里只保证不编造名字。
     expect(resolveOpenAiTtsVoice('aggregator-custom-tts')).toBeUndefined()
     expect(isKnownOpenAiTtsModel('aggregator-custom-tts')).toBe(false)
     expect(isKnownOpenAiTtsModel('tts-1')).toBe(true)
