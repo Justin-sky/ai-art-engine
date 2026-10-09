@@ -65,6 +65,15 @@ export async function executeVoiceGenerateNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
   const { node } = ctx
+  /**
+   * 声音资产变体绝不能落到 TTS：它们的 `assetType` 也是 `voice`，
+   * 一旦路由/注册表把执行器指错，就会把「雷声」念出来。
+   * 这里再挡一层，与 host.ts / builtins 的 typeId 分支互为兜底。
+   */
+  if (node.typeId === 'asset.sfx') return executeSoundEffectNode(ctx)
+  if (node.typeId === 'asset.music') return executeMusicGenerateNode(ctx)
+  if (node.typeId === 'asset.dialogue') return executeDialogueGenerateNode(ctx)
+
   const instructionRaw = node.params.generateInstruction?.trim() || ''
   const mentionSources = resolveMentionSources(ctx)
   const selected = selectIncomingValuesForInstruction(ctx, instructionRaw)

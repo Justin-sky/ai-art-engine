@@ -18,9 +18,9 @@ describe('generateNodeModality', () => {
     expect(generateNodeModality({ typeId: 'asset.music', assetType: 'voice' })).toBe('music')
   })
 
-  it('对话与音效用声音模态的模型（各自另有选择器）', () => {
+  it('音效读 sfx 模态；对话仍读声音（TTS）模态', () => {
+    expect(generateNodeModality({ typeId: 'asset.sfx', assetType: 'voice' })).toBe('sfx')
     expect(generateNodeModality({ typeId: 'asset.dialogue', assetType: 'voice' })).toBe('audio')
-    expect(generateNodeModality({ typeId: 'asset.sfx', assetType: 'voice' })).toBe('audio')
     // 纯声音节点仍是音频
     expect(generateNodeModality({ typeId: 'asset.voice', assetType: 'voice' })).toBe('audio')
   })
@@ -76,16 +76,19 @@ describe('usesVoiceProfile', () => {
  * 就是漏改的来源；纯函数解决「判什么」，这里守「有没有用」。
  */
 describe('模态路由的接线', () => {
-  it('GraphNodeCard：音乐节点在 voice 分支之前返回 music', () => {
+  it('GraphNodeCard：音乐 / 音效节点在 voice 分支之前返回对应模态', () => {
     const src = readFileSync('src/renderer/src/components/GraphNodeCard.vue', 'utf8')
     const start = src.indexOf('const instructionModality = computed')
     const block = src.slice(start, src.indexOf('const instructionPlaceholder', start))
     // 定位**语句**而不是注释里的提及
     const musicAt = block.indexOf("if (isMusicNode.value) return 'music'")
+    const sfxAt = block.indexOf("if (isSoundEffectNode.value) return 'sfx'")
     const voiceAt = block.indexOf("if (instructionKind.value === 'voice')")
     expect(musicAt, '音乐分支缺失').toBeGreaterThanOrEqual(0)
+    expect(sfxAt, '音效分支缺失').toBeGreaterThanOrEqual(0)
     expect(voiceAt, 'voice 分支缺失').toBeGreaterThanOrEqual(0)
     expect(musicAt, '音乐分支必须在 voice 之前，否则音乐下拉会拿到 TTS 模型').toBeLessThan(voiceAt)
+    expect(sfxAt, '音效分支必须在 voice 之前，否则音效下拉会拿到 TTS 模型').toBeLessThan(voiceAt)
   })
 
   it('ShotNodeInspector：生成模型加载走统一判定，不再硬编码 audio', () => {

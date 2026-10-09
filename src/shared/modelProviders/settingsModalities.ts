@@ -8,7 +8,8 @@ import {
   isWorldProviderKind,
   resolveCustomApiStyle,
   supportsAudioModality,
-  supportsMusicModality
+  supportsMusicModality,
+  supportsSoundEffectModality
 } from '../modelProvider'
 import type { ModelModality, ModelProviderInstance } from '../modelProvider'
 
@@ -17,9 +18,9 @@ import type { ModelModality, ModelProviderInstance } from '../modelProvider'
  *
  * 结构是「基准列表 + 能力来源合并」：
  * - 基准列表只写该家的**主要**模态（阅读友好，且能表达 home 能力）
- * - 声音与音乐再按 `supportsAudioModality` / `supportsMusicModality` 合并进来
+ * - 声音 / 音乐 / 音效再按能力表合并进来
  *
- * 为什么不把声音 / 音乐也写进基准列表：新增一个模态时（如 music 从 audio 拆出来）
+ * 为什么不把声音 / 音乐 / 音效也写进基准列表：新增一个模态时（如 music / sfx 从 audio 拆出来）
  * 要挨个改这份列表，而漏改的表现是「某个提供商的页签凭空消失」——
  * 很难在测试里发现，用户只会觉得功能没了。踩过两次：
  * - ElevenLabs 写死 `['audio']`，拆出 music 后它的音乐页签没了
@@ -29,7 +30,7 @@ export function settingsModalitiesFor(provider: ModelProviderInstance): ModelMod
   return withCapabilityModalities(provider, settingsModalitiesBase(provider))
 }
 
-/** 把提供商实际具备的声音 / 音乐模态并进基准列表（按 MODEL_MODALITIES 的既有顺序） */
+/** 把提供商实际具备的声音 / 音乐 / 音效模态并进基准列表（按 MODEL_MODALITIES 的既有顺序） */
 function withCapabilityModalities(
   provider: ModelProviderInstance,
   base: ModelModality[]
@@ -37,6 +38,7 @@ function withCapabilityModalities(
   const merged = new Set<ModelModality>(base)
   if (supportsAudioModality(provider.providerKind)) merged.add('audio')
   if (supportsMusicModality(provider.providerKind)) merged.add('music')
+  if (supportsSoundEffectModality(provider.providerKind)) merged.add('sfx')
   return MODEL_MODALITIES.filter((m) => merged.has(m))
 }
 
@@ -61,7 +63,7 @@ function settingsModalitiesBase(provider: ModelProviderInstance): ModelModality[
     return ['text', 'image', 'audio']
   }
   if (provider.providerKind === 'elevenlabs') {
-    // 语音合成（/v1/text-to-speech/{voice_id}）；音乐由能力来源补齐
+    // 语音合成（/v1/text-to-speech/{voice_id}）；音乐 / 音效由能力来源补齐
     return ['audio']
   }
   if (provider.providerKind === 'kling') return ['image', 'video']

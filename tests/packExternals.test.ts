@@ -6,9 +6,9 @@
  * （6.1.1 的 chokidar 就是这么翻车的）。所以它**既不能漏报也不能误报**：
  *
  * - 误报：真的踩过。它先前恒取顶层 `node_modules/<name>` 展开闭包，
- *   把 `@elevenlabs/elevenlabs-js` 内嵌的 node-fetch@2.7.0 当成顶层那份
- *   （dsh 的 v3.3.2，纯 ESM 且被 asar 排除），再顺着 v3 的链拖出 8.8 MB 的
- *   web-streams-polyfill —— 报了一串并不存在的冲突。
+ *   把某 SDK 内嵌的 node-fetch@2.7.0 当成顶层那份（dsh 的 v3.3.2，纯 ESM
+ *   且被 asar 排除），再顺着 v3 的链拖出 8.8 MB 的 web-streams-polyfill ——
+ *   报了一串并不存在的冲突。
  * - 漏报：同一处写法只看一层依赖，间接依赖根本没遍历到。
  */
 import { describe, expect, it } from 'vitest'
@@ -137,21 +137,17 @@ describe('findPackConflicts', () => {
 })
 
 /**
- * 对**真实仓库**跑一遍：确认 SDK 内嵌的那份 node-fetch 不再被误报，
+ * 对**真实仓库**跑一遍：确认真实依赖闭包可解析，
  * 同时保证真冲突仍然会被抓住（用人为排除清单验证）。
  */
 describe('真实仓库的依赖树', () => {
-  it('@elevenlabs/elevenlabs-js 内嵌 node-fetch，不计入冲突', async () => {
+  it('顶层 axios 未被 asar 排除时不报冲突', async () => {
     const { readFileSync } = await import('node:fs')
     const packages = JSON.parse(readFileSync('package-lock.json', 'utf8')).packages
     const excluded = readAsarExcluded(readFileSync('electron-builder.yml', 'utf8'))
     expect(excluded.has('node-fetch')).toBe(true)
-    expect(
-      resolvePackagePath('node-fetch', 'node_modules/@elevenlabs/elevenlabs-js', packages)
-    ).toBe('node_modules/@elevenlabs/elevenlabs-js/node_modules/node-fetch')
-    expect(findPackConflicts(['@elevenlabs/elevenlabs-js'], excluded, packages).conflicts).toEqual(
-      []
-    )
+    expect(packages['node_modules/axios']).toBeTruthy()
+    expect(findPackConflicts(['axios'], excluded, packages).conflicts).toEqual([])
   })
 
   it('同一份树，若把某个真依赖也排除，仍会报出来（检查没有被架空）', async () => {

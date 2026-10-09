@@ -24,8 +24,6 @@ import {
   resolveBeatUnitGenSystemPrompt,
   resolveUiSplitSystemPrompt,
   resolveToPromptSystemPrompt,
-  resolveVoiceSystemPrompt,
-  resolveSoundEffectSystemPrompt,
   resolveModel3dSystemPrompt,
   resolveSpatialWorldSystemPrompt
 } from '../systemPromptSchemes'
@@ -70,8 +68,9 @@ export type InstructionFinalPreviewKind =
   | 'image'
   | 'video'
   | 'reshoot'
+  /** 声音 / 对话 / 音乐：TTS·编曲端点只吃用户文本，无系统提示词 */
   | 'voice'
-  /** 音效生成：走的是非人声的音效端点，系统提示词与「声音」不同 */
+  /** 音效：只吃非人声描述，无系统提示词 */
   | 'soundEffect'
   | 'optimize'
   | 'toPrompt'
@@ -126,9 +125,8 @@ export function resolveInstructionFinalPreviewKind(
     return 'model3d'
   if (typeId === 'asset.video' || assetType === 'video' || presetKind === 'video') return 'video'
   /**
-   * 音效必须排在「声音」之前：`asset.sfx` 的 `assetType` 就是 `voice`（产物是声音资产），
-   * 按下面那条兜底走会拿到**配音**口径的系统提示词（「专业声音导演…匹配语气与角色气质」），
-   * 而音效端点只吃非人声描述 —— 这正是用户反馈的「音效生成的系统提示词不正确」。
+   * 音效必须排在「声音」之前：`asset.sfx` 的 `assetType` 就是 `voice`，
+   * 否则会落到配音用户模板（`buildVoicePrompt`），而音效端点只吃非人声描述。
    */
   if (typeId === 'asset.sfx') return 'soundEffect'
   if (typeId === 'asset.voice' || assetType === 'voice' || presetKind === 'voice') return 'voice'
@@ -157,9 +155,9 @@ function resolveSystemPromptForPreviewKind(
     case 'reshoot':
       return resolveReshootSystemPrompt(raw, locale)
     case 'voice':
-      return resolveVoiceSystemPrompt(raw, locale)
     case 'soundEffect':
-      return resolveSoundEffectSystemPrompt(raw, locale)
+      // 声音相关节点不发系统提示词（端点把文本当朗读/描述内容）
+      return ''
     case 'optimize':
       return resolveOptimizeSystemPrompt(raw, locale)
     case 'toPrompt':
@@ -297,6 +295,8 @@ export function buildInstructionFinalPromptPreview(input: {
   }
   // 决策判定：没有系统提示词，也没有生成模板——预览的就是「发给决策模型的 state / 问题」
   if (input.kind === 'decisions') return userPrompt
+  // 声音 / 对话 / 音乐 / 音效：执行层不拼系统提示词，预览也不展示
+  if (input.kind === 'voice' || input.kind === 'soundEffect') return userPrompt
   if (input.includeSystem === false) return userPrompt
   const system = resolveSystemPromptForPreviewKind(input.kind, input.systemPrompt, input.locale)
   const labels = previewSectionLabels(input.locale)

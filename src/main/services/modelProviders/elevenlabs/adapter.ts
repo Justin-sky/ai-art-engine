@@ -19,11 +19,10 @@ import type {
   TranscribeAudioResult
 } from '@shared/modelProvider'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
-import { extname, join } from 'path'
+import { basename, extname, join } from 'path'
 import type { ModelProviderAdapter, VideoPollResult } from '../types'
 import { fail, defErr, defErrSimple } from '@shared/errors/appError'
 import { PROVIDER_ERRORS } from '../catalog'
-import { LONG_GENERATE_TIMEOUT_MS } from '../http'
 import {
   ELEVEN_DEFAULT_MUSIC_MODEL,
   ELEVEN_DEFAULT_OUTPUT_FORMAT,
@@ -42,12 +41,7 @@ import {
   resolveElevenOutputFormat,
   type ElevenVoiceEntry
 } from '@shared/modelProviders/elevenlabs/voice'
-import {
-  ELEVEN_NO_RETRY,
-  collectElevenAudio,
-  createElevenClient,
-  readElevenErrorDetail
-} from './client'
+import { elevenGetJson, elevenPostAudio, elevenPostFormJson, readElevenErrorDetail } from './client'
 
 /** 上传音频的 MIME：与 OpenAI 兼容转写同一套映射（按扩展名猜） */
 function audioMimeForPath(path: string): string {
@@ -131,7 +125,6 @@ const E_ELEVEN_SOUND_NO_PROMPT = defErrSimple(
   'Sound effect generation requires a description (e.g. "rain on a tin roof")'
 )
 // 该供应商只有语音合成，其余模态逐一给明确文案
-// （不用拼接的模态名：硬编码中文过不了 CJK 守卫，且各语言语序不同）
 const UNSUPPORTED_MODALITIES = {
   text: defErrSimple(
     'provider.elevenlabs.textUnsupported',
@@ -165,7 +158,7 @@ function notSupported(modality: keyof typeof UNSUPPORTED_MODALITIES): Promise<ne
  */
 async function listElevenModels(provider: ModelProviderInstance): Promise<CatalogModel[]> {
   try {
-    const models = await createElevenClient(provider).models.list({ timeoutInSeconds: 30 })
+    const models = await elevenGetJson<unknown>(provider, '/v1/models')
     const parsed = parseElevenModels(models)
     return parsed.length ? parsed : listElevenFallbackModels()
   } catch {
@@ -174,7 +167,7 @@ async function listElevenModels(provider: ModelProviderInstance): Promise<Catalo
 }
 
 /**
- * 音色目录：`SDK voices.getAll()`。
+ * 音色目录：`GET /v1/voices`。
  *
  * 单独导出给主进程的目录服务用（音色不是模型，不进 CatalogModel）；
  * 无 Key 时该端点也返回 200（实测 21 个 premade），带 Key 会额外带上用户克隆的音色。
@@ -182,16 +175,14 @@ async function listElevenModels(provider: ModelProviderInstance): Promise<Catalo
 export async function fetchElevenVoices(
   provider: ModelProviderInstance
 ): Promise<ElevenVoiceEntry[]> {
-  const response = await createElevenClient(provider).voices.getAll({}, { timeoutInSeconds: 30 })
+  const response = await elevenGetJson<unknown>(provider, '/v1/voices')
   return parseElevenVoices(response)
 }
 
 /**
- * 多说话人对话：`SDK textToDialogue.convert()`。
+ * 多说话人对话：`POST /v1/text-to-dialogue`。
  *
  * 每段的 voiceId 由执行层解析好后传入（说话人 → 音色），这里只管发请求。
- * 放模块级而不是适配器方法：接口上多一个方法等于给所有供应商加实现负担，
- * 而它与单说话人 TTS 产物同形、落盘与登记完全一致。
  * 返回的 `voice` 是**多段**音色去重后用逗号连起来，便于日志排查。
  */
 async function generateDialogueSpeech(
@@ -203,11 +194,12 @@ async function generateDialogueSpeech(
   const outputFormat = resolveElevenOutputFormat(undefined)
   const { ext, format } = elevenFormatOf(outputFormat)
   try {
-    const stream = await createElevenClient(provider).textToDialogue.convert(
-      buildElevenDialogueRequest({ inputs, modelId, outputFormat }),
-      { ...ELEVEN_NO_RETRY }
+    const buf = await elevenPostAudio(
+      provider,
+      '/v1/text-to-dialogue',
+      buildElevenDialogueRequest({ inputs, modelId }),
+      { output_format: outputFormat }
     )
-    const buf = await collectElevenAudio(stream)
     if (!buf.length) throw fail(PROVIDER_ERRORS.noAudioResult)
     return {
       model: modelId,
@@ -216,7 +208,7 @@ async function generateDialogueSpeech(
       filePath: writeElevenTemp('dialogue', 'eleven-dialogue', ext, buf)
     }
   } catch (err) {
-    throw fail(E_ELEVEN_DIALOGUE_FAILED, { detail: readElevenErrorDetail(err) })
+    throw fail(E_ELEVEN_DIALOGUE_FAILED, { detail: await readElevenErrorDetail(err) })
   }
 }
 
@@ -227,29 +219,27 @@ export const elevenLabsAdapter: ModelProviderAdapter = {
     if (!provider.apiKey.trim()) throw fail(PROVIDER_ERRORS.missingApiKey)
     // 无 Key 也能拿到公开音色，所以必须用**带鉴权**的端点验证密钥有效性
     try {
-      await createElevenClient(provider).user.get({ timeoutInSeconds: 20 })
+      await elevenGetJson(provider, '/v1/user', 20_000)
     } catch (err) {
-      throw fail(E_ELEVEN_CONNECTION_TEST_FAILED, { detail: readElevenErrorDetail(err) })
+      throw fail(E_ELEVEN_CONNECTION_TEST_FAILED, { detail: await readElevenErrorDetail(err) })
     }
   },
 
   /**
-   * 目录：`GET /v1/models`（SDK models.list），失败或缺失时退回本地表。
+   * 目录：`GET /v1/models`，失败或缺失时退回本地表。
    *
-   * 按模态分流（同一端点混着三类模型），且**按类别兜底**：
-   * - `audio`（语音合成）→ 只给 TTS，否则声音节点的下拉会出现 `music_v2_5` / `scribe_v2`
+   * 按模态分流（同一端点混着多类模型），且**按类别兜底**：
+   * - `audio`（语音合成）→ 只给 TTS
    * - `music`（音乐生成）→ 只给 `music_*`
-   *
-   * 「按类别兜底」很关键：`/v1/models` 实测**不列举音乐模型**（音乐按 model_id
-   * 直接调 `/v1/music`），所以响应里有 TTS 不代表音乐也拿得到 ——
-   * 只在「整条为空」时兜底会让音乐页签永远为空。
-   *
-   * 其它模态返回空数组 —— 本适配器不支持，避免设置页出现选不了的页签。
+   * - `sfx`（音效生成）→ 只给 `eleven_text_to_sound_*`
    */
   async fetchCatalog(provider: ModelProviderInstance, modality: ModelModality) {
-    if (modality !== 'audio' && modality !== 'music') return []
+    if (modality !== 'audio' && modality !== 'music' && modality !== 'sfx') return []
     const all = await listElevenModels(provider)
-    return listElevenModelsOfKind(all, modality === 'music' ? 'music' : 'tts')
+    const kind = modality === 'music' ? 'music' : modality === 'sfx' ? 'sfx' : 'tts'
+    return listElevenModelsOfKind(all, kind).map((model) =>
+      modality === 'audio' ? model : { ...model, modality }
+    )
   },
 
   /**
@@ -262,7 +252,6 @@ export const elevenLabsAdapter: ModelProviderAdapter = {
 
   /**
    * 音色 id → 展示名。ElevenLabs 的 voiceId 是不透明字符串，选择器必须显示名字。
-   * 无 Key 时该端点也返回公开音色（实测 21 个 premade）；带 Key 会带上克隆音色。
    */
   async fetchVoiceLabels(provider: ModelProviderInstance): Promise<Record<string, string>> {
     const entries = await fetchElevenVoices(provider)
@@ -303,16 +292,13 @@ export const elevenLabsAdapter: ModelProviderAdapter = {
   },
 
   /**
-   * 语音合成：单说话人走 `textToSpeech.convert`，
-   * 多说话人（给了 `input.dialogue`）走 `textToDialogue.convert`。
-   *
-   * 两个端点产物同为音频字节、落盘与登记方式完全一致，所以合在一个方法里按入参分流；
-   * 拆成两个适配器方法只会把整条链路复制一遍。
+   * 语音合成：单说话人走 `POST /v1/text-to-speech/{voice_id}`，
+   * 多说话人（给了 `input.dialogue`）走 `POST /v1/text-to-dialogue`。
    *
    * 只写临时文件并返回 `filePath`：落盘目录与资产登记由 facade 的
-   * generateSpeechAsset 统一负责（与 OpenAI 兼容 / ComfyUI / 方舟 / MiniMax 一致）。
+   * generateSpeechAsset 统一负责。
    *
-   * `voice` 是 **voiceId**（不透明字符串），不是音色名 —— 目录里的名字只用于展示。
+   * `voice` 是 **voiceId**（不透明字符串），不是音色名。
    */
   async generateSpeech(
     provider: ModelProviderInstance,
@@ -325,7 +311,6 @@ export const elevenLabsAdapter: ModelProviderAdapter = {
     }
     const voiceId = input.voice?.trim()
     if (!voiceId) {
-      // 音色走路径参数，没有它连端点都拼不出来 —— 明确报错而不是发一个坏请求
       throw fail(
         defErrSimple(
           'provider.elevenlabs.voiceRequired',
@@ -338,12 +323,12 @@ export const elevenLabsAdapter: ModelProviderAdapter = {
     const { ext, format } = elevenFormatOf(outputFormat)
 
     try {
-      const stream = await createElevenClient(provider).textToSpeech.convert(
-        voiceId,
-        buildElevenTtsRequest({ text: input.input, modelId, outputFormat }),
-        { ...ELEVEN_NO_RETRY }
+      const buf = await elevenPostAudio(
+        provider,
+        `/v1/text-to-speech/${encodeURIComponent(voiceId)}`,
+        buildElevenTtsRequest({ text: input.input, modelId }),
+        { output_format: outputFormat }
       )
-      const buf = await collectElevenAudio(stream)
       if (!buf.length) throw fail(PROVIDER_ERRORS.noAudioResult)
       return {
         model: modelId,
@@ -352,15 +337,12 @@ export const elevenLabsAdapter: ModelProviderAdapter = {
         filePath: writeElevenTemp('tts', 'eleven', ext, buf)
       }
     } catch (err) {
-      throw fail(E_ELEVEN_SPEECH_FAILED, { detail: readElevenErrorDetail(err) })
+      throw fail(E_ELEVEN_SPEECH_FAILED, { detail: await readElevenErrorDetail(err) })
     }
   },
 
   /**
-   * 语音转文字：`SDK speechToText.convert`（multipart 上传，响应是 JSON 不是音频）。
-   *
-   * SDK 的响应类型是判别联合（单声道 / 多声道 / webhook）；我们只要单声道那支的
-   * `text` 与 `words`。多声道（`useMultiChannel`）我们没开，所以按单声道取用。
+   * 语音转文字：`POST /v1/speech-to-text`（multipart 上传，响应是 JSON）。
    */
   async transcribeAudio(
     provider: ModelProviderInstance,
@@ -369,11 +351,17 @@ export const elevenLabsAdapter: ModelProviderAdapter = {
   ): Promise<TranscribeAudioResult> {
     const absPath = input.absPath?.trim()
     if (!absPath) throw fail(E_ELEVEN_TRANSCRIBE_NO_FILE)
-    let file: Blob
+    const form = new FormData()
+    form.append('model_id', modelId || ELEVEN_DEFAULT_STT_MODEL)
+    form.append('timestamps_granularity', 'word')
+    if (input.language?.trim()) form.append('language_code', input.language.trim())
     try {
-      file = new Blob([new Uint8Array(readFileSync(absPath))], {
-        type: audioMimeForPath(absPath)
-      })
+      const buffer = readFileSync(absPath)
+      form.append(
+        'file',
+        new Blob([new Uint8Array(buffer)], { type: audioMimeForPath(absPath) }),
+        basename(absPath)
+      )
     } catch (err) {
       if (err instanceof Error && (err as Error & { code?: string }).code === 'ENOENT') {
         throw fail(E_ELEVEN_TRANSCRIBE_NO_FILE)
@@ -381,31 +369,17 @@ export const elevenLabsAdapter: ModelProviderAdapter = {
       throw err
     }
     try {
-      const response = await createElevenClient(
-        provider,
-        LONG_GENERATE_TIMEOUT_MS
-      ).speechToText.convert(
-        {
-          modelId: modelId || ELEVEN_DEFAULT_STT_MODEL,
-          file,
-          timestampsGranularity: 'word',
-          ...(input.language?.trim() ? { languageCode: input.language.trim() } : {})
-        },
-        { ...ELEVEN_NO_RETRY }
-      )
-      // 多声道响应里 text/words 在 channel 里，我们没开多声道时不会走到这支
-      const single = 'text' in response ? response : undefined
-      return parseElevenTranscript(single, modelId)
+      const response = await elevenPostFormJson<unknown>(provider, '/v1/speech-to-text', form)
+      return parseElevenTranscript(response, modelId)
     } catch (err) {
-      throw fail(E_ELEVEN_TRANSCRIBE_FAILED, { detail: readElevenErrorDetail(err) })
+      throw fail(E_ELEVEN_TRANSCRIBE_FAILED, { detail: await readElevenErrorDetail(err) })
     }
   },
 
   /**
-   * 音乐生成：`SDK music.compose`（响应音频字节）。
+   * 音乐生成：`POST /v1/music`（响应音频字节）。
    *
-   * 与其它供应商不同，ElevenLabs 直接回音频、没有下载地址，所以走
-   * `filePath` 而不是 `downloadUrl`（facade 两种都支持）。
+   * 直接回音频、没有下载地址，所以走 `filePath` 而不是 `downloadUrl`。
    * 仍然遵守既定契约：**只写临时文件**，落盘登记由 generateMusicAsset 负责。
    */
   async generateMusic(
@@ -417,36 +391,32 @@ export const elevenLabsAdapter: ModelProviderAdapter = {
     const outputFormat = ELEVEN_DEFAULT_OUTPUT_FORMAT
     const { ext } = elevenFormatOf(outputFormat)
     try {
-      const stream = await createElevenClient(provider).music.compose(
+      const buf = await elevenPostAudio(
+        provider,
+        '/v1/music',
         buildElevenMusicRequest({
           prompt: input.prompt,
           lyrics: input.lyrics,
           instrumental: input.instrumental,
-          modelId,
-          outputFormat
+          modelId
         }),
-        { ...ELEVEN_NO_RETRY }
+        { output_format: outputFormat }
       )
-      const buf = await collectElevenAudio(stream)
       if (!buf.length) throw fail(PROVIDER_ERRORS.noAudioResult)
       return {
         model: modelId || ELEVEN_DEFAULT_MUSIC_MODEL,
         filePath: writeElevenTemp('music', 'eleven-music', ext, buf)
       }
     } catch (err) {
-      throw fail(E_ELEVEN_MUSIC_FAILED, { detail: readElevenErrorDetail(err) })
+      throw fail(E_ELEVEN_MUSIC_FAILED, { detail: await readElevenErrorDetail(err) })
     }
   },
 
   /**
-   * 音效生成：`SDK textToSoundEffects.convert`（响应音频字节）。
+   * 音效生成：`POST /v1/sound-generation`（响应音频字节）。
    *
-   * 与音乐同形：直接回音频、没有下载地址，所以走 `filePath`。
-   * 该端点只能出一个音效，`loop` 控制是否可无缝循环（环境音常用）。
-   *
-   * **忽略入参 modelId**：音效的模型是 SDK 字面量类型 `SfxModelId`（只有
-   * `eleven_text_to_sound_v2`）。节点上那个下拉是选**提供商实例**用的，
-   * 它带的模型串（可能是 TTS 模型）不能透传给上游。
+   * **忽略入参 modelId**：音效的模型只有 `eleven_text_to_sound_v2`。
+   * 节点上那个下拉是选**提供商实例**用的，它带的模型串不能透传给上游。
    */
   async generateSoundEffect(
     provider: ModelProviderInstance,
@@ -457,24 +427,24 @@ export const elevenLabsAdapter: ModelProviderAdapter = {
     const outputFormat = ELEVEN_DEFAULT_OUTPUT_FORMAT
     const { ext } = elevenFormatOf(outputFormat)
     try {
-      const stream = await createElevenClient(provider).textToSoundEffects.convert(
+      const buf = await elevenPostAudio(
+        provider,
+        '/v1/sound-generation',
         buildElevenSoundRequest({
           text: input.prompt,
           loop: input.loop,
           durationSeconds: input.durationSeconds,
-          promptInfluence: input.promptInfluence,
-          outputFormat
+          promptInfluence: input.promptInfluence
         }),
-        { ...ELEVEN_NO_RETRY }
+        { output_format: outputFormat }
       )
-      const buf = await collectElevenAudio(stream)
       if (!buf.length) throw fail(PROVIDER_ERRORS.noAudioResult)
       return {
         model: ELEVEN_SOUND_MODEL,
         filePath: writeElevenTemp('sfx', 'eleven-sfx', ext, buf)
       }
     } catch (err) {
-      throw fail(E_ELEVEN_SOUND_FAILED, { detail: readElevenErrorDetail(err) })
+      throw fail(E_ELEVEN_SOUND_FAILED, { detail: await readElevenErrorDetail(err) })
     }
   },
 

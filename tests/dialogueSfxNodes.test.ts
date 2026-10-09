@@ -95,7 +95,9 @@ describe('多说话人对话 / 音效节点', () => {
     // 下拉同时是「选提供商实例」的入口（key 是 providerId::model），
     // 多 Key / 多账号时删掉它就等于没得选 —— 所以必须保留
     expect(card).not.toContain('v-if="!isSoundEffectNode"')
-    expect(card).toContain('buildSoundEffectOptions(await loadAllProviders())')
+    // 经 loadGenerateModelOptions('sfx') → buildSoundEffectOptions（固定模型、选实例）
+    expect(card).toContain('loadGenerateModelOptions(instructionModality.value')
+    expect(card).toContain("if (isSoundEffectNode.value) return 'sfx'")
     // 固定模型+每提供商一项由纯函数负责（单测见 generateModelOptions.test.ts）
     expect(card).toContain('const isSoundEffectNode = computed')
     // 音色选择器仍必须排除音效节点（音效没有「音色」这个概念）
@@ -106,19 +108,18 @@ describe('多说话人对话 / 音效节点', () => {
     expect(selectBlock).toContain('!isSoundEffectNode.value')
     // 有音效专用的指令占位文案（否则仍写着「描述要生成的声音/视频」那套）
     expect(card).toContain("t('graph.inspector.generate.sfxInstructionPlaceholder')")
-    // 下拉标题点明「模型固定」，免得又像在选 TTS 模型
     expect(card).toContain("t('graph.inspector.generate.soundEffectProvider')")
   })
 
   it('音效请求恒用唯一 model_id（节点上的 TTS 模型不会透传成坏请求）', () => {
-    // 请求体构造层不接受外部 modelId：SDK 的类型是字面量 SfxModelId，
+    // 请求体构造层不接受外部 modelId：线格式恒写唯一取值，
     // 被坏值覆盖就是上游 400
     const voice = readFileSync('src/shared/modelProviders/elevenlabs/voice.ts', 'utf8')
     const start = voice.indexOf('export function buildElevenSoundRequest')
     // 只取这一个函数体（到下一个顶层 export 为止），否则会把别的函数的 input.modelId 算进来
     const nextExport = voice.indexOf('\nexport ', start + 1)
     const block = voice.slice(start, nextExport > start ? nextExport : undefined)
-    expect(block).toContain('modelId: ELEVEN_SOUND_MODEL')
+    expect(block).toContain('model_id: ELEVEN_SOUND_MODEL')
     expect(block).not.toContain('input.modelId')
     // 适配器也不认入参 modelId
     const adapter = readFileSync('src/main/services/modelProviders/elevenlabs/adapter.ts', 'utf8')

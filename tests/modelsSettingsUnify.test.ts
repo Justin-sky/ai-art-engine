@@ -249,11 +249,22 @@ describe('normalizeModelsSettings', () => {
   it('defaults every modality key including decisions', () => {
     const empty = createEmptyModalityMap()
     expect(Object.keys(empty).sort()).toEqual(
-      // music 从 audio 里拆出来的独立模态（音乐生成 ≠ 语音合成）
-      ['audio', 'music', 'decisions', 'image', 'model3d', 'text', 'video', 'spatialWorld'].sort()
+      // music / sfx 从 audio 里拆出来的独立模态（音乐生成 ≠ 语音合成 ≠ 音效）
+      [
+        'audio',
+        'music',
+        'sfx',
+        'decisions',
+        'image',
+        'model3d',
+        'text',
+        'video',
+        'spatialWorld'
+      ].sort()
     )
     expect(empty.decisions).toEqual({ selectedModelIds: [], defaultModelId: '' })
     expect(empty.music).toEqual({ selectedModelIds: [], defaultModelId: '' })
+    expect(empty.sfx).toEqual({ selectedModelIds: [], defaultModelId: '' })
   })
 })
 

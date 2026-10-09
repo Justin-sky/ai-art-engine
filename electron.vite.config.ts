@@ -138,16 +138,10 @@ export default defineConfig({
         /**
          * `node-fetch` → 全局 fetch 的替身。
          *
-         * `@elevenlabs/elevenlabs-js` 是外置依赖，它的 `getFetchFn` 里有一句静态
-         * `require('node-fetch')`，只在 Node ≤ 17 的分支执行 —— 而 `RUNTIME.parsedVersion`
-         * 取 `process.versions.node` 的主版本号，Electron 主进程恒为 Node 20+，
-         * **那条分支永远不执行**。但静态 require 会被 scripts/check-pack-externals.mjs
-         * 算进依赖闭包，而依赖树里的顶层 `node-fetch` 是 dsh 带的 v3.3.2（纯 ESM）、
-         * 又被 electron-builder.yml 排除在 asar 之外（dsh 自带一份，避免重复打包），
-         * 于是检查会报 6 个包冲突、打包版会在启动时 require 不到。
-         *
-         * 第三方 SDK 不能改（Fern 生成，重生成即丢），所以在这里把该引用换成替身：
-         * 零新增打包体积，也不动 dsh 的排除清单。详见 shims/nodeFetch.ts。
+         * Electron 主进程已有全局 fetch（Node 20+）。部分 CJS 依赖仍会静态
+         * `require('node-fetch')`；顶层 node-fetch 是 dsh 的 v3.3.2（纯 ESM）且被
+         * electron-builder.yml 排除，静态 require 会进 check-pack-externals 冲突、
+         * 打包版也可能 require 不到。换成替身：零新增体积。详见 shims/nodeFetch.ts。
          */
         'node-fetch': resolve('src/main/services/shims/nodeFetch.ts')
       }

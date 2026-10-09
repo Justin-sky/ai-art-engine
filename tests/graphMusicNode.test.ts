@@ -73,8 +73,9 @@ describe('音乐模态', () => {
     expect(resolveMiniMaxModelCapabilities('music-future-9', 'music')).toBeTruthy()
   })
 
-  it('createEmptyModalityMap 带上 music 桶', () => {
+  it('createEmptyModalityMap 带上 music / sfx 桶', () => {
     expect(createEmptyModalityMap().music).toEqual({ selectedModelIds: [], defaultModelId: '' })
+    expect(createEmptyModalityMap().sfx).toEqual({ selectedModelIds: [], defaultModelId: '' })
   })
 
   it('旧设置里勾在 audio 桶的音乐模型会迁到 music 桶（不让用户以为选择丢了）', () => {
@@ -108,6 +109,47 @@ describe('音乐模态', () => {
     // 不依赖勾选项），所以这里只断言原来的选择没被动过
     expect(provider.modalities.audio.selectedModelIds).toEqual(['music-3.0', 'voice-design'])
     expect(settings.providers).toEqual([])
+  })
+
+  it('旧设置没有 sfx 桶时，ElevenLabs 归一化会预勾音效模型', () => {
+    const normalized = normalizeModelsSettings({
+      providers: [
+        {
+          id: 'el-1',
+          providerKind: 'elevenlabs',
+          label: 'ElevenLabs',
+          apiKey: 'k',
+          baseUrl: 'https://api.elevenlabs.io',
+          enabled: true,
+          modalities: {
+            audio: {
+              selectedModelIds: ['eleven_v4'],
+              defaultModelId: 'eleven_v4'
+            }
+          }
+        }
+      ]
+    })
+    const provider = normalized.providers[0]!
+    expect(provider.modalities.sfx.selectedModelIds).toEqual(['eleven_text_to_sound_v2'])
+    expect(provider.modalities.sfx.defaultModelId).toBe('eleven_text_to_sound_v2')
+    // 用户主动清空过的空桶不要被悄悄填回去
+    const cleared = normalizeModelsSettings({
+      providers: [
+        {
+          id: 'el-2',
+          providerKind: 'elevenlabs',
+          label: 'ElevenLabs',
+          apiKey: 'k',
+          baseUrl: 'https://api.elevenlabs.io',
+          enabled: true,
+          modalities: {
+            sfx: { selectedModelIds: [], defaultModelId: '' }
+          }
+        }
+      ]
+    })
+    expect(cleared.providers[0]!.modalities.sfx.selectedModelIds).toEqual([])
   })
 })
 

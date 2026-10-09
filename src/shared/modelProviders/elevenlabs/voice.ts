@@ -1,31 +1,36 @@
 import type { CatalogModel } from '@shared/modelProvider'
-import type {
-  BodyComposeMusicV1MusicPost,
-  BodyTextToDialogueMultiVoiceV1TextToDialoguePost,
-  BodyTextToSpeechFull,
-  CreateSoundEffectRequest
-} from '@elevenlabs/elevenlabs-js/api'
 import fallback from './fallbackModels.json'
 
 /**
- * ElevenLabs 的领域知识与纯映射（可单测）。
+ * ElevenLabs 的领域知识与线格式映射（可单测）。
  *
- * 传输层已改用官方 SDK（`@elevenlabs/elevenlabs-js`），所以这里**不再拼 HTTP 细节**
- * （路径 / query / 请求体字段名都由 SDK 按规范生成）。
- * 本文件保留三类东西：
+ * 传输层走直连 HTTP（`xi-api-key` + snake_case JSON），本文件负责：
  * 1. 规范里有硬性取值或范围的常量（输出格式、音效 model_id、音效数值范围）
- * 2. 模型**类别**的判定 —— SDK 与规范都没有「这个模型是 TTS 还是转写」，
+ * 2. 模型**类别**的判定 —— 规范没有「这个模型是 TTS 还是转写」，
  *    只能按 `model_id` 命名约定判断（见 elevenModelKind）
- * 3. SDK 类型 → 我们领域类型的映射（目录条目、音色标签、转写分段）
+ * 3. 请求体构造（线格式 snake_case）与响应解析（兼容 snake / camel）
  *
- * SDK 的响应已经是 **camelCase**（`voiceId` / `languageCode` / `canDoTextToSpeech`），
- * 且会 strip 未知键 —— 所以映射里读的是 camelCase，不再是 snake_case。
+ * `output_format` **不进 body**：官方约定它是 query；适配器经 `elevenPostAudio` 传。
  */
 
-/* ── 取值常量（规范/SDK 里是单值或有限枚举） ── */
+/* ── 取值常量（规范里是单值或有限枚举） ── */
 
-/** 音效模型的唯一取值：SDK 类型 `SfxModelId = "eleven_text_to_sound_v2"` */
+/** 音效模型的唯一取值 */
 export const ELEVEN_SOUND_MODEL = 'eleven_text_to_sound_v2'
+
+/**
+ * ElevenLabs `/v1/sound-generation` 对中日韩等表意文字描述会**念出原文**
+ * （实测：中文「雷声」STT 回「雷声。」；同语义英文才产出雷声音效）。
+ * 对话面板之所以正常，是因为 LLM 会先把描述改写成英文再调工具。
+ * 节点路径必须在发上游前自己做这件事。
+ */
+const SOUND_EFFECT_NON_LATIN_RE =
+  /[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff\uac00-\ud7af\u0600-\u06ff\u0400-\u04ff]/
+
+/** 音效描述是否需要先译成英文再交给 sound-generation */
+export function soundEffectPromptNeedsEnglish(prompt: string): boolean {
+  return SOUND_EFFECT_NON_LATIN_RE.test(prompt)
+}
 /** 规范里 TTS 的默认模型 */
 export const ELEVEN_DEFAULT_MODEL_ID = 'eleven_multilingual_v2'
 /** 转写默认模型：规范里 `scribe_v2` 是当前基线 */
@@ -75,105 +80,103 @@ function clampNumber(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
 
-/* ── 请求体（SDK 的 camelCase 形状） ── */
+/** 读字符串字段：优先 snake_case（线格式），兼容 camelCase */
+function pickStr(obj: Record<string, unknown>, snake: string, camel: string): string {
+  const a = obj[snake]
+  if (typeof a === 'string' && a.trim()) return a.trim()
+  const b = obj[camel]
+  if (typeof b === 'string' && b.trim()) return b.trim()
+  return ''
+}
 
-/**
- * 语音合成请求体（SDK `textToSpeech.convert`）。
- *
- * **`outputFormat` 放在这里**：SDK 把它定义成请求对象的字段，内部再提取为
- * query 参数（`const { outputFormat } = request, _body = __rest(...)`）。
- * 不要改用 `requestOptions.queryParams` —— 那会覆盖掉 SDK 自己算出的 query，
- * 结果是 URL 上一个参数都不带（踩过这个坑）。
- *
- * 返回值直接用 SDK 的请求体类型：`outputFormat` 在各端点里是不同的受限联合，
- * 让 SDK 兜住比我自己维护一份类型可靠（值本身已由 resolveElevenOutputFormat 白名单校验）。
- */
-export function buildElevenTtsRequest(input: {
+/* ── 请求体（线格式 snake_case；output_format 不在此） ── */
+
+/** 语音合成 body：`POST /v1/text-to-speech/{voice_id}` */
+export function buildElevenTtsRequest(input: { text: string; modelId: string }): {
   text: string
-  modelId: string
-  outputFormat: ElevenOutputFormat
-}): BodyTextToSpeechFull {
+  model_id?: string
+} {
   const modelId = input.modelId.trim()
   return {
     text: input.text,
-    ...(modelId ? { modelId } : {}),
-    outputFormat: input.outputFormat
+    ...(modelId ? { model_id: modelId } : {})
   }
 }
 
-/**
- * 多说话人对话请求体（SDK `textToDialogue.convert`）。
- *
- * SDK 的 `inputs` 元素形状是 `{ text, voiceId }`（camelCase）——
- * 原始 HTTP 字段是 `voice_id`，SDK 负责转换。`outputFormat` 同上走请求对象。
- */
+/** 多说话人对话 body：`POST /v1/text-to-dialogue` */
 export function buildElevenDialogueRequest(input: {
   inputs: Array<{ text: string; voice: string }>
   modelId?: string
-  outputFormat: ElevenOutputFormat
-}): BodyTextToDialogueMultiVoiceV1TextToDialoguePost {
+}): {
+  inputs: Array<{ text: string; voice_id: string }>
+  model_id?: string
+} {
   const modelId = input.modelId?.trim()
   return {
-    inputs: input.inputs.map((row) => ({ text: row.text, voiceId: row.voice })),
-    ...(modelId ? { modelId } : {}),
-    outputFormat: input.outputFormat
+    inputs: input.inputs.map((row) => ({ text: row.text, voice_id: row.voice })),
+    ...(modelId ? { model_id: modelId } : {})
   }
 }
 
 /**
- * 音效生成请求体（SDK `textToSoundEffects.convert`）。
+ * 音效生成 body：`POST /v1/sound-generation`。
  *
  * 两个数值字段都有**硬范围**（duration 0.5–30、prompt_influence 0–1），
- * 超出去上游直接 422，所以这里夹紧而不是原样透传 —— 用户手填 0.2 或 60 时
- * 应该安静地取到合法值，而不是拿到一条看不懂的上游校验错误。
+ * 超出去上游直接 422，所以这里夹紧而不是原样透传。
  *
- * `modelId` 只认唯一取值：SDK 的类型是字面量 `SfxModelId = "eleven_text_to_sound_v2"`，
- * 传别的连编译都过不去（踩过的坑：音效节点复用了声音节点的模型选择器，
- * 用户选的是 TTS 模型，透传过去直接被上游拒）。
+ * `model_id` 只认唯一取值：传别的会被上游拒（踩过的坑：音效节点复用了
+ * 声音节点的模型选择器，用户选的是 TTS 模型）。
  */
 export function buildElevenSoundRequest(input: {
   text: string
   loop?: boolean
   durationSeconds?: number
   promptInfluence?: number
-  outputFormat?: ElevenOutputFormat
-}): CreateSoundEffectRequest {
-  const request: CreateSoundEffectRequest = {
+}): {
+  text: string
+  model_id: string
+  loop?: boolean
+  duration_seconds?: number
+  prompt_influence?: number
+} {
+  const request: {
+    text: string
+    model_id: string
+    loop?: boolean
+    duration_seconds?: number
+    prompt_influence?: number
+  } = {
     text: input.text.trim(),
-    modelId: ELEVEN_SOUND_MODEL
+    model_id: ELEVEN_SOUND_MODEL
   }
   // 显式 false 不写进去（避免用 false 覆盖上游默认）
   if (input.loop) request.loop = true
   if (typeof input.durationSeconds === 'number' && Number.isFinite(input.durationSeconds)) {
-    request.durationSeconds = clampNumber(
+    request.duration_seconds = clampNumber(
       input.durationSeconds,
       ELEVEN_SOUND_DURATION_MIN,
       ELEVEN_SOUND_DURATION_MAX
     )
   }
   if (typeof input.promptInfluence === 'number' && Number.isFinite(input.promptInfluence)) {
-    request.promptInfluence = clampNumber(
+    request.prompt_influence = clampNumber(
       input.promptInfluence,
       ELEVEN_SOUND_PROMPT_INFLUENCE_MIN,
       ELEVEN_SOUND_PROMPT_INFLUENCE_MAX
     )
   }
-  // outputFormat 也是请求对象字段（SDK 内部提为 query）
-  if (input.outputFormat) request.outputFormat = input.outputFormat
   return request
 }
 
-/** SDK 里音乐模型的合法取值（`MusicModelId` 是受限联合，不是任意字符串） */
+/** 音乐模型的合法取值 */
 export const ELEVEN_MUSIC_MODELS = ['music_v1', 'music_v2', 'music_v2_5'] as const
 export type ElevenMusicModel = (typeof ELEVEN_MUSIC_MODELS)[number]
 
 /**
- * 收窄音乐模型：只放行 SDK 认可的取值。
+ * 收窄音乐模型：只放行规范认可的取值。
  *
- * 为什么必须收窄：音乐模型**不在音频模态目录里**（它属于「音乐」用途），
- * 所以主进程解析活跃提供商时可能退回到声音页签里勾的 TTS 模型（如 eleven_v3），
- * 原样发出去就是上游 422。认不出就退回默认的 music_v2_5 —— 与「音效恒用唯一
- * model_id」同一个道理，宁可安静地用一个合法值，也不甩一条看不懂的校验错误。
+ * 音乐模型**不在音频模态目录里**，主进程解析活跃提供商时可能退回到声音页签里勾的
+ * TTS 模型（如 eleven_v3），原样发出去就是上游 422。认不出就退回默认 music_v2_5。
  */
 export function resolveElevenMusicModel(modelId?: string): ElevenMusicModel {
   const wanted = modelId?.trim()
@@ -183,50 +186,42 @@ export function resolveElevenMusicModel(modelId?: string): ElevenMusicModel {
 }
 
 /**
- * 音乐生成请求体（SDK `music.compose`）。
+ * 音乐生成 body：`POST /v1/music`。
  *
- * 字段名按 SDK：`prompt` / `lyricsText` / `forceInstrumental` / `modelId`。
- * `outputFormat` 不走这里 —— 它是 query 参数，统一由适配器经 `queryParams` 传
- * （SDK 也接受把它放在请求体里，但那依赖内部解构，显式走 query 更清楚）。
+ * 字段：`prompt` / `lyrics_text` / `force_instrumental` / `model_id`。
  */
 export function buildElevenMusicRequest(input: {
   prompt: string
   lyrics?: string
   instrumental?: boolean
   modelId?: string
-  outputFormat?: ElevenOutputFormat
-}): BodyComposeMusicV1MusicPost {
+}): {
+  prompt: string
+  lyrics_text?: string
+  force_instrumental: boolean
+  model_id: ElevenMusicModel
+} {
   const lyrics = input.lyrics?.trim()
   return {
     prompt: input.prompt.trim(),
-    ...(lyrics ? { lyricsText: lyrics } : {}),
+    ...(lyrics ? { lyrics_text: lyrics } : {}),
     // 缺省纯音乐（与 GenerateMusicInput.instrumental 的语义一致）
-    forceInstrumental: input.instrumental !== false,
-    modelId: resolveElevenMusicModel(input.modelId),
-    ...(input.outputFormat ? { outputFormat: input.outputFormat } : {})
+    force_instrumental: input.instrumental !== false,
+    model_id: resolveElevenMusicModel(input.modelId)
   }
 }
 
 /* ── 模型类别 ── */
 
-/**
- * 模型类别。
- *
- * SDK 与规范**都不含**「是 TTS 还是转写 / 音乐 / 音效」的能力位 ——
- * 只有 `canDoTextToSpeech` / `canDoVoiceConversion` / `canUseStyle`。
- * 所以类别只能按 model_id 约定判断，本函数就是那个约定的唯一登记处。
- */
 export type ElevenModelKind = 'tts' | 'stt' | 'music' | 'sfx' | 'other'
 
 /**
  * 按 id 判断模型类别。
  *
- * 依据是官方规范里出现过的 model_id 命名：
- * - `scribe_*`（scribe_v2 / _turbo / _medical）→ 语音转文字
- * - `music_*`（music_v1 / v2 / v2_5）→ 音乐生成
+ * - `scribe_*` → 语音转文字
+ * - `music_*` → 音乐生成
  * - `eleven_text_to_sound_*` → 音效
- * - 其余 `eleven_*`（v3 / multilingual_v2 / turbo / flash …）→ TTS
- * 认不出的返回 'other'，由调用方决定要不要收。
+ * - 其余 `eleven_*` → TTS
  */
 export function elevenModelKind(modelId: string): ElevenModelKind {
   const id = modelId.trim().toLowerCase()
@@ -238,49 +233,36 @@ export function elevenModelKind(modelId: string): ElevenModelKind {
   return 'other'
 }
 
-/**
- * SDK 返回类型的**结构化视图**。
- *
- * 只声明我们真正读的字段：既避免耦合 SDK 内部类型路径，也让这些映射函数
- * 在单测里可以喂普通对象字面量（不必造完整的 SDK 类型）。
- */
-interface ElevenModelLike {
-  modelId: string
-  name?: string
-  description?: string
-  canDoTextToSpeech?: boolean
-  languages?: Array<{ name?: string }>
-}
-interface ElevenVoiceLike {
-  voiceId: string
-  name?: string
-  category?: unknown
-}
-interface ElevenTranscriptLike {
-  text?: string
-  languageCode?: string
-  words?: Array<{ text?: string; start?: number; end?: number; type?: string }>
-}
-
-/** 模型目录条目：SDK `Model` → `CatalogModel`（带类别标注，供各调用点分流） */
-export function parseElevenModels(models: ElevenModelLike[] | undefined | null): CatalogModel[] {
+/** 模型目录条目：`GET /v1/models` → CatalogModel（兼容 snake / camel） */
+export function parseElevenModels(models: unknown): CatalogModel[] {
+  const list = Array.isArray(models) ? models : []
   const out: CatalogModel[] = []
-  for (const item of Array.isArray(models) ? models : []) {
-    const id = typeof item?.modelId === 'string' ? item.modelId.trim() : ''
+  for (const raw of list) {
+    if (!raw || typeof raw !== 'object') continue
+    const item = raw as Record<string, unknown>
+    const id = pickStr(item, 'model_id', 'modelId')
     if (!id) continue
-    const languages = (item.languages ?? [])
-      .map((language) => language?.name?.trim())
-      .filter((name): name is string => Boolean(name))
+    const languagesRaw = item.languages
+    const languages = (Array.isArray(languagesRaw) ? languagesRaw : [])
+      .map((language) => {
+        if (!language || typeof language !== 'object') return ''
+        const name = (language as { name?: unknown }).name
+        return typeof name === 'string' ? name.trim() : ''
+      })
+      .filter(Boolean)
+    const name = pickStr(item, 'name', 'name') || id
+    const description = pickStr(item, 'description', 'description')
+    const canDo =
+      item.can_do_text_to_speech === false || item.canDoTextToSpeech === false ? false : undefined
     out.push({
       id,
-      name: item.name?.trim() || id,
-      ...(item.description?.trim() ? { description: item.description.trim() } : {}),
+      name,
+      ...(description ? { description } : {}),
       modality: 'audio',
       capabilities: {
         ...(languages.length ? { languages } : {}),
         elevenKind: elevenModelKind(id),
-        // 规范里确实有这一位，用它同时校验 id 约定
-        ...(item.canDoTextToSpeech === false ? { canDoTextToSpeech: false } : {})
+        ...(canDo === false ? { canDoTextToSpeech: false } : {})
       }
     })
   }
@@ -302,13 +284,8 @@ export function filterElevenModelsByKind(
 /**
  * 取某一类别的模型；**这一类为空时用本地表补齐**（按 id 去重）。
  *
- * 为什么按类别兜底、而不是「整个列表为空才兜底」：
  * `GET /v1/models` 并不列举所有能力 —— 实测账号返回的是 TTS 等模型，
- * **音乐模型不在其中**（音乐是按 `model_id` 直接调 `/v1/music` 用的）。
- * 早先只在「整条响应为空」时兜底，于是响应里只要有 TTS，音乐这一类就被过滤成空、
- * 且不会再兜底 —— 表现就是「音乐页签拉取为空」。
- *
- * 拿本地表里的音乐模型去请求是安全的：音乐端点不挑 `music_*` 的具体版本。
+ * **音乐模型不在其中**。只在「整条响应为空」时兜底会让音乐页签永远为空。
  */
 export function listElevenModelsOfKind(
   models: CatalogModel[],
@@ -325,12 +302,7 @@ export function listElevenModelsOfKind(
   return matched
 }
 
-/**
- * 离线兜底的模型表（同时是「模型类别」的事实来源）。
- *
- * 正常路径是拉 `GET /v1/models`（官方有该端点），但该端点不含类别能力位，
- * 所以类别靠 id 约定；这份表把约定显式登记下来，拉取失败时也仍有可用选项。
- */
+/** 离线兜底的模型表（同时是「模型类别」的事实来源） */
 export function listElevenFallbackModels(): CatalogModel[] {
   const rows = (
     fallback as {
@@ -362,7 +334,6 @@ export function isKnownElevenModel(modelId: string): boolean {
 
 /* ── 音色 ── */
 
-/** 音色目录条目：选择器要显示名字，生成时用 voiceId */
 export interface ElevenVoiceEntry {
   id: string
   /** 展示名：`Sarah - Mature, Reassuring, Confident` */
@@ -370,27 +341,26 @@ export interface ElevenVoiceEntry {
   category?: string
 }
 
-export interface GetVoicesResponseLike {
-  voices: ElevenVoiceLike[]
-}
-
 /**
- * SDK `voices.getAll()` 响应 → 音色条目。
+ * `GET /v1/voices` 响应 → 音色条目（兼容 snake / camel）。
  *
  * 实测（不带 Key 时该端点也返回 200）：21 个 premade 音色；
  * 带 Key 时同一端点会额外返回用户自己的克隆音色。
  */
-export function parseElevenVoices(
-  response: GetVoicesResponseLike | null | undefined
-): ElevenVoiceEntry[] {
+export function parseElevenVoices(response: unknown): ElevenVoiceEntry[] {
+  const root =
+    response && typeof response === 'object' ? (response as Record<string, unknown>) : null
+  const voices = Array.isArray(root?.voices) ? root!.voices : []
   const out: ElevenVoiceEntry[] = []
-  for (const voice of response?.voices ?? []) {
-    const id = typeof voice?.voiceId === 'string' ? voice.voiceId.trim() : ''
+  for (const raw of voices) {
+    if (!raw || typeof raw !== 'object') continue
+    const voice = raw as Record<string, unknown>
+    const id = pickStr(voice, 'voice_id', 'voiceId')
     if (!id) continue
     out.push({
       id,
-      label: voice.name?.trim() || id,
-      ...(voice.category ? { category: String(voice.category) } : {})
+      label: pickStr(voice, 'name', 'name') || id,
+      ...(voice.category != null ? { category: String(voice.category) } : {})
     })
   }
   return out
@@ -399,14 +369,13 @@ export function parseElevenVoices(
 /* ── 转写 ── */
 
 /**
- * SDK `speechToText.convert()` 响应 → 既有的转写结果。
+ * `POST /v1/speech-to-text` 响应 → 转写结果（兼容 snake / camel）。
  *
- * 只用 `type === 'word'` 的词：规范里该数组也会混入 `spacing` / `audio_event`，
- * 把它们当正文会把「空格」拼进字幕。
- * 按**句读**切段（词级时间戳直接当分段会碎成一个个词，时间线没法用）。
+ * 只用 `type === 'word'` 的词：规范里该数组也会混入 `spacing` / `audio_event`。
+ * 按**句读**切段（词级时间戳直接当分段会碎成一个个词）。
  */
 export function parseElevenTranscript(
-  response: ElevenTranscriptLike | null | undefined,
+  response: unknown,
   modelId: string
 ): {
   segments: Array<{ startSec: number; endSec: number; text: string }>
@@ -414,9 +383,11 @@ export function parseElevenTranscript(
   model: string
   language?: string
 } {
-  const words = response?.words ?? []
-  const fullText = response?.text?.trim() ?? ''
-  const language = response?.languageCode?.trim() ?? ''
+  const root =
+    response && typeof response === 'object' ? (response as Record<string, unknown>) : null
+  const words = Array.isArray(root?.words) ? root!.words : []
+  const fullText = typeof root?.text === 'string' ? root.text.trim() : ''
+  const language = root ? pickStr(root, 'language_code', 'languageCode') : ''
   const segments: Array<{ startSec: number; endSec: number; text: string }> = []
   // 句读边界：中文句号/问号/叹号/分号 + 西文 .!?;
   const boundary = /[。！？；!?;]/
@@ -429,8 +400,10 @@ export function parseElevenTranscript(
     if (text) segments.push({ startSec, endSec, text })
     bucket = ''
   }
-  for (const word of words) {
-    if (word?.type !== 'word') continue
+  for (const raw of words) {
+    if (!raw || typeof raw !== 'object') continue
+    const word = raw as Record<string, unknown>
+    if (word.type !== 'word') continue
     const text = typeof word.text === 'string' ? word.text : ''
     if (!text) continue
     if (!bucket.trim()) startSec = Number(word.start) || 0

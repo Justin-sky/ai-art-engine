@@ -340,6 +340,12 @@ export type ModelModality =
   | 'audio'
   /** 音乐生成（BGM / 配乐）：与「声音（TTS）」分开，模型与端点都不同 */
   | 'music'
+  /**
+   * 音效生成（Foley / 环境音等）：与「声音（TTS）」和「音乐」都分开。
+   * 端点与模型体系独立（目前 ElevenLabs `eleven_text_to_sound_v2`），
+   * 将来多家提供时在设置页单独勾选，避免再和 TTS 混在一个页签里。
+   */
+  | 'sfx'
   | 'model3d'
   | 'spatialWorld'
   | 'decisions'
@@ -356,6 +362,11 @@ export const MODEL_MODALITIES: readonly ModelModality[] = [
    * 混在一个页签里会让「声音节点的模型下拉」出现 music_v2_5 这种不能合成的模型。
    */
   'music',
+  /**
+   * 音效生成。与 audio / music 分开：描述的是声音事件本身，不是台词也不是编曲。
+   * 目前只有 ElevenLabs，页签先立好，方便以后多家接入时只扩能力表。
+   */
+  'sfx',
   'model3d',
   /** 空间世界（World Labs Marble）：从文本 / 图片生成可交互 3D 世界 */
   'spatialWorld',
@@ -475,19 +486,22 @@ export function supportsMusicModality(kind: ModelProviderKind): boolean {
 }
 
 /**
- * 谁支持**音效生成**（`POST /v1/sound-generation`）。
+ * 谁支持**音效生成**（`POST /v1/sound-generation` 一类端点）。
  *
- * 与 `supportsAudioModality` 分开，理由和音乐一样：一家能做 TTS 不代表能做音效，
- * 这张表的粒度是「**具体端点**」而不是「音频这一大类」。
+ * 与 `supportsAudioModality` / `supportsMusicModality` 分开，理由一样：
+ * 一家能做 TTS 或音乐不代表能做音效；粒度是「具体端点」而不是「音频这一大类」。
  *
- * 为什么必须单独有一张表：音效节点的提供商解析如果只看「audio 桶里勾了模型」，
- * 就会选中一家**不会做音效**的（OpenAI / MiniMax / 方舟都有 TTS），
- * 然后才在适配器那层报「不支持」—— 用户看到的是「我配了 ElevenLabs 却说我不支持」。
- * 设置页的音效选择器、节点下拉、主进程解析、空列表成因解释都只认这一处。
+ * 设置页「音效」页签、音效节点选型、主进程解析、空列表成因都只认这一处。
+ * 新增一家音效提供商时只改这里（并在适配器实现 `generateSoundEffect`）。
  */
 export function supportsSoundEffect(kind: ModelProviderKind): boolean {
-  // 目前只有 ElevenLabs 实现了该端点（唯一模型 eleven_text_to_sound_v2）
+  // 目前只有 ElevenLabs（模型 eleven_text_to_sound_v2）；将来多家时在此扩展
   return kind === 'elevenlabs'
+}
+
+/** 与 `supportsSoundEffect` 同义，命名对齐 `supportsMusicModality` 供设置页合并页签 */
+export function supportsSoundEffectModality(kind: ModelProviderKind): boolean {
+  return supportsSoundEffect(kind)
 }
 
 export function isMiniMaxProvider(
@@ -768,6 +782,7 @@ export function createEmptyModalityMap(): ProviderModalityMap {
     video: createEmptyModalityConfig(),
     audio: createEmptyModalityConfig(),
     music: createEmptyModalityConfig(),
+    sfx: createEmptyModalityConfig(),
     model3d: createEmptyModalityConfig(),
     spatialWorld: createEmptyModalityConfig(),
     decisions: createEmptyModalityConfig()
@@ -876,6 +891,14 @@ export function createProviderInstance(
   overrides?: Partial<ModelProviderInstance>
 ): ModelProviderInstance {
   const meta = MODEL_PROVIDER_KINDS.find((p) => p.id === kind) ?? MODEL_PROVIDER_KINDS[0]
+  const modalities = createEmptyModalityMap()
+  // 新建 ElevenLabs 实例时预勾音效模型，避免用户还没打开「音效」页签节点就空着
+  if (supportsSoundEffect(kind)) {
+    modalities.sfx = {
+      selectedModelIds: ['eleven_text_to_sound_v2'],
+      defaultModelId: 'eleven_text_to_sound_v2'
+    }
+  }
   const base: ModelProviderInstance = {
     id: newLocalId(),
     providerKind: kind,
@@ -885,7 +908,7 @@ export function createProviderInstance(
     nativeBaseUrl: '',
     ...(kind === 'custom' ? { apiStyle: DEFAULT_CUSTOM_API_STYLE } : {}),
     enabled: true,
-    modalities: createEmptyModalityMap()
+    modalities
   }
   if (!overrides) return base
   return normalizeProviderInstance({ ...base, ...overrides }) ?? base
@@ -1903,6 +1926,11 @@ export interface GenerateMusicAssetResult {
   relativePath: string
   model: string
   durationMs?: number
+  /**
+   * 实际发给上游的描述（音效专用）。
+   * 中文等会先译成英文再调 `/v1/sound-generation`，与用户原文可能不同。
+   */
+  resolvedPrompt?: string
 }
 
 /**
@@ -2173,6 +2201,8 @@ function normalizeModalityMap(
     // 老设置里音乐模型可能被勾在 audio 桶下（当时音乐借用音频模态），
     // 直接读 music 桶会是空的 —— 让用户以为勾过的模型丢了。
     music: normalizeModalityConfig(raw.music ?? inferLegacyMusicModality(raw.audio), kind),
+    // 音效是新建的独立模态：旧设置没有 sfx 桶时补上固定模型，避免页签与节点下拉空着
+    sfx: normalizeModalityConfig(coerceLegacySfxModality(kind, raw.sfx), kind),
     model3d: normalizeModalityConfig(raw.model3d, kind),
     // 兼容旧工程：改名前的模态桶是 world（世界模型），读回来别把用户已选的模型丢掉
     spatialWorld: normalizeModalityConfig(
@@ -2181,6 +2211,26 @@ function normalizeModalityMap(
       kind
     ),
     decisions: normalizeModalityConfig(raw.decisions, kind)
+  }
+}
+
+/**
+ * 旧设置没有 sfx 桶时，给有音效能力的提供商补上默认勾选。
+ *
+ * 模型 id 与 `ELEVEN_SOUND_MODEL`（`elevenlabs/voice.ts`）同值；这里不能 import
+ * 那份常量，否则 modelProvider ↔ elevenlabs/voice 形成环依赖。
+ *
+ * 已有 `selectedModelIds` 字段（含用户主动清空的空数组）一律原样保留。
+ */
+function coerceLegacySfxModality(
+  kind: ModelProviderKind,
+  raw: Partial<ModalityModelConfig> | undefined
+): Partial<ModalityModelConfig> | undefined {
+  if (raw && typeof raw === 'object' && 'selectedModelIds' in raw) return raw
+  if (!supportsSoundEffect(kind)) return raw
+  return {
+    selectedModelIds: ['eleven_text_to_sound_v2'],
+    defaultModelId: 'eleven_text_to_sound_v2'
   }
 }
 

@@ -11,6 +11,7 @@ import {
   createEmptyModalityMap,
   findProviderById,
   isCustomApiStyle,
+  modalityConfig,
   pickActiveProvider,
   supportsSoundEffect
 } from '@shared/modelProvider'
@@ -81,8 +82,8 @@ export function resolveActiveMusicProvider(
  * 方舟都算），它就会选中一家**不会做音效**的，然后在适配器那层报「不支持」——
  * 用户看到的是「我明明配了 ElevenLabs，它却说我不支持」。
  *
- * 也不能按「有没有勾选模型」筛：ElevenLabs 的音效节点只用到实例，用户完全可能
- * 没在「声音」页签勾任何模型。**能做，就是候选**。
+ * 模型从 **sfx 桶**取（设置页「音效」页签）；没有勾选时退回固定的
+ * `ELEVEN_SOUND_MODEL`，绝不读 audio 桶（那是 TTS，踩过「音效变成念描述」）。
  *
  * @param providerInstanceId 节点上选的实例；给了但它不会做音效时**不会**退化到别家
  *   （宁可用同一家的另一个实例，也不要偷偷换提供商）
@@ -102,17 +103,17 @@ export function resolveActiveSoundEffectProvider(providerInstanceId?: string): {
   if (!capable.length) throw fail(PROVIDER_ERRORS.soundEffectUnsupported)
 
   const requested = providerInstanceId?.trim()
-  const picked = (requested ? capable.find((p) => p.id === requested) : undefined) ?? capable[0]
+  // 优先：sfx 桶里勾过模型的实例（将来多家时按勾选分流）；否则退回能做音效的第一家
+  const withSfxSelection = capable.filter(
+    (p) => modalityConfig(p, 'sfx').selectedModelIds.length > 0
+  )
+  const pool = withSfxSelection.length ? withSfxSelection : capable
+  const picked =
+    (requested ? pool.find((p) => p.id === requested) : undefined) ??
+    (requested ? capable.find((p) => p.id === requested) : undefined) ??
+    pool[0]!
 
-  /**
-   * 模型**固定**为音效模型，不再从 `audio` 桶取默认值。
-   *
-   * 原来这里读的是 `modalityConfig(picked, 'audio')` —— 那是**语音/TTS 桶**
-   * （用户那里默认是 `eleven_v4`、`microsoft/mai-voice-2.1-flash` 这类语音模型）。
-   * 结果：音效节点被写上一个语音模型名，界面上看起来就像「音效生成变成了 TTS」
-   * （用户实际反馈过）。音效端点本来就是单值 enum，正确取值只有
-   * `eleven_text_to_sound_v2`。
-   */
+  // 端点 model_id 是单值 enum：绝不信任 sfx 桶勾选（旧设置可能混进 TTS id）
   return {
     provider: picked,
     modelId: ELEVEN_SOUND_MODEL

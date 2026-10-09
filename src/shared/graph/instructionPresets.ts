@@ -12,6 +12,9 @@ export type InstructionPresetKind =
   | 'lipSync'
   | 'reshoot'
   | 'voice'
+  | 'dialogue'
+  | 'sfx'
+  | 'music'
   | 'toPrompt'
   | 'optimize'
   | 'spatialWorldExtract'
@@ -1219,7 +1222,170 @@ const RESHOOT_PRESETS: InstructionPreset[] = [
   }
 ]
 
-const VOICE_PRESETS: InstructionPreset[] = []
+/** ——— 声音（TTS）：写入的是要被朗读的文本 ——— */
+const VOICE_PRESETS: InstructionPreset[] = [
+  {
+    id: 'voice.narration',
+    titleKey: 'graph.inspector.generate.presets.voice.narration',
+    visual: { kind: 'icon', icon: '🎙' },
+    body: `夜色像一层薄纱覆在湖面上，远处灯火一闪一闪。他停住脚步，听见自己的呼吸比风还重。`
+  },
+  {
+    id: 'voice.adRead',
+    titleKey: 'graph.inspector.generate.presets.voice.adRead',
+    visual: { kind: 'icon', icon: '📢' },
+    body: `三秒懂你所需：更轻、更快、更懂你。现在下单，限时礼遇。`
+  },
+  {
+    id: 'voice.trailer',
+    titleKey: 'graph.inspector.generate.presets.voice.trailer',
+    visual: { kind: 'icon', icon: '🎬' },
+    body: `当规则崩塌，谁还能守住真相？答案，藏在下一秒。`
+  },
+  {
+    id: 'voice.tutorial',
+    titleKey: 'graph.inspector.generate.presets.voice.tutorial',
+    visual: { kind: 'icon', icon: '📘' },
+    body: `第一步，点击右上角新建。第二步，把素材拖进时间线。第三步，按空格预览，确认无误再导出。`
+  },
+  {
+    id: 'voice.emotionSoft',
+    titleKey: 'graph.inspector.generate.presets.voice.emotionSoft',
+    visual: { kind: 'icon', icon: '💬' },
+    body: `其实我一直都在。只是这次，我想听你先开口。`
+  }
+]
+
+/** ——— 多说话人对话：每行「说话人: 台词」——— */
+const DIALOGUE_PRESETS: InstructionPreset[] = [
+  {
+    id: 'dialogue.twoShot',
+    titleKey: 'graph.inspector.generate.presets.dialogue.twoShot',
+    visual: { kind: 'icon', icon: '🗣' },
+    body: `A: 你终于来了。
+B: 路上有点事。你等很久了？
+A: 不长。进来吧，灯还亮着。`
+  },
+  {
+    id: 'dialogue.conflict',
+    titleKey: 'graph.inspector.generate.presets.dialogue.conflict',
+    visual: { kind: 'icon', icon: '⚡' },
+    body: `A: 你说过不会再瞒我。
+B: 我是在保护你。
+A: 保护？还是在替我做决定？
+B: ……你想听真话，还是想听安慰？`
+  },
+  {
+    id: 'dialogue.interview',
+    titleKey: 'graph.inspector.generate.presets.dialogue.interview',
+    visual: { kind: 'icon', icon: '🎙' },
+    body: `主持人: 欢迎回来。先请嘉宾用一句话介绍自己。
+嘉宾: 我做声音设计，专攻环境与打击。
+主持人: 那今天示范的这段，核心听感是什么？
+嘉宾: 近距离冲击，然后把尾音交给空间。`
+  },
+  {
+    id: 'dialogue.gameNpc',
+    titleKey: 'graph.inspector.generate.presets.dialogue.gameNpc',
+    visual: { kind: 'icon', icon: '🎮' },
+    body: `向导: 前方岔路，左是捷径，右更安全。
+旅人: 捷径有多险？
+向导: 有巡逻。但能省半日路程。
+旅人: ……走右边。我还想活着看见尽头。`
+  }
+]
+
+/** ——— 音效：描述声音事件本身（非台词）；中文会自动英译再上送 ——— */
+const SFX_PRESETS: InstructionPreset[] = [
+  {
+    id: 'sfx.thunder',
+    titleKey: 'graph.inspector.generate.presets.sfx.thunder',
+    visual: { kind: 'icon', icon: '⛈' },
+    body: `近距离炸雷，低频滚雷接长混响尾音，纯环境，无雨声底噪，无音乐`
+  },
+  {
+    id: 'sfx.rainRoof',
+    titleKey: 'graph.inspector.generate.presets.sfx.rainRoof',
+    visual: { kind: 'icon', icon: '🌧' },
+    body: `雨落在铁皮屋顶上，密集滴答带金属共鸣，可无缝循环的环境底噪`
+  },
+  {
+    id: 'sfx.footsteps',
+    titleKey: 'graph.inspector.generate.presets.sfx.footsteps',
+    visual: { kind: 'icon', icon: '👟' },
+    body: `室内木地板脚步，中速走近再停住，鞋底摩擦与轻微吱嘎，小房间混响`
+  },
+  {
+    id: 'sfx.uiClick',
+    titleKey: 'graph.inspector.generate.presets.sfx.uiClick',
+    visual: { kind: 'icon', icon: '🖱' },
+    body: `短促清脆的 UI 按钮点击，干净高音，几乎无尾音，单次 one-shot`
+  },
+  {
+    id: 'sfx.whoosh',
+    titleKey: 'graph.inspector.generate.presets.sfx.whoosh',
+    visual: { kind: 'icon', icon: '💨' },
+    body: `快速空气 whoosh，由远到近再掠过，短促有力，适合转场`
+  },
+  {
+    id: 'sfx.impact',
+    titleKey: 'graph.inspector.generate.presets.sfx.impact',
+    visual: { kind: 'icon', icon: '💥' },
+    body: `沉重金属撞击后带低频余震，短攻击、中等衰减，室内硬表面`
+  },
+  {
+    id: 'sfx.doorCreak',
+    titleKey: 'graph.inspector.generate.presets.sfx.doorCreak',
+    visual: { kind: 'icon', icon: '🚪' },
+    body: `厚重木门缓缓打开的吱嘎声，铰链摩擦，结尾轻轻碰到门框`
+  },
+  {
+    id: 'sfx.cityAmbience',
+    titleKey: 'graph.inspector.generate.presets.sfx.cityAmbience',
+    visual: { kind: 'icon', icon: '🏙' },
+    body: `城市夜景环境底噪：远处车流、零星鸣笛、空调外机嗡鸣，可无缝循环`
+  }
+]
+
+/** ——— 音乐 / BGM：编曲描述（+ 可选歌词由节点参数另填）——— */
+const MUSIC_PRESETS: InstructionPreset[] = [
+  {
+    id: 'music.trailerEpic',
+    titleKey: 'graph.inspector.generate.presets.music.trailerEpic',
+    visual: { kind: 'icon', icon: '🎬' },
+    body: `史诗预告片配乐：低弦铺底，铜管推进，中段鼓点加速，结尾一记 braam 收住，无歌词`
+  },
+  {
+    id: 'music.ambientLoop',
+    titleKey: 'graph.inspector.generate.presets.music.ambientLoop',
+    visual: { kind: 'icon', icon: '🌊' },
+    body: `安静氛围铺底：柔和合成垫、缓慢琶音、几乎无鼓点，适合循环，无歌词`
+  },
+  {
+    id: 'music.upbeatAd',
+    titleKey: 'graph.inspector.generate.presets.music.upbeatAd',
+    visual: { kind: 'icon', icon: '✨' },
+    body: `轻快广告感：明亮木吉他与轻打击，节奏稳、情绪正向，15–30 秒可用，无歌词`
+  },
+  {
+    id: 'music.emotionalPiano',
+    titleKey: 'graph.inspector.generate.presets.music.emotionalPiano',
+    visual: { kind: 'icon', icon: '🎹' },
+    body: `抒情钢琴为主，弦乐轻托，缓慢推高再回落，适合回忆/告别段落，无歌词`
+  },
+  {
+    id: 'music.battleGame',
+    titleKey: 'graph.inspector.generate.presets.music.battleGame',
+    visual: { kind: 'icon', icon: '⚔' },
+    body: `游戏战斗 BGM：紧凑鼓点、失真吉他与合成低音，可循环，紧张但不刺耳，无歌词`
+  },
+  {
+    id: 'music.lofiStudy',
+    titleKey: 'graph.inspector.generate.presets.music.lofiStudy',
+    visual: { kind: 'icon', icon: '🎧' },
+    body: `Lo-fi 学习向：柔和鼓机、温暖电钢琴、轻微黑胶底噪，稳定循环，无歌词`
+  }
+]
 
 /** ——— 图片反推提示词：通用 ——— */
 const TO_PROMPT_GENERAL_STRUCTURED_BODY = `请根据图片输出可复用的结构化中文生图提示词，按下列段落书写（不要解释过程）：
@@ -2224,6 +2390,9 @@ const PRESET_PACKS: Record<InstructionPresetKind, InstructionPreset[]> = {
   lipSync: LIP_SYNC_PRESETS,
   reshoot: RESHOOT_PRESETS,
   voice: VOICE_PRESETS,
+  dialogue: DIALOGUE_PRESETS,
+  sfx: SFX_PRESETS,
+  music: MUSIC_PRESETS,
   toPrompt: TO_PROMPT_PRESETS,
   optimize: OPTIMIZE_PRESETS,
   spatialWorldExtract: WORLD_EXTRACT_PRESETS,

@@ -1371,6 +1371,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             loop: input.loop,
             durationSeconds: input.durationSeconds
           }
+          logBridge.appendMessage(String(i18n.global.t('graph.logs.submitSoundEffect')))
           try {
             const project = useProjectStore()
             const outputDir = resolveMediaOutputDir({
@@ -1388,7 +1389,8 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
               response: {
                 model: value.model,
                 assetId: value.assetId,
-                relativePath: value.relativePath
+                relativePath: value.relativePath,
+                ...(value.resolvedPrompt ? { resolvedPrompt: value.resolvedPrompt } : {})
               },
               durationMs: Math.max(0, Date.now() - startedAt)
             })
@@ -1412,6 +1414,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             model: input.model,
             providerInstanceId: input.providerInstanceId
           }
+          logBridge.appendMessage(String(i18n.global.t('graph.logs.submitMusic')))
           try {
             const project = useProjectStore()
             const outputDir = resolveMediaOutputDir({

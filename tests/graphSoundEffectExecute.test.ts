@@ -140,4 +140,16 @@ describe('声音节点与音效节点互不串味', () => {
     expect(generateSpeech).toHaveBeenCalledTimes(1)
     expect(generateSoundEffect).not.toHaveBeenCalled()
   })
+
+  it('误进 executeVoiceGenerateNode 的 asset.sfx 仍改走音效端点', async () => {
+    const generateSoundEffect = vi.fn(async () => ({
+      assetId: 'sfx-guard',
+      relativePath: 'Cache/Sfx/guard.mp3',
+      model: 'eleven_text_to_sound_v2'
+    }))
+    const generateSpeech = vi.fn()
+    await executeVoiceGenerateNode(ctxWith(sfxNode(), { generateSoundEffect, generateSpeech }))
+    expect(generateSoundEffect).toHaveBeenCalledTimes(1)
+    expect(generateSpeech).not.toHaveBeenCalled()
+  })
 })

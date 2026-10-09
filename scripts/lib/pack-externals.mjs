@@ -2,9 +2,9 @@
  * 打包一致性检查的纯逻辑（`scripts/check-pack-externals.mjs` 调用）。
  *
  * 提出来是为了可单测：这段逻辑先前**恒取顶层 `node_modules/<name>`** 展开依赖闭包，
- * 不看 Node 的嵌套解析，于是把 `@elevenlabs/elevenlabs-js` 内嵌的 node-fetch@2.7.0
- * 误当成顶层那份（dsh 的 node-fetch@3.3.2，纯 ESM 且被 asar 排除），
- * 再顺着 v3 的链拖出 8.8 MB 的 web-streams-polyfill，报了一串**不存在的冲突**。
+ * 不看 Node 的嵌套解析，于是把某包内嵌的 node-fetch@2 误当成顶层那份
+ * （dsh 的 node-fetch@3，纯 ESM 且被 asar 排除），再顺着 v3 的链拖出
+ * web-streams-polyfill，报了一串**不存在的冲突**。
  */
 
 /** 解析 electron-builder.yml 里形如 `- '!node_modules/foo/**'` 的 asar 排除清单 */

@@ -965,14 +965,10 @@ const modelPreviewPath = computed((): string | null => {
   return current.params.previewRelativePath?.trim() || null
 })
 /**
- * 音效节点还有一个**别处没有的**陷阱：它的 `assetType` 也是 `voice`，
- * 于是会走进 `isVoice` 分支去 `loadModels('audio')`，把**音频（TTS）模态**的模型
- * 拉进 Inspector 的通用下拉 —— 那个列表里的模型（eleven_v3 / 微软音色那些）
- * 对音效端点毫无意义（选了也不会发出去），属于"看着能选、选了没用"，
- * 还和节点卡片上真正的「音效提供商」选择器重复。
- *
- * `generateNodeModality` 对 `asset.sfx` 有意返回 `'audio'` 只作安全默认
- * （见 @shared/graph/generateNodeModality），所以这里必须显式兜住。
+ * 音效节点的 `assetType` 也是 `voice`，会走进 `isVoice` 分支。
+ * 卡片指令面板已有「音效模型」下拉；Inspector 再放一份通用模型选择器会重复，
+ * 且旧逻辑曾误拉 audio（TTS）桶。这里显式排除音效节点。
+ * （`generateNodeModality(asset.sfx)` 已返回 `'sfx'`，见 @shared/graph/generateNodeModality。）
  */
 const supportsModelPicker = computed(
   () =>

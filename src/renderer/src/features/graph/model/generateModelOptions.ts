@@ -32,7 +32,9 @@ export interface GenerateModelOption {
 /**
  * 生成模型下拉的展示名：优先设置里缓存的目录名（拉取目录时写入），
  * 其次 provider 内置展示名（目录只返回 id 的 provider，如 DeepSeek 的 deepseek-flash），
- * 最后回退 id；若 provider 名已出现在展示名开头则不重复拼接。
+ * 最后回退 id。
+ *
+ * **始终** `提供商 · 模型`（只一项时也不省略提供商），与声音 / 音乐等下拉同口径。
  */
 function resolveModelOptionLabel(
   provider: ModelProviderInstance,
@@ -41,10 +43,26 @@ function resolveModelOptionLabel(
 ): string {
   const cachedName = config.catalog?.[modelId]?.name?.trim()
   const display = cachedName || providerModelDisplayName(provider.providerKind, modelId)
-  const providerLabel = provider.label.trim()
-  if (!providerLabel || display.toLowerCase().startsWith(providerLabel.toLowerCase()))
+  const providerLabel = provider.label.trim() || provider.providerKind
+  // 模型展示名已以提供商名开头时不再重复拼（避免「ElevenLabs · ElevenLabs xxx」）
+  if (display.toLowerCase().startsWith(providerLabel.toLowerCase())) {
     return display
+  }
   return `${providerLabel} · ${display}`
+}
+
+/** 音效模型 id：桶里可能混进 TTS，只放行 sound 系 */
+function isSoundEffectModelId(modelId: string): boolean {
+  const id = modelId.trim().toLowerCase()
+  return id === ELEVEN_SOUND_MODEL || id.startsWith('eleven_text_to_sound')
+}
+
+/** 读 sfx 桶勾选；空或全是 TTS 残留时退回固定音效模型 */
+function resolveSoundEffectModelIds(config: ModalityModelConfig): string[] {
+  const selected = config.selectedModelIds.filter(
+    (id): id is string => typeof id === 'string' && Boolean(id.trim()) && isSoundEffectModelId(id)
+  )
+  return selected.length ? selected : [ELEVEN_SOUND_MODEL]
 }
 
 export function modelKey(providerInstanceId: string, model: string): string {
@@ -58,33 +76,27 @@ export function parseModelKey(key: string): { providerInstanceId: string; model:
 }
 
 /**
- * 音效节点的模型选项：**每个可用提供商一项，模型固定**。
+ * 音效节点的模型选项：与其它模态同形 —— 读设置 **sfx** 桶勾选，
+ * 标签恒为 `提供商 · 模型`（只一项也不省略提供商）。
  *
- * 音效端点 `POST /v1/sound-generation` 的 `model_id` 是单值 enum
- * （只有 `eleven_text_to_sound_v2`），所以「选模型」没有意义；
- * 但那个下拉同时是**选提供商实例**（key 是 `providerId::model`）——
- * 多个 Key / 多账号时它是唯一入口，不能因为「只有一个模型」就整个删掉。
- * 所以这里保留下拉，只把模型名固定成规范里那个唯一取值。
- *
- * 模型串照常写进 params：主进程的 resolveActiveProvider 用它做**偏好**匹配，
- * 命中不了就退回该提供商在声音页签里的默认模型（音效适配器本就忽略模型入参）。
+ * 桶里若混进 TTS id（旧设置 / 手动误加）会滤掉；全空时退回 `eleven_text_to_sound_v2`。
  */
 export function buildSoundEffectOptions(providers: ModelProviderInstance[]): GenerateModelOption[] {
   const options: GenerateModelOption[] = []
   for (const provider of providers) {
     if (!provider.enabled) continue
-    // 目前只有 ElevenLabs 实现了 /v1/sound-generation（facade 见适配器无此方法即明确报错）
     if (!supportsSoundEffect(provider.providerKind)) continue
     if (!provider.apiKey.trim() && !allowsEmptyApiKey(provider)) continue
-    options.push({
-      key: modelKey(provider.id, ELEVEN_SOUND_MODEL),
-      model: ELEVEN_SOUND_MODEL,
-      providerInstanceId: provider.id,
-      providerKind: provider.providerKind,
-      // 标签就是**提供商名**：音效端点的模型是唯一取值，这个下拉实际在选「用哪个实例」。
-      // 用 "ElevenLabs · eleven_text_to_sound_v2" 这种模型名只会让人以为在选模型。
-      label: provider.label.trim() || provider.providerKind
-    })
+    const config = modalityConfig(provider, 'sfx')
+    for (const model of resolveSoundEffectModelIds(config)) {
+      options.push({
+        key: modelKey(provider.id, model),
+        model,
+        providerInstanceId: provider.id,
+        providerKind: provider.providerKind,
+        label: resolveModelOptionLabel(provider, config, model)
+      })
+    }
   }
   return options
 }
@@ -120,8 +132,13 @@ export function buildModelOptions(
   const options: GenerateModelOption[] = []
   for (const provider of providers) {
     if (!provider.enabled) continue
-    // 声音与音乐：ElevenLabs 的模型 / 音色目录公开可读（无 Key 也能先配）
-    if (provider.providerKind === 'elevenlabs' && modality !== 'audio' && modality !== 'music') {
+    // 声音 / 音乐 / 音效：ElevenLabs 的目录公开可读（无 Key 也能先配）
+    if (
+      provider.providerKind === 'elevenlabs' &&
+      modality !== 'audio' &&
+      modality !== 'music' &&
+      modality !== 'sfx'
+    ) {
       continue
     }
     // 本地 OpenAI 兼容服务与 ComfyUI 无需 API Key
@@ -141,6 +158,21 @@ export function buildModelOptions(
     // 音乐（music）同理，走同一份事实来源：OpenAI 有 TTS 但**没有**音乐端点，
     // 不放行的话它会掉进末尾的「文本 + 图片」默认分支，音乐下拉里出现不能编曲的模型
     if (modality === 'music' && !supportsMusicModality(provider.providerKind)) {
+      continue
+    }
+    // 音效：只认有 sound-generation 端点的家；勾选与标签口径见 buildSoundEffectOptions
+    if (modality === 'sfx') {
+      if (!supportsSoundEffect(provider.providerKind)) continue
+      const sfxConfig = modalityConfig(provider, 'sfx')
+      for (const model of resolveSoundEffectModelIds(sfxConfig)) {
+        options.push({
+          key: modelKey(provider.id, model),
+          label: resolveModelOptionLabel(provider, sfxConfig, model),
+          providerInstanceId: provider.id,
+          providerKind: provider.providerKind,
+          model
+        })
+      }
       continue
     }
     if (provider.providerKind === 'comfyui' && modality === 'text') continue
@@ -265,7 +297,7 @@ export function preferredModelKey(providerInstanceId?: string, model?: string): 
 }
 
 export type GenerateModelModality =
-  'text' | 'image' | 'video' | 'audio' | 'music' | 'model3d' | 'spatialWorld' | 'decisions'
+  'text' | 'image' | 'video' | 'audio' | 'music' | 'sfx' | 'model3d' | 'spatialWorld' | 'decisions'
 
 /** 打开编辑窗时会连打 getSettings；短缓存避免同一次打开多 Dialog 重复 IPC */
 let settingsCache: {
@@ -315,7 +347,9 @@ export function resolveEmptyModelOptionsReason(
     // 音乐同理，且**必须排在下面那条 elevenlabs 否掉之前** ——
     // ElevenLabs 有音乐端点（/v1/music），音乐节点不能因为「它只有语音合成」而被判成没提供商
     if (modality === 'music') return supportsMusicModality(kind)
-    // ElevenLabs 只有语音合成与音乐 —— 其它模态到不了上面两行，必须显式否掉，
+    // 音效同理：必须排在 elevenlabs 否掉之前
+    if (modality === 'sfx') return supportsSoundEffect(kind)
+    // ElevenLabs 只有语音 / 音乐 / 音效 —— 其它模态到不了上面几行，必须显式否掉，
     // 否则会掉进末尾的「文本 + 图片」默认分支被误判为支持
     if (kind === 'elevenlabs') return false
     if (isVllmProvider(kind)) return modality === 'text' || modality === 'video'
@@ -415,9 +449,12 @@ export async function loadGenerateModelOptions(
   try {
     const settings = await getSettingsCached()
     const providers = settings.models?.providers ?? []
-    // 不再按模型类别二次过滤：类别已经由**模态**表达
-    // （TTS 在 audio 模态、音乐在 music 模态），目录侧也按类别滤过一遍
-    const options = buildModelOptions(providers, modality)
+    // 音效：端点模型固定，下拉只表达提供商实例（见 buildSoundEffectOptions）
+    // 不能走 buildModelOptions —— 它会读 sfx 桶勾选，旧设置里可能混进 TTS 模型 id
+    const options =
+      modality === 'sfx'
+        ? buildSoundEffectOptions(providers)
+        : buildModelOptions(providers, modality)
     const voicesByModelKey = buildModelVoiceOptions(providers, modality, options)
     const voiceLabels = buildVoiceLabels(providers, options)
     // voiceRequired 按最终选中的那个模型判定（入参 preferred/current 可能都没命中）
@@ -432,10 +469,29 @@ export async function loadGenerateModelOptions(
     if (preferredKey && options.some((o) => o.key === preferredKey)) {
       return done(preferredKey)
     }
+    // 音效：preferred 可能带着旧的 TTS 模型 id（providerId::eleven_v3），按实例对齐
+    if (modality === 'sfx' && preferredKey) {
+      const preferredProvider = parseModelKey(preferredKey)?.providerInstanceId
+      const byProvider = preferredProvider
+        ? options.find((o) => o.providerInstanceId === preferredProvider)
+        : undefined
+      if (byProvider) return done(byProvider.key)
+    }
     if (currentKey && options.some((o) => o.key === currentKey)) {
       return done(currentKey)
     }
-    return done(pickDefaultModelKey(providers, modality, options))
+    if (modality === 'sfx' && currentKey) {
+      const currentProvider = parseModelKey(currentKey)?.providerInstanceId
+      const byProvider = currentProvider
+        ? options.find((o) => o.providerInstanceId === currentProvider)
+        : undefined
+      if (byProvider) return done(byProvider.key)
+    }
+    return done(
+      modality === 'sfx'
+        ? (options[0]?.key ?? '')
+        : pickDefaultModelKey(providers, modality, options)
+    )
   } catch {
     return {
       options: [],

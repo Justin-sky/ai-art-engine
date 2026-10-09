@@ -158,7 +158,13 @@ export interface GraphRunSessionOptions {
     promptInfluence?: number
     name?: string
     outputDir?: string
-  }) => Promise<{ assetId?: string; relativePath?: string; model: string }>
+  }) => Promise<{
+    assetId?: string
+    relativePath?: string
+    model: string
+    /** 实际上游描述（中文等会先译成英文） */
+    resolvedPrompt?: string
+  }>
   /** 可选：音乐 / BGM 生成（MiniMax / 百炼 Fun-Music / ElevenLabs `/v1/music`） */
   generateMusic?: (input: {
     prompt: string
@@ -1048,7 +1054,8 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         durationSeconds: input.durationSeconds,
         promptInfluence: input.promptInfluence
       }
-      run.logBridge.appendMessage(options.t('graph.logs.submitSpeech'))
+      // 绝不能复用 submitSpeech：用户会以为音效节点又在念描述（TTS）
+      run.logBridge.appendMessage(options.t('graph.logs.submitSoundEffect'))
       try {
         const value = await withAbortSignal(generateSoundEffect(input), run)
         run.logBridge.recordApiCall({
@@ -1057,7 +1064,9 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
           response: {
             model: value.model,
             assetId: value.assetId,
-            relativePath: value.relativePath
+            relativePath: value.relativePath,
+            // 中文描述会被译成英文再上送；日志里露出实际 prompt，避免误以为「念中文」
+            ...(value.resolvedPrompt ? { resolvedPrompt: value.resolvedPrompt } : {})
           },
           durationMs: Math.max(0, Date.now() - startedAt)
         })
@@ -1099,7 +1108,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         model: input.model,
         providerInstanceId: input.providerInstanceId
       }
-      run.logBridge.appendMessage(options.t('graph.logs.submitSpeech'))
+      run.logBridge.appendMessage(options.t('graph.logs.submitMusic'))
       try {
         const value = await withAbortSignal(generateMusic(input), run)
         run.logBridge.recordApiCall({

@@ -112,6 +112,7 @@ import {
   type VoiceProfile
 } from '@shared/voiceProfiles'
 import { defErr } from '@shared/errors/appError'
+import { soundEffectPromptNeedsEnglish } from '@shared/modelProviders/elevenlabs/voice'
 
 // ── 本文件错误条目（catalog 未覆盖的个性文案）──
 const E_NO_PROJECT = defErrSimple(
@@ -265,8 +266,13 @@ const E_MUSIC_NO_AUDIO = defErrSimple(
 )
 const E_SOUND_EFFECT_UNSUPPORTED = defErrSimple(
   'provider.facade.sound-effect-unsupported',
-  '当前模型提供商不支持音效生成，请在设置中配置 ElevenLabs 提供商（音效走 /v1/sound-generation）',
-  'The selected provider does not support sound effect generation; configure an ElevenLabs provider in Settings (sound effects use /v1/sound-generation)'
+  '当前模型提供商不支持音效生成，请在设置 → 模型里配置 ElevenLabs 并在「音效」页签勾选模型',
+  'The selected provider does not support sound effect generation; add ElevenLabs under Settings → Models and enable a model on the Sound effects tab'
+)
+const E_SOUND_EFFECT_PROMPT_TRANSLATE_FAILED = defErrSimple(
+  'provider.facade.sound-effect-prompt-translate-failed',
+  'ElevenLabs 音效模型对中文等描述会念出文字而不是生成音效；自动译成英文失败。请改用英文描述，或先在设置里配置可用的文本模型。',
+  'ElevenLabs sound-generation speaks non-English descriptions aloud instead of making SFX; auto-translate to English failed. Use an English prompt, or configure a text model in Settings first.'
 )
 const E_TRANSCRIBE_NO_FILE = defErrSimple(
   'provider.facade.transcribe-file-missing',
@@ -1574,6 +1580,9 @@ class ModelProviderFacade {
   /**
    * 音效生成 → 工程声音资产（ElevenLabs `/v1/sound-generation`）。
    * 与音乐同一条落盘模式，但目录类型是 `sfx`（Cache/Sfx），便于时间线音效轨直接取用。
+   *
+   * **中文等非拉丁描述会先译成英文**：上游对中文会念出描述（像 TTS），
+   * 对话面板之所以正常是因为 LLM 先改写成了英文；节点路径在这里对齐。
    */
   async generateSoundEffectAsset(
     input: GenerateSoundEffectInput & { outputDir?: string }
@@ -1585,7 +1594,12 @@ class ModelProviderFacade {
     const { provider, modelId } = resolveActiveSoundEffectProvider(input.providerInstanceId)
     const adapter = getProviderAdapter(provider.providerKind)
     if (!adapter.generateSoundEffect) throw fail(E_SOUND_EFFECT_UNSUPPORTED)
-    const result = await adapter.generateSoundEffect(provider, modelId, input)
+
+    const resolvedPrompt = await this.resolveSoundEffectPromptForUpstream(input.prompt)
+    const result = await adapter.generateSoundEffect(provider, modelId, {
+      ...input,
+      prompt: resolvedPrompt
+    })
 
     // 与音乐同形：两种取回方式（本地临时文件 / 下载地址）
     const dir = mkdtempSync(join(tmpdir(), 'aiae-sfx-'))
@@ -1606,6 +1620,7 @@ class ModelProviderFacade {
     const asset = projectService.attachExternalGeneratedFile({
       type: 'voice',
       sourceFilePath: dest,
+      // 资产卡仍保留用户原文，便于回看；真正发给上游的是 resolvedPrompt
       name: input.name ?? `生成音效 ${new Date().toLocaleString()}`,
       prompt: input.prompt,
       outputDir
@@ -1614,7 +1629,36 @@ class ModelProviderFacade {
       assetId: asset.id,
       relativePath: asset.relativePath,
       model: result.model,
-      durationMs: result.durationMs
+      durationMs: result.durationMs,
+      ...(resolvedPrompt !== input.prompt.trim() ? { resolvedPrompt } : {})
+    }
+  }
+
+  /**
+   * 音效描述规范化：含中日韩等文字时译成英文音效提示词。
+   * 英文 / 纯拟声可直接上送，避免多余一次文本调用。
+   */
+  private async resolveSoundEffectPromptForUpstream(raw: string): Promise<string> {
+    const prompt = raw.trim()
+    if (!prompt || !soundEffectPromptNeedsEnglish(prompt)) return prompt
+    try {
+      const translated = await this.generateText({
+        system:
+          'You translate sound-effect descriptions into concise English for ElevenLabs text-to-sound. ' +
+          'Output ONLY the English audio description. Keep audio terms (whoosh, braam, rumble, reverb, ambient, impact). ' +
+          'Do not add quotes, labels, or explanation. Never write dialogue to be spoken.',
+        prompt
+      })
+      const text = translated.text?.trim() ?? ''
+      // 去掉模型可能包的引号；译完仍全是非拉丁就当失败
+      const cleaned = text.replace(/^["「『]+|["」』]+$/g, '').trim()
+      if (!cleaned || soundEffectPromptNeedsEnglish(cleaned)) {
+        throw fail(E_SOUND_EFFECT_PROMPT_TRANSLATE_FAILED)
+      }
+      return cleaned
+    } catch (err) {
+      if (isAppError(err) && err.code === E_SOUND_EFFECT_PROMPT_TRANSLATE_FAILED.code) throw err
+      throw fail(E_SOUND_EFFECT_PROMPT_TRANSLATE_FAILED)
     }
   }
 

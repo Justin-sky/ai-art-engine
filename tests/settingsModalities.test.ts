@@ -54,9 +54,16 @@ describe('设置页模态页签', () => {
     }
   })
 
-  it('ElevenLabs 同时有声音与音乐（此前只有声音）', () => {
+  it('ElevenLabs 同时有声音、音乐与音效（此前只有声音）', () => {
     const tabs = settingsModalitiesFor(provider('elevenlabs'))
-    expect(tabs).toEqual(['audio', 'music'])
+    expect(tabs).toEqual(['audio', 'music', 'sfx'])
+  })
+
+  it('音效页签只给真正支持音效的商家（目前 ElevenLabs）', () => {
+    expect(settingsModalitiesFor(provider('elevenlabs'))).toContain('sfx')
+    for (const kind of ['openai', 'openrouter', 'minimax', 'dashscope', 'google'] as const) {
+      expect(settingsModalitiesFor(provider(kind)), kind).not.toContain('sfx')
+    }
   })
 
   it('OpenRouter 的声音与音乐都在（音乐走 /audio/speech，不是 /v1/music）', () => {
@@ -71,7 +78,7 @@ describe('设置页模态页签', () => {
   })
 
   it('页签顺序跟 MODEL_MODALITIES 一致（不因合并而乱序）', () => {
-    // MiniMax：文本 / 图片 / 视频 / 声音 / 音乐
+    // MiniMax：文本 / 图片 / 视频 / 声音 / 音乐（无音效）
     expect(settingsModalitiesFor(provider('minimax'))).toEqual([
       'text',
       'image',
@@ -79,7 +86,7 @@ describe('设置页模态页签', () => {
       'audio',
       'music'
     ])
-    // 方舟没有音乐端点，不该冒出 music
+    // 方舟没有音乐端点，不该冒出 music / sfx
     expect(settingsModalitiesFor(provider('volcengine-ark'))).toEqual([
       'text',
       'image',
@@ -116,7 +123,17 @@ describe('设置页模态页签', () => {
     for (const kind of kinds) {
       for (const mod of settingsModalitiesFor(provider(kind))) {
         expect(
-          ['text', 'image', 'video', 'audio', 'music', 'model3d', 'spatialWorld', 'decisions'],
+          [
+            'text',
+            'image',
+            'video',
+            'audio',
+            'music',
+            'sfx',
+            'model3d',
+            'spatialWorld',
+            'decisions'
+          ],
           `${kind} → ${mod}`
         ).toContain(mod)
       }

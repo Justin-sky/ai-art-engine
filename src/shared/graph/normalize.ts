@@ -29,11 +29,15 @@ import { isAssetRefInputHostType } from './nodeRole'
 import { defaultHostInterfaceForAssetType, type HostInterfaceDocument } from './hostInterface'
 import { ensureBoundaryProxyNodes } from './ensureBoundary'
 import { ELEVEN_SOUND_MODEL } from '../modelProviders/elevenlabs/voice'
-import {
-  defaultSoundEffectSystemPrompt,
-  isLegacyVoicePromptOnSoundEffect
-} from './systemPromptSchemes'
 import { inferElementWorkflowHostInterface } from './worldElementParams'
+
+/** 声音相关生成节点：系统提示词不会发给上游，规范化时清空残留 */
+const VOICE_GENERATE_TYPE_IDS = new Set([
+  'asset.voice',
+  'asset.dialogue',
+  'asset.sfx',
+  'asset.music'
+])
 
 export { ASSET_DIRECTOR_OUTPUT_TITLE, ASSET_SCREENPLAY_OUTPUT_TITLE } from './scopes'
 
@@ -247,6 +251,19 @@ function migrateRetiredGameHtmlGenNode(raw: GraphNode): GraphNode {
 const SOUND_EFFECT_TYPE_ID = 'asset.sfx'
 
 /**
+ * 清空声音相关节点上的 `generateSystemPrompt`。
+ *
+ * TTS / 对话 / 音效 / 音乐端点都把文本当朗读或描述内容，系统提示词既不发送、
+ * 也不该出现在指令预览里；旧工程里可能残留默认「声音导演 / 音效设计师」文案。
+ */
+function stripVoiceGenerateSystemPrompt(node: GraphNode): GraphNode {
+  if (!node.typeId || !VOICE_GENERATE_TYPE_IDS.has(node.typeId)) return node
+  const raw = node.params?.generateSystemPrompt
+  if (raw == null || raw === '') return node
+  return { ...node, params: { ...node.params, generateSystemPrompt: '' } }
+}
+
+/**
  * 音效节点的模型是**固定值**：端点 `POST /v1/sound-generation` 的 model_id 是单值 enum
  * （只有 `eleven_text_to_sound_v2`），节点上那个下拉只是用来选**提供商实例**。
  *
@@ -258,21 +275,9 @@ const SOUND_EFFECT_TYPE_ID = 'asset.sfx'
  */
 function coerceSoundEffectModel(node: GraphNode): GraphNode {
   if (node.typeId !== SOUND_EFFECT_TYPE_ID) return node
-  let params = node.params ?? {}
-
-  /**
-   * 顺带修系统提示词：旧版音效节点被灌了「声音（配音）」那条口径的提示词
-   * （「专业声音导演…匹配语气、节奏与角色气质」），而音效端点只吃非人声描述。
-   * 只在**原封不动仍是那条旧文案**时替换 —— 用户自己改过的句子不能被规范化悄悄改掉。
-   */
-  if (isLegacyVoicePromptOnSoundEffect(params.generateSystemPrompt)) {
-    params = { ...params, generateSystemPrompt: defaultSoundEffectSystemPrompt() }
-  }
-
+  const params = node.params ?? {}
   const current = params.generateModel
-  if (typeof current === 'string' && current.trim() === ELEVEN_SOUND_MODEL) {
-    return params === node.params ? node : { ...node, params }
-  }
+  if (typeof current === 'string' && current.trim() === ELEVEN_SOUND_MODEL) return node
   return { ...node, params: { ...params, generateModel: ELEVEN_SOUND_MODEL } }
 }
 
@@ -286,8 +291,10 @@ function finalizeGraph(
   const stripped = stripClassicOutputNodes(scope, nodes, edges, runStates)
   syncCanonicalOutputNodeIds(stripped.nodes, stripped.edges, stripped.runStates)
   const sanitizedEdges = sanitizeEdges(stripped.nodes, stripped.edges, scope)
-  // 纠正音效节点上的语音模型残留（旧设置写进去的），让打开工程即自愈
-  const coercedNodes = stripped.nodes.map(coerceSoundEffectModel)
+  // 纠正音效模型残留 + 清掉声音节点无用的系统提示词残留
+  const coercedNodes = stripped.nodes
+    .map(coerceSoundEffectModel)
+    .map(stripVoiceGenerateSystemPrompt)
   return {
     nodes: coercedNodes,
     edges: sanitizedEdges,

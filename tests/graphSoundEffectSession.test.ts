@@ -37,10 +37,11 @@ describe('音效能力的 session 注入', () => {
       model: 'eleven_v3',
       voice: 'v1'
     }))
+    const t = vi.fn((key: string) => key)
     const session = useGraphRunSession({
       buildGraph: () => graph,
       commitLocal: () => undefined,
-      t: (key: string) => key,
+      t,
       generateSoundEffect,
       generateSpeech
     })
@@ -51,6 +52,9 @@ describe('音效能力的 session 注入', () => {
     expect(generateSoundEffect).toHaveBeenCalledTimes(1)
     // 退回 TTS 就是把音效描述念出来 —— 这条是本次回归的核心
     expect(generateSpeech).not.toHaveBeenCalled()
+    // 日志文案也不能写「提交语音」：用户会以为节点还在走 TTS
+    expect(t).toHaveBeenCalledWith('graph.logs.submitSoundEffect')
+    expect(t).not.toHaveBeenCalledWith('graph.logs.submitSpeech')
   })
 
   it('对照：同样的接线给 generateSpeech 时声音节点能拿到能力', async () => {

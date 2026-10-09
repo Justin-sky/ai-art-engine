@@ -37,8 +37,8 @@ export const PROVIDER_ERRORS = {
    */
   soundEffectUnsupported: defErrSimple(
     'provider.soundEffectUnsupported',
-    '没有可用的音效生成提供商：请到「设置 → 模型」添加 ElevenLabs 并填好 API Key（音效走 /v1/sound-generation，端点只有它实现了）',
-    'No sound-effect provider available: add ElevenLabs under Settings → Models with an API key (sound effects use /v1/sound-generation, which only ElevenLabs implements)'
+    '没有可用的音效生成提供商：请到「设置 → 模型」添加 ElevenLabs、填好 API Key，并在「音效」页签勾选模型',
+    'No sound-effect provider available: add ElevenLabs under Settings → Models with an API key, then enable a model on the Sound effects tab'
   ),
   connectionTestFailed: defErr<{ detail: string }>(
     'provider.connectionTestFailed',

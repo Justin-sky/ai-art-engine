@@ -2648,7 +2648,7 @@ const TOOL_DEFS: McpToolDef[] = [
     description:
       '按描述生成**音效本身**（ElevenLabs `POST /v1/sound-generation`）并落盘到工程缓存目录 Cache/Sfx（不自动进资产库，避免在对话流里出重复卡）；需要进资产库时由用户在对话产物卡上点「保存到资产库」按钮。返回工程内相对路径。' +
       '**「生成一段雨声 / 风声 / 环境音 / 脚步声」这类请求归本工具**（非人声），不要用 `generate_speech` —— 那会把描述当台词念出来。' +
-      '描述要写成**声音听起来是什么样**（「雨落在铁皮屋顶上」「清脆短促的按钮点击」），而不是「我要一个按钮音效」这类**用途**——用途模型听不懂。' +
+      '描述尽量用**英文**写声音听起来是什么样（"rain on a tin roof" / "short crisp UI click"）；中文等非拉丁描述会自动译成英文再上送——上游对中文会念出文字而不是出音效。不要写「我要一个按钮音效」这类**用途**。' +
       '环境音（雨 / 风 / 海浪 / 机器嗡鸣）请把 `loop` 设为 true：否则长循环时接缝处会有可听见的咔嗒声。' +
       '需要**人声**（台词 / 旁白）请用 `generate_speech`；**对白**用 `generate_dialogue`；**音乐**用 `generate_music`。',
     inputSchema: {
@@ -2722,7 +2722,8 @@ const TOOL_DEFS: McpToolDef[] = [
           response: {
             model: r.model,
             assetId: r.assetId,
-            relativePath: liveAssetRelativePath(r)
+            relativePath: liveAssetRelativePath(r),
+            ...(r.resolvedPrompt ? { resolvedPrompt: r.resolvedPrompt } : {})
           }
         })
       )

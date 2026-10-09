@@ -532,6 +532,7 @@ export default {
         video: '视频',
         audio: '声音',
         music: '音乐',
+        sfx: '音效',
         model3d: '3D 模型',
         spatialWorld: '空间世界',
         decisions: '决策'
@@ -544,6 +545,7 @@ export default {
           '用于 TTS 语音合成，对应 /api/v1/models?output_modalities=speech 与 /api/v1/audio/speech。',
         music:
           '用于 BGM / 配乐生成（与「声音」的语音合成分开）：MiniMax music-3.0、百炼 Fun-Music、ElevenLabs music_v2_5。勾选后可在「音乐生成」节点与时间线的 BGM 生成里选用。',
+        sfx: '用于音效生成（与「声音」TTS、「音乐」编曲分开）：描述雨声、脚步、撞击等非人声事件。目前 ElevenLabs eleven_text_to_sound_v2；勾选后可在「音效生成」节点与时间线音效库里选用。',
         model3d: '用于 3D 模型生成，从文本和/或参考图生成 GLB 模型。',
         world:
           '用于空间世界生成（World Labs Marble）：从文本或参考图生成可交互 3D 世界（高斯泼溅 + 网格）。',
@@ -600,8 +602,11 @@ export default {
       elevenLabsModalityHint: {
         audio:
           'ElevenLabs：语音合成走 POST /v1/text-to-speech/{voice_id}（鉴权头 xi-api-key），模型目录 GET /v1/models，音色目录 GET /v1/voices（无 Key 也能拿到公开音色，带 Key 会带上你自己的克隆音色）。音色是 voice_id（不透明字符串），选择器里显示的是音色名。' +
-          '同一把 Key 还提供两条既有管线：语音转文字（Scribe，供时间线「配音转字幕」）与音乐生成（供 BGM / 音效）。这三个端点混在同一份模型目录里，本页只列 TTS 模型。' +
-          '注意：ElevenLabs 的 input 就是要朗读的文本，模型与音色之外没有「说话风格」参数。'
+          '同一把 Key 还提供音乐、音效与转写；本页只列 TTS 模型，音乐 / 音效请切到对应页签。' +
+          '注意：ElevenLabs 的 input 就是要朗读的文本，模型与音色之外没有「说话风格」参数。',
+        music:
+          'ElevenLabs 音乐生成（POST /v1/music）：勾选 music_v1 / music_v2 / music_v2_5。与「声音」TTS、「音效」页签分开；供「音乐生成」节点与时间线 BGM 使用。',
+        sfx: 'ElevenLabs 音效生成（POST /v1/sound-generation）：模型固定为 eleven_text_to_sound_v2。描述的是声音事件本身（雨、脚步、撞击），不是台词。勾选后可在「音效生成」节点与时间线音效库选用。'
       },
       deepseekModalityHint: {
         text: 'DeepSeek 对话模型（deepseek-flash = V4.1 Flash / deepseek-v4-pro），OpenAI 兼容，默认 Base URL 为 api.deepseek.com，对应 /chat/completions；文本目录由 GET /models 拉取。'
@@ -1914,7 +1919,7 @@ export default {
         '描述想要的声音本身（如雨声 / 开门 / 撞击 / 鸟鸣），走专用音效生成，生成后自动铺到音效轨',
       generateSfxPlaceholder: '雨滴打在窗玻璃上的声音，近景',
       generateSfxNoProvider:
-        '没有可用的音效生成提供商：请在设置里配置 ElevenLabs（专用音效端点 /v1/sound-generation）',
+        '没有可用的音效生成提供商：请在设置 → 模型里添加 ElevenLabs，并在「音效」页签勾选模型',
       generateSfxDone: '已生成「{name}」并铺到音效轨',
       generateSfxFailed: '音效生成失败：{error}',
       smartCut: '智能粗剪',
@@ -3070,6 +3075,8 @@ export default {
       submitImage: '提交图片生成…',
       submitVideo: '提交视频生成…',
       submitSpeech: '提交语音生成…',
+      submitSoundEffect: '提交音效生成…',
+      submitMusic: '提交音乐生成…',
       submitModel3d: '提交 3D 模型生成…',
       submitSpatialWorld: '提交空间世界生成…',
       submitSpatialWorldExport: '提交空间世界导出…',
@@ -5431,6 +5438,8 @@ export default {
         lipSyncInstructionPlaceholder:
           '可选：补充表演/镜头说明（图→图片1+音频1；视频→视频1+音频1）；推荐 Seedance 2.0',
         voiceInstructionPlaceholder: "描述声音（文本）；可接图片参考；可用 {'@'} 引用连线资源",
+        dialogueInstructionPlaceholder:
+          "每行「说话人: 台词」，例如 A: 你来了。；可用 {'@'} 引用连线资源",
         speechVoiceHint: '声音生成：音色（供应商声音 ID，对应 API 的 voice 字段）',
         speechVoiceDefault: '默认音色',
         model3dInstructionPlaceholder:
@@ -5489,6 +5498,10 @@ export default {
           titleImage: '图片生成模板',
           titleVideo: '视频生成模板',
           titleLipSync: '对口型模板',
+          titleVoice: '声音生成模板',
+          titleDialogue: '对话生成模板',
+          titleSfx: '音效生成模板',
+          titleMusic: '音乐生成模板',
           titleToPrompt: '图片反推模板',
           titleSvgGen: 'SVG 生成模板',
           titleModelPose: '3D姿势模板',
@@ -5698,6 +5711,37 @@ export default {
             performance: '表演式对口型',
             fromVideo: '视频角色对口型'
           },
+          voice: {
+            narration: '旁白叙述',
+            adRead: '广告口播',
+            trailer: '预告片旁白',
+            tutorial: '教程步骤',
+            emotionSoft: '轻柔对白'
+          },
+          dialogue: {
+            twoShot: '双人寒暄',
+            conflict: '冲突对峙',
+            interview: '访谈问答',
+            gameNpc: '游戏 NPC 对话'
+          },
+          sfx: {
+            thunder: '近距炸雷',
+            rainRoof: '铁皮雨声',
+            footsteps: '木地板脚步',
+            uiClick: 'UI 点击',
+            whoosh: '空气 whoosh',
+            impact: '金属撞击',
+            doorCreak: '木门吱嘎',
+            cityAmbience: '城市夜景环境'
+          },
+          music: {
+            trailerEpic: '史诗预告片',
+            ambientLoop: '氛围循环铺底',
+            upbeatAd: '轻快广告',
+            emotionalPiano: '抒情钢琴',
+            battleGame: '游戏战斗',
+            lofiStudy: 'Lo-fi 学习向'
+          },
           reshoot: {
             prop: '改道具',
             scene: '改场景',
@@ -5836,11 +5880,11 @@ export default {
         dialogueSpeakersEmpty:
           '还没解析出说话人。请在上方指令框里按行写「说话人: 台词」，例如：A: 你终于来了。',
         soundEffectOptions: '音效参数',
-        soundEffectProvider: '音效提供商（模型固定为 eleven_text_to_sound_v2）',
+        soundEffectProvider: '音效模型',
         sfxInstructionPlaceholder:
-          '描述要生成的声音本身，例如「雨落在铁皮屋顶上，远处有闷雷」；不需要写台词',
+          '描述要生成的声音本身，例如「雨落在铁皮屋顶上，远处有闷雷」；中文会自动译成英文再生成（上游对中文会念出文字）',
         soundEffectOptionsHint:
-          '音效描述的是声音本身（如「雨落在铁皮屋顶上」），不是台词；这些参数只对音效节点生效。',
+          '音效描述的是声音本身（如「雨落在铁皮屋顶上」），不是台词。中文等会先自动译成英文再发给 ElevenLabs（否则会念出描述）。',
         soundEffectLoop: '可无缝循环（环境音常用）',
         soundEffectDuration: '期望时长（秒）',
         soundEffectPromptInfluence: '提示词影响力',

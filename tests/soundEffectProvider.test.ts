@@ -109,10 +109,11 @@ describe('音效节点的模型 UI 位置', () => {
   })
 
   it('卡片上的提供商选择器不能被删（多账号时是唯一入口）', () => {
-    expect(card).toContain('buildSoundEffectOptions(await loadAllProviders())')
+    // 经 loadGenerateModelOptions('sfx') → buildSoundEffectOptions，模型固定、选实例
+    expect(card).toContain('loadGenerateModelOptions(instructionModality.value')
     expect(card).toContain("t('graph.inspector.generate.soundEffectProvider')")
-    // 标签必须说清它选的不是模型
+    expect(card).toContain("if (isSoundEffectNode.value) return 'sfx'")
     const zh = readFileSync('src/renderer/src/i18n/locales/zh-CN.ts', 'utf8')
-    expect(zh).toContain('音效提供商（模型固定为 eleven_text_to_sound_v2）')
+    expect(zh).toContain("soundEffectProvider: '音效模型'")
   })
 })

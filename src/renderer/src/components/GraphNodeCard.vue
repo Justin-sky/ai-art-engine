@@ -579,8 +579,6 @@ import ImageGenerateParamsSelect from './ImageGenerateParamsSelect.vue'
 import VideoGenerateParamsSelect from './VideoGenerateParamsSelect.vue'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import {
-  buildSoundEffectOptions,
-  loadAllProviders,
   loadGenerateModelOptions,
   parseModelKey,
   preferredModelKey,
@@ -959,10 +957,8 @@ function toggleLock(): void {
  * - 工具节点：图片反推提示词（对齐图片生成）/ 提示词优化（对齐剧本生成）
  */
 /**
- * 音效节点本身没有模型可选：`/v1/sound-generation` 的 `model_id` 是单值 enum
- * （只有 `eleven_text_to_sound_v2`）。它复用声音节点的那套模型下拉只会误导 ——
- * 「音效生成为什么也是文本转语音」，而且选中的 TTS 模型会被当成音效模型发出去。
- * 所以卡片上不给模型选择器与音色选择器，只留指令框。
+ * 音效节点：端点 model 固定为 `eleven_text_to_sound_v2`，下拉只选提供商实例
+ * （走 modality=`sfx`，见 instructionModality）。不要读 audio 桶，否则会像 TTS。
  */
 const isSoundEffectNode = computed(() => props.node.typeId === 'asset.sfx')
 
@@ -1031,11 +1027,13 @@ const instructionKind = computed((): InstructionPresetKind | null => {
       return 'image'
     case 'asset.voice':
       return isProcessingNode.value ? 'voice' : null
-    // 声音资产的变体节点：预设面板与声音节点同一套（都只是「生成音频」）
+    // 声音资产变体：各自独立预设包（TTS / 多说话人 / 音效 / 音乐）
     case 'asset.dialogue':
+      return isProcessingNode.value ? 'dialogue' : null
     case 'asset.sfx':
+      return isProcessingNode.value ? 'sfx' : null
     case 'asset.music':
-      return isProcessingNode.value ? 'voice' : null
+      return isProcessingNode.value ? 'music' : null
     case 'asset.model3d':
       return isProcessingNode.value ? 'model3d' : null
     case 'asset.spatialWorld':
@@ -1146,14 +1144,9 @@ function inPortTitle(port: GraphPortDef): string {
 }
 
 const instructionModality = computed((): GenerateModelModality => {
-  /**
-   * 音乐节点必须**排在 `instructionKind === 'voice'` 之前**：
-   * 它的 instructionKind 也是 'voice'（沿用声音节点的预设/指令面板），
-   * 但模型来自 **music 模态**（MiniMax music-* / 百炼 fun-music-* /
-   * ElevenLabs music_* / OpenRouter 的 Google Lyria）。
-   * 不拦住就会读到音频模态，下拉里出现 TTS 模型。
-   */
+  // 音乐 / 音效有独立模态；须先于 voice/dialogue，否则会落到 TTS 模型列表
   if (isMusicNode.value) return 'music'
+  if (isSoundEffectNode.value) return 'sfx'
   if (
     instructionKind.value === 'image' ||
     instructionKind.value === 'frameAnimGen' ||
@@ -1162,8 +1155,9 @@ const instructionModality = computed((): GenerateModelModality => {
     return 'image'
   }
   if (instructionKind.value === 'video' || instructionKind.value === 'lipSync') return 'video'
-  // 声音节点，以及沿用它的对话 / 音效变体，都读音频模态
+  // TTS 与多说话人对话都读音频模态（对话只是换端点，模型仍来自声音目录）
   if (instructionKind.value === 'voice') return 'audio'
+  if (instructionKind.value === 'dialogue') return 'audio'
   if (instructionKind.value === 'model3d' || instructionKind.value === 'modelRigSkin')
     return 'model3d'
   if (instructionKind.value === 'spatialWorld') return 'spatialWorld'
@@ -1183,11 +1177,14 @@ const instructionPlaceholder = computed(() => {
   if (instructionKind.value === 'video') {
     return t('graph.inspector.generate.videoInstructionPlaceholder')
   }
-  if (isSoundEffectNode.value) {
+  if (isSoundEffectNode.value || instructionKind.value === 'sfx') {
     return t('graph.inspector.generate.sfxInstructionPlaceholder')
   }
-  if (isMusicNode.value) {
+  if (isMusicNode.value || instructionKind.value === 'music') {
     return t('graph.inspector.generate.musicInstructionPlaceholder')
+  }
+  if (instructionKind.value === 'dialogue') {
+    return t('graph.inspector.generate.dialogueInstructionPlaceholder')
   }
   if (instructionKind.value === 'voice') {
     return t('graph.inspector.generate.voiceInstructionPlaceholder')
@@ -1259,13 +1256,13 @@ const instructionModelTitle = computed(() => {
   if (instructionKind.value === 'video' || instructionKind.value === 'lipSync') {
     return t('graph.inspector.generate.videoModel')
   }
-  if (instructionKind.value === 'voice') {
-    // 音效端点的模型是固定的，下拉实际在选「用哪个提供商实例」
-    if (isSoundEffectNode.value) {
-      return t('graph.inspector.generate.soundEffectProvider')
-    }
-    // 音乐是独立模态：它的下拉列的是音乐模型，不该写「声音模型」
-    if (isMusicNode.value) return t('graph.inspector.generate.musicModel')
+  if (instructionKind.value === 'sfx' || isSoundEffectNode.value) {
+    return t('graph.inspector.generate.soundEffectProvider')
+  }
+  if (instructionKind.value === 'music' || isMusicNode.value) {
+    return t('graph.inspector.generate.musicModel')
+  }
+  if (instructionKind.value === 'voice' || instructionKind.value === 'dialogue') {
     return t('graph.inspector.generate.voiceModel')
   }
   if (instructionKind.value === 'model3d') return t('graph.inspector.generate.model3dModel')
@@ -2200,24 +2197,12 @@ function meshOpForInstructionKind(kind: InstructionPresetKind | null): MeshOp | 
 
 async function refreshModelOptions(): Promise<void> {
   if (!instructionKind.value) return
-  // 音效节点：模型固定（端点 model_id 是单值 enum），下拉只用来选提供商实例。
-  // 不能因为「只有一个模型」就删掉下拉 —— 多 Key / 多账号时它是唯一入口。
-  if (isSoundEffectNode.value) {
-    const options = buildSoundEffectOptions(await loadAllProviders())
-    modelOptions.value = options
-    modelVoices.value = {}
-    modelVoiceLabels.value = {}
-    modelVoiceRequired.value = false
-    // 保持当前选中的提供商；它已不可用（被停用 / 删掉）时才退回第一个
-    const currentProviderId = parseModelKey(selectedModelKey.value)?.providerInstanceId
-    selectedModelKey.value =
-      options.find((o) => o.providerInstanceId === currentProviderId)?.key ?? options[0]?.key ?? ''
-    return
-  }
   const preferred = preferredModelKey(
     props.node.params.generateProviderInstanceId,
     props.node.params.generateModel
   )
+  // 音效走 modality='sfx'：loadGenerateModelOptions 内部用 buildSoundEffectOptions，
+  // 模型固定、下拉只选提供商实例（多 Key / 多账号时是唯一入口）
   const { options, selectedKey, voicesByModelKey, voiceLabels, voiceRequired } =
     await loadGenerateModelOptions(instructionModality.value, preferred, selectedModelKey.value)
   // 3D 加工节点按能力矩阵过滤供应商（谁能做这个 op 就留谁）：
@@ -2354,7 +2339,7 @@ const showSpeechVoice = computed(
   () =>
     !isSoundEffectNode.value &&
     !isMusicNode.value &&
-    instructionKind.value === 'voice' &&
+    (instructionKind.value === 'voice' || instructionKind.value === 'dialogue') &&
     speechVoiceOptions.value.length > 0
 )
 

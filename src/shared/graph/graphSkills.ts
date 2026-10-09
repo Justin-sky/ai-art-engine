@@ -46,7 +46,6 @@ import {
   defaultUiSplitSystemPrompt,
   defaultUpscaleSystemPrompt,
   defaultVideoSystemPrompt,
-  defaultTimbreSystemPrompt,
   defaultWorldExtractSystemPrompt
 } from './systemPromptSchemes'
 import type { GraphNodeParams } from './types'
@@ -512,7 +511,6 @@ const BUILTIN_SKILLS: GraphSkill[] = [
     'Image to prompt',
     defaultToPromptSystemPrompt
   ),
-  fromSystemDefault('system.voice', '声音', 'Voice', defaultTimbreSystemPrompt),
   fromSystemDefault(
     'system.spatialWorldExtract',
     '世界提取',

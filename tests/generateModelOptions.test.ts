@@ -217,18 +217,50 @@ describe('buildModelOptions', () => {
     ])
   })
 
-  it('音效选项的标签是**提供商名**，不是模型名（下拉实际在选实例）', () => {
+  it('音效选项标签恒为「提供商 · 模型」（只一项也不省略提供商）', () => {
+    const single = buildSoundEffectOptions([
+      baseProvider({ id: 'el1', providerKind: 'elevenlabs', label: 'ElevenLabs' })
+    ])
+    expect(single).toHaveLength(1)
+    expect(single[0]!.label).toBe('ElevenLabs · eleven_text_to_sound_v2')
+
     const options = buildSoundEffectOptions([
       baseProvider({ id: 'el1', providerKind: 'elevenlabs', label: '主账号' }),
       baseProvider({ id: 'el2', providerKind: 'elevenlabs', label: '备用号' })
     ])
-    // 模型是唯一取值，把 eleven_text_to_sound_v2 显示出来只会让人以为在选模型
-    expect(options.map((o) => o.label)).toEqual(['主账号', '备用号'])
-    // 标签缺失时退回 kind，不能是空串（否则下拉里是一条空选项）
+    expect(options.map((o) => o.label)).toEqual([
+      '主账号 · eleven_text_to_sound_v2',
+      '备用号 · eleven_text_to_sound_v2'
+    ])
+    // 标签为空时退回 kind，仍拼模型
     const unnamed = buildSoundEffectOptions([
       baseProvider({ id: 'el3', providerKind: 'elevenlabs', label: '   ' })
     ])
-    expect(unnamed[0]!.label).toBe('elevenlabs')
+    expect(unnamed[0]!.label).toBe('elevenlabs · eleven_text_to_sound_v2')
+  })
+
+  it('音效下拉读 sfx 桶勾选，并忽略残留的 TTS 模型 id', () => {
+    const modalities = createEmptyModalityMap()
+    modalities.sfx.selectedModelIds = [
+      'eleven_v3',
+      'eleven_text_to_sound_v2',
+      'eleven_multilingual_v2'
+    ]
+    modalities.sfx.defaultModelId = 'eleven_v3'
+    modalities.sfx.catalog = {
+      eleven_text_to_sound_v2: { id: 'eleven_text_to_sound_v2', name: 'Text to Sound v2' }
+    }
+    const providers = [
+      baseProvider({ id: 'el1', providerKind: 'elevenlabs', label: '主账号', modalities })
+    ]
+    const options = buildSoundEffectOptions(providers)
+    expect(options.map((o) => o.key)).toEqual(['el1::eleven_text_to_sound_v2'])
+    expect(options.map((o) => o.model)).toEqual(['eleven_text_to_sound_v2'])
+    expect(options[0]!.label).toBe('主账号 · Text to Sound v2')
+    expect(options[0]!.label).not.toContain('eleven_v3')
+    expect(buildModelOptions(providers, 'sfx').map((o) => o.model)).toEqual([
+      'eleven_text_to_sound_v2'
+    ])
   })
   /**
    * 时间线的 BGM / 音效按钮与音乐节点都用这个。

@@ -541,6 +541,7 @@ export default {
         video: 'Video',
         audio: 'Voice',
         music: 'Music',
+        sfx: 'Sound effects',
         model3d: '3D Model',
         spatialWorld: 'Spatial world',
         decisions: 'Decisions'
@@ -552,6 +553,7 @@ export default {
         audio: 'TTS via /api/v1/models?output_modalities=speech and /api/v1/audio/speech.',
         music:
           'BGM / score generation (separate from the Voice TTS tab): MiniMax music-3.0, Bailian Fun-Music, ElevenLabs music_v2_5. Selected music models become available in the Music generation node and the timeline BGM action.',
+        sfx: 'Sound-effect generation (separate from Voice TTS and Music): non-speech events like rain, footsteps, impacts. Currently ElevenLabs eleven_text_to_sound_v2; selected models appear in the Sound effect node and timeline SFX library.',
         model3d: '3D model generation from text and/or reference images, producing GLB assets.',
         world:
           'Spatial world generation (World Labs Marble): interactive 3D worlds (gaussian splats + mesh) from text or reference images.',
@@ -610,8 +612,11 @@ export default {
       elevenLabsModalityHint: {
         audio:
           'ElevenLabs: speech synthesis posts to POST /v1/text-to-speech/{voice_id} (auth header xi-api-key), models come from GET /v1/models and voices from GET /v1/voices (public voices work without a key; your cloned voices appear once a key is set). A voice is an opaque voice_id, shown by name in the picker. ' +
-          "The same key also powers two existing pipelines: speech-to-text (Scribe, used by the timeline's “audio to subtitles”) and music generation (for BGM / SFX). All three endpoints share one model catalog; this tab lists TTS models only. " +
-          'Note: with ElevenLabs the input *is* the text to speak — beyond model and voice there is no separate speaking-style parameter.'
+          'The same key also powers music, sound effects, and transcription; this tab lists TTS models only — use the Music / Sound effects tabs for those. ' +
+          'Note: with ElevenLabs the input *is* the text to speak — beyond model and voice there is no separate speaking-style parameter.',
+        music:
+          'ElevenLabs music generation (POST /v1/music): select music_v1 / music_v2 / music_v2_5. Separate from the Voice TTS and Sound effects tabs; used by the Music generation node and timeline BGM.',
+        sfx: 'ElevenLabs sound-effect generation (POST /v1/sound-generation): model is fixed to eleven_text_to_sound_v2. Describe a sound event itself (rain, footsteps, impacts), not spoken lines. Selected models appear in the Sound effect node and timeline SFX library.'
       },
       deepseekModalityHint: {
         text: 'DeepSeek chat models (deepseek-flash = V4.1 Flash / deepseek-v4-pro), OpenAI-compatible. Default Base URL is api.deepseek.com via /chat/completions; the text catalog is fetched from GET /models.'
@@ -1963,7 +1968,7 @@ export default {
         'Describe the sound itself (e.g. rain / door / impact / birds). It uses the dedicated sound-effect endpoint and lands on the SFX track',
       generateSfxPlaceholder: 'Rain tapping on a window pane, close-up',
       generateSfxNoProvider:
-        'No sound-effect provider available: configure ElevenLabs in Settings (dedicated sound-effect endpoint /v1/sound-generation)',
+        'No sound-effect provider available: add ElevenLabs under Settings → Models and enable a model on the Sound effects tab',
       generateSfxDone: 'Generated "{name}" and placed it on the SFX track',
       generateSfxFailed: 'SFX generation failed: {error}',
       smartCut: 'Smart cut',
@@ -3147,6 +3152,8 @@ export default {
       submitImage: 'Submitting image generation…',
       submitVideo: 'Submitting video generation…',
       submitSpeech: 'Submitting speech generation…',
+      submitSoundEffect: 'Submitting sound-effect generation…',
+      submitMusic: 'Submitting music generation…',
       submitModel3d: 'Submitting 3D model generation…',
       submitSpatialWorld: 'Submitting spatial world generation…',
       submitSpatialWorldExport: 'Submitting world export…',
@@ -5579,6 +5586,8 @@ export default {
           'Optional performance / camera notes (image→图片1+音频1; video→视频1+音频1); Seedance 2.0 recommended',
         voiceInstructionPlaceholder:
           "Describe the voice in text; connect an image for visual prompt; use {'@'} to cite inputs",
+        dialogueInstructionPlaceholder:
+          "One line per speaker as \"Speaker: line\", e.g. A: You're here.; use {'@'} to cite inputs",
         speechVoiceHint: 'Voice generation: voice (provider voice id, sent as the API voice field)',
         speechVoiceDefault: 'Default voice',
         model3dInstructionPlaceholder:
@@ -5639,6 +5648,10 @@ export default {
           titleImage: 'Image generation templates',
           titleVideo: 'Video generation templates',
           titleLipSync: 'Lip sync templates',
+          titleVoice: 'Voice generation templates',
+          titleDialogue: 'Dialogue generation templates',
+          titleSfx: 'Sound effect templates',
+          titleMusic: 'Music generation templates',
           titleToPrompt: 'Image reverse-prompt templates',
           titleSvgGen: 'SVG generation templates',
           titleModelPose: '3D pose templates',
@@ -5848,6 +5861,37 @@ export default {
             performance: 'Performance lip sync',
             fromVideo: 'Lip sync from video'
           },
+          voice: {
+            narration: 'Narration',
+            adRead: 'Ad read',
+            trailer: 'Trailer VO',
+            tutorial: 'Tutorial steps',
+            emotionSoft: 'Soft dialogue'
+          },
+          dialogue: {
+            twoShot: 'Two-person greeting',
+            conflict: 'Conflict standoff',
+            interview: 'Interview Q&A',
+            gameNpc: 'Game NPC dialogue'
+          },
+          sfx: {
+            thunder: 'Close thunderclap',
+            rainRoof: 'Rain on tin roof',
+            footsteps: 'Wood-floor footsteps',
+            uiClick: 'UI click',
+            whoosh: 'Air whoosh',
+            impact: 'Metal impact',
+            doorCreak: 'Door creak',
+            cityAmbience: 'City night ambience'
+          },
+          music: {
+            trailerEpic: 'Epic trailer',
+            ambientLoop: 'Ambient loop bed',
+            upbeatAd: 'Upbeat ad',
+            emotionalPiano: 'Emotional piano',
+            battleGame: 'Game battle',
+            lofiStudy: 'Lo-fi study'
+          },
           reshoot: {
             prop: 'Swap prop',
             scene: 'Swap scene',
@@ -5990,11 +6034,11 @@ export default {
         dialogueSpeakersEmpty:
           'No speakers parsed yet. Write one utterance per line in the instruction box above, e.g. A: You finally made it.',
         soundEffectOptions: 'Sound effect options',
-        soundEffectProvider: 'Sound effect provider (model is fixed to eleven_text_to_sound_v2)',
+        soundEffectProvider: 'Sound effect model',
         sfxInstructionPlaceholder:
-          'Describe the sound itself, e.g. "rain on a tin roof with distant thunder"; no dialogue needed',
+          'Describe the sound itself, e.g. "rain on a tin roof with distant thunder". Non-English prompts are auto-translated (the model otherwise speaks the text).',
         soundEffectOptionsHint:
-          'A sound effect describes the sound itself (e.g. "rain on a tin roof"), not a line of dialogue. These options apply to the sound effect node only.',
+          'A sound effect describes the sound itself (e.g. "rain on a tin roof"), not a line of dialogue. Non-English prompts are auto-translated to English before ElevenLabs (otherwise it speaks the description).',
         soundEffectLoop: 'Seamless loop (common for ambience)',
         soundEffectDuration: 'Target duration (seconds)',
         soundEffectPromptInfluence: 'Prompt influence',

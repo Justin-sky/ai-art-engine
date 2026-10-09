@@ -24,6 +24,12 @@ const settings = {
             defaultModelId: 'eleven_v4',
             selectedModelIds: ['eleven_v4', 'eleven_multilingual_v2'],
             catalog: []
+          },
+          // sfx 桶故意不写：解析必须退回固定音效模型，绝不能读到上面的 TTS
+          sfx: {
+            defaultModelId: '',
+            selectedModelIds: [],
+            catalog: []
           }
         }
       },

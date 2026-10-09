@@ -114,10 +114,23 @@ export function resolveNodeType(
   return getNodeType(inferNodeTypeId(node))
 }
 
+/**
+ * 声音资产的**变体 typeId**（产物仍是 voice，但执行端点不同）。
+ *
+ * 必须在「按 assetType 兜底」之前认出它们：否则 registry 暂时没有该 typeId 时
+ * （例如 renderer 产物过期、插件尚未注册），`asset.sfx` 会被改写成 `asset.voice`，
+ * Cook 就会走 TTS 把「雷声」念出来，而不是 `/v1/sound-generation`。
+ */
+const VOICE_ASSET_VARIANT_TYPE_IDS = new Set<string>(['asset.sfx', 'asset.dialogue', 'asset.music'])
+
 export function inferNodeTypeId(
   node: Pick<GraphNode, 'category' | 'assetType' | 'params' | 'typeId'>
 ): GraphNodeTypeId {
   if (node.typeId && registry.has(node.typeId)) return node.typeId
+  // 变体 typeId：即便 registry 尚未挂上，也绝不能按 assetType=voice 降成 asset.voice
+  if (node.typeId && VOICE_ASSET_VARIANT_TYPE_IDS.has(node.typeId)) {
+    return node.typeId as GraphNodeTypeId
+  }
   if (node.category === 'note') {
     if (node.typeId === 'play.script') return 'play.script'
     return 'note.text'
