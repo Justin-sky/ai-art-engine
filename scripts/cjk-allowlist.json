@@ -1185,7 +1185,8 @@
     "src/shared/objectStorage.ts": [
       "{ id: 'volcengine-tos', label: '火山引擎 TOS' },",
       "{ id: 'aliyun-oss', label: '阿里云 OSS' },",
-      "{ id: 'tencent-cos', label: '腾讯云 COS' }",
+      "{ id: 'tencent-cos', label: '腾讯云 COS' },",
+      "{ id: 's3', label: '兼容 Amazon S3' }",
       "{ region: 'cn-beijing', endpoint: 'https://tos-cn-beijing.volces.com', label: '华北2（北京）' },",
       "{ region: 'cn-shanghai', endpoint: 'https://tos-cn-shanghai.volces.com', label: '华东2（上海）' },",
       "{ region: 'cn-chengdu', endpoint: 'https://tos-cn-chengdu.volces.com', label: '西南1（成都）' },",
