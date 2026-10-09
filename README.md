@@ -1,7 +1,7 @@
 <div align="center">
 
 <a href="https://justin-sky.github.io/ai-art-engine/">
-  <img src="docs/assets/banner.png" alt="AI Art Engine" width="760" height="322" />
+  <img src="docs/assets/banner.webp" alt="AI Art Engine" width="760" height="322" />
 </a>
 
 <p><b>Agent 原生的 AI 美术资产引擎</b><br />图片、视频、语音、3D 模型与空间世界，在一个桌面端里生成、沉淀、复用</p>
@@ -22,8 +22,6 @@
   <a href="./CHANGELOG.md">更新日志</a> ·
   <a href="./README.en.md">English</a>
 </p>
-
-<img src="website/assets/banner/node-graph.webp" alt="AI Art Engine 节点图工作区" width="100%" />
 
 </div>
 
