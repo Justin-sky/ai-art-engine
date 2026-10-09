@@ -1,10 +1,8 @@
 <div align="center">
 
 <a href="https://justin-sky.github.io/ai-art-engine/index.en.html">
-  <img src="docs/assets/logo-mark.png" alt="AI Art Engine" width="96" />
+  <img src="docs/assets/banner.png" alt="AI Art Engine" width="760" height="322" />
 </a>
-
-<h1>AI Art Engine</h1>
 
 <p><b>The agent-native AI art asset engine</b><br />Generate, organize and reuse images, video, voice, 3D models and explorable worlds in one desktop app</p>
 
