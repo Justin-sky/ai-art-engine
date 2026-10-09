@@ -360,72 +360,9 @@
     })
   }
 
-  /**
-   * 首页演示视频的自绘控制条。
-   *
-   * 不用浏览器原生 controls：那条灰色控制条和深色卡片完全不搭，而且在移动端尺寸很怪。
-   * 这里只保留两个按钮（播放/暂停、静音切换），标签从按钮自身上读，站点中英双版共用这份 JS。
-   * 尊重 prefers-reduced-motion：用户要求减少动效时不自动播放，停在海报帧上等点击。
-   */
-  function enhanceHeroVideo() {
-    const figures = document.querySelectorAll('.hero-video')
-    figures.forEach((figure) => {
-      const video = figure.querySelector('[data-hero-video]')
-      if (!video) return
-      const toggle = figure.querySelector('[data-hv-toggle]')
-      const mute = figure.querySelector('[data-hv-mute]')
-
-      const syncPaused = () => {
-        figure.classList.toggle('is-paused', video.paused)
-        if (toggle) {
-          toggle.setAttribute('aria-pressed', video.paused ? 'false' : 'true')
-          const label = video.paused
-            ? toggle.dataset.labelPlay || 'Play'
-            : toggle.dataset.labelPause || 'Pause'
-          toggle.setAttribute('aria-label', label)
-        }
-      }
-      const syncMuted = () => {
-        figure.classList.toggle('is-unmuted', !video.muted)
-        if (mute) {
-          mute.setAttribute('aria-pressed', video.muted ? 'true' : 'false')
-          const label = video.muted
-            ? mute.dataset.labelUnmute || 'Unmute'
-            : mute.dataset.labelMute || 'Mute'
-          mute.setAttribute('aria-label', label)
-        }
-      }
-
-      toggle?.addEventListener('click', () => {
-        if (video.paused) {
-          // 点了才播放：这时才算用户手势，可以带声音（但默认仍保持静音，避免突然出声）
-          void video.play().catch(() => {})
-        } else {
-          video.pause()
-        }
-      })
-      mute?.addEventListener('click', () => {
-        video.muted = !video.muted
-        // 手动取消静音后浏览器不再拦截播放，这里同步一次状态
-        if (!video.muted && video.paused) void video.play().catch(() => {})
-        syncMuted()
-      })
-
-      video.addEventListener('play', syncPaused)
-      video.addEventListener('pause', syncPaused)
-      video.addEventListener('volumechange', syncMuted)
-
-      const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false
-      if (reduce) video.pause()
-      syncPaused()
-      syncMuted()
-    })
-  }
-
   function init() {
     enhanceCopyBlocks()
     enhanceDocPage()
-    enhanceHeroVideo()
     hardenExternalLinks()
   }
 

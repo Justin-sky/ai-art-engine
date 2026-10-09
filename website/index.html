@@ -49,7 +49,7 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20261009g" />
+    <link rel="stylesheet" href="styles.css?v=20261009h" />
     <link rel="stylesheet" href="site.css?v=20261009c" />
   </head>
   <body>
@@ -174,77 +174,20 @@
         </div>
 
         <figure class="hero-video reveal reveal-stage" style="--d: 0.2s">
-          <video
-            data-hero-video
-            src="assets/show.mp4"
-            poster="assets/banner/node-graph.webp"
+          <iframe
+            src="https://player.bilibili.com/player.html?bvid=BV19Bpt68E47&page=1&high_quality=1&danmaku=0"
+            title="AI Art Engine 演示视频（B 站）"
             width="854"
             height="480"
-            autoplay
-            muted
-            loop
-            playsinline
-            preload="metadata"
-          >
-            你的浏览器不支持视频播放。
-          </video>
-          <div class="hero-video-ui">
-            <button
-              type="button"
-              class="hv-btn"
-              data-hv-toggle
-              data-label-play="播放"
-              data-label-pause="暂停"
-              aria-label="暂停"
-              aria-pressed="false"
-            >
-              <svg class="hv-i-pause" aria-hidden="true" viewBox="0 0 24 24">
-                <rect x="6.6" y="5" width="3.6" height="14" rx="1.3" />
-                <rect x="13.8" y="5" width="3.6" height="14" rx="1.3" />
-              </svg>
-              <svg class="hv-i-play" aria-hidden="true" viewBox="0 0 24 24">
-                <path d="M8.4 5.1v13.8a1 1 0 0 0 1.52.85l10.4-6.9a1 1 0 0 0 0-1.7L9.92 4.25A1 1 0 0 0 8.4 5.1Z" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              class="hv-btn"
-              data-hv-mute
-              data-label-mute="静音"
-              data-label-unmute="取消静音"
-              aria-label="取消静音"
-              aria-pressed="true"
-            >
-
-              <svg class="hv-i-sound-on" aria-hidden="true" viewBox="0 0 24 24">
-                <path d="M4 9.5h3.3L12 5.4v13.2L7.3 14.5H4a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1Z" />
-                <path
-                  d="M15.6 8.6a4.4 4.4 0 0 1 0 6.8"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.8"
-                  stroke-linecap="round"
-                />
-                <path
-                  d="M18 6.2a7.6 7.6 0 0 1 0 11.6"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.8"
-                  stroke-linecap="round"
-                />
-              </svg>
-              <svg class="hv-i-sound-off" aria-hidden="true" viewBox="0 0 24 24">
-                <path d="M4 9.5h3.3L12 5.4v13.2L7.3 14.5H4a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1Z" />
-                <path
-                  d="M16.2 9.6l4.2 4.8M20.4 9.6l-4.2 4.8"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.8"
-                  stroke-linecap="round"
-                />
-              </svg>
-            </button>
-          </div>
+            loading="lazy"
+            scrolling="no"
+            allowfullscreen
+          ></iframe>
+          <figcaption>
+            <a href="https://www.bilibili.com/video/BV19Bpt68E47" target="_blank" rel="noopener noreferrer">
+              在 B 站观看 ↗
+            </a>
+          </figcaption>
         </figure>
       </section>
 
