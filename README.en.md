@@ -23,8 +23,6 @@
   <a href="./README.md">中文</a>
 </p>
 
-<img src="website/assets/banner/node-graph.webp" alt="AI Art Engine node graph workspace" width="100%" />
-
 </div>
 
 ## Overview
