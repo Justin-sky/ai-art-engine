@@ -690,8 +690,8 @@ code {
   box-shadow: 0 0 8px rgba(34, 197, 94, 0.8);
 }
 
-/* ---------- Hero video（首页演示片，外部嵌入） ---------- */
-/* 宽度与原封面卡一致（62vw / 760px 封顶） */
+/* ---------- Hero video（首页演示片） ---------- */
+/* 宽度与原封面卡一致（62vw / 760px 封顶）：源片只有 854×480，按 760 展示刚好不放大 */
 .hero-video {
   position: relative;
   width: min(62vw, 760px);
@@ -709,40 +709,97 @@ code {
   opacity: 0.32;
 }
 
-/* 画框放在嵌入页面上：图容器不留 overflow:hidden，否则上面那层辉光会被裁掉。
-   B 站 / YouTube 的播放器自带 UI，所以这里不再自绘控制条 */
-.hero-video iframe {
+/* 画框放在视频自身上：图容器不留 overflow:hidden，否则上面那层辉光会被裁掉 */
+.hero-video video {
   display: block;
   width: 100%;
   max-width: 100%;
-  aspect-ratio: 16 / 9;
   height: auto;
-  border: 1px solid rgba(148, 163, 255, 0.18);
+  aspect-ratio: 16 / 9;
   border-radius: 14px;
   background: #0a0f1b;
+  border: 1px solid rgba(148, 163, 255, 0.18);
   box-shadow: 0 30px 80px -20px rgba(2, 6, 23, 0.6);
 }
 
-/* 兜底入口：嵌入被墙/被拦时至少还能点出去看 */
-.hero-video figcaption {
-  margin-top: 12px;
-  color: var(--ink-soft);
-  font-size: 13px;
-  text-align: center;
+/* 自绘播放器：不用浏览器原生控件（那条灰色控制条和深色卡片完全不搭） */
+.hero-video-ui {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  z-index: 2;
+  display: flex;
+  gap: 8px;
 }
 
-.hero-video figcaption a {
-  color: var(--ink-soft);
-  text-decoration: none;
-  border-bottom: 1px solid transparent;
+.hv-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 1px solid rgba(148, 163, 255, 0.26);
+  border-radius: 11px;
+  background: rgba(10, 15, 27, 0.72);
+  color: #e8ecff;
+  cursor: pointer;
+  opacity: 0.82;
+  backdrop-filter: blur(10px);
   transition:
-    color 0.2s ease,
-    border-color 0.2s ease;
+    opacity 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.2s ease;
 }
 
-.hero-video figcaption a:hover {
-  color: var(--ink);
-  border-bottom-color: currentColor;
+.hero-video:hover .hv-btn,
+.hv-btn:focus-visible {
+  opacity: 1;
+}
+
+.hv-btn:hover {
+  border-color: rgba(148, 163, 255, 0.55);
+  transform: translateY(-1px);
+}
+
+.hv-btn:focus-visible {
+  outline: 2px solid #3b6cff;
+  outline-offset: 2px;
+}
+
+.hv-btn svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+
+/* 图标按状态切换。基准态 = 「正在播放 + 已静音」（与 HTML 上的 autoplay muted 一致）：
+   暂停时换成播放三角，取消静音时换成有声图标 —— 两个类都由 site-enhance.js 维护 */
+.hero-video .hv-i-play,
+.hero-video .hv-i-sound-on {
+  display: none;
+}
+
+.hero-video.is-paused .hv-i-pause {
+  display: none;
+}
+
+.hero-video.is-paused .hv-i-play {
+  display: block;
+}
+
+.hero-video.is-unmuted .hv-i-sound-off {
+  display: none;
+}
+
+.hero-video.is-unmuted .hv-i-sound-on {
+  display: block;
+}
+
+@media (hover: none) {
+  .hv-btn {
+    opacity: 1;
+  }
 }
 
 /* ---------- 数据条 ---------- */
