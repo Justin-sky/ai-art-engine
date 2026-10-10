@@ -242,8 +242,10 @@ function beatLabel(type: string): string {
         >
       </div>
 
-      <section class="stl-layer">
-        <header>{{ t('graph.semanticTimeline.layerStory') }}</header>
+      <section class="stl-layer stl-layer--story">
+        <header class="stl-layer-head">
+          <span class="stl-layer-title">{{ t('graph.semanticTimeline.layerStory') }}</span>
+        </header>
         <div class="stl-row">
           <span class="stl-row-label" aria-hidden="true"></span>
           <div class="stl-track" :style="{ width: widthPx + 'px' }">
@@ -266,8 +268,10 @@ function beatLabel(type: string): string {
         </div>
       </section>
 
-      <section class="stl-layer">
-        <header>{{ t('graph.semanticTimeline.layerEntity') }}</header>
+      <section class="stl-layer stl-layer--entity">
+        <header class="stl-layer-head">
+          <span class="stl-layer-title">{{ t('graph.semanticTimeline.layerEntity') }}</span>
+        </header>
         <div v-for="ent in entities" :key="ent.id" class="stl-row">
           <span class="stl-row-label" :title="ent.name">{{ ent.name }}</span>
           <div class="stl-track" :style="{ width: widthPx + 'px' }">
@@ -287,8 +291,10 @@ function beatLabel(type: string): string {
         </div>
       </section>
 
-      <section class="stl-layer">
-        <header>{{ t('graph.semanticTimeline.layerProduction') }}</header>
+      <section class="stl-layer stl-layer--production">
+        <header class="stl-layer-head">
+          <span class="stl-layer-title">{{ t('graph.semanticTimeline.layerProduction') }}</span>
+        </header>
         <div v-for="track in productionTracks" :key="track.id" class="stl-row">
           <span class="stl-row-label">{{ track.label }}</span>
           <div class="stl-track" :style="{ width: widthPx + 'px' }">
@@ -477,22 +483,50 @@ function beatLabel(type: string): string {
 }
 .stl-layer {
   margin-bottom: 14px;
+  /* 每层的主题色与层内块色一致：剧情=节拍蓝 / 角色=实体青 / 制作=意图橙 */
+  --layer-accent: var(--text-muted);
 }
-.stl-layer > header {
-  /* 层标题同样钉在最左边：横向滚动时跟着跑会让人失去层次感。
-     必须 `width: fit-content`——块级元素撑满内容宽度时没有可滑动的余量，sticky 不会生效。 */
+.stl-layer--story {
+  --layer-accent: #5b6cff;
+}
+.stl-layer--entity {
+  --layer-accent: #2a9d8f;
+}
+.stl-layer--production {
+  --layer-accent: #e76f51;
+}
+/**
+ * 层标题栏：与轨道名**刻意拉开层次**。
+ *
+ * 轨道名是「弱标签」（灰、常规字重、无底），层标题是「章节」：
+ * 全宽背景条 + 上下分割线 + 左侧主题色竖条 + 加粗提亮。
+ * 条子铺满时间轴宽度（横向滚动时像分隔带掠过），里面的文字 sticky 钉在左边不跑。
+ */
+.stl-layer-head {
+  display: flex;
+  align-items: center;
+  margin-bottom: 6px;
+  padding: 3px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+  background: color-mix(in srgb, var(--layer-accent) 9%, var(--bg-panel));
+}
+.stl-layer-title {
+  /* 必须 `width: fit-content`——块级元素撑满内容宽度时没有可滑动的余量，sticky 不会生效。
+     底色与标题栏一致：滚动时文字与条子无缝、轨道从下面穿过也透不出来 */
   position: sticky;
   left: 0;
   z-index: 2;
   width: fit-content;
   max-width: 100%;
-  padding: 0 10px 0 12px;
-  background: var(--bg-panel);
+  padding: 0 12px 0 10px;
+  background: color-mix(in srgb, var(--layer-accent) 9%, var(--bg-panel));
+  box-shadow: inset 3px 0 0 var(--layer-accent);
   font-size: 13px;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-muted);
-  margin-bottom: 5px;
+  letter-spacing: 0.08em;
+  color: var(--text);
 }
 /* 一行 = 左侧固定标签栏 + 右侧时间轴轨道 */
 .stl-row {

@@ -44,7 +44,7 @@ describe('SemanticTimelineEditor 轨道尺寸与字号', () => {
     expect(pxOf('.stl-block', 'font-size')).toBeGreaterThanOrEqual(13)
     expect(pxOf('.stl-row-label', 'font-size')).toBeGreaterThanOrEqual(13)
     expect(pxOf('.stl-tick', 'font-size')).toBeGreaterThanOrEqual(12)
-    expect(pxOf('.stl-layer > header', 'font-size')).toBeGreaterThanOrEqual(13)
+    expect(pxOf('.stl-layer-title', 'font-size')).toBeGreaterThanOrEqual(13)
   })
 
   /**
@@ -80,22 +80,57 @@ describe('SemanticTimelineEditor 轨道尺寸与字号', () => {
   })
 
   /**
-   * 层标题（剧情 / 角色·实体 / 制作）与空态（暂无实体）也要钉在左边。
+   * 层标题（剧情 / 角色·实体 / 制作）与空态钉在左边。
    *
    * 关键点：必须 `width: fit-content` —— 块级元素撑满内容宽度时 sticky 没有可滑动余量，
    * 写了 `position: sticky` 也不生效（这条踩过）。
    */
-  it('层标题与空态同样固定（sticky + 收缩宽度 + 不透明底）', () => {
-    for (const selector of ['.stl-layer > header', '.stl-empty']) {
-      const block = cssBlock(selector)
-      expect(block, `${selector} 缺少样式`).toBeTruthy()
-      expect(block, `${selector} 未 sticky`).toMatch(/position:\s*sticky/)
-      expect(block, `${selector} 未钉左侧`).toMatch(/left:\s*0/)
-      expect(block, `${selector} 未收缩宽度（sticky 会失效）`).toMatch(/width:\s*fit-content/)
-      expect(block, `${selector} 缺不透明底（滚动时内容会透出）`).toMatch(
-        /background:\s*var\(--bg-panel\)/
-      )
+  it('层标题与空态同样固定（sticky + 收缩宽度）', () => {
+    const title = cssBlock('.stl-layer-title')
+    expect(title, '层标题缺少样式').toBeTruthy()
+    expect(title).toMatch(/position:\s*sticky/)
+    expect(title).toMatch(/left:\s*0/)
+    expect(title, '未收缩宽度（sticky 会失效）').toMatch(/width:\s*fit-content/)
+    // 滚动时不透明：底色与标题栏同色，轨道从下面穿过也不透出来
+    expect(title).toMatch(/background:\s*color-mix\(/)
+
+    const empty = cssBlock('.stl-empty')
+    expect(empty, '空态缺少样式').toBeTruthy()
+    expect(empty).toMatch(/position:\s*sticky/)
+    expect(empty).toMatch(/left:\s*0/)
+    expect(empty).toMatch(/width:\s*fit-content/)
+    expect(empty).toMatch(/background:\s*var\(--bg-panel\)/)
+  })
+
+  /**
+   * 层标题要能和轨道名一眼区分：标题=章节（全宽背景条 + 上下分割线 + 主题色竖条 + 加粗提亮），
+   * 轨道名=弱标签（灰、常规字重、无底无边）。
+   */
+  it('层标题栏有独立样式（背景条 + 分割线 + 主题色竖条），与轨道名拉开层次', () => {
+    const head = cssBlock('.stl-layer-head')
+    expect(head, '缺少标题栏样式').toBeTruthy()
+    expect(head, '缺上分割线').toMatch(/border-top:\s*1px solid/)
+    expect(head, '缺下分割线').toMatch(/border-bottom:\s*1px solid/)
+    expect(head, '缺背景条').toMatch(/background:\s*color-mix\(/)
+    // 每层一个主题色，与层内块色一致
+    for (const [modifier, accent] of [
+      ['.stl-layer--story', '#5b6cff'],
+      ['.stl-layer--entity', '#2a9d8f'],
+      ['.stl-layer--production', '#e76f51']
+    ] as const) {
+      const block = cssBlock(modifier)
+      expect(block, `${modifier} 缺主题色`).toContain(accent)
+      expect(block).toMatch(/--layer-accent\s*:/)
     }
+    const title = cssBlock('.stl-layer-title')
+    expect(title, '标题缺主题色竖条').toMatch(/box-shadow:\s*inset 3px 0 0 var\(--layer-accent\)/)
+    expect(title, '标题未加粗').toMatch(/font-weight:\s*600/)
+    expect(title, '标题未提亮（仍与轨道名同色）').toMatch(/color:\s*var\(--text\)/)
+    // 轨道名保持弱化：不加粗、无竖条、无底色
+    const label = cssBlock('.stl-row-label')
+    expect(label).not.toMatch(/font-weight/)
+    expect(label).not.toMatch(/box-shadow/)
+    expect(label).toMatch(/color:\s*var\(--text-muted\)/)
   })
 
   /**
