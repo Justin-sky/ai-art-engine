@@ -49,7 +49,7 @@ function makeDoc(): SemanticTimeline {
 function buildGraph(options: { viaTrigger?: boolean } = {}) {
   // 分析节点用 sourceAssetId 指定来源，就不必再挂一个视频源节点
   const analyze = createNodeFromType(
-    'video.semanticAnalyze',
+    'semantic.analyze',
     { x: 0, y: 0 },
     { params: { sourceAssetId: 'asset-1' } }
   )

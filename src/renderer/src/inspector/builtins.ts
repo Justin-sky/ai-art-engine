@@ -327,7 +327,7 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
   {
     id: 'studio.graph.semanticAnalyze',
     component: SemanticTimelineInspector,
-    nodeTypeId: 'video.semanticAnalyze'
+    nodeTypeId: 'semantic.analyze'
   },
   {
     id: 'studio.graph.semanticTimeline',
@@ -347,12 +347,12 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
   {
     id: 'studio.graph.videoRepair',
     component: SemanticTimelineInspector,
-    nodeTypeId: 'video.repair'
+    nodeTypeId: 'semantic.repair'
   },
   {
     id: 'studio.graph.videoVariant',
     component: SemanticTimelineInspector,
-    nodeTypeId: 'video.variant'
+    nodeTypeId: 'semantic.variant'
   },
   {
     id: 'studio.graph.reshoot',

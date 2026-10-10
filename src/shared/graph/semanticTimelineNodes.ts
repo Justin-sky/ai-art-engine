@@ -53,7 +53,7 @@ const timelineOut = {
 
 export const SEMANTIC_TIMELINE_NODE_TYPES: NodeTypeDefinition[] = [
   {
-    typeId: 'video.semanticAnalyze',
+    typeId: 'semantic.analyze',
     category: 'note',
     label: 'Semantic analyze',
     icon: '🧭',
@@ -155,7 +155,7 @@ export const SEMANTIC_TIMELINE_NODE_TYPES: NodeTypeDefinition[] = [
     execute: executeSemanticCompileNode
   },
   {
-    typeId: 'video.repair',
+    typeId: 'semantic.repair',
     category: 'note',
     label: 'Semantic repair',
     icon: '🔧',
@@ -189,7 +189,7 @@ export const SEMANTIC_TIMELINE_NODE_TYPES: NodeTypeDefinition[] = [
     execute: executeSemanticRepairNode
   },
   {
-    typeId: 'video.variant',
+    typeId: 'semantic.variant',
     category: 'note',
     label: 'Semantic variant',
     icon: '🧬',

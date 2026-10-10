@@ -44,6 +44,11 @@ export function shouldKeepInstructionMentionToken(
   ) {
     if (node.typeId !== 'image.toPrompt') return true
   }
+  // 语义管线里**带媒体产物**的节点：它们的 typeId 从 video.* 改到 semantic.* 后不再被上面的前缀命中，
+  // 这里逐个列出，保持「语义修复 / 语义变体产出媒体 → 保留 @n」不变。
+  // 注意 semantic.analyze 不在此列：它产出的是时间线文档（与 semantic.timeline / trigger / compile 一致），
+  // 保留 @n 没有意义 —— 改名顺带修掉了「它靠 video. 前缀被当媒体」这个隐性错配。
+  if (node.typeId === 'semantic.repair' || node.typeId === 'semantic.variant') return true
   if (
     node.typeId === 'media.bundle' ||
     node.typeId === 'output.image' ||

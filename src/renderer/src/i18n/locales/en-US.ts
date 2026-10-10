@@ -4758,12 +4758,12 @@ export default {
         select: 'Select video',
         lipSync: 'Lip sync',
         framePull: 'Frame pull',
-        reshoot: 'Segment reshoot',
-        semanticAnalyze: 'Semantic analyze',
-        repair: 'Semantic repair',
-        variant: 'Semantic variant'
+        reshoot: 'Segment reshoot'
       },
       semantic: {
+        analyze: 'Semantic analyze',
+        repair: 'Semantic repair',
+        variant: 'Semantic variant',
         timeline: 'Semantic timeline',
         trigger: 'Semantic trigger',
         compile: 'Director compile'

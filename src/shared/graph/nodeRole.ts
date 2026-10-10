@@ -173,9 +173,9 @@ export function isReshootNode(node: Pick<GraphNode, 'typeId'>): boolean {
 }
 
 const SEMANTIC_TIMELINE_TOOL_TYPE_IDS = new Set([
-  'video.semanticAnalyze',
-  'video.repair',
-  'video.variant',
+  'semantic.analyze',
+  'semantic.repair',
+  'semantic.variant',
   'semantic.timeline',
   'semantic.trigger',
   'semantic.compile'

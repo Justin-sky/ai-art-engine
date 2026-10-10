@@ -2789,7 +2789,7 @@ function onPreviewDblClick(): void {
       if (!ok && payload?.json) await openSemanticResultTextDive(title, payload.json)
       return
     }
-    if (props.node.typeId === 'video.semanticAnalyze') {
+    if (props.node.typeId === 'semantic.analyze') {
       const payload = resolveSemanticTimelinePayload(props.node, props.runState)
       if (payload) {
         const ok = await openSemanticTimelineDive(title, payload)

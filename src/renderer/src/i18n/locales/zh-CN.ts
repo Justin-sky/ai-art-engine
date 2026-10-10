@@ -4651,12 +4651,12 @@ export default {
         select: '选取视频',
         lipSync: '对口型',
         framePull: '逐帧拉片',
-        reshoot: '片段重拍',
-        semanticAnalyze: '语义分析',
-        repair: '语义修复',
-        variant: '语义变体'
+        reshoot: '片段重拍'
       },
       semantic: {
+        analyze: '语义分析',
+        repair: '语义修复',
+        variant: '语义变体',
         timeline: '语义时间线',
         trigger: '语义触发',
         compile: '导演编译'

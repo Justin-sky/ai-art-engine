@@ -289,9 +289,9 @@ import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import { graphRunHosts } from '../features/graph/model/graphRunHosts'
 
 const SEMANTIC_TYPE_IDS = new Set([
-  'video.semanticAnalyze',
-  'video.repair',
-  'video.variant',
+  'semantic.analyze',
+  'semantic.repair',
+  'semantic.variant',
   'semantic.timeline',
   'semantic.trigger',
   'semantic.compile'
@@ -321,12 +321,14 @@ const typeId = computed(() => node.value?.typeId ?? '')
 const typeLabel = computed(() => (typeId.value ? graphTypeLabel(typeId.value) : ''))
 const displayTitle = useNodeDisplayTitle(node, typeLabel)
 
-const isAnalyze = computed(() => typeId.value === 'video.semanticAnalyze')
+const isAnalyze = computed(() => typeId.value === 'semantic.analyze')
 const isTimelineHost = computed(() => typeId.value === 'semantic.timeline')
 const isTrigger = computed(() => typeId.value === 'semantic.trigger')
 const isCompile = computed(() => typeId.value === 'semantic.compile')
-const isVariant = computed(() => typeId.value === 'video.variant')
-const isPlan = computed(() => typeId.value === 'video.repair' || typeId.value === 'video.variant')
+const isVariant = computed(() => typeId.value === 'semantic.variant')
+const isPlan = computed(
+  () => typeId.value === 'semantic.repair' || typeId.value === 'semantic.variant'
+)
 const usesRulePacks = computed(() => isTrigger.value || isCompile.value)
 const showTimelineFallback = computed(
   () => isTimelineHost.value || isTrigger.value || isCompile.value || isPlan.value
@@ -334,7 +336,7 @@ const showTimelineFallback = computed(
 
 const hintText = computed(() => {
   switch (typeId.value) {
-    case 'video.semanticAnalyze':
+    case 'semantic.analyze':
       return t('graph.inspector.semantic.analyzeHint')
     case 'semantic.timeline':
       return t('graph.inspector.semantic.timelineHint')
@@ -342,9 +344,9 @@ const hintText = computed(() => {
       return t('graph.inspector.semantic.triggerHint')
     case 'semantic.compile':
       return t('graph.inspector.semantic.compileHint')
-    case 'video.repair':
+    case 'semantic.repair':
       return t('graph.inspector.semantic.repairHint')
-    case 'video.variant':
+    case 'semantic.variant':
       return t('graph.inspector.semantic.variantHint')
     default:
       return ''

@@ -52,9 +52,9 @@ const CANVAS_ADDABLE_NODE_TYPES = [
   'video.framePull',
   'video.reshoot',
   // 视频语义分组
-  'video.semanticAnalyze',
-  'video.repair',
-  'video.variant',
+  'semantic.analyze',
+  'semantic.repair',
+  'semantic.variant',
   'semantic.timeline',
   'semantic.trigger',
   'semantic.compile',

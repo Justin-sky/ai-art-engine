@@ -66,9 +66,9 @@ export function isNodeTextCapable(node: GraphNode): boolean {
   if (node.typeId === 'asset.gamePlay' || node.assetType === 'gamePlay') return false
   // Semantic Timeline 工具：category=note 但产出 JSON 管线，双击应进语义视图 / 结果预览，不是记事本
   if (
-    node.typeId === 'video.semanticAnalyze' ||
-    node.typeId === 'video.repair' ||
-    node.typeId === 'video.variant' ||
+    node.typeId === 'semantic.analyze' ||
+    node.typeId === 'semantic.repair' ||
+    node.typeId === 'semantic.variant' ||
     node.typeId === 'semantic.timeline' ||
     node.typeId === 'semantic.trigger' ||
     node.typeId === 'semantic.compile'

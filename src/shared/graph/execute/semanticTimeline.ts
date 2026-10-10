@@ -356,7 +356,7 @@ async function enrichTimelineWithLlm(
   })
 }
 
-// ─── video.semanticAnalyze ─────────────────────────────────────────────────
+// ─── semantic.analyze ─────────────────────────────────────────────────
 
 /** 无主进程能力时：按参数旁路 JSON 出启发式骨架 */
 function heuristicTimeline(
@@ -646,7 +646,7 @@ export async function executeSemanticTriggerNode(
   return outText(JSON.stringify({ eventLabel, events, commands }, null, 2))
 }
 
-// ─── video.repair / video.variant ──────────────────────────────────────────
+// ─── semantic.repair / semantic.variant ──────────────────────────────────────────
 
 function readEdits(ctx: NodeExecuteContext): SemanticEdit[] {
   const raw = parseJsonParam<unknown>(ctx.node.params?.editsJson, [])
@@ -708,7 +708,7 @@ function shouldExecute(ctx: NodeExecuteContext): boolean {
   return true
 }
 
-/** video.repair：编辑 → 失效计划 → 本地构建成片 */
+/** semantic.repair：编辑 → 失效计划 → 本地构建成片 */
 export async function executeSemanticRepairNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
@@ -737,7 +737,7 @@ export async function executeSemanticRepairNode(
   }
 }
 
-/** video.variant：配方 × 槽位矩阵 → 多个变体成片 */
+/** semantic.variant：配方 × 槽位矩阵 → 多个变体成片 */
 export async function executeSemanticVariantNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {

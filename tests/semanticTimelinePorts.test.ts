@@ -49,7 +49,7 @@ function node(id: string, typeId: string): GraphNode {
 
 describe('语义时间线端口类型', () => {
   it('语义分析节点的出口是语义时间线（不再是 text）', () => {
-    expect(portOf('video.semanticAnalyze', 'out').dataType).toBe(GraphPortType.semanticTimeline)
+    expect(portOf('semantic.analyze', 'out').dataType).toBe(GraphPortType.semanticTimeline)
   })
 
   it('语义时间线节点的进出都是语义时间线（它是透传）', () => {
@@ -62,8 +62,8 @@ describe('语义时间线端口类型', () => {
       'semantic.timeline',
       'semantic.trigger',
       'semantic.compile',
-      'video.repair',
-      'video.variant'
+      'semantic.repair',
+      'semantic.variant'
     ]) {
       expect(portOf(typeId, 'in').dataType, typeId).toBe(GraphPortType.semanticTimeline)
     }
@@ -73,8 +73,8 @@ describe('语义时间线端口类型', () => {
     for (const typeId of [
       'semantic.trigger',
       'semantic.compile',
-      'video.repair',
-      'video.variant'
+      'semantic.repair',
+      'semantic.variant'
     ]) {
       expect(portOf(typeId, 'out').dataType, typeId).toBe(GraphPortType.text)
     }
@@ -92,7 +92,7 @@ describe('语义时间线端口类型', () => {
   })
 
   it('连线校验：分析 → 时间线可以连，随便一个文本节点 → 时间线连不上', () => {
-    const analyze = node('n-analyze', 'video.semanticAnalyze')
+    const analyze = node('n-analyze', 'semantic.analyze')
     const timeline = node('n-timeline', 'semantic.timeline')
     const noteText = node('n-text', 'note.text')
 
@@ -101,7 +101,7 @@ describe('语义时间线端口类型', () => {
   })
 
   it('规范化会剪掉工程里「文本 → 时间线口」的旧连线，合法连线保留', () => {
-    const analyze = node('n-analyze', 'video.semanticAnalyze')
+    const analyze = node('n-analyze', 'semantic.analyze')
     const timeline = node('n-timeline', 'semantic.timeline')
     const noteText = node('n-text', 'note.text')
     const doc: GraphDocument = {
@@ -136,7 +136,7 @@ describe('语义时间线端口类型', () => {
    * 菜单按「直接对口」算：只有真吃时间线的节点才出现。
    */
   it('菜单过滤：从时间线口拖出时，普通文本消费节点不该出现在菜单里', () => {
-    const analyze = node('n-analyze', 'video.semanticAnalyze')
+    const analyze = node('n-analyze', 'semantic.analyze')
     const textConsumer = {
       typeId: 'test.textConsumer',
       ports: [

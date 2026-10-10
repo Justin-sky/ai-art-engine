@@ -221,12 +221,12 @@ describe('semanticTimeline graph nodes', () => {
   it('registers semantic node types', () => {
     ensureBuiltinNodeTypes()
     for (const id of [
-      'video.semanticAnalyze',
+      'semantic.analyze',
       'semantic.timeline',
       'semantic.trigger',
       'semantic.compile',
-      'video.repair',
-      'video.variant'
+      'semantic.repair',
+      'semantic.variant'
     ]) {
       expect(resolveNodeType({ typeId: id } as GraphNode)?.typeId).toBe(id)
     }
@@ -235,7 +235,7 @@ describe('semanticTimeline graph nodes', () => {
   it('executeSemanticAnalyzeNode returns timeline json', async () => {
     const node = {
       id: 'n1',
-      typeId: 'video.semanticAnalyze',
+      typeId: 'semantic.analyze',
       category: 'note',
       title: 'x',
       params: {
@@ -445,7 +445,7 @@ describe('semanticTimeline executors with injected capabilities', () => {
     const saved: SemanticTimeline[] = []
     const node = {
       id: 'n1',
-      typeId: 'video.semanticAnalyze',
+      typeId: 'semantic.analyze',
       title: 'x',
       params: { vocabulary: 'commerce.v1', semanticLlm: true }
     } as unknown as GraphNode
@@ -530,7 +530,7 @@ describe('semanticTimeline executors with injected capabilities', () => {
     const calls: SemanticBuildRequest[] = []
     const node = {
       id: 'r',
-      typeId: 'video.repair',
+      typeId: 'semantic.repair',
       params: { editsJson: JSON.stringify([{ kind: 'dropBeat', beatId: 'beat.demo' }]) }
     } as unknown as GraphNode
     const out = await executeSemanticRepairNode({
@@ -569,7 +569,7 @@ describe('semanticTimeline executors with injected capabilities', () => {
     }
     const node = {
       id: 'v',
-      typeId: 'video.variant',
+      typeId: 'semantic.variant',
       params: {
         recipeId: 'recipe.replace_product.v1',
         recipeSlotsJson: JSON.stringify({ productAssetId: ['p1', 'p2'] })
@@ -595,7 +595,7 @@ describe('semanticTimeline executors with injected capabilities', () => {
     const { doc } = fixtureTimeline()
     const node = {
       id: 'v',
-      typeId: 'video.variant',
+      typeId: 'semantic.variant',
       params: { recipeId: 'recipe.replace_product.v1' }
     } as unknown as GraphNode
     const pack = {

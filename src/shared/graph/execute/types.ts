@@ -240,7 +240,7 @@ export interface GraphVideoValue {
 }
 
 /**
- * 语义时间线文档值（`video.semanticAnalyze` 的出口、`semantic.timeline` 的透传）。
+ * 语义时间线文档值（`semantic.analyze` 的出口、`semantic.timeline` 的透传）。
  *
  * 为什么要**同时**带 `text`：
  * - 端口兼容规则允许 `semanticTimeline → text`（把整份文档喂给 LLM 指令节点或文本消费者），

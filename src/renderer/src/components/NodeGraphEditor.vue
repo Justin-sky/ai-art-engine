@@ -3530,9 +3530,9 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
   {
     id: 'videoSemantic',
     typeIds: [
-      'video.semanticAnalyze',
-      'video.repair',
-      'video.variant',
+      'semantic.analyze',
+      'semantic.repair',
+      'semantic.variant',
       'semantic.timeline',
       'semantic.trigger',
       'semantic.compile'
