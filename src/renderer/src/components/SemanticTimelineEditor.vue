@@ -403,56 +403,61 @@ function intentsForTrack(track: string): DirectorIntent[] {
 }
 .stl-ruler {
   position: relative;
-  height: 20px;
+  height: 26px;
   margin-bottom: 8px;
   border-bottom: 1px solid var(--border);
 }
 .stl-tick {
   position: absolute;
   top: 0;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--text-muted);
   transform: translateX(-50%);
 }
 .stl-layer {
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 .stl-layer > header {
-  font-size: 11px;
+  font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--text-muted);
-  margin-bottom: 4px;
+  margin-bottom: 5px;
 }
 .stl-track {
   position: relative;
-  height: 28px;
-  margin-bottom: 4px;
+  height: 40px;
+  margin-bottom: 6px;
   background: var(--bg-elevated);
-  border-radius: 4px;
+  border-radius: 5px;
 }
 .stl-ent-label {
   position: absolute;
-  left: 4px;
-  top: 6px;
+  left: 6px;
+  top: 50%;
+  transform: translateY(-50%);
   z-index: 2;
-  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  /* 标签压在块上（块从 0s 开始时必然重叠）：给层底片，字号加大后仍读得清 */
+  background: color-mix(in srgb, var(--bg-panel) 72%, transparent);
+  font-size: 13px;
   color: var(--text-muted);
   pointer-events: none;
 }
 .stl-block {
   position: absolute;
-  top: 3px;
-  height: 22px;
+  top: 5px;
+  height: 30px;
   border: none;
-  border-radius: 4px;
-  font-size: 10px;
+  border-radius: 5px;
+  font-size: 13px;
   color: #fff;
   cursor: pointer;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  padding: 0 6px;
+  padding: 0 8px;
   text-align: left;
 }
 .stl-block.beat {
@@ -460,7 +465,7 @@ function intentsForTrack(track: string): DirectorIntent[] {
 }
 .stl-block.entity {
   background: #2a9d8f;
-  min-width: 8px;
+  min-width: 10px;
 }
 .stl-block.entity.soft {
   background: #6c757d;
@@ -476,24 +481,24 @@ function intentsForTrack(track: string): DirectorIntent[] {
   outline: 2px solid var(--text);
 }
 .stl-empty {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-muted);
-  padding: 4px;
+  padding: 6px;
 }
 .stl-inspector {
-  width: 220px;
+  width: 240px;
   flex-shrink: 0;
   border-left: 1px solid var(--border);
   padding: 12px;
-  font-size: 12px;
+  font-size: 13px;
   overflow: auto;
 }
 .stl-inspector h4 {
   margin: 0 0 8px;
-  font-size: 12px;
+  font-size: 13px;
 }
 .stl-inspector .muted {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 </style>
