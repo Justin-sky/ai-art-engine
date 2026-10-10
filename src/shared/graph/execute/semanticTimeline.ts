@@ -142,7 +142,8 @@ async function runSkill(
   ctx: NodeExecuteContext,
   skillId: string,
   prompt: string,
-  images?: string[]
+  images?: string[],
+  onError?: (reason: string) => void
 ): Promise<string | null> {
   // 动态导入：graphSkills → anim2d 等会经 builtins 回到本模块，静态导入会触发循环初始化
   const { getGraphSkill } = await import('../graphSkills')
@@ -165,7 +166,9 @@ async function runSkill(
     })
     return res.text
   } catch (e) {
-    say(ctx, `${skillId} 调用失败：${errorText(e)}`, `${skillId} failed: ${errorText(e)}`, 'warn') // cjk-ok
+    const reason = errorText(e)
+    say(ctx, `${skillId} 调用失败：${reason}`, `${skillId} failed: ${reason}`, 'warn') // cjk-ok
+    onError?.(reason)
     return null
   }
 }
@@ -193,6 +196,17 @@ async function enrichTimelineWithLlm(
   const { doc, shots, utterances, keyframes } = input
   const fps = doc.source.fps
   const shotById = new Map(shots.map((s) => [s.id, s]))
+  /**
+   * 三步富化各自的失败原因（同一步失败只记第一条）。
+   *
+   * 为什么要收集：这一步失败是**静默降级**——节点仍然 `done`、时间线照样有启发式事件，
+   * 用户从结果上看不出「镜头描述/导演意图是空的」。三条分散的 warn 也拼不出「富化整体没
+   * 生效、原因是模型不可用」。这里汇总成一条可执行的提示（含模型/提供商线索）。
+   */
+  const failures: Array<{ skillId: string; reason: string }> = []
+  const trackFailure = (skillId: string) => (reason: string) => {
+    if (!failures.some((f) => f.skillId === skillId)) failures.push({ skillId, reason })
+  }
 
   // 1) 镜头描述
   const describeShots = shots.filter((s) => keyframes[s.id]).slice(0, MAX_DESCRIBE_SHOTS)
@@ -215,7 +229,8 @@ async function enrichTimelineWithLlm(
       ctx,
       'semantic.shotDescribe',
       `Images are in this order (one keyframe per shot):\n${imageShots.map((s, i) => `${i + 1}. ${s.id} ${fmtRange(s.range)}`).join('\n')}`,
-      images
+      images,
+      trackFailure('semantic.shotDescribe')
     )
     for (const d of text ? parseShotDescriptions(text) : []) {
       const shot = shotById.get(d.shotId)
@@ -263,7 +278,13 @@ async function enrichTimelineWithLlm(
     'Use only the ids above as evidence. start/end are seconds.'
   ].join('\n')
   let storyEvents = doc.events
-  const eventText = await runSkill(ctx, 'semantic.eventExtract', evidencePrompt)
+  const eventText = await runSkill(
+    ctx,
+    'semantic.eventExtract',
+    evidencePrompt,
+    undefined,
+    trackFailure('semantic.eventExtract')
+  )
   if (eventText) {
     const drafts = parseEventDrafts(eventText).map((d) => ({
       ...d,
@@ -309,7 +330,9 @@ async function enrichTimelineWithLlm(
           (e) => `- ${e.id} [${e.type}] ${e.label} ${fmtRange(e.timeRange)} ${e.description}`
         ),
         `Allowed tracks: ${[...TRACK_KINDS].join(', ')}. trigger must be an event id above.`
-      ].join('\n')
+      ].join('\n'),
+      undefined,
+      trackFailure('semantic.directorInfer')
     )
     const parsed = intentText
       ? parseJsonArray<{
@@ -342,6 +365,27 @@ async function enrichTimelineWithLlm(
         ...intents.filter((i) => !agentIntents.some((a) => a.id === i.id))
       ]
     }
+  }
+
+  /**
+   * 富化整体失败时给一条**可执行**的汇总提示。
+   *
+   * 这一步失败不会让节点报错（时间线仍有启发式事件/节拍），所以必须把「哪些步没产出、
+   * 大概为什么」讲清楚，否则用户看到的是「跑成功了但镜头描述与导演意图是空的」。
+   * 原因里通常带着模型名与提供商的原始报错（如方舟的「模型未开通」），一并带出来。
+   */
+  if (failures.length > 0) {
+    const steps = failures.map((f) => f.skillId).join(' / ')
+    const reason = failures[0]!.reason
+    say(
+      ctx,
+      `语义富化有 ${failures.length}/3 步没产出（${steps}）：本节点只保留启发式事件与节拍，镜头描述/导演意图可能为空。` + // cjk-ok
+        `常见原因是文本模型不可用（未开通 / Key 失效 / 未勾选）：${reason}` + // cjk-ok
+        '——请在 设置 → 提供商 里换一个可用的文本模型后重跑。', // cjk-ok
+      `Semantic enrichment failed for ${failures.length}/3 step(s) (${steps}): this run keeps heuristic events/beats only, shot descriptions and director intents may be empty. ` +
+        `Usual cause is an unusable text model (not activated / bad key / not selected): ${reason} — pick a working text model in Settings → Providers and re-run.`,
+      'warn'
+    )
   }
 
   return rebuildTracks({

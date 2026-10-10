@@ -6,6 +6,7 @@ import {
 import { semanticTimelineValue } from '../src/shared/graph/execute/semanticTimelineValue'
 import { SEMANTIC_TIMELINE_NODE_TYPES } from '../src/shared/graph/semanticTimelineNodes'
 import { graphValueHasPayload } from '../src/shared/graph/hostInput'
+import { summarizeGraphValueForLog } from '../src/shared/graph/execute/runLog'
 import { SEMANTIC_TIMELINE_SCHEMA } from '../src/shared/semanticTimeline'
 import type { SemanticTimeline } from '../src/shared/semanticTimeline'
 import type { GraphValue, NodeExecuteContext } from '../src/shared/graph/execute/types'
@@ -87,6 +88,103 @@ describe('语义时间线值类型', () => {
         text: ''
       })
     ).toBe(false)
+  })
+
+  it('日志摘要能看懂时间线规模（不再只剩 kind）', () => {
+    const doc = makeDoc('stl.logsnap')
+    doc.events = [
+      {
+        id: 'ev-1',
+        type: 'story',
+        label: '开场',
+        timeRange: { start: 0, end: 1, startFrame: 0, endFrame: 24 },
+        confidence: 0.9,
+        origin: 'analysis',
+        evidence: []
+      }
+    ] as SemanticTimeline['events']
+    doc.evidence.hashes = { shots: '9', utterances: '8', entities: '16', ocr: '0' }
+
+    const snapshot = summarizeGraphValueForLog(semanticTimelineValue(doc))
+    expect(snapshot.kind).toBe('semanticTimeline')
+    expect(snapshot.assetId).toBe('stl.logsnap')
+    expect(snapshot.itemCount).toBe(1) // events
+    expect(snapshot.shotsCount).toBe(9)
+    expect(snapshot.utterancesCount).toBe(8)
+    expect(snapshot.entitiesCount).toBe(16)
+    // 不要把这整份文档塞进日志
+    expect(JSON.stringify(snapshot).length).toBeLessThan(400)
+  })
+
+  /**
+   * 富化整体失败时，必须有一条**能指导下一步**的汇总告警。
+   *
+   * 实测踩过：模型未开通 → 三步全失败 → 节点仍报 done、时间线仍有启发式事件，
+   * 用户从结果上完全看不出「镜头描述与导演意图是空的」，三条分散的 warn 也拼不出结论。
+   */
+  it('三步富化全失败时汇总成一条可执行告警，且仍产出启发式时间线', async () => {
+    const doc = makeDoc('stl.llmfail')
+    doc.events = [
+      {
+        id: 'ev-1',
+        type: 'story',
+        label: '开场',
+        timeRange: { start: 0, end: 1, startFrame: 0, endFrame: 24 },
+        confidence: 0.9,
+        origin: 'analysis',
+        evidence: []
+      }
+    ] as SemanticTimeline['events']
+    const analyzeSemanticVideo = vi.fn(async () => ({
+      timeline: doc,
+      shots: [
+        {
+          id: 'shot.a',
+          range: { start: 0, end: 3, startFrame: 0, endFrame: 72 },
+          keyframes: { middle: 'evidence/keyframes/a.jpg' },
+          confidence: 1
+        }
+      ],
+      utterances: [],
+      keyframes: { 'shot.a': 'evidence/keyframes/a.jpg' },
+      sourceRelativePath: 'Cache/Videos/a.mp4',
+      method: 'scene' as const,
+      notes: []
+    }))
+    const logs: Array<{ text: string; level?: string }> = []
+    const ctx = {
+      node: {
+        id: 'n1',
+        typeId: 'semantic.analyze',
+        category: 'note',
+        position: { x: 0, y: 0 },
+        // semanticLlm 打开才会走三步富化
+        params: { sourceAssetId: 'asset-1', semanticLlm: true }
+      },
+      inputs: {},
+      analyzeSemanticVideo,
+      resolveProjectMediaUrl: async (rel: string) => `file:///${rel}`,
+      generateText: async () => {
+        throw new Error(
+          '文本生成失败: Your account 2102221174 has not activated the model deepseek-v4-1-flash-260910'
+        )
+      },
+      log: (text: string, level?: string) => logs.push({ text, level })
+    } as unknown as NodeExecuteContext
+
+    const out = await executeSemanticAnalyzeNode(ctx)
+    expect((out.out as { kind: string }).kind).toBe('semanticTimeline')
+
+    const warns = logs.filter((l) => l.level === 'warn').map((l) => l.text)
+    const summary = warns.find((t) => t.includes('语义富化有'))
+    expect(summary, '缺少富化失败的汇总告警').toBeTruthy()
+    expect(summary).toContain('3/3')
+    expect(summary).toContain('semantic.shotDescribe')
+    expect(summary).toContain('semantic.eventExtract')
+    expect(summary).toContain('semantic.directorInfer')
+    // 原因要带出来（含模型名），并给出可执行的下一步
+    expect(summary).toContain('deepseek-v4-1-flash-260910')
+    expect(summary).toContain('设置')
   })
 
   it('语义分析节点（有分析能力）产出结构化值，并把 timelineId 写回参数', async () => {

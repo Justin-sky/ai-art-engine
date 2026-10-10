@@ -359,6 +359,34 @@ export function summarizeGraphValueForLog(value: GraphValue): GraphRunLogPortSna
       }
     case 'camera':
       return { kind: 'camera', label: 'camera' }
+    case 'semanticTimeline': {
+      /**
+       * 语义时间线：只摘要「一眼能判断产出是否正常」的量。
+       *
+       * 之前落到 default 分支只剩 `{ kind }`，日志里看不出时间线 id 与规模 ——
+       * 排查「镜头/事件是不是空的」时等于没信息。镜头/话语/实体/OCR 的条数在
+       * `evidence.hashes` 里存的就是计数（不是内容哈希），直接取用。
+       */
+      const doc = value.doc
+      const evidence = doc?.evidence as { hashes?: Record<string, string> } | undefined
+      const count = (key: string): number | undefined => {
+        const raw = evidence?.hashes?.[key]
+        const n = Number(raw)
+        return Number.isFinite(n) ? n : undefined
+      }
+      const numbered: Record<string, number> = {}
+      for (const key of ['shots', 'utterances', 'entities', 'ocr']) {
+        const n = count(key)
+        if (n != null) numbered[`${key}Count`] = n
+      }
+      return {
+        kind: 'semanticTimeline',
+        assetId: doc?.id,
+        label: 'timeline',
+        itemCount: doc?.events.length,
+        ...numbered
+      }
+    }
     default: {
       const kind =
         value && typeof value === 'object' && 'kind' in value
