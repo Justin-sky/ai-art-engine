@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { normalizeScopedGraph } from '../src/shared/graph/normalize'
-import { canConnectNodes, portsCompatible } from '../src/shared/graph/ports'
+import {
+  canConnectNodes,
+  canConnectToNodeType,
+  portsCompatible,
+  portsCompatibleForMenu
+} from '../src/shared/graph/ports'
 import { SEMANTIC_TIMELINE_NODE_TYPES } from '../src/shared/graph/semanticTimelineNodes'
 import { GraphPortType, ensureBuiltinNodeTypes } from '../src/shared/graph'
 import type { GraphDocument, GraphNode } from '../src/shared/graph'
@@ -119,5 +126,66 @@ describe('语义时间线端口类型', () => {
     const ids = out.edges.map((e) => e.id)
     expect(ids).toContain('e-ok')
     expect(ids).not.toContain('e-bad')
+  })
+
+  /**
+   * 回归：从语义时间线拖出去的「添加并连接」菜单**必须被过滤**。
+   *
+   * 值可以被投影成文本（`semanticTimeline → text`，执行期成立），但拿这条兼容去筛菜单，
+   * 会把**所有**带文本入端的节点都列出来（几乎等于没筛）—— 这正是用户报的现象。
+   * 菜单按「直接对口」算：只有真吃时间线的节点才出现。
+   */
+  it('菜单过滤：从时间线口拖出时，普通文本消费节点不该出现在菜单里', () => {
+    const analyze = node('n-analyze', 'video.semanticAnalyze')
+    const textConsumer = {
+      typeId: 'test.textConsumer',
+      ports: [
+        {
+          id: 'in-text',
+          direction: 'in' as const,
+          dataType: GraphPortType.text,
+          multiple: false,
+          label: 'Text'
+        }
+      ]
+    }
+    const timelineConsumerDef = SEMANTIC_TIMELINE_NODE_TYPES.find(
+      (d) => d.typeId === 'semantic.timeline'
+    )!
+
+    expect(
+      canConnectToNodeType(analyze, textConsumer, { dataType: GraphPortType.semanticTimeline })
+    ).toBe(false)
+    expect(
+      canConnectToNodeType(analyze, timelineConsumerDef, {
+        dataType: GraphPortType.semanticTimeline
+      })
+    ).toBe(true)
+  })
+
+  it('菜单口径不含投影兼容，但仍保留既有的 image → svg 窄例外', () => {
+    expect(portsCompatibleForMenu(GraphPortType.semanticTimeline, GraphPortType.text)).toBe(false)
+    expect(
+      portsCompatibleForMenu(GraphPortType.semanticTimeline, GraphPortType.semanticTimeline)
+    ).toBe(true)
+    expect(portsCompatibleForMenu(GraphPortType.image, GraphPortType.svg)).toBe(true)
+    // 执行口径不受影响：投影仍然可用（把文档喂给文本消费者）
+    expect(portsCompatible(GraphPortType.semanticTimeline, GraphPortType.text)).toBe(true)
+  })
+
+  /**
+   * 接线守卫：画布的「添加并连接」菜单必须走菜单口径的那两个入口
+   * （`canConnectToNodeType` / `canConnectFromNodeType`）。若有人改成直接调
+   * `portsCompatible`，菜单会立刻回到「不过滤」，这个用例会先红。
+   */
+  it('画布菜单的过滤确实走菜单口径入口', () => {
+    const editor = readFileSync(
+      resolve(__dirname, '../src/renderer/src/components/NodeGraphEditor.vue'),
+      'utf8'
+    )
+    expect(editor).toContain('canConnectToNodeType(source, def')
+    expect(editor).toContain('canConnectFromNodeType(target, def')
+    // 渲染层不该直接用执行口径的兼容判断
+    expect(editor).not.toContain('portsCompatible(')
   })
 })

@@ -57,6 +57,23 @@ export function portsCompatible(source: GraphPortDataType, target: GraphPortData
   return source === GraphPortType.semanticTimeline && target === GraphPortType.text
 }
 
+/**
+ * **菜单口径**的兼容判断：与 `portsCompatible` 的区别是**不含投影类兼容**
+ * （现在只有 `semanticTimeline → text`）。
+ *
+ * 为什么菜单要更严：值确实能被投影成文本（执行期成立），但拿这条去筛「添加并连接」菜单，
+ * 会把**所有**带文本入端的节点都列出来 —— 几乎等于没筛（实测从语义时间线拖出时，
+ * 菜单里仍是一整片文本消费节点）。同一个数据类型：**菜单发现按「直接对口」算，
+ * 实际连线按 `portsCompatible` 算**（拖到目标端口上仍允许投影，那是用户的明确意图）。
+ */
+export function portsCompatibleForMenu(
+  source: GraphPortDataType,
+  target: GraphPortDataType
+): boolean {
+  if (source === target) return true
+  return source === GraphPortType.image && target === GraphPortType.svg
+}
+
 function resolveVideoFrameMode(raw: unknown): VideoFrameMode {
   if (raw === 'first' || raw === 'first_last' || raw === 'none') return raw
   return 'none'
@@ -396,7 +413,12 @@ function typeDefOutPorts(
   return resolveTypeDefPorts(typeDef, options.typeParams).filter((p) => p.direction === 'out')
 }
 
-/** 某类型定义是否接受给定输出数据类型（用于「从输出端口拖出」的添加菜单） */
+/**
+ * 某类型定义是否接受给定输出数据类型（用于「从输出端口拖出」的添加菜单）。
+ *
+ * 用**菜单口径** `portsCompatibleForMenu`：投影类兼容（时间线 → 文本）在语义上成立，
+ * 但它会让所有文本消费节点都进菜单，等于没筛。束结分支保持原样（束结本就吃多种类型）。
+ */
 export function typeDefAcceptsDataType(
   typeDef: NodeTypeConnectMeta,
   dataType: GraphPortDataType,
@@ -411,12 +433,12 @@ export function typeDefAcceptsDataType(
   const inPorts = typeDefInPorts(typeDef, options)
   if (options.targetPort) {
     const inPort = inPorts.find((p) => p.id === options.targetPort)
-    return !!inPort && portsCompatible(dataType, inPort.dataType)
+    return !!inPort && portsCompatibleForMenu(dataType, inPort.dataType)
   }
-  return inPorts.some((p) => portsCompatible(dataType, p.dataType))
+  return inPorts.some((p) => portsCompatibleForMenu(dataType, p.dataType))
 }
 
-/** 某类型定义是否能产出给定输入数据类型（用于「从输入端口拖出」的添加菜单） */
+/** 某类型定义是否能产出给定输入数据类型（用于「从输入端口拖出」的添加菜单，口径同上） */
 export function typeDefProvidesDataType(
   typeDef: NodeTypeConnectMeta,
   dataType: GraphPortDataType,
@@ -431,9 +453,9 @@ export function typeDefProvidesDataType(
   const outPorts = typeDefOutPorts(typeDef, options)
   if (options.sourcePort) {
     const outPort = outPorts.find((p) => p.id === options.sourcePort)
-    return !!outPort && portsCompatible(outPort.dataType, dataType)
+    return !!outPort && portsCompatibleForMenu(outPort.dataType, dataType)
   }
-  return outPorts.some((p) => portsCompatible(p.dataType, dataType))
+  return outPorts.some((p) => portsCompatibleForMenu(p.dataType, dataType))
 }
 
 /** 判断从 source 拖出的连线能否连到某类新节点（用于输出端口松手后的添加菜单过滤）。 */
