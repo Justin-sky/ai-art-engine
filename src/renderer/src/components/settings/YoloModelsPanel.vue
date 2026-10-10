@@ -86,24 +86,36 @@
       </label>
     </div>
 
-    <!-- 已安装模型 -->
-    <h2>
-      {{ t('settings.yoloModels.installedTitle') }}
-      <span class="count-badge">{{ installedModels.length }}</span>
-    </h2>
-    <p class="hint">
+    <!-- 已安装模型：YOLO / 人脸 / SAM 2.1 -->
+    <h2>{{ t('settings.yoloModels.installedTitle') }}</h2>
+    <div class="model-tabs" role="tablist" :aria-label="t('settings.yoloModels.installedTitle')">
+      <button
+        v-for="tab in modelTabs"
+        :key="tab"
+        type="button"
+        role="tab"
+        class="model-tab"
+        :class="{ active: installedTab === tab }"
+        :aria-selected="installedTab === tab"
+        @click="installedTab = tab"
+      >
+        {{ t(`settings.yoloModels.tab.${tab}`) }}
+        <span class="tab-count">{{ installedCount(tab) }}</span>
+      </button>
+    </div>
+    <p v-if="installedTab === 'yolo'" class="hint">
       {{ t('settings.yoloModels.defaultPickHint') }}
     </p>
-    <p v-if="installedModels.length === 0" class="meta empty">
-      {{ t('settings.yoloModels.installedEmpty') }}
+    <p v-if="visibleInstalled.length === 0" class="meta empty">
+      {{ t(`settings.yoloModels.installedEmpty.${installedTab}`) }}
     </p>
     <ul v-else class="model-list">
-      <li v-for="m in installedModels" :key="m.id">
+      <li v-for="m in visibleInstalled" :key="m.id">
         <span class="model-id">{{ m.id }}</span>
-        <span class="kind-chip">{{ kindLabel(m.kind) }}</span>
+        <span v-if="installedTab !== 'sam2'" class="kind-chip">{{ kindLabel(m.kind) }}</span>
         <span class="meta">{{ m.sizeMb }} MB</span>
         <span
-          v-if="isAutoPick(m)"
+          v-if="installedTab !== 'sam2' && isAutoPick(m)"
           class="auto-chip"
           :title="t('settings.yoloModels.autoPickTitle')"
           >{{ t('settings.yoloModels.autoPick') }}</span
@@ -118,14 +130,23 @@
       </li>
     </ul>
 
-    <!-- 官方可下载目录 -->
-    <h2>
-      {{ t('settings.yoloModels.catalogTitle') }}
-      <span class="count-badge">{{ catalog.length }}</span>
-    </h2>
-    <p class="hint">
-      {{ t('settings.yoloModels.catalogHint') }}
-    </p>
+    <!-- 三种本地下载：YOLO / 人脸 / SAM 2.1 -->
+    <h2>{{ t('settings.yoloModels.catalogTitle') }}</h2>
+    <div class="model-tabs" role="tablist" :aria-label="t('settings.yoloModels.catalogTitle')">
+      <button
+        v-for="tab in modelTabs"
+        :key="`download-${tab}`"
+        type="button"
+        role="tab"
+        class="model-tab"
+        :class="{ active: downloadTab === tab }"
+        :aria-selected="downloadTab === tab"
+        @click="downloadTab = tab"
+      >
+        {{ t(`settings.yoloModels.tab.${tab}`) }}
+        <span class="tab-count">{{ tabCount(tab) }}</span>
+      </button>
+    </div>
 
     <!-- 全局下载进度 -->
     <div v-if="activeProgress" class="progress-card">
@@ -143,31 +164,36 @@
       </div>
     </div>
 
-    <div v-for="kind in YOLO_KIND_ORDER" :key="kind" class="cat-group">
-      <h3>{{ kindLabel(kind) }}</h3>
-      <ul class="model-list catalog-list">
-        <li v-for="model in catalogByKind(kind)" :key="model.id">
-          <span class="model-id">{{ model.id }}</span>
-          <span class="meta size">≈ {{ model.sizeMb }} MB</span>
-          <span v-if="isInstalled(model.id)" class="ok-chip">{{
-            t('settings.yoloModels.installedTag')
-          }}</span>
-          <span v-else-if="downloadingId === model.id" class="ok-chip busy">{{
-            activeProgress?.phase === 'verifying'
-              ? t('settings.yoloModels.verifyingTag')
-              : t('settings.yoloModels.downloadingTag')
-          }}</span>
-          <button
-            v-else
-            type="button"
-            class="download-btn"
-            :disabled="!!downloadingId || loading"
-            @click="startDownload(model)"
-          >
-            {{ t('settings.yoloModels.download') }}
-          </button>
-        </li>
-      </ul>
+    <div v-show="downloadTab === 'yolo'" class="tab-panel">
+      <p class="hint">
+        {{ t('settings.yoloModels.catalogHint') }}
+      </p>
+      <div v-for="kind in YOLO_KIND_ORDER" :key="kind" class="cat-group">
+        <h3>{{ kindLabel(kind) }}</h3>
+        <ul class="model-list catalog-list">
+          <li v-for="model in catalogByKind(kind)" :key="model.id">
+            <span class="model-id">{{ model.id }}</span>
+            <span class="meta size">≈ {{ model.sizeMb }} MB</span>
+            <span v-if="isInstalled(model.id)" class="ok-chip">{{
+              t('settings.yoloModels.installedTag')
+            }}</span>
+            <span v-else-if="downloadingId === model.id" class="ok-chip busy">{{
+              activeProgress?.phase === 'verifying'
+                ? t('settings.yoloModels.verifyingTag')
+                : t('settings.yoloModels.downloadingTag')
+            }}</span>
+            <button
+              v-else
+              type="button"
+              class="download-btn"
+              :disabled="!!downloadingId || loading"
+              @click="startDownload(model)"
+            >
+              {{ t('settings.yoloModels.download') }}
+            </button>
+          </li>
+        </ul>
+      </div>
     </div>
 
     <!--
@@ -175,8 +201,7 @@
       因此不在 Ultralytics 目录里，改由**本仓 GitHub Release**（tag 固定）托管。
       源已配置时与其它模型一样给下载按钮；未配置时只引导手动放置。
     -->
-    <div class="cat-group">
-      <h3>{{ t('settings.yoloModels.kind.face') }}</h3>
+    <div v-show="downloadTab === 'face'" class="tab-panel cat-group">
       <p class="hint">
         {{ t('settings.yoloModels.facePresetHint') }}
       </p>
@@ -212,6 +237,47 @@
       </ul>
     </div>
 
+    <div v-show="downloadTab === 'sam2'" class="tab-panel cat-group">
+      <p class="hint">
+        {{ t('settings.yoloModels.sam2Hint') }}
+      </p>
+      <ul class="model-list catalog-list">
+        <li v-for="model in SAM2_CATALOG" :key="model.id">
+          <span class="model-id">{{ model.id }}</span>
+          <span class="meta size">≈ {{ model.sizeMb }} MB</span>
+          <template v-if="isSam2Installed(model.id)">
+            <span class="ok-chip">{{ t('settings.yoloModels.installedTag') }}</span>
+            <button
+              type="button"
+              class="danger-btn"
+              :disabled="loading"
+              @click="toggleDelete(model.id)"
+            >
+              {{
+                confirmingDelete === model.id
+                  ? t('settings.yoloModels.deleteConfirm')
+                  : t('settings.yoloModels.delete')
+              }}
+            </button>
+          </template>
+          <span v-else-if="downloadingId === model.id" class="ok-chip busy">{{
+            activeProgress?.phase === 'verifying'
+              ? t('settings.yoloModels.verifyingTag')
+              : t('settings.yoloModels.downloadingTag')
+          }}</span>
+          <button
+            v-else
+            type="button"
+            class="download-btn"
+            :disabled="!!downloadingId || loading"
+            @click="startDownload(model)"
+          >
+            {{ t('settings.yoloModels.download') }}
+          </button>
+        </li>
+      </ul>
+    </div>
+
     <p v-if="feedback" class="msg" :class="{ error: feedbackError }">
       {{ feedback }}
     </p>
@@ -221,6 +287,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { YoloSettings } from '@shared/domain'
+import { SAM2_CATALOG } from '@shared/sam2Catalog'
 import { YOLO_KIND_ORDER, yoloFaceCatalogReady } from '@shared/yoloCatalog'
 import {
   type YoloCatalogModel,
@@ -247,6 +314,11 @@ const yolo = defineModel<YoloSettings>('yolo', { required: true })
 
 const { t } = useStudioI18n()
 
+type ModelTab = 'yolo' | 'face' | 'sam2'
+const modelTabs: readonly ModelTab[] = ['yolo', 'face', 'sam2']
+const installedTab = ref<ModelTab>('yolo')
+const downloadTab = ref<ModelTab>('yolo')
+
 const yoloStatus = ref<YoloStatus | null>(null)
 const catalog = ref<YoloCatalogModel[]>([])
 const loading = ref(false)
@@ -262,6 +334,7 @@ let progressClearTimer: ReturnType<typeof setTimeout> | null = null
 const statusReady = computed(() => !!yoloStatus.value?.ready)
 const hasCustomDir = computed(() => !!yolo.value.modelDir?.trim())
 const installedModels = computed<YoloModelInfo[]>(() => yoloStatus.value?.models ?? [])
+const installedSam2 = computed(() => yoloStatus.value?.sam2Models ?? [])
 const downloadingId = computed(() =>
   progress.value && (progress.value.phase === 'downloading' || progress.value.phase === 'verifying')
     ? progress.value.modelId
@@ -307,8 +380,32 @@ function catalogByKind(kind: YoloTaskKind): YoloCatalogModel[] {
   return catalog.value.filter((m) => m.kind === kind)
 }
 
+const installedYolo = computed(() => installedModels.value.filter((model) => model.kind !== 'face'))
+const installedFace = computed(() => installedModels.value.filter((model) => model.kind === 'face'))
+const visibleInstalled = computed(() => {
+  if (installedTab.value === 'sam2') return installedSam2.value
+  if (installedTab.value === 'face') return installedFace.value
+  return installedYolo.value
+})
+
+function installedCount(tab: ModelTab): number {
+  if (tab === 'sam2') return installedSam2.value.length
+  if (tab === 'face') return installedFace.value.length
+  return installedYolo.value.length
+}
+
+function tabCount(tab: ModelTab): number {
+  if (tab === 'sam2') return SAM2_CATALOG.length
+  if (tab === 'face') return catalogByKind('face').length
+  return YOLO_KIND_ORDER.reduce((sum, kind) => sum + catalogByKind(kind).length, 0)
+}
+
 function isInstalled(id: string): boolean {
   return installedModels.value.some((m) => m.id === id)
+}
+
+function isSam2Installed(id: string): boolean {
+  return installedSam2.value.some((m) => m.id === id)
 }
 
 /** 该 kind 当前自动选用（目录中体积最大）的模型 id */
@@ -423,7 +520,7 @@ async function toggleDelete(id: string): Promise<void> {
 }
 
 async function startDownload(model: YoloCatalogModel): Promise<void> {
-  if (downloadingId.value || isInstalled(model.id)) return
+  if (downloadingId.value || isInstalled(model.id) || isSam2Installed(model.id)) return
   progress.value = { modelId: model.id, phase: 'downloading', percent: 0 }
   feedback.value = ''
   loading.value = true
@@ -746,6 +843,56 @@ label {
 .danger-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.model-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--wash-08);
+}
+
+.model-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.model-tab:hover {
+  color: var(--text);
+  background: var(--wash-04);
+}
+
+.model-tab.active {
+  color: var(--text);
+  background: var(--wash-08);
+  border-color: var(--wash-14);
+}
+
+.tab-count {
+  min-width: 16px;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+  background: var(--accent-28);
+  color: var(--text);
+}
+
+.tab-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .cat-group {

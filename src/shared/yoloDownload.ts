@@ -15,7 +15,9 @@ export const YOLO_DOWNLOAD_ALLOWED_HOSTS: readonly string[] = [
   'github.com',
   'objects.githubusercontent.com',
   'release-assets.githubusercontent.com',
-  'codeload.github.com'
+  'codeload.github.com',
+  // SAM 2.1 ONNX（Hugging Face resolve；fetch 会继续跟随 CDN 重定向）
+  'huggingface.co'
 ]
 
 /** 该地址是否允许作为模型下载源 */

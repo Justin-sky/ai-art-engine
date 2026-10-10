@@ -689,7 +689,7 @@ export default {
       enabled: 'Enable local vision',
       dirTitle: 'Model directory',
       dirHint:
-        'Defaults to the app user-data folder; point it at any folder to reuse existing YOLO ONNX models. For each task the largest model in the directory is used automatically.',
+        'Defaults to local-models under the app user-data folder. YOLO weights go in yolo, face weights in face, and SAM 2.1 in sam2. You can point this at another folder; each task uses the largest model in its subfolder.',
       dirLabel: 'Model directory path',
       applyDir: 'Apply',
       chooseDir: 'Browse…',
@@ -700,8 +700,11 @@ export default {
       confLabel: 'Detection confidence',
       iouLabel: 'NMS IoU',
       installedTitle: 'Installed models',
-      installedEmpty:
-        'No models yet. Drop yolo11*.onnx files into the model directory or download larger variants below.',
+      installedEmpty: {
+        yolo: 'No YOLO models yet. Drop yolo11*.onnx files into local-models/yolo, or download from the YOLO tab below.',
+        face: 'No face models yet. The bundled copies land in local-models/face, or download them from the Face tab below.',
+        sam2: 'No SAM 2.1 weights yet. Download them from the SAM 2.1 tab below.'
+      },
       defaultPickHint:
         'The largest model per task is picked automatically, so downloading a bigger variant makes it the default right away.',
       autoPick: 'Auto-selected',
@@ -709,6 +712,11 @@ export default {
       delete: 'Delete',
       deleteConfirm: 'Click again to confirm',
       catalogTitle: 'Downloadable models',
+      tab: {
+        yolo: 'YOLO',
+        face: 'Face',
+        sam2: 'SAM 2.1'
+      },
       catalogHint:
         'Official fp32 ONNX exports from Ultralytics (ultralytics/assets v8.4.0), produced by the same export pipeline as the bundled models. s = lightweight, m = balanced, l/x = high accuracy (x ≈ 230–250 MB; latency and memory grow with size).',
       installedTag: 'Installed',
@@ -723,13 +731,16 @@ export default {
         face: 'Face landmarks'
       },
       facePresetHint:
-        'Face landmarks use a two-stage pipeline: a detector finds faces plus the keypoints used for alignment, and FaceMesh produces the 468 points. Both models come from a different upstream (not the Ultralytics naming scheme) which has no permanently fixed URL, so they are **bundled with the installer** (fetched from this repository\u2019s Release at build time and copied into the model directory on first launch) and work offline out of the box. If either file is missing, the 7 face-dependent tool groups (heal / skin / tone / face / eyes / makeup / lighting) are greyed out and skipped in the prompt, and the local-scope face mask loses that part (manual region boxes still work).',
+        'Face landmarks use a two-stage pipeline: a detector finds faces plus the keypoints used for alignment, and FaceMesh produces the 468 points. Both models come from a different upstream (not the Ultralytics naming scheme) which has no permanently fixed URL, so they ship inside the installer (fetched from this repository\u2019s Release at build time and copied into local-models/face on first launch) and work offline out of the box. If either file is missing, the 7 face-dependent tool groups (heal / skin / tone / face / eyes / makeup / lighting) are greyed out and skipped in the prompt, and the local-scope face mask loses that part (manual region boxes still work).',
       faceSourceMissing:
-        'This build has no source configured for the face models (YOLO_FACE_CATALOG_BASE_URL in @shared/yoloCatalog): drop the two .onnx files into the model directory, or set the source and rebuild.',
+        'This build has no source configured for the face models (YOLO_FACE_CATALOG_BASE_URL in @shared/yoloCatalog): drop the two .onnx files into local-models/face, or set the source and rebuild.',
       faceSourcePending:
         'Both models ship inside the app (npm run fetch:yolo-models pulls them from this repository\u2019s Release at build time); if the bundled copy was deleted, the download button fetches it again.',
       facePresetNote: 'Conventional file name',
-      facePresetMissing: 'Not placed yet'
+      facePresetMissing: 'Not placed yet',
+      sam2Title: 'SAM 2.1',
+      sam2Hint:
+        'SAM 2.1 weights that onnxruntime can load (Apache-2.0). Each size downloads one archive and extracts an image encoder plus a mask decoder into local-models/sam2, for point or box segmentation of a still frame. YOLO detection keeps using the models in the yolo subfolder. Tiny is about 111 MB; large is about 768 MB.'
     },
     objectStorage: {
       hint: 'Configure object storage for media upload and public access. Supports Volcengine TOS, Alibaba Cloud OSS, Tencent Cloud COS, and Amazon S3–compatible services.',

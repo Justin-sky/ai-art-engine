@@ -679,7 +679,7 @@ export default {
       enabled: '启用本地视觉',
       dirTitle: '模型目录',
       dirHint:
-        '默认位于应用用户数据目录；可改为任意文件夹以复用已有的 YOLO ONNX 模型（识别时按任务自动选用目录中体积最大的模型）。',
+        '默认是用户数据目录下的 local-models。YOLO 在 yolo，人脸在 face，SAM 2.1 在 sam2。也可改成其它文件夹；识别时按任务自动选用对应子目录里体积最大的模型。',
       dirLabel: '模型目录路径',
       applyDir: '应用',
       chooseDir: '选择目录…',
@@ -690,13 +690,22 @@ export default {
       confLabel: '检测置信度阈值',
       iouLabel: 'NMS IoU 阈值',
       installedTitle: '已安装模型',
-      installedEmpty: '暂无模型。可将 yolo11*.onnx 放入模型目录，或在下方下载更大档位。',
+      installedEmpty: {
+        yolo: '暂无 YOLO 模型。可将 yolo11*.onnx 放入 local-models/yolo，或在下方 YOLO 页签下载。',
+        face: '暂无人脸模型。随包副本会放进 local-models/face，也可在下方人脸页签下载。',
+        sam2: '暂无 SAM 2.1。在下方 SAM 2.1 页签下载。'
+      },
       defaultPickHint: '同一任务自动选用目录中体积最大的模型（下载更大的档位后会立即成为默认）。',
       autoPick: '当前自动选用',
       autoPickTitle: '该任务默认将使用此模型',
       delete: '删除',
       deleteConfirm: '再点一次确认删除',
       catalogTitle: '可下载模型',
+      tab: {
+        yolo: 'YOLO',
+        face: '人脸',
+        sam2: 'SAM 2.1'
+      },
       catalogHint:
         '由 Ultralytics 官方发布（ultralytics/assets v8.4.0 的 fp32 ONNX），与内置模型同一导出管线，下载后即可本地推理。s 轻量、m 均衡、l/x 高精度（x 约 230–250 MB，推理耗时与内存占用随档位显著增加）。',
       installedTag: '已安装',
@@ -711,13 +720,16 @@ export default {
         face: '人脸关键点'
       },
       facePresetHint:
-        '人脸关键点是两段式管线：检测器负责找人脸与对齐用的关键点，FaceMesh 负责 468 点。这两个模型来自另一套上游（非 Ultralytics 命名），没有可长期固定的直链，因此**随安装包内置**（构建期从本仓 Release 拉取，首次启动自动放进模型目录），开箱即用、无需联网下载。两个文件缺一，依赖人脸的 7 个工具组（修复 / 磨皮 / 肤色 / 五官 / 眼睛 / 妆容 / 光影）会置灰且整组不进提示词，局部回贴的脸部蒙版也会缺一块（手动区域框仍然可用）。',
+        '人脸关键点是两段式管线：检测器负责找人脸与对齐用的关键点，FaceMesh 负责 468 点。这两个模型来自另一套上游（非 Ultralytics 命名），没有可长期固定的直链，因此随安装包内置（构建期从本仓 Release 拉取，首次启动自动放进 local-models/face），开箱即用、无需联网下载。两个文件缺一，依赖人脸的 7 个工具组（修复 / 磨皮 / 肤色 / 五官 / 眼睛 / 妆容 / 光影）会置灰且整组不进提示词，局部回贴的脸部蒙版也会缺一块（手动区域框仍然可用）。',
       faceSourceMissing:
-        '当前构建没有配置人脸模型的来源（@shared/yoloCatalog 的 YOLO_FACE_CATALOG_BASE_URL 为空）：请把两个 .onnx 按约定名放进模型目录，或补上源地址后重新打包。',
+        '当前构建没有配置人脸模型的来源（@shared/yoloCatalog 的 YOLO_FACE_CATALOG_BASE_URL 为空）：请把两个 .onnx 按约定名放进 local-models/face，或补上源地址后重新打包。',
       faceSourcePending:
         '这两个模型随包内置（构建期 `npm run fetch:yolo-models` 会从本仓 Release 拉取并一起打包）；如果内置副本被删掉，也可以点下载重新取回。',
       facePresetNote: '约定文件名',
-      facePresetMissing: '待放置'
+      facePresetMissing: '待放置',
+      sam2Title: 'SAM 2.1',
+      sam2Hint:
+        '可被 onnxruntime 加载的 SAM 2.1 权重（Apache-2.0）。每个档位下载一个压缩包，解压为图像编码器和掩码解码器两个 ONNX，保存在 local-models/sam2，供按点或框分割单帧使用。YOLO 检测继续使用 yolo 子目录里的模型。tiny 约 111 MB，large 约 768 MB。'
     },
     objectStorage: {
       hint: '配置对象存储后可用于媒体上传与公网访问。支持火山引擎 TOS、阿里云 OSS、腾讯云 COS，以及兼容 Amazon S3 的服务。',

@@ -161,6 +161,8 @@ export interface YoloStatus {
   backend: YoloBackend
   modelDir: string
   models: YoloModelInfo[]
+  /** 已下载的 SAM 2.1 ONNX（local-models/sam2 下的 encoder + decoder，不参与 YOLO 推理） */
+  sam2Models?: YoloModelInfo[]
   /** 未就绪原因（进程崩溃 / ort 缺失 / 无模型等） */
   error?: string
 }

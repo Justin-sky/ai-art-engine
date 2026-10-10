@@ -21,10 +21,13 @@ import { mkdir, rename, stat, unlink } from 'fs/promises'
 import { join } from 'path'
 import { IpcChannels } from '@shared/ipc'
 import type { YoloModelDownloadProgress, YoloModelOperationResult } from '@shared/yolo'
+import { FACE_MODEL_SUBDIR, YOLO_MODEL_SUBDIR } from '@shared/localModelLayout'
+import { findSam2CatalogModel, SAM2_SUBDIR, sam2OnnxFileNames } from '@shared/sam2Catalog'
 import { YOLO_CATALOG_ALL } from '@shared/yoloCatalog'
 import { isAllowedYoloDownloadUrl } from '@shared/yoloDownload'
 import { broadcastToAllWindows } from '../broadcast'
 import { settingsService } from '../services/settingsService'
+import { extractSam2OnnxPair } from './sam2Unzip'
 import { yoloService } from './yoloService'
 
 /** 进行中的下载模型 id；null = 空闲 */
@@ -70,7 +73,8 @@ export async function downloadYoloModel(
   modelId: string,
   sourceUrl?: string
 ): Promise<YoloModelOperationResult> {
-  const entry = YOLO_CATALOG_ALL.find((m) => m.id === modelId)
+  const sam2 = findSam2CatalogModel(modelId)
+  const entry = sam2 ?? YOLO_CATALOG_ALL.find((m) => m.id === modelId)
   if (!entry) return fail(`模型目录中不存在 ${modelId}。`) // cjk-ok 透传 UI
   const url = sourceUrl?.trim() || entry.url
   if (!isAllowedYoloDownloadUrl(url)) {
@@ -80,10 +84,11 @@ export async function downloadYoloModel(
     return fail(`已有模型正在下载（${activeModelId}），请先完成或取消后再试。`) // cjk-ok
   }
 
-  const dir = yoloService.modelDir()
+  const dir = join(yoloService.modelDir(), storageSubdir(Boolean(sam2), entry.kind))
   const destPath = join(dir, entry.fileName)
-  if (existsSync(destPath)) {
-    return fail(`模型 ${entry.fileName} 已存在，可直接使用；如需重新下载请先删除。`) // cjk-ok
+  if (sam2 ? sam2PairReady(dir, modelId) : existsSync(destPath)) {
+    const label = sam2 ? modelId : entry.fileName
+    return fail(`模型 ${label} 已存在，可直接使用；如需重新下载请先删除。`) // cjk-ok
   }
 
   const partPath = join(dir, `${entry.fileName}.part`)
@@ -176,9 +181,17 @@ export async function downloadYoloModel(
       }
     }
 
-    await rename(partPath, destPath)
+    if (sam2) {
+      await extractSam2OnnxPair(partPath, dir, modelId)
+    } else {
+      await rename(partPath, destPath)
+    }
     broadcastProgress({ modelId, phase: 'done' })
-    return { ok: true, message: `模型 ${entry.fileName} 下载完成，本地推理可直接使用。` } // cjk-ok
+    const readyNote = sam2
+      ? `encoder 与 decoder 已保存到 ${SAM2_SUBDIR} 文件夹。` // cjk-ok 透传 UI
+      : `已保存到 ${storageSubdir(false, entry.kind)} 文件夹，本地推理可直接使用。` // cjk-ok 透传 UI
+    const label = sam2 ? modelId : entry.fileName
+    return { ok: true, message: `模型 ${label} 下载完成，${readyNote}` } // cjk-ok
   } catch (err) {
     if (controller.signal.aborted) {
       broadcastProgress({ modelId, phase: 'cancelled', message: '下载已取消' }) // cjk-ok
@@ -207,16 +220,40 @@ export async function deleteYoloModel(modelId: string): Promise<YoloModelOperati
   if (activeModelId === modelId) {
     return fail('该模型正在下载中，无法删除。') // cjk-ok
   }
-  const fileName = `${modelId}.onnx`
-  const dir = yoloService.modelDir()
-  const target = join(dir, fileName)
-  if (!existsSync(target)) return fail(`模型 ${fileName} 不存在于当前模型目录。`) // cjk-ok
+  const sam2 = findSam2CatalogModel(modelId)
+  const catalog = sam2 ?? YOLO_CATALOG_ALL.find((model) => model.id === modelId)
+  const dir = join(yoloService.modelDir(), storageSubdir(Boolean(sam2), catalog?.kind))
+  const targets = sam2
+    ? [sam2OnnxFileNames(modelId).encoder, sam2OnnxFileNames(modelId).decoder].map((name) =>
+        join(dir, name)
+      )
+    : [join(dir, `${modelId}.onnx`)]
+  const present = targets.filter((path) => existsSync(path))
+  if (present.length === 0) {
+    const label = sam2 ? modelId : `${modelId}.onnx`
+    return fail(`模型 ${label} 不存在于当前模型目录。`) // cjk-ok
+  }
   try {
-    await unlink(target)
+    for (const path of present) await unlink(path)
   } catch (err) {
     return fail(`删除失败（文件可能正被占用）：${errDetail(err)}`) // cjk-ok
   }
-  return { ok: true, message: `已删除模型 ${fileName}，其它任务会自动改用剩余模型中体积最大者。` } // cjk-ok
+  const label = sam2 ? modelId : `${modelId}.onnx`
+  const note = sam2
+    ? `SAM 2.1 的 encoder 与 decoder 已从 ${SAM2_SUBDIR} 文件夹移除。` // cjk-ok 透传 UI
+    : '其它任务会自动改用剩余模型中体积最大者。' // cjk-ok 透传 UI
+  return { ok: true, message: `已删除模型 ${label}，${note}` } // cjk-ok
+}
+
+function sam2PairReady(dir: string, modelId: string): boolean {
+  const names = sam2OnnxFileNames(modelId)
+  return existsSync(join(dir, names.encoder)) && existsSync(join(dir, names.decoder))
+}
+
+function storageSubdir(sam2: boolean, kind?: string): string {
+  if (sam2) return SAM2_SUBDIR
+  if (kind === 'face') return FACE_MODEL_SUBDIR
+  return YOLO_MODEL_SUBDIR
 }
 
 /**

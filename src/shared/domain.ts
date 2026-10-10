@@ -480,7 +480,7 @@ export interface YoloSettings {
   enabled: boolean
   /** 推理后端；'cpu' 开箱即用（'dml' 需另装 onnxruntime-directml） */
   backend: 'cpu'
-  /** 模型目录；空 = 缺省 <userData>/yolo-models */
+  /** 模型目录；空 = 缺省 <userData>/local-models（其下 yolo / face / sam2） */
   modelDir: string
   /** 默认置信度阈值 */
   confThreshold: number

@@ -1,7 +1,7 @@
 /**
  * YOLO 本地视觉服务（主进程）：
  * - 管理推理子进程（utilityProcess）生命周期：懒启动 / 请求路由 / 崩溃标记 / 退出清理；
- * - 扫描模型目录（默认 <userData>/yolo-models，可被设置覆盖）并按任务类型选模型；
+ * - 扫描模型目录（默认 <userData>/local-models，可被设置覆盖）并按任务类型选模型；
  * - 把渲染层的相对路径输入解析为绝对路径后再下发 worker。
  */
 import { app, shell, utilityProcess, type UtilityProcess } from 'electron'
@@ -28,6 +28,13 @@ import {
   type YoloStatus,
   type YoloTaskKind
 } from '@shared/yolo'
+import {
+  FACE_MODEL_SUBDIR,
+  LOCAL_MODELS_DIR_NAME,
+  YOLO_MODEL_SUBDIR
+} from '@shared/localModelLayout'
+import { SAM2_CATALOG, SAM2_SUBDIR, sam2OnnxFileNames } from '@shared/sam2Catalog'
+import { migrateLocalModelLayout } from './localModelMigrate'
 import {
   faceModelAliases,
   pickFaceModel,
@@ -58,11 +65,11 @@ class YoloService {
   private spawning: Promise<void> | null = null
   private bundledSynced = false
 
-  /** 模型目录：优先用户自定义，缺省 userData/yolo-models */
+  /** 模型目录：优先用户自定义，缺省 userData/local-models */
   modelDir(): string {
     const custom = settingsService.get().yolo?.modelDir?.trim()
     if (custom) return custom
-    return join(app.getPath('userData'), 'yolo-models')
+    return join(app.getPath('userData'), LOCAL_MODELS_DIR_NAME)
   }
 
   // ── 对外 IPC 入口 ──────────────────────────────────────────────
@@ -70,7 +77,13 @@ class YoloService {
   async status(): Promise<YoloStatus> {
     this.ensureBundledModels()
     const models = this.scanModels()
-    const base: YoloStatus = { ready: false, backend: 'cpu', modelDir: this.modelDir(), models }
+    const base: YoloStatus = {
+      ready: false,
+      backend: 'cpu',
+      modelDir: this.modelDir(),
+      models,
+      sam2Models: this.scanSam2Models()
+    }
     if (this.crashed) {
       return { ...base, error: 'YOLO: inference process crashed; restart the app to retry' }
     }
@@ -149,7 +162,7 @@ class YoloService {
       .join(' or ')
     const found = pick.available.length ? `; face models found: ${pick.available.join(', ')}` : ''
     throw new Error(
-      `YOLO: face "${role}" model not found in ${this.modelDir()}; expected ${expected}${found} ` +
+      `YOLO: face "${role}" model not found in ${join(this.modelDir(), FACE_MODEL_SUBDIR)}; expected ${expected}${found} ` +
         '(place the ONNX file there or change the dir in settings)'
     )
   }
@@ -191,7 +204,7 @@ class YoloService {
     const models = this.scanModels()
     if (models.length === 0) {
       throw new Error(
-        `YOLO: no .onnx model found in ${this.modelDir()}; place a YOLO ONNX model there (or configure the dir in settings)`
+        `YOLO: no .onnx model found in ${join(this.modelDir(), YOLO_MODEL_SUBDIR)}; place a YOLO ONNX model there (or configure the dir in settings)`
       )
     }
     if (modelId) {
@@ -318,49 +331,60 @@ class YoloService {
    * 内置模型源目录（可能多个）：打包后 `<resourcesPath>/<name>`；开发期 `项目/resources/<name>`。
    *
    * 两个目录分开只是为了「体积与许可口径不同、可以各自替换」：
-   * - `yolo-models`：Ultralytics 的 yolo11n 系（detect / segment / pose）；
-   * - `face-models`：人脸两段式（face-detect / face-landmark），来自另一套上游。
+   * - `yolo-models`：Ultralytics 的 yolo11n 系（detect / segment / pose）→ `yolo/`；
+   * - `face-models`：人脸两段式（face-detect / face-landmark）→ `face/`。
    *
    * 五份 .onnx 都已随仓库提交（构建零下载），`npm run fetch:yolo-models` 只是缺文件时的
-   * 恢复路径。两份目录都会在首次启动时按文件名落进模型目录，扫描逻辑完全一致。
+   * 恢复路径。两份目录都会在首次启动时按文件名落进对应子目录。
    */
-  private bundledModelDirs(): string[] {
-    const names = ['yolo-models', 'face-models']
-    const dirs: string[] = []
-    for (const name of names) {
+  private bundledSources(): Array<{ dir: string; subdir: string }> {
+    const bundles = [
+      { name: 'yolo-models', subdir: YOLO_MODEL_SUBDIR },
+      { name: 'face-models', subdir: FACE_MODEL_SUBDIR }
+    ]
+    const sources: Array<{ dir: string; subdir: string }> = []
+    for (const bundle of bundles) {
       const dir = app.isPackaged
-        ? join(process.resourcesPath, name)
-        : join(app.getAppPath(), 'resources', name)
-      if (existsSync(dir)) dirs.push(dir)
+        ? join(process.resourcesPath, bundle.name)
+        : join(app.getAppPath(), 'resources', bundle.name)
+      if (existsSync(dir)) sources.push({ dir, subdir: bundle.subdir })
     }
-    return dirs
+    return sources
   }
 
   /**
-   * 把随包内置模型落到模型目录（进程内仅执行一次）：
-   * - 内置但模型目录缺失的模型会被安装；
+   * 把随包内置模型落到对应子目录（进程内仅执行一次）：
+   * - 先把旧的平面目录收进 yolo / face / sam2；
+   * - 内置但子目录缺失的模型会被安装；
    * - 清单中已记录过的模型不再重复落地，用户主动删除后不会被"复活"。
    */
   private ensureBundledModels(): void {
     if (this.bundledSynced) return
     this.bundledSynced = true
-    const sources = this.bundledModelDirs()
-    if (!sources.length) return
     const target = this.modelDir()
+    try {
+      migrateLocalModelLayout(app.getPath('userData'), target)
+    } catch (err) {
+      console.error('[yolo] failed to migrate model layout:', err)
+    }
+    const sources = this.bundledSources()
+    if (!sources.length) return
     if (!existsSync(target)) mkdirSync(target, { recursive: true })
     const manifest = this.readManifest(target)
     let changed = false
     for (const src of sources) {
-      for (const file of readdirSync(src)) {
+      const destDir = join(target, src.subdir)
+      if (!existsSync(destDir)) mkdirSync(destDir, { recursive: true })
+      for (const file of readdirSync(src.dir)) {
         if (!file.toLowerCase().endsWith('.onnx') || manifest.includes(file)) continue
-        const dest = join(target, file)
+        const dest = join(destDir, file)
         if (existsSync(dest)) {
           manifest.push(file)
           changed = true
           continue
         }
         try {
-          copyFileSync(join(src, file), dest)
+          copyFileSync(join(src.dir, file), dest)
           manifest.push(file)
           changed = true
           console.log(`[yolo] installed bundled model: ${file}`)
@@ -392,7 +416,14 @@ class YoloService {
   // ── 模型目录扫描 ───────────────────────────────────────────────
 
   private scanModels(): YoloModelInfo[] {
-    const dir = this.modelDir()
+    const files = [
+      ...this.scanOnnxDir(join(this.modelDir(), YOLO_MODEL_SUBDIR)),
+      ...this.scanOnnxDir(join(this.modelDir(), FACE_MODEL_SUBDIR))
+    ]
+    return files.sort((a, b) => a.id.localeCompare(b.id))
+  }
+
+  private scanOnnxDir(dir: string): YoloModelInfo[] {
     if (!existsSync(dir)) return []
     const files: YoloModelInfo[] = []
     for (const name of readdirSync(dir)) {
@@ -405,6 +436,28 @@ class YoloService {
         /* ignore stat errors */
       }
       files.push({ id, kind: kindOfModelId(id), path: join(dir, name), sizeMb })
+    }
+    return files
+  }
+
+  /** SAM 2.1：encoder 与 decoder 都在 `<模型目录>/sam2/` 时才算已安装，不进入 YOLO 自动选型。 */
+  private scanSam2Models(): YoloModelInfo[] {
+    const dir = join(this.modelDir(), SAM2_SUBDIR)
+    if (!existsSync(dir)) return []
+    const files: YoloModelInfo[] = []
+    for (const model of SAM2_CATALOG) {
+      const names = sam2OnnxFileNames(model.id)
+      const encoder = join(dir, names.encoder)
+      const decoder = join(dir, names.decoder)
+      if (!existsSync(encoder) || !existsSync(decoder)) continue
+      let sizeMb = 0
+      try {
+        const bytes = statSync(encoder).size + statSync(decoder).size
+        sizeMb = Math.max(1, Math.round(bytes / 1024 / 1024))
+      } catch {
+        /* ignore stat errors */
+      }
+      files.push({ id: model.id, kind: 'segment', path: encoder, sizeMb })
     }
     return files.sort((a, b) => a.id.localeCompare(b.id))
   }
