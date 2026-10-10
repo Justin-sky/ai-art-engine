@@ -46,6 +46,6 @@ export function buildAudioStems(options: {
     vocals: options.vocalsRel ?? null,
     accompaniment: options.accompanimentRel ?? null,
     separated,
-    note: options.note ?? (separated ? undefined : '人声未分离或分离失败，保留混合原声')
+    note: options.note ?? (separated ? undefined : '人声未分离或分离失败，保留混合原声') // cjk-ok
   }
 }

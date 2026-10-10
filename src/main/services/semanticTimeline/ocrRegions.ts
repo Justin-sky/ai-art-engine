@@ -65,8 +65,8 @@ export function draftsToOcrRegions(drafts: VlmOcrDraft[], fps: number): OcrRegio
 }
 
 function inferKind(text: string): OcrRegion['kind'] {
-  if (/[¥$€]|元|块|折|价/.test(text)) return 'price'
-  if (/logo|品牌/i.test(text)) return 'logo'
+  if (/[¥$€]|元|块|折|价/.test(text)) return 'price' // cjk-ok
+  if (/logo|品牌/i.test(text)) return 'logo' // cjk-ok
   return 'other'
 }
 
@@ -96,4 +96,4 @@ export function heuristicOcrFromUtterances(
 
 /** 供 GraphSkill / 节点使用的 OCR 系统提示片段 */
 export const OCR_VLM_INSTRUCTION =
-  '从关键帧宫格识别画面文字，输出 JSON 数组：[{text,kind,shotId,start,end,box:{x,y,w,h},confidence}]。kind 取 product_name|price|caption|logo|other。只输出 JSON。'
+  '从关键帧宫格识别画面文字，输出 JSON 数组：[{text,kind,shotId,start,end,box:{x,y,w,h},confidence}]。kind 取 product_name|price|caption|logo|other。只输出 JSON。' // cjk-ok

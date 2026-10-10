@@ -94,7 +94,7 @@ async function loadPacks(ctx: NodeExecuteContext): Promise<SemanticPack[]> {
   } catch (e) {
     say(
       ctx,
-      `读取语义市场包失败：${errorText(e)}`,
+      `读取语义市场包失败：${errorText(e)}`, // cjk-ok
       `Failed to list semantic packs: ${errorText(e)}`,
       'warn'
     )
@@ -163,7 +163,7 @@ async function runSkill(
     })
     return res.text
   } catch (e) {
-    say(ctx, `${skillId} 调用失败：${errorText(e)}`, `${skillId} failed: ${errorText(e)}`, 'warn')
+    say(ctx, `${skillId} 调用失败：${errorText(e)}`, `${skillId} failed: ${errorText(e)}`, 'warn') // cjk-ok
     return null
   }
 }
@@ -208,7 +208,7 @@ async function enrichTimelineWithLlm(
   const descriptions = new Map<string, string>()
   const cameraDrafts: RawEventDraft[] = []
   if (images.length > 0) {
-    say(ctx, `镜头描述：${images.length} 个关键帧`, `Shot describe: ${images.length} keyframes`)
+    say(ctx, `镜头描述：${images.length} 个关键帧`, `Shot describe: ${images.length} keyframes`) // cjk-ok
     const text = await runSkill(
       ctx,
       'semantic.shotDescribe',
@@ -272,13 +272,13 @@ async function enrichTimelineWithLlm(
       storyEvents = extracted
       say(
         ctx,
-        `事件抽取：${extracted.length} 个有证据事件`,
+        `事件抽取：${extracted.length} 个有证据事件`, // cjk-ok
         `Event extract: ${extracted.length} evidenced events`
       )
     } else {
       say(
         ctx,
-        '事件抽取没有返回带证据的事件，保留启发式结果',
+        '事件抽取没有返回带证据的事件，保留启发式结果', // cjk-ok
         'Event extract returned no evidenced events; kept heuristics',
         'warn'
       )
@@ -413,7 +413,7 @@ export async function executeSemanticAnalyzeNode(
   if (ctx.analyzeSemanticVideo && (assetId || relativePath)) {
     say(
       ctx,
-      '语义分析：切镜 / 关键帧 / 转写 / 人声 / 实体…',
+      '语义分析：切镜 / 关键帧 / 转写 / 人声 / 实体…', // cjk-ok
       'Semantic analyze: shots / keyframes / transcript / stems / entities…'
     )
     const res = await ctx.analyzeSemanticVideo({
@@ -427,7 +427,7 @@ export async function executeSemanticAnalyzeNode(
     for (const note of res.notes) ctx.log?.(note, 'warn')
     say(
       ctx,
-      `镜头 ${res.shots.length}（${res.method}）· 话语 ${res.utterances.length} · 实体 ${res.timeline.entities.length}`,
+      `镜头 ${res.shots.length}（${res.method}）· 话语 ${res.utterances.length} · 实体 ${res.timeline.entities.length}`, // cjk-ok
       `${res.shots.length} shots (${res.method}) · ${res.utterances.length} utterances · ${res.timeline.entities.length} entities`
     )
     let doc = res.timeline
@@ -446,7 +446,7 @@ export async function executeSemanticAnalyzeNode(
         } catch (e) {
           say(
             ctx,
-            `保存语义时间线失败：${errorText(e)}`,
+            `保存语义时间线失败：${errorText(e)}`, // cjk-ok
             `Failed to save timeline: ${errorText(e)}`,
             'warn'
           )
@@ -466,7 +466,7 @@ export async function executeSemanticAnalyzeNode(
   if (assetId || relativePath) {
     say(
       ctx,
-      '当前执行环境没有语义分析能力，已按参数生成启发式骨架',
+      '当前执行环境没有语义分析能力，已按参数生成启发式骨架', // cjk-ok
       'Semantic analysis is unavailable here; produced a heuristic skeleton from params',
       'warn'
     )
@@ -494,12 +494,12 @@ function readTimeline(ctx: NodeExecuteContext): SemanticTimeline | null {
   try {
     parsed = JSON.parse(raw)
   } catch {
-    throw new Error(isEn(ctx) ? 'Timeline input is not valid JSON' : '时间线输入不是合法 JSON')
+    throw new Error(isEn(ctx) ? 'Timeline input is not valid JSON' : '时间线输入不是合法 JSON') // cjk-ok
   }
   const doc = parsed as SemanticTimeline
   if (!doc || typeof doc !== 'object' || !doc.source || !Array.isArray(doc.events)) {
     throw new Error(
-      isEn(ctx) ? 'Input is not a semantic timeline document' : '输入不是语义时间线文档'
+      isEn(ctx) ? 'Input is not a semantic timeline document' : '输入不是语义时间线文档' // cjk-ok
     )
   }
   return doc
@@ -531,7 +531,7 @@ async function loadShotContext(
     } catch (e) {
       say(
         ctx,
-        `读取镜头证据失败：${errorText(e)}`,
+        `读取镜头证据失败：${errorText(e)}`, // cjk-ok
         `Failed to load shot evidence: ${errorText(e)}`,
         'warn'
       )
@@ -574,7 +574,7 @@ export async function executeSemanticCompileNode(
   })
   say(
     ctx,
-    `导演编译：${commands.length} 条命令 · 规则包 ${rulePacks.map((p) => p.id).join(', ')}`,
+    `导演编译：${commands.length} 条命令 · 规则包 ${rulePacks.map((p) => p.id).join(', ')}`, // cjk-ok
     `Director compile: ${commands.length} commands · rule packs ${rulePacks.map((p) => p.id).join(', ')}`
   )
   return outText(
@@ -609,7 +609,7 @@ export async function executeSemanticTriggerNode(
   if (events.length === 0) {
     say(
       ctx,
-      `时间线里没有「${eventLabel}」事件`,
+      `时间线里没有「${eventLabel}」事件`, // cjk-ok
       `No "${eventLabel}" event in the timeline`,
       'warn'
     )
@@ -622,7 +622,7 @@ export async function executeSemanticTriggerNode(
 function readEdits(ctx: NodeExecuteContext): SemanticEdit[] {
   const raw = parseJsonParam<unknown>(ctx.node.params?.editsJson, [])
   const { edits, issues } = normalizeSemanticEdits(raw, 'user')
-  for (const issue of issues) say(ctx, `已忽略编辑 ${issue}`, `Ignored edit ${issue}`, 'warn')
+  for (const issue of issues) say(ctx, `已忽略编辑 ${issue}`, `Ignored edit ${issue}`, 'warn') // cjk-ok
   return edits
 }
 
@@ -651,13 +651,13 @@ async function buildOnce(
   })
   for (const note of res.notes) ctx.log?.(note, 'warn')
   if (res.manifest.status !== 'done' || !res.outputRelativePath) {
-    throw new Error(res.manifest.error || (isEn(ctx) ? 'Semantic build failed' : '语义构建失败'))
+    throw new Error(res.manifest.error || (isEn(ctx) ? 'Semantic build failed' : '语义构建失败')) // cjk-ok
   }
   const qc = res.manifest.qc
   if (qc) {
     say(
       ctx,
-      `构建完成 ${res.outputRelativePath} · QC ${qc.level} ${qc.passed ? '通过' : '未通过'}`,
+      `构建完成 ${res.outputRelativePath} · QC ${qc.level} ${qc.passed ? '通过' : '未通过'}`, // cjk-ok
       `Built ${res.outputRelativePath} · QC ${qc.level} ${qc.passed ? 'passed' : 'failed'}`,
       qc.passed ? 'info' : 'warn'
     )
@@ -670,7 +670,7 @@ function shouldExecute(ctx: NodeExecuteContext): boolean {
   if (!ctx.buildSemanticVideo) {
     say(
       ctx,
-      '当前执行环境没有语义构建能力，只输出计划',
+      '当前执行环境没有语义构建能力，只输出计划', // cjk-ok
       'Semantic build is unavailable here; plan only',
       'warn'
     )
@@ -690,7 +690,7 @@ export async function executeSemanticRepairNode(
   const { plan, definition } = planFor(timeline, shotCtx.shots, edits)
   say(
     ctx,
-    `修复计划：${edits.length} 条编辑 · 目标 ${plan.targetLevel} · ${plan.cost.note ?? ''}`,
+    `修复计划：${edits.length} 条编辑 · 目标 ${plan.targetLevel} · ${plan.cost.note ?? ''}`, // cjk-ok
     `Repair plan: ${edits.length} edits · target ${plan.targetLevel} · ${plan.cost.note ?? ''}`
   )
   if (edits.length === 0 || !shouldExecute(ctx)) {
@@ -725,7 +725,7 @@ export async function executeSemanticVariantNode(
   if (recipeId) {
     const recipe = findRecipe(await loadPacks(ctx), recipeId)
     if (!recipe) {
-      throw new Error(isEn(ctx) ? `Recipe not found: ${recipeId}` : `找不到变体配方：${recipeId}`)
+      throw new Error(isEn(ctx) ? `Recipe not found: ${recipeId}` : `找不到变体配方：${recipeId}`) // cjk-ok
     }
     const slotValues = parseJsonParam<Record<string, unknown>>(p.recipeSlotsJson, {})
     const inst = instantiateRecipe(recipe, slotValues)
@@ -733,7 +733,7 @@ export async function executeSemanticVariantNode(
       throw new Error(
         isEn(ctx)
           ? `Recipe slots missing: ${inst.missingSlots.join(', ')}`
-          : `配方槽位未填写：${inst.missingSlots.join(', ')}`
+          : `配方槽位未填写：${inst.missingSlots.join(', ')}` // cjk-ok
       )
     }
     rows = inst.rows.map((row) => ({
@@ -744,7 +744,7 @@ export async function executeSemanticVariantNode(
   if (rows.length > MAX_VARIANTS) {
     say(
       ctx,
-      `变体 ${rows.length} 个，只构建前 ${MAX_VARIANTS} 个`,
+      `变体 ${rows.length} 个，只构建前 ${MAX_VARIANTS} 个`, // cjk-ok
       `${rows.length} variants; building first ${MAX_VARIANTS}`,
       'warn'
     )
@@ -762,7 +762,7 @@ export async function executeSemanticVariantNode(
       variants.push({ slots: row.slots, plan, definition })
       continue
     }
-    say(ctx, `构建变体 ${i + 1}/${rows.length}`, `Building variant ${i + 1}/${rows.length}`)
+    say(ctx, `构建变体 ${i + 1}/${rows.length}`, `Building variant ${i + 1}/${rows.length}`) // cjk-ok
     const res = await buildOnce(ctx, timeline, edits, `v${i + 1}`)
     variants.push({ slots: row.slots, ...res })
     items.push({

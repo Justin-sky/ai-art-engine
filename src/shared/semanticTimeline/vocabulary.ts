@@ -3,21 +3,21 @@ import type { BeatVocabulary } from './types'
 /** 内置带货节拍词表（核心默认；市场包可替换） */
 export const COMMERCE_VOCABULARY: BeatVocabulary = {
   id: 'commerce.v1',
-  title: 'Commerce / 带货',
+  title: 'Commerce / 带货', // cjk-ok
   beats: [
-    { type: 'hook', label: 'Hook', description: '开场痛点或悬念' },
-    { type: 'problem', label: 'Problem', description: '问题放大' },
-    { type: 'product-intro', label: 'Product Intro', description: '产品出场' },
-    { type: 'demo', label: 'Demo', description: '演示质地/用法' },
-    { type: 'proof', label: 'Proof', description: '效果/对比证明' },
-    { type: 'offer', label: 'Offer', description: '价格与赠品' },
-    { type: 'cta', label: 'CTA', description: '行动号召' }
+    { type: 'hook', label: 'Hook', description: '开场痛点或悬念' }, // cjk-ok
+    { type: 'problem', label: 'Problem', description: '问题放大' }, // cjk-ok
+    { type: 'product-intro', label: 'Product Intro', description: '产品出场' }, // cjk-ok
+    { type: 'demo', label: 'Demo', description: '演示质地/用法' }, // cjk-ok
+    { type: 'proof', label: 'Proof', description: '效果/对比证明' }, // cjk-ok
+    { type: 'offer', label: 'Offer', description: '价格与赠品' }, // cjk-ok
+    { type: 'cta', label: 'CTA', description: '行动号召' } // cjk-ok
   ]
 }
 
 export const DRAMA_VOCABULARY: BeatVocabulary = {
   id: 'drama.v1',
-  title: 'Drama / 短剧',
+  title: 'Drama / 短剧', // cjk-ok
   beats: [
     { type: 'intro', label: 'Intro' },
     { type: 'conflict', label: 'Conflict' },

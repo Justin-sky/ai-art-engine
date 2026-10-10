@@ -114,7 +114,10 @@ export function heuristicEventsFromUtterances(
     const shot =
       shots.find((s) => s.range.start <= u.range.start && s.range.end >= u.range.start) ?? shots[0]
     const evidence = [u.id, ...(shot ? [shot.id] : [])]
-    if (/价格|只要|块钱|元|¥|\$|price|offer/i.test(text)) {
+    const priceCue = /价格|只要|块钱|元|¥|\$|price|offer/i // cjk-ok
+    const ctaCue = /点击|下单|链接|购买|buy|shop/i // cjk-ok
+    const problemCue = /干燥|卡粉|问题|痛点|problem/i // cjk-ok
+    if (priceCue.test(text)) {
       drafts.push({
         label: 'price_announce',
         type: 'product',
@@ -124,7 +127,7 @@ export function heuristicEventsFromUtterances(
         evidence,
         importance: 0.9
       })
-    } else if (/点击|下单|链接|购买|buy|shop/i.test(text)) {
+    } else if (ctaCue.test(text)) {
       drafts.push({
         label: 'cta',
         type: 'story',
@@ -134,7 +137,7 @@ export function heuristicEventsFromUtterances(
         evidence,
         importance: 0.85
       })
-    } else if (/干燥|卡粉|问题|痛点|problem/i.test(text)) {
+    } else if (problemCue.test(text)) {
       drafts.push({
         label: 'problem_hook',
         type: 'story',
@@ -162,7 +165,7 @@ export function inferIntentsFromEvents(events: SemanticEvent[]): DirectorIntent[
           { track: 'camera', action: 'push_in', params: { zoom: 1.12 } },
           { track: 'text', action: 'emphasis', params: { scale: 1.2 } }
         ],
-        reason: '价格出现：推近并强调字幕',
+        reason: '价格出现：推近并强调字幕', // cjk-ok
         origin: 'analysis'
       })
     } else if (ev.label === 'cta') {
@@ -171,7 +174,7 @@ export function inferIntentsFromEvents(events: SemanticEvent[]): DirectorIntent[
         trigger: ev.id,
         goal: 'clarify',
         techniques: [{ track: 'text', action: 'emphasis', params: { scale: 1.15 } }],
-        reason: '行动号召：加强字幕',
+        reason: '行动号召：加强字幕', // cjk-ok
         origin: 'analysis'
       })
     }

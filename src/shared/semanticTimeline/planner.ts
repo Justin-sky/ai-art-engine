@@ -182,8 +182,8 @@ export function planInvalidation(input: PlannerInput): InvalidationPlan {
     paidShotCount,
     note:
       paidSeconds > 0
-        ? `将调用付费模型约 ${paidSeconds.toFixed(1)}s；确认前不产生费用`
-        : '仅本地处理，无付费生成'
+        ? `将调用付费模型约 ${paidSeconds.toFixed(1)}s；确认前不产生费用` // cjk-ok
+        : '仅本地处理，无付费生成' // cjk-ok
   }
 
   return {

@@ -216,19 +216,19 @@ export const BUILTIN_DIRECTOR_RULES: DirectorRulePack = {
         { track: 'audio', action: 'sfx', params: { id: 'ui_ding' } },
         { track: 'text', action: 'emphasis', params: { scale: 1.2 } }
       ],
-      reason: '价格出现时推近并强调字幕'
+      reason: '价格出现时推近并强调字幕' // cjk-ok
     },
     {
       id: 'hook-energy',
       when: { beatType: 'hook' },
       then: [{ track: 'camera', action: 'static', params: {} }],
-      reason: '开场稳住画面'
+      reason: '开场稳住画面' // cjk-ok
     },
     {
       id: 'offer-bright',
       when: { beatType: 'offer' },
       then: [{ track: 'vfx', action: 'brighten', params: { amount: 0.05 } }],
-      reason: '报价段落略提亮'
+      reason: '报价段落略提亮' // cjk-ok
     }
   ]
 }
