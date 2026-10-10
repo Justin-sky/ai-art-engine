@@ -325,8 +325,12 @@ function intentsForTrack(track: string): DirectorIntent[] {
 <style scoped>
 .stl-editor {
   display: flex;
+  /* 吃掉 dive 里的可用高度：轨道多时**由 .stl-scroll 自己滚**，
+     横向滚动条才会落在可见区底部（否则编辑器随内容长高，滚动条被推到内容最下面） */
+  flex: 1 1 auto;
+  min-height: 240px;
+  min-width: 0;
   gap: 12px;
-  min-height: 280px;
   background: var(--bg-panel);
   color: var(--text);
   border: 1px solid var(--border);
@@ -335,6 +339,9 @@ function intentsForTrack(track: string): DirectorIntent[] {
 }
 .stl-scroll {
   flex: 1;
+  /* flex 子项默认 min-*:auto 会撑开而不滚，必须显式归零 */
+  min-width: 0;
+  min-height: 0;
   overflow: auto;
   padding: 8px 12px 16px;
 }

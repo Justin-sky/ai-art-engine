@@ -104,6 +104,8 @@ watch(
   flex-direction: column;
   gap: 12px;
   height: 100%;
+  /* 外层只在「窗口太矮、编辑器到 min-height 还放不下」时兜底滚动；
+     正常情况下高度由编辑器内部的滚动区承担，横向滚动条就贴在可见区底部 */
   overflow: auto;
   padding: 8px;
 }
@@ -113,5 +115,7 @@ watch(
 }
 .compare {
   min-height: 220px;
+  /* 比对面板不参与挤压编辑器的高度 */
+  flex: 0 0 auto;
 }
 </style>

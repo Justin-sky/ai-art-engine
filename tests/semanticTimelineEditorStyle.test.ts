@@ -44,4 +44,22 @@ describe('SemanticTimelineEditor 轨道尺寸与字号', () => {
     expect(label).toContain('top: 50%')
     expect(label).toContain('translateY(-50%)')
   })
+
+  /**
+   * 横向滚动条必须落在**可见区底部**。
+   *
+   * 实测踩过：编辑器不给高度、随内容长高，于是 `.stl-scroll` 的横向滚动条被推到内容最底部 ——
+   * 轨道一多，视口里根本够不到它（只能先把整个视图滚到底）。
+   * 修法是让编辑器吃满可用高度、由 `.stl-scroll` 自己滚；flex 子项还必须显式 `min-*: 0`，
+   * 否则默认 `auto` 会撑开而不滚。
+   */
+  it('滚动区由编辑器内部承担（编辑器吃满高度 + min-*: 0）', () => {
+    const editor = /\.stl-editor\s*\{([^}]*)\}/s.exec(source)?.[1] ?? ''
+    const scroll = /\.stl-scroll\s*\{([^}]*)\}/s.exec(source)?.[1] ?? ''
+    expect(editor).toContain('flex: 1 1 auto')
+    expect(editor).not.toMatch(/min-height:\s*280px/)
+    expect(scroll).toContain('overflow: auto')
+    expect(scroll).toContain('min-width: 0')
+    expect(scroll).toContain('min-height: 0')
+  })
 })
