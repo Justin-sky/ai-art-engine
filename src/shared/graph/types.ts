@@ -350,6 +350,12 @@ export interface GraphNodeParams {
   /** 加工节点提供商实例 id */
   generateProviderInstanceId?: string
   /**
+   * 语义分析节点的**转写**覆盖（与上面的 `generateModel` 分开：转写是另一个端点/模型体系）。
+   * 留空 = 首个支持转写的已配置实例；**填了就严格用它**，该实例不能转写时直接报错。
+   */
+  transcribeModel?: string
+  transcribeProviderInstanceId?: string
+  /**
    * 加工节点备选模型链：首选模型调用失败（限流/不可用/超时）时依次自动切换。
    * 每项为 modelKey（providerInstanceId::model），按数组顺序尝试。
    */

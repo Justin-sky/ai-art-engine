@@ -79,6 +79,17 @@ export const SEMANTIC_TIMELINE_NODE_TYPES: NodeTypeDefinition[] = [
       semanticLlm: false,
       semanticFps: 30,
       semanticDuration: 60,
+      /**
+       * 富化（三步 LLM）用哪家/哪个模型。空 = 应用默认文本模型。
+       *
+       * 之前这两个字段**没被声明**，而 `runSkill` 一直在读它们 —— 等于按节点指定模型是条死路，
+       * 用户只能吃「设置里第一个合格实例」，撞上未开通的模型就三步全失败（实测踩过）。
+       */
+      generateModel: '',
+      generateProviderInstanceId: '',
+      /** 转写用哪家/哪个模型；空 = 首个支持转写的已配置实例（老行为） */
+      transcribeModel: '',
+      transcribeProviderInstanceId: '',
       shotsJson: '',
       utterancesJson: '',
       previewCollapsed: false

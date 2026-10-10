@@ -2007,6 +2007,43 @@ export interface TranscribeAudioResult {
   granularity?: 'word' | 'sentence'
 }
 
+/**
+ * 转写（语音识别）用哪家 —— 与 `pickActiveProvider` 不同：转写**不参与模态勾选**
+ * （`ModelModality` 里没有 transcribe 桶），只认「适配器实现了 transcribeAudio」。
+ *
+ * 关键规则：**指定了实例就只用它**，不能用时报错而不是偷偷换一家 ——
+ * 以前是 `if (found && usable(found)) ... else providers.find(usable)`，
+ * 用户以为在用 A、实际走了 B，从结果上完全看不出来（音效解析踩过同一个坑）。
+ *
+ * @param supportsTranscribe 该 providerKind 是否具备转写能力（主进程按适配器判定）
+ * @returns 命中：`{ provider }`；未命中：`{ reason }`（英文细节，供上层包成应用错误）
+ */
+export function pickTranscribeProvider(
+  providers: ModelProviderInstance[],
+  preferredInstanceId: string | undefined,
+  supportsTranscribe: (kind: ModelProviderKind) => boolean
+): { provider: ModelProviderInstance } | { reason: string } {
+  const whyUnusable = (p: ModelProviderInstance): string | null => {
+    if (!p.enabled) return 'instance disabled'
+    if (p.apiKey.trim().length === 0 && !allowsEmptyApiKey(p)) return 'missing api key'
+    if (!supportsTranscribe(p.providerKind)) return 'adapter has no transcribeAudio'
+    return null
+  }
+
+  const preferredId = preferredInstanceId?.trim()
+  if (preferredId) {
+    const found = findProviderById(providers, preferredId)
+    if (!found) return { reason: `instance not found: ${preferredId}` }
+    const why = whyUnusable(found)
+    if (why) return { reason: `${found.providerKind} (${preferredId}) — ${why}` }
+    return { provider: found }
+  }
+
+  const fallback = providers.find((p) => whyUnusable(p) === null)
+  if (!fallback) return { reason: 'no configured provider supports audio transcription' }
+  return { provider: fallback }
+}
+
 /** 从 AppSettings.models 解析当前可用提供商 + 默认模型 */
 export function pickActiveProvider(
   providers: ModelProviderInstance[],

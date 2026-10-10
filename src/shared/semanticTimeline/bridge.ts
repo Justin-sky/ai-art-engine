@@ -21,6 +21,14 @@ export interface SemanticAnalyzeRequest {
   vocabulary?: string
   /** 调转写模型拿话语证据（默认 true；失败降级为无话语） */
   transcribe?: boolean
+  /**
+   * 转写用的提供商实例 / 模型（可选）。
+   *
+   * 不给时沿用「首个支持转写的已配置实例」的老行为；**给了就严格用它** ——
+   * 指定的实例不能转写时直接报错，不偷偷换一家（否则用户以为在用 A、实际走了 B）。
+   */
+  transcribeProviderInstanceId?: string
+  transcribeModel?: string
   separateAudio?: boolean
   detectEntities?: boolean
 }

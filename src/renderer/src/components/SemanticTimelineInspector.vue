@@ -53,6 +53,29 @@
       </div>
 
       <label>
+        <span class="field-label">{{ t('graph.inspector.semantic.enrichModel') }}</span>
+        <InstructionModelSelect
+          v-model="enrichModelKey"
+          :options="enrichModelOptions"
+          :title="t('graph.inspector.semantic.enrichModel')"
+          :empty-label="t('graph.inspector.semantic.modelAuto')"
+          @change="persistAnalyze"
+        />
+        <span class="field-hint">{{ t('graph.inspector.semantic.enrichModelHint') }}</span>
+      </label>
+
+      <label>
+        <span class="field-label">{{ t('graph.inspector.semantic.transcribeInstance') }}</span>
+        <select v-model="transcribeInstanceId" @change="persistAnalyze">
+          <option value="">{{ t('graph.inspector.semantic.modelAuto') }}</option>
+          <option v-for="p in providerInstances" :key="p.id" :value="p.id">
+            {{ p.label || p.providerKind }}
+          </option>
+        </select>
+        <span class="field-hint">{{ t('graph.inspector.semantic.transcribeInstanceHint') }}</span>
+      </label>
+
+      <label>
         <span class="field-label">{{ t('graph.inspector.semantic.sourceAssetId') }}</span>
         <input
           v-model="sourceAssetId"
@@ -272,6 +295,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import {
+  loadAllProviders,
+  loadGenerateModelOptions,
+  parseModelKey,
+  preferredModelKey,
+  type GenerateModelOption
+} from '../features/graph/model/generateModelOptions'
+import type { ModelProviderInstance } from '@shared/modelProvider'
+import {
   collectRulePacks,
   listRecipes,
   listVocabularies,
@@ -281,6 +312,7 @@ import {
 import GraphNodeRunControl from './GraphNodeRunControl.vue'
 import GraphNodeOutputPreview from './GraphNodeOutputPreview.vue'
 import ExpandableTextarea from './ExpandableTextarea.vue'
+import InstructionModelSelect from './InstructionModelSelect.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useNodeDisplayTitle } from '../composables/useNodeDisplayTitle'
 import { useGraphNodeRun } from '../composables/useGraphNodeRun'
@@ -354,11 +386,25 @@ const hintText = computed(() => {
 })
 
 const packs = ref<SemanticPack[]>([])
+/** 富化（文本）模型可选项；转写可选实例清单 */
+const enrichModelOptions = ref<GenerateModelOption[]>([])
+const providerInstances = ref<ModelProviderInstance[]>([])
 onMounted(async () => {
   try {
     packs.value = (await window.studio.semanticListPacks()) ?? []
   } catch {
     packs.value = []
+  }
+  try {
+    const loaded = await loadGenerateModelOptions('text')
+    enrichModelOptions.value = loaded.options
+  } catch {
+    enrichModelOptions.value = []
+  }
+  try {
+    providerInstances.value = await loadAllProviders()
+  } catch {
+    providerInstances.value = []
   }
 })
 
@@ -377,6 +423,15 @@ const useLlm = ref(false)
 const semanticFps = ref(30)
 const semanticDuration = ref(60)
 const sourceAssetId = ref('')
+/**
+ * 富化（三步 LLM）用哪个模型：`providerInstanceId::model` 的 key，空 = 应用默认文本模型。
+ *
+ * 这两个参数以前没在节点上声明，`runSkill` 却一直在读 —— 用户只能吃「设置里第一个合格实例」，
+ * 撞上未开通的模型就三步全失败（实测踩过）。这里把选择权交给用户。
+ */
+const enrichModelKey = ref('')
+/** 转写用哪个提供商实例：空 = 首个支持转写的已配置实例（老行为） */
+const transcribeInstanceId = ref('')
 const shotsJson = ref('')
 const utterancesJson = ref('')
 const timelineJson = ref('')
@@ -419,6 +474,8 @@ function loadConfig(current: NonNullable<typeof node.value>): void {
   semanticFps.value = Number(p.semanticFps) > 0 ? Number(p.semanticFps) : 30
   semanticDuration.value = Number(p.semanticDuration) > 0 ? Number(p.semanticDuration) : 60
   sourceAssetId.value = p.sourceAssetId?.trim() || ''
+  enrichModelKey.value = preferredModelKey(p.generateProviderInstanceId, p.generateModel)
+  transcribeInstanceId.value = p.transcribeProviderInstanceId?.trim() || ''
   shotsJson.value = typeof p.shotsJson === 'string' ? p.shotsJson : ''
   utterancesJson.value = typeof p.utterancesJson === 'string' ? p.utterancesJson : ''
   timelineJson.value = typeof p.timelineJson === 'string' ? p.timelineJson : ''
@@ -464,6 +521,7 @@ function persistTitle(): void {
 }
 
 function persistAnalyze(): void {
+  const enrich = parseModelKey(enrichModelKey.value)
   patch({
     vocabulary: vocabulary.value.trim() || 'commerce.v1',
     semanticTranscribe: transcribe.value,
@@ -474,7 +532,11 @@ function persistAnalyze(): void {
     semanticDuration: Math.max(0.1, Number(semanticDuration.value) || 60),
     sourceAssetId: sourceAssetId.value.trim(),
     shotsJson: shotsJson.value,
-    utterancesJson: utterancesJson.value
+    utterancesJson: utterancesJson.value,
+    // 富化模型：key 拆成「实例 + 模型」两个参数（与其它加工节点同一套口径）
+    generateModel: enrich?.model ?? '',
+    generateProviderInstanceId: enrich?.providerInstanceId ?? '',
+    transcribeProviderInstanceId: transcribeInstanceId.value.trim()
   })
 }
 

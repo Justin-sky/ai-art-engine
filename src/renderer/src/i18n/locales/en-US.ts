@@ -5361,6 +5361,13 @@ export default {
         llm: 'LLM understanding',
         llmHint:
           'When on, a text model looks at keyframes to describe shots, extracts evidenced events and infers director intents (incurs model cost). Off = rule heuristics only.',
+        enrichModel: 'Enrichment model',
+        enrichModelHint:
+          'Which model the three enrichment steps use; empty = the app default text model (an unusable model fails all three steps, leaving heuristics only).',
+        transcribeInstance: 'Transcription provider',
+        transcribeInstanceHint:
+          'Empty = first configured instance that supports transcription. When set, it is used strictly and an incapable instance errors out (only the OpenAI / ElevenLabs adapters transcribe).',
+        modelAuto: 'Auto (default)',
         fallbackParams: 'Fallback params (no video)',
         fallbackParamsHint:
           'Only used when there is no upstream video and no source asset, to hand-build a timeline skeleton.',

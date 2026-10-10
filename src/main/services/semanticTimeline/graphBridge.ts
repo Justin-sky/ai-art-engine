@@ -101,7 +101,10 @@ export async function semanticAnalyzeForGraph(
     try {
       const tr = await modelProviderFacade.transcribeAudio({
         relativePath: rel,
-        wordTimestamps: true
+        wordTimestamps: true,
+        // 节点可以指定用哪家/哪个转写模型；不给则由 facade 选首个支持转写的已配置实例
+        providerInstanceId: input.transcribeProviderInstanceId,
+        model: input.transcribeModel
       })
       transcriptSegments = tr.segments as TranscribeLikeSegment[]
       transcriptGranularity = tr.granularity ?? 'sentence'

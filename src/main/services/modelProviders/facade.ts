@@ -57,6 +57,7 @@ import {
   allowsEmptyApiKey,
   findProviderById,
   normalizeVideoInputReference,
+  pickTranscribeProvider,
   resolveDefaultVoice,
   supportsModel3dRig,
   supportsModel3dSegment
@@ -283,6 +284,16 @@ const E_TRANSCRIBE_UNSUPPORTED = defErrSimple(
   'provider.facade.transcribe-unsupported',
   '当前模型提供商不支持音频转写（语音识别），请在设置中配置 OpenAI 提供商（whisper-1）',
   'The selected provider does not support audio transcription; configure an OpenAI provider (whisper-1) in Settings'
+)
+/**
+ * 用户（或节点）**明确指定**了转写实例，但那个实例不能转写。
+ *
+ * 这种情况必须报错而不是偷偷换一家：否则用户以为在用 A、实际走了 B，从结果上完全看不出来。
+ */
+const E_TRANSCRIBE_INSTANCE_UNUSABLE = defErr<{ detail: string }>(
+  'provider.facade.transcribe-instance-unusable',
+  ({ detail }) => `指定的转写提供商实例不可用：${detail}`,
+  ({ detail }) => `The selected transcription provider instance is unusable: ${detail}`
 )
 const E_TRANSCRIBE_NO_MODEL = defErrSimple(
   'provider.facade.transcribe-no-model',
@@ -1723,19 +1734,17 @@ class ModelProviderFacade {
     modelId: string
   } {
     const providers = settingsService.get().models.providers
-    const usable = (p: ModelProviderInstance): boolean =>
-      p.enabled &&
-      (p.apiKey.trim().length > 0 || allowsEmptyApiKey(p)) &&
-      Boolean(getProviderAdapter(p.providerKind).transcribeAudio)
-
-    let provider: ModelProviderInstance | undefined
-    const preferredId = input.providerInstanceId?.trim()
-    if (preferredId) {
-      const found = findProviderById(providers, preferredId)
-      if (found && usable(found)) provider = found
+    const picked = pickTranscribeProvider(providers, input.providerInstanceId, (kind) =>
+      Boolean(getProviderAdapter(kind).transcribeAudio)
+    )
+    if ('reason' in picked) {
+      // 指定了实例却不能用 → 明确报错，绝不静默换一家（规则与原因文案见 pickTranscribeProvider）
+      if (input.providerInstanceId?.trim()) {
+        throw fail(E_TRANSCRIBE_INSTANCE_UNUSABLE, { detail: picked.reason })
+      }
+      throw fail(PROVIDER_ERRORS.noActiveProvider, { modality: 'audio transcription' })
     }
-    if (!provider) provider = providers.find(usable)
-    if (!provider) throw fail(PROVIDER_ERRORS.noActiveProvider, { modality: 'audio transcription' })
+    const provider = picked.provider
 
     const modelId = input.model?.trim() || defaultTranscribeModelId(provider.providerKind)
     if (!modelId) throw fail(E_TRANSCRIBE_NO_MODEL)

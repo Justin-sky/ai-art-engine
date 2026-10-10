@@ -467,6 +467,10 @@ export async function executeSemanticAnalyzeNode(
       videoRelativePath: relativePath,
       vocabulary,
       transcribe: p.semanticTranscribe !== false,
+      // 转写覆盖：给了就严格用指定实例/模型；不给沿用「首个支持转写的实例」
+      transcribeProviderInstanceId:
+        String(p.transcribeProviderInstanceId || '').trim() || undefined,
+      transcribeModel: String(p.transcribeModel || '').trim() || undefined,
       separateAudio: p.semanticSeparateAudio !== false,
       detectEntities: p.semanticDetectEntities !== false
     })

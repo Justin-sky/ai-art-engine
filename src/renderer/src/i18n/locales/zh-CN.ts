@@ -5233,6 +5233,13 @@ export default {
         llm: 'LLM 深度理解',
         llmHint:
           '勾选后用文本模型看关键帧描述镜头、抽取带证据的事件并推断导演意图；会产生模型调用费用。不勾选只用规则启发式。',
+        enrichModel: '富化模型',
+        enrichModelHint:
+          '上面三步富化用哪个模型；留空则用应用默认文本模型（撞上未开通/不可用的模型会三步全失败，只留启发式结果）。',
+        transcribeInstance: '转写实例',
+        transcribeInstanceHint:
+          '留空 = 首个支持转写的已配置实例；指定后严格用它，该实例不能转写会直接报错（目前仅 OpenAI / ElevenLabs 适配器支持转写）。',
+        modelAuto: '自动（默认）',
         fallbackParams: '无视频时的兜底参数',
         fallbackParamsHint: '只在没有上游视频、也没有源资产时使用，用来手动构造时间线骨架。',
         fps: '兜底帧率',

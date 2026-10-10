@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import {
   executeSemanticAnalyzeNode,
   executeSemanticTriggerNode
@@ -185,6 +187,96 @@ describe('语义时间线值类型', () => {
     // 原因要带出来（含模型名），并给出可执行的下一步
     expect(summary).toContain('deepseek-v4-1-flash-260910')
     expect(summary).toContain('设置')
+  })
+
+  /**
+   * 按节点指定模型：`runSkill` 一直在读 `params.generateModel`，但节点**从未声明**这两个参数 →
+   * 实际永远吃到全局默认文本模型。实测踩过：默认模型未开通 → 三步富化全失败。
+   */
+  it('节点上的富化模型 / 转写覆盖会真的传下去', async () => {
+    const doc = makeDoc('stl.override')
+    const analyzeSemanticVideo = vi.fn(async () => ({
+      timeline: doc,
+      shots: [],
+      utterances: [],
+      keyframes: {},
+      sourceRelativePath: '',
+      method: 'scene' as const,
+      notes: []
+    }))
+    const textCalls: Array<{ model?: string; providerInstanceId?: string }> = []
+    const ctx = {
+      node: {
+        id: 'n1',
+        typeId: 'semantic.analyze',
+        category: 'note',
+        position: { x: 0, y: 0 },
+        params: {
+          sourceAssetId: 'asset-1',
+          semanticLlm: true,
+          generateModel: 'deepseek/deepseek-v4.1-flash',
+          generateProviderInstanceId: 'inst-openrouter',
+          transcribeModel: 'whisper-1',
+          transcribeProviderInstanceId: 'inst-openai'
+        }
+      },
+      inputs: {},
+      analyzeSemanticVideo,
+      generateText: async (req: { model?: string; providerInstanceId?: string }) => {
+        textCalls.push({ model: req.model, providerInstanceId: req.providerInstanceId })
+        return { text: '[]' }
+      },
+      log: () => {}
+    } as unknown as NodeExecuteContext
+
+    await executeSemanticAnalyzeNode(ctx)
+
+    // 转写覆盖一路传到能力调用
+    expect(analyzeSemanticVideo).toHaveBeenCalledTimes(1)
+    const analyzeArg = analyzeSemanticVideo.mock.calls[0]![0] as Record<string, unknown>
+    expect(analyzeArg.transcribeModel).toBe('whisper-1')
+    expect(analyzeArg.transcribeProviderInstanceId).toBe('inst-openai')
+    // 富化模型一路传到文本生成（三步都要带）
+    expect(textCalls.length).toBeGreaterThan(0)
+    for (const call of textCalls) {
+      expect(call.model).toBe('deepseek/deepseek-v4.1-flash')
+      expect(call.providerInstanceId).toBe('inst-openrouter')
+    }
+  })
+
+  it('语义分析节点的定义声明了这四个覆盖参数（否则 UI 无从写起）', () => {
+    const def = SEMANTIC_TIMELINE_NODE_TYPES.find((d) => d.typeId === 'semantic.analyze')
+    const params = def?.defaultParams?.() ?? {}
+    for (const key of [
+      'generateModel',
+      'generateProviderInstanceId',
+      'transcribeModel',
+      'transcribeProviderInstanceId'
+    ]) {
+      expect(key in params, `缺少参数 ${key}`).toBe(true)
+      expect(params[key as keyof typeof params]).toBe('')
+    }
+  })
+
+  /**
+   * 上面两个参数是「声明了 + 传下去了」，但**检查器得能写**才有意义。
+   * 组件没法在 node 环境渲染（没有 jsdom），所以按本仓库既有做法做源码守卫。
+   */
+  it('检查器把富化模型与转写实例写回节点参数（源码守卫）', () => {
+    const source = readFileSync(
+      join(process.cwd(), 'src/renderer/src/components/SemanticTimelineInspector.vue'),
+      'utf8'
+    )
+    // 读：从 providerInstanceId::model 还原成选择器的 key
+    expect(source).toContain('preferredModelKey(p.generateProviderInstanceId, p.generateModel)')
+    // 写：key 拆回两个参数
+    expect(source).toContain('generateModel: enrich?.model ?? ')
+    expect(source).toContain('generateProviderInstanceId: enrich?.providerInstanceId ?? ')
+    expect(source).toContain('transcribeProviderInstanceId: transcribeInstanceId.value.trim()')
+    // 模板里两个控件都绑上了、并且走同一套持久化
+    expect(source).toContain('v-model="enrichModelKey"')
+    expect(source).toContain('v-model="transcribeInstanceId"')
+    expect(source.match(/@change="persistAnalyze"/g)?.length ?? 0).toBeGreaterThanOrEqual(3)
   })
 
   it('语义分析节点（有分析能力）产出结构化值，并把 timelineId 写回参数', async () => {
