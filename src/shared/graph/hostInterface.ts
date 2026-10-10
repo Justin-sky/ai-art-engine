@@ -144,7 +144,8 @@ const PORT_DATA_TYPE_LABELS: Record<string, string> = {
   [GraphPortType.world]: '世界元素',
   [GraphPortType.worldEntities]: '世界元素实体',
   [GraphPortType.beat]: '场',
-  [GraphPortType.model]: '模型'
+  [GraphPortType.model]: '模型',
+  [GraphPortType.semanticTimeline]: '语义时间线' // cjk-ok（端口类型显示名映射：随封装/边界端口落盘）
 }
 
 /**

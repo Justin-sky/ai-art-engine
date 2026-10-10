@@ -46,10 +46,15 @@ function shouldHideAssetRefInputs(
  * 含网格 + 高斯泼溅 + 全景），不是通用模型。要让世界变成可继续编排的模型，
  * 必须先过「空间世界导出」节点 —— 它的出口是 `model`（HQ 网格 GLB），从那里接导演台 / 3D 加工。
  * 反过来 `model` 也进不了 `spatialWorld` 口：普通模型没有 world_id。
+ *
+ * 例外之二：`semanticTimeline → text`（**单向**）。语义时间线文档可以交给文本消费者
+ * 展示或给 agent 读；反向不允许 —— 文本口什么都可能产（提示词、剧本、OCR），
+ * 既没有 schema 也没有 `stl.` id，接进语义口只会在运行期才报「输入不是语义时间线文档」。
  */
 export function portsCompatible(source: GraphPortDataType, target: GraphPortDataType): boolean {
   if (source === target) return true
-  return source === GraphPortType.image && target === GraphPortType.svg
+  if (source === GraphPortType.image && target === GraphPortType.svg) return true
+  return source === GraphPortType.semanticTimeline && target === GraphPortType.text
 }
 
 function resolveVideoFrameMode(raw: unknown): VideoFrameMode {

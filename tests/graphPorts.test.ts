@@ -27,7 +27,9 @@ describe('GraphPortType', () => {
       GraphPortType.beat,
       GraphPortType.model,
       GraphPortType.spatialWorld,
-      GraphPortType.project
+      GraphPortType.project,
+      // 语义时间线文档（整份 SemanticTimeline，不是普通文本）
+      GraphPortType.semanticTimeline
     ])
     expect(isGraphPortDataType('image')).toBe(true)
     expect(isGraphPortDataType('images')).toBe(true)

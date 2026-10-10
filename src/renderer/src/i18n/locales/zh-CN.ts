@@ -4461,7 +4461,8 @@ export default {
         beat: '场',
         model: '模型',
         spatialWorld: '空间世界',
-        project: '工程'
+        project: '工程',
+        semanticTimeline: '语义时间线'
       }
     },
     media: {

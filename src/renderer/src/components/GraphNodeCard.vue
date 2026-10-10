@@ -873,6 +873,8 @@ function portDataTypeClass(port: GraphPortDef): string {
       return 'port-beat'
     case GraphPortType.spatialWorld:
       return 'port-world-model'
+    case GraphPortType.semanticTimeline:
+      return 'port-timeline'
     default:
       return ''
   }
@@ -4368,6 +4370,12 @@ function formatTime(sec: number): string {
 .port.port-world-model {
   border-color: #b48cff;
   background: color-mix(in srgb, #b48cff 28%, var(--graph-port-bg));
+}
+
+/* 语义时间线口：整份 SemanticTimeline 文档，不是普通文本口（天蓝，与 beat 的浅蓝区分） */
+.port.port-timeline {
+  border-color: #38bdf8;
+  background: color-mix(in srgb, #38bdf8 28%, var(--graph-port-bg));
 }
 
 .port.port-shots {

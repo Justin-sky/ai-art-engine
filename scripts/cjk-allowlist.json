@@ -700,7 +700,7 @@
       "[GraphPortType.world]: '世界元素',",
       "[GraphPortType.worldEntities]: '世界元素实体',",
       "[GraphPortType.beat]: '场',",
-      "[GraphPortType.model]: '模型'",
+      "[GraphPortType.model]: '模型',",
       "const dirLabel = direction === 'in' ? '输入' : '输出'"
     ],
     "src/shared/graph/iconRefine.ts": [

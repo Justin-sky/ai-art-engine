@@ -4564,7 +4564,8 @@ export default {
         beat: 'Beat',
         model: 'Model',
         spatialWorld: 'Spatial world',
-        project: 'Project'
+        project: 'Project',
+        semanticTimeline: 'Semantic timeline'
       }
     },
     media: {

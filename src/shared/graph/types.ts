@@ -137,7 +137,19 @@ export const GraphPortType = {
    */
   spatialWorld: 'spatialWorld',
   /** 可玩 HTML 等：磁盘上的工程目录（相对工程根） */
-  project: 'project'
+  project: 'project',
+  /**
+   * 语义时间线文档（`SemanticTimeline`，schema `aiart.semantic-timeline@1`，id 形如 `stl.*`）。
+   *
+   * 语义分析那条管线（分析 / 时间线 / 触发 / 编译 / 修复 / 多版本）传递的是**这份文档**，
+   * 而不是随便一段文本。以前它们共用 `text` 口，后果是：任何文本产地（提示词、剧本、OCR）
+   * 都能接进语义口，且要等运行期解析才报「不是合法 JSON / 不是语义时间线文档」。
+   *
+   * 连接规则**单向放宽**：`semanticTimeline → text` 允许（展示、交给文本消费者、给 agent 读），
+   * 反向不允许 —— 普通文本没有 schema，也没有 `stl.` id。手写 JSON 请走节点参数
+   * `timelineJson`，或先过语义分析节点。
+   */
+  semanticTimeline: 'semanticTimeline'
 } as const
 
 /** 目录 JSON 端口 / 运行时 kind（与 GraphPortType 同名） */

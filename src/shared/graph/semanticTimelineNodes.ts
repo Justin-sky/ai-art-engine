@@ -24,6 +24,33 @@ const textOut = {
   label: 'Out'
 }
 
+/**
+ * 语义时间线文档口。
+ *
+ * 语义管线的入边一律是**整份 `SemanticTimeline` 文档**（schema `aiart.semantic-timeline@1`），
+ * 不是随便一段文本 —— 所以它有自己的类型：文本口谁都能接，接错了要等运行期解析才报错。
+ *
+ * 只有**产物确实是整份文档**的口才用这个类型：语义分析节点的出口，以及语义时间线节点的
+ * 进出（它是透传）。触发 / 编译 / 修复 / 多版本的出口是各自的信封
+ * （`{eventLabels,events,commands}` / `{rulePacks,commands,scriptTimeline}` /
+ * `{plan,definition}` / `{recipeId,variants}`），仍保持 `text`。
+ */
+const timelineIn = {
+  id: 'in',
+  direction: 'in' as const,
+  dataType: GraphPortType.semanticTimeline,
+  multiple: false,
+  label: 'Timeline'
+}
+
+const timelineOut = {
+  id: 'out',
+  direction: 'out' as const,
+  dataType: GraphPortType.semanticTimeline,
+  multiple: false,
+  label: 'Timeline'
+}
+
 export const SEMANTIC_TIMELINE_NODE_TYPES: NodeTypeDefinition[] = [
   {
     typeId: 'video.semanticAnalyze',
@@ -41,7 +68,7 @@ export const SEMANTIC_TIMELINE_NODE_TYPES: NodeTypeDefinition[] = [
         multiple: false,
         label: 'Video'
       },
-      textOut
+      timelineOut
     ],
     defaultParams: () => ({
       sourceAssetId: '',
@@ -72,16 +99,7 @@ export const SEMANTIC_TIMELINE_NODE_TYPES: NodeTypeDefinition[] = [
     defaultTitle: 'Semantic timeline',
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
-    ports: [
-      {
-        id: 'in',
-        direction: 'in',
-        dataType: GraphPortType.text,
-        multiple: false,
-        label: 'Timeline JSON'
-      },
-      textOut
-    ],
+    ports: [timelineIn, timelineOut],
     defaultParams: () => ({ timelineJson: '' }),
     addable: true,
     deletable: true,
@@ -106,16 +124,7 @@ export const SEMANTIC_TIMELINE_NODE_TYPES: NodeTypeDefinition[] = [
     defaultTitle: 'Semantic trigger',
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
-    ports: [
-      {
-        id: 'in',
-        direction: 'in',
-        dataType: GraphPortType.text,
-        multiple: false,
-        label: 'Timeline'
-      },
-      textOut
-    ],
+    ports: [timelineIn, textOut],
     defaultParams: () => ({ timelineJson: '', eventLabel: '', rulePackIds: '' }),
     addable: true,
     deletable: true,
@@ -133,16 +142,7 @@ export const SEMANTIC_TIMELINE_NODE_TYPES: NodeTypeDefinition[] = [
     defaultTitle: 'Director compile',
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
-    ports: [
-      {
-        id: 'in',
-        direction: 'in',
-        dataType: GraphPortType.text,
-        multiple: false,
-        label: 'Timeline'
-      },
-      textOut
-    ],
+    ports: [timelineIn, textOut],
     defaultParams: () => ({ timelineJson: '', sourceRelativePath: '', rulePackIds: '' }),
     addable: true,
     deletable: true,
@@ -161,13 +161,7 @@ export const SEMANTIC_TIMELINE_NODE_TYPES: NodeTypeDefinition[] = [
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
-      {
-        id: 'in',
-        direction: 'in',
-        dataType: GraphPortType.text,
-        multiple: false,
-        label: 'Timeline'
-      },
+      timelineIn,
       textOut,
       {
         id: 'out-video',
@@ -201,13 +195,7 @@ export const SEMANTIC_TIMELINE_NODE_TYPES: NodeTypeDefinition[] = [
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
-      {
-        id: 'in',
-        direction: 'in',
-        dataType: GraphPortType.text,
-        multiple: false,
-        label: 'Timeline'
-      },
+      timelineIn,
       textOut,
       {
         id: 'out-videos',
