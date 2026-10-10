@@ -4653,8 +4653,8 @@ export default {
         framePull: '逐帧拉片',
         reshoot: '片段重拍',
         semanticAnalyze: '语义分析',
-        repair: '视频修复',
-        variant: '视频变体'
+        repair: '语义修复',
+        variant: '语义变体'
       },
       semantic: {
         timeline: '语义时间线',

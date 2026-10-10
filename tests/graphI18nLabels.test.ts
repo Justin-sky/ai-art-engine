@@ -28,8 +28,9 @@ describe('graph processing menu labels', () => {
     expect(t('graph.types.image.select')).toBe('选取图片')
     expect(t('graph.types.video.select')).toBe('选取视频')
     expect(t('graph.types.video.semanticAnalyze')).toBe('语义分析')
-    expect(t('graph.types.video.repair')).toBe('视频修复')
-    expect(t('graph.types.video.variant')).toBe('视频变体')
+    // 「视频语义」组内统一用「语义」前缀（typeId 仍是 video.repair / video.variant）
+    expect(t('graph.types.video.repair')).toBe('语义修复')
+    expect(t('graph.types.video.variant')).toBe('语义变体')
     expect(t('graph.types.semantic.timeline')).toBe('语义时间线')
     expect(t('graph.types.semantic.trigger')).toBe('语义触发')
     expect(t('graph.types.semantic.compile')).toBe('导演编译')

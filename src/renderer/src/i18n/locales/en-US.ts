@@ -4760,8 +4760,8 @@ export default {
         framePull: 'Frame pull',
         reshoot: 'Segment reshoot',
         semanticAnalyze: 'Semantic analyze',
-        repair: 'Video repair',
-        variant: 'Video variant'
+        repair: 'Semantic repair',
+        variant: 'Semantic variant'
       },
       semantic: {
         timeline: 'Semantic timeline',

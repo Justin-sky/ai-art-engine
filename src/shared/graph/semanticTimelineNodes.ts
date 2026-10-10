@@ -157,9 +157,9 @@ export const SEMANTIC_TIMELINE_NODE_TYPES: NodeTypeDefinition[] = [
   {
     typeId: 'video.repair',
     category: 'note',
-    label: 'Video repair',
+    label: 'Semantic repair',
     icon: '🔧',
-    defaultTitle: 'Video repair',
+    defaultTitle: 'Semantic repair',
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
@@ -191,9 +191,9 @@ export const SEMANTIC_TIMELINE_NODE_TYPES: NodeTypeDefinition[] = [
   {
     typeId: 'video.variant',
     category: 'note',
-    label: 'Video variant',
+    label: 'Semantic variant',
     icon: '🧬',
-    defaultTitle: 'Video variant',
+    defaultTitle: 'Semantic variant',
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
