@@ -147,17 +147,18 @@ describe('SemanticTimelineEditor 轨道尺寸与字号', () => {
     expect(source).toContain("t('graph.semanticTimeline.selectHint')")
     expect(source).toContain('v-if="!selectedEvidence"')
     const panel = cssBlock('.stl-inspector')
-    expect(panel).toMatch(/position:\s*sticky/)
-    expect(panel).toMatch(/top:\s*0/)
+    // 面板高度要撑满（与 dive / 窗口等高）：flex-start 会压成内容高度、边框断掉
+    expect(panel).toMatch(/align-self:\s*stretch/)
+    expect(panel).not.toMatch(/align-self:\s*flex-start/)
     expect(panel).toMatch(/max-height:\s*100%/)
     expect(panel).toMatch(/overflow:\s*auto/)
     expect(panel).toMatch(/flex-shrink:\s*0/)
-    // 面板要够宽，视频才放得大（240 太窄）
-    expect(pxOf('.stl-inspector', 'width')).toBeGreaterThanOrEqual(300)
+    // 面板宽度决定视频高度（16:9）：跟窗口走但保底够大
+    expect(panel).toMatch(/width:\s*clamp\(320px, 30vw, 440px\)/)
   })
 
   /**
-   * 原视频要**够大**：出血到面板两边吃满整栏 + 粘顶 + 窗口矮时限高。
+   * 原视频要**够大**：出血到面板两边吃满整栏 + 粘顶 + 矮窗口限高但要够高。
    */
   it('原视频区域够大（出血满栏 + 粘顶 + 限高不挤掉证据）', () => {
     const sourceBox = cssBlock('.stl-source')
@@ -167,7 +168,9 @@ describe('SemanticTimelineEditor 轨道尺寸与字号', () => {
     const video = cssBlock('.stl-source-video')
     expect(video).toMatch(/width:\s*100%/)
     expect(video).toMatch(/aspect-ratio:\s*16 \/ 9/)
-    expect(video).toMatch(/max-height:\s*46vh/)
+    // 矮窗口限高不能收得太狠（46vh 时 320 宽的视频在 700 高的窗口里就被切了）
+    const maxHeight = Number(/max-height:\s*(\d+)vh/.exec(video)?.[1] ?? 0)
+    expect(maxHeight).toBeGreaterThanOrEqual(56)
     expect(video).toMatch(/object-fit:\s*contain/)
   })
 

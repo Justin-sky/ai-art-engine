@@ -673,18 +673,19 @@ function beatLabel(type: string): string {
   padding: 6px 10px 6px 12px;
 }
 .stl-inspector {
-  /* 面板要放得下够大的视频：240 → 320（时间线窄了会自己横向滚动） */
-  width: 320px;
+  /* 面板宽度决定视频能多大（16:9 → 高 = 宽 × 9/16）：
+     跟着窗口走，宽屏给到 440（视频 440×248），窄屏保底 320，别把时间线挤没 */
+  width: clamp(320px, 30vw, 440px);
   flex-shrink: 0;
-  /* 常驻固定栏：不随选中项出现/消失（否则选一下整条时间线就左右跳），
-     并在编辑器可滚动时钉在顶部，不会被内容带走 */
-  position: sticky;
-  top: 0;
-  align-self: flex-start;
+  /* 常驻固定栏：不随选中项出现/消失（否则选一下整条时间线就左右跳）。
+     高度**撑满**：与 dive（进而与窗口）等高 —— 不要写 flex-start，
+     那会把面板压成内容高度、左边框到证据文字下面就断掉 */
+  align-self: stretch;
   max-height: 100%;
   border-left: 1px solid var(--border);
   padding: 12px;
   font-size: 13px;
+  /* 面板自身成为滚动容器：内容多了在里面滚，边框始终占满整高 */
   overflow: auto;
 }
 .stl-inspector h4 {
@@ -705,8 +706,8 @@ function beatLabel(type: string): string {
   display: block;
   width: 100%;
   aspect-ratio: 16 / 9;
-  /* 窗口矮时不许把证据挤没：超过视口 46% 就收住，画面按 contain 留边 */
-  max-height: 46vh;
+  /* 矮窗口时不许把证据挤没：超过视口 60% 就收住，画面按 contain 留边 */
+  max-height: 60vh;
   object-fit: contain;
   background: #000;
 }
