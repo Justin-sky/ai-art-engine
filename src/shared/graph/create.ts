@@ -28,7 +28,8 @@ const ASSET_NODE_TITLES: Record<AssetType, string> = {
   canvas: 'Canvas',
   world: 'World Elements',
   beat: 'Beat Units',
-  subgraph: 'Host Asset'
+  subgraph: 'Host Asset',
+  semanticTimeline: 'Semantic Timeline'
 }
 
 export function assetTypeToGraphNodeTitle(type: AssetType, name?: string): string {

@@ -61,6 +61,7 @@ import { enrichStyleImagesWithLibraryPrompts } from '../features/stylePresets/de
 import { resolveStyleImageUrls } from '../features/stylePresets/resolveStyleImageUrls'
 import i18n from '../i18n'
 import { composeImageExpandCanvas } from '../features/graph/model/composeImageExpandCanvas'
+import { semanticGraphCapabilities } from '../features/graph/model/semanticGraphCapabilities'
 import { composeImageRedrawCanvas } from '../features/graph/model/composeImageRedrawCanvas'
 import { composeImageCropCanvas } from '../features/graph/model/composeImageCropCanvas'
 import { composeImageTransformCanvas } from '../features/graph/model/composeImageTransformCanvas'
@@ -1789,6 +1790,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         resolveAssetImageUrl,
         resolveAssetMediaUrl: resolveAssetMediaDataUrl,
         resolveProjectMediaUrl: (relativePath: string) => resolveAssetFileUrl(relativePath),
+        ...semanticGraphCapabilities,
         composeImageExpandCanvas,
         composeImageRedrawCanvas,
         composeImageCropCanvas,

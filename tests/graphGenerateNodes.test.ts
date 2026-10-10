@@ -51,6 +51,13 @@ const CANVAS_ADDABLE_NODE_TYPES = [
   'video.lipSync',
   'video.framePull',
   'video.reshoot',
+  // 视频语义分组
+  'video.semanticAnalyze',
+  'video.repair',
+  'video.variant',
+  'semantic.timeline',
+  'semantic.trigger',
+  'semantic.compile',
   'image.toPrompt',
   'image.transform',
   'image.upscale',

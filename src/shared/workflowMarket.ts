@@ -42,6 +42,14 @@ export interface WorkflowMarketEntry {
   sizeBytes?: number
   /** 可选：随本条工作流一起安装的 dsh 技能包（清单由仓库脚本从磁盘派生） */
   skill?: WorkflowSkillManifest
+  /**
+   * 可选：Semantic Pack 文件清单（索引派生，相对工作流根，如 `semanticPacks/foo.json`）。
+   * 客户端按此清单下载；`workflow.json` 里的 `semanticPacks` 字符串数组是声明，清单以磁盘为准。
+   */
+  semanticPacks?: {
+    files: Array<{ path: string; sizeBytes?: number }>
+    sizeBytes?: number
+  }
 }
 
 /**
@@ -108,6 +116,11 @@ export interface WorkflowBundle {
   /** **必填**（解析器总会填上）：兼容性判定的依据 */
   requires: WorkflowRequirement
   plan: GraphPlan
+  /**
+   * 可选：随工作流分发的 Semantic Pack 相对路径列表（包内 `semanticPacks/*.json`）。
+   * 仅 JSON 数据包，不含可执行节点代码；安装后由 semantic pack 加载器校验入库。
+   */
+  semanticPacks?: string[]
 }
 
 /** 分类枚举：与仓库 `validate.mjs` 里的集合必须一致（两侧测试共同钉住） */
@@ -218,7 +231,11 @@ export function parseWorkflowMarketEntry(raw: unknown): WorkflowMarketEntry | nu
     ...(sizeBytes > 0 ? { sizeBytes } : {}),
     ...(() => {
       const skill = parseWorkflowSkillManifest(obj.skill)
-      return skill ? { skill } : {}
+      const semanticPacks = parseSemanticPacksManifest(obj.semanticPacks)
+      return {
+        ...(skill ? { skill } : {}),
+        ...(semanticPacks ? { semanticPacks } : {})
+      }
     })()
   }
 }
@@ -238,6 +255,37 @@ export function isSafeSkillFilePath(path: string): boolean {
   // 只允许 SKILL.md 与三个约定子目录下的文件（与仓库 validator 同一口径）
   if (path === 'SKILL.md') return true
   return /^(references|scripts|assets)\/[^/]+$/.test(path)
+}
+
+/** Semantic Pack 路径：仅 `semanticPacks/<name>.json` */
+export function isSafeSemanticPackPath(path: string): boolean {
+  if (!path || path.length > 200) return false
+  if (path.includes('\\') || path.includes('\0')) return false
+  return /^semanticPacks\/[a-z0-9][a-z0-9._-]*\.json$/i.test(path)
+}
+
+export function parseSemanticPacksManifest(
+  raw: unknown
+): WorkflowMarketEntry['semanticPacks'] | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const obj = raw as Record<string, unknown>
+  if (!Array.isArray(obj.files)) return null
+  const files: Array<{ path: string; sizeBytes?: number }> = []
+  for (const item of obj.files) {
+    if (!item || typeof item !== 'object') continue
+    const filePath = asString((item as { path?: unknown }).path)
+    if (!isSafeSemanticPackPath(filePath)) continue
+    const sizeBytes = asCount((item as { sizeBytes?: unknown }).sizeBytes)
+    files.push({ path: filePath, ...(sizeBytes > 0 ? { sizeBytes } : {}) })
+  }
+  if (!files.length) return null
+  const sizeBytes = asCount(obj.sizeBytes)
+  return {
+    files,
+    ...(sizeBytes > 0
+      ? { sizeBytes }
+      : { sizeBytes: files.reduce((sum, f) => sum + (f.sizeBytes ?? 0), 0) })
+  }
 }
 
 /**
@@ -471,6 +519,9 @@ export function parseWorkflowBundle(
 
   const category = asString(obj.category)
   const cover = asString(obj.cover)
+  const semanticPacks = asStringArray(obj.semanticPacks).filter((p) =>
+    p.replace(/\\/g, '/').startsWith('semanticPacks/')
+  )
   return {
     ok: true,
     bundle: {
@@ -485,6 +536,7 @@ export function parseWorkflowBundle(
       author,
       license,
       ...(cover ? { cover } : {}),
+      ...(semanticPacks.length ? { semanticPacks } : {}),
       requires: asRequirement(obj.requires),
       plan: {
         ...(asString(planObj.title) ? { title: asString(planObj.title) } : {}),
@@ -608,6 +660,8 @@ export function workflowMarketUrls(source: string): {
   cover: (entry: Pick<WorkflowMarketEntry, 'id' | 'cover'>) => string | null
   /** 技能包内单个文件；路径不合法时返回 null（不发出请求） */
   skillFile: (id: string, filePath: string) => string | null
+  /** Semantic Pack 文件（路径已含 `semanticPacks/` 前缀） */
+  semanticPackFile: (id: string, filePath: string) => string | null
 } {
   const base = source.replace(/\/+$/, '')
   return {
@@ -619,7 +673,9 @@ export function workflowMarketUrls(source: string): {
      * 这条 URL 会交给下载器，不能让远端用 `../` 把请求引到别处。
      */
     skillFile: (id: string, filePath: string) =>
-      isSafeSkillFilePath(filePath) ? `${base}/workflows/${id}/skill/${filePath}` : null
+      isSafeSkillFilePath(filePath) ? `${base}/workflows/${id}/skill/${filePath}` : null,
+    semanticPackFile: (id: string, filePath: string) =>
+      isSafeSemanticPackPath(filePath) ? `${base}/workflows/${id}/${filePath}` : null
   }
 }
 

@@ -67,6 +67,8 @@ const READ_TOOLS = new Set([
   'asset_qc',
   'timeline_read',
   'timeline_preview',
+  'semantic_timeline_read',
+  'semantic_build_status',
   'render_svg',
   'models_list',
   'storage_status',
@@ -101,8 +103,13 @@ const GENERATE_TOOLS = new Set([
   'transcribe_audio',
   'gameplay_build',
   // 教学成片合成：内含 TTS + ffmpeg 导出，产物不可逆
-  'tutorial_compose'
+  'tutorial_compose',
+  // 语义时间线：分析 / 构建会触达模型或 ffmpeg 长任务
+  'semantic_analyze_video',
+  'semantic_build'
 ])
+
+// semantic_timeline_edit / semantic_plan 未列入上表 → 默认 write（Plan 确认前不可用）
 
 /**
  * 工具副作用等级。**未登记的工具一律按 write**：新增工具默认受 Plan 首轮限制（安全侧兜底），

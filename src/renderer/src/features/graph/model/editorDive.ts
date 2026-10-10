@@ -7,6 +7,7 @@ export type EditorDiveKind = 'asset' | 'screenplay' | 'canvas' | 'world' | 'beat
 /** 逻辑视图 id（双击侧栏/表格/工具/预览等） */
 export type EditorDiveViewId =
   | 'script.timeline'
+  | 'semantic.timeline'
   | 'world.editor'
   | 'world.table'
   | 'beat.gen'
@@ -79,6 +80,15 @@ export type EditorDiveNodeToolViewId = Extract<
 
 export type EditorDiveViewMeta =
   | { viewId: 'script.timeline'; scriptAssetId: string; timelineNodeId?: string }
+  | {
+      viewId: 'semantic.timeline'
+      timelineId: string
+      sourceAssetId?: string
+      sourceRelativePath?: string
+      resultRelativePath?: string
+      /** 节点输出尚未落盘时，内联 JSON 直接渲染编辑器 */
+      timelineJson?: string
+    }
   | {
       viewId: 'world.editor'
       worldAssetId: string
@@ -167,6 +177,8 @@ export function editorDiveViewFrameKey(rootKey: string, meta: EditorDiveViewMeta
   switch (meta.viewId) {
     case 'script.timeline':
       return `${root}/view:${meta.viewId}:${meta.scriptAssetId}:${meta.timelineNodeId ?? '_'}`
+    case 'semantic.timeline':
+      return `${root}/view:${meta.viewId}:${meta.timelineId}`
     case 'world.table':
       return `${root}/view:${meta.viewId}:${meta.worldAssetId}`
     case 'world.editor':

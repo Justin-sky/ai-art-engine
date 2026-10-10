@@ -8,6 +8,7 @@ import PortraitInspector from '../components/PortraitInspector.vue'
 import EmotionInspector from '../components/EmotionInspector.vue'
 import UpscaleInspector from '../components/UpscaleInspector.vue'
 import FramePullInspector from '../components/FramePullInspector.vue'
+import SemanticTimelineInspector from '../components/SemanticTimelineInspector.vue'
 import ReshootInspector from '../components/ReshootInspector.vue'
 import LipSyncInspector from '../components/LipSyncInspector.vue'
 import ExpandInspector from '../components/ExpandInspector.vue'
@@ -322,6 +323,36 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     id: 'studio.graph.framePull',
     component: FramePullInspector,
     nodeTypeId: 'video.framePull'
+  },
+  {
+    id: 'studio.graph.semanticAnalyze',
+    component: SemanticTimelineInspector,
+    nodeTypeId: 'video.semanticAnalyze'
+  },
+  {
+    id: 'studio.graph.semanticTimeline',
+    component: SemanticTimelineInspector,
+    nodeTypeId: 'semantic.timeline'
+  },
+  {
+    id: 'studio.graph.semanticTrigger',
+    component: SemanticTimelineInspector,
+    nodeTypeId: 'semantic.trigger'
+  },
+  {
+    id: 'studio.graph.semanticCompile',
+    component: SemanticTimelineInspector,
+    nodeTypeId: 'semantic.compile'
+  },
+  {
+    id: 'studio.graph.videoRepair',
+    component: SemanticTimelineInspector,
+    nodeTypeId: 'video.repair'
+  },
+  {
+    id: 'studio.graph.videoVariant',
+    component: SemanticTimelineInspector,
+    nodeTypeId: 'video.variant'
   },
   {
     id: 'studio.graph.reshoot',

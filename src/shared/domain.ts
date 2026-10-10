@@ -93,6 +93,8 @@ export type AssetType =
   | 'world'
   | 'beat'
   | 'subgraph'
+  /** 语义时间线工程：事件 / 节拍 / 导演意图，旁挂 Semantic/<id>/ */
+  | 'semanticTimeline'
 
 /** 将任意字符串收窄为 AssetType */
 export function normalizeAssetType(type: string): AssetType {
@@ -458,6 +460,8 @@ export interface AssetInfo {
   visionTags?: VisionAssetTags
   /** 视频人/物打点结果：抽帧逐帧检测聚合出的空镜/单人/群像时间线段（仅 video，按需触发） */
   videoBeats?: VideoBeatTags
+  /** 关联的语义时间线资产 id（仅 video；拆解后写入） */
+  semanticTimelineId?: string
   version: number
   createdAt: string
   updatedAt: string
@@ -658,7 +662,8 @@ export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   canvas: 'Series',
   world: 'World Elements',
   beat: 'Beat Units',
-  subgraph: 'Host Asset'
+  subgraph: 'Host Asset',
+  semanticTimeline: 'Semantic Timeline'
 }
 
 /** 中文资产类型名（落盘默认名 / 主进程命名用） */
@@ -677,7 +682,8 @@ export const ASSET_TYPE_LABELS_ZH: Record<AssetType, string> = {
   canvas: '剧集',
   world: '世界元素',
   beat: '场',
-  subgraph: '宿主资产'
+  subgraph: '宿主资产',
+  semanticTimeline: '语义时间线'
 }
 
 export function isEnglishLanguage(language?: string | null): boolean {
@@ -712,7 +718,8 @@ export const ASSET_TYPE_ICONS: Record<AssetType, string> = {
   canvas: '📺',
   world: '🤺',
   beat: '📖',
-  subgraph: '📦'
+  subgraph: '📦',
+  semanticTimeline: '🧭'
 }
 
 /** 仅含骨骼+动画、无网格的模型资产图标（动画片段） */

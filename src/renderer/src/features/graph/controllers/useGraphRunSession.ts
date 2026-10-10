@@ -42,6 +42,7 @@ import { resolveAssetFileUrl } from '../../media/assetUrlCache'
 import { resolveAssetText as resolveAssetTextById } from '../../media/resolveAssetText'
 import { composeImageExpandCanvas } from '../model/composeImageExpandCanvas'
 import { composeImageRedrawCanvas } from '../model/composeImageRedrawCanvas'
+import { semanticGraphCapabilities } from '../model/semanticGraphCapabilities'
 import { composeImageCropCanvas } from '../model/composeImageCropCanvas'
 import { composeImageTransformCanvas } from '../model/composeImageTransformCanvas'
 import { composeImageCutoutCanvas } from '../model/composeImageCutoutCanvas'
@@ -1661,6 +1662,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         resolveAssetMediaUrl: resolveAssetMediaDataUrl,
         // 人像处理「以上次出图结果为底」需要按工程相对路径取图（产物是相对路径，不是 assetId）
         resolveProjectMediaUrl: (relativePath: string) => resolveAssetFileUrl(relativePath),
+        ...semanticGraphCapabilities,
         composeImageExpandCanvas,
         composeImageRedrawCanvas,
         composeImageCropCanvas,

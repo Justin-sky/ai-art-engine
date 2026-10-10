@@ -538,7 +538,49 @@ const BUILTIN_SKILLS: GraphSkill[] = [
     'Portrait texture',
     defaultPortraitTextureSystemPrompt
   ),
-  fromSystemDefault('system.emotion', '情绪', 'Emotion', defaultEmotionSystemPrompt)
+  fromSystemDefault('system.emotion', '情绪', 'Emotion', defaultEmotionSystemPrompt),
+  {
+    id: 'semantic.shotDescribe',
+    kind: 'system',
+    titleZh: '语义·镜头描述',
+    titleEn: 'Semantic · shot describe',
+    systemPromptZh:
+      '你是电影摄影分析师。根据镜头关键帧宫格图，输出 JSON 数组，每项含 shotId,subject,action,emotion,shotSize,angle,cameraMotion,focalLengthHint。只输出 JSON。',
+    systemPromptEn:
+      'You are a cinematography analyst. Given a keyframe grid, output a JSON array with shotId,subject,action,emotion,shotSize,angle,cameraMotion,focalLengthHint. JSON only.',
+    instructionZh: '描述每个镜头的主体、动作、情绪与镜头语言。',
+    instructionEn: 'Describe subject, action, emotion and camera language for each shot.',
+    usageZh: '用于 Semantic Timeline 分析管线的镜头理解步骤。',
+    usageEn: 'Used in the Semantic Timeline shot-understanding step.'
+  },
+  {
+    id: 'semantic.eventExtract',
+    kind: 'system',
+    titleZh: '语义·事件抽取',
+    titleEn: 'Semantic · event extract',
+    systemPromptZh:
+      '你是导演助理。根据镜头描述、转写与 OCR，抽取语义事件。输出 JSON 数组，每项必须含 label,description,start,end,evidence（证据 ID 数组，不可为空）,type?,importance?。无证据的事件不要输出。只输出 JSON。',
+    systemPromptEn:
+      'You are a director assistant. Extract semantic events from shot descriptions, transcript and OCR. JSON array items must include label,description,start,end,evidence (non-empty id list). Drop events without evidence. JSON only.',
+    instructionZh: '抽取剧情/产品/镜头/情绪事件，并强制引用证据 ID。',
+    instructionEn: 'Extract story/product/camera/emotion events with mandatory evidence ids.',
+    usageZh: '用于 Semantic Timeline 事件抽取；解析器会丢弃无证据事件。',
+    usageEn: 'Semantic Timeline event extraction; parser drops evidence-less events.'
+  },
+  {
+    id: 'semantic.directorInfer',
+    kind: 'system',
+    titleZh: '语义·导演意图',
+    titleEn: 'Semantic · director intent',
+    systemPromptZh:
+      '你是电影导演。根据语义事件与镜头描述，推断导演意图。输出 JSON 数组：trigger(事件id或label),goal,techniques[{track,action,params}],reason。',
+    systemPromptEn:
+      'You are a film director. Infer director intents from events and shot descriptions. JSON array: trigger,goal,techniques[{track,action,params}],reason.',
+    instructionZh: '为每个重要事件给出可执行的镜头/声音/字幕手法。',
+    instructionEn: 'Propose executable camera/audio/text techniques for key events.',
+    usageZh: 'DirectorAgent 基础版：反推意图写入 Semantic Timeline。',
+    usageEn: 'Baseline DirectorAgent: write intents into the Semantic Timeline.'
+  }
 ]
 
 /**

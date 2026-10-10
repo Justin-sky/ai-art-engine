@@ -302,6 +302,11 @@ export const IpcChannels = {
   TIMELINE_TRANSITION_PREVIEW: 'timeline:transition-preview',
   /** 音频转写（语音识别）：配音/音频文件 → 带时间戳文本 */
   TRANSCRIBE_AUDIO: 'transcribe:audio',
+  SEMANTIC_ANALYZE: 'semantic:analyze',
+  SEMANTIC_LOAD_EVIDENCE: 'semantic:loadEvidence',
+  SEMANTIC_SAVE_TIMELINE: 'semantic:saveTimeline',
+  SEMANTIC_BUILD: 'semantic:build',
+  SEMANTIC_LIST_PACKS: 'semantic:listPacks',
 
   // 应用界面录制：把「界面上的操作过程」录成视频，供教学视频合成使用。
   // 应用此前没有任何屏幕/窗口录制能力（desktopCapturer 零出现），这一段是教学视频唯一缺的素材来源。
@@ -1165,6 +1170,11 @@ export interface WorkflowMarketEntryView {
   updatable: boolean
   /** 随包附带的 dsh 技能包清单；有它时界面显示「含技能 / 含脚本」 */
   skill?: WorkflowSkillManifest
+  /** 随包 Semantic Pack 文件清单；安装时一并下载到工作流目录 */
+  semanticPacks?: {
+    files: Array<{ path: string; sizeBytes?: number }>
+    sizeBytes?: number
+  }
 }
 
 export interface WorkflowMarketFetchResult {
@@ -1707,6 +1717,24 @@ export interface StudioApi {
   ) => Promise<import('./modelProvider').Model3dAnimationAction[]>
   /** 音频转写：本地音频文件 → 带时间戳文本（语音识别） */
   transcribeAudio: (input: TranscribeAudioInput) => Promise<TranscribeAudioResult>
+  /** 语义分析视频：切镜 / 关键帧 / 转写 / 人声 / 实体，写入 Semantic/<id>/ */
+  semanticAnalyze: (
+    input: import('./semanticTimeline').SemanticAnalyzeRequest
+  ) => Promise<import('./semanticTimeline').SemanticAnalyzeResponse>
+  /** 读取语义时间线证据（镜头 / 话语 / 关键帧） */
+  semanticLoadEvidence: (
+    timelineId: string
+  ) => Promise<import('./semanticTimeline').SemanticEvidenceResponse>
+  /** 保存（LLM 补全后的）语义时间线文档 */
+  semanticSaveTimeline: (
+    doc: import('./semanticTimeline').SemanticTimeline
+  ) => Promise<{ ok: true }>
+  /** 按语义编辑构建成片（本地 ffmpeg；生成类编辑只出计划不执行） */
+  semanticBuild: (
+    input: import('./semanticTimeline').SemanticBuildRequest
+  ) => Promise<import('./semanticTimeline').SemanticBuildResponse>
+  /** 列出内置 + 已安装的语义市场包（词表 / 规则 / 配方） */
+  semanticListPacks: () => Promise<import('./semanticTimeline').SemanticPack[]>
   /** AI 自由构图：仅规划预览 */
   planAiWorkflow: (input: PlanAiWorkflowInput) => Promise<PlanAiWorkflowResult>
   /** AI 自由构图：确认计划后落盘 */
@@ -1761,6 +1789,11 @@ export interface StudioApi {
      * 界面必须先展示脚本清单再让用户点确认）；true 也要逐条过路径白名单与体积上限。
      */
     skillScriptsConsent?: boolean
+    /** 索引条目里的 Semantic Pack 清单（随工作流一并下载） */
+    semanticPacks?: {
+      files: Array<{ path: string; sizeBytes?: number }>
+      sizeBytes?: number
+    }
   }) => Promise<WorkflowMarketActionResult>
   uninstallWorkflowMarket: (id: string) => Promise<WorkflowMarketActionResult>
   /** 已安装清单 */

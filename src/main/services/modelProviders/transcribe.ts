@@ -8,7 +8,8 @@ import type {
   ModelProviderInstance,
   TranscribeAudioInput,
   TranscribeAudioResult,
-  TranscribeAudioSegment
+  TranscribeAudioSegment,
+  TranscribeAudioWord
 } from '@shared/modelProvider'
 import { fail, defErrSimple } from '@shared/errors/appError'
 import { createProviderHttpClient, LONG_GENERATE_TIMEOUT_MS, readHttpError } from './http'
@@ -25,7 +26,13 @@ type VerboseJsonTranscription = {
   language?: string
   duration?: number
   text?: string
-  segments?: Array<{ start?: number; end?: number; text?: string }>
+  segments?: Array<{
+    start?: number
+    end?: number
+    text?: string
+    words?: Array<{ word?: string; start?: number; end?: number; probability?: number }>
+  }>
+  words?: Array<{ word?: string; start?: number; end?: number; probability?: number }>
 }
 
 function audioMimeForPath(path: string): string {
@@ -50,22 +57,73 @@ function audioMimeForPath(path: string): string {
   }
 }
 
+function parseWords(
+  rows: Array<{ word?: string; start?: number; end?: number; probability?: number }> | undefined
+): TranscribeAudioWord[] | undefined {
+  if (!rows?.length) return undefined
+  const words = rows
+    .map((w) => {
+      const text = String(w.word ?? '').trim()
+      if (!text) return null
+      const start = Number.isFinite(w.start) ? Math.max(0, w.start!) : 0
+      const end = Number.isFinite(w.end) ? Math.max(start, w.end!) : start
+      return {
+        text,
+        startSec: start,
+        endSec: end,
+        ...(typeof w.probability === 'number' ? { confidence: w.probability } : {})
+      } satisfies TranscribeAudioWord
+    })
+    .filter((w): w is TranscribeAudioWord => w != null)
+  return words.length ? words : undefined
+}
+
 function parseVerboseResult(
   data: VerboseJsonTranscription,
   durationSec?: number
-): TranscribeAudioSegment[] {
+): { segments: TranscribeAudioSegment[]; granularity: 'word' | 'sentence' } {
+  const topWords = parseWords(data.words)
   const segments = (data.segments ?? [])
     .map((row) => {
       const start = Number.isFinite(row.start) ? Math.max(0, row.start!) : 0
       const end = Number.isFinite(row.end) ? Math.max(start, row.end!) : start
       const text = String(row.text ?? '').trim()
-      return text ? { startSec: start, endSec: end, text } : null
+      if (!text) return null
+      const words = parseWords(row.words)
+      return {
+        startSec: start,
+        endSec: end,
+        text,
+        ...(words ? { words } : {})
+      } satisfies TranscribeAudioSegment
     })
     .filter((item): item is TranscribeAudioSegment => item != null)
-  if (segments.length) return segments
+
+  if (segments.length) {
+    const hasWord = segments.some((s) => (s.words?.length ?? 0) > 0) || (topWords?.length ?? 0) > 0
+    // 顶层 words 按段时间切分挂到各 segment（OpenAI 常见形态）
+    if (!segments.some((s) => s.words?.length) && topWords?.length) {
+      for (const seg of segments) {
+        seg.words = topWords.filter(
+          (w) => w.startSec >= seg.startSec - 0.05 && w.endSec <= seg.endSec + 0.05
+        )
+      }
+    }
+    return { segments, granularity: hasWord ? 'word' : 'sentence' }
+  }
   const whole = String(data.text ?? '').trim()
-  if (!whole) return []
-  return [{ startSec: 0, endSec: durationSec ?? 0, text: whole }]
+  if (!whole) return { segments: [], granularity: 'sentence' }
+  return {
+    segments: [
+      {
+        startSec: 0,
+        endSec: durationSec ?? 0,
+        text: whole,
+        ...(topWords ? { words: topWords } : {})
+      }
+    ],
+    granularity: topWords?.length ? 'word' : 'sentence'
+  }
 }
 
 /**
@@ -80,12 +138,17 @@ export async function transcribeAudioViaOpenAiCompatible(
 ): Promise<TranscribeAudioResult> {
   const client = createProviderHttpClient(provider, LONG_GENERATE_TIMEOUT_MS)
 
-  const buildForm = (responseFormat: 'verbose_json' | 'json'): FormData => {
+  const buildForm = (responseFormat: 'verbose_json' | 'json', withWords: boolean): FormData => {
     const form = new FormData()
     form.append('model', modelId)
     form.append('response_format', responseFormat)
     if (input.language?.trim()) form.append('language', input.language.trim())
     if (input.prompt?.trim()) form.append('prompt', input.prompt.trim())
+    // OpenAI：verbose_json + timestamp_granularities[]=word 才返回词级时间
+    if (withWords && responseFormat === 'verbose_json') {
+      form.append('timestamp_granularities[]', 'word')
+      form.append('timestamp_granularities[]', 'segment')
+    }
     const buffer = readFileSync(absPath)
     form.append(
       'file',
@@ -101,12 +164,23 @@ export async function transcribeAudioViaOpenAiCompatible(
       timeout: LONG_GENERATE_TIMEOUT_MS
     })
 
+  const wantWords = input.wordTimestamps === true
+
   try {
     // 优先 verbose_json 拿分段时间戳；兼容网关不支持时回退 json
     let data: VerboseJsonTranscription
     try {
-      const { data: verbose } = await post(buildForm('verbose_json'))
-      data = verbose as VerboseJsonTranscription
+      let verbose: VerboseJsonTranscription
+      try {
+        const res = await post(buildForm('verbose_json', wantWords))
+        verbose = res.data as VerboseJsonTranscription
+      } catch (wordErr) {
+        // 词级参数不被支持时，降级为无 word 的 verbose_json
+        if (!wantWords) throw wordErr
+        const res = await post(buildForm('verbose_json', false))
+        verbose = res.data as VerboseJsonTranscription
+      }
+      data = verbose
       if (
         typeof data.text !== 'string' &&
         typeof (verbose as { text?: string }).text === 'string'
@@ -114,21 +188,23 @@ export async function transcribeAudioViaOpenAiCompatible(
         data.text = (verbose as { text?: string }).text
       }
     } catch {
-      const { data: plain } = await post(buildForm('json'))
+      const { data: plain } = await post(buildForm('json', false))
       const text = typeof plain.text === 'string' ? plain.text : ''
       return {
         segments: text.trim() ? [{ startSec: 0, endSec: 0, text: text.trim() }] : [],
         text: text.trim() || undefined,
-        model: modelId
+        model: modelId,
+        granularity: 'sentence'
       }
     }
 
-    const segments = parseVerboseResult(data, data.duration)
-    const text = segments.map((s) => s.text).join('') || String(data.text ?? '').trim()
+    const parsed = parseVerboseResult(data, data.duration)
+    const text = parsed.segments.map((s) => s.text).join('') || String(data.text ?? '').trim()
     return {
-      segments,
+      segments: parsed.segments,
       ...(text ? { text } : {}),
       model: modelId,
+      granularity: parsed.granularity,
       ...(data.language ? { language: data.language } : {})
     }
   } catch (err) {

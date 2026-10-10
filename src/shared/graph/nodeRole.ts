@@ -172,6 +172,24 @@ export function isReshootNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === 'video.reshoot'
 }
 
+const SEMANTIC_TIMELINE_TOOL_TYPE_IDS = new Set([
+  'video.semanticAnalyze',
+  'video.repair',
+  'video.variant',
+  'semantic.timeline',
+  'semantic.trigger',
+  'semantic.compile'
+])
+
+/** Semantic Timeline 工具节点（媒体卡；勿当记事本） */
+export function isSemanticTimelineToolNode(node: Pick<GraphNode, 'typeId'>): boolean {
+  return typeof node.typeId === 'string' && SEMANTIC_TIMELINE_TOOL_TYPE_IDS.has(node.typeId)
+}
+
+export function isSemanticTimelineEditorNode(node: Pick<GraphNode, 'typeId'>): boolean {
+  return node.typeId === 'semantic.timeline'
+}
+
 export function isSelectVoiceNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === 'voice.select'
 }

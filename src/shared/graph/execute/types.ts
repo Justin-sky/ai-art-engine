@@ -757,6 +757,24 @@ export interface NodeExecuteContext {
    * `portraitBakedRelativePath` 是相对路径，不是 assetId）。
    */
   resolveProjectMediaUrl?: (relativePath: string) => Promise<string | undefined>
+  /** 语义分析视频（主进程：切镜 / 关键帧 / 转写 / 人声 / 实体，落盘 Semantic/<id>/） */
+  analyzeSemanticVideo?: (
+    input: import('../../semanticTimeline').SemanticAnalyzeRequest
+  ) => Promise<import('../../semanticTimeline').SemanticAnalyzeResponse>
+  /** 读取语义时间线的镜头 / 话语证据 */
+  loadSemanticEvidence?: (
+    timelineId: string
+  ) => Promise<import('../../semanticTimeline').SemanticEvidenceResponse>
+  /** 保存 LLM 补全后的语义时间线 */
+  saveSemanticTimeline?: (
+    doc: import('../../semanticTimeline').SemanticTimeline
+  ) => Promise<unknown>
+  /** 按语义编辑构建成片 */
+  buildSemanticVideo?: (
+    input: import('../../semanticTimeline').SemanticBuildRequest
+  ) => Promise<import('../../semanticTimeline').SemanticBuildResponse>
+  /** 内置 + 已安装的语义市场包 */
+  listSemanticPacks?: () => Promise<import('../../semanticTimeline').SemanticPack[]>
   /**
    * 扩图：将原图按锚点合成到扩展画布（透明底），返回 PNG data URL。
    * 未注入时退回直接用原图作参考。
@@ -1265,6 +1283,11 @@ export interface GraphRunOptions {
   resolveAssetImageUrl?: NodeExecuteContext['resolveAssetImageUrl']
   resolveAssetMediaUrl?: NodeExecuteContext['resolveAssetMediaUrl']
   resolveProjectMediaUrl?: NodeExecuteContext['resolveProjectMediaUrl']
+  analyzeSemanticVideo?: NodeExecuteContext['analyzeSemanticVideo']
+  loadSemanticEvidence?: NodeExecuteContext['loadSemanticEvidence']
+  saveSemanticTimeline?: NodeExecuteContext['saveSemanticTimeline']
+  buildSemanticVideo?: NodeExecuteContext['buildSemanticVideo']
+  listSemanticPacks?: NodeExecuteContext['listSemanticPacks']
   composeImageExpandCanvas?: NodeExecuteContext['composeImageExpandCanvas']
   composeImageRedrawCanvas?: NodeExecuteContext['composeImageRedrawCanvas']
   composeImageCropCanvas?: NodeExecuteContext['composeImageCropCanvas']

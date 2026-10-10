@@ -147,6 +147,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     switch (meta.viewId) {
       case 'script.timeline':
         return 'Timeline'
+      case 'semantic.timeline':
+        return 'Semantic Timeline'
       case 'world.editor':
         return 'World editor'
       case 'world.table':
@@ -176,6 +178,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const stack = diveStack(key)
     const top = stack[stack.length - 1]
     if (top?.key === frame.key) {
+      // 同 key 再 dive：刷新 meta（如语义时间线内联 JSON 更新），避免栈顶停在旧载荷
+      if (frame.type === 'view') {
+        editorDives.value = {
+          ...editorDives.value,
+          [key]: [...stack.slice(0, -1), frame]
+        }
+      }
       if (isEditorDiveAssetFrame(frame)) requestHostInputSlotSync(frame.assetId)
       return true
     }

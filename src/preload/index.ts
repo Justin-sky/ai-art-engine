@@ -163,6 +163,12 @@ const api: StudioApi = {
   postProcessModel3d: (input) => ipcRenderer.invoke(IpcChannels.POST_PROCESS_MODEL3D, input),
   listModel3dAnimations: (input) => ipcRenderer.invoke(IpcChannels.LIST_MODEL3D_ANIMATIONS, input),
   transcribeAudio: (input) => ipcRenderer.invoke(IpcChannels.TRANSCRIBE_AUDIO, input),
+  semanticAnalyze: (input) => ipcRenderer.invoke(IpcChannels.SEMANTIC_ANALYZE, input),
+  semanticLoadEvidence: (timelineId) =>
+    ipcRenderer.invoke(IpcChannels.SEMANTIC_LOAD_EVIDENCE, timelineId),
+  semanticSaveTimeline: (doc) => ipcRenderer.invoke(IpcChannels.SEMANTIC_SAVE_TIMELINE, doc),
+  semanticBuild: (input) => ipcRenderer.invoke(IpcChannels.SEMANTIC_BUILD, input),
+  semanticListPacks: () => ipcRenderer.invoke(IpcChannels.SEMANTIC_LIST_PACKS),
   planAiWorkflow: (input) => ipcRenderer.invoke(IpcChannels.GEN_AI_WORKFLOW_PLAN, input),
   commitAiWorkflow: (input) => ipcRenderer.invoke(IpcChannels.GEN_AI_WORKFLOW_COMMIT, input),
   listVideoJobs: () => ipcRenderer.invoke(IpcChannels.VIDEO_JOB_LIST),

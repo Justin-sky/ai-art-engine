@@ -1,0 +1,329 @@
+<script setup lang="ts">
+/**
+ * Semantic Timeline 三层只读视图（Story / Entity / Production）。
+ * 编辑操作入口预留；首期展示证据与意图。
+ */
+import { computed, ref } from 'vue'
+import type {
+  DirectorIntent,
+  Entity,
+  SemanticEvent,
+  SemanticTimeline,
+  StoryBeat
+} from '@shared/semanticTimeline'
+
+const props = defineProps<{
+  timeline: SemanticTimeline
+  /** 秒 → 像素 */
+  pxPerSec?: number
+}>()
+
+const emit = defineEmits<{
+  seek: [sec: number]
+  selectEvent: [id: string]
+  selectBeat: [id: string]
+  selectEntity: [id: string]
+}>()
+
+const px = computed(() => props.pxPerSec ?? 40)
+const duration = computed(() => Math.max(0.1, props.timeline.source.duration))
+const widthPx = computed(() => duration.value * px.value)
+
+const selectedId = ref<string | null>(null)
+
+const beats = computed(() => props.timeline.beats)
+const entities = computed(() => props.timeline.entities)
+const events = computed(() => props.timeline.events)
+const intents = computed(() => props.timeline.intents)
+
+const selectedEvidence = computed(() => {
+  const id = selectedId.value
+  if (!id) return null
+  const ev = events.value.find((e) => e.id === id)
+  if (ev) return { kind: 'event' as const, item: ev }
+  const beat = beats.value.find((b) => b.id === id)
+  if (beat) return { kind: 'beat' as const, item: beat }
+  const ent = entities.value.find((e) => e.id === id)
+  if (ent) return { kind: 'entity' as const, item: ent }
+  return null
+})
+
+function left(start: number): string {
+  return `${Math.max(0, start) * px.value}px`
+}
+function width(start: number, end: number): string {
+  return `${Math.max(4, (end - start) * px.value)}px`
+}
+
+function selectBeat(b: StoryBeat): void {
+  selectedId.value = b.id
+  emit('selectBeat', b.id)
+  emit('seek', b.timeRange.start)
+}
+function selectEvent(e: SemanticEvent): void {
+  selectedId.value = e.id
+  emit('selectEvent', e.id)
+  emit('seek', e.timeRange.start)
+}
+function selectEntity(e: Entity): void {
+  selectedId.value = e.id
+  emit('selectEntity', e.id)
+  const first = e.appearances[0]
+  if (first) emit('seek', first.range.start)
+}
+
+function intentsForTrack(track: string): DirectorIntent[] {
+  return intents.value.filter((i) => i.techniques.some((t) => t.track === track))
+}
+</script>
+
+<template>
+  <div class="stl-editor">
+    <div class="stl-scroll">
+      <div class="stl-ruler" :style="{ width: widthPx + 'px' }">
+        <span
+          v-for="t in Math.ceil(duration) + 1"
+          :key="t"
+          class="stl-tick"
+          :style="{ left: (t - 1) * px + 'px' }"
+          >{{ t - 1 }}s</span
+        >
+      </div>
+
+      <section class="stl-layer">
+        <header>Story</header>
+        <div class="stl-track" :style="{ width: widthPx + 'px' }">
+          <button
+            v-for="b in beats"
+            :key="b.id"
+            type="button"
+            class="stl-block beat"
+            :class="{ selected: selectedId === b.id }"
+            :style="{
+              left: left(b.timeRange.start),
+              width: width(b.timeRange.start, b.timeRange.end)
+            }"
+            :title="b.description"
+            @click="selectBeat(b)"
+          >
+            {{ b.type }}
+          </button>
+        </div>
+      </section>
+
+      <section class="stl-layer">
+        <header>Character / Entity</header>
+        <div
+          v-for="ent in entities"
+          :key="ent.id"
+          class="stl-track entity-row"
+          :style="{ width: widthPx + 'px' }"
+        >
+          <span class="stl-ent-label">{{ ent.name }}</span>
+          <button
+            v-for="(ap, i) in ent.appearances"
+            :key="ent.id + i"
+            type="button"
+            class="stl-block entity"
+            :class="{ selected: selectedId === ent.id, soft: !ent.pixelEditable }"
+            :style="{ left: left(ap.range.start), width: width(ap.range.start, ap.range.end) }"
+            @click="selectEntity(ent)"
+          />
+        </div>
+        <div v-if="!entities.length" class="stl-empty">No entities</div>
+      </section>
+
+      <section class="stl-layer">
+        <header>Production</header>
+        <div
+          v-for="track in ['camera', 'audio', 'text', 'vfx']"
+          :key="track"
+          class="stl-track"
+          :style="{ width: widthPx + 'px' }"
+        >
+          <span class="stl-ent-label">{{ track }}</span>
+          <button
+            v-for="intent in intentsForTrack(track)"
+            :key="intent.id + track"
+            type="button"
+            class="stl-block intent"
+            :style="{
+              left: left(
+                events.find((e) => e.id === intent.trigger || e.label === intent.trigger)?.timeRange
+                  .start ?? 0
+              ),
+              width: width(
+                events.find((e) => e.id === intent.trigger || e.label === intent.trigger)?.timeRange
+                  .start ?? 0,
+                events.find((e) => e.id === intent.trigger || e.label === intent.trigger)?.timeRange
+                  .end ?? 1
+              )
+            }"
+            :title="intent.reason"
+          >
+            {{ intent.techniques.find((t) => t.track === track)?.action }}
+          </button>
+        </div>
+        <div class="stl-track" :style="{ width: widthPx + 'px' }">
+          <span class="stl-ent-label">events</span>
+          <button
+            v-for="ev in events"
+            :key="ev.id"
+            type="button"
+            class="stl-block event"
+            :class="{ selected: selectedId === ev.id }"
+            :style="{
+              left: left(ev.timeRange.start),
+              width: width(ev.timeRange.start, ev.timeRange.end)
+            }"
+            :title="ev.description"
+            @click="selectEvent(ev)"
+          >
+            {{ ev.label }}
+          </button>
+        </div>
+      </section>
+    </div>
+
+    <aside v-if="selectedEvidence" class="stl-inspector">
+      <h4>Evidence</h4>
+      <template v-if="selectedEvidence.kind === 'event'">
+        <p>
+          <strong>{{ selectedEvidence.item.label }}</strong>
+        </p>
+        <p>{{ selectedEvidence.item.description }}</p>
+        <p class="muted">evidence: {{ selectedEvidence.item.evidence.join(', ') || '—' }}</p>
+        <p class="muted">
+          {{ selectedEvidence.item.timeRange.start.toFixed(2) }}s –
+          {{ selectedEvidence.item.timeRange.end.toFixed(2) }}s
+        </p>
+      </template>
+      <template v-else-if="selectedEvidence.kind === 'beat'">
+        <p>
+          <strong>{{ selectedEvidence.item.type }}</strong>
+        </p>
+        <p>{{ selectedEvidence.item.description }}</p>
+        <p class="muted">events: {{ selectedEvidence.item.events.join(', ') || '—' }}</p>
+      </template>
+      <template v-else>
+        <p>
+          <strong>{{ selectedEvidence.item.name }}</strong> ({{ selectedEvidence.item.kind }})
+        </p>
+        <p class="muted">pixelEditable: {{ selectedEvidence.item.pixelEditable ? 'yes' : 'no' }}</p>
+      </template>
+    </aside>
+  </div>
+</template>
+
+<style scoped>
+.stl-editor {
+  display: flex;
+  gap: 12px;
+  min-height: 280px;
+  background: var(--bg-panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.stl-scroll {
+  flex: 1;
+  overflow: auto;
+  padding: 8px 12px 16px;
+}
+.stl-ruler {
+  position: relative;
+  height: 20px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.stl-tick {
+  position: absolute;
+  top: 0;
+  font-size: 10px;
+  color: var(--text-muted);
+  transform: translateX(-50%);
+}
+.stl-layer {
+  margin-bottom: 12px;
+}
+.stl-layer > header {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+.stl-track {
+  position: relative;
+  height: 28px;
+  margin-bottom: 4px;
+  background: var(--bg-elevated);
+  border-radius: 4px;
+}
+.stl-ent-label {
+  position: absolute;
+  left: 4px;
+  top: 6px;
+  z-index: 2;
+  font-size: 10px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+.stl-block {
+  position: absolute;
+  top: 3px;
+  height: 22px;
+  border: none;
+  border-radius: 4px;
+  font-size: 10px;
+  color: #fff;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 6px;
+  text-align: left;
+}
+.stl-block.beat {
+  background: #5b6cff;
+}
+.stl-block.entity {
+  background: #2a9d8f;
+  min-width: 8px;
+}
+.stl-block.entity.soft {
+  background: #6c757d;
+  opacity: 0.7;
+}
+.stl-block.intent {
+  background: #e76f51;
+}
+.stl-block.event {
+  background: #9b5de5;
+}
+.stl-block.selected {
+  outline: 2px solid var(--text);
+}
+.stl-empty {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 4px;
+}
+.stl-inspector {
+  width: 220px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  padding: 12px;
+  font-size: 12px;
+  overflow: auto;
+}
+.stl-inspector h4 {
+  margin: 0 0 8px;
+  font-size: 12px;
+}
+.stl-inspector .muted {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+</style>

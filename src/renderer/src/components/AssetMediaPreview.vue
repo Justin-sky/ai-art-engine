@@ -170,6 +170,40 @@ function seekFromBeatStrip(e: MouseEvent): void {
   syncMediaClock(el)
 }
 
+/** Semantic Timeline 三行色带（节拍 / 镜头 / 话语），数据来自 genParams.semanticPreview */
+interface SemanticRibbonSeg {
+  id: string
+  start: number
+  end: number
+  label: string
+}
+interface SemanticPreview {
+  beats?: SemanticRibbonSeg[]
+  shots?: SemanticRibbonSeg[]
+  utterances?: SemanticRibbonSeg[]
+}
+const semanticPreview = computed<SemanticPreview | null>(() => {
+  if (props.asset.type !== 'video') return null
+  const raw = props.asset.genParams?.semanticPreview
+  if (!raw || typeof raw !== 'object') return null
+  return raw as SemanticPreview
+})
+const semanticRibbonVisible = computed(() => {
+  const p = semanticPreview.value
+  if (!p || beatTotalSec.value <= 0) return false
+  return !!(p.beats?.length || p.shots?.length || p.utterances?.length)
+})
+function ribbonStyle(seg: SemanticRibbonSeg): Record<string, string> {
+  const total = beatTotalSec.value
+  if (!total) return {}
+  const left = Math.min(100, Math.max(0, (seg.start / total) * 100))
+  const right = Math.min(100, Math.max(0, (seg.end / total) * 100))
+  return { left: `${left}%`, width: `${Math.max(0.5, right - left)}%` }
+}
+function seekSemanticRibbon(e: MouseEvent): void {
+  seekFromBeatStrip(e)
+}
+
 const typeIcon = computed(() => ASSET_TYPE_ICONS[props.asset.type] ?? '📄')
 
 const activeMediaEl = computed((): HTMLMediaElement | null => {
@@ -628,6 +662,54 @@ onBeforeUnmount(() => {
           />
         </div>
 
+        <div v-if="semanticRibbonVisible" class="semantic-ribbons">
+          <div
+            v-if="semanticPreview?.beats?.length"
+            class="beat-strip semantic-row beats"
+            role="slider"
+            title="Semantic beats"
+            @click="seekSemanticRibbon"
+          >
+            <span
+              v-for="seg in semanticPreview!.beats"
+              :key="seg.id"
+              class="beat-seg kind-semantic-beat"
+              :style="ribbonStyle(seg)"
+              :title="seg.label"
+            />
+          </div>
+          <div
+            v-if="semanticPreview?.shots?.length"
+            class="beat-strip semantic-row shots"
+            role="slider"
+            title="Semantic shots"
+            @click="seekSemanticRibbon"
+          >
+            <span
+              v-for="seg in semanticPreview!.shots"
+              :key="seg.id"
+              class="beat-seg kind-semantic-shot"
+              :style="ribbonStyle(seg)"
+              :title="seg.label"
+            />
+          </div>
+          <div
+            v-if="semanticPreview?.utterances?.length"
+            class="beat-strip semantic-row utterances"
+            role="slider"
+            title="Semantic utterances"
+            @click="seekSemanticRibbon"
+          >
+            <span
+              v-for="seg in semanticPreview!.utterances"
+              :key="seg.id"
+              class="beat-seg kind-semantic-utt"
+              :style="ribbonStyle(seg)"
+              :title="seg.label"
+            />
+          </div>
+        </div>
+
         <div
           v-if="beatStripVisible"
           class="beat-strip"
@@ -1015,5 +1097,24 @@ onBeforeUnmount(() => {
 }
 .beat-seg.kind-person-group {
   background: color-mix(in srgb, #ff9f43 90%, transparent);
+}
+.semantic-ribbons {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  flex-shrink: 0;
+}
+.semantic-row {
+  height: 8px;
+}
+.beat-seg.kind-semantic-beat {
+  background: color-mix(in srgb, #5b6cff 85%, transparent);
+}
+.beat-seg.kind-semantic-shot {
+  background: color-mix(in srgb, #2a9d8f 85%, transparent);
+}
+.beat-seg.kind-semantic-utt {
+  background: color-mix(in srgb, #9b5de5 85%, transparent);
 }
 </style>

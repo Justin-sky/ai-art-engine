@@ -330,6 +330,18 @@
           <span class="hint">{{ t('graph.inspector.framePull.openHint') }}</span>
         </div>
 
+        <div
+          v-else-if="isSemanticTimelineToolNode(node)"
+          class="media-fallback semantic-timeline-hint"
+        >
+          <span class="icon"><WorkspaceItemIcon :icon="typeIcon" :size="18" /></span>
+          <span class="hint">{{
+            isSemanticTimelineEditorNode(node)
+              ? t('graph.semanticTimeline.openEditorHint')
+              : t('graph.semanticTimeline.openResultHint')
+          }}</span>
+        </div>
+
         <div v-else class="media-fallback">
           <span class="icon"><WorkspaceItemIcon :icon="typeIcon" :size="18" /></span>
           <span class="hint">{{ previewHint }}</span>
@@ -644,6 +656,8 @@ import {
   isSelectBeatNode,
   isFramePullNode,
   isReshootNode,
+  isSemanticTimelineToolNode,
+  isSemanticTimelineEditorNode,
   isPluralGraphPortDataType,
   isMultiAngleEditorNode,
   isAdVariantsNode,
@@ -1723,6 +1737,7 @@ const hideCardPreview = computed(
     isBeatSplitNode(props.node) ||
     isBeatTableNode(props.node) ||
     isBeatGenNode(props.node) ||
+    isSemanticTimelineToolNode(props.node) ||
     props.node.typeId === 'asset.gamePlay' ||
     props.node.assetType === 'gamePlay'
 )
@@ -1735,6 +1750,8 @@ const scriptNodePreviewTitle = computed(() => {
   if (isWorldGenNode(props.node)) return t('graph.worldGenNode.hint')
   if (isBeatTableNode(props.node)) return t('graph.beatTableNode.hint')
   if (isBeatGenNode(props.node)) return t('graph.beatGenNode.hint')
+  if (isSemanticTimelineEditorNode(props.node)) return t('graph.semanticTimeline.openEditorHint')
+  if (isSemanticTimelineToolNode(props.node)) return t('graph.semanticTimeline.openResultHint')
   return ''
 })
 
@@ -1813,6 +1830,8 @@ const previewOpenHint = computed(() => {
   if (isScreenplayOutputNode.value) return t('graph.textsPreview.hint')
   if (isSelectTextNode(props.node)) return t('graph.selectText.hint')
   if (isSelectBeatNode(props.node)) return t('graph.selectBeat.hint')
+  if (isSemanticTimelineEditorNode(props.node)) return t('graph.semanticTimeline.openEditorHint')
+  if (isSemanticTimelineToolNode(props.node)) return t('graph.semanticTimeline.openResultHint')
   // 预览区已有正文时，双击优先打开记事本
   if (textPreview.value && !isAssetRef.value && isNodeTextCapable(props.node)) {
     return t('graph.notepad.openHint')
@@ -2569,6 +2588,77 @@ async function diveNodeTool(
   return diveView({ viewId, hostId, nodeId: props.node.id, ...(mode ? { mode } : {}) }, title)
 }
 
+/** 节点文本输出（单口 out / timelineJson 参数） */
+function resolveSemanticOutText(
+  node: GraphNode,
+  runState: GraphNodeRunState | null | undefined
+): string {
+  const out = runState?.outputs?.out
+  if (out?.kind === 'text' && out.text.trim()) return out.text.trim()
+  const fromParams = String(node.params?.timelineJson ?? '').trim()
+  return fromParams
+}
+
+/**
+ * 解析可打开语义编辑器的时间线载荷。
+ * 分析节点只把 JSON 挂在运行输出上，不一定已写 Semantic/<id>/timeline.json，
+ * 因此必须带回 inline `json` 供 dive 视图直接渲染。
+ */
+function resolveSemanticTimelinePayload(
+  node: GraphNode,
+  runState: GraphNodeRunState | null | undefined
+): { id: string; json: string } | null {
+  const candidates = [
+    String(node.params?.timelineJson ?? ''),
+    resolveSemanticOutText(node, runState)
+  ]
+  for (const raw of candidates) {
+    const text = raw.trim()
+    if (!text) continue
+    try {
+      const doc = JSON.parse(text) as { id?: unknown; schema?: unknown; source?: unknown }
+      if (typeof doc.id === 'string' && doc.id.startsWith('stl.') && doc.source) {
+        return { id: doc.id, json: text }
+      }
+    } catch {
+      /* not json */
+    }
+  }
+  return null
+}
+
+async function openSemanticTimelineDive(
+  title: string,
+  payload: { id: string; json?: string } | null,
+  fallbackId?: string
+): Promise<boolean> {
+  const timelineId = payload?.id || fallbackId
+  if (!timelineId) return false
+  return diveView(
+    {
+      viewId: 'semantic.timeline',
+      timelineId,
+      timelineJson: payload?.json
+    },
+    title
+  )
+}
+
+async function openSemanticResultTextDive(title: string, text: string): Promise<boolean> {
+  const body = text.trim()
+  if (!body) return false
+  return diveView(
+    {
+      viewId: 'media.preview',
+      mediaKind: 'text',
+      url: `semantic-result:${props.node.id}`,
+      text: body,
+      title
+    },
+    title
+  )
+}
+
 function onPreviewDblClick(): void {
   if (isMissingLinkedAsset.value) return
   void (async () => {
@@ -2684,6 +2774,36 @@ function onPreviewDblClick(): void {
     }
     if (isReshootNode(props.node)) {
       await diveNodeTool('node.reshoot', title)
+      return
+    }
+    // Semantic Timeline：时间线编辑器 dive；其余工具 dive 文本结果（勿记事本 / 空 texts 弹窗）
+    if (isSemanticTimelineEditorNode(props.node)) {
+      const payload = resolveSemanticTimelinePayload(props.node, props.runState)
+      const ok = await openSemanticTimelineDive(
+        title,
+        payload,
+        payload ? undefined : `stl.node.${props.node.id}`
+      )
+      if (!ok && payload?.json) await openSemanticResultTextDive(title, payload.json)
+      return
+    }
+    if (props.node.typeId === 'video.semanticAnalyze') {
+      const payload = resolveSemanticTimelinePayload(props.node, props.runState)
+      if (payload) {
+        const ok = await openSemanticTimelineDive(title, payload)
+        if (!ok) await openSemanticResultTextDive(title, payload.json)
+        return
+      }
+      const raw = resolveSemanticOutText(props.node, props.runState)
+      if (raw) await openSemanticResultTextDive(title, raw)
+      return
+    }
+    if (isSemanticTimelineToolNode(props.node)) {
+      const raw = resolveSemanticOutText(props.node, props.runState)
+      if (raw) {
+        const ok = await openSemanticResultTextDive(title, raw)
+        if (!ok) emit('textsOpen', props.node.id)
+      }
       return
     }
     if (isPortraitTextureEditorNode(props.node)) {

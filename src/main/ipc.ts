@@ -435,6 +435,29 @@ export function registerIpcHandlers(): void {
     (input: import('@shared/modelProvider').TranscribeAudioInput) =>
       modelProviderFacade.transcribeAudio(input)
   )
+  handle(
+    IpcChannels.SEMANTIC_ANALYZE,
+    async (input: import('@shared/semanticTimeline').SemanticAnalyzeRequest) =>
+      (await import('./services/semanticTimeline/graphBridge')).semanticAnalyzeForGraph(input)
+  )
+  handle(IpcChannels.SEMANTIC_LOAD_EVIDENCE, async (timelineId: string) =>
+    (await import('./services/semanticTimeline/graphBridge')).semanticLoadEvidenceForGraph(
+      timelineId
+    )
+  )
+  handle(
+    IpcChannels.SEMANTIC_SAVE_TIMELINE,
+    async (doc: import('@shared/semanticTimeline').SemanticTimeline) =>
+      (await import('./services/semanticTimeline/graphBridge')).semanticSaveTimelineForGraph(doc)
+  )
+  handle(
+    IpcChannels.SEMANTIC_BUILD,
+    async (input: import('@shared/semanticTimeline').SemanticBuildRequest) =>
+      (await import('./services/semanticTimeline/graphBridge')).semanticBuildForGraph(input)
+  )
+  handle(IpcChannels.SEMANTIC_LIST_PACKS, async () =>
+    (await import('./services/semanticTimeline/graphBridge')).listSemanticPacksForGraph()
+  )
   handle(IpcChannels.GEN_MODEL3D, async (input: GenerateModel3dInput) => {
     const result = await modelProviderFacade.generateModel3d(input)
     const asset = projectService.listAssets().find((item) => item.id === result.assetId)
@@ -563,6 +586,10 @@ export function registerIpcHandlers(): void {
       acceptMissingTypes?: boolean
       skill?: WorkflowSkillManifest
       skillScriptsConsent?: boolean
+      semanticPacks?: {
+        files: Array<{ path: string; sizeBytes?: number }>
+        sizeBytes?: number
+      }
     }) => installWorkflow(input)
   )
   handle(IpcChannels.WORKFLOW_MARKET_UNINSTALL, (id: string) => uninstallWorkflow({ id }))

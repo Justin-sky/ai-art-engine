@@ -1973,6 +1973,19 @@ export interface TranscribeAudioInput {
   language?: string
   /** 提示词：用于纠正识别（可选，OpenAI whisper 支持） */
   prompt?: string
+  /**
+   * 请求词级时间戳（OpenAI `timestamp_granularities[]=word`）。
+   * 网关不支持时适配器应降级为句级并在结果里标明 granularity。
+   */
+  wordTimestamps?: boolean
+}
+
+/** 词级时间戳（可选；缺省表示仅句级） */
+export interface TranscribeAudioWord {
+  text: string
+  startSec: number
+  endSec: number
+  confidence?: number
 }
 
 /** 一条带时间戳的转写片段 */
@@ -1980,6 +1993,7 @@ export interface TranscribeAudioSegment {
   startSec: number
   endSec: number
   text: string
+  words?: TranscribeAudioWord[]
 }
 
 export interface TranscribeAudioResult {
@@ -1989,6 +2003,8 @@ export interface TranscribeAudioResult {
   text?: string
   model: string
   language?: string
+  /** word = 拿到了词级时间；sentence = 仅句级（显式降级） */
+  granularity?: 'word' | 'sentence'
 }
 
 /** 从 AppSettings.models 解析当前可用提供商 + 默认模型 */

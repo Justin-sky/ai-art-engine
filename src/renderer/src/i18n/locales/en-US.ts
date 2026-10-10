@@ -3322,7 +3322,8 @@ export default {
         spatialWorld: 'Spatial world',
         comic: 'Comic',
         qc: 'QC & rework',
-        ad: 'Ads'
+        ad: 'Ads',
+        videoSemantic: 'Video semantic'
       }
     },
     episodeAgent: {
@@ -4756,7 +4757,15 @@ export default {
         select: 'Select video',
         lipSync: 'Lip sync',
         framePull: 'Frame pull',
-        reshoot: 'Segment reshoot'
+        reshoot: 'Segment reshoot',
+        semanticAnalyze: 'Semantic analyze',
+        repair: 'Video repair',
+        variant: 'Video variant'
+      },
+      semantic: {
+        timeline: 'Semantic timeline',
+        trigger: 'Semantic trigger',
+        compile: 'Director compile'
       },
       voice: {
         select: 'Select voice'
@@ -4871,6 +4880,10 @@ export default {
         'Running Beat unit gen saves each unit as its own screenplay file; double-click to preview',
       beatPathsEmpty: 'Nothing saved yet — refine units and run this node',
       beatPathPending: '(not saved)'
+    },
+    semanticTimeline: {
+      openEditorHint: 'Double-click to open semantic timeline',
+      openResultHint: 'Double-click to view analysis result'
     },
     notepad: {
       appMark: 'Notepad',
@@ -5325,6 +5338,71 @@ export default {
         remove: 'Remove frame',
         note: 'Frame note',
         notePlaceholder: 'Note shot, composition or performance observations for this frame…'
+      },
+      semantic: {
+        analyzeHint:
+          'Connect an upstream video (or set a source asset id) and run: shot detection, keyframes, transcript, vocal separation and entity detection are written to the project Semantic/ folder, and the Semantic Timeline JSON is emitted. Double-click to inspect the result.',
+        timelineHint:
+          'Pass through or edit Semantic Timeline JSON. Upstream text wins when present; otherwise use the JSON below. Double-click to open the semantic timeline editor.',
+        triggerHint:
+          'Find the given events and the director commands that land on them (matched by intent trigger or time overlap). Leave empty to emit all events and commands. Double-click to inspect the result.',
+        compileHint:
+          'Compile the Semantic Timeline into director commands and a ScriptTimeline using director rule packs. Shots and subtitles come from the analysis evidence. Double-click to inspect the result.',
+        repairHint:
+          'Plan and build locally from the edit list: untouched shots are stream-copied, replaced/erased/retexted/graded shots are processed and spliced back, dropped/reordered beats reorder shots. The result comes out of the Video port.',
+        variantHint:
+          'Pick a market-pack recipe and fill its slots (comma-separate multiple values to expand combinations). Each combination builds one variant, output on the Videos port.',
+        vocabulary: 'Beat vocabulary',
+        vocabularyHint: 'Controls beat labels; market packs can add more vocabularies',
+        transcribe: 'Transcribe speech (utterances)',
+        separateAudio: 'Separate vocals / background',
+        detectEntities: 'Detect people and objects (entities)',
+        llm: 'LLM understanding',
+        llmHint:
+          'When on, a text model looks at keyframes to describe shots, extracts evidenced events and infers director intents (incurs model cost). Off = rule heuristics only.',
+        fallbackParams: 'Fallback params (no video)',
+        fallbackParamsHint:
+          'Only used when there is no upstream video and no source asset, to hand-build a timeline skeleton.',
+        fps: 'Fallback fps',
+        duration: 'Fallback duration (sec)',
+        sourceAssetId: 'Source asset id',
+        sourceAssetIdPlaceholder: 'Leave empty to use the upstream video',
+        sourceAssetIdHint:
+          'Analyze this video asset when no upstream video is wired; the timeline id and preview bands are written back to it',
+        advanced: 'Advanced (evidence JSON)',
+        shotsJson: 'Shot evidence JSON',
+        utterancesJson: 'Utterance evidence JSON',
+        jsonPlaceholder: '[] or a full evidence-array JSON',
+        eventLabel: 'Event label filter',
+        eventLabelPlaceholder: 'e.g. offer / CTA; empty = all',
+        eventLabelHint: 'Keep only director commands whose trigger/intent matches this string',
+        sourceRelativePath: 'Source video relative path',
+        sourceRelativePathPlaceholder: 'e.g. Assets/foo.mp4',
+        sourceRelativePathHint: 'Leave empty to resolve from the timeline source asset',
+        rulePacks: 'Director rule packs',
+        rulePacksHint: 'None checked = built-in rules + every installed rule pack',
+        recipeId: 'Variant recipe',
+        recipeNone: 'No recipe (edit list only)',
+        recipeIdPlaceholder: 'Market-pack recipe id',
+        recipeIdHint: 'From installed semantic market packs (kind=recipe)',
+        slotPlaceholder: 'Value; comma-separate multiple',
+        slotHint: 'Each slot may take several values; one variant per combination (max 12)',
+        execute: 'Build video on run',
+        executeHint:
+          'Off = emit the invalidation plan and cost estimate only, without processing video',
+        editsJson: 'Edits JSON',
+        editsJsonPlaceholder:
+          '[{"kind":"replaceEntity","entityId":"ent.product.bottle-1","newAssetId":"…"}]',
+        editsJsonHint:
+          'Local: replaceEntity / removeEntity / editText / grade / dropBeat / reorderBeats; generative edits (regenerateShot, lip sync) are planned only',
+        timelineJson: 'Timeline JSON (no upstream)',
+        timelineJsonPlaceholder: 'Paste Semantic Timeline JSON',
+        timelineJsonHint:
+          'Used only when the text input is unwired; with upstream text, run reads the upstream payload',
+        summaryId: 'Timeline id',
+        summaryEvents: 'Events',
+        summaryBeats: 'Beats',
+        summaryIntents: 'Intents'
       },
       reshoot: {
         hint: 'Connect a source video and double-click the node to open the reshoot desk: locate the start and end times to edit, write the change, and run — only that segment is regenerated while the rest stays intact. Works best with Seedance 2.5 (timestamp-level video editing)',

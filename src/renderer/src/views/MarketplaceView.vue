@@ -977,6 +977,20 @@ async function installMarketWorkflow(card: MarketplaceCard): Promise<void> {
       // 但「装哪个技能」必须与卡片上写的一致，否则界面就在骗人。
       // 必须转成纯数据：卡片上的 skill 是 Vue 响应式代理，代理过不了 IPC 的结构化克隆
       ...(card.skill ? { skill: plainSkillManifest(card.skill) } : {}),
+      // Semantic Pack 清单也要转成纯数据（避免 Vue 代理过不了 IPC）
+      ...(card.semanticPacks
+        ? {
+            semanticPacks: {
+              files: card.semanticPacks.files.map((f) => ({
+                path: f.path,
+                ...(typeof f.sizeBytes === 'number' ? { sizeBytes: f.sizeBytes } : {})
+              })),
+              ...(typeof card.semanticPacks.sizeBytes === 'number'
+                ? { sizeBytes: card.semanticPacks.sizeBytes }
+                : {})
+            }
+          }
+        : {}),
       // 只有用户在上面的确认框里点了「确定」才为 true；主进程只认字面量 true
       ...(scriptsConsented ? { skillScriptsConsent: true } : {})
     })

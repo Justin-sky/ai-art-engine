@@ -497,6 +497,8 @@ export async function installWorkflow(input: {
    * 且**不算安装失败**（技能本身仍然可用，只是没有随包脚本）。
    */
   skillScriptsConsent?: boolean
+  /** 索引条目里的 Semantic Pack 文件清单（与 skill 同口径：界面传入、主进程再校验路径） */
+  semanticPacks?: WorkflowMarketEntry['semanticPacks']
 }): Promise<WorkflowMarketActionResult> {
   const sources = orderedSources()
   const failures: string[] = []
@@ -530,6 +532,7 @@ async function installFromSource(
     acceptMissingTypes?: boolean
     skill?: WorkflowSkillManifest
     skillScriptsConsent?: boolean
+    semanticPacks?: WorkflowMarketEntry['semanticPacks']
   },
   failures: string[]
 ): Promise<WorkflowMarketActionResult | null> {
@@ -557,12 +560,26 @@ async function installFromSource(
 
   const coverUrl = urls.cover({ id: bundle.id, cover: bundle.cover ?? 'cover.png' })
   const targetDir = join(installedWorkflowsDir(), bundle.id)
+  const packFiles = (input.semanticPacks?.files ?? [])
+    .map((file) => {
+      const url = urls.semanticPackFile(bundle.id, file.path)
+      return url ? { path: file.path, url } : null
+    })
+    .filter((item): item is { path: string; url: string } => !!item)
+  // workflow.json 里声明了但索引清单漏了：仍按 bundle.semanticPacks 补下
+  if (packFiles.length === 0 && bundle.semanticPacks?.length) {
+    for (const rel of bundle.semanticPacks) {
+      const url = urls.semanticPackFile(bundle.id, rel)
+      if (url) packFiles.push({ path: rel, url })
+    }
+  }
   const installed = await getPipeline().install({
     targetDir,
     files: [
       { path: 'workflow.json', url: urls.bundle(bundle.id) },
       // 封面取不到不该让整次安装失败：没有封面只是卡片不好看，工作流本身是可用的
-      ...(coverUrl ? [{ path: 'cover.png', url: coverUrl }] : [])
+      ...(coverUrl ? [{ path: 'cover.png', url: coverUrl }] : []),
+      ...packFiles
     ],
     verify: (files) => {
       const workflowFile = files.find((item) => item.path === 'workflow.json')

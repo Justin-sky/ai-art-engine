@@ -64,6 +64,17 @@ export function isNodeTextCapable(node: GraphNode): boolean {
   if (node.typeId === 'stage.2d' || node.typeId === 'svg.anim') return false
   // 可玩 HTML：cook 后 params 可能残留整页 HTML，绝不能当记事本/卡片正文预览
   if (node.typeId === 'asset.gamePlay' || node.assetType === 'gamePlay') return false
+  // Semantic Timeline 工具：category=note 但产出 JSON 管线，双击应进语义视图 / 结果预览，不是记事本
+  if (
+    node.typeId === 'video.semanticAnalyze' ||
+    node.typeId === 'video.repair' ||
+    node.typeId === 'video.variant' ||
+    node.typeId === 'semantic.timeline' ||
+    node.typeId === 'semantic.trigger' ||
+    node.typeId === 'semantic.compile'
+  ) {
+    return false
+  }
   if (node.category === 'note') return true
   if (node.typeId === 'note.text' || node.typeId === 'play.script') return true
   if (isTextToolNode(node)) return true

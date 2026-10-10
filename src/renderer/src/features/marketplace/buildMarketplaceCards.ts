@@ -84,6 +84,8 @@ export interface MarketplaceCard {
    * agent 手里多了一份操作手册。
    */
   skill?: WorkflowSkillManifest
+  /** Semantic Pack 清单（安装时传回主进程） */
+  semanticPacks?: WorkflowMarketEntryView['semanticPacks']
 }
 
 export interface MarketplaceSources {
@@ -284,6 +286,7 @@ export function buildMarketplaceCards(sources: MarketplaceSources): MarketplaceC
       installed: entry.installed,
       updatable: entry.updatable,
       ...(entry.skill ? { skill: entry.skill } : {}),
+      ...(entry.semanticPacks ? { semanticPacks: entry.semanticPacks } : {}),
       // 状态点：可用且已装 = 绿；可用未装 = 灰（不是「运行中」）
       active: entry.installed && !entry.blockReason
     })

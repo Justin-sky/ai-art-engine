@@ -303,6 +303,36 @@ export interface GraphNodeParams {
    * 不按 typeId 设 defaultSkillKind：同一类型可扮演多种角色。
    */
   skillId?: string
+  /** Semantic Timeline：源视频资产 id */
+  sourceAssetId?: string
+  /** Semantic Timeline：节拍词表 id */
+  vocabulary?: string
+  /** Semantic Timeline：分析用帧率 / 时长（无探测时的兜底） */
+  semanticFps?: number
+  semanticDuration?: number
+  /** Semantic Timeline：镜头 / 话语 / 时间线 / 编辑 JSON 旁路入参 */
+  shotsJson?: string
+  utterancesJson?: string
+  timelineJson?: string
+  editsJson?: string
+  /** Semantic Timeline：变体配方 id / 事件触发标签 / 源相对路径 */
+  recipeId?: string
+  eventLabel?: string
+  sourceRelativePath?: string
+  /** Semantic Timeline：上次分析落盘的时间线 id（stl.…） */
+  semanticTimelineId?: string
+  /** Semantic Timeline：分析时调转写 / 人声分离 / 实体检测（默认 true） */
+  semanticTranscribe?: boolean
+  semanticSeparateAudio?: boolean
+  semanticDetectEntities?: boolean
+  /** Semantic Timeline：分析后跑 LLM 镜头描述 / 事件抽取 / 导演意图（默认 false） */
+  semanticLlm?: boolean
+  /** Semantic Timeline：修复 / 变体是否真正构建成片（默认 true；false 只出计划） */
+  semanticExecute?: boolean
+  /** Semantic Timeline：变体配方槽位值 JSON（`{ slotKey: 值 | 值[] }`，数组做笛卡尔积） */
+  recipeSlotsJson?: string
+  /** Semantic Timeline：只启用这些导演规则包（逗号分隔；空 = 内置 + 全部已装） */
+  rulePackIds?: string
   /** 加工节点模型 id（剧本=文本，图片/全景=图片，视频=视频，声音=音频） */
   generateModel?: string
   /** 加工节点提供商实例 id */

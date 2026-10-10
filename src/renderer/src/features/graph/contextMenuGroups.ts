@@ -48,6 +48,12 @@ export function contextMenuResourceGroupIcon(groupId: string): string {
       return '🛠️'
     case 'video':
       return '📹'
+    /**
+     * 「视频语义」不用 🧭：组内语义分析 / 时间线节点就是 🧭，
+     * 分组与节点同图标会分不清（同 video / text 分组的教训）。
+     */
+    case 'videoSemantic':
+      return '🧠'
     case 'text':
       return '📚'
     case 'game':

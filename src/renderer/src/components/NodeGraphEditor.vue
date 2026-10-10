@@ -3471,6 +3471,8 @@ type ResourceMenuGroupId =
   | 'comic'
   | 'qc'
   | 'ad'
+  /** 视频语义时间线工具：分析 / 修复 / 变体 / 时间线 / 触发 / 编译 */
+  | 'videoSemantic'
 
 /** 菜单分组：影视父级 id 不是资产类型，只作二级入口，故不进 ResourceMenuGroupId（否则文案窄化会漏到 assetTypeLabel） */
 type ResourceMenuGroup = ContextMenuResourceGroup<
@@ -3523,6 +3525,17 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
       'video.framePull',
       'video.reshoot',
       'output.timeline'
+    ]
+  },
+  {
+    id: 'videoSemantic',
+    typeIds: [
+      'video.semanticAnalyze',
+      'video.repair',
+      'video.variant',
+      'semantic.timeline',
+      'semantic.trigger',
+      'semantic.compile'
     ]
   },
   {
@@ -3758,7 +3771,8 @@ const resourceMenuGroups = computed((): ResourceMenuGroup[] => {
               group.id === 'spatialWorld' ||
               group.id === 'comic' ||
               group.id === 'qc' ||
-              group.id === 'ad'
+              group.id === 'ad' ||
+              group.id === 'videoSemantic'
             ? t(`graph.context.groups.${group.id}`)
             : assetTypeLabel(group.id),
       icon: contextMenuResourceGroupIcon(group.id),
@@ -6287,6 +6301,10 @@ function collectTextOutputItems(nodeId: string): GraphTextItem[] {
 
   const out = runStates[nodeId]?.outputs?.out
   if (out?.kind === 'texts' && out.items.length) return fromRun(out.items)
+  // 语义工具等单口 text 输出：原先只认 texts，双击 textsOpen 会弹空窗
+  if (out?.kind === 'text' && out.text.trim()) {
+    return [{ id: 'out', text: out.text }]
+  }
   if (out?.kind === 'output') {
     if (out.texts?.length) return fromRun(out.texts)
     if (out.notes.length) {

@@ -91,6 +91,7 @@ describe('context menu resource group icons', () => {
       'imageRefine',
       'imageEdit',
       'video',
+      'videoSemantic',
       'text',
       'game',
       'motionFx',

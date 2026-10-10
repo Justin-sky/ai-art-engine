@@ -86,6 +86,9 @@ const DirectorEditor = defineAsyncComponent(() => import('./DirectorEditor.vue')
 
 const viewRegistry: Record<string, Component> = {
   'script.timeline': defineAsyncComponent(() => import('./dive/EditorDiveScriptTimelineView.vue')),
+  'semantic.timeline': defineAsyncComponent(
+    () => import('./dive/EditorDiveSemanticTimelineView.vue')
+  ),
   'world.editor': defineAsyncComponent(() => import('./dive/EditorDiveWorldEditorView.vue')),
   'world.table': defineAsyncComponent(() => import('./dive/EditorDiveWorldTableView.vue')),
   'beat.gen': defineAsyncComponent(() => import('./dive/EditorDiveBeatGenView.vue')),
@@ -218,6 +221,15 @@ const viewBindings = computed(() => {
         hostId: meta.hostId,
         nodeId: meta.nodeId,
         gamePlayAssetId: meta.gamePlayAssetId
+      }
+    case 'semantic.timeline':
+      return {
+        ...base,
+        timelineId: meta.timelineId,
+        sourceAssetId: meta.sourceAssetId,
+        sourceRelativePath: meta.sourceRelativePath,
+        resultRelativePath: meta.resultRelativePath,
+        timelineJson: meta.timelineJson
       }
     default:
       return {

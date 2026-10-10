@@ -3243,7 +3243,8 @@ export default {
         spatialWorld: '空间世界',
         comic: '漫画',
         qc: '质检返工',
-        ad: '广告'
+        ad: '广告',
+        videoSemantic: '视频语义'
       }
     },
     episodeAgent: {
@@ -4649,7 +4650,15 @@ export default {
         select: '选取视频',
         lipSync: '对口型',
         framePull: '逐帧拉片',
-        reshoot: '片段重拍'
+        reshoot: '片段重拍',
+        semanticAnalyze: '语义分析',
+        repair: '视频修复',
+        variant: '视频变体'
+      },
+      semantic: {
+        timeline: '语义时间线',
+        trigger: '语义触发',
+        compile: '导演编译'
       },
       voice: {
         select: '选取声音'
@@ -4762,6 +4771,10 @@ export default {
       beatPathsHint: '运行「场生成」后，各单元文本会保存为独立剧本文件；双击预览全文',
       beatPathsEmpty: '尚未落地，请先细化各单元并运行本节点',
       beatPathPending: '（未落盘）'
+    },
+    semanticTimeline: {
+      openEditorHint: '双击打开语义时间线',
+      openResultHint: '双击查看分析结果'
     },
     notepad: {
       appMark: '记事本',
@@ -5197,6 +5210,68 @@ export default {
         remove: '移除该帧',
         note: '当前帧批注',
         notePlaceholder: '记录这一帧的镜头、构图、表演要点…'
+      },
+      semantic: {
+        analyzeHint:
+          '连接上游视频（或填源资产 id）后运行：切镜、抽关键帧、转写、人声分离、实体检测，结果写入工程 Semantic/ 目录并输出语义时间线 JSON。双击查看分析结果。',
+        timelineHint:
+          '透传或编辑语义时间线 JSON。上游有文本时优先用上游；否则用下方 JSON。双击打开语义时间线编辑器。',
+        triggerHint:
+          '找出指定事件，以及落在这些事件上的导演指令（按意图触发或时间重叠匹配）。留空则输出全部事件与指令。双击查看结果。',
+        compileHint:
+          '用导演规则包把语义时间线编译成导演指令和成片时间线（ScriptTimeline）。镜头与字幕取自分析证据。双击查看结果。',
+        repairHint:
+          '按编辑列表规划并本地构建成片：未改镜头直拷，替换/擦除/改字/调色的镜头处理后拼回，删/重排节拍会重排镜头。成片从「视频」口输出。',
+        variantHint:
+          '选择市场包配方并填写槽位（多个值用逗号分隔，按组合展开），每个组合构建一条变体成片，从「视频组」口输出。',
+        vocabulary: '节拍词表',
+        vocabularyHint: '决定节拍划分与标签；市场包可扩展更多词表',
+        transcribe: '转写语音（话语证据）',
+        separateAudio: '分离人声 / 背景声',
+        detectEntities: '检测人物与物体（实体）',
+        llm: 'LLM 深度理解',
+        llmHint:
+          '勾选后用文本模型看关键帧描述镜头、抽取带证据的事件并推断导演意图；会产生模型调用费用。不勾选只用规则启发式。',
+        fallbackParams: '无视频时的兜底参数',
+        fallbackParamsHint: '只在没有上游视频、也没有源资产时使用，用来手动构造时间线骨架。',
+        fps: '兜底帧率',
+        duration: '兜底时长（秒）',
+        sourceAssetId: '源资产 id',
+        sourceAssetIdPlaceholder: '留空则用上游视频',
+        sourceAssetIdHint:
+          '没有连上游视频时，按此视频资产分析；分析结果会写回该资产（时间线 id 与预览色带）',
+        advanced: '高级（证据 JSON）',
+        shotsJson: '镜头证据 JSON',
+        utterancesJson: '话语证据 JSON',
+        jsonPlaceholder: '[] 或完整证据数组 JSON',
+        eventLabel: '事件标签过滤',
+        eventLabelPlaceholder: '例如 offer / CTA；留空=全部',
+        eventLabelHint: '只保留触发标签或意图匹配该字符串的导演指令',
+        sourceRelativePath: '源视频相对路径',
+        sourceRelativePathPlaceholder: '如 Assets/foo.mp4',
+        sourceRelativePathHint: '留空则按时间线的源资产自动解析',
+        rulePacks: '导演规则包',
+        rulePacksHint: '都不勾选 = 内置规则 + 全部已安装的规则包',
+        recipeId: '变体配方',
+        recipeNone: '不用配方（只用编辑列表）',
+        recipeIdPlaceholder: '市场包 recipe id',
+        recipeIdHint: '来自已安装的语义市场包（kind=recipe）',
+        slotPlaceholder: '值；多个用逗号分隔',
+        slotHint: '每个槽位可填多个值，按所有组合各出一条变体（最多 12 条）',
+        execute: '运行时构建成片',
+        executeHint: '关闭后只输出失效计划与费用估算，不处理视频',
+        editsJson: '编辑列表 JSON',
+        editsJsonPlaceholder:
+          '[{"kind":"replaceEntity","entityId":"ent.product.bottle-1","newAssetId":"…"}]',
+        editsJsonHint:
+          '本地可执行：replaceEntity / removeEntity / editText / grade / dropBeat / reorderBeats；regenerateShot、改口型等生成类编辑只出计划',
+        timelineJson: '时间线 JSON（无上游时）',
+        timelineJsonPlaceholder: '粘贴 Semantic Timeline JSON',
+        timelineJsonHint: '仅在未接上游文本口时作为输入；有上游时运行会覆盖读取上游',
+        summaryId: '时间线 id',
+        summaryEvents: '事件数',
+        summaryBeats: '节拍数',
+        summaryIntents: '意图数'
       },
       reshoot: {
         hint: '连接源视频后双击节点打开重拍台：定位到要修改的起止时间，填写修改要求，运行后仅重拍该区间，其余片段保持不变。建议配合 Seedance 2.5（时间戳级视频编辑）使用',

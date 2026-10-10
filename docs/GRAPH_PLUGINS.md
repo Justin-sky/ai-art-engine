@@ -26,6 +26,24 @@
 | 资产引用 | `params.assetRef === true`  | 从资产库拖入，仅输出      |
 | 加工节点 | 无 `assetId`、无 `assetRef` | 右键菜单添加，有输入/输出 |
 
+### `category` ≠ `card`（易错）
+
+`category` 只有三档：`asset` / `output` / `note`。**几乎所有加工/工具节点都必须写 `category: 'note'`**（表示「非资产引用、非输出槽」）。
+
+`card` 是另一回事——决定画布用哪张壳、双击走什么逻辑：
+
+| 场景                      | `category` | `card`      | 说明                                           |
+| ------------------------- | ---------- | ----------- | ---------------------------------------------- |
+| 真正的记事本 / 剧本       | `note`     | `note`      | `GraphNoteCard`，双击开记事本                  |
+| 视频/图像加工、语义工具等 | `note`     | **`media`** | 与 `video.framePull` 同壳；默认尺寸用 ASSET 卡 |
+| 资产生成节点              | `asset`    | `media`     | `asset.image` 等                               |
+
+新人与 Agent 常把「category 是 note」抄成 `card: 'note'`，结果菜单分组、卡片样式、双击全错。对照实现：`video.framePull`。注册后还需：
+
+1. 把 `typeId` 写进 `NodeGraphEditor.vue` 的 `CONTEXT_MENU_RESOURCE_GROUPS`
+2. 补 `graph.types.<typeId>`（中英）
+3. 跑 `tests/graphAddableNodeChrome.test.ts`
+
 ### 画布 Scope
 
 内置 Scope：`workflow`、`shotWorkflow`、`visual`、`screenplayAsset`、`directorAsset`、`scriptAsset`。  
@@ -154,14 +172,14 @@ export function apply(ctx: Context): void {
 
 ## 节点类型字段
 
-| 字段                        | 说明                                                                     |
-| --------------------------- | ------------------------------------------------------------------------ |
-| `typeId`                    | 唯一 id，建议 `plugin.*` 前缀                                            |
-| `addable`                   | 全局是否可添加；具体出现在哪些画布由 `graphPolicy.addableNodeTypes` 决定 |
-| `inspector` / `inspectorId` | 检查器种类或显式绑定                                                     |
-| `card` / `cardId`           | 卡片种类（`note`/`media`）或显式绑定                                     |
-| `presentation`              | 备注类卡片 i18n 键（`badgeKey` 等）                                      |
-| `execute`                   | 节点执行器；缺省透传。可另用 `ctx.editor.executor(typeId, fn)` 覆盖      |
+| 字段                        | 说明                                                                          |
+| --------------------------- | ----------------------------------------------------------------------------- |
+| `typeId`                    | 唯一 id，建议 `plugin.*` 前缀                                                 |
+| `addable`                   | 全局是否可添加；具体出现在哪些画布由 `graphPolicy.addableNodeTypes` 决定      |
+| `inspector` / `inspectorId` | 检查器种类或显式绑定                                                          |
+| `card` / `cardId`           | **勿与 `category` 混用**：工具节点用 `media`；仅真正记事本用 `note`（见上文） |
+| `presentation`              | 备注类卡片 i18n 键（`badgeKey` 等）                                           |
+| `execute`                   | 节点执行器；缺省透传。可另用 `ctx.editor.executor(typeId, fn)` 覆盖           |
 
 默认检查器解析见 `src/renderer/src/inspector/defaults.ts`。  
 默认卡片 id：`studio.graph.note` / `studio.graph.media`。

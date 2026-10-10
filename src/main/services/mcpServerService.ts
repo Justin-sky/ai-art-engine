@@ -1231,6 +1231,234 @@ const TOOL_DEFS: McpToolDef[] = [
     handler: (args) => runAssetQcTool(args, true)
   },
   {
+    name: 'semantic_analyze_video',
+    title: '语义分析视频',
+    description:
+      '对视频资产跑 Semantic Timeline 切镜分析（媒体事实 + 场景切镜 + 关键帧），写入工程 Semantic/<id>/。返回 timelineId 与镜头列表。完整事件/转写需后续步骤。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        assetId: { type: 'string', description: '视频资产 id' },
+        vocabulary: {
+          type: 'string',
+          description: '节拍词表 id，默认 commerce.v1'
+        },
+        transcribe: {
+          type: 'boolean',
+          description: '是否调转写模型拿话语证据（默认 true；失败降级并写入 notes）'
+        }
+      },
+      required: ['assetId']
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const assetId = readString(args, 'assetId')
+      const vocabulary = optionalString(args, 'vocabulary') || 'commerce.v1'
+      const asset = findAssetOrThrow(assetId)
+      if (asset.type !== 'video') throw new Error('assetId must be a video asset')
+      const { semanticAnalyzeForGraph } = await import('./semanticTimeline/graphBridge')
+      const result = await semanticAnalyzeForGraph({
+        sourceAssetId: assetId,
+        vocabulary,
+        transcribe: args.transcribe !== false,
+        separateAudio: true,
+        detectEntities: true
+      })
+      return {
+        timelineId: result.timeline.id,
+        method: result.method,
+        durationSec: result.timeline.evidence.mediaFacts.durationSec,
+        fps: result.timeline.evidence.mediaFacts.fps,
+        shotCount: result.shots.length,
+        eventCount: result.timeline.events.length,
+        beatCount: result.timeline.beats.length,
+        entityCount: result.timeline.entities.length,
+        utteranceCount: result.utterances.length,
+        notes: result.notes,
+        shots: result.shots.map((s) => ({
+          id: s.id,
+          start: s.range.start,
+          end: s.range.end
+        }))
+      }
+    }
+  },
+  {
+    name: 'semantic_timeline_read',
+    title: '读取语义时间线',
+    description:
+      '读取 Semantic/<timelineId>/timeline.json 摘要：事件、节拍、实体、意图数量与列表。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        timelineId: { type: 'string', description: '语义时间线 id（stl.…）' },
+        assetId: {
+          type: 'string',
+          description: '或传视频资产 id（读其 semanticTimelineId）'
+        }
+      }
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const { loadSemanticTimeline } = await import('./semanticTimeline/SemanticTimelineService')
+      const root = projectService.getRoot()
+      let timelineId = optionalString(args, 'timelineId')
+      if (!timelineId) {
+        const assetId = optionalString(args, 'assetId')
+        if (!assetId) throw new Error('timelineId or assetId required')
+        const meta = findAssetOrThrow(assetId)
+        timelineId = meta.semanticTimelineId
+        if (!timelineId) {
+          throw new Error('asset has no semanticTimelineId; run semantic_analyze_video first')
+        }
+      }
+      const doc = loadSemanticTimeline(root, timelineId)
+      if (!doc) throw new Error('semantic timeline not found')
+      return {
+        id: doc.id,
+        schema: doc.schema,
+        source: doc.source,
+        eventCount: doc.events.length,
+        beatCount: doc.beats.length,
+        entityCount: doc.entities.length,
+        intentCount: doc.intents.length,
+        editCount: doc.edits.length,
+        events: doc.events.map((e) => ({
+          id: e.id,
+          label: e.label,
+          start: e.timeRange.start,
+          end: e.timeRange.end,
+          evidence: e.evidence
+        })),
+        beats: doc.beats.map((b) => ({
+          id: b.id,
+          type: b.type,
+          start: b.timeRange.start,
+          end: b.timeRange.end
+        }))
+      }
+    }
+  },
+  {
+    name: 'semantic_timeline_edit',
+    title: '编辑语义时间线',
+    description:
+      '向语义时间线追加 SemanticEdit（replaceEntity / rewriteUtterance / dropBeat 等）。默认 dry-run 只校验；apply=true 才写盘。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        timelineId: { type: 'string' },
+        edit: { type: 'object', description: '一条 SemanticEdit（需含 kind 等字段）' },
+        apply: { type: 'boolean', description: 'true 时写回 timeline.json' }
+      },
+      required: ['timelineId', 'edit']
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const timelineId = readString(args, 'timelineId')
+      const edit = args.edit as Record<string, unknown>
+      const apply = args.apply === true
+      const { assertValidEdit } = await import('@shared/semanticTimeline')
+      const { loadSemanticTimeline, saveSemanticTimeline } =
+        await import('./semanticTimeline/SemanticTimelineService')
+      const root = projectService.getRoot()
+      const doc = loadSemanticTimeline(root, timelineId)
+      if (!doc) throw new Error('semantic timeline not found')
+      const typed = edit as unknown as import('@shared/semanticTimeline').SemanticEdit
+      const v = assertValidEdit(typed)
+      if (!v.ok) throw new Error(v.issues.map((i) => i.message).join('; '))
+      if (!apply) return { dryRun: true, ok: true, edit: typed }
+      doc.edits = [...doc.edits, typed]
+      doc.updatedAt = new Date().toISOString()
+      saveSemanticTimeline(root, doc)
+      return { dryRun: false, ok: true, editCount: doc.edits.length }
+    }
+  },
+  {
+    name: 'semantic_plan',
+    title: '语义构建计划',
+    description:
+      '根据时间线上的 edits 生成失效计划（保留/替换/重算）与费用估算。确认前不调用付费模型。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        timelineId: { type: 'string' }
+      },
+      required: ['timelineId']
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const timelineId = readString(args, 'timelineId')
+      const { planInvalidation, freezeBuildDefinition, timelineVersionHash } =
+        await import('@shared/semanticTimeline')
+      const { loadSemanticTimeline, loadShotsEvidence } =
+        await import('./semanticTimeline/SemanticTimelineService')
+      const root = projectService.getRoot()
+      const doc = loadSemanticTimeline(root, timelineId)
+      if (!doc) throw new Error('semantic timeline not found')
+      const shots = loadShotsEvidence(root, timelineId)
+      const plan = planInvalidation({ timeline: doc, shots, edits: doc.edits })
+      const definition = freezeBuildDefinition(doc, doc.edits, plan, timelineVersionHash(doc))
+      return { plan, definition }
+    }
+  },
+  {
+    name: 'semantic_build',
+    title: '执行语义构建',
+    description:
+      '按 semantic_plan 冻结的 definition 执行构建：未改镜头直拷，替换/擦除/改字/调色镜头本地处理后拼接，删/重排节拍会重排镜头序列。生成类编辑（重生镜头、改口型）只记录在 notes。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        timelineId: { type: 'string' },
+        definitionJson: { type: 'string', description: 'semantic_plan 返回的 definition JSON' }
+      },
+      required: ['timelineId', 'definitionJson']
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const timelineId = readString(args, 'timelineId')
+      const definition = JSON.parse(
+        readString(args, 'definitionJson')
+      ) as import('@shared/semanticTimeline').BuildDefinition
+      const { loadSemanticTimeline } = await import('./semanticTimeline/SemanticTimelineService')
+      const { semanticBuildForGraph } = await import('./semanticTimeline/graphBridge')
+      const root = projectService.getRoot()
+      const doc = loadSemanticTimeline(root, timelineId)
+      if (!doc) throw new Error('semantic timeline not found')
+      const wanted = new Set(definition.editIds ?? [])
+      const result = await semanticBuildForGraph({
+        timeline: doc,
+        edits: doc.edits.filter((e) => wanted.has(e.id))
+      })
+      return { ...result.manifest, notes: result.notes }
+    }
+  },
+  {
+    name: 'semantic_build_status',
+    title: '语义构建状态',
+    description: '读取 builds/<buildId>/manifest.json。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        timelineId: { type: 'string' },
+        buildId: { type: 'string' }
+      },
+      required: ['timelineId', 'buildId']
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const timelineId = readString(args, 'timelineId')
+      const buildId = readString(args, 'buildId')
+      const { manifestPath } = await import('@shared/semanticTimeline')
+      const { readFileSync, existsSync } = await import('fs')
+      const root = projectService.getRoot()
+      const abs = join(root, ...manifestPath(timelineId, buildId).split('/'))
+      if (!existsSync(abs)) throw new Error('manifest not found')
+      return JSON.parse(readFileSync(abs, 'utf8'))
+    }
+  },
+  {
     name: 'timeline_read',
     title: '读取成片时间线',
     description:
