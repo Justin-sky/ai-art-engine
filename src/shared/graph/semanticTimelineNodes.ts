@@ -109,6 +109,8 @@ export const SEMANTIC_TIMELINE_NODE_TYPES: NodeTypeDefinition[] = [
     contributeToGeneration: false,
     execute: async (ctx) => {
       const upstream = ctx.inputs.in?.[0]
+      // 上游是结构化时间线值：原样透传（保住 doc，不让它在半路被序列化掉）
+      if (upstream && upstream.kind === 'semanticTimeline') return { out: upstream }
       const text =
         upstream && upstream.kind === 'text'
           ? upstream.text

@@ -387,6 +387,8 @@ export function graphValueHasPayload(value: GraphValue | undefined): value is Gr
     )
   }
   if (value.kind === 'asset') return true
+  // 语义时间线：文档本体就是载荷（有 doc 且有规范文本）
+  if (value.kind === 'semanticTimeline') return !!value.doc && !!value.text.trim()
   return false
 }
 

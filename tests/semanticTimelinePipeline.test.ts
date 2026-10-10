@@ -254,10 +254,13 @@ describe('semanticTimeline graph nodes', () => {
     } as unknown as GraphNode
     const ctx = { node, inputs: {} } as NodeExecuteContext
     const out = await executeSemanticAnalyzeNode(ctx)
-    const text = out.out && out.out.kind === 'text' ? out.out.text : ''
-    const doc = JSON.parse(text)
+    // 产出结构化值：doc 直接用；text 是给 text 口的规范投影（落到文本口时才用）
+    const value = out.out as { kind?: string; doc?: SemanticTimeline; text?: string }
+    expect(value.kind).toBe('semanticTimeline')
+    const doc = value.doc ?? (JSON.parse(String(value.text)) as SemanticTimeline)
     expect(doc.schema).toBe('aiart.semantic-timeline@1')
     expect(doc.events.length).toBeGreaterThanOrEqual(1)
+    expect(JSON.parse(String(value.text)).schema).toBe('aiart.semantic-timeline@1')
   })
 })
 
@@ -488,9 +491,9 @@ describe('semanticTimeline executors with injected capabilities', () => {
       patchNode: (p: unknown) => patches.push(p)
     } as unknown as NodeExecuteContext
     const out = await executeSemanticAnalyzeNode(ctx)
-    const result = JSON.parse(
-      out.out && out.out.kind === 'text' ? out.out.text : '{}'
-    ) as SemanticTimeline
+    const value = out.out as { kind?: string; doc?: SemanticTimeline; text?: string }
+    expect(value.kind).toBe('semanticTimeline')
+    const result = value.doc ?? (JSON.parse(String(value.text)) as SemanticTimeline)
     expect(requests[0]).toMatchObject({
       sourceAssetId: 'asset.vid',
       videoRelativePath: 'Assets/v.mp4'

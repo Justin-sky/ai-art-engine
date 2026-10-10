@@ -13,6 +13,7 @@ import type {
 } from '../types'
 import type { GraphImageReferenceMeta } from '../../modelProvider'
 import type { RigQaReport } from '../../blenderRigSkinPipeline'
+import type { SemanticTimeline } from '../../semanticTimeline'
 
 export type GraphNodeRunStatus =
   'idle' | 'pending' | 'running' | 'done' | 'error' | 'degraded' | 'skipped'
@@ -238,6 +239,24 @@ export interface GraphVideoValue {
   relativePath?: string
 }
 
+/**
+ * 语义时间线文档值（`video.semanticAnalyze` 的出口、`semantic.timeline` 的透传）。
+ *
+ * 为什么要**同时**带 `text`：
+ * - 端口兼容规则允许 `semanticTimeline → text`（把整份文档喂给 LLM 指令节点或文本消费者），
+ *   而仓库里没有「GraphValue → 文本」的集中助手，各处都按 `kind === 'text'` 取；
+ * - 所以投影放在**端口边界**做（引擎装配 inputs 时按目标端口类型转换，见 execute/engine.ts），
+ *   值本身把规范 JSON 文本一起带好，避免消费侧再序列化一次。
+ *
+ * 时间线专属的消费侧（语义触发/编译/修复/多版本）走 `doc`，不再 JSON.parse。
+ */
+export interface GraphSemanticTimelineValue {
+  kind: 'semanticTimeline'
+  doc: SemanticTimeline
+  /** 规范 JSON 文本（2 空格缩进）：落到 text 口时由引擎投影过去 */
+  text: string
+}
+
 /** 单张图片（选取图片节点输出等） */
 export interface GraphImageValue {
   kind: 'image'
@@ -264,6 +283,7 @@ export interface GraphOutputValue {
 }
 
 export type GraphValue =
+  | GraphSemanticTimelineValue
   | GraphAssetValue
   | GraphTextValue
   | GraphTextsValue

@@ -40,6 +40,8 @@ import {
   type ShotEvidence,
   type UtteranceEvidence
 } from '../../semanticTimeline'
+import { validateSemanticTimeline } from '../../semanticTimeline'
+import { semanticTimelineValue } from './semanticTimelineValue'
 
 /** 变体批量构建上限（防配方槽位笛卡尔积爆炸） */
 const MAX_VARIANTS = 12
@@ -460,7 +462,7 @@ export async function executeSemanticAnalyzeNode(
         ...(upstream.assetId ? { sourceAssetId: upstream.assetId } : {})
       }
     })
-    return outText(JSON.stringify(doc, null, 2))
+    return { out: semanticTimelineValue(doc) }
   }
 
   if (assetId || relativePath) {
@@ -476,18 +478,45 @@ export async function executeSemanticAnalyzeNode(
   const doc = useLlm
     ? await enrichTimelineWithLlm(ctx, { ...base, keyframes: {}, vocabulary: vocabDef })
     : base.doc
-  return outText(JSON.stringify(doc, null, 2))
+  return { out: semanticTimelineValue(doc) }
 }
 
 // ─── Timeline consumers ─────────────────────────────────────────────────────
 
 function readTimelineJson(ctx: NodeExecuteContext): string {
   const upstream = ctx.inputs.in?.[0]
+  if (upstream && upstream.kind === 'semanticTimeline') return upstream.text
   if (upstream && upstream.kind === 'text' && upstream.text.trim()) return upstream.text.trim()
   return String(ctx.node.params?.timelineJson || '').trim()
 }
 
+/**
+ * 取上游时间线文档。
+ *
+ * 上游是**结构化值**时直接用 `doc`（不再 JSON.parse，也不再有「字符串里塞了坏 JSON」这类
+ * 只在解析时才暴露的问题）；文本值仍走解析 —— 那条路是给节点参数 `timelineJson`
+ * 与 agent 手写 JSON 用的，必须继续支持。
+ */
 function readTimeline(ctx: NodeExecuteContext): SemanticTimeline | null {
+  const upstream = ctx.inputs.in?.[0]
+  if (upstream && upstream.kind === 'semanticTimeline') {
+    const doc = upstream.doc
+    if (!doc || typeof doc !== 'object' || !doc.source || !Array.isArray(doc.events)) {
+      throw new Error(
+        isEn(ctx) ? 'Upstream is not a semantic timeline document' : '上游不是语义时间线文档' // cjk-ok
+      )
+    }
+    // schema 不匹配只告警不拦：启发式骨架等合法产物也可能不完全满足严格规则
+    const check = validateSemanticTimeline(doc)
+    if (!check.ok) {
+      ctx.log?.(
+        (isEn(ctx) ? 'Semantic timeline schema warnings: ' : '语义时间线 schema 告警：') + // cjk-ok
+          check.issues.map((i) => `${i.path} ${i.message}`).join('; '),
+        'warn'
+      )
+    }
+    return doc
+  }
   const raw = readTimelineJson(ctx)
   if (!raw) return null
   let parsed: unknown

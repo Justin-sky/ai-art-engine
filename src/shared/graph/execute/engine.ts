@@ -9,7 +9,13 @@ import { expandIncomingThroughBundles, isBundleNode } from '../bundleExpand'
 import { isAssetHostNode, isGenerateLocked } from '../nodeRole'
 import { getNodePorts } from '../ports'
 import { resolveNodeType } from '../registry'
-import type { GraphDocument, GraphNode, GraphPersistedRunState } from '../types'
+import {
+  GraphPortType,
+  type GraphDocument,
+  type GraphNode,
+  type GraphPersistedRunState,
+  type GraphPortDataType
+} from '../types'
 import { isVideoFramePortId } from '../videoGenerateParams'
 import { resolveGraphRunTargeting } from './targeting'
 import { topologicalSort, topologicalWaves } from './topo'
@@ -26,6 +32,23 @@ import { buildMentionSourcesForNode, resolveGenerateMentionIndexBase } from './c
 import { resolveGalleryOutputsFromNodeParams } from './helpers'
 import { executeAssetHostInnerGraph } from './host'
 import { resolveNodeExecutor } from './registry'
+
+/**
+ * 端口边界的值投影：语义时间线值落到 **text 口**时转成它的规范 JSON 文本。
+ *
+ * 端口兼容规则允许 `semanticTimeline → text`（把文档喂给 LLM 指令节点 / 文本消费者），
+ * 而各处文本消费都按 `kind === 'text'` 取 —— 所以这条兼容必须在装配 inputs 时做实，
+ * 否则「连得上但读不到」。时间线口自己拿到的仍是结构化值（含 doc，不再 JSON.parse）。
+ */
+function projectValueForPort(
+  value: GraphValue,
+  targetPortType: GraphPortDataType | undefined
+): GraphValue {
+  if (value.kind === 'semanticTimeline' && targetPortType === GraphPortType.text) {
+    return { kind: 'text', text: value.text }
+  }
+  return value
+}
 
 function emptyState(status: GraphNodeRunState['status'] = 'idle'): GraphNodeRunState {
   return { status }
@@ -341,8 +364,10 @@ async function executeOneNode(
 
   // 先挂上声明的入端口（可为空），再填入边上传来的值，便于日志打印空输入
   const inputs: Record<string, GraphValue[]> = {}
+  const inPortTypes = new Map<string, GraphPortDataType>()
   for (const port of getNodePorts(node).filter((p) => p.direction === 'in')) {
     inputs[port.id] = []
+    inPortTypes.set(port.id, port.dataType)
   }
   for (const edge of graph.edges) {
     if (edge.target !== nodeId) continue
@@ -353,7 +378,7 @@ async function executeOneNode(
       for (const logical of expandIncomingThroughBundles(graph, source.id)) {
         const value = outputs.get(logical.sourceNodeId)?.[logical.sourcePort]
         if (!value) continue
-        ;(inputs[targetPort] ??= []).push(value)
+        ;(inputs[targetPort] ??= []).push(projectValueForPort(value, inPortTypes.get(targetPort)))
       }
       continue
     }
@@ -362,7 +387,7 @@ async function executeOneNode(
     const sourcePort = edge.sourcePort ?? 'out'
     const value = sourcePorts[sourcePort]
     if (!value) continue
-    ;(inputs[targetPort] ??= []).push(value)
+    ;(inputs[targetPort] ??= []).push(projectValueForPort(value, inPortTypes.get(targetPort)))
   }
 
   publish(states, nodeId, { status: 'running', inputs }, options.onNodeUpdate)
