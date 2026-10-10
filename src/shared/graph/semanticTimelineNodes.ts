@@ -139,9 +139,9 @@ export const SEMANTIC_TIMELINE_NODE_TYPES: NodeTypeDefinition[] = [
   {
     typeId: 'semantic.compile',
     category: 'note',
-    label: 'Director compile',
+    label: 'Semantic compile',
     icon: '🎬',
-    defaultTitle: 'Director compile',
+    defaultTitle: 'Semantic compile',
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [timelineIn, textOut],

@@ -33,7 +33,7 @@ describe('graph processing menu labels', () => {
     expect(t('graph.types.semantic.variant')).toBe('语义变体')
     expect(t('graph.types.semantic.timeline')).toBe('语义时间线')
     expect(t('graph.types.semantic.trigger')).toBe('语义触发')
-    expect(t('graph.types.semantic.compile')).toBe('导演编译')
+    expect(t('graph.types.semantic.compile')).toBe('语义编译')
     expect(t('graph.types.voice.select')).toBe('选取声音')
     expect(t('graph.types.image.toPrompt')).toBe('图片反推提示词')
     expect(t('graph.types.prompt.optimize')).toBe('提示词优化')

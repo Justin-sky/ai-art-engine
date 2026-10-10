@@ -4659,7 +4659,7 @@ export default {
         variant: '语义变体',
         timeline: '语义时间线',
         trigger: '语义触发',
-        compile: '导演编译'
+        compile: '语义编译'
       },
       voice: {
         select: '选取声音'

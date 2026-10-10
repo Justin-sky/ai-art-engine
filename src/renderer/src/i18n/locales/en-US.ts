@@ -4766,7 +4766,7 @@ export default {
         variant: 'Semantic variant',
         timeline: 'Semantic timeline',
         trigger: 'Semantic trigger',
-        compile: 'Director compile'
+        compile: 'Semantic compile'
       },
       voice: {
         select: 'Select voice'

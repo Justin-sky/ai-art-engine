@@ -603,8 +603,8 @@ export async function executeSemanticCompileNode(
   })
   say(
     ctx,
-    `导演编译：${commands.length} 条命令 · 规则包 ${rulePacks.map((p) => p.id).join(', ')}`, // cjk-ok
-    `Director compile: ${commands.length} commands · rule packs ${rulePacks.map((p) => p.id).join(', ')}`
+    `语义编译：${commands.length} 条命令 · 规则包 ${rulePacks.map((p) => p.id).join(', ')}`, // cjk-ok
+    `Semantic compile: ${commands.length} commands · rule packs ${rulePacks.map((p) => p.id).join(', ')}`
   )
   return outText(
     JSON.stringify({ rulePacks: rulePacks.map((p) => p.id), commands, scriptTimeline }, null, 2)
