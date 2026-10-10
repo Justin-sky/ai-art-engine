@@ -152,6 +152,23 @@ describe('SemanticTimelineEditor 轨道尺寸与字号', () => {
     expect(panel).toMatch(/max-height:\s*100%/)
     expect(panel).toMatch(/overflow:\s*auto/)
     expect(panel).toMatch(/flex-shrink:\s*0/)
+    // 面板要够宽，视频才放得大（240 太窄）
+    expect(pxOf('.stl-inspector', 'width')).toBeGreaterThanOrEqual(300)
+  })
+
+  /**
+   * 原视频要**够大**：出血到面板两边吃满整栏 + 粘顶 + 窗口矮时限高。
+   */
+  it('原视频区域够大（出血满栏 + 粘顶 + 限高不挤掉证据）', () => {
+    const sourceBox = cssBlock('.stl-source')
+    expect(sourceBox).toMatch(/margin:\s*-12px -12px/) // 出血到手，抵消面板内边距
+    expect(sourceBox).toMatch(/position:\s*sticky/)
+    expect(sourceBox).toMatch(/background:\s*var\(--bg-panel\)/)
+    const video = cssBlock('.stl-source-video')
+    expect(video).toMatch(/width:\s*100%/)
+    expect(video).toMatch(/aspect-ratio:\s*16 \/ 9/)
+    expect(video).toMatch(/max-height:\s*46vh/)
+    expect(video).toMatch(/object-fit:\s*contain/)
   })
 
   /**

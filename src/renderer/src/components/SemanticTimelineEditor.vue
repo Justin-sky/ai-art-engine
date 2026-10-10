@@ -673,7 +673,8 @@ function beatLabel(type: string): string {
   padding: 6px 10px 6px 12px;
 }
 .stl-inspector {
-  width: 240px;
+  /* 面板要放得下够大的视频：240 → 320（时间线窄了会自己横向滚动） */
+  width: 320px;
   flex-shrink: 0;
   /* 常驻固定栏：不随选中项出现/消失（否则选一下整条时间线就左右跳），
      并在编辑器可滚动时钉在顶部，不会被内容带走 */
@@ -692,13 +693,21 @@ function beatLabel(type: string): string {
 }
 /* 原视频：放在证据面板上方，点选 clip 时播放条自动跳过去 */
 .stl-source {
-  margin-bottom: 10px;
+  /* 出血到面板两边（抵消 12px 内边距）→ 视频宽度吃满整栏；
+     并粘在面板顶部：证据内容多时向下滚，画面仍留在视野里 */
+  position: sticky;
+  top: -12px;
+  z-index: 1;
+  margin: -12px -12px 10px;
+  background: var(--bg-panel);
 }
 .stl-source-video {
   display: block;
   width: 100%;
   aspect-ratio: 16 / 9;
-  border-radius: 6px;
+  /* 窗口矮时不许把证据挤没：超过视口 46% 就收住，画面按 contain 留边 */
+  max-height: 46vh;
+  object-fit: contain;
   background: #000;
 }
 .stl-inspector .muted {
