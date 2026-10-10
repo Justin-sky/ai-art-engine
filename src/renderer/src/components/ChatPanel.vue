@@ -1102,7 +1102,7 @@ const ACTIVITY_TTL_MS = 6000
  * 返回第 userIndex 条 user 消息之后、下一条 user 消息之前的工具/生成活动卡；
  * 任务执行中状态实时更新，不持久化。
  */
-function taskToolsAt(userIndex: number): Array<ChatMsg & { kind: 'tool' }> {
+function roundToolsAt(userIndex: number): Array<ChatMsg & { kind: 'tool' }> {
   const list = messages.value
   const out: Array<ChatMsg & { kind: 'tool' }> = []
   for (let i = userIndex + 1; i < list.length; i++) {
@@ -1111,6 +1111,24 @@ function taskToolsAt(userIndex: number): Array<ChatMsg & { kind: 'tool' }> {
     if (m.kind === 'tool') out.push(m)
   }
   return out
+}
+
+/**
+ * 顶层卡片：主代理自己的调用。子代理的调用挂在对应 subagent 卡片下（见 subagentToolsOf）；
+ * 父卡片不在本轮里（旧数据 / 匹配失败）时退回顶层，避免活动凭空消失。
+ */
+function taskToolsAt(userIndex: number): Array<ChatMsg & { kind: 'tool' }> {
+  const tools = roundToolsAt(userIndex)
+  const topIds = new Set(tools.filter((tm) => !tm.parentId && tm.id).map((tm) => tm.id))
+  return tools.filter((tm) => !tm.parentId || !topIds.has(tm.parentId))
+}
+
+function subagentToolsOf(
+  userIndex: number,
+  parent: ChatMsg & { kind: 'tool' }
+): Array<ChatMsg & { kind: 'tool' }> {
+  if (!parent.id || parent.parentId) return []
+  return roundToolsAt(userIndex).filter((tm) => tm.parentId === parent.id)
 }
 
 /**
@@ -1577,7 +1595,10 @@ function onHarnessEvent(event: HarnessEvent): void {
     case 'tool': {
       // dsh-agent 等 harness 工具卡：同一会话内按 key 去重（优先 callId 实例，无则按名字回退），
       // 状态变更时原地更新，不要保留一张"执行中"的同时再新增一张"完成"
-      const key = `tool:${event.id ?? event.name}`
+      // 子代理的 callId 只在它自己的会话内唯一，挂上父卡片 id 才能与主代理的卡片区分
+      const key = event.parentId
+        ? `tool:${event.parentId}/${event.id ?? event.name}`
+        : `tool:${event.id ?? event.name}`
       const prev = findToolByKey(key)
       if (prev) {
         prev.state = event.state
@@ -1591,6 +1612,7 @@ function onHarnessEvent(event: HarnessEvent): void {
           key,
           name: event.name,
           ...(event.id ? { id: event.id } : {}),
+          ...(event.parentId ? { parentId: event.parentId } : {}),
           state: event.state,
           ...(event.detail !== undefined ? { detail: event.detail } : {}),
           ...(event.args !== undefined ? { args: event.args } : {})
@@ -2574,6 +2596,34 @@ onBeforeUnmount(() => {
                     v-if="tm.state === 'done' && tm.relativePath && !hasAssetCard(tm.key)"
                     :relative-path="tm.relativePath"
                   />
+                  <!-- 子代理活动：嵌套在发起它的 subagent 卡片下，执行中展开 -->
+                  <details
+                    v-if="subagentToolsOf(i, tm).length"
+                    class="subagent-tools"
+                    :open="tm.state === 'start'"
+                  >
+                    <summary class="subagent-tools-summary">
+                      {{
+                        t('studio.chat.subagentSteps', {
+                          done: subagentToolsOf(i, tm).filter((c) => c.state === 'done').length,
+                          total: subagentToolsOf(i, tm).length
+                        })
+                      }}
+                    </summary>
+                    <ul class="subagent-tool-list">
+                      <li
+                        v-for="ct in subagentToolsOf(i, tm)"
+                        :key="ct.key"
+                        class="subagent-tool"
+                        :class="ct.state"
+                        :title="ct.detail"
+                      >
+                        <span class="task-dot" />
+                        <span class="task-name">{{ ct.name }}</span>
+                        <span v-if="ct.detail" class="subagent-tool-detail">{{ ct.detail }}</span>
+                      </li>
+                    </ul>
+                  </details>
                 </li>
               </ul>
             </details>
@@ -3769,6 +3819,71 @@ onBeforeUnmount(() => {
   color: var(--text-muted);
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+/* 子代理活动：嵌套在 subagent 卡片下，左侧竖线标出层级 */
+.subagent-tools {
+  flex: 1 1 100%;
+  min-width: 0;
+  margin: 2px 0 0 16px;
+}
+
+.subagent-tools-summary {
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--text-muted);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.subagent-tool-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 2px 0 2px 8px;
+  border-left: 2px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.subagent-tool {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.subagent-tool .task-dot {
+  width: 6px;
+  height: 6px;
+}
+
+.subagent-tool.start .task-dot {
+  background: var(--accent);
+  animation: task-pulse 1.2s ease-in-out infinite;
+}
+
+.subagent-tool.done .task-dot {
+  background: var(--success);
+}
+
+.subagent-tool.error .task-dot {
+  background: var(--danger);
+}
+
+.subagent-tool .task-name {
+  flex: 0 0 auto;
+}
+
+.subagent-tool-detail {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.8;
 }
 
 /* 任务清单内的资产预览更紧凑 */

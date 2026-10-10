@@ -1325,6 +1325,8 @@ export type HarnessEvent =
       type: 'tool'
       /** 工具调用实例 ID（dsh 的 callId）：同一工具多次调用可区分；旧数据可能缺失 */
       id?: string
+      /** 子代理发起的工具调用：所属顶层 subagent 调用的 callId，面板据此嵌套在该卡片下 */
+      parentId?: string
       name: string
       state: 'start' | 'done' | 'error'
       detail?: string

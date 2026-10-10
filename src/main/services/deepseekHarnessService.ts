@@ -1579,18 +1579,21 @@ function attachWorkerIo(opts: {
     let detail: string | undefined
     let args: string | undefined
     let id: string | undefined
+    let parentId: string | undefined
     try {
       const parsed = JSON.parse(payload)
       if (typeof parsed.name === 'string' && parsed.name) name = parsed.name
       if (typeof parsed.detail === 'string' && parsed.detail) detail = parsed.detail
       if (typeof parsed.args === 'string' && parsed.args) args = parsed.args
       if (typeof parsed.callId === 'string' && parsed.callId) id = parsed.callId
+      if (typeof parsed.parentId === 'string' && parsed.parentId) parentId = parsed.parentId
     } catch {
       /* ignore */
     }
     emit({
       type: 'tool',
       ...(id ? { id } : {}),
+      ...(parentId ? { parentId } : {}),
       name,
       state,
       ...(detail ? { detail } : {}),

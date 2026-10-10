@@ -1175,6 +1175,7 @@ export default {
       toolFailed: 'Failed',
       taskList: 'Tasks',
       taskListSummary: '{done}/{total} done',
+      subagentSteps: 'Subagent steps {done}/{total}',
       toolParams: 'Params',
       model: 'Model',
       noModel: 'No text model configured',

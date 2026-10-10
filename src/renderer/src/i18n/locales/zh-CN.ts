@@ -1151,6 +1151,7 @@ export default {
       toolFailed: '失败',
       taskList: '任务清单',
       taskListSummary: '已完成 {done}/{total}',
+      subagentSteps: '子代理步骤 {done}/{total}',
       toolParams: '参数',
       model: '模型',
       noModel: '未配置文本模型',

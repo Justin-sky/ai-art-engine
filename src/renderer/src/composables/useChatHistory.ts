@@ -34,6 +34,8 @@ export type ChatMsg =
       args?: string
       /** 工具调用实例 ID（dsh callId）：同一工具多次调用可区分；旧数据可能缺失 */
       id?: string
+      /** 子代理的工具调用：所属顶层 subagent 卡片的 callId（嵌套展示在该卡片下） */
+      parentId?: string
       /** MCP 生成活动关联资产的工程内相对路径：done 后据此在对话末尾生成独立预览卡（图片/视频/音频/3D） */
       relativePath?: string
     }

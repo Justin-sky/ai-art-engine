@@ -61,6 +61,7 @@ function summarizeToolArgs(raw) {
       return value.length > 80 ? value.slice(0, 80) + '…' : value
     }
     const json = JSON.stringify(parsed)
+    if (json === '{}' || json === '[]') return ''
     return json.length > 80 ? json.slice(0, 80) + '…' : json
   } catch {
     return raw.length > 80 ? raw.slice(0, 80) + '…' : raw
@@ -174,6 +175,226 @@ function modePreamble(mode) {
     )
   }
   return '[AIArtEngine panel mode: Craft]\nPrefer MCP tools to complete the request.\n\n'
+}
+
+/** Tools that start a child agent; their callId anchors the child's activity in the panel. */
+const DELEGATION_TOOLS = new Set(['subagent', 'subagent_fork'])
+/** Every subagent tool, including the ones that steer an existing child. */
+const SUBAGENT_TOOLS = new Set([
+  ...DELEGATION_TOOLS,
+  'send_message',
+  'interrupt_agent',
+  'list_agents'
+])
+
+const ASK_DELEGATION_DENIED =
+  'Ask mode does not allow delegating to subagents; answer in text only.'
+const CHILD_ASK_USER_DENIED =
+  'Delegated subagents cannot ask the user. Put the open question in your reply so the delegating agent can ask it.'
+
+function childModeNote(mode) {
+  if (mode === 'plan') {
+    return (
+      '[AIArtEngine panel mode: Plan]\n' +
+      'Write/generate tools stay locked until the user confirms the plan with the delegating agent. ' +
+      'Prefer read-only tools; if a tool is denied, do not retry it — report findings or proposed steps back.'
+    )
+  }
+  return '[AIArtEngine panel mode: Craft]\n' + 'Prefer MCP tools to complete the delegated task.'
+}
+
+function delegationDepthOf(agent) {
+  const depth = agent?.session?.header?.delegationDepth
+  return typeof depth === 'number' ? depth : 0
+}
+
+/** Panel mode applies to the whole delegation tree, so the guard is global and keyed by agent depth. */
+function registerDelegationGuard(ctx, getMode) {
+  const tools = ctx.get('tools')
+  if (typeof tools?.guard !== 'function') return
+  tools.guard((exec) => {
+    if (getMode() === 'ask' && SUBAGENT_TOOLS.has(exec.name)) return ASK_DELEGATION_DENIED
+    if (exec.name === 'ask_user_question' && delegationDepthOf(exec.agent) > 0) {
+      return CHILD_ASK_USER_DENIED
+    }
+    return undefined
+  })
+}
+
+function parseToolArgs(raw) {
+  if (raw && typeof raw === 'object') return raw
+  if (typeof raw !== 'string' || raw === '') return undefined
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return undefined
+  }
+}
+
+/** `subagent/descriptor` label (the delegation's `description`); undefined until it is appended. */
+function descriptorLabel(session, fromSeq) {
+  for (let seq = fromSeq; seq < session.seq; seq++) {
+    const event = session.eventAt(SessionSeq(seq))
+    if (event?.type === 'subagent/descriptor') {
+      return typeof event.data?.label === 'string' ? event.data.label : ''
+    }
+  }
+  return undefined
+}
+
+/** Last panel mode announced to each child; live children outlive turns, so notes repeat only on change. */
+const notedModes = new WeakMap()
+
+function noteChildMode(agent, mode) {
+  if (notedModes.get(agent) === mode) return
+  notedModes.set(agent, mode)
+  agent.inject(
+    createUserMessage({
+      content: [{ type: 'text', text: childModeNote(mode) }],
+      source: { kind: 'plugin', plugin: name }
+    })
+  )
+}
+
+/**
+ * Child agents under one panel turn's root agent: those spawned during the turn and
+ * those still live from earlier turns (continuable children woken by send_message).
+ * Each child is anchored to the top-level call that led to it, so the panel can nest
+ * its tool activity under that card.
+ */
+function createDelegationTracker(ctx, root, mode) {
+  const rootSessionId = String(root.session.header.id)
+  const children = new Map()
+  const delegations = []
+  /** send_message target → anchor of that call; re-anchors a child each time it is woken. */
+  const wakeAnchors = new Map()
+
+  const ownerOf = (sessionId) => {
+    if (sessionId === rootSessionId) return { sessionId, anchorId: undefined, isRoot: true }
+    return children.get(sessionId)
+  }
+
+  const track = (agent, adopted) => {
+    const header = agent?.session?.header
+    if (header?.origin !== 'subagent' || header.parentSession === undefined) return undefined
+    const sessionId = String(header.id)
+    if (children.has(sessionId)) return children.get(sessionId)
+    const owner = ownerOf(String(header.parentSession))
+    if (owner === undefined) return undefined
+    const entry = {
+      agent,
+      sessionId,
+      ownerSessionId: owner.sessionId,
+      startSeq: agent.session.seq,
+      lastSeq: agent.session.seq,
+      pendingTools: new Map(),
+      anchorId: undefined,
+      resolved: false,
+      adopted
+    }
+    children.set(sessionId, entry)
+    return entry
+  }
+
+  // Registration order lists parents before their children, so one pass adopts whole subtrees.
+  const registry = ctx.get('agents')
+  if (typeof registry?.list === 'function') {
+    for (const agent of registry.list()) {
+      if (track(agent, true)) noteChildMode(agent, mode)
+    }
+  }
+
+  const offCreated = ctx.on('agent/created', ({ agent }) => {
+    track(agent, false)
+  })
+  const offStart = ctx.on('agent/session-start', ({ agent }) => {
+    const header = agent?.session?.header
+    if (header === undefined || !children.has(String(header.id))) return
+    noteChildMode(agent, mode)
+  })
+  const offDisposed = ctx.on('agent/disposed', ({ agent }) => {
+    const id = agent?.session?.header?.id
+    const entry = id === undefined ? undefined : children.get(String(id))
+    if (entry) entry.disposed = true
+  })
+
+  /** Remember delegation and wake-up calls so the children they drive can be anchored to them. */
+  const noteToolCall = (ownerSessionId, anchorId, callId, toolName, rawArgs) => {
+    const args = parseToolArgs(rawArgs)
+    if (toolName === 'send_message') {
+      const target = typeof args?.agent_id === 'string' ? args.agent_id : ''
+      if (!target) return
+      const anchor = anchorId ?? callId
+      wakeAnchors.set(target, anchor)
+      const child = children.get(target)
+      if (child?.resolved) child.anchorId = anchor
+      return
+    }
+    if (!DELEGATION_TOOLS.has(toolName)) return
+    delegations.push({
+      ownerSessionId,
+      callId,
+      anchorId: anchorId ?? callId,
+      label: typeof args?.description === 'string' ? args.description : '',
+      claimed: false
+    })
+  }
+
+  /**
+   * Match a child to the call that drives it: a send_message that woke it, else its
+   * delegation call (same owner, same description label, falling back to the earliest
+   * unclaimed call). Returns false while it is too early to tell.
+   */
+  const resolveAnchor = (child, force) => {
+    if (child.resolved) return true
+    const woken = wakeAnchors.get(child.sessionId)
+    if (woken !== undefined) {
+      child.anchorId = woken
+      child.resolved = true
+      return true
+    }
+    // A child from an earlier turn only acts this turn after a send_message reaches it.
+    if (child.adopted) {
+      if (force) child.resolved = true
+      return force
+    }
+    const owner = ownerOf(child.ownerSessionId)
+    if (owner === undefined || (!owner.isRoot && !owner.resolved)) {
+      if (!force) return false
+    }
+    const label = descriptorLabel(child.agent.session, child.startSeq)
+    const open = delegations.filter((d) => !d.claimed && d.ownerSessionId === child.ownerSessionId)
+    const pick = (label ? open.find((d) => d.label === label) : undefined) ?? open[0]
+    if (pick === undefined && !force) return false
+    if (pick) {
+      pick.claimed = true
+      child.anchorId = pick.anchorId
+    }
+    child.resolved = true
+    return true
+  }
+
+  const isBusy = () => {
+    for (const child of children.values()) {
+      if (!child.disposed && child.agent.status === 'running') return true
+    }
+    return false
+  }
+
+  const whenChildrenIdle = () =>
+    Promise.all(
+      [...children.values()]
+        .filter((child) => !child.disposed)
+        .map((child) => child.agent.whenIdle().catch(() => undefined))
+    )
+
+  const dispose = () => {
+    offCreated()
+    offStart()
+    offDisposed()
+  }
+
+  return { children, noteToolCall, resolveAnchor, isBusy, whenChildrenIdle, dispose }
 }
 
 function registerAskUserTool(ctx, io, getMode, getRunId) {
@@ -481,10 +702,8 @@ async function runOneTurn(ctx, io, opts) {
   await agent.whenIdle()
   const firstSeq = agent.session.seq
 
-  let lastSeq = firstSeq
   let inReasoning = false
   let streamedText = false
-  const pendingTools = new Map()
   const closeReasoning = () => {
     if (inReasoning) {
       inReasoning = false
@@ -526,15 +745,23 @@ async function runOneTurn(ctx, io, opts) {
         closeReasoning()
     }
   })
-  const flushEvents = () => {
-    for (; lastSeq < agent.session.seq; lastSeq++) {
-      const event = agent.session.eventAt(SessionSeq(lastSeq))
+  const tracker = createDelegationTracker(ctx, agent, mode)
+  const rootSessionId = String(agent.session.header.id)
+
+  /** Emit tool markers for one agent's new events; child cards carry the anchoring delegation call. */
+  const flushAgent = (owner) => {
+    const session = owner.agent.session
+    const tools = owner.pendingTools
+    for (; owner.lastSeq < session.seq; owner.lastSeq++) {
+      const event = session.eventAt(SessionSeq(owner.lastSeq))
       if (event === void 0) continue
       if (event.type === 'tool/call') {
         const callId = event.data?.callId
-        if (typeof callId === 'string' && !pendingTools.has(callId)) {
+        if (typeof callId === 'string' && !tools.has(callId)) {
           const toolName = event.data?.name || 'tool'
-          pendingTools.set(callId, toolName)
+          const parentId = owner.anchorId
+          tools.set(callId, { name: toolName, parentId })
+          tracker.noteToolCall(owner.sessionId, parentId, callId, toolName, event.data?.arguments)
           closeReasoning()
           io.stdout.write(
             '\n' +
@@ -542,6 +769,7 @@ async function runOneTurn(ctx, io, opts) {
               JSON.stringify({
                 name: toolName,
                 callId,
+                ...(parentId ? { parentId } : {}),
                 detail: summarizeToolArgs(event.data?.arguments),
                 args: clipToolArgs(event.data?.arguments)
               }) +
@@ -553,19 +781,45 @@ async function runOneTurn(ctx, io, opts) {
       if (event.type === 'tool/result') {
         const callId = event.data?.message?.source?.callId
         if (typeof callId === 'string') {
-          const toolName = pendingTools.get(callId) || 'tool'
-          pendingTools.delete(callId)
-          io.stdout.write('\n' + TOOL_END + JSON.stringify({ name: toolName, callId }) + '\n')
+          // The card must close under the anchor it opened with, even if a later wake re-anchored the child.
+          const pending = tools.get(callId)
+          tools.delete(callId)
+          const parentId = pending ? pending.parentId : owner.anchorId
+          io.stdout.write(
+            '\n' +
+              TOOL_END +
+              JSON.stringify({
+                name: pending?.name || 'tool',
+                callId,
+                ...(parentId ? { parentId } : {})
+              }) +
+              '\n'
+          )
         }
         continue
       }
-      if (event.type === 'assistant/message' && event.data?.usage) {
+      if (owner.isRoot && event.type === 'assistant/message' && event.data?.usage) {
         const usage = event.data.usage
         if (typeof usage.inputTokens === 'number' && usage.inputTokens >= 0) {
           closeReasoning()
           io.stdout.write('\n' + CONTEXT_BEGIN + JSON.stringify(usage) + '\n')
         }
       }
+    }
+  }
+
+  const rootEntry = {
+    agent,
+    sessionId: rootSessionId,
+    lastSeq: firstSeq,
+    pendingTools: new Map(),
+    anchorId: undefined,
+    isRoot: true
+  }
+  const flushEvents = (force = false) => {
+    flushAgent(rootEntry)
+    for (const child of tracker.children.values()) {
+      if (tracker.resolveAnchor(child, force)) flushAgent(child)
     }
   }
 
@@ -580,11 +834,23 @@ async function runOneTurn(ctx, io, opts) {
       })
     )
     await agent.whenIdle()
+    // Background children finish after the parent goes idle and then wake it with
+    // their result; keep the turn open until the whole delegation tree settles.
+    while (tracker.children.size > 0) {
+      if (tracker.isBusy()) {
+        await tracker.whenChildrenIdle()
+      } else {
+        await new Promise((resolve) => setTimeout(resolve, 100))
+        if (!tracker.isBusy() && agent.status !== 'running') break
+      }
+      await agent.whenIdle()
+    }
   } finally {
     clearInterval(timer)
     offStream()
+    tracker.dispose()
   }
-  flushEvents()
+  flushEvents(true)
   if (inReasoning) io.stdout.write('\n' + REASONING_END + '\n')
   try {
     await sessions.flush(agent.session)
@@ -618,6 +884,7 @@ async function runPersistent(ctx, io) {
     () => currentMode,
     () => currentRunId
   )
+  registerDelegationGuard(ctx, () => currentMode)
 
   await ctx.get('loader')?.await()
   const defaultModel = ctx.get('agentDefaultModel')
@@ -730,6 +997,7 @@ async function runOnce(ctx, task, io) {
           () => mode,
           () => runId
         )
+  registerDelegationGuard(ctx, () => mode)
   await ctx.get('loader')?.await()
   const defaultModel = ctx.get('agentDefaultModel')
   if (defaultModel === void 0) return
@@ -765,4 +1033,4 @@ function apply(ctx, config) {
   })
 }
 
-export { Config, apply, inject, name }
+export { Config, apply, createDelegationTracker, inject, name, registerDelegationGuard }
