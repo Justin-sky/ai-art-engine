@@ -15,6 +15,7 @@ import {
 import { thumbRelativePathFor } from '@shared/media/thumbnailPath'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import { graphRunHosts } from '../features/graph/model/graphRunHosts'
+import { semanticTimelineSummaryText } from '../features/graph/model/semanticTimelineView'
 import {
   deleteGalleryOutput,
   hasGalleryEntry,
@@ -315,6 +316,18 @@ function collectFromValue(value: GraphValue | undefined, into: PreviewItem[]): v
       kind: 'text',
       text: value.text
     })
+    return
+  }
+  /**
+   * 语义时间线：**不要**把整份 JSON 塞进预览（几百行，看不出重点），只给一眼能判断的摘要：
+   * 时间线 id + 镜头/话语/实体/事件规模。以前没有这个分支 → 分析节点跑完卡片一片空白，
+   * 用户根本不知道结果在哪（双击节点可打开完整时间线编辑器）。
+   */
+  if (value.kind === 'semanticTimeline') {
+    const summary = semanticTimelineSummaryText(value)
+    if (summary) {
+      into.push({ key: `semanticTimeline:${value.doc?.id ?? ''}`, kind: 'text', text: summary })
+    }
     return
   }
   if (value.kind === 'texts') {

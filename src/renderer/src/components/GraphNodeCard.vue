@@ -603,6 +603,10 @@ import { loadImageGenerateCapabilities } from '../features/graph/model/imageGene
 import { loadVideoGeneratePortLimits } from '../features/graph/model/videoGenerateCapabilities'
 import { composeImageGridCell } from '../features/graph/model/composeImageGridCell'
 import {
+  resolveSemanticTimelineViewTarget,
+  semanticTimelineTextFromRunState
+} from '../features/graph/model/semanticTimelineView'
+import {
   ASSET_TYPE_ICONS,
   assetDisplayIcon,
   isImportedMediaRefAsset,
@@ -2590,43 +2594,28 @@ async function diveNodeTool(
   return diveView({ viewId, hostId, nodeId: props.node.id, ...(mode ? { mode } : {}) }, title)
 }
 
-/** 节点文本输出（单口 out / timelineJson 参数） */
+/**
+ * 节点文本输出（单口 out / timelineJson 参数）。
+ *
+ * 结构化时间线值（`kind: 'semanticTimeline'`）也要认 —— 第 2 步把它换成结构化值后，
+ * 这里只认 `kind === 'text'`，导致卡片双击变成静默无响应（已抽到
+ * `semanticTimelineView.ts` 并补上用例）。
+ */
 function resolveSemanticOutText(
   node: GraphNode,
   runState: GraphNodeRunState | null | undefined
 ): string {
-  const out = runState?.outputs?.out
-  if (out?.kind === 'text' && out.text.trim()) return out.text.trim()
-  const fromParams = String(node.params?.timelineJson ?? '').trim()
-  return fromParams
+  const text = semanticTimelineTextFromRunState(runState)
+  if (text) return text
+  return String(node.params?.timelineJson ?? '').trim()
 }
 
-/**
- * 解析可打开语义编辑器的时间线载荷。
- * 分析节点只把 JSON 挂在运行输出上，不一定已写 Semantic/<id>/timeline.json，
- * 因此必须带回 inline `json` 供 dive 视图直接渲染。
- */
+/** 语义时间线的查看目标（运行输出 → timelineJson → semanticTimelineId） */
 function resolveSemanticTimelinePayload(
   node: GraphNode,
   runState: GraphNodeRunState | null | undefined
-): { id: string; json: string } | null {
-  const candidates = [
-    String(node.params?.timelineJson ?? ''),
-    resolveSemanticOutText(node, runState)
-  ]
-  for (const raw of candidates) {
-    const text = raw.trim()
-    if (!text) continue
-    try {
-      const doc = JSON.parse(text) as { id?: unknown; schema?: unknown; source?: unknown }
-      if (typeof doc.id === 'string' && doc.id.startsWith('stl.') && doc.source) {
-        return { id: doc.id, json: text }
-      }
-    } catch {
-      /* not json */
-    }
-  }
-  return null
+): { id: string; json?: string } | null {
+  return resolveSemanticTimelineViewTarget(node, runState)
 }
 
 async function openSemanticTimelineDive(
@@ -2790,10 +2779,10 @@ function onPreviewDblClick(): void {
       return
     }
     if (props.node.typeId === 'semantic.analyze') {
-      const payload = resolveSemanticTimelinePayload(props.node, props.runState)
-      if (payload) {
-        const ok = await openSemanticTimelineDive(title, payload)
-        if (!ok) await openSemanticResultTextDive(title, payload.json)
+      const target = resolveSemanticTimelineViewTarget(props.node, props.runState)
+      if (target) {
+        const ok = await openSemanticTimelineDive(title, target)
+        if (!ok && target.json) await openSemanticResultTextDive(title, target.json)
         return
       }
       const raw = resolveSemanticOutText(props.node, props.runState)
