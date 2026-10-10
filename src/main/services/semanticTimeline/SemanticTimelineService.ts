@@ -273,8 +273,10 @@ export async function analyzeSemanticTimeline(
       fps,
       options.transcriptGranularity ?? 'sentence'
     )
-    if (options.transcriptGranularity === 'sentence') {
-      notes.push('transcript granularity=sentence (word timestamps unavailable)')
+    // 按**产出的 utterances** 判定是否真的只有句级：提供商声明（transcriptGranularity）只是兜底 ——
+    // 有的家会返回词级数据却不声明 granularity，只认声明就会误报「词级时间戳不可用」。
+    if (utterances.length > 0 && utterances.every((u) => u.granularity !== 'word')) {
+      notes.push('transcript granularity=sentence (provider returned no word timestamps)')
     }
   }
   saveUtterances(projectRoot, doc.id, {

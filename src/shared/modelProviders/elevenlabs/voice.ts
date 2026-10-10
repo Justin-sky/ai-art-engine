@@ -372,33 +372,50 @@ export function parseElevenVoices(response: unknown): ElevenVoiceEntry[] {
  * `POST /v1/speech-to-text` 响应 → 转写结果（兼容 snake / camel）。
  *
  * 只用 `type === 'word'` 的词：规范里该数组也会混入 `spacing` / `audio_event`。
- * 按**句读**切段（词级时间戳直接当分段会碎成一个个词）。
+ * 按**句读**切段（词级时间戳直接当分段会碎成一个个词），但**把词保留在段上**并声明
+ * `granularity: 'word'` —— 下游（`segmentsToUtterances`）是按「段里带不带 words」判定词级的：
+ * 之前这里把词丢了、也没声明 granularity，于是明明拿到了词级时间戳，却被当成
+ * 「word timestamps unavailable」降级为句级（字幕/OCR 时间只能取整句边界）。
  */
 export function parseElevenTranscript(
   response: unknown,
   modelId: string
 ): {
-  segments: Array<{ startSec: number; endSec: number; text: string }>
+  segments: Array<{
+    startSec: number
+    endSec: number
+    text: string
+    words?: Array<{ text: string; startSec: number; endSec: number; confidence?: number }>
+  }>
   text?: string
   model: string
   language?: string
+  granularity?: 'word' | 'sentence'
 } {
   const root =
     response && typeof response === 'object' ? (response as Record<string, unknown>) : null
   const words = Array.isArray(root?.words) ? root!.words : []
   const fullText = typeof root?.text === 'string' ? root.text.trim() : ''
   const language = root ? pickStr(root, 'language_code', 'languageCode') : ''
-  const segments: Array<{ startSec: number; endSec: number; text: string }> = []
+  const segments: Array<{
+    startSec: number
+    endSec: number
+    text: string
+    words?: Array<{ text: string; startSec: number; endSec: number; confidence?: number }>
+  }> = []
   // 句读边界：中文句号/问号/叹号/分号 + 西文 .!?;
   const boundary = /[。！？；!?;]/
 
   let bucket = ''
   let startSec = 0
   let endSec = 0
+  let bucketWords: Array<{ text: string; startSec: number; endSec: number; confidence?: number }> =
+    []
   const flush = (): void => {
     const text = bucket.trim()
-    if (text) segments.push({ startSec, endSec, text })
+    if (text) segments.push({ startSec, endSec, text, words: bucketWords })
     bucket = ''
+    bucketWords = []
   }
   for (const raw of words) {
     if (!raw || typeof raw !== 'object') continue
@@ -409,6 +426,14 @@ export function parseElevenTranscript(
     if (!bucket.trim()) startSec = Number(word.start) || 0
     endSec = Number.isFinite(Number(word.end)) ? Number(word.end) : endSec
     bucket += text
+    const wordStart = Number(word.start)
+    const wordEnd = Number(word.end)
+    bucketWords.push({
+      text,
+      startSec: Number.isFinite(wordStart) ? wordStart : startSec,
+      endSec: Number.isFinite(wordEnd) ? wordEnd : endSec,
+      ...(Number.isFinite(Number(word.probability)) ? { confidence: Number(word.probability) } : {})
+    })
     if (boundary.test(text)) flush()
   }
   flush()
@@ -417,12 +442,14 @@ export function parseElevenTranscript(
     // 没有词级时间戳（如请求未要 timestamps）时退化为整段
     segments.push({ startSec: 0, endSec: 0, text: fullText })
   }
+  const hasWords = segments.some((s) => (s.words?.length ?? 0) > 0)
   return {
     segments,
     ...(fullText || segments.length
       ? { text: fullText || segments.map((s) => s.text).join('') }
       : {}),
     model: modelId,
-    ...(language ? { language } : {})
+    ...(language ? { language } : {}),
+    granularity: hasWords ? 'word' : 'sentence'
   }
 }

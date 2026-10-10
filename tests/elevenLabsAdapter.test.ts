@@ -7,6 +7,7 @@ import {
   supportsAudioModality,
   type ModelProviderInstance
 } from '../src/shared/modelProvider'
+import { segmentsToUtterances } from '../src/shared/semanticTimeline/utterances'
 import {
   buildElevenDialogueRequest,
   buildElevenMusicRequest,
@@ -254,17 +255,33 @@ describe('ElevenLabs 协议映射（纯函数）', () => {
       },
       'scribe_v2'
     )
-    expect(result.segments).toEqual([
+    expect(
+      result.segments.map((s) => ({ startSec: s.startSec, endSec: s.endSec, text: s.text }))
+    ).toEqual([
       { startSec: 0, endSec: 0.6, text: '你好。' },
       { startSec: 0.7, endSec: 1.2, text: '世界' }
     ])
+    // 词级时间戳要留在段上（下游按「段里带不带 words」判定词级），spacing 不进正文也不进 words
+    expect(result.segments[0]!.words).toEqual([
+      { text: '你好', startSec: 0, endSec: 0.5 },
+      { text: '。', startSec: 0.5, endSec: 0.6 }
+    ])
+    expect(result.segments[1]!.words).toEqual([{ text: '世界', startSec: 0.7, endSec: 1.2 }])
+    expect(result.granularity).toBe('word')
     expect(result.text).toBe('你好。世界')
     expect(result.language).toBe('zho')
+
+    // 下游效果：utterances 拿到词级时间与 word 级标记（否则分析会报「word timestamps unavailable」）
+    const utterances = segmentsToUtterances(result.segments, 30, result.granularity ?? 'sentence')
+    expect(utterances.map((u) => u.text)).toEqual(['你好。', '世界'])
+    expect(utterances.every((u) => u.granularity === 'word')).toBe(true)
+    expect(utterances[0]!.words?.map((w) => w.text)).toEqual(['你好', '。'])
   })
 
-  it('转写：没有词级时间戳时退化为整段', () => {
+  it('转写：没有词级时间戳时退化为整段，并显式声明 sentence', () => {
     const result = parseElevenTranscript({ text: '整段文本' }, 'scribe_v2')
     expect(result.segments).toEqual([{ startSec: 0, endSec: 0, text: '整段文本' }])
+    expect(result.granularity).toBe('sentence')
   })
 })
 
