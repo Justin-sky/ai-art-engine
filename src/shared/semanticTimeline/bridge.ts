@@ -30,6 +30,12 @@ export interface SemanticAnalyzeRequest {
   transcribeProviderInstanceId?: string
   transcribeModel?: string
   separateAudio?: boolean
+  /**
+   * 实体检测（人物 / 商品 / 物体 / 文字 / logo）用哪个模型 —— 现在是**多模态大模型**看关键帧，
+   * 不再是本地 YOLO。缺省用应用默认文本模型；节点会把「富化模型」一并传下来。
+   */
+  entityProviderInstanceId?: string
+  entityModel?: string
   detectEntities?: boolean
 }
 

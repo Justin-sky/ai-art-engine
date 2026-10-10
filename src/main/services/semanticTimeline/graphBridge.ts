@@ -124,7 +124,10 @@ export async function semanticAnalyzeForGraph(
     transcriptSegments,
     transcriptGranularity,
     separateAudio: input.separateAudio,
-    detectEntities: input.detectEntities
+    detectEntities: input.detectEntities,
+    // 实体检测也走大模型：模型/实例由节点透传（缺省应用默认文本模型）
+    entityModel: input.entityModel,
+    entityProviderInstanceId: input.entityProviderInstanceId
   })
   notes.push(...result.notes)
 

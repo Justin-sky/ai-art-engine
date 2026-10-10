@@ -54,7 +54,11 @@ function iou(a: DetectBox, b: DetectBox): number {
   return uni > 0 ? inter / uni : 0
 }
 
-function kindOfLabel(label: string): EntityKind {
+/**
+ * 检测标签 → 实体类型。本地 YOLO 的 COCO 标签只覆盖人 / 杯子 / 瓶子这类；
+ * 多模态大模型通常直接给 `kind`，给了未知值时也回落到这里（`entityDetectVlm` 复用）。
+ */
+export function kindOfLabel(label: string): EntityKind {
   const l = label.toLowerCase()
   if (l === 'person' || l === 'face') return 'person'
   if (['bottle', 'cup', 'wine glass', 'bowl'].includes(l)) return 'product'

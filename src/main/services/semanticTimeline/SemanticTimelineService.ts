@@ -37,7 +37,7 @@ import {
 import { probeMediaFacts } from './mediaFacts'
 import { detectShots, extractShotKeyframes } from './shotDetect'
 import { buildAudioStems, extractMixedAudio } from './audioStem'
-import { detectEntitiesForShots } from './entityDetect'
+import { detectEntitiesViaVisionModel } from './entityDetectVlm'
 import { heuristicOcrFromUtterances } from './ocrRegions'
 import { separateAudioStems } from '../audioSeparationService'
 
@@ -209,8 +209,11 @@ export interface AnalyzeSemanticOptions {
   transcriptGranularity?: 'word' | 'sentence'
   /** 是否尝试人声分离（默认 true） */
   separateAudio?: boolean
-  /** 是否跑 YOLO 实体（默认 true） */
+  /** 是否跑实体检测（默认 true；用多模态大模型看关键帧，不再用本地 YOLO） */
   detectEntities?: boolean
+  /** 实体检测用哪个模型 / 实例（缺省用应用默认文本模型） */
+  entityModel?: string
+  entityProviderInstanceId?: string
 }
 
 export interface AnalyzeSemanticResult extends AnalyzeShotsOnlyResult {
@@ -279,16 +282,25 @@ export async function analyzeSemanticTimeline(
     utterances
   })
 
-  // 实体
+  // 实体：多模态大模型看关键帧（取代本地 YOLO —— 语义实体与跨镜头身份归并 YOLO 做不到）
   let entities = doc.entities
   if (options.detectEntities !== false) {
     try {
-      const det = await detectEntitiesForShots(projectRoot, doc.id, shots, fps)
-      entities = det.entities
-      saveEntities(projectRoot, doc.id, {
-        schema: SEMANTIC_TIMELINE_SCHEMA,
-        entities
+      const det = await detectEntitiesViaVisionModel({
+        projectRoot,
+        timelineId: doc.id,
+        shots,
+        model: options.entityModel,
+        providerInstanceId: options.entityProviderInstanceId
       })
+      notes.push(...det.notes)
+      if (det.entities.length > 0) {
+        entities = det.entities
+        saveEntities(projectRoot, doc.id, {
+          schema: SEMANTIC_TIMELINE_SCHEMA,
+          entities
+        })
+      }
     } catch (e) {
       notes.push(`entity detect: ${e instanceof Error ? e.message : String(e)}`)
     }

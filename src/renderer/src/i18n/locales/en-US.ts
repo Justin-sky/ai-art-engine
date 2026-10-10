@@ -5357,13 +5357,13 @@ export default {
         vocabularyHint: 'Controls beat labels; market packs can add more vocabularies',
         transcribe: 'Transcribe speech (utterances)',
         separateAudio: 'Separate vocals / background',
-        detectEntities: 'Detect people and objects (entities)',
+        detectEntities: 'Detect people and objects (vision model)',
         llm: 'LLM understanding',
         llmHint:
           'When on, a text model looks at keyframes to describe shots, extracts evidenced events and infers director intents (incurs model cost). Off = rule heuristics only.',
         enrichModel: 'Enrichment model',
         enrichModelHint:
-          'Which model the three enrichment steps use; empty = the app default text model (an unusable model fails all three steps, leaving heuristics only).',
+          'Which model the three enrichment steps (shot describe / event extract / director infer) and entity detection (people, products, on-screen text, logos) use; empty = the app default text model (an unusable model leaves heuristics only).',
         transcribeInstance: 'Transcription provider',
         transcribeInstanceHint:
           'Empty = first configured instance that supports transcription. When set, it is used strictly and an incapable instance errors out (only the OpenAI / ElevenLabs adapters transcribe).',

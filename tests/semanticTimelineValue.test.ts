@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   executeSemanticAnalyzeNode,
@@ -236,6 +236,9 @@ describe('语义时间线值类型', () => {
     const analyzeArg = analyzeSemanticVideo.mock.calls[0]![0] as Record<string, unknown>
     expect(analyzeArg.transcribeModel).toBe('whisper-1')
     expect(analyzeArg.transcribeProviderInstanceId).toBe('inst-openai')
+    // 实体检测（视觉大模型）复用同一个富化模型选择
+    expect(analyzeArg.entityModel).toBe('deepseek/deepseek-v4.1-flash')
+    expect(analyzeArg.entityProviderInstanceId).toBe('inst-openrouter')
     // 富化模型一路传到文本生成（三步都要带）
     expect(textCalls.length).toBeGreaterThan(0)
     for (const call of textCalls) {
@@ -277,6 +280,30 @@ describe('语义时间线值类型', () => {
     expect(source).toContain('v-model="enrichModelKey"')
     expect(source).toContain('v-model="transcribeInstanceId"')
     expect(source.match(/@change="persistAnalyze"/g)?.length ?? 0).toBeGreaterThanOrEqual(3)
+  })
+
+  /**
+   * 实体检测从本地 YOLO 换成多模态大模型：这条链路要钉住，否则容易悄悄退回本地模型
+   * （本地模型不需要 Key、跑得快，很容易被"顺手加回兜底"）。
+   */
+  it('实体检测走视觉大模型，且本地 YOLO 实体检测已移除（源码守卫）', () => {
+    const root = process.cwd()
+    const service = readFileSync(
+      join(root, 'src/main/services/semanticTimeline/SemanticTimelineService.ts'),
+      'utf8'
+    )
+    expect(service).toContain("from './entityDetectVlm'")
+    expect(service).not.toContain("from './entityDetect'")
+    expect(service).not.toContain('detectEntitiesForShots')
+    expect(service).not.toContain('yoloService')
+    expect(existsSync(join(root, 'src/main/services/semanticTimeline/entityDetect.ts'))).toBe(false)
+    // 检测模块本身也不许再碰本地 YOLO
+    const vlm = readFileSync(
+      join(root, 'src/main/services/semanticTimeline/entityDetectVlm.ts'),
+      'utf8'
+    )
+    expect(vlm).not.toContain('yoloService')
+    expect(vlm).toContain('modelProviderFacade.generateText')
   })
 
   it('语义分析节点（有分析能力）产出结构化值，并把 timelineId 写回参数', async () => {

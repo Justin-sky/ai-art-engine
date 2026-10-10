@@ -472,7 +472,10 @@ export async function executeSemanticAnalyzeNode(
         String(p.transcribeProviderInstanceId || '').trim() || undefined,
       transcribeModel: String(p.transcribeModel || '').trim() || undefined,
       separateAudio: p.semanticSeparateAudio !== false,
-      detectEntities: p.semanticDetectEntities !== false
+      detectEntities: p.semanticDetectEntities !== false,
+      // 实体检测（视觉大模型看关键帧）与三步富化共用节点上的「富化模型」选择
+      entityModel: String(p.generateModel || '').trim() || undefined,
+      entityProviderInstanceId: String(p.generateProviderInstanceId || '').trim() || undefined
     })
     for (const note of res.notes) ctx.log?.(note, 'warn')
     say(
