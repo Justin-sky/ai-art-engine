@@ -4775,7 +4775,39 @@ export default {
     },
     semanticTimeline: {
       openEditorHint: '双击打开语义时间线',
-      openResultHint: '双击查看分析结果'
+      openResultHint: '双击查看分析结果',
+      /** 时间线编辑器（dive）的三层与轨道名 */
+      layerStory: '剧情',
+      layerEntity: '角色 / 实体',
+      layerProduction: '制作',
+      trackCamera: '机位',
+      trackAudio: '声音',
+      trackText: '字幕',
+      trackVfx: '特效',
+      trackEvents: '事件',
+      evidence: '证据',
+      noEntities: '暂无实体',
+      pixelEditable: '可像素级替换',
+      yes: '是',
+      no: '否',
+      zoomIn: '放大',
+      zoomOut: '缩小',
+      zoomReset: '重置缩放',
+      zoomHint: 'Ctrl + 滚轮缩放',
+      /** 内置词表的节拍类型名（市场包自定义类型回退为原始 id） */
+      beat: {
+        hook: '钩子',
+        problem: '问题',
+        'product-intro': '产品出场',
+        demo: '演示',
+        proof: '证明',
+        offer: '优惠',
+        cta: '行动号召',
+        intro: '开场',
+        conflict: '冲突',
+        climax: '高潮',
+        resolution: '结局'
+      }
     },
     notepad: {
       appMark: '记事本',

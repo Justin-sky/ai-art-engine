@@ -20,6 +20,9 @@ import {
   nextPxPerSec,
   timeAtPointer
 } from '../features/graph/model/semanticTimelineZoom'
+import { useStudioI18n } from '../composables/useStudioI18n'
+
+const { t, te } = useStudioI18n()
 
 const props = defineProps<{
   timeline: SemanticTimeline
@@ -152,6 +155,35 @@ function selectEntity(e: Entity): void {
 function intentsForTrack(track: string): DirectorIntent[] {
   return intents.value.filter((i) => i.techniques.some((t) => t.track === track))
 }
+
+/** 制作层四个轨道（id 用于匹配 intent.techniques[].track，label 是界面文案） */
+const productionTracks = computed(() => [
+  { id: 'camera', label: t('graph.semanticTimeline.trackCamera') },
+  { id: 'audio', label: t('graph.semanticTimeline.trackAudio') },
+  { id: 'text', label: t('graph.semanticTimeline.trackText') },
+  { id: 'vfx', label: t('graph.semanticTimeline.trackVfx') }
+])
+
+function eventOf(trigger: string): SemanticEvent | undefined {
+  return events.value.find((e) => e.id === trigger || e.label === trigger)
+}
+function eventStart(trigger: string): number {
+  return eventOf(trigger)?.timeRange.start ?? 0
+}
+function eventEnd(trigger: string): number {
+  return eventOf(trigger)?.timeRange.end ?? 1
+}
+
+/**
+ * 节拍类型 → 显示名。
+ *
+ * 内置词表（commerce / drama）的类型在两套文案里都有对应 key；**市场包自定义类型**
+ * 回退为原始 id（词表 schema 只有单语 `label`，要做到自定义类型也本地化得先扩 schema）。
+ */
+function beatLabel(type: string): string {
+  const key = `graph.semanticTimeline.beat.${type}`
+  return te(key) ? t(key) : type
+}
 </script>
 
 <template>
@@ -161,7 +193,8 @@ function intentsForTrack(track: string): DirectorIntent[] {
         <button
           type="button"
           class="stl-zoombar-btn"
-          title="Zoom out"
+          :title="t('graph.semanticTimeline.zoomOut')"
+          :aria-label="t('graph.semanticTimeline.zoomOut')"
           @click="zoomBy(1 / ZOOM_STEP)"
         >
           −
@@ -174,126 +207,131 @@ function intentsForTrack(track: string): DirectorIntent[] {
           step="1"
           :value="px"
           :style="{ '--zoom-fill': zoomFill }"
-          title="Zoom (Ctrl + wheel)"
-          aria-label="Zoom"
+          :title="t('graph.semanticTimeline.zoomHint')"
+          :aria-label="t('graph.semanticTimeline.zoomHint')"
           @input="onZoomInput"
         />
-        <button type="button" class="stl-zoombar-btn" title="Zoom in" @click="zoomBy(ZOOM_STEP)">
+        <button
+          type="button"
+          class="stl-zoombar-btn"
+          :title="t('graph.semanticTimeline.zoomIn')"
+          :aria-label="t('graph.semanticTimeline.zoomIn')"
+          @click="zoomBy(ZOOM_STEP)"
+        >
           +
         </button>
         <span class="stl-zoom-readout">{{ Math.round(px) }} px/s</span>
-        <button type="button" class="stl-zoombar-btn" title="Reset zoom" @click="resetZoom">
+        <button
+          type="button"
+          class="stl-zoombar-btn"
+          :title="t('graph.semanticTimeline.zoomReset')"
+          :aria-label="t('graph.semanticTimeline.zoomReset')"
+          @click="resetZoom"
+        >
           ⟲
         </button>
       </div>
 
       <div class="stl-ruler" :style="{ width: widthPx + 'px' }">
         <span
-          v-for="t in Math.ceil(duration) + 1"
-          :key="t"
+          v-for="tick in Math.ceil(duration) + 1"
+          :key="tick"
           class="stl-tick"
-          :style="{ left: (t - 1) * px + 'px' }"
-          >{{ t - 1 }}s</span
+          :style="{ left: (tick - 1) * px + 'px' }"
+          >{{ tick - 1 }}s</span
         >
       </div>
 
       <section class="stl-layer">
-        <header>Story</header>
-        <div class="stl-track" :style="{ width: widthPx + 'px' }">
-          <button
-            v-for="b in beats"
-            :key="b.id"
-            type="button"
-            class="stl-block beat"
-            :class="{ selected: selectedId === b.id }"
-            :style="{
-              left: left(b.timeRange.start),
-              width: width(b.timeRange.start, b.timeRange.end)
-            }"
-            :title="b.description"
-            @click="selectBeat(b)"
-          >
-            {{ b.type }}
-          </button>
+        <header>{{ t('graph.semanticTimeline.layerStory') }}</header>
+        <div class="stl-row">
+          <span class="stl-row-label" aria-hidden="true"></span>
+          <div class="stl-track" :style="{ width: widthPx + 'px' }">
+            <button
+              v-for="b in beats"
+              :key="b.id"
+              type="button"
+              class="stl-block beat"
+              :class="{ selected: selectedId === b.id }"
+              :style="{
+                left: left(b.timeRange.start),
+                width: width(b.timeRange.start, b.timeRange.end)
+              }"
+              :title="b.description"
+              @click="selectBeat(b)"
+            >
+              {{ beatLabel(b.type) }}
+            </button>
+          </div>
         </div>
       </section>
 
       <section class="stl-layer">
-        <header>Character / Entity</header>
-        <div
-          v-for="ent in entities"
-          :key="ent.id"
-          class="stl-track entity-row"
-          :style="{ width: widthPx + 'px' }"
-        >
-          <span class="stl-ent-label">{{ ent.name }}</span>
-          <button
-            v-for="(ap, i) in ent.appearances"
-            :key="ent.id + i"
-            type="button"
-            class="stl-block entity"
-            :class="{ selected: selectedId === ent.id, soft: !ent.pixelEditable }"
-            :style="{ left: left(ap.range.start), width: width(ap.range.start, ap.range.end) }"
-            @click="selectEntity(ent)"
-          />
+        <header>{{ t('graph.semanticTimeline.layerEntity') }}</header>
+        <div v-for="ent in entities" :key="ent.id" class="stl-row">
+          <span class="stl-row-label" :title="ent.name">{{ ent.name }}</span>
+          <div class="stl-track" :style="{ width: widthPx + 'px' }">
+            <button
+              v-for="(ap, i) in ent.appearances"
+              :key="ent.id + i"
+              type="button"
+              class="stl-block entity"
+              :class="{ selected: selectedId === ent.id, soft: !ent.pixelEditable }"
+              :style="{ left: left(ap.range.start), width: width(ap.range.start, ap.range.end) }"
+              @click="selectEntity(ent)"
+            />
+          </div>
         </div>
-        <div v-if="!entities.length" class="stl-empty">No entities</div>
+        <div v-if="!entities.length" class="stl-empty">
+          {{ t('graph.semanticTimeline.noEntities') }}
+        </div>
       </section>
 
       <section class="stl-layer">
-        <header>Production</header>
-        <div
-          v-for="track in ['camera', 'audio', 'text', 'vfx']"
-          :key="track"
-          class="stl-track"
-          :style="{ width: widthPx + 'px' }"
-        >
-          <span class="stl-ent-label">{{ track }}</span>
-          <button
-            v-for="intent in intentsForTrack(track)"
-            :key="intent.id + track"
-            type="button"
-            class="stl-block intent"
-            :style="{
-              left: left(
-                events.find((e) => e.id === intent.trigger || e.label === intent.trigger)?.timeRange
-                  .start ?? 0
-              ),
-              width: width(
-                events.find((e) => e.id === intent.trigger || e.label === intent.trigger)?.timeRange
-                  .start ?? 0,
-                events.find((e) => e.id === intent.trigger || e.label === intent.trigger)?.timeRange
-                  .end ?? 1
-              )
-            }"
-            :title="intent.reason"
-          >
-            {{ intent.techniques.find((t) => t.track === track)?.action }}
-          </button>
+        <header>{{ t('graph.semanticTimeline.layerProduction') }}</header>
+        <div v-for="track in productionTracks" :key="track.id" class="stl-row">
+          <span class="stl-row-label">{{ track.label }}</span>
+          <div class="stl-track" :style="{ width: widthPx + 'px' }">
+            <button
+              v-for="intent in intentsForTrack(track.id)"
+              :key="intent.id + track.id"
+              type="button"
+              class="stl-block intent"
+              :style="{
+                left: left(eventStart(intent.trigger)),
+                width: width(eventStart(intent.trigger), eventEnd(intent.trigger))
+              }"
+              :title="intent.reason"
+            >
+              {{ intent.techniques.find((t) => t.track === track.id)?.action }}
+            </button>
+          </div>
         </div>
-        <div class="stl-track" :style="{ width: widthPx + 'px' }">
-          <span class="stl-ent-label">events</span>
-          <button
-            v-for="ev in events"
-            :key="ev.id"
-            type="button"
-            class="stl-block event"
-            :class="{ selected: selectedId === ev.id }"
-            :style="{
-              left: left(ev.timeRange.start),
-              width: width(ev.timeRange.start, ev.timeRange.end)
-            }"
-            :title="ev.description"
-            @click="selectEvent(ev)"
-          >
-            {{ ev.label }}
-          </button>
+        <div class="stl-row">
+          <span class="stl-row-label">{{ t('graph.semanticTimeline.trackEvents') }}</span>
+          <div class="stl-track" :style="{ width: widthPx + 'px' }">
+            <button
+              v-for="ev in events"
+              :key="ev.id"
+              type="button"
+              class="stl-block event"
+              :class="{ selected: selectedId === ev.id }"
+              :style="{
+                left: left(ev.timeRange.start),
+                width: width(ev.timeRange.start, ev.timeRange.end)
+              }"
+              :title="ev.description"
+              @click="selectEvent(ev)"
+            >
+              {{ ev.label }}
+            </button>
+          </div>
         </div>
       </section>
     </div>
 
     <aside v-if="selectedEvidence" class="stl-inspector">
-      <h4>Evidence</h4>
+      <h4>{{ t('graph.semanticTimeline.evidence') }}</h4>
       <template v-if="selectedEvidence.kind === 'event'">
         <p>
           <strong>{{ selectedEvidence.item.label }}</strong>
@@ -307,7 +345,7 @@ function intentsForTrack(track: string): DirectorIntent[] {
       </template>
       <template v-else-if="selectedEvidence.kind === 'beat'">
         <p>
-          <strong>{{ selectedEvidence.item.type }}</strong>
+          <strong>{{ beatLabel(selectedEvidence.item.type) }}</strong>
         </p>
         <p>{{ selectedEvidence.item.description }}</p>
         <p class="muted">events: {{ selectedEvidence.item.events.join(', ') || '—' }}</p>
@@ -316,7 +354,14 @@ function intentsForTrack(track: string): DirectorIntent[] {
         <p>
           <strong>{{ selectedEvidence.item.name }}</strong> ({{ selectedEvidence.item.kind }})
         </p>
-        <p class="muted">pixelEditable: {{ selectedEvidence.item.pixelEditable ? 'yes' : 'no' }}</p>
+        <p class="muted">
+          {{ t('graph.semanticTimeline.pixelEditable') }}:
+          {{
+            selectedEvidence.item.pixelEditable
+              ? t('graph.semanticTimeline.yes')
+              : t('graph.semanticTimeline.no')
+          }}
+        </p>
       </template>
     </aside>
   </div>
@@ -325,6 +370,7 @@ function intentsForTrack(track: string): DirectorIntent[] {
 <style scoped>
 .stl-editor {
   display: flex;
+  --stl-gutter: 104px;
   /* 吃掉 dive 里的可用高度：轨道多时**由 .stl-scroll 自己滚**，
      横向滚动条才会落在可见区底部（否则编辑器随内容长高，滚动条被推到内容最下面） */
   flex: 1 1 auto;
@@ -343,7 +389,9 @@ function intentsForTrack(track: string): DirectorIntent[] {
   min-width: 0;
   min-height: 0;
   overflow: auto;
-  padding: 8px 12px 16px;
+  /* 左边不留内边距：否则横向滚动时轨道内容会从标签栏左侧那一条缝里露出来
+     （sticky 标签只能盖住内容盒，盖不住 padding 区）。留白改由下面各元素自己加 */
+  padding: 8px 12px 16px 0;
 }
 /* 缩放条：粘在滚动区顶部，横向滚动时也看得见 */
 .stl-zoombar {
@@ -355,6 +403,7 @@ function intentsForTrack(track: string): DirectorIntent[] {
   align-items: center;
   gap: 6px;
   width: fit-content;
+  margin-left: 12px;
   margin-bottom: 8px;
   padding: 3px 8px;
   border: 1px solid var(--border);
@@ -412,6 +461,8 @@ function intentsForTrack(track: string): DirectorIntent[] {
   position: relative;
   height: 26px;
   margin-bottom: 8px;
+  /* 与轨道对齐：空出左侧标签栏的位置（刻度 0s 正对轨道起点） */
+  margin-left: var(--stl-gutter);
   border-bottom: 1px solid var(--border);
 }
 .stl-tick {
@@ -425,32 +476,46 @@ function intentsForTrack(track: string): DirectorIntent[] {
   margin-bottom: 14px;
 }
 .stl-layer > header {
+  padding-left: 12px;
   font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--text-muted);
   margin-bottom: 5px;
 }
-.stl-track {
-  position: relative;
-  height: 40px;
+/* 一行 = 左侧固定标签栏 + 右侧时间轴轨道 */
+.stl-row {
+  display: flex;
+  align-items: center;
   margin-bottom: 6px;
-  background: var(--bg-elevated);
-  border-radius: 5px;
 }
-.stl-ent-label {
-  position: absolute;
-  left: 6px;
-  top: 50%;
-  transform: translateY(-50%);
+.stl-row-label {
+  /* 固定在最左边：横向滚动时粘住不动，且**在流内**占位 ——
+     块从标签栏右侧才开始，绝不会压在名字上（旧做法是绝对定位在块上面） */
+  position: sticky;
+  left: 0;
   z-index: 2;
-  padding: 1px 5px;
-  border-radius: 3px;
-  /* 标签压在块上（块从 0s 开始时必然重叠）：给层底片，字号加大后仍读得清 */
-  background: color-mix(in srgb, var(--bg-panel) 72%, transparent);
+  flex: 0 0 var(--stl-gutter);
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  padding: 0 8px 0 2px;
+  box-sizing: border-box;
+  /* 不透明：滚动时下面的轨道从标签栏底下穿过而不透出来 */
+  background: var(--bg-panel);
   font-size: 13px;
   color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   pointer-events: none;
+}
+.stl-track {
+  position: relative;
+  flex: 0 0 auto;
+  height: 40px;
+  background: var(--bg-elevated);
+  border-radius: 5px;
 }
 .stl-block {
   position: absolute;

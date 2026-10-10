@@ -4884,7 +4884,39 @@ export default {
     },
     semanticTimeline: {
       openEditorHint: 'Double-click to open semantic timeline',
-      openResultHint: 'Double-click to view analysis result'
+      openResultHint: 'Double-click to view analysis result',
+      /** Timeline editor (dive): layers and track names */
+      layerStory: 'Story',
+      layerEntity: 'Character / Entity',
+      layerProduction: 'Production',
+      trackCamera: 'Camera',
+      trackAudio: 'Audio',
+      trackText: 'Text',
+      trackVfx: 'VFX',
+      trackEvents: 'Events',
+      evidence: 'Evidence',
+      noEntities: 'No entities',
+      pixelEditable: 'Pixel-editable',
+      yes: 'Yes',
+      no: 'No',
+      zoomIn: 'Zoom in',
+      zoomOut: 'Zoom out',
+      zoomReset: 'Reset zoom',
+      zoomHint: 'Ctrl + wheel to zoom',
+      /** Built-in vocabulary beat names (market-pack types fall back to the raw id) */
+      beat: {
+        hook: 'Hook',
+        problem: 'Problem',
+        'product-intro': 'Product Intro',
+        demo: 'Demo',
+        proof: 'Proof',
+        offer: 'Offer',
+        cta: 'CTA',
+        intro: 'Intro',
+        conflict: 'Conflict',
+        climax: 'Climax',
+        resolution: 'Resolution'
+      }
     },
     notepad: {
       appMark: 'Notepad',

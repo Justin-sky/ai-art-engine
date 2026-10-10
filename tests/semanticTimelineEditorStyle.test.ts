@@ -34,15 +34,42 @@ describe('SemanticTimelineEditor 轨道尺寸与字号', () => {
 
   it('轨道上的字号足够大（块文字 ≥13px，标签/刻度 ≥12px）', () => {
     expect(pxOf('.stl-block', 'font-size')).toBeGreaterThanOrEqual(13)
-    expect(pxOf('.stl-ent-label', 'font-size')).toBeGreaterThanOrEqual(13)
+    expect(pxOf('.stl-row-label', 'font-size')).toBeGreaterThanOrEqual(13)
     expect(pxOf('.stl-tick', 'font-size')).toBeGreaterThanOrEqual(12)
     expect(pxOf('.stl-layer > header', 'font-size')).toBeGreaterThanOrEqual(13)
   })
 
-  it('轨道标签垂直居中（轨道变高后不能还钉在固定 top 上）', () => {
-    const label = /\.stl-ent-label\s*\{([^}]*)\}/s.exec(source)?.[1] ?? ''
-    expect(label).toContain('top: 50%')
-    expect(label).toContain('translateY(-50%)')
+  /**
+   * 轨道名必须**固定在最左边**，而且不能压在块上。
+   *
+   * 旧做法是 `position: absolute; left: 6px` 放在轨道里 —— 横向滚动时名字跟着跑，
+   * 块从 0s 开始时还直接压在名字上。现在是「左侧标签栏（sticky + 在流内占位）+ 右侧轨道」。
+   */
+  it('轨道名固定在左侧栏（sticky + 在流内占位，不绝对定位压块）', () => {
+    const label = /\.stl-row-label\s*\{([^}]*)\}/s.exec(source)?.[1] ?? ''
+    expect(label).toContain('position: sticky')
+    expect(label).toContain('left: 0')
+    expect(label).toContain('var(--stl-gutter)')
+    expect(label).not.toContain('position: absolute')
+    // 标签栏不透明：滚动时轨道从它底下穿过而不透出来
+    expect(label).toContain('background: var(--bg-panel)')
+    // 模板里标签是轨道的**兄弟**节点（在流内），不是轨道的子节点
+    expect(source).toContain('class="stl-row-label"')
+    expect(source).not.toContain('stl-ent-label')
+    const labelIndex = source.indexOf('class="stl-row-label"')
+    const trackIndex = source.indexOf('class="stl-track"')
+    expect(labelIndex).toBeGreaterThan(-1)
+    expect(trackIndex).toBeGreaterThan(labelIndex)
+    // 刻度尺要让开标签栏（0s 与轨道起点对齐）
+    const ruler = /\.stl-ruler\s*\{([^}]*)\}/s.exec(source)?.[1] ?? ''
+    expect(ruler).toContain('margin-left: var(--stl-gutter)')
+    /**
+     * 滚动区**左边不能有内边距**：sticky 标签只盖得住内容盒，盖不住 padding 区，
+     * 于是横向滚动时轨道会从标签栏左侧那条缝里露出 12px 的块（实测见过）。
+     */
+    const scroll = /\.stl-scroll\s*\{([^}]*)\}/s.exec(source)?.[1] ?? ''
+    expect(scroll).toContain('padding: 8px 12px 16px 0')
+    expect(scroll).not.toContain('padding: 8px 12px 16px;')
   })
 
   /**
