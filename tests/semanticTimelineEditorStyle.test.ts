@@ -99,6 +99,27 @@ describe('SemanticTimelineEditor 轨道尺寸与字号', () => {
   })
 
   /**
+   * 证据面板必须**常驻固定位置**。
+   *
+   * 旧写法 `<aside v-if="selectedEvidence">`：点选一下面板才出现，整条时间线跟着左右跳；
+   * 未选中时右侧还没有任何落点。现在常驻（未选中显示提示）+ sticky 钉在顶部。
+   */
+  it('证据面板常驻且钉在固定位置', () => {
+    // 不再随选中项出现/消失
+    expect(source).not.toContain('v-if="selectedEvidence" class="stl-inspector"')
+    expect(source).toContain('class="stl-inspector"')
+    // 未选中时有提示文案（不是空白一片）
+    expect(source).toContain("t('graph.semanticTimeline.selectHint')")
+    expect(source).toContain('v-if="!selectedEvidence"')
+    const panel = cssBlock('.stl-inspector')
+    expect(panel).toMatch(/position:\s*sticky/)
+    expect(panel).toMatch(/top:\s*0/)
+    expect(panel).toMatch(/max-height:\s*100%/)
+    expect(panel).toMatch(/overflow:\s*auto/)
+    expect(panel).toMatch(/flex-shrink:\s*0/)
+  })
+
+  /**
    * 横向滚动条必须落在**可见区底部**。
    *
    * 实测踩过：编辑器不给高度、随内容长高，于是 `.stl-scroll` 的横向滚动条被推到内容最底部 ——

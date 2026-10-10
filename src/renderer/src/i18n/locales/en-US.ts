@@ -4895,6 +4895,7 @@ export default {
       trackVfx: 'VFX',
       trackEvents: 'Events',
       evidence: 'Evidence',
+      selectHint: 'Select an event, beat or entity to see its evidence',
       noEntities: 'No entities',
       pixelEditable: 'Pixel-editable',
       yes: 'Yes',

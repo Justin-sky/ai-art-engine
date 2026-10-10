@@ -4786,6 +4786,7 @@ export default {
       trackVfx: '特效',
       trackEvents: '事件',
       evidence: '证据',
+      selectHint: '点选事件、节拍或实体查看其证据',
       noEntities: '暂无实体',
       pixelEditable: '可像素级替换',
       yes: '是',

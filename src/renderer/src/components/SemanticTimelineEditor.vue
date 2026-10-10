@@ -330,9 +330,12 @@ function beatLabel(type: string): string {
       </section>
     </div>
 
-    <aside v-if="selectedEvidence" class="stl-inspector">
+    <aside class="stl-inspector">
       <h4>{{ t('graph.semanticTimeline.evidence') }}</h4>
-      <template v-if="selectedEvidence.kind === 'event'">
+      <p v-if="!selectedEvidence" class="muted">
+        {{ t('graph.semanticTimeline.selectHint') }}
+      </p>
+      <template v-else-if="selectedEvidence.kind === 'event'">
         <p>
           <strong>{{ selectedEvidence.item.label }}</strong>
         </p>
@@ -575,6 +578,12 @@ function beatLabel(type: string): string {
 .stl-inspector {
   width: 240px;
   flex-shrink: 0;
+  /* 常驻固定栏：不随选中项出现/消失（否则选一下整条时间线就左右跳），
+     并在编辑器可滚动时钉在顶部，不会被内容带走 */
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  max-height: 100%;
   border-left: 1px solid var(--border);
   padding: 12px;
   font-size: 13px;
