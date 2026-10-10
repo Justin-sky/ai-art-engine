@@ -5361,9 +5361,9 @@ export default {
         llm: 'LLM understanding',
         llmHint:
           'When on, a text model looks at keyframes to describe shots, extracts evidenced events and infers director intents (incurs model cost). Off = rule heuristics only.',
-        enrichModel: 'Enrichment model',
-        enrichModelHint:
-          'Which model the three enrichment steps (shot describe / event extract / director infer) and entity detection (people, products, on-screen text, logos) use; empty = the app default text model (an unusable model leaves heuristics only).',
+        understandModel: 'Understanding model',
+        understandModelHint:
+          'The model that "watches" the video: describes shots, extracts events and director intents, and detects people/objects on screen. Keyframes are sent as images, so pick a vision-capable model; empty = the app default text model.',
         transcribeInstance: 'Transcription provider',
         transcribeInstanceHint:
           'Empty = first configured instance that supports transcription. When set, it is used strictly and an incapable instance errors out (only the OpenAI / ElevenLabs adapters transcribe).',

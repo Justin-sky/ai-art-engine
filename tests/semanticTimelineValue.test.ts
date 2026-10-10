@@ -280,6 +280,13 @@ describe('语义时间线值类型', () => {
     expect(source).toContain('v-model="enrichModelKey"')
     expect(source).toContain('v-model="transcribeInstanceId"')
     expect(source.match(/@change="persistAnalyze"/g)?.length ?? 0).toBeGreaterThanOrEqual(3)
+    /**
+     * 这里是**检查器**（`.fields label` 是纵向 flex、控件满宽），不能塞卡片工具栏用的
+     * `InstructionModelSelect`：它的 max-width 是给节点头部设计的（图标会挤到另一行、
+     * 下拉被截成 "OpenRout…"）。实测踩过，用普通 select 与同区其它字段保持一致。
+     */
+    expect(source).not.toContain('InstructionModelSelect')
+    expect(source).toContain('<select v-model="enrichModelKey"')
   })
 
   /**

@@ -5233,9 +5233,9 @@ export default {
         llm: 'LLM 深度理解',
         llmHint:
           '勾选后用文本模型看关键帧描述镜头、抽取带证据的事件并推断导演意图；会产生模型调用费用。不勾选只用规则启发式。',
-        enrichModel: '富化模型',
-        enrichModelHint:
-          '三步富化（镜头描述 / 事件抽取 / 导演意图）与实体检测（人物、商品、文字、logo）用哪个模型；留空则用应用默认文本模型（撞上未开通/不可用的模型会失败，只留启发式结果）。',
+        understandModel: '理解模型',
+        understandModelHint:
+          '用来「看懂」视频的模型：描述镜头、抽事件与导演意图、识别画面里的人物与物体。会送关键帧图，所以要选支持看图的模型；留空用应用默认文本模型。',
         transcribeInstance: '转写实例',
         transcribeInstanceHint:
           '留空 = 首个支持转写的已配置实例；指定后严格用它，该实例不能转写会直接报错（目前仅 OpenAI / ElevenLabs 适配器支持转写）。',

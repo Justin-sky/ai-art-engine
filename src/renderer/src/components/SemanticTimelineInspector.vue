@@ -53,15 +53,14 @@
       </div>
 
       <label>
-        <span class="field-label">{{ t('graph.inspector.semantic.enrichModel') }}</span>
-        <InstructionModelSelect
-          v-model="enrichModelKey"
-          :options="enrichModelOptions"
-          :title="t('graph.inspector.semantic.enrichModel')"
-          :empty-label="t('graph.inspector.semantic.modelAuto')"
-          @change="persistAnalyze"
-        />
-        <span class="field-hint">{{ t('graph.inspector.semantic.enrichModelHint') }}</span>
+        <span class="field-label">{{ t('graph.inspector.semantic.understandModel') }}</span>
+        <select v-model="enrichModelKey" @change="persistAnalyze">
+          <option value="">{{ t('graph.inspector.semantic.modelAuto') }}</option>
+          <option v-for="opt in enrichModelOptions" :key="opt.key" :value="opt.key">
+            {{ opt.label }}
+          </option>
+        </select>
+        <span class="field-hint">{{ t('graph.inspector.semantic.understandModelHint') }}</span>
       </label>
 
       <label>
@@ -312,7 +311,6 @@ import {
 import GraphNodeRunControl from './GraphNodeRunControl.vue'
 import GraphNodeOutputPreview from './GraphNodeOutputPreview.vue'
 import ExpandableTextarea from './ExpandableTextarea.vue'
-import InstructionModelSelect from './InstructionModelSelect.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useNodeDisplayTitle } from '../composables/useNodeDisplayTitle'
 import { useGraphNodeRun } from '../composables/useGraphNodeRun'
