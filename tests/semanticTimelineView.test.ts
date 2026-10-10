@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  clampSeekSeconds,
   resolveSemanticTimelineViewTarget,
   semanticTimelineSummaryText,
   semanticTimelineTextFromRunState
@@ -105,6 +106,20 @@ describe('semanticTimelineView', () => {
       null
     )
     expect(target).toEqual({ id: 'stl.fromdisk' })
+  })
+
+  /**
+   * 点选 clip → 播放条跳过去：越界必须夹住，否则 `video.currentTime = 超出时长` 会被拒绝。
+   */
+  it('clampSeekSeconds：负数归零、越界夹到时长、时长未知时只保证非负', () => {
+    expect(clampSeekSeconds(3.2, 35.6)).toBe(3.2)
+    expect(clampSeekSeconds(-1, 35.6)).toBe(0)
+    expect(clampSeekSeconds(40, 35.6)).toBe(35.6)
+    expect(clampSeekSeconds(Number.NaN, 35.6)).toBe(0)
+    // 时长还没解析出来（video.duration 为 NaN）时不能把 seek 归零
+    expect(clampSeekSeconds(12.5, Number.NaN)).toBe(12.5)
+    expect(clampSeekSeconds(12.5, 0)).toBe(12.5)
+    expect(clampSeekSeconds(12.5, undefined)).toBe(12.5)
   })
 
   it('非法 / 不相干的 JSON 不算时间线目标', () => {

@@ -68,6 +68,19 @@ interface TimelineCounts {
   ocr?: number
 }
 
+/**
+ * 点选 clip 时播放条要跳到的时刻：负数归零，并夹在视频时长内。
+ *
+ * 不夹的话 `video.currentTime = 超出时长` 会被浏览器拒绝或产生 NaN ——
+ * 事件时间来自证据，偶尔会略长于 `source.duration`（转写尾段/末帧取整）。
+ */
+export function clampSeekSeconds(sec: number, duration: number | undefined): number {
+  const value = Number.isFinite(sec) ? sec : 0
+  const max = Number.isFinite(duration) && (duration as number) > 0 ? (duration as number) : 0
+  const nonNegative = Math.max(0, value)
+  return max > 0 ? Math.min(nonNegative, max) : nonNegative
+}
+
 /** 一眼判断产出是否正常：id + 规模。计数从 `evidence.hashes` 取（那里存的就是计数） */
 export function semanticTimelineSummaryText(value: GraphValue | undefined): string {
   if (!value || value.kind !== 'semanticTimeline') return ''

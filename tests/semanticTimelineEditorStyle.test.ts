@@ -155,6 +155,33 @@ describe('SemanticTimelineEditor 轨道尺寸与字号', () => {
   })
 
   /**
+   * 证据面板上方要有**原视频**，且点选 clip 时播放条自动跳过去。
+   *
+   * 组件在 node 环境渲染不了，所以用源码守卫钉住：视频节点在证据标题**之前**、
+   * 地址按 `timeline.source.assetId` 自己解析（宿主只给 timelineId 时也要有画面）、
+   * 三个选中入口都调用 seek。
+   */
+  it('证据面板上方是原视频，且选中 clip 会移动播放条', () => {
+    const videoIndex = source.indexOf('class="stl-source-video"')
+    const evidenceIndex = source.indexOf("t('graph.semanticTimeline.evidence')")
+    expect(videoIndex, '缺少原视频节点').toBeGreaterThan(-1)
+    expect(evidenceIndex, '缺少证据标题').toBeGreaterThan(-1)
+    expect(videoIndex, '视频必须在证据标题之前（面板上方）').toBeLessThan(evidenceIndex)
+    expect(source).toContain('ref="videoRef"')
+    // 地址来源：assetId → 资产相对路径；`path:` 型来源直接用后缀
+    expect(source).toContain("assetId.startsWith('path:')")
+    expect(source).toContain('window.studio.getAssetFileUrl(rel)')
+    expect(source).toContain('project.assets.find((a) => a.id === assetId)')
+    // 三个选中入口都要 seek（节拍 / 事件 / 实体）
+    expect(source.match(/seekVideo\(/g)?.length ?? 0).toBeGreaterThanOrEqual(4) // 定义 1 + 调用 3
+    expect(source).toContain('seekVideo(b.timeRange.start)')
+    expect(source).toContain('seekVideo(e.timeRange.start)')
+    expect(source).toContain('seekVideo(first.range.start)')
+    // 夹取走纯函数（越界会被浏览器拒绝）
+    expect(source).toContain('clampSeekSeconds(sec, duration)')
+  })
+
+  /**
    * 横向滚动条必须落在**可见区底部**。
    *
    * 实测踩过：编辑器不给高度、随内容长高，于是 `.stl-scroll` 的横向滚动条被推到内容最底部 ——

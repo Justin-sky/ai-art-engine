@@ -21,8 +21,11 @@ import {
   timeAtPointer
 } from '../features/graph/model/semanticTimelineZoom'
 import { useStudioI18n } from '../composables/useStudioI18n'
+import { clampSeekSeconds } from '../features/graph/model/semanticTimelineView'
+import { useProjectStore } from '../stores/project'
 
 const { t, te } = useStudioI18n()
+const project = useProjectStore()
 
 const props = defineProps<{
   timeline: SemanticTimeline
@@ -139,17 +142,67 @@ function selectBeat(b: StoryBeat): void {
   selectedId.value = b.id
   emit('selectBeat', b.id)
   emit('seek', b.timeRange.start)
+  seekVideo(b.timeRange.start)
 }
 function selectEvent(e: SemanticEvent): void {
   selectedId.value = e.id
   emit('selectEvent', e.id)
   emit('seek', e.timeRange.start)
+  seekVideo(e.timeRange.start)
 }
 function selectEntity(e: Entity): void {
   selectedId.value = e.id
   emit('selectEntity', e.id)
   const first = e.appearances[0]
-  if (first) emit('seek', first.range.start)
+  if (first) {
+    emit('seek', first.range.start)
+    seekVideo(first.range.start)
+  }
+}
+
+/**
+ * 点选 clip → 播放条跳到该 clip 起点。
+ *
+ * 原视频地址由 `timeline.source.assetId` 自己解析（不依赖宿主传参）：
+ * 双击分析节点打开时宿主只给 timelineId，拿不到 sourceRelativePath —— 那样面板上就没有画面。
+ * `SemanticTimelineSource` 里没有 relativePath，所以要按 assetId 找资产；
+ * 无资产（按路径分析的视频）时 id 形如 `path:<工程相对路径>`，直接取后缀。
+ */
+const videoRef = ref<HTMLVideoElement | null>(null)
+const sourceVideoUrl = ref('')
+
+function sourceRelativePath(): string {
+  const assetId = props.timeline.source?.assetId?.trim() ?? ''
+  if (assetId.startsWith('path:')) return assetId.slice('path:'.length).trim()
+  return project.assets.find((a) => a.id === assetId)?.relativePath?.trim() ?? ''
+}
+
+async function resolveSourceVideoUrl(): Promise<void> {
+  const rel = sourceRelativePath()
+  if (!rel) {
+    sourceVideoUrl.value = ''
+    return
+  }
+  try {
+    sourceVideoUrl.value = (await window.studio.getAssetFileUrl(rel)) ?? ''
+  } catch {
+    sourceVideoUrl.value = ''
+  }
+}
+
+watch(
+  () => [props.timeline.source?.assetId, project.assets.length],
+  () => {
+    void resolveSourceVideoUrl()
+  },
+  { immediate: true }
+)
+
+function seekVideo(sec: number): void {
+  const video = videoRef.value
+  if (!video) return
+  const duration = Number.isFinite(video.duration) ? video.duration : props.timeline.source.duration
+  video.currentTime = clampSeekSeconds(sec, duration)
 }
 
 function intentsForTrack(track: string): DirectorIntent[] {
@@ -337,6 +390,16 @@ function beatLabel(type: string): string {
     </div>
 
     <aside class="stl-inspector">
+      <div v-if="sourceVideoUrl" class="stl-source">
+        <video
+          ref="videoRef"
+          class="stl-source-video"
+          :src="sourceVideoUrl"
+          controls
+          playsinline
+          preload="metadata"
+        />
+      </div>
       <h4>{{ t('graph.semanticTimeline.evidence') }}</h4>
       <p v-if="!selectedEvidence" class="muted">
         {{ t('graph.semanticTimeline.selectHint') }}
@@ -626,6 +689,17 @@ function beatLabel(type: string): string {
 .stl-inspector h4 {
   margin: 0 0 8px;
   font-size: 13px;
+}
+/* 原视频：放在证据面板上方，点选 clip 时播放条自动跳过去 */
+.stl-source {
+  margin-bottom: 10px;
+}
+.stl-source-video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 6px;
+  background: #000;
 }
 .stl-inspector .muted {
   color: var(--text-muted);
