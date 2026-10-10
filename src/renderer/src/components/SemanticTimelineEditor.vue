@@ -3,7 +3,7 @@
  * Semantic Timeline 三层只读视图（Story / Entity / Production）。
  * 编辑操作入口预留；首期展示证据与意图。
  */
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import type {
   DirectorIntent,
   Entity,
@@ -11,10 +11,19 @@ import type {
   SemanticTimeline,
   StoryBeat
 } from '@shared/semanticTimeline'
+import {
+  MAX_PX_PER_SEC,
+  MIN_PX_PER_SEC,
+  ZOOM_STEP,
+  anchoredScrollLeft,
+  clampPxPerSec,
+  nextPxPerSec,
+  timeAtPointer
+} from '../features/graph/model/semanticTimelineZoom'
 
 const props = defineProps<{
   timeline: SemanticTimeline
-  /** 秒 → 像素 */
+  /** 秒 → 像素（初始缩放；用户滚轮/滑块调整后以内部状态为准） */
   pxPerSec?: number
 }>()
 
@@ -25,9 +34,77 @@ const emit = defineEmits<{
   selectEntity: [id: string]
 }>()
 
-const px = computed(() => props.pxPerSec ?? 40)
+const scrollRef = ref<HTMLElement | null>(null)
+/** 当前缩放（秒 → 像素）。滚轮（Ctrl/⌘ + 滚）与滑块都改它 */
+const pxPerSecValue = ref(clampPxPerSec(props.pxPerSec ?? 40))
+watch(
+  () => props.pxPerSec,
+  (value) => {
+    if (value != null) pxPerSecValue.value = clampPxPerSec(value)
+  }
+)
+
+const px = computed(() => pxPerSecValue.value)
 const duration = computed(() => Math.max(0.1, props.timeline.source.duration))
 const widthPx = computed(() => duration.value * px.value)
+/** 滑块填充比例（给滑轨上色用） */
+const zoomFill = computed(
+  () => `${((px.value - MIN_PX_PER_SEC) / (MAX_PX_PER_SEC - MIN_PX_PER_SEC)) * 100}%`
+)
+
+/**
+ * 滚轮缩放：**Ctrl/⌘ + 滚**才缩放，普通滚轮保持滚动。
+ *
+ * 为什么不学 DirectorAnimationPanel 的裸滚轮缩放：那边轨道区不靠滚轮滚动，
+ * 这里实体行多、纵向滚动是刚需，裸滚轮会让人翻不动列表。
+ * 缩放同时把「光标下的时刻」固定在光标下，否则放大时画面会整体甩走。
+ */
+function onWheel(e: WheelEvent): void {
+  if (!e.ctrlKey && !e.metaKey) return
+  e.preventDefault()
+  const el = scrollRef.value
+  const next = nextPxPerSec(px.value, e.deltaY)
+  if (next === px.value) return
+  const rect = el?.getBoundingClientRect()
+  const pointerX = rect ? e.clientX - rect.left : 0
+  const anchorSec = el
+    ? timeAtPointer({ scrollLeft: el.scrollLeft, pointerX, pxPerSec: px.value })
+    : 0
+  pxPerSecValue.value = next
+  void nextTick(() => {
+    if (el)
+      el.scrollLeft = anchoredScrollLeft({ timeAtPointer: anchorSec, pointerX, pxPerSec: next })
+  })
+}
+
+function onZoomInput(e: Event): void {
+  const value = Number((e.target as HTMLInputElement).value)
+  if (Number.isFinite(value)) pxPerSecValue.value = clampPxPerSec(value)
+}
+
+/** 按钮缩放：以视口中心为锚点，避免只看得到最左边 */
+function zoomBy(step: number): void {
+  const el = scrollRef.value
+  const current = px.value
+  const next = clampPxPerSec(current * step)
+  if (next === current) return
+  const pointerX = el ? el.clientWidth / 2 : 0
+  const anchorSec = el
+    ? timeAtPointer({ scrollLeft: el.scrollLeft, pointerX, pxPerSec: current })
+    : 0
+  pxPerSecValue.value = next
+  void nextTick(() => {
+    if (el)
+      el.scrollLeft = anchoredScrollLeft({ timeAtPointer: anchorSec, pointerX, pxPerSec: next })
+  })
+}
+
+function resetZoom(): void {
+  pxPerSecValue.value = clampPxPerSec(props.pxPerSec ?? 40)
+  void nextTick(() => {
+    if (scrollRef.value) scrollRef.value.scrollLeft = 0
+  })
+}
 
 const selectedId = ref<string | null>(null)
 
@@ -79,7 +156,37 @@ function intentsForTrack(track: string): DirectorIntent[] {
 
 <template>
   <div class="stl-editor">
-    <div class="stl-scroll">
+    <div ref="scrollRef" class="stl-scroll" @wheel="onWheel">
+      <div class="stl-zoombar">
+        <button
+          type="button"
+          class="stl-zoombar-btn"
+          title="Zoom out"
+          @click="zoomBy(1 / ZOOM_STEP)"
+        >
+          −
+        </button>
+        <input
+          class="stl-zoom-slider"
+          type="range"
+          :min="MIN_PX_PER_SEC"
+          :max="MAX_PX_PER_SEC"
+          step="1"
+          :value="px"
+          :style="{ '--zoom-fill': zoomFill }"
+          title="Zoom (Ctrl + wheel)"
+          aria-label="Zoom"
+          @input="onZoomInput"
+        />
+        <button type="button" class="stl-zoombar-btn" title="Zoom in" @click="zoomBy(ZOOM_STEP)">
+          +
+        </button>
+        <span class="stl-zoom-readout">{{ Math.round(px) }} px/s</span>
+        <button type="button" class="stl-zoombar-btn" title="Reset zoom" @click="resetZoom">
+          ⟲
+        </button>
+      </div>
+
       <div class="stl-ruler" :style="{ width: widthPx + 'px' }">
         <span
           v-for="t in Math.ceil(duration) + 1"
@@ -230,6 +337,69 @@ function intentsForTrack(track: string): DirectorIntent[] {
   flex: 1;
   overflow: auto;
   padding: 8px 12px 16px;
+}
+/* 缩放条：粘在滚动区顶部，横向滚动时也看得见 */
+.stl-zoombar {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  margin-bottom: 8px;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-panel) 92%, transparent);
+  backdrop-filter: blur(6px);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.stl-zoombar-btn {
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+.stl-zoombar-btn:hover {
+  background: color-mix(in srgb, var(--accent) 30%, var(--bg-elevated));
+}
+.stl-zoom-slider {
+  width: 96px;
+  height: 14px;
+  margin: 0;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+.stl-zoom-slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(
+    to right,
+    var(--accent) var(--zoom-fill, 50%),
+    var(--bg-elevated) var(--zoom-fill, 50%)
+  );
+}
+.stl-zoom-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 10px;
+  height: 10px;
+  margin-top: -3px;
+  border-radius: 50%;
+  background: var(--text);
+}
+.stl-zoom-readout {
+  min-width: 46px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 .stl-ruler {
   position: relative;
