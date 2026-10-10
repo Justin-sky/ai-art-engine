@@ -476,7 +476,15 @@ function beatLabel(type: string): string {
   margin-bottom: 14px;
 }
 .stl-layer > header {
-  padding-left: 12px;
+  /* 层标题同样钉在最左边：横向滚动时跟着跑会让人失去层次感。
+     必须 `width: fit-content`——块级元素撑满内容宽度时没有可滑动的余量，sticky 不会生效。 */
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  width: fit-content;
+  max-width: 100%;
+  padding: 0 10px 0 12px;
+  background: var(--bg-panel);
   font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -553,9 +561,16 @@ function beatLabel(type: string): string {
   outline: 2px solid var(--text);
 }
 .stl-empty {
+  /* 空态同样钉在左边（理由与层标题一致：撑满宽度时 sticky 无效） */
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  width: fit-content;
+  max-width: 100%;
+  background: var(--bg-panel);
   font-size: 12px;
   color: var(--text-muted);
-  padding: 6px;
+  padding: 6px 10px 6px 12px;
 }
 .stl-inspector {
   width: 240px;
