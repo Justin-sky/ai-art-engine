@@ -269,6 +269,86 @@
           {{ t('graph.inspector.semantic.editsInsertSample') }}
         </button>
       </div>
+      <!--
+        结构化编辑：常见 kind 一行一项（节拍 / 实体从时间线里**选真实 id**）。
+        只改表单认识的字段，其余字段原样保留（agent / 手写的高级编辑不会被吃掉）。
+      -->
+      <div class="edits-struct">
+        <span class="field-label">{{ t('graph.inspector.semantic.editsStruct') }}</span>
+        <div v-for="(draft, index) in editDrafts" :key="`draft-${index}`" class="edits-row">
+          <select
+            :value="draftKind(draft)"
+            class="edits-row-kind"
+            @change="setDraftField(index, 'kind', ($event.target as HTMLSelectElement).value)"
+          >
+            <option v-for="kind in structuredEditKinds" :key="kind" :value="kind">
+              {{ kind }}
+            </option>
+          </select>
+
+          <!-- 节拍类：从时间线里选真实节拍 id -->
+          <select
+            v-if="draftKind(draft) === 'dropBeat' || draftKind(draft) === 'reorderBeats'"
+            :value="String(draft.beatId ?? '')"
+            @change="setDraftField(index, 'beatId', ($event.target as HTMLSelectElement).value)"
+          >
+            <option value="">{{ t('graph.inspector.semantic.pickBeat') }}</option>
+            <option v-for="beat in beatOptions" :key="beat.id" :value="beat.id">
+              {{ beat.title }}
+            </option>
+          </select>
+
+          <!-- 实体类：从时间线里选真实实体 id -->
+          <select
+            v-if="draftKind(draft) === 'replaceEntity' || draftKind(draft) === 'removeEntity'"
+            :value="String(draft.entityId ?? '')"
+            @change="setDraftField(index, 'entityId', ($event.target as HTMLSelectElement).value)"
+          >
+            <option value="">{{ t('graph.inspector.semantic.pickEntity') }}</option>
+            <option v-for="entity in entityOptions" :key="entity.id" :value="entity.id">
+              {{ entity.name }}
+            </option>
+          </select>
+          <input
+            v-if="draftKind(draft) === 'replaceEntity'"
+            :value="String(draft.newAssetId ?? '')"
+            type="text"
+            :placeholder="t('graph.inspector.semantic.pickNewAsset')"
+            @change="setDraftField(index, 'newAssetId', ($event.target as HTMLInputElement).value)"
+          />
+
+          <!-- 字幕类：文本区域 id + 新文本（区域在证据文件里，文档读不到 → 手填 / 从字幕轨道抄） -->
+          <template v-if="draftKind(draft) === 'editText'">
+            <input
+              :value="String(draft.regionId ?? '')"
+              type="text"
+              :placeholder="t('graph.inspector.semantic.pickTextRegion')"
+              @change="setDraftField(index, 'regionId', ($event.target as HTMLInputElement).value)"
+            />
+            <input
+              :value="String(draft.newText ?? '')"
+              type="text"
+              :placeholder="t('graph.inspector.semantic.newText')"
+              @change="setDraftField(index, 'newText', ($event.target as HTMLInputElement).value)"
+            />
+          </template>
+
+          <button type="button" class="edits-row-remove" @click="removeDraft(index)">
+            {{ t('graph.inspector.semantic.removeEdit') }}
+          </button>
+        </div>
+        <div class="edits-row-actions">
+          <select v-model="newDraftKind" class="edits-row-kind">
+            <option v-for="kind in structuredEditKinds" :key="`new-${kind}`" :value="kind">
+              {{ kind }}
+            </option>
+          </select>
+          <button type="button" class="edits-sample" @click="addDraft">
+            {{ t('graph.inspector.semantic.addEdit') }}
+          </button>
+          <span class="field-hint">{{ t('graph.inspector.semantic.editsStructHint') }}</span>
+        </div>
+      </div>
       <!-- 计划预览：**不构建**就能看到将付出什么代价（读证据 → 本地跑 planInvalidation） -->
       <div v-if="planSummary" class="plan-preview">
         <span class="field-label">{{ t('graph.inspector.semantic.planPreview') }}</span>
@@ -395,9 +475,14 @@ import {
   planInvalidation,
   buildEntityShotIndex,
   normalizeSemanticEdits,
+  addEditDraft,
+  readEditDrafts,
+  removeEditDraft,
   sampleSemanticEdit,
   summarizeInvalidationPlan,
   summarizeSemanticEdits,
+  updateEditDraft,
+  STRUCTURED_EDIT_KINDS,
   type ShotEvidence
 } from '@shared/semanticTimeline'
 
@@ -623,6 +708,55 @@ function persistAnalyze(): void {
 
 /** 编辑草稿摘要（计数 + 被丢弃原因）——不跑节点就能看到 */
 const editsSummary = computed(() => summarizeSemanticEdits(editsJson.value))
+
+/** 结构化编辑：当前草稿行（保留未知字段）+ 可选的真实节拍 / 实体 / 文本区域 */
+const editDrafts = computed(() => readEditDrafts(editsJson.value))
+const structuredEditKinds = STRUCTURED_EDIT_KINDS
+const newDraftKind = ref<string>('grade')
+
+function draftKind(draft: Record<string, unknown>): string {
+  return typeof draft.kind === 'string' ? draft.kind : 'grade'
+}
+
+const beatOptions = computed(() =>
+  (timelineDoc.value?.beats ?? []).map((beat) => ({
+    id: beat.id,
+    // StoryBeat 没有 label 字段：用描述兜，再退回 type
+    title: beat.description?.trim() || beat.type || beat.id
+  }))
+)
+const entityOptions = computed(() =>
+  (timelineDoc.value?.entities ?? []).map((entity) => ({ id: entity.id, name: entity.name }))
+)
+
+/** 表单改一个字段：只并进这一项，其余字段（含高级字段）原样保留 */
+function setDraftField(index: number, key: string, value: string): void {
+  editsJson.value = updateEditDraft(editsJson.value, index, { [key]: value })
+  persistPlan()
+}
+
+function removeDraft(index: number): void {
+  editsJson.value = removeEditDraft(editsJson.value, index)
+  persistPlan()
+}
+
+function addDraft(): void {
+  const kind = newDraftKind.value
+  const patch: Record<string, unknown> = { kind }
+  const firstBeat = beatOptions.value[0]?.id
+  const firstEntity = entityOptions.value[0]?.id
+  if (kind === 'dropBeat' || kind === 'reorderBeats') patch.beatId = firstBeat ?? ''
+  if (kind === 'replaceEntity' || kind === 'removeEntity') patch.entityId = firstEntity ?? ''
+  if (kind === 'replaceEntity') patch.newAssetId = ''
+  if (kind === 'editText') {
+    // 文本区域在证据文件里（文档读不到）→ 先留空，用户手填
+    patch.regionId = ''
+    patch.newText = ''
+  }
+  if (kind === 'grade') patch.params = { brightness: 1.05 }
+  editsJson.value = addEditDraft(editsJson.value, patch)
+  persistPlan()
+}
 
 /**
  * 失效计划的**本地预览**：读一次镜头证据，纯函数算计划 —— 不进构建、不花钱。
@@ -976,6 +1110,53 @@ const timelineSummary = computed(() => {
 }
 .plan-chip.plan-paid {
   background: color-mix(in srgb, #e0a458 22%, var(--bg-panel));
+}
+
+/* 结构化编辑：一行一项（kind 选择 + 该类型的字段） */
+.edits-struct {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.edits-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-panel);
+}
+.edits-row-kind {
+  flex: 0 0 auto;
+  font-size: 12px;
+}
+.edits-row input,
+.edits-row select {
+  min-width: 0;
+  flex: 1 1 120px;
+  font-size: 12px;
+}
+.edits-row-remove {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+.edits-row-remove:hover {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+.edits-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 /* 事件标签多选：紧凑两列，长标签省略 */

@@ -2,9 +2,14 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
+  addEditDraft,
+  readEditDrafts,
+  removeEditDraft,
   sampleSemanticEdit,
+  STRUCTURED_EDIT_KINDS,
   summarizeInvalidationPlan,
-  summarizeSemanticEdits
+  summarizeSemanticEdits,
+  updateEditDraft
 } from '../src/shared/semanticTimeline'
 import { resolveBuiltVideoRelativePath } from '../src/renderer/src/features/graph/model/semanticTimelineView'
 
@@ -118,6 +123,70 @@ describe('语义修复节点完善', () => {
     expect(inspector).toMatch(
       /const planPreview = computed\(\(\) => \{\s*\n\s*if \(!isPlan\.value\) return null/
     )
+  })
+
+  /**
+   * 结构化编辑器的行操作：**必须保留未知字段**（agent / 手写的高级编辑不能被表单吃掉）。
+   */
+  it('readEditDrafts / addEditDraft / updateEditDraft / removeEditDraft 保留未知字段', () => {
+    const raw = JSON.stringify([
+      { kind: 'grade', params: { LUT: 'cinematic.cube' }, note: '高级字段' },
+      { kind: 'regenerateShot', shotId: 'shot.1', prompt: '重画这一镜' },
+      'not-an-object'
+    ])
+    // 读：跳过非对象，保持顺序
+    expect(readEditDrafts(raw).map((d) => d.kind)).toEqual(['grade', 'regenerateShot'])
+    expect(readEditDrafts('')).toEqual([])
+    expect(readEditDrafts('{oops')).toEqual([])
+    expect(readEditDrafts({ edits: [{ kind: 'grade' }] }).length).toBe(1)
+
+    // 改一个字段：**其它字段原样保留**
+    const updated = JSON.parse(
+      updateEditDraft(raw, 0, { kind: 'grade', params: { brightness: 1.2 } })
+    )
+    expect(updated[0].note).toBe('高级字段') // note 不被吃掉
+    expect(updated[0].params).toEqual({ brightness: 1.2 }) // 只并进这一个字段（params 整体覆盖）
+    expect(updated[0].params.LUT).toBeUndefined()
+    expect(updated[1].prompt).toBe('重画这一镜') // 第二行没被动过
+    // 改第二行时，第一行的高级字段同样保留
+    const updatedB = JSON.parse(updateEditDraft(raw, 1, { prompt: '换个提示词' }))
+    expect(updatedB[1].prompt).toBe('换个提示词')
+    expect(updatedB[1].shotId).toBe('shot.1')
+    expect(updatedB[0].note).toBe('高级字段')
+
+    // 增
+    expect(JSON.parse(addEditDraft(raw, { kind: 'dropBeat', beatId: 'b1' })).length).toBe(3)
+    expect(JSON.parse(addEditDraft('', { kind: 'grade' }))).toEqual([{ kind: 'grade' }])
+    // 删（越界不动）
+    expect(JSON.parse(removeEditDraft(raw, 1)).map((d: { kind: string }) => d.kind)).toEqual([
+      'grade'
+    ])
+    expect(JSON.parse(removeEditDraft(raw, 9)).length).toBe(2)
+    // 只有本地可执行的 kind 出现在结构化表单里
+    expect([...STRUCTURED_EDIT_KINDS]).toEqual([
+      'grade',
+      'dropBeat',
+      'reorderBeats',
+      'replaceEntity',
+      'removeEntity',
+      'editText'
+    ])
+  })
+
+  it('检查器的结构化编辑器：真实节拍/实体可选，且只改认识的字段', () => {
+    expect(inspector).toContain('readEditDrafts(editsJson.value)')
+    expect(inspector).toContain('updateEditDraft(editsJson.value, index,')
+    expect(inspector).toContain('removeEditDraft(editsJson.value, index)')
+    expect(inspector).toContain('addEditDraft(editsJson.value, patch)')
+    expect(inspector).toContain('STRUCTURED_EDIT_KINDS')
+    expect(inspector).toContain('class="edits-struct"')
+    // 节拍 / 实体从时间线文档里来（真实 id），不是让用户手打
+    expect(inspector).toContain('timelineDoc.value?.beats')
+    expect(inspector).toContain('timelineDoc.value?.entities')
+    // 每次表单改动都要落盘
+    expect(inspector).toMatch(/function setDraftField[\s\S]{0,200}?persistPlan\(\)/)
+    expect(inspector).toMatch(/function addDraft[\s\S]{0,900}?persistPlan\(\)/)
+    expect(inspector).toMatch(/function removeDraft[\s\S]{0,160}?persistPlan\(\)/)
   })
 
   it('summarizeSemanticEdits：计数 + 类型分布 + 丢弃原因（稳定排序）', () => {

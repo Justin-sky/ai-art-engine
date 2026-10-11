@@ -79,6 +79,72 @@ export function sampleSemanticEdit(now = new Date().toISOString()): SemanticEdit
 }
 
 /**
+ * 结构化编辑器的**行操作**（把界面上的增删改落到 `editsJson` 文本）。
+ *
+ * 关键约束：**保留未知字段**。这些行可能是 agent 或用户手写的高级编辑
+ * （`regenerateShot.prompt`、`grade.params.LUT`、`replaceEntity.faceOnly`…），
+ * 结构化表单只改它认识的字段，其余原样带过去 —— 否则"用表单改一下"就把高级字段吃掉了。
+ */
+export function readEditDrafts(raw: unknown): Array<Record<string, unknown>> {
+  const text = typeof raw === 'string' ? raw.trim() : ''
+  let parsed: unknown = raw
+  if (typeof raw === 'string') {
+    if (!text) return []
+    try {
+      parsed = JSON.parse(text)
+    } catch {
+      return []
+    }
+  }
+  const list = Array.isArray(parsed)
+    ? parsed
+    : parsed && typeof parsed === 'object' && Array.isArray((parsed as { edits?: unknown[] }).edits)
+      ? (parsed as { edits: unknown[] }).edits
+      : []
+  return list.filter((item): item is Record<string, unknown> => !!item && typeof item === 'object')
+}
+
+export function writeEditDrafts(list: Array<Record<string, unknown>>): string {
+  return JSON.stringify(list, null, 2)
+}
+
+export function addEditDraft(raw: unknown, patch: Record<string, unknown>): string {
+  return writeEditDrafts([...readEditDrafts(raw), patch])
+}
+
+export function removeEditDraft(raw: unknown, index: number): string {
+  const list = readEditDrafts(raw)
+  if (index < 0 || index >= list.length) return writeEditDrafts(list)
+  return writeEditDrafts(list.filter((_, i) => i !== index))
+}
+
+/** 只并进给定字段（其余字段保持原样）；越界时不改动 */
+export function updateEditDraft(
+  raw: unknown,
+  index: number,
+  patch: Record<string, unknown>
+): string {
+  const list = readEditDrafts(raw)
+  if (index < 0 || index >= list.length) return writeEditDrafts(list)
+  return writeEditDrafts(list.map((item, i) => (i === index ? { ...item, ...patch } : item)))
+}
+
+/**
+ * 结构化表单里可选的 kind（**本地能真正执行**的那些）。
+ *
+ * 生成类编辑（`regenerateShot` / `revoice`…）只出计划，放在表单里容易被误会成"点了就会生成"，
+ * 所以仍然只能手写 JSON。
+ */
+export const STRUCTURED_EDIT_KINDS: ReadonlyArray<SemanticEditKind> = [
+  'grade',
+  'dropBeat',
+  'reorderBeats',
+  'replaceEntity',
+  'removeEntity',
+  'editText'
+]
+
+/**
  * 用户/配方/智能体给的编辑草稿 → 合法 SemanticEdit：补 id / origin / createdAt，丢弃非法项。
  * 接受数组或 `{ edits: [...] }`。
  */
