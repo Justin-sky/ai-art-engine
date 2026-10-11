@@ -9,6 +9,7 @@ import {
   assignBeatsHeuristic,
   buildEntityShotIndex,
   collectRulePacks,
+  commandBelongsToEvents,
   compileDirectorCommands,
   createEmptySemanticTimeline,
   draftsToEvents,
@@ -722,14 +723,14 @@ export async function executeSemanticEventNode(
   const events = timeline.events.filter(
     (e) => labels.includes(e.label) || labels.includes(e.id) || labels.includes(e.type)
   )
-  const eventIds = new Set(events.map((e) => e.id))
-  const commands = all.filter((c) => {
-    const intent = c.sourceIntentId
-      ? timeline.intents.find((i) => i.id === c.sourceIntentId)
-      : undefined
-    if (intent && (eventIds.has(intent.trigger) || labels.includes(intent.trigger))) return true
-    return events.some((e) => c.start < e.timeRange.end && c.end > e.timeRange.start)
-  })
+  /**
+   * 命令筛选：**按归属**，时间重叠只作兜底（口径见 `commandBelongsToEvents`）。
+   *
+   * 以前对所有命令都用「来源意图 trigger 命中所选事件 **或** 时间区间重叠」——
+   * 实测（用户真实工程）：选 8 个事件时 116 条里只有 39 条真属于这些事件，
+   * **65 条仅因时间重叠被留下**，于是"选与不选看着差不多"（commands 只从 129 掉到 116）。
+   */
+  const commands = all.filter((c) => commandBelongsToEvents(c, events, timeline.intents))
   if (events.length === 0 && notes.length === 0) {
     say(
       ctx,

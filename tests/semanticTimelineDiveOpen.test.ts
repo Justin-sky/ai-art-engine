@@ -141,10 +141,10 @@ describe('语义时间线 dive 的打开路径', () => {
     expect(itemRule).toMatch(/display:\s*flex/)
     expect(itemRule).toMatch(/flex-direction:\s*row/)
     expect(itemRule).toMatch(/align-items:\s*center/)
-    // 引擎侧：多值解析函数被真正使用（行为由 tests/semanticTriggerNode.test.ts 覆盖）
+    // 引擎侧：多值解析 + 归属筛选（行为由 tests/semanticEventNode.test.ts 覆盖）
     expect(executor).toContain('parseEventLabels(ctx.node.params?.eventLabel)')
     expect(executor).toContain('labels.includes(e.label)')
-    expect(executor).toContain('labels.includes(intent.trigger)')
+    expect(executor).toContain('commandBelongsToEvents(c, events, timeline.intents)')
     expect(executor).toContain('eventLabels: labels')
   })
 

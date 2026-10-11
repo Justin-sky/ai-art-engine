@@ -3,7 +3,11 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { executeSemanticEventNode } from '../src/shared/graph/execute/semanticTimeline'
 import { createNodeFromType, GraphPortType, type NodeExecuteContext } from '../src/shared/graph'
-import { parseEventLabels, type SemanticTimeline } from '../src/shared/semanticTimeline'
+import {
+  parseEventLabels,
+  commandBelongsToEvents,
+  type SemanticTimeline
+} from '../src/shared/semanticTimeline'
 
 /**
  * 触发节点「事件标签过滤」的多值支持。
@@ -196,6 +200,81 @@ describe('语义事件节点：事件标签过滤', () => {
       'intent.b',
       'intent.byLabel'
     ])
+  })
+
+  /**
+   * 命令按**归属**筛：有来源意图的命令不能因为"时间上撞上了所选事件"就被留下。
+   *
+   * 实测（用户真实工程）：选 8 个事件时 116 条命令里 65 条只是时间重叠，
+   * 于是"选与不选结果看着差不多"。
+   */
+  it('有来源意图的命令只按归属保留（时间撞上不算）', async () => {
+    const timeline = doc()
+    // 追加一条意图：trigger 指向**没被选中**的事件，但时间与选中的事件重叠
+    const unselected = timeline.events.find((e) => e.id === 'ev.c')!
+    timeline.intents.push({
+      id: 'intent.overlapOnly',
+      trigger: unselected.id,
+      goal: '不属于所选事件',
+      techniques: [{ track: 'vfx', action: '不该出现' }],
+      reason: '',
+      timeRange: timeline.events.find((e) => e.id === 'ev.a')!.timeRange
+    })
+    const node = createNodeFromType('semantic.event', { x: 0, y: 0 })
+    node.params = { ...node.params, eventLabel: '京东福利价引导' }
+    const res = await executeSemanticEventNode({
+      node,
+      locale: 'zh-CN',
+      inputs: {
+        in: [
+          { kind: GraphPortType.semanticTimeline, doc: timeline, text: JSON.stringify(timeline) }
+        ]
+      },
+      log: () => {}
+    } as unknown as NodeExecuteContext)
+    const payload = JSON.parse((res.out as { text: string }).text) as {
+      commands: Array<{ sourceIntentId?: string }>
+    }
+    const ids = payload.commands.map((c) => c.sourceIntentId)
+    expect(ids).toContain('intent.a')
+    expect(ids, '时间撞上但归属其它事件的命令不该被留下').not.toContain('intent.overlapOnly')
+  })
+
+  /**
+   * 归属判定（纯函数）：这是"选与不选结果看着一样"的根因所在，单独钉住。
+   */
+  it('commandBelongsToEvents：有来源意图只按归属；无来源意图才用时间重叠', () => {
+    const range = (s: number, e: number) => ({ start: s, end: e })
+    const selected = [
+      { id: 'ev.a', label: '京东福利价引导', type: '促销', timeRange: range(6, 14) }
+    ]
+    const intents = [
+      { id: 'intent.a', trigger: 'ev.a' }, // 归属被选事件（按 id）
+      { id: 'intent.byLabel', trigger: '京东福利价引导' }, // 归属被选事件（按 label）
+      { id: 'intent.byType', trigger: '促销' }, // 归属被选事件（按 type）
+      { id: 'intent.other', trigger: 'ev.c' } // 属于别的事件
+    ]
+    const cmd = (patch: Record<string, unknown>): never =>
+      ({ start: 6, end: 14, ...patch }) as never
+
+    expect(commandBelongsToEvents(cmd({ sourceIntentId: 'intent.a' }), selected, intents)).toBe(
+      true
+    )
+    expect(
+      commandBelongsToEvents(cmd({ sourceIntentId: 'intent.byLabel' }), selected, intents)
+    ).toBe(true)
+    expect(
+      commandBelongsToEvents(cmd({ sourceIntentId: 'intent.byType' }), selected, intents)
+    ).toBe(true)
+    // 有来源意图但属于别的事件：**即使时间完全重叠也不留**（旧行为会留 → 看着像没筛）
+    expect(commandBelongsToEvents(cmd({ sourceIntentId: 'intent.other' }), selected, intents)).toBe(
+      false
+    )
+    // 无来源意图（规则包生成）：时间重叠就留，范围外丢掉
+    expect(commandBelongsToEvents(cmd({}), selected, intents)).toBe(true)
+    expect(commandBelongsToEvents(cmd({ start: 100, end: 101 }), selected, intents)).toBe(false)
+    // 空选择集：什么都不留
+    expect(commandBelongsToEvents(cmd({}), [], intents)).toBe(false)
   })
 
   it('顿号分隔的多标签也能命中（中文用户最常用的写法）', async () => {

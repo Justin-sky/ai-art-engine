@@ -90,6 +90,35 @@ function techniqueToCommand(
   }
 }
 
+/**
+ * 一条命令是否**属于**这组事件（语义事件节点的筛选口径）。
+ *
+ * - 有来源意图的命令：**只按归属** —— 意图的 `trigger` 命中任一被选事件（id / label / type 三种写法都认）。
+ *   以前对它们也用「时间重叠」兜底，实测（用户真实工程）选 8 个事件时 116 条里 65 条只是撞了时间，
+ *   于是"选与不选看着差不多"。
+ * - 没有来源意图的命令（规则包生成的）：只能靠**时间重叠**判断，保留落在所选事件区间内的。
+ */
+export function commandBelongsToEvents(
+  command: ProductionCommand,
+  events: ReadonlyArray<{
+    id: string
+    label?: string
+    type?: string
+    timeRange: { start: number; end: number }
+  }>,
+  intents: ReadonlyArray<{ id: string; trigger: string }>
+): boolean {
+  const intent = command.sourceIntentId
+    ? intents.find((i) => i.id === command.sourceIntentId)
+    : undefined
+  if (intent) {
+    return events.some(
+      (e) => e.id === intent.trigger || e.label === intent.trigger || e.type === intent.trigger
+    )
+  }
+  return events.some((e) => command.start < e.timeRange.end && command.end > e.timeRange.start)
+}
+
 /** 规则包 + 文档内 intents → 生产命令列表（按时间排序） */
 export function compileDirectorCommands(
   timeline: SemanticTimeline,
