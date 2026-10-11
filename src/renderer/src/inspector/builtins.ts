@@ -335,9 +335,9 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     nodeTypeId: 'semantic.timeline'
   },
   {
-    id: 'studio.graph.semanticTrigger',
+    id: 'studio.graph.semanticEvent',
     component: SemanticTimelineInspector,
-    nodeTypeId: 'semantic.trigger'
+    nodeTypeId: 'semantic.event'
   },
   {
     id: 'studio.graph.semanticCompile',

@@ -4658,7 +4658,7 @@ export default {
         repair: '语义修复',
         variant: '语义变体',
         timeline: '语义时间线',
-        trigger: '语义触发',
+        event: '语义事件',
         compile: '语义编译'
       },
       voice: {
@@ -5276,7 +5276,7 @@ export default {
           '连接上游视频（或填源资产 id）后运行：切镜、抽关键帧、转写、人声分离、实体检测，结果写入工程 Semantic/ 目录并输出语义时间线 JSON。双击查看分析结果。',
         timelineHint:
           '透传或编辑语义时间线 JSON。上游有文本时优先用上游；否则用下方 JSON。双击打开语义时间线编辑器。',
-        triggerHint:
+        eventHint:
           '找出指定事件，以及落在这些事件上的导演指令（按意图触发或时间重叠匹配）。留空则输出全部事件与指令。双击查看结果。',
         compileHint:
           '用导演规则包把语义时间线编译成导演指令和成片时间线（ScriptTimeline）。镜头与字幕取自分析证据。双击查看结果。',

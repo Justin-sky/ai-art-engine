@@ -68,7 +68,7 @@ function buildGraph(options: { viaTrigger?: boolean } = {}) {
       outputId: output.id
     }
   }
-  const trigger = createNodeFromType('semantic.trigger', { x: 240, y: 0 })
+  const trigger = createNodeFromType('semantic.event', { x: 240, y: 0 })
   return {
     doc: {
       nodes: [analyze, trigger, output],

@@ -176,6 +176,22 @@ export function semanticLoadEvidenceForGraph(timelineId: string): SemanticEviden
   }
 }
 
+/**
+ * 按 id 读整份时间线文档（读不到返回 null，不抛）。
+ *
+ * 给引擎侧的兜底用：上游分析节点在"拿不到视频输入"时会产出只有 id 的空骨架，
+ * 下游据此把磁盘上的真实文档读回来。
+ */
+export function semanticLoadTimelineForGraph(timelineId: string): SemanticTimeline | null {
+  const id = timelineId?.trim()
+  if (!id) return null
+  try {
+    return loadSemanticTimeline(projectService.getRoot(), id)
+  } catch {
+    return null
+  }
+}
+
 export function semanticSaveTimelineForGraph(doc: SemanticTimeline): { ok: true } {
   const v = validateSemanticTimeline(doc)
   if (!v.ok) throw new Error(v.issues.map((i) => `${i.path} ${i.message}`).join('; '))

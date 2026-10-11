@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   executeSemanticAnalyzeNode,
-  executeSemanticTriggerNode
+  executeSemanticEventNode
 } from '../src/shared/graph/execute/semanticTimeline'
 import { semanticTimelineValue } from '../src/shared/graph/execute/semanticTimelineValue'
 import { SEMANTIC_TIMELINE_NODE_TYPES } from '../src/shared/graph/semanticTimelineNodes'
@@ -57,7 +57,7 @@ function ctxWith(inputs: Record<string, GraphValue[]>, extra: Partial<NodeExecut
   const ctx = {
     node: {
       id: 'n1',
-      typeId: 'semantic.trigger',
+      typeId: 'semantic.event',
       category: 'note',
       position: { x: 0, y: 0 },
       params: {}
@@ -187,6 +187,38 @@ describe('语义时间线值类型', () => {
     // 原因要带出来（含模型名），并给出可执行的下一步
     expect(summary).toContain('deepseek-v4-1-flash-260910')
     expect(summary).toContain('设置')
+  })
+
+  /**
+   * 拿不到视频输入时，分析节点会产出「只有 id 的空骨架」。
+   *
+   * 以前这条路径**完全静默**（只在"有 assetId 或路径"时才 warn）—— 下游拿到
+   * `events: []` 却不知道原因（用户实测：触发节点输出两个空数组，全靠我后加的 notes 才定位到）。
+   * 现在无论哪种情况都必须告警。
+   */
+  it('分析节点走到空骨架分支时必须告警（以前没有视频输入时是静默的）', async () => {
+    const logs: Array<{ text: string; level?: string }> = []
+    const ctx = {
+      node: {
+        id: 'n-skeleton',
+        typeId: 'semantic.analyze',
+        category: 'note',
+        position: { x: 0, y: 0 },
+        // 没有 sourceAssetId、上游也没有视频值 → 拿不到视频输入
+        params: { semanticLlm: false }
+      },
+      inputs: {},
+      // 注意：**不给** analyzeSemanticVideo（模拟主进程能力缺失）
+      log: (text: string, level?: string) => logs.push({ text, level })
+    } as unknown as NodeExecuteContext
+
+    const out = await executeSemanticAnalyzeNode(ctx)
+    expect((out.out as { kind: string }).kind).toBe('semanticTimeline')
+    const warns = logs.filter((l) => l.level === 'warn').map((l) => l.text)
+    expect(
+      warns.some((t) => t.includes('没有解析到视频输入')),
+      '空骨架分支必须给出可诊断的告警'
+    ).toBe(true)
   })
 
   /**
@@ -394,7 +426,7 @@ describe('语义时间线值类型', () => {
     }
     const { ctx } = ctxWith({ in: [broken] })
 
-    const out = await executeSemanticTriggerNode(ctx)
+    const out = await executeSemanticEventNode(ctx)
     const text = (out.out as { kind: 'text'; text: string }).text
     expect(JSON.parse(text).events[0].label).toBe('开场')
   })
@@ -417,7 +449,7 @@ describe('语义时间线值类型', () => {
       timelineJson: JSON.stringify(doc)
     }
 
-    const out = await executeSemanticTriggerNode(ctx)
+    const out = await executeSemanticEventNode(ctx)
     const text = (out.out as { kind: 'text'; text: string }).text
     expect(JSON.parse(text).events[0].label).toBe('来自文本')
   })

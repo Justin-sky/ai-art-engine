@@ -517,14 +517,19 @@ export async function executeSemanticAnalyzeNode(
     return { out: semanticTimelineValue(doc) }
   }
 
-  if (assetId || relativePath) {
-    say(
-      ctx,
-      '当前执行环境没有语义分析能力，已按参数生成启发式骨架', // cjk-ok
-      'Semantic analysis is unavailable here; produced a heuristic skeleton from params',
-      'warn'
-    )
-  }
+  /**
+   * 走到这里就**没有真正做分析**：产出的是只有 id / 骨架的文档（事件来自节点参数，
+   * 通常为空）。以前只在"有 assetId 或路径"时才打这条 warn，两者都没有时**完全静默** ——
+   * 于是下游拿到 `events: []` 却不知道为什么（实测踩到）。现在一律告警。
+   */
+  say(
+    ctx,
+    assetId || relativePath
+      ? '当前执行环境没有语义分析能力，已按参数生成启发式骨架' // cjk-ok
+      : '没有解析到视频输入（上游视频口为空 / 该视频资产不可用），本次只产出空的时间线骨架', // cjk-ok
+    'Semantic analysis is unavailable here; produced a heuristic skeleton from params',
+    'warn'
+  )
   const vocabDef = findVocabularyInPacks(await loadPacks(ctx), vocabulary)
   const base = heuristicTimeline(ctx, vocabulary, vocabDef)
   const doc = useLlm
@@ -543,13 +548,36 @@ function readTimelineJson(ctx: NodeExecuteContext): string {
 }
 
 /**
- * 取上游时间线文档。
+ * 取上游时间线文档；**空骨架时按 id 从磁盘兜底**。
  *
- * 上游是**结构化值**时直接用 `doc`（不再 JSON.parse，也不再有「字符串里塞了坏 JSON」这类
- * 只在解析时才暴露的问题）；文本值仍走解析 —— 那条路是给节点参数 `timelineJson`
- * 与 agent 手写 JSON 用的，必须继续支持。
+ * 为什么需要兜底：分析节点在"拿不到视频输入 / 当前环境没有分析能力"时会返回一份
+ * **只有 id、没有事件**的骨架（沿用上一次的 `semanticTimelineId`）。此时下游拿到的是
+ * `events: []`，看起来像过滤条件写错了 —— 实测踩到（触发节点输出两个空数组）。
+ * 磁盘上那份文档通常是好的，所以这里按 id 读一次；读到了就用它并记一条日志。
  */
-function readTimeline(ctx: NodeExecuteContext): SemanticTimeline | null {
+async function readTimeline(ctx: NodeExecuteContext): Promise<SemanticTimeline | null> {
+  const doc = readTimelineStrict(ctx)
+  if (!doc) return null
+  if (doc.events.length > 0 || !ctx.loadSemanticTimeline) return doc
+  const id = typeof doc.id === 'string' ? doc.id.trim() : ''
+  if (!id.startsWith('stl.')) return doc
+  try {
+    const loaded = await ctx.loadSemanticTimeline(id)
+    if (loaded && Array.isArray(loaded.events) && loaded.events.length > 0) {
+      ctx.log?.(
+        `上游给的时间线是空骨架（${id}），已按 id 从磁盘读到 ${loaded.events.length} 个事件`, // cjk-ok
+        'warn'
+      )
+      return loaded
+    }
+  } catch (e) {
+    ctx.log?.(`按 id 读取时间线失败：${errorText(e)}`, 'warn') // cjk-ok
+  }
+  return doc
+}
+
+/** 严格版本：只认上游传入的值（结构化文档 / JSON 文本），不做磁盘兜底 */
+function readTimelineStrict(ctx: NodeExecuteContext): SemanticTimeline | null {
   const upstream = ctx.inputs.in?.[0]
   if (upstream && upstream.kind === 'semanticTimeline') {
     const doc = upstream.doc
@@ -639,7 +667,7 @@ function rulePackIds(ctx: NodeExecuteContext): string[] {
 export async function executeSemanticCompileNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
-  const timeline = readTimeline(ctx)
+  const timeline = await readTimeline(ctx)
   if (!timeline) return outText('{}')
   const rulePacks = collectRulePacks(await loadPacks(ctx), rulePackIds(ctx))
   const shotCtx = await loadShotContext(ctx, timeline)
@@ -663,10 +691,10 @@ export async function executeSemanticCompileNode(
   )
 }
 
-export async function executeSemanticTriggerNode(
+export async function executeSemanticEventNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
-  const timeline = readTimeline(ctx)
+  const timeline = await readTimeline(ctx)
   if (!timeline) return outText('{}')
   /**
    * 事件标签支持**多种分隔符多值**（`eventLabel` 保持单值字段名以便向后兼容）：
@@ -820,7 +848,7 @@ function shouldExecute(ctx: NodeExecuteContext): boolean {
 export async function executeSemanticRepairNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
-  const timeline = readTimeline(ctx)
+  const timeline = await readTimeline(ctx)
   if (!timeline) return outText('{}')
   const edits = readEdits(ctx)
   const shotCtx = await loadShotContext(ctx, timeline)
@@ -849,7 +877,7 @@ export async function executeSemanticRepairNode(
 export async function executeSemanticVariantNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
-  const timeline = readTimeline(ctx)
+  const timeline = await readTimeline(ctx)
   if (!timeline) return outText('{}')
   const p = ctx.node.params ?? {}
   const recipeId = String(p.recipeId || '').trim()

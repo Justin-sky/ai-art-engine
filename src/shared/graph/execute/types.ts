@@ -248,7 +248,7 @@ export interface GraphVideoValue {
  * - 所以投影放在**端口边界**做（引擎装配 inputs 时按目标端口类型转换，见 execute/engine.ts），
  *   值本身把规范 JSON 文本一起带好，避免消费侧再序列化一次。
  *
- * 时间线专属的消费侧（语义触发/编译/修复/多版本）走 `doc`，不再 JSON.parse。
+ * 时间线专属的消费侧（语义事件/编译/修复/多版本）走 `doc`，不再 JSON.parse。
  */
 export interface GraphSemanticTimelineValue {
   kind: 'semanticTimeline'
@@ -785,6 +785,15 @@ export interface NodeExecuteContext {
   loadSemanticEvidence?: (
     timelineId: string
   ) => Promise<import('../../semanticTimeline').SemanticEvidenceResponse>
+  /**
+   * 按 id 读取整份语义时间线文档。
+   *
+   * 用途：上游给的可能是**只有 id 的空骨架**（分析节点拿不到视频输入时的兜底产物），
+   * 下游据此从磁盘把真实文档读回来，而不是对着 `events: []` 干瞪眼。
+   */
+  loadSemanticTimeline?: (
+    timelineId: string
+  ) => Promise<import('../../semanticTimeline').SemanticTimeline | null>
   /** 保存 LLM 补全后的语义时间线 */
   saveSemanticTimeline?: (
     doc: import('../../semanticTimeline').SemanticTimeline
@@ -1305,6 +1314,7 @@ export interface GraphRunOptions {
   resolveProjectMediaUrl?: NodeExecuteContext['resolveProjectMediaUrl']
   analyzeSemanticVideo?: NodeExecuteContext['analyzeSemanticVideo']
   loadSemanticEvidence?: NodeExecuteContext['loadSemanticEvidence']
+  loadSemanticTimeline?: NodeExecuteContext['loadSemanticTimeline']
   saveSemanticTimeline?: NodeExecuteContext['saveSemanticTimeline']
   buildSemanticVideo?: NodeExecuteContext['buildSemanticVideo']
   listSemanticPacks?: NodeExecuteContext['listSemanticPacks']

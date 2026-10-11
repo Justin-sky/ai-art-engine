@@ -133,7 +133,7 @@ describe('graph policy', () => {
         'semantic.repair',
         'semantic.variant',
         'semantic.timeline',
-        'semantic.trigger',
+        'semantic.event',
         'semantic.compile',
         'image.toPrompt',
         'image.transform',

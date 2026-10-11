@@ -27,7 +27,7 @@ import { resolveNodeType } from '../src/shared/graph/registry'
 import {
   executeSemanticAnalyzeNode,
   executeSemanticRepairNode,
-  executeSemanticTriggerNode,
+  executeSemanticEventNode,
   executeSemanticVariantNode
 } from '../src/shared/graph/execute/semanticTimeline'
 import {
@@ -223,7 +223,7 @@ describe('semanticTimeline graph nodes', () => {
     for (const id of [
       'semantic.analyze',
       'semantic.timeline',
-      'semantic.trigger',
+      'semantic.event',
       'semantic.compile',
       'semantic.repair',
       'semantic.variant'
@@ -513,10 +513,10 @@ describe('semanticTimeline executors with injected capabilities', () => {
     const { doc } = fixtureTimeline()
     const node = {
       id: 't',
-      typeId: 'semantic.trigger',
+      typeId: 'semantic.event',
       params: { eventLabel: 'price_announce' }
     } as unknown as GraphNode
-    const out = await executeSemanticTriggerNode({
+    const out = await executeSemanticEventNode({
       node,
       inputs: { in: [{ kind: 'text', text: JSON.stringify(doc) }] }
     } as unknown as NodeExecuteContext)

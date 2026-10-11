@@ -5,12 +5,14 @@ export const semanticGraphCapabilities: Pick<
   GraphRunOptions,
   | 'analyzeSemanticVideo'
   | 'loadSemanticEvidence'
+  | 'loadSemanticTimeline'
   | 'saveSemanticTimeline'
   | 'buildSemanticVideo'
   | 'listSemanticPacks'
 > = {
   analyzeSemanticVideo: (input) => window.studio.semanticAnalyze(input),
   loadSemanticEvidence: (timelineId) => window.studio.semanticLoadEvidence(timelineId),
+  loadSemanticTimeline: (timelineId) => window.studio.semanticLoadTimeline(timelineId),
   saveSemanticTimeline: (doc) => window.studio.semanticSaveTimeline(doc),
   buildSemanticVideo: (input) => window.studio.semanticBuild(input),
   listSemanticPacks: () => window.studio.semanticListPacks()

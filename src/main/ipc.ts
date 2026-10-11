@@ -445,6 +445,11 @@ export function registerIpcHandlers(): void {
       timelineId
     )
   )
+  handle(IpcChannels.SEMANTIC_LOAD_TIMELINE, async (timelineId: string) =>
+    (await import('./services/semanticTimeline/graphBridge')).semanticLoadTimelineForGraph(
+      timelineId
+    )
+  )
   handle(
     IpcChannels.SEMANTIC_SAVE_TIMELINE,
     async (doc: import('@shared/semanticTimeline').SemanticTimeline) =>

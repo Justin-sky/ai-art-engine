@@ -56,7 +56,7 @@ const CANVAS_ADDABLE_NODE_TYPES = [
   'semantic.repair',
   'semantic.variant',
   'semantic.timeline',
-  'semantic.trigger',
+  'semantic.event',
   'semantic.compile',
   'image.toPrompt',
   'image.transform',

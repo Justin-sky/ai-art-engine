@@ -137,7 +137,7 @@
       </details>
     </section>
 
-    <section v-else-if="isTrigger" class="fields">
+    <section v-else-if="isSemanticEvent" class="fields">
       <label>
         <span class="field-label">{{ t('graph.inspector.semantic.eventLabel') }}</span>
         <!--
@@ -349,7 +349,7 @@ const SEMANTIC_TYPE_IDS = new Set([
   'semantic.repair',
   'semantic.variant',
   'semantic.timeline',
-  'semantic.trigger',
+  'semantic.event',
   'semantic.compile'
 ])
 
@@ -379,15 +379,15 @@ const displayTitle = useNodeDisplayTitle(node, typeLabel)
 
 const isAnalyze = computed(() => typeId.value === 'semantic.analyze')
 const isTimelineHost = computed(() => typeId.value === 'semantic.timeline')
-const isTrigger = computed(() => typeId.value === 'semantic.trigger')
+const isSemanticEvent = computed(() => typeId.value === 'semantic.event')
 const isCompile = computed(() => typeId.value === 'semantic.compile')
 const isVariant = computed(() => typeId.value === 'semantic.variant')
 const isPlan = computed(
   () => typeId.value === 'semantic.repair' || typeId.value === 'semantic.variant'
 )
-const usesRulePacks = computed(() => isTrigger.value || isCompile.value)
+const usesRulePacks = computed(() => isSemanticEvent.value || isCompile.value)
 const showTimelineFallback = computed(
-  () => isTimelineHost.value || isTrigger.value || isCompile.value || isPlan.value
+  () => isTimelineHost.value || isSemanticEvent.value || isCompile.value || isPlan.value
 )
 
 const hintText = computed(() => {
@@ -396,8 +396,8 @@ const hintText = computed(() => {
       return t('graph.inspector.semantic.analyzeHint')
     case 'semantic.timeline':
       return t('graph.inspector.semantic.timelineHint')
-    case 'semantic.trigger':
-      return t('graph.inspector.semantic.triggerHint')
+    case 'semantic.event':
+      return t('graph.inspector.semantic.eventHint')
     case 'semantic.compile':
       return t('graph.inspector.semantic.compileHint')
     case 'semantic.repair':

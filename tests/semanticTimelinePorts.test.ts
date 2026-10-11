@@ -60,7 +60,7 @@ describe('语义时间线端口类型', () => {
   it('所有吃时间线的入端口都被收窄', () => {
     for (const typeId of [
       'semantic.timeline',
-      'semantic.trigger',
+      'semantic.event',
       'semantic.compile',
       'semantic.repair',
       'semantic.variant'
@@ -71,7 +71,7 @@ describe('语义时间线端口类型', () => {
 
   it('**出口不能被一刀切**：触发/编译/修复/多版本吐的是各自信封，仍是 text', () => {
     for (const typeId of [
-      'semantic.trigger',
+      'semantic.event',
       'semantic.compile',
       'semantic.repair',
       'semantic.variant'

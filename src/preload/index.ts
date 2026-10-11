@@ -166,6 +166,8 @@ const api: StudioApi = {
   semanticAnalyze: (input) => ipcRenderer.invoke(IpcChannels.SEMANTIC_ANALYZE, input),
   semanticLoadEvidence: (timelineId) =>
     ipcRenderer.invoke(IpcChannels.SEMANTIC_LOAD_EVIDENCE, timelineId),
+  semanticLoadTimeline: (timelineId) =>
+    ipcRenderer.invoke(IpcChannels.SEMANTIC_LOAD_TIMELINE, timelineId),
   semanticSaveTimeline: (doc) => ipcRenderer.invoke(IpcChannels.SEMANTIC_SAVE_TIMELINE, doc),
   semanticBuild: (input) => ipcRenderer.invoke(IpcChannels.SEMANTIC_BUILD, input),
   semanticListPacks: () => ipcRenderer.invoke(IpcChannels.SEMANTIC_LIST_PACKS),

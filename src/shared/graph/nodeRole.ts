@@ -177,7 +177,7 @@ const SEMANTIC_TIMELINE_TOOL_TYPE_IDS = new Set([
   'semantic.repair',
   'semantic.variant',
   'semantic.timeline',
-  'semantic.trigger',
+  'semantic.event',
   'semantic.compile'
 ])
 

@@ -70,7 +70,7 @@ export function isNodeTextCapable(node: GraphNode): boolean {
     node.typeId === 'semantic.repair' ||
     node.typeId === 'semantic.variant' ||
     node.typeId === 'semantic.timeline' ||
-    node.typeId === 'semantic.trigger' ||
+    node.typeId === 'semantic.event' ||
     node.typeId === 'semantic.compile'
   ) {
     return false

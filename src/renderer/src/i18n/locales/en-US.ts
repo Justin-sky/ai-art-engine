@@ -4765,7 +4765,7 @@ export default {
         repair: 'Semantic repair',
         variant: 'Semantic variant',
         timeline: 'Semantic timeline',
-        trigger: 'Semantic trigger',
+        event: 'Semantic event',
         compile: 'Semantic compile'
       },
       voice: {
@@ -5405,7 +5405,7 @@ export default {
           'Connect an upstream video (or set a source asset id) and run: shot detection, keyframes, transcript, vocal separation and entity detection are written to the project Semantic/ folder, and the Semantic Timeline JSON is emitted. Double-click to inspect the result.',
         timelineHint:
           'Pass through or edit Semantic Timeline JSON. Upstream text wins when present; otherwise use the JSON below. Double-click to open the semantic timeline editor.',
-        triggerHint:
+        eventHint:
           'Find the given events and the director commands that land on them (matched by intent trigger or time overlap). Leave empty to emit all events and commands. Double-click to inspect the result.',
         compileHint:
           'Compile the Semantic Timeline into director commands and a ScriptTimeline using director rule packs. Shots and subtitles come from the analysis evidence. Double-click to inspect the result.',

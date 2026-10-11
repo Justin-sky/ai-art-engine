@@ -3534,7 +3534,7 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
       'semantic.repair',
       'semantic.variant',
       'semantic.timeline',
-      'semantic.trigger',
+      'semantic.event',
       'semantic.compile'
     ]
   },

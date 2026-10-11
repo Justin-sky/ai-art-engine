@@ -304,6 +304,7 @@ export const IpcChannels = {
   TRANSCRIBE_AUDIO: 'transcribe:audio',
   SEMANTIC_ANALYZE: 'semantic:analyze',
   SEMANTIC_LOAD_EVIDENCE: 'semantic:loadEvidence',
+  SEMANTIC_LOAD_TIMELINE: 'semantic:loadTimeline',
   SEMANTIC_SAVE_TIMELINE: 'semantic:saveTimeline',
   SEMANTIC_BUILD: 'semantic:build',
   SEMANTIC_LIST_PACKS: 'semantic:listPacks',
@@ -1725,6 +1726,13 @@ export interface StudioApi {
   semanticLoadEvidence: (
     timelineId: string
   ) => Promise<import('./semanticTimeline').SemanticEvidenceResponse>
+  /**
+   * 按 id 读取整份语义时间线文档（给"上游只给了空骨架"时兜底用）。
+   * 读不到返回 null（不抛）。
+   */
+  semanticLoadTimeline: (
+    timelineId: string
+  ) => Promise<import('./semanticTimeline').SemanticTimeline | null>
   /** 保存（LLM 补全后的）语义时间线文档 */
   semanticSaveTimeline: (
     doc: import('./semanticTimeline').SemanticTimeline

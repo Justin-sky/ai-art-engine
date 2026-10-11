@@ -8,7 +8,7 @@ import {
   executeSemanticAnalyzeNode,
   executeSemanticCompileNode,
   executeSemanticRepairNode,
-  executeSemanticTriggerNode,
+  executeSemanticEventNode,
   executeSemanticVariantNode
 } from './execute/semanticTimeline'
 
@@ -130,11 +130,11 @@ export const SEMANTIC_TIMELINE_NODE_TYPES: NodeTypeDefinition[] = [
     }
   },
   {
-    typeId: 'semantic.trigger',
+    typeId: 'semantic.event',
     category: 'note',
-    label: 'Semantic trigger',
+    label: 'Semantic event',
     icon: '⚡',
-    defaultTitle: 'Semantic trigger',
+    defaultTitle: 'Semantic event',
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [timelineIn, textOut],
@@ -142,10 +142,10 @@ export const SEMANTIC_TIMELINE_NODE_TYPES: NodeTypeDefinition[] = [
     addable: true,
     deletable: true,
     inspector: 'none',
-    inspectorId: 'studio.graph.semanticTrigger',
+    inspectorId: 'studio.graph.semanticEvent',
     card: 'media',
     contributeToGeneration: false,
-    execute: executeSemanticTriggerNode
+    execute: executeSemanticEventNode
   },
   {
     typeId: 'semantic.compile',

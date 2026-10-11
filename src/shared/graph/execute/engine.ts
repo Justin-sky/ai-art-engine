@@ -452,6 +452,7 @@ async function executeOneNode(
     resolveProjectMediaUrl: options.resolveProjectMediaUrl,
     analyzeSemanticVideo: options.analyzeSemanticVideo,
     loadSemanticEvidence: options.loadSemanticEvidence,
+    loadSemanticTimeline: options.loadSemanticTimeline,
     saveSemanticTimeline: options.saveSemanticTimeline,
     buildSemanticVideo: options.buildSemanticVideo,
     listSemanticPacks: options.listSemanticPacks,
