@@ -122,6 +122,7 @@ function payloadOf(result: Record<string, { kind: string; text?: string }>): {
   eventLabels: string[]
   events: Array<{ id: string }>
   commands: Array<{ sourceIntentId?: string }>
+  notes: string[]
 } {
   const out = result.out
   expect(out?.kind).toBe('text')
@@ -129,9 +130,15 @@ function payloadOf(result: Record<string, { kind: string; text?: string }>): {
 }
 
 describe('语义触发节点：事件标签过滤', () => {
-  it('parseEventLabels：逗号分隔、去重、去空白；**不按空格切**（英文标签含空格）', () => {
+  it('parseEventLabels：多分隔符（逗号/中文逗号/**顿号**/分号/换行）、去重、去空白', () => {
     expect(parseEventLabels('a')).toEqual(['a'])
     expect(parseEventLabels('a, b，c')).toEqual(['a', 'b', 'c'])
+    // 顿号：中文里最自然的分隔方式，不支持就会把整串当一个标签（实测踩到）
+    expect(parseEventLabels('秒杀与包邮字幕、斜挎促销展示')).toEqual([
+      '秒杀与包邮字幕',
+      '斜挎促销展示'
+    ])
+    expect(parseEventLabels('a;b；c\nd')).toEqual(['a', 'b', 'c', 'd'])
     expect(parseEventLabels(' 京东福利价引导 , 斜挎促销展示 ')).toEqual([
       '京东福利价引导',
       '斜挎促销展示'
@@ -187,6 +194,46 @@ describe('语义触发节点：事件标签过滤', () => {
       'intent.b',
       'intent.byLabel'
     ])
+  })
+
+  it('顿号分隔的多标签也能命中（中文用户最常用的写法）', async () => {
+    const payload = payloadOf(
+      await executeSemanticTriggerNode(ctxFor('京东福利价引导、最终抢购号召'))
+    )
+    expect(payload.eventLabels).toEqual(['京东福利价引导', '最终抢购号召'])
+    expect(payload.events.map((e) => e.id)).toEqual(['ev.a', 'ev.c'])
+    expect(payload.notes).toEqual([])
+  })
+
+  it('输出自带 notes：没命中和"输入没事件"要区分开（不再只给两个空数组）', async () => {
+    // 有事件但没命中 → 提示里给出可用标签
+    const miss = payloadOf(await executeSemanticTriggerNode(ctxFor('不存在的标签')))
+    expect(miss.events).toEqual([])
+    expect(miss.commands).toEqual([])
+    expect(miss.notes).toHaveLength(1)
+    expect(miss.notes[0]).toContain('没有事件匹配')
+    expect(miss.notes[0]).toContain('可用标签')
+    expect(miss.notes[0]).toContain('京东福利价引导')
+
+    // 输入文档根本没有事件 → 指向上游分析节点，而不是让用户怀疑过滤词
+    const empty = doc()
+    empty.events = []
+    const node = createNodeFromType('semantic.trigger', { x: 0, y: 0 })
+    node.params = { ...node.params, eventLabel: '京东福利价引导' }
+    const res = await executeSemanticTriggerNode({
+      node,
+      locale: 'zh-CN',
+      inputs: {
+        in: [{ kind: GraphPortType.semanticTimeline, doc: empty, text: JSON.stringify(empty) }]
+      }
+    } as unknown as NodeExecuteContext)
+    const payload = JSON.parse((res.out as { text: string }).text)
+    expect(payload.events).toEqual([])
+    expect(payload.notes[0]).toContain('没有事件')
+    expect(payload.notes[0]).toContain('语义分析')
+    // 带上文档 id 与证据计数，方便和磁盘上的 timeline.json 对照
+    expect(payload.notes[0]).toContain('stl.test')
+    expect(payload.notes[0]).toContain('镜头')
   })
 
   it('填事件 id 同样生效；标签不存在时给 warn 且事件/命令都为空', async () => {

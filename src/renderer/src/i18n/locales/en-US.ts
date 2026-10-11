@@ -5442,13 +5442,13 @@ export default {
         utterancesJson: 'Utterance evidence JSON',
         jsonPlaceholder: '[] or a full evidence-array JSON',
         eventLabel: 'Event label filter',
-        eventLabelPlaceholder: 'e.g. offer / CTA; empty = all',
+        eventLabelPlaceholder: 'e.g. offer / CTA; separate with commas; empty = all',
         eventLabelPickMany: 'Multi-select: tick the event labels to include',
         eventLabelPicked: '{count} selected (comma separated)',
         eventLabelNoOptions:
           'No timeline loaded yet, so no candidates — copy a label from the upstream analyze node or the event track.',
         eventLabelHint:
-          'Multi-select works; you can also type event ids or types, separated by commas (empty = all)',
+          'Multi-select works; you can also type event ids or types, separated by commas or 、 (empty = all)',
         sourceRelativePath: 'Source video relative path',
         sourceRelativePathPlaceholder: 'e.g. Assets/foo.mp4',
         sourceRelativePathHint: 'Leave empty to resolve from the timeline source asset',

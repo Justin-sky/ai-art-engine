@@ -669,16 +669,23 @@ export async function executeSemanticTriggerNode(
   const timeline = readTimeline(ctx)
   if (!timeline) return outText('{}')
   /**
-   * 事件标签支持**逗号分隔多值**（`eventLabel` 保持单值字段名以便向后兼容）：
+   * 事件标签支持**多种分隔符多值**（`eventLabel` 保持单值字段名以便向后兼容）：
    * 串一条片子时常常要一次抓多个事件（促销类 + 收尾号召）。
    */
   const labels = parseEventLabels(ctx.node.params?.eventLabel)
   const rulePacks = collectRulePacks(await loadPacks(ctx), rulePackIds(ctx))
   const all = compileDirectorCommands(timeline, { rulePacks })
+  /**
+   * `notes`：把「为什么是空的」写进**输出本身**。
+   *
+   * 以前过滤没命中时只打一条运行日志，输出就是 `{events: [], commands: []}` ——
+   * 用户盯着两个空数组不知道是标签写错、还是输入的时间线压根没事件（实测踩到）。
+   */
+  const notes = timelineNotes(timeline, labels)
   if (labels.length === 0) {
     return outText(
       JSON.stringify(
-        { eventLabel: '', eventLabels: [], events: timeline.events, commands: all },
+        { eventLabel: '', eventLabels: [], events: timeline.events, commands: all, notes },
         null,
         2
       )
@@ -695,7 +702,7 @@ export async function executeSemanticTriggerNode(
     if (intent && (eventIds.has(intent.trigger) || labels.includes(intent.trigger))) return true
     return events.some((e) => c.start < e.timeRange.end && c.end > e.timeRange.start)
   })
-  if (events.length === 0) {
+  if (events.length === 0 && notes.length === 0) {
     say(
       ctx,
       `时间线里没有「${labels.join('、')}」事件`, // cjk-ok
@@ -703,13 +710,48 @@ export async function executeSemanticTriggerNode(
       'warn'
     )
   }
+  for (const note of notes) say(ctx, note, note, 'warn')
   return outText(
     JSON.stringify(
-      { eventLabel: labels.join(', '), eventLabels: labels, events, commands },
+      { eventLabel: labels.join(', '), eventLabels: labels, events, commands, notes },
       null,
       2
     )
   )
+}
+
+/**
+ * 空结果的两种成因，写清楚（`events: []` 到底为什么空）。
+ *
+ * - 输入文档没有事件：问题在**上游分析节点**，不是过滤词；
+ * - 有事件但没命中：把**可用标签**列出来，直接告诉用户该填什么。
+ */
+function timelineNotes(timeline: SemanticTimeline, labels: string[]): string[] {
+  const notes: string[] = []
+  if (timeline.events.length === 0) {
+    /**
+     * 带上文档 id 与各证据计数：用户可以直接和磁盘上的 `Semantic/<id>/timeline.json` 对照，
+     * 判断是"接线接错/上游 run 输出是空的"还是"分析真的没产出事件"。
+     */
+    const id = typeof timeline.id === 'string' && timeline.id ? timeline.id : '(no id)' // cjk-ok
+    const hashes = timeline.evidence?.hashes ?? {}
+    notes.push(
+      `输入的时间线没有事件（文档 ${id}；镜头 ${hashes.shots ?? '?'} · 话语 ${hashes.utterances ?? '?'}）—— ` + // cjk-ok
+        `检查上游「语义分析」节点是否已运行、以及 Timeline 输入口是否接上` // cjk-ok
+    )
+    return notes
+  }
+  if (labels.length === 0) return notes
+  const matched = timeline.events.some(
+    (e) => labels.includes(e.label) || labels.includes(e.id) || labels.includes(e.type)
+  )
+  if (!matched) {
+    const available = [...new Set(timeline.events.map((e) => e.label))].slice(0, 12)
+    notes.push(
+      `没有事件匹配「${labels.join('、')}」；可用标签（前 12 个）：${available.join('、')}` // cjk-ok
+    )
+  }
+  return notes
 }
 
 // ─── semantic.repair / semantic.variant ──────────────────────────────────────────
