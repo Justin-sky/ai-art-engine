@@ -16,12 +16,11 @@ export function validateSemanticPack(raw: unknown): PackValidation {
   if (typeof p.id !== 'string' || !p.id) issues.push('id required')
   if (typeof p.title !== 'string') issues.push('title required')
   const kind = p.kind
-  if (kind !== 'vocabulary' && kind !== 'rules' && kind !== 'recipe' && kind !== 'persona') {
-    issues.push('kind must be vocabulary|rules|recipe|persona')
+  if (kind !== 'vocabulary' && kind !== 'rules' && kind !== 'persona') {
+    issues.push('kind must be vocabulary|rules|persona')
   }
   if (kind === 'vocabulary' && !p.vocabulary) issues.push('vocabulary payload missing')
   if (kind === 'rules' && !p.rules) issues.push('rules payload missing')
-  if (kind === 'recipe' && !p.recipe) issues.push('recipe payload missing')
   if (kind === 'persona' && !p.persona) issues.push('persona payload missing')
   return { ok: issues.length === 0, issues }
 }

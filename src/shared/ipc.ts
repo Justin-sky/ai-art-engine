@@ -1745,7 +1745,7 @@ export interface StudioApi {
   semanticRebuild: (
     input: import('./semanticTimeline').SemanticRebuildRequest
   ) => Promise<import('./semanticTimeline').SemanticRebuildResponse>
-  /** 列出内置 + 已安装的语义市场包（词表 / 规则 / 配方） */
+  /** 列出内置 + 已安装的语义市场包（词表 / 规则 / 人设） */
   semanticListPacks: () => Promise<import('./semanticTimeline').SemanticPack[]>
   /** AI 自由构图：仅规划预览 */
   planAiWorkflow: (input: PlanAiWorkflowInput) => Promise<PlanAiWorkflowResult>

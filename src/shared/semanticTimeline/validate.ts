@@ -73,7 +73,6 @@ export function validateSemanticTimeline(doc: unknown): ValidationResult {
   if (!Array.isArray(doc.entities)) issues.push(issue('entities', 'required array'))
   if (!Array.isArray(doc.intents)) issues.push(issue('intents', 'required array'))
   if (!Array.isArray(doc.tracks)) issues.push(issue('tracks', 'required array'))
-  if (!Array.isArray(doc.edits)) issues.push(issue('edits', 'required array'))
 
   // 事件必须引用至少一个证据（分析产出的硬约束）
   if (Array.isArray(doc.events)) {

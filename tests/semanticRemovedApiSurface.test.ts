@@ -44,6 +44,10 @@ const REMOVED_FROM_BARREL = [
   'expandRecipeEditMatrix',
   // 旧触发节点的事件标签解析
   'parseEventLabels',
+  // 保真度量（qc.ts 已删：原消费者 visualReview 已随之删除，生产侧无消费者）
+  'evaluateFidelity',
+  'L1_PSNR_MIN',
+  'L1_SSIM_MIN',
   // builds/<buildId>/manifest.json 的布局辅助
   'manifestPath',
   'buildDir',
@@ -59,7 +63,7 @@ const REMOVED_FROM_TIMELINE_SERVICE = [
 ] as const
 
 describe('编辑时代 API 已从导出面移除', () => {
-  it('语义库 barrel 不再导出编辑 / 规划 / 构建 / 配方 / 触发标签 API', () => {
+  it('语义库 barrel 不再导出编辑 / 规划 / 构建 / 配方 / 保真度量 / 触发标签 API', () => {
     const present = REMOVED_FROM_BARREL.filter(
       (name) => (semanticBarrel as Record<string, unknown>)[name] !== undefined
     )
@@ -88,7 +92,7 @@ describe('编辑时代 API 已从导出面移除', () => {
       'planRebuildClips',
       'collectRulePacks',
       'validateSemanticTimeline',
-      'evaluateFidelity'
+      'parseSemanticPack'
     ]) {
       expect(typeof (semanticBarrel as Record<string, unknown>)[name], `缺少 ${name}`).not.toBe(
         'undefined'

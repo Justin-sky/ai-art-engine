@@ -30,7 +30,6 @@ function makePlan(shots = 2): VideoPromptPlan {
     beats: [],
     intents: [],
     tracks: [],
-    edits: [],
     updatedAt: '2026-01-01T00:00:00.000Z',
     createdAt: '2026-01-01T00:00:00.000Z'
   } as unknown as SemanticTimeline

@@ -50,7 +50,6 @@ export function createEmptySemanticTimeline(
     beats: [],
     intents: [],
     tracks: EMPTY_TRACKS.map((kind) => ({ kind, items: [] })),
-    edits: [],
     vocabulary,
     createdAt: now,
     updatedAt: now

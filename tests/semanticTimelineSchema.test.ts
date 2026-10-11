@@ -7,7 +7,6 @@ import {
   buildShotsFromCutPoints,
   compileDirectorCommands,
   createEmptySemanticTimeline,
-  evaluateFidelity,
   filterEventsRequiringEvidence,
   makeTimeRange,
   matchStableEventId,
@@ -109,7 +108,7 @@ describe('shots + L0 roundtrip', () => {
   })
 })
 
-describe('compiler + packs + qc', () => {
+describe('compiler + packs', () => {
   it('compiles price_announce to push_in', () => {
     const doc = createEmptySemanticTimeline('vid', {
       durationSec: 20,
@@ -151,20 +150,19 @@ describe('compiler + packs + qc', () => {
     ).toBe(true)
   })
 
-  it('evaluates L1 fidelity thresholds', () => {
-    const pass = evaluateFidelity('L1', {
-      psnrOutsideMask: 50,
-      ssimOutsideMask: 0.995,
-      frameDelta: 0,
-      audioSampleMatch: true,
-      durationMatch: true
+  /**
+   * 配方包（`kind='recipe'`）随变体节点一起退役：官方三个包只剩 vocabulary / rules / persona。
+   * 校验器要**主动拒收** recipe —— 否则旧配方包被重新装进来会静默通过，而它带来的
+   * `editTemplates` / `targetLevel` 已经没有类型与消费者承接，等于留一个「看着能用」的坑。
+   */
+  it('rejects the retired recipe pack kind', () => {
+    const v = validateSemanticPack({
+      schemaVersion: 1,
+      id: 'commerce-variant-recipe',
+      title: 'Variant recipe',
+      kind: 'recipe'
     })
-    expect(pass.passed).toBe(true)
-    const fail = evaluateFidelity('L1', {
-      psnrOutsideMask: 30,
-      ssimOutsideMask: 0.9,
-      durationMatch: true
-    })
-    expect(fail.passed).toBe(false)
+    expect(v.ok).toBe(false)
+    expect(v.issues.join(' ')).toContain('kind')
   })
 })

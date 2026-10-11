@@ -1,7 +1,9 @@
 /**
  * Semantic Timeline — `aiart.semantic-timeline@1`
  *
- * 三层模型：证据层（Evidence）→ 语义层（Events/Beats/Intents/Edits）→ 生产层（Plan/ScriptTimeline/Build）。
+ * 新管线三层：证据层（Evidence）→ 语义层（Events/Beats/Intents）→ 生产层
+ * （提示词计划 → 重建片段）。旧「编辑列表 / 变体配方 / 失效计划 / 冻结构建」
+ * 那一层已随四个旧节点删除，这里不再有 `Edits` / `Plan` / `Build` 契约。
  * 本文件只含类型；校验与纯算法见同目录其它模块。
  */
 
@@ -39,9 +41,6 @@ export type CameraAction =
   | 'handheld'
   | 'rack_focus'
   | string
-
-/** 保真等级（完美复刻的可度量定义） */
-export type FidelityLevel = 'L0' | 'L1' | 'L2' | 'L3'
 
 // ─── Evidence ───────────────────────────────────────────────────────────────
 
@@ -205,125 +204,6 @@ export interface SemanticTrack {
   items: string[]
 }
 
-// ─── Edits ──────────────────────────────────────────────────────────────────
-
-export type SemanticEditKind =
-  | 'replaceEntity'
-  | 'removeEntity'
-  | 'rewriteUtterance'
-  | 'revoice'
-  | 'editText'
-  | 'retimeBeat'
-  | 'reorderBeats'
-  | 'dropBeat'
-  | 'regenerateShot'
-  | 'fixFrames'
-  | 'grade'
-  | 'audioFix'
-  | 'applyIntent'
-
-export interface SemanticEditBase {
-  id: string
-  kind: SemanticEditKind
-  origin: Origin
-  createdAt: string
-  note?: string
-}
-
-export interface ReplaceEntityEdit extends SemanticEditBase {
-  kind: 'replaceEntity'
-  entityId: string
-  newAssetId: string
-  /** person 时可只换脸 */
-  faceOnly?: boolean
-}
-
-export interface RemoveEntityEdit extends SemanticEditBase {
-  kind: 'removeEntity'
-  entityId: string
-}
-
-export interface RewriteUtteranceEdit extends SemanticEditBase {
-  kind: 'rewriteUtterance'
-  utteranceId: string
-  newText: string
-  voiceId?: string
-  lipSync?: boolean
-}
-
-export interface RevoiceEdit extends SemanticEditBase {
-  kind: 'revoice'
-  language?: string
-  voiceId?: string
-  lipSync?: boolean
-}
-
-export interface EditTextEdit extends SemanticEditBase {
-  kind: 'editText'
-  regionId: string
-  newText: string
-}
-
-export interface RetimeBeatEdit extends SemanticEditBase {
-  kind: 'retimeBeat'
-  beatId: string
-  timeRange: TimeRange
-}
-
-export interface ReorderBeatsEdit extends SemanticEditBase {
-  kind: 'reorderBeats'
-  beatIds: string[]
-}
-
-export interface DropBeatEdit extends SemanticEditBase {
-  kind: 'dropBeat'
-  beatId: string
-}
-
-export interface RegenerateShotEdit extends SemanticEditBase {
-  kind: 'regenerateShot'
-  shotId: string
-  prompt?: string
-}
-
-export interface FixFramesEdit extends SemanticEditBase {
-  kind: 'fixFrames'
-  shotId: string
-  frameIndices: number[]
-  prompt?: string
-}
-
-export interface GradeEdit extends SemanticEditBase {
-  kind: 'grade'
-  shotIds?: string[]
-  params: Record<string, unknown>
-}
-
-export interface AudioFixEdit extends SemanticEditBase {
-  kind: 'audioFix'
-  params: Record<string, unknown>
-}
-
-export interface ApplyIntentEdit extends SemanticEditBase {
-  kind: 'applyIntent'
-  intent: DirectorIntent
-}
-
-export type SemanticEdit =
-  | ReplaceEntityEdit
-  | RemoveEntityEdit
-  | RewriteUtteranceEdit
-  | RevoiceEdit
-  | EditTextEdit
-  | RetimeBeatEdit
-  | ReorderBeatsEdit
-  | DropBeatEdit
-  | RegenerateShotEdit
-  | FixFramesEdit
-  | GradeEdit
-  | AudioFixEdit
-  | ApplyIntentEdit
-
 // ─── Document ───────────────────────────────────────────────────────────────
 
 export interface SemanticTimelineSource {
@@ -344,35 +224,9 @@ export interface SemanticTimeline {
   beats: StoryBeat[]
   intents: DirectorIntent[]
   tracks: SemanticTrack[]
-  edits: SemanticEdit[]
   vocabulary?: string
   updatedAt: string
   createdAt: string
-}
-
-/**
- * ─── QC ─────────────────────────────────────────────────────────────────────
- *
- * 保真度量结果（`qc.ts` 的 `evaluateFidelity` 消费）。
- *
- * 注意：这里**只剩 QC**。原来的失效计划与构建契约（`PlanAction` / `PlanItem` /
- * `CostEstimate` / `InvalidationPlan` / `BuildDefinition` / `BuildManifest`）随
- * 「按编辑列表裁剪原片」那条构建路一起删除了 —— 新管线是
- * 「语义分析 → 语义编译（提示词计划）→ 语义重建（生成片段 + 本地拼接）」。
- */
-
-export interface BuildQcResult {
-  level: FidelityLevel
-  passed: boolean
-  metrics: {
-    psnrOutsideMask?: number
-    ssimOutsideMask?: number
-    frameDelta?: number
-    audioSampleMatch?: boolean
-    durationMatch?: boolean
-  }
-  failedShotIds?: string[]
-  notes?: string[]
 }
 
 // ─── Market packs (data only) ───────────────────────────────────────────────
@@ -400,28 +254,12 @@ export interface DirectorRulePack {
   rules: DirectorRule[]
 }
 
-export interface VariantSlot {
-  key: string
-  kind: 'asset' | 'text' | 'voice' | 'language'
-  label: string
-}
-
-export interface VariantRecipe {
-  id: string
-  title: string
-  slots: VariantSlot[]
-  /** 模板化 edits；槽位用 {{key}} 占位 */
-  editTemplates: Array<Partial<SemanticEdit> & { kind: SemanticEditKind }>
-  targetLevel: FidelityLevel
-}
-
 export interface SemanticPack {
   schemaVersion: 1
   id: string
   title: string
-  kind: 'vocabulary' | 'rules' | 'recipe' | 'persona'
+  kind: 'vocabulary' | 'rules' | 'persona'
   vocabulary?: BeatVocabulary
   rules?: DirectorRulePack
-  recipe?: VariantRecipe
   persona?: { id: string; title: string; systemPrompt: string }
 }

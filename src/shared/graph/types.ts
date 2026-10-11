@@ -344,10 +344,8 @@ export interface GraphNodeParams {
   semanticDetectEntities?: boolean
   /** Semantic Timeline：分析后跑 LLM 镜头描述 / 事件抽取 / 导演意图（默认 false） */
   semanticLlm?: boolean
-  /** Semantic Timeline：修复 / 变体是否真正构建成片（默认 true；false 只出计划） */
+  /** 语义重建：是否真正调模型出片（默认 true；false 只产出清单，可以先看再开） */
   semanticExecute?: boolean
-  /** Semantic Timeline：变体配方槽位值 JSON（`{ slotKey: 值 | 值[] }`，数组做笛卡尔积） */
-  recipeSlotsJson?: string
   /** Semantic Timeline：只启用这些导演规则包（逗号分隔；空 = 内置 + 全部已装） */
   rulePackIds?: string
   /**

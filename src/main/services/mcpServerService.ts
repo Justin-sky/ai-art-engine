@@ -1322,7 +1322,6 @@ const TOOL_DEFS: McpToolDef[] = [
         beatCount: doc.beats.length,
         entityCount: doc.entities.length,
         intentCount: doc.intents.length,
-        editCount: doc.edits.length,
         events: doc.events.map((e) => ({
           id: e.id,
           label: e.label,
