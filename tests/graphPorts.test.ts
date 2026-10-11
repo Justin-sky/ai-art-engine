@@ -29,7 +29,9 @@ describe('GraphPortType', () => {
       GraphPortType.spatialWorld,
       GraphPortType.project,
       // 语义时间线文档（整份 SemanticTimeline，不是普通文本）
-      GraphPortType.semanticTimeline
+      GraphPortType.semanticTimeline,
+      // 视频生成提示词计划（语义编译 → 语义重建）
+      GraphPortType.videoPrompts
     ])
     expect(isGraphPortDataType('image')).toBe(true)
     expect(isGraphPortDataType('images')).toBe(true)

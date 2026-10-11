@@ -13,7 +13,7 @@ import type {
 } from '../types'
 import type { GraphImageReferenceMeta } from '../../modelProvider'
 import type { RigQaReport } from '../../blenderRigSkinPipeline'
-import type { SemanticTimeline } from '../../semanticTimeline'
+import type { SemanticTimeline, VideoPromptPlan } from '../../semanticTimeline'
 
 export type GraphNodeRunStatus =
   'idle' | 'pending' | 'running' | 'done' | 'error' | 'degraded' | 'skipped'
@@ -257,6 +257,19 @@ export interface GraphSemanticTimelineValue {
   text: string
 }
 
+/**
+ * 视频生成提示词计划值（语义编译 → 语义重建）。
+ *
+ * 与语义时间线值同理：结构化 `plan` 给重建节点用，`text` 是它的规范 JSON，
+ * 落 `text` 口时由**端口边界**投影（见 execute/engine.ts 的 projectValueForPort）。
+ */
+export interface GraphVideoPromptsValue {
+  kind: 'videoPrompts'
+  plan: VideoPromptPlan
+  /** 规范 JSON 文本（2 空格缩进）：落到 text 口时由引擎投影过去 */
+  text: string
+}
+
 /** 单张图片（选取图片节点输出等） */
 export interface GraphImageValue {
   kind: 'image'
@@ -284,6 +297,7 @@ export interface GraphOutputValue {
 
 export type GraphValue =
   | GraphSemanticTimelineValue
+  | GraphVideoPromptsValue
   | GraphAssetValue
   | GraphTextValue
   | GraphTextsValue

@@ -34,17 +34,19 @@ import { executeAssetHostInnerGraph } from './host'
 import { resolveNodeExecutor } from './registry'
 
 /**
- * 端口边界的值投影：语义时间线值落到 **text 口**时转成它的规范 JSON 文本。
+ * 端口边界的值投影：结构化值落到 **text 口**时转成它的规范 JSON 文本。
  *
- * 端口兼容规则允许 `semanticTimeline → text`（把文档喂给 LLM 指令节点 / 文本消费者），
- * 而各处文本消费都按 `kind === 'text'` 取 —— 所以这条兼容必须在装配 inputs 时做实，
- * 否则「连得上但读不到」。时间线口自己拿到的仍是结构化值（含 doc，不再 JSON.parse）。
+ * 端口兼容规则允许 `semanticTimeline → text` 与 `videoPrompts → text`
+ * （把文档/提示词喂给 LLM 指令节点或文本消费者），而各处文本消费都按 `kind === 'text'` 取 ——
+ * 所以这条兼容必须在装配 inputs 时做实，否则「连得上但读不到」。
+ * 同类型的口自己拿到的仍是结构化值（含 doc/plan，不再 JSON.parse）。
  */
 function projectValueForPort(
   value: GraphValue,
   targetPortType: GraphPortDataType | undefined
 ): GraphValue {
-  if (value.kind === 'semanticTimeline' && targetPortType === GraphPortType.text) {
+  if (targetPortType !== GraphPortType.text) return value
+  if (value.kind === 'semanticTimeline' || value.kind === 'videoPrompts') {
     return { kind: 'text', text: value.text }
   }
   return value

@@ -1,4 +1,5 @@
 import type { GraphNodeRunStatus, GraphValue } from './types'
+import { summarizePromptPlan } from '../../semanticTimeline'
 import type { GraphImageReferenceMeta } from '../../modelProvider'
 
 export type GraphRunLogLevel = 'info' | 'warn' | 'error'
@@ -28,6 +29,10 @@ export type GraphRunLogPortSnapshot = {
   imageCount?: number
   videoCount?: number
   voiceCount?: number
+  /** 提示词计划：几镜有首帧（没有首帧的重建会退化成文生视频） */
+  withFirstFrame?: number
+  /** 提示词计划：其中几镜由文本模型撰写 */
+  modelAuthored?: number
   /** 图片/视频条目摘要（不含 dataUrl） */
   items?: Array<{
     id?: string
@@ -385,6 +390,21 @@ export function summarizeGraphValueForLog(value: GraphValue): GraphRunLogPortSna
         label: 'timeline',
         itemCount: doc?.events.length,
         ...numbered
+      }
+    }
+    case 'videoPrompts': {
+      /**
+       * 提示词计划：摘要「几镜 / 几镜有首帧 / 是否模型撰写」——
+       * 一眼判断重建会不会凭空文生视频（没有首帧就退化了）。
+       */
+      const summary = summarizePromptPlan(value.plan)
+      return {
+        kind: 'videoPrompts',
+        assetId: value.plan?.timelineId,
+        label: 'prompts',
+        itemCount: summary.shots,
+        withFirstFrame: summary.withFirstFrame,
+        modelAuthored: summary.modelAuthored
       }
     }
     default: {

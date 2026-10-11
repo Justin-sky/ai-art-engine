@@ -4565,7 +4565,8 @@ export default {
         model: 'Model',
         spatialWorld: 'Spatial world',
         project: 'Project',
-        semanticTimeline: 'Semantic timeline'
+        semanticTimeline: 'Semantic timeline',
+        videoPrompts: 'Video prompts'
       }
     },
     media: {

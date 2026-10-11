@@ -149,7 +149,15 @@ export const GraphPortType = {
    * 反向不允许 —— 普通文本没有 schema，也没有 `stl.` id。手写 JSON 请走节点参数
    * `timelineJson`，或先过语义分析节点。
    */
-  semanticTimeline: 'semanticTimeline'
+  semanticTimeline: 'semanticTimeline',
+  /**
+   * 视频生成提示词计划（`VideoPromptPlan`，schema `aiart.video-prompts@1`）。
+   *
+   * 语义编译的产物、语义重建的输入 —— 每一镜一条提示词 + 该镜首帧（来自分析证据的关键帧），
+   * 所以重建是**图生视频**而不是凭空文生视频。与 `semanticTimeline` 同一套路：
+   * 单向放宽 `videoPrompts → text`（交给文本消费者/agent 读），反向不允许。
+   */
+  videoPrompts: 'videoPrompts'
 } as const
 
 /** 目录 JSON 端口 / 运行时 kind（与 GraphPortType 同名） */
@@ -345,6 +353,24 @@ export interface GraphNodeParams {
   recipeSlotsJson?: string
   /** Semantic Timeline：只启用这些导演规则包（逗号分隔；空 = 内置 + 全部已装） */
   rulePackIds?: string
+  /**
+   * 语义编译：人工改过的提示词（按 shotId 覆盖）。
+   * 紧凑格式 `{"shot.1":"提示词"}`，也接受 `[{shotId,prompt,negativePrompt?}]`。
+   */
+  promptOverridesJson?: string
+  /** 语义重建：生成粒度（`shots` 逐镜头，默认；`full` 整片一次） */
+  rebuildMode?: string
+  /** 语义重建：每镜生成时长（秒；空 = 跟随镜头时长） */
+  rebuildDurationSec?: number
+  /** 语义重建：分辨率 / 画幅（空 = 跟随源片设置与模型默认） */
+  rebuildResolution?: string
+  rebuildAspectRatio?: string
+  /** 语义重建：逐镜头模式的上限（默认 12，防误点跑几十次生成） */
+  rebuildMaxShots?: number
+  /** 语义重建：保留原片音轨（默认 true） */
+  rebuildKeepAudio?: boolean
+  /** 语义重建：烧录转写字幕（默认 true） */
+  rebuildBurnSubtitles?: boolean
   /** 加工节点模型 id（剧本=文本，图片/全景=图片，视频=视频，声音=音频） */
   generateModel?: string
   /** 加工节点提供商实例 id */

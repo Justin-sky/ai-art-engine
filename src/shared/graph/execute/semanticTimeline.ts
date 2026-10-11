@@ -5,6 +5,14 @@
  * 能力缺失（单测 / 无工程）时退回纯启发式，并写 warn 日志说明。
  */
 import type { GraphValue, GraphVideoItem, NodeExecuteContext } from './types'
+import { videoPromptsValue } from './videoPromptsValue'
+import {
+  applyPromptOverrides,
+  buildPromptPlan,
+  summarizePromptPlan,
+  VIDEO_PROMPT_PLAN_SCHEMA,
+  type VideoPromptPlan
+} from '../../semanticTimeline'
 import {
   assignBeatsHeuristic,
   buildEntityShotIndex,
@@ -27,7 +35,6 @@ import {
   parseShotDescriptions,
   planInvalidation,
   rebuildTracks,
-  semanticToScriptTimeline,
   singleShot,
   timelineVersionHash,
   type BeatVocabulary,
@@ -668,28 +675,92 @@ function rulePackIds(ctx: NodeExecuteContext): string[] {
 export async function executeSemanticCompileNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
-  const timeline = await readTimeline(ctx)
-  if (!timeline) return outText('{}')
+  let timeline = await readTimeline(ctx)
+  if (!timeline) return { out: videoPromptsValue(emptyPromptPlan()) }
   const rulePacks = collectRulePacks(await loadPacks(ctx), rulePackIds(ctx))
   const shotCtx = await loadShotContext(ctx, timeline)
+
+  /**
+   * 可选：用模型写提示词。
+   *
+   * 复用**分析节点那套三步富化**（镜头描述 / 事件抽取 / 导演意图）来"把画面说清楚"，
+   * 然后**仍然走规则拼装** —— 这样提示词结构稳定、可解释，模型只负责补描述性内容，
+   * 不必让模型直接吐 JSON（那条路更容易崩且难排查）。
+   */
+  let modelAuthored = false
+  if (ctx.node.params?.semanticLlm === true) {
+    const vocabulary = String(ctx.node.params?.vocabulary || 'commerce.v1')
+    const vocabDef = findVocabularyInPacks(await loadPacks(ctx), vocabulary)
+    try {
+      timeline = await enrichTimelineWithLlm(ctx, {
+        doc: timeline,
+        shots: shotCtx.shots,
+        utterances: shotCtx.utterances,
+        keyframes: Object.fromEntries(
+          shotCtx.shots
+            .map((shot) => [shot.id, shot.keyframes?.middle ?? shot.keyframes?.first] as const)
+            .filter((entry): entry is [string, string] => !!entry[1])
+        ),
+        vocabulary: vocabDef
+      })
+      modelAuthored = true
+    } catch (e) {
+      say(
+        ctx,
+        `用模型写提示词失败，已退回规则拼装：${errorText(e)}`, // cjk-ok
+        `Model-authored prompts failed; fell back to rule-based: ${errorText(e)}`,
+        'warn'
+      )
+    }
+  }
+
   const commands = compileDirectorCommands(timeline, { rulePacks })
   const sourceRelativePath =
     String(ctx.node.params?.sourceRelativePath || '').trim() || shotCtx.sourceRelativePath || ''
-  const scriptTimeline = semanticToScriptTimeline({
-    timeline,
-    shots: shotCtx.shots,
-    utterances: shotCtx.utterances,
-    commands,
-    sourceRelativePath
-  })
+  const plan = applyPromptOverrides(
+    buildPromptPlan({
+      timeline,
+      shots: shotCtx.shots,
+      utterances: shotCtx.utterances,
+      commands,
+      sourceRelativePath,
+      lang: isEn(ctx) ? 'en' : 'zh'
+    }),
+    ctx.node.params?.promptOverridesJson
+  )
+  if (modelAuthored) {
+    for (const shot of plan.shots) shot.modelAuthored = true
+  }
+
+  const summary = summarizePromptPlan(plan)
   say(
     ctx,
-    `语义编译：${commands.length} 条命令 · 规则包 ${rulePacks.map((p) => p.id).join(', ')}`, // cjk-ok
-    `Semantic compile: ${commands.length} commands · rule packs ${rulePacks.map((p) => p.id).join(', ')}`
+    `语义编译：${summary.shots} 镜提示词（${summary.withFirstFrame} 镜带首帧${modelAuthored ? ' · 模型参与' : ''}）`, // cjk-ok
+    `Semantic compile: ${summary.shots} shot prompts (${summary.withFirstFrame} with first frame${modelAuthored ? ' · model-authored' : ''})`
   )
-  return outText(
-    JSON.stringify({ rulePacks: rulePacks.map((p) => p.id), commands, scriptTimeline }, null, 2)
-  )
+  if (summary.shots === 0) {
+    say(
+      ctx,
+      '没有镜头证据，提示词计划为空 —— 先运行上游「语义分析」', // cjk-ok
+      'No shot evidence: the prompt plan is empty — run the upstream analyze node first',
+      'warn'
+    )
+  }
+  const value: GraphValue = videoPromptsValue(plan)
+  return { out: value }
+}
+
+/** 空计划（没有上游时间线时的占位）：schema 正确、零镜头，便于下游判断 */
+function emptyPromptPlan(): VideoPromptPlan {
+  return {
+    schema: VIDEO_PROMPT_PLAN_SCHEMA,
+    timelineId: '',
+    sourceAssetId: '',
+    lang: 'zh',
+    shots: [],
+    fullPrompt: '',
+    settings: { width: 0, height: 0, fps: 30, durationSec: 0 }
+  }
 }
 
 export async function executeSemanticEventNode(
