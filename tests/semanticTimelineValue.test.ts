@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   executeSemanticAnalyzeNode,
-  executeSemanticEventNode
+  executeSemanticCompileNode
 } from '../src/shared/graph/execute/semanticTimeline'
 import { semanticTimelineValue } from '../src/shared/graph/execute/semanticTimelineValue'
 import { SEMANTIC_TIMELINE_NODE_TYPES } from '../src/shared/graph/semanticTimelineNodes'
@@ -57,7 +57,7 @@ function ctxWith(inputs: Record<string, GraphValue[]>, extra: Partial<NodeExecut
   const ctx = {
     node: {
       id: 'n1',
-      typeId: 'semantic.event',
+      typeId: 'semantic.compile',
       category: 'note',
       position: { x: 0, y: 0 },
       params: {}
@@ -426,9 +426,11 @@ describe('语义时间线值类型', () => {
     }
     const { ctx } = ctxWith({ in: [broken] })
 
-    const out = await executeSemanticEventNode(ctx)
-    const text = (out.out as { kind: 'text'; text: string }).text
-    expect(JSON.parse(text).events[0].label).toBe('开场')
+    const out = await executeSemanticCompileNode(ctx)
+    const plan = (out.out as { kind: string; plan?: { timelineId?: string; shots?: unknown[] } })
+      .plan
+    expect(plan?.timelineId).toBe('stl.badtext1')
+    expect(plan?.shots?.length).toBeGreaterThanOrEqual(1)
   })
 
   it('文本路径仍然可用：手写 timelineJson 参数照旧被解析', async () => {
@@ -449,25 +451,19 @@ describe('语义时间线值类型', () => {
       timelineJson: JSON.stringify(doc)
     }
 
-    const out = await executeSemanticEventNode(ctx)
-    const text = (out.out as { kind: 'text'; text: string }).text
-    expect(JSON.parse(text).events[0].label).toBe('来自文本')
+    const out = await executeSemanticCompileNode(ctx)
+    const plan = (out.out as { kind: string; plan?: { timelineId?: string } }).plan
+    expect(plan?.timelineId).toBe('stl.fromtext')
   })
 
-  it('语义时间线节点透传结构化值（不被序列化成文本）', async () => {
-    const def = SEMANTIC_TIMELINE_NODE_TYPES.find((d) => d.typeId === 'semantic.timeline')
+  it('语义编译拿到结构化时间线值时走 doc（出境是提示词计划口）', async () => {
+    const def = SEMANTIC_TIMELINE_NODE_TYPES.find((d) => d.typeId === 'semantic.compile')
     expect(def?.execute).toBeTruthy()
     const doc = makeDoc('stl.passthru')
     const { ctx } = ctxWith({ in: [semanticTimelineValue(doc)] })
     const out = await def!.execute!(ctx)
-    expect((out.out as { kind: string }).kind).toBe('semanticTimeline')
-    expect((out.out as { doc?: SemanticTimeline }).doc?.id).toBe('stl.passthru')
-  })
-
-  it('语义时间线节点收到文本时仍按文本透传（老工程/手写 JSON 不受影响）', async () => {
-    const def = SEMANTIC_TIMELINE_NODE_TYPES.find((d) => d.typeId === 'semantic.timeline')
-    const { ctx } = ctxWith({ in: [{ kind: 'text', text: '{"hello":1}' }] })
-    const out = await def!.execute!(ctx)
-    expect(out.out).toEqual({ kind: 'text', text: '{"hello":1}' })
+    expect((out.out as { kind: string }).kind).toBe('videoPrompts')
+    const plan = (out.out as { plan?: { timelineId?: string } }).plan
+    expect(plan?.timelineId).toBe('stl.passthru')
   })
 })

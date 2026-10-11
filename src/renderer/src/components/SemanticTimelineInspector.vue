@@ -137,47 +137,6 @@
       </details>
     </section>
 
-    <section v-else-if="isSemanticEvent" class="fields">
-      <label>
-        <span class="field-label">{{ t('graph.inspector.semantic.eventLabel') }}</span>
-        <!--
-          纯文本框（**不挂 datalist**）：挂了浏览器会在右侧画一个下拉箭头，
-          看起来像"选择控件"，而真正的选择已经是下面的多选列表 —— 用户反馈过这个箭头。
-        -->
-        <input
-          v-model="eventLabel"
-          type="text"
-          :placeholder="t('graph.inspector.semantic.eventLabelPlaceholder')"
-          @change="persistTrigger"
-        />
-        <!-- 多选：勾选写回成逗号分隔（参数仍是单值字段，零迁移） -->
-        <div v-if="eventLabelOptions.length" class="event-label-list">
-          <span class="field-label">{{ t('graph.inspector.semantic.eventLabelPickMany') }}</span>
-          <label
-            v-for="label in eventLabelOptions"
-            :key="`pick-${label}`"
-            class="event-label-item check"
-          >
-            <input
-              type="checkbox"
-              :checked="pickedEventLabels.includes(label)"
-              @change="toggleEventLabel(label)"
-            />
-            <span>{{ label }}</span>
-          </label>
-          <span class="field-hint">
-            {{
-              t('graph.inspector.semantic.eventLabelPicked', { count: pickedEventLabels.length })
-            }}
-          </span>
-        </div>
-        <span v-if="!eventLabelOptions.length" class="field-hint">
-          {{ t('graph.inspector.semantic.eventLabelNoOptions') }}
-        </span>
-        <span class="field-hint">{{ t('graph.inspector.semantic.eventLabelHint') }}</span>
-      </label>
-    </section>
-
     <section v-else-if="isCompile" class="fields">
       <label>
         <span class="field-label">{{ t('graph.inspector.semantic.sourceRelativePath') }}</span>
@@ -304,103 +263,8 @@
       <p class="field-hint">{{ t('graph.inspector.semantic.rebuildPromptPointer') }}</p>
     </section>
 
-    <section v-if="isPlan" class="fields">
-      <template v-if="isVariant">
-        <label>
-          <span class="field-label">{{ t('graph.inspector.semantic.recipeId') }}</span>
-          <select v-model="recipeId" @change="persistPlan">
-            <option value="">{{ t('graph.inspector.semantic.recipeNone') }}</option>
-            <option v-for="r in recipeOptions" :key="r.recipe.id" :value="r.recipe.id">
-              {{ r.recipe.title }}
-            </option>
-          </select>
-          <span class="field-hint">{{ t('graph.inspector.semantic.recipeIdHint') }}</span>
-        </label>
-        <label v-for="slot in selectedRecipe?.slots ?? []" :key="slot.key">
-          <span class="field-label">{{ slot.label || slot.key }}</span>
-          <input
-            :value="slotText(slot.key)"
-            type="text"
-            :placeholder="t('graph.inspector.semantic.slotPlaceholder')"
-            @change="updateSlot(slot.key, ($event.target as HTMLInputElement).value)"
-          />
-        </label>
-        <span v-if="selectedRecipe?.slots.length" class="field-hint">
-          {{ t('graph.inspector.semantic.slotHint') }}
-        </span>
-      </template>
-
-      <label class="check">
-        <input v-model="execute" type="checkbox" @change="persistPlan" />
-        <span>{{ t('graph.inspector.semantic.execute') }}</span>
-      </label>
-      <span class="field-hint">{{ t('graph.inspector.semantic.executeHint') }}</span>
-
-      <!--
-        编辑**不在 inspector 里做**：编辑要"看着时间线点目标"，操作台放在双击打开的
-        编辑器（dive）右栏「编辑」页签。这里只保留指路 + 只读的计划预览。
-      -->
-      <p class="field-hint">{{ t('graph.inspector.semantic.editsMovedHint') }}</p>
-      <!-- 计划预览：**不构建**就能看到将付出什么代价（读证据 → 本地跑 planInvalidation） -->
-      <div v-if="planSummary || planError" class="plan-preview">
-        <span class="field-label">{{ t('graph.inspector.semantic.planPreview') }}</span>
-        <p v-if="planError" class="edits-issue">
-          {{ t('graph.inspector.semantic.planPreviewFailed') }} {{ planError }}
-        </p>
-        <p v-if="planSummary" class="plan-line">
-          <span class="plan-chip">
-            {{ t('graph.inspector.semantic.planLevel', { level: planSummary.targetLevel }) }}
-          </span>
-          <span class="plan-chip">{{
-            t('graph.inspector.semantic.planKeep', { count: planSummary.kept })
-          }}</span>
-          <span class="plan-chip">{{
-            t('graph.inspector.semantic.planReplace', { count: planSummary.replaced })
-          }}</span>
-          <span class="plan-chip">{{
-            t('graph.inspector.semantic.planRecompute', { count: planSummary.recompute })
-          }}</span>
-          <span v-if="planSummary.paidSeconds > 0" class="plan-chip plan-paid">
-            {{
-              t('graph.inspector.semantic.planPaid', {
-                seconds: planSummary.paidSeconds.toFixed(1)
-              })
-            }}
-          </span>
-        </p>
-        <p v-if="planSummary?.note" class="field-hint">{{ planSummary?.note }}</p>
-        <p v-if="planNeedsEvidence" class="field-hint">
-          {{ t('graph.inspector.semantic.planNoEvidence') }}
-        </p>
-      </div>
-      <details class="advanced">
-        <summary>{{ t('graph.inspector.semantic.advanced') }}</summary>
-        <label>
-          <span class="field-label">{{ t('graph.inspector.semantic.sourceRelativePath') }}</span>
-          <input
-            v-model="sourceRelativePath"
-            type="text"
-            :placeholder="t('graph.inspector.semantic.sourceRelativePathPlaceholder')"
-            @change="persistPlan"
-          />
-          <span class="field-hint">{{ t('graph.inspector.semantic.sourceRelativePathHint') }}</span>
-        </label>
-        <label>
-          <span class="field-label">{{ t('graph.inspector.semantic.shotsJson') }}</span>
-          <ExpandableTextarea
-            :key="`plan-shots-${node.id}`"
-            v-model="shotsJson"
-            :title="t('graph.inspector.semantic.shotsJson')"
-            :rows="4"
-            :placeholder="t('graph.inspector.semantic.jsonPlaceholder')"
-            @change="persistPlan"
-          />
-        </label>
-      </details>
-    </section>
-
     <section v-if="showTimelineFallback" class="fields">
-      <details class="advanced" :open="isTimelineHost">
+      <details class="advanced">
         <summary>{{ t('graph.inspector.semantic.timelineJson') }}</summary>
         <ExpandableTextarea
           :key="`tl-${node.id}`"
@@ -450,7 +314,6 @@ import {
 import type { ModelProviderInstance } from '@shared/modelProvider'
 import {
   collectRulePacks,
-  listRecipes,
   listVocabularies,
   type SemanticPack,
   type SemanticTimeline
@@ -464,25 +327,8 @@ import { useGraphNodeRun } from '../composables/useGraphNodeRun'
 import { useEditorKernel } from '../editor/kernel'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import { graphRunHosts } from '../features/graph/model/graphRunHosts'
-import { eventLabelChoices } from '../features/graph/model/semanticTimelineView'
-import {
-  parseEventLabels,
-  planInvalidation,
-  buildEntityShotIndex,
-  normalizeSemanticEdits,
-  summarizeInvalidationPlan,
-  type PlanSummary,
-  type ShotEvidence
-} from '@shared/semanticTimeline'
 
-const SEMANTIC_TYPE_IDS = new Set([
-  'semantic.analyze',
-  'semantic.edit',
-  'semantic.variant',
-  'semantic.timeline',
-  'semantic.event',
-  'semantic.compile'
-])
+const SEMANTIC_TYPE_IDS = new Set(['semantic.analyze', 'semantic.compile', 'semantic.rebuild'])
 
 const { t, graphTypeLabel } = useStudioI18n()
 const editor = useEditorKernel()
@@ -509,32 +355,18 @@ const typeLabel = computed(() => (typeId.value ? graphTypeLabel(typeId.value) : 
 const displayTitle = useNodeDisplayTitle(node, typeLabel)
 
 const isAnalyze = computed(() => typeId.value === 'semantic.analyze')
-const isTimelineHost = computed(() => typeId.value === 'semantic.timeline')
-const isSemanticEvent = computed(() => typeId.value === 'semantic.event')
 const isCompile = computed(() => typeId.value === 'semantic.compile')
-const isVariant = computed(() => typeId.value === 'semantic.variant')
-const isPlan = computed(
-  () => typeId.value === 'semantic.edit' || typeId.value === 'semantic.variant'
-)
-const usesRulePacks = computed(() => isSemanticEvent.value || isCompile.value)
-const showTimelineFallback = computed(
-  () => isTimelineHost.value || isSemanticEvent.value || isCompile.value || isPlan.value
-)
+const usesRulePacks = computed(() => isCompile.value)
+const showTimelineFallback = computed(() => isCompile.value)
 
 const hintText = computed(() => {
   switch (typeId.value) {
     case 'semantic.analyze':
       return t('graph.inspector.semantic.analyzeHint')
-    case 'semantic.timeline':
-      return t('graph.inspector.semantic.timelineHint')
-    case 'semantic.event':
-      return t('graph.inspector.semantic.eventHint')
     case 'semantic.compile':
       return t('graph.inspector.semantic.compileHint')
-    case 'semantic.edit':
-      return t('graph.inspector.semantic.editHint')
-    case 'semantic.variant':
-      return t('graph.inspector.semantic.variantHint')
+    case 'semantic.rebuild':
+      return t('graph.inspector.semantic.rebuildHint')
     default:
       return ''
   }
@@ -568,7 +400,6 @@ const vocabularyOptions = computed(() => listVocabularies(packs.value))
 const rulePackOptions = computed(() =>
   collectRulePacks(packs.value).map((p) => ({ id: p.id, title: p.title || p.id }))
 )
-const recipeOptions = computed(() => listRecipes(packs.value))
 
 const localTitle = ref('')
 const vocabulary = ref('commerce.v1')
@@ -595,31 +426,10 @@ const transcribeInstanceId = ref('')
 const shotsJson = ref('')
 const utterancesJson = ref('')
 const timelineJson = ref('')
-const editsJson = ref('[]')
-const eventLabel = ref('')
-const recipeId = ref('')
-const recipeSlots = ref<Record<string, unknown>>({})
-const execute = ref(true)
 const sourceRelativePath = ref('')
 const selectedRulePacks = ref<string[]>([])
 const loadedNodeId = ref<string | null>(null)
 const loadedHostId = ref<string | null>(null)
-
-const selectedRecipe = computed(
-  () => recipeOptions.value.find((r) => r.recipe.id === recipeId.value)?.recipe
-)
-
-function parseSlots(raw: unknown): Record<string, unknown> {
-  if (typeof raw !== 'string' || !raw.trim()) return {}
-  try {
-    const parsed = JSON.parse(raw) as unknown
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : {}
-  } catch {
-    return {}
-  }
-}
 
 function loadConfig(current: NonNullable<typeof node.value>): void {
   loadedNodeId.value = current.id
@@ -639,11 +449,6 @@ function loadConfig(current: NonNullable<typeof node.value>): void {
   shotsJson.value = typeof p.shotsJson === 'string' ? p.shotsJson : ''
   utterancesJson.value = typeof p.utterancesJson === 'string' ? p.utterancesJson : ''
   timelineJson.value = typeof p.timelineJson === 'string' ? p.timelineJson : ''
-  editsJson.value = typeof p.editsJson === 'string' && p.editsJson.trim() ? p.editsJson : '[]'
-  eventLabel.value = p.eventLabel?.trim() || ''
-  recipeId.value = p.recipeId?.trim() || ''
-  recipeSlots.value = parseSlots(p.recipeSlotsJson)
-  execute.value = p.semanticExecute !== false
   sourceRelativePath.value = p.sourceRelativePath?.trim() || ''
   useLlmForPrompts.value = p.semanticLlm === true
   promptOverridesJson.value = typeof p.promptOverridesJson === 'string' ? p.promptOverridesJson : ''
@@ -703,9 +508,6 @@ function persistAnalyze(): void {
   })
 }
 
-// 计划预览（planShots / loadPlanShots / planPreviewResult / planSummary / planError /
-// planNeedsEvidence）依赖 timelineDoc —— 实现放在 timelineDoc 声明之后。
-
 /** 语义重建：模式 / 模型 / 上限 / 音轨字幕 / 时长与画面参数 */
 const isRebuild = computed(() => typeId.value === 'semantic.rebuild')
 const rebuildModelOptions = ref<GenerateModelOption[]>([])
@@ -757,21 +559,6 @@ async function loadRebuildModels(): Promise<void> {
   }
 }
 
-function persistTrigger(): void {
-  patch({ eventLabel: eventLabel.value.trim() })
-}
-
-/** 已勾选的事件标签（输入框里的值按逗号拆开；手填的 id/type 也在这里保留） */
-const pickedEventLabels = computed(() => parseEventLabels(eventLabel.value))
-
-/** 勾选/取消一个标签：重写成逗号分隔并落盘（多值走同一字段，向后兼容） */
-function toggleEventLabel(label: string): void {
-  const picked = pickedEventLabels.value
-  const next = picked.includes(label) ? picked.filter((l) => l !== label) : [...picked, label]
-  eventLabel.value = next.join(', ')
-  persistTrigger()
-}
-
 function persistCompile(): void {
   patch({
     sourceRelativePath: sourceRelativePath.value.trim(),
@@ -788,41 +575,6 @@ function toggleRulePack(id: string): void {
   patch({ rulePackIds: next.join(',') })
 }
 
-function slotText(key: string): string {
-  const v = recipeSlots.value[key]
-  return Array.isArray(v) ? v.join(', ') : v === undefined || v === null ? '' : String(v)
-}
-
-/** 逗号分隔多值 → 数组（变体按笛卡尔积展开） */
-function updateSlot(key: string, text: string): void {
-  const values = text
-    .split(/[,，]/)
-    .map((s) => s.trim())
-    .filter(Boolean)
-  const next = { ...recipeSlots.value }
-  if (values.length === 0) delete next[key]
-  else next[key] = values.length === 1 ? values[0] : values
-  recipeSlots.value = next
-  persistPlan()
-}
-
-function persistPlan(): void {
-  patch({
-    editsJson: editsJson.value.trim() || '[]',
-    shotsJson: shotsJson.value,
-    semanticExecute: execute.value,
-    sourceRelativePath: sourceRelativePath.value.trim(),
-    ...(isVariant.value
-      ? {
-          recipeId: recipeId.value.trim(),
-          recipeSlotsJson: Object.keys(recipeSlots.value).length
-            ? JSON.stringify(recipeSlots.value)
-            : ''
-        }
-      : {})
-  })
-}
-
 function persistTimelineJson(): void {
   patch({ timelineJson: timelineJson.value })
 }
@@ -836,10 +588,9 @@ const runOutText = computed(() => {
 /**
  * 上游时间线文档（原始 JSON 文本）。
  *
- * 触发节点自己的输出**不是时间线文档**（`{eventLabel, events, commands}`），
- * 所以「事件标签过滤」的候选项必须能往上游找；否则下拉永远是空的 —— 用户看到的就是
- * 一个没法选的输入框。这里按入边逐个尝试：上游的运行输出 → 上游的 `timelineJson`
- * → 上游的 `semanticTimelineId` 读盘。
+ * 编译节点的入边是整份时间线文档，所以「本节点 JSON / 本节点输出 / 上游」三处都要找：
+ * 否则用户在编译节点上直接改 `timelineJson` 时看不到任何摘要。这里按入边逐个尝试：
+ * 上游的运行输出 → 上游的 `timelineJson` → 上游的 `semanticTimelineId` 读盘。
  */
 const upstreamTimelineJson = ref('')
 
@@ -900,8 +651,6 @@ const timelineDoc = computed((): SemanticTimeline | null => {
   return null
 })
 
-const eventLabelOptions = computed(() => eventLabelChoices(timelineDoc.value))
-
 const timelineSummary = computed(() => {
   const doc = timelineDoc.value
   if (!doc) return null
@@ -912,71 +661,6 @@ const timelineSummary = computed(() => {
     intents: Array.isArray(doc.intents) ? doc.intents.length : 0
   }
 })
-
-// ── 以下实现都依赖 timelineDoc，必须放在它的声明之后（否则 TDZ，整个检查器不渲染） ──
-
-/**
- * 失效计划的**本地预览**：读一次镜头证据，纯函数算计划 —— 不进构建、不花钱。
- *
- * 目的：修复节点以前只有点运行才知道"要重做几个镜头、要不要付费重生成"。
- */
-const planShots = ref<ShotEvidence[] | null>(null)
-
-async function loadPlanShots(): Promise<void> {
-  planShots.value = null
-  const id = timelineDoc.value?.id?.trim()
-  if (!id?.startsWith('stl.')) return
-  try {
-    const evidence = await window.studio.semanticLoadEvidence(id)
-    planShots.value = evidence?.shots ?? []
-  } catch {
-    planShots.value = null
-  }
-}
-
-watch(
-  [() => timelineDoc.value?.id, () => node.value?.typeId],
-  () => {
-    void loadPlanShots()
-  },
-  { immediate: true }
-)
-
-/**
- * 计划预览：**任何异常都不能让面板变空白**。
- *
- * Vue 的 computed 一旦抛错，整个组件就不渲染 —— 表现就是"检查器一片空白"（实测踩到：
- * 字段不全的时间线文档让 `buildEntityShotIndex` / `planInvalidation` 抛
- * `undefined is not iterable`）。所以这里一手包住，并把错误**显示出来**而不是吞掉。
- */
-const planPreviewResult = computed<{ plan: PlanSummary | null; error: string }>(() => {
-  if (!isPlan.value) return { plan: null, error: '' }
-  const timeline = timelineDoc.value
-  if (!timeline) return { plan: null, error: '' }
-  try {
-    const edits = normalizeSemanticEdits(editsJson.value, 'user').edits
-    return {
-      plan: summarizeInvalidationPlan(
-        planInvalidation({
-          timeline,
-          shots: planShots.value ?? [],
-          edits,
-          entityShotIndex: buildEntityShotIndex(timeline)
-        })
-      ),
-      error: ''
-    }
-  } catch (e) {
-    return { plan: null, error: e instanceof Error ? e.message : String(e) }
-  }
-})
-
-const planSummary = computed(() => planPreviewResult.value.plan)
-const planError = computed(() => planPreviewResult.value.error)
-/** 读不到镜头证据时要说清楚（否则"直拷 0 镜"会误导） */
-const planNeedsEvidence = computed(
-  () => isPlan.value && !!timelineDoc.value && (planShots.value?.length ?? 0) === 0
-)
 </script>
 
 <style scoped>
@@ -1039,158 +723,6 @@ const planNeedsEvidence = computed(
   display: flex;
   flex-direction: column;
   gap: 6px;
-}
-
-/* 编辑摘要：计数 + 类型标签 + 会被丢弃的条目 + 插入示例 */
-.edits-summary {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 6px 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg-elevated);
-}
-.edits-kinds {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: 0;
-  font-size: 12px;
-}
-.edits-kind {
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
-  color: var(--text-muted);
-  font-size: 11px;
-}
-.edits-issue {
-  margin: 0;
-  color: var(--text-warn, #e0a458);
-  font-size: 12px;
-}
-.edits-sample {
-  align-self: flex-start;
-  padding: 3px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg-panel);
-  color: var(--text);
-  font-size: 12px;
-  cursor: pointer;
-}
-.edits-sample:hover {
-  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
-}
-
-/* 计划预览：不进构建就能看到代价 */
-.plan-preview {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 6px 8px;
-  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--accent) 7%, var(--bg-elevated));
-}
-.plan-line {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: 0;
-  font-size: 12px;
-}
-.plan-chip {
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: var(--bg-panel);
-  color: var(--text-muted);
-  font-size: 11px;
-}
-.plan-chip.plan-paid {
-  background: color-mix(in srgb, #e0a458 22%, var(--bg-panel));
-}
-
-/* 结构化编辑：一行一项（kind 选择 + 该类型的字段） */
-.edits-struct {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.edits-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 6px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg-panel);
-}
-.edits-row-kind {
-  flex: 0 0 auto;
-  font-size: 12px;
-}
-.edits-row input,
-.edits-row select {
-  min-width: 0;
-  flex: 1 1 120px;
-  font-size: 12px;
-}
-.edits-row-remove {
-  flex: 0 0 auto;
-  padding: 2px 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 11px;
-  cursor: pointer;
-}
-.edits-row-remove:hover {
-  color: var(--text);
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
-}
-.edits-row-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-/* 事件标签多选：紧凑两列，长标签省略 */
-.event-label-list {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 2px 10px;
-  margin-top: 6px;
-}
-.event-label-list > .field-label,
-.event-label-list > .field-hint {
-  grid-column: 1 / -1;
-}
-/*
- * 复选框与标签**同一行**。必须带 `.fields` 前缀提高权重 ——
- * 上面的 `.fields label { flex-direction: column }`（0,1,1）会压过 `.event-label-item`（0,1,0），
- * 结果复选框和文字被排成上下两行（用户反馈）。
- */
-.fields .event-label-item {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  min-width: 0;
-}
-.fields .event-label-item > input {
-  flex: 0 0 auto;
-  margin: 0;
-}
-.fields .event-label-item > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .field-label {

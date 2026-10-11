@@ -18,8 +18,8 @@ import type { GraphDocument, GraphNode } from '../src/shared/graph'
  * 这条管线以前全用 `text` 口传 JSON 字符串，后果是**任何文本产地都能接进语义口**
  * （提示词 / 剧本 / OCR），且要等运行期解析才报「不是合法 JSON / 不是语义时间线文档」。
  * 现在语义时间线有自己的端口类型：
- *   - 只有「产物确实是整份 SemanticTimeline 文档」的口才用它（分析出口 + 时间线节点进出）；
- *   - 触发 / 编译 / 修复 / 多版本的出口是各自的信封，仍是 text（不能一刀切）；
+ *   - 只有「产物确实是整份 SemanticTimeline 文档」的口才用它（分析出口 + 编译入口）；
+ *   - 编译出**提示词计划**，用 `videoPrompts` 结构化口（重建的入口也是它）；
  *   - 兼容规则**单向**：semanticTimeline → text 允许，反向不允许。
  */
 ensureBuiltinNodeTypes()
@@ -52,19 +52,8 @@ describe('语义时间线端口类型', () => {
     expect(portOf('semantic.analyze', 'out').dataType).toBe(GraphPortType.semanticTimeline)
   })
 
-  it('语义时间线节点的进出都是语义时间线（它是透传）', () => {
-    expect(portOf('semantic.timeline', 'in').dataType).toBe(GraphPortType.semanticTimeline)
-    expect(portOf('semantic.timeline', 'out').dataType).toBe(GraphPortType.semanticTimeline)
-  })
-
   it('所有吃时间线的入端口都被收窄', () => {
-    for (const typeId of [
-      'semantic.timeline',
-      'semantic.event',
-      'semantic.compile',
-      'semantic.edit',
-      'semantic.variant'
-    ]) {
+    for (const typeId of ['semantic.compile']) {
       expect(portOf(typeId, 'in').dataType, typeId).toBe(GraphPortType.semanticTimeline)
     }
   })
@@ -75,10 +64,6 @@ describe('语义时间线端口类型', () => {
     // 重建吃提示词口、吐视频口
     expect(portOf('semantic.rebuild', 'in').dataType).toBe(GraphPortType.videoPrompts)
     expect(portOf('semantic.rebuild', 'out-video').dataType).toBe(GraphPortType.video)
-    // 触发 / 修复 / 多版本仍吐各自信封（text）
-    for (const typeId of ['semantic.event', 'semantic.edit', 'semantic.variant']) {
-      expect(portOf(typeId, 'out').dataType, typeId).toBe(GraphPortType.text)
-    }
   })
 
   it('提示词口单向兼容文本口（与时间线口同一口径）', () => {
@@ -98,32 +83,32 @@ describe('语义时间线端口类型', () => {
     expect(portsCompatible(GraphPortType.image, GraphPortType.svg)).toBe(true)
   })
 
-  it('连线校验：分析 → 时间线可以连，随便一个文本节点 → 时间线连不上', () => {
+  it('连线校验：分析 → 编译可以连，随便一个文本节点 → 编译连不上', () => {
     const analyze = node('n-analyze', 'semantic.analyze')
-    const timeline = node('n-timeline', 'semantic.timeline')
+    const compile = node('n-compile', 'semantic.compile')
     const noteText = node('n-text', 'note.text')
 
-    expect(canConnectNodes(analyze, timeline)).toBe(true)
-    expect(canConnectNodes(noteText, timeline)).toBe(false)
+    expect(canConnectNodes(analyze, compile)).toBe(true)
+    expect(canConnectNodes(noteText, compile)).toBe(false)
   })
 
   it('规范化会剪掉工程里「文本 → 时间线口」的旧连线，合法连线保留', () => {
     const analyze = node('n-analyze', 'semantic.analyze')
-    const timeline = node('n-timeline', 'semantic.timeline')
+    const compile = node('n-compile', 'semantic.compile')
     const noteText = node('n-text', 'note.text')
     const doc: GraphDocument = {
-      nodes: [analyze, timeline, noteText],
+      nodes: [analyze, compile, noteText],
       edges: [
-        // 合法：语义分析 → 语义时间线
+        // 合法：语义分析 → 语义编译
         {
           id: 'e-ok',
           source: 'n-analyze',
-          target: 'n-timeline',
+          target: 'n-compile',
           sourcePort: 'out',
           targetPort: 'in'
         },
         // 非法：普通文本接进语义口（正是这次要挡住的用法）
-        { id: 'e-bad', source: 'n-text', target: 'n-timeline', sourcePort: 'out', targetPort: 'in' }
+        { id: 'e-bad', source: 'n-text', target: 'n-compile', sourcePort: 'out', targetPort: 'in' }
       ],
       groups: [],
       viewport: { x: 0, y: 0, zoom: 1 }
@@ -157,7 +142,7 @@ describe('语义时间线端口类型', () => {
       ]
     }
     const timelineConsumerDef = SEMANTIC_TIMELINE_NODE_TYPES.find(
-      (d) => d.typeId === 'semantic.timeline'
+      (d) => d.typeId === 'semantic.compile'
     )!
 
     expect(

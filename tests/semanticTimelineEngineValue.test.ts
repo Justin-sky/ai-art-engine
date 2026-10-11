@@ -46,7 +46,7 @@ function makeDoc(): SemanticTimeline {
   }
 }
 
-function buildGraph(options: { viaTrigger?: boolean } = {}) {
+function buildGraph(options: { viaCompile?: boolean } = {}) {
   // 分析节点用 sourceAssetId 指定来源，就不必再挂一个视频源节点
   const analyze = createNodeFromType(
     'semantic.analyze',
@@ -55,7 +55,7 @@ function buildGraph(options: { viaTrigger?: boolean } = {}) {
   )
   const output = createOutputGraphNode('text', { x: 480, y: 0 }, { id: graphOutputNodeId('text') })
   // 引擎会跳过「不通向任何输出节点」的节点，所以两条路都要接到边界输出
-  if (!options.viaTrigger) {
+  if (!options.viaCompile) {
     return {
       doc: {
         nodes: [analyze, output],
@@ -68,18 +68,18 @@ function buildGraph(options: { viaTrigger?: boolean } = {}) {
       outputId: output.id
     }
   }
-  const trigger = createNodeFromType('semantic.event', { x: 240, y: 0 })
+  const compile = createNodeFromType('semantic.compile', { x: 240, y: 0 })
   return {
     doc: {
-      nodes: [analyze, trigger, output],
+      nodes: [analyze, compile, output],
       edges: [
-        { id: 'e1', source: analyze.id, target: trigger.id, sourcePort: 'out', targetPort: 'in' },
-        { id: 'e2', source: trigger.id, target: output.id, sourcePort: 'out', targetPort: 'in' }
+        { id: 'e1', source: analyze.id, target: compile.id, sourcePort: 'out', targetPort: 'in' },
+        { id: 'e2', source: compile.id, target: output.id, sourcePort: 'out', targetPort: 'in' }
       ],
       viewport: { x: 0, y: 0, zoom: 1 }
     },
     analyzeId: analyze.id,
-    triggerId: trigger.id,
+    compileId: compile.id,
     outputId: output.id
   }
 }
@@ -97,15 +97,16 @@ function capability() {
 }
 
 describe('语义时间线值经引擎贯通', () => {
-  it('结构化值到达时间线口：触发节点消费 doc，事件进入下游输出', async () => {
-    const { doc, triggerId, outputId } = buildGraph({ viaTrigger: true })
+  it('结构化值到达时间线口：编译节点消费 doc，提示词计划流到下游', async () => {
+    const { doc, compileId, outputId } = buildGraph({ viaCompile: true })
     const result = await runGraph(doc, { stepDelayMs: 1, analyzeSemanticVideo: capability() })
 
     expect(result.ok, result.error).toBe(true)
-    expect(result.states?.[triggerId]?.status).toBe('done')
-    expect(JSON.stringify(result.states?.[triggerId]?.outputs)).toContain('开场镜头')
-    // 触发节点吃的是 doc（不是坏文本），所以下游输出里能看到该事件
-    expect(JSON.stringify(result.states?.[outputId]?.outputs)).toContain('开场镜头')
+    expect(result.states?.[compileId]?.status).toBe('done')
+    // 编译吃的是 doc（不是文本），所以计划里的 timelineId 就是那份文档
+    expect(JSON.stringify(result.states?.[compileId]?.outputs)).toContain('stl.engine01')
+    // 落到文本口时按计划 schema 投影（videoPrompts → text 的单向兼容）
+    expect(JSON.stringify(result.states?.[outputId]?.outputs)).toContain('aiart.video-prompts@1')
   })
 
   it('落到文本口时被投影成文本（时间线 → text 的单向兼容真的可用）', async () => {

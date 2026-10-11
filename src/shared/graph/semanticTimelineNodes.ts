@@ -7,10 +7,7 @@ import type { NodeTypeDefinition } from './registry'
 import {
   executeSemanticAnalyzeNode,
   executeSemanticCompileNode,
-  executeSemanticEditNode,
-  executeSemanticEventNode,
-  executeSemanticRebuildNode,
-  executeSemanticVariantNode
+  executeSemanticRebuildNode
 } from './execute/semanticTimeline'
 
 /** 与 builtins 视频工具节点同尺寸 */
@@ -31,10 +28,8 @@ const textOut = {
  * 语义管线的入边一律是**整份 `SemanticTimeline` 文档**（schema `aiart.semantic-timeline@1`），
  * 不是随便一段文本 —— 所以它有自己的类型：文本口谁都能接，接错了要等运行期解析才报错。
  *
- * 只有**产物确实是整份文档**的口才用这个类型：语义分析节点的出口，以及语义时间线节点的
- * 进出（它是透传）。触发 / 编译 / 修复 / 多版本的出口是各自的信封
- * （`{eventLabels,events,commands}` / `{rulePacks,commands,scriptTimeline}` /
- * `{plan,definition}` / `{recipeId,variants}`），仍保持 `text`。
+ * 只有**产物确实是整份文档**的口才用这个类型：语义分析节点的出口，以及语义编译节点的入口。
+ * 语义编译的出口是**提示词计划**（见下 `videoPrompts`），不再走文本口。
  */
 const timelineIn = {
   id: 'in',
@@ -134,51 +129,6 @@ export const SEMANTIC_TIMELINE_NODE_TYPES: NodeTypeDefinition[] = [
     execute: executeSemanticAnalyzeNode
   },
   {
-    typeId: 'semantic.timeline',
-    category: 'note',
-    label: 'Semantic timeline',
-    icon: '🧭',
-    defaultTitle: 'Semantic timeline',
-    defaultSize: { ...ASSET_SIZE },
-    sizeLimits: { ...ASSET_LIMITS },
-    ports: [timelineIn, timelineOut],
-    defaultParams: () => ({ timelineJson: '' }),
-    addable: true,
-    deletable: true,
-    inspector: 'none',
-    inspectorId: 'studio.graph.semanticTimeline',
-    card: 'media',
-    contributeToGeneration: false,
-    execute: async (ctx) => {
-      const upstream = ctx.inputs.in?.[0]
-      // 上游是结构化时间线值：原样透传（保住 doc，不让它在半路被序列化掉）
-      if (upstream && upstream.kind === 'semanticTimeline') return { out: upstream }
-      const text =
-        upstream && upstream.kind === 'text'
-          ? upstream.text
-          : String(ctx.node.params?.timelineJson || '')
-      return { out: { kind: 'text', text } }
-    }
-  },
-  {
-    typeId: 'semantic.event',
-    category: 'note',
-    label: 'Semantic event',
-    icon: '⚡',
-    defaultTitle: 'Semantic event',
-    defaultSize: { ...ASSET_SIZE },
-    sizeLimits: { ...ASSET_LIMITS },
-    ports: [timelineIn, textOut],
-    defaultParams: () => ({ timelineJson: '', eventLabel: '', rulePackIds: '' }),
-    addable: true,
-    deletable: true,
-    inspector: 'none',
-    inspectorId: 'studio.graph.semanticEvent',
-    card: 'media',
-    contributeToGeneration: false,
-    execute: executeSemanticEventNode
-  },
-  {
     typeId: 'semantic.compile',
     category: 'note',
     label: 'Semantic compile',
@@ -230,75 +180,5 @@ export const SEMANTIC_TIMELINE_NODE_TYPES: NodeTypeDefinition[] = [
     card: 'media',
     contributeToGeneration: true,
     execute: executeSemanticRebuildNode
-  },
-  {
-    typeId: 'semantic.edit',
-    category: 'note',
-    label: 'Semantic edit',
-    icon: '🔧',
-    defaultTitle: 'Semantic edit',
-    defaultSize: { ...ASSET_SIZE },
-    sizeLimits: { ...ASSET_LIMITS },
-    ports: [
-      timelineIn,
-      textOut,
-      {
-        id: 'out-video',
-        direction: 'out',
-        dataType: GraphPortType.video,
-        multiple: false,
-        label: 'Video'
-      }
-    ],
-    defaultParams: () => ({
-      timelineJson: '',
-      editsJson: '[]',
-      shotsJson: '',
-      sourceRelativePath: '',
-      semanticExecute: true
-    }),
-    addable: true,
-    deletable: true,
-    inspector: 'none',
-    inspectorId: 'studio.graph.semanticEdit',
-    card: 'media',
-    contributeToGeneration: false,
-    execute: executeSemanticEditNode
-  },
-  {
-    typeId: 'semantic.variant',
-    category: 'note',
-    label: 'Semantic variant',
-    icon: '🧬',
-    defaultTitle: 'Semantic variant',
-    defaultSize: { ...ASSET_SIZE },
-    sizeLimits: { ...ASSET_LIMITS },
-    ports: [
-      timelineIn,
-      textOut,
-      {
-        id: 'out-videos',
-        direction: 'out',
-        dataType: GraphPortType.videos,
-        multiple: false,
-        label: 'Videos'
-      }
-    ],
-    defaultParams: () => ({
-      timelineJson: '',
-      editsJson: '[]',
-      shotsJson: '',
-      recipeId: '',
-      recipeSlotsJson: '',
-      sourceRelativePath: '',
-      semanticExecute: true
-    }),
-    addable: true,
-    deletable: true,
-    inspector: 'none',
-    inspectorId: 'studio.graph.videoVariant',
-    card: 'media',
-    contributeToGeneration: false,
-    execute: executeSemanticVariantNode
   }
 ]

@@ -2,44 +2,25 @@ import { describe, expect, it } from 'vitest'
 import {
   assignBeatsHeuristic,
   draftsToEvents,
-  expandVariantMatrix,
   heuristicEventsFromUtterances,
   inferIntentsFromEvents,
   linkEntitiesFromDetections,
   makeTimeRange,
   parseEventDrafts,
   parseJsonArray,
-  planInvalidation,
   segmentsToUtterances,
   singleShot,
   validateSemanticPack,
   createEmptySemanticTimeline,
-  freezeBuildDefinition,
-  timelineVersionHash,
   compileDirectorCommands,
   BUILTIN_DIRECTOR_RULES,
-  semanticToScriptTimeline,
-  editId
+  semanticToScriptTimeline
 } from '../src/shared/semanticTimeline'
 import { loadBundledSemanticPacks } from '../src/main/services/semanticTimeline/packLoader'
 import { ensureBuiltinNodeTypes } from '../src/shared/graph/builtins'
 import { resolveNodeType } from '../src/shared/graph/registry'
-import {
-  executeSemanticAnalyzeNode,
-  executeSemanticEditNode,
-  executeSemanticEventNode,
-  executeSemanticVariantNode
-} from '../src/shared/graph/execute/semanticTimeline'
-import {
-  applyStructuralEdits,
-  instantiateRecipe,
-  normalizeSemanticEdits,
-  type SemanticAnalyzeResponse,
-  type SemanticBuildRequest,
-  type SemanticBuildResponse,
-  type SemanticPack,
-  type SemanticTimeline
-} from '../src/shared/semanticTimeline'
+import { executeSemanticAnalyzeNode } from '../src/shared/graph/execute/semanticTimeline'
+import { type SemanticAnalyzeResponse, type SemanticTimeline } from '../src/shared/semanticTimeline'
 import type { GraphNode } from '../src/shared/graph/types'
 import type { NodeExecuteContext } from '../src/shared/graph/execute/types'
 
@@ -139,46 +120,17 @@ describe('semanticTimeline pipeline pure', () => {
 
   it('loads official market packs from workflow repo (or empty if absent)', () => {
     const packs = loadBundledSemanticPacks()
-    // 开发态并列仓库应能读到 ≥5 个；CI 若未检出 workflow 仓则允许空
+    /**
+     * 开发态并列仓库应能读到官方包（词表 / 规则 / persona）。
+     *
+     * 这里原来写的是 ≥5：那时官方包里还有 3 个**变体配方**（variant-*.json）。
+     * 变体节点删除后配方包已从 workflow 仓移除（保留 3 个），所以断言跟着收窄到 3。
+     * CI 若未检出 workflow 仓则允许空（0 个）。
+     */
     if (packs.length > 0) {
-      expect(packs.length).toBeGreaterThanOrEqual(5)
+      expect(packs.length).toBeGreaterThanOrEqual(3)
       expect(packs.every((p) => validateSemanticPack(p).ok)).toBe(true)
     }
-    expect(expandVariantMatrix([{ key: 'a', values: [1, 2] }])).toHaveLength(2)
-  })
-
-  it('plans replaceEntity invalidation', () => {
-    const facts = {
-      durationSec: 6,
-      fps: 30,
-      width: 1080,
-      height: 1920,
-      hasAudio: true
-    }
-    const doc = createEmptySemanticTimeline('vid', facts)
-    doc.entities = [
-      {
-        id: 'ent.product.bottle',
-        kind: 'product',
-        name: 'bottle',
-        appearances: [{ shotId: 'shot.001.0', range: makeTimeRange(0, 3, 30) }],
-        pixelEditable: true
-      }
-    ]
-    const shots = singleShot(6, 30)
-    const edit = {
-      id: editId('replaceEntity'),
-      kind: 'replaceEntity' as const,
-      entityId: 'ent.product.bottle',
-      newAssetId: 'asset.new',
-      origin: 'user' as const,
-      createdAt: new Date().toISOString()
-    }
-    const plan = planInvalidation({ timeline: doc, shots, edits: [edit] })
-    expect(plan.targetLevel).toBe('L1')
-    expect(plan.items.some((i) => i.action === 'recompute')).toBe(true)
-    const def = freezeBuildDefinition(doc, [edit], plan, timelineVersionHash(doc))
-    expect(def.editIds).toContain(edit.id)
   })
 
   it('compiles director rules and ScriptTimeline', () => {
@@ -220,14 +172,7 @@ describe('semanticTimeline pipeline pure', () => {
 describe('semanticTimeline graph nodes', () => {
   it('registers semantic node types', () => {
     ensureBuiltinNodeTypes()
-    for (const id of [
-      'semantic.analyze',
-      'semantic.timeline',
-      'semantic.event',
-      'semantic.compile',
-      'semantic.edit',
-      'semantic.variant'
-    ]) {
+    for (const id of ['semantic.analyze', 'semantic.compile', 'semantic.rebuild']) {
       expect(resolveNodeType({ typeId: id } as GraphNode)?.typeId).toBe(id)
     }
   })
@@ -337,79 +282,7 @@ function fixtureTimeline(): { doc: SemanticTimeline; shots: ReturnType<typeof si
   }
 }
 
-function fakeBuild(calls: SemanticBuildRequest[]) {
-  return async (input: SemanticBuildRequest): Promise<SemanticBuildResponse> => {
-    calls.push(input)
-    const plan = planInvalidation({ timeline: input.timeline, shots: [], edits: input.edits })
-    const definition = freezeBuildDefinition(input.timeline, input.edits, plan, 'h')
-    const rel = `Semantic/${input.timeline.id}/builds/${definition.id}/output${input.label ? `.${input.label}` : ''}.mp4`
-    return {
-      plan,
-      definition,
-      manifest: {
-        id: definition.id,
-        definitionId: definition.id,
-        status: 'done',
-        startedAt: '',
-        finishedAt: 'now',
-        outputRelativePath: rel,
-        shotActions: []
-      },
-      outputRelativePath: rel,
-      notes: []
-    }
-  }
-}
-
-describe('semanticTimeline edits / recipes', () => {
-  it('normalizes edit drafts and drops invalid ones', () => {
-    const { edits, issues } = normalizeSemanticEdits([
-      { kind: 'dropBeat', beatId: 'beat.demo' },
-      { kind: 'replaceEntity', entityId: 'ent.x' },
-      { kind: 'nope' }
-    ])
-    expect(edits).toHaveLength(1)
-    expect(edits[0]!.id).toMatch(/^edit\./)
-    expect(edits[0]!.origin).toBe('user')
-    expect(issues).toHaveLength(2)
-  })
-
-  it('applies dropBeat / reorderBeats to the shot sequence', () => {
-    const { doc, shots } = fixtureTimeline()
-    const dropped = applyStructuralEdits(
-      doc,
-      shots,
-      normalizeSemanticEdits([{ kind: 'dropBeat', beatId: 'beat.demo' }]).edits
-    )
-    expect(dropped.map((s) => s.id)).toEqual(['shot.a', 'shot.c'])
-    const reordered = applyStructuralEdits(
-      doc,
-      shots,
-      normalizeSemanticEdits([{ kind: 'reorderBeats', beatIds: ['beat.offer', 'beat.hook'] }]).edits
-    )
-    expect(reordered.map((s) => s.id)).toEqual(['shot.c', 'shot.a', 'shot.b'])
-  })
-
-  it('expands recipe slots as a cartesian product and reports missing slots', () => {
-    const recipe = {
-      id: 'recipe.replace_product.v1',
-      title: 'Replace product',
-      slots: [{ key: 'productAssetId', kind: 'asset' as const, label: 'Product' }],
-      editTemplates: [
-        {
-          kind: 'replaceEntity' as const,
-          entityId: 'ent.product.bottle-1',
-          newAssetId: '{{productAssetId}}'
-        }
-      ],
-      targetLevel: 'L1' as const
-    }
-    const ok = instantiateRecipe(recipe, { productAssetId: ['a1', 'a2'] })
-    expect(ok.rows.map((r) => r.edits[0]!.newAssetId)).toEqual(['a1', 'a2'])
-    expect(ok.rows[1]!.slots).toEqual({ productAssetId: 'a2' })
-    expect(instantiateRecipe(recipe, {}).missingSlots).toEqual(['productAssetId'])
-  })
-
+describe('semanticTimeline entity linkage', () => {
   it('stores normalized boxes on entity appearances when frame size is known', () => {
     const entities = linkEntitiesFromDetections([
       {
@@ -507,116 +380,5 @@ describe('semanticTimeline executors with injected capabilities', () => {
     expect(patches[0]).toMatchObject({
       params: { semanticTimelineId: doc.id, sourceRelativePath: 'Assets/v.mp4' }
     })
-  })
-
-  it('trigger keeps commands overlapping the matched events', async () => {
-    const { doc } = fixtureTimeline()
-    const node = {
-      id: 't',
-      typeId: 'semantic.event',
-      params: { eventLabel: 'price_announce' }
-    } as unknown as GraphNode
-    const out = await executeSemanticEventNode({
-      node,
-      inputs: { in: [{ kind: 'text', text: JSON.stringify(doc) }] }
-    } as unknown as NodeExecuteContext)
-    const parsed = JSON.parse(out.out && out.out.kind === 'text' ? out.out.text : '{}')
-    expect(parsed.events.map((e: { label: string }) => e.label)).toEqual(['price_announce'])
-    expect(parsed.commands.length).toBeGreaterThanOrEqual(1)
-  })
-
-  it('repair builds and emits a video', async () => {
-    const { doc, shots } = fixtureTimeline()
-    const calls: SemanticBuildRequest[] = []
-    const node = {
-      id: 'r',
-      typeId: 'semantic.edit',
-      params: { editsJson: JSON.stringify([{ kind: 'dropBeat', beatId: 'beat.demo' }]) }
-    } as unknown as GraphNode
-    const out = await executeSemanticEditNode({
-      node,
-      inputs: { in: [{ kind: 'text', text: JSON.stringify(doc) }] },
-      loadSemanticEvidence: async () => ({ shots, utterances: [], keyframes: {} }),
-      buildSemanticVideo: fakeBuild(calls)
-    } as unknown as NodeExecuteContext)
-    expect(calls).toHaveLength(1)
-    expect(calls[0]!.edits[0]!.kind).toBe('dropBeat')
-    const video = out['out-video']
-    expect(video && video.kind === 'video' ? video.relativePath : '').toMatch(/\.mp4$/)
-  })
-
-  it('variant expands a market recipe into one build per slot value', async () => {
-    const { doc, shots } = fixtureTimeline()
-    const calls: SemanticBuildRequest[] = []
-    const pack: SemanticPack = {
-      schemaVersion: 1,
-      id: 'variant-replace-product',
-      title: 'Replace product',
-      kind: 'recipe',
-      recipe: {
-        id: 'recipe.replace_product.v1',
-        title: 'Replace product',
-        slots: [{ key: 'productAssetId', kind: 'asset', label: 'Product' }],
-        editTemplates: [
-          {
-            kind: 'replaceEntity',
-            entityId: 'ent.product.bottle-1',
-            newAssetId: '{{productAssetId}}'
-          }
-        ],
-        targetLevel: 'L1'
-      }
-    }
-    const node = {
-      id: 'v',
-      typeId: 'semantic.variant',
-      params: {
-        recipeId: 'recipe.replace_product.v1',
-        recipeSlotsJson: JSON.stringify({ productAssetId: ['p1', 'p2'] })
-      }
-    } as unknown as GraphNode
-    const out = await executeSemanticVariantNode({
-      node,
-      inputs: { in: [{ kind: 'text', text: JSON.stringify(doc) }] },
-      listSemanticPacks: async () => [pack],
-      loadSemanticEvidence: async () => ({ shots, utterances: [], keyframes: {} }),
-      buildSemanticVideo: fakeBuild(calls)
-    } as unknown as NodeExecuteContext)
-    expect(calls.map((c) => (c.edits[0] as { newAssetId: string }).newAssetId)).toEqual([
-      'p1',
-      'p2'
-    ])
-    expect(calls.map((c) => c.label)).toEqual(['v1', 'v2'])
-    const videos = out['out-videos']
-    expect(videos && videos.kind === 'videos' ? videos.items.length : 0).toBe(2)
-  })
-
-  it('variant fails loudly when recipe slots are missing', async () => {
-    const { doc } = fixtureTimeline()
-    const node = {
-      id: 'v',
-      typeId: 'semantic.variant',
-      params: { recipeId: 'recipe.replace_product.v1' }
-    } as unknown as GraphNode
-    const pack = {
-      schemaVersion: 1,
-      id: 'p',
-      title: 'p',
-      kind: 'recipe',
-      recipe: {
-        id: 'recipe.replace_product.v1',
-        title: 'r',
-        slots: [{ key: 'productAssetId', kind: 'asset', label: 'x' }],
-        editTemplates: [],
-        targetLevel: 'L1'
-      }
-    } as SemanticPack
-    await expect(
-      executeSemanticVariantNode({
-        node,
-        inputs: { in: [{ kind: 'text', text: JSON.stringify(doc) }] },
-        listSemanticPacks: async () => [pack]
-      } as unknown as NodeExecuteContext)
-    ).rejects.toThrow(/productAssetId/)
   })
 })

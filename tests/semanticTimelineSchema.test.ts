@@ -9,25 +9,19 @@ import {
   compileDirectorCommands,
   createEmptySemanticTimeline,
   evaluateFidelity,
-  expandVariantMatrix,
-  fillTemplate,
   filterEventsRequiringEvidence,
-  freezeBuildDefinition,
   makeTimeRange,
   matchStableEventId,
   parseSceneCutPtsTimes,
-  planInvalidation,
   rebuildTracks,
   roundtripDurationOk,
   shortHash,
   singleShot,
   timelineId,
-  timelineVersionHash,
   validateSemanticPack,
   validateSemanticTimeline,
   type SemanticEdit,
-  type SemanticEvent,
-  type ShotEvidence
+  type SemanticEvent
 } from '../src/shared/semanticTimeline'
 
 describe('semanticTimeline schema', () => {
@@ -117,67 +111,6 @@ describe('shots + L0 roundtrip', () => {
   })
 })
 
-describe('planner', () => {
-  it('marks only entity shots for replaceEntity', () => {
-    const doc = createEmptySemanticTimeline('vid', {
-      durationSec: 10,
-      fps: 30,
-      width: 1080,
-      height: 1920,
-      hasAudio: true
-    })
-    const shots: ShotEvidence[] = buildShotsFromCutPoints([3, 7], 10, 30)
-    doc.entities = [
-      {
-        id: 'ent.product.bottle',
-        kind: 'product',
-        name: 'bottle',
-        appearances: [{ shotId: shots[1]!.id, range: shots[1]!.range }],
-        pixelEditable: true
-      }
-    ]
-    const edit: SemanticEdit = {
-      id: 'edit.1',
-      kind: 'replaceEntity',
-      origin: 'user',
-      createdAt: new Date().toISOString(),
-      entityId: 'ent.product.bottle',
-      newAssetId: 'asset-new'
-    }
-    const plan = planInvalidation({ timeline: doc, shots, edits: [edit] })
-    expect(plan.targetLevel).toBe('L1')
-    const videoItems = plan.items.filter((i) => i.productId.endsWith('.video'))
-    const recomputed = videoItems.filter((i) => i.action === 'recompute')
-    expect(recomputed.some((i) => i.productId.startsWith(shots[1]!.id))).toBe(true)
-    expect(plan.cost.paidShotCount).toBe(1)
-    const def = freezeBuildDefinition(doc, [edit], plan, timelineVersionHash(doc))
-    expect(def.editIds).toEqual(['edit.1'])
-    expect(def.frozenAt).toBeTruthy()
-  })
-
-  it('rewrite without lipSync stays L3 and local', () => {
-    const doc = createEmptySemanticTimeline('vid', {
-      durationSec: 5,
-      fps: 30,
-      width: 100,
-      height: 100,
-      hasAudio: true
-    })
-    const shots = singleShot(5, 30)
-    const edit: SemanticEdit = {
-      id: 'e2',
-      kind: 'rewriteUtterance',
-      origin: 'user',
-      createdAt: new Date().toISOString(),
-      utteranceId: 'utt.1',
-      newText: 'hello'
-    }
-    const plan = planInvalidation({ timeline: doc, shots, edits: [edit] })
-    expect(plan.targetLevel).toBe('L3')
-    expect(plan.cost.paidSeconds).toBe(0)
-  })
-})
-
 describe('compiler + packs + qc', () => {
   it('compiles price_announce to push_in', () => {
     const doc = createEmptySemanticTimeline('vid', {
@@ -208,7 +141,7 @@ describe('compiler + packs + qc', () => {
     expect(cmds.some((c) => c.kind === 'camera.push_in')).toBe(true)
   })
 
-  it('validates semantic packs and expands variant matrix', () => {
+  it('validates semantic packs', () => {
     expect(
       validateSemanticPack({
         schemaVersion: 1,
@@ -218,12 +151,6 @@ describe('compiler + packs + qc', () => {
         vocabulary: COMMERCE_VOCABULARY
       }).ok
     ).toBe(true)
-    const rows = expandVariantMatrix([
-      { key: 'product', values: ['a', 'b'] },
-      { key: 'hook', values: ['h1', 'h2'] }
-    ])
-    expect(rows).toHaveLength(4)
-    expect(fillTemplate('use {{product}}', { product: 'cream' })).toBe('use cream')
   })
 
   it('evaluates L1 fidelity thresholds', () => {

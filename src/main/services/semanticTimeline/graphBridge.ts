@@ -1,21 +1,13 @@
 /**
- * 画布语义节点 / MCP 共用的主进程编排：分析（含转写）、证据读取、文档保存、按编辑构建成片。
+ * 画布语义节点 / MCP 共用的主进程编排：分析（含转写）、证据读取、文档保存、成片拼接。
  */
 import { existsSync, mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import {
-  applyStructuralEdits,
-  buildEntityShotIndex,
   findVocabularyInPacks,
-  freezeBuildDefinition,
-  planInvalidation,
-  timelineVersionHash,
   validateSemanticTimeline,
   type SemanticAnalyzeRequest,
   type SemanticAnalyzeResponse,
-  type SemanticBuildRequest,
-  type SemanticBuildResponse,
-  type SemanticEdit,
   type SemanticEvidenceResponse,
   type SemanticPack,
   type SemanticTimeline,
@@ -32,15 +24,11 @@ import { IpcChannels } from '@shared/ipc'
 import {
   analyzeSemanticTimeline,
   buildSemanticPreview,
-  loadOcrRegions,
   loadSemanticTimeline,
   loadShotsEvidence,
   loadUtterances,
-  resolveTimelineDir,
-  saveBuildManifest,
   saveSemanticTimeline
 } from './SemanticTimelineService'
-import { executeBuild } from './buildExecutor'
 import { rebuildVideo } from './rebuildService'
 import { listAllSemanticPacks } from './packLoader'
 
@@ -200,118 +188,8 @@ export function semanticSaveTimelineForGraph(doc: SemanticTimeline): { ok: true 
   return { ok: true }
 }
 
-function canonical(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonical)
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(
-      Object.keys(value as Record<string, unknown>)
-        .sort()
-        .map((k) => [k, canonical((value as Record<string, unknown>)[k])])
-    )
-  }
-  return value
-}
-
-function editSignature(edit: SemanticEdit): string {
-  const { id: _id, createdAt: _createdAt, origin: _origin, ...rest } = edit
-  return JSON.stringify(canonical(rest))
-}
-
 function sanitizeLabel(label: string | undefined): string {
   return (label ?? '').replace(/[^\w.-]+/g, '_').slice(0, 40)
-}
-
-/**
- * 编辑 → 失效计划 → 冻结 → 执行。编辑追加进文档（按 id 去重）后落盘，保证 timeline.json 可追溯。
- */
-export async function semanticBuildForGraph(
-  input: SemanticBuildRequest
-): Promise<SemanticBuildResponse> {
-  const root = projectService.getRoot()
-  const base = input.timeline
-  const v = validateSemanticTimeline(base)
-  if (!v.ok) throw new Error(`invalid timeline: ${v.issues.map((i) => i.message).join('; ')}`)
-  const rel = sourceRelativeForTimeline(base, input.sourceRelativePath)
-  if (!rel) throw new Error('source video not resolvable (set sourceRelativePath)')
-  const videoAbs = toAbs(root, rel)
-  if (!existsSync(videoAbs)) throw new Error(`source video missing: ${rel}`)
-
-  const shots = loadShotsEvidence(root, base.id)
-  if (shots.length === 0) throw new Error('no shot evidence; run semantic analyze first')
-
-  // 内容相同的编辑复用已有记录：重复运行不膨胀 timeline.json，且构建目录（按 editIds 定）可复用
-  const bySignature = new Map(base.edits.map((e) => [editSignature(e), e]))
-  const edits = input.edits.map((e) => bySignature.get(editSignature(e)) ?? e)
-  const known = new Set(base.edits.map((e) => e.id))
-  const added = edits.filter((e) => !known.has(e.id))
-  const doc: SemanticTimeline =
-    added.length > 0
-      ? { ...base, edits: [...base.edits, ...added], updatedAt: new Date().toISOString() }
-      : base
-  saveSemanticTimeline(root, doc)
-
-  const entityShotIndex = buildEntityShotIndex(doc)
-  const plan = planInvalidation({ timeline: doc, shots, edits, entityShotIndex })
-  const definition = freezeBuildDefinition(doc, edits, plan, timelineVersionHash(doc))
-
-  const notes: string[] = []
-  const replaceMediaAbs = new Map<string, string>()
-  for (const edit of edits) {
-    if (edit.kind !== 'replaceEntity') continue
-    const asset = findAsset(edit.newAssetId)
-    const assetRel = assetVideoRelativePath(asset)
-    if (assetRel && existsSync(toAbs(root, assetRel))) {
-      replaceMediaAbs.set(edit.newAssetId, toAbs(root, assetRel))
-    } else {
-      notes.push(`replaceEntity: asset ${edit.newAssetId} has no media file`)
-    }
-  }
-
-  const timelineDir = resolveTimelineDir(root, doc.id)
-  const entityMaskDirs = new Map<string, string>()
-  const entityBoxes = new Map<string, Map<string, { x: number; y: number; w: number; h: number }>>()
-  for (const ent of doc.entities) {
-    const boxes = new Map<string, { x: number; y: number; w: number; h: number }>()
-    for (const app of ent.appearances) {
-      if (app.box) boxes.set(app.shotId, app.box)
-      if (app.masks && !entityMaskDirs.has(ent.id)) {
-        entityMaskDirs.set(ent.id, join(timelineDir, ...app.masks.split('/')))
-      }
-    }
-    if (boxes.size > 0) entityBoxes.set(ent.id, boxes)
-  }
-
-  const suffix = sanitizeLabel(input.label)
-  const workDir = join(timelineDir, 'builds', definition.id)
-  const fileName = suffix ? `output.${suffix}.mp4` : 'output.mp4'
-  const outputRel = `Semantic/${doc.id}/builds/${definition.id}/${fileName}`
-  const manifest = await executeBuild({
-    sourceVideoAbs: videoAbs,
-    shots,
-    outputShots: applyStructuralEdits(doc, shots, edits),
-    definition,
-    workDirAbs: workDir,
-    outputAbs: join(workDir, fileName),
-    outputRelativePath: outputRel,
-    edits,
-    runEdits: true,
-    entityShotIndex,
-    entityMaskDirs,
-    entityBoxes,
-    replaceMediaAbs,
-    ocrRegions: loadOcrRegions(root, doc.id),
-    frameWidth: doc.source.width,
-    frameHeight: doc.source.height
-  })
-  saveBuildManifest(root, doc.id, manifest)
-  notes.push(...(manifest.notes ?? []))
-  return {
-    plan,
-    definition,
-    manifest,
-    outputRelativePath: manifest.status === 'done' ? outputRel : undefined,
-    notes
-  }
 }
 
 // ─── 语义重建（分析 → 编译 → 重建）：把生成的镜头片段接成成片 ─────────────────────
@@ -343,7 +221,7 @@ export interface SemanticRebuildForGraphResult {
 /**
  * 语义重建的落盘与拼接。
  *
- * 与旧的 `semanticBuildForGraph`（按编辑列表裁剪原片）不同：素材是**模型新生成的片段**，
+ * 与旧的"按编辑列表裁剪原片"那条路不同：素材是**模型新生成的片段**，
  * 所以这里统一重编码拼接（见 `rebuildService`），并按需混回原片音轨、烧录转写字幕。
  * 每次运行落在 `Semantic/<id>/rebuilds/<runId>/`，跑多少次都不覆盖历史。
  */

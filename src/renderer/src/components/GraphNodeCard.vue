@@ -335,11 +335,7 @@
           class="media-fallback semantic-timeline-hint"
         >
           <span class="icon"><WorkspaceItemIcon :icon="typeIcon" :size="18" /></span>
-          <span class="hint">{{
-            isSemanticTimelineEditorNode(node)
-              ? t('graph.semanticTimeline.openEditorHint')
-              : t('graph.semanticTimeline.openResultHint')
-          }}</span>
+          <span class="hint">{{ t('graph.semanticTimeline.openResultHint') }}</span>
         </div>
 
         <div v-else class="media-fallback">
@@ -663,7 +659,6 @@ import {
   isFramePullNode,
   isReshootNode,
   isSemanticTimelineToolNode,
-  isSemanticTimelineEditorNode,
   isPluralGraphPortDataType,
   isMultiAngleEditorNode,
   isAdVariantsNode,
@@ -1758,7 +1753,6 @@ const scriptNodePreviewTitle = computed(() => {
   if (isWorldGenNode(props.node)) return t('graph.worldGenNode.hint')
   if (isBeatTableNode(props.node)) return t('graph.beatTableNode.hint')
   if (isBeatGenNode(props.node)) return t('graph.beatGenNode.hint')
-  if (isSemanticTimelineEditorNode(props.node)) return t('graph.semanticTimeline.openEditorHint')
   if (isSemanticTimelineToolNode(props.node)) return t('graph.semanticTimeline.openResultHint')
   return ''
 })
@@ -1838,7 +1832,6 @@ const previewOpenHint = computed(() => {
   if (isScreenplayOutputNode.value) return t('graph.textsPreview.hint')
   if (isSelectTextNode(props.node)) return t('graph.selectText.hint')
   if (isSelectBeatNode(props.node)) return t('graph.selectBeat.hint')
-  if (isSemanticTimelineEditorNode(props.node)) return t('graph.semanticTimeline.openEditorHint')
   if (isSemanticTimelineToolNode(props.node)) return t('graph.semanticTimeline.openResultHint')
   // 预览区已有正文时，双击优先打开记事本
   if (textPreview.value && !isAssetRef.value && isNodeTextCapable(props.node)) {
@@ -2647,10 +2640,10 @@ async function openSemanticTimelineDive(
   // 允许空 id：真没有时间线时也把编辑器打开，由视图给出「还没有时间线」的提示
   const timelineId = payload?.id || fallbackId || ''
   /**
-   * 语义编辑 / 变体节点：把**来源节点**也带进 dive ——
-   * 编辑操作在 dive 里做，改动要写回节点参数（节点仍是唯一事实来源）。
+   * 语义编译节点：把**来源节点**也带进 dive ——
+   * 提示词覆盖在 dive 里改，改动要写回节点参数（节点仍是唯一事实来源）。
    */
-  const editable = props.node.typeId === 'semantic.edit' || props.node.typeId === 'semantic.variant'
+  const editable = props.node.typeId === 'semantic.compile'
   const hostId = props.hostId?.trim()
   return diveView(
     {
@@ -2806,15 +2799,7 @@ function onPreviewDblClick(): void {
       await diveNodeTool('node.reshoot', title)
       return
     }
-    // Semantic Timeline：时间线编辑器 dive；其余工具 dive 文本结果（勿记事本 / 空 texts 弹窗）
-    if (isSemanticTimelineEditorNode(props.node)) {
-      const payload =
-        resolveSemanticTimelinePayload(props.node, props.runState) ??
-        resolveUpstreamTimelinePayload()
-      const ok = await openSemanticTimelineDive(title, payload)
-      if (!ok && payload?.json) await openSemanticResultTextDive(title, payload.json)
-      return
-    }
+    // Semantic Timeline：工具 dive 文本结果（勿记事本 / 空 texts 弹窗）
     if (props.node.typeId === 'semantic.analyze') {
       const target = resolveSemanticTimelineViewTarget(props.node, props.runState)
       if (target) {
@@ -2829,14 +2814,10 @@ function onPreviewDblClick(): void {
     }
     if (isSemanticTimelineToolNode(props.node)) {
       /**
-       * 修复 / 变体的产物是**成片**，不是 JSON 计划 —— 双击优先预览成片
+       * 语义重建的产物是**成片**，不是 JSON 计划 —— 双击优先预览成片
        * （没有成片时回落到下面的文本结果，给出计划或"还没运行"的说明）。
        */
-      if (
-        props.node.typeId === 'semantic.edit' ||
-        props.node.typeId === 'semantic.variant' ||
-        props.node.typeId === 'semantic.rebuild'
-      ) {
+      if (props.node.typeId === 'semantic.rebuild') {
         const rel = resolveBuiltVideoRelativePath(props.runState?.outputs)
         if (rel) {
           const url = (await window.studio.getAssetFileUrl(rel)) ?? ''

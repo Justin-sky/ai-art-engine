@@ -4656,11 +4656,7 @@ export default {
       },
       semantic: {
         analyze: '语义分析',
-        edit: '语义编辑',
         rebuild: '语义重建',
-        variant: '语义变体',
-        timeline: '语义时间线',
-        event: '语义事件',
         compile: '语义编译'
       },
       voice: {
@@ -4775,43 +4771,7 @@ export default {
       beatPathsEmpty: '尚未落地，请先细化各单元并运行本节点',
       beatPathPending: '（未落盘）'
     },
-    /** 语义编辑面板（在 dive 里操作，不在 inspector） */
-    semanticEdit: {
-      tabEdit: '编辑',
-      tabEvidence: '证据',
-      edits: '编辑列表',
-      empty: '还没有编辑。在时间线上点中节拍 / 实体 / 事件，再点上面的操作即可添加。',
-      selectTargetHint: '先在时间线上选中一个对象（节拍 / 实体 / 事件）',
-      dropped: '将被丢弃：',
-      remove: '删除',
-      pickBeat: '选择节拍…',
-      pickEntity: '选择实体…',
-      newText: '改成什么文本',
-      newAsset: '替换成哪个资产 id（如 asset.xxx）',
-      rawJson: '高级：原始 JSON',
-      rawJsonHint: '生成类编辑（重画镜头、改口型）与 agent 产物只能在这里写。',
-      writeBackHint: '改动立即写回节点参数；在画布上运行该节点即可构建成片。',
-      target: {
-        beat: '节拍',
-        entity: '实体',
-        event: '事件',
-        intent: '意图'
-      },
-      opDropBeat: '删除节拍',
-      opDropBeatHint: '删掉这个节拍（它的镜头会被移除）',
-      opRetimeBeat: '重定时长',
-      opRetimeBeatHint: '改这个节拍的时间范围（成片会重排）',
-      opReorderBeats: '重排节拍',
-      opReorderBeatsHint: '按编辑里的顺序重排节拍',
-      opReplaceEntity: '替换实体',
-      opReplaceEntityHint: '把这个实体换成别的资产',
-      opRemoveEntity: '移除实体',
-      opRemoveEntityHint: '把这个实体从画面里移除',
-      opGrade: '调色',
-      opGradeHint: '整体调色（亮度 / 对比度 / 饱和度）'
-    },
     semanticTimeline: {
-      openEditorHint: '双击打开语义时间线',
       openResultHint: '双击查看分析结果',
       /** 时间线编辑器（dive）的三层与轨道名 */
       layerStory: '剧情',
@@ -4847,7 +4807,7 @@ export default {
       noEntities: '暂无实体',
       noTimelineHint: '这个节点还没有时间线',
       noTimelineHintSub:
-        '把「语义分析」节点接到它的 Timeline 输入口并运行一次（拿到时间线后，右栏「编辑」页签就能从时间线上选目标添加操作）。',
+        '把「语义分析」节点接到它的 Timeline 输入口并运行一次，拿到时间线后这里就能看到镜头、事件与制作轨道。',
       timelineFileMissing: '时间线文件不存在',
       noResultHint: '这个节点还没有运行结果',
       noResultHintSub: '先执行它（节点上的「执行当前节点」），再双击查看结果。',
@@ -5312,16 +5272,8 @@ export default {
       semantic: {
         analyzeHint:
           '连接上游视频（或填源资产 id）后运行：切镜、抽关键帧、转写、人声分离、实体检测，结果写入工程 Semantic/ 目录并输出语义时间线 JSON。双击查看分析结果。',
-        timelineHint:
-          '透传或编辑语义时间线 JSON。上游有文本时优先用上游；否则用下方 JSON。双击打开语义时间线编辑器。',
-        eventHint:
-          '找出指定事件，以及落在这些事件上的导演指令（按意图触发或时间重叠匹配）。留空则输出全部事件与指令。双击查看结果。',
         compileHint:
-          '用导演规则包把语义时间线编译成导演指令和成片时间线（ScriptTimeline）。镜头与字幕取自分析证据。双击查看结果。',
-        editHint:
-          '按编辑列表规划并本地构建成片：未改镜头直拷，替换/擦除/改字/调色的镜头处理后拼回，删/重排节拍会重排镜头。成片从「视频」口输出。',
-        variantHint:
-          '选择市场包配方并填写槽位（多个值用逗号分隔，按组合展开），每个组合构建一条变体成片，从「视频组」口输出。',
+          '把语义时间线按导演规则包编译成**逐镜视频生成提示词计划**（含每镜首帧），出口是结构化提示词口。可勾选「用模型写提示词」让文本模型先把画面说清楚。双击查看结果。',
         vocabulary: '节拍词表',
         vocabularyHint: '决定节拍划分与标签；市场包可扩展更多词表',
         transcribe: '转写语音（话语证据）',
@@ -5349,46 +5301,12 @@ export default {
         shotsJson: '镜头证据 JSON',
         utterancesJson: '话语证据 JSON',
         jsonPlaceholder: '[] 或完整证据数组 JSON',
-        eventLabel: '事件标签过滤',
-        eventLabelPlaceholder: '例如 offer / CTA；多个用逗号或顿号分隔；留空=全部',
-        eventLabelPickMany: '多选：勾选要包含的事件标签',
-        eventLabelPicked: '已选 {count} 个（多个用逗号分隔）',
-        eventLabelNoOptions: '没读到时间线，暂时列不出候选 —— 可从上游分析节点或事件轨道上抄标签。',
-        eventLabelHint: '可多选；也可手填事件 id 或 type，多个用逗号/顿号分隔（留空=全部）',
         sourceRelativePath: '源视频相对路径',
         sourceRelativePathPlaceholder: '如 Assets/foo.mp4',
         sourceRelativePathHint: '留空则按时间线的源资产自动解析',
         rulePacks: '导演规则包',
         rulePacksHint: '都不勾选 = 内置规则 + 全部已安装的规则包',
-        recipeId: '变体配方',
-        recipeNone: '不用配方（只用编辑列表）',
-        recipeIdPlaceholder: '市场包 recipe id',
-        recipeIdHint: '来自已安装的语义市场包（kind=recipe）',
-        slotPlaceholder: '值；多个用逗号分隔',
-        slotHint: '每个槽位可填多个值，按所有组合各出一条变体（最多 12 条）',
-        execute: '运行时构建成片',
-        executeHint: '关闭后只输出失效计划与费用估算，不处理视频',
-        editsJson: '编辑列表 JSON',
-        editsJsonPlaceholder:
-          '{\'[{"kind":"replaceEntity","entityId":"ent.product.bottle-1","newAssetId":"…"}]\'}',
-        editsJsonHint:
-          '本地可执行：replaceEntity / removeEntity / editText / grade / dropBeat / reorderBeats；regenerateShot、改口型等生成类编辑只出计划',
-        editsSummary: '编辑摘要',
-        editsEmpty: '还没有编辑：此时只产出失效计划（不生成成片）。可点下面的「插入示例」试试。',
-        editsCount: '共 {count} 条：',
-        editsIssue: '将被丢弃：',
-        editsInsertSample: '插入示例编辑（调色）',
-        editsStruct: '结构化编辑（常见类型）',
-        editsStructHint:
-          '表单只改它认识的字段，其它字段（含 agent/手写的高级字段）原样保留；生成类编辑仍需手写 JSON。',
-        addEdit: '添加编辑',
-        removeEdit: '删除',
-        pickBeat: '选择节拍…',
-        pickEntity: '选择实体…',
-        pickNewAsset: '替换成哪个资产 id（如 asset.xxx）',
-        pickTextRegion: '字幕区域 id（如 ocr.003.xxxx）',
-        newText: '改成什么文本',
-        planPreview: '计划预览（不构建）',
+        execute: '运行时生成成片',
         promptsWithModel: '用模型写提示词',
         promptsWithModelHint:
           '打开后先用文本模型把画面说清楚（镜头描述/事件/意图），再规则拼装成提示词；失败会自动退回纯规则',
@@ -5402,6 +5320,8 @@ export default {
         rebuildModeHint: '逐镜头可控、能重跑单镜；整片一次更便宜但不可局部重做',
         rebuildModel: '视频生成模型',
         rebuildModelHint: '默认跟随设置里的视频模型',
+        rebuildHint:
+          '按上游「语义编译」给出的逐镜提示词逐段生成，再用本地 ffmpeg 拼接成片（可按需混回原音轨、烧录转写字幕）。双击预览成片。',
         rebuildExecuteHint: '关掉后只出计划（一次模型都不调），确认清单后再打开',
         rebuildMaxShots: '每镜上限',
         rebuildMaxShotsHint: '逐镜头模式最多生成几段（默认 12），防止误点烧掉几十次生成',
@@ -5412,15 +5332,6 @@ export default {
         rebuildResolution: '分辨率',
         rebuildAspectRatio: '画幅',
         rebuildPromptPointer: '逐镜提示词在「语义编译」节点上改（双击该节点查看/覆盖）。',
-        editsMovedHint:
-          '编辑操作已移到双击打开的编辑器（右栏「编辑」页签）：在时间线上点中节拍 / 实体 / 事件即可添加操作。',
-        planPreviewFailed: '计划预览失败（不影响运行）：',
-        planLevel: '目标级 {level}',
-        planKeep: '直拷 {count}',
-        planReplace: '替换 {count}',
-        planRecompute: '重算 {count}',
-        planPaid: '付费重生成 {seconds}s',
-        planNoEvidence: '没读到镜头证据（先运行上游语义分析），下面是按空镜头集算的结果。',
         timelineJson: '时间线 JSON（无上游时）',
         timelineJsonPlaceholder: '粘贴 Semantic Timeline JSON',
         timelineJsonHint: '仅在未接上游文本口时作为输入；有上游时运行会覆盖读取上游',

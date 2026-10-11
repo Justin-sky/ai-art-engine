@@ -53,10 +53,6 @@ const CANVAS_ADDABLE_NODE_TYPES = [
   'video.reshoot',
   // 视频语义分组
   'semantic.analyze',
-  'semantic.edit',
-  'semantic.variant',
-  'semantic.timeline',
-  'semantic.event',
   'semantic.compile',
   'semantic.rebuild',
   'image.toPrompt',

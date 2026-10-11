@@ -21,7 +21,6 @@ import {
   timeAtPointer
 } from '../features/graph/model/semanticTimelineZoom'
 import { useStudioI18n } from '../composables/useStudioI18n'
-import SemanticEditPanel from './SemanticEditPanel.vue'
 import {
   appearanceSeekSeconds,
   clampSeekSeconds,
@@ -43,9 +42,6 @@ const props = defineProps<{
   timeline: SemanticTimeline
   /** 秒 → 像素（初始缩放；用户滚轮/滑块调整后以内部状态为准） */
   pxPerSec?: number
-  /** 语义编辑列表（来自来源节点参数）；给了它右栏才出现「编辑」页签 */
-  editsJson?: string
-  canEdit?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -54,7 +50,6 @@ const emit = defineEmits<{
   selectBeat: [id: string]
   selectEntity: [id: string]
   selectIntent: [id: string]
-  'update:editsJson': [value: string]
 }>()
 
 const scrollRef = ref<HTMLElement | null>(null)
@@ -136,36 +131,6 @@ function resetZoom(): void {
  */
 const selectedId = ref<string | null>(null)
 const selectedClip = ref<string | null>(null)
-
-/**
- * 右栏页签：**证据**（看当前选中的事件/节拍/实体的出处）与
- * **编辑**（语义编辑的操作台 —— 编辑列表、从当前选择添加操作、原始 JSON）。
- *
- * 为什么把编辑放到 dive 而不是 inspector：编辑天然要"看着时间线点目标"，
- * 目标 id（节拍 / 实体 / 事件）都在时间线上，不该让人去 JSON 里抄。
- */
-const paneTab = ref<'evidence' | 'edit'>(props.canEdit ? 'edit' : 'evidence')
-watch(
-  () => props.canEdit,
-  (can) => {
-    if (can) paneTab.value = 'edit'
-  }
-)
-
-/** 当前选择（给编辑面板决定"能加哪些操作"、并自动填目标 id） */
-const editSelection = computed(() => {
-  const sel = selectedEvidence.value
-  if (!sel) return null
-  const label =
-    sel.kind === 'event'
-      ? sel.item.label
-      : sel.kind === 'beat'
-        ? sel.item.description?.trim() || beatLabel(sel.item.type)
-        : sel.kind === 'entity'
-          ? sel.item.name
-          : (sel.item.goal ?? sel.item.id)
-  return { kind: sel.kind, id: sel.item.id, label: label || sel.item.id }
-})
 
 /** 片段键：实体＝id#出现序号，制作层＝id#轨道，其余＝id */
 function clipKey(id: string, suffix?: string | number): string {
@@ -699,38 +664,7 @@ function beatLabel(type: string): string {
         />
       </div>
 
-      <!-- 右栏页签：证据 / 编辑（编辑只在语义编辑类节点打开时出现） -->
-      <div v-if="canEdit" class="stl-tabs" role="tablist">
-        <button
-          type="button"
-          class="stl-tab"
-          :class="{ active: paneTab === 'evidence' }"
-          role="tab"
-          :aria-selected="paneTab === 'evidence'"
-          @click="paneTab = 'evidence'"
-        >
-          {{ t('graph.semanticEdit.tabEvidence') }}
-        </button>
-        <button
-          type="button"
-          class="stl-tab"
-          :class="{ active: paneTab === 'edit' }"
-          role="tab"
-          :aria-selected="paneTab === 'edit'"
-          @click="paneTab = 'edit'"
-        >
-          {{ t('graph.semanticEdit.tabEdit') }}
-        </button>
-      </div>
-
-      <SemanticEditPanel
-        v-if="canEdit && paneTab === 'edit'"
-        :timeline="timeline"
-        :edits-json="editsJson ?? ''"
-        :selection="editSelection"
-        @update:edits-json="(value) => emit('update:editsJson', value)"
-      />
-      <template v-if="paneTab === 'evidence'">
+      <template>
         <h4>{{ t('graph.semanticTimeline.evidence') }}</h4>
         <p v-if="!selectedEvidence" class="muted">
           {{ t('graph.semanticTimeline.selectHint') }}

@@ -28,12 +28,9 @@ describe('graph processing menu labels', () => {
     expect(t('graph.types.image.select')).toBe('选取图片')
     expect(t('graph.types.video.select')).toBe('选取视频')
     expect(t('graph.types.semantic.analyze')).toBe('语义分析')
-    // 「视频语义」组内统一用「语义」前缀（typeId 仍是 semantic.edit / semantic.variant）
-    expect(t('graph.types.semantic.edit')).toBe('语义编辑')
-    expect(t('graph.types.semantic.variant')).toBe('语义变体')
-    expect(t('graph.types.semantic.timeline')).toBe('语义时间线')
-    expect(t('graph.types.semantic.event')).toBe('语义事件')
+    // 「视频语义」组内统一用「语义」前缀（typeId 仍是 semantic.compile / semantic.rebuild）
     expect(t('graph.types.semantic.compile')).toBe('语义编译')
+    expect(t('graph.types.semantic.rebuild')).toBe('语义重建')
     expect(t('graph.types.voice.select')).toBe('选取声音')
     expect(t('graph.types.image.toPrompt')).toBe('图片反推提示词')
     expect(t('graph.types.prompt.optimize')).toBe('提示词优化')

@@ -330,14 +330,11 @@ export interface GraphNodeParams {
   /** Semantic Timeline：分析用帧率 / 时长（无探测时的兜底） */
   semanticFps?: number
   semanticDuration?: number
-  /** Semantic Timeline：镜头 / 话语 / 时间线 / 编辑 JSON 旁路入参 */
+  /** Semantic Timeline：镜头 / 话语 / 时间线 JSON 旁路入参 */
   shotsJson?: string
   utterancesJson?: string
   timelineJson?: string
-  editsJson?: string
-  /** Semantic Timeline：变体配方 id / 事件触发标签 / 源相对路径 */
-  recipeId?: string
-  eventLabel?: string
+  /** Semantic Timeline：源相对路径 */
   sourceRelativePath?: string
   /** Semantic Timeline：上次分析落盘的时间线 id（stl.…） */
   semanticTimelineId?: string

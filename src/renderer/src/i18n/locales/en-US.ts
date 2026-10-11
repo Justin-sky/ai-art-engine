@@ -4763,11 +4763,7 @@ export default {
       },
       semantic: {
         analyze: 'Semantic analyze',
-        edit: 'Semantic edit',
         rebuild: 'Semantic rebuild',
-        variant: 'Semantic variant',
-        timeline: 'Semantic timeline',
-        event: 'Semantic event',
         compile: 'Semantic compile'
       },
       voice: {
@@ -4884,46 +4880,7 @@ export default {
       beatPathsEmpty: 'Nothing saved yet — refine units and run this node',
       beatPathPending: '(not saved)'
     },
-    /** Semantic edit panel (operates inside the dive, not the inspector) */
-    semanticEdit: {
-      tabEdit: 'Edit',
-      tabEvidence: 'Evidence',
-      edits: 'Edit list',
-      empty:
-        'No edits yet. Select a beat / entity / event on the timeline, then pick an operation above.',
-      selectTargetHint: 'Select an object on the timeline first (beat / entity / event)',
-      dropped: 'Will be dropped:',
-      remove: 'Remove',
-      pickBeat: 'Pick a beat…',
-      pickEntity: 'Pick an entity…',
-      newText: 'New text',
-      newAsset: 'Replacement asset id (e.g. asset.xxx)',
-      rawJson: 'Advanced: raw JSON',
-      rawJsonHint:
-        'Generative edits (regenerate shot, lip sync) and agent output can only be written here.',
-      writeBackHint:
-        'Changes are written back to the node parameters immediately; run the node on the canvas to build.',
-      target: {
-        beat: 'beat',
-        entity: 'entity',
-        event: 'event',
-        intent: 'intent'
-      },
-      opDropBeat: 'Drop beat',
-      opDropBeatHint: 'Remove this beat (its shots are dropped)',
-      opRetimeBeat: 'Retime',
-      opRetimeBeatHint: 'Change this beat time range (the cut is rebuilt)',
-      opReorderBeats: 'Reorder beats',
-      opReorderBeatsHint: 'Reorder beats following the edit list',
-      opReplaceEntity: 'Replace entity',
-      opReplaceEntityHint: 'Swap this entity for another asset',
-      opRemoveEntity: 'Remove entity',
-      opRemoveEntityHint: 'Remove this entity from the frame',
-      opGrade: 'Grade',
-      opGradeHint: 'Overall grade (brightness / contrast / saturation)'
-    },
     semanticTimeline: {
-      openEditorHint: 'Double-click to open semantic timeline',
       openResultHint: 'Double-click to view analysis result',
       /** Timeline editor (dive): layers and track names */
       layerStory: 'Story',
@@ -4959,7 +4916,7 @@ export default {
       noEntities: 'No entities',
       noTimelineHint: 'This node has no timeline yet',
       noTimelineHintSub:
-        'Connect a Semantic analyze node to its Timeline input and run it once — then the "Edit" tab on the right pane can add operations straight from the timeline.',
+        'Connect a Semantic analyze node to its Timeline input and run it once — the shots, events and production tracks then show up here.',
       timelineFileMissing: 'Timeline file not found',
       noResultHint: 'This node has no result yet',
       noResultHintSub:
@@ -5444,16 +5401,8 @@ export default {
       semantic: {
         analyzeHint:
           'Connect an upstream video (or set a source asset id) and run: shot detection, keyframes, transcript, vocal separation and entity detection are written to the project Semantic/ folder, and the Semantic Timeline JSON is emitted. Double-click to inspect the result.',
-        timelineHint:
-          'Pass through or edit Semantic Timeline JSON. Upstream text wins when present; otherwise use the JSON below. Double-click to open the semantic timeline editor.',
-        eventHint:
-          'Find the given events and the director commands that land on them (matched by intent trigger or time overlap). Leave empty to emit all events and commands. Double-click to inspect the result.',
         compileHint:
-          'Compile the Semantic Timeline into director commands and a ScriptTimeline using director rule packs. Shots and subtitles come from the analysis evidence. Double-click to inspect the result.',
-        editHint:
-          'Plan and build locally from the edit list: untouched shots are stream-copied, replaced/erased/retexted/graded shots are processed and spliced back, dropped/reordered beats reorder shots. The result comes out of the Video port.',
-        variantHint:
-          'Pick a market-pack recipe and fill its slots (comma-separate multiple values to expand combinations). Each combination builds one variant, output on the Videos port.',
+          'Compile the Semantic Timeline into a **per-shot video prompt plan** (with each shot first frame) using director rule packs; the output is a structured prompts port. Turn on "Write prompts with a model" to let a text model describe the picture first. Double-click to inspect the result.',
         vocabulary: 'Beat vocabulary',
         vocabularyHint: 'Controls beat labels; market packs can add more vocabularies',
         transcribe: 'Transcribe speech (utterances)',
@@ -5482,50 +5431,12 @@ export default {
         shotsJson: 'Shot evidence JSON',
         utterancesJson: 'Utterance evidence JSON',
         jsonPlaceholder: '[] or a full evidence-array JSON',
-        eventLabel: 'Event label filter',
-        eventLabelPlaceholder: 'e.g. offer / CTA; separate with commas; empty = all',
-        eventLabelPickMany: 'Multi-select: tick the event labels to include',
-        eventLabelPicked: '{count} selected (comma separated)',
-        eventLabelNoOptions:
-          'No timeline loaded yet, so no candidates — copy a label from the upstream analyze node or the event track.',
-        eventLabelHint:
-          'Multi-select works; you can also type event ids or types, separated by commas or 、 (empty = all)',
         sourceRelativePath: 'Source video relative path',
         sourceRelativePathPlaceholder: 'e.g. Assets/foo.mp4',
         sourceRelativePathHint: 'Leave empty to resolve from the timeline source asset',
         rulePacks: 'Director rule packs',
         rulePacksHint: 'None checked = built-in rules + every installed rule pack',
-        recipeId: 'Variant recipe',
-        recipeNone: 'No recipe (edit list only)',
-        recipeIdPlaceholder: 'Market-pack recipe id',
-        recipeIdHint: 'From installed semantic market packs (kind=recipe)',
-        slotPlaceholder: 'Value; comma-separate multiple',
-        slotHint: 'Each slot may take several values; one variant per combination (max 12)',
-        execute: 'Build video on run',
-        executeHint:
-          'Off = emit the invalidation plan and cost estimate only, without processing video',
-        editsJson: 'Edits JSON',
-        editsJsonPlaceholder:
-          '{\'[{"kind":"replaceEntity","entityId":"ent.product.bottle-1","newAssetId":"…"}]\'}',
-        editsJsonHint:
-          'Local: replaceEntity / removeEntity / editText / grade / dropBeat / reorderBeats; generative edits (regenerateShot, lip sync) are planned only',
-        editsSummary: 'Edit summary',
-        editsEmpty:
-          'No edits yet: this only produces an invalidation plan (no video). Try the "Insert sample" button below.',
-        editsCount: '{count} edits:',
-        editsIssue: 'Will be dropped:',
-        editsInsertSample: 'Insert sample edit (grade)',
-        editsStruct: 'Structured edits (common kinds)',
-        editsStructHint:
-          'The form only touches fields it knows; everything else (agent / hand-written advanced fields) is kept as-is. Generative edits still need raw JSON.',
-        addEdit: 'Add edit',
-        removeEdit: 'Remove',
-        pickBeat: 'Pick a beat…',
-        pickEntity: 'Pick an entity…',
-        pickNewAsset: 'Replacement asset id (e.g. asset.xxx)',
-        pickTextRegion: 'Text region id (e.g. ocr.003.xxxx)',
-        newText: 'New text',
-        planPreview: 'Plan preview (no build)',
+        execute: 'Generate video on run',
         promptsWithModel: 'Write prompts with a model',
         promptsWithModelHint:
           'When on, a text model first describes the picture (shot description / events / intents); the final prompt is still rule-assembled. Falls back to pure rules on failure.',
@@ -5540,6 +5451,8 @@ export default {
           'Per shot is controllable and lets you redo a single shot; a full pass is cheaper but cannot be partially redone',
         rebuildModel: 'Video model',
         rebuildModelHint: 'Default: the video model configured in settings',
+        rebuildHint:
+          'Generates one clip per shot from the prompt plan emitted by the upstream Semantic compile node, then concatenates them locally with ffmpeg (optionally mixing the original audio and burning transcript subtitles). Double-click to preview the video.',
         rebuildExecuteHint:
           'Turn off to emit the plan only (no model calls at all), then enable after checking the list',
         rebuildMaxShots: 'Max shots',
@@ -5553,16 +5466,6 @@ export default {
         rebuildAspectRatio: 'Aspect ratio',
         rebuildPromptPointer:
           'Per-shot prompts are edited on the Semantic compile node (double-click it to view/override).',
-        editsMovedHint:
-          'Edit operations moved into the editor opened by double-click (right pane "Edit" tab): select a beat / entity / event on the timeline, then pick an operation.',
-        planPreviewFailed: 'Plan preview failed (does not affect running):',
-        planLevel: 'Level {level}',
-        planKeep: 'copy {count}',
-        planReplace: 'replace {count}',
-        planRecompute: 'recompute {count}',
-        planPaid: 'paid regen {seconds}s',
-        planNoEvidence:
-          'No shot evidence loaded (run the upstream analyze node first); the numbers below assume an empty shot set.',
         timelineJson: 'Timeline JSON (no upstream)',
         timelineJsonPlaceholder: 'Paste Semantic Timeline JSON',
         timelineJsonHint:

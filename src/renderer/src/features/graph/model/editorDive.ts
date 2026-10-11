@@ -7,7 +7,7 @@ export type EditorDiveKind = 'asset' | 'screenplay' | 'canvas' | 'world' | 'beat
 /** 逻辑视图 id（双击侧栏/表格/工具/预览等） */
 export type EditorDiveViewId =
   | 'script.timeline'
-  | 'semantic.timeline'
+  | 'semantic.timeline' // view-id-keep：视图 id，与已删的 semantic.timeline 节点类型是两个命名空间
   | 'world.editor'
   | 'world.table'
   | 'beat.gen'
@@ -183,7 +183,7 @@ export function editorDiveViewFrameKey(rootKey: string, meta: EditorDiveViewMeta
   switch (meta.viewId) {
     case 'script.timeline':
       return `${root}/view:${meta.viewId}:${meta.scriptAssetId}:${meta.timelineNodeId ?? '_'}`
-    case 'semantic.timeline':
+    case 'semantic.timeline': // view-id-keep
       return `${root}/view:${meta.viewId}:${meta.timelineId}`
     case 'world.table':
       return `${root}/view:${meta.viewId}:${meta.worldAssetId}`

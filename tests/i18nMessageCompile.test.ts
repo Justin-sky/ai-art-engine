@@ -63,11 +63,10 @@ describe('i18n 文案可编译（花括号必须转义）', () => {
       messages: { 'zh-CN': zhCN as Record<string, unknown> }
     })
     const t = i18n.global.t as (key: string, named?: Record<string, unknown>) => string
-    // 修复节点编辑列表的示例占位符：JSON 要原样出现
-    const placeholder = t('graph.inspector.semantic.editsJsonPlaceholder')
-    expect(placeholder).toContain('[{"kind":"replaceEntity"')
-    expect(placeholder).toContain('"newAssetId"')
-    expect(placeholder.endsWith('}]')).toBe(true)
+    // 编译节点的提示词覆盖占位符：JSON 要原样出现
+    const placeholder = t('graph.inspector.semantic.promptOverridesPlaceholder')
+    expect(placeholder).toContain('{"shot.001.0"')
+    expect(placeholder.endsWith('}')).toBe(true)
     // 人脸模型来源提示里的 @ 路径要原样出现
     expect(t('settings.yoloModels.faceSourceMissing')).toContain('@shared/yoloCatalog')
     // 带插值的 @ 文案：@ 是字面量，{fps} 仍然插值

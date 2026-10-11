@@ -240,7 +240,7 @@ export interface GraphVideoValue {
 }
 
 /**
- * 语义时间线文档值（`semantic.analyze` 的出口、`semantic.timeline` 的透传）。
+ * 语义时间线文档值（`semantic.analyze` 的出口、`semantic.compile` 的入口）。
  *
  * 为什么要**同时**带 `text`：
  * - 端口兼容规则允许 `semanticTimeline → text`（把整份文档喂给 LLM 指令节点或文本消费者），
@@ -812,13 +812,8 @@ export interface NodeExecuteContext {
   saveSemanticTimeline?: (
     doc: import('../../semanticTimeline').SemanticTimeline
   ) => Promise<unknown>
-  /** 按语义编辑构建成片 */
-  buildSemanticVideo?: (
-    input: import('../../semanticTimeline').SemanticBuildRequest
-  ) => Promise<import('../../semanticTimeline').SemanticBuildResponse>
   /**
    * 语义重建：把**生成的**镜头片段接成成片（拼接 + 混原音轨 + 烧字幕 + 落清单）。
-   * 与 `buildSemanticVideo`（按编辑列表裁剪原片）是两条路：这里素材是模型新产出的。
    */
   rebuildSemanticVideo?: (
     input: import('../../semanticTimeline').SemanticRebuildRequest
@@ -1337,7 +1332,6 @@ export interface GraphRunOptions {
   loadSemanticEvidence?: NodeExecuteContext['loadSemanticEvidence']
   loadSemanticTimeline?: NodeExecuteContext['loadSemanticTimeline']
   saveSemanticTimeline?: NodeExecuteContext['saveSemanticTimeline']
-  buildSemanticVideo?: NodeExecuteContext['buildSemanticVideo']
   rebuildSemanticVideo?: NodeExecuteContext['rebuildSemanticVideo']
   listSemanticPacks?: NodeExecuteContext['listSemanticPacks']
   composeImageExpandCanvas?: NodeExecuteContext['composeImageExpandCanvas']

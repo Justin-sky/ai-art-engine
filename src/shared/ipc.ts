@@ -306,7 +306,6 @@ export const IpcChannels = {
   SEMANTIC_LOAD_EVIDENCE: 'semantic:loadEvidence',
   SEMANTIC_LOAD_TIMELINE: 'semantic:loadTimeline',
   SEMANTIC_SAVE_TIMELINE: 'semantic:saveTimeline',
-  SEMANTIC_BUILD: 'semantic:build',
   /** 语义重建：把生成的镜头片段接成成片（拼接 + 混原音轨 + 烧转写字幕） */
   SEMANTIC_REBUILD: 'semantic:rebuild',
   SEMANTIC_LIST_PACKS: 'semantic:listPacks',
@@ -1739,10 +1738,6 @@ export interface StudioApi {
   semanticSaveTimeline: (
     doc: import('./semanticTimeline').SemanticTimeline
   ) => Promise<{ ok: true }>
-  /** 按语义编辑构建成片（本地 ffmpeg；生成类编辑只出计划不执行） */
-  semanticBuild: (
-    input: import('./semanticTimeline').SemanticBuildRequest
-  ) => Promise<import('./semanticTimeline').SemanticBuildResponse>
   /**
    * 语义重建：生成片段的拼接落盘（主进程 ffmpeg）。
    * 片段由节点执行器逐镜生成后传入；这里只负责拼接/混音/字幕与清单。

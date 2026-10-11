@@ -300,47 +300,17 @@ export function appearanceSeekSeconds(
 }
 
 /**
- * 触发节点「事件标签过滤」的可选项：时间线里所有事件标签（去重、保持原顺序）。
- *
- * 触发节点的**运行输出不是时间线文档**（是 `{eventLabel, events, commands}`），
- * 所以候选项不能只看"本节点的 JSON / 本节点输出" —— 得能往上游找，
- * 否则这个下拉永远是空的（实测踩到）。
- */
-export function eventLabelChoices(
-  doc: { events?: ReadonlyArray<{ label?: unknown }> } | null | undefined
-): string[] {
-  const out: string[] = []
-  for (const event of doc?.events ?? []) {
-    const label = typeof event?.label === 'string' ? event.label.trim() : ''
-    if (label && !out.includes(label)) out.push(label)
-  }
-  return out
-}
-
-/**
  * 从运行输出里取**成片**的相对路径。
  *
- * 语义编辑出 `out-video`（单条），语义变体出 `out-videos`（取第一条预览）。
- * 双击节点应该先看**成片**，而不是只看 JSON 计划 —— 成片才是这个节点的产物。
- * 没有成片（只出计划 / 构建失败）时返回 undefined，调用方回落到文本结果。
+ * 语义重建出 `out-video`（单条）。双击节点应该先看**成片**，而不是只看 JSON 计划 ——
+ * 成片才是这个节点的产物。没有成片（只出计划 / 拼接失败）时返回 undefined，
+ * 调用方回落到文本结果。
  */
 export function resolveBuiltVideoRelativePath(
   outputs: Record<string, unknown> | null | undefined
 ): string | undefined {
-  const rel = (value: unknown): string | undefined => {
-    const path = (value as { relativePath?: unknown } | undefined)?.relativePath
-    return typeof path === 'string' && path.trim() ? path.trim() : undefined
-  }
-  const single = rel(outputs?.['out-video'])
-  if (single) return single
-  const group = outputs?.['out-videos'] as { items?: unknown } | undefined
-  if (Array.isArray(group?.items)) {
-    for (const item of group.items) {
-      const hit = rel(item)
-      if (hit) return hit
-    }
-  }
-  return undefined
+  const path = (outputs?.['out-video'] as { relativePath?: unknown } | undefined)?.relativePath
+  return typeof path === 'string' && path.trim() ? path.trim() : undefined
 }
 
 /** 右栏（视频+证据）可调宽度的边界 */

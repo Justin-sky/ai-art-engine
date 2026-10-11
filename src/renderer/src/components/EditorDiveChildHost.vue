@@ -84,11 +84,14 @@ const BeatAssetEditor = defineAsyncComponent(() => import('./BeatAssetEditor.vue
 const WorldElementEditor = defineAsyncComponent(() => import('./WorldElementEditor.vue'))
 const DirectorEditor = defineAsyncComponent(() => import('./DirectorEditor.vue'))
 
+/** 语义时间线视图单独提出，好让注册表的 key 与白名单标记留在同一行 */
+const SemanticTimelineDiveView = defineAsyncComponent(
+  () => import('./dive/EditorDiveSemanticTimelineView.vue')
+)
+
 const viewRegistry: Record<string, Component> = {
   'script.timeline': defineAsyncComponent(() => import('./dive/EditorDiveScriptTimelineView.vue')),
-  'semantic.timeline': defineAsyncComponent(
-    () => import('./dive/EditorDiveSemanticTimelineView.vue')
-  ),
+  'semantic.timeline': SemanticTimelineDiveView, // view-id-keep：dive 视图 id（不是节点类型）
   'world.editor': defineAsyncComponent(() => import('./dive/EditorDiveWorldEditorView.vue')),
   'world.table': defineAsyncComponent(() => import('./dive/EditorDiveWorldTableView.vue')),
   'beat.gen': defineAsyncComponent(() => import('./dive/EditorDiveBeatGenView.vue')),
@@ -222,7 +225,7 @@ const viewBindings = computed(() => {
         nodeId: meta.nodeId,
         gamePlayAssetId: meta.gamePlayAssetId
       }
-    case 'semantic.timeline':
+    case 'semantic.timeline': // view-id-keep：dive 视图 id（不是节点类型）
       return {
         ...base,
         timelineId: meta.timelineId,

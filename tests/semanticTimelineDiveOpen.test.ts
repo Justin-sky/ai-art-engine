@@ -8,7 +8,7 @@ import zhCN from '../src/renderer/src/i18n/locales/zh-CN'
 /**
  * 「语义时间线 dive 打不开 / 报 timeline not found」的回归守卫。
  *
- * 实测踩到：透传节点（`semantic.timeline`）自己没时间线时，卡片**编了一个假 id**
+ * 实测踩到：节点自己没时间线时，卡片**编了一个假 id**
  * `stl.node.<nodeId>` 去开编辑器 → dive 去读不存在的 `Semantic/<假id>/timeline.json`
  * → 用户看到 `timeline not found`。正确做法是：回落上游节点；真没有就给提示。
  */
@@ -22,10 +22,6 @@ const view = readFileSync(
 )
 const inspector = readFileSync(
   join(process.cwd(), 'src/renderer/src/components/SemanticTimelineInspector.vue'),
-  'utf8'
-)
-const executor = readFileSync(
-  join(process.cwd(), 'src/shared/graph/execute/semanticTimeline.ts'),
   'utf8'
 )
 
@@ -62,7 +58,7 @@ describe('语义时间线 dive 的打开路径', () => {
   })
 
   it('没有运行结果时双击也要有反应（不能静默什么都不做）', () => {
-    // 工具节点（触发 / 编译 / 修复 / 变体）与分析的兜底都改成"开文本 dive 说明情况"
+    // 工具节点（编译 / 重建）与分析的兜底都改成"开文本 dive 说明情况"
     expect(card).toContain('function semanticNoResultHint(')
     /**
      * 两个分支必须**分别**断言，而且不能用子串关系糊弄过去：
@@ -85,12 +81,10 @@ describe('语义时间线 dive 的打开路径', () => {
     expect(card).toContain("t('graph.semanticTimeline.noResultHintSub')")
   })
 
-  it('触发节点的「事件标签过滤」要真的列出候选（下拉 + 上游解析）', () => {
+  it('检查器仍然从「本节点 / 本节点输出 / 上游」三处解析时间线文档', () => {
     /**
-     * 以前候选项只来自"本节点 JSON / 本节点输出"，而触发节点的输出是
-     * `{eventLabel, events, commands}`（不是时间线文档）→ 下拉永远是空的。
+     * 编译节点的入边是整份时间线文档；三处来源都要参与，否则用户看不到任何摘要。
      */
-    expect(inspector).toContain('eventLabelChoices(timelineDoc.value)')
     expect(inspector).toContain('const upstreamTimelineJson = ref(')
     expect(inspector).toContain('graphEditorHosts.listIncomingEdges(host, current.id)')
     // 三种上游来源：上游运行输出 → 上游 timelineJson → 上游 semanticTimelineId 读盘
@@ -100,52 +94,11 @@ describe('语义时间线 dive 的打开路径', () => {
     expect(inspector).toContain(
       '[timelineJson.value, runOutText.value, upstreamTimelineJson.value]'
     )
-    // 候选项以**多选列表**呈现（原生 datalist 没箭头，很多人不知道有候选）
-    expect(inspector).toContain('class="event-label-list"')
-    expect(inspector).toContain('v-if="eventLabelOptions.length"')
-    expect(inspector).toContain('@change="toggleEventLabel(label)"')
-    // 列不出候选时要说清楚原因
-    expect(inspector).toContain('eventLabelNoOptions')
-  })
-
-  it('事件标签支持多选（勾选写回逗号分隔，参数仍是单值字段）', () => {
-    // 勾选状态从输入框解析（手填的 id/type 也保留）
-    expect(inspector).toContain('const pickedEventLabels = computed(() => parseEventLabels(')
-    // 复选框列表
-    expect(inspector).toContain('class="event-label-item check"')
-    expect(inspector).toContain('type="checkbox"')
-    expect(inspector).toContain(':checked="pickedEventLabels.includes(label)"')
-    expect(inspector).toContain('@change="toggleEventLabel(label)"')
-    // 切换后重写成逗号分隔并落盘
-    expect(inspector).toMatch(
-      /function toggleEventLabel[\s\S]{0,320}?eventLabel\.value = next\.join\(', '\)[\s\S]{0,80}?persistTrigger\(\)/
-    )
-    /**
-     * 多选就够，**不要再放一个单选下拉**（用户反馈：有多选为什么还有单选）。
-     * 纯文本框保留（可手填 id / type / 逗号多值），但**不挂 datalist** ——
-     * 挂了浏览器会画一个下拉箭头，看起来又像选择控件（用户第二次反馈）。
-     */
-    expect(inspector).not.toContain('event-label-select')
-    expect(inspector).not.toContain('onPickEventLabel')
-    expect(inspector).not.toContain('<datalist')
-    expect(inspector).not.toContain('list="semantic-event-labels"')
+    // 只服务已删事件节点的那套「事件标签多选」必须清零
+    expect(inspector).not.toContain('eventLabelChoices(')
+    expect(inspector).not.toContain('eventLabelOptions')
     expect(zhCN.graph.inspector.semantic.eventLabelPick).toBeUndefined()
     expect(enUS.graph.inspector.semantic.eventLabelPick).toBeUndefined()
-    /**
-     * 复选框与标签**同一行**：选择器必须带 `.fields` 前缀提高权重，
-     * 否则被 `.fields label { flex-direction: column }`（0,1,1）压成上下两行（用户反馈）。
-     */
-    expect(inspector).toContain('class="event-label-item check"')
-    const itemRule = /\.fields \.event-label-item\s*\{([^}]*)\}/s.exec(inspector)?.[1] ?? ''
-    expect(itemRule, '缺少 .fields .event-label-item 规则').toBeTruthy()
-    expect(itemRule).toMatch(/display:\s*flex/)
-    expect(itemRule).toMatch(/flex-direction:\s*row/)
-    expect(itemRule).toMatch(/align-items:\s*center/)
-    // 引擎侧：多值解析 + 归属筛选（行为由 tests/semanticEventNode.test.ts 覆盖）
-    expect(executor).toContain('parseEventLabels(ctx.node.params?.eventLabel)')
-    expect(executor).toContain('labels.includes(e.label)')
-    expect(executor).toContain('commandBelongsToEvents(c, events, timeline.intents)')
-    expect(executor).toContain('eventLabels: labels')
   })
 
   it('两套文案都有这五个 key', () => {

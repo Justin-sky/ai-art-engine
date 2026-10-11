@@ -3529,14 +3529,7 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
   },
   {
     id: 'videoSemantic',
-    typeIds: [
-      'semantic.analyze',
-      'semantic.edit',
-      'semantic.variant',
-      'semantic.timeline',
-      'semantic.event',
-      'semantic.compile'
-    ]
+    typeIds: ['semantic.analyze', 'semantic.compile', 'semantic.rebuild']
   },
   {
     id: 'voice',

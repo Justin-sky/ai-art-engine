@@ -7,7 +7,6 @@ import {
   clampSeekSeconds,
   clampSidePaneWidth,
   entityKindKey,
-  eventLabelChoices,
   resolveEvidenceRef,
   resolveSemanticTimelineViewTarget,
   resolveTriggerRange,
@@ -343,21 +342,6 @@ describe('semanticTimelineView', () => {
     ).toEqual({ id: 'stl.aaa', json: doc, sourceRelativePath: video })
     // 既没 id 也没 JSON → null（调用方据此回落上游 / 给提示，而不是编假 id）
     expect(resolveSemanticTimelineViewTarget({ params: { timelineJson: '' } }, null)).toBeNull()
-  })
-
-  /**
-   * 触发节点下拉的候选项：时间线里的事件标签（去重、保序、剔除空值）。
-   */
-  it('eventLabelChoices：去重保序、剔除空标签、无文档给空数组', () => {
-    expect(
-      eventLabelChoices({
-        events: [{ label: '京东福利价引导' }, { label: '固定' }, { label: '京东福利价引导' }]
-      })
-    ).toEqual(['京东福利价引导', '固定'])
-    expect(eventLabelChoices({ events: [{ label: '  ' }, { label: undefined }, {}] })).toEqual([])
-    expect(eventLabelChoices({ events: [] })).toEqual([])
-    expect(eventLabelChoices(null)).toEqual([])
-    expect(eventLabelChoices(undefined)).toEqual([])
   })
 
   it('非法 / 不相干的 JSON 不算时间线目标', () => {

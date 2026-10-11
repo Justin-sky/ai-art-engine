@@ -18,34 +18,23 @@ import {
 } from '../../semanticTimeline'
 import {
   assignBeatsHeuristic,
-  buildEntityShotIndex,
   collectRulePacks,
-  commandBelongsToEvents,
   compileDirectorCommands,
   createEmptySemanticTimeline,
   draftsToEvents,
-  findRecipe,
   findVocabularyInPacks,
-  freezeBuildDefinition,
   heuristicEventsFromUtterances,
   inferIntentsFromEvents,
-  instantiateRecipe,
   intentId,
-  normalizeSemanticEdits,
   parseEventDrafts,
-  parseEventLabels,
   parseJsonArray,
   parseShotDescriptions,
-  planInvalidation,
   rebuildTracks,
   singleShot,
-  timelineVersionHash,
   type BeatVocabulary,
   type DirectorIntent,
   type IntentTechnique,
   type RawEventDraft,
-  type SemanticBuildResponse,
-  type SemanticEdit,
   type SemanticPack,
   type SemanticTimeline,
   type SemanticTrackKind,
@@ -55,8 +44,6 @@ import {
 import { validateSemanticTimeline } from '../../semanticTimeline'
 import { semanticTimelineValue } from './semanticTimelineValue'
 
-/** 变体批量构建上限（防配方槽位笛卡尔积爆炸） */
-const MAX_VARIANTS = 12
 /** 镜头描述一次最多看的关键帧数 */
 const MAX_DESCRIBE_SHOTS = 8
 
@@ -764,258 +751,6 @@ function emptyPromptPlan(): VideoPromptPlan {
     fullPrompt: '',
     settings: { width: 0, height: 0, fps: 30, durationSec: 0 }
   }
-}
-
-export async function executeSemanticEventNode(
-  ctx: NodeExecuteContext
-): Promise<Record<string, GraphValue>> {
-  const timeline = await readTimeline(ctx)
-  if (!timeline) return outText('{}')
-  /**
-   * 事件标签支持**多种分隔符多值**（`eventLabel` 保持单值字段名以便向后兼容）：
-   * 串一条片子时常常要一次抓多个事件（促销类 + 收尾号召）。
-   */
-  const labels = parseEventLabels(ctx.node.params?.eventLabel)
-  const rulePacks = collectRulePacks(await loadPacks(ctx), rulePackIds(ctx))
-  const all = compileDirectorCommands(timeline, { rulePacks })
-  /**
-   * `notes`：把「为什么是空的」写进**输出本身**。
-   *
-   * 以前过滤没命中时只打一条运行日志，输出就是 `{events: [], commands: []}` ——
-   * 用户盯着两个空数组不知道是标签写错、还是输入的时间线压根没事件（实测踩到）。
-   */
-  const notes = timelineNotes(timeline, labels)
-  if (labels.length === 0) {
-    return outText(
-      JSON.stringify(
-        { eventLabel: '', eventLabels: [], events: timeline.events, commands: all, notes },
-        null,
-        2
-      )
-    )
-  }
-  const events = timeline.events.filter(
-    (e) => labels.includes(e.label) || labels.includes(e.id) || labels.includes(e.type)
-  )
-  /**
-   * 命令筛选：**按归属**，时间重叠只作兜底（口径见 `commandBelongsToEvents`）。
-   *
-   * 以前对所有命令都用「来源意图 trigger 命中所选事件 **或** 时间区间重叠」——
-   * 实测（用户真实工程）：选 8 个事件时 116 条里只有 39 条真属于这些事件，
-   * **65 条仅因时间重叠被留下**，于是"选与不选看着差不多"（commands 只从 129 掉到 116）。
-   */
-  const commands = all.filter((c) => commandBelongsToEvents(c, events, timeline.intents))
-  if (events.length === 0 && notes.length === 0) {
-    say(
-      ctx,
-      `时间线里没有「${labels.join('、')}」事件`, // cjk-ok
-      `No "${labels.join(', ')}" event in the timeline`,
-      'warn'
-    )
-  }
-  for (const note of notes) say(ctx, note, note, 'warn')
-  return outText(
-    JSON.stringify(
-      { eventLabel: labels.join(', '), eventLabels: labels, events, commands, notes },
-      null,
-      2
-    )
-  )
-}
-
-/**
- * 空结果的两种成因，写清楚（`events: []` 到底为什么空）。
- *
- * - 输入文档没有事件：问题在**上游分析节点**，不是过滤词；
- * - 有事件但没命中：把**可用标签**列出来，直接告诉用户该填什么。
- */
-function timelineNotes(timeline: SemanticTimeline, labels: string[]): string[] {
-  const notes: string[] = []
-  if (timeline.events.length === 0) {
-    /**
-     * 带上文档 id 与各证据计数：用户可以直接和磁盘上的 `Semantic/<id>/timeline.json` 对照，
-     * 判断是"接线接错/上游 run 输出是空的"还是"分析真的没产出事件"。
-     */
-    const id = typeof timeline.id === 'string' && timeline.id ? timeline.id : '(no id)' // cjk-ok
-    const hashes = timeline.evidence?.hashes ?? {}
-    notes.push(
-      `输入的时间线没有事件（文档 ${id}；镜头 ${hashes.shots ?? '?'} · 话语 ${hashes.utterances ?? '?'}）—— ` + // cjk-ok
-        `检查上游「语义分析」节点是否已运行、以及 Timeline 输入口是否接上` // cjk-ok
-    )
-    return notes
-  }
-  if (labels.length === 0) return notes
-  const matched = timeline.events.some(
-    (e) => labels.includes(e.label) || labels.includes(e.id) || labels.includes(e.type)
-  )
-  if (!matched) {
-    const available = [...new Set(timeline.events.map((e) => e.label))].slice(0, 12)
-    notes.push(
-      `没有事件匹配「${labels.join('、')}」；可用标签（前 12 个）：${available.join('、')}` // cjk-ok
-    )
-  }
-  return notes
-}
-
-// ─── semantic.edit / semantic.variant ──────────────────────────────────────────
-
-function readEdits(ctx: NodeExecuteContext): SemanticEdit[] {
-  const raw = parseJsonParam<unknown>(ctx.node.params?.editsJson, [])
-  const { edits, issues } = normalizeSemanticEdits(raw, 'user')
-  for (const issue of issues) say(ctx, `已忽略编辑 ${issue}`, `Ignored edit ${issue}`, 'warn') // cjk-ok
-  return edits
-}
-
-function planFor(timeline: SemanticTimeline, shots: ShotEvidence[], edits: SemanticEdit[]) {
-  const plan = planInvalidation({
-    timeline,
-    shots,
-    edits,
-    entityShotIndex: buildEntityShotIndex(timeline)
-  })
-  const definition = freezeBuildDefinition(timeline, edits, plan, timelineVersionHash(timeline))
-  return { plan, definition }
-}
-
-async function buildOnce(
-  ctx: NodeExecuteContext,
-  timeline: SemanticTimeline,
-  edits: SemanticEdit[],
-  label?: string
-): Promise<SemanticBuildResponse> {
-  const res = await ctx.buildSemanticVideo!({
-    timeline,
-    edits,
-    sourceRelativePath: String(ctx.node.params?.sourceRelativePath || '').trim() || undefined,
-    label
-  })
-  for (const note of res.notes) ctx.log?.(note, 'warn')
-  if (res.manifest.status !== 'done' || !res.outputRelativePath) {
-    throw new Error(res.manifest.error || (isEn(ctx) ? 'Semantic build failed' : '语义构建失败')) // cjk-ok
-  }
-  const qc = res.manifest.qc
-  if (qc) {
-    say(
-      ctx,
-      `构建完成 ${res.outputRelativePath} · QC ${qc.level} ${qc.passed ? '通过' : '未通过'}`, // cjk-ok
-      `Built ${res.outputRelativePath} · QC ${qc.level} ${qc.passed ? 'passed' : 'failed'}`,
-      qc.passed ? 'info' : 'warn'
-    )
-  }
-  return res
-}
-
-function shouldExecute(ctx: NodeExecuteContext): boolean {
-  if (ctx.node.params?.semanticExecute === false) return false
-  if (!ctx.buildSemanticVideo) {
-    say(
-      ctx,
-      '当前执行环境没有语义构建能力，只输出计划', // cjk-ok
-      'Semantic build is unavailable here; plan only',
-      'warn'
-    )
-    return false
-  }
-  return true
-}
-
-/** semantic.edit：编辑 → 失效计划 → 本地构建成片 */
-export async function executeSemanticEditNode(
-  ctx: NodeExecuteContext
-): Promise<Record<string, GraphValue>> {
-  const timeline = await readTimeline(ctx)
-  if (!timeline) return outText('{}')
-  const edits = readEdits(ctx)
-  const shotCtx = await loadShotContext(ctx, timeline)
-  const { plan, definition } = planFor(timeline, shotCtx.shots, edits)
-  say(
-    ctx,
-    `修复计划：${edits.length} 条编辑 · 目标 ${plan.targetLevel} · ${plan.cost.note ?? ''}`, // cjk-ok
-    `Repair plan: ${edits.length} edits · target ${plan.targetLevel} · ${plan.cost.note ?? ''}`
-  )
-  if (edits.length === 0 || !shouldExecute(ctx)) {
-    return outText(JSON.stringify({ plan, definition }, null, 2))
-  }
-  const res = await buildOnce(ctx, timeline, edits)
-  return {
-    out: { kind: 'text', text: JSON.stringify(res, null, 2) },
-    'out-video': {
-      kind: 'video',
-      id: res.definition.id,
-      relativePath: res.outputRelativePath,
-      createdAt: res.manifest.finishedAt
-    }
-  }
-}
-
-/** semantic.variant：配方 × 槽位矩阵 → 多个变体成片 */
-export async function executeSemanticVariantNode(
-  ctx: NodeExecuteContext
-): Promise<Record<string, GraphValue>> {
-  const timeline = await readTimeline(ctx)
-  if (!timeline) return outText('{}')
-  const p = ctx.node.params ?? {}
-  const recipeId = String(p.recipeId || '').trim()
-  const userEdits = readEdits(ctx)
-  const shotCtx = await loadShotContext(ctx, timeline)
-
-  let rows: Array<{ slots: Record<string, unknown>; edits: SemanticEdit[] }> = [
-    { slots: {}, edits: [] }
-  ]
-  if (recipeId) {
-    const recipe = findRecipe(await loadPacks(ctx), recipeId)
-    if (!recipe) {
-      throw new Error(isEn(ctx) ? `Recipe not found: ${recipeId}` : `找不到变体配方：${recipeId}`) // cjk-ok
-    }
-    const slotValues = parseJsonParam<Record<string, unknown>>(p.recipeSlotsJson, {})
-    const inst = instantiateRecipe(recipe, slotValues)
-    if (inst.missingSlots.length > 0) {
-      throw new Error(
-        isEn(ctx)
-          ? `Recipe slots missing: ${inst.missingSlots.join(', ')}`
-          : `配方槽位未填写：${inst.missingSlots.join(', ')}` // cjk-ok
-      )
-    }
-    rows = inst.rows.map((row) => ({
-      slots: row.slots,
-      edits: normalizeSemanticEdits(row.edits, 'agent').edits
-    }))
-  }
-  if (rows.length > MAX_VARIANTS) {
-    say(
-      ctx,
-      `变体 ${rows.length} 个，只构建前 ${MAX_VARIANTS} 个`, // cjk-ok
-      `${rows.length} variants; building first ${MAX_VARIANTS}`,
-      'warn'
-    )
-    rows = rows.slice(0, MAX_VARIANTS)
-  }
-
-  const execute = shouldExecute(ctx)
-  const variants: unknown[] = []
-  const items: GraphVideoItem[] = []
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i]!
-    const edits = [...row.edits, ...userEdits]
-    const { plan, definition } = planFor(timeline, shotCtx.shots, edits)
-    if (!execute || edits.length === 0) {
-      variants.push({ slots: row.slots, plan, definition })
-      continue
-    }
-    say(ctx, `构建变体 ${i + 1}/${rows.length}`, `Building variant ${i + 1}/${rows.length}`) // cjk-ok
-    const res = await buildOnce(ctx, timeline, edits, `v${i + 1}`)
-    variants.push({ slots: row.slots, ...res })
-    items.push({
-      id: `${res.definition.id}.v${i + 1}`,
-      relativePath: res.outputRelativePath,
-      createdAt: res.manifest.finishedAt
-    })
-  }
-  const outputs: Record<string, GraphValue> = {
-    out: { kind: 'text', text: JSON.stringify({ recipeId, variants }, null, 2) }
-  }
-  if (items.length > 0) outputs['out-videos'] = { kind: 'videos', items }
-  return outputs
 }
 
 // ─── 语义重建（分析 → 编译 → 重建） ───────────────────────────────────────────

@@ -456,11 +456,6 @@ export function registerIpcHandlers(): void {
       (await import('./services/semanticTimeline/graphBridge')).semanticSaveTimelineForGraph(doc)
   )
   handle(
-    IpcChannels.SEMANTIC_BUILD,
-    async (input: import('@shared/semanticTimeline').SemanticBuildRequest) =>
-      (await import('./services/semanticTimeline/graphBridge')).semanticBuildForGraph(input)
-  )
-  handle(
     IpcChannels.SEMANTIC_REBUILD,
     async (input: import('@shared/semanticTimeline').SemanticRebuildRequest) =>
       (await import('./services/semanticTimeline/graphBridge')).semanticRebuildForGraph(input)

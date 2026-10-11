@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 /**
- * 「选中语义编辑节点，inspector 没有显示」的守卫。
+ * 「选中语义节点，inspector 没有显示」的守卫。
  *
  * 机制：检查器（含子组件 GraphNodeOutputPreview）在渲染时抛错 → Vue 把该子树留空 →
  * 用户只看到**空白**。`InspectorPanel` 本来就有 onErrorCaptured，但只 console.error，
@@ -82,7 +82,7 @@ describe('检查器渲染失败的可见性', () => {
       return -1
     }
 
-    for (const name of ['timelineDoc', 'editsJson', 'node']) {
+    for (const name of ['timelineDoc', 'upstreamTimelineJson', 'node']) {
       expect(declIndex(name), `${name} 应该有声明`).toBeGreaterThan(-1)
       const use = firstUse(name)
       if (use >= 0) {
@@ -92,21 +92,25 @@ describe('检查器渲染失败的可见性', () => {
       }
     }
 
-    // 计划预览那几个必须还在，且只能声明一次（防止搬移时插出重复块）
+    // 时间线摘要那几个必须还在，且只能声明一次（防止搬移时插出重复块）
+    for (const name of ['timelineSummary', 'runOutText', 'timelineDoc']) {
+      const hits = withoutComments.split(`const ${name} =`).length - 1
+      expect(hits, `${name} 必须存在且只能声明一次（重复块会导致同名重复声明）`).toBe(1)
+    }
+    // 只服务已删节点（语义事件 / 语义编辑 / 语义变体）的那几块不该再留在检查器里
     for (const name of [
       'planShots',
       'planPreviewResult',
       'planSummary',
       'planError',
-      'planNeedsEvidence'
+      'planNeedsEvidence',
+      'editsJson',
+      'pickedEventLabels',
+      'eventLabelOptions',
+      'recipeSlots'
     ]) {
       const hits = withoutComments.split(`const ${name} =`).length - 1
-      expect(hits, `${name} 必须存在且只能声明一次（重复块会导致同名重复声明）`).toBe(1)
-    }
-    // 编辑操作已搬到 dive 面板：这些不该再出现在检查器里
-    for (const name of ['editsSummary', 'editDrafts', 'beatOptions', 'entityOptions']) {
-      const hits = withoutComments.split(`const ${name} =`).length - 1
-      expect(hits, `${name} 已移到 SemanticEditPanel，不应留在检查器`).toBe(0)
+      expect(hits, `${name} 属于已删节点，不应留在检查器`).toBe(0)
     }
   })
 })
