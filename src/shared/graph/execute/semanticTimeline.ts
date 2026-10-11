@@ -1163,7 +1163,9 @@ export async function executeSemanticRebuildNode(
     `Rebuilt ${rebuilt.outputRelativePath} (${rebuilt.clipCount} clips${rebuilt.keptAudio ? ' + original audio' : ''})`
   )
   return {
-    ...outText(JSON.stringify({ mode, generated, failures, rebuild: rebuilt, notes }, null, 2)),
+    ...outText(
+      JSON.stringify({ mode, planned, generated, failures, rebuild: rebuilt, notes }, null, 2)
+    ),
     'out-video': {
       kind: 'video',
       id: `rebuild.${plan.timelineId}`,
