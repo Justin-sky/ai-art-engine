@@ -58,4 +58,23 @@ describe('语义重建节点的界面接线', () => {
       /props\.node\.typeId === 'semantic\.rebuild'[\s\S]{0,400}?resolveBuiltVideoRelativePath\(props\.runState\?\.outputs\)/
     )
   })
+
+  /**
+   * 「编译 → 微调 → 重建」要能闭环：编译节点上必须能开"用模型写提示词"、
+   * 也必须能按镜头人工覆盖提示词（否则人工微调只能改代码）。
+   */
+  it('编译节点能开模型写提示词、也能人工覆盖（写回节点参数）', () => {
+    expect(inspector).toContain('useLlmForPrompts')
+    expect(inspector).toContain('promptOverridesJson')
+    expect(inspector).toContain("t('graph.inspector.semantic.promptsWithModel')")
+    expect(inspector).toContain("t('graph.inspector.semantic.promptOverridesHint')")
+    // 写回：两个值都要进 patch（不是只改本地 ref）
+    expect(inspector).toMatch(
+      /function persistCompile\(\): void \{[\s\S]{0,300}?semanticLlm: useLlmForPrompts\.value[\s\S]{0,160}?promptOverridesJson: promptOverridesJson\.value/
+    )
+    // 选中节点变化时回填（否则显示上一个节点的覆盖内容）
+    expect(inspector).toMatch(
+      /useLlmForPrompts\.value = p\.semanticLlm === true[\s\S]{0,200}?typeof p\.promptOverridesJson === 'string'/
+    )
+  })
 })

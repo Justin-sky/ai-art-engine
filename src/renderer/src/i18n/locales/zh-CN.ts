@@ -5389,6 +5389,13 @@ export default {
         pickTextRegion: '字幕区域 id（如 ocr.003.xxxx）',
         newText: '改成什么文本',
         planPreview: '计划预览（不构建）',
+        promptsWithModel: '用模型写提示词',
+        promptsWithModelHint:
+          '打开后先用文本模型把画面说清楚（镜头描述/事件/意图），再规则拼装成提示词；失败会自动退回纯规则',
+        promptOverrides: '人工修改提示词（按镜头）',
+        promptOverridesPlaceholder: '{\'{"shot.001.0": "改成你要的画面描述"}\'}',
+        promptOverridesHint:
+          '按 shotId 覆盖对应镜头的提示词（JSON：{\'{"shotId":"提示词"}\'}）；留空则全用自动拼装结果',
         rebuildMode: '生成粒度',
         rebuildModeShots: '逐镜头（每镜一段，拼接成片）',
         rebuildModeFull: '整片一次（一条长提示词）',

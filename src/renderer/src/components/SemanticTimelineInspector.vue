@@ -189,6 +189,25 @@
         />
         <span class="field-hint">{{ t('graph.inspector.semantic.sourceRelativePathHint') }}</span>
       </label>
+
+      <label class="check">
+        <input v-model="useLlmForPrompts" type="checkbox" @change="persistCompile" />
+        <span>{{ t('graph.inspector.semantic.promptsWithModel') }}</span>
+      </label>
+      <span class="field-hint">{{ t('graph.inspector.semantic.promptsWithModelHint') }}</span>
+
+      <label>
+        <span class="field-label">{{ t('graph.inspector.semantic.promptOverrides') }}</span>
+        <textarea
+          v-model="promptOverridesJson"
+          class="prompt-overrides"
+          rows="5"
+          spellcheck="false"
+          :placeholder="t('graph.inspector.semantic.promptOverridesPlaceholder')"
+          @change="persistCompile"
+        />
+        <span class="field-hint">{{ t('graph.inspector.semantic.promptOverridesHint') }}</span>
+      </label>
     </section>
 
     <section v-if="usesRulePacks" class="fields">
@@ -557,6 +576,10 @@ const transcribe = ref(true)
 const separateAudio = ref(true)
 const detectEntities = ref(true)
 const useLlm = ref(false)
+/** 语义编译：用模型写提示词（与分析的富化同一套开关语义） */
+const useLlmForPrompts = ref(false)
+/** 语义编译：人工改过的提示词（按 shotId 覆盖规则拼装结果） */
+const promptOverridesJson = ref('')
 const semanticFps = ref(30)
 const semanticDuration = ref(60)
 const sourceAssetId = ref('')
@@ -622,6 +645,8 @@ function loadConfig(current: NonNullable<typeof node.value>): void {
   recipeSlots.value = parseSlots(p.recipeSlotsJson)
   execute.value = p.semanticExecute !== false
   sourceRelativePath.value = p.sourceRelativePath?.trim() || ''
+  useLlmForPrompts.value = p.semanticLlm === true
+  promptOverridesJson.value = typeof p.promptOverridesJson === 'string' ? p.promptOverridesJson : ''
   syncRebuildFromNode()
   selectedRulePacks.value = String(p.rulePackIds || '')
     .split(/[,，\s]+/)
@@ -748,7 +773,11 @@ function toggleEventLabel(label: string): void {
 }
 
 function persistCompile(): void {
-  patch({ sourceRelativePath: sourceRelativePath.value.trim() })
+  patch({
+    sourceRelativePath: sourceRelativePath.value.trim(),
+    semanticLlm: useLlmForPrompts.value,
+    promptOverridesJson: promptOverridesJson.value
+  })
 }
 
 function toggleRulePack(id: string): void {

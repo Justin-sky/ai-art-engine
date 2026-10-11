@@ -5526,6 +5526,13 @@ export default {
         pickTextRegion: 'Text region id (e.g. ocr.003.xxxx)',
         newText: 'New text',
         planPreview: 'Plan preview (no build)',
+        promptsWithModel: 'Write prompts with a model',
+        promptsWithModelHint:
+          'When on, a text model first describes the picture (shot description / events / intents); the final prompt is still rule-assembled. Falls back to pure rules on failure.',
+        promptOverrides: 'Manual prompt overrides (per shot)',
+        promptOverridesPlaceholder: '{\'{"shot.001.0": "your own shot description"}\'}',
+        promptOverridesHint:
+          'Override individual shots by shotId (JSON: {\'{"shotId": "prompt"}\'}); empty means use the assembled prompts.',
         rebuildMode: 'Generation granularity',
         rebuildModeShots: 'Per shot (one clip each, then concatenated)',
         rebuildModeFull: 'Single full pass (one long prompt)',
