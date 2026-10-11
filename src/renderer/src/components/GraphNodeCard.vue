@@ -2812,6 +2812,25 @@ function onPreviewDblClick(): void {
       await openSemanticResultTextDive(title, raw || semanticNoResultHint())
       return
     }
+    /**
+     * 语义编译：双击**优先进 dive 的提示词面板**（逐镜看/改提示词）。
+     *
+     * 以前它落在下面那个通用的"文本结果"分支上 —— 计划是一大坨 JSON，
+     * 用户在里面手改提示词既不直观、也容易改坏结构。dive 里按镜一行才好改。
+     * 拿不到时间线时也照进（视图给「先接上游语义分析」的提示），只有连 dive 都开不出来
+     * 才回落到文本结果。
+     */
+    if (props.node.typeId === 'semantic.compile') {
+      const target =
+        resolveSemanticTimelineViewTarget(props.node, props.runState) ??
+        resolveUpstreamTimelinePayload()
+      const ok = await openSemanticTimelineDive(title, target)
+      if (!ok) {
+        const raw = resolveSemanticOutText(props.node, props.runState)
+        await openSemanticResultTextDive(title, raw || semanticNoResultHint())
+      }
+      return
+    }
     if (isSemanticTimelineToolNode(props.node)) {
       /**
        * 语义重建的产物是**成片**，不是 JSON 计划 —— 双击优先预览成片
