@@ -5526,6 +5526,26 @@ export default {
         pickTextRegion: 'Text region id (e.g. ocr.003.xxxx)',
         newText: 'New text',
         planPreview: 'Plan preview (no build)',
+        rebuildMode: 'Generation granularity',
+        rebuildModeShots: 'Per shot (one clip each, then concatenated)',
+        rebuildModeFull: 'Single full pass (one long prompt)',
+        rebuildModeHint:
+          'Per shot is controllable and lets you redo a single shot; a full pass is cheaper but cannot be partially redone',
+        rebuildModel: 'Video model',
+        rebuildModelHint: 'Default: the video model configured in settings',
+        rebuildExecuteHint:
+          'Turn off to emit the plan only (no model calls at all), then enable after checking the list',
+        rebuildMaxShots: 'Max shots',
+        rebuildMaxShotsHint:
+          'How many clips the per-shot mode generates at most (default 12), so a stray click cannot burn dozens of calls',
+        rebuildKeepAudio: 'Keep original audio',
+        rebuildBurnSubtitles: 'Burn transcript subtitles',
+        rebuildDuration: 'Clip duration (s)',
+        rebuildDurationPlaceholder: 'Empty = follow shot duration',
+        rebuildResolution: 'Resolution',
+        rebuildAspectRatio: 'Aspect ratio',
+        rebuildPromptPointer:
+          'Per-shot prompts are edited on the Semantic compile node (double-click it to view/override).',
         editsMovedHint:
           'Edit operations moved into the editor opened by double-click (right pane "Edit" tab): select a beat / entity / event on the timeline, then pick an operation.',
         planPreviewFailed: 'Plan preview failed (does not affect running):',

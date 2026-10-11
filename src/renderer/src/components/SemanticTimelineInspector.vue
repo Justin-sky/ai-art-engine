@@ -206,6 +206,85 @@
       </div>
     </section>
 
+    <section v-if="isRebuild" class="fields">
+      <label>
+        <span class="field-label">{{ t('graph.inspector.semantic.rebuildMode') }}</span>
+        <select v-model="rebuildMode" @change="persistRebuild">
+          <option value="shots">{{ t('graph.inspector.semantic.rebuildModeShots') }}</option>
+          <option value="full">{{ t('graph.inspector.semantic.rebuildModeFull') }}</option>
+        </select>
+        <span class="field-hint">{{ t('graph.inspector.semantic.rebuildModeHint') }}</span>
+      </label>
+
+      <label>
+        <span class="field-label">{{ t('graph.inspector.semantic.rebuildModel') }}</span>
+        <select v-model="rebuildModelKey" @change="persistRebuild">
+          <option value="">{{ t('graph.inspector.semantic.modelAuto') }}</option>
+          <option v-for="opt in rebuildModelOptions" :key="opt.key" :value="opt.key">
+            {{ opt.label }}
+          </option>
+        </select>
+        <span class="field-hint">{{ t('graph.inspector.semantic.rebuildModelHint') }}</span>
+      </label>
+
+      <label class="check">
+        <input v-model="rebuildExecute" type="checkbox" @change="persistRebuild" />
+        <span>{{ t('graph.inspector.semantic.execute') }}</span>
+      </label>
+      <span class="field-hint">{{ t('graph.inspector.semantic.rebuildExecuteHint') }}</span>
+
+      <label>
+        <span class="field-label">{{ t('graph.inspector.semantic.rebuildMaxShots') }}</span>
+        <input
+          v-model.number="rebuildMaxShots"
+          type="number"
+          min="1"
+          max="60"
+          @change="persistRebuild"
+        />
+        <span class="field-hint">{{ t('graph.inspector.semantic.rebuildMaxShotsHint') }}</span>
+      </label>
+
+      <label class="check">
+        <input v-model="rebuildKeepAudio" type="checkbox" @change="persistRebuild" />
+        <span>{{ t('graph.inspector.semantic.rebuildKeepAudio') }}</span>
+      </label>
+      <label class="check">
+        <input v-model="rebuildBurnSubtitles" type="checkbox" @change="persistRebuild" />
+        <span>{{ t('graph.inspector.semantic.rebuildBurnSubtitles') }}</span>
+      </label>
+
+      <label>
+        <span class="field-label">{{ t('graph.inspector.semantic.rebuildDuration') }}</span>
+        <input
+          v-model="rebuildDuration"
+          type="text"
+          :placeholder="t('graph.inspector.semantic.rebuildDurationPlaceholder')"
+          @change="persistRebuild"
+        />
+      </label>
+      <label>
+        <span class="field-label">{{ t('graph.inspector.semantic.rebuildResolution') }}</span>
+        <input
+          v-model="rebuildResolution"
+          type="text"
+          placeholder="1080p"
+          @change="persistRebuild"
+        />
+      </label>
+      <label>
+        <span class="field-label">{{ t('graph.inspector.semantic.rebuildAspectRatio') }}</span>
+        <input
+          v-model="rebuildAspectRatio"
+          type="text"
+          placeholder="9:16"
+          @change="persistRebuild"
+        />
+      </label>
+
+      <p class="field-hint">{{ t('graph.inspector.semantic.rebuildPromptPointer') }}</p>
+    </section>
+
     <section v-if="isPlan" class="fields">
       <template v-if="isVariant">
         <label>
@@ -463,6 +542,7 @@ onMounted(async () => {
   } catch {
     providerInstances.value = []
   }
+  await loadRebuildModels()
 })
 
 const vocabularyOptions = computed(() => listVocabularies(packs.value))
@@ -542,6 +622,7 @@ function loadConfig(current: NonNullable<typeof node.value>): void {
   recipeSlots.value = parseSlots(p.recipeSlotsJson)
   execute.value = p.semanticExecute !== false
   sourceRelativePath.value = p.sourceRelativePath?.trim() || ''
+  syncRebuildFromNode()
   selectedRulePacks.value = String(p.rulePackIds || '')
     .split(/[,，\s]+/)
     .map((s) => s.trim())
@@ -599,6 +680,57 @@ function persistAnalyze(): void {
 
 // 计划预览（planShots / loadPlanShots / planPreviewResult / planSummary / planError /
 // planNeedsEvidence）依赖 timelineDoc —— 实现放在 timelineDoc 声明之后。
+
+/** 语义重建：模式 / 模型 / 上限 / 音轨字幕 / 时长与画面参数 */
+const isRebuild = computed(() => typeId.value === 'semantic.rebuild')
+const rebuildModelOptions = ref<GenerateModelOption[]>([])
+const rebuildModelKey = ref('')
+const rebuildMode = ref<'shots' | 'full'>('shots')
+const rebuildExecute = ref(true)
+const rebuildMaxShots = ref(12)
+const rebuildKeepAudio = ref(true)
+const rebuildBurnSubtitles = ref(true)
+const rebuildDuration = ref('')
+const rebuildResolution = ref('')
+const rebuildAspectRatio = ref('')
+
+function syncRebuildFromNode(): void {
+  const p = node.value?.params
+  rebuildMode.value = p?.rebuildMode === 'full' ? 'full' : 'shots'
+  rebuildExecute.value = p?.semanticExecute !== false
+  rebuildMaxShots.value = Number(p?.rebuildMaxShots) || 12
+  rebuildKeepAudio.value = p?.rebuildKeepAudio !== false
+  rebuildBurnSubtitles.value = p?.rebuildBurnSubtitles !== false
+  rebuildDuration.value = Number(p?.rebuildDurationSec) ? String(p?.rebuildDurationSec) : ''
+  rebuildResolution.value = String(p?.rebuildResolution ?? '')
+  rebuildAspectRatio.value = String(p?.rebuildAspectRatio ?? '')
+  rebuildModelKey.value = preferredModelKey(p?.generateProviderInstanceId, p?.generateModel)
+}
+
+function persistRebuild(): void {
+  const parsed = parseModelKey(rebuildModelKey.value)
+  patch({
+    rebuildMode: rebuildMode.value,
+    semanticExecute: rebuildExecute.value,
+    rebuildMaxShots: Math.max(1, Number(rebuildMaxShots.value) || 12),
+    rebuildKeepAudio: rebuildKeepAudio.value,
+    rebuildBurnSubtitles: rebuildBurnSubtitles.value,
+    rebuildDurationSec: Number(rebuildDuration.value) || 0,
+    rebuildResolution: rebuildResolution.value.trim(),
+    rebuildAspectRatio: rebuildAspectRatio.value.trim(),
+    generateModel: parsed?.model ?? '',
+    generateProviderInstanceId: parsed?.providerInstanceId ?? ''
+  })
+}
+
+async function loadRebuildModels(): Promise<void> {
+  try {
+    const loaded = await loadGenerateModelOptions('video')
+    rebuildModelOptions.value = loaded.options
+  } catch {
+    rebuildModelOptions.value = []
+  }
+}
 
 function persistTrigger(): void {
   patch({ eventLabel: eventLabel.value.trim() })
