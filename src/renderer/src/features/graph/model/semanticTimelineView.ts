@@ -309,6 +309,32 @@ export function eventLabelChoices(
   return out
 }
 
+/**
+ * 从运行输出里取**成片**的相对路径。
+ *
+ * 语义修复出 `out-video`（单条），语义变体出 `out-videos`（取第一条预览）。
+ * 双击节点应该先看**成片**，而不是只看 JSON 计划 —— 成片才是这个节点的产物。
+ * 没有成片（只出计划 / 构建失败）时返回 undefined，调用方回落到文本结果。
+ */
+export function resolveBuiltVideoRelativePath(
+  outputs: Record<string, unknown> | null | undefined
+): string | undefined {
+  const rel = (value: unknown): string | undefined => {
+    const path = (value as { relativePath?: unknown } | undefined)?.relativePath
+    return typeof path === 'string' && path.trim() ? path.trim() : undefined
+  }
+  const single = rel(outputs?.['out-video'])
+  if (single) return single
+  const group = outputs?.['out-videos'] as { items?: unknown } | undefined
+  if (Array.isArray(group?.items)) {
+    for (const item of group.items) {
+      const hit = rel(item)
+      if (hit) return hit
+    }
+  }
+  return undefined
+}
+
 /** 右栏（视频+证据）可调宽度的边界 */
 export const SIDE_PANE_MIN_WIDTH = 320
 export const SIDE_PANE_MAX_WIDTH = 900

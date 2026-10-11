@@ -41,6 +41,44 @@ export interface NormalizedEdits {
 }
 
 /**
+ * 编辑草稿 → 给界面看的摘要（不需要跑节点就能知道"我填了什么、能不能用"）。
+ *
+ * 修复节点的 editsJson 是手写 JSON，界面原来只有一块文本域：填错了要等运行日志才知道
+ * （`normalizeSemanticEdits` 的 issues 只进日志）。这个摘要让检查器**当场**显示
+ * "N 条编辑 · 各类型计数" + 被丢弃的条目及原因。
+ */
+export interface EditsSummary {
+  /** 合法条目数 */
+  count: number
+  /** 按 kind 计数（降序，数量相同按 kind 升序，保证稳定） */
+  kinds: Array<{ kind: string; count: number }>
+  /** 被丢弃的条目说明（来自 normalizeSemanticEdits） */
+  issues: string[]
+}
+
+export function summarizeSemanticEdits(raw: unknown): EditsSummary {
+  const { edits, issues } = normalizeSemanticEdits(raw, 'user')
+  const counts = new Map<string, number>()
+  for (const edit of edits) counts.set(edit.kind, (counts.get(edit.kind) ?? 0) + 1)
+  const kinds = [...counts.entries()]
+    .map(([kind, count]) => ({ kind, count }))
+    .sort((a, b) => b.count - a.count || a.kind.localeCompare(b.kind))
+  return { count: edits.length, kinds, issues }
+}
+
+/** 一条**不引用任何 id** 的示例编辑：调色（`grade`），填进去就能跑通 */
+export function sampleSemanticEdit(now = new Date().toISOString()): SemanticEdit {
+  return {
+    id: `edit.sample.${now}`,
+    kind: 'grade',
+    origin: 'user',
+    createdAt: now,
+    note: '示例：整体提亮一点（可改成自己的参数）', // cjk-ok
+    params: { brightness: 1.06, contrast: 1.04, saturation: 1.05 }
+  } as SemanticEdit
+}
+
+/**
  * 用户/配方/智能体给的编辑草稿 → 合法 SemanticEdit：补 id / origin / createdAt，丢弃非法项。
  * 接受数组或 `{ edits: [...] }`。
  */

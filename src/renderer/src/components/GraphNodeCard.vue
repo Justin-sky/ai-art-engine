@@ -603,6 +603,7 @@ import { loadImageGenerateCapabilities } from '../features/graph/model/imageGene
 import { loadVideoGeneratePortLimits } from '../features/graph/model/videoGenerateCapabilities'
 import { composeImageGridCell } from '../features/graph/model/composeImageGridCell'
 import {
+  resolveBuiltVideoRelativePath,
   resolveSemanticTimelineViewTarget,
   semanticTimelineTextFromRunState,
   type SemanticTimelineViewTarget
@@ -2820,6 +2821,29 @@ function onPreviewDblClick(): void {
       return
     }
     if (isSemanticTimelineToolNode(props.node)) {
+      /**
+       * 修复 / 变体的产物是**成片**，不是 JSON 计划 —— 双击优先预览成片
+       * （没有成片时回落到下面的文本结果，给出计划或"还没运行"的说明）。
+       */
+      if (props.node.typeId === 'semantic.repair' || props.node.typeId === 'semantic.variant') {
+        const rel = resolveBuiltVideoRelativePath(props.runState?.outputs)
+        if (rel) {
+          const url = (await window.studio.getAssetFileUrl(rel)) ?? ''
+          if (url) {
+            const opened = await diveView(
+              {
+                viewId: 'media.preview',
+                mediaKind: 'video',
+                url,
+                relativePath: rel,
+                title
+              },
+              title
+            )
+            if (opened) return
+          }
+        }
+      }
       const raw = resolveSemanticOutText(props.node, props.runState)
       const ok = await openSemanticResultTextDive(title, raw || semanticNoResultHint())
       if (!ok) emit('textsOpen', props.node.id)

@@ -5468,6 +5468,12 @@ export default {
           '[{"kind":"replaceEntity","entityId":"ent.product.bottle-1","newAssetId":"…"}]',
         editsJsonHint:
           'Local: replaceEntity / removeEntity / editText / grade / dropBeat / reorderBeats; generative edits (regenerateShot, lip sync) are planned only',
+        editsSummary: 'Edit summary',
+        editsEmpty:
+          'No edits yet: this only produces an invalidation plan (no video). Try the "Insert sample" button below.',
+        editsCount: '{count} edits:',
+        editsIssue: 'Will be dropped:',
+        editsInsertSample: 'Insert sample edit (grade)',
         timelineJson: 'Timeline JSON (no upstream)',
         timelineJsonPlaceholder: 'Paste Semantic Timeline JSON',
         timelineJsonHint:

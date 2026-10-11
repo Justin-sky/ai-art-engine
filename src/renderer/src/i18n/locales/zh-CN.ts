@@ -5335,6 +5335,11 @@ export default {
           '[{"kind":"replaceEntity","entityId":"ent.product.bottle-1","newAssetId":"…"}]',
         editsJsonHint:
           '本地可执行：replaceEntity / removeEntity / editText / grade / dropBeat / reorderBeats；regenerateShot、改口型等生成类编辑只出计划',
+        editsSummary: '编辑摘要',
+        editsEmpty: '还没有编辑：此时只产出失效计划（不生成成片）。可点下面的「插入示例」试试。',
+        editsCount: '共 {count} 条：',
+        editsIssue: '将被丢弃：',
+        editsInsertSample: '插入示例编辑（调色）',
         timelineJson: '时间线 JSON（无上游时）',
         timelineJsonPlaceholder: '粘贴 Semantic Timeline JSON',
         timelineJsonHint: '仅在未接上游文本口时作为输入；有上游时运行会覆盖读取上游',

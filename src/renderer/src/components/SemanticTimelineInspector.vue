@@ -250,6 +250,25 @@
         />
         <span class="field-hint">{{ t('graph.inspector.semantic.editsJsonHint') }}</span>
       </label>
+      <!-- 编辑摘要 / 校验：不用跑节点就能看到"填了什么、哪些会被丢掉" -->
+      <div class="edits-summary">
+        <span class="field-label">{{ t('graph.inspector.semantic.editsSummary') }}</span>
+        <p v-if="editsSummary.count === 0" class="field-hint">
+          {{ t('graph.inspector.semantic.editsEmpty') }}
+        </p>
+        <p v-else class="edits-kinds">
+          {{ t('graph.inspector.semantic.editsCount', { count: editsSummary.count }) }}
+          <span v-for="row in editsSummary.kinds" :key="row.kind" class="edits-kind">
+            {{ row.kind }} ×{{ row.count }}
+          </span>
+        </p>
+        <p v-for="issue in editsSummary.issues" :key="issue" class="edits-issue">
+          {{ t('graph.inspector.semantic.editsIssue') }} {{ issue }}
+        </p>
+        <button type="button" class="edits-sample" @click="insertSampleEdit">
+          {{ t('graph.inspector.semantic.editsInsertSample') }}
+        </button>
+      </div>
       <details class="advanced">
         <summary>{{ t('graph.inspector.semantic.advanced') }}</summary>
         <label>
@@ -342,7 +361,11 @@ import { useEditorKernel } from '../editor/kernel'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import { graphRunHosts } from '../features/graph/model/graphRunHosts'
 import { eventLabelChoices } from '../features/graph/model/semanticTimelineView'
-import { parseEventLabels } from '@shared/semanticTimeline'
+import {
+  parseEventLabels,
+  sampleSemanticEdit,
+  summarizeSemanticEdits
+} from '@shared/semanticTimeline'
 
 const SEMANTIC_TYPE_IDS = new Set([
   'semantic.analyze',
@@ -564,6 +587,29 @@ function persistAnalyze(): void {
   })
 }
 
+/** 编辑草稿摘要（计数 + 被丢弃原因）——不跑节点就能看到 */
+const editsSummary = computed(() => summarizeSemanticEdits(editsJson.value))
+
+/** 追加一条示例编辑（`grade`，不引用任何 id），填进文本框并落盘 */
+function insertSampleEdit(): void {
+  const parsed: unknown = (() => {
+    const text = editsJson.value.trim()
+    if (!text) return []
+    try {
+      return JSON.parse(text)
+    } catch {
+      return []
+    }
+  })()
+  const list = Array.isArray(parsed)
+    ? parsed
+    : parsed && typeof parsed === 'object' && Array.isArray((parsed as { edits?: unknown[] }).edits)
+      ? ((parsed as { edits: unknown[] }).edits as unknown[])
+      : []
+  editsJson.value = JSON.stringify([...list, sampleSemanticEdit()], null, 2)
+  persistPlan()
+}
+
 function persistTrigger(): void {
   patch({ eventLabel: eventLabel.value.trim() })
 }
@@ -777,6 +823,49 @@ const timelineSummary = computed(() => {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+/* 编辑摘要：计数 + 类型标签 + 会被丢弃的条目 + 插入示例 */
+.edits-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-elevated);
+}
+.edits-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  font-size: 12px;
+}
+.edits-kind {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.edits-issue {
+  margin: 0;
+  color: var(--text-warn, #e0a458);
+  font-size: 12px;
+}
+.edits-sample {
+  align-self: flex-start;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-panel);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+.edits-sample:hover {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
 }
 
 /* 事件标签多选：紧凑两列，长标签省略 */
