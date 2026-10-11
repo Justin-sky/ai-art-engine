@@ -4943,6 +4943,24 @@ export default {
         resolution: 'Resolution'
       }
     },
+    /** Per-shot prompt panel (dive right pane, "Prompts" tab) */
+    semanticPrompt: {
+      tab: 'Prompts',
+      rerunHint: 'Edits only go to the compile node parameters — rerun the compile node to apply',
+      loading: 'Reading the prompt plan…',
+      loadFailed: 'Failed to read the prompt plan:',
+      empty: 'No prompt plan yet',
+      noTimeline: 'This node has no timeline yet — wire the upstream analyze node and run it once',
+      noShots: 'No shot evidence, so no per-shot prompts — run the upstream analyze node first',
+      timeRange: '{start}–{end}s',
+      firstFrame: 'first frame',
+      noFirstFrame: 'no first frame',
+      modelAuthored: 'model-written',
+      overridden: 'overridden',
+      restore: 'Restore',
+      restoreHint: 'Drop this override and go back to the assembled prompt',
+      promptPlaceholder: 'Prompt for this shot; clear the text to drop the override'
+    },
     notepad: {
       appMark: 'Notepad',
       title: 'Notepad',

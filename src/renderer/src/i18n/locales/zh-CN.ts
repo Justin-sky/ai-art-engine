@@ -4833,6 +4833,28 @@ export default {
         resolution: '结局'
       }
     },
+    /**
+     * 逐镜提示词面板（dive 右栏「提示词」页签）。
+     *
+     * 文案要短：prettier 会把过长对象折行，而 CJK 门禁要求中英成对写在同一行。
+     */
+    semanticPrompt: {
+      tab: '逐镜提示词',
+      rerunHint: '改动只写回编译节点的参数，要重跑编译节点才生效',
+      loading: '正在读出提示词计划…',
+      loadFailed: '读提示词计划失败：',
+      empty: '还没有提示词计划',
+      noTimeline: '这个节点还没有时间线 —— 先接上游「语义分析」并运行一次',
+      noShots: '没有镜头证据，拼不出逐镜提示词 —— 先运行上游「语义分析」',
+      timeRange: '{start}–{end} 秒',
+      firstFrame: '有首帧',
+      noFirstFrame: '无首帧',
+      modelAuthored: '模型撰写',
+      overridden: '已覆盖',
+      restore: '恢复',
+      restoreHint: '删掉这条覆盖，回到自动拼装结果',
+      promptPlaceholder: '给这一镜的生成提示词；清空 = 撤销覆盖'
+    },
     notepad: {
       appMark: '记事本',
       title: '记事本',

@@ -121,15 +121,22 @@ describe('semanticTimeline pipeline pure', () => {
   it('loads official market packs from workflow repo (or empty if absent)', () => {
     const packs = loadBundledSemanticPacks()
     /**
-     * 开发态并列仓库应能读到官方包（词表 / 规则 / persona）。
+     * **跨仓耦合**：这三个包来自兄弟仓库 ai-art-engine-workflow 的
+     * `workflows/commerce-semantic-variants/semanticPacks`（路径见
+     * `packLoader.bundledPacksDir()`）。CI 不检出兄弟仓库，所以这里对空目录放行。
      *
-     * 这里原来写的是 ≥5：那时官方包里还有 3 个**变体配方**（variant-*.json）。
-     * 变体节点删除后配方包已从 workflow 仓移除（保留 3 个），所以断言跟着收窄到 3。
-     * CI 若未检出 workflow 仓则允许空（0 个）。
+     * 断言**具体 id**而不是数量（原来写的是 `>= 5`）：
+     * - 数量会被无关的增删掩盖 —— 上一轮删掉 3 个变体配方包后 "≥5" 变红，却没人回头跑 app 全量；
+     *   而若只改成 `>= 3`，那误删一个正牌包也照样绿；
+     * - 断 id 才能表达"这三个包必须还在"，误删任何一个都会红。
      */
     if (packs.length > 0) {
-      expect(packs.length).toBeGreaterThanOrEqual(3)
       expect(packs.every((p) => validateSemanticPack(p).ok)).toBe(true)
+      expect(packs.map((p) => p.id).sort()).toEqual([
+        'commerce-director-persona',
+        'commerce-director-rules',
+        'commerce-vocabulary'
+      ])
     }
   })
 
