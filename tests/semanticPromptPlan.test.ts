@@ -265,4 +265,175 @@ describe('视频生成提示词计划', () => {
       true
     )
   })
+
+  /**
+   * 提示词质量回归（真实数据暴露的问题：无上限 + 全量拼接时单镜近千字、整片 5313 字，
+   * 模型会截断，主体与动作反被切掉）。
+   */
+  it('质量：未知命令不原样吐、非画面轨道不进、事件按重要度取前 3', () => {
+    const timeline = makeTimeline()
+    // 5 个与同一镜重叠的事件，重要度递减 → 只应取前 3
+    timeline.events = Array.from({ length: 5 }, (_, i) => ({
+      id: `ev.${i}`,
+      timeRange: range(0, 6),
+      type: 'reveal',
+      label: `label_${i}`,
+      description: `事件描述${i}`,
+      importance: 1 - i * 0.1,
+      entities: [],
+      evidence: [],
+      intents: [],
+      confidence: 1,
+      origin: 'agent'
+    })) as never
+    timeline.intents = [
+      {
+        id: 'intent.picture',
+        trigger: 'ev.0',
+        goal: '强调容量',
+        techniques: [
+          { track: 'camera', action: '特写拉开' },
+          { track: 'light', action: '柔光' },
+          { track: 'audio', action: '口播重音+BGM推进' },
+          { track: 'edit', action: '硬切特写' }
+        ],
+        reason: '',
+        origin: 'agent'
+      }
+    ] as never
+
+    const plan = buildPromptPlan({
+      timeline,
+      shots: [{ id: 'shot.1', range: range(0, 6), keyframes: {}, confidence: 1 }],
+      commands: [
+        { kind: 'camera.pushIn', start: 0, end: 6, params: {}, reason: '' },
+        // 规则包把中文动作塞进 kind：不能原样拼进提示词
+        { kind: 'light.价格弹跳与箭头', start: 0, end: 6, params: {}, reason: '' },
+        { kind: 'camera.固定中景', start: 0, end: 6, params: {}, reason: '' }
+      ]
+    })
+    const prompt = plan.shots[0]!.prompt
+
+    expect(prompt).not.toContain('价格弹跳与箭头')
+    expect(prompt).not.toContain('固定中景')
+    expect(prompt).not.toContain('口播重音')
+    expect(prompt).not.toContain('硬切特写')
+    // 画面轨道的技术动作进得来
+    expect(prompt).toContain('特写拉开')
+    expect(prompt).toContain('柔光')
+    expect(prompt).toContain('镜头缓慢推进')
+    // 事件只取前 3（重要度最高的）
+    expect(prompt).toContain('事件描述0')
+    expect(prompt).toContain('事件描述1')
+    expect(prompt).toContain('事件描述2')
+    expect(prompt).not.toContain('事件描述3')
+    expect(prompt).not.toContain('事件描述4')
+    // camera 字段只收去重后的镜头语言
+    expect(plan.shots[0]!.camera).toBe('镜头缓慢推进')
+  })
+
+  /**
+   * 长度上限单独一条：输入**故意超长**（真实数据里单镜近千字），否则断言是空的
+   * （取消上限也照样通过 —— 变异验证发现的）。
+   */
+  it('质量：超长输入被按分隔符截断到上限内（单镜 220 / 整片 600）', () => {
+    const timeline = makeTimeline()
+    timeline.events = Array.from({ length: 5 }, (_, i) => ({
+      id: `ev.long.${i}`,
+      timeRange: range(0, 6),
+      type: 'reveal',
+      label: `long_${i}`,
+      description: `事件描述${i}${'补充说明'.repeat(30)}`,
+      importance: 1 - i * 0.1,
+      entities: [],
+      evidence: [],
+      intents: [],
+      confidence: 1,
+      origin: 'agent'
+    })) as never
+    const plan = buildPromptPlan({
+      timeline,
+      shots: [{ id: 'shot.1', range: range(0, 6), keyframes: {}, confidence: 1 }]
+    })
+    const prompt = plan.shots[0]!.prompt
+    expect(prompt.length).toBeGreaterThan(100) // 确实被截断过（不是本来就短）
+    expect(prompt.length).toBeLessThanOrEqual(220)
+    expect(plan.fullPrompt.length).toBeLessThanOrEqual(600)
+  })
+
+  /**
+   * 实体收口：只留画面主体（人物/商品/物体/背景）且取前几个。
+   * 真实数据里一镜挂 11 个实体（含 OCR 文字 / logo / 音色），把 220 字预算吃光。
+   */
+  it('质量：实体只留画面主体、按优先级取前 3，OCR 文字 / logo / 音色不进提示词', () => {
+    const timeline = makeTimeline()
+    timeline.entities = [
+      {
+        id: 'e.voice',
+        kind: 'voice',
+        name: '男声口播',
+        pixelEditable: false,
+        appearances: [{ shotId: 'shot.1', range: range(0, 6) }]
+      },
+      {
+        id: 'e.text',
+        kind: 'text',
+        name: '0.01元起！包邮！',
+        pixelEditable: false,
+        appearances: [{ shotId: 'shot.1', range: range(0, 6) }]
+      },
+      {
+        id: 'e.logo',
+        kind: 'logo',
+        name: '京东 logo',
+        pixelEditable: false,
+        appearances: [{ shotId: 'shot.1', range: range(0, 6) }]
+      },
+      {
+        id: 'e.bg',
+        kind: 'background',
+        name: '办公室桌面',
+        pixelEditable: false,
+        appearances: [{ shotId: 'shot.1', range: range(0, 6) }]
+      },
+      {
+        id: 'e.obj',
+        kind: 'object',
+        name: '红白条纹小旗',
+        pixelEditable: false,
+        appearances: [{ shotId: 'shot.1', range: range(0, 6) }]
+      },
+      {
+        id: 'e.p',
+        kind: 'product',
+        name: '灰色腰包',
+        pixelEditable: true,
+        appearances: [{ shotId: 'shot.1', range: range(0, 6) }]
+      },
+      {
+        id: 'e.person',
+        kind: 'person',
+        name: '蓝西装男士',
+        pixelEditable: false,
+        appearances: [{ shotId: 'shot.1', range: range(0, 6) }]
+      }
+    ] as never
+
+    const plan = buildPromptPlan({
+      timeline,
+      shots: [{ id: 'shot.1', range: range(0, 6), keyframes: {}, confidence: 1 }]
+    })
+    const prompt = plan.shots[0]!.prompt
+    // 非画面主体不进
+    expect(prompt).not.toContain('男声口播')
+    expect(prompt).not.toContain('0.01元起')
+    expect(prompt).not.toContain('京东 logo')
+    // 主体按优先级取前 3：person > product > object
+    expect(plan.shots[0]!.entities).toEqual([
+      '蓝西装男士（人物）',
+      '灰色腰包（商品）',
+      '红白条纹小旗（object）'
+    ])
+    expect(prompt).not.toContain('办公室桌面')
+  })
 })

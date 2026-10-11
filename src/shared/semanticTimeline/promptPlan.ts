@@ -103,6 +103,33 @@ const ENTITY_KIND_LABEL: Record<string, Record<PromptLang, string>> = {
 /** 台词前缀（中英成对） */
 const DIALOGUE_PREFIX: Record<PromptLang, string> = { zh: '台词：', en: 'dialogue: ' }
 
+/**
+ * 提示词长度上限（字符）。
+ *
+ * 实测（用户真实工程，9 镜 / 129 命令）：无上限时单镜贴近千字、整片 5313 字 ——
+ * 视频模型会直接截断，等于最要紧的信息（主体 / 动作）反而可能被切掉。宁可我们自己
+ * 按优先级截断，也不要让模型随机截断。
+ */
+const MAX_SHOT_PROMPT_CHARS = 220
+const MAX_FULL_PROMPT_CHARS = 600
+
+/** 单镜最多纳入几个事件（按重要度×重叠时长排序取前几个，避免"整镜全塞"） */
+const MAX_EVENTS_PER_SHOT = 3
+
+/** 能进**画面**提示词的意图轨道：其余（audio/text/edit/story/emotion）属于声音与剪辑，不该进 prompt */
+const PICTURE_TRACKS = new Set(['camera', 'light', 'vfx'])
+
+/**
+ * 能进**画面**提示词的实体类别（数组顺序即优先级）。
+ *
+ * 实测：用户那支片子一镜挂 11 个实体（含 `text` 的 OCR 文字、`logo`、`voice` 音色），
+ * 全塞进去会把 220 字预算吃光，动作与运镜反被截断 —— 而 OCR 文字/logo 本来就在画面里，
+ * `voice` 更不是画面内容，都不该占提示词。
+ */
+const PICTURE_ENTITY_KINDS: readonly string[] = ['person', 'product', 'object', 'background']
+/** 单镜最多列几个实体（主体优先） */
+const MAX_ENTITIES_PER_SHOT = 3
+
 /** 各字段的空值/默认：缺字段的时间线（空骨架、手写 JSON）也要能算 */
 function arr<T>(value: T[] | undefined | null): T[] {
   return Array.isArray(value) ? value : []
@@ -110,6 +137,37 @@ function arr<T>(value: T[] | undefined | null): T[] {
 
 function overlaps(a: { start: number; end: number }, b: { start: number; end: number }): boolean {
   return a.start < b.end && a.end > b.start
+}
+
+/** 重叠时长（秒）：事件排序用（"重要且占了这镜大半"的排前面） */
+function overlapSeconds(
+  a: { start: number; end: number },
+  b: { start: number; end: number }
+): number {
+  return Math.max(0, Math.min(a.end, b.end) - Math.max(a.start, b.start))
+}
+
+/** 去重：丢掉完全重复的片段，以及已被更长片段包含的片段（"固定中景" vs "固定中景平视"） */
+function dedupeParts(parts: string[]): string[] {
+  const out: string[] = []
+  for (const raw of parts) {
+    const part = raw.trim()
+    if (!part) continue
+    if (out.some((kept) => kept === part || kept.includes(part))) continue
+    for (let i = out.length - 1; i >= 0; i -= 1) {
+      if (part.includes(out[i]!)) out.splice(i, 1)
+    }
+    out.push(part)
+  }
+  return out
+}
+
+/** 按分隔符边界截断（不把词切一半；超出部分丢弃） */
+function truncateAtSeparator(text: string, max: number, sep: string): string {
+  if (text.length <= max) return text
+  const head = text.slice(0, max)
+  const cut = head.lastIndexOf(sep)
+  return (cut > max * 0.5 ? head.slice(0, cut) : head).trim()
 }
 
 function phraseOf(kind: string, lang: PromptLang): string {
@@ -151,14 +209,35 @@ function buildShotPrompt(input: {
 
   const entityNames = input.entities
     .filter((ent) => arr(ent.appearances).some((app) => app?.shotId === shot.id))
+    // 只留画面主体类，并按优先级（人物/商品/物体/背景）取前几个
+    .filter((ent) => PICTURE_ENTITY_KINDS.includes(String(ent.kind ?? '')))
+    .sort(
+      (a, b) =>
+        PICTURE_ENTITY_KINDS.indexOf(String(a.kind ?? '')) -
+        PICTURE_ENTITY_KINDS.indexOf(String(b.kind ?? ''))
+    )
+    .slice(0, MAX_ENTITIES_PER_SHOT)
     .map((ent) => entityLabel(ent, lang))
-  if (entityNames.length) parts.push(entityNames.join(lang === 'zh' ? '、' : ', '))
+  if (entityNames.length) parts.push(dedupeParts(entityNames).join(lang === 'zh' ? '、' : ', '))
 
-  const eventTexts = input.events
+  /**
+   * 事件：**按重要度 × 重叠时长排序后只取前几个**。
+   *
+   * 真实数据上"整镜全塞"是最主要的质量问题：一镜 14 秒会和 6 个事件重叠，
+   * 全拼进去近千字，模型只会截断 —— 主体与动作反而被切掉。
+   */
+  const rankedEvents = [...input.events]
+    .sort(
+      (a, b) =>
+        (b.importance ?? 0) * overlapSeconds(b.timeRange, shot.range) -
+        (a.importance ?? 0) * overlapSeconds(a.timeRange, shot.range)
+    )
+    .slice(0, MAX_EVENTS_PER_SHOT)
+  const eventTexts = rankedEvents
     .map((event) => [event.description?.trim(), event.label?.trim()].filter(Boolean).join(' / '))
     .filter(Boolean)
-  const eventLabels = input.events.map((event) => event.label).filter(Boolean)
-  if (eventTexts.length) parts.push(eventTexts.join(sep))
+  const eventLabels = rankedEvents.map((event) => event.label).filter(Boolean)
+  if (eventTexts.length) parts.push(dedupeParts(eventTexts).join(sep))
 
   const lines = input.utterances.map((utt) => utt.text?.trim()).filter(Boolean)
   if (lines.length) parts.push(`${DIALOGUE_PREFIX[lang]}${lines[0]}`)
@@ -167,43 +246,55 @@ function buildShotPrompt(input: {
   const intentTexts: string[] = []
   const sourceIntentIds: string[] = []
   for (const command of input.commands) {
-    if (String(command.kind).startsWith('camera.')) {
-      cameraKinds.push(phraseOf(String(command.kind), lang))
+    const kind = String(command.kind)
+    /**
+     * 只翻**认识**的命令：规则包会把中文动作塞进 `kind`（`light.价格弹跳与箭头`、
+     * `camera.固定中景`），原样拼进提示词等于把执行清单喂给模型 —— 直接跳过。
+     */
+    if (!COMMAND_PHRASES[kind]) continue
+    if (kind.startsWith('camera.')) {
+      cameraKinds.push(phraseOf(kind, lang))
       continue
     }
-    if (String(command.kind).startsWith('light.') || String(command.kind).startsWith('grade.')) {
-      parts.push(phraseOf(String(command.kind), lang))
+    if (kind.startsWith('light.') || kind.startsWith('grade.')) {
+      parts.push(phraseOf(kind, lang))
     }
   }
-  if (cameraKinds.length) parts.push(cameraKinds.join(sep))
+  const cameraPhrases = dedupeParts(cameraKinds)
+  if (cameraPhrases.length) parts.push(cameraPhrases.join(sep))
 
   for (const intent of input.intents) {
     sourceIntentIds.push(intent.id)
+    // 只取**画面**轨道的技术动作：声音 / 字幕 / 剪辑类（口播重音、拉链音效、硬切、长镜不切）
+    // 属于后期与声音设计，不该进画面生成提示词
     const techniques = arr(intent.techniques)
+      .filter((tech) => PICTURE_TRACKS.has(String(tech?.track ?? '')))
       .map((tech) => String(tech?.action ?? '').trim())
       .filter(Boolean)
     const goal = String(intent.goal ?? '').trim()
-    const text = techniques.length ? techniques.join(sep) : goal
+    const text = techniques.length ? dedupeParts(techniques).join(sep) : goal
     if (text) intentTexts.push(text)
   }
-  if (intentTexts.length) parts.push(intentTexts.join(sep))
+  if (intentTexts.length) parts.push(dedupeParts(intentTexts).join(sep))
 
+  const prompt = truncateAtSeparator(parts.filter(Boolean).join(sep), MAX_SHOT_PROMPT_CHARS, sep)
   return {
-    prompt: parts.filter(Boolean).join(sep),
-    ...(cameraKinds.length ? { camera: cameraKinds.join(sep) } : {}),
+    prompt,
+    ...(cameraPhrases.length ? { camera: cameraPhrases.join(sep) } : {}),
     eventLabels,
     entities: entityNames,
     sourceIntentIds
   }
 }
 
-/** 整片提示词：按镜头顺序把每镜提示词接起来（给 full 模式用） */
+/** 整片提示词：按镜头顺序把每镜提示词接起来（给 full 模式用），并做长度上限 */
 function combineFullPrompt(shots: VideoPromptShot[], lang: PromptLang): string {
   const sep = lang === 'zh' ? '；' : '; '
-  return shots
+  const joined = shots
     .map((shot) => shot.prompt?.trim())
     .filter(Boolean)
     .join(sep)
+  return truncateAtSeparator(joined, MAX_FULL_PROMPT_CHARS, sep)
 }
 
 export function buildPromptPlan(input: BuildPromptPlanInput): VideoPromptPlan {
