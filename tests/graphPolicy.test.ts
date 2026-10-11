@@ -130,7 +130,7 @@ describe('graph policy', () => {
         'video.framePull',
         'video.reshoot',
         'semantic.analyze',
-        'semantic.repair',
+        'semantic.edit',
         'semantic.variant',
         'semantic.timeline',
         'semantic.event',

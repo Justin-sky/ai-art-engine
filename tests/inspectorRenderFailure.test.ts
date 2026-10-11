@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 /**
- * 「选中语义修复节点，inspector 没有显示」的守卫。
+ * 「选中语义编辑节点，inspector 没有显示」的守卫。
  *
  * 机制：检查器（含子组件 GraphNodeOutputPreview）在渲染时抛错 → Vue 把该子树留空 →
  * 用户只看到**空白**。`InspectorPanel` 本来就有 onErrorCaptured，但只 console.error，

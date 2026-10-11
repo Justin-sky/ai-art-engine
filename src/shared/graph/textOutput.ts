@@ -67,7 +67,7 @@ export function isNodeTextCapable(node: GraphNode): boolean {
   // Semantic Timeline 工具：category=note 但产出 JSON 管线，双击应进语义视图 / 结果预览，不是记事本
   if (
     node.typeId === 'semantic.analyze' ||
-    node.typeId === 'semantic.repair' ||
+    node.typeId === 'semantic.edit' ||
     node.typeId === 'semantic.variant' ||
     node.typeId === 'semantic.timeline' ||
     node.typeId === 'semantic.event' ||

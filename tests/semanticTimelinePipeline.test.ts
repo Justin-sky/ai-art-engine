@@ -26,7 +26,7 @@ import { ensureBuiltinNodeTypes } from '../src/shared/graph/builtins'
 import { resolveNodeType } from '../src/shared/graph/registry'
 import {
   executeSemanticAnalyzeNode,
-  executeSemanticRepairNode,
+  executeSemanticEditNode,
   executeSemanticEventNode,
   executeSemanticVariantNode
 } from '../src/shared/graph/execute/semanticTimeline'
@@ -225,7 +225,7 @@ describe('semanticTimeline graph nodes', () => {
       'semantic.timeline',
       'semantic.event',
       'semantic.compile',
-      'semantic.repair',
+      'semantic.edit',
       'semantic.variant'
     ]) {
       expect(resolveNodeType({ typeId: id } as GraphNode)?.typeId).toBe(id)
@@ -530,10 +530,10 @@ describe('semanticTimeline executors with injected capabilities', () => {
     const calls: SemanticBuildRequest[] = []
     const node = {
       id: 'r',
-      typeId: 'semantic.repair',
+      typeId: 'semantic.edit',
       params: { editsJson: JSON.stringify([{ kind: 'dropBeat', beatId: 'beat.demo' }]) }
     } as unknown as GraphNode
-    const out = await executeSemanticRepairNode({
+    const out = await executeSemanticEditNode({
       node,
       inputs: { in: [{ kind: 'text', text: JSON.stringify(doc) }] },
       loadSemanticEvidence: async () => ({ shots, utterances: [], keyframes: {} }),

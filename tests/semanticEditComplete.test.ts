@@ -18,7 +18,7 @@ import {
 import { resolveBuiltVideoRelativePath } from '../src/renderer/src/features/graph/model/semanticTimelineView'
 
 /**
- * 「完善语义修复节点」这批改动的守卫：
+ * 「完善语义编辑节点」这批改动的守卫：
  * 1. 双击优先看**成片**（`out-video` / `out-videos`），不是只看 JSON 计划；
  * 2. 检查器给出**编辑摘要 + 会被丢弃的条目 + 插入示例**（不跑节点就知道填得对不对）。
  */
@@ -31,7 +31,7 @@ const inspector = readFileSync(
   'utf8'
 )
 
-describe('语义修复节点完善', () => {
+describe('语义编辑节点完善', () => {
   it('resolveBuiltVideoRelativePath：单条 / 多条 / 空都要正确', () => {
     expect(resolveBuiltVideoRelativePath({ 'out-video': { relativePath: 'Build/a.mp4' } })).toBe(
       'Build/a.mp4'
@@ -53,11 +53,11 @@ describe('语义修复节点完善', () => {
     expect(resolveBuiltVideoRelativePath({ out: { kind: 'text', text: '{}' } })).toBeUndefined()
   })
 
-  it('双击修复/变体时先开视频预览，再回落到文本', () => {
+  it('双击编辑/变体时先开视频预览，再回落到文本', () => {
     expect(card).toContain('resolveBuiltVideoRelativePath(props.runState?.outputs)')
     expect(card).toContain("mediaKind: 'video'")
     expect(card).toMatch(
-      /props\.node\.typeId === 'semantic\.repair' \|\| props\.node\.typeId === 'semantic\.variant'/
+      /props\.node\.typeId === 'semantic\.edit' \|\| props\.node\.typeId === 'semantic\.variant'/
     )
     // 打不开视频时仍要有反应（下面那段文本分支）
     expect(card).toContain(

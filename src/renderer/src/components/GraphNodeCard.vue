@@ -2825,7 +2825,7 @@ function onPreviewDblClick(): void {
        * 修复 / 变体的产物是**成片**，不是 JSON 计划 —— 双击优先预览成片
        * （没有成片时回落到下面的文本结果，给出计划或"还没运行"的说明）。
        */
-      if (props.node.typeId === 'semantic.repair' || props.node.typeId === 'semantic.variant') {
+      if (props.node.typeId === 'semantic.edit' || props.node.typeId === 'semantic.variant') {
         const rel = resolveBuiltVideoRelativePath(props.runState?.outputs)
         if (rel) {
           const url = (await window.studio.getAssetFileUrl(rel)) ?? ''

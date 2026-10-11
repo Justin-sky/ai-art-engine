@@ -4762,7 +4762,7 @@ export default {
       },
       semantic: {
         analyze: 'Semantic analyze',
-        repair: 'Semantic repair',
+        edit: 'Semantic edit',
         variant: 'Semantic variant',
         timeline: 'Semantic timeline',
         event: 'Semantic event',
@@ -5410,7 +5410,7 @@ export default {
           'Find the given events and the director commands that land on them (matched by intent trigger or time overlap). Leave empty to emit all events and commands. Double-click to inspect the result.',
         compileHint:
           'Compile the Semantic Timeline into director commands and a ScriptTimeline using director rule packs. Shots and subtitles come from the analysis evidence. Double-click to inspect the result.',
-        repairHint:
+        editHint:
           'Plan and build locally from the edit list: untouched shots are stream-copied, replaced/erased/retexted/graded shots are processed and spliced back, dropped/reordered beats reorder shots. The result comes out of the Video port.',
         variantHint:
           'Pick a market-pack recipe and fill its slots (comma-separate multiple values to expand combinations). Each combination builds one variant, output on the Videos port.',

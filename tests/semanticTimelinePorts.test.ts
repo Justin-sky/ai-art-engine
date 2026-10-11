@@ -62,7 +62,7 @@ describe('语义时间线端口类型', () => {
       'semantic.timeline',
       'semantic.event',
       'semantic.compile',
-      'semantic.repair',
+      'semantic.edit',
       'semantic.variant'
     ]) {
       expect(portOf(typeId, 'in').dataType, typeId).toBe(GraphPortType.semanticTimeline)
@@ -73,7 +73,7 @@ describe('语义时间线端口类型', () => {
     for (const typeId of [
       'semantic.event',
       'semantic.compile',
-      'semantic.repair',
+      'semantic.edit',
       'semantic.variant'
     ]) {
       expect(portOf(typeId, 'out').dataType, typeId).toBe(GraphPortType.text)

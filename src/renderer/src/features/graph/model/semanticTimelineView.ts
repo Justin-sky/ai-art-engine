@@ -312,7 +312,7 @@ export function eventLabelChoices(
 /**
  * 从运行输出里取**成片**的相对路径。
  *
- * 语义修复出 `out-video`（单条），语义变体出 `out-videos`（取第一条预览）。
+ * 语义编辑出 `out-video`（单条），语义变体出 `out-videos`（取第一条预览）。
  * 双击节点应该先看**成片**，而不是只看 JSON 计划 —— 成片才是这个节点的产物。
  * 没有成片（只出计划 / 构建失败）时返回 undefined，调用方回落到文本结果。
  */

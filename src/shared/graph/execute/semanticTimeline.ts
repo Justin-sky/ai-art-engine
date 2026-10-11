@@ -783,7 +783,7 @@ function timelineNotes(timeline: SemanticTimeline, labels: string[]): string[] {
   return notes
 }
 
-// ─── semantic.repair / semantic.variant ──────────────────────────────────────────
+// ─── semantic.edit / semantic.variant ──────────────────────────────────────────
 
 function readEdits(ctx: NodeExecuteContext): SemanticEdit[] {
   const raw = parseJsonParam<unknown>(ctx.node.params?.editsJson, [])
@@ -845,8 +845,8 @@ function shouldExecute(ctx: NodeExecuteContext): boolean {
   return true
 }
 
-/** semantic.repair：编辑 → 失效计划 → 本地构建成片 */
-export async function executeSemanticRepairNode(
+/** semantic.edit：编辑 → 失效计划 → 本地构建成片 */
+export async function executeSemanticEditNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
   const timeline = await readTimeline(ctx)

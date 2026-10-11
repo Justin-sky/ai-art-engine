@@ -345,9 +345,9 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     nodeTypeId: 'semantic.compile'
   },
   {
-    id: 'studio.graph.videoRepair',
+    id: 'studio.graph.semanticEdit',
     component: SemanticTimelineInspector,
-    nodeTypeId: 'semantic.repair'
+    nodeTypeId: 'semantic.edit'
   },
   {
     id: 'studio.graph.videoVariant',

@@ -493,7 +493,7 @@ import {
 
 const SEMANTIC_TYPE_IDS = new Set([
   'semantic.analyze',
-  'semantic.repair',
+  'semantic.edit',
   'semantic.variant',
   'semantic.timeline',
   'semantic.event',
@@ -530,7 +530,7 @@ const isSemanticEvent = computed(() => typeId.value === 'semantic.event')
 const isCompile = computed(() => typeId.value === 'semantic.compile')
 const isVariant = computed(() => typeId.value === 'semantic.variant')
 const isPlan = computed(
-  () => typeId.value === 'semantic.repair' || typeId.value === 'semantic.variant'
+  () => typeId.value === 'semantic.edit' || typeId.value === 'semantic.variant'
 )
 const usesRulePacks = computed(() => isSemanticEvent.value || isCompile.value)
 const showTimelineFallback = computed(
@@ -547,8 +547,8 @@ const hintText = computed(() => {
       return t('graph.inspector.semantic.eventHint')
     case 'semantic.compile':
       return t('graph.inspector.semantic.compileHint')
-    case 'semantic.repair':
-      return t('graph.inspector.semantic.repairHint')
+    case 'semantic.edit':
+      return t('graph.inspector.semantic.editHint')
     case 'semantic.variant':
       return t('graph.inspector.semantic.variantHint')
     default:

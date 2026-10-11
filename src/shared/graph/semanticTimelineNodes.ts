@@ -7,7 +7,7 @@ import type { NodeTypeDefinition } from './registry'
 import {
   executeSemanticAnalyzeNode,
   executeSemanticCompileNode,
-  executeSemanticRepairNode,
+  executeSemanticEditNode,
   executeSemanticEventNode,
   executeSemanticVariantNode
 } from './execute/semanticTimeline'
@@ -166,11 +166,11 @@ export const SEMANTIC_TIMELINE_NODE_TYPES: NodeTypeDefinition[] = [
     execute: executeSemanticCompileNode
   },
   {
-    typeId: 'semantic.repair',
+    typeId: 'semantic.edit',
     category: 'note',
-    label: 'Semantic repair',
+    label: 'Semantic edit',
     icon: '🔧',
-    defaultTitle: 'Semantic repair',
+    defaultTitle: 'Semantic edit',
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
@@ -194,10 +194,10 @@ export const SEMANTIC_TIMELINE_NODE_TYPES: NodeTypeDefinition[] = [
     addable: true,
     deletable: true,
     inspector: 'none',
-    inspectorId: 'studio.graph.videoRepair',
+    inspectorId: 'studio.graph.semanticEdit',
     card: 'media',
     contributeToGeneration: false,
-    execute: executeSemanticRepairNode
+    execute: executeSemanticEditNode
   },
   {
     typeId: 'semantic.variant',
