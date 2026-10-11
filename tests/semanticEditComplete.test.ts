@@ -43,6 +43,7 @@ const diveView = readFileSync(
   join(process.cwd(), 'src/renderer/src/components/dive/EditorDiveSemanticTimelineView.vue'),
   'utf8'
 )
+const zh = readFileSync(join(process.cwd(), 'src/renderer/src/i18n/locales/zh-CN.ts'), 'utf8')
 
 describe('语义编辑节点完善', () => {
   it('resolveBuiltVideoRelativePath：单条 / 多条 / 空都要正确', () => {
@@ -66,16 +67,23 @@ describe('语义编辑节点完善', () => {
     expect(resolveBuiltVideoRelativePath({ out: { kind: 'text', text: '{}' } })).toBeUndefined()
   })
 
-  it('双击编辑/变体时先开视频预览，再回落到文本', () => {
+  it('双击编辑/变体时先开视频预览，没有成片也要进编辑器（不要甩"先执行它"）', () => {
     expect(card).toContain('resolveBuiltVideoRelativePath(props.runState?.outputs)')
     expect(card).toContain("mediaKind: 'video'")
     expect(card).toMatch(
       /props\.node\.typeId === 'semantic\.edit' \|\| props\.node\.typeId === 'semantic\.variant'/
     )
-    // 打不开视频时仍要有反应（下面那段文本分支）
+    // 没有成片时**也要进编辑器**：编辑发生在运行之前，顺序提示不能反
+    expect(card).toMatch(
+      /const intoEditor = await openSemanticTimelineDive\(title, payload\)\n\s*if \(intoEditor\) return/
+    )
+    // 真正打不开编辑器时才回落到文本（含"还没运行"的说明）
     expect(card).toContain(
       'const ok = await openSemanticResultTextDive(title, raw || semanticNoResultHint())'
     )
+    // 空态提示要指向"跑一次上游 + 右栏编辑页签"，不能再让人去属性面板粘 JSON（已搬走）
+    expect(zh).toContain('右栏「编辑」页签')
+    expect(zh).not.toContain('在右侧属性面板里粘贴时间线 JSON')
   })
 
   it('编辑操作在 dive 的面板里：摘要 / 丢弃原因 / 从时间线选目标 / 写回', () => {

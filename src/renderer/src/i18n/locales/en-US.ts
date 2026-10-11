@@ -4957,7 +4957,7 @@ export default {
       noEntities: 'No entities',
       noTimelineHint: 'This node has no timeline yet',
       noTimelineHintSub:
-        'Connect a Semantic analyze node to its Timeline input, or paste timeline JSON in the inspector.',
+        'Connect a Semantic analyze node to its Timeline input and run it once — then the "Edit" tab on the right pane can add operations straight from the timeline.',
       timelineFileMissing: 'Timeline file not found',
       noResultHint: 'This node has no result yet',
       noResultHintSub:

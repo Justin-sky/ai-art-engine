@@ -4845,7 +4845,7 @@ export default {
       noEntities: '暂无实体',
       noTimelineHint: '这个节点还没有时间线',
       noTimelineHintSub:
-        '把「语义分析」节点接到它的 Timeline 输入口，或在右侧属性面板里粘贴时间线 JSON。',
+        '把「语义分析」节点接到它的 Timeline 输入口并运行一次（拿到时间线后，右栏「编辑」页签就能从时间线上选目标添加操作）。',
       timelineFileMissing: '时间线文件不存在',
       noResultHint: '这个节点还没有运行结果',
       noResultHintSub: '先执行它（节点上的「执行当前节点」），再双击查看结果。',

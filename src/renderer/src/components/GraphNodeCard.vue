@@ -2850,6 +2850,17 @@ function onPreviewDblClick(): void {
             if (opened) return
           }
         }
+        /**
+         * 还没有成片时**也要进编辑器**，不要甩一句"先执行它"。
+         *
+         * 编辑本来就发生在运行**之前**（先写编辑列表，再运行该节点构建）——
+         * 顺序提示反了。编辑器会拿上游时间线（还没跑上游时由视图给出可执行的提示）。
+         */
+        const payload =
+          resolveSemanticTimelinePayload(props.node, props.runState) ??
+          resolveUpstreamTimelinePayload()
+        const intoEditor = await openSemanticTimelineDive(title, payload)
+        if (intoEditor) return
       }
       const raw = resolveSemanticOutText(props.node, props.runState)
       const ok = await openSemanticResultTextDive(title, raw || semanticNoResultHint())
