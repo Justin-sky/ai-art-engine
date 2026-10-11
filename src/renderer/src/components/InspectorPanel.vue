@@ -1,5 +1,12 @@
 <template>
   <div class="inspector-host" :class="{ stacked: mountedEditors.length > 1 }">
+    <!--
+      子组件渲染抛错时 Vue 会把那棵子树留空 —— 表现就是"检查器一片空白"，只有控制台有线索。
+      这里把原因显示出来，用户能直接看到（也能直接反馈给我们）。
+    -->
+    <div v-if="childError" class="inspector-error">
+      {{ t('graph.inspector.renderFailed') }} {{ childError }}
+    </div>
     <div v-for="editor in mountedEditors" :key="editor.key" class="editor-frame">
       <component :is="editor.component" v-bind="editor.props" />
     </div>
@@ -70,6 +77,8 @@ const propertyDrawers = computed(() =>
 const mountedEditors = ref<MountedEditor[]>([])
 const mountedDrawers = ref<MountedEditor[]>([])
 const switching = ref(false)
+/** 子组件渲染错误信息（显示在面板上，切换选中时清空） */
+const childError = ref('')
 let mountEpoch = 0
 
 function buildMountedEditors(key: string): MountedEditor[] {
@@ -100,6 +109,8 @@ watch(
   async () => {
     const key = target.value.key
     const epoch = ++mountEpoch
+    // 换目标时清掉上一次的渲染错误（否则会一直挂在面板上）
+    childError.value = ''
     const nextEditors = buildMountedEditors(key)
     const nextDrawers = buildMountedDrawers(key)
 
@@ -136,6 +147,8 @@ watch(
 
 onErrorCaptured((err) => {
   console.error('[InspectorPanel] child error:', err)
+  // 显示到面板上：子组件渲染抛错后那棵子树是空的，不给提示用户只会看到"一片空白"
+  childError.value = err instanceof Error ? err.message : String(err)
   return false
 })
 </script>
@@ -146,6 +159,18 @@ onErrorCaptured((err) => {
   min-height: 0;
   overflow: auto;
   background: var(--bg-panel);
+}
+
+/* 子组件渲染失败的原因（不能只留在控制台，否则用户只看到空白） */
+.inspector-error {
+  margin: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--danger, #c0392b);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--danger, #c0392b) 12%, transparent);
+  color: var(--text);
+  font-size: 12px;
+  word-break: break-word;
 }
 
 .editor-frame {

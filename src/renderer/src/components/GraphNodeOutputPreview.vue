@@ -190,7 +190,7 @@ function pushVideoLikeItem(
     return
   }
   into.push({
-    key: id?.trim() || rel || data!.slice(0, 64),
+    key: id?.trim() || rel || (data ?? '').slice(0, 64) || 'video',
     kind: 'video',
     src: rel ? `rel:${rel}` : data,
     assetId: revealableAssetId(id) ?? assetIdByRelativePath(rel)
@@ -256,7 +256,7 @@ function collectFromValue(value: GraphValue | undefined, into: PreviewItem[]): v
     return
   }
   if (value.kind === 'images') {
-    for (const [index, item] of value.items.entries()) {
+    for (const [index, item] of (value.items ?? []).entries()) {
       const src = imageItemSrc(item)
       if (!src) continue
       into.push({
@@ -288,7 +288,7 @@ function collectFromValue(value: GraphValue | undefined, into: PreviewItem[]): v
     return
   }
   if (value.kind === 'videos') {
-    for (const [index, item] of value.items.entries()) {
+    for (const [index, item] of (value.items ?? []).entries()) {
       pushVideoLikeItem(into, item.id?.trim() || `vid:${index}`, item.relativePath, item.dataUrl)
     }
     return
@@ -296,27 +296,29 @@ function collectFromValue(value: GraphValue | undefined, into: PreviewItem[]): v
   if (value.kind === 'text') {
     // 落盘后正文不再内联，仅有 relativePath 时也是一条有效产物
     const rel = value.relativePath?.trim()
-    const text = value.text.trim()
+    // 运行输出里的值可能字段不全（失败 / 锁定 / 旧版本状态）→ 不能直接 .trim()，否则整块面板渲染失败
+    const rawText = typeof value.text === 'string' ? value.text : ''
+    const text = rawText.trim()
     if (text || rel) {
       into.push({
         key: value.id?.trim() || rel || `text:${text.slice(0, 32)}`,
         kind: 'text',
-        text: value.text,
+        text: rawText,
         ...(rel ? { relativePath: rel } : {})
       })
       return
     }
   }
-  if (
-    (value.kind === 'world' || value.kind === 'worldEntities' || value.kind === 'beat') &&
-    value.text.trim()
-  ) {
-    into.push({
-      key: `${value.kind}:${value.text.slice(0, 32)}`,
-      kind: 'text',
-      text: value.text
-    })
-    return
+  if (value.kind === 'world' || value.kind === 'worldEntities' || value.kind === 'beat') {
+    const rawText = typeof value.text === 'string' ? value.text : ''
+    if (rawText.trim()) {
+      into.push({
+        key: `${value.kind}:${rawText.slice(0, 32)}`,
+        kind: 'text',
+        text: rawText
+      })
+      return
+    }
   }
   /**
    * 语义时间线：**不要**把整份 JSON 塞进预览（几百行，看不出重点），只给一眼能判断的摘要：
@@ -331,7 +333,7 @@ function collectFromValue(value: GraphValue | undefined, into: PreviewItem[]): v
     return
   }
   if (value.kind === 'texts') {
-    for (const [index, item] of value.items.entries()) {
+    for (const [index, item] of (value.items ?? []).entries()) {
       const text = item.text?.trim() ?? ''
       const rel = item.relativePath?.trim()
       if (!text && !rel) continue
@@ -345,7 +347,7 @@ function collectFromValue(value: GraphValue | undefined, into: PreviewItem[]): v
     return
   }
   if (value.kind === 'voices') {
-    for (const [index, item] of value.items.entries()) {
+    for (const [index, item] of (value.items ?? []).entries()) {
       pushLocalMediaPreview(into, item.id?.trim() || `voices:${index}`, 'audio', {
         relativePath: item.relativePath,
         assetId: item.id,
@@ -424,13 +426,14 @@ function collectFromValue(value: GraphValue | undefined, into: PreviewItem[]): v
         })
       }
     } else {
-      for (const [index, note] of value.notes.entries()) {
-        const text = note.text.trim()
+      for (const [index, note] of (value.notes ?? []).entries()) {
+        const rawText = typeof note?.text === 'string' ? note.text : ''
+        const text = rawText.trim()
         if (!text) continue
         into.push({
           key: `output-notes:${index}:${text.slice(0, 32)}`,
           kind: 'text',
-          text: note.text
+          text: rawText
         })
       }
     }
@@ -839,20 +842,35 @@ function collectUpstreamPreview(
   }
 }
 
+/**
+ * 运行输出里有没有文本产物。
+ *
+ * 这里的每个字段都可能缺（失败 / 跳过 / 锁定 / 旧版本状态），所以**一律不假设类型**：
+ * 以前 `value.text.trim()` 直接调用 —— 只要有一个 `kind:'text'` 却没有 `text` 的值就抛错，
+ * 而它在检查器内部渲染，抛错会让整个面板变空白（用户报"选中节点 inspector 没有显示"）。
+ */
+function nonEmptyText(value: unknown): boolean {
+  return typeof value === 'string' && value.trim().length > 0
+}
+
 function runOutHasTextItems(value: GraphValue | undefined): boolean {
   if (!value) return false
   if (value.kind === 'texts') {
-    return value.items.some((item) => !!item.text?.trim() || !!item.relativePath?.trim())
+    return (value.items ?? []).some(
+      (item) => nonEmptyText(item?.text) || !!item?.relativePath?.trim()
+    )
   }
-  if (value.kind === 'text') return !!value.text.trim() || !!value.relativePath?.trim()
+  if (value.kind === 'text') return nonEmptyText(value.text) || !!value.relativePath?.trim()
   if (value.kind === 'world' || value.kind === 'worldEntities' || value.kind === 'beat') {
-    return !!value.text.trim()
+    return nonEmptyText(value.text)
   }
   if (value.kind === 'output') {
-    if (value.texts?.some((item) => !!item.text?.trim() || !!item.relativePath?.trim())) {
+    if (
+      (value.texts ?? []).some((item) => nonEmptyText(item?.text) || !!item?.relativePath?.trim())
+    ) {
       return true
     }
-    return value.notes.some((note) => !!note.text.trim())
+    return (value.notes ?? []).some((note) => nonEmptyText(note?.text))
   }
   return false
 }

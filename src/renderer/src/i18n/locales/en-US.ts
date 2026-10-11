@@ -4965,6 +4965,7 @@ export default {
       imageBatch: 'Reference images'
     },
     inspector: {
+      renderFailed: 'This inspector failed to render (see console):',
       node: {
         title: 'Node parameters',
         hint: 'Preview on the node; edit details here',

@@ -4855,6 +4855,7 @@ export default {
       imageBatch: '参考图片'
     },
     inspector: {
+      renderFailed: '该检查器渲染失败（详情见控制台）：',
       node: {
         title: '节点参数',
         hint: '预览在节点上；此处编辑详细参数',
