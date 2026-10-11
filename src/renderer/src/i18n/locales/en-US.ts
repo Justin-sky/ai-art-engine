@@ -5443,7 +5443,6 @@ export default {
         jsonPlaceholder: '[] or a full evidence-array JSON',
         eventLabel: 'Event label filter',
         eventLabelPlaceholder: 'e.g. offer / CTA; empty = all',
-        eventLabelPick: 'Pick an event label…',
         eventLabelPickMany: 'Multi-select: tick the event labels to include',
         eventLabelPicked: '{count} selected (comma separated)',
         eventLabelNoOptions:

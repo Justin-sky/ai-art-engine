@@ -5313,7 +5313,6 @@ export default {
         jsonPlaceholder: '[] 或完整证据数组 JSON',
         eventLabel: '事件标签过滤',
         eventLabelPlaceholder: '例如 offer / CTA；留空=全部',
-        eventLabelPick: '从列表选一个事件标签…',
         eventLabelPickMany: '多选：勾选要包含的事件标签',
         eventLabelPicked: '已选 {count} 个（多个用逗号分隔）',
         eventLabelNoOptions: '没读到时间线，暂时列不出候选 —— 可从上游分析节点或事件轨道上抄标签。',

@@ -140,35 +140,24 @@
     <section v-else-if="isTrigger" class="fields">
       <label>
         <span class="field-label">{{ t('graph.inspector.semantic.eventLabel') }}</span>
+        <!--
+          纯文本框（**不挂 datalist**）：挂了浏览器会在右侧画一个下拉箭头，
+          看起来像"选择控件"，而真正的选择已经是下面的多选列表 —— 用户反馈过这个箭头。
+        -->
         <input
           v-model="eventLabel"
           type="text"
-          list="semantic-event-labels"
           :placeholder="t('graph.inspector.semantic.eventLabelPlaceholder')"
           @change="persistTrigger"
         />
-        <datalist id="semantic-event-labels">
-          <option v-for="label in eventLabelOptions" :key="label" :value="label" />
-        </datalist>
-        <!-- 原生 datalist 没有下拉箭头，很多人不知道有候选项；这里再给一个显式下拉 -->
-        <select
-          v-if="eventLabelOptions.length"
-          class="event-label-select"
-          :value="eventLabel"
-          @change="onPickEventLabel"
-        >
-          <option value="">{{ t('graph.inspector.semantic.eventLabelPick') }}</option>
-          <option v-for="label in eventLabelOptions" :key="`sel-${label}`" :value="label">
-            {{ label }}
-          </option>
-        </select>
-        <span v-else class="field-hint">
-          {{ t('graph.inspector.semantic.eventLabelNoOptions') }}
-        </span>
         <!-- 多选：勾选写回成逗号分隔（参数仍是单值字段，零迁移） -->
         <div v-if="eventLabelOptions.length" class="event-label-list">
           <span class="field-label">{{ t('graph.inspector.semantic.eventLabelPickMany') }}</span>
-          <label v-for="label in eventLabelOptions" :key="`pick-${label}`" class="event-label-item">
+          <label
+            v-for="label in eventLabelOptions"
+            :key="`pick-${label}`"
+            class="event-label-item check"
+          >
             <input
               type="checkbox"
               :checked="pickedEventLabels.includes(label)"
@@ -182,6 +171,9 @@
             }}
           </span>
         </div>
+        <span v-if="!eventLabelOptions.length" class="field-hint">
+          {{ t('graph.inspector.semantic.eventLabelNoOptions') }}
+        </span>
         <span class="field-hint">{{ t('graph.inspector.semantic.eventLabelHint') }}</span>
       </label>
     </section>
@@ -576,12 +568,6 @@ function persistTrigger(): void {
   patch({ eventLabel: eventLabel.value.trim() })
 }
 
-/** 下拉选一个事件标签 → 填进输入框并落盘（输入框仍可手填 id / type） */
-function onPickEventLabel(event: Event): void {
-  eventLabel.value = (event.target as HTMLSelectElement).value
-  persistTrigger()
-}
-
 /** 已勾选的事件标签（输入框里的值按逗号拆开；手填的 id/type 也在这里保留） */
 const pickedEventLabels = computed(() => parseEventLabels(eventLabel.value))
 
@@ -793,9 +779,6 @@ const timelineSummary = computed(() => {
   gap: 6px;
 }
 
-.event-label-select {
-  margin-top: 4px;
-}
 /* 事件标签多选：紧凑两列，长标签省略 */
 .event-label-list {
   display: grid;
@@ -807,14 +790,24 @@ const timelineSummary = computed(() => {
 .event-label-list > .field-hint {
   grid-column: 1 / -1;
 }
-.event-label-item {
+/*
+ * 复选框与标签**同一行**。必须带 `.fields` 前缀提高权重 ——
+ * 上面的 `.fields label { flex-direction: column }`（0,1,1）会压过 `.event-label-item`（0,1,0），
+ * 结果复选框和文字被排成上下两行（用户反馈）。
+ */
+.fields .event-label-item {
   display: flex;
+  flex-direction: row;
   align-items: center;
   gap: 6px;
   font-size: 12px;
   min-width: 0;
 }
-.event-label-item > span {
+.fields .event-label-item > input {
+  flex: 0 0 auto;
+  margin: 0;
+}
+.fields .event-label-item > span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

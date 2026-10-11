@@ -100,14 +100,10 @@ describe('语义时间线 dive 的打开路径', () => {
     expect(inspector).toContain(
       '[timelineJson.value, runOutText.value, upstreamTimelineJson.value]'
     )
-    // 显式下拉（原生 datalist 没箭头，很多人不知道有候选）：class 与 v-if 都要断言，
-    // 否则把 v-if 改成 false（等于没有下拉）也照样通过
-    expect(inspector).toMatch(/<select[\s\S]{0,160}?v-if="eventLabelOptions\.length"/)
-    expect(inspector).toContain('class="event-label-select"')
-    expect(inspector).toContain('@change="onPickEventLabel"')
-    expect(inspector).toContain('function onPickEventLabel(')
-    // 选完要落盘
-    expect(inspector).toMatch(/function onPickEventLabel[\s\S]{0,200}?persistTrigger\(\)/)
+    // 候选项以**多选列表**呈现（原生 datalist 没箭头，很多人不知道有候选）
+    expect(inspector).toContain('class="event-label-list"')
+    expect(inspector).toContain('v-if="eventLabelOptions.length"')
+    expect(inspector).toContain('@change="toggleEventLabel(label)"')
     // 列不出候选时要说清楚原因
     expect(inspector).toContain('eventLabelNoOptions')
   })
@@ -116,7 +112,7 @@ describe('语义时间线 dive 的打开路径', () => {
     // 勾选状态从输入框解析（手填的 id/type 也保留）
     expect(inspector).toContain('const pickedEventLabels = computed(() => parseEventLabels(')
     // 复选框列表
-    expect(inspector).toContain('class="event-label-item"')
+    expect(inspector).toContain('class="event-label-item check"')
     expect(inspector).toContain('type="checkbox"')
     expect(inspector).toContain(':checked="pickedEventLabels.includes(label)"')
     expect(inspector).toContain('@change="toggleEventLabel(label)"')
@@ -124,6 +120,27 @@ describe('语义时间线 dive 的打开路径', () => {
     expect(inspector).toMatch(
       /function toggleEventLabel[\s\S]{0,320}?eventLabel\.value = next\.join\(', '\)[\s\S]{0,80}?persistTrigger\(\)/
     )
+    /**
+     * 多选就够，**不要再放一个单选下拉**（用户反馈：有多选为什么还有单选）。
+     * 纯文本框保留（可手填 id / type / 逗号多值），但**不挂 datalist** ——
+     * 挂了浏览器会画一个下拉箭头，看起来又像选择控件（用户第二次反馈）。
+     */
+    expect(inspector).not.toContain('event-label-select')
+    expect(inspector).not.toContain('onPickEventLabel')
+    expect(inspector).not.toContain('<datalist')
+    expect(inspector).not.toContain('list="semantic-event-labels"')
+    expect(zhCN.graph.inspector.semantic.eventLabelPick).toBeUndefined()
+    expect(enUS.graph.inspector.semantic.eventLabelPick).toBeUndefined()
+    /**
+     * 复选框与标签**同一行**：选择器必须带 `.fields` 前缀提高权重，
+     * 否则被 `.fields label { flex-direction: column }`（0,1,1）压成上下两行（用户反馈）。
+     */
+    expect(inspector).toContain('class="event-label-item check"')
+    const itemRule = /\.fields \.event-label-item\s*\{([^}]*)\}/s.exec(inspector)?.[1] ?? ''
+    expect(itemRule, '缺少 .fields .event-label-item 规则').toBeTruthy()
+    expect(itemRule).toMatch(/display:\s*flex/)
+    expect(itemRule).toMatch(/flex-direction:\s*row/)
+    expect(itemRule).toMatch(/align-items:\s*center/)
     // 引擎侧：多值解析函数被真正使用（行为由 tests/semanticTriggerNode.test.ts 覆盖）
     expect(executor).toContain('parseEventLabels(ctx.node.params?.eventLabel)')
     expect(executor).toContain('labels.includes(e.label)')
