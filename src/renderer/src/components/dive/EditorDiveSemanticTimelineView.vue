@@ -3,10 +3,27 @@
  * Dive：Semantic Timeline 三层只读编辑器 + 对比面板。
  * 与其它 dive 视图一致：接收 EditorDiveChildHost 展开的扁平 props（勿再包一层 meta）。
  */
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, inject, onMounted, ref, watch } from 'vue'
 import type { SemanticTimeline } from '@shared/semanticTimeline'
 import SemanticTimelineEditor from '../SemanticTimelineEditor.vue'
 import SemanticCompareView from '../SemanticCompareView.vue'
+import EditorDiveBar from '../EditorDiveBar.vue'
+import { editorDiveKey } from '../../features/graph/model/editorDive'
+
+/**
+ * 浮层里保留 dive 自己的返回条（宿主 provide 的上下文）。
+ * 没有宿主上下文（例如独立窗口打开）时为 null，不渲染返回条。
+ */
+const injectedDive = inject(editorDiveKey, null)
+const diveBar = computed(() =>
+  injectedDive
+    ? {
+        rootTitle: injectedDive.rootTitle,
+        frames: injectedDive.frames,
+        popTo: injectedDive.popTo
+      }
+    : null
+)
 
 const props = defineProps<{
   frameKey: string
@@ -86,16 +103,31 @@ watch(
 </script>
 
 <template>
-  <div class="dive-semantic dive-view">
-    <p v-if="error" class="err">{{ error }}</p>
-    <SemanticTimelineEditor v-if="timeline" :timeline="timeline" />
-    <SemanticCompareView
-      v-if="originalUrl && resultUrl"
-      class="compare"
-      :original-url="originalUrl"
-      :result-url="resultUrl"
-    />
-  </div>
+  <!--
+    这个视图**直接铺满整个窗口**（不再有全屏按钮/开关）：
+    `Teleport to="body"` 把它搬到文档顶层，绕开宿主那层布局（dive 平时只占画布区），
+    再用 `position: fixed; inset: 0` 盖住应用左右面板。
+    顶部保留 dive 自带的返回条（宿主 provide 的上下文），否则盖住它就没法退出 —— Esc 不做处理。
+  -->
+  <Teleport to="body">
+    <div class="dive-semantic dive-view dive-fullscreen">
+      <div v-if="diveBar" class="dive-shell-bar">
+        <EditorDiveBar
+          :root-title="diveBar.rootTitle"
+          :frames="diveBar.frames"
+          @pop-to="diveBar.popTo"
+        />
+      </div>
+      <p v-if="error" class="err">{{ error }}</p>
+      <SemanticTimelineEditor v-if="timeline" :timeline="timeline" />
+      <SemanticCompareView
+        v-if="originalUrl && resultUrl"
+        class="compare"
+        :original-url="originalUrl"
+        :result-url="resultUrl"
+      />
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -108,6 +140,28 @@ watch(
      正常情况下高度由编辑器内部的滚动区承担，横向滚动条就贴在可见区底部 */
   overflow: auto;
   padding: 8px;
+}
+/*
+ * 直接全屏：铺满整个窗口（fixed + inset 0），并盖住应用外壳（左右面板 / 工具条）。
+ * z-index 取 6000：高于应用内已有的最高弹层（5200），低于 9999 的 OverflowTip —— 悬浮提示仍需可见。
+ * 顶部返回条由本组件自己渲染（宿主那份会被浮层盖住）。
+ */
+.dive-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 6000;
+  background: var(--bg-app, var(--bg-panel));
+  padding: 0 12px 12px;
+  gap: 8px;
+}
+.dive-fullscreen .dive-shell-bar {
+  flex-shrink: 0;
+  margin: 0 -12px 4px;
+  display: flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
 }
 .err {
   color: #f88;
