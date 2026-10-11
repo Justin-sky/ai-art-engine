@@ -735,16 +735,8 @@ function draftKind(draft: Record<string, unknown>): string {
   return typeof draft.kind === 'string' ? draft.kind : 'grade'
 }
 
-const beatOptions = computed(() =>
-  (timelineDoc.value?.beats ?? []).map((beat) => ({
-    id: beat.id,
-    // StoryBeat 没有 label 字段：用描述兜，再退回 type
-    title: beat.description?.trim() || beat.type || beat.id
-  }))
-)
-const entityOptions = computed(() =>
-  (timelineDoc.value?.entities ?? []).map((entity) => ({ id: entity.id, name: entity.name }))
-)
+// beatOptions / entityOptions 依赖 timelineDoc，实现放在 timelineDoc 声明之后
+// （放在这里会 TDZ：`Cannot access 'timelineDoc' before initialization` → 整个检查器不渲染）
 
 /** 表单改一个字段：只并进这一项，其余字段（含高级字段）原样保留 */
 function setDraftField(index: number, key: string, value: string): void {
@@ -775,68 +767,8 @@ function addDraft(): void {
   persistPlan()
 }
 
-/**
- * 失效计划的**本地预览**：读一次镜头证据，纯函数算计划 —— 不进构建、不花钱。
- *
- * 目的：修复节点以前只有点运行才知道"要重做几个镜头、要不要付费重生成"。
- */
-const planShots = ref<ShotEvidence[] | null>(null)
-
-async function loadPlanShots(): Promise<void> {
-  planShots.value = null
-  const id = timelineDoc.value?.id?.trim()
-  if (!id?.startsWith('stl.')) return
-  try {
-    const evidence = await window.studio.semanticLoadEvidence(id)
-    planShots.value = evidence?.shots ?? []
-  } catch {
-    planShots.value = null
-  }
-}
-
-watch(
-  [() => timelineDoc.value?.id, () => node.value?.typeId],
-  () => {
-    void loadPlanShots()
-  },
-  { immediate: true }
-)
-
-/**
- * 计划预览：**任何异常都不能让面板变空白**。
- *
- * Vue 的 computed 一旦抛错，整个组件就不渲染 —— 表现就是"检查器一片空白"（实测踩到：
- * 字段不全的时间线文档让 `buildEntityShotIndex` / `planInvalidation` 抛
- * `undefined is not iterable`）。所以这里一手包住，并把错误**显示出来**而不是吞掉。
- */
-const planPreviewResult = computed<{ plan: PlanSummary | null; error: string }>(() => {
-  if (!isPlan.value) return { plan: null, error: '' }
-  const timeline = timelineDoc.value
-  if (!timeline) return { plan: null, error: '' }
-  try {
-    const edits = normalizeSemanticEdits(editsJson.value, 'user').edits
-    return {
-      plan: summarizeInvalidationPlan(
-        planInvalidation({
-          timeline,
-          shots: planShots.value ?? [],
-          edits,
-          entityShotIndex: buildEntityShotIndex(timeline)
-        })
-      ),
-      error: ''
-    }
-  } catch (e) {
-    return { plan: null, error: e instanceof Error ? e.message : String(e) }
-  }
-})
-
-const planSummary = computed(() => planPreviewResult.value.plan)
-const planError = computed(() => planPreviewResult.value.error)
-/** 读不到镜头证据时要说清楚（否则"直拷 0 镜"会误导） */
-const planNeedsEvidence = computed(
-  () => isPlan.value && !!timelineDoc.value && (planShots.value?.length ?? 0) === 0
-)
+// 计划预览（planShots / loadPlanShots / planPreviewResult / planSummary / planError /
+// planNeedsEvidence）也依赖 timelineDoc —— 实现同样放在 timelineDoc 声明之后。
 
 /** 追加一条示例编辑（`grade`，不引用任何 id），填进文本框并落盘 */
 function insertSampleEdit(): void {
@@ -1009,6 +941,83 @@ const timelineSummary = computed(() => {
     intents: Array.isArray(doc.intents) ? doc.intents.length : 0
   }
 })
+
+// ── 以下实现都依赖 timelineDoc，必须放在它的声明之后（否则 TDZ，整个检查器不渲染） ──
+
+/**
+ * 失效计划的**本地预览**：读一次镜头证据，纯函数算计划 —— 不进构建、不花钱。
+ *
+ * 目的：修复节点以前只有点运行才知道"要重做几个镜头、要不要付费重生成"。
+ */
+const planShots = ref<ShotEvidence[] | null>(null)
+
+async function loadPlanShots(): Promise<void> {
+  planShots.value = null
+  const id = timelineDoc.value?.id?.trim()
+  if (!id?.startsWith('stl.')) return
+  try {
+    const evidence = await window.studio.semanticLoadEvidence(id)
+    planShots.value = evidence?.shots ?? []
+  } catch {
+    planShots.value = null
+  }
+}
+
+watch(
+  [() => timelineDoc.value?.id, () => node.value?.typeId],
+  () => {
+    void loadPlanShots()
+  },
+  { immediate: true }
+)
+
+/**
+ * 计划预览：**任何异常都不能让面板变空白**。
+ *
+ * Vue 的 computed 一旦抛错，整个组件就不渲染 —— 表现就是"检查器一片空白"（实测踩到：
+ * 字段不全的时间线文档让 `buildEntityShotIndex` / `planInvalidation` 抛
+ * `undefined is not iterable`）。所以这里一手包住，并把错误**显示出来**而不是吞掉。
+ */
+const planPreviewResult = computed<{ plan: PlanSummary | null; error: string }>(() => {
+  if (!isPlan.value) return { plan: null, error: '' }
+  const timeline = timelineDoc.value
+  if (!timeline) return { plan: null, error: '' }
+  try {
+    const edits = normalizeSemanticEdits(editsJson.value, 'user').edits
+    return {
+      plan: summarizeInvalidationPlan(
+        planInvalidation({
+          timeline,
+          shots: planShots.value ?? [],
+          edits,
+          entityShotIndex: buildEntityShotIndex(timeline)
+        })
+      ),
+      error: ''
+    }
+  } catch (e) {
+    return { plan: null, error: e instanceof Error ? e.message : String(e) }
+  }
+})
+
+const planSummary = computed(() => planPreviewResult.value.plan)
+const planError = computed(() => planPreviewResult.value.error)
+/** 读不到镜头证据时要说清楚（否则"直拷 0 镜"会误导） */
+const planNeedsEvidence = computed(
+  () => isPlan.value && !!timelineDoc.value && (planShots.value?.length ?? 0) === 0
+)
+
+/** 结构化编辑的下拉项：节拍 / 实体都取自时间线文档（真实 id，不让用户手打） */
+const beatOptions = computed(() =>
+  (timelineDoc.value?.beats ?? []).map((beat) => ({
+    id: beat.id,
+    // StoryBeat 没有 label 字段：用描述兜，再退回 type
+    title: beat.description?.trim() || beat.type || beat.id
+  }))
+)
+const entityOptions = computed(() =>
+  (timelineDoc.value?.entities ?? []).map((entity) => ({ id: entity.id, name: entity.name }))
+)
 </script>
 
 <style scoped>
