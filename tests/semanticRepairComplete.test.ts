@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { sampleSemanticEdit, summarizeSemanticEdits } from '../src/shared/semanticTimeline'
+import {
+  sampleSemanticEdit,
+  summarizeInvalidationPlan,
+  summarizeSemanticEdits
+} from '../src/shared/semanticTimeline'
 import { resolveBuiltVideoRelativePath } from '../src/renderer/src/features/graph/model/semanticTimelineView'
 
 /**
@@ -61,6 +65,59 @@ describe('语义修复节点完善', () => {
     expect(inspector).toContain('sampleSemanticEdit()')
     // 插入后要落盘
     expect(inspector).toMatch(/function insertSampleEdit[\s\S]{0,700}?persistPlan\(\)/)
+  })
+
+  it('summarizeInvalidationPlan：按 action 计数 + 费用字段 + 空值安全', () => {
+    const plan = {
+      targetLevel: 'L1',
+      items: [
+        { productId: 'a', action: 'keep', reason: 'unchanged' },
+        { productId: 'b', action: 'keep', reason: 'unchanged' },
+        { productId: 'c', action: 'replace', reason: 'entity swapped' },
+        { productId: 'd', action: 'recompute', reason: 'grade' }
+      ],
+      cost: { paidSeconds: 4.5, localShotCount: 2, paidShotCount: 1, note: '需付费重生成 1 镜' }
+    } as never
+    expect(summarizeInvalidationPlan(plan)).toEqual({
+      targetLevel: 'L1',
+      kept: 2,
+      replaced: 1,
+      recompute: 1,
+      paidSeconds: 4.5,
+      paidShotCount: 1,
+      localShotCount: 2,
+      note: '需付费重生成 1 镜'
+    })
+    // 没有 cost / 没有 note 时不炸，note 不塞空串
+    expect(summarizeInvalidationPlan({ targetLevel: 'L0', items: [] } as never)).toEqual({
+      targetLevel: 'L0',
+      kept: 0,
+      replaced: 0,
+      recompute: 0,
+      paidSeconds: 0,
+      paidShotCount: 0,
+      localShotCount: 0
+    })
+    expect(summarizeInvalidationPlan(null)).toBeNull()
+    expect(summarizeInvalidationPlan(undefined)).toBeNull()
+  })
+
+  it('检查器本地算计划预览（读证据 + 不构建）', () => {
+    expect(inspector).toContain('window.studio.semanticLoadEvidence(id)')
+    expect(inspector).toContain('planInvalidation({')
+    expect(inspector).toContain('buildEntityShotIndex(timeline)')
+    expect(inspector).toContain('summarizeInvalidationPlan(')
+    expect(inspector).toContain('normalizeSemanticEdits(editsJson.value')
+    expect(inspector).toContain('class="plan-preview"')
+    // 读不到证据要说明（否则"直拷 0"会误导）—— 必须断言**绑定**：
+    // 只查文案存在的话，把 v-if 改成 false（等于不提示）照样通过
+    expect(inspector).toContain('const planNeedsEvidence = computed(')
+    expect(inspector).toMatch(/<p v-if="planNeedsEvidence" class="field-hint">/)
+    expect(inspector).toContain("t('graph.inspector.semantic.planNoEvidence')")
+    // 只在计划类节点（修复/变体）上算
+    expect(inspector).toMatch(
+      /const planPreview = computed\(\(\) => \{\s*\n\s*if \(!isPlan\.value\) return null/
+    )
   })
 
   it('summarizeSemanticEdits：计数 + 类型分布 + 丢弃原因（稳定排序）', () => {

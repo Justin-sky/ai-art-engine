@@ -53,6 +53,52 @@ function shotDuration(shot: ShotEvidence): number {
 }
 
 /**
+ * 失效计划 → 给界面看的摘要（**不构建**就能看到代价）。
+ *
+ * 修复节点原来点运行才知道会发生什么；检查器拿这份摘要就能显示
+ * 「目标级 X · 直拷 M 镜 / 需重做 K 镜 · 付费 N 秒」。
+ */
+export interface PlanSummary {
+  targetLevel: string
+  kept: number
+  replaced: number
+  recompute: number
+  paidSeconds: number
+  paidShotCount: number
+  localShotCount: number
+  note?: string
+}
+
+export function summarizeInvalidationPlan(
+  plan: InvalidationPlan | null | undefined
+): PlanSummary | null {
+  if (!plan || !Array.isArray(plan.items)) return null
+  let kept = 0
+  let replaced = 0
+  let recompute = 0
+  for (const item of plan.items) {
+    if (item.action === 'keep') kept += 1
+    else if (item.action === 'replace') replaced += 1
+    else if (item.action === 'recompute') recompute += 1
+  }
+  const cost = plan.cost ?? {
+    paidSeconds: 0,
+    localShotCount: 0,
+    paidShotCount: 0
+  }
+  return {
+    targetLevel: plan.targetLevel,
+    kept,
+    replaced,
+    recompute,
+    paidSeconds: cost.paidSeconds ?? 0,
+    paidShotCount: cost.paidShotCount ?? 0,
+    localShotCount: cost.localShotCount ?? 0,
+    ...(cost.note?.trim() ? { note: cost.note.trim() } : {})
+  }
+}
+
+/**
  * 根据 edits 生成失效计划。
  * 默认所有 shot.video / shot.audio / final.video 为 keep；按规则升级。
  */

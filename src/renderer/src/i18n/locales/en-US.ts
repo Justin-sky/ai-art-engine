@@ -5474,6 +5474,14 @@ export default {
         editsCount: '{count} edits:',
         editsIssue: 'Will be dropped:',
         editsInsertSample: 'Insert sample edit (grade)',
+        planPreview: 'Plan preview (no build)',
+        planLevel: 'Level {level}',
+        planKeep: 'copy {count}',
+        planReplace: 'replace {count}',
+        planRecompute: 'recompute {count}',
+        planPaid: 'paid regen {seconds}s',
+        planNoEvidence:
+          'No shot evidence loaded (run the upstream analyze node first); the numbers below assume an empty shot set.',
         timelineJson: 'Timeline JSON (no upstream)',
         timelineJsonPlaceholder: 'Paste Semantic Timeline JSON',
         timelineJsonHint:

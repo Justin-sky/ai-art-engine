@@ -269,6 +269,35 @@
           {{ t('graph.inspector.semantic.editsInsertSample') }}
         </button>
       </div>
+      <!-- 计划预览：**不构建**就能看到将付出什么代价（读证据 → 本地跑 planInvalidation） -->
+      <div v-if="planSummary" class="plan-preview">
+        <span class="field-label">{{ t('graph.inspector.semantic.planPreview') }}</span>
+        <p class="plan-line">
+          <span class="plan-chip">
+            {{ t('graph.inspector.semantic.planLevel', { level: planSummary.targetLevel }) }}
+          </span>
+          <span class="plan-chip">{{
+            t('graph.inspector.semantic.planKeep', { count: planSummary.kept })
+          }}</span>
+          <span class="plan-chip">{{
+            t('graph.inspector.semantic.planReplace', { count: planSummary.replaced })
+          }}</span>
+          <span class="plan-chip">{{
+            t('graph.inspector.semantic.planRecompute', { count: planSummary.recompute })
+          }}</span>
+          <span v-if="planSummary.paidSeconds > 0" class="plan-chip plan-paid">
+            {{
+              t('graph.inspector.semantic.planPaid', {
+                seconds: planSummary.paidSeconds.toFixed(1)
+              })
+            }}
+          </span>
+        </p>
+        <p v-if="planSummary.note" class="field-hint">{{ planSummary.note }}</p>
+        <p v-if="planNeedsEvidence" class="field-hint">
+          {{ t('graph.inspector.semantic.planNoEvidence') }}
+        </p>
+      </div>
       <details class="advanced">
         <summary>{{ t('graph.inspector.semantic.advanced') }}</summary>
         <label>
@@ -363,8 +392,13 @@ import { graphRunHosts } from '../features/graph/model/graphRunHosts'
 import { eventLabelChoices } from '../features/graph/model/semanticTimelineView'
 import {
   parseEventLabels,
+  planInvalidation,
+  buildEntityShotIndex,
+  normalizeSemanticEdits,
   sampleSemanticEdit,
-  summarizeSemanticEdits
+  summarizeInvalidationPlan,
+  summarizeSemanticEdits,
+  type ShotEvidence
 } from '@shared/semanticTimeline'
 
 const SEMANTIC_TYPE_IDS = new Set([
@@ -589,6 +623,54 @@ function persistAnalyze(): void {
 
 /** 编辑草稿摘要（计数 + 被丢弃原因）——不跑节点就能看到 */
 const editsSummary = computed(() => summarizeSemanticEdits(editsJson.value))
+
+/**
+ * 失效计划的**本地预览**：读一次镜头证据，纯函数算计划 —— 不进构建、不花钱。
+ *
+ * 目的：修复节点以前只有点运行才知道"要重做几个镜头、要不要付费重生成"。
+ */
+const planShots = ref<ShotEvidence[] | null>(null)
+
+async function loadPlanShots(): Promise<void> {
+  planShots.value = null
+  const id = timelineDoc.value?.id?.trim()
+  if (!id?.startsWith('stl.')) return
+  try {
+    const evidence = await window.studio.semanticLoadEvidence(id)
+    planShots.value = evidence?.shots ?? []
+  } catch {
+    planShots.value = null
+  }
+}
+
+watch(
+  [() => timelineDoc.value?.id, () => node.value?.typeId],
+  () => {
+    void loadPlanShots()
+  },
+  { immediate: true }
+)
+
+const planPreview = computed(() => {
+  if (!isPlan.value) return null
+  const timeline = timelineDoc.value
+  if (!timeline || planShots.value === null) return null
+  const edits = normalizeSemanticEdits(editsJson.value, 'user').edits
+  return summarizeInvalidationPlan(
+    planInvalidation({
+      timeline,
+      shots: planShots.value,
+      edits,
+      entityShotIndex: buildEntityShotIndex(timeline)
+    })
+  )
+})
+
+const planSummary = planPreview
+/** 读不到镜头证据时要说清楚（否则"直拷 0 镜"会误导） */
+const planNeedsEvidence = computed(
+  () => isPlan.value && !!timelineDoc.value && (planShots.value?.length ?? 0) === 0
+)
 
 /** 追加一条示例编辑（`grade`，不引用任何 id），填进文本框并落盘 */
 function insertSampleEdit(): void {
@@ -866,6 +948,34 @@ const timelineSummary = computed(() => {
 }
 .edits-sample:hover {
   border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+}
+
+/* 计划预览：不进构建就能看到代价 */
+.plan-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 7%, var(--bg-elevated));
+}
+.plan-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  font-size: 12px;
+}
+.plan-chip {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--bg-panel);
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.plan-chip.plan-paid {
+  background: color-mix(in srgb, #e0a458 22%, var(--bg-panel));
 }
 
 /* 事件标签多选：紧凑两列，长标签省略 */
