@@ -8,6 +8,7 @@ import type { SemanticTimeline } from '@shared/semanticTimeline'
 import SemanticTimelineEditor from '../SemanticTimelineEditor.vue'
 import SemanticCompareView from '../SemanticCompareView.vue'
 import { useStudioI18n } from '../../composables/useStudioI18n'
+import { graphEditorHosts } from '../../features/graph/model/graphEditorHosts'
 
 const { t } = useStudioI18n()
 
@@ -18,9 +19,34 @@ const props = defineProps<{
   sourceRelativePath?: string
   resultRelativePath?: string
   timelineJson?: string
+  /** 来源节点（语义编辑 / 变体）：编辑操作在 dive 里做，改动写回这个节点的参数 */
+  editorNodeId?: string
+  hostId?: string
 }>()
 
 const timeline = ref<SemanticTimeline | null>(null)
+/**
+ * 编辑操作在 **dive** 里做（不在 inspector）：这里把编辑列表**读自 / 写回**来源节点参数。
+ * 节点参数仍是唯一事实来源 —— 构建还是走画布上的节点运行。
+ */
+const canEdit = computed(() => !!props.editorNodeId?.trim() && !!props.hostId?.trim())
+const editsJson = computed(() => {
+  void graphEditorHosts.revision.value
+  const hostId = props.hostId?.trim()
+  const nodeId = props.editorNodeId?.trim()
+  if (!hostId || !nodeId) return ''
+  const node = graphEditorHosts.getNode(hostId, nodeId)
+  const raw = node?.params?.editsJson
+  return typeof raw === 'string' ? raw : ''
+})
+
+function persistEdits(value: string): void {
+  const hostId = props.hostId?.trim()
+  const nodeId = props.editorNodeId?.trim()
+  if (!hostId || !nodeId) return
+  // updateNode（而非 Live 版）：记撤销 + 触发自动保存 —— 这是用户的编辑
+  graphEditorHosts.updateNode(hostId, nodeId, { editsJson: value })
+}
 const error = ref('')
 /** 「还没有时间线」不是错误：透传节点未接上游时就是这种状态，给提示而不是报错 */
 const hint = ref('')
@@ -118,7 +144,13 @@ watch(
       <p>{{ hint }}</p>
       <p class="hint-sub">{{ t('graph.semanticTimeline.noTimelineHintSub') }}</p>
     </div>
-    <SemanticTimelineEditor v-if="timeline" :timeline="timeline" />
+    <SemanticTimelineEditor
+      v-if="timeline"
+      :timeline="timeline"
+      :edits-json="editsJson"
+      :can-edit="canEdit"
+      @update:edits-json="persistEdits"
+    />
     <SemanticCompareView
       v-if="originalUrl && resultUrl"
       class="compare"

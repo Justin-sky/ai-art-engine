@@ -2646,12 +2646,19 @@ async function openSemanticTimelineDive(
 ): Promise<boolean> {
   // 允许空 id：真没有时间线时也把编辑器打开，由视图给出「还没有时间线」的提示
   const timelineId = payload?.id || fallbackId || ''
+  /**
+   * 语义编辑 / 变体节点：把**来源节点**也带进 dive ——
+   * 编辑操作在 dive 里做，改动要写回节点参数（节点仍是唯一事实来源）。
+   */
+  const editable = props.node.typeId === 'semantic.edit' || props.node.typeId === 'semantic.variant'
+  const hostId = props.hostId?.trim()
   return diveView(
     {
       viewId: 'semantic.timeline',
       timelineId,
       timelineJson: payload?.json,
-      sourceRelativePath: payload?.sourceRelativePath
+      sourceRelativePath: payload?.sourceRelativePath,
+      ...(editable && hostId ? { editorNodeId: props.node.id, hostId } : {})
     },
     title
   )

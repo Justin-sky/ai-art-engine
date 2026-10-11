@@ -238,117 +238,11 @@
       </label>
       <span class="field-hint">{{ t('graph.inspector.semantic.executeHint') }}</span>
 
-      <label>
-        <span class="field-label">{{ t('graph.inspector.semantic.editsJson') }}</span>
-        <ExpandableTextarea
-          :key="`edits-${node.id}`"
-          v-model="editsJson"
-          :title="t('graph.inspector.semantic.editsJson')"
-          :rows="5"
-          :placeholder="t('graph.inspector.semantic.editsJsonPlaceholder')"
-          @change="persistPlan"
-        />
-        <span class="field-hint">{{ t('graph.inspector.semantic.editsJsonHint') }}</span>
-      </label>
-      <!-- 编辑摘要 / 校验：不用跑节点就能看到"填了什么、哪些会被丢掉" -->
-      <div class="edits-summary">
-        <span class="field-label">{{ t('graph.inspector.semantic.editsSummary') }}</span>
-        <p v-if="editsSummary.count === 0" class="field-hint">
-          {{ t('graph.inspector.semantic.editsEmpty') }}
-        </p>
-        <p v-else class="edits-kinds">
-          {{ t('graph.inspector.semantic.editsCount', { count: editsSummary.count }) }}
-          <span v-for="row in editsSummary.kinds" :key="row.kind" class="edits-kind">
-            {{ row.kind }} ×{{ row.count }}
-          </span>
-        </p>
-        <p v-for="issue in editsSummary.issues" :key="issue" class="edits-issue">
-          {{ t('graph.inspector.semantic.editsIssue') }} {{ issue }}
-        </p>
-        <button type="button" class="edits-sample" @click="insertSampleEdit">
-          {{ t('graph.inspector.semantic.editsInsertSample') }}
-        </button>
-      </div>
       <!--
-        结构化编辑：常见 kind 一行一项（节拍 / 实体从时间线里**选真实 id**）。
-        只改表单认识的字段，其余字段原样保留（agent / 手写的高级编辑不会被吃掉）。
+        编辑**不在 inspector 里做**：编辑要"看着时间线点目标"，操作台放在双击打开的
+        编辑器（dive）右栏「编辑」页签。这里只保留指路 + 只读的计划预览。
       -->
-      <div class="edits-struct">
-        <span class="field-label">{{ t('graph.inspector.semantic.editsStruct') }}</span>
-        <div v-for="(draft, index) in editDrafts" :key="`draft-${index}`" class="edits-row">
-          <select
-            :value="draftKind(draft)"
-            class="edits-row-kind"
-            @change="setDraftField(index, 'kind', ($event.target as HTMLSelectElement).value)"
-          >
-            <option v-for="kind in structuredEditKinds" :key="kind" :value="kind">
-              {{ kind }}
-            </option>
-          </select>
-
-          <!-- 节拍类：从时间线里选真实节拍 id -->
-          <select
-            v-if="draftKind(draft) === 'dropBeat' || draftKind(draft) === 'reorderBeats'"
-            :value="String(draft.beatId ?? '')"
-            @change="setDraftField(index, 'beatId', ($event.target as HTMLSelectElement).value)"
-          >
-            <option value="">{{ t('graph.inspector.semantic.pickBeat') }}</option>
-            <option v-for="beat in beatOptions" :key="beat.id" :value="beat.id">
-              {{ beat.title }}
-            </option>
-          </select>
-
-          <!-- 实体类：从时间线里选真实实体 id -->
-          <select
-            v-if="draftKind(draft) === 'replaceEntity' || draftKind(draft) === 'removeEntity'"
-            :value="String(draft.entityId ?? '')"
-            @change="setDraftField(index, 'entityId', ($event.target as HTMLSelectElement).value)"
-          >
-            <option value="">{{ t('graph.inspector.semantic.pickEntity') }}</option>
-            <option v-for="entity in entityOptions" :key="entity.id" :value="entity.id">
-              {{ entity.name }}
-            </option>
-          </select>
-          <input
-            v-if="draftKind(draft) === 'replaceEntity'"
-            :value="String(draft.newAssetId ?? '')"
-            type="text"
-            :placeholder="t('graph.inspector.semantic.pickNewAsset')"
-            @change="setDraftField(index, 'newAssetId', ($event.target as HTMLInputElement).value)"
-          />
-
-          <!-- 字幕类：文本区域 id + 新文本（区域在证据文件里，文档读不到 → 手填 / 从字幕轨道抄） -->
-          <template v-if="draftKind(draft) === 'editText'">
-            <input
-              :value="String(draft.regionId ?? '')"
-              type="text"
-              :placeholder="t('graph.inspector.semantic.pickTextRegion')"
-              @change="setDraftField(index, 'regionId', ($event.target as HTMLInputElement).value)"
-            />
-            <input
-              :value="String(draft.newText ?? '')"
-              type="text"
-              :placeholder="t('graph.inspector.semantic.newText')"
-              @change="setDraftField(index, 'newText', ($event.target as HTMLInputElement).value)"
-            />
-          </template>
-
-          <button type="button" class="edits-row-remove" @click="removeDraft(index)">
-            {{ t('graph.inspector.semantic.removeEdit') }}
-          </button>
-        </div>
-        <div class="edits-row-actions">
-          <select v-model="newDraftKind" class="edits-row-kind">
-            <option v-for="kind in structuredEditKinds" :key="`new-${kind}`" :value="kind">
-              {{ kind }}
-            </option>
-          </select>
-          <button type="button" class="edits-sample" @click="addDraft">
-            {{ t('graph.inspector.semantic.addEdit') }}
-          </button>
-          <span class="field-hint">{{ t('graph.inspector.semantic.editsStructHint') }}</span>
-        </div>
-      </div>
+      <p class="field-hint">{{ t('graph.inspector.semantic.editsMovedHint') }}</p>
       <!-- 计划预览：**不构建**就能看到将付出什么代价（读证据 → 本地跑 planInvalidation） -->
       <div v-if="planSummary || planError" class="plan-preview">
         <span class="field-label">{{ t('graph.inspector.semantic.planPreview') }}</span>
@@ -478,15 +372,7 @@ import {
   planInvalidation,
   buildEntityShotIndex,
   normalizeSemanticEdits,
-  addEditDraft,
-  readEditDrafts,
-  removeEditDraft,
-  sampleSemanticEdit,
   summarizeInvalidationPlan,
-  summarizeSemanticEdits,
-  updateEditDraft,
-  STRUCTURED_EDIT_KINDS,
-  type EditsSummary,
   type PlanSummary,
   type ShotEvidence
 } from '@shared/semanticTimeline'
@@ -711,84 +597,8 @@ function persistAnalyze(): void {
   })
 }
 
-/** 编辑草稿摘要（计数 + 被丢弃原因）——不跑节点就能看到；同样不能让面板空白 */
-const editsSummary = computed<EditsSummary>(() => {
-  try {
-    return summarizeSemanticEdits(editsJson.value)
-  } catch {
-    return { count: 0, kinds: [], issues: [] }
-  }
-})
-
-/** 结构化编辑：草稿行（字段不全 / 坏 JSON 都不能抛） */
-const editDrafts = computed<Array<Record<string, unknown>>>(() => {
-  try {
-    return readEditDrafts(editsJson.value)
-  } catch {
-    return []
-  }
-})
-const structuredEditKinds = STRUCTURED_EDIT_KINDS
-const newDraftKind = ref<string>('grade')
-
-function draftKind(draft: Record<string, unknown>): string {
-  return typeof draft.kind === 'string' ? draft.kind : 'grade'
-}
-
-// beatOptions / entityOptions 依赖 timelineDoc，实现放在 timelineDoc 声明之后
-// （放在这里会 TDZ：`Cannot access 'timelineDoc' before initialization` → 整个检查器不渲染）
-
-/** 表单改一个字段：只并进这一项，其余字段（含高级字段）原样保留 */
-function setDraftField(index: number, key: string, value: string): void {
-  editsJson.value = updateEditDraft(editsJson.value, index, { [key]: value })
-  persistPlan()
-}
-
-function removeDraft(index: number): void {
-  editsJson.value = removeEditDraft(editsJson.value, index)
-  persistPlan()
-}
-
-function addDraft(): void {
-  const kind = newDraftKind.value
-  const patch: Record<string, unknown> = { kind }
-  const firstBeat = beatOptions.value[0]?.id
-  const firstEntity = entityOptions.value[0]?.id
-  if (kind === 'dropBeat' || kind === 'reorderBeats') patch.beatId = firstBeat ?? ''
-  if (kind === 'replaceEntity' || kind === 'removeEntity') patch.entityId = firstEntity ?? ''
-  if (kind === 'replaceEntity') patch.newAssetId = ''
-  if (kind === 'editText') {
-    // 文本区域在证据文件里（文档读不到）→ 先留空，用户手填
-    patch.regionId = ''
-    patch.newText = ''
-  }
-  if (kind === 'grade') patch.params = { brightness: 1.05 }
-  editsJson.value = addEditDraft(editsJson.value, patch)
-  persistPlan()
-}
-
 // 计划预览（planShots / loadPlanShots / planPreviewResult / planSummary / planError /
-// planNeedsEvidence）也依赖 timelineDoc —— 实现同样放在 timelineDoc 声明之后。
-
-/** 追加一条示例编辑（`grade`，不引用任何 id），填进文本框并落盘 */
-function insertSampleEdit(): void {
-  const parsed: unknown = (() => {
-    const text = editsJson.value.trim()
-    if (!text) return []
-    try {
-      return JSON.parse(text)
-    } catch {
-      return []
-    }
-  })()
-  const list = Array.isArray(parsed)
-    ? parsed
-    : parsed && typeof parsed === 'object' && Array.isArray((parsed as { edits?: unknown[] }).edits)
-      ? ((parsed as { edits: unknown[] }).edits as unknown[])
-      : []
-  editsJson.value = JSON.stringify([...list, sampleSemanticEdit()], null, 2)
-  persistPlan()
-}
+// planNeedsEvidence）依赖 timelineDoc —— 实现放在 timelineDoc 声明之后。
 
 function persistTrigger(): void {
   patch({ eventLabel: eventLabel.value.trim() })
@@ -1005,18 +815,6 @@ const planError = computed(() => planPreviewResult.value.error)
 /** 读不到镜头证据时要说清楚（否则"直拷 0 镜"会误导） */
 const planNeedsEvidence = computed(
   () => isPlan.value && !!timelineDoc.value && (planShots.value?.length ?? 0) === 0
-)
-
-/** 结构化编辑的下拉项：节拍 / 实体都取自时间线文档（真实 id，不让用户手打） */
-const beatOptions = computed(() =>
-  (timelineDoc.value?.beats ?? []).map((beat) => ({
-    id: beat.id,
-    // StoryBeat 没有 label 字段：用描述兜，再退回 type
-    title: beat.description?.trim() || beat.type || beat.id
-  }))
-)
-const entityOptions = computed(() =>
-  (timelineDoc.value?.entities ?? []).map((entity) => ({ id: entity.id, name: entity.name }))
 )
 </script>
 

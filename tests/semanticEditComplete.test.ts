@@ -20,7 +20,8 @@ import { resolveBuiltVideoRelativePath } from '../src/renderer/src/features/grap
 /**
  * 「完善语义编辑节点」这批改动的守卫：
  * 1. 双击优先看**成片**（`out-video` / `out-videos`），不是只看 JSON 计划；
- * 2. 检查器给出**编辑摘要 + 会被丢弃的条目 + 插入示例**（不跑节点就知道填得对不对）。
+ * 2. **编辑操作在 dive 里**（右栏「编辑」页签），不在 inspector：
+ *    编辑摘要 / 会被丢弃的条目 / 从时间线选目标 / 写回节点参数。
  */
 const card = readFileSync(
   join(process.cwd(), 'src/renderer/src/components/GraphNodeCard.vue'),
@@ -28,6 +29,18 @@ const card = readFileSync(
 )
 const inspector = readFileSync(
   join(process.cwd(), 'src/renderer/src/components/SemanticTimelineInspector.vue'),
+  'utf8'
+)
+const panel = readFileSync(
+  join(process.cwd(), 'src/renderer/src/components/SemanticEditPanel.vue'),
+  'utf8'
+)
+const editor = readFileSync(
+  join(process.cwd(), 'src/renderer/src/components/SemanticTimelineEditor.vue'),
+  'utf8'
+)
+const diveView = readFileSync(
+  join(process.cwd(), 'src/renderer/src/components/dive/EditorDiveSemanticTimelineView.vue'),
   'utf8'
 )
 
@@ -65,15 +78,33 @@ describe('语义编辑节点完善', () => {
     )
   })
 
-  it('检查器显示编辑摘要、丢弃原因，并能插入示例', () => {
-    expect(inspector).toContain('summarizeSemanticEdits(editsJson.value)')
-    expect(inspector).toContain('class="edits-summary"')
-    expect(inspector).toContain('editsSummary.issues')
-    expect(inspector).toContain("t('graph.inspector.semantic.editsInsertSample')")
-    expect(inspector).toContain('function insertSampleEdit()')
-    expect(inspector).toContain('sampleSemanticEdit()')
-    // 插入后要落盘
-    expect(inspector).toMatch(/function insertSampleEdit[\s\S]{0,700}?persistPlan\(\)/)
+  it('编辑操作在 dive 的面板里：摘要 / 丢弃原因 / 从时间线选目标 / 写回', () => {
+    // 面板自身
+    expect(panel).toContain('summarizeSemanticEdits(props.editsJson)')
+    expect(panel).toContain('readEditDrafts(props.editsJson)')
+    expect(panel).toContain('addEditDraft(props.editsJson, patch)')
+    expect(panel).toContain('updateEditDraft(props.editsJson, index,')
+    expect(panel).toContain('removeEditDraft(props.editsJson, index)')
+    expect(panel).toContain("emit('update:editsJson', value)")
+    expect(panel).toContain('class="sep-issue"')
+    // 目标 id 来自时间线（节拍 / 实体），不让用户手打
+    expect(panel).toContain('props.timeline.beats')
+    expect(panel).toContain('props.timeline.entities')
+    // 「从当前选择添加操作」
+    expect(panel).toContain('const OPERATIONS = {')
+    expect(panel).toContain('availableOps')
+    // 面板挂在 dive 的右栏页签里，编辑器必须显式 import（否则静默不渲染）
+    expect(editor).toContain("import SemanticEditPanel from './SemanticEditPanel.vue'")
+    expect(editor).toContain('<SemanticEditPanel')
+    expect(editor).toContain("paneTab === 'edit'")
+    expect(editor).toContain("emit('update:editsJson', value)")
+    // dive 视图读自 / 写回节点参数
+    expect(diveView).toContain('graphEditorHosts.getNode(hostId, nodeId)')
+    expect(diveView).toContain('graphEditorHosts.updateNode(hostId, nodeId, { editsJson: value })')
+    // inspector 里不再有编辑操作，只有指路
+    expect(inspector).not.toContain('class="edits-struct"')
+    expect(inspector).not.toContain('class="edits-summary"')
+    expect(inspector).toContain("t('graph.inspector.semantic.editsMovedHint')")
   })
 
   it('summarizeInvalidationPlan：按 action 计数 + 费用字段 + 空值安全', () => {
@@ -177,20 +208,13 @@ describe('语义编辑节点完善', () => {
     ])
   })
 
-  it('检查器的结构化编辑器：真实节拍/实体可选，且只改认识的字段', () => {
-    expect(inspector).toContain('readEditDrafts(editsJson.value)')
-    expect(inspector).toContain('updateEditDraft(editsJson.value, index,')
-    expect(inspector).toContain('removeEditDraft(editsJson.value, index)')
-    expect(inspector).toContain('addEditDraft(editsJson.value, patch)')
-    expect(inspector).toContain('STRUCTURED_EDIT_KINDS')
-    expect(inspector).toContain('class="edits-struct"')
-    // 节拍 / 实体从时间线文档里来（真实 id），不是让用户手打
-    expect(inspector).toContain('timelineDoc.value?.beats')
-    expect(inspector).toContain('timelineDoc.value?.entities')
-    // 每次表单改动都要落盘
-    expect(inspector).toMatch(/function setDraftField[\s\S]{0,200}?persistPlan\(\)/)
-    expect(inspector).toMatch(/function addDraft[\s\S]{0,900}?persistPlan\(\)/)
-    expect(inspector).toMatch(/function removeDraft[\s\S]{0,160}?persistPlan\(\)/)
+  it('面板的编辑行：真实节拍/实体可选，且只改认识的字段', () => {
+    expect(panel).toContain('STRUCTURED_EDIT_KINDS')
+    expect(panel).toContain('function targetField(')
+    // 只改认识的字段（逐字段并进 → 高级字段保留，另有纯函数用例覆盖）
+    expect(panel).toMatch(/function setField[\s\S]{0,120}?updateEditDraft\(/)
+    expect(panel).toMatch(/function remove\([\s\S]{0,120}?removeEditDraft\(/)
+    expect(panel).toMatch(/function addOp[\s\S]{0,700}?addEditDraft\(/)
   })
 
   /**
@@ -246,15 +270,9 @@ describe('语义编辑节点完善', () => {
     ).not.toThrow()
   })
 
-  it('检查器：计划预览与摘要都包了异常，且失败时要把原因显示出来', () => {
+  it('检查器只留计划预览：包了异常，且失败时要把原因显示出来', () => {
     // computed 抛错 = 整个面板不渲染 → 必须 try/catch
     expect(inspector).toMatch(/const planPreviewResult = computed<\{[\s\S]{0,260}?try \{/)
-    expect(inspector).toMatch(
-      /const editsSummary = computed<EditsSummary>\(\(\) => \{\s*\n\s*try \{/
-    )
-    expect(inspector).toMatch(
-      /const editDrafts = computed<Array<Record<string, unknown>>>\(\(\) => \{\s*\n\s*try \{/
-    )
     // 出错也要有可见反馈（不能静默空白），所以渲染条件包含 planError
     expect(inspector).toMatch(/<div v-if="planSummary \|\| planError" class="plan-preview">/)
     expect(inspector).toMatch(/<p v-if="planError" class="edits-issue">/)

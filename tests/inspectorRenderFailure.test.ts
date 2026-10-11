@@ -92,20 +92,21 @@ describe('检查器渲染失败的可见性', () => {
       }
     }
 
-    // 我新增的实现各自只能声明一次（防止搬移时插出重复块）
+    // 计划预览那几个必须还在，且只能声明一次（防止搬移时插出重复块）
     for (const name of [
       'planShots',
       'planPreviewResult',
       'planSummary',
       'planError',
-      'planNeedsEvidence',
-      'beatOptions',
-      'entityOptions',
-      'editsSummary',
-      'editDrafts'
+      'planNeedsEvidence'
     ]) {
       const hits = withoutComments.split(`const ${name} =`).length - 1
-      expect(hits, `${name} 只能声明一次（重复块会导致同名重复声明）`).toBe(1)
+      expect(hits, `${name} 必须存在且只能声明一次（重复块会导致同名重复声明）`).toBe(1)
+    }
+    // 编辑操作已搬到 dive 面板：这些不该再出现在检查器里
+    for (const name of ['editsSummary', 'editDrafts', 'beatOptions', 'entityOptions']) {
+      const hits = withoutComments.split(`const ${name} =`).length - 1
+      expect(hits, `${name} 已移到 SemanticEditPanel，不应留在检查器`).toBe(0)
     }
   })
 })

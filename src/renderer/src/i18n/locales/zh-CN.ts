@@ -4773,6 +4773,41 @@ export default {
       beatPathsEmpty: '尚未落地，请先细化各单元并运行本节点',
       beatPathPending: '（未落盘）'
     },
+    /** 语义编辑面板（在 dive 里操作，不在 inspector） */
+    semanticEdit: {
+      tabEdit: '编辑',
+      tabEvidence: '证据',
+      edits: '编辑列表',
+      empty: '还没有编辑。在时间线上点中节拍 / 实体 / 事件，再点上面的操作即可添加。',
+      selectTargetHint: '先在时间线上选中一个对象（节拍 / 实体 / 事件）',
+      dropped: '将被丢弃：',
+      remove: '删除',
+      pickBeat: '选择节拍…',
+      pickEntity: '选择实体…',
+      newText: '改成什么文本',
+      newAsset: '替换成哪个资产 id（如 asset.xxx）',
+      rawJson: '高级：原始 JSON',
+      rawJsonHint: '生成类编辑（重画镜头、改口型）与 agent 产物只能在这里写。',
+      writeBackHint: '改动立即写回节点参数；在画布上运行该节点即可构建成片。',
+      target: {
+        beat: '节拍',
+        entity: '实体',
+        event: '事件',
+        intent: '意图'
+      },
+      opDropBeat: '删除节拍',
+      opDropBeatHint: '删掉这个节拍（它的镜头会被移除）',
+      opRetimeBeat: '重定时长',
+      opRetimeBeatHint: '改这个节拍的时间范围（成片会重排）',
+      opReorderBeats: '重排节拍',
+      opReorderBeatsHint: '按编辑里的顺序重排节拍',
+      opReplaceEntity: '替换实体',
+      opReplaceEntityHint: '把这个实体换成别的资产',
+      opRemoveEntity: '移除实体',
+      opRemoveEntityHint: '把这个实体从画面里移除',
+      opGrade: '调色',
+      opGradeHint: '整体调色（亮度 / 对比度 / 饱和度）'
+    },
     semanticTimeline: {
       openEditorHint: '双击打开语义时间线',
       openResultHint: '双击查看分析结果',
@@ -5352,6 +5387,8 @@ export default {
         pickTextRegion: '字幕区域 id（如 ocr.003.xxxx）',
         newText: '改成什么文本',
         planPreview: '计划预览（不构建）',
+        editsMovedHint:
+          '编辑操作已移到双击打开的编辑器（右栏「编辑」页签）：在时间线上点中节拍 / 实体 / 事件即可添加操作。',
         planPreviewFailed: '计划预览失败（不影响运行）：',
         planLevel: '目标级 {level}',
         planKeep: '直拷 {count}',

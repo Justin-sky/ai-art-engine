@@ -4882,6 +4882,44 @@ export default {
       beatPathsEmpty: 'Nothing saved yet — refine units and run this node',
       beatPathPending: '(not saved)'
     },
+    /** Semantic edit panel (operates inside the dive, not the inspector) */
+    semanticEdit: {
+      tabEdit: 'Edit',
+      tabEvidence: 'Evidence',
+      edits: 'Edit list',
+      empty:
+        'No edits yet. Select a beat / entity / event on the timeline, then pick an operation above.',
+      selectTargetHint: 'Select an object on the timeline first (beat / entity / event)',
+      dropped: 'Will be dropped:',
+      remove: 'Remove',
+      pickBeat: 'Pick a beat…',
+      pickEntity: 'Pick an entity…',
+      newText: 'New text',
+      newAsset: 'Replacement asset id (e.g. asset.xxx)',
+      rawJson: 'Advanced: raw JSON',
+      rawJsonHint:
+        'Generative edits (regenerate shot, lip sync) and agent output can only be written here.',
+      writeBackHint:
+        'Changes are written back to the node parameters immediately; run the node on the canvas to build.',
+      target: {
+        beat: 'beat',
+        entity: 'entity',
+        event: 'event',
+        intent: 'intent'
+      },
+      opDropBeat: 'Drop beat',
+      opDropBeatHint: 'Remove this beat (its shots are dropped)',
+      opRetimeBeat: 'Retime',
+      opRetimeBeatHint: 'Change this beat time range (the cut is rebuilt)',
+      opReorderBeats: 'Reorder beats',
+      opReorderBeatsHint: 'Reorder beats following the edit list',
+      opReplaceEntity: 'Replace entity',
+      opReplaceEntityHint: 'Swap this entity for another asset',
+      opRemoveEntity: 'Remove entity',
+      opRemoveEntityHint: 'Remove this entity from the frame',
+      opGrade: 'Grade',
+      opGradeHint: 'Overall grade (brightness / contrast / saturation)'
+    },
     semanticTimeline: {
       openEditorHint: 'Double-click to open semantic timeline',
       openResultHint: 'Double-click to view analysis result',
@@ -5486,6 +5524,8 @@ export default {
         pickTextRegion: 'Text region id (e.g. ocr.003.xxxx)',
         newText: 'New text',
         planPreview: 'Plan preview (no build)',
+        editsMovedHint:
+          'Edit operations moved into the editor opened by double-click (right pane "Edit" tab): select a beat / entity / event on the timeline, then pick an operation.',
         planPreviewFailed: 'Plan preview failed (does not affect running):',
         planLevel: 'Level {level}',
         planKeep: 'copy {count}',
