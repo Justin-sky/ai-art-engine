@@ -673,19 +673,17 @@ function beatLabel(type: string): string {
   padding: 6px 10px 6px 12px;
 }
 .stl-inspector {
-  /* 面板宽度决定视频能多大（16:9 → 高 = 宽 × 9/16）：
-     跟着窗口走，宽屏给到 440（视频 440×248），窄屏保底 320，别把时间线挤没 */
-  width: clamp(320px, 30vw, 440px);
-  flex-shrink: 0;
-  /* 常驻固定栏：不随选中项出现/消失（否则选一下整条时间线就左右跳）。
-     高度**撑满**：与 dive（进而与窗口）等高 —— 不要写 flex-start，
+  /* 右侧栏（视频 + 证据）。两栏布局：左轨道 flex:1、右栏按比例固定 ——
+     宽度要够放 720 高的竖屏画面（9:16 → 需要 405 宽），窄屏保底 420 */
+  flex: 0 0 clamp(420px, 44%, 720px);
+  /* 高度**撑满**：与 dive（进而与窗口）等高 —— 不要写 flex-start，
      那会把面板压成内容高度、左边框到证据文字下面就断掉 */
   align-self: stretch;
   max-height: 100%;
   border-left: 1px solid var(--border);
   padding: 12px;
   font-size: 13px;
-  /* 面板自身成为滚动容器：内容多了在里面滚，边框始终占满整高 */
+  /* 面板自身成为滚动容器：视频 720 高 + 证据放不下时在里面滚，边框始终占满整高 */
   overflow: auto;
 }
 .stl-inspector h4 {
@@ -694,20 +692,16 @@ function beatLabel(type: string): string {
 }
 /* 原视频：放在证据面板上方，点选 clip 时播放条自动跳过去 */
 .stl-source {
-  /* 出血到面板两边（抵消 12px 内边距）→ 视频宽度吃满整栏；
-     并粘在面板顶部：证据内容多时向下滚，画面仍留在视野里 */
-  position: sticky;
-  top: -12px;
-  z-index: 1;
+  /* 出血到面板两边（抵消 12px 内边距）→ 视频宽度吃满整栏 */
   margin: -12px -12px 10px;
   background: var(--bg-panel);
 }
 .stl-source-video {
   display: block;
   width: 100%;
-  aspect-ratio: 16 / 9;
-  /* 矮窗口时不许把证据挤没：超过视口 60% 就收住，画面按 contain 留边 */
-  max-height: 60vh;
+  /* 固定 720 高：竖屏（9:16）画面正好铺满高度；横屏按 contain 上下留黑边。
+     证据在视频下方，由面板自己滚 —— 不再粘顶（720 高的视频粘住会把证据全挡住） */
+  height: 720px;
   object-fit: contain;
   background: #000;
 }

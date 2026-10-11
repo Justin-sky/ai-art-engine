@@ -152,25 +152,22 @@ describe('SemanticTimelineEditor 轨道尺寸与字号', () => {
     expect(panel).not.toMatch(/align-self:\s*flex-start/)
     expect(panel).toMatch(/max-height:\s*100%/)
     expect(panel).toMatch(/overflow:\s*auto/)
-    expect(panel).toMatch(/flex-shrink:\s*0/)
-    // 面板宽度决定视频高度（16:9）：跟窗口走但保底够大
-    expect(panel).toMatch(/width:\s*clamp\(320px, 30vw, 440px\)/)
+    // 两栏：右栏按比例固定宽度（够放 720 高的竖屏画面），不再用 flex-shrink
+    expect(panel).toMatch(/flex:\s*0 0 clamp\(420px, 44%, 720px\)/)
   })
 
   /**
-   * 原视频要**够大**：出血到面板两边吃满整栏 + 粘顶 + 矮窗口限高但要够高。
+   * 原视频：高度固定 720（竖屏画面正好铺满），宽度吃满右栏，按 contain 留边。
    */
-  it('原视频区域够大（出血满栏 + 粘顶 + 限高不挤掉证据）', () => {
+  it('原视频高度固定 720、宽度吃满右栏（出血 + contain）', () => {
     const sourceBox = cssBlock('.stl-source')
     expect(sourceBox).toMatch(/margin:\s*-12px -12px/) // 出血到手，抵消面板内边距
-    expect(sourceBox).toMatch(/position:\s*sticky/)
     expect(sourceBox).toMatch(/background:\s*var\(--bg-panel\)/)
+    // 720 高的视频不能再粘顶：会把下面的证据全挡住
+    expect(sourceBox).not.toMatch(/position:\s*sticky/)
     const video = cssBlock('.stl-source-video')
     expect(video).toMatch(/width:\s*100%/)
-    expect(video).toMatch(/aspect-ratio:\s*16 \/ 9/)
-    // 矮窗口限高不能收得太狠（46vh 时 320 宽的视频在 700 高的窗口里就被切了）
-    const maxHeight = Number(/max-height:\s*(\d+)vh/.exec(video)?.[1] ?? 0)
-    expect(maxHeight).toBeGreaterThanOrEqual(56)
+    expect(pxOf('.stl-source-video', 'height')).toBe(720)
     expect(video).toMatch(/object-fit:\s*contain/)
   })
 
