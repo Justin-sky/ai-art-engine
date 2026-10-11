@@ -733,7 +733,7 @@ export default {
       facePresetHint:
         'Face landmarks use a two-stage pipeline: a detector finds faces plus the keypoints used for alignment, and FaceMesh produces the 468 points. Both models come from a different upstream (not the Ultralytics naming scheme) which has no permanently fixed URL, so they ship inside the installer (fetched from this repository\u2019s Release at build time and copied into local-models/face on first launch) and work offline out of the box. If either file is missing, the 7 face-dependent tool groups (heal / skin / tone / face / eyes / makeup / lighting) are greyed out and skipped in the prompt, and the local-scope face mask loses that part (manual region boxes still work).',
       faceSourceMissing:
-        'This build has no source configured for the face models (YOLO_FACE_CATALOG_BASE_URL in @shared/yoloCatalog): drop the two .onnx files into local-models/face, or set the source and rebuild.',
+        "This build has no source configured for the face models (YOLO_FACE_CATALOG_BASE_URL in {'@'}shared/yoloCatalog): drop the two .onnx files into local-models/face, or set the source and rebuild.",
       faceSourcePending:
         'Both models ship inside the app (npm run fetch:yolo-models pulls them from this repository\u2019s Release at build time); if the bundled copy was deleted, the download button fetches it again.',
       facePresetNote: 'Conventional file name',
@@ -4261,7 +4261,7 @@ export default {
       runGifOff: 'Off',
       runGifHint:
         'When enabled, running this node composes the split frames into a GIF at this fps and saves it as a project asset (applies to MCP / workflows too)',
-      runGifDone: 'GIF output: {path} ({frames} frames @ {fps} fps)',
+      runGifDone: "GIF output: {path} ({frames} frames {'@'} {fps} fps)",
       presets: {
         idle: 'Idle',
         walk: 'Walk',
@@ -4301,7 +4301,7 @@ export default {
     },
     svgAnim: {
       inspectorHint:
-        'Bake an SVG (from the SVG Generation node or a vector library asset) into bitmap frames: with SMIL animation (the SVG\u2019s own <animate> / <animateTransform> / <set>; CSS @keyframes and <animateMotion> are not evaluated) it renders one PNG per timeline sample and composes a GIF, while a static SVG yields a single frame and no GIF',
+        "Bake an SVG (from the SVG Generation node or a vector library asset) into bitmap frames: with SMIL animation (the SVG\u2019s own <animate> / <animateTransform> / <set>; CSS {'@'}keyframes and <animateMotion> are not evaluated) it renders one PNG per timeline sample and composes a GIF, while a static SVG yields a single frame and no GIF",
       cardPlayHint: 'Double-click the node to play / pause the baked frames',
       frames: 'Sample frames',
       duration: 'Sample duration (s)',
@@ -4314,7 +4314,7 @@ export default {
       zeroHint:
         'Duration / width / height of 0 means auto: duration follows the SVG animation period, size follows the SVG itself. A static SVG yields a single frame and no GIF. Re-run the node after changing parameters.',
       runSummary: 'Last run: {frames} frames / {seconds}s',
-      runGifDone: 'GIF written: {path} ({frames} frames @ {fps} fps)',
+      runGifDone: "GIF written: {path} ({frames} frames {'@'} {fps} fps)",
       preview: 'SVG bake preview',
       play: 'Play',
       pause: 'Pause',
@@ -5466,7 +5466,7 @@ export default {
           'Off = emit the invalidation plan and cost estimate only, without processing video',
         editsJson: 'Edits JSON',
         editsJsonPlaceholder:
-          '[{"kind":"replaceEntity","entityId":"ent.product.bottle-1","newAssetId":"…"}]',
+          '{\'[{"kind":"replaceEntity","entityId":"ent.product.bottle-1","newAssetId":"…"}]\'}',
         editsJsonHint:
           'Local: replaceEntity / removeEntity / editText / grade / dropBeat / reorderBeats; generative edits (regenerateShot, lip sync) are planned only',
         editsSummary: 'Edit summary',

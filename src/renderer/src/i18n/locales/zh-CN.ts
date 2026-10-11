@@ -722,7 +722,7 @@ export default {
       facePresetHint:
         '人脸关键点是两段式管线：检测器负责找人脸与对齐用的关键点，FaceMesh 负责 468 点。这两个模型来自另一套上游（非 Ultralytics 命名），没有可长期固定的直链，因此随安装包内置（构建期从本仓 Release 拉取，首次启动自动放进 local-models/face），开箱即用、无需联网下载。两个文件缺一，依赖人脸的 7 个工具组（修复 / 磨皮 / 肤色 / 五官 / 眼睛 / 妆容 / 光影）会置灰且整组不进提示词，局部回贴的脸部蒙版也会缺一块（手动区域框仍然可用）。',
       faceSourceMissing:
-        '当前构建没有配置人脸模型的来源（@shared/yoloCatalog 的 YOLO_FACE_CATALOG_BASE_URL 为空）：请把两个 .onnx 按约定名放进 local-models/face，或补上源地址后重新打包。',
+        "当前构建没有配置人脸模型的来源（{'@'}shared/yoloCatalog 的 YOLO_FACE_CATALOG_BASE_URL 为空）：请把两个 .onnx 按约定名放进 local-models/face，或补上源地址后重新打包。",
       faceSourcePending:
         '这两个模型随包内置（构建期 `npm run fetch:yolo-models` 会从本仓 Release 拉取并一起打包）；如果内置副本被删掉，也可以点下载重新取回。',
       facePresetNote: '约定文件名',
@@ -4163,7 +4163,7 @@ export default {
       runGifOff: '关闭',
       runGifHint:
         '开启后运行本节点会按该帧率把切好的帧合成 GIF 动图并落盘为工程资产（MCP / 工作流同样生效）',
-      runGifDone: '已输出 GIF：{path}（{frames} 帧 @ {fps} fps）',
+      runGifDone: "已输出 GIF：{path}（{frames} 帧 {'@'} {fps} fps）",
       presets: {
         idle: '待机',
         walk: '行走',
@@ -4200,7 +4200,7 @@ export default {
     },
     svgAnim: {
       inspectorHint:
-        '接入 SVG（SVG 生成节点或图库矢量资产）烘焙为位图序列：含 SMIL 动效（SVG 自身的 <animate> / <animateTransform> / <set>；CSS @keyframes 与 <animateMotion> 不参与求值）时按动画时间轴逐帧出 PNG 并合成 GIF 落盘，无动效时只出 1 帧、不产 GIF',
+        "接入 SVG（SVG 生成节点或图库矢量资产）烘焙为位图序列：含 SMIL 动效（SVG 自身的 <animate> / <animateTransform> / <set>；CSS {'@'}keyframes 与 <animateMotion> 不参与求值）时按动画时间轴逐帧出 PNG 并合成 GIF 落盘，无动效时只出 1 帧、不产 GIF",
       cardPlayHint: '双击节点播放 / 暂停烘焙帧',
       frames: '采样帧数',
       duration: '取样时长（秒）',
@@ -4213,7 +4213,7 @@ export default {
       zeroHint:
         '时长 / 宽 / 高填 0 表示自动：时长取 SVG 自身动画周期，尺寸取 SVG 自身尺寸；无动效的 SVG 只出 1 帧、不产 GIF；改完参数需重新运行才生效。',
       runSummary: '上次运行：{frames} 帧 / {seconds} 秒',
-      runGifDone: '已输出 GIF：{path}（{frames} 帧 @ {fps} fps）',
+      runGifDone: "已输出 GIF：{path}（{frames} 帧 {'@'} {fps} fps）",
       preview: 'SVG 烘焙预览',
       play: '播放',
       pause: '暂停',
@@ -5333,7 +5333,7 @@ export default {
         executeHint: '关闭后只输出失效计划与费用估算，不处理视频',
         editsJson: '编辑列表 JSON',
         editsJsonPlaceholder:
-          '[{"kind":"replaceEntity","entityId":"ent.product.bottle-1","newAssetId":"…"}]',
+          '{\'[{"kind":"replaceEntity","entityId":"ent.product.bottle-1","newAssetId":"…"}]\'}',
         editsJsonHint:
           '本地可执行：replaceEntity / removeEntity / editText / grade / dropBeat / reorderBeats；regenerateShot、改口型等生成类编辑只出计划',
         editsSummary: '编辑摘要',
