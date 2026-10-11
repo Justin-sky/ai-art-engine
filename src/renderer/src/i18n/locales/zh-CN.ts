@@ -4657,6 +4657,7 @@ export default {
       semantic: {
         analyze: '语义分析',
         edit: '语义编辑',
+        rebuild: '语义重建',
         variant: '语义变体',
         timeline: '语义时间线',
         event: '语义事件',

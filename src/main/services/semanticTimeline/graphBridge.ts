@@ -1,7 +1,7 @@
 /**
  * 画布语义节点 / MCP 共用的主进程编排：分析（含转写）、证据读取、文档保存、按编辑构建成片。
  */
-import { existsSync } from 'fs'
+import { existsSync, mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import {
   applyStructuralEdits,
@@ -41,6 +41,7 @@ import {
   saveSemanticTimeline
 } from './SemanticTimelineService'
 import { executeBuild } from './buildExecutor'
+import { rebuildVideo } from './rebuildService'
 import { listAllSemanticPacks } from './packLoader'
 
 function errorText(e: unknown): string {
@@ -310,5 +311,111 @@ export async function semanticBuildForGraph(
     manifest,
     outputRelativePath: manifest.status === 'done' ? outputRel : undefined,
     notes
+  }
+}
+
+// ─── 语义重建（分析 → 编译 → 重建）：把生成的镜头片段接成成片 ─────────────────────
+
+export interface SemanticRebuildForGraphInput {
+  timelineId: string
+  clips: Array<{ key: string; relativePath: string }>
+  /** 输出文件名后缀（多版本/重跑时区分），已由调用方 sanitize */
+  label?: string
+  keepAudio?: boolean
+  sourceRelativePath?: string
+  burnSubtitles?: boolean
+  width?: number
+  height?: number
+  fps?: number
+}
+
+export interface SemanticRebuildForGraphResult {
+  ok: boolean
+  outputRelativePath?: string
+  manifestRelativePath: string
+  clipCount: number
+  burnedSubtitles: number
+  keptAudio: boolean
+  notes: string[]
+  error?: string
+}
+
+/**
+ * 语义重建的落盘与拼接。
+ *
+ * 与旧的 `semanticBuildForGraph`（按编辑列表裁剪原片）不同：素材是**模型新生成的片段**，
+ * 所以这里统一重编码拼接（见 `rebuildService`），并按需混回原片音轨、烧录转写字幕。
+ * 每次运行落在 `Semantic/<id>/rebuilds/<runId>/`，跑多少次都不覆盖历史。
+ */
+export async function semanticRebuildForGraph(
+  input: SemanticRebuildForGraphInput
+): Promise<SemanticRebuildForGraphResult> {
+  const root = projectService.getRoot()
+  const timelineId = String(input.timelineId || '').trim()
+  if (!timelineId) throw new Error('rebuild requires timelineId')
+
+  const clips = (input.clips ?? []).filter((clip) => !!clip?.relativePath?.trim())
+  if (clips.length === 0) throw new Error('rebuild requires at least one clip')
+
+  const runId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
+  const suffix = sanitizeLabel(input.label)
+  const fileName = suffix ? `output.${suffix}.mp4` : 'output.mp4'
+  const workDirRelativePath = `Semantic/${timelineId}/rebuilds/${runId}`
+  const outputRelativePath = `${workDirRelativePath}/${fileName}`
+
+  // 字幕：用时间线的转写（与旧成片管线同一口径）
+  const subtitles =
+    input.burnSubtitles === false
+      ? []
+      : loadUtterances(root, timelineId).map((utt) => ({
+          startSec: utt.range.start,
+          endSec: utt.range.end,
+          text: utt.text
+        }))
+
+  const result = await rebuildVideo({
+    timelineId,
+    projectRoot: root,
+    clips,
+    outputRelativePath,
+    workDirRelativePath,
+    keepAudio: input.keepAudio !== false,
+    sourceRelativePath: input.sourceRelativePath,
+    burnSubtitles: input.burnSubtitles !== false,
+    subtitles,
+    width: input.width,
+    height: input.height,
+    fps: input.fps
+  })
+
+  const manifestRelativePath = `${workDirRelativePath}/manifest.json`
+  const manifest = {
+    schema: 'aiart.semantic-rebuild@1',
+    timelineId,
+    runId,
+    createdAt: new Date().toISOString(),
+    outputRelativePath: result.ok ? outputRelativePath : undefined,
+    clips,
+    keepAudio: result.keptAudio,
+    burnedSubtitles: result.burnedSubtitles,
+    notes: result.notes,
+    error: result.error
+  }
+  mkdirSync(join(root, ...workDirRelativePath.split('/')), { recursive: true })
+  writeFileSync(
+    join(root, ...manifestRelativePath.split('/')),
+    JSON.stringify(manifest, null, 2),
+    'utf8'
+  )
+
+  return {
+    ok: result.ok,
+    ...(result.ok ? { outputRelativePath } : {}),
+    manifestRelativePath,
+    clipCount: result.clipCount,
+    burnedSubtitles: result.burnedSubtitles,
+    keptAudio: result.keptAudio,
+    notes: result.notes,
+    ...(result.error ? { error: result.error } : {})
   }
 }

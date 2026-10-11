@@ -69,15 +69,22 @@ describe('语义时间线端口类型', () => {
     }
   })
 
-  it('**出口不能被一刀切**：触发/编译/修复/多版本吐的是各自信封，仍是 text', () => {
-    for (const typeId of [
-      'semantic.event',
-      'semantic.compile',
-      'semantic.edit',
-      'semantic.variant'
-    ]) {
+  it('**出口不能被一刀切**：按各自产物类型走专用口，不再一律文本', () => {
+    // 编译出的**提示词计划**是结构化口（每镜提示词 + 首帧），接错类型连线时就该被拒
+    expect(portOf('semantic.compile', 'out').dataType).toBe(GraphPortType.videoPrompts)
+    // 重建吃提示词口、吐视频口
+    expect(portOf('semantic.rebuild', 'in').dataType).toBe(GraphPortType.videoPrompts)
+    expect(portOf('semantic.rebuild', 'out-video').dataType).toBe(GraphPortType.video)
+    // 触发 / 修复 / 多版本仍吐各自信封（text）
+    for (const typeId of ['semantic.event', 'semantic.edit', 'semantic.variant']) {
       expect(portOf(typeId, 'out').dataType, typeId).toBe(GraphPortType.text)
     }
+  })
+
+  it('提示词口单向兼容文本口（与时间线口同一口径）', () => {
+    expect(portsCompatible(GraphPortType.videoPrompts, GraphPortType.text)).toBe(true)
+    expect(portsCompatible(GraphPortType.text, GraphPortType.videoPrompts)).toBe(false)
+    expect(portsCompatible(GraphPortType.semanticTimeline, GraphPortType.videoPrompts)).toBe(false)
   })
 
   it('兼容规则单向：时间线可流向文本口，文本口进不了时间线口', () => {

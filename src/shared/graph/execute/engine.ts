@@ -457,6 +457,7 @@ async function executeOneNode(
     loadSemanticTimeline: options.loadSemanticTimeline,
     saveSemanticTimeline: options.saveSemanticTimeline,
     buildSemanticVideo: options.buildSemanticVideo,
+    rebuildSemanticVideo: options.rebuildSemanticVideo,
     listSemanticPacks: options.listSemanticPacks,
     composeImageExpandCanvas: options.composeImageExpandCanvas,
     composeImageRedrawCanvas: options.composeImageRedrawCanvas,

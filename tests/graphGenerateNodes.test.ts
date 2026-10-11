@@ -58,6 +58,7 @@ const CANVAS_ADDABLE_NODE_TYPES = [
   'semantic.timeline',
   'semantic.event',
   'semantic.compile',
+  'semantic.rebuild',
   'image.toPrompt',
   'image.transform',
   'image.upscale',

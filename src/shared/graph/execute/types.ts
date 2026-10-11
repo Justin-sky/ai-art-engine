@@ -816,6 +816,13 @@ export interface NodeExecuteContext {
   buildSemanticVideo?: (
     input: import('../../semanticTimeline').SemanticBuildRequest
   ) => Promise<import('../../semanticTimeline').SemanticBuildResponse>
+  /**
+   * 语义重建：把**生成的**镜头片段接成成片（拼接 + 混原音轨 + 烧字幕 + 落清单）。
+   * 与 `buildSemanticVideo`（按编辑列表裁剪原片）是两条路：这里素材是模型新产出的。
+   */
+  rebuildSemanticVideo?: (
+    input: import('../../semanticTimeline').SemanticRebuildRequest
+  ) => Promise<import('../../semanticTimeline').SemanticRebuildResponse>
   /** 内置 + 已安装的语义市场包 */
   listSemanticPacks?: () => Promise<import('../../semanticTimeline').SemanticPack[]>
   /**
@@ -1331,6 +1338,7 @@ export interface GraphRunOptions {
   loadSemanticTimeline?: NodeExecuteContext['loadSemanticTimeline']
   saveSemanticTimeline?: NodeExecuteContext['saveSemanticTimeline']
   buildSemanticVideo?: NodeExecuteContext['buildSemanticVideo']
+  rebuildSemanticVideo?: NodeExecuteContext['rebuildSemanticVideo']
   listSemanticPacks?: NodeExecuteContext['listSemanticPacks']
   composeImageExpandCanvas?: NodeExecuteContext['composeImageExpandCanvas']
   composeImageRedrawCanvas?: NodeExecuteContext['composeImageRedrawCanvas']

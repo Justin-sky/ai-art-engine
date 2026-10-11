@@ -9,6 +9,7 @@ import {
   executeSemanticCompileNode,
   executeSemanticEditNode,
   executeSemanticEventNode,
+  executeSemanticRebuildNode,
   executeSemanticVariantNode
 } from './execute/semanticTimeline'
 
@@ -41,6 +42,36 @@ const timelineIn = {
   dataType: GraphPortType.semanticTimeline,
   multiple: false,
   label: 'Timeline'
+}
+
+/**
+ * 视频生成提示词口（语义编译 → 语义重建）。
+ *
+ * 出口是**结构化计划**（每镜提示词 + 该镜首帧），不是一段文本：接错类型在连线时就被拒，
+ * 不必等运行期才发现"上游给的是一段普通文本"。文本消费者仍可接（单向投影）。
+ */
+const promptsOut = {
+  id: 'out',
+  direction: 'out' as const,
+  dataType: GraphPortType.videoPrompts,
+  multiple: false,
+  label: 'Prompts'
+}
+
+const promptsIn = {
+  id: 'in',
+  direction: 'in' as const,
+  dataType: GraphPortType.videoPrompts,
+  multiple: false,
+  label: 'Prompts'
+}
+
+const videoOut = {
+  id: 'out-video',
+  direction: 'out' as const,
+  dataType: GraphPortType.video,
+  multiple: false,
+  label: 'Video'
 }
 
 const timelineOut = {
@@ -155,8 +186,14 @@ export const SEMANTIC_TIMELINE_NODE_TYPES: NodeTypeDefinition[] = [
     defaultTitle: 'Semantic compile',
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
-    ports: [timelineIn, textOut],
-    defaultParams: () => ({ timelineJson: '', sourceRelativePath: '', rulePackIds: '' }),
+    // 出口是**提示词计划**（结构化口）：接错类型在连线时就被拒，不必等运行期解析
+    ports: [timelineIn, promptsOut],
+    defaultParams: () => ({
+      timelineJson: '',
+      sourceRelativePath: '',
+      rulePackIds: '',
+      promptOverridesJson: ''
+    }),
     addable: true,
     deletable: true,
     inspector: 'none',
@@ -164,6 +201,35 @@ export const SEMANTIC_TIMELINE_NODE_TYPES: NodeTypeDefinition[] = [
     card: 'media',
     contributeToGeneration: false,
     execute: executeSemanticCompileNode
+  },
+  {
+    typeId: 'semantic.rebuild',
+    category: 'note',
+    label: 'Semantic rebuild',
+    icon: '🎞️',
+    defaultTitle: 'Semantic rebuild',
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [promptsIn, textOut, videoOut],
+    defaultParams: () => ({
+      rebuildMode: 'shots',
+      generateModel: '',
+      generateProviderInstanceId: '',
+      rebuildDurationSec: 0,
+      rebuildResolution: '',
+      rebuildAspectRatio: '',
+      rebuildMaxShots: 12,
+      rebuildKeepAudio: true,
+      rebuildBurnSubtitles: true,
+      semanticExecute: true
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.semanticRebuild',
+    card: 'media',
+    contributeToGeneration: true,
+    execute: executeSemanticRebuildNode
   },
   {
     typeId: 'semantic.edit',

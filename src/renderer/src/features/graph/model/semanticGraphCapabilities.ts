@@ -8,6 +8,7 @@ export const semanticGraphCapabilities: Pick<
   | 'loadSemanticTimeline'
   | 'saveSemanticTimeline'
   | 'buildSemanticVideo'
+  | 'rebuildSemanticVideo'
   | 'listSemanticPacks'
 > = {
   analyzeSemanticVideo: (input) => window.studio.semanticAnalyze(input),
@@ -15,5 +16,6 @@ export const semanticGraphCapabilities: Pick<
   loadSemanticTimeline: (timelineId) => window.studio.semanticLoadTimeline(timelineId),
   saveSemanticTimeline: (doc) => window.studio.semanticSaveTimeline(doc),
   buildSemanticVideo: (input) => window.studio.semanticBuild(input),
+  rebuildSemanticVideo: (input) => window.studio.semanticRebuild(input),
   listSemanticPacks: () => window.studio.semanticListPacks()
 }

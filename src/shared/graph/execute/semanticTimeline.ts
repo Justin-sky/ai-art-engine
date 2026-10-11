@@ -9,8 +9,11 @@ import { videoPromptsValue } from './videoPromptsValue'
 import {
   applyPromptOverrides,
   buildPromptPlan,
+  parsePromptPlan,
+  planRebuildClips,
   summarizePromptPlan,
   VIDEO_PROMPT_PLAN_SCHEMA,
+  type RebuildMode,
   type VideoPromptPlan
 } from '../../semanticTimeline'
 import {
@@ -1013,4 +1016,159 @@ export async function executeSemanticVariantNode(
   }
   if (items.length > 0) outputs['out-videos'] = { kind: 'videos', items }
   return outputs
+}
+
+// ─── 语义重建（分析 → 编译 → 重建） ───────────────────────────────────────────
+
+/** 逐镜头模式的上限（防误点一次跑几十次生成） */
+const MAX_REBUILD_SHOTS = 12
+
+/** 从输入口取提示词计划：结构化值优先，文本（agent 手写 / 上游转文本）走解析 */
+function readPromptPlan(ctx: NodeExecuteContext): VideoPromptPlan | null {
+  const upstream = ctx.inputs.in?.[0]
+  if (upstream && upstream.kind === 'videoPrompts') return upstream.plan
+  if (upstream && upstream.kind === 'text') return parsePromptPlan(upstream.text)
+  return null
+}
+
+/**
+ * 语义重建：提示词计划 → 逐镜（或整片）生成 → 本地拼接成片。
+ *
+ * 成本可见性是刻意的：先把"要生成几次、跳过多少"打进日志，再决定跑不跑；
+ * `semanticExecute=false` 时一次模型都不调，只产出清单（可以先看再开）。
+ */
+export async function executeSemanticRebuildNode(
+  ctx: NodeExecuteContext
+): Promise<Record<string, GraphValue>> {
+  const plan = readPromptPlan(ctx)
+  if (!plan) {
+    say(
+      ctx,
+      '没有收到提示词计划 —— 上游请接「语义编译」', // cjk-ok
+      'No prompt plan on the input — connect the Semantic compile node upstream',
+      'warn'
+    )
+    // outText 返回的就是端口记录（{ out: {...} }），不要再包一层
+    return outText('{}')
+  }
+
+  const mode: RebuildMode = ctx.node.params?.rebuildMode === 'full' ? 'full' : 'shots'
+  const maxShots = Number(ctx.node.params?.rebuildMaxShots) || MAX_REBUILD_SHOTS
+  const planned = planRebuildClips(plan, { mode, maxShots })
+  const notes: string[] = []
+  if (planned.skippedByLimit > 0) {
+    notes.push(`超过每镜上限（${maxShots}），已跳过 ${planned.skippedByLimit} 镜`) // cjk-ok
+  }
+  if (planned.skippedEmpty > 0) {
+    notes.push(`有 ${planned.skippedEmpty} 镜没有提示词，已跳过`) // cjk-ok
+  }
+  say(
+    ctx,
+    `语义重建：${mode === 'full' ? '整片一次' : `${planned.clips.length} 镜`} · 模型 ${String(ctx.node.params?.generateModel || '').trim() || '默认'}`, // cjk-ok
+    `Semantic rebuild: ${mode === 'full' ? 'single full pass' : `${planned.clips.length} shots`}`
+  )
+  for (const note of notes) say(ctx, note, note, 'warn')
+
+  const execute = ctx.node.params?.semanticExecute !== false
+  if (!execute || planned.clips.length === 0) {
+    return outText(
+      JSON.stringify({ mode, execute: false, shots: plan.shots.length, planned, notes }, null, 2)
+    )
+  }
+  if (!ctx.generateVideo) {
+    throw new Error(
+      isEn(ctx)
+        ? 'This environment has no video generation capability'
+        : '当前执行环境没有视频生成能力' // cjk-ok
+    )
+  }
+
+  const duration = Number(ctx.node.params?.rebuildDurationSec) || undefined
+  const resolution = String(ctx.node.params?.rebuildResolution || '').trim() || undefined
+  const aspectRatio = String(ctx.node.params?.rebuildAspectRatio || '').trim() || undefined
+  const generated: Array<{ key: string; relativePath: string }> = []
+  const failures: Array<{ key: string; reason: string }> = []
+
+  for (const clip of planned.clips) {
+    if (ctx.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+    let firstFrameImageUrl: string | undefined
+    if (clip.firstFrameRelativePath && ctx.resolveProjectMediaUrl) {
+      firstFrameImageUrl = await ctx
+        .resolveProjectMediaUrl(clip.firstFrameRelativePath)
+        .catch(() => undefined)
+    }
+    say(
+      ctx,
+      `生成 ${clip.key}${firstFrameImageUrl ? '（图生视频）' : '（文生视频）'}`, // cjk-ok
+      `Generating ${clip.key}${firstFrameImageUrl ? ' (image-to-video)' : ' (text-to-video)'}`
+    )
+    try {
+      const res = await ctx.generateVideo({
+        prompt: clip.prompt,
+        model: String(ctx.node.params?.generateModel || '').trim() || undefined,
+        providerInstanceId:
+          String(ctx.node.params?.generateProviderInstanceId || '').trim() || undefined,
+        duration: duration ?? clip.durationSec,
+        ...(resolution ? { resolution } : {}),
+        ...(aspectRatio ? { aspectRatio } : {}),
+        generateAudio: false,
+        ...(firstFrameImageUrl ? { firstFrameImageUrl } : {}),
+        name: `rebuild-${clip.key}`,
+        graphBinding: { nodeId: ctx.node.id }
+      })
+      generated.push({ key: clip.key, relativePath: res.relativePath })
+    } catch (e) {
+      const reason = errorText(e)
+      failures.push({ key: clip.key, reason })
+      say(ctx, `${clip.key} 生成失败，已跳过：${reason}`, `${clip.key} failed: ${reason}`, 'warn') // cjk-ok
+    }
+  }
+
+  if (generated.length === 0) {
+    throw new Error(
+      isEn(ctx)
+        ? `all clip generations failed (first: ${failures[0]?.reason ?? 'unknown'})`
+        : `所有镜头都生成失败（首个原因：${failures[0]?.reason ?? '未知'}）` // cjk-ok
+    )
+  }
+
+  if (!ctx.rebuildSemanticVideo) {
+    say(
+      ctx,
+      '当前环境没有拼接能力，只返回生成的片段', // cjk-ok
+      'No rebuild capability here; returning the generated clips only',
+      'warn'
+    )
+    return outText(JSON.stringify({ mode, generated, failures, rebuild: null, notes }, null, 2))
+  }
+
+  const rebuilt = await ctx.rebuildSemanticVideo({
+    timelineId: plan.timelineId,
+    clips: generated,
+    keepAudio: ctx.node.params?.rebuildKeepAudio !== false,
+    sourceRelativePath: plan.sourceRelativePath,
+    burnSubtitles: ctx.node.params?.rebuildBurnSubtitles !== false,
+    ...(plan.settings.width ? { width: plan.settings.width } : {}),
+    ...(plan.settings.height ? { height: plan.settings.height } : {}),
+    ...(plan.settings.fps ? { fps: plan.settings.fps } : {})
+  })
+  for (const note of rebuilt.notes ?? []) say(ctx, note, note, 'warn')
+
+  if (!rebuilt.ok || !rebuilt.outputRelativePath) {
+    throw new Error(rebuilt.error || (isEn(ctx) ? 'rebuild failed' : '重建拼接失败')) // cjk-ok
+  }
+  say(
+    ctx,
+    `重建完成：${rebuilt.outputRelativePath}（${rebuilt.clipCount} 段${rebuilt.keptAudio ? ' · 保留原音轨' : ''}${rebuilt.burnedSubtitles ? ` · 字幕 ${rebuilt.burnedSubtitles} 条` : ''}）`, // cjk-ok
+    `Rebuilt ${rebuilt.outputRelativePath} (${rebuilt.clipCount} clips${rebuilt.keptAudio ? ' + original audio' : ''})`
+  )
+  return {
+    ...outText(JSON.stringify({ mode, generated, failures, rebuild: rebuilt, notes }, null, 2)),
+    'out-video': {
+      kind: 'video',
+      id: `rebuild.${plan.timelineId}`,
+      relativePath: rebuilt.outputRelativePath,
+      createdAt: new Date().toISOString()
+    }
+  }
 }

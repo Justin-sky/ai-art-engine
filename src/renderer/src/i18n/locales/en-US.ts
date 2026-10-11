@@ -4764,6 +4764,7 @@ export default {
       semantic: {
         analyze: 'Semantic analyze',
         edit: 'Semantic edit',
+        rebuild: 'Semantic rebuild',
         variant: 'Semantic variant',
         timeline: 'Semantic timeline',
         event: 'Semantic event',

@@ -170,6 +170,7 @@ const api: StudioApi = {
     ipcRenderer.invoke(IpcChannels.SEMANTIC_LOAD_TIMELINE, timelineId),
   semanticSaveTimeline: (doc) => ipcRenderer.invoke(IpcChannels.SEMANTIC_SAVE_TIMELINE, doc),
   semanticBuild: (input) => ipcRenderer.invoke(IpcChannels.SEMANTIC_BUILD, input),
+  semanticRebuild: (input) => ipcRenderer.invoke(IpcChannels.SEMANTIC_REBUILD, input),
   semanticListPacks: () => ipcRenderer.invoke(IpcChannels.SEMANTIC_LIST_PACKS),
   planAiWorkflow: (input) => ipcRenderer.invoke(IpcChannels.GEN_AI_WORKFLOW_PLAN, input),
   commitAiWorkflow: (input) => ipcRenderer.invoke(IpcChannels.GEN_AI_WORKFLOW_COMMIT, input),

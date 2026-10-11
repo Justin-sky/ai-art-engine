@@ -80,3 +80,35 @@ export interface SemanticBuildResponse {
 export interface SemanticPacksResponse {
   packs: SemanticPack[]
 }
+
+/**
+ * 语义重建：主进程侧的拼接请求 / 结果。
+ *
+ * 与 `SemanticBuildRequest`（按编辑列表裁剪**原片**）不同：这里传的是**模型新生成的片段**，
+ * 主进程负责统一重编码拼接、按需混回原片音轨、烧录转写字幕，并落一份清单。
+ */
+export interface SemanticRebuildRequest {
+  timelineId: string
+  clips: Array<{ key: string; relativePath: string }>
+  /** 输出文件名后缀（重跑/多版本区分） */
+  label?: string
+  /** 保留原片音轨（默认 true） */
+  keepAudio?: boolean
+  sourceRelativePath?: string
+  /** 烧录转写字幕（默认 true） */
+  burnSubtitles?: boolean
+  width?: number
+  height?: number
+  fps?: number
+}
+
+export interface SemanticRebuildResponse {
+  ok: boolean
+  outputRelativePath?: string
+  manifestRelativePath: string
+  clipCount: number
+  burnedSubtitles: number
+  keptAudio: boolean
+  notes: string[]
+  error?: string
+}

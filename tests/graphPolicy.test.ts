@@ -135,6 +135,7 @@ describe('graph policy', () => {
         'semantic.timeline',
         'semantic.event',
         'semantic.compile',
+        'semantic.rebuild',
         'image.toPrompt',
         'image.transform',
         'image.upscale',
