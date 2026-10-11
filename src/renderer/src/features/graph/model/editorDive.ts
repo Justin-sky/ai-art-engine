@@ -7,7 +7,7 @@ export type EditorDiveKind = 'asset' | 'screenplay' | 'canvas' | 'world' | 'beat
 /** 逻辑视图 id（双击侧栏/表格/工具/预览等） */
 export type EditorDiveViewId =
   | 'script.timeline'
-  | 'semantic.timeline' // view-id-keep：视图 id，与已删的 semantic.timeline 节点类型是两个命名空间
+  | 'semantic.timeline' // view-id-keep：**dive 视图 id**，不是节点类型。它是"语义时间线视图"（时间线 + 逐镜提示词面板 + 成片预览），会被工作区布局持久化，与已删除的同名节点类型无关 —— 勿因节点改名而重命名它
   | 'world.editor'
   | 'world.table'
   | 'beat.gen'

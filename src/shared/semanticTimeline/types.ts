@@ -350,40 +350,16 @@ export interface SemanticTimeline {
   createdAt: string
 }
 
-// ─── Production / Build ─────────────────────────────────────────────────────
-
-export type PlanAction = 'keep' | 'replace' | 'recompute'
-
-export interface PlanItem {
-  productId: string
-  action: PlanAction
-  reason: string
-  /** 付费生成秒数；本地处理为 0 */
-  paidSeconds?: number
-  localOnly?: boolean
-}
-
-export interface CostEstimate {
-  paidSeconds: number
-  localShotCount: number
-  paidShotCount: number
-  note?: string
-}
-
-export interface InvalidationPlan {
-  items: PlanItem[]
-  cost: CostEstimate
-  targetLevel: FidelityLevel
-}
-
-export interface BuildDefinition {
-  id: string
-  timelineId: string
-  timelineVersionHash: string
-  editIds: string[]
-  plan: InvalidationPlan
-  frozenAt: string
-}
+/**
+ * ─── QC ─────────────────────────────────────────────────────────────────────
+ *
+ * 保真度量结果（`qc.ts` 的 `evaluateFidelity` 消费）。
+ *
+ * 注意：这里**只剩 QC**。原来的失效计划与构建契约（`PlanAction` / `PlanItem` /
+ * `CostEstimate` / `InvalidationPlan` / `BuildDefinition` / `BuildManifest`）随
+ * 「按编辑列表裁剪原片」那条构建路一起删除了 —— 新管线是
+ * 「语义分析 → 语义编译（提示词计划）→ 语义重建（生成片段 + 本地拼接）」。
+ */
 
 export interface BuildQcResult {
   level: FidelityLevel
@@ -396,22 +372,6 @@ export interface BuildQcResult {
     durationMatch?: boolean
   }
   failedShotIds?: string[]
-  notes?: string[]
-}
-
-export interface BuildManifest {
-  id: string
-  definitionId: string
-  status: 'pending' | 'running' | 'done' | 'failed' | 'cancelled'
-  startedAt: string
-  finishedAt?: string
-  outputAssetId?: string
-  outputRelativePath?: string
-  shotActions: { shotId: string; action: 'copy' | 'mask_replace' | 'regenerate' | 'skip' }[]
-  qc?: BuildQcResult
-  error?: string
-  reusedEvidence?: string[]
-  /** 执行链的降级/跳过说明（如缺掩码、缺 TTS） */
   notes?: string[]
 }
 

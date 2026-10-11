@@ -1,4 +1,4 @@
-import { SEMANTIC_TIMELINE_SCHEMA, type SemanticEdit, type SemanticTimeline } from './types'
+import { SEMANTIC_TIMELINE_SCHEMA, type SemanticTimeline } from './types'
 
 export interface ValidationIssue {
   path: string
@@ -94,39 +94,4 @@ export function filterEventsRequiringEvidence(
   events: SemanticTimeline['events']
 ): SemanticTimeline['events'] {
   return events.filter((ev) => ev.origin !== 'analysis' || (ev.evidence?.length ?? 0) > 0)
-}
-
-export function assertValidEdit(edit: SemanticEdit): ValidationResult {
-  const issues: ValidationIssue[] = []
-  if (!edit.id) issues.push(issue('id', 'required'))
-  if (!edit.kind) issues.push(issue('kind', 'required'))
-  if (!edit.origin) issues.push(issue('origin', 'required'))
-  switch (edit.kind) {
-    case 'replaceEntity':
-      if (!edit.entityId) issues.push(issue('entityId', 'required'))
-      if (!edit.newAssetId) issues.push(issue('newAssetId', 'required'))
-      break
-    case 'removeEntity':
-      if (!edit.entityId) issues.push(issue('entityId', 'required'))
-      break
-    case 'rewriteUtterance':
-      if (!edit.utteranceId) issues.push(issue('utteranceId', 'required'))
-      if (!edit.newText) issues.push(issue('newText', 'required'))
-      break
-    case 'editText':
-      if (!edit.regionId) issues.push(issue('regionId', 'required'))
-      if (!edit.newText) issues.push(issue('newText', 'required'))
-      break
-    case 'dropBeat':
-    case 'retimeBeat':
-      if (!('beatId' in edit) || !edit.beatId) issues.push(issue('beatId', 'required'))
-      break
-    case 'regenerateShot':
-    case 'fixFrames':
-      if (!('shotId' in edit) || !edit.shotId) issues.push(issue('shotId', 'required'))
-      break
-    default:
-      break
-  }
-  return { ok: issues.length === 0, issues }
 }

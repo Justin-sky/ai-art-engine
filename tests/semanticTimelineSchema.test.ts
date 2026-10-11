@@ -4,7 +4,6 @@ import {
   COMMERCE_VOCABULARY,
   SEMANTIC_TIMELINE_SCHEMA,
   adaptiveSceneThreshold,
-  assertValidEdit,
   buildShotsFromCutPoints,
   compileDirectorCommands,
   createEmptySemanticTimeline,
@@ -20,7 +19,6 @@ import {
   timelineId,
   validateSemanticPack,
   validateSemanticTimeline,
-  type SemanticEdit,
   type SemanticEvent
 } from '../src/shared/semanticTimeline'
 
@@ -168,18 +166,5 @@ describe('compiler + packs + qc', () => {
       durationMatch: true
     })
     expect(fail.passed).toBe(false)
-  })
-
-  it('assertValidEdit checks required fields', () => {
-    expect(
-      assertValidEdit({
-        id: 'x',
-        kind: 'replaceEntity',
-        origin: 'user',
-        createdAt: '',
-        entityId: '',
-        newAssetId: 'a'
-      } as SemanticEdit).ok
-    ).toBe(false)
   })
 })

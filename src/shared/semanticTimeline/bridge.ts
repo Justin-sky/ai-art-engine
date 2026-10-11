@@ -2,16 +2,7 @@
  * 画布节点 ↔ 主进程语义管线的 IPC 契约（纯类型）。
  * 路径一律为工程相对路径（正斜杠）；主进程负责解析为绝对路径。
  */
-import type {
-  BuildDefinition,
-  BuildManifest,
-  InvalidationPlan,
-  SemanticEdit,
-  SemanticPack,
-  SemanticTimeline,
-  ShotEvidence,
-  UtteranceEvidence
-} from './types'
+import type { SemanticPack, SemanticTimeline, ShotEvidence, UtteranceEvidence } from './types'
 
 export interface SemanticAnalyzeRequest {
   /** 源视频资产 id（优先；同时用于把 semanticTimelineId 写回资产） */
@@ -58,25 +49,6 @@ export interface SemanticEvidenceResponse {
   sourceRelativePath?: string
 }
 
-export interface SemanticBuildRequest {
-  /** 当前文档（可能已被上游 LLM / 用户改过；主进程会以它为准落盘） */
-  timeline: SemanticTimeline
-  edits: SemanticEdit[]
-  /** 源视频；缺省按 timeline.source.assetId 解析 */
-  sourceRelativePath?: string
-  /** 输出文件名后缀（变体区分） */
-  label?: string
-}
-
-export interface SemanticBuildResponse {
-  plan: InvalidationPlan
-  definition: BuildDefinition
-  manifest: BuildManifest
-  /** 成片工程相对路径（成功时） */
-  outputRelativePath?: string
-  notes: string[]
-}
-
 export interface SemanticPacksResponse {
   packs: SemanticPack[]
 }
@@ -84,7 +56,7 @@ export interface SemanticPacksResponse {
 /**
  * 语义重建：主进程侧的拼接请求 / 结果。
  *
- * 与 `SemanticBuildRequest`（按编辑列表裁剪**原片**）不同：这里传的是**模型新生成的片段**，
+ * 素材是**模型新生成的片段**（不是按编辑列表裁剪原片 —— 那条"构建"路已随旧编辑 / 变体节点删除）：
  * 主进程负责统一重编码拼接、按需混回原片音轨、烧录转写字幕，并落一份清单。
  */
 export interface SemanticRebuildRequest {

@@ -147,7 +147,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     switch (meta.viewId) {
       case 'script.timeline':
         return 'Timeline'
-      case 'semantic.timeline': // view-id-keep：dive 视图 id（不是节点类型）
+      // **dive 视图 id**（"语义时间线视图"），不是节点类型；它会随工作区布局被持久化，
+      // 与已删除的同名节点类型无关 —— 勿因节点改名而重命名。
+      case 'semantic.timeline': // view-id-keep
         return 'Semantic Timeline'
       case 'world.editor':
         return 'World editor'

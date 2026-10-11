@@ -13,7 +13,6 @@ import {
   keyframesDir,
   rebuildTracks,
   segmentsToUtterances,
-  semanticAssetDir,
   timelineJsonPath,
   validateSemanticTimeline,
   type BeatVocabulary,
@@ -24,10 +23,8 @@ import {
   type UtteranceEvidenceFile,
   type EntityEvidenceFile,
   type OcrEvidenceFile,
-  type BuildManifest,
   type TranscribeLikeSegment,
   type UtteranceEvidence,
-  manifestPath,
   SHOTS_FILE,
   UTTERANCES_FILE,
   ENTITIES_FILE,
@@ -40,14 +37,6 @@ import { buildAudioStems, extractMixedAudio } from './audioStem'
 import { detectEntitiesViaVisionModel } from './entityDetectVlm'
 import { heuristicOcrFromUtterances } from './ocrRegions'
 import { separateAudioStems } from '../audioSeparationService'
-
-export function projectSemanticRoot(projectRoot: string): string {
-  return join(projectRoot, 'Semantic')
-}
-
-export function resolveTimelineDir(projectRoot: string, timelineId: string): string {
-  return join(projectRoot, ...semanticAssetDir(timelineId).split('/'))
-}
 
 export function resolveTimelineJson(projectRoot: string, timelineId: string): string {
   return join(projectRoot, ...timelineJsonPath(timelineId).split('/'))
@@ -127,13 +116,6 @@ export function loadUtterances(projectRoot: string, timelineId: string): Utteran
   )
 }
 
-export function loadOcrRegions(
-  projectRoot: string,
-  timelineId: string
-): OcrEvidenceFile['regions'] {
-  return readEvidenceJson<OcrEvidenceFile>(projectRoot, timelineId, OCR_FILE)?.regions ?? []
-}
-
 export function saveUtterances(
   projectRoot: string,
   timelineId: string,
@@ -152,15 +134,6 @@ export function saveEntities(
 
 export function saveOcr(projectRoot: string, timelineId: string, file: OcrEvidenceFile): void {
   writeEvidenceJson(projectRoot, evidenceFilePath(timelineId, OCR_FILE), file)
-}
-
-export function saveBuildManifest(
-  projectRoot: string,
-  timelineId: string,
-  manifest: BuildManifest
-): void {
-  const rel = manifestPath(timelineId, manifest.id)
-  writeEvidenceJson(projectRoot, rel, manifest)
 }
 
 export interface AnalyzeShotsOnlyResult {
