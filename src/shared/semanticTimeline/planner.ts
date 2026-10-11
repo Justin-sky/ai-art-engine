@@ -42,10 +42,17 @@ function ensureItem(
   }
 }
 
+/** 找实体出现在哪些镜头（字段不全的文档也要能算：`entities` / `appearances` 可能缺） */
 function entityShots(timeline: SemanticTimeline, entityId: string): string[] {
-  const ent = timeline.entities.find((e) => e.id === entityId)
+  const ent = (timeline.entities ?? []).find((e) => e?.id === entityId)
   if (!ent) return []
-  return [...new Set(ent.appearances.map((a) => a.shotId))]
+  return [
+    ...new Set(
+      (ent.appearances ?? [])
+        .map((a) => a?.shotId)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0)
+    )
+  ]
 }
 
 function shotDuration(shot: ShotEvidence): number {
@@ -271,9 +278,10 @@ export function timelineVersionHash(timeline: SemanticTimeline): string {
   const payload = JSON.stringify({
     id: timeline.id,
     updatedAt: timeline.updatedAt,
-    editIds: timeline.edits.map((e) => e.id),
-    eventIds: timeline.events.map((e) => e.id),
-    beatIds: timeline.beats.map((b) => b.id)
+    // 字段不全的文档（空骨架 / 手写 JSON）不能在这里抛错
+    editIds: (timeline.edits ?? []).map((e) => e?.id),
+    eventIds: (timeline.events ?? []).map((e) => e?.id),
+    beatIds: (timeline.beats ?? []).map((b) => b?.id)
   })
   // 与 ids.shortHash 同算法，内联避免循环依赖观感
   let h = 0x811c9dc5

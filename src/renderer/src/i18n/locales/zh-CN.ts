@@ -5351,6 +5351,7 @@ export default {
         pickTextRegion: '字幕区域 id（如 ocr.003.xxxx）',
         newText: '改成什么文本',
         planPreview: '计划预览（不构建）',
+        planPreviewFailed: '计划预览失败（不影响运行）：',
         planLevel: '目标级 {level}',
         planKeep: '直拷 {count}',
         planReplace: '替换 {count}',

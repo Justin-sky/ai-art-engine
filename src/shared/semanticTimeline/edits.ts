@@ -225,11 +225,21 @@ export function applyStructuralEdits(
     .map((x) => x.shot)
 }
 
-/** 实体 → 出现镜头索引（规划器与执行器共用） */
+/**
+ * 实体 → 出现镜头索引（规划器与执行器共用）。
+ *
+ * **必须容错**：时间线可能是"字段不全的文档"（分析节点拿不到视频时的空骨架、
+ * 手写 / agent 产出的 JSON），`entities` 或 `appearances` 缺失时会直接抛
+ * `undefined is not iterable` —— 界面里这会让整个检查器面板变空白（computed 抛错 → 不渲染）。
+ */
 export function buildEntityShotIndex(timeline: SemanticTimeline): Map<string, string[]> {
   const index = new Map<string, string[]>()
-  for (const ent of timeline.entities) {
-    index.set(ent.id, [...new Set(ent.appearances.map((a) => a.shotId))])
+  for (const ent of timeline?.entities ?? []) {
+    if (!ent?.id) continue
+    const shotIds = (ent.appearances ?? [])
+      .map((a) => a?.shotId)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0)
+    index.set(ent.id, [...new Set(shotIds)])
   }
   return index
 }

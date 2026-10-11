@@ -350,9 +350,12 @@
         </div>
       </div>
       <!-- 计划预览：**不构建**就能看到将付出什么代价（读证据 → 本地跑 planInvalidation） -->
-      <div v-if="planSummary" class="plan-preview">
+      <div v-if="planSummary || planError" class="plan-preview">
         <span class="field-label">{{ t('graph.inspector.semantic.planPreview') }}</span>
-        <p class="plan-line">
+        <p v-if="planError" class="edits-issue">
+          {{ t('graph.inspector.semantic.planPreviewFailed') }} {{ planError }}
+        </p>
+        <p v-if="planSummary" class="plan-line">
           <span class="plan-chip">
             {{ t('graph.inspector.semantic.planLevel', { level: planSummary.targetLevel }) }}
           </span>
@@ -373,7 +376,7 @@
             }}
           </span>
         </p>
-        <p v-if="planSummary.note" class="field-hint">{{ planSummary.note }}</p>
+        <p v-if="planSummary?.note" class="field-hint">{{ planSummary?.note }}</p>
         <p v-if="planNeedsEvidence" class="field-hint">
           {{ t('graph.inspector.semantic.planNoEvidence') }}
         </p>
@@ -483,6 +486,8 @@ import {
   summarizeSemanticEdits,
   updateEditDraft,
   STRUCTURED_EDIT_KINDS,
+  type EditsSummary,
+  type PlanSummary,
   type ShotEvidence
 } from '@shared/semanticTimeline'
 
@@ -706,11 +711,23 @@ function persistAnalyze(): void {
   })
 }
 
-/** 编辑草稿摘要（计数 + 被丢弃原因）——不跑节点就能看到 */
-const editsSummary = computed(() => summarizeSemanticEdits(editsJson.value))
+/** 编辑草稿摘要（计数 + 被丢弃原因）——不跑节点就能看到；同样不能让面板空白 */
+const editsSummary = computed<EditsSummary>(() => {
+  try {
+    return summarizeSemanticEdits(editsJson.value)
+  } catch {
+    return { count: 0, kinds: [], issues: [] }
+  }
+})
 
-/** 结构化编辑：当前草稿行（保留未知字段）+ 可选的真实节拍 / 实体 / 文本区域 */
-const editDrafts = computed(() => readEditDrafts(editsJson.value))
+/** 结构化编辑：草稿行（字段不全 / 坏 JSON 都不能抛） */
+const editDrafts = computed<Array<Record<string, unknown>>>(() => {
+  try {
+    return readEditDrafts(editsJson.value)
+  } catch {
+    return []
+  }
+})
 const structuredEditKinds = STRUCTURED_EDIT_KINDS
 const newDraftKind = ref<string>('grade')
 
@@ -785,22 +802,37 @@ watch(
   { immediate: true }
 )
 
-const planPreview = computed(() => {
-  if (!isPlan.value) return null
+/**
+ * 计划预览：**任何异常都不能让面板变空白**。
+ *
+ * Vue 的 computed 一旦抛错，整个组件就不渲染 —— 表现就是"检查器一片空白"（实测踩到：
+ * 字段不全的时间线文档让 `buildEntityShotIndex` / `planInvalidation` 抛
+ * `undefined is not iterable`）。所以这里一手包住，并把错误**显示出来**而不是吞掉。
+ */
+const planPreviewResult = computed<{ plan: PlanSummary | null; error: string }>(() => {
+  if (!isPlan.value) return { plan: null, error: '' }
   const timeline = timelineDoc.value
-  if (!timeline || planShots.value === null) return null
-  const edits = normalizeSemanticEdits(editsJson.value, 'user').edits
-  return summarizeInvalidationPlan(
-    planInvalidation({
-      timeline,
-      shots: planShots.value,
-      edits,
-      entityShotIndex: buildEntityShotIndex(timeline)
-    })
-  )
+  if (!timeline) return { plan: null, error: '' }
+  try {
+    const edits = normalizeSemanticEdits(editsJson.value, 'user').edits
+    return {
+      plan: summarizeInvalidationPlan(
+        planInvalidation({
+          timeline,
+          shots: planShots.value ?? [],
+          edits,
+          entityShotIndex: buildEntityShotIndex(timeline)
+        })
+      ),
+      error: ''
+    }
+  } catch (e) {
+    return { plan: null, error: e instanceof Error ? e.message : String(e) }
+  }
 })
 
-const planSummary = planPreview
+const planSummary = computed(() => planPreviewResult.value.plan)
+const planError = computed(() => planPreviewResult.value.error)
 /** 读不到镜头证据时要说清楚（否则"直拷 0 镜"会误导） */
 const planNeedsEvidence = computed(
   () => isPlan.value && !!timelineDoc.value && (planShots.value?.length ?? 0) === 0

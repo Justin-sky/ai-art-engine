@@ -5485,6 +5485,7 @@ export default {
         pickTextRegion: 'Text region id (e.g. ocr.003.xxxx)',
         newText: 'New text',
         planPreview: 'Plan preview (no build)',
+        planPreviewFailed: 'Plan preview failed (does not affect running):',
         planLevel: 'Level {level}',
         planKeep: 'copy {count}',
         planReplace: 'replace {count}',

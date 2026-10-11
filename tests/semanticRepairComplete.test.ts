@@ -3,13 +3,17 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   addEditDraft,
+  buildEntityShotIndex,
+  planInvalidation,
   readEditDrafts,
   removeEditDraft,
   sampleSemanticEdit,
   STRUCTURED_EDIT_KINDS,
   summarizeInvalidationPlan,
   summarizeSemanticEdits,
-  updateEditDraft
+  timelineVersionHash,
+  updateEditDraft,
+  type SemanticTimeline
 } from '../src/shared/semanticTimeline'
 import { resolveBuiltVideoRelativePath } from '../src/renderer/src/features/graph/model/semanticTimelineView'
 
@@ -121,7 +125,7 @@ describe('语义修复节点完善', () => {
     expect(inspector).toContain("t('graph.inspector.semantic.planNoEvidence')")
     // 只在计划类节点（修复/变体）上算
     expect(inspector).toMatch(
-      /const planPreview = computed\(\(\) => \{\s*\n\s*if \(!isPlan\.value\) return null/
+      /const planPreviewResult = computed<\{[\s\S]{0,140}?if \(!isPlan\.value\) return \{ plan: null, error: '' \}/
     )
   })
 
@@ -187,6 +191,74 @@ describe('语义修复节点完善', () => {
     expect(inspector).toMatch(/function setDraftField[\s\S]{0,200}?persistPlan\(\)/)
     expect(inspector).toMatch(/function addDraft[\s\S]{0,900}?persistPlan\(\)/)
     expect(inspector).toMatch(/function removeDraft[\s\S]{0,160}?persistPlan\(\)/)
+  })
+
+  /**
+   * 字段不全的时间线文档**绝不能抛错**。
+   *
+   * 实测踩到：这种文档让 `buildEntityShotIndex` 抛 `undefined is not iterable`，
+   * 而它跑在检查器的 computed 里 → **整个 inspector 面板空白**（用户报"inspector 为空"）。
+   */
+  it('字段不全的文档不抛错：buildEntityShotIndex / planInvalidation / 版本哈希', () => {
+    const partial = {
+      id: 'stl.partial',
+      source: { assetId: 'a', fps: 30, duration: 10, width: 100, height: 100 },
+      updatedAt: '2026-01-01T00:00:00.000Z'
+      // 故意不给 entities / events / beats / edits
+    } as unknown as SemanticTimeline
+
+    expect(buildEntityShotIndex(partial).size).toBe(0)
+    expect(() => planInvalidation({ timeline: partial, shots: [], edits: [] })).not.toThrow()
+    expect(() => timelineVersionHash(partial)).not.toThrow()
+
+    // 实体缺 appearances / 缺 id 也要能算
+    const messy = {
+      ...partial,
+      entities: [
+        { id: 'ent.a' }, // 没有 appearances
+        { name: '没有 id' },
+        { id: 'ent.b', appearances: [{ shotId: 'shot.1' }, { shotId: 'shot.1' }, { shotId: '' }] }
+      ],
+      edits: [],
+      events: [],
+      beats: []
+    } as unknown as SemanticTimeline
+    const index = buildEntityShotIndex(messy)
+    expect(index.get('ent.a')).toEqual([])
+    expect(index.has('undefined')).toBe(false)
+    expect(index.get('ent.b')).toEqual(['shot.1']) // 去重 + 丢掉空 shotId
+    expect(() =>
+      planInvalidation({
+        timeline: messy,
+        shots: [
+          { id: 'shot.1', range: { start: 0, end: 1, startFrame: 0, endFrame: 30 } } as never
+        ],
+        edits: [
+          {
+            id: 'edit.1',
+            kind: 'removeEntity',
+            origin: 'user',
+            createdAt: '2026-01-01T00:00:00.000Z',
+            entityId: 'ent.b'
+          } as never
+        ]
+      })
+    ).not.toThrow()
+  })
+
+  it('检查器：计划预览与摘要都包了异常，且失败时要把原因显示出来', () => {
+    // computed 抛错 = 整个面板不渲染 → 必须 try/catch
+    expect(inspector).toMatch(/const planPreviewResult = computed<\{[\s\S]{0,260}?try \{/)
+    expect(inspector).toMatch(
+      /const editsSummary = computed<EditsSummary>\(\(\) => \{\s*\n\s*try \{/
+    )
+    expect(inspector).toMatch(
+      /const editDrafts = computed<Array<Record<string, unknown>>>\(\(\) => \{\s*\n\s*try \{/
+    )
+    // 出错也要有可见反馈（不能静默空白），所以渲染条件包含 planError
+    expect(inspector).toMatch(/<div v-if="planSummary \|\| planError" class="plan-preview">/)
+    expect(inspector).toMatch(/<p v-if="planError" class="edits-issue">/)
+    expect(inspector).toContain("t('graph.inspector.semantic.planPreviewFailed')")
   })
 
   it('summarizeSemanticEdits：计数 + 类型分布 + 丢弃原因（稳定排序）', () => {
