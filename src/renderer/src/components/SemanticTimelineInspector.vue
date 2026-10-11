@@ -431,6 +431,26 @@ const selectedRulePacks = ref<string[]>([])
 const loadedNodeId = ref<string | null>(null)
 const loadedHostId = ref<string | null>(null)
 
+/**
+ * 语义重建：模式 / 模型 / 上限 / 音轨字幕 / 时长与画面参数。
+ *
+ * 必须声明在下面那个 `watch(..., { immediate: true })` **之前**：该 watch 会在 setup
+ * 期间同步调用 `loadConfig` → `syncRebuildFromNode`，而 `const` 不提升 —— 声明在后面
+ * 就是 TDZ，选中语义节点时整个检查器直接抛
+ * `Cannot access 'rebuildMode' before initialization`（面板只剩一句渲染失败）。
+ */
+const isRebuild = computed(() => typeId.value === 'semantic.rebuild')
+const rebuildModelOptions = ref<GenerateModelOption[]>([])
+const rebuildModelKey = ref('')
+const rebuildMode = ref<'shots' | 'full'>('shots')
+const rebuildExecute = ref(true)
+const rebuildMaxShots = ref(12)
+const rebuildKeepAudio = ref(true)
+const rebuildBurnSubtitles = ref(true)
+const rebuildDuration = ref('')
+const rebuildResolution = ref('')
+const rebuildAspectRatio = ref('')
+
 function loadConfig(current: NonNullable<typeof node.value>): void {
   loadedNodeId.value = current.id
   loadedHostId.value = hostId.value
@@ -507,19 +527,6 @@ function persistAnalyze(): void {
     transcribeProviderInstanceId: transcribeInstanceId.value.trim()
   })
 }
-
-/** 语义重建：模式 / 模型 / 上限 / 音轨字幕 / 时长与画面参数 */
-const isRebuild = computed(() => typeId.value === 'semantic.rebuild')
-const rebuildModelOptions = ref<GenerateModelOption[]>([])
-const rebuildModelKey = ref('')
-const rebuildMode = ref<'shots' | 'full'>('shots')
-const rebuildExecute = ref(true)
-const rebuildMaxShots = ref(12)
-const rebuildKeepAudio = ref(true)
-const rebuildBurnSubtitles = ref(true)
-const rebuildDuration = ref('')
-const rebuildResolution = ref('')
-const rebuildAspectRatio = ref('')
 
 function syncRebuildFromNode(): void {
   const p = node.value?.params
