@@ -210,9 +210,9 @@ describe('semanticTimeline graph nodes', () => {
     const value = out.out as { kind?: string; doc?: SemanticTimeline; text?: string }
     expect(value.kind).toBe('semanticTimeline')
     const doc = value.doc ?? (JSON.parse(String(value.text)) as SemanticTimeline)
-    expect(doc.schema).toBe('aiart.semantic-timeline@1')
+    expect(doc.schema).toBe('aiart.semantic-timeline@2')
     expect(doc.events.length).toBeGreaterThanOrEqual(1)
-    expect(JSON.parse(String(value.text)).schema).toBe('aiart.semantic-timeline@1')
+    expect(JSON.parse(String(value.text)).schema).toBe('aiart.semantic-timeline@2')
   })
 })
 

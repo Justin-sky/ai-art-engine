@@ -33,16 +33,13 @@ describe('语义时间线 dive 的打开路径', () => {
     expect(card).toContain("const timelineId = payload?.id || fallbackId || ''")
   })
 
-  it('自己没有时间线时回落上游节点的 semanticTimelineId（并带上原视频路径）', () => {
-    expect(card).toContain('function resolveUpstreamTimelinePayload(')
-    expect(card).toContain('graphEditorHosts.listIncomingEdges(hostId, props.node.id)')
-    expect(card).toContain('graphEditorHosts.getNode(hostId, edge.sourceNodeId)')
-    // 必须真的拿上游节点去解析（否则"回落"是空壳：函数在、但永远返回 null）
-    expect(card).toContain('resolveSemanticTimelineViewTarget(source, null)')
-    expect(card).toMatch(
-      /resolveSemanticTimelinePayload\(props\.node, props\.runState\) \?\?\s*\n\s*resolveUpstreamTimelinePayload\(\)/
-    )
+  /**
+   * 只有分析节点双击进时间线 dive（编译 / 重建双击开指令面板），所以不再需要
+   * "自己没时间线就回落上游"那条路；dive 仍要带上原视频路径。
+   */
+  it('dive 带上原视频路径；只有分析节点双击进时间线', () => {
     expect(card).toContain('sourceRelativePath: payload?.sourceRelativePath')
+    expect(card).not.toContain('function resolveUpstreamTimelinePayload(')
   })
 
   it('视图把「还没有时间线」当提示、把「文件缺失」当错误（都不再是裸英文 timeline not found）', () => {

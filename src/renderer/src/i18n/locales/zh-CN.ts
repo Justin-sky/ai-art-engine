@@ -4775,6 +4775,7 @@ export default {
     },
     semanticTimeline: {
       openResultHint: '双击查看分析结果',
+      rebuildOpenHint: '双击打开指令面板（选视频模型）；成片在右侧面板预览',
       /** 时间线编辑器（dive）的三层与轨道名 */
       layerStory: '剧情',
       layerEntity: '角色 / 实体',
@@ -4835,27 +4836,47 @@ export default {
         resolution: '结局'
       }
     },
-    /**
-     * 逐镜提示词面板（dive 右栏「提示词」页签）。
-     *
-     * 文案要短：prettier 会把过长对象折行，而 CJK 门禁要求中英成对写在同一行。
-     */
-    semanticPrompt: {
-      tab: '逐镜提示词',
-      rerunHint: '改动只写回编译节点的参数，要重跑编译节点才生效',
-      loading: '正在读出提示词计划…',
-      loadFailed: '读提示词计划失败：',
-      empty: '还没有提示词计划',
-      noTimeline: '这个节点还没有时间线 —— 先接上游「语义分析」并运行一次',
-      noShots: '没有镜头证据，拼不出逐镜提示词 —— 先运行上游「语义分析」',
-      timeRange: '{start}–{end} 秒',
-      firstFrame: '有首帧',
-      noFirstFrame: '无首帧',
-      modelAuthored: '模型撰写',
-      overridden: '已覆盖',
+    /** 结构化修改面板（dive，时间线编辑器下方）：改镜头 / 台词 / 实体，落盘后重跑编译与重建 */
+    semanticEdit: {
+      title: '修改',
+      summary: '{shots} 镜将重新生成 · {removed} 镜删除 · {lines} 句重新配音',
+      hint: '改动立即保存到时间线；重跑「语义编译」和「语义重建」后生效。未修改的镜头在重建时直通原片，零修改即还原原片。',
+      tab_shots: '镜头',
+      tab_dialogue: '台词',
+      tab_entities: '实体',
+      noShots: '还没有镜头树：先运行上游「语义分析」',
+      noDialogue: '没有转写台词',
+      noEntities: '没有识别到实体',
+      removed: '已删除',
+      willRegenerate: '将重新生成',
+      passthrough: '直通原片',
+      remove: '删除本镜',
       restore: '恢复',
-      restoreHint: '删掉这条覆盖，回到自动拼装结果',
-      promptPlaceholder: '给这一镜的生成提示词；清空 = 撤销覆盖'
+      subject: '主体',
+      subjectBoundHint: '绑定了实体：在「实体」页签里改名',
+      action: '动作',
+      addSubject: '+ 添加主体',
+      newSubject: '新主体',
+      camera_shotSize: '景别',
+      camera_angle: '角度',
+      camera_motion: '运镜',
+      camera_lens: '焦段',
+      visual_description: '画面描述',
+      visual_style: '风格',
+      visual_lighting: '光影',
+      visual_grade: '调色',
+      promptOverride: '提示词覆盖（可选）',
+      promptOverridePlaceholder: '写了就直接用这条提示词重新生成本镜',
+      willRedub: '将重新配音',
+      original: '原文：',
+      lineText: '台词',
+      speaker: '说话人',
+      entityName: '名称',
+      entityReference: '参考资产 id（换人 / 换商品）',
+      entityReferencePlaceholder: '留空 = 不换参考',
+      appearances: '出现在 {n} 镜',
+      saveFailed: '保存修改失败：',
+      currentPrompt: '当前提示词：'
     },
     notepad: {
       appMark: '记事本',
@@ -5297,7 +5318,7 @@ export default {
         analyzeHint:
           '连接上游视频（或填源资产 id）后运行：切镜、抽关键帧、转写、人声分离、实体检测，结果写入工程 Semantic/ 目录并输出语义时间线 JSON。双击查看分析结果。',
         compileHint:
-          '把语义时间线按导演规则包编译成**逐镜视频生成提示词计划**（含每镜首帧），出口是结构化提示词口。可勾选「用模型写提示词」让文本模型先把画面说清楚。双击查看结果。',
+          '把语义时间线编译成**逐镜视频生成提示词计划**：与分析基线比对，标出哪些镜头直通原片、哪些重新生成、哪些台词重新配音。双击节点打开指令面板，选文本模型、开「用模型写提示词」、选规则包、写编译要求。',
         vocabulary: '节拍词表',
         vocabularyHint: '决定节拍划分与标签；市场包可扩展更多词表',
         transcribe: '转写语音（话语证据）',
@@ -5334,10 +5355,16 @@ export default {
         promptsWithModel: '用模型写提示词',
         promptsWithModelHint:
           '打开后先用文本模型把画面说清楚（镜头描述/事件/意图），再规则拼装成提示词；失败会自动退回纯规则',
-        promptOverrides: '人工修改提示词（按镜头）',
-        promptOverridesPlaceholder: '{\'{"shot.001.0": "改成你要的画面描述"}\'}',
-        promptOverridesHint:
-          '按 shotId 覆盖对应镜头的提示词（JSON：{\'{"shotId":"提示词"}\'}）；留空则全用自动拼装结果',
+        promptsByRules: '规则拼装',
+        rulePacksAll: '全部规则包',
+        compileHasInstruction: '有编译要求',
+        compilePanelSummary: '编译设置',
+        compileInPanelHint:
+          '双击节点打开指令面板修改（文本模型 / 用模型写提示词 / 规则包 / 编译要求）',
+        compileEditPointer:
+          '要改镜头内容、台词、实体或单镜提示词：双击上游「语义分析」节点，在时间线下方的「修改」面板里改，然后重跑本节点。',
+        compileInstructionPlaceholder:
+          '编译要求（可选）：追加到每一镜提示词末尾，如「保持原片构图与人物外观，写实质感」',
         rebuildMode: '生成粒度',
         rebuildModeShots: '逐镜头（每镜一段，拼接成片）',
         rebuildModeFull: '整片一次（一条长提示词）',
@@ -5345,7 +5372,26 @@ export default {
         rebuildModel: '视频生成模型',
         rebuildModelHint: '默认跟随设置里的视频模型',
         rebuildHint:
-          '按上游「语义编译」给出的逐镜提示词逐段生成，再用本地 ffmpeg 拼接成片（可按需混回原音轨、烧录转写字幕）。双击预览成片。',
+          '按上游「语义编译」的计划还原成片：没改过的镜头直通原片段，改过的镜头用视频模型重新生成，改过的台词重新配音，再用本地 ffmpeg 拼接。零修改即还原原片。双击节点打开指令面板选视频模型。',
+        rebuildInstructionPlaceholder:
+          '整片补充指令（可选）：追加到每个重新生成镜头的提示词末尾，如「保持写实风格、自然光」',
+        rebuildModelInPanelHint: '双击节点打开指令面板选择视频模型与画面参数（分辨率 / 画幅）',
+        rebuildRegenerateAll: '全部镜头重新生成',
+        rebuildRegenerateAllHint:
+          '关闭（默认）时只生成改过的镜头，其余直通原片；打开后每镜都调用一次视频模型（风格重制）',
+        rebuildDub: '改过的台词重新配音',
+        rebuildDubHint: '只替换改过台词那几句的人声；有人声分离结果时背景声保留',
+        rebuildDubModel: '配音模型',
+        rebuildDubVoice: '配音音色',
+        rebuildDubVoicePlaceholder: '空 = 说话人档案 / 模型默认音色',
+        rebuildDubClone: '没有指定音色时用原片人声做声音克隆参考',
+        rebuildPreview: '成片预览',
+        rebuildPreviewEmpty: '还没有成片：运行本节点后在这里预览',
+        rebuildReportGenerate: '重新生成',
+        rebuildReportPassthrough: '直通原片',
+        rebuildReportRemoved: '删除镜头',
+        rebuildReportDubs: '重新配音',
+        rebuildReportJson: '重建清单（JSON）',
         rebuildExecuteHint: '关掉后只出计划（一次模型都不调），确认清单后再打开',
         rebuildMaxShots: '每镜上限',
         rebuildMaxShotsHint: '逐镜头模式最多生成几段（默认 12），防止误点烧掉几十次生成',
@@ -5355,7 +5401,8 @@ export default {
         rebuildDurationPlaceholder: '空 = 跟随镜头时长',
         rebuildResolution: '分辨率',
         rebuildAspectRatio: '画幅',
-        rebuildPromptPointer: '逐镜提示词在「语义编译」节点上改（双击该节点查看/覆盖）。',
+        rebuildPromptPointer:
+          '镜头内容、台词与单镜提示词在上游「语义分析」节点的时间线「修改」面板里改（双击分析节点）。',
         timelineJson: '时间线 JSON（无上游时）',
         timelineJsonPlaceholder: '粘贴 Semantic Timeline JSON',
         timelineJsonHint: '仅在未接上游文本口时作为输入；有上游时运行会覆盖读取上游',
@@ -5715,6 +5762,11 @@ export default {
             uiButton: 'UI 按钮',
             animIcon: '图标动效',
             illustFlat: '扁平插画'
+          },
+          semanticCompile: {
+            keepOriginal: '贴近原片',
+            productDetail: '突出商品细节',
+            cinematic: '电影感升级'
           },
           spatialWorld: {
             interior: '室内场景',

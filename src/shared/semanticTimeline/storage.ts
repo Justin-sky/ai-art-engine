@@ -72,3 +72,23 @@ export function defaultEvidencePaths(timelineId: string) {
     ocrPath: evidenceFilePath(timelineId, OCR_FILE)
   }
 }
+
+/**
+ * 证据里的关键帧路径（相对 `Semantic/<id>/`，如 `evidence/keyframes/x.jpg`）→ 工程相对路径。
+ *
+ * 证据文件为了可搬迁只存相对语义根的路径；而 `resolveProjectMediaUrl` / 图生视频按**工程根**
+ * 解析。以前编译直接把证据路径写进提示词计划，重建时首帧解析不到，静默退化成文生视频。
+ * 已经是工程相对（以 `Semantic/` 开头）或绝对/URL 的路径原样返回。
+ */
+export function keyframeProjectPath(
+  timelineId: string,
+  rel: string | undefined
+): string | undefined {
+  const raw = (rel ?? '').trim().replace(/\\/g, '/')
+  if (!raw) return undefined
+  if (raw.startsWith(`${SEMANTIC_ROOT_DIR}/`)) return raw
+  if (/^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.startsWith('/')) return raw
+  const id = timelineId.trim()
+  if (!id) return raw
+  return `${semanticAssetDir(id)}/${raw.replace(/^\.\//, '')}`
+}

@@ -16,14 +16,6 @@ export interface SemanticTimelineViewTarget {
   json?: string
   /** 原视频工程相对路径（dive 里显示视频用；透传节点从上游拿） */
   sourceRelativePath?: string
-  /**
-   * 打开 dive 时的**来源节点**（语义编辑 / 变体节点）。
-   *
-   * 有它，dive 里的编辑面板才能把改动**写回节点参数** —— 编辑台在 dive，
-   * 但节点参数仍是唯一事实来源，构建还是走画布上的节点。
-   */
-  editorNodeId?: string
-  hostId?: string
 }
 
 /** 运行输出里的时间线文本（兼容旧的纯文本值与新的结构化值） */

@@ -63,10 +63,9 @@ describe('i18n 文案可编译（花括号必须转义）', () => {
       messages: { 'zh-CN': zhCN as Record<string, unknown> }
     })
     const t = i18n.global.t as (key: string, named?: Record<string, unknown>) => string
-    // 编译节点的提示词覆盖占位符：JSON 要原样出现
-    const placeholder = t('graph.inspector.semantic.promptOverridesPlaceholder')
-    expect(placeholder).toContain('{"shot.001.0"')
-    expect(placeholder.endsWith('}')).toBe(true)
+    // 转义花括号要原样出现（原用例的「提示词覆盖」占位符已随旧入口删除，换成仍在用的同类文案）
+    const subtitle = t('workflowExport.dialog.subtitle')
+    expect(subtitle).toContain('workflows/{id}/workflow.json')
     // 人脸模型来源提示里的 @ 路径要原样出现
     expect(t('settings.yoloModels.faceSourceMissing')).toContain('@shared/yoloCatalog')
     // 带插值的 @ 文案：@ 是字面量，{fps} 仍然插值

@@ -335,7 +335,11 @@
           class="media-fallback semantic-timeline-hint"
         >
           <span class="icon"><WorkspaceItemIcon :icon="typeIcon" :size="18" /></span>
-          <span class="hint">{{ t('graph.semanticTimeline.openResultHint') }}</span>
+          <span class="hint">{{
+            node.typeId === 'semantic.rebuild'
+              ? t('graph.semanticTimeline.rebuildOpenHint')
+              : t('graph.semanticTimeline.openResultHint')
+          }}</span>
         </div>
 
         <div v-else class="media-fallback">
@@ -483,11 +487,18 @@
             :model-key="selectedModelKey"
             @change="persistImageGenerateParams"
           />
+          <SemanticCompileControls
+            v-if="instructionKind === 'semanticCompile'"
+            :semantic-llm="node.params.semanticLlm === true"
+            :rule-pack-ids="String(node.params.rulePackIds ?? '')"
+            @update:semantic-llm="persistCompileParams({ semanticLlm: $event })"
+            @update:rule-pack-ids="persistCompileParams({ rulePackIds: $event })"
+          />
           <VideoGenerateParamsSelect
             v-if="showVideoGenerateParams"
             v-model="videoGenerateParams"
             :model-key="selectedModelKey"
-            :hide-frame-mode="instructionKind === 'lipSync'"
+            :hide-frame-mode="instructionKind === 'lipSync' || node.typeId === 'semantic.rebuild'"
             @change="persistVideoGenerateParams"
           />
         </template>
@@ -587,6 +598,7 @@ import Model3dRigControls from './Model3dRigControls.vue'
 import Model3dSegmentControls from './Model3dSegmentControls.vue'
 import ImageGenerateParamsSelect from './ImageGenerateParamsSelect.vue'
 import VideoGenerateParamsSelect from './VideoGenerateParamsSelect.vue'
+import SemanticCompileControls from './SemanticCompileControls.vue'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import {
   loadGenerateModelOptions,
@@ -599,7 +611,6 @@ import { loadImageGenerateCapabilities } from '../features/graph/model/imageGene
 import { loadVideoGeneratePortLimits } from '../features/graph/model/videoGenerateCapabilities'
 import { composeImageGridCell } from '../features/graph/model/composeImageGridCell'
 import {
-  resolveBuiltVideoRelativePath,
   resolveSemanticTimelineViewTarget,
   semanticTimelineTextFromRunState,
   type SemanticTimelineViewTarget
@@ -1038,6 +1049,12 @@ const instructionKind = computed((): InstructionPresetKind | null => {
       return 'lipSync'
     case 'video.reshoot':
       return 'reshoot'
+    // 语义重建：指令面板选视频模型 / 画面参数；指令文本追加到每镜提示词（复用视频预设）
+    case 'semantic.rebuild':
+      return 'video'
+    // 语义编译：文本模型（用模型写提示词时的三步理解）+ 编译要求（追加到每镜提示词）
+    case 'semantic.compile':
+      return 'semanticCompile'
     case 'media.review':
       return 'mediaReview'
     case 'media.rework':
@@ -1192,6 +1209,12 @@ const instructionPlaceholder = computed(() => {
   }
   if (instructionKind.value === 'lipSync') {
     return t('graph.inspector.generate.lipSyncInstructionPlaceholder')
+  }
+  if (props.node.typeId === 'semantic.rebuild') {
+    return t('graph.inspector.semantic.rebuildInstructionPlaceholder')
+  }
+  if (instructionKind.value === 'semanticCompile') {
+    return t('graph.inspector.semantic.compileInstructionPlaceholder')
   }
   if (instructionKind.value === 'video') {
     return t('graph.inspector.generate.videoInstructionPlaceholder')
@@ -1753,6 +1776,7 @@ const scriptNodePreviewTitle = computed(() => {
   if (isWorldGenNode(props.node)) return t('graph.worldGenNode.hint')
   if (isBeatTableNode(props.node)) return t('graph.beatTableNode.hint')
   if (isBeatGenNode(props.node)) return t('graph.beatGenNode.hint')
+  if (props.node.typeId === 'semantic.rebuild') return t('graph.semanticTimeline.rebuildOpenHint')
   if (isSemanticTimelineToolNode(props.node)) return t('graph.semanticTimeline.openResultHint')
   return ''
 })
@@ -1832,6 +1856,7 @@ const previewOpenHint = computed(() => {
   if (isScreenplayOutputNode.value) return t('graph.textsPreview.hint')
   if (isSelectTextNode(props.node)) return t('graph.selectText.hint')
   if (isSelectBeatNode(props.node)) return t('graph.selectBeat.hint')
+  if (props.node.typeId === 'semantic.rebuild') return t('graph.semanticTimeline.rebuildOpenHint')
   if (isSemanticTimelineToolNode(props.node)) return t('graph.semanticTimeline.openResultHint')
   // 预览区已有正文时，双击优先打开记事本
   if (textPreview.value && !isAssetRef.value && isNodeTextCapable(props.node)) {
@@ -2286,6 +2311,12 @@ function persistInstruction(): void {
   graphEditorHosts.updateNode(props.hostId, props.node.id, next)
 }
 
+/** 语义编译：指令面板里的「用模型写提示词」与规则包 */
+function persistCompileParams(patch: Partial<GraphNodeParams>): void {
+  if (!props.hostId || instructionKind.value !== 'semanticCompile') return
+  graphEditorHosts.updateNode(props.hostId, props.node.id, patch)
+}
+
 function persistGenerateModel(): void {
   if (!props.hostId || !instructionKind.value) return
   const parsed = parseModelKey(selectedModelKey.value)
@@ -2605,33 +2636,6 @@ function resolveSemanticOutText(
   return String(node.params?.timelineJson ?? '').trim()
 }
 
-/** 语义时间线的查看目标（运行输出 → timelineJson → semanticTimelineId） */
-function resolveSemanticTimelinePayload(
-  node: GraphNode,
-  runState: GraphNodeRunState | null | undefined
-): SemanticTimelineViewTarget | null {
-  return resolveSemanticTimelineViewTarget(node, runState)
-}
-
-/**
- * 语义时间线是**透传**节点：自己没时间线时，回落到上游（通常就是语义分析节点）。
- *
- * 以前这里没有回落，而是编了个假 id `stl.node.<nodeId>` 去开编辑器 —— 那个目录根本不存在，
- * 于是用户看到 `timeline not found`（实测踩到）。上游分析节点会把 `semanticTimelineId`
- * 存在自己的参数里，所以不需要上游的运行态也能解析。
- */
-function resolveUpstreamTimelinePayload(): SemanticTimelineViewTarget | null {
-  const hostId = props.hostId?.trim()
-  if (!hostId) return null
-  for (const edge of graphEditorHosts.listIncomingEdges(hostId, props.node.id)) {
-    const source = graphEditorHosts.getNode(hostId, edge.sourceNodeId)
-    if (!source) continue
-    const target = resolveSemanticTimelineViewTarget(source, null)
-    if (target) return target
-  }
-  return null
-}
-
 async function openSemanticTimelineDive(
   title: string,
   payload: SemanticTimelineViewTarget | null,
@@ -2640,18 +2644,15 @@ async function openSemanticTimelineDive(
   // 允许空 id：真没有时间线时也把编辑器打开，由视图给出「还没有时间线」的提示
   const timelineId = payload?.id || fallbackId || ''
   /**
-   * 语义编译节点：把**来源节点**也带进 dive ——
-   * 提示词覆盖在 dive 里改，改动要写回节点参数（节点仍是唯一事实来源）。
+   * 修改（镜头 / 台词 / 实体 / 逐镜提示词覆盖）统一在 dive 下方的「修改」面板里做，直接落盘时间线；
+   * 不再把某个节点带进来当"可写目标"（以前编译节点的逐镜提示词覆盖走这条路，已合并进修改面板）。
    */
-  const editable = props.node.typeId === 'semantic.compile'
-  const hostId = props.hostId?.trim()
   return diveView(
     {
       viewId: 'semantic.timeline',
       timelineId,
       timelineJson: payload?.json,
-      sourceRelativePath: payload?.sourceRelativePath,
-      ...(editable && hostId ? { editorNodeId: props.node.id, hostId } : {})
+      sourceRelativePath: payload?.sourceRelativePath
     },
     title
   )
@@ -2714,6 +2715,15 @@ function onPreviewDblClick(): void {
 
     // 媒体质检 / 返工：双击展开/收起生成指令面板（与图片/视频生成节点一致）
     if (props.node.typeId === 'media.review' || props.node.typeId === 'media.rework') {
+      instructionOpen.value = !instructionOpen.value
+      return
+    }
+
+    /**
+     * 语义重建：双击开关**指令面板**（选视频模型 / 画面参数 / 整片补充指令），与其它生成节点一致。
+     * 成片预览与重建清单在 Inspector 里（节点已没有文本输出口）。
+     */
+    if (props.node.typeId === 'semantic.rebuild') {
       instructionOpen.value = !instructionOpen.value
       return
     }
@@ -2813,59 +2823,16 @@ function onPreviewDblClick(): void {
       return
     }
     /**
-     * 语义编译：双击**优先进 dive 的提示词面板**（逐镜看/改提示词）。
+     * 语义编译：双击开关**指令面板**（文本模型 / 用模型写提示词 / 规则包 / 编译要求）。
      *
-     * 以前它落在下面那个通用的"文本结果"分支上 —— 计划是一大坨 JSON，
-     * 用户在里面手改提示词既不直观、也容易改坏结构。dive 里按镜一行才好改。
-     * 拿不到时间线时也照进（视图给「先接上游语义分析」的提示），只有连 dive 都开不出来
-     * 才回落到文本结果。
+     * 逐镜内容与提示词的修改统一在分析节点的 dive「修改」面板里做 —— 编译节点只管"怎么编"，
+     * 不再是第二个修改入口（以前双击进 dive 的逐镜提示词页签，与修改面板重复）。
      */
     if (props.node.typeId === 'semantic.compile') {
-      const target =
-        resolveSemanticTimelineViewTarget(props.node, props.runState) ??
-        resolveUpstreamTimelinePayload()
-      const ok = await openSemanticTimelineDive(title, target)
-      if (!ok) {
-        const raw = resolveSemanticOutText(props.node, props.runState)
-        await openSemanticResultTextDive(title, raw || semanticNoResultHint())
-      }
+      instructionOpen.value = !instructionOpen.value
       return
     }
     if (isSemanticTimelineToolNode(props.node)) {
-      /**
-       * 语义重建的产物是**成片**，不是 JSON 计划 —— 双击优先预览成片
-       * （没有成片时回落到下面的文本结果，给出计划或"还没运行"的说明）。
-       */
-      if (props.node.typeId === 'semantic.rebuild') {
-        const rel = resolveBuiltVideoRelativePath(props.runState?.outputs)
-        if (rel) {
-          const url = (await window.studio.getAssetFileUrl(rel)) ?? ''
-          if (url) {
-            const opened = await diveView(
-              {
-                viewId: 'media.preview',
-                mediaKind: 'video',
-                url,
-                relativePath: rel,
-                title
-              },
-              title
-            )
-            if (opened) return
-          }
-        }
-        /**
-         * 还没有成片时**也要进编辑器**，不要甩一句"先执行它"。
-         *
-         * 编辑本来就发生在运行**之前**（先写编辑列表，再运行该节点构建）——
-         * 顺序提示反了。编辑器会拿上游时间线（还没跑上游时由视图给出可执行的提示）。
-         */
-        const payload =
-          resolveSemanticTimelinePayload(props.node, props.runState) ??
-          resolveUpstreamTimelinePayload()
-        const intoEditor = await openSemanticTimelineDive(title, payload)
-        if (intoEditor) return
-      }
       const raw = resolveSemanticOutText(props.node, props.runState)
       const ok = await openSemanticResultTextDive(title, raw || semanticNoResultHint())
       if (!ok) emit('textsOpen', props.node.id)

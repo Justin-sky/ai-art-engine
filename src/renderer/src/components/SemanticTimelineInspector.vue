@@ -149,39 +149,32 @@
         <span class="field-hint">{{ t('graph.inspector.semantic.sourceRelativePathHint') }}</span>
       </label>
 
-      <label class="check">
-        <input v-model="useLlmForPrompts" type="checkbox" @change="persistCompile" />
-        <span>{{ t('graph.inspector.semantic.promptsWithModel') }}</span>
-      </label>
-      <span class="field-hint">{{ t('graph.inspector.semantic.promptsWithModelHint') }}</span>
-
-      <label>
-        <span class="field-label">{{ t('graph.inspector.semantic.promptOverrides') }}</span>
-        <textarea
-          v-model="promptOverridesJson"
-          class="prompt-overrides"
-          rows="5"
-          spellcheck="false"
-          :placeholder="t('graph.inspector.semantic.promptOverridesPlaceholder')"
-          @change="persistCompile"
-        />
-        <span class="field-hint">{{ t('graph.inspector.semantic.promptOverridesHint') }}</span>
-      </label>
-    </section>
-
-    <section v-if="usesRulePacks" class="fields">
-      <div class="checks">
-        <span class="field-label">{{ t('graph.inspector.semantic.rulePacks') }}</span>
-        <label v-for="pack in rulePackOptions" :key="pack.id" class="check">
-          <input
-            type="checkbox"
-            :checked="selectedRulePacks.includes(pack.id)"
-            @change="toggleRulePack(pack.id)"
-          />
-          <span>{{ pack.title }}</span>
-        </label>
-        <span class="field-hint">{{ t('graph.inspector.semantic.rulePacksHint') }}</span>
+      <!-- 文本模型 / 用模型写提示词 / 规则包 / 编译要求都在指令面板里（双击节点）；这里只显示 -->
+      <div class="readonly-field">
+        <span class="field-label">{{ t('graph.inspector.semantic.compilePanelSummary') }}</span>
+        <span class="readonly-value">{{ compileSettingsLabel }}</span>
+        <span class="field-hint">{{ t('graph.inspector.semantic.compileInPanelHint') }}</span>
       </div>
+
+      <dl v-if="compileSummary" class="meta">
+        <div>
+          <dt>{{ t('graph.inspector.semantic.rebuildReportGenerate') }}</dt>
+          <dd>{{ compileSummary.regenerate }}</dd>
+        </div>
+        <div>
+          <dt>{{ t('graph.inspector.semantic.rebuildReportPassthrough') }}</dt>
+          <dd>{{ compileSummary.passthrough }}</dd>
+        </div>
+        <div>
+          <dt>{{ t('graph.inspector.semantic.rebuildReportRemoved') }}</dt>
+          <dd>{{ compileSummary.removed }}</dd>
+        </div>
+        <div>
+          <dt>{{ t('graph.inspector.semantic.rebuildReportDubs') }}</dt>
+          <dd>{{ compileSummary.dubs }}</dd>
+        </div>
+      </dl>
+      <span class="field-hint">{{ t('graph.inspector.semantic.compileEditPointer') }}</span>
     </section>
 
     <section v-if="isRebuild" class="fields">
@@ -194,16 +187,18 @@
         <span class="field-hint">{{ t('graph.inspector.semantic.rebuildModeHint') }}</span>
       </label>
 
-      <label>
+      <!-- 视频模型 / 画面参数在指令面板里选（双击节点）；这里只显示当前选择 -->
+      <div class="readonly-field">
         <span class="field-label">{{ t('graph.inspector.semantic.rebuildModel') }}</span>
-        <select v-model="rebuildModelKey" @change="persistRebuild">
-          <option value="">{{ t('graph.inspector.semantic.modelAuto') }}</option>
-          <option v-for="opt in rebuildModelOptions" :key="opt.key" :value="opt.key">
-            {{ opt.label }}
-          </option>
-        </select>
-        <span class="field-hint">{{ t('graph.inspector.semantic.rebuildModelHint') }}</span>
+        <span class="readonly-value">{{ rebuildModelLabel }}</span>
+        <span class="field-hint">{{ t('graph.inspector.semantic.rebuildModelInPanelHint') }}</span>
+      </div>
+
+      <label class="check">
+        <input v-model="rebuildRegenerateAll" type="checkbox" @change="persistRebuild" />
+        <span>{{ t('graph.inspector.semantic.rebuildRegenerateAll') }}</span>
       </label>
+      <span class="field-hint">{{ t('graph.inspector.semantic.rebuildRegenerateAllHint') }}</span>
 
       <label class="check">
         <input v-model="rebuildExecute" type="checkbox" @change="persistRebuild" />
@@ -232,6 +227,36 @@
         <span>{{ t('graph.inspector.semantic.rebuildBurnSubtitles') }}</span>
       </label>
 
+      <label class="check">
+        <input v-model="rebuildDub" type="checkbox" @change="persistRebuild" />
+        <span>{{ t('graph.inspector.semantic.rebuildDub') }}</span>
+      </label>
+      <span class="field-hint">{{ t('graph.inspector.semantic.rebuildDubHint') }}</span>
+      <template v-if="rebuildDub">
+        <label>
+          <span class="field-label">{{ t('graph.inspector.semantic.rebuildDubModel') }}</span>
+          <select v-model="dubModelKey" @change="persistRebuild">
+            <option value="">{{ t('graph.inspector.semantic.modelAuto') }}</option>
+            <option v-for="opt in dubModelOptions" :key="opt.key" :value="opt.key">
+              {{ opt.label }}
+            </option>
+          </select>
+        </label>
+        <label>
+          <span class="field-label">{{ t('graph.inspector.semantic.rebuildDubVoice') }}</span>
+          <input
+            v-model="dubVoice"
+            type="text"
+            :placeholder="t('graph.inspector.semantic.rebuildDubVoicePlaceholder')"
+            @change="persistRebuild"
+          />
+        </label>
+        <label class="check">
+          <input v-model="rebuildDubClone" type="checkbox" @change="persistRebuild" />
+          <span>{{ t('graph.inspector.semantic.rebuildDubClone') }}</span>
+        </label>
+      </template>
+
       <label>
         <span class="field-label">{{ t('graph.inspector.semantic.rebuildDuration') }}</span>
         <input
@@ -241,26 +266,39 @@
           @change="persistRebuild"
         />
       </label>
-      <label>
-        <span class="field-label">{{ t('graph.inspector.semantic.rebuildResolution') }}</span>
-        <input
-          v-model="rebuildResolution"
-          type="text"
-          placeholder="1080p"
-          @change="persistRebuild"
-        />
-      </label>
-      <label>
-        <span class="field-label">{{ t('graph.inspector.semantic.rebuildAspectRatio') }}</span>
-        <input
-          v-model="rebuildAspectRatio"
-          type="text"
-          placeholder="9:16"
-          @change="persistRebuild"
-        />
-      </label>
 
       <p class="field-hint">{{ t('graph.inspector.semantic.rebuildPromptPointer') }}</p>
+
+      <!-- 成片预览 + 重建清单（节点没有文本输出口；清单来自 rebuildLastReport） -->
+      <div class="rebuild-result">
+        <span class="field-label">{{ t('graph.inspector.semantic.rebuildPreview') }}</span>
+        <MediaPreviewPlayer v-if="rebuildPreviewUrl" kind="video" :src="rebuildPreviewUrl" />
+        <span v-else class="field-hint">{{
+          t('graph.inspector.semantic.rebuildPreviewEmpty')
+        }}</span>
+        <dl v-if="rebuildReport" class="meta">
+          <div>
+            <dt>{{ t('graph.inspector.semantic.rebuildReportGenerate') }}</dt>
+            <dd>{{ rebuildReport.generate }}</dd>
+          </div>
+          <div>
+            <dt>{{ t('graph.inspector.semantic.rebuildReportPassthrough') }}</dt>
+            <dd>{{ rebuildReport.passthrough }}</dd>
+          </div>
+          <div>
+            <dt>{{ t('graph.inspector.semantic.rebuildReportRemoved') }}</dt>
+            <dd>{{ rebuildReport.removed }}</dd>
+          </div>
+          <div>
+            <dt>{{ t('graph.inspector.semantic.rebuildReportDubs') }}</dt>
+            <dd>{{ rebuildReport.dubs }}</dd>
+          </div>
+        </dl>
+        <details v-if="rebuildReportText" class="advanced">
+          <summary>{{ t('graph.inspector.semantic.rebuildReportJson') }}</summary>
+          <pre class="report-json">{{ rebuildReportText }}</pre>
+        </details>
+      </div>
     </section>
 
     <section v-if="showTimelineFallback" class="fields">
@@ -321,6 +359,7 @@ import {
 import GraphNodeRunControl from './GraphNodeRunControl.vue'
 import GraphNodeOutputPreview from './GraphNodeOutputPreview.vue'
 import ExpandableTextarea from './ExpandableTextarea.vue'
+import MediaPreviewPlayer from './MediaPreviewPlayer.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useNodeDisplayTitle } from '../composables/useNodeDisplayTitle'
 import { useGraphNodeRun } from '../composables/useGraphNodeRun'
@@ -356,7 +395,6 @@ const displayTitle = useNodeDisplayTitle(node, typeLabel)
 
 const isAnalyze = computed(() => typeId.value === 'semantic.analyze')
 const isCompile = computed(() => typeId.value === 'semantic.compile')
-const usesRulePacks = computed(() => isCompile.value)
 const showTimelineFallback = computed(() => isCompile.value)
 
 const hintText = computed(() => {
@@ -407,10 +445,6 @@ const transcribe = ref(true)
 const separateAudio = ref(true)
 const detectEntities = ref(true)
 const useLlm = ref(false)
-/** 语义编译：用模型写提示词（与分析的富化同一套开关语义） */
-const useLlmForPrompts = ref(false)
-/** 语义编译：人工改过的提示词（按 shotId 覆盖规则拼装结果） */
-const promptOverridesJson = ref('')
 const semanticFps = ref(30)
 const semanticDuration = ref(60)
 const sourceAssetId = ref('')
@@ -427,7 +461,6 @@ const shotsJson = ref('')
 const utterancesJson = ref('')
 const timelineJson = ref('')
 const sourceRelativePath = ref('')
-const selectedRulePacks = ref<string[]>([])
 const loadedNodeId = ref<string | null>(null)
 const loadedHostId = ref<string | null>(null)
 
@@ -440,16 +473,22 @@ const loadedHostId = ref<string | null>(null)
  * `Cannot access 'rebuildMode' before initialization`（面板只剩一句渲染失败）。
  */
 const isRebuild = computed(() => typeId.value === 'semantic.rebuild')
+/** 视频模型清单只用来把当前选择显示成可读名字（选择本身在指令面板里） */
 const rebuildModelOptions = ref<GenerateModelOption[]>([])
 const rebuildModelKey = ref('')
 const rebuildMode = ref<'shots' | 'full'>('shots')
 const rebuildExecute = ref(true)
+const rebuildRegenerateAll = ref(false)
 const rebuildMaxShots = ref(12)
 const rebuildKeepAudio = ref(true)
 const rebuildBurnSubtitles = ref(true)
 const rebuildDuration = ref('')
-const rebuildResolution = ref('')
-const rebuildAspectRatio = ref('')
+/** 重新配音：开关 / TTS 模型 / 音色 / 用原人声克隆 */
+const rebuildDub = ref(true)
+const rebuildDubClone = ref(true)
+const dubModelOptions = ref<GenerateModelOption[]>([])
+const dubModelKey = ref('')
+const dubVoice = ref('')
 
 function loadConfig(current: NonNullable<typeof node.value>): void {
   loadedNodeId.value = current.id
@@ -470,13 +509,7 @@ function loadConfig(current: NonNullable<typeof node.value>): void {
   utterancesJson.value = typeof p.utterancesJson === 'string' ? p.utterancesJson : ''
   timelineJson.value = typeof p.timelineJson === 'string' ? p.timelineJson : ''
   sourceRelativePath.value = p.sourceRelativePath?.trim() || ''
-  useLlmForPrompts.value = p.semanticLlm === true
-  promptOverridesJson.value = typeof p.promptOverridesJson === 'string' ? p.promptOverridesJson : ''
   syncRebuildFromNode()
-  selectedRulePacks.value = String(p.rulePackIds || '')
-    .split(/[,，\s]+/)
-    .map((s) => s.trim())
-    .filter(Boolean)
 }
 
 watch(
@@ -532,28 +565,37 @@ function syncRebuildFromNode(): void {
   const p = node.value?.params
   rebuildMode.value = p?.rebuildMode === 'full' ? 'full' : 'shots'
   rebuildExecute.value = p?.semanticExecute !== false
+  rebuildRegenerateAll.value = p?.rebuildRegenerateAll === true
   rebuildMaxShots.value = Number(p?.rebuildMaxShots) || 12
   rebuildKeepAudio.value = p?.rebuildKeepAudio !== false
   rebuildBurnSubtitles.value = p?.rebuildBurnSubtitles !== false
   rebuildDuration.value = Number(p?.rebuildDurationSec) ? String(p?.rebuildDurationSec) : ''
-  rebuildResolution.value = String(p?.rebuildResolution ?? '')
-  rebuildAspectRatio.value = String(p?.rebuildAspectRatio ?? '')
   rebuildModelKey.value = preferredModelKey(p?.generateProviderInstanceId, p?.generateModel)
+  rebuildDub.value = p?.rebuildDub !== false
+  rebuildDubClone.value = p?.rebuildDubClone !== false
+  dubModelKey.value = preferredModelKey(p?.dubProviderInstanceId, p?.dubModel)
+  dubVoice.value = String(p?.dubVoice ?? '')
 }
 
+/**
+ * 写回重建参数。视频模型 / 分辨率 / 画幅由指令面板写（`generate*`），这里不碰，
+ * 免得两处同时写互相覆盖。
+ */
 function persistRebuild(): void {
-  const parsed = parseModelKey(rebuildModelKey.value)
+  const dub = parseModelKey(dubModelKey.value)
   patch({
     rebuildMode: rebuildMode.value,
     semanticExecute: rebuildExecute.value,
+    rebuildRegenerateAll: rebuildRegenerateAll.value,
     rebuildMaxShots: Math.max(1, Number(rebuildMaxShots.value) || 12),
     rebuildKeepAudio: rebuildKeepAudio.value,
     rebuildBurnSubtitles: rebuildBurnSubtitles.value,
     rebuildDurationSec: Number(rebuildDuration.value) || 0,
-    rebuildResolution: rebuildResolution.value.trim(),
-    rebuildAspectRatio: rebuildAspectRatio.value.trim(),
-    generateModel: parsed?.model ?? '',
-    generateProviderInstanceId: parsed?.providerInstanceId ?? ''
+    rebuildDub: rebuildDub.value,
+    rebuildDubClone: rebuildDubClone.value,
+    dubModel: dub?.model ?? '',
+    dubProviderInstanceId: dub?.providerInstanceId ?? '',
+    dubVoice: dubVoice.value.trim()
   })
 }
 
@@ -564,23 +606,126 @@ async function loadRebuildModels(): Promise<void> {
   } catch {
     rebuildModelOptions.value = []
   }
+  try {
+    const loaded = await loadGenerateModelOptions('audio')
+    dubModelOptions.value = loaded.options
+  } catch {
+    dubModelOptions.value = []
+  }
 }
 
+/** 当前视频模型的可读名（未选 = 跟随设置默认） */
+const rebuildModelLabel = computed(() => {
+  void graphEditorHosts.revision.value
+  const key = preferredModelKey(
+    node.value?.params?.generateProviderInstanceId,
+    node.value?.params?.generateModel
+  )
+  if (!key) return t('graph.inspector.semantic.modelAuto')
+  return rebuildModelOptions.value.find((o) => o.key === key)?.label ?? key
+})
+
+/** 上次成片：本次运行的视频输出优先，否则节点参数里记的上次成片 */
+const rebuildOutputRel = computed(() => {
+  if (!isRebuild.value || !node.value) return ''
+  const out = graphRunHosts.get(hostId.value)?.runStates?.[node.value.id]?.outputs?.['out-video']
+  if (out && out.kind === 'video' && out.relativePath?.trim()) return out.relativePath.trim()
+  return String(node.value.params?.rebuildLastOutput ?? '').trim()
+})
+
+const rebuildPreviewUrl = ref('')
+watch(
+  rebuildOutputRel,
+  async (rel) => {
+    rebuildPreviewUrl.value = ''
+    if (!rel) return
+    try {
+      const url = (await window.studio.getAssetFileUrl(rel)) ?? ''
+      if (rel === rebuildOutputRel.value) rebuildPreviewUrl.value = url
+    } catch {
+      rebuildPreviewUrl.value = ''
+    }
+  },
+  { immediate: true }
+)
+
+const rebuildReportText = computed(() =>
+  isRebuild.value ? String(node.value?.params?.rebuildLastReport ?? '').trim() : ''
+)
+
+/** 清单摘要：生成几镜 / 直通几镜 / 删几镜 / 配音几句 */
+const rebuildReport = computed(() => {
+  const text = rebuildReportText.value
+  if (!text) return null
+  try {
+    const r = JSON.parse(text) as {
+      generate?: unknown[]
+      passthrough?: unknown[]
+      removed?: unknown[]
+      dubs?: unknown[]
+    }
+    const n = (v: unknown[] | undefined): number => (Array.isArray(v) ? v.length : 0)
+    return {
+      generate: n(r.generate),
+      passthrough: n(r.passthrough),
+      removed: n(r.removed),
+      dubs: n(r.dubs)
+    }
+  } catch {
+    return null
+  }
+})
+
+/**
+ * 编译节点在检查器里只写原视频路径；文本模型 / 用模型写提示词 / 规则包 / 编译要求
+ * 都由指令面板写（两处同时写会互相覆盖）。
+ */
 function persistCompile(): void {
-  patch({
-    sourceRelativePath: sourceRelativePath.value.trim(),
-    semanticLlm: useLlmForPrompts.value,
-    promptOverridesJson: promptOverridesJson.value
-  })
+  patch({ sourceRelativePath: sourceRelativePath.value.trim() })
 }
 
-function toggleRulePack(id: string): void {
-  const next = selectedRulePacks.value.includes(id)
-    ? selectedRulePacks.value.filter((x) => x !== id)
-    : [...selectedRulePacks.value, id]
-  selectedRulePacks.value = next
-  patch({ rulePackIds: next.join(',') })
-}
+/** 指令面板里的设置摘要：文本模型 · 是否用模型写 · 规则包 · 有无编译要求 */
+const compileSettingsLabel = computed(() => {
+  void graphEditorHosts.revision.value
+  const p = node.value?.params
+  if (!p || !isCompile.value) return ''
+  const key = preferredModelKey(p.generateProviderInstanceId, p.generateModel)
+  const model = key
+    ? (enrichModelOptions.value.find((o) => o.key === key)?.label ?? key)
+    : t('graph.inspector.semantic.modelAuto')
+  const packIds = String(p.rulePackIds || '')
+    .split(/[,，\s]+/)
+    .filter(Boolean)
+  const titles = packIds.map(
+    (id) => rulePackOptions.value.find((pack) => pack.id === id)?.title ?? id
+  )
+  return [
+    model,
+    p.semanticLlm === true
+      ? t('graph.inspector.semantic.promptsWithModel')
+      : t('graph.inspector.semantic.promptsByRules'),
+    titles.length ? titles.join('、') : t('graph.inspector.semantic.rulePacksAll'),
+    String(p.generateInstruction ?? '').trim()
+      ? t('graph.inspector.semantic.compileHasInstruction')
+      : ''
+  ]
+    .filter(Boolean)
+    .join(' · ')
+})
+
+/** 编译结果摘要（来自运行输出的提示词计划）：重新生成 / 直通 / 删除 / 配音 */
+const compileSummary = computed(() => {
+  if (!isCompile.value || !node.value) return null
+  const out = graphRunHosts.get(hostId.value)?.runStates?.[node.value.id]?.outputs?.out
+  const plan = out && out.kind === 'videoPrompts' ? out.plan : null
+  if (!plan) return null
+  return {
+    regenerate: plan.shots.filter((s) => s.strategy !== 'passthrough').length,
+    passthrough: plan.shots.filter((s) => s.strategy === 'passthrough').length,
+    removed: plan.removedShotIds?.length ?? 0,
+    dubs: plan.dubs?.length ?? 0
+  }
+})
 
 function persistTimelineJson(): void {
   patch({ timelineJson: timelineJson.value })
@@ -796,6 +941,36 @@ input[type='checkbox'] {
 .meta dd {
   margin: 0;
   font-variant-numeric: tabular-nums;
+  word-break: break-all;
+}
+
+.readonly-field,
+.rebuild-result {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.readonly-value {
+  padding: 6px 8px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  word-break: break-all;
+}
+
+.rebuild-result :deep(.media-preview-player) {
+  width: 100%;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.report-json {
+  margin: 0;
+  max-height: 240px;
+  overflow: auto;
+  font-size: 11px;
+  white-space: pre-wrap;
   word-break: break-all;
 }
 </style>

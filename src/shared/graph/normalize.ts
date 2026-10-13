@@ -129,6 +129,23 @@ function remapLegacyMotionSourcePort(source: GraphNode, sourcePort?: string): st
   return sourcePort
 }
 
+/**
+ * 语义重建的旧文本口 `out` 已删除（节点只出成片）：旧边迁到视频口 `out-video`。
+ * 目标不收视频时，下面的 `canConnectNodes` 会把它当非法边丢掉。
+ */
+function remapLegacySemanticRebuildPort(
+  source: GraphNode,
+  sourcePort?: string
+): string | undefined {
+  if (source.typeId !== 'semantic.rebuild') return sourcePort
+  if (!sourcePort || sourcePort === 'out') return 'out-video'
+  return sourcePort
+}
+
+function remapLegacySourcePort(source: GraphNode, sourcePort?: string): string {
+  return remapLegacyMotionSourcePort(source, remapLegacySemanticRebuildPort(source, sourcePort))
+}
+
 function sanitizeEdges(nodes: GraphNode[], edges: GraphEdge[], scope: GraphAddScope): GraphEdge[] {
   const byId = new Map(nodes.map((n) => [n.id, n]))
   const seen = new Set<string>()
@@ -137,7 +154,7 @@ function sanitizeEdges(nodes: GraphNode[], edges: GraphEdge[], scope: GraphAddSc
     const source = byId.get(edge.source)
     const target = byId.get(edge.target)
     if (!source || !target) continue
-    const sourcePort = remapLegacyMotionSourcePort(source, edge.sourcePort)
+    const sourcePort = remapLegacySourcePort(source, edge.sourcePort)
     if (
       !canConnectNodes(source, target, {
         scope,

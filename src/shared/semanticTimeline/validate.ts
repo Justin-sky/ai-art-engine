@@ -74,6 +74,38 @@ export function validateSemanticTimeline(doc: unknown): ValidationResult {
   if (!Array.isArray(doc.intents)) issues.push(issue('intents', 'required array'))
   if (!Array.isArray(doc.tracks)) issues.push(issue('tracks', 'required array'))
 
+  // v2 结构（可选字段；给了就要合法，并且镜头 / 台词 id 唯一）
+  for (const key of ['shots', 'dialogue', 'textLayers', 'speakers', 'edits'] as const) {
+    if (doc[key] !== undefined && !Array.isArray(doc[key])) {
+      issues.push(issue(key, 'must be an array'))
+    }
+  }
+  if (Array.isArray(doc.shots)) {
+    const seen = new Set<string>()
+    doc.shots.forEach((shot, i) => {
+      if (!isRecord(shot) || typeof shot.id !== 'string' || !shot.id) {
+        issues.push(issue(`shots[${i}].id`, 'required'))
+        return
+      }
+      if (seen.has(shot.id)) issues.push(issue(`shots[${i}].id`, 'duplicate'))
+      seen.add(shot.id)
+      validateTimeRange(`shots[${i}].range`, shot.range, issues)
+      const seg = shot.sourceSegment
+      if (!isRecord(seg) || !isFiniteNumber(seg.start) || !isFiniteNumber(seg.end)) {
+        issues.push(issue(`shots[${i}].sourceSegment`, 'start/end required'))
+      }
+    })
+  }
+  if (Array.isArray(doc.dialogue)) {
+    doc.dialogue.forEach((line, i) => {
+      if (!isRecord(line) || typeof line.id !== 'string' || typeof line.text !== 'string') {
+        issues.push(issue(`dialogue[${i}]`, 'id/text required'))
+        return
+      }
+      validateTimeRange(`dialogue[${i}].range`, line.range, issues)
+    })
+  }
+
   // 事件必须引用至少一个证据（分析产出的硬约束）
   if (Array.isArray(doc.events)) {
     for (let i = 0; i < doc.events.length; i++) {

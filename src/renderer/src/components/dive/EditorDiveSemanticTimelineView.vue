@@ -1,14 +1,17 @@
 <script setup lang="ts">
 /**
- * Dive：Semantic Timeline 三层只读编辑器 + 对比面板 + 逐镜提示词面板。
+ * Dive：Semantic Timeline 三层编辑器 + 结构化「修改」面板（镜头 / 台词 / 实体 / 逐镜提示词覆盖）
+ * + 对比面板。修改是本工作流**唯一**的修改入口：直接落盘时间线，编译据基线判断要重做什么。
  * 与其它 dive 视图一致：接收 EditorDiveChildHost 展开的扁平 props（勿再包一层 meta）。
  */
 import { computed, onMounted, ref, watch } from 'vue'
 import {
+  applySemanticEdit,
   buildPromptPlan,
   collectRulePacks,
   compileDirectorCommands,
-  parsePromptPlan,
+  migrateSemanticTimeline,
+  type SemanticEditInput,
   type SemanticPack,
   type SemanticTimeline,
   type ShotEvidence,
@@ -16,11 +19,9 @@ import {
   type VideoPromptPlan
 } from '@shared/semanticTimeline'
 import SemanticTimelineEditor from '../SemanticTimelineEditor.vue'
-import SemanticPromptPanel from '../SemanticPromptPanel.vue'
+import SemanticEditPanel from '../SemanticEditPanel.vue'
 import SemanticCompareView from '../SemanticCompareView.vue'
 import { useStudioI18n } from '../../composables/useStudioI18n'
-import { graphEditorHosts } from '../../features/graph/model/graphEditorHosts'
-import { graphRunHosts } from '../../features/graph/model/graphRunHosts'
 
 const { t, locale } = useStudioI18n()
 
@@ -31,9 +32,6 @@ const props = defineProps<{
   sourceRelativePath?: string
   resultRelativePath?: string
   timelineJson?: string
-  /** 来源节点（语义编译）：提示词覆盖写回这个节点的 `promptOverridesJson` */
-  editorNodeId?: string
-  hostId?: string
 }>()
 
 const timeline = ref<SemanticTimeline | null>(null)
@@ -70,6 +68,12 @@ async function load(): Promise<void> {
   const inline = parseInline(props.timelineJson)
   if (inline) {
     timeline.value = inline
+    /**
+     * 内联文档来自上游节点的运行输出（修改**前**的那份）；修改是直接落盘的。
+     * 磁盘上有更新的版本就用磁盘的 —— 否则重开 dive 看不到之前的修改，再改一次还会把它们覆盖掉。
+     */
+    const disk = await readDiskTimeline(inline.id)
+    if (disk && isNewerDoc(disk, inline)) timeline.value = disk
   } else {
     const id = timelineId.value
     if (!id) {
@@ -97,6 +101,9 @@ async function load(): Promise<void> {
     }
   }
 
+  // v1 → v2：内联镜头树 / 台词（需要证据）；修改面板靠它
+  if (timeline.value) timeline.value = await toV2(timeline.value)
+
   try {
     if (props.resultRelativePath) {
       resultUrl.value = (await window.studio.getAssetFileUrl(props.resultRelativePath)) ?? ''
@@ -106,6 +113,72 @@ async function load(): Promise<void> {
     }
   } catch {
     /* preview urls optional */
+  }
+}
+
+async function readDiskTimeline(id: string | undefined): Promise<SemanticTimeline | null> {
+  const stl = id?.trim()
+  if (!stl?.startsWith('stl.')) return null
+  try {
+    const text = await window.studio.readProjectFile(`Semantic/${stl}/timeline.json`)
+    return text?.trim() ? (JSON.parse(text) as SemanticTimeline) : null
+  } catch {
+    return null
+  }
+}
+
+function isNewerDoc(a: SemanticTimeline, b: SemanticTimeline): boolean {
+  const ea = a.edits?.length ?? 0
+  const eb = b.edits?.length ?? 0
+  if (ea !== eb) return ea > eb
+  const ta = Date.parse(a.updatedAt ?? '')
+  const tb = Date.parse(b.updatedAt ?? '')
+  return Number.isFinite(ta) && Number.isFinite(tb) && ta > tb
+}
+
+async function toV2(doc: SemanticTimeline): Promise<SemanticTimeline> {
+  if ((doc.shots?.length ?? 0) > 0 && doc.baseline) return migrateSemanticTimeline(doc)
+  let evidence: { shots?: ShotEvidence[]; utterances?: UtteranceEvidence[] } = {}
+  if (doc.id && window.studio.semanticLoadEvidence) {
+    try {
+      const ev = await window.studio.semanticLoadEvidence(doc.id)
+      evidence = { shots: ev?.shots ?? [], utterances: ev?.utterances ?? [] }
+    } catch {
+      /* 没有证据：只迁 schema，修改面板给"没有镜头"的提示 */
+    }
+  }
+  return migrateSemanticTimeline(doc, evidence)
+}
+
+// ─── 结构化修改（镜头 / 台词 / 实体） ────────────────────────────────────────────
+
+const editError = ref('')
+const saving = ref(false)
+
+/**
+ * 应用一次修改并**立即落盘**（`timeline.json`）。编译节点读时间线时会优先用磁盘上更新的版本，
+ * 所以改完重跑编译 / 重建即可生效。落盘失败时回滚到修改前，并把原因显示出来。
+ */
+async function applyEdit(input: SemanticEditInput): Promise<void> {
+  const before = timeline.value
+  if (!before) return
+  editError.value = ''
+  let next: SemanticTimeline
+  try {
+    next = applySemanticEdit(before, input)
+  } catch (e) {
+    editError.value = e instanceof Error ? e.message : String(e)
+    return
+  }
+  timeline.value = next
+  saving.value = true
+  try {
+    await window.studio.semanticSaveTimeline(next)
+  } catch (e) {
+    timeline.value = before
+    editError.value = `${t('graph.semanticEdit.saveFailed')}${e instanceof Error ? e.message : String(e)}`
+  } finally {
+    saving.value = false
   }
 }
 
@@ -119,86 +192,31 @@ watch(
   }
 )
 
-// ─── 逐镜提示词（编译节点的覆盖入口） ──────────────────────────────────────────
+// ─── 当前提示词（只读，给修改面板做参照） ────────────────────────────────────────
 
 /**
- * 面板**只在从编译节点双击进来时可写**：`editorNodeId` + `hostId` 由 `editorDive.ts`
- * 的 meta 传入（`GraphNodeCard.openSemanticTimelineDive` 在 `semantic.compile` 上设置）。
- * 纯查看（从分析节点双击）时右栏没有提示词页签 —— 没有可写目标，给了也是假按钮。
- */
-const canEditPrompts = computed(() => !!props.editorNodeId?.trim() && !!props.hostId?.trim())
-
-const editorNode = computed(() => {
-  const hostId = props.hostId?.trim()
-  const nodeId = props.editorNodeId?.trim()
-  if (!hostId || !nodeId) return null
-  return graphEditorHosts.getNode(hostId, nodeId)
-})
-
-const promptOverridesJson = computed(() => {
-  const raw = editorNode.value?.params?.promptOverridesJson
-  return typeof raw === 'string' ? raw : ''
-})
-
-function persistPromptOverrides(value: string): void {
-  const hostId = props.hostId?.trim()
-  const nodeId = props.editorNodeId?.trim()
-  if (!hostId || !nodeId) return
-  // updateNode（而非 Live 版）：记撤销 + 触发自动保存 —— 这是用户的编辑
-  graphEditorHosts.updateNode(hostId, nodeId, { promptOverridesJson: value })
-}
-
-function rulePackIds(): string[] {
-  return String(editorNode.value?.params?.rulePackIds || '')
-    .split(/[,，\s]+/)
-    .map((s) => s.trim())
-    .filter(Boolean)
-}
-
-/**
- * 计划来源 ①：编译节点的**运行输出**（`out` 是 `aiart.video-prompts@1`）。
- *
- * 优先它：它带着模型是否参与、以及上次运行时的提示词原文。
- */
-const planFromRun = computed((): VideoPromptPlan | null => {
-  const hostId = props.hostId?.trim()
-  const nodeId = props.editorNodeId?.trim()
-  if (!hostId || !nodeId) return null
-  // runStates 是 reactive 对象：节点跑完会自动重算
-  const out = graphRunHosts.get(hostId)?.runStates?.[nodeId]?.outputs?.out
-  if (!out) return null
-  if (out.kind === 'videoPrompts') return out.plan
-  if (out.kind === 'text') return parsePromptPlan(out.text)
-  return null
-})
-
-/**
- * 计划来源 ②：**渲染侧本地用 `buildPromptPlan` 重算**。
- *
- * 为什么要有这条路：编译节点没跑过（或工程重开后运行输出不在内存里）时，
- * 只看 ① 会让面板全空 —— 而用户来这一趟就是为了改提示词。
- * 口径与执行器一致（规则包 + 导演命令 + 证据镜头）。
+ * 渲染侧用 `buildPromptPlan` 按当前时间线（含修改）重算一份计划，只用来在修改面板里
+ * **显示每镜现在会用的提示词**（提示词覆盖框的参照）。口径与编译执行器一致
+ * （导演规则 + 结构化镜头）；真正的计划仍以编译节点的运行结果为准。
  */
 const localPlan = ref<VideoPromptPlan | null>(null)
-const planLoading = ref(false)
-const planError = ref('')
 
 async function buildLocalPlan(): Promise<void> {
-  localPlan.value = null
-  planError.value = ''
   const doc = timeline.value
-  if (!doc) return
-  planLoading.value = true
+  if (!doc) {
+    localPlan.value = null
+    return
+  }
   try {
     let shots: ShotEvidence[] = []
     let utterances: UtteranceEvidence[] = []
-    if (doc.id && window.studio.semanticLoadEvidence) {
+    if (!doc.shots?.length && doc.id && window.studio.semanticLoadEvidence) {
       try {
         const evidence = await window.studio.semanticLoadEvidence(doc.id)
         shots = evidence?.shots ?? []
         utterances = evidence?.utterances ?? []
       } catch {
-        /* 读不到证据不是错误：下面按 0 镜给提示 */
+        /* 读不到证据：没有参照提示词，不影响修改 */
       }
     }
     let packs: SemanticPack[] = []
@@ -207,9 +225,7 @@ async function buildLocalPlan(): Promise<void> {
     } catch {
       packs = []
     }
-    const commands = compileDirectorCommands(doc, {
-      rulePacks: collectRulePacks(packs, rulePackIds())
-    })
+    const commands = compileDirectorCommands(doc, { rulePacks: collectRulePacks(packs) })
     localPlan.value = buildPromptPlan({
       timeline: doc,
       shots,
@@ -218,29 +234,20 @@ async function buildLocalPlan(): Promise<void> {
       sourceRelativePath: props.sourceRelativePath,
       lang: locale.value.toLowerCase().startsWith('en') ? 'en' : 'zh'
     })
-  } catch (e) {
-    planError.value = e instanceof Error ? e.message : String(e)
-  } finally {
-    planLoading.value = false
+  } catch {
+    localPlan.value = null
   }
 }
 
-watch(
-  [() => timeline.value?.id, () => props.editorNodeId, () => props.hostId],
-  () => {
-    // 有运行输出就以它为准（本地重算只是"没有输出时也别空着"的兜底）
-    if (!planFromRun.value) void buildLocalPlan()
-  },
-  { immediate: true }
-)
+watch([() => timeline.value?.id, () => timeline.value?.updatedAt], () => void buildLocalPlan(), {
+  immediate: true
+})
 
-const plan = computed(() => planFromRun.value ?? localPlan.value)
-
-/** 面板为空时要说清**为什么**空（没时间线 / 没镜头证据），不能留一片空白 */
-const promptEmptyHint = computed(() => {
-  if (!timeline.value) return t('graph.semanticPrompt.noTimeline')
-  if ((plan.value?.shots.length ?? 0) === 0) return t('graph.semanticPrompt.noShots')
-  return t('graph.semanticPrompt.empty')
+/** shotId → 当前会用的提示词 */
+const promptByShot = computed((): Record<string, string> => {
+  const out: Record<string, string> = {}
+  for (const shot of localPlan.value?.shots ?? []) out[shot.shotId] = shot.prompt
+  return out
 })
 </script>
 
@@ -259,18 +266,14 @@ const promptEmptyHint = computed(() => {
       <p>{{ hint }}</p>
       <p class="hint-sub">{{ t('graph.semanticTimeline.noTimelineHintSub') }}</p>
     </div>
-    <SemanticTimelineEditor v-if="timeline" :timeline="timeline" :show-prompt-tab="canEditPrompts">
-      <template #prompt-panel>
-        <SemanticPromptPanel
-          :plan="plan"
-          :overrides-json="promptOverridesJson"
-          :loading="planLoading"
-          :error="planError"
-          :empty-hint="promptEmptyHint"
-          @update:overrides-json="persistPromptOverrides"
-        />
-      </template>
-    </SemanticTimelineEditor>
+    <SemanticTimelineEditor v-if="timeline" :timeline="timeline" />
+    <SemanticEditPanel
+      v-if="timeline && timeline.id"
+      :timeline="timeline"
+      :prompt-by-shot="promptByShot"
+      :error="editError"
+      @edit="applyEdit"
+    />
     <SemanticCompareView
       v-if="originalUrl && resultUrl"
       class="compare"

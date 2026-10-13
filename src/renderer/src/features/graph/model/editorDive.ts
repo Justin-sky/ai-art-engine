@@ -88,12 +88,6 @@ export type EditorDiveViewMeta =
       resultRelativePath?: string
       /** 节点输出尚未落盘时，内联 JSON 直接渲染编辑器 */
       timelineJson?: string
-      /**
-       * 来源节点（语义编辑 / 变体）。带上它，dive 里的编辑面板才能把改动写回节点参数：
-       * **编辑台在 dive，节点参数仍是唯一事实来源。**
-       */
-      editorNodeId?: string
-      hostId?: string
     }
   | {
       viewId: 'world.editor'

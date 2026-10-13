@@ -138,7 +138,7 @@ describe('视频生成提示词计划', () => {
     expect(first.entities).toEqual(['托特包（商品）']) // product 在中文下本地化为「商品」
     expect(first.eventLabels).toEqual(['product_reveal'])
     expect(first.sourceIntentIds).toEqual(['intent.a'])
-    expect(first.firstFrameRelativePath).toBe('evidence/keyframes/shot1.jpg')
+    expect(first.firstFrameRelativePath).toBe('Semantic/stl.prompt.1/evidence/keyframes/shot1.jpg')
     expect(first.negativePrompt).toBeTruthy()
 
     const second = plan.shots[1]!
@@ -224,7 +224,9 @@ describe('视频生成提示词计划', () => {
     const shotsMode = planRebuildClips(plan, { mode: 'shots' })
     expect(shotsMode.mode).toBe('shots')
     expect(shotsMode.clips.map((c) => c.key)).toEqual(['shot.1', 'shot.2'])
-    expect(shotsMode.clips[0]!.firstFrameRelativePath).toBe('evidence/keyframes/shot1.jpg')
+    expect(shotsMode.clips[0]!.firstFrameRelativePath).toBe(
+      'Semantic/stl.prompt.1/evidence/keyframes/shot1.jpg'
+    )
     expect(shotsMode.clips[0]!.durationSec).toBe(6)
     expect(shotsMode.skippedByLimit).toBe(0)
 

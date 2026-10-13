@@ -59,9 +59,37 @@ export interface SemanticPacksResponse {
  * 素材是**模型新生成的片段**（不是按编辑列表裁剪原片 —— 那条"构建"路已随旧编辑 / 变体节点删除）：
  * 主进程负责统一重编码拼接、按需混回原片音轨、烧录转写字幕，并落一份清单。
  */
+/**
+ * v2 成片段：`source` = 直通原片入/出点；`generate` = 生成片段（对齐到 `durationSec`）。
+ * 时间均为秒；入/出点是**原片时间**。
+ */
+export interface SemanticRebuildSegment {
+  key: string
+  kind: 'source' | 'generate'
+  durationSec: number
+  relativePath?: string
+  sourceStartSec?: number
+  sourceEndSec?: number
+}
+
+/** 重新配音的台词：合成好的音频 + 它替换的原片时间段 */
+export interface SemanticRebuildDub {
+  id: string
+  relativePath: string
+  sourceStartSec: number
+  sourceEndSec: number
+}
+
 export interface SemanticRebuildRequest {
   timelineId: string
+  /** 旧路径：只有生成片段（顺序拼接） */
   clips: Array<{ key: string; relativePath: string }>
+  /** v2：按输出顺序的全部段（含直通原片段）；给了就忽略 `clips` 的拼接顺序 */
+  segments?: SemanticRebuildSegment[]
+  /** v2：重新配音（原片时间轴上替换人声） */
+  dubs?: SemanticRebuildDub[]
+  /** v2：字幕（修改后的台词，原片时间）；缺省用转写证据 */
+  subtitles?: Array<{ sourceStartSec: number; sourceEndSec: number; text: string }>
   /** 输出文件名后缀（重跑/多版本区分） */
   label?: string
   /** 保留原片音轨（默认 true） */
@@ -79,6 +107,9 @@ export interface SemanticRebuildResponse {
   outputRelativePath?: string
   manifestRelativePath: string
   clipCount: number
+  /** v2：直通原片的段数 / 实际混入的配音句数 */
+  passthroughCount?: number
+  dubCount?: number
   burnedSubtitles: number
   keptAudio: boolean
   notes: string[]

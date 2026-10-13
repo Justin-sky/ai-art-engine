@@ -366,6 +366,23 @@ export interface GraphNodeParams {
   rebuildKeepAudio?: boolean
   /** 语义重建：烧录转写字幕（默认 true） */
   rebuildBurnSubtitles?: boolean
+  /**
+   * 语义重建：全部镜头重新生成（默认 false）。
+   * false = 只生成**改过**的镜头，未改镜头直通原片段（零修改即还原原片）。
+   */
+  rebuildRegenerateAll?: boolean
+  /** 语义重建：改过的台词重新配音（默认 true） */
+  rebuildDub?: boolean
+  /** 语义重建：配音没有指定音色时，用原片分离出的人声做声音克隆参考（默认 true） */
+  rebuildDubClone?: boolean
+  /** 语义重建：配音用的 TTS 模型 / 实例 / 音色（空 = 设置里的默认语音模型） */
+  dubModel?: string
+  dubProviderInstanceId?: string
+  dubVoice?: string
+  /** 语义重建：上次运行（或只出计划时）的清单 JSON —— 节点已无文本输出口，Inspector 读它 */
+  rebuildLastReport?: string
+  /** 语义重建：上次成片（工程相对路径），Inspector 预览用 */
+  rebuildLastOutput?: string
   /** 加工节点模型 id（剧本=文本，图片/全景=图片，视频=视频，声音=音频） */
   generateModel?: string
   /** 加工节点提供商实例 id */

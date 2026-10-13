@@ -4884,6 +4884,8 @@ export default {
     },
     semanticTimeline: {
       openResultHint: 'Double-click to view analysis result',
+      rebuildOpenHint:
+        'Double-click to open the instruction panel (pick a video model); preview the result in the side panel',
       /** Timeline editor (dive): layers and track names */
       layerStory: 'Story',
       layerEntity: 'Character / Entity',
@@ -4945,23 +4947,47 @@ export default {
         resolution: 'Resolution'
       }
     },
-    /** Per-shot prompt panel (dive right pane, "Prompts" tab) */
-    semanticPrompt: {
-      tab: 'Prompts',
-      rerunHint: 'Edits only go to the compile node parameters — rerun the compile node to apply',
-      loading: 'Reading the prompt plan…',
-      loadFailed: 'Failed to read the prompt plan:',
-      empty: 'No prompt plan yet',
-      noTimeline: 'This node has no timeline yet — wire the upstream analyze node and run it once',
-      noShots: 'No shot evidence, so no per-shot prompts — run the upstream analyze node first',
-      timeRange: '{start}–{end}s',
-      firstFrame: 'first frame',
-      noFirstFrame: 'no first frame',
-      modelAuthored: 'model-written',
-      overridden: 'overridden',
+    /** Structured edit panel (dive, below the timeline editor): edit shots / lines / entities */
+    semanticEdit: {
+      title: 'Edit',
+      summary: '{shots} shot(s) to regenerate · {removed} removed · {lines} line(s) to re-dub',
+      hint: 'Edits are saved to the timeline right away; rerun Semantic compile and Semantic rebuild to apply. Unchanged shots pass through from the original, so no edits = the original video.',
+      tab_shots: 'Shots',
+      tab_dialogue: 'Lines',
+      tab_entities: 'Entities',
+      noShots: 'No shot tree yet: run the upstream Semantic analyze node first',
+      noDialogue: 'No transcribed lines',
+      noEntities: 'No entities detected',
+      removed: 'Removed',
+      willRegenerate: 'Will regenerate',
+      passthrough: 'Passthrough',
+      remove: 'Remove shot',
       restore: 'Restore',
-      restoreHint: 'Drop this override and go back to the assembled prompt',
-      promptPlaceholder: 'Prompt for this shot; clear the text to drop the override'
+      subject: 'Subject',
+      subjectBoundHint: 'Bound to an entity: rename it in the Entities tab',
+      action: 'Action',
+      addSubject: '+ Add subject',
+      newSubject: 'New subject',
+      camera_shotSize: 'Shot size',
+      camera_angle: 'Angle',
+      camera_motion: 'Camera move',
+      camera_lens: 'Lens',
+      visual_description: 'Description',
+      visual_style: 'Style',
+      visual_lighting: 'Lighting',
+      visual_grade: 'Grade',
+      promptOverride: 'Prompt override (optional)',
+      promptOverridePlaceholder: 'If set, this prompt is used to regenerate the shot',
+      willRedub: 'Will re-dub',
+      original: 'Original: ',
+      lineText: 'Line',
+      speaker: 'Speaker',
+      entityName: 'Name',
+      entityReference: 'Reference asset id (swap person / product)',
+      entityReferencePlaceholder: 'Empty = keep the original',
+      appearances: 'In {n} shot(s)',
+      saveFailed: 'Failed to save edit: ',
+      currentPrompt: 'Current prompt:'
     },
     notepad: {
       appMark: 'Notepad',
@@ -5422,7 +5448,7 @@ export default {
         analyzeHint:
           'Connect an upstream video (or set a source asset id) and run: shot detection, keyframes, transcript, vocal separation and entity detection are written to the project Semantic/ folder, and the Semantic Timeline JSON is emitted. Double-click to inspect the result.',
         compileHint:
-          'Compile the Semantic Timeline into a **per-shot video prompt plan** (with each shot first frame) using director rule packs; the output is a structured prompts port. Turn on "Write prompts with a model" to let a text model describe the picture first. Double-click to inspect the result.',
+          'Compile the Semantic Timeline into a **per-shot video prompt plan**: compares against the analysis baseline to mark which shots pass through, which are regenerated and which lines are re-dubbed. Double-click the node to open the instruction panel: pick a text model, toggle "Write prompts with a model", choose rule packs and write compile requirements.',
         vocabulary: 'Beat vocabulary',
         vocabularyHint: 'Controls beat labels; market packs can add more vocabularies',
         transcribe: 'Transcribe speech (utterances)',
@@ -5460,10 +5486,16 @@ export default {
         promptsWithModel: 'Write prompts with a model',
         promptsWithModelHint:
           'When on, a text model first describes the picture (shot description / events / intents); the final prompt is still rule-assembled. Falls back to pure rules on failure.',
-        promptOverrides: 'Manual prompt overrides (per shot)',
-        promptOverridesPlaceholder: '{\'{"shot.001.0": "your own shot description"}\'}',
-        promptOverridesHint:
-          'Override individual shots by shotId (JSON: {\'{"shotId": "prompt"}\'}); empty means use the assembled prompts.',
+        promptsByRules: 'Rule-assembled',
+        rulePacksAll: 'All rule packs',
+        compileHasInstruction: 'Has compile requirements',
+        compilePanelSummary: 'Compile settings',
+        compileInPanelHint:
+          'Double-click the node to change them in the instruction panel (text model / write with a model / rule packs / requirements)',
+        compileEditPointer:
+          'To change shot content, lines, entities or a single shot prompt: double-click the upstream Semantic analyze node, edit in the Edit panel below the timeline, then rerun this node.',
+        compileInstructionPlaceholder:
+          'Compile requirements (optional): appended to every shot prompt, e.g. "keep the original framing and look, realistic"',
         rebuildMode: 'Generation granularity',
         rebuildModeShots: 'Per shot (one clip each, then concatenated)',
         rebuildModeFull: 'Single full pass (one long prompt)',
@@ -5472,7 +5504,28 @@ export default {
         rebuildModel: 'Video model',
         rebuildModelHint: 'Default: the video model configured in settings',
         rebuildHint:
-          'Generates one clip per shot from the prompt plan emitted by the upstream Semantic compile node, then concatenates them locally with ffmpeg (optionally mixing the original audio and burning transcript subtitles). Double-click to preview the video.',
+          'Rebuilds the video from the upstream Semantic compile plan: unchanged shots pass through from the original, changed shots are regenerated with a video model, edited lines are re-dubbed, then everything is concatenated locally with ffmpeg. No edits = the original video. Double-click the node to open the instruction panel and pick a video model.',
+        rebuildInstructionPlaceholder:
+          'Optional instruction for the whole video: appended to every regenerated shot prompt, e.g. "keep a realistic look, natural light"',
+        rebuildModelInPanelHint:
+          'Double-click the node to open the instruction panel and pick the video model and picture params (resolution / aspect ratio)',
+        rebuildRegenerateAll: 'Regenerate every shot',
+        rebuildRegenerateAllHint:
+          'Off (default): only changed shots are generated, the rest pass through from the original. On: every shot calls the video model (style remake).',
+        rebuildDub: 'Re-dub edited lines',
+        rebuildDubHint:
+          'Only the edited lines get a new voice; background audio is kept when vocal separation is available',
+        rebuildDubModel: 'Dubbing model',
+        rebuildDubVoice: 'Dubbing voice',
+        rebuildDubVoicePlaceholder: 'Empty = speaker profile / model default voice',
+        rebuildDubClone: 'Clone the original vocals when no voice is set',
+        rebuildPreview: 'Result preview',
+        rebuildPreviewEmpty: 'No video yet: run this node to preview it here',
+        rebuildReportGenerate: 'Regenerated',
+        rebuildReportPassthrough: 'Passthrough',
+        rebuildReportRemoved: 'Removed shots',
+        rebuildReportDubs: 'Re-dubbed lines',
+        rebuildReportJson: 'Rebuild report (JSON)',
         rebuildExecuteHint:
           'Turn off to emit the plan only (no model calls at all), then enable after checking the list',
         rebuildMaxShots: 'Max shots',
@@ -5485,7 +5538,7 @@ export default {
         rebuildResolution: 'Resolution',
         rebuildAspectRatio: 'Aspect ratio',
         rebuildPromptPointer:
-          'Per-shot prompts are edited on the Semantic compile node (double-click it to view/override).',
+          'Shot content, lines and single-shot prompts are edited in the Edit panel of the upstream Semantic analyze timeline (double-click the analyze node).',
         timelineJson: 'Timeline JSON (no upstream)',
         timelineJsonPlaceholder: 'Paste Semantic Timeline JSON',
         timelineJsonHint:
@@ -5867,6 +5920,11 @@ export default {
             uiButton: 'UI button',
             animIcon: 'Icon motion',
             illustFlat: 'Flat illustration'
+          },
+          semanticCompile: {
+            keepOriginal: 'Stay close to the original',
+            productDetail: 'Highlight product details',
+            cinematic: 'Cinematic upgrade'
           },
           spatialWorld: {
             interior: 'Interior scene',

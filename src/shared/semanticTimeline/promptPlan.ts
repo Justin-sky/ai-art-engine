@@ -19,6 +19,9 @@ import type {
   UtteranceEvidence
 } from './types'
 import type { ProductionCommand } from './compiler'
+import { keyframeProjectPath } from './storage'
+import { diffAgainstBaseline, type SemanticDiff } from './migrate'
+import type { SemanticShot } from './types'
 
 export const VIDEO_PROMPT_PLAN_SCHEMA = 'aiart.video-prompts@1'
 
@@ -41,6 +44,43 @@ export interface VideoPromptShot {
   sourceIntentIds: string[]
   /** 是否由文本模型撰写（false = 规则拼装） */
   modelAuthored?: boolean
+  /**
+   * 重建策略（v2）：`passthrough` = 未修改，直接裁原片段；`regenerate` = 改过，交给视频模型。
+   * 缺省（旧计划 / 无镜头树的时间线）按 `regenerate` 处理，与旧行为一致。
+   */
+  strategy?: ShotRebuildStrategy
+  /** 原片入/出点（秒）：直通裁切与音轨对齐用 */
+  sourceStartSec?: number
+  sourceEndSec?: number
+  /** 为什么要重新生成（prompt / camera / visual / subjects / entity …） */
+  changeReasons?: string[]
+  /**
+   * 本镜主体绑定的参考资产（换人 / 换商品）：重建时作为参考图喂给视频模型，
+   * 并且**不再用原片首帧**（原首帧里是被换掉的那个人 / 商品）。
+   */
+  referenceAssetIds?: string[]
+}
+
+export type ShotRebuildStrategy = 'passthrough' | 'regenerate'
+
+/** 需要重新配音的一句台词（时间均为**原片时间**） */
+export interface DubLine {
+  id: string
+  sourceStartSec: number
+  sourceEndSec: number
+  text: string
+  sourceText: string
+  speaker?: string
+  /** 说话人档案里的音色 / 克隆参考音频 */
+  voice?: string
+  referenceAudio?: string
+}
+
+/** 字幕（用修改后的台词；时间为原片时间） */
+export interface PlanSubtitle {
+  sourceStartSec: number
+  sourceEndSec: number
+  text: string
 }
 
 export interface VideoPromptPlan {
@@ -53,6 +93,12 @@ export interface VideoPromptPlan {
   /** 整片模式的合成提示词（重建节点的 full 模式用） */
   fullPrompt: string
   settings: { width: number; height: number; fps: number; durationSec: number }
+  /** v2：需要重新配音的台词 */
+  dubs?: DubLine[]
+  /** v2：字幕（修改后的台词） */
+  subtitles?: PlanSubtitle[]
+  /** v2：被删除的镜头 */
+  removedShotIds?: string[]
 }
 
 export interface BuildPromptPlanInput {
@@ -63,6 +109,11 @@ export interface BuildPromptPlanInput {
   sourceAssetId?: string
   sourceRelativePath?: string
   lang?: PromptLang
+  /**
+   * 预先算好的脏集合（编译在 LLM 富化**之前**算：富化会补字段，之后再算会把所有镜头误判为改过）。
+   * 缺省时按时间线自身的基线现算。
+   */
+  diff?: SemanticDiff
 }
 
 // ─── 规则拼装 ────────────────────────────────────────────────────────────────
@@ -78,6 +129,16 @@ const COMMAND_PHRASES: Record<string, { zh: string; en: string }> = {
   'camera.trackIn': { zh: '跟拍靠近', en: 'tracking in' },
   'camera.trackOut': { zh: '跟拍拉远', en: 'tracking out' },
   'camera.handheld': { zh: '手持轻微晃动', en: 'handheld camera' },
+  'camera.static': { zh: '固定机位', en: 'static camera' },
+  'camera.pan': { zh: '镜头平摇', en: 'camera pan' },
+  'camera.tilt': { zh: '镜头上下摇', en: 'camera tilt' },
+  'camera.zoom': { zh: '镜头变焦推近', en: 'zoom in' },
+  'camera.dolly': { zh: '移动机位推轨', en: 'dolly shot' },
+  'camera.orbit': { zh: '环绕运镜', en: 'orbit shot' },
+  'camera.rackFocus': { zh: '焦点转移', en: 'rack focus' },
+  'light.brighten': { zh: '画面提亮', en: 'brighter lighting' },
+  'light.darken': { zh: '画面压暗', en: 'darker, moodier lighting' },
+  'grade.eq': { zh: '对比与饱和略增强', en: 'slightly richer contrast and saturation' },
   'light.soften': { zh: '柔光', en: 'soft light' },
   'light.contrastUp': { zh: '加强对比', en: 'higher contrast lighting' },
   'light.warm': { zh: '暖调灯光', en: 'warm lighting' },
@@ -170,8 +231,23 @@ function truncateAtSeparator(text: string, max: number, sep: string): string {
   return (cut > max * 0.5 ? head.slice(0, cut) : head).trim()
 }
 
+/**
+ * 命令名规范化：规则引擎产出 snake_case（`camera.push_in` / `light.brighten`），
+ * 提示词表用 camelCase（`camera.pushIn`）。以前两边对不上，内置规则（价格推镜、
+ * 报价提亮）在 `COMMAND_PHRASES[kind]` 处被整条过滤掉。`vfx.*` 的光影动作也归到 `light.*`。
+ */
+export function normalizeCommandKind(kind: string): string {
+  const raw = String(kind ?? '').trim()
+  const dot = raw.indexOf('.')
+  if (dot <= 0) return raw
+  let ns = raw.slice(0, dot)
+  const action = raw.slice(dot + 1).replace(/[_-]+([a-z0-9])/gi, (_m, c: string) => c.toUpperCase())
+  if (ns === 'vfx' && /^(brighten|darken|soften|warm|cool|contrastUp)$/.test(action)) ns = 'light'
+  return `${ns}.${action}`
+}
+
 function phraseOf(kind: string, lang: PromptLang): string {
-  const hit = COMMAND_PHRASES[kind]
+  const hit = COMMAND_PHRASES[normalizeCommandKind(kind)]
   if (hit) return lang === 'zh' ? hit.zh : hit.en
   // 未知命令：保留 kind（下游执行器本来就按 kind 前缀分派），不硬编造中文
   return kind
@@ -196,6 +272,8 @@ function buildShotPrompt(input: {
   commands: ProductionCommand[]
   utterances: UtteranceEvidence[]
   lang: PromptLang
+  /** v2 结构化镜头（有就优先用：主体动作 / 镜头语言 / 画面风格都来自它） */
+  structured?: SemanticShot
 }): {
   prompt: string
   camera?: string
@@ -203,22 +281,49 @@ function buildShotPrompt(input: {
   entities: string[]
   sourceIntentIds: string[]
 } {
-  const { shot, lang } = input
+  const { shot, lang, structured } = input
   const sep = lang === 'zh' ? '，' : ', '
   const parts: string[] = []
 
-  const entityNames = input.entities
-    .filter((ent) => arr(ent.appearances).some((app) => app?.shotId === shot.id))
-    // 只留画面主体类，并按优先级（人物/商品/物体/背景）取前几个
-    .filter((ent) => PICTURE_ENTITY_KINDS.includes(String(ent.kind ?? '')))
-    .sort(
-      (a, b) =>
-        PICTURE_ENTITY_KINDS.indexOf(String(a.kind ?? '')) -
-        PICTURE_ENTITY_KINDS.indexOf(String(b.kind ?? ''))
-    )
+  // 人工覆盖（结构化镜头上的 promptOverride）：原样作为本镜提示词
+  const override = structured?.promptOverride?.trim()
+  if (override) {
+    return {
+      prompt: override,
+      eventLabels: [],
+      entities: arr(structured?.subjects).map((s) => s.name),
+      sourceIntentIds: []
+    }
+  }
+
+  // 结构化主体 + 动作（"主播（人物）举起托特包"）优先于只列实体名
+  const subjectTexts = arr(structured?.subjects)
+    .filter((s) => s?.name?.trim())
     .slice(0, MAX_ENTITIES_PER_SHOT)
-    .map((ent) => entityLabel(ent, lang))
+    .map((s) => {
+      const ent = s.entityId ? input.entities.find((e) => e.id === s.entityId) : undefined
+      const label = ent ? entityLabel({ ...ent, name: s.name }, lang) : s.name.trim()
+      return [label, s.action?.trim(), s.emotion?.trim()]
+        .filter(Boolean)
+        .join(lang === 'zh' ? '' : ' ')
+    })
+
+  const entityNames = subjectTexts.length
+    ? subjectTexts
+    : input.entities
+        .filter((ent) => arr(ent.appearances).some((app) => app?.shotId === shot.id))
+        // 只留画面主体类，并按优先级（人物/商品/物体/背景）取前几个
+        .filter((ent) => PICTURE_ENTITY_KINDS.includes(String(ent.kind ?? '')))
+        .sort(
+          (a, b) =>
+            PICTURE_ENTITY_KINDS.indexOf(String(a.kind ?? '')) -
+            PICTURE_ENTITY_KINDS.indexOf(String(b.kind ?? ''))
+        )
+        .slice(0, MAX_ENTITIES_PER_SHOT)
+        .map((ent) => entityLabel(ent, lang))
   if (entityNames.length) parts.push(dedupeParts(entityNames).join(lang === 'zh' ? '、' : ', '))
+  const visualDescription = structured?.visual?.description?.trim()
+  if (visualDescription) parts.push(visualDescription)
 
   /**
    * 事件：**按重要度 × 重叠时长排序后只取前几个**。
@@ -246,7 +351,7 @@ function buildShotPrompt(input: {
   const intentTexts: string[] = []
   const sourceIntentIds: string[] = []
   for (const command of input.commands) {
-    const kind = String(command.kind)
+    const kind = normalizeCommandKind(String(command.kind))
     /**
      * 只翻**认识**的命令：规则包会把中文动作塞进 `kind`（`light.价格弹跳与箭头`、
      * `camera.固定中景`），原样拼进提示词等于把执行清单喂给模型 —— 直接跳过。
@@ -260,8 +365,18 @@ function buildShotPrompt(input: {
       parts.push(phraseOf(kind, lang))
     }
   }
-  const cameraPhrases = dedupeParts(cameraKinds)
+  // 结构化镜头语言（景别 / 角度 / 运镜 / 焦段）排在命令推导的运镜之前：它是"原片事实"
+  const cam = structured?.camera
+  const structuredCamera = [cam?.shotSize, cam?.angle, cam?.motion, cam?.lens]
+    .map((v) => String(v ?? '').trim())
+    .filter(Boolean)
+  const cameraPhrases = dedupeParts([...structuredCamera, ...cameraKinds])
   if (cameraPhrases.length) parts.push(cameraPhrases.join(sep))
+  const vis = structured?.visual
+  const visualStyle = [vis?.style, vis?.lighting, vis?.grade, ...arr(vis?.palette)]
+    .map((v) => String(v ?? '').trim())
+    .filter(Boolean)
+  if (visualStyle.length) parts.push(dedupeParts(visualStyle).join(sep))
 
   for (const intent of input.intents) {
     sourceIntentIds.push(intent.id)
@@ -287,6 +402,11 @@ function buildShotPrompt(input: {
   }
 }
 
+/** 计划里的每镜提示词被改过（如编译要求追加）后，重算整片提示词 */
+export function combinePlanFullPrompt(shots: VideoPromptShot[], lang: PromptLang): string {
+  return combineFullPrompt(shots, lang)
+}
+
 /** 整片提示词：按镜头顺序把每镜提示词接起来（给 full 模式用），并做长度上限 */
 function combineFullPrompt(shots: VideoPromptShot[], lang: PromptLang): string {
   const sep = lang === 'zh' ? '；' : '; '
@@ -305,9 +425,36 @@ export function buildPromptPlan(input: BuildPromptPlanInput): VideoPromptPlan {
   const intents = arr(timeline?.intents)
   const entities = arr(timeline?.entities)
   const commands = arr(input.commands)
-  const utterances = arr(input.utterances)
+  const timelineId = String(timeline?.id ?? '')
+  /**
+   * v2：有结构化镜头树就以它为准（顺序、删镜、修改后的字段）；台词用修改后的 `dialogue`。
+   * 没有（旧计划 / 手写时间线）时退回证据镜头，`strategy` 不填 = 旧行为（全部重新生成）。
+   */
+  const structuredShots = arr(timeline?.shots)
+  const isV2 = structuredShots.length > 0
+  const dialogue = arr(timeline?.dialogue)
+  const utterances: UtteranceEvidence[] = dialogue.length
+    ? dialogue.map((d) => ({
+        id: d.id,
+        range: d.range,
+        text: d.text,
+        granularity: d.granularity,
+        confidence: d.confidence
+      }))
+    : arr(input.utterances)
+  const diff: SemanticDiff | undefined = isV2
+    ? (input.diff ?? diffAgainstBaseline(timeline))
+    : undefined
+  const structuredById = new Map(structuredShots.map((s) => [s.id, s]))
+  const removedShotIds = structuredShots.filter((s) => s.removed).map((s) => s.id)
+  const walk: ShotEvidence[] = isV2
+    ? structuredShots
+        .filter((s) => !s.removed && s.range)
+        .map((s) => ({ id: s.id, range: s.range, keyframes: s.keyframes ?? {}, confidence: 1 }))
+    : shots
 
-  const promptShots: VideoPromptShot[] = shots.map((shot) => {
+  const promptShots: VideoPromptShot[] = walk.map((shot) => {
+    const structured = structuredById.get(shot.id)
     const inShotEvents = events.filter((event) => overlaps(event.timeRange, shot.range))
     const eventIds = new Set(inShotEvents.map((event) => event.id))
     const inShotIntents = intents.filter((intent) => {
@@ -332,16 +479,43 @@ export function buildPromptPlan(input: BuildPromptPlanInput): VideoPromptPlan {
       entities,
       commands: inShotCommands,
       utterances: inShotUtterances,
-      lang
+      lang,
+      ...(structured ? { structured } : {})
     })
+    const reasons = diff?.dirtyShots.get(shot.id)
+    const referenceAssetIds = [
+      ...new Set(
+        arr(structured?.subjects)
+          .map((s) => (s.entityId ? entities.find((e) => e.id === s.entityId) : undefined))
+          .map((e) => e?.reference?.assetId?.trim() ?? '')
+          .filter(Boolean)
+      )
+    ]
     return {
       shotId: shot.id,
+      ...(referenceAssetIds.length ? { referenceAssetIds } : {}),
+      ...(structured
+        ? {
+            strategy: (reasons ? 'regenerate' : 'passthrough') as ShotRebuildStrategy,
+            sourceStartSec: structured.sourceSegment?.start ?? shot.range.start,
+            sourceEndSec: structured.sourceSegment?.end ?? shot.range.end,
+            ...(reasons ? { changeReasons: reasons } : {})
+          }
+        : {}),
       startSec: shot.range.start,
       durationSec: Math.max(0.05, shot.range.end - shot.range.start),
+      // 证据路径相对 `Semantic/<id>/`；计划里统一成工程相对路径（重建按工程根解析首帧）
       ...(shot.keyframes?.middle || shot.keyframes?.first
-        ? { firstFrameRelativePath: shot.keyframes.middle ?? shot.keyframes.first }
+        ? {
+            firstFrameRelativePath: keyframeProjectPath(
+              timelineId,
+              shot.keyframes.middle ?? shot.keyframes.first
+            )
+          }
         : {}),
-      ...(shot.keyframes?.last ? { lastFrameRelativePath: shot.keyframes.last } : {}),
+      ...(shot.keyframes?.last
+        ? { lastFrameRelativePath: keyframeProjectPath(timelineId, shot.keyframes.last) }
+        : {}),
       prompt: built.prompt,
       negativePrompt: NEGATIVE_PROMPT[lang],
       ...(built.camera ? { camera: built.camera } : {}),
@@ -367,8 +541,45 @@ export function buildPromptPlan(input: BuildPromptPlanInput): VideoPromptPlan {
       height: Number(source?.height) || 0,
       fps: Number(source?.fps) || 30,
       durationSec: Number(source?.duration) || 0
-    }
+    },
+    ...(isV2
+      ? {
+          dubs: buildDubLines(timeline, diff!),
+          subtitles: dialogue
+            .filter((d) => d.text?.trim())
+            .map((d) => ({
+              sourceStartSec: d.range.start,
+              sourceEndSec: d.range.end,
+              text: d.text.trim()
+            })),
+          removedShotIds
+        }
+      : {})
   }
+}
+
+/** 改过的台词 → 配音清单（带说话人档案里的音色 / 克隆参考） */
+function buildDubLines(timeline: SemanticTimeline, diff: SemanticDiff): DubLine[] {
+  const speakers = new Map(arr(timeline.speakers).map((s) => [s.id, s]))
+  const vocals = timeline.evidence?.stems?.vocals?.trim() || undefined
+  return arr(timeline.dialogue)
+    .filter((d) => diff.dirtyDialogue.has(d.id) && d.text?.trim())
+    .map((d) => {
+      const profile = d.speaker ? speakers.get(d.speaker) : undefined
+      return {
+        id: d.id,
+        sourceStartSec: d.range.start,
+        sourceEndSec: d.range.end,
+        text: d.text.trim(),
+        sourceText: d.sourceText,
+        ...(d.speaker ? { speaker: d.speaker } : {}),
+        ...(profile?.voice ? { voice: profile.voice } : {}),
+        // 克隆参考：说话人档案优先，否则用分析时分离出的原人声（工程相对路径）
+        ...(profile?.referenceAudio || vocals
+          ? { referenceAudio: profile?.referenceAudio || vocals }
+          : {})
+      }
+    })
 }
 
 // ─── 人工覆盖 / 序列化 / 摘要 ────────────────────────────────────────────────
@@ -423,7 +634,14 @@ export function applyPromptOverrides(plan: VideoPromptPlan, raw: unknown): Video
       ...(override.prompt != null ? { prompt: override.prompt } : {}),
       ...(override.negativePrompt != null ? { negativePrompt: override.negativePrompt } : {}),
       // 覆盖后不再是模型原文：标出来，便于 UI 提示"这条被改过"
-      modelAuthored: false
+      modelAuthored: false,
+      // 人工改了提示词 = 想要不同的画面：这一镜改为重新生成
+      ...(override.prompt != null && override.prompt.trim() && shot.strategy
+        ? {
+            strategy: 'regenerate' as const,
+            changeReasons: [...new Set([...(shot.changeReasons ?? []), 'prompt'])]
+          }
+        : {})
     }
   })
   return { ...plan, shots, fullPrompt: combineFullPrompt(shots, plan.lang) }
@@ -474,11 +692,32 @@ export interface RebuildClip {
   durationSec: number
   firstFrameRelativePath?: string
   lastFrameRelativePath?: string
+  /** 参考资产（换人 / 换商品）；有它时不用原片首帧 */
+  referenceAssetIds?: string[]
+}
+
+/**
+ * 成片里的一段（按输出顺序）：`source` 直通原片入/出点，`generate` 用对应的生成片段。
+ * 生成段也带原片入/出点（若有）：拼接时把生成片段对齐到原镜头时长，音轨才不错位。
+ */
+export interface RebuildSegment {
+  key: string
+  kind: 'source' | 'generate'
+  durationSec: number
+  sourceStartSec?: number
+  sourceEndSec?: number
 }
 
 export interface RebuildPlan {
   mode: RebuildMode
+  /** 需要调用视频模型的片段（= 要花钱的次数） */
   clips: RebuildClip[]
+  /** 成片的全部段（含直通段），按输出顺序 */
+  segments: RebuildSegment[]
+  /** 直通原片的镜头数 */
+  passthrough: number
+  /** 需要重新配音的台词 */
+  dubs: DubLine[]
   /** 因为超过上限被跳过的镜头数（只可能出现在 shots 模式） */
   skippedByLimit: number
   /** 没有提示词、无法生成的镜头数 */
@@ -493,44 +732,73 @@ export interface RebuildPlan {
  */
 export function planRebuildClips(
   plan: VideoPromptPlan | null | undefined,
-  options: { mode?: RebuildMode; maxShots?: number } = {}
+  options: { mode?: RebuildMode; maxShots?: number; regenerateAll?: boolean } = {}
 ): RebuildPlan {
   const mode: RebuildMode = options.mode === 'full' ? 'full' : 'shots'
   const shots = arr(plan?.shots)
+  const dubs = arr(plan?.dubs)
   if (mode === 'full') {
     const prompt = plan?.fullPrompt?.trim() || combineFullPrompt(shots, plan?.lang ?? 'zh')
+    const durationSec = Number(plan?.settings?.durationSec) || 5
     return {
       mode,
-      clips: prompt
-        ? [
-            {
-              key: 'full',
-              prompt,
-              durationSec: Number(plan?.settings?.durationSec) || 5
-            }
-          ]
-        : [],
+      clips: prompt ? [{ key: 'full', prompt, durationSec }] : [],
+      segments: prompt ? [{ key: 'full', kind: 'generate', durationSec }] : [],
+      passthrough: 0,
+      dubs,
       skippedByLimit: 0,
       skippedEmpty: prompt ? 0 : 1
     }
   }
 
   const max = Math.max(1, Number(options.maxShots) || shots.length || 1)
-  const usable = shots.filter((shot) => !!shot.prompt?.trim())
-  const taken = usable.slice(0, max)
-  return {
-    mode,
-    clips: taken.map((shot) => ({
-      key: shot.shotId,
-      prompt: shot.prompt.trim(),
-      ...(shot.negativePrompt ? { negativePrompt: shot.negativePrompt } : {}),
-      durationSec: shot.durationSec,
-      ...(shot.firstFrameRelativePath
-        ? { firstFrameRelativePath: shot.firstFrameRelativePath }
-        : {}),
-      ...(shot.lastFrameRelativePath ? { lastFrameRelativePath: shot.lastFrameRelativePath } : {})
-    })),
-    skippedByLimit: Math.max(0, usable.length - taken.length),
-    skippedEmpty: shots.length - usable.length
+  const clips: RebuildClip[] = []
+  const segments: RebuildSegment[] = []
+  let passthrough = 0
+  let skippedByLimit = 0
+  let skippedEmpty = 0
+  for (const shot of shots) {
+    const hasSource =
+      Number.isFinite(shot.sourceStartSec) &&
+      Number.isFinite(shot.sourceEndSec) &&
+      (shot.sourceEndSec as number) > (shot.sourceStartSec as number)
+    const source = hasSource
+      ? { sourceStartSec: shot.sourceStartSec as number, sourceEndSec: shot.sourceEndSec as number }
+      : {}
+    // 旧计划没有 strategy：一律重新生成（旧行为）
+    const wantsGenerate = options.regenerateAll === true || shot.strategy !== 'passthrough'
+    const prompt = shot.prompt?.trim() ?? ''
+    if (wantsGenerate && prompt && clips.length < max) {
+      clips.push({
+        key: shot.shotId,
+        prompt,
+        ...(shot.negativePrompt ? { negativePrompt: shot.negativePrompt } : {}),
+        durationSec: shot.durationSec,
+        ...(shot.firstFrameRelativePath
+          ? { firstFrameRelativePath: shot.firstFrameRelativePath }
+          : {}),
+        ...(shot.lastFrameRelativePath
+          ? { lastFrameRelativePath: shot.lastFrameRelativePath }
+          : {}),
+        ...(shot.referenceAssetIds?.length ? { referenceAssetIds: shot.referenceAssetIds } : {})
+      })
+      segments.push({
+        key: shot.shotId,
+        kind: 'generate',
+        durationSec: shot.durationSec,
+        ...source
+      })
+      continue
+    }
+    if (wantsGenerate) {
+      if (!prompt) skippedEmpty += 1
+      else skippedByLimit += 1
+    }
+    // 未改 / 超上限 / 无提示词：有原片入出点就直通原片（成片不缺镜），否则只能跳过
+    if (hasSource) {
+      passthrough += 1
+      segments.push({ key: shot.shotId, kind: 'source', durationSec: shot.durationSec, ...source })
+    }
   }
+  return { mode, clips, segments, passthrough, dubs, skippedByLimit, skippedEmpty }
 }

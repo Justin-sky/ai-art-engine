@@ -15,6 +15,12 @@ import {
   segmentsToUtterances,
   timelineJsonPath,
   validateSemanticTimeline,
+  ensureSemanticStructure,
+  migrateSemanticTimeline,
+  rebaselineSemanticTimeline,
+  carryOverSemanticEdits,
+  timelineId,
+  type OcrRegion,
   type BeatVocabulary,
   type MediaFacts,
   type SemanticTimeline,
@@ -49,13 +55,24 @@ export function loadSemanticTimeline(
   const path = resolveTimelineJson(projectRoot, timelineId)
   if (!existsSync(path)) return null
   try {
-    const raw = JSON.parse(readFileSync(path, 'utf8')) as unknown
-    const v = validateSemanticTimeline(raw)
+    const raw = JSON.parse(readFileSync(path, 'utf8')) as SemanticTimeline
+    if (!raw || typeof raw !== 'object') return null
+    // v1 → v2 自动迁移：用磁盘上的证据内联镜头树 / 台词 / 文字层，并补基线
+    const doc = migrateSemanticTimeline(raw, {
+      shots: loadShotsEvidence(projectRoot, timelineId),
+      utterances: loadUtterances(projectRoot, timelineId),
+      ocr: loadOcr(projectRoot, timelineId)
+    })
+    const v = validateSemanticTimeline(doc)
     if (!v.ok) return null
-    return raw as SemanticTimeline
+    return doc
   } catch {
     return null
   }
+}
+
+export function loadOcr(projectRoot: string, timelineId: string): OcrRegion[] {
+  return readEvidenceJson<OcrEvidenceFile>(projectRoot, timelineId, OCR_FILE)?.regions ?? []
 }
 
 export function saveSemanticTimeline(projectRoot: string, doc: SemanticTimeline): void {
@@ -167,6 +184,7 @@ export async function analyzeShotsOnly(
     },
     updatedAt: new Date().toISOString()
   })
+  doc = rebaselineSemanticTimeline(ensureSemanticStructure(doc, { shots }))
   saveSemanticTimeline(projectRoot, doc)
   return { timeline: doc, shots, facts, method: detected.method }
 }
@@ -205,6 +223,8 @@ export async function analyzeSemanticTimeline(
 ): Promise<AnalyzeSemanticResult> {
   const vocabulary = options.vocabulary ?? 'commerce.v1'
   const notes: string[] = []
+  // 重新分析前先读上一版（下一步就会被骨架覆盖）：用户修改要带到新文档上
+  const previous = loadSemanticTimeline(projectRoot, timelineId(sourceAssetId))
   const base = await analyzeShotsOnly(projectRoot, sourceAssetId, videoAbs, vocabulary)
   let doc = base.timeline
   const { shots, facts } = base
@@ -325,6 +345,18 @@ export async function analyzeSemanticTimeline(
     },
     updatedAt: new Date().toISOString()
   })
+  // v2：内联结构化镜头树 / 台词 / 文字层，并以分析结果为基线（重新分析 = 新基线）
+  doc = rebaselineSemanticTimeline(
+    ensureSemanticStructure(
+      { ...doc, shots: [], dialogue: [], textLayers: [], edits: [], baseline: undefined },
+      { shots, utterances, ocr: ocrRegions }
+    )
+  )
+  const carried = carryOverSemanticEdits(previous, doc)
+  if (carried !== doc) {
+    notes.push(`kept ${carried.edits?.length ?? 0} user edit(s) from the previous analysis`)
+    doc = carried
+  }
   saveSemanticTimeline(projectRoot, doc)
   return { ...base, timeline: doc, utterances, notes }
 }

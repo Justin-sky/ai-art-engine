@@ -6,9 +6,11 @@
  */
 import type { GraphValue, GraphVideoItem, NodeExecuteContext } from './types'
 import { videoPromptsValue } from './videoPromptsValue'
+import { resolveVideoGenerateParamsForApi } from '../videoGenerateParams'
 import {
   applyPromptOverrides,
   buildPromptPlan,
+  combinePlanFullPrompt,
   parsePromptPlan,
   planRebuildClips,
   summarizePromptPlan,
@@ -24,6 +26,11 @@ import {
   draftsToEvents,
   findVocabularyInPacks,
   heuristicEventsFromUtterances,
+  keyframeProjectPath,
+  ensureSemanticStructure,
+  migrateSemanticTimeline,
+  rebaselineSemanticTimeline,
+  diffAgainstBaseline,
   inferIntentsFromEvents,
   intentId,
   parseEventDrafts,
@@ -36,8 +43,10 @@ import {
   type IntentTechnique,
   type RawEventDraft,
   type SemanticPack,
+  type SemanticShot,
   type SemanticTimeline,
   type SemanticTrackKind,
+  type ShotDescription,
   type ShotEvidence,
   type UtteranceEvidence
 } from '../../semanticTimeline'
@@ -57,10 +66,6 @@ const TRACK_KINDS: ReadonlySet<SemanticTrackKind> = new Set<SemanticTrackKind>([
   'vfx',
   'edit'
 ])
-
-function outText(text: string): Record<string, GraphValue> {
-  return { out: { kind: 'text', text } }
-}
 
 function isEn(ctx: NodeExecuteContext): boolean {
   return (ctx.locale ?? '').toLowerCase().startsWith('en')
@@ -221,6 +226,8 @@ async function enrichTimelineWithLlm(
     }
   }
   const descriptions = new Map<string, string>()
+  /** 结构化镜头描述：写回 v2 镜头树（以前只拼成一句话、用完即丢） */
+  const structured = new Map<string, ShotDescription>()
   const cameraDrafts: RawEventDraft[] = []
   if (images.length > 0) {
     say(ctx, `镜头描述：${images.length} 个关键帧`, `Shot describe: ${images.length} keyframes`) // cjk-ok
@@ -234,6 +241,7 @@ async function enrichTimelineWithLlm(
     for (const d of text ? parseShotDescriptions(text) : []) {
       const shot = shotById.get(d.shotId)
       if (!shot) continue
+      structured.set(shot.id, d)
       const desc = [d.subject, d.action, d.emotion, d.shotSize, d.angle, d.cameraMotion]
         .filter(Boolean)
         .join(' / ')
@@ -389,6 +397,7 @@ async function enrichTimelineWithLlm(
 
   return rebuildTracks({
     ...doc,
+    ...(doc.shots?.length ? { shots: applyShotDescriptions(doc.shots, structured) } : {}),
     events: events.map((e) => ({
       ...e,
       intents: intents.filter((i) => i.trigger === e.id).map((i) => i.id)
@@ -396,6 +405,59 @@ async function enrichTimelineWithLlm(
     beats,
     intents,
     updatedAt: new Date().toISOString()
+  })
+}
+
+/**
+ * 把镜头描述写进结构化镜头树：**只填空字段**，用户改过 / 锁定的镜头不动
+ * （富化是"补全事实"，不能覆盖修改）。
+ */
+function applyShotDescriptions(
+  shots: SemanticShot[],
+  descriptions: Map<string, ShotDescription>
+): SemanticShot[] {
+  if (descriptions.size === 0) return shots
+  const pick = (cur: string | undefined, next: string | undefined): string | undefined =>
+    cur?.trim() ? cur : next?.trim() || undefined
+  return shots.map((shot) => {
+    const d = descriptions.get(shot.id)
+    if (!d || shot.locked || shot.origin === 'user') return shot
+    const camera = {
+      ...shot.camera,
+      ...(pick(shot.camera?.shotSize, d.shotSize)
+        ? { shotSize: pick(shot.camera?.shotSize, d.shotSize) }
+        : {}),
+      ...(pick(shot.camera?.angle, d.angle) ? { angle: pick(shot.camera?.angle, d.angle) } : {}),
+      ...(pick(shot.camera?.motion, d.cameraMotion)
+        ? { motion: pick(shot.camera?.motion, d.cameraMotion) }
+        : {}),
+      ...(pick(shot.camera?.lens, d.focalLengthHint)
+        ? { lens: pick(shot.camera?.lens, d.focalLengthHint) }
+        : {})
+    }
+    const subjects = [...(shot.subjects ?? [])]
+    if (d.subject?.trim()) {
+      const first = subjects[0]
+      if (first) {
+        subjects[0] = {
+          ...first,
+          ...(first.action?.trim() || !d.action?.trim() ? {} : { action: d.action.trim() }),
+          ...(first.emotion?.trim() || !d.emotion?.trim() ? {} : { emotion: d.emotion.trim() })
+        }
+      } else {
+        subjects.push({
+          name: d.subject.trim(),
+          ...(d.action?.trim() ? { action: d.action.trim() } : {}),
+          ...(d.emotion?.trim() ? { emotion: d.emotion.trim() } : {})
+        })
+      }
+    }
+    const description = [d.subject, d.action].filter((s) => s?.trim()).join(' ')
+    const visual = {
+      ...shot.visual,
+      ...(shot.visual?.description?.trim() || !description ? {} : { description })
+    }
+    return { ...shot, camera, visual, subjects }
   })
 }
 
@@ -492,6 +554,10 @@ export async function executeSemanticAnalyzeNode(
         keyframes: res.keyframes,
         vocabulary: vocabDef
       })
+      // 富化补全的镜头语言 / 画面描述属于"分析事实"：重设基线，之后的改动才算修改
+      doc = rebaselineSemanticTimeline(
+        ensureSemanticStructure(doc, { shots: res.shots, utterances: res.utterances })
+      )
       if (ctx.saveSemanticTimeline) {
         try {
           await ctx.saveSemanticTimeline(doc)
@@ -530,10 +596,14 @@ export async function executeSemanticAnalyzeNode(
   )
   const vocabDef = findVocabularyInPacks(await loadPacks(ctx), vocabulary)
   const base = heuristicTimeline(ctx, vocabulary, vocabDef)
+  const structuredBase = {
+    ...base,
+    doc: ensureSemanticStructure(base.doc, { shots: base.shots, utterances: base.utterances })
+  }
   const doc = useLlm
-    ? await enrichTimelineWithLlm(ctx, { ...base, keyframes: {}, vocabulary: vocabDef })
-    : base.doc
-  return { out: semanticTimelineValue(doc) }
+    ? await enrichTimelineWithLlm(ctx, { ...structuredBase, keyframes: {}, vocabulary: vocabDef })
+    : structuredBase.doc
+  return { out: semanticTimelineValue(rebaselineSemanticTimeline(doc)) }
 }
 
 // ─── Timeline consumers ─────────────────────────────────────────────────────
@@ -556,9 +626,29 @@ function readTimelineJson(ctx: NodeExecuteContext): string {
 async function readTimeline(ctx: NodeExecuteContext): Promise<SemanticTimeline | null> {
   const doc = readTimelineStrict(ctx)
   if (!doc) return null
-  if (doc.events.length > 0 || !ctx.loadSemanticTimeline) return doc
+  if (!ctx.loadSemanticTimeline) return doc
   const id = typeof doc.id === 'string' ? doc.id.trim() : ''
   if (!id.startsWith('stl.')) return doc
+  /**
+   * 修改发生在 dive 里（直接落盘 `timeline.json`），而上游分析节点的运行输出还是修改**前**的那份。
+   * 磁盘版本更新（或带着更多修改记录）时以磁盘为准 —— 否则用户改了半天，编译仍按原样出计划。
+   */
+  if (doc.events.length > 0) {
+    try {
+      const loaded = await ctx.loadSemanticTimeline(id)
+      if (loaded && isNewerTimeline(loaded, doc)) {
+        say(
+          ctx,
+          `使用磁盘上修改过的时间线（${loaded.edits?.length ?? 0} 处修改）`, // cjk-ok
+          `Using the edited timeline on disk (${loaded.edits?.length ?? 0} edit(s))`
+        )
+        return migrateSemanticTimeline(loaded)
+      }
+    } catch {
+      /* 读不到就用上游 */
+    }
+    return doc
+  }
   try {
     const loaded = await ctx.loadSemanticTimeline(id)
     if (loaded && Array.isArray(loaded.events) && loaded.events.length > 0) {
@@ -574,6 +664,16 @@ async function readTimeline(ctx: NodeExecuteContext): Promise<SemanticTimeline |
   return doc
 }
 
+/** 磁盘版本是否比上游给的新（修改记录更多，或更新时间更晚） */
+function isNewerTimeline(disk: SemanticTimeline, upstream: SemanticTimeline): boolean {
+  const diskEdits = disk.edits?.length ?? 0
+  const upEdits = upstream.edits?.length ?? 0
+  if (diskEdits !== upEdits) return diskEdits > upEdits
+  const a = Date.parse(disk.updatedAt ?? '')
+  const b = Date.parse(upstream.updatedAt ?? '')
+  return Number.isFinite(a) && Number.isFinite(b) && a > b
+}
+
 /** 严格版本：只认上游传入的值（结构化文档 / JSON 文本），不做磁盘兜底 */
 function readTimelineStrict(ctx: NodeExecuteContext): SemanticTimeline | null {
   const upstream = ctx.inputs.in?.[0]
@@ -584,8 +684,10 @@ function readTimelineStrict(ctx: NodeExecuteContext): SemanticTimeline | null {
         isEn(ctx) ? 'Upstream is not a semantic timeline document' : '上游不是语义时间线文档' // cjk-ok
       )
     }
+    // v1 → v2 自动迁移（镜头树等证据字段由编译在拿到证据后补齐）
+    const migrated = migrateSemanticTimeline(doc)
     // schema 不匹配只告警不拦：启发式骨架等合法产物也可能不完全满足严格规则
-    const check = validateSemanticTimeline(doc)
+    const check = validateSemanticTimeline(migrated)
     if (!check.ok) {
       ctx.log?.(
         (isEn(ctx) ? 'Semantic timeline schema warnings: ' : '语义时间线 schema 告警：') + // cjk-ok
@@ -593,7 +695,7 @@ function readTimelineStrict(ctx: NodeExecuteContext): SemanticTimeline | null {
         'warn'
       )
     }
-    return doc
+    return migrated
   }
   const raw = readTimelineJson(ctx)
   if (!raw) return null
@@ -609,7 +711,7 @@ function readTimelineStrict(ctx: NodeExecuteContext): SemanticTimeline | null {
       isEn(ctx) ? 'Input is not a semantic timeline document' : '输入不是语义时间线文档' // cjk-ok
     )
   }
-  return doc
+  return migrateSemanticTimeline(doc)
 }
 
 interface ShotContext {
@@ -669,6 +771,24 @@ export async function executeSemanticCompileNode(
   if (!timeline) return { out: videoPromptsValue(emptyPromptPlan()) }
   const rulePacks = collectRulePacks(await loadPacks(ctx), rulePackIds(ctx))
   const shotCtx = await loadShotContext(ctx, timeline)
+  /**
+   * v2：只有**真实切镜证据**时才内联镜头树（整片单镜兜底没有可直通的原片段意义）。
+   * 脏集合必须在富化**之前**算：富化会补镜头语言字段，之后算会把每一镜都误判为"改过"。
+   */
+  if (shotCtx.real) {
+    timeline = ensureSemanticStructure(timeline, {
+      shots: shotCtx.shots,
+      utterances: shotCtx.utterances
+    })
+  }
+  const diff = timeline.shots?.length ? diffAgainstBaseline(timeline) : undefined
+  if (diff) {
+    say(
+      ctx,
+      `修改检测：${diff.dirtyShots.size} 镜需重新生成 · ${diff.removedShots.size} 镜删除 · ${diff.dirtyDialogue.size} 句需重新配音`, // cjk-ok
+      `Changes: ${diff.dirtyShots.size} shot(s) to regenerate · ${diff.removedShots.size} removed · ${diff.dirtyDialogue.size} line(s) to re-dub`
+    )
+  }
 
   /**
    * 可选：用模型写提示词。
@@ -688,7 +808,13 @@ export async function executeSemanticCompileNode(
         utterances: shotCtx.utterances,
         keyframes: Object.fromEntries(
           shotCtx.shots
-            .map((shot) => [shot.id, shot.keyframes?.middle ?? shot.keyframes?.first] as const)
+            .map(
+              (shot) =>
+                [
+                  shot.id,
+                  keyframeProjectPath(timeline!.id, shot.keyframes?.middle ?? shot.keyframes?.first)
+                ] as const
+            )
             .filter((entry): entry is [string, string] => !!entry[1])
         ),
         vocabulary: vocabDef
@@ -714,12 +840,31 @@ export async function executeSemanticCompileNode(
       utterances: shotCtx.utterances,
       commands,
       sourceRelativePath,
-      lang: isEn(ctx) ? 'en' : 'zh'
+      lang: isEn(ctx) ? 'en' : 'zh',
+      ...(diff ? { diff } : {})
     }),
     ctx.node.params?.promptOverridesJson
   )
   if (modelAuthored) {
     for (const shot of plan.shots) shot.modelAuthored = true
+  }
+  if (String(ctx.node.params?.promptOverridesJson ?? '').trim()) {
+    say(
+      ctx,
+      '本节点带有旧版逐镜提示词覆盖（promptOverridesJson），仍然生效；新的修改请在分析节点时间线的「修改」面板里做', // cjk-ok
+      'This node still carries legacy per-shot overrides (promptOverridesJson); they still apply. Make new edits in the Edit panel of the analyze timeline.',
+      'warn'
+    )
+  }
+  // 指令面板的「编译要求」：追加到每镜提示词末尾（整片提示词随之重算）
+  const compileInstruction = String(ctx.node.params?.generateInstruction ?? '').trim()
+  if (compileInstruction) {
+    const sep = plan.lang === 'zh' ? '。' : '. '
+    for (const shot of plan.shots) {
+      if (!shot.prompt?.trim() || shot.prompt.includes(compileInstruction)) continue
+      shot.prompt = `${shot.prompt}${sep}${compileInstruction}`
+    }
+    plan.fullPrompt = combinePlanFullPrompt(plan.shots, plan.lang)
   }
 
   const summary = summarizePromptPlan(plan)
@@ -766,15 +911,46 @@ function readPromptPlan(ctx: NodeExecuteContext): VideoPromptPlan | null {
   return null
 }
 
+/** 选一个模型支持的生成时长：≥ 镜头时长的最小档；没有更长的档就取最长档；无能力表时向上取整 */
+function pickGenerateDuration(shotSec: number, durations: number[] | undefined): number {
+  const want = Math.max(1, Math.ceil(shotSec - 1e-6))
+  const options = (durations ?? []).filter((d) => Number.isFinite(d) && d > 0).sort((a, b) => a - b)
+  if (options.length === 0) return want
+  return options.find((d) => d >= shotSec - 1e-6) ?? options[options.length - 1]!
+}
+
+/** 节点参数里的整片指令（指令面板写的）：追加到每镜提示词末尾 */
+function withInstruction(prompt: string, instruction: string, lang: 'zh' | 'en'): string {
+  const extra = instruction.trim()
+  if (!extra) return prompt
+  return prompt ? `${prompt}${lang === 'zh' ? '。' : '. '}${extra}` : extra
+}
+
+/** 清单写回节点参数（节点已没有文本输出口；Inspector 读它展示计划 / 结果） */
+function writeRebuildReport(
+  ctx: NodeExecuteContext,
+  report: Record<string, unknown>,
+  outputRelativePath?: string
+): void {
+  ctx.patchNode?.({
+    params: {
+      rebuildLastReport: JSON.stringify(report, null, 2),
+      ...(outputRelativePath ? { rebuildLastOutput: outputRelativePath } : {})
+    }
+  })
+}
+
 /**
- * 语义重建：提示词计划 → 逐镜（或整片）生成 → 本地拼接成片。
+ * 语义重建：提示词计划 → 未改镜头直通原片 / 改过的镜头生成 / 改过的台词重新配音 → 本地拼接成片。
  *
- * 成本可见性是刻意的：先把"要生成几次、跳过多少"打进日志，再决定跑不跑；
- * `semanticExecute=false` 时一次模型都不调，只产出清单（可以先看再开）。
+ * - 输出**只有视频口**（`out-video`）；清单写进节点参数 `rebuildLastReport`（Inspector 展示）与日志。
+ * - 成本可见：先把"生成几次、直通几镜、配音几句"打进日志；`semanticExecute=false` 时一次模型都不调。
+ * - 零修改 + 有原片入出点时**零次生成**，成片 = 原片按镜头重新拼接（还原原片）。
  */
 export async function executeSemanticRebuildNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
+  const p = ctx.node.params ?? {}
   const plan = readPromptPlan(ctx)
   if (!plan) {
     say(
@@ -783,83 +959,185 @@ export async function executeSemanticRebuildNode(
       'No prompt plan on the input — connect the Semantic compile node upstream',
       'warn'
     )
-    // outText 返回的就是端口记录（{ out: {...} }），不要再包一层
-    return outText('{}')
+    return {}
   }
 
-  const mode: RebuildMode = ctx.node.params?.rebuildMode === 'full' ? 'full' : 'shots'
-  const maxShots = Number(ctx.node.params?.rebuildMaxShots) || MAX_REBUILD_SHOTS
-  const planned = planRebuildClips(plan, { mode, maxShots })
+  const mode: RebuildMode = p.rebuildMode === 'full' ? 'full' : 'shots'
+  const maxShots = Number(p.rebuildMaxShots) || MAX_REBUILD_SHOTS
+  const regenerateAll = p.rebuildRegenerateAll === true
+  const planned = planRebuildClips(plan, { mode, maxShots, regenerateAll })
+  const dubEnabled = p.rebuildDub !== false && mode === 'shots'
+  const dubs = dubEnabled ? planned.dubs : []
   const notes: string[] = []
   if (planned.skippedByLimit > 0) {
-    notes.push(`超过每镜上限（${maxShots}），已跳过 ${planned.skippedByLimit} 镜`) // cjk-ok
+    notes.push(
+      planned.passthrough > 0
+        ? `超过每镜上限（${maxShots}），已跳过 ${planned.skippedByLimit} 镜的生成（改用原片段）` // cjk-ok
+        : `超过每镜上限（${maxShots}），已跳过 ${planned.skippedByLimit} 镜` // cjk-ok
+    )
   }
   if (planned.skippedEmpty > 0) {
     notes.push(`有 ${planned.skippedEmpty} 镜没有提示词，已跳过`) // cjk-ok
   }
+  const modelLabel = String(p.generateModel || '').trim()
   say(
     ctx,
-    `语义重建：${mode === 'full' ? '整片一次' : `${planned.clips.length} 镜`} · 模型 ${String(ctx.node.params?.generateModel || '').trim() || '默认'}`, // cjk-ok
-    `Semantic rebuild: ${mode === 'full' ? 'single full pass' : `${planned.clips.length} shots`}`
+    `语义重建：${mode === 'full' ? '整片一次' : `生成 ${planned.clips.length} 镜 · 直通原片 ${planned.passthrough} 镜 · 配音 ${dubs.length} 句`} · 模型 ${modelLabel || '默认'}`, // cjk-ok
+    `Semantic rebuild: ${mode === 'full' ? 'single full pass' : `${planned.clips.length} generated · ${planned.passthrough} passthrough · ${dubs.length} re-dubbed`}`
   )
   for (const note of notes) say(ctx, note, note, 'warn')
+  const loggedNotes = notes.length
 
-  const execute = ctx.node.params?.semanticExecute !== false
-  if (!execute || planned.clips.length === 0) {
-    return outText(
-      JSON.stringify({ mode, execute: false, shots: plan.shots.length, planned, notes }, null, 2)
-    )
+  const baseReport = {
+    mode,
+    regenerateAll,
+    shots: plan.shots.length,
+    generate: planned.clips.map((c) => c.key),
+    passthrough: planned.segments.filter((s) => s.kind === 'source').map((s) => s.key),
+    removed: plan.removedShotIds ?? [],
+    dubs: dubs.map((d) => ({ id: d.id, text: d.text, sourceText: d.sourceText })),
+    skippedByLimit: planned.skippedByLimit,
+    skippedEmpty: planned.skippedEmpty,
+    notes
   }
-  if (!ctx.generateVideo) {
+
+  const execute = p.semanticExecute !== false
+  if (!execute || planned.segments.length === 0) {
+    if (planned.segments.length === 0) {
+      say(ctx, '没有可拼接的镜头，未出片', 'Nothing to rebuild', 'warn') // cjk-ok
+    }
+    writeRebuildReport(ctx, { ...baseReport, execute: false })
+    return {}
+  }
+  if (planned.clips.length > 0 && !ctx.generateVideo) {
     throw new Error(
       isEn(ctx)
         ? 'This environment has no video generation capability'
         : '当前执行环境没有视频生成能力' // cjk-ok
     )
   }
+  if (!ctx.rebuildSemanticVideo) {
+    throw new Error(
+      isEn(ctx)
+        ? 'This environment cannot assemble the rebuilt video'
+        : '当前执行环境没有成片拼接能力' // cjk-ok
+    )
+  }
 
-  const duration = Number(ctx.node.params?.rebuildDurationSec) || undefined
-  const resolution = String(ctx.node.params?.rebuildResolution || '').trim() || undefined
-  const aspectRatio = String(ctx.node.params?.rebuildAspectRatio || '').trim() || undefined
-  const generated: Array<{ key: string; relativePath: string }> = []
+  // ── 视频参数：指令面板写 generate*，旧节点写 rebuild*；按模型能力夹取 ─────────────
+  const model = String(p.generateModel || '').trim() || undefined
+  const providerInstanceId = String(p.generateProviderInstanceId || '').trim() || undefined
+  let caps: import('../videoGenerateParams').VideoGenerateParamCapabilities | null = null
+  if (ctx.resolveVideoGenerateCapabilities && planned.clips.length > 0) {
+    try {
+      caps =
+        (await ctx.resolveVideoGenerateCapabilities({ model, providerInstanceId }))?.params ?? null
+    } catch {
+      caps = null
+    }
+  }
+  const fixedDuration = Number(p.rebuildDurationSec) || 0
+  const clamped = resolveVideoGenerateParamsForApi(
+    {
+      generateResolution:
+        String(p.generateResolution || p.rebuildResolution || '').trim() || undefined,
+      generateAspectRatio:
+        String(p.generateAspectRatio || p.rebuildAspectRatio || '').trim() || undefined,
+      ...(typeof p.generateSeed === 'number' ? { generateSeed: p.generateSeed } : {}),
+      ...(typeof p.generateSeedUseGlobal === 'boolean'
+        ? { generateSeedUseGlobal: p.generateSeedUseGlobal }
+        : {})
+    },
+    caps
+  )
+  const frameSupport = caps?.supportedFrameImages ?? []
+  // 能力表声明了帧能力但没有首帧：不发首帧（否则供应商直接 400）
+  const firstFrameAllowed = frameSupport.length === 0 || frameSupport.includes('first_frame')
+  if (!firstFrameAllowed && planned.clips.some((c) => c.firstFrameRelativePath)) {
+    say(
+      ctx,
+      '所选视频模型不支持首帧，改为文生视频（构图可能与原片不一致）', // cjk-ok
+      'The selected video model has no first-frame input; using text-to-video',
+      'warn'
+    )
+  }
+  const instruction = String(p.generateInstruction || '')
+
+  const generated = new Map<string, string>()
   const failures: Array<{ key: string; reason: string }> = []
-
   for (const clip of planned.clips) {
     if (ctx.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+    // 换人 / 换商品：参考资产作为参考图；此时**不用原片首帧**（首帧里还是被换掉的那个）
+    const referenceUrls: string[] = []
+    for (const assetId of clip.referenceAssetIds ?? []) {
+      const url = ctx.resolveAssetImageUrl
+        ? await ctx.resolveAssetImageUrl(assetId).catch(() => undefined)
+        : undefined
+      if (url) referenceUrls.push(url)
+      else notes.push(`${clip.key} 的参考资产 ${assetId} 读不到，已忽略`) // cjk-ok
+    }
     let firstFrameImageUrl: string | undefined
-    if (clip.firstFrameRelativePath && ctx.resolveProjectMediaUrl) {
+    if (
+      referenceUrls.length === 0 &&
+      firstFrameAllowed &&
+      clip.firstFrameRelativePath &&
+      ctx.resolveProjectMediaUrl
+    ) {
       firstFrameImageUrl = await ctx
         .resolveProjectMediaUrl(clip.firstFrameRelativePath)
         .catch(() => undefined)
     }
+    const duration = fixedDuration || pickGenerateDuration(clip.durationSec, caps?.durations)
     say(
       ctx,
-      `生成 ${clip.key}${firstFrameImageUrl ? '（图生视频）' : '（文生视频）'}`, // cjk-ok
-      `Generating ${clip.key}${firstFrameImageUrl ? ' (image-to-video)' : ' (text-to-video)'}`
+      `生成 ${clip.key}${referenceUrls.length ? '（参考图生视频）' : firstFrameImageUrl ? '（图生视频）' : '（文生视频）'} · ${duration}s`, // cjk-ok
+      `Generating ${clip.key}${referenceUrls.length ? ' (reference-to-video)' : firstFrameImageUrl ? ' (image-to-video)' : ' (text-to-video)'} · ${duration}s`
     )
     try {
-      const res = await ctx.generateVideo({
-        prompt: clip.prompt,
-        model: String(ctx.node.params?.generateModel || '').trim() || undefined,
-        providerInstanceId:
-          String(ctx.node.params?.generateProviderInstanceId || '').trim() || undefined,
-        duration: duration ?? clip.durationSec,
-        ...(resolution ? { resolution } : {}),
-        ...(aspectRatio ? { aspectRatio } : {}),
+      const res = await ctx.generateVideo!({
+        prompt: withInstruction(clip.prompt, instruction, plan.lang),
+        model,
+        providerInstanceId,
+        duration,
+        ...(clamped.resolution ? { resolution: clamped.resolution } : {}),
+        ...(clamped.aspectRatio ? { aspectRatio: clamped.aspectRatio } : {}),
+        ...(typeof clamped.seed === 'number' ? { seed: clamped.seed } : {}),
         generateAudio: false,
         ...(firstFrameImageUrl ? { firstFrameImageUrl } : {}),
+        ...(referenceUrls.length
+          ? {
+              inputReferences: referenceUrls.map((url) => ({ kind: 'image_url' as const, url }))
+            }
+          : {}),
         name: `rebuild-${clip.key}`,
         graphBinding: { nodeId: ctx.node.id }
       })
-      generated.push({ key: clip.key, relativePath: res.relativePath })
+      generated.set(clip.key, res.relativePath)
     } catch (e) {
       const reason = errorText(e)
       failures.push({ key: clip.key, reason })
-      say(ctx, `${clip.key} 生成失败，已跳过：${reason}`, `${clip.key} failed: ${reason}`, 'warn') // cjk-ok
+      say(ctx, `${clip.key} 生成失败：${reason}`, `${clip.key} failed: ${reason}`, 'warn') // cjk-ok
     }
   }
 
-  if (generated.length === 0) {
+  // 生成失败的镜头：有原片入出点就退回原片段（成片不缺镜），否则只能丢掉
+  const segments: import('../../semanticTimeline').SemanticRebuildSegment[] = []
+  for (const seg of planned.segments) {
+    if (seg.kind === 'generate') {
+      const rel = generated.get(seg.key)
+      if (rel) {
+        segments.push({ ...seg, relativePath: rel })
+        continue
+      }
+      if (seg.sourceStartSec != null && seg.sourceEndSec != null) {
+        segments.push({ ...seg, kind: 'source' })
+        notes.push(`${seg.key} 生成失败，已用原片段代替`) // cjk-ok
+      }
+      continue
+    }
+    segments.push(seg)
+  }
+  if (segments.length === 0) {
     throw new Error(
       isEn(ctx)
         ? `all clip generations failed (first: ${failures[0]?.reason ?? 'unknown'})`
@@ -867,40 +1145,85 @@ export async function executeSemanticRebuildNode(
     )
   }
 
-  if (!ctx.rebuildSemanticVideo) {
-    say(
-      ctx,
-      '当前环境没有拼接能力，只返回生成的片段', // cjk-ok
-      'No rebuild capability here; returning the generated clips only',
-      'warn'
-    )
-    return outText(JSON.stringify({ mode, generated, failures, rebuild: null, notes }, null, 2))
+  // ── 重新配音：改过的台词逐句 TTS（失败的句子保留原声） ─────────────────────────
+  const dubbed: import('../../semanticTimeline').SemanticRebuildDub[] = []
+  if (dubs.length > 0) {
+    if (!ctx.generateSpeech) {
+      notes.push('当前环境没有语音合成能力，改过的台词只更新字幕') // cjk-ok
+    } else {
+      const clone = p.rebuildDubClone !== false
+      for (const line of dubs) {
+        if (ctx.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+        const voice = line.voice || String(p.dubVoice || '').trim() || undefined
+        try {
+          const res = await ctx.generateSpeech({
+            input: line.text,
+            model: String(p.dubModel || '').trim() || undefined,
+            providerInstanceId: String(p.dubProviderInstanceId || '').trim() || undefined,
+            ...(voice ? { voice } : {}),
+            ...(!voice && clone && line.referenceAudio
+              ? { referenceAudio: line.referenceAudio }
+              : {}),
+            name: `dub-${line.id}`
+          })
+          if (!res.relativePath) throw new Error('no audio file')
+          dubbed.push({
+            id: line.id,
+            relativePath: res.relativePath,
+            sourceStartSec: line.sourceStartSec,
+            sourceEndSec: line.sourceEndSec
+          })
+          say(ctx, `配音 ${line.id}：${line.text}`, `Dubbed ${line.id}: ${line.text}`) // cjk-ok
+        } catch (e) {
+          const reason = errorText(e)
+          notes.push(`${line.id} 配音失败，保留原声：${reason}`) // cjk-ok
+        }
+      }
+    }
   }
 
   const rebuilt = await ctx.rebuildSemanticVideo({
     timelineId: plan.timelineId,
-    clips: generated,
-    keepAudio: ctx.node.params?.rebuildKeepAudio !== false,
+    clips: segments
+      .filter((s) => s.kind === 'generate' && s.relativePath)
+      .map((s) => ({ key: s.key, relativePath: s.relativePath! })),
+    segments,
+    ...(dubbed.length ? { dubs: dubbed } : {}),
+    ...(plan.subtitles ? { subtitles: plan.subtitles } : {}),
+    keepAudio: p.rebuildKeepAudio !== false,
     sourceRelativePath: plan.sourceRelativePath,
-    burnSubtitles: ctx.node.params?.rebuildBurnSubtitles !== false,
+    burnSubtitles: p.rebuildBurnSubtitles !== false,
     ...(plan.settings.width ? { width: plan.settings.width } : {}),
     ...(plan.settings.height ? { height: plan.settings.height } : {}),
     ...(plan.settings.fps ? { fps: plan.settings.fps } : {})
   })
-  for (const note of rebuilt.notes ?? []) say(ctx, note, note, 'warn')
+  // 生成 / 配音阶段新增的说明 + 拼接服务的说明（开头那批已经打过日志）
+  for (const note of [...notes.slice(loggedNotes), ...(rebuilt.notes ?? [])]) {
+    say(ctx, note, note, 'warn')
+  }
 
   if (!rebuilt.ok || !rebuilt.outputRelativePath) {
+    writeRebuildReport(ctx, { ...baseReport, execute: true, failures, error: rebuilt.error })
     throw new Error(rebuilt.error || (isEn(ctx) ? 'rebuild failed' : '重建拼接失败')) // cjk-ok
   }
   say(
     ctx,
-    `重建完成：${rebuilt.outputRelativePath}（${rebuilt.clipCount} 段${rebuilt.keptAudio ? ' · 保留原音轨' : ''}${rebuilt.burnedSubtitles ? ` · 字幕 ${rebuilt.burnedSubtitles} 条` : ''}）`, // cjk-ok
-    `Rebuilt ${rebuilt.outputRelativePath} (${rebuilt.clipCount} clips${rebuilt.keptAudio ? ' + original audio' : ''})`
+    `重建完成：${rebuilt.outputRelativePath}（${rebuilt.clipCount} 段生成${rebuilt.passthroughCount ? ` · ${rebuilt.passthroughCount} 段原片` : ''}${rebuilt.dubCount ? ` · 配音 ${rebuilt.dubCount} 句` : ''}${rebuilt.keptAudio ? ' · 保留原音轨' : ''}${rebuilt.burnedSubtitles ? ` · 字幕 ${rebuilt.burnedSubtitles} 条` : ''}）`, // cjk-ok
+    `Rebuilt ${rebuilt.outputRelativePath} (${rebuilt.clipCount} generated, ${rebuilt.passthroughCount ?? 0} passthrough${rebuilt.keptAudio ? ' + original audio' : ''})`
+  )
+  writeRebuildReport(
+    ctx,
+    {
+      ...baseReport,
+      execute: true,
+      generated: [...generated.keys()],
+      failures,
+      dubbed: dubbed.map((d) => d.id),
+      rebuild: rebuilt
+    },
+    rebuilt.outputRelativePath
   )
   return {
-    ...outText(
-      JSON.stringify({ mode, planned, generated, failures, rebuild: rebuilt, notes }, null, 2)
-    ),
     'out-video': {
       kind: 'video',
       id: `rebuild.${plan.timelineId}`,

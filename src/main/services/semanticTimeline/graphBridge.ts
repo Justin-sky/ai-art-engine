@@ -5,11 +5,13 @@ import { existsSync, mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import {
   findVocabularyInPacks,
+  migrateSemanticTimeline,
   validateSemanticTimeline,
   type SemanticAnalyzeRequest,
   type SemanticAnalyzeResponse,
   type SemanticEvidenceResponse,
   type SemanticPack,
+  type SemanticRebuildRequest,
   type SemanticTimeline,
   type ShotEvidence,
   type TranscribeLikeSegment
@@ -24,12 +26,14 @@ import { IpcChannels } from '@shared/ipc'
 import {
   analyzeSemanticTimeline,
   buildSemanticPreview,
+  loadOcr,
   loadSemanticTimeline,
   loadShotsEvidence,
   loadUtterances,
   saveSemanticTimeline
 } from './SemanticTimelineService'
 import { rebuildVideo } from './rebuildService'
+import { rebuildVideoFromSegments } from './segmentRebuild'
 import { listAllSemanticPacks } from './packLoader'
 
 function errorText(e: unknown): string {
@@ -181,11 +185,100 @@ export function semanticLoadTimelineForGraph(timelineId: string): SemanticTimeli
   }
 }
 
-export function semanticSaveTimelineForGraph(doc: SemanticTimeline): { ok: true } {
+export function semanticSaveTimelineForGraph(input: SemanticTimeline): { ok: true } {
+  const root = projectService.getRoot()
+  // 调用方可能还拿着 v1 文档（旧节点输出 / 手写 JSON）：落盘前统一迁到 v2
+  const doc = migrateSemanticTimeline(input, {
+    shots: loadShotsEvidence(root, input.id),
+    utterances: loadUtterances(root, input.id),
+    ocr: loadOcr(root, input.id)
+  })
   const v = validateSemanticTimeline(doc)
   if (!v.ok) throw new Error(v.issues.map((i) => `${i.path} ${i.message}`).join('; '))
-  saveSemanticTimeline(projectService.getRoot(), doc)
+  saveSemanticTimeline(root, doc)
   return { ok: true }
+}
+
+/**
+ * v2 重建：直通原片段 + 生成片段 + 重新配音（见 `segmentRebuild.ts`）。
+ * 原片路径缺省时按时间线来源解析；人声 / 伴奏来自分析时的分离结果（配音只静音人声）。
+ */
+async function rebuildFromSegmentsForGraph(args: {
+  root: string
+  timelineId: string
+  runId: string
+  input: SemanticRebuildForGraphInput
+  segments: NonNullable<SemanticRebuildForGraphInput['segments']>
+  outputRelativePath: string
+  workDirRelativePath: string
+}): Promise<SemanticRebuildForGraphResult> {
+  const { root, timelineId, runId, input, segments, outputRelativePath, workDirRelativePath } = args
+  const doc = loadSemanticTimeline(root, timelineId)
+  const sourceRelativePath =
+    normalizeRel(input.sourceRelativePath) || (doc ? sourceRelativeForTimeline(doc) : '')
+  const subtitles =
+    input.burnSubtitles === false
+      ? []
+      : (input.subtitles ??
+        loadUtterances(root, timelineId).map((utt) => ({
+          sourceStartSec: utt.range.start,
+          sourceEndSec: utt.range.end,
+          text: utt.text
+        })))
+  const result = await rebuildVideoFromSegments({
+    projectRoot: root,
+    segments,
+    dubs: input.dubs,
+    sourceRelativePath,
+    stems: {
+      vocals: doc?.evidence?.stems?.vocals ?? null,
+      accompaniment: doc?.evidence?.stems?.accompaniment ?? null
+    },
+    keepAudio: input.keepAudio !== false,
+    burnSubtitles: input.burnSubtitles !== false,
+    subtitles,
+    width: input.width,
+    height: input.height,
+    fps: input.fps,
+    outputRelativePath,
+    workDirRelativePath
+  })
+  const manifestRelativePath = `${workDirRelativePath}/manifest.json`
+  mkdirSync(join(root, ...workDirRelativePath.split('/')), { recursive: true })
+  writeFileSync(
+    join(root, ...manifestRelativePath.split('/')),
+    JSON.stringify(
+      {
+        schema: 'aiart.semantic-rebuild@2',
+        timelineId,
+        runId,
+        createdAt: new Date().toISOString(),
+        outputRelativePath: result.ok ? outputRelativePath : undefined,
+        sourceRelativePath,
+        segments,
+        dubs: input.dubs ?? [],
+        keepAudio: result.keptAudio,
+        burnedSubtitles: result.burnedSubtitles,
+        notes: result.notes,
+        error: result.error
+      },
+      null,
+      2
+    ),
+    'utf8'
+  )
+  return {
+    ok: result.ok,
+    ...(result.ok ? { outputRelativePath } : {}),
+    manifestRelativePath,
+    clipCount: result.generatedCount,
+    passthroughCount: result.passthroughCount,
+    dubCount: result.dubCount,
+    burnedSubtitles: result.burnedSubtitles,
+    keptAudio: result.keptAudio,
+    notes: result.notes,
+    ...(result.error ? { error: result.error } : {})
+  }
 }
 
 function sanitizeLabel(label: string | undefined): string {
@@ -197,6 +290,9 @@ function sanitizeLabel(label: string | undefined): string {
 export interface SemanticRebuildForGraphInput {
   timelineId: string
   clips: Array<{ key: string; relativePath: string }>
+  segments?: SemanticRebuildRequest['segments']
+  dubs?: SemanticRebuildRequest['dubs']
+  subtitles?: SemanticRebuildRequest['subtitles']
   /** 输出文件名后缀（多版本/重跑时区分），已由调用方 sanitize */
   label?: string
   keepAudio?: boolean
@@ -212,6 +308,8 @@ export interface SemanticRebuildForGraphResult {
   outputRelativePath?: string
   manifestRelativePath: string
   clipCount: number
+  passthroughCount?: number
+  dubCount?: number
   burnedSubtitles: number
   keptAudio: boolean
   notes: string[]
@@ -233,13 +331,28 @@ export async function semanticRebuildForGraph(
   if (!timelineId) throw new Error('rebuild requires timelineId')
 
   const clips = (input.clips ?? []).filter((clip) => !!clip?.relativePath?.trim())
-  if (clips.length === 0) throw new Error('rebuild requires at least one clip')
+  const segments = input.segments ?? []
+  if (clips.length === 0 && segments.length === 0) {
+    throw new Error('rebuild requires at least one clip')
+  }
 
   const runId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
   const suffix = sanitizeLabel(input.label)
   const fileName = suffix ? `output.${suffix}.mp4` : 'output.mp4'
   const workDirRelativePath = `Semantic/${timelineId}/rebuilds/${runId}`
   const outputRelativePath = `${workDirRelativePath}/${fileName}`
+
+  if (segments.length > 0) {
+    return rebuildFromSegmentsForGraph({
+      root,
+      timelineId,
+      runId,
+      input,
+      segments,
+      outputRelativePath,
+      workDirRelativePath
+    })
+  }
 
   // 字幕：用时间线的转写（与旧成片管线同一口径）
   const subtitles =

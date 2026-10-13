@@ -38,6 +38,7 @@ export type InstructionPresetKind =
   | 'modelAnimation'
   | 'mediaReview'
   | 'mediaRework'
+  | 'semanticCompile'
 
 /** 预设页签（反推等跨行业模板用）；缺省不参与页签 UI */
 export type InstructionPresetTab = 'general' | 'game' | 'film' | 'character' | 'fx'
@@ -2382,7 +2383,30 @@ const WORLD_MODEL_PRESETS: InstructionPreset[] = [
   }
 ]
 
+/** 语义编译的「编译要求」：追加到每镜提示词末尾（开启用模型写提示词时也一并交给模型参考） */
+const SEMANTIC_COMPILE_PRESETS: InstructionPreset[] = [
+  {
+    id: 'keepOriginal',
+    titleKey: 'graph.inspector.generate.presets.semanticCompile.keepOriginal',
+    tab: 'general',
+    body: '保持与原片一致的构图、人物外观、服装与场景，写实摄影质感，自然光，不添加原片没有的元素。'
+  },
+  {
+    id: 'productDetail',
+    titleKey: 'graph.inspector.generate.presets.semanticCompile.productDetail',
+    tab: 'general',
+    body: '商品始终清晰可见并居于画面视觉中心，突出材质纹理与细节，背景简洁不抢戏，干净明亮的商业布光。'
+  },
+  {
+    id: 'cinematic',
+    titleKey: 'graph.inspector.generate.presets.semanticCompile.cinematic',
+    tab: 'film',
+    body: '电影感画面：浅景深、柔和逆光与轮廓光，细腻胶片质感与克制调色，运镜平稳流畅。'
+  }
+]
+
 const PRESET_PACKS: Record<InstructionPresetKind, InstructionPreset[]> = {
+  semanticCompile: SEMANTIC_COMPILE_PRESETS,
   screenplay: SCREENPLAY_PRESETS,
   gameSystem: GAME_SYSTEM_PRESETS,
   image: IMAGE_PRESETS,

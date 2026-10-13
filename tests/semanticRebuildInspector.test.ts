@@ -8,8 +8,8 @@ import { join } from 'node:path'
  * 节点在引擎里能跑，但界面没接线的话用户既看不到成片、也改不了参数（实测踩过：
  * 面板一片空白、双击只弹一句"还没运行"）。这里钉住三段接线：
  * 1. inspector 注册表把 `semantic.rebuild` 指到语义检查器；
- * 2. 检查器里有模式 / 模型 / 上限 / 音轨字幕 / 画面参数，并能写回节点；
- * 3. 双击重建节点优先看**成片**。
+ * 2. 检查器里有模式 / 上限 / 直通 / 配音 / 音轨字幕，并能写回节点；成片在检查器里预览；
+ * 3. 双击重建节点打开**指令面板**（选视频模型与画面参数）。
  */
 const read = (rel: string): string => readFileSync(join(process.cwd(), rel), 'utf8')
 
@@ -24,39 +24,53 @@ describe('语义重建节点的界面接线', () => {
     )
   })
 
-  it('检查器给出模式 / 模型 / 上限 / 音轨字幕 / 画面参数，且写回节点', () => {
+  it('检查器给出模式 / 上限 / 直通开关 / 配音 / 音轨字幕 / 成片预览，且写回节点', () => {
     for (const token of [
       'isRebuild',
       'rebuildMode',
       'rebuildModelOptions',
+      'rebuildModelLabel',
       'rebuildMaxShots',
+      'rebuildRegenerateAll',
       'rebuildKeepAudio',
       'rebuildBurnSubtitles',
-      'rebuildResolution',
-      'rebuildAspectRatio'
+      'rebuildDub',
+      'dubModelKey',
+      'rebuildPreviewUrl',
+      'rebuildLastReport'
     ]) {
       expect(inspector, token).toContain(token)
     }
     // 写回：参数进 patch（不是只改本地 ref）
     expect(inspector).toMatch(/function persistRebuild\(\): void \{[\s\S]{0,700}?patch\(\{/)
     expect(inspector).toContain('rebuildMode: rebuildMode.value')
-    expect(inspector).toContain("generateModel: parsed?.model ?? ''")
+    expect(inspector).toContain('rebuildRegenerateAll: rebuildRegenerateAll.value')
+    // 视频模型由指令面板写：检查器的 persistRebuild 不能再写 generateModel（两处写会互相覆盖）
+    const persistBody =
+      /function persistRebuild\(\): void \{([\s\S]*?)\n\}/.exec(inspector)?.[1] ?? ''
+    expect(persistBody).not.toContain('generateModel')
+    // 成片预览：读视频输出口 / 上次成片参数
+    expect(inspector).toContain("outputs?.['out-video']")
+    expect(inspector).toContain('rebuildLastOutput')
     // 选中节点变化时同步到表单
     expect(inspector).toMatch(
       /const same = current\.id === loadedNodeId\.value[\s\S]{0,200}?loadConfig\(current\)/
     )
     // 注意：要锚定**调用点**（syncRebuildFromNode 的定义也在附近，只写函数名会被定义蒙过去）
-    expect(inspector).toMatch(/syncRebuildFromNode\(\)\n\s*selectedRulePacks\.value/)
+    expect(inspector).toMatch(/syncRebuildFromNode\(\)\n\}/)
     // 视频模型（不是文本模型）
     expect(inspector).toContain("loadGenerateModelOptions('video')")
-    // 提示词在编译节点上改：给一句指路
+    // 内容 / 提示词在分析节点的修改面板里改：给一句指路
     expect(inspector).toContain("t('graph.inspector.semantic.rebuildPromptPointer')")
   })
 
-  it('双击重建节点优先看成片（没有成片才回落）', () => {
+  it('双击重建节点打开指令面板（视频模型 + 画面参数），帧模式由计划决定故隐藏', () => {
     expect(card).toMatch(
-      /props\.node\.typeId === 'semantic\.rebuild'[\s\S]{0,400}?resolveBuiltVideoRelativePath\(props\.runState\?\.outputs\)/
+      /if \(props\.node\.typeId === 'semantic\.rebuild'\) \{\s*instructionOpen\.value = !instructionOpen\.value\s*return/
     )
+    // 指令面板以视频模态打开（模型下拉是视频模型）
+    expect(card).toMatch(/case 'semantic\.rebuild':\s*return 'video'/)
+    expect(card).toContain("node.typeId === 'semantic.rebuild'\"")
   })
 
   /**
@@ -111,21 +125,27 @@ describe('语义重建节点的界面接线', () => {
   })
 
   /**
-   * 「编译 → 微调 → 重建」要能闭环：编译节点上必须能开"用模型写提示词"、
-   * 也必须能按镜头人工覆盖提示词（否则人工微调只能改代码）。
+   * 编译节点：双击开**指令面板**（文本模型 + 用模型写提示词 + 规则包 + 编译要求），
+   * 不再进 dive 的逐镜提示词页签 —— 逐镜修改只有一个入口（分析节点 dive 的修改面板）。
    */
-  it('编译节点能开模型写提示词、也能人工覆盖（写回节点参数）', () => {
-    expect(inspector).toContain('useLlmForPrompts')
-    expect(inspector).toContain('promptOverridesJson')
-    expect(inspector).toContain("t('graph.inspector.semantic.promptsWithModel')")
-    expect(inspector).toContain("t('graph.inspector.semantic.promptOverridesHint')")
-    // 写回：两个值都要进 patch（不是只改本地 ref）
-    expect(inspector).toMatch(
-      /function persistCompile\(\): void \{[\s\S]{0,300}?semanticLlm: useLlmForPrompts\.value[\s\S]{0,160}?promptOverridesJson: promptOverridesJson\.value/
+  it('编译节点双击开指令面板；设置在面板里写，检查器只显示', () => {
+    expect(card).toMatch(
+      /if \(props\.node\.typeId === 'semantic\.compile'\) \{\s*instructionOpen\.value = !instructionOpen\.value\s*return/
     )
-    // 选中节点变化时回填（否则显示上一个节点的覆盖内容）
-    expect(inspector).toMatch(
-      /useLlmForPrompts\.value = p\.semanticLlm === true[\s\S]{0,200}?typeof p\.promptOverridesJson === 'string'/
-    )
+    expect(card).toMatch(/case 'semantic\.compile':\s*return 'semanticCompile'/)
+    // 面板附加控件：用模型写提示词 + 规则包，写回节点参数
+    expect(card).toContain('<SemanticCompileControls')
+    expect(card).toContain('persistCompileParams({ semanticLlm: $event })')
+    expect(card).toContain('persistCompileParams({ rulePackIds: $event })')
+    // 不再把编译节点当作 dive 的可写目标
+    expect(card).not.toContain('editorNodeId')
+    // 检查器：编译只写原视频路径（其余由指令面板写，避免两处写互相覆盖）
+    const persistBody =
+      /function persistCompile\(\): void \{([\s\S]*?)\n\}/.exec(inspector)?.[1] ?? ''
+    expect(persistBody).toContain('sourceRelativePath')
+    expect(persistBody).not.toContain('semanticLlm')
+    expect(persistBody).not.toContain('promptOverridesJson')
+    expect(inspector).toContain('compileSettingsLabel')
+    expect(inspector).toContain("t('graph.inspector.semantic.compileEditPointer')")
   })
 })

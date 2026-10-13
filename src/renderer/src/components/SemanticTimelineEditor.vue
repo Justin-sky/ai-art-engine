@@ -42,8 +42,6 @@ const props = defineProps<{
   timeline: SemanticTimeline
   /** 秒 → 像素（初始缩放；用户滚轮/滑块调整后以内部状态为准） */
   pxPerSec?: number
-  /** 右栏是否多出「逐镜提示词」页签（内容由 `#prompt-panel` 插槽给） */
-  showPromptTab?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -133,20 +131,6 @@ function resetZoom(): void {
  */
 const selectedId = ref<string | null>(null)
 const selectedClip = ref<string | null>(null)
-
-/**
- * 右栏页签：**证据**（看当前选中对象的出处）与**逐镜提示词**（编译节点的覆盖入口）。
- *
- * 从编译节点双击进来时直接落在提示词页签 —— 用户来这一趟就是为了改提示词，
- * 让他再点一次页签纯属多余。
- */
-const paneTab = ref<'evidence' | 'prompt'>(props.showPromptTab ? 'prompt' : 'evidence')
-watch(
-  () => props.showPromptTab,
-  (can) => {
-    if (can) paneTab.value = 'prompt'
-  }
-)
 
 /** 片段键：实体＝id#出现序号，制作层＝id#轨道，其余＝id */
 function clipKey(id: string, suffix?: string | number): string {
@@ -680,36 +664,7 @@ function beatLabel(type: string): string {
         />
       </div>
 
-      <!--
-        右栏页签：证据 / 逐镜提示词。提示词页签只在**来源节点可写**时出现
-        （编译节点双击进来才带 editorNodeId；纯查看时没有可写目标）。
-      -->
-      <div v-if="showPromptTab" class="stl-tabs" role="tablist">
-        <button
-          type="button"
-          class="stl-tab"
-          :class="{ active: paneTab === 'evidence' }"
-          role="tab"
-          :aria-selected="paneTab === 'evidence'"
-          @click="paneTab = 'evidence'"
-        >
-          {{ t('graph.semanticTimeline.evidence') }}
-        </button>
-        <button
-          type="button"
-          class="stl-tab"
-          :class="{ active: paneTab === 'prompt' }"
-          role="tab"
-          :aria-selected="paneTab === 'prompt'"
-          @click="paneTab = 'prompt'"
-        >
-          {{ t('graph.semanticPrompt.tab') }}
-        </button>
-      </div>
-
-      <slot v-if="showPromptTab && paneTab === 'prompt'" name="prompt-panel" />
-
-      <template v-else>
+      <template>
         <h4>{{ t('graph.semanticTimeline.evidence') }}</h4>
         <p v-if="!selectedEvidence" class="muted">
           {{ t('graph.semanticTimeline.selectHint') }}
@@ -1072,28 +1027,6 @@ function beatLabel(type: string): string {
 .stl-splitter.dragging {
   /* 拖动中别让文本被选中 */
   user-select: none;
-}
-/* 右栏页签：证据 / 编辑（编辑只在语义编辑类节点打开时出现） */
-.stl-tabs {
-  display: flex;
-  gap: 4px;
-  padding: 6px 8px 0;
-  border-bottom: 1px solid var(--border);
-}
-.stl-tab {
-  padding: 3px 10px;
-  border: 1px solid transparent;
-  border-bottom: none;
-  border-radius: 6px 6px 0 0;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 12px;
-  cursor: pointer;
-}
-.stl-tab.active {
-  border-color: var(--border);
-  background: var(--bg-panel);
-  color: var(--text);
 }
 .stl-inspector {
   /* 右侧栏（视频 + 证据）。两栏布局：左轨道 flex:1、右栏按比例固定 ——

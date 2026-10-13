@@ -14,14 +14,6 @@ import {
 const ASSET_SIZE = { w: 168, h: 128 }
 const ASSET_LIMITS = { minW: 120, minH: 72, maxW: 480, maxH: 400 }
 
-const textOut = {
-  id: 'out',
-  direction: 'out' as const,
-  dataType: GraphPortType.text,
-  multiple: false,
-  label: 'Out'
-}
-
 /**
  * 语义时间线文档口。
  *
@@ -138,11 +130,19 @@ export const SEMANTIC_TIMELINE_NODE_TYPES: NodeTypeDefinition[] = [
     sizeLimits: { ...ASSET_LIMITS },
     // 出口是**提示词计划**（结构化口）：接错类型在连线时就被拒，不必等运行期解析
     ports: [timelineIn, promptsOut],
+    /**
+     * 指令面板（双击）：文本模型（用模型写提示词时的三步理解）、用模型写提示词开关、
+     * 规则包、编译要求（追加到每镜提示词）。逐镜内容修改在分析节点 dive 的「修改」面板里做。
+     * `promptOverridesJson` 已无界面入口，旧图里写过的值编译时仍生效（兼容）。
+     */
     defaultParams: () => ({
       timelineJson: '',
       sourceRelativePath: '',
-      rulePackIds: '',
-      promptOverridesJson: ''
+      generateModel: '',
+      generateProviderInstanceId: '',
+      generateInstruction: '',
+      semanticLlm: false,
+      rulePackIds: ''
     }),
     addable: true,
     deletable: true,
@@ -160,17 +160,29 @@ export const SEMANTIC_TIMELINE_NODE_TYPES: NodeTypeDefinition[] = [
     defaultTitle: 'Semantic rebuild',
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
-    ports: [promptsIn, textOut, videoOut],
+    /**
+     * 只有视频出口：成片是唯一产物。清单（生成几镜 / 直通几镜 / 配音几句）写进节点参数
+     * `rebuildLastReport`，由 Inspector 展示；旧图里连在文本口 `out` 上的边在加载时迁到 `out-video`。
+     */
+    ports: [promptsIn, videoOut],
     defaultParams: () => ({
       rebuildMode: 'shots',
+      /** 指令面板：视频模型 + 画面参数 + 整片补充指令（追加到每镜提示词） */
       generateModel: '',
       generateProviderInstanceId: '',
+      generateInstruction: '',
+      generateResolution: '',
+      generateAspectRatio: '',
       rebuildDurationSec: 0,
-      rebuildResolution: '',
-      rebuildAspectRatio: '',
       rebuildMaxShots: 12,
+      rebuildRegenerateAll: false,
       rebuildKeepAudio: true,
       rebuildBurnSubtitles: true,
+      rebuildDub: true,
+      rebuildDubClone: true,
+      dubModel: '',
+      dubProviderInstanceId: '',
+      dubVoice: '',
       semanticExecute: true
     }),
     addable: true,
