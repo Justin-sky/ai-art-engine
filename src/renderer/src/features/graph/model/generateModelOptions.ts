@@ -5,6 +5,7 @@ import type {
   ModelProviderKind
 } from '@shared/modelProvider'
 import { ELEVEN_SOUND_MODEL } from '@shared/modelProviders/elevenlabs/voice'
+import { customProviderSupportsModality } from '@shared/modelProviders/custom/modelCapabilities'
 import {
   allowsEmptyApiKey,
   isDecisionProviderKind,
@@ -148,11 +149,14 @@ export function buildModelOptions(
     if (isLocalOpenAiProvider(provider) && !isVllmProvider(provider) && modality !== 'text') {
       continue
     }
-    // 声音（audio）一家一家认：火山方舟 voice_design / MiniMax 音色设计 /
-    // ComfyUI 音频工作流，以及走 OpenAI 兼容 `POST /audio/speech` 的 OpenAI 与 OpenRouter
-    // （聚合器）。**不要**退回成「只认某几家」的白名单：新增 TTS 提供商时这里必须同步，
-    // 否则设置里勾了模型、声音节点的下拉依然是空的。
-    if (modality === 'audio' && !supportsAudioModality(provider.providerKind)) {
+    // 声音（audio）一家一家认：火山方舟 / MiniMax / ComfyUI，以及 POST /audio/speech
+    // 的 OpenAI、OpenRouter。自定义提供商的 OpenAI 兼容 / Gemini 走同一条语音协议，
+    // kind 仍是 custom，所以按端点类型放行，而不是再认一家网关。
+    if (
+      modality === 'audio' &&
+      !supportsAudioModality(provider.providerKind) &&
+      !customProviderSupportsModality(provider, 'audio')
+    ) {
       continue
     }
     // 音乐（music）同理，走同一份事实来源：OpenAI 有 TTS 但**没有**音乐端点，
@@ -252,6 +256,10 @@ export function buildModelOptions(
     if (modality === 'decisions' && !isDecisionProviderKind(provider.providerKind)) {
       continue
     }
+    // 自定义提供商：OpenAI 兼容 / Gemini 是文本、图片、语音；Anthropic 只有文本。没有视频。
+    if (provider.providerKind === 'custom' && !customProviderSupportsModality(provider, modality)) {
+      continue
+    }
     const sel = modalityConfig(provider, modality)
     const models =
       sel.selectedModelIds.length > 0
@@ -336,7 +344,9 @@ export function resolveEmptyModelOptionsReason(
   providers: ModelProviderInstance[],
   modality: ModelModality
 ): EmptyModelOptionsReason {
-  const supports = (kind: ModelProviderKind): boolean => {
+  const supports = (provider: ModelProviderInstance): boolean => {
+    const kind = provider.providerKind
+    if (kind === 'custom') return customProviderSupportsModality(provider, modality)
     // 决策协议供应商（OpenRouter / TypeSafe）：支持 decisions，且各自另有能力
     if (isDecisionProviderKind(kind)) return modality === 'decisions' || kind === 'openrouter'
     if (modality === 'decisions') return false
@@ -360,12 +370,11 @@ export function resolveEmptyModelOptionsReason(
       return modality !== 'model3d'
     }
     if (kind === 'kling') return modality === 'image' || modality === 'video'
-    if (kind === 'custom') return modality === 'text' || modality === 'image'
     // 其余（openai / deepseek / moonshot / anthropic / zhipu / google / xai / modelscope …）：文本 + 部分图片
     return modality === 'text' || modality === 'image'
   }
 
-  const candidates = providers.filter((p) => supports(p.providerKind))
+  const candidates = providers.filter((provider) => supports(provider))
   if (!candidates.length) return 'noProvider'
   if (candidates.every((p) => !p.enabled)) return 'providerDisabled'
   if (candidates.some((p) => !p.apiKey.trim() && !allowsEmptyApiKey(p))) return 'missingApiKey'

@@ -481,11 +481,17 @@ export function extractChatCompletionToolCalls(data: ChatCompletionResponse): Ar
 export async function generateOpenAiCompatibleSpeech(
   provider: ModelProviderInstance,
   modelId: string,
-  input: GenerateSpeechInput
+  input: GenerateSpeechInput,
+  options?: { requireVoice?: boolean }
 ): Promise<GenerateSpeechResult> {
   const format = input.responseFormat ?? 'mp3'
-  const voice = resolveOpenAiTtsVoice(modelId, input.voice)
-  if (!voice && !isKnownVoicelessTtsModel(modelId)) {
+  // KodikRouter 的 /audio/speech 在网关层就把 voice 当必填，省略会 400。
+  // 这和 OpenRouter 上 seed-audio「靠提示词、必须省略 voice」是两份契约，
+  // 所以这里照发用户填的音色 ID，没填就报错，不再走「已知无音色则省略」。
+  const voice = options?.requireVoice
+    ? input.voice?.trim() || undefined
+    : resolveOpenAiTtsVoice(modelId, input.voice)
+  if (!voice && (options?.requireVoice || !isKnownVoicelessTtsModel(modelId))) {
     // 不能省略 voice 再碰运气。OpenRouter 只在提供商自己声明了默认音色时才允许省略，
     // 否则回 `Required field is not filled in (body.voice)`。也不要猜 alloy：
     // 第三方 speaker 表不认这个名字（实测 `speaker alloy not found`）。

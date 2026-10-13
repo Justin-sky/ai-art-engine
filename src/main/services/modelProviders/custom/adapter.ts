@@ -15,20 +15,25 @@ import type {
 } from '@shared/modelProvider'
 import { resolveCustomApiStyle } from '@shared/modelProvider'
 import { isCustomTextModelId } from '@shared/modelProviders/custom/modelCapabilities'
+import { isKodikRouterBaseUrl } from '@shared/modelProviders/kodikrouter'
 import type { ModelProviderAdapter, VideoPollResult } from '../types'
 import { PROVIDER_ERRORS } from '../catalog'
 import { fail, defErr, defErrSimple } from '@shared/errors/appError'
 import { createProviderHttpClient, formatAuthError, isAuthFailure, readHttpError } from '../http'
-import { generateOpenAiCompatibleImage, generateOpenAiCompatibleText } from '../openaiCompat'
+import {
+  generateOpenAiCompatibleImage,
+  generateOpenAiCompatibleSpeech,
+  generateOpenAiCompatibleText
+} from '../openaiCompat'
 import { assertAnthropicAuth, generateAnthropicText, listAnthropicModels } from './anthropic'
 
 // ── 自定义提供商适配器 ──────────────────────────────────────────────
 // 一个 kind（custom）承载多种端点类型，由实例级 apiStyle 决定走哪套协议：
-//   - openai   ：OpenAI 兼容（/chat/completions + /models），覆盖中转站 / one-api / vLLM 等
-//   - gemini   ：Gemini 兼容（Google 官方 OpenAI 兼容层与多数 Gemini 网关），同 OpenAI 兼容格式
-//   - anthropic：Anthropic Messages API（/v1/messages + /v1/models）
-// 文本模态全部端点类型可用；图片生成仅 OpenAI 兼容 / Gemini 端点支持（/images/generations），
-// Anthropic 端点不支持图片；视频 / 声音 / 3D 明确提示不支持。
+//   - openai   ：OpenAI 兼容。文本 /chat/completions，图片 /images/generations，
+//                语音 /audio/speech。与官方 OpenAI 提供商同一组能力，不含视频。
+//   - gemini   ：Gemini 的 OpenAI 兼容层，请求形状与 openai 相同
+//   - anthropic：Anthropic Messages API（/v1/messages），仅文本
+// 视频 / 3D 明确不支持。KodikRouter 只在语音上多一条：网关强制 body.voice。
 
 const E_CUSTOM_MISSING_BASE_URL = defErrSimple(
   'provider.custom.missing-base-url',
@@ -139,9 +144,9 @@ export const customAdapter: ModelProviderAdapter = {
   },
 
   async fetchCatalog(provider, modality) {
-    // 图片模态不自动识别模型（/models 无法区分图片能力），由用户手填图片模型 id；
-    // 图片模型 id 只在「图片」页签出现，不会混进文本页签（文本侧按下表剔除）。
-    if (modality === 'image') return []
+    // 图片、语音都不从 GET /models 自动识别：官方 OpenAI 的这个接口只给 id，
+    // 不标明是出图还是朗读。图片与语音模型 id 由用户在对应页签手填。
+    if (modality === 'image' || modality === 'audio') return []
     if (modality !== 'text') return []
     const style = resolveCustomApiStyle(provider)
     const { rows, catalogCount } =
@@ -194,11 +199,19 @@ export const customAdapter: ModelProviderAdapter = {
   },
 
   generateSpeech(
-    _provider: ModelProviderInstance,
-    _modelId: string,
-    _input: GenerateSpeechInput
+    provider: ModelProviderInstance,
+    modelId: string,
+    input: GenerateSpeechInput
   ): Promise<GenerateSpeechResult> {
-    return notSupported('audio')
+    if (resolveCustomApiStyle(provider) === 'anthropic') return notSupported('audio')
+    requireBaseUrl(provider)
+    if (!provider.apiKey.trim()) throw fail(PROVIDER_ERRORS.missingApiKey)
+    // 与 OpenAI 提供商同一条 POST /audio/speech。
+    // Kodik 的网关把 voice 当必填；OpenRouter 上 seed-audio 却要省略该字段。
+    // 只在这条地址上改为「有就照发，没有就报错」，其它网关保持原行为。
+    return generateOpenAiCompatibleSpeech(provider, modelId, input, {
+      requireVoice: isKodikRouterBaseUrl(provider.baseUrl)
+    })
   },
 
   submitModel3d(

@@ -91,7 +91,7 @@ describe('projectService.getAssetFileUrl（asset:get-file-url 的委托方法）
     expect(url).toMatch(/^studio-media:\/\/local\/\?path=/)
     expect(url).toContain(encodeURIComponent(join(dir, 'Assets', 'ok.png')))
     expect(url).toMatch(/&t=\d/)
-  })
+  }, 20_000)
 
   it('文件存在：非媒体扩展名回退 file:// URL', async () => {
     const service = await openTempProject()

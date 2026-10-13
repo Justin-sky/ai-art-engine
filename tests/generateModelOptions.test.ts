@@ -438,3 +438,55 @@ describe('resolveEmptyModelOptionsReason', () => {
     expect(resolveEmptyModelOptionsReason(providers, 'decisions')).toBe('noSelection')
   })
 })
+
+describe('自定义提供商的 OpenAI 兼容能力', () => {
+  function customOpenAi(modalities = createEmptyModalityMap()) {
+    modalities.audio.selectedModelIds = ['bytedance-seed/seed-audio-1-0']
+    modalities.video.selectedModelIds = ['bytedance/seedance-2.5']
+    modalities.text.selectedModelIds = ['openai/gpt-4o']
+    return baseProvider({
+      id: 'kr',
+      providerKind: 'custom',
+      apiStyle: 'openai',
+      baseUrl: 'https://api.kodikrouter.ru/v1',
+      modalities
+    })
+  }
+
+  it('OpenAI 兼容有语音，没有视频；换不换 Kodik 地址都一样', () => {
+    const providers = [customOpenAi()]
+    expect(buildModelOptions(providers, 'audio').map((o) => o.model)).toEqual([
+      'bytedance-seed/seed-audio-1-0'
+    ])
+    expect(buildModelOptions(providers, 'video')).toEqual([])
+    expect(buildModelOptions(providers, 'text').map((o) => o.model)).toEqual(['openai/gpt-4o'])
+    expect(resolveEmptyModelOptionsReason(providers, 'video')).toBe('noProvider')
+
+    const otherGateway = [
+      baseProvider({
+        id: 'gw',
+        providerKind: 'custom',
+        apiStyle: 'openai',
+        baseUrl: 'https://gateway.example/v1',
+        modalities: customOpenAi().modalities
+      })
+    ]
+    expect(buildModelOptions(otherGateway, 'audio').map((o) => o.model)).toEqual([
+      'bytedance-seed/seed-audio-1-0'
+    ])
+    expect(buildModelOptions(otherGateway, 'video')).toEqual([])
+  })
+
+  it('Anthropic 端点没有语音', () => {
+    const providers = [
+      baseProvider({
+        id: 'an',
+        providerKind: 'custom',
+        apiStyle: 'anthropic',
+        modalities: customOpenAi().modalities
+      })
+    ]
+    expect(buildModelOptions(providers, 'audio')).toEqual([])
+    expect(resolveEmptyModelOptionsReason(providers, 'audio')).toBe('noProvider')
+  })
+})

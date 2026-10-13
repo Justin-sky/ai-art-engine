@@ -101,8 +101,17 @@ describe('设置页模态页签', () => {
     expect(settingsModalitiesFor(provider('typesafe'))).toEqual(['decisions'])
     // 本地 OpenAI 兼容：仅文本
     expect(settingsModalitiesFor(provider('ollama'))).toEqual(['text'])
-    // 自定义：OpenAI 兼容给文本 + 图片
-    expect(settingsModalitiesFor(provider('custom'))).toEqual(['text', 'image'])
+    // 自定义：OpenAI 兼容 / Gemini 为文本 + 图片 + 语音（与官方 OpenAI 相同，无视频）
+    expect(settingsModalitiesFor(provider('custom'))).toEqual(['text', 'image', 'audio'])
+    expect(
+      settingsModalitiesFor(
+        provider('custom', {
+          apiStyle: 'openai',
+          baseUrl: 'https://api.kodikrouter.ru/v1'
+        })
+      )
+    ).toEqual(['text', 'image', 'audio'])
+    expect(settingsModalitiesFor(provider('custom', { apiStyle: 'anthropic' }))).toEqual(['text'])
   })
 
   it('每个页签都在 MODEL_MODALITIES 里（不产生未知模态）', () => {

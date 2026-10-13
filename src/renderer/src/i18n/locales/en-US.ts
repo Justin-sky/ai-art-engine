@@ -464,9 +464,9 @@ export default {
         gemini: 'Gemini'
       },
       customApiStyleHint:
-        "Endpoint type: {style}. OpenAI compatible covers most relay services / one-api / vLLM; Gemini uses Google's official OpenAI-compatible layer and most Gemini gateways; Anthropic uses the Messages API (x-api-key auth).",
+        'Endpoint type: {style}. OpenAI compatible covers most relays / one-api / vLLM and matches the official OpenAI provider: text, image, and speech (POST /audio/speech), not video. Gemini uses Google’s OpenAI-compatible layer. Anthropic uses the Messages API and is text only. For KodikRouter use https://api.kodikrouter.ru/v1; speech requests must include voice.',
       customBaseUrlPlaceholder:
-        'e.g. https://api.openai.com/v1, https://generativelanguage.googleapis.com/v1beta/openai, or https://api.anthropic.com',
+        'e.g. https://api.openai.com/v1, https://api.kodikrouter.ru/v1, https://generativelanguage.googleapis.com/v1beta/openai, or https://api.anthropic.com',
       nativeBaseUrl: 'ComfyUI native URL',
       nativeBaseUrlPlaceholder: 'http://127.0.0.1:8188',
       nativeBaseUrlHint:
@@ -675,9 +675,11 @@ export default {
           'vLLM-Omni video generation (Wan T2V / I2V diffusion models): async jobs via /v1/videos, download the result when completed; supports first-frame image-to-video and reference video/audio. Ollama / LM Studio do not support video.'
       },
       customModalityHint: {
-        text: 'Text chat goes through /chat/completions (OpenAI compatible / Gemini) or /v1/messages (Anthropic); multimodal understanding works by passing images into a text node. OpenAI-compatible / Gemini endpoints also support image generation — see the Image tab.',
+        text: 'Text chat goes through /chat/completions (OpenAI compatible / Gemini) or /v1/messages (Anthropic). Multimodal understanding works by passing images into a text node. OpenAI-compatible and Gemini endpoints also support image and speech — see those tabs.',
         image:
-          'Image generation uses the OpenAI-compatible /images/generations endpoint (e.g. gpt-image-1 / dall-e-3 / FLUX); reference images go through /images/edits. The catalog does not auto-detect image models — add the image model id below and select it.'
+          'Image generation uses the OpenAI-compatible /images/generations endpoint (e.g. gpt-image-1 / dall-e-3 / FLUX); reference images go through /images/edits. The catalog does not auto-detect image models — add the image model id below and select it.',
+        audio:
+          'Speech uses OpenAI POST /audio/speech (model + input + voice). GET /models does not list voices, so type the model id below and set the voice on the voice node. KodikRouter requires voice; leaving it empty returns 400.'
       }
     },
     yoloModels: {

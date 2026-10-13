@@ -1,3 +1,27 @@
+import type { ModelModality, ModelProviderInstance } from '../../modelProvider'
+import { resolveCustomApiStyle } from '../../modelProvider'
+
+/**
+ * 自定义提供商在设置页和节点下拉里开放哪些模态。
+ *
+ * OpenAI 兼容 / Gemini 与官方 OpenAI 提供商对齐：文本、图片、语音
+ * （`POST /audio/speech`）。视频不对齐：本应用的 OpenAI 适配器也没有接入 Sora。
+ * Anthropic Messages API 只有文本。
+ */
+export function customProviderModalities(
+  provider: Pick<ModelProviderInstance, 'apiStyle'>
+): ModelModality[] {
+  if (resolveCustomApiStyle(provider as ModelProviderInstance) === 'anthropic') return ['text']
+  return ['text', 'image', 'audio']
+}
+
+export function customProviderSupportsModality(
+  provider: Pick<ModelProviderInstance, 'apiStyle'>,
+  modality: ModelModality
+): boolean {
+  return customProviderModalities(provider).includes(modality)
+}
+
 /**
  * 自定义提供商（自建 / 中转网关）的模型模态判定。
  *

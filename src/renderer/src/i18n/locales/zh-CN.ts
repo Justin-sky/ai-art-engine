@@ -458,9 +458,9 @@ export default {
         gemini: 'Gemini'
       },
       customApiStyleHint:
-        '当前端点类型：{style}。OpenAI 兼容覆盖多数中转站 / one-api / vLLM 等；Gemini 走 Google 官方 OpenAI 兼容层与多数 Gemini 网关；Anthropic 使用 Messages API（x-api-key 认证）。',
+        '当前端点类型：{style}。OpenAI 兼容覆盖多数中转站 / one-api / vLLM 等，能力与官方 OpenAI 相同：文本、图片、语音（POST /audio/speech），不含视频。Gemini 走 Google 官方 OpenAI 兼容层；Anthropic 使用 Messages API，仅文本。KodikRouter 填 https://api.kodikrouter.ru/v1，语音请求必须带 voice。',
       customBaseUrlPlaceholder:
-        '例如 https://api.openai.com/v1、https://generativelanguage.googleapis.com/v1beta/openai 或 https://api.anthropic.com',
+        '例如 https://api.openai.com/v1、https://api.kodikrouter.ru/v1、https://generativelanguage.googleapis.com/v1beta/openai 或 https://api.anthropic.com',
       nativeBaseUrl: 'ComfyUI 本体地址',
       nativeBaseUrlPlaceholder: 'http://127.0.0.1:8188',
       nativeBaseUrlHint:
@@ -665,9 +665,11 @@ export default {
           'vLLM-Omni 视频生成（Wan T2V / I2V 等扩散模型）：异步任务走 /v1/videos，完成后下载成片；支持首帧图生视频与参考视频/音频；Ollama / LM Studio 不支持视频。'
       },
       customModalityHint: {
-        text: '文本对话走 /chat/completions（OpenAI 兼容 / Gemini）或 /v1/messages（Anthropic）；多模态理解可在文本节点直接传图。OpenAI 兼容 / Gemini 端点还支持图片生成，见「图片」页签。',
+        text: '文本对话走 /chat/completions（OpenAI 兼容 / Gemini）或 /v1/messages（Anthropic）；多模态理解可在文本节点直接传图。OpenAI 兼容 / Gemini 还支持图片与语音，见对应页签。',
         image:
-          '图片生成走 OpenAI 兼容 /images/generations 接口（如 gpt-image-1 / dall-e-3 / FLUX 等），参考图走 /images/edits。目录不自动识别图片模型，请在下方手动填写图片模型 id 并勾选。'
+          '图片生成走 OpenAI 兼容 /images/generations（如 gpt-image-1 / dall-e-3 / FLUX），参考图走 /images/edits。目录不自动识别图片模型，请在下方手动填写图片模型 id 并勾选。',
+        audio:
+          '语音合成走 OpenAI 的 POST /audio/speech（model + input + voice）。GET /models 不提供音色列表，请在下方手填模型 id，音色在声音节点里填。KodikRouter 把 voice 当必填，留空会返回 400。'
       }
     },
     yoloModels: {

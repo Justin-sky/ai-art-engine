@@ -6,12 +6,12 @@ import {
   isModel3dProviderKind,
   isVllmProvider,
   isWorldProviderKind,
-  resolveCustomApiStyle,
   supportsAudioModality,
   supportsMusicModality,
   supportsSoundEffectModality
 } from '../modelProvider'
 import type { ModelModality, ModelProviderInstance } from '../modelProvider'
+import { customProviderModalities } from './custom/modelCapabilities'
 
 /**
  * 各提供商在设置页显示哪些模态页签（纯函数：从组件里提出来才能单测）。
@@ -44,11 +44,7 @@ function withCapabilityModalities(
 
 /** 各家的基准页签（不含按能力来源补齐的声音 / 音乐） */
 function settingsModalitiesBase(provider: ModelProviderInstance): ModelModality[] {
-  if (isCustomProvider(provider)) {
-    // Anthropic Messages API 无统一图片生成协议，仅开放文本；
-    // OpenAI 兼容 / Gemini 走 /images/generations
-    return resolveCustomApiStyle(provider) === 'anthropic' ? ['text'] : ['text', 'image']
-  }
+  if (isCustomProvider(provider)) return customProviderModalities(provider)
   if (provider.providerKind === 'moonshot') return ['text']
   if (provider.providerKind === 'google') return ['text', 'image', 'video']
   if (provider.providerKind === 'xai') return ['text', 'image', 'video']
