@@ -29,10 +29,16 @@ import {
 const range = (start: number, end: number) => ({ start, end, startFrame: 0, endFrame: 0 })
 
 function makePlan(shots = 2): VideoPromptPlan {
+  return makePlanWithShotSeconds(Array.from({ length: shots }, () => 6))
+}
+
+/** 每镜时长可控的计划：短镜头（1–3s）是「模型档位不合法」那条 400 的触发条件 */
+function makePlanWithShotSeconds(shotSeconds: number[]): VideoPromptPlan {
+  const total = shotSeconds.reduce((sum, sec) => sum + sec, 0)
   const timeline = {
     id: 'stl.rebuild.1',
     schema: 'aiart.semantic-timeline@1',
-    source: { assetId: 'asset-1', fps: 30, duration: 12, width: 1080, height: 1920 },
+    source: { assetId: 'asset-1', fps: 30, duration: total, width: 1080, height: 1920 },
     entities: [],
     events: [],
     beats: [],
@@ -41,18 +47,24 @@ function makePlan(shots = 2): VideoPromptPlan {
     updatedAt: '2026-01-01T00:00:00.000Z',
     createdAt: '2026-01-01T00:00:00.000Z'
   } as unknown as SemanticTimeline
+  let cursor = 0
+  const spans = shotSeconds.map((sec) => {
+    const span = { start: cursor, end: cursor + sec }
+    cursor += sec
+    return span
+  })
   return buildPromptPlan({
     timeline,
-    shots: Array.from({ length: shots }, (_, i) => ({
+    shots: spans.map((span, i) => ({
       id: `shot.${i + 1}`,
-      range: range(i * 6, (i + 1) * 6),
+      range: range(span.start, span.end),
       keyframes: i === 0 ? { middle: 'evidence/keyframes/shot1.jpg' } : {},
       confidence: 1
     })),
-    commands: Array.from({ length: shots }, (_, i) => ({
+    commands: spans.map((span) => ({
       kind: 'camera.pushIn',
-      start: i * 6,
-      end: (i + 1) * 6,
+      start: span.start,
+      end: span.end,
       params: {},
       reason: ''
     }))
@@ -75,6 +87,8 @@ function harness(
     failKeys?: string[]
     withRebuild?: boolean
     firstFrameUrl?: string | undefined
+    /** 模拟只认 4..15 档的模型：小于 4s 的提交被**提交前校验**拒绝（不产生费用） */
+    enforceModelDurations?: boolean
   } = {}
 ): Harness {
   const node = createNodeFromType('semantic.rebuild', { x: 0, y: 0 })
@@ -110,9 +124,19 @@ function harness(
     resolveProjectMediaUrl: async () =>
       options.firstFrameUrl === undefined ? 'file:///kf.jpg' : options.firstFrameUrl,
     generateVideo: vi.fn(
-      async (input: { prompt: string; name?: string; firstFrameImageUrl?: string }) => {
+      async (input: {
+        prompt: string
+        name?: string
+        firstFrameImageUrl?: string
+        duration?: number
+      }) => {
         const key = String(input.name ?? '').replace(/^rebuild-/, '')
         if (options.failKeys?.includes(key)) throw new Error(`boom ${key}`)
+        if (options.enforceModelDurations && Number(input.duration ?? 0) < 4) {
+          throw new Error(
+            `提交视频生成失败: HTTP 400: Duration ${input.duration}s is not supported for this model. Supported durations: 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15s`
+          )
+        }
         generated.push({ ...input, key })
         return { assetId: `asset-${key}`, relativePath: `Build/${key}.mp4`, model: 'fake' }
       }
@@ -191,6 +215,26 @@ describe('语义重建节点', () => {
     expect(h.generated).toHaveLength(1)
     expect(h.logs.some((l) => l.text.includes('已跳过 2 镜') && l.level === 'warn')).toBe(true)
     expect(payloadOf(h).skippedByLimit).toBe(2)
+  })
+
+  /**
+   * 实测踩到：9 镜里 6 镜因为 1s / 2s 不在模型的 4..15 档位内被 400 打回，
+   * 整趟跑完只剩 2 镜。上游的拒绝里写清了合法档位，就按它重试一次（提交前校验，不产生费用）。
+   */
+  it('时长不被模型接受时，按上游给出的档位重试一次（而不是白丢一镜）', async () => {
+    const h = harness(makePlanWithShotSeconds([2, 6]), { enforceModelDurations: true })
+    await executeSemanticRebuildNode(h.ctx)
+
+    // 2s 的镜头被拒 → 用 4s 重试成功；6s 的镜头本来就在档位内
+    expect(h.generated.map((g) => [g.key, g.duration])).toEqual([
+      ['shot.1', 4],
+      ['shot.2', 6]
+    ])
+    expect(h.logs.some((l) => l.text.includes('模型不接受 2s') && l.text.includes('改用 4s'))).toBe(
+      true
+    )
+    expect(h.rebuilt).toHaveLength(1)
+    expect((h.rebuilt[0]!.clips as unknown[]).length).toBe(2)
   })
 
   it('只有视频输出口，成片也记到节点参数供 Inspector 预览', async () => {

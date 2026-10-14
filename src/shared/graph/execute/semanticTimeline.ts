@@ -6,7 +6,10 @@
  */
 import type { GraphValue, GraphVideoItem, NodeExecuteContext } from './types'
 import { videoPromptsValue } from './videoPromptsValue'
-import { resolveVideoGenerateParamsForApi } from '../videoGenerateParams'
+import {
+  resolveVideoGenerateParamsForApi,
+  supportedDurationsFromError
+} from '../videoGenerateParams'
 import { normalizeImageRedraw } from '../imageRedraw'
 import {
   MASK_OVERLAP_WARN_RATIO,
@@ -68,6 +71,9 @@ import { semanticTimelineValue } from './semanticTimelineValue'
 
 /** 镜头描述一次最多看的关键帧数 */
 const MAX_DESCRIBE_SHOTS = 8
+
+type GenerateVideoRequest = Parameters<NonNullable<NodeExecuteContext['generateVideo']>>[0]
+type GenerateVideoResult = Awaited<ReturnType<NonNullable<NodeExecuteContext['generateVideo']>>>
 
 const TRACK_KINDS: ReadonlySet<SemanticTrackKind> = new Set(SEMANTIC_TRACK_KINDS)
 
@@ -925,6 +931,34 @@ function readPromptPlan(ctx: NodeExecuteContext): VideoPromptPlan | null {
   return null
 }
 
+/**
+ * 提交一次视频生成；上游以「时长档位」为由拒绝时，按它自己给出的档位**重试一次**。
+ *
+ * 这类拒绝发生在**提交前校验**（HTTP 400，不产生费用），而能力表未必覆盖该模型
+ * （自建网关 / 刚上线的新模型）—— 不重试就是白丢一镜：实测 9 镜里 6 镜因为 1s / 2s
+ * 不在模型的 4..15 档位内被拒，用户等了 4 分半只拿到 2 镜。
+ */
+async function generateClipVideo(
+  ctx: NodeExecuteContext,
+  request: Omit<GenerateVideoRequest, 'duration'>,
+  duration: number
+): Promise<GenerateVideoResult> {
+  try {
+    return await ctx.generateVideo!({ ...request, duration })
+  } catch (e) {
+    const supported = supportedDurationsFromError(errorText(e))
+    const retry = supported.length ? pickGenerateDuration(duration, supported) : undefined
+    if (retry == null || retry === duration) throw e
+    say(
+      ctx,
+      `${request.name ?? '镜头'}：模型不接受 ${duration}s，改用 ${retry}s 重试一次`, // cjk-ok
+      `${request.name ?? 'clip'}: ${duration}s rejected by the model, retrying with ${retry}s`,
+      'warn'
+    )
+    return await ctx.generateVideo!({ ...request, duration: retry })
+  }
+}
+
 /** 选一个模型支持的生成时长：≥ 镜头时长的最小档；没有更长的档就取最长档；无能力表时向上取整 */
 function pickGenerateDuration(shotSec: number, durations: number[] | undefined): number {
   const want = Math.max(1, Math.ceil(shotSec - 1e-6))
@@ -1366,24 +1400,27 @@ export async function executeSemanticRebuildNode(
       `Generating ${clip.key}${modeEn} · ${duration}s`
     )
     try {
-      const res = await ctx.generateVideo!({
-        prompt,
-        model,
-        providerInstanceId,
-        duration,
-        ...(clamped.resolution ? { resolution: clamped.resolution } : {}),
-        ...(clamped.aspectRatio ? { aspectRatio: clamped.aspectRatio } : {}),
-        ...(typeof clamped.seed === 'number' ? { seed: clamped.seed } : {}),
-        generateAudio: false,
-        ...(firstFrameImageUrl ? { firstFrameImageUrl } : {}),
-        ...(referenceUrls.length
-          ? {
-              inputReferences: referenceUrls.map((url) => ({ kind: 'image_url' as const, url }))
-            }
-          : {}),
-        name: `rebuild-${clip.key}`,
-        graphBinding: { nodeId: ctx.node.id }
-      })
+      const res = await generateClipVideo(
+        ctx,
+        {
+          prompt,
+          model,
+          providerInstanceId,
+          ...(clamped.resolution ? { resolution: clamped.resolution } : {}),
+          ...(clamped.aspectRatio ? { aspectRatio: clamped.aspectRatio } : {}),
+          ...(typeof clamped.seed === 'number' ? { seed: clamped.seed } : {}),
+          generateAudio: false,
+          ...(firstFrameImageUrl ? { firstFrameImageUrl } : {}),
+          ...(referenceUrls.length
+            ? {
+                inputReferences: referenceUrls.map((url) => ({ kind: 'image_url' as const, url }))
+              }
+            : {}),
+          name: `rebuild-${clip.key}`,
+          graphBinding: { nodeId: ctx.node.id }
+        },
+        duration
+      )
       generated.set(clip.key, res.relativePath)
     } catch (e) {
       const reason = errorText(e)
@@ -1461,7 +1498,23 @@ export async function executeSemanticRebuildNode(
       .map((s) => ({ key: s.key, relativePath: s.relativePath! })),
     segments,
     ...(dubbed.length ? { dubs: dubbed } : {}),
-    ...(plan.subtitles ? { subtitles: plan.subtitles } : {}),
+    /**
+     * 字幕**逐字段拍平**再交出去。
+     *
+     * 计划可能来自**运行态**（`priorNodeStates` 是会话的 `reactive(runStates)`），
+     * 那时 `plan.subtitles` 是 Vue 代理；代理过 contextBridge / IPC 要结构化克隆，
+     * Chromium 直接报 `An object could not be cloned.` —— 整趟跑了 4 分半、
+     * 视频也生成成功了几镜，却在最后拼接这一步全丢（实测踩到）。
+     */
+    ...(plan.subtitles?.length
+      ? {
+          subtitles: plan.subtitles.map((subtitle) => ({
+            sourceStartSec: subtitle.sourceStartSec,
+            sourceEndSec: subtitle.sourceEndSec,
+            text: subtitle.text
+          }))
+        }
+      : {}),
     keepAudio: p.rebuildKeepAudio !== false,
     sourceRelativePath: plan.sourceRelativePath,
     burnSubtitles: p.rebuildBurnSubtitles !== false,

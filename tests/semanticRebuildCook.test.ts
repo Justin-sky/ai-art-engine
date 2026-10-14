@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { reactive } from 'vue'
 import {
   createNodeFromType,
   runGraph,
@@ -201,5 +202,32 @@ describe('语义重建节点 Cook（只跑当前节点）', () => {
     expect(run.rebuilt).toHaveLength(0)
     expect(run.logs.join('\n')).toContain('上游提示词计划是空的')
     expect(run.logs.join('\n')).toContain('没有可拼接的镜头')
+  })
+
+  /**
+   * 实测踩到（7.5.1 之后仍未修）：成片前的拼接请求带上了**响应式代理**，
+   * 过 contextBridge / IPC 结构化克隆直接失败 —— 整趟跑了 4 分半、生成成功 2 镜，
+   * 最后一步报 `An object could not be cloned.`，一段成片都拿不到。
+   *
+   * 代理来自运行态：`priorNodeStates` 是会话的 `reactive(runStates)`，取出来的计划是 Proxy，
+   * 而计划里的 `subtitles` 会原样进拼接请求。这里用 `structuredClone` 复现 IPC 的判定。
+   */
+  it('上游计划是响应式代理时，拼接请求仍必须是可结构化克隆的纯数据', async () => {
+    const plan = {
+      ...makePlan(2),
+      subtitles: [{ sourceStartSec: 0, sourceEndSec: 2, text: '口播一句' }]
+    }
+    const livePlan = reactive(plan) as unknown as VideoPromptPlan
+    const run = await cook(graphCompileToRebuild(), {
+      'n-compile': {
+        status: 'done',
+        outputs: { out: { kind: 'videoPrompts', plan: livePlan, text: JSON.stringify(plan) } }
+      }
+    })
+    expect(run.rebuilt).toHaveLength(1)
+    expect(() => structuredClone(run.rebuilt[0])).not.toThrow()
+    expect(run.rebuilt[0]?.subtitles).toEqual([
+      { sourceStartSec: 0, sourceEndSec: 2, text: '口播一句' }
+    ])
   })
 })

@@ -188,6 +188,28 @@ export function hasAnyVideoGenerateCapability(caps: VideoGenerateParamCapabiliti
   )
 }
 
+/**
+ * 从上游报错里解析「支持的时长档位」。
+ *
+ * 上游对不合法时长的拒绝写得很清楚（`Duration 2s is not supported for this model.
+ * Supported durations: 4, 5, …, 15s`），而能力表未必覆盖这个模型（自建网关 / 刚上线的新模型）。
+ * 解析出来就能按上游自己给的档位**重试一次**，而不是白丢一镜
+ * （实测：9 镜里 6 镜就因为这个被 400 打回）。
+ *
+ * 只在「时长不被支持」这一类**提交前校验**错误上生效：这类拒绝不产生费用。
+ */
+export function supportedDurationsFromError(message: string): number[] {
+  const text = String(message ?? '')
+  if (!/not supported for this model/i.test(text)) return []
+  const match = /supported durations?\s*[:：]?\s*([\d,\s]+)/i.exec(text)
+  if (!match?.[1]) return []
+  const values = match[1]
+    .split(',')
+    .map((part) => Number(part.trim()))
+    .filter((value) => Number.isFinite(value) && value > 0)
+  return [...new Set(values)].sort((a, b) => a - b)
+}
+
 export function clampVideoGenerateParams(
   params: VideoGenerateParams,
   caps: VideoGenerateParamCapabilities

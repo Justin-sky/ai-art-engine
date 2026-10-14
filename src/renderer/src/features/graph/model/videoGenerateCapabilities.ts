@@ -16,7 +16,8 @@ import {
   isMiniMaxProvider,
   isVllmProvider,
   isVolcengineArkProvider,
-  isXaiProvider
+  isXaiProvider,
+  type ModelModality
 } from '@shared/modelProvider'
 import { resolveVolcengineArkModelCapabilities } from '@shared/modelProviders/volcengineArk/modelCapabilities'
 import { resolveKlingModelCapabilities } from '@shared/modelProviders/kling/modelCapabilities'
@@ -27,7 +28,12 @@ import { resolveVllmModelCapabilities } from '@shared/modelProviders/vllm/modelC
 import { resolveXaiModelCapabilities } from '@shared/modelProviders/xai/modelCapabilities'
 import { resolveGoogleModelCapabilities } from '@shared/modelProviders/google/modelCapabilities'
 import { resolveMagicRouterModelCapabilities } from '@shared/modelProviders/magicrouter/modelCapabilities'
-import { modelKey, parseModelKey } from './generateModelOptions'
+import {
+  modelKey,
+  parseModelKey,
+  buildModelOptions,
+  pickDefaultModelKey
+} from './generateModelOptions'
 
 export interface VideoGenerateCapabilitiesBundle {
   params: VideoGenerateParamCapabilities
@@ -184,14 +190,46 @@ export async function loadVideoGenerateParamCapabilities(
   return bundle.params
 }
 
+/**
+ * 节点没钉模型时（检查器显示「跟随设置默认」）：从设置里解析该模态的默认模型 key。
+ *
+ * 与下拉里的「默认」同一口径（`pickDefaultModelKey`），保证「默认」在运行期也**真的**被解析成
+ * 一个具体模型 —— 否则能力表为空，调用方只能拿镜头时长当生成时长（1s / 2s），
+ * 而默认模型（如 Seedance 2）的合法档位是 4..15s，整批镜头会被上游 400 打回（实测踩到）。
+ */
+async function resolveFallbackModelKey(
+  modality: ModelModality,
+  pinnedProviderInstanceId: string | undefined
+): Promise<string> {
+  try {
+    const settings = await window.studio.getSettings()
+    const providers = settings.models?.providers ?? []
+    const options = buildModelOptions(providers, modality)
+    const scoped = pinnedProviderInstanceId
+      ? options.filter((o) => o.providerInstanceId === pinnedProviderInstanceId)
+      : options
+    return pickDefaultModelKey(providers, modality, scoped) || scoped[0]?.key || ''
+  } catch {
+    return ''
+  }
+}
+
 export async function resolveVideoGenerateCapabilitiesForRun(input: {
   model?: string
   providerInstanceId?: string
 }): Promise<VideoGenerateCapabilitiesBundle | undefined> {
   const providerInstanceId = input.providerInstanceId?.trim()
   const model = input.model?.trim()
-  if (!providerInstanceId || !model) return undefined
-  return loadVideoGenerateCapabilities(modelKey(providerInstanceId, model))
+  if (providerInstanceId && model) {
+    return loadVideoGenerateCapabilities(modelKey(providerInstanceId, model))
+  }
+  /**
+   * 只有一半（或两样都没有）时**不能直接放弃**：语义重建这类节点会把「默认模型」交给运行期，
+   * 这里必须把默认模型解析出来，否则 durations 为空 —— 那是上面那条 400 的根因。
+   */
+  const fallbackKey = await resolveFallbackModelKey('video', providerInstanceId || undefined)
+  if (!fallbackKey) return undefined
+  return loadVideoGenerateCapabilities(fallbackKey)
 }
 
 export async function resolveVideoGeneratePortLimitsForRun(input: {
