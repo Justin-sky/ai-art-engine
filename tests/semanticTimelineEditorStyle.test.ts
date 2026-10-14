@@ -143,9 +143,10 @@ describe('SemanticTimelineEditor 轨道尺寸与字号', () => {
     // 不再随选中项出现/消失
     expect(source).not.toContain('v-if="selectedEvidence" class="stl-inspector"')
     expect(source).toContain('class="stl-inspector"')
-    // 未选中时有提示文案（不是空白一片）
+    // 未选中时有提示文案（不是空白一片）；选中任何类型都进检查器
     expect(source).toContain("t('graph.semanticTimeline.selectHint')")
-    expect(source).toContain('v-if="!selectedEvidence"')
+    expect(source).toContain('v-if="!resolvedSelection"')
+    expect(source).toMatch(/<SemanticSelectionInspector\s+v-else/)
     const panel = cssBlock('.stl-inspector')
     // 面板高度要撑满（与 dive / 窗口等高）：flex-start 会压成内容高度、边框断掉
     expect(panel).toMatch(/align-self:\s*stretch/)
@@ -186,10 +187,10 @@ describe('SemanticTimelineEditor 轨道尺寸与字号', () => {
    */
   it('证据面板上方是原视频，且选中 clip 会移动播放条', () => {
     const videoIndex = source.indexOf('class="stl-source-video"')
-    const evidenceIndex = source.indexOf("t('graph.semanticTimeline.evidence')")
+    const inspectorIndex = source.indexOf('<SemanticSelectionInspector')
     expect(videoIndex, '缺少原视频节点').toBeGreaterThan(-1)
-    expect(evidenceIndex, '缺少证据标题').toBeGreaterThan(-1)
-    expect(videoIndex, '视频必须在证据标题之前（面板上方）').toBeLessThan(evidenceIndex)
+    expect(inspectorIndex, '缺少检查器').toBeGreaterThan(-1)
+    expect(videoIndex, '视频必须在检查器之前（面板上方）').toBeLessThan(inspectorIndex)
     expect(source).toContain('ref="videoRef"')
     // 地址来源：assetId → 资产相对路径；`path:` 型来源直接用后缀
     expect(source).toContain("assetId.startsWith('path:')")
@@ -233,7 +234,11 @@ describe('SemanticTimelineEditor 轨道尺寸与字号', () => {
    * 只比 id 会「点一个片段整行 / 整条轨道全亮」（用户反馈）。
    */
   it('高亮按片段键（实体带出现序号、制作层带轨道），不是只比 id', () => {
-    expect(source).toContain('const selectedClip = ref<string | null>(null)')
+    // 唯一选中状态（类型 + id + 片段）；高亮键由它派生
+    expect(source).toContain('const selection = ref<SemanticSelection | null>(null)')
+    expect(source).toContain(
+      'const selectedClip = computed(() => selectionClipKey(selection.value))'
+    )
     expect(source).toContain('function clipKey(id: string, suffix?: string | number)')
     // 四类片段都按片段键判断
     expect(source).toContain(':class="{ selected: selectedClip === clipKey(ent.id, i)')
@@ -247,9 +252,11 @@ describe('SemanticTimelineEditor 轨道尺寸与字号', () => {
     expect(source).not.toContain('selected: selectedId === ev.id')
     // 制作层点击要带轨道
     expect(source).toContain('@click="selectIntent(intent, track.id)"')
-    // 选中状态也要写进片段键（否则点完不高亮）
-    expect(source).toContain('selectedClip.value = clipKey(e.id, index ?? 0)')
-    expect(source).toContain('selectedClip.value = clipKey(intent.id, track)')
+    // 选中状态带上片段（否则点完不高亮 / 整行全亮）
+    expect(source).toContain("selection.value = { kind: 'entity', id: e.id, clip: index ?? 0 }")
+    expect(source).toContain(
+      "selection.value = { kind: 'intent', id: intent.id, ...(track ? { clip: track } : {}) }"
+    )
   })
 
   /**
@@ -323,7 +330,14 @@ describe('SemanticTimelineEditor 轨道尺寸与字号', () => {
     expect(source).toMatch(
       /import \{[\s\S]*?entityKindKey[\s\S]*?trackLabelKey[\s\S]*?\} from '\.\.\/features\/graph\/model\/semanticTimelineView'/
     )
-    expect(source).toContain('trackLabel(tech.track)')
+    // 手法的轨道名现在在意图表单里显示（下拉），同样走 trackLabelKey 映射
+    const intentForm = readFileSync(
+      join(process.cwd(), 'src/renderer/src/components/semanticInspector/IntentForm.vue'),
+      'utf8'
+    )
+    expect(intentForm).toContain('trackLabelKey(track)')
+    expect(intentForm).toContain('{{ trackLabel(track) }}')
+    expect(intentForm).not.toContain('{{ track }}')
     expect(source).toContain('entityKindLabel(selectedEvidence.item.kind)')
     // 直接渲染机器值的写法必须消失
     expect(source).not.toContain('{{ tech.track }}')

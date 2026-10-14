@@ -618,3 +618,63 @@ describe('卡片模型不含展示文案（文案只在 locale 文件）', () =>
     expect(builtin?.title).toBe('图片生成')
   })
 })
+
+/**
+ * 含可执行代码（script.run）的工作流卡：卡片要带上 hasExecutableCode / scripts，
+ * 判据取「索引自述」或「摘要非空」的并集（远端内容不一致时按含代码处理），
+ * 同意框正文逐条列出每段代码的能力与规模（装前就看得见）。
+ */
+import {
+  cardHasExecutableCode,
+  scriptConsentText
+} from '../src/renderer/src/features/marketplace/buildMarketplaceCards'
+
+describe('工作流卡：可执行代码识别与同意正文', () => {
+  it('卡片携带 hasExecutableCode / scripts', () => {
+    const cards = buildMarketplaceCards(
+      sources({
+        workflows: [
+          workflowEntry({
+            hasExecutableCode: true,
+            scripts: [
+              { nodeKey: 's1', capabilities: ['generateText'], codeChars: 42, codeHash: 'deadbeef' }
+            ]
+          })
+        ]
+      })
+    )
+    const card = cards.find((c) => c.category === 'workflows')!
+    expect(card.hasExecutableCode).toBe(true)
+    expect(card.scripts?.[0]?.nodeKey).toBe('s1')
+    expect(cardHasExecutableCode(card)).toBe(true)
+  })
+
+  it('cardHasExecutableCode：摘要非空也算含代码（即便索引没写 flag）', () => {
+    expect(
+      cardHasExecutableCode({
+        scripts: [{ nodeKey: 's', capabilities: [], codeChars: 1, codeHash: 'x' }]
+      })
+    ).toBe(true)
+    expect(cardHasExecutableCode({})).toBe(false)
+  })
+
+  it('scriptConsentText 逐条列出能力与规模，没能力的标 none', () => {
+    const text = scriptConsentText(
+      [
+        {
+          nodeKey: 's1',
+          title: '改图',
+          capabilities: ['generateImage'],
+          codeChars: 120,
+          codeHash: 'abcd1234'
+        },
+        { nodeKey: 's2', capabilities: [], codeChars: 30, codeHash: 'ef567890' }
+      ],
+      (key, named) => `${key}|count=${named.count}|${named.scripts}`
+    )
+    expect(text).toContain('marketplace.workflows.scriptConfirm')
+    expect(text).toContain('count=2')
+    expect(text).toContain('改图 (s1) · generateImage · 120 chars · #abcd1234')
+    expect(text).toContain('s2 · none · 30 chars · #ef567890')
+  })
+})

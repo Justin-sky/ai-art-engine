@@ -375,6 +375,9 @@ export interface GraphNodeParams {
   rebuildDub?: boolean
   /** 语义重建：配音没有指定音色时，用原片分离出的人声做声音克隆参考（默认 true） */
   rebuildDubClone?: boolean
+  /** 语义重建：实体局部替换时首帧重绘用的图片模型 / 实例（空 = 设置里的默认图片模型） */
+  replaceImageModel?: string
+  replaceImageProviderInstanceId?: string
   /** 语义重建：配音用的 TTS 模型 / 实例 / 音色（空 = 设置里的默认语音模型） */
   dubModel?: string
   dubProviderInstanceId?: string

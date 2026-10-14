@@ -21,6 +21,8 @@ import type {
 import type { ProductionCommand } from './compiler'
 import { keyframeProjectPath } from './storage'
 import { diffAgainstBaseline, type SemanticDiff } from './migrate'
+import { PICTURE_TRACK_KINDS, shotSemanticInputs } from './shotSemantics'
+import { collectShotReplacements, type ShotReplacement } from './entityReplace'
 import type { SemanticShot } from './types'
 
 export const VIDEO_PROMPT_PLAN_SCHEMA = 'aiart.video-prompts@1'
@@ -55,10 +57,15 @@ export interface VideoPromptShot {
   /** 为什么要重新生成（prompt / camera / visual / subjects / entity …） */
   changeReasons?: string[]
   /**
-   * 本镜主体绑定的参考资产（换人 / 换商品）：重建时作为参考图喂给视频模型，
-   * 并且**不再用原片首帧**（原首帧里是被换掉的那个人 / 商品）。
+   * 旧计划的参考资产（无序、不知道谁对应谁）。新计划改写 `replacements`；
+   * 重建仍认它，只为兼容已经编译好的旧计划。
    */
   referenceAssetIds?: string[]
+  /**
+   * 本镜要做的局部替换（**有序**，即重绘顺序；每项显式绑定 实体 → 掩码 → 参考图 → 指令）。
+   * 有掩码的项走"首帧逐个重绘 → 图生视频"；没有掩码的项只能兜底走参考图生视频。
+   */
+  replacements?: ShotReplacement[]
 }
 
 export type ShotRebuildStrategy = 'passthrough' | 'regenerate'
@@ -178,7 +185,7 @@ const MAX_FULL_PROMPT_CHARS = 600
 const MAX_EVENTS_PER_SHOT = 3
 
 /** 能进**画面**提示词的意图轨道：其余（audio/text/edit/story/emotion）属于声音与剪辑，不该进 prompt */
-const PICTURE_TRACKS = new Set(['camera', 'light', 'vfx'])
+const PICTURE_TRACKS = new Set(PICTURE_TRACK_KINDS)
 
 /**
  * 能进**画面**提示词的实体类别（数组顺序即优先级）。
@@ -455,18 +462,11 @@ export function buildPromptPlan(input: BuildPromptPlanInput): VideoPromptPlan {
 
   const promptShots: VideoPromptShot[] = walk.map((shot) => {
     const structured = structuredById.get(shot.id)
-    const inShotEvents = events.filter((event) => overlaps(event.timeRange, shot.range))
-    const eventIds = new Set(inShotEvents.map((event) => event.id))
-    const inShotIntents = intents.filter((intent) => {
-      const trigger = String(intent.trigger ?? '')
-      if (!trigger) return false
-      if (eventIds.has(trigger)) return true
-      const hit = inShotEvents.find((event) => event.label === trigger)
-      if (hit) return true
-      // 兜底：意图按时间落在这镜里（事件 label 手写过、对不上时仍能带上）
-      const range = (intent as { timeRange?: { start: number; end: number } }).timeRange
-      return !!range && overlaps(range, shot.range)
-    })
+    // 与脏检测同一口径（shotSemantics.ts）：提示词吃进什么，指纹就看什么
+    const { events: inShotEvents, intents: inShotIntents } = shotSemanticInputs(
+      { events, intents, beats: [] },
+      shot.range
+    )
     const inShotCommands = commands.filter((command) =>
       overlaps({ start: command.start, end: command.end }, shot.range)
     )
@@ -483,17 +483,11 @@ export function buildPromptPlan(input: BuildPromptPlanInput): VideoPromptPlan {
       ...(structured ? { structured } : {})
     })
     const reasons = diff?.dirtyShots.get(shot.id)
-    const referenceAssetIds = [
-      ...new Set(
-        arr(structured?.subjects)
-          .map((s) => (s.entityId ? entities.find((e) => e.id === s.entityId) : undefined))
-          .map((e) => e?.reference?.assetId?.trim() ?? '')
-          .filter(Boolean)
-      )
-    ]
+    // 替换按实体显式绑定（含旧版 reference.assetId 迁移出的"只有参考图"项）
+    const replacements = structured ? collectShotReplacements(timeline, structured) : []
     return {
       shotId: shot.id,
-      ...(referenceAssetIds.length ? { referenceAssetIds } : {}),
+      ...(replacements.length ? { replacements } : {}),
       ...(structured
         ? {
             strategy: (reasons ? 'regenerate' : 'passthrough') as ShotRebuildStrategy,
@@ -692,8 +686,10 @@ export interface RebuildClip {
   durationSec: number
   firstFrameRelativePath?: string
   lastFrameRelativePath?: string
-  /** 参考资产（换人 / 换商品）；有它时不用原片首帧 */
+  /** 旧计划的参考资产（兼容）；新计划用 `replacements` */
   referenceAssetIds?: string[]
+  /** 本镜的局部替换（有序、显式绑定） */
+  replacements?: ShotReplacement[]
 }
 
 /**
@@ -780,7 +776,8 @@ export function planRebuildClips(
         ...(shot.lastFrameRelativePath
           ? { lastFrameRelativePath: shot.lastFrameRelativePath }
           : {}),
-        ...(shot.referenceAssetIds?.length ? { referenceAssetIds: shot.referenceAssetIds } : {})
+        ...(shot.referenceAssetIds?.length ? { referenceAssetIds: shot.referenceAssetIds } : {}),
+        ...(shot.replacements?.length ? { replacements: shot.replacements } : {})
       })
       segments.push({
         key: shot.shotId,

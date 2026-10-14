@@ -84,7 +84,8 @@ const CANVAS_ADDABLE_NODE_TYPES = [
   'world.gen',
   'world.extract',
   'world.table',
-  'spatialWorld.export'
+  'spatialWorld.export',
+  'script.run'
 ] as const
 
 describe('graph canvas menu nodes', () => {

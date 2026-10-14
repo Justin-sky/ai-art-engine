@@ -7,6 +7,17 @@
 import type { GraphValue, GraphVideoItem, NodeExecuteContext } from './types'
 import { videoPromptsValue } from './videoPromptsValue'
 import { resolveVideoGenerateParamsForApi } from '../videoGenerateParams'
+import { normalizeImageRedraw } from '../imageRedraw'
+import {
+  MASK_OVERLAP_WARN_RATIO,
+  SOFT_MAX_REPLACEMENTS_PER_SHOT,
+  buildEntityRedrawPrompt,
+  overlappingReplacements,
+  referenceLegend,
+  replacementVideoNote,
+  type EntityReplacementRef,
+  type ShotReplacement
+} from '../../semanticTimeline'
 import {
   applyPromptOverrides,
   buildPromptPlan,
@@ -30,6 +41,8 @@ import {
   ensureSemanticStructure,
   migrateSemanticTimeline,
   rebaselineSemanticTimeline,
+  carryOverSemanticEdits,
+  SEMANTIC_TRACK_KINDS,
   diffAgainstBaseline,
   inferIntentsFromEvents,
   intentId,
@@ -56,16 +69,7 @@ import { semanticTimelineValue } from './semanticTimelineValue'
 /** 镜头描述一次最多看的关键帧数 */
 const MAX_DESCRIBE_SHOTS = 8
 
-const TRACK_KINDS: ReadonlySet<SemanticTrackKind> = new Set<SemanticTrackKind>([
-  'story',
-  'character',
-  'camera',
-  'emotion',
-  'audio',
-  'text',
-  'vfx',
-  'edit'
-])
+const TRACK_KINDS: ReadonlySet<SemanticTrackKind> = new Set(SEMANTIC_TRACK_KINDS)
 
 function isEn(ctx: NodeExecuteContext): boolean {
   return (ctx.locale ?? '').toLowerCase().startsWith('en')
@@ -554,6 +558,11 @@ export async function executeSemanticAnalyzeNode(
         keyframes: res.keyframes,
         vocabulary: vocabDef
       })
+      /**
+       * 富化会重写事件 / 节拍 / 意图：用户在 dive 里改过、删过的语义层内容要再带回来，
+       * 否则开着「理解」重跑一次，语义层修改就被模型产物覆盖了。
+       */
+      doc = carryOverSemanticEdits(res.timeline, doc)
       // 富化补全的镜头语言 / 画面描述属于"分析事实"：重设基线，之后的改动才算修改
       doc = rebaselineSemanticTimeline(
         ensureSemanticStructure(doc, { shots: res.shots, utterances: res.utterances })
@@ -919,6 +928,155 @@ function pickGenerateDuration(shotSec: number, durations: number[] | undefined):
   return options.find((d) => d >= shotSec - 1e-6) ?? options[options.length - 1]!
 }
 
+// ─── 实体局部替换：首帧逐个重绘 ─────────────────────────────────────────────────
+
+interface FirstFrameEditResult {
+  /** 重绘后的首帧（工程相对路径）；undefined = 没做 / 失败，调用方走兜底 */
+  firstFrameRelativePath?: string
+  /** 成功完成的重绘次数（= 图片模型调用次数） */
+  redraws: number
+  /** 首帧里已替换的实体名（写进视频提示词） */
+  replacedNames: string[]
+  /** 失败原因（有它时整镜走兜底，不混用半成品） */
+  failure?: string
+}
+
+async function readReferenceUrl(
+  ctx: NodeExecuteContext,
+  ref: EntityReplacementRef
+): Promise<string | undefined> {
+  if (ref.assetId) return ctx.resolveAssetImageUrl?.(ref.assetId).catch(() => undefined)
+  if (ref.relativePath)
+    return ctx.readProjectImageDataUrl?.(ref.relativePath).catch(() => undefined)
+  return undefined
+}
+
+/**
+ * 首帧局部替换：以掩码所在关键帧为底图，按实体**逐个**重绘。
+ *
+ * 每一遍只带**这个实体自己的**参考图（避免多张参考图对错号），并把前面已换好的实体掩码
+ * 作为保护区扣掉（避免后一遍把前一遍改回去）。每一遍的结果都落盘再读回：
+ * 生成结果可能是远程 URL，直接进 canvas 会污染画布；落盘后也便于排查。
+ *
+ * 任一遍失败就整镜放弃首帧编辑（返回 failure），由调用方走参考图兜底 —— 不拿半成品出片。
+ */
+async function editFirstFrameForReplacements(
+  ctx: NodeExecuteContext,
+  input: {
+    timelineId: string
+    clipKey: string
+    replacements: ShotReplacement[]
+    imageModel?: string
+    imageProviderInstanceId?: string
+  }
+): Promise<FirstFrameEditResult> {
+  const masked = input.replacements.filter((r) => r.mask)
+  const empty: FirstFrameEditResult = { redraws: 0, replacedNames: [] }
+  if (masked.length === 0) return empty
+  if (
+    !ctx.generateImage ||
+    !ctx.composeImageRedrawCanvas ||
+    !ctx.composeEntityMask ||
+    !ctx.readProjectImageDataUrl ||
+    !ctx.saveRunMedia
+  ) {
+    return { ...empty, failure: 'no image redraw capability here' }
+  }
+  const keyframe = masked[0]!.mask!.keyframeRelativePath
+  let current = await ctx.readProjectImageDataUrl(keyframe).catch(() => undefined)
+  if (!current) return { ...empty, failure: `cannot read keyframe ${keyframe}` }
+  if (masked.some((r) => r.mask!.keyframeRelativePath !== keyframe)) {
+    say(
+      ctx,
+      `${input.clipKey}：各实体的目标点选在不同关键帧上，统一以 ${keyframe} 为底图`, // cjk-ok
+      `${input.clipKey}: targets were picked on different keyframes; using ${keyframe}`,
+      'warn'
+    )
+  }
+
+  const protect: string[] = []
+  let lastRel: string | undefined
+  const replacedNames: string[] = []
+  for (const [i, r] of masked.entries()) {
+    if (ctx.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+    try {
+      const rawMask = await ctx.readProjectImageDataUrl(r.mask!.maskRelativePath)
+      if (!rawMask) throw new Error(`cannot read mask ${r.mask!.maskRelativePath}`)
+      const effective = await ctx.composeEntityMask({
+        maskDataUrl: rawMask,
+        // 传快照：后面还会往保护区里追加，不能让调用方拿到会变的数组
+        protectMaskDataUrls: [...protect]
+      })
+      if (effective.coverage <= 0) {
+        say(
+          ctx,
+          `${input.clipKey}：${r.entityName} 的目标区域被前面已替换的实体完全覆盖，跳过`, // cjk-ok
+          `${input.clipKey}: ${r.entityName} is fully covered by earlier replacements; skipped`,
+          'warn'
+        )
+        continue
+      }
+      if (effective.protectedRatio > MASK_OVERLAP_WARN_RATIO) {
+        say(
+          ctx,
+          `${input.clipKey}：${r.entityName} 与前面的实体重叠 ${Math.round(effective.protectedRatio * 100)}%，重叠处保留前一个的结果`, // cjk-ok
+          `${input.clipKey}: ${r.entityName} overlaps earlier replacements by ${Math.round(effective.protectedRatio * 100)}%; overlap keeps the earlier result`,
+          'warn'
+        )
+      }
+      const composed = await ctx.composeImageRedrawCanvas({
+        sourceDataUrl: current,
+        state: normalizeImageRedraw({ maskDataUrl: effective.dataUrl, aspectId: 'original' })
+      })
+      const refUrls: string[] = []
+      for (const ref of r.references) {
+        const url = await readReferenceUrl(ctx, ref)
+        if (url) refUrls.push(url)
+      }
+      const res = await ctx.generateImage({
+        prompt: buildEntityRedrawPrompt({
+          entityName: r.entityName,
+          instruction: r.instruction,
+          referenceCount: refUrls.length
+        }),
+        model: input.imageModel,
+        providerInstanceId: input.imageProviderInstanceId,
+        quality: 'high',
+        n: 1,
+        inputReferences: [composed.dataUrl, composed.maskDataUrl ?? effective.dataUrl, ...refUrls]
+      })
+      const image = res.images[0]
+      if (!image) throw new Error('image model returned no image')
+      lastRel = await ctx.saveRunMedia({
+        dataUrl: image,
+        key: `replace-${input.clipKey}-${i + 1}`,
+        outputDir: `Semantic/${input.timelineId}/replace`,
+        node: ctx.node
+      })
+      const next = await ctx.readProjectImageDataUrl(lastRel)
+      if (!next) throw new Error(`cannot read redrawn frame ${lastRel}`)
+      current = next
+      // 保护区用**原始**掩码（不是扣过的）：前一个实体的整块区域都不许再动
+      protect.push(rawMask)
+      replacedNames.push(r.entityName)
+      say(
+        ctx,
+        `${input.clipKey}：首帧替换 ${r.entityName}（${i + 1}/${masked.length}）`, // cjk-ok
+        `${input.clipKey}: replaced ${r.entityName} in the first frame (${i + 1}/${masked.length})`
+      )
+    } catch (e) {
+      return {
+        redraws: replacedNames.length,
+        replacedNames,
+        failure: `${r.entityName}: ${errorText(e)}`
+      }
+    }
+  }
+  return lastRel
+    ? { firstFrameRelativePath: lastRel, redraws: replacedNames.length, replacedNames }
+    : empty
+}
+
 /** 节点参数里的整片指令（指令面板写的）：追加到每镜提示词末尾 */
 function withInstruction(prompt: string, instruction: string, lang: 'zh' | 'en'): string {
   const extra = instruction.trim()
@@ -1063,39 +1221,136 @@ export async function executeSemanticRebuildNode(
   }
   const instruction = String(p.generateInstruction || '')
 
+  const imageModel = String(p.replaceImageModel || '').trim() || undefined
+  const imageProviderInstanceId = String(p.replaceImageProviderInstanceId || '').trim() || undefined
+
+  // ── 成本可见：先列出每镜的局部替换开销（首帧重绘几次 + 视频一次） ─────────────────
+  for (const clip of planned.clips) {
+    const reps = clip.replacements ?? []
+    if (!reps.length) continue
+    const masked = reps.filter((r) => r.mask).length
+    say(
+      ctx,
+      `${clip.key}：替换 ${reps.map((r) => r.entityName).join('、')} · ${masked} 次首帧重绘 + 1 次视频生成`, // cjk-ok
+      `${clip.key}: replacing ${reps.map((r) => r.entityName).join(', ')} · ${masked} first-frame redraw(s) + 1 video generation`
+    )
+    if (reps.length > SOFT_MAX_REPLACEMENTS_PER_SHOT) {
+      notes.push(
+        `${clip.key} 同时替换 ${reps.length} 个实体，超过 ${SOFT_MAX_REPLACEMENTS_PER_SHOT} 个时效果可能不稳定，建议拆镜或分次处理` // cjk-ok
+      )
+    }
+    for (const pair of overlappingReplacements(reps)) {
+      notes.push(
+        `${clip.key}：${pair.a} 与 ${pair.b} 的目标区域重叠约 ${Math.round(pair.ratio * 100)}%，重叠处以先处理的实体为准` // cjk-ok
+      )
+    }
+    const unmasked = reps.filter((r) => !r.mask).map((r) => r.entityName)
+    if (masked > 0 && unmasked.length) {
+      notes.push(
+        `${clip.key}：${unmasked.join('、')} 在这一镜没有点选目标，本镜不会替换它们（先在 Dive 里点选）` // cjk-ok
+      )
+    }
+  }
+  const replaceReport: Record<string, { redraws: number; mode: string; failure?: string }> = {}
+
   const generated = new Map<string, string>()
   const failures: Array<{ key: string; reason: string }> = []
   for (const clip of planned.clips) {
     if (ctx.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
-    // 换人 / 换商品：参考资产作为参考图；此时**不用原片首帧**（首帧里还是被换掉的那个）
-    const referenceUrls: string[] = []
-    for (const assetId of clip.referenceAssetIds ?? []) {
-      const url = ctx.resolveAssetImageUrl
-        ? await ctx.resolveAssetImageUrl(assetId).catch(() => undefined)
-        : undefined
-      if (url) referenceUrls.push(url)
-      else notes.push(`${clip.key} 的参考资产 ${assetId} 读不到，已忽略`) // cjk-ok
+    const replacements = clip.replacements ?? []
+    let prompt = withInstruction(clip.prompt, instruction, plan.lang)
+
+    // ① 有掩码：首帧逐个重绘 → 图生视频（构图、其他实体、背景都由首帧锚住）
+    let edited: FirstFrameEditResult = { redraws: 0, replacedNames: [] }
+    if (replacements.some((r) => r.mask)) {
+      if (!firstFrameAllowed) {
+        edited.failure = 'video model has no first-frame input'
+      } else {
+        edited = await editFirstFrameForReplacements(ctx, {
+          timelineId: plan.timelineId,
+          clipKey: clip.key,
+          replacements,
+          imageModel,
+          imageProviderInstanceId
+        })
+      }
+      if (edited.failure) {
+        notes.push(
+          `${clip.key} 首帧局部替换失败，改用参考图生视频（构图可能与原片不一致）：${edited.failure}` // cjk-ok
+        )
+      }
     }
+
+    // ② 兜底：参考图生视频。参考图按实体顺序排，提示词里写明"参考图 k 对应谁"
+    const referenceUrls: string[] = []
+    if (!edited.firstFrameRelativePath) {
+      const groups: Array<{ name: string; count: number }> = []
+      for (const r of replacements) {
+        let count = 0
+        for (const ref of r.references) {
+          const url = await readReferenceUrl(ctx, ref)
+          if (url) {
+            referenceUrls.push(url)
+            count += 1
+          } else {
+            notes.push(`${clip.key} 的 ${r.entityName} 参考图读不到，已忽略`) // cjk-ok
+          }
+        }
+        groups.push({ name: r.entityName, count })
+      }
+      // 旧计划（只有无序的 referenceAssetIds）
+      for (const assetId of replacements.length ? [] : (clip.referenceAssetIds ?? [])) {
+        const url = await ctx.resolveAssetImageUrl?.(assetId).catch(() => undefined)
+        if (url) referenceUrls.push(url)
+        else notes.push(`${clip.key} 的参考资产 ${assetId} 读不到，已忽略`) // cjk-ok
+      }
+      const legend = referenceLegend(groups, plan.lang)
+      if (legend) prompt = `${prompt}${plan.lang === 'zh' ? '。' : '. '}${legend}`
+    } else {
+      const note = replacementVideoNote(edited.replacedNames, plan.lang)
+      if (note) prompt = `${prompt}${plan.lang === 'zh' ? '。' : '. '}${note}`
+    }
+
     let firstFrameImageUrl: string | undefined
+    const firstFrameRel = edited.firstFrameRelativePath ?? clip.firstFrameRelativePath
     if (
       referenceUrls.length === 0 &&
       firstFrameAllowed &&
-      clip.firstFrameRelativePath &&
+      firstFrameRel &&
       ctx.resolveProjectMediaUrl
     ) {
-      firstFrameImageUrl = await ctx
-        .resolveProjectMediaUrl(clip.firstFrameRelativePath)
-        .catch(() => undefined)
+      firstFrameImageUrl = await ctx.resolveProjectMediaUrl(firstFrameRel).catch(() => undefined)
+    }
+    if (replacements.length) {
+      replaceReport[clip.key] = {
+        redraws: edited.redraws,
+        mode: edited.firstFrameRelativePath ? 'first-frame-edit' : 'reference',
+        ...(edited.failure ? { failure: edited.failure } : {})
+      }
     }
     const duration = fixedDuration || pickGenerateDuration(clip.durationSec, caps?.durations)
+    const modeZh = edited.firstFrameRelativePath
+      ? '（首帧替换 + 图生视频）' // cjk-ok
+      : referenceUrls.length
+        ? '（参考图生视频）' // cjk-ok
+        : firstFrameImageUrl
+          ? '（图生视频）' // cjk-ok
+          : '（文生视频）' // cjk-ok
+    const modeEn = edited.firstFrameRelativePath
+      ? ' (first-frame replace + image-to-video)'
+      : referenceUrls.length
+        ? ' (reference-to-video)'
+        : firstFrameImageUrl
+          ? ' (image-to-video)'
+          : ' (text-to-video)'
     say(
       ctx,
-      `生成 ${clip.key}${referenceUrls.length ? '（参考图生视频）' : firstFrameImageUrl ? '（图生视频）' : '（文生视频）'} · ${duration}s`, // cjk-ok
-      `Generating ${clip.key}${referenceUrls.length ? ' (reference-to-video)' : firstFrameImageUrl ? ' (image-to-video)' : ' (text-to-video)'} · ${duration}s`
+      `生成 ${clip.key}${modeZh} · ${duration}s`, // cjk-ok
+      `Generating ${clip.key}${modeEn} · ${duration}s`
     )
     try {
       const res = await ctx.generateVideo!({
-        prompt: withInstruction(clip.prompt, instruction, plan.lang),
+        prompt,
         model,
         providerInstanceId,
         duration,
@@ -1203,7 +1458,13 @@ export async function executeSemanticRebuildNode(
   }
 
   if (!rebuilt.ok || !rebuilt.outputRelativePath) {
-    writeRebuildReport(ctx, { ...baseReport, execute: true, failures, error: rebuilt.error })
+    writeRebuildReport(ctx, {
+      ...baseReport,
+      execute: true,
+      failures,
+      replacements: replaceReport,
+      error: rebuilt.error
+    })
     throw new Error(rebuilt.error || (isEn(ctx) ? 'rebuild failed' : '重建拼接失败')) // cjk-ok
   }
   say(
@@ -1218,6 +1479,7 @@ export async function executeSemanticRebuildNode(
       execute: true,
       generated: [...generated.keys()],
       failures,
+      replacements: replaceReport,
       dubbed: dubbed.map((d) => d.id),
       rebuild: rebuilt
     },

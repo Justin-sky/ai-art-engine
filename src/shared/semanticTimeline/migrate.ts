@@ -8,21 +8,52 @@
  *   未改动的镜头在重建时直通原片段 —— 零修改即还原原片。
  * - `applySemanticEdit`：修改操作（UI / agent 共用），改字段并记审计。
  */
-import { shortHash } from './ids'
+import { makeTimeRange, shortHash, stableStringify } from './ids'
+import { rebuildTracks } from './document'
+import { SEMANTIC_EVENT_TYPES, isKnownTechniqueTrack, shotSemanticSignature } from './shotSemantics'
+import {
+  hasReplacementContent,
+  normalizeEntityReplacement,
+  replacementSignatureForShot
+} from './entityReplace'
+
+/** 改过实体（改名 / 换参考 / 局部替换）的修改操作 */
+const ENTITY_EDIT_OPS: ReadonlySet<SemanticEditOp> = new Set<SemanticEditOp>([
+  'entity.update',
+  'entity.replace'
+])
 import {
   SEMANTIC_TIMELINE_SCHEMA,
   SEMANTIC_TIMELINE_SCHEMA_V1,
   type DialogueLine,
+  type DirectorIntent,
   type Entity,
+  type IntentTechnique,
   type OcrRegion,
   type SemanticBaseline,
   type SemanticEdit,
   type SemanticEditOp,
+  type SemanticEvent,
+  type SemanticEventType,
   type SemanticShot,
   type SemanticTimeline,
   type ShotEvidence,
+  type StoryBeat,
   type UtteranceEvidence
 } from './types'
+
+/** 语义层修改（事件 / 节拍 / 意图）：经语义指纹驱动重生成 */
+const SEMANTIC_LAYER_OPS: ReadonlySet<SemanticEditOp> = new Set<SemanticEditOp>([
+  'event.update',
+  'event.remove',
+  'beat.update',
+  'intent.update',
+  'intent.remove'
+])
+
+export function isSemanticLayerOp(op: SemanticEditOp): boolean {
+  return SEMANTIC_LAYER_OPS.has(op)
+}
 
 function arr<T>(value: T[] | undefined | null): T[] {
   return Array.isArray(value) ? value : []
@@ -30,19 +61,6 @@ function arr<T>(value: T[] | undefined | null): T[] {
 
 function overlaps(a: { start: number; end: number }, b: { start: number; end: number }): boolean {
   return a.start < b.end && a.end > b.start
-}
-
-/** 稳定序列化（键排序），哈希用 */
-function stableStringify(value: unknown): string {
-  if (value === undefined) return ''
-  if (value === null || typeof value !== 'object') return JSON.stringify(value)
-  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
-  const obj = value as Record<string, unknown>
-  return `{${Object.keys(obj)
-    .filter((k) => obj[k] !== undefined && obj[k] !== '')
-    .sort()
-    .map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`)
-    .join(',')}}`
 }
 
 export function isSemanticTimelineV1(doc: unknown): boolean {
@@ -133,18 +151,31 @@ export function ensureSemanticStructure(
     edits: arr(doc.edits)
   }
   const baseline = doc.baseline
+  /**
+   * 语义指纹缺失（旧文档）时补齐 —— 但只在**还没有任何语义层修改**时补：
+   * 那时文档内容就是分析结果，补出来的指纹等于"什么都没改"；有了语义层修改再补，
+   * 会把修改当成原样吞掉（宁可这些修改不触发重生成，也不误判）。
+   */
+  const canBackfillSemantic =
+    !!baseline && !baseline.semantic && !arr(doc.edits).some((e) => isSemanticLayerOp(e.op))
   const needsBaseline =
     !baseline ||
+    canBackfillSemantic ||
     shots.some((s) => !(s.id in (baseline.shots ?? {}))) ||
     dialogue.some((d) => !(d.id in (baseline.dialogue ?? {})))
   if (!needsBaseline) return next
   // 只给**新出现**的节点补指纹；已有指纹保持（否则用户修改会被当成新基线吞掉）
   const fresh = captureBaseline(next)
+  const semantic =
+    baseline && !baseline.semantic && !canBackfillSemantic
+      ? undefined
+      : { ...fresh.semantic, ...(baseline?.semantic ?? {}) }
   return {
     ...next,
     baseline: {
       shots: { ...fresh.shots, ...(baseline?.shots ?? {}) },
       dialogue: { ...fresh.dialogue, ...(baseline?.dialogue ?? {}) },
+      ...(semantic ? { semantic } : {}),
       createdAt: baseline?.createdAt ?? fresh.createdAt
     }
   }
@@ -164,6 +195,13 @@ export function migrateSemanticTimeline(
 
 // ─── 指纹 / 基线 / 脏检测 ──────────────────────────────────────────────────────
 
+/** 在这一镜点选过替换目标（有掩码）的实体 */
+function shotReplacementEntityIds(doc: SemanticTimeline, shot: SemanticShot): string[] {
+  return arr(doc.entities)
+    .filter((e) => arr(e.replacement?.masks).some((m) => m.shotId === shot.id))
+    .map((e) => e.id)
+}
+
 /** 镜头画面相关内容的指纹：范围、镜头语言、画面、主体、提示词覆盖、删除，以及本镜实体的定义 */
 export function shotSignature(doc: SemanticTimeline, shot: SemanticShot): string {
   const entityIds = new Set(
@@ -171,9 +209,18 @@ export function shotSignature(doc: SemanticTimeline, shot: SemanticShot): string
       .map((s) => s.entityId)
       .filter(Boolean)
   )
+  // 主体绑定的实体 + 在这一镜点过替换掩码的实体（替换没绑主体也要算进来）
+  for (const id of shotReplacementEntityIds(doc, shot)) entityIds.add(id)
   const entities = arr(doc.entities)
     .filter((e) => entityIds.has(e.id))
-    .map((e) => ({ id: e.id, kind: e.kind, name: e.name, ref: e.reference?.assetId }))
+    .map((e) => ({
+      id: e.id,
+      kind: e.kind,
+      name: e.name,
+      ref: e.reference?.assetId,
+      // 没设置替换时为 undefined（稳定序列化会丢掉）→ 旧文档指纹不变
+      rep: replacementSignatureForShot(e, shot.id)
+    }))
   return shortHash(
     stableStringify({
       d: Number(((shot.range?.end ?? 0) - (shot.range?.start ?? 0)).toFixed(3)),
@@ -198,7 +245,21 @@ export function captureBaseline(doc: SemanticTimeline): SemanticBaseline {
   for (const shot of arr(doc.shots)) shots[shot.id] = shotSignature(doc, shot)
   const dialogue: Record<string, string> = {}
   for (const line of arr(doc.dialogue)) dialogue[line.id] = dialogueSignature(line)
-  return { shots, dialogue, createdAt: new Date().toISOString() }
+  const semantic: Record<string, string> = {}
+  for (const shot of arr(doc.shots)) {
+    if (shot.range) semantic[shot.id] = shotSemanticSignature(doc, shot.range)
+  }
+  return { shots, dialogue, semantic, createdAt: new Date().toISOString() }
+}
+
+/** 语义层修改波及过的镜头（来自修改审计） */
+function semanticallyEditedShots(doc: SemanticTimeline): Set<string> {
+  const out = new Set<string>()
+  for (const edit of arr(doc.edits)) {
+    if (!isSemanticLayerOp(edit.op)) continue
+    for (const id of arr(edit.affectedShots)) out.add(id)
+  }
+  return out
 }
 
 /** 这个镜头是否带着用户修改（重设基线时不能把它的修改吞掉） */
@@ -226,15 +287,76 @@ export function rebaselineSemanticTimeline(doc: SemanticTimeline): SemanticTimel
     // 改过名 / 换过参考的实体：它出现的镜头也保留旧指纹
     const editedEntities = new Set(
       arr(doc.edits)
-        .filter((e) => e.op === 'entity.update')
+        .filter((e) => ENTITY_EDIT_OPS.has(e.op))
         .map((e) => e.target)
     )
     for (const shot of arr(doc.shots)) {
-      const touched = arr(shot.subjects).some((s) => s.entityId && editedEntities.has(s.entityId))
+      const touched =
+        arr(shot.subjects).some((s) => s.entityId && editedEntities.has(s.entityId)) ||
+        shotReplacementEntityIds(doc, shot).some((id) => editedEntities.has(id))
       if (touched && prev.shots?.[shot.id]) fresh.shots[shot.id] = prev.shots[shot.id]!
+    }
+    // 语义层修改波及的镜头：保留旧语义指纹（没有旧指纹就不记 —— 未知基线视作未改，不误判）
+    for (const id of semanticallyEditedShots(doc)) {
+      const before = prev.semantic?.[id]
+      if (before) fresh.semantic![id] = before
+      else delete fresh.semantic![id]
     }
   }
   return { ...doc, baseline: fresh }
+}
+
+/**
+ * 把上一版里**用户改过 / 删掉**的事件、节拍、意图带到新文档上。
+ *
+ * - 改过的事件 / 意图：同 id 用旧值覆盖；新分析里没有这个 id 时**追加**（用户写的内容不丢，
+ *   重复了用户能在轨道上看到并删掉；静默丢掉则无从察觉）。意图的触发事件不在了就不带。
+ * - 改过的节拍：只按 id 覆盖（节拍由启发式按时间重新切分，追加会叠出重叠段落）。
+ * - 删掉的事件 / 意图：在新文档上同样删除（含级联）。
+ */
+function carryOverSemanticLayer(prev: SemanticTimeline, next: SemanticTimeline): SemanticTimeline {
+  const edits = arr(prev.edits).filter((e) => isSemanticLayerOp(e.op))
+  if (edits.length === 0) return next
+  const targets = (op: SemanticEditOp): Set<string> =>
+    new Set(edits.filter((e) => e.op === op).map((e) => e.target))
+  const removedEvents = targets('event.remove')
+  const removedIntents = targets('intent.remove')
+  const editedEvents = targets('event.update')
+  const editedBeats = targets('beat.update')
+  const editedIntents = targets('intent.update')
+
+  const mergeById = <T extends { id: string }>(
+    base: T[],
+    previous: T[],
+    ids: Set<string>,
+    append: boolean
+  ): T[] => {
+    const prevById = new Map(previous.filter((x) => ids.has(x.id)).map((x) => [x.id, x]))
+    const out = base.map((x) => prevById.get(x.id) ?? x)
+    if (append) {
+      for (const [id, item] of prevById) if (!base.some((x) => x.id === id)) out.push(item)
+    }
+    return out
+  }
+
+  let doc: SemanticTimeline = {
+    ...next,
+    events: mergeById(arr(next.events), arr(prev.events), editedEvents, true),
+    beats: mergeById(arr(next.beats), arr(prev.beats), editedBeats, false)
+  }
+  const eventIds = new Set(arr(doc.events).map((e) => e.id))
+  const carriedIntents = arr(prev.intents).filter(
+    (i) => editedIntents.has(i.id) && eventIds.has(i.trigger)
+  )
+  doc = {
+    ...doc,
+    intents: mergeById(arr(doc.intents), carriedIntents, editedIntents, true)
+  }
+  for (const id of removedEvents) {
+    if (arr(doc.events).some((e) => e.id === id)) doc = removeEventCascade(doc, id)
+  }
+  for (const id of removedIntents) doc = removeIntent(doc, id)
+  return rebuildTracks(linkIntentsToEvents(doc))
 }
 
 /**
@@ -253,13 +375,26 @@ export function carryOverSemanticEdits(
   const prevEntities = new Map(arr(prev.entities).map((e) => [e.id, e]))
   const editedEntityIds = new Set(
     arr(prev.edits)
-      .filter((e) => e.op === 'entity.update')
+      .filter((e) => ENTITY_EDIT_OPS.has(e.op))
       .map((e) => e.target)
   )
+  const shotIds = new Set(arr(next.shots).map((s) => s.id))
   const entities = arr(next.entities).map((ent) => {
     const old = prevEntities.get(ent.id)
     if (!old || !editedEntityIds.has(ent.id)) return ent
-    return { ...ent, name: old.name, ...(old.reference ? { reference: old.reference } : {}) }
+    // 局部替换跟着带过来；新分析里已经没有的镜头，其掩码丢掉（掩码只对那一镜的关键帧有效）
+    const replacement = old.replacement
+      ? {
+          ...old.replacement,
+          masks: arr(old.replacement.masks).filter((m) => shotIds.has(m.shotId))
+        }
+      : undefined
+    return {
+      ...ent,
+      name: old.name,
+      ...(old.reference ? { reference: old.reference } : {}),
+      ...(replacement ? { replacement } : {})
+    }
   })
   const shots = arr(next.shots).map((shot) => {
     const old = prevShots.get(shot.id)
@@ -294,14 +429,14 @@ export function carryOverSemanticEdits(
       origin: 'user' as const
     }
   })
-  return {
+  return carryOverSemanticLayer(prev, {
     ...next,
     entities,
     shots,
     dialogue,
     speakers: arr(prev.speakers).length ? arr(prev.speakers) : arr(next.speakers),
     edits: arr(prev.edits)
-  }
+  })
 }
 
 export interface SemanticDiff {
@@ -322,13 +457,27 @@ function shotChangeReasons(doc: SemanticTimeline, shot: SemanticShot): string[] 
       .map((s) => s.entityId)
       .filter(Boolean)
   )
-  const touchedEntity = arr(doc.edits).some(
-    (e) => e.op === 'entity.update' && entityIds.has(e.target)
+  for (const id of shotReplacementEntityIds(doc, shot)) entityIds.add(id)
+  const entityEdits = arr(doc.edits).filter(
+    (e) => ENTITY_EDIT_OPS.has(e.op) && entityIds.has(e.target)
   )
-  if (touchedEntity) reasons.push('entity')
+  if (entityEdits.some((e) => e.op === 'entity.update')) reasons.push('entity')
+  if (entityEdits.some((e) => e.op === 'entity.replace')) reasons.push('replace')
   const touchedShot = arr(doc.edits).filter((e) => e.target === shot.id && e.op === 'shot.update')
   for (const e of touchedShot) for (const key of Object.keys(e.patch ?? {})) reasons.push(key)
+  // 语义层：'event' / 'beat' / 'intent'（由修改审计里的 affectedShots 得出）
+  for (const e of arr(doc.edits)) {
+    if (isSemanticLayerOp(e.op) && arr(e.affectedShots).includes(shot.id)) {
+      reasons.push(e.op.slice(0, e.op.indexOf('.')))
+    }
+  }
   return [...new Set(reasons.length ? reasons : ['content'])]
+}
+
+/** 本镜语义输入是否偏离基线（基线里没有语义指纹时视作未改） */
+function semanticChanged(doc: SemanticTimeline, shot: SemanticShot): boolean {
+  const before = doc.baseline?.semantic?.[shot.id]
+  return !!before && !!shot.range && before !== shotSemanticSignature(doc, shot.range)
 }
 
 export function diffAgainstBaseline(doc: SemanticTimeline): SemanticDiff {
@@ -347,7 +496,10 @@ export function diffAgainstBaseline(doc: SemanticTimeline): SemanticDiff {
       if (shot.promptOverride?.trim()) dirtyShots.set(shot.id, ['prompt'])
       continue
     }
-    if (before !== shotSignature(doc, shot)) dirtyShots.set(shot.id, shotChangeReasons(doc, shot))
+    // 镜头自身内容变了，或覆盖它的事件 / 节拍 / 意图变了（提示词会跟着变）
+    if (before !== shotSignature(doc, shot) || semanticChanged(doc, shot)) {
+      dirtyShots.set(shot.id, shotChangeReasons(doc, shot))
+    }
   }
   for (const line of arr(doc.dialogue)) {
     const before = base?.dialogue?.[line.id]
@@ -481,10 +633,244 @@ export function applySemanticEdit(
       }
       break
     }
+    case 'entity.replace': {
+      const entities = arr(doc.entities)
+      const index = entities.findIndex((e) => e.id === input.target)
+      if (index < 0) throw new Error(`entity not found: ${input.target}`)
+      const { reference: _legacy, replacement: _old, ...rest } = entities[index]!
+      const raw = patch.replacement
+      const replacement = raw == null ? null : normalizeEntityReplacement(raw, doc)
+      // 写入新结构即完成迁移：旧的 reference.assetId 不再保留（避免两处来源打架）
+      const merged: Entity = {
+        ...rest,
+        ...(replacement && (hasReplacementContent(replacement) || replacement.masks.length)
+          ? { replacement }
+          : {})
+      }
+      next = { ...doc, entities: entities.map((e, i) => (i === index ? merged : e)) }
+      break
+    }
+    case 'event.update':
+      next = updateEvent(doc, input.target, patch, edit.origin)
+      break
+    case 'event.remove':
+      if (!arr(doc.events).some((e) => e.id === input.target)) {
+        throw new Error(`event not found: ${input.target}`)
+      }
+      next = rebuildTracks(removeEventCascade(doc, input.target))
+      break
+    case 'beat.update':
+      next = updateBeat(doc, input.target, patch, edit.origin)
+      break
+    case 'intent.update':
+      next = rebuildTracks(updateIntent(doc, input.target, patch, edit.origin))
+      break
+    case 'intent.remove':
+      if (!arr(doc.intents).some((i) => i.id === input.target)) {
+        throw new Error(`intent not found: ${input.target}`)
+      }
+      next = rebuildTracks(removeIntent(doc, input.target))
+      break
     default:
       throw new Error(`unknown edit op: ${String(input.op)}`)
   }
+  if (isSemanticLayerOp(input.op)) edit.affectedShots = affectedShots(doc, next)
   return { ...next, edits: [...arr(doc.edits), edit], updatedAt: now }
+}
+
+// ─── 语义层修改（事件 / 节拍 / 意图） ─────────────────────────────────────────────
+
+/** 前后语义指纹不同的镜头 = 这次修改波及的镜头 */
+function affectedShots(before: SemanticTimeline, after: SemanticTimeline): string[] {
+  return arr(after.shots)
+    .filter((s) => !!s.range)
+    .filter((s) => shotSemanticSignature(before, s.range) !== shotSemanticSignature(after, s.range))
+    .map((s) => s.id)
+}
+
+function has(patch: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(patch, key)
+}
+
+function requiredText(value: unknown, field: string): string {
+  const text = typeof value === 'string' ? value.trim() : ''
+  if (!text) throw new Error(`${field} must be a non-empty string`)
+  return text
+}
+
+function unitInterval(value: unknown, field: string): number {
+  const n = Number(value)
+  if (!Number.isFinite(n) || n < 0 || n > 1) throw new Error(`${field} must be within 0..1`)
+  return n
+}
+
+function updateEvent(
+  doc: SemanticTimeline,
+  id: string,
+  patch: Record<string, unknown>,
+  origin: SemanticEdit['origin']
+): SemanticTimeline {
+  const events = arr(doc.events)
+  const index = events.findIndex((e) => e.id === id)
+  if (index < 0) throw new Error(`event not found: ${id}`)
+  const ev = events[index]!
+  const merged: SemanticEvent = { ...ev, origin }
+  if (has(patch, 'label')) merged.label = requiredText(patch.label, 'event label')
+  if (has(patch, 'description')) merged.description = String(patch.description ?? '')
+  if (has(patch, 'type')) {
+    if (!(SEMANTIC_EVENT_TYPES as readonly unknown[]).includes(patch.type)) {
+      throw new Error(`unknown event type: ${String(patch.type)}`)
+    }
+    merged.type = patch.type as SemanticEventType
+  }
+  if (has(patch, 'importance')) merged.importance = unitInterval(patch.importance, 'importance')
+  if (has(patch, 'start') || has(patch, 'end')) {
+    const start = has(patch, 'start') ? Number(patch.start) : ev.timeRange.start
+    const end = has(patch, 'end') ? Number(patch.end) : ev.timeRange.end
+    const duration = Number(doc.source?.duration)
+    const limit = Number.isFinite(duration) && duration > 0 ? duration : Infinity
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start) {
+      throw new Error('event time range must satisfy 0 <= start < end')
+    }
+    if (end > limit + 1e-3) throw new Error('event time range exceeds the video duration')
+    merged.timeRange = makeTimeRange(start, Math.min(end, limit), Number(doc.source?.fps) || 30)
+  }
+  // 改名后，按旧 label 触发的意图改为按 id 触发（否则改名会让意图悄悄脱钩）
+  const renamed = merged.label !== ev.label
+  const intents = renamed
+    ? arr(doc.intents).map((i) => (i.trigger === ev.label ? { ...i, trigger: ev.id } : i))
+    : arr(doc.intents)
+  return {
+    ...doc,
+    events: events.map((e, i) => (i === index ? merged : e)),
+    intents
+  }
+}
+
+function updateBeat(
+  doc: SemanticTimeline,
+  id: string,
+  patch: Record<string, unknown>,
+  origin: SemanticEdit['origin']
+): SemanticTimeline {
+  const beats = arr(doc.beats)
+  const index = beats.findIndex((b) => b.id === id)
+  if (index < 0) throw new Error(`beat not found: ${id}`)
+  const beat = beats[index]!
+  const merged: StoryBeat = { ...beat, emotion: { ...beat.emotion }, origin }
+  if (has(patch, 'type')) merged.type = requiredText(patch.type, 'beat type')
+  if (has(patch, 'description')) merged.description = String(patch.description ?? '')
+  if (has(patch, 'emotionLabel')) merged.emotion.label = String(patch.emotionLabel ?? '').trim()
+  if (has(patch, 'emotionIntensity')) {
+    merged.emotion.intensity = unitInterval(patch.emotionIntensity, 'emotion intensity')
+  }
+  return { ...doc, beats: beats.map((b, i) => (i === index ? merged : b)) }
+}
+
+function parseTechniques(value: unknown): IntentTechnique[] {
+  if (!Array.isArray(value)) throw new Error('techniques must be an array')
+  return value.map((raw, i) => {
+    const tech = (raw ?? {}) as Record<string, unknown>
+    if (!isKnownTechniqueTrack(tech.track)) {
+      throw new Error(`techniques[${i}].track is not a known track: ${String(tech.track)}`)
+    }
+    const action = requiredText(tech.action, `techniques[${i}].action`)
+    const params =
+      tech.params && typeof tech.params === 'object' && !Array.isArray(tech.params)
+        ? (tech.params as Record<string, unknown>)
+        : undefined
+    return {
+      track: tech.track as IntentTechnique['track'],
+      action,
+      ...(params ? { params } : {})
+    }
+  })
+}
+
+function updateIntent(
+  doc: SemanticTimeline,
+  id: string,
+  patch: Record<string, unknown>,
+  origin: SemanticEdit['origin']
+): SemanticTimeline {
+  const intents = arr(doc.intents)
+  const index = intents.findIndex((i) => i.id === id)
+  if (index < 0) throw new Error(`intent not found: ${id}`)
+  const intent = intents[index]!
+  const merged: DirectorIntent = { ...intent, origin }
+  if (has(patch, 'goal')) merged.goal = requiredText(patch.goal, 'intent goal')
+  if (has(patch, 'reason')) merged.reason = String(patch.reason ?? '')
+  if (has(patch, 'techniques')) merged.techniques = parseTechniques(patch.techniques)
+  if (has(patch, 'trigger')) {
+    const trigger = requiredText(patch.trigger, 'intent trigger')
+    if (!arr(doc.events).some((e) => e.id === trigger)) {
+      throw new Error(`intent trigger must be an existing event id: ${trigger}`)
+    }
+    merged.trigger = trigger
+  }
+  const next = { ...doc, intents: intents.map((x, i) => (i === index ? merged : x)) }
+  return merged.trigger === intent.trigger ? next : linkIntentsToEvents(next)
+}
+
+/** 删一个意图，并清掉事件上对它的引用 */
+function removeIntent(doc: SemanticTimeline, id: string): SemanticTimeline {
+  return {
+    ...doc,
+    intents: arr(doc.intents).filter((i) => i.id !== id),
+    events: arr(doc.events).map((e) =>
+      arr(e.intents).includes(id) ? { ...e, intents: arr(e.intents).filter((x) => x !== id) } : e
+    )
+  }
+}
+
+/**
+ * 删一个事件并级联：以它为触发的意图一起删（按 id 触发；按 label 触发且再没有同名事件时也删），
+ * 节拍里对它的引用一并清掉。
+ */
+function removeEventCascade(doc: SemanticTimeline, id: string): SemanticTimeline {
+  const target = arr(doc.events).find((e) => e.id === id)
+  const events = arr(doc.events).filter((e) => e.id !== id)
+  const labelStillUsed = !!target && events.some((e) => e.label === target.label)
+  const orphaned = new Set(
+    arr(doc.intents)
+      .filter(
+        (i) => i.trigger === id || (!!target && i.trigger === target.label && !labelStillUsed)
+      )
+      .map((i) => i.id)
+  )
+  return {
+    ...doc,
+    events: events.map((e) =>
+      arr(e.intents).some((x) => orphaned.has(x))
+        ? { ...e, intents: arr(e.intents).filter((x) => !orphaned.has(x)) }
+        : e
+    ),
+    intents: arr(doc.intents).filter((i) => !orphaned.has(i.id)),
+    beats: arr(doc.beats).map((b) =>
+      arr(b.events).includes(id) ? { ...b, events: arr(b.events).filter((x) => x !== id) } : b
+    )
+  }
+}
+
+/**
+ * 删除事件时会被一起删掉的意图（UI 在提交前预演、提示用户）。
+ */
+export function intentsRemovedWithEvent(doc: SemanticTimeline, eventId: string): DirectorIntent[] {
+  const before = new Set(arr(doc.intents).map((i) => i.id))
+  const after = new Set(arr(removeEventCascade(doc, eventId).intents).map((i) => i.id))
+  return arr(doc.intents).filter((i) => before.has(i.id) && !after.has(i.id))
+}
+
+/** 事件上的 `intents[]` 按 trigger 重新对齐（trigger 是事件 id 或 label） */
+function linkIntentsToEvents(doc: SemanticTimeline): SemanticTimeline {
+  const intents = arr(doc.intents)
+  return {
+    ...doc,
+    events: arr(doc.events).map((e) => ({
+      ...e,
+      intents: intents.filter((i) => i.trigger === e.id || i.trigger === e.label).map((i) => i.id)
+    }))
+  }
 }
 
 /** 文档里有多少处修改（UI 摘要用） */

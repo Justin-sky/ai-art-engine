@@ -32,6 +32,7 @@ import {
   missingNodeTypes,
   parseWorkflowBundle,
   parseWorkflowMarketIndex,
+  planHasExecutableCode,
   resolveWorkflowMarketSources,
   validateSkillEntryText,
   workflowEntryBlockReason,
@@ -497,6 +498,13 @@ export async function installWorkflow(input: {
    * 且**不算安装失败**（技能本身仍然可用，只是没有随包脚本）。
    */
   skillScriptsConsent?: boolean
+  /**
+   * 用户**明示同意**安装含可执行代码（`script.run` 节点）的工作流。
+   *
+   * 缺省 / false = 拒绝安装含代码的工作流（界面先逐条展示脚本清单再确认，不记忆）。
+   * 不含代码的工作流不受影响。
+   */
+  scriptConsent?: boolean
   /** 索引条目里的 Semantic Pack 文件清单（与 skill 同口径：界面传入、主进程再校验路径） */
   semanticPacks?: WorkflowMarketEntry['semanticPacks']
 }): Promise<WorkflowMarketActionResult> {
@@ -532,6 +540,7 @@ async function installFromSource(
     acceptMissingTypes?: boolean
     skill?: WorkflowSkillManifest
     skillScriptsConsent?: boolean
+    scriptConsent?: boolean
     semanticPacks?: WorkflowMarketEntry['semanticPacks']
   },
   failures: string[]
@@ -556,6 +565,12 @@ async function installFromSource(
   const missing = missingNodeTypes(bundle, known)
   if (missing.length > 0 && !input.acceptMissingTypes) {
     return { ok: false, reasonKey: 'missingNodeTypes', error: missing.join(', ') }
+  }
+
+  // 含可执行代码（script.run）的工作流：必须用户逐次明示同意，否则拒绝安装。
+  // 字面 === true，和 skillScriptsConsent 同一安全口径（界面先展示脚本清单再确认）。
+  if (planHasExecutableCode(bundle.plan) && input.scriptConsent !== true) {
+    return { ok: false, reasonKey: 'scriptConsentRequired' }
   }
 
   const coverUrl = urls.cover({ id: bundle.id, cover: bundle.cover ?? 'cover.png' })

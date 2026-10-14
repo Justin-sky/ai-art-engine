@@ -88,6 +88,9 @@ export type EditorDiveViewMeta =
       resultRelativePath?: string
       /** 节点输出尚未落盘时，内联 JSON 直接渲染编辑器 */
       timelineJson?: string
+      /** 打开它的分析节点（读取「参考图」端口上游的图片，作为实体替换的 `@` 候选） */
+      hostId?: string
+      nodeId?: string
     }
   | {
       viewId: 'world.editor'

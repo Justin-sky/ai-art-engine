@@ -10,6 +10,9 @@ import {
   executeSemanticRebuildNode
 } from './execute/semanticTimeline'
 
+/** 语义分析节点的参考图入口（实体替换的 `@` 候选来源） */
+export const SEMANTIC_REFERENCE_IMAGES_PORT_ID = 'in-images'
+
 /** 与 builtins 视频工具节点同尺寸 */
 const ASSET_SIZE = { w: 168, h: 128 }
 const ASSET_LIMITS = { minW: 120, minH: 72, maxW: 480, maxH: 400 }
@@ -85,6 +88,17 @@ export const SEMANTIC_TIMELINE_NODE_TYPES: NodeTypeDefinition[] = [
         dataType: GraphPortType.video,
         multiple: false,
         label: 'Video'
+      },
+      /**
+       * 替换用的参考图（换人 / 换商品）。**不参与分析**：只作为 Dive 里实体指令框 `@` 的候选，
+       * 上游接「生成角色图」之类的节点，新形象就能沿着图流进来。
+       */
+      {
+        id: SEMANTIC_REFERENCE_IMAGES_PORT_ID,
+        direction: 'in',
+        dataType: GraphPortType.image,
+        multiple: true,
+        label: 'Reference images'
       },
       timelineOut
     ],
@@ -183,6 +197,9 @@ export const SEMANTIC_TIMELINE_NODE_TYPES: NodeTypeDefinition[] = [
       dubModel: '',
       dubProviderInstanceId: '',
       dubVoice: '',
+      // 实体局部替换：首帧重绘用的图片模型（空 = 设置里的默认图片模型）
+      replaceImageModel: '',
+      replaceImageProviderInstanceId: '',
       semanticExecute: true
     }),
     addable: true,

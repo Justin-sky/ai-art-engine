@@ -232,7 +232,9 @@ const viewBindings = computed(() => {
         sourceAssetId: meta.sourceAssetId,
         sourceRelativePath: meta.sourceRelativePath,
         resultRelativePath: meta.resultRelativePath,
-        timelineJson: meta.timelineJson
+        timelineJson: meta.timelineJson,
+        graphHostId: meta.hostId,
+        graphNodeId: meta.nodeId
       }
     default:
       return {

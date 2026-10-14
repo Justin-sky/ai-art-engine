@@ -258,6 +258,17 @@
       </template>
 
       <label>
+        <span class="field-label">{{ t('graph.inspector.semantic.replaceImageModel') }}</span>
+        <select v-model="replaceImageModelKey" @change="persistRebuild">
+          <option value="">{{ t('graph.inspector.semantic.modelAuto') }}</option>
+          <option v-for="opt in imageModelOptions" :key="opt.key" :value="opt.key">
+            {{ opt.label }}
+          </option>
+        </select>
+        <span class="field-hint">{{ t('graph.inspector.semantic.replaceImageModelHint') }}</span>
+      </label>
+
+      <label>
         <span class="field-label">{{ t('graph.inspector.semantic.rebuildDuration') }}</span>
         <input
           v-model="rebuildDuration"
@@ -488,6 +499,9 @@ const rebuildDub = ref(true)
 const rebuildDubClone = ref(true)
 const dubModelOptions = ref<GenerateModelOption[]>([])
 const dubModelKey = ref('')
+/** 实体局部替换：首帧重绘用的图片模型 */
+const imageModelOptions = ref<GenerateModelOption[]>([])
+const replaceImageModelKey = ref('')
 const dubVoice = ref('')
 
 function loadConfig(current: NonNullable<typeof node.value>): void {
@@ -574,6 +588,10 @@ function syncRebuildFromNode(): void {
   rebuildDub.value = p?.rebuildDub !== false
   rebuildDubClone.value = p?.rebuildDubClone !== false
   dubModelKey.value = preferredModelKey(p?.dubProviderInstanceId, p?.dubModel)
+  replaceImageModelKey.value = preferredModelKey(
+    p?.replaceImageProviderInstanceId,
+    p?.replaceImageModel
+  )
   dubVoice.value = String(p?.dubVoice ?? '')
 }
 
@@ -583,6 +601,7 @@ function syncRebuildFromNode(): void {
  */
 function persistRebuild(): void {
   const dub = parseModelKey(dubModelKey.value)
+  const replaceImage = parseModelKey(replaceImageModelKey.value)
   patch({
     rebuildMode: rebuildMode.value,
     semanticExecute: rebuildExecute.value,
@@ -595,7 +614,9 @@ function persistRebuild(): void {
     rebuildDubClone: rebuildDubClone.value,
     dubModel: dub?.model ?? '',
     dubProviderInstanceId: dub?.providerInstanceId ?? '',
-    dubVoice: dubVoice.value.trim()
+    dubVoice: dubVoice.value.trim(),
+    replaceImageModel: replaceImage?.model ?? '',
+    replaceImageProviderInstanceId: replaceImage?.providerInstanceId ?? ''
   })
 }
 
@@ -605,6 +626,12 @@ async function loadRebuildModels(): Promise<void> {
     rebuildModelOptions.value = loaded.options
   } catch {
     rebuildModelOptions.value = []
+  }
+  try {
+    const loaded = await loadGenerateModelOptions('image')
+    imageModelOptions.value = loaded.options
+  } catch {
+    imageModelOptions.value = []
   }
   try {
     const loaded = await loadGenerateModelOptions('audio')

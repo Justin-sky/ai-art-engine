@@ -21,6 +21,14 @@
  */
 
 import type { GraphPlan } from './graph'
+import {
+  planHasExecutableCode as nodesHaveExecutableCode,
+  scriptSummariesOfNodes,
+  SCRIPT_CAPABILITIES,
+  validateScriptNodesInPlan,
+  type ScriptNodeSummary,
+  type ScriptScannableNode
+} from './graph/scriptNode'
 
 /** 索引里一条工作流的**展示与兼容信息**（不含 `plan` 本体，控制索引体积） */
 export interface WorkflowMarketEntry {
@@ -42,6 +50,16 @@ export interface WorkflowMarketEntry {
   sizeBytes?: number
   /** 可选：随本条工作流一起安装的 dsh 技能包（清单由仓库脚本从磁盘派生） */
   skill?: WorkflowSkillManifest
+  /**
+   * 该工作流是否含可执行代码（存在 `script.run` 节点）。
+   *
+   * 为 true 时界面标「含可执行代码」，并驱动**逐次同意流** —— 客户端只在用户每次安装都明示
+   * 同意（`scriptConsent === true`，不记忆）时才落盘；代码在受限沙箱里跑（无 fs / 网络 / require）。
+   * 索引由仓库脚本从 plan 派生，不允许手写。
+   */
+  hasExecutableCode?: boolean
+  /** 可选：脚本节点摘要（逐条列出 key / 标题 / 所需能力 / 代码规模与短 hash），同意流展示用 */
+  scripts?: ScriptNodeSummary[]
   /**
    * 可选：Semantic Pack 文件清单（索引派生，相对工作流根，如 `semanticPacks/foo.json`）。
    * 客户端按此清单下载；`workflow.json` 里的 `semanticPacks` 字符串数组是声明，清单以磁盘为准。
@@ -232,12 +250,56 @@ export function parseWorkflowMarketEntry(raw: unknown): WorkflowMarketEntry | nu
     ...(() => {
       const skill = parseWorkflowSkillManifest(obj.skill)
       const semanticPacks = parseSemanticPacksManifest(obj.semanticPacks)
+      const scripts = parseScriptSummaries(obj.scripts)
+      const hasExecutableCode = obj.hasExecutableCode === true || scripts.length > 0
       return {
         ...(skill ? { skill } : {}),
-        ...(semanticPacks ? { semanticPacks } : {})
+        ...(semanticPacks ? { semanticPacks } : {}),
+        ...(hasExecutableCode ? { hasExecutableCode: true } : {}),
+        ...(scripts.length ? { scripts } : {})
       }
     })()
   }
+}
+
+/**
+ * 解析索引条目里的脚本摘要段（远端内容，宽容读取、逐字段重建）。
+ * 能力名越白名单的丢弃；缺 nodeKey 的丢弃。
+ */
+export function parseScriptSummaries(raw: unknown): ScriptNodeSummary[] {
+  if (!Array.isArray(raw)) return []
+  const out: ScriptNodeSummary[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const obj = item as Record<string, unknown>
+    const nodeKey = asString(obj.nodeKey)
+    if (!nodeKey) continue
+    const title = asString(obj.title)
+    const capabilities = asStringArray(obj.capabilities).filter((c) =>
+      (SCRIPT_CAPABILITIES as readonly string[]).includes(c)
+    ) as ScriptNodeSummary['capabilities']
+    const codeChars = asCount(obj.codeChars)
+    const codeHash = asString(obj.codeHash)
+    out.push({
+      nodeKey,
+      ...(title ? { title } : {}),
+      capabilities,
+      codeChars,
+      codeHash
+    })
+  }
+  return out.sort((a, b) => a.nodeKey.localeCompare(b.nodeKey))
+}
+
+/** 把脚本摘要转成可结构化克隆的纯数据（跨 IPC 前，与 plainSkillManifest 同理） */
+export function plainScriptSummaries(scripts: readonly ScriptNodeSummary[]): ScriptNodeSummary[] {
+  return scripts.map((s) => ({
+    nodeKey: s.nodeKey,
+    ...(s.title ? { title: s.title } : {}),
+    capabilities: [...s.capabilities],
+    codeChars: s.codeChars,
+    codeHash: s.codeHash
+  }))
 }
 
 /**
@@ -502,6 +564,10 @@ export function parseWorkflowBundle(
     if (keys.has(key)) return { ok: false, reasonKey: 'duplicateNodeKey' }
     keys.add(key)
   }
+  // 脚本节点参数不可信：代码空 / 超长、能力越白名单、端口非法、资源超硬顶 → 整体拒绝
+  if (validateScriptNodesInPlan(nodes as ScriptScannableNode[]).length > 0) {
+    return { ok: false, reasonKey: 'badScript' }
+  }
   const edgesRaw = planObj.edges
   if (edgesRaw !== undefined && !Array.isArray(edgesRaw)) {
     return { ok: false, reasonKey: 'badEdges' }
@@ -559,6 +625,20 @@ export function nodeTypesOfPlan(plan: GraphPlan): string[] {
     if (node && typeof node.typeId === 'string' && node.typeId.trim()) set.add(node.typeId.trim())
   }
   return [...set].sort()
+}
+
+/**
+ * 从 `plan` 派生脚本节点摘要（含可执行代码的识别基础）。
+ * 仓库侧 `build-index.mjs` 用同一规则写进索引的 `scripts` / `hasExecutableCode`；
+ * 应用侧安装时也用它交叉核对、驱动同意流。两边口径必须相同。
+ */
+export function scriptSummariesOfPlan(plan: GraphPlan): ScriptNodeSummary[] {
+  return scriptSummariesOfNodes(plan.nodes as unknown as ScriptScannableNode[])
+}
+
+/** `plan` 是否含可执行代码（存在 `script.run` 节点） */
+export function planHasExecutableCode(plan: GraphPlan): boolean {
+  return nodesHaveExecutableCode(plan.nodes as unknown as ScriptScannableNode[])
 }
 
 // ─────────────────────────────────────────────────────────────

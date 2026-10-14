@@ -49,6 +49,7 @@ import ShotNoteInspector from '../components/ShotNoteInspector.vue'
 import DirectorCameraInspector from '../components/DirectorCameraInspector.vue'
 import DirectorStageInspector from '../components/DirectorStageInspector.vue'
 import GraphHostInspector from '../components/GraphHostInspector.vue'
+import ScriptRunInspector from '../components/ScriptRunInspector.vue'
 import type { InspectorDefinition } from './types'
 import type { ProjectConfig } from '@shared/domain'
 import {
@@ -433,6 +434,11 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     id: 'studio.graph.camera',
     component: DirectorCameraInspector,
     nodeInspectorKind: 'camera'
+  },
+  {
+    id: 'studio.graph.scriptRun',
+    component: ScriptRunInspector,
+    nodeTypeId: 'script.run'
   },
   {
     id: 'studio.graph.group',

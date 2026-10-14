@@ -976,6 +976,16 @@ export default {
        */
       scriptsConfirm:
         '这个技能包里有 {count} 个脚本文件，它们是 AI agent 可以在这台机器上跑起来的代码：\n\n{files}\n\n只有你点「确定」才会把这些脚本写入本机。点「取消」则只安装说明书与 references（脚本不落盘，工作流照常可用）。\n\n仍要安装这些脚本吗？',
+      /** 卡片上的可执行代码标记：装之前就要让用户知道这条工作流会执行自带代码 */
+      executableCode: '含可执行代码',
+      executableCodeHint:
+        '这条工作流包含 script.run 节点，会执行自带的 JavaScript 代码（在受限沙箱里运行：无文件 / 网络 / require，只能调用节点声明且经应用治理的能力）。安装前需你逐次同意。',
+      /**
+       * 含可执行代码工作流的安装确认框。必须**逐条列出**脚本节点：同意的是具体这些代码段，
+       * 而不是一句笼统的「包含代码」。取消即不安装整条工作流。
+       */
+      scriptConfirm:
+        '这条工作流包含 {count} 段可执行代码（script.run 节点）。它们会在受限沙箱里运行（无文件 / 网络 / require），只能调用下列声明的、经应用治理的能力：\n\n{scripts}\n\n点「确定」才会安装并允许这些代码运行。点「取消」则不安装这条工作流。\n\n仍要安装吗？',
       reason: {
         network: '连不上远端市场（检查网络或换一个源地址）',
         schemaTooNew: '目录格式比本应用新，请先更新应用',
@@ -991,6 +1001,9 @@ export default {
         missingMeta: '工作流缺少标题 / 简介 / 许可 / 署名等必填信息',
         noPlan: '工作流文件里没有计划',
         noNodes: '工作流里没有节点',
+        badScript:
+          '工作流里的脚本节点参数不合法（代码为空 / 超长、能力越白名单、端口非法或超资源上限）',
+        scriptConsentRequired: '这条工作流含可执行代码，需你明确同意后才能安装',
         idMismatch: '目录与工作流文件里的 id 不一致（仓库内容有误）',
         download: '下载失败',
         removeFailed: '删除失败',
@@ -4250,6 +4263,23 @@ export default {
       title: '文本',
       placeholder: '双击编辑文本内容…'
     },
+    scriptRun: {
+      hint: '在沙箱中运行自定义 JavaScript：读取上游输入，可调用已勾选的应用能力（om.*），返回输出。禁止文件 / 网络 / require。',
+      ports: '端口',
+      inPortsShort: '入',
+      outPortsShort: '出',
+      inputs: '输入端口',
+      outputs: '输出端口',
+      capabilities: '可用能力',
+      capabilitiesHint: '仅勾选的 om.* 能力可在脚本中调用；默认全部关闭。',
+      code: '代码',
+      limits: '资源上限',
+      timeoutMs: '超时（毫秒）',
+      memoryMb: '内存（MB）',
+      addPort: '添加端口',
+      portId: '端口 ID',
+      removePort: '删除端口'
+    },
     inputInterface: {
       badge: '输入接口',
       title: '输入',
@@ -4661,6 +4691,9 @@ export default {
         rebuild: '语义重建',
         compile: '语义编译'
       },
+      script: {
+        run: '脚本'
+      },
       voice: {
         select: '选取声音'
       },
@@ -4794,7 +4827,11 @@ export default {
       entityKindBackground: '背景',
       entityKindVoice: '声音',
       trackVfx: '特效',
+      trackLight: '光影',
       trackEvents: '事件',
+      layerFootage: '镜头 / 台词',
+      trackShots: '镜头',
+      trackDialogue: '台词',
       refEvent: '事件',
       refBeat: '节拍',
       refIntent: '意图',
@@ -4806,7 +4843,7 @@ export default {
       reason: '理由',
       resizePanes: '拖动调整左右宽度（← → 也可）',
       evidence: '证据',
-      selectHint: '点选事件、节拍、实体或制作片段查看其证据',
+      selectHint: '点选轨道上的镜头、台词、事件、节拍、实体或制作片段，在这里修改它',
       noEntities: '暂无实体',
       noTimelineHint: '这个节点还没有时间线',
       noTimelineHintSub:
@@ -4836,20 +4873,10 @@ export default {
         resolution: '结局'
       }
     },
-    /** 结构化修改面板（dive，时间线编辑器下方）：改镜头 / 台词 / 实体，落盘后重跑编译与重建 */
+    /** 修改摘要条 + 镜头 / 台词 / 实体表单字段（dive 右侧检查器） */
     semanticEdit: {
       title: '修改',
       summary: '{shots} 镜将重新生成 · {removed} 镜删除 · {lines} 句重新配音',
-      hint: '改动立即保存到时间线；重跑「语义编译」和「语义重建」后生效。未修改的镜头在重建时直通原片，零修改即还原原片。',
-      tab_shots: '镜头',
-      tab_dialogue: '台词',
-      tab_entities: '实体',
-      noShots: '还没有镜头树：先运行上游「语义分析」',
-      noDialogue: '没有转写台词',
-      noEntities: '没有识别到实体',
-      removed: '已删除',
-      willRegenerate: '将重新生成',
-      passthrough: '直通原片',
       remove: '删除本镜',
       restore: '恢复',
       subject: '主体',
@@ -4877,6 +4904,85 @@ export default {
       appearances: '出现在 {n} 镜',
       saveFailed: '保存修改失败：',
       currentPrompt: '当前提示词：'
+    },
+    /** 语义 dive 右侧检查器：轨道上选中什么就改什么（镜头 / 台词 / 事件 / 节拍 / 意图 / 实体） */
+    semanticInspector: {
+      kind_shot: '镜头',
+      kind_dialogue: '台词',
+      kind_event: '事件',
+      kind_beat: '节拍',
+      kind_intent: '导演意图',
+      kind_entity: '实体',
+      seekTo: '在原片中跳到这里',
+      impactTitle: '影响的镜头',
+      impactNone: '不覆盖任何镜头',
+      status_regenerate: '将重新生成',
+      status_removed: '已删除',
+      status_passthrough: '直通原片',
+      impactHint:
+        '修改立即保存；重跑「语义编译」和「语义重建」时，只有标为「将重新生成」的镜头会交给模型。',
+      eventLabel: '标签',
+      eventType: '类型',
+      eventDescription: '描述',
+      importance: '重要度',
+      start: '开始（秒）',
+      end: '结束（秒）',
+      eventType_story: '剧情',
+      eventType_character: '角色',
+      eventType_camera: '镜头',
+      eventType_emotion: '情绪',
+      eventType_audio: '声音',
+      eventType_text: '文字',
+      eventType_product: '商品',
+      deleteEvent: '删除事件',
+      deleteIntent: '删除意图',
+      confirmDelete: '确认删除',
+      cancel: '取消',
+      deleteEventCascade: '会同时删除 {n} 个以它为触发的导演意图：{names}',
+      deleteImpact: '删除后，覆盖的镜头会按新内容重新生成。',
+      beatType: '类型',
+      beatDescription: '描述',
+      emotionLabel: '情绪',
+      emotionIntensity: '情绪强度',
+      intentGoal: '目标',
+      intentTrigger: '触发事件',
+      intentTechniques: '手法',
+      techniqueTrack: '轨道',
+      techniqueAction: '动作',
+      addTechnique: '+ 添加手法',
+      removeTechnique: '移除这条手法',
+      intentReason: '理由',
+      pictureTrackHint:
+        '只有机位、光影、特效的手法会进入画面提示词；声音、字幕、剪辑属于后期，改了不会让画面重新生成。',
+      entityKind: '类别',
+      replaceTitle: '替换成',
+      replaceRefs: '已引用的参考图',
+      replaceInstruction: "替换指令（输入 {'@'} 引用参考图）",
+      replaceInstructionPlaceholder: "例如：换成 {'@'}1 里的女主播，保持原动作和走位",
+      replaceCandidates: '可引用的图片（点一下插入）：',
+      replaceInsert: '插入 {token}',
+      replaceNoCandidates:
+        '还没有可引用的图片：给语义分析节点的「参考图」端口接上图片（上游是生成节点的话先运行它）。',
+      replaceClear: '清除替换',
+      targetTitle: '替换目标（每镜点一下要换的那个）',
+      targetPicked: '已选目标',
+      targetMissing: '未选目标',
+      targetNoKeyframe: '这一镜没有关键帧，无法点选目标',
+      targetHint:
+        '点选了目标的镜头：先按实体逐个局部重绘首帧，再图生视频，构图和其他角色都保持原样；没点选的镜头只能按参考图整镜重拍。',
+      pickMode: '选择方式',
+      pickMode_point: '点选',
+      pickMode_rect: '框选',
+      pickBusy: '识别中…',
+      pickClear: '清除目标',
+      pickStageLabel: '关键帧：点选或拖框选出要替换的目标',
+      pickMiss: '这里没有识别到可选目标，换「框选」拖一个框试试',
+      pickFailed: '识别失败：',
+      saving: '保存中…',
+      saved: '已保存',
+      saveFailed: '保存失败：',
+      reloaded: '已从磁盘重新载入最新版本。',
+      shortcutsHint: 'Esc 取消选中 · Delete 删除选中项'
     },
     notepad: {
       appMark: '记事本',
@@ -5385,6 +5491,9 @@ export default {
         rebuildDubVoice: '配音音色',
         rebuildDubVoicePlaceholder: '空 = 说话人档案 / 模型默认音色',
         rebuildDubClone: '没有指定音色时用原片人声做声音克隆参考',
+        replaceImageModel: '实体替换的图片模型',
+        replaceImageModelHint:
+          '在 Dive 里给实体点选了替换目标的镜头：先用它按实体逐个局部重绘首帧，再交给视频模型做图生视频。',
         rebuildPreview: '成片预览',
         rebuildPreviewEmpty: '还没有成片：运行本节点后在这里预览',
         rebuildReportGenerate: '重新生成',

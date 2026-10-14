@@ -10,7 +10,10 @@ import {
   buildPromptPlan,
   collectRulePacks,
   compileDirectorCommands,
+  findVocabularyInPacks,
+  listVocabularies,
   migrateSemanticTimeline,
+  summarizeSemanticDiff,
   type SemanticEditInput,
   type SemanticPack,
   type SemanticTimeline,
@@ -19,11 +22,18 @@ import {
   type VideoPromptPlan
 } from '@shared/semanticTimeline'
 import SemanticTimelineEditor from '../SemanticTimelineEditor.vue'
-import SemanticEditPanel from '../SemanticEditPanel.vue'
 import SemanticCompareView from '../SemanticCompareView.vue'
 import { useStudioI18n } from '../../composables/useStudioI18n'
+import { SEMANTIC_REFERENCE_IMAGES_PORT_ID } from '@shared/graph/semanticTimelineNodes'
+import { graphEditorHosts } from '../../features/graph/model/graphEditorHosts'
+import { graphRunHosts } from '../../features/graph/model/graphRunHosts'
+import {
+  candidatesFromSourceNode,
+  mergeCandidates,
+  type ReferenceCandidate
+} from '../../features/graph/model/semanticReferenceCandidates'
 
-const { t, locale } = useStudioI18n()
+const { t, te, locale } = useStudioI18n()
 
 const props = defineProps<{
   frameKey: string
@@ -32,6 +42,9 @@ const props = defineProps<{
   sourceRelativePath?: string
   resultRelativePath?: string
   timelineJson?: string
+  /** 打开它的分析节点（读「参考图」端口上游的图片） */
+  graphHostId?: string
+  graphNodeId?: string
 }>()
 
 const timeline = ref<SemanticTimeline | null>(null)
@@ -150,40 +163,129 @@ async function toV2(doc: SemanticTimeline): Promise<SemanticTimeline> {
   return migrateSemanticTimeline(doc, evidence)
 }
 
-// ─── 结构化修改（镜头 / 台词 / 实体） ────────────────────────────────────────────
+// ─── 修改（检查器 → 文档 → 落盘） ────────────────────────────────────────────────
 
 const editError = ref('')
-const saving = ref(false)
+type SaveState = 'idle' | 'saving' | 'saved' | 'error'
+const saveState = ref<SaveState>('idle')
+
+function errorText(e: unknown): string {
+  return e instanceof Error ? e.message : String(e)
+}
 
 /**
- * 应用一次修改并**立即落盘**（`timeline.json`）。编译节点读时间线时会优先用磁盘上更新的版本，
- * 所以改完重跑编译 / 重建即可生效。落盘失败时回滚到修改前，并把原因显示出来。
+ * 应用一次修改：**立即**更新界面（乐观），再排队落盘。
+ * 校验失败（空标签、触发事件不存在…）时文档不动，把原因显示出来。
  */
-async function applyEdit(input: SemanticEditInput): Promise<void> {
-  const before = timeline.value
-  if (!before) return
+function applyEdit(input: SemanticEditInput): void {
+  const current = timeline.value
+  if (!current) return
   editError.value = ''
-  let next: SemanticTimeline
   try {
-    next = applySemanticEdit(before, input)
+    timeline.value = applySemanticEdit(current, input)
   } catch (e) {
-    editError.value = e instanceof Error ? e.message : String(e)
+    editError.value = errorText(e)
     return
   }
-  timeline.value = next
-  saving.value = true
+  scheduleSave()
+}
+
+/**
+ * 串行落盘，只存**最新**状态。
+ *
+ * 连续快速修改时不并发写盘、不乱序；正在写的那次结束后，若期间又有修改，再写一次最新版。
+ * 失败时**从磁盘重载**而不是回滚到某个旧快照 —— 回滚会把失败那次之后的修改一起冲掉。
+ */
+let saveChain: Promise<void> = Promise.resolve()
+let saveQueued = false
+
+function scheduleSave(): void {
+  saveState.value = 'saving'
+  if (saveQueued) return
+  saveQueued = true
+  saveChain = saveChain.then(async () => {
+    saveQueued = false
+    const doc = timeline.value
+    if (!doc) return
+    try {
+      await window.studio.semanticSaveTimeline(doc)
+      if (!saveQueued) saveState.value = 'saved'
+    } catch (e) {
+      saveState.value = 'error'
+      editError.value = `${t('graph.semanticInspector.saveFailed')}${errorText(e)}`
+      const disk = await readDiskTimeline(doc.id)
+      if (disk) {
+        timeline.value = await toV2(disk)
+        editError.value += ` ${t('graph.semanticInspector.reloaded')}`
+      }
+    }
+  })
+}
+
+const editSummary = computed(() => {
+  const doc = timeline.value
+  if (!doc) return null
+  const s = summarizeSemanticDiff(doc)
+  return { shots: s.dirtyShots, removed: s.removedShots, lines: s.dirtyDialogue }
+})
+
+const saveLabel = computed(() =>
+  saveState.value === 'saving'
+    ? t('graph.semanticInspector.saving')
+    : saveState.value === 'saved'
+      ? t('graph.semanticInspector.saved')
+      : ''
+)
+
+// ─── 语义市场包（词表 / 规则）：加载一次，提示词参照与节拍下拉共用 ──────────────────
+
+const packs = ref<SemanticPack[]>([])
+
+async function loadPacks(): Promise<void> {
   try {
-    await window.studio.semanticSaveTimeline(next)
-  } catch (e) {
-    timeline.value = before
-    editError.value = `${t('graph.semanticEdit.saveFailed')}${e instanceof Error ? e.message : String(e)}`
-  } finally {
-    saving.value = false
+    packs.value = (await window.studio.semanticListPacks()) ?? []
+  } catch {
+    packs.value = []
   }
 }
 
+/** 节拍下拉：当前时间线所用词表的类型（内置类型本地化；市场包类型用包里的名字） */
+const beatTypes = computed(() => {
+  const vocab =
+    findVocabularyInPacks(packs.value, timeline.value?.vocabulary) ??
+    listVocabularies(packs.value)[0]
+  return (vocab?.beats ?? []).map((b) => {
+    const key = `graph.semanticTimeline.beat.${b.type}`
+    return { type: b.type, label: te(key) ? t(key) : b.label || b.type }
+  })
+})
+
 onMounted(() => {
   void load()
+  void loadPacks().then(() => buildLocalPlan())
+})
+
+// ─── 实体替换的参考图候选：**只取**分析节点「参考图」端口上游的图片 ─────────────────
+// 不列资产库：候选来源与图上的连线一致，换什么形象由图决定，菜单也不会被整个资产库淹没
+
+const referenceCandidates = computed(() => {
+  const host = props.graphHostId?.trim()
+  const nodeId = props.graphNodeId?.trim()
+  const fromPort: ReferenceCandidate[] = []
+  if (host && nodeId) {
+    const runStates = graphRunHosts.get(host)?.runStates
+    for (const edge of graphEditorHosts.listIncomingEdges(
+      host,
+      nodeId,
+      SEMANTIC_REFERENCE_IMAGES_PORT_ID
+    )) {
+      const source = graphEditorHosts.getNode(host, edge.sourceNodeId)
+      if (!source) continue
+      fromPort.push(...candidatesFromSourceNode(source, runStates?.[source.id], edge.sourcePort))
+    }
+  }
+  // 多条入边可能指向同一张图：去重
+  return mergeCandidates(fromPort)
 })
 watch(
   () => [props.timelineId, props.timelineJson, props.sourceRelativePath, props.resultRelativePath],
@@ -219,13 +321,7 @@ async function buildLocalPlan(): Promise<void> {
         /* 读不到证据：没有参照提示词，不影响修改 */
       }
     }
-    let packs: SemanticPack[] = []
-    try {
-      packs = (await window.studio.semanticListPacks()) ?? []
-    } catch {
-      packs = []
-    }
-    const commands = compileDirectorCommands(doc, { rulePacks: collectRulePacks(packs) })
+    const commands = compileDirectorCommands(doc, { rulePacks: collectRulePacks(packs.value) })
     localPlan.value = buildPromptPlan({
       timeline: doc,
       shots,
@@ -266,12 +362,19 @@ const promptByShot = computed((): Record<string, string> => {
       <p>{{ hint }}</p>
       <p class="hint-sub">{{ t('graph.semanticTimeline.noTimelineHintSub') }}</p>
     </div>
-    <SemanticTimelineEditor v-if="timeline" :timeline="timeline" />
-    <SemanticEditPanel
-      v-if="timeline && timeline.id"
+    <!-- 修改摘要条：改了多少、保存状态、校验 / 保存失败原因（编辑本身在右侧检查器里） -->
+    <div v-if="timeline && editSummary" class="edit-bar" role="status" aria-live="polite">
+      <span class="edit-bar-title">{{ t('graph.semanticEdit.title') }}</span>
+      <span class="edit-bar-summary">{{ t('graph.semanticEdit.summary', editSummary) }}</span>
+      <span v-if="saveLabel" class="edit-bar-save">{{ saveLabel }}</span>
+      <span v-if="editError" class="edit-bar-err" role="alert">{{ editError }}</span>
+    </div>
+    <SemanticTimelineEditor
+      v-if="timeline"
       :timeline="timeline"
       :prompt-by-shot="promptByShot"
-      :error="editError"
+      :beat-types="beatTypes"
+      :reference-candidates="referenceCandidates"
       @edit="applyEdit"
     />
     <SemanticCompareView
@@ -314,6 +417,33 @@ const promptByShot = computed((): Record<string, string> => {
 .hint-sub {
   color: var(--text-muted);
   font-size: 12px;
+}
+.edit-bar {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-panel);
+  font-size: 12px;
+}
+.edit-bar-title {
+  font-weight: 600;
+  color: var(--text);
+}
+.edit-bar-summary,
+.edit-bar-save {
+  color: var(--text-muted);
+}
+.edit-bar-save {
+  margin-left: auto;
+}
+.edit-bar-err {
+  flex-basis: 100%;
+  color: #f88;
 }
 .compare {
   min-height: 220px;

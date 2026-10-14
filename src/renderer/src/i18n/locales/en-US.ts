@@ -994,6 +994,16 @@ export default {
        */
       scriptsConfirm:
         'This skill bundle contains {count} script file(s) — code the AI agent can run on this machine:\n\n{files}\n\nThey are written to your machine only if you click OK. Clicking Cancel installs the instructions and references only (no scripts on disk; the workflow still works).\n\nInstall these scripts?',
+      /** Card badge: tell the user, before installing, that this workflow runs its own code */
+      executableCode: 'Contains executable code',
+      executableCodeHint:
+        'This workflow has script.run nodes that execute bundled JavaScript (in a restricted sandbox: no file / network / require; it can only call the capabilities the node declares, all governed by the app). You must consent on each install.',
+      /**
+       * Install confirmation for workflows with executable code: list each script node.
+       * Cancel means the whole workflow is not installed.
+       */
+      scriptConfirm:
+        'This workflow contains {count} executable code block(s) (script.run nodes). They run in a restricted sandbox (no file / network / require) and may only call the declared, app-governed capabilities below:\n\n{scripts}\n\nClicking OK installs the workflow and lets this code run. Clicking Cancel does not install it.\n\nInstall anyway?',
       reason: {
         network: 'Cannot reach the remote market (check your network or use another source)',
         schemaTooNew: 'The catalog format is newer than this app — please update',
@@ -1009,6 +1019,10 @@ export default {
         missingMeta: 'The workflow is missing title / summary / license / author',
         noPlan: 'The workflow file has no plan',
         noNodes: 'The workflow has no nodes',
+        badScript:
+          'A script node has invalid params (empty / oversized code, capability outside the whitelist, invalid port, or over the resource cap)',
+        scriptConsentRequired:
+          'This workflow contains executable code; you must consent to install it',
         idMismatch: 'The catalog and the workflow file disagree on the id (repo content bug)',
         download: 'Download failed',
         removeFailed: 'Delete failed',
@@ -4351,6 +4365,24 @@ export default {
       title: 'Text',
       placeholder: 'Double-click to edit text…'
     },
+    scriptRun: {
+      hint: 'Run sandboxed JavaScript: read upstream inputs, call the capabilities you enable (om.*), return outputs. No file / network / require.',
+      ports: 'Ports',
+      inPortsShort: 'in',
+      outPortsShort: 'out',
+      inputs: 'Input ports',
+      outputs: 'Output ports',
+      capabilities: 'Capabilities',
+      capabilitiesHint:
+        'Only the om.* capabilities you check are callable from the script; all off by default.',
+      code: 'Code',
+      limits: 'Resource limits',
+      timeoutMs: 'Timeout (ms)',
+      memoryMb: 'Memory (MB)',
+      addPort: 'Add port',
+      portId: 'Port ID',
+      removePort: 'Remove port'
+    },
     inputInterface: {
       badge: 'Input',
       title: 'Input',
@@ -4768,6 +4800,9 @@ export default {
         rebuild: 'Semantic rebuild',
         compile: 'Semantic compile'
       },
+      script: {
+        run: 'Script'
+      },
       voice: {
         select: 'Select voice'
       },
@@ -4904,7 +4939,11 @@ export default {
       entityKindBackground: 'Background',
       entityKindVoice: 'Voice',
       trackVfx: 'VFX',
+      trackLight: 'Light',
       trackEvents: 'Events',
+      layerFootage: 'Shots / Lines',
+      trackShots: 'Shots',
+      trackDialogue: 'Lines',
       refEvent: 'Event',
       refBeat: 'Beat',
       refIntent: 'Intent',
@@ -4916,7 +4955,8 @@ export default {
       reason: 'Reason',
       resizePanes: 'Drag to resize panes (or ← →)',
       evidence: 'Evidence',
-      selectHint: 'Select an event, beat, entity or production clip to see its evidence',
+      selectHint:
+        'Select a shot, line, event, beat, entity or production clip on the tracks to edit it here',
       noEntities: 'No entities',
       noTimelineHint: 'This node has no timeline yet',
       noTimelineHintSub:
@@ -4947,20 +4987,10 @@ export default {
         resolution: 'Resolution'
       }
     },
-    /** Structured edit panel (dive, below the timeline editor): edit shots / lines / entities */
+    /** Edit summary bar + shot / line / entity form fields (dive inspector) */
     semanticEdit: {
       title: 'Edit',
       summary: '{shots} shot(s) to regenerate · {removed} removed · {lines} line(s) to re-dub',
-      hint: 'Edits are saved to the timeline right away; rerun Semantic compile and Semantic rebuild to apply. Unchanged shots pass through from the original, so no edits = the original video.',
-      tab_shots: 'Shots',
-      tab_dialogue: 'Lines',
-      tab_entities: 'Entities',
-      noShots: 'No shot tree yet: run the upstream Semantic analyze node first',
-      noDialogue: 'No transcribed lines',
-      noEntities: 'No entities detected',
-      removed: 'Removed',
-      willRegenerate: 'Will regenerate',
-      passthrough: 'Passthrough',
       remove: 'Remove shot',
       restore: 'Restore',
       subject: 'Subject',
@@ -4988,6 +5018,86 @@ export default {
       appearances: 'In {n} shot(s)',
       saveFailed: 'Failed to save edit: ',
       currentPrompt: 'Current prompt:'
+    },
+    /** Semantic dive side inspector: edit whatever is selected on the tracks */
+    semanticInspector: {
+      kind_shot: 'Shot',
+      kind_dialogue: 'Line',
+      kind_event: 'Event',
+      kind_beat: 'Beat',
+      kind_intent: 'Director intent',
+      kind_entity: 'Entity',
+      seekTo: 'Jump here in the original',
+      impactTitle: 'Affected shots',
+      impactNone: 'Covers no shots',
+      status_regenerate: 'Will regenerate',
+      status_removed: 'Removed',
+      status_passthrough: 'Passthrough',
+      impactHint:
+        'Edits save right away. When you rerun Semantic compile and Semantic rebuild, only shots marked "Will regenerate" go to the model.',
+      eventLabel: 'Label',
+      eventType: 'Type',
+      eventDescription: 'Description',
+      importance: 'Importance',
+      start: 'Start (s)',
+      end: 'End (s)',
+      eventType_story: 'Story',
+      eventType_character: 'Character',
+      eventType_camera: 'Camera',
+      eventType_emotion: 'Emotion',
+      eventType_audio: 'Audio',
+      eventType_text: 'Text',
+      eventType_product: 'Product',
+      deleteEvent: 'Delete event',
+      deleteIntent: 'Delete intent',
+      confirmDelete: 'Confirm delete',
+      cancel: 'Cancel',
+      deleteEventCascade: 'This also deletes {n} director intent(s) it triggers: {names}',
+      deleteImpact: 'After deleting, the shots it covers regenerate with the new content.',
+      beatType: 'Type',
+      beatDescription: 'Description',
+      emotionLabel: 'Emotion',
+      emotionIntensity: 'Emotion intensity',
+      intentGoal: 'Goal',
+      intentTrigger: 'Trigger event',
+      intentTechniques: 'Techniques',
+      techniqueTrack: 'Track',
+      techniqueAction: 'Action',
+      addTechnique: '+ Add technique',
+      removeTechnique: 'Remove this technique',
+      intentReason: 'Reason',
+      pictureTrackHint:
+        'Only camera, light and VFX techniques go into the picture prompt; audio, text and edit are post-production and do not regenerate the picture.',
+      entityKind: 'Kind',
+      replaceTitle: 'Replace with',
+      replaceRefs: 'Referenced images',
+      replaceInstruction: "Replacement instruction (type {'@'} to reference an image)",
+      replaceInstructionPlaceholder:
+        "e.g. Replace with the host in {'@'}1, keep the original motion and blocking",
+      replaceCandidates: 'Images you can reference (click to insert):',
+      replaceInsert: 'Insert {token}',
+      replaceNoCandidates:
+        'No images to reference yet: connect images to the Semantic analyze node’s Reference images port (and run the upstream node if it generates them).',
+      replaceClear: 'Clear replacement',
+      targetTitle: 'Target (click the one to replace in each shot)',
+      targetPicked: 'Target set',
+      targetMissing: 'No target',
+      targetNoKeyframe: 'This shot has no keyframe to pick a target on',
+      targetHint:
+        'Shots with a target: the first frame is redrawn entity by entity, then animated image-to-video, so framing and other characters stay as they were. Shots without a target can only be reshot from the reference images.',
+      pickMode: 'Selection mode',
+      pickMode_point: 'Click',
+      pickMode_rect: 'Box',
+      pickBusy: 'Detecting…',
+      pickClear: 'Clear target',
+      pickStageLabel: 'Keyframe: click or drag a box over the target to replace',
+      pickMiss: 'Nothing selectable here; switch to Box and drag a box instead',
+      pickFailed: 'Detection failed: ',
+      saving: 'Saving…',
+      saved: 'Saved',
+      saveFailed: 'Save failed: ',
+      reloaded: 'Reloaded the latest version from disk.',
+      shortcutsHint: 'Esc clears the selection · Delete removes the selected item'
     },
     notepad: {
       appMark: 'Notepad',
@@ -5519,6 +5629,9 @@ export default {
         rebuildDubVoice: 'Dubbing voice',
         rebuildDubVoicePlaceholder: 'Empty = speaker profile / model default voice',
         rebuildDubClone: 'Clone the original vocals when no voice is set',
+        replaceImageModel: 'Image model for entity replacement',
+        replaceImageModelHint:
+          'For shots where an entity has a picked target in the Dive: redraws the first frame entity by entity with this model, then hands it to the video model as image-to-video.',
         rebuildPreview: 'Result preview',
         rebuildPreviewEmpty: 'No video yet: run this node to preview it here',
         rebuildReportGenerate: 'Regenerated',

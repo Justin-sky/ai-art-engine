@@ -12,6 +12,7 @@ import {
   resolveNodeHostInterface
 } from './hostInterface'
 import { isBundleAcceptableDataType, isBundleNode, MEDIA_BUNDLE_TYPE_ID } from './bundleExpand'
+import { readScriptNodeParams, scriptNodePorts, SCRIPT_RUN_TYPE_ID } from './scriptNode'
 import {
   GraphPortType,
   toSingularGraphPortDataType,
@@ -193,6 +194,11 @@ export function resolveTypeDefPorts(
   > | null,
   node?: Pick<GraphNode, 'category' | 'params' | 'assetId' | 'typeId' | 'assetType'> | null
 ): GraphPortDef[] {
+  // 脚本节点：端口完全由 params.ports 声明（输入 / 输出端口数不定）
+  if (typeDef.typeId === SCRIPT_RUN_TYPE_ID) {
+    const sp = readScriptNodeParams((node?.params ?? params ?? {}) as Record<string, unknown>)
+    return scriptNodePorts(sp)
+  }
   let ports = typeDef.ports ?? []
   const hideInputs = shouldHideAssetRefInputs(params, node)
   if (hideInputs) {

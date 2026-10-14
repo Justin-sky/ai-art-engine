@@ -106,9 +106,40 @@ export interface Entity {
   kind: EntityKind
   name: string
   appearances: EntityAppearance[]
+  /** 旧版"参考资产 id"（换人 / 换商品）；新代码写 `replacement`，读取时两者都认 */
   reference?: { assetId: string }
   /** 只有带检测框或掩码的实体才允许像素级替换 */
   pixelEditable: boolean
+  /** 局部替换：换成谁（参考图）+ 换哪里（各镜掩码）+ 怎么换（指令） */
+  replacement?: EntityReplacement
+}
+
+/** 替换用的身份参考图：资产 id 或工程相对路径（二选一） */
+export interface EntityReplacementRef {
+  assetId?: string
+  relativePath?: string
+  /** 显示名（候选列表里的名字） */
+  label?: string
+}
+
+/** 某一镜里"要换的是哪一块"：在该镜首帧所用关键帧上点选 / 框选得到的黑白掩码 */
+export interface EntityTargetMask {
+  shotId: string
+  /** 点选时用的关键帧（工程相对路径）；重绘以它为底图，也是图生视频的首帧来源 */
+  keyframeRelativePath: string
+  /** 黑白掩码 PNG（白 = 要替换的区域），工程相对路径 */
+  maskRelativePath: string
+  /** 归一化外接框（0..1），同镜多实体的重叠判断用 */
+  box: { x: number; y: number; w: number; h: number }
+  /** instance = 本地实例分割选中；rect = 手动拖框 */
+  method: 'instance' | 'rect'
+}
+
+export interface EntityReplacement {
+  /** 替换指令，含 `@n`（n 从 1 起，对应 references[n-1]） */
+  instruction: string
+  references: EntityReplacementRef[]
+  masks: EntityTargetMask[]
 }
 
 export interface OcrRegion {
@@ -257,7 +288,15 @@ export type SemanticEditOp =
   | 'shot.prompt'
   | 'dialogue.update'
   | 'entity.update'
+  /** 局部替换：`patch.replacement`（null = 清除） */
+  | 'entity.replace'
   | 'speaker.update'
+  /** 语义层：改了会经语义指纹让覆盖的镜头重新生成（见 shotSemantics.ts） */
+  | 'event.update'
+  | 'event.remove'
+  | 'beat.update'
+  | 'intent.update'
+  | 'intent.remove'
 
 /** 修改审计（文档字段已是修改后的状态；这里只记录"谁在何时改了什么"） */
 export interface SemanticEdit {
@@ -267,6 +306,11 @@ export interface SemanticEdit {
   patch: Record<string, unknown>
   origin: Origin
   at: string
+  /**
+   * 语义层修改：这次修改改变了哪些镜头的语义输入（应用时算好）。
+   * 用于解释"为什么要重新生成"，以及重设基线时保留这些镜头的旧指纹。
+   */
+  affectedShots?: string[]
 }
 
 /**
@@ -276,6 +320,11 @@ export interface SemanticEdit {
 export interface SemanticBaseline {
   shots: Record<string, string>
   dialogue: Record<string, string>
+  /**
+   * 每镜的**语义输入**指纹（覆盖本镜的事件 / 节拍 / 意图，见 `shotSemanticSignature`）。
+   * 可选：旧文档没有它，加载时补齐；缺省时语义层改动不参与脏检测。
+   */
+  semantic?: Record<string, string>
   createdAt: string
 }
 
@@ -305,6 +354,8 @@ export interface StoryBeat {
   emotion: { label: string; intensity: number }
   description: string
   events: string[]
+  /** 缺省 = 分析产出；用户改过为 'user'（重新分析时据此保留修改） */
+  origin?: Origin
 }
 
 export interface IntentTechnique {

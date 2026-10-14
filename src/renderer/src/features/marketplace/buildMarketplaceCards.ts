@@ -1,5 +1,6 @@
 import type { DshSkillsInfo, McpServerInfo, WorkflowMarketEntryView } from '@shared/ipc'
 import type { WorkflowSkillManifest } from '@shared/workflowMarket'
+import type { ScriptNodeSummary } from '@shared/graph/scriptNode'
 import {
   EXTERNAL_MCP_CONFIG_REASON,
   createDefaultExternalMcpServer,
@@ -84,6 +85,16 @@ export interface MarketplaceCard {
    * agent 手里多了一份操作手册。
    */
   skill?: WorkflowSkillManifest
+  /**
+   * 工作流市场卡：是否含可执行代码（存在 `script.run` 节点）。
+   *
+   * 为 true 时卡片标「含可执行代码」，安装前必须逐次明示同意 —— 代码在受限沙箱里跑
+   *（无 fs / 网络 / require），能力仅限节点声明且走应用治理。不显示的话用户不会知道
+   * 这条工作流会执行自带代码。
+   */
+  hasExecutableCode?: boolean
+  /** 工作流市场卡：脚本节点摘要（同意流逐条展示 key / 能力 / 代码规模与 hash） */
+  scripts?: ScriptNodeSummary[]
   /** Semantic Pack 清单（安装时传回主进程） */
   semanticPacks?: WorkflowMarketEntryView['semanticPacks']
 }
@@ -181,6 +192,41 @@ export function skillScriptsConsentText(
   return translate('marketplace.workflows.scriptsConfirm', {
     count: scripts.length,
     files: scripts.join('\n')
+  })
+}
+
+/**
+ * 工作流是否含可执行代码（存在 `script.run` 节点）。
+ *
+ * 判据取「索引自述 hasExecutableCode」**或**「脚本摘要列表非空」的并集：索引是远端内容，
+ * 两者不一致时按「含代码」处理 —— 真正决定装不装的是主进程（它对 `scriptConsent` 要求
+ * 字面 `=== true`），界面这里只是不能漏问。
+ */
+export function cardHasExecutableCode(
+  card: Pick<MarketplaceCard, 'hasExecutableCode' | 'scripts'>
+): boolean {
+  return card.hasExecutableCode === true || (card.scripts?.length ?? 0) > 0
+}
+
+/**
+ * 安装含可执行代码工作流时的确认正文。
+ *
+ * 文案进 i18n（非豁免文件，不留中文），脚本清单是纯数据：用户必须在点确认前看到
+ * 「有几段代码、各要什么能力、代码多大」。每段列成一行 `key · caps · N chars · hash`，
+ * 没声明能力的标 `none`，让「要不要让它跑」这个决定建立在能看见的信息上。
+ */
+export function scriptConsentText(
+  scripts: readonly ScriptNodeSummary[],
+  translate: (key: string, named: Record<string, unknown>) => string
+): string {
+  const lines = scripts.map((s) => {
+    const label = s.title ? `${s.title} (${s.nodeKey})` : s.nodeKey
+    const caps = s.capabilities.length ? s.capabilities.join(', ') : 'none'
+    return `${label} · ${caps} · ${s.codeChars} chars · #${s.codeHash}`
+  })
+  return translate('marketplace.workflows.scriptConfirm', {
+    count: scripts.length,
+    scripts: lines.join('\n')
   })
 }
 
@@ -286,6 +332,8 @@ export function buildMarketplaceCards(sources: MarketplaceSources): MarketplaceC
       installed: entry.installed,
       updatable: entry.updatable,
       ...(entry.skill ? { skill: entry.skill } : {}),
+      ...(entry.hasExecutableCode ? { hasExecutableCode: true } : {}),
+      ...(entry.scripts?.length ? { scripts: entry.scripts } : {}),
       ...(entry.semanticPacks ? { semanticPacks: entry.semanticPacks } : {}),
       // 状态点：可用且已装 = 绿；可用未装 = 灰（不是「运行中」）
       active: entry.installed && !entry.blockReason

@@ -65,6 +65,40 @@ const BUNDLE = {
   }
 }
 
+/** 含可执行代码（script.run）的工作流包：用来验证逐次同意的安装闸门 */
+const SCRIPT_BUNDLE = {
+  schemaVersion: 1,
+  id: 'script-flow',
+  title: '脚本工作流',
+  summary: '含可执行代码',
+  category: 'utility',
+  version: '1.0.0',
+  author: { name: '测试作者' },
+  license: 'CC-BY-4.0',
+  cover: 'cover.png',
+  requires: { nodeTypes: ['script.run'] },
+  plan: {
+    title: '脚本工作流',
+    nodes: [
+      {
+        key: 's1',
+        typeId: 'script.run',
+        title: '脚本',
+        params: {
+          code: 'export default async () => ({ out: { kind: "text", text: "hi" } })',
+          ports: {
+            inputs: [{ id: 'in', dataType: 'text' }],
+            outputs: [{ id: 'out', dataType: 'text' }]
+          },
+          capabilities: ['generateText'],
+          limits: { timeoutMs: 15000, memoryMb: 128 }
+        }
+      }
+    ],
+    edges: []
+  }
+}
+
 vi.mock('electron', () => ({
   app: { getPath: () => userDataDir }
 }))
@@ -96,6 +130,16 @@ beforeEach(async () => {
       return
     }
     if (url === '/workflows/demo-flow/cover.png') {
+      res.writeHead(200, { 'content-type': 'image/png' })
+      res.end(PNG)
+      return
+    }
+    if (url === '/workflows/script-flow/workflow.json') {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify(SCRIPT_BUNDLE))
+      return
+    }
+    if (url === '/workflows/script-flow/cover.png') {
       res.writeHead(200, { 'content-type': 'image/png' })
       res.end(PNG)
       return
@@ -273,5 +317,41 @@ describe('listInstalledWorkflowDetails：供对话面板展示的已安装清单
   it('没有任何安装时返回空数组（不抛错）', async () => {
     const service = await import('../src/main/services/workflowMarketService')
     expect(service.listInstalledWorkflowDetails()).toEqual([])
+  })
+})
+
+describe('含可执行代码的工作流：逐次同意闸门', () => {
+  it('缺 scriptConsent → 拒绝安装（scriptConsentRequired），磁盘上不落盘', async () => {
+    const service = await import('../src/main/services/workflowMarketService')
+    const result = await service.installWorkflow({ id: 'script-flow' })
+    expect(result.ok).toBe(false)
+    expect(result.reasonKey).toBe('scriptConsentRequired')
+    expect(existsSync(join(userDataDir, 'workflows', 'script-flow'))).toBe(false)
+    expect(service.listInstalledWorkflows()).toEqual([])
+  })
+
+  it('scriptConsent 不是字面 true（如 1）同样被拒', async () => {
+    const service = await import('../src/main/services/workflowMarketService')
+    // 故意传一个真值但非字面 true，确认主进程只认 === true
+    const result = await service.installWorkflow({
+      id: 'script-flow',
+      scriptConsent: 1 as unknown as boolean
+    })
+    expect(result.ok).toBe(false)
+    expect(result.reasonKey).toBe('scriptConsentRequired')
+  })
+
+  it('scriptConsent === true → 安装成功并可读回 plan', async () => {
+    const service = await import('../src/main/services/workflowMarketService')
+    const result = await service.installWorkflow({ id: 'script-flow', scriptConsent: true })
+    expect(result.ok).toBe(true)
+    expect(existsSync(join(userDataDir, 'workflows', 'script-flow', 'workflow.json'))).toBe(true)
+    expect(service.listInstalledWorkflows().map((w) => w.id)).toContain('script-flow')
+  })
+
+  it('不含代码的工作流不受闸门影响（无需 scriptConsent）', async () => {
+    const service = await import('../src/main/services/workflowMarketService')
+    const result = await service.installWorkflow({ id: 'demo-flow' })
+    expect(result.ok).toBe(true)
   })
 })

@@ -164,6 +164,17 @@
                   : t('marketplace.workflows.skillIncluded')
               }}
             </span>
+            <!--
+              含可执行代码（script.run）必须在**装之前**就标出来：这条工作流会执行自带代码
+              （受限沙箱里，无 fs / 网络 / require），装前要用户逐次同意。不标就等于不告知。
+            -->
+            <span
+              v-if="cardHasExecutableCode(card)"
+              class="mp-card-state warn"
+              :title="t('marketplace.workflows.executableCodeHint')"
+            >
+              {{ t('marketplace.workflows.executableCode') }}
+            </span>
             <span class="mp-card-meta">{{ card.meta }}</span>
           </div>
 
@@ -421,9 +432,11 @@ import ExternalMcpConfig from '../components/marketplace/ExternalMcpConfig.vue'
 import ExternalMcpAddDialog from '../components/marketplace/ExternalMcpAddDialog.vue'
 import {
   buildMarketplaceCards,
+  cardHasExecutableCode,
   countByCategory,
   filterMarketplaceCards,
   marketplaceCardHeading,
+  scriptConsentText,
   searchPlaceholderKey,
   skillHasScripts,
   skillScriptPaths,
@@ -925,6 +938,7 @@ async function installMarketWorkflow(card: MarketplaceCard): Promise<void> {
   let missing: string[] = []
   let withScripts = false
   let scriptsConsented = false
+  let scriptConsented = false
   try {
     /**
      * 确认框一律用应用自己的 `promptConfirm`，**不要用 `window.confirm`**。
@@ -962,6 +976,20 @@ async function installMarketWorkflow(card: MarketplaceCard): Promise<void> {
             confirmLabel: t('marketplace.workflows.install')
           })
         : false
+    /**
+     * 含可执行代码（script.run）的工作流也**逐次**确认，但与技能脚本不同：
+     * 这里的「取消」= **不安装整条工作流**（代码就是工作流的一部分，不能像技能脚本那样
+     * 「只跳过脚本、照装其余」）。主进程缺 `scriptConsent === true` 时同样会拒绝安装，
+     * 界面在这里提前把脚本清单摆出来，取消就直接返回、什么都不装。
+     */
+    if (cardHasExecutableCode(card)) {
+      scriptConsented = await promptConfirm({
+        title: t('marketplace.workflows.executableCode'),
+        message: scriptConsentText(card.scripts ?? [], (key, named) => t(key, named)),
+        confirmLabel: t('marketplace.workflows.install')
+      })
+      if (!scriptConsented) return
+    }
   } catch (e) {
     isError.value = true
     message.value = e instanceof Error ? e.message : String(e)
@@ -992,7 +1020,9 @@ async function installMarketWorkflow(card: MarketplaceCard): Promise<void> {
           }
         : {}),
       // 只有用户在上面的确认框里点了「确定」才为 true；主进程只认字面量 true
-      ...(scriptsConsented ? { skillScriptsConsent: true } : {})
+      ...(scriptsConsented ? { skillScriptsConsent: true } : {}),
+      // 含可执行代码的工作流：用户逐次同意后才带上；主进程同样只认字面量 true
+      ...(scriptConsented ? { scriptConsent: true } : {})
     })
     if (!result.ok) {
       isError.value = true

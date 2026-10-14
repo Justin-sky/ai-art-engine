@@ -423,3 +423,135 @@ describe('与真实节点注册表的一致性', () => {
     expect(missingNodeTypes({ requires: { nodeTypes: known } }, known)).toEqual([])
   })
 })
+
+/**
+ * 含可执行代码（script.run）的工作流：市场契约必须（1）识别出来并产出可展示的摘要，
+ * （2）在参数越界时整体拒绝导入，（3）从远端索引里宽容读回摘要字段。
+ * 真正"要不要跑"的决定交给客户端逐次同意流（这里只保证识别与边界）。
+ */
+import {
+  parseScriptSummaries,
+  planHasExecutableCode,
+  scriptSummariesOfPlan
+} from '../src/shared/workflowMarket'
+import {
+  SCRIPT_DEFAULT_CODE,
+  SCRIPT_MAX_CODE_CHARS,
+  scriptCodeHash
+} from '../src/shared/graph/scriptNode'
+
+const scriptNode = (key: string, overrides: Record<string, unknown> = {}): unknown => ({
+  key,
+  typeId: 'script.run',
+  title: `脚本 ${key}`,
+  params: {
+    code: SCRIPT_DEFAULT_CODE,
+    ports: {
+      inputs: [{ id: 'in', dataType: 'text' }],
+      outputs: [{ id: 'out', dataType: 'text' }]
+    },
+    capabilities: ['generateText'],
+    limits: { timeoutMs: 15000, memoryMb: 128 },
+    ...overrides
+  }
+})
+
+const planWithScript = (nodeOverrides: Record<string, unknown> = {}): { nodes: unknown[] } => ({
+  nodes: [
+    { key: 'a', typeId: 'asset.text', params: { text: 'x' } },
+    scriptNode('s1', nodeOverrides)
+  ]
+})
+
+describe('script.run：识别与摘要', () => {
+  it('planHasExecutableCode 仅在存在 script.run 时为 true', () => {
+    expect(planHasExecutableCode(goodPlan as never)).toBe(false)
+    expect(planHasExecutableCode(planWithScript() as never)).toBe(true)
+  })
+
+  it('scriptSummariesOfPlan 逐条给出 key / 能力 / 代码规模与 hash，按 key 排序', () => {
+    const plan = {
+      nodes: [scriptNode('z'), scriptNode('a'), { key: 'x', typeId: 'asset.text' }]
+    }
+    const summaries = scriptSummariesOfPlan(plan as never)
+    expect(summaries.map((s) => s.nodeKey)).toEqual(['a', 'z'])
+    expect(summaries[0]).toMatchObject({
+      nodeKey: 'a',
+      capabilities: ['generateText'],
+      codeChars: SCRIPT_DEFAULT_CODE.length,
+      codeHash: scriptCodeHash(SCRIPT_DEFAULT_CODE)
+    })
+  })
+})
+
+describe('parseWorkflowBundle：脚本参数越界 → 整体拒绝', () => {
+  const bundleWith = (nodeOverrides: Record<string, unknown>): unknown => ({
+    ...goodBundle,
+    requires: { nodeTypes: ['asset.text', 'script.run'] },
+    plan: planWithScript(nodeOverrides)
+  })
+
+  it('合法脚本参数 → 通过', () => {
+    const result = parseWorkflowBundle(bundleWith({}))
+    expect(result.ok).toBe(true)
+  })
+
+  it('代码为空 → badScript', () => {
+    const result = parseWorkflowBundle(bundleWith({ code: '   ' }))
+    expect(result).toMatchObject({ ok: false, reasonKey: 'badScript' })
+  })
+
+  it('代码超长 → badScript', () => {
+    const result = parseWorkflowBundle(bundleWith({ code: 'x'.repeat(SCRIPT_MAX_CODE_CHARS + 10) }))
+    expect(result).toMatchObject({ ok: false, reasonKey: 'badScript' })
+  })
+
+  /**
+   * 契约取舍：越白名单的能力、超硬顶的资源、以及非法端口 id 都由 `readScriptNodeParams`
+   * **就地规整**（丢弃未知能力 / 把资源夹到硬顶内 / 非法端口回落默认），而不是拒绝整条 ——
+   * 这类"脏但可规整"的输入不该让一条本来有用的工作流进不了市场；真正拒绝的是**无法规整**
+   * 的情形（代码为空 / 超长）。规整后的摘要才是客户端同意流展示的依据。
+   */
+  it('越白名单的能力被丢弃、不致整体拒绝', () => {
+    const result = parseWorkflowBundle(bundleWith({ capabilities: ['generateText', 'rm -rf'] }))
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      const summaries = scriptSummariesOfPlan(result.bundle.plan)
+      expect(summaries[0]?.capabilities).toEqual(['generateText'])
+    }
+  })
+
+  it('超硬顶的资源被夹到上限、不致整体拒绝', () => {
+    const result = parseWorkflowBundle(bundleWith({ limits: { timeoutMs: 999999, memoryMb: 128 } }))
+    expect(result.ok).toBe(true)
+  })
+})
+
+describe('parseWorkflowMarketEntry：从索引宽容读回脚本摘要', () => {
+  it('读回 scripts 并据非空推出 hasExecutableCode', () => {
+    const entry = parseWorkflowMarketEntry({
+      ...goodEntry,
+      scripts: [
+        {
+          nodeKey: 's1',
+          title: '脚本',
+          capabilities: ['generateText', 'bogus'],
+          codeChars: 42,
+          codeHash: 'deadbeef'
+        }
+      ]
+    })
+    expect(entry?.hasExecutableCode).toBe(true)
+    // 能力越白名单的被丢弃
+    expect(entry?.scripts?.[0]).toMatchObject({ nodeKey: 's1', capabilities: ['generateText'] })
+  })
+
+  it('parseScriptSummaries 丢弃缺 nodeKey 的项、按 key 排序', () => {
+    const list = parseScriptSummaries([
+      { title: 'no key', capabilities: [], codeChars: 1, codeHash: 'x' },
+      { nodeKey: 'b', capabilities: [], codeChars: 1, codeHash: 'y' },
+      { nodeKey: 'a', capabilities: [], codeChars: 1, codeHash: 'z' }
+    ])
+    expect(list.map((s) => s.nodeKey)).toEqual(['a', 'b'])
+  })
+})

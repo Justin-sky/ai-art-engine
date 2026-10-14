@@ -1,16 +1,31 @@
 <script setup lang="ts">
 /**
- * Semantic Timeline 三层只读视图（Story / Entity / Production）。
- * 编辑操作入口预留；首期展示证据与意图。
+ * Semantic Timeline 编辑器：左边轨道（镜头 / 台词 / 剧情 / 实体 / 制作），右边原片 + 检查器。
+ *
+ * 轨道上点中什么，右侧检查器就编辑什么；修改以 `edit` 事件上抛（`SemanticEditInput`），
+ * 由 dive 视图应用并落盘 —— 本组件不持有文档副本，只持有选中状态。
  */
 import { computed, nextTick, ref, watch } from 'vue'
-import type {
-  DirectorIntent,
-  Entity,
-  SemanticEvent,
-  SemanticTimeline,
-  StoryBeat
+import {
+  diffAgainstBaseline,
+  type DialogueLine,
+  type DirectorIntent,
+  type Entity,
+  type SemanticEditInput,
+  type SemanticEvent,
+  type SemanticShot,
+  type SemanticTimeline,
+  type StoryBeat
 } from '@shared/semanticTimeline'
+import SemanticSelectionInspector from './semanticInspector/SemanticSelectionInspector.vue'
+import type { ReferenceCandidate } from '../features/graph/model/semanticReferenceCandidates'
+import {
+  keepSelection,
+  resolveSelection,
+  selectionClipKey,
+  shotLabel,
+  type SemanticSelection
+} from '../features/graph/model/semanticSelection'
 import {
   MAX_PX_PER_SEC,
   MIN_PX_PER_SEC,
@@ -42,6 +57,12 @@ const props = defineProps<{
   timeline: SemanticTimeline
   /** 秒 → 像素（初始缩放；用户滚轮/滑块调整后以内部状态为准） */
   pxPerSec?: number
+  /** shotId → 按当前内容会生成的提示词（镜头表单的只读参照） */
+  promptByShot?: Record<string, string>
+  /** 当前词表的节拍类型（节拍表单的下拉） */
+  beatTypes?: Array<{ type: string; label: string }>
+  /** 实体替换的参考图候选 */
+  referenceCandidates?: ReferenceCandidate[]
 }>()
 
 const emit = defineEmits<{
@@ -50,6 +71,7 @@ const emit = defineEmits<{
   selectBeat: [id: string]
   selectEntity: [id: string]
   selectIntent: [id: string]
+  edit: [input: SemanticEditInput]
 }>()
 
 const scrollRef = ref<HTMLElement | null>(null)
@@ -125,14 +147,15 @@ function resetZoom(): void {
 }
 
 /**
- * 证据面板按**实体/节拍/事件/意图**选中（`selectedId`）；
+ * 唯一的选中状态（类型 + id + 片段）。右侧检查器据它编辑，轨道据它高亮。
+ *
  * 高亮要按**片段**算 —— 一个实体有多次出现、一个意图会横跨多条制作轨道，
  * 只比 id 会「点一个片段，整行 / 整条轨道全亮」（用户反馈）。
  */
-const selectedId = ref<string | null>(null)
-const selectedClip = ref<string | null>(null)
+const selection = ref<SemanticSelection | null>(null)
+const selectedClip = computed(() => selectionClipKey(selection.value))
 
-/** 片段键：实体＝id#出现序号，制作层＝id#轨道，其余＝id */
+/** 片段键：实体＝id#出现序号，制作层＝id#轨道，其余＝id（与 selectionClipKey 同一口径） */
 function clipKey(id: string, suffix?: string | number): string {
   return suffix == null ? id : `${id}#${suffix}`
 }
@@ -141,20 +164,56 @@ const beats = computed(() => props.timeline.beats)
 const entities = computed(() => props.timeline.entities)
 const events = computed(() => props.timeline.events)
 const intents = computed(() => props.timeline.intents)
+const shots = computed(() => props.timeline.shots ?? [])
+const dialogue = computed(() => props.timeline.dialogue ?? [])
+/** 当前修改状态：镜头块 / 台词块上标出「将重新生成 / 重新配音 / 已删除」 */
+const diff = computed(() => diffAgainstBaseline(props.timeline))
 
+const resolvedSelection = computed(() => resolveSelection(props.timeline, selection.value))
+// 修改会换掉整份文档：对象还在就保持选中，被删了就清空
+watch(
+  () => props.timeline,
+  (doc) => {
+    selection.value = keepSelection(doc, selection.value)
+  }
+)
+
+/** 证据引用只有事件 / 节拍 / 实体才有（镜头、台词、意图本身就是可编辑的事实） */
 const selectedEvidence = computed(() => {
-  const id = selectedId.value
-  if (!id) return null
-  const ev = events.value.find((e) => e.id === id)
-  if (ev) return { kind: 'event' as const, item: ev }
-  const beat = beats.value.find((b) => b.id === id)
-  if (beat) return { kind: 'beat' as const, item: beat }
-  const ent = entities.value.find((e) => e.id === id)
-  if (ent) return { kind: 'entity' as const, item: ent }
-  const intent = intents.value.find((i) => i.id === id)
-  if (intent) return { kind: 'intent' as const, item: intent }
+  const s = resolvedSelection.value
+  if (s?.kind === 'event' || s?.kind === 'beat' || s?.kind === 'entity') return s
   return null
 })
+
+/** 删除确认的触发计数（Delete 快捷键 → 表单就地展开确认） */
+const armDelete = ref(0)
+
+function onEdit(input: SemanticEditInput): void {
+  emit('edit', input)
+}
+
+/**
+ * 键盘：Esc 取消选中；Delete 删除选中的事件 / 意图（先就地确认），镜头则在删除 / 恢复间切换。
+ * 焦点在输入控件里时不拦截（否则在文本框里按 Delete 会删掉整个对象）。
+ */
+function onKeydown(e: KeyboardEvent): void {
+  const target = e.target as HTMLElement | null
+  if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+  const s = resolvedSelection.value
+  if (e.key === 'Escape' && selection.value) {
+    e.preventDefault()
+    selection.value = null
+    return
+  }
+  if (e.key !== 'Delete' || !s) return
+  if (s.kind === 'shot') {
+    e.preventDefault()
+    emit('edit', { op: s.item.removed ? 'shot.restore' : 'shot.remove', target: s.item.id })
+  } else if (s.kind === 'event' || s.kind === 'intent') {
+    e.preventDefault()
+    armDelete.value += 1
+  }
+}
 
 function left(start: number): string {
   return `${Math.max(0, start) * px.value}px`
@@ -255,19 +314,36 @@ function seekToRef(ref: ResolvedEvidenceRef): void {
   seekVideo(ref.startSec)
 }
 
+function seekToSeconds(sec: number): void {
+  emit('seek', sec)
+  seekVideo(sec)
+}
+
 function selectBeat(b: StoryBeat): void {
-  selectedId.value = b.id
-  selectedClip.value = clipKey(b.id)
+  selection.value = { kind: 'beat', id: b.id }
   emit('selectBeat', b.id)
   emit('seek', b.timeRange.start)
   seekVideo(b.timeRange.start)
 }
 function selectEvent(e: SemanticEvent): void {
-  selectedId.value = e.id
-  selectedClip.value = clipKey(e.id)
+  selection.value = { kind: 'event', id: e.id }
   emit('selectEvent', e.id)
   emit('seek', e.timeRange.start)
   seekVideo(e.timeRange.start)
+}
+function selectShot(shot: SemanticShot): void {
+  selection.value = { kind: 'shot', id: shot.id }
+  emit('seek', shot.range.start)
+  seekVideo(shot.range.start)
+}
+function selectShotById(shotId: string): void {
+  const shot = shots.value.find((s) => s.id === shotId)
+  if (shot) selectShot(shot)
+}
+function selectDialogue(line: DialogueLine): void {
+  selection.value = { kind: 'dialogue', id: line.id }
+  emit('seek', line.range.start)
+  seekVideo(line.range.start)
 }
 /**
  * 点实体片段：跳到**被点的这次出现**，且只高亮**这一个片段**。
@@ -277,8 +353,7 @@ function selectEvent(e: SemanticEvent): void {
  * 2. 高亮只比实体 id，而该 id 被同一实体的所有出现共用 → 点一个，整行都亮。
  */
 function selectEntity(e: Entity, index?: number): void {
-  selectedId.value = e.id
-  selectedClip.value = clipKey(e.id, index ?? 0)
+  selection.value = { kind: 'entity', id: e.id, clip: index ?? 0 }
   emit('selectEntity', e.id)
   const start = appearanceSeekSeconds(e.appearances, index)
   if (start == null) return
@@ -460,8 +535,7 @@ function onSplitterKeydown(e: KeyboardEvent): void {
  * 同一意图会横跨多条轨道，高亮要带上轨道（否则点机位那条，声音那条也一起亮）。
  */
 function selectIntent(intent: DirectorIntent, track?: string): void {
-  selectedId.value = intent.id
-  selectedClip.value = clipKey(intent.id, track)
+  selection.value = { kind: 'intent', id: intent.id, ...(track ? { clip: track } : {}) }
   emit('selectIntent', intent.id)
   const start = intentRange(intent).start
   emit('seek', start)
@@ -481,7 +555,7 @@ function beatLabel(type: string): string {
 </script>
 
 <template>
-  <div ref="editorRef" class="stl-editor">
+  <div ref="editorRef" class="stl-editor" @keydown="onKeydown">
     <div ref="scrollRef" class="stl-scroll" @wheel="onWheel">
       <div class="stl-zoombar">
         <button
@@ -535,6 +609,60 @@ function beatLabel(type: string): string {
           >{{ tick - 1 }}s</span
         >
       </div>
+
+      <!-- 镜头 / 台词：重建的直接单位（改镜头 = 重新生成，改台词 = 重新配音） -->
+      <section v-if="shots.length || dialogue.length" class="stl-layer stl-layer--footage">
+        <header class="stl-layer-head">
+          <span class="stl-layer-title">{{ t('graph.semanticTimeline.layerFootage') }}</span>
+        </header>
+        <div class="stl-row">
+          <span class="stl-row-label">{{ t('graph.semanticTimeline.trackShots') }}</span>
+          <div class="stl-track" :style="{ width: widthPx + 'px' }">
+            <button
+              v-for="shot in shots"
+              :key="shot.id"
+              type="button"
+              class="stl-block shot"
+              :class="{
+                selected: selectedClip === clipKey(shot.id),
+                dirty: diff.dirtyShots.has(shot.id),
+                removed: diff.removedShots.has(shot.id)
+              }"
+              :style="{
+                left: left(shot.range.start),
+                width: width(shot.range.start, shot.range.end)
+              }"
+              :title="`${shotLabel(timeline, shot.id)} · ${shot.range.start.toFixed(2)}–${shot.range.end.toFixed(2)}s`"
+              @click="selectShot(shot)"
+            >
+              {{ shotLabel(timeline, shot.id) }}
+            </button>
+          </div>
+        </div>
+        <div class="stl-row">
+          <span class="stl-row-label">{{ t('graph.semanticTimeline.trackDialogue') }}</span>
+          <div class="stl-track" :style="{ width: widthPx + 'px' }">
+            <button
+              v-for="line in dialogue"
+              :key="line.id"
+              type="button"
+              class="stl-block dialogue"
+              :class="{
+                selected: selectedClip === clipKey(line.id),
+                dirty: diff.dirtyDialogue.has(line.id)
+              }"
+              :style="{
+                left: left(line.range.start),
+                width: width(line.range.start, line.range.end)
+              }"
+              :title="line.text"
+              @click="selectDialogue(line)"
+            >
+              {{ line.text }}
+            </button>
+          </div>
+        </div>
+      </section>
 
       <section class="stl-layer stl-layer--story">
         <header class="stl-layer-head">
@@ -664,17 +792,25 @@ function beatLabel(type: string): string {
         />
       </div>
 
-      <template>
-        <h4>{{ t('graph.semanticTimeline.evidence') }}</h4>
-        <p v-if="!selectedEvidence" class="muted">
-          {{ t('graph.semanticTimeline.selectHint') }}
-        </p>
-        <template v-else-if="selectedEvidence.kind === 'event'">
-          <p>
-            <strong>{{ selectedEvidence.item.label }}</strong>
-          </p>
-          <p>{{ selectedEvidence.item.description }}</p>
-          <div class="stl-refs">
+      <p v-if="!resolvedSelection" class="muted">
+        {{ t('graph.semanticTimeline.selectHint') }}
+      </p>
+      <SemanticSelectionInspector
+        v-else
+        :timeline="timeline"
+        :selection="resolvedSelection"
+        :prompt-by-shot="promptByShot"
+        :beat-types="beatTypes ?? []"
+        :beat-label="beatLabel"
+        :reference-candidates="referenceCandidates"
+        :arm-delete="armDelete"
+        @edit="onEdit"
+        @seek="seekToSeconds"
+        @select-shot="selectShotById"
+      >
+        <!-- 证据：只有事件 / 节拍 / 实体才有（点引用跳原片） -->
+        <template v-if="selectedEvidence" #evidence>
+          <div v-if="selectedEvidence.kind === 'event'" class="stl-refs">
             <button
               v-for="ref in resolveRefs(selectedEvidence.item.evidence)"
               :key="ref.raw"
@@ -690,17 +826,7 @@ function beatLabel(type: string): string {
               <span v-if="refTimeLabel(ref)" class="stl-ref-time">{{ refTimeLabel(ref) }}</span>
             </button>
           </div>
-          <p class="muted">
-            {{ selectedEvidence.item.timeRange.start.toFixed(2) }}s –
-            {{ selectedEvidence.item.timeRange.end.toFixed(2) }}s
-          </p>
-        </template>
-        <template v-else-if="selectedEvidence.kind === 'beat'">
-          <p>
-            <strong>{{ beatLabel(selectedEvidence.item.type) }}</strong>
-          </p>
-          <p>{{ selectedEvidence.item.description }}</p>
-          <div class="stl-refs">
+          <div v-else-if="selectedEvidence.kind === 'beat'" class="stl-refs">
             <button
               v-for="ref in resolveRefs(selectedEvidence.item.events)"
               :key="ref.raw"
@@ -716,32 +842,8 @@ function beatLabel(type: string): string {
               <span v-if="refTimeLabel(ref)" class="stl-ref-time">{{ refTimeLabel(ref) }}</span>
             </button>
           </div>
-        </template>
-        <template v-else-if="selectedEvidence.kind === 'intent'">
-          <p>
-            <strong>{{ selectedEvidence.item.goal }}</strong>
-          </p>
-          <p class="muted">{{ t('graph.semanticTimeline.techniques') }}</p>
-          <p>
-            <span v-for="tech in selectedEvidence.item.techniques" :key="tech.track + tech.action">
-              {{ trackLabel(tech.track) }} · {{ tech.action }}<br />
-            </span>
-          </p>
-          <p v-if="selectedEvidence.item.reason" class="muted">
-            {{ t('graph.semanticTimeline.reason') }}: {{ selectedEvidence.item.reason }}
-          </p>
-          <p class="muted">
-            {{ intentRange(selectedEvidence.item).start.toFixed(2) }}s –
-            {{ intentRange(selectedEvidence.item).end.toFixed(2) }}s
-          </p>
-        </template>
-        <template v-else>
-          <p>
-            <strong>{{ selectedEvidence.item.name }}</strong> ({{
-              entityKindLabel(selectedEvidence.item.kind)
-            }})
-          </p>
-          <p class="muted">
+          <p v-else class="muted">
+            {{ entityKindLabel(selectedEvidence.item.kind) }} ·
             {{ t('graph.semanticTimeline.pixelEditable') }}:
             {{
               selectedEvidence.item.pixelEditable
@@ -750,7 +852,8 @@ function beatLabel(type: string): string {
             }}
           </p>
         </template>
-      </template>
+      </SemanticSelectionInspector>
+      <p class="muted stl-shortcuts">{{ t('graph.semanticInspector.shortcutsHint') }}</p>
     </aside>
   </div>
 </template>
@@ -872,6 +975,9 @@ function beatLabel(type: string): string {
   /* 每层的主题色与层内块色一致：剧情=节拍蓝 / 角色=实体青 / 制作=意图橙 */
   --layer-accent: var(--text-muted);
 }
+.stl-layer--footage {
+  --layer-accent: #457b9d;
+}
 .stl-layer--story {
   --layer-accent: #5b6cff;
 }
@@ -980,8 +1086,32 @@ function beatLabel(type: string): string {
 .stl-block.event {
   background: #9b5de5;
 }
+.stl-block.shot {
+  background: #457b9d;
+}
+.stl-block.dialogue {
+  background: #b5838d;
+}
+/* 将重新生成 / 重新配音：底部一道强调色（改了什么，轨道上一眼可见） */
+.stl-block.dirty {
+  box-shadow: inset 0 -3px 0 var(--accent);
+}
+/* 已删除的镜头：保留位置、斜纹弱化（可在检查器里恢复） */
+.stl-block.removed {
+  opacity: 0.45;
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0 6px,
+    color-mix(in srgb, var(--bg-panel) 60%, transparent) 6px 12px
+  );
+  text-decoration: line-through;
+}
 .stl-block.selected {
   outline: 2px solid var(--text);
+}
+.stl-block:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 .stl-empty {
   /* 空态同样钉在左边（理由与层标题一致：撑满宽度时 sticky 无效） */
@@ -1110,5 +1240,8 @@ function beatLabel(type: string): string {
 .stl-inspector .muted {
   color: var(--text-muted);
   font-size: 12px;
+}
+.stl-shortcuts {
+  margin-top: 12px;
 }
 </style>

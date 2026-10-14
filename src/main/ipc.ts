@@ -591,6 +591,7 @@ export function registerIpcHandlers(): void {
       acceptMissingTypes?: boolean
       skill?: WorkflowSkillManifest
       skillScriptsConsent?: boolean
+      scriptConsent?: boolean
       semanticPacks?: {
         files: Array<{ path: string; sizeBytes?: number }>
         sizeBytes?: number

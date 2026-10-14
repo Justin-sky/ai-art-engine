@@ -1380,9 +1380,25 @@ const rolePill = computed(() => {
   return ''
 })
 
-/** 可双击 dive 进入内图的宿主资产节点（非导入引用） */
+/**
+ * 资产有没有应用内编辑器（与 workspace.canOpenEditorForAssetId 同口径）。
+ *
+ * 3D 模型（含动画 / 姿势）、2D 动作文档只在 Inspector 里看，没有可下钻的内图编辑器 ——
+ * 拖进画面双击**不应该**有反应（以前它不被 `isImportedRefAsset` 认成引用，于是双击错误地
+ * 调 `diveAsset` 打开一个空编辑器）。
+ */
+const assetHasInAppEditor = computed(() => {
+  const type = props.node.assetType ?? props.asset?.type
+  return type !== 'model' && type !== 'motion2d'
+})
+
+/** 可双击 dive 进入内图的宿主资产节点（非导入引用、且确有内图编辑器） */
 const canDiveIntoHost = computed(
-  () => isAssetRef.value && !isImportedRefAsset.value && !isMissingLinkedAsset.value
+  () =>
+    isAssetRef.value &&
+    !isImportedRefAsset.value &&
+    !isMissingLinkedAsset.value &&
+    assetHasInAppEditor.value
 )
 
 /**
@@ -2652,7 +2668,9 @@ async function openSemanticTimelineDive(
       viewId: 'semantic.timeline',
       timelineId,
       timelineJson: payload?.json,
-      sourceRelativePath: payload?.sourceRelativePath
+      sourceRelativePath: payload?.sourceRelativePath,
+      // 实体替换的 `@` 候选要读本节点「参考图」端口的上游图片
+      ...(props.hostId ? { hostId: props.hostId, nodeId: props.node.id } : {})
     },
     title
   )
@@ -2687,6 +2705,11 @@ function onPreviewDblClick(): void {
   if (isMissingLinkedAsset.value) return
   void (async () => {
     const title = displayTitle.value
+
+    // 脚本节点：代码在右侧检查器里编辑（单击选中即展开），双击不走记事本、也不另开弹窗
+    if (props.node.typeId === 'script.run') {
+      return
+    }
 
     // 精灵对齐：note 分类但产出对齐图，双击下钻对齐工具（源图 + 画布 / 锚点参数 + 实时结果），勿走记事本
     if (props.node.typeId === 'image.align') {
@@ -2981,8 +3004,8 @@ function onPreviewDblClick(): void {
       return
     }
 
-    // 宿主资产节点：同面板 dive
-    if (isAssetRef.value && !isImportedRefAsset.value) {
+    // 宿主资产节点：同面板 dive（没有内图编辑器的资产——如 3D 模型——双击不作响应）
+    if (isAssetRef.value && !isImportedRefAsset.value && assetHasInAppEditor.value) {
       const assetId = props.node.assetId?.trim() || props.asset?.id
       if (assetId && editorDive?.rootKey) {
         if (props.hostId) {

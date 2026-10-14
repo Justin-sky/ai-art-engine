@@ -452,6 +452,8 @@ async function executeOneNode(
     resolveAssetImageUrl: options.resolveAssetImageUrl,
     resolveAssetMediaUrl: options.resolveAssetMediaUrl,
     resolveProjectMediaUrl: options.resolveProjectMediaUrl,
+    readProjectImageDataUrl: options.readProjectImageDataUrl,
+    composeEntityMask: options.composeEntityMask,
     analyzeSemanticVideo: options.analyzeSemanticVideo,
     loadSemanticEvidence: options.loadSemanticEvidence,
     loadSemanticTimeline: options.loadSemanticTimeline,

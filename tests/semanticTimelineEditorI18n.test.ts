@@ -16,6 +16,13 @@ const source = readFileSync(
   join(process.cwd(), 'src/renderer/src/components/SemanticTimelineEditor.vue'),
   'utf8'
 )
+const inspectorSource = readFileSync(
+  join(
+    process.cwd(),
+    'src/renderer/src/components/semanticInspector/SemanticSelectionInspector.vue'
+  ),
+  'utf8'
+)
 
 function leaf(locale: unknown, path: string[]): unknown {
   let node: unknown = locale
@@ -45,7 +52,10 @@ describe('SemanticTimelineEditor 国际化', () => {
     expect(source).toContain("t('graph.semanticTimeline.layerStory')")
     expect(source).toContain("t('graph.semanticTimeline.layerProduction')")
     expect(source).toContain("t('graph.semanticTimeline.trackEvents')")
-    expect(source).toContain("t('graph.semanticTimeline.evidence')")
+    expect(source).toContain("t('graph.semanticTimeline.trackShots')")
+    expect(source).toContain("t('graph.semanticTimeline.trackDialogue')")
+    // 证据区挪进了右侧检查器（折叠区标题仍走 i18n）
+    expect(inspectorSource).toContain("t('graph.semanticTimeline.evidence')")
     expect(source).toContain("t('graph.semanticTimeline.noEntities')")
     expect(source).toContain('beatLabel(')
   })

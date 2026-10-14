@@ -18,6 +18,19 @@ export function shortHash(input: string, len = 10): string {
   return (hex + (h2 >>> 0).toString(16).padStart(8, '0')).slice(0, len)
 }
 
+/** 稳定序列化（键排序、丢弃 undefined / 空串），内容指纹用 */
+export function stableStringify(value: unknown): string {
+  if (value === undefined) return ''
+  if (value === null || typeof value !== 'object') return JSON.stringify(value)
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
+  const obj = value as Record<string, unknown>
+  return `{${Object.keys(obj)
+    .filter((k) => obj[k] !== undefined && obj[k] !== '')
+    .sort()
+    .map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`)
+    .join(',')}}`
+}
+
 export function eventId(label: string, startSec: number, endSec: number): string {
   return `ev.${shortHash(`${label}|${startSec.toFixed(3)}|${endSec.toFixed(3)}`)}`
 }

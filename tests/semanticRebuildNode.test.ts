@@ -419,14 +419,23 @@ describe('语义重建 v2：直通 / 修改 / 配音', () => {
     expect(payloadOf(h).skippedEmpty).toBe(1)
   })
 
-  it('换参考资产（换人）：参考图喂给模型，不再用原片首帧', async () => {
+  it('换参考资产（旧字段，没有点选目标）：兜底参考图生视频，参考图编号写进提示词', async () => {
     const doc = applySemanticEdit(makeDoc(), {
       op: 'entity.update',
       target: 'ent.person.host',
       patch: { referenceAssetId: 'asset-ref' }
     })
     const plan = planOf(doc)
-    expect(plan.shots[0]!.referenceAssetIds).toEqual(['asset-ref'])
+    // 计划里是显式绑定的替换（实体 → 参考图），不再是无序的 referenceAssetIds
+    expect(plan.shots[0]!.referenceAssetIds).toBeUndefined()
+    expect(plan.shots[0]!.replacements).toEqual([
+      {
+        entityId: 'ent.person.host',
+        entityName: '主播',
+        instruction: '',
+        references: [{ assetId: 'asset-ref' }]
+      }
+    ])
     const h = harness(plan)
     ;(h.ctx as { resolveAssetImageUrl?: unknown }).resolveAssetImageUrl = async (id: string) =>
       `data:image/png;base64,${id}`
@@ -436,6 +445,7 @@ describe('语义重建 v2：直通 / 修改 / 配音', () => {
     expect(h.generated[0]!.inputReferences).toEqual([
       { kind: 'image_url', url: 'data:image/png;base64,asset-ref' }
     ])
+    expect(h.generated[0]!.prompt).toContain('参考图1：主播')
   })
 
   it('重新分析：上一版的修改带到新文档上，重设基线也不会吞掉修改', () => {

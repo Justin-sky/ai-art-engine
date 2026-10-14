@@ -791,6 +791,22 @@ export interface NodeExecuteContext {
    * `portraitBakedRelativePath` 是相对路径，不是 assetId）。
    */
   resolveProjectMediaUrl?: (relativePath: string) => Promise<string | undefined>
+  /**
+   * 按工程相对路径读取图片为 **data URL**。
+   *
+   * 与 `resolveProjectMediaUrl` 的区别：那个返回可显示的 URL，画进 canvas 后会让画布被污染、
+   * 导不出像素；局部重绘要在 canvas 里合成，必须拿 data URL（实体替换的关键帧 / 掩码 / 中间帧）。
+   */
+  readProjectImageDataUrl?: (relativePath: string) => Promise<string | undefined>
+  /**
+   * 实体替换：把一个实体的掩码**扣掉保护区**（同镜已经换好的实体），并报告扣掉了多少。
+   * 白 = 要替换；返回的 `coverage` 为扣除后白区占整帧的比例，`protectedRatio` 为被扣掉的比例。
+   */
+  composeEntityMask?: (input: { maskDataUrl: string; protectMaskDataUrls: string[] }) => Promise<{
+    dataUrl: string
+    coverage: number
+    protectedRatio: number
+  }>
   /** 语义分析视频（主进程：切镜 / 关键帧 / 转写 / 人声 / 实体，落盘 Semantic/<id>/） */
   analyzeSemanticVideo?: (
     input: import('../../semanticTimeline').SemanticAnalyzeRequest
@@ -1328,6 +1344,8 @@ export interface GraphRunOptions {
   resolveAssetImageUrl?: NodeExecuteContext['resolveAssetImageUrl']
   resolveAssetMediaUrl?: NodeExecuteContext['resolveAssetMediaUrl']
   resolveProjectMediaUrl?: NodeExecuteContext['resolveProjectMediaUrl']
+  readProjectImageDataUrl?: NodeExecuteContext['readProjectImageDataUrl']
+  composeEntityMask?: NodeExecuteContext['composeEntityMask']
   analyzeSemanticVideo?: NodeExecuteContext['analyzeSemanticVideo']
   loadSemanticEvidence?: NodeExecuteContext['loadSemanticEvidence']
   loadSemanticTimeline?: NodeExecuteContext['loadSemanticTimeline']

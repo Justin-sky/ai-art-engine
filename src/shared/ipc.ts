@@ -4,6 +4,7 @@ import type { ExternalMcpServer } from './externalMcp'
 import type { GitFileDiffInput, GitFileDiffResult, GitStatusResult } from './git'
 import type { ProjectOutputFile } from './outputScan'
 import type { WorkflowSkillManifest } from './workflowMarket'
+import type { ScriptNodeSummary } from './graph/scriptNode'
 import type { WorkspaceToolbarItem } from './workspaceToolbar'
 import type {
   TimelineExportInput,
@@ -1172,6 +1173,10 @@ export interface WorkflowMarketEntryView {
   updatable: boolean
   /** 随包附带的 dsh 技能包清单；有它时界面显示「含技能 / 含脚本」 */
   skill?: WorkflowSkillManifest
+  /** 含可执行代码（存在 script.run 节点）；界面标「含可执行代码」并驱动逐次同意流 */
+  hasExecutableCode?: boolean
+  /** 脚本节点摘要（key / 标题 / 所需能力 / 代码规模与短 hash），同意流逐条展示 */
+  scripts?: ScriptNodeSummary[]
   /** 随包 Semantic Pack 文件清单；安装时一并下载到工作流目录 */
   semanticPacks?: {
     files: Array<{ path: string; sizeBytes?: number }>
@@ -1801,6 +1806,14 @@ export interface StudioApi {
      * 界面必须先展示脚本清单再让用户点确认）；true 也要逐条过路径白名单与体积上限。
      */
     skillScriptsConsent?: boolean
+    /**
+     * 用户**明示同意**安装含可执行代码（`script.run` 节点）的工作流。
+     *
+     * 缺省 / false = 拒绝安装（含代码的工作流必须每次安装都先展示脚本清单再确认，不记忆）；
+     * 代码在受限沙箱里跑（无 fs / 网络 / require），能力仅限节点声明且走应用治理。
+     * 主进程以字面 `=== true` 为准，和 `skillScriptsConsent` 同一安全口径。
+     */
+    scriptConsent?: boolean
     /** 索引条目里的 Semantic Pack 清单（随工作流一并下载） */
     semanticPacks?: {
       files: Array<{ path: string; sizeBytes?: number }>

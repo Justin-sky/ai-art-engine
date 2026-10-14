@@ -161,7 +161,8 @@ describe('graph policy', () => {
         'world.gen',
         'world.extract',
         'world.table',
-        'spatialWorld.export'
+        'spatialWorld.export',
+        'script.run'
       ].sort()
     )
   })

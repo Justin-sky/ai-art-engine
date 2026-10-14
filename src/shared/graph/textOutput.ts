@@ -72,6 +72,8 @@ export function isNodeTextCapable(node: GraphNode): boolean {
   ) {
     return false
   }
+  // 脚本节点：category=note 但双击应打开代码编辑器，不是记事本
+  if (node.typeId === 'script.run') return false
   if (node.category === 'note') return true
   if (node.typeId === 'note.text' || node.typeId === 'play.script') return true
   if (isTextToolNode(node)) return true

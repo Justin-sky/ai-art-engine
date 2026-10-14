@@ -13,6 +13,7 @@ import { DEFAULT_SVG_GEN_STATE } from './svgGen'
 import { bindEnsureBuiltinNodeTypes, builtinRegistrationState } from './builtinState'
 import { registerNodeType, type NodeTypeDefinition } from './registry'
 import { SEMANTIC_TIMELINE_NODE_TYPES } from './semanticTimelineNodes'
+import { SCRIPT_NODE_TYPES } from './scriptNodeTypes'
 import {
   GRAPH_OUTPUT_NODE_IDS,
   GRAPH_BEAT_SPLIT_NODE_ID,
@@ -3224,6 +3225,7 @@ export function ensureBuiltinNodeTypes(): void {
   builtinRegistrationState.registered = true
   for (const definition of BUILTIN_NODE_TYPES) registerNodeType(definition)
   for (const definition of SEMANTIC_TIMELINE_NODE_TYPES) registerNodeType(definition)
+  for (const definition of SCRIPT_NODE_TYPES) registerNodeType(definition)
 }
 
 bindEnsureBuiltinNodeTypes(ensureBuiltinNodeTypes)

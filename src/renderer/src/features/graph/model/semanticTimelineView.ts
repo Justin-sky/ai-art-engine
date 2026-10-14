@@ -238,6 +238,9 @@ export function trackLabelKey(track: string): string | undefined {
       return 'trackEmotion'
     case 'edit':
       return 'trackEdit'
+    // 规则包产出的画面轨（不在 SemanticTrackKind 里，但会进提示词）
+    case 'light':
+      return 'trackLight'
     // 层名复用（story / entity 既是轨道 id 也是层标题）
     case 'story':
       return 'layerStory'
