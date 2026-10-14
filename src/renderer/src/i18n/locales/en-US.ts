@@ -4370,6 +4370,16 @@ export default {
       ports: 'Ports',
       inPortsShort: 'in',
       outPortsShort: 'out',
+      expandEditor: 'Expand',
+      expandEditorHint: 'Edit the code in a large resizable window with type hints',
+      editor: {
+        title: 'Edit code · {name}',
+        appMark: 'Script',
+        close: 'Close',
+        saveHint: 'Save code (also auto-saves on close)',
+        unsaved: 'Unsaved',
+        saved: 'Saved'
+      },
       inputs: 'Input ports',
       outputs: 'Output ports',
       capabilities: 'Capabilities',

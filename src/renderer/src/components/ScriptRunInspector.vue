@@ -73,9 +73,19 @@
     <section class="block code-section">
       <div class="block-head">
         <span class="block-title">{{ t('graph.scriptRun.code') }}</span>
-        <span class="block-count" :class="{ 'count-warn': codeNearLimit }">
-          {{ codeCountLabel }}
-        </span>
+        <div class="block-head-right">
+          <span class="block-count" :class="{ 'count-warn': codeNearLimit }">
+            {{ codeCountLabel }}
+          </span>
+          <button
+            type="button"
+            class="expand-btn"
+            :title="t('graph.scriptRun.expandEditorHint')"
+            @click="codeDialogOpen = true"
+          >
+            {{ t('graph.scriptRun.expandEditor') }}
+          </button>
+        </div>
       </div>
       <CodeEditor v-model="draft.code" :extra-lib="typings" @change="persistCode" />
     </section>
@@ -112,6 +122,15 @@
     </section>
 
     <GraphNodeOutputPreview v-if="node && hostId" :node="node" :host-id="hostId" />
+
+    <ScriptCodeEditorDialog
+      :open="codeDialogOpen"
+      :title="t('graph.scriptRun.editor.title', { name: displayTitle })"
+      :code="draft.code"
+      :extra-lib="typings"
+      @save="onDialogSave"
+      @close="codeDialogOpen = false"
+    />
   </div>
   <div v-else class="node-inspector empty">
     {{ t('graph.inspector.node.empty') }}
@@ -133,6 +152,7 @@ import {
 import GraphNodeRunControl from './GraphNodeRunControl.vue'
 import GraphNodeOutputPreview from './GraphNodeOutputPreview.vue'
 import CodeEditor from './CodeEditor.vue'
+import ScriptCodeEditorDialog from './ScriptCodeEditorDialog.vue'
 import PortDeclEditor from './PortDeclEditor.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useNodeDisplayTitle } from '../composables/useNodeDisplayTitle'
@@ -165,6 +185,7 @@ const displayTitle = useNodeDisplayTitle(node, typeLabel)
 const allCapabilities = SCRIPT_CAPABILITIES
 const maxLimits = SCRIPT_MAX_LIMITS
 const localTitle = ref('')
+const codeDialogOpen = ref(false)
 
 /** 端口数概览：N 入 · M 出（装前就能看出接线规模） */
 const portCountLabel = computed(
@@ -185,10 +206,13 @@ watch(
   (current) => {
     if (!current) {
       loadedId = null
+      codeDialogOpen.value = false
       return
     }
     const key = `${hostId.value}:${current.id}`
     if (key === loadedId) return
+    // 切到另一个脚本节点：关掉大编辑窗，避免它继续显示上一个节点的代码
+    codeDialogOpen.value = false
     loadedId = key
     const params = readScriptNodeParams(current.params as Record<string, unknown>)
     draft.code = params.code
@@ -221,6 +245,11 @@ function persistTitle(): void {
 }
 function persistCode(): void {
   persist({ code: draft.code })
+}
+/** 大编辑窗保存：写回草稿（同步内嵌编辑器）并落盘 */
+function onDialogSave(code: string): void {
+  draft.code = code
+  persistCode()
 }
 function persistLimits(): void {
   persist({ limits: { ...draft.limits } })
@@ -286,6 +315,11 @@ function toggleCapability(cap: ScriptCapability, on: boolean): void {
   justify-content: space-between;
   gap: 8px;
 }
+.block-head-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .block-title {
   font-size: 12px;
   font-weight: 600;
@@ -298,6 +332,21 @@ function toggleCapability(cap: ScriptCapability, on: boolean): void {
 }
 .count-warn {
   color: #d9a441;
+}
+.expand-btn {
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-input, var(--bg-panel));
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+.expand-btn:hover {
+  border-color: var(--accent);
+  color: var(--text);
 }
 
 .ports-grid {

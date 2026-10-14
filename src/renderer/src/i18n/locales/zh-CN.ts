@@ -4268,6 +4268,16 @@ export default {
       ports: '端口',
       inPortsShort: '入',
       outPortsShort: '出',
+      expandEditor: '展开编辑',
+      expandEditorHint: '在独立大窗口里编辑代码（可拖拽缩放、带类型提示）',
+      editor: {
+        title: '编辑代码 · {name}',
+        appMark: '脚本',
+        close: '关闭',
+        saveHint: '保存代码（关闭窗口也会自动保存）',
+        unsaved: '未保存',
+        saved: '已保存'
+      },
       inputs: '输入端口',
       outputs: '输出端口',
       capabilities: '可用能力',
