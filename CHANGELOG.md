@@ -2,7 +2,17 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
-## [7.4.0] — 2026-10-09
+## [7.5.0] — 2026-10-14
+
+7.5.0 功能版：工作流**终于能自带可执行代码**——新增 `script.run` 脚本节点，代码在受限沙箱（QuickJS WASM）里跑，能调用应用治理过的生成能力，但没有文件 / 网络 / require。同时语义时间线获得了**右侧属性面板直接编辑**（选中轨道条目即可改台词 / 事件 / 节拍 / 意图），以及**实体局部替换**（给参考图、写提示词、选目标镜头、一键重绘）两项操作能力；工作流市场对应补上含代码工作流的**逐次同意流**。
+
+- **新增 · `script.run` 脚本节点：工作流可以自带受控 JavaScript**：以往工作流的 `plan` 只能引用已注册的节点类型并填参数，不含任何可执行代码——逻辑组合全靠节点图的有向边。现在新增 `script.run` 节点：代码（JavaScript）是它的参数，在 **QuickJS WASM 沙箱**里跑，与宿主 JS 堆完全隔离——**无文件系统 / 无网络 / 无 `require` / 无任何宿主全局**。沙箱对外只暴露 `await om.<能力>(...)` 接口，每个 `om.*` 在节点的 `capabilities` 白名单里声明过才有，且全部转发到应用治理过的能力（提供商 / 密钥 / 配额 / 日志）——不是绕过治理的后门。再叠加超时（deadline 中断，默认 15s、硬顶 120s）与内存上限（默认 128MB、硬顶 512MB）。目前开放的能力：`generateText` / `generateImage` / `generateVideo` / `generateSpeech` / `resolveAssetImageUrl` / `readProjectImageDataUrl` / `saveMedia` / `log`，默认全部关闭，由节点逐项声明开启。底层沙箱使用 **single-file variant**（`@jitl/quickjs-singlefile-browser-release-asyncify`），WASM 以 base64 内联进 JS，渲染进程不再运行时 fetch `.wasm`，彻底避免了打包 / Electron 环境下 WASM URL 解析失败的问题（`expected magic word 00 61 73 6d, found 3c 21 64 6f`）。
+- **新增 · 脚本节点 Inspector：Monaco 代码编辑器 + 可展开大编辑窗**：Inspector 右侧面板集成 Monaco（`monaco-editor@0.52.2`，懒加载、不进首屏 bundle），带 TypeScript 类型提示——`inputs` 的端口结构、`om.*` 的实际签名、返回值形状都能点出来；能力选中后 `om.` 上立即出现对应方法。Inspector 同时显示端口声明（可增删改、两栏对齐）、能力勾选（胶囊样式，选中高亮）、代码字符数 / 上限计数（接近上限时变黄）、资源上限（折叠区块）。「展开编辑」按钮开一个可拖拽缩放的 `StudioFloatingWindow` 大编辑器，带本地草稿与显式保存（关窗自动落盘）。底部**逐端口**显示输出预览——脚本端口名完全自定义、可以有多个，`GraphNodeOutputPreview` 新增可选 `portId` prop（默认 `out`，不影响既有节点），Inspector 按声明的输出端口循环逐个预览并标注端口名与数据类型。
+- **新增 · 语义时间线右侧属性编辑：选中轨道条目即改**：此前语义时间线（`semantic.analyze` 节点产出的 Dive）只能查看结果，要改台词 / 事件 / 节拍 / 意图要么重跑分析、要么手动查 JSON。现在 Dive 右侧的检查器（`SemanticSelectionInspector`）在轨道上选中什么就显示什么、改什么——镜头选出「描述 / 台词 / 摄像机指令」、语义事件选出「事件描述」、节拍选出「描述」、意图选出「意图文字」，原地保存并同步更新时间线的 fingerprint。对应的写操作（`event.update` / `event.remove` / `beat.update` / `intent.update` / `intent.remove`）均加入时间线 op 系统，保证撤销 / 重做一致性。
+- **新增 · 实体局部替换（`entity.replace`）**：针对已有产出帧里的某个实体（角色 / 道具 / 场景元素）做局部重绘——在 Dive 的实体列表里选中，填写替换提示词（`@` 引用可引入端口传入的参考图），圈定目标镜头，提交即在第一帧上运行遮罩 + 重绘 + 重建整张时间线。参考图**只取输入端口传入的图片**（不从资产库拉），与节点的数据流模型一致——外界负责传进来，节点负责用。遮罩逻辑复用现有 `image.matte` 能力，重绘走 `image.redraw`，端到端在执行引擎的节点编排里完成。
+- **新增 · 工作流市场：含可执行代码的工作流逐次同意**：工作流里一旦含 `script.run` 节点，`build-index.mjs` 从 `plan` 派生 `hasExecutableCode: true` 与逐条脚本摘要（节点 key / 标题 / 声明能力 / 代码字符数 / 短 hash）写进索引；卡片标 **「含可执行代码」** 徽标。安装前弹确认框，逐条列出每个脚本节点声明用到的能力与代码规模；取消**即不安装整条工作流**（不像技能脚本那样可以只跳过脚本照装其余——代码是工作流的一部分），每次安装都重新问、不记忆、无「总是允许」；主进程严格 `scriptConsent === true` 字面量判定。同时 `parseWorkflowBundle` 在 bundle 层就校验脚本参数合法性（代码为空 / 超长则整体拒绝，能力越白名单 / 资源超硬顶就地规整）。仓库侧 `scripts/validate.mjs` / `known-node-types.json` 同步对齐；`ai-art-engine-workflow` 的 CONTRIBUTING.md 与 README 补入相关说明。
+- **修复 · 3D 模型节点双击误触发错误编辑器**：拖入 3D 模型（`assetType === 'model'` 或 `motion2d`）的节点，双击会尝试打开在应用内没有对应编辑器的资产，弹出或跳转到无关界面。现在 `GraphNodeCard.vue` 在 `onPreviewDblClick` 里增加 `assetHasInAppEditor` 判断，3D 模型节点双击静默不作响应。
+- **说明（发版提示）**：本版新增 `quickjs-emscripten-core` + `@jitl/quickjs-singlefile-browser-release-asyncify` 依赖（QuickJS WASM 沙箱，~1.4MB 内联进渲染包），以及 `monaco-editor@0.52.2`（懒加载，首次打开脚本节点 Inspector 时才加载）。改动涉及渲染进程（脚本节点执行、语义时间线 Inspector、市场同意流）与共享层，升级后请**重启应用**；只刷新页面不足以生效。
 
 7.4.0 功能版：教学录屏补上了「**界面操作**」那段画面 —— 此前 Agent 能写脚本、出旁白、铺轨导片，唯独没法把应用界面本身录下来，所以在对话里说「录制一条生成音效的教学视频」始终缺一环。同时把**音效**这条线整个走通（不再串成 TTS、不再套配音的系统提示词、独立成模态），对象存储支持**任意兼容 Amazon S3 的服务**，官网与使用手册按章节重写。
 
