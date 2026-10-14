@@ -21,7 +21,7 @@
     </script>
     <meta
       name="description"
-      content="AIArtEngine plugin marketplace developer docs: what the marketplace contains, the delivery pipeline for workflows and skill bundles, the client install contract, script consent, compatibility and versions, local debugging, and common rejection reasons."
+      content="AIArtEngine plugin marketplace developer docs: what the marketplace contains, the delivery pipeline for workflows and skill bundles, the client install contract, script consent, executable-code nodes, compatibility and versions, local debugging, and common rejection reasons."
     />
     <title>Plugin Marketplace Developer Docs — AIArtEngine</title>
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/developers.en.html" />
@@ -29,14 +29,14 @@
     <meta property="og:type" content="website" />
     <meta property="og:locale" content="zh_CN" />
     <meta property="og:title" content="Plugin Marketplace Developer Docs — AIArtEngine" />
-    <meta property="og:description" content="AIArtEngine plugin marketplace developer docs: what the marketplace contains, the delivery pipeline for workflows and skill bundles, the client install contract, script consent, compatibility and versions, local debugging, and common rejection reasons." />
+    <meta property="og:description" content="AIArtEngine plugin marketplace developer docs: what the marketplace contains, the delivery pipeline for workflows and skill bundles, the client install contract, script consent, executable-code nodes, compatibility and versions, local debugging, and common rejection reasons." />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/developers.en.html" />
     <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Plugin Marketplace Developer Docs — AIArtEngine" />
-    <meta name="twitter:description" content="AIArtEngine plugin marketplace developer docs: what the marketplace contains, the delivery pipeline for workflows and skill bundles, the client install contract, script consent, compatibility and versions, local debugging, and common rejection reasons." />
+    <meta name="twitter:description" content="AIArtEngine plugin marketplace developer docs: what the marketplace contains, the delivery pipeline for workflows and skill bundles, the client install contract, script consent, executable-code nodes, compatibility and versions, local debugging, and common rejection reasons." />
     <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/developers.html" />
     <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/developers.en.html" />
@@ -135,9 +135,10 @@
           <li><a href="#pipeline">2. The delivery pipeline</a></li>
           <li><a href="#install-contract">3. Client install contract</a></li>
           <li><a href="#scripts-consent">4. Scripts and consent</a></li>
-          <li><a href="#compatibility">5. Compatibility and versions</a></li>
-          <li><a href="#debugging">6. Local debugging</a></li>
-          <li><a href="#rejections">7. Common rejection reasons</a></li>
+          <li><a href="#exec-code">5. Executable-code node</a></li>
+          <li><a href="#compatibility">6. Compatibility and versions</a></li>
+          <li><a href="#debugging">7. Local debugging</a></li>
+          <li><a href="#rejections">8. Common rejection reasons</a></li>
         </ol>
         <p style="margin-top: 1.25rem; font-size: 12px; color: var(--mute)">
           <a href="manual.en.html">← Back to the manual</a>
@@ -510,8 +511,72 @@ npm run check:market-plans   # verify only; exit code 1 on any mismatch (this is
           </div>
         </section>
 
+        <section id="exec-code">
+          <h2>5. Executable-code node (<code>script.run</code>) and consent</h2>
+          <p>
+            §4 is about <strong>scripts inside a skill bundle</strong> (<code>skill/scripts/</code>, files the
+            AI agent runs on the local machine). This section is a separate, independent path:
+            <strong>executable code inside the workflow’s own <code>plan</code></strong>.
+          </p>
+          <p>
+            <code>script.run</code> is a node type whose code (JavaScript) is a parameter written into the
+            <code>plan</code>, run by the app’s <strong>graph execution engine</strong> in the renderer process
+            — not the harness shell. It runs in a <strong>restricted sandbox</strong> (QuickJS WASM,
+            <code>src/shared/graph/execute/scriptSandboxQuickjs.ts</code>): <strong>no file system, no network,
+            no <code>require</code>, no host globals</strong>. Only three things cross the sandbox boundary —
+            upstream inputs in, port outputs out, and a set of governed capability calls
+            <code>await om.&lt;capability&gt;(...)</code>: the <code>&lt;capability&gt;</code> must be declared in
+            the node’s <code>capabilities</code> whitelist, and every <code>om.*</code> forwards to an
+            app-governed capability (provider / key / quota / log), not a back door. Plus a timeout (deadline
+            interrupt) and a memory cap.
+          </p>
+
+          <h3>5.1 Detection and derivation (repo + client, same rule)</h3>
+          <ul>
+            <li>
+              The repo <code>build-index.mjs</code> derives <code>hasExecutableCode: true</code> and a per-node
+              <strong>script summary</strong> (node key / title / declared capabilities / code char count /
+              short hash) into <code>index.json</code>; contributors do not hand-write these fields (same as
+              <code>requires.nodeTypes</code> and the skill manifest).
+            </li>
+            <li>The client <code>parseWorkflowMarketEntry</code> / <code>parseWorkflowBundle</code> read those fields and re-validate.</li>
+            <li>
+              The validator checks each <code>script.run</code> node’s bounds: <code>code</code> non-empty and
+              &lt; 100000 chars, <code>capabilities</code> only from the whitelist, port ids valid and unique,
+              <code>limits</code> within hard caps (timeout ≤ 120s, mem ≤ 512MB). Empty / oversized code —
+              things that <strong>cannot be normalised</strong> — <strong>reject the whole workflow</strong>
+              (the code is part of the workflow and, unlike a bad skill, cannot be dropped to degrade). Out-of-
+              whitelist capabilities and over-cap resources are <strong>normalised in place</strong> (dropped /
+              clamped) rather than rejecting the whole thing.
+            </li>
+          </ul>
+
+          <h3>5.2 Install time: executable code needs per-install consent; declining means not imported</h3>
+          <ul>
+            <li>Workflows with a <code>script.run</code> node show a <strong>Contains executable code</strong> badge (distinct from a skill’s “includes scripts”).</li>
+            <li>Before install a confirm dialog <strong>lists each script node’s</strong> declared capabilities and code size.</li>
+            <li>
+              <strong>OK</strong> = install and allow it to run; <strong>Cancel</strong> =
+              <strong>do not install this workflow</strong> — this <strong>differs</strong> from skill scripts’
+              “Cancel skips only the scripts and installs the rest”, because the code is part of the workflow
+              and without it the workflow doesn’t stand.
+            </li>
+            <li><strong>Asked on every install, never remembered, no “always allow”.</strong> The main process only accepts the literal <code>scriptConsent === true</code>.</li>
+            <li>
+              <strong>Locally authored is exempt</strong>: script nodes you create / edit in the app yourself
+              don’t go through the marketplace consent flow (you wrote them); only <strong>importing from the
+              marketplace</strong> gates.
+            </li>
+          </ul>
+          <div class="tip">
+            Relationship to skill scripts: the two paths consent independently. A workflow can be both “includes
+            skill · includes scripts” and “contains executable code”, in which case the two dialogs ask
+            separately.
+          </div>
+        </section>
+
         <section id="compatibility">
-          <h2>5. Compatibility and versions</h2>
+          <h2>6. Compatibility and versions</h2>
           <ul>
             <li>
               The index <code>schemaVersion</code> is currently <strong>1</strong>; an index newer than the
@@ -535,9 +600,9 @@ npm run check:market-plans   # verify only; exit code 1 on any mismatch (this is
         </section>
 
         <section id="debugging">
-          <h2>6. Local debugging</h2>
+          <h2>7. Local debugging</h2>
 
-          <h3>6.1 In the content repository</h3>
+          <h3>7.1 In the content repository</h3>
           <pre class="mcp-code"><code>node scripts/validate.mjs          # format / dependencies / index consistency / all skill bundle rules
 node scripts/build-index.mjs       # rebuild index.json (the derived fields)
 node scripts/build-index.mjs --check   # what CI runs: is the index consistent with disk?
@@ -547,7 +612,7 @@ node --test scripts/validate.test.mjs  # unit tests for the validator itself</co
             failing in CI is not something that should happen.
           </p>
 
-          <h3>6.2 On the app side</h3>
+          <h3>7.2 On the app side</h3>
           <ul>
             <li>
               <strong>Custom sources</strong>: the data layer supports setting
@@ -568,7 +633,7 @@ node --test scripts/validate.test.mjs  # unit tests for the validator itself</co
         </section>
 
         <section id="rejections">
-          <h2>7. Common rejection reasons (client-side view)</h2>
+          <h2>8. Common rejection reasons (client-side view)</h2>
           <p>
             Beyond the ones listed in the content repository’s <code>CONTRIBUTING.md</code>, these directly
             produce <strong>“installed but not in effect”</strong>:
