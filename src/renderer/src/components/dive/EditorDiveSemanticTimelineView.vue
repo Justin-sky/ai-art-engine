@@ -27,6 +27,7 @@ import { useStudioI18n } from '../../composables/useStudioI18n'
 import { SEMANTIC_REFERENCE_IMAGES_PORT_ID } from '@shared/graph/semanticTimelineNodes'
 import { graphEditorHosts } from '../../features/graph/model/graphEditorHosts'
 import { graphRunHosts } from '../../features/graph/model/graphRunHosts'
+import { semanticTimelineSavePayload } from '../../features/graph/model/semanticTimelineSave'
 import {
   candidatesFromSourceNode,
   mergeCandidates,
@@ -208,7 +209,8 @@ function scheduleSave(): void {
     const doc = timeline.value
     if (!doc) return
     try {
-      await window.studio.semanticSaveTimeline(doc)
+      // 文档是响应式代理（`timeline.value`），直接过 IPC 会 DataCloneError → 拍成纯数据再存
+      await window.studio.semanticSaveTimeline(semanticTimelineSavePayload(doc))
       if (!saveQueued) saveState.value = 'saved'
     } catch (e) {
       saveState.value = 'error'
