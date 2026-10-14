@@ -353,6 +353,12 @@ export interface GraphNodeParams {
    * 紧凑格式 `{"shot.1":"提示词"}`，也接受 `[{shotId,prompt,negativePrompt?}]`。
    */
   promptOverridesJson?: string
+  /**
+   * 语义编译：上次编译产出的提示词计划（规范 JSON）。**节点参数随图落盘**，
+   * 是运行态 outputs 之外的第二份缓存 —— 运行态丢了（旧存档 / 撤销 / 任务快照）时，
+   * 下游「语义重建」仍能从这里把计划复原，无需重跑编译、更不用重跑分析。
+   */
+  planJson?: string
   /** 语义重建：生成粒度（`shots` 逐镜头，默认；`full` 整片一次） */
   rebuildMode?: string
   /** 语义重建：每镜生成时长（秒；空 = 跟随镜头时长） */

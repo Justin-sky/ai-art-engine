@@ -27,6 +27,7 @@ import {
   isPluralGraphPortDataType
 } from './types'
 import type { GraphValue } from './execute/types'
+import { videoPromptsValue } from './execute/videoPromptsValue'
 import {
   boundaryInputNodeId,
   boundaryOutputNodeId,
@@ -37,6 +38,7 @@ import {
   type HostInterfaceDocument
 } from './hostInterface'
 import { catalogValue } from './catalogValue'
+import { parsePromptPlan } from '../semanticTimeline'
 
 /**
  * 把抬升/软解析出的宿主出口值物化到宿主节点 params 图库：
@@ -389,6 +391,16 @@ export function graphValueHasPayload(value: GraphValue | undefined): value is Gr
   if (value.kind === 'asset') return true
   // 语义时间线：文档本体就是载荷（有 doc 且有规范文本）
   if (value.kind === 'semanticTimeline') return !!value.doc && !!value.text.trim()
+  /**
+   * 提示词计划：有镜头提示词（或整片提示词）才算载荷。
+   *
+   * 漏了这一支时，「只跑语义重建（Cook）」会把已完成的上游计划判成**空值**：
+   * 引擎于是走「空输入兜底执行」，把编译节点重跑成空计划再喂给重建节点 ——
+   * 表现是既不出片也不报错，只有一句「没有可拼接的镜头，未出片」（实测踩到）。
+   */
+  if (value.kind === 'videoPrompts') {
+    return value.plan.shots.length > 0 || !!value.plan.fullPrompt?.trim()
+  }
   return false
 }
 
@@ -719,6 +731,17 @@ export function softResolveSourceOutput(
     if (graphValueHasPayload(fromBoundaryIn)) return fromBoundaryIn
     if (graphValueHasPayload(fromRun)) return fromRun
     return undefined
+  }
+
+  /**
+   * 语义编译：运行态丢了（旧存档没落盘 `videoPrompts` / 运行态被清）时，
+   * 按节点参数里的计划缓存复原 —— 否则下游「语义重建」单独 Cook 只会拿到空计划，
+   * 既不出片也不报错（实测踩到）。
+   */
+  if (node.typeId === 'semantic.compile' && (sourcePort === 'out' || !sourcePort)) {
+    if (graphValueHasPayload(fromRun)) return fromRun
+    const cached = parsePromptPlan(node.params.planJson)
+    if (cached) return videoPromptsValue(cached)
   }
 
   // 场表格 / 场输出：目录 JSON 必须保持 beat kind（勿经 resolveNodeTextContent 变成 text）

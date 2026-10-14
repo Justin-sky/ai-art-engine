@@ -890,6 +890,11 @@ export async function executeSemanticCompileNode(
       'warn'
     )
   }
+  /**
+   * 计划同时写进节点参数：运行态 outputs 会随存档/撤销/任务快照丢失，
+   * 参数在图上，下游「语义重建」单独 Cook 时还能靠它把计划取回来（见 hostInput 软解析）。
+   */
+  ctx.patchNode?.({ params: { planJson: JSON.stringify(plan) } })
   const value: GraphValue = videoPromptsValue(plan)
   return { out: value }
 }
@@ -1118,6 +1123,18 @@ export async function executeSemanticRebuildNode(
       'warn'
     )
     return {}
+  }
+  /**
+   * 空计划（编译没拿到镜头）：以前只说「没有可拼接的镜头」，看不出是上游的问题。
+   * 这里把原因与下一步说清楚，避免又变成一次"点了没反应"。
+   */
+  if (plan.shots.length === 0 && !plan.fullPrompt?.trim()) {
+    say(
+      ctx,
+      '上游提示词计划是空的（编译时没有镜头证据）—— 先运行上游「语义编译」；时间线没有镜头时先在分析节点里重新分析', // cjk-ok
+      'The upstream prompt plan is empty (compile saw no shots) — run the upstream Semantic compile node first',
+      'warn'
+    )
   }
 
   const mode: RebuildMode = p.rebuildMode === 'full' ? 'full' : 'shots'

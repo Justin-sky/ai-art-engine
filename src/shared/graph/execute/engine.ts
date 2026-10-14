@@ -32,6 +32,9 @@ import { buildMentionSourcesForNode, resolveGenerateMentionIndexBase } from './c
 import { resolveGalleryOutputsFromNodeParams } from './helpers'
 import { executeAssetHostInnerGraph } from './host'
 import { resolveNodeExecutor } from './registry'
+import { semanticTimelineValue } from './semanticTimelineValue'
+import { videoPromptsValue } from './videoPromptsValue'
+import { parsePromptPlan } from '../../semanticTimeline'
 
 /**
  * 端口边界的值投影：结构化值落到 **text 口**时转成它的规范 JSON 文本。
@@ -200,6 +203,66 @@ function resolveLockedOutputs(
   return null
 }
 
+/**
+ * 语义链路自愈：把**丢失的上游语义值**补回来。
+ *
+ * 为什么需要：语义节点的产物（时间线文档 / 提示词计划）只在运行态 outputs 里，
+ * 落盘、撤销、任务快照、旧版存档都可能让它变空 —— 此时「仅跑语义重建（Cook）」
+ * 只会拿到空计划，既不出片也不报错（实测踩到）。这里按节点参数/磁盘把值复原：
+ *
+ * - 语义分析：按参数里的 `semanticTimelineId` 从磁盘读回整份文档（不重跑分析）；
+ * - 语义编译：优先用参数里的计划缓存；没有缓存就把上游时间线取回来后**就地重编译**。
+ *   开了 `semanticLlm` 时不自动重编（那会走模型、可能产生费用），交给用户显式运行。
+ */
+async function restoreSemanticSourceOutput(
+  node: GraphNode,
+  graph: GraphDocument,
+  options: Pick<
+    GraphRunOptions,
+    'locale' | 'loadSemanticTimeline' | 'loadSemanticEvidence' | 'listSemanticPacks' | 'onLog'
+  >,
+  priorNodeStates: Record<string, GraphNodeRunState> | undefined,
+  sourcePort: string
+): Promise<GraphValue | undefined> {
+  if (sourcePort && sourcePort !== 'out') return undefined
+
+  if (node.typeId === 'semantic.analyze') {
+    const id = String(node.params.semanticTimelineId ?? '').trim()
+    if (!id.startsWith('stl.') || !options.loadSemanticTimeline) return undefined
+    const doc = await options.loadSemanticTimeline(id).catch(() => null)
+    return doc ? semanticTimelineValue(doc) : undefined
+  }
+
+  if (node.typeId !== 'semantic.compile') return undefined
+  const cached = parsePromptPlan(node.params.planJson)
+  if (cached) return videoPromptsValue(cached)
+  if (node.params.semanticLlm === true) return undefined
+
+  const edge = graph.edges.find((e) => e.target === node.id)
+  const source = edge ? graph.nodes.find((n) => n.id === edge.source) : undefined
+  if (!edge || !source) return undefined
+  const upstreamPort = edge.sourcePort ?? 'out'
+  const fromPrior = priorNodeStates?.[source.id]?.outputs?.[upstreamPort]
+  const timeline = graphValueHasPayload(fromPrior)
+    ? fromPrior
+    : await restoreSemanticSourceOutput(source, graph, options, priorNodeStates, upstreamPort)
+  if (!timeline || timeline.kind !== 'semanticTimeline') return undefined
+
+  const def = resolveNodeType(node)
+  const execute = resolveNodeExecutor(node, def)
+  const restored = await execute({
+    node,
+    inputs: { [edge.targetPort ?? 'in']: [timeline] },
+    locale: options.locale,
+    ...(options.onLog ? { log: (message, level) => options.onLog?.(node.id, message, level) } : {}),
+    loadSemanticTimeline: options.loadSemanticTimeline,
+    loadSemanticEvidence: options.loadSemanticEvidence,
+    listSemanticPacks: options.listSemanticPacks
+  })
+  const value = restored.out
+  return value && graphValueHasPayload(value) ? value : undefined
+}
+
 /** 单节点执行时：用缓存 outputs，或对上游做无 generate* 快照（仍解析资产正文） */
 async function softSnapshotOutputs(
   node: GraphNode,
@@ -214,6 +277,10 @@ async function softSnapshotOutputs(
     | 'locale'
     | 'readRunText'
     | 'resolveBeatUnit'
+    | 'loadSemanticTimeline'
+    | 'loadSemanticEvidence'
+    | 'listSemanticPacks'
+    | 'onLog'
   >,
   softCtx?: {
     graph: GraphDocument
@@ -258,6 +325,22 @@ async function softSnapshotOutputs(
         const record: Record<string, GraphValue> = { [port]: softVal!, out: softVal! }
         return hydrateOutputRecordTexts(record, options.readRunText)
       }
+    }
+    /**
+     * 语义链路自愈：上面这条软解析只吃节点参数里的**同步**缓存，
+     * 时间线本体在磁盘上、要按 id 读；编译还要在缺计划时就地重编一次。
+     * 放在「空 inputs 兜底执行」**之前**，否则上游会被重跑成空产物（正是本 bug 的成因）。
+     */
+    const restored = await restoreSemanticSourceOutput(
+      node,
+      softCtx.graph,
+      options,
+      softCtx.priorNodeStates,
+      softCtx.sourcePort
+    )
+    if (restored) {
+      const port = softCtx.sourcePort || 'out'
+      return hydrateOutputRecordTexts({ [port]: restored, out: restored }, options.readRunText)
     }
   }
 

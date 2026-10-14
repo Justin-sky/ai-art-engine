@@ -92,6 +92,28 @@ function sanitizeGraphValue(value: GraphValue): GraphValue | undefined {
     case 'texts':
     case 'camera':
       return value
+    /**
+     * 语义链路的两个一等值：**必须落盘**。
+     *
+     * 漏掉它们时，存档 / 重开工程后节点状态还是 `done` 但 outputs 已空：
+     * 分析节点的时间线没了 → 编译节点读不到上游；编译节点的提示词计划没了 →
+     * 在重建节点上 Cook 只会拿到空计划，既不出片也不报错（实测踩到）。
+     * 两个 kind 都是纯 JSON（体积与图库节点同量级），没有 dataUrl 需要剥离。
+     */
+    case 'semanticTimeline':
+    case 'videoPrompts':
+      return value
+    /** 文本型载荷（世界 / 场目录）与工程目录：按原字段落盘 */
+    case 'world':
+    case 'worldEntities':
+    case 'beat':
+    case 'project':
+      return { ...value }
+    case 'voice': {
+      const item = sanitizeVoiceItem(value)
+      if (!item) return undefined
+      return { kind: 'voice', ...item }
+    }
     case 'svg': {
       const item = sanitizeSvgItem(value)
       if (!item) return undefined
