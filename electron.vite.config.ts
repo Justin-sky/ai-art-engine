@@ -181,6 +181,19 @@ export default defineConfig({
         '@shared': resolve('src/shared')
       }
     },
+    /**
+     * QuickJS 脚本沙箱（script.run 节点）的依赖是经 `scriptNodeTypes.ts` 里的**动态 import**
+     * 懒加载的，Vite 启动时的 esbuild 扫描看不到它。dev 下首次执行脚本节点才首次触及这条依赖，
+     * 触发一次运行时 re-optimize，把带旧 `?t=` 时间戳的模块 URL 作废 ——
+     * 表现为 "Failed to fetch dynamically imported module: .../scriptSandboxQuickjs.ts?t=…"。
+     *
+     * 两个包都显式 `include`：Vite 启动时就一次性预构建完（single-file 变体把 ~1.4MB WASM
+     * 以 base64 内联进 JS，实测 esbuild 能正常预构建），这样首次动态 import 时不再触发运行时
+     * re-optimize —— 从源头消除那次把模块 URL 作废的重优化。
+     */
+    optimizeDeps: {
+      include: ['quickjs-emscripten-core', '@jitl/quickjs-singlefile-browser-release-asyncify']
+    },
     plugins: [vue(), threeModuleRawPlugin()]
   }
 })

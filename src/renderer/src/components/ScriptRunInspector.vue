@@ -121,7 +121,16 @@
       </details>
     </section>
 
-    <GraphNodeOutputPreview v-if="node && hostId" :node="node" :host-id="hostId" />
+    <!-- 输出预览：脚本端口名可自定义、可多口，逐个端口各给一块预览并标出端口名 -->
+    <template v-if="node && hostId">
+      <section v-for="port in draft.ports.outputs" :key="port.id" class="output-port">
+        <div class="output-port-head">
+          <code class="output-port-id">{{ port.id }}</code>
+          <span class="output-port-type">{{ port.dataType }}</span>
+        </div>
+        <GraphNodeOutputPreview :node="node" :host-id="hostId" :port-id="port.id" />
+      </section>
+    </template>
 
     <ScriptCodeEditorDialog
       :open="codeDialogOpen"
@@ -435,5 +444,28 @@ function toggleCapability(cap: ScriptCapability, on: boolean): void {
   color: var(--text);
   font: inherit;
   font-size: 13px;
+}
+
+/* 逐端口输出预览：端口名 + 类型做小标头，底下接 GraphNodeOutputPreview */
+.output-port {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.output-port-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.output-port-id {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+.output-port-type {
+  font-size: 11px;
+  color: var(--text-muted);
 }
 </style>

@@ -54,6 +54,11 @@ const props = defineProps<{
   hostId: string
   /** 输出预览图右上角显示「删除输出」（frame.animGen 等用） */
   clearable?: boolean
+  /**
+   * 要预览的运行输出端口名，默认 `out`（绝大多数节点只有这一个输出口）。
+   * 脚本节点（script.run）端口名由作者自定义、可能有多个，调用方按端口逐个传入。
+   */
+  portId?: string
 }>()
 
 const emit = defineEmits<{
@@ -96,7 +101,7 @@ const runOut = computed((): GraphValue | undefined => {
   const state = states?.[nodeId]
   // 逐字段触达，确保 status/outputs 变更能刷新预览
   void state?.status
-  return state?.outputs?.out
+  return state?.outputs?.[props.portId ?? 'out']
 })
 
 function isSoundType(type: AssetType | undefined): boolean {

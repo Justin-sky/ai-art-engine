@@ -9,11 +9,26 @@
  * 这里把它包成一个表达式求值，拿到那个 async 函数并调用，`om.<name>` 转成对宿主的异步回调。
  */
 import {
-  newAsyncContext,
+  newQuickJSAsyncWASMModuleFromVariant,
   shouldInterruptAfterDeadline,
+  type QuickJSAsyncWASMModule,
   type QuickJSHandle
-} from 'quickjs-emscripten'
+} from 'quickjs-emscripten-core'
+// single-file variant：WASM 以 base64 **内联进 JS**，运行时不再 fetch 独立 .wasm —— Electron
+// 打包 / 渲染进程里相对 URL fetch 不到真实文件（会被 index.html 兜底），正是之前
+// "expected magic word 00 61 73 6d, found 3c 21 64 6f（<!do）" 报错的根因。asyncify 变体
+// 保留从 WASM 同步调用宿主异步函数的能力（om.* 需要）。
+import releaseAsyncifyVariant from '@jitl/quickjs-singlefile-browser-release-asyncify'
 import type { ScriptRunRequest, ScriptRunResult, ScriptSandbox } from './scriptSandbox'
+
+/** 构建一次 WASM 模块后缓存：实例化 WASM 不便宜，每次 run 复用同一模块、只新建隔离 context */
+let modulePromise: Promise<QuickJSAsyncWASMModule> | null = null
+function getQuickJsModule(): Promise<QuickJSAsyncWASMModule> {
+  if (!modulePromise) {
+    modulePromise = newQuickJSAsyncWASMModuleFromVariant(releaseAsyncifyVariant)
+  }
+  return modulePromise
+}
 
 /**
  * 把作者代码包成"求值后得到默认导出函数"的表达式。
@@ -35,7 +50,8 @@ function wrapAuthorCode(code: string): string {
 
 export class QuickJsScriptSandbox implements ScriptSandbox {
   async run(request: ScriptRunRequest): Promise<ScriptRunResult> {
-    const context = await newAsyncContext()
+    const module = await getQuickJsModule()
+    const context = module.newContext()
     const runtime = context.runtime
     const disposables: QuickJSHandle[] = []
     const track = <T extends QuickJSHandle>(h: T): T => {
