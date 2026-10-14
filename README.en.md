@@ -30,7 +30,7 @@
 AI Art Engine is an open-source desktop app that puts model calls, node-graph orchestration, 3D previsualization and final editing into one local project, for short drama, ads, games and e-commerce content.
 
 - **Agent-native**: the in-app AI chat calls tools to generate and orchestrate directly; a built-in MCP server lets Claude Code, Codex and other external agents work on your project too.
-- **Node graph and One-Click Workflow**: text, image, video, audio, 3D and spatial-world modalities; industry templates become reusable host assets in one click.
+- **Node graph and One-Click Workflow**: text, image, video, audio, 3D and spatial-world modalities; industry templates become reusable host assets in one click; an optional sandboxed script node (`script.run`) lets a workflow carry governed code without changing the app.
 - **3D director stage and timeline**: blocking, camera angles and motion recording, then arrange and export on the final timeline.
 - **Many models, local-first**: 30+ model providers with your own API keys; a project is a folder of JSON and media files on your machine, with no relay service in between.
 
