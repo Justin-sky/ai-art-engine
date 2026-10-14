@@ -100,7 +100,8 @@ export function pictureTechniques(
     .filter((t) => !!t.action)
 }
 
-const r3 = (n: number | undefined): number => Number((n ?? 0).toFixed(3))
+const r3 = (n: unknown): number =>
+  Number((typeof n === 'number' && Number.isFinite(n) ? n : 0).toFixed(3))
 
 /**
  * 本镜语义输入的指纹：只取**会改变画面提示词或导演命令**的字段。

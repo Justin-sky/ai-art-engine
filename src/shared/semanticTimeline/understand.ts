@@ -37,6 +37,19 @@ export interface RawEventDraft {
   confidence?: number
 }
 
+/** 把模型返回的 importance 规范化为 0..1 数值。模型有时返回「高/中/低」或百分数字符串 */
+function normalizeImportance(raw: unknown): number {
+  if (raw == null) return 0.5
+  if (typeof raw === 'number') return Number.isFinite(raw) ? Math.min(1, Math.max(0, raw)) : 0.5
+  const s = String(raw).trim()
+  // 这三个字面量是模型输出的取值，不是界面文案：不进词表，显式豁免
+  if (s === '高' || s === 'high') return 0.8 // cjk-ok
+  if (s === '中' || s === 'medium') return 0.5 // cjk-ok
+  if (s === '低' || s === 'low') return 0.3 // cjk-ok
+  const n = parseFloat(s)
+  return Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0.5
+}
+
 /** 丢弃无证据草稿，并稳定化 ID */
 export function draftsToEvents(
   drafts: RawEventDraft[],
@@ -60,7 +73,7 @@ export function draftsToEvents(
       type: d.type ?? 'story',
       label: d.label,
       description: d.description,
-      importance: d.importance ?? 0.5,
+      importance: normalizeImportance(d.importance),
       entities: d.entities ?? [],
       evidence: [...d.evidence],
       intents: [],
