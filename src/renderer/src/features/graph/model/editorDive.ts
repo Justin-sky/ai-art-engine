@@ -94,7 +94,7 @@ export type EditorDiveViewMeta =
       viewId: 'world.editor'
       worldAssetId: string
       tab?: WorldElementKind
-      /** 打开的 world.gen 节点；缺省 / 旧版默认节点编辑资产级共享子图 */
+      /** 打开此视图的元素节点 id；缺省 / 旧版默认节点编辑资产级共享子图 */
       worldGenNodeId?: string
     }
   | { viewId: 'director.stage'; directorAssetId: string; processingNodeId?: string }

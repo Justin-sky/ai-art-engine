@@ -3381,11 +3381,6 @@ export default {
       openHint: 'Double-click to open notepad',
       empty: 'No upstream texts yet. Connect a text generate node and run it first.'
     },
-    selectBeat: {
-      appMark: 'Select beat unit',
-      hint: 'Double-click to pick one unit from the upstream beat catalog. Defaults to the first item.',
-      empty: 'No upstream beat units yet. Connect a beat asset and run it first.'
-    },
     textsPreview: {
       appMark: 'Texts preview',
       hint: 'Preview multiple texts in a grid; double-click a card to open the notepad.',
@@ -4964,7 +4959,6 @@ export default {
       directorOutput: 'Director deck output',
       timelineOutput: 'Cut timeline',
       beatOutput: 'Beat output',
-      beatUnitOutput: 'Beat output',
       worldOutput: 'World entities output',
       assetOutput: {
         image: 'Image output',
@@ -4999,12 +4993,7 @@ export default {
       muted: 'Mute output',
       loop: 'Loop playback',
       duration: 'Duration (seconds)',
-      speed: 'Playback speed',
-      beatPaths: 'Saved screenplays',
-      beatPathsHint:
-        'Running Beat unit gen saves each unit as its own screenplay file; double-click to preview',
-      beatPathsEmpty: 'Nothing saved yet — refine units and run this node',
-      beatPathPending: '(not saved)'
+      speed: 'Playback speed'
     },
     semanticTimeline: {
       openResultHint: 'Double-click to view analysis result',
@@ -6122,8 +6111,6 @@ export default {
           "Decompose the screenplay into beat units; use {'@'} to cite connected inputs",
         uiSplitInstructionPlaceholder:
           "Split UI screens from the design doc into detailed prompts; use {'@'} to cite connected inputs",
-        beatUnitGenInstructionPlaceholder:
-          "Optional focus for this refine (rules live in Inspector system prompt); use {'@'} to cite upstream",
         svgGenInstructionPlaceholder:
           "Describe the vector art to generate (icon / illustration / UI element / motion); use {'@'} to cite connected inputs",
         modelPoseInstructionPlaceholder:

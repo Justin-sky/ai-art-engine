@@ -1241,9 +1241,6 @@ const instructionPlaceholder = computed(() => {
   if (instructionKind.value === 'uiSplit') {
     return t('graph.inspector.generate.uiSplitInstructionPlaceholder')
   }
-  if (instructionKind.value === 'beatUnitGen') {
-    return t('graph.inspector.generate.beatUnitGenInstructionPlaceholder')
-  }
   if (instructionKind.value === 'svgGen') {
     return t('graph.inspector.generate.svgGenInstructionPlaceholder')
   }

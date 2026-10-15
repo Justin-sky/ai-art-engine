@@ -22,9 +22,6 @@
     "beatAsset": {
       "addableNodeTypes": ["*"]
     },
-    "beatUnit": {
-      "addableNodeTypes": ["*"]
-    },
     "elementWorkflow": {
       "addableNodeTypes": ["*"]
     }

@@ -4,7 +4,6 @@ import { useEditorKernel } from '../editor/kernel'
 import { useProjectStore } from '../stores/project'
 import { useWorkspaceStore } from '../stores/workspace'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
-import { loadBeatCatalog } from '../features/beat/applyBeatCatalogOnOpen'
 import type { InspectorTarget } from './types'
 
 /**
@@ -109,21 +108,6 @@ export function useInspectorTarget(): ComputedRef<InspectorTarget> {
           subject: group,
           memberCount
         }
-      }
-    }
-
-    if (selection.kind === 'beatUnit') {
-      const beatId = selection.id ?? workspace.activeBeatId
-      const assetId = workspace.activeBeatAssetId
-      const unit =
-        beatId && assetId
-          ? (loadBeatCatalog(assetId).find((row) => row.id === beatId) ?? null)
-          : null
-      return {
-        kind: 'beatUnit',
-        key: beatId ? `beatUnit:${beatId}` : 'beatUnit:none',
-        subject: unit,
-        meta: assetId ? { beatAssetId: assetId } : undefined
       }
     }
 

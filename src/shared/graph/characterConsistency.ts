@@ -19,7 +19,7 @@ function nameKey(name: string): string {
 }
 
 /**
- * 从世界元素生成结果（world.gen 的 worldElementOutputs）收集角色参考图：
+ * 从世界元素生成结果（worldElementOutputs 参数）收集角色参考图：
  * 只取 type 为「角色」且名字/图 URL 非空的条目，按名字去重（首个命中优先）。
  */
 export function characterReferenceImagesFromResults(

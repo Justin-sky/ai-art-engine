@@ -966,8 +966,6 @@ export interface GraphNodeParams {
    * 生成节点每次运行成功后强制切到最新一条。
    */
   selectedTextId?: string
-  /** 选择场节点：当前选中的 BeatRow.id */
-  selectedBeatId?: string
   /** UI 界面拆分：拆分出的界面提示词数组（每条对应 dive 内图一条输出链，可含空字底图轨 cleanPrompt） */
   uiScreens?: Array<{ id: string; title: string; prompt: string; cleanPrompt?: string }>
   /** UI 界面拆分：dive 内图对应的子图资产 id（懒创建） */
@@ -1122,8 +1120,6 @@ export interface GraphNodeParams {
   iconPackCellRefines?: import('./iconPack').IconPackCellRefines
   /** 图层分离（Seedream layer_decomposition） */
   imageLayerSplit?: Partial<ImageLayerSplitState>
-  /** 场参考节点绑定的 BeatRow.id；拖入单元栏时写入 */
-  boundBeatId?: string
   /** 剧集 Agent 流水线：分镜师/动画师生成步骤（breakdown/beatboard/sequence/motion） */
   episodeStep?: 'breakdown' | 'beatboard' | 'sequence' | 'motion'
   /** 剧集 Agent 流水线：导演审核目标步骤（与 episodeStep 互斥） */

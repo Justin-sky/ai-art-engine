@@ -21,7 +21,6 @@ import {
   resolveGameSystemSystemPrompt,
   resolveWorldExtractSystemPrompt,
   resolveBeatSplitSystemPrompt,
-  resolveBeatUnitGenSystemPrompt,
   resolveUiSplitSystemPrompt,
   resolveToPromptSystemPrompt,
   resolveModel3dSystemPrompt,
@@ -41,7 +40,6 @@ import {
   buildGameSystemPrompt,
   buildWorldExtractPrompt,
   buildBeatSplitPrompt,
-  buildBeatUnitGenPrompt,
   buildUiSplitPrompt,
   buildToPromptUserPrompt,
   buildVoicePrompt,
@@ -75,7 +73,6 @@ export type InstructionFinalPreviewKind =
   | 'toPrompt'
   | 'spatialWorldExtract'
   | 'beatSplit'
-  | 'beatUnitGen'
   | 'uiSplit'
   | 'frameAnimGen'
   | 'svgGen'
@@ -98,7 +95,6 @@ export function resolveInstructionFinalPreviewKind(
   if (typeId === 'image.toPrompt' || presetKind === 'toPrompt') return 'toPrompt'
   if (presetKind === 'spatialWorldExtract') return 'spatialWorldExtract'
   if (presetKind === 'beatSplit') return 'beatSplit'
-  if (presetKind === 'beatUnitGen') return 'beatUnitGen'
   if (typeId === 'ui.split' || presetKind === 'uiSplit') {
     return 'uiSplit'
   }
@@ -160,8 +156,6 @@ function resolveSystemPromptForPreviewKind(
       return resolveWorldExtractSystemPrompt(raw, locale)
     case 'beatSplit':
       return resolveBeatSplitSystemPrompt(raw, locale)
-    case 'beatUnitGen':
-      return resolveBeatUnitGenSystemPrompt(raw, locale)
     case 'uiSplit':
       return resolveUiSplitSystemPrompt(raw, locale)
     case 'gameSystem':
@@ -209,8 +203,6 @@ function buildUserPromptForPreviewKind(
       return buildWorldExtractPrompt(instruction, locale)
     case 'beatSplit':
       return buildBeatSplitPrompt(instruction, locale)
-    case 'beatUnitGen':
-      return buildBeatUnitGenPrompt(instruction, locale)
     case 'uiSplit':
       return buildUiSplitPrompt(instruction, locale)
     case 'gameSystem':
@@ -362,7 +354,6 @@ export function buildMentionSourcesForNode(input: {
   byId: Map<string, GraphNode>
   outputs: Map<string, Record<string, GraphValue>>
   mentionIndexBase?: number
-  resolveBeatUnit?: (beatId: string) => import('../beatParse').BeatRow | null
 }): InstructionMentionSource[] {
   const base = Math.max(0, Math.floor(input.mentionIndexBase ?? 0))
   const incoming = expandIncomingThroughBundles(input.graph, input.nodeId)

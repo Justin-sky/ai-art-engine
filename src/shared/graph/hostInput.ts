@@ -108,7 +108,7 @@ export interface ResolveHostInputSlotsOptions {
   resolveAssetGenParams?: (assetId: string) => Record<string, unknown> | undefined
   /** 已打开的源资产内图（优先于落盘 genParams.graphJson） */
   resolveLiveAssetGraph?: (assetId: string) => GraphDocument | undefined
-  /** world.gen 四类图片组口：params 为空时从该节点自己的 element 子图 soft 收集 */
+  /** 世界元素四类图片组口：params 为空时从该节点自己的 element 子图 soft 收集 */
   resolveWorldElementOutputs?: (node: GraphNode) => WorldElementGenResult[]
 }
 

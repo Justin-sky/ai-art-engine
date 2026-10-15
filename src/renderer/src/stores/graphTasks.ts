@@ -95,26 +95,12 @@ import { readGraphRunText } from '../features/graph/readGraphRunText'
 import { useDraftStore } from './drafts'
 import { useProjectStore } from './project'
 import { toPlain } from '../utils/toPlain'
-import { applyWorldCatalog, loadWorldCatalog } from '../features/world/applyWorldCatalogOnOpen'
-import {
-  collectWorldElementOutputs,
-  previewWorldElementOutputsFromSubgraphs
-} from '../features/world/worldElementPipeline'
-import { collectBeatUnitTexts } from '../features/beat/beatPipeline'
+import { previewWorldElementOutputsFromSubgraphs } from '../features/world/worldElementPreview'
 import { loadBeatCatalog, applyBeatCatalog } from '../features/beat/applyBeatCatalogOnOpen'
 import {
-  stringifyWorldElementCatalog,
-  WORLD_ELEMENT_KINDS,
-  collectTextFromBeatGraph,
-  listVisualOutputNodeIdsNeedingCook,
   LEGACY_WORLD_GEN_NODE_ID,
-  normalizeScopedGraph,
   readWorldElementGraphForNode,
-  readWorldElementIdFromNodeParams,
-  inferElementWorkflowHostInterface,
-  readBeatGraphFromGenParams,
   withWorldElementGraphForNode,
-  withBeatGraph,
   type WorldElementKind
 } from '@shared/graph'
 
@@ -126,14 +112,8 @@ export type GraphTaskTarget =
       worldAssetId: string
       elementKind: WorldElementKind
       hostId: string
-      /** 所属 world.gen 节点 id；缺省 / 旧版默认节点走资产级共享子图 */
+      /** 所属世界元素节点 id；缺省 / 旧版默认节点走资产级共享子图 */
       nodeId?: string
-    }
-  | {
-      kind: 'beat-unit'
-      beatAssetId: string
-      beatId: string
-      hostId: string
     }
   | {
       kind: 'asset'
@@ -254,8 +234,6 @@ function taskTargetKey(target: GraphTaskTarget): string {
       return `world-element:${target.worldAssetId}${
         target.nodeId ? `:${target.nodeId}` : ''
       }:${target.elementKind}`
-    case 'beat-unit':
-      return `beat-unit:${target.beatAssetId}:${target.beatId}`
   }
 }
 
@@ -267,9 +245,6 @@ function taskTargetKey(target: GraphTaskTarget): string {
 export function writeBackExclusiveKey(target: GraphTaskTarget): string {
   if (target.kind === 'world-element') {
     return `world-element:${target.worldAssetId}${target.nodeId ? `:${target.nodeId}` : ''}`
-  }
-  if (target.kind === 'beat-unit') {
-    return `beat-unit:${target.beatAssetId}`
   }
   return taskTargetKey(target)
 }
@@ -377,10 +352,6 @@ function readPersistedGraphForTarget(target: GraphTaskTarget): GraphDocument | n
     )
     return asGraphDocument(raw)
   }
-  if (target.kind === 'beat-unit') {
-    const raw = readBeatGraphFromGenParams(readBeatGenParams(target.beatAssetId), target.beatId)
-    return asGraphDocument(raw)
-  }
   return null
 }
 
@@ -411,13 +382,6 @@ const MAX_COMPLETED_TASKS = 100
 
 export type EnqueueWorkflowResult = { ok: true; id: string } | { ok: false; reason: 'duplicate' }
 
-export type EnqueueBatchResult = {
-  enqueued: number
-  skipped: number
-  duplicates: number
-  taskIds: string[]
-}
-
 function readWorldGenParams(worldAssetId: string): Record<string, unknown> {
   if (isDraftAssetId(worldAssetId)) {
     return { ...(useDraftStore().getDraft(worldAssetId)?.genParams ?? {}) }
@@ -431,56 +395,12 @@ function isWorldPipelineAssetType(type: string | undefined | null): boolean {
   return type === 'world' || type === 'subgraph'
 }
 
-function spatialWorldKindNeedsBatch(doc: GraphDocument, onlyMissing: boolean): boolean {
-  const hasElements = doc.nodes.some((node) => !!readWorldElementIdFromNodeParams(node.params))
-  if (!hasElements) return false
-  if (!onlyMissing) return true
-  // 缺图补跑；有图但未锁定则重新 cook；锁定有图跳过
-  return listVisualOutputNodeIdsNeedingCook(doc).length > 0
-}
-
-function beatUnitNeedsBatch(doc: GraphDocument, onlyMissing: boolean): boolean {
-  if (!onlyMissing) return true
-  const collected = collectTextFromBeatGraph(doc)
-  return !(collected?.text.trim() || collected?.relativePath?.trim())
-}
-
-function worldElementNodeKey(nodeId?: string): string | undefined {
-  const id = nodeId?.trim()
-  return id && id !== LEGACY_WORLD_GEN_NODE_ID ? id : undefined
-}
-
-function worldElementHostId(
-  worldAssetId: string,
-  elementKind: WorldElementKind,
-  nodeId?: string
-): string {
-  const nodeKey = worldElementNodeKey(nodeId)
-  return nodeKey
-    ? `asset:${worldAssetId}:element:${elementKind}:${nodeKey}`
-    : `asset:${worldAssetId}:element:${elementKind}`
-}
-
-function beatUnitHostId(beatAssetId: string, beatId: string): string {
-  return `asset:${beatAssetId}:unit:${beatId}`
-}
-
-function readBeatGenParams(beatAssetId: string): Record<string, unknown> {
-  if (isDraftAssetId(beatAssetId)) {
-    return { ...(useDraftStore().getDraft(beatAssetId)?.genParams ?? {}) }
-  }
-  const asset = useProjectStore().assets.find((a) => a.id === beatAssetId)
-  return { ...((asset?.genParams as Record<string, unknown> | undefined) ?? {}) }
-}
-
 function taskHostAssetId(target: GraphTaskTarget): string {
   switch (target.kind) {
     case 'asset':
       return target.assetId
     case 'world-element':
       return target.worldAssetId
-    case 'beat-unit':
-      return target.beatAssetId
   }
 }
 
@@ -666,15 +586,6 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         })
         return
       }
-
-      if (task.target.kind === 'beat-unit') {
-        const { beatAssetId, beatId } = task.target
-        const prevParams = readBeatGenParams(beatAssetId)
-        await persistAssetRecord(beatAssetId, {
-          genParams: withBeatGraph(prevParams, beatId, toPlain(graph) as GraphDocument)
-        })
-        return
-      }
     })
   }
 
@@ -729,106 +640,9 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
     return { ok: true, id }
   }
 
-  function enqueueWorldElementBatch(input: {
-    worldAssetId: string
-    nodeId?: string
-    onlyMissing?: boolean
-  }): EnqueueBatchResult {
-    const onlyMissing = input.onlyMissing !== false
-    const genParams = readWorldGenParams(input.worldAssetId)
-    const ownerNodeId = input.nodeId ?? LEGACY_WORLD_GEN_NODE_ID
-    let enqueued = 0
-    let skipped = 0
-    let duplicates = 0
-    const taskIds: string[] = []
-
-    for (const elementKind of WORLD_ELEMENT_KINDS) {
-      const raw = readWorldElementGraphForNode(genParams, ownerNodeId, elementKind)
-      const graph = normalizeScopedGraph('elementWorkflow', raw ?? null, {
-        assetType: 'world',
-        hostInterface: inferElementWorkflowHostInterface(raw)
-      })
-      if (!spatialWorldKindNeedsBatch(graph, onlyMissing)) {
-        skipped += 1
-        continue
-      }
-      const cookIds = listVisualOutputNodeIdsNeedingCook(graph)
-      const priorNodeStates = graph.runStates
-        ? ({ ...graph.runStates } as Record<string, GraphNodeRunState>)
-        : undefined
-      const result = enqueueWorkflow({
-        title: elementKind,
-        graph,
-        target: {
-          kind: 'world-element',
-          worldAssetId: input.worldAssetId,
-          elementKind,
-          hostId: worldElementHostId(input.worldAssetId, elementKind, input.nodeId),
-          nodeId: input.nodeId
-        },
-        // 缺图补跑 + 未锁定有图重烹；锁定有图不入队，collect 时 soft 进实体列表
-        // skipCompletedNodes=false：未锁定节点即使 prior=done 也要重新 cook
-        targetNodeIds: onlyMissing && cookIds.length ? cookIds : undefined,
-        priorNodeStates,
-        skipCompletedNodes: false
-      })
-      if (result.ok) {
-        enqueued += 1
-        taskIds.push(result.id)
-      } else {
-        duplicates += 1
-      }
-    }
-
-    return { enqueued, skipped, duplicates, taskIds }
-  }
-
-  function enqueueBeatUnitBatch(input: {
-    beatAssetId: string
-    onlyMissing?: boolean
-  }): EnqueueBatchResult {
-    const onlyMissing = input.onlyMissing !== false
-    const rows = loadBeatCatalog(input.beatAssetId)
-    const genParams = readBeatGenParams(input.beatAssetId)
-    let enqueued = 0
-    let skipped = 0
-    let duplicates = 0
-    const taskIds: string[] = []
-
-    for (const row of rows) {
-      const raw = readBeatGraphFromGenParams(genParams, row.id)
-      const graph = normalizeScopedGraph('beatUnit', raw ?? null, {
-        assetType: 'beat'
-      })
-      if (!beatUnitNeedsBatch(graph, onlyMissing)) {
-        skipped += 1
-        continue
-      }
-      const result = enqueueWorkflow({
-        title: row.title?.trim() || row.id,
-        graph,
-        target: {
-          kind: 'beat-unit',
-          beatAssetId: input.beatAssetId,
-          beatId: row.id,
-          hostId: beatUnitHostId(input.beatAssetId, row.id)
-        }
-      })
-      if (result.ok) {
-        enqueued += 1
-        taskIds.push(result.id)
-      } else {
-        duplicates += 1
-      }
-    }
-
-    return { enqueued, skipped, duplicates, taskIds }
-  }
-
   /**
    * 等到任务离开 active 列表（writeBack + moveToCompleted 之后）。
-   * 不能仅看 status===done：status 会在 writeBack 之前就置 done，过早返回会导致
-   * collectWorldElementOutputs 读到旧 worldElementGraphs 并回写冲掉刚烹好的结果。
+   * 不能仅看 status===done：status 会在 writeBack 之前就置 done，过早返回会读到旧产物。
    */
   async function waitForTaskIds(taskIds: string[]): Promise<void> {
     if (!taskIds.length) return
@@ -1822,73 +1636,6 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             timeoutMs: input.timeoutMs
           }),
         normalizeImageAspectRatio,
-        resolveWorldCatalogJson: () => {
-          if (task.target.kind !== 'asset') return null
-          const spatialWorldId = task.target.assetId
-          if (isDraftAssetId(spatialWorldId)) {
-            const draft = useDraftStore().getDraft(spatialWorldId)
-            if (!isWorldPipelineAssetType(draft?.type)) return null
-          } else {
-            const project = useProjectStore()
-            const asset = project.assets.find((a) => a.id === spatialWorldId)
-            if (!isWorldPipelineAssetType(asset?.type)) return null
-          }
-          const catalog = loadWorldCatalog(spatialWorldId)
-          const total = WORLD_ELEMENT_KINDS.reduce((sum, kind) => sum + catalog[kind].length, 0)
-          if (!total) return null
-          return stringifyWorldElementCatalog(catalog)
-        },
-        importWorldCatalogJson: async (jsonText) => {
-          if (task.target.kind !== 'asset') return
-          const spatialWorldId = task.target.assetId
-          if (isDraftAssetId(spatialWorldId)) {
-            const draft = useDraftStore().getDraft(spatialWorldId)
-            if (!isWorldPipelineAssetType(draft?.type)) return
-          } else {
-            const project = useProjectStore()
-            const asset = project.assets.find((a) => a.id === spatialWorldId)
-            if (!isWorldPipelineAssetType(asset?.type)) return
-          }
-          await applyWorldCatalog(spatialWorldId, jsonText)
-        },
-        collectBeatUnitTexts: async (signal) => {
-          if (task.target.kind !== 'asset') return null
-          const beatId = task.target.assetId
-          if (isDraftAssetId(beatId)) {
-            const draft = useDraftStore().getDraft(beatId)
-            if (draft?.type !== 'beat') return null
-            const batch = enqueueBeatUnitBatch({
-              beatAssetId: beatId,
-              onlyMissing: true
-            })
-            await waitForTaskIds(batch.taskIds)
-            return collectBeatUnitTexts({ beatAssetId: beatId, signal })
-          }
-          const project = useProjectStore()
-          const asset = project.assets.find((a) => a.id === beatId)
-          if (asset?.type !== 'beat') return null
-          const batch = enqueueBeatUnitBatch({
-            beatAssetId: beatId,
-            onlyMissing: true
-          })
-          await waitForTaskIds(batch.taskIds)
-          return collectBeatUnitTexts({ beatAssetId: beatId, signal })
-        },
-        resolveBeatUnit: (beatId) => {
-          const id = beatId.trim()
-          if (!id) return null
-          if (task.target.kind === 'asset') {
-            const assetId = task.target.assetId
-            const project = useProjectStore()
-            const asset = project.assets.find((a) => a.id === assetId)
-            const draft = useDraftStore().getDraft(assetId)
-            const type = draft?.type ?? asset?.type
-            if (type === 'beat') {
-              return loadBeatCatalog(assetId).find((row) => row.id === id) ?? null
-            }
-          }
-          return null
-        },
         resolveBeatCatalogJson: () => {
           if (task.target.kind !== 'asset') return null
           const beatId = task.target.assetId
@@ -1899,44 +1646,6 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         importBeatCatalogJson: async (jsonText) => {
           if (task.target.kind !== 'asset') return
           await applyBeatCatalog(task.target.assetId, jsonText)
-        },
-        collectWorldElementOutputs: async (signal, options) => {
-          if (task.target.kind !== 'asset') return null
-          const spatialWorldId = task.target.assetId
-          if (isDraftAssetId(spatialWorldId)) {
-            const draft = useDraftStore().getDraft(spatialWorldId)
-            if (!isWorldPipelineAssetType(draft?.type)) return null
-            // Cook / 整链：缺图补跑后再收集；执行当前只收集已有结果
-            if (options?.cookBatch) {
-              const batch = enqueueWorldElementBatch({
-                worldAssetId: spatialWorldId,
-                nodeId: options?.nodeId,
-                onlyMissing: true
-              })
-              await waitForTaskIds(batch.taskIds)
-            }
-            return collectWorldElementOutputs({
-              worldAssetId: spatialWorldId,
-              nodeId: options?.nodeId,
-              signal
-            })
-          }
-          const project = useProjectStore()
-          const asset = project.assets.find((a) => a.id === spatialWorldId)
-          if (!isWorldPipelineAssetType(asset?.type)) return null
-          if (options?.cookBatch) {
-            const batch = enqueueWorldElementBatch({
-              worldAssetId: spatialWorldId,
-              nodeId: options?.nodeId,
-              onlyMissing: true
-            })
-            await waitForTaskIds(batch.taskIds)
-          }
-          return collectWorldElementOutputs({
-            worldAssetId: spatialWorldId,
-            nodeId: options?.nodeId,
-            signal
-          })
         },
         resolveWorldElementOutputs: (node) => {
           if (task.target.kind !== 'asset') return []
@@ -2044,8 +1753,6 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
     openDialog,
     closeDialog,
     enqueueWorkflow,
-    enqueueWorldElementBatch,
-    enqueueBeatUnitBatch,
     waitForTaskIds,
     getTaskRunSnapshot,
     runHostInnerGraph,

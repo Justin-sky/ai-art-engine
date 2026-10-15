@@ -1188,35 +1188,6 @@ export interface NodeExecuteContext {
   }) => Promise<{ result?: unknown; error?: string }>
   /** 图片生成后按目标宽高比居中裁正（宫格画布保证每格比例） */
   normalizeImageAspectRatio?: (input: { dataUrl: string; aspectRatio: string }) => Promise<string>
-  /** 场参考节点：按 boundBeatId 解析目录行 */
-  resolveBeatUnit?: (beatId: string) => import('../beatParse').BeatRow | null
-  /**
-   * 世界元素编辑：收集四类 elementWorkflow 已完成输出；`cookBatch` 为 true 时先入队批跑。
-   */
-  collectWorldElementOutputs?: (
-    signal?: AbortSignal,
-    options?: { cookBatch?: boolean; nodeId?: string }
-  ) => Promise<{
-    items: Array<{ type: string; name: string; imageUrl: string }>
-  } | null>
-  /**
-   * 场生成：收集各单元 beatUnit 子图「场输出」已有文本（不级联跑子图生成）。
-   */
-  collectBeatUnitTexts?: (signal?: AbortSignal) => Promise<{
-    items: GraphTextItem[]
-  } | null>
-  /**
-   * 世界元素表格节点：把当前目录序列化为提取 JSON。
-   */
-  resolveWorldCatalogJson?: () => string | null
-  /**
-   * 世界元素表格 / 编辑节点执行时：把上游提取 JSON 同步到元素子图。
-   */
-  /**
-   * 世界元素目录导入：sourceNodeId 为执行节点 id。
-   * world.gen → 导入到该节点独立子图；world.extract/table → 导入到其下游 world.gen 节点。
-   */
-  importWorldCatalogJson?: (jsonText: string, sourceNodeId?: string) => void | Promise<void>
   /**
    * 场表格节点：把当前目录序列化为拆解 JSON。
    */
@@ -1424,13 +1395,8 @@ export interface GraphRunOptions {
   buildGamePlayProject?: NodeExecuteContext['buildGamePlayProject']
   runBlenderMcpTool?: NodeExecuteContext['runBlenderMcpTool']
   normalizeImageAspectRatio?: NodeExecuteContext['normalizeImageAspectRatio']
-  resolveBeatUnit?: NodeExecuteContext['resolveBeatUnit']
-  collectWorldElementOutputs?: NodeExecuteContext['collectWorldElementOutputs']
-  /** world.gen 四类图片组口：params 为空时从 element 子图 soft 收集（选取/快照用） */
+  /** 世界元素四类图片组口：params 为空时从 element 子图 soft 收集（选取/快照用） */
   resolveWorldElementOutputs?: (node: GraphNode) => WorldElementGenResult[]
-  collectBeatUnitTexts?: NodeExecuteContext['collectBeatUnitTexts']
-  resolveWorldCatalogJson?: NodeExecuteContext['resolveWorldCatalogJson']
-  importWorldCatalogJson?: NodeExecuteContext['importWorldCatalogJson']
   resolveBeatCatalogJson?: NodeExecuteContext['resolveBeatCatalogJson']
   importBeatCatalogJson?: NodeExecuteContext['importBeatCatalogJson']
   runHostInnerGraph?: NodeExecuteContext['runHostInnerGraph']

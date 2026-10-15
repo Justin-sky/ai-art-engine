@@ -3299,11 +3299,6 @@ export default {
       openHint: '双击打开记事本',
       empty: '暂无上游文本，请先连接文本生成等节点并执行'
     },
-    selectBeat: {
-      appMark: '选择场',
-      hint: '双击从上游场目录中选出一个单元；默认第一项。',
-      empty: '暂无上游场，请先连接场资产并执行'
-    },
     textsPreview: {
       appMark: '文本预览',
       hint: '多段文本以网格预览；双击卡片打开记事本查看全文。',
@@ -4852,7 +4847,6 @@ export default {
       directorOutput: '导演台输出',
       timelineOutput: '成片时间线',
       beatOutput: '场输出',
-      beatUnitOutput: '场输出',
       worldOutput: '世界元素实体输出',
       assetOutput: {
         image: '图片输出',
@@ -4886,11 +4880,7 @@ export default {
       muted: '输出静音',
       loop: '循环播放',
       duration: '输出时长（秒）',
-      speed: '播放速度',
-      beatPaths: '落地剧本',
-      beatPathsHint: '运行「场生成」后，各单元文本会保存为独立剧本文件；双击预览全文',
-      beatPathsEmpty: '尚未落地，请先细化各单元并运行本节点',
-      beatPathPending: '（未落盘）'
+      speed: '播放速度'
     },
     semanticTimeline: {
       openResultHint: '双击查看分析结果',
@@ -5955,8 +5945,6 @@ export default {
         beatSplitInstructionPlaceholder: "将剧本拆解为场；可用 {'@'} 引用上方连线资源",
         uiSplitInstructionPlaceholder:
           "将策划案中的 UI 拆为独立界面详细提示词；可用 {'@'} 引用上方连线资源",
-        beatUnitGenInstructionPlaceholder:
-          "可选：补充本次细化焦点（规则已在 Inspector 系统提示词）；可用 {'@'} 引用上游",
         svgGenInstructionPlaceholder:
           "描述要生成的矢量图（图标 / 插画 / UI 元素 / 动效）；可用 {'@'} 引用上方连线资源",
         modelPoseInstructionPlaceholder:

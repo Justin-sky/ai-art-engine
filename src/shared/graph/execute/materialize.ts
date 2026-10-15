@@ -8,9 +8,6 @@ import type {
   GraphVoiceItem,
   NodeExecuteContext
 } from './types'
-import { GraphPortType } from '../types'
-import { GRAPH_OUT_ALL_PORT_ID } from '../ports'
-import { catalogValue } from '../catalogValue'
 import { buildGeneratedMediaFileKey, formatGeneratedMediaStamp } from '../../domain'
 import { fail } from '@shared/errors/appError'
 import { SHARED_ERRORS } from '../../errors/catalog'
@@ -26,7 +23,6 @@ import {
   newestTextSelectedId,
   newestVideoSelectedId,
   newestVoiceSelectedId,
-  pickTextItem,
   stripEmbeddedImageData,
   stripEmbeddedTextData,
   stripEmbeddedVideoData,
@@ -390,127 +386,6 @@ export function persistVoiceGeneration(
     }
   })
   return dualVoiceGalleryOutputs(generatedVoices, selectedVoiceId)
-}
-
-/** 世界元素提取图库：`out` 为选中目录（world），`out-all` 为历史 texts */
-export function dualWorldCatalogOutputs(
-  items: GraphTextItem[],
-  selectedTextId: string
-): Record<string, GraphValue> {
-  const picked = pickTextItem(items, selectedTextId)
-  const text = picked?.text ?? ''
-  return {
-    out: catalogValue(GraphPortType.world, text, picked?.relativePath),
-    [GRAPH_OUT_ALL_PORT_ID]: { kind: 'texts', items }
-  }
-}
-
-/** 场拆解图库：`out` 为选中目录（beat），`out-all` 为历史 texts */
-export function dualBeatCatalogOutputs(
-  items: GraphTextItem[],
-  selectedTextId: string
-): Record<string, GraphValue> {
-  const picked = pickTextItem(items, selectedTextId)
-  const text = picked?.text ?? ''
-  return {
-    out: catalogValue(GraphPortType.beat, text, picked?.relativePath),
-    [GRAPH_OUT_ALL_PORT_ID]: { kind: 'texts', items }
-  }
-}
-
-/**
- * 目录拆解/提取图库合并：必须保留 JSON 正文。
- * 不可走 mergeGeneratedTexts（落盘后会 strip 掉 text，导致预览/out/锁定全空）。
- */
-export function mergeCatalogGeneratedTexts(
-  ctx: NodeExecuteContext,
-  batch: GraphTextItem[],
-  idFallbackPrefix: string
-): GraphTextItem[] {
-  const previous = (ctx.node.params.generatedTexts ?? []).map((item) => ({
-    id: item.id,
-    text: item.text ?? '',
-    createdAt: item.createdAt,
-    ...(item.title?.trim() ? { title: item.title.trim() } : {}),
-    ...(item.relativePath?.trim() ? { relativePath: item.relativePath.trim() } : {})
-  }))
-  return [...previous, ...batch].map((item, index) => ({
-    id: item.id?.trim() || `${idFallbackPrefix}:${index}`,
-    text: item.text ?? '',
-    ...(item.createdAt ? { createdAt: item.createdAt } : {}),
-    ...(item.title?.trim() ? { title: item.title.trim() } : {}),
-    ...(item.relativePath?.trim() ? { relativePath: item.relativePath.trim() } : {})
-  }))
-}
-
-export async function persistCatalogTextGeneration(
-  ctx: NodeExecuteContext,
-  text: string,
-  options: {
-    idPrefix: string
-    fileKeyPrefix: string
-    dualOutputs: (items: GraphTextItem[], selectedTextId: string) => Record<string, GraphValue>
-  }
-): Promise<Record<string, GraphValue>> {
-  const createdAt = new Date().toISOString()
-  const stamp = formatGeneratedMediaStamp()
-  const id = `${options.idPrefix}:${stamp}`
-  let item: GraphTextItem = { id, text, createdAt }
-  if (ctx.saveRunText && text.trim()) {
-    try {
-      const relativePath = await ctx.saveRunText({
-        content: text,
-        key: buildGeneratedMediaFileKey({
-          hostAssetName: ctx.resolveHostAssetName?.(),
-          nodeTitle: options.fileKeyPrefix || ctx.node.title || ctx.node.typeId || 'text',
-          stamp: formatGeneratedMediaStamp()
-        }),
-        outputDir: ctx.node.params.mediaOutputDir?.trim() || undefined,
-        node: ctx.node
-      })
-      if (relativePath?.trim()) item = { ...item, relativePath: relativePath.trim() }
-    } catch (err) {
-      console.warn(`[graph] materialize ${options.idPrefix} text failed`, err)
-    }
-  }
-  const generatedTexts = mergeCatalogGeneratedTexts(ctx, [item], `${stamp}:keep`)
-  const selectedTextId = newestTextSelectedId(generatedTexts)
-  ctx.node.params = {
-    ...ctx.node.params,
-    text,
-    generatedTexts,
-    selectedTextId
-  }
-  ctx.patchNode?.({
-    params: {
-      text,
-      generatedTexts,
-      selectedTextId
-    }
-  })
-  return options.dualOutputs(generatedTexts, selectedTextId)
-}
-
-export async function persistWorldExtractGeneration(
-  ctx: NodeExecuteContext,
-  text: string
-): Promise<Record<string, GraphValue>> {
-  return persistCatalogTextGeneration(ctx, text, {
-    idPrefix: 'world-extract',
-    fileKeyPrefix: 'world_extract',
-    dualOutputs: dualWorldCatalogOutputs
-  })
-}
-
-export async function persistBeatSplitGeneration(
-  ctx: NodeExecuteContext,
-  text: string
-): Promise<Record<string, GraphValue>> {
-  return persistCatalogTextGeneration(ctx, text, {
-    idPrefix: 'beat-split',
-    fileKeyPrefix: 'beat_split',
-    dualOutputs: dualBeatCatalogOutputs
-  })
 }
 
 export function commitGeneratedImages(

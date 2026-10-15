@@ -28,7 +28,6 @@ describe('graph policy', () => {
         'directorAsset',
         'elementWorkflow',
         'beatAsset',
-        'beatUnit',
         'screenplayAsset',
         'subgraphAsset',
         'workflow',

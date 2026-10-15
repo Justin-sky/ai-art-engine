@@ -45,7 +45,7 @@ interface CrossingIn {
   /** 选中侧目标端口 */
   targetPort: string
   targetNodeId: string
-  /** 目标端口语义标签（如 world.extract 的 in），用于命名边界输入 */
+  /** 目标端口语义标签（如 in），用于命名边界输入 */
   label?: string
 }
 
@@ -54,7 +54,7 @@ interface CrossingOut {
   dataType: GraphPortDataType
   sourcePort: string
   sourceNodeId: string
-  /** 源端口语义标签（如 world.gen 的 角色/场景/道具/武器），用于命名边界输出 */
+  /** 源端口语义标签（如角色 / 场景 / 道具 / 武器），用于命名边界输出 */
   label?: string
 }
 

@@ -11,7 +11,7 @@ import { WORLD_ELEMENT_KINDS } from './worldElementParse'
 /** world 资产 genParams 中存放四类元素工作流图的键 */
 export const WORLD_ELEMENT_GRAPHS_PARAM_KEY = 'worldElementGraphs'
 
-/** 按 world.gen 节点 id 存放四类元素工作流图的键（多节点独立状态） */
+/** 按节点 id 分区存放四类元素工作流图的键（多节点独立状态） */
 export const WORLD_ELEMENT_GRAPHS_BY_NODE_PARAM_KEY = 'worldElementGraphsByNode'
 
 /** 旧版资产级共享图归属的默认节点 id（首个世界元素生成节点） */
@@ -89,7 +89,7 @@ export function readWorldElementGraphsFromGenParams(
 }
 
 /**
- * 读取某个 world.gen 节点的四类元素图：
+ * 读取某个节点的四类元素图：
  * 优先按节点 id 独立存储；无独立条目时仅对旧版默认节点回退到资产级共享图，
  * 其余节点（新添加的生成节点）保持独立空状态，不继承其它节点的内容。
  */
@@ -145,7 +145,7 @@ export function withWorldElementGraph(
 }
 
 /**
- * 按 world.gen 节点写回某类元素图：
+ * 按节点 id 写回某类元素图：
  * 写入独立节点槽位，不动资产级共享图，保证多节点互不影响。
  */
 export function withWorldElementGraphForNode(
@@ -179,7 +179,7 @@ export function withWorldElementGraphForNode(
 }
 
 /**
- * 把指定 world.gen 节点的世界元素状态（四类子图 + 目录指纹）从源 genParams 抽取出来，
+ * 把指定节点的世界元素状态（四类子图 + 目录指纹）从源 genParams 抽取出来，
  * 供「封装为资产」时迁入子图资产，避免封装后已生成数据丢失。
  */
 export function pickWorldElementStateForMigration(

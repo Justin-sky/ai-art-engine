@@ -19,7 +19,6 @@ export type InstructionPresetKind =
   | 'optimize'
   | 'spatialWorldExtract'
   | 'beatSplit'
-  | 'beatUnitGen'
   | 'uiSplit'
   | 'frameAnimGen'
   | 'svgGen'
@@ -2421,8 +2420,6 @@ const PRESET_PACKS: Record<InstructionPresetKind, InstructionPreset[]> = {
   optimize: OPTIMIZE_PRESETS,
   spatialWorldExtract: WORLD_EXTRACT_PRESETS,
   beatSplit: BEAT_SPLIT_PRESETS,
-  // 规则在系统提示词；指令窗口仅作临时焦点，暂无成套预设
-  beatUnitGen: [],
   uiSplit: [],
   frameAnimGen: [...FRAME_ANIM_GEN_CHARACTER_PRESETS, ...FRAME_ANIM_GEN_FX_PRESETS],
   svgGen: SVG_GEN_PRESETS,

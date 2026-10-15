@@ -172,7 +172,7 @@ function waitStep(ms: number, signal?: AbortSignal): Promise<void> {
 /** 输出表是否含有可用正文/媒体（空 text / 空 images 组视为无效） */
 function hasUsableOutputRecord(outputs: Record<string, GraphValue> | undefined | null): boolean {
   if (!outputs || !Object.keys(outputs).length) return false
-  // world.gen 等只有 out-* 组口、无 out：必须逐口检查，不能因缺 out 当成可用
+  // 分组输出节点只有 out-* 组口、无 out：必须逐口检查，不能因缺 out 当成可用
   return Object.values(outputs).some((value) => graphValueHasPayload(value))
 }
 
@@ -281,7 +281,6 @@ async function softSnapshotOutputs(
     | 'hasAsset'
     | 'locale'
     | 'readRunText'
-    | 'resolveBeatUnit'
     | 'loadSemanticTimeline'
     | 'loadSemanticEvidence'
     | 'listSemanticPacks'
@@ -360,8 +359,7 @@ async function softSnapshotOutputs(
       resolveAssetText: options.resolveAssetText,
       resolveAssetGenParams: options.resolveAssetGenParams,
       hasAsset: options.hasAsset,
-      readRunText: options.readRunText,
-      resolveBeatUnit: options.resolveBeatUnit
+      readRunText: options.readRunText
     })
   )
 }
@@ -491,8 +489,7 @@ async function executeOneNode(
     nodeId,
     byId,
     outputs,
-    mentionIndexBase,
-    resolveBeatUnit: options.resolveBeatUnit
+    mentionIndexBase
   })
   const incomingByIndex = expandIncomingThroughBundles(graph, nodeId).map((edge, i) => {
     const index = mentionIndexBase + i + 1
@@ -575,11 +572,6 @@ async function executeOneNode(
     buildGamePlayProject: options.buildGamePlayProject,
     runBlenderMcpTool: options.runBlenderMcpTool,
     normalizeImageAspectRatio: options.normalizeImageAspectRatio,
-    resolveBeatUnit: options.resolveBeatUnit,
-    collectWorldElementOutputs: options.collectWorldElementOutputs,
-    collectBeatUnitTexts: options.collectBeatUnitTexts,
-    resolveWorldCatalogJson: options.resolveWorldCatalogJson,
-    importWorldCatalogJson: options.importWorldCatalogJson,
     resolveBeatCatalogJson: options.resolveBeatCatalogJson,
     importBeatCatalogJson: options.importBeatCatalogJson,
     runHostInnerGraph: options.runHostInnerGraph,

@@ -1,6 +1,6 @@
 /**
- * 角色参考图来源：从工程内世界资产（world / subgraph）的 world.gen 节点
- * `worldElementOutputs` 收集「角色」参考图，供图片生成节点绑定角色一致性参考。
+ * 角色参考图来源：从工程内世界资产（world / subgraph）的 `worldElementOutputs`
+ * 参数收集「角色」参考图，供图片生成节点绑定角色一致性参考。
  *
  * 只做纯数据收集，不解析相对路径 URL（解析发生在生成执行侧，复用端口参考图同款解析）。
  */

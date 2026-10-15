@@ -65,7 +65,7 @@ async function persistCatalog(
     return rows.length
   }
   const previous = readBeatGenParams(beatAssetId) ?? {}
-  // 在已有 genParams 上合并，避免冲掉 beatGraphs 等并行写入字段
+  // 在已有 genParams 上合并，避免冲掉并行写入的其它字段
   const genParams: Record<string, unknown> = {
     ...previous,
     beatCatalog: toPlain(rows),

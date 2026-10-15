@@ -54,9 +54,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const openWorldEditorIds = ref<string[]>([])
   const openBeatEditorIds = ref<string[]>([])
   const openDirectorEditorIds = ref<string[]>([])
-  /** 场细化底栏当前选中单元 */
-  const activeBeatId = ref<string | null>(null)
-  const activeBeatAssetId = ref<string | null>(null)
   const selectedAssetId = computed(() =>
     editor.selection.current.value.kind === 'asset'
       ? (editor.selection.current.value.id ?? null)
@@ -410,8 +407,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     openWorldEditorIds.value = []
     openBeatEditorIds.value = []
     openDirectorEditorIds.value = []
-    activeBeatId.value = null
-    activeBeatAssetId.value = null
     draggingAsset.value = null
     assetBrowserReveal.value = null
     diveClearAll()
@@ -455,25 +450,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     } else if (editor.selection.is('asset')) {
       focusProjectGlobals()
     }
-  }
-
-  function selectBeatUnit(beatId: string | null, beatAssetId?: string | null): void {
-    activeBeatId.value = beatId
-    if (beatAssetId !== undefined) {
-      activeBeatAssetId.value = beatAssetId
-    }
-  }
-
-  function focusBeatUnit(): void {
-    const beatId = activeBeatId.value
-    editor.selection.select({
-      kind: 'beatUnit',
-      key: beatId ? `beatUnit:${beatId}` : 'beatUnit:none',
-      id: beatId ?? undefined
-    })
-    editor.commands.setActiveScope(
-      beatId ? `document:beatUnit:${beatId}` : 'selection:beatUnit:none'
-    )
   }
 
   /** 任意画布空白处 / 打开编辑器：统一工程全局参数（含普通图片/视频/声音资产） */
@@ -586,8 +562,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     openWorldEditorIds,
     openBeatEditorIds,
     openDirectorEditorIds,
-    activeBeatId,
-    activeBeatAssetId,
     selectedAssetId,
     selectedAsset,
     openAssetEditor,
@@ -611,8 +585,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     registerCloseAllEditorPanels,
     closeEditorsForAssetIds,
     selectAsset,
-    selectBeatUnit,
-    focusBeatUnit,
     focusProjectGlobals,
     focusEditorGlobals,
     focusEditorGlobalsForAsset,

@@ -27,7 +27,6 @@ export type BuiltinGraphAddScope =
   | 'canvasAsset'
   | 'worldAsset'
   | 'beatAsset'
-  | 'beatUnit'
   | 'elementWorkflow'
   | 'subgraphAsset'
 
@@ -46,9 +45,6 @@ export const ASSET_TIMELINE_OUTPUT_TITLE = 'Cut timeline'
 /** 场资产图输出节点默认标题（持久化；UI 映射为「场输出」） */
 export const ASSET_BEAT_OUTPUT_TITLE = 'Beat output'
 
-/** 场细化画布输出节点默认标题（持久化；UI 映射为「场输出」） */
-export const BEAT_UNIT_OUTPUT_TITLE = 'Beat unit output'
-
 /** 世界元素资产图输出节点默认标题（持久化；UI 映射为「世界元素输出」） */
 export const ASSET_WORLD_OUTPUT_TITLE = 'World element output'
 
@@ -56,7 +52,7 @@ export interface GraphScopeOutputConfig {
   kind: GraphOutputKind
   title: string
   inputDataType?: GraphPortDataType
-  /** 专用输出 typeId（如 output.beatUnit）；缺省为 output.${kind} */
+  /** 专用输出 typeId；缺省为 output.${kind} */
   typeId?: GraphNodeTypeId
 }
 
@@ -167,18 +163,6 @@ export const GRAPH_SCOPE_DEFINITIONS: Record<BuiltinGraphAddScope, GraphScopeDef
       kind: 'text',
       title: ASSET_BEAT_OUTPUT_TITLE,
       inputDataType: GraphPortType.beat
-    }
-  },
-  beatUnit: {
-    id: 'beatUnit',
-    ensureOutput: false,
-    outputTitleI18nKey: 'graph.titles.beatUnitOutput',
-    dragAssets: DEFAULT_SCOPE_DRAG_ASSETS,
-    hostIdSuffix: 'beat-unit',
-    output: {
-      kind: 'text',
-      title: BEAT_UNIT_OUTPUT_TITLE,
-      inputDataType: GraphPortType.text
     }
   },
   /** 世界元素四类子画布：可添加图片加工节点等；不强制输出 */

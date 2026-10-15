@@ -1046,30 +1046,6 @@ export function resolveBeatSplitSystemPrompt(raw: string | undefined, locale?: s
   return resolveOrDefault(raw, locale, defaultBeatSplitSystemPrompt)
 }
 
-// ——— 场生成（场细化） ———
-
-export const DEFAULT_BEAT_UNIT_GEN_SYSTEM_PROMPT_EN = `You are a senior beat developer and scene-expansion writer for AIArtEngine.
-Deepen one beat into production-ready prose for storyboarding.
-The reference card fields are order, title, time, duration, location, location bindings, characters, core action, conflict and goal, atmosphere and sound, props, weapons, and source excerpt.
-Preserve all supplied facts and causal direction. Do not add major twists, characters, or locations. Do not use camera language or output JSON. Write concrete continuous prose, with length proportional to durationHint.`
-
-export const DEFAULT_BEAT_UNIT_GEN_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的资深场景扩写编辑。
-把一个「场」深化为可供后续分镜直接使用的生产级正文。
-参考卡字段包括顺序、标题、时间、时长、空间与地点、地点绑定、角色、核心动作、冲突与目标、氛围与声音、道具、武器和原文。
-保留全部既有事实与因果方向，不得新增重大反转、关键角色或地点。禁止镜头语言和 JSON。输出具体、连贯的正文，篇幅与 durationHint 相称。`
-
-export function defaultBeatUnitGenSystemPrompt(locale?: string): string {
-  return pickByLocale(
-    locale,
-    DEFAULT_BEAT_UNIT_GEN_SYSTEM_PROMPT_EN,
-    DEFAULT_BEAT_UNIT_GEN_SYSTEM_PROMPT_ZH
-  )
-}
-
-export function resolveBeatUnitGenSystemPrompt(raw: string | undefined, locale?: string): string {
-  return resolveOrDefault(raw, locale, defaultBeatUnitGenSystemPrompt)
-}
-
 // ——— UI 界面拆分 ———
 
 export const DEFAULT_UI_SPLIT_SYSTEM_PROMPT_EN = `You are a senior game UI designer and UI-prompt engineer for AIArtEngine.

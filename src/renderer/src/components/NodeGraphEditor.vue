@@ -734,12 +734,7 @@ import { resolveGraphImageUrls } from '../features/graph/model/resolveGraphImage
 import { saveGraphRunTextForNode } from '../features/graph/saveGraphRunTextForNode'
 import { readGraphRunText } from '../features/graph/readGraphRunText'
 import { resolveAssetText } from '../features/media/resolveAssetText'
-import {
-  collectWorldElementOutputs,
-  previewWorldElementOutputsFromSubgraphs
-} from '../features/world/worldElementPipeline'
-import { collectBeatUnitTexts } from '../features/beat/beatPipeline'
-import { applyWorldCatalog, loadWorldCatalog } from '../features/world/applyWorldCatalogOnOpen'
+import { previewWorldElementOutputsFromSubgraphs } from '../features/world/worldElementPreview'
 import { applyBeatCatalog, loadBeatCatalog } from '../features/beat/applyBeatCatalogOnOpen'
 import {
   canConnectFromNodeType,
@@ -840,10 +835,7 @@ import {
   LEGACY_WORLD_GEN_NODE_ID,
   inferElementWorkflowHostInterface,
   withWorldElementGraphForNode,
-  readBeatGraphFromGenParams,
-  withBeatGraph,
   type WorldElementKind,
-  type BeatRow,
   type GraphImageItem,
   type GraphTextItem,
   type GraphVideoItem,
@@ -919,16 +911,11 @@ import {
   mapDecompositionToLayers,
   placeLayersInParentRect,
   layerSplitGroupForSource,
-  stringifyWorldElementCatalog,
   stringifyBeatRows,
-  formatBeatRefText,
-  parseBeatJson,
-  catalogTextFromValue,
   isBoundaryOutputNode,
   isGraphOutputTerminalNode,
   summarizeReferenceListForLog,
   GraphPortType,
-  WORLD_ELEMENT_KINDS,
   collectBlockedNodeIds
 } from '@shared/graph'
 import { isVideoJobActive, type VideoJobRecord } from '@shared/videoJob'
@@ -1022,10 +1009,8 @@ const props = withDefaults(
     scope?: GraphAddScope
     /** 世界元素四类子画布 kind（优先于 inject） */
     worldElementKind?: WorldElementKind
-    /** 所属 world.gen 节点 id；elementWorkflow 画布按节点读写独立子图 */
+    /** 所属世界元素节点 id；elementWorkflow 画布按节点读写独立子图 */
     worldGenNodeId?: string
-    /** 场细化画布：当前单元 id（与 assetId + scope=beatUnit 合用） */
-    beatId?: string
     /** 嵌入底栏等场景隐藏图工具条，运行/参数走外层 Inspector */
     hideToolbar?: boolean
   }>(),
@@ -1034,7 +1019,6 @@ const props = withDefaults(
     scope: undefined,
     worldElementKind: undefined,
     worldGenNodeId: '',
-    beatId: '',
     hideToolbar: false
   }
 )
@@ -1055,7 +1039,6 @@ const editorDive = inject(editorDiveKey, null)
 /** 资产 dive 栈顶宿主图画布显示面包屑；视图帧由编辑器壳层显示 */
 const diveNavActive = computed(() => {
   if (!editorDive || editorDive.frames.length === 0 || !props.assetId) return false
-  if (props.beatId || graphScope.value === 'beatUnit') return false
   const top = editorDive.frames[editorDive.frames.length - 1]
   return isEditorDiveAssetFrame(top) && props.assetId === top.assetId
 })
@@ -1082,9 +1065,6 @@ const worldElementNodeId = computed(() => {
   // 旧版默认节点走资产级共享子图（宿主 id 不带节点后缀）
   return id === LEGACY_WORLD_GEN_NODE_ID ? '' : id
 })
-const isBeatUnitGraph = computed(
-  () => isAssetGraph.value && graphScope.value === 'beatUnit' && !!props.beatId?.trim()
-)
 
 const previewVisibleNodeIds = ref<ReadonlySet<string>>(new Set())
 const previewVisibilityRevision = ref(0)
@@ -1164,9 +1144,6 @@ const graphHostId = computed(() => {
     return worldElementNodeId.value
       ? `${base}:element:${worldElementKind.value}:${worldElementNodeId.value}`
       : `${base}:element:${worldElementKind.value}`
-  }
-  if (isBeatUnitGraph.value && props.beatId) {
-    return `${base}:unit:${props.beatId}`
   }
   const suffix = getScopeHostIdSuffix(graphScope.value)
   if (!props.assetId && suffix) return `${base}:${suffix}`
@@ -1272,8 +1249,8 @@ function hostInputResolveOptions(): ResolveHostInputSlotsOptions {
 
 function resolveParentHostInputSlots(hostAssetId: string | null | undefined) {
   if (!hostAssetId) return undefined
-  // 仅主资产图画布同步输入接口；场 / 世界元素子图不参与
-  if (isBeatUnitGraph.value || isElementWorkflowGraph.value) {
+  // 仅主资产图画布同步输入接口；世界元素子图不参与
+  if (isElementWorkflowGraph.value) {
     return undefined
   }
   if (!isAssetRefInputHostType(graphAsset.value?.type)) return undefined
@@ -1325,17 +1302,6 @@ function normalizeGraphForHost(raw: GraphDocument | null | undefined): GraphDocu
 }
 
 function readAssetGraph(): GraphDocument {
-  if (isBeatUnitGraph.value && props.beatId && props.assetId) {
-    const gen =
-      (isDraftAssetId(props.assetId)
-        ? draftStore.getDraft(props.assetId)?.genParams
-        : graphAsset.value?.genParams) ?? undefined
-    const raw = readBeatGraphFromGenParams(gen, props.beatId)
-    return normalizeScopedGraph(graphScope.value, raw, {
-      assetType: graphAsset.value?.type ?? 'beat',
-      hostAssetId: props.assetId
-    })
-  }
   if (isElementWorkflowGraph.value && worldElementKind.value && props.assetId) {
     const gen =
       (isDraftAssetId(props.assetId)
@@ -1381,32 +1347,6 @@ function commitAssetGraph(): boolean {
     (isDraftAssetId(props.assetId)
       ? null
       : project.assets.find((item) => item.id === props.assetId)) ?? asset
-
-  if (isBeatUnitGraph.value && props.beatId) {
-    const plain = toPlain(graphJson)
-    if (isDraftAssetId(props.assetId)) {
-      const draft = draftStore.getDraft(props.assetId)
-      // 再读一次最新 genParams，降低与 catalog 落盘的竞态丢字段
-      const latestGen = draftStore.getDraft(props.assetId)?.genParams ?? draft?.genParams
-      draftStore.updateDraft(props.assetId, {
-        genParams: withBeatGraph(latestGen, props.beatId, plain)
-      })
-      return true
-    }
-    const write = persistAssetRecord(props.assetId, {
-      genParams: withBeatGraph(
-        (project.assets.find((item) => item.id === props.assetId)?.genParams as
-          Record<string, unknown> | undefined) ??
-          (latest.genParams as Record<string, unknown> | undefined),
-        props.beatId,
-        plain
-      )
-    }).catch((error) => {
-      console.error('[NodeGraphEditor] beat unit graph save failed', error)
-    })
-    trackAssetGraphPersist(write)
-    return true
-  }
 
   if (isElementWorkflowGraph.value && worldElementKind.value) {
     const plain = toPlain(graphJson)
@@ -1592,7 +1532,7 @@ async function hydrateHostInputSlotTextsInGraph(): Promise<void> {
  * HDA 不再创建 classic graph.input.slot（「文本输入/图片输入」）。
  */
 function syncHostInputSlotsFromParents(): void {
-  if (isBeatUnitGraph.value || isElementWorkflowGraph.value) return
+  if (isElementWorkflowGraph.value) return
   const hostAssetId = props.assetId ?? graphAsset.value?.id ?? null
   if (!hostAssetId) return
   const boundaryChanged = syncBoundaryInputsFromParents()
@@ -1767,7 +1707,7 @@ const {
   },
   afterRunCommit: async ({ graph: settled, runStates: settledStates }) => {
     // 仅资产主图 dive：内层直接跑出口时抬升到父宿主（与 Cook 子图写回对齐）
-    if (isBeatUnitGraph.value || isElementWorkflowGraph.value) return
+    if (isElementWorkflowGraph.value) return
     const assetId = props.assetId?.trim()
     if (!assetId) return
     await liftHostOutputsFromInnerGraph(assetId, settled, settledStates)
@@ -1935,32 +1875,6 @@ const {
   resolveHostAssetName: () => graphAsset.value?.name?.trim() || undefined,
   resolveHostAssetId: () => props.assetId?.trim() || undefined,
   resolveProjectStyleImages: () => normalizeProjectStyleImages(project.config?.styleImages),
-  resolveBeatUnit: (beatId) => {
-    const id = beatId.trim()
-    if (!id) return null
-    const beatAssetId = props.assetId
-    if (!beatAssetId || graphScope.value !== 'beatUnit') return null
-    return loadBeatCatalog(beatAssetId).find((row) => row.id === id) ?? null
-  },
-  collectWorldElementOutputs: async (signal, options) => {
-    if (!isWorldElementPipelineHost.value) return null
-    const worldId = props.assetId
-    if (!worldId) return null
-    // Cook 子图 / 整链：先跑齐四类元素子图，再收集；执行当前只收集已有结果
-    if (options?.cookBatch) {
-      const batch = taskStore.enqueueWorldElementBatch({
-        worldAssetId: worldId,
-        nodeId: options?.nodeId,
-        onlyMissing: false
-      })
-      await taskStore.waitForTaskIds(batch.taskIds)
-    }
-    return collectWorldElementOutputs({
-      worldAssetId: worldId,
-      nodeId: options?.nodeId,
-      signal
-    })
-  },
   resolveWorldElementOutputs: (node) => {
     const worldId = props.assetId?.trim()
     if (!worldId || !isWorldElementPipelineHost.value) return []
@@ -1969,31 +1883,7 @@ const {
       nodeId: node?.id
     })
   },
-  collectBeatUnitTexts: async (signal) => {
-    if (graphScope.value !== 'beatAsset') return null
-    const beatId = props.assetId
-    if (!beatId) return null
-    return collectBeatUnitTexts({
-      beatAssetId: beatId,
-      signal
-    })
-  },
   runHostInnerGraph: (input) => taskStore.runHostInnerGraph(input),
-  resolveWorldCatalogJson: () => {
-    if (!isWorldElementPipelineHost.value) return null
-    const worldId = props.assetId
-    if (!worldId) return null
-    const catalog = loadWorldCatalog(worldId)
-    const total = WORLD_ELEMENT_KINDS.reduce((sum, kind) => sum + catalog[kind].length, 0)
-    if (!total) return null
-    return stringifyWorldElementCatalog(catalog)
-  },
-  importWorldCatalogJson: async (jsonText, sourceNodeId) => {
-    if (!isWorldElementPipelineHost.value) return
-    const worldId = props.assetId
-    if (!worldId) return
-    await applyWorldCatalog(worldId, jsonText, sourceNodeId)
-  },
   resolveBeatCatalogJson: () => {
     if (graphScope.value !== 'beatAsset') return null
     const beatId = props.assetId
@@ -2128,14 +2018,6 @@ function currentGraphTaskTarget(): GraphTaskTarget | null {
       elementKind: worldElementKind.value,
       hostId: graphHostId.value,
       nodeId: worldElementNodeId.value || undefined
-    }
-  }
-  if (isBeatUnitGraph.value && props.beatId?.trim()) {
-    return {
-      kind: 'beat-unit',
-      beatAssetId: props.assetId,
-      beatId: props.beatId.trim(),
-      hostId: graphHostId.value
     }
   }
   return {
@@ -5557,7 +5439,7 @@ function resolveWorldGenPortImages(source: GraphNode, sourcePort: string): Graph
   if (soft && graphValueHasPayload(soft)) {
     return flattenImagesValues([soft])
   }
-  // 再直读子图（world.gen 未执行且 params 为空时）
+  // 再直读子图（宿主节点未执行且 params 为空时）
   const groups = worldGenImageGroupOutputs(resolveWorldElementOutputsForSelect(source))
   const fromSubgraphs = groups[sourcePort]
   if (fromSubgraphs && graphValueHasPayload(fromSubgraphs)) {
@@ -6049,48 +5931,15 @@ function collectSelectTextItems(nodeId: string): GraphTextItem[] {
   return items
 }
 
-function collectSelectBeatItems(nodeId: string): GraphTextItem[] {
-  const items: GraphTextItem[] = []
-  const seen = new Set<string>()
-  const pushRow = (row: BeatRow): void => {
-    if (!row.id || seen.has(row.id)) return
-    seen.add(row.id)
-    items.push({
-      id: row.id,
-      title: `#${row.order} ${row.title}`.trim(),
-      text: formatBeatRefText(row)
-    })
-  }
-
-  for (const edge of graph.edges) {
-    if (edge.target !== nodeId) continue
-    if ((edge.targetPort ?? 'in') !== 'in') continue
-    const source = graph.nodes.find((n) => n.id === edge.source)
-    if (!source) continue
-    const sourcePort = edge.sourcePort ?? 'out'
-    const runOut = runStates[source.id]?.outputs?.[sourcePort]
-    const catalog =
-      catalogTextFromValue(runOut, GraphPortType.beat) || source.params.text?.trim() || ''
-    for (const row of parseBeatJson(catalog) ?? []) pushRow(row)
-    if (source.assetId && (source.assetType === 'beat' || source.typeId === 'asset.beat')) {
-      for (const row of loadBeatCatalog(source.assetId)) pushRow(row)
-    }
-  }
-  return items
-}
-
 function onSelectTextOpen(nodeId: string): void {
   const node = graph.nodes.find((n) => n.id === nodeId)
   if (!node) return
-  const isBeat = Boolean(node.params.selectedBeatId)
-  const items = isBeat ? collectSelectBeatItems(nodeId) : collectSelectTextItems(nodeId)
-  const selectedId = isBeat
-    ? node.params.selectedBeatId?.trim() || ''
-    : node.params.selectedTextId?.trim() || ''
+  const items = collectSelectTextItems(nodeId)
+  const selectedId = node.params.selectedTextId?.trim() || ''
   const selected = pickTextItem(items, selectedId) ?? (items[0] ? items[0] : undefined)
   selectText.open = true
   selectText.nodeId = nodeId
-  selectText.title = isBeat ? t('graph.selectBeat.appMark') : nodeDisplayTitle(node)
+  selectText.title = nodeDisplayTitle(node)
   selectText.items = items
   selectText.selectedTextId = selected
     ? textItemKey(selected, Math.max(0, items.indexOf(selected)))
@@ -6111,20 +5960,6 @@ async function saveSelectText(selectedTextId: string): Promise<void> {
   const items = selectText.items
   const picked = pickTextItem(items, selectedTextId)
   const before = buildGraphJson()
-  if (node.params.selectedBeatId !== undefined) {
-    const beatId = picked?.id?.trim() || selectedTextId
-    const text = picked?.text?.trim() || ''
-    node.params = {
-      ...node.params,
-      selectedBeatId: beatId,
-      text
-    }
-    selectText.selectedTextId = selectedTextId
-    scheduleSave()
-    recordGraphChange('select-beat', before)
-    closeSelectText()
-    return
-  }
   let text = picked?.text?.trim() || ''
   const previewRelativePath = picked?.relativePath?.trim() || undefined
   if (!text && previewRelativePath) {
@@ -9130,7 +8965,7 @@ function onWindowMouseDown(e: MouseEvent): void {
 
 function onKeyDown(e: KeyboardEvent): void {
   // dive / 后台保活时画布被 v-show 隐藏但仍挂载：全局快捷键必须只响应可见画布，
-  // 否则在子层按 Delete/Backspace 会误删外层仍处于选中状态的节点（如 world.gen）。
+  // 否则在子层按 Delete/Backspace 会误删外层仍处于选中状态的节点。
   if (!isGraphViewportVisible()) return
   if (e.code === 'Escape' && radialMenu.value) {
     e.preventDefault()

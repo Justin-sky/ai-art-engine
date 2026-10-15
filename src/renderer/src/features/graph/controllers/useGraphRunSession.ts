@@ -417,31 +417,14 @@ export interface GraphRunSessionOptions {
   resolveHostAssetName?: () => string | undefined
   resolveHostAssetId?: () => string | undefined
   resolveAssetText?: (assetId: string) => Promise<string | undefined>
-  /** 场参考节点：按 boundBeatId 解析目录行 */
-  resolveBeatUnit?: (beatId: string) => import('@shared/graph').BeatRow | null
   /** 工程全局画面风格（生成节点「使用全局风格」时读取） */
   resolveProjectStyleImages?: () => ProjectStyleImage[]
   /** 工程全局随机种子（生成节点「使用全局种子」时读取） */
   resolveProjectGenerateSeed?: () => number | undefined
-  /** 世界元素编辑：收集四类子图输出；cookBatch 时入队批跑元素子图 */
-  collectWorldElementOutputs?: (
-    signal?: AbortSignal,
-    options?: { cookBatch?: boolean; nodeId?: string }
-  ) => Promise<{
-    items: Array<{ type: string; name: string; imageUrl: string }>
-  } | null>
-  /** world.gen 四类图片组口：params 为空时从 element 子图 soft 收集 */
+  /** 世界元素四类子图口：params 为空时从 element 子图 soft 收集 */
   resolveWorldElementOutputs?: (
     node: import('@shared/graph').GraphNode
   ) => import('@shared/graph').WorldElementGenResult[]
-  /** 场生成：收集各单元子图「场输出」已有文本 */
-  collectBeatUnitTexts?: (signal?: AbortSignal) => Promise<{
-    items: import('@shared/graph').GraphTextItem[]
-  } | null>
-  /** 世界元素表格节点：输出当前目录 JSON */
-  resolveWorldCatalogJson?: () => string | null
-  /** 世界元素表格 / 编辑节点执行时：导入上游提取 JSON 到元素子图 */
-  importWorldCatalogJson?: (jsonText: string, sourceNodeId?: string) => void | Promise<void>
   /** 场表格节点：输出当前目录 JSON */
   resolveBeatCatalogJson?: () => string | null
   /** 场表格 / 编辑节点执行时：导入上游拆解 JSON */
@@ -1639,12 +1622,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         resolveHostAssetName: options.resolveHostAssetName,
         resolveHostAssetId: options.resolveHostAssetId,
         resolveAssetText: options.resolveAssetText ?? resolveAssetTextById,
-        resolveBeatUnit: options.resolveBeatUnit,
-        collectWorldElementOutputs: options.collectWorldElementOutputs,
         resolveWorldElementOutputs: options.resolveWorldElementOutputs,
-        collectBeatUnitTexts: options.collectBeatUnitTexts,
-        resolveWorldCatalogJson: options.resolveWorldCatalogJson,
-        importWorldCatalogJson: options.importWorldCatalogJson,
         resolveBeatCatalogJson: options.resolveBeatCatalogJson,
         importBeatCatalogJson: options.importBeatCatalogJson,
         runHostInnerGraph: options.runHostInnerGraph,

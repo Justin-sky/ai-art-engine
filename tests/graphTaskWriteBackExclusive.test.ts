@@ -27,21 +27,4 @@ describe('writeBackExclusiveKey', () => {
     expect(writeBackExclusiveKey(characters)).toBe(writeBackExclusiveKey(scenes))
     expect(writeBackExclusiveKey(otherWorld)).toBe('world-element:world-2')
   })
-
-  it('串行化同一叙事资产下各单元写回', () => {
-    const a: GraphTaskTarget = {
-      kind: 'beat-unit',
-      beatAssetId: 'nar-1',
-      beatId: 'u1',
-      hostId: 'h1'
-    }
-    const b: GraphTaskTarget = {
-      kind: 'beat-unit',
-      beatAssetId: 'nar-1',
-      beatId: 'u2',
-      hostId: 'h2'
-    }
-    expect(writeBackExclusiveKey(a)).toBe('beat-unit:nar-1')
-    expect(writeBackExclusiveKey(a)).toBe(writeBackExclusiveKey(b))
-  })
 })

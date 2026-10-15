@@ -199,26 +199,6 @@ export function buildBeatSplitPrompt(instruction: string, locale?: string): stri
   return buildOrDefault(instruction, locale, defaultBeatSplitUserPrompt)
 }
 
-// ——— 场生成（单元细化） ———
-
-export const DEFAULT_BEAT_UNIT_GEN_USER_PROMPT_EN =
-  'Deepen the upstream beat unit along theme, story spine, and environment. Follow the system prompt strictly; output production-ready prose only (no JSON).'
-
-export const DEFAULT_BEAT_UNIT_GEN_USER_PROMPT_ZH =
-  '请基于上游场参考，按系统提示词对主题、故事脉络与环境氛围做深度细化；仅输出生产级正文，不要 JSON。'
-
-export function defaultBeatUnitGenUserPrompt(locale?: string): string {
-  return pickByLocale(
-    locale,
-    DEFAULT_BEAT_UNIT_GEN_USER_PROMPT_EN,
-    DEFAULT_BEAT_UNIT_GEN_USER_PROMPT_ZH
-  )
-}
-
-export function buildBeatUnitGenPrompt(instruction: string, locale?: string): string {
-  return buildOrDefault(instruction, locale, defaultBeatUnitGenUserPrompt)
-}
-
 // ——— UI 界面拆分 ———
 
 export const DEFAULT_UI_SPLIT_USER_PROMPT_EN =

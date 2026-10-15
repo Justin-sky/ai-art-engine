@@ -28,7 +28,6 @@ import {
 } from './episodeAgentPrompts'
 import {
   defaultBeatSplitSystemPrompt,
-  defaultBeatUnitGenSystemPrompt,
   defaultEmotionSystemPrompt,
   defaultEraseSystemPrompt,
   defaultExpandSystemPrompt,
@@ -549,12 +548,6 @@ const BUILTIN_SKILLS: GraphSkill[] = [
     defaultWorldExtractSystemPrompt
   ),
   fromSystemDefault('system.beatSplit', '节拍拆分', 'Beat split', defaultBeatSplitSystemPrompt),
-  fromSystemDefault(
-    'system.beatUnitGen',
-    '节拍单元生成',
-    'Beat unit gen',
-    defaultBeatUnitGenSystemPrompt
-  ),
   fromSystemDefault('system.uiSplit', '界面拆分', 'UI split', defaultUiSplitSystemPrompt),
   fromSystemDefault('system.upscale', '高清放大', 'Upscale', defaultUpscaleSystemPrompt),
   fromSystemDefault('system.expand', '扩图', 'Expand', defaultExpandSystemPrompt),
