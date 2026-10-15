@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   beatRowsToTextItems,
-  extractBeatJsonText,
   formatBeatFullText,
   mergeBeatRowsPreservingReviewed,
   parseBeatEntityJson,
@@ -9,8 +8,7 @@ import {
   stableBeatId,
   stringifyBeatEntity,
   stringifyBeatRows,
-  type BeatRow,
-  type GraphDocument
+  type BeatRow
 } from '../src/shared/graph'
 
 function beat(overrides: Partial<BeatRow> = {}): BeatRow {
@@ -180,29 +178,5 @@ describe('beatParse', () => {
 
   it('recovers an array from surrounding prose', () => {
     expect(parseBeatJson('说明\n[{"title":"A","order":1}]\n完')?.[0]?.title).toBe('A')
-  })
-
-  it('extracts table upstream text and split fallback', () => {
-    const doc = {
-      nodes: [
-        {
-          id: 'beat-split',
-          typeId: 'beat.split',
-          category: 'note',
-          position: { x: 0, y: 0 },
-          params: { text: '[{"title":"FromSplit"}]' }
-        },
-        {
-          id: 'beat-table',
-          typeId: 'beat.table',
-          category: 'note',
-          position: { x: 200, y: 0 },
-          params: { text: '[{"title":"FromTable"}]' }
-        }
-      ],
-      edges: [{ id: 'e1', source: 'beat-split', target: 'beat-table' }],
-      viewport: { x: 0, y: 0, zoom: 1 }
-    } as GraphDocument
-    expect(extractBeatJsonText(doc)).toContain('FromSplit')
   })
 })

@@ -6,7 +6,6 @@ import {
   type ReviewStatus
 } from './reviewStatus'
 import { stripJsonCodeFence } from './jsonFence'
-import type { GraphDocument } from './types'
 
 /** 场中的世界元素引用 */
 export type BeatWorldRef = WorldEntityRef
@@ -254,35 +253,4 @@ export function mergeBeatRowsPreservingReviewed(
     if (isReviewedStatus(prev.status) && !used.has(prev.id)) result.push({ ...prev })
   }
   return result
-}
-
-function nodeCatalogPayload(doc: GraphDocument, nodeId: string): string | null {
-  const node = doc.nodes.find((item) => item.id === nodeId)
-  const fromParams = node?.params?.text?.trim()
-  if (fromParams) return fromParams
-  const out = doc.runStates?.[nodeId]?.outputs?.out
-  if (out && typeof out === 'object' && out.kind === 'beat' && typeof out.text === 'string') {
-    const live = out.text.trim()
-    if (live) return live
-  }
-  return null
-}
-
-/** 从场资产图取出连到场表格的上游文本，否则取表格自身或拆解节点正文。 */
-export function extractBeatJsonText(doc: GraphDocument | null | undefined): string | null {
-  if (!doc?.nodes?.length) return null
-
-  const table = doc.nodes.find((node) => node.typeId === 'beat.table')
-  if (table) {
-    for (const edge of doc.edges) {
-      if (edge.target !== table.id || (edge.targetPort ?? 'in') !== 'in') continue
-      const text = nodeCatalogPayload(doc, edge.source)
-      if (text) return text
-    }
-    const own = nodeCatalogPayload(doc, table.id)
-    if (own) return own
-  }
-
-  const split = doc.nodes.find((node) => node.typeId === 'beat.split')
-  return (split && nodeCatalogPayload(doc, split.id)) || null
 }

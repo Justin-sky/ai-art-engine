@@ -2,7 +2,6 @@ import { isDraftAssetId } from '@shared/domain'
 import { normalizeReviewStatus } from '@shared/graph'
 import {
   emptyWorldElementCatalog,
-  extractWorldCatalogJsonText,
   LEGACY_WORLD_GEN_NODE_ID,
   mergeWorldCatalogPreservingReviewed,
   parseWorldElementCatalog,
@@ -33,18 +32,6 @@ const WORLD_CATALOG_WORLDVIEW_KEY = 'worldCatalogWorldview'
 function catalogOwnerNodeId(nodeId?: string): string {
   const id = nodeId?.trim()
   return id && id !== LEGACY_WORLD_GEN_NODE_ID ? id : LEGACY_WORLD_GEN_NODE_ID
-}
-
-function readWorldAssetGraph(worldAssetId: string): GraphDocument | null {
-  const project = useProjectStore()
-  if (isDraftAssetId(worldAssetId)) {
-    const draft = useDraftStore().getDraft(worldAssetId)
-    const raw = draft?.genParams?.graphJson
-    return raw && typeof raw === 'object' ? (raw as GraphDocument) : null
-  }
-  const asset = project.assets.find((item) => item.id === worldAssetId)
-  const raw = asset?.genParams?.graphJson
-  return raw && typeof raw === 'object' ? (raw as GraphDocument) : null
 }
 
 function readWorldGenParams(worldAssetId: string): Record<string, unknown> | undefined {
@@ -127,19 +114,7 @@ export function catalogFromWorldGenParams(
 }
 
 export function loadWorldCatalog(worldAssetId: string, nodeId?: string): WorldElementCatalog {
-  const fromGraphs = catalogFromWorldGenParams(readWorldGenParams(worldAssetId), nodeId)
-  const total = WORLD_ELEMENT_KINDS.reduce((sum, kind) => sum + fromGraphs[kind].length, 0)
-  const jsonCatalog = parseWorldElementCatalog(
-    extractWorldCatalogJsonText(readWorldAssetGraph(worldAssetId))
-  )
-  if (total > 0 || fromGraphs.style?.trim() || fromGraphs.worldview?.trim()) {
-    // 元素子图存在时，genParams 可能还没写入新的 style/worldview；
-    // 从世界元素提取节点的 JSON 文本补齐，避免表格打开后两个设定为空。
-    if (!fromGraphs.style?.trim()) fromGraphs.style = jsonCatalog?.style ?? ''
-    if (!fromGraphs.worldview?.trim()) fromGraphs.worldview = jsonCatalog?.worldview ?? ''
-    return fromGraphs
-  }
-  return jsonCatalog ?? emptyWorldElementCatalog()
+  return catalogFromWorldGenParams(readWorldGenParams(worldAssetId), nodeId)
 }
 
 async function writeWorldGenParams(
@@ -248,7 +223,7 @@ export async function saveWorldCatalog(
 /**
  * 将世界元素目录 JSON 同步到四类 elementWorkflow 图
  *（为每条目录创建/更新：play.script → asset.image → boundary.output）。
- * 在表格/生成节点执行、以及打开世界元素生成侧栏时调用。
+ * 由世界元素资产编辑器在导入目录 JSON（对话框 / 运行结果）时调用。
  */
 export async function applyWorldCatalog(
   worldAssetId: string,
@@ -256,18 +231,7 @@ export async function applyWorldCatalog(
   nodeId?: string
 ): Promise<number> {
   const owner = catalogOwnerNodeId(nodeId)
-  // 新节点的子图默认由它自己的目录导入（运行/上游）填充；
-  // 打开编辑视图（jsonText 为空）时，若该节点子图仍为空，回退播种资产级共享目录，
-  // 避免 dive 进 world.gen 节点后画布空白；子图已有内容则尊重用户编辑。
-  if (owner !== LEGACY_WORLD_GEN_NODE_ID && !jsonText?.trim()) {
-    const own = catalogFromWorldGenParams(readWorldGenParams(worldAssetId), owner)
-    const hasOwnContent = WORLD_ELEMENT_KINDS.some((kind) => own[kind].length > 0)
-    if (hasOwnContent) return 0
-    jsonText = extractWorldCatalogJsonText(readWorldAssetGraph(worldAssetId))
-    if (!jsonText?.trim()) return 0
-  }
-  const text = jsonText?.trim() || extractWorldCatalogJsonText(readWorldAssetGraph(worldAssetId))
-  const parsed = parseWorldElementCatalog(text)
+  const parsed = parseWorldElementCatalog(jsonText?.trim() ?? '')
   if (!parsed) return 0
 
   const existing = catalogFromWorldGenParams(readWorldGenParams(worldAssetId), owner)

@@ -709,9 +709,7 @@ import {
   useWorkspaceStore,
   STUDIO_ASSET_DRAG_MIME,
   STUDIO_ASSET_ID_DRAG_MIME,
-  STUDIO_ASSET_IDS_DRAG_MIME,
-  STUDIO_BEAT_UNIT_DRAG_MIME,
-  STUDIO_BEAT_UNIT_ID_DRAG_MIME
+  STUDIO_ASSET_IDS_DRAG_MIME
 } from '../stores/workspace'
 import { useDraftStore } from '../stores/drafts'
 import { useGraphTaskStore, type GraphTaskTarget } from '../stores/graphTasks'
@@ -838,14 +836,12 @@ import {
   pickVoiceItem,
   resolveAssetTextFromGenParams,
   resolveMotionImageItems,
-  createBeatRefNode,
   readWorldElementGraphForNode,
   LEGACY_WORLD_GEN_NODE_ID,
   inferElementWorkflowHostInterface,
   withWorldElementGraphForNode,
   readBeatGraphFromGenParams,
   withBeatGraph,
-  readBoundBeatIdFromNodeParams,
   type WorldElementKind,
   type BeatRow,
   type GraphImageItem,
@@ -4794,18 +4790,6 @@ async function onDrop(e: DragEvent): Promise<void> {
   // 节点拖动松手时可能冒泡出带 Files 的原生 drop，直接忽略
   if (isDraggingNodes.value) return
 
-  // 0b) 场栏拖入 → 创建绑定该单元的参考节点
-  const droppedUnit = resolveDroppedBeatUnit(e)
-  if (droppedUnit) {
-    if (graphScope.value !== 'beatUnit') {
-      showDropError(t('graph.error.unsupportedDrop'))
-      return
-    }
-    dropError.value = ''
-    addBeatUnitRefNode(droppedUnit, dropPositionAt(e.clientX, e.clientY))
-    return
-  }
-
   // 1) 资产库引用优先，避免被误判成「系统文件拖入」
   const asset = workspace.resolveDraggedAsset(e)
   if (asset) {
@@ -4844,37 +4828,6 @@ async function onDrop(e: DragEvent): Promise<void> {
   if (allPaths.length > 0) {
     showDropError(t('graph.error.noneImportable'))
   }
-}
-
-function resolveDroppedBeatUnit(e: DragEvent): BeatRow | null {
-  const raw = e.dataTransfer?.getData(STUDIO_BEAT_UNIT_DRAG_MIME)
-  let id = e.dataTransfer?.getData(STUDIO_BEAT_UNIT_ID_DRAG_MIME) || ''
-  if (!id && raw) {
-    try {
-      const parsed = JSON.parse(raw) as { id?: string }
-      if (typeof parsed.id === 'string') id = parsed.id
-    } catch {
-      /* ignore */
-    }
-  }
-  if (!id || !props.assetId) return null
-  return loadBeatCatalog(props.assetId).find((row) => row.id === id) ?? null
-}
-
-function addBeatUnitRefNode(unit: BeatRow, position: { x: number; y: number }): boolean {
-  const existing = graph.nodes.find((n) => readBoundBeatIdFromNodeParams(n.params) === unit.id)
-  if (existing) {
-    workspace.selectGraphNode(existing.id, graphHostId.value)
-    return true
-  }
-  const before = buildGraphJson()
-  const node = createBeatRefNode(unit, position)
-  graph.nodes.push(node)
-  recordGraphChange('add-beat-unit-ref', before)
-  scheduleSave()
-  graphEditorHosts.bumpRevision()
-  workspace.selectGraphNode(node.id, graphHostId.value)
-  return true
 }
 
 /** 拖入后是否应建成宿主实例（与 createAssetGraphNode 的 assetHost 条件一致） */

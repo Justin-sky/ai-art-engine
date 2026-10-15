@@ -2956,25 +2956,6 @@ export default {
     asset: {
       hint: '双击拆解进入指令编辑 · 双击表格进入目录 · 双击输出进入文本细化；面包屑返回'
     },
-    dialog: {
-      close: '关闭',
-      table: '场表格',
-      gen: '场生成'
-    },
-    hint: {
-      table: '场表格 · 批量编辑节拍结构与审核状态',
-      gen: '上图画布细化单元 · 下栏点选 Inspector · 拖入生成参考节点'
-    },
-    pane: {
-      resizeSplit: '拖动调整上下区域高度'
-    },
-    strip: {
-      title: '场',
-      switchHint: '点击切换 · 拖入画布添加参考',
-      empty: '暂无场，请先拆解或在表格中新建',
-      collapse: '收起场栏',
-      expand: '展开场栏'
-    },
     unit: {
       inspector: {
         type: '场 {n}',
@@ -2982,66 +2963,11 @@ export default {
         empty: '未选择场',
         sourceExcerpt: '原文'
       }
-    },
-    table: {
-      new: '新建',
-      empty: '暂无条目，点击新建或先执行拆解',
-      unit: '场',
-      column: {
-        order: '顺序',
-        title: '标题',
-        time: '时间',
-        durationHint: '时长',
-        location: '空间与地点',
-        locations: '地点绑定',
-        characters: '角色',
-        action: '核心动作',
-        conflict: '冲突与目标',
-        atmosphere: '氛围与声音',
-        props: '道具',
-        weapons: '武器',
-        sourceExcerpt: '原文',
-        status: '状态'
-      },
-      bind: {
-        title: '绑定世界元素',
-        action: '绑定',
-        add: '添加名称',
-        empty: '请先执行场表格节点以同步世界元素实体'
-      }
     }
   },
   world: {
     asset: {
       hint: '双击提取进入指令编辑 · 双击表格进入目录 · 双击生成进入世界编辑；面包屑返回'
-    },
-    dialog: {
-      close: '关闭',
-      elementTable: '世界元素表格',
-      editor: '世界元素生成'
-    },
-    hint: {
-      table: '世界元素表格 · 批量编辑角色 / 场景 / 道具 / 武器',
-      editor: '四类元素画布 · 参数与运行使用右侧 Inspector'
-    },
-    pane: {
-      resizeSplit: '拖动调整上下画布高度'
-    },
-    table: {
-      new: '新建',
-      empty: '暂无条目，点击新建或先执行提取',
-      briefStyle: '画风设定',
-      briefWorldview: '世界观设定',
-      column: {
-        name: '名称',
-        prompt: '提示词',
-        status: '状态'
-      },
-      placeholder: {
-        prompt: '图片生成提示词',
-        style: '从剧本提炼的画风/媒介/色板/光影/材质/避免项',
-        worldview: '时代、文化、规则、势力、基调等可复用的非视觉设定'
-      }
     },
     tab: {
       characters: '角色',
@@ -3054,11 +2980,6 @@ export default {
       scene: '场景',
       prop: '道具',
       weapon: '武器'
-    },
-    tableWindow: {
-      loading: '正在打开世界元素表格…',
-      missingAsset: '缺少世界元素资产 id',
-      noProject: '未打开工程'
     }
   },
   graph: {
@@ -4800,10 +4721,7 @@ export default {
         voice: '声音输出',
         text: '剧本输出',
         director: '导演台输出',
-        timeline: '成片时间线',
-        beat: '场输出',
-        beatUnit: '场输出',
-        world: '世界元素实体输出'
+        timeline: '成片时间线'
       },
       note: {
         text: '备注'
@@ -4880,14 +4798,6 @@ export default {
       text: {
         select: '选择文本'
       },
-      beat: {
-        select: '选择场',
-        split: '场拆解',
-        table: '场表格',
-        gen: '场生成',
-        unitGen: '场生成',
-        unitRef: '场参考'
-      },
       ui: {
         split: 'UI 界面拆分',
         gen: 'UI 界面生成'
@@ -4918,11 +4828,6 @@ export default {
         cast: '角色场景设定',
         shot: '镜头',
         render: '批量拍摄'
-      },
-      world: {
-        extract: '世界元素提取',
-        table: '世界元素审核',
-        gen: '世界元素生成'
       },
       spatialWorld: {
         export: '空间世界导出'

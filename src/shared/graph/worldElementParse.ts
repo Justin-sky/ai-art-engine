@@ -4,7 +4,7 @@ import {
   normalizeReviewStatus,
   type ReviewStatus
 } from './reviewStatus'
-import type { GraphDocument, GraphNodeParams } from './types'
+import type { GraphNodeParams } from './types'
 import type { GraphImageItem, GraphValue } from './execute/types'
 
 /** 世界元素四类 */
@@ -218,18 +218,6 @@ export function mergeWorldCatalogPreservingReviewed(
   return result
 }
 
-function nodeCatalogPayload(doc: GraphDocument, nodeId: string): string | null {
-  const node = doc.nodes.find((item) => item.id === nodeId)
-  const fromParams = node?.params?.text?.trim()
-  if (fromParams) return fromParams
-  const out = doc.runStates?.[nodeId]?.outputs?.out
-  if (out && typeof out === 'object' && out.kind === 'world' && typeof out.text === 'string') {
-    const live = out.text.trim()
-    if (live) return live
-  }
-  return null
-}
-
 /** 序列化世界元素目录（表格 ↔ 提取 JSON） */
 export function stringifyWorldElementCatalog(catalog: WorldElementCatalog): string {
   const payload = {
@@ -381,24 +369,4 @@ export function worldElementOutputsFromParams(
     out.push({ type: type as WorldElementOutputType, name, imageUrl })
   }
   return out
-}
-
-/** 从世界元素资产图取出连到「世界元素表格」的上游文本，否则表格自身 / 提取节点正文 */
-export function extractWorldCatalogJsonText(doc: GraphDocument | null | undefined): string | null {
-  if (!doc?.nodes?.length) return null
-
-  const table = doc.nodes.find((node) => node.typeId === 'world.table')
-  if (table) {
-    for (const edge of doc.edges) {
-      if (edge.target !== table.id) continue
-      if ((edge.targetPort ?? 'in') !== 'in') continue
-      const text = nodeCatalogPayload(doc, edge.source)
-      if (text) return text
-    }
-    const own = nodeCatalogPayload(doc, table.id)
-    if (own) return own
-  }
-
-  const extract = doc.nodes.find((node) => node.typeId === 'world.extract')
-  return (extract && nodeCatalogPayload(doc, extract.id)) || null
 }

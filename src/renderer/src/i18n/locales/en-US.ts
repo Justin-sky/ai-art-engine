@@ -3034,25 +3034,6 @@ export default {
     asset: {
       hint: 'Double-click split for instructions · table for catalog · output opens unit refinement; use breadcrumbs to go back'
     },
-    dialog: {
-      close: 'Close',
-      table: 'Beat unit table',
-      gen: 'Beat unit gen'
-    },
-    hint: {
-      table: 'Beat unit table · edit beats and review status',
-      gen: 'Canvas above refines the unit · click strip for Inspector · drag to add refs'
-    },
-    pane: {
-      resizeSplit: 'Drag to resize the split panes'
-    },
-    strip: {
-      title: 'Beat units',
-      switchHint: 'Click to switch · drag onto canvas for refs',
-      empty: 'No beat units yet — run split or add rows in the table',
-      collapse: 'Collapse beat unit strip',
-      expand: 'Expand beat unit strip'
-    },
     unit: {
       inspector: {
         type: 'Beat {n}',
@@ -3060,66 +3041,11 @@ export default {
         empty: 'No beat selected',
         sourceExcerpt: 'Source excerpt'
       }
-    },
-    table: {
-      new: 'New',
-      empty: 'No entries yet — add one or run split first',
-      unit: 'Beat',
-      column: {
-        order: 'Order',
-        title: 'Title',
-        time: 'Time',
-        durationHint: 'Duration',
-        location: 'Space and location',
-        locations: 'Location bindings',
-        characters: 'Characters',
-        action: 'Core action',
-        conflict: 'Conflict and goal',
-        atmosphere: 'Atmosphere and sound',
-        props: 'Props',
-        weapons: 'Weapons',
-        sourceExcerpt: 'Source excerpt',
-        status: 'Status'
-      },
-      bind: {
-        title: 'Bind world entity',
-        action: 'Bind',
-        add: 'Add name',
-        empty: 'Run the beat table node first to sync world entities'
-      }
     }
   },
   world: {
     asset: {
       hint: 'Double-click extract for instructions · table for catalog · gen opens world editor; use breadcrumbs to go back'
-    },
-    dialog: {
-      close: 'Close',
-      elementTable: 'World element table',
-      editor: 'World element gen'
-    },
-    hint: {
-      table: 'World element table · edit characters / scenes / props / weapons',
-      editor: 'Four element canvases · use the right Inspector for params and run'
-    },
-    pane: {
-      resizeSplit: 'Drag to resize the split panes'
-    },
-    table: {
-      new: 'New',
-      empty: 'No entries yet — add one or run extract first',
-      briefStyle: 'Style brief',
-      briefWorldview: 'Worldview brief',
-      column: {
-        name: 'Name',
-        prompt: 'Prompt',
-        status: 'Status'
-      },
-      placeholder: {
-        prompt: 'Image generation prompt',
-        style: 'Distilled genre / medium / palette / lighting / texture / avoid list',
-        worldview: 'Era, culture, rules, factions, tone and other reusable non-visual settings'
-      }
     },
     tab: {
       characters: 'Characters',
@@ -3132,11 +3058,6 @@ export default {
       scene: 'Scene',
       prop: 'Prop',
       weapon: 'Weapon'
-    },
-    tableWindow: {
-      loading: 'Opening world element table…',
-      missingAsset: 'Missing world asset id',
-      noProject: 'No project open'
     }
   },
   graph: {
@@ -4912,10 +4833,7 @@ export default {
         voice: 'Voice output',
         text: 'Screenplay output',
         director: 'Director deck output',
-        timeline: 'Cut timeline',
-        beat: 'Beat output',
-        beatUnit: 'Beat output',
-        world: 'World entities output'
+        timeline: 'Cut timeline'
       },
       note: {
         text: 'Note'
@@ -4992,14 +4910,6 @@ export default {
       text: {
         select: 'Select text'
       },
-      beat: {
-        select: 'Select beat unit',
-        split: 'Beat split',
-        table: 'Beat table',
-        gen: 'Beat unit gen',
-        unitGen: 'Beat gen',
-        unitRef: 'Beat ref'
-      },
       ui: {
         split: 'UI screen split',
         gen: 'UI screen gen'
@@ -5030,11 +4940,6 @@ export default {
         cast: 'Cast & locations',
         shot: 'Shot',
         render: 'Batch shoot'
-      },
-      world: {
-        extract: 'World extract',
-        table: 'World element review',
-        gen: 'World element gen'
       },
       spatialWorld: {
         export: 'Spatial world export'

@@ -9,9 +9,6 @@ export type EditorDiveViewId =
   | 'script.timeline'
   | 'semantic.timeline' // view-id-keep：**dive 视图 id**，不是节点类型。它是"语义时间线视图"（时间线 + 逐镜提示词面板 + 成片预览），会被工作区布局持久化，与已删除的同名节点类型无关 —— 勿因节点改名而重命名它
   | 'world.editor'
-  | 'world.table'
-  | 'beat.gen'
-  | 'beat.table'
   | 'director.stage'
   | 'ui.split'
   | 'node.notepad'
@@ -100,14 +97,7 @@ export type EditorDiveViewMeta =
       /** 打开的 world.gen 节点；缺省 / 旧版默认节点编辑资产级共享子图 */
       worldGenNodeId?: string
     }
-  | { viewId: 'world.table'; worldAssetId: string }
-  | { viewId: 'beat.gen'; beatAssetId: string }
-  | { viewId: 'beat.table'; beatAssetId: string }
-  | {
-      viewId: 'director.stage'
-      directorAssetId: string
-      processingNodeId?: string
-    }
+  | { viewId: 'director.stage'; directorAssetId: string; processingNodeId?: string }
   | { viewId: 'ui.split'; hostId: string; nodeId: string }
   | { viewId: 'anim.2d'; hostId: string; nodeId: string }
   | { viewId: 'comic.page'; hostId: string; nodeId: string }
@@ -184,13 +174,8 @@ export function editorDiveViewFrameKey(rootKey: string, meta: EditorDiveViewMeta
       return `${root}/view:${meta.viewId}:${meta.scriptAssetId}:${meta.timelineNodeId ?? '_'}`
     case 'semantic.timeline': // view-id-keep
       return `${root}/view:${meta.viewId}:${meta.timelineId}`
-    case 'world.table':
-      return `${root}/view:${meta.viewId}:${meta.worldAssetId}`
     case 'world.editor':
       return `${root}/view:${meta.viewId}:${meta.worldAssetId}:${meta.worldGenNodeId ?? '_'}:${meta.tab ?? 'characters'}`
-    case 'beat.table':
-    case 'beat.gen':
-      return `${root}/view:${meta.viewId}:${meta.beatAssetId}`
     case 'director.stage':
       return `${root}/view:director.stage:${meta.directorAssetId}:${meta.processingNodeId ?? '_default'}`
     case 'ui.split':

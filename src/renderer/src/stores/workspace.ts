@@ -153,12 +153,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         return 'Semantic Timeline'
       case 'world.editor':
         return 'World editor'
-      case 'world.table':
-        return 'World table'
-      case 'beat.gen':
-        return 'Beat units'
-      case 'beat.table':
-        return 'Beat table'
       case 'director.stage':
         return 'Director stage'
       case 'media.preview':

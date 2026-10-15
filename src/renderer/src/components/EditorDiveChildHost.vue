@@ -93,9 +93,6 @@ const viewRegistry: Record<string, Component> = {
   'script.timeline': defineAsyncComponent(() => import('./dive/EditorDiveScriptTimelineView.vue')),
   'semantic.timeline': SemanticTimelineDiveView, // view-id-keep：dive 视图 id（不是节点类型）
   'world.editor': defineAsyncComponent(() => import('./dive/EditorDiveWorldEditorView.vue')),
-  'world.table': defineAsyncComponent(() => import('./dive/EditorDiveWorldTableView.vue')),
-  'beat.gen': defineAsyncComponent(() => import('./dive/EditorDiveBeatGenView.vue')),
-  'beat.table': defineAsyncComponent(() => import('./dive/EditorDiveBeatTableView.vue')),
   'director.stage': defineAsyncComponent(() => import('./dive/EditorDiveDirectorStageView.vue')),
   'ui.split': defineAsyncComponent(() => import('./dive/EditorDiveUiSplitView.vue')),
   'media.preview': defineAsyncComponent(() => import('./dive/EditorDiveMediaPreview.vue')),
@@ -193,11 +190,6 @@ const viewBindings = computed(() => {
         tab: meta.tab,
         worldGenNodeId: meta.worldGenNodeId
       }
-    case 'world.table':
-      return { ...base, worldAssetId: meta.worldAssetId }
-    case 'beat.gen':
-    case 'beat.table':
-      return { ...base, beatAssetId: meta.beatAssetId }
     case 'director.stage':
       return {
         ...base,

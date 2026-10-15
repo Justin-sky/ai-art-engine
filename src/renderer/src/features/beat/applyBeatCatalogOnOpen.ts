@@ -1,10 +1,8 @@
 import { isDraftAssetId } from '@shared/domain'
 import {
-  extractBeatJsonText,
   mergeBeatRowsPreservingReviewed,
   parseBeatJson,
   stringifyBeatRows,
-  type GraphDocument,
   type BeatRow
 } from '@shared/graph'
 import { toPlain } from '../../utils/toPlain'
@@ -14,17 +12,6 @@ import { useProjectStore } from '../../stores/project'
 
 /** 已成功导入的场目录指纹 */
 export const LAST_APPLIED_BEAT_CATALOG_FP_KEY = 'lastAppliedBeatCatalogFingerprint'
-
-function readBeatAssetGraph(beatAssetId: string): GraphDocument | null {
-  if (isDraftAssetId(beatAssetId)) {
-    const draft = useDraftStore().getDraft(beatAssetId)
-    const raw = draft?.genParams?.graphJson
-    return raw && typeof raw === 'object' ? (raw as GraphDocument) : null
-  }
-  const asset = useProjectStore().assets.find((item) => item.id === beatAssetId)
-  const raw = asset?.genParams?.graphJson
-  return raw && typeof raw === 'object' ? (raw as GraphDocument) : null
-}
 
 function readBeatGenParams(beatAssetId: string): Record<string, unknown> | undefined {
   if (isDraftAssetId(beatAssetId)) {
@@ -53,22 +40,6 @@ function readLastAppliedFingerprint(beatAssetId: string): string {
   return String(readBeatGenParams(beatAssetId)?.[LAST_APPLIED_BEAT_CATALOG_FP_KEY] ?? '')
 }
 
-function syncCatalogTextIntoGraph(
-  doc: GraphDocument | null,
-  text: string
-): GraphDocument | undefined {
-  if (!doc?.nodes?.length) return undefined
-  return {
-    ...doc,
-    nodes: doc.nodes.map((node) => {
-      if (node.typeId !== 'beat.table' && node.typeId !== 'beat.split') {
-        return node
-      }
-      return { ...node, params: { ...node.params, text } }
-    })
-  }
-}
-
 async function writeBeatGenParams(
   beatAssetId: string,
   genParams: Record<string, unknown>
@@ -80,12 +51,9 @@ async function writeBeatGenParams(
   await persistAssetRecord(beatAssetId, { genParams })
 }
 
-/** 从资产 genParams / 主图读取场列表 */
+/** 从资产 genParams 读取场列表 */
 export function loadBeatCatalog(beatAssetId: string): BeatRow[] {
-  const stored = readStoredCatalog(readBeatGenParams(beatAssetId))
-  if (stored.length) return stored
-  const fromGraph = extractBeatJsonText(readBeatAssetGraph(beatAssetId))
-  return parseBeatJson(fromGraph) ?? []
+  return readStoredCatalog(readBeatGenParams(beatAssetId))
 }
 
 async function persistCatalog(
@@ -96,18 +64,12 @@ async function persistCatalog(
   if (readLastAppliedFingerprint(beatAssetId) === fingerprint) {
     return rows.length
   }
-  const text = stringifyBeatRows(rows)
   const previous = readBeatGenParams(beatAssetId) ?? {}
   // 在已有 genParams 上合并，避免冲掉 beatGraphs 等并行写入字段
-  const graphJson = syncCatalogTextIntoGraph(
-    (previous.graphJson as GraphDocument | undefined) ?? readBeatAssetGraph(beatAssetId),
-    text
-  )
   const genParams: Record<string, unknown> = {
     ...previous,
     beatCatalog: toPlain(rows),
-    [LAST_APPLIED_BEAT_CATALOG_FP_KEY]: fingerprint,
-    ...(graphJson ? { graphJson: toPlain(graphJson) } : {})
+    [LAST_APPLIED_BEAT_CATALOG_FP_KEY]: fingerprint
   }
   await writeBeatGenParams(beatAssetId, genParams)
   return rows.length
@@ -123,8 +85,7 @@ export async function applyBeatCatalog(
   beatAssetId: string,
   jsonText?: string | null
 ): Promise<number> {
-  const text = jsonText?.trim() || extractBeatJsonText(readBeatAssetGraph(beatAssetId))
-  const parsed = parseBeatJson(text)
+  const parsed = parseBeatJson(jsonText?.trim() ?? '')
   if (!parsed?.length) return 0
 
   const previous = loadBeatCatalog(beatAssetId)

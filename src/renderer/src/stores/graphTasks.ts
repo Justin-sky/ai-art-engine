@@ -1838,7 +1838,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           if (!total) return null
           return stringifyWorldElementCatalog(catalog)
         },
-        importWorldCatalogJson: async (jsonText, sourceNodeId) => {
+        importWorldCatalogJson: async (jsonText) => {
           if (task.target.kind !== 'asset') return
           const spatialWorldId = task.target.assetId
           if (isDraftAssetId(spatialWorldId)) {
@@ -1848,22 +1848,6 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             const project = useProjectStore()
             const asset = project.assets.find((a) => a.id === spatialWorldId)
             if (!isWorldPipelineAssetType(asset?.type)) return
-          }
-          if (sourceNodeId) {
-            const source = task.graph?.nodes.find((node) => node.id === sourceNodeId)
-            if (source?.typeId === 'world.gen') {
-              await applyWorldCatalog(spatialWorldId, jsonText, sourceNodeId)
-              return
-            }
-            // 表格/提取运行：目录沿边流入其下游 world.gen 节点
-            const downstreamGens = (task.graph?.edges ?? [])
-              .filter((edge) => edge.source === sourceNodeId)
-              .map((edge) => task.graph?.nodes.find((node) => node.id === edge.target))
-              .filter((node): node is GraphNode => !!node && node.typeId === 'world.gen')
-            for (const gen of downstreamGens) {
-              await applyWorldCatalog(spatialWorldId, jsonText, gen.id)
-            }
-            if (downstreamGens.length) return
           }
           await applyWorldCatalog(spatialWorldId, jsonText)
         },

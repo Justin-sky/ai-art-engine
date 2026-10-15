@@ -1,6 +1,5 @@
 import type { GraphTextItem } from './execute/types'
 import type { GraphDocument, GraphNode, GraphNodeParams, GraphValue } from './types'
-import { createNodeFromType } from './create'
 import { findOutputNode } from './query'
 import type { BeatRow } from './beatParse'
 
@@ -46,13 +45,6 @@ export function withBeatGraph(
   }
 }
 
-export function readBoundBeatIdFromNodeParams(
-  params: GraphNodeParams | undefined | null
-): string | undefined {
-  const id = params?.boundBeatId?.trim()
-  return id || undefined
-}
-
 function worldRefNames(refs: BeatRow['characters']): string {
   return refs
     .map((ref) => ref.name.trim())
@@ -60,7 +52,7 @@ function worldRefNames(refs: BeatRow['characters']): string {
     .join('、')
 }
 
-/** 参考节点输出：场目录字段拼成可读文本 */
+/** 场目录字段拼成可读文本（场选择列表用） */
 export function formatBeatRefText(beat: BeatRow): string {
   const lines: string[] = []
   const title = beat.title.trim() || 'Untitled'
@@ -81,18 +73,6 @@ export function formatBeatRefText(beat: BeatRow): string {
   if (weapons) lines.push(`武器：${weapons}`)
   if (beat.sourceExcerpt.trim()) lines.push(`原文：${beat.sourceExcerpt.trim()}`)
   return lines.join('\n')
-}
-
-export function createBeatRefNode(
-  beat: BeatRow,
-  position: { x: number; y: number },
-  options?: { title?: string }
-): GraphNode {
-  const title = options?.title?.trim() || beat.title.trim() || 'Beat ref'
-  return createNodeFromType('beat.unitRef', position, {
-    title,
-    params: { boundBeatId: beat.id }
-  })
 }
 
 /** 场生成节点默认参数：规则在系统提示词，指令窗口留给临时焦点 */
@@ -196,7 +176,7 @@ export function collectTextFromBeatGraph(
 ): GraphTextItem | null {
   if (!doc?.nodes?.length) return null
 
-  const output = doc.nodes.find((node) => node.typeId === 'output.beatUnit') ?? findOutputNode(doc)
+  const output = findOutputNode(doc)
   if (output) {
     const fromOutput = collectTextItemFromNode(doc, output)
     if (fromOutput?.text.trim() || fromOutput?.relativePath?.trim()) return fromOutput
@@ -212,8 +192,5 @@ export function collectTextFromBeatGraph(
     }
   }
 
-  const beatGen = doc.nodes.find((node) => node.typeId === 'beat.unitGen')
-  const fromGen = collectTextItemFromNode(doc, beatGen)
-  if (fromGen?.text.trim() || fromGen?.relativePath?.trim()) return fromGen
   return null
 }

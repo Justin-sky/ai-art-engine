@@ -367,7 +367,7 @@ const selectedApiEmptyText = computed(() => {
 
 function isPassthroughOutputType(typeId: string | undefined): boolean {
   if (!typeId) return false
-  return typeId.startsWith('output.') || typeId === 'world.table' || typeId === 'beat.table'
+  return typeId.startsWith('output.')
 }
 
 watch(

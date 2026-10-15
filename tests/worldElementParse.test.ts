@@ -1,12 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
-  extractWorldCatalogJsonText,
   mergeWorldCatalogPreservingReviewed,
   parseWorldElementCatalog,
   parseWorldElementGenResults,
   stringifyWorldElementCatalog,
   stringifyWorldElementGenResults,
-  type GraphDocument,
   type WorldElementCatalog
 } from '../src/shared/graph'
 
@@ -106,56 +104,6 @@ describe('worldElementParse', () => {
     expect(text).toContain('"weapons"')
     expect(text).toContain('"style"')
     expect(text).toContain('"worldview"')
-  })
-
-  it('extracts upstream text linked into world.table', () => {
-    const doc: GraphDocument = {
-      nodes: [
-        {
-          id: 'world-extract',
-          typeId: 'world.extract',
-          category: 'note',
-          position: { x: 0, y: 0 },
-          params: { text: '{"characters":[],"scenes":[],"props":[],"weapons":[]}' },
-          title: 'extract'
-        },
-        {
-          id: 'world-table',
-          typeId: 'world.table',
-          category: 'note',
-          position: { x: 200, y: 0 },
-          params: {},
-          title: 'table'
-        },
-        {
-          id: 'world-gen',
-          typeId: 'world.gen',
-          category: 'note',
-          position: { x: 400, y: 0 },
-          params: {},
-          title: 'gen'
-        }
-      ],
-      edges: [
-        {
-          id: 'e1',
-          source: 'world-extract',
-          target: 'world-table',
-          sourcePort: 'out',
-          targetPort: 'in'
-        },
-        {
-          id: 'e2',
-          source: 'world-table',
-          target: 'world-gen',
-          sourcePort: 'out',
-          targetPort: 'in'
-        }
-      ],
-      groups: [],
-      viewport: { x: 0, y: 0, zoom: 1 }
-    }
-    expect(extractWorldCatalogJsonText(doc)).toContain('characters')
   })
 
   it('round-trips world element gen results', () => {
