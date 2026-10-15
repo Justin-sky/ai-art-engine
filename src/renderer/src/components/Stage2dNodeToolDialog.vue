@@ -27,6 +27,15 @@
             <span v-else class="thumb-fallback">🖼</span>
             <span class="name" :title="layer.sourceUrl">{{ layer.name }}</span>
             <button
+              v-if="index > 0 && layers.length > 2"
+              type="button"
+              class="icon"
+              :title="t('stage2d.soloLayer')"
+              @click.stop="soloVariant(layer.id)"
+            >
+              🎯
+            </button>
+            <button
               type="button"
               class="icon"
               :title="t('stage2d.moveUp')"
@@ -89,6 +98,20 @@
         </p>
         <div class="section-label">
           {{ t('stage2d.scene') }}
+        </div>
+        <div class="preset-chips">
+          <button
+            v-for="preset in canvasPresets"
+            :key="preset.id"
+            type="button"
+            class="icon"
+            :class="{
+              on: scene.canvasWidth === preset.width && scene.canvasHeight === preset.height
+            }"
+            @click="applyCanvasPreset(preset.width, preset.height)"
+          >
+            {{ preset.label }}
+          </button>
         </div>
         <div class="grid2">
           <label class="field">
@@ -187,14 +210,37 @@
               @input="patchLayerRatio('groundRatio', $event)"
             />
           </label>
-          <label class="check">
+          <label class="slider">
+            <span>
+              {{ t('stage2d.layerOpacity') }}<b>{{ Math.round((selected.opacity ?? 1) * 100) }}%</b>
+            </span>
             <input
-              type="checkbox"
-              :checked="selected.align.fitWithinWidth"
-              @change="patchLayerFit($event)"
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              :value="selected.opacity ?? 1"
+              @input="patchLayerOpacity($event)"
             />
-            <span>{{ t('stage2d.fitWidth') }}</span>
           </label>
+          <div class="row">
+            <label class="check">
+              <input
+                type="checkbox"
+                :checked="selected.align.fitWithinWidth"
+                @change="patchLayerFit($event)"
+              />
+              <span>{{ t('stage2d.fitWidth') }}</span>
+            </label>
+            <label class="check">
+              <input
+                type="checkbox"
+                :checked="!!selected.flipX"
+                @change="patchLayerFlipX($event)"
+              />
+              <span>{{ t('stage2d.layerFlipX') }}</span>
+            </label>
+          </div>
           <div class="grid2">
             <label class="field">
               <span>{{ t('stage2d.offsetX') }}</span>
@@ -626,6 +672,35 @@
                   {{ t('stage2d.actionFreeze') }}
                 </button>
               </div>
+              <div v-if="actionCurrent" class="timeline-scrub-box">
+                <label class="slider">
+                  <span>
+                    {{ t('stage2d.timelineScrub') }}
+                    <b>
+                      {{ formatActionTime(actionClock % (actionCurrent.duration || 1)) }}s /
+                      {{ formatActionTime(actionCurrent.duration ?? 0) }}s
+                    </b>
+                  </span>
+                  <input
+                    type="range"
+                    min="0"
+                    :max="Math.max(0.1, actionCurrent.duration ?? 1)"
+                    step="0.02"
+                    :value="actionClock % Math.max(0.1, actionCurrent.duration ?? 1)"
+                    @input="onActionScrub($event)"
+                  />
+                </label>
+                <div class="row">
+                  <button
+                    type="button"
+                    class="icon"
+                    :title="t('stage2d.recordKeyframeTip')"
+                    @click="recordPoseKeyframe"
+                  >
+                    ⏺ {{ t('stage2d.recordKeyframe') }}
+                  </button>
+                </div>
+              </div>
               <button type="button" class="action-video-btn" @click="openVideoActionDialog">
                 🎬 {{ t('stage2dVideo.actionFromVideo') }}
               </button>
@@ -807,6 +882,44 @@
                 {{ t('stage2d.exportDone', { count: exportFrameCount }) }}
               </p>
             </template>
+
+            <!-- 角色差分批量导出：底图（第 1 层）+ 各上层差分（表情/服装/部件）逐套导出 PNG + manifest.json -->
+            <div class="section-label">
+              {{ t('stage2d.batchExportTitle') }}
+            </div>
+            <p v-if="layers.length < 2" class="hint">
+              {{ t('stage2d.batchExportNeedLayers') }}
+            </p>
+            <template v-else>
+              <div class="row export-controls">
+                <label class="field">
+                  <span>{{ t('stage2d.spineExportName') }}</span>
+                  <input
+                    v-model="variantExportName"
+                    type="text"
+                    :disabled="variantBusy"
+                    @keydown.enter="exportLayerVariantsPackage"
+                  />
+                </label>
+                <button
+                  type="button"
+                  class="primary"
+                  :disabled="variantBusy"
+                  @click="exportLayerVariantsPackage"
+                >
+                  📦 {{ t('stage2d.batchExportVariants') }}
+                </button>
+              </div>
+              <p class="hint">
+                {{ t('stage2d.batchExportNote', { count: layers.length - 1 }) }}
+              </p>
+              <p v-if="variantError" class="export-status error">
+                {{ variantError }}
+              </p>
+              <p v-else-if="variantMsg" class="export-status ok">
+                {{ variantMsg }}
+              </p>
+            </template>
           </template>
         </div>
 
@@ -839,6 +952,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import {
+  buildSpriteManifest,
   computeStage2dRigTransforms,
   createHumanoidStage2dRig,
   createStage2dJoint,
@@ -851,6 +965,7 @@ import {
   stage2dActionPresetById,
   stage2dGroundY,
   STAGE2D_ACTION_PRESETS,
+  STAGE2D_CANVAS_PRESETS,
   type Stage2dAction,
   type Stage2dLayer,
   type Stage2dPose,
@@ -875,6 +990,8 @@ import Stage2dActionFromVideoDialog from './Stage2dActionFromVideoDialog.vue'
 import StudioFloatingWindow from './StudioFloatingWindow.vue'
 
 type StageLayer = Stage2dSceneState['layers'][number]
+
+const canvasPresets = STAGE2D_CANVAS_PRESETS
 
 const props = defineProps<{
   open: boolean
@@ -955,8 +1072,15 @@ function applySetup(): void {
   rig.value = normalizeStage2dRig(props.setupRig ?? undefined)
   pose.value = normalizeStage2dPose(rig.value, props.setupPose ?? null)
   cancelActionLoop()
-  customAction.value = props.setupAction ? normalizeStage2dAction(props.setupAction) : null
-  actionId.value = customAction.value ? CUSTOM_ACTION_ID : ''
+  const setupAct = props.setupAction ? normalizeStage2dAction(props.setupAction) : null
+  const matchedPreset = setupAct ? stage2dActionPresetById(setupAct.name) : null
+  if (matchedPreset && setupAct && matchedPreset.keyframes.length === setupAct.keyframes.length) {
+    customAction.value = null
+    actionId.value = matchedPreset.id
+  } else {
+    customAction.value = setupAct
+    actionId.value = setupAct ? CUSTOM_ACTION_ID : ''
+  }
   selectedJointId.value = rig.value.joints[0]?.id ?? ''
   panel.value = 'rig'
   void nextTick(fitView)
@@ -1037,6 +1161,10 @@ function commit(next: Stage2dSceneState): void {
   scheduleRender()
 }
 
+function applyCanvasPreset(width: number, height: number): void {
+  commit({ ...scene.value, canvasWidth: width, canvasHeight: height })
+}
+
 function patchCanvas(key: 'canvasWidth' | 'canvasHeight', event: Event): void {
   const raw = Number((event.target as HTMLInputElement).value)
   const clamped = Math.min(8192, Math.max(16, Math.round(raw)))
@@ -1076,6 +1204,18 @@ function patchLayerRatio(key: 'contentHeightRatio' | 'groundRatio', event: Event
   if (!selected.value) return
   const value = Number((event.target as HTMLInputElement).value)
   patchLayer(selected.value.id, { align: { ...selected.value.align, [key]: value } })
+}
+
+function patchLayerOpacity(event: Event): void {
+  if (!selected.value) return
+  const value = Number((event.target as HTMLInputElement).value)
+  patchLayer(selected.value.id, { opacity: value })
+}
+
+function patchLayerFlipX(event: Event): void {
+  if (!selected.value) return
+  const checked = (event.target as HTMLInputElement).checked
+  patchLayer(selected.value.id, { flipX: checked })
 }
 
 /** 手动微调：数值输入（舞台像素系，右 / 下为正） */
@@ -1335,6 +1475,53 @@ function freezeActionFrame(): void {
   if (actionMode.value === 'off' || !action) return
   pose.value = sampleStage2dAction(action, actionClock.value)
   cancelActionLoop()
+}
+
+/** 时间轴拖拽采样：暂停播放并实时跳到对应时刻 */
+function onActionScrub(event: Event): void {
+  const action = actionCurrent.value
+  if (!action) return
+  const nextTime = Math.max(0, Number((event.target as HTMLInputElement).value) || 0)
+  if (actionMode.value === 'playing') {
+    cancelAnimationFrame(actionRaf)
+    actionRaf = 0
+    actionMode.value = 'paused'
+  } else if (actionMode.value === 'off') {
+    actionSavedPose = { ...pose.value }
+    actionMode.value = 'paused'
+  }
+  actionClock.value = nextTime
+  pose.value = sampleStage2dAction(action, nextTime)
+  if (renderTimer) {
+    clearTimeout(renderTimer)
+    renderTimer = null
+  }
+  void render()
+}
+
+/** 把当前关节摆姿打点记录到当前时间轴时刻（自动转为可持久化的自定义动作） */
+function recordPoseKeyframe(): void {
+  const base = actionCurrent.value ?? {
+    id: CUSTOM_ACTION_ID,
+    name: 'custom',
+    duration: 1.2,
+    loop: true,
+    keyframes: [{ time: 0, pose: {} }]
+  }
+  const duration = Math.max(0.2, base.duration ?? 1.2)
+  const targetTime = Math.round((actionClock.value % duration) * 100) / 100
+  const nextPose = normalizeStage2dPose(rig.value, pose.value)
+  const filtered = base.keyframes.filter((kf) => Math.abs(kf.time - targetTime) > 0.015)
+  filtered.push({ time: targetTime, pose: nextPose })
+  filtered.sort((a, b) => a.time - b.time)
+  const updated = normalizeStage2dAction({
+    name: base.id === CUSTOM_ACTION_ID ? base.name || 'custom' : `${base.id}-custom`,
+    duration,
+    loop: base.loop ?? true,
+    keyframes: filtered
+  })
+  customAction.value = updated
+  actionId.value = CUSTOM_ACTION_ID
 }
 
 /** 动作下拉切换：播放中无缝换动作从头循环；清空则停止并恢复试播前摆姿 */
@@ -1671,6 +1858,113 @@ async function exportActionFrames(): Promise<void> {
   }
 }
 
+/** 独显差分层：保留底图（第 0 层）+ 目标差分层可见，隐藏其余上层；若已处于独显则恢复全部可见 */
+function soloVariant(id: string): void {
+  const list = layers.value
+  const alreadySolo = list.every((l, idx) => (idx === 0 || l.id === id ? l.visible : !l.visible))
+  commit({
+    ...scene.value,
+    layers: list.map((l, idx) => ({
+      ...l,
+      visible: alreadySolo ? true : idx === 0 || l.id === id
+    }))
+  })
+}
+
+const variantExportName = ref('character')
+const variantBusy = ref(false)
+const variantMsg = ref('')
+const variantError = ref('')
+
+async function exportLayerVariantsPackage(): Promise<void> {
+  if (variantBusy.value || layers.value.length < 2) return
+  stopActionPlayback()
+  variantBusy.value = true
+  variantMsg.value = ''
+  variantError.value = ''
+  try {
+    const sceneState = normalizeStage2dScene(scene.value)
+    const resolved = await Promise.all(
+      sceneState.layers.map((layer) => resolveLayerUrl(layer.sourceUrl))
+    )
+    const baseName = (variantExportName.value.trim() || 'character').replace(
+      /[^\w\u4e00-\u9fa5-]+/g,
+      '-'
+    )
+    const subDir = `Assets/2D/Variants/${baseName}`
+    const spriteEntries: Array<{
+      name: string
+      fileName: string
+      width: number
+      height: number
+      anchorX?: number
+      anchorY?: number
+    }> = []
+
+    const anchorX = Math.round(sceneState.canvasWidth / 2)
+    const rawGround = stage2dGroundY(sceneState)
+    const anchorY =
+      sceneState.anchor === 'ground' && rawGround >= 0
+        ? Math.round(rawGround)
+        : Math.round(sceneState.canvasHeight / 2)
+
+    for (let i = 1; i < sceneState.layers.length; i++) {
+      const variantLayer = sceneState.layers[i]
+      const variantScene = normalizeStage2dScene({
+        ...sceneState,
+        layers: sceneState.layers.map((layer, idx) => ({
+          ...layer,
+          sourceUrl: resolved[idx] ?? '',
+          visible: idx === 0 || idx === i
+        }))
+      })
+      const composed = await composeStage2dCanvas({
+        state: variantScene,
+        rig: rig.value,
+        pose: pose.value
+      })
+      const safeLayerName =
+        (variantLayer.name || `variant-${i}`).replace(/[^\w\u4e00-\u9fa5-]+/g, '-') ||
+        `variant-${i}`
+      const key = `${baseName}-${safeLayerName}`
+      const savedPath = await window.studio.saveGraphRunMedia({
+        dataUrl: composed.dataUrl,
+        key,
+        outputDir: subDir
+      })
+      spriteEntries.push({
+        name: key,
+        fileName: savedPath.split('/').pop() || `${key}.png`,
+        width: sceneState.canvasWidth,
+        height: sceneState.canvasHeight,
+        anchorX,
+        anchorY
+      })
+    }
+
+    const manifest = buildSpriteManifest({
+      exportId: `${baseName}-${Date.now().toString(36)}`,
+      canvasWidth: sceneState.canvasWidth,
+      canvasHeight: sceneState.canvasHeight,
+      anchor: sceneState.anchor,
+      sprites: spriteEntries
+    })
+    await window.studio.writeProjectFile({
+      relativePath: `${subDir}/manifest.json`,
+      content: JSON.stringify(manifest, null, 2)
+    })
+    await project.scheduleRefreshLibrary()
+    variantMsg.value = t('stage2d.batchExportDone', {
+      count: spriteEntries.length,
+      path: subDir
+    })
+  } catch (err) {
+    variantError.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    variantBusy.value = false
+  }
+}
+
 /** 把当前选中的层挂到选中关节（同一层只能挂一个关节） */
 function bindSelectedLayer(): void {
   const layer = selected.value
@@ -1978,14 +2272,19 @@ function scheduleRender(): void {
 }
 
 function save(): void {
+  const act = actionCurrent.value
   emit('save', {
     stage2dScene: normalizeStage2dScene(scene.value),
     stage2dRig: normalizeStage2dRig(rig.value),
     stage2dPose: normalizeStage2dPose(normalizeStage2dRig(rig.value), pose.value),
-    stage2dAction:
-      actionId.value === CUSTOM_ACTION_ID
-        ? normalizeStage2dAction(customAction.value ?? null)
-        : null,
+    stage2dAction: act
+      ? normalizeStage2dAction({
+          name: act.id === CUSTOM_ACTION_ID ? act.name || 'custom' : act.id,
+          duration: act.duration,
+          loop: act.loop,
+          keyframes: act.keyframes
+        })
+      : null,
     ...(previewUrl.value ? { dataUrl: previewUrl.value } : {})
   })
 }
@@ -2656,5 +2955,21 @@ button.primary.on {
 
 button.primary.on:hover {
   background: var(--accent-hover);
+}
+
+.preset-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.timeline-scrub-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 6px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
 }
 </style>

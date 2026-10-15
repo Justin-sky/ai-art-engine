@@ -39,21 +39,11 @@
           v-if="incomingImages.length > 0"
           type="button"
           class="tb-btn tb-btn--accent-soft"
-          :title="
-            pickComicBi(
-              '按阅读顺序将上游图片填入空白分镜格',
-              'Fill empty panels with upstream images in reading order'
-            )
-          "
+          :title="uiLabels.autoFillTitle"
           @click="autoFillFromIncoming(true)"
         >
           ⚡
-          {{
-            pickComicBi(
-              `顺填上游图 (${incomingImages.length})`,
-              `Auto-fill (${incomingImages.length})`
-            )
-          }}
+          {{ pickComicBi('顺填上游图', 'Auto-fill') }} ({{ incomingImages.length }})
         </button>
         <button
           type="button"
@@ -128,12 +118,7 @@
             </button>
           </div>
           <p class="dock-hint">
-            {{
-              pickComicBi(
-                '点击套用分镜（自动保留并按序迁移现有图片与台词）',
-                'Click to apply layout (keeps existing images & dialogue)'
-              )
-            }}
+            {{ uiLabels.applyTemplateHint }}
           </p>
           <div class="template-grid">
             <button
@@ -1106,12 +1091,7 @@
             </div>
           </div>
           <p v-else class="hint">
-            {{
-              pickComicBi(
-                '可从左侧「分镜模板」一键生成专业排版',
-                'Pick a layout preset on the left to start'
-              )
-            }}
+            {{ uiLabels.emptyLayerHint }}
           </p>
         </div>
       </aside>
@@ -1184,6 +1164,21 @@ function pickComicBi(zh: string, en: string): string {
     ? zh
     : en
 }
+
+const uiLabels = computed(() => ({
+  autoFillTitle: pickComicBi(
+    '按阅读顺序将上游图片填入空白分镜格', // cjk-ok
+    'Fill empty panels with upstream images in reading order'
+  ),
+  applyTemplateHint: pickComicBi(
+    '点击套用分镜（自动保留并按序迁移现有图片与台词）', // cjk-ok
+    'Click to apply layout (keeps existing images & dialogue)'
+  ),
+  emptyLayerHint: pickComicBi(
+    '可从左侧「分镜模板」一键生成专业排版', // cjk-ok
+    'Pick a layout preset on the left to start'
+  )
+}))
 
 const page = ref<ComicPage>(createComicPage())
 const dirty = ref(false)

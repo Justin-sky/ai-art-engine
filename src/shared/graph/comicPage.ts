@@ -1036,7 +1036,7 @@ export const COMIC_LAYOUT_TEMPLATES: readonly ComicLayoutTemplate[] = [
     category: 'manga',
     name: { zh: '日漫叙事 5 格', en: 'Manga Narrative 5-Panel' },
     desc: {
-      zh: '顶部远景建立镜头 + 中段对切 + 底部情绪落幅',
+      zh: '顶部远景建立镜头 + 中段对切 + 底部情绪落幅', // cjk-ok
       en: 'Top establishing shot + mid rhythm + bottom closure'
     },
     page: {
@@ -1064,7 +1064,7 @@ export const COMIC_LAYOUT_TEMPLATES: readonly ComicLayoutTemplate[] = [
     category: 'action',
     name: { zh: '热血斜切分镜', en: 'Dynamic Slash Action' },
     desc: {
-      zh: '高速斜向刀口线 + 集中线冲击格',
+      zh: '高速斜向刀口线 + 集中线冲击格', // cjk-ok
       en: 'Diagonal slash gutters with impact focus lines'
     },
     page: {
@@ -1129,7 +1129,7 @@ export const COMIC_LAYOUT_TEMPLATES: readonly ComicLayoutTemplate[] = [
     category: 'action',
     name: { zh: '高潮跨格画中画', en: 'Climax Inset Overlay' },
     desc: {
-      zh: '巨幅主视觉 + 浮动眼神特写叠格（带留白衬边）',
+      zh: '巨幅主视觉 + 浮动眼神特写叠格（带留白衬边）', // cjk-ok
       en: 'Hero background panel + floating close-up inset panel'
     },
     page: {
@@ -1174,7 +1174,7 @@ export const COMIC_LAYOUT_TEMPLATES: readonly ComicLayoutTemplate[] = [
     category: 'strip',
     name: { zh: '经典四格漫 (起承转合)', en: 'Classic 4-Koma Strip' },
     desc: {
-      zh: '标准竖向四格条漫，适合日常幽默与短剧节奏',
+      zh: '标准竖向四格条漫，适合日常幽默与短剧节奏', // cjk-ok
       en: 'Vertical 4-panel strip for gag and slice-of-life'
     },
     page: {
@@ -1201,7 +1201,7 @@ export const COMIC_LAYOUT_TEMPLATES: readonly ComicLayoutTemplate[] = [
     category: 'strip',
     name: { zh: '条漫长图 (Webtoon)', en: 'Webtoon Vertical Scroll' },
     desc: {
-      zh: '竖屏流式大留白排版，专为手机端韩漫/国漫打造',
+      zh: '竖屏流式大留白排版，专为手机端韩漫/国漫打造', // cjk-ok
       en: 'Mobile vertical scroll layout with cinematic spacing'
     },
     page: {
@@ -1229,7 +1229,7 @@ export const COMIC_LAYOUT_TEMPLATES: readonly ComicLayoutTemplate[] = [
     category: 'manga',
     name: { zh: '紧凑对话 6 格', en: 'Dialogue 6-Panel' },
     desc: {
-      zh: '正反打镜头交替，适合多角色对手戏',
+      zh: '正反打镜头交替，适合多角色对手戏', // cjk-ok
       en: 'Shot-reverse-shot rhythm for character dialogue'
     },
     page: {
@@ -1258,7 +1258,7 @@ export const COMIC_LAYOUT_TEMPLATES: readonly ComicLayoutTemplate[] = [
     category: 'manga',
     name: { zh: '电影宽银幕 3 幕', en: 'Cinematic Widescreen 3-Act' },
     desc: {
-      zh: '2.35:1 电影感横幅分镜，极具史诗氛围',
+      zh: '2.35:1 电影感横幅分镜，极具史诗氛围', // cjk-ok
       en: 'Anamorphic widescreen horizontal panels'
     },
     page: {
@@ -1284,7 +1284,7 @@ export const COMIC_LAYOUT_TEMPLATES: readonly ComicLayoutTemplate[] = [
     category: 'manga',
     name: { zh: '上半主视觉 + 下三格', en: 'Top Hero + 3 Sub-Panels' },
     desc: {
-      zh: '上半页宏大场景，下半页连续三格细节反应',
+      zh: '上半页宏大场景，下半页连续三格细节反应', // cjk-ok
       en: 'Large top scene with three reaction panels below'
     },
     page: {
@@ -1311,7 +1311,7 @@ export const COMIC_LAYOUT_TEMPLATES: readonly ComicLayoutTemplate[] = [
     category: 'action',
     name: { zh: 'Z 字视觉流刀口页', en: 'Z-Flow Diagonal Page' },
     desc: {
-      zh: '引导读者视线呈 Z 字高速滑落的分镜编排',
+      zh: '引导读者视线呈 Z 字高速滑落的分镜编排', // cjk-ok
       en: 'Z-pattern eye-tracking diagonal layout'
     },
     page: {

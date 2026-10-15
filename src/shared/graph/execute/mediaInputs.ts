@@ -3,8 +3,8 @@ import {
   resolveGenerateStyleImages,
   type ProjectStyleImage
 } from '../../domain'
-import type { GraphImageItem, GraphValue, NodeExecuteContext } from './types'
-import { flattenAssetValues, flattenImagesValues } from './gallery'
+import type { GraphImageItem, GraphValue, GraphVideoItem, NodeExecuteContext } from './types'
+import { flattenAssetValues, flattenImagesValues, flattenVideosValues } from './gallery'
 import { collectIncomingValues, selectIncomingValuesForInstruction } from './incoming'
 
 export function resolveNodeStyleImages(ctx: NodeExecuteContext): ProjectStyleImage[] {
@@ -129,6 +129,51 @@ export async function collectIncomingImageItems(
       if (seen.has(key)) continue
       seen.add(key)
       items.push(item)
+    }
+  }
+  return items
+}
+
+/** 收集节点入边视频（含 video / videos，以及视频资产引用） */
+export async function collectIncomingVideoItems(
+  ctx: NodeExecuteContext
+): Promise<GraphVideoItem[]> {
+  const videoInputs = [...(ctx.inputs['in-video'] ?? []), ...(ctx.inputs.in ?? [])]
+  const values = videoInputs.length ? videoInputs : collectIncomingValues(ctx.inputs)
+  const items: GraphVideoItem[] = []
+  const seen = new Set<string>()
+  const pushItem = (item: GraphVideoItem): void => {
+    const key =
+      item.id?.trim() || item.relativePath?.trim() || item.dataUrl?.trim() || `v:${items.length}`
+    if (seen.has(key)) return
+    const hasPayload =
+      (typeof item.dataUrl === 'string' && item.dataUrl.length > 0) ||
+      (typeof item.relativePath === 'string' && item.relativePath.length > 0)
+    if (!hasPayload) return
+    seen.add(key)
+    items.push(item)
+  }
+
+  for (const value of values) {
+    for (const item of flattenVideosValues([value])) {
+      pushItem(item)
+    }
+    for (const asset of flattenAssetValues([value])) {
+      if (asset.assetType !== 'video') continue
+      if (asset.relativePath?.trim()) {
+        pushItem({ id: asset.assetId, relativePath: asset.relativePath.trim() })
+        continue
+      }
+      if (ctx.resolveAssetMediaUrl) {
+        const mediaUrl = await ctx.resolveAssetMediaUrl(asset.assetId)
+        if (mediaUrl?.trim()) {
+          if (mediaUrl.startsWith('data:') || /^https?:\/\//i.test(mediaUrl)) {
+            pushItem({ id: asset.assetId, dataUrl: mediaUrl.trim() })
+          } else {
+            pushItem({ id: asset.assetId, relativePath: mediaUrl.trim() })
+          }
+        }
+      }
     }
   }
   return items

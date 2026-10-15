@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createNodeFromType, executeAnim2dNode, type NodeExecuteContext } from '../src/shared/graph'
+import {
+  createNodeFromType,
+  executeAnim2dNode,
+  executeFrameAnimGenNode,
+  type NodeExecuteContext
+} from '../src/shared/graph'
 
 /**
  * 2D帧动画的 GIF 输出（animGifFps）：帧率 > 0 时合成动图并落盘，
@@ -89,5 +94,51 @@ describe('anim.2d gif output', () => {
 
     expect(composeGifFrames).not.toHaveBeenCalled()
     expect(outputs['out-gif']).toBeUndefined()
+  })
+
+  it('supports direct video-to-spritesheet in frame.animGen and anim.2d', async () => {
+    const genNode = createNodeFromType('frame.animGen', { x: 0, y: 0 })
+    genNode.params = {
+      ...genNode.params,
+      animRows: 2,
+      animCols: 2,
+      animGenMode: 'auto',
+      animVideoStartRatio: 0.1,
+      animVideoEndRatio: 0.9,
+      animStabilize: 'ground'
+    }
+    const composeVideoFrameSheet = vi.fn(async () => ({
+      dataUrl: 'data:image/png;base64,dmlkZW9TaGVldA==',
+      width: 512,
+      height: 512,
+      cellWidth: 256,
+      cellHeight: 256,
+      frameCount: 4
+    }))
+    const saveRunMedia = vi.fn(async (opts: { key: string }) => `Cache/Images/${opts.key}.png`)
+    const genCtx = {
+      node: genNode,
+      inputs: { 'in-video': [{ kind: 'video', relativePath: 'Assets/Video/run.mp4' }] },
+      locale: 'zh-CN',
+      composeVideoFrameSheet,
+      saveRunMedia,
+      patchNode: (patch: { params: Record<string, unknown> }) => {
+        genNode.params = { ...genNode.params, ...patch.params }
+      }
+    } as unknown as NodeExecuteContext
+
+    const genOut = await executeFrameAnimGenNode(genCtx)
+    expect(composeVideoFrameSheet).toHaveBeenCalledTimes(1)
+    expect(composeVideoFrameSheet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        videoRelativePath: 'Assets/Video/run.mp4',
+        rows: 2,
+        cols: 2,
+        startRatio: 0.1,
+        endRatio: 0.9,
+        stabilize: 'ground'
+      })
+    )
+    expect(genOut.out).toBeDefined()
   })
 })

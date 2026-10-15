@@ -33,12 +33,7 @@
       <div v-if="editable && framingPanel" class="framing-banner" @pointerdown.stop>
         <span class="framing-dot" />
         <span>
-          {{
-            pickComicBi(
-              '格内画面取景模式：拖拽平移焦点 · 滚轮缩放特写 · 双击空白处退出',
-              'Intra-panel Framing Mode: Drag to pan · Scroll to zoom · Double-click to exit'
-            )
-          }}
+          {{ uiLabels.framingBanner }}
         </span>
         <button type="button" class="framing-btn" @click="resetPanelFraming(framingPanel.id)">
           {{ pickComicBi('重置构图', 'Reset Framing') }}
@@ -215,12 +210,7 @@
                 type="button"
                 class="pf-btn"
                 :class="{ 'pf-btn--active': framingPanelId === panel.id }"
-                :title="
-                  pickComicBi(
-                    '调整格内画面位置与缩放 (或双击分镜)',
-                    'Pan & zoom image inside panel (or double-click)'
-                  )
-                "
+                :title="uiLabels.frameBtnTitle"
                 @click.stop="toggleFramingMode(panel.id)"
               >
                 {{
@@ -245,12 +235,7 @@
                 type="button"
                 class="pf-btn"
                 :class="{ 'pf-btn--active': slantEditMode }"
-                :title="
-                  pickComicBi(
-                    '开启四角斜切控制点（制作刀口斜分镜）',
-                    'Toggle 4-corner diagonal slant handles'
-                  )
-                "
+                :title="uiLabels.slantBtnTitle"
                 @click.stop="slantEditMode = !slantEditMode"
               >
                 {{ pickComicBi('📐 斜切', '📐 Slant') }}
@@ -344,12 +329,7 @@
                 :key="`corner-${cIdx}`"
                 class="corner-slant-handle"
                 :style="corner.style"
-                :title="
-                  pickComicBi(
-                    '拖动顶点制作斜切分镜线 (双击复位该角)',
-                    'Drag corner to slant panel (double-click to reset)'
-                  )
-                "
+                :title="uiLabels.cornerSlantTitle"
                 @pointerdown.stop.prevent="onCornerSlantDown($event, panel, cIdx as 0 | 1 | 2 | 3)"
                 @dblclick.stop="resetCornerSlant(panel, cIdx as 0 | 1 | 2 | 3)"
               />
@@ -480,12 +460,7 @@
             left: `${(selectedBubbleBounds.tailTipX / (norm.width || 1)) * 100}%`,
             top: `${(selectedBubbleBounds.tailTipY / (norm.height || 1)) * 100}%`
           }"
-          :title="
-            pickComicBi(
-              '拖动尾巴尖端指向说话角色嘴部 (双击恢复默认)',
-              'Drag tail tip toward speaker (double-click to reset)'
-            )
-          "
+          :title="uiLabels.bubbleTailTitle"
           @pointerdown.stop.prevent="onBubbleTailDown($event, selectedBubblePanel, selectedBubble)"
           @dblclick.stop="
             emit(
@@ -629,6 +604,29 @@ function pickComicBi(zh: string, en: string): string {
     ? zh
     : en
 }
+
+const uiLabels = computed(() => ({
+  framingBanner: pickComicBi(
+    '格内画面取景模式：拖拽平移焦点 · 滚轮缩放特写 · 双击空白处退出', // cjk-ok
+    'Intra-panel Framing Mode: Drag to pan · Scroll to zoom · Double-click to exit'
+  ),
+  frameBtnTitle: pickComicBi(
+    '调整格内画面位置与缩放 (或双击分镜)', // cjk-ok
+    'Pan & zoom image inside panel (or double-click)'
+  ),
+  slantBtnTitle: pickComicBi(
+    '开启四角斜切控制点（制作刀口斜分镜）', // cjk-ok
+    'Toggle 4-corner diagonal slant handles'
+  ),
+  cornerSlantTitle: pickComicBi(
+    '拖动顶点制作斜切分镜线 (双击复位该角)', // cjk-ok
+    'Drag corner to slant panel (double-click to reset)'
+  ),
+  bubbleTailTitle: pickComicBi(
+    '拖动尾巴尖端指向说话角色嘴部 (双击恢复默认)', // cjk-ok
+    'Drag tail tip toward speaker (double-click to reset)'
+  )
+}))
 
 const viewportEl = ref<HTMLElement | null>(null)
 const pageEl = ref<HTMLElement | null>(null)

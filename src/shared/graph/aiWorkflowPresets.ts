@@ -1464,7 +1464,7 @@ const PRESET_PLANS: Record<Exclude<AiWorkflowPresetId, 'custom'>, GraphPlan> = {
         title: '动作序列图',
         params: {
           generateInstruction:
-            '为同一角色生成「行走」动作的序列图（sprite sheet）：一张图内按 1 行 4 列分格，帧序从左到右，格子无缝拼接、无边框与分隔线，各格角色的外观、体型、配色与画风完全一致，仅姿态不同'
+            '为同一角色生成「行走」动作的序列图（sprite sheet）：一张图内按 1 行 4 列分格，帧序从左到右，格子无缝拼接、无边框与分隔线，纯色干净背景，各格角色的外观、体型、配色与画风完全一致，仅姿态不同' // cjk-ok
         }
       },
       {
@@ -1476,6 +1476,8 @@ const PRESET_PLANS: Record<Exclude<AiWorkflowPresetId, 'custom'>, GraphPlan> = {
           animCols: 4,
           animPresetId: 'walk',
           animInstruction: '角色侧面行走循环：完整步态周期，四肢摆动自然，各帧外形一致',
+          animKeyColor: 'auto',
+          animStabilize: 'ground',
           animGifFps: 12
         }
       },
@@ -1484,7 +1486,7 @@ const PRESET_PLANS: Record<Exclude<AiWorkflowPresetId, 'custom'>, GraphPlan> = {
         typeId: 'note.text',
         title: '出图说明',
         params: {
-          text: '运行后「2D帧动画」节点逐格切出帧 PNG，并经 out-gif 端口产出 GIF 动图（animGifFps=12）；改 animPresetId / animRows / animCols 可换动作与帧数。'
+          text: '运行后「2D帧动画」节点按行列切出逐帧 PNG（out 帧 / out-all 全部帧），自动抠底并按脚底原地稳像（animKeyColor=auto, animStabilize=ground），再经 out-gif 端口产出 GIF 动图（animGifFps=12）；也可直接把动作视频连到 in-video 端口抽帧转序列图，或双击节点进入全屏帧动画工作台。' // cjk-ok
         }
       }
     ],

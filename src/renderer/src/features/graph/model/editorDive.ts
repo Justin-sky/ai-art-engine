@@ -42,6 +42,7 @@ export type EditorDiveViewId =
   | 'node.align'
   | 'node.stage2d'
   | 'node.instruction'
+  | 'anim.2d'
   | 'comic.page'
   | 'gamePlay.sandbox'
   | 'media.preview'
@@ -108,6 +109,7 @@ export type EditorDiveViewMeta =
       processingNodeId?: string
     }
   | { viewId: 'ui.split'; hostId: string; nodeId: string }
+  | { viewId: 'anim.2d'; hostId: string; nodeId: string }
   | { viewId: 'comic.page'; hostId: string; nodeId: string }
   | { viewId: 'gamePlay.sandbox'; hostId?: string; nodeId?: string; gamePlayAssetId?: string }
   | {
@@ -193,6 +195,8 @@ export function editorDiveViewFrameKey(rootKey: string, meta: EditorDiveViewMeta
       return `${root}/view:director.stage:${meta.directorAssetId}:${meta.processingNodeId ?? '_default'}`
     case 'ui.split':
       return `${root}/view:ui.split:${meta.hostId}:${meta.nodeId}`
+    case 'anim.2d':
+      return `${root}/view:anim.2d:${meta.hostId}:${meta.nodeId}`
     case 'comic.page':
       return `${root}/view:comic.page:${meta.hostId}:${meta.nodeId}`
     case 'gamePlay.sandbox':

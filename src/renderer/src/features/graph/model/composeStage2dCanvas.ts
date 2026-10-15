@@ -89,19 +89,40 @@ export async function composeStage2dCanvas(input: {
     // 隐藏层不绘出（整图层拆件后隐藏，仅保留其几何给部件层继承）
     if (!probe || !plan || !placement.layer.visible) return
     const rigged = rigByLayer.get(placement.layer.id)
+    const opacity = placement.layer.opacity ?? 1
+    const flipX = placement.layer.flipX === true
     if (!rigged) {
-      // 只搬主体框内容（自动丢弃半透明孤立点 / 残留边）
-      ctx.drawImage(
-        probe.image,
-        plan.bounds.x,
-        plan.bounds.y,
-        plan.bounds.width,
-        plan.bounds.height,
-        plan.dstX,
-        plan.dstY,
-        plan.dstW,
-        plan.dstH
-      )
+      ctx.save()
+      ctx.globalAlpha = opacity
+      if (flipX) {
+        ctx.translate(plan.dstX + plan.dstW / 2, plan.dstY + plan.dstH / 2)
+        ctx.scale(-1, 1)
+        ctx.drawImage(
+          probe.image,
+          plan.bounds.x,
+          plan.bounds.y,
+          plan.bounds.width,
+          plan.bounds.height,
+          -plan.dstW / 2,
+          -plan.dstH / 2,
+          plan.dstW,
+          plan.dstH
+        )
+      } else {
+        // 只搬主体框内容（自动丢弃半透明孤立点 / 残留边）
+        ctx.drawImage(
+          probe.image,
+          plan.bounds.x,
+          plan.bounds.y,
+          plan.bounds.width,
+          plan.bounds.height,
+          plan.dstX,
+          plan.dstY,
+          plan.dstW,
+          plan.dstH
+        )
+      }
+      ctx.restore()
       return
     }
     // 挂到骨骼的层：以自身枢轴（缺省 ground=底边中点 / center=中心）对准挂点，再随关节旋转
@@ -115,8 +136,10 @@ export async function composeStage2dCanvas(input: {
         ? plan.dstH / 2
         : plan.dstH
     ctx.save()
+    ctx.globalAlpha = opacity
     ctx.translate(rigged.x, rigged.y)
     ctx.rotate((rigged.rotation * Math.PI) / 180)
+    if (flipX) ctx.scale(-1, 1)
     ctx.drawImage(
       probe.image,
       plan.bounds.x,

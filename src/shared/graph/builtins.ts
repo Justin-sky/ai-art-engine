@@ -1849,11 +1849,20 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     label: 'Sprite align',
     icon: '⊟',
     defaultTitle: 'Sprite align',
+    description:
+      '精灵对齐与 2D 资产规范化（纯本地像素几何与通道处理，不调模型）：按统一画布（canvasWidth × canvasHeight）与锚点（anchor: ground 脚底压基线 / center 居中）缩放摆放主体，输出引擎就绪的透明 PNG（out 对齐图）。支持非透明底一键抠除（bgKey: auto 四角采样 / black 黑底 / white 白底，配合 bgThreshold 容差与 defringe 边缘去白边/去暗边）、像素微调（offsetX / offsetY）、左右朝向镜像（flipX）、2D 瓦片四边无缝平铺融合（tileSeamless + tileBlendRatio）及九宫格 UI 拉伸参考线（nineSlice）。', // cjk-ok（MCP / Agent 集成文本：随 graph_node_types 返回给外部 Agent，非 UI 文案）
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
       { id: 'in', direction: 'in', dataType: GraphPortType.image, multiple: false, label: 'In' },
-      ...galleryOutPorts(GraphPortType.image)
+      {
+        id: 'out',
+        direction: 'out',
+        dataType: GraphPortType.image,
+        multiple: false,
+        label: 'Selected',
+        labelKey: 'graph.port.alignedSprite'
+      }
     ],
     defaultParams: () => ({
       imageAlign: {
@@ -1881,12 +1890,19 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     icon: '▦',
     defaultTitle: '2D stage',
     description:
-      '2D 舞台叠绘：上游精灵自动成层，按 z 序合成一帧 PNG（out 当前帧 / out-all 历史帧）。节点带自定义动作（stage2dAction）时，把 stage2dAnimFps 设为 6~24（0 = 关闭），运行后按该帧率逐帧采样动作，额外产出「动作帧序列」（out-frames：逐帧透明 PNG 图库）与「帧序列 sheet」（out-sheet：一张拼版 PNG，含 rows / columns 记录）；帧与 sheet 全部落盘为工程图片资产，可直接交给引擎播放。未设动作或帧率为 0 时只出单帧。', // cjk-ok（MCP / Agent 集成文本：随 graph_node_types 返回给外部 Agent，非 UI 文案）
+      '2D 舞台叠绘与骨骼/视差动画：上游精灵自动成层，支持混合模式、色调/不透明度、视差深度（parallaxX/Y）、父子骨骼层级与 Pivot 锚点，按 z 序合成单帧舞台图（out 舞台图）。节点带自定义动作（stage2dAction，支持呼吸待机、行走步态、跳跃挤压、攻击前冲、受击抖动、悬浮摇摆、视差横移等程序化预设与关键帧动画）时，把 stage2dAnimFps 设为 6~24（0 = 关闭），运行后按该帧率逐帧采样动作，额外产出「动作帧序列」（out-frames：逐帧透明 PNG 图库）与「帧序列 sheet」（out-sheet：一张拼版 PNG，含 rows / columns 记录）；帧与 sheet 全部落盘为工程图片资产，也可通过 stage2d_spine_export 导出 Spine 骨架包。未设动作或帧率为 0 时只出单帧。', // cjk-ok（MCP / Agent 集成文本：随 graph_node_types 返回给外部 Agent，非 UI 文案）
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
       { id: 'in', direction: 'in', dataType: GraphPortType.image, multiple: true, label: 'In' },
-      ...galleryOutPorts(GraphPortType.image),
+      {
+        id: 'out',
+        direction: 'out',
+        dataType: GraphPortType.image,
+        multiple: false,
+        label: 'Selected',
+        labelKey: 'graph.port.stageImage'
+      },
       // 运行产出（帧率 > 0 且有自定义动作时）：与单帧舞台图分开走独立端口，
       // 避免下游「收集上游图片」把一整套动作帧当成素材序列吃进去
       {
@@ -1894,14 +1910,16 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
         direction: 'out',
         dataType: GraphPortType.images,
         multiple: true,
-        label: 'Frames'
+        label: 'Frames',
+        labelKey: 'graph.port.actionFrames'
       },
       {
         id: STAGE2D_SHEET_OUT_PORT_ID,
         direction: 'out',
         dataType: GraphPortType.image,
         multiple: false,
-        label: 'Sheet'
+        label: 'Sheet',
+        labelKey: 'graph.port.spriteSheet'
       }
     ],
     defaultParams: () => ({
@@ -1912,6 +1930,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     addable: true,
     deletable: true,
     inspector: 'none',
+    inspectorId: 'studio.graph.stage2d',
     card: 'media',
     assetType: 'image',
     contributeToGeneration: false
@@ -2330,19 +2349,30 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     icon: ANIM2D_ASSET_ICON,
     defaultTitle: '2D帧动画',
     description:
-      '按行列切分序列图得到逐帧 PNG（out / out-all）；animGifFps > 0 时运行后额外把帧合成 GIF 动图（out-gif 端口）并落盘为工程资产；animKeyColor 可把纯色背景键控为透明。', // cjk-ok（MCP / Agent 集成文本：随 graph_node_types 返回给外部 Agent，非 UI 文案）
+      '按行列切分序列图（in）或直接从动作视频抽帧（in-video）得到逐帧 PNG（out 帧 / out-all 全部帧），双击节点可进入全屏帧动画工作台；animGifFps > 0 时运行后额外把帧合成 GIF 动图（out-gif 端口，animPlayMode 支持 loop 正向 / pingpong 往返循环）并落盘为工程资产；支持背景键控透明（animKeyColor: auto 四角采样 / black 黑底 / white 白底 + animKeyThreshold 容差）、帧间原地稳像防漂移（animStabilize: ground 脚底对齐 / center 质心居中）、切格边缘内缩（animEdgeInset）与坏帧跳过（animDisabledCells）。', // cjk-ok（MCP / Agent 集成文本：随 graph_node_types 返回给外部 Agent，非 UI 文案）
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
       { id: 'in', direction: 'in', dataType: GraphPortType.image, multiple: false, label: 'In' },
-      ...galleryOutPorts(GraphPortType.image),
+      {
+        id: 'in-video',
+        direction: 'in',
+        dataType: GraphPortType.video,
+        multiple: false,
+        label: 'Video'
+      },
+      ...galleryOutPorts(GraphPortType.image, {
+        out: 'graph.port.frame',
+        outAll: 'graph.port.frames'
+      }),
       /** 运行后按帧率合成的 GIF 动图（animGifFps > 0 时产出） */
       {
         id: ANIM2D_GIF_OUT_PORT_ID,
         direction: 'out',
         dataType: GraphPortType.image,
         multiple: false,
-        label: 'GIF'
+        label: 'GIF',
+        labelKey: 'graph.port.gif'
       }
     ],
     defaultParams: () => ({
@@ -2353,6 +2383,14 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
       animAssetId: '',
       animGraphVersion: ANIM2D_INNER_GRAPH_VERSION,
       animKeyColor: '',
+      animKeyThreshold: undefined,
+      animEdgeInset: undefined,
+      animStabilize: undefined,
+      animPlayMode: undefined,
+      animDisabledCells: undefined,
+      animGenMode: undefined,
+      animVideoStartRatio: undefined,
+      animVideoEndRatio: undefined,
       animGifFps: ANIM2D_GIF_FPS_DEFAULT,
       text: ''
     }),
@@ -2471,16 +2509,35 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     label: '生成帧动画序列图',
     icon: FRAME_ANIM_GEN_ASSET_ICON,
     defaultTitle: '生成帧动画序列图',
+    description:
+      '生成 2D 帧动画序列图（sprite sheet，out 序列图 / out-all 全部序列图）：支持 4 种可控模式（animGenMode）——① video-sheet：从 in-video 视频在 [animVideoStartRatio, animVideoEndRatio] 区间均匀抽帧、抠底去白边并按 animStabilize（ground 脚底 / center 质心）原地稳像后零 AI 拼合序列图；② video-restyle：视频抽帧拼成姿态参考网格 + in 角色图交由 AI 严格按姿态重绘；③ frames-sheet：将 in 多张散帧（如逐帧拉片输出）对齐拼合为标准序列图；④ ai-sheet：单张角色参考图 + 动作预设（animPresetId）/ 视角锁定（animViewAngle）/ 画风锁定（animStyleLock）生成序列图。', // cjk-ok（MCP / Agent 集成文本：随 graph_node_types 返回给外部 Agent，非 UI 文案）
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
       { id: 'in', direction: 'in', dataType: GraphPortType.image, multiple: true, label: 'In' },
-      ...galleryOutPorts(GraphPortType.image)
+      {
+        id: 'in-video',
+        direction: 'in',
+        dataType: GraphPortType.video,
+        multiple: false,
+        label: 'Video'
+      },
+      ...galleryOutPorts(GraphPortType.image, {
+        out: 'graph.port.spriteSheet',
+        outAll: 'graph.port.spriteSheetAll'
+      })
     ],
     defaultParams: () => ({
       animRows: DEFAULT_ANIM2D_STATE.rows,
       animCols: DEFAULT_ANIM2D_STATE.cols,
       animPresetId: 'walk',
+      animKeyColor: '',
+      animViewAngle: '',
+      animStyleLock: '',
+      animGenMode: 'auto',
+      animVideoStartRatio: 0,
+      animVideoEndRatio: 1,
+      animStabilize: 'ground',
       generateInstruction: '',
       generateSystemPrompt: '',
       generateModel: '',

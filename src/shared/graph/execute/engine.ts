@@ -553,6 +553,7 @@ async function executeOneNode(
     composeStage2dCanvas: options.composeStage2dCanvas,
     composeStage2dFrameSheet: options.composeStage2dFrameSheet,
     composeImageGridCell: options.composeImageGridCell,
+    composeVideoFrameSheet: options.composeVideoFrameSheet,
     composeGifFrames: options.composeGifFrames,
     renderSvgFrames: options.renderSvgFrames,
     composeImageIconPackSheet: options.composeImageIconPackSheet,

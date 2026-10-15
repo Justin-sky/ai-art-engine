@@ -931,9 +931,35 @@ export interface NodeExecuteContext {
     cellKey: string
     /** 向内收缩像素；`'auto'` 按格子尺寸估算，用于去掉序列图格线/黑边 */
     edgeInset?: number | 'auto'
-    /** 色度键：把接近纯黑/纯白的像素转透明（2D 特效黑底/白底 → 透明 PNG） */
-    chromaKey?: { color: 'black' | 'white'; threshold?: number; feather?: number }
+    /** 色度键：把接近纯黑/纯白或四角采样背景色的像素转透明 */
+    chromaKey?: { color: 'black' | 'white' | 'auto'; threshold?: number; feather?: number }
+    /** 帧间防抖稳像：ground=脚底基线对齐 / center=主体质心居中 */
+    stabilize?: 'off' | 'ground' | 'center'
   }) => Promise<{ dataUrl: string; width: number; height: number; cellKey: string }>
+  /**
+   * 视频抽帧或多张关键帧散图 → 标准 rows×cols 序列图（Sprite Sheet）：
+   * 支持时间区间截取、逐帧背景键控透明 + 去白边、逐帧原地脚底/中心稳像。
+   */
+  composeVideoFrameSheet?: (input: {
+    videoUrl?: string
+    videoRelativePath?: string
+    frameDataUrls?: string[]
+    rows: number
+    cols: number
+    startRatio?: number
+    endRatio?: number
+    keyColor?: '' | 'black' | 'white' | 'auto'
+    keyThreshold?: number
+    stabilize?: 'off' | 'ground' | 'center'
+    drawFrameNumbers?: boolean
+  }) => Promise<{
+    dataUrl: string
+    width: number
+    height: number
+    cellWidth: number
+    cellHeight: number
+    frameCount: number
+  }>
   /**
    * 2D 帧动画 → GIF：把逐帧图片合成为动图 dataUrl（渲染层 canvas 编码）。
    * 未注入或返回 null 时不产出 GIF，节点保持纯切帧行为。
@@ -1362,6 +1388,7 @@ export interface GraphRunOptions {
   composeStage2dCanvas?: NodeExecuteContext['composeStage2dCanvas']
   composeStage2dFrameSheet?: NodeExecuteContext['composeStage2dFrameSheet']
   composeImageGridCell?: NodeExecuteContext['composeImageGridCell']
+  composeVideoFrameSheet?: NodeExecuteContext['composeVideoFrameSheet']
   composeGifFrames?: NodeExecuteContext['composeGifFrames']
   renderSvgFrames?: NodeExecuteContext['renderSvgFrames']
   composeImageIconPackSheet?: NodeExecuteContext['composeImageIconPackSheet']

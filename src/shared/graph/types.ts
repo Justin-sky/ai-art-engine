@@ -664,6 +664,10 @@ export interface GraphNodeParams {
   animCols?: number
   /** 2D帧动画：动画动作预设 id（见 ANIM2D_PRESETS） */
   animPresetId?: string
+  /** 2D帧动画：视角锁定（''|side|iso|front|top） */
+  animViewAngle?: '' | 'side' | 'iso' | 'front' | 'top'
+  /** 2D帧动画：画风锁定（''|cel|pixel|hd2d|vfx） */
+  animStyleLock?: '' | 'cel' | 'pixel' | 'hd2d' | 'vfx'
   /** 2D帧动画：自定义动作描述（留空用预设） */
   animInstruction?: string
   /** 2D帧动画：dive 子图资产 id */
@@ -672,8 +676,31 @@ export interface GraphNodeParams {
   animGraphVersion?: number
   /** 2D帧动画：序列图预览（dataUrl 或 relativePath） */
   animGridImage?: { dataUrl?: string; relativePath?: string }
-  /** 2D帧动画：特效透明化背景模式（''|black|white），生成/切帧按纯色背景键控透明 */
-  animKeyColor?: '' | 'black' | 'white'
+  /** 2D帧动画：特效/角色透明化背景模式（''|black|white|auto） */
+  animKeyColor?: '' | 'black' | 'white' | 'auto'
+  /** 2D帧动画：背景键控容差阈值（5~180，默认 60） */
+  animKeyThreshold?: number
+  /** 2D帧动画：切格边缘内缩（'auto' 或 0~24 px） */
+  animEdgeInset?: 'auto' | number
+  /** 2D帧动画：帧间防抖稳像模式（off|ground|center） */
+  animStabilize?: 'off' | 'ground' | 'center'
+  /** 2D帧动画：播放/合成模式（loop=正向循环 / pingpong=往返循环） */
+  animPlayMode?: 'loop' | 'pingpong'
+  /** 2D帧动画：禁用/跳过的坏帧格子键列表（如 ['1-3']） */
+  animDisabledCells?: string[]
+  /**
+   * 生成帧动画序列图模式：
+   * - 'auto'：智能判别（仅接视频→视频直抽拼表；视频+角色图→视频姿态引导重绘；多张散图→散帧拼表；单张角色图→AI生图）
+   * - 'video-sheet'：视频直接抽帧拼合序列图（零API成本、100%动作连续、支持抠底与原地稳像）
+   * - 'video-restyle'：视频抽帧作为姿态参考网格 + 角色参考图交给生图模型重绘
+   * - 'frames-sheet'：多张关键帧散图（如逐帧拉片/2D舞台输出）直接对齐拼合为序列图
+   * - 'ai-sheet'：纯角色参考图 + 动作预设提示词 AI 生图
+   */
+  animGenMode?: 'auto' | 'video-sheet' | 'video-restyle' | 'frames-sheet' | 'ai-sheet'
+  /** 视频抽帧起始时间占比（0~0.95，默认 0） */
+  animVideoStartRatio?: number
+  /** 视频抽帧结束时间占比（0.05~1，默认 1） */
+  animVideoEndRatio?: number
   /**
    * 2D帧动画：运行后输出 GIF 的帧率（0 = 关闭，只切帧）。
    * 合成发生在渲染层（浏览器 canvas），由 `ctx.composeGifFrames` 注入。

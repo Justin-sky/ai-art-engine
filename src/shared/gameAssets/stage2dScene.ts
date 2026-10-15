@@ -72,6 +72,10 @@ export interface Stage2dLayer {
    * ground（图底边中点）只是 pivot 的两个特例；带枢轴时优先于 align.anchor。
    */
   pivot?: Stage2dLayerPivot | null
+  /** 水平镜像翻转（可选，缺省 false） */
+  flipX?: boolean
+  /** 图层不透明度（0.05~1，缺省 1） */
+  opacity?: number
   /** 是否可见 */
   visible: boolean
 }
@@ -114,6 +118,20 @@ export const DEFAULT_STAGE2D_SCENE: Stage2dSceneState = {
   groundRatio: 0.06,
   layers: []
 }
+
+export interface Stage2dCanvasPreset {
+  id: '512x512' | '1024x1024' | '1920x1080' | '1080x1920'
+  label: string
+  width: number
+  height: number
+}
+
+export const STAGE2D_CANVAS_PRESETS: readonly Stage2dCanvasPreset[] = [
+  { id: '512x512', label: '512×512', width: 512, height: 512 },
+  { id: '1024x1024', label: '1024×1024', width: 1024, height: 1024 },
+  { id: '1920x1080', label: '1920×1080', width: 1920, height: 1080 },
+  { id: '1080x1920', label: '1080×1920', width: 1080, height: 1920 }
+] as const
 
 const MIN_CANVAS = 16
 const MAX_CANVAS = 8192
@@ -194,16 +212,24 @@ export function normalizeStage2dScene(raw?: Stage2dSceneInput | null): Stage2dSc
   const sourceLayers: Stage2dLayer[] = Array.isArray(base.layers)
     ? base.layers
         .filter((l): l is Stage2dLayer => !!l && typeof l === 'object')
-        .map((l, index) => ({
-          id: l.id?.trim() || `layer-${index}`,
-          name: String(l.name ?? l.id?.trim() ?? `Layer ${index + 1}`),
-          sourceUrl: String(l.sourceUrl ?? ''),
-          align: normalizeLayerAlign(l.align),
-          offset: normalizeLayerOffset(l.offset),
-          frame: normalizeFrameSpec(l.frame),
-          pivot: normalizePivot(l.pivot),
-          visible: l.visible !== false
-        }))
+        .map((l, index) => {
+          const opacityNum = Number(l.opacity)
+          const opacity = Number.isFinite(opacityNum)
+            ? Math.round(clamp(opacityNum, 0.05, 1) * 100) / 100
+            : 1
+          return {
+            id: l.id?.trim() || `layer-${index}`,
+            name: String(l.name ?? l.id?.trim() ?? `Layer ${index + 1}`),
+            sourceUrl: String(l.sourceUrl ?? ''),
+            align: normalizeLayerAlign(l.align),
+            offset: normalizeLayerOffset(l.offset),
+            frame: normalizeFrameSpec(l.frame),
+            pivot: normalizePivot(l.pivot),
+            ...(l.flipX === true ? { flipX: true } : {}),
+            ...(opacity < 1 ? { opacity } : {}),
+            visible: l.visible !== false
+          }
+        })
         .filter((l) => !!l.sourceUrl)
     : []
   const layerIds = new Set(sourceLayers.map((layer) => layer.id))

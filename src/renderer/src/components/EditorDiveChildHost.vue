@@ -127,6 +127,7 @@ const viewRegistry: Record<string, Component> = {
   'node.compose': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
   'node.align': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
   'node.stage2d': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
+  'anim.2d': defineAsyncComponent(() => import('./dive/EditorDiveAnim2dView.vue')),
   'comic.page': defineAsyncComponent(() => import('./dive/EditorDiveComicPageView.vue')),
   'gamePlay.sandbox': defineAsyncComponent(() => import('./dive/EditorDiveGamePlayView.vue'))
 }
@@ -215,6 +216,8 @@ const viewBindings = computed(() => {
     case 'node.instruction':
       return { ...base, hostId: meta.hostId, nodeId: meta.nodeId }
     case 'ui.split':
+      return { ...base, hostId: meta.hostId, nodeId: meta.nodeId }
+    case 'anim.2d':
       return { ...base, hostId: meta.hostId, nodeId: meta.nodeId }
     case 'comic.page':
       return { ...base, hostId: meta.hostId, nodeId: meta.nodeId }

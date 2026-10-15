@@ -15,12 +15,24 @@ import {
   ANIM2D_GIF_OUT_PORT_ID,
   buildAnim2dGridInstruction,
   buildAnimKeyColorPrompt,
+  buildAnimVideoRestyleInstruction,
+  buildAnimViewStylePrompt,
   readAnim2dFromNode,
+  readAnimDisabledCellsFromNode,
+  readAnimEdgeInsetFromNode,
+  readAnimGenModeFromNode,
   readAnimGifFpsFromNode,
   readAnimKeyColorFromNode,
+  readAnimKeyThresholdFromNode,
+  readAnimPlayModeFromNode,
+  readAnimStabilizeFromNode,
+  readAnimStyleLockFromNode,
+  readAnimVideoRangeFromNode,
+  readAnimViewAngleFromNode,
   resolveAnim2dPreset,
   resolveFrameAnimGenSystemPrompt,
-  type Anim2dState
+  type Anim2dState,
+  type AnimGenMode
 } from '../anim2d'
 import type { GraphImageItem, GraphImageValue, GraphValue, NodeExecuteContext } from './types'
 import { buildGeneratedMediaFileKey } from '../../domain'
@@ -30,35 +42,32 @@ import {
   materializeGeneratedBatch,
   mergeGeneratedImages
 } from './materialize'
-import { collectIncomingImageItems } from './mediaInputs'
+import { collectIncomingImageItems, collectIncomingVideoItems } from './mediaInputs'
 import { fail } from '@shared/errors/appError'
 import { SHARED_ERRORS } from '../../errors/catalog'
 
 /**
- * 生成帧动画序列图：参考图 + 动作描述 → 生图 API 生成 rows×cols 分格序列图。
- * 序列图排版指令按当前行列数动态拼入提示词。
+ * 生成帧动画序列图：
+ * 支持 4 种高可控度通道（可通过 animGenMode 显式指定或 auto 自动判别）：
+ * 1. video-sheet（视频直抽拼表）：从上游视频均匀抽帧 + 背景抠除 + 原地脚底稳像 → 拼合序列图（零 API 成本）
+ * 2. video-restyle（视频姿态引导重绘）：视频抽帧拼成动作网格表 + 角色参考图 → 生图 API 严格按姿态重绘
+ * 3. frames-sheet（多图散帧拼表）：将逐帧拉片/舞台输出的 N 张关键帧统一稳像拼合为序列图
+ * 4. ai-sheet（AI 提示词生图）：角色参考图 + 动作预设提示词 → 生图 API 生成序列图
  */
 export async function executeFrameAnimGenNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
   const { node } = ctx
   const state = readAnim2dFromNode(node.params)
+  const rawMode = readAnimGenModeFromNode(node.params)
+  const videoRange = readAnimVideoRangeFromNode(node.params)
   const preset = resolveAnim2dPreset(node.params.animPresetId)
   const keyColor = readAnimKeyColorFromNode(node.params)
-  const instructionRaw = node.params.generateInstruction?.trim() || preset?.prompt || ''
-  const system = resolveFrameAnimGenSystemPrompt(node.params.generateSystemPrompt, ctx.locale)
-  const userPrompt = [
-    instructionRaw,
-    buildAnim2dGridInstruction(state.rows, state.cols, ctx.locale),
-    buildAnimKeyColorPrompt(keyColor, ctx.locale)
-  ]
-    .filter(Boolean)
-    .join('\n\n')
-  const prompt = system.trim() ? `${system.trim()}\n\n${userPrompt}` : userPrompt
+  const keyThreshold = readAnimKeyThresholdFromNode(node.params)
+  const stabilize = readAnimStabilizeFromNode(node.params)
+  const viewAngle = readAnimViewAngleFromNode(node.params)
+  const styleLock = readAnimStyleLockFromNode(node.params)
 
-  if (!ctx.generateImage) {
-    throw new Error('GRAPH_PROCESS_NO_INPUT')
-  }
   if (ctx.signal?.aborted) {
     throw new DOMException('Aborted', 'AbortError')
   }
@@ -74,9 +83,121 @@ export async function executeFrameAnimGenNode(
         .filter((url): url is string => Boolean(url))
     }
   }
-  if (!portUrls.length) {
+
+  const sourceVideos = await collectIncomingVideoItems(ctx)
+  const hasVideo = sourceVideos.length > 0
+  const hasImage = portUrls.length > 0
+
+  let effectiveMode: Exclude<AnimGenMode, 'auto'> = 'ai-sheet'
+  if (rawMode !== 'auto') {
+    effectiveMode = rawMode
+  } else if (hasVideo && hasImage) {
+    effectiveMode = 'video-restyle'
+  } else if (hasVideo) {
+    effectiveMode = 'video-sheet'
+  } else if (portUrls.length >= 2 && !ctx.generateImage) {
+    effectiveMode = 'frames-sheet'
+  } else {
+    effectiveMode = 'ai-sheet'
+  }
+
+  // 通道 1 & 3：视频直接抽帧拼合序列图 / 多张散帧直接拼合序列图（零 API 成本，100% 确定性）
+  if (
+    (effectiveMode === 'video-sheet' || effectiveMode === 'frames-sheet') &&
+    ctx.composeVideoFrameSheet
+  ) {
+    if (effectiveMode === 'video-sheet' && !hasVideo) {
+      throw new Error('GRAPH_PROCESS_NO_INPUT')
+    }
+    if (effectiveMode === 'frames-sheet' && !hasImage) {
+      throw new Error('GRAPH_PROCESS_NO_INPUT')
+    }
+    const videoItem = sourceVideos[0]
+    const sheet = await ctx.composeVideoFrameSheet({
+      ...(effectiveMode === 'video-sheet' && videoItem
+        ? {
+            videoUrl: videoItem.dataUrl?.trim(),
+            videoRelativePath: videoItem.relativePath?.trim()
+          }
+        : {
+            frameDataUrls: portUrls
+          }),
+      rows: state.rows,
+      cols: state.cols,
+      startRatio: videoRange.startRatio,
+      endRatio: videoRange.endRatio,
+      keyColor,
+      keyThreshold,
+      stabilize
+    })
+    if (ctx.signal?.aborted) {
+      throw new DOMException('Aborted', 'AbortError')
+    }
+    const createdAt = new Date().toISOString()
+    const stamp = Date.now()
+    const stampKey = `animGen:${node.id}:${stamp}`
+    const batch: GraphImageItem[] = [{ id: `${stampKey}:0`, dataUrl: sheet.dataUrl, createdAt }]
+    const materializedBatch = await materializeGeneratedBatch(ctx, batch, stampKey)
+    if (!materializedBatch.length) {
+      throw fail(SHARED_ERRORS.persistImageFailed, { detail: '' })
+    }
+    const generatedImages = mergeGeneratedImages(ctx, materializedBatch, `${stampKey}:keep`)
+    return commitGeneratedImages(ctx, generatedImages, materializedBatch[0]?.relativePath?.trim(), {
+      animRows: state.rows,
+      animCols: state.cols,
+      animPresetId: node.params.animPresetId || '',
+      animKeyColor: keyColor,
+      ...(viewAngle ? { animViewAngle: viewAngle } : {}),
+      ...(styleLock ? { animStyleLock: styleLock } : {})
+    })
+  }
+
+  // 通道 2 & 4：AI 生图（含视频姿态参考表引导重绘 video-restyle 与纯提示词 ai-sheet）
+  if (!ctx.generateImage) {
     throw new Error('GRAPH_PROCESS_NO_INPUT')
   }
+
+  let restyleSheetUrl = ''
+  if (effectiveMode === 'video-restyle' && hasVideo) {
+    const videoItem = sourceVideos[0]!
+    if (ctx.composeVideoFrameSheet) {
+      try {
+        const contactSheet = await ctx.composeVideoFrameSheet({
+          videoUrl: videoItem.dataUrl?.trim(),
+          videoRelativePath: videoItem.relativePath?.trim(),
+          rows: state.rows,
+          cols: state.cols,
+          startRatio: videoRange.startRatio,
+          endRatio: videoRange.endRatio,
+          stabilize: stabilize !== 'off' ? stabilize : 'ground',
+          drawFrameNumbers: true
+        })
+        restyleSheetUrl = contactSheet.dataUrl
+      } catch {
+        restyleSheetUrl = ''
+      }
+    }
+  }
+
+  const finalInputUrls = restyleSheetUrl ? [...portUrls, restyleSheetUrl] : portUrls
+  if (!finalInputUrls.length) {
+    throw new Error('GRAPH_PROCESS_NO_INPUT')
+  }
+
+  const isEn = Boolean(ctx.locale?.startsWith('en'))
+  const presetPrompt = preset ? (isEn ? preset.promptEn || preset.prompt : preset.prompt) : ''
+  const instructionRaw = node.params.generateInstruction?.trim() || presetPrompt || ''
+  const system = resolveFrameAnimGenSystemPrompt(node.params.generateSystemPrompt, ctx.locale)
+  const userPrompt = [
+    instructionRaw,
+    restyleSheetUrl ? buildAnimVideoRestyleInstruction(state.rows, state.cols, ctx.locale) : '',
+    buildAnimViewStylePrompt(viewAngle, styleLock, ctx.locale),
+    buildAnim2dGridInstruction(state.rows, state.cols, ctx.locale),
+    buildAnimKeyColorPrompt(keyColor, ctx.locale)
+  ]
+    .filter(Boolean)
+    .join('\n\n')
+  const prompt = system.trim() ? `${system.trim()}\n\n${userPrompt}` : userPrompt
 
   const genParams = resolveImageGenerateParamsForApi(node.params)
   const paramsPatch = imageGenerateParamsToNodePatch(genParams)
@@ -92,11 +213,14 @@ export async function executeFrameAnimGenNode(
     quality: genParams.quality,
     n: genParams.count,
     seed: resolveGenerateSeed(node.params, ctx.resolveProjectGenerateSeed?.()),
-    inputReferences: portUrls,
-    inputReferenceMeta: sourceItems.slice(0, portUrls.length).map((item) => ({
-      source: 'port',
-      ...(item.relativePath?.trim() ? { relativePath: item.relativePath.trim() } : {})
-    }))
+    inputReferences: finalInputUrls,
+    inputReferenceMeta: finalInputUrls.map((_, idx) => {
+      const item = sourceItems[idx]
+      return {
+        source: 'port' as const,
+        ...(item?.relativePath?.trim() ? { relativePath: item.relativePath.trim() } : {})
+      }
+    })
   })
 
   if (ctx.signal?.aborted) {
@@ -125,13 +249,15 @@ export async function executeFrameAnimGenNode(
     animRows: state.rows,
     animCols: state.cols,
     animPresetId: node.params.animPresetId || '',
-    animKeyColor: keyColor
+    animKeyColor: keyColor,
+    ...(viewAngle ? { animViewAngle: viewAngle } : {}),
+    ...(styleLock ? { animStyleLock: styleLock } : {})
   })
 }
 
 /**
- * 2D帧动画：收集 dive 子图输出边界（序列图），按 rows×cols 切分为单帧输出，
- * 并把序列图信息写回节点参数供 inspector 播放预览。
+ * 2D帧动画：收集上游序列图（或直接从 in-video 视频实时抽帧合成序列图），
+ * 按 rows×cols 切分为单帧输出，并把序列图信息写回节点参数供 inspector 播放预览。
  */
 export async function executeAnim2dNode(
   ctx: NodeExecuteContext
@@ -140,16 +266,53 @@ export async function executeAnim2dNode(
   const assetId = node.params.animAssetId?.trim()
   // 特效透明化：外层可显式设键控背景；未设时回退内层 frame.animGen 的键控设定
   const ownKeyColor = readAnimKeyColorFromNode(node.params)
-  // 普通播放节点：优先取 in 端口序列图；旧数据无输入时回退内图产物
+  // 普通播放节点：优先取 in 端口序列图；无图片时检查 in-video 视频直抽；最后回退内图产物
   const incoming = await collectIncomingImageItems(ctx)
   let gridItem: (GraphImageItem & { assetId?: string }) | undefined = incoming[0]
-  if (!gridItem && assetId) {
-    gridItem = await softResolveAnim2dGridImage(ctx, assetId)
-  }
   // 行列：有内图时沿用内图层帧生成行列，否则用本节点 Inspector 行列
   const innerState = assetId ? softResolveAnim2dInnerState(ctx, assetId) : undefined
   const state = innerState ?? readAnim2dFromNode(node.params)
   const keyColor = ownKeyColor || innerState?.keyColor || ''
+  const keyThreshold = readAnimKeyThresholdFromNode(node.params)
+  const edgeInset = readAnimEdgeInsetFromNode(node.params)
+  const stabilize = readAnimStabilizeFromNode(node.params)
+  const playMode = readAnimPlayModeFromNode(node.params)
+  const videoRange = readAnimVideoRangeFromNode(node.params)
+
+  let preProcessedFromVideo = false
+  if (!gridItem) {
+    const incomingVideos = await collectIncomingVideoItems(ctx)
+    if (incomingVideos.length > 0 && ctx.composeVideoFrameSheet) {
+      const videoItem = incomingVideos[0]!
+      const videoSheet = await ctx.composeVideoFrameSheet({
+        videoUrl: videoItem.dataUrl?.trim(),
+        videoRelativePath: videoItem.relativePath?.trim(),
+        rows: state.rows,
+        cols: state.cols,
+        startRatio: videoRange.startRatio,
+        endRatio: videoRange.endRatio,
+        keyColor,
+        keyThreshold,
+        stabilize
+      })
+      gridItem = {
+        id: `animVideoSheet:${node.id}:${Date.now()}`,
+        dataUrl: videoSheet.dataUrl
+      }
+      preProcessedFromVideo = true
+    }
+  }
+
+  if (!gridItem && assetId) {
+    gridItem = await softResolveAnim2dGridImage(ctx, assetId)
+  }
+  const disabledSet = new Set(
+    readAnimDisabledCellsFromNode({
+      animDisabledCells: node.params.animDisabledCells,
+      animRows: state.rows,
+      animCols: state.cols
+    })
+  )
   if (!gridItem) {
     throw new Error('GRAPH_PROCESS_NO_INPUT')
   }
@@ -171,10 +334,14 @@ export async function executeAnim2dNode(
     throw new DOMException('Aborted', 'AbortError')
   }
 
+  const allCells = anim2dCellKeys(state.rows, state.cols)
+  const activeCells = allCells.filter((cell) => !disabledSet.has(cell))
+  const targetCells = activeCells.length > 0 ? activeCells : allCells
+
   const createdAt = new Date().toISOString()
   const stamp = Date.now()
   const batch: GraphImageItem[] = []
-  for (const cell of anim2dCellKeys(state.rows, state.cols)) {
+  for (const cell of targetCells) {
     if (ctx.signal?.aborted) {
       throw new DOMException('Aborted', 'AbortError')
     }
@@ -182,10 +349,18 @@ export async function executeAnim2dNode(
       sourceDataUrl: sourceUrl,
       state: { rows: state.rows, cols: state.cols, selected: [] },
       cellKey: cell,
-      // 序列图常带格线/黑边：整数切格后再按格子尺寸内缩
-      edgeInset: 'auto',
-      // 特效黑底/白底键控透明：仅当明确设置了 animKeyColor 时启用
-      ...(keyColor ? { chromaKey: { color: keyColor } } : {})
+      // 视频抽帧直拼的序列图无格线，不再额外内缩；AI 生图序列图按設定内缩
+      edgeInset: preProcessedFromVideo ? 0 : edgeInset,
+      // 视频直拼时已在入表前做过键控与稳像，避免二次重复处理
+      ...(!preProcessedFromVideo && keyColor
+        ? {
+            chromaKey: {
+              color: keyColor,
+              ...(node.params.animKeyThreshold !== undefined ? { threshold: keyThreshold } : {})
+            }
+          }
+        : {}),
+      ...(!preProcessedFromVideo && stabilize !== 'off' ? { stabilize } : {})
     })
     const cellDataUrl = composed.dataUrl?.trim()
     if (!cellDataUrl) {
@@ -215,7 +390,11 @@ export async function executeAnim2dNode(
     ...(gridItem.dataUrl?.trim() ? { dataUrl: gridItem.dataUrl.trim() } : {}),
     ...(gridItem.relativePath?.trim() ? { relativePath: gridItem.relativePath.trim() } : {})
   }
-  const gif = await composeAnim2dGifOutput(ctx, batch, readAnimGifFpsFromNode(node.params))
+  const gifFrames =
+    playMode === 'pingpong' && batch.length > 2
+      ? [...batch, ...batch.slice(1, -1).reverse()]
+      : batch
+  const gif = await composeAnim2dGifOutput(ctx, gifFrames, readAnimGifFpsFromNode(node.params))
   const outputs = commitGeneratedImages(
     ctx,
     generatedImages,

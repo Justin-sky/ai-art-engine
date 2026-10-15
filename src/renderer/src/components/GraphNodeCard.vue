@@ -695,6 +695,10 @@ import {
   readImageGenerateParamsFromNode,
   readAnim2dFromNode,
   readAnimKeyColorFromNode,
+  readAnimKeyThresholdFromNode,
+  readAnimStabilizeFromNode,
+  readAnimEdgeInsetFromNode,
+  readAnimDisabledCellsFromNode,
   readSvgAnimFromNode,
   readVideoGenerateParamsFromNode,
   resolveNodeTextContent,
@@ -2723,7 +2727,15 @@ function onPreviewDblClick(): void {
       return
     }
 
-    // 2D帧动画 / SVG 烘焙：双击播放/暂停烘焙帧，勿走 note 分类的记事本
+    // 2D 帧动画：双击进入全屏帧动画工作台（切帧网格 / 洋葱皮比对 / 废帧剔除 / 视频抽帧 / GIF 导出）
+    if (props.node.typeId === 'anim.2d') {
+      const hostId = props.hostId?.trim()
+      if (!hostId) return
+      await diveView({ viewId: 'anim.2d', hostId, nodeId: props.node.id }, title)
+      return
+    }
+
+    // SVG 烘焙：双击播放/暂停烘焙帧，勿走 note 分类的记事本
     if (isCardAnimNode.value) {
       await toggleCardAnimPreview()
       return
@@ -3342,15 +3354,21 @@ async function loadCardAnimFramesFromSequence(): Promise<void> {
   if (!sourceUrl) sourceUrl = previewUrl.value || ''
   if (!sourceUrl) return
   const keyColor = readAnimKeyColorFromNode(props.node.params)
+  const keyThreshold = readAnimKeyThresholdFromNode(props.node.params)
+  const stabilize = readAnimStabilizeFromNode(props.node.params)
+  const edgeInset = readAnimEdgeInsetFromNode(props.node.params)
+  const disabledSet = new Set(readAnimDisabledCellsFromNode(props.node.params))
   const next: string[] = []
   for (const key of anim2dCellKeys(s.rows, s.cols)) {
+    if (disabledSet.has(key)) continue
     try {
       const composed = await composeImageGridCell({
         sourceDataUrl: sourceUrl,
         state: { rows: s.rows, cols: s.cols, selected: [] },
         cellKey: key,
-        edgeInset: 'auto',
-        ...(keyColor ? { chromaKey: { color: keyColor } } : {})
+        edgeInset,
+        ...(keyColor ? { chromaKey: { color: keyColor, threshold: keyThreshold } } : {}),
+        ...(stabilize !== 'off' ? { stabilize } : {})
       })
       if (composed.dataUrl?.trim()) next.push(composed.dataUrl.trim())
     } catch {

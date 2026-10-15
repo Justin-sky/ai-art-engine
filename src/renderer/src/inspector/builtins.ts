@@ -36,6 +36,7 @@ import ModelSegmentInspector from '../components/ModelSegmentInspector.vue'
 import ModelPostProcessInspector from '../components/ModelPostProcessInspector.vue'
 import ModelAnimationInspector from '../components/ModelAnimationInspector.vue'
 import Anim2dInspector from '../components/Anim2dInspector.vue'
+import Stage2dInspector from '../components/Stage2dInspector.vue'
 import SvgAnimInspector from '../components/SvgAnimInspector.vue'
 import FrameAnimGenInspector from '../components/FrameAnimGenInspector.vue'
 import SvgGenInspector from '../components/SvgGenInspector.vue'
@@ -233,6 +234,11 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     id: 'studio.graph.anim2d',
     component: Anim2dInspector,
     nodeTypeId: 'anim.2d'
+  },
+  {
+    id: 'studio.graph.stage2d',
+    component: Stage2dInspector,
+    nodeTypeId: 'stage.2d'
   },
   {
     id: 'studio.graph.svgAnim',
