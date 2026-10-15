@@ -49,7 +49,12 @@ function projectValueForPort(
   targetPortType: GraphPortDataType | undefined
 ): GraphValue {
   if (targetPortType !== GraphPortType.text) return value
-  if (value.kind === 'semanticTimeline' || value.kind === 'videoPrompts') {
+  if (
+    value.kind === 'semanticTimeline' ||
+    value.kind === 'videoPrompts' ||
+    value.kind === 'storyboard' ||
+    value.kind === 'filmCast'
+  ) {
     return { kind: 'text', text: value.text }
   }
   return value

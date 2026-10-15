@@ -4,13 +4,7 @@ import { collectScreenplayTextRelativePaths, resolveAssetTextFromGenParams } fro
 import { getNodePorts } from './ports'
 import type { GraphAddScope } from './scopes'
 import { resolveNodeTextContent } from './textOutput'
-import {
-  isWorldGenImageOutPortId,
-  parseWorldElementGenResults,
-  stringifyWorldElementGenResults,
-  worldGenImageGroupOutputs,
-  type WorldElementGenResult
-} from './worldElementParse'
+import { stringifyWorldElementGenResults, type WorldElementGenResult } from './worldElementParse'
 import type {
   GraphCatalogKind,
   GraphDocument,
@@ -401,6 +395,8 @@ export function graphValueHasPayload(value: GraphValue | undefined): value is Gr
   if (value.kind === 'videoPrompts') {
     return value.plan.shots.length > 0 || !!value.plan.fullPrompt?.trim()
   }
+  if (value.kind === 'storyboard') return (value.doc?.shots?.length ?? 0) > 0
+  if (value.kind === 'filmCast') return (value.doc?.entries?.length ?? 0) > 0
   return false
 }
 
@@ -744,47 +740,9 @@ export function softResolveSourceOutput(
     if (cached) return videoPromptsValue(cached)
   }
 
-  // 场表格 / 场输出：目录 JSON 必须保持 beat kind（勿经 resolveNodeTextContent 变成 text）
+  // 世界元素宿主：实体先于文本图库，避免目录或正文冒充实体
   if (
-    (node.typeId === 'beat.table' || node.typeId === 'output.beat') &&
-    (sourcePort === 'out' || !sourcePort)
-  ) {
-    const text = node.params.text?.trim() || node.params.resultText?.trim() || ''
-    if (text) return { kind: 'beat', text }
-    if (graphValueHasPayload(fromRun) && fromRun?.kind === 'beat') return fromRun
-  }
-
-  // 世界元素生成：按四类图片组口软解析
-  if (node.typeId === 'world.gen' && sourcePort && isWorldGenImageOutPortId(sourcePort)) {
-    const fromParams = Array.isArray(node.params.worldElementOutputs)
-      ? (node.params.worldElementOutputs as WorldElementGenResult[])
-      : []
-    const fromParamsWithImages = fromParams.filter(
-      (item) => item?.type && item?.name && item?.imageUrl
-    )
-    // params 有行但尚无图 / 为空：继续 soft 子图与 text，勿短路成空 images
-    let results = fromParamsWithImages
-    if (!results.length) {
-      results = options?.resolveWorldElementOutputs?.(node) ?? []
-    }
-    if (!results.length) {
-      results = parseWorldElementGenResults(node.params.text)
-    }
-    // 运行态该口已有有效图时优先（避免子图回退覆盖本批结果）
-    if (
-      graphValueHasPayload(fromRun) &&
-      fromRun &&
-      (fromRun.kind === 'images' || fromRun.kind === 'image')
-    ) {
-      return fromRun
-    }
-    const groups = worldGenImageGroupOutputs(results)
-    return groups[sourcePort] ?? { kind: 'images', items: [] }
-  }
-
-  // 世界元素宿主 / 生成：实体先于文本图库，避免目录或正文冒充实体
-  if (
-    (node.typeId === 'world.gen' || node.assetType === 'world' || node.typeId === 'asset.world') &&
+    (node.assetType === 'world' || node.typeId === 'asset.world') &&
     (sourcePort === 'out' || !sourcePort)
   ) {
     const fromParams = Array.isArray(node.params.worldElementOutputs)
@@ -831,19 +789,6 @@ export function softResolveSourceOutput(
       const picked =
         (selectedId ? items.find((item) => item.id === selectedId) : undefined) ||
         items[items.length - 1]
-      // 世界元素提取 / 场拆解：选中项输出目录口（与 table 相连）
-      if (node.typeId === 'world.extract') {
-        const text = picked?.text ?? ''
-        return picked?.relativePath?.trim()
-          ? { kind: 'world', text, relativePath: picked.relativePath.trim() }
-          : { kind: 'world', text }
-      }
-      if (node.typeId === 'beat.split') {
-        const text = picked?.text ?? ''
-        return picked?.relativePath?.trim()
-          ? { kind: 'beat', text, relativePath: picked.relativePath.trim() }
-          : { kind: 'beat', text }
-      }
       const galleryOut: GraphValue = {
         kind: 'text',
         text: picked?.text ?? '',
@@ -997,12 +942,6 @@ export function softResolveSourceOutput(
     if (fromPersisted) return { kind: 'beat', text: fromPersisted }
   }
 
-  // 选择场：params.text 为可读普通文本
-  if (node.typeId === 'beat.select' && (sourcePort === 'out' || !sourcePort)) {
-    const text = node.params.text?.trim() || ''
-    if (text) return { kind: 'text', text }
-  }
-
   if (graphValueHasPayload(fromRun)) return fromRun
 
   const runState = runStates[sourceId]
@@ -1129,7 +1068,6 @@ function textFromWorldEntitiesInGraph(graphJson: unknown): string {
   if (!graphJson || typeof graphJson !== 'object') return ''
   const nodes = (graphJson as GraphDocument).nodes
   if (!Array.isArray(nodes)) return ''
-  // 实体缓存优先，避免按节点顺序先命中目录节点（world.table 在 world.gen 之前）
   for (const node of nodes) {
     const outputs = Array.isArray(node.params.worldElementOutputs)
       ? (node.params.worldElementOutputs as WorldElementGenResult[])
@@ -1139,27 +1077,21 @@ function textFromWorldEntitiesInGraph(graphJson: unknown): string {
     if (text.trim()) return text
   }
   for (const node of nodes) {
-    if (node.typeId !== 'world.gen' && node.typeId !== 'output.world') continue
     const text = worldEntitiesText(node.params.text) || worldEntitiesText(node.params.resultText)
     if (text) return text
   }
   return ''
 }
 
-/** 从叙事内图表格 / 输出取目录 JSON */
+/** 从叙事内图取目录 JSON */
 function textFromBeatCatalogInGraph(graphJson: unknown): string {
   if (!graphJson || typeof graphJson !== 'object') return ''
   const nodes = (graphJson as GraphDocument).nodes
   if (!Array.isArray(nodes)) return ''
   for (const node of nodes) {
-    if (
-      node.typeId === 'beat.table' ||
-      node.typeId === 'beat.split' ||
-      node.typeId === 'output.beat'
-    ) {
-      const text = node.params.text?.trim() || node.params.resultText?.trim() || ''
-      if (text && (text.startsWith('[') || text.startsWith('{'))) return text
-    }
+    if (isHostInputSlotNode(node) || isBoundaryInputNode(node)) continue
+    const text = node.params.text?.trim() || node.params.resultText?.trim() || ''
+    if (text && (text.startsWith('[') || text.startsWith('{'))) return text
   }
   return textFromHostInputSlotsInGraph(graphJson)
 }

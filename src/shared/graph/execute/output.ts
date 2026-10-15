@@ -1,15 +1,8 @@
-import { buildGeneratedMediaFileKey, formatGeneratedMediaStamp } from '../../domain'
 import { patchBoundaryOutputPreview } from './slots'
 import type { GraphNodeParams, GraphOutputKind, GraphPortDataType } from '../types'
 import { GraphPortType } from '../types'
 import { catalogValue } from '../catalogValue'
-import type {
-  GraphOutputValue,
-  GraphTextItem,
-  GraphTextValue,
-  GraphValue,
-  NodeExecuteContext
-} from './types'
+import type { GraphOutputValue, GraphTextValue, GraphValue, NodeExecuteContext } from './types'
 import {
   flattenAssetValues,
   flattenImagesValues,
@@ -37,10 +30,8 @@ export async function executeScreenplayOutputNode(
     .map((text) => ({ kind: 'text' as const, text }))
   const resultText = notes.map((item) => item.text).join('\n\n')
   const outputKind: GraphOutputKind = ctx.node.params.outputKind ?? 'text'
-  // 场输出等：落地已迁至上游 gen，清空旧 generatedTexts，避免预览叠 resultText 变多
   const paramsPatch = {
-    resultText,
-    ...(ctx.node.typeId === 'output.beat' ? { generatedTexts: [] as GraphTextItem[] } : {})
+    resultText
   }
   ctx.node.params = { ...ctx.node.params, ...paramsPatch }
   ctx.patchNode?.({ params: paramsPatch })
@@ -56,139 +47,11 @@ export async function executeScreenplayOutputNode(
   return { out: value }
 }
 
-function sanitizeBeatOutputKeyPart(raw: string, fallback: string): string {
-  const cleaned = raw
-    .trim()
-    .replace(/[^\w\u4e00-\u9fff.-]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 48)
-  return cleaned || fallback
-}
-
-/** 落盘文件名：{宿主}_{场标题}_{时间戳}[_{序号}] */
-function resolveBeatUnitFileKey(
-  ctx: NodeExecuteContext,
-  item: GraphTextItem,
-  index: number,
-  stamp: string,
-  total: number
-): string {
-  const fromTitle = item.title?.trim()
-  const firstLine = item.text?.split(/\r?\n/, 1)[0]?.trim() ?? ''
-  const numbered = firstLine.match(/^\d+\.\s*(.+)$/)
-  const fromLine = (numbered?.[1] ?? firstLine).trim()
-  const unitTitle = sanitizeBeatOutputKeyPart(
-    fromTitle || fromLine || item.id?.trim() || '',
-    `场${index + 1}`
-  )
-  return buildGeneratedMediaFileKey({
-    hostAssetName: ctx.resolveHostAssetName?.(),
-    nodeTitle: unitTitle,
-    stamp,
-    index: total > 1 ? index + 1 : null
-  })
-}
-
-/**
- * 将场 texts 落地为剧本文件（txt），返回物化后的条目（有路径时清空 text）。
- */
-export async function materializeBeatUnitTextItems(
-  ctx: NodeExecuteContext,
-  hydrated: GraphTextItem[]
-): Promise<GraphTextItem[]> {
-  const createdAt = new Date().toISOString()
-  const stamp = formatGeneratedMediaStamp()
-  const materialized: GraphTextItem[] = []
-
-  for (let index = 0; index < hydrated.length; index++) {
-    const item = hydrated[index]!
-    const text = item.text?.trim() ?? ''
-    const existingPath = item.relativePath?.trim()
-    const id = item.id?.trim() || `nu-out:${stamp}:${index}`
-    const fileKey = resolveBeatUnitFileKey(ctx, item, index, stamp, hydrated.length)
-    const title = item.title?.trim() || fileKey
-
-    if (existingPath && !ctx.saveRunText) {
-      materialized.push({
-        id,
-        title,
-        text: '',
-        createdAt: item.createdAt ?? createdAt,
-        relativePath: existingPath
-      })
-      continue
-    }
-
-    if (!text && existingPath) {
-      materialized.push({
-        id,
-        title,
-        text: '',
-        createdAt: item.createdAt ?? createdAt,
-        relativePath: existingPath
-      })
-      continue
-    }
-
-    if (!text) continue
-
-    if (!ctx.saveRunText) {
-      materialized.push({
-        id,
-        title,
-        text,
-        createdAt: item.createdAt ?? createdAt
-      })
-      continue
-    }
-
-    try {
-      const relativePath = await ctx.saveRunText({
-        content: text,
-        key: fileKey,
-        outputDir: ctx.node.params.mediaOutputDir?.trim() || undefined,
-        node: ctx.node
-      })
-      materialized.push({
-        id,
-        title,
-        text: '',
-        createdAt: item.createdAt ?? createdAt,
-        relativePath
-      })
-    } catch (err) {
-      console.warn('[graph] beat unit text save failed', err)
-      materialized.push({
-        id,
-        title,
-        text,
-        createdAt: item.createdAt ?? createdAt
-      })
-    }
-  }
-
-  return materialized
-}
-
-/**
- * 场细化画布输出：透传上游 texts（资产主链已改为 table → output.beat）。
- */
-export async function executeBeatOutputNode(
-  ctx: NodeExecuteContext
-): Promise<Record<string, GraphValue>> {
-  return executeScreenplayOutputNode(ctx)
-}
-
 export async function executeOutputNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
   // 「剧本/文本输出」：透传为 texts，不调大模型、不收集媒体 genRefs
-  if (
-    ctx.node.params.outputKind === 'text' ||
-    ctx.node.typeId === 'output.text' ||
-    ctx.node.typeId === 'output.beat' ||
-    ctx.node.typeId === 'output.beatUnit'
-  ) {
+  if (ctx.node.params.outputKind === 'text' || ctx.node.typeId === 'output.text') {
     return executeScreenplayOutputNode(ctx)
   }
 

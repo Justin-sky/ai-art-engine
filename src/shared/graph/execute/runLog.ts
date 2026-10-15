@@ -407,6 +407,25 @@ export function summarizeGraphValueForLog(value: GraphValue): GraphRunLogPortSna
         modelAuthored: summary.modelAuthored
       }
     }
+    case 'storyboard': {
+      const doc = value.doc
+      const shots = doc?.shots?.length ?? 0
+      return {
+        kind: 'storyboard',
+        label: doc?.title || 'storyboard',
+        title: `${shots} shots · ${doc?.scenes?.length ?? 0} scenes · ${doc?.entities?.length ?? 0} entities`,
+        itemCount: shots
+      }
+    }
+    case 'filmCast': {
+      const entries = value.doc?.entries ?? []
+      return {
+        kind: 'filmCast',
+        label: 'cast',
+        itemCount: entries.length,
+        imageCount: entries.filter((entry) => !!entry.imageRelativePath || !!entry.imageUrl).length
+      }
+    }
     default: {
       const kind =
         value && typeof value === 'object' && 'kind' in value

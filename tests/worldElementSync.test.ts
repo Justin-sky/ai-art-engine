@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import {
   boundaryOutputNodeId,
   createNodeFromType,
-  encapsulateSelection,
   isBoundaryInputNode,
   isBoundaryOutputNode,
   LEGACY_WORLD_GEN_NODE_ID,
@@ -281,92 +280,5 @@ describe('syncWorldElementKindGraph', () => {
     expect(picked.graphJson).toBeUndefined()
     // 未选中的节点不迁移任何状态
     expect(pickWorldElementStateForMigration(source, ['gen-b'])).toEqual({})
-  })
-
-  it('encapsulating a world.gen node migrates source subgraphs into the host asset', () => {
-    const sourceGenParams = {
-      worldElementGraphs: {
-        characters: { nodes: [{ id: 'c1' }] },
-        scenes: { nodes: [] },
-        props: { nodes: [] },
-        weapons: { nodes: [] }
-      },
-      lastAppliedWorldCatalogFingerprint: 'fp-legacy'
-    } as never
-
-    const doc = {
-      nodes: [
-        createNodeFromType('world.gen', { x: 0, y: 0 }, { id: LEGACY_WORLD_GEN_NODE_ID }),
-        createNodeFromType('output.image', { x: 300, y: 0 }, { id: 'out' })
-      ],
-      edges: [
-        {
-          id: 'e1',
-          source: LEGACY_WORLD_GEN_NODE_ID,
-          target: 'out',
-          sourcePort: 'out-characters',
-          targetPort: 'in'
-        }
-      ]
-    }
-
-    const result = encapsulateSelection(doc, {
-      selectedNodeIds: [LEGACY_WORLD_GEN_NODE_ID],
-      hostAssetId: '123e4567-e89b-12d3-a456-426614174000',
-      hostAssetName: 'Host'
-    })
-
-    // 内图保留 world.gen 节点
-    expect(result.innerDocument.nodes.some((node) => node.id === LEGACY_WORLD_GEN_NODE_ID)).toBe(
-      true
-    )
-    // 外层被替换为 host 节点
-    expect(result.parentDocument.nodes.some((node) => node.id === LEGACY_WORLD_GEN_NODE_ID)).toBe(
-      false
-    )
-    expect(result.parentDocument.nodes.some((node) => node.typeId === 'asset.subgraph')).toBe(true)
-
-    // 自动迁移：封装资产的 genParams 应带上源画布的四类子图与指纹
-    const migrated = pickWorldElementStateForMigration(sourceGenParams, [LEGACY_WORLD_GEN_NODE_ID])
-    expect(migrated.worldElementGraphs).toBe(sourceGenParams.worldElementGraphs)
-    expect(migrated.lastAppliedWorldCatalogFingerprint).toBe('fp-legacy')
-  })
-
-  it('encapsulate names host output ports after source port labels', () => {
-    const gen = createNodeFromType('world.gen', { x: 0, y: 0 }, { id: 'gen-1' })
-    const o1 = createNodeFromType('output.image', { x: 300, y: 0 }, { id: 'o1' })
-    const o2 = createNodeFromType('output.image', { x: 300, y: 100 }, { id: 'o2' })
-    const doc = {
-      nodes: [gen, o1, o2],
-      edges: [
-        {
-          id: 'e1',
-          source: 'gen-1',
-          target: 'o1',
-          sourcePort: 'out-characters',
-          targetPort: 'in'
-        },
-        {
-          id: 'e2',
-          source: 'gen-1',
-          target: 'o2',
-          sourcePort: 'out-scenes',
-          targetPort: 'in'
-        }
-      ]
-    }
-
-    const result = encapsulateSelection(doc, {
-      selectedNodeIds: ['gen-1'],
-      hostAssetId: '123e4567-e89b-12d3-a456-426614174000',
-      hostAssetName: 'Host'
-    })
-
-    // 输出端口用源端口语义名（角色 / 场景），而不是通用的「图片组输出 N」
-    expect(result.hostInterface.outputs.map((output) => output.label)).toEqual(['角色', '场景'])
-    const boundaryTitles = result.innerDocument.nodes
-      .filter((node) => node.typeId === 'graph.boundary.output')
-      .map((node) => node.title)
-    expect(boundaryTitles).toEqual(['角色', '场景'])
   })
 })

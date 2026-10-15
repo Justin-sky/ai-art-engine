@@ -3,6 +3,8 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { isDraftAssetId, type AssetInfo, type AssetType } from '@shared/domain'
 import { isAudioFilePath, isImageFilePath, isTextFilePath, isVideoFilePath } from '@shared/import'
 import {
+  filmCastSummary,
+  filmStoryboardSummary,
   flattenImagesValues,
   graphValueHasPayload,
   isBoundaryOutputNode,
@@ -65,7 +67,7 @@ const emit = defineEmits<{
   clearOutput: []
 }>()
 
-const { t } = useStudioI18n()
+const { t, locale } = useStudioI18n()
 const project = useProjectStore()
 const workspace = useWorkspaceStore()
 const {
@@ -231,7 +233,6 @@ function mediaKindFromNode(node: GraphNode): PreviewMediaKind | null {
   if (node.typeId === 'video.select') return 'video'
   if (node.typeId === 'voice.select') return 'audio'
   if (node.typeId === 'text.select') return 'text'
-  if (node.typeId === 'beat.select') return 'text'
   if (
     node.category === 'output' &&
     (node.typeId === 'output.text' || node.params.outputKind === 'text')
@@ -335,6 +336,18 @@ function collectFromValue(value: GraphValue | undefined, into: PreviewItem[]): v
     if (summary) {
       into.push({ key: `semanticTimeline:${value.doc?.id ?? ''}`, kind: 'text', text: summary })
     }
+    return
+  }
+  /** 影视分镜文档 / 设定库：只给摘要（完整内容在检查器的镜头表 / 设定表里） */
+  if (value.kind === 'storyboard') {
+    const summary = filmStoryboardSummary(value.doc, locale.value)
+    if (summary)
+      into.push({ key: `storyboard:${summary.slice(0, 32)}`, kind: 'text', text: summary })
+    return
+  }
+  if (value.kind === 'filmCast') {
+    const summary = filmCastSummary(value.doc, locale.value)
+    if (summary) into.push({ key: `filmCast:${summary.slice(0, 32)}`, kind: 'text', text: summary })
     return
   }
   if (value.kind === 'texts') {
@@ -586,23 +599,9 @@ function collectFallback(into: PreviewItem[]): void {
   }
 
   if (generatedTextItems.length) {
-    const catalogFallback =
-      node.typeId === 'world.extract' || node.typeId === 'beat.split'
-        ? node.params.text?.trim() || ''
-        : ''
-    const selectedTextId = node.params.selectedTextId?.trim() || ''
     for (const [index, item] of generatedTextItems.entries()) {
       const rel = item.relativePath?.trim()
-      let text = item.text?.trim() ?? ''
-      // 历史数据曾被 strip 掉正文：选中项用 params.text 回填，保证 Inspector 立刻有预览
-      if (
-        !text &&
-        catalogFallback &&
-        (item.id?.trim() === selectedTextId ||
-          (!selectedTextId && index === generatedTextItems.length - 1))
-      ) {
-        text = catalogFallback
-      }
+      const text = item.text?.trim() ?? ''
       if (!text && !rel) continue
       into.push({
         key: item.id?.trim() || `fallback-text:${index}`,
@@ -611,16 +610,6 @@ function collectFallback(into: PreviewItem[]): void {
         ...(rel ? { relativePath: rel } : {})
       })
     }
-  } else if (
-    (node.typeId === 'world.extract' || node.typeId === 'beat.split') &&
-    node.params.text?.trim()
-  ) {
-    // 尚无图库时仍展示当前目录 JSON
-    into.push({
-      key: 'catalog-text',
-      kind: 'text',
-      text: node.params.text.trim()
-    })
   }
 
   // 落盘后的文本产物只留旁挂路径（如剧本经边界输入注入），无内联正文时按路径读取
@@ -948,9 +937,6 @@ const layoutKind = computed(() => {
       props.node.typeId === 'output.text' ||
       props.node.params.outputKind === 'text' ||
       (props.node.typeId === 'asset.screenplay' && props.node.params.assetRef !== true) ||
-      props.node.typeId === 'world.extract' ||
-      props.node.typeId === 'beat.split' ||
-      props.node.typeId === 'beat.gen' ||
       list.length > 1
     return preferTextGrid ? 'grid' : 'text'
   }

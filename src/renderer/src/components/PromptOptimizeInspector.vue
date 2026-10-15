@@ -48,28 +48,16 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import {
-  DEFAULT_BEAT_SPLIT_SYSTEM_PROMPT_EN,
-  DEFAULT_BEAT_SPLIT_SYSTEM_PROMPT_ZH,
-  DEFAULT_BEAT_UNIT_GEN_SYSTEM_PROMPT_EN,
-  DEFAULT_BEAT_UNIT_GEN_SYSTEM_PROMPT_ZH,
   DEFAULT_OPTIMIZE_SYSTEM_PROMPT_EN,
   DEFAULT_OPTIMIZE_SYSTEM_PROMPT_ZH,
-  DEFAULT_WORLD_EXTRACT_SYSTEM_PROMPT_EN,
-  DEFAULT_WORLD_EXTRACT_SYSTEM_PROMPT_ZH,
   DEFAULT_TO_PROMPT_SYSTEM_PROMPT_EN,
   DEFAULT_TO_PROMPT_SYSTEM_PROMPT_ZH,
   DEFAULT_UI_SPLIT_SYSTEM_PROMPT_EN,
   DEFAULT_UI_SPLIT_SYSTEM_PROMPT_ZH,
-  defaultBeatSplitSystemPrompt,
-  defaultBeatUnitGenSystemPrompt,
   defaultOptimizeSystemPrompt,
-  defaultWorldExtractSystemPrompt,
   defaultToPromptSystemPrompt,
   defaultUiSplitSystemPrompt,
-  resolveBeatSplitSystemPrompt,
-  resolveBeatUnitGenSystemPrompt,
   resolveOptimizeSystemPrompt,
-  resolveWorldExtractSystemPrompt,
   resolveToPromptSystemPrompt,
   resolveUiSplitSystemPrompt
 } from '@shared/graph'
@@ -89,14 +77,7 @@ import {
 } from '../features/graph/model/generateModelOptions'
 import { useProjectStore } from '../stores/project'
 
-const TOOL_TYPE_IDS = new Set([
-  'prompt.optimize',
-  'image.toPrompt',
-  'world.extract',
-  'beat.split',
-  'beat.unitGen',
-  'ui.split'
-])
+const TOOL_TYPE_IDS = new Set(['prompt.optimize', 'image.toPrompt', 'ui.split'])
 
 const { t, locale, graphTypeLabel } = useStudioI18n()
 const editor = useEditorKernel()
@@ -120,17 +101,11 @@ const hostId = computed(() => {
 const { hasInPort, runStatus, isGraphRunning, blocked, toggleRun } = useGraphNodeRun(node)
 
 const isToPrompt = computed(() => node.value?.typeId === 'image.toPrompt')
-const isWorldExtract = computed(() => node.value?.typeId === 'world.extract')
-const isBeatSplit = computed(() => node.value?.typeId === 'beat.split')
-const isBeatUnitGen = computed(() => node.value?.typeId === 'beat.unitGen')
 const isUiSplit = computed(() => node.value?.typeId === 'ui.split')
 
 const typeLabel = computed(() => {
   if (node.value?.typeId) return graphTypeLabel(node.value.typeId)
   if (isToPrompt.value) return t('graph.types.image.toPrompt')
-  if (isWorldExtract.value) return t('graph.types.world.extract')
-  if (isBeatSplit.value) return t('graph.types.beat.split')
-  if (isBeatUnitGen.value) return t('graph.types.beat.unitGen')
   if (isUiSplit.value) return t('graph.types.ui.split')
   return t('graph.types.prompt.optimize')
 })
@@ -169,37 +144,12 @@ async function loadModels(preferredKey?: string): Promise<void> {
 
 function resolveSystemPrompt(raw: string | undefined, nextLocale: string): string {
   if (isToPrompt.value) return resolveToPromptSystemPrompt(raw, nextLocale)
-  if (isWorldExtract.value) return resolveWorldExtractSystemPrompt(raw, nextLocale)
-  if (isBeatSplit.value) {
-    const trimmed = raw?.trim() ?? ''
-    // 曾误绑「提示词优化」默认文案：视为未配置，改回场拆解默认
-    if (
-      trimmed === DEFAULT_OPTIMIZE_SYSTEM_PROMPT_EN ||
-      trimmed === DEFAULT_OPTIMIZE_SYSTEM_PROMPT_ZH
-    ) {
-      return defaultBeatSplitSystemPrompt(nextLocale)
-    }
-    return resolveBeatSplitSystemPrompt(raw, nextLocale)
-  }
-  if (isBeatUnitGen.value) {
-    const trimmed = raw?.trim() ?? ''
-    if (
-      trimmed === DEFAULT_OPTIMIZE_SYSTEM_PROMPT_EN ||
-      trimmed === DEFAULT_OPTIMIZE_SYSTEM_PROMPT_ZH
-    ) {
-      return defaultBeatUnitGenSystemPrompt(nextLocale)
-    }
-    return resolveBeatUnitGenSystemPrompt(raw, nextLocale)
-  }
   if (isUiSplit.value) return resolveUiSplitSystemPrompt(raw, nextLocale)
   return resolveOptimizeSystemPrompt(raw, nextLocale)
 }
 
 function defaultSystemPrompt(nextLocale: string): string {
   if (isToPrompt.value) return defaultToPromptSystemPrompt(nextLocale)
-  if (isWorldExtract.value) return defaultWorldExtractSystemPrompt(nextLocale)
-  if (isBeatSplit.value) return defaultBeatSplitSystemPrompt(nextLocale)
-  if (isBeatUnitGen.value) return defaultBeatUnitGenSystemPrompt(nextLocale)
   if (isUiSplit.value) return defaultUiSplitSystemPrompt(nextLocale)
   return defaultOptimizeSystemPrompt(nextLocale)
 }
@@ -208,23 +158,6 @@ function isDefaultSystemPrompt(value: string): boolean {
   if (isToPrompt.value) {
     return (
       value === DEFAULT_TO_PROMPT_SYSTEM_PROMPT_EN || value === DEFAULT_TO_PROMPT_SYSTEM_PROMPT_ZH
-    )
-  }
-  if (isWorldExtract.value) {
-    return (
-      value === DEFAULT_WORLD_EXTRACT_SYSTEM_PROMPT_EN ||
-      value === DEFAULT_WORLD_EXTRACT_SYSTEM_PROMPT_ZH
-    )
-  }
-  if (isBeatSplit.value) {
-    return (
-      value === DEFAULT_BEAT_SPLIT_SYSTEM_PROMPT_EN || value === DEFAULT_BEAT_SPLIT_SYSTEM_PROMPT_ZH
-    )
-  }
-  if (isBeatUnitGen.value) {
-    return (
-      value === DEFAULT_BEAT_UNIT_GEN_SYSTEM_PROMPT_EN ||
-      value === DEFAULT_BEAT_UNIT_GEN_SYSTEM_PROMPT_ZH
     )
   }
   if (isUiSplit.value) {

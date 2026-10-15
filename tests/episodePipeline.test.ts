@@ -8,8 +8,6 @@ import {
   episodeFailReasonForStep,
   extractEpisodeBeatNumber,
   formatEpisodeKeyframeSpanNotes,
-  getAiWorkflowPresetPlan,
-  materializeGraphPlan,
   parseEpisodeBeatBoard,
   parseEpisodeBeatBreakdown,
   parseEpisodeDirectorVerdict,
@@ -297,70 +295,9 @@ describe('episode director verdict', () => {
   })
 })
 
-describe('shortDrama agent pipeline preset', () => {
-  it('materializes the 9×4=36 pipeline', () => {
-    const plan = getAiWorkflowPresetPlan('shortDrama')!
-    expect(plan.nodes.length).toBe(137)
-    const result = materializeGraphPlan(plan, {
-      scope: 'subgraphAsset',
-      assetType: 'subgraph'
-    })
-    expect(result.ok, result.error).toBe(true)
-    const nodes = result.document!.nodes
-    // 9宫格：一个拼图生成节点 + 9 个本地宫格提取
-    expect(nodes.filter((n) => n.typeId === 'episode.anchorSelect').length).toBe(0)
-    expect(nodes.filter((n) => n.typeId === 'asset.image').length).toBe(10)
-    expect(nodes.filter((n) => n.typeId === 'image.gridSplit').length).toBe(45)
-    expect(nodes.filter((n) => n.typeId === 'image.upscale').length).toBe(0)
-    expect(nodes.filter((n) => n.typeId === 'episode.cellSelect').length).toBe(36)
-    expect(nodes.filter((n) => n.typeId === 'asset.video').length).toBe(36)
-    // 9宫格提取：每节点只提取对应 1 格
-    const grid9 = nodes.filter(
-      (n) => n.typeId === 'image.gridSplit' && n.params.imageGridSplit?.rows === 3
-    )
-    expect(grid9.length).toBe(9)
-    expect(grid9.every((n) => n.params.imageGridSplit?.selected?.length === 1)).toBe(true)
-    // 4宫格提取：2×2 布局，每节点提取对应 1 格
-    const grid4 = nodes.filter(
-      (n) => n.typeId === 'image.gridSplit' && n.params.imageGridSplit?.cols === 2
-    )
-    expect(grid4.length).toBe(36)
-    expect(grid4.every((n) => n.params.imageGridSplit?.selected?.length === 1)).toBe(true)
-    const breakdown = nodes.find((n) => n.params.episodeStep === 'breakdown')
-    expect(breakdown).toBeTruthy()
-    expect(breakdown?.params.generateSystemPrompt).toContain('分镜师')
-    expect(breakdown?.params.skillId).toBe('episode.breakdown')
-    const review = nodes.find((n) => n.params.episodeReviewTarget === 'motion')
-    expect(review).toBeTruthy()
-    const video = nodes.find((n) => n.typeId === 'asset.video')
-    const img9 = nodes.find((n) => n.title?.includes('9宫格拼图'))
-    expect(img9?.params.episodeStep).toBe('beatboard')
-    const img4 = nodes.find((n) => n.title?.includes('4宫格拼图'))
-    expect(img4?.params.episodeStep).toBe('sequence')
-    expect(img9?.params.skillId).toBe('episode.image.grid9')
-    expect(img4?.params.skillId).toBe('episode.image.grid4')
-    expect(video?.params.skillId).toBe('episode.video.grid4')
-    expect(video?.params.generateFrameMode).toBeUndefined()
-    const edges = result.document!.edges
-    const titleById = new Map<string, string>()
-    for (const node of nodes) titleById.set(node.id, node.title ?? '')
-    const sourceTitles = (target: string | undefined): string[] =>
-      edges.filter((edge) => edge.target === target).map((edge) => titleById.get(edge.source) ?? '')
-    const reviewBreakdown = nodes.find((n) => n.params.episodeReviewTarget === 'breakdown')
-    // 一键工作流写盘的库存标题已是英文规范值
-    expect(sourceTitles(reviewBreakdown?.id)).toEqual(
-      expect.arrayContaining(['剧本', EPISODE_AGENT_STOCK_TITLES.breakdown])
-    )
-    expect(sourceTitles(nodes.find((n) => n.params.episodeReviewTarget === 'motion')?.id)).toEqual(
-      expect.arrayContaining([
-        '剧本',
-        EPISODE_AGENT_STOCK_TITLES.breakdown,
-        EPISODE_AGENT_STOCK_TITLES.beatboard,
-        EPISODE_AGENT_STOCK_TITLES.sequence,
-        EPISODE_AGENT_STOCK_TITLES.motion
-      ])
-    )
-    // 旧版中文库存标题仍可被兜底匹配（legacy 回归用例）
+describe('legacy episode stage titles', () => {
+  it('still matches stock and legacy Chinese stage titles (old graphs keep working)', () => {
+    // 剧集流水线已由 film.* 影视流水线取代；旧图里的库存标题仍需被识别（回归用例）
     expect(titleMatchesEpisodeStage('分镜师·节拍拆解表', 'breakdown')).toBe(true) // cjk-ok 旧标题
     expect(titleMatchesEpisodeStage('分镜师·9宫格分镜表', 'beatboard')).toBe(true) // cjk-ok 旧标题
     expect(titleMatchesEpisodeStage('分镜师·4宫格动态分镜表', 'sequence')).toBe(true) // cjk-ok 旧标题
@@ -368,21 +305,5 @@ describe('shortDrama agent pipeline preset', () => {
     expect(titleMatchesEpisodeReview('导演审核·4宫格动态分镜表', 'sequence')).toBe(true) // cjk-ok 旧标题
     expect(titleMatchesEpisodeStage(EPISODE_AGENT_STOCK_TITLES.beatboard, 'beatboard')).toBe(true)
     expect(titleMatchesEpisodeStage(EPISODE_AGENT_STOCK_TITLES.sequence, 'beatboard')).toBe(false)
-    expect(edges.some((e) => e.sourcePort === 'out' && e.targetPort === 'in-text')).toBe(true)
-    expect(edges.some((e) => e.sourcePort === 'out' && e.targetPort === 'in-image')).toBe(true)
-    // 高清放大节点已移除：9宫格提取图直接作 4宫格拼图参考图
-    const extract9 = nodes.find((n) => n.title === '宫格提取·格1')
-    expect(
-      edges.some(
-        (e) => e.source === extract9?.id && e.target === img4?.id && e.targetPort === 'in-image'
-      )
-    ).toBe(true)
-    // 4宫格提取图直接作动态视频参考图
-    const extract4 = nodes.find((n) => n.title === '宫格提取·组1-格1')
-    expect(
-      edges.some(
-        (e) => e.source === extract4?.id && e.target === video?.id && e.targetPort === 'in-image'
-      )
-    ).toBe(true)
   })
 })

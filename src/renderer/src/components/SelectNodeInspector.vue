@@ -34,7 +34,6 @@
 import { computed, ref, watch } from 'vue'
 import {
   isSelectImageNode,
-  isSelectBeatNode,
   isSelectTextNode,
   isSelectVideoNode,
   isSelectVoiceNode,
@@ -48,13 +47,7 @@ import { useGraphNodeRun } from '../composables/useGraphNodeRun'
 import { useEditorKernel } from '../editor/kernel'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 
-const SELECT_TYPE_IDS = new Set([
-  'image.select',
-  'video.select',
-  'voice.select',
-  'text.select',
-  'beat.select'
-])
+const SELECT_TYPE_IDS = new Set(['image.select', 'video.select', 'voice.select', 'text.select'])
 
 const { t, graphTypeLabel } = useStudioI18n()
 const editor = useEditorKernel()
@@ -86,7 +79,6 @@ const hint = computed(() => {
   if (isSelectVideoNode(current)) return t('graph.selectVideo.hint')
   if (isSelectVoiceNode(current)) return t('graph.selectVoice.hint')
   if (isSelectTextNode(current)) return t('graph.selectText.hint')
-  if (isSelectBeatNode(current)) return t('graph.selectBeat.hint')
   return t('graph.inspector.select.hint')
 })
 

@@ -25,69 +25,6 @@ describe('gallery selected output', () => {
     })
   })
 
-  it('resolveGalleryOutputsFromNodeParams maps world.extract selected to world out', () => {
-    const outs = resolveGalleryOutputsFromNodeParams(
-      {
-        generatedTexts: [
-          { id: 'a', text: '{"characters":[]}' },
-          { id: 'b', text: '{"characters":[{"name":"B"}]}' }
-        ],
-        selectedTextId: 'b'
-      },
-      { typeId: 'world.extract' }
-    )
-    expect(outs?.out).toMatchObject({
-      kind: 'world',
-      text: '{"characters":[{"name":"B"}]}'
-    })
-    expect(outs?.['out-all']?.kind).toBe('texts')
-  })
-
-  it('resolveGalleryOutputsFromNodeParams maps beat.split selected to beat out', () => {
-    const outs = resolveGalleryOutputsFromNodeParams(
-      {
-        generatedTexts: [
-          { id: 'a', text: '[]' },
-          { id: 'b', text: '[{"id":"nu-1","title":"B"}]' }
-        ],
-        selectedTextId: 'b'
-      },
-      { typeId: 'beat.split' }
-    )
-    expect(outs?.out).toMatchObject({
-      kind: 'beat',
-      text: '[{"id":"nu-1","title":"B"}]'
-    })
-    expect(outs?.['out-all']?.kind).toBe('texts')
-  })
-
-  it('resolveGalleryOutputsFromNodeParams maps world.gen entities to four image groups', () => {
-    const outs = resolveGalleryOutputsFromNodeParams(
-      {
-        worldElementOutputs: [
-          { type: '角色', name: 'Ada', imageUrl: 'Assets/a.png' },
-          { type: '武器', name: 'Sword', imageUrl: 'data:image/png;base64,xx' }
-        ]
-      },
-      { typeId: 'world.gen' }
-    )
-    expect(outs?.out).toBeUndefined()
-    expect(outs?.['out-characters']?.kind).toBe('images')
-    if (outs?.['out-characters']?.kind === 'images') {
-      expect(outs['out-characters'].items).toEqual([
-        { id: '角色:Ada:0', title: 'Ada', dataUrl: '', relativePath: 'Assets/a.png' }
-      ])
-    }
-    expect(outs?.['out-weapons']?.kind).toBe('images')
-    if (outs?.['out-weapons']?.kind === 'images') {
-      expect(outs['out-weapons'].items).toEqual([
-        { id: '武器:Sword:1', title: 'Sword', dataUrl: 'data:image/png;base64,xx' }
-      ])
-    }
-    expect(outs?.['out-scenes']?.kind).toBe('images')
-    expect(outs?.['out-props']?.kind).toBe('images')
-  })
-
   it('onlyTarget soft-snapshot overlays selected over stale prior out', async () => {
     const imageGen = createNodeFromType(
       'asset.image',

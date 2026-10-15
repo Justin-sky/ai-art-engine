@@ -21,22 +21,22 @@ describe('text.select node', () => {
     ])
   })
 
-  it('connects from screenplay out-all and into beat split', () => {
+  it('connects from screenplay out-all and into prompt optimize', () => {
     const generate = createNodeFromType('asset.screenplay', { x: 0, y: 0 })
     const select = createNodeFromType('text.select', { x: 120, y: 0 })
-    const beat = createNodeFromType('beat.split', { x: 240, y: 0 })
+    const optimize = createNodeFromType('prompt.optimize', { x: 240, y: 0 })
     expect(canConnectNodes(generate, select, { sourcePort: 'out-all' })).toBe(true)
     expect(canConnectNodes(generate, select, { sourcePort: 'out' })).toBe(false)
-    expect(canConnectNodes(select, beat)).toBe(true)
-    expect(canConnectNodes(generate, beat)).toBe(true)
+    expect(canConnectNodes(select, optimize)).toBe(true)
+    expect(canConnectNodes(generate, optimize)).toBe(true)
   })
 
   it('rejects a single text node into text.select', () => {
     const text = createNodeFromType('play.script', { x: 0, y: 0 })
     const select = createNodeFromType('text.select', { x: 120, y: 0 })
-    const beat = createNodeFromType('beat.split', { x: 240, y: 0 })
+    const optimize = createNodeFromType('prompt.optimize', { x: 240, y: 0 })
     expect(canConnectNodes(text, select)).toBe(false)
-    expect(canConnectNodes(text, beat)).toBe(true)
+    expect(canConnectNodes(text, optimize)).toBe(true)
   })
 
   it('defaults to the first text and can pick by id', () => {

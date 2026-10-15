@@ -295,9 +295,28 @@ export interface GraphOutputValue {
   voices?: GraphVoiceItem[]
 }
 
+/**
+ * 影视分镜文档值（film.breakdown / film.review / film.render 的出口）。
+ * 同语义时间线：结构化 `doc` 给 film.* 消费，`text` 是规范 JSON，落 text 口时由引擎投影。
+ */
+export interface GraphFilmStoryboardValue {
+  kind: 'storyboard'
+  doc: import('../film/storyboard').FilmStoryboard
+  text: string
+}
+
+/** 影视设定库值（film.cast 出口；film.shot / film.render 的 in-cast 入口） */
+export interface GraphFilmCastValue {
+  kind: 'filmCast'
+  doc: import('../film/storyboard').FilmCast
+  text: string
+}
+
 export type GraphValue =
   | GraphSemanticTimelineValue
   | GraphVideoPromptsValue
+  | GraphFilmStoryboardValue
+  | GraphFilmCastValue
   | GraphAssetValue
   | GraphTextValue
   | GraphTextsValue

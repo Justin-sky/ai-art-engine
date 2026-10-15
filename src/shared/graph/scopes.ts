@@ -147,7 +147,6 @@ export const GRAPH_SCOPE_DEFINITIONS: Record<BuiltinGraphAddScope, GraphScopeDef
       title: 'Canvas output'
     }
   },
-  /** 世界元素资产图：提取 → 表格 → 生成 → 输出；不强制通用输出节点 */
   worldAsset: {
     id: 'worldAsset',
     ensureOutput: false,
@@ -156,11 +155,9 @@ export const GRAPH_SCOPE_DEFINITIONS: Record<BuiltinGraphAddScope, GraphScopeDef
     output: {
       kind: 'text',
       title: ASSET_WORLD_OUTPUT_TITLE,
-      typeId: 'output.world',
       inputDataType: GraphPortType.worldEntities
     }
   },
-  /** 场资产图：拆解 → 表格 → 生成 → 选择文本 → 输出；不强制通用输出节点 */
   beatAsset: {
     id: 'beatAsset',
     ensureOutput: false,
@@ -172,7 +169,6 @@ export const GRAPH_SCOPE_DEFINITIONS: Record<BuiltinGraphAddScope, GraphScopeDef
       inputDataType: GraphPortType.beat
     }
   },
-  /** 场细化图：场生成（文本模型）→ 场输出；参考节点从底栏拖入 */
   beatUnit: {
     id: 'beatUnit',
     ensureOutput: false,
@@ -180,7 +176,6 @@ export const GRAPH_SCOPE_DEFINITIONS: Record<BuiltinGraphAddScope, GraphScopeDef
     dragAssets: DEFAULT_SCOPE_DRAG_ASSETS,
     hostIdSuffix: 'beat-unit',
     output: {
-      typeId: 'output.beatUnit',
       kind: 'text',
       title: BEAT_UNIT_OUTPUT_TITLE,
       inputDataType: GraphPortType.text

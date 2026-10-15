@@ -98,30 +98,6 @@ export const DEFAULT_GRAPH_TEMPLATES: Record<
   directorAsset: {
     nodes: [{ key: 'gen', typeId: 'asset.motion', x: 240, y: 160 }],
     edges: []
-  },
-  beatUnit: {
-    nodes: [{ key: 'gen', typeId: 'beat.unitGen', x: 300, y: 160 }],
-    edges: []
-  },
-  worldAsset: {
-    nodes: [
-      { key: 'extract', typeId: 'world.extract', x: 120, y: 160 },
-      { key: 'table', typeId: 'world.table', x: 340, y: 160 },
-      { key: 'gen', typeId: 'world.gen', x: 560, y: 160 }
-    ],
-    edges: [
-      { from: 'extract', to: 'table', fromPort: 'out', toPort: 'in' },
-      { from: 'table', to: 'gen', fromPort: 'out', toPort: 'in' }
-    ],
-    inputLinkTo: 'extract'
-  },
-  beatAsset: {
-    nodes: [
-      { key: 'split', typeId: 'beat.split', x: 120, y: 160 },
-      { key: 'table', typeId: 'beat.table', x: 340, y: 160 }
-    ],
-    edges: [{ from: 'split', to: 'table', fromPort: 'out', toPort: 'in' }],
-    inputLinkTo: 'split'
   }
 }
 

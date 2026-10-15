@@ -650,23 +650,11 @@ import {
   isVideoFramePortId,
   isDirectorProcessingNode,
   isTimelineOutputNode,
-  isWorldGenNode,
-  isWorldExtractNode,
-  isWorldTableNode,
-  isBeatSplitNode,
-  isBeatTableNode,
-  isBeatGenNode,
-  isBeatOutputNode,
-  isBeatUnitOutputNode,
-  isEpisodeAnchorSelectNode,
-  isEpisodeCellSelectNode,
   anim2dCellKeys,
-  isWorldOutputNode,
   isSelectImageNode,
   isSelectVideoNode,
   isSelectVoiceNode,
   isSelectTextNode,
-  isSelectBeatNode,
   isFramePullNode,
   isReshootNode,
   isSemanticTimelineToolNode,
@@ -891,6 +879,11 @@ function portDataTypeClass(port: GraphPortDef): string {
       return 'port-world-model'
     case GraphPortType.semanticTimeline:
       return 'port-timeline'
+    // 影视分镜文档 / 设定库：沿用目录类端口配色，一眼区分于普通文本口
+    case GraphPortType.storyboard:
+      return 'port-beat'
+    case GraphPortType.filmCast:
+      return 'port-world-entities'
     default:
       return ''
   }
@@ -954,8 +947,6 @@ const isLocked = computed(() => isGenerateLocked(props.node))
 const isScreenplayOutputNode = computed(
   () =>
     props.node.category === 'output' &&
-    !isBeatOutputNode(props.node) &&
-    !isBeatUnitOutputNode(props.node) &&
     (props.node.typeId === 'output.text' || props.node.params.outputKind === 'text')
 )
 const previewCollapsed = computed(() => props.node.params.previewCollapsed === true)
@@ -1008,12 +999,6 @@ const instructionKind = computed((): InstructionPresetKind | null => {
       return 'toPrompt'
     case 'prompt.optimize':
       return 'optimize'
-    case 'beat.unitGen':
-      return 'beatUnitGen'
-    case 'world.extract':
-      return 'spatialWorldExtract'
-    case 'beat.split':
-      return 'beatSplit'
     case 'ui.split':
       return 'uiSplit'
     case 'frame.animGen':
@@ -1350,9 +1335,6 @@ const typeLabel = computed(() => {
   }
   if (props.node.category === 'output') {
     if (isTimelineOutputNode(props.node)) return t('graph.titles.timelineOutput')
-    if (isBeatOutputNode(props.node)) return t('graph.titles.beatOutput')
-    if (isBeatUnitOutputNode(props.node)) return t('graph.titles.beatUnitOutput')
-    if (isWorldOutputNode(props.node)) return t('graph.titles.worldOutput')
     if (isScreenplayOutputNode.value) return t('graph.titles.screenplayOutput')
     if (props.node.typeId && te(`graph.types.${props.node.typeId}`)) {
       return graphTypeLabel(props.node.typeId)
@@ -1411,15 +1393,7 @@ const canDiveIntoHost = computed(
  */
 const canDiveIntoSubgraph = computed(() => {
   const n = props.node
-  return (
-    isTimelineOutputNode(n) ||
-    isWorldTableNode(n) ||
-    isWorldGenNode(n) ||
-    isBeatTableNode(n) ||
-    isBeatGenNode(n) ||
-    isBeatOutputNode(n) ||
-    isDirectorProcessingNode(n)
-  )
+  return isTimelineOutputNode(n) || isDirectorProcessingNode(n)
 })
 
 /** 类型色块：用颜色区分角色，图标表示类型（锁定由标题栏锁按钮表示，不改图标） */
@@ -1476,12 +1450,6 @@ const displayTitle = computed(() => {
 })
 
 const typeIcon = computed(() => {
-  if (isWorldExtractNode(props.node)) return '🗡️'
-  if (isWorldTableNode(props.node) || isBeatTableNode(props.node)) return '📋'
-  if (isBeatGenNode(props.node) || isBeatSplitNode(props.node)) return '📖'
-  if (isWorldGenNode(props.node)) return '🤺'
-  if (isWorldOutputNode(props.node)) return '🌍'
-  if (isBeatOutputNode(props.node) || isBeatUnitOutputNode(props.node)) return '📖'
   if (isScreenplayOutputNode.value) return '📜'
   if (props.node.category === 'output' && props.node.params.outputKind === 'voice') return '🔊'
   if (props.asset) return assetDisplayIcon(props.asset)
@@ -1574,11 +1542,6 @@ watch(
       props.node.params.generatedImages?.[props.node.params.generatedImages.length - 1]?.dataUrl,
       props.node.params.generatedImages?.[props.node.params.generatedImages.length - 1]
         ?.relativePath,
-      props.node.typeId === 'world.gen'
-        ? props.node.params.worldElementOutputs?.[
-            (props.node.params.worldElementOutputs?.length ?? 1) - 1
-          ]?.imageUrl
-        : '',
       isFrameAnimGenNode.value ||
         props.node.typeId === 'svg.gen' ||
         isSelectImageNode(props.node) ||
@@ -1604,33 +1567,19 @@ watch(
       previewInViewport.value,
       previewPriority.value
     ] as const,
-  async ([
-    dataUrl,
-    relativePath,
-    genDataUrl,
-    genRel,
-    worldImageUrl,
-    showPreview,
-    visible,
-    priority
-  ]) => {
+  async ([dataUrl, relativePath, genDataUrl, genRel, showPreview, visible, priority]) => {
     selectPreviewCancel?.()
     selectPreviewCancel = null
     if (!showPreview || !visible) {
       selectImagePreview.value = ''
       return
     }
-    const worldUrl = worldImageUrl?.trim() || ''
-    const resolvedData =
-      dataUrl?.trim() || genDataUrl?.trim() || (worldUrl.startsWith('data:') ? worldUrl : '')
+    const resolvedData = dataUrl?.trim() || genDataUrl?.trim() || ''
     if (resolvedData) {
       selectImagePreview.value = resolvedData
       return
     }
-    const path =
-      relativePath?.trim() ||
-      genRel?.trim() ||
-      (worldUrl && !worldUrl.startsWith('data:') ? worldUrl : '')
+    const path = relativePath?.trim() || genRel?.trim() || ''
     if (!path) {
       selectImagePreview.value = ''
       return
@@ -1652,17 +1601,6 @@ watch(
 /** 多结果图片：节点卡网格（≥2）；单张仍走原单预览路径 */
 type CardImageGridSource = { key: string; dataUrl?: string; relativePath?: string }
 const cardImageGridSources = computed((): CardImageGridSource[] => {
-  const worldOutputs = props.node.params.worldElementOutputs ?? []
-  if (props.node.typeId === 'world.gen' && worldOutputs.length > 1) {
-    return worldOutputs.map((item, index) => {
-      const url = item.imageUrl?.trim() || ''
-      return {
-        key: `${item.type}:${item.name}:${index}`,
-        dataUrl: url.startsWith('data:') ? url : undefined,
-        relativePath: url && !url.startsWith('data:') ? url : undefined
-      }
-    })
-  }
   const generatedSvgs = props.node.params.generatedSvgs ?? []
   if (props.node.typeId === 'svg.gen' && generatedSvgs.length > 1) {
     return generatedSvgs.map((item, index) => ({
@@ -1777,25 +1715,12 @@ const cardTextGridItems = computed((): string[] => {
 /** 分镜 / 世界元素 / 可玩 HTML：不展示正文预览，仅显示图标+提示以便双击 */
 const hideCardPreview = computed(
   () =>
-    isWorldExtractNode(props.node) ||
-    isWorldTableNode(props.node) ||
-    isWorldGenNode(props.node) ||
-    isBeatSplitNode(props.node) ||
-    isBeatTableNode(props.node) ||
-    isBeatGenNode(props.node) ||
     isSemanticTimelineToolNode(props.node) ||
     props.node.typeId === 'asset.gamePlay' ||
     props.node.assetType === 'gamePlay'
 )
 
 const scriptNodePreviewTitle = computed(() => {
-  if (isWorldExtractNode(props.node) || isBeatSplitNode(props.node)) {
-    return t('graph.generateNode.instructionHint')
-  }
-  if (isWorldTableNode(props.node)) return t('graph.worldTableNode.hint')
-  if (isWorldGenNode(props.node)) return t('graph.worldGenNode.hint')
-  if (isBeatTableNode(props.node)) return t('graph.beatTableNode.hint')
-  if (isBeatGenNode(props.node)) return t('graph.beatGenNode.hint')
   if (props.node.typeId === 'semantic.rebuild') return t('graph.semanticTimeline.rebuildOpenHint')
   if (isSemanticTimelineToolNode(props.node)) return t('graph.semanticTimeline.openResultHint')
   return ''
@@ -1820,15 +1745,10 @@ const previewHint = computed(() => {
   if (isTimelineOutputNode(props.node)) {
     return t('graph.timelineOutputNode.hint')
   }
-  if (isWorldTableNode(props.node)) return t('graph.worldTableNode.hint')
-  if (isWorldGenNode(props.node)) return t('graph.worldGenNode.hint')
-  if (isBeatTableNode(props.node)) return t('graph.beatTableNode.hint')
-  if (isBeatGenNode(props.node)) return t('graph.beatGenNode.hint')
   if (isSelectImageNode(props.node)) return t('graph.selectImage.hint')
   if (isSelectVideoNode(props.node)) return t('graph.selectVideo.hint')
   if (isSelectVoiceNode(props.node)) return t('graph.selectVoice.hint')
   if (isSelectTextNode(props.node)) return t('graph.selectText.hint')
-  if (isSelectBeatNode(props.node)) return t('graph.selectBeat.hint')
   if (isMultiAngleEditorNode(props.node)) return t('graph.multiAngle.hint')
   if (isLightingEditorNode(props.node)) return t('graph.lighting.hint')
   if (isPortraitTextureEditorNode(props.node)) return t('graph.portraitTexture.hint')
@@ -1875,7 +1795,6 @@ const previewOpenHint = computed(() => {
   }
   if (isScreenplayOutputNode.value) return t('graph.textsPreview.hint')
   if (isSelectTextNode(props.node)) return t('graph.selectText.hint')
-  if (isSelectBeatNode(props.node)) return t('graph.selectBeat.hint')
   if (props.node.typeId === 'semantic.rebuild') return t('graph.semanticTimeline.rebuildOpenHint')
   if (isSemanticTimelineToolNode(props.node)) return t('graph.semanticTimeline.openResultHint')
   // 预览区已有正文时，双击优先打开记事本
@@ -2816,7 +2735,7 @@ function onPreviewDblClick(): void {
       emit('selectVoiceOpen', props.node.id)
       return
     }
-    if (isSelectTextNode(props.node) || isSelectBeatNode(props.node)) {
+    if (isSelectTextNode(props.node)) {
       emit('selectTextOpen', props.node.id)
       return
     }
@@ -2938,32 +2857,6 @@ function onPreviewDblClick(): void {
       return
     }
 
-    const worldAssetId = hostAssetId.value
-    if (isWorldTableNode(props.node) && worldAssetId) {
-      await diveView({ viewId: 'world.table', worldAssetId }, title)
-      return
-    }
-    if (isWorldGenNode(props.node) && worldAssetId) {
-      await diveView({ viewId: 'world.editor', worldAssetId, worldGenNodeId: props.node.id }, title)
-      return
-    }
-
-    const beatAssetId = hostAssetId.value
-    if (isBeatTableNode(props.node) && beatAssetId) {
-      await diveView({ viewId: 'beat.table', beatAssetId }, title)
-      return
-    }
-    if ((isBeatGenNode(props.node) || isBeatOutputNode(props.node)) && beatAssetId) {
-      await diveView({ viewId: 'beat.gen', beatAssetId }, title)
-      return
-    }
-
-    // 剧集流水线总览由顶部工具栏打开；宫格/动态格选择双击统一打开记事本
-    if (isEpisodeAnchorSelectNode(props.node) || isEpisodeCellSelectNode(props.node)) {
-      emit('textOpen', props.node.id)
-      return
-    }
-
     // UI 界面生成：双击进入内图（每条提示词一条输出链）
     if (props.node.typeId === 'ui.gen') {
       emit('uiSplitOpen', props.node.id)
@@ -2972,11 +2865,6 @@ function onPreviewDblClick(): void {
 
     // 生成剧本 / 策划案：双击展开生成指令面板（勿被正文预览抢成记事本）
     if (instructionKind.value === 'screenplay' || instructionKind.value === 'gameSystem') {
-      instructionOpen.value = !instructionOpen.value
-      return
-    }
-    // 场生成：双击只开关指令面板，不打开正文预览/记事本
-    if (instructionKind.value === 'beatUnitGen') {
       instructionOpen.value = !instructionOpen.value
       return
     }

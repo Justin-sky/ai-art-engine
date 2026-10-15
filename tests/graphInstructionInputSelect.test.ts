@@ -8,7 +8,6 @@ import {
   executeImageGenerateNode,
   executeGridSplitNode,
   executePromptOptimizeNode,
-  executeWorldExtractNode,
   selectIncomingValuesForInstruction
 } from '../src/shared/graph/execute'
 import type { GraphValue, NodeExecuteContext } from '../src/shared/graph/execute/types'
@@ -252,87 +251,6 @@ describe('generation input auto-include vs @ filter', () => {
     const prompt = generateImage.mock.calls[0]![0].prompt as string
     expect(prompt).not.toContain('不要拼这段')
     expect(generateImage.mock.calls[0]![0].inputReferences).toEqual(['data:image/png;base64,ref'])
-  })
-
-  it('world extract without @ auto-appends input interface text', async () => {
-    const generateText = vi.fn(async () => ({
-      text: '{"characters":[],"scenes":[],"props":[],"weapons":[]}',
-      model: 'm'
-    }))
-    const upstream: GraphValue = { kind: 'text', text: '输入接口剧本正文' }
-    const ctx = baseCtx({
-      node: {
-        id: 'extract',
-        category: 'note',
-        typeId: 'world.extract',
-        title: 'World extract',
-        position: { x: 0, y: 0 },
-        params: { generateInstruction: '提取世界元素' }
-      },
-      incomingByIndex: [{ index: 1, value: upstream }],
-      inputs: { in: [upstream] },
-      mentionSources: [{ index: 1, title: '输入接口', text: '输入接口剧本正文' }],
-      generateText
-    })
-    await executeWorldExtractNode(ctx)
-    expect(generateText.mock.calls[0]![0].prompt).toContain('输入接口剧本正文')
-  })
-
-  it('world extract without @ falls back to mentionSources when port text empty', async () => {
-    const generateText = vi.fn(async () => ({
-      text: '{"characters":[],"scenes":[],"props":[],"weapons":[]}',
-      model: 'm'
-    }))
-    const empty: GraphValue = { kind: 'text', text: '' }
-    const ctx = baseCtx({
-      node: {
-        id: 'extract',
-        category: 'note',
-        typeId: 'world.extract',
-        title: 'World extract',
-        position: { x: 0, y: 0 },
-        params: { generateInstruction: '提取世界元素' }
-      },
-      incomingByIndex: [{ index: 1, value: empty }],
-      inputs: { in: [empty] },
-      mentionSources: [{ index: 1, title: '输入接口', text: '槽位缓存正文' }],
-      generateText
-    })
-    await executeWorldExtractNode(ctx)
-    expect(generateText.mock.calls[0]![0].prompt).toContain('槽位缓存正文')
-  })
-
-  it('world extract with @ does not auto-append unmentioned upstream', async () => {
-    const generateText = vi.fn(async () => ({
-      text: '{"characters":[],"scenes":[],"props":[],"weapons":[]}',
-      model: 'm'
-    }))
-    const a: GraphValue = { kind: 'text', text: '内容A' }
-    const b: GraphValue = { kind: 'text', text: '内容B' }
-    const ctx = baseCtx({
-      node: {
-        id: 'extract',
-        category: 'note',
-        typeId: 'world.extract',
-        title: 'World extract',
-        position: { x: 0, y: 0 },
-        params: { generateInstruction: '只提取 @1' }
-      },
-      incomingByIndex: [
-        { index: 1, value: a },
-        { index: 2, value: b }
-      ],
-      inputs: { in: [a, b] },
-      mentionSources: [
-        { index: 1, title: 'A', text: '内容A' },
-        { index: 2, title: 'B', text: '内容B' }
-      ],
-      generateText
-    })
-    await executeWorldExtractNode(ctx)
-    const prompt = generateText.mock.calls[0]![0].prompt as string
-    expect(prompt).toContain('内容A')
-    expect(prompt).not.toContain('内容B')
   })
 
   it('prompt optimize without @ auto-appends upstream text', async () => {

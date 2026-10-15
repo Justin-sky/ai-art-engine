@@ -20,7 +20,7 @@ describe('snapConnectThresholdWorld', () => {
 describe('resolveSnapConnectEdges', () => {
   it('connects nearby compatible out→in when dragged beside a target', () => {
     const source = createNodeFromType('asset.screenplay', { x: 0, y: 0 }, { id: 'src' })
-    const target = createNodeFromType('beat.split', { x: 0, y: 0 }, { id: 'dst' })
+    const target = createNodeFromType('prompt.optimize', { x: 0, y: 0 }, { id: 'dst' })
     // 把 source 出口贴到 target 入口附近
     const srcSize = getNodeSize(source)
     const inCenter = getNodePortCenter(target, 'left', 'in')
@@ -53,7 +53,7 @@ describe('resolveSnapConnectEdges', () => {
 
   it('connects reverse direction when target sits left of dragged source', () => {
     const left = createNodeFromType('asset.screenplay', { x: 0, y: 0 }, { id: 'left' })
-    const right = createNodeFromType('beat.split', { x: 200, y: 0 }, { id: 'right' })
+    const right = createNodeFromType('prompt.optimize', { x: 200, y: 0 }, { id: 'right' })
     const leftSize = getNodeSize(left)
     const inCenter = getNodePortCenter(right, 'left', 'in')
     left.position = {
@@ -75,7 +75,7 @@ describe('resolveSnapConnectEdges', () => {
 
   it('skips incompatible types even when close', () => {
     const image = createNodeFromType('asset.image', { x: 0, y: 0 }, { id: 'img' })
-    const split = createNodeFromType('beat.split', { x: 0, y: 0 }, { id: 'split' })
+    const split = createNodeFromType('prompt.optimize', { x: 0, y: 0 }, { id: 'split' })
     const imgSize = getNodeSize(image)
     const inCenter = getNodePortCenter(split, 'left', 'in')
     image.position = {
@@ -97,7 +97,7 @@ describe('resolveSnapConnectEdges', () => {
 
   it('skips when an identical edge already exists', () => {
     const source = createNodeFromType('asset.screenplay', { x: 0, y: 0 }, { id: 'src' })
-    const target = createNodeFromType('beat.split', { x: 180, y: 0 }, { id: 'dst' })
+    const target = createNodeFromType('prompt.optimize', { x: 180, y: 0 }, { id: 'dst' })
     const srcSize = getNodeSize(source)
     const inCenter = getNodePortCenter(target, 'left', 'in')
     source.position = { x: inCenter.x - srcSize.w - 16, y: 0 }
@@ -163,7 +163,7 @@ describe('resolveSnapConnectEdges', () => {
 
   it('does not wire nodes that moved together in the same drag', () => {
     const a = createNodeFromType('asset.screenplay', { x: 0, y: 0 }, { id: 'a' })
-    const b = createNodeFromType('beat.split', { x: 180, y: 0 }, { id: 'b' })
+    const b = createNodeFromType('prompt.optimize', { x: 180, y: 0 }, { id: 'b' })
     const aSize = getNodeSize(a)
     const inCenter = getNodePortCenter(b, 'left', 'in')
     a.position = { x: inCenter.x - aSize.w - 12, y: 0 }
@@ -182,7 +182,7 @@ describe('resolveSnapConnectEdges', () => {
 
   it('returns empty when ports are farther than threshold', () => {
     const source = createNodeFromType('asset.screenplay', { x: 0, y: 0 }, { id: 'src' })
-    const target = createNodeFromType('beat.split', { x: 400, y: 0 }, { id: 'dst' })
+    const target = createNodeFromType('prompt.optimize', { x: 400, y: 0 }, { id: 'dst' })
 
     const hits = resolveSnapConnectEdges({
       nodes: [source, target],
@@ -196,7 +196,7 @@ describe('resolveSnapConnectEdges', () => {
 
   it('highlights compatible ports when nodes overlap during drag preview', () => {
     const a = createNodeFromType('asset.screenplay', { x: 0, y: 0 }, { id: 'A' })
-    const c = createNodeFromType('beat.split', { x: 0, y: 0 }, { id: 'C' })
+    const c = createNodeFromType('prompt.optimize', { x: 0, y: 0 }, { id: 'C' })
     a.position = { ...c.position }
 
     const preview = resolveSnapDragPreview({
@@ -217,8 +217,8 @@ describe('resolveSnapConnectEdges', () => {
 
   it('does not connect when nodes overlap but ports are far apart', () => {
     const a = createNodeFromType('asset.screenplay', { x: 0, y: 0 }, { id: 'A' })
-    const b = createNodeFromType('beat.unitGen', { x: 220, y: 0 }, { id: 'B' })
-    const c = createNodeFromType('beat.split', { x: 440, y: 0 }, { id: 'C' })
+    const b = createNodeFromType('prompt.optimize', { x: 220, y: 0 }, { id: 'B' })
+    const c = createNodeFromType('prompt.optimize', { x: 440, y: 0 }, { id: 'C' })
     // A 与 C 完全叠放：左右端口相距约一个节点宽，超出端口阈值
     a.position = { ...c.position }
 

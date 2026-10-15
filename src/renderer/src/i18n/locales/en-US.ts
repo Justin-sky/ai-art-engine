@@ -192,16 +192,16 @@ export default {
           'Create a 3D director previz workflow: an image node generates a 360 panorama mood reference wired into the director deck panorama port, dive sets it as stage background; build the scene with primitives on stage, set cameras and capture shots; a select node picks a shot and image-to-video renders the previz clip, with the text node supplementing the video prompt.'
       },
       shortDrama: {
-        title: 'Short drama',
-        desc: 'Script → beats → 9-grid → 4-grid → 36 motion videos (agent pipeline)',
+        title: 'Film pipeline',
+        desc: 'Script → storyboard → director review & auto-revise → cast & sets → batch shoot (QC retakes + image-to-video)',
         prompt:
-          'Create a short-drama agent-pipeline workflow: a text node holds the episode script; storyboard-artist nodes produce the beat breakdown, 9-grid beat board, and 4-grid dynamic storyboard (9×4=36); an animator node produces the motion prompt table; 9 anchor-select nodes each feed one key storyboard image, 36 dynamic-cell select nodes each feed one image-to-video clip (parent anchor image as first frame); after each stage a director-review node outputs PASS/FAIL, and failures are written to agent-state.json and appended on rerun.'
+          'Create a closed-loop film workflow: a text node holds the script; a storyboard breakdown node (film.breakdown) turns it into a structured storyboard (shot count follows the story); a director review node (film.review) reviews it against the script and auto-revises failing shots; a cast node (film.cast) generates a design sheet per character and location; a batch shoot node (film.render) shoots keyframes with the per-shot cast sheets, runs vision QC with automatic retakes, and generates a clip per shot from each keyframe.'
       },
       shortDrama9: {
-        title: 'Short drama · 9 direct',
-        desc: 'Script → beats → 9-grid → animator 9 motion prompts → 9 videos',
+        title: 'Film · single-shot polish',
+        desc: 'Storyboard → cast → shot node → keyframe image → shot video (manual polish)',
         prompt:
-          'Create a short-drama agent-pipeline workflow that skips 4-grid expansion: a text node holds the episode script; storyboard-artist nodes produce the beat breakdown and 9-grid beat board; one 9-grid canvas is split into 9 anchor images; an animator node decomposes one motion prompt for each of the 9 cells, and each motion prompt drives one image-to-video clip together with its anchor image (9 clips total); director-review nodes after the beat breakdown and 9-grid board output PASS/FAIL, with failures written to agent-state.json and appended on rerun.'
+          'Create a single-shot polishing film workflow: a text node holds the script; after storyboard breakdown, director review and cast generation, a shot node (film.shot) picks one shot by index; its keyframe prompt and cast refs feed an image generation node for the keyframe, and the keyframe plus the motion prompt feed a video generation node for the shot clip.'
       },
       anim2dGif: {
         title: '2D frame anim',
@@ -3404,6 +3404,9 @@ export default {
         imageEdit: 'Image edit',
         episode: 'Episode',
         filmTv: 'Film & TV',
+        filmPre: 'Pre-production',
+        filmArt: 'Art · cast & sets',
+        filmShoot: 'Shooting',
         text: 'Text',
         game: 'Game',
         motionFx: '2D',
@@ -4744,6 +4747,16 @@ export default {
       firstFrame: 'First',
       lastFrame: 'Last',
       referenceImage: 'Reference',
+      filmShotList: 'Shot list',
+      filmScriptIn: 'Script',
+      filmReport: 'Report',
+      filmCastIn: 'Cast',
+      filmDesignSheets: 'Design sheets',
+      filmKeyframePrompt: 'Keyframe prompt',
+      filmMotionPrompt: 'Motion prompt',
+      filmCastRefs: 'Cast refs',
+      filmKeyframes: 'Keyframes',
+      filmClips: 'Clips',
       types: {
         image: 'Image',
         images: 'Images',
@@ -4762,7 +4775,9 @@ export default {
         spatialWorld: 'Spatial world',
         project: 'Project',
         semanticTimeline: 'Semantic timeline',
-        videoPrompts: 'Video prompts'
+        videoPrompts: 'Video prompts',
+        storyboard: 'Storyboard',
+        filmCast: 'Cast library'
       }
     },
     media: {
@@ -5008,6 +5023,13 @@ export default {
       episode: {
         anchorSelect: 'Anchor select',
         cellSelect: 'Dynamic cell select'
+      },
+      film: {
+        breakdown: 'Storyboard breakdown',
+        review: 'Director review',
+        cast: 'Cast & locations',
+        shot: 'Shot',
+        render: 'Batch shoot'
       },
       world: {
         extract: 'World extract',
@@ -5416,6 +5438,79 @@ export default {
       },
       select: {
         hint: 'Double-click the node to open the picker. After running, preview the selected out port here.'
+      },
+      film: {
+        hint: {
+          breakdown:
+            'Breaks the script into a structured storyboard: scenes / shots (count follows the story) / character & location entities. Locked or edited shots survive re-breakdowns; an unchanged script reuses the storyboard without calling the model.',
+          review:
+            'Reviews the storyboard against the script: failing shots are revised automatically and re-reviewed until PASS or the round limit. Outputs the revised storyboard and a review report.',
+          cast: 'Generates a design sheet for every character / location in the storyboard; shooting attaches them per shot to lock consistency. Unchanged descriptions are never redrawn.',
+          shot: 'Picks one shot: outputs its keyframe prompt, motion prompt and cast reference images to wire straight into image / video generation for fine-tuning.',
+          render:
+            'Shoots a keyframe per shot (cast sheets attached automatically) → optional vision QC with automatic retakes → optional image-to-video from the keyframe. Fingerprint cache: editing one shot reshoots only that shot.'
+        },
+        models: 'Models',
+        textModel: 'Text model',
+        imageModel: 'Image model',
+        videoModel: 'Video model',
+        qcModel: 'QC model (vision)',
+        noModel: 'Configure a model in Settings first',
+        breakdownOptions: 'Breakdown options',
+        targetShots: 'Target shots (0 = auto)',
+        aspectRatio: 'Aspect ratio',
+        style: 'Visual style',
+        stylePlaceholder: 'e.g. realistic cinematic, warm/cool contrast, 35mm grain',
+        forceBreakdown: 'Force re-breakdown (ignore unchanged-script reuse)',
+        reviewOptions: 'Review options',
+        maxRounds: 'Max auto-revision rounds',
+        maxRoundsHint:
+          '0 = review only. Revisions rewrite failing shots only; locked shots are never rewritten.',
+        castOptions: 'Cast options',
+        kind: {
+          character: 'Character',
+          location: 'Location',
+          prop: 'Prop'
+        },
+        force: 'Force regenerate (ignore cache)',
+        lockHint: 'Lock: AI will not rewrite / redraw',
+        castRefHint:
+          'Wire existing images into Reference: images titled like an entity become its design sheet; the rest act as global style references.',
+        shotRef: 'Shot',
+        shotRefHint: 'Use a 1-based index or a shot id (e.g. S02-03).',
+        renderOptions: 'Shoot options',
+        mode: {
+          keyframe: 'Keyframes only',
+          video: 'Keyframes + video'
+        },
+        followStoryboard: 'Follow storyboard',
+        shotRange: 'Shot range',
+        shotRangePlaceholder: 'Empty = all, e.g. 1-5,8',
+        qc: 'Keyframe vision QC (auto retake on failure)',
+        maxRetries: 'Max retakes',
+        renderCacheHint:
+          'Shots whose prompt and references are unchanged reuse the last output; enable Force to reshoot everything.',
+        instruction: {
+          breakdown: 'Director notes',
+          review: 'Extra review criteria',
+          cast: 'Design sheet notes',
+          render: 'Extra notes'
+        },
+        instructionPlaceholder: {
+          breakdown: 'e.g. set up the mystery within 3 shots; favor close-ups for emotion',
+          review: 'e.g. every scene needs an establishing shot; dialogue shots ≤ 5 s',
+          cast: 'e.g. three-view turnaround on white; realistic costumes',
+          render:
+            'e.g. consistent cinematic rim light; realistic proportions; shallow depth of field'
+        },
+        shots: 'Shots ({n})',
+        shotsHint:
+          'Click a shot to edit. Edited shots are locked automatically and never rewritten by re-breakdowns or review revisions.',
+        field: {
+          action: 'Action',
+          imagePrompt: 'Keyframe prompt',
+          videoPrompt: 'Motion prompt'
+        }
       },
       episode: {
         anchorHint:

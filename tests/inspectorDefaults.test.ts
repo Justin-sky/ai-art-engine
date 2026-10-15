@@ -29,13 +29,13 @@ describe('graph inspector defaults', () => {
     ).toBe('plugin.custom')
   })
 
-  it('resolves world table inspector id', () => {
+  it('resolves film pipeline inspector id', () => {
     expect(
       resolveGraphInspectorId(
-        { inspector: 'none', inspectorId: 'studio.graph.worldTable' },
-        { category: 'note', typeId: 'world.table', params: {} }
+        { inspector: 'none', inspectorId: 'studio.graph.film' },
+        { category: 'note', typeId: 'film.breakdown', params: {} }
       )
-    ).toBe('studio.graph.worldTable')
+    ).toBe('studio.graph.film')
   })
 
   it('resolves select node inspector id', () => {

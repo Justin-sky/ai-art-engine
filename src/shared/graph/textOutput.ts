@@ -45,8 +45,6 @@ export function textFromGraphValue(value: GraphValue | undefined): string {
 /** 拆解 / 提取类工具：执行结果写在 params.text */
 function isTextToolNode(node: GraphNode): boolean {
   return (
-    node.typeId === 'beat.split' ||
-    node.typeId === 'world.extract' ||
     node.typeId === 'ui.split' ||
     node.typeId === 'prompt.optimize' ||
     node.typeId === 'image.toPrompt'

@@ -31,7 +31,9 @@ describe('GraphPortType', () => {
       // 语义时间线文档（整份 SemanticTimeline，不是普通文本）
       GraphPortType.semanticTimeline,
       // 视频生成提示词计划（语义编译 → 语义重建）
-      GraphPortType.videoPrompts
+      GraphPortType.videoPrompts,
+      GraphPortType.storyboard,
+      GraphPortType.filmCast
     ])
     expect(isGraphPortDataType('image')).toBe(true)
     expect(isGraphPortDataType('images')).toBe(true)
@@ -52,53 +54,39 @@ describe('GraphPortType', () => {
 })
 
 describe('catalog port types', () => {
-  it('world / beat / shots chain connect within domain only', () => {
-    const extract = createNodeFromType('world.extract', { x: 0, y: 0 })
-    const worldTable = createNodeFromType('world.table', { x: 100, y: 0 })
-    const worldGen = createNodeFromType('world.gen', { x: 200, y: 0 })
-    const split = createNodeFromType('beat.split', { x: 0, y: 80 })
-    const beatTable = createNodeFromType('beat.table', { x: 100, y: 80 })
-    const screenplay = createNodeFromType('asset.screenplay', { x: 0, y: 240 })
-    const beatSelect = createNodeFromType('beat.select', { x: 0, y: 120 })
+  it('film pipeline nodes connect within domain and to downstream media', () => {
+    const screenplay = createNodeFromType('asset.screenplay', { x: 0, y: 0 })
+    const breakdown = createNodeFromType('film.breakdown', { x: 100, y: 0 })
+    const review = createNodeFromType('film.review', { x: 200, y: 0 })
+    const cast = createNodeFromType('film.cast', { x: 200, y: 80 })
+    const shot = createNodeFromType('film.shot', { x: 300, y: 0 })
+    const render = createNodeFromType('film.render', { x: 400, y: 0 })
+    const imageGen = createNodeFromType('asset.image', { x: 400, y: 120 })
+    const imageSelect = createNodeFromType('image.select', { x: 500, y: 0 })
+    const videoSelect = createNodeFromType('video.select', { x: 500, y: 80 })
 
-    expect(canConnectNodes(extract, worldTable)).toBe(true)
-    expect(canConnectNodes(worldTable, worldGen)).toBe(true)
-    const worldOutput = createNodeFromType('output.world', { x: 300, y: 0 })
-    // world.gen 出口为四类图片组，不再直连 worldEntities 输出
-    expect(canConnectNodes(worldGen, worldOutput)).toBe(false)
+    expect(canConnectNodes(screenplay, breakdown)).toBe(true)
+    expect(canConnectNodes(breakdown, review)).toBe(true)
+    expect(canConnectNodes(review, cast)).toBe(true)
+    expect(canConnectNodes(review, shot)).toBe(true)
+    expect(canConnectNodes(cast, shot, { sourcePort: 'out', targetPort: 'in-cast' })).toBe(true)
+    expect(canConnectNodes(review, render)).toBe(true)
+    expect(canConnectNodes(cast, render, { sourcePort: 'out', targetPort: 'in-cast' })).toBe(true)
     expect(
-      canConnectNodes(worldGen, createNodeFromType('image.select', { x: 400, y: 0 }), {
-        sourcePort: 'out-characters',
-        targetPort: 'in'
-      })
+      canConnectNodes(render, imageSelect, { sourcePort: 'out-images', targetPort: 'in' })
     ).toBe(true)
     expect(
-      canConnectNodes(worldGen, createNodeFromType('asset.screenplay', { x: 400, y: 0 }))
-    ).toBe(false)
-    expect(canConnectNodes(split, beatTable)).toBe(true)
-    expect(canConnectNodes(beatTable, beatSelect)).toBe(true)
-
-    // 历史口 out-all 为 texts，不可直接进 world.table / beat.table
-    expect(canConnectNodes(extract, worldTable, { sourcePort: 'out-all', targetPort: 'in' })).toBe(
-      false
-    )
-    expect(canConnectNodes(split, beatTable, { sourcePort: 'out-all', targetPort: 'in' })).toBe(
-      false
-    )
-    const textSelect = createNodeFromType('text.select', { x: 300, y: 0 })
-    expect(canConnectNodes(extract, textSelect, { sourcePort: 'out-all', targetPort: 'in' })).toBe(
-      true
-    )
-    expect(canConnectNodes(split, textSelect, { sourcePort: 'out-all', targetPort: 'in' })).toBe(
-      true
-    )
-
-    expect(canConnectNodes(extract, beatTable)).toBe(false)
-    expect(canConnectNodes(split, worldTable)).toBe(false)
-    expect(canConnectNodes(extract, screenplay)).toBe(false)
-    expect(canConnectNodes(worldTable, screenplay)).toBe(false)
-    expect(canConnectNodes(screenplay, worldTable)).toBe(false)
-    expect(canConnectNodes(screenplay, extract)).toBe(true)
+      canConnectNodes(render, videoSelect, { sourcePort: 'out-videos', targetPort: 'in' })
+    ).toBe(true)
+    expect(canConnectNodes(shot, imageGen, { sourcePort: 'out', targetPort: 'in-text' })).toBe(true)
+    /**
+     * 剧本**可以**直连导演审核：`film.review` 的 `in-script` 口就是为它准备的
+     * （执行器 `collectScriptText(ctx, ctx.inputs['in-script'])` 用它做「对照原剧本」审核）。
+     * 这里断言 true，别把这条合法接线掐掉。
+     */
+    expect(canConnectNodes(screenplay, review)).toBe(true)
+    // 图片口接不进纯文本入口（拆解只吃剧本文本）
+    expect(canConnectNodes(imageGen, breakdown)).toBe(false)
   })
 })
 

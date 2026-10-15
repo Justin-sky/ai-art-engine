@@ -45,7 +45,7 @@ function groupsBlock(): string {
   const src = readFileSync(EDITOR, 'utf8')
   const start = src.indexOf('const CONTEXT_MENU_RESOURCE_GROUPS')
   expect(start).toBeGreaterThan(-1)
-  const end = src.indexOf('* 剧集 Agent 流水线手动创建预设', start)
+  const end = src.indexOf('const CONTEXT_MENU_GROUPED_TYPE_IDS', start)
   expect(end).toBeGreaterThan(start)
   return src.slice(start, end)
 }

@@ -14,11 +14,9 @@ import { bindEnsureBuiltinNodeTypes, builtinRegistrationState } from './builtinS
 import { registerNodeType, type NodeTypeDefinition } from './registry'
 import { SEMANTIC_TIMELINE_NODE_TYPES } from './semanticTimelineNodes'
 import { SCRIPT_NODE_TYPES } from './scriptNodeTypes'
+import { FILM_NODE_TYPES } from './film/nodes'
 import {
   GRAPH_OUTPUT_NODE_IDS,
-  GRAPH_BEAT_SPLIT_NODE_ID,
-  GRAPH_BEAT_TABLE_NODE_ID,
-  GRAPH_BEAT_GEN_NODE_ID,
   graphOutputNodeId,
   GraphPortType,
   toPluralGraphPortDataType,
@@ -54,7 +52,6 @@ import {
   executeFramePullNode,
   executeSelectVoiceNode,
   executeSelectTextNode,
-  executeSelectBeatNode,
   executeMultiAngleNode,
   executeAdVariantsNode,
   executeLightingNode,
@@ -79,21 +76,9 @@ import {
   executeLayerSplitNode,
   executeMediaReviewNode,
   executeMediaReworkNode,
-  executeBeatSplitNode,
-  executeBeatTableNode,
-  executeBeatGenNode,
-  executeBeatUnitGenNode,
-  executeBeatUnitRefNode,
-  executeEpisodeAnchorSelectNode,
-  executeEpisodeCellSelectNode,
   executeUiSplitNode,
   executeUiGenNode,
-  executeWorldGenNode,
-  executeWorldEntitiesOutputNode,
-  executeBeatCatalogOutputNode,
   executeTimelineOutputNode,
-  executeWorldExtractNode,
-  executeWorldTableNode,
   executeAnim2dNode,
   executeFrameAnimGenNode,
   executeSvgAnimNode,
@@ -133,15 +118,7 @@ import {
   STAGE2D_FRAMES_OUT_PORT_ID,
   STAGE2D_SHEET_OUT_PORT_ID
 } from './stage2dAction'
-import { WORLD_GEN_IMAGE_OUT_PORTS } from './worldElementParse'
-import {
-  ASSET_DIRECTOR_OUTPUT_TITLE,
-  ASSET_BEAT_OUTPUT_TITLE,
-  ASSET_TIMELINE_OUTPUT_TITLE,
-  ASSET_WORLD_OUTPUT_TITLE,
-  BEAT_UNIT_OUTPUT_TITLE
-} from './scopes'
-import { defaultBeatUnitGenParams } from './beatParams'
+import { ASSET_DIRECTOR_OUTPUT_TITLE, ASSET_TIMELINE_OUTPUT_TITLE } from './scopes'
 import { isAssetRefNode } from './nodeRole'
 
 const ASSET_SIZE = { w: 168, h: 128 }
@@ -832,10 +809,9 @@ function outputDef(kind: GraphOutputKind, label: string, icon: string): NodeType
   }
 }
 
-/** 导演台 / 成片时间线 / 叙事 / 世界元素资产编辑窗口的专用输出（仅输入口，无输出端口） */
+/** 导演台 / 成片时间线资产编辑窗口的专用输出（仅输入口，无输出端口） */
 function specializedOutputDef(
-  typeId:
-    'output.director' | 'output.timeline' | 'output.beat' | 'output.beatUnit' | 'output.world',
+  typeId: 'output.director' | 'output.timeline',
   label: string,
   icon: string,
   defaultTitle: string,
@@ -878,13 +854,7 @@ function specializedOutputDef(
     singletonId:
       typeId === 'output.director'
         ? GRAPH_OUTPUT_NODE_IDS.director
-        : typeId === 'output.timeline'
-          ? GRAPH_OUTPUT_NODE_IDS.timeline
-          : typeId === 'output.beat'
-            ? GRAPH_OUTPUT_NODE_IDS.beat
-            : typeId === 'output.beatUnit'
-              ? GRAPH_OUTPUT_NODE_IDS.beatUnit
-              : GRAPH_OUTPUT_NODE_IDS.world,
+        : GRAPH_OUTPUT_NODE_IDS.timeline,
     // classic 输出已从菜单移除；残留节点允许删除
     deletable: true,
     inspector: 'output',
@@ -929,32 +899,6 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
         label: 'Videos'
       }
     ]
-  ),
-  specializedOutputDef(
-    'output.beat',
-    'Beat output',
-    '📖',
-    ASSET_BEAT_OUTPUT_TITLE,
-    'text',
-    GraphPortType.beat,
-    executeBeatCatalogOutputNode
-  ),
-  specializedOutputDef(
-    'output.beatUnit',
-    'Beat output',
-    '📖',
-    BEAT_UNIT_OUTPUT_TITLE,
-    'text',
-    GraphPortType.text
-  ),
-  specializedOutputDef(
-    'output.world',
-    'World element output',
-    '🌍',
-    ASSET_WORLD_OUTPUT_TITLE,
-    'text',
-    GraphPortType.worldEntities,
-    executeWorldEntitiesOutputNode
   ),
   {
     typeId: 'note.text',
@@ -1237,36 +1181,6 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     card: 'media',
     contributeToGeneration: false,
     execute: executeSelectTextNode
-  },
-  {
-    typeId: 'beat.select',
-    category: 'note',
-    label: 'Select beat unit',
-    icon: '📖',
-    defaultTitle: 'Select beat unit',
-    defaultSize: { ...ASSET_SIZE },
-    sizeLimits: { ...ASSET_LIMITS },
-    ports: [
-      { id: 'in', direction: 'in', dataType: GraphPortType.beat, multiple: false, label: 'In' },
-      {
-        id: 'out',
-        direction: 'out',
-        dataType: GraphPortType.text,
-        multiple: true,
-        label: 'Out'
-      }
-    ],
-    defaultParams: () => ({
-      text: '',
-      selectedBeatId: ''
-    }),
-    addable: true,
-    deletable: true,
-    inspector: 'none',
-    inspectorId: 'studio.graph.select',
-    card: 'media',
-    contributeToGeneration: false,
-    execute: executeSelectBeatNode
   },
   {
     typeId: 'image.multiAngle',
@@ -2228,49 +2142,6 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     execute: executeMediaReworkNode
   },
   {
-    typeId: 'beat.split',
-    category: 'note',
-    label: 'Beat split',
-    icon: '📖',
-    defaultTitle: 'Beat split',
-    defaultSize: { ...ASSET_SIZE },
-    sizeLimits: { ...ASSET_LIMITS },
-    ports: [
-      { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'In' },
-      {
-        id: 'out',
-        direction: 'out',
-        dataType: GraphPortType.beat,
-        multiple: false,
-        label: 'Selected'
-      },
-      {
-        id: 'out-all',
-        direction: 'out',
-        dataType: GraphPortType.texts,
-        multiple: true,
-        label: 'All'
-      }
-    ],
-    defaultParams: () => ({
-      text: '',
-      generatedTexts: [],
-      selectedTextId: '',
-      generateInstruction: '',
-      generateSystemPrompt: '',
-      generateModel: '',
-      generateProviderInstanceId: ''
-    }),
-    addable: true,
-    singletonId: GRAPH_BEAT_SPLIT_NODE_ID,
-    deletable: true,
-    inspector: 'none',
-    inspectorId: 'studio.graph.beatSplit',
-    card: 'media',
-    contributeToGeneration: false,
-    execute: executeBeatSplitNode
-  },
-  {
     typeId: 'ui.split',
     category: 'note',
     label: 'UI 界面拆分',
@@ -2550,244 +2421,6 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     card: 'media',
     contributeToGeneration: false,
     execute: executeFrameAnimGenNode
-  },
-  {
-    typeId: 'beat.table',
-    category: 'note',
-    label: 'Beat table',
-    icon: '📋',
-    defaultTitle: 'Beat table',
-    defaultSize: { ...ASSET_SIZE },
-    sizeLimits: { ...ASSET_LIMITS },
-    ports: [
-      { id: 'in', direction: 'in', dataType: GraphPortType.beat, multiple: false, label: 'In' },
-      { id: 'out', direction: 'out', dataType: GraphPortType.beat, multiple: true, label: 'Out' }
-    ],
-    defaultParams: () => ({ text: '' }),
-    addable: true,
-    singletonId: GRAPH_BEAT_TABLE_NODE_ID,
-    deletable: true,
-    inspector: 'none',
-    inspectorId: 'studio.graph.beatTable',
-    card: 'media',
-    contributeToGeneration: false,
-    execute: executeBeatTableNode
-  },
-  {
-    typeId: 'beat.gen',
-    category: 'note',
-    label: 'Beat unit gen',
-    icon: '📖',
-    defaultTitle: 'Beat unit gen',
-    defaultSize: { ...ASSET_SIZE },
-    sizeLimits: { ...ASSET_LIMITS },
-    ports: [
-      { id: 'in', direction: 'in', dataType: GraphPortType.beat, multiple: false, label: 'In' },
-      {
-        id: 'out',
-        direction: 'out',
-        dataType: GraphPortType.text,
-        multiple: false,
-        label: 'Selected'
-      },
-      {
-        id: 'out-all',
-        direction: 'out',
-        dataType: GraphPortType.texts,
-        multiple: true,
-        label: 'All'
-      }
-    ],
-    defaultParams: () => ({
-      mediaOutputDir: '',
-      generatedTexts: [],
-      selectedTextId: ''
-    }),
-    addable: false,
-    singletonId: GRAPH_BEAT_GEN_NODE_ID,
-    deletable: true,
-    inspector: 'none',
-    inspectorId: 'studio.graph.beatGen',
-    card: 'media',
-    contributeToGeneration: false,
-    execute: executeBeatGenNode
-  },
-  {
-    typeId: 'beat.unitGen',
-    category: 'note',
-    label: 'Beat gen',
-    icon: '📖',
-    defaultTitle: 'Beat gen',
-    defaultSize: { ...ASSET_SIZE },
-    sizeLimits: { ...ASSET_LIMITS },
-    ports: [
-      { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'In' },
-      ...galleryOutPorts(GraphPortType.text)
-    ],
-    defaultParams: () => defaultBeatUnitGenParams(),
-    addable: true,
-    deletable: true,
-    inspector: 'none',
-    inspectorId: 'studio.graph.beatUnitGen',
-    card: 'media',
-    contributeToGeneration: false,
-    execute: executeBeatUnitGenNode
-  },
-  {
-    typeId: 'beat.unitRef',
-    category: 'note',
-    label: 'Beat ref',
-    icon: '📎',
-    defaultTitle: 'Beat ref',
-    defaultSize: { ...ASSET_SIZE },
-    sizeLimits: { ...ASSET_LIMITS },
-    ports: [
-      { id: 'out', direction: 'out', dataType: GraphPortType.text, multiple: true, label: 'Out' }
-    ],
-    defaultParams: () => ({}),
-    addable: true,
-    deletable: true,
-    inspector: 'none',
-    inspectorId: 'studio.graph.beatUnitRef',
-    card: 'media',
-    contributeToGeneration: false,
-    execute: executeBeatUnitRefNode
-  },
-  {
-    typeId: 'episode.anchorSelect',
-    category: 'note',
-    label: 'Anchor select',
-    icon: '🎯',
-    defaultTitle: 'Anchor select',
-    defaultSize: { ...ASSET_SIZE },
-    sizeLimits: { ...ASSET_LIMITS },
-    ports: [
-      { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: false, label: 'In' },
-      { id: 'out', direction: 'out', dataType: GraphPortType.text, multiple: false, label: 'Out' }
-    ],
-    defaultParams: () => ({ text: '', anchorIndex: 1 }),
-    addable: true,
-    deletable: true,
-    inspector: 'none',
-    inspectorId: 'studio.graph.episodeAnchorSelect',
-    card: 'media',
-    contributeToGeneration: false,
-    execute: executeEpisodeAnchorSelectNode
-  },
-  {
-    typeId: 'episode.cellSelect',
-    category: 'note',
-    label: 'Dynamic cell select',
-    icon: '🔲',
-    defaultTitle: 'Dynamic cell select',
-    defaultSize: { ...ASSET_SIZE },
-    sizeLimits: { ...ASSET_LIMITS },
-    ports: [
-      { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: false, label: 'In' },
-      { id: 'out', direction: 'out', dataType: GraphPortType.text, multiple: false, label: 'Out' }
-    ],
-    defaultParams: () => ({ text: '', cellGroupIndex: 1, cellIndex: 1 }),
-    addable: true,
-    deletable: true,
-    inspector: 'none',
-    inspectorId: 'studio.graph.episodeCellSelect',
-    card: 'media',
-    contributeToGeneration: false,
-    execute: executeEpisodeCellSelectNode
-  },
-  {
-    typeId: 'world.extract',
-    category: 'note',
-    label: 'World extract',
-    icon: '🗡️',
-    defaultTitle: 'World extract',
-    defaultSize: { ...ASSET_SIZE },
-    sizeLimits: { ...ASSET_LIMITS },
-    ports: [
-      { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'In' },
-      {
-        id: 'out',
-        direction: 'out',
-        dataType: GraphPortType.world,
-        multiple: false,
-        label: 'Selected'
-      },
-      {
-        id: 'out-all',
-        direction: 'out',
-        dataType: GraphPortType.texts,
-        multiple: true,
-        label: 'All'
-      }
-    ],
-    defaultParams: () => ({
-      text: '',
-      generatedTexts: [],
-      selectedTextId: '',
-      generateInstruction: '',
-      generateSystemPrompt: '',
-      generateModel: '',
-      generateProviderInstanceId: ''
-    }),
-    addable: true,
-    deletable: true,
-    inspector: 'none',
-    inspectorId: 'studio.graph.spatialWorldExtract',
-    card: 'media',
-    contributeToGeneration: false,
-    execute: executeWorldExtractNode
-  },
-  {
-    typeId: 'world.table',
-    category: 'note',
-    label: 'World element review',
-    icon: '📋',
-    defaultTitle: 'World element review',
-    defaultSize: { ...ASSET_SIZE },
-    sizeLimits: { ...ASSET_LIMITS },
-    ports: [
-      { id: 'in', direction: 'in', dataType: GraphPortType.world, multiple: false, label: 'In' },
-      { id: 'out', direction: 'out', dataType: GraphPortType.world, multiple: true, label: 'Out' }
-    ],
-    defaultParams: () => ({ text: '' }),
-    addable: true,
-    deletable: true,
-    inspector: 'none',
-    inspectorId: 'studio.graph.worldTable',
-    card: 'media',
-    contributeToGeneration: false,
-    execute: executeWorldTableNode
-  },
-  {
-    typeId: 'world.gen',
-    category: 'note',
-    label: 'World element gen',
-    icon: '🤺',
-    defaultTitle: 'World element gen',
-    defaultSize: { ...ASSET_SIZE },
-    sizeLimits: { ...ASSET_LIMITS },
-    ports: [
-      { id: 'in', direction: 'in', dataType: GraphPortType.world, multiple: false, label: 'In' },
-      ...WORLD_GEN_IMAGE_OUT_PORTS.map((port) => ({
-        id: port.id,
-        direction: 'out' as const,
-        dataType: GraphPortType.images,
-        multiple: true,
-        label: port.label
-      }))
-    ],
-    defaultParams: () => ({
-      worldElementOutputs: [],
-      text: ''
-    }),
-    addable: true,
-    deletable: true,
-    inspector: 'none',
-    inspectorId: 'studio.graph.worldGen',
-    card: 'media',
-    contributeToGeneration: false,
-    /** 同步目录后收集实体；批跑元素子图由 cookBatchSubgraphs / Cook 子图控制 */
-    execute: executeWorldGenNode
   },
   {
     typeId: 'model.pose',
@@ -3283,6 +2916,7 @@ export function ensureBuiltinNodeTypes(): void {
   for (const definition of BUILTIN_NODE_TYPES) registerNodeType(definition)
   for (const definition of SEMANTIC_TIMELINE_NODE_TYPES) registerNodeType(definition)
   for (const definition of SCRIPT_NODE_TYPES) registerNodeType(definition)
+  for (const definition of FILM_NODE_TYPES) registerNodeType(definition)
 }
 
 bindEnsureBuiltinNodeTypes(ensureBuiltinNodeTypes)

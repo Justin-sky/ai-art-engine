@@ -20,7 +20,6 @@ import CutoutProcessInspector from '../components/CutoutProcessInspector.vue'
 import AlignProcessInspector from '../components/AlignProcessInspector.vue'
 import ComposeProcessInspector from '../components/ComposeProcessInspector.vue'
 import SelectNodeInspector from '../components/SelectNodeInspector.vue'
-import EpisodeSelectInspector from '../components/EpisodeSelectInspector.vue'
 import GridSplitInspector from '../components/GridSplitInspector.vue'
 import IconPackInspector from '../components/IconPackInspector.vue'
 import LayerSplitInspector from '../components/LayerSplitInspector.vue'
@@ -40,10 +39,7 @@ import Stage2dInspector from '../components/Stage2dInspector.vue'
 import SvgAnimInspector from '../components/SvgAnimInspector.vue'
 import FrameAnimGenInspector from '../components/FrameAnimGenInspector.vue'
 import SvgGenInspector from '../components/SvgGenInspector.vue'
-import TablePassThroughInspector from '../components/TablePassThroughInspector.vue'
-import WorldGenInspector from '../components/WorldGenInspector.vue'
 import SpatialWorldExportInspector from '../components/SpatialWorldExportInspector.vue'
-import BeatInspector from '../components/BeatInspector.vue'
 import ProjectGlobalsInspector from '../components/ProjectGlobalsInspector.vue'
 import ShotNodeInspector from '../components/ShotNodeInspector.vue'
 import ShotNoteInspector from '../components/ShotNoteInspector.vue'
@@ -51,13 +47,10 @@ import DirectorCameraInspector from '../components/DirectorCameraInspector.vue'
 import DirectorStageInspector from '../components/DirectorStageInspector.vue'
 import GraphHostInspector from '../components/GraphHostInspector.vue'
 import ScriptRunInspector from '../components/ScriptRunInspector.vue'
+import FilmInspector from '../components/FilmInspector.vue'
 import type { InspectorDefinition } from './types'
 import type { ProjectConfig } from '@shared/domain'
-import {
-  readBoundBeatIdFromNodeParams,
-  isAssetRefInputHostType,
-  type GraphNode
-} from '@shared/graph'
+import { isAssetRefInputHostType, isFilmNodeTypeId, type GraphNode } from '@shared/graph'
 
 function isStageInspectorTarget(kind: string): boolean {
   return (
@@ -75,14 +68,6 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     match: (target) => target.kind === 'project',
     props: (context) => ({
       config: (context.target.subject as ProjectConfig | null) ?? null
-    })
-  },
-  {
-    id: 'studio.beatUnit',
-    component: BeatInspector,
-    match: (target) => target.kind === 'beatUnit',
-    props: (context) => ({
-      beatAssetId: (context.target.meta?.beatAssetId as string | undefined) ?? undefined
     })
   },
   {
@@ -216,16 +201,6 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     nodeTypeId: 'decisions.judge'
   },
   {
-    id: 'studio.graph.spatialWorldExtract',
-    component: PromptOptimizeInspector,
-    nodeTypeId: 'world.extract'
-  },
-  {
-    id: 'studio.graph.beatSplit',
-    component: PromptOptimizeInspector,
-    nodeTypeId: 'beat.split'
-  },
-  {
     id: 'studio.graph.uiSplit',
     component: PromptOptimizeInspector,
     nodeTypeId: 'ui.split'
@@ -254,42 +229,6 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     id: 'studio.graph.svgGen',
     component: SvgGenInspector,
     nodeTypeId: 'svg.gen'
-  },
-  {
-    id: 'studio.graph.beatUnitGen',
-    component: PromptOptimizeInspector,
-    nodeTypeId: 'beat.unitGen'
-  },
-  {
-    id: 'studio.graph.beatTable',
-    component: TablePassThroughInspector,
-    nodeTypeId: 'beat.table'
-  },
-  {
-    id: 'studio.graph.beatGen',
-    component: TablePassThroughInspector,
-    nodeTypeId: 'beat.gen'
-  },
-  {
-    id: 'studio.graph.beatUnitRef',
-    component: BeatInspector,
-    nodeTypeId: 'beat.unitRef',
-    props: (context) => {
-      const node = context.target.subject as GraphNode | null
-      return {
-        beatId: readBoundBeatIdFromNodeParams(node?.params)
-      }
-    }
-  },
-  {
-    id: 'studio.graph.worldTable',
-    component: TablePassThroughInspector,
-    nodeTypeId: 'world.table'
-  },
-  {
-    id: 'studio.graph.worldGen',
-    component: WorldGenInspector,
-    nodeTypeId: 'world.gen'
   },
   {
     id: 'studio.graph.spatialWorldExport',
@@ -406,20 +345,17 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
         typeId === 'image.select' ||
         typeId === 'video.select' ||
         typeId === 'voice.select' ||
-        typeId === 'text.select' ||
-        typeId === 'beat.select'
+        typeId === 'text.select'
       )
     }
   },
   {
-    id: 'studio.graph.episodeAnchorSelect',
-    component: EpisodeSelectInspector,
-    nodeTypeId: 'episode.anchorSelect'
-  },
-  {
-    id: 'studio.graph.episodeCellSelect',
-    component: EpisodeSelectInspector,
-    nodeTypeId: 'episode.cellSelect'
+    id: 'studio.graph.film',
+    component: FilmInspector,
+    match: (target) => {
+      if (target.kind !== 'graph.node') return false
+      return isFilmNodeTypeId((target.subject as GraphNode | null)?.typeId)
+    }
   },
   {
     id: 'studio.graph.gridSplit',

@@ -927,12 +927,6 @@ import {
   stringifyBeatRows,
   formatBeatRefText,
   parseBeatJson,
-  EPISODE_AGENT_BEATBOARD,
-  EPISODE_AGENT_BREAKDOWN,
-  EPISODE_AGENT_DIRECTOR,
-  EPISODE_AGENT_MOTION,
-  EPISODE_AGENT_SEQUENCE,
-  EPISODE_AGENT_STOCK_TITLES,
   catalogTextFromValue,
   isBoundaryOutputNode,
   isGraphOutputTerminalNode,
@@ -2002,23 +1996,7 @@ const {
     if (!isWorldElementPipelineHost.value) return
     const worldId = props.assetId
     if (!worldId) return
-    if (sourceNodeId) {
-      const source = graph.nodes.find((node) => node.id === sourceNodeId)
-      if (source?.typeId === 'world.gen') {
-        await applyWorldCatalog(worldId, jsonText, sourceNodeId)
-        return
-      }
-      // 表格/提取运行：目录沿边流入其下游 world.gen 节点
-      const downstreamGens = graph.edges
-        .filter((edge) => edge.source === sourceNodeId)
-        .map((edge) => graph.nodes.find((node) => node.id === edge.target))
-        .filter((node): node is GraphNode => !!node && node.typeId === 'world.gen')
-      for (const gen of downstreamGens) {
-        await applyWorldCatalog(worldId, jsonText, gen.id)
-      }
-      if (downstreamGens.length) return
-    }
-    await applyWorldCatalog(worldId, jsonText)
+    await applyWorldCatalog(worldId, jsonText, sourceNodeId)
   },
   resolveBeatCatalogJson: () => {
     if (graphScope.value !== 'beatAsset') return null
@@ -2041,7 +2019,7 @@ const {
       live.params = { ...live.params, ...patch.params }
     }
     if (patch.title !== undefined) live.title = patch.title
-    // 通知 Inspector 输出预览等订阅方刷新（如 beat.split 写回 params.text）
+    // 通知 Inspector 输出预览等订阅方刷新
     graphEditorHosts.bumpRevision()
     scheduleSave()
   },
@@ -2232,15 +2210,13 @@ const toolbarSelectedNode = computed(() => {
   return graph.nodes.find((n) => n.id === id) ?? null
 })
 
-/** 当前画布是否为剧集流水线（含宫格/动态格选择节点或阶段生成节点） */
+/** 当前画布是否为剧集流水线（含阶段生成节点） */
 const isEpisodePipelineGraph = computed(() =>
   graph.nodes.some(
     (n) =>
-      n.typeId === 'episode.anchorSelect' ||
-      n.typeId === 'episode.cellSelect' ||
-      (n.typeId === 'prompt.optimize' &&
-        typeof n.params?.episodeStep === 'string' &&
-        !!n.params.episodeStep)
+      n.typeId === 'prompt.optimize' &&
+      typeof n.params?.episodeStep === 'string' &&
+      !!n.params.episodeStep
   )
 )
 
@@ -3146,13 +3122,9 @@ async function onEncapsulateSaveConfirm(payload: {
       hostAssetId: created.id,
       hostAssetName: created.name
     })
-    // 迁移被封装 world.gen 节点的世界元素状态（四类子图 + 指纹），
-    // 避免封装后已生成数据丢失、图片输出为空
     const migratedWorldState = pickWorldElementStateForMigration(
       graphAsset.value?.genParams as Record<string, unknown> | undefined,
-      before.nodes
-        .filter((node) => ids.includes(node.id) && node.typeId === 'world.gen')
-        .map((node) => node.id)
+      []
     )
     // IPC 不能传 Vue Proxy；toPlain 剥离响应式后再写回定义资产
     await window.studio.updateAsset(
@@ -3472,8 +3444,11 @@ type AddableMenuItem = {
 }
 
 type ResourceMenuGroupId =
-  | Extract<AssetType, 'image' | 'video' | 'voice' | 'screenplay' | 'motion' | 'world' | 'beat'>
-  | 'episode'
+  | Extract<AssetType, 'image' | 'video' | 'voice' | 'motion'>
+  /** 影视流水线三个制作阶段（收进「影视」父级）：前期剧本分镜 / 美术设定 / 拍摄出片 */
+  | 'filmPre'
+  | 'filmArt'
+  | 'filmShoot'
   | 'imageRefine'
   | 'imageEdit'
   | 'text'
@@ -3487,6 +3462,9 @@ type ResourceMenuGroupId =
   | 'ad'
   /** 视频语义时间线工具：分析 / 修复 / 变体 / 时间线 / 触发 / 编译 */
   | 'videoSemantic'
+
+/** 影视阶段分组：组内按流水线顺序展示（不按名称排序），文案走 graph.context.groups */
+const FILM_MENU_GROUP_IDS: ReadonlySet<string> = new Set(['filmPre', 'filmArt', 'filmShoot'])
 
 /** 菜单分组：影视父级 id 不是资产类型，只作二级入口，故不进 ResourceMenuGroupId（否则文案窄化会漏到 assetTypeLabel） */
 type ResourceMenuGroup = ContextMenuResourceGroup<
@@ -3552,8 +3530,9 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
     typeIds: ['asset.voice', 'asset.dialogue', 'asset.sfx', 'asset.music', 'voice.select']
   },
   {
-    id: 'screenplay',
-    typeIds: ['asset.screenplay']
+    // 影视·前期：剧本生成 → 分镜拆解 → 导演审核（组内按流水线顺序，不按名称排序）
+    id: 'filmPre',
+    typeIds: ['asset.screenplay', 'film.breakdown', 'film.review']
   },
   {
     id: 'text',
@@ -3568,24 +3547,14 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
     typeIds: ['frame.animGen', 'anim.2d', 'image.align', 'stage.2d']
   },
   {
-    id: 'beat',
-    typeIds: [
-      'asset.beat',
-      'beat.select',
-      'beat.split',
-      'beat.table',
-      'beat.gen',
-      'beat.unitGen',
-      'beat.unitRef'
-    ]
+    // 影视·美术：角色 / 场景 / 道具设定库
+    id: 'filmArt',
+    typeIds: ['film.cast']
   },
   {
-    id: 'world',
-    typeIds: ['asset.world', 'world.extract', 'world.table', 'world.gen']
-  },
-  {
-    id: 'episode',
-    typeIds: ['episode.anchorSelect', 'episode.cellSelect']
+    // 影视·拍摄：批量拍摄（关键帧 + 视频）/ 单镜精修
+    id: 'filmShoot',
+    typeIds: ['film.render', 'film.shot']
   },
   {
     id: 'model3d',
@@ -3619,75 +3588,6 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
   {
     id: 'ad',
     typeIds: ['image.adVariants']
-  }
-]
-
-/** 剧集 Agent 流水线手动创建预设：右键「剧集」分组直接生成配置好的 prompt.optimize */
-const EPISODE_AGENT_PRESET_ITEMS: AddableMenuItem[] = [
-  {
-    typeId: 'prompt.optimize',
-    label: t('graph.episodeAgent.breakdown'),
-    icon: '✨',
-    portTypeLabel: '',
-    // 库存标题持久化英文规范值；展示层经 EPISODE_AGENT_TITLE_I18N 走 i18n
-    title: EPISODE_AGENT_STOCK_TITLES.breakdown,
-    params: {
-      episodeStep: 'breakdown',
-      episodeScopeKey: 'ep01',
-      generateSystemPrompt: EPISODE_AGENT_BREAKDOWN.systemPromptZh,
-      generateInstruction: EPISODE_AGENT_BREAKDOWN.instructionZh
-    }
-  },
-  {
-    typeId: 'prompt.optimize',
-    label: t('graph.episodeAgent.beatboard'),
-    icon: '✨',
-    portTypeLabel: '',
-    title: EPISODE_AGENT_STOCK_TITLES.beatboard,
-    params: {
-      episodeStep: 'beatboard',
-      episodeScopeKey: 'ep01',
-      generateSystemPrompt: EPISODE_AGENT_BEATBOARD.systemPromptZh,
-      generateInstruction: EPISODE_AGENT_BEATBOARD.instructionZh
-    }
-  },
-  {
-    typeId: 'prompt.optimize',
-    label: t('graph.episodeAgent.sequence'),
-    icon: '✨',
-    portTypeLabel: '',
-    title: EPISODE_AGENT_STOCK_TITLES.sequence,
-    params: {
-      episodeStep: 'sequence',
-      episodeScopeKey: 'ep01',
-      generateSystemPrompt: EPISODE_AGENT_SEQUENCE.systemPromptZh,
-      generateInstruction: EPISODE_AGENT_SEQUENCE.instructionZh
-    }
-  },
-  {
-    typeId: 'prompt.optimize',
-    label: t('graph.episodeAgent.motion'),
-    icon: '✨',
-    portTypeLabel: '',
-    title: EPISODE_AGENT_STOCK_TITLES.motion,
-    params: {
-      episodeStep: 'motion',
-      episodeScopeKey: 'ep01',
-      generateSystemPrompt: EPISODE_AGENT_MOTION.systemPromptZh,
-      generateInstruction: EPISODE_AGENT_MOTION.instructionZh
-    }
-  },
-  {
-    typeId: 'prompt.optimize',
-    label: t('graph.episodeAgent.review'),
-    icon: '✨',
-    portTypeLabel: '',
-    title: EPISODE_AGENT_STOCK_TITLES.directorReview,
-    params: {
-      episodeScopeKey: 'ep01',
-      generateSystemPrompt: EPISODE_AGENT_DIRECTOR.systemPromptZh,
-      generateInstruction: EPISODE_AGENT_DIRECTOR.instructionZh
-    }
   }
 ]
 
@@ -3750,38 +3650,30 @@ const rootAddableMenuItems = computed(() =>
 const resourceMenuGroups = computed((): ResourceMenuGroup[] => {
   const byTypeId = new Map(addableMenuItems.value.map((item) => [item.typeId, item]))
   return CONTEXT_MENU_RESOURCE_GROUPS.map((group) => {
-    const items = group.typeIds
+    const picked = group.typeIds
       .map((typeId) => byTypeId.get(typeId as GraphNodeTypeId))
       .filter((item): item is AddableMenuItem => item != null)
-      .concat(
-        // 剧集 Agent 预设项自带预设参数，不能简单换成 byTypeId 里的普通项；
-        // 但必须过同一道类型过滤（byTypeId 已按当前连线类型筛过），
-        // 否则从任何端口拉线都会冒出剧集节点 —— 例如「空间世界导出」的模型口
-        group.id === 'episode'
-          ? EPISODE_AGENT_PRESET_ITEMS.filter((item) =>
-              byTypeId.has(item.typeId as GraphNodeTypeId)
-            )
-          : []
-      )
-      .sort((a, b) => compareNames(a.label, b.label))
+    // 影视阶段分组按流水线顺序展示（剧本生成 → 分镜拆解 → 导演审核），其余按名称排序
+    const items = FILM_MENU_GROUP_IDS.has(group.id)
+      ? picked
+      : picked.sort((a, b) => compareNames(a.label, b.label))
     return {
       id: group.id,
       label:
-        group.id === 'episode'
+        FILM_MENU_GROUP_IDS.has(group.id) ||
+        group.id === 'imageRefine' ||
+        group.id === 'imageEdit' ||
+        group.id === 'text' ||
+        group.id === 'game' ||
+        group.id === 'motionFx' ||
+        group.id === 'model3d' ||
+        group.id === 'spatialWorld' ||
+        group.id === 'comic' ||
+        group.id === 'qc' ||
+        group.id === 'ad' ||
+        group.id === 'videoSemantic'
           ? t(`graph.context.groups.${group.id}`)
-          : group.id === 'imageRefine' ||
-              group.id === 'imageEdit' ||
-              group.id === 'text' ||
-              group.id === 'game' ||
-              group.id === 'motionFx' ||
-              group.id === 'model3d' ||
-              group.id === 'spatialWorld' ||
-              group.id === 'comic' ||
-              group.id === 'qc' ||
-              group.id === 'ad' ||
-              group.id === 'videoSemantic'
-            ? t(`graph.context.groups.${group.id}`)
-            : assetTypeLabel(group.id),
+          : assetTypeLabel(group.id as AssetType),
       icon: contextMenuResourceGroupIcon(group.id),
       items
     }
@@ -3791,8 +3683,8 @@ const resourceMenuGroups = computed((): ResourceMenuGroup[] => {
 })
 
 /**
- * 根菜单的资源分组：影视的四个分组收进「影视」父级（二级嵌套），其余原样平铺。
- * 名称排序在嵌套之后做——父级与其余分组一起排，二级分组保持声明顺序（剧本 → 剧集 → 世界元素 → 场）。
+ * 根菜单的资源分组：影视的三个阶段分组收进「影视」父级（二级嵌套），其余原样平铺。
+ * 名称排序在嵌套之后做——父级与其余分组一起排，二级分组保持声明顺序（前期 → 美术 → 拍摄）。
  */
 const resourceAddableMenuGroups = computed((): ResourceMenuGroup[] =>
   nestContextMenuResourceGroups(resourceMenuGroups.value, {
@@ -4970,9 +4862,7 @@ function resolveDroppedBeatUnit(e: DragEvent): BeatRow | null {
 }
 
 function addBeatUnitRefNode(unit: BeatRow, position: { x: number; y: number }): boolean {
-  const existing = graph.nodes.find(
-    (n) => n.typeId === 'beat.unitRef' && readBoundBeatIdFromNodeParams(n.params) === unit.id
-  )
+  const existing = graph.nodes.find((n) => readBoundBeatIdFromNodeParams(n.params) === unit.id)
   if (existing) {
     workspace.selectGraphNode(existing.id, graphHostId.value)
     return true
@@ -5750,7 +5640,7 @@ function collectSelectImageItems(nodeId: string): GraphImageItem[] {
     if (!source) continue
 
     const sourcePort = edge.sourcePort ?? 'out'
-    if (source.typeId === 'world.gen') {
+    if (isWorldGenImageOutPortId(sourcePort)) {
       const ports = isWorldGenImageOutPortId(sourcePort)
         ? [sourcePort]
         : WORLD_GEN_IMAGE_OUT_PORTS.map((port) => port.id)
@@ -6239,7 +6129,7 @@ function collectSelectBeatItems(nodeId: string): GraphTextItem[] {
 function onSelectTextOpen(nodeId: string): void {
   const node = graph.nodes.find((n) => n.id === nodeId)
   if (!node) return
-  const isBeat = node.typeId === 'beat.select'
+  const isBeat = Boolean(node.params.selectedBeatId)
   const items = isBeat ? collectSelectBeatItems(nodeId) : collectSelectTextItems(nodeId)
   const selectedId = isBeat
     ? node.params.selectedBeatId?.trim() || ''
@@ -6268,7 +6158,7 @@ async function saveSelectText(selectedTextId: string): Promise<void> {
   const items = selectText.items
   const picked = pickTextItem(items, selectedTextId)
   const before = buildGraphJson()
-  if (node.typeId === 'beat.select') {
+  if (node.params.selectedBeatId !== undefined) {
     const beatId = picked?.id?.trim() || selectedTextId
     const text = picked?.text?.trim() || ''
     node.params = {

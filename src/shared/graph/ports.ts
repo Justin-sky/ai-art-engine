@@ -57,7 +57,13 @@ export function portsCompatible(source: GraphPortDataType, target: GraphPortData
   if (source === target) return true
   if (source === GraphPortType.image && target === GraphPortType.svg) return true
   if (target !== GraphPortType.text) return false
-  return source === GraphPortType.semanticTimeline || source === GraphPortType.videoPrompts
+  // 影视分镜文档 / 设定库同理：单向投影成规范 JSON 文本
+  return (
+    source === GraphPortType.semanticTimeline ||
+    source === GraphPortType.videoPrompts ||
+    source === GraphPortType.storyboard ||
+    source === GraphPortType.filmCast
+  )
 }
 
 /**

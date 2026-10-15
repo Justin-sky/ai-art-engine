@@ -2,8 +2,8 @@
  * 画布右键菜单的资源分组嵌套。
  *
  * 分组声明（id → typeIds）仍在 `NodeGraphEditor.vue`：可添加节点随画布作用域变化，
- * 声明必须挨着 `addableMenuItems` 才看得清。这里只做纯数据搬运——把影视相关的四个
- * 分组收进「影视」父级，并把分组图标收成一处纯函数，便于单测锁住层级、顺序与图标。
+ * 声明必须挨着 `addableMenuItems` 才看得清。这里只做纯数据搬运——把影视流水线的三个
+ * 阶段分组（前期 / 美术 / 拍摄）收进「影视」父级，并把分组图标收成一处纯函数，便于单测锁住层级、顺序与图标。
  */
 
 import { ANIM2D_ASSET_ICON, ASSET_TYPE_ICONS } from '@shared/domain'
@@ -74,18 +74,26 @@ export function contextMenuResourceGroupIcon(groupId: string): string {
       return '🤖'
     case 'ad':
       return '📢'
+    /**
+     * 影视三个阶段分组：图标不能与组内节点撞（剧本生成 📜 / 设定 🎭 / 镜头 📷 / 批量拍摄 🪄），
+     * 否则分不清谁是组、谁是节点（同 video / text 分组的教训）。
+     */
+    case 'filmPre':
+      return '🗒️'
+    case 'filmArt':
+      return '🖌️'
+    case 'filmShoot':
+      return '📽️'
     default:
       return ASSET_TYPE_ICONS[groupId as keyof typeof ASSET_TYPE_ICONS] ?? '◇'
   }
 }
 
-/** 收进影视父级的分组 id；数组顺序＝二级菜单展示顺序（剧本 → 剧集 → 世界元素 → 场） */
-export const CONTEXT_MENU_NESTED_CHILD_GROUP_IDS = [
-  'screenplay',
-  'episode',
-  'world',
-  'beat'
-] as const
+/**
+ * 收进影视父级的分组 id；数组顺序＝二级菜单展示顺序（按制作阶段：前期 → 美术 → 拍摄）。
+ * 组内节点也按流水线顺序排列（不参与名称排序），见 NodeGraphEditor 的 FILM_MENU_GROUP_IDS。
+ */
+export const CONTEXT_MENU_NESTED_CHILD_GROUP_IDS = ['filmPre', 'filmArt', 'filmShoot'] as const
 
 const NESTED_CHILD_ID_SET: ReadonlySet<string> = new Set(CONTEXT_MENU_NESTED_CHILD_GROUP_IDS)
 

@@ -251,9 +251,7 @@ import {
   resolveInstructionVisual,
   resolveNodeTextContent,
   type RefMentionOption,
-  readBoundBeatIdFromNodeParams,
   readSvgGenFromNode,
-  formatBeatRefText,
   shouldKeepInstructionMentionToken,
   softResolveBoundaryInputParams,
   isBoundaryInputNode,
@@ -278,7 +276,6 @@ import RefMentionTextarea from './RefMentionTextarea.vue'
 import { resolveEditorFocusIntent } from '../utils/editorFocusIntent'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useProjectStore } from '../stores/project'
-import { loadBeatCatalog } from '../features/beat/applyBeatCatalogOnOpen'
 import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
 import {
   fetchTextFromAssetRelativePath,
@@ -590,17 +587,7 @@ function sourceTitle(node: GraphNode): string {
 }
 
 /** 文本产出/透传节点：指令窗口引用芯片统一显示文本图标 */
-const TEXT_ICON_TYPE_IDS = new Set([
-  'play.script',
-  'text.select',
-  'output.text',
-  'episode.cellSelect',
-  'prompt.optimize',
-  'world.extract',
-  'beat.split',
-  'beat.table',
-  'beat.gen'
-])
+const TEXT_ICON_TYPE_IDS = new Set(['play.script', 'text.select', 'output.text', 'prompt.optimize'])
 
 function sourceIcon(node: GraphNode): string {
   if (node.assetType && ASSET_TYPE_ICONS[node.assetType]) {
@@ -615,22 +602,9 @@ function sourceIcon(node: GraphNode): string {
   return '📄'
 }
 
-/** 预览/芯片摘要用：场参考节点需现场拼正文 */
+/** 预览/芯片摘要用：解析来源节点纯文本 */
 function resolveSourcePlainText(node: GraphNode): string {
-  if (node.typeId === 'beat.unitRef') {
-    const beatId = readBoundBeatIdFromNodeParams(node.params)
-    const assetId = resolveHostBeatAssetId(props.hostId)
-    if (beatId && assetId) {
-      const unit = loadBeatCatalog(assetId).find((row) => row.id === beatId)
-      if (unit) return formatBeatRefText(unit)
-    }
-  }
   return resolveNodeTextContent(node)?.text?.trim() ?? node.params.notes?.trim() ?? ''
-}
-
-function resolveHostBeatAssetId(hostId: string): string | null {
-  const match = /^asset:([^:]+)/.exec(hostId)
-  return match?.[1] ?? null
 }
 
 function sourceSnippet(node: GraphNode): string {

@@ -189,16 +189,16 @@ export default {
           '创建一个 3D 导演台预演工作流：图片节点生成 360 全景氛围参考并接入导演台的全景口，dive 进入舞台自动设为背景；在舞台用基础几何体手动搭景，摆机位截取站位图；站位图经选择节点挑一张，图生视频按构图生成预演成片，文本节点作为成片提示词补充。'
       },
       shortDrama: {
-        title: '短剧分镜',
-        desc: '剧本→节拍→9宫格→4宫格→36动态视频（Agent 流水线）',
+        title: '影视全流程',
+        desc: '剧本→分镜拆解→导演审核自动修订→角色场景设定→批量拍摄（质检重拍+图生视频）',
         prompt:
-          '创建一个短剧分镜 Agent 流水线工作流：文本节点放单集剧本，分镜师角色节点依次生成节拍拆解表、9宫格分镜表、4宫格动态分镜表（9×4=36），动画师角色节点生成动态提示词表；9 个宫格选择节点各接一张锚点分镜图，36 个动态格选择节点各接一条图生视频（父宫格锚点图作首帧）；每个阶段后接导演审核节点（输出 PASS/FAIL，失败原因自动写入 agent-state.json 并在重跑时附加）。'
+          '创建一个影视全流程闭环工作流：文本节点放剧本；分镜拆解节点（film.breakdown）把剧本拆成结构化分镜（镜头数随剧情）；导演审核节点（film.review）对照剧本审核并自动修订不通过的镜头；角色场景设定节点（film.cast）为每个角色与地点生成设定图；批量拍摄节点（film.render）按镜头出场名单带设定图拍关键帧、开启视觉质检自动重拍，并以关键帧为首帧生成每镜视频。'
       },
       shortDrama9: {
-        title: '短剧分镜·9格直出',
-        desc: '剧本→节拍→9宫格→动画师9条动态提示词→9条视频',
+        title: '影视精修·单镜头',
+        desc: '分镜→设定→镜头节点→关键帧图片→镜头视频（手动精修）',
         prompt:
-          '创建一个短剧分镜 Agent 流水线工作流，但跳过 4宫格展开：文本节点放单集剧本，分镜师角色节点依次生成节拍拆解表、9宫格分镜表；一张 9宫格拼图提取出 9 张锚点图；动画师角色节点为 9 个宫格各拆解 1 条动态提示词，共 9 条，每条动态提示词与对应锚点图共同驱动一条图生视频；节拍拆解表和 9宫格分镜表后各接导演审核节点（输出 PASS/FAIL，失败原因自动写入 agent-state.json 并在重跑时附加）。'
+          '创建一个影视单镜头精修工作流：文本节点放剧本，经分镜拆解、导演审核、角色场景设定后接镜头节点（film.shot，按序号取一镜）；镜头节点的关键帧提示词与出场设定图接图片生成节点出关键帧，关键帧与动态提示词接视频生成节点出镜头视频。'
       },
       anim2dGif: {
         title: '2D 帧动画',
@@ -3322,6 +3322,9 @@ export default {
         imageEdit: '图片编辑',
         episode: '剧集',
         filmTv: '影视',
+        filmPre: '前期·剧本分镜',
+        filmArt: '美术·角色场景',
+        filmShoot: '拍摄·出图出片',
         text: '文本',
         game: '游戏',
         motionFx: '2D',
@@ -4636,6 +4639,16 @@ export default {
       firstFrame: '首帧',
       lastFrame: '尾帧',
       referenceImage: '参考图',
+      filmShotList: '镜头表',
+      filmScriptIn: '原剧本',
+      filmReport: '审核报告',
+      filmCastIn: '设定库',
+      filmDesignSheets: '设定图',
+      filmKeyframePrompt: '关键帧提示词',
+      filmMotionPrompt: '动态提示词',
+      filmCastRefs: '出场设定图',
+      filmKeyframes: '关键帧',
+      filmClips: '镜头视频',
       types: {
         image: '图片',
         images: '图片组',
@@ -4654,7 +4667,9 @@ export default {
         spatialWorld: '空间世界',
         project: '工程',
         semanticTimeline: '语义时间线',
-        videoPrompts: '视频生成提示词'
+        videoPrompts: '视频生成提示词',
+        storyboard: '分镜文档',
+        filmCast: '设定库'
       }
     },
     media: {
@@ -4896,6 +4911,13 @@ export default {
       episode: {
         anchorSelect: '宫格选择',
         cellSelect: '动态格选择'
+      },
+      film: {
+        breakdown: '分镜拆解',
+        review: '导演审核',
+        cast: '角色场景设定',
+        shot: '镜头',
+        render: '批量拍摄'
       },
       world: {
         extract: '世界元素提取',
@@ -5292,6 +5314,76 @@ export default {
       },
       select: {
         hint: '双击节点打开选取面板；运行后可在此预览输出端口当前选中项'
+      },
+      film: {
+        hint: {
+          breakdown:
+            '把剧本拆成结构化分镜：场 / 镜头（数量随剧情）/ 角色场景实体。锁定或修改过的镜头在重新拆解时原样保留；剧本未变时直接复用，不重复调模型。',
+          review:
+            '对照原剧本审核分镜：不通过的镜头自动修订后复审，直到通过或达到最大轮数。输出修订后的分镜与审核报告。',
+          cast: '按分镜实体表为每个角色 / 地点生成设定图，供拍摄时按镜头出场名单自动带参考图锁一致性。描述不变不重画。',
+          shot: '取分镜中的一镜：输出关键帧提示词、动态提示词与该镜出场设定图，直接接图片 / 视频生成节点精修。',
+          render:
+            '逐镜拍摄关键帧（自动带出场角色 / 地点设定图）→ 可选视觉质检不合格自动重拍 → 可选以关键帧为首帧图生视频。按提示词指纹增量缓存，改一镜只重拍一镜。'
+        },
+        models: '模型',
+        textModel: '文本模型',
+        imageModel: '图片模型',
+        videoModel: '视频模型',
+        qcModel: '质检模型（视觉）',
+        noModel: '请先在设置中配置模型',
+        breakdownOptions: '拆解选项',
+        targetShots: '目标镜头数（0 = 自动）',
+        aspectRatio: '画幅',
+        style: '视觉风格',
+        stylePlaceholder: '如：写实电影感、冷暖对比、35mm 胶片颗粒',
+        forceBreakdown: '强制重新拆解（忽略「剧本未变化」复用）',
+        reviewOptions: '审核选项',
+        maxRounds: '最多自动修订轮数',
+        maxRoundsHint: '0 = 只审不改；修订只重写不通过的镜头，锁定镜头永不改写。',
+        castOptions: '设定选项',
+        kind: {
+          character: '角色',
+          location: '地点',
+          prop: '道具'
+        },
+        force: '强制重新生成（忽略缓存）',
+        lockHint: '锁定：AI 不再改写 / 重画',
+        castRefHint:
+          '可向「参考图」口接入现成图片：标题与实体同名的作为该实体设定图，其余作为全局风格参考。',
+        shotRef: '镜头',
+        shotRefHint: '填 1 起序号或镜头 id（如 S02-03）。',
+        renderOptions: '拍摄选项',
+        mode: {
+          keyframe: '只出关键帧',
+          video: '关键帧 + 视频'
+        },
+        followStoryboard: '跟随分镜',
+        shotRange: '镜头范围',
+        shotRangePlaceholder: '空 = 全部，如 1-5,8',
+        qc: '关键帧视觉质检（不合格自动重拍）',
+        maxRetries: '最多重拍次数',
+        renderCacheHint:
+          '提示词与参考图没变的镜头直接复用上次产物；需要全部重拍时勾选「强制重新生成」。',
+        instruction: {
+          breakdown: '补充导演要求',
+          review: '额外审核标准',
+          cast: '设定图补充要求',
+          render: '补充要求'
+        },
+        instructionPlaceholder: {
+          breakdown: '如：开场 3 镜内抛出悬念；多用特写表现情绪',
+          review: '如：每场必须有建立镜头；对白镜头不超过 5 秒',
+          cast: '如：统一三视图白底；服装偏写实',
+          render: '如：统一电影感侧逆光；人物比例写实；浅景深'
+        },
+        shots: '分镜（{n} 镜）',
+        shotsHint: '点击镜头展开编辑；修改过的镜头自动锁定，重新拆解 / 审核修订都不会改写。',
+        field: {
+          action: '画面动作',
+          imagePrompt: '关键帧提示词',
+          videoPrompt: '动态提示词'
+        }
       },
       episode: {
         anchorHint: '从上游 9宫格分镜表选择要提取的宫格（1~9）；运行后输出该格提示词。',

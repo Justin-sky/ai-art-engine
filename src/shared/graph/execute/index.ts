@@ -77,6 +77,7 @@ export {
 } from './modelPostProcess'
 export { executeModelAnimationNode } from './modelAnimation'
 export * from './narrative'
+export * from './film'
 export * from './select'
 export * from './imageEdit'
 export * from './imageLocal'
@@ -89,12 +90,7 @@ export * from './anim'
 export * from './svgAnim'
 export * from './svgGen'
 export * from './gamePlay'
-export {
-  executeScreenplayOutputNode,
-  executeBeatOutputNode,
-  executeOutputNode,
-  executeBundleNode
-} from './output'
+export { executeScreenplayOutputNode, executeOutputNode, executeBundleNode } from './output'
 export * from './engine'
 export * from './targeting'
 export * from './lanes'

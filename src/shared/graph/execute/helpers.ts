@@ -1,9 +1,4 @@
 import type { GraphNode, GraphNodeParams } from '../types'
-import {
-  parseWorldElementGenResults,
-  worldGenImageGroupOutputs,
-  type WorldElementGenResult
-} from '../worldElementParse'
 import type {
   GraphAssetValue,
   GraphImageItem,
@@ -25,7 +20,6 @@ import {
   newestVideoSelectedId,
   newestVoiceSelectedId
 } from './gallery'
-import { dualBeatCatalogOutputs, dualWorldCatalogOutputs } from './materialize'
 
 /** 预览/汇总时按路径补全文；无 readRunText 或无路径则原样返回 */
 export async function hydrateTextItems(
@@ -51,23 +45,12 @@ export async function hydrateTextItems(
 /**
  * 按节点参数中的累计图库 + selected*Id 重算 `out` / `out-all`。
  * 用于 soft-resolve / soft-snapshot：避免缓存 outputs.out 与当前选中不一致。
- * `typeId`：世界元素提取等需把 `out` 组装成目录 kind，而非普通 text。
  */
 export function resolveGalleryOutputsFromNodeParams(
   params: GraphNodeParams | undefined | null,
   options?: { typeId?: string | null }
 ): Record<string, GraphValue> | null {
   if (!params) return null
-
-  if (options?.typeId === 'world.gen') {
-    const fromParams = Array.isArray(params.worldElementOutputs)
-      ? (params.worldElementOutputs as WorldElementGenResult[])
-      : []
-    const withImages = fromParams.filter((item) => item?.type && item?.name && item?.imageUrl)
-    const results = withImages.length > 0 ? withImages : parseWorldElementGenResults(params.text)
-    if (!results.length) return null
-    return worldGenImageGroupOutputs(results)
-  }
 
   const generatedImages = params.generatedImages
   if (Array.isArray(generatedImages) && generatedImages.length) {
@@ -138,12 +121,6 @@ export function resolveGalleryOutputsFromNodeParams(
       createdAt: item.createdAt
     }))
     const selectedId = params.selectedTextId?.trim() || newestTextSelectedId(items)
-    if (options?.typeId === 'world.extract') {
-      return dualWorldCatalogOutputs(items, selectedId)
-    }
-    if (options?.typeId === 'beat.split') {
-      return dualBeatCatalogOutputs(items, selectedId)
-    }
     if (options?.typeId === 'ui.split') {
       return { out: { kind: 'texts', items } }
     }

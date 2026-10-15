@@ -24,7 +24,7 @@ function groupsBlock(): string {
   const src = editorSource()
   const start = src.indexOf('const CONTEXT_MENU_RESOURCE_GROUPS')
   expect(start, '未找到 CONTEXT_MENU_RESOURCE_GROUPS').toBeGreaterThan(-1)
-  const end = src.indexOf('* 剧集 Agent 流水线手动创建预设', start)
+  const end = src.indexOf('const CONTEXT_MENU_GROUPED_TYPE_IDS', start)
   expect(end, '未找到分组清单结尾锚点').toBeGreaterThan(start)
   return src.slice(start, end)
 }

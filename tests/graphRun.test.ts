@@ -3,7 +3,7 @@ import {
   boundaryOutputNodeId,
   createNodeFromType,
   createOutputGraphNode,
-  createDefaultScopedGraph,
+  GraphPortType,
   runGraph
 } from '../src/shared/graph'
 import { graphOutputNodeId } from '../src/shared/graph/types'
@@ -296,23 +296,23 @@ describe('graph run', () => {
         params: { assetRef: true }
       }
     )
-    const split = createNodeFromType(
-      'beat.split',
+    const breakdown = createNodeFromType(
+      'film.breakdown',
       { x: 200, y: 0 },
       {
-        id: 'split'
+        id: 'breakdown'
       }
     )
     let promptSeen = ''
 
     const result = await runGraph(
       {
-        nodes: [ref, split],
+        nodes: [ref, breakdown],
         edges: [
           {
-            id: 'e-ref-split',
+            id: 'e-ref-breakdown',
             source: 'ref',
-            target: 'split',
+            target: 'breakdown',
             sourcePort: 'out',
             targetPort: 'in'
           }
@@ -321,7 +321,7 @@ describe('graph run', () => {
       },
       {
         stepDelayMs: 1,
-        targetNodeId: 'split',
+        targetNodeId: 'breakdown',
         onlyTargetNode: true,
         preserveOutsideSubset: true,
         priorNodeStates: {
@@ -334,23 +334,22 @@ describe('graph run', () => {
         generateText: async ({ prompt }) => {
           promptSeen = prompt
           return {
-            text: JSON.stringify([
-              {
-                id: 'nu-1',
-                title: '开场',
-                order: 1,
-                summary: '登场',
-                dramaticFunction: '建置',
-                characters: [],
-                scenes: [],
-                props: [],
-                weapons: [],
-                sourceExcerpt: '',
-                emotionalBeat: '',
-                durationHint: '',
-                status: '未审核'
-              }
-            ]),
+            text: JSON.stringify({
+              title: '测试片',
+              shots: [
+                {
+                  id: 'shot.1',
+                  order: 1,
+                  title: '开场',
+                  shotSize: 'MS',
+                  action: '主角推门进入',
+                  location: '街道',
+                  characters: [],
+                  props: [],
+                  dialogue: []
+                }
+              ]
+            }),
             model: 'm'
           }
         }
@@ -361,7 +360,7 @@ describe('graph run', () => {
     expect(promptSeen).toContain('缓存为空后重读正文')
   })
 
-  it('onlyTargetNode soft-snapshots screenplay asset ref text into beat.split', async () => {
+  it('onlyTargetNode soft-snapshots screenplay asset ref text into film.breakdown', async () => {
     const assetId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
     const ref = createNodeFromType(
       'asset.screenplay',
@@ -373,23 +372,23 @@ describe('graph run', () => {
         params: { assetRef: true }
       }
     )
-    const split = createNodeFromType(
-      'beat.split',
+    const breakdown = createNodeFromType(
+      'film.breakdown',
       { x: 200, y: 0 },
       {
-        id: 'split'
+        id: 'breakdown'
       }
     )
     let promptSeen = ''
 
     const result = await runGraph(
       {
-        nodes: [ref, split],
+        nodes: [ref, breakdown],
         edges: [
           {
-            id: 'e-ref-split',
+            id: 'e-ref-breakdown',
             source: 'ref',
-            target: 'split',
+            target: 'breakdown',
             sourcePort: 'out',
             targetPort: 'in'
           }
@@ -398,30 +397,29 @@ describe('graph run', () => {
       },
       {
         stepDelayMs: 1,
-        targetNodeId: 'split',
+        targetNodeId: 'breakdown',
         onlyTargetNode: true,
         preserveOutsideSubset: true,
         resolveAssetText: async (id) => (id === assetId ? '雨夜开场剧本正文' : undefined),
         generateText: async ({ prompt }) => {
           promptSeen = prompt
           return {
-            text: JSON.stringify([
-              {
-                id: 'nu-1',
-                title: '开场',
-                order: 1,
-                summary: '登场',
-                dramaticFunction: '建置',
-                characters: ['林晓'],
-                scenes: ['街道'],
-                props: [],
-                weapons: [],
-                sourceExcerpt: '……',
-                emotionalBeat: '平静',
-                durationHint: '中',
-                status: '未审核'
-              }
-            ]),
+            text: JSON.stringify({
+              title: '测试片',
+              shots: [
+                {
+                  id: 'shot.1',
+                  order: 1,
+                  title: '雨夜',
+                  shotSize: 'LS',
+                  action: '雨夜街道，主角撑伞走来',
+                  location: '街道',
+                  characters: ['林晓'],
+                  props: [],
+                  dialogue: []
+                }
+              ]
+            }),
             model: 'm'
           }
         }
@@ -430,8 +428,8 @@ describe('graph run', () => {
 
     expect(result.ok, result.error).toBe(true)
     expect(promptSeen).toContain('雨夜开场剧本正文')
-    expect(result.states.split?.outputs?.out).toMatchObject({
-      kind: 'beat'
+    expect(result.states.breakdown?.outputs?.out).toMatchObject({
+      kind: GraphPortType.storyboard
     })
   })
 
@@ -995,104 +993,17 @@ describe('graph run', () => {
     ).toBe(false)
   })
 
-  it('world.gen collects element entities into four image group outputs', async () => {
-    const doc = createDefaultScopedGraph('worldAsset', 'world')
-    const editor = doc.nodes.find((node) => node.typeId === 'world.gen')
-    expect(editor).toBeTruthy()
-
-    const result = await runGraph(doc, {
-      stepDelayMs: 1,
-      targetNodeId: editor!.id,
-      onlyTargetNode: true,
-      collectWorldElementOutputs: async () => ({
-        items: [
-          {
-            type: '角色',
-            name: 'Hero',
-            imageUrl: '.aiartengine/graph-outputs/hero.png'
-          },
-          {
-            type: '场景',
-            name: 'Town',
-            imageUrl: '.aiartengine/graph-outputs/town.png'
-          }
-        ]
-      })
-    })
-
-    expect(result.ok, result.error).toBe(true)
-    const editorState = result.states[editor!.id]
-    expect(editorState?.status).toBe('done')
-    expect(editorState?.outputs?.out).toBeUndefined()
-    const characters = editorState?.outputs?.['out-characters']
-    expect(characters?.kind).toBe('images')
-    if (characters?.kind === 'images') {
-      expect(characters.items).toEqual([
-        {
-          id: '角色:Hero:0',
-          title: 'Hero',
-          dataUrl: '',
-          relativePath: '.aiartengine/graph-outputs/hero.png'
-        }
-      ])
-    }
-    const scenes = editorState?.outputs?.['out-scenes']
-    expect(scenes?.kind).toBe('images')
-    if (scenes?.kind === 'images') {
-      expect(scenes.items.map((item) => item.relativePath)).toEqual([
-        '.aiartengine/graph-outputs/town.png'
-      ])
-    }
-    expect(editorState?.outputs?.['out-props']?.kind).toBe('images')
-    expect(editorState?.outputs?.['out-weapons']?.kind).toBe('images')
-    expect(editor?.params.worldElementOutputs).toEqual([
-      {
-        type: '角色',
-        name: 'Hero',
-        imageUrl: '.aiartengine/graph-outputs/hero.png'
-      },
-      {
-        type: '场景',
-        name: 'Town',
-        imageUrl: '.aiartengine/graph-outputs/town.png'
-      }
-    ])
-  })
-
-  it('batch cook nodes: onlyTarget skips cookBatch; Cook / chain enables it', async () => {
-    const worldDoc = createDefaultScopedGraph('worldAsset', 'world')
-    const worldGen = worldDoc.nodes.find((node) => node.typeId === 'world.gen')
-    expect(worldGen).toBeTruthy()
-    const worldCalls: Array<boolean | undefined> = []
-    const worldCollect = async (_signal?: AbortSignal, options?: { cookBatch?: boolean }) => {
-      worldCalls.push(options?.cookBatch)
-      return { items: [] }
-    }
-
-    await runGraph(worldDoc, {
-      stepDelayMs: 1,
-      onlyTargetNode: true,
-      targetNodeId: worldGen!.id,
-      collectWorldElementOutputs: worldCollect
-    })
-    expect(worldCalls.at(-1)).toBe(false)
-
-    await runGraph(worldDoc, {
-      stepDelayMs: 1,
-      onlyTargetNode: true,
-      targetNodeId: worldGen!.id,
-      cookHostInnerGraph: true,
-      collectWorldElementOutputs: worldCollect
-    })
-    expect(worldCalls.at(-1)).toBe(true)
-
-    await runGraph(worldDoc, {
-      stepDelayMs: 1,
-      targetNodeId: worldGen!.id,
-      collectWorldElementOutputs: worldCollect
-    })
-    expect(worldCalls.at(-1)).toBe(true)
-  })
+  /**
+   * 这两条用例原本覆盖 `beat.split`：它们是**通用行为**（onlyTarget 时空的 prior 正文要按
+   * assetRef 重新解析、非要当作有效上游），已改用新流水线的 `film.breakdown` 承载
+   * —— 见上方两条 `onlyTargetNode … screenplay ref …`。
+   *
+   * 另有两条 `world.gen` 用例随「世界元素」节点家族一起下线（`world.extract` / `world.gen` /
+   * `world.table` 已从节点注册表移除，`worldAsset` 域里再也没有可跑的宿主节点）：
+   * - world.gen collects element entities into four image group outputs
+   * - batch cook nodes: onlyTarget skips cookBatch; Cook / chain enables it
+   * 宿主内图批量 cook 的语义仍有 `tests/hostCookEnqueue.test.ts` 覆盖。
+   */
 
   it('strict mode fails the chain while continueOnError degrades and keeps running', async () => {
     const graph = {

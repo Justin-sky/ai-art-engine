@@ -1,331 +1,143 @@
 import type { GraphPlan } from './graphPlan'
 import { serializeComicPage } from './comicPage'
-import { applyGraphSkill } from './graphSkills'
-import { EPISODE_AGENT_STOCK_TITLES } from './episodeStageTitles'
-
-/** 剧集 Agent 流水线：状态作用域键（集编号），生成后可改 */
-const EPISODE_SCOPE_KEY = 'ep01'
 
 /** 批量图标整版表统一规范尾句（线宽 / 圆角 / 内边距 / 最小可读），追加到每类图标整版节点指令 */
 const ICON_SHEET_SPEC_TAIL =
   ' 图标统一规范：等线宽描边、同一圆角与内边距比例、主体简洁高对比（缩小到 16px 仍可辨）、每格一枚完整图标、不画任何文字、不画网格线与外框；名单不足 9 枚时其余格为纯色空白底。'
 
-/** 导演审核复合标题：前缀 + 目标阶段英文名（与旧中文「导演审核·X」同构） */
-function directorReviewTitle(target: keyof typeof EPISODE_AGENT_STOCK_TITLES): string {
-  return target === 'directorReview'
-    ? EPISODE_AGENT_STOCK_TITLES.directorReview
-    : `${EPISODE_AGENT_STOCK_TITLES.directorReview} · ${EPISODE_AGENT_STOCK_TITLES[target]}`
+const FILM_SCRIPT_PLACEHOLDER =
+  '（在此填写剧本 / 故事梗概；也可以先用「剧本生成」节点产出后接入分镜拆解）'
+
+/**
+ * 影视全流程（闭环）：剧本 → 分镜拆解 → 导演审核（自动修订）→ 角色场景设定 → 批量拍摄（关键帧质检 + 图生视频）。
+ *
+ * 镜头数量由剧情决定（不再固定 9 / 36 格）；中间产物全部是结构化分镜文档，
+ * 改一镜只重拍一镜（批量拍摄按提示词指纹增量缓存）。
+ */
+function buildFilmPipelinePlan(): GraphPlan {
+  return {
+    title: '影视全流程（Agent 闭环）',
+    nodes: [
+      {
+        key: 'script',
+        typeId: 'play.script',
+        title: '剧本',
+        params: { text: FILM_SCRIPT_PLACEHOLDER }
+      },
+      {
+        key: 'breakdown',
+        typeId: 'film.breakdown',
+        title: '分镜拆解',
+        params: { filmAspectRatio: '9:16', filmTargetShots: 0 }
+      },
+      {
+        key: 'review',
+        typeId: 'film.review',
+        title: '导演审核',
+        params: { filmReviewMaxRounds: 2 }
+      },
+      {
+        key: 'cast',
+        typeId: 'film.cast',
+        title: '角色场景设定',
+        params: { filmCastKinds: 'character,location' }
+      },
+      {
+        key: 'render',
+        typeId: 'film.render',
+        title: '批量拍摄',
+        params: { filmRenderMode: 'video', filmRenderQc: true, filmRenderMaxRetries: 1 }
+      },
+      {
+        key: 'note',
+        typeId: 'note.text',
+        title: '流水线说明',
+        params: {
+          text: `流程：剧本 → 分镜拆解（结构化分镜：场 / 镜头 / 角色场景实体，镜头数随剧情）→ 导演审核（不通过的镜头自动修订后复审，最多 2 轮）→ 角色场景设定（每个角色 / 地点一张设定图）→ 批量拍摄（按镜头出场名单自动带设定图出关键帧 → 视觉质检不合格自动重拍 → 以关键帧为首帧图生视频）。
+
+迭代：在检查器里改任一镜头或「锁定」满意的镜头后重跑，锁定镜头不会被 AI 改写；批量拍摄只重拍提示词变化的镜头。
+
+精修：需要单独打磨某一镜时，从导演审核接一个「镜头」节点，再接图片 / 视频生成节点手动调参。`
+        }
+      }
+    ],
+    edges: [
+      { from: 'script', to: 'breakdown', fromPort: 'out', toPort: 'in' },
+      { from: 'script', to: 'review', fromPort: 'out', toPort: 'in-script' },
+      { from: 'breakdown', to: 'review', fromPort: 'out', toPort: 'in' },
+      { from: 'review', to: 'cast', fromPort: 'out', toPort: 'in' },
+      { from: 'review', to: 'render', fromPort: 'out', toPort: 'in' },
+      { from: 'cast', to: 'render', fromPort: 'out', toPort: 'in-cast' }
+    ]
+  }
 }
 
-/** 短剧分镜（Agent 流水线）：剧本 → 节拍拆解 → 9宫格 → 9 锚点图 → 4宫格(36) → 动态提示词(36) → 36 视频，4 级导演审核；grid9 为 9宫格直出 9 条视频 */
-function buildEpisodePipelinePlan(variant: 'grid4' | 'grid9' = 'grid4'): GraphPlan {
-  const nodes: GraphPlan['nodes'] = []
-  const edges: GraphPlan['edges'] = []
-  const add = (node: GraphPlan['nodes'][number]): void => {
-    nodes.push(node)
-  }
-  const link = (from: string, to: string, ports?: { fromPort?: string; toPort?: string }): void => {
-    edges.push({ from, to, ...ports })
-  }
-  const scope = { episodeScopeKey: EPISODE_SCOPE_KEY }
-
-  add({
-    key: 'script',
-    typeId: 'play.script',
-    title: '剧本',
-    params: { text: '（在此填写单集剧本，或用「短剧创作框架」先生成）' }
-  })
-  link('script', 'breakdown')
-
-  add({
-    key: 'breakdown',
-    typeId: 'prompt.optimize',
-    title: EPISODE_AGENT_STOCK_TITLES.breakdown,
-    params: {
-      ...scope,
-      episodeStep: 'breakdown',
-      ...applyGraphSkill('episode.breakdown')
-    }
-  })
-  add({
-    key: 'review1',
-    typeId: 'prompt.optimize',
-    title: directorReviewTitle('breakdown'),
-    params: {
-      ...scope,
-      episodeReviewTarget: 'breakdown',
-      ...applyGraphSkill('episode.review.breakdown')
-    }
-  })
-  link('script', 'review1', { fromPort: 'out', toPort: 'in' })
-  link('breakdown', 'review1', { fromPort: 'out', toPort: 'in' })
-  link('breakdown', 'beatboard', { fromPort: 'out', toPort: 'in' })
-
-  add({
-    key: 'beatboard',
-    typeId: 'prompt.optimize',
-    title: EPISODE_AGENT_STOCK_TITLES.beatboard,
-    params: {
-      ...scope,
-      episodeStep: 'beatboard',
-      ...applyGraphSkill('episode.beatboard')
-    }
-  })
-  add({
-    key: 'review2',
-    typeId: 'prompt.optimize',
-    title: directorReviewTitle('beatboard'),
-    params: {
-      ...scope,
-      episodeReviewTarget: 'beatboard',
-      ...applyGraphSkill('episode.review.beatboard')
-    }
-  })
-  link('script', 'review2', { fromPort: 'out', toPort: 'in' })
-  link('breakdown', 'review2', { fromPort: 'out', toPort: 'in' })
-  link('beatboard', 'review2', { fromPort: 'out', toPort: 'in' })
-
-  // 9宫格拼图画布：一个生成节点生成 3×3 九宫格拼图，再逐格本地提取
-  add({
-    key: 'img9grid',
-    typeId: 'asset.image',
-    title: '9宫格拼图·锚点画布',
-    params: {
-      ...scope,
-      episodeStep: 'beatboard',
-      ...applyGraphSkill('episode.image.grid9')
-    }
-  })
-  link('beatboard', 'img9grid', { fromPort: 'out', toPort: 'in-text' })
-  for (let i = 1; i <= 9; i++) {
-    const extractKey = `gridExtract${i}`
-    const row = Math.floor((i - 1) / 3) + 1
-    const col = ((i - 1) % 3) + 1
-    add({
-      key: extractKey,
-      typeId: 'image.gridSplit',
-      title: `宫格提取·格${i}`,
-      params: {
-        // 稳定参数：流水线视图优先按此定位，避免按标题探测
-        anchorCellIndex: i,
-        imageGridSplit: {
-          rows: 3,
-          cols: 3,
-          selected: [`${row}-${col}`]
-        }
-      }
-    })
-    link('img9grid', extractKey, { fromPort: 'out', toPort: 'in' })
-  }
-
-  if (variant === 'grid9') {
-    // 9宫格直出：动画师为 9 个宫格各拆解 1 条动态提示词，再逐格生成视频
-    add({
-      key: 'motion',
-      typeId: 'prompt.optimize',
-      title: EPISODE_AGENT_STOCK_TITLES.motion,
-      params: {
-        ...scope,
-        episodeStep: 'motion',
-        ...applyGraphSkill('episode.motion9')
-      }
-    })
-    link('script', 'motion', { fromPort: 'out', toPort: 'in' })
-    link('breakdown', 'motion', { fromPort: 'out', toPort: 'in' })
-    link('beatboard', 'motion', { fromPort: 'out', toPort: 'in' })
-    add({
-      key: 'review4',
-      typeId: 'prompt.optimize',
-      title: directorReviewTitle('motion'),
-      params: {
-        ...scope,
-        episodeReviewTarget: 'motion',
-        episodeReviewVariant: '9',
-        ...applyGraphSkill('episode.review.motion9')
-      }
-    })
-    link('script', 'review4', { fromPort: 'out', toPort: 'in' })
-    link('breakdown', 'review4', { fromPort: 'out', toPort: 'in' })
-    link('beatboard', 'review4', { fromPort: 'out', toPort: 'in' })
-    link('motion', 'review4', { fromPort: 'out', toPort: 'in' })
-
-    for (let g = 1; g <= 9; g++) {
-      const cellKey = `cell${g}-1`
-      const videoKey = `video${g}-1`
-      add({
-        key: cellKey,
-        typeId: 'episode.cellSelect',
-        title: `动态格选择·格${g}-1`,
-        params: { cellGroupIndex: g, cellIndex: 1 }
-      })
-      link('motion', cellKey)
-      add({
-        key: videoKey,
-        typeId: 'asset.video',
-        title: `动态视频·格${g}-1`,
-        params: {
-          ...applyGraphSkill('episode.video.grid9'),
-          // 稳定参数：流水线视图优先按此定位该条动态视频
-          motionCellIndex: `${g}-1`,
-          generateDuration: 15
-        }
-      })
-      link(`gridExtract${g}`, videoKey, { fromPort: 'out', toPort: 'in-image' })
-      link(cellKey, videoKey, { fromPort: 'out', toPort: 'in-text' })
-    }
-
-    add({
-      key: 'note',
-      typeId: 'note.text',
-      title: '流水线说明',
-      params: {
-        text: `流程：剧本 → 节拍拆解表 → 9宫格分镜表 → 1 张 9宫格拼图 → 宫格提取 9 格锚点图 → 动画师·9宫格动态提示词表(9条，每条覆盖上一关键帧到本关键帧的完整剧情与对白，时长 3~15 秒) → 9 条动态视频（每条直接用对应 9宫格锚点图作首帧）。
-
-导演审核：review1（节拍）、review2（9宫格）、review4（9宫格动态提示词）输出 ## 结论: PASS / FAIL；FAIL 原因会自动写入 agent-state.json，重跑对应分镜师/动画师节点时自动附加原因。
-
-视频产出：单条按需 = 只运行某个 video 节点；一键全跑 = 批量运行全部 9 条 video 节点。命名规则：集-场-宫格。`
-      }
-    })
-  } else {
-    add({
-      key: 'sequence',
-      typeId: 'prompt.optimize',
-      title: EPISODE_AGENT_STOCK_TITLES.sequence,
-      params: {
-        ...scope,
-        episodeStep: 'sequence',
-        ...applyGraphSkill('episode.sequence')
-      }
-    })
-    link('beatboard', 'sequence', { fromPort: 'out', toPort: 'in' })
-    // 4宫格动态分镜需要同时拿到节拍拆解：每组按“锚点 + 相邻普通节拍”合并展开，
-    // 保证完整剧本内容都被使用，而不是只画关键帧单帧
-    link('breakdown', 'sequence', { fromPort: 'out', toPort: 'in' })
-    add({
-      key: 'review3',
-      typeId: 'prompt.optimize',
-      title: directorReviewTitle('sequence'),
-      params: {
-        ...scope,
-        episodeReviewTarget: 'sequence',
-        ...applyGraphSkill('episode.review.sequence')
-      }
-    })
-    link('script', 'review3', { fromPort: 'out', toPort: 'in' })
-    link('breakdown', 'review3', { fromPort: 'out', toPort: 'in' })
-    link('beatboard', 'review3', { fromPort: 'out', toPort: 'in' })
-    link('sequence', 'review3', { fromPort: 'out', toPort: 'in' })
-    link('sequence', 'motion', { fromPort: 'out', toPort: 'in' })
-
-    add({
-      key: 'motion',
-      typeId: 'prompt.optimize',
-      title: EPISODE_AGENT_STOCK_TITLES.motion,
-      params: {
-        ...scope,
-        episodeStep: 'motion',
-        ...applyGraphSkill('episode.motion')
-      }
-    })
-    add({
-      key: 'review4',
-      typeId: 'prompt.optimize',
-      title: directorReviewTitle('motion'),
-      params: {
-        ...scope,
-        episodeReviewTarget: 'motion',
-        ...applyGraphSkill('episode.review.motion')
-      }
-    })
-    link('script', 'review4', { fromPort: 'out', toPort: 'in' })
-    link('breakdown', 'review4', { fromPort: 'out', toPort: 'in' })
-    link('beatboard', 'review4', { fromPort: 'out', toPort: 'in' })
-    link('sequence', 'review4', { fromPort: 'out', toPort: 'in' })
-    link('motion', 'review4', { fromPort: 'out', toPort: 'in' })
-
-    // 9 组 4宫格拼图（2×2）：每组用 9宫格提取的锚点图作参考生成 4宫格拼图，
-    // 再本地提取 4 格，分别作为该组 4 个动态视频的参考图
-    for (let g = 1; g <= 9; g++) {
-      const img4Key = `img4grid${g}`
-      add({
-        key: img4Key,
-        typeId: 'asset.image',
-        title: `4宫格拼图·组${g}`,
-        params: {
-          ...scope,
-          episodeStep: 'sequence',
-          ...applyGraphSkill('episode.image.grid4', { vars: { group: g } })
-        }
-      })
-      link('sequence', img4Key, { fromPort: 'out', toPort: 'in-text' })
-      link(`gridExtract${g}`, img4Key, { fromPort: 'out', toPort: 'in-image' })
-      const CELL_KEYS = ['1-1', '1-2', '2-1', '2-2'] as const
-      for (let c = 1; c <= 4; c++) {
-        const extract4Key = `gridExtract4-${g}-${c}`
-        add({
-          key: extract4Key,
-          typeId: 'image.gridSplit',
-          title: `宫格提取·组${g}-格${c}`,
-          params: {
-            // 稳定参数：4 宫格按「组-格」定位，替代按标题探测
-            gridCellIndex: `${g}-${c}`,
-            imageGridSplit: {
-              rows: 2,
-              cols: 2,
-              selected: [CELL_KEYS[c - 1]]
-            }
-          }
-        })
-        link(img4Key, extract4Key, { fromPort: 'out', toPort: 'in' })
-      }
-    }
-
-    // 36 个动态格选择 + 36 条动态视频（父宫格锚点图作首帧）
-    for (let g = 1; g <= 9; g++) {
-      for (let c = 1; c <= 4; c++) {
-        const cellKey = `cell${g}-${c}`
-        const videoKey = `video${g}-${c}`
-        add({
-          key: cellKey,
-          typeId: 'episode.cellSelect',
-          title: `动态格选择·格${g}-${c}`,
-          params: { cellGroupIndex: g, cellIndex: c }
-        })
-        link('motion', cellKey)
-        add({
-          key: videoKey,
-          typeId: 'asset.video',
-          title: `动态视频·格${g}-${c}`,
-          params: {
-            ...applyGraphSkill('episode.video.grid4', { vars: { group: g, cell: c } }),
-            // 稳定参数：流水线视图优先按此定位该条动态视频
-            motionCellIndex: `${g}-${c}`,
-            generateDuration: 4
-          }
-        })
-        link(`gridExtract4-${g}-${c}`, videoKey, { fromPort: 'out', toPort: 'in-image' })
-        link(cellKey, videoKey, { fromPort: 'out', toPort: 'in-text' })
-      }
-    }
-
-    add({
-      key: 'note',
-      typeId: 'note.text',
-      title: '流水线说明',
-      params: {
-        text: `流程：剧本 → 节拍拆解表 → 9宫格分镜表 → 1 张 9宫格拼图 → 宫格提取 9 格锚点图 → 4宫格动态分镜表(9×4=36) → 每组 1 张 2×2 4宫格拼图（参考第 g 格锚点图）→ 宫格提取 36 格 → 动态提示词表(36) → 36 条动态视频（参考图用对应 4宫格提取图）。
-
-导演审核：review1~review4 输出 ## 结论: PASS / FAIL；FAIL 原因会自动写入 agent-state.json，重跑对应分镜师/动画师节点时自动附加原因。
-
-视频产出：单条按需 = 只运行某个 video 节点；一键全跑 = 批量运行全部 video 节点。命名规则：集-场-宫格-动态格。`
-      }
-    })
-  }
-
+/**
+ * 影视精修（单镜头工作台）：剧本 → 分镜拆解 → 导演审核 → 角色场景设定 → 镜头 → 图片生成（关键帧）→ 视频生成。
+ * 镜头节点按序号 / id 取一镜，自动输出关键帧提示词、动态提示词与该镜出场设定图；复制镜头节点即可精修多镜。
+ */
+function buildFilmShotPlan(): GraphPlan {
   return {
-    title: variant === 'grid9' ? '短剧分镜（9宫格直出）' : '短剧分镜（Agent 流水线）',
-    nodes,
-    edges
+    title: '影视精修（单镜头工作台）',
+    nodes: [
+      {
+        key: 'script',
+        typeId: 'play.script',
+        title: '剧本',
+        params: { text: FILM_SCRIPT_PLACEHOLDER }
+      },
+      {
+        key: 'breakdown',
+        typeId: 'film.breakdown',
+        title: '分镜拆解',
+        params: { filmAspectRatio: '16:9' }
+      },
+      {
+        key: 'review',
+        typeId: 'film.review',
+        title: '导演审核',
+        params: { filmReviewMaxRounds: 1 }
+      },
+      {
+        key: 'cast',
+        typeId: 'film.cast',
+        title: '角色场景设定',
+        params: { filmCastKinds: 'character,location' }
+      },
+      { key: 'shot', typeId: 'film.shot', title: '镜头 1', params: { filmShotRef: '1' } },
+      {
+        key: 'keyframe',
+        typeId: 'asset.image',
+        title: '关键帧',
+        params: { generateAspectRatio: '16:9' }
+      },
+      {
+        key: 'clip',
+        typeId: 'asset.video',
+        title: '镜头视频',
+        params: { generateAspectRatio: '16:9', generateDuration: 5 }
+      },
+      {
+        key: 'note',
+        typeId: 'note.text',
+        title: '使用说明',
+        params: {
+          text: '运行到「角色场景设定」后，在「镜头」节点检查器里切换镜头序号 / id：它自动输出该镜关键帧提示词（接关键帧图片生成）、出场角色与地点设定图（接参考图口锁一致性）与动态提示词（接视频生成）。复制「镜头 → 关键帧 → 镜头视频」这一组即可并行精修多镜。'
+        }
+      }
+    ],
+    edges: [
+      { from: 'script', to: 'breakdown', fromPort: 'out', toPort: 'in' },
+      { from: 'script', to: 'review', fromPort: 'out', toPort: 'in-script' },
+      { from: 'breakdown', to: 'review', fromPort: 'out', toPort: 'in' },
+      { from: 'review', to: 'cast', fromPort: 'out', toPort: 'in' },
+      { from: 'review', to: 'shot', fromPort: 'out', toPort: 'in' },
+      { from: 'cast', to: 'shot', fromPort: 'out', toPort: 'in-cast' },
+      { from: 'shot', to: 'keyframe', fromPort: 'out', toPort: 'in-text' },
+      { from: 'shot', to: 'keyframe', fromPort: 'out-refs', toPort: 'in-image' },
+      { from: 'keyframe', to: 'clip', fromPort: 'out', toPort: 'in-image' },
+      { from: 'shot', to: 'clip', fromPort: 'out-motion', toPort: 'in-text' }
+    ]
   }
 }
 
@@ -1492,8 +1304,8 @@ const PRESET_PLANS: Record<Exclude<AiWorkflowPresetId, 'custom'>, GraphPlan> = {
     ],
     edges: [{ from: 'sheet', to: 'anim' }]
   },
-  shortDrama: buildEpisodePipelinePlan('grid4'),
-  shortDrama9: buildEpisodePipelinePlan('grid9')
+  shortDrama: buildFilmPipelinePlan(),
+  shortDrama9: buildFilmShotPlan()
 }
 
 export function hasAiWorkflowPresetPlan(id: string): id is Exclude<AiWorkflowPresetId, 'custom'> {

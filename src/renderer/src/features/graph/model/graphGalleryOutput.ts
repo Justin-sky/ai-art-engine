@@ -234,25 +234,12 @@ function commitTexts(hostId: string, node: GraphNode, list: TextList, selectedId
   const picked = pickEntry(list, selectedId)
   const body = picked?.text ?? ''
   if (picked?.id) {
-    const out: GraphValue =
-      node.typeId === 'world.extract'
-        ? {
-            kind: 'world',
-            text: body,
-            ...(picked.relativePath ? { relativePath: picked.relativePath } : {})
-          }
-        : node.typeId === 'beat.split'
-          ? {
-              kind: 'beat',
-              text: body,
-              ...(picked.relativePath ? { relativePath: picked.relativePath } : {})
-            }
-          : {
-              kind: 'text',
-              text: body,
-              id: picked.id,
-              ...(picked.relativePath ? { relativePath: picked.relativePath } : {})
-            }
+    const out: GraphValue = {
+      kind: 'text',
+      text: body,
+      id: picked.id,
+      ...(picked.relativePath ? { relativePath: picked.relativePath } : {})
+    }
     writeRunOutputs(hostId, node.id, out, { kind: 'texts', items: list })
   } else {
     dropRunState(hostId, node.id)

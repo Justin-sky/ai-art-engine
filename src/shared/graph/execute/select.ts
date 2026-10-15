@@ -1,8 +1,4 @@
-import { GraphPortType } from '../types'
-import { catalogTextFromInputs } from '../catalogValue'
 import { resolveMotionImageItems, resolveMotionVideoItems } from '../motionShots'
-import { parseBeatJson } from '../beatParse'
-import { formatBeatRefText } from '../beatParams'
 import type { GraphImageItem, GraphValue, GraphVideoItem, NodeExecuteContext } from './types'
 import {
   flattenImagesValues,
@@ -159,57 +155,6 @@ export async function executeSelectTextNode(
       selectedTextId,
       text,
       previewRelativePath
-    }
-  })
-  return { out: { kind: 'text', text } }
-}
-
-/**
- * 从入边取场目录 JSON。
- * soft 快照偶发把上游目录解析成 text，此时若正文可 parse 为场行则同样接受。
- */
-function beatCatalogTextFromIncoming(inputs: Record<string, GraphValue[]>): string {
-  const values = collectIncomingValues(inputs)
-  const fromBeat = catalogTextFromInputs(values, GraphPortType.beat)
-  if (fromBeat) return fromBeat
-  for (const value of values) {
-    if (value?.kind !== 'text') continue
-    const text = value.text?.trim() ?? ''
-    if (!text) continue
-    const rows = parseBeatJson(text)
-    if (rows?.length) return text
-  }
-  return ''
-}
-
-/**
- * 选择场：从 beat 目录中选出一行，输出可读普通文本。
- */
-export function executeSelectBeatNode(ctx: NodeExecuteContext): Record<string, GraphValue> {
-  const catalogText = beatCatalogTextFromIncoming(ctx.inputs)
-  const rows = parseBeatJson(catalogText) ?? []
-  const selectedId = ctx.node.params.selectedBeatId?.trim()
-  const picked = (selectedId ? rows.find((row) => row.id === selectedId) : undefined) ?? rows[0]
-  if (!picked) {
-    // 上游瞬时软快照失败时保留已有结果，避免「执行当前」把预览清空
-    const existing = ctx.node.params.text?.trim() ?? ''
-    if (existing) {
-      return { out: { kind: 'text', text: existing } }
-    }
-    ctx.node.params = { ...ctx.node.params, text: '', selectedBeatId: '' }
-    ctx.patchNode?.({ params: { text: '', selectedBeatId: '' } })
-    return {}
-  }
-  const text = formatBeatRefText(picked)
-  ctx.node.params = {
-    ...ctx.node.params,
-    selectedBeatId: picked.id,
-    text
-  }
-  ctx.patchNode?.({
-    params: {
-      selectedBeatId: picked.id,
-      text
     }
   })
   return { out: { kind: 'text', text } }

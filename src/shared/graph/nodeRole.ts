@@ -64,19 +64,11 @@ export function isGraphIoNode(node: Pick<GraphNode, 'typeId' | 'category'>): boo
   }
 }
 
-/**
- * 目录表格节点：只把上游目录透传并存进 params.text，不调用生成，
- * 也没有 generated* 图库可复用；锁定它只会让整条链取不到缓存而失败。
- */
-export function isCatalogTableNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return isWorldTableNode(node) || isBeatTableNode(node)
-}
-
-/** 除输入/输出与目录表格外均可锁定上次输出（有图库或可复用 prior runStates） */
+/** 除输入/输出节点外均可锁定上次输出（有图库或可复用 prior runStates） */
 export function supportsGenerateLock(
   node: Pick<GraphNode, 'typeId' | 'category' | 'params' | 'assetId'>
 ): boolean {
-  return !isGraphIoNode(node) && !isCatalogTableNode(node)
+  return !isGraphIoNode(node)
 }
 
 export function isGenerateLocked(
@@ -91,65 +83,13 @@ export function isDirectorProcessingNode(
   return node.typeId === 'asset.motion' && isProcessingAssetNode(node)
 }
 
-export function isWorldExtractNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'world.extract'
-}
-
-export function isBeatSplitNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'beat.split'
-}
-
 export function isUiSplitNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === 'ui.split'
 }
 
-export function isBeatTableNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'beat.table'
-}
-
-export function isBeatGenNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'beat.gen'
-}
-
-export function isBeatUnitGenNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'beat.unitGen'
-}
-
-export function isBeatUnitRefNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'beat.unitRef'
-}
-
-export function isEpisodeAnchorSelectNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'episode.anchorSelect'
-}
-
-export function isEpisodeCellSelectNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'episode.cellSelect'
-}
-
-export function isBeatOutputNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'output.beat'
-}
-
-export function isBeatUnitOutputNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'output.beatUnit'
-}
-
-export function isWorldOutputNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'output.world'
-}
-
-export function isWorldTableNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'world.table'
-}
-
-export function isWorldGenNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'world.gen'
-}
-
-/** 批量子图编排节点：执行时可能入队多份子图（元素）。 */
-export function isBatchSubgraphCookNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return isWorldGenNode(node)
+/** 批量子图编排节点：执行时可能入队多份子图。 */
+export function isBatchSubgraphCookNode(_node: Pick<GraphNode, 'typeId'>): boolean {
+  return false
 }
 
 export function isTimelineOutputNode(node: Pick<GraphNode, 'typeId'>): boolean {
@@ -189,10 +129,6 @@ export function isSelectVoiceNode(node: Pick<GraphNode, 'typeId'>): boolean {
 
 export function isSelectTextNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === 'text.select'
-}
-
-export function isSelectBeatNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'beat.select'
 }
 
 export function isMultiAngleEditorNode(node: Pick<GraphNode, 'typeId'>): boolean {

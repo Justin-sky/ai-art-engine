@@ -102,6 +102,9 @@ function sanitizeGraphValue(value: GraphValue): GraphValue | undefined {
      */
     case 'semanticTimeline':
     case 'videoPrompts':
+    /** 影视分镜文档 / 设定库：纯 JSON（设定图只存相对路径），同样必须落盘 */
+    case 'storyboard':
+    case 'filmCast':
       return value
     /** 文本型载荷（世界 / 场目录）与工程目录：按原字段落盘 */
     case 'world':

@@ -44,12 +44,6 @@ const presetKind = computed((): InstructionPresetKind | null => {
       return 'toPrompt'
     case 'prompt.optimize':
       return 'optimize'
-    case 'beat.unitGen':
-      return 'beatUnitGen'
-    case 'world.extract':
-      return 'spatialWorldExtract'
-    case 'beat.split':
-      return 'beatSplit'
     case 'ui.split':
       return 'uiSplit'
     case 'svg.gen':

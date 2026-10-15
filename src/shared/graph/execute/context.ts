@@ -53,7 +53,6 @@ import {
 import { buildAnim2dGridInstruction, resolveFrameAnimGenSystemPrompt } from '../anim2d'
 import { expandIncomingThroughBundles } from '../bundleExpand'
 import { collectIncomingValues } from './incoming'
-import { formatBeatRefText } from '../beatParams'
 import { isProcessingAssetNode } from '../nodeRole'
 import type { GraphValue, NodeExecuteContext } from './types'
 
@@ -97,14 +96,9 @@ export function resolveInstructionFinalPreviewKind(
   if (typeId === 'decisions.judge') return 'decisions'
   if (typeId === 'prompt.optimize' || presetKind === 'optimize') return 'optimize'
   if (typeId === 'image.toPrompt' || presetKind === 'toPrompt') return 'toPrompt'
-  if (typeId === 'world.extract' || presetKind === 'spatialWorldExtract')
-    return 'spatialWorldExtract'
-  if (typeId === 'beat.split' || presetKind === 'beatSplit') {
-    return 'beatSplit'
-  }
-  if (typeId === 'beat.unitGen' || presetKind === 'beatUnitGen') {
-    return 'beatUnitGen'
-  }
+  if (presetKind === 'spatialWorldExtract') return 'spatialWorldExtract'
+  if (presetKind === 'beatSplit') return 'beatSplit'
+  if (presetKind === 'beatUnitGen') return 'beatUnitGen'
   if (typeId === 'ui.split' || presetKind === 'uiSplit') {
     return 'uiSplit'
   }
@@ -357,17 +351,6 @@ function fallbackMentionTextFromNode(node: GraphNode | undefined): string {
   )
 }
 
-function fallbackBeatUnitRefText(
-  node: GraphNode | undefined,
-  resolveBeatUnit?: (beatId: string) => import('../beatParse').BeatRow | null
-): string {
-  if (!node || node.typeId !== 'beat.unitRef' || !resolveBeatUnit) return ''
-  const beatId = node.params.boundBeatId?.trim()
-  if (!beatId) return ''
-  const unit = resolveBeatUnit(beatId)
-  return unit ? formatBeatRefText(unit) : ''
-}
-
 /**
  * 按入边顺序构建 `@n` 引用源，编号与 UI chips 一致；
  * 端口值缺正文时回退到源节点 params（与预览 resolveNodeTextContent 对齐）。
@@ -398,9 +381,7 @@ export function buildMentionSourcesForNode(input: {
       `@${index}`
     const text = keepMentionToken
       ? ''
-      : fromValue?.text?.trim() ||
-        fallbackMentionTextFromNode(source) ||
-        fallbackBeatUnitRefText(source, input.resolveBeatUnit)
+      : fromValue?.text?.trim() || fallbackMentionTextFromNode(source)
     return { index, title, text, keepMentionToken }
   })
 }

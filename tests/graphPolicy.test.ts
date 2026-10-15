@@ -62,10 +62,7 @@ describe('graph policy', () => {
         'output.voice',
         'output.text',
         'output.director',
-        'output.timeline',
-        'output.beat',
-        'output.beatUnit',
-        'output.world'
+        'output.timeline'
       ]) {
         expect(isNodeAddableInScope(scope, typeId), `${scope}: ${typeId}`).toBe(false)
       }
@@ -137,14 +134,13 @@ describe('graph policy', () => {
         'image.upscale',
         'decisions.judge',
         'prompt.optimize',
-        'beat.select',
-        'episode.anchorSelect',
-        'episode.cellSelect',
-        'beat.split',
+        // 影视流水线（取代旧 剧集 / 场 / 世界元素 节点）
+        'film.breakdown',
+        'film.review',
+        'film.cast',
+        'film.shot',
+        'film.render',
         'ui.split',
-        'beat.table',
-        'beat.unitGen',
-        'beat.unitRef',
         'comic.page',
         'model.pose',
         'model.rigSkin',
@@ -158,9 +154,6 @@ describe('graph policy', () => {
         'model.animation',
         'stage.2d',
         'text.select',
-        'world.gen',
-        'world.extract',
-        'world.table',
         'spatialWorld.export',
         'script.run'
       ].sort()

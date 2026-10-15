@@ -1,8 +1,6 @@
 import { formatGeneratedMediaStamp } from '../../domain'
-import { materializeBeatUnitTextItems } from './output'
 import type { GraphDocument, GraphNode, GraphNodeParams, GraphOutputKind } from '../types'
 import { GraphPortType } from '../types'
-import { catalogTextFromInputs, catalogValue } from '../catalogValue'
 import {
   graphValueHasPayload,
   mergeBoundarySoftValues,
@@ -27,63 +25,24 @@ import { pickEpisodeAgentPrompt, resolveEpisodeDirectorReviewPack } from '../epi
 import { parseAgentVerdict } from '../agentPrompts'
 import {
   parseEpisodeBeatBreakdown,
-  selectEpisodeAnchor,
   selectEpisodeAnchors,
-  selectEpisodeCell,
   selectEpisodeKeyframeSpans,
-  formatEpisodeKeyframeSpanNotes,
-  selectEpisodeMotion
+  formatEpisodeKeyframeSpanNotes
 } from '../episodeBoardParse'
-import {
-  resolveOptimizeSystemPrompt,
-  resolveWorldExtractSystemPrompt,
-  resolveBeatSplitSystemPrompt,
-  resolveBeatUnitGenSystemPrompt,
-  resolveUiSplitSystemPrompt
-} from '../systemPromptSchemes'
-import {
-  buildOptimizePrompt,
-  buildWorldExtractPrompt,
-  buildBeatSplitPrompt,
-  buildBeatUnitGenPrompt,
-  buildUiSplitPrompt
-} from '../userPromptSchemes'
+import { resolveOptimizeSystemPrompt, resolveUiSplitSystemPrompt } from '../systemPromptSchemes'
+import { buildOptimizePrompt, buildUiSplitPrompt } from '../userPromptSchemes'
 import { resolveAssetTextFromGenParams } from '../assetText'
-import {
-  mergeWorldCatalogPreservingReviewed,
-  parseWorldElementCatalog,
-  parseWorldElementGenResults,
-  stringifyWorldElementCatalog,
-  stringifyWorldElementGenResults,
-  worldGenImageGroupOutputs,
-  type WorldElementGenResult
-} from '../worldElementParse'
-import { mergeBeatRowsPreservingReviewed, parseBeatJson, stringifyBeatRows } from '../beatParse'
 import {
   parseUiScreenPrompts,
   screensFromUiGenIncoming,
   UI_SPLIT_INNER_GRAPH_VERSION
 } from '../uiSplitParse'
-import { formatBeatRefText } from '../beatParams'
-import type { GraphTextItem, GraphValue, NodeExecuteContext } from './types'
-import {
-  dualTextGalleryOutputs,
-  flattenTextValues,
-  flattenVideosValues,
-  newestTextSelectedId,
-  stripEmbeddedTextData
-} from './gallery'
+import type { GraphValue, NodeExecuteContext } from './types'
+import { flattenVideosValues, newestTextSelectedId } from './gallery'
 import { autoIncomingTextForInstruction, selectIncomingValuesForInstruction } from './incoming'
-import {
-  commitInMemoryTextGallery,
-  dualBeatCatalogOutputs,
-  dualWorldCatalogOutputs,
-  persistBeatSplitGeneration,
-  persistScreenplayGeneration,
-  persistWorldExtractGeneration
-} from './materialize'
+import { commitInMemoryTextGallery, persistScreenplayGeneration } from './materialize'
 import { resolveMentionSources } from './context'
-import { hydrateTextItems, resolveGalleryOutputsFromNodeParams } from './helpers'
+import { resolveGalleryOutputsFromNodeParams } from './helpers'
 import { fail } from '@shared/errors/appError'
 import { SHARED_ERRORS } from '../../errors/catalog'
 
@@ -246,50 +205,6 @@ export function applyEpisodeReviewMarks(
   }
 }
 
-/** 宫格选择：从 9宫格分镜表文本中选中一个宫格，输出该格提示词 */
-export async function executeEpisodeAnchorSelectNode(
-  ctx: NodeExecuteContext
-): Promise<Record<string, GraphValue>> {
-  const { node } = ctx
-  const incoming = flattenTextValues(ctx.inputs.in ?? Object.values(ctx.inputs).flat())
-    .map((item) => item.text.trim())
-    .filter(Boolean)
-    .join('\n\n')
-  const source = incoming || node.params.text?.trim() || ''
-  const index = node.params.anchorIndex ?? 1
-  const row = selectEpisodeAnchor(source, index)
-  const outText = row
-    ? `# 格${row.index}${row.title ? ` - ${row.title}` : ''}${row.beatId ? ` [节拍ID: ${row.beatId}]` : ''}\n\n${row.text}`
-    : source
-  node.params = { ...node.params, text: outText }
-  ctx.patchNode?.({ params: { text: outText } })
-  return { out: { kind: 'text', text: outText } }
-}
-
-/** 动态格选择：优先从动态提示词表选中该格指令，回退到 4宫格动态分镜表选中该格内容 */
-export async function executeEpisodeCellSelectNode(
-  ctx: NodeExecuteContext
-): Promise<Record<string, GraphValue>> {
-  const { node } = ctx
-  const incoming = flattenTextValues(ctx.inputs.in ?? Object.values(ctx.inputs).flat())
-    .map((item) => item.text.trim())
-    .filter(Boolean)
-    .join('\n\n')
-  const source = incoming || node.params.text?.trim() || ''
-  const groupIndex = node.params.cellGroupIndex ?? 1
-  const cellIndex = node.params.cellIndex ?? 1
-  const motionRow = selectEpisodeMotion(source, groupIndex, cellIndex)
-  const cellRow = selectEpisodeCell(source, groupIndex, cellIndex)
-  const outText = motionRow
-    ? `# ${motionRow.key}\n\n${motionRow.text}`
-    : cellRow
-      ? `# 格${cellRow.groupIndex}-${cellRow.cellIndex} (${cellRow.stage})\n\n${cellRow.text}`
-      : source
-  node.params = { ...node.params, text: outText }
-  ctx.patchNode?.({ params: { text: outText } })
-  return { out: { kind: 'text', text: outText } }
-}
-
 /** 成片时间线输出：透传上游视频（单视频 / 视频组），写回图库与预览路径 */
 export async function executeTimelineOutputNode(
   ctx: NodeExecuteContext
@@ -319,286 +234,8 @@ export async function executeTimelineOutputNode(
   return { out: { kind: 'videos', items: videos } }
 }
 
-/**
- * 世界元素表格：有上游世界目录则透传并导入（提取 → 表格）；
- * 否则输出当前目录 JSON。
- * 导入只在节点执行时发生，打开表格窗口不会导入。
- */
-export async function executeWorldTableNode(
-  ctx: NodeExecuteContext
-): Promise<Record<string, GraphValue>> {
-  const fromIn = catalogTextFromInputs(Object.values(ctx.inputs).flat(), GraphPortType.world)
-  if (fromIn) {
-    ctx.node.params = { ...ctx.node.params, text: fromIn }
-    ctx.patchNode?.({ params: { text: fromIn } })
-    await ctx.importWorldCatalogJson?.(fromIn, ctx.node.id)
-    return { out: catalogValue(GraphPortType.world, fromIn) }
-  }
-
-  const fromCatalog = ctx.resolveWorldCatalogJson?.()?.trim()
-  if (fromCatalog) {
-    ctx.node.params = { ...ctx.node.params, text: fromCatalog }
-    ctx.patchNode?.({ params: { text: fromCatalog } })
-    return { out: catalogValue(GraphPortType.world, fromCatalog) }
-  }
-
-  const local = ctx.node.params.text?.trim() ?? ''
-  return local ? { out: catalogValue(GraphPortType.world, local) } : {}
-}
-
-/**
- * 世界元素生成：有上游提取/表格目录时同步到元素子图；
- * 再通过 ctx.collectWorldElementOutputs 汇集四类 elementWorkflow 边界输出实体。
- * 是否入队批跑元素子图由 ctx.cookBatchSubgraphs 决定（Cook 子图 / 整链为 true）。
- * 导入只在节点执行时发生，打开编辑窗口不会导入。
- */
-export async function executeWorldGenNode(
-  ctx: NodeExecuteContext
-): Promise<Record<string, GraphValue>> {
-  const fromIn = catalogTextFromInputs(Object.values(ctx.inputs).flat(), GraphPortType.world)
-  if (fromIn) {
-    await ctx.importWorldCatalogJson?.(fromIn, ctx.node.id)
-  }
-
-  const collected = await ctx.collectWorldElementOutputs?.(ctx.signal, {
-    cookBatch: ctx.cookBatchSubgraphs === true,
-    nodeId: ctx.node.id
-  })
-  const items: WorldElementGenResult[] = (collected?.items ?? [])
-    .map((item) => ({
-      type: item.type as WorldElementGenResult['type'],
-      name: String(item.name ?? '').trim(),
-      imageUrl: String(item.imageUrl ?? '').trim()
-    }))
-    .filter((item) => item.type && item.name && item.imageUrl)
-
-  const text = stringifyWorldElementGenResults(items)
-  const params = {
-    worldElementOutputs: items,
-    text
-  }
-  ctx.node.params = { ...ctx.node.params, ...params }
-  ctx.patchNode?.({ params })
-  return worldGenImageGroupOutputs(items)
-}
-
-/** 世界元素实体输出：透传 worldEntities 目录 JSON */
-export async function executeWorldEntitiesOutputNode(
-  ctx: NodeExecuteContext
-): Promise<Record<string, GraphValue>> {
-  const fromIn = catalogTextFromInputs(
-    Object.values(ctx.inputs).flat(),
-    GraphPortType.worldEntities
-  )
-  const text = fromIn ?? ''
-  const items = parseWorldElementGenResults(text)
-  const paramsPatch = {
-    resultText: text,
-    worldElementOutputs: items,
-    outputKind: (ctx.node.params.outputKind ?? 'text') as GraphOutputKind,
-    inputDataType: GraphPortType.worldEntities
-  }
-  ctx.node.params = { ...ctx.node.params, ...paramsPatch }
-  ctx.patchNode?.({ params: paramsPatch })
-  return text
-    ? { out: catalogValue(GraphPortType.worldEntities, text) }
-    : { out: catalogValue(GraphPortType.worldEntities, '[]') }
-}
-
-/** 场输出：透传 beat 目录 JSON */
-export async function executeBeatCatalogOutputNode(
-  ctx: NodeExecuteContext
-): Promise<Record<string, GraphValue>> {
-  const fromIn = catalogTextFromInputs(Object.values(ctx.inputs).flat(), GraphPortType.beat)
-  const text = fromIn ?? ''
-  const paramsPatch = {
-    resultText: text,
-    text,
-    generatedTexts: [] as GraphTextItem[],
-    outputKind: (ctx.node.params.outputKind ?? 'text') as GraphOutputKind,
-    inputDataType: GraphPortType.beat
-  }
-  ctx.node.params = { ...ctx.node.params, ...paramsPatch }
-  ctx.patchNode?.({ params: paramsPatch })
-  return {
-    out: catalogValue(GraphPortType.beat, text || '[]')
-  }
-}
-
-/**
- * 场表格：有上游场目录则透传并导入；
- * 可同时接收世界元素实体（写入 params，供表格引用）；
- * 否则输出当前目录 JSON。
- */
-export async function executeBeatTableNode(
-  ctx: NodeExecuteContext
-): Promise<Record<string, GraphValue>> {
-  const fromIn = catalogTextFromInputs(
-    ctx.inputs.in ?? Object.values(ctx.inputs).flat(),
-    GraphPortType.beat
-  )
-  if (fromIn) {
-    ctx.node.params = { ...ctx.node.params, text: fromIn }
-    ctx.patchNode?.({ params: { text: fromIn } })
-    await ctx.importBeatCatalogJson?.(fromIn)
-    return { out: catalogValue(GraphPortType.beat, fromIn) }
-  }
-
-  const fromCatalog = ctx.resolveBeatCatalogJson?.()?.trim()
-  if (fromCatalog) {
-    ctx.node.params = { ...ctx.node.params, text: fromCatalog }
-    ctx.patchNode?.({ params: { text: fromCatalog } })
-    return { out: catalogValue(GraphPortType.beat, fromCatalog) }
-  }
-
-  const local = ctx.node.params.text?.trim() ?? ''
-  return local ? { out: catalogValue(GraphPortType.beat, local) } : {}
-}
-
-/**
- * 场生成：有上游场目录时同步到单元子图；
- * 再从各单元 beatUnit 子图收集「场输出」已有文本并落地到输出路径（不级联跑子图生成）。
- * 导入只在节点执行时发生，打开细化窗口不会导入。
- */
-export async function executeBeatGenNode(
-  ctx: NodeExecuteContext
-): Promise<Record<string, GraphValue>> {
-  const fromIn = catalogTextFromInputs(Object.values(ctx.inputs).flat(), GraphPortType.beat)
-  if (fromIn) {
-    // 先导入目录再 patch，减少与单元图落盘的竞态
-    await ctx.importBeatCatalogJson?.(fromIn)
-    ctx.node.params = { ...ctx.node.params, text: fromIn }
-    ctx.patchNode?.({ params: { text: fromIn } })
-  }
-
-  const collected = await ctx.collectBeatUnitTexts?.(ctx.signal)
-  const items = collected?.items ?? []
-  if (!items.length) {
-    const paramsPatch = {
-      generatedTexts: [] as GraphTextItem[],
-      selectedTextId: '',
-      previewRelativePath: '',
-      resultText: ''
-    }
-    ctx.node.params = { ...ctx.node.params, ...paramsPatch }
-    ctx.patchNode?.({ params: paramsPatch })
-    return dualTextGalleryOutputs([], '')
-  }
-
-  const hydrated = await hydrateTextItems(items, ctx.readRunText)
-  const materialized = await materializeBeatUnitTextItems(ctx, hydrated)
-  if (!materialized.length) {
-    const paramsPatch = {
-      generatedTexts: [] as GraphTextItem[],
-      selectedTextId: '',
-      previewRelativePath: '',
-      resultText: ''
-    }
-    ctx.node.params = { ...ctx.node.params, ...paramsPatch }
-    ctx.patchNode?.({ params: paramsPatch })
-    return dualTextGalleryOutputs([], '')
-  }
-
-  const stripped = materialized.map(stripEmbeddedTextData)
-  const selectedTextId = newestTextSelectedId(stripped)
-  const previewRelativePath =
-    stripped.find((item) => item.relativePath?.trim())?.relativePath?.trim() || ''
-  const resultText = (await hydrateTextItems(stripped, ctx.readRunText))
-    .map((item) => item.text.trim())
-    .filter(Boolean)
-    .join('\n\n')
-
-  const paramsPatch = {
-    generatedTexts: stripped,
-    selectedTextId,
-    previewRelativePath,
-    resultText
-  }
-  ctx.node.params = { ...ctx.node.params, ...paramsPatch }
-  ctx.patchNode?.({ params: paramsPatch })
-
-  return dualTextGalleryOutputs(stripped, selectedTextId)
-}
-
-/**
-/**
- * 世界元素提取：将上游剧本文本拆成角色/场景/道具/武器目录。
- * 成功结果写入 generatedTexts 图库；`out` 选中目录，`out-all` 历史。
- * 合并「已审核」项时只读本地 params 中的上次目录。
- */
-export async function executeWorldExtractNode(
-  ctx: NodeExecuteContext
-): Promise<Record<string, GraphValue>> {
-  const { node } = ctx
-  const mentionSources = resolveMentionSources(ctx)
-  const instructionRaw = node.params.generateInstruction?.trim() ?? ''
-  const instruction = expandInstructionMentions(instructionRaw, mentionSources)
-  const selected = selectIncomingValuesForInstruction(ctx, instructionRaw)
-  const incomingText = autoIncomingTextForInstruction(instructionRaw, selected, mentionSources)
-  const localText = node.params.text?.trim() ?? ''
-  const previousCatalog = parseWorldElementCatalog(localText)
-
-  if (!ctx.generateText) {
-    const text = localText || instruction.trim()
-    if (!text.trim()) {
-      const gallery = resolveGalleryOutputsFromNodeParams(node.params, {
-        typeId: node.typeId
-      })
-      return gallery ?? dualWorldCatalogOutputs([], '')
-    }
-    if ((node.params.generatedTexts ?? []).length) {
-      // 无模型：复用已有图库选中，仅同步 text
-      node.params = { ...node.params, text }
-      ctx.patchNode?.({ params: { text } })
-      return (
-        resolveGalleryOutputsFromNodeParams(node.params, { typeId: node.typeId }) ??
-        dualWorldCatalogOutputs([], '')
-      )
-    }
-    return persistWorldExtractGeneration(ctx, text)
-  }
-
-  if (ctx.signal?.aborted) {
-    throw new DOMException('Aborted', 'AbortError')
-  }
-
-  let prompt = buildWorldExtractPrompt(instruction, ctx.locale)
-  if (incomingText) {
-    prompt = `${prompt.trim()}\n\n${incomingText}`
-  }
-
-  const result = await ctx.generateText({
-    prompt,
-    system: resolveWorldExtractSystemPrompt(node.params.generateSystemPrompt, ctx.locale),
-    model: node.params.generateModel || undefined,
-    providerInstanceId: node.params.generateProviderInstanceId || undefined
-  })
-  if (ctx.signal?.aborted) {
-    throw new DOMException('Aborted', 'AbortError')
-  }
-  let text = result.text.trim()
-  if (!text)
-    throw fail(SHARED_ERRORS.resultMissing, {
-      what: { zh: '世界元素提取结果', en: 'world element extraction result' }
-    }) // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
-
-  const nextCatalog = parseWorldElementCatalog(text)
-  const merged = mergeWorldCatalogPreservingReviewed(previousCatalog, nextCatalog)
-  if (merged) {
-    text = stringifyWorldElementCatalog(merged)
-  }
-
-  return persistWorldExtractGeneration(ctx, text)
-}
-
-/**
- * 场拆解：将上游剧本文本（text）拆成有序场 JSON。
- * 成功结果写入 generatedTexts 图库；`out` 选中目录，`out-all` 历史。
- * 通常经由 text.select 从 texts 中选出单条后再接入。
- * 本地若含上次拆解 JSON，合并时强制保留「已审核」行。
- */
-/** 收集场拆解可用的上游剧本文本（含 texts.relativePath 落盘正文） */
-async function resolveBeatSplitSourceText(
+/** 收集上游剧本文本（含 texts.relativePath 落盘正文） */
+async function resolveUiSplitSourceText(
   ctx: NodeExecuteContext,
   instructionRaw: string,
   mentionSources?: InstructionMentionSource[]
@@ -632,135 +269,6 @@ async function resolveBeatSplitSourceText(
   return ''
 }
 
-export async function executeBeatUnitGenNode(
-  ctx: NodeExecuteContext
-): Promise<Record<string, GraphValue>> {
-  const { node } = ctx
-  const mentionSources = resolveMentionSources(ctx)
-  const instructionRaw = node.params.generateInstruction?.trim() ?? ''
-  const instruction = expandInstructionMentions(instructionRaw, mentionSources)
-  const selected = selectIncomingValuesForInstruction(ctx, instructionRaw)
-  const incomingText = autoIncomingTextForInstruction(instructionRaw, selected, mentionSources)
-  const localText = node.params.text?.trim() ?? ''
-
-  if (!ctx.generateText) {
-    const text = instruction.trim() || incomingText || localText
-    if (text && text !== localText) {
-      node.params = { ...node.params, text }
-      ctx.patchNode?.({ params: { text } })
-    }
-    if (!text) return { out: { kind: 'text', text: '' } }
-    return commitInMemoryTextGallery(ctx, text)
-  }
-
-  if (ctx.signal?.aborted) {
-    throw new DOMException('Aborted', 'AbortError')
-  }
-
-  let prompt = buildBeatUnitGenPrompt(instruction, ctx.locale)
-  if (incomingText) {
-    prompt = `${prompt.trim()}\n\n${incomingText}`
-  }
-
-  const result = await ctx.generateText({
-    prompt,
-    system: resolveBeatUnitGenSystemPrompt(node.params.generateSystemPrompt, ctx.locale),
-    model: node.params.generateModel || undefined,
-    providerInstanceId: node.params.generateProviderInstanceId || undefined
-  })
-  if (ctx.signal?.aborted) {
-    throw new DOMException('Aborted', 'AbortError')
-  }
-  const text = result.text.trim()
-  if (!text)
-    throw fail(SHARED_ERRORS.resultMissing, {
-      what: { zh: '叙事细化结果', en: 'narrative refinement result' }
-    }) // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
-
-  return persistScreenplayGeneration(ctx, text)
-}
-
-/** 场参考：输出绑定单元的目录字段文本 */
-
-export function executeBeatUnitRefNode(ctx: NodeExecuteContext): Record<string, GraphValue> {
-  const beatId = ctx.node.params.boundBeatId?.trim()
-  if (!beatId) return {}
-  const unit = ctx.resolveBeatUnit?.(beatId)
-  if (!unit) return {}
-  const text = formatBeatRefText(unit)
-  return text ? { out: { kind: 'text', text } } : {}
-}
-
-export async function executeBeatSplitNode(
-  ctx: NodeExecuteContext
-): Promise<Record<string, GraphValue>> {
-  const { node } = ctx
-  const mentionSources = resolveMentionSources(ctx)
-  const instructionRaw = node.params.generateInstruction?.trim() ?? ''
-  const instruction = expandInstructionMentions(instructionRaw, mentionSources)
-  const incomingText = await resolveBeatSplitSourceText(ctx, instructionRaw, mentionSources)
-  const localText = node.params.text?.trim() ?? ''
-  const previousRows = parseBeatJson(localText)
-
-  if (!ctx.generateText) {
-    // 无模型时只输出本地已有目录，不把上游剧本文冒充目录
-    const text = localText || instruction.trim()
-    if (!text.trim()) {
-      const gallery = resolveGalleryOutputsFromNodeParams(node.params, {
-        typeId: node.typeId
-      })
-      return gallery ?? dualBeatCatalogOutputs([], '')
-    }
-    if ((node.params.generatedTexts ?? []).length) {
-      node.params = { ...node.params, text }
-      ctx.patchNode?.({ params: { text } })
-      return (
-        resolveGalleryOutputsFromNodeParams(node.params, { typeId: node.typeId }) ??
-        dualBeatCatalogOutputs([], '')
-      )
-    }
-    return persistBeatSplitGeneration(ctx, text)
-  }
-
-  if (ctx.signal?.aborted) {
-    throw new DOMException('Aborted', 'AbortError')
-  }
-
-  // 无上游正文时：若指令里用了 @ 引用且已展开出内容，仍可继续；否则报无输入
-  const hasMentionSource = instructionHasMentions(instructionRaw) && !!instruction.trim()
-  if (!incomingText.trim() && !hasMentionSource) {
-    throw new Error('GRAPH_PROCESS_NO_INPUT')
-  }
-
-  let prompt = buildBeatSplitPrompt(instruction, ctx.locale)
-  if (incomingText.trim()) {
-    prompt = `${prompt.trim()}\n\n${incomingText}`
-  }
-
-  const result = await ctx.generateText({
-    prompt,
-    system: resolveBeatSplitSystemPrompt(node.params.generateSystemPrompt, ctx.locale),
-    model: node.params.generateModel || undefined,
-    providerInstanceId: node.params.generateProviderInstanceId || undefined
-  })
-  if (ctx.signal?.aborted) {
-    throw new DOMException('Aborted', 'AbortError')
-  }
-  let text = result.text.trim()
-  if (!text)
-    throw fail(SHARED_ERRORS.resultMissing, {
-      what: { zh: '场拆解结果', en: 'scene breakdown result' }
-    }) // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
-
-  const nextRows = parseBeatJson(text)
-  const merged = mergeBeatRowsPreservingReviewed(previousRows, nextRows)
-  if (merged?.length) {
-    text = stringifyBeatRows(merged)
-  }
-
-  return persistBeatSplitGeneration(ctx, text)
-}
-
 /**
  * UI 界面拆分：读策划案，把每个独立界面拆成详细生图提示词。
  * 主出口 `out` 为 texts 数组（每项一个界面）；图库 generatedTexts 同步保存便于预览。
@@ -772,7 +280,7 @@ export async function executeUiSplitNode(
   const mentionSources = resolveMentionSources(ctx)
   const instructionRaw = node.params.generateInstruction?.trim() ?? ''
   const instruction = expandInstructionMentions(instructionRaw, mentionSources)
-  const incomingText = await resolveBeatSplitSourceText(ctx, instructionRaw, mentionSources)
+  const incomingText = await resolveUiSplitSourceText(ctx, instructionRaw, mentionSources)
 
   if (!ctx.generateText) {
     const existing = resolveGalleryOutputsFromNodeParams(node.params, {

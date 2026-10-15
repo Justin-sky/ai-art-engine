@@ -50,6 +50,7 @@ import {
 } from './systemPromptSchemes'
 import type { GraphNodeParams } from './types'
 import { resolveFrameAnimGenSystemPrompt } from './anim2d'
+import { FILM_BREAKDOWN_SYSTEM, pickFilmPrompt } from './film/prompts'
 
 export type GraphSkillKind =
   | 'episode'
@@ -62,6 +63,7 @@ export type GraphSkillKind =
   | 'blender'
   | 'gameplay'
   | 'tutorial'
+  | 'film'
 
 /** 解析入口指针；实现仍在 episodeBoardParse 等文件，此处不搬家 */
 export type GraphSkillParseKind =
@@ -145,7 +147,7 @@ const TUTORIAL_RECORDING_USAGE_ZH =
   '**口播=画面（最高优先级，禁止「嘴上说选中/点击，实际没点」）**：' +
   'caption/narration 写到的每个操作，下一步工具必须做出**可见**动作。' +
   '说「右键添加节点」→ step(graph-canvas, doContextMenu:true) → step(graph-ctx-group-{分组}, doClick) → step(graph-ctx-type-{typeId点改横杠}, doClick)；例图片：graph-ctx-group-image → graph-ctx-type-asset-image（禁止静默 node_upsert）；' +
-  '**影视类要多一层**：graph-ctx-group-filmTv → graph-ctx-group-screenplay → graph-ctx-type-asset-screenplay（第二层不开，type 项根本不在 DOM 里）；' + // cjk-ok（dsh 技能正文：随技能进 SKILL.md 的提示词数据）
+  '**影视类要多一层**：graph-ctx-group-filmTv → graph-ctx-group-filmPre（前期）/ filmArt（美术）/ filmShoot（拍摄）→ graph-ctx-type-film-breakdown 等（第二层不开，type 项根本不在 DOM 里）；' + // cjk-ok（dsh 技能正文：随技能进 SKILL.md 的提示词数据）
   '说「选中节点」→ graph_edit node_select（编辑器没开时它会自己打开，保证画布上真的高亮）；' + // cjk-ok（dsh 技能正文：随技能进 SKILL.md 的提示词数据）
   '说「改提示词/参数」→ 指令面板节点：doDblClick → fillText(graph-instruction-input) → 可选 graph-model-select / graph-gen-params；**禁止**静默 node_update；' +
   '说「打开记事本/正文」→ doDblClick → 高亮 graph-notepad，编辑用 fillText(graph-notepad-input)；' +
@@ -168,7 +170,7 @@ const TUTORIAL_RECORDING_USAGE_EN =
   'Three fields: title ≤12 chars; caption = full sentence; narration required in compose.steps. ' +
   'SAY=SHOW (critical): every named action must be a visible tool action. ' +
   'Right-click add: step(graph-canvas, doContextMenu) → graph-ctx-group-{group} → graph-ctx-type-{typeId with dots→dashes}; e.g. graph-ctx-group-image → graph-ctx-type-asset-image. Never silent node_upsert. ' +
-  'Film/TV needs one more level: graph-ctx-group-filmTv → graph-ctx-group-screenplay → graph-ctx-type-asset-screenplay. ' +
+  'Film/TV needs one more level: graph-ctx-group-filmTv → graph-ctx-group-filmPre / filmArt / filmShoot → graph-ctx-type-film-breakdown etc. ' +
   'Select: graph_edit node_select (it opens the editor if needed, so the canvas really highlights). ' +
   'Edit prompt/params: doDblClick → fillText graph-instruction-input (+ optional graph-model-select / graph-gen-params). Never silent node_update. ' +
   'Notepad/text: doDblClick → graph-notepad / fillText graph-notepad-input. ' +
@@ -227,6 +229,24 @@ const SVG_MOTION_USAGE_EN =
   ' Over MCP the minimum is 3 calls and workflow_plan is not needed first (workflow_commit accepts a hand-written plan): (1) workflow_commit({ plan, name }) — plan is {"title":"Pelican riding a bicycle (SVG)","nodes":[{"key":"svg","typeId":"svg.gen","params":{"generateInstruction":"Draw a cartoon pelican riding a bicycle as a standalone renderable SVG: strict left-facing side view with both wheels, spokes, frame, handlebars and pedals fully visible; use <animateTransform> to keep the wheels and crank rotating, the legs pedalling alternately and the body bobbing slightly, forming one seamless pedalling loop","svgGenWidth":512,"svgGenHeight":512}},{"key":"bake","typeId":"svg.anim","params":{"svgFrames":24,"svgDurationSec":2,"svgWidth":512,"svgHeight":512}}],"edges":[{"from":"svg","to":"bake"}]}, which returns assetId; (2) task_run({ assetId }) returns mcpTaskId; (3) task_status({ mcpTaskId }) fetches the outputs (the text model needs roughly ten seconds for the SVG, then baking and GIF encoding take a few more). For a single static vector image keep only the svg.gen node with an empty edges array and skip svg.anim. Do not switch to generate_image when the user asks for SVG / vector / vector animation / vector icons — that produces a bitmap. Use graph_node_types / graph_read / graph_edit only when modifying an existing asset.' +
   // Mirrors the persona guardrail: the skill is what the model reads while doing vector work.
   ' For a visual self-check (what was drawn, whether the motion reads) call the `render_svg` tool — pass inline SVG markup or a project-relative .svg path and the picture comes back with the response, nothing written to disk, no browser needed; to inspect the asset-side frame sequence and GIF, use the PNG frames and the GIF that svg.anim bakes, whose paths task_status reports. Do not take headless screenshots with a local browser: inside the sandbox msedge / chrome cannot create their internal IPC pipe, so they abort with 0x80000003 and pop an out-of-app Windows error dialog, and the tool call fails anyway (such commands are refused before they run).'
+
+/**
+ * 影视流水线（film.*）：dsh 技能快照里的操作说明。
+ * 重点讲清结构化端口、可直接读写的 params JSON、以及闭环迭代方式（锁定 / 指纹缓存）。
+ */
+const FILM_PIPELINE_USAGE_ZH =
+  '用途：用户要把剧本 / 故事做成分镜、设定图、关键帧或成片视频时走这条链（不要再用 prompt.optimize 手搭 9 宫格 / 36 格）。' + // cjk-ok（dsh 技能用法文本：双语提示词数据）
+  '节点与端口：① film.breakdown（in:text 剧本 → out:storyboard 分镜文档，out-text:text 镜头表 Markdown；params：filmTargetShots 0=自动、filmAspectRatio、filmStyle、generateInstruction 导演要求）；② film.review（in:storyboard + in-script:text 原剧本 → out:storyboard 修订稿，out-text 审核报告；filmReviewMaxRounds 自动修订轮数，0=只审不改）；③ film.cast（in:storyboard + in-image:image 现成参考图 → out:filmCast 设定库，out-sheets:images 设定图；filmCastKinds 如 \"character,location\"）；④ film.render（in:storyboard + in-cast:filmCast → out:storyboard 带每镜产物，out-images:images 关键帧，out-videos:videos 镜头视频；filmRenderMode keyframe|video、filmShotRange 如 \"1-5,8\"、filmRenderQc 视觉质检自动重拍、filmVideoModel / filmVideoProviderInstanceId 视频模型）；⑤ film.shot（in:storyboard + in-cast → out:text 关键帧提示词、out-motion:text 动态提示词、out-refs:image 出场设定图，接 asset.image / asset.video 精修单镜；filmShotRef 填序号或镜头 id）。' + // cjk-ok（dsh 技能用法文本：双语提示词数据）
+  '走 MCP 最少 3 次调用：① workflow_commit({ plan, name })，plan 为 {\"title\":\"影视全流程\",\"nodes\":[{\"key\":\"script\",\"typeId\":\"play.script\",\"params\":{\"text\":\"<剧本>\"}},{\"key\":\"sb\",\"typeId\":\"film.breakdown\",\"params\":{\"filmAspectRatio\":\"9:16\"}},{\"key\":\"rv\",\"typeId\":\"film.review\",\"params\":{\"filmReviewMaxRounds\":2}},{\"key\":\"cast\",\"typeId\":\"film.cast\"},{\"key\":\"shoot\",\"typeId\":\"film.render\",\"params\":{\"filmRenderMode\":\"keyframe\",\"filmRenderQc\":true}}],\"edges\":[{\"from\":\"script\",\"to\":\"sb\"},{\"from\":\"script\",\"to\":\"rv\",\"toPort\":\"in-script\"},{\"from\":\"sb\",\"to\":\"rv\"},{\"from\":\"rv\",\"to\":\"cast\"},{\"from\":\"rv\",\"to\":\"shoot\"},{\"from\":\"cast\",\"to\":\"shoot\",\"toPort\":\"in-cast\"}]}；② task_run({ assetId })；③ task_status 轮询取产物。' + // cjk-ok（dsh 技能用法文本：双语提示词数据）
+  '迭代闭环：分镜文档就在节点 params.filmStoryboard（schema aiart.film-storyboard@1，镜头字段 id/shotSize/angle/cameraMove/durationSec/characters/location/props/action/dialogue/imagePrompt/videoPrompt/status/locked/review/media），用 graph_read 读、graph_edit 改；把满意或人工改过的镜头设 locked:true，重新拆解 / 审核修订都不会改写它；film.render 按提示词指纹增量缓存，只改一镜就只重拍一镜（filmForce:true 才全部重拍）；剧本没变时 film.breakdown 直接复用旧分镜不调模型。' + // cjk-ok（dsh 技能用法文本：双语提示词数据）
+  '一致性：角色 / 地点外观只写在 entities[].description 里，镜头提示词只写实体名；film.cast 生成的设定图会按每镜出场名单自动作为参考图注入关键帧生成。' // cjk-ok（dsh 技能用法文本：双语提示词数据）
+
+const FILM_PIPELINE_USAGE_EN =
+  'Use this chain whenever the user wants a script / story turned into a storyboard, design sheets, keyframes or shot videos (do not hand-build 9/36-grid chains from prompt.optimize).' +
+  ' Nodes and ports: (1) film.breakdown (in:text script → out:storyboard document, out-text:text shot list Markdown; params filmTargetShots 0=auto, filmAspectRatio, filmStyle, generateInstruction director notes); (2) film.review (in:storyboard + in-script:text → out:storyboard revised, out-text report; filmReviewMaxRounds auto-revision rounds, 0 = review only); (3) film.cast (in:storyboard + in-image:image existing refs → out:filmCast library, out-sheets:images design sheets; filmCastKinds e.g. "character,location"); (4) film.render (in:storyboard + in-cast:filmCast → out:storyboard with per-shot media, out-images:images keyframes, out-videos:videos clips; filmRenderMode keyframe|video, filmShotRange e.g. "1-5,8", filmRenderQc vision QC with retakes, filmVideoModel / filmVideoProviderInstanceId); (5) film.shot (in:storyboard + in-cast → out:text keyframe prompt, out-motion:text motion prompt, out-refs:image cast refs, to polish one shot with asset.image / asset.video; filmShotRef index or shot id).' +
+  ' Over MCP the minimum is 3 calls: (1) workflow_commit({ plan, name }) with nodes play.script → film.breakdown → film.review (also script → in-script) → film.cast → film.render (cast → in-cast); (2) task_run({ assetId }); (3) poll task_status for outputs.' +
+  ' Iterate in a closed loop: the storyboard lives in node params.filmStoryboard (schema aiart.film-storyboard@1; shot fields id/shotSize/angle/cameraMove/durationSec/characters/location/props/action/dialogue/imagePrompt/videoPrompt/status/locked/review/media) — read with graph_read, edit with graph_edit; set locked:true on approved or hand-edited shots and neither re-breakdowns nor review revisions will rewrite them; film.render caches by prompt fingerprint so editing one shot reshoots only that shot (filmForce:true reshoots all); film.breakdown reuses the storyboard without calling the model when the script is unchanged.' +
+  ' Consistency: appearance lives only in entities[].description; shot prompts reference entity names; film.cast design sheets are injected automatically as keyframe references per shot cast list.'
 
 /** 3D 加工节点：dsh 只指挥 Blender MCP，禁止在对话里编欧拉表交差 */
 const BLENDER_JOB_SYSTEM_ZH =
@@ -439,6 +459,17 @@ const BUILTIN_SKILLS: GraphSkill[] = [
     instructionEn: SVG_MOTION_INSTRUCTION_EN,
     usageZh: SVG_MOTION_USAGE_ZH,
     usageEn: SVG_MOTION_USAGE_EN
+  },
+  {
+    // 影视流水线：剧本 → 结构化分镜 → 审核自动修订 → 设定图 → 批量拍摄（关键帧质检 + 图生视频）
+    id: 'film.pipeline',
+    kind: 'film',
+    titleZh: '影视全流程（分镜 / 设定 / 拍摄）', // cjk-ok（技能标题）
+    titleEn: 'Film pipeline (storyboard / cast / shoot)',
+    systemPromptZh: pickFilmPrompt(FILM_BREAKDOWN_SYSTEM, 'zh-CN'),
+    systemPromptEn: pickFilmPrompt(FILM_BREAKDOWN_SYSTEM, 'en-US'),
+    usageZh: FILM_PIPELINE_USAGE_ZH,
+    usageEn: FILM_PIPELINE_USAGE_EN
   },
   {
     // 可玩 HTML（程序化资产）：对话里一句话生成可试玩小游戏，资产全部由代码生成

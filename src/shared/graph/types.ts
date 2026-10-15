@@ -35,34 +35,10 @@ export const GRAPH_OUTPUT_NODE_IDS = {
   voice: 'voice-output',
   text: 'text-output',
   director: 'director-output',
-  timeline: 'timeline-output',
-  beat: 'beat-output',
-  beatUnit: 'beat-unit-output',
-  world: 'world-output'
+  timeline: 'timeline-output'
 } as const
 
 export type GraphOutputNodeIdKey = keyof typeof GRAPH_OUTPUT_NODE_IDS
-
-/** 场资产图：场拆解节点 */
-export const GRAPH_BEAT_SPLIT_NODE_ID = 'beat-split'
-
-/** 场资产图：场表格节点 */
-export const GRAPH_BEAT_TABLE_NODE_ID = 'beat-table'
-
-/** 场资产图：叙事编辑入口节点 */
-export const GRAPH_BEAT_GEN_NODE_ID = 'beat-gen'
-
-/** 世界元素资产图：世界元素提取节点 */
-export const GRAPH_WORLD_EXTRACT_NODE_ID = 'world-extract'
-
-/** 世界元素资产图：世界元素表格节点 */
-export const GRAPH_WORLD_TABLE_NODE_ID = 'world-table'
-
-/** 世界元素资产图：世界元素编辑入口节点 */
-export const GRAPH_WORLD_GEN_NODE_ID = 'world-gen'
-
-/** 世界元素资产图：世界元素输出节点 */
-export const GRAPH_WORLD_OUTPUT_NODE_ID = GRAPH_OUTPUT_NODE_IDS.world
 
 export type GraphNodeCategory = 'asset' | 'output' | 'note'
 export type GraphOutputKind = 'video' | 'image' | 'voice' | 'text'
@@ -82,9 +58,6 @@ export function graphOutputNodeIdForType(
 ): string {
   if (typeId === 'output.director') return GRAPH_OUTPUT_NODE_IDS.director
   if (typeId === 'output.timeline') return GRAPH_OUTPUT_NODE_IDS.timeline
-  if (typeId === 'output.beat') return GRAPH_OUTPUT_NODE_IDS.beat
-  if (typeId === 'output.beatUnit') return GRAPH_OUTPUT_NODE_IDS.beatUnit
-  if (typeId === 'output.world') return GRAPH_OUTPUT_NODE_IDS.world
   if (typeId?.startsWith('output.')) {
     const suffix = typeId.slice('output.'.length)
     if (suffix === 'image' || suffix === 'video' || suffix === 'voice' || suffix === 'text') {
@@ -157,7 +130,20 @@ export const GraphPortType = {
    * 所以重建是**图生视频**而不是凭空文生视频。与 `semanticTimeline` 同一套路：
    * 单向放宽 `videoPrompts → text`（交给文本消费者/agent 读），反向不允许。
    */
-  videoPrompts: 'videoPrompts'
+  videoPrompts: 'videoPrompts',
+  /**
+   * 影视分镜文档（`FilmStoryboard`，schema `aiart.film-storyboard@1`）：
+   * 剧本拆出的场 / 镜头 / 角色场景实体 / 审核结论 / 每镜产物，一整份结构化 JSON。
+   * film.breakdown → film.review → film.cast / film.shot / film.render 之间传它。
+   * 与语义时间线同一套路：单向放宽 `storyboard → text`（给 LLM 指令节点 / agent 读），反向不允许。
+   */
+  storyboard: 'storyboard',
+  /**
+   * 影视设定库（`FilmCast`，schema `aiart.film-cast@1`）：角色 / 场景 / 道具的设定图与描述。
+   * film.cast 产出，film.shot / film.render 按镜头出场名单自动取参考图锁一致性。
+   * 单向放宽 `filmCast → text`。
+   */
+  filmCast: 'filmCast'
 } as const
 
 /** 目录 JSON 端口 / 运行时 kind（与 GraphPortType 同名） */
@@ -235,9 +221,6 @@ export type GraphNodeTypeId =
   | `output.${GraphOutputKind}`
   | 'output.director'
   | 'output.timeline'
-  | 'output.beat'
-  | 'output.beatUnit'
-  | 'output.world'
   | 'note.text'
   | 'media.bundle'
   | 'play.script'
@@ -246,14 +229,11 @@ export type GraphNodeTypeId =
   | 'video.select'
   | 'voice.select'
   | 'text.select'
-  | 'beat.select'
-  | 'beat.split'
-  | 'beat.table'
-  | 'beat.gen'
-  | 'beat.unitGen'
-  | 'beat.unitRef'
-  | 'episode.anchorSelect'
-  | 'episode.cellSelect'
+  | 'film.breakdown'
+  | 'film.review'
+  | 'film.cast'
+  | 'film.shot'
+  | 'film.render'
   | 'image.multiAngle'
   | 'image.lighting'
   | 'image.portraitTexture'
@@ -1219,6 +1199,49 @@ export interface GraphNodeParams {
   mediaReworkCost?: string
   /** 漫画页：序列化 JSON 文本（见 comicPage.ts），由 ComicPageInspector 编辑/预览/导出 */
   comicPage?: string
+  /**
+   * 影视流水线（film.*）：结构化分镜文档 JSON（schema `aiart.film-storyboard@1`，见 film/storyboard.ts）。
+   * film.breakdown / film.review 执行后写回；人工可直接编辑（锁定的镜头不会被 AI 重写）。
+   */
+  filmStoryboard?: string
+  /** 影视流水线：角色 / 场景 / 道具设定库 JSON（schema `aiart.film-cast@1`），film.cast 写回 */
+  filmCast?: string
+  /** 影视流水线：film.render 每镜产物缓存 JSON（shotId → 关键帧 / 视频 / 指纹 / 质检） */
+  filmRenders?: string
+  /** 分镜拆解：目标镜头数（0 = 由剧情节奏自动决定） */
+  filmTargetShots?: number
+  /** 分镜拆解：统一画幅（如 16:9 / 9:16 / 2.39:1），写入分镜文档并作为下游出图默认值 */
+  filmAspectRatio?: string
+  /** 分镜拆解：全片视觉风格（画风 / 色调 / 年代质感），写入分镜文档并注入所有出图提示词 */
+  filmStyle?: string
+  /** 分镜拆解：输入指纹（剧本 + 选项 + 模型）；未变化时直接复用已有分镜，不重复调模型 */
+  filmSourceHash?: string
+  /** 导演审核：最多自动修订轮数（0 = 只审不改） */
+  filmReviewMaxRounds?: number
+  /** 导演审核：上次审核报告（Markdown，供卡片与检查器展示） */
+  filmReviewReport?: string
+  /** 导演审核：上次结论 */
+  filmReviewVerdict?: 'PASS' | 'FAIL' | ''
+  /** 角色场景设定：参与生成的实体种类，逗号分隔（character,location,prop） */
+  filmCastKinds?: string
+  /** 角色场景设定 / 批量拍摄：忽略缓存强制重生成 */
+  filmForce?: boolean
+  /** 镜头装配：镜头引用（1 起序号或镜头 id） */
+  filmShotRef?: string
+  /** 批量拍摄：产出模式（keyframe = 只出关键帧；video = 关键帧 + 图生视频） */
+  filmRenderMode?: 'keyframe' | 'video'
+  /** 批量拍摄：镜头范围（如 `1-5,8`；空 = 全部） */
+  filmShotRange?: string
+  /** 批量拍摄：关键帧视觉质检（不合格自动重拍） */
+  filmRenderQc?: boolean
+  /** 批量拍摄：单镜最大重拍次数 */
+  filmRenderMaxRetries?: number
+  /** 批量拍摄：视频模型（generateModel 是关键帧图片模型） */
+  filmVideoModel?: string
+  filmVideoProviderInstanceId?: string
+  /** 批量拍摄：质检用视觉文本模型（缺省 = 设置里默认文本模型） */
+  filmQcModel?: string
+  filmQcProviderInstanceId?: string
 }
 
 export interface GraphPortDef {

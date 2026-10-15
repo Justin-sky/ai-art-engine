@@ -9,9 +9,7 @@ import {
   createOutputGraphNode,
   getNodePorts,
   getNodeType,
-  GraphPortType,
   isAssetRefNode,
-  isNodeDeletable,
   isProcessingAssetNode,
   normalizeAssetGraph,
   normalizeScopedGraph
@@ -196,7 +194,7 @@ describe('asset editor graph', () => {
     expect(cleaned.nodes.some((n) => n.id === boundaryInputNodeId('in-image'))).toBe(true)
   })
 
-  it('normalize image/video/world assets create matching boundary inputs (HDA)', () => {
+  it('normalize image/video assets create matching boundary inputs (HDA)', () => {
     const image = normalizeScopedGraph('workflow', null, {
       assetType: 'image',
       hostAssetId: '00000000-0000-4000-8000-000000000401'
@@ -219,142 +217,6 @@ describe('asset editor graph', () => {
         port
       ).toBe(true)
     }
-
-    const world = normalizeScopedGraph('worldAsset', null, {
-      assetType: 'world',
-      hostAssetId: '00000000-0000-4000-8000-000000000403'
-    })
-    const extract = world.nodes.find((n) => n.typeId === 'world.extract')
-    expect(extract).toBeTruthy()
-    expect(world.nodes.some((n) => n.id === boundaryInputNodeId('in'))).toBe(true)
-  })
-
-  it('creates default beat asset graph with split → table → boundary (no gen)', () => {
-    const doc = createDefaultScopedGraph('beatAsset', 'beat')
-    const split = doc.nodes.find((node) => node.typeId === 'beat.split')
-    const table = doc.nodes.find((node) => node.typeId === 'beat.table')
-    const editor = doc.nodes.find((node) => node.typeId === 'beat.gen')
-    const select = doc.nodes.find((node) => node.typeId === 'text.select')
-    const output = doc.nodes.find((node) => node.id === BOUNDARY_OUTPUT_ID)
-    expect(split).toBeTruthy()
-    expect(table).toBeTruthy()
-    expect(editor).toBeUndefined()
-    expect(select).toBeUndefined()
-    expect(output).toBeTruthy()
-    expect(output?.typeId).toBe('graph.boundary.output')
-    expect(doc.nodes.some((node) => node.category === 'output')).toBe(false)
-    expect(getNodePorts(split!).map((p) => [p.direction, p.dataType])).toEqual([
-      ['in', 'text'],
-      ['out', 'beat'],
-      ['out', 'texts']
-    ])
-    expect(getNodePorts(table!).map((p) => [p.direction, p.dataType])).toEqual([
-      ['in', 'beat'],
-      ['out', 'beat']
-    ])
-    expect(getNodePorts(output!).map((p) => [p.direction, p.dataType])).toEqual([['in', 'beat']])
-    expect(doc.edges.some((edge) => edge.source === split?.id && edge.target === table?.id)).toBe(
-      true
-    )
-    expect(doc.edges.some((edge) => edge.source === table?.id && edge.target === output?.id)).toBe(
-      true
-    )
-    expect(doc.edges.some((edge) => edge.source === table?.id && edge.target === editor?.id)).toBe(
-      false
-    )
-    expect(canConnectNodes(split!, table!)).toBe(true)
-    expect(canConnectNodes(table!, output!)).toBe(true)
-    expect(isNodeDeletable(split!)).toBe(true)
-    expect(isNodeDeletable(table!)).toBe(true)
-    expect(isNodeDeletable(output!)).toBe(false)
-  })
-
-  it('beat asset host creates text boundary input (HDA)', () => {
-    const doc = normalizeScopedGraph('beatAsset', null, {
-      assetType: 'beat',
-      hostAssetId: '00000000-0000-4000-8000-000000000601'
-    })
-    const table = doc.nodes.find((node) => node.typeId === 'beat.table')
-    const split = doc.nodes.find((node) => node.typeId === 'beat.split')
-    expect(table).toBeTruthy()
-    expect(split).toBeTruthy()
-    expect(getNodePorts(table!).some((p) => p.id === 'in-worldEntities')).toBe(false)
-    expect(doc.nodes.some((n) => n.id === boundaryInputNodeId('in'))).toBe(true)
-    expect(doc.nodes.some((n) => n.typeId === 'graph.input.slot')).toBe(false)
-  })
-
-  it('drops beat.gen → text.select edge on incompatible out port', () => {
-    const gen = createNodeFromType('beat.gen', { x: 0, y: 0 }, { id: 'gen' })
-    const select = createNodeFromType('text.select', { x: 200, y: 0 }, { id: 'select' })
-    const doc = normalizeScopedGraph(
-      'beatAsset',
-      {
-        nodes: [gen, select],
-        edges: [
-          {
-            id: 'e1',
-            source: 'gen',
-            target: 'select',
-            sourcePort: 'out',
-            targetPort: 'in'
-          }
-        ],
-        viewport: { x: 0, y: 0, zoom: 1 }
-      },
-      { assetType: 'beat' }
-    )
-    expect(doc.edges.some((edge) => edge.source === 'gen' && edge.target === 'select')).toBe(false)
-  })
-
-  it('creates default world asset graph with extract → table → editor → boundary chain', () => {
-    const doc = createDefaultScopedGraph('worldAsset', 'world')
-    const extract = doc.nodes.find((node) => node.typeId === 'world.extract')
-    const table = doc.nodes.find((node) => node.typeId === 'world.table')
-    const editor = doc.nodes.find((node) => node.typeId === 'world.gen')
-    const output = doc.nodes.find((node) => node.id === BOUNDARY_OUTPUT_ID)
-    expect(extract).toBeTruthy()
-    expect(table).toBeTruthy()
-    expect(editor).toBeTruthy()
-    expect(output).toBeTruthy()
-    expect(output?.typeId).toBe('graph.boundary.output')
-    expect(doc.nodes.some((node) => node.category === 'output')).toBe(false)
-    expect(getNodePorts(extract!).map((p) => [p.direction, p.dataType])).toEqual([
-      ['in', 'text'],
-      ['out', 'world'],
-      ['out', 'texts']
-    ])
-    expect(getNodePorts(table!).map((p) => [p.direction, p.dataType])).toEqual([
-      ['in', 'world'],
-      ['out', 'world']
-    ])
-    expect(getNodePorts(editor!).map((p) => [p.direction, p.dataType, p.id])).toEqual([
-      ['in', 'world', 'in'],
-      ['out', 'images', 'out-characters'],
-      ['out', 'images', 'out-scenes'],
-      ['out', 'images', 'out-props'],
-      ['out', 'images', 'out-weapons']
-    ])
-    expect(getNodePorts(output!).map((p) => [p.direction, p.dataType])).toEqual([
-      ['in', 'worldEntities']
-    ])
-    expect(doc.edges.some((edge) => edge.source === extract?.id && edge.target === table?.id)).toBe(
-      true
-    )
-    expect(doc.edges.some((edge) => edge.source === table?.id && edge.target === editor?.id)).toBe(
-      true
-    )
-    // 生成节点改为四类图片组出口，不再直接接到 worldEntities 边界
-    expect(doc.edges.some((edge) => edge.source === editor?.id && edge.target === output?.id)).toBe(
-      false
-    )
-    expect(canConnectNodes(editor!, output!)).toBe(false)
-    expect(
-      canConnectNodes(editor!, createNodeFromType('image.select', { x: 400, y: 0 }), {
-        sourcePort: 'out-characters',
-        targetPort: 'in'
-      })
-    ).toBe(true)
-    expect(isNodeDeletable(output!)).toBe(false)
   })
 
   it('keeps screenplay processing node id and play.script edges across normalize reload', () => {

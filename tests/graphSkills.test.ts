@@ -82,10 +82,10 @@ describe('graphSkills', () => {
      * - 动作必须带 tutorialId（旧实现静默跳过，成片里什么都没发生）；
      * - 默认不要再加字幕轨（HUD 已把 title/caption 烧进画面）。
      */
-    expect(skill?.usageZh).toContain('graph-ctx-group-screenplay')
+    expect(skill?.usageZh).toContain('graph-ctx-group-filmPre')
     expect(skill?.usageZh).toContain('必须带 tutorialId')
     expect(skill?.usageZh).toContain('别再加字幕轨')
-    expect(skill?.usageEn).toContain('graph-ctx-group-screenplay')
+    expect(skill?.usageEn).toContain('graph-ctx-group-filmPre')
     expect(skill?.usageEn).toContain('tutorialId is REQUIRED')
   })
 

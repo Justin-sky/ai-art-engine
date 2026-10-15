@@ -19,9 +19,12 @@ describe('graph processing menu labels', () => {
     expect(t('graph.types.asset.voice')).toBe('声音生成')
     expect(t('graph.types.asset.screenplay')).toBe('剧本生成')
     expect(t('graph.types.asset.motion')).toBe('3D导演台')
-    expect(t('graph.types.world.extract')).toBe('世界元素提取')
-    expect(t('graph.types.world.table')).toBe('世界元素审核')
-    expect(t('graph.types.world.gen')).toBe('世界元素生成')
+    // 影视流水线：菜单短名与词表一致（长描述在 hint / 预设里用「分镜拆解」等全称）
+    expect(t('graph.types.film.breakdown')).toBe('分镜拆解')
+    expect(t('graph.types.film.review')).toBe('导演审核')
+    expect(t('graph.types.film.cast')).toBe('角色场景设定')
+    expect(t('graph.types.film.shot')).toBe('镜头')
+    expect(t('graph.types.film.render')).toBe('批量拍摄')
     expect(t('graph.inspector.generate.presets.image.multiAngle9')).toBe('多机位九宫格')
     expect(t('graph.inspector.generate.presets.image.story25')).toBe('25宫格连贯分镜')
     expect(t('graph.inspector.generate.presets.titleImage')).toBe('图片生成模板')
@@ -37,10 +40,6 @@ describe('graph processing menu labels', () => {
     expect(t('graph.types.output.director')).toBe('导演台输出')
     expect(t('graph.types.output.timeline')).toBe('成片时间线')
     expect(t('graph.titles.timelineOutput')).toBe('成片时间线')
-    expect(t('graph.types.output.beat')).toBe('场输出')
-    expect(t('graph.types.output.world')).toBe('世界元素实体输出')
-    expect(t('graph.titles.worldOutput')).toBe('世界元素实体输出')
-    expect(t('graph.types.beat.select')).toBe('选择场')
   })
 
   it('resolves persisted English enum ids to localized labels', () => {
