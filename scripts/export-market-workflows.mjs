@@ -51,6 +51,7 @@ async function loadAppData() {
       stdin: {
         contents: `
           export { AI_WORKFLOW_PRESET_IDS, getAiWorkflowPresetPlan } from './src/shared/graph/aiWorkflowPresets'
+          export { listNodeTypes } from './src/shared/graph'
           export { nodeTypesOfPlan } from './src/shared/workflowMarket'
         `,
         resolveDir: ROOT,
@@ -173,7 +174,38 @@ if (!existsSync(join(dir, 'workflows'))) {
   process.exit(2)
 }
 
-const { AI_WORKFLOW_PRESET_IDS, getAiWorkflowPresetPlan, nodeTypesOfPlan } = await loadAppData()
+const { AI_WORKFLOW_PRESET_IDS, getAiWorkflowPresetPlan, listNodeTypes, nodeTypesOfPlan } =
+  await loadAppData()
+
+// 同步市场仓库的 scripts/known-node-types.json（防止应用新增节点类型后社区导出被市场 CI 误判未知类型）
+const knownTypesPath = join(dir, 'scripts', 'known-node-types.json')
+if (!opts.only && existsSync(knownTypesPath)) {
+  try {
+    const currentKnown = JSON.parse(readFileSync(knownTypesPath, 'utf8'))
+    const latestTypes = [...new Set(listNodeTypes().map((def) => def.typeId))].sort()
+    const prevTypes = Array.isArray(currentKnown.nodeTypes) ? currentKnown.nodeTypes : []
+    if (JSON.stringify(prevTypes) !== JSON.stringify(latestTypes) && !opts.check) {
+      writeFileSync(
+        knownTypesPath,
+        `${JSON.stringify(
+          {
+            generatedAt: new Date().toISOString(),
+            source: 'ai-art-engine listNodeTypes()',
+            nodeTypes: latestTypes
+          },
+          null,
+          2
+        )}\n`,
+        'utf8'
+      )
+      console.log(
+        `  ✎ 已同步更新 scripts/known-node-types.json（共 ${latestTypes.length} 种节点类型）`
+      )
+    }
+  } catch {
+    // 忽略读取异常
+  }
+}
 
 /**
  * 市场索引里"已发布"的 id 集合。

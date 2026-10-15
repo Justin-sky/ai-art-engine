@@ -115,13 +115,35 @@
               <button type="button" :disabled="busy" @click="void pickCover()">
                 {{ t('workflowExport.dialog.chooseCover') }}
               </button>
+              <button type="button" :disabled="busy" @click="generateAutoCover()">
+                {{ t('workflowExport.dialog.autoCover') }}
+              </button>
               <span class="cover-name">{{
-                coverFileName || t('workflowExport.dialog.coverEmpty')
+                coverFileName ||
+                (coverDataUrl
+                  ? t('workflowExport.dialog.coverGenerated')
+                  : t('workflowExport.dialog.coverEmpty'))
               }}</span>
             </div>
+            <img v-if="coverDataUrl" :src="coverDataUrl" class="cover-preview" alt="cover" />
             <span class="hint" :class="{ 'hint-bad': errorField === 'cover' }">
               {{ t('workflowExport.dialog.coverHint') }}
             </span>
+          </div>
+
+          <div class="wx-options">
+            <label class="wx-check">
+              <input v-model="includeSkill" type="checkbox" :disabled="busy" />
+              <span>{{ t('workflowExport.dialog.includeSkill') }}</span>
+            </label>
+            <label class="wx-check">
+              <input v-model="allowStandaloneFormat" type="checkbox" :disabled="busy" />
+              <span>{{ t('workflowExport.dialog.allowStandaloneFormat') }}</span>
+            </label>
+            <label class="wx-check">
+              <input v-model="installLocal" type="checkbox" :disabled="busy" />
+              <span>{{ t('workflowExport.dialog.installLocal') }}</span>
+            </label>
           </div>
         </div>
 
@@ -170,6 +192,7 @@
 import { computed, ref, watch } from 'vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import {
+  WORKFLOW_EXPORT_COVER_SIZE,
   WORKFLOW_EXPORT_LIMITS,
   normalizeWorkflowExportMeta,
   type WorkflowExportMetaInput,
@@ -220,6 +243,10 @@ const authorName = ref('')
 const authorUrl = ref('')
 const license = ref('CC-BY-4.0')
 const coverPath = ref('')
+const coverDataUrl = ref('')
+const includeSkill = ref(true)
+const allowStandaloneFormat = ref(true)
+const installLocal = ref(true)
 
 const busy = ref(false)
 const attempted = ref(false)
@@ -256,7 +283,7 @@ const coverFileName = computed(() => {
 /** 失败原因落在哪个字段上（只用于给输入框标红） */
 const errorField = computed(() => {
   if (!attempted.value) return ''
-  if (!coverPath.value) return 'cover'
+  if (!coverPath.value && !coverDataUrl.value) return 'cover'
   const result = validation.value
   if (result.ok) return ''
   switch (result.reasonKey) {
@@ -300,6 +327,10 @@ watch(
     authorUrl.value = ''
     license.value = 'CC-BY-4.0'
     coverPath.value = ''
+    coverDataUrl.value = ''
+    includeSkill.value = true
+    allowStandaloneFormat.value = true
+    installLocal.value = true
     busy.value = false
     attempted.value = false
     error.value = null
@@ -327,8 +358,119 @@ async function pickCover(): Promise<void> {
   const first = files.find((file) => file.trim())
   if (first) {
     coverPath.value = first
+    coverDataUrl.value = ''
     if (error.value?.reasonKey.startsWith('cover')) error.value = null
   }
+}
+
+/** 一键生成符合市场规范（800×450、PNG、<300KB）的工作流封面卡 */
+function generateAutoCover(): void {
+  const w = WORKFLOW_EXPORT_COVER_SIZE.width
+  const h = WORKFLOW_EXPORT_COVER_SIZE.height
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+
+  // 渐变底色
+  const bg = ctx.createLinearGradient(0, 0, w, h)
+  bg.addColorStop(0, '#0f172a')
+  bg.addColorStop(0.55, '#1e1b4b')
+  bg.addColorStop(1, '#111827')
+  ctx.fillStyle = bg
+  ctx.fillRect(0, 0, w, h)
+
+  // 背景网格
+  ctx.strokeStyle = 'rgba(148, 163, 184, 0.08)'
+  ctx.lineWidth = 1
+  for (let x = 0; x < w; x += 40) {
+    ctx.beginPath()
+    ctx.moveTo(x, 0)
+    ctx.lineTo(x, h)
+    ctx.stroke()
+  }
+  for (let y = 0; y < h; y += 40) {
+    ctx.beginPath()
+    ctx.moveTo(0, y)
+    ctx.lineTo(w, y)
+    ctx.stroke()
+  }
+
+  // 右侧装饰拓扑连线与节点框
+  ctx.strokeStyle = 'rgba(99, 102, 241, 0.35)'
+  ctx.lineWidth = 2.5
+  ctx.beginPath()
+  ctx.moveTo(520, 120)
+  ctx.bezierCurveTo(600, 120, 580, 220, 660, 220)
+  ctx.moveTo(520, 280)
+  ctx.bezierCurveTo(600, 280, 580, 220, 660, 220)
+  ctx.stroke()
+
+  for (const box of [
+    { x: 430, y: 92, c: 'rgba(56, 189, 248, 0.28)' },
+    { x: 430, y: 252, c: 'rgba(168, 85, 247, 0.28)' },
+    { x: 650, y: 192, c: 'rgba(52, 211, 153, 0.32)' }
+  ]) {
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.85)'
+    ctx.strokeStyle = box.c
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.roundRect(box.x, box.y, 100, 56, 10)
+    ctx.fill()
+    ctx.stroke()
+  }
+
+  // 顶部分类胶囊与版本
+  const catText = t(workflowCategoryKey(category.value as never))
+  ctx.fillStyle = 'rgba(99, 102, 241, 0.24)'
+  ctx.strokeStyle = 'rgba(129, 140, 248, 0.5)'
+  ctx.lineWidth = 1.5
+  ctx.beginPath()
+  ctx.roundRect(48, 44, 150, 34, 17)
+  ctx.fill()
+  ctx.stroke()
+
+  ctx.fillStyle = '#c7d2fe'
+  ctx.font = '600 15px system-ui, -apple-system, sans-serif'
+  ctx.fillText(catText.slice(0, 12), 66, 66)
+
+  // 主标题與副标题
+  const mainTitle = (title.value || id.value || 'Workflow').trim()
+  ctx.fillStyle = '#f8fafc'
+  ctx.font = '700 40px system-ui, -apple-system, sans-serif'
+  ctx.fillText(mainTitle.slice(0, 16), 48, 150)
+
+  if (titleEn.value.trim()) {
+    ctx.fillStyle = '#94a3b8'
+    ctx.font = '500 20px system-ui, -apple-system, sans-serif'
+    ctx.fillText(titleEn.value.trim().slice(0, 36), 48, 188)
+  }
+
+  // 简介文字（最多两行）
+  const desc = (summary.value || mainTitle).trim()
+  ctx.fillStyle = '#cbd5e1'
+  ctx.font = '400 20px system-ui, -apple-system, sans-serif'
+  ctx.fillText(desc.slice(0, 26), 48, 250)
+  if (desc.length > 26) {
+    ctx.fillText(desc.slice(26, 52), 48, 282)
+  }
+
+  // 底部 ID 与作者信息
+  ctx.fillStyle = '#64748b'
+  ctx.font = '500 16px ui-monospace, SFMono-Regular, Menlo, monospace'
+  const footerLeft = `${id.value.trim() || 'workflow'} · v${version.value.trim() || '0.1.0'}`
+  ctx.fillText(footerLeft, 48, 402)
+
+  if (authorName.value.trim()) {
+    ctx.fillStyle = '#94a3b8'
+    ctx.font = '500 16px system-ui, -apple-system, sans-serif'
+    ctx.fillText(`@${authorName.value.trim().slice(0, 24)}`, 48, 372)
+  }
+
+  coverDataUrl.value = canvas.toDataURL('image/png')
+  coverPath.value = ''
+  if (error.value?.reasonKey.startsWith('cover')) error.value = null
 }
 
 async function onExport(overwrite: boolean): Promise<void> {
@@ -341,7 +483,7 @@ async function onExport(overwrite: boolean): Promise<void> {
     error.value = { reasonKey: result.reasonKey, params: result.params }
     return
   }
-  if (!coverPath.value) {
+  if (!coverPath.value && !coverDataUrl.value) {
     error.value = { reasonKey: 'coverRequired' }
     return
   }
@@ -356,6 +498,10 @@ async function onExport(overwrite: boolean): Promise<void> {
       assetId: props.assetId,
       meta: draft.value,
       coverPath: coverPath.value,
+      coverDataUrl: coverDataUrl.value || undefined,
+      includeSkill: includeSkill.value,
+      allowStandaloneFormat: allowStandaloneFormat.value,
+      installLocal: installLocal.value,
       overwrite,
       directoryTitle: t('workflowExport.dialog.pickDirectoryTitle')
     })
@@ -452,6 +598,32 @@ function onClose(): void {
   white-space: nowrap;
   font-size: 12px;
   color: var(--text);
+}
+
+.cover-preview {
+  width: 200px;
+  height: 112px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  margin-top: 2px;
+}
+
+.wx-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.wx-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
 }
 
 .err {

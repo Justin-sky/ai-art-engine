@@ -37,6 +37,7 @@ import {
   WORKFLOW_EXPORT_COVER_SIZE,
   WORKFLOW_EXPORT_LIMITS,
   WorkflowExportUnknownTypesError,
+  buildMarketSkillScaffold,
   buildMarketWorkflowBundle,
   documentToPlanReport,
   normalizeWorkflowExportMeta,
@@ -47,6 +48,7 @@ import {
 import { dialogService } from './dialogService'
 import { projectService } from './projectService'
 import { updateService } from './updateService'
+import { installLocalExportedWorkflow } from './workflowMarketService'
 
 /** 失败返回：原因 + 已有提示（成功路径单独构造） */
 function fail(
@@ -114,13 +116,34 @@ type CoverResult =
   | { ok: true; bytes: Buffer }
   | { ok: false; reasonKey: string; params?: Record<string, string | number> }
 
+const DATA_PNG_PREFIX = 'data:image/png;base64,'
+
 /**
- * 读封面图。
+ * 读封面图（优先认渲染层生成的 800×450 PNG data URL，再回退磁盘路径）。
  *
  * **必填且必须是 PNG**：市场校验器要求包内存在 `cover.png`（缺图直接判「缺少封面」），
  * 而落进包里的文件名是固定的 —— 收一张 JPEG 却叫 cover.png 只会制造一个名不副实的文件。
  */
-function readCover(coverPath: string | undefined): CoverResult {
+function readCover(coverPath: string | undefined, coverDataUrl?: string): CoverResult {
+  const inline = (coverDataUrl ?? '').trim()
+  if (inline) {
+    if (!inline.startsWith(DATA_PNG_PREFIX)) {
+      return { ok: false, reasonKey: 'coverNotPng' }
+    }
+    const bytes = Buffer.from(inline.slice(DATA_PNG_PREFIX.length), 'base64')
+    if (!readPngSize(bytes)) {
+      return { ok: false, reasonKey: 'coverNotPng' }
+    }
+    if (bytes.length > WORKFLOW_EXPORT_LIMITS.coverMaxBytes) {
+      return {
+        ok: false,
+        reasonKey: 'coverTooLarge',
+        params: { maxKb: Math.round(WORKFLOW_EXPORT_LIMITS.coverMaxBytes / 1024) }
+      }
+    }
+    return { ok: true, bytes }
+  }
+
   const target = (coverPath ?? '').trim()
   if (!target) return { ok: false, reasonKey: 'coverRequired' }
   if (extname(target).toLowerCase() !== '.png') return { ok: false, reasonKey: 'coverNotPng' }
@@ -199,7 +222,7 @@ export async function exportWorkflowToMarket(
     throw err
   }
 
-  const cover = readCover(input?.coverPath)
+  const cover = readCover(input?.coverPath, input?.coverDataUrl)
   if (!cover.ok) return fail(cover.reasonKey, cover.params, report.warnings)
 
   const picked = await dialogService.selectDirectory({
@@ -211,31 +234,79 @@ export async function exportWorkflowToMarket(
 
   const repoRoot = resolve(picked)
   const workflowsRoot = join(repoRoot, 'workflows')
+  let parentRoot = workflowsRoot
+  let standaloneExport = false
   if (!isDirectory(workflowsRoot)) {
-    return fail('repoMissing', { dir: repoRoot }, report.warnings)
+    if (input?.allowStandaloneFormat !== true) {
+      return fail('repoMissing', { dir: repoRoot }, report.warnings)
+    }
+    parentRoot = repoRoot
+    standaloneExport = true
   }
-  const targetDir = join(workflowsRoot, meta.id)
-  if (!isInside(repoRoot, targetDir) || !isInside(workflowsRoot, targetDir)) {
+  const targetDir = join(parentRoot, meta.id)
+  if (!isInside(repoRoot, targetDir) || !isInside(parentRoot, targetDir)) {
     return fail('unsafeTarget', { dir: repoRoot }, report.warnings)
   }
   if (existsSync(targetDir) && input?.overwrite !== true) {
     return fail('targetExists', { dir: targetDir }, report.warnings)
   }
 
+  const workflowJsonText = serializeWorkflowJson(bundle)
   mkdirSync(targetDir, { recursive: true })
-  writeFileSync(join(targetDir, 'workflow.json'), serializeWorkflowJson(bundle), 'utf8')
+  writeFileSync(join(targetDir, 'workflow.json'), workflowJsonText, 'utf8')
   writeFileSync(join(targetDir, WORKFLOW_EXPORT_COVER_FILE_NAME), cover.bytes)
+
+  const skillScaffold = input?.includeSkill !== false ? buildMarketSkillScaffold(bundle) : undefined
+  if (skillScaffold) {
+    const skillDir = join(targetDir, 'skill')
+    const refsDir = join(skillDir, 'references')
+    mkdirSync(refsDir, { recursive: true })
+    writeFileSync(join(skillDir, 'SKILL.md'), skillScaffold.skillMd, 'utf8')
+    writeFileSync(join(refsDir, 'ports.md'), skillScaffold.portsMd, 'utf8')
+  }
+
+  if (input?.installLocal === true) {
+    try {
+      installLocalExportedWorkflow({
+        id: meta.id,
+        version: meta.version,
+        workflowJsonText,
+        planJsonText: JSON.stringify(bundle.plan),
+        coverBytes: cover.bytes,
+        skill: skillScaffold
+      })
+    } catch {
+      // 本地自测安装失败不阻断已成功写盘的导出包
+    }
+  }
+
   rememberRepoDir(repoRoot)
+
+  const nextSteps: WorkflowExportNote[] = standaloneExport
+    ? [{ reasonKey: 'uploadPr', params: { id: meta.id, dir: targetDir } }]
+    : [
+        // 索引里的派生字段（requires / nodeCount / skill 清单）由仓库脚本从磁盘生成，
+        // 不跑 build-index 直接 validate 会因为「索引与磁盘不一致」被拒。
+        { reasonKey: 'rebuildIndex', params: { dir: repoRoot } },
+        { reasonKey: 'commit', params: { id: meta.id } }
+      ]
+  if (skillScaffold) {
+    nextSteps.push({
+      reasonKey: 'editSkill',
+      params: { id: meta.id, skillName: skillScaffold.skillName }
+    })
+  }
+  if (input?.installLocal === true) {
+    nextSteps.push({
+      reasonKey: 'installedLocal',
+      params: { id: meta.id, title: meta.title }
+    })
+  }
 
   return {
     ok: true,
     dir: targetDir,
     warnings: [...report.warnings, ...coverWarnings(cover.bytes)],
-    nextSteps: [
-      // 索引里的派生字段（requires / nodeCount / skill 清单）由仓库脚本从磁盘生成，
-      // 不跑 build-index 直接 validate 会因为「索引与磁盘不一致」被拒。
-      { reasonKey: 'rebuildIndex', params: { dir: repoRoot } },
-      { reasonKey: 'commit', params: { id: meta.id } }
-    ]
+    nextSteps
   }
 }

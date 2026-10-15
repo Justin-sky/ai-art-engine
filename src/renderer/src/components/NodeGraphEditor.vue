@@ -299,6 +299,7 @@
       @pointerdown="onViewportPointerDown"
       @pointermove="onViewportPointerMove"
       @pointerleave="onViewportPointerLeave"
+      @scroll="onViewportScroll"
     >
       <div class="grid-layer" :class="{ hidden: !gridVisible }" aria-hidden="true">
         <div ref="gridMinorEl" class="grid-pattern grid-pattern-minor" />
@@ -1687,6 +1688,11 @@ const linkingFromPort = ref<string | null>(null)
 const linkingTo = ref<string | null>(null)
 const linkingToPort = ref<string | null>(null)
 const tempEdgeEnd = ref<{ x: number; y: number } | null>(null)
+/**
+ * 拖线时最后一次光标的屏幕坐标。tempEdgeEnd 是世界坐标，拖线中滚轮缩放/平移会让它与光标脱节，
+ * 因此每次重绘都按当前视口由屏幕坐标重算。
+ */
+let tempEdgeClient: { x: number; y: number } | null = null
 /** 拖节点重合：兼容端口高亮 / 靠近可连预览 */
 const snapHighlightPortKeys = ref<Set<string>>(new Set())
 const snapReadyPortKeys = ref<Set<string>>(new Set())
@@ -2664,6 +2670,11 @@ function flushViewportTransform(): void {
  * 才做一次真正重绘并把基准视口归位。手势结束（idle）会再补一帧清晰重绘。
  */
 function syncEdgesForViewport(): void {
+  // 拖线中：临时线一端跟光标（屏幕坐标固定），不能用位图整体变换近似，需按新视口重绘
+  if (tempEdgeClient) {
+    renderEdgesNow()
+    return
+  }
   const s = liveViewport.zoom / edgeRenderViewport.zoom
   const tx =
     liveViewport.x + EDGE_CANVAS_OVERSCAN - s * (edgeRenderViewport.x + EDGE_CANVAS_OVERSCAN)
@@ -2788,6 +2799,9 @@ function renderEdgesNow(): void {
   lastEdgeGeometry = geoms
   const dpr = Math.max(1, window.devicePixelRatio || 1)
 
+  if (tempEdgeClient && tempEdgeEnd.value) {
+    tempEdgeEnd.value = screenToWorld(tempEdgeClient.x, tempEdgeClient.y)
+  }
   const tempScreens = resolveTempEdgeWorlds().map((tempWorld) =>
     computeTempEdgeScreen(tempWorld.from, tempWorld.to, liveViewport, edgePathStyle.value)
   )
@@ -4072,6 +4086,24 @@ function hitTestEdgeAt(clientX: number, clientY: number): string | null {
   return hitTestEdges(lastEdgeGeometry, px, py, tolerance)
 }
 
+/**
+ * 视口容器不应滚动：overflow 内容（边 Canvas overscan、离屏节点）会让 overflow:hidden 容器
+ * 在 focus()/文字拖选时被浏览器悄悄滚动，导致 screenToWorld 与画面错位。CSS 已用 overflow: clip，
+ * 此处兜底归零。
+ */
+function onViewportScroll(): void {
+  const host = viewportEl.value
+  if (!host) return
+  if (host.scrollLeft !== 0) host.scrollLeft = 0
+  if (host.scrollTop !== 0) host.scrollTop = 0
+}
+
+function updateTempEdgeFromPointer(ev: PointerEvent): void {
+  tempEdgeClient = { x: ev.clientX, y: ev.clientY }
+  tempEdgeEnd.value = screenToWorld(ev.clientX, ev.clientY)
+  requestEdgeRender()
+}
+
 function screenToWorld(clientX: number, clientY: number): { x: number; y: number } {
   const rect = viewportEl.value!.getBoundingClientRect()
   // 与画面合成层一致，使用 liveViewport（手势期 graph.viewport 可能尚未写回）
@@ -5211,10 +5243,7 @@ function onOutPortDown(nodeId: string, portId: string, e: PointerEvent): void {
   const node = graph.nodes.find((n) => n.id === nodeId)
   if (!node) return
   const captureEl = e.currentTarget as HTMLElement | null
-  const update = (ev: PointerEvent): void => {
-    tempEdgeEnd.value = screenToWorld(ev.clientX, ev.clientY)
-    requestEdgeRender()
-  }
+  const update = updateTempEdgeFromPointer
   update(e)
   const onUp = (ev: PointerEvent): void => {
     if (captureEl?.hasPointerCapture(ev.pointerId)) {
@@ -5345,10 +5374,7 @@ function onInPortDown(nodeId: string, portId: string, e: PointerEvent): void {
   const node = graph.nodes.find((n) => n.id === nodeId)
   if (!node) return
   const captureEl = e.currentTarget as HTMLElement | null
-  const update = (ev: PointerEvent): void => {
-    tempEdgeEnd.value = screenToWorld(ev.clientX, ev.clientY)
-    requestEdgeRender()
-  }
+  const update = updateTempEdgeFromPointer
   update(e)
   const onUp = (ev: PointerEvent): void => {
     if (captureEl?.hasPointerCapture(ev.pointerId)) {
@@ -5459,10 +5485,7 @@ function beginEdgesRewire(
   linkingTo.value = null
   linkingToPort.value = null
 
-  const update = (ev: PointerEvent): void => {
-    tempEdgeEnd.value = screenToWorld(ev.clientX, ev.clientY)
-    requestEdgeRender()
-  }
+  const update = updateTempEdgeFromPointer
   update(e)
 
   const finish = (ev: PointerEvent): void => {
@@ -5589,6 +5612,7 @@ function cancelLink(): void {
   linkingToPort.value = null
   rewireSession.value = null
   tempEdgeEnd.value = null
+  tempEdgeClient = null
   requestEdgeRender()
 }
 
@@ -10056,6 +10080,8 @@ defineExpose({
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  /* clip：不可被 focus()/拖选/脚本滚动，避免光标→世界坐标换算错位（拖线端点偏移） */
+  overflow: clip;
   background: var(--graph-viewport-bg);
 }
 

@@ -649,3 +649,134 @@ export function readPngSize(bytes: Uint8Array): { width: number; height: number 
   if (!width || !height) return null
   return { width, height }
 }
+
+// ─────────────────────────────────────────────────────────────
+// 随包技能脚手架（`workflows/<id>/skill/{SKILL.md, references/ports.md}`）
+// ─────────────────────────────────────────────────────────────
+
+export interface MarketSkillScaffold {
+  skillName: string
+  skillMd: string
+  portsMd: string
+}
+
+function sanitizeFrontmatterValue(raw: string): string {
+  return raw
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/"/g, "'")
+    .trim()
+}
+
+function summarizeParamKeys(params: Record<string, unknown> | undefined): string {
+  const keys = Object.keys(params ?? {})
+  return keys.length ? keys.map((k) => `\`${k}\``).join(', ') : '-'
+}
+
+/**
+ * 从工作流包自动生成合规的 `skill/SKILL.md` 与 `skill/references/ports.md` 脚手架。
+ *
+ * 产出遵循市场校验器（`validate.mjs`）与客户端 `validateSkillEntryText` 的全部硬约束：
+ * - `name` 固定为 `wf-<id>`；
+ * - 扁平 YAML frontmatter（无缩进块、无 camelCase 旧键）；
+ * - 节点表、连线拓扑、端口与可写参数白名单均从 `bundle.plan` 与节点注册表同源派生。
+ */
+export function buildMarketSkillScaffold(bundle: MarketWorkflowFile): MarketSkillScaffold {
+  const skillName = `wf-${bundle.id}`
+  const cleanTitle = sanitizeFrontmatterValue(bundle.title || bundle.id)
+  const cleanSummary = sanitizeFrontmatterValue(bundle.summary || cleanTitle)
+  const description = `Use when the user wants to run or customize the '${cleanTitle}' workflow (${cleanSummary}). Guides node parameters, port wiring, and topological execution order.`
+
+  const nodeRows = bundle.plan.nodes.map((node) => {
+    const label = sanitizeFrontmatterValue(node.title ?? node.key).replace(/\|/g, '/')
+    return `| \`${node.key}\` | \`${node.typeId}\` | ${label} | ${summarizeParamKeys(node.params)} |`
+  })
+
+  const edgeLines = bundle.plan.edges.length
+    ? bundle.plan.edges.map(
+        (edge) =>
+          `- \`${edge.from}.${edge.fromPort ?? 'out'}\` -> \`${edge.to}.${edge.toPort ?? 'in'}\``
+      )
+    : ['- (No edges — standalone nodes)']
+
+  const skillMdLines = [
+    '---',
+    `name: ${skillName}`,
+    `description: "${description}"`,
+    `workflow: ${bundle.id}`,
+    `workflow-version: ${bundle.version}`,
+    'user-invocable: true',
+    '---',
+    '',
+    `# ${cleanTitle} (\`${bundle.id}\`)`,
+    '',
+    `> ${cleanSummary}`,
+    '',
+    '## 1. Workflow Topology (`plan.nodes` & `plan.edges`)',
+    '',
+    '| Key | Node Type (`typeId`) | Title | Preset Params |',
+    '| --- | --- | --- | --- |',
+    ...nodeRows,
+    '',
+    '### Connections (`plan.edges`)',
+    '',
+    ...edgeLines,
+    '',
+    '## 2. Agent Execution SOP (MCP Tools)',
+    '',
+    '1. **Inspect Canvas**: Call `graph_read` to inspect the active canvas nodes and edges.',
+    '2. **Materialize / Patch**: Use `graph_edit` (`addNodes`, `updateNodes`, `addEdges`) to materialize or customize the nodes and connections above.',
+    '3. **Customize Prompts**: Tailor `generateInstruction`, `text`, or domain-specific parameters to the user request while preserving upstream reference links (`@1`, `@2`, etc.).',
+    '4. **Run in Topological Order**: Execute upstream source/anchor nodes first via `task_run`, verify outputs, then run downstream generation/composition nodes.',
+    '',
+    '## 3. Port & Parameter Reference',
+    '',
+    `See \`references/ports.md\` for port contracts and declared parameter keys of the node types in this workflow (${bundle.requires.nodeTypes.map((t) => `\`${t}\``).join(', ')}).`,
+    ''
+  ]
+
+  const addableByType = new Map(
+    listAddableNodeTypes(MCP_GRAPH_EDIT_SCOPE).map((def) => [def.typeId, def] as const)
+  )
+  const portSections: string[] = [
+    `# ${cleanTitle} (\`${bundle.id}\`) — Ports & Parameters Reference`,
+    '',
+    'Generated from the application node registry (`MCP_GRAPH_EDIT_SCOPE`).',
+    ''
+  ]
+
+  for (const typeId of bundle.requires.nodeTypes) {
+    const def = addableByType.get(typeId)
+    portSections.push(`## \`${typeId}\``)
+    portSections.push('')
+    if (!def) {
+      portSections.push('- Definition not found in current scope.')
+      portSections.push('')
+      continue
+    }
+    const inPorts = (def.ports ?? []).filter((p) => p.direction === 'in')
+    const outPorts = (def.ports ?? []).filter((p) => p.direction === 'out')
+    const inputs = inPorts.length
+      ? inPorts
+          .map((p) => `\`${p.id}\` (${p.dataType}${p.multiple ? ', multiple' : ''})`)
+          .join(', ')
+      : 'none'
+    const outputs = outPorts.length
+      ? outPorts
+          .map((p) => `\`${p.id}\` (${p.dataType}${p.multiple ? ', multiple' : ''})`)
+          .join(', ')
+      : 'none'
+    const paramKeys = [...declaredParamKeys(def)].sort()
+    const paramList = paramKeys.length ? paramKeys.map((k) => `\`${k}\``).join(', ') : 'none'
+
+    portSections.push(`- **Inputs**: ${inputs}`)
+    portSections.push(`- **Outputs**: ${outputs}`)
+    portSections.push(`- **Declared Params**: ${paramList}`)
+    portSections.push('')
+  }
+
+  return {
+    skillName,
+    skillMd: skillMdLines.join('\n'),
+    portsMd: portSections.join('\n')
+  }
+}

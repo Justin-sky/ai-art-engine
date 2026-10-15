@@ -1262,6 +1262,14 @@ export interface ExportWorkflowToMarketInput {
   meta: import('./workflowExport').WorkflowExportMetaInput
   /** 封面图绝对路径（必须是 PNG；落进包里的名字固定 `cover.png`） */
   coverPath?: string
+  /** 渲染层生成的 800×450 PNG 封面（`data:image/png;base64,...`），与 `coverPath` 二选一或优先使用 */
+  coverDataUrl?: string
+  /** 是否自动生成 `skill/SKILL.md` 与 `skill/references/ports.md` 脚手架（默认 true） */
+  includeSkill?: boolean
+  /** 允许导出到不含 `workflows/` 的普通目录（直接写出 `<id>/`，供 PR 网页端上传或独立分发） */
+  allowStandaloneFormat?: boolean
+  /** 导出成功后是否同时安装到本机客户端（写入已安装工作流与技能目录，便于立即在工程与 AI 对话中自测） */
+  installLocal?: boolean
   /** `workflows/<id>/` 已存在时必须显式传 true 才覆盖 */
   overwrite?: boolean
   /** 目录选择器的标题（渲染层按当前语言给，主进程不产出成品文案） */

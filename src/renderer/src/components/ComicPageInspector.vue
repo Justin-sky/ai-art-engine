@@ -13,10 +13,6 @@
       <input v-model="localTitle" @change="persistTitle" />
     </label>
 
-    <button type="button" class="open-btn" @click="openEditor">
-      {{ t('graph.inspector.comicPage.openEditor') }}
-    </button>
-
     <ComicPageCanvas :page="page" exportable :export-name="exportName" />
 
     <details class="gen-config">
@@ -38,18 +34,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, inject, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { createComicPage, parseComicPage, serializeComicPage, type ComicPage } from '@shared/graph'
 import ComicPageCanvas from './ComicPageCanvas.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useNodeDisplayTitle } from '../composables/useNodeDisplayTitle'
 import { useEditorKernel } from '../editor/kernel'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
-import { editorDiveKey } from '../features/graph/model/editorDive'
 
 const { t, graphTypeLabel } = useStudioI18n()
 const editor = useEditorKernel()
-const editorDive = inject(editorDiveKey, null)
 
 const node = computed(() => {
   void graphEditorHosts.revision.value
@@ -92,8 +86,8 @@ function loadPage(current: NonNullable<typeof node.value>): void {
 }
 
 watch(
-  node,
-  (current) => {
+  () => [node.value, node.value?.params.comicPage] as const,
+  ([current]) => {
     if (!current) {
       localTitle.value = ''
       text.value = ''
@@ -102,7 +96,8 @@ watch(
       return
     }
     const sameNode = current.id === loadedNodeId.value && hostId.value === loadedHostId.value
-    if (!sameNode) loadPage(current)
+    const raw = current.params.comicPage?.trim() || serializeComicPage(createComicPage())
+    if (!sameNode || raw !== text.value) loadPage(current)
   },
   { immediate: true }
 )
@@ -126,19 +121,6 @@ function persist(): void {
 function resetPage(): void {
   text.value = serializeComicPage(createComicPage())
   persist()
-}
-
-async function openEditor(): Promise<void> {
-  if (!node.value || !hostId.value || !editorDive) return
-  try {
-    await graphEditorHosts.flush(hostId.value)
-  } catch (err) {
-    console.error('[ComicPageInspector] flush before dive failed', err)
-  }
-  await editorDive.diveView(
-    { viewId: 'comic.page', hostId: hostId.value, nodeId: node.value.id },
-    node.value.title || typeLabel.value
-  )
 }
 </script>
 
@@ -181,17 +163,6 @@ label {
   gap: 4px;
   font-size: 12px;
   color: var(--text-muted);
-}
-
-.open-btn {
-  align-self: flex-start;
-  padding: 4px 10px;
-  font-size: 12px;
-  color: var(--accent);
-  background: transparent;
-  border: 1px solid var(--accent);
-  border-radius: 6px;
-  cursor: pointer;
 }
 
 .gen-config {

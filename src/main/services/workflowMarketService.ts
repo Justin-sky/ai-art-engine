@@ -791,3 +791,45 @@ export function resetWorkflowMarketCache(): void {
   pipelineInstance = null
   coverMemo.clear()
 }
+
+/**
+ * 将本地导出的工作流包（含可选技能脚手架）同步安装到本机客户端，供创作者导出后立即在工程与 AI 对话中自测。
+ */
+export function installLocalExportedWorkflow(input: {
+  id: string
+  version: string
+  workflowJsonText: string
+  planJsonText: string
+  coverBytes: Buffer
+  skill?: { skillName: string; skillMd: string; portsMd: string }
+}): void {
+  const localBundleDir = join(installedWorkflowsDir(), input.id)
+  mkdirSync(localBundleDir, { recursive: true })
+  writeFileSync(join(localBundleDir, 'workflow.json'), input.workflowJsonText, 'utf8')
+  writeFileSync(join(localBundleDir, 'cover.png'), input.coverBytes)
+
+  let installedSkillName: string | undefined
+  if (input.skill) {
+    const check = validateSkillEntryText(input.skill.skillMd, input.skill.skillName)
+    if (check.ok) {
+      const skillDir = join(dshSkillsDir(), input.skill.skillName)
+      const refsDir = join(skillDir, 'references')
+      mkdirSync(refsDir, { recursive: true })
+      writeFileSync(join(skillDir, 'SKILL.md'), input.skill.skillMd, 'utf8')
+      writeFileSync(join(refsDir, 'ports.md'), input.skill.portsMd, 'utf8')
+      installedSkillName = input.skill.skillName
+    }
+  }
+
+  const records = listInstalledWorkflows().filter((item) => item.id !== input.id)
+  records.push({
+    id: input.id,
+    version: input.version,
+    installedAt: new Date().toISOString(),
+    source: 'local-export',
+    contentHash: sha256OfBytes(new TextEncoder().encode(input.planJsonText)).slice(0, 16),
+    ...(installedSkillName ? { skillName: installedSkillName } : {})
+  })
+  writeRecords(records)
+  coverMemo.delete(input.id)
+}

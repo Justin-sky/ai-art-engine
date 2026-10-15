@@ -7,13 +7,14 @@ import {
   type GraphDocument,
   type GraphPlan
 } from '../src/shared/graph'
-import { nodeTypesOfPlan } from '../src/shared/workflowMarket'
+import { nodeTypesOfPlan, validateSkillEntryText } from '../src/shared/workflowMarket'
 import {
   RESERVED_WORKFLOW_EXPORT_IDS,
   WORKFLOW_EXPORT_COVER_FILE_NAME,
   WORKFLOW_EXPORT_ID_MAX,
   WORKFLOW_EXPORT_LIMITS,
   WorkflowExportUnknownTypesError,
+  buildMarketSkillScaffold,
   buildMarketWorkflowBundle,
   documentToPlan,
   documentToPlanReport,
@@ -457,5 +458,37 @@ describe('readPngSize', () => {
     const jpeg = new Uint8Array(24)
     jpeg.set([0xff, 0xd8, 0xff, 0xe0], 0)
     expect(readPngSize(jpeg)).toBeNull()
+  })
+})
+
+describe('buildMarketSkillScaffold', () => {
+  it('生成的 SKILL.md 通过市场与客户端 validateSkillEntryText 校验，且包含节点拓扑与端口参考', () => {
+    const doc = materializePreset('anim2dGif')
+    const plan = documentToPlan(doc, { title: '帧动画导出' })
+    const meta = normalizeWorkflowExportMeta({
+      id: 'my-anim-pack',
+      title: '自定义帧动画工作流',
+      summary: '一键生成 2D 帧动画与 GIF',
+      category: 'game',
+      tags: '2D,GIF',
+      version: '0.2.0',
+      authorName: 'Tester',
+      license: 'CC-BY-4.0'
+    })
+    expect(meta.ok).toBe(true)
+    const bundle = buildMarketWorkflowBundle({
+      meta: (meta as { ok: true; meta: WorkflowExportMeta }).meta,
+      plan,
+      nodeTypes: listNodeTypes().map((def) => def.typeId)
+    })
+
+    const scaffold = buildMarketSkillScaffold(bundle)
+    expect(scaffold.skillName).toBe('wf-my-anim-pack')
+    expect(validateSkillEntryText(scaffold.skillMd, 'wf-my-anim-pack')).toEqual({ ok: true })
+    expect(scaffold.skillMd).toContain('workflow: my-anim-pack')
+    expect(scaffold.skillMd).toContain('workflow-version: 0.2.0')
+    expect(scaffold.skillMd).toContain('`anim.2d`')
+    expect(scaffold.portsMd).toContain('## `anim.2d`')
+    expect(scaffold.portsMd).toContain('`animRows`')
   })
 })

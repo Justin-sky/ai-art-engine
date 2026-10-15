@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { AI_WORKFLOW_PRESET_IDS, getAiWorkflowPresetPlan, listNodeTypes } from '../src/shared/graph'
+import {
+  AI_WORKFLOW_PRESET_IDS,
+  getAiWorkflowPresetPlan,
+  listNodeTypes,
+  parseComicPage
+} from '../src/shared/graph'
 import { nodeTypesOfPlan } from '../src/shared/workflowMarket'
 
 /**
@@ -33,5 +38,29 @@ describe('内置预设作为市场种子内容的基本条件', () => {
     first.nodes.push({ key: 'polluted', typeId: 'note.text' })
     // 再取一次必须还是原来的节点数，否则说明返回的是内部引用
     expect(getAiWorkflowPresetPlan('shortDrama')!.nodes.length).toBe(before)
+  })
+
+  it('comicPublish 包含角色定妆锚点、多页分镜连线与预置的漫画页版式/斜切/特效/台词气泡', () => {
+    const plan = getAiWorkflowPresetPlan('comicPublish')!
+    const pages = plan.nodes.filter((n) => n.typeId === 'comic.page')
+    expect(pages).toHaveLength(3)
+
+    const anchorEdges = plan.edges.filter((e) => e.from === 'charAnchor' && e.toPort === 'in-image')
+    expect(anchorEdges).toHaveLength(10)
+
+    for (const pageNode of pages) {
+      const parsed = parseComicPage(String(pageNode.params?.comicPage ?? ''))
+      expect(parsed, pageNode.key).toBeTruthy()
+      expect(parsed!.panels.length).toBeGreaterThanOrEqual(3)
+      // 初始分格不绑死本地图片，等上游分镜图生成后按阅读顺序自动填入
+      expect(parsed!.panels.every((p) => !p.imageUrl)).toBe(true)
+      expect(parsed!.panels.some((p) => p.bubbles.length > 0)).toBe(true)
+    }
+
+    const page2 = parseComicPage(String(pages[1]!.params?.comicPage ?? ''))!
+    expect(page2.panels.some((p) => Array.isArray(p.cornerOffsets))).toBe(true)
+    expect(
+      page2.panels.some((p) => p.effectType === 'speed-lines' || p.effectType === 'focus-lines')
+    ).toBe(true)
   })
 })

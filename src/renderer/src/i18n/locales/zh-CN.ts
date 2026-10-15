@@ -172,9 +172,9 @@ export default {
       },
       comicPublish: {
         title: '漫画出版',
-        desc: '剧本 → 分镜图 ×3 → 漫画页排版导出',
+        desc: '剧本 → 角色定妆锚点 → 多页分镜与台词气泡自动排版出片',
         prompt:
-          '创建一个漫画出版工作流：文本节点放按格编写的漫画剧本，三个图片节点分别生成统一画风的分镜图，全部接入漫画页节点；双击漫画页进入编辑器排版分格、加台词气泡、调背景色，并支持透明底导出。'
+          '创建一个整集漫画出版工作流：文本节点放整集漫画剧本，角色与画风定妆节点锁定主角外貌与统一画风并连入全部 10 个分镜图节点的参考图口；按起承、高潮、收尾三页分镜分别接入三张漫画页节点，自动配置分格版式、斜切破格、速度线/集中线、台词气泡、旁白框与音效字，一键合成整集漫画 PNG。'
       },
       courseNarrate: {
         title: '知识口播',
@@ -820,6 +820,11 @@ export default {
       coverHint: '必填：PNG，建议 800x450、不超过 300KB（落进包里叫 cover.png）',
       coverEmpty: '还没有选择',
       chooseCover: '选择图片',
+      autoCover: '自动生成封面 (800×450)',
+      coverGenerated: '已生成 800×450 封面卡',
+      includeSkill: '随包生成 AI 技能脚手架（skill/SKILL.md + references/ports.md）',
+      allowStandaloneFormat: '允许导出到任意文件夹（无需预先克隆市场仓库）',
+      installLocal: '导出后同时安装到本机（立即在工程与 AI 对话中自测）',
       pickDirectoryTitle: '选择工作流市场仓库目录（含 workflows/ 的那一层）',
       export: '导出',
       exporting: '导出中…',
@@ -871,7 +876,13 @@ export default {
     nextStep: {
       rebuildIndex:
         '在仓库 {dir} 里执行：node scripts/build-index.mjs && node scripts/validate.mjs',
-      commit: '确认无误后提交 workflows/{id}/（同一个 version 的内容不得再改，改了请升版本）'
+      commit: '确认无误后提交 workflows/{id}/（同一个 version 的内容不得再改，改了请升版本）',
+      uploadPr:
+        '已导出独立工作流包 {dir}，可直接上传至 ai-art-engine-workflow 仓库的 workflows/{id}/ 发起 PR（CI 会自动生成并校验索引）',
+      editSkill:
+        '已自动生成技能脚手架 workflows/{id}/skill/SKILL.md（技能名 {skillName}），可按需补充领域提示词规范',
+      installedLocal:
+        '已同步安装到本机客户端：可在「插件市场 → 工作流」或 AI 对话中直接调用「{title}」（{id}）进行自测'
     }
   },
   screenRecord: {

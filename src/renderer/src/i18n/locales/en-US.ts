@@ -175,9 +175,9 @@ export default {
       },
       comicPublish: {
         title: 'Comic publishing',
-        desc: 'Script → 3 panels → comic page layout & export',
+        desc: 'Script → character anchor → multi-page panels & speech bubbles',
         prompt:
-          'Create a comic publishing workflow: text holds a per-panel comic script, three image nodes generate consistent-style panels that all feed a comic-page node; double-click the comic page to lay out panels, add speech bubbles, adjust the page background, and export with transparent background.'
+          'Create a full-episode comic publishing workflow: a text node holds the episode script, a character & style anchor node locks protagonist appearance and feeds all 10 panel image nodes as reference; panels across 3 pages (opening, action climax, cliffhanger ending) feed 3 comic-page nodes pre-configured with layouts, slanted cuts, speed/focus lines, speech bubbles, narration boxes, and SFX to compose a complete comic episode.'
       },
       courseNarrate: {
         title: 'Knowledge talking-head',
@@ -832,6 +832,11 @@ export default {
       coverHint: 'Required: PNG, ideally 800x450 and at most 300KB (stored as cover.png)',
       coverEmpty: 'Nothing selected yet',
       chooseCover: 'Choose image',
+      autoCover: 'Auto-generate cover (800×450)',
+      coverGenerated: 'Generated 800×450 cover card',
+      includeSkill: 'Generate AI skill scaffold (skill/SKILL.md + references/ports.md)',
+      allowStandaloneFormat: 'Allow exporting to any folder (no local market repo clone required)',
+      installLocal: 'Also install locally after export (test immediately in project & AI chat)',
       pickDirectoryTitle:
         'Select the workflow market repository (the folder containing workflows/)',
       export: 'Export',
@@ -889,7 +894,13 @@ export default {
     nextStep: {
       rebuildIndex: 'In {dir} run: node scripts/build-index.mjs && node scripts/validate.mjs',
       commit:
-        'Once it looks right, commit workflows/{id}/ (never change the content of an existing version — bump it instead)'
+        'Once it looks right, commit workflows/{id}/ (never change the content of an existing version — bump it instead)',
+      uploadPr:
+        'Standalone workflow pack exported to {dir}; upload it to workflows/{id}/ in ai-art-engine-workflow via PR (CI builds and validates the index automatically)',
+      editSkill:
+        'Generated skill scaffold workflows/{id}/skill/SKILL.md ({skillName}); refine domain prompt guidelines as needed',
+      installedLocal:
+        'Installed locally: test "{title}" ({id}) right away from Marketplace → Workflows or in AI chat'
     }
   },
   screenRecord: {

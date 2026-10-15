@@ -2,11 +2,16 @@ import { describe, expect, it } from 'vitest'
 import {
   addComicBubble,
   addComicPanel,
+  applyComicLayoutTemplate,
+  COMIC_LAYOUT_TEMPLATES,
   COMIC_PAGE_DEFAULTS,
   COMIC_PAGE_PARAM_KEY,
   comicBubblePagePoint,
+  comicBubbleTailTipPagePoint,
+  comicPanelPolygon,
   comicPanelRects,
   createComicPage,
+  duplicateComicBubble,
   fillComicPageFromImageUrls,
   findComicCellAtPagePoint,
   findComicPanelAtPagePoint,
@@ -18,6 +23,8 @@ import {
   removeComicBubble,
   removeComicPanel,
   serializeComicPage,
+  slantPresetToCornerOffsets,
+  swapComicPanelContents,
   updateComicBubble,
   upsertComicPanel,
   withComicPage
@@ -325,5 +332,93 @@ describe('layout hit-testing and fill from images', () => {
     expect(filled.panels).toHaveLength(3)
     expect(filled.panels.map((item) => `${item.row},${item.col}`)).toEqual(['0,0', '0,1', '1,0'])
     expect(filled.panels.map((item) => item.imageUrl)).toEqual(['a.png', 'b.png', 'c.png'])
+  })
+
+  it('applies layout templates while preserving existing images, framing, and bubbles', () => {
+    expect(COMIC_LAYOUT_TEMPLATES.length).toBeGreaterThanOrEqual(10)
+    let page = createComicPage({ title: 'Ch.1', columns: 2, rows: 2 })
+    page = addComicPanel(page, {
+      id: 'p1',
+      row: 0,
+      col: 0,
+      imageUrl: 'hero.png',
+      imageZoom: 1.5,
+      imagePanX: -0.2,
+      imageFlipX: true,
+      imageFilter: 'manga-bw'
+    })
+    page = addComicBubble(page, 'p1', {
+      id: 'b1',
+      text: '冲击台词',
+      shape: 'shout',
+      writingMode: 'vertical-rl',
+      tailTipX: 0.25,
+      tailTipY: 0.75
+    })
+    const applied = applyComicLayoutTemplate(page, 'manga-action-slash')
+    expect(applied.title).toBe('Ch.1')
+    expect(applied.panels.length).toBe(5)
+    expect(applied.panels[0]?.imageUrl).toBe('hero.png')
+    expect(applied.panels[0]?.imageZoom).toBe(1.5)
+    expect(applied.panels[0]?.imageFlipX).toBe(true)
+    expect(applied.panels[0]?.imageFilter).toBe('manga-bw')
+    expect(applied.panels[0]?.bubbles[0]).toMatchObject({
+      text: '冲击台词',
+      shape: 'shout',
+      writingMode: 'vertical-rl',
+      tailTipX: 0.25,
+      tailTipY: 0.75
+    })
+  })
+
+  it('computes slanted polygon vertices, tail tips, bubble duplication, and panel swapping', () => {
+    const offsets = slantPresetToCornerOffsets('slash-left', 0.1)
+    expect(offsets).toBeDefined()
+    let page = createComicPage({
+      columns: 2,
+      rows: 1,
+      gutter: 0,
+      padding: 20,
+      width: 240,
+      height: 140
+    })
+    page = addComicPanel(page, {
+      id: 'left',
+      row: 0,
+      col: 0,
+      imageUrl: 'a.png',
+      imageZoom: 1.4,
+      cornerOffsets: offsets
+    })
+    page = addComicPanel(page, {
+      id: 'right',
+      row: 0,
+      col: 1,
+      imageUrl: 'b.png'
+    })
+    const rectLeft = comicPanelRects(page).get('left')!
+    expect(rectLeft).toEqual({ x: 20, y: 20, width: 100, height: 100 })
+    const poly = comicPanelPolygon(rectLeft, page.panels[0])
+    expect(poly[0]).toEqual({ x: 20, y: 30 })
+
+    page = addComicBubble(page, 'left', {
+      id: 'b1',
+      text: 'Hello',
+      x: 0.5,
+      y: 0.5,
+      tail: 'bl',
+      tailTipX: 0.2,
+      tailTipY: 0.8
+    })
+    expect(comicBubbleTailTipPagePoint(page, 'left', 'b1')).toEqual({ x: 40, y: 100 })
+
+    const dup = duplicateComicBubble(page, 'left', 'b1')
+    expect(dup.newBubbleId).toBeTruthy()
+    expect(dup.page.panels[0]?.bubbles).toHaveLength(2)
+
+    const swapped = swapComicPanelContents(dup.page, 'left', 'right')
+    expect(swapped.panels.find((p) => p.id === 'left')?.imageUrl).toBe('b.png')
+    expect(swapped.panels.find((p) => p.id === 'right')?.imageUrl).toBe('a.png')
+    expect(swapped.panels.find((p) => p.id === 'right')?.imageZoom).toBe(1.4)
   })
 })
