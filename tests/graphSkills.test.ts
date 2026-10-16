@@ -112,6 +112,46 @@ describe('graphSkills', () => {
     expect(skill?.instructionZh).toBeUndefined()
   })
 
+  it('exposes updated film.pipeline skill with Series Bible, variant inheritance, and concurrency', () => {
+    const skill = getGraphSkill('film.pipeline')
+    expect(skill?.kind).toBe('film')
+    expect(skill?.usageZh).toContain('film.workbench')
+    expect(skill?.usageZh).toContain('in-cast')
+    expect(skill?.usageZh).toContain('角色名#造型')
+    expect(skill?.usageZh).toContain('filmRenderConcurrency')
+    expect(skill?.usageEn).toContain('film.workbench')
+    expect(skill?.usageEn).toContain('in-cast')
+    expect(skill?.usageEn).toContain('BaseName#Variant')
+    expect(skill?.usageEn).toContain('filmRenderConcurrency')
+  })
+
+  it('exposes latest consolidated node skills (image.process, image.adVariants, stage2d.director, voice.audio, world.spatial)', () => {
+    const imgProc = getGraphSkill('image.process')
+    expect(imgProc?.usageZh).toContain('imageProcessTool')
+    expect(imgProc?.usageEn).toContain('imageProcessTool')
+
+    for (const id of [
+      'system.upscale',
+      'system.expand',
+      'system.redraw',
+      'system.erase',
+      'system.matte'
+    ] as const) {
+      const s = getGraphSkill(id)
+      expect(s?.usageZh, `${id} usageZh should reference image.process`).toContain('image.process')
+      expect(s?.usageEn, `${id} usageEn should reference image.process`).toContain('image.process')
+    }
+
+    expect(getGraphSkill('image.adVariants')?.usageZh).toContain('adVariantMatrix')
+    expect(getGraphSkill('stage2d.director')?.usageZh).toContain('stage.2d')
+    expect(getGraphSkill('stage2d.director')?.usageZh).toContain('image.align')
+    expect(getGraphSkill('voice.audio')?.usageZh).toContain('voice.tts')
+    expect(getGraphSkill('voice.audio')?.usageZh).toContain('audio.separate')
+    expect(getGraphSkill('world.spatial')?.usageZh).toContain('world.splatView')
+    expect(getGraphSkill('semantic.shotDescribe')?.usageZh).toContain('semantic.analyze')
+    expect(getGraphSkill('semantic.shotDescribe')?.usageZh).toContain('semantic.rebuild')
+  })
+
   it('registers a new skill and removes it on dispose', () => {
     const dispose = registerGraphSkill({
       id: 'plugin.test.skill',

@@ -25,6 +25,7 @@ const EXEMPT_FILES = new Set([
   'src/main/services/modelProviders/catalog.ts',
   'src/shared/graph/agentPrompts.ts',
   'src/shared/graph/episodeAgentPrompts.ts',
+  'src/shared/graph/graphSkills.ts',
   // 影视流水线：双语提示词 / 模型输出中文键宽容解析 / 提示词合成与执行日志（AI 域数据）
   'src/shared/graph/film/prompts.ts',
   'src/shared/graph/film/storyboard.ts',
