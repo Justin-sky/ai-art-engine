@@ -156,41 +156,117 @@ export function isEmotionEditorNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === 'image.emotion'
 }
 
-export function isUpscaleEditorNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'image.upscale'
+export const IMAGE_PROCESS_TOOLS = [
+  'crop',
+  'transform',
+  'compose',
+  'gridSplit',
+  'cutout',
+  'matte',
+  'erase',
+  'redraw',
+  'expand',
+  'upscale'
+] as const
+
+export type ImageProcessToolId = (typeof IMAGE_PROCESS_TOOLS)[number]
+
+const IMAGE_PROCESS_TOOL_SET = new Set<string>(IMAGE_PROCESS_TOOLS)
+
+const LEGACY_IMAGE_PROCESS_TYPE_TO_TOOL: Readonly<Record<string, ImageProcessToolId>> = {
+  'image.crop': 'crop',
+  'image.transform': 'transform',
+  'image.compose': 'compose',
+  'image.gridSplit': 'gridSplit',
+  'image.cutout': 'cutout',
+  'image.matte': 'matte',
+  'image.erase': 'erase',
+  'image.redraw': 'redraw',
+  'image.expand': 'expand',
+  'image.upscale': 'upscale'
+}
+
+export function isLegacyImageProcessTypeId(typeId: string | undefined): boolean {
+  return typeof typeId === 'string' && typeId in LEGACY_IMAGE_PROCESS_TYPE_TO_TOOL
+}
+
+type NodeRoleTarget =
+  (Pick<GraphNode, 'typeId'> & { params?: Partial<GraphNode['params']> }) | null | undefined
+
+export function isImageProcessNode(node: NodeRoleTarget): boolean {
+  return node?.typeId === 'image.process'
+}
+
+export function resolveImageProcessTool(node: NodeRoleTarget): ImageProcessToolId {
+  const raw = node?.params?.imageProcessTool
+  if (typeof raw === 'string' && IMAGE_PROCESS_TOOL_SET.has(raw)) {
+    return raw as ImageProcessToolId
+  }
+  const typeId = node?.typeId
+  const legacy = typeId ? LEGACY_IMAGE_PROCESS_TYPE_TO_TOOL[typeId] : undefined
+  if (legacy) return legacy
+  return 'crop'
+}
+
+export function isUpscaleEditorNode(node: NodeRoleTarget): boolean {
+  return (
+    node?.typeId === 'image.upscale' ||
+    (node?.typeId === 'image.process' && resolveImageProcessTool(node) === 'upscale')
+  )
 }
 
 export function isLipSyncNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === 'video.lipSync'
 }
 
-export function isExpandEditorNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'image.expand'
+export function isExpandEditorNode(node: NodeRoleTarget): boolean {
+  return (
+    node?.typeId === 'image.expand' ||
+    (node?.typeId === 'image.process' && resolveImageProcessTool(node) === 'expand')
+  )
 }
 
-export function isRedrawEditorNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'image.redraw'
+export function isRedrawEditorNode(node: NodeRoleTarget): boolean {
+  return (
+    node?.typeId === 'image.redraw' ||
+    (node?.typeId === 'image.process' && resolveImageProcessTool(node) === 'redraw')
+  )
 }
 
-export function isEraseEditorNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'image.erase'
+export function isEraseEditorNode(node: NodeRoleTarget): boolean {
+  return (
+    node?.typeId === 'image.erase' ||
+    (node?.typeId === 'image.process' && resolveImageProcessTool(node) === 'erase')
+  )
 }
 
-export function isMatteEditorNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'image.matte'
+export function isMatteEditorNode(node: NodeRoleTarget): boolean {
+  return (
+    node?.typeId === 'image.matte' ||
+    (node?.typeId === 'image.process' && resolveImageProcessTool(node) === 'matte')
+  )
 }
 
-export function isCropEditorNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'image.crop'
+export function isCropEditorNode(node: NodeRoleTarget): boolean {
+  return (
+    node?.typeId === 'image.crop' ||
+    (node?.typeId === 'image.process' && resolveImageProcessTool(node) === 'crop')
+  )
 }
 
 /** 图片变换：缩放 / 旋转 / 镜像 / 平移（纯本地像素，双击进 dive 编辑器） */
-export function isTransformEditorNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'image.transform'
+export function isTransformEditorNode(node: NodeRoleTarget): boolean {
+  return (
+    node?.typeId === 'image.transform' ||
+    (node?.typeId === 'image.process' && resolveImageProcessTool(node) === 'transform')
+  )
 }
 
-export function isGridSplitEditorNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'image.gridSplit'
+export function isGridSplitEditorNode(node: NodeRoleTarget): boolean {
+  return (
+    node?.typeId === 'image.gridSplit' ||
+    (node?.typeId === 'image.process' && resolveImageProcessTool(node) === 'gridSplit')
+  )
 }
 
 export function isIconPackEditorNode(node: Pick<GraphNode, 'typeId'>): boolean {
@@ -201,12 +277,18 @@ export function isLayerSplitEditorNode(node: Pick<GraphNode, 'typeId'>): boolean
   return node.typeId === 'image.layerSplit'
 }
 
-export function isCutoutNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'image.cutout'
+export function isCutoutNode(node: NodeRoleTarget): boolean {
+  return (
+    node?.typeId === 'image.cutout' ||
+    (node?.typeId === 'image.process' && resolveImageProcessTool(node) === 'cutout')
+  )
 }
 
-export function isComposeNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'image.compose'
+export function isComposeNode(node: NodeRoleTarget): boolean {
+  return (
+    node?.typeId === 'image.compose' ||
+    (node?.typeId === 'image.process' && resolveImageProcessTool(node) === 'compose')
+  )
 }
 
 export function isComicPageNode(node: Pick<GraphNode, 'typeId'>): boolean {

@@ -384,9 +384,9 @@
           <h4>生成 / 资产类</h4>
           <ul>
             <li>
-              图片生成 · 视频生成 · 声音生成 · 剧本生成 · 场生成 · 世界元素提取 · 策划案生成 ·
+              图片生成 · 视频生成 · 声音生成 · 剧本生成 · 影视工作台 · 镜头 · 策划案生成 ·
               导演台编辑 · 画布编辑 · 3D 模型生成 · 空间世界生成 · 3D 模型加工（蒙皮 / 绑骨检查 / 动画重定向 / 拆分 / 部件补全 /
-              重拓扑 / 贴图 / 格式转换）· 2D 帧动画 · 决策判定 · 模型（引用）· 宿主资产
+              重拓扑 / 贴图 / 格式转换）· 2D 帧动画 · 2D 舞台 · SVG 生成 · SVG 烘焙 · 决策判定 · 模型（引用）· 宿主资产
             </li>
             <li>
               <strong>3D 模型生成</strong>：文本 / 上游参考图 → 3D 模型资产（Meshy、Tripo、Rodin（Hyper3D）、Luma AI、Lux3D，文生 3D / 图生 3D，部分支持多图生 3D）；
@@ -416,7 +416,7 @@
               <code>*.pano.png</code> <strong>360 等距柱状全景图</strong>（2560×1280，可直接当 2D 全景输入再生成一次）。
               这两份不额外扣积分，路径会写进运行日志与节点检查器（选中节点即可复制路径）；
               <strong>需要 PLY 泼溅或 HQ 贴图网格</strong>时用<strong>「空间世界导出」节点</strong>（<code>spatialWorld.export</code>）：
-              把空间世界节点的输出（端口类型是<strong>空间世界</strong>，与世界元素目录口区分）接进它的
+              把空间世界节点的输出（端口类型是<strong>空间世界</strong>）接进它的
               <code>in-world</code>，在检查器里选导出内容 ——
               <strong>高质量网格</strong>（GLB：带贴图约 60 万面 / 顶点色约 100 万面，官方异步导出，<strong>最长约 1 小时、限速 4 次/小时、单独计费</strong>；
               产物登记为模型资产，出口是 <code>model</code> —— 从这里接导演台或下游 3D 加工节点）或 <strong>PLY 泼溅</strong>
@@ -439,8 +439,8 @@
               属于别家（如 Tripo 拆件后接 Meshy 贴图）时自动退回「上传模型换公网 URL」。
             </li>
             <li>
-              <strong>宿主资产</strong>：把已有资产（图片 / 视频 / 声音 / 剧本 / 场 / 导演台等）作为节点引入当前画布，
-              输出口类型即该资产端口类型；双击宿主资产节点可 dive 进入其内部工作流（详见 <a href="#host">7.6 宿主资产与 Dive</a>）。
+              <strong>宿主资产</strong>：把已有资产（图片 / 视频 / 声音 / 剧本 / 导演台等）作为节点引入当前画布，
+              输出口类型即该资产端口类型；双击宿主资产节点可 dive 进入其内部工作流（详见 <a href="#host">8.6 宿主资产与 Dive</a>）。
             </li>
             <li>
               <strong>决策判定</strong>：接上游文本，用 OpenRouter 决策模型回答一组类型化问题（<code>noul</code>
@@ -452,7 +452,7 @@
 
           <h4>输出类</h4>
           <ul>
-            <li>图片 / 视频 / 声音 / 剧本输出 · 导演台输出 · 场输出 · 世界元素输出 · 成片时间线</li>
+            <li>图片 / 视频 / 声音 / 剧本输出 · 导演台输出 · 成片时间线</li>
           </ul>
 
           <h4>工具类</h4>
@@ -470,22 +470,31 @@
           <h4>动效（动效分组下）</h4>
           <ul>
             <li>
-              <strong>生成帧动画序列图</strong>：双击打开指令面板（角色 / 特效 / 武功预设，默认指令与系统提示词），
-              行列参数拼入提示词后用图片模型产出序列图；输出预览支持删除与选择输出图。
+              <strong>生成帧动画序列图</strong>（<code>frame.animGen</code>）：提供四条序列帧生成通道——
+              <strong>视频直出序列图</strong>（从参考视频按均匀帧率抽帧拼成 Sprite Sheet）、
+              <strong>视频姿势引导 AI 重绘</strong>（抽帧同时叠加角色设定图重绘保持动作一致）、
+              <strong>多帧散图拼合</strong>（将上游多张散帧自动对齐拼成规整序列图）、
+              <strong>AI 动作预设生成</strong>（双击打开动作指令面板，选角色 / 特效 / 武功预设，由图片模型一次或逐帧生成序列图）；
+              内置四角采样色度键自动去底、逐帧脚底基线 / 质心对齐稳像，显著减轻 AI 序列帧闪烁与漂移。
             </li>
             <li>
-              <strong>2D 帧动画</strong>：输入序列图，Inspector 设置行列参数，节点卡自动逐帧播放预览；
-              Cook 时清除上一次输出，不累积。
+              <strong>2D 帧动画</strong>（<code>anim.2d</code>）：输入序列图并在 Inspector 设置行列参数后，节点卡自动逐帧播放预览；
+              <strong>双击节点进入 2D 帧动画 Dive 工作台</strong>，支持自动去底色（容差与边缘羽化）、基线 / 质心稳像、洋葱皮前后帧对比、
+              逐帧启用 / 剔除坏帧、自定义帧率与循环模式（正向 / 乒乓 / 单次），并可一键<strong>导出透明 GIF</strong> 或<strong>导出清理后的 Sprite Sheet PNG</strong>。
+            </li>
+            <li>
+              <strong>2D 舞台</strong>（<code>stage.2d</code>）与 <strong>图片对齐</strong>（<code>image.align</code>）：支持 2D 角色拆件绑骨、动作驱动与多帧像素对齐；
+              另有 <strong>SVG 生成</strong>（<code>svg.gen</code>）与 <strong>SVG 烘焙</strong>（<code>svg.anim</code>）用于矢量图形与序列帧烘焙。
             </li>
           </ul>
 
           <h4>漫画与广告</h4>
           <ul>
             <li>
-              <strong>漫画页</strong>：网格分镜格 + 台词气泡编辑器。从资产库拖图入格 / 本地导入 / 上游图片一键填入，
-              逐格可清除图片路径；分格大小用右缘 / 下缘 / 右下角手柄按单格跨数调整（连续跟手预览、松手吸附网格），
-              气泡可拖动移动、角部手柄等比缩放（0.5~4 倍）；点击空白处设置页面级与分格背景颜色。
-              导出 PNG 默认透明底；Cook 按阅读顺序回填上游图片并合成 PNG 进图库。
+              <strong>漫画页</strong>（<code>comic.page</code>）：双击打开全屏<strong>漫画排版 Dive 工作台</strong>，支持<strong>多页漫画管理</strong>（新建 / 复制 / 删除 / 排序页码）、
+              经典分格模板（四格 / 六格 / 斜切动态分格等）与自由拖拽调整分格跨数；内置<strong>多种对白气泡</strong>（椭圆 / 云朵思考 / 炸裂喊叫 / 旁白方框，支持拖拽气泡尾巴尖端指向说话角色）、
+              <strong>拟声词特效字（SFX）</strong>与<strong>网点 / 速度线 / 装饰贴纸</strong>；支持单格 AI 补图或按阅读顺序一键回填上游图片，
+              可导出<strong>当前页 PNG</strong>、<strong>全部页 PNG</strong> 或<strong>条漫长图 PNG</strong>。
             </li>
             <li>
               <strong>广告变体矩阵</strong>：设置产品描述与画幅比例后，双击进入变体维度配置与对比预览，
@@ -536,24 +545,42 @@
             <figure class="shot">
               <img
                 src="assets/banner/image-editor.webp"
-                alt="图片修改器：局部重绘与画面修订"
+                alt="图像处理工作台：10 合 1 像素与 AI 编辑"
                 width="775"
                 height="634"
                 loading="lazy"
               />
-              <figcaption><strong>图片修改</strong>：局部重绘与画面修订。</figcaption>
+              <figcaption><strong>图像处理工作台</strong>：10 合 1 像素与 AI 编辑。</figcaption>
             </figure>
           </div>
           <ul>
             <li>
-              多角度编辑 · 打光效果 · 人像质感调节 · 人像处理 · 情绪调节 · 高清放大 · 扩图 · 重绘 · 擦除 · 抠图 · 裁剪 · 图片变换 · 宫格切分 · 图层分离
+              图像处理（10 合 1） · 图标包 · 多角度编辑 · 打光效果 · 人像质感调节 · 人像处理 · 情绪调节 · 图层分离
             </li>
             <li>
-              <strong>图片变换</strong>（<code>image.transform</code>）：纯本地像素变换，<strong>不调用任何模型</strong>。
-              双击节点卡片进入编辑器：拖拽平移、滚轮缩放、旋转滑杆与「±90°」快捷按钮、水平 / 垂直镜像，
-              可选输出画幅（跟随原图 / 1:1 / 4:3 / 3:4 / 3:2 / 2:3 / 16:9 / 9:16）、输出尺寸（跟随原图 / 1K / 2K / 4K）
-              与空白填充（透明 / 白 / 黑），右侧实时预览；关闭窗口即写入参数，运行节点在本地出图。
-              注意「跟随原图 + 不选档位」时，旋转会把画布按**旋转后的外接框**扩张，所以转到任何角度都不会裁掉内容。
+              <strong>图像处理</strong>（<code>image.process</code>）：将原先分散的 10 个图片处理节点整合为单一<strong>图像处理工作台</strong>。
+              双击节点卡片进入 Dive 编辑器，顶部工具切换栏（或右侧 Inspector 的「处理工具」下拉）可随时在 10 项工具间无缝切换，节点卡片副标题实时显示当前激活的工具：
+              <ul>
+                <li>
+                  <strong>本地像素与智能视觉工具（不调云端生图模型）</strong>：
+                  <strong>裁剪</strong>（<code>crop</code>，自由或按比例框选裁切）、
+                  <strong>图片变换</strong>（<code>transform</code>，拖拽平移、滚轮缩放、旋转滑杆与 ±90°、水平/垂直镜像，支持跟随原图外接框无损旋转或固定画幅/尺寸与空白填充）、
+                  <strong>智能构图</strong>（<code>compose</code>，基于显著性与构图法则自动裁切最佳画幅）、
+                  <strong>宫格切分</strong>（<code>gridSplit</code>，按行列网格、去黑边设置将九宫格/四宫格拼图拆分为独立单图列表 <code>out-all</code>）、
+                  <strong>本地抠图</strong>（<code>cutout</code>，基于本机 ONNX 实例分割/人像模型离线去背景，零费用秒级出图）。
+                </li>
+                <li>
+                  <strong>AI 生成式编辑工具（调用所选图片模型）</strong>：
+                  <strong>抠图</strong>（<code>matte</code>，AI 精细主体提取）、
+                  <strong>擦除</strong>（<code>erase</code>，涂抹遮罩消除杂物或水印）、
+                  <strong>重绘</strong>（<code>redraw</code>，局部涂抹遮罩 + 提示词局部改图）、
+                  <strong>扩图</strong>（<code>expand</code>，向外扩展画布比例并由 AI 延展画面）、
+                  <strong>高清放大</strong>（<code>upscale</code>，AI 超分辨率放大与细节增强，Inspector 与 Dive 弹窗均支持切换 2K / 4K 档位与对比预览）。
+                </li>
+              </ul>
+            </li>
+            <li>
+              <strong>图标包</strong>（<code>image.iconPack</code>）：面向游戏道具、技能与 UI 图标批量生产，支持稀有度边框模板、统一背景剔除与一键打包图集。
             </li>
             <li>
               <strong>人像处理</strong>（<code>image.portrait</code>）：像素蛋糕式精修。双击节点卡片进入编辑器，
@@ -655,18 +682,29 @@
             </li>
           </ul>
 
-          <h4>场 / 世界</h4>
+          <h4>影视流水线（影视分组下）</h4>
           <ul>
-            <li>场拆解 / 场表格 / 场生成 / 场参考 · 选择场 · 世界元素提取 / 世界元素审核 / 世界元素生成 / 世界元素实体输出</li>
+            <li>影视工作台 · 镜头</li>
             <li>
-              <strong>选择场</strong>：从上游多个场中挑取一个（或按条件匹配）作为当前输出，
-              常用于多分支场流程中决定后续接哪一场。
+              <strong>影视工作台</strong>（<code>film.workbench</code>）：将原先分散的分镜拆解、导演审核、角色场景设定与批量拍摄整合为<strong>单一影视工作台节点</strong>。
+              双击节点（或点击 Inspector 的「打开影视工作台」）进入全屏 Dive 工作台，在一个界面内串联四阶段：
+              <strong>① 分镜拆解</strong>（<code>breakdown</code>，从剧本拆解景别、运镜、时长、表演、台词与角色/场景清单）→
+              <strong>② 导演审核</strong>（<code>review</code>，AI 导演逐镜打分并提供修改建议，支持一键应用修订）→
+              <strong>③ 角色场景设定</strong>（<code>cast</code>，按提取出的角色、场景、道具生成定妆与环境锚点图）→
+              <strong>④ 批量拍摄</strong>（<code>render</code>，自动为每镜匹配对应角色/场景锚点图，批量生成分镜关键帧与动态视频）。
+              Inspector 可切换「执行范围」（仅运行当前阶段 / 一次跑通全流程四阶段），并独立配置文本模型、图片模型与视频生成参数；
+              其中<strong>视频时长支持「自动（跟随分镜拆解单镜时长）」</strong>（自动读取分镜表中每一镜的 <code>duration</code> 秒数并约束在 2~15 秒，缺省回退 5 秒），也可固定为 4 / 5 / 6 / 8 / 10 秒。
+              出口一应俱全：<code>out-videos</code>（全部镜头视频）、<code>out-keyframes</code>（全部关键帧图）、<code>out-cast</code>（设定图集）、<code>out-shots</code>（结构化分镜列表）与 <code>out</code>（主视频）。
+            </li>
+            <li>
+              <strong>镜头</strong>（<code>film.shot</code>）：单镜精细覆写节点。需要单独定制某一镜的景别、机位角度、运镜方式、时长、转场或指定专属参考图/尾帧时，
+              添加「镜头」节点并连入「影视工作台」的 <code>in-shots</code> 端口，即可按镜号精确覆写或追加分镜。
             </li>
           </ul>
 
           <h4>世界模型（世界分组下）</h4>
           <ul>
-            <li>空间世界生成 · 空间世界导出 · 世界元素提取 / 世界元素表 / 世界元素生成</li>
+            <li>空间世界生成 · 空间世界导出</li>
             <li>
               <strong>空间世界生成</strong>（<code>asset.spatialWorld</code>）：文本、1–4 张参考图或 1 段参考视频 →
               可漫游 3D 世界（World Labs Marble，1.1 / 1.1-plus / 1.0 / 1.0-draft 四档）。
@@ -695,11 +733,6 @@
               world_id 只能由「空间世界生成」节点给出，上游没接该节点时直接报错，不会猜；
               出口值缺失时会按产出该模型的节点去任务记录里找回（生成本身已花过积分，不逼用户重生成）。
             </li>
-            <li>
-              世界元素相关：<strong>世界元素提取</strong>（<code>world.extract</code>，从世界 / 全景图里抽出可复用的元素）、
-              <strong>世界元素表格</strong>（<code>world.table</code>，目录表格节点，只透传并存进 <code>params.text</code>，不调用生成模型）、
-              <strong>世界元素生成</strong>（<code>world.gen</code>，按元素逐项出图），配合画布与世界元素流程使用。
-            </li>
           </ul>
 
           <h4>其它</h4>
@@ -713,16 +746,16 @@
               <strong>剧本</strong>：新建剧本 → 右侧选文本模型 → 填「生成指令」→ 执行生成节点 → 接到「剧本输出」。
             </li>
             <li>
-              <strong>场</strong>：剧本 →「场拆解」→「场表格」（运行导入 JSON）→「场生成」/ 视频生成
-              →「场输出」；批量叙事可走一键工作流的「短剧分镜（Agent 流水线）」。
+              <strong>影视流水线</strong>：剧本 →「影视工作台」（一节点串联分镜拆解、导演审核、角色场景设定与批量拍摄，双击进入影视工作台 Dive 界面逐阶段审校，或接「镜头」节点单镜覆写）→「成片时间线」；
+              长链多宫格短剧也可走一键工作流的「短剧分镜（Agent 流水线）」。
             </li>
             <li>
-              <strong>图片 / 视频</strong>：上游参考连入生成口 → 提示词中用 <code>@</code> 引用 → 执行 →
-              输出节点导出结果。自由画布上从零搭视频与参考视频，见
+              <strong>图片 / 视频与 10 合 1 图像处理</strong>：上游参考连入生成口 → 提示词中用 <code>@</code> 引用 → 执行 →
+              接「图像处理」节点完成裁剪 / 变换 / 本地抠图 / 重绘 / 扩图 / 高清放大 → 输出节点导出结果。自由画布上从零搭视频与参考视频，见
               <a href="guide-video.html">专题指南</a>。
             </li>
             <li>
-              <strong>成片</strong>：场 / 视频节点输出 → 打开剧本资产的成片时间线 → 拖入轨道拼装与导出。
+              <strong>成片</strong>：影视工作台 / 视频节点输出 → 打开剧本资产的成片时间线 → 拖入轨道拼装与导出。
             </li>
             <li>
               <strong>配音（单角色）</strong>：文本 / 剧本 →「声音生成」→ 在指令面板选音色、填要朗读的文本 →
@@ -747,10 +780,10 @@
               <strong>可漫游世界</strong>：「空间世界生成」（文本 / 1–4 张参考图 / 1 段参考视频）→
               「空间世界导出」→ 取导出的网格接「导演台」排机位，或接 3D 加工节点继续处理。
               <strong>不能跳过导出节点</strong>——空间世界端口不隐式兼容模型端口。
-              世界里的元素可用「世界元素提取」抽出来复用，配「世界元素表」管理、再逐项「世界元素生成」出图。
             </li>
             <li>
-              <strong>一键工作流</strong>：工作区「新建」创建宿主 → 拖入画布接线 → Dive 微调 → 加入任务。
+              <strong>一键工作流与导出市场工作流</strong>：工作区「新建」创建宿主 → 拖入画布接线 → Dive 微调 → 加入任务；
+              调好的工作流还可点击画布顶栏「导出为市场工作流」，一键生成含 <code>manifest.json</code>、<code>workflow.json</code> 与 <code>README.md</code> 的插件包目录。
             </li>
           </ol>
 
@@ -763,7 +796,7 @@
             <li>边界输出按汇点一一对应：多路同类型结果（如多张立绘）会各建一个出口，而不是合并成单口。</li>
             <li>备注类文本节点默认不暴露为宿主出口。</li>
             <li>内图整链可入队任务列表；宿主节点也可作为画布上的黑盒参与更大流程。</li>
-            <li>精修 / 图片编辑等工具在 Dive 中操作，选项写回节点参数；大图预览走弹窗。</li>
+            <li>影视工作台、图像处理（10 合 1）、人像精修、漫画页、2D 帧动画等专业工具均在 Dive 中操作，选项实时写回节点参数；大图预览走弹窗。</li>
           </ul>
         </section>
 

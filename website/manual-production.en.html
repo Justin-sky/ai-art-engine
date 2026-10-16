@@ -143,42 +143,39 @@
         </header>
 
         <section id="script-beat">
-          <h2>9. Script &amp; shots</h2>
+          <h2>9. Script &amp; Film Workbench</h2>
 
           <h3>9.1 Script assets</h3>
           <p>
-            Generate and edit script content through the node graph. Connect the result to “script output” and
-            pick a suitable text model and prompt in the parameter panel. Script assets can be dragged into
-            other graphs as upstream.
+            Generate and edit script content through the node graph. Connect the result to “script output” or
+            pipe it directly into the “Film Workbench”, and pick a suitable text model and prompt in the parameter
+            panel. Script assets can be dragged into other graphs as upstream.
           </p>
 
-          <h3>9.2 Shot assets</h3>
+          <h3>9.2 Film Workbench &amp; single-shot node</h3>
           <ul>
             <li>
-              A shot (beat) replaces the old storyboard: narrative is organized per shot, then broken down and
-              generated into camera-ready shots.
+              <strong>Film Workbench</strong> (<code>film.workbench</code>) replaces the legacy separate shot-breakdown, shot-table, shot-generation and world-element nodes, consolidating the entire film production chain into one node and a full-screen Dive workbench:
+              <ul>
+                <li><strong>① Storyboard Breakdown</strong> (<code>breakdown</code>): splits a script into per-shot framing, camera angle, movement, duration (seconds), acting, dialogue and cast/scene lists.</li>
+                <li><strong>② Director Review</strong> (<code>review</code>): AI director evaluates narrative continuity and blocking shot by shot, returning scores and one-click revision suggestions.</li>
+                <li><strong>③ Character &amp; Scene Design</strong> (<code>cast</code>): gathers characters, scenes and key props across the script to batch-generate turnaround and environment anchor sheets.</li>
+                <li><strong>④ Batch Shoot</strong> (<code>render</code>): automatically pairs each shot with its character and scene anchor sheets to batch-generate keyframes and motion videos; video duration supports <strong>“Auto (follow per-shot breakdown duration)”</strong> (reads each shot's <code>duration</code> in seconds, clamped to 2–15 s with a 5 s fallback) as well as fixed duration tiers.</li>
+              </ul>
             </li>
             <li>
-              <strong>Shot breakdown</strong> (storyboard artist · beat breakdown table): splits time / space /
-              characters / action / conflict / atmosphere columns out of the script.
+              <strong>Shot</strong> (<code>film.shot</code>): when you need to customize a specific shot's framing, camera move, duration, transition or custom first/last-frame reference images, drop a “Shot” node onto the canvas and connect it to the Film Workbench's <code>in-shots</code> port to override or append by shot number.
             </li>
             <li>
-              <strong>Shot table</strong>: view and edit breakdown results in bulk; rows can be added and
-              deleted, and double-clicking the node opens the table window.
-            </li>
-            <li>
-              <strong>Shot generation / shot reference</strong>: generate content per shot in bulk, or reference
-              a specific shot to keep working; combined with the Episode Pipeline's 9-grid / 4-grid storyboard
-              tables and motion video generation, this completes the whole short-drama chain.
+              Combined with the Episode Pipeline's 9-grid / 4-grid storyboard tables, you can choose between rapid single-node filmmaking and multi-grid batch episode production.
             </li>
           </ul>
 
           <h3>9.3 Storyboard thinking and prompt presets</h3>
           <p>
-            The old standalone “storyboard asset / camera blocking” has been removed — storyboarding now lives
-            in shots and the Episode Pipeline: the beat breakdown table splits shots, the 9-grid / 4-grid
-            storyboard tables turn shots into camera setups you can generate, and images and video come from
-            generation nodes.
+            Storyboarding is unified inside the <strong>Film Workbench</strong> and the <strong>Episode Pipeline</strong>:
+            Storyboard Breakdown or the beat breakdown table splits the script into shots, while Character &amp; Scene Design
+            or the 9-grid / 4-grid storyboard tables lock visual anchors and turn shots into camera setups ready to render.
           </p>
           <ul>
             <li>
@@ -327,7 +324,7 @@
         </section>
 
         <section id="canvas">
-          <h2>11. Canvas &amp; world elements</h2>
+          <h2>11. Free canvas &amp; cast / scene settings</h2>
 
           <h3>11.1 Canvas assets</h3>
           <ul>
@@ -339,15 +336,12 @@
             </li>
           </ul>
 
-          <h3>11.2 World elements / shots</h3>
+          <h3>11.2 Cast &amp; scene settings and shot list</h3>
           <ul>
             <li>
-              Table view: world elements are character / scene / prop / weapon; the shot table has time / space /
-              characters / action / conflict / atmosphere columns. Rows can be added and deleted.
-            </li>
-            <li>
-              Double-clicking the matching node opens the extraction / breakdown prompt, the table or the
-              editing window.
+              Double-click a <strong>Film Workbench</strong> (<code>film.workbench</code>) node to enter its Dive view:
+              the “Storyboard Breakdown” stage edits shot framing, camera moves, duration, action, dialogue and cast bindings;
+              the “Character &amp; Scene Design” stage manages reusable character, scene and prop anchor sheets with per-item regeneration.
             </li>
           </ul>
         </section>

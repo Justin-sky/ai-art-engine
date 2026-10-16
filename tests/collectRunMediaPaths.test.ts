@@ -334,4 +334,61 @@ describe('collectRunMediaPaths', () => {
       expect(paths).toEqual([])
     })
   })
+
+  it('影视工作台（film.workbench）：多镜产出按镜头顺序收集，不只取末条', () => {
+    const wb = createNodeFromType('film.workbench', { x: 0, y: 0 }, { id: 'wb' })
+    const bout = createNodeFromType(
+      'graph.boundary.output',
+      { x: 280, y: 0 },
+      {
+        id: 'boundary-output-out',
+        params: {
+          hostBoundaryPort: { portId: 'out', dataType: 'videos', multiple: true }
+        }
+      }
+    )
+    const graph: GraphDocument = {
+      nodes: [wb, bout],
+      edges: [
+        {
+          id: 'e1',
+          source: 'wb',
+          target: 'boundary-output-out',
+          sourcePort: 'out-videos',
+          targetPort: 'in'
+        }
+      ],
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+    const paths = collectRunMediaPaths(
+      graph,
+      statesOf({
+        wb: {
+          'out-videos': {
+            kind: 'videos',
+            items: [
+              { dataUrl: '', relativePath: 'Assets/Film/shot-1.mp4' },
+              { dataUrl: '', relativePath: 'Assets/Film/shot-2.mp4' },
+              { dataUrl: '', relativePath: 'Assets/Film/shot-3.mp4' }
+            ]
+          }
+        },
+        'boundary-output-out': {
+          out: {
+            kind: 'videos',
+            items: [
+              { dataUrl: '', relativePath: 'Assets/Film/shot-1.mp4' },
+              { dataUrl: '', relativePath: 'Assets/Film/shot-2.mp4' },
+              { dataUrl: '', relativePath: 'Assets/Film/shot-3.mp4' }
+            ]
+          }
+        }
+      })
+    )
+    expect(paths).toEqual([
+      'Assets/Film/shot-1.mp4',
+      'Assets/Film/shot-2.mp4',
+      'Assets/Film/shot-3.mp4'
+    ])
+  })
 })

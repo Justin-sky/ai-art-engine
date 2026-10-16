@@ -25,6 +25,7 @@ export type EditorDiveViewId =
   | 'node.portraitTexture'
   | 'node.portrait'
   | 'node.emotion'
+  | 'node.upscale'
   | 'node.expand'
   | 'node.redraw'
   | 'node.erase'
@@ -41,6 +42,7 @@ export type EditorDiveViewId =
   | 'node.instruction'
   | 'anim.2d'
   | 'comic.page'
+  | 'film.workbench'
   | 'gamePlay.sandbox'
   | 'media.preview'
 
@@ -60,6 +62,7 @@ export type EditorDiveNodeToolViewId = Extract<
   | 'node.portraitTexture'
   | 'node.portrait'
   | 'node.emotion'
+  | 'node.upscale'
   | 'node.expand'
   | 'node.redraw'
   | 'node.erase'
@@ -101,6 +104,7 @@ export type EditorDiveViewMeta =
   | { viewId: 'ui.split'; hostId: string; nodeId: string }
   | { viewId: 'anim.2d'; hostId: string; nodeId: string }
   | { viewId: 'comic.page'; hostId: string; nodeId: string }
+  | { viewId: 'film.workbench'; hostId: string; nodeId: string }
   | { viewId: 'gamePlay.sandbox'; hostId?: string; nodeId?: string; gamePlayAssetId?: string }
   | {
       viewId: EditorDiveNodeToolViewId
@@ -184,6 +188,8 @@ export function editorDiveViewFrameKey(rootKey: string, meta: EditorDiveViewMeta
       return `${root}/view:anim.2d:${meta.hostId}:${meta.nodeId}`
     case 'comic.page':
       return `${root}/view:comic.page:${meta.hostId}:${meta.nodeId}`
+    case 'film.workbench':
+      return `${root}/view:film.workbench:${meta.hostId}`
     case 'gamePlay.sandbox':
       return `${root}/view:gamePlay.sandbox:${meta.gamePlayAssetId || '_'}:${meta.hostId || '_'}:${meta.nodeId || '_'}`
     case 'media.preview':

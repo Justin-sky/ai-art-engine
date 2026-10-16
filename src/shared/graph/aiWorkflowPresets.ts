@@ -25,55 +25,38 @@ function buildFilmPipelinePlan(): GraphPlan {
         params: { text: FILM_SCRIPT_PLACEHOLDER }
       },
       {
-        key: 'breakdown',
-        typeId: 'film.breakdown',
-        title: '分镜拆解',
-        params: { filmAspectRatio: '9:16', filmTargetShots: 0 }
-      },
-      {
-        key: 'review',
-        typeId: 'film.review',
-        title: '导演审核',
-        params: { filmReviewMaxRounds: 2 }
-      },
-      {
-        key: 'cast',
-        typeId: 'film.cast',
-        title: '角色场景设定',
-        params: { filmCastKinds: 'character,location' }
-      },
-      {
-        key: 'render',
-        typeId: 'film.render',
-        title: '批量拍摄',
-        params: { filmRenderMode: 'video', filmRenderQc: true, filmRenderMaxRetries: 1 }
+        key: 'workbench',
+        typeId: 'film.workbench',
+        title: '影视工作台', // cjk-ok
+        params: {
+          filmAspectRatio: '9:16',
+          filmTargetShots: 0,
+          filmReviewMaxRounds: 2,
+          filmCastKinds: 'character,location',
+          filmRenderMode: 'video',
+          filmRenderQc: true,
+          filmRenderMaxRetries: 1
+        }
       },
       {
         key: 'note',
         typeId: 'note.text',
         title: '流水线说明',
         params: {
-          text: `流程：剧本 → 分镜拆解（结构化分镜：场 / 镜头 / 角色场景实体，镜头数随剧情）→ 导演审核（不通过的镜头自动修订后复审，最多 2 轮）→ 角色场景设定（每个角色 / 地点一张设定图）→ 批量拍摄（按镜头出场名单自动带设定图出关键帧 → 视觉质检不合格自动重拍 → 以关键帧为首帧图生视频）。
-
-迭代：在检查器里改任一镜头或「锁定」满意的镜头后重跑，锁定镜头不会被 AI 改写；批量拍摄只重拍提示词变化的镜头。
-
-精修：需要单独打磨某一镜时，从导演审核接一个「镜头」节点，再接图片 / 视频生成节点手动调参。`
+          text: [
+            '流程：剧本 → 影视工作台（双击进入工作台，顶部切换 ①分镜拆解 / ②导演审核 / ③角色场景设定 / ④批量拍摄，既可分阶段单独运行，也可一键全流程运行）。', // cjk-ok
+            '迭代：在同一工作台里改任一镜头、锁镜或单卡重跑，所有阶段实时共享同一份分镜与设定数据。', // cjk-ok
+            '精修：需要单独打磨某一镜时，从影视工作台接一个「镜头」节点，再接图片 / 视频生成节点手动调参。' // cjk-ok
+          ].join('\n\n')
         }
       }
     ],
-    edges: [
-      { from: 'script', to: 'breakdown', fromPort: 'out', toPort: 'in' },
-      { from: 'script', to: 'review', fromPort: 'out', toPort: 'in-script' },
-      { from: 'breakdown', to: 'review', fromPort: 'out', toPort: 'in' },
-      { from: 'review', to: 'cast', fromPort: 'out', toPort: 'in' },
-      { from: 'review', to: 'render', fromPort: 'out', toPort: 'in' },
-      { from: 'cast', to: 'render', fromPort: 'out', toPort: 'in-cast' }
-    ]
+    edges: [{ from: 'script', to: 'workbench', fromPort: 'out', toPort: 'in' }]
   }
 }
 
 /**
- * 影视精修（单镜头工作台）：剧本 → 分镜拆解 → 导演审核 → 角色场景设定 → 镜头 → 图片生成（关键帧）→ 视频生成。
+ * 影视精修（单镜头工作台）：剧本 → 影视工作台 → 镜头 → 图片生成（关键帧）→ 视频生成。
  * 镜头节点按序号 / id 取一镜，自动输出关键帧提示词、动态提示词与该镜出场设定图；复制镜头节点即可精修多镜。
  */
 function buildFilmShotPlan(): GraphPlan {
@@ -87,22 +70,14 @@ function buildFilmShotPlan(): GraphPlan {
         params: { text: FILM_SCRIPT_PLACEHOLDER }
       },
       {
-        key: 'breakdown',
-        typeId: 'film.breakdown',
-        title: '分镜拆解',
-        params: { filmAspectRatio: '16:9' }
-      },
-      {
-        key: 'review',
-        typeId: 'film.review',
-        title: '导演审核',
-        params: { filmReviewMaxRounds: 1 }
-      },
-      {
-        key: 'cast',
-        typeId: 'film.cast',
-        title: '角色场景设定',
-        params: { filmCastKinds: 'character,location' }
+        key: 'workbench',
+        typeId: 'film.workbench',
+        title: '影视工作台', // cjk-ok
+        params: {
+          filmAspectRatio: '16:9',
+          filmReviewMaxRounds: 1,
+          filmCastKinds: 'character,location'
+        }
       },
       { key: 'shot', typeId: 'film.shot', title: '镜头 1', params: { filmShotRef: '1' } },
       {
@@ -122,17 +97,14 @@ function buildFilmShotPlan(): GraphPlan {
         typeId: 'note.text',
         title: '使用说明',
         params: {
-          text: '运行到「角色场景设定」后，在「镜头」节点检查器里切换镜头序号 / id：它自动输出该镜关键帧提示词（接关键帧图片生成）、出场角色与地点设定图（接参考图口锁一致性）与动态提示词（接视频生成）。复制「镜头 → 关键帧 → 镜头视频」这一组即可并行精修多镜。'
+          text: '在「影视工作台」完成分镜与角色场景设定后，在「镜头」节点里切换镜头序号 / id：它自动输出该镜关键帧提示词（接关键帧图片生成）、出场角色与地点设定图（接参考图口锁一致性）与动态提示词（接视频生成）。复制「镜头 → 关键帧 → 镜头视频」这一组即可并行精修多镜。' // cjk-ok
         }
       }
     ],
     edges: [
-      { from: 'script', to: 'breakdown', fromPort: 'out', toPort: 'in' },
-      { from: 'script', to: 'review', fromPort: 'out', toPort: 'in-script' },
-      { from: 'breakdown', to: 'review', fromPort: 'out', toPort: 'in' },
-      { from: 'review', to: 'cast', fromPort: 'out', toPort: 'in' },
-      { from: 'review', to: 'shot', fromPort: 'out', toPort: 'in' },
-      { from: 'cast', to: 'shot', fromPort: 'out', toPort: 'in-cast' },
+      { from: 'script', to: 'workbench', fromPort: 'out', toPort: 'in' },
+      { from: 'workbench', to: 'shot', fromPort: 'out', toPort: 'in' },
+      { from: 'workbench', to: 'shot', fromPort: 'out-cast', toPort: 'in-cast' },
       { from: 'shot', to: 'keyframe', fromPort: 'out', toPort: 'in-text' },
       { from: 'shot', to: 'keyframe', fromPort: 'out-refs', toPort: 'in-image' },
       { from: 'keyframe', to: 'clip', fromPort: 'out', toPort: 'in-image' },
@@ -391,9 +363,10 @@ const PRESET_PLANS: Record<Exclude<AiWorkflowPresetId, 'custom'>, GraphPlan> = {
       },
       {
         key: 'skillSplit',
-        typeId: 'image.gridSplit',
+        typeId: 'image.process',
         title: '技能图标·切格',
         params: {
+          imageProcessTool: 'gridSplit',
           imageGridSplit: {
             rows: 3,
             cols: 3,
@@ -439,9 +412,10 @@ const PRESET_PLANS: Record<Exclude<AiWorkflowPresetId, 'custom'>, GraphPlan> = {
       },
       {
         key: 'itemSplit',
-        typeId: 'image.gridSplit',
+        typeId: 'image.process',
         title: '道具图标·切格',
         params: {
+          imageProcessTool: 'gridSplit',
           imageGridSplit: {
             rows: 3,
             cols: 3,
@@ -487,9 +461,10 @@ const PRESET_PLANS: Record<Exclude<AiWorkflowPresetId, 'custom'>, GraphPlan> = {
       },
       {
         key: 'statusSplit',
-        typeId: 'image.gridSplit',
+        typeId: 'image.process',
         title: '状态图标·切格',
         params: {
+          imageProcessTool: 'gridSplit',
           imageGridSplit: {
             rows: 3,
             cols: 3,

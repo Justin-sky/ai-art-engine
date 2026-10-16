@@ -134,7 +134,7 @@ describe('MCP_GRAPH_EDIT_SCOPE（清单工具与 graph_edit 同源）', () => {
     const ids = addable.map((def) => def.typeId)
     expect(ids.length).toBeGreaterThan(0)
     expect(ids).toContain('stage.2d')
-    expect(ids).toContain('image.gridSplit')
+    expect(ids).toContain('image.process')
     expect(ids).toContain('image.iconPack')
     const { graph } = buildSampleGraph()
     const ops: McpGraphEditOp[] = addable.map((def) => ({

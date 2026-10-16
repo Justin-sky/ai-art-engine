@@ -57,6 +57,20 @@ describe('editorDive keys', () => {
     expect(anim2d).toContain('asset:x')
     expect(anim2d).toContain('anim-1')
 
+    const filmWorkbench = editorDiveViewFrameKey('canvas-editor-c', {
+      viewId: 'film.workbench',
+      hostId: 'asset:x',
+      nodeId: 'film-1'
+    })
+    const filmWorkbenchOtherNode = editorDiveViewFrameKey('canvas-editor-c', {
+      viewId: 'film.workbench',
+      hostId: 'asset:x',
+      nodeId: 'film-2'
+    })
+    expect(filmWorkbench).toContain('film.workbench')
+    expect(filmWorkbench).toContain('asset:x')
+    expect(filmWorkbench).toBe(filmWorkbenchOtherNode)
+
     const preview = editorDiveViewFrameKey('script-editor-x', {
       viewId: 'media.preview',
       mediaKind: 'image',

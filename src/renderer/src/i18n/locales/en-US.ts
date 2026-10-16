@@ -193,15 +193,15 @@ export default {
       },
       shortDrama: {
         title: 'Film pipeline',
-        desc: 'Script → storyboard → director review & auto-revise → cast & sets → batch shoot (QC retakes + image-to-video)',
+        desc: 'Script → Film Workbench (breakdown · director review · cast & sets · batch shoot in one node)',
         prompt:
-          'Create a closed-loop film workflow: a text node holds the script; a storyboard breakdown node (film.breakdown) turns it into a structured storyboard (shot count follows the story); a director review node (film.review) reviews it against the script and auto-revises failing shots; a cast node (film.cast) generates a design sheet per character and location; a batch shoot node (film.render) shoots keyframes with the per-shot cast sheets, runs vision QC with automatic retakes, and generates a clip per shot from each keyframe.'
+          'Create a closed-loop film workflow: a text node holds the script and connects to the Film Workbench node (film.workbench), which handles storyboard breakdown (shot count follows the story), director review with automatic revision, character & location design sheets, and batch keyframe + video shooting with vision QC retakes in one place.'
       },
       shortDrama9: {
         title: 'Film · single-shot polish',
-        desc: 'Storyboard → cast → shot node → keyframe image → shot video (manual polish)',
+        desc: 'Script → Film Workbench → shot node → keyframe image → shot video (manual polish)',
         prompt:
-          'Create a single-shot polishing film workflow: a text node holds the script; after storyboard breakdown, director review and cast generation, a shot node (film.shot) picks one shot by index; its keyframe prompt and cast refs feed an image generation node for the keyframe, and the keyframe plus the motion prompt feed a video generation node for the shot clip.'
+          'Create a single-shot polishing film workflow: a text node holds the script and feeds the Film Workbench node (film.workbench) to produce the storyboard and cast design sheets; a shot node (film.shot) picks one shot by index; its keyframe prompt and cast refs feed an image generation node for the keyframe, and the keyframe plus the motion prompt feed a video generation node for the shot clip.'
       },
       anim2dGif: {
         title: '2D frame anim',
@@ -3946,7 +3946,24 @@ export default {
       hint: 'Connect a character image or reference video plus voice, then run; needs Seedance 2.0 or another audio-reference video model'
     },
 
+    imageProcess: {
+      toolLabel: 'Active tool',
+      openWorkbench: 'Double-click card to open image processing workbench'
+    },
+
     upscale: {
+      appMark: 'Upscale',
+      noSource: 'No upstream image yet. Connect an image input and run upstream first.',
+      scale: 'Upscale factor',
+      variant: 'Subject preset',
+      variants: {
+        general: 'General',
+        portrait: 'Portrait',
+        landscape: 'Landscape / Scene'
+      },
+      instruction: 'Additional instructions (optional)',
+      instructionPlaceholder: 'e.g. restore crisp edges, preserve film grain…',
+      resetParams: 'Reset parameters',
       systemPrompt: 'System prompt',
       mergedPrompt: 'Merged prompt',
       promptEmpty:
@@ -4857,6 +4874,7 @@ export default {
         script: 'Text'
       },
       image: {
+        process: 'Image processing',
         select: 'Select image',
         multiAngle: 'Multi-angle edit',
         lighting: 'Lighting effects',
@@ -4930,6 +4948,7 @@ export default {
         cellSelect: 'Dynamic cell select'
       },
       film: {
+        workbench: 'Film workbench',
         breakdown: 'Storyboard breakdown',
         review: 'Director review',
         cast: 'Cast & locations',
@@ -5335,6 +5354,8 @@ export default {
       },
       film: {
         hint: {
+          workbench:
+            'Unified 4-stage Film Workbench (Storyboard Breakdown, Director Review, Cast & Locations, Batch Shoot): shares one storyboard & cast dataset, supporting both per-stage execution and one-click full pipeline run.',
           breakdown:
             'Breaks the script into a structured storyboard: scenes / shots (count follows the story) / character & location entities. Locked or edited shots survive re-breakdowns; an unchanged script reuses the storyboard without calling the model.',
           review:
@@ -5344,6 +5365,21 @@ export default {
           render:
             'Shoots a keyframe per shot (cast sheets attached automatically) → optional vision QC with automatic retakes → optional image-to-video from the keyframe. Fingerprint cache: editing one shot reshoots only that shot.'
         },
+        stageTabs: {
+          breakdown: '1. Breakdown',
+          review: '2. Review',
+          cast: '3. Cast & Scenes',
+          render: '4. Batch Shoot'
+        },
+        runCurrentStage: {
+          breakdown: 'Run Breakdown',
+          review: 'Run Review',
+          cast: 'Run Cast',
+          render: 'Run Shoot'
+        },
+        runFullPipeline: 'Run All Stages',
+        runFullPipelineHint:
+          'Run in order: Breakdown → Review → Cast → Batch Shoot (unchanged items reuse cache)',
         models: 'Models',
         textModel: 'Text model',
         imageModel: 'Image model',
@@ -5352,6 +5388,10 @@ export default {
         noModel: 'Configure a model in Settings first',
         breakdownOptions: 'Breakdown options',
         targetShots: 'Target shots (0 = auto)',
+        shotDurationSec: 'Target shot duration (s, 0 = auto)',
+        shotDurationHint:
+          'Set 8–30s (e.g. 15s) to break down into long shots with time-segmented video prompts (0-2s...; 2-6s...).',
+        shotDurationAuto: 'Auto',
         aspectRatio: 'Aspect ratio',
         style: 'Visual style',
         stylePlaceholder: 'e.g. realistic cinematic, warm/cool contrast, 35mm grain',
@@ -5380,6 +5420,10 @@ export default {
         followStoryboard: 'Follow storyboard',
         shotRange: 'Shot range',
         shotRangePlaceholder: 'Empty = all, e.g. 1-5,8',
+        continuity: 'Same-scene shot continuity (pass previous keyframe & lighting)',
+        continuityFrom: 'Follows {id}',
+        continuityHint:
+          'Previous same-scene shot ({id}) keyframe is injected as a reference for lighting and spatial axis continuity',
         qc: 'Keyframe vision QC (auto retake on failure)',
         maxRetries: 'Max retakes',
         renderCacheHint:
@@ -5400,7 +5444,65 @@ export default {
         shots: 'Shots ({n})',
         shotsHint:
           'Click a shot to edit. Edited shots are locked automatically and never rewritten by re-breakdowns or review revisions.',
+        workbenchShotsHint:
+          'Edit shot size, camera move, action and prompts directly. Edited shots lock automatically and survive re-breakdowns and review revisions.',
+        openWorkbench: 'Open Film Workbench',
+        openWorkbenchHint: 'Double-click to open film workbench',
+        workbenchTitle: 'Film Workbench',
+        pipelineNodes: 'Pipeline nodes',
+        entitiesTitle: 'Entities ({n})',
+        emptyStoryboard:
+          'No storyboard yet. Connect an upstream script and click "Run" or "⚡ Run All".',
+        emptyBreakdown:
+          'No storyboard breakdown yet. Connect an upstream script and click "Run" or "⚡ Run All".',
+        emptyReview:
+          'No director review yet. Run "1. Breakdown" first, then click "Run" or "⚡ Run All".',
+        emptyCast:
+          'No cast / scene design sheets yet. Run "1. Breakdown" first, then click "Run" or "⚡ Run All".',
+        emptyRender:
+          'No rendered shots yet. Complete breakdown and cast sheets, then click "Run" or "⚡ Run All".',
+        upstreamDraftHint:
+          'Previewing upstream storyboard draft — click Run in the top-right to execute this node.',
+        shotPreviewTitle: 'Selected shot preview',
+        emptyShot:
+          'No upstream storyboard yet. Connect an upstream "Film Workbench" node to preview and extract single-shot prompts.',
+        lockAll: 'Lock all',
+        unlockAll: 'Unlock all',
+        castRefsMatched: 'Matched cast references ({n})',
+        qcPass: 'QC pass',
+        qcFail: 'QC fail',
+        renderedKeyframe: 'Keyframe ready',
+        renderedVideo: 'Video ready',
+        pendingRender: 'Pending',
+        runCastEntry: 'Generate sheet',
+        rerunCastEntry: 'Regenerate',
+        runShotRender: 'Shoot shot',
+        runShotVideo: 'Generate video',
+        rerunShotRender: 'Retake shot',
+        runningSingle: 'Running…',
+        previewFinalPrompt: 'Preview final prompt',
+        hideFinalPrompt: 'Hide prompt',
+        expandAllPrompts: 'Expand all prompts',
+        collapseAllPrompts: 'Collapse all prompts',
+        finalImagePrompt: 'Final keyframe prompt (sent to model)',
+        finalVideoPrompt: 'Final video prompt (sent to model)',
+        boundEntities: 'Bound characters & location',
+        addCharacter: '+ Bind character',
+        setLocation: 'Switch location',
+        clearLocation: 'None / Black screen',
+        refSheetReady: "Ref {'@'}{n}",
+        refSheetMissing: 'Sheet pending',
+        usedInShots: 'Used in shots ({n})',
+        noUsedShots: 'Not used in any shot yet',
         field: {
+          shotSize: 'Shot size',
+          angle: 'Camera angle',
+          cameraMove: 'Camera move',
+          durationSec: 'Duration (s)',
+          location: 'Location',
+          characters: 'Characters',
+          dialogue: 'Dialogue',
+          description: 'Visual description',
           action: 'Action',
           imagePrompt: 'Keyframe prompt',
           videoPrompt: 'Motion prompt'
@@ -6102,7 +6204,36 @@ export default {
         speechVoiceDefault: 'Default voice',
         speechVoiceManualPlaceholder: 'Voice id',
         model3dInstructionPlaceholder:
-          "Describe the 3D model to generate; connect reference images for image-to-3D; use {'@'} to cite inputs",
+          "Describe the 3D model to generate; connect 1 or more reference images (Tripo multi-view takes up to 4 in Front/Left/Back/Right order; drag thumbnails or use {'@'} to reorder)",
+        model3dRefRoles: {
+          single: 'Ref',
+          multi: 'Multi',
+          front: 'Front',
+          left: 'Left',
+          back: 'Back',
+          right: 'Right',
+          primary: 'Main',
+          secondary: 'Sub',
+          active: 'Active',
+          ignored: 'Ignored'
+        },
+        model3dGuide: {
+          textOnly:
+            'Text-to-3D · Connect 1 image for single-image 3D, or multiple images for multi-view 3D',
+          singleImage:
+            'Image-to-3D (1 ref) · Connect more images to enable multi-view / multi-image 3D',
+          singleImageLuma: 'Image-to-3D (Luma supports 1 reference image only)',
+          multiTripo:
+            "Tripo Multi-view 3D ({n}/4) · Order: Front → Left → Back → Right (drag thumbnails or use {'@'} to reorder)",
+          multiTripoOverflow:
+            'Tripo Multi-view 3D (first 4 active, {extra} ignored) · Order: Front → Left → Back → Right (drag to reorder)',
+          multiLux3d:
+            'Lux3D Multi-image 3D ({n} refs) · 1st image is primary (drag thumbnails to change primary)',
+          multiLumaWarn:
+            'Luma supports 1 image only · 1st image active, {extra} ignored (drag to switch or use Tripo / Meshy)',
+          multiGeneral:
+            "Multi-image 3D ({n} refs) · Drag thumbnails above or use {'@'} to reorder reference images"
+        },
         spatialWorldInstructionPlaceholder:
           "Describe the explorable 3D world (layout, what the starting viewpoint sees, lighting mood); connect 1-4 reference images or one reference video (video wins when both are connected); use {'@'} to cite inputs",
         spatialWorldExtractInstructionPlaceholder:
@@ -6498,6 +6629,8 @@ export default {
           loading: 'Loading model capabilities…',
           empty: 'This model declares no tunable params',
           duration: 'Duration',
+          durationAuto: 'Auto',
+          durationAutoHint: 'Automatically use each shot’s duration from the storyboard breakdown',
           durationOption: '{n}s',
           resolution: 'Resolution',
           aspectRatio: 'Aspect ratio',

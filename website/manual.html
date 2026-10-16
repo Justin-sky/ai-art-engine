@@ -253,12 +253,11 @@
             </div>
 
             <div class="concept-card">
-              <h3>剧集 / 场 / 节拍</h3>
+              <h3>影视工作台 / 镜头</h3>
               <p>
-                <strong>剧集</strong>（Episode）由多个<strong>场</strong>（Scene）组成；剧本先拆成<strong>节拍拆解表</strong>，再落到具体的场。
-                对应专用端口类型 <code>world</code> / <code>worldEntities</code> / <code>beat</code>，不可与普通 <code>text</code> 混连。
+                <strong>影视工作台</strong>（<code>film.workbench</code>）在一个节点与全屏 Dive 界面内串联「分镜拆解 → 导演审核 → 角色场景设定 → 批量拍摄」，支持跟随分镜拆解自动设置视频时长，并可接<strong>镜头</strong>（<code>film.shot</code>）节点单镜覆写。
               </p>
-              <span class="concept-meta">详见 §9 剧本与场</span>
+              <span class="concept-meta">详见 §8.5 / §9 剧本与影视工作台</span>
             </div>
 
             <div class="concept-card">
@@ -271,12 +270,11 @@
             </div>
 
             <div class="concept-card">
-              <h3>世界元素 World Element</h3>
+              <h3>角色场景设定 Cast &amp; Scene</h3>
               <p>
-                可复用的设定条目：角色、场景、道具。挂在剧集上被各场共用，<strong>避免每个镜头重新描述一遍</strong>，
-                也是保持一致性的手段之一。
+                影视工作台中可复用的设定条目：角色、场景、道具。统一生成定妆与环境锚点图并在批量拍摄时自动挂载到对应镜头，<strong>避免每个镜头重新描述一遍</strong>。
               </p>
-              <span class="concept-meta">详见 §11 画布与世界元素</span>
+              <span class="concept-meta">详见 §11 自由画布与角色场景设定</span>
             </div>
 
             <div class="concept-card">

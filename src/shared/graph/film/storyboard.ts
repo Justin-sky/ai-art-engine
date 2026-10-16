@@ -236,6 +236,65 @@ function shotCode(sceneOrder: number, shotIndexInScene: number): string {
   return `S${String(sceneOrder).padStart(2, '0')}-${String(shotIndexInScene).padStart(2, '0')}`
 }
 
+const NON_SPATIAL_LOCATION_KEYS = new Set([
+  '黑屏',
+  '黑场',
+  '纯黑',
+  '純黑',
+  '黑底',
+  '黑幕',
+  '白屏',
+  '白场',
+  '纯白',
+  '白底',
+  '字幕',
+  '字幕卡',
+  '标题卡',
+  '片头',
+  '片尾',
+  '转场',
+  '空',
+  '无',
+  '无场景',
+  '无地点',
+  '未知',
+  '旁白',
+  'blackscreen',
+  'black',
+  'fadetoblack',
+  'whitescreen',
+  'titlecard',
+  'subtitle',
+  'subtitles',
+  'transition',
+  'none',
+  'na',
+  'n/a',
+  'null',
+  'unknown',
+  'void'
+])
+
+/**
+ * 判断「地点」是否为黑屏 / 黑场 / 字幕卡 / 纯色背景等非实景占位：
+ * 这类条目没有空间结构与陈设，不应作为场景实体去生成「广角全景建立镜头」设定图。
+ */
+export function isNonSpatialFilmLocation(name: string, description = ''): boolean {
+  const key = filmNameKey(name)
+  if (!key) return true
+  if (NON_SPATIAL_LOCATION_KEYS.has(key)) return true
+  const desc = description.trim()
+  if (
+    desc &&
+    /^(?:纯?[黑白]色?(?:背景|画面|屏|场|底)?|黑屏|黑场|白屏|白场|solid\s*(?:black|white)\s*(?:background|screen|frame)?)(?:[，,。；;\s—-]*(?:用于|仅用于|for)?\s*(?:字幕|标题|转场|旁白|过渡|黑屏|subtitles?|title\s*card|transition).*)?$/i.test(
+      desc
+    )
+  ) {
+    return true
+  }
+  return false
+}
+
 // ─── 解析 / 规范化 ──────────────────────────────────────────────────────
 
 function normalizeEntities(raw: unknown): FilmEntity[] {
@@ -248,6 +307,10 @@ function normalizeEntities(raw: unknown): FilmEntity[] {
     const name = str(pick(row, 'name', '名称', '名字'))
     const kind = normalizeEntityKind(pick(row, 'kind', 'type', '类型')) ?? fallbackKind
     if (!name || !kind) return
+    const description = str(
+      pick(row, 'description', 'desc', 'appearance', 'prompt', '描述', '外观', '设定')
+    )
+    if (kind === 'location' && isNonSpatialFilmLocation(name, description)) return
     const key = `${kind}:${filmNameKey(name)}`
     if (seen.has(key)) return
     seen.add(key)
@@ -255,9 +318,7 @@ function normalizeEntities(raw: unknown): FilmEntity[] {
       id: str(row.id) || `${kind}-${filmHash(filmNameKey(name))}`,
       kind,
       name,
-      description: str(
-        pick(row, 'description', 'desc', 'appearance', 'prompt', '描述', '外观', '设定')
-      )
+      description
     })
   }
   if (Array.isArray(raw)) {
@@ -347,7 +408,7 @@ function normalizeShot(item: unknown, index: number): FilmShot | null {
     shotSize: str(pick(row, 'shotSize', 'size', '景别')),
     angle: str(pick(row, 'angle', '角度', '机位')),
     cameraMove: str(pick(row, 'cameraMove', 'camera', 'movement', '运镜')),
-    durationSec: Math.min(30, Math.max(1, num(pick(row, 'durationSec', 'duration', '时长'), 4))),
+    durationSec: Math.min(60, Math.max(1, num(pick(row, 'durationSec', 'duration', '时长'), 4))),
     characters: strList(pick(row, 'characters', '角色', '人物')),
     location: str(pick(row, 'location', '地点', '场景')),
     props: strList(pick(row, 'props', '道具')),
@@ -435,10 +496,13 @@ export function finalizeFilmStoryboard(doc: FilmStoryboard): FilmStoryboard {
     }
   })
 
-  const entities = [...doc.entities]
+  const entities = doc.entities.filter(
+    (e) => !(e.kind === 'location' && isNonSpatialFilmLocation(e.name, e.description))
+  )
   const known = new Set(entities.map((e) => `${e.kind}:${filmNameKey(e.name)}`))
   const ensure = (kind: FilmEntityKind, name: string): void => {
     if (!name) return
+    if (kind === 'location' && isNonSpatialFilmLocation(name)) return
     const key = `${kind}:${filmNameKey(name)}`
     if (known.has(key)) return
     known.add(key)
@@ -574,6 +638,8 @@ export function parseFilmCast(raw: unknown): FilmCast | null {
     const name = str(pick(r, 'name', '名称'))
     const kind = normalizeEntityKind(pick(r, 'kind', 'type', '类型'))
     if (!name || !kind) continue
+    const description = str(pick(r, 'description', '描述'))
+    if (kind === 'location' && isNonSpatialFilmLocation(name, description)) continue
     const imageRelativePath = str(r.imageRelativePath)
     const imageUrl = str(r.imageUrl)
     const promptHash = str(r.promptHash)
@@ -581,7 +647,7 @@ export function parseFilmCast(raw: unknown): FilmCast | null {
       id: str(r.id) || `${kind}-${filmHash(filmNameKey(name))}`,
       kind,
       name,
-      description: str(pick(r, 'description', '描述')),
+      description,
       ...(imageRelativePath ? { imageRelativePath } : {}),
       ...(imageUrl ? { imageUrl } : {}),
       ...(promptHash ? { promptHash } : {}),
@@ -618,6 +684,10 @@ export function deriveFilmCast(
   for (const entity of storyboard.entities) {
     if (!kinds.includes(entity.kind)) continue
     const prev = prevByKey.get(`${entity.kind}:${filmNameKey(entity.name)}`)
+    const description = prev?.description || entity.description || ''
+    if (entity.kind === 'location' && isNonSpatialFilmLocation(entity.name, description)) {
+      continue
+    }
     if (prev?.locked) {
       entries.push({ ...prev })
       continue
@@ -626,7 +696,7 @@ export function deriveFilmCast(
       id: entity.id,
       kind: entity.kind,
       name: entity.name,
-      description: entity.description || prev?.description || '',
+      description,
       ...(prev?.imageRelativePath ? { imageRelativePath: prev.imageRelativePath } : {}),
       ...(prev?.imageUrl ? { imageUrl: prev.imageUrl } : {}),
       ...(prev?.promptHash ? { promptHash: prev.promptHash } : {})
@@ -659,6 +729,46 @@ export function matchFilmCastForShot(
   return out
 }
 
+export interface FilmShotContinuity {
+  /** 同场相邻的上一镜头（若存在） */
+  prevShot?: FilmShot | null
+  /** 若上一镜头已产出关键帧并作为参考图传入，其 1-based 参考图编号（如 @3） */
+  prevKeyframeRefIndex?: number
+}
+
+/**
+ * 查找同场相邻的上一镜头（用于动作承接与光影/空间轴线连贯）。
+ * 判定同场条件：
+ * 1. 当前镜头与紧邻的上一镜头都不是非空间转场（如黑屏/纯色背景）；
+ * 2. 若两者都显式填写了非空 location 且不同名，视为换景，返回 null；
+ * 3. 两者同名 location（非空）或同 sceneId（非空）。
+ */
+export function findPrevSameSceneShot(
+  storyboard: Pick<FilmStoryboard, 'shots'> | null | undefined,
+  shot: Pick<FilmShot, 'id' | 'sceneId' | 'location'> | null | undefined
+): FilmShot | null {
+  if (!storyboard?.shots.length || !shot) return null
+  const idx = storyboard.shots.findIndex((item) => item.id === shot.id)
+  if (idx <= 0) return null
+  const prev = storyboard.shots[idx - 1]
+  if (!prev) return null
+  if (
+    (shot.location && isNonSpatialFilmLocation(shot.location)) ||
+    (prev.location && isNonSpatialFilmLocation(prev.location))
+  ) {
+    return null
+  }
+  const curLoc = shot.location?.trim() ?? ''
+  const prevLoc = prev.location?.trim() ?? ''
+  if (curLoc && prevLoc && filmNameKey(curLoc) !== filmNameKey(prevLoc)) {
+    return null
+  }
+  const sameLocation = !!curLoc && !!prevLoc && filmNameKey(curLoc) === filmNameKey(prevLoc)
+  const sameScene =
+    !!shot.sceneId?.trim() && !!prev.sceneId?.trim() && shot.sceneId.trim() === prev.sceneId.trim()
+  return sameLocation || sameScene ? prev : null
+}
+
 // ─── 提示词合成 ─────────────────────────────────────────────────────────
 
 function isEnglish(locale?: string): boolean {
@@ -666,14 +776,15 @@ function isEnglish(locale?: string): boolean {
 }
 
 /**
- * 关键帧（首帧）生图提示词：风格 + 景别机位 + 地点 + 出场角色 + 画面 + 镜头自带 imagePrompt。
+ * 关键帧（首帧）生图提示词：风格 + 景别机位 + 地点 + 出场角色 + 画面 + 镜头自带 imagePrompt + 同场上一镜衔接。
  * 参考图按出场顺序编号（@1 起），提示词里点名「角色 X 以参考图 @n 为准」锁一致性。
  */
 export function composeFilmShotImagePrompt(
   storyboard: Pick<FilmStoryboard, 'style' | 'aspectRatio'>,
   shot: FilmShot,
   refs: readonly FilmCastEntry[] = [],
-  locale?: string
+  locale?: string,
+  continuity?: FilmShotContinuity
 ): string {
   const en = isEnglish(locale)
   const lines: string[] = []
@@ -681,7 +792,8 @@ export function composeFilmShotImagePrompt(
     lines.push(en ? `Visual style: ${storyboard.style}` : `视觉风格：${storyboard.style}`)
   const camera = [shot.shotSize, shot.angle].filter(Boolean).join(' / ')
   if (camera) lines.push(en ? `Shot: ${camera}` : `镜头：${camera}`)
-  if (shot.location) lines.push(en ? `Location: ${shot.location}` : `地点：${shot.location}`)
+  if (shot.location && !isNonSpatialFilmLocation(shot.location))
+    lines.push(en ? `Location: ${shot.location}` : `地点：${shot.location}`)
   if (shot.characters.length) {
     lines.push(
       en ? `Characters: ${shot.characters.join(', ')}` : `出场角色：${shot.characters.join('、')}`
@@ -703,6 +815,25 @@ export function composeFilmShotImagePrompt(
         : `一致性：${mapping}，人物长相、服装、发型与场景陈设严格保持一致。`
     )
   }
+  const prev = continuity?.prevShot
+  if (prev) {
+    const prevCam = [prev.shotSize, prev.angle].filter(Boolean).join(' / ')
+    const prevDesc = (prev.action || prev.imagePrompt || prev.title || '').trim().slice(0, 80)
+    const refIdx = continuity?.prevKeyframeRefIndex
+    if (refIdx && refIdx > 0) {
+      lines.push(
+        en
+          ? `Shot continuity: follows same-scene shot ${prev.id}${prevCam ? ` (${prevCam})` : ''}${prevDesc ? ` "${prevDesc}"` : ''}; reference @${refIdx} is the previous shot's frame — inherit its key light direction, color temperature, spatial layout, 180-degree axis and costume state, while switching camera framing and pose to match the current shot.`
+          : `镜头衔接：紧接同场上一镜 ${prev.id}${prevCam ? `（${prevCam}）` : ''}${prevDesc ? `「${prevDesc}」` : ''}；上一镜实拍画面见参考图@${refIdx}，严格继承其环境主光方向、色温、空间方位、180° 轴线与人物衣着状态，但机位景别与人物姿态按本镜要求切换，切勿照搬上一镜构图。`
+      )
+    } else {
+      lines.push(
+        en
+          ? `Shot continuity: follows same-scene shot ${prev.id}${prevCam ? ` (${prevCam})` : ''}${prevDesc ? ` "${prevDesc}"` : ''} — maintain consistent key light direction, color temperature, spatial axis and character state transition.`
+          : `镜头衔接：紧接同场上一镜 ${prev.id}${prevCam ? `（${prevCam}）` : ''}${prevDesc ? `「${prevDesc}」` : ''}，保持同场主光方向、色温、空间方位与 180° 轴线连贯，人物动作自然承接。`
+      )
+    }
+  }
   lines.push(
     en
       ? 'Single cinematic frame, no text, no subtitles, no watermark, no split panels.'
@@ -711,14 +842,29 @@ export function composeFilmShotImagePrompt(
   return lines.join('\n')
 }
 
-/** 图生视频提示词：运镜 + 时长 + 动作时间轴 + 对白（逐字）+ 声音 */
-export function composeFilmShotVideoPrompt(shot: FilmShot, locale?: string): string {
+/** 图生视频提示词：运镜 + 时长 + 动作时间轴 + 同场动作承接 + 对白（逐字）+ 声音 */
+export function composeFilmShotVideoPrompt(
+  shot: FilmShot,
+  locale?: string,
+  continuity?: FilmShotContinuity
+): string {
   const en = isEnglish(locale)
   const lines: string[] = []
   if (shot.videoPrompt) lines.push(shot.videoPrompt)
   else if (shot.action) lines.push(shot.action)
   if (shot.cameraMove)
     lines.push(en ? `Camera move: ${shot.cameraMove}` : `运镜：${shot.cameraMove}`)
+  const prev = continuity?.prevShot
+  if (prev) {
+    const prevDesc = (prev.action || prev.videoPrompt || prev.title || '').trim().slice(0, 80)
+    if (prevDesc) {
+      lines.push(
+        en
+          ? `Action continuity: naturally continue motion momentum and emotion from previous shot (${prev.id}: ${prevDesc}).`
+          : `动作承接：紧接同场上一镜（${prev.id}：${prevDesc}）的动作态势与情绪自然延续。`
+      )
+    }
+  }
   if (shot.dialogue.length) {
     const said = shot.dialogue
       .map((d) => {

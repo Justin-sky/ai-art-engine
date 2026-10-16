@@ -531,6 +531,8 @@ export interface PlanAiWorkflowInput {
   prompt: string
   model?: string
   providerInstanceId?: string
+  textModel?: string
+  textProviderInstanceId?: string
   imageModel?: string
   imageProviderInstanceId?: string
   videoModel?: string
@@ -597,6 +599,8 @@ export interface CommitAiWorkflowInput {
   folderId?: string | null
   /** 资产显示名；缺省用计划 title */
   name?: string
+  textModel?: string
+  textProviderInstanceId?: string
   imageModel?: string
   imageProviderInstanceId?: string
   videoModel?: string

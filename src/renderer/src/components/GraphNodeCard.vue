@@ -226,6 +226,7 @@
         <img
           v-else-if="
             (isFrameAnimGenNode ||
+              isFilmMediaPreviewNode ||
               isSelectImageNode(node) ||
               isMultiAngleEditorNode(node) ||
               isLightingEditorNode(node) ||
@@ -418,6 +419,7 @@
         :host-id="hostId"
         :node-id="node.id"
         :preset-kind="effectivePresetKind"
+        :provider-kind="selectedProviderKind"
         :rows="5"
         :placeholder="instructionPlaceholder"
         @change="persistInstruction"
@@ -510,6 +512,7 @@
         :host-id="hostId"
         :node-id="node.id"
         :preset-kind="effectivePresetKind"
+        :provider-kind="selectedProviderKind"
         :placeholder="instructionPlaceholder"
         @change="persistInstruction"
         @close="instructionDialogOpen = false"
@@ -666,6 +669,7 @@ import {
   isPortraitEditorNode,
   isEmotionEditorNode,
   isUpscaleEditorNode,
+  resolveImageProcessTool,
   isLipSyncNode,
   isExpandEditorNode,
   isRedrawEditorNode,
@@ -679,6 +683,9 @@ import {
   isCutoutNode,
   isComposeNode,
   isComicPageNode,
+  isFilmNodeTypeId,
+  parseFilmCast,
+  parseFilmRenderCache,
   portLimitMaxForDataType,
   readImageGenerateParamsFromNode,
   readAnim2dFromNode,
@@ -1050,6 +1057,8 @@ const instructionKind = computed((): InstructionPresetKind | null => {
       return 'mediaRework'
     case 'image.upscale':
       return 'image'
+    case 'image.process':
+      return resolveImageProcessTool(props.node) === 'upscale' ? 'image' : null
     case 'asset.voice':
       return isProcessingNode.value ? 'voice' : null
     // 声音资产变体：各自独立预设包（TTS / 多说话人 / 音效 / 音乐）
@@ -1081,7 +1090,7 @@ const effectivePresetKind = computed((): InstructionPresetKind | null => {
   return kind
 })
 
-const portLimitKind = computed((): 'image' | 'video' | null => {
+const portLimitKind = computed((): 'image' | 'video' | 'model3d' | null => {
   if (instructionKind.value === 'image') return 'image'
   if (
     instructionKind.value === 'video' ||
@@ -1089,6 +1098,7 @@ const portLimitKind = computed((): 'image' | 'video' | null => {
     instructionKind.value === 'reshoot'
   )
     return 'video'
+  if (instructionKind.value === 'model3d') return 'model3d'
   return null
 })
 
@@ -1127,7 +1137,8 @@ function portLimitMax(port: GraphPortDef): number | null | undefined {
   const raw = portLimitMaxForDataType(port.dataType, {
     kind: portLimitKind.value,
     imageMax: imageMaxInputReferences.value,
-    videoLimits: effectiveVideoPortLimits()
+    videoLimits: effectiveVideoPortLimits(),
+    model3dProviderKind: selectedProviderKind.value
   })
   if (port.dataType === GraphPortType.image) {
     return deductReservedImageSlots(raw, styleImageSlotCount.value)
@@ -1530,16 +1541,66 @@ watch(
   { immediate: true }
 )
 
+const isFilmNode = computed(() => isFilmNodeTypeId(props.node.typeId))
+const isFilmMediaPreviewNode = computed(
+  () =>
+    props.node.typeId === 'film.workbench' ||
+    props.node.typeId === 'film.cast' ||
+    props.node.typeId === 'film.render'
+)
+
+/** 多结果图片：节点卡网格（≥2）；单张仍走原单预览路径 */
+type CardImageGridSource = { key: string; dataUrl?: string; relativePath?: string }
+
+const filmCardImageSources = computed((): CardImageGridSource[] => {
+  if (props.node.typeId === 'film.workbench' || props.node.typeId === 'film.render') {
+    const cache = parseFilmRenderCache(props.node.params.filmRenders)
+    const out: CardImageGridSource[] = []
+    for (const [shotId, entry] of Object.entries(cache)) {
+      const kf = entry?.keyframe?.trim() ?? ''
+      if (!kf) continue
+      const inline = kf.startsWith('data:')
+      out.push({
+        key: `film:${shotId}`,
+        dataUrl: inline ? kf : undefined,
+        relativePath: inline ? undefined : kf
+      })
+    }
+    if (out.length > 0 || props.node.typeId === 'film.render') return out
+  }
+  if (props.node.typeId === 'film.workbench' || props.node.typeId === 'film.cast') {
+    const cast = parseFilmCast(props.node.params.filmCast ?? '')
+    if (!cast?.entries?.length) return []
+    const out: CardImageGridSource[] = []
+    for (const [idx, entry] of cast.entries.entries()) {
+      const url = entry.imageUrl?.trim() ?? ''
+      const rel = entry.imageRelativePath?.trim() || (url && !url.startsWith('data:') ? url : '')
+      const dataUrl = url.startsWith('data:') ? url : undefined
+      if (!dataUrl && !rel) continue
+      out.push({
+        key: entry.id?.trim() || `cast:${idx}`,
+        dataUrl,
+        relativePath: rel || undefined
+      })
+    }
+    return out
+  }
+  return []
+})
+
 const selectImagePreview = ref('')
 watch(
   () =>
     [
       props.node.params.previewDataUrl,
       props.node.params.previewRelativePath,
-      props.node.params.generatedImages?.[props.node.params.generatedImages.length - 1]?.dataUrl,
+      props.node.params.generatedImages?.[props.node.params.generatedImages.length - 1]?.dataUrl ||
+        filmCardImageSources.value[filmCardImageSources.value.length - 1]?.dataUrl,
       props.node.params.generatedImages?.[props.node.params.generatedImages.length - 1]
-        ?.relativePath,
+        ?.relativePath ||
+        filmCardImageSources.value[filmCardImageSources.value.length - 1]?.relativePath,
       isFrameAnimGenNode.value ||
+        isFilmMediaPreviewNode.value ||
         props.node.typeId === 'svg.gen' ||
         isSelectImageNode(props.node) ||
         isMultiAngleEditorNode(props.node) ||
@@ -1595,9 +1656,10 @@ watch(
   { immediate: true }
 )
 
-/** 多结果图片：节点卡网格（≥2）；单张仍走原单预览路径 */
-type CardImageGridSource = { key: string; dataUrl?: string; relativePath?: string }
 const cardImageGridSources = computed((): CardImageGridSource[] => {
+  if (filmCardImageSources.value.length > 1) {
+    return filmCardImageSources.value
+  }
   const generatedSvgs = props.node.params.generatedSvgs ?? []
   if (props.node.typeId === 'svg.gen' && generatedSvgs.length > 1) {
     return generatedSvgs.map((item, index) => ({
@@ -1752,6 +1814,7 @@ const previewHint = computed(() => {
   if (isPortraitEditorNode(props.node)) return t('graph.portrait.hint')
   if (isEmotionEditorNode(props.node)) return t('graph.emotion.hint')
   if (isLipSyncNode(props.node)) return t('graph.lipSync.hint')
+  if (isUpscaleEditorNode(props.node)) return t('graph.imageProcess.openWorkbench')
   if (isExpandEditorNode(props.node)) return t('graph.expand.hint')
   if (isRedrawEditorNode(props.node)) return t('graph.redraw.hint')
   if (isEraseEditorNode(props.node)) return t('graph.erase.hint')
@@ -1764,6 +1827,7 @@ const previewHint = computed(() => {
   if (isCutoutNode(props.node)) return t('graph.cutout.hint')
   if (isComposeNode(props.node)) return t('graph.compose.hint')
   if (isComicPageNode(props.node)) return t('graph.inspector.comicPage.cardHint')
+  if (isFilmNode.value) return t('graph.inspector.film.openWorkbenchHint')
   if (instructionKind.value) return t('graph.generateNode.instructionHint')
   if (isMissingLinkedAsset.value) return t('graph.assetMissing.hint')
   if (isAssetRef.value) {
@@ -1785,6 +1849,9 @@ const previewOpenHint = computed(() => {
   }
   if (props.node.typeId === 'comic.page') {
     return t('graph.inspector.comicPage.cardHint')
+  }
+  if (isFilmNode.value) {
+    return t('graph.inspector.film.openWorkbenchHint')
   }
   // 生成剧本 / 策划案：双击开的是生成指令面板，不是正文记事本（与上方双击分发同顺序）
   if (instructionKind.value === 'screenplay' || instructionKind.value === 'gameSystem') {
@@ -1813,8 +1880,10 @@ const previewKind = computed((): 'image' | 'video' | 'voice' | 'none' => {
     if (kind === 'voice') return 'voice'
     if (kind === 'text') return 'none'
   }
-  // 帧动画：note 分类无 assetType，但仍输出图片，需按 image 走预览与尺寸自适应
-  if (isFrameAnimGenNode.value || isCardAnimNode.value) return 'image'
+  // 帧动画 / 影视设定与拍摄：note 分类无 assetType，但仍输出图片，需按 image 走预览与尺寸自适应
+  if (isFrameAnimGenNode.value || isCardAnimNode.value || isFilmMediaPreviewNode.value) {
+    return 'image'
+  }
   if (isSelectVideoNode(props.node)) return 'video'
   if (isSelectVoiceNode(props.node)) return 'voice'
   const t = props.node.assetType ?? props.asset?.type
@@ -2687,6 +2756,15 @@ function onPreviewDblClick(): void {
       return
     }
 
+    // 影视流水线节点（分镜拆解 / 导演审核 / 角色场景设定 / 镜头 / 批量拍摄）：
+    // 双击进入全屏影视工作台（大屏分镜表精修、审核报告、角色场景设定图画廊、批量成片监控），勿落入记事本
+    if (isFilmNode.value) {
+      const hostId = props.hostId?.trim()
+      if (!hostId) return
+      await diveView({ viewId: 'film.workbench', hostId, nodeId: props.node.id }, title)
+      return
+    }
+
     // 可玩 HTML 资产节点：双击进 Dive 沙盒（无 dive 上下文时退回浮窗）
     if (props.node.typeId === 'asset.gamePlay') {
       const hostId = props.hostId?.trim()
@@ -2799,6 +2877,10 @@ function onPreviewDblClick(): void {
     }
     if (isEmotionEditorNode(props.node)) {
       await diveNodeTool('node.emotion', title)
+      return
+    }
+    if (isUpscaleEditorNode(props.node)) {
+      await diveNodeTool('node.upscale', title)
       return
     }
     if (isExpandEditorNode(props.node)) {

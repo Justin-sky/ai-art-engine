@@ -45,6 +45,7 @@ import {
   DEFAULT_UPSCALE_SYSTEM_PROMPT_EN,
   DEFAULT_UPSCALE_SYSTEM_PROMPT_ZH,
   defaultUpscaleSystemPrompt,
+  isUpscaleEditorNode,
   readImageUpscaleFromNode,
   resolveUpscaleInstruction,
   resolveUpscaleSystemPrompt
@@ -67,7 +68,7 @@ const node = computed(() => {
   const id = selection.kind === 'graph.node' ? selection.id : null
   if (!id) return null
   const current = graphEditorHosts.getNode(selection.hostId, id)
-  return current?.typeId === 'image.upscale' ? current : null
+  return isUpscaleEditorNode(current) ? current : null
 })
 
 const hostId = computed(() => {

@@ -111,6 +111,7 @@ const viewRegistry: Record<string, Component> = {
   'node.portraitTexture': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
   'node.portrait': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
   'node.emotion': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
+  'node.upscale': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
   'node.expand': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
   'node.redraw': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
   'node.erase': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
@@ -126,6 +127,7 @@ const viewRegistry: Record<string, Component> = {
   'node.stage2d': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
   'anim.2d': defineAsyncComponent(() => import('./dive/EditorDiveAnim2dView.vue')),
   'comic.page': defineAsyncComponent(() => import('./dive/EditorDiveComicPageView.vue')),
+  'film.workbench': defineAsyncComponent(() => import('./dive/EditorDiveFilmView.vue')),
   'gamePlay.sandbox': defineAsyncComponent(() => import('./dive/EditorDiveGamePlayView.vue'))
 }
 
@@ -212,6 +214,8 @@ const viewBindings = computed(() => {
     case 'anim.2d':
       return { ...base, hostId: meta.hostId, nodeId: meta.nodeId }
     case 'comic.page':
+      return { ...base, hostId: meta.hostId, nodeId: meta.nodeId }
+    case 'film.workbench':
       return { ...base, hostId: meta.hostId, nodeId: meta.nodeId }
     case 'gamePlay.sandbox':
       return {

@@ -16,14 +16,16 @@ import {
   executeFilmCastNode,
   executeFilmRenderNode,
   executeFilmReviewNode,
-  executeFilmShotNode
+  executeFilmShotNode,
+  executeFilmWorkbenchNode
 } from '../execute/film'
 
 const ASSET_SIZE = { w: 168, h: 128 }
 const ASSET_LIMITS = { minW: 120, minH: 72, maxW: 480, maxH: 400 }
 
-/** 菜单与预设共用的 typeId（顺序 = 流水线顺序） */
+/** 菜单与预设共用的 typeId（film.workbench 为合一工作台节点；其余四个阶段节点保留存档兼容） */
 export const FILM_NODE_TYPE_IDS = [
+  'film.workbench',
   'film.breakdown',
   'film.review',
   'film.cast',
@@ -67,6 +69,110 @@ const textModelParams = (): Record<string, string> => ({
 
 export const FILM_NODE_TYPES: NodeTypeDefinition[] = [
   {
+    typeId: 'film.workbench',
+    category: 'note',
+    label: 'Film workbench',
+    icon: '🪄',
+    defaultTitle: 'Film workbench',
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'Script' },
+      {
+        id: 'in-image',
+        direction: 'in',
+        dataType: GraphPortType.image,
+        multiple: true,
+        label: 'Reference',
+        labelKey: 'graph.port.referenceImage'
+      },
+      storyboardOut,
+      {
+        id: 'out-cast',
+        direction: 'out',
+        dataType: GraphPortType.filmCast,
+        multiple: true,
+        label: 'Cast'
+      },
+      {
+        id: 'out-sheets',
+        direction: 'out',
+        dataType: GraphPortType.images,
+        multiple: true,
+        label: 'Design sheets',
+        labelKey: 'graph.port.filmDesignSheets'
+      },
+      {
+        id: 'out-images',
+        direction: 'out',
+        dataType: GraphPortType.images,
+        multiple: true,
+        label: 'Keyframes',
+        labelKey: 'graph.port.filmKeyframes'
+      },
+      {
+        id: 'out-videos',
+        direction: 'out',
+        dataType: GraphPortType.videos,
+        multiple: true,
+        label: 'Clips',
+        labelKey: 'graph.port.filmClips'
+      },
+      {
+        id: 'out-text',
+        direction: 'out',
+        dataType: GraphPortType.text,
+        multiple: true,
+        label: 'Shot list',
+        labelKey: 'graph.port.filmShotList'
+      }
+    ],
+    defaultParams: () => ({
+      ...textModelParams(),
+      filmTextModel: '',
+      filmTextProviderInstanceId: '',
+      filmBreakdownInstruction: '',
+      filmReviewInstruction: '',
+      filmCastInstruction: '',
+      generateAspectRatio: '',
+      generateResolution: '',
+      generateQuality: '',
+      text: '',
+      filmWorkbenchStage: 'breakdown',
+      filmWorkbenchRunMode: '',
+      filmStoryboard: '',
+      filmSourceHash: '',
+      filmForce: false,
+      filmTargetShots: 0,
+      filmShotDurationSec: 0,
+      filmAspectRatio: '16:9',
+      filmStyle: '',
+      filmReviewMaxRounds: 2,
+      filmReviewReport: '',
+      filmReviewVerdict: '',
+      filmCast: '',
+      filmCastKinds: 'character,location',
+      filmRenders: '',
+      filmRenderMode: 'keyframe',
+      filmShotRange: '',
+      filmRenderContinuity: true,
+      filmRenderQc: false,
+      filmRenderMaxRetries: 1,
+      filmVideoModel: '',
+      filmVideoProviderInstanceId: '',
+      filmQcModel: '',
+      filmQcProviderInstanceId: '',
+      mediaOutputDir: ''
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.film',
+    card: 'media',
+    contributeToGeneration: true,
+    execute: executeFilmWorkbenchNode
+  },
+  {
     typeId: 'film.breakdown',
     category: 'note',
     label: 'Storyboard breakdown',
@@ -93,10 +199,11 @@ export const FILM_NODE_TYPES: NodeTypeDefinition[] = [
       filmSourceHash: '',
       filmForce: false,
       filmTargetShots: 0,
+      filmShotDurationSec: 0,
       filmAspectRatio: '16:9',
       filmStyle: ''
     }),
-    addable: true,
+    addable: false,
     deletable: true,
     inspector: 'none',
     inspectorId: 'studio.graph.film',
@@ -140,7 +247,7 @@ export const FILM_NODE_TYPES: NodeTypeDefinition[] = [
       filmReviewReport: '',
       filmReviewVerdict: ''
     }),
-    addable: true,
+    addable: false,
     deletable: true,
     inspector: 'none',
     inspectorId: 'studio.graph.film',
@@ -194,7 +301,7 @@ export const FILM_NODE_TYPES: NodeTypeDefinition[] = [
       filmForce: false,
       mediaOutputDir: ''
     }),
-    addable: true,
+    addable: false,
     deletable: true,
     inspector: 'none',
     inspectorId: 'studio.graph.film',
@@ -288,6 +395,7 @@ export const FILM_NODE_TYPES: NodeTypeDefinition[] = [
       filmRenders: '',
       filmRenderMode: 'keyframe',
       filmShotRange: '',
+      filmRenderContinuity: true,
       filmRenderQc: false,
       filmRenderMaxRetries: 1,
       filmForce: false,
@@ -297,7 +405,7 @@ export const FILM_NODE_TYPES: NodeTypeDefinition[] = [
       filmQcProviderInstanceId: '',
       mediaOutputDir: ''
     }),
-    addable: true,
+    addable: false,
     deletable: true,
     inspector: 'none',
     inspectorId: 'studio.graph.film',

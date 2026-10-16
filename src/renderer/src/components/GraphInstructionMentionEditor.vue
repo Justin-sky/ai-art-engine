@@ -47,6 +47,8 @@
           :key="chip.edgeId"
           class="ref-chip"
           :class="{
+            'has-role': Boolean(chip.roleLabel),
+            'is-ignored': chip.roleMuted,
             dragging: dragFromId === chip.edgeId && dragMoved,
             'drag-over': dragOverId === chip.edgeId && dragFromId !== chip.edgeId
           }"
@@ -64,6 +66,9 @@
             @pointerenter="showRefPreview('mention', chip, $event)"
             @pointerleave="hideRefPreview"
           >
+            <span v-if="chip.roleLabel" class="ref-role" :class="{ muted: chip.roleMuted }">{{
+              chip.roleLabel
+            }}</span>
             <span class="ref-index">{{ chip.index }}</span>
             <img v-if="chip.thumbUrl" :src="chip.thumbUrl" alt="" draggable="false" />
             <span v-else class="ref-fallback"
@@ -117,6 +122,15 @@
           <ExpandArrowsIcon />
         </button>
       </div>
+    </div>
+
+    <div
+      v-if="model3dGuide"
+      class="model3d-guide-bar"
+      :class="{ warn: model3dGuide.warn }"
+      @pointerdown.stop
+    >
+      {{ model3dGuide.text }}
     </div>
 
     <!-- Teleport：避免 instruction-box overflow / 画布 transform 遮挡 -->
@@ -309,6 +323,9 @@ interface RefChip {
   icon: string
   thumbUrl: string
   snippet: string
+  isImageRef?: boolean
+  roleLabel?: string
+  roleMuted?: boolean
 }
 
 interface FrameChip {
@@ -337,6 +354,7 @@ const props = withDefaults(
     rows?: number
     placeholder?: string
     presetKind?: InstructionPresetKind | null
+    providerKind?: string
     /** inline：Inspector 紧凑框；dialog：大窗内嵌（不显示展开按钮） */
     variant?: 'inline' | 'dialog'
   }>(),
@@ -344,6 +362,7 @@ const props = withDefaults(
     rows: 8,
     placeholder: '',
     presetKind: null,
+    providerKind: '',
     variant: 'inline'
   }
 )
@@ -687,8 +706,39 @@ function lookupThumbUrl(source: GraphNode | null): string {
   return key ? (thumbUrls.value[key] ?? '') : ''
 }
 
+function isSourceImageForModel3d(
+  source: GraphNode | null,
+  ownerNodeId: string,
+  targetPort?: string
+): boolean {
+  if (targetPort === 'in-image') return true
+  if (targetPort === 'in-text') return false
+  if (ownerNodeId && ownerNodeId !== props.nodeId) {
+    const owner = graphEditorHosts.getNode(props.hostId, ownerNodeId)
+    if (isImageBundle(owner)) return true
+  }
+  if (!source) return false
+  if (source.assetType === 'image' || source.typeId === 'asset.image') return true
+  if (
+    source.typeId?.startsWith('image.') ||
+    source.typeId === 'portrait.spec' ||
+    source.typeId === 'comic.page' ||
+    source.typeId === 'anim2d.rig' ||
+    source.typeId === 'anim2d.frames'
+  ) {
+    return true
+  }
+  return Boolean(lookupThumbUrl(source))
+}
+
 function toRefChip(
-  edge: { edgeId: string; ownerNodeId: string; sourceNodeId: string; index: number },
+  edge: {
+    edgeId: string
+    ownerNodeId: string
+    sourceNodeId: string
+    index: number
+    targetPort?: string
+  },
   source: GraphNode | null
 ): RefChip {
   const title = source ? sourceTitle(source) : edge.sourceNodeId.slice(0, 8)
@@ -700,8 +750,76 @@ function toRefChip(
     title,
     icon: source ? sourceIcon(source) : '📄',
     thumbUrl: lookupThumbUrl(source),
-    snippet: source ? sourceSnippet(source) : ''
+    snippet: source ? sourceSnippet(source) : '',
+    isImageRef: isSourceImageForModel3d(source, edge.ownerNodeId, edge.targetPort)
   }
+}
+
+/**
+ * 为 3D 模型生成节点的图片参考芯片打上供应商语义角色角标：
+ * - 单图：参考图
+ * - 多图 Tripo：正视 / 左视 / 后视 / 右视（第 5 张起标记「忽略」）
+ * - 多图 Lux3D：主图 / 辅图
+ * - 多图 Luma：第 1 张「生效」，第 2 张起「忽略」
+ * - 多图 Meshy / Hyper3D 等：多图
+ */
+function decorateModel3dImageChips(chips: RefChip[]): RefChip[] {
+  if (props.presetKind !== 'model3d') return chips
+  const imageTotal = chips.filter((c) => c.isImageRef).length
+  if (imageTotal === 0) return chips
+  let imgIdx = 0
+  const provider = props.providerKind || ''
+  const tripoViews = ['front', 'left', 'back', 'right'] as const
+  return chips.map((chip) => {
+    if (!chip.isImageRef) return chip
+    const k = imgIdx++
+    if (imageTotal === 1) {
+      return {
+        ...chip,
+        roleLabel: t('graph.inspector.generate.model3dRefRoles.single'),
+        roleMuted: false
+      }
+    }
+    if (provider === 'tripo') {
+      if (k < 4) {
+        return {
+          ...chip,
+          roleLabel: t(`graph.inspector.generate.model3dRefRoles.${tripoViews[k]}`),
+          roleMuted: false
+        }
+      }
+      return {
+        ...chip,
+        roleLabel: t('graph.inspector.generate.model3dRefRoles.ignored'),
+        roleMuted: true
+      }
+    }
+    if (provider === 'lux3d') {
+      return {
+        ...chip,
+        roleLabel:
+          k === 0
+            ? t('graph.inspector.generate.model3dRefRoles.primary')
+            : t('graph.inspector.generate.model3dRefRoles.secondary'),
+        roleMuted: false
+      }
+    }
+    if (provider === 'luma') {
+      return {
+        ...chip,
+        roleLabel:
+          k === 0
+            ? t('graph.inspector.generate.model3dRefRoles.active')
+            : t('graph.inspector.generate.model3dRefRoles.ignored'),
+        roleMuted: k > 0
+      }
+    }
+    return {
+      ...chip,
+      roleLabel: t('graph.inspector.generate.model3dRefRoles.multi'),
+      roleMuted: false
+    }
+  })
 }
 
 function styleImagePreviewUrl(item: ProjectStyleImage): string {
@@ -755,33 +873,90 @@ const mentionChips = computed((): RefChip[] => {
     const edges = graphEditorHosts
       .listIncomingEdges(props.hostId, props.nodeId)
       .filter((edge) => !isVideoFramePortId(edge.targetPort))
-    return edges.map((edge, i) => {
+    return decorateModel3dImageChips(
+      edges.map((edge, i) => {
+        const source = graphEditorHosts.getNode(props.hostId, edge.sourceNodeId)
+        return toRefChip(
+          {
+            edgeId: edge.edgeId,
+            ownerNodeId: props.nodeId,
+            sourceNodeId: edge.sourceNodeId,
+            index: portMentionIndex(i, reserve),
+            targetPort: edge.targetPort
+          },
+          source
+        )
+      })
+    )
+  }
+  // 束结入边展开为真实上游缩略图，与 cook @n 一致
+  const logical = expandIncomingThroughBundles(doc, props.nodeId)
+  const edgeById = new Map(doc.edges.map((e) => [e.id, e]))
+  return decorateModel3dImageChips(
+    logical.map((edge, i) => {
       const source = graphEditorHosts.getNode(props.hostId, edge.sourceNodeId)
+      const rawEdge = edgeById.get(edge.edgeId)
       return toRefChip(
         {
           edgeId: edge.edgeId,
-          ownerNodeId: props.nodeId,
+          ownerNodeId: edge.ownerNodeId,
           sourceNodeId: edge.sourceNodeId,
-          index: portMentionIndex(i, reserve)
+          index: portMentionIndex(i, reserve),
+          targetPort: rawEdge?.targetPort
         },
         source
       )
     })
+  )
+})
+
+/** 3D 模型生成节点的实时多图参考指引条 */
+const model3dGuide = computed((): { text: string; warn: boolean } | null => {
+  if (props.presetKind !== 'model3d') return null
+  const imageCount = mentionChips.value.filter((c) => c.isImageRef).length
+  const provider = props.providerKind || ''
+  if (imageCount === 0) {
+    return { text: t('graph.inspector.generate.model3dGuide.textOnly'), warn: false }
   }
-  // 束结入边展开为真实上游缩略图，与 cook @n 一致
-  const logical = expandIncomingThroughBundles(doc, props.nodeId)
-  return logical.map((edge, i) => {
-    const source = graphEditorHosts.getNode(props.hostId, edge.sourceNodeId)
-    return toRefChip(
-      {
-        edgeId: edge.edgeId,
-        ownerNodeId: edge.ownerNodeId,
-        sourceNodeId: edge.sourceNodeId,
-        index: portMentionIndex(i, reserve)
-      },
-      source
-    )
-  })
+  if (imageCount === 1) {
+    return {
+      text:
+        provider === 'luma'
+          ? t('graph.inspector.generate.model3dGuide.singleImageLuma')
+          : t('graph.inspector.generate.model3dGuide.singleImage'),
+      warn: false
+    }
+  }
+  if (provider === 'tripo') {
+    if (imageCount > 4) {
+      return {
+        text: t('graph.inspector.generate.model3dGuide.multiTripoOverflow', {
+          extra: imageCount - 4
+        }),
+        warn: true
+      }
+    }
+    return {
+      text: t('graph.inspector.generate.model3dGuide.multiTripo', { n: imageCount }),
+      warn: false
+    }
+  }
+  if (provider === 'lux3d') {
+    return {
+      text: t('graph.inspector.generate.model3dGuide.multiLux3d', { n: imageCount }),
+      warn: false
+    }
+  }
+  if (provider === 'luma') {
+    return {
+      text: t('graph.inspector.generate.model3dGuide.multiLumaWarn', { extra: imageCount - 1 }),
+      warn: true
+    }
+  }
+  return {
+    text: t('graph.inspector.generate.model3dGuide.multiGeneral', { n: imageCount }),
+    warn: false
+  }
 })
 
 const frameChips = computed((): FrameChip[] => {
@@ -1424,11 +1599,38 @@ onBeforeUnmount(() => {
   background: color-mix(in srgb, #c9842a 88%, #000 12%);
 }
 
-.ref-chip.style-chip .ref-index {
+.ref-chip.style-chip .ref-index,
+.ref-chip.has-role .ref-index {
   left: auto;
   right: 4px;
   top: auto;
   bottom: 4px;
+}
+
+.ref-chip.is-ignored .ref-thumb {
+  opacity: 0.55;
+  border-style: dashed;
+}
+
+.ref-role.muted {
+  background: var(--bg-hover);
+  color: var(--text-muted);
+}
+
+.model3d-guide-bar {
+  margin: 6px 10px 0;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-hover));
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.model3d-guide-bar.warn {
+  background: color-mix(in srgb, var(--status-warning) 14%, var(--bg-hover));
+  border-color: color-mix(in srgb, var(--status-warning) 40%, var(--border));
 }
 
 .ref-role {

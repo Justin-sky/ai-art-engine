@@ -190,15 +190,15 @@ export default {
       },
       shortDrama: {
         title: '影视全流程',
-        desc: '剧本→分镜拆解→导演审核自动修订→角色场景设定→批量拍摄（质检重拍+图生视频）',
+        desc: '剧本 → 影视工作台（分镜拆解 · 导演审核 · 角色场景设定 · 批量拍摄一站式闭环）',
         prompt:
-          '创建一个影视全流程闭环工作流：文本节点放剧本；分镜拆解节点（film.breakdown）把剧本拆成结构化分镜（镜头数随剧情）；导演审核节点（film.review）对照剧本审核并自动修订不通过的镜头；角色场景设定节点（film.cast）为每个角色与地点生成设定图；批量拍摄节点（film.render）按镜头出场名单带设定图拍关键帧、开启视觉质检自动重拍，并以关键帧为首帧生成每镜视频。'
+          '创建一个影视全流程闭环工作流：文本节点放剧本，接入影视工作台节点（film.workbench），一站式完成分镜拆解（镜头数随剧情）、导演审核自动修订、角色与场景设定图生成、以及带设定图参考的关键帧与视频批量拍摄（开启视觉质检自动重拍）。'
       },
       shortDrama9: {
         title: '影视精修·单镜头',
-        desc: '分镜→设定→镜头节点→关键帧图片→镜头视频（手动精修）',
+        desc: '剧本 → 影视工作台 → 镜头节点 → 关键帧图片 → 镜头视频（手动精修）',
         prompt:
-          '创建一个影视单镜头精修工作流：文本节点放剧本，经分镜拆解、导演审核、角色场景设定后接镜头节点（film.shot，按序号取一镜）；镜头节点的关键帧提示词与出场设定图接图片生成节点出关键帧，关键帧与动态提示词接视频生成节点出镜头视频。'
+          '创建一个影视单镜头精修工作流：文本节点放剧本并接入影视工作台节点（film.workbench）产出分镜与角色场景设定；再接镜头节点（film.shot，按序号取一镜），把该镜关键帧提示词与出场设定图接入图片生成节点出关键帧，再把关键帧与动态提示词接入视频生成节点出镜头视频。'
       },
       anim2dGif: {
         title: '2D 帧动画',
@@ -3853,7 +3853,24 @@ export default {
       hint: '连接角色图或参考视频，再接声音后运行；需 Seedance 2.0 等支持参考音频的视频模型'
     },
 
+    imageProcess: {
+      toolLabel: '当前工具',
+      openWorkbench: '双击卡片打开图像处理工作台'
+    },
+
     upscale: {
+      appMark: '高清放大',
+      noSource: '暂无上游图片，请先连接图片输入并执行上游节点',
+      scale: '放大倍率',
+      variant: '画面类型',
+      variants: {
+        general: '通用',
+        portrait: '人像',
+        landscape: '风景 / 场景'
+      },
+      instruction: '附加要求（可选）',
+      instructionPlaceholder: '例如：修复模糊边缘、保留胶片颗粒感…',
+      resetParams: '重置参数',
       systemPrompt: '系统提示词',
       mergedPrompt: '合并提示词',
       promptEmpty: '暂无合并提示词，请在节点指令框填写放大指令'
@@ -4745,6 +4762,7 @@ export default {
         script: '文本'
       },
       image: {
+        process: '图像处理',
         select: '选取图片',
         multiAngle: '多角度编辑',
         lighting: '打光效果',
@@ -4818,6 +4836,7 @@ export default {
         cellSelect: '动态格选择'
       },
       film: {
+        workbench: '影视工作台',
         breakdown: '分镜拆解',
         review: '导演审核',
         cast: '角色场景设定',
@@ -5212,6 +5231,8 @@ export default {
       },
       film: {
         hint: {
+          workbench:
+            '集成分镜拆解、导演审核、角色场景设定与批量拍摄四个阶段：共享同一份分镜与设定数据，既可在工作台内按阶段分步执行，也可一键全流程运行。',
           breakdown:
             '把剧本拆成结构化分镜：场 / 镜头（数量随剧情）/ 角色场景实体。锁定或修改过的镜头在重新拆解时原样保留；剧本未变时直接复用，不重复调模型。',
           review:
@@ -5221,6 +5242,21 @@ export default {
           render:
             '逐镜拍摄关键帧（自动带出场角色 / 地点设定图）→ 可选视觉质检不合格自动重拍 → 可选以关键帧为首帧图生视频。按提示词指纹增量缓存，改一镜只重拍一镜。'
         },
+        stageTabs: {
+          breakdown: '① 分镜拆解',
+          review: '② 导演审核',
+          cast: '③ 角色场景设定',
+          render: '④ 批量拍摄'
+        },
+        runCurrentStage: {
+          breakdown: '运行分镜拆解',
+          review: '运行导演审核',
+          cast: '运行角色设定',
+          render: '运行批量拍摄'
+        },
+        runFullPipeline: '全流程运行',
+        runFullPipelineHint:
+          '按顺序执行：分镜拆解 → 导演审核 → 角色场景设定 → 批量拍摄（未变化内容自动复用缓存）',
         models: '模型',
         textModel: '文本模型',
         imageModel: '图片模型',
@@ -5229,6 +5265,10 @@ export default {
         noModel: '请先在设置中配置模型',
         breakdownOptions: '拆解选项',
         targetShots: '目标镜头数（0 = 自动）',
+        shotDurationSec: '单镜目标时长（秒，0 = 自动）',
+        shotDurationHint:
+          '设 8~30 秒（如 15s）将按长分镜拆解，并在视频提示词内按时间段（0-2s…；2-6s…）分段编写动作与运镜。',
+        shotDurationAuto: '自动',
         aspectRatio: '画幅',
         style: '视觉风格',
         stylePlaceholder: '如：写实电影感、冷暖对比、35mm 胶片颗粒',
@@ -5256,6 +5296,9 @@ export default {
         followStoryboard: '跟随分镜',
         shotRange: '镜头范围',
         shotRangePlaceholder: '空 = 全部，如 1-5,8',
+        continuity: '同场相邻镜头衔接（承接上一镜关键帧与光影动作）',
+        continuityFrom: '承接 {id}',
+        continuityHint: '同场上一镜（{id}）关键帧将作为参考图注入，继承环境光影与空间轴线',
         qc: '关键帧视觉质检（不合格自动重拍）',
         maxRetries: '最多重拍次数',
         renderCacheHint:
@@ -5274,7 +5317,64 @@ export default {
         },
         shots: '分镜（{n} 镜）',
         shotsHint: '点击镜头展开编辑；修改过的镜头自动锁定，重新拆解 / 审核修订都不会改写。',
+        workbenchShotsHint:
+          '大屏逐镜精修：直接编辑景别、运镜、画面动作与提示词；修改后自动锁定，重新拆解 / 审核修订都不会冲掉。',
+        openWorkbench: '打开影视工作台',
+        openWorkbenchHint: '双击打开影视工作台',
+        workbenchTitle: '影视工作台',
+        pipelineNodes: '本图影视节点',
+        entitiesTitle: '角色与场景实体（{n}）',
+        emptyStoryboard:
+          '暂无分镜拆解数据：请先连接上游「剧本」节点，再点击右上角「运行」或「⚡ 全流程运行」拆解分镜。',
+        emptyBreakdown:
+          '暂无分镜拆解数据：请先连接上游「剧本」节点，再点击右上角「运行」或「⚡ 全流程运行」拆解分镜。',
+        emptyReview:
+          '暂无导演审核数据：请先完成「① 分镜拆解」，再点击右上角「运行」或「⚡ 全流程运行」执行导演审核与修订。',
+        emptyCast:
+          '暂无角色与场景设定：请先完成「① 分镜拆解」，再点击右上角「运行」或「⚡ 全流程运行」生成设定图。',
+        emptyRender:
+          '暂无批量拍摄产物：请先完成分镜与角色场景设定，再点击右上角「运行」或「⚡ 全流程运行」开始批量拍摄。',
+        shotPreviewTitle: '当前选中镜头预览',
+        emptyShot:
+          '暂无单镜装配数据：请先连接上游「影视工作台」节点，即可在此按镜号预览与提取单镜提示词。',
+        upstreamDraftHint: '当前预览上游待审分镜草稿，点击右上角「运行」执行导演审核。',
+        lockAll: '全部锁定',
+        unlockAll: '全部解锁',
+        castRefsMatched: '匹配设定参考（{n}）',
+        qcPass: '质检通过',
+        qcFail: '质检未过',
+        renderedKeyframe: '关键帧已就绪',
+        renderedVideo: '视频已就绪',
+        pendingRender: '待拍摄',
+        runCastEntry: '生成设定图',
+        rerunCastEntry: '重绘此项',
+        runShotRender: '拍摄此镜',
+        runShotVideo: '生成视频',
+        rerunShotRender: '重拍此镜',
+        runningSingle: '执行中…',
+        previewFinalPrompt: '预览最终提示词',
+        hideFinalPrompt: '收起提示词',
+        expandAllPrompts: '展开全部提示词',
+        collapseAllPrompts: '收起全部提示词',
+        finalImagePrompt: '关键帧最终提示词（实际发送）',
+        finalVideoPrompt: '视频最终提示词（实际发送）',
+        boundEntities: '绑定角色与场景',
+        addCharacter: '+ 绑定角色',
+        setLocation: '切换地点',
+        clearLocation: '无实景 / 黑屏',
+        refSheetReady: "参考图 {'@'}{n}",
+        refSheetMissing: '待生成设定图',
+        usedInShots: '关联镜头（{n}）',
+        noUsedShots: '暂未在镜头中出场',
         field: {
+          shotSize: '景别',
+          angle: '机位角度',
+          cameraMove: '运镜',
+          durationSec: '时长(s)',
+          location: '场景地点',
+          characters: '出场角色',
+          dialogue: '对白',
+          description: '视觉设定描述',
           action: '画面动作',
           imagePrompt: '关键帧提示词',
           videoPrompt: '动态提示词'
@@ -5937,7 +6037,33 @@ export default {
         speechVoiceDefault: '默认音色',
         speechVoiceManualPlaceholder: '填写音色 ID',
         model3dInstructionPlaceholder:
-          "描述要生成的 3D 模型；可接参考图进行图生 3D；可用 {'@'} 引用连线资源",
+          "描述要生成的 3D 模型；支持连入单图或多张多视角参考图（Tripo 多图按「正视·左视·后视·右视」最多 4 张，可拖拽上方缩略图或用 {'@'} 排序）",
+        model3dRefRoles: {
+          single: '参考图',
+          multi: '多图',
+          front: '正视',
+          left: '左视',
+          back: '后视',
+          right: '右视',
+          primary: '主图',
+          secondary: '辅图',
+          active: '生效',
+          ignored: '忽略'
+        },
+        model3dGuide: {
+          textOnly: '文生 3D · 连入 1 张图片为单图生 3D，连入多张开启多图/多视图建模',
+          singleImage: '单图生 3D · 再连入更多参考图可开启多图/多视图建模',
+          singleImageLuma: '单图生 3D（Luma 仅支持 1 张参考图）',
+          multiTripo:
+            "Tripo 多视图生 3D（{n}/4）· 顺序：正视 → 左视 → 后视 → 右视（拖拽上方缩略图或用 {'@'} 调整方位）",
+          multiTripoOverflow:
+            'Tripo 多视图生 3D（前 4 张生效，已忽略 {extra} 张）· 顺序：正视 → 左视 → 后视 → 右视（拖拽缩略图调序）',
+          multiLux3d: 'Lux3D 多图生 3D（共 {n} 张）· 第 1 张为主参考图（拖拽上方缩略图可切换主图）',
+          multiLumaWarn:
+            'Luma 仅支持单图生 3D · 仅第 1 张生效，已忽略其余 {extra} 张（可拖拽缩略图切换或改选 Tripo / Meshy）',
+          multiGeneral:
+            "多图生 3D（已连入 {n} 张参考图）· 拖拽上方缩略图或用 {'@'} 可调整参考图顺序"
+        },
         spatialWorldInstructionPlaceholder:
           "描述要生成的可漫游 3D 世界（空间格局、起始视角景物、光照氛围）；可接 1–4 张参考图或 1 段参考视频（同时接时以视频为准）；可用 {'@'} 引用连线资源",
         spatialWorldExtractInstructionPlaceholder:
@@ -6328,6 +6454,8 @@ export default {
           loading: '正在读取模型能力…',
           empty: '当前模型未声明可调参数',
           duration: '时长',
+          durationAuto: '自动',
+          durationAutoHint: '自动从分镜拆解获取每镜生成视频的时长',
           durationOption: '{n}秒',
           resolution: '清晰度',
           aspectRatio: '比例',

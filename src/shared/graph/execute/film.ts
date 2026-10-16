@@ -24,6 +24,12 @@ import { SHARED_ERRORS } from '../../errors/catalog'
 import { resolveMentionSources } from './context'
 import { materializeGeneratedBatch } from './materialize'
 import {
+  clampVideoGenerateParams,
+  hasAnyVideoGenerateCapability,
+  supportedDurationsFromError,
+  type VideoGenerateParamCapabilities
+} from '../videoGenerateParams'
+import {
   applyFilmReview,
   composeFilmShotImagePrompt,
   composeFilmShotVideoPrompt,
@@ -34,6 +40,7 @@ import {
   filmNameKey,
   filmStoryboardSummary,
   filmStoryboardToMarkdown,
+  findPrevSameSceneShot,
   isFilmShotLocked,
   matchFilmCastForShot,
   mergeFilmStoryboards,
@@ -179,12 +186,22 @@ async function generateJson<T>(
   what: { zh: string; en: string }
 ): Promise<{ value: T; raw: string }> {
   const generateText = requireTextModel(ctx)
+  const textModel =
+    ctx.node.params.filmTextModel?.trim() ||
+    (ctx.node.typeId !== 'film.workbench' ? ctx.node.params.generateModel?.trim() : '') ||
+    undefined
+  const textProviderId =
+    ctx.node.params.filmTextProviderInstanceId?.trim() ||
+    (ctx.node.typeId !== 'film.workbench'
+      ? ctx.node.params.generateProviderInstanceId?.trim()
+      : '') ||
+    undefined
   const call = (prompt: string): ReturnType<typeof generateText> =>
     generateText({
       prompt,
       system: input.system,
-      model: ctx.node.params.generateModel || undefined,
-      providerInstanceId: ctx.node.params.generateProviderInstanceId || undefined
+      model: textModel,
+      providerInstanceId: textProviderId
     })
   const first = await call(input.prompt)
   checkAbort(ctx)
@@ -250,18 +267,46 @@ export async function executeFilmBreakdownNode(
   const target = Math.max(0, Math.round(Number(node.params.filmTargetShots ?? 0)))
   if (target > 0)
     directives.push(en ? `Target shot count: about ${target}.` : `目标镜头数：约 ${target} 镜。`)
+  const shotDuration = Math.min(
+    60,
+    Math.max(0, Math.round(Number(node.params.filmShotDurationSec ?? 0)))
+  )
+  if (shotDuration > 0) {
+    if (shotDuration >= 8) {
+      const seg1 = Math.max(1, Math.round(shotDuration * 0.15))
+      const seg2 = Math.max(seg1 + 2, Math.round(shotDuration * 0.45))
+      const seg3 = Math.max(seg2 + 2, Math.round(shotDuration * 0.75))
+      directives.push(
+        en
+          ? `Target duration per shot: ${shotDuration}s (long-shot mode). Set each shot's durationSec to ${shotDuration} (do NOT split into short ~3s clips). Pack a continuous multi-beat sequence into each shot, and write videoPrompt in explicit time segments covering the full 0–${shotDuration}s timeline (e.g. 0-${seg1}s: ...; ${seg1}-${seg2}s: ...; ${seg2}-${seg3}s: ...; ${seg3}-${shotDuration}s: ...).`
+          : `单镜目标时长：${shotDuration} 秒（长分镜模式）。严禁拆成 3 秒左右的短镜头，每个镜头的 durationSec 必须设为 ${shotDuration} 左右，承载连续的多阶段剧情动作；videoPrompt 必须按时间段（如 0-${seg1}s：…；${seg1}-${seg2}s：…；${seg2}-${seg3}s：…；${seg3}-${shotDuration}s：…）完整覆盖 0~${shotDuration} 秒内的每段动作演变、表情转折与运镜轨迹。`
+      )
+    } else {
+      const mid = Math.max(1, Math.round(shotDuration * 0.4))
+      directives.push(
+        en
+          ? `Target duration per shot: ${shotDuration}s. Set each shot's durationSec to ${shotDuration}, and write videoPrompt in explicit time segments (e.g. 0-${mid}s: ...; ${mid}-${shotDuration}s: ...).`
+          : `单镜目标时长：${shotDuration} 秒。每个镜头的 durationSec 设为 ${shotDuration} 左右，且 videoPrompt 必须按时间段（如 0-${mid}s：…；${mid}-${shotDuration}s：…）分段写清动作与运镜。`
+      )
+    }
+  }
   const aspect = node.params.filmAspectRatio?.trim()
   if (aspect) directives.push(en ? `Aspect ratio: ${aspect}.` : `画幅：${aspect}。`)
   const style = node.params.filmStyle?.trim()
   if (style) directives.push(en ? `Visual style: ${style}.` : `视觉风格：${style}。`)
-  const extra = node.params.generateInstruction?.trim()
+  const extra = (
+    node.params.filmBreakdownInstruction ??
+    (node.typeId !== 'film.workbench' ? node.params.generateInstruction : '')
+  )?.trim()
   if (extra) directives.push(extra)
   const system =
     node.params.generateSystemPrompt?.trim() || pickFilmPrompt(FILM_BREAKDOWN_SYSTEM, ctx.locale)
+  const textModelKey =
+    node.params.filmTextModel?.trim() ||
+    (node.typeId !== 'film.workbench' ? node.params.generateModel?.trim() : '') ||
+    ''
   // 指纹只看剧本 + 选项 + 模型（不含锁定清单）：锁定 / 人工改镜头不应触发重新拆解
-  const sourceHash = filmHash(
-    `${directives.join('\n')}|${script}|${system}|${node.params.generateModel ?? ''}`
-  )
+  const sourceHash = filmHash(`${directives.join('\n')}|${script}|${system}|${textModelKey}`)
   const locked = previous?.shots.filter(isFilmShotLocked) ?? []
   if (locked.length) {
     const list = locked
@@ -294,8 +339,18 @@ export async function executeFilmBreakdownNode(
     zh: '可解析的分镜 JSON',
     en: 'a parseable storyboard JSON'
   })
+  const normalizedShots =
+    shotDuration > 0
+      ? value.shots.map((shot) =>
+          shot.durationSec === 4 ||
+          (shotDuration >= 8 && shot.durationSec < Math.round(shotDuration * 0.6))
+            ? { ...shot, durationSec: shotDuration }
+            : shot
+        )
+      : value.shots
   const next: FilmStoryboard = {
     ...value,
+    shots: normalizedShots,
     style: style || value.style,
     aspectRatio: aspect || value.aspectRatio
   }
@@ -354,15 +409,21 @@ export async function executeFilmReviewNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
   const { node } = ctx
-  const input = storyboardFromInputs(ctx.inputs.in)
+  const input =
+    storyboardFromInputs(ctx.inputs.in) || parseFilmStoryboard(node.params.filmStoryboard ?? '')
   if (!input) throw new Error('GRAPH_PROCESS_NO_INPUT')
-  const script = await collectScriptText(ctx, ctx.inputs['in-script'] ?? [])
+  const script =
+    (await collectScriptText(ctx, ctx.inputs['in-script'] ?? ctx.inputs.in ?? [])) ||
+    (node.typeId === 'film.workbench' ? node.params.text?.trim() || '' : '')
   const en = isEn(ctx)
   const maxRounds = Math.min(
     5,
     Math.max(0, Math.round(Number(node.params.filmReviewMaxRounds ?? 2)))
   )
-  const criteria = node.params.generateInstruction?.trim()
+  const criteria = (
+    node.params.filmReviewInstruction ??
+    (node.typeId !== 'film.workbench' ? node.params.generateInstruction : '')
+  )?.trim()
   const reviewSystem =
     node.params.generateSystemPrompt?.trim() || pickFilmPrompt(FILM_REVIEW_SYSTEM, ctx.locale)
 
@@ -490,29 +551,41 @@ export async function executeFilmCastNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
   const { node } = ctx
-  const storyboard = storyboardFromInputs(ctx.inputs.in)
+  const onlyId = node.params.filmCastOnlyId?.trim() || ''
+  if (onlyId) patch(ctx, { filmCastOnlyId: '' })
+  const storyboard =
+    storyboardFromInputs(ctx.inputs.in) || parseFilmStoryboard(node.params.filmStoryboard ?? '')
   const previous = parseFilmCast(node.params.filmCast ?? '')
-  if (!storyboard) {
-    if (previous?.entries.length) {
-      return {
-        out: filmCastValue(previous),
-        'out-sheets': { kind: 'images', items: castImageItems(previous) }
-      }
-    }
+  if (!storyboard && !previous?.entries.length) {
     throw new Error('GRAPH_PROCESS_NO_INPUT')
   }
   const kinds = parseFilmCastKinds(node.params.filmCastKinds)
-  const cast = deriveFilmCast(storyboard, previous, kinds)
+  const cast = storyboard ? deriveFilmCast(storyboard, previous, kinds) : previous!
+  if (!storyboard && !onlyId && previous?.entries.length) {
+    return {
+      out: filmCastValue(previous),
+      'out-sheets': { kind: 'images', items: castImageItems(previous) }
+    }
+  }
   const { byKey, style } = splitUserRefs(ctx.inputs['in-image'], cast.entries)
   const styleUrls = await resolveRefUrls(ctx, style.slice(0, 2))
   const force = node.params.filmForce === true
-  const extra = node.params.generateInstruction?.trim()
+  const extra = (
+    node.params.filmCastInstruction ??
+    (node.typeId !== 'film.workbench' ? node.params.generateInstruction : '')
+  )?.trim()
   const aspect = node.params.generateAspectRatio?.trim() || undefined
   let generated = 0
 
   for (const entry of cast.entries) {
     checkAbort(ctx)
-    if (entry.locked) continue
+    if (onlyId) {
+      const isTarget = entry.id === onlyId || filmNameKey(entry.name) === filmNameKey(onlyId)
+      if (!isTarget) continue
+    } else if (entry.locked) {
+      continue
+    }
+    const forceEntry = force || !!onlyId
     // 用户直接给了该实体的图：作为设定图，不再生成
     const userRef = byKey.get(filmNameKey(entry.name))
     if (userRef) {
@@ -535,8 +608,12 @@ export async function executeFilmCastNode(
     ]
       .filter(Boolean)
       .join('\n')
-    const hash = filmHash(`${prompt}|${node.params.generateModel ?? ''}|${aspect ?? ''}`)
-    if (!force && filmCastEntryImage(entry) && entry.promptHash === hash) continue
+    const imageSeed =
+      node.params.generateSeedUseGlobal === false ? node.params.generateSeed : undefined
+    const hash = filmHash(
+      `${prompt}|${node.params.generateModel ?? ''}|${aspect ?? ''}|${node.params.generateResolution ?? ''}|${node.params.generateQuality ?? ''}|${imageSeed ?? ''}`
+    )
+    if (!forceEntry && filmCastEntryImage(entry) && entry.promptHash === hash) continue
     if (!ctx.generateImage) continue
     ctx.log?.(pickLogBi(ctx, `设定图：${entry.name}`, `Design sheet: ${entry.name}`))
     const result = await ctx.generateImage({
@@ -545,6 +622,8 @@ export async function executeFilmCastNode(
       providerInstanceId: node.params.generateProviderInstanceId || undefined,
       aspectRatio: aspect ?? (entry.kind === 'location' ? '16:9' : '4:3'),
       resolution: node.params.generateResolution || undefined,
+      quality: node.params.generateQuality || undefined,
+      ...(imageSeed != null ? { seed: imageSeed } : {}),
       n: 1,
       inputReferences: styleUrls.length ? styleUrls : undefined
     })
@@ -606,14 +685,31 @@ export async function executeFilmShotNode(
   }
   const cast = castFromInputs(ctx.inputs['in-cast'])
   const refs = matchFilmCastForShot(cast, shot)
-  const imagePrompt = composeFilmShotImagePrompt(storyboard, shot, refs, ctx.locale)
-  const videoPrompt = composeFilmShotVideoPrompt(shot, ctx.locale)
-  const refItems: GraphImageItem[] = refs.map((entry) => ({
-    id: `cast:${entry.id}`,
-    title: entry.name,
-    dataUrl: entry.imageUrl ?? '',
-    ...(entry.imageRelativePath ? { relativePath: entry.imageRelativePath } : {})
-  }))
+  const prevShot = findPrevSameSceneShot(storyboard, shot)
+  const prevKeyframe = prevShot?.media?.keyframe?.trim() || ''
+  const imagePrompt = composeFilmShotImagePrompt(storyboard, shot, refs, ctx.locale, {
+    prevShot,
+    prevKeyframeRefIndex: prevKeyframe ? refs.length + 1 : undefined
+  })
+  const videoPrompt = composeFilmShotVideoPrompt(shot, ctx.locale, { prevShot })
+  const refItems: GraphImageItem[] = [
+    ...refs.map((entry) => ({
+      id: `cast:${entry.id}`,
+      title: entry.name,
+      dataUrl: entry.imageUrl ?? '',
+      ...(entry.imageRelativePath ? { relativePath: entry.imageRelativePath } : {})
+    })),
+    ...(prevKeyframe && prevShot
+      ? [
+          {
+            id: `prev:${prevShot.id}`,
+            title: prevShot.id,
+            dataUrl: prevKeyframe.startsWith('data:') ? prevKeyframe : '',
+            ...(prevKeyframe.startsWith('data:') ? {} : { relativePath: prevKeyframe })
+          }
+        ]
+      : [])
+  ]
   patch(ctx, { text: `${shot.id} · ${shot.title || shot.action}`.slice(0, 200) })
   return {
     out: { kind: 'text', text: imagePrompt },
@@ -630,6 +726,7 @@ export interface FilmRenderEntry {
   video?: string
   videoHash?: string
   qc?: { pass: boolean; issues: string }
+  error?: string
 }
 
 export type FilmRenderCache = Record<string, FilmRenderEntry>
@@ -672,23 +769,38 @@ function mediaRefItem(path: string): { relativePath?: string; dataUrl?: string }
   return path.startsWith('data:') ? { dataUrl: path } : { relativePath: path }
 }
 
+/** 选一个视频模型支持的生成时长：优先 ≥ 镜头时长的最小档；无更长档时取最大档 */
+export function pickFilmVideoDuration(shotSec: number, durations?: number[]): number {
+  const want = Math.max(2, Math.round(shotSec))
+  if (!durations?.length) return want
+  const sorted = [
+    ...new Set(durations.map((n) => Math.round(n)).filter((n) => Number.isFinite(n) && n > 0))
+  ].sort((a, b) => a - b)
+  if (!sorted.length) return want
+  return sorted.find((d) => d >= want) ?? sorted[sorted.length - 1]!
+}
+
 export async function executeFilmRenderNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
   const { node } = ctx
-  const input = storyboardFromInputs(ctx.inputs.in)
+  const onlyShotId = node.params.filmRenderOnlyShotId?.trim() || ''
+  if (onlyShotId) patch(ctx, { filmRenderOnlyShotId: '' })
+  const input =
+    storyboardFromInputs(ctx.inputs.in) || parseFilmStoryboard(node.params.filmStoryboard ?? '')
   if (!input) throw new Error('GRAPH_PROCESS_NO_INPUT')
-  const cast = castFromInputs(ctx.inputs['in-cast'])
+  const cast = castFromInputs(ctx.inputs['in-cast']) || parseFilmCast(node.params.filmCast ?? '')
   const cache = parseFilmRenderCache(node.params.filmRenders)
   const mode = node.params.filmRenderMode === 'video' ? 'video' : 'keyframe'
-  const force = node.params.filmForce === true
+  const forceAll = node.params.filmForce === true
+  const continuityOn = node.params.filmRenderContinuity !== false
   const qcOn = node.params.filmRenderQc === true && !!ctx.generateText
   const maxRetries = Math.min(
     3,
     Math.max(0, Math.round(Number(node.params.filmRenderMaxRetries ?? 1)))
   )
   const aspect = node.params.generateAspectRatio?.trim() || input.aspectRatio || undefined
-  const indexes = parseFilmShotRange(node.params.filmShotRange, input.shots)
+  const indexes = parseFilmShotRange(onlyShotId || node.params.filmShotRange, input.shots)
   if (!ctx.generateImage) {
     throw fail(SHARED_ERRORS.resultMissing, {
       what: { zh: '可用的图片模型（关键帧）', en: 'an available image model (keyframes)' }
@@ -703,6 +815,19 @@ export async function executeFilmRenderNode(
   const generateVideo = ctx.generateVideo
   const generateText = ctx.generateText
 
+  let videoCaps: VideoGenerateParamCapabilities | null = null
+  if (mode === 'video' && ctx.resolveVideoGenerateCapabilities) {
+    try {
+      const bundle = await ctx.resolveVideoGenerateCapabilities({
+        model: node.params.filmVideoModel || undefined,
+        providerInstanceId: node.params.filmVideoProviderInstanceId || undefined
+      })
+      if (bundle) videoCaps = bundle.params
+    } catch {
+      /* 能力查询失败时沿用镜头参数，遇时长 400 自动按返回档位重试 */
+    }
+  }
+
   const shots = input.shots.map((shot) => ({ ...shot }))
   let rendered = 0
   let reused = 0
@@ -713,18 +838,62 @@ export async function executeFilmRenderNode(
     checkAbort(ctx)
     const shot = shots[index]
     const entry: FilmRenderEntry = { ...(cache[shot.id] ?? {}) }
+    delete entry.error
     const refs = matchFilmCastForShot(cast, shot)
+    const prevShot = continuityOn ? findPrevSameSceneShot(input, shot) : null
+    const prevKeyframe = prevShot
+      ? (cache[prevShot.id]?.keyframe || prevShot.media?.keyframe || '').trim()
+      : ''
     const extra = node.params.generateInstruction?.trim()
-    const composed = composeFilmShotImagePrompt(input, shot, refs, ctx.locale)
-    const basePrompt = extra ? `${composed}\n${extra}` : composed
-    const keyHash = filmHash(
-      `${basePrompt}|${refs.map(filmCastEntryImage).join(',')}|${node.params.generateModel ?? ''}|${aspect ?? ''}`
+    const composed = composeFilmShotImagePrompt(
+      input,
+      shot,
+      refs,
+      ctx.locale,
+      prevShot
+        ? {
+            prevShot,
+            prevKeyframeRefIndex: prevKeyframe ? refs.length + 1 : undefined
+          }
+        : undefined
     )
+    const basePrompt = extra ? `${composed}\n${extra}` : composed
+    const imageSeed =
+      node.params.generateSeedUseGlobal === false ? node.params.generateSeed : undefined
+    const keyHash = filmHash(
+      `${basePrompt}|${refs.map(filmCastEntryImage).join(',')}|${prevKeyframe}|${node.params.generateModel ?? ''}|${aspect ?? ''}|${node.params.generateResolution ?? ''}|${node.params.generateQuality ?? ''}|${imageSeed ?? ''}`
+    )
+    const hasValidKeyframe = !!entry.keyframe && entry.keyframeHash === keyHash
+    // 单镜执行且处于「关键帧 + 视频」模式：若关键帧已就绪且尚未生成视频，直接复用关键帧补拍视频
+    const onlyNeedsVideo =
+      !!onlyShotId && mode === 'video' && hasValidKeyframe && !entry.video && !forceAll
+    const forceKeyframe = (forceAll || !!onlyShotId) && !onlyNeedsVideo
+    const forceVideo = forceAll || !!onlyShotId
     const progress = `[${step + 1}/${indexes.length}] ${shot.id}`
     try {
       // ① 关键帧（指纹未变 → 复用）
-      if (force || !entry.keyframe || entry.keyframeHash !== keyHash) {
-        const refUrls = await resolveRefUrls(ctx, refs.map(entryRefItem))
+      if (forceKeyframe || !hasValidKeyframe) {
+        const refItems = [
+          ...refs.map(entryRefItem),
+          ...(prevKeyframe ? [mediaRefItem(prevKeyframe)] : [])
+        ]
+        const refUrls = await resolveRefUrls(ctx, refItems)
+        const refMeta = [
+          ...refs.map((ref) => ({
+            source: 'character' as const,
+            name: ref.name,
+            ...(ref.imageRelativePath ? { relativePath: ref.imageRelativePath } : {})
+          })),
+          ...(prevKeyframe && prevShot
+            ? [
+                {
+                  source: 'character' as const,
+                  name: prevShot.id,
+                  ...(prevKeyframe.startsWith('data:') ? {} : { relativePath: prevKeyframe })
+                }
+              ]
+            : [])
+        ].slice(0, refUrls.length)
         let prompt = basePrompt
         let attempt = 0
         for (;;) {
@@ -743,15 +912,10 @@ export async function executeFilmRenderNode(
             aspectRatio: aspect,
             resolution: node.params.generateResolution || undefined,
             quality: node.params.generateQuality || undefined,
+            ...(imageSeed != null ? { seed: imageSeed } : {}),
             n: 1,
             inputReferences: refUrls.length ? refUrls : undefined,
-            inputReferenceMeta: refs.length
-              ? refs.slice(0, refUrls.length).map((ref) => ({
-                  source: 'character' as const,
-                  name: ref.name,
-                  ...(ref.imageRelativePath ? { relativePath: ref.imageRelativePath } : {})
-                }))
-              : undefined
+            inputReferenceMeta: refMeta.length ? refMeta : undefined
           })
           checkAbort(ctx)
           let dataUrl = result.images?.[0]?.trim() ?? ''
@@ -820,21 +984,78 @@ export async function executeFilmRenderNode(
       // ③ 图生视频（首帧 = 关键帧）
       const keyframe = entry.keyframe
       if (mode === 'video' && generateVideo && keyframe) {
-        const videoPrompt = composeFilmShotVideoPrompt(shot, ctx.locale)
-        const videoHash = filmHash(
-          `${keyframe}|${videoPrompt}|${node.params.filmVideoModel ?? ''}|${shot.durationSec}`
+        const videoPrompt = composeFilmShotVideoPrompt(
+          shot,
+          ctx.locale,
+          prevShot ? { prevShot } : undefined
         )
-        if (force || !entry.video || entry.videoHash !== videoHash) {
+        const fallbackShotSec =
+          typeof node.params.filmShotDurationSec === 'number' &&
+          Number.isFinite(node.params.filmShotDurationSec) &&
+          node.params.filmShotDurationSec > 0
+            ? Math.round(node.params.filmShotDurationSec)
+            : 5
+        const targetVideoDuration =
+          typeof node.params.filmVideoDuration === 'number' &&
+          Number.isFinite(node.params.filmVideoDuration) &&
+          node.params.filmVideoDuration > 0
+            ? Math.round(node.params.filmVideoDuration)
+            : shot.durationSec > 0
+              ? shot.durationSec
+              : fallbackShotSec
+        const rawVideoAspect =
+          node.params.filmVideoAspectRatio?.trim() || (aspect === '2.39:1' ? '16:9' : aspect)
+        const rawVideoResolution = node.params.filmVideoResolution?.trim() || undefined
+        const rawVideoAudio =
+          typeof node.params.filmVideoAudio === 'boolean' ? node.params.filmVideoAudio : undefined
+        const videoSeed =
+          node.params.filmVideoSeedUseGlobal === false ? node.params.filmVideoSeed : undefined
+        const videoHash = filmHash(
+          `${keyframe}|${videoPrompt}|${node.params.filmVideoModel ?? ''}|${targetVideoDuration}|${rawVideoResolution ?? ''}|${rawVideoAspect ?? ''}|${rawVideoAudio ?? ''}|${videoSeed ?? ''}`
+        )
+        if (forceVideo || !entry.video || entry.videoHash !== videoHash) {
           ctx.log?.(pickLogBi(ctx, `${progress} 生成视频`, `${progress} video`))
           const [firstFrame] = await resolveRefUrls(ctx, [mediaRefItem(keyframe)])
-          const video = await generateVideo({
+          const clamped =
+            videoCaps != null && hasAnyVideoGenerateCapability(videoCaps)
+              ? clampVideoGenerateParams(
+                  {
+                    aspectRatio: rawVideoAspect,
+                    resolution: rawVideoResolution || node.params.generateResolution || undefined,
+                    duration: pickFilmVideoDuration(targetVideoDuration, videoCaps.durations),
+                    generateAudio: rawVideoAudio,
+                    frameMode: firstFrame ? 'first' : 'none'
+                  },
+                  videoCaps
+                )
+              : null
+          const requestDuration =
+            clamped?.duration ?? pickFilmVideoDuration(targetVideoDuration, videoCaps?.durations)
+          const requestAspect = clamped ? clamped.aspectRatio : rawVideoAspect
+          const requestResolution = clamped ? clamped.resolution : rawVideoResolution
+          const requestAudio = clamped ? clamped.generateAudio : rawVideoAudio
+          const useFirstFrame =
+            firstFrame &&
+            (!clamped ||
+              !videoCaps?.supportedFrameImages?.length ||
+              clamped.frameMode === 'first' ||
+              clamped.frameMode === 'first_last')
+              ? firstFrame
+              : undefined
+          const fallbackRefs =
+            firstFrame && !useFirstFrame
+              ? [{ kind: 'image_url' as const, url: firstFrame }]
+              : undefined
+          const baseVideoInput = {
             prompt: videoPrompt,
             model: node.params.filmVideoModel || undefined,
             providerInstanceId: node.params.filmVideoProviderInstanceId || undefined,
-            duration: Math.max(2, Math.round(shot.durationSec)),
-            aspectRatio: aspect,
-            resolution: node.params.generateResolution || undefined,
-            ...(firstFrame ? { firstFrameImageUrl: firstFrame } : {}),
+            aspectRatio: requestAspect,
+            resolution: requestResolution,
+            ...(typeof requestAudio === 'boolean' ? { generateAudio: requestAudio } : {}),
+            ...(videoSeed != null ? { seed: videoSeed } : {}),
+            ...(useFirstFrame ? { firstFrameImageUrl: useFirstFrame } : {}),
+            ...(fallbackRefs ? { inputReferences: fallbackRefs } : {}),
             outputDir: node.params.mediaOutputDir?.trim() || undefined,
             name: `${ctx.resolveHostAssetName?.() || input.title || 'film'}_${shot.id}`,
             graphBinding: {
@@ -842,7 +1063,34 @@ export async function executeFilmRenderNode(
               nodeId: node.id,
               shotId: shot.id
             }
-          })
+          }
+          let video: Awaited<ReturnType<typeof generateVideo>>
+          try {
+            video = await generateVideo({
+              ...baseVideoInput,
+              duration: requestDuration
+            })
+          } catch (videoErr) {
+            if ((videoErr as Error)?.name === 'AbortError') throw videoErr
+            const errMsg = videoErr instanceof Error ? videoErr.message : String(videoErr)
+            const supported = supportedDurationsFromError(errMsg)
+            const retryDuration = supported.length
+              ? pickFilmVideoDuration(targetVideoDuration, supported)
+              : undefined
+            if (retryDuration == null || retryDuration === requestDuration) throw videoErr
+            ctx.log?.(
+              pickLogBi(
+                ctx,
+                `${progress} 模型不支持 ${requestDuration}s，改用 ${retryDuration}s 重试一次`,
+                `${progress} ${requestDuration}s rejected by model, retrying with ${retryDuration}s`
+              ),
+              'warn'
+            )
+            video = await generateVideo({
+              ...baseVideoInput,
+              duration: retryDuration
+            })
+          }
           checkAbort(ctx)
           entry.video = video.relativePath
           entry.videoHash = videoHash
@@ -851,6 +1099,7 @@ export async function executeFilmRenderNode(
     } catch (err) {
       if ((err as Error)?.name === 'AbortError') throw err
       const message = err instanceof Error ? err.message : String(err)
+      entry.error = message
       failures.push(`${shot.id}: ${message}`)
       ctx.log?.(`${progress} ${message}`, 'error')
     }
@@ -883,7 +1132,12 @@ export async function executeFilmRenderNode(
     }
     if (shot.media?.video) videos.push({ id: `film:${shot.id}`, relativePath: shot.media.video })
   }
-  patch(ctx, { text: filmStoryboardSummary(doc, ctx.locale) })
+  patch(ctx, {
+    text: filmStoryboardSummary(doc, ctx.locale),
+    ...(node.typeId === 'film.workbench' || node.params.filmStoryboard?.trim()
+      ? { filmStoryboard: stringifyFilmStoryboard(doc) }
+      : {})
+  })
   ctx.log?.(
     pickLogBi(
       ctx,
@@ -891,9 +1145,9 @@ export async function executeFilmRenderNode(
       `Render done: ${rendered} new, ${reused} reused, ${failures.length} failed`
     )
   )
-  if (failures.length && !images.length) {
+  if (failures.length && (!images.length || (mode === 'video' && !videos.length) || !!onlyShotId)) {
     throw fail(SHARED_ERRORS.resultMissing, {
-      what: { zh: `任何镜头产物（${failures[0]}）`, en: `any shot output (${failures[0]})` }
+      what: { zh: `镜头拍摄产物（${failures[0]}）`, en: `shot render output (${failures[0]})` }
     })
   }
   return {
@@ -901,4 +1155,129 @@ export async function executeFilmRenderNode(
     'out-images': { kind: 'images', items: images },
     'out-videos': { kind: 'videos', items: videos }
   }
+}
+
+// ─── film.workbench 影视工作台（四阶段合一节点） ─────────────────────────
+
+function collectWorkbenchOutputs(ctx: NodeExecuteContext): Record<string, GraphValue> {
+  const { node } = ctx
+  const doc = parseFilmStoryboard(node.params.filmStoryboard ?? '')
+  const cast = parseFilmCast(node.params.filmCast ?? '')
+  const cache = parseFilmRenderCache(node.params.filmRenders)
+  const shotIds = doc?.shots.map((shot) => shot.id) ?? Object.keys(cache)
+  const images: GraphImageItem[] = []
+  const videos: GraphVideoItem[] = []
+  for (const shotId of shotIds) {
+    const entry = cache[shotId]
+    const kf = entry?.keyframe?.trim() ?? ''
+    if (kf) {
+      const inline = kf.startsWith('data:')
+      images.push({
+        id: `film:${shotId}`,
+        title: shotId,
+        dataUrl: inline ? kf : '',
+        ...(inline ? {} : { relativePath: kf })
+      })
+    }
+    const vid = entry?.video?.trim() ?? ''
+    if (vid) videos.push({ id: `film:${shotId}`, relativePath: vid })
+  }
+  return {
+    ...(doc
+      ? {
+          out: filmStoryboardValue(doc),
+          'out-text': { kind: 'text', text: filmStoryboardToMarkdown(doc, ctx.locale) }
+        }
+      : {}),
+    ...(cast
+      ? {
+          'out-cast': filmCastValue(cast),
+          'out-sheets': { kind: 'images', items: castImageItems(cast) }
+        }
+      : {}),
+    'out-images': { kind: 'images', items: images },
+    'out-videos': { kind: 'videos', items: videos }
+  }
+}
+
+export async function executeFilmWorkbenchNode(
+  ctx: NodeExecuteContext
+): Promise<Record<string, GraphValue>> {
+  const { node } = ctx
+  const onlyCastId = node.params.filmCastOnlyId?.trim() || ''
+  const onlyShotId = node.params.filmRenderOnlyShotId?.trim() || ''
+  const rawMode = node.params.filmWorkbenchRunMode?.trim() || ''
+  if (rawMode) patch(ctx, { filmWorkbenchRunMode: '' })
+
+  const runTarget: 'all' | 'breakdown' | 'review' | 'cast' | 'render' = onlyCastId
+    ? 'cast'
+    : onlyShotId
+      ? 'render'
+      : rawMode === 'breakdown' ||
+          rawMode === 'review' ||
+          rawMode === 'cast' ||
+          rawMode === 'render'
+        ? rawMode
+        : 'all'
+
+  // 1) 分镜拆解（或者单跑后续阶段但尚无分镜时自动补拆解）
+  let storyboard = parseFilmStoryboard(node.params.filmStoryboard ?? '')
+  if (runTarget === 'breakdown' || runTarget === 'all' || !storyboard) {
+    await executeFilmBreakdownNode(ctx)
+    storyboard = parseFilmStoryboard(node.params.filmStoryboard ?? '')
+  }
+
+  // 2) 导演审核（显式单跑审核，或全流程开启了审核且当前未 PASS / 强制重跑）
+  const maxReviewRounds = Math.min(
+    5,
+    Math.max(0, Math.round(Number(node.params.filmReviewMaxRounds ?? 2)))
+  )
+  const shouldReview =
+    runTarget === 'review' ||
+    (runTarget === 'all' &&
+      maxReviewRounds > 0 &&
+      !!ctx.generateText &&
+      !!storyboard &&
+      (node.params.filmForce === true || storyboard.review?.verdict !== 'PASS'))
+  if (shouldReview && storyboard) {
+    await executeFilmReviewNode({
+      ...ctx,
+      inputs: {
+        ...ctx.inputs,
+        in: [filmStoryboardValue(storyboard)],
+        'in-script': ctx.inputs['in-script'] ?? ctx.inputs.in ?? []
+      }
+    })
+    storyboard = parseFilmStoryboard(node.params.filmStoryboard ?? '') ?? storyboard
+  }
+
+  // 3) 角色场景设定
+  if ((runTarget === 'cast' || runTarget === 'all') && storyboard) {
+    await executeFilmCastNode({
+      ...ctx,
+      inputs: {
+        ...ctx.inputs,
+        in: [filmStoryboardValue(storyboard)]
+      }
+    })
+  }
+
+  // 4) 批量拍摄
+  if (
+    (runTarget === 'render' ||
+      (runTarget === 'all' && (!!ctx.generateImage || !!ctx.generateVideo))) &&
+    storyboard
+  ) {
+    const cast = parseFilmCast(node.params.filmCast ?? '')
+    await executeFilmRenderNode({
+      ...ctx,
+      inputs: {
+        ...ctx.inputs,
+        in: [filmStoryboardValue(storyboard)],
+        'in-cast': cast ? [filmCastValue(cast)] : (ctx.inputs['in-cast'] ?? [])
+      }
+    })
+  }
+
+  return collectWorkbenchOutputs(ctx)
 }

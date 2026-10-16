@@ -20,6 +20,7 @@ describe('graph processing menu labels', () => {
     expect(t('graph.types.asset.screenplay')).toBe('剧本生成')
     expect(t('graph.types.asset.motion')).toBe('3D导演台')
     // 影视流水线：菜单短名与词表一致（长描述在 hint / 预设里用「分镜拆解」等全称）
+    expect(t('graph.types.film.workbench')).toBe('影视工作台')
     expect(t('graph.types.film.breakdown')).toBe('分镜拆解')
     expect(t('graph.types.film.review')).toBe('导演审核')
     expect(t('graph.types.film.cast')).toBe('角色场景设定')

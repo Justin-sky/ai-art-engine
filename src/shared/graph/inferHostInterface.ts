@@ -46,14 +46,50 @@ function toBoundaryDataType(dataType: GraphPortDataType): GraphPortDataType {
   return toSingularGraphPortDataType(dataType)
 }
 
-function pickPrimaryOutType(node: GraphNode): GraphPortDataType | null {
+function pickPrimaryOutPort(
+  node: GraphNode
+): { id: string; dataType: GraphPortDataType; multiple: boolean } | null {
   const outs = getNodePorts(node).filter((p) => p.direction === 'out')
   if (!outs.length) return null
+  if (node.typeId === 'film.workbench' || node.typeId === 'film.render') {
+    const defaultMode = node.typeId === 'film.workbench' ? 'video' : 'keyframes'
+    const mode =
+      typeof node.params?.filmRenderMode === 'string' ? node.params.filmRenderMode : defaultMode
+    const preferredId =
+      mode === 'video' ? 'out-videos' : mode === 'sheets' ? 'out-sheets' : 'out-images'
+    const hit =
+      outs.find((p) => p.id === preferredId) ??
+      outs.find((p) => p.id === 'out-videos') ??
+      outs.find((p) => p.id === 'out-images')
+    if (hit) {
+      return {
+        id: hit.id,
+        dataType: hit.dataType,
+        multiple: hit.multiple === true || isPluralGraphPortDataType(hit.dataType)
+      }
+    }
+  }
   for (const preferred of OUT_TYPE_PRIORITY) {
     const hit = outs.find((p) => p.dataType === preferred)
-    if (hit) return toBoundaryDataType(hit.dataType)
+    if (hit) {
+      return {
+        id: hit.id,
+        dataType: hit.dataType,
+        multiple: hit.multiple === true || isPluralGraphPortDataType(hit.dataType)
+      }
+    }
   }
-  return toBoundaryDataType(outs[0]!.dataType)
+  const first = outs[0]!
+  return {
+    id: first.id,
+    dataType: first.dataType,
+    multiple: first.multiple === true || isPluralGraphPortDataType(first.dataType)
+  }
+}
+
+function pickPrimaryOutType(node: GraphNode): GraphPortDataType | null {
+  const primary = pickPrimaryOutPort(node)
+  return primary ? toBoundaryDataType(primary.dataType) : null
 }
 
 function sortSinks(a: GraphNode, b: GraphNode): number {
@@ -148,8 +184,10 @@ export function inferHostInterfaceFromGraph(document: GraphDocument): HostInterf
   } else {
     const outTypeOrdinal = new Map<string, number>()
     for (const sink of sinks) {
-      const dataType = pickPrimaryOutType(sink)
-      if (!dataType) continue
+      const primary = pickPrimaryOutPort(sink)
+      if (!primary) continue
+      const isPlural = isPluralGraphPortDataType(primary.dataType)
+      const dataType = isPlural ? primary.dataType : toBoundaryDataType(primary.dataType)
       const next = (outTypeOrdinal.get(dataType) ?? 0) + 1
       outTypeOrdinal.set(dataType, next)
       const title = typeof sink.title === 'string' ? sink.title.trim() : ''
@@ -157,7 +195,7 @@ export function inferHostInterfaceFromGraph(document: GraphDocument): HostInterf
         id: outputs.length === 0 ? 'out' : `out-${outputs.length}`,
         label: title || hostBoundaryPortLabel(dataType, 'out', next),
         dataType,
-        multiple: false
+        multiple: isPlural
       })
     }
   }
@@ -175,7 +213,8 @@ export function inferHostInterfaceFromGraph(document: GraphDocument): HostInterf
     const ins = getNodePorts(source).filter((p) => p.direction === 'in')
     for (const port of ins) {
       const wired = document.edges.some(
-        (e) => e.target === source.id && (e.targetPort ?? 'in') === port.id
+        (e) =>
+          e.target === source.id && businessIds.has(e.source) && (e.targetPort ?? 'in') === port.id
       )
       if (wired) continue
       const dataType = toBoundaryDataType(port.dataType)

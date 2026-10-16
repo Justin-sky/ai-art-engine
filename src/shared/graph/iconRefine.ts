@@ -13,6 +13,7 @@
  * 以及据此组装「单枚精修」的生图指令。
  */
 import { readImageGridSplitFromNode } from './imageGridSplit'
+import { isGridSplitEditorNode } from './nodeRole'
 import {
   normalizeIconPackCellRefines,
   parseIconCellKey,
@@ -113,7 +114,7 @@ export function resolveIconRefineContext(
 ): IconRefineContext | null {
   if (!doc || !splitNodeId?.trim()) return null
   const split = findNode(doc, splitNodeId)
-  if (!split || split.typeId !== 'image.gridSplit') return null
+  if (!split || !isGridSplitEditorNode(split)) return null
   const splitState = readImageGridSplitFromNode(split.params)
   const rc = parseIconCellKey(cellKey)
   if (!rc || rc.row1 > splitState.rows || rc.col1 > splitState.cols) return null

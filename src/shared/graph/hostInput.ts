@@ -33,6 +33,8 @@ import {
 } from './hostInterface'
 import { catalogValue } from './catalogValue'
 import { parsePromptPlan } from '../semanticTimeline'
+import { filmStoryboardToMarkdown, parseFilmCast, parseFilmStoryboard } from './film/storyboard'
+import { filmCastValue, filmStoryboardValue, parseFilmRenderCache } from './execute/film'
 
 /**
  * 把抬升/软解析出的宿主出口值物化到宿主节点 params 图库：
@@ -738,6 +740,74 @@ export function softResolveSourceOutput(
     if (graphValueHasPayload(fromRun)) return fromRun
     const cached = parsePromptPlan(node.params.planJson)
     if (cached) return videoPromptsValue(cached)
+  }
+
+  // 影视工作台 / 分镜与审核：params.filmStoryboard 为权威落盘值（含工作台/检查器人工精修），优先从参数还原
+  if (
+    node.typeId === 'film.workbench' ||
+    node.typeId === 'film.breakdown' ||
+    node.typeId === 'film.review'
+  ) {
+    const doc = parseFilmStoryboard(node.params.filmStoryboard ?? '')
+    if (doc?.shots?.length) {
+      if (sourcePort === 'out' || !sourcePort) return filmStoryboardValue(doc)
+      if (sourcePort === 'out-text') return { kind: 'text', text: filmStoryboardToMarkdown(doc) }
+    }
+  }
+  if (node.typeId === 'film.workbench' || node.typeId === 'film.cast') {
+    const cast = parseFilmCast(node.params.filmCast ?? '')
+    if (cast?.entries?.length) {
+      const isCastPort =
+        node.typeId === 'film.workbench'
+          ? sourcePort === 'out-cast'
+          : sourcePort === 'out' || !sourcePort
+      if (isCastPort) return filmCastValue(cast)
+      if (sourcePort === 'out-sheets') {
+        const items = cast.entries
+          .filter((entry) => entry.imageRelativePath?.trim() || entry.imageUrl?.trim())
+          .map((entry) => ({
+            id: `cast:${entry.id}`,
+            title: entry.name,
+            dataUrl: entry.imageUrl?.startsWith('data:') ? entry.imageUrl : '',
+            ...(entry.imageRelativePath?.trim()
+              ? { relativePath: entry.imageRelativePath.trim() }
+              : entry.imageUrl && !entry.imageUrl.startsWith('data:')
+                ? { relativePath: entry.imageUrl.trim() }
+                : {})
+          }))
+        if (items.length) return { kind: 'images', items }
+      }
+    }
+  }
+  if (
+    (node.typeId === 'film.workbench' || node.typeId === 'film.render') &&
+    !graphValueHasPayload(fromRun)
+  ) {
+    const cache = parseFilmRenderCache(node.params.filmRenders)
+    if (sourcePort === 'out-images') {
+      const items = Object.entries(cache)
+        .filter(([, entry]) => entry?.keyframe?.trim())
+        .map(([shotId, entry]) => {
+          const kf = entry.keyframe!.trim()
+          const inline = kf.startsWith('data:')
+          return {
+            id: `film:${shotId}`,
+            title: shotId,
+            dataUrl: inline ? kf : '',
+            ...(inline ? {} : { relativePath: kf })
+          }
+        })
+      if (items.length) return { kind: 'images', items }
+    }
+    if (sourcePort === 'out-videos') {
+      const items = Object.entries(cache)
+        .filter(([, entry]) => entry?.video?.trim())
+        .map(([shotId, entry]) => ({
+          id: `film:${shotId}`,
+          relativePath: entry.video!.trim()
+        }))
+      if (items.length) return { kind: 'videos', items }
+    }
   }
 
   // 世界元素宿主：实体先于文本图库，避免目录或正文冒充实体

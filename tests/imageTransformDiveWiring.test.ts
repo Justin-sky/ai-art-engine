@@ -16,36 +16,40 @@ import { BUILTIN_NODE_TYPES, getNodePorts, listAddableNodeTypes } from '../src/s
 const ROOT = join(__dirname, '..')
 const read = (relative: string): string => readFileSync(join(ROOT, relative), 'utf8')
 
-describe('image.transform 节点注册', () => {
-  it('已注册、可添加、端口正确（右键菜单与 MCP graph_node_types 同源）', () => {
+describe('image.transform 节点注册（与 image.process 图像处理合一）', () => {
+  it('image.process 已注册、可添加；旧 image.transform 保留兼容且端口正确', () => {
+    const procDef = BUILTIN_NODE_TYPES.find((item) => item.typeId === 'image.process')
+    expect(procDef, 'image.process 未注册').toBeTruthy()
+    expect(procDef?.addable).toBe(true)
+    expect(procDef?.deletable).toBe(true)
+    expect(procDef?.inspectorId).toBe('studio.graph.imageProcess')
+    expect(listAddableNodeTypes().some((item) => item.typeId === 'image.process')).toBe(true)
+
     const def = BUILTIN_NODE_TYPES.find((item) => item.typeId === 'image.transform')
     expect(def, 'image.transform 未注册').toBeTruthy()
-    expect(def?.addable).toBe(true)
+    expect(def?.addable).toBe(false)
     expect(def?.deletable).toBe(true)
     expect(def?.inspectorId).toBe('studio.graph.transform')
     // 纯本地节点：不参与生成、不调模型
     expect(def?.contributeToGeneration).toBe(false)
     expect(String(def?.description ?? '').length).toBeGreaterThan(20)
-    expect(listAddableNodeTypes().some((item) => item.typeId === 'image.transform')).toBe(true)
 
     const ports = getNodePorts('image.transform').map((port) => `${port.id}:${port.direction}`)
     expect(ports).toContain('in-image:in')
     expect(ports).toContain('out:out')
   })
 
-  it('出现在「图片编辑」分组菜单里（拼错 id 就等于菜单里没有）', () => {
+  it('image.process 出现在「图片编辑」分组菜单里', () => {
     const editor = read('src/renderer/src/components/NodeGraphEditor.vue')
     const group = /id: 'imageEdit',\s*\n\s*typeIds: \[([\s\S]*?)\]/.exec(editor)?.[1] ?? ''
     expect(group, '找不到 imageEdit 分组声明').toBeTruthy()
-    expect(group).toContain("'image.transform'")
-    // 与裁剪 / 抠图这些同类本地节点排在一起
-    expect(group).toContain("'image.crop'")
+    expect(group).toContain("'image.process'")
   })
 
-  it('中英文案齐全（graph.types.image.transform 是界面上的节点名）', () => {
-    for (const [file, expected] of [
-      ['zh-CN.ts', '图片变换'],
-      ['en-US.ts', 'Image transform']
+  it('中英文案齐全（graph.types.image.transform 与 graph.types.image.process）', () => {
+    for (const [file, expected, expectedProcess] of [
+      ['zh-CN.ts', '图片变换', '图像处理'],
+      ['en-US.ts', 'Image transform', 'Image processing']
     ] as const) {
       const locale = read(`src/renderer/src/i18n/locales/${file}`)
       // 注意：i18n 里不止一个 `types:` 块（端口类型 / 资产类型也有），必须挑「节点类型」那一个 ——
@@ -56,6 +60,7 @@ describe('image.transform 节点注册', () => {
           .find((text) => text.includes('portraitTexture:')) ?? ''
       expect(block, `${file} 找不到节点类型名块`).toBeTruthy()
       expect(block, `${file} 缺 transform 节点名`).toContain(`transform: '${expected}'`)
+      expect(block, `${file} 缺 process 节点名`).toContain(`process: '${expectedProcess}'`)
       expect(locale, `${file} 缺 transform 节点提示`).toMatch(/transform: \{[\s\S]*?hint:/)
     }
   })
@@ -73,7 +78,7 @@ describe('image.transform dive 接线', () => {
 
   it('宿主四个分支齐全（模板 + toolOpen + closeCurrent + 面包屑 flush）', () => {
     const host = read('src/renderer/src/components/dive/EditorDiveNodeToolHost.vue')
-    expect(host).toMatch(/viewId === 'node\.transform'/)
+    expect(host).toMatch(/activeViewId === 'node\.transform'/)
     expect(host).toContain('ImageTransformEditorDialog')
     expect(host).toMatch(/case 'node\.transform':\s*\n\s*return current\.transform\.open/)
     expect(host).toMatch(/case 'node\.transform':\s*\n\s*current\.closeTransform\(\)/)

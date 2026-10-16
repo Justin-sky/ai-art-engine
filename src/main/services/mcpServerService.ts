@@ -1783,7 +1783,39 @@ const TOOL_DEFS: McpToolDef[] = [
         prompt: { type: 'string', description: '工作流描述（presetId 缺省时必填）' },
         presetId: { type: 'string', description: '行业模板 id，可选' },
         useSeedOnly: { type: 'boolean', description: 'true 时只用预设固化拓扑，不调用文本模型' },
-        model: { type: 'string', description: '文本模型 id，可选（缺省用应用当前选择）' },
+        model: {
+          type: 'string',
+          description:
+            '规划用文本模型 id，可选（未指定 textModel 时同时注入 film.workbench 的 filmTextModel）'
+        },
+        providerInstanceId: {
+          type: 'string',
+          description: '规划用文本模型所属提供商实例 id，可选'
+        },
+        textModel: {
+          type: 'string',
+          description: '默认文本模型 id，可选（注入 film.workbench 的 filmTextModel）'
+        },
+        textProviderInstanceId: {
+          type: 'string',
+          description: '默认文本模型所属提供商实例 id，可选'
+        },
+        imageModel: {
+          type: 'string',
+          description: '默认图片模型 id，可选（注入图片生成与 film.workbench 节点）'
+        },
+        imageProviderInstanceId: {
+          type: 'string',
+          description: '图片模型所属提供商实例 id，可选'
+        },
+        videoModel: {
+          type: 'string',
+          description: '默认视频模型 id，可选（注入视频生成与 film.workbench 节点）'
+        },
+        videoProviderInstanceId: {
+          type: 'string',
+          description: '视频模型所属提供商实例 id，可选'
+        },
         generateAspectRatio: { type: 'string', description: '统一宽高比，如 9:16' }
       },
       required: []
@@ -1795,6 +1827,13 @@ const TOOL_DEFS: McpToolDef[] = [
         presetId: optionalString(args, 'presetId'),
         useSeedOnly: args.useSeedOnly === true,
         model: optionalString(args, 'model'),
+        providerInstanceId: optionalString(args, 'providerInstanceId'),
+        textModel: optionalString(args, 'textModel'),
+        textProviderInstanceId: optionalString(args, 'textProviderInstanceId'),
+        imageModel: optionalString(args, 'imageModel'),
+        imageProviderInstanceId: optionalString(args, 'imageProviderInstanceId'),
+        videoModel: optionalString(args, 'videoModel'),
+        videoProviderInstanceId: optionalString(args, 'videoProviderInstanceId'),
         generateAspectRatio: optionalString(args, 'generateAspectRatio')
       }
       return planAiWorkflow(input, { signal: ctx?.signal })
@@ -1815,9 +1854,18 @@ const TOOL_DEFS: McpToolDef[] = [
         },
         name: { type: 'string', description: '资产显示名，缺省用计划标题' },
         generateAspectRatio: { type: 'string', description: '统一宽高比，如 9:16' },
+        textModel: {
+          type: 'string',
+          description: '文本模型 id：写入计划中未指定 filmTextModel 的 film.workbench 节点'
+        },
+        textProviderInstanceId: {
+          type: 'string',
+          description: '文本模型所属提供商实例 id，可选（自定义提供商模型需要）'
+        },
         imageModel: {
           type: 'string',
-          description: '图片模型 id：写入计划中未指定 generateModel 的图片生成/高清放大节点'
+          description:
+            '图片模型 id：写入计划中未指定 generateModel 的图片生成 / 高清放大 / film.workbench 节点'
         },
         imageProviderInstanceId: {
           type: 'string',
@@ -1825,7 +1873,8 @@ const TOOL_DEFS: McpToolDef[] = [
         },
         videoModel: {
           type: 'string',
-          description: '视频模型 id：写入计划中未指定 generateModel 的视频生成节点'
+          description:
+            '视频模型 id：写入计划中未指定 generateModel / filmVideoModel 的视频生成 / film.workbench 节点'
         },
         videoProviderInstanceId: {
           type: 'string',
@@ -1843,6 +1892,8 @@ const TOOL_DEFS: McpToolDef[] = [
         plan: plan as CommitAiWorkflowInput['plan'],
         name: optionalString(args, 'name'),
         generateAspectRatio: optionalString(args, 'generateAspectRatio'),
+        textModel: optionalString(args, 'textModel'),
+        textProviderInstanceId: optionalString(args, 'textProviderInstanceId'),
         imageModel: optionalString(args, 'imageModel'),
         imageProviderInstanceId: optionalString(args, 'imageProviderInstanceId'),
         videoModel: optionalString(args, 'videoModel'),
@@ -1894,8 +1945,30 @@ const TOOL_DEFS: McpToolDef[] = [
         id: { type: 'string', description: '已安装工作流的 id（workflow_list_installed 返回）' },
         name: { type: 'string', description: '资产显示名，缺省用工作流标题' },
         generateAspectRatio: { type: 'string', description: '统一宽高比，如 9:16' },
-        imageModel: { type: 'string', description: '图片模型 id（覆盖计划中未指定的图片节点）' },
-        videoModel: { type: 'string', description: '视频模型 id（覆盖计划中未指定的视频节点）' },
+        textModel: {
+          type: 'string',
+          description: '文本模型 id（写入未指定 filmTextModel 的 film.workbench 节点）'
+        },
+        textProviderInstanceId: {
+          type: 'string',
+          description: '文本模型所属提供商实例 id，可选'
+        },
+        imageModel: {
+          type: 'string',
+          description: '图片模型 id（覆盖计划中未指定的图片节点与 film.workbench）'
+        },
+        imageProviderInstanceId: {
+          type: 'string',
+          description: '图片模型所属提供商实例 id，可选'
+        },
+        videoModel: {
+          type: 'string',
+          description: '视频模型 id（覆盖计划中未指定的视频节点与 film.workbench）'
+        },
+        videoProviderInstanceId: {
+          type: 'string',
+          description: '视频模型所属提供商实例 id，可选'
+        },
         folderId: { type: 'string', description: '资产库文件夹 id（folder_list 查询）' }
       },
       required: ['id']
@@ -1917,8 +1990,12 @@ const TOOL_DEFS: McpToolDef[] = [
           seedPlan: installed.bundle.plan as PlanAiWorkflowInput['seedPlan'],
           useSeedOnly: true,
           generateAspectRatio: optionalString(args, 'generateAspectRatio'),
+          textModel: optionalString(args, 'textModel'),
+          textProviderInstanceId: optionalString(args, 'textProviderInstanceId'),
           imageModel: optionalString(args, 'imageModel'),
-          videoModel: optionalString(args, 'videoModel')
+          imageProviderInstanceId: optionalString(args, 'imageProviderInstanceId'),
+          videoModel: optionalString(args, 'videoModel'),
+          videoProviderInstanceId: optionalString(args, 'videoProviderInstanceId')
         },
         { signal: ctx?.signal }
       )
@@ -1929,8 +2006,12 @@ const TOOL_DEFS: McpToolDef[] = [
         plan: planned.plan,
         name: optionalString(args, 'name') ?? installed.bundle.title,
         generateAspectRatio: optionalString(args, 'generateAspectRatio'),
+        textModel: optionalString(args, 'textModel'),
+        textProviderInstanceId: optionalString(args, 'textProviderInstanceId'),
         imageModel: optionalString(args, 'imageModel'),
+        imageProviderInstanceId: optionalString(args, 'imageProviderInstanceId'),
         videoModel: optionalString(args, 'videoModel'),
+        videoProviderInstanceId: optionalString(args, 'videoProviderInstanceId'),
         folderId: optionalString(args, 'folderId')
       })
       if (!result.ok || !result.assetId) {
@@ -2209,7 +2290,7 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'graph_node_types',
     title: '节点类型清单',
     description:
-      '列出能被 graph_edit 添加到宿主资产子图的节点类型（与 graph_edit 的 node_upsert 校验同一白名单，含 2D 舞台 / 宫格切分 / 图标包等新节点）：typeId、名称、分类、端口（连线时 fromPort / toPort 用的 id）与可选默认参数。用于外部 Agent 自发现可建节点，避免用猜的 typeId 被 graph_edit 跳过。需要 2D 帧动画 / GIF 动图时查 `anim.2d`：一张按行列分格的序列图（sprite sheet）从 in 端口接入，按 animRows / animCols 逐格切成帧 PNG；animGifFps（1–24，默认 0 = 只切帧）> 0 时额外经 out-gif 端口产出 GIF 动图并落盘为工程资产；动作预设与自定义描述见 animPresetId / animInstruction。只读操作，无需打开工程。需要 SVG 矢量图 / 矢量动画（不是位图）时查 `svg.gen` 与 `svg.anim`：`svg.gen` 用文本模型把描述画成 SVG 源码并落盘为工程 .svg 资产（in 接文本指令、in-image 接参考图照图生矢量，自带 SVG 系统提示词）；要帧序列 / GIF 就把它接到 `svg.anim` 的 in 端口（端口类型 svg）烘焙：含 SMIL 动效出多帧 PNG（out / out-all）+ GIF（out-gif），静态 SVG 只出 1 帧、不产 GIF（动效须写在 SVG 自身的 <animate> / <animateTransform> / <set> 里，CSS @keyframes 与 <animateMotion> 不参与求值）。关键参数：svgGenWidth / svgGenHeight（16–2048，默认 512）、svgGenBackground、svgFrames（2–60，默认 12）、svgDurationSec（0 = 自动探测动画周期，上限 30 秒），用 includeParams 查询。',
+      '列出能被 graph_edit 添加到宿主资产子图的节点类型（与 graph_edit 的 node_upsert 校验同一白名单，含影视制作工作台 / 2D 舞台 / 宫格切分 / 图标包等新节点）：typeId、名称、分类、端口（连线时 fromPort / toPort 用的 id）与可选默认参数。用于外部 Agent 自发现可建节点，避免用猜的 typeId 被 graph_edit 跳过。需要影视 / 短剧 / 分镜创作时查 `film.workbench` 与 `film.shot`：`play.script` → `film.workbench` 一站式完成分镜拆解、导演审核、角色/场景设定图与各镜头关键帧/视频拍摄（参数见 filmStoryboard / filmCast / filmRenderMode / filmWorkbenchRunMode）；需按镜展开节点链或单镜精修时用 `film.workbench` → `film.shot`（out→in，out-cast→in-cast，参数 filmShotRef）→ `asset.image`（out→in-text，out-refs→in-image）→ `asset.video`（out-motion→in-text）。需要 2D 帧动画 / GIF 动图时查 `anim.2d`：一张按行列分格的序列图（sprite sheet）从 in 端口接入，按 animRows / animCols 逐格切成帧 PNG；animGifFps（1–24，默认 0 = 只切帧）> 0 时额外经 out-gif 端口产出 GIF 动图并落盘为工程资产；动作预设与自定义描述见 animPresetId / animInstruction。只读操作，无需打开工程。需要 SVG 矢量图 / 矢量动画（不是位图）时查 `svg.gen` 与 `svg.anim`：`svg.gen` 用文本模型把描述画成 SVG 源码并落盘为工程 .svg 资产（in 接文本指令、in-image 接参考图照图生矢量，自带 SVG 系统提示词）；要帧序列 / GIF 就把它接到 `svg.anim` 的 in 端口（端口类型 svg）烘焙：含 SMIL 动效出多帧 PNG（out / out-all）+ GIF（out-gif），静态 SVG 只出 1 帧、不产 GIF（动效须写在 SVG 自身的 <animate> / <animateTransform> / <set> 里，CSS @keyframes 与 <animateMotion> 不参与求值）。关键参数：svgGenWidth / svgGenHeight（16–2048，默认 512）、svgGenBackground、svgFrames（2–60，默认 12）、svgDurationSec（0 = 自动探测动画周期，上限 30 秒），用 includeParams 查询。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -2305,7 +2386,7 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'graph_edit',
     title: '编辑节点图',
     description:
-      '对一个已落盘的宿主资产图应用一批编辑操作（node_upsert / node_update / node_delete / edge_connect / edge_delete）。端口兼容性与类型合法性在应用内校验，未通过的操作跳过并记入 warnings。**图正在编辑器中打开时同样可用**：改动叠加在编辑器当前状态之上并即时同步到界面（因此不会覆盖用户尚未落盘的编辑），落盘完成才返回。修改立即持久化并同步应用界面。可借此搭建生成链路，如「图片节点出序列图 → 2D 帧动画（anim.2d，animGifFps > 0 时运行产出 GIF 动图）」；可建节点类型清单见 graph_node_types。也用于落 Agent 撰写的 Markdown 正文（如游戏策划案底稿）：node_update 目标 asset.gameSystem 节点、把正文写入 params.text 即可（下游 ui.split 等优先读取该参数；注意该节点自身再跑生成会重写 text）。' +
+      '对一个已落盘的宿主资产图应用一批编辑操作（node_upsert / node_update / node_delete / edge_connect / edge_delete）。端口兼容性与类型合法性在应用内校验，未通过的操作跳过并记入 warnings。**图正在编辑器中打开时同样可用**：改动叠加在编辑器当前状态之上并即时同步到界面（因此不会覆盖用户尚未落盘的编辑），落盘完成才返回。修改立即持久化并同步应用界面。可借此搭建生成链路，如「剧本（play.script）→ 影视制作工作台（film.workbench，或再展开 film.shot → asset.image → asset.video）」或「图片节点出序列图 → 2D 帧动画（anim.2d，animGifFps > 0 时运行产出 GIF 动图）」；可建节点类型清单见 graph_node_types。也用于落 Agent 撰写的长文或分镜数据（如把 filmStoryboard / filmCast / filmRenderMode 写进 film.workbench，或把游戏策划案正文写入 asset.gameSystem 的 params.text）。' +
       '教学录屏时请传 **openEditor: true**：先打开该资产编辑器再改图，保证 `screen_record_*` 拍到可见画布变化。' +
       '创建 / 串联节点后**默认自动布局**（左→右分层）；仅在需要保留手动坐标时传 **autoLayout: false**。',
     inputSchema: {

@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   clampVideoGenerateParams,
+  filmVideoParamsToNodePatch,
   parseVideoGenerateParamCapabilities,
+  readFilmVideoParamsFromNode,
   readVideoGenerateParamsFromNode,
   videoGenerateParamsToNodePatch
 } from '../src/shared/graph'
@@ -49,6 +51,25 @@ describe('clampVideoGenerateParams', () => {
     expect(clamped.duration).toBe(5)
     expect(clamped.generateAudio).toBe(true)
     expect(clamped.frameMode).toBe('none')
+  })
+
+  it('preserves undefined (auto) duration when allowAutoDuration is true', () => {
+    const caps = {
+      aspectRatios: ['16:9', '9:16'],
+      resolutions: ['720p', '1080p'],
+      durations: [4, 5, 8, 10, 15],
+      supportsGenerateAudio: true,
+      supportedFrameImages: []
+    }
+    const autoClamped = clampVideoGenerateParams({}, caps, { allowAutoDuration: true })
+    expect(autoClamped.duration).toBeUndefined()
+    expect(autoClamped.aspectRatio).toBe('16:9')
+    expect(autoClamped.resolution).toBe('1080p')
+
+    const explicitClamped = clampVideoGenerateParams({ duration: 10 }, caps, {
+      allowAutoDuration: true
+    })
+    expect(explicitClamped.duration).toBe(10)
   })
 
   it('clears unsupported fields', () => {
@@ -122,5 +143,16 @@ describe('videoGenerateParams node patch', () => {
       seed: 42,
       seedUseGlobal: false
     })
+  })
+
+  it('writes filmVideoDuration: 0 when auto duration is selected and reads back as undefined', () => {
+    const patch = filmVideoParamsToNodePatch({
+      aspectRatio: '16:9',
+      resolution: '720p',
+      duration: undefined,
+      generateAudio: true
+    })
+    expect(patch.filmVideoDuration).toBe(0)
+    expect(readFilmVideoParamsFromNode(patch).duration).toBeUndefined()
   })
 })

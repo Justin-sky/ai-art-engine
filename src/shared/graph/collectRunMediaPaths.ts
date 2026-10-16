@@ -85,6 +85,23 @@ function mediaPathOf(value: GraphValue | undefined): string | undefined {
   }
 }
 
+const MULTI_SHOT_SOURCE_TYPE_IDS = new Set<string>(['film.workbench', 'film.render'])
+
+function pushAllItemPaths(value: GraphValue | undefined, push: (path?: string) => void): boolean {
+  if (!value || (value.kind !== 'images' && value.kind !== 'videos' && value.kind !== 'voices')) {
+    return false
+  }
+  let added = false
+  for (const item of value.items) {
+    const p = item?.relativePath?.trim()
+    if (p) {
+      push(p)
+      added = true
+    }
+  }
+  return added
+}
+
 /**
  * 收集一次图运行值得展示的媒体相对路径（去重、限量、稳定顺序）。
  *
@@ -105,6 +122,7 @@ export function collectRunMediaPaths(
     paths.push(value)
   }
 
+  const byId = new Map(graph.nodes.map((node) => [node.id, node]))
   const nodeIds = graph.nodes.map((node) => node.id)
 
   // 1) 作品级单件产出：2D 帧动画 GIF、2D 舞台拼版
@@ -114,16 +132,35 @@ export function collectRunMediaPaths(
     }
   }
 
-  // 2) 输出节点成片（图库末条）
+  // 2) 输出节点成片（图库末条；若上游为影视工作台等多镜批量节点则按镜头顺序全收）
   for (const node of findAllOutputNodes(graph)) {
-    push(mediaPathOf(runStates[node.id]?.outputs?.out))
+    const outVal = runStates[node.id]?.outputs?.out
+    const hasMultiShotUpstream = graph.edges.some((edge) => {
+      if (edge.target !== node.id) return false
+      const src = byId.get(edge.source)
+      return !!src?.typeId && MULTI_SHOT_SOURCE_TYPE_IDS.has(src.typeId)
+    })
+    if (hasMultiShotUpstream && pushAllItemPaths(outVal, push)) {
+      continue
+    }
+    push(mediaPathOf(outVal))
   }
 
-  // 3) 兜底：整图任一端口确有媒体产出时至少让结果可见（如只跑了单张生成节点）
+  // 3) 兜底：整图任一端口确有媒体产出时至少让结果可见（如只跑了单张生成节点或单跑 film.workbench）
   if (!paths.length) {
     for (const nodeId of nodeIds) {
+      const node = byId.get(nodeId)
       const outputs = runStates[nodeId]?.outputs
       if (!outputs) continue
+      if (node?.typeId && MULTI_SHOT_SOURCE_TYPE_IDS.has(node.typeId)) {
+        if (
+          pushAllItemPaths(outputs['out-videos'], push) ||
+          pushAllItemPaths(outputs['out-images'], push) ||
+          pushAllItemPaths(outputs['out-sheets'], push)
+        ) {
+          continue
+        }
+      }
       for (const [portId, value] of Object.entries(outputs)) {
         if (FRAME_BATCH_OUT_PORT_IDS.has(portId)) continue
         push(mediaPathOf(value))

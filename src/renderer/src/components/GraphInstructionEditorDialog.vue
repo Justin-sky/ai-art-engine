@@ -24,6 +24,7 @@
         :host-id="hostId"
         :node-id="nodeId"
         :preset-kind="presetKind"
+        :provider-kind="providerKind"
         :placeholder="placeholder"
         :rows="18"
         @update:model-value="onUpdate"
@@ -58,6 +59,7 @@ const props = defineProps<{
   nodeId: string
   placeholder?: string
   presetKind?: InstructionPresetKind | null
+  providerKind?: string
 }>()
 
 const emit = defineEmits<{

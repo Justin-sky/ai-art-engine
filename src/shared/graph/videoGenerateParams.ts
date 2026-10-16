@@ -212,7 +212,8 @@ export function supportedDurationsFromError(message: string): number[] {
 
 export function clampVideoGenerateParams(
   params: VideoGenerateParams,
-  caps: VideoGenerateParamCapabilities
+  caps: VideoGenerateParamCapabilities,
+  options?: { allowAutoDuration?: boolean }
 ): VideoGenerateParams {
   const next: VideoGenerateParams = { ...params }
 
@@ -235,7 +236,9 @@ export function clampVideoGenerateParams(
   }
 
   if (caps.durations.length) {
-    if (next.duration == null || !caps.durations.includes(next.duration)) {
+    if (options?.allowAutoDuration && (next.duration == null || next.duration <= 0)) {
+      next.duration = undefined
+    } else if (next.duration == null || !caps.durations.includes(next.duration)) {
       next.duration = pickPreferredDuration(caps.durations, [5, 4, 6, 8, 10]) ?? caps.durations[0]
     }
   } else {
@@ -328,4 +331,49 @@ export function resolveVideoGenerateParamsForApi(
   const raw = readVideoGenerateParamsFromNode(params)
   if (!caps || !hasAnyVideoGenerateCapability(caps)) return raw
   return clampVideoGenerateParams(raw, caps)
+}
+
+export function readFilmVideoParamsFromNode(params: {
+  filmVideoAspectRatio?: string
+  filmVideoResolution?: string
+  filmVideoDuration?: number
+  filmVideoSeed?: number
+  filmVideoSeedUseGlobal?: boolean
+  filmVideoAudio?: boolean
+}): VideoGenerateParams {
+  const durationRaw = params.filmVideoDuration
+  const duration =
+    typeof durationRaw === 'number' && Number.isFinite(durationRaw) && durationRaw > 0
+      ? Math.round(durationRaw)
+      : undefined
+  return {
+    aspectRatio: params.filmVideoAspectRatio?.trim() || undefined,
+    resolution: params.filmVideoResolution?.trim() || undefined,
+    duration,
+    seed: clampSeed(params.filmVideoSeed),
+    seedUseGlobal: params.filmVideoSeedUseGlobal !== false,
+    generateAudio: typeof params.filmVideoAudio === 'boolean' ? params.filmVideoAudio : undefined,
+    frameMode: 'first'
+  }
+}
+
+export function filmVideoParamsToNodePatch(params: VideoGenerateParams): {
+  filmVideoAspectRatio: string
+  filmVideoResolution: string
+  filmVideoDuration: number
+  filmVideoSeed?: number
+  filmVideoSeedUseGlobal?: boolean
+  filmVideoAudio: boolean | undefined
+} {
+  return {
+    filmVideoAspectRatio: params.aspectRatio ?? '',
+    filmVideoResolution: params.resolution ?? '',
+    filmVideoDuration:
+      typeof params.duration === 'number' && Number.isFinite(params.duration) && params.duration > 0
+        ? Math.round(params.duration)
+        : 0,
+    ...(clampSeed(params.seed) != null ? { filmVideoSeed: clampSeed(params.seed) } : {}),
+    filmVideoSeedUseGlobal: params.seedUseGlobal !== false,
+    filmVideoAudio: params.generateAudio
+  }
 }

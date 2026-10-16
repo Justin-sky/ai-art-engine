@@ -8,6 +8,8 @@ import {
   flattenImagesValues,
   graphValueHasPayload,
   isBoundaryOutputNode,
+  parseFilmCast,
+  parseFilmRenderCache,
   resolveNodeTextContent,
   softResolveBoundaryOutputValue,
   type GraphDocument,
@@ -503,6 +505,62 @@ function collectFallback(into: PreviewItem[]): void {
   const node = graphEditorHosts.getNode(props.hostId, props.node.id) ?? props.node
   const runState = graphRunHosts.get(props.hostId)?.runStates?.[node.id]
   void runState?.status
+
+  // 影视设定图 / 批量拍摄分端口预览：重开项目尚未重跑时，从持久化 params 还原，勿退回总结文本
+  if (
+    (node.typeId === 'film.workbench' || node.typeId === 'film.cast') &&
+    props.portId === 'out-sheets'
+  ) {
+    const cast = parseFilmCast(node.params.filmCast ?? '')
+    for (const [idx, entry] of (cast?.entries ?? []).entries()) {
+      const url = entry.imageUrl?.trim() ?? ''
+      const rel = entry.imageRelativePath?.trim() || (url && !url.startsWith('data:') ? url : '')
+      const dataUrl = url.startsWith('data:') ? url : ''
+      const src = imageItemSrc({ dataUrl, relativePath: rel || undefined })
+      if (!src) continue
+      into.push({
+        key: `cast:${entry.id || idx}`,
+        kind: 'image',
+        src,
+        label: entry.name,
+        assetId: assetIdByRelativePath(rel || undefined)
+      })
+    }
+    return
+  }
+  if (
+    (node.typeId === 'film.workbench' || node.typeId === 'film.render') &&
+    (props.portId === 'out-images' || props.portId === 'out-videos')
+  ) {
+    const cache = parseFilmRenderCache(node.params.filmRenders)
+    if (props.portId === 'out-images') {
+      for (const [shotId, entry] of Object.entries(cache)) {
+        const kf = entry?.keyframe?.trim() ?? ''
+        if (!kf) continue
+        const inline = kf.startsWith('data:')
+        const src = imageItemSrc({
+          dataUrl: inline ? kf : '',
+          relativePath: inline ? undefined : kf
+        })
+        if (!src) continue
+        into.push({
+          key: `film-img:${shotId}`,
+          kind: 'image',
+          src,
+          label: shotId,
+          assetId: inline ? undefined : assetIdByRelativePath(kf)
+        })
+      }
+      return
+    }
+    for (const [shotId, entry] of Object.entries(cache)) {
+      const vid = entry?.video?.trim() ?? ''
+      if (!vid) continue
+      pushVideoLikeItem(into, `film-vid:${shotId}`, vid, undefined)
+    }
+    return
+  }
+
   const generatedTextItems = node.params.generatedTexts ?? []
   // 已有分条 generatedTexts 时，resultText 只是它们的汇总，再塞一遍会多出一条且与首条重复感强
   if (!generatedTextItems.length) {

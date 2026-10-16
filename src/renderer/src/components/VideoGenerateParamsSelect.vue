@@ -39,11 +39,21 @@
             {{ t('graph.inspector.generate.videoParams.empty') }}
           </p>
           <template v-else>
-            <section v-if="caps.durations.length" class="section">
+            <section v-if="caps.durations.length || allowAutoDuration" class="section">
               <div class="section-title">
                 {{ t('graph.inspector.generate.videoParams.duration') }}
               </div>
               <div class="chip-row">
+                <button
+                  v-if="allowAutoDuration"
+                  type="button"
+                  class="chip"
+                  :class="{ active: !local.duration }"
+                  :title="t('graph.inspector.generate.videoParams.durationAutoHint')"
+                  @click="pickDuration(undefined)"
+                >
+                  {{ t('graph.inspector.generate.videoParams.durationAuto') }}
+                </button>
                 <button
                   v-for="sec in caps.durations"
                   :key="sec"
@@ -204,8 +214,10 @@ const props = withDefaults(
     modelValue: VideoGenerateParams
     /** 对口型等节点不展示首尾帧模式 */
     hideFrameMode?: boolean
+    /** 允许「自动」时长（如影视工作台按分镜拆解时长自动匹配） */
+    allowAutoDuration?: boolean
   }>(),
-  { hideFrameMode: false }
+  { hideFrameMode: false, allowAutoDuration: false }
 )
 
 const emit = defineEmits<{
@@ -224,16 +236,23 @@ const caps = ref<VideoGenerateParamCapabilities>({ ...EMPTY_VIDEO_GENERATE_CAPAB
 const local = ref<VideoGenerateParams>({ ...props.modelValue })
 
 const visible = computed(() => Boolean(props.modelKey.trim()))
-const hasSections = computed(() => hasAnyVideoGenerateCapability(caps.value))
+const allowAutoDuration = computed(() => props.allowAutoDuration)
+const hasSections = computed(
+  () => hasAnyVideoGenerateCapability(caps.value) || props.allowAutoDuration
+)
 const hideFrameMode = computed(() => props.hideFrameMode)
 const frameModeOptions = computed(() => availableVideoFrameModes(caps.value.supportedFrameImages))
 
 const summaryText = computed(() => {
   const parts: string[] = []
-  if (caps.value.durations.length && local.value.duration != null) {
-    parts.push(
-      t('graph.inspector.generate.videoParams.durationOption', { n: local.value.duration })
-    )
+  if (caps.value.durations.length || props.allowAutoDuration) {
+    if (local.value.duration != null && local.value.duration > 0) {
+      parts.push(
+        t('graph.inspector.generate.videoParams.durationOption', { n: local.value.duration })
+      )
+    } else if (props.allowAutoDuration) {
+      parts.push(t('graph.inspector.generate.videoParams.durationAuto'))
+    }
   }
   if (caps.value.aspectRatios.length && local.value.aspectRatio) {
     parts.push(local.value.aspectRatio)
@@ -267,7 +286,7 @@ function emitLocal(): void {
   emit('change')
 }
 
-function pickDuration(sec: number): void {
+function pickDuration(sec: number | undefined): void {
   local.value = { ...local.value, duration: sec }
   emitLocal()
 }
@@ -307,7 +326,9 @@ function toggleSeedUseGlobal(e: Event): void {
 
 function applyCapabilities(nextCaps: VideoGenerateParamCapabilities): void {
   caps.value = nextCaps
-  const clamped = clampVideoGenerateParams(props.modelValue, nextCaps)
+  const clamped = clampVideoGenerateParams(props.modelValue, nextCaps, {
+    allowAutoDuration: props.allowAutoDuration
+  })
   local.value = clamped
   if (
     clamped.aspectRatio !== props.modelValue.aspectRatio ||

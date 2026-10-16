@@ -12,7 +12,7 @@ import {
   isBoundaryProxyNode,
   type HostInterfaceDocument
 } from './hostInterface'
-import type { GraphDocument, GraphEdge, GraphNode } from './types'
+import type { GraphDocument, GraphEdge, GraphNode, GraphPortDataType } from './types'
 import { GraphPortType, isPluralGraphPortDataType, toSingularGraphPortDataType } from './types'
 import { canConnectNodes, getNodePorts, GRAPH_OUT_ALL_PORT_ID, portsCompatible } from './ports'
 
@@ -40,13 +40,38 @@ function pushEdge(
   })
 }
 
-/** 接复数边界口时优先 out-all（图库节点禁止 out→复数） */
-function preferredSourcePort(node: GraphNode, targetIsPlural: boolean): string {
+/** 接复数边界口时优先 out-all（图库节点禁止 out→复数）；主口不兼容时选与目标类型兼容的出口（如 film.workbench 的 out-videos / out-images） */
+function preferredSourcePort(
+  node: GraphNode,
+  targetIsPlural: boolean,
+  targetDataType?: GraphPortDataType
+): string {
+  const outs = getNodePorts(node).filter((p) => p.direction === 'out')
   if (
     targetIsPlural &&
-    getNodePorts(node).some((p) => p.id === GRAPH_OUT_ALL_PORT_ID && p.direction === 'out')
+    outs.some(
+      (p) =>
+        p.id === GRAPH_OUT_ALL_PORT_ID &&
+        (!targetDataType || portsCompatible(p.dataType, targetDataType))
+    )
   ) {
     return GRAPH_OUT_ALL_PORT_ID
+  }
+  const defaultOut = outs.find((p) => p.id === 'out')
+  if (defaultOut && (!targetDataType || portsCompatible(defaultOut.dataType, targetDataType))) {
+    return 'out'
+  }
+  if (targetDataType) {
+    if (targetDataType === GraphPortType.images) {
+      const preferSheets = node.params?.filmRenderMode === 'sheets'
+      const preferredId = preferSheets ? 'out-sheets' : 'out-images'
+      const hit = outs.find(
+        (p) => p.id === preferredId && portsCompatible(p.dataType, targetDataType)
+      )
+      if (hit) return hit.id
+    }
+    const compatible = outs.find((p) => portsCompatible(p.dataType, targetDataType))
+    if (compatible) return compatible.id
   }
   return 'out'
 }
@@ -75,7 +100,7 @@ export function wireDanglingOutsToBoundaryOutputs(
   const usedSources = new Set<string>()
 
   const byTopThenRight = (a: GraphNode, b: GraphNode): number =>
-    a.position.y - b.position.y || b.position.x - a.position.x
+    a.position.y - b.position.y || a.position.x - b.position.x
 
   for (const port of iface.outputs) {
     const boutId = boundaryOutputNodeId(port.id)
@@ -99,7 +124,7 @@ export function wireDanglingOutsToBoundaryOutputs(
         const out = getNodePorts(node).find((p) => p.direction === 'out' && p.id === 'out')
         return !!out && portsCompatible(out.dataType, singularType)
       }
-      const sourcePort = preferredSourcePort(node, aggregate)
+      const sourcePort = preferredSourcePort(node, aggregate, port.dataType)
       const hasOut = getNodePorts(node).some((p) => p.direction === 'out' && p.id === sourcePort)
       if (!hasOut) return false
       return canConnectNodes(node, bout!, { sourcePort, targetPort: 'in' })
@@ -132,7 +157,7 @@ export function wireDanglingOutsToBoundaryOutputs(
       if (!splittable) {
         // 世界/场等不可拆目录型复数口：保持旧行为，全部汇到主边界节点
         for (const source of dangling) {
-          const sourcePort = preferredSourcePort(source, true)
+          const sourcePort = preferredSourcePort(source, true, port.dataType)
           pushEdge(edges, source.id, boutId, sourcePort, 'in')
           usedSources.add(source.id)
         }
@@ -219,6 +244,33 @@ export function wireDanglingOutsToBoundaryOutputs(
             if (edges[i]!.target === boutId) edges.splice(i, 1)
           }
         }
+      } else if (bout) {
+        // 尚无单数 out 源（如单节点自带复数出口的 film.workbench / film.render / image.gridSplit）：直接接汇总主节点
+        const pluralConnectable = (node: GraphNode): boolean => {
+          if (isBoundaryProxyNode(node) || node.category === 'output') return false
+          if (node.typeId === 'note.text') return false
+          const sourcePort = preferredSourcePort(node, true, port.dataType)
+          return canConnectNodes(node, bout, { sourcePort, targetPort: 'in' })
+        }
+        const pluralDangling = nodes
+          .filter(
+            (node) =>
+              pluralConnectable(node) &&
+              !usedSources.has(node.id) &&
+              !hasOutEdgeIgnoringBoundary(node)
+          )
+          .sort(byTopThenRight)
+        for (const source of pluralDangling) {
+          const sourcePort = preferredSourcePort(source, true, port.dataType)
+          pushEdge(edges, source.id, boutId, sourcePort, 'in')
+          usedSources.add(source.id)
+        }
+        if (pluralDangling.length) {
+          bout.position = {
+            x: Math.max(bout.position.x, pluralDangling[0]!.position.x + 280),
+            y: pluralDangling[0]!.position.y
+          }
+        }
       }
       continue
     }
@@ -228,6 +280,7 @@ export function wireDanglingOutsToBoundaryOutputs(
         const title = n.title?.trim()
         return title && title === port.label
       }) ??
+      dangling.find((n) => edges.some((e) => e.source === n.id && e.target === boutId)) ??
       dangling.find((n) => (preferredType ? n.typeId === preferredType : true)) ??
       dangling[0]
 
@@ -246,7 +299,7 @@ export function wireDanglingOutsToBoundaryOutputs(
     }
 
     if (!source) continue
-    const sourcePort = preferredSourcePort(source, false)
+    const sourcePort = preferredSourcePort(source, false, port.dataType)
     pushEdge(edges, source.id, boutId, sourcePort, 'in')
     usedSources.add(source.id)
     // 出口节点靠齐对应汇点右侧，便于三路立绘各自成对

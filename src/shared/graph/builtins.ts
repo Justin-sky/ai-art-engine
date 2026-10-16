@@ -57,6 +57,7 @@ import {
   executeLightingNode,
   executePortraitTextureNode,
   executeEmotionNode,
+  executeImageProcessNode,
   executeUpscaleNode,
   executeLipSyncNode,
   executeVideoReshootNode,
@@ -1390,6 +1391,104 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     execute: executeEmotionNode
   },
   {
+    typeId: 'image.process',
+    category: 'note',
+    label: 'Image processing',
+    icon: '🛠️',
+    defaultTitle: 'Image processing',
+    description:
+      '图像处理综合工作台（10 合 1）：双击卡片进入图像处理工作台，顶栏可切换 裁剪（crop）/ 图片变换（transform）/ 智能构图（compose）/ 宫格切分（gridSplit）/ 本地抠图（cutout）/ 抠图（matte）/ 擦除（erase）/ 重绘（redraw）/ 扩图（expand）/ 高清放大（upscale）。通过 params.imageProcessTool 指定当前激活的工具模式。', // cjk-ok（MCP / Agent 集成文本：随 graph_node_types 返回给外部 Agent，非 UI 文案）
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      { id: 'in', direction: 'in', dataType: GraphPortType.image, multiple: false, label: 'In' },
+      ...galleryOutPorts(GraphPortType.image)
+    ],
+    defaultParams: () => ({
+      imageProcessTool: 'crop' as const,
+      imageCrop: {
+        cropX: 0.1,
+        cropY: 0.1,
+        cropW: 0.8,
+        cropH: 0.8,
+        aspectId: 'original'
+      },
+      imageTransform: { ...DEFAULT_IMAGE_TRANSFORM },
+      imageCompose: {
+        aspectId: '9:16',
+        strategy: 'headroom',
+        confThreshold: 0.5,
+        subjectBox: null,
+        detectedWidth: 0,
+        detectedHeight: 0,
+        detectedConf: 0
+      },
+      imageGridSplit: {
+        rows: 3,
+        cols: 3,
+        selected: []
+      },
+      imageCutout: {
+        confThreshold: 0.25,
+        threshold: 0.5,
+        feather: 2,
+        cropToSubject: true,
+        personOnly: true
+      },
+      imageMatte: {
+        maskDataUrl: '',
+        prompt: '',
+        brushSize: 28,
+        aspectId: 'original',
+        resolution: '2K',
+        count: 1
+      },
+      imageErase: {
+        maskDataUrl: '',
+        prompt: '',
+        brushSize: 28,
+        aspectId: 'original',
+        resolution: '2K',
+        count: 1
+      },
+      imageRedraw: {
+        maskDataUrl: '',
+        prompt: '',
+        brushSize: 28,
+        aspectId: 'original',
+        resolution: '2K',
+        count: 1
+      },
+      imageExpand: {
+        expandLeft: 0,
+        expandRight: 0.5,
+        expandTop: 0.5,
+        expandBottom: 0,
+        aspectId: 'original',
+        resolution: '2K',
+        count: 1
+      },
+      imageUpscale: {
+        engineId: 'imageApi',
+        variantId: 'general',
+        scale: 2
+      },
+      generateInstruction: '',
+      generateSystemPrompt: '',
+      generateModel: '',
+      generateProviderInstanceId: '',
+      generateAspectRatio: ''
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.imageProcess',
+    card: 'media',
+    assetType: 'image',
+    contributeToGeneration: false,
+    execute: executeImageProcessNode
+  },
+  {
     typeId: 'image.upscale',
     category: 'note',
     label: 'HD upscale',
@@ -1413,7 +1512,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
       generateProviderInstanceId: '',
       generateAspectRatio: ''
     }),
-    addable: true,
+    addable: false,
     deletable: true,
     inspector: 'none',
     inspectorId: 'studio.graph.upscale',
@@ -1560,7 +1659,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
       generateProviderInstanceId: '',
       generateSystemPrompt: ''
     }),
-    addable: true,
+    addable: false,
     deletable: true,
     inspector: 'none',
     inspectorId: 'studio.graph.expand',
@@ -1594,7 +1693,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
       generateProviderInstanceId: '',
       generateSystemPrompt: ''
     }),
-    addable: true,
+    addable: false,
     deletable: true,
     inspector: 'none',
     inspectorId: 'studio.graph.redraw',
@@ -1628,7 +1727,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
       generateProviderInstanceId: '',
       generateSystemPrompt: ''
     }),
-    addable: true,
+    addable: false,
     deletable: true,
     inspector: 'none',
     inspectorId: 'studio.graph.erase',
@@ -1662,7 +1761,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
       generateProviderInstanceId: '',
       generateSystemPrompt: ''
     }),
-    addable: true,
+    addable: false,
     deletable: true,
     inspector: 'none',
     inspectorId: 'studio.graph.matte',
@@ -1688,7 +1787,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     defaultParams: () => ({
       imageTransform: { ...DEFAULT_IMAGE_TRANSFORM }
     }),
-    addable: true,
+    addable: false,
     deletable: true,
     inspector: 'none',
     inspectorId: 'studio.graph.transform',
@@ -1718,7 +1817,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
         aspectId: 'original'
       }
     }),
-    addable: true,
+    addable: false,
     deletable: true,
     inspector: 'none',
     inspectorId: 'studio.graph.crop',
@@ -1748,7 +1847,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
         personOnly: true
       }
     }),
-    addable: true,
+    addable: false,
     deletable: true,
     inspector: 'none',
     inspectorId: 'studio.graph.cutout',
@@ -1872,7 +1971,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
         detectedConf: 0
       }
     }),
-    addable: true,
+    addable: false,
     deletable: true,
     inspector: 'none',
     inspectorId: 'studio.graph.compose',
@@ -1900,7 +1999,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
         selected: []
       }
     }),
-    addable: true,
+    addable: false,
     deletable: true,
     inspector: 'none',
     inspectorId: 'studio.graph.gridSplit',

@@ -16,6 +16,7 @@ import RedrawInspector from '../components/RedrawInspector.vue'
 import EraseInspector from '../components/EraseInspector.vue'
 import MatteInspector from '../components/MatteInspector.vue'
 import CropInspector from '../components/CropInspector.vue'
+import ImageProcessInspector from '../components/ImageProcessInspector.vue'
 import CutoutProcessInspector from '../components/CutoutProcessInspector.vue'
 import AlignProcessInspector from '../components/AlignProcessInspector.vue'
 import ComposeProcessInspector from '../components/ComposeProcessInspector.vue'
@@ -314,6 +315,11 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     id: 'studio.graph.matte',
     component: MatteInspector,
     nodeTypeId: 'image.matte'
+  },
+  {
+    id: 'studio.graph.imageProcess',
+    component: ImageProcessInspector,
+    nodeTypeId: 'image.process'
   },
   {
     id: 'studio.graph.crop',

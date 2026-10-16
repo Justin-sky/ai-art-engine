@@ -30,8 +30,9 @@
 AI Art Engine is an open-source desktop app that puts model calls, node-graph orchestration, 3D previsualization and final editing into one local project, for short drama, ads, games and e-commerce content.
 
 - **Agent-native**: the in-app AI chat calls tools to generate and orchestrate directly; a built-in MCP server lets Claude Code, Codex and other external agents work on your project too.
-- **Node graph and One-Click Workflow**: text, image, video, audio, 3D and spatial-world modalities; industry templates become reusable host assets in one click; an optional sandboxed script node (`script.run`) lets a workflow carry governed code without changing the app.
-- **3D director stage and timeline**: blocking, camera angles and motion recording, then arrange and export on the final timeline.
+- **Node graph and One-Click Workflow**: text, image, video, audio, 3D and spatial-world modalities; industry templates become reusable host assets in one click, and any saved workflow can be exported as a Marketplace plugin bundle; an optional sandboxed script node (`script.run`) lets a workflow carry governed code without changing the app.
+- **Dedicated Dive workbenches**: all-in-one **Film Workbench** (`film.workbench`: Storyboard Breakdown → Director Review → Character & Scene Design → Batch Shoot, with auto per-shot video duration and single-shot `film.shot` overrides), 10-in-1 **Image Processing Workbench** (`image.process`: Crop, Transform, Smart Compose, Grid Split, Local Cutout, AI Matte, Erase, Redraw, Expand and Upscale in one node), **Portrait Retouch & Multi-Angle Lighting**, **Comic Page Layout** (`comic.page`), and **2D Frame Animation & Rig Stage** (`frame.animGen` / `anim.2d` / `stage.2d`).
+- **3D director stage and timeline**: blocking, camera angles and motion recording, then multi-track arrangement, transitions, subtitles and export on the final timeline.
 - **Many models, local-first**: 30+ model providers with your own API keys; a project is a folder of JSON and media files on your machine, with no relay service in between.
 
 ## Getting started

@@ -103,6 +103,13 @@
             :model-key="selectedModelKey"
             @change="persistImageGenerateParams"
           />
+          <VideoGenerateParamsSelect
+            v-if="isVideo && selectedModelKey"
+            v-model="videoGenerateParams"
+            :model-key="selectedModelKey"
+            :hide-frame-mode="node?.typeId === 'video.lipSync'"
+            @change="persistVideoGenerateParams"
+          />
         </div>
         <!-- 音效节点没有「角色音色」可言：它是音效端点，不吃音色档案 -->
         <!-- 角色音色只在**真的会用到**它的节点上出现（见 usesVoiceProfile）：
@@ -662,12 +669,15 @@ import {
   imageGenerateParamsToNodePatch,
   isProcessingAssetNode,
   readImageGenerateParamsFromNode,
+  readVideoGenerateParamsFromNode,
   resolveGameSystemSystemPrompt,
   resolveImageSystemPrompt,
   resolveNodeType,
   resolveScreenplaySystemPrompt,
   resolveVideoSystemPrompt,
-  type ImageGenerateParams
+  videoGenerateParamsToNodePatch,
+  type ImageGenerateParams,
+  type VideoGenerateParams
 } from '@shared/graph'
 import GraphNodeRunControl from './GraphNodeRunControl.vue'
 import GraphNodeOutputPreview from './GraphNodeOutputPreview.vue'
@@ -675,6 +685,7 @@ import GraphTextNotepadDialog from './GraphTextNotepadDialog.vue'
 import ExpandableTextarea from './ExpandableTextarea.vue'
 import InstructionModelSelect from './InstructionModelSelect.vue'
 import ImageGenerateParamsSelect from './ImageGenerateParamsSelect.vue'
+import VideoGenerateParamsSelect from './VideoGenerateParamsSelect.vue'
 import ModelPreview from './ModelPreview.vue'
 import GeneratedModelsGallery from './GeneratedModelsGallery.vue'
 import PreviewSaveToLibraryButton from './PreviewSaveToLibraryButton.vue'
@@ -787,6 +798,7 @@ const playbackRate = ref(1)
 const modelOptions = ref<GenerateModelOption[]>([])
 const selectedModelKey = ref('')
 const imageGenerateParams = ref<ImageGenerateParams>(readImageGenerateParamsFromNode({}))
+const videoGenerateParams = ref<VideoGenerateParams>(readVideoGenerateParamsFromNode({}))
 const systemPrompt = ref('')
 const instruction = ref('')
 const localStyleImages = ref<ProjectStyleImage[]>([])
@@ -1699,6 +1711,7 @@ function loadGenerateConfig(current: NonNullable<typeof node.value>): void {
   }
 
   if (current.assetType === 'video') {
+    videoGenerateParams.value = readVideoGenerateParamsFromNode(current.params)
     systemPrompt.value = resolveVideoSystemPrompt(
       current.params.generateSystemPrompt,
       String(locale.value)
@@ -1734,6 +1747,12 @@ watch(
       current.assetType === 'video'
     if (hasGen && !sameNode) {
       loadGenerateConfig(current)
+    } else if (hasGen && sameNode) {
+      if (current.assetType === 'image') {
+        imageGenerateParams.value = readImageGenerateParamsFromNode(current.params)
+      } else if (current.assetType === 'video') {
+        videoGenerateParams.value = readVideoGenerateParamsFromNode(current.params)
+      }
     } else if (!hasGen) {
       clearGenerateConfig()
     }
@@ -2001,6 +2020,17 @@ function persistImageGenerateParams(): void {
     hid,
     current.id,
     imageGenerateParamsToNodePatch(imageGenerateParams.value)
+  )
+}
+
+function persistVideoGenerateParams(): void {
+  const current = node.value
+  const hid = hostId.value
+  if (!current || !hid || !isVideo.value) return
+  graphEditorHosts.updateNode(
+    hid,
+    current.id,
+    videoGenerateParamsToNodePatch(videoGenerateParams.value)
   )
 }
 

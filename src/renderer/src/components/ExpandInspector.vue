@@ -46,6 +46,7 @@ import {
   DEFAULT_EXPAND_SYSTEM_PROMPT_ZH,
   buildExpandPrompt,
   defaultExpandSystemPrompt,
+  isExpandEditorNode,
   readImageExpandFromNode,
   resolveExpandSystemPrompt
 } from '@shared/graph'
@@ -67,7 +68,7 @@ const node = computed(() => {
   const id = selection.kind === 'graph.node' ? selection.id : null
   if (!id) return null
   const current = graphEditorHosts.getNode(selection.hostId, id)
-  return current?.typeId === 'image.expand' ? current : null
+  return isExpandEditorNode(current) ? current : null
 })
 
 const hostId = computed(() => {

@@ -871,6 +871,7 @@ import {
   type EmotionPadState,
   emotionPadToNodePatch,
   readEmotionPadFromNode,
+  type ImageUpscaleState,
   type ImageExpandState,
   type ImageRedrawState,
   type ImageEraseState,
@@ -896,6 +897,7 @@ import {
   readStage2dAnimFpsFromNode,
   normalizeStage2dAnimFps,
   stage2dActionToNodePatch,
+  readImageUpscaleFromNode,
   readImageExpandFromNode,
   readImageRedrawFromNode,
   readImageEraseFromNode,
@@ -3371,20 +3373,7 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
   },
   {
     id: 'imageEdit',
-    typeIds: [
-      'image.upscale',
-      'image.expand',
-      'image.redraw',
-      'image.erase',
-      'image.matte',
-      'image.crop',
-      'image.transform',
-      'image.gridSplit',
-      'image.iconPack',
-      'image.layerSplit',
-      'image.cutout',
-      'image.compose'
-    ]
+    typeIds: ['image.process', 'image.iconPack', 'image.layerSplit']
   },
   {
     id: 'video',
@@ -3430,9 +3419,9 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
     typeIds: ['film.cast']
   },
   {
-    // 影视·拍摄：批量拍摄（关键帧 + 视频）/ 单镜精修
+    // 影视·拍摄：影视工作台（分镜+审核+设定+拍摄合一）/ 单镜精修
     id: 'filmShoot',
-    typeIds: ['film.render', 'film.shot']
+    typeIds: ['film.workbench', 'film.render', 'film.shot']
   },
   {
     id: 'model3d',
@@ -7368,6 +7357,90 @@ function saveEmotion(
   closeEmotion()
 }
 
+const upscale = reactive({
+  open: false,
+  nodeId: '' as string,
+  setup: null as ImageUpscaleState | null,
+  sourceUrl: '',
+  sourceLoading: false,
+  generateModel: '',
+  generateProviderInstanceId: '',
+  generateInstruction: ''
+})
+
+async function onUpscaleOpen(nodeId: string): Promise<void> {
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  if (!node) return
+  upscale.nodeId = nodeId
+  upscale.setup = readImageUpscaleFromNode(node.params)
+  upscale.sourceUrl = ''
+  upscale.sourceLoading = true
+  upscale.generateModel = node.params.generateModel ?? ''
+  upscale.generateProviderInstanceId = node.params.generateProviderInstanceId ?? ''
+  upscale.generateInstruction = node.params.generateInstruction ?? ''
+  upscale.open = true
+  await fillEditorSourceUrl(
+    nodeId,
+    (url) => {
+      upscale.sourceUrl = url
+      upscale.sourceLoading = false
+    },
+    () => upscale.open && upscale.nodeId === nodeId,
+    { preferUpstream: true }
+  )
+  if (upscale.open && upscale.nodeId === nodeId) upscale.sourceLoading = false
+}
+
+function closeUpscale(): void {
+  upscale.open = false
+  upscale.nodeId = ''
+  upscale.setup = null
+  upscale.sourceUrl = ''
+  upscale.sourceLoading = false
+  upscale.generateModel = ''
+  upscale.generateProviderInstanceId = ''
+  upscale.generateInstruction = ''
+}
+
+function previewUpscale(payload: {
+  imageUpscale: ImageUpscaleState
+  generateModel: string
+  generateProviderInstanceId: string
+  generateInstruction?: string
+}): void {
+  const node = graph.nodes.find((n) => n.id === upscale.nodeId)
+  if (!node) return
+  node.params = { ...node.params, ...payload }
+  scheduleSave()
+  graphEditorHosts.bumpRevision()
+}
+
+function saveUpscale(payload: {
+  imageUpscale: ImageUpscaleState
+  generateModel: string
+  generateProviderInstanceId: string
+  generateInstruction?: string
+}): void {
+  const nodeId = upscale.nodeId
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  if (!node) return
+  const before = buildGraphJson()
+  node.params = {
+    ...node.params,
+    ...payload
+  }
+  upscale.setup = payload.imageUpscale
+  upscale.generateModel = payload.generateModel
+  upscale.generateProviderInstanceId = payload.generateProviderInstanceId
+  if (payload.generateInstruction !== undefined) {
+    upscale.generateInstruction = payload.generateInstruction
+  }
+  scheduleSave()
+  graphEditorHosts.bumpRevision()
+  recordGraphChange('upscale', before)
+  closeUpscale()
+}
+
 const expand = reactive({
   open: false,
   nodeId: '' as string,
@@ -8786,6 +8859,7 @@ const graphDialogsApi = {
   portraitTexture,
   portrait,
   emotion,
+  upscale,
   expand,
   redraw,
   erase,
@@ -8834,6 +8908,9 @@ const graphDialogsApi = {
   closeEmotion,
   previewEmotion,
   saveEmotion,
+  closeUpscale,
+  previewUpscale,
+  saveUpscale,
   closeExpand,
   previewExpand,
   saveExpand,
@@ -9215,6 +9292,7 @@ function registerNodeToolHost(): void {
       'node.portraitTexture': (nodeId) => onPortraitTextureOpen(nodeId),
       'node.portrait': (nodeId) => onPortraitOpen(nodeId),
       'node.emotion': (nodeId) => onEmotionOpen(nodeId),
+      'node.upscale': (nodeId) => onUpscaleOpen(nodeId),
       'node.expand': (nodeId) => onExpandOpen(nodeId),
       'node.redraw': (nodeId) => onRedrawOpen(nodeId),
       'node.erase': (nodeId) => onEraseOpen(nodeId),

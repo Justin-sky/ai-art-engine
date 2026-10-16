@@ -35,7 +35,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { readImageCropFromNode } from '@shared/graph'
+import { isCropEditorNode, readImageCropFromNode } from '@shared/graph'
 import GraphNodeRunControl from './GraphNodeRunControl.vue'
 import GraphNodeOutputPreview from './GraphNodeOutputPreview.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
@@ -53,7 +53,7 @@ const node = computed(() => {
   const id = selection.kind === 'graph.node' ? selection.id : null
   if (!id) return null
   const current = graphEditorHosts.getNode(selection.hostId, id)
-  return current?.typeId === 'image.crop' ? current : null
+  return isCropEditorNode(current) ? current : null
 })
 
 const hostId = computed(() => {

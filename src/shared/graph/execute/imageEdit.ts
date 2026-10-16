@@ -62,6 +62,8 @@ import {
 } from './materialize'
 import { resolveMentionSources } from './context'
 import { collectIncomingImageItems } from './mediaInputs'
+import { resolveImageProcessTool } from '../nodeRole'
+import { executeComposeNode, executeCutoutNode, executeImageTransformNode } from './imageLocal'
 import { fail } from '@shared/errors/appError'
 import { SHARED_ERRORS } from '../../errors/catalog'
 
@@ -1318,4 +1320,35 @@ export async function executeLayerSplitNode(
   const generatedImages = [...materializedLayers, ...extra]
   const previewPath = extra[0]?.relativePath?.trim() || materializedLayers[0]?.relativePath?.trim()
   return commitGeneratedImages(ctx, generatedImages, previewPath, imageLayerSplitToNodePatch(state))
+}
+
+/**
+ * 图像处理综合节点（image.process）：按 params.imageProcessTool 分发至对应 10 类子工具处理器。
+ */
+export async function executeImageProcessNode(
+  ctx: NodeExecuteContext
+): Promise<Record<string, GraphValue>> {
+  const tool = resolveImageProcessTool(ctx.node)
+  switch (tool) {
+    case 'crop':
+      return executeCropNode(ctx)
+    case 'transform':
+      return executeImageTransformNode(ctx)
+    case 'compose':
+      return executeComposeNode(ctx)
+    case 'gridSplit':
+      return executeGridSplitNode(ctx)
+    case 'cutout':
+      return executeCutoutNode(ctx)
+    case 'matte':
+      return executeMatteNode(ctx)
+    case 'erase':
+      return executeEraseNode(ctx)
+    case 'redraw':
+      return executeRedrawNode(ctx)
+    case 'expand':
+      return executeExpandNode(ctx)
+    case 'upscale':
+      return executeUpscaleNode(ctx)
+  }
 }

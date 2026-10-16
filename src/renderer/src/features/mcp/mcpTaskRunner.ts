@@ -1,5 +1,11 @@
 import type { GraphDocument } from '@shared/graph'
-import { applyGraphEditOps, collectRunMediaPaths } from '@shared/graph'
+import {
+  applyGraphEditOps,
+  autoLayoutNodes,
+  collectRunMediaPaths,
+  ensureBoundaryProxyNodes,
+  inferHostInterfaceFromGraph
+} from '@shared/graph'
 import type { McpGraphEditPayload, McpGraphIconRefinePayload } from '@shared/ipc'
 import { useGraphTaskStore } from '../../stores/graphTasks'
 import { useProjectStore } from '../../stores/project'
@@ -171,6 +177,19 @@ async function handleGraphEdit(payload: McpGraphEditPayload): Promise<void> {
           ? { autoLayout: false as const }
           : undefined
 
+    const syncSubgraphBoundaryAfterEdit = (
+      doc: GraphDocument,
+      reLayout: boolean
+    ): { graph: GraphDocument; hostInterface?: ReturnType<typeof inferHostInterfaceFromGraph> } => {
+      if (asset && asset.type !== 'subgraph') return { graph: doc }
+      const hostInterface = inferHostInterfaceFromGraph(doc)
+      const synced = ensureBoundaryProxyNodes(doc, hostInterface)
+      if (reLayout) {
+        autoLayoutNodes(synced.nodes, synced.edges)
+      }
+      return { graph: synced, hostInterface }
+    }
+
     if (isGraphEditorOpen(payload.assetId)) {
       const hostId = `asset:${payload.assetId}`
       const live = graphEditorHosts.getLiveAssetDocument(payload.assetId)
@@ -188,10 +207,13 @@ async function handleGraphEdit(payload: McpGraphEditPayload): Promise<void> {
       const onlySelect =
         liveResult.selectNodeIds?.length &&
         liveResult.applied.every((item) => item === '自动布局' || item.startsWith('选中节点'))
+      let syncedHostInterface: ReturnType<typeof inferHostInterfaceFromGraph> | undefined
       if (!onlySelect) {
+        const synced = syncSubgraphBoundaryAfterEdit(liveResult.graph, didAutoLayout)
+        syncedHostInterface = synced.hostInterface
         graphEditorHosts.applyExternalGraph(
           hostId,
-          liveResult.graph,
+          synced.graph,
           didAutoLayout ? { fitView: true } : undefined
         )
       }
@@ -199,6 +221,15 @@ async function handleGraphEdit(payload: McpGraphEditPayload): Promise<void> {
       const selectId = liveResult.selectNodeIds?.at(-1)
       if (selectId) graphEditorHosts.selectNode(hostId, selectId)
       await graphEditorHosts.flush(hostId)
+      if (syncedHostInterface && asset) {
+        const latest = project.assets.find((item) => item.id === payload.assetId) ?? asset
+        await persistAssetRecord(payload.assetId, {
+          genParams: {
+            ...((latest.genParams as Record<string, unknown> | undefined) ?? {}),
+            hostInterface: syncedHostInterface
+          }
+        })
+      }
       reply(true, { applied: liveResult.applied, warnings: liveResult.warnings })
       return
     }
@@ -214,8 +245,19 @@ async function handleGraphEdit(payload: McpGraphEditPayload): Promise<void> {
       reply(false, { applied: [], warnings: result.warnings, error: '全部操作未生效' })
       return
     }
+    const didAutoLayout = result.applied.includes('自动布局')
+    const onlySelect =
+      result.selectNodeIds?.length &&
+      result.applied.every((item) => item === '自动布局' || item.startsWith('选中节点'))
+    const synced = onlySelect
+      ? { graph: result.graph, hostInterface: undefined }
+      : syncSubgraphBoundaryAfterEdit(result.graph, didAutoLayout)
     const updated = await persistAssetRecord(payload.assetId, {
-      genParams: { ...(asset.genParams as Record<string, unknown>), graphJson: result.graph }
+      genParams: {
+        ...(asset.genParams as Record<string, unknown>),
+        graphJson: synced.graph,
+        ...(synced.hostInterface ? { hostInterface: synced.hostInterface } : {})
+      }
     })
     if (!updated) {
       reply(false, { error: '持久化失败：资产不存在' })

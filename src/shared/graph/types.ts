@@ -229,6 +229,7 @@ export type GraphNodeTypeId =
   | 'video.select'
   | 'voice.select'
   | 'text.select'
+  | 'film.workbench'
   | 'film.breakdown'
   | 'film.review'
   | 'film.cast'
@@ -239,6 +240,7 @@ export type GraphNodeTypeId =
   | 'image.portraitTexture'
   | 'image.portrait'
   | 'image.emotion'
+  | 'image.process'
   | 'image.upscale'
   | 'video.lipSync'
   | 'video.framePull'
@@ -1060,6 +1062,8 @@ export interface GraphNodeParams {
   frameFilmstripFps?: number
   /** 胶片条模式：keyframe=仅关键帧；frame=逐帧回退；空=未生成 */
   frameFilmstripMode?: 'keyframe' | 'frame' | ''
+  /** 图像处理综合节点（image.process）：当前激活子工具 */
+  imageProcessTool?: import('./nodeRole').ImageProcessToolId
   /** 扩图参数 */
   imageExpand?: Partial<ImageExpandState>
   /** 重绘（inpaint）参数 */
@@ -1206,6 +1210,8 @@ export interface GraphNodeParams {
   filmRenders?: string
   /** 分镜拆解：目标镜头数（0 = 由剧情节奏自动决定） */
   filmTargetShots?: number
+  /** 分镜拆解：单镜目标时长（秒，0 = 自动；如 15 表示拆解为约 15s 的长分镜并按时间段写动态提示词） */
+  filmShotDurationSec?: number
   /** 分镜拆解：统一画幅（如 16:9 / 9:16 / 2.39:1），写入分镜文档并作为下游出图默认值 */
   filmAspectRatio?: string
   /** 分镜拆解：全片视觉风格（画风 / 色调 / 年代质感），写入分镜文档并注入所有出图提示词 */
@@ -1220,14 +1226,20 @@ export interface GraphNodeParams {
   filmReviewVerdict?: 'PASS' | 'FAIL' | ''
   /** 角色场景设定：参与生成的实体种类，逗号分隔（character,location,prop） */
   filmCastKinds?: string
+  /** 角色场景设定：单次只生成指定实体 id（或名称）的设定图，执行后自动清空 */
+  filmCastOnlyId?: string
   /** 角色场景设定 / 批量拍摄：忽略缓存强制重生成 */
   filmForce?: boolean
   /** 镜头装配：镜头引用（1 起序号或镜头 id） */
   filmShotRef?: string
-  /** 批量拍摄：产出模式（keyframe = 只出关键帧；video = 关键帧 + 图生视频） */
-  filmRenderMode?: 'keyframe' | 'video'
+  /** 批量拍摄：产出模式（keyframe = 只出关键帧；video = 关键帧 + 图生视频；sheets = 设定图） */
+  filmRenderMode?: 'keyframe' | 'keyframes' | 'video' | 'sheets'
   /** 批量拍摄：镜头范围（如 `1-5,8`；空 = 全部） */
   filmShotRange?: string
+  /** 批量拍摄：单次只拍摄指定镜头 id（或序号），执行后自动清空 */
+  filmRenderOnlyShotId?: string
+  /** 批量拍摄：同场相邻镜头衔接（默认开启：注入上一镜动作/光影上下文并将上一镜关键帧作为参考图） */
+  filmRenderContinuity?: boolean
   /** 批量拍摄：关键帧视觉质检（不合格自动重拍） */
   filmRenderQc?: boolean
   /** 批量拍摄：单镜最大重拍次数 */
@@ -1235,9 +1247,27 @@ export interface GraphNodeParams {
   /** 批量拍摄：视频模型（generateModel 是关键帧图片模型） */
   filmVideoModel?: string
   filmVideoProviderInstanceId?: string
+  /** 批量拍摄：视频生成参数（与关键帧图片参数独立存储，避免 2K vs 1080p 等互相覆盖） */
+  filmVideoResolution?: string
+  filmVideoAspectRatio?: string
+  filmVideoDuration?: number
+  filmVideoAudio?: boolean
+  filmVideoSeed?: number
+  filmVideoSeedUseGlobal?: boolean
   /** 批量拍摄：质检用视觉文本模型（缺省 = 设置里默认文本模型） */
   filmQcModel?: string
   filmQcProviderInstanceId?: string
+  /** 影视工作台（film.workbench）：当前选中的阶段 Tab */
+  filmWorkbenchStage?: 'breakdown' | 'review' | 'cast' | 'render'
+  /** 影视工作台：单次执行的阶段目标（空或 all = 按顺序执行全流程；执行后自动清空） */
+  filmWorkbenchRunMode?: 'all' | 'breakdown' | 'review' | 'cast' | 'render' | ''
+  /** 影视工作台：分镜拆解与导演审核使用的文本模型（与图片生成模型 generateModel 独立存储） */
+  filmTextModel?: string
+  filmTextProviderInstanceId?: string
+  /** 影视工作台：各阶段独立额外指令（旧单阶段节点回退读 generateInstruction） */
+  filmBreakdownInstruction?: string
+  filmReviewInstruction?: string
+  filmCastInstruction?: string
 }
 
 export interface GraphPortDef {

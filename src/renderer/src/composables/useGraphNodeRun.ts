@@ -1,13 +1,18 @@
-import { computed, type Ref } from 'vue'
+import { computed, toValue, type MaybeRefOrGetter, type Ref } from 'vue'
 import { getNodePorts, type GraphNode, type GraphNodeRunStatus } from '@shared/graph'
 import { useEditorKernel } from '../editor/kernel'
 import { graphRunHosts } from '../features/graph/model/graphRunHosts'
 
 /** Inspector 与画布节点共用同一 runStates（经 graphRunHosts） */
-export function useGraphNodeRun(node: Ref<GraphNode | null | undefined>) {
+export function useGraphNodeRun(
+  node: Ref<GraphNode | null | undefined>,
+  explicitHostId?: MaybeRefOrGetter<string | null | undefined>
+) {
   const editor = useEditorKernel()
 
   const hostId = computed(() => {
+    const explicit = toValue(explicitHostId)?.trim()
+    if (explicit) return explicit
     const selection = editor.selection.current.value
     return selection.kind === 'graph.node' ? selection.hostId : null
   })

@@ -160,6 +160,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         return String(i18n.global.t('graph.types.anim.2d'))
       case 'comic.page':
         return String(i18n.global.t('graph.types.comic.page'))
+      case 'film.workbench':
+        return String(i18n.global.t('graph.inspector.film.workbenchTitle'))
       case 'gamePlay.sandbox':
         return String(i18n.global.t('studio.dive.gamePlay.title'))
       default:

@@ -3,7 +3,8 @@ import { autoLayoutNodes } from './layout'
 import { normalizeScopedGraph } from './normalize'
 import { canConnectNodes, getNodePorts } from './ports'
 import { sanitizeReferenceParams } from './referenceParams'
-import { listAddableNodeTypes, type NodeTypeDefinition } from './registry'
+import { isLegacyImageProcessTypeId } from './nodeRole'
+import { getNodeType, listAddableNodeTypes, type NodeTypeDefinition } from './registry'
 import type { GraphAddScope } from './scopes'
 import type { GraphDocument, GraphEdge, GraphNode, GraphNodeParams, GraphNodeTypeId } from './types'
 import { fail } from '@shared/errors/appError'
@@ -110,6 +111,8 @@ export const ALLOWED_PARAM_KEYS = new Set<keyof GraphNodeParams | string>([
 ])
 
 export interface GraphPlanMediaModelDefaults {
+  textModel?: string
+  textProviderInstanceId?: string
   imageModel?: string
   imageProviderInstanceId?: string
   videoModel?: string
@@ -135,7 +138,11 @@ export function applyDefaultGenerateModels(
   const aspectRatio = defaults.generateAspectRatio?.trim() || ''
   const nodes = plan.nodes.map((node) => {
     const params = { ...(node.params ?? {}) }
-    if (node.typeId === 'asset.image' || node.typeId === 'image.upscale') {
+    if (
+      node.typeId === 'asset.image' ||
+      node.typeId === 'image.upscale' ||
+      (node.typeId === 'image.process' && params.imageProcessTool === 'upscale')
+    ) {
       if (defaults.imageModel && !params.generateModel) {
         params.generateModel = defaults.imageModel
       }
@@ -151,6 +158,26 @@ export function applyDefaultGenerateModels(
         params.generateProviderInstanceId = defaults.videoProviderInstanceId
       }
       if (aspectRatio) params.generateAspectRatio = aspectRatio
+    } else if (node.typeId === 'film.workbench') {
+      if (defaults.textModel && !params.filmTextModel) {
+        params.filmTextModel = defaults.textModel
+      }
+      if (defaults.textProviderInstanceId && !params.filmTextProviderInstanceId) {
+        params.filmTextProviderInstanceId = defaults.textProviderInstanceId
+      }
+      if (defaults.imageModel && !params.generateModel) {
+        params.generateModel = defaults.imageModel
+      }
+      if (defaults.imageProviderInstanceId && !params.generateProviderInstanceId) {
+        params.generateProviderInstanceId = defaults.imageProviderInstanceId
+      }
+      if (defaults.videoModel && !params.filmVideoModel) {
+        params.filmVideoModel = defaults.videoModel
+      }
+      if (defaults.videoProviderInstanceId && !params.filmVideoProviderInstanceId) {
+        params.filmVideoProviderInstanceId = defaults.videoProviderInstanceId
+      }
+      if (aspectRatio) params.filmAspectRatio = aspectRatio
     } else {
       return node
     }
@@ -357,7 +384,9 @@ export function materializeGraphPlan(
       warnings.push(`重复节点 key「${key}」已跳过`)
       continue
     }
-    const def = addable.get(spec.typeId)
+    const def =
+      addable.get(spec.typeId) ??
+      (isLegacyImageProcessTypeId(spec.typeId) ? getNodeType(spec.typeId) : undefined)
     if (!def) {
       warnings.push(`未知或不可添加类型「${spec.typeId}」（key=${key}）`)
       continue

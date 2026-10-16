@@ -1,5 +1,13 @@
 import { shallowRef, ref } from 'vue'
-import type { GraphPlan } from '@shared/graph'
+import {
+  applyDefaultGenerateModels,
+  buildGraphPlanPreview,
+  cloneGraphPlan,
+  ensureBoundaryProxyNodes,
+  inferHostInterfaceFromGraph,
+  materializeGraphPlan,
+  type GraphPlan
+} from '@shared/graph'
 import {
   AI_WORKFLOW_ASPECT_RATIO_KEY,
   AI_WORKFLOW_IMAGE_MODEL_KEY,
@@ -132,9 +140,12 @@ export function useAiCreateWorkflow() {
   }
 
   function mediaModelPayload() {
+    const text = parseModelKey(textModelKey.value)
     const image = parseModelKey(imageModelKey.value)
     const video = parseModelKey(videoModelKey.value)
     return {
+      textModel: text?.model,
+      textProviderInstanceId: text?.providerInstanceId,
       imageModel: image?.model,
       imageProviderInstanceId: image?.providerInstanceId,
       videoModel: video?.model,
@@ -227,6 +238,31 @@ export function useAiCreateWorkflow() {
       persistModelKeys()
       const text = parseModelKey(textModelKey.value)
       const seedPlan = hasSeed && presetId ? getAiWorkflowPresetPlan(presetId) : null
+
+      if (mode === 'seed' && seedPlan) {
+        const plan = applyDefaultGenerateModels(cloneGraphPlan(seedPlan), {
+          generateAspectRatio: generateAspectRatio.value || undefined,
+          ...mediaModelPayload()
+        })
+        const materialized = materializeGraphPlan(plan, {
+          scope: 'subgraphAsset',
+          assetType: 'subgraph'
+        })
+        if (!materialized.ok) {
+          error.value = materialized.error || t('aiWorkflow.planFailed')
+          return false
+        }
+        const builtPreview = buildGraphPlanPreview(plan)
+        pendingPlan.value = toPlain(plan)
+        preview.value = {
+          title: builtPreview.title,
+          nodes: builtPreview.nodes,
+          edges: builtPreview.edges.map((e) => ({ from: e.from, to: e.to }))
+        }
+        previewWarnings.value = materialized.warnings || []
+        return true
+      }
+
       const result = await window.studio.planAiWorkflow(
         toPlain({
           prompt,
@@ -373,6 +409,14 @@ export function useAiCreateWorkflow() {
     error.value = ''
     try {
       persistModelKeys()
+      const localPlan = applyDefaultGenerateModels(cloneGraphPlan(pendingPlan.value), {
+        generateAspectRatio: generateAspectRatio.value || undefined,
+        ...mediaModelPayload()
+      })
+      const localMat = materializeGraphPlan(localPlan, {
+        scope: 'subgraphAsset',
+        assetType: 'subgraph'
+      })
       const result = await window.studio.commitAiWorkflow(
         toPlain({
           plan: pendingPlan.value,
@@ -388,13 +432,35 @@ export function useAiCreateWorkflow() {
       }
       saveDialogOpen.value = false
       await project.refreshAssets()
-      const asset = project.assets.find((item) => item.id === result.assetId)
+      let asset = project.assets.find((item) => item.id === result.assetId)
+      let commitWarnings = result.warnings
+      if (
+        asset &&
+        localMat.ok &&
+        localMat.document &&
+        result.warnings.length > localMat.warnings.length
+      ) {
+        const hostInterface = inferHostInterfaceFromGraph(localMat.document)
+        const wiredDoc = ensureBoundaryProxyNodes(localMat.document, hostInterface)
+        asset = await window.studio.updateAsset(
+          toPlain({
+            ...asset,
+            genParams: {
+              ...(asset.genParams ?? {}),
+              graphJson: toPlain(wiredDoc),
+              hostInterface: toPlain(hostInterface)
+            }
+          })
+        )
+        await project.refreshAssets()
+        commitWarnings = localMat.warnings
+      }
       if (asset) openAssetEditor(asset)
       dialogOpen.value = false
       draftPrompt.value = ''
       selectedPresetId.value = null
       clearPreview()
-      const warnings = [...previewWarnings.value, ...result.warnings]
+      const warnings = [...previewWarnings.value, ...commitWarnings]
       if (warnings.length) {
         void promptAlert({
           title: t('aiWorkflow.createdWithWarnings'),

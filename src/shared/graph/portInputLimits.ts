@@ -1,4 +1,4 @@
-﻿import type { GraphPortDataType, GraphPortDef } from './types'
+import type { GraphPortDataType, GraphPortDef } from './types'
 import { GraphPortType } from './types'
 
 /** 媒体输入口才显示数量上限角标（文本口不显示） */
@@ -126,13 +126,26 @@ export function formatDurationRange(durations: number[]): string {
   return `${durations.join('/')}s`
 }
 
+/**
+ * 按 3D 供应商解析图片参考口的数量上限：
+ * - Tripo：multiview-to-model 最多 4 视图（正/左/后/右）
+ * - Luma：仅取首张参考图（上限 1）
+ * - Meshy / Hyper3D / Lux3D / 未选：支持多图（未声明固定上限，显示 *）
+ */
+export function resolveModel3dMaxInputImages(providerKind: string | undefined): PortInputLimitMax {
+  if (providerKind === 'tripo') return 4
+  if (providerKind === 'luma') return 1
+  return null
+}
+
 /** 按端口数据类型取数量上限 */
 export function portLimitMaxForDataType(
   dataType: GraphPortDataType,
   opts: {
-    kind: 'image' | 'video' | null
+    kind: 'image' | 'video' | 'model3d' | null
     imageMax?: PortInputLimitMax
     videoLimits?: VideoGeneratePortLimits | null
+    model3dProviderKind?: string
   }
 ): PortInputLimitMax | undefined {
   if (!isPortLimitMediaType(dataType)) return undefined
@@ -151,6 +164,12 @@ export function portLimitMaxForDataType(
       return limits.maxVideos
     }
     if (dataType === GraphPortType.voice) return limits.maxVoices
+  }
+  if (opts.kind === 'model3d') {
+    if (dataType === GraphPortType.image) {
+      return resolveModel3dMaxInputImages(opts.model3dProviderKind)
+    }
+    return undefined
   }
   return undefined
 }

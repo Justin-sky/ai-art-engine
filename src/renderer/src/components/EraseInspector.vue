@@ -46,6 +46,7 @@ import {
   DEFAULT_ERASE_SYSTEM_PROMPT_ZH,
   buildEraseUserPrompt,
   defaultEraseSystemPrompt,
+  isEraseEditorNode,
   readImageEraseFromNode,
   resolveEraseSystemPrompt
 } from '@shared/graph'
@@ -67,7 +68,7 @@ const node = computed(() => {
   const id = selection.kind === 'graph.node' ? selection.id : null
   if (!id) return null
   const current = graphEditorHosts.getNode(selection.hostId, id)
-  return current?.typeId === 'image.erase' ? current : null
+  return isEraseEditorNode(current) ? current : null
 })
 
 const hostId = computed(() => {

@@ -46,6 +46,7 @@ import {
   DEFAULT_REDRAW_SYSTEM_PROMPT_ZH,
   buildRedrawUserPrompt,
   defaultRedrawSystemPrompt,
+  isRedrawEditorNode,
   readImageRedrawFromNode,
   resolveRedrawSystemPrompt
 } from '@shared/graph'
@@ -67,7 +68,7 @@ const node = computed(() => {
   const id = selection.kind === 'graph.node' ? selection.id : null
   if (!id) return null
   const current = graphEditorHosts.getNode(selection.hostId, id)
-  return current?.typeId === 'image.redraw' ? current : null
+  return isRedrawEditorNode(current) ? current : null
 })
 
 const hostId = computed(() => {

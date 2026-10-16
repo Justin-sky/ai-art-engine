@@ -522,4 +522,66 @@ describe('graphPlan materialize', () => {
       )
     ).toBe(true)
   })
+
+  it('injects text/image/video models and aspect ratio into film.workbench and wires its plural output port to boundary.output', () => {
+    const plan = applyDefaultGenerateModels(getAiWorkflowPresetPlan('shortDrama')!, {
+      textModel: 'txt-model',
+      textProviderInstanceId: 'prov-txt',
+      imageModel: 'img-model',
+      imageProviderInstanceId: 'prov-img',
+      videoModel: 'vid-model',
+      videoProviderInstanceId: 'prov-vid',
+      generateAspectRatio: '9:16'
+    })
+    const wbSpec = plan.nodes.find((n) => n.typeId === 'film.workbench')!
+    expect(wbSpec.params).toMatchObject({
+      filmTextModel: 'txt-model',
+      filmTextProviderInstanceId: 'prov-txt',
+      generateModel: 'img-model',
+      generateProviderInstanceId: 'prov-img',
+      filmVideoModel: 'vid-model',
+      filmVideoProviderInstanceId: 'prov-vid',
+      filmAspectRatio: '9:16'
+    })
+
+    const materialized = materializeGraphPlan(plan, {
+      scope: 'subgraphAsset',
+      assetType: 'subgraph'
+    })
+    expect(materialized.ok, materialized.error).toBe(true)
+    const iface = inferHostInterfaceFromGraph(materialized.document!)
+    expect(iface.outputs).toEqual([
+      expect.objectContaining({
+        id: 'out',
+        dataType: 'videos',
+        multiple: true
+      })
+    ])
+
+    const wired = ensureBoundaryProxyNodes(materialized.document!, iface)
+    const wbNode = wired.nodes.find((n) => n.typeId === 'film.workbench')!
+    const boutId = boundaryOutputNodeId('out')
+    expect(
+      wired.edges.some(
+        (e) => e.source === wbNode.id && e.sourcePort === 'out-videos' && e.target === boutId
+      )
+    ).toBe(true)
+
+    // 切换为 keyframes 模式时，自动改接 out-images（images 复数口）
+    wbNode.params = { ...wbNode.params, filmRenderMode: 'keyframes' }
+    const kfIface = inferHostInterfaceFromGraph(wired)
+    expect(kfIface.outputs).toEqual([
+      expect.objectContaining({
+        id: 'out',
+        dataType: 'images',
+        multiple: true
+      })
+    ])
+    const kfWired = ensureBoundaryProxyNodes(wired, kfIface)
+    expect(
+      kfWired.edges.some(
+        (e) => e.source === wbNode.id && e.sourcePort === 'out-images' && e.target === boutId
+      )
+    ).toBe(true)
+  })
 })

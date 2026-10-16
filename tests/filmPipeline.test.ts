@@ -4,12 +4,15 @@ import {
   composeFilmShotImagePrompt,
   composeFilmShotVideoPrompt,
   createNodeFromType,
+  deriveFilmCast,
   executeFilmBreakdownNode,
   executeFilmCastNode,
   executeFilmRenderNode,
   executeFilmReviewNode,
   executeFilmShotNode,
+  executeFilmWorkbenchNode,
   filmStoryboardValue,
+  findPrevSameSceneShot,
   getAiWorkflowPresetPlan,
   getNodeType,
   GraphPortType,
@@ -174,10 +177,13 @@ describe('film storyboard model', () => {
 })
 
 describe('film nodes', () => {
-  it('exposes the five film nodes and removes the legacy episode / beat / world nodes', () => {
+  it('exposes film.workbench and film.shot as addable nodes, keeps legacy stage nodes registered for compatibility, and removes legacy episode / beat / world nodes', () => {
     const ids = listAddableNodeTypes('workflow').map((def) => def.typeId)
-    for (const id of ['film.breakdown', 'film.review', 'film.cast', 'film.shot', 'film.render']) {
+    for (const id of ['film.workbench', 'film.shot']) {
       expect(ids).toContain(id)
+    }
+    for (const id of ['film.breakdown', 'film.review', 'film.cast', 'film.render']) {
+      expect(getNodeType(id)).toBeDefined()
     }
     for (const id of [
       'beat.select',
@@ -215,6 +221,18 @@ describe('film nodes', () => {
     const again = await executeFilmBreakdownNode(ctxFor(node, inputs, { generateText }))
     expect(generateText).toHaveBeenCalledTimes(2)
     expect(again.out.kind).toBe('storyboard')
+
+    // 指定 15s 长分镜：触发重新拆解（sourceHash 变化），下发多时间段提示词指令并写回 durationSec=15
+    node.params.filmShotDurationSec = 15
+    generateText.mockResolvedValueOnce({ text: MODEL_STORYBOARD, model: 'm' })
+    const longOut = await executeFilmBreakdownNode(ctxFor(node, inputs, { generateText }))
+    expect(generateText).toHaveBeenCalledTimes(3)
+    const callArg = generateText.mock.calls[2][0] as { prompt: string }
+    expect(callArg.prompt).toContain('单镜目标时长：15 秒（长分镜模式）')
+    expect(callArg.prompt).toContain('0-2s')
+    expect(callArg.prompt).toContain('11-15s')
+    const longDoc = (longOut.out as { doc: FilmStoryboard }).doc
+    expect(longDoc.shots.every((shot) => shot.durationSec === 15)).toBe(true)
   })
 
   it('review closes the loop: FAIL → revise failing shots → PASS', async () => {
@@ -257,6 +275,14 @@ describe('film nodes', () => {
 
     await executeFilmCastNode(ctxFor(node, inputs, { generateImage, saveRunMedia }))
     expect(generateImage).toHaveBeenCalledTimes(3)
+
+    // 单卡片执行：仅重绘指定条目（忽略 locked 与 hash 缓存），并自动清空 filmCastOnlyId
+    const beforeCast = parseFilmCast(node.params.filmCast ?? '')!
+    const targetEntryId = beforeCast.entries[0].id
+    node.params.filmCastOnlyId = targetEntryId
+    await executeFilmCastNode(ctxFor(node, inputs, { generateImage, saveRunMedia }))
+    expect(generateImage).toHaveBeenCalledTimes(4)
+    expect(node.params.filmCastOnlyId).toBe('')
   })
 
   it('shot node emits prompts and the cast refs for one shot', async () => {
@@ -315,7 +341,23 @@ describe('film nodes', () => {
     expect(firstCall.inputReferences).toEqual(['file://Cast/linxia.png', 'file://Cast/hall.png'])
     const retake = generateImage.mock.calls[1][0] as { prompt: string }
     expect(retake.prompt).toContain('人物太小')
+    // 第 2 镜（S01-02，同场同地点）自动注入第 1 镜（S01-01）的关键帧作为 @3 参考图，并写入承接指令
+    const secondShotCall = generateImage.mock.calls[2][0] as {
+      prompt: string
+      inputReferences?: string[]
+    }
+    expect(secondShotCall.inputReferences).toHaveLength(3)
+    expect(secondShotCall.inputReferences?.slice(0, 2)).toEqual([
+      'file://Cast/linxia.png',
+      'file://Cast/hall.png'
+    ])
+    expect(secondShotCall.inputReferences?.[2]).toMatch(/^file:\/\/Film\//)
+    expect(secondShotCall.prompt).toContain('紧接同场上一镜 S01-01')
+    expect(secondShotCall.prompt).toContain('参考图@3')
     expect(generateVideo).toHaveBeenCalledTimes(2)
+    expect((generateVideo.mock.calls[1][0] as { prompt: string }).prompt).toContain(
+      '紧接同场上一镜（S01-01：林夏走进走廊）'
+    )
     expect(
       (generateVideo.mock.calls[0][0] as { firstFrameImageUrl?: string }).firstFrameImageUrl
     ).toMatch(/^file:\/\/Film\//)
@@ -329,6 +371,135 @@ describe('film nodes', () => {
     await executeFilmRenderNode(ctxFor(node, inputs, extra))
     expect(generateImage).toHaveBeenCalledTimes(3)
     expect(generateVideo).toHaveBeenCalledTimes(2)
+
+    // 单镜卡片执行：仅重拍指定镜头 S01-02，其余镜头保持原缓存，且自动清空 filmRenderOnlyShotId
+    node.params.filmRenderOnlyShotId = 'S01-02'
+    await executeFilmRenderNode(ctxFor(node, inputs, extra))
+    expect(generateImage).toHaveBeenCalledTimes(4)
+    expect(generateVideo).toHaveBeenCalledTimes(3)
+    expect(node.params.filmRenderOnlyShotId).toBe('')
+  })
+
+  it('film.render reuses existing keyframe when switching image -> video and auto-retries unsupported 3s video duration', async () => {
+    const generateImage = vi
+      .fn()
+      .mockResolvedValue({ images: ['data:image/png;base64,S0Y='], model: 'img-m' })
+    const generateVideo = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new Error('400 Duration 3s is not supported for this model. Supported durations: 4, 5, 10s')
+      )
+      .mockResolvedValue({ assetId: 'v1', relativePath: 'Film/shot1.mp4', model: 'vid-m' })
+    const saveRunMedia = vi.fn(async ({ key }: { key: string }) => `Film/${key}.png`)
+    const resolveImageUrls = vi.fn(
+      async (items: Array<{ dataUrl?: string; relativePath?: string }>) =>
+        items.map((item) => item.dataUrl || `file://${item.relativePath}`)
+    )
+
+    const node: GraphNode = {
+      id: 'render-retry',
+      typeId: 'film.render',
+      position: { x: 0, y: 0 },
+      params: {
+        generateModel: 'img-m',
+        filmVideoModel: 'vid-m',
+        filmRenderMode: 'keyframe',
+        generateAspectRatio: '2.39:1',
+        generateResolution: '2K'
+      }
+    }
+    const inputs = { in: [filmStoryboardValue(sampleStoryboard())] }
+    const extra = { generateImage, generateVideo, saveRunMedia, resolveImageUrls }
+
+    // 1) 先在仅关键帧模式下生成 2 张关键帧
+    await executeFilmRenderNode(ctxFor(node, inputs, extra))
+    expect(generateImage).toHaveBeenCalledTimes(2)
+    expect(generateVideo).toHaveBeenCalledTimes(0)
+
+    // 2) 切换到 关键帧 + 视频 模式，点击 S01-02（durationSec=3）卡片单独生成视频：
+    //    直接复用已有关键帧（不重拍图片），且遇到 3s 时长不支持时自动回退到 4s 重试成功
+    node.params.filmRenderMode = 'video'
+    node.params.filmRenderOnlyShotId = 'S01-02'
+    const out = await executeFilmRenderNode(ctxFor(node, inputs, extra))
+    expect(generateImage).toHaveBeenCalledTimes(2)
+    expect(generateVideo).toHaveBeenCalledTimes(2)
+    expect((generateVideo.mock.calls[0][0] as { duration?: number }).duration).toBe(3)
+    expect((generateVideo.mock.calls[1][0] as { duration?: number }).duration).toBe(4)
+    expect((generateVideo.mock.calls[0][0] as { aspectRatio?: string }).aspectRatio).toBe('16:9')
+    expect((out['out-videos'] as { items: unknown[] }).items).toHaveLength(1)
+
+    // 3) 配置了独立的视频参数（filmVideoResolution / filmVideoAspectRatio / filmVideoDuration / filmVideoAudio）时优先传给 generateVideo
+    node.params.filmVideoResolution = '1080p'
+    node.params.filmVideoAspectRatio = '9:16'
+    node.params.filmVideoDuration = 10
+    node.params.filmVideoAudio = true
+    node.params.filmVideoSeed = 42
+    node.params.filmVideoSeedUseGlobal = false
+    node.params.filmRenderOnlyShotId = 'S01-01'
+    await executeFilmRenderNode(ctxFor(node, inputs, extra))
+    const lastVideoCall = generateVideo.mock.calls.at(-1)?.[0] as {
+      resolution?: string
+      aspectRatio?: string
+      duration?: number
+      generateAudio?: boolean
+      seed?: number
+    }
+    expect(lastVideoCall.resolution).toBe('1080p')
+    expect(lastVideoCall.aspectRatio).toBe('9:16')
+    expect(lastVideoCall.duration).toBe(10)
+    expect(lastVideoCall.generateAudio).toBe(true)
+    expect(lastVideoCall.seed).toBe(42)
+  })
+
+  it('film.workbench supports both single-stage run and full-pipeline run on one node', async () => {
+    const node = createNodeFromType(
+      'film.workbench',
+      { x: 0, y: 0 },
+      {
+        params: {
+          filmReviewMaxRounds: 1,
+          filmRenderMode: 'video',
+          filmWorkbenchRunMode: 'breakdown'
+        }
+      }
+    )
+    const generateText = vi
+      .fn()
+      .mockResolvedValueOnce({ text: MODEL_STORYBOARD, model: 'txt' })
+      .mockResolvedValueOnce({ text: '{"verdict":"PASS","score":92,"shots":[]}', model: 'txt' })
+    const generateImage = vi
+      .fn()
+      .mockResolvedValue({ images: ['data:image/png;base64,S0Y='], model: 'img' })
+    const generateVideo = vi.fn(async (input: { name?: string }) => ({
+      assetId: 'v',
+      relativePath: `Film/${input.name}.mp4`,
+      model: 'vid'
+    }))
+    const saveRunMedia = vi.fn(async ({ key }: { key: string }) => `Film/${key}.png`)
+    const resolveImageUrls = vi.fn(
+      async (items: Array<{ dataUrl?: string; relativePath?: string }>) =>
+        items.map((item) => item.dataUrl || `file://${item.relativePath}`)
+    )
+    const inputs = { in: [{ kind: 'text', text: '雨夜走廊，林夏寻找老周。' } as GraphValue] }
+    const extra = { generateText, generateImage, generateVideo, saveRunMedia, resolveImageUrls }
+
+    // 1) 单阶段运行（breakdown）：只执行分镜拆解，不触发审核 / 设定图 / 批量拍摄，且自动清空 filmWorkbenchRunMode
+    const out1 = await executeFilmWorkbenchNode(ctxFor(node, inputs, extra))
+    expect(node.params.filmWorkbenchRunMode).toBe('')
+    expect(generateText).toHaveBeenCalledTimes(1)
+    expect(generateImage).toHaveBeenCalledTimes(0)
+    expect(generateVideo).toHaveBeenCalledTimes(0)
+    expect((out1.out as { doc: FilmStoryboard }).doc.shots).toHaveLength(2)
+
+    // 2) 全流程运行（默认 / all）：复用未变的分镜，依次执行导演审核 → 角色场景设定（3 实体）→ 批量拍摄（2 镜关键帧 + 2 镜视频）
+    const out2 = await executeFilmWorkbenchNode(ctxFor(node, inputs, extra))
+    expect(generateText).toHaveBeenCalledTimes(2)
+    expect(generateImage).toHaveBeenCalledTimes(3 + 2)
+    expect(generateVideo).toHaveBeenCalledTimes(2)
+    expect((out2['out-cast'] as { doc: FilmCast }).doc.entries).toHaveLength(3)
+    expect((out2['out-sheets'] as { items: unknown[] }).items).toHaveLength(3)
+    expect((out2['out-images'] as { items: unknown[] }).items).toHaveLength(2)
+    expect((out2['out-videos'] as { items: unknown[] }).items).toHaveLength(2)
   })
 })
 
@@ -341,7 +512,99 @@ describe('film presets', () => {
       expect(result.warnings).toEqual([])
       // 规划的边全部保留（规范化可能额外补边界连线，所以只要求不少于计划）
       expect(result.document!.edges.length).toBeGreaterThanOrEqual(plan.edges.length)
-      expect(result.document!.nodes.some((node) => node.typeId === 'film.breakdown')).toBe(true)
+      expect(result.document!.nodes.some((node) => node.typeId === 'film.workbench')).toBe(true)
     })
   }
+})
+
+describe('film workbench dive & soft resolve wiring', () => {
+  it('GraphNodeCard routes film.* double-click to film.workbench dive instead of notepad', async () => {
+    const { readFileSync } = await import('node:fs')
+    const { join } = await import('node:path')
+    const cardCode = readFileSync(
+      join(process.cwd(), 'src/renderer/src/components/GraphNodeCard.vue'),
+      'utf8'
+    )
+    expect(cardCode).toContain("viewId: 'film.workbench'")
+    expect(cardCode).toContain("t('graph.inspector.film.openWorkbenchHint')")
+
+    const hostCode = readFileSync(
+      join(process.cwd(), 'src/renderer/src/components/EditorDiveChildHost.vue'),
+      'utf8'
+    )
+    expect(hostCode).toContain(
+      "'film.workbench': defineAsyncComponent(() => import('./dive/EditorDiveFilmView.vue'))"
+    )
+
+    const inspectorCode = readFileSync(
+      join(process.cwd(), 'src/renderer/src/components/FilmInspector.vue'),
+      'utf8'
+    )
+    expect(inspectorCode).toContain("viewId: 'film.workbench'")
+    expect(inspectorCode).not.toContain('InstructionModelSelect')
+
+    const diveCode = readFileSync(
+      join(process.cwd(), 'src/renderer/src/components/dive/EditorDiveFilmView.vue'),
+      'utf8'
+    )
+    expect(diveCode).toContain('VideoGenerateParamsSelect')
+    expect(diveCode).toContain('ImageGenerateParamsSelect')
+  })
+
+  it('filters non-spatial placeholder locations (e.g. 黑屏 / 纯黑背景) out of entities and cast sheets', () => {
+    const sb = parseFilmStoryboard({
+      title: '职场短剧',
+      style: '现代都市职场写实',
+      entities: [
+        { kind: 'location', name: '开放式办公室', description: '现代公司开放式办公区' },
+        { kind: 'location', name: '黑屏', description: '纯黑背景，用于字幕。' },
+        { kind: 'location', name: '场景A', description: '纯黑背景，仅用于转场字幕' }
+      ],
+      shots: [
+        {
+          id: 'S01-01',
+          location: '黑屏',
+          action: '黑屏字幕：三年前'
+        },
+        {
+          id: 'S01-02',
+          location: '开放式办公室',
+          action: '林小满坐在工位前'
+        }
+      ]
+    })
+    expect(sb).not.toBeNull()
+    expect(sb!.entities.map((e) => e.name)).toEqual(['开放式办公室'])
+
+    const cast = deriveFilmCast(sb!, null, ['character', 'location'])
+    expect(cast.entries.map((e) => e.name)).toEqual(['开放式办公室'])
+
+    const parsedLegacyCast = parseFilmCast(
+      JSON.stringify({
+        style: '现代都市职场写实',
+        entries: [
+          {
+            id: 'loc-1',
+            kind: 'location',
+            name: '开放式办公室',
+            description: '现代公司开放式办公区',
+            imageRelativePath: 'Cache/office.png'
+          },
+          {
+            id: 'loc-2',
+            kind: 'location',
+            name: '黑屏',
+            description: '纯黑背景，用于字幕。',
+            imageRelativePath: 'Cache/bogus-office.png'
+          }
+        ]
+      })
+    )
+    expect(parsedLegacyCast?.entries.map((e) => e.name)).toEqual(['开放式办公室'])
+    // 黑屏转场镜头不与下一镜产生空间衔接
+    expect(findPrevSameSceneShot(sb!, sb!.shots[1])).toBeNull()
+    const doc = sampleStoryboard()
+    expect(findPrevSameSceneShot(doc, doc.shots[0])).toBeNull()
+    expect(findPrevSameSceneShot(doc, doc.shots[1])?.id).toBe('S01-01')
+  })
 })

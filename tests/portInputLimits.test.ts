@@ -69,6 +69,24 @@ describe('portInputLimits', () => {
         }
       })
     ).toBe(3)
+    expect(
+      portLimitMaxForDataType(GraphPortType.image, {
+        kind: 'model3d',
+        model3dProviderKind: 'tripo'
+      })
+    ).toBe(4)
+    expect(
+      portLimitMaxForDataType(GraphPortType.image, {
+        kind: 'model3d',
+        model3dProviderKind: 'luma'
+      })
+    ).toBe(1)
+    expect(
+      portLimitMaxForDataType(GraphPortType.image, {
+        kind: 'model3d',
+        model3dProviderKind: 'meshy'
+      })
+    ).toBeNull()
   })
 
   it('deducts style slots from image port budget', () => {

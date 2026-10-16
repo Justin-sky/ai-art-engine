@@ -15,6 +15,7 @@ import type {
   ImageLayerSplitNestedRequest,
   ImageMatteState,
   ImageRedrawState,
+  ImageUpscaleState,
   LightingSetupState,
   MultiAngleCameraState,
   PortraitQualityState,
@@ -149,6 +150,15 @@ export type GraphEditorDialogsApi = {
     setup: EmotionPadState | null
     generateModel: string
     generateProviderInstanceId: string
+  }
+  upscale: {
+    open: boolean
+    setup: ImageUpscaleState | null
+    sourceUrl: string
+    sourceLoading: boolean
+    generateModel: string
+    generateProviderInstanceId: string
+    generateInstruction: string
   }
   expand: {
     open: boolean
@@ -294,6 +304,9 @@ export type GraphEditorDialogsApi = {
   closeEmotion: () => void
   previewEmotion: (payload: unknown) => void
   saveEmotion: (payload: unknown) => void
+  closeUpscale: () => void
+  previewUpscale: (payload: unknown) => void
+  saveUpscale: (payload: unknown) => void
   closeExpand: () => void
   previewExpand: (payload: unknown) => void
   saveExpand: (payload: unknown) => void

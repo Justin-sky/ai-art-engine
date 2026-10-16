@@ -46,6 +46,7 @@ import {
   DEFAULT_MATTE_SYSTEM_PROMPT_ZH,
   buildMatteUserPrompt,
   defaultMatteSystemPrompt,
+  isMatteEditorNode,
   readImageMatteFromNode,
   resolveMatteSystemPrompt
 } from '@shared/graph'
@@ -67,7 +68,7 @@ const node = computed(() => {
   const id = selection.kind === 'graph.node' ? selection.id : null
   if (!id) return null
   const current = graphEditorHosts.getNode(selection.hostId, id)
-  return current?.typeId === 'image.matte' ? current : null
+  return isMatteEditorNode(current) ? current : null
 })
 
 const hostId = computed(() => {
