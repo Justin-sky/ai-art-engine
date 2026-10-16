@@ -2292,6 +2292,13 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
         label: 'UI Screens'
       },
       {
+        id: 'in-image',
+        direction: 'in',
+        dataType: GraphPortType.image,
+        multiple: true,
+        label: 'Style Ref'
+      },
+      {
         id: 'out',
         direction: 'out',
         dataType: GraphPortType.images,
@@ -2310,11 +2317,18 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
       text: '',
       uiScreens: [],
       uiSplitAssetId: '',
-      uiSplitGraphVersion: UI_SPLIT_INNER_GRAPH_VERSION
+      uiSplitGraphVersion: UI_SPLIT_INNER_GRAPH_VERSION,
+      generateModel: '',
+      generateProviderInstanceId: '',
+      generateAspectRatio: '9:16',
+      uiGenTrackMode: 'dual',
+      uiGenStylePreset: 'auto',
+      styleImagesUseGlobal: true
     }),
     addable: true,
     deletable: true,
     inspector: 'none',
+    inspectorId: 'studio.graph.uiGen',
     card: 'media',
     contributeToGeneration: false,
     execute: executeUiGenNode

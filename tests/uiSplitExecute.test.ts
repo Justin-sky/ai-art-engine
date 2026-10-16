@@ -12,6 +12,8 @@ import {
   boundaryOutputNodeId,
   ensureBoundaryProxyNodes,
   screensFromUiGenIncoming,
+  applyUiGenStylePreset,
+  executeLayerSplitNode,
   UI_SPLIT_SLOT_CAP,
   GraphPortType,
   type NodeExecuteContext
@@ -478,5 +480,140 @@ describe('ui.split', () => {
       generateText: vi.fn()
     } as unknown as NodeExecuteContext
     await expect(executeUiSplitNode(ctx)).rejects.toThrow('GRAPH_PROCESS_NO_INPUT')
+  })
+
+  it('ui.gen outer-canvas batch generation runs dual-track, applies style preset, skips disabled screens, and propagates layerPrompt to image.layerSplit', async () => {
+    const node = createNodeFromType('ui.gen', { x: 0, y: 0 })
+    node.params.uiGenTrackMode = 'dual'
+    node.params.uiGenStylePreset = 'dark-fantasy'
+    let callCount = 0
+    const generateImage = vi.fn(async (req: { prompt: string; inputReferences?: string[] }) => {
+      callCount += 1
+      return {
+        images: [`data:image/png;base64,GEN_${callCount}`],
+        model: 'gemini-2.5-flash-image'
+      }
+    })
+    const patchNode = vi.fn()
+    const ctx = {
+      node,
+      locale: 'zh-CN',
+      inputs: {
+        in: [
+          {
+            kind: 'texts',
+            items: [
+              {
+                id: 'ui-hud',
+                title: '战斗 HUD',
+                text: '左上血条与右下技能栏',
+                cleanPrompt: '左上血条与右下技能栏空字底图',
+                layerPrompt: '拆分为透明背景、左上角色头像框、右下技能按钮',
+                aspectRatio: '16:9'
+              },
+              {
+                id: 'ui-disabled',
+                title: '隐藏界面',
+                text: '不应被生成的界面',
+                enabled: false
+              }
+            ]
+          }
+        ],
+        'in-image': [
+          {
+            kind: 'image',
+            dataUrl: 'data:image/png;base64,STYLE_REF'
+          }
+        ]
+      },
+      generateImage,
+      patchNode
+    } as unknown as NodeExecuteContext
+
+    // Ensure manual disabled flag is respected
+    node.params.uiScreens = [
+      {
+        id: 'ui-hud',
+        title: '战斗 HUD',
+        prompt: '左上血条与右下技能栏',
+        cleanPrompt: '左上血条与右下技能栏空字底图',
+        layerPrompt: '拆分为透明背景、左上角色头像框、右下技能按钮',
+        aspectRatio: '16:9',
+        enabled: true
+      },
+      {
+        id: 'ui-disabled',
+        title: '隐藏界面',
+        prompt: '不应被生成的界面',
+        enabled: false
+      }
+    ]
+
+    const out = await executeUiGenNode(ctx)
+    // Only enabled screen #1 runs dual track => 2 calls (preview + clean)
+    expect(generateImage).toHaveBeenCalledTimes(2)
+    const firstCall = generateImage.mock.calls[0]?.[0]
+    const secondCall = generateImage.mock.calls[1]?.[0]
+    expect(firstCall?.prompt).toContain('暗黑哥特幻想 RPG UI')
+    expect(firstCall?.inputReferences).toEqual(['data:image/png;base64,STYLE_REF'])
+    // Second call (clean track) receives preview track output first + style ref
+    expect(secondCall?.inputReferences).toEqual([
+      'data:image/png;base64,GEN_1',
+      'data:image/png;base64,STYLE_REF'
+    ])
+    expect(out['out-selected']).toMatchObject({
+      kind: 'image',
+      dataUrl: 'data:image/png;base64,GEN_2',
+      title: '底图·战斗 HUD',
+      layerPrompt: '拆分为透明背景、左上角色头像框、右下技能按钮'
+    })
+    expect(node.params.uiSelectedLayerPrompt).toBe('拆分为透明背景、左上角色头像框、右下技能按钮')
+
+    // Feed out-selected directly into image.layerSplit with empty prompt
+    const splitNode = createNodeFromType('image.layerSplit', { x: 200, y: 0 })
+    splitNode.params.imageLayerSplit = {
+      ...splitNode.params.imageLayerSplit!,
+      splitMode: 'local-slice'
+    }
+    const decomposeImageUiLayers = vi.fn(async () => ({
+      width: 200,
+      height: 100,
+      baseDataUrl: 'data:image/png;base64,BG',
+      widgets: [
+        {
+          name: '角色头像框',
+          description: '左上头像框',
+          left: 10,
+          top: 10,
+          width: 40,
+          height: 40,
+          dataUrl: 'data:image/png;base64,W1',
+          nineSliceBorders: [8, 8, 8, 8] as [number, number, number, number]
+        }
+      ]
+    }))
+    const splitCtx = {
+      node: splitNode,
+      locale: 'zh-CN',
+      inputs: {
+        in: [out['out-selected']!]
+      },
+      decomposeImageUiLayers,
+      patchNode: vi.fn()
+    } as unknown as NodeExecuteContext
+
+    await executeLayerSplitNode(splitCtx)
+    expect(splitNode.params.imageLayerSplit?.prompt).toBe(
+      '拆分为透明背景、左上角色头像框、右下技能按钮'
+    )
+    expect(splitNode.params.imageLayerSplit?.layers[1]?.nineSliceBorders).toEqual([8, 8, 8, 8])
+  })
+
+  it('applyUiGenStylePreset prepends style guidance when preset is not auto', () => {
+    const styled = applyUiGenStylePreset('背包界面', 'eastern-xianxia', 'zh-CN')
+    expect(styled).toContain('国风仙侠')
+    expect(styled).toContain('背包界面')
+    expect(applyUiGenStylePreset('背包界面', 'auto', 'zh-CN')).toBe('背包界面')
   })
 })

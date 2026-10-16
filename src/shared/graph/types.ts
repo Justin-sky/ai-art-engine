@@ -849,6 +849,8 @@ export interface GraphNodeParams {
     dataUrl: string
     createdAt?: string
     relativePath?: string
+    /** UI 生成节点：该界面对应的图层分离拆层指令（供下游 image.layerSplit 自动继承） */
+    layerPrompt?: string
   }>
   /**
    * SVG 生成节点：历次生成累计的矢量源码（含落盘 .svg 路径）。
@@ -984,7 +986,15 @@ export interface GraphNodeParams {
     screenKind?: 'fullscreen' | 'hud' | 'popup' | 'panel' | 'component'
     aspectRatio?: '9:16' | '16:9' | '1:1' | '4:3' | '3:4'
     layerPrompt?: string
+    /** 单屏是否启用生成（缺省 true；false 时在批量生成中跳过该屏） */
+    enabled?: boolean
   }>
+  /** UI 界面生成：出图轨道模式（'dual' = 带字预览 + 无字底图双轨，'clean-only' = 仅无字底图直通拆层，'preview-only' = 仅带字预览） */
+  uiGenTrackMode?: 'dual' | 'clean-only' | 'preview-only'
+  /** UI 界面生成：游戏 UI 视觉材质基底预设 */
+  uiGenStylePreset?: string
+  /** UI 界面生成：当前选中界面对应的专属拆层提示词（供下游 UI 图层分离自动继承） */
+  uiSelectedLayerPrompt?: string
   /** UI 界面拆分：dive 内图对应的子图资产 id（懒创建） */
   uiSplitAssetId?: string
   /** UI 界面拆分：dive 内图结构版本（结构变化时递增，旧资产强制重建） */

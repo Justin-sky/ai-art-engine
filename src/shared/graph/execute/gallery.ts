@@ -101,6 +101,8 @@ export function flattenImagesValues(values: GraphValue[]): GraphImageItem[] {
     else if (v.kind === 'image' && (v.dataUrl || v.relativePath)) {
       out.push({
         id: v.id,
+        ...(v.title ? { title: v.title } : {}),
+        ...(v.layerPrompt ? { layerPrompt: v.layerPrompt } : {}),
         dataUrl: v.dataUrl,
         createdAt: v.createdAt,
         relativePath: v.relativePath
@@ -260,6 +262,8 @@ export function dualImageGalleryOutputs(
     out: {
       kind: 'image',
       id: picked?.id,
+      ...(picked?.title ? { title: picked.title } : {}),
+      ...(picked?.layerPrompt ? { layerPrompt: picked.layerPrompt } : {}),
       dataUrl: picked?.dataUrl || '',
       createdAt: picked?.createdAt,
       ...(picked?.relativePath ? { relativePath: picked.relativePath } : {})
@@ -410,8 +414,12 @@ export function newestTextSelectedId(items: GraphTextItem[]): string {
 }
 
 export function stripEmbeddedImageData(item: GraphImageItem): GraphImageItem {
+  const title = item.title?.trim()
+  const layerPrompt = item.layerPrompt?.trim()
   return {
     id: item.id,
+    ...(title ? { title: title } : {}),
+    ...(layerPrompt ? { layerPrompt } : {}),
     dataUrl: item.relativePath?.trim() ? '' : item.dataUrl || '',
     createdAt: item.createdAt,
     ...(item.relativePath?.trim() ? { relativePath: item.relativePath.trim() } : {})

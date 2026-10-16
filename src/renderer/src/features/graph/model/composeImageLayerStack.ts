@@ -3,7 +3,10 @@ import {
   isCanvasSafeImageSrc,
   isLayerSplitBase,
   isLayerSplitLayerDrawable,
+  sliceUiLayerFromRgbaRect,
   sortLayersForCompose,
+  type ImageLayerSplitLayer,
+  type ImageLayerSplitRect,
   type ImageLayerSplitState
 } from '@shared/graph'
 import { SHARED_ERRORS } from '@shared/errors/catalog'
@@ -97,6 +100,7 @@ export async function decomposeImageUiLayers(input: {
     width: number
     height: number
     dataUrl: string
+    nineSliceBorders?: [number, number, number, number]
   }>
 }> {
   const srcImg = await loadImage(input.sourceDataUrl)
@@ -144,7 +148,8 @@ export async function decomposeImageUiLayers(input: {
     top: widget.top,
     width: widget.width,
     height: widget.height,
-    dataUrl: rgbaBufferToPngDataUrl(widget.rgba, widget.width, widget.height)
+    dataUrl: rgbaBufferToPngDataUrl(widget.rgba, widget.width, widget.height),
+    ...(widget.nineSliceBorders ? { nineSliceBorders: widget.nineSliceBorders } : {})
   }))
 
   return {
@@ -152,6 +157,129 @@ export async function decomposeImageUiLayers(input: {
     height,
     baseDataUrl,
     widgets
+  }
+}
+
+/**
+ * 手动框选切层（Box-Slice）：从源图（或基底图）按给定画布矩形框智能抠出独立透明图层 PNG。
+ */
+export async function sliceUiLayerFromSourceCanvas(input: {
+  sourceUrl: string
+  baseUrl?: string
+  canvasWidth: number
+  canvasHeight: number
+  rect: ImageLayerSplitRect
+  layerIndex: number
+}): Promise<{
+  name: string
+  description: string
+  left: number
+  top: number
+  width: number
+  height: number
+  dataUrl: string
+  nineSliceBorders?: [number, number, number, number]
+}> {
+  const srcImg = await loadImage(input.sourceUrl)
+  const width = Math.max(1, input.canvasWidth || srcImg.naturalWidth || srcImg.width || 1)
+  const height = Math.max(1, input.canvasHeight || srcImg.naturalHeight || srcImg.height || 1)
+
+  const srcCanvas = document.createElement('canvas')
+  srcCanvas.width = width
+  srcCanvas.height = height
+  const srcCtx = srcCanvas.getContext('2d')
+  if (!srcCtx) throw new Error('LAYER_SPLIT_CANVAS_UNAVAILABLE')
+  srcCtx.drawImage(srcImg, 0, 0, width, height)
+  const sourceRgba = srcCtx.getImageData(0, 0, width, height).data
+
+  let cleanBaseRgba: Uint8ClampedArray | undefined
+  if (input.baseUrl?.trim() && input.baseUrl.trim() !== input.sourceUrl.trim()) {
+    try {
+      const baseImg = await loadImage(input.baseUrl.trim())
+      const baseCanvas = document.createElement('canvas')
+      baseCanvas.width = width
+      baseCanvas.height = height
+      const baseCtx = baseCanvas.getContext('2d')
+      if (baseCtx) {
+        baseCtx.drawImage(baseImg, 0, 0, width, height)
+        cleanBaseRgba = baseCtx.getImageData(0, 0, width, height).data
+      }
+    } catch {
+      cleanBaseRgba = undefined
+    }
+  }
+
+  const { layer: sliced } = sliceUiLayerFromRgbaRect({
+    sourceRgba,
+    width,
+    height,
+    rect: input.rect,
+    baseRgba: cleanBaseRgba,
+    zIndex: input.layerIndex
+  })
+
+  return {
+    name: sliced.name,
+    description: sliced.description,
+    left: sliced.left,
+    top: sliced.top,
+    width: sliced.width,
+    height: sliced.height,
+    dataUrl: rgbaBufferToPngDataUrl(sliced.rgba, sliced.width, sliced.height),
+    ...(sliced.nineSliceBorders ? { nineSliceBorders: sliced.nineSliceBorders } : {})
+  }
+}
+
+/**
+ * 将上下两个控件图层按各自的画布坐标融合为单张透明 PNG（向下合并图层）。
+ */
+export async function mergeTwoLayerImagesToDataUrl(input: {
+  upperLayer: ImageLayerSplitLayer
+  upperUrl: string
+  lowerLayer: ImageLayerSplitLayer
+  lowerUrl: string
+}): Promise<{ dataUrl: string; mergedRect: ImageLayerSplitRect }> {
+  const [lowerImg, upperImg] = await Promise.all([
+    loadImage(input.lowerUrl),
+    loadImage(input.upperUrl)
+  ])
+  const left = Math.min(input.lowerLayer.left, input.upperLayer.left)
+  const top = Math.min(input.lowerLayer.top, input.upperLayer.top)
+  const right = Math.max(
+    input.lowerLayer.left + Math.max(1, input.lowerLayer.width),
+    input.upperLayer.left + Math.max(1, input.upperLayer.width)
+  )
+  const bottom = Math.max(
+    input.lowerLayer.top + Math.max(1, input.lowerLayer.height),
+    input.upperLayer.top + Math.max(1, input.upperLayer.height)
+  )
+  const width = Math.max(1, right - left)
+  const height = Math.max(1, bottom - top)
+
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('LAYER_SPLIT_CANVAS_UNAVAILABLE')
+
+  ctx.drawImage(
+    lowerImg,
+    input.lowerLayer.left - left,
+    input.lowerLayer.top - top,
+    Math.max(1, input.lowerLayer.width),
+    Math.max(1, input.lowerLayer.height)
+  )
+  ctx.drawImage(
+    upperImg,
+    input.upperLayer.left - left,
+    input.upperLayer.top - top,
+    Math.max(1, input.upperLayer.width),
+    Math.max(1, input.upperLayer.height)
+  )
+
+  return {
+    dataUrl: canvas.toDataURL('image/png'),
+    mergedRect: { left, top, width, height }
   }
 }
 

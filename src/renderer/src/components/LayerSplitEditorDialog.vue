@@ -43,11 +43,41 @@
         <button
           type="button"
           class="tool-btn"
+          :class="{ active: boxSliceActive }"
+          :disabled="!hasCanvas || splitting || slicing"
+          :title="t('graph.layerSplit.boxSliceHint')"
+          @click="toggleBoxSliceMode"
+        >
+          {{
+            boxSliceActive ? t('graph.layerSplit.boxSliceActive') : t('graph.layerSplit.boxSlice')
+          }}
+        </button>
+        <button
+          type="button"
+          class="tool-btn"
           :disabled="!canSplitSelected"
           :title="splitDisabledReason"
           @click="onSplitSelected"
         >
           {{ splitting ? t('graph.layerSplit.splitting') : t('graph.layerSplit.splitSelected') }}
+        </button>
+        <button
+          type="button"
+          class="tool-btn"
+          :disabled="!canMergeDown"
+          :title="t('graph.layerSplit.mergeDownHint')"
+          @click="onMergeDownSelected"
+        >
+          {{ t('graph.layerSplit.mergeDown') }}
+        </button>
+        <button
+          type="button"
+          class="tool-btn danger-btn"
+          :disabled="!canDeleteLayer"
+          :title="t('graph.layerSplit.deleteLayerHint')"
+          @click="onDeleteSelectedLayer"
+        >
+          {{ t('graph.layerSplit.deleteLayer') }}
         </button>
         <button
           type="button"
@@ -82,9 +112,11 @@
           </div>
           <div
             v-else
+            ref="canvasWrapEl"
             class="canvas-wrap"
+            :class="{ 'box-slice-mode': boxSliceActive }"
             :style="canvasWrapStyle"
-            @pointerdown.self="draft.selectedId = ''"
+            @pointerdown="onCanvasWrapPointerDown"
             @dblclick.self="resetView"
           >
             <div v-if="splitting" class="stage-mask">
@@ -119,6 +151,7 @@
                 />
               </template>
             </div>
+            <div v-if="boxSliceDrag.active" class="box-slice-rect" :style="boxSliceRectStyle" />
           </div>
         </div>
 
@@ -390,10 +423,12 @@ import {
   DEFAULT_IMAGE_LAYER_SPLIT,
   LAYER_SPLIT_RESOLUTIONS,
   UI_LAYER_SPLIT_PRESETS,
+  applyMergedLayerSplitPair,
   autoGroupLayersForGameUi,
   buildLayerSplitList,
   buildLayerSplitUiManifest,
   collectLayerSplitGroupLayers,
+  findMergeDownTargetLayer,
   layerSplitExportFolderSegments,
   imageLayerSplitToNodePatch,
   isLayerSplitBase,
@@ -401,12 +436,14 @@ import {
   layerSplitGroupForSource,
   nudgeLayerSplit,
   normalizeImageLayerSplit,
+  removeLayerSplitLayer,
   renameLayerSplitItem,
   reorderLayerSplit,
   resetLayerSplitRect,
   sortLayersForCompose,
   toggleLayerSplitGroupCollapsed,
   toggleLayerSplitGroupVisible,
+  type GraphImageItem,
   type ImageLayerSplitLayer,
   type ImageLayerSplitNestedRequest,
   type ImageLayerSplitState,
@@ -414,6 +451,10 @@ import {
   type UiLayerSplitPresetId
 } from '@shared/graph'
 import { useStudioI18n } from '../composables/useStudioI18n'
+import {
+  mergeTwoLayerImagesToDataUrl,
+  sliceUiLayerFromSourceCanvas
+} from '../features/graph/model/composeImageLayerStack'
 import {
   loadGenerateModelOptions,
   preferredModelKey,
@@ -426,6 +467,7 @@ import StudioFloatingWindow from './StudioFloatingWindow.vue'
 export type LayerSplitEditorSavePayload = ReturnType<typeof imageLayerSplitToNodePatch> & {
   generateModel: string
   generateProviderInstanceId: string
+  extraGeneratedImages?: GraphImageItem[]
 }
 
 type ResizeHandle = 'nw' | 'ne' | 'sw' | 'se'
@@ -465,6 +507,7 @@ const { t, locale } = useStudioI18n()
 const windowTitle = computed(() => t('graph.layerSplit.appMark'))
 const draft = reactive<ImageLayerSplitState>(normalizeImageLayerSplit())
 const stageEl = ref<HTMLElement | null>(null)
+const canvasWrapEl = ref<HTMLElement | null>(null)
 const display = reactive({ w: 480, h: 480 })
 const ZOOM_MIN = 0.2
 const ZOOM_MAX = 8
@@ -482,6 +525,17 @@ const pan = reactive({
 })
 const hydrating = ref(false)
 const exporting = ref(false)
+const slicing = ref(false)
+const boxSliceActive = ref(false)
+const boxSliceDrag = reactive({
+  active: false,
+  startX: 0,
+  startY: 0,
+  currentX: 0,
+  currentY: 0
+})
+const localLayerUrls = reactive<Record<string, string>>({})
+const extraImages = ref<GraphImageItem[]>([])
 const exportMessage = ref('')
 const exportFailed = ref(false)
 const modelOptions = ref<GenerateModelOption[]>([])
@@ -523,6 +577,7 @@ const dirty = computed(() => {
   const b = normalizeImageLayerSplit(draft)
   return (
     JSON.stringify(a) !== JSON.stringify(b) ||
+    extraImages.value.length > 0 ||
     selectedModel.value !== (props.generateModel ?? '') ||
     selectedProviderInstanceId.value !== (props.generateProviderInstanceId ?? '')
   )
@@ -557,9 +612,29 @@ const canSplitSelected = computed(() => {
   return (
     !!layer &&
     !splitting.value &&
+    !slicing.value &&
     !alreadySplitSource.value &&
     hasCanvas.value &&
     !props.sourceLoading
+  )
+})
+const canDeleteLayer = computed(() => {
+  const layer = selectedLayer.value
+  return !!layer && !isLayerSplitBase(layer) && !splitting.value && !slicing.value
+})
+const mergeDownTarget = computed(() =>
+  selectedLayer.value ? findMergeDownTargetLayer(draft, selectedLayer.value.id) : null
+)
+const canMergeDown = computed(() => {
+  const upper = selectedLayer.value
+  const lower = mergeDownTarget.value
+  return (
+    !splitting.value &&
+    !slicing.value &&
+    !!upper &&
+    !!lower &&
+    !!layerUrl(upper) &&
+    !!layerUrl(lower)
   )
 })
 const splitDisabledReason = computed(() => {
@@ -591,6 +666,21 @@ const canvasWrapStyle = computed(() => ({
   transform: `translate(${Math.round(panOffset.x)}px, ${Math.round(panOffset.y)}px)`
 }))
 
+const boxSliceRectStyle = computed(() => {
+  const cw = Math.max(1, draft.canvasWidth)
+  const ch = Math.max(1, draft.canvasHeight)
+  const left = Math.min(boxSliceDrag.startX, boxSliceDrag.currentX)
+  const top = Math.min(boxSliceDrag.startY, boxSliceDrag.currentY)
+  const width = Math.max(1, Math.abs(boxSliceDrag.currentX - boxSliceDrag.startX))
+  const height = Math.max(1, Math.abs(boxSliceDrag.currentY - boxSliceDrag.startY))
+  return {
+    left: `${(left / cw) * 100}%`,
+    top: `${(top / ch) * 100}%`,
+    width: `${(width / cw) * 100}%`,
+    height: `${(height / ch) * 100}%`
+  }
+})
+
 function isBase(layer: ImageLayerSplitLayer): boolean {
   return isLayerSplitBase(layer)
 }
@@ -605,7 +695,13 @@ function layerOnCanvas(layer: ImageLayerSplitLayer): boolean {
 }
 
 function layerUrl(layer: ImageLayerSplitLayer): string {
-  return props.layerUrls[layer.imageId] || props.layerUrls[layer.id] || ''
+  return (
+    localLayerUrls[layer.imageId] ||
+    localLayerUrls[layer.id] ||
+    props.layerUrls[layer.imageId] ||
+    props.layerUrls[layer.id] ||
+    ''
+  )
 }
 
 function sanitizeFileBase(name: string): string {
@@ -824,7 +920,7 @@ async function exportPsd(): Promise<void> {
   try {
     const data = await layerSplitToPsdUint8Array({
       state: draft,
-      layerUrls: props.layerUrls
+      layerUrls: { ...props.layerUrls, ...localLayerUrls }
     })
     const saved = await window.studio.saveBinaryFile({
       data,
@@ -989,9 +1085,192 @@ function scaleFromDisplay(dx: number, dy: number): { dx: number; dy: number } {
   }
 }
 
+function clientToCanvasPoint(clientX: number, clientY: number): { x: number; y: number } {
+  const wrap = canvasWrapEl.value
+  const cw = Math.max(1, draft.canvasWidth)
+  const ch = Math.max(1, draft.canvasHeight)
+  if (!wrap) return { x: 0, y: 0 }
+  const rect = wrap.getBoundingClientRect()
+  const relX = Math.max(0, Math.min(1, (clientX - rect.left) / Math.max(1, rect.width)))
+  const relY = Math.max(0, Math.min(1, (clientY - rect.top) / Math.max(1, rect.height)))
+  return {
+    x: Math.round(relX * cw),
+    y: Math.round(relY * ch)
+  }
+}
+
+function toggleBoxSliceMode(): void {
+  if (!hasCanvas.value || splitting.value || slicing.value) return
+  boxSliceActive.value = !boxSliceActive.value
+  if (boxSliceActive.value) {
+    flashExportMessage(t('graph.layerSplit.boxSliceHint'))
+  }
+}
+
+function onCanvasWrapPointerDown(event: PointerEvent): void {
+  if (spaceHeld.value) {
+    onStagePanStart(event)
+    return
+  }
+  if (!boxSliceActive.value) {
+    if (event.target === canvasWrapEl.value) {
+      draft.selectedId = ''
+    }
+    return
+  }
+  if (!hasCanvas.value || slicing.value) return
+  event.preventDefault()
+  event.stopPropagation()
+  const pt = clientToCanvasPoint(event.clientX, event.clientY)
+  boxSliceDrag.active = true
+  boxSliceDrag.startX = pt.x
+  boxSliceDrag.startY = pt.y
+  boxSliceDrag.currentX = pt.x
+  boxSliceDrag.currentY = pt.y
+  window.addEventListener('pointermove', onBoxSlicePointerMove)
+  window.addEventListener('pointerup', onBoxSlicePointerUp)
+}
+
+function onBoxSlicePointerMove(event: PointerEvent): void {
+  if (!boxSliceDrag.active) return
+  const pt = clientToCanvasPoint(event.clientX, event.clientY)
+  boxSliceDrag.currentX = pt.x
+  boxSliceDrag.currentY = pt.y
+}
+
+async function onBoxSlicePointerUp(): Promise<void> {
+  window.removeEventListener('pointermove', onBoxSlicePointerMove)
+  window.removeEventListener('pointerup', onBoxSlicePointerUp)
+  if (!boxSliceDrag.active) return
+  const left = Math.min(boxSliceDrag.startX, boxSliceDrag.currentX)
+  const top = Math.min(boxSliceDrag.startY, boxSliceDrag.currentY)
+  const width = Math.abs(boxSliceDrag.currentX - boxSliceDrag.startX)
+  const height = Math.abs(boxSliceDrag.currentY - boxSliceDrag.startY)
+  boxSliceDrag.active = false
+
+  if (width < 6 || height < 6) return
+  const base = baseLayer.value
+  const baseUrl = base ? layerUrl(base) : ''
+  const srcUrl = props.sourceUrl?.trim() || baseUrl
+  if (!srcUrl) return
+
+  slicing.value = true
+  try {
+    pushDraftHistory()
+    const sliced = await sliceUiLayerFromSourceCanvas({
+      sourceUrl: srcUrl,
+      baseUrl: baseUrl || undefined,
+      canvasWidth: draft.canvasWidth,
+      canvasHeight: draft.canvasHeight,
+      rect: { left, top, width, height },
+      layerIndex: draft.layers.length
+    })
+    const maxZ = draft.layers.reduce((m, l) => Math.max(m, l.zIndex), 0)
+    const stamp = Date.now()
+    const newId = `layerSplit:slice:${stamp}:z${maxZ + 1}`
+    localLayerUrls[newId] = sliced.dataUrl
+    extraImages.value = [
+      ...extraImages.value,
+      {
+        id: newId,
+        title: sliced.name,
+        dataUrl: sliced.dataUrl,
+        createdAt: new Date().toISOString()
+      }
+    ]
+    const newLayer: ImageLayerSplitLayer = {
+      id: newId,
+      imageId: newId,
+      zIndex: maxZ + 1,
+      name: sliced.name,
+      description: sliced.description,
+      visible: true,
+      left: sliced.left,
+      top: sliced.top,
+      width: sliced.width,
+      height: sliced.height,
+      role: 'layer',
+      originalAbsolute: [
+        sliced.left,
+        sliced.top,
+        sliced.left + sliced.width,
+        sliced.top + sliced.height
+      ],
+      ...(sliced.nineSliceBorders ? { nineSliceBorders: sliced.nineSliceBorders } : {})
+    }
+    draft.layers = [...draft.layers, newLayer]
+    draft.selectedId = newId
+    boxSliceActive.value = false
+    flashExportMessage(t('graph.layerSplit.boxSliceDone', { name: sliced.name }))
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    flashExportMessage(t('graph.layerSplit.exportFailed', { error: message }), true)
+  } finally {
+    slicing.value = false
+  }
+}
+
+function onDeleteSelectedLayer(): void {
+  const layer = selectedLayer.value
+  if (!layer || isBase(layer) || !canDeleteLayer.value) return
+  pushDraftHistory()
+  const next = removeLayerSplitLayer(draft, layer.id)
+  Object.assign(draft, next)
+  flashExportMessage(t('graph.layerSplit.deleteLayerDone'))
+}
+
+async function onMergeDownSelected(): Promise<void> {
+  const upper = selectedLayer.value
+  const lower = mergeDownTarget.value
+  if (!upper || !lower || !canMergeDown.value) return
+  const upperUrl = layerUrl(upper)
+  const lowerUrl = layerUrl(lower)
+  if (!upperUrl || !lowerUrl) return
+
+  slicing.value = true
+  try {
+    pushDraftHistory()
+    const merged = await mergeTwoLayerImagesToDataUrl({
+      upperLayer: upper,
+      upperUrl,
+      lowerLayer: lower,
+      lowerUrl
+    })
+    const mergedImageId = `layerSplit:merge:${Date.now()}:${lower.id}`
+    localLayerUrls[mergedImageId] = merged.dataUrl
+    extraImages.value = [
+      ...extraImages.value,
+      {
+        id: mergedImageId,
+        title: lower.name || lower.id,
+        dataUrl: merged.dataUrl,
+        createdAt: new Date().toISOString()
+      }
+    ]
+    const next = applyMergedLayerSplitPair({
+      state: draft,
+      upperId: upper.id,
+      lowerId: lower.id,
+      mergedImageId,
+      mergedRect: merged.mergedRect
+    })
+    Object.assign(draft, next)
+    flashExportMessage(t('graph.layerSplit.mergeDownDone', { name: lower.name || lower.id }))
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    flashExportMessage(t('graph.layerSplit.exportFailed', { error: message }), true)
+  } finally {
+    slicing.value = false
+  }
+}
+
 function onLayerPointerDown(event: PointerEvent, layer: ImageLayerSplitLayer): void {
   if (spaceHeld.value) {
     onStagePanStart(event)
+    return
+  }
+  if (boxSliceActive.value) {
+    onCanvasWrapPointerDown(event)
     return
   }
   draft.selectedId = layer.id
@@ -1155,6 +1434,11 @@ function resetAll(): void {
 function onKeydown(event: KeyboardEvent): void {
   const layer = selectedLayer.value
   if (!layer || isBase(layer)) return
+  if (event.key === 'Delete' || event.key === 'Backspace') {
+    event.preventDefault()
+    onDeleteSelectedLayer()
+    return
+  }
   const step = event.shiftKey ? 10 : 1
   if (event.key === 'ArrowLeft') {
     event.preventDefault()
@@ -1279,7 +1563,8 @@ function buildSavePayload(): LayerSplitEditorSavePayload {
   return {
     ...imageLayerSplitToNodePatch(normalizeImageLayerSplit(draft)),
     generateModel: selectedModel.value,
-    generateProviderInstanceId: selectedProviderInstanceId.value
+    generateProviderInstanceId: selectedProviderInstanceId.value,
+    ...(extraImages.value.length ? { extraGeneratedImages: [...extraImages.value] } : {})
   }
 }
 
@@ -1318,9 +1603,15 @@ watch(
       onWindowBlur()
       releaseDiveHistoryBridge()
       resetLocalHistory()
+      boxSliceActive.value = false
+      boxSliceDrag.active = false
       return
     }
     resetLocalHistory()
+    for (const k of Object.keys(localLayerUrls)) delete localLayerUrls[k]
+    extraImages.value = []
+    boxSliceActive.value = false
+    boxSliceDrag.active = false
     window.addEventListener('keydown', onWindowUndoKeydown, true)
     window.addEventListener('keydown', onWindowSpaceKeydown, true)
     window.addEventListener('keyup', onWindowSpaceKeyup, true)
@@ -1375,12 +1666,16 @@ function save(): void {
 
 function onClose(): void {
   onPointerUp()
+  window.removeEventListener('pointermove', onBoxSlicePointerMove)
+  window.removeEventListener('pointerup', onBoxSlicePointerUp)
   if (dirty.value) save()
   emit('close')
 }
 
 onBeforeUnmount(() => {
   onPointerUp()
+  window.removeEventListener('pointermove', onBoxSlicePointerMove)
+  window.removeEventListener('pointerup', onBoxSlicePointerUp)
   window.removeEventListener('keydown', onWindowUndoKeydown, true)
   releaseDiveHistoryBridge()
   if (previewTimer) clearTimeout(previewTimer)
@@ -1447,6 +1742,17 @@ onBeforeUnmount(() => {
   cursor: default;
 }
 
+.tool-btn.active {
+  border-color: #4a90e2;
+  background: rgba(74, 144, 226, 0.22);
+  color: #7ab8ff;
+}
+
+.tool-btn.danger-btn:hover:not(:disabled) {
+  border-color: #e07070;
+  color: #e07070;
+}
+
 .layer-count {
   margin-left: auto;
   font-size: 12px;
@@ -1506,6 +1812,20 @@ onBeforeUnmount(() => {
     8px -8px,
     -8px 0;
   background-color: #2a2a2a;
+}
+
+.canvas-wrap.box-slice-mode,
+.canvas-wrap.box-slice-mode .layer {
+  cursor: crosshair;
+}
+
+.box-slice-rect {
+  position: absolute;
+  z-index: 30;
+  border: 2px dashed #4a90e2;
+  background: rgba(74, 144, 226, 0.22);
+  pointer-events: none;
+  box-sizing: border-box;
 }
 
 .stage-mask {

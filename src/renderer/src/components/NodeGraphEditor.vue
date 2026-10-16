@@ -8571,17 +8571,43 @@ function closeLayerSplit(): void {
   layerSplit.splitError = ''
 }
 
+function mergeExtraLayerSplitImages(
+  node: GraphNode,
+  extra?: GraphImageItem[]
+): GraphImageItem[] | undefined {
+  if (!extra?.length) return node.params.generatedImages
+  const previous = node.params.generatedImages ?? []
+  const byId = new Map(previous.map((item) => [item.id ?? '', item]))
+  for (const item of extra) {
+    const id = item.id?.trim()
+    if (!id) continue
+    byId.set(id, item)
+    if (item.dataUrl?.trim()) {
+      layerSplit.layerUrls = {
+        ...layerSplit.layerUrls,
+        [id]: item.dataUrl.trim()
+      }
+    }
+  }
+  return [...byId.values()]
+}
+
 function previewLayerSplit(payload: {
   imageLayerSplit: ImageLayerSplitState
   generateModel: string
   generateProviderInstanceId: string
+  extraGeneratedImages?: GraphImageItem[]
 }): void {
   if (layerSplit.splitting) return
   const node = graph.nodes.find((n) => n.id === layerSplit.nodeId)
   if (!node) return
+  const generatedImages = mergeExtraLayerSplitImages(node, payload.extraGeneratedImages)
   node.params = {
     ...node.params,
-    ...payload
+    imageLayerSplit: payload.imageLayerSplit,
+    generateModel: payload.generateModel,
+    generateProviderInstanceId: payload.generateProviderInstanceId,
+    ...(generatedImages ? { generatedImages } : {})
   }
   scheduleSave()
   graphEditorHosts.bumpRevision()
@@ -8591,14 +8617,19 @@ function saveLayerSplit(payload: {
   imageLayerSplit: ImageLayerSplitState
   generateModel: string
   generateProviderInstanceId: string
+  extraGeneratedImages?: GraphImageItem[]
 }): void {
   const nodeId = layerSplit.nodeId
   const node = graph.nodes.find((n) => n.id === nodeId)
   if (!node) return
   const before = layerSplit.historyBefore ?? buildGraphJson()
+  const generatedImages = mergeExtraLayerSplitImages(node, payload.extraGeneratedImages)
   node.params = {
     ...node.params,
-    ...payload
+    imageLayerSplit: payload.imageLayerSplit,
+    generateModel: payload.generateModel,
+    generateProviderInstanceId: payload.generateProviderInstanceId,
+    ...(generatedImages ? { generatedImages } : {})
   }
   layerSplit.setup = payload.imageLayerSplit
   layerSplit.generateModel = payload.generateModel

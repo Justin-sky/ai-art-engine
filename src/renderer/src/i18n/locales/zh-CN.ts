@@ -4240,7 +4240,61 @@ export default {
       exportManifest: '导出 UI 布局清单 (JSON)',
       exportManifestShort: 'JSON',
       exportManifestDone: '已导出 UI 布局清单 JSON',
-      exportManifestFilter: 'UI 布局清单 JSON'
+      exportManifestFilter: 'UI 布局清单 JSON',
+      boxSlice: '✂️ 框选切层',
+      boxSliceActive: '✂️ 退出框选',
+      boxSliceHint:
+        '开启后在画布上拖拽拉框，即可将该区域的圆角/异形按钮抠为独立透明图层并自动修补底板',
+      boxSliceBanner: '框选切层模式：请在画布上按住左键拖拽框选要拆出的 UI 控件（按 Esc 退出）',
+      boxSliceDone: '已框选切出图层「{name}」并自动修补底板',
+      deleteLayer: '删除选中层',
+      deleteLayerHint: '删除当前选中的前景图层',
+      deleteLayerDone: '已删除选中图层',
+      mergeDown: '向下合并',
+      mergeDownHint: '将当前选中层与紧邻的下层前景图层合并为一层',
+      mergeDownDone: '已向下合并至「{name}」'
+    },
+    uiGen: {
+      hint: '支持外层一键批量生成游戏 UI（双轨带字预览 + 100% 布局对齐的无字底板），也可双击进入 Dive 子图逐屏精调；输出无字底板可直连「UI 图层分离」导出分层 PSD',
+      trackMode: '出图轨道模式',
+      trackModeDual: '🎭 双轨输出（带字效果图 + 100%对齐无字底板）',
+      trackModeCleanOnly: '🧼 仅无字底板轨（省时 50% · 直通 PSD 拆层与引擎叠字）',
+      trackModePreviewOnly: '🖼️ 仅带字预览轨（快速概念提案与排版验证）',
+      trackModeHintDual:
+        '先生成带字高保真效果图，再以带字图为参考生成零文字纯净底板，兼顾视觉提案与程序拼 UI',
+      trackModeHintCleanOnly:
+        '直接生成留空文字槽位的无字 UI 底板，耗时与成本减半，适合直接送入下游 UI 图层分离',
+      trackModeHintPreviewOnly:
+        '仅生成包含完整标题、数值与按钮文案的 UI 效果图，适合立项与定调汇报',
+      stylePreset: '游戏 UI 材质基底',
+      presetAuto: '跟随策划案',
+      presetAnimeFlat: '二次元扁平毛玻璃',
+      presetDarkFantasy: '暗黑金属石雕',
+      presetEasternXianxia: '国风仙侠鎏金',
+      presetCasualCartoon: '欧美休闲 Q 弹',
+      presetScifiHud: '科幻全息 HUD',
+      defaultAspectRatio: '默认画幅比例',
+      useGlobalStyle: '启用项目全局 UI 风格参考图',
+      screensTitle: '界面生成清单 ({active}/{total})',
+      syncFromUpstream: '↻ 从上游刷新清单',
+      addScreen: '+ 新增界面',
+      openDiveSubgraph: '🔍 进入子图精调 (Dive)',
+      emptyScreens:
+        '尚未载入界面清单。请先连接并运行上游「拆分游戏UI」，或点击上方「+ 新增界面」直接编写单屏提示词。',
+      screenTitlePlaceholder: '界面名称（如：战斗 HUD）',
+      screenPromptLabel: '带字预览提示词',
+      screenPromptPlaceholder: '描述该界面的布局分区、主面板材质、按钮样式与状态栏细节…',
+      screenCleanPromptLabel: '无字底板提示词（留空自动派生）',
+      screenCleanPromptPlaceholder: '可选：自定义不带任何文字的底板提示词…',
+      screenLayerPromptLabel: 'PSD 拆层提示词（供下游 UI 图层分离继承）',
+      screenLayerPromptPlaceholder: '可选：指导下游按底板、面板框、按钮、图标拆分的专属提示词…',
+      kindFullscreen: '全屏界面',
+      kindHud: '战斗 HUD',
+      kindPopup: '模态弹窗',
+      kindPanel: '侧栏面板',
+      kindComponent: '独立组件',
+      removeScreen: '移除此界面',
+      newScreenDefaultTitle: '界面 {n}'
     },
     anim2d: {
       inspectorHint:

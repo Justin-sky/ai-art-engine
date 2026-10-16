@@ -1110,12 +1110,13 @@ export async function executeGridSplitNode(
 
 async function resolveLayerSplitSourceInfo(
   ctx: NodeExecuteContext
-): Promise<{ sourceUrl: string; sourceTitle?: string }> {
+): Promise<{ sourceUrl: string; sourceTitle?: string; sourceLayerPrompt?: string }> {
   const sourceItems = await collectIncomingImageItems(ctx)
   if (!sourceItems.length) {
     throw new Error('GRAPH_PROCESS_NO_INPUT')
   }
   const sourceTitle = sourceItems[0]?.title?.trim() || undefined
+  const sourceLayerPrompt = sourceItems[0]?.layerPrompt?.trim() || undefined
   let sourceUrl = ''
   if (ctx.resolveImageUrls) {
     sourceUrl = (await ctx.resolveImageUrls(sourceItems.slice(0, 1))).find(Boolean) ?? ''
@@ -1139,7 +1140,7 @@ async function resolveLayerSplitSourceInfo(
   if (!sourceUrl) {
     throw new Error('GRAPH_PROCESS_NO_INPUT')
   }
-  return { sourceUrl, sourceTitle }
+  return { sourceUrl, sourceTitle, sourceLayerPrompt }
 }
 
 function layersFromApiResult(
@@ -1147,7 +1148,7 @@ function layersFromApiResult(
   stamp: number,
   result: {
     images: string[]
-    layers?: GenerateImageLayer[]
+    layers?: Array<GenerateImageLayer & { nineSliceBorders?: [number, number, number, number] }>
   },
   canvasHint: { width: number; height: number }
 ): {
@@ -1236,6 +1237,7 @@ function layersFromUiWidgetDecomposition(
       width: number
       height: number
       dataUrl: string
+      nineSliceBorders?: [number, number, number, number]
     }>
   },
   fallbackForegroundUrl: string,
@@ -1249,7 +1251,9 @@ function layersFromUiWidgetDecomposition(
   const cw = Math.max(1, decomposed.width)
   const ch = Math.max(1, decomposed.height)
   const baseUrl = overrideBaseUrl?.trim() || decomposed.baseDataUrl?.trim() || fallbackForegroundUrl
-  const apiLayers: GenerateImageLayer[] = [
+  const apiLayers: Array<
+    GenerateImageLayer & { nineSliceBorders?: [number, number, number, number] }
+  > = [
     {
       url: baseUrl,
       zIndex: 0,
@@ -1277,7 +1281,8 @@ function layersFromUiWidgetDecomposition(
         boundingBox: {
           absolute: [x1, y1, x2, y2],
           normalized: [normX1, normY1, normX2, normY2]
-        }
+        },
+        ...(widget.nineSliceBorders ? { nineSliceBorders: widget.nineSliceBorders } : {})
       })
     }
   } else {
@@ -1311,11 +1316,12 @@ function layersFromUiWidgetDecomposition(
 export async function executeLayerSplitNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
-  const { sourceUrl, sourceTitle } = await resolveLayerSplitSourceInfo(ctx)
+  const { sourceUrl, sourceTitle, sourceLayerPrompt } = await resolveLayerSplitSourceInfo(ctx)
   const prev = readImageLayerSplitFromNode(ctx.node.params)
+  const effectiveUserPrompt = prev.prompt.trim() || sourceLayerPrompt || ''
   const model = ctx.node.params.generateModel?.trim() || undefined
   const providerInstanceId = ctx.node.params.generateProviderInstanceId?.trim() || undefined
-  const fingerprint = layerSplitFingerprint(sourceUrl, prev.prompt, prev.resolution, {
+  const fingerprint = layerSplitFingerprint(sourceUrl, effectiveUserPrompt, prev.resolution, {
     splitMode: prev.splitMode,
     model,
     providerInstanceId
@@ -1381,7 +1387,7 @@ export async function executeLayerSplitNode(
           throw fail(SHARED_ERRORS.capabilityImageGenerate)
         }
       } else {
-        const inpaintPrompt = buildUiCleanBaseInpaintPrompt(prev.prompt, {
+        const inpaintPrompt = buildUiCleanBaseInpaintPrompt(effectiveUserPrompt, {
           locale: ctx.locale,
           sourceTitle
         })
@@ -1439,7 +1445,7 @@ export async function executeLayerSplitNode(
       if (!ctx.generateImage) {
         throw fail(SHARED_ERRORS.capabilityImageGenerate)
       }
-      const effectivePrompt = resolveEffectiveLayerSplitPrompt(prev.prompt, {
+      const effectivePrompt = resolveEffectiveLayerSplitPrompt(effectiveUserPrompt, {
         locale: ctx.locale,
         sourceTitle
       })
@@ -1481,6 +1487,7 @@ export async function executeLayerSplitNode(
       mapped.layers.find((layer) => !isLayerSplitBase(layer))?.id || mapped.layers[0]?.id || ''
     const rawState: ImageLayerSplitState = {
       ...prev,
+      prompt: effectiveUserPrompt,
       selectedId,
       canvasWidth: mapped.canvasWidth,
       canvasHeight: mapped.canvasHeight,

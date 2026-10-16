@@ -86,6 +86,18 @@
     </dl>
 
     <div v-if="state.layers.length" class="inspector-actions">
+      <button type="button" class="clear-btn primary-btn" :disabled="exporting" @click="exportPsd">
+        {{ t('graph.layerSplit.exportPsd') }}
+      </button>
+      <button
+        type="button"
+        class="clear-btn"
+        :disabled="exporting"
+        :title="t('graph.layerSplit.exportManifest')"
+        @click="exportManifestJson"
+      >
+        {{ t('graph.layerSplit.exportManifestShort') }}
+      </button>
       <button
         type="button"
         class="clear-btn"
@@ -98,6 +110,9 @@
         {{ t('graph.layerSplit.redecompose') }}
       </button>
     </div>
+    <p v-if="exportMessage" class="export-msg" :class="{ error: exportFailed }">
+      {{ exportMessage }}
+    </p>
   </div>
   <div v-else class="node-inspector empty">
     {{ t('graph.inspector.node.empty') }}
@@ -105,11 +120,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import {
   LAYER_SPLIT_RESOLUTIONS,
   UI_LAYER_SPLIT_PRESETS,
   autoGroupLayersForGameUi,
+  buildLayerSplitUiManifest,
   imageLayerSplitToNodePatch,
   normalizeLayerSplitMode,
   normalizeLayerSplitResolution,
@@ -127,10 +143,15 @@ import { useNodeDisplayTitle } from '../composables/useNodeDisplayTitle'
 import { useGraphNodeRun } from '../composables/useGraphNodeRun'
 import { useEditorKernel } from '../editor/kernel'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
+import { layerSplitToPsdUint8Array } from '../features/graph/model/layerSplitPsd'
 
 const { t, locale, graphTypeLabel } = useStudioI18n()
 const editor = useEditorKernel()
 const resolutions = LAYER_SPLIT_RESOLUTIONS
+const exporting = ref(false)
+const exportMessage = ref('')
+const exportFailed = ref(false)
+let exportMsgTimer: ReturnType<typeof setTimeout> | null = null
 
 const node = computed(() => {
   void graphEditorHosts.revision.value
@@ -209,6 +230,87 @@ function autoGroupUiLayers(): void {
     .toLowerCase()
     .startsWith('zh')
   persist(autoGroupLayersForGameUi(state.value, isZh ? 'zh-CN' : 'en-US'))
+}
+
+function flashExportMessage(message: string, failed = false): void {
+  exportMessage.value = message
+  exportFailed.value = failed
+  if (exportMsgTimer) clearTimeout(exportMsgTimer)
+  exportMsgTimer = setTimeout(() => {
+    exportMessage.value = ''
+    exportFailed.value = false
+    exportMsgTimer = null
+  }, 3200)
+}
+
+async function resolveInspectorLayerUrls(): Promise<Record<string, string>> {
+  const urls: Record<string, string> = {}
+  const items = node.value?.params.generatedImages ?? []
+  for (const item of items) {
+    const id = item.id?.trim()
+    if (!id) continue
+    if (item.dataUrl?.trim()) {
+      urls[id] = item.dataUrl.trim()
+      continue
+    }
+    const rel = item.relativePath?.trim()
+    if (rel) {
+      const fileUrl = await window.studio.getAssetFileUrl(rel).catch(() => '')
+      if (fileUrl) urls[id] = fileUrl
+    }
+  }
+  return urls
+}
+
+async function exportPsd(): Promise<void> {
+  if (exporting.value || !state.value.layers.length) return
+  exporting.value = true
+  try {
+    const layerUrls = await resolveInspectorLayerUrls()
+    const data = await layerSplitToPsdUint8Array({
+      state: state.value,
+      layerUrls
+    })
+    const saved = await window.studio.saveBinaryFile({
+      data,
+      defaultPath: 'ui-layer-split.psd',
+      filters: [
+        { name: t('graph.layerSplit.exportPsdFilter'), extensions: ['psd'] },
+        { name: t('graph.output.exportFilterAll'), extensions: ['*'] }
+      ]
+    })
+    if (!saved) return
+    flashExportMessage(t('graph.layerSplit.exportPsdDone'))
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    flashExportMessage(t('graph.layerSplit.exportFailed', { error: message }), true)
+  } finally {
+    exporting.value = false
+  }
+}
+
+async function exportManifestJson(): Promise<void> {
+  if (exporting.value || !state.value.layers.length) return
+  exporting.value = true
+  try {
+    const manifest = buildLayerSplitUiManifest(state.value)
+    const data = new TextEncoder().encode(JSON.stringify(manifest, null, 2))
+    const saved = await window.studio.saveBinaryFile({
+      data,
+      defaultPath: 'ui-layout-manifest.json',
+      filters: [
+        { name: t('graph.layerSplit.exportManifestFilter'), extensions: ['json'] },
+        { name: t('graph.output.exportFilterAll'), extensions: ['*'] }
+      ]
+    })
+    if (!saved) return
+    flashExportMessage(t('graph.layerSplit.exportManifestDone'))
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    flashExportMessage(t('graph.layerSplit.exportFailed', { error: message }), true)
+  } finally {
+    exporting.value = false
+  }
 }
 
 function persist(next: ImageLayerSplitState): void {
@@ -415,5 +517,22 @@ function clearLayers(): void {
   padding: 7px 12px;
   font-size: 12px;
   cursor: pointer;
+}
+
+.clear-btn.primary-btn {
+  border-color: #4a90e2;
+  background: rgba(74, 144, 226, 0.14);
+  color: #4a90e2;
+  font-weight: 600;
+}
+
+.export-msg {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.export-msg.error {
+  color: #ff6b6b;
 }
 </style>

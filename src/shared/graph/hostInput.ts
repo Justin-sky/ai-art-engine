@@ -77,6 +77,7 @@ export function outputsToHostGalleryParams(
       const items = value.items.map((item) => ({
         id: item.id,
         ...(item.title ? { title: item.title } : {}),
+        ...(item.layerPrompt ? { layerPrompt: item.layerPrompt } : {}),
         dataUrl: item.dataUrl ?? '',
         createdAt: item.createdAt,
         relativePath: item.relativePath
@@ -891,6 +892,7 @@ export function softResolveSourceOutput(
         items: generatedImages.map((item) => ({
           id: item.id,
           ...(item.title ? { title: item.title } : {}),
+          ...(item.layerPrompt ? { layerPrompt: item.layerPrompt } : {}),
           dataUrl: item.dataUrl ?? '',
           relativePath: item.relativePath,
           createdAt: item.createdAt
@@ -905,10 +907,13 @@ export function softResolveSourceOutput(
           ? generatedImages.find((item) => item.title?.startsWith('底图·')) // cjk-ok
           : undefined) ||
         generatedImages[generatedImages.length - 1]
+      const layerPrompt =
+        picked?.layerPrompt?.trim() || node.params.uiSelectedLayerPrompt?.trim() || undefined
       return {
         kind: 'image',
         id: picked?.id,
         ...(picked?.title ? { title: picked.title } : {}),
+        ...(layerPrompt ? { layerPrompt } : {}),
         dataUrl: picked?.dataUrl ?? '',
         createdAt: picked?.createdAt,
         ...(picked?.relativePath ? { relativePath: picked.relativePath } : {})

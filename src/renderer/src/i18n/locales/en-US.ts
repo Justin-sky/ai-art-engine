@@ -4344,7 +4344,64 @@ export default {
       exportManifest: 'Export UI Layout Manifest (JSON)',
       exportManifestShort: 'JSON',
       exportManifestDone: 'UI layout manifest JSON exported',
-      exportManifestFilter: 'UI Layout Manifest JSON'
+      exportManifestFilter: 'UI Layout Manifest JSON',
+      boxSlice: '✂️ Box Slice',
+      boxSliceActive: '✂️ Exit Slice',
+      boxSliceHint:
+        'Drag a rectangle on the canvas to slice out any rounded/irregular widget into a transparent layer and auto-inpaint the base plate',
+      boxSliceBanner:
+        'Box Slice Mode: drag a rectangle over the UI widget to extract as a new layer (press Esc to exit)',
+      boxSliceDone: 'Sliced widget “{name}” into a new layer and inpainted base plate',
+      deleteLayer: 'Delete layer',
+      deleteLayerHint: 'Remove the selected foreground layer',
+      deleteLayerDone: 'Deleted selected layer',
+      mergeDown: 'Merge down',
+      mergeDownHint: 'Merge the selected layer into the foreground layer directly below it',
+      mergeDownDone: 'Merged down into “{name}”'
+    },
+    uiGen: {
+      hint: 'Batch-generates Game UI screens directly on the canvas (Dual-Track: text preview + 100% layout-aligned textless base plate) or double-click to dive into the per-screen subgraph; feeds clean base plates directly into UI Layer Split for PSD export',
+      trackMode: 'Generation Track Mode',
+      trackModeDual: '🎭 Dual-Track (Text Mockup + 100% Aligned Textless Base)',
+      trackModeCleanOnly: '🧼 Textless Base Only (50% faster · Direct to PSD Split)',
+      trackModePreviewOnly: '🖼️ Text Mockup Only (Fast concept & layout pitch)',
+      trackModeHintDual:
+        'Generates the full text mockup first, then uses it as a layout reference to produce a 100% aligned textless base plate',
+      trackModeHintCleanOnly:
+        'Generates only textless UI base plates with empty label slots — 2x faster and ready for PSD layer decomposition',
+      trackModeHintPreviewOnly:
+        'Generates only high-fidelity UI mockups with titles, numbers, and button labels for concept review',
+      stylePreset: 'Game UI Material Preset',
+      presetAuto: 'Follow Design Doc',
+      presetAnimeFlat: 'Anime Frosted Glass',
+      presetDarkFantasy: 'Dark Gothic Metal',
+      presetEasternXianxia: 'Eastern Xianxia Jade & Gold',
+      presetCasualCartoon: 'Casual Glossy Cartoon',
+      presetScifiHud: 'Sci-Fi Holographic HUD',
+      defaultAspectRatio: 'Default Aspect Ratio',
+      useGlobalStyle: 'Use Project Global UI Style Reference',
+      screensTitle: 'UI Screen Manifest ({active}/{total})',
+      syncFromUpstream: '↻ Sync from Upstream',
+      addScreen: '+ Add Screen',
+      openDiveSubgraph: '🔍 Dive into Subgraph',
+      emptyScreens:
+        'No UI screens loaded yet. Wire and run an upstream “Split Game UI” node, or click “+ Add Screen” above to author screens directly.',
+      screenTitlePlaceholder: 'Screen title (e.g. Battle HUD)',
+      screenPromptLabel: 'Preview Prompt (with text)',
+      screenPromptPlaceholder:
+        'Describe layout zones, frame materials, button styles, and HUD bars…',
+      screenCleanPromptLabel: 'Textless Base Prompt (auto-derived if empty)',
+      screenCleanPromptPlaceholder: 'Optional: custom prompt for the textless base plate…',
+      screenLayerPromptLabel: 'PSD Layer Split Prompt (inherited by downstream UI Layer Split)',
+      screenLayerPromptPlaceholder:
+        'Optional: custom instructions for decomposing base plate, frames, buttons, and icons…',
+      kindFullscreen: 'Fullscreen',
+      kindHud: 'Battle HUD',
+      kindPopup: 'Modal Popup',
+      kindPanel: 'Side Panel',
+      kindComponent: 'Widget / Card',
+      removeScreen: 'Remove screen',
+      newScreenDefaultTitle: 'Screen {n}'
     },
     anim2d: {
       inspectorHint:

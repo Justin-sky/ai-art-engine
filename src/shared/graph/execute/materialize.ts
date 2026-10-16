@@ -49,6 +49,8 @@ export async function materializeGeneratedBatch(
     if (item.relativePath?.trim()) {
       next.push({
         id: item.id,
+        ...(item.title ? { title: item.title } : {}),
+        ...(item.layerPrompt ? { layerPrompt: item.layerPrompt } : {}),
         dataUrl: '',
         createdAt: item.createdAt,
         relativePath: item.relativePath.trim()
@@ -72,6 +74,8 @@ export async function materializeGeneratedBatch(
       })
       next.push({
         id: item.id,
+        ...(item.title ? { title: item.title } : {}),
+        ...(item.layerPrompt ? { layerPrompt: item.layerPrompt } : {}),
         dataUrl: '',
         createdAt: item.createdAt,
         relativePath

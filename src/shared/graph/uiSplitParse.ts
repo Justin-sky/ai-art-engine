@@ -13,6 +13,93 @@ import { resolveUiImageSystemPrompt } from './systemPromptSchemes'
 
 export type UiScreenKind = 'fullscreen' | 'hud' | 'popup' | 'panel' | 'component'
 export type UiScreenAspectRatio = '9:16' | '16:9' | '1:1' | '4:3' | '3:4'
+export type UiGenTrackMode = 'dual' | 'clean-only' | 'preview-only'
+export type UiGenStylePresetId =
+  'auto' | 'anime-flat' | 'dark-fantasy' | 'eastern-xianxia' | 'casual-cartoon' | 'scifi-hud'
+
+export interface UiGenStylePreset {
+  id: UiGenStylePresetId
+  promptZh: string
+  promptEn: string
+}
+
+export const UI_GEN_STYLE_PRESETS: readonly UiGenStylePreset[] = [
+  {
+    id: 'auto',
+    promptZh: '',
+    promptEn: ''
+  },
+  {
+    id: 'anime-flat',
+    promptZh:
+      '视觉材质规范：二次元现代扁平毛玻璃 UI，半透明磨砂亚克力底板、锐利斜切高光几何边框、高对比度科技感指示色与干净利落的无衬线排版，各功能区块边界分明、便于九宫格切图。', // cjk-ok 游戏 UI 风格预设
+    promptEn:
+      'Visual material spec: modern anime flat frosted-glass UI, translucent acrylic panels, crisp angled geometric borders with specular highlights, high-contrast accent colors, clean modular 9-sliceable widget boundaries.'
+  },
+  {
+    id: 'dark-fantasy',
+    promptZh:
+      '视觉材质规范：暗黑哥特幻想 RPG UI，深色做旧黑铁与浮雕石刻底框、暗金巴洛克包角装饰、内凹宝石镶嵌槽位与羊皮纸质感内衬，控件边缘厚重清晰、独立可拆。', // cjk-ok 游戏 UI 风格预设
+    promptEn:
+      'Visual material spec: dark gothic fantasy RPG UI, weathered wrought-iron and carved stone panel frames, antique gold filigree corner ornaments, recessed gem-socketed slots, crisp isolated widget borders.'
+  },
+  {
+    id: 'eastern-xianxia',
+    promptZh:
+      '视觉材质规范：国风仙侠修真 UI，温润白玉与鎏金云纹边框、丝绸卷轴与宣纸底板、朱砂印章式主操作按钮與青金石色调点缀，层级雅致清晰、支持九宫格拉伸。', // cjk-ok 游戏 UI 风格预设
+    promptEn:
+      'Visual material spec: Eastern Xianxia fantasy UI, carved white jade and gilded cloud-motif borders, silk scroll and rice-paper backing plates, cinnabar-seal CTA buttons, clean modular 9-sliceable hierarchy.'
+  },
+  {
+    id: 'casual-cartoon',
+    promptZh:
+      '视觉材质规范：欧美休闲卡通 Q 弹 UI，高饱和糖果色圆角立体胶囊按钮、明亮高光与柔和内阴影、奶油白与浅木纹圆润面板底框，图标与按钮颗粒感饱满、轮廓干净独立。', // cjk-ok 游戏 UI 风格预设
+    promptEn:
+      'Visual material spec: vibrant casual cartoon UI, glossy candy-colored rounded pill buttons with specular top highlights and soft bevels, warm cream and light wood panel frames, crisp isolated widget silhouettes.'
+  },
+  {
+    id: 'scifi-hud',
+    promptZh:
+      '视觉材质规范：硬核科幻机甲全息 HUD UI，深空碳纤维半透明战术底板、45度切角青色/琥珀色霓虹发光线框、精密FUI刻度装饰与模块化能量槽，边缘锐利规整。', // cjk-ok 游戏 UI 风格预设
+    promptEn:
+      'Visual material spec: sci-fi mecha tactical holographic HUD UI, dark carbon-fiber translucent plates, 45-degree chamfered cyan/amber neon wireframe borders, precision FUI telemetry ticks and modular energy bars.'
+  }
+]
+
+export function normalizeUiGenTrackMode(raw: unknown): UiGenTrackMode {
+  const s = typeof raw === 'string' ? raw.trim().toLowerCase() : ''
+  if (s === 'clean-only' || s === 'preview-only' || s === 'dual') {
+    return s
+  }
+  return 'dual'
+}
+
+export function normalizeUiGenStylePreset(raw: unknown): UiGenStylePresetId {
+  const s = typeof raw === 'string' ? raw.trim().toLowerCase() : ''
+  if (
+    s === 'anime-flat' ||
+    s === 'dark-fantasy' ||
+    s === 'eastern-xianxia' ||
+    s === 'casual-cartoon' ||
+    s === 'scifi-hud'
+  ) {
+    return s
+  }
+  return 'auto'
+}
+
+export function applyUiGenStylePreset(prompt: string, presetId?: unknown, locale?: string): string {
+  const trimmed = prompt.trim()
+  if (!trimmed) return ''
+  const normalized = normalizeUiGenStylePreset(presetId)
+  if (normalized === 'auto') return trimmed
+  const spec = UI_GEN_STYLE_PRESETS.find((item) => item.id === normalized)
+  if (!spec) return trimmed
+  const useEn = locale?.toLowerCase().startsWith('en') || !/[\u4e00-\u9fff]/.test(trimmed)
+  const suffix = useEn ? spec.promptEn : spec.promptZh
+  if (!suffix || trimmed.includes(suffix)) return trimmed
+  return `${trimmed}${useEn ? ' ' : '。'}${suffix}`
+}
 
 export interface UiScreenPromptItem {
   id: string
@@ -33,6 +120,8 @@ export interface UiScreenPromptItem {
    * 按游戏引擎拼 UI 规范拆出底板、框体、顶底栏、按钮、列表格与图标层。
    */
   layerPrompt?: string
+  /** 单屏是否启用生成（缺省 true；false 时在批量生成中跳过该屏） */
+  enabled?: boolean
 }
 
 const VALID_SCREEN_KINDS = new Set<UiScreenKind>([
@@ -256,6 +345,21 @@ export function buildUiSplitHostInterface(screens: UiScreenPromptItem[]): HostIn
   return { version: HOST_INTERFACE_FORMAT_VERSION, inputs, outputs }
 }
 
+export interface BuildUiSplitInnerGraphOptions {
+  generateModel?: string
+  generateProviderInstanceId?: string
+  defaultAspectRatio?: UiScreenAspectRatio
+  stylePreset?: UiGenStylePresetId
+  styleImagesUseGlobal?: boolean
+  generatedImages?: Array<{
+    id?: string
+    title?: string
+    dataUrl?: string
+    relativePath?: string
+    createdAt?: string
+  }>
+}
+
 /**
  * 构建 ui.split 的 dive 内图：每屏两条链——双轨输出。
  * - 带字精修轨：提示词输入边界 → 图像生成（asset.image）→ 图片输出边界。
@@ -264,7 +368,8 @@ export function buildUiSplitHostInterface(screens: UiScreenPromptItem[]): HostIn
  */
 export function buildUiSplitInnerGraph(
   screens: UiScreenPromptItem[],
-  locale?: string
+  locale?: string,
+  options?: BuildUiSplitInnerGraphOptions
 ): GraphDocument {
   const nodes: GraphNode[] = []
   const edges: GraphEdge[] = []
@@ -272,18 +377,26 @@ export function buildUiSplitInnerGraph(
   // 游戏 UI 生成专用系统提示词：对齐风格参考图的 UI 元素/界面风格/控件/配色等细节，
   // 不影响标准图片生成的默认系统提示词
   const uiImageSystemPrompt = resolveUiImageSystemPrompt(undefined, locale)
+  const defaultAspect = options?.defaultAspectRatio ?? '9:16'
   const cleanBaseParams = {
-    generateAspectRatio: '9:16',
-    styleImagesUseGlobal: true,
+    generateAspectRatio: defaultAspect,
+    styleImagesUseGlobal: options?.styleImagesUseGlobal !== false,
     styleReferenceSubject: 'ui' as const,
-    generateSystemPrompt: uiImageSystemPrompt
+    generateSystemPrompt: uiImageSystemPrompt,
+    ...(options?.generateModel?.trim() ? { generateModel: options.generateModel.trim() } : {}),
+    ...(options?.generateProviderInstanceId?.trim()
+      ? { generateProviderInstanceId: options.generateProviderInstanceId.trim() }
+      : {})
   }
+  const existingImages = Array.isArray(options?.generatedImages) ? options!.generatedImages! : []
+
   for (let i = 0; i < cap; i += 1) {
     const screen = screens[i]!
     const slot = i + 1
     const y = 80 * i + 40
     const screenAspectRatio =
-      normalizeUiScreenAspectRatio(screen.aspectRatio, screen.prompt, screen.title) ?? '9:16'
+      normalizeUiScreenAspectRatio(screen.aspectRatio, screen.prompt, screen.title) ?? defaultAspect
+    const styledPrompt = applyUiGenStylePreset(screen.prompt, options?.stylePreset, locale)
     const screenBaseParams = {
       ...cleanBaseParams,
       generateAspectRatio: screenAspectRatio
@@ -299,6 +412,11 @@ export function buildUiSplitInnerGraph(
     const cleanImgId = `ui-img-clean-${slot}`
     const cleanOutId = boundaryOutputNodeId(portOutClean)
 
+    const previewTitle = `图片·${screen.title}` // cjk-ok
+    const cleanTitle = `底图·${screen.title}` // cjk-ok
+    const matchedPreview = existingImages.filter((item) => item.title === previewTitle)
+    const matchedClean = existingImages.filter((item) => item.title === cleanTitle)
+
     nodes.push({
       id: inId,
       typeId: GRAPH_BOUNDARY_INPUT_TYPE_ID,
@@ -312,7 +430,7 @@ export function buildUiSplitInnerGraph(
           dataType: GraphPortType.text,
           multiple: false
         },
-        text: screen.prompt
+        text: styledPrompt
       }
     })
     // 标题对齐输出口 label（wireDanglingOutsToBoundaryOutputs 按标题配对出口，
@@ -323,8 +441,22 @@ export function buildUiSplitInnerGraph(
         { x: 260, y },
         {
           id: imgId,
-          title: `图片·${screen.title}`,
-          params: screenBaseParams
+          title: previewTitle,
+          params: {
+            ...screenBaseParams,
+            ...(matchedPreview.length
+              ? {
+                  generatedImages: matchedPreview.map((item, idx) => ({
+                    id: item.id || `${imgId}:${idx}`,
+                    title: item.title,
+                    dataUrl: item.dataUrl ?? '',
+                    relativePath: item.relativePath,
+                    createdAt: item.createdAt ?? new Date().toISOString()
+                  })),
+                  selectedImageId: matchedPreview[matchedPreview.length - 1]?.id ?? ''
+                }
+              : {})
+          }
         }
       )
     )
@@ -333,7 +465,7 @@ export function buildUiSplitInnerGraph(
       typeId: GRAPH_BOUNDARY_OUTPUT_TYPE_ID,
       category: 'note',
       position: { x: 480, y },
-      title: `图片·${screen.title}`,
+      title: previewTitle,
       params: {
         previewCollapsed: true,
         hostBoundaryPort: {
@@ -344,17 +476,30 @@ export function buildUiSplitInnerGraph(
       }
     })
     // 空字底图轨：无输入边界，cleanPrompt 直接烘焙进图像节点指令（执行时不再取上游文本）
-    const cleanPrompt = screen.cleanPrompt?.trim() || buildTextlessUiPrompt(screen.prompt)
+    const rawClean = screen.cleanPrompt?.trim() || buildTextlessUiPrompt(screen.prompt)
+    const cleanPrompt = applyUiGenStylePreset(rawClean, options?.stylePreset, locale)
     nodes.push(
       createNodeFromType(
         'asset.image',
         { x: 700, y },
         {
           id: cleanImgId,
-          title: `底图·${screen.title}`,
+          title: cleanTitle,
           params: {
             ...screenBaseParams,
-            generateInstruction: cleanPrompt
+            generateInstruction: cleanPrompt,
+            ...(matchedClean.length
+              ? {
+                  generatedImages: matchedClean.map((item, idx) => ({
+                    id: item.id || `${cleanImgId}:${idx}`,
+                    title: item.title,
+                    dataUrl: item.dataUrl ?? '',
+                    relativePath: item.relativePath,
+                    createdAt: item.createdAt ?? new Date().toISOString()
+                  })),
+                  selectedImageId: matchedClean[matchedClean.length - 1]?.id ?? ''
+                }
+              : {})
           }
         }
       )
@@ -364,7 +509,7 @@ export function buildUiSplitInnerGraph(
       typeId: GRAPH_BOUNDARY_OUTPUT_TYPE_ID,
       category: 'note',
       position: { x: 920, y },
-      title: `底图·${screen.title}`,
+      title: cleanTitle,
       params: {
         previewCollapsed: true,
         hostBoundaryPort: {

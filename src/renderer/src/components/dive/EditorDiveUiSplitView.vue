@@ -91,7 +91,14 @@ onMounted(async () => {
       name: `UI拆分·${node?.title?.trim() || props.nodeId}`, // cjk-ok 持久化资产名前缀（存的是名字不是标签）
       folderId: null,
       genParams: {
-        graphJson: buildUiSplitInnerGraph(screens, locale.value),
+        graphJson: buildUiSplitInnerGraph(screens, locale.value, {
+          generateModel: node?.params?.generateModel,
+          generateProviderInstanceId: node?.params?.generateProviderInstanceId,
+          defaultAspectRatio: node?.params?.generateAspectRatio as never,
+          stylePreset: node?.params?.uiGenStylePreset as never,
+          styleImagesUseGlobal: node?.params?.styleImagesUseGlobal !== false,
+          generatedImages: node?.params?.generatedImages
+        }),
         hostInterface: buildUiSplitHostInterface(screens)
       } as never
     })

@@ -19,6 +19,11 @@ import {
   orderLayerSplitTreeForPsd,
   placeLayersInParentRect,
   renameLayerSplitItem,
+  removeLayerSplitLayer,
+  findMergeDownTargetLayer,
+  applyMergedLayerSplitPair,
+  computeNineSliceFromRgbaBuffer,
+  sliceUiLayerFromRgbaRect,
   reorderLayerSplit,
   resetLayerSplitRect,
   resolveEffectiveLayerSplitPrompt,
@@ -797,6 +802,200 @@ describe('imageLayerSplit', () => {
     expect(generateCalled).toBe(0)
     expect(nodeLocal.params.imageLayerSplit.layers).toHaveLength(3)
     expect(nodeLocal.params.imageLayerSplit.groups.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('contour matting clears exterior corners of circular/rounded widgets while preserving interior highlights, and peels child buttons from parent panels', () => {
+    const width = 180
+    const height = 180
+    const cleanBase = new Uint8ClampedArray(width * height * 4)
+    const source = new Uint8ClampedArray(width * height * 4)
+
+    // Deep slate background
+    for (let i = 0; i < width * height; i++) {
+      cleanBase[i * 4] = 20
+      cleanBase[i * 4 + 1] = 24
+      cleanBase[i * 4 + 2] = 36
+      cleanBase[i * 4 + 3] = 255
+    }
+    source.set(cleanBase)
+
+    // 1. Circular badge at top-left (center 32, 32, radius 16) with an interior highlight pixel matching background color
+    for (let y = 14; y <= 50; y++) {
+      for (let x = 14; x <= 50; x++) {
+        const dist = Math.hypot(x - 32, y - 32)
+        if (dist <= 16) {
+          const idx = (y * width + x) * 4
+          if (dist <= 3) {
+            // Interior dark emblem matching background color — must stay opaque!
+            source[idx] = 20
+            source[idx + 1] = 24
+            source[idx + 2] = 36
+            source[idx + 3] = 255
+          } else {
+            source[idx] = 240
+            source[idx + 1] = 190
+            source[idx + 2] = 60
+            source[idx + 3] = 255
+          }
+        }
+      }
+    }
+
+    // 2. Large dialog panel (x: 20..160, y: 65..165 => 140x100) with a bright border and an inner action button
+    for (let y = 65; y < 165; y++) {
+      for (let x = 20; x < 160; x++) {
+        const idx = (y * width + x) * 4
+        const isBorder = x < 26 || x >= 154 || y < 71 || y >= 159
+        source[idx] = isBorder ? 175 : 58
+        source[idx + 1] = isBorder ? 140 : 66
+        source[idx + 2] = isBorder ? 72 : 88
+        source[idx + 3] = 255
+      }
+    }
+    // Inner action button inside the panel (x: 56..124, y: 128..148 => 68x20)
+    for (let y = 128; y < 148; y++) {
+      for (let x = 56; x < 124; x++) {
+        const idx = (y * width + x) * 4
+        source[idx] = 235
+        source[idx + 1] = 85
+        source[idx + 2] = 50
+        source[idx + 3] = 255
+      }
+    }
+
+    const res = decomposeRgbaBufferToUiLayers({
+      width,
+      height,
+      sourceRgba: source,
+      cleanBaseRgba: cleanBase,
+      locale: 'zh-CN'
+    })
+
+    // Circular badge layer should have transparent corners (0,0) and opaque center
+    const badge = res.layers.find((l) => l.top < 30 && l.left < 30)
+    expect(badge).toBeDefined()
+    if (badge) {
+      // Top-left corner of bounding box is outside the circle => alpha = 0
+      expect(badge.rgba[3]).toBe(0)
+      // Center of circle (even though RGB matches background) is enclosed => alpha = 255
+      const cx = Math.floor(badge.width / 2)
+      const cy = Math.floor(badge.height / 2)
+      expect(badge.rgba[(cy * badge.width + cx) * 4 + 3]).toBe(255)
+    }
+
+    // Both the parent container panel and the peeled inner button should be extracted
+    const panelLayer = res.layers.find((l) => l.width >= 120 && l.height >= 85)
+    const childBtnLayer = res.layers.find(
+      (l) => l.left >= 50 && l.top >= 120 && l.width >= 55 && l.width <= 80
+    )
+    expect(panelLayer).toBeDefined()
+    expect(childBtnLayer).toBeDefined()
+    // Parent panel should also have 9-slice borders detected from its 6px frame
+    expect(panelLayer?.nineSliceBorders).toBeDefined()
+  })
+
+  it('computes 9-slice borders, manual Box-Slice extraction, layer deletion, and Merge Down', () => {
+    const w = 100
+    const h = 60
+    const frameRgba = new Uint8ClampedArray(w * h * 4)
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const idx = (y * w + x) * 4
+        const border = x < 10 || x >= w - 10 || y < 8 || y >= h - 8
+        frameRgba[idx] = border ? 220 : 60
+        frameRgba[idx + 1] = border ? 180 : 65
+        frameRgba[idx + 2] = border ? 70 : 80
+        frameRgba[idx + 3] = 255
+      }
+    }
+    const borders = computeNineSliceFromRgbaBuffer(frameRgba, w, h)
+    expect(borders).toBeDefined()
+    if (borders) {
+      expect(borders[0]).toBeGreaterThanOrEqual(6)
+      expect(borders[1]).toBeGreaterThanOrEqual(8)
+    }
+
+    // Manual Box-Slice extraction from canvas
+    const sliced = sliceUiLayerFromRgbaRect({
+      width: w,
+      height: h,
+      sourceRgba: frameRgba,
+      rect: { left: 10, top: 8, width: 80, height: 44 },
+      locale: 'zh-CN',
+      zIndex: 2
+    })
+    expect(sliced.layer.width).toBe(80)
+    expect(sliced.layer.height).toBe(44)
+
+    // Delete Layer & Merge Down state operations
+    const state = normalizeImageLayerSplit({
+      canvasWidth: 200,
+      canvasHeight: 200,
+      selectedId: 'l2',
+      layers: [
+        {
+          id: 'base',
+          imageId: 'base',
+          zIndex: 0,
+          name: 'Base',
+          visible: true,
+          left: 0,
+          top: 0,
+          width: 200,
+          height: 200,
+          role: 'background'
+        },
+        {
+          id: 'l1',
+          imageId: 'img-1',
+          zIndex: 1,
+          name: 'Button Frame',
+          visible: true,
+          left: 40,
+          top: 100,
+          width: 120,
+          height: 48,
+          nineSliceBorders: [10, 12, 10, 12]
+        },
+        {
+          id: 'l2',
+          imageId: 'img-2',
+          zIndex: 2,
+          name: 'Button Icon',
+          visible: true,
+          left: 80,
+          top: 108,
+          width: 32,
+          height: 32
+        }
+      ]
+    })
+
+    // Manifest uses measured nineSliceBorders when available
+    const manifest = buildLayerSplitUiManifest(state)
+    const l1Manifest = manifest.layers.find((l) => l.id === 'l1')
+    expect(l1Manifest?.nineSliceHint).toEqual({
+      recommended: true,
+      bordersPx: [10, 12, 10, 12]
+    })
+
+    const target = findMergeDownTargetLayer(state, 'l2')
+    expect(target?.id).toBe('l1')
+
+    const merged = applyMergedLayerSplitPair({
+      state,
+      upperId: 'l2',
+      lowerId: 'l1',
+      mergedImageId: 'img-merged',
+      mergedRect: { left: 40, top: 100, width: 120, height: 48 }
+    })
+    expect(merged.layers).toHaveLength(2)
+    expect(merged.layers[1]?.imageId).toBe('img-merged')
+    expect(merged.selectedId).toBe('l1')
+
+    const afterDelete = removeLayerSplitLayer(state, 'l2')
+    expect(afterDelete.layers.map((l) => l.id)).toEqual(['base', 'l1'])
+    expect(afterDelete.selectedId).toBe('l1')
   })
 })
 

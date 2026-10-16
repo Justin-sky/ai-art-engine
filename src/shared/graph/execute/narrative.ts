@@ -29,19 +29,38 @@ import {
   selectEpisodeKeyframeSpans,
   formatEpisodeKeyframeSpanNotes
 } from '../episodeBoardParse'
-import { resolveOptimizeSystemPrompt, resolveUiSplitSystemPrompt } from '../systemPromptSchemes'
+import {
+  resolveOptimizeSystemPrompt,
+  resolveUiImageSystemPrompt,
+  resolveUiSplitSystemPrompt
+} from '../systemPromptSchemes'
 import { buildOptimizePrompt, buildUiSplitPrompt } from '../userPromptSchemes'
 import { resolveAssetTextFromGenParams } from '../assetText'
 import {
+  applyUiGenStylePreset,
+  buildDefaultUiLayerSplitPrompt,
+  buildTextlessUiPrompt,
+  normalizeUiGenStylePreset,
+  normalizeUiGenTrackMode,
+  normalizeUiScreenAspectRatio,
   parseUiScreenPrompts,
   screensFromUiGenIncoming,
   UI_SPLIT_INNER_GRAPH_VERSION,
   type UiScreenPromptItem
 } from '../uiSplitParse'
-import type { GraphValue, NodeExecuteContext } from './types'
+import type { GraphImageItem, GraphValue, NodeExecuteContext } from './types'
 import { flattenVideosValues, newestTextSelectedId } from './gallery'
 import { autoIncomingTextForInstruction, selectIncomingValuesForInstruction } from './incoming'
-import { commitInMemoryTextGallery, persistScreenplayGeneration } from './materialize'
+import {
+  commitInMemoryTextGallery,
+  materializeGeneratedBatch,
+  persistScreenplayGeneration
+} from './materialize'
+import {
+  collectIncomingImageItems,
+  resolveNodeStyleImages,
+  resolveStyleReferenceUrls
+} from './mediaInputs'
 import { resolveMentionSources } from './context'
 import { resolveGalleryOutputsFromNodeParams } from './helpers'
 import { fail } from '@shared/errors/appError'
@@ -337,21 +356,179 @@ export async function executeUiSplitNode(
   return persistUiSplitGeneration(ctx, screens)
 }
 
-/** UI 界面生成：接收界面提示词数组，落为 uiScreens 供 dive 内图使用；外口输出图片组（由内图产出）及当前选中单图（供直接连入 UI 图层分离） */
+/**
+ * UI 界面生成：
+ * - 接收上游 `ui.split` 界面提示词数组（或使用本节点已存 `uiScreens` / 单屏指令）
+ * - 若 Dive 子图已有产出则优先收集子图输出；
+ * - 若外层直接点击运行且注入了 `ctx.generateImage`，则按 `uiGenTrackMode`（`dual` 双轨 / `clean-only` 仅无字底图 / `preview-only` 仅带字预览）直接批量生图；
+ * - 外口输出 `out`（图片组）及 `out-selected`（当前选中单图，默认优选无字底图直通 `image.layerSplit`），并同步 `uiSelectedLayerPrompt`。
+ */
 export async function executeUiGenNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
   const { node } = ctx
   const incoming = screensFromUiGenIncoming(Object.values(ctx.inputs).flat())
-  // 端口无输入时保留已存界面列表，避免上游未运行就把 dive 提示词清空
-  const screens = incoming.length
-    ? incoming
-    : Array.isArray(node.params.uiScreens)
-      ? node.params.uiScreens
-      : []
+  const previousScreens = Array.isArray(node.params.uiScreens) ? node.params.uiScreens : []
+  // 端口无输入时保留已存界面列表，避免上游未运行就把 dive 提示词清空；若有输入则保留用户在面板上勾选的 enabled 状态
+  let screens: UiScreenPromptItem[] = incoming.length
+    ? incoming.map((item) => {
+        const prevMatch = previousScreens.find(
+          (p) => (p.id && p.id === item.id) || (p.title && p.title === item.title)
+        )
+        return prevMatch && prevMatch.enabled === false ? { ...item, enabled: false } : item
+      })
+    : previousScreens
+
+  // 支持独立单节点使用：若既无上游拆屏也无已存 uiScreens，则允许用 generateInstruction 构造单屏条目
+  if (!screens.length) {
+    const manualPrompt = node.params.generateInstruction?.trim() || ''
+    if (manualPrompt) {
+      const aspect = normalizeUiScreenAspectRatio(node.params.generateAspectRatio, manualPrompt)
+      screens = [
+        {
+          id: 'ui-1',
+          title: node.title?.trim() || '主界面', // cjk-ok 默认界面名
+          prompt: manualPrompt,
+          ...(aspect ? { aspectRatio: aspect } : {})
+        }
+      ]
+    }
+  }
+
   const summary = screens.map((s, i) => `${i + 1}. ${s.title}`).join('\n')
   // 点 cook：收集内图所有输出边界（边界输出未运行也可从上游取到），并落节点图库供预览
-  const collected = collectUiGenInnerOutputs(ctx)
+  let collected = collectUiGenInnerOutputs(ctx)
+  const hasInnerImages =
+    collected?.kind === 'images' && Array.isArray(collected.items) && collected.items.length > 0
+
+  // 外层直跑：当注入了 generateImage 且 Dive 内图尚未产出图片时，按启用界面直接批量生成游戏 UI
+  if (!hasInnerImages && ctx.generateImage && screens.length > 0) {
+    if (ctx.signal?.aborted) {
+      throw new DOMException('Aborted', 'AbortError')
+    }
+    const activeScreens = screens.filter((s) => s.enabled !== false && Boolean(s.prompt?.trim()))
+    if (activeScreens.length > 0) {
+      const trackMode = normalizeUiGenTrackMode(node.params.uiGenTrackMode)
+      const stylePreset = normalizeUiGenStylePreset(node.params.uiGenStylePreset)
+      const defaultAspect = normalizeUiScreenAspectRatio(node.params.generateAspectRatio) ?? '9:16'
+      const systemPrompt = resolveUiImageSystemPrompt(
+        node.params.generateSystemPrompt,
+        ctx.locale
+      ).trim()
+      const model = node.params.generateModel?.trim() || undefined
+      const providerInstanceId = node.params.generateProviderInstanceId?.trim() || undefined
+
+      // 汇总主画布 in-image 风格参考图与全局 UI 风格参考图
+      const sourceItems = await collectIncomingImageItems(ctx)
+      let portRefs: string[] = []
+      if (sourceItems.length) {
+        if (ctx.resolveImageUrls) {
+          portRefs = (await ctx.resolveImageUrls(sourceItems.slice(0, 4))).filter(Boolean)
+        } else {
+          portRefs = sourceItems
+            .slice(0, 4)
+            .map((item) => item.dataUrl?.trim() ?? '')
+            .filter(Boolean)
+        }
+      }
+      const styleImages =
+        node.params.styleImagesUseGlobal !== false ? resolveNodeStyleImages(ctx) : []
+      const styleUrls = styleImages.length ? await resolveStyleReferenceUrls(ctx, styleImages) : []
+      const baseInputRefs = [...styleUrls, ...portRefs].filter(Boolean).slice(0, 4)
+
+      const createdAt = new Date().toISOString()
+      const stamp = Date.now()
+      const batch: GraphImageItem[] = []
+
+      for (const [idx, screen] of activeScreens.entries()) {
+        if (ctx.signal?.aborted) {
+          throw new DOMException('Aborted', 'AbortError')
+        }
+        const slot = idx + 1
+        const aspectRatio =
+          normalizeUiScreenAspectRatio(screen.aspectRatio, screen.prompt, screen.title) ??
+          defaultAspect
+        const screenLayerPrompt =
+          screen.layerPrompt?.trim() || buildDefaultUiLayerSplitPrompt(screen, ctx.locale)
+        let previewUrl = ''
+
+        if (trackMode === 'dual' || trackMode === 'preview-only') {
+          const styledPreview = applyUiGenStylePreset(screen.prompt, stylePreset, ctx.locale)
+          const fullPreviewPrompt = systemPrompt
+            ? `${systemPrompt}\n\n${styledPreview}`
+            : styledPreview
+          const previewRes = await ctx.generateImage({
+            prompt: fullPreviewPrompt,
+            model,
+            providerInstanceId,
+            aspectRatio,
+            n: 1,
+            inputReferences: baseInputRefs.length ? baseInputRefs : undefined
+          })
+          const firstUrl = previewRes.images?.[0]?.trim() || ''
+          if (firstUrl) {
+            previewUrl = firstUrl
+            batch.push({
+              id: `uiGen:${node.id}:${stamp}:${slot}:preview`,
+              title: `图片·${screen.title}`, // cjk-ok 带字预览轨标题前缀
+              ...(screenLayerPrompt ? { layerPrompt: screenLayerPrompt } : {}),
+              dataUrl: firstUrl,
+              createdAt
+            })
+          }
+        }
+
+        if (trackMode === 'dual' || trackMode === 'clean-only') {
+          if (ctx.signal?.aborted) {
+            throw new DOMException('Aborted', 'AbortError')
+          }
+          const rawClean = screen.cleanPrompt?.trim() || buildTextlessUiPrompt(screen.prompt)
+          const styledClean = applyUiGenStylePreset(rawClean, stylePreset, ctx.locale)
+          const fullCleanPrompt = systemPrompt ? `${systemPrompt}\n\n${styledClean}` : styledClean
+          // 双轨模式下把同屏刚产出的带字图作为第一参考图，保证无字底板与带字预览 100% 布局对齐
+          const cleanRefs = previewUrl ? [previewUrl, ...baseInputRefs].slice(0, 4) : baseInputRefs
+          const cleanRes = await ctx.generateImage({
+            prompt: fullCleanPrompt,
+            model,
+            providerInstanceId,
+            aspectRatio,
+            n: 1,
+            inputReferences: cleanRefs.length ? cleanRefs : undefined
+          })
+          const cleanUrl = cleanRes.images?.[0]?.trim() || ''
+          if (cleanUrl) {
+            batch.push({
+              id: `uiGen:${node.id}:${stamp}:${slot}:clean`,
+              title: `底图·${screen.title}`, // cjk-ok 空字底板轨标题前缀
+              ...(screenLayerPrompt ? { layerPrompt: screenLayerPrompt } : {}),
+              dataUrl: cleanUrl,
+              createdAt
+            })
+          }
+        }
+      }
+
+      if (batch.length > 0) {
+        const materialized = await materializeGeneratedBatch(
+          ctx,
+          batch,
+          `uiGen:${node.id}:${stamp}`
+        )
+        collected = {
+          kind: 'images',
+          items: materialized.map((item) => ({
+            id: item.id,
+            ...(item.title ? { title: item.title } : {}),
+            ...(item.layerPrompt ? { layerPrompt: item.layerPrompt } : {}),
+            dataUrl: item.dataUrl ?? '',
+            createdAt: item.createdAt,
+            ...(item.relativePath ? { relativePath: item.relativePath } : {})
+          }))
+        }
+      }
+    }
+  }
+
   const out: GraphValue = collected ?? { kind: 'images', items: [] }
   const gallery = collected ? outputsToHostGalleryParams({ out }) : {}
   const genImgs = gallery.generatedImages ?? node.params.generatedImages ?? []
@@ -365,17 +542,40 @@ export async function executeUiGenNode(
       ? explicitSelectedId
       : preferredClean?.id) ?? gallery.selectedImageId
   const finalGallery = selectedImageId ? { ...gallery, selectedImageId } : gallery
-  node.params = { ...node.params, text: summary, uiScreens: screens, ...finalGallery }
-  ctx.patchNode?.({ params: { text: summary, uiScreens: screens, ...finalGallery } })
 
   const picked =
     (selectedImageId ? genImgs.find((item) => item.id === selectedImageId) : undefined) ||
     genImgs[genImgs.length - 1]
+
+  // 根据当前选中的界面图反查对应 screen 的专属 layerPrompt，供下游 image.layerSplit 自动继承
+  const pickedScreenTitle = picked?.title
+    ? picked.title.replace(/^(?:图片|底图|Image|Base)\s*[·•:\-—]\s*/i, '').trim() // cjk-ok
+    : ''
+  const matchedScreen =
+    (pickedScreenTitle ? screens.find((s) => s.title.trim() === pickedScreenTitle) : undefined) ||
+    screens[0]
+  const uiSelectedLayerPrompt =
+    picked?.layerPrompt?.trim() ||
+    (matchedScreen
+      ? matchedScreen.layerPrompt?.trim() ||
+        buildDefaultUiLayerSplitPrompt(matchedScreen, ctx.locale)
+      : undefined)
+
+  const patchParams = {
+    text: summary,
+    uiScreens: screens,
+    ...(uiSelectedLayerPrompt ? { uiSelectedLayerPrompt } : {}),
+    ...finalGallery
+  }
+  node.params = { ...node.params, ...patchParams }
+  ctx.patchNode?.({ params: patchParams })
+
   const outSelected: GraphValue | undefined = picked
     ? {
         kind: 'image',
         id: picked.id,
         ...(picked.title ? { title: picked.title } : {}),
+        ...(uiSelectedLayerPrompt ? { layerPrompt: uiSelectedLayerPrompt } : {}),
         dataUrl: picked.dataUrl ?? '',
         createdAt: picked.createdAt,
         ...(picked.relativePath ? { relativePath: picked.relativePath } : {})

@@ -177,6 +177,8 @@ export interface GraphImageItem {
   createdAt?: string
   /** 物化后的工程相对路径；有值时可清空 dataUrl 以减小落盘体积 */
   relativePath?: string
+  /** UI 生成节点：该界面对应的图层分离拆层指令（供下游 image.layerSplit 自动继承） */
+  layerPrompt?: string
 }
 
 /** 站位截图等图片数组 */
@@ -284,6 +286,7 @@ export interface GraphImageValue {
   dataUrl: string
   createdAt?: string
   relativePath?: string
+  layerPrompt?: string
 }
 
 export interface GraphOutputValue {
@@ -1069,6 +1072,7 @@ export interface NodeExecuteContext {
       width: number
       height: number
       dataUrl: string
+      nineSliceBorders?: [number, number, number, number]
     }>
   }>
   /** 漫画页：分镜格 + 气泡合成一张 PNG（浏览器 canvas）。 */

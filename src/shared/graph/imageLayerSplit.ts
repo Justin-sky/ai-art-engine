@@ -84,6 +84,8 @@ export interface ImageLayerSplitLayer {
   /** API 原始绝对框 [left, top, right, bottom]，用于复位 */
   originalAbsolute?: [number, number, number, number]
   originalNormalized?: [number, number, number, number]
+  /** 像素自相似度测算的真实九宫格切线 [top, right, bottom, left]（像素） */
+  nineSliceBorders?: [number, number, number, number]
 }
 
 export interface ImageLayerSplitGroup {
@@ -272,6 +274,7 @@ function normalizeLayer(raw: unknown, index: number): ImageLayerSplitLayer | nul
   const height = clampInt(row.height, 1, 1)
   const originalAbsolute = tuple4(row.originalAbsolute)
   const originalNormalized = tuple4(row.originalNormalized)
+  const nineSliceBorders = tuple4(row.nineSliceBorders)
   const groupId = typeof row.groupId === 'string' && row.groupId.trim() ? row.groupId.trim() : ''
   const role = normalizeLayerRole(row, zIndex, groupId)
   return {
@@ -288,7 +291,8 @@ function normalizeLayer(raw: unknown, index: number): ImageLayerSplitLayer | nul
     role,
     ...(groupId ? { groupId } : {}),
     ...(originalAbsolute ? { originalAbsolute } : {}),
-    ...(originalNormalized ? { originalNormalized } : {})
+    ...(originalNormalized ? { originalNormalized } : {}),
+    ...(nineSliceBorders ? { nineSliceBorders } : {})
   }
 }
 
@@ -453,6 +457,124 @@ export function nudgeLayerSplit(
     left: layer.left + dx,
     top: layer.top + dy
   }
+}
+
+/**
+ * 删除指定非底图前景图层，并自动清理不再包含任何图层的空分组。
+ */
+export function removeLayerSplitLayer(
+  inputState: ImageLayerSplitState,
+  layerId: string
+): ImageLayerSplitState {
+  const state = normalizeImageLayerSplit(inputState)
+  const target = state.layers.find((layer) => layer.id === layerId)
+  if (!target || isLayerSplitBase(target)) return state
+  const remainingLayers = state.layers.filter((layer) => layer.id !== layerId)
+  const usedGroupIds = new Set<string>()
+  for (const layer of remainingLayers) {
+    let gid = layer.groupId?.trim() ?? ''
+    const seen = new Set<string>()
+    while (gid && !seen.has(gid)) {
+      seen.add(gid)
+      usedGroupIds.add(gid)
+      gid = state.groups.find((g) => g.id === gid)?.parentGroupId?.trim() ?? ''
+    }
+  }
+  const remainingGroups = state.groups.filter((g) => usedGroupIds.has(g.id))
+  const nextSelected =
+    state.selectedId === layerId
+      ? remainingLayers.find((layer) => !isLayerSplitBase(layer))?.id ||
+        remainingLayers[0]?.id ||
+        ''
+      : state.selectedId
+  return normalizeImageLayerSplit({
+    ...state,
+    selectedId: nextSelected,
+    layers: remainingLayers,
+    groups: remainingGroups
+  })
+}
+
+/**
+ * 查找指定前景图层在叠放顺序中紧邻的下层前景图层（供「向下合并」使用，不合并入底图 Base）。
+ */
+export function findMergeDownTargetLayer(
+  inputState: ImageLayerSplitState,
+  upperLayerId: string
+): ImageLayerSplitLayer | null {
+  const state = normalizeImageLayerSplit(inputState)
+  const upper = state.layers.find((layer) => layer.id === upperLayerId)
+  if (!upper || isLayerSplitBase(upper)) return null
+  const groupKey = siblingGroupKey(upper)
+  const sameGroupCandidates = sortLayersForCompose(
+    state.layers.filter(
+      (layer) =>
+        !isLayerSplitBase(layer) &&
+        layer.visible &&
+        layer.id !== upper.id &&
+        siblingGroupKey(layer) === groupKey &&
+        layer.zIndex <= upper.zIndex
+    )
+  )
+  if (sameGroupCandidates.length > 0) {
+    return sameGroupCandidates[sameGroupCandidates.length - 1]!
+  }
+  const allLowerCandidates = sortLayersForCompose(
+    state.layers.filter(
+      (layer) =>
+        !isLayerSplitBase(layer) &&
+        layer.visible &&
+        layer.id !== upper.id &&
+        layer.zIndex < upper.zIndex
+    )
+  )
+  return allLowerCandidates[allLowerCandidates.length - 1] ?? null
+}
+
+/**
+ * 将「上层 (`upperId`) 合并入下层 (`lowerId`)」后的新边界与新图像 ID 写回拆层状态。
+ */
+export function applyMergedLayerSplitPair(input: {
+  state: ImageLayerSplitState
+  upperId: string
+  lowerId: string
+  mergedImageId: string
+  mergedRect: ImageLayerSplitRect
+}): ImageLayerSplitState {
+  const state = normalizeImageLayerSplit(input.state)
+  const upper = state.layers.find((l) => l.id === input.upperId)
+  const lower = state.layers.find((l) => l.id === input.lowerId)
+  if (!upper || !lower || isLayerSplitBase(upper) || isLayerSplitBase(lower)) return state
+
+  const abs: [number, number, number, number] = [
+    input.mergedRect.left,
+    input.mergedRect.top,
+    input.mergedRect.left + input.mergedRect.width,
+    input.mergedRect.top + input.mergedRect.height
+  ]
+  const updatedLayers = state.layers
+    .filter((layer) => layer.id !== upper.id)
+    .map((layer) =>
+      layer.id === lower.id
+        ? {
+            ...layer,
+            imageId: input.mergedImageId,
+            left: input.mergedRect.left,
+            top: input.mergedRect.top,
+            width: input.mergedRect.width,
+            height: input.mergedRect.height,
+            originalAbsolute: abs
+          }
+        : layer
+    )
+  return removeLayerSplitLayer(
+    {
+      ...state,
+      selectedId: lower.id,
+      layers: [...updatedLayers, upper]
+    },
+    upper.id
+  )
 }
 
 export function layerSplitGroupForSource(
@@ -672,6 +794,7 @@ export interface LayerSplitApiLayerInput {
   name?: string
   description?: string
   boundingBox?: { absolute?: unknown; normalized?: unknown }
+  nineSliceBorders?: [number, number, number, number]
 }
 
 export interface LayerSplitMappedItem {
@@ -726,6 +849,7 @@ export function mapDecompositionToLayers(input: {
     const name = row.name?.trim() || (zIndex <= 0 ? 'Base' : `Layer ${zIndex}`)
     const originalAbsolute = tuple4(row.boundingBox?.absolute)
     const originalNormalized = tuple4(row.boundingBox?.normalized)
+    const nineSliceBorders = tuple4(row.nineSliceBorders)
     layers.push({
       id,
       imageId: id,
@@ -739,7 +863,8 @@ export function mapDecompositionToLayers(input: {
       height: rect.height,
       role: isCanvasBase ? 'canvas-base' : 'layer',
       ...(originalAbsolute ? { originalAbsolute } : {}),
-      ...(originalNormalized ? { originalNormalized } : {})
+      ...(originalNormalized ? { originalNormalized } : {}),
+      ...(nineSliceBorders ? { nineSliceBorders } : {})
     })
     items.push({ id, title: name, url })
   }
@@ -1140,6 +1265,111 @@ function inferLayerAnchor(
   return `${v}-${h}` as UiLayerManifestItem['anchor']
 }
 
+/**
+ * 基于 RGBA 像素缓冲区测算真实的九宫格（9-Slice）可拉伸切线 `[top, right, bottom, left]`。
+ * 扫描水平与垂直方向中部像素梯度变化率，定位四角装饰区与中部可平铺/拉伸区的真实像素边界。
+ */
+export function computeNineSliceFromRgbaBuffer(
+  rgba: Uint8Array | Uint8ClampedArray,
+  width: number,
+  height: number
+): [number, number, number, number] | undefined {
+  if (width < 36 || height < 28 || rgba.length < width * height * 4) return undefined
+
+  const xStart = Math.max(4, Math.floor(width * 0.12))
+  const xEnd = Math.min(width - 5, Math.ceil(width * 0.88))
+  const yStart = Math.max(4, Math.floor(height * 0.12))
+  const yEnd = Math.min(height - 5, Math.ceil(height * 0.88))
+  if (xEnd - xStart < 8 || yEnd - yStart < 6) return undefined
+
+  // 计算每一列与其相邻列在中段区域的平均像素差
+  const colDiff = new Float32Array(width)
+  let colDiffSum = 0
+  for (let x = xStart; x <= xEnd; x++) {
+    let diff = 0
+    let count = 0
+    for (let y = yStart; y <= yEnd; y += 2) {
+      const idx = (y * width + x) * 4
+      const prevIdx = (y * width + (x - 1)) * 4
+      diff +=
+        Math.abs(rgba[idx]! - rgba[prevIdx]!) +
+        Math.abs(rgba[idx + 1]! - rgba[prevIdx + 1]!) +
+        Math.abs(rgba[idx + 2]! - rgba[prevIdx + 2]!) +
+        Math.abs(rgba[idx + 3]! - rgba[prevIdx + 3]!)
+      count++
+    }
+    colDiff[x] = count > 0 ? diff / count : 0
+    colDiffSum += colDiff[x]!
+  }
+  const colMean = colDiffSum / Math.max(1, xEnd - xStart + 1)
+  const colThresh = Math.max(6, colMean * 0.85)
+
+  let bestX0 = Math.round(width * 0.25)
+  let bestX1 = Math.round(width * 0.75)
+  let bestXRun = 0
+  let curX0 = xStart
+  for (let x = xStart; x <= xEnd; x++) {
+    if (colDiff[x]! <= colThresh) {
+      const run = x - curX0 + 1
+      if (run > bestXRun) {
+        bestXRun = run
+        bestX0 = curX0
+        bestX1 = x
+      }
+    } else {
+      curX0 = x + 1
+    }
+  }
+
+  // 计算每一行与其相邻行在中段区域的平均像素差
+  const rowDiff = new Float32Array(height)
+  let rowDiffSum = 0
+  for (let y = yStart; y <= yEnd; y++) {
+    let diff = 0
+    let count = 0
+    for (let x = xStart; x <= xEnd; x += 2) {
+      const idx = (y * width + x) * 4
+      const prevIdx = ((y - 1) * width + x) * 4
+      diff +=
+        Math.abs(rgba[idx]! - rgba[prevIdx]!) +
+        Math.abs(rgba[idx + 1]! - rgba[prevIdx + 1]!) +
+        Math.abs(rgba[idx + 2]! - rgba[prevIdx + 2]!) +
+        Math.abs(rgba[idx + 3]! - rgba[prevIdx + 3]!)
+      count++
+    }
+    rowDiff[y] = count > 0 ? diff / count : 0
+    rowDiffSum += rowDiff[y]!
+  }
+  const rowMean = rowDiffSum / Math.max(1, yEnd - yStart + 1)
+  const rowThresh = Math.max(6, rowMean * 0.85)
+
+  let bestY0 = Math.round(height * 0.25)
+  let bestY1 = Math.round(height * 0.75)
+  let bestYRun = 0
+  let curY0 = yStart
+  for (let y = yStart; y <= yEnd; y++) {
+    if (rowDiff[y]! <= rowThresh) {
+      const run = y - curY0 + 1
+      if (run > bestYRun) {
+        bestYRun = run
+        bestY0 = curY0
+        bestY1 = y
+      }
+    } else {
+      curY0 = y + 1
+    }
+  }
+
+  if (bestXRun < width * 0.18 || bestYRun < height * 0.18) {
+    return undefined
+  }
+  const left = Math.max(6, Math.min(Math.round(width * 0.42), bestX0))
+  const right = Math.max(6, Math.min(Math.round(width * 0.42), width - 1 - bestX1))
+  const top = Math.max(6, Math.min(Math.round(height * 0.42), bestY0))
+  const bottom = Math.max(6, Math.min(Math.round(height * 0.42), height - 1 - bestY1))
+  return [top, right, bottom, left]
+}
+
 function inferNineSliceHint(
   layer: ImageLayerSplitLayer,
   canvasWidth: number,
@@ -1147,6 +1377,21 @@ function inferNineSliceHint(
 ): UiLayerManifestNineSliceHint {
   if (isLayerSplitBase(layer)) {
     return { recommended: false, bordersPx: [0, 0, 0, 0] }
+  }
+  if (
+    layer.nineSliceBorders &&
+    layer.nineSliceBorders.length === 4 &&
+    layer.nineSliceBorders.some((v) => v > 0)
+  ) {
+    return {
+      recommended: true,
+      bordersPx: [
+        layer.nineSliceBorders[0]!,
+        layer.nineSliceBorders[1]!,
+        layer.nineSliceBorders[2]!,
+        layer.nineSliceBorders[3]!
+      ]
+    }
   }
   const bucket = classifyGameUiLayerBucket(layer, canvasWidth, canvasHeight)
   const text = `${layer.name} ${layer.description ?? ''}`.toLowerCase()
@@ -1280,6 +1525,7 @@ export interface ExtractedUiLayerBuffer {
   width: number
   height: number
   rgba: Uint8ClampedArray
+  nineSliceBorders?: [number, number, number, number]
 }
 
 export interface DecomposedRgbaUiLayersResult {
@@ -1342,12 +1588,519 @@ function inferExtractedUiWidgetName(
 }
 
 /**
- * 像素级游戏 UI 图层分解引擎（纯 RGBA 缓冲区算法，兼容任意生图模型差分重绘底板与零 API 本地智能拆层）：
- * 1. 若提供 `cleanBaseRgba`（由任意图片模型擦除前景控件后生成），按感知色差 + 边缘能量提取前景控件显著图；
- * 2. 若未提供 `cleanBaseRgba`（本地零 API 拆层），自动建模多尺度背景底色并结合 Sobel 边缘梯度定位独立 UI 控件岛；
- * 3. 经形态学闭运算 + 连通域聚类 + 邻近框合并，提取每个 UI 控件的精确像素包围盒；
- * 4. 若无外部底板，自动用边界双线性纹理内插修补底图上的控件区域，生成干净无重影的 `baseRgba`；
- * 5. 对每个前景控件执行色彩反混合软抠图（Color-Unmixing Alpha Matting），消除锯齿与背景杂边。
+ * 在指定 RGBA 缓冲区内对矩形区域执行边界双线性内插修补（Inpainting），擦除前景控件重影。
+ */
+function inpaintRectBilinearInPlace(
+  targetRgba: Uint8ClampedArray,
+  width: number,
+  height: number,
+  sampleSourceRgba: Uint8ClampedArray,
+  rect: ImageLayerSplitRect
+): void {
+  const x0 = Math.max(0, rect.left)
+  const y0 = Math.max(0, rect.top)
+  const x1 = Math.min(width - 1, rect.left + rect.width - 1)
+  const y1 = Math.min(height - 1, rect.top + rect.height - 1)
+  if (x1 < x0 || y1 < y0) return
+
+  const leftSampleX = Math.max(0, x0 - 1)
+  const rightSampleX = Math.min(width - 1, x1 + 1)
+  const topSampleY = Math.max(0, y0 - 1)
+  const bottomSampleY = Math.min(height - 1, y1 + 1)
+  const spanW = Math.max(1, x1 - x0 + 1)
+  const spanH = Math.max(1, y1 - y0 + 1)
+
+  for (let py = y0; py <= y1; py++) {
+    const ty = (py - y0) / spanH
+    const leftIdx = (py * width + leftSampleX) * 4
+    const rightIdx = (py * width + rightSampleX) * 4
+    for (let px = x0; px <= x1; px++) {
+      const tx = (px - x0) / spanW
+      const topIdx = (topSampleY * width + px) * 4
+      const bottomIdx = (bottomSampleY * width + px) * 4
+      const dstIdx = (py * width + px) * 4
+      for (let c = 0; c < 3; c++) {
+        const horiz =
+          sampleSourceRgba[leftIdx + c]! * (1 - tx) + sampleSourceRgba[rightIdx + c]! * tx
+        const vert =
+          sampleSourceRgba[topIdx + c]! * (1 - ty) + sampleSourceRgba[bottomIdx + c]! * ty
+        targetRgba[dstIdx + c] = Math.round((horiz + vert) * 0.5)
+      }
+      targetRgba[dstIdx + 3] = 255
+    }
+  }
+}
+
+/**
+ * 计算源像素 `(px, py)` 与参考底板在 `3×3` 局部邻域内的最小色彩差异及最匹配背景色。
+ * 抵消通用生图模型重绘底板时产生的 1~2px 扩散重采样微位移（Pixel Drift）。
+ */
+function computePatchAlignedDiff(
+  src: Uint8ClampedArray,
+  base: Uint8ClampedArray,
+  width: number,
+  height: number,
+  px: number,
+  py: number,
+  usePatchSearch: boolean
+): { maxChannelDiff: number; perceptualDiff: number; bgR: number; bgG: number; bgB: number } {
+  const srcIdx = (py * width + px) * 4
+  const sr = src[srcIdx]!
+  const sg = src[srcIdx + 1]!
+  const sb = src[srcIdx + 2]!
+
+  if (!usePatchSearch) {
+    const br = base[srcIdx]!
+    const bg = base[srcIdx + 1]!
+    const bb = base[srcIdx + 2]!
+    const dr = Math.abs(sr - br)
+    const dg = Math.abs(sg - bg)
+    const db = Math.abs(sb - bb)
+    const maxC = Math.max(dr, dg, db)
+    return {
+      maxChannelDiff: maxC,
+      perceptualDiff: maxC + 0.3 * (dr + dg + db),
+      bgR: br,
+      bgG: bg,
+      bgB: bb
+    }
+  }
+
+  let bestPerceptual = 1e9
+  let bestMaxC = 255
+  let bestR = base[srcIdx]!
+  let bestG = base[srcIdx + 1]!
+  let bestB = base[srcIdx + 2]!
+
+  for (let dy = -1; dy <= 1; dy++) {
+    const ny = py + dy
+    if (ny < 0 || ny >= height) continue
+    for (let dx = -1; dx <= 1; dx++) {
+      const nx = px + dx
+      if (nx < 0 || nx >= width) continue
+      const bIdx = (ny * width + nx) * 4
+      const br = base[bIdx]!
+      const bg = base[bIdx + 1]!
+      const bb = base[bIdx + 2]!
+      const dr = Math.abs(sr - br)
+      const dg = Math.abs(sg - bg)
+      const db = Math.abs(sb - bb)
+      const maxC = Math.max(dr, dg, db)
+      const pDiff = maxC + 0.3 * (dr + dg + db)
+      if (pDiff < bestPerceptual) {
+        bestPerceptual = pDiff
+        bestMaxC = maxC
+        bestR = br
+        bestG = bg
+        bestB = bb
+      }
+    }
+  }
+
+  return {
+    maxChannelDiff: bestMaxC,
+    perceptualDiff: bestPerceptual,
+    bgR: bestR,
+    bgG: bestG,
+    bgB: bestB
+  }
+}
+
+/**
+ * 全包围盒圆角/异形轮廓软抠图 + 外部泛洪（Exterior Flood-Fill）+ 边缘去溢色（Color Decontamination）：
+ * - 从控件矩形框四条外边界向内对背景近似像素执行 8-连通泛洪（Exterior Flood-Fill）：
+ *   凡是与外框连通的背景区（如圆角按钮的四个外三角、圆形徽章外围、异形标签凹角）均被精确识别为外部背景并透明化；
+ * - 控件闭合轮廓内部的文字、高光、纹章即使局部颜色接近底色，因不与外框背景连通而受到 100% 不透明度保护（绝不抠穿孔洞）；
+ * - 在轮廓交界带（Contour Transition Band）执行色彩反混合（Color Unmixing），彻底消除黑边/白边与锯齿。
+ */
+function extractWidgetRgbaWithContourMatting(input: {
+  src: Uint8ClampedArray
+  baseRgba: Uint8ClampedArray
+  canvasWidth: number
+  canvasHeight: number
+  rect: ImageLayerSplitRect
+  usePatchSearch: boolean
+}): Uint8ClampedArray {
+  const { src, baseRgba, canvasWidth, canvasHeight, rect, usePatchSearch } = input
+  const lw = Math.max(1, rect.width)
+  const lh = Math.max(1, rect.height)
+  const total = lw * lh
+  const layerRgba = new Uint8ClampedArray(total * 4)
+
+  const maxDiffMap = new Float32Array(total)
+  const refBgR = new Uint8Array(total)
+  const refBgG = new Uint8Array(total)
+  const refBgB = new Uint8Array(total)
+
+  for (let ly = 0; ly < lh; ly++) {
+    const py = rect.top + ly
+    if (py < 0 || py >= canvasHeight) continue
+    for (let lx = 0; lx < lw; lx++) {
+      const px = rect.left + lx
+      if (px < 0 || px >= canvasWidth) continue
+      const localIdx = ly * lw + lx
+      const diff = computePatchAlignedDiff(
+        src,
+        baseRgba,
+        canvasWidth,
+        canvasHeight,
+        px,
+        py,
+        usePatchSearch
+      )
+      maxDiffMap[localIdx] = diff.maxChannelDiff
+      refBgR[localIdx] = diff.bgR
+      refBgG[localIdx] = diff.bgG
+      refBgB[localIdx] = diff.bgB
+    }
+  }
+
+  // 从矩形四条外边界向内执行 8-连通外部背景泛洪（识别圆角外侧三角与异形控件外围背景）
+  const exteriorBg = new Uint8Array(total)
+  const floodQueue = new Int32Array(total)
+  let qHead = 0
+  let qTail = 0
+  const floodThreshold = 24
+
+  const trySeed = (lx: number, ly: number): void => {
+    const idx = ly * lw + lx
+    if (exteriorBg[idx]) return
+    if (maxDiffMap[idx]! <= floodThreshold) {
+      exteriorBg[idx] = 1
+      floodQueue[qTail++] = idx
+    }
+  }
+
+  for (let lx = 0; lx < lw; lx++) {
+    trySeed(lx, 0)
+    if (lh > 1) trySeed(lx, lh - 1)
+  }
+  for (let ly = 1; ly < lh - 1; ly++) {
+    trySeed(0, ly)
+    if (lw > 1) trySeed(lw - 1, ly)
+  }
+
+  while (qHead < qTail) {
+    const cur = floodQueue[qHead++]!
+    const cy = Math.floor(cur / lw)
+    const cx = cur - cy * lw
+    for (let dy = -1; dy <= 1; dy++) {
+      const ny = cy + dy
+      if (ny < 0 || ny >= lh) continue
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue
+        const nx = cx + dx
+        if (nx < 0 || nx >= lw) continue
+        const nIdx = ny * lw + nx
+        if (!exteriorBg[nIdx] && maxDiffMap[nIdx]! <= floodThreshold) {
+          exteriorBg[nIdx] = 1
+          floodQueue[qTail++] = nIdx
+        }
+      }
+    }
+  }
+
+  // 构建轮廓边缘 2px 抗锯齿过渡带（Contour Band）
+  const contourBand = new Uint8Array(total)
+  const edgePad = Math.max(1, Math.min(4, Math.round(Math.min(lw, lh) * 0.05)))
+  for (let ly = 0; ly < lh; ly++) {
+    const isOuterY = ly < edgePad || ly >= lh - edgePad
+    for (let lx = 0; lx < lw; lx++) {
+      const idx = ly * lw + lx
+      if (exteriorBg[idx]) {
+        contourBand[idx] = 1
+        continue
+      }
+      if (isOuterY || lx < edgePad || lx >= lw - edgePad) {
+        contourBand[idx] = 1
+        continue
+      }
+      // 紧邻外部泛洪背景的 2px 轮廓边界设为抗锯齿反混合带
+      let touchesExterior = 0
+      for (let dy = -2; dy <= 2 && !touchesExterior; dy++) {
+        const ny = ly + dy
+        if (ny < 0 || ny >= lh) continue
+        for (let dx = -2; dx <= 2; dx++) {
+          const nx = lx + dx
+          if (nx < 0 || nx >= lw) continue
+          if (exteriorBg[ny * lw + nx]) {
+            touchesExterior = 1
+            break
+          }
+        }
+      }
+      if (touchesExterior) {
+        contourBand[idx] = 1
+      }
+    }
+  }
+
+  // 逐像素合成透明图层（外部圆角背景透明 + 轮廓带 Color-Unmixing 去溢色 + 闭合内部 100% 保护）
+  for (let ly = 0; ly < lh; ly++) {
+    const py = rect.top + ly
+    if (py < 0 || py >= canvasHeight) continue
+    for (let lx = 0; lx < lw; lx++) {
+      const px = rect.left + lx
+      if (px < 0 || px >= canvasWidth) continue
+      const localIdx = ly * lw + lx
+      const srcIdx = (py * canvasWidth + px) * 4
+      const dstIdx = localIdx * 4
+
+      const sr = src[srcIdx]!
+      const sg = src[srcIdx + 1]!
+      const sb = src[srcIdx + 2]!
+      const sa = src[srcIdx + 3]!
+      if (sa === 0) continue
+
+      const maxDiff = maxDiffMap[localIdx]!
+      const br = refBgR[localIdx]!
+      const bg = refBgG[localIdx]!
+      const bb = refBgB[localIdx]!
+
+      if (exteriorBg[localIdx] && maxDiff < 12) {
+        // 圆角/异形控件外部泛洪背景区：彻底透明
+        continue
+      }
+
+      if (!contourBand[localIdx]) {
+        // 控件闭合轮廓内部：100% 保留原始像素与锐度，防止内部文字或图标被误伤
+        layerRgba[dstIdx] = sr
+        layerRgba[dstIdx + 1] = sg
+        layerRgba[dstIdx + 2] = sb
+        layerRgba[dstIdx + 3] = sa
+      } else {
+        // 轮廓过渡带：色彩反混合软抠图（Color Unmixing）+ 前景色去污（Decontamination）
+        const rawAlpha = Math.min(1, Math.max(0, (maxDiff - 8) / 28))
+        const alpha = Math.round(rawAlpha * sa)
+        if (alpha <= 3) continue
+        const aNorm = Math.max(0.12, alpha / 255)
+        const unmixR = Math.min(255, Math.max(0, Math.round((sr - (1 - aNorm) * br) / aNorm)))
+        const unmixG = Math.min(255, Math.max(0, Math.round((sg - (1 - aNorm) * bg) / aNorm)))
+        const unmixB = Math.min(255, Math.max(0, Math.round((sb - (1 - aNorm) * bb) / aNorm)))
+        layerRgba[dstIdx] = unmixR
+        layerRgba[dstIdx + 1] = unmixG
+        layerRgba[dstIdx + 2] = unmixB
+        layerRgba[dstIdx + 3] = alpha
+      }
+    }
+  }
+
+  return layerRgba
+}
+
+/**
+ * 针对大面积面板容器（如弹窗底框、主面板），自动检测并剥离其内部嵌套的高对比度子控件（如按钮、道具槽）。
+ * 返回被剥离出的子控件矩形框列表。
+ */
+function detectInnerChildWidgetsInContainer(
+  src: Uint8ClampedArray,
+  canvasWidth: number,
+  canvasHeight: number,
+  container: ImageLayerSplitRect,
+  minPxSide: number
+): Array<ImageLayerSplitRect & { score: number }> {
+  const cw = container.width
+  const ch = container.height
+  if (cw < minPxSide * 3 || ch < minPxSide * 3) return []
+
+  // 内缩 10% 避开容器自身的外边框与角花装饰
+  const insetX = Math.max(4, Math.round(cw * 0.1))
+  const insetY = Math.max(4, Math.round(ch * 0.1))
+  const ix0 = container.left + insetX
+  const iy0 = container.top + insetY
+  const iw = cw - insetX * 2
+  const ih = ch - insetY * 2
+  if (iw < minPxSide * 2 || ih < minPxSide * 2) return []
+
+  // 采样容器内圈边缘估算容器底板主色（Plate Color）
+  let pR = 0
+  let pG = 0
+  let pB = 0
+  let pCount = 0
+  for (let x = ix0; x < ix0 + iw; x += 2) {
+    const topIdx = (iy0 * canvasWidth + x) * 4
+    const botIdx = ((iy0 + ih - 1) * canvasWidth + x) * 4
+    pR += src[topIdx]! + src[botIdx]!
+    pG += src[topIdx + 1]! + src[botIdx + 1]!
+    pB += src[topIdx + 2]! + src[botIdx + 2]!
+    pCount += 2
+  }
+  for (let y = iy0; y < iy0 + ih; y += 2) {
+    const leftIdx = (y * canvasWidth + ix0) * 4
+    const rightIdx = (y * canvasWidth + (ix0 + iw - 1)) * 4
+    pR += src[leftIdx]! + src[rightIdx]!
+    pG += src[leftIdx + 1]! + src[rightIdx + 1]!
+    pB += src[leftIdx + 2]! + src[rightIdx + 2]!
+    pCount += 2
+  }
+  if (pCount === 0) return []
+  const plateR = pR / pCount
+  const plateG = pG / pCount
+  const plateB = pB / pCount
+
+  const step = Math.max(1, Math.ceil(Math.max(iw, ih) / 96))
+  const gw = Math.max(1, Math.ceil(iw / step))
+  const gh = Math.max(1, Math.ceil(ih / step))
+  const mask = new Uint8Array(gw * gh)
+  const cellScore = new Float32Array(gw * gh)
+
+  for (let gy = 0; gy < gh; gy++) {
+    const py = Math.min(canvasHeight - 1, iy0 + gy * step)
+    for (let gx = 0; gx < gw; gx++) {
+      const px = Math.min(canvasWidth - 1, ix0 + gx * step)
+      const idx = (py * canvasWidth + px) * 4
+      const dr = Math.abs(src[idx]! - plateR)
+      const dg = Math.abs(src[idx + 1]! - plateG)
+      const db = Math.abs(src[idx + 2]! - plateB)
+      const diff = Math.max(dr, dg, db) + 0.3 * (dr + dg + db)
+      const gIdx = gy * gw + gx
+      cellScore[gIdx] = diff
+      if (src[idx + 3]! > 32 && diff >= 42) {
+        mask[gIdx] = 1
+      }
+    }
+  }
+
+  const visited = new Uint8Array(gw * gh)
+  const queue = new Int32Array(gw * gh)
+  const children: Array<ImageLayerSplitRect & { score: number }> = []
+  const containerArea = cw * ch
+
+  for (let gy = 0; gy < gh; gy++) {
+    for (let gx = 0; gx < gw; gx++) {
+      const start = gy * gw + gx
+      if (!mask[start] || visited[start]) continue
+      let head = 0
+      let tail = 0
+      queue[tail++] = start
+      visited[start] = 1
+      let gx0 = gx
+      let gy0 = gy
+      let gx1 = gx
+      let gy1 = gy
+      let scoreSum = 0
+
+      while (head < tail) {
+        const cur = queue[head++]!
+        const cy = Math.floor(cur / gw)
+        const cx = cur - cy * gw
+        if (cx < gx0) gx0 = cx
+        if (cy < gy0) gy0 = cy
+        if (cx > gx1) gx1 = cx
+        if (cy > gy1) gy1 = cy
+        scoreSum += cellScore[cur]!
+
+        for (let dy = -1; dy <= 1; dy++) {
+          const ny = cy + dy
+          if (ny < 0 || ny >= gh) continue
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue
+            const nx = cx + dx
+            if (nx < 0 || nx >= gw) continue
+            const nIdx = ny * gw + nx
+            if (mask[nIdx] && !visited[nIdx]) {
+              visited[nIdx] = 1
+              queue[tail++] = nIdx
+            }
+          }
+        }
+      }
+
+      const left = ix0 + gx0 * step
+      const top = iy0 + gy0 * step
+      const right = Math.min(ix0 + iw, ix0 + (gx1 + 1) * step)
+      const bottom = Math.min(iy0 + ih, iy0 + (gy1 + 1) * step)
+      const rw = right - left
+      const rh = bottom - top
+      const area = rw * rh
+      if (rw < minPxSide || rh < minPxSide) continue
+      // 子控件面积须在容器面积的 0.8% ~ 45% 之间（排除噪点与容器本身）
+      if (area < containerArea * 0.008 || area > containerArea * 0.45) continue
+      children.push({ left, top, width: rw, height: rh, score: scoreSum })
+    }
+  }
+
+  return children
+}
+
+/**
+ * 手动框选切层（Box Slice Tool）：
+ * 将用户在 Dive 画布上框选的矩形区域 `rect` 从源图提取为带圆角/异形透明轮廓的独立前景图层，
+ * 同时在底图缓冲区 `baseRgba` 上对该矩形执行双线性纹理修补（消除移走控件后的底图重影）。
+ */
+export function sliceUiLayerFromRgbaRect(input: {
+  width: number
+  height: number
+  sourceRgba: Uint8Array | Uint8ClampedArray
+  baseRgba?: Uint8Array | Uint8ClampedArray | null
+  rect: ImageLayerSplitRect
+  layerId?: string
+  name?: string
+  zIndex?: number
+  locale?: string
+}): {
+  layer: ExtractedUiLayerBuffer
+  updatedBaseRgba: Uint8ClampedArray
+} {
+  const width = Math.max(1, Math.round(input.width))
+  const height = Math.max(1, Math.round(input.height))
+  const totalPixels = width * height
+  const src = new Uint8ClampedArray(totalPixels * 4)
+  src.set(input.sourceRgba.subarray(0, totalPixels * 4))
+
+  const updatedBaseRgba = new Uint8ClampedArray(totalPixels * 4)
+  if (input.baseRgba && input.baseRgba.length >= totalPixels * 4) {
+    updatedBaseRgba.set(input.baseRgba.subarray(0, totalPixels * 4))
+  } else {
+    updatedBaseRgba.set(src)
+  }
+
+  const left = Math.max(0, Math.min(width - 1, Math.round(input.rect.left)))
+  const top = Math.max(0, Math.min(height - 1, Math.round(input.rect.top)))
+  const rw = Math.max(1, Math.min(width - left, Math.round(input.rect.width)))
+  const rh = Math.max(1, Math.min(height - top, Math.round(input.rect.height)))
+  const clampedRect: ImageLayerSplitRect = { left, top, width: rw, height: rh }
+
+  // 先用框选外围像素对底图对应区域执行双线性修补，再以修补后的干净底图为参考抠出框内圆角/异形控件
+  inpaintRectBilinearInPlace(updatedBaseRgba, width, height, src, clampedRect)
+
+  const layerRgba = extractWidgetRgbaWithContourMatting({
+    src,
+    baseRgba: updatedBaseRgba,
+    canvasWidth: width,
+    canvasHeight: height,
+    rect: clampedRect,
+    usePatchSearch: false
+  })
+
+  const zIndex = input.zIndex ?? 1
+  const meta = inferExtractedUiWidgetName(clampedRect, width, height, zIndex, input.locale)
+  const nineSliceBorders = computeNineSliceFromRgbaBuffer(layerRgba, rw, rh)
+
+  return {
+    layer: {
+      id: input.layerId?.trim() || `manual-slice:${zIndex}`,
+      name: input.name?.trim() || meta.name,
+      description: meta.description,
+      zIndex,
+      left,
+      top,
+      width: rw,
+      height: rh,
+      rgba: layerRgba,
+      ...(nineSliceBorders ? { nineSliceBorders } : {})
+    },
+    updatedBaseRgba
+  }
+}
+
+/**
+ * 商用级像素游戏 UI 图层分解引擎（兼容任意生图模型差分重绘底板与零 API 本地智能拆层）：
+ * 1. 若提供 `cleanBaseRgba`（由任意图片模型擦除前景控件后生成），采用 `3×3` 邻域对齐最小色差（Patch-Aligned Diff）抵消重绘微漂移；
+ * 2. 若未提供 `cleanBaseRgba`（本地零 API 拆层），自动建模多尺度背景底色定位独立 UI 控件岛；
+ * 3. 支持「父容器 + 内部子控件」双层剥离（Hierarchical Parent-Child Peeling）：大弹窗/主面板内部的按钮与槽位自动剥离为上层独立图层，并在父面板底框上自动修补擦除子控件；
+ * 4. 对每个前景控件执行全包围盒外部背景泛洪（Exterior Flood-Fill）+ 轮廓色彩反混合软抠图（Color Unmixing），使圆角按钮、圆形徽章四角 100% 纯净透明，内部文字不穿孔；
+ * 5. 自动测算面板与按钮的真实像素九宫格切线（`nineSliceBorders`）。
  */
 export function decomposeRgbaBufferToUiLayers(input: {
   width: number
@@ -1373,7 +2126,7 @@ export function decomposeRgbaBufferToUiLayers(input: {
     baseRgba.set(src)
   }
 
-  const maxDim = 192
+  const maxDim = 320
   const step = Math.max(1, Math.ceil(Math.max(width, height) / maxDim))
   const gw = Math.max(1, Math.ceil(width / step))
   const gh = Math.max(1, Math.ceil(height / step))
@@ -1433,18 +2186,11 @@ export function decomposeRgbaBufferToUiLayers(input: {
         let count = 0
         for (let py = py0; py < py1; py++) {
           for (let px = px0; px < px1; px++) {
-            const idx = (py * width + px) * 4
-            const br = baseRgba[idx]!
-            const bg = baseRgba[idx + 1]!
-            const bb = baseRgba[idx + 2]!
-            rSum += br
-            gSum += bg
-            bSum += bb
-            const dr = Math.abs(src[idx]! - br)
-            const dg = Math.abs(src[idx + 1]! - bg)
-            const db = Math.abs(src[idx + 2]! - bb)
-            const d = Math.max(dr, dg, db) + 0.3 * (dr + dg + db)
-            if (d > maxDiff) maxDiff = d
+            const aligned = computePatchAlignedDiff(src, baseRgba, width, height, px, py, true)
+            rSum += aligned.bgR
+            gSum += aligned.bgG
+            bSum += aligned.bgB
+            if (aligned.perceptualDiff > maxDiff) maxDiff = aligned.perceptualDiff
             count++
           }
         }
@@ -1481,7 +2227,6 @@ export function decomposeRgbaBufferToUiLayers(input: {
     for (let gy = 0; gy < gh; gy++) {
       for (let gx = 0; gx < gw; gx++) {
         const gIdx = gy * gw + gx
-        // 取周围大半径环形邻域均值与全局边框均值融合作为背景估计
         let ringR = 0
         let ringG = 0
         let ringB = 0
@@ -1616,7 +2361,6 @@ export function decomposeRgbaBufferToUiLayers(input: {
 
       const bw = gx1 - gx0 + 1
       const bh = gy1 - gy0 + 1
-      // 过滤全屏背景框与极小噪点
       if (bw >= gw * 0.94 && bh >= gh * 0.94) continue
       if (cellCount < 1) continue
       rawBoxes.push({
@@ -1629,8 +2373,9 @@ export function decomposeRgbaBufferToUiLayers(input: {
     }
   }
 
-  // 合并高度重叠或紧邻的同组件碎片框（仅当合并后不超过画布 75% 时）
+  // 合并同级碎片框（若一方已是大容器面板且另一方是独立小控件，则保留父子分离而不吞并）
   const mergedBoxes = [...rawBoxes]
+  const totalGridCells = gw * gh
   let changed = true
   while (changed) {
     changed = false
@@ -1641,6 +2386,14 @@ export function decomposeRgbaBufferToUiLayers(input: {
         const gapX = Math.max(0, Math.max(a.gx0, b.gx0) - Math.min(a.gx1, b.gx1) - 1)
         const gapY = Math.max(0, Math.max(a.gy0, b.gy0) - Math.min(a.gy1, b.gy1) - 1)
         if (gapX <= 0 && gapY <= 0) {
+          const areaA = (a.gx1 - a.gx0 + 1) * (a.gy1 - a.gy0 + 1)
+          const areaB = (b.gx1 - b.gx0 + 1) * (b.gy1 - b.gy0 + 1)
+          const bigArea = Math.max(areaA, areaB)
+          const smallArea = Math.min(areaA, areaB)
+          // 若大框已是面板容器（>= 14% 画布）且小框是内部独立子控件（<= 大框 35%），保持父子分层不吞并
+          if (bigArea >= totalGridCells * 0.14 && smallArea >= 4 && smallArea <= bigArea * 0.35) {
+            continue
+          }
           const nx0 = Math.min(a.gx0, b.gx0)
           const ny0 = Math.min(a.gy0, b.gy0)
           const nx1 = Math.max(a.gx1, b.gx1)
@@ -1680,6 +2433,28 @@ export function decomposeRgbaBufferToUiLayers(input: {
     candidateRects.push({ left, top, width: rw, height: rh, score: box.score })
   }
 
+  // 父子容器双层剥离（Hierarchical Peeling）：对大面积容器面板内部扫描高对比度子控件（按钮/道具格）
+  const peeledChildren: Array<ImageLayerSplitRect & { score: number }> = []
+  for (const rect of candidateRects) {
+    const areaRatio = (rect.width * rect.height) / Math.max(1, totalPixels)
+    if (areaRatio >= 0.12 && rect.width >= width * 0.28 && rect.height >= height * 0.22) {
+      const innerKids = detectInnerChildWidgetsInContainer(src, width, height, rect, minPxSide)
+      for (const kid of innerKids) {
+        const duplicate = candidateRects.some(
+          (existing) =>
+            Math.abs(existing.left - kid.left) <= 6 &&
+            Math.abs(existing.top - kid.top) <= 6 &&
+            Math.abs(existing.width - kid.width) <= 8 &&
+            Math.abs(existing.height - kid.height) <= 8
+        )
+        if (!duplicate) {
+          peeledChildren.push(kid)
+        }
+      }
+    }
+  }
+  candidateRects.push(...peeledChildren)
+
   // 若整张图极其平滑导致未检出独立连通域，按经典三段式 UI 布局（顶栏 / 中心主面板 / 底部操作栏）切分兜底
   if (!candidateRects.length && width >= 32 && height >= 32) {
     candidateRects.push(
@@ -1707,7 +2482,7 @@ export function decomposeRgbaBufferToUiLayers(input: {
     )
   }
 
-  // 先按显著度挑选前 maxLayers 个组件，再按面积从大到小赋 zIndex（大面板在下、小按钮与顶栏装饰在上）
+  // 先按显著度挑选前 maxLayers 个组件，再按面积从大到小赋 zIndex（大面板容器在下、内部子按钮与顶栏装饰在上）
   const topRects = candidateRects
     .sort((a, b) => b.score - a.score)
     .slice(0, maxLayers)
@@ -1716,99 +2491,69 @@ export function decomposeRgbaBufferToUiLayers(input: {
   // 若无外部 AI 底图，在本地对 baseRgba 执行边界色彩双线性修补（Inpainting），消除移动图层时的底图重影
   if (!hasExternalBase) {
     for (const rect of topRects) {
-      const x0 = Math.max(0, rect.left)
-      const y0 = Math.max(0, rect.top)
-      const x1 = Math.min(width - 1, rect.left + rect.width - 1)
-      const y1 = Math.min(height - 1, rect.top + rect.height - 1)
-      const leftSampleX = Math.max(0, x0 - 1)
-      const rightSampleX = Math.min(width - 1, x1 + 1)
-      const topSampleY = Math.max(0, y0 - 1)
-      const bottomSampleY = Math.min(height - 1, y1 + 1)
-      const spanW = Math.max(1, x1 - x0 + 1)
-      const spanH = Math.max(1, y1 - y0 + 1)
-
-      for (let py = y0; py <= y1; py++) {
-        const ty = (py - y0) / spanH
-        const leftIdx = (py * width + leftSampleX) * 4
-        const rightIdx = (py * width + rightSampleX) * 4
-        for (let px = x0; px <= x1; px++) {
-          const tx = (px - x0) / spanW
-          const topIdx = (topSampleY * width + px) * 4
-          const bottomIdx = (bottomSampleY * width + px) * 4
-          const dstIdx = (py * width + px) * 4
-          for (let c = 0; c < 3; c++) {
-            const horiz = src[leftIdx + c]! * (1 - tx) + src[rightIdx + c]! * tx
-            const vert = src[topIdx + c]! * (1 - ty) + src[bottomIdx + c]! * ty
-            baseRgba[dstIdx + c] = Math.round((horiz + vert) * 0.5)
-          }
-          baseRgba[dstIdx + 3] = 255
-        }
-      }
+      inpaintRectBilinearInPlace(baseRgba, width, height, src, rect)
     }
   }
 
-  // 提取每个前景 UI 控件的透明 PNG 像素（边缘色彩反混合软抠图 + 内部主体全不透明保护）
+  // 提取每个前景 UI 控件的透明 PNG 像素（若父容器包含上层子控件，自动在父容器层中修补擦除子控件区域！）
   const idPrefix = input.idPrefix?.trim() || 'ui-slice'
   const layers: ExtractedUiLayerBuffer[] = []
 
   for (const [idx, rect] of topRects.entries()) {
     const lw = Math.max(1, rect.width)
     const lh = Math.max(1, rect.height)
-    const layerRgba = new Uint8ClampedArray(lw * lh * 4)
-    const borderBandX = Math.max(2, Math.min(8, Math.round(lw * 0.08)))
-    const borderBandY = Math.max(2, Math.min(8, Math.round(lh * 0.08)))
 
-    for (let ly = 0; ly < lh; ly++) {
-      const py = rect.top + ly
-      if (py < 0 || py >= height) continue
-      const isEdgeY = ly < borderBandY || ly >= lh - borderBandY
-      for (let lx = 0; lx < lw; lx++) {
-        const px = rect.left + lx
-        if (px < 0 || px >= width) continue
-        const isEdgeX = lx < borderBandX || lx >= lw - borderBandX
-        const srcIdx = (py * width + px) * 4
-        const dstIdx = (ly * lw + lx) * 4
+    // 查找完全落在该大容器内部的上层子控件（索引 > idx 即面积更小、zIndex 更高）
+    const enclosedChildren = topRects.slice(idx + 1).filter((child) => {
+      const cx0 = Math.max(rect.left, child.left)
+      const cy0 = Math.max(rect.top, child.top)
+      const cx1 = Math.min(rect.left + rect.width, child.left + child.width)
+      const cy1 = Math.min(rect.top + rect.height, child.top + child.height)
+      if (cx1 <= cx0 || cy1 <= cy0) return false
+      const overlapArea = (cx1 - cx0) * (cy1 - cy0)
+      const childArea = Math.max(1, child.width * child.height)
+      return overlapArea >= childArea * 0.75 && childArea <= rect.width * rect.height * 0.55
+    })
 
-        const sr = src[srcIdx]!
-        const sg = src[srcIdx + 1]!
-        const sb = src[srcIdx + 2]!
-        const sa = src[srcIdx + 3]!
-        if (sa === 0) continue
-
-        const br = baseRgba[srcIdx]!
-        const bg = baseRgba[srcIdx + 1]!
-        const bb = baseRgba[srcIdx + 2]!
-
-        const dr = Math.abs(sr - br)
-        const dg = Math.abs(sg - bg)
-        const db = Math.abs(sb - bb)
-        const maxDiff = Math.max(dr, dg, db)
-
-        if (!isEdgeX && !isEdgeY && maxDiff >= 12) {
-          // 控件内部主体保持 100% 原始像素与不透明度，保证按钮/图标纹理想素级锐利
-          layerRgba[dstIdx] = sr
-          layerRgba[dstIdx + 1] = sg
-          layerRgba[dstIdx + 2] = sb
-          layerRgba[dstIdx + 3] = sa
-        } else {
-          // 外圈边缘采用色彩反混合软 Alpha（Color Unmixing），消除锯齿与背景杂边
-          const rawAlpha = Math.min(1, Math.max(0, (maxDiff - 8) / 28))
-          const alpha = Math.round(rawAlpha * sa)
-          if (alpha <= 2) continue
-          const aNorm = alpha / 255
-          const unmixR = Math.min(255, Math.max(0, Math.round((sr - (1 - aNorm) * br) / aNorm)))
-          const unmixG = Math.min(255, Math.max(0, Math.round((sg - (1 - aNorm) * bg) / aNorm)))
-          const unmixB = Math.min(255, Math.max(0, Math.round((sb - (1 - aNorm) * bb) / aNorm)))
-          layerRgba[dstIdx] = unmixR
-          layerRgba[dstIdx + 1] = unmixG
-          layerRgba[dstIdx + 2] = unmixB
-          layerRgba[dstIdx + 3] = alpha
-        }
+    // 若该层是包含子控件的父容器，先在局部源图副本上把子控件区域修补擦除为干净的面板底色
+    let effectiveSrc = src
+    let effectiveBase = baseRgba
+    if (enclosedChildren.length > 0) {
+      effectiveSrc = new Uint8ClampedArray(src)
+      for (const child of enclosedChildren) {
+        inpaintRectBilinearInPlace(effectiveSrc, width, height, src, child)
       }
     }
 
+    // 若该层是位于父容器内部的子控件，其局部背景应当是父容器底板色而非最底层画布背景
+    const parentContainer = topRects.slice(0, idx).find((parent) => {
+      const cx0 = Math.max(parent.left, rect.left)
+      const cy0 = Math.max(parent.top, rect.top)
+      const cx1 = Math.min(parent.left + parent.width, rect.left + rect.width)
+      const cy1 = Math.min(parent.top + parent.height, rect.top + rect.height)
+      if (cx1 <= cx0 || cy1 <= cy0) return false
+      const overlapArea = (cx1 - cx0) * (cy1 - cy0)
+      return overlapArea >= lw * lh * 0.75
+    })
+    if (parentContainer) {
+      const localParentBase = new Uint8ClampedArray(baseRgba)
+      inpaintRectBilinearInPlace(localParentBase, width, height, src, rect)
+      effectiveBase = localParentBase
+    }
+
+    const layerRgba = extractWidgetRgbaWithContourMatting({
+      src: effectiveSrc,
+      baseRgba: effectiveBase,
+      canvasWidth: width,
+      canvasHeight: height,
+      rect,
+      usePatchSearch: hasExternalBase && !parentContainer
+    })
+
     const zIndex = idx + 1
     const meta = inferExtractedUiWidgetName(rect, width, height, zIndex, input.locale)
+    const nineSliceBorders = computeNineSliceFromRgbaBuffer(layerRgba, lw, lh)
+
     layers.push({
       id: `${idPrefix}:layer:${zIndex}`,
       name: meta.name,
@@ -1818,7 +2563,8 @@ export function decomposeRgbaBufferToUiLayers(input: {
       top: rect.top,
       width: lw,
       height: lh,
-      rgba: layerRgba
+      rgba: layerRgba,
+      ...(nineSliceBorders ? { nineSliceBorders } : {})
     })
   }
 
