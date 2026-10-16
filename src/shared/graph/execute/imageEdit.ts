@@ -41,6 +41,8 @@ import {
 import { readImageCropFromNode } from '../imageCrop'
 import { readImageGridSplitFromNode, resolveGridSplitTargets } from '../imageGridSplit'
 import {
+  autoGroupLayersForGameUi,
+  buildUiCleanBaseInpaintPrompt,
   imageLayerSplitToNodePatch,
   isCanvasSafeImageSrc,
   isLayerSplitBase,
@@ -48,6 +50,8 @@ import {
   layerSplitFingerprint,
   mapDecompositionToLayers,
   readImageLayerSplitFromNode,
+  resolveEffectiveLayerSplitPrompt,
+  resolveEffectiveUiLayerSplitStrategy,
   sortLayersForCompose,
   type ImageLayerSplitLayer,
   type ImageLayerSplitState
@@ -1104,11 +1108,14 @@ export async function executeGridSplitNode(
   })
 }
 
-async function resolveLayerSplitSourceUrl(ctx: NodeExecuteContext): Promise<string> {
+async function resolveLayerSplitSourceInfo(
+  ctx: NodeExecuteContext
+): Promise<{ sourceUrl: string; sourceTitle?: string }> {
   const sourceItems = await collectIncomingImageItems(ctx)
   if (!sourceItems.length) {
     throw new Error('GRAPH_PROCESS_NO_INPUT')
   }
+  const sourceTitle = sourceItems[0]?.title?.trim() || undefined
   let sourceUrl = ''
   if (ctx.resolveImageUrls) {
     sourceUrl = (await ctx.resolveImageUrls(sourceItems.slice(0, 1))).find(Boolean) ?? ''
@@ -1132,7 +1139,7 @@ async function resolveLayerSplitSourceUrl(ctx: NodeExecuteContext): Promise<stri
   if (!sourceUrl) {
     throw new Error('GRAPH_PROCESS_NO_INPUT')
   }
-  return sourceUrl
+  return { sourceUrl, sourceTitle }
 }
 
 function layersFromApiResult(
@@ -1214,16 +1221,105 @@ async function composeLayerSplitOutput(
   }
 }
 
+function layersFromUiWidgetDecomposition(
+  ctx: NodeExecuteContext,
+  stamp: number,
+  decomposed: {
+    width: number
+    height: number
+    baseDataUrl: string
+    widgets: Array<{
+      name: string
+      description?: string
+      left: number
+      top: number
+      width: number
+      height: number
+      dataUrl: string
+    }>
+  },
+  fallbackForegroundUrl: string,
+  overrideBaseUrl?: string
+): {
+  layers: ImageLayerSplitLayer[]
+  batch: GraphImageItem[]
+  canvasWidth: number
+  canvasHeight: number
+} {
+  const cw = Math.max(1, decomposed.width)
+  const ch = Math.max(1, decomposed.height)
+  const baseUrl = overrideBaseUrl?.trim() || decomposed.baseDataUrl?.trim() || fallbackForegroundUrl
+  const apiLayers: GenerateImageLayer[] = [
+    {
+      url: baseUrl,
+      zIndex: 0,
+      size: `${cw}x${ch}`,
+      name: 'Base'
+    }
+  ]
+
+  if (decomposed.widgets.length > 0) {
+    for (const [idx, widget] of decomposed.widgets.entries()) {
+      const x1 = Math.max(0, Math.round(widget.left))
+      const y1 = Math.max(0, Math.round(widget.top))
+      const x2 = Math.min(cw, x1 + Math.max(1, Math.round(widget.width)))
+      const y2 = Math.min(ch, y1 + Math.max(1, Math.round(widget.height)))
+      const normX1 = Math.round((x1 / cw) * 1000)
+      const normY1 = Math.round((y1 / ch) * 1000)
+      const normX2 = Math.round((x2 / cw) * 1000)
+      const normY2 = Math.round((y2 / ch) * 1000)
+      apiLayers.push({
+        url: widget.dataUrl,
+        zIndex: idx + 1,
+        size: `${Math.max(1, x2 - x1)}x${Math.max(1, y2 - y1)}`,
+        name: widget.name || `Widget_${idx + 1}`,
+        description: widget.description || '',
+        boundingBox: {
+          absolute: [x1, y1, x2, y2],
+          normalized: [normX1, normY1, normX2, normY2]
+        }
+      })
+    }
+  } else {
+    apiLayers.push({
+      url: fallbackForegroundUrl,
+      zIndex: 1,
+      size: `${cw}x${ch}`,
+      name: 'UI_Foreground',
+      boundingBox: {
+        absolute: [0, 0, cw, ch],
+        normalized: [0, 0, 1000, 1000]
+      }
+    })
+  }
+
+  return layersFromApiResult(
+    ctx,
+    stamp,
+    {
+      images: apiLayers.map((l) => l.url),
+      layers: apiLayers
+    },
+    { width: cw, height: ch }
+  )
+}
+
 /**
- * 图层分离：调用 Seedream 5.0 Pro layer_decomposition，再按用户调整的层级/位置合成。
- * 源图、提示词或分辨率变化时重新拆层；否则只按当前图层本地合成。
+ * UI 图层分离：支持 4 种拆层引擎策略（auto / ai-inpaint-slice / ai-layers / local-slice）与任意图片模型，
+ * 将 UI 界面拆分为无字干净底板 + 独立透明 UI 控件图层，并自动归入游戏 UI 标准 PSD 分组。
  */
 export async function executeLayerSplitNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
-  const sourceUrl = await resolveLayerSplitSourceUrl(ctx)
+  const { sourceUrl, sourceTitle } = await resolveLayerSplitSourceInfo(ctx)
   const prev = readImageLayerSplitFromNode(ctx.node.params)
-  const fingerprint = layerSplitFingerprint(sourceUrl, prev.prompt, prev.resolution)
+  const model = ctx.node.params.generateModel?.trim() || undefined
+  const providerInstanceId = ctx.node.params.generateProviderInstanceId?.trim() || undefined
+  const fingerprint = layerSplitFingerprint(sourceUrl, prev.prompt, prev.resolution, {
+    splitMode: prev.splitMode,
+    model,
+    providerInstanceId
+  })
   const canReuse =
     prev.layers.length > 0 &&
     prev.sourceFingerprint === fingerprint &&
@@ -1254,34 +1350,136 @@ export async function executeLayerSplitNode(
   }
 
   if (!reused) {
-    if (!ctx.generateImage) {
-      throw fail(SHARED_ERRORS.capabilityImageGenerate)
+    const strategy = resolveEffectiveUiLayerSplitStrategy(prev.splitMode, model)
+    let mapped: {
+      layers: ImageLayerSplitLayer[]
+      batch: GraphImageItem[]
+      canvasWidth: number
+      canvasHeight: number
+    } | null = null
+
+    if (strategy === 'local-slice') {
+      if (ctx.decomposeImageUiLayers) {
+        const decomposed = await ctx.decomposeImageUiLayers({
+          sourceDataUrl: sourceUrl
+        })
+        mapped = layersFromUiWidgetDecomposition(ctx, stamp, decomposed, sourceUrl)
+      } else {
+        mapped = layersFromApiResult(
+          ctx,
+          stamp,
+          { images: [sourceUrl, sourceUrl] },
+          { width: prev.canvasWidth || 1024, height: prev.canvasHeight || 1024 }
+        )
+      }
+    } else if (strategy === 'ai-inpaint-slice') {
+      if (!ctx.generateImage) {
+        if (ctx.decomposeImageUiLayers) {
+          const decomposed = await ctx.decomposeImageUiLayers({ sourceDataUrl: sourceUrl })
+          mapped = layersFromUiWidgetDecomposition(ctx, stamp, decomposed, sourceUrl)
+        } else {
+          throw fail(SHARED_ERRORS.capabilityImageGenerate)
+        }
+      } else {
+        const inpaintPrompt = buildUiCleanBaseInpaintPrompt(prev.prompt, {
+          locale: ctx.locale,
+          sourceTitle
+        })
+        const normalizedRes =
+          prev.resolution === '1.5K' || prev.resolution === 'auto' ? '2K' : prev.resolution
+        const result = await ctx.generateImage({
+          prompt: inpaintPrompt,
+          model,
+          providerInstanceId,
+          resolution: normalizedRes,
+          inputReferences: [sourceUrl]
+        })
+        if (ctx.signal?.aborted) {
+          throw new DOMException('Aborted', 'AbortError')
+        }
+        if (result.layers?.length && result.layers.length >= 2) {
+          mapped = layersFromApiResult(ctx, stamp, result, {
+            width: prev.canvasWidth,
+            height: prev.canvasHeight
+          })
+        } else {
+          const cleanBaseUrl = result.images?.[0]?.trim() || ''
+          if (!cleanBaseUrl) {
+            throw fail(SHARED_ERRORS.layerSplitNoLayers)
+          }
+          if (ctx.decomposeImageUiLayers) {
+            const decomposed = await ctx.decomposeImageUiLayers({
+              sourceDataUrl: sourceUrl,
+              cleanBaseDataUrl: isCanvasSafeImageSrc(cleanBaseUrl) ? cleanBaseUrl : undefined
+            })
+            mapped = layersFromUiWidgetDecomposition(
+              ctx,
+              stamp,
+              decomposed,
+              sourceUrl,
+              cleanBaseUrl
+            )
+          } else {
+            mapped = layersFromApiResult(
+              ctx,
+              stamp,
+              {
+                images: [cleanBaseUrl, ...(result.images?.slice(1) ?? []), sourceUrl]
+              },
+              {
+                width: prev.canvasWidth || 1024,
+                height: prev.canvasHeight || 1024
+              }
+            )
+          }
+        }
+      }
+    } else {
+      // 'ai-layers'（原生模型 layer_decomposition，若所选模型只返回单张图则自动接力智能控件切分）
+      if (!ctx.generateImage) {
+        throw fail(SHARED_ERRORS.capabilityImageGenerate)
+      }
+      const effectivePrompt = resolveEffectiveLayerSplitPrompt(prev.prompt, {
+        locale: ctx.locale,
+        sourceTitle
+      })
+      const result = await ctx.generateImage({
+        prompt: effectivePrompt,
+        model,
+        providerInstanceId,
+        resolution: prev.resolution,
+        inputReferences: [sourceUrl],
+        layerDecomposition: true
+      })
+      if (ctx.signal?.aborted) {
+        throw new DOMException('Aborted', 'AbortError')
+      }
+      if (!result.layers?.length && (result.images?.length ?? 0) < 2) {
+        const singleImg = result.images?.[0]?.trim() || ''
+        if (singleImg && ctx.decomposeImageUiLayers) {
+          const decomposed = await ctx.decomposeImageUiLayers({
+            sourceDataUrl: sourceUrl,
+            cleanBaseDataUrl: isCanvasSafeImageSrc(singleImg) ? singleImg : undefined
+          })
+          mapped = layersFromUiWidgetDecomposition(ctx, stamp, decomposed, sourceUrl, singleImg)
+        } else {
+          throw fail(SHARED_ERRORS.layerSplitNoLayers)
+        }
+      } else {
+        mapped = layersFromApiResult(ctx, stamp, result, {
+          width: prev.canvasWidth,
+          height: prev.canvasHeight
+        })
+      }
     }
-    const result = await ctx.generateImage({
-      prompt: prev.prompt,
-      model: ctx.node.params.generateModel || undefined,
-      providerInstanceId: ctx.node.params.generateProviderInstanceId || undefined,
-      resolution: prev.resolution,
-      inputReferences: [sourceUrl],
-      layerDecomposition: true
-    })
-    if (ctx.signal?.aborted) {
-      throw new DOMException('Aborted', 'AbortError')
-    }
-    if (!result.layers?.length && (result.images?.length ?? 0) < 2) {
-      throw fail(SHARED_ERRORS.layerSplitNoLayers)
-    }
-    const mapped = layersFromApiResult(ctx, stamp, result, {
-      width: prev.canvasWidth,
-      height: prev.canvasHeight
-    })
-    if (!mapped.layers.length) {
+
+    if (!mapped || !mapped.layers.length) {
       throw fail(SHARED_ERRORS.layerSplitEmpty)
     }
     layerBatch = mapped.batch
     const selectedId =
       mapped.layers.find((layer) => !isLayerSplitBase(layer))?.id || mapped.layers[0]?.id || ''
-    state = {
+    const rawState: ImageLayerSplitState = {
       ...prev,
       selectedId,
       canvasWidth: mapped.canvasWidth,
@@ -1290,6 +1488,8 @@ export async function executeLayerSplitNode(
       groups: [],
       sourceFingerprint: fingerprint
     }
+    // 自动按游戏 UI 规范归类 PSD 文件夹（顶栏与装饰 / 交互控件与按钮 / 面板与容器底框）
+    state = autoGroupLayersForGameUi(rawState, ctx.locale)
   }
 
   const materializedLayers = await materializeGeneratedBatch(

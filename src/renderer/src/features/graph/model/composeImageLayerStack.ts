@@ -1,4 +1,5 @@
 import {
+  decomposeRgbaBufferToUiLayers,
   isCanvasSafeImageSrc,
   isLayerSplitBase,
   isLayerSplitLayerDrawable,
@@ -64,6 +65,93 @@ export async function composeImageLayerStack(input: {
     dataUrl: canvas.toDataURL('image/png'),
     width: canvasWidth,
     height: canvasHeight
+  }
+}
+
+function rgbaBufferToPngDataUrl(rgba: Uint8ClampedArray, width: number, height: number): string {
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.max(1, width)
+  canvas.height = Math.max(1, height)
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('LAYER_SPLIT_CANVAS_UNAVAILABLE')
+  const imageData = ctx.createImageData(canvas.width, canvas.height)
+  imageData.data.set(rgba)
+  ctx.putImageData(imageData, 0, 0)
+  return canvas.toDataURL('image/png')
+}
+
+export async function decomposeImageUiLayers(input: {
+  sourceDataUrl: string
+  cleanBaseDataUrl?: string
+  maxLayers?: number
+  diffThreshold?: number
+}): Promise<{
+  width: number
+  height: number
+  baseDataUrl: string
+  widgets: Array<{
+    name: string
+    description?: string
+    left: number
+    top: number
+    width: number
+    height: number
+    dataUrl: string
+  }>
+}> {
+  const srcImg = await loadImage(input.sourceDataUrl)
+  const width = Math.max(1, srcImg.naturalWidth || srcImg.width || 1)
+  const height = Math.max(1, srcImg.naturalHeight || srcImg.height || 1)
+
+  const srcCanvas = document.createElement('canvas')
+  srcCanvas.width = width
+  srcCanvas.height = height
+  const srcCtx = srcCanvas.getContext('2d')
+  if (!srcCtx) throw new Error('LAYER_SPLIT_CANVAS_UNAVAILABLE')
+  srcCtx.drawImage(srcImg, 0, 0, width, height)
+  const sourceRgba = srcCtx.getImageData(0, 0, width, height).data
+
+  let cleanBaseRgba: Uint8ClampedArray | undefined
+  if (input.cleanBaseDataUrl?.trim()) {
+    try {
+      const baseImg = await loadImage(input.cleanBaseDataUrl.trim())
+      const baseCanvas = document.createElement('canvas')
+      baseCanvas.width = width
+      baseCanvas.height = height
+      const baseCtx = baseCanvas.getContext('2d')
+      if (baseCtx) {
+        baseCtx.drawImage(baseImg, 0, 0, width, height)
+        cleanBaseRgba = baseCtx.getImageData(0, 0, width, height).data
+      }
+    } catch {
+      cleanBaseRgba = undefined
+    }
+  }
+
+  const decomposed = decomposeRgbaBufferToUiLayers({
+    sourceRgba,
+    width,
+    height,
+    cleanBaseRgba,
+    maxLayers: input.maxLayers
+  })
+
+  const baseDataUrl = rgbaBufferToPngDataUrl(decomposed.baseRgba, width, height)
+  const widgets = decomposed.layers.map((widget) => ({
+    name: widget.name,
+    description: widget.description,
+    left: widget.left,
+    top: widget.top,
+    width: widget.width,
+    height: widget.height,
+    dataUrl: rgbaBufferToPngDataUrl(widget.rgba, widget.width, widget.height)
+  }))
+
+  return {
+    width,
+    height,
+    baseDataUrl,
+    widgets
   }
 }
 

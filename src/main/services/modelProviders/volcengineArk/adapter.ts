@@ -204,18 +204,28 @@ export const volcengineArkAdapter: ModelProviderAdapter = {
     const allowedResolutions = (
       caps as { supported_parameters?: { resolution?: { values?: string[] } } } | null
     )?.supported_parameters?.resolution?.values
-    assertSeedreamResolutionSupported(modelId, input.resolution, allowedResolutions)
-    if (input.layerDecomposition) {
+    // 仅 Seedream 5.x（或未显式命中旧代的 ep-* 接入点）原生支持 layer_decomposition
+    const useNativeLayerDecomposition =
+      Boolean(input.layerDecomposition) &&
+      (profileId === 'seedream-5' || profileId === null || isOpaqueVolcengineArkEndpointId(modelId))
+    if (useNativeLayerDecomposition) {
       body.layer_decomposition = true
       const size = input.resolution?.trim()
       if (size) body.size = size
     } else {
+      const normalizedRes =
+        input.layerDecomposition &&
+        (input.resolution?.trim().toUpperCase() === '1.5K' ||
+          input.resolution?.trim().toLowerCase() === 'auto')
+          ? '2K'
+          : input.resolution
+      assertSeedreamResolutionSupported(modelId, normalizedRes, allowedResolutions)
       if (input.n && input.n >= 1) body.n = Math.floor(input.n)
       // Seedream size 只接受分辨率关键字或像素宽高；把 resolution + aspectRatio
       // 合并成像素值，避免传 16:9 被接口忽略、或传 2K 时模型自行决定比例。
       // 4.5 / 5 等模型要求总像素 ≥ 3686400：不足时按比例放大，避免接口直接拒绝。
       const minPixels = profileId === 'seedream-3' ? undefined : SEEDREAM_MIN_PIXELS
-      const size = resolveSeedreamImageSize(input.resolution, input.aspectRatio, minPixels)
+      const size = resolveSeedreamImageSize(normalizedRes, input.aspectRatio, minPixels)
       if (size) body.size = size
     }
     if (input.seed != null) body.seed = input.seed
@@ -244,7 +254,9 @@ export const volcengineArkAdapter: ModelProviderAdapter = {
       return {
         images: parsed.images,
         model: data.model ?? modelId,
-        ...(input.layerDecomposition ? { layers: parsed.layers } : {})
+        ...(useNativeLayerDecomposition && parsed.layers.length > 1
+          ? { layers: parsed.layers }
+          : {})
       }
     } catch (err) {
       throw fail(PROVIDER_ERRORS.actionFailed, {

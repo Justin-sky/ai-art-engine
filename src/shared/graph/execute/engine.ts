@@ -560,6 +560,7 @@ async function executeOneNode(
     renderSvgFrames: options.renderSvgFrames,
     composeImageIconPackSheet: options.composeImageIconPackSheet,
     composeImageLayerStack: options.composeImageLayerStack,
+    decomposeImageUiLayers: options.decomposeImageUiLayers,
     composeComicPageImage: options.composeComicPageImage,
     composePortraitIdPhoto: options.composePortraitIdPhoto,
     detectPortraitFaces: options.detectPortraitFaces,

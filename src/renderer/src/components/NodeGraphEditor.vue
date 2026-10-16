@@ -913,6 +913,10 @@ import {
   mapDecompositionToLayers,
   placeLayersInParentRect,
   layerSplitGroupForSource,
+  buildUiCleanBaseInpaintPrompt,
+  resolveEffectiveLayerSplitPrompt,
+  resolveEffectiveUiLayerSplitStrategy,
+  isCanvasSafeImageSrc,
   stringifyBeatRows,
   isBoundaryOutputNode,
   isGraphOutputTerminalNode,
@@ -920,6 +924,7 @@ import {
   GraphPortType,
   collectBlockedNodeIds
 } from '@shared/graph'
+import { decomposeImageUiLayers } from '../features/graph/model/composeImageLayerStack'
 import { isVideoJobActive, type VideoJobRecord } from '@shared/videoJob'
 import { SHARED_ERRORS } from '@shared/errors/catalog'
 import { fail } from '@shared/errors/appError'
@@ -3373,7 +3378,7 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
   },
   {
     id: 'imageEdit',
-    typeIds: ['image.process', 'image.iconPack', 'image.layerSplit']
+    typeIds: ['image.process', 'image.iconPack']
   },
   {
     id: 'video',
@@ -3407,7 +3412,7 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
   },
   {
     id: 'game',
-    typeIds: ['asset.gameSystem', 'ui.split', 'ui.gen']
+    typeIds: ['asset.gameSystem', 'ui.split', 'ui.gen', 'image.layerSplit']
   },
   {
     id: 'motionFx',
@@ -8697,66 +8702,163 @@ async function splitSelectedLayerSplit(payload: ImageLayerSplitNestedRequest): P
     )
   }
 
+  const model = payload.generateModel?.trim() || undefined
+  const providerInstanceId = payload.generateProviderInstanceId?.trim() || undefined
+  const strategy = resolveEffectiveUiLayerSplitStrategy(payload.splitMode ?? state.splitMode, model)
+  const effectivePrompt =
+    strategy === 'ai-inpaint-slice'
+      ? buildUiCleanBaseInpaintPrompt(payload.prompt, {
+          locale: String(locale.value),
+          sourceTitle: layerLabel
+        })
+      : resolveEffectiveLayerSplitPrompt(payload.prompt, {
+          locale: String(locale.value),
+          sourceTitle: layerLabel
+        })
   const apiRequest = {
-    prompt: payload.prompt,
-    model: payload.generateModel || undefined,
-    providerInstanceId: payload.generateProviderInstanceId || undefined,
+    prompt: effectivePrompt,
+    model,
+    providerInstanceId,
     resolution: payload.resolution,
     inputReferenceCount: 1,
     inputReferences: [{ source: 'port' as const, name: layerLabel }],
     inputReferenceUrls: summarizeReferenceListForLog([sourceUrl]),
-    layerDecomposition: true
+    layerDecomposition: strategy === 'ai-layers'
   }
 
   try {
     logBridge.onNodeUpdate(node.id, { status: 'running' })
-    const apiStarted = Date.now()
-    let result
-    try {
-      result = await window.studio.generateImage({
-        prompt: payload.prompt,
-        model: payload.generateModel || undefined,
-        providerInstanceId: payload.generateProviderInstanceId || undefined,
-        resolution: payload.resolution,
-        inputReferences: [sourceUrl],
-        layerDecomposition: true
-      })
-      logBridge.recordApiCall({
-        kind: 'generateImage',
-        request: apiRequest,
-        response: {
-          model: result.model,
-          imageCount: result.layers?.length || result.images?.length || 0,
-          referenceNotes: result.referenceNotes
-        },
-        durationMs: Math.max(0, Date.now() - apiStarted)
-      })
-    } catch (err) {
-      const raw = err instanceof Error ? err.message : String(err)
-      const error = formatProviderErrorForLog(raw, String(locale.value))
-      logBridge.recordApiCall({
-        kind: 'generateImage',
-        request: apiRequest,
-        error,
-        durationMs: Math.max(0, Date.now() - apiStarted)
-      })
-      throw new Error(error)
-    }
-    if (!layerSplit.open || layerSplit.nodeId !== nodeId) {
-      finishLog(true)
-      return
-    }
-    if (!result.layers?.length && (result.images?.length ?? 0) < 2) {
-      throw fail(SHARED_ERRORS.layerSplitNoLayers)
-    }
     const stamp = Date.now()
-    const mapped = mapDecompositionToLayers({
-      idPrefix: `layerSplit:${node.id}:${stamp}:nest`,
-      apiLayers: result.layers,
-      images: result.images,
-      canvasHint: { width: parent.width, height: parent.height },
-      asCanvasBase: false
-    })
+    let mapped: ReturnType<typeof mapDecompositionToLayers>
+
+    if (strategy === 'local-slice') {
+      const decomposed = await decomposeImageUiLayers({ sourceDataUrl: sourceUrl })
+      const cw = Math.max(1, decomposed.width)
+      const ch = Math.max(1, decomposed.height)
+      const apiLayers = [
+        {
+          url: decomposed.baseDataUrl,
+          zIndex: 0,
+          size: `${cw}x${ch}`,
+          name: 'Base'
+        },
+        ...decomposed.widgets.map((w, idx) => ({
+          url: w.dataUrl,
+          zIndex: idx + 1,
+          size: `${w.width}x${w.height}`,
+          name: w.name,
+          description: w.description || '',
+          boundingBox: {
+            absolute: [w.left, w.top, w.left + w.width, w.top + w.height],
+            normalized: [
+              Math.round((w.left / cw) * 1000),
+              Math.round((w.top / ch) * 1000),
+              Math.round(((w.left + w.width) / cw) * 1000),
+              Math.round(((w.top + w.height) / ch) * 1000)
+            ]
+          }
+        }))
+      ]
+      mapped = mapDecompositionToLayers({
+        idPrefix: `layerSplit:${node.id}:${stamp}:nest`,
+        apiLayers,
+        images: apiLayers.map((l) => l.url),
+        canvasHint: { width: parent.width, height: parent.height },
+        asCanvasBase: false
+      })
+    } else {
+      const apiStarted = Date.now()
+      let result
+      try {
+        result = await window.studio.generateImage({
+          prompt: effectivePrompt,
+          model,
+          providerInstanceId,
+          resolution:
+            strategy === 'ai-inpaint-slice' &&
+            (payload.resolution === '1.5K' || payload.resolution === 'auto')
+              ? '2K'
+              : payload.resolution,
+          inputReferences: [sourceUrl],
+          layerDecomposition: strategy === 'ai-layers'
+        })
+        logBridge.recordApiCall({
+          kind: 'generateImage',
+          request: apiRequest,
+          response: {
+            model: result.model,
+            imageCount: result.layers?.length || result.images?.length || 0,
+            referenceNotes: result.referenceNotes
+          },
+          durationMs: Math.max(0, Date.now() - apiStarted)
+        })
+      } catch (err) {
+        const raw = err instanceof Error ? err.message : String(err)
+        const error = formatProviderErrorForLog(raw, String(locale.value))
+        logBridge.recordApiCall({
+          kind: 'generateImage',
+          request: apiRequest,
+          error,
+          durationMs: Math.max(0, Date.now() - apiStarted)
+        })
+        throw new Error(error)
+      }
+      if (!layerSplit.open || layerSplit.nodeId !== nodeId) {
+        finishLog(true)
+        return
+      }
+      if (result.layers?.length && result.layers.length >= 2) {
+        mapped = mapDecompositionToLayers({
+          idPrefix: `layerSplit:${node.id}:${stamp}:nest`,
+          apiLayers: result.layers,
+          images: result.images,
+          canvasHint: { width: parent.width, height: parent.height },
+          asCanvasBase: false
+        })
+      } else {
+        const cleanBaseUrl = result.images?.[0]?.trim() || ''
+        if (!cleanBaseUrl) {
+          throw fail(SHARED_ERRORS.layerSplitNoLayers)
+        }
+        const decomposed = await decomposeImageUiLayers({
+          sourceDataUrl: sourceUrl,
+          cleanBaseDataUrl: isCanvasSafeImageSrc(cleanBaseUrl) ? cleanBaseUrl : undefined
+        })
+        const cw = Math.max(1, decomposed.width)
+        const ch = Math.max(1, decomposed.height)
+        const apiLayers = [
+          {
+            url: cleanBaseUrl || decomposed.baseDataUrl,
+            zIndex: 0,
+            size: `${cw}x${ch}`,
+            name: 'Base'
+          },
+          ...decomposed.widgets.map((w, idx) => ({
+            url: w.dataUrl,
+            zIndex: idx + 1,
+            size: `${w.width}x${w.height}`,
+            name: w.name,
+            description: w.description || '',
+            boundingBox: {
+              absolute: [w.left, w.top, w.left + w.width, w.top + w.height],
+              normalized: [
+                Math.round((w.left / cw) * 1000),
+                Math.round((w.top / ch) * 1000),
+                Math.round(((w.left + w.width) / cw) * 1000),
+                Math.round(((w.top + w.height) / ch) * 1000)
+              ]
+            }
+          }))
+        ]
+        mapped = mapDecompositionToLayers({
+          idPrefix: `layerSplit:${node.id}:${stamp}:nest`,
+          apiLayers,
+          images: apiLayers.map((l) => l.url),
+          canvasHint: { width: parent.width, height: parent.height },
+          asCanvasBase: false
+        })
+      }
+    }
     if (!mapped.layers.length) {
       throw fail(SHARED_ERRORS.layerSplitEmpty)
     }

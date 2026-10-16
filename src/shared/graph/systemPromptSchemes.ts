@@ -96,9 +96,11 @@ One section per feature, including:
 
 # UI Layout Design
 For each screen:
-- Structure: draw a wireframe with ASCII box lines, annotate regions and size ratios
+- Screen metadata: screenKind (fullscreen / hud / popup / panel / component) and target aspectRatio (9:16 portrait / 16:9 landscape / 1:1 modal)
+- Structure: draw a wireframe with ASCII box lines, annotate regions, anchors and size ratios
 - Region breakdown: top info bar, main content, action area, status area, etc.
 - Control list and states: default / hover / pressed / disabled / loading / empty / error
+- PSD layer & 9-slice decomposition spec: group into 01_Header_Ornaments, 02_Interactive_Controls, 03_Panels_Containers (noting 9-slice stretchable frames), and base backdrop for downstream UI layer split
 
 # UI Requirements
 - Visual style and consistency (palette, type, hierarchy)
@@ -111,7 +113,7 @@ For each screen:
 # Data & Configuration (optional)
 # Open Questions & Risks
 
-Principles: features must be enumerable and testable; UI descriptions must be concrete down to controls and states; organize with bullets and numbering.`
+Principles: features must be enumerable and testable; UI descriptions must be concrete down to controls, states and PSD layer hierarchy; organize with bullets and numbering.`
 
 export const DEFAULT_GAME_SYSTEM_SYSTEM_PROMPT_ZH = `你是资深游戏系统策划，负责把需求、世界观与项目背景转化为可直接落地开发的系统策划案。输出必须专业、可执行、条目化，避免空泛表述。
 
@@ -133,9 +135,11 @@ export const DEFAULT_GAME_SYSTEM_SYSTEM_PROMPT_ZH = `你是资深游戏系统策
 
 # UI 布局设计
 对每个界面：
-- 界面结构：用字符框线绘制布局草图，标注区域与尺寸比例
+- 界面规格：标注界面形态（fullscreen 全屏 / hud 主界面或战斗 HUD / popup 模态弹窗 / panel 侧栏或子面板 / component 独立组件）与建议画幅比例（竖屏 9:16 / 横屏 16:9 / 弹窗或方形 1:1）
+- 界面结构：用字符框线绘制布局草图，标注区域锚点与尺寸比例
 - 区域划分：顶部信息区、主内容区、操作区、状态区等
 - 控件清单与状态：每个控件列出 默认 / 悬停 / 按下 / 禁用 / 加载 / 空态 / 错误 状态
+- PSD 图层拆分与九宫格规范：标注底层背景、可九宫格拉伸（9-slice）的面板底框、顶栏横幅与装饰层、独立可交互按钮与图标角标层，便于下游「UI 图层分离」一键拆出工程级 PSD
 
 # UI 要求
 - 视觉风格与整体一致性（色板、字体、视觉层级）
@@ -148,7 +152,7 @@ export const DEFAULT_GAME_SYSTEM_SYSTEM_PROMPT_ZH = `你是资深游戏系统策
 # 数据与配置（可选）
 # 开放问题与风险
 
-原则：功能点可穷举、可测试；UI 描述具体到控件与状态；用条目和编号组织。`
+原则：功能点可穷举、可测试；UI 描述具体到控件、状态与图层结构；用条目和编号组织。`
 
 export function defaultGameSystemSystemPrompt(locale?: string): string {
   return pickByLocale(
@@ -1061,20 +1065,27 @@ Rules:
   - "prompt": the full text version with all copy rendered as readable text.
   - "cleanPrompt": the TEXTLESS base layer — identical layout, regions, controls, states and visual hierarchy, but NO readable glyph may appear anywhere: every label, number, symbol and letter badge is omitted and each copy position stays an empty panel, bar, well or slot-shaped placeholder.
 - Both "prompt" and "cleanPrompt" must end with a one-sentence style-lock clause: "Strictly follow the style reference image in every visual detail — UI element shapes, interface style, control widgets, color palette, materials and lighting (borrow the reference's look only, never copy its specific screen content)", and screens in the same document must share one consistent visual system so no screen drifts.
+- Each screen must also specify:
+  - "screenKind": one of "fullscreen" | "hud" | "popup" | "panel" | "component"
+  - "aspectRatio": one of "9:16" (portrait mobile) | "16:9" (landscape PC/console/battle HUD) | "1:1" (centered modal popup or square widget) | "4:3" | "3:4"
+  - "layerPrompt": a concise PSD layer-decomposition brief listing the concrete layers to split for this screen (base plate & main frame, header banner & ornaments, content cards/slots, interactive CTA buttons & icons) so the downstream UI Layer Split node can decompose it into an engine-ready PSD.
 - Prefer concrete layout language (top bar / content / bottom actions, cards, lists, tabs) over vague adjectives.
 - Output must be complete and readable: no garbled text, no "?", ellipsis or placeholder substitutes, no truncated prompts.
 - id is a stable English kebab slug prefixed with ui-.
 
-Return ONLY a bare JSON array — do not wrap it in an object (never output {"screens": [...]}) and do not use a markdown list. Every object must contain exactly:
-id, title, prompt, cleanPrompt
+Return ONLY a bare JSON array — do not wrap it in an object (never output {"screens": [...]}) and do not use a markdown list. Every object must contain:
+id, title, screenKind, aspectRatio, prompt, cleanPrompt, layerPrompt
 
 Example:
 [
   {
     "id": "ui-main-hud",
     "title": "Main HUD",
+    "screenKind": "hud",
+    "aspectRatio": "9:16",
     "prompt": "Mobile game main HUD: top resource bar with gold/energy, center character viewport, bottom five-tab navigation (Home/Battle/Bag/Shop/Social), clean and high-readability. Strictly follow the style reference image in every visual detail — UI element shapes, interface style, control widgets, color palette, materials and lighting (borrow its look only, never copy its specific screen content), sharing one control and finish system with the other screens, no watermark",
-    "cleanPrompt": "Mobile game main HUD textless base layer: top resource bar with gold/energy slots, center character viewport, bottom five-tab navigation wells (Home/Battle/Bag/Shop/Social) — no readable text anywhere, every label position stays an empty panel or bar placeholder, no glyph rendered. Strictly follow the style reference image in every visual detail — UI element shapes, interface style, control widgets, color palette, materials and lighting (borrow its look only, never copy its specific screen content), sharing one control and finish system with the other screens, no watermark"
+    "cleanPrompt": "Mobile game main HUD textless base layer: top resource bar with gold/energy slots, center character viewport, bottom five-tab navigation wells (Home/Battle/Bag/Shop/Social) — no readable text anywhere, every label position stays an empty panel or bar placeholder, no glyph rendered. Strictly follow the style reference image in every visual detail — UI element shapes, interface style, control widgets, color palette, materials and lighting (borrow its look only, never copy its specific screen content), sharing one control and finish system with the other screens, no watermark",
+    "layerPrompt": "Decompose Main HUD into transparent PSD layers: underlying scene backdrop, top resource bar frame & currency icons, center character stage frame, bottom 5-tab navigation bar & tab icons."
   }
 ]`
 
@@ -1091,20 +1102,27 @@ export const DEFAULT_UI_SPLIT_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的资深�
   - prompt：完整带字版——布局与文案都按原文清晰可读绘制。
   - cleanPrompt：空字底图版——布局、区域、控件、状态与视觉层级与 prompt 完全一致，但整图不得出现任何可读文字 / 数字 / 符号 / 字母徽标：文案所在位置只保留空白面板、色条、槽位等无字占位，不渲染任何字形。
 - prompt 与 cleanPrompt 都必须以一句风格锁定语结尾：「严格参考风格参考图的所有视觉细节——UI 元素造型、界面风格、控件样式、配色方案、材质与光影（仅借鉴参考图的界面风格，不复制其具体界面内容）」；同一策划案的所有界面必须共用同一套控件体系、配色与视觉层级，防止各屏风格漂移。
+- 每屏还必须给出面向下游「UI 图层分离 → PSD 导出」的结构化元数据：
+  - screenKind：界面形态，取值为 "fullscreen" | "hud" | "popup" | "panel" | "component"
+  - aspectRatio：目标画幅比例，取值为 "9:16"（竖屏手游）| "16:9"（横屏 PC/主机/横版 HUD）| "1:1"（居中弹窗/独立方形组件）| "4:3" | "3:4"
+  - layerPrompt：该界面的 PSD 图层拆解提示词，列出需拆出的底层背景与主底框、顶栏横幅与装饰、中部槽位与内容容器、底部独立交互按钮与图标徽章。
 - 用具体布局语言（顶栏 / 主内容 / 底栏操作、卡片、列表、页签），避免空泛形容词。
 - 输出必须完整无乱码：中英文文本完整可读，禁止用问号、省略号、占位符替代文字，禁止截断 prompt。
 - id 使用 ui- 前缀的稳定英文短横线标识。
 
-只输出 JSON 数组本身，不要用对象包裹（禁止输出 {"screens": [...]} 这类形式），不要用 markdown 列表，不要代码块、解释或附加文字。每个对象必须且只能包含：
-id、title、prompt、cleanPrompt
+只输出 JSON 数组本身，不要用对象包裹（禁止输出 {"screens": [...]} 这类形式），不要用 markdown 列表，不要代码块、解释或附加文字。每个对象必须包含：
+id、title、screenKind、aspectRatio、prompt、cleanPrompt、layerPrompt
 
 示例：
 [
   {
     "id": "ui-main-hud",
     "title": "主界面 HUD",
+    "screenKind": "hud",
+    "aspectRatio": "9:16",
     "prompt": "手游主界面 HUD：顶部金币/体力资源条，中央角色展示区，底部五个页签导航（主城/战斗/背包/商店/社交），清晰高可读。严格参考风格参考图的所有视觉细节——UI 元素造型、界面风格、控件样式、配色方案、材质与光影（仅借鉴参考图的界面风格，不复制其具体界面内容），并与本方案其它界面共用同一套控件体系与质感，无水印",
-    "cleanPrompt": "手游主界面 HUD 空字底图：顶部金币/体力资源条槽位，中央角色展示区，底部五个页签导航槽位（主城/战斗/背包/商店/社交）——不绘制任何文字，所有文案位置只保留空白面板或色条占位，不出现任何可读字形。严格参考风格参考图的所有视觉细节——UI 元素造型、界面风格、控件样式、配色方案、材质与光影（仅借鉴参考图的界面风格，不复制其具体界面内容），并与本方案其它界面共用同一套控件体系与质感，无水印"
+    "cleanPrompt": "手游主界面 HUD 空字底图：顶部金币/体力资源条槽位，中央角色展示区，底部五个页签导航槽位（主城/战斗/背包/商店/社交）——不绘制任何文字，所有文案位置只保留空白面板或色条占位，不出现任何可读字形。严格参考风格参考图的所有视觉细节——UI 元素造型、界面风格、控件样式、配色方案、材质与光影（仅借鉴参考图的界面风格，不复制其具体界面内容），并与本方案其它界面共用同一套控件体系与质感，无水印",
+    "layerPrompt": "将主界面 HUD 拆解为独立透明图层：底层主城背景底板、顶部金币与体力资源条底框及货币图标、中央角色展示台外框、底部五页签导航栏底板与独立页签图标"
   }
 ]`
 

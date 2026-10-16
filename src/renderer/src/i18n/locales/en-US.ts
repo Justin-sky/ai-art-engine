@@ -4269,17 +4269,40 @@ export default {
       manifestLabel: 'Latest manifest'
     },
     layerSplit: {
-      appMark: 'Layer split',
-      hint: 'Run the node to decompose with Seedream 5.0 Pro; double-click to reorder and move layers',
+      appMark: 'UI layer split',
+      hint: 'Supports any image model and 4 decomposition engines (Seedream 5 Native / Universal AI Base Inpaint + Smart Soft-Matte Slice / 0-API Local Smart Slice); double-click to organize folders, rename layers, and export layered PSD / JSON manifest',
       needRun:
-        'Connect an upstream image and run the node. The model returns a base image plus transparent layers you can drag, resize, and restack here.',
+        'Connect an upstream UI image (recommended: wire from the Selected UI port of Generate Game UI) and run the node. The node decomposes a clean base plate plus transparent UI widget layers organized into PSD folders.',
       noSelection: 'No layer selected',
       layers: 'Layers',
       emptyLayers: 'No layers yet. Run the node to decompose the image.',
       layerCount: '{n} layers',
+      splitMode: 'Split Engine',
+      splitModeAuto: '⚡ Smart Auto (matches best strategy for selected model)',
+      splitModeAiInpaintSlice: '🎨 Universal AI Split (Any Model Clean Base + Soft-Matte Slice)',
+      splitModeAiLayers: '🧩 Native Layer API (Seedream 5.0 Pro layer_decomposition)',
+      splitModeLocalSlice: '🚀 0-API Local Smart Slice (Local BG Inpaint + Widget Cutout)',
+      splitModeHintAutoLayers:
+        'Selected model supports native API layer decomposition and auto-organizes into Game UI PSD folders',
+      splitModeHintAiInpaint:
+        'Works with any image model (Gemini / GPT / Seedream 4.x / Flux): inpaints a clean widget-free base plate first, then extracts crisp transparent UI widgets via color-unmixing soft matting',
+      splitModeHintLocalSlice:
+        'Zero cloud API calls — locally reconstructs the clean base plate and slices out all standalone UI buttons, icons, and panel frames',
       prompt: 'Decompose prompt',
       promptPlaceholder:
-        'Optional: name the elements to isolate. Leave empty to detect subjects, text, and decorations automatically.',
+        'Optional: describe the UI widgets to isolate (or click a preset below). Leave empty to automatically decompose base plate, frames, buttons, and ornaments for Game UI.',
+      presets: 'UI Decompose Presets',
+      presetStandard: 'Standard UI',
+      presetHud: 'Combat HUD',
+      presetPopup: 'Dialog Popup',
+      presetInventory: 'Inventory Grid',
+      presetCard: 'Gacha / Card',
+      autoUiGroup: 'Smart UI Grouping',
+      autoUiGroupHint:
+        'Auto-organize layers into PSD folders (Top HUD & Ornaments / Interactive Controls & Buttons / Panels & Frames)',
+      autoUiGroupDone: 'Organized into {n} Game UI PSD folders',
+      renameLabel: 'Layer name',
+      renamePlaceholder: 'Rename selected layer or group (synced to PSD & exported files)',
       resolution: 'Resolution',
       sendBack: 'Send backward',
       bringForward: 'Bring forward',
@@ -4307,17 +4330,21 @@ export default {
       showGroup: 'Show group',
       exportSelected: 'Export selected layer',
       exportGroup: 'Export selected group',
-      exportAll: 'Export all layers',
+      exportAll: 'Export all layers (with UI layout JSON)',
       exporting: 'Exporting…',
       exportSelectedDone: 'Selected layer exported',
       exportGroupDone: 'Exported {n} layers from the group',
-      exportAllDone: 'Exported {n} layers',
+      exportAllDone: 'Exported {n} layers and UI layout manifest',
       exportFailed: 'Export failed: {error}',
       exportNeedImage: 'No layer image to export',
       exportFilterImage: 'Images',
       exportPsd: 'Export PSD',
-      exportPsdDone: 'PSD exported',
-      exportPsdFilter: 'Photoshop PSD'
+      exportPsdDone: 'Layered PSD exported',
+      exportPsdFilter: 'Photoshop PSD',
+      exportManifest: 'Export UI Layout Manifest (JSON)',
+      exportManifestShort: 'JSON',
+      exportManifestDone: 'UI layout manifest JSON exported',
+      exportManifestFilter: 'UI Layout Manifest JSON'
     },
     anim2d: {
       inspectorHint:
@@ -4962,7 +4989,7 @@ export default {
         transform: 'Image transform',
         gridSplit: 'Grid split',
         iconPack: 'Icon pack',
-        layerSplit: 'Layer split',
+        layerSplit: 'UI layer split',
         cutout: 'Cutout',
         align: 'Sprite align',
         compose: 'Smart framing',
@@ -6032,7 +6059,7 @@ export default {
         hint: 'Double-click to tune keying and canvas options. Run the node to key cells to transparent and save PNGs named after the list.'
       },
       layerSplit: {
-        hint: 'Run the node to decompose with Seedream 5.0 Pro. Double-click to drag, resize, and restack layers. Select a layer to split it further into a group. Changing the prompt or resolution triggers a new decompose.'
+        hint: 'Supports any image model and 4 decomposition engines (Smart Auto / Universal AI Clean Base + Soft-Matte Slice / Seedream 5 Native / 0-API Local Smart Slice), auto-grouping into Game UI PSD folders and exporting layered PSD + JSON layout manifest.'
       },
       camera: {
         hint: 'Edits sync to the director deck edit preview; orbiting in the preview updates it live.',

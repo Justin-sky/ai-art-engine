@@ -4165,16 +4165,40 @@ export default {
       manifestLabel: '最近清单'
     },
     layerSplit: {
-      appMark: '图层分离',
-      hint: '运行节点调用 Seedream 5.0 Pro 拆层；双击进入画布调整层级与位置',
+      appMark: 'UI 图层分离',
+      hint: '支持任意生图模型与 4 种拆层引擎（Seedream 5 原生拆层 / 任意图片模型 AI 底板重绘+智能软抠图切件 / 零 API 极速本地切件）；双击进入画布调整层级、智能 UI 分组与导出分层 PSD / JSON 清单',
       needRun:
-        '请先连接上游图片并运行节点。模型会拆出底图和透明图层，之后可在此拖动、缩放与调整叠放顺序。',
+        '请先连接上游 UI 画面（推荐接入「生成游戏UI」节点的 Selected UI 端口）并运行节点。节点会自动拆出干净底图与独立透明 UI 控件图层并归入 PSD 分组。',
       noSelection: '未选中图层',
       layers: '图层',
       emptyLayers: '尚未拆层。运行节点后会显示各图层。',
       layerCount: '{n} 层',
+      splitMode: '拆层引擎',
+      splitModeAuto: '⚡ 智能自动（按所选模型自动匹配最佳拆层方案）',
+      splitModeAiInpaintSlice: '🎨 通用模型拆层（任意图片模型 AI 擦除底板 + 智能软抠图切件）',
+      splitModeAiLayers: '🧩 原生接口拆层（Seedream 5.0 Pro layer_decomposition）',
+      splitModeLocalSlice: '🚀 零 API 本地智能切件（本地背景修补 + 连通域透明拆层）',
+      splitModeHintAutoLayers:
+        '当前模型支持原生 API 拆层，将直接输出分层结果并自动归入游戏 UI 标准 PSD 文件夹',
+      splitModeHintAiInpaint:
+        '兼容任意图片模型（Gemini / GPT / Seedream 4.x / Flux 等）：先由 AI 擦除前景控件生成纯净底板，再按色彩反混合软抠图精确切出每个独立透明 UI 控件',
+      splitModeHintLocalSlice:
+        '无需调用任何云端大模型，本地直接修补干净底板并分离所有独立 UI 按钮、图标与面板图层',
       prompt: '拆层提示词',
-      promptPlaceholder: '可选：描述要拆出的元素。留空则自动识别主体、文字与装饰。',
+      promptPlaceholder:
+        '可选：描述要拆出的 UI 控件（或点击下方预设）。留空则默认按游戏 UI 规范自动分离底图、面板底框、按钮控件与装饰徽章。',
+      presets: 'UI 拆层预设',
+      presetStandard: '标准全套 UI',
+      presetHud: '战斗 HUD',
+      presetPopup: '弹窗对话框',
+      presetInventory: '背包格子',
+      presetCard: '抽卡立绘',
+      autoUiGroup: '智能 UI 分组',
+      autoUiGroupHint:
+        '按游戏 UI 层级（顶栏与装饰 / 交互控件与按钮 / 面板与容器底框）自动归入 PSD 文件夹',
+      autoUiGroupDone: '已按游戏 UI 结构整理为 {n} 个 PSD 分组',
+      renameLabel: '图层名称',
+      renamePlaceholder: '重命名选中图层或分组（同步至 PSD 与导出文件名）',
       resolution: '分辨率',
       sendBack: '下移一层',
       bringForward: '上移一层',
@@ -4202,17 +4226,21 @@ export default {
       showGroup: '显示分组',
       exportSelected: '导出选中图层',
       exportGroup: '导出选中分组',
-      exportAll: '导出全部图层',
+      exportAll: '导出全部图层（含 UI 布局 JSON）',
       exporting: '导出中…',
       exportSelectedDone: '已导出选中图层',
       exportGroupDone: '已导出分组内 {n} 个图层',
-      exportAllDone: '已导出 {n} 个图层',
+      exportAllDone: '已导出 {n} 个图层与 UI 布局清单',
       exportFailed: '导出失败：{error}',
       exportNeedImage: '没有可导出的图层图片',
       exportFilterImage: '图片',
       exportPsd: '导出 PSD',
-      exportPsdDone: '已导出 PSD',
-      exportPsdFilter: 'Photoshop PSD'
+      exportPsdDone: '已导出分层 PSD',
+      exportPsdFilter: 'Photoshop PSD',
+      exportManifest: '导出 UI 布局清单 (JSON)',
+      exportManifestShort: 'JSON',
+      exportManifestDone: '已导出 UI 布局清单 JSON',
+      exportManifestFilter: 'UI 布局清单 JSON'
     },
     anim2d: {
       inspectorHint:
@@ -4844,7 +4872,7 @@ export default {
         transform: '图片变换',
         gridSplit: '宫格切分',
         iconPack: '图标包',
-        layerSplit: '图层分离',
+        layerSplit: 'UI 图层分离',
         cutout: '本地抠图',
         align: '精灵对齐',
         compose: '智能构图',
@@ -5876,7 +5904,7 @@ export default {
         hint: '双击调整键控与画布参数；运行节点按名单逐格键控透明并命名落盘 PNG'
       },
       layerSplit: {
-        hint: '运行节点用 Seedream 5.0 Pro 拆层。双击进入画布：拖动移动、角点缩放、列表调整叠放顺序。选中一层可继续拆分，结果收进分组。提示词或分辨率变化后会重新拆层。'
+        hint: '支持任意图片模型与 4 种拆层引擎（智能自动 / 通用模型 AI 底板重绘+软抠图切件 / Seedream 5 原生拆层 / 零 API 本地智能切件），自动归入游戏 UI 标准 PSD 分组并导出分层 PSD 与 JSON 布局清单。'
       },
       camera: {
         hint: '修改参数会同步到导演台编辑预览；在预览中环视也会实时更新。',

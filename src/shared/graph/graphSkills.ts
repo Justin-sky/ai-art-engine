@@ -741,9 +741,9 @@ const BUILTIN_SKILLS: GraphSkill[] = [
   }),
   fromSystemDefault('system.matte', '抠图', 'Matte', defaultMatteSystemPrompt, {
     usageZh:
-      '在画布上请添加 `typeId: "image.process"` 节点并设 `params.imageProcessTool: "matte"`（AI 语义抠图）或 `"cutout"`（本地高速去底/色度抠图）（旧 `image.matte` / `image.cutout` 已合并进十合一图像处理工作台）。端口：`in`:image → `out`:image（透明通道 PNG）+ `out-mask`:image（黑白遮罩）。若需将一张图拆为多个独立前景图层与干净背景并导出 PSD，请使用 `typeId: "image.layerSplit"`（图像分层节点）。',
+      '在画布上请添加 `typeId: "image.process"` 节点并设 `params.imageProcessTool: "matte"`（AI 语义抠图）或 `"cutout"`（本地高速去底/色度抠图）（旧 `image.matte` / `image.cutout` 已合并进十合一图像处理工作台）。端口：`in`:image → `out`:image（透明通道 PNG）+ `out-mask`:image（黑白遮罩）。若需将 UI 界面或单张图拆为多个独立前景图层与干净背景并导出 PSD，请使用 `typeId: "image.layerSplit"`（UI 图层分离节点，位于右键「游戏」分组）。',
     usageEn:
-      'On the canvas, add a `typeId: "image.process"` node and set `params.imageProcessTool: "matte"` (AI matting) or `"cutout"` (local/chroma/rembg cutout) (legacy `image.matte` / `image.cutout` are consolidated into `image.process`). Ports: `in`:image → `out`:image (transparent PNG) + `out-mask`:image. To decompose an image into multiple foreground layers + clean background with PSD export, use `typeId: "image.layerSplit"`.'
+      'On the canvas, add a `typeId: "image.process"` node and set `params.imageProcessTool: "matte"` (AI matting) or `"cutout"` (local/chroma/rembg cutout) (legacy `image.matte` / `image.cutout` are consolidated into `image.process`). Ports: `in`:image → `out`:image (transparent PNG) + `out-mask`:image. To decompose a UI screen or image into multiple foreground layers + clean background with PSD export, use `typeId: "image.layerSplit"` (UI layer split, under the "Game" context-menu group).'
   }),
   fromSystemDefault('system.multiAngle', '多角度', 'Multi-angle', defaultMultiAngleSystemPrompt, {
     usageZh:

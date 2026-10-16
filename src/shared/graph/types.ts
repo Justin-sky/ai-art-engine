@@ -845,6 +845,7 @@ export interface GraphNodeParams {
    */
   generatedImages?: Array<{
     id?: string
+    title?: string
     dataUrl: string
     createdAt?: string
     relativePath?: string
@@ -918,6 +919,12 @@ export interface GraphNodeParams {
     relativePath?: string
     /** UI 界面拆分：该条目的空字底图轨提示词（随 texts 载荷透传，避免 dive 重建时丢失） */
     cleanPrompt?: string
+    /** UI 界面拆分：界面形态分类（fullscreen / hud / popup / panel / component） */
+    screenKind?: 'fullscreen' | 'hud' | 'popup' | 'panel' | 'component'
+    /** UI 界面拆分：界面画幅比例（9:16 / 16:9 / 1:1 / 4:3 / 3:4） */
+    aspectRatio?: '9:16' | '16:9' | '1:1' | '4:3' | '3:4'
+    /** UI 界面拆分：供下游 UI 图层分离（image.layerSplit → PSD）使用的拆层提示词 */
+    layerPrompt?: string
   }>
   /**
    * 声音生成节点：历次生成累计的音频（重新执行追加，可在 Inspector 删除）。
@@ -968,8 +975,16 @@ export interface GraphNodeParams {
    * 生成节点每次运行成功后强制切到最新一条。
    */
   selectedTextId?: string
-  /** UI 界面拆分：拆分出的界面提示词数组（每条对应 dive 内图一条输出链，可含空字底图轨 cleanPrompt） */
-  uiScreens?: Array<{ id: string; title: string; prompt: string; cleanPrompt?: string }>
+  /** UI 界面拆分：拆分出的界面提示词数组（每条对应 dive 内图一条输出链，可含空字底图轨 cleanPrompt、画幅、形态与拆层提示词） */
+  uiScreens?: Array<{
+    id: string
+    title: string
+    prompt: string
+    cleanPrompt?: string
+    screenKind?: 'fullscreen' | 'hud' | 'popup' | 'panel' | 'component'
+    aspectRatio?: '9:16' | '16:9' | '1:1' | '4:3' | '3:4'
+    layerPrompt?: string
+  }>
   /** UI 界面拆分：dive 内图对应的子图资产 id（懒创建） */
   uiSplitAssetId?: string
   /** UI 界面拆分：dive 内图结构版本（结构变化时递增，旧资产强制重建） */

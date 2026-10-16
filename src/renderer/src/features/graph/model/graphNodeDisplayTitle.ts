@@ -137,7 +137,10 @@ export function resolveGraphNodeDisplayTitle(
     const agentTitle = resolveEpisodeAgentStageTitle(custom, options.t)
     if (agentTitle) return agentTitle
     const def = resolveNodeType(node) ?? (node.typeId ? getNodeType(node.typeId) : undefined)
-    if (def?.defaultTitle && custom === def.defaultTitle) {
+    if (
+      (def?.defaultTitle && custom === def.defaultTitle) ||
+      (node.typeId === 'image.layerSplit' && custom === 'Layer split')
+    ) {
       if (node.typeId) return options.graphTypeLabel(node.typeId)
     }
     return custom

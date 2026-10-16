@@ -2042,9 +2042,9 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
   {
     typeId: 'image.layerSplit',
     category: 'note',
-    label: 'Layer split',
+    label: 'UI layer split',
     icon: '🗂️',
-    defaultTitle: 'Layer split',
+    defaultTitle: 'UI layer split',
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
@@ -2297,6 +2297,13 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
         dataType: GraphPortType.images,
         multiple: true,
         label: 'UI Images'
+      },
+      {
+        id: 'out-selected',
+        direction: 'out',
+        dataType: GraphPortType.image,
+        multiple: false,
+        label: 'Selected UI'
       }
     ],
     defaultParams: () => ({

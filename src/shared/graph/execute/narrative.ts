@@ -35,7 +35,8 @@ import { resolveAssetTextFromGenParams } from '../assetText'
 import {
   parseUiScreenPrompts,
   screensFromUiGenIncoming,
-  UI_SPLIT_INNER_GRAPH_VERSION
+  UI_SPLIT_INNER_GRAPH_VERSION,
+  type UiScreenPromptItem
 } from '../uiSplitParse'
 import type { GraphValue, NodeExecuteContext } from './types'
 import { flattenVideosValues, newestTextSelectedId } from './gallery'
@@ -336,7 +337,7 @@ export async function executeUiSplitNode(
   return persistUiSplitGeneration(ctx, screens)
 }
 
-/** UI 界面生成：接收界面提示词数组，落为 uiScreens 供 dive 内图使用；外口输出图片组（由内图产出） */
+/** UI 界面生成：接收界面提示词数组，落为 uiScreens 供 dive 内图使用；外口输出图片组（由内图产出）及当前选中单图（供直接连入 UI 图层分离） */
 export async function executeUiGenNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
@@ -353,12 +354,38 @@ export async function executeUiGenNode(
   const collected = collectUiGenInnerOutputs(ctx)
   const out: GraphValue = collected ?? { kind: 'images', items: [] }
   const gallery = collected ? outputsToHostGalleryParams({ out }) : {}
-  node.params = { ...node.params, text: summary, uiScreens: screens, ...gallery }
-  ctx.patchNode?.({ params: { text: summary, uiScreens: screens, ...gallery } })
-  return { out }
+  const genImgs = gallery.generatedImages ?? node.params.generatedImages ?? []
+  const explicitSelectedId = node.params.selectedImageId?.trim()
+  // 若用户尚未手动挑图，优先把「底图·*」（空字底图轨）选为默认单图输出，方便下游 UI 图层分离直接拆无字底板
+  const preferredClean = !explicitSelectedId
+    ? genImgs.find((item) => item.title?.startsWith('底图·')) // cjk-ok
+    : undefined
+  const selectedImageId =
+    (explicitSelectedId && genImgs.some((item) => item.id === explicitSelectedId)
+      ? explicitSelectedId
+      : preferredClean?.id) ?? gallery.selectedImageId
+  const finalGallery = selectedImageId ? { ...gallery, selectedImageId } : gallery
+  node.params = { ...node.params, text: summary, uiScreens: screens, ...finalGallery }
+  ctx.patchNode?.({ params: { text: summary, uiScreens: screens, ...finalGallery } })
+
+  const picked =
+    (selectedImageId ? genImgs.find((item) => item.id === selectedImageId) : undefined) ||
+    genImgs[genImgs.length - 1]
+  const outSelected: GraphValue | undefined = picked
+    ? {
+        kind: 'image',
+        id: picked.id,
+        ...(picked.title ? { title: picked.title } : {}),
+        dataUrl: picked.dataUrl ?? '',
+        createdAt: picked.createdAt,
+        ...(picked.relativePath ? { relativePath: picked.relativePath } : {})
+      }
+    : undefined
+
+  return outSelected ? { out, 'out-selected': outSelected } : { out }
 }
 
-/** ui.gen：从 dive 子图资产软解析所有输出边界，合并为图片组 */
+/** ui.gen：从 dive 子图资产软解析所有输出边界，合并为图片组（保留边界标题以区分「图片·」与「底图·」） */
 function collectUiGenInnerOutputs(ctx: NodeExecuteContext): GraphValue | undefined {
   const assetId = ctx.node.params.uiSplitAssetId?.trim()
   if (!assetId) return undefined
@@ -377,14 +404,20 @@ function collectUiGenInnerOutputs(ctx: NodeExecuteContext): GraphValue | undefin
   for (const bnode of doc.nodes) {
     if (!isBoundaryOutputNode(bnode)) continue
     const value = softResolveBoundaryOutputValue(doc, bnode.id, softOptions)
-    if (graphValueHasPayload(value)) collected.push(value)
+    if (!graphValueHasPayload(value) || !value) continue
+    const bTitle = bnode.title?.trim()
+    if (value.kind === 'image' && bTitle && !value.title) {
+      collected.push({ ...value, title: bTitle })
+    } else {
+      collected.push(value)
+    }
   }
   return mergeBoundarySoftValues(collected, GraphPortType.images)
 }
 
 async function persistUiSplitGeneration(
   ctx: NodeExecuteContext,
-  screens: Array<{ id: string; title: string; prompt: string; cleanPrompt?: string }>
+  screens: UiScreenPromptItem[]
 ): Promise<Record<string, GraphValue>> {
   const createdAt = new Date().toISOString()
   const stamp = formatGeneratedMediaStamp()
@@ -392,8 +425,11 @@ async function persistUiSplitGeneration(
     id: screen.id || `ui-screen:${stamp}:${index}`,
     title: screen.title,
     text: screen.prompt,
-    // 空字底图轨提示词随 texts 载荷透传，dive 重建内图时可保留双轨
+    // 空字底图轨提示词、界面形态、画幅比例与拆层提示词随 texts 载荷透传，dive 重建内图或下游拆层时保留
     cleanPrompt: screen.cleanPrompt?.trim() || undefined,
+    ...(screen.screenKind ? { screenKind: screen.screenKind } : {}),
+    ...(screen.aspectRatio ? { aspectRatio: screen.aspectRatio } : {}),
+    ...(screen.layerPrompt?.trim() ? { layerPrompt: screen.layerPrompt.trim() } : {}),
     createdAt
   }))
   // 每次拆分结果整体替换图库，避免新旧界面混在一起

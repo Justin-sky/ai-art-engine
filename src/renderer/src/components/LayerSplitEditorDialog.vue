@@ -49,6 +49,15 @@
         >
           {{ splitting ? t('graph.layerSplit.splitting') : t('graph.layerSplit.splitSelected') }}
         </button>
+        <button
+          type="button"
+          class="tool-btn"
+          :disabled="!hasCanvas || splitting"
+          :title="t('graph.layerSplit.autoUiGroupHint')"
+          @click="onAutoGroupUiLayers"
+        >
+          {{ t('graph.layerSplit.autoUiGroup') }}
+        </button>
         <span class="layer-count">
           {{ t('graph.layerSplit.layerCount', { n: draft.layers.length }) }}
         </span>
@@ -221,7 +230,26 @@
               >
                 PSD
               </button>
+              <button
+                type="button"
+                class="icon-btn psd-btn"
+                :disabled="!hasCanvas || exporting"
+                :title="t('graph.layerSplit.exportManifest')"
+                :aria-label="t('graph.layerSplit.exportManifest')"
+                @click="exportManifestJson"
+              >
+                {{ t('graph.layerSplit.exportManifestShort') }}
+              </button>
             </div>
+          </div>
+          <div v-if="selectedLayer && !isBase(selectedLayer)" class="side-rename">
+            <input
+              type="text"
+              class="rename-input"
+              :value="selectedLayer.name"
+              :placeholder="t('graph.layerSplit.renamePlaceholder')"
+              @change="onRenameSelectedLayer"
+            />
           </div>
           <p v-if="exportMessage" class="side-export" :class="{ error: exportFailed }">
             {{ exportMessage }}
@@ -303,13 +331,36 @@
       </div>
 
       <div class="bottom">
-        <textarea
-          v-model="draft.prompt"
-          class="prompt"
-          rows="2"
-          :placeholder="t('graph.layerSplit.promptPlaceholder')"
-        />
+        <div class="prompt-col">
+          <div class="preset-bar">
+            <span class="preset-title">{{ t('graph.layerSplit.presets') }}:</span>
+            <button
+              v-for="preset in presetOptions"
+              :key="preset.id"
+              type="button"
+              class="preset-chip"
+              :class="{ active: draft.prompt.trim() === preset.prompt.trim() }"
+              @click="draft.prompt = preset.prompt"
+            >
+              {{ preset.label }}
+            </button>
+          </div>
+          <textarea
+            v-model="draft.prompt"
+            class="prompt"
+            rows="2"
+            :placeholder="t('graph.layerSplit.promptPlaceholder')"
+          />
+        </div>
         <div class="toolbar">
+          <label class="tool tool-mode">
+            <span class="tool-label">{{ t('graph.layerSplit.splitMode') }}</span>
+            <select v-model="draft.splitMode" class="select">
+              <option v-for="m in splitModeOptions" :key="m.id" :value="m.id">
+                {{ m.label }}
+              </option>
+            </select>
+          </label>
           <label class="tool tool-model">
             <span class="tool-label">{{ t('graph.inspector.generate.imageModel') }}</span>
             <select v-model="selectionKey" class="select" @change="onModelChange">
@@ -338,7 +389,10 @@ import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import {
   DEFAULT_IMAGE_LAYER_SPLIT,
   LAYER_SPLIT_RESOLUTIONS,
+  UI_LAYER_SPLIT_PRESETS,
+  autoGroupLayersForGameUi,
   buildLayerSplitList,
+  buildLayerSplitUiManifest,
   collectLayerSplitGroupLayers,
   layerSplitExportFolderSegments,
   imageLayerSplitToNodePatch,
@@ -347,6 +401,7 @@ import {
   layerSplitGroupForSource,
   nudgeLayerSplit,
   normalizeImageLayerSplit,
+  renameLayerSplitItem,
   reorderLayerSplit,
   resetLayerSplitRect,
   sortLayersForCompose,
@@ -354,7 +409,9 @@ import {
   toggleLayerSplitGroupVisible,
   type ImageLayerSplitLayer,
   type ImageLayerSplitNestedRequest,
-  type ImageLayerSplitState
+  type ImageLayerSplitState,
+  type UiLayerSplitMode,
+  type UiLayerSplitPresetId
 } from '@shared/graph'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import {
@@ -404,7 +461,7 @@ const emit = defineEmits<{
   'split-selected': [payload: ImageLayerSplitNestedRequest]
 }>()
 
-const { t } = useStudioI18n()
+const { t, locale } = useStudioI18n()
 const windowTitle = computed(() => t('graph.layerSplit.appMark'))
 const draft = reactive<ImageLayerSplitState>(normalizeImageLayerSplit())
 const stageEl = ref<HTMLElement | null>(null)
@@ -607,9 +664,53 @@ async function resolveLayerBytes(src: string): Promise<{ data: Uint8Array; ext: 
   }
 }
 
+const PRESET_LABEL_KEYS: Record<UiLayerSplitPresetId, string> = {
+  'ui-standard': 'graph.layerSplit.presetStandard',
+  'ui-hud': 'graph.layerSplit.presetHud',
+  'ui-popup': 'graph.layerSplit.presetPopup',
+  'ui-inventory': 'graph.layerSplit.presetInventory',
+  'ui-card': 'graph.layerSplit.presetCard'
+}
+
+const presetOptions = computed(() => {
+  const isZh = String(locale.value || '')
+    .toLowerCase()
+    .startsWith('zh')
+  return UI_LAYER_SPLIT_PRESETS.map((item) => ({
+    id: item.id,
+    label: t(PRESET_LABEL_KEYS[item.id]),
+    prompt: isZh ? item.promptZh : item.promptEn
+  }))
+})
+
+function onAutoGroupUiLayers(): void {
+  if (!hasCanvas.value || splitting.value) return
+  pushDraftHistory()
+  const isZh = String(locale.value || '')
+    .toLowerCase()
+    .startsWith('zh')
+  const grouped = autoGroupLayersForGameUi(draft, isZh ? 'zh-CN' : 'en-US')
+  Object.assign(draft, grouped)
+  flashExportMessage(t('graph.layerSplit.autoUiGroupDone', { n: grouped.groups.length }))
+}
+
+function onRenameSelectedLayer(event: Event): void {
+  const layer = selectedLayer.value
+  if (!layer || isBase(layer)) return
+  const nextName = (event.target as HTMLInputElement).value.trim()
+  if (!nextName || nextName === layer.name) return
+  pushDraftHistory()
+  Object.assign(draft, renameLayerSplitItem(draft, layer.id, nextName))
+}
+
+function encodeManifestBytes(): Uint8Array {
+  const manifest = buildLayerSplitUiManifest(draft)
+  return new TextEncoder().encode(JSON.stringify(manifest, null, 2))
+}
+
 async function exportLayerFiles(
   layers: ImageLayerSplitLayer[],
-  options?: { nestGroups?: boolean; rootGroupId?: string }
+  options?: { nestGroups?: boolean; rootGroupId?: string; includeManifest?: boolean }
 ): Promise<number | null> {
   const counts = new Map<string, number>()
   const files: Array<{ fileName: string; data: Uint8Array }> = []
@@ -637,8 +738,16 @@ async function exportLayerFiles(
     flashExportMessage(t('graph.layerSplit.exportNeedImage'), true)
     return null
   }
+  const imageCount = files.length
+  if (options?.includeManifest) {
+    files.push({
+      fileName: 'ui-layout-manifest.json',
+      data: encodeManifestBytes()
+    })
+  }
   const result = await window.studio.saveBinaryFilesToDirectory({ files })
-  return result?.written ?? null
+  if (result?.written == null) return null
+  return options?.includeManifest ? imageCount : result.written
 }
 
 async function exportSelectedLayer(): Promise<void> {
@@ -693,7 +802,7 @@ async function exportAllLayers(): Promise<void> {
   }
   exporting.value = true
   try {
-    const written = await exportLayerFiles(layers, { nestGroups: true })
+    const written = await exportLayerFiles(layers, { nestGroups: true, includeManifest: true })
     if (written == null) return
     flashExportMessage(t('graph.layerSplit.exportAllDone', { n: written }))
   } catch (err) {
@@ -719,7 +828,7 @@ async function exportPsd(): Promise<void> {
     })
     const saved = await window.studio.saveBinaryFile({
       data,
-      defaultPath: 'layer-split.psd',
+      defaultPath: 'ui-layer-split.psd',
       filters: [
         { name: t('graph.layerSplit.exportPsdFilter'), extensions: ['psd'] },
         { name: t('graph.output.exportFilterAll'), extensions: ['*'] }
@@ -727,6 +836,29 @@ async function exportPsd(): Promise<void> {
     })
     if (!saved) return
     flashExportMessage(t('graph.layerSplit.exportPsdDone'))
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    flashExportMessage(t('graph.layerSplit.exportFailed', { error: message }), true)
+  } finally {
+    exporting.value = false
+  }
+}
+
+async function exportManifestJson(): Promise<void> {
+  if (exporting.value || !hasCanvas.value) return
+  exporting.value = true
+  try {
+    const data = encodeManifestBytes()
+    const saved = await window.studio.saveBinaryFile({
+      data,
+      defaultPath: 'ui-layout-manifest.json',
+      filters: [
+        { name: t('graph.layerSplit.exportManifestFilter'), extensions: ['json'] },
+        { name: t('graph.output.exportFilterAll'), extensions: ['*'] }
+      ]
+    })
+    if (!saved) return
+    flashExportMessage(t('graph.layerSplit.exportManifestDone'))
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     flashExportMessage(t('graph.layerSplit.exportFailed', { error: message }), true)
@@ -968,6 +1100,13 @@ function selectGroup(groupId: string): void {
   draft.selectedId = source?.id || firstChild?.id || draft.selectedId
 }
 
+const splitModeOptions = computed<Array<{ id: UiLayerSplitMode; label: string }>>(() => [
+  { id: 'auto', label: t('graph.layerSplit.splitModeAuto') },
+  { id: 'ai-inpaint-slice', label: t('graph.layerSplit.splitModeAiInpaintSlice') },
+  { id: 'ai-layers', label: t('graph.layerSplit.splitModeAiLayers') },
+  { id: 'local-slice', label: t('graph.layerSplit.splitModeLocalSlice') }
+])
+
 function onSplitSelected(): void {
   const layer = selectedLayer.value
   if (!layer || !canSplitSelected.value) return
@@ -979,6 +1118,7 @@ function onSplitSelected(): void {
     layerId: layer.id,
     prompt: draft.prompt,
     resolution: draft.resolution,
+    splitMode: draft.splitMode,
     generateModel: selectedModel.value,
     generateProviderInstanceId: selectedProviderInstanceId.value,
     imageLayerSplit: normalizeImageLayerSplit(draft)
@@ -1501,6 +1641,22 @@ onBeforeUnmount(() => {
   letter-spacing: 0.02em;
 }
 
+.side-rename {
+  flex: 0 0 auto;
+  margin-bottom: 8px;
+}
+
+.rename-input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  padding: 5px 8px;
+  font-size: 12px;
+}
+
 .side-export {
   flex: 0 0 auto;
   margin: 0 0 8px;
@@ -1606,9 +1762,46 @@ onBeforeUnmount(() => {
   color: var(--text-muted);
 }
 
+.prompt-col {
+  flex: 1 1 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.preset-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.preset-title {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.preset-chip {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text);
+  padding: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.preset-chip.active,
+.preset-chip:hover {
+  border-color: #4a90e2;
+  color: #4a90e2;
+}
+
 .prompt {
-  flex: 1 1 240px;
-  min-height: 56px;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 48px;
   resize: vertical;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -1631,6 +1824,11 @@ onBeforeUnmount(() => {
   gap: 4px;
   font-size: 12px;
   color: var(--text-muted);
+}
+
+.tool-mode {
+  min-width: 190px;
+  max-width: 260px;
 }
 
 .tool-model {

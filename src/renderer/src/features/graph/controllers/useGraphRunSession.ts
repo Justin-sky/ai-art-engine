@@ -55,7 +55,7 @@ import { composeVideoFrameSheet } from '../model/composeVideoFrameSheet'
 import { composeAnim2dGif } from '../model/composeAnim2dGif'
 import { renderSvgFrames } from '../model/renderSvgFrames'
 import { composeImageIconPackSheet } from '../model/composeImageIconPackSheet'
-import { composeImageLayerStack } from '../model/composeImageLayerStack'
+import { composeImageLayerStack, decomposeImageUiLayers } from '../model/composeImageLayerStack'
 import { composeComicPageImage } from '../../comic/composeComicPageImage'
 import {
   composePortraitIdPhoto,
@@ -1657,6 +1657,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         renderSvgFrames,
         composeImageIconPackSheet,
         composeImageLayerStack,
+        decomposeImageUiLayers,
         composeComicPageImage,
         composePortraitIdPhoto,
         composePortraitScopedRetouch,

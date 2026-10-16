@@ -74,7 +74,10 @@ import { composeImageGridCell } from '../features/graph/model/composeImageGridCe
 import { composeAnim2dGif } from '../features/graph/model/composeAnim2dGif'
 import { renderSvgFrames } from '../features/graph/model/renderSvgFrames'
 import { composeImageIconPackSheet } from '../features/graph/model/composeImageIconPackSheet'
-import { composeImageLayerStack } from '../features/graph/model/composeImageLayerStack'
+import {
+  composeImageLayerStack,
+  decomposeImageUiLayers
+} from '../features/graph/model/composeImageLayerStack'
 import { composeComicPageImage } from '../features/comic/composeComicPageImage'
 import {
   composePortraitIdPhoto,
@@ -1619,6 +1622,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         renderSvgFrames,
         composeImageIconPackSheet,
         composeImageLayerStack,
+        decomposeImageUiLayers,
         composeComicPageImage,
         composePortraitIdPhoto,
         composePortraitScopedRetouch,

@@ -318,17 +318,23 @@ const PRESET_PLANS: Record<Exclude<AiWorkflowPresetId, 'custom'>, GraphPlan> = {
         title: 'UI界面生成'
       },
       {
+        key: 'uiLayerSplit',
+        typeId: 'image.layerSplit',
+        title: 'UI 图层分离' // cjk-ok
+      },
+      {
         key: 'note',
         typeId: 'note.text',
         title: '使用说明',
         params: {
-          text: '使用流程：运行「策划案生成」产出系统策划案 → 运行「UI界面拆分」拆出各界面提示词 → 双击「UI界面生成」进入内图逐屏出图 → 回外层点 Cook 汇集全部界面图。界面风格由全局风格参考图统一控制（风格库 → UI 风格）。'
+          text: '使用流程：1) 运行「策划案生成」产出系统策划案（含界面形态与画幅规格）→ 2) 运行「UI界面拆分」拆出双轨提示词（带字版 + 空字底图版）与图层拆分说明 → 3) 双击「UI界面生成」进入内图逐屏出图，回外层点 Cook 汇集全部界面图（默认优先选中空字底图输出到 Selected UI 端口）→ 4) 运行「UI 图层分离」一键拆解底板、顶栏装饰、面板容器与交互按钮，双击进入编辑器可「智能 UI 分组」、重命名图层并直接导出分层 PSD 与 UI 布局清单（JSON）。界面风格由全局风格参考图统一控制（风格库 → UI 风格）。' // cjk-ok
         }
       }
     ],
     edges: [
       { from: 'gameSystem', to: 'uiSplit' },
-      { from: 'uiSplit', to: 'uiGen' }
+      { from: 'uiSplit', to: 'uiGen' },
+      { from: 'uiGen', to: 'uiLayerSplit', fromPort: 'out-selected', toPort: 'in' }
     ]
   },
   gameIcons: {
@@ -538,13 +544,13 @@ const PRESET_PLANS: Record<Exclude<AiWorkflowPresetId, 'custom'>, GraphPlan> = {
         params: { generateInstruction: '产品真实使用场景，突出人群与使用氛围' }
       },
       { key: 'adVariants', typeId: 'image.adVariants', title: '广告变体矩阵' },
-      { key: 'split', typeId: 'image.layerSplit', title: '图层分离' },
+      { key: 'split', typeId: 'image.layerSplit', title: 'UI 图层分离' }, // cjk-ok
       {
         key: 'note',
         typeId: 'note.text',
         title: '使用说明',
         params: {
-          text: '流程：运行「产品主视觉 / 使用场景图」→ 双击「广告变体矩阵」配置产品描述与变体维度，批量生成多版本 → 需要改详情页文字层时，把主视觉接入「图层分离」分层导出（PSD / PNG）。'
+          text: '流程：运行「产品主视觉 / 使用场景图」→ 双击「广告变体矩阵」配置产品描述与变体维度，批量生成多版本 → 需要改详情页文字层时，把主视觉接入「UI 图层分离」分层导出（PSD / PNG）。' // cjk-ok
         }
       }
     ],

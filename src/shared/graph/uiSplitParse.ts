@@ -11,6 +11,9 @@ import {
 import { GraphPortType, type GraphDocument, type GraphEdge, type GraphNode } from './types'
 import { resolveUiImageSystemPrompt } from './systemPromptSchemes'
 
+export type UiScreenKind = 'fullscreen' | 'hud' | 'popup' | 'panel' | 'component'
+export type UiScreenAspectRatio = '9:16' | '16:9' | '1:1' | '4:3' | '3:4'
+
 export interface UiScreenPromptItem {
   id: string
   title: string
@@ -21,6 +24,100 @@ export interface UiScreenPromptItem {
    * 缺省时构建内图用 buildTextlessUiPrompt 兜底派生。
    */
   cleanPrompt?: string
+  /** 界面形态分类：全屏主界面 / HUD / 模态弹窗 / 侧边面板 / 独立复用组件 */
+  screenKind?: UiScreenKind
+  /** 界面画幅比例：竖屏 9:16、横屏 16:9、方形弹窗/组件 1:1、宽弹窗 4:3 等（缺省回退 9:16） */
+  aspectRatio?: UiScreenAspectRatio
+  /**
+   * UI 图层分离提示词（可选）：指导下游 image.layerSplit（UI 图层分离 / PSD 导出）
+   * 按游戏引擎拼 UI 规范拆出底板、框体、顶底栏、按钮、列表格与图标层。
+   */
+  layerPrompt?: string
+}
+
+const VALID_SCREEN_KINDS = new Set<UiScreenKind>([
+  'fullscreen',
+  'hud',
+  'popup',
+  'panel',
+  'component'
+])
+
+const VALID_ASPECT_RATIOS = new Set<UiScreenAspectRatio>(['9:16', '16:9', '1:1', '4:3', '3:4'])
+
+export function normalizeUiScreenKind(
+  raw: unknown,
+  title?: string,
+  prompt?: string
+): UiScreenKind | undefined {
+  const s = typeof raw === 'string' ? raw.trim().toLowerCase() : ''
+  if (VALID_SCREEN_KINDS.has(s as UiScreenKind)) return s as UiScreenKind
+  if (/^(modal|dialog|弹窗|对话框)$/i.test(s)) return 'popup' // cjk-ok
+  if (/^(drawer|sidebar|面板|侧栏|抽屉)$/i.test(s)) return 'panel' // cjk-ok
+  if (/^(card|cell|item|组件|卡片)$/i.test(s)) return 'component' // cjk-ok
+  if (/^(screen|page|全屏)$/i.test(s)) return 'fullscreen' // cjk-ok
+  const text = `${title ?? ''} ${prompt ?? ''}`
+  if (/弹窗|对话框|确认框|\b(?:popup|modal|dialog)\b/i.test(text)) return 'popup' // cjk-ok
+  if (/\bhud\b|战斗主界面|常驻信息条/i.test(text)) return 'hud' // cjk-ok
+  if (/侧栏|抽屉|半屏面板|\b(?:drawer|side\s*panel)\b/i.test(text)) return 'panel' // cjk-ok
+  return undefined
+}
+
+export function normalizeUiScreenAspectRatio(
+  raw: unknown,
+  prompt?: string,
+  title?: string
+): UiScreenAspectRatio | undefined {
+  const s = typeof raw === 'string' ? raw.trim() : ''
+  if (VALID_ASPECT_RATIOS.has(s as UiScreenAspectRatio)) return s as UiScreenAspectRatio
+  if (/^(landscape|horizontal|横屏|横版)$/i.test(s)) return '16:9' // cjk-ok
+  if (/^(portrait|vertical|竖屏|竖版)$/i.test(s)) return '9:16' // cjk-ok
+  if (/^(square|方形|正方形)$/i.test(s)) return '1:1' // cjk-ok
+  const text = `${title ?? ''} ${prompt ?? ''}`
+  const landscapeRe =
+    /16\s*[:：]\s*9|横屏|横版手游|PC\s*端游|主机端|\b(?:landscape|widescreen|desktop\s+ui)\b/i // cjk-ok
+  if (landscapeRe.test(text)) {
+    return '16:9'
+  }
+  if (/9\s*[:：]\s*16|竖屏|竖版/i.test(text)) return '9:16' // cjk-ok
+  if (/1\s*[:：]\s*1\b/i.test(text)) return '1:1'
+  if (/4\s*[:：]\s*3\b/i.test(text)) return '4:3'
+  if (/3\s*[:：]\s*4\b/i.test(text)) return '3:4'
+  return undefined
+}
+
+/**
+ * 为指定游戏 UI 界面生成标准的「UI 图层分离（Seedream layer_decomposition → PSD）」提示词。
+ * 按游戏引擎（UGUI / FairyGUI / UMG）拼 UI 的动静分离层级拆解：
+ * 底板层（9-Slice）→ 容器面板框 → 顶底导航与状态栏 → 交互按钮与列表格槽位 → 图标与前景装饰。
+ */
+export function buildDefaultUiLayerSplitPrompt(
+  screen: Pick<UiScreenPromptItem, 'title' | 'prompt' | 'screenKind'>,
+  locale?: string
+): string {
+  const title = screen.title?.trim() || 'UI'
+  const kind = screen.screenKind ?? normalizeUiScreenKind(undefined, screen.title, screen.prompt)
+  const useEn =
+    locale?.toLowerCase().startsWith('en') ||
+    (!!screen.prompt && !/[\u4e00-\u9fff]/.test(`${screen.title ?? ''}${screen.prompt}`))
+
+  if (useEn) {
+    if (kind === 'popup') {
+      return `Game UI modal popup layer decomposition (${title}): isolate into clean, engine-ready transparent PNG layers for PSD assembly — 1. backdrop overlay & base plate; 2. main modal frame container (9-sliceable); 3. top title banner & close button; 4. center content slots, item cells & reward frames; 5. bottom primary/secondary action buttons & ornamental badges. Keep widget edges crisp and non-overlapping.`
+    }
+    if (kind === 'hud') {
+      return `Game HUD layer decomposition (${title}): isolate into clean, engine-ready transparent PNG layers for PSD assembly — 1. scene background base; 2. top-left avatar frame, HP/energy bars & currency strip; 3. top-right minimap & event entry icons; 4. bottom navigation tab bar or skill dock; 5. floating action buttons & status badges. Keep widget edges crisp and non-overlapping.`
+    }
+    return `Game UI screen layer decomposition (${title}): isolate into clean, engine-ready transparent PNG layers for PSD assembly — 1. full-screen background base plate; 2. main panel & container frames (9-sliceable); 3. top resource bar & tab navigation bar; 4. interactive buttons, switches & progress bars; 5. list/grid item cell slots, icon wells & foreground ornaments. Keep widget edges crisp and non-overlapping.`
+  }
+
+  if (kind === 'popup') {
+    return `游戏UI模态弹窗分层拆解（${title}）：请按游戏引擎拼UI与PSD规范拆分为独立透明图层：1.底层暗色遮罩与背景底板；2.弹窗主底框容器（保持九宫格边框完整）；3.顶部标题横幅与关闭按钮；4.中部内容槽位、奖励格与道具底框；5.底部确认/取消主次操作按钮与前景装饰徽章。各控件边缘干净独立、互不粘连。` // cjk-ok
+  }
+  if (kind === 'hud') {
+    return `游戏HUD界面分层拆解（${title}）：请按游戏引擎拼UI与PSD规范拆分为独立透明图层：1.底层主城/战斗场景背景；2.顶部角色状态栏（头像框、血条/能量条底槽、货币资源条）；3.右上小地图与活动功能入口图标组；4.底部页签导航栏或技能快捷栏底座；5.独立操作按钮与浮动角标控件。各控件边缘干净独立、互不粘连。` // cjk-ok
+  }
+  return `游戏UI界面分层拆解（${title}）：请按游戏引擎拼UI与PSD规范拆分为独立透明图层：1.底层背景底板；2.主面板与容器底框（保持九宫格边框完整可复用）；3.顶部资源信息栏与页签导航栏；4.核心操作按钮、开关与进度条控件；5.列表卡片底槽、独立图标槽位与前景装饰元素。各控件边缘干净独立、互不粘连。` // cjk-ok
 }
 
 /** 空字底图兜底派生：在提示词末尾追加“不绘制任何文字 / 文字位留空占位”约束 */
@@ -45,10 +142,17 @@ export function buildTextlessUiPrompt(prompt: string): string {
 /**
  * 把输入端口收到的提示词载荷直接展开为界面列表。
  * 供 ui.gen 执行与 dive 打开共用：dive 时无需先 cook，直接按端口数组展开。
- * cleanPrompt 可选随载荷透传（空字底图轨提示词，缺失时由构建层兜底派生）。
+ * cleanPrompt / screenKind / aspectRatio / layerPrompt 可选随载荷透传。
  */
 export function screensFromUiGenIncoming(values: unknown[]): UiScreenPromptItem[] {
-  const raw: Array<{ title: string; prompt: string; cleanPrompt?: string }> = []
+  const raw: Array<{
+    title: string
+    prompt: string
+    cleanPrompt?: string
+    screenKind?: UiScreenKind
+    aspectRatio?: UiScreenAspectRatio
+    layerPrompt?: string
+  }> = []
   for (const value of values) {
     if (!value || typeof value !== 'object') continue
     const entry = value as { kind?: unknown; text?: unknown; items?: unknown }
@@ -58,25 +162,43 @@ export function screensFromUiGenIncoming(values: unknown[]): UiScreenPromptItem[
           title?: unknown
           text?: unknown
           cleanPrompt?: unknown
+          screenKind?: unknown
+          aspectRatio?: unknown
+          layerPrompt?: unknown
         }
         const prompt = typeof rec.text === 'string' ? rec.text.trim() : ''
         if (prompt) {
+          const title = typeof rec.title === 'string' ? rec.title.trim() : ''
+          const screenKind = normalizeUiScreenKind(rec.screenKind, title, prompt)
+          const aspectRatio = normalizeUiScreenAspectRatio(rec.aspectRatio, prompt, title)
+          const layerPrompt =
+            typeof rec.layerPrompt === 'string' && rec.layerPrompt.trim()
+              ? rec.layerPrompt.trim()
+              : undefined
           raw.push({
-            title: typeof rec.title === 'string' ? rec.title.trim() : '',
+            title,
             prompt,
-            cleanPrompt: typeof rec.cleanPrompt === 'string' ? rec.cleanPrompt.trim() : undefined
+            cleanPrompt: typeof rec.cleanPrompt === 'string' ? rec.cleanPrompt.trim() : undefined,
+            ...(screenKind ? { screenKind } : {}),
+            ...(aspectRatio ? { aspectRatio } : {}),
+            ...(layerPrompt ? { layerPrompt } : {})
           })
         }
       }
     } else if (entry.kind === 'text' && typeof entry.text === 'string' && entry.text.trim()) {
-      raw.push({ title: '', prompt: entry.text.trim() })
+      const prompt = entry.text.trim()
+      const aspectRatio = normalizeUiScreenAspectRatio(undefined, prompt)
+      raw.push({ title: '', prompt, ...(aspectRatio ? { aspectRatio } : {}) })
     }
   }
   return raw.map((item, index) => ({
     id: `ui-${index + 1}`,
     title: item.title || `界面 ${index + 1}`,
     prompt: item.prompt,
-    cleanPrompt: item.cleanPrompt
+    cleanPrompt: item.cleanPrompt,
+    ...(item.screenKind ? { screenKind: item.screenKind } : {}),
+    ...(item.aspectRatio ? { aspectRatio: item.aspectRatio } : {}),
+    ...(item.layerPrompt ? { layerPrompt: item.layerPrompt } : {})
   }))
 }
 
@@ -160,6 +282,12 @@ export function buildUiSplitInnerGraph(
     const screen = screens[i]!
     const slot = i + 1
     const y = 80 * i + 40
+    const screenAspectRatio =
+      normalizeUiScreenAspectRatio(screen.aspectRatio, screen.prompt, screen.title) ?? '9:16'
+    const screenBaseParams = {
+      ...cleanBaseParams,
+      generateAspectRatio: screenAspectRatio
+    }
     const portIn = `in-${slot}`
     const portOut = uiSplitOutPortId(slot)
     const portOutClean = uiSplitCleanOutPortId(slot)
@@ -196,7 +324,7 @@ export function buildUiSplitInnerGraph(
         {
           id: imgId,
           title: `图片·${screen.title}`,
-          params: cleanBaseParams
+          params: screenBaseParams
         }
       )
     )
@@ -225,7 +353,7 @@ export function buildUiSplitInnerGraph(
           id: cleanImgId,
           title: `底图·${screen.title}`,
           params: {
-            ...cleanBaseParams,
+            ...screenBaseParams,
             generateInstruction: cleanPrompt
           }
         }
@@ -322,6 +450,9 @@ function normalizeUiScreenRows(parsed: unknown[]): UiScreenPromptItem[] {
     let title = ''
     let prompt = ''
     let cleanPrompt = ''
+    let rawScreenKind: unknown
+    let rawAspectRatio: unknown
+    let layerPrompt = ''
     let id = ''
     if (typeof row === 'string') {
       prompt = row.trim()
@@ -336,6 +467,13 @@ function normalizeUiScreenRows(parsed: unknown[]): UiScreenPromptItem[] {
         asString(obj.description)
       // 空字底图轨：模型直接输出两套提示词时随行携带
       cleanPrompt = asString(obj.cleanPrompt) || asString(obj.textlessPrompt) || asString(obj.clean)
+      rawScreenKind = obj.screenKind ?? obj.kind ?? obj.type
+      rawAspectRatio = obj.aspectRatio ?? obj.ratio ?? obj.orientation
+      layerPrompt =
+        asString(obj.layerPrompt) ||
+        asString(obj.layerSplitPrompt) ||
+        asString(obj.psdPrompt) ||
+        asString(obj.layers)
       id = asString(obj.id)
     }
     if (!prompt) continue
@@ -344,6 +482,11 @@ function normalizeUiScreenRows(parsed: unknown[]): UiScreenPromptItem[] {
     seen.add(nextId)
     const item: UiScreenPromptItem = { id: nextId, title, prompt }
     if (cleanPrompt) item.cleanPrompt = cleanPrompt
+    const screenKind = normalizeUiScreenKind(rawScreenKind, title, prompt)
+    if (screenKind) item.screenKind = screenKind
+    const aspectRatio = normalizeUiScreenAspectRatio(rawAspectRatio, prompt, title)
+    if (aspectRatio) item.aspectRatio = aspectRatio
+    if (layerPrompt) item.layerPrompt = layerPrompt
     items.push(item)
   }
   return items

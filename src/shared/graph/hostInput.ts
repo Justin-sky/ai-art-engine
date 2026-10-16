@@ -64,6 +64,10 @@ export function outputsToHostGalleryParams(
         title: item.title,
         text: item.text ?? '',
         createdAt: item.createdAt,
+        ...(item.cleanPrompt ? { cleanPrompt: item.cleanPrompt } : {}),
+        ...(item.screenKind ? { screenKind: item.screenKind } : {}),
+        ...(item.aspectRatio ? { aspectRatio: item.aspectRatio } : {}),
+        ...(item.layerPrompt ? { layerPrompt: item.layerPrompt } : {}),
         ...(item.relativePath ? { relativePath: item.relativePath } : {})
       }))
       params.generatedTexts = [...(params.generatedTexts ?? []), ...items]
@@ -72,6 +76,7 @@ export function outputsToHostGalleryParams(
     } else if (value.kind === 'images') {
       const items = value.items.map((item) => ({
         id: item.id,
+        ...(item.title ? { title: item.title } : {}),
         dataUrl: item.dataUrl ?? '',
         createdAt: item.createdAt,
         relativePath: item.relativePath
@@ -457,6 +462,7 @@ export function mergeBoundarySoftValues(
         return [
           {
             id: v.id,
+            ...(v.title ? { title: v.title } : {}),
             dataUrl: v.dataUrl,
             createdAt: v.createdAt,
             relativePath: v.relativePath
@@ -844,6 +850,10 @@ export function softResolveSourceOutput(
       id: item.id,
       title: item.title,
       text: item.text ?? '',
+      ...(item.cleanPrompt ? { cleanPrompt: item.cleanPrompt } : {}),
+      ...(item.screenKind ? { screenKind: item.screenKind } : {}),
+      ...(item.aspectRatio ? { aspectRatio: item.aspectRatio } : {}),
+      ...(item.layerPrompt ? { layerPrompt: item.layerPrompt } : {}),
       relativePath: item.relativePath,
       createdAt: item.createdAt
     }))
@@ -872,25 +882,33 @@ export function softResolveSourceOutput(
 
   const generatedImages = node.params.generatedImages
   if (Array.isArray(generatedImages) && generatedImages.length) {
-    if (sourcePort === 'out-all') {
+    if (
+      sourcePort === 'out-all' ||
+      (node.typeId === 'ui.gen' && (sourcePort === 'out' || !sourcePort))
+    ) {
       return {
         kind: 'images',
         items: generatedImages.map((item) => ({
           id: item.id,
+          ...(item.title ? { title: item.title } : {}),
           dataUrl: item.dataUrl ?? '',
           relativePath: item.relativePath,
           createdAt: item.createdAt
         }))
       }
     }
-    if (sourcePort === 'out' || !sourcePort) {
+    if (sourcePort === 'out' || sourcePort === 'out-selected' || !sourcePort) {
       const selectedId = node.params.selectedImageId?.trim()
       const picked =
         (selectedId ? generatedImages.find((item) => item.id === selectedId) : undefined) ||
+        (node.typeId === 'ui.gen'
+          ? generatedImages.find((item) => item.title?.startsWith('底图·')) // cjk-ok
+          : undefined) ||
         generatedImages[generatedImages.length - 1]
       return {
         kind: 'image',
         id: picked?.id,
+        ...(picked?.title ? { title: picked.title } : {}),
         dataUrl: picked?.dataUrl ?? '',
         createdAt: picked?.createdAt,
         ...(picked?.relativePath ? { relativePath: picked.relativePath } : {})

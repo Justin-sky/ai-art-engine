@@ -106,6 +106,12 @@ export interface GraphTextItem {
   relativePath?: string
   /** UI 界面拆分：空字底图轨提示词（双轨出图用，随 texts 载荷透传） */
   cleanPrompt?: string
+  /** UI 界面拆分：界面形态分类 */
+  screenKind?: 'fullscreen' | 'hud' | 'popup' | 'panel' | 'component'
+  /** UI 界面拆分：界面画幅比例 */
+  aspectRatio?: '9:16' | '16:9' | '1:1' | '4:3' | '3:4'
+  /** UI 界面拆分：供下游 UI 图层分离（image.layerSplit）使用的拆层提示词 */
+  layerPrompt?: string
 }
 
 /** 剧本生成 → 剧本输出等文本数组 */
@@ -274,6 +280,7 @@ export interface GraphVideoPromptsValue {
 export interface GraphImageValue {
   kind: 'image'
   id?: string
+  title?: string
   dataUrl: string
   createdAt?: string
   relativePath?: string
@@ -1041,6 +1048,29 @@ export interface NodeExecuteContext {
     state: import('../imageLayerSplit').ImageLayerSplitState
     layerUrls: Record<string, string>
   }) => Promise<{ dataUrl: string; width: number; height: number }>
+  /**
+   * UI 图层分离（通用图片模型回抹差分拆层 / 本地连通域拆层）：
+   * 从 UI 源图与可选干净底图中提取去字去控件底图 + 独立透明 UI 控件切片。
+   */
+  decomposeImageUiLayers?: (input: {
+    sourceDataUrl: string
+    cleanBaseDataUrl?: string
+    maxLayers?: number
+    diffThreshold?: number
+  }) => Promise<{
+    width: number
+    height: number
+    baseDataUrl: string
+    widgets: Array<{
+      name: string
+      description?: string
+      left: number
+      top: number
+      width: number
+      height: number
+      dataUrl: string
+    }>
+  }>
   /** 漫画页：分镜格 + 气泡合成一张 PNG（浏览器 canvas）。 */
   composeComicPageImage?: (input: {
     page: import('../comicPage').ComicPage
@@ -1383,6 +1413,7 @@ export interface GraphRunOptions {
   renderSvgFrames?: NodeExecuteContext['renderSvgFrames']
   composeImageIconPackSheet?: NodeExecuteContext['composeImageIconPackSheet']
   composeImageLayerStack?: NodeExecuteContext['composeImageLayerStack']
+  decomposeImageUiLayers?: NodeExecuteContext['decomposeImageUiLayers']
   composeComicPageImage?: NodeExecuteContext['composeComicPageImage']
   composePortraitIdPhoto?: NodeExecuteContext['composePortraitIdPhoto']
   detectPortraitFaces?: NodeExecuteContext['detectPortraitFaces']

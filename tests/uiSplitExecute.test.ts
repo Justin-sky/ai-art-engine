@@ -389,6 +389,86 @@ describe('ui.split', () => {
     expect(node.params.uiScreens?.[0]).toMatchObject({ cleanPrompt: '商店货架空字底图' })
   })
 
+  it('parses screenKind, aspectRatio, and layerPrompt and applies per-screen aspect ratio in inner graph', () => {
+    const items = parseUiScreenPrompts(
+      JSON.stringify([
+        {
+          id: 'ui-hud',
+          title: '战斗主界面 HUD',
+          screenKind: 'hud',
+          aspectRatio: '16:9',
+          prompt: '横屏 16:9 战斗 HUD，左上角色血条，右下技能轮盘',
+          cleanPrompt: '横屏 16:9 战斗 HUD 空字底图',
+          layerPrompt: '拆分为透明背景层、左上血条底框、右下技能按钮'
+        },
+        {
+          id: 'ui-popup',
+          title: '购买确认弹窗',
+          screenKind: 'popup',
+          aspectRatio: '1:1',
+          prompt: '居中确认弹窗'
+        }
+      ])
+    )
+    expect(items[0]).toMatchObject({
+      screenKind: 'hud',
+      aspectRatio: '16:9',
+      layerPrompt: '拆分为透明背景层、左上血条底框、右下技能按钮'
+    })
+    expect(items[1]).toMatchObject({
+      screenKind: 'popup',
+      aspectRatio: '1:1'
+    })
+
+    const doc = buildUiSplitInnerGraph(items)
+    const hudImg = doc.nodes.find((n) => n.id === 'ui-img-1')
+    const hudClean = doc.nodes.find((n) => n.id === 'ui-img-clean-1')
+    const popupImg = doc.nodes.find((n) => n.id === 'ui-img-2')
+    expect(hudImg?.params?.generateAspectRatio).toBe('16:9')
+    expect(hudClean?.params?.generateAspectRatio).toBe('16:9')
+    expect(popupImg?.params?.generateAspectRatio).toBe('1:1')
+  })
+
+  it('ui.gen cook defaults selectedImageId and out-selected port to the clean textless base plate for downstream UI layer split', async () => {
+    const doc = buildUiSplitInnerGraph([{ id: 'a', title: '主界面', prompt: 'p1' }])
+    const img1 = doc.nodes.find((n) => n.id === 'ui-img-1')!
+    img1.params = {
+      ...img1.params,
+      generatedImages: [
+        { id: 'img-text-1', dataUrl: 'data:image/png;base64,TEXT', createdAt: 't1' }
+      ]
+    }
+    const clean1 = doc.nodes.find((n) => n.id === 'ui-img-clean-1')!
+    clean1.params = {
+      ...clean1.params,
+      generatedImages: [
+        { id: 'img-clean-1', dataUrl: 'data:image/png;base64,CLEAN', createdAt: 't2' }
+      ]
+    }
+    const patchNode = vi.fn()
+    const ctx = {
+      node: {
+        id: 'gen',
+        typeId: 'ui.gen',
+        category: 'note',
+        title: '生成游戏UI',
+        position: { x: 0, y: 0 },
+        params: { uiSplitAssetId: 'sub-1' }
+      },
+      inputs: {},
+      resolveAssetGenParams: () => ({ graphJson: doc }),
+      patchNode
+    } as unknown as NodeExecuteContext
+
+    const out = await executeUiGenNode(ctx)
+    expect(ctx.node.params.selectedImageId).toBe('img-clean-1')
+    expect(out['out-selected']).toMatchObject({
+      kind: 'image',
+      dataUrl: 'data:image/png;base64,CLEAN',
+      title: '底图·主界面'
+    })
+  })
+
   it('errors when upstream text is missing', async () => {
     const node = createNodeFromType('ui.split', { x: 0, y: 0 })
     const ctx = {
