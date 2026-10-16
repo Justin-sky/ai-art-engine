@@ -2,7 +2,9 @@
   <div v-if="node" class="dive-film dive-view">
     <header class="workbench-header">
       <div class="header-left">
-        <span class="kind-badge">{{ typeLabel }}</span>
+        <span class="kind-badge" :title="typeLabel" :aria-label="typeLabel">
+          <WorkspaceItemIcon :icon="nodeIcon" :size="15" />
+        </span>
         <input
           v-model="displayName"
           type="text"
@@ -43,7 +45,7 @@
         </span>
         <GraphNodeRunControl
           v-if="hasInPort"
-          :status="runStatus"
+          :status="stageRunStatus"
           :is-running="isGraphRunning"
           :blocked="blocked"
           @toggle="handleToggleRun"
@@ -1146,6 +1148,7 @@ import {
   parseFilmStoryboard,
   readFilmVideoParamsFromNode,
   readImageGenerateParamsFromNode,
+  resolveNodeType,
   selectFilmShot,
   stringifyFilmCast,
   stringifyFilmStoryboard,
@@ -1156,6 +1159,7 @@ import {
   type FilmStoryboard,
   type GraphNode,
   type GraphNodeParams,
+  type GraphNodeRunStatus,
   type ImageGenerateParams,
   type VideoGenerateParams
 } from '@shared/graph'
@@ -1164,6 +1168,7 @@ import GraphNodeOutputPreview from '../GraphNodeOutputPreview.vue'
 import InstructionModelSelect from '../InstructionModelSelect.vue'
 import ImageGenerateParamsSelect from '../ImageGenerateParamsSelect.vue'
 import VideoGenerateParamsSelect from '../VideoGenerateParamsSelect.vue'
+import WorkspaceItemIcon from '../WorkspaceItemIcon.vue'
 import { useStudioI18n } from '../../composables/useStudioI18n'
 import { useGraphNodeRun } from '../../composables/useGraphNodeRun'
 import { graphEditorHosts } from '../../features/graph/model/graphEditorHosts'
@@ -1255,6 +1260,11 @@ function stageBadge(stage: WorkbenchStage): string {
 }
 
 const typeLabel = computed(() => (node.value?.typeId ? graphTypeLabel(node.value.typeId) : ''))
+const nodeIcon = computed(() => {
+  const current = node.value
+  if (!current) return '🎬'
+  return resolveNodeType(current)?.icon?.trim() || '🎬'
+})
 const { hasInPort, runStatus, isGraphRunning, blocked, toggleRun } = useGraphNodeRun(
   node,
   () => props.hostId
@@ -1312,14 +1322,18 @@ const displayName = ref('')
 watch(
   node,
   (current) => {
-    displayName.value = current?.title?.trim() || ''
+    const custom = current?.title?.trim() || ''
+    const def = current ? resolveNodeType(current) : undefined
+    displayName.value = def?.defaultTitle && custom === def.defaultTitle ? '' : custom
   },
   { immediate: true }
 )
 function persistTitle(): void {
   const current = node.value
   if (!current || !props.hostId) return
-  graphEditorHosts.updateNode(props.hostId, current.id, {}, displayName.value)
+  const def = resolveNodeType(current)
+  const nextTitle = displayName.value.trim() || def?.defaultTitle || ''
+  graphEditorHosts.updateNode(props.hostId, current.id, {}, nextTitle)
   graphEditorHosts.bumpRevision()
 }
 
@@ -1809,6 +1823,34 @@ function shotRawVideo(shot: FilmShot | null | undefined): string {
   ).trim()
 }
 
+const stageRunStatus = computed((): GraphNodeRunStatus | undefined => {
+  if (!isWorkbenchNode.value) return runStatus.value
+  if (runStatus.value === 'running' || runStatus.value === 'pending') return runStatus.value
+  if (kind.value === 'breakdown') {
+    return (storyboard.value?.shots?.length ?? 0) > 0 ? 'done' : 'idle'
+  }
+  if (kind.value === 'review') {
+    const hasReview = Boolean(
+      params.value.filmReviewVerdict?.trim() ||
+      params.value.filmReviewReport?.trim() ||
+      storyboard.value?.review?.verdict
+    )
+    return hasReview ? 'done' : 'idle'
+  }
+  if (kind.value === 'cast') {
+    return hasCastOutputs.value ? 'done' : 'idle'
+  }
+  if (kind.value === 'render') {
+    const hasAnyRender =
+      hasRenderOutputs.value ||
+      (effectiveStoryboard.value?.shots ?? []).some(
+        (s) => !!(shotRawKeyframe(s) || shotRawVideo(s))
+      )
+    return hasAnyRender ? 'done' : 'idle'
+  }
+  return runStatus.value
+})
+
 function prevSameSceneShot(shot: FilmShot | null | undefined): FilmShot | null {
   const doc = displayStoryboard.value ?? effectiveStoryboard.value
   return findPrevSameSceneShot(doc, shot)
@@ -2082,13 +2124,17 @@ function unboundCharactersForShot(shot: FilmShot): FilmEntity[] {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
 .kind-badge {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 999px;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 8px;
   background: color-mix(in srgb, var(--accent) 18%, transparent);
   color: var(--accent);
   border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
@@ -2102,7 +2148,8 @@ function unboundCharactersForShot(shot: FilmShot): FilmEntity[] {
   font-weight: 600;
   padding: 4px 8px;
   border-radius: 6px;
-  min-width: 160px;
+  min-width: 120px;
+  max-width: 220px;
 }
 
 .title-input:hover,
@@ -2148,6 +2195,16 @@ function unboundCharactersForShot(shot: FilmShot): FilmEntity[] {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.header-right :deep(.node-run-btn) {
+  width: auto;
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .full-pipeline-btn {

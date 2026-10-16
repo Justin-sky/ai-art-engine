@@ -549,6 +549,9 @@ describe('film workbench dive & soft resolve wiring', () => {
     )
     expect(diveCode).toContain('VideoGenerateParamsSelect')
     expect(diveCode).toContain('ImageGenerateParamsSelect')
+    expect(diveCode).toContain('<WorkspaceItemIcon :icon="nodeIcon"')
+    expect(diveCode).toContain('.header-right :deep(.node-run-btn)')
+    expect(diveCode).toContain(':status="stageRunStatus"')
   })
 
   it('filters non-spatial placeholder locations (e.g. 黑屏 / 纯黑背景) out of entities and cast sheets', () => {
