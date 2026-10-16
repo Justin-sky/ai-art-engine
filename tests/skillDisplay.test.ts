@@ -138,8 +138,23 @@ describe('builtinSkillDisplayMap：内置项反查', () => {
       : ((manifest as { files?: string[] }).files ?? [])
     expect(files.length).toBeGreaterThan(0)
 
+    const currentFiles = new Set(
+      listGraphSkills()
+        .map((skill) => dshSkillNameOf(skill.id))
+        .filter(Boolean)
+        .map((name) => `${name}.md`)
+    )
     const map = builtinSkillDisplayMap(listGraphSkills())
-    const unresolved = files.filter((name) => !map.has(skillFileStem(name)))
+    // 先校验当前代码的全部内置技能生成文件名都能 100% 反查
+    const unresolvedCurrent = [...currentFiles].filter((name) => !map.has(skillFileStem(name)))
+    expect(
+      unresolvedCurrent,
+      `当前内置技能无法反查到标题：${unresolvedCurrent.join(', ')}`
+    ).toEqual([])
+
+    // 再核对本机真实落盘的 manifest（跳过代码已删除但尚未重启应用重刷盘的历史残留项）
+    const activeManifestFiles = files.filter((name) => currentFiles.has(name))
+    const unresolved = activeManifestFiles.filter((name) => !map.has(skillFileStem(name)))
     expect(unresolved, `这些文件没能反查到标题：${unresolved.join(', ')}`).toEqual([])
   })
 })

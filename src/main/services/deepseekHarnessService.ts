@@ -747,6 +747,7 @@ const DSH_SKILLS_TEMPLATE_FILE = 'my-skill.example'
  * 被测试引用会整个模块加载失败）。所以路径抽到独立小文件共享。
  */
 export function getDshSkillsInfo(): DshSkillsInfo {
+  writeDshSkills()
   const skillsDir = dshSkillsDir()
   const files: DshSkillsFile[] = []
   // 内置项的文件名是 GraphSkill id 的 kebab-case 化，反查回标题与描述给界面用
