@@ -159,9 +159,9 @@
               (see <a href="manual-workflow.en.html#ai-workflow">§7</a>).
             </li>
             <li>
-              <strong>Episode Pipeline</strong>: open the short-drama Agent pipeline window to work through
-              9-grid, 4-grid, director review and video generation (see
-              <a href="manual-workflow.en.html#agent-pipeline">§7.5</a>).
+              <strong>Film Workbench</strong>: double-click a <code>film.workbench</code> node in the node graph
+              to enter the full-screen Dive workbench for storyboard breakdown, director review, character/scene
+              design and batch shooting (see <a href="manual-workflow.en.html#agent-pipeline">§7.5</a>).
             </li>
             <li><strong>Task list</strong> and <strong>Run log</strong>: background queue and model call logs.</li>
             <li>
@@ -286,11 +286,11 @@
             <a href="#marketplace">plugin marketplace</a> to give the assistant a tailored way of working.
           </p>
           <ul>
-            <li><strong>Built-in skills</strong>: storyboard / animation (9-grid storyboard table, beat breakdown
-              table, motion prompt table, 4-grid motion storyboard table, …), director review (storyboard / beat /
-              motion prompts), and system creation (script, image-from-prompt, image / video generation, voice,
+            <li><strong>Built-in skills</strong>: film &amp; storyboard breakdown (script breakdown, character &amp;
+              scene design, camera blocking &amp; motion prompts), director review (narrative continuity / Vision
+              QC), and system creation (script, image-from-prompt, image / video generation, voice,
               emotion, lighting, multi-angle, upscale, redraw, erase, HD enhance, UI image, UI split, world
-              extraction, beat split, beat unit generation, plan, portrait texture, prompt optimization).
+              extraction, plan, portrait texture, prompt optimization).
               These are managed automatically — please don’t edit them.</li>
             <li><strong>Custom skills</strong>: in the <strong>Marketplace → Skills</strong> tab click
               “Open folder” and drop in a <code>.md</code> file in dsh SKILL.md format (frontmatter
@@ -312,8 +312,9 @@
           </ul>
           <div class="tip">
             <strong>Skills vs tools:</strong> skills are the “job manual”, tools are the “hands”. Say “use the
-            storyboard skill to split this script into a 9-grid storyboard table” — the skill provides the
-            professional workflow (beat → framing → motion → prompt) and tools execute the generation.
+            film pipeline skill to break this script into a storyboard with cast design and camera moves” — the
+            skill provides the professional workflow (breakdown → review → cast design → shoot) and tools execute
+            the generation.
           </div>
 
           <h3 id="marketplace">5.7 Plugin marketplace</h3>

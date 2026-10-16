@@ -21,7 +21,7 @@
     </script>
     <meta
       name="description"
-      content="AIArtEngine 教程：用一键工作流的短视频模板自动生成工作流，再在 Agent 流程窗口完成拼图、分镜与视频生成。"
+      content="AIArtEngine 短剧制作教程：用一键工作流的「影视全流程」或「影视精修·单镜头」模板自动生成节点图，在合一的「影视工作台」（film.workbench）内一站式完成分镜拆解、导演审核自动修订、角色场景设定与批量拍摄。"
     />
     <title>短剧制作教程 · AIArtEngine</title>
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/guide-short-video.html" />
@@ -29,14 +29,14 @@
     <meta property="og:type" content="website" />
     <meta property="og:locale" content="zh_CN" />
     <meta property="og:title" content="短剧制作教程 · AIArtEngine" />
-    <meta property="og:description" content="AIArtEngine 教程：用一键工作流的短视频模板自动生成工作流，再在 Agent 流程窗口完成拼图、分镜与视频生成。" />
+    <meta property="og:description" content="AIArtEngine 短剧制作教程：用一键工作流的「影视全流程」或「影视精修·单镜头」模板自动生成节点图，在合一的「影视工作台」（film.workbench）内一站式完成分镜拆解、导演审核自动修订、角色场景设定与批量拍摄。" />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/guide-short-video.html" />
     <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="短剧制作教程 · AIArtEngine" />
-    <meta name="twitter:description" content="AIArtEngine 教程：用一键工作流的短视频模板自动生成工作流，再在 Agent 流程窗口完成拼图、分镜与视频生成。" />
+    <meta name="twitter:description" content="AIArtEngine 短剧制作教程：用一键工作流的「影视全流程」或「影视精修·单镜头」模板自动生成节点图，在合一的「影视工作台」（film.workbench）内一站式完成分镜拆解、导演审核自动修订、角色场景设定与批量拍摄。" />
     <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-short-video.html" />
     <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-short-video.en.html" />
@@ -67,7 +67,7 @@
             教程<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
           </button>
           <div class="nav-drop-menu">
-            <a href="guide-short-video.html" aria-current="page"><strong>短剧教程</strong><span>分镜 · 拼图 · 审核 · 动态视频</span></a>
+            <a href="guide-short-video.html" aria-current="page"><strong>短剧教程</strong><span>分镜 · 审核 · 设定 · 批量拍摄</span></a>
             <a href="guide-video.html"><strong>视频教程</strong><span>自由画布与参考视频</span></a>
             <a href="guide-comfyui.html"><strong>ComfyUI 教程</strong><span>API 2 与 comfy-api-proxy</span></a>
             <a href="guide-newapi.html"><strong>NewAPI 教程</strong><span>自建中转网关接入</span></a>
@@ -112,11 +112,12 @@
       <aside class="toc" aria-label="目录">
         <h2>目录</h2>
         <ol>
-          <li><a href="#prep">准备</a></li>
-          <li><a href="#step-1">第 1 步：选择短视频模板</a></li>
-          <li><a href="#step-2">第 2 步：自动生成的工作流节点</a></li>
-          <li><a href="#step-3">第 3 步：在 Agent 流程窗口完成所有操作</a></li>
-          <li><a href="#faq">常见问题</a></li>
+          <li><a href="#prep">1. 准备</a></li>
+          <li><a href="#step-1">2. 第 1 步：选择影视 / 短剧模板</a></li>
+          <li><a href="#step-2">3. 第 2 步：认识生成的节点与端口</a></li>
+          <li><a href="#step-3">4. 第 3 步：在影视工作台完成四阶段闭环</a></li>
+          <li><a href="#step-4">5. 第 4 步：增量返工与单镜精修</a></li>
+          <li><a href="#faq">6. 常见问题</a></li>
         </ol>
         <p style="margin-top: 1.25rem; font-size: 12px; color: var(--mute)">
           <a href="manual.html">← 返回完整手册</a>
@@ -125,11 +126,11 @@
 
       <article class="manual" id="manual">
         <header class="manual-hero">
-          <p class="eyebrow">Guide · Short Drama</p>
-          <h1>短剧制作教程</h1>
+          <p class="eyebrow">Guide · Short Drama &amp; Film</p>
+          <h1>短剧制作教程（影视工作台）</h1>
           <p class="lede">
-            三步跑通一条短视频：先用<strong>一键工作流</strong>的短视频模板自动生成完整节点图，再在
-            <strong>Agent 流程窗口</strong>中完成分镜、拼图、导演审核与视频生成，全程无需手动搭节点。
+            用<strong>一键工作流</strong>的「影视全流程」或「影视精修·单镜头」模板生成宿主资产，双击进入四合一的
+            <strong>影视工作台（<code>film.workbench</code>）</strong>，在一个大屏界面内完成「①分镜拆解 → ②导演审核自动修订 → ③角色场景设定 → ④批量拍摄（视觉质检 + 图生视频）」全链路闭环。
           </p>
         </header>
 
@@ -138,31 +139,41 @@
           <ol>
             <li>
               <strong>模型</strong>：设置 → 模型 → 添加并启用提供商（火山方舟、可灵、MiniMax、通义千问、魔塔、
-              OpenRouter 等）。建议分别勾选并设置默认的<strong>文本模型</strong>（分镜 / 提示词 / 审核）、
-              <strong>图片模型</strong>（拼图与锚点图）与<strong>视频模型</strong>（动态视频）。
+              OpenRouter、DeepSeek 等）。建议分别勾选并设置默认的<strong>文本模型</strong>（分镜拆解 / 导演审核 / 视觉质检）、
+              <strong>图片模型</strong>（角色与场景设定图、分镜关键帧）与<strong>视频模型</strong>（关键帧图生视频）。
             </li>
             <li>
               <strong>对象存储（可选）</strong>：设置 → 对象存储 → 启用火山 TOS / 阿里云 OSS / 腾讯云 COS / 兼容 Amazon S3 之一。
-              视频需要外链或做参考视频时推荐配置；纯本地预览可暂不配置。
+              部分云端图生视频模型要求参考图为公网 URL 时推荐配置；支持本地直传的模型或纯本地预览可暂不配置。
             </li>
             <li>从首页新建或打开一个工程，进入工作区。</li>
           </ol>
-          <div class="tip">确认提供商账户有足够额度；余额不足时生成会直接失败。</div>
+          <div class="tip">确认提供商账户有足够额度；余额不足时生成会直接报错并停止当前任务。</div>
         </section>
 
         <section id="step-1">
-          <h2>2. 第 1 步：选择短视频模板</h2>
+          <h2>2. 第 1 步：选择影视 / 短剧模板</h2>
+          <p>
+            打开工程后，在工作区的「新建」里点击<strong>一键工作流</strong>（或在顶栏<strong>插件市场 → 工作流</strong>中查看），内置两套短剧 / 影视预设模板：
+          </p>
+          <ul>
+            <li>
+              <strong>「影视全流程」（<code>short-drama</code>）</strong>：<code>剧本 (play.script)</code> → <code>影视工作台 (film.workbench)</code> 极简闭环（默认竖屏 <code>9:16</code>，可在工作台内切换 <code>16:9</code> 等画幅）。适合整集短剧、漫剧、故事短片的一键批量生成与局部闭环返工。
+            </li>
+            <li>
+              <strong>「影视精修·单镜头」（<code>short-drama9</code>）</strong>：<code>剧本</code> → <code>影视工作台 (film.workbench)</code> → <code>镜头 (film.shot)</code> → <code>关键帧 (asset.image)</code> → <code>镜头视频 (asset.video)</code>。适合在工作台完成分镜与角色场景设定后，按镜头序号拉出单镜数据，接独立生图、10 合 1 图像处理（<code>image.process</code>）与视频节点逐镜精调。
+            </li>
+          </ul>
           <ol>
-            <li>打开工程后，在工作区的「新建」里点击<strong>一键工作流</strong>。</li>
-            <li>在<strong>预设模板</strong>中选择「短剧分镜（Agent 流水线）」——即短视频模板。</li>
-            <li>点击<strong>预览模板</strong>查看自动生成的节点与连线拓扑；可先选预设再改“工作流描述”。</li>
+            <li>在<strong>预设模板</strong>中选择「影视全流程」或「影视精修·单镜头」。</li>
+            <li>点击<strong>预览模板</strong>查看自动生成的节点与连线拓扑。</li>
             <li>确认后点击<strong>创建工作流</strong>，选择保存目录与名称。</li>
-            <li>资产库中出现新的<strong>宿主资产</strong>，短视频工作流即创建完成。</li>
+            <li>资产库中出现新的<strong>宿主资产</strong>，双击或拖入画布即可开始制作。</li>
           </ol>
           <figure style="margin: 14px 0 20px">
             <img
               src="assets/short-video/step-1.png"
-              alt="在一键工作流中选择短视频模板"
+              alt="在一键工作流中选择短剧/影视模板"
               style="
                 border: 1px solid var(--line);
                 border-radius: 10px;
@@ -170,97 +181,118 @@
               "
             />
             <figcaption style="margin-top: 8px; font-size: 12px; color: var(--mute)">
-              图 1：一键工作流 → 选择短视频模板
+              图 1：一键工作流 → 选择短剧 / 影视预设模板
             </figcaption>
           </figure>
         </section>
 
         <section id="step-2">
-          <h2>3. 第 2 步：自动生成的工作流节点</h2>
-          <p>双击宿主资产进入内图，可以看到模板自动生成的完整链路：</p>
-          <ol>
-            <li><strong>剧本</strong> → <strong>节拍拆解表</strong>（分镜师）→ <strong>9宫格分镜表</strong>。</li>
-            <li>9宫格拼图：一个节点生成 3×3 拼图画布，再按格拆出 9 张锚点图并高清放大。</li>
-            <li><strong>4宫格动态分镜表</strong> → 每组 2×2 拼图 → 36 个动态格提取与高清放大。</li>
-            <li><strong>动态提示词表</strong>（36 条）→ <strong>动态格选择</strong> → <strong>36 条动态视频</strong>。</li>
-            <li>全程穿插 <strong>review1~review4</strong> 四个导演审核节点（节拍 / 9宫格 / 4宫格 / 动态提示词）。</li>
-          </ol>
-          <p>
-            节点图支持任意微调：改提示词、换模型、重连边。日常使用无需逐个节点手动运行，直接进入第 3 步的
-            Agent 流程窗口操作即可。
-          </p>
-          <figure style="margin: 14px 0 20px">
-            <img
-              src="assets/short-video/step-2.png"
-              alt="一键工作流自动生成的短视频节点图"
-              style="
-                border: 1px solid var(--line);
-                border-radius: 10px;
-                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-              "
-            />
-            <figcaption style="margin-top: 8px; font-size: 12px; color: var(--mute)">
-              图 2：自动生成的完整工作流节点
-            </figcaption>
-          </figure>
+          <h2>3. 第 2 步：认识生成的节点与端口</h2>
+          <p>双击宿主资产进入内图，可以看到以<strong>影视工作台（<code>film.workbench</code>）</strong>为核心的结构化链路（不再需要旧版繁琐的 9 宫格 / 4 宫格切图与数十个分散节点）：</p>
+          <ul>
+            <li>
+              <strong><code>剧本</code>（<code>play.script</code>）</strong>：在此粘贴完整剧本或故事梗概（也可先用「剧本生成」节点产出文本后连入）。
+            </li>
+            <li>
+              <strong><code>影视工作台</code>（<code>film.workbench</code>）</strong>：
+              <ul>
+                <li><strong>输入口</strong>：<code>in</code>（剧本文本）、<code>in-image</code>（可选参考图，传入的已有角色立绘或场景图会优先绑定为对应设定图）。</li>
+                <li>
+                  <strong>输出口</strong>：
+                  <code>out</code>（<code>storyboard</code> 结构化分镜文档 <code>aiart.film-storyboard@1</code>）、
+                  <code>out-cast</code>（<code>filmCast</code> 角色与场景设定库 <code>aiart.film-cast@1</code>）、
+                  <code>out-sheets</code>（<code>images</code> 角色/地点设定图集）、
+                  <code>out-images</code>（<code>images</code> 各镜关键帧图片序列）、
+                  <code>out-videos</code>（<code>videos</code> 各镜成片视频序列）、
+                  <code>out-text</code>（<code>text</code> 可读分镜表与审核报告）。
+                </li>
+              </ul>
+            </li>
+            <li>
+              <strong><code>镜头</code>（<code>film.shot</code>，单镜精修模板内置）</strong>：
+              输入口接工作台的 <code>out</code>（分镜）与 <code>out-cast</code>（设定库），通过 <code>filmShotRef</code> 指定镜头序号（如 <code>"1"</code>）或镜头 ID（如 <code>"S01-02"</code>），自动从分镜中抽出该镜的<strong>关键帧提示词</strong>（<code>out</code>，内置 <code>@1</code>/<code>@2</code> 参考图编号映射）、<strong>出场角色与地点设定图</strong>（<code>out-refs</code>，直连图片生成节点的 <code>in-image</code> 锁住造型）和<strong>动态提示词</strong>（<code>out-motion</code>，直连视频生成节点的 <code>in-text</code>）。
+            </li>
+          </ul>
         </section>
 
         <section id="step-3">
-          <h2>4. 第 3 步：在 Agent 流程窗口完成所有操作</h2>
-          <p>点击顶部工具栏的<strong>「剧集流水线」</strong>按钮，打开 Agent 流程窗口，之后的生成与审核都在这里完成：</p>
+          <h2>4. 第 3 步：在影视工作台完成四阶段闭环</h2>
+          <p>
+            把剧本填入「剧本」节点后，<strong>双击「影视工作台」节点</strong>（或点击右侧 Inspector 的「打开影视工作台」）进入全屏 Dive 工作台。顶部提供四个阶段页签，右上角既可点击 <strong>「⚡ 一键全流程」</strong> 一次跑完四阶段，也可点击当前阶段运行按钮逐阶段推进与审校：
+          </p>
           <ol>
             <li>
-              <strong>节拍拆解</strong>（左栏）：先运行<strong>重新生成</strong>产出节拍表，再点<strong>导演审核</strong>。
+              <strong>① 分镜拆解（<code>breakdown</code>）</strong>：
+              <ul>
+                <li>在左侧栏设置<strong>画幅比例</strong>（竖屏短剧常用 <code>9:16</code>，横屏影视常用 <code>16:9</code>）、<strong>目标镜头数</strong>（<code>0</code> 表示按剧情自动决定镜头数，不再强行凑 9 格 / 36 格）、<strong>单镜时长预设</strong>（支持 <code>自动 / 4s / 8s / 10s / 15s</code>，直接对齐主流视频模型时长档位）与<strong>视觉风格</strong>。</li>
+                <li>运行后自动产出场次、镜头卡片列表（含景别、机位角度、运镜、时长秒数、动作表演、台词、画面提示词 <code>imagePrompt</code>、动态提示词 <code>videoPrompt</code>）以及出场<strong>角色 / 场景 / 道具实体表</strong>。</li>
+                <li>可在工作台内直接编辑任意镜头的字段、增删镜头，或点击镜头卡片上的<strong>「锁定」</strong>按钮（锁定后的镜头在重新拆解或导演审核时绝不会被 AI 覆盖）。</li>
+              </ul>
             </li>
             <li>
-              <strong>9宫格分镜表</strong>（中栏）：运行<strong>重新生成</strong>产出 9 宫格文本；点击右上角
-              <strong>网格图标</strong>一次性生成整张 9宫格拼图并拆出全部 9 格；随后<strong>导演审核</strong>。
+              <strong>② 导演审核（<code>review</code>）</strong>：
+              <ul>
+                <li>AI 导演对照原剧本逐镜检查叙事连贯性、角色一致性、视听节奏与可拍性，给出总评（<code>PASS</code> / <code>REVISE</code>）与逐镜问题清单。</li>
+                <li>未通过的镜头会由 AI 自动重写修订并复审（左侧可设最大自动修订轮数 <code>filmReviewMaxRounds</code>，默认 2 轮），已锁定的镜头自动跳过改写。</li>
+              </ul>
             </li>
             <li>
-              <strong>4宫格</strong>（右栏）：运行<strong>重新生成</strong>；点击<strong>2×2 网格图标</strong>生成当前组
-              4宫格拼图；<strong>导演审核</strong>。右侧可查看动态提示词与视频产物。
+              <strong>③ 角色场景设定（<code>cast</code>）</strong>：
+              <ul>
+                <li>根据分镜提取出的角色、场景（及可选道具）实体表，统一生成角色定妆图与场景环境锚点图，作为后续所有镜头的视觉基准。</li>
+                <li>每张设定卡都支持直接编辑外观描述，并点击卡片上的 <strong>「▶ 生成 / ↻ 重跑」</strong> 单独生成或重画该角色/场景；描述未变时整阶段运行会自动命中指纹缓存、秒级跳过。</li>
+              </ul>
             </li>
             <li>
-              <strong>视频</strong>：点<strong>生成这条视频</strong>（或按需逐条生成），生成后窗口内直接播放预览。
+              <strong>④ 批量拍摄（<code>render</code>）</strong>：
+              <ul>
+                <li><strong>自动绑定设定图与 <code>@1</code>/<code>@2</code> 编号对齐</strong>：工作台按每镜的出场角色与所在场景，自动把对应设定图注入生图参考（镜头卡片直观展示绑定的设定图缩略图及 <code>@1</code>、<code>@2</code> 编号，与发往生图模型的参考图顺序严格一致；开启<strong>「同场次连续性」</strong>时还会自动带入同场上一镜关键帧保持光影连贯）。</li>
+                <li><strong>关键帧视觉质检（QC）自动重拍</strong>：勾选「视觉质检」后，多模态模型会自动检查每镜关键帧是否出现人物崩坏、多手多脚或严重偏题，不合格自动触发重拍（可设最大重试次数）。</li>
+                <li><strong>图生视频与自动时长跟随</strong>：产出模式可选<strong>「仅关键帧」</strong>或<strong>「关键帧 + 视频」</strong>。在视频生成参数中将时长设为<strong>「自动」</strong>（默认），工作台会自动读取分镜拆解中每一镜的时长秒数（<code>duration</code>），并智能映射到当前视频模型支持的时长档位；每张镜头卡片也支持单独点击「拍关键帧」或「拍视频」。</li>
+              </ul>
             </li>
-            <li>三栏之间可拖动分隔条调整宽度，方便同时观察文本与图片。</li>
           </ol>
           <div class="tip">
-            推荐顺序：节拍拆解 → 9宫格分镜表 → 生成9宫格拼图 → 4宫格动态分镜表 → 生成4宫格拼图 → 动态提示词 →
-            导演审核逐级 PASS → 生成视频。阶段<strong>重新生成</strong>后，其下游图 / 视频会自动失效并显示“未生成”，
-            再次点击生成会从最新文本一致补跑，避免“新文本配旧图”。
+            <strong>省额度技巧（先看画面再出视频）：</strong>第一次跑长剧本时，可先把「④ 批量拍摄」的产出模式设为<strong>「仅关键帧」</strong>，快速确认全部镜头构图与角色造型；对个别不满意的镜头单卡重拍后，再把产出模式切回<strong>「关键帧 + 视频」</strong>运行——此时已有的关键帧会 100% 命中指纹缓存不重画，只增量生成各镜视频。
           </div>
-          <figure style="margin: 14px 0 20px">
-            <img
-              src="assets/short-video/step-3.png"
-              alt="在 Agent 流程窗口中完成分镜、拼图与视频操作"
-              style="
-                border: 1px solid var(--line);
-                border-radius: 10px;
-                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-              "
-            />
-            <figcaption style="margin-top: 8px; font-size: 12px; color: var(--mute)">
-              图 3：在 Agent 流程窗口完成所有操作
-            </figcaption>
-          </figure>
+        </section>
+
+        <section id="step-4">
+          <h2>5. 第 4 步：增量返工与单镜精修</h2>
+          <ul>
+            <li>
+              <strong>改一镜只重拍一镜</strong>：在影视工作台里修改某一镜的提示词、台词或出场角色后，直接点击该镜头卡片上的<strong>「↻ 重跑」</strong>（或整阶段运行），指纹未变的其余镜头全部秒级跳过，彻底告别「改一句话重跑整集」。
+            </li>
+            <li>
+              <strong>指定镜头区间试拍</strong>：在「④ 批量拍摄」左侧填写<strong>镜头范围</strong>（如 <code>1-4,7</code>），可只拍摄指定序号的镜头，适合长剧集先试拍前几镜定调。
+            </li>
+            <li>
+              <strong>用「镜头」节点做单镜深度精修</strong>：若某一镜需要更换特殊模型、或对关键帧做局部重绘 / 抠图 / 扩图 / 4K 放大，可从 <code>影视工作台</code> 的 <code>out</code> 与 <code>out-cast</code> 引出一个<strong>「镜头」（<code>film.shot</code>）</strong>节点（或直接使用「影视精修·单镜头」模板），在「关键帧」与「镜头视频」之间串入 10 合 1 <strong>「图像处理」（<code>image.process</code>）</strong>节点精细打磨。
+            </li>
+            <li>
+              <strong>合成整集成片</strong>：将 <code>影视工作台</code> 的 <code>out-videos</code> 端口接入「视频拼接」（<code>video.concat</code>）节点一键合成完整短剧视频，或打开<strong>成片时间线</strong>拖入各镜视频、配音与配乐多轨剪辑导出。
+            </li>
+          </ul>
         </section>
 
         <section id="faq">
-          <h2>5. 常见问题</h2>
+          <h2>6. 常见问题</h2>
           <ul>
             <li>
-              <strong>需要哪些模型？</strong>文本模型必须（分镜 / 提示词 / 导演审核）；图片模型用于拼图与锚点图；
-              视频模型用于动态视频。均在 设置 → 模型 中勾选并设默认。
+              <strong>需要配置哪些模型？</strong>
+              文本模型用于分镜拆解、导演审核与视觉质检；图片模型用于角色/场景设定图与镜头关键帧；视频模型用于图生视频。在影视工作台左侧栏可为不同阶段单独指定模型，未指定时使用「设置 → 模型」中的各模态默认模型。
             </li>
             <li>
-              <strong>视频只显示路径、没有预览？</strong>生成完成后流程窗口会自动加载可播放预览；若仍未出现，点击刷新或重新打开流程窗口。
+              <strong>如何避免角色在不同镜头里「变脸」？</strong>
+              先在「③ 角色场景设定」生成满意的角色定妆图与场景图（或把已有立绘连入工作台的 <code>in-image</code> 端口），确认每镜卡片上已正确绑定出场角色缩略图（<code>@1</code>、<code>@2</code>），并在「④ 批量拍摄」中选用支持多参考图的图片模型（如 Seedream、Flux / OpenRouter 多图模型等）同时开启「同场次连续性」。
             </li>
             <li>
-              <strong>导演审核按钮是灰色的？</strong>对应阶段“重新生成”成功写回结果后按钮才会点亮，避免审核旧内容。
+              <strong>视频时长怎么让它自动按分镜走？</strong>
+              在「④ 批量拍摄」左侧的视频模型参数选择器中，将时长切换为<strong>「自动」</strong>。系统会按「① 分镜拆解」里每镜设定的秒数自动匹配视频模型支持的时长档位（若模型固定单档位则自动使用模型档位）。
             </li>
             <li>
-              <strong>生成失败？</strong>先检查模型密钥、默认模型与账户余额；失败原因会显示在任务队列或窗口顶部。
+              <strong>为什么重新拆解分镜后，我手动改过的镜头没有变？</strong>
+              如果你点亮了该镜头卡片上的<strong>「锁定」</strong>图标（<code>locked: true</code>），无论是重新拆解还是导演审核自动修订都会保护该镜头不被改写；需要让 AI 重新生成该镜时先取消锁定即可。
             </li>
           </ul>
         </section>

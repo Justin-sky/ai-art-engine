@@ -21,7 +21,7 @@
     </script>
     <meta
       name="description"
-      content="AIArtEngine guide: generate a workflow from the short-video template in One-Click Workflow, then finish storyboards, tiling and video generation in the Agent pipeline window."
+      content="AIArtEngine Short-Drama Guide: generate a host asset from the Film pipeline or Film single-shot polish template in One-Click Workflow, then complete Storyboard Breakdown, Director Review, Character & Scene Design and Batch Shoot inside the unified Film Workbench (film.workbench)."
     />
     <title>Short-Drama Guide · AIArtEngine</title>
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/guide-short-video.en.html" />
@@ -29,14 +29,14 @@
     <meta property="og:type" content="website" />
     <meta property="og:locale" content="en_US" />
     <meta property="og:title" content="Short-Drama Guide · AIArtEngine" />
-    <meta property="og:description" content="AIArtEngine guide: generate a workflow from the short-video template in One-Click Workflow, then finish storyboards, tiling and video generation in the Agent pipeline window." />
+    <meta property="og:description" content="AIArtEngine Short-Drama Guide: generate a host asset from the Film pipeline or Film single-shot polish template in One-Click Workflow, then complete Storyboard Breakdown, Director Review, Character & Scene Design and Batch Shoot inside the unified Film Workbench (film.workbench)." />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/guide-short-video.en.html" />
     <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Short-Drama Guide · AIArtEngine" />
-    <meta name="twitter:description" content="AIArtEngine guide: generate a workflow from the short-video template in One-Click Workflow, then finish storyboards, tiling and video generation in the Agent pipeline window." />
+    <meta name="twitter:description" content="AIArtEngine Short-Drama Guide: generate a host asset from the Film pipeline or Film single-shot polish template in One-Click Workflow, then complete Storyboard Breakdown, Director Review, Character & Scene Design and Batch Shoot inside the unified Film Workbench (film.workbench)." />
     <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-short-video.html" />
     <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-short-video.en.html" />
@@ -67,7 +67,7 @@
             Guides<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
           </button>
           <div class="nav-drop-menu">
-            <a href="guide-short-video.en.html" aria-current="page"><strong>Short drama</strong><span>Storyboards, review, motion video</span></a>
+            <a href="guide-short-video.en.html" aria-current="page"><strong>Short drama</strong><span>Breakdown, review, cast &amp; batch shoot</span></a>
             <a href="guide-video.en.html"><strong>Video</strong><span>Free canvas & reference video</span></a>
             <a href="guide-comfyui.en.html"><strong>ComfyUI</strong><span>API v2 and comfy-api-proxy</span></a>
             <a href="guide-newapi.en.html"><strong>NewAPI</strong><span>Self-hosted relay gateways</span></a>
@@ -112,11 +112,12 @@
       <aside class="toc" aria-label="Table of contents">
         <h2>Contents</h2>
         <ol>
-          <li><a href="#prep">Preparation</a></li>
-          <li><a href="#step-1">Step 1: Pick the short-video template</a></li>
-          <li><a href="#step-2">Step 2: Auto-generated workflow nodes</a></li>
-          <li><a href="#step-3">Step 3: Finish everything in the Agent pipeline</a></li>
-          <li><a href="#faq">FAQ</a></li>
+          <li><a href="#prep">1. Preparation</a></li>
+          <li><a href="#step-1">2. Step 1: Pick a film / short-drama template</a></li>
+          <li><a href="#step-2">3. Step 2: Understand the generated nodes &amp; ports</a></li>
+          <li><a href="#step-3">4. Step 3: Run the 4-stage loop in Film Workbench</a></li>
+          <li><a href="#step-4">5. Step 4: Incremental retakes &amp; single-shot polish</a></li>
+          <li><a href="#faq">6. FAQ</a></li>
         </ol>
         <p style="margin-top: 1.25rem; font-size: 12px; color: var(--mute)">
           <a href="manual.en.html">← Back to the full manual</a>
@@ -125,12 +126,12 @@
 
       <article class="manual" id="manual">
         <header class="manual-hero">
-          <p class="eyebrow">Guide · Short Drama</p>
-          <h1>Short-Drama Guide</h1>
+          <p class="eyebrow">Guide · Short Drama &amp; Film</p>
+          <h1>Short-Drama Guide (Film Workbench)</h1>
           <p class="lede">
-            Produce a short video in three steps: let <strong>One-Click Workflow</strong> build the full node
-            graph from the short-video template, then complete storyboards, tiling, director review and video
-            generation inside the <strong>Agent pipeline window</strong> — no manual node wiring required.
+            Generate a host asset from the <strong>“Film pipeline”</strong> or <strong>“Film · single-shot polish”</strong> template in
+            <strong>One-Click Workflow</strong>, then double-click the 4-in-1 <strong>Film Workbench (<code>film.workbench</code>)</strong>
+            node to complete “① Storyboard Breakdown → ② Director Review with Auto-Revision → ③ Character &amp; Scene Design → ④ Batch Shoot (Vision QC + Image-to-Video)” in a single full-screen workspace.
           </p>
         </header>
 
@@ -139,45 +140,45 @@
           <ol>
             <li>
               <strong>Models</strong>: Settings → Models → add and enable a provider (Volcengine Ark, Kling,
-              MiniMax, Tongyi Qianwen, ModelScope, OpenRouter, …). Select and set defaults for the
-              <strong>text model</strong> (storyboard / prompts / review), the <strong>image model</strong>
-              (tiling and anchor images) and the <strong>video model</strong> (motion video).
+              MiniMax, Tongyi Qianwen, ModelScope, OpenRouter, DeepSeek, …). Select and set defaults for the
+              <strong>text model</strong> (storyboard breakdown / director review / vision QC), the <strong>image model</strong>
+              (character &amp; location design sheets and shot keyframes) and the <strong>video model</strong> (image-to-video shot clips).
             </li>
             <li>
               <strong>Object storage (optional)</strong>: Settings → Object Storage → enable one of Volcengine
-              TOS / Alibaba Cloud OSS / Tencent Cloud COS / Amazon S3–compatible. Recommended when videos need public URLs or are used
-              as reference videos; you can skip it for local preview only.
+              TOS / Alibaba Cloud OSS / Tencent Cloud COS / Amazon S3–compatible. Recommended when a cloud video model requires public reference URLs;
+              skip it when using direct local uploads or local preview.
             </li>
             <li>Create or open a project from the home page and enter the workspace.</li>
           </ol>
           <div class="tip">
-            Make sure the provider account has enough credits — generation fails immediately when the balance
-            runs out.
+            Make sure the provider account has enough credits — generation fails immediately and stops the task when the balance runs out.
           </div>
         </section>
 
         <section id="step-1">
-          <h2>2. Step 1: Pick the short-video template</h2>
+          <h2>2. Step 1: Pick a film / short-drama template</h2>
+          <p>
+            With a project open, click <strong>One-Click Workflow</strong> under “New” in the workspace (or browse <strong>Marketplace → Workflows</strong> in the top bar). Two built-in short-drama / film templates are available:
+          </p>
+          <ul>
+            <li>
+              <strong>“Film pipeline” (<code>short-drama</code>)</strong>: a compact <code>Script (play.script)</code> → <code>Film Workbench (film.workbench)</code> closed loop (defaults to vertical <code>9:16</code>, switchable to <code>16:9</code> and other ratios inside the workbench). Ideal for generating a whole short-drama or animated-comic episode end-to-end with incremental retakes.
+            </li>
+            <li>
+              <strong>“Film · single-shot polish” (<code>short-drama9</code>)</strong>: <code>Script</code> → <code>Film Workbench (film.workbench)</code> → <code>Shot (film.shot)</code> → <code>Keyframe (asset.image)</code> → <code>Shot clip (asset.video)</code>. Ideal when you want to finish breakdown and cast sheets in the workbench, then pull out individual shots by index and route them through dedicated image generation, the 10-in-1 <strong>Image Processing (<code>image.process</code>)</strong> workbench and video nodes.
+            </li>
+          </ul>
           <ol>
-            <li>With the project open, click <strong>One-Click Workflow</strong> in the top bar.</li>
-            <li>
-              In <strong>preset templates</strong> choose “Short-drama storyboard (Agent pipeline)” — the
-              short-video template.
-            </li>
-            <li>
-              Click <strong>Preview template</strong> to inspect the generated nodes and links; you can pick a
-              preset first and then edit the “workflow description”.
-            </li>
+            <li>Choose <strong>“Film pipeline”</strong> or <strong>“Film · single-shot polish”</strong> under <strong>Preset templates</strong>.</li>
+            <li>Click <strong>Preview template</strong> to inspect the generated nodes and link topology.</li>
             <li>Confirm with <strong>Create workflow</strong>, then choose a save directory and name.</li>
-            <li>
-              A new <strong>host asset</strong> appears in the asset library — the short-video workflow is
-              ready.
-            </li>
+            <li>A new <strong>host asset</strong> appears in the asset library — double-click it or drag it onto a canvas to begin.</li>
           </ol>
           <figure style="margin: 14px 0 20px">
             <img
               src="assets/short-video/step-1.png"
-              alt="Choosing the short-video template in One-Click Workflow"
+              alt="Choosing a short-drama / film template in One-Click Workflow"
               style="
                 border: 1px solid var(--line);
                 border-radius: 10px;
@@ -185,129 +186,120 @@
               "
             />
             <figcaption style="margin-top: 8px; font-size: 12px; color: var(--mute)">
-              Figure 1: One-Click Workflow → choose the short-video template
+              Figure 1: One-Click Workflow → pick a short-drama / film preset template
             </figcaption>
           </figure>
         </section>
 
         <section id="step-2">
-          <h2>3. Step 2: Auto-generated workflow nodes</h2>
-          <p>Double-click the host asset to dive into the inner graph and see the chain the template built:</p>
-          <ol>
-            <li>
-              <strong>Script</strong> → <strong>Beat breakdown table</strong> (storyboard artist) →
-              <strong>9-grid storyboard table</strong>.
-            </li>
-            <li>
-              9-grid tiling: one node renders the whole 3×3 sheet, then splits it into 9 anchor images and
-              upscales them.
-            </li>
-            <li>
-              <strong>4-grid motion storyboard table</strong> → one 2×2 sheet per group → 36 motion cells
-              extracted and upscaled.
-            </li>
-            <li>
-              <strong>Motion prompt table</strong> (36 entries) → <strong>motion cell select</strong> →
-              <strong>36 motion videos</strong>.
-            </li>
-            <li>
-              Four director review nodes (<strong>review1~review4</strong>) are interleaved throughout (beats /
-              9-grid / 4-grid / motion prompts).
-            </li>
-          </ol>
+          <h2>3. Step 2: Understand the generated nodes &amp; ports</h2>
           <p>
-            The graph stays fully editable: change prompts, swap models, rewire edges. In daily use you never
-            need to run nodes one by one — jump straight to the Agent pipeline window in step 3.
+            Double-click the host asset to dive into the inner graph, centered around the unified <strong>Film Workbench (<code>film.workbench</code>)</strong> node (replacing the legacy 9-grid / 4-grid slicing chain and dozens of separate nodes):
           </p>
-          <figure style="margin: 14px 0 20px">
-            <img
-              src="assets/short-video/step-2.png"
-              alt="The short-video node graph generated by One-Click Workflow"
-              style="
-                border: 1px solid var(--line);
-                border-radius: 10px;
-                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-              "
-            />
-            <figcaption style="margin-top: 8px; font-size: 12px; color: var(--mute)">
-              Figure 2: The complete auto-generated workflow nodes
-            </figcaption>
-          </figure>
+          <ul>
+            <li>
+              <strong><code>Script</code> (<code>play.script</code>)</strong>: paste your full script or story synopsis here (or feed it from an upstream “Script generation” node).
+            </li>
+            <li>
+              <strong><code>Film Workbench</code> (<code>film.workbench</code>)</strong>:
+              <ul>
+                <li><strong>Input ports</strong>: <code>in</code> (script text) and <code>in-image</code> (optional reference images — existing character turnarounds or location art wired here are bound to matching cast entries first).</li>
+                <li>
+                  <strong>Output ports</strong>:
+                  <code>out</code> (<code>storyboard</code> structured document <code>aiart.film-storyboard@1</code>),
+                  <code>out-cast</code> (<code>filmCast</code> character &amp; location library <code>aiart.film-cast@1</code>),
+                  <code>out-sheets</code> (<code>images</code> character &amp; location design sheets),
+                  <code>out-images</code> (<code>images</code> per-shot keyframe sequence),
+                  <code>out-videos</code> (<code>videos</code> per-shot video clip sequence),
+                  <code>out-text</code> (<code>text</code> readable shot list &amp; review report).
+                </li>
+              </ul>
+            </li>
+            <li>
+              <strong><code>Shot</code> (<code>film.shot</code>, included in the single-shot polish template)</strong>:
+              connects to the workbench's <code>out</code> (storyboard) and <code>out-cast</code> (cast library), picks one shot by <code>filmShotRef</code> (shot number such as <code>"1"</code> or shot ID such as <code>"S01-02"</code>), and outputs that shot's <strong>keyframe prompt</strong> (<code>out</code>, with built-in <code>@1</code>/<code>@2</code> reference mapping), <strong>appearing cast &amp; location sheets</strong> (<code>out-refs</code>, wired into <code>asset.image</code>'s <code>in-image</code> port to lock consistency) and <strong>motion prompt</strong> (<code>out-motion</code>, wired into <code>asset.video</code>'s <code>in-text</code> port).
+            </li>
+          </ul>
         </section>
 
         <section id="step-3">
-          <h2>4. Step 3: Finish everything in the Agent pipeline</h2>
+          <h2>4. Step 3: Run the 4-stage loop in Film Workbench</h2>
           <p>
-            Click <strong>“Episode Pipeline”</strong> in the top toolbar to open the Agent pipeline window —
-            every generation and review step happens here:
+            After pasting your script into the “Script” node, <strong>double-click the “Film Workbench” node</strong> (or click “Open Film Workbench” in the Inspector) to enter the full-screen Dive workbench. Use the four stage tabs at the top to switch views; click <strong>“⚡ Run Full Pipeline”</strong> at the top-right to execute all four stages end-to-end, or click the current-stage run button to step through and review stage by stage:
           </p>
           <ol>
             <li>
-              <strong>Beat breakdown</strong> (left column): run <strong>Regenerate</strong> to produce the beat
-              table, then click <strong>Director review</strong>.
+              <strong>① Storyboard Breakdown (<code>breakdown</code>)</strong>:
+              <ul>
+                <li>In the left sidebar, set the <strong>aspect ratio</strong> (<code>9:16</code> for vertical short dramas, <code>16:9</code> for horizontal films), <strong>target shot count</strong> (<code>0</code> = let the story determine the shot count automatically instead of forcing 9 or 36 cells), <strong>per-shot duration preset</strong> (<code>Auto / 4s / 8s / 10s / 15s</code>, aligned with mainstream video model duration tiers) and <strong>visual style</strong>.</li>
+                <li>Running this stage produces scenes, shot cards (shot size, camera angle, camera move, duration in seconds, action/acting, dialogue, keyframe <code>imagePrompt</code>, motion <code>videoPrompt</code>) and the extracted <strong>character / location / prop entity table</strong>.</li>
+                <li>Edit any shot field directly on its card, add or remove shots, or click the <strong>Lock</strong> icon on a shot card so future re-breakdowns or director reviews never overwrite it.</li>
+              </ul>
             </li>
             <li>
-              <strong>9-grid storyboard table</strong> (center): run <strong>Regenerate</strong> for the 9-grid
-              text; click the <strong>grid icon</strong> at the top-right to generate the whole 3×3 sheet and
-              split out all 9 cells in one go; then <strong>Director review</strong>.
+              <strong>② Director Review (<code>review</code>)</strong>:
+              <ul>
+                <li>The AI director checks every shot against the script for narrative continuity, character consistency, pacing and shootability, outputting an overall verdict (<code>PASS</code> / <code>REVISE</code>) and per-shot notes.</li>
+                <li>Shots that fail review are automatically rewritten and re-reviewed (up to <code>filmReviewMaxRounds</code>, default 2 rounds), while locked shots are never touched.</li>
+              </ul>
             </li>
             <li>
-              <strong>4-grid</strong> (right column): run <strong>Regenerate</strong>; click the
-              <strong>2×2 grid icon</strong> to generate the current group's 2×2 sheet;
-              <strong>Director review</strong>. Motion prompts and video outputs are shown on the right.
+              <strong>③ Character &amp; Scene Design (<code>cast</code>)</strong>:
+              <ul>
+                <li>Generates character turnaround sheets and location environment anchor sheets from the extracted entity table, serving as the visual ground truth for every shot.</li>
+                <li>Edit any character or location description on its card and click <strong>“▶ Generate / ↻ Rerun”</strong> to render or redraw that single card; unchanged entries hit the fingerprint cache and skip in milliseconds during stage runs.</li>
+              </ul>
             </li>
             <li>
-              <strong>Video</strong>: click <strong>Generate this video</strong> (or generate entries one by
-              one) and preview playback directly inside the window.
-            </li>
-            <li>
-              Drag the dividers between the three columns to resize them, so you can watch text and images side
-              by side.
+              <strong>④ Batch Shoot (<code>render</code>)</strong>:
+              <ul>
+                <li><strong>Automatic <code>@1</code>/<code>@2</code> reference binding</strong>: for each shot, the workbench automatically injects the appearing characters' and location's design sheets as reference images (each shot card displays the bound thumbnails and their exact <code>@1</code>, <code>@2</code> indices matching the order sent to the image model; enabling <strong>“Same-scene continuity”</strong> also feeds the previous shot's keyframe in the same scene).</li>
+                <li><strong>Vision QC auto-reshoot</strong>: with “Vision QC” enabled, a multimodal model inspects each generated keyframe for anatomy glitches or prompt drift and automatically reshoots failed frames (up to the configured retry limit).</li>
+                <li><strong>Image-to-video &amp; auto per-shot duration</strong>: switch output mode between <strong>“Keyframes only”</strong> and <strong>“Keyframes + Video”</strong>. Setting video duration to <strong>“Auto”</strong> (default) in the video parameter selector automatically reads each shot's <code>duration</code> seconds from Storyboard Breakdown and maps it to a tier supported by the selected video model. Every shot card also has per-card buttons to shoot its keyframe or video individually.</li>
+              </ul>
             </li>
           </ol>
           <div class="tip">
-            Recommended order: beat breakdown → 9-grid storyboard → generate 9-grid sheet → 4-grid motion
-            storyboard → generate 4-grid sheet → motion prompts → pass director review level by level → generate
-            videos. When a stage is regenerated, its downstream images / videos are invalidated and marked “Not
-            generated”; clicking generate again re-runs the chain from the latest text, so new text never pairs
-            with stale images.
+            <strong>Credit-saving tip (preview keyframes before rendering video):</strong> on a long script's first run, set the output mode in “④ Batch Shoot” to <strong>“Keyframes only”</strong> to verify framing and character likeness across all shots; reshoot any individual card you want to tweak, then switch output mode back to <strong>“Keyframes + Video”</strong> and run again — existing keyframes hit the fingerprint cache 100% without redrawing, and only the videos are generated.
           </div>
-          <figure style="margin: 14px 0 20px">
-            <img
-              src="assets/short-video/step-3.png"
-              alt="Running storyboards, tiling and video inside the Agent pipeline window"
-              style="
-                border: 1px solid var(--line);
-                border-radius: 10px;
-                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-              "
-            />
-            <figcaption style="margin-top: 8px; font-size: 12px; color: var(--mute)">
-              Figure 3: Storyboards, tiling and video in the Agent pipeline window
-            </figcaption>
-          </figure>
+        </section>
+
+        <section id="step-4">
+          <h2>5. Step 4: Incremental retakes &amp; single-shot polish</h2>
+          <ul>
+            <li>
+              <strong>Edit one shot, reshoot only one shot</strong>: after tweaking a single shot's prompt, dialogue or cast list inside the Film Workbench, click <strong>“↻ Rerun”</strong> on that shot card (or run the stage) — all unchanged shots hit the fingerprint cache and skip immediately.
+            </li>
+            <li>
+              <strong>Shoot a specific shot range</strong>: fill in <strong>Shot range</strong> (e.g. <code>1-4,7</code>) in the left sidebar of “④ Batch Shoot” to test-shoot the opening shots of a long script before committing to the full episode.
+            </li>
+            <li>
+              <strong>Deep single-shot polish with the “Shot” node</strong>: when a key shot needs a different model or pixel-level touch-ups (inpainting, cutout, outpainting, 4K upscale), wire a <strong>“Shot” (<code>film.shot</code>)</strong> node from the Film Workbench's <code>out</code> and <code>out-cast</code> ports (or start from the “Film · single-shot polish” template) and insert the 10-in-1 <strong>“Image processing” (<code>image.process</code>)</strong> node between “Keyframe” and “Shot clip”.
+            </li>
+            <li>
+              <strong>Assemble the full episode</strong>: connect the Film Workbench's <code>out-videos</code> port to a “Video concat” (<code>video.concat</code>) node to splice all clips in one click, or drag the clips, dubbing and BGM onto the multi-track <strong>Final timeline</strong> to edit and export.
+            </li>
+          </ul>
         </section>
 
         <section id="faq">
-          <h2>5. FAQ</h2>
+          <h2>6. FAQ</h2>
           <ul>
             <li>
-              <strong>Which models are required?</strong> A text model is mandatory (storyboard / prompts /
-              director review); the image model renders tiling and anchor images; the video model renders motion
-              videos. Enable and set defaults for each under Settings → Models.
+              <strong>Which models are required?</strong>
+              A text model handles Storyboard Breakdown, Director Review and Vision QC; an image model renders character/location sheets and shot keyframes; a video model renders image-to-video clips. You can pick dedicated models per stage in the Film Workbench sidebar, or rely on the defaults under Settings → Models.
             </li>
             <li>
-              <strong>The video only shows a file path, no preview?</strong> Once generation finishes, the
-              pipeline window loads a playable preview automatically; if it still doesn't appear, click refresh
-              or reopen the pipeline window.
+              <strong>How do I keep characters from “changing faces” across shots?</strong>
+              Generate clean character turnaround and location sheets in “③ Character &amp; Scene Design” first (or feed existing art into the workbench's <code>in-image</code> port), verify that each shot card binds the right <code>@1</code> / <code>@2</code> thumbnails, pick a multi-reference-capable image model in “④ Batch Shoot”, and keep “Same-scene continuity” enabled.
             </li>
             <li>
-              <strong>The director review button is greyed out?</strong> It lights up only after the matching
-              stage's <strong>Regenerate</strong> writes results back, so you never review stale content.
+              <strong>How does automatic video duration work?</strong>
+              In the video parameter selector of “④ Batch Shoot”, set Duration to <strong>“Auto”</strong>. Each shot automatically uses the <code>duration</code> seconds assigned to it in “① Storyboard Breakdown”, mapped to the closest tier supported by your chosen video model.
             </li>
             <li>
-              <strong>Generation failed?</strong> Check the model key, default models and account balance first;
-              the failure reason appears in the task queue or at the top of the window.
+              <strong>Why didn't re-running Storyboard Breakdown overwrite a shot I edited?</strong>
+              Any shot card with its <strong>Lock</strong> icon toggled on (<code>locked: true</code>) is protected from both re-breakdown and director auto-revision; unlock the card first if you want the AI to rewrite it.
             </li>
           </ul>
         </section>

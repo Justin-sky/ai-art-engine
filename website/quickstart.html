@@ -60,7 +60,7 @@
             教程<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
           </button>
           <div class="nav-drop-menu">
-            <a href="guide-short-video.html"><strong>短剧教程</strong><span>分镜 · 拼图 · 审核 · 动态视频</span></a>
+            <a href="guide-short-video.html"><strong>短剧教程</strong><span>分镜 · 定妆 · 审核 · 动态视频</span></a>
             <a href="guide-video.html"><strong>视频教程</strong><span>自由画布与参考视频</span></a>
             <a href="guide-comfyui.html"><strong>ComfyUI 教程</strong><span>API 2 与 comfy-api-proxy</span></a>
             <a href="guide-newapi.html"><strong>NewAPI 教程</strong><span>自建中转网关接入</span></a>
@@ -223,8 +223,8 @@
             <li>
               在<strong>预设模板</strong>里选一个。首次建议：
               <ul>
-                <li><strong>短剧分镜</strong>——剧本 → 分镜 → 视频的完整流水线，最能体现能力；</li>
-                <li><strong>分镜出片</strong>——只想快速出一组分镜图时用它；</li>
+                <li><strong>影视全流程</strong>（<code>short-drama</code>）——剧本 → 影视工作台（分镜拆解 → 导演审核 → 角色场景设定 → 批量拍摄）的完整短剧流水线，最能体现能力；</li>
+                <li><strong>影视精修·单镜头</strong>（<code>short-drama9</code>）——在影视工作台下游接「镜头」节点，抽出单镜做局部重绘与独立视频生成；</li>
                 <li><strong>产品广告 / 电商带货</strong>——做商品图与广告变体。</li>
               </ul>
             </li>
@@ -281,8 +281,7 @@
 
           <h3>做短剧的话走这条更快的路</h3>
           <p>
-            如果你选的是<strong>短剧分镜</strong>模板，可以用顶栏<strong>剧集流水线</strong>打开 Agent
-            流程窗口，在窗口里按步骤完成分镜、拼图、导演审核与视频生成，<strong>无需回到节点图逐个节点操作</strong>。
+            如果你选的是<strong>影视全流程</strong>（<code>short-drama</code>）模板，只需双击<strong>影视工作台</strong>（<code>film.workbench</code>）进入全屏 Dive 界面，即可在四个阶段页签（<strong>① 分镜拆解 → ② 导演审核 → ③ 角色场景设定 → ④ 批量拍摄</strong>）中一站式完成分镜、定妆锚点、导演审核与批量视频生成，或点右上角<strong>「一键跑完四阶段」</strong>全自动出片。
             详见 <a href="guide-short-video.html">短剧制作教程</a>。
           </p>
         </section>
@@ -294,7 +293,7 @@
             <a class="path-card" href="guide-short-video.html">
               <span class="path-tag">短剧 / 短视频</span>
               <strong>跑一整条短剧流水线</strong>
-              <span class="path-desc">分镜、拼图、导演审核、动态视频，含四个审核节点的完整讲解。</span>
+              <span class="path-desc">影视工作台四阶段闭环（分镜拆解、导演审核、角色场景设定、批量拍摄）与单镜头精修完整讲解。</span>
             </a>
             <a class="path-card" href="guide-video.html">
               <span class="path-tag">视频生成</span>

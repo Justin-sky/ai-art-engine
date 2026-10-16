@@ -74,7 +74,7 @@
             教程<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
           </button>
           <div class="nav-drop-menu">
-            <a href="guide-short-video.html"><strong>短剧教程</strong><span>分镜 · 拼图 · 审核 · 动态视频</span></a>
+            <a href="guide-short-video.html"><strong>短剧教程</strong><span>分镜 · 定妆 · 审核 · 动态视频</span></a>
             <a href="guide-video.html"><strong>视频教程</strong><span>自由画布与参考视频</span></a>
             <a href="guide-comfyui.html"><strong>ComfyUI 教程</strong><span>API 2 与 comfy-api-proxy</span></a>
             <a href="guide-newapi.html"><strong>NewAPI 教程</strong><span>自建中转网关接入</span></a>
@@ -120,7 +120,7 @@
         <h2>目录</h2>
         <ol>
           <li class="toc-group">核心能力</li>
-          <li><a href="#script-beat">9. 剧本与场</a></li>
+          <li><a href="#script-beat">9. 剧本与影视工作台</a></li>
           <li><a href="#timeline">10. 成片时间线</a></li>
           <li><a href="#canvas">11. 画布与世界元素</a></li>
           <li><a href="#director">12. 导演台</a></li>
@@ -139,7 +139,7 @@
           <p class="eyebrow">Manual · Production</p>
           <h1>剧本、成片与导演台</h1>
           <p class="lede">
-            剧本与场资产，成片时间线的上轨编排、字幕与导出，画布与世界元素，以及 3D 导演台的站位、动画录制与高斯泼溅。
+            剧本与影视工作台，成片时间线的上轨编排、字幕与导出，画布与世界元素，以及 3D 导演台的站位、动画录制与高斯泼溅。
           </p>
         </header>
 
@@ -158,23 +158,23 @@
               <strong>影视工作台</strong>（<code>film.workbench</code>）取代了旧版分散的场拆解 / 场表格 / 场生成 / 世界元素提取节点，将影视制作全链路整合进同一个节点与全屏 Dive 工作台：
               <ul>
                 <li><strong>① 分镜拆解</strong>（<code>breakdown</code>）：从剧本自动拆出每镜的景别、机位角度、运镜、单镜时长（秒）、人物表演、台词及出场角色/场景清单。</li>
-                <li><strong>② 导演审核</strong>（<code>review</code>）：AI 导演逐镜评估叙事连贯性与镜头调度，给出评分与修订建议，支持一键应用到分镜表。</li>
+                <li><strong>② 导演审核</strong>（<code>review</code>）：AI 导演逐镜评估叙事连贯性、轴线关系与节奏张力，给出评分与修订建议，支持一键应用到分镜表。</li>
                 <li><strong>③ 角色场景设定</strong>（<code>cast</code>）：汇总全片角色、场景与关键道具，批量生成定妆图与环境锚点图，锁住跨镜头视觉一致性。</li>
-                <li><strong>④ 批量拍摄</strong>（<code>render</code>）：按分镜表自动挂载对应角色与场景锚点图，批量生成关键帧与动态视频；视频时长支持<strong>「自动（跟随分镜拆解单镜时长）」</strong>（按每镜 <code>duration</code> 自动约束在 2~15 秒，缺省 5 秒）或固定秒数档位。</li>
+                <li><strong>④ 批量拍摄</strong>（<code>render</code>）：按分镜表自动把本镜出场角色/场景设定图映射为 <code>@1</code>、<code>@2</code> 参考图，批量生成关键帧（开启视觉质检时低分自动重拍）与动态视频；视频时长支持<strong>「自动（跟随分镜拆解单镜时长）」</strong>（按每镜 <code>duration</code> 自动约束在 2~15 秒，缺省 5 秒）或固定秒数档位。</li>
               </ul>
             </li>
             <li>
-              <strong>镜头</strong>（<code>film.shot</code>）：需要单独定制某一镜的景别、运镜、时长、转场或专属首尾帧参考图时，可在画布上添加「镜头」节点并连入「影视工作台」的 <code>in-shots</code> 端口，按镜号精确覆写或追加分镜。
+              <strong>镜头</strong>（<code>film.shot</code>）：接在「影视工作台」<strong>下游</strong>（将工作台的 <code>out</code> 与 <code>out-cast</code> 连入「镜头」节点的 <code>in</code> 与 <code>in-cast</code>），按镜号或 <code>shotId</code>（如 <code>1</code> 或 <code>S01-02</code>）取出指定单镜的关键帧提示词（<code>out</code>）、出场角色/场景参考图（<code>out-refs</code>）与运镜提示词（<code>out-motion</code>），再接独立「生成图片 → 图像局部编辑 / 擦除 → 生成视频」链路做精细打磨。
             </li>
             <li>
-              结合「剧集流水线」的 9 宫格 / 4 宫格分镜表，可兼顾单节点快速出片与多宫格工业化长链生产。
+              配合一键工作流的<strong>「影视全流程」</strong>（<code>short-drama</code>）与<strong>「影视精修·单镜头」</strong>（<code>short-drama9</code>）两套预设，可兼顾整集批量出片与重点镜头单拆精修（详见 <a href="guide-short-video.html">短剧制作教程</a>）。
             </li>
           </ul>
 
           <h3>9.3 分镜思维与指令预设</h3>
           <p>
-            分镜能力统一内聚在<strong>影视工作台</strong>与<strong>剧集流水线</strong>中：由分镜拆解或节拍拆解表负责拆镜，
-            角色场景设定或 9 宫格 / 4 宫格分镜表负责锁住锚点图并落到可生成镜头。
+            分镜能力统一内聚在<strong>影视工作台</strong>与生成节点指令预设中：由影视工作台「① 分镜拆解」完成场次与镜头拆解，
+            「③ 角色场景设定」锁住定妆与场景锚点图，「④ 批量拍摄」与「镜头」节点自动组装带 <code>@1</code>、<code>@2</code> 引用关系的可生成镜头提示词。
           </p>
           <ul>
             <li> <strong>镜头语言</strong>：英雄 / 神秘出场、双人中景、过肩反打、俯视、背面、荷兰角等。 </li>
@@ -190,8 +190,7 @@
             </li>
           </ul>
           <p>
-            视频与图片生成节点的指令预设（分镜师·节拍拆解表 / 9宫格分镜表 / 4宫格动态分镜表等）会把上面这些
-            镜头语言直接写入提示词；逐帧拉片节点可先从参考视频取关键帧，再用片段重拍做局部修改，详见
+            视频与图片生成节点的指令预设也会把上面这些镜头语言直接写入提示词；逐帧拉片节点可先从参考视频取关键帧，再用片段重拍做局部修改，详见
             <a href="manual-workflow.html#graph">节点图</a>章节。
           </p>
         </section>

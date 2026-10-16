@@ -395,13 +395,13 @@
             <pre><span class="t-dim">$</span> <span class="t-cmd">claude mcp add aiartengine -- node ./resources/mcp-bridge.mjs</span>
 <span class="t-ok">✓</span> Added stdio MCP server <span class="t-ok">aiartengine</span>
 
-<span class="t-user">&gt;</span> Make a mystery short with the short-drama template, lead from @heroine-sheet
+<span class="t-user">&gt;</span> Make a mystery short with the Film Full Pipeline template, lead from @heroine-sheet
 
-<span class="t-tool">●</span> workflow_list_presets  <span class="t-dim">matched: short-drama storyboard</span>
+<span class="t-tool">●</span> workflow_list_presets  <span class="t-dim">matched: Film Full Pipeline (short-drama)</span>
 <span class="t-tool">●</span> workflow_plan          <span class="t-dim">plan preview ready</span>
 <span class="t-tool">●</span> workflow_commit        <span class="t-dim">host asset committed, shown in UI</span>
 <span class="t-tool">●</span> task_run               <span class="t-warn">running</span> <span class="t-dim">mcpTaskId=7f3a…</span>
-<span class="t-tool">●</span> task_status            <span class="t-dim">script</span> <span class="t-ok">✓</span> <span class="t-dim">beats</span> <span class="t-ok">✓</span> <span class="t-dim">9-grid</span> <span class="t-ok">✓</span> <span class="t-dim">video …</span>
+<span class="t-tool">●</span> task_status            <span class="t-dim">script</span> <span class="t-ok">✓</span> <span class="t-dim">breakdown</span> <span class="t-ok">✓</span> <span class="t-dim">cast sheets</span> <span class="t-ok">✓</span> <span class="t-dim">batch shoot …</span>
 <span class="cursor"></span></pre>
           </div>
         </div>
@@ -456,7 +456,7 @@
               <span class="n">01</span>
               <h3>One-Click Workflow</h3>
               <p>
-                Pick a preset (including the short-drama storyboard template) or describe what you need in one sentence, preview the topology and create a reusable host asset. See
+                Pick a preset (including the Film Full Pipeline and Single-Shot Polish templates) or describe what you need in one sentence, preview the topology and create a reusable host asset. See
                 <a href="manual-workflow.en.html#ai-workflow">Manual §7</a> and the <a href="guide-short-video.en.html">short-drama guide</a>.
               </p>
             </li>
@@ -467,8 +467,8 @@
             </li>
             <li>
               <span class="n">03</span>
-              <h3>Film Workbench &amp; episode pipeline</h3>
-              <p>Unified Film Workbench (Breakdown → Director Review → Character &amp; Scene Design → Batch Shoot, with auto per-shot duration and single-shot overrides) plus 9-grid / 4-grid storyboard sheets.</p>
+              <h3>Film Workbench &amp; Shot node</h3>
+              <p>Unified 4-stage Film Workbench (Breakdown → Director Review → Character &amp; Scene Design → Batch Shoot, with auto per-shot duration and Vision QC reshoots) plus downstream single-shot polish.</p>
             </li>
             <li class="is-wide">
               <span class="n">04</span>
@@ -489,9 +489,9 @@
             </li>
             <li class="is-wide">
               <span class="n">07</span>
-              <h3>Agent pipeline</h3>
+              <h3>4-stage film loop &amp; incremental cache</h3>
               <p>
-                The short-drama template builds script → beats → 9-grid → collage → 4-grid → motion prompts → 36 videos; the Episode Pipeline window regenerates a stage and invalidates downstream consistently.
+                Double-click the Film Workbench to enter its full-screen Dive view for script breakdown, AI director scoring, character/scene anchor sheets and batch video generation — with fingerprint caching and per-shot locking so editing one shot only re-renders that shot.
               </p>
             </li>
           </ol>
@@ -513,7 +513,7 @@
             <a class="path-card" href="guide-short-video.en.html">
               <span class="path-tag">Short drama</span>
               <strong>Run the full short-drama pipeline</strong>
-              <span class="path-desc">Storyboards, collage, director review and motion video, with all four review nodes explained.</span>
+              <span class="path-desc">The 4-stage Film Workbench loop (breakdown, director review, cast/scene sheets, batch shoot) and single-shot polish.</span>
             </a>
             <a class="path-card" href="manual.en.html">
               <span class="path-tag">Reference</span>

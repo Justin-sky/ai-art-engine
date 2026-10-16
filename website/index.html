@@ -95,7 +95,7 @@
             教程<svg aria-hidden="true"><use href="#i-down" /></svg>
           </button>
           <div class="nav-drop-menu">
-            <a href="guide-short-video.html"><strong>短剧教程</strong><span>分镜 · 拼图 · 审核 · 动态视频</span></a>
+            <a href="guide-short-video.html"><strong>短剧教程</strong><span>分镜 · 定妆 · 审核 · 动态视频</span></a>
             <a href="guide-video.html"><strong>视频教程</strong><span>自由画布与参考视频</span></a>
             <a href="guide-mcp.html"><strong>MCP 接入</strong><span>Claude Code / Codex 驱动应用</span></a>
             <a href="guide-comfyui.html"><strong>ComfyUI 教程</strong><span>API 2 与 comfy-api-proxy</span></a>
@@ -392,13 +392,13 @@
             <pre><span class="t-dim">$</span> <span class="t-cmd">claude mcp add aiartengine -- node ./resources/mcp-bridge.mjs</span>
 <span class="t-ok">✓</span> Added stdio MCP server <span class="t-ok">aiartengine</span>
 
-<span class="t-user">&gt;</span> 用「短剧分镜」模板做一集悬疑短片，主角参考 @女主设定图
+<span class="t-user">&gt;</span> 用「影视全流程」模板做一集悬疑短片，主角参考 @女主设定图
 
-<span class="t-tool">●</span> workflow_list_presets  <span class="t-dim">匹配模板：短剧分镜</span>
+<span class="t-tool">●</span> workflow_list_presets  <span class="t-dim">匹配模板：影视全流程 (short-drama)</span>
 <span class="t-tool">●</span> workflow_plan          <span class="t-dim">方案预览就绪</span>
 <span class="t-tool">●</span> workflow_commit        <span class="t-dim">宿主资产已落盘，界面同步出现</span>
 <span class="t-tool">●</span> task_run               <span class="t-warn">运行中</span> <span class="t-dim">mcpTaskId=7f3a…</span>
-<span class="t-tool">●</span> task_status            <span class="t-dim">剧本</span> <span class="t-ok">✓</span> <span class="t-dim">节拍</span> <span class="t-ok">✓</span> <span class="t-dim">9 宫格</span> <span class="t-ok">✓</span> <span class="t-dim">视频 …</span>
+<span class="t-tool">●</span> task_status            <span class="t-dim">剧本</span> <span class="t-ok">✓</span> <span class="t-dim">分镜拆解</span> <span class="t-ok">✓</span> <span class="t-dim">定妆设定</span> <span class="t-ok">✓</span> <span class="t-dim">批量拍摄 …</span>
 <span class="cursor"></span></pre>
           </div>
         </div>
@@ -453,7 +453,7 @@
               <span class="n">01</span>
               <h3>一键工作流</h3>
               <p>
-                选预设（含「短剧分镜」短视频模板）或用一句话描述需求，预览拓扑后创建可复用宿主资产；拖入画布即可接线运行。详见
+                选预设（含「影视全流程」「影视精修·单镜头」短剧模板）或用一句话描述需求，预览拓扑后创建可复用宿主资产；拖入画布即可接线运行。详见
                 <a href="manual-workflow.html#ai-workflow">使用手册 §7</a> 与 <a href="guide-short-video.html">短剧制作教程</a>。
               </p>
             </li>
@@ -464,8 +464,8 @@
             </li>
             <li>
               <span class="n">03</span>
-              <h3>影视工作台与剧集流水线</h3>
-              <p>合一影视工作台（分镜拆解 → 导演审核 → 角色场景设定 → 批量拍摄，支持跟随分镜自动视频时长与单镜覆写）与 9 宫格 / 4 宫格分镜表。</p>
+              <h3>影视工作台与单镜节点</h3>
+              <p>四阶段合一影视工作台（分镜拆解 → 导演审核 → 角色场景设定 → 批量拍摄，支持跟随分镜自动视频时长与视觉质检重拍）及下游「镜头」节点单镜精修。</p>
             </li>
             <li class="is-wide">
               <span class="n">04</span>
@@ -486,9 +486,9 @@
             </li>
             <li class="is-wide">
               <span class="n">07</span>
-              <h3>Agent 流水线</h3>
+              <h3>影视四阶段闭环与增量重跑</h3>
               <p>
-                短剧模板自动生成 剧本 → 节拍 → 9 宫格 → 拼图 → 4 宫格 → 动态提示词 → 36 条视频；「剧集流水线」窗口集中操作，阶段重生成后下游自动失效、一致补跑。
+                双击「影视工作台」进入全屏 Dive 界面，一站式完成剧本拆镜、导演审核评分、角色场景定妆锚点图与批量视频生成；内置指纹缓存，改单镜只重算变更镜头，已满意镜头一键锁定保护。
               </p>
             </li>
           </ol>
@@ -510,7 +510,7 @@
             <a class="path-card" href="guide-short-video.html">
               <span class="path-tag">短剧 / 短视频</span>
               <strong>跑通短剧全流程</strong>
-              <span class="path-desc">分镜、拼图、导演审核到动态视频，含四个审核节点详解。</span>
+              <span class="path-desc">影视工作台四阶段闭环（分镜拆解、导演审核、角色场景设定、批量拍摄）与单镜头精修详解。</span>
             </a>
             <a class="path-card" href="manual.html">
               <span class="path-tag">进阶 / 查资料</span>

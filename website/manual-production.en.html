@@ -119,7 +119,7 @@
         <h2>Table of contents</h2>
         <ol>
           <li class="toc-group">Core features</li>
-          <li><a href="#script-beat">9. Script &amp; shots</a></li>
+          <li><a href="#script-beat">9. Script &amp; Film Workbench</a></li>
           <li><a href="#timeline">10. Final timeline</a></li>
           <li><a href="#canvas">11. Canvas &amp; world elements</a></li>
           <li><a href="#director">12. Director stage</a></li>
@@ -138,7 +138,7 @@
           <p class="eyebrow">Manual · Production</p>
           <h1>Script, timeline & director stage</h1>
           <p class="lede">
-            Script and shot assets; arranging, subtitling and exporting on the final timeline; canvas and world elements; and blocking, animation recording and Gaussian splats on the 3D director stage.
+            Script and Film Workbench; arranging, subtitling and exporting on the final timeline; canvas and world elements; and blocking, animation recording and Gaussian splats on the 3D director stage.
           </p>
         </header>
 
@@ -158,24 +158,25 @@
               <strong>Film Workbench</strong> (<code>film.workbench</code>) replaces the legacy separate shot-breakdown, shot-table, shot-generation and world-element nodes, consolidating the entire film production chain into one node and a full-screen Dive workbench:
               <ul>
                 <li><strong>① Storyboard Breakdown</strong> (<code>breakdown</code>): splits a script into per-shot framing, camera angle, movement, duration (seconds), acting, dialogue and cast/scene lists.</li>
-                <li><strong>② Director Review</strong> (<code>review</code>): AI director evaluates narrative continuity and blocking shot by shot, returning scores and one-click revision suggestions.</li>
+                <li><strong>② Director Review</strong> (<code>review</code>): AI director evaluates narrative continuity, 180° axis and pacing shot by shot, returning scores and one-click revision suggestions.</li>
                 <li><strong>③ Character &amp; Scene Design</strong> (<code>cast</code>): gathers characters, scenes and key props across the script to batch-generate turnaround and environment anchor sheets.</li>
-                <li><strong>④ Batch Shoot</strong> (<code>render</code>): automatically pairs each shot with its character and scene anchor sheets to batch-generate keyframes and motion videos; video duration supports <strong>“Auto (follow per-shot breakdown duration)”</strong> (reads each shot's <code>duration</code> in seconds, clamped to 2–15 s with a 5 s fallback) as well as fixed duration tiers.</li>
+                <li><strong>④ Batch Shoot</strong> (<code>render</code>): automatically maps each shot's appearing character and scene design sheets as <code>@1</code>, <code>@2</code> reference images to batch-generate keyframes (with optional Vision QC auto-reshoots) and motion videos; video duration supports <strong>“Auto (follow per-shot breakdown duration)”</strong> (reads each shot's <code>duration</code> in seconds, clamped to 2–15 s with a 5 s fallback) as well as fixed duration tiers.</li>
               </ul>
             </li>
             <li>
-              <strong>Shot</strong> (<code>film.shot</code>): when you need to customize a specific shot's framing, camera move, duration, transition or custom first/last-frame reference images, drop a “Shot” node onto the canvas and connect it to the Film Workbench's <code>in-shots</code> port to override or append by shot number.
+              <strong>Shot</strong> (<code>film.shot</code>): connected <strong>downstream</strong> of the Film Workbench (wire the workbench's <code>out</code> and <code>out-cast</code> to the Shot node's <code>in</code> and <code>in-cast</code>). Select a shot by 1-based index or <code>shotId</code> (e.g. <code>1</code> or <code>S01-02</code>) to output its keyframe prompt (<code>out</code>), appearing cast/scene reference sheets (<code>out-refs</code>) and motion prompt (<code>out-motion</code>) into a dedicated Image Generation → Inpaint / Erase → Video Generation chain.
             </li>
             <li>
-              Combined with the Episode Pipeline's 9-grid / 4-grid storyboard tables, you can choose between rapid single-node filmmaking and multi-grid batch episode production.
+              Paired with the built-in <strong>“Film Full Pipeline”</strong> (<code>short-drama</code>) and <strong>“Film Polish · Single Shot”</strong> (<code>short-drama9</code>) workflow presets, you can combine full-episode batch shooting with surgical single-shot polish (see the <a href="guide-short-video.en.html">Short-Drama Guide</a>).
             </li>
           </ul>
 
           <h3>9.3 Storyboard thinking and prompt presets</h3>
           <p>
-            Storyboarding is unified inside the <strong>Film Workbench</strong> and the <strong>Episode Pipeline</strong>:
-            Storyboard Breakdown or the beat breakdown table splits the script into shots, while Character &amp; Scene Design
-            or the 9-grid / 4-grid storyboard tables lock visual anchors and turn shots into camera setups ready to render.
+            Storyboarding is unified inside the <strong>Film Workbench</strong> and generation-node prompt presets:
+            “① Storyboard Breakdown” splits the script into scenes and shots, “③ Character &amp; Scene Design” locks
+            character turnaround and environment anchor sheets, and “④ Batch Shoot” / the “Shot” node automatically
+            assemble render-ready camera prompts with <code>@1</code>, <code>@2</code> reference bindings.
           </p>
           <ul>
             <li>
@@ -200,8 +201,7 @@
             </li>
           </ul>
           <p>
-            The prompt presets of video and image generation nodes (storyboard artist · beat breakdown table /
-            9-grid storyboard table / 4-grid motion storyboard table, …) write this camera language straight
+            The prompt presets of video and image generation nodes also write this camera language straight
             into the prompt; the frame pulling node can grab key frames from a reference video first, then use
             segment reshoot for local changes — see the <a href="manual-workflow.en.html#graph">Node graph</a> chapter.
           </p>

@@ -85,7 +85,7 @@
             Guides<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
           </button>
           <div class="nav-drop-menu">
-            <a href="guide-short-video.en.html"><strong>Short drama</strong><span>Storyboards, review, motion video</span></a>
+            <a href="guide-short-video.en.html"><strong>Short drama</strong><span>Breakdown, review, cast &amp; batch shoot</span></a>
             <a href="guide-video.en.html"><strong>Video</strong><span>Free canvas & reference video</span></a>
             <a href="guide-comfyui.en.html"><strong>ComfyUI</strong><span>API v2 and comfy-api-proxy</span></a>
             <a href="guide-newapi.en.html"><strong>NewAPI</strong><span>Self-hosted relay gateways</span></a>
@@ -150,7 +150,7 @@
           <p class="eyebrow">Manual · Overview</p>
           <h1>Manual</h1>
           <p class="lede">
-            The complete operating reference for AI Art Engine <strong>7.3</strong>, organized into six parts by workflow. This page covers preparation and core concepts; everything else is under “Manual chapters” below or in the sidebar. Wording follows the in-app UI — switch the app to English under Settings → General → Language. Video walkthroughs are on <a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer">Bilibili</a>.
+            The complete operating reference for AI Art Engine <strong>7.5</strong>, organized into six parts by workflow. This page covers preparation and core concepts; everything else is under “Manual chapters” below or in the sidebar. Wording follows the in-app UI — switch the app to English under Settings → General → Language. Video walkthroughs are on <a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer">Bilibili</a>.
           </p>
         </header>
 
@@ -161,11 +161,11 @@
           </a>
           <a class="entry-card" href="#concepts">
             <strong>Learn a few concepts</strong>
-            <span>What host assets, anchor images and world elements mean</span>
+            <span>What host assets, Film Workbench and cast anchor sheets mean</span>
           </a>
           <a class="entry-card" href="guide-short-video.en.html">
             <strong>Short drama pipeline</strong>
-            <span>Episode pipeline: storyboards, grids, review and video</span>
+            <span>Film Workbench: breakdown, review, cast &amp; batch shoot</span>
           </a>
           <a class="entry-card" href="manual-reference.en.html#troubleshooting">
             <strong>Something broken?</strong>
@@ -212,7 +212,7 @@
           <h2>2. Core concepts</h2>
           <p>
             Spend two minutes on the words below and every screen afterwards will make sense. Data in this
-            app is organized as <strong>project → shot / episode → node graph → asset</strong>: the project
+            app is organized as <strong>project → script / host asset → node graph → asset</strong>: the project
             is the container, the node graph is the workshop, and assets are what comes out of it.
           </p>
 
@@ -230,8 +230,8 @@
             <div class="concept-card">
               <h3>Asset</h3>
               <p>
-                The umbrella term for every output and piece of media in a project: scripts, beat tables,
-                storyboard images, anchor images, video, audio, 3D models and host assets. Browse and drag
+                The umbrella term for every output and piece of media in a project: scripts, storyboard documents,
+                cast sheets, keyframe images, video, audio, 3D models and host assets. Browse and drag
                 them all from the <strong>asset library</strong>.
               </p>
               <span class="concept-meta">See §6 Asset library</span>
@@ -251,7 +251,7 @@
               <h3>Node graph</h3>
               <p>
                 The canvas where nodes and links describe “input → generate → output”. It is the
-                <strong>shared foundation</strong> of scripts, shots, canvases, the director stage and host
+                <strong>shared foundation</strong> of scripts, canvases, the director stage and host
                 assets.
               </p>
               <span class="concept-meta">See §8 Node graph</span>
@@ -272,7 +272,7 @@
             <div class="concept-card">
               <h3>Film Workbench / Shot</h3>
               <p>
-                <strong>Film Workbench</strong> (<code>film.workbench</code>) chains Storyboard Breakdown → Director Review → Character &amp; Scene Design → Batch Shoot inside one node and full-screen Dive view, with auto per-shot video duration and single-shot overrides via <strong>Shot</strong> (<code>film.shot</code>).
+                <strong>Film Workbench</strong> (<code>film.workbench</code>) chains ① Storyboard Breakdown → ② Director Review → ③ Character &amp; Scene Design → ④ Batch Shoot inside one node and full-screen Dive view, with auto per-shot video duration and single-shot extraction for manual polishing via <strong>Shot</strong> (<code>film.shot</code>).
               </p>
               <span class="concept-meta">See §8.5 / §9 Script &amp; Film Workbench</span>
             </div>
@@ -280,9 +280,7 @@
             <div class="concept-card">
               <h3>Anchor image</h3>
               <p>
-                A <strong>single reference image split out of a 9-grid / 4-grid sheet, cell by cell</strong>.
-                It locks a character's face, outfit and setting so every later storyboard stays consistent —
-                this is the key to keeping a short drama from “changing faces”.
+                A <strong>character turnaround or location reference sheet</strong> generated in “Character &amp; Scene Design” (or sliced out of a multi-cell sheet via Image Processing). It is automatically bound as <code>@1</code> / <code>@2</code> to every matching shot during Batch Shoot — the key to keeping a short drama from “changing faces”.
               </p>
               <span class="concept-meta">See the <a href="guide-short-video.en.html">Short-Drama Guide</a></span>
             </div>
@@ -326,34 +324,30 @@
           </div>
 
           <h3>2.1 How a short drama actually runs</h3>
-          <p>With the concepts above in place, the full data flow of the short-drama pipeline reads:</p>
+          <p>With the concepts above in place, the closed-loop data flow of the short-drama / film pipeline reads:</p>
           <ol>
             <li>
-              <strong>Script</strong> → broken down by a text model into a
-              <strong>beat breakdown table</strong> (beat).
+              <strong>Script</strong> (<code>play.script</code>) → wired into the
+              <strong>Film Workbench</strong> (<code>film.workbench</code>).
             </li>
             <li>
-              Beat → <strong>9-grid storyboard table</strong>: one node generates a 3×3 sheet, then 9
-              <strong>anchor images</strong> are split out cell by cell and upscaled.
+              <strong>① Storyboard Breakdown</strong>: a text model splits the script into a structured shot list (shot size, camera move, per-shot duration, dialogue, keyframe &amp; motion prompts — shot count follows the story) plus a character / location / prop entity table.
             </li>
             <li>
-              Anchor images → <strong>4-grid motion storyboard table</strong>: 2×2 sheets per group, split
-              into 36 motion cells and upscaled.
+              <strong>② Director Review</strong>: the AI director reviews every shot against the script and automatically rewrites &amp; re-reviews shots that need work (locked shots are never overwritten).
             </li>
             <li>
-              Motion cells → <strong>motion prompt table</strong> (36 entries) →
-              <strong>36 motion videos</strong>.
+              <strong>③ Character &amp; Scene Design</strong>: batch-generates character turnaround and location environment <strong>anchor sheets</strong> from the entity table (with single-card reruns and fingerprint caching).
             </li>
             <li>
-              Four director review nodes, <strong>review1~review4</strong>, sit along the way; anything
-              below standard can be sent back for a re-run.
+              <strong>④ Batch Shoot</strong>: automatically binds <code>@1</code>/<code>@2</code> cast &amp; location sheets per shot to generate keyframes (with same-scene continuity and Vision QC auto-reshoots) → batch-renders <strong>shot videos</strong> from those keyframes using each shot's breakdown duration automatically.
             </li>
             <li>
-              Videos → arranged on the <strong>final timeline</strong> → export the finished film.
+              <strong>Single-shot polish &amp; final cut</strong>: wire a <strong>Shot</strong> (<code>film.shot</code>) node to polish hero shots through dedicated image / 10-in-1 image-processing / video nodes; drop all shot clips onto the <strong>Final timeline</strong> (or “Video concat”) to export the finished episode.
             </li>
           </ol>
           <div class="tip">
-            This flow ships as the “short-drama storyboard” template: pick it in
+            This flow ships as the “Film pipeline” and “Film · single-shot polish” templates: pick either in
             <strong>One-Click Workflow</strong> and all of the above is generated for you — no manual
             wiring. See the <a href="guide-short-video.en.html">Short-Drama Guide</a> and the
             <a href="quickstart.en.html">Quickstart</a> for the full walkthrough.
@@ -374,7 +368,7 @@
             </a>
             <a class="entry-card" href="manual-workflow.en.html">
               <strong>§7–8 One-Click Workflow & node graph</strong>
-              <span>One-Click Workflow, episode pipeline, node graph, task queue and node types</span>
+              <span>One-Click Workflow, Film Workbench, node graph, task queue and node types</span>
             </a>
             <a class="entry-card" href="manual-production.en.html">
               <strong>§9–12 Script, timeline & director stage</strong>

@@ -74,7 +74,7 @@
             教程<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
           </button>
           <div class="nav-drop-menu">
-            <a href="guide-short-video.html"><strong>短剧教程</strong><span>分镜 · 拼图 · 审核 · 动态视频</span></a>
+            <a href="guide-short-video.html"><strong>短剧教程</strong><span>分镜 · 定妆 · 审核 · 动态视频</span></a>
             <a href="guide-video.html"><strong>视频教程</strong><span>自由画布与参考视频</span></a>
             <a href="guide-comfyui.html"><strong>ComfyUI 教程</strong><span>API 2 与 comfy-api-proxy</span></a>
             <a href="guide-newapi.html"><strong>NewAPI 教程</strong><span>自建中转网关接入</span></a>
@@ -155,7 +155,7 @@
               <a href="manual-workflow.html#ai-workflow">§7</a>）。
             </li>
             <li>
-              <strong>剧集流水线</strong>：打开短剧分镜 Agent 流程窗口，集中完成 9宫格、4宫格、导演审核与视频生成（见
+              <strong>影视工作台</strong>：在节点图中双击 <code>film.workbench</code> 节点进入全屏 Dive 界面，集中完成分镜拆解、导演审核、角色场景设定与批量拍摄（见
               <a href="manual-workflow.html#agent-pipeline">§7.5</a>）。
             </li>
             <li><strong>任务列表</strong>、<strong>执行日志</strong>：后台队列与模型调用日志。</li>
@@ -258,9 +258,9 @@
             你也可以在<a href="#marketplace">插件市场</a>的<strong>「技能」页签</strong>里放入自己的技能，让助手具备专属的工作方法。
           </p>
           <ul>
-            <li><strong>内置技能</strong>：分镜 / 动画（9 宫格分镜表、节拍拆解表、动态提示词表、4 宫格动态分镜表等）、
-              导演审核（分镜 / 节拍 / 动态提示词）、系统创作（剧本、图生提示词、图片 / 视频生成、声音、情绪、灯光、
-              多角度、扩图、重绘、抠图、高清放大、界面图、界面拆分、世界提取、节拍拆分、节拍单元生成、策划案、
+            <li><strong>内置技能</strong>：影视与分镜拆解（剧本拆镜、角色场景设定、镜头调度与运镜提示词）、
+              导演审核（叙事连贯性 / 视觉质检）、系统创作（剧本、图生提示词、图片 / 视频生成、声音、情绪、灯光、
+              多角度、扩图、重绘、抠图、高清放大、界面图、界面拆分、世界提取、策划案、
               肖像贴图、提示词优化、擦除）。程序自动管理，请勿手动修改。</li>
             <li><strong>自定义技能</strong>：在<strong>插件市场 → 技能</strong>页签里「打开目录」，把符合
               dsh SKILL.md 格式（frontmatter <code>name</code> / <code>description</code> + Markdown 正文）的
@@ -278,7 +278,7 @@
           </ul>
           <div class="tip">
             <strong>技能 vs 工具：</strong>技能是「职业手册」，工具是「手脚」。例如说
-            「用分镜技能把这段剧本拆成 9 宫格分镜表」——技能提供专业流程（节拍 → 机位 → 动态 → 提示词），
+            「用影视全流程把这段剧本拆成带角色设定与运镜的分镜表」——技能提供专业流程（拆镜 → 审核 → 定妆 → 拍摄），
             生成动作由工具执行。
           </div>
 

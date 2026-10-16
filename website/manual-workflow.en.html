@@ -21,7 +21,7 @@
     </script>
     <meta
       name="description"
-      content="Generate reusable host assets from templates or plain language with One-Click Workflow and run short-drama storyboards through the episode pipeline; then add and wire nodes, run the task queue and look up every node type and typical workflow in the node graph."
+      content="Generate reusable host assets from templates or plain language with One-Click Workflow and run short-drama / film pipelines through the 4-stage Film Workbench; then add and wire nodes, run the task queue and look up every node type and typical workflow in the node graph."
     />
     <title>One-Click Workflow & node graph · Manual — AIArtEngine</title>
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/manual-workflow.en.html" />
@@ -29,14 +29,14 @@
     <meta property="og:type" content="website" />
     <meta property="og:locale" content="en_US" />
     <meta property="og:title" content="One-Click Workflow & node graph · Manual — AIArtEngine" />
-    <meta property="og:description" content="Generate reusable host assets from templates or plain language with One-Click Workflow and run short-drama storyboards through the episode pipeline; then add and wire nodes, run the task queue and look up every node type and typical workflow in the node graph." />
+    <meta property="og:description" content="Generate reusable host assets from templates or plain language with One-Click Workflow and run short-drama / film pipelines through the 4-stage Film Workbench; then add and wire nodes, run the task queue and look up every node type and typical workflow in the node graph." />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/manual-workflow.en.html" />
     <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="One-Click Workflow & node graph · Manual — AIArtEngine" />
-    <meta name="twitter:description" content="Generate reusable host assets from templates or plain language with One-Click Workflow and run short-drama storyboards through the episode pipeline; then add and wire nodes, run the task queue and look up every node type and typical workflow in the node graph." />
+    <meta name="twitter:description" content="Generate reusable host assets from templates or plain language with One-Click Workflow and run short-drama / film pipelines through the 4-stage Film Workbench; then add and wire nodes, run the task queue and look up every node type and typical workflow in the node graph." />
     <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-workflow.html" />
     <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual-workflow.en.html" />
@@ -73,7 +73,7 @@
             Guides<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
           </button>
           <div class="nav-drop-menu">
-            <a href="guide-short-video.en.html"><strong>Short drama</strong><span>Storyboards, review, motion video</span></a>
+            <a href="guide-short-video.en.html"><strong>Short drama</strong><span>Breakdown, review, cast &amp; batch shoot</span></a>
             <a href="guide-video.en.html"><strong>Video</strong><span>Free canvas & reference video</span></a>
             <a href="guide-comfyui.en.html"><strong>ComfyUI</strong><span>API v2 and comfy-api-proxy</span></a>
             <a href="guide-newapi.en.html"><strong>NewAPI</strong><span>Self-hosted relay gateways</span></a>
@@ -120,7 +120,7 @@
         <ol>
           <li class="toc-group">Core features</li>
           <li><a href="#ai-workflow">7. One-Click Workflow</a></li>
-          <li><a href="#agent-pipeline">7.5 Episode pipeline · Agent window</a></li>
+          <li><a href="#agent-pipeline">7.5 Film Workbench · 4-stage pipeline</a></li>
           <li><a href="#graph">8. Node graph</a></li>
 
           <li class="toc-group">Manual chapters</li>
@@ -137,7 +137,7 @@
           <p class="eyebrow">Manual · Workflow</p>
           <h1>One-Click Workflow & node graph</h1>
           <p class="lede">
-            Generate reusable host assets from templates or plain language with One-Click Workflow and run short-drama storyboards through the episode pipeline; then add and wire nodes, run the task queue and look up every node type and typical workflow in the node graph.
+            Generate reusable host assets from templates or plain language with One-Click Workflow and run short-drama / film pipelines through the 4-stage Film Workbench; then add and wire nodes, run the task queue and look up every node type and typical workflow in the node graph.
           </p>
         </header>
 
@@ -164,11 +164,11 @@
           <ul>
             <li>
               <strong>Preset templates</strong> (covering the main capability nodes by industry): game user
-              acquisition, game UI, character design, storyboard-to-film, product ads,
+              acquisition, game UI, batch icons, character design, storyboard-to-film, product ads,
               <strong>e-commerce livestream</strong>, <strong>game 3D assets</strong>,
               <strong>world model</strong>, <strong>comic publishing</strong>,
               <strong>knowledge talking-head</strong>,
-              <strong>3D blockout previz</strong>, short-drama storyboard, custom, and more. Presets with a
+              <strong>3D director previz</strong>, <strong>Film pipeline</strong>, <strong>Film · single-shot polish</strong>, <strong>2D frame anim</strong>, custom, and more. Presets with a
               fixed topology can be previewed directly with “Preview template”. “Game UI” builds a full chain of
               planning document → UI screen breakdown → UI screen generation, where UI generation can dive into
               the inner graph to render screen by screen, with a global style reference keeping the look
@@ -182,8 +182,8 @@
               is the strictly typed <code>spatialWorld</code>, so it has to go through the export node to become a
               model before it can feed the stage); “Comic publishing” chains storyboard images ×3 → comic
               page (panels / balloons / transparent-background export); “Knowledge talking-head” chains script →
-              voice-over + talking-head video → lip sync; “3D blockout previz” chains panorama reference →
-              director stage AI blockout → blocking shots → previz film. Each template's note node documents its
+              voice-over + talking-head video → lip sync; “3D director previz” chains panorama reference →
+              director stage blocking → blocking shots → previz film; <strong>“Film pipeline”</strong> and <strong>“Film · single-shot polish”</strong> drive short-drama / animated-comic production through the 4-in-1 <strong>Film Workbench (<code>film.workbench</code>)</strong>. Each template's note node documents its
               step-by-step usage.
             </li>
             <li>
@@ -226,52 +226,42 @@
             </li>
           </ul>
 
-          <h3 id="agent-pipeline">7.5 Episode pipeline: the Agent window</h3>
+          <h3 id="agent-pipeline">7.5 Film Workbench: 4-stage closed-loop short-drama &amp; film pipeline</h3>
           <figure class="shot">
             <img
               src="assets/banner/storyboard.webp"
-              alt="Episode pipeline window: beat breakdown, grid storyboards and director review"
+              alt="Film Workbench: Storyboard Breakdown, Director Review, Character & Scene Design and Batch Shoot"
               width="1120"
               height="760"
               loading="lazy"
             />
             <figcaption>
-              <strong>Episode pipeline</strong>: beat breakdown, 9-grid / 4-grid storyboards and director
-              review.
+              <strong>Film Workbench (<code>film.workbench</code>)</strong>: 4-in-1 closed loop for breakdown, review, cast &amp; scene design and batch shooting.
             </figcaption>
           </figure>
           <p>
-            After creating a host asset from the “Short-drama storyboard (Agent pipeline)” template, click
-            <strong>“Episode Pipeline”</strong> in the top toolbar to open a dedicated flow window and finish
-            storyboards, tiling, review and video generation in one place. See the
+            After creating a host asset from the <strong>“Film pipeline” (<code>short-drama</code>)</strong> or <strong>“Film · single-shot polish” (<code>short-drama9</code>)</strong> template, double-click the
+            <strong>“Film Workbench” (<code>film.workbench</code>)</strong> node inside the graph to enter the full-screen Dive workbench and run the entire script-to-video loop in one place. See the
             <a href="guide-short-video.en.html">Short-Drama Guide</a> for the full walkthrough.
           </p>
           <ul>
             <li>
-              <strong>Three columns</strong>: beat breakdown (left), 9-grid storyboard table (center), 4-grid
-              detail (right); drag the dividers to resize each column.
+              <strong>Four stage tabs &amp; one-click full pipeline</strong>: switch across <strong>① Storyboard Breakdown / ② Director Review / ③ Character &amp; Scene Design / ④ Batch Shoot</strong> at the top; click “⚡ Run Full Pipeline” at the top-right to execute all four stages end-to-end, or run the current stage individually.
             </li>
             <li>
-              <strong>9-grid tiling</strong>: click the grid icon to generate the entire 3×3 sheet at once and
-              split out all 9 anchor images; regeneration and director review are supported.
+              <strong>① Storyboard Breakdown (<code>breakdown</code>)</strong>: shot count follows the story automatically (<code>filmTargetShots = 0</code>) or uses a fixed target; per-shot duration presets include <code>Auto / 4s / 8s / 10s / 15s</code>; produces structured shot cards plus a character / location / prop entity table, with inline editing and <strong>shot locking</strong> (locked shots are never overwritten by re-breakdown or review).
             </li>
             <li>
-              <strong>4-grid</strong>: click the 2×2 grid icon to generate the current group's sheet; the right
-              side shows the motion prompt and lets you generate / preview the current cell's motion video.
+              <strong>② Director Review (<code>review</code>)</strong>: checks every shot against the script for narrative continuity and character consistency, automatically rewriting and re-reviewing failed shots (up to <code>filmReviewMaxRounds</code>) while skipping locked shots.
             </li>
             <li>
-              <strong>Director review</strong>: the review button lights up only after that stage's
-              “Regenerate” has written results back. Review defaults to PASS and only FAILs on blocking issues;
-              FAIL reasons are written back and appended to that stage's re-run.
+              <strong>③ Character &amp; Scene Design (<code>cast</code>)</strong>: batch-generates character turnaround and location environment anchor sheets from the entity table; supports per-card “▶ Generate / ↻ Rerun” and automatic fingerprint caching.
             </li>
             <li>
-              <strong>Cascading invalidation</strong>: after a stage is regenerated, its downstream tiling /
-              extraction / upscale / video are invalidated and show “Not generated”; clicking generate again
-              re-runs the whole chain from the latest text, so new text never pairs with old images.
+              <strong>④ Batch Shoot (<code>render</code>)</strong>: automatically injects appearing cast &amp; location sheets as <code>@1</code>, <code>@2</code> references to generate keyframes (with same-scene continuity and <strong>Vision QC auto-reshoots</strong>) → renders image-to-video clips from keyframes (with video duration set to <strong>“Auto”</strong> to follow each shot's breakdown duration and map to supported model tiers; supports previewing “Keyframes only” before switching to “Keyframes + Video” for incremental video rendering, or per-card reruns).
             </li>
             <li>
-              <strong>Node inspector</strong>: with a “grid select / motion cell select” node selected, edit the
-              cell (1~9) or group × cell (1~9 × 1~4) parameters on the right.
+              <strong>Single-shot polish (<code>film.shot</code>)</strong>: to polish a specific shot manually, connect a “Shot” node to the Film Workbench's <code>out</code> and <code>out-cast</code> ports, select the shot via <code>filmShotRef</code>, and feed its keyframe prompt, appearing cast sheets and motion prompt into dedicated image generation, 10-in-1 image processing (<code>image.process</code>) and video generation nodes.
             </li>
           </ul>
         </section>
@@ -821,16 +811,16 @@
             <li>
               <strong>Film Workbench</strong> (<code>film.workbench</code>): consolidates Storyboard Breakdown, Director Review, Character &amp; Scene Design, and Batch Shoot into a
               <strong>single unified Film Workbench node</strong>. Double-click the node (or click “Open Film Workbench” in the Inspector) to enter the full-screen Dive workbench that chains all four stages in one view:
-              <strong>① Storyboard Breakdown</strong> (<code>breakdown</code> — splits a script into shot size, camera move, duration, acting, dialogue and cast/scene lists) →
-              <strong>② Director Review</strong> (<code>review</code> — AI director scores each shot and suggests revisions that can be applied in one click) →
-              <strong>③ Character &amp; Scene Design</strong> (<code>cast</code> — generates turnaround and environment anchor sheets for extracted characters, scenes and props) →
-              <strong>④ Batch Shoot</strong> (<code>render</code> — automatically matches each shot with its character/scene anchor sheets and batch-renders keyframes and motion videos).
-              In the Inspector you can switch the “Execution scope” (run current stage only vs. run the full 4-stage pipeline) and configure the text, image and video models and parameters independently;
-              <strong>video duration supports “Auto (follow per-shot breakdown duration)”</strong> (reads each shot's <code>duration</code> seconds from the breakdown, clamped to 2–15 s with a 5 s fallback) as well as fixed 4 / 5 / 6 / 8 / 10 s tiers.
-              Outputs include <code>out-videos</code> (all shot videos), <code>out-keyframes</code> (all keyframes), <code>out-cast</code> (cast &amp; scene sheets), <code>out-shots</code> (structured shot list) and <code>out</code> (primary video).
+              <strong>① Storyboard Breakdown</strong> (<code>breakdown</code> — splits a script into shot size, camera move, duration, acting, dialogue and character/location/prop entity lists, with shot locking) →
+              <strong>② Director Review</strong> (<code>review</code> — AI director checks each shot against the script and automatically rewrites &amp; re-reviews shots that need work) →
+              <strong>③ Character &amp; Scene Design</strong> (<code>cast</code> — generates turnaround and environment anchor sheets for extracted characters, locations and props, with single-card reruns and fingerprint caching) →
+              <strong>④ Batch Shoot</strong> (<code>render</code> — automatically binds appearing character/location sheets as <code>@1</code>/<code>@2</code> references for each shot, batch-renders keyframes with Vision QC auto-reshoots, and generates image-to-video clips from keyframes).
+              Both the Inspector and the Dive top bar let you switch the execution scope (run current stage only vs. <code>⚡ Run Full Pipeline</code> across all four stages) and configure text, image and video models and parameters independently;
+              <strong>video duration supports “Auto (follow per-shot breakdown duration)”</strong> (reads each shot's <code>duration</code> seconds from the breakdown and maps it to a tier supported by the video model) as well as fixed duration tiers.
+              Input ports are <code>in</code> (script text) and <code>in-image</code> (optional reference images); output ports include <code>out</code> (<code>storyboard</code> structured document), <code>out-cast</code> (<code>filmCast</code> library), <code>out-sheets</code> (design sheets), <code>out-images</code> (all keyframes), <code>out-videos</code> (all shot videos) and <code>out-text</code> (readable shot list / review report).
             </li>
             <li>
-              <strong>Shot</strong> (<code>film.shot</code>): single-shot override node. Connect one or more “Shot” nodes into the Film Workbench's <code>in-shots</code> port to override or append a specific shot's framing, camera angle, movement, duration, transition or custom reference/tail images.
+              <strong>Shot</strong> (<code>film.shot</code>): single-shot extraction and polish node. Connect its inputs to the Film Workbench's <code>out</code> (storyboard) and <code>out-cast</code> (cast library), specify a shot number (such as <code>"1"</code>) or shot ID (such as <code>"S01-02"</code>) in <code>filmShotRef</code>, and it outputs that shot's <strong>keyframe prompt</strong> (<code>out</code>, with built-in <code>@1</code>/<code>@2</code> reference mapping), <strong>appearing cast &amp; location sheets</strong> (<code>out-refs</code>) and <strong>motion prompt</strong> (<code>out-motion</code>) to drive downstream “Image generation” → (optional “Image processing”) → “Video generation” nodes for single-shot polishing.
             </li>
           </ul>
 
@@ -884,7 +874,7 @@
               prompt” → run the generation node → connect it to “script output”.
             </li>
             <li>
-              <strong>Film pipeline</strong>: script → “Film Workbench” (chains Storyboard Breakdown, Director Review, Character &amp; Scene Design and Batch Shoot in a single node; double-click to review and refine inside the Film Workbench Dive view, or wire “Shot” nodes for single-shot overrides) → “Final timeline”; for multi-grid batch episodes use the One-Click Workflow “short-drama storyboard (Agent pipeline)” template.
+              <strong>Short-drama / film pipeline</strong>: script → “Film Workbench” (chains Storyboard Breakdown, Director Review, Character &amp; Scene Design and Batch Shoot in a single node; double-click to review and refine inside the full-screen workbench, matching the “Film pipeline” template); for single-shot manual polish, wire “Film Workbench” → “Shot” → “Keyframe” → “Shot clip” (matching the “Film · single-shot polish” template).
             </li>
             <li>
               <strong>Image / video &amp; 10-in-1 image processing</strong>: connect upstream references into the generation port → reference

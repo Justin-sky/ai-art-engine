@@ -74,7 +74,7 @@
             教程<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
           </button>
           <div class="nav-drop-menu">
-            <a href="guide-short-video.html"><strong>短剧教程</strong><span>分镜 · 拼图 · 审核 · 动态视频</span></a>
+            <a href="guide-short-video.html"><strong>短剧教程</strong><span>分镜 · 定妆 · 审核 · 动态视频</span></a>
             <a href="guide-video.html"><strong>视频教程</strong><span>自由画布与参考视频</span></a>
             <a href="guide-comfyui.html"><strong>ComfyUI 教程</strong><span>API 2 与 comfy-api-proxy</span></a>
             <a href="guide-newapi.html"><strong>NewAPI 教程</strong><span>自建中转网关接入</span></a>
@@ -357,12 +357,11 @@
               <p>这是纯文生图最容易踩的坑，靠<strong>参考而非反复描述</strong>来解决：</p>
               <ol>
                 <li>
-                  使用<strong>锚点图</strong>：先从 9 宫格 / 4 宫格拼图中按格拆出参考图，再作为后续生成的参考输入，
-                  可锁住长相、服装与场景。
+                  使用<strong>角色场景设定锚点图</strong>：在「影视工作台」的<strong>「③ 角色场景设定」</strong>中先为全片登场人物与环境生成定妆设定图（或上传手动参考图），批量拍摄与「镜头」节点会自动将出场角色/场景绑定为 <code>@1</code>、<code>@2</code> 参考输入，锁住长相、服装与场景。
                 </li>
                 <li>把角色、场景、道具登记为<strong>世界元素</strong>，让各场共用同一份设定，避免每次重新描述。</li>
                 <li>检查中途是否有节点<strong>更换了模型或大幅改写提示词</strong>，风格漂移往往来自这里。</li>
-                <li>短剧流程中善用 <strong>review1~review4</strong> 审核节点，及时打回不达标结果。</li>
+                <li>短剧流程中善用「影视工作台」的<strong>「② 导演审核」</strong>与<strong>视觉质检自动重拍</strong>（<code>enableVisionQc</code>），及时修正不达标镜头。</li>
               </ol>
               <p>详见 <a href="manual.html#concepts">§2 核心概念</a> 与 <a href="guide-short-video.html">短剧制作教程</a>。</p>
             </div>
@@ -372,8 +371,8 @@
             <summary>图片模糊、分辨率不够</summary>
             <div class="trouble-body">
               <ol>
-                <li>在生成链末端接入<strong>高清放大</strong>节点；短剧模板已内置该步骤。</li>
-                <li>确认生成节点参数中的分辨率设置，部分模型需显式指定尺寸。</li>
+                <li>在生成链末端接入<strong>图像处理</strong>节点（切换为「高清放大」操作）或独立放大步骤。</li>
+                <li>确认生成节点参数中的分辨率设置（如 <code>2K</code> / <code>4K</code>），部分模型需显式指定尺寸。</li>
                 <li>避免过度压缩：导出时留意缩放比例与导出格式。</li>
               </ol>
             </div>

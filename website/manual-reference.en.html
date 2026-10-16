@@ -410,9 +410,11 @@
               </p>
               <ol>
                 <li>
-                  Use <strong>anchor images</strong>: split reference images out of a 9-grid / 4-grid sheet
-                  cell by cell, then feed them in as references for later generations to lock face, outfit and
-                  setting.
+                  Use <strong>Character &amp; Scene Design anchor sheets</strong>: generate turnaround and
+                  environment design sheets (or upload manual reference images) in stage
+                  <strong>③ Character &amp; Scene Design</strong> of the Film Workbench. Batch Shoot and the
+                  downstream Shot node automatically bind each shot's appearing characters and locations as
+                  <code>@1</code>, <code>@2</code> reference inputs to lock face, outfit and setting.
                 </li>
                 <li>
                   Register characters, scenes and props as <strong>world elements</strong> so every shot
@@ -423,8 +425,9 @@
                   prompt</strong> — style drift usually comes from there.
                 </li>
                 <li>
-                  In the short-drama flow, make good use of the <strong>review1~review4</strong> review nodes
-                  to send sub-par results back in time.
+                  In the short-drama flow, make good use of stage <strong>② Director Review</strong> and
+                  <strong>Vision QC auto-reshoots</strong> (<code>enableVisionQc</code>) inside the Film
+                  Workbench to catch and fix off-model shots early.
                 </li>
               </ol>
               <p>
@@ -439,11 +442,12 @@
             <div class="trouble-body">
               <ol>
                 <li>
-                  Append an <strong>HD upscale</strong> node at the end of the generation chain; the
-                  short-drama template already includes that step.
+                  Append an <strong>Image Process</strong> node (set to “HD Upscale”) at the end of the
+                  generation chain.
                 </li>
                 <li>
-                  Check the resolution setting on the generation node — some models need an explicit size.
+                  Check the resolution setting on the generation node (such as <code>2K</code> / <code>4K</code>)
+                  — some models need an explicit size.
                 </li>
                 <li>
                   Avoid over-compression: watch the scale factor and export format when exporting.
