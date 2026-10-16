@@ -1227,7 +1227,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
-      { id: 'in', direction: 'in', dataType: GraphPortType.image, multiple: false, label: 'In' },
+      { id: 'in', direction: 'in', dataType: GraphPortType.image, multiple: true, label: 'In' },
       ...galleryOutPorts(GraphPortType.image)
     ],
     defaultParams: () => ({

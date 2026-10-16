@@ -55,7 +55,7 @@ const castIn: GraphPortDef = {
   id: 'in-cast',
   direction: 'in',
   dataType: GraphPortType.filmCast,
-  multiple: false,
+  multiple: true,
   label: 'Cast',
   labelKey: 'graph.port.filmCastIn'
 }
@@ -78,6 +78,7 @@ export const FILM_NODE_TYPES: NodeTypeDefinition[] = [
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
       { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'Script' },
+      castIn,
       {
         id: 'in-image',
         direction: 'in',
@@ -158,6 +159,7 @@ export const FILM_NODE_TYPES: NodeTypeDefinition[] = [
       filmRenderContinuity: true,
       filmRenderQc: false,
       filmRenderMaxRetries: 1,
+      filmRenderConcurrency: 3,
       filmVideoModel: '',
       filmVideoProviderInstanceId: '',
       filmQcModel: '',
@@ -182,6 +184,7 @@ export const FILM_NODE_TYPES: NodeTypeDefinition[] = [
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
       { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'Script' },
+      castIn,
       storyboardOut,
       {
         id: 'out-text',
@@ -265,6 +268,7 @@ export const FILM_NODE_TYPES: NodeTypeDefinition[] = [
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
       storyboardIn,
+      castIn,
       {
         id: 'in-image',
         direction: 'in',
@@ -299,6 +303,7 @@ export const FILM_NODE_TYPES: NodeTypeDefinition[] = [
       filmCast: '',
       filmCastKinds: 'character,location',
       filmForce: false,
+      filmRenderConcurrency: 3,
       mediaOutputDir: ''
     }),
     addable: false,
@@ -398,6 +403,7 @@ export const FILM_NODE_TYPES: NodeTypeDefinition[] = [
       filmRenderContinuity: true,
       filmRenderQc: false,
       filmRenderMaxRetries: 1,
+      filmRenderConcurrency: 3,
       filmForce: false,
       filmVideoModel: '',
       filmVideoProviderInstanceId: '',

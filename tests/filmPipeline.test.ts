@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   applyFilmReview,
+  buildFilmContinuityChains,
   composeFilmShotImagePrompt,
   composeFilmShotVideoPrompt,
   createNodeFromType,
@@ -11,6 +12,8 @@ import {
   executeFilmReviewNode,
   executeFilmShotNode,
   executeFilmWorkbenchNode,
+  filmBaseEntityName,
+  filmCastValue,
   filmStoryboardValue,
   findPrevSameSceneShot,
   getAiWorkflowPresetPlan,
@@ -19,6 +22,7 @@ import {
   listAddableNodeTypes,
   matchFilmCastForShot,
   materializeGraphPlan,
+  mergeFilmCasts,
   mergeFilmStoryboards,
   parseFilmCast,
   parseFilmRenderCache,
@@ -609,5 +613,219 @@ describe('film workbench dive & soft resolve wiring', () => {
     const doc = sampleStoryboard()
     expect(findPrevSameSceneShot(doc, doc.shots[0])).toBeNull()
     expect(findPrevSameSceneShot(doc, doc.shots[1])?.id).toBe('S01-01')
+  })
+
+  it('supports cross-episode Series Bible in-cast reuse and Character#Outfit variant inheritance', async () => {
+    expect(filmBaseEntityName('林夏#晚礼服')).toBe('林夏')
+    expect(filmBaseEntityName('林夏·战损')).toBe('林夏')
+    expect(filmBaseEntityName('林夏')).toBeNull()
+
+    const seriesBibleCast: FilmCast = {
+      schema: 'film.cast/v1',
+      style: '冷色写实电影感',
+      entries: [
+        {
+          id: 'char-lin',
+          kind: 'character',
+          name: '林夏',
+          description: '二十多岁女性，短发，冷峻五官',
+          imageRelativePath: 'Bible/lin-base.png',
+          locked: true
+        },
+        {
+          id: 'loc-corridor',
+          kind: 'location',
+          name: '旧公寓走廊',
+          description: '昏黄壁灯，潮湿墙面',
+          imageRelativePath: 'Bible/corridor.png'
+        }
+      ]
+    }
+
+    expect(
+      mergeFilmCasts(seriesBibleCast, {
+        schema: 'film.cast/v1',
+        style: '',
+        entries: [{ id: 'char-zhou', kind: 'character', name: '老周', description: '中年侦探' }]
+      })?.entries.map((e) => e.name)
+    ).toEqual(['林夏', '旧公寓走廊', '老周'])
+
+    // 1) Breakdown 注入全剧设定库指令，并自动补全同集实体描述
+    const ep2Breakdown = createNodeFromType('film.breakdown', { x: 0, y: 0 })
+    const generateText = vi.fn().mockResolvedValue({
+      text: JSON.stringify({
+        title: '第二集：晚宴潜入',
+        style: '冷色写实电影感',
+        entities: [
+          { kind: 'character', name: '林夏', description: '' },
+          { kind: 'character', name: '林夏#晚礼服', description: '换上深蓝丝绒露背晚礼服，盘发' },
+          { kind: 'location', name: '旧公寓走廊', description: '' }
+        ],
+        shots: [
+          {
+            id: 'S01-01',
+            location: '旧公寓走廊',
+            characters: ['林夏#晚礼服'],
+            action: '林夏身穿晚礼服走过走廊'
+          }
+        ]
+      }),
+      model: 'txt'
+    })
+    const bdOut = await executeFilmBreakdownNode(
+      ctxFor(
+        ep2Breakdown,
+        {
+          in: [{ kind: 'text', text: '第二集剧本：林夏换上晚礼服。' }],
+          'in-cast': [filmCastValue(seriesBibleCast)]
+        },
+        { generateText }
+      )
+    )
+    expect(generateText.mock.calls[0][0].prompt).toContain('全剧既有设定名录')
+    expect(generateText.mock.calls[0][0].prompt).toContain('林夏')
+    const ep2Doc = (bdOut.out as { doc: FilmStoryboard }).doc
+    expect(ep2Doc.entities.find((e) => e.name === '林夏')?.description).toBe(
+      '二十多岁女性，短发，冷峻五官'
+    )
+
+    // 当变体尚未单独出图时，matchFilmCastForShot 自动回退主角色设定图
+    const fallbackRefs = matchFilmCastForShot(seriesBibleCast, ep2Doc.shots[0])
+    expect(fallbackRefs.map((r) => r.imageRelativePath)).toEqual([
+      'Bible/lin-base.png',
+      'Bible/corridor.png'
+    ])
+
+    // 2) Cast 节点跨集复用主角色与旧地点设定图（不重画），仅为 #晚礼服 变体生成新设定图且自动带入主角色图作为 @1 参考
+    const ep2CastNode = createNodeFromType('film.cast', { x: 0, y: 0 })
+    const generateImage = vi.fn().mockResolvedValue({
+      images: ['data:image/png;base64,VkFSSUFOVA=='],
+      model: 'img'
+    })
+    const saveRunMedia = vi.fn(async ({ key }: { key: string }) => `Ep2/${key}.png`)
+    const resolveImageUrls = vi.fn(
+      async (items: Array<{ dataUrl?: string; relativePath?: string }>) =>
+        items.map((item) => item.dataUrl || `file://${item.relativePath}`)
+    )
+
+    const castOut = await executeFilmCastNode(
+      ctxFor(
+        ep2CastNode,
+        {
+          in: [bdOut.out],
+          'in-cast': [filmCastValue(seriesBibleCast)]
+        },
+        { generateImage, saveRunMedia, resolveImageUrls }
+      )
+    )
+    // 林夏与旧公寓走廊直接复用 Bible，只有 林夏#晚礼服 调了 1 次生图
+    expect(generateImage).toHaveBeenCalledTimes(1)
+    expect(generateImage.mock.calls[0][0].inputReferences).toEqual(['file://Bible/lin-base.png'])
+    expect(generateImage.mock.calls[0][0].prompt).toContain('@1')
+    expect(generateImage.mock.calls[0][0].prompt).toContain('林夏')
+
+    const mergedCast = (castOut.out as { doc: FilmCast }).doc
+    expect(mergedCast.entries).toHaveLength(3)
+    expect(mergedCast.entries.find((e) => e.name === '林夏')?.imageRelativePath).toBe(
+      'Bible/lin-base.png'
+    )
+    expect(mergedCast.entries.find((e) => e.name === '林夏#晚礼服')?.imageRelativePath).toMatch(
+      /^Ep2\//
+    )
+  })
+
+  it('partitions shots into scene continuity chains and renders independent scenes concurrently', async () => {
+    const multiSceneDoc = parseFilmStoryboard({
+      title: '双线并发测试',
+      style: '写实',
+      scenes: [
+        { id: 'scene-1', heading: '走廊', location: '旧公寓走廊' },
+        { id: 'scene-2', heading: '天台', location: '大厦天台' }
+      ],
+      shots: [
+        {
+          id: 'S01-01',
+          sceneId: 'scene-1',
+          location: '旧公寓走廊',
+          characters: ['林夏'],
+          action: '走廊镜头1',
+          imagePrompt: '走廊镜头1'
+        },
+        {
+          id: 'S01-02',
+          sceneId: 'scene-1',
+          location: '旧公寓走廊',
+          characters: ['林夏'],
+          action: '走廊镜头2',
+          imagePrompt: '走廊镜头2'
+        },
+        {
+          id: 'S02-01',
+          sceneId: 'scene-2',
+          location: '大厦天台',
+          characters: ['老周'],
+          action: '天台镜头1',
+          imagePrompt: '天台镜头1'
+        },
+        {
+          id: 'S02-02',
+          sceneId: 'scene-2',
+          location: '大厦天台',
+          characters: ['老周'],
+          action: '天台镜头2',
+          imagePrompt: '天台镜头2'
+        }
+      ]
+    })!
+
+    const chains = buildFilmContinuityChains(multiSceneDoc, [0, 1, 2, 3], true)
+    expect(chains).toEqual([
+      [0, 1],
+      [2, 3]
+    ])
+    expect(buildFilmContinuityChains(multiSceneDoc, [0, 1, 2, 3], false)).toEqual([
+      [0],
+      [1],
+      [2],
+      [3]
+    ])
+
+    let activeImages = 0
+    let maxConcurrentImages = 0
+    const generateImage = vi.fn(async () => {
+      activeImages += 1
+      maxConcurrentImages = Math.max(maxConcurrentImages, activeImages)
+      await new Promise((r) => setTimeout(r, 25))
+      activeImages -= 1
+      return { images: ['data:image/png;base64,S0Y='], model: 'img' }
+    })
+    const saveRunMedia = vi.fn(async ({ key }: { key: string }) => `Film/${key}.png`)
+    const resolveImageUrls = vi.fn(
+      async (items: Array<{ dataUrl?: string; relativePath?: string }>) =>
+        items.map((item) => item.dataUrl || `file://${item.relativePath}`)
+    )
+
+    const renderNode = createNodeFromType(
+      'film.render',
+      { x: 0, y: 0 },
+      { params: { filmRenderMode: 'keyframe', filmRenderConcurrency: 3 } }
+    )
+    const out = await executeFilmRenderNode(
+      ctxFor(
+        renderNode,
+        { in: [filmStoryboardValue(multiSceneDoc)] },
+        { generateImage, saveRunMedia, resolveImageUrls }
+      )
+    )
+    // 两个场次的第 1 镜（S01-01 与 S02-01）并行启动，而同场第 2 镜严格等待第 1 镜关键帧完成
+    expect(maxConcurrentImages).toBeGreaterThanOrEqual(2)
+    const images = (out['out-images'] as { items: Array<{ title?: string }> }).items
+    expect(images.map((item) => item.title)).toEqual(['S01-01', 'S01-02', 'S02-01', 'S02-02'])
+    expect(Object.keys(parseFilmRenderCache(renderNode.params.filmRenders))).toEqual([
+      'S01-01',
+      'S01-02',
+      'S02-01',
+      'S02-02'
+    ])
   })
 })

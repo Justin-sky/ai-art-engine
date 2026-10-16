@@ -31,6 +31,7 @@ const EXEMPT_FILES = new Set([
   'src/shared/graph/execute/film.ts',
   'src/shared/graph/mediaReviewPrompts.ts',
   'src/shared/graph/instructionPresets.ts',
+  'src/shared/graph/adVariantMatrix.ts',
   'src/shared/graph/systemPromptSchemes.ts',
   'src/shared/graph/emotionPad.ts',
   'src/renderer/src/features/director/aiPosePresets.ts',

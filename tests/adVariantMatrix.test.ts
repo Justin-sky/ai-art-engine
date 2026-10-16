@@ -4,10 +4,14 @@ import {
   applyAdVariantOutputRefs,
   buildAdVariantCellPrompt,
   expandAdVariantMatrix,
+  getAdVariantCellActiveRef,
+  getAdVariantCellEffectivePrompt,
+  mergeExpandedAdVariantCells,
   normalizeAdVariantMatrix,
   normalizeAdVariantVerdict,
   readAdVariantMatrixFromGenParams,
   readAdVariantMatrixFromNode,
+  resolveAdVariantDownstreamPaths,
   withAdVariantCellVerdict,
   withAdVariantMatrix
 } from '../src/shared/graph'
@@ -27,6 +31,16 @@ describe('adVariantMatrix', () => {
     })
     expect(cells[3].combo).toEqual({ angle: '侧面', style: '高级' })
     expect(cells[0].status).toBe('unreviewed')
+  })
+
+  it('includes sellingPoints and ctaText in expanded prompts when provided', () => {
+    const cells = expandAdVariantMatrix('一瓶精华液', dimensions, {
+      sellingPoints: '72小时长效保湿',
+      ctaText: '买一赠一'
+    })
+    expect(cells[0].prompt).toContain('一瓶精华液')
+    expect(cells[0].prompt).toContain('核心卖点：72小时长效保湿')
+    expect(cells[0].prompt).toContain('视觉钩子/CTA：买一赠一')
   })
 
   it('ignores dimensions with no values', () => {
@@ -105,7 +119,7 @@ describe('adVariantMatrix', () => {
     expect(readAdVariantMatrixFromNode({ adVariantMatrix: null }).cells).toHaveLength(0)
   })
 
-  it('backfills outputRefs by cell order, appending and skipping empties', () => {
+  it('backfills outputRefs by cell order, appending, skipping empties, and pointing activeOutputIndex to latest', () => {
     const cells = expandAdVariantMatrix('产品', dimensions).map((c, i) =>
       i === 0 ? { ...c, outputRefs: ['已有'] } : c
     )
@@ -115,9 +129,52 @@ describe('adVariantMatrix', () => {
     )
     const result = applyAdVariantOutputRefs(cells, cellIds, paths)
     expect(result[0].outputRefs).toEqual(['已有', 'out/' + cells[0].id + '.png'])
+    expect(result[0].activeOutputIndex).toBe(1)
+    expect(getAdVariantCellActiveRef(result[0])).toBe('out/' + cells[0].id + '.png')
     expect(result[1].outputRefs).toEqual(['out/' + cells[1].id + '.png'])
+    expect(result[1].activeOutputIndex).toBe(0)
     expect(result[2].outputRefs).toHaveLength(1)
     expect(result[3].outputRefs).toEqual([])
+  })
+
+  it('merges expanded cells while preserving per-cell state', () => {
+    const prev = expandAdVariantMatrix('旧产品', dimensions).map((c, i) =>
+      i === 0
+        ? {
+            ...c,
+            outputRefs: ['v1.png', 'v2.png'],
+            activeOutputIndex: 0,
+            verdict: 'selected' as const,
+            customPrompt: '手动覆写提示词',
+            locked: true,
+            note: 'CTR最高'
+          }
+        : c
+    )
+    const nextExpanded = expandAdVariantMatrix('新产品', dimensions)
+    const merged = mergeExpandedAdVariantCells(prev, nextExpanded)
+    expect(merged[0].prompt).toContain('新产品')
+    expect(merged[0].outputRefs).toEqual(['v1.png', 'v2.png'])
+    expect(merged[0].activeOutputIndex).toBe(0)
+    expect(getAdVariantCellActiveRef(merged[0])).toBe('v1.png')
+    expect(getAdVariantCellEffectivePrompt(merged[0])).toBe('手动覆写提示词')
+    expect(merged[0].locked).toBe(true)
+    expect(merged[0].note).toBe('CTR最高')
+  })
+
+  it('resolves downstream paths respecting selectedOnly filter and verdicts', () => {
+    const cells = expandAdVariantMatrix('产品', dimensions).map((c, i) => ({
+      ...c,
+      outputRefs: [`img-${i}.png`],
+      verdict: i === 0 ? ('rejected' as const) : i === 2 ? ('selected' as const) : undefined
+    }))
+    const allMode = resolveAdVariantDownstreamPaths(cells, 'all')
+    expect(allMode.primaryPath).toBe('img-2.png')
+    expect(allMode.allPaths).toEqual(['img-1.png', 'img-2.png', 'img-3.png'])
+
+    const selectedMode = resolveAdVariantDownstreamPaths(cells, 'selectedOnly')
+    expect(selectedMode.primaryPath).toBe('img-2.png')
+    expect(selectedMode.allPaths).toEqual(['img-2.png'])
   })
 
   it('normalizes verdict values to selected/rejected/undefined', () => {

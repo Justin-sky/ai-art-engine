@@ -216,6 +216,16 @@
               {{ t(`graph.inspector.film.kind.${castKind}`) }}
             </label>
           </div>
+          <label class="inline">
+            {{ t('graph.inspector.film.concurrency') }}
+            <input
+              type="number"
+              min="1"
+              max="8"
+              :value="params.filmRenderConcurrency ?? 3"
+              @change="patchNumber('filmRenderConcurrency', $event, 1, 8)"
+            />
+          </label>
           <label class="check">
             <input
               type="checkbox"
@@ -291,6 +301,16 @@
               />
             </label>
           </div>
+          <label class="inline">
+            {{ t('graph.inspector.film.concurrency') }}
+            <input
+              type="number"
+              min="1"
+              max="8"
+              :value="params.filmRenderConcurrency ?? 3"
+              @change="patchNumber('filmRenderConcurrency', $event, 1, 8)"
+            />
+          </label>
           <label class="check">
             <input
               type="checkbox"
@@ -1135,6 +1155,7 @@ import {
   composeFilmShotImagePrompt,
   composeFilmShotVideoPrompt,
   deriveFilmCast,
+  filmBaseEntityName,
   filmCastEntryImage,
   filmNameKey,
   filmVideoParamsToNodePatch,
@@ -1143,6 +1164,7 @@ import {
   isFilmNodeTypeId,
   isFilmShotLocked,
   matchFilmCastForShot,
+  mergeFilmCasts,
   parseFilmCast,
   parseFilmRenderCache,
   parseFilmStoryboard,
@@ -1536,6 +1558,7 @@ function findUpstreamStoryboard(startNodeId: string): FilmStoryboard | null {
 function findUpstreamCast(startNodeId: string): FilmCast | null {
   const visited = new Set<string>()
   const queue = [startNodeId]
+  const found: FilmCast[] = []
   while (queue.length) {
     const cur = queue.shift()!
     if (visited.has(cur)) continue
@@ -1545,11 +1568,11 @@ function findUpstreamCast(startNodeId: string): FilmCast | null {
       const src = graphEditorHosts.getNode(props.hostId, edge.sourceNodeId)
       if (!src) continue
       const parsed = parseFilmCast(src.params.filmCast ?? '')
-      if (parsed?.entries?.length) return parsed
+      if (parsed?.entries?.length) found.push(parsed)
       queue.push(src.id)
     }
   }
-  return null
+  return mergeFilmCasts(...found.reverse())
 }
 
 const storyboard = computed(() => {
@@ -1688,11 +1711,19 @@ const cast = computed(() => {
   void graphEditorHosts.revision.value
   return parseFilmCast(params.value.filmCast ?? '')
 })
+const incomingCast = computed((): FilmCast | null => {
+  void graphEditorHosts.revision.value
+  if (!node.value) return null
+  return findUpstreamCast(node.value.id)
+})
+const mergedPriorCast = computed((): FilmCast | null =>
+  mergeFilmCasts(incomingCast.value, cast.value)
+)
 const effectiveCast = computed((): FilmCast | null => {
   if (effectiveStoryboard.value) {
-    return deriveFilmCast(effectiveStoryboard.value, cast.value, castKinds.value)
+    return deriveFilmCast(effectiveStoryboard.value, mergedPriorCast.value, castKinds.value)
   }
-  return cast.value
+  return mergedPriorCast.value
 })
 const castEntries = computed(() => effectiveCast.value?.entries ?? [])
 const hasCastOutputs = computed(() =>
@@ -1761,16 +1792,10 @@ const pipelineNodes = computed((): GraphNode[] => {
   return (doc?.nodes ?? []).filter((n) => isFilmNodeTypeId(n.typeId))
 })
 
-const upstreamCast = computed((): FilmCast | null => {
-  if (cast.value?.entries?.length) return cast.value
-  if (!node.value) return null
-  return findUpstreamCast(node.value.id)
-})
-
 /** 全图可用的角色场景设定库（即使当前在拆解/审核页签，也能看到同图已生成的设定图缩略图与 @n 编号） */
 const graphCast = computed((): FilmCast | null => {
-  if (upstreamCast.value?.entries?.length) return upstreamCast.value
-  if (effectiveCast.value?.entries?.length) return effectiveCast.value
+  const merged = mergeFilmCasts(incomingCast.value, cast.value, effectiveCast.value)
+  if (merged?.entries?.length) return merged
   for (const item of pipelineNodes.value) {
     if (item.typeId !== 'film.cast' && item.typeId !== 'film.workbench') continue
     const parsed = parseFilmCast(item.params.filmCast ?? '')
@@ -2022,10 +2047,20 @@ function previewMedia(url: string, title?: string): void {
 }
 
 function entityThumbUrl(entityKind: FilmEntityKind, name: string): string {
+  const entries = graphCast.value?.entries ?? []
   const key = `${entityKind}:${filmNameKey(name)}`
-  const entry = (graphCast.value?.entries ?? []).find(
-    (e) => `${e.kind}:${filmNameKey(e.name)}` === key
+  let entry = entries.find(
+    (e) => `${e.kind}:${filmNameKey(e.name)}` === key && !!filmCastEntryImage(e)
   )
+  if (!entry) {
+    const base = filmBaseEntityName(name)
+    if (base) {
+      const baseKey = `${entityKind}:${filmNameKey(base)}`
+      entry = entries.find(
+        (e) => `${e.kind}:${filmNameKey(e.name)}` === baseKey && !!filmCastEntryImage(e)
+      )
+    }
+  }
   return entry ? mediaThumbUrl(filmCastEntryImage(entry)) : ''
 }
 
@@ -2070,7 +2105,11 @@ function shotBindingItems(shot: FilmShot): ShotBindingVisualItem[] {
     const trimmed = name.trim()
     if (!trimmed) return
     const key = `${entityKind}:${filmNameKey(trimmed)}`
-    const hit = refIndexByKey.get(key)
+    let hit = refIndexByKey.get(key)
+    if (!hit) {
+      const base = filmBaseEntityName(trimmed)
+      if (base) hit = refIndexByKey.get(`${entityKind}:${filmNameKey(base)}`)
+    }
     items.push({
       kind: entityKind,
       name: trimmed,

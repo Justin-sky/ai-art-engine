@@ -18,19 +18,33 @@ export interface AdVariantCell {
   id: string
   /** 各维度取值：键 = dimension.id */
   combo: Record<string, string>
-  /** 由产品描述 + 各维度取值拼接出的生成提示词 */
+  /** 由产品描述 + 各维度取值拼接出的默认生成提示词 */
   prompt: string
+  /** 用户针对该单元格单独微调的覆盖提示词（非空时优先于 prompt） */
+  customPrompt?: string
+  /** 锁定标记：开启后整批重新生成时跳过此单元格，保护满意素材不被覆盖 */
+  locked?: boolean
   /** 批量生成结果的相对路径/资产引用，跑完回填 */
   outputRefs: string[]
+  /** 当前选中的历史输出索引（默认取最新一张 outputRefs.length - 1） */
+  activeOutputIndex?: number
   status: ReviewStatus
   /** A/B 对比结论：入选 / 淘汰；未标记为 undefined */
   verdict?: AdVariantVerdict
+  /** 审片备注 / 投放测试批注 */
+  note?: string
 }
 
 /** 对比视图标记：入选 / 淘汰 */
 export type AdVariantVerdict = 'selected' | 'rejected'
 
 export const AD_VARIANT_VERDICTS = ['selected', 'rejected'] as const
+
+/** 下游端口输出过滤策略：all = 全部非淘汰图；selectedOnly = 仅输出标记为入选的图 */
+export type AdVariantOutputFilter = 'all' | 'selectedOnly'
+
+export const AD_VARIANT_ASPECT_RATIOS = ['1:1', '9:16', '16:9', '3:4', '4:3', '2.39:1'] as const
+export const AD_VARIANT_QUALITY_TIERS = ['1K', '2K', '4K'] as const
 
 /** 归一化对比结论：非法值回落为 undefined（未标记） */
 export function normalizeAdVariantVerdict(value: unknown): AdVariantVerdict | undefined {
@@ -39,9 +53,20 @@ export function normalizeAdVariantVerdict(value: unknown): AdVariantVerdict | un
   return undefined
 }
 
+export function normalizeAdVariantOutputFilter(value: unknown): AdVariantOutputFilter {
+  return value === 'selectedOnly' ? 'selectedOnly' : 'all'
+}
+
 export interface AdVariantMatrix {
   product: string
+  /** 核心卖点与受众痛点补充（如：24h持妆、防水防汗、针对油皮人群） */
+  sellingPoints?: string
+  /** 促销钩子 / 行动号召视觉提示（如：限时买一赠一、新品首发礼盒） */
+  ctaText?: string
   aspectRatio?: string
+  quality?: string
+  /** 下游输出过滤：all | selectedOnly */
+  outputFilter?: AdVariantOutputFilter
   dimensions: AdVariantDimension[]
   cells: AdVariantCell[]
 }
@@ -61,27 +86,75 @@ export function adVariantCellId(
   return `cell-${parts.join('|')}`
 }
 
-/** 单元格生成提示词：产品描述 + 每个维度的「label：value」 */
+export interface BuildAdVariantPromptOptions {
+  sellingPoints?: string
+  ctaText?: string
+  locale?: string
+}
+
+/** 单元格生成提示词：产品描述 + 核心卖点/CTA（可选） + 每个维度的「label：value」 */
 export function buildAdVariantCellPrompt(
   product: string,
-  entries: ReadonlyArray<{ label: string; value: string }>
+  entries: ReadonlyArray<{ label: string; value: string }>,
+  options?: BuildAdVariantPromptOptions
 ): string {
   const base = product.trim()
+  const selling = options?.sellingPoints?.trim() ?? ''
+  const cta = options?.ctaText?.trim() ?? ''
+  const isEn = typeof options?.locale === 'string' && options.locale.toLowerCase().startsWith('en')
+  const sep = isEn ? ': ' : '：'
   const modifiers = entries
     .map(({ label, value }) => {
       const l = label.trim()
       const v = value.trim()
       if (!v) return ''
-      return l ? `${l}：${v}` : v
+      return l ? `${l}${sep}${v}` : v
     })
     .filter(Boolean)
-  return [base, ...modifiers].filter(Boolean).join('\n')
+  const extra: string[] = []
+  if (selling) extra.push(isEn ? `Core Selling Points: ${selling}` : `核心卖点：${selling}`) // cjk-ok
+  if (cta) extra.push(isEn ? `Promo Hook / CTA: ${cta}` : `视觉钩子/CTA：${cta}`) // cjk-ok
+  return [base, ...extra, ...modifiers].filter(Boolean).join('\n')
+}
+
+/** 获取单元格实际用于生成的提示词（customPrompt 优先于自动合成的 prompt） */
+export function getAdVariantCellEffectivePrompt(
+  cell: Pick<AdVariantCell, 'prompt' | 'customPrompt'>
+): string {
+  const custom = cell.customPrompt?.trim()
+  return custom || cell.prompt
+}
+
+/** 获取单元格当前激活的历史图索引（默认取最新一张 outputRefs.length - 1） */
+export function getAdVariantCellActiveIndex(
+  cell: Pick<AdVariantCell, 'outputRefs' | 'activeOutputIndex'>
+): number {
+  const len = cell.outputRefs?.length ?? 0
+  if (len <= 0) return -1
+  if (
+    typeof cell.activeOutputIndex === 'number' &&
+    Number.isInteger(cell.activeOutputIndex) &&
+    cell.activeOutputIndex >= 0 &&
+    cell.activeOutputIndex < len
+  ) {
+    return cell.activeOutputIndex
+  }
+  return len - 1
+}
+
+/** 获取单元格当前激活的输出图片路径（默认取最新一张，修复旧版固定取 outputRefs[0] 的问题） */
+export function getAdVariantCellActiveRef(
+  cell: Pick<AdVariantCell, 'outputRefs' | 'activeOutputIndex'>
+): string {
+  const idx = getAdVariantCellActiveIndex(cell)
+  return idx >= 0 ? (cell.outputRefs[idx]?.trim() ?? '') : ''
 }
 
 /** 笛卡尔积展开：product × dimensions → cells（忽略无取值的维度） */
 export function expandAdVariantMatrix(
   product: string,
-  dimensions: AdVariantDimension[]
+  dimensions: AdVariantDimension[],
+  options?: BuildAdVariantPromptOptions
 ): AdVariantCell[] {
   const active = dimensions.filter((d) => d && d.values?.length > 0)
   if (!active.length) return []
@@ -103,11 +176,44 @@ export function expandAdVariantMatrix(
     combo,
     prompt: buildAdVariantCellPrompt(
       product,
-      active.map((d) => ({ label: d.label, value: combo[d.id] ?? '' }))
+      active.map((d) => ({ label: d.label, value: combo[d.id] ?? '' })),
+      options
     ),
     outputRefs: [],
     status: DEFAULT_REVIEW_STATUS
   }))
+}
+
+/**
+ * 将已存在的单元格状态（outputRefs / verdict / customPrompt / locked / activeOutputIndex / note）
+ * 按稳定 cell.id 合并进新展开的单元格列表，避免修改维度或产品描述时丢失已生成图片与审片结论。
+ */
+export function mergeExpandedAdVariantCells(
+  existingCells: ReadonlyArray<AdVariantCell>,
+  expandedCells: ReadonlyArray<AdVariantCell>
+): AdVariantCell[] {
+  const byId = new Map(existingCells.map((c) => [c.id, c]))
+  return expandedCells.map((cell) => {
+    const prev = byId.get(cell.id)
+    if (!prev) return cell
+    const outputRefs = [...(prev.outputRefs ?? [])]
+    const activeOutputIndex =
+      typeof prev.activeOutputIndex === 'number' &&
+      prev.activeOutputIndex >= 0 &&
+      prev.activeOutputIndex < outputRefs.length
+        ? prev.activeOutputIndex
+        : undefined
+    return {
+      ...cell,
+      outputRefs,
+      status: prev.status ?? cell.status,
+      ...(prev.verdict ? { verdict: prev.verdict } : {}),
+      ...(prev.customPrompt?.trim() ? { customPrompt: prev.customPrompt.trim() } : {}),
+      ...(prev.locked ? { locked: true } : {}),
+      ...(activeOutputIndex !== undefined ? { activeOutputIndex } : {}),
+      ...(prev.note?.trim() ? { note: prev.note.trim() } : {})
+    }
+  })
 }
 
 /** 从持久化 JSON 归一化出变体矩阵；非法字段回退到默认/空值 */
@@ -127,29 +233,52 @@ export function normalizeAdVariantMatrix(raw?: Partial<AdVariantMatrix> | null):
 
   const cells: AdVariantCell[] = (Array.isArray(raw.cells) ? raw.cells : [])
     .filter((c): c is AdVariantCell => !!c && typeof c === 'object')
-    .map((c) => ({
-      id: typeof c.id === 'string' ? c.id : '',
-      combo:
-        c.combo && typeof c.combo === 'object' && !Array.isArray(c.combo)
-          ? (c.combo as Record<string, string>)
-          : {},
-      prompt: typeof c.prompt === 'string' ? c.prompt : '',
-      outputRefs: Array.isArray(c.outputRefs)
-        ? c.outputRefs.filter((r): r is string => typeof r === 'string')
-        : [],
-      status: normalizeReviewStatus(c.status),
-      ...(normalizeAdVariantVerdict(c.verdict)
-        ? { verdict: normalizeAdVariantVerdict(c.verdict) }
-        : {})
-    }))
+    .map((c) => {
+      const outputRefs = Array.isArray(c.outputRefs)
+        ? c.outputRefs.filter((r): r is string => typeof r === 'string' && !!r.trim())
+        : []
+      const verdict = normalizeAdVariantVerdict(c.verdict)
+      const customPrompt = typeof c.customPrompt === 'string' ? c.customPrompt.trim() : ''
+      const note = typeof c.note === 'string' ? c.note.trim() : ''
+      const activeOutputIndex =
+        typeof c.activeOutputIndex === 'number' &&
+        Number.isInteger(c.activeOutputIndex) &&
+        c.activeOutputIndex >= 0 &&
+        c.activeOutputIndex < outputRefs.length
+          ? c.activeOutputIndex
+          : undefined
+      return {
+        id: typeof c.id === 'string' ? c.id : '',
+        combo:
+          c.combo && typeof c.combo === 'object' && !Array.isArray(c.combo)
+            ? (c.combo as Record<string, string>)
+            : {},
+        prompt: typeof c.prompt === 'string' ? c.prompt : '',
+        outputRefs,
+        status: normalizeReviewStatus(c.status),
+        ...(verdict ? { verdict } : {}),
+        ...(customPrompt ? { customPrompt } : {}),
+        ...(c.locked === true ? { locked: true } : {}),
+        ...(activeOutputIndex !== undefined ? { activeOutputIndex } : {}),
+        ...(note ? { note } : {})
+      }
+    })
     .filter((c) => c.id)
+
+  const sellingPoints = typeof raw.sellingPoints === 'string' ? raw.sellingPoints.trim() : ''
+  const ctaText = typeof raw.ctaText === 'string' ? raw.ctaText.trim() : ''
+  const aspectRatio = typeof raw.aspectRatio === 'string' ? raw.aspectRatio.trim() : ''
+  const quality = typeof raw.quality === 'string' ? raw.quality.trim() : ''
+  const outputFilter =
+    raw.outputFilter === 'selectedOnly' || raw.outputFilter === 'all' ? raw.outputFilter : undefined
 
   return {
     product: typeof raw.product === 'string' ? raw.product : '',
-    aspectRatio:
-      typeof raw.aspectRatio === 'string' && raw.aspectRatio.trim()
-        ? raw.aspectRatio.trim()
-        : undefined,
+    ...(sellingPoints ? { sellingPoints } : {}),
+    ...(ctaText ? { ctaText } : {}),
+    ...(aspectRatio ? { aspectRatio } : {}),
+    ...(quality ? { quality } : {}),
+    ...(outputFilter ? { outputFilter } : {}),
     dimensions,
     cells
   }
@@ -164,7 +293,7 @@ export function readAdVariantMatrixFromNode(params: {
 
 /**
  * 把本批生成结果的相对路径回填到对应单元格的 outputRefs（按批内顺序与 cellId 对齐）。
- * 纯函数，便于单测；重复运行会追加而非覆盖（与图库累积行为一致）。
+ * 纯函数，便于单测；重复运行会追加而非覆盖（与图库累积行为一致），并将 activeOutputIndex 指向最新生成的一张。
  */
 export function applyAdVariantOutputRefs(
   cells: AdVariantCell[],
@@ -183,7 +312,13 @@ export function applyAdVariantOutputRefs(
   }
   return cells.map((cell) => {
     const refs = byCell.get(cell.id)
-    return refs?.length ? { ...cell, outputRefs: [...cell.outputRefs, ...refs] } : cell
+    if (!refs?.length) return cell
+    const nextRefs = [...cell.outputRefs, ...refs]
+    return {
+      ...cell,
+      outputRefs: nextRefs,
+      activeOutputIndex: nextRefs.length - 1
+    }
   })
 }
 
@@ -199,6 +334,44 @@ export function withAdVariantCellVerdict(
   return cells.map((cell) => (cell.id === cellId ? { ...cell, verdict } : cell))
 }
 
+/**
+ * 根据单元格的对比结论（selected / rejected）与 outputFilter 计算向下游端口输出的圖片路径：
+ * - primaryPath（`out` 单图端口）：优先取第一个标记为 `selected`（入选）单元格的当前激活图；若无入选则取第一个未淘汰单元格的激活图。
+ * - allPaths（`out-all` 列表端口）：当 `outputFilter === 'selectedOnly'` 且存在已入选单元格时，仅向下游传递已入选变体；否则传递全部未淘汰变体（若全部被标为淘汰则兜底返回全部已生成图）。
+ */
+export function resolveAdVariantDownstreamPaths(
+  cells: ReadonlyArray<AdVariantCell>,
+  outputFilter: AdVariantOutputFilter = 'all'
+): { primaryPath: string; allPaths: string[] } {
+  const selectedPaths: string[] = []
+  const nonRejectedPaths: string[] = []
+  const allGeneratedPaths: string[] = []
+
+  for (const cell of cells) {
+    const activeRef = getAdVariantCellActiveRef(cell)
+    if (!activeRef) continue
+    allGeneratedPaths.push(activeRef)
+    if (cell.verdict === 'selected') {
+      selectedPaths.push(activeRef)
+    }
+    if (cell.verdict !== 'rejected') {
+      nonRejectedPaths.push(activeRef)
+    }
+  }
+
+  const primaryPath = selectedPaths[0] ?? nonRejectedPaths[0] ?? allGeneratedPaths[0] ?? ''
+  let allPaths: string[]
+  if (outputFilter === 'selectedOnly' && selectedPaths.length > 0) {
+    allPaths = selectedPaths
+  } else if (nonRejectedPaths.length > 0) {
+    allPaths = nonRejectedPaths
+  } else {
+    allPaths = allGeneratedPaths
+  }
+
+  return { primaryPath, allPaths }
+}
+
 export type AdVariantPresetGroup = 'general' | 'industry' | 'promotion'
 
 export interface AdVariantPresetDef {
@@ -208,6 +381,8 @@ export interface AdVariantPresetDef {
   group: AdVariantPresetGroup
   /** 预设维度（label + 取值列表）；应用时替换当前维度 */
   dimensions: Array<{ label: string; values: string[] }>
+  /** 英文版预设维度 */
+  dimensionsEn?: Array<{ label: string; values: string[] }>
 }
 
 /** 预设分组顺序（labelKey under graph.adVariants.presetGroups.*） */
@@ -220,15 +395,36 @@ export const AD_VARIANT_PRESET_GROUPS: readonly {
   { id: 'promotion', labelKey: 'promotion' }
 ]
 
-/** 广告素材常用变体维度预设 */
+/** 广告素材常用变体维度预设（面向同一单品的多维创意 A/B 测试） */
 export const AD_VARIANT_PRESETS: readonly AdVariantPresetDef[] = [
   {
     id: 'basic-ab',
     titleKey: 'basicAb',
     group: 'general',
     dimensions: [
-      { label: '卖点钩子', values: ['限时五折', '新品首发', '买一送一'] },
-      { label: '视觉风格', values: ['简约高级感', '活力年轻感'] }
+      {
+        label: '卖点视觉焦点',
+        values: ['核心成分/材质微距特写', '使用前后效果对比感', '礼盒全套陈列展示']
+      }, // cjk-ok
+      { label: '视觉风格', values: ['极简高定摄影棚', '清新自然生活流', '高对比杂志大片感'] } // cjk-ok
+    ],
+    dimensionsEn: [
+      {
+        label: 'Selling Point Focus',
+        values: [
+          'Macro close-up of core ingredient/texture',
+          'Before & after efficacy contrast',
+          'Full gift set hero display'
+        ]
+      },
+      {
+        label: 'Visual Style',
+        values: [
+          'Minimalist couture studio',
+          'Fresh natural lifestyle',
+          'High-contrast magazine editorial'
+        ]
+      }
     ]
   },
   {
@@ -236,8 +432,38 @@ export const AD_VARIANT_PRESETS: readonly AdVariantPresetDef[] = [
     titleKey: 'cameraAngle',
     group: 'general',
     dimensions: [
-      { label: '机位角度', values: ['正面平视', '45°侧面', '俯拍', '仰拍'] },
-      { label: '景别', values: ['全景', '中景', '特写'] }
+      {
+        label: '机位角度',
+        values: [
+          '正面平视英雄位',
+          '45°斜侧立体透视',
+          '桌面俯拍平铺（Flat Lay）',
+          '低角度仰拍气场感'
+        ]
+      }, // cjk-ok
+      {
+        label: '景别构图',
+        values: ['黄金分割中景', '微距局部质感特写', '带环境留白全景（预留排版区）']
+      } // cjk-ok
+    ],
+    dimensionsEn: [
+      {
+        label: 'Camera Angle',
+        values: [
+          'Front eye-level hero shot',
+          '45° three-quarter perspective',
+          'Top-down flat lay',
+          'Low-angle commanding hero shot'
+        ]
+      },
+      {
+        label: 'Framing & Scale',
+        values: [
+          'Golden-ratio medium shot',
+          'Extreme macro texture close-up',
+          'Wide shot with negative space for copy'
+        ]
+      }
     ]
   },
   {
@@ -245,8 +471,30 @@ export const AD_VARIANT_PRESETS: readonly AdVariantPresetDef[] = [
     titleKey: 'sceneTone',
     group: 'general',
     dimensions: [
-      { label: '场景', values: ['纯色摄影棚', '居家场景', '户外自然光', '都市夜景'] },
-      { label: '色调', values: ['暖色调', '冷色调', '高对比黑白'] }
+      {
+        label: '背景场景',
+        values: ['纯净几何展台静物', '现代极简居家桌面', '户外阳光自然绿植', '都市霓虹夜景氛围']
+      }, // cjk-ok
+      { label: '光影色调', values: ['晨间柔和暖阳', '清冷通透实验室光', '高反差戏剧轮廓光'] } // cjk-ok
+    ],
+    dimensionsEn: [
+      {
+        label: 'Background Scene',
+        values: [
+          'Clean geometric podium still life',
+          'Modern minimalist home tabletop',
+          'Outdoor sunlit botanical greenery',
+          'Urban neon night ambiance'
+        ]
+      },
+      {
+        label: 'Lighting & Tone',
+        values: [
+          'Soft warm morning sunlight',
+          'Crisp cool laboratory lighting',
+          'High-contrast dramatic rim light'
+        ]
+      }
     ]
   },
   {
@@ -254,8 +502,29 @@ export const AD_VARIANT_PRESETS: readonly AdVariantPresetDef[] = [
     titleKey: 'audienceEmotion',
     group: 'general',
     dimensions: [
-      { label: '目标人群', values: ['年轻女性', '都市男性', '家庭用户'] },
-      { label: '情绪基调', values: ['温馨治愈', '潮流酷感', '高端奢华'] }
+      {
+        label: '目标受众代入',
+        values: ['精致都市白领使用场景', '潮流Z世代街头张力', '温馨品质家庭生活']
+      }, // cjk-ok
+      { label: '情绪氛围', values: ['松弛治愈感', '活力多巴胺撞色', '黑金奢华尊享感'] } // cjk-ok
+    ],
+    dimensionsEn: [
+      {
+        label: 'Target Audience Persona',
+        values: [
+          'Refined urban professional routine',
+          'Trendy Gen-Z street energy',
+          'Warm quality family lifestyle'
+        ]
+      },
+      {
+        label: 'Mood & Vibe',
+        values: [
+          'Relaxed healing calm',
+          'Vibrant dopamine color pop',
+          'Black-and-gold luxury prestige'
+        ]
+      }
     ]
   },
   {
@@ -263,8 +532,38 @@ export const AD_VARIANT_PRESETS: readonly AdVariantPresetDef[] = [
     titleKey: 'copyStyle',
     group: 'general',
     dimensions: [
-      { label: '文案钩子', values: ['痛点共鸣', '好奇心悬念', '权威背书', '限时紧迫'] },
-      { label: '风格', values: ['专业商务', '俏皮网络语', '故事叙述'] }
+      {
+        label: '创意切角（Hook）',
+        values: [
+          '直击痛点场景还原',
+          '感官冲击（水花/光效/爆汁）',
+          '专业科研背书质感',
+          '开箱惊喜仪式感'
+        ]
+      }, // cjk-ok
+      {
+        label: '版式构图留白',
+        values: ['居中聚焦主体', '左图右留白（适合横版信息流）', '上留白下主体（适合竖屏大字标题）']
+      } // cjk-ok
+    ],
+    dimensionsEn: [
+      {
+        label: 'Creative Hook',
+        values: [
+          'Pain-point scenario visualization',
+          'Sensory impact (splash/particles/glow)',
+          'Clinical R&D authority look',
+          'Unboxing ceremony surprise'
+        ]
+      },
+      {
+        label: 'Copy Space Layout',
+        values: [
+          'Centered hero focus',
+          'Subject left + right copy space (landscape feed)',
+          'Top copy space + bottom hero (vertical feed)'
+        ]
+      }
     ]
   },
   {
@@ -272,8 +571,35 @@ export const AD_VARIANT_PRESETS: readonly AdVariantPresetDef[] = [
     titleKey: 'vertical',
     group: 'general',
     dimensions: [
-      { label: '构图', values: ['9:16竖屏', '大字标题', '上下分割', '居中聚焦'] },
-      { label: '语气', values: ['直接促销', '悬念反转', '情感共鸣', '权威背书'] }
+      {
+        label: '竖屏首帧构图',
+        values: [
+          '手持产品第一视角（POV）',
+          '人物近景手持展示',
+          '视觉奇观微距冲击',
+          '三分法上下对比构图'
+        ]
+      }, // cjk-ok
+      { label: '买量转化氛围', values: ['真实种草原生感', '强促销爆款吸睛感', '高审美品牌质感'] } // cjk-ok
+    ],
+    dimensionsEn: [
+      {
+        label: 'Vertical First-Frame Hook',
+        values: [
+          'First-person POV holding product',
+          'Talent close-up holding product',
+          'Scroll-stopping macro spectacle',
+          'Rule-of-thirds split contrast'
+        ]
+      },
+      {
+        label: 'Conversion Vibe',
+        values: [
+          'Authentic UGC review feel',
+          'High-urgency bestseller promo feel',
+          'Elevated brand campaign aesthetic'
+        ]
+      }
     ]
   },
   {
@@ -281,8 +607,39 @@ export const AD_VARIANT_PRESETS: readonly AdVariantPresetDef[] = [
     titleKey: 'beauty',
     group: 'industry',
     dimensions: [
-      { label: '产品', values: ['精华液', '面霜', '口红', '香水'] },
-      { label: '视觉风格', values: ['高级裸妆感', '水光肌', '复古名媛风', '极简药妆风'] }
+      {
+        label: '质地与呈现',
+        values: [
+          '瓶身+水润精华流体微距',
+          '膏体/粉质一抹延展特写',
+          '水面波纹涟漪悬浮展台',
+          '模特脸部水光肌同框'
+        ]
+      }, // cjk-ok
+      {
+        label: '护肤美学风格',
+        values: ['清透冰川水光感', '植萃自然草本风', '实验室成分极简风', '鎏金高定奢宠风']
+      } // cjk-ok
+    ],
+    dimensionsEn: [
+      {
+        label: 'Texture & Presentation',
+        values: [
+          'Bottle + dewy serum droplet macro',
+          'Cream/powder swatch smear close-up',
+          'Floating podium over water ripples',
+          'Model glowing glass-skin frame'
+        ]
+      },
+      {
+        label: 'Skincare Aesthetic',
+        values: [
+          'Crystal glacier hydration',
+          'Botanical herbal naturalism',
+          'Clinical lab minimalist',
+          'Gilded luxury couture'
+        ]
+      }
     ]
   },
   {
@@ -290,8 +647,38 @@ export const AD_VARIANT_PRESETS: readonly AdVariantPresetDef[] = [
     titleKey: 'electronics',
     group: 'industry',
     dimensions: [
-      { label: '展示方式', values: ['整机特写', '产品拆解', '场景使用', '参数对比'] },
-      { label: '氛围', values: ['科技蓝调', '极简灰白', '电竞炫彩'] }
+      {
+        label: '产品展示维度',
+        values: [
+          '金属机身精工微距特写',
+          '悬浮结构光影陈列',
+          '极客桌面（Desk Setup）实景',
+          '户外便携高频使用瞬间'
+        ]
+      }, // cjk-ok
+      {
+        label: '科技光效氛围',
+        values: ['冷冽钛金属暗调光', '极简苹果风纯白柔光', '赛博霓虹电竞光效']
+      } // cjk-ok
+    ],
+    dimensionsEn: [
+      {
+        label: 'Product Showcase',
+        values: [
+          'Precision anodized metal macro',
+          'Floating levitation hero display',
+          'Minimalist creator desk setup',
+          'On-the-go outdoor usage moment'
+        ]
+      },
+      {
+        label: 'Tech Lighting',
+        values: [
+          'Cold titanium dark-mode rim light',
+          'Ultra-clean white studio softbox',
+          'Cyberpunk RGB neon glow'
+        ]
+      }
     ]
   },
   {
@@ -299,8 +686,35 @@ export const AD_VARIANT_PRESETS: readonly AdVariantPresetDef[] = [
     titleKey: 'food',
     group: 'industry',
     dimensions: [
-      { label: '呈现方式', values: ['食材特写', '成品摆盘', '食用瞬间', '配料展示'] },
-      { label: '氛围', values: ['清新夏日', '温暖居家', '深夜治愈', '元气活力'] }
+      {
+        label: '食欲感镜头',
+        values: [
+          '食材飞溅/爆汁高速快门瞬间',
+          '热气腾腾刚出锅微距特写',
+          '原产地新鲜原料环绕摆盘',
+          '多人欢聚分享餐桌视角'
+        ]
+      }, // cjk-ok
+      { label: '美食光影色调', values: ['清新夏日冰爽感', '暖调深夜食堂治愈感', '阳光早餐元气感'] } // cjk-ok
+    ],
+    dimensionsEn: [
+      {
+        label: 'Appetite Appeal Shot',
+        values: [
+          'High-speed juicy splash/burst',
+          'Steaming hot fresh-cooked macro',
+          'Surrounded by fresh raw ingredients',
+          'Tabletop sharing feast perspective'
+        ]
+      },
+      {
+        label: 'Food Color & Lighting',
+        values: [
+          'Crisp summer icy refreshment',
+          'Warm late-night comfort glow',
+          'Sunny morning breakfast vibrancy'
+        ]
+      }
     ]
   },
   {
@@ -308,8 +722,44 @@ export const AD_VARIANT_PRESETS: readonly AdVariantPresetDef[] = [
     titleKey: 'fashion',
     group: 'industry',
     dimensions: [
-      { label: '拍摄方式', values: ['模特上身', '平铺展示', '街拍场景', '细节特写'] },
-      { label: '风格', values: ['极简通勤', '复古文艺', '运动街头', '甜美少女'] }
+      {
+        label: '穿搭呈现方式',
+        values: [
+          '街拍动态抓拍全身',
+          '影棚几何光影半身像',
+          '面料纹理与剪裁细节微距',
+          '杂志感精致平铺搭配'
+        ]
+      }, // cjk-ok
+      {
+        label: '时尚风格语境',
+        values: [
+          '老钱风极简松弛（Old Money）',
+          '美式复古街头潮流',
+          '高智感都市通勤',
+          '法式浪漫假日'
+        ]
+      } // cjk-ok
+    ],
+    dimensionsEn: [
+      {
+        label: 'Styling Presentation',
+        values: [
+          'Dynamic street-style full-body candid',
+          'Studio geometric shadow half-body',
+          'Fabric weave & tailoring macro',
+          'Editorial curated flat-lay outfit'
+        ]
+      },
+      {
+        label: 'Fashion Aesthetic',
+        values: [
+          'Quiet luxury Old Money minimalism',
+          'Vintage American streetwear',
+          'Smart urban commuter chic',
+          'Effortless French holiday romance'
+        ]
+      }
     ]
   },
   {
@@ -317,8 +767,38 @@ export const AD_VARIANT_PRESETS: readonly AdVariantPresetDef[] = [
     titleKey: 'baby',
     group: 'industry',
     dimensions: [
-      { label: '产品', values: ['纸尿裤', '奶粉', '婴儿车', '益智玩具'] },
-      { label: '场景', values: ['宝宝日常', '亲子互动', '温馨家庭', '户外出行'] }
+      {
+        label: '安心感卖点画面',
+        values: [
+          '云朵般柔肤材质微距对比',
+          '宝宝酣睡/开怀互动特写',
+          '天然温和成分视觉化元素',
+          '母婴外出便捷收纳实景'
+        ]
+      }, // cjk-ok
+      {
+        label: '亲子色彩氛围',
+        values: ['马卡龙柔和粉彩', '阳光原木温馨居家', '纯净安全医护白绿调']
+      } // cjk-ok
+    ],
+    dimensionsEn: [
+      {
+        label: 'Gentle Care Visual',
+        values: [
+          'Cloud-soft material macro comparison',
+          'Peaceful sleeping / smiling baby close-up',
+          'Natural gentle ingredient motifs',
+          'Organized on-the-go parenting scene'
+        ]
+      },
+      {
+        label: 'Nursery Palette',
+        values: [
+          'Soft pastel macaron tones',
+          'Sunlit warm wood nursery',
+          'Pure clinical white & sage green'
+        ]
+      }
     ]
   },
   {
@@ -326,8 +806,39 @@ export const AD_VARIANT_PRESETS: readonly AdVariantPresetDef[] = [
     titleKey: 'home',
     group: 'industry',
     dimensions: [
-      { label: '产品', values: ['沙发', '床垫', '灯具', '收纳用品'] },
-      { label: '风格', values: ['北欧简约', '现代轻奢', '奶油风', '原木自然'] }
+      {
+        label: '空间搭配视角',
+        values: [
+          '落地窗采光客厅主视觉',
+          '材质肌理与做工微距',
+          '小户型整洁收纳前后感',
+          '夜晚暖光氛围角落'
+        ]
+      }, // cjk-ok
+      {
+        label: '家装美学流派',
+        values: ['北欧原木自然风', '意式现代极简轻奢', '法式温柔奶油风', '中古侘寂艺术风']
+      } // cjk-ok
+    ],
+    dimensionsEn: [
+      {
+        label: 'Interior Perspective',
+        values: [
+          'Sunlit floor-to-ceiling window living room',
+          'Material grain & craftsmanship macro',
+          'Compact space tidy organization',
+          'Cozy warm evening reading corner'
+        ]
+      },
+      {
+        label: 'Interior Style',
+        values: [
+          'Nordic natural oak',
+          'Italian modern minimalist luxury',
+          'Soft French cream aesthetic',
+          'Mid-century Wabi-Sabi art'
+        ]
+      }
     ]
   },
   {
@@ -335,8 +846,38 @@ export const AD_VARIANT_PRESETS: readonly AdVariantPresetDef[] = [
     titleKey: 'auto',
     group: 'industry',
     dimensions: [
-      { label: '展示', values: ['整车外观', '内饰细节', '动态行驶', '细节特写'] },
-      { label: '场景', values: ['都市通勤', '户外自驾', '展厅静态', '夜间灯光'] }
+      {
+        label: '镜头机位',
+        values: [
+          '低趴前脸45°动态追焦',
+          '奢华座舱中控与座椅细节',
+          '山海公路驰骋航拍全景',
+          '车灯矩阵暗夜点亮特写'
+        ]
+      }, // cjk-ok
+      {
+        label: '环境光影',
+        values: ['城市CBD蓝调时刻夜景', '旷野雪山日出金光', '极简未来感几何光棚']
+      } // cjk-ok
+    ],
+    dimensionsEn: [
+      {
+        label: 'Camera Placement',
+        values: [
+          'Low-slung 45° front tracking shot',
+          'Luxury cockpit console & stitching detail',
+          'Coastal mountain highway aerial wide',
+          'Matrix headlight signature in dark'
+        ]
+      },
+      {
+        label: 'Environment Lighting',
+        values: [
+          'CBD blue-hour cityscape',
+          'Alpine sunrise golden hour',
+          'Futuristic geometric light tunnel'
+        ]
+      }
     ]
   },
   {
@@ -344,8 +885,35 @@ export const AD_VARIANT_PRESETS: readonly AdVariantPresetDef[] = [
     titleKey: 'pet',
     group: 'industry',
     dimensions: [
-      { label: '对象', values: ['猫咪', '狗狗', '仓鼠', '观赏鱼'] },
-      { label: '场景', values: ['萌宠日常', '互动瞬间', '产品使用', '温馨陪伴'] }
+      {
+        label: '萌宠互动画面',
+        values: [
+          '猫咪/狗狗大口进食满足特写',
+          '宠物广角大头萌态贴镜',
+          '人宠温馨拥抱居家瞬间',
+          '天然鲜肉原料与产品同框'
+        ]
+      }, // cjk-ok
+      { label: '画面情绪色调', values: ['明快多巴胺活力色', '午后阳光地毯暖调', '清新草地自然感'] } // cjk-ok
+    ],
+    dimensionsEn: [
+      {
+        label: 'Pet Interaction',
+        values: [
+          'Happy cat/dog eating close-up',
+          'Wide-angle cute nose-to-lens portrait',
+          'Warm owner-pet cuddle at home',
+          'Fresh natural ingredients beside product'
+        ]
+      },
+      {
+        label: 'Color Mood',
+        values: [
+          'Playful bright dopamine colors',
+          'Warm afternoon sunlit rug',
+          'Fresh green lawn outdoor vibe'
+        ]
+      }
     ]
   },
   {
@@ -353,8 +921,35 @@ export const AD_VARIANT_PRESETS: readonly AdVariantPresetDef[] = [
     titleKey: 'education',
     group: 'industry',
     dimensions: [
-      { label: '目标', values: ['少儿启蒙', '职场提升', '考证冲刺', '兴趣培养'] },
-      { label: '风格', values: ['专业权威', '活泼趣味', '温暖陪伴', '科技互动'] }
+      {
+        label: '学习场景表现',
+        values: [
+          '专注高效书桌沉浸式学习',
+          '亲子共读启发互动瞬间',
+          'AI科技感智慧屏幕辅助',
+          '拿到成果自信微笑特写'
+        ]
+      }, // cjk-ok
+      { label: '视觉风格', values: ['专业名校知性蓝调', '趣味绘本多彩插画感', '温暖陪伴书香暖光'] } // cjk-ok
+    ],
+    dimensionsEn: [
+      {
+        label: 'Learning Scenario',
+        values: [
+          'Focused immersive study desk',
+          'Parent-child interactive reading',
+          'AI smart screen assisted learning',
+          'Confident achiever smile portrait'
+        ]
+      },
+      {
+        label: 'Visual Tone',
+        values: [
+          'Academic prestigious navy blue',
+          'Playful colorful storybook vibe',
+          'Warm library reading lamp glow'
+        ]
+      }
     ]
   },
   {
@@ -362,8 +957,38 @@ export const AD_VARIANT_PRESETS: readonly AdVariantPresetDef[] = [
     titleKey: 'travel',
     group: 'industry',
     dimensions: [
-      { label: '目的地', values: ['海滨度假', '山川自然', '古城人文', '都市漫步'] },
-      { label: '氛围', values: ['治愈度假', '探险刺激', '浪漫蜜月', '亲子同游'] }
+      {
+        label: '目的地体验视角',
+        values: [
+          '无边泳池面朝大海背影',
+          '雪山森林徒步壮丽全景',
+          '古城人间烟火街巷漫步',
+          '精致露营篝火晚霞'
+        ]
+      }, // cjk-ok
+      {
+        label: '胶片与色彩氛围',
+        values: ['高饱和度蔚蓝假日感', '富士胶片日系清新感', '国家地理史诗电影感']
+      } // cjk-ok
+    ],
+    dimensionsEn: [
+      {
+        label: 'Destination Experience',
+        values: [
+          'Infinity pool overlooking turquoise ocean',
+          'Epic alpine forest trekking panorama',
+          'Historic old-town lantern street stroll',
+          'Glamping campfire at sunset'
+        ]
+      },
+      {
+        label: 'Film & Color Grade',
+        values: [
+          'Vibrant Mediterranean azure holiday',
+          'Airy Fujifilm daylight pastel',
+          'Cinematic National Geographic epic'
+        ]
+      }
     ]
   },
   {
@@ -371,8 +996,38 @@ export const AD_VARIANT_PRESETS: readonly AdVariantPresetDef[] = [
     titleKey: 'health',
     group: 'industry',
     dimensions: [
-      { label: '产品', values: ['保健品', '医疗器械', '口腔护理', '健康监测'] },
-      { label: '风格', values: ['专业可信', '温和关怀', '科技感', '清爽洁净'] }
+      {
+        label: '健康价值视觉化',
+        values: [
+          '高纯度胶囊/饮品通透微距',
+          '清晨运动后充沛活力状态',
+          '科学分子结构与草本精粹同框',
+          '全家三代健康守护场景'
+        ]
+      }, // cjk-ok
+      {
+        label: '信赖感色调',
+        values: ['纯净瑞士医学白蓝调', '有机生态森林绿调', '温润东方滋补金棕调']
+      } // cjk-ok
+    ],
+    dimensionsEn: [
+      {
+        label: 'Wellness Visualization',
+        values: [
+          'Translucent softgel/elixir macro',
+          'Energetic morning post-workout glow',
+          'Molecular structure + botanical extract',
+          'Multi-generational family wellness'
+        ]
+      },
+      {
+        label: 'Trust Palette',
+        values: [
+          'Swiss clinical white & cyan',
+          'Organic forest botanical green',
+          'Warm herbal amber & gold'
+        ]
+      }
     ]
   },
   {
@@ -380,8 +1035,35 @@ export const AD_VARIANT_PRESETS: readonly AdVariantPresetDef[] = [
     titleKey: 'realestate',
     group: 'industry',
     dimensions: [
-      { label: '户型', values: ['刚需两居', '改善三居', '大平层', '别墅'] },
-      { label: '场景', values: ['样板间', '园林景观', '区位配套', '夜景灯光'] }
+      {
+        label: '空间价值呈现',
+        values: [
+          '270°环幕落地窗城市天际线',
+          '大师级园林水景归家动线',
+          '高定厨房与岛台生活场景',
+          '黄昏万家灯火建筑立面'
+        ]
+      }, // cjk-ok
+      { label: '光影质感', values: ['香槟金晨昏暖调', '高定酒店感静谧光影', '生机盎然森系自然光'] } // cjk-ok
+    ],
+    dimensionsEn: [
+      {
+        label: 'Space Value Showcase',
+        values: [
+          '270° panoramic skyline penthouse view',
+          'Master landscaped water courtyard',
+          'Bespoke kitchen island lifestyle',
+          'Illuminated architectural facade at dusk'
+        ]
+      },
+      {
+        label: 'Lighting Atmosphere',
+        values: [
+          'Champagne gold twilight warmth',
+          'Five-star hotel serene ambiance',
+          'Lush biophilic natural daylight'
+        ]
+      }
     ]
   },
   {
@@ -389,8 +1071,35 @@ export const AD_VARIANT_PRESETS: readonly AdVariantPresetDef[] = [
     titleKey: 'finance',
     group: 'industry',
     dimensions: [
-      { label: '产品', values: ['信用卡', '贷款', '保险', '理财'] },
-      { label: '风格', values: ['专业可信', '温馨家庭', '科技数字', '精英商务'] }
+      {
+        label: '核心主题视觉',
+        values: [
+          '向上生长的金色光影阶梯与盾牌',
+          '从容规划未来的精英商务场景',
+          '三口之家稳健幸福生活画面',
+          '数字化全球资产连接图景'
+        ]
+      }, // cjk-ok
+      { label: '品牌质感', values: ['深海蓝沉稳权威感', '黑金尊贵私行质感', '温暖阳光亲和民生感'] } // cjk-ok
+    ],
+    dimensionsEn: [
+      {
+        label: 'Core Visual Metaphor',
+        values: [
+          'Ascending golden light steps & shield',
+          'Confident executive wealth planning',
+          'Secure happy family milestone',
+          'Global digital asset network'
+        ]
+      },
+      {
+        label: 'Brand Prestige',
+        values: [
+          'Authoritative deep navy blue',
+          'Private-banking black & gold',
+          'Warm approachable sunlit tone'
+        ]
+      }
     ]
   },
   {
@@ -398,8 +1107,44 @@ export const AD_VARIANT_PRESETS: readonly AdVariantPresetDef[] = [
     titleKey: 'game',
     group: 'industry',
     dimensions: [
-      { label: '题材', values: ['仙侠', '二次元', '射击', '策略'] },
-      { label: '风格', values: ['酷炫特效', '国风写实', '像素复古', '赛博朋克'] }
+      {
+        label: '买量吸睛构图',
+        values: [
+          '主角觉醒满屏大招特效冲击',
+          '史诗级巨型Boss压迫感对峙',
+          '稀有神装/SSR金光爆出瞬间',
+          '高颜值角色眼神杀特写'
+        ]
+      }, // cjk-ok
+      {
+        label: '美术渲染风格',
+        values: [
+          'UE5次世代主机级写实',
+          '高饱和度二次元番剧感',
+          '东方幻想水墨流金国风',
+          '赛博朋克霓虹机甲风'
+        ]
+      } // cjk-ok
+    ],
+    dimensionsEn: [
+      {
+        label: 'UA Scroll-Stopping Hook',
+        values: [
+          'Hero ultimate skill full-screen VFX',
+          'Colossal boss showdown perspective',
+          'SSR legendary loot golden burst',
+          'Charismatic character intense close-up'
+        ]
+      },
+      {
+        label: 'Art Rendering Style',
+        values: [
+          'UE5 next-gen photorealistic',
+          'Vibrant anime cel-shaded',
+          'Eastern fantasy ink & gold',
+          'Cyberpunk neon mecha'
+        ]
+      }
     ]
   },
   {
@@ -407,8 +1152,38 @@ export const AD_VARIANT_PRESETS: readonly AdVariantPresetDef[] = [
     titleKey: 'fitness',
     group: 'industry',
     dimensions: [
-      { label: '场景', values: ['健身房', '户外跑步', '瑜伽', '球类运动'] },
-      { label: '氛围', values: ['热血燃动', '自律专注', '轻松解压', '活力青春'] }
+      {
+        label: '运动张力瞬间',
+        values: [
+          '汗水滑落与肌肉线条爆发力特写',
+          '清晨城市天际线晨跑剪影',
+          '阳光瑜伽室舒展呼吸感',
+          '运动装备科技面料微距'
+        ]
+      }, // cjk-ok
+      {
+        label: '光影情绪',
+        values: ['硬核暗调高反差轮廓光', '清新多巴胺活力自然光', '极简高级运动美学']
+      } // cjk-ok
+    ],
+    dimensionsEn: [
+      {
+        label: 'Athletic Peak Moment',
+        values: [
+          'Sweat & muscle power close-up',
+          'Sunrise skyline runner silhouette',
+          'Sunlit yoga studio mindful stretch',
+          'Performance breathable fabric macro'
+        ]
+      },
+      {
+        label: 'Lighting Mood',
+        values: [
+          'Gritty high-contrast gym rim light',
+          'Fresh energetic daylight',
+          'Sleek minimalist athletic studio'
+        ]
+      }
     ]
   },
   {
@@ -416,8 +1191,38 @@ export const AD_VARIANT_PRESETS: readonly AdVariantPresetDef[] = [
     titleKey: 'daily',
     group: 'industry',
     dimensions: [
-      { label: '产品', values: ['洗衣液', '洗洁精', '纸品', '清洁工具'] },
-      { label: '场景', values: ['厨房', '卫生间', '客厅', '阳台'] }
+      {
+        label: '洁净力/品质视觉化',
+        values: [
+          '绵密微米泡沫包裹水珠微距',
+          '污渍瞬间瓦解洁净如新对比',
+          '鲜花植萃留香氛围缠绕',
+          '极简整洁阳光卫浴/厨房台面'
+        ]
+      }, // cjk-ok
+      {
+        label: '色调氛围',
+        values: ['透亮薄荷冰蓝洁净感', '春意花果芬芳柔光', '日式极简无印生活感']
+      } // cjk-ok
+    ],
+    dimensionsEn: [
+      {
+        label: 'Cleaning Power Visual',
+        values: [
+          'Dense micro-foam & water droplets macro',
+          'Instant stain-dissolve sparkle contrast',
+          'Botanical floral fragrance aura',
+          'Sunlit spotless bathroom/kitchen counter'
+        ]
+      },
+      {
+        label: 'Color Atmosphere',
+        values: [
+          'Crystal mint & ice-blue purity',
+          'Spring floral soft pastel glow',
+          'Japanese Muji-inspired calm'
+        ]
+      }
     ]
   },
   {
@@ -425,8 +1230,38 @@ export const AD_VARIANT_PRESETS: readonly AdVariantPresetDef[] = [
     titleKey: 'beverage',
     group: 'industry',
     dimensions: [
-      { label: '产品', values: ['咖啡', '茶饮', '气泡水', '果汁'] },
-      { label: '氛围', values: ['清爽冰凉', '醇香浓郁', '元气活力', '微醺放松'] }
+      {
+        label: '畅饮感官镜头',
+        values: [
+          '冰块坠入激起晶莹水花高速抓拍',
+          '杯壁冷凝水珠与绵密奶盖微距',
+          '新鲜水果切片环绕炸裂感',
+          '露营/下午茶碰杯微醺瞬间'
+        ]
+      }, // cjk-ok
+      {
+        label: '光影色彩',
+        values: ['夏日正午阳光穿透冰饮折射', '醇厚油脂丝绒暖调光', '霓虹微醺夜店潮酷光效']
+      } // cjk-ok
+    ],
+    dimensionsEn: [
+      {
+        label: 'Refreshment Sensory Shot',
+        values: [
+          'Ice cube plunge crystal splash',
+          'Frosted glass condensation macro',
+          'Exploding fresh fruit slices',
+          'Outdoor camping / afternoon cheers'
+        ]
+      },
+      {
+        label: 'Light & Color',
+        values: [
+          'Midday sun refracting through ice drink',
+          'Rich velvety espresso warm glow',
+          'Trendy neon lounge bar vibe'
+        ]
+      }
     ]
   },
   {
@@ -434,8 +1269,38 @@ export const AD_VARIANT_PRESETS: readonly AdVariantPresetDef[] = [
     titleKey: 'freshfood',
     group: 'industry',
     dimensions: [
-      { label: '品类', values: ['水果', '海鲜', '蔬菜', '肉类'] },
-      { label: '呈现', values: ['产地直采', '新鲜特写', '烹饪过程', '餐桌成品'] }
+      {
+        label: '新鲜度特写',
+        values: [
+          '晨露挂在果皮/菜叶上的微距',
+          '切开瞬间饱满多汁纹理特写',
+          '高山果园/深海捕捞原产地实景',
+          '冷链冰鲜高品质礼盒开箱'
+        ]
+      }, // cjk-ok
+      {
+        label: '视觉色调',
+        values: ['原生态阳光自然高饱和色', '黑底精品超市高级静物光', '家常烟火气暖光']
+      } // cjk-ok
+    ],
+    dimensionsEn: [
+      {
+        label: 'Freshness Close-Up',
+        values: [
+          'Morning dew on fruit skin/leaf macro',
+          'Juicy cross-section slice texture',
+          'Orchard / deep-sea origin backdrop',
+          'Chilled premium gift box unboxing'
+        ]
+      },
+      {
+        label: 'Visual Tone',
+        values: [
+          'Sun-drenched organic natural colors',
+          'Dark-background gourmet grocer lighting',
+          'Warm home-kitchen comfort light'
+        ]
+      }
     ]
   },
   {
@@ -443,8 +1308,38 @@ export const AD_VARIANT_PRESETS: readonly AdVariantPresetDef[] = [
     titleKey: 'hotel',
     group: 'industry',
     dimensions: [
-      { label: '房型', values: ['海景房', '山景房', '亲子房', '特色民宿'] },
-      { label: '氛围', values: ['浪漫度假', '温馨舒适', '轻奢商务', '自然野趣'] }
+      {
+        label: '度假心动瞬间',
+        values: [
+          '推开窗即见山海云雾全景第一视角',
+          '高支棉床品与阳光洒入的慵懒清晨',
+          '私汤泡池烛光晚霞静谧时刻',
+          '特色在地文化下午茶摆盘'
+        ]
+      }, // cjk-ok
+      {
+        label: '美学影调',
+        values: ['安缦式隐世禅意自然风', '浪漫法式海岛蔚蓝风', '王家卫式复古电影胶片感']
+      } // cjk-ok
+    ],
+    dimensionsEn: [
+      {
+        label: 'Hospitality Hero Moment',
+        values: [
+          'First-person window opening to ocean/mountain mist',
+          'Crisp linen bedding in lazy morning sun',
+          'Private hot-spring pool at twilight candlelight',
+          'Artisanal local afternoon tea tray'
+        ]
+      },
+      {
+        label: 'Aesthetic Grade',
+        values: [
+          'Aman-inspired zen sanctuary',
+          'Romantic French Riviera azure',
+          'Vintage cinematic film warmth'
+        ]
+      }
     ]
   },
   {
@@ -452,8 +1347,38 @@ export const AD_VARIANT_PRESETS: readonly AdVariantPresetDef[] = [
     titleKey: 'livestream',
     group: 'promotion',
     dimensions: [
-      { label: '钩子', values: ['价格锚点', '福利预告', '明星同款', '限时抢购'] },
-      { label: '场景', values: ['主播讲解', '产品堆头', '效果对比', '开箱体验'] }
+      {
+        label: '直播间引流画面',
+        values: [
+          '爆款礼盒堆头量感视觉冲击',
+          '手持产品近距离展示质地细节',
+          '使用前后强烈视觉反差对比',
+          '奢华专柜/源头工厂实景背书'
+        ]
+      }, // cjk-ok
+      {
+        label: '转化紧迫感氛围',
+        values: ['大促红金聚光灯舞台感', '高亮度纯净美妆灯近景', '源头产地真实原生感']
+      } // cjk-ok
+    ],
+    dimensionsEn: [
+      {
+        label: 'Livestream Traffic Hook',
+        values: [
+          'Abundant gift-box tower volume impact',
+          'Hand-held close-up showing texture',
+          'Dramatic before/after visual contrast',
+          'Flagship counter / factory origin proof'
+        ]
+      },
+      {
+        label: 'Urgency & Trust Vibe',
+        values: [
+          'Mega-sale red & gold spotlight stage',
+          'Bright beauty ring-light close-up',
+          'Raw authentic source origin feel'
+        ]
+      }
     ]
   },
   {
@@ -461,8 +1386,38 @@ export const AD_VARIANT_PRESETS: readonly AdVariantPresetDef[] = [
     titleKey: 'holiday',
     group: 'promotion',
     dimensions: [
-      { label: '节日', values: ['双11', '618', '春节', '情人节', '中秋'] },
-      { label: '氛围', values: ['喜庆红金', '清新粉彩', '科技未来', '温馨暖黄'] }
+      {
+        label: '大促/佳节主题场景',
+        values: [
+          '双11/618狂欢礼盒丝带环绕展台',
+          '国潮新春红金祥云喜庆陈列',
+          '浪漫情人节玫瑰星光礼赠氛围',
+          '秋日桂花满月东方雅致礼盒'
+        ]
+      }, // cjk-ok
+      {
+        label: '光影礼赞感',
+        values: ['流光溢彩金粉粒子光效', '温暖团圆烛光暖调', '高定丝绒暗红奢华光影']
+      } // cjk-ok
+    ],
+    dimensionsEn: [
+      {
+        label: 'Festival / Mega-Sale Scene',
+        values: [
+          'Mega-sale ribbon & gift podium',
+          'Festive red & gold celebration display',
+          'Valentine rose & starlight gifting',
+          'Autumn full-moon poetic gift set'
+        ]
+      },
+      {
+        label: 'Celebration Lighting',
+        values: [
+          'Shimmering golden bokeh particles',
+          'Warm family reunion candlelight',
+          'Couture crimson velvet luxury glow'
+        ]
+      }
     ]
   }
 ] as const
@@ -472,11 +1427,13 @@ export function listAdVariantPresetsForGroup(group: AdVariantPresetGroup): AdVar
   return AD_VARIANT_PRESETS.filter((item) => item.group === group)
 }
 
-/** 应用预设：把预设维度转成带稳定 id 的维度列表（替换当前维度） */
-export function applyAdVariantPreset(presetId: string): AdVariantDimension[] {
+/** 应用预设：把预设维度转成带稳定 id 的维度列表（替换当前维度，支持按 locale 自动选用中/英文预设） */
+export function applyAdVariantPreset(presetId: string, locale?: string): AdVariantDimension[] {
   const preset = AD_VARIANT_PRESETS.find((item) => item.id === presetId)
   if (!preset) return []
-  return preset.dimensions.map((dim, index) => ({
+  const isEn = typeof locale === 'string' && locale.toLowerCase().startsWith('en')
+  const sourceDims = isEn && preset.dimensionsEn ? preset.dimensionsEn : preset.dimensions
+  return sourceDims.map((dim, index) => ({
     id: `d-${preset.id}-${index + 1}`,
     label: dim.label,
     values: [...dim.values]

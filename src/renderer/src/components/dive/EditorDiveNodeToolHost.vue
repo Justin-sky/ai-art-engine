@@ -90,6 +90,8 @@
       <AdVariantsEditorDialog
         v-else-if="viewId === 'node.adVariants' && api.adVariants.open"
         :open="true"
+        :host-id="hostId"
+        :node-id="nodeId"
         :matrix="api.adVariants.matrix"
         :generate-model="api.adVariants.generateModel"
         :generate-provider-instance-id="api.adVariants.generateProviderInstanceId"

@@ -981,6 +981,10 @@ export interface GraphNodeParams {
   selectedVoiceId?: string
   /** 广告变体矩阵：产品 × 维度展开的生成矩阵（随节点落盘） */
   adVariantMatrix?: Partial<AdVariantMatrix>
+  /** 广告变体矩阵：单格执行目标 cellId（仅运行该单元格后自动清除） */
+  adVariantOnlyCellId?: string
+  /** 广告变体矩阵：批量运行模式（'missing' = 仅生成未出图单元格，'all' = 全部未锁定单元格） */
+  adVariantRunMode?: 'missing' | 'all'
   /** 角色一致性：绑定的角色引用（含 imageUrl），图片生成时注入 inputReferences */
   characterRefs?: WorldEntityRef[]
   /** 多角度编辑器：机位参数 */
@@ -1244,6 +1248,8 @@ export interface GraphNodeParams {
   filmRenderQc?: boolean
   /** 批量拍摄：单镜最大重拍次数 */
   filmRenderMaxRetries?: number
+  /** 批量拍摄与设定图：最大并发数（1~8，默认 3；同场次关键帧内部按顺序保持连续性，跨场次关键帧与图生视频并发执行） */
+  filmRenderConcurrency?: number
   /** 批量拍摄：视频模型（generateModel 是关键帧图片模型） */
   filmVideoModel?: string
   filmVideoProviderInstanceId?: string

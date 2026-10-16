@@ -709,7 +709,85 @@ export function filmCastEntryImage(entry: FilmCastEntry): string {
   return entry.imageRelativePath?.trim() || entry.imageUrl?.trim() || ''
 }
 
-/** 该镜出场的设定条目（角色在前、地点、道具），只返回有设定图的 */
+/**
+ * 提取变体实体名中的主实体名（如 `林夏#晚礼服` / `林夏·战损` → `林夏`）。
+ * 无变体后缀时返回 null。
+ */
+export function filmBaseEntityName(name: string | undefined | null): string | null {
+  const raw = (name ?? '').trim()
+  if (!raw) return null
+  const match = raw.match(/^([^#＃·]+?)\s*[#＃·]\s*(.+)$/)
+  if (!match) return null
+  const base = match[1].trim()
+  const variant = match[2].trim()
+  if (!base || !variant || filmNameKey(base) === filmNameKey(raw)) return null
+  return base
+}
+
+/**
+ * 合并多份设定库（例如全剧共享设定库 `in-cast` + 本集设定库 `filmCast`）：
+ * 同种类同名条目按先后顺序融合，保留已有设定图与描述，锁定条目优先保留。
+ */
+export function mergeFilmCasts(...casts: Array<FilmCast | null | undefined>): FilmCast | null {
+  const valid = casts.filter((c): c is FilmCast => !!c && Array.isArray(c.entries))
+  if (!valid.length) return null
+  const byKey = new Map<string, FilmCastEntry>()
+  let style = ''
+  for (const cast of valid) {
+    if (cast.style?.trim()) style = cast.style.trim()
+    for (const entry of cast.entries) {
+      const key = `${entry.kind}:${filmNameKey(entry.name)}`
+      const prev = byKey.get(key)
+      if (!prev) {
+        byKey.set(key, { ...entry })
+        continue
+      }
+      if (prev.locked && !entry.locked) {
+        byKey.set(key, {
+          ...prev,
+          description: prev.description || entry.description,
+          ...(prev.imageRelativePath || entry.imageRelativePath
+            ? { imageRelativePath: prev.imageRelativePath || entry.imageRelativePath }
+            : {}),
+          ...(prev.imageUrl || entry.imageUrl ? { imageUrl: prev.imageUrl || entry.imageUrl } : {}),
+          ...(prev.promptHash || entry.promptHash
+            ? { promptHash: prev.promptHash || entry.promptHash }
+            : {})
+        })
+        continue
+      }
+      const nextHasImg = !!filmCastEntryImage(entry)
+      const prevHasImg = !!filmCastEntryImage(prev)
+      byKey.set(key, {
+        id: entry.id || prev.id,
+        kind: entry.kind,
+        name: entry.name || prev.name,
+        description: entry.description || prev.description,
+        ...(nextHasImg
+          ? {
+              ...(entry.imageRelativePath ? { imageRelativePath: entry.imageRelativePath } : {}),
+              ...(entry.imageUrl ? { imageUrl: entry.imageUrl } : {}),
+              ...(entry.promptHash ? { promptHash: entry.promptHash } : {})
+            }
+          : prevHasImg
+            ? {
+                ...(prev.imageRelativePath ? { imageRelativePath: prev.imageRelativePath } : {}),
+                ...(prev.imageUrl ? { imageUrl: prev.imageUrl } : {}),
+                ...(prev.promptHash ? { promptHash: prev.promptHash } : {})
+              }
+            : {}),
+        ...(entry.locked || prev.locked ? { locked: true } : {})
+      })
+    }
+  }
+  return {
+    schema: FILM_CAST_SCHEMA,
+    style,
+    entries: [...byKey.values()]
+  }
+}
+
+/** 该镜出场的设定条目（角色在前、地点、道具），只返回有设定图的；变体名未单独出图时自动回退主角色设定图 */
 export function matchFilmCastForShot(
   cast: FilmCast | null | undefined,
   shot: Pick<FilmShot, 'characters' | 'location' | 'props'>
@@ -720,7 +798,14 @@ export function matchFilmCastForShot(
   )
   const out: FilmCastEntry[] = []
   const add = (kind: FilmEntityKind, name: string): void => {
-    const entry = byKey.get(`${kind}:${filmNameKey(name)}`)
+    let entry = byKey.get(`${kind}:${filmNameKey(name)}`)
+    if (!entry || !filmCastEntryImage(entry)) {
+      const base = filmBaseEntityName(name)
+      if (base) {
+        const baseEntry = byKey.get(`${kind}:${filmNameKey(base)}`)
+        if (baseEntry && filmCastEntryImage(baseEntry)) entry = baseEntry
+      }
+    }
     if (entry && filmCastEntryImage(entry) && !out.includes(entry)) out.push(entry)
   }
   for (const name of shot.characters) add('character', name)
@@ -767,6 +852,40 @@ export function findPrevSameSceneShot(
   const sameScene =
     !!shot.sceneId?.trim() && !!prev.sceneId?.trim() && shot.sceneId.trim() === prev.sceneId.trim()
   return sameLocation || sameScene ? prev : null
+}
+
+/**
+ * 将待拍镜头下标列表按「同场连续性依赖」切分为多条互不依赖的镜头链：
+ * - 链内镜头属于同一场次/地点，按顺序依次生成关键帧，保证下一镜能拿到上一镜关键帧作为参考图；
+ * - 不同链之间（不同场次，或关闭了连续性开关时）完全独立，可安全并发执行。
+ */
+export function buildFilmContinuityChains(
+  storyboard: Pick<FilmStoryboard, 'shots'> | null | undefined,
+  indexes: readonly number[],
+  continuityOn = true
+): number[][] {
+  if (!indexes.length) return []
+  if (!continuityOn || !storyboard?.shots.length) {
+    return indexes.map((idx) => [idx])
+  }
+  const chains: number[][] = []
+  for (const idx of indexes) {
+    const shot = storyboard.shots[idx]
+    const prev = shot ? findPrevSameSceneShot(storyboard, shot) : null
+    const currentChain = chains.at(-1)
+    const lastIdx = currentChain?.at(-1)
+    if (
+      prev &&
+      currentChain &&
+      lastIdx !== undefined &&
+      storyboard.shots[lastIdx]?.id === prev.id
+    ) {
+      currentChain.push(idx)
+    } else {
+      chains.push([idx])
+    }
+  }
+  return chains
 }
 
 // ─── 提示词合成 ─────────────────────────────────────────────────────────

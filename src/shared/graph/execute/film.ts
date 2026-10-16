@@ -31,9 +31,11 @@ import {
 } from '../videoGenerateParams'
 import {
   applyFilmReview,
+  buildFilmContinuityChains,
   composeFilmShotImagePrompt,
   composeFilmShotVideoPrompt,
   deriveFilmCast,
+  filmBaseEntityName,
   filmCastEntryImage,
   filmCastSummary,
   filmHash,
@@ -43,6 +45,7 @@ import {
   findPrevSameSceneShot,
   isFilmShotLocked,
   matchFilmCastForShot,
+  mergeFilmCasts,
   mergeFilmStoryboards,
   parseFilmCast,
   parseFilmCastKinds,
@@ -56,6 +59,7 @@ import {
   stringifyFilmStoryboard,
   type FilmCast,
   type FilmCastEntry,
+  type FilmEntity,
   type FilmShot,
   type FilmStoryboard
 } from '../film/storyboard'
@@ -99,6 +103,36 @@ function patch(ctx: NodeExecuteContext, params: Partial<GraphNodeParams>): void 
   ctx.patchNode?.({ params })
 }
 
+export function clampFilmConcurrency(raw: unknown): number {
+  const n = Math.round(Number(raw ?? 3))
+  if (!Number.isFinite(n) || n <= 0) return 3
+  return Math.min(8, Math.max(1, n))
+}
+
+function createConcurrencyLimiter(limit: number): <T>(fn: () => Promise<T>) => Promise<T> {
+  const max = Math.max(1, Math.floor(limit))
+  let active = 0
+  const queue: Array<() => void> = []
+  const next = (): void => {
+    if (active >= max || !queue.length) return
+    active += 1
+    const run = queue.shift()!
+    run()
+  }
+  return <T>(fn: () => Promise<T>): Promise<T> =>
+    new Promise<T>((resolve, reject) => {
+      queue.push(() => {
+        fn()
+          .then(resolve, reject)
+          .finally(() => {
+            active -= 1
+            next()
+          })
+      })
+      next()
+    })
+}
+
 function requireTextModel(
   ctx: NodeExecuteContext
 ): NonNullable<NodeExecuteContext['generateText']> {
@@ -127,17 +161,38 @@ function storyboardFromInputs(values: GraphValue[] | undefined): FilmStoryboard 
   return null
 }
 
+/** 取上游设定库：支持多条 `in-cast` 边按接入顺序融合（如全剧角色圣经 + 场景圣经 + 上一集设定库） */
 function castFromInputs(values: GraphValue[] | undefined): FilmCast | null {
+  const found: FilmCast[] = []
   for (const value of values ?? []) {
-    if (value.kind === 'filmCast' && value.doc) return value.doc
-  }
-  for (const value of values ?? []) {
-    if (value.kind === 'text') {
+    if (value.kind === 'filmCast' && value.doc) found.push(value.doc)
+    else if (value.kind === 'text') {
       const cast = parseFilmCast(value.text)
-      if (cast) return cast
+      if (cast) found.push(cast)
     }
   }
-  return null
+  return mergeFilmCasts(...found)
+}
+
+function formatSeriesCastDirective(cast: FilmCast, en: boolean): string {
+  const chars = cast.entries.filter((e) => e.kind === 'character')
+  const locs = cast.entries.filter((e) => e.kind === 'location')
+  const props = cast.entries.filter((e) => e.kind === 'prop')
+  const fmt = (list: FilmCastEntry[]): string =>
+    list
+      .map((e) => {
+        const desc = e.description?.trim().slice(0, 60)
+        return desc ? `${e.name}（${desc}）` : e.name
+      })
+      .join(en ? '; ' : '；')
+  const parts: string[] = []
+  if (chars.length) parts.push(`${en ? 'Characters' : '角色'}: ${fmt(chars)}`)
+  if (locs.length) parts.push(`${en ? 'Locations' : '地点'}: ${fmt(locs)}`)
+  if (props.length) parts.push(`${en ? 'Props' : '道具'}: ${fmt(props)}`)
+  if (!parts.length) return ''
+  return en
+    ? `Series Bible / Canonical Entities (MUST reuse these exact names in entities[].name and shot characters/location/props whenever the same recurring character, location, or prop appears in this episode; if a recurring character wears a new outfit or state in this episode, name it "BaseName#Variant", e.g. "${chars[0]?.name ?? 'Hero'}#EveningGown"):\n${parts.join('\n')}`
+    : `全剧既有设定名录（本集若出现同一人物/地点/道具或其简称，entities[].name 与镜头里的 characters / location / props 必须严格沿用以下标准名称；若常驻角色在本集换了新服装或新状态，请命名为「角色名#新造型」，如「${chars[0]?.name ?? '林夏'}#晚礼服」，以便自动继承主角色面部参考图）：\n${parts.join('\n')}`
 }
 
 /** 收集上游剧本正文（文本 / 文本组 / 落盘路径 / 剧本资产引用） */
@@ -294,6 +349,11 @@ export async function executeFilmBreakdownNode(
   if (aspect) directives.push(en ? `Aspect ratio: ${aspect}.` : `画幅：${aspect}。`)
   const style = node.params.filmStyle?.trim()
   if (style) directives.push(en ? `Visual style: ${style}.` : `视觉风格：${style}。`)
+  const upstreamCast = castFromInputs(ctx.inputs['in-cast'])
+  if (upstreamCast?.entries.length) {
+    const castDirective = formatSeriesCastDirective(upstreamCast, en)
+    if (castDirective) directives.push(castDirective)
+  }
   const extra = (
     node.params.filmBreakdownInstruction ??
     (node.typeId !== 'film.workbench' ? node.params.generateInstruction : '')
@@ -348,10 +408,25 @@ export async function executeFilmBreakdownNode(
             : shot
         )
       : value.shots
+  const upstreamByKey = new Map(
+    (upstreamCast?.entries ?? []).map((e) => [`${e.kind}:${filmNameKey(e.name)}`, e])
+  )
+  const enrichedEntities: FilmEntity[] = value.entities.map((entity) => {
+    if (entity.description?.trim()) return entity
+    const exact = upstreamByKey.get(`${entity.kind}:${filmNameKey(entity.name)}`)
+    if (exact?.description) return { ...entity, description: exact.description }
+    const base = filmBaseEntityName(entity.name)
+    if (base) {
+      const baseEntry = upstreamByKey.get(`${entity.kind}:${filmNameKey(base)}`)
+      if (baseEntry?.description) return { ...entity, description: baseEntry.description }
+    }
+    return entity
+  })
   const next: FilmStoryboard = {
     ...value,
+    entities: enrichedEntities,
     shots: normalizedShots,
-    style: style || value.style,
+    style: style || value.style || upstreamCast?.style || '',
     aspectRatio: aspect || value.aspectRatio
   }
   const merged = mergeFilmStoryboards(previous, next)
@@ -555,7 +630,9 @@ export async function executeFilmCastNode(
   if (onlyId) patch(ctx, { filmCastOnlyId: '' })
   const storyboard =
     storyboardFromInputs(ctx.inputs.in) || parseFilmStoryboard(node.params.filmStoryboard ?? '')
-  const previous = parseFilmCast(node.params.filmCast ?? '')
+  const upstreamCast = castFromInputs(ctx.inputs['in-cast'])
+  const localPrev = parseFilmCast(node.params.filmCast ?? '')
+  const previous = mergeFilmCasts(upstreamCast, localPrev)
   if (!storyboard && !previous?.entries.length) {
     throw new Error('GRAPH_PROCESS_NO_INPUT')
   }
@@ -567,6 +644,11 @@ export async function executeFilmCastNode(
       'out-sheets': { kind: 'images', items: castImageItems(previous) }
     }
   }
+  const upstreamImageKeys = new Set(
+    (upstreamCast?.entries ?? [])
+      .filter((entry) => filmCastEntryImage(entry))
+      .map((entry) => `${entry.kind}:${filmNameKey(entry.name)}`)
+  )
   const { byKey, style } = splitUserRefs(ctx.inputs['in-image'], cast.entries)
   const styleUrls = await resolveRefUrls(ctx, style.slice(0, 2))
   const force = node.params.filmForce === true
@@ -575,17 +657,35 @@ export async function executeFilmCastNode(
     (node.typeId !== 'film.workbench' ? node.params.generateInstruction : '')
   )?.trim()
   const aspect = node.params.generateAspectRatio?.trim() || undefined
+  const concurrency = clampFilmConcurrency(node.params.filmRenderConcurrency)
+  const castLimiter = createConcurrencyLimiter(concurrency)
   let generated = 0
 
-  for (const entry of cast.entries) {
+  const findBaseCastEntry = (entry: FilmCastEntry): FilmCastEntry | null => {
+    const baseName = filmBaseEntityName(entry.name)
+    if (!baseName) return null
+    const key = `${entry.kind}:${filmNameKey(baseName)}`
+    return (
+      cast.entries.find((item) => `${item.kind}:${filmNameKey(item.name)}` === key) ??
+      previous?.entries.find((item) => `${item.kind}:${filmNameKey(item.name)}` === key) ??
+      null
+    )
+  }
+
+  const processEntry = async (entry: FilmCastEntry): Promise<void> => {
     checkAbort(ctx)
     if (onlyId) {
       const isTarget = entry.id === onlyId || filmNameKey(entry.name) === filmNameKey(onlyId)
-      if (!isTarget) continue
+      if (!isTarget) return
     } else if (entry.locked) {
-      continue
+      return
     }
     const forceEntry = force || !!onlyId
+    const entryKey = `${entry.kind}:${filmNameKey(entry.name)}`
+    // 全剧设定库（in-cast）已带设定图的常驻实体直接复用，避免跨集重画导致换脸
+    if (!forceEntry && upstreamImageKeys.has(entryKey) && filmCastEntryImage(entry)) {
+      return
+    }
     // 用户直接给了该实体的图：作为设定图，不再生成
     const userRef = byKey.get(filmNameKey(entry.name))
     if (userRef) {
@@ -598,11 +698,22 @@ export async function executeFilmCastNode(
         else entry.imageUrl = userRef.dataUrl
       }
       entry.promptHash = 'user'
-      continue
+      return
     }
+    const baseEntry = findBaseCastEntry(entry)
+    const baseHasImg = !!baseEntry && !!filmCastEntryImage(baseEntry)
+    const baseUrls =
+      baseHasImg && baseEntry ? await resolveRefUrls(ctx, [entryRefItem(baseEntry)]) : []
+    const variantRefLine =
+      baseUrls.length && baseEntry
+        ? isEn(ctx)
+          ? `Identity reference: keep the exact facial features, bone structure and core identity of reference @1 (${baseEntry.name}), changing only the outfit or state as described below.`
+          : `角色基底参考：人物面部五官、骨相与核心特征严格继承参考图@1（${baseEntry.name}），仅按以下描述更换服装、造型或状态。`
+        : ''
     const prompt = [
       cast.style ? (isEn(ctx) ? `Visual style: ${cast.style}` : `视觉风格：${cast.style}`) : '',
       pickFilmPrompt(FILM_CAST_IMAGE[entry.kind], ctx.locale),
+      variantRefLine,
       `${entry.name}${entry.description ? `: ${entry.description}` : ''}`,
       extra ?? ''
     ]
@@ -610,12 +721,14 @@ export async function executeFilmCastNode(
       .join('\n')
     const imageSeed =
       node.params.generateSeedUseGlobal === false ? node.params.generateSeed : undefined
+    const baseImgKey = baseHasImg && baseEntry ? filmCastEntryImage(baseEntry) : ''
     const hash = filmHash(
-      `${prompt}|${node.params.generateModel ?? ''}|${aspect ?? ''}|${node.params.generateResolution ?? ''}|${node.params.generateQuality ?? ''}|${imageSeed ?? ''}`
+      `${prompt}|${baseImgKey}|${node.params.generateModel ?? ''}|${aspect ?? ''}|${node.params.generateResolution ?? ''}|${node.params.generateQuality ?? ''}|${imageSeed ?? ''}`
     )
-    if (!forceEntry && filmCastEntryImage(entry) && entry.promptHash === hash) continue
-    if (!ctx.generateImage) continue
+    if (!forceEntry && filmCastEntryImage(entry) && entry.promptHash === hash) return
+    if (!ctx.generateImage) return
     ctx.log?.(pickLogBi(ctx, `设定图：${entry.name}`, `Design sheet: ${entry.name}`))
+    const refList = [...baseUrls, ...styleUrls]
     const result = await ctx.generateImage({
       prompt,
       model: node.params.generateModel || undefined,
@@ -625,11 +738,11 @@ export async function executeFilmCastNode(
       quality: node.params.generateQuality || undefined,
       ...(imageSeed != null ? { seed: imageSeed } : {}),
       n: 1,
-      inputReferences: styleUrls.length ? styleUrls : undefined
+      inputReferences: refList.length ? refList : undefined
     })
     checkAbort(ctx)
     const dataUrl = result.images?.[0]?.trim()
-    if (!dataUrl) continue
+    if (!dataUrl) return
     const saved = await materializeGeneratedBatch(
       ctx,
       [{ id: `cast:${entry.id}`, dataUrl, createdAt: new Date().toISOString() }],
@@ -643,6 +756,18 @@ export async function executeFilmCastNode(
     }
     entry.promptHash = hash
     generated += 1
+  }
+
+  // 第一阶段并发生成主实体，第二阶段并发生成依赖主实体设定图的 #造型 变体实体
+  const baseEntries: FilmCastEntry[] = []
+  const variantEntries: FilmCastEntry[] = []
+  for (const entry of cast.entries) {
+    if (findBaseCastEntry(entry)) variantEntries.push(entry)
+    else baseEntries.push(entry)
+  }
+  await Promise.all(baseEntries.map((entry) => castLimiter(() => processEntry(entry))))
+  if (variantEntries.length) {
+    await Promise.all(variantEntries.map((entry) => castLimiter(() => processEntry(entry))))
   }
 
   const missing = cast.entries.filter((entry) => !filmCastEntryImage(entry))
@@ -789,7 +914,10 @@ export async function executeFilmRenderNode(
   const input =
     storyboardFromInputs(ctx.inputs.in) || parseFilmStoryboard(node.params.filmStoryboard ?? '')
   if (!input) throw new Error('GRAPH_PROCESS_NO_INPUT')
-  const cast = castFromInputs(ctx.inputs['in-cast']) || parseFilmCast(node.params.filmCast ?? '')
+  const cast = mergeFilmCasts(
+    castFromInputs(ctx.inputs['in-cast']),
+    parseFilmCast(node.params.filmCast ?? '')
+  )
   const cache = parseFilmRenderCache(node.params.filmRenders)
   const mode = node.params.filmRenderMode === 'video' ? 'video' : 'keyframe'
   const forceAll = node.params.filmForce === true
@@ -799,6 +927,7 @@ export async function executeFilmRenderNode(
     3,
     Math.max(0, Math.round(Number(node.params.filmRenderMaxRetries ?? 1)))
   )
+  const concurrency = clampFilmConcurrency(node.params.filmRenderConcurrency)
   const aspect = node.params.generateAspectRatio?.trim() || input.aspectRatio || undefined
   const indexes = parseFilmShotRange(onlyShotId || node.params.filmShotRange, input.shots)
   if (!ctx.generateImage) {
@@ -832,279 +961,334 @@ export async function executeFilmRenderNode(
   let rendered = 0
   let reused = 0
   const failures: string[] = []
-  const persist = (): void => patch(ctx, { filmRenders: JSON.stringify(cache) })
+  const persist = (): void => {
+    const ordered: FilmRenderCache = {}
+    for (const s of shots) {
+      if (cache[s.id]) ordered[s.id] = cache[s.id]
+    }
+    for (const [k, v] of Object.entries(cache)) {
+      if (!(k in ordered)) ordered[k] = v
+    }
+    patch(ctx, { filmRenders: JSON.stringify(ordered) })
+  }
 
-  for (const [step, index] of indexes.entries()) {
-    checkAbort(ctx)
-    const shot = shots[index]
-    const entry: FilmRenderEntry = { ...(cache[shot.id] ?? {}) }
-    delete entry.error
-    const refs = matchFilmCastForShot(cast, shot)
-    const prevShot = continuityOn ? findPrevSameSceneShot(input, shot) : null
-    const prevKeyframe = prevShot
-      ? (cache[prevShot.id]?.keyframe || prevShot.media?.keyframe || '').trim()
-      : ''
-    const extra = node.params.generateInstruction?.trim()
-    const composed = composeFilmShotImagePrompt(
-      input,
-      shot,
-      refs,
-      ctx.locale,
-      prevShot
-        ? {
-            prevShot,
-            prevKeyframeRefIndex: prevKeyframe ? refs.length + 1 : undefined
-          }
-        : undefined
-    )
-    const basePrompt = extra ? `${composed}\n${extra}` : composed
-    const imageSeed =
-      node.params.generateSeedUseGlobal === false ? node.params.generateSeed : undefined
-    const keyHash = filmHash(
-      `${basePrompt}|${refs.map(filmCastEntryImage).join(',')}|${prevKeyframe}|${node.params.generateModel ?? ''}|${aspect ?? ''}|${node.params.generateResolution ?? ''}|${node.params.generateQuality ?? ''}|${imageSeed ?? ''}`
-    )
-    const hasValidKeyframe = !!entry.keyframe && entry.keyframeHash === keyHash
-    // 单镜执行且处于「关键帧 + 视频」模式：若关键帧已就绪且尚未生成视频，直接复用关键帧补拍视频
-    const onlyNeedsVideo =
-      !!onlyShotId && mode === 'video' && hasValidKeyframe && !entry.video && !forceAll
-    const forceKeyframe = (forceAll || !!onlyShotId) && !onlyNeedsVideo
-    const forceVideo = forceAll || !!onlyShotId
-    const progress = `[${step + 1}/${indexes.length}] ${shot.id}`
+  const stepByIndex = new Map(indexes.map((idx, step) => [idx, step]))
+  const chains = buildFilmContinuityChains(input, indexes, continuityOn)
+  const chainLimiter = createConcurrencyLimiter(concurrency)
+  const videoLimiter = createConcurrencyLimiter(concurrency)
+  const videoTasks: Promise<void>[] = []
+
+  const runShotVideo = async (
+    shot: FilmShot,
+    prevShot: FilmShot | null,
+    entry: FilmRenderEntry,
+    forceVideo: boolean,
+    progress: string
+  ): Promise<void> => {
+    const keyframe = entry.keyframe
+    if (mode !== 'video' || !generateVideo || !keyframe) return
     try {
-      // ① 关键帧（指纹未变 → 复用）
-      if (forceKeyframe || !hasValidKeyframe) {
-        const refItems = [
-          ...refs.map(entryRefItem),
-          ...(prevKeyframe ? [mediaRefItem(prevKeyframe)] : [])
-        ]
-        const refUrls = await resolveRefUrls(ctx, refItems)
-        const refMeta = [
-          ...refs.map((ref) => ({
-            source: 'character' as const,
-            name: ref.name,
-            ...(ref.imageRelativePath ? { relativePath: ref.imageRelativePath } : {})
-          })),
-          ...(prevKeyframe && prevShot
-            ? [
-                {
-                  source: 'character' as const,
-                  name: prevShot.id,
-                  ...(prevKeyframe.startsWith('data:') ? {} : { relativePath: prevKeyframe })
-                }
-              ]
-            : [])
-        ].slice(0, refUrls.length)
-        let prompt = basePrompt
-        let attempt = 0
-        for (;;) {
-          checkAbort(ctx)
-          ctx.log?.(
-            pickLogBi(
-              ctx,
-              `${progress} 拍摄关键帧${attempt ? `（重拍 ${attempt}）` : ''}`,
-              `${progress} keyframe${attempt ? ` (retake ${attempt})` : ''}`
-            )
-          )
-          const result = await generateImage({
-            prompt,
-            model: node.params.generateModel || undefined,
-            providerInstanceId: node.params.generateProviderInstanceId || undefined,
-            aspectRatio: aspect,
-            resolution: node.params.generateResolution || undefined,
-            quality: node.params.generateQuality || undefined,
-            ...(imageSeed != null ? { seed: imageSeed } : {}),
-            n: 1,
-            inputReferences: refUrls.length ? refUrls : undefined,
-            inputReferenceMeta: refMeta.length ? refMeta : undefined
-          })
-          checkAbort(ctx)
-          let dataUrl = result.images?.[0]?.trim() ?? ''
-          if (!dataUrl) throw fail(SHARED_ERRORS.noModelImage)
-          if (aspect && ctx.normalizeImageAspectRatio && dataUrl.startsWith('data:image/')) {
-            try {
-              dataUrl =
-                (await ctx.normalizeImageAspectRatio({ dataUrl, aspectRatio: aspect })) || dataUrl
-            } catch {
-              /* 裁正失败保留原图 */
-            }
-          }
-          const saved = await materializeGeneratedBatch(
-            ctx,
-            [
+      const videoPrompt = composeFilmShotVideoPrompt(
+        shot,
+        ctx.locale,
+        prevShot ? { prevShot } : undefined
+      )
+      const fallbackShotSec =
+        typeof node.params.filmShotDurationSec === 'number' &&
+        Number.isFinite(node.params.filmShotDurationSec) &&
+        node.params.filmShotDurationSec > 0
+          ? Math.round(node.params.filmShotDurationSec)
+          : 5
+      const targetVideoDuration =
+        typeof node.params.filmVideoDuration === 'number' &&
+        Number.isFinite(node.params.filmVideoDuration) &&
+        node.params.filmVideoDuration > 0
+          ? Math.round(node.params.filmVideoDuration)
+          : shot.durationSec > 0
+            ? shot.durationSec
+            : fallbackShotSec
+      const rawVideoAspect =
+        node.params.filmVideoAspectRatio?.trim() || (aspect === '2.39:1' ? '16:9' : aspect)
+      const rawVideoResolution = node.params.filmVideoResolution?.trim() || undefined
+      const rawVideoAudio =
+        typeof node.params.filmVideoAudio === 'boolean' ? node.params.filmVideoAudio : undefined
+      const videoSeed =
+        node.params.filmVideoSeedUseGlobal === false ? node.params.filmVideoSeed : undefined
+      const videoHash = filmHash(
+        `${keyframe}|${videoPrompt}|${node.params.filmVideoModel ?? ''}|${targetVideoDuration}|${rawVideoResolution ?? ''}|${rawVideoAspect ?? ''}|${rawVideoAudio ?? ''}|${videoSeed ?? ''}`
+      )
+      if (!forceVideo && entry.video && entry.videoHash === videoHash) return
+      checkAbort(ctx)
+      ctx.log?.(pickLogBi(ctx, `${progress} 生成视频`, `${progress} video`))
+      const [firstFrame] = await resolveRefUrls(ctx, [mediaRefItem(keyframe)])
+      const clamped =
+        videoCaps != null && hasAnyVideoGenerateCapability(videoCaps)
+          ? clampVideoGenerateParams(
               {
-                id: `film:${shot.id}`,
-                title: shot.id,
-                dataUrl,
-                createdAt: new Date().toISOString()
-              }
-            ],
-            `film:${shot.id}`
-          )
-          const keyframe = saved[0]?.relativePath || dataUrl
-          entry.keyframe = keyframe
-          entry.keyframeHash = keyHash
-          delete entry.video
-          delete entry.videoHash
-          delete entry.qc
-
-          // ② 视觉质检：不合格带问题重拍
-          if (!qcOn || !generateText) break
-          const frameUrls = await resolveRefUrls(ctx, [mediaRefItem(keyframe)])
-          const qcResult = await generateText({
-            prompt: shotSpecForQc(ctx, shot),
-            system: pickFilmPrompt(FILM_FRAME_QC_SYSTEM, ctx.locale),
-            model: node.params.filmQcModel || undefined,
-            providerInstanceId: node.params.filmQcProviderInstanceId || undefined,
-            images: [...frameUrls, ...refUrls.slice(0, 3)]
-          })
-          checkAbort(ctx)
-          const qc = parseQc(qcResult.text) ?? { pass: true, issues: '' }
-          entry.qc = qc
-          if (qc.pass || attempt >= maxRetries) {
-            if (!qc.pass) {
-              ctx.log?.(
-                pickLogBi(
-                  ctx,
-                  `${progress} 质检仍未通过：${qc.issues}`,
-                  `${progress} QC still failing: ${qc.issues}`
-                ),
-                'warn'
-              )
-            }
-            break
-          }
-          attempt += 1
-          prompt = `${basePrompt}\n${isEn(ctx) ? 'Reshoot fixes' : '重拍修正'}: ${qc.issues}`
-        }
-        rendered += 1
-      } else {
-        reused += 1
-      }
-
-      // ③ 图生视频（首帧 = 关键帧）
-      const keyframe = entry.keyframe
-      if (mode === 'video' && generateVideo && keyframe) {
-        const videoPrompt = composeFilmShotVideoPrompt(
-          shot,
-          ctx.locale,
-          prevShot ? { prevShot } : undefined
-        )
-        const fallbackShotSec =
-          typeof node.params.filmShotDurationSec === 'number' &&
-          Number.isFinite(node.params.filmShotDurationSec) &&
-          node.params.filmShotDurationSec > 0
-            ? Math.round(node.params.filmShotDurationSec)
-            : 5
-        const targetVideoDuration =
-          typeof node.params.filmVideoDuration === 'number' &&
-          Number.isFinite(node.params.filmVideoDuration) &&
-          node.params.filmVideoDuration > 0
-            ? Math.round(node.params.filmVideoDuration)
-            : shot.durationSec > 0
-              ? shot.durationSec
-              : fallbackShotSec
-        const rawVideoAspect =
-          node.params.filmVideoAspectRatio?.trim() || (aspect === '2.39:1' ? '16:9' : aspect)
-        const rawVideoResolution = node.params.filmVideoResolution?.trim() || undefined
-        const rawVideoAudio =
-          typeof node.params.filmVideoAudio === 'boolean' ? node.params.filmVideoAudio : undefined
-        const videoSeed =
-          node.params.filmVideoSeedUseGlobal === false ? node.params.filmVideoSeed : undefined
-        const videoHash = filmHash(
-          `${keyframe}|${videoPrompt}|${node.params.filmVideoModel ?? ''}|${targetVideoDuration}|${rawVideoResolution ?? ''}|${rawVideoAspect ?? ''}|${rawVideoAudio ?? ''}|${videoSeed ?? ''}`
-        )
-        if (forceVideo || !entry.video || entry.videoHash !== videoHash) {
-          ctx.log?.(pickLogBi(ctx, `${progress} 生成视频`, `${progress} video`))
-          const [firstFrame] = await resolveRefUrls(ctx, [mediaRefItem(keyframe)])
-          const clamped =
-            videoCaps != null && hasAnyVideoGenerateCapability(videoCaps)
-              ? clampVideoGenerateParams(
-                  {
-                    aspectRatio: rawVideoAspect,
-                    resolution: rawVideoResolution || node.params.generateResolution || undefined,
-                    duration: pickFilmVideoDuration(targetVideoDuration, videoCaps.durations),
-                    generateAudio: rawVideoAudio,
-                    frameMode: firstFrame ? 'first' : 'none'
-                  },
-                  videoCaps
-                )
-              : null
-          const requestDuration =
-            clamped?.duration ?? pickFilmVideoDuration(targetVideoDuration, videoCaps?.durations)
-          const requestAspect = clamped ? clamped.aspectRatio : rawVideoAspect
-          const requestResolution = clamped ? clamped.resolution : rawVideoResolution
-          const requestAudio = clamped ? clamped.generateAudio : rawVideoAudio
-          const useFirstFrame =
-            firstFrame &&
-            (!clamped ||
-              !videoCaps?.supportedFrameImages?.length ||
-              clamped.frameMode === 'first' ||
-              clamped.frameMode === 'first_last')
-              ? firstFrame
-              : undefined
-          const fallbackRefs =
-            firstFrame && !useFirstFrame
-              ? [{ kind: 'image_url' as const, url: firstFrame }]
-              : undefined
-          const baseVideoInput = {
-            prompt: videoPrompt,
-            model: node.params.filmVideoModel || undefined,
-            providerInstanceId: node.params.filmVideoProviderInstanceId || undefined,
-            aspectRatio: requestAspect,
-            resolution: requestResolution,
-            ...(typeof requestAudio === 'boolean' ? { generateAudio: requestAudio } : {}),
-            ...(videoSeed != null ? { seed: videoSeed } : {}),
-            ...(useFirstFrame ? { firstFrameImageUrl: useFirstFrame } : {}),
-            ...(fallbackRefs ? { inputReferences: fallbackRefs } : {}),
-            outputDir: node.params.mediaOutputDir?.trim() || undefined,
-            name: `${ctx.resolveHostAssetName?.() || input.title || 'film'}_${shot.id}`,
-            graphBinding: {
-              hostId: ctx.resolveHostAssetId?.(),
-              nodeId: node.id,
-              shotId: shot.id
-            }
-          }
-          let video: Awaited<ReturnType<typeof generateVideo>>
-          try {
-            video = await generateVideo({
-              ...baseVideoInput,
-              duration: requestDuration
-            })
-          } catch (videoErr) {
-            if ((videoErr as Error)?.name === 'AbortError') throw videoErr
-            const errMsg = videoErr instanceof Error ? videoErr.message : String(videoErr)
-            const supported = supportedDurationsFromError(errMsg)
-            const retryDuration = supported.length
-              ? pickFilmVideoDuration(targetVideoDuration, supported)
-              : undefined
-            if (retryDuration == null || retryDuration === requestDuration) throw videoErr
-            ctx.log?.(
-              pickLogBi(
-                ctx,
-                `${progress} 模型不支持 ${requestDuration}s，改用 ${retryDuration}s 重试一次`,
-                `${progress} ${requestDuration}s rejected by model, retrying with ${retryDuration}s`
-              ),
-              'warn'
+                aspectRatio: rawVideoAspect,
+                resolution: rawVideoResolution || node.params.generateResolution || undefined,
+                duration: pickFilmVideoDuration(targetVideoDuration, videoCaps.durations),
+                generateAudio: rawVideoAudio,
+                frameMode: firstFrame ? 'first' : 'none'
+              },
+              videoCaps
             )
-            video = await generateVideo({
-              ...baseVideoInput,
-              duration: retryDuration
-            })
-          }
-          checkAbort(ctx)
-          entry.video = video.relativePath
-          entry.videoHash = videoHash
+          : null
+      const requestDuration =
+        clamped?.duration ?? pickFilmVideoDuration(targetVideoDuration, videoCaps?.durations)
+      const requestAspect = clamped ? clamped.aspectRatio : rawVideoAspect
+      const requestResolution = clamped ? clamped.resolution : rawVideoResolution
+      const requestAudio = clamped ? clamped.generateAudio : rawVideoAudio
+      const useFirstFrame =
+        firstFrame &&
+        (!clamped ||
+          !videoCaps?.supportedFrameImages?.length ||
+          clamped.frameMode === 'first' ||
+          clamped.frameMode === 'first_last')
+          ? firstFrame
+          : undefined
+      const fallbackRefs =
+        firstFrame && !useFirstFrame ? [{ kind: 'image_url' as const, url: firstFrame }] : undefined
+      const baseVideoInput = {
+        prompt: videoPrompt,
+        model: node.params.filmVideoModel || undefined,
+        providerInstanceId: node.params.filmVideoProviderInstanceId || undefined,
+        aspectRatio: requestAspect,
+        resolution: requestResolution,
+        ...(typeof requestAudio === 'boolean' ? { generateAudio: requestAudio } : {}),
+        ...(videoSeed != null ? { seed: videoSeed } : {}),
+        ...(useFirstFrame ? { firstFrameImageUrl: useFirstFrame } : {}),
+        ...(fallbackRefs ? { inputReferences: fallbackRefs } : {}),
+        outputDir: node.params.mediaOutputDir?.trim() || undefined,
+        name: `${ctx.resolveHostAssetName?.() || input.title || 'film'}_${shot.id}`,
+        graphBinding: {
+          hostId: ctx.resolveHostAssetId?.(),
+          nodeId: node.id,
+          shotId: shot.id
         }
       }
+      let video: Awaited<ReturnType<typeof generateVideo>>
+      try {
+        video = await generateVideo({
+          ...baseVideoInput,
+          duration: requestDuration
+        })
+      } catch (videoErr) {
+        if ((videoErr as Error)?.name === 'AbortError') throw videoErr
+        const errMsg = videoErr instanceof Error ? videoErr.message : String(videoErr)
+        const supported = supportedDurationsFromError(errMsg)
+        const retryDuration = supported.length
+          ? pickFilmVideoDuration(targetVideoDuration, supported)
+          : undefined
+        if (retryDuration == null || retryDuration === requestDuration) throw videoErr
+        ctx.log?.(
+          pickLogBi(
+            ctx,
+            `${progress} 模型不支持 ${requestDuration}s，改用 ${retryDuration}s 重试一次`,
+            `${progress} ${requestDuration}s rejected by model, retrying with ${retryDuration}s`
+          ),
+          'warn'
+        )
+        video = await generateVideo({
+          ...baseVideoInput,
+          duration: retryDuration
+        })
+      }
+      checkAbort(ctx)
+      entry.video = video.relativePath
+      entry.videoHash = videoHash
+      cache[shot.id] = entry
+      persist()
     } catch (err) {
       if ((err as Error)?.name === 'AbortError') throw err
       const message = err instanceof Error ? err.message : String(err)
       entry.error = message
       failures.push(`${shot.id}: ${message}`)
       ctx.log?.(`${progress} ${message}`, 'error')
+      cache[shot.id] = entry
+      persist()
     }
-    cache[shot.id] = entry
-    persist()
+  }
+
+  // 按场次连续性链并发拍关键帧（同场次内顺序承接上一镜关键帧，跨场次并发）；
+  // 每镜关键帧就绪后立即送入视频并发池，无需阻塞同场下一镜关键帧生成。
+  await Promise.all(
+    chains.map((chain) =>
+      chainLimiter(async () => {
+        for (const index of chain) {
+          checkAbort(ctx)
+          const step = stepByIndex.get(index) ?? 0
+          const shot = shots[index]
+          const entry: FilmRenderEntry = { ...(cache[shot.id] ?? {}) }
+          delete entry.error
+          const refs = matchFilmCastForShot(cast, shot)
+          const prevShot = continuityOn ? findPrevSameSceneShot(input, shot) : null
+          const prevKeyframe = prevShot
+            ? (cache[prevShot.id]?.keyframe || prevShot.media?.keyframe || '').trim()
+            : ''
+          const extra = node.params.generateInstruction?.trim()
+          const composed = composeFilmShotImagePrompt(
+            input,
+            shot,
+            refs,
+            ctx.locale,
+            prevShot
+              ? {
+                  prevShot,
+                  prevKeyframeRefIndex: prevKeyframe ? refs.length + 1 : undefined
+                }
+              : undefined
+          )
+          const basePrompt = extra ? `${composed}\n${extra}` : composed
+          const imageSeed =
+            node.params.generateSeedUseGlobal === false ? node.params.generateSeed : undefined
+          const keyHash = filmHash(
+            `${basePrompt}|${refs.map(filmCastEntryImage).join(',')}|${prevKeyframe}|${node.params.generateModel ?? ''}|${aspect ?? ''}|${node.params.generateResolution ?? ''}|${node.params.generateQuality ?? ''}|${imageSeed ?? ''}`
+          )
+          const hasValidKeyframe = !!entry.keyframe && entry.keyframeHash === keyHash
+          // 单镜执行且处于「关键帧 + 视频」模式：若关键帧已就绪且尚未生成视频，直接复用关键帧补拍视频
+          const onlyNeedsVideo =
+            !!onlyShotId && mode === 'video' && hasValidKeyframe && !entry.video && !forceAll
+          const forceKeyframe = (forceAll || !!onlyShotId) && !onlyNeedsVideo
+          const forceVideo = forceAll || !!onlyShotId
+          const progress = `[${step + 1}/${indexes.length}] ${shot.id}`
+          try {
+            // ① 关键帧（指纹未变 → 复用）
+            if (forceKeyframe || !hasValidKeyframe) {
+              const refItems = [
+                ...refs.map(entryRefItem),
+                ...(prevKeyframe ? [mediaRefItem(prevKeyframe)] : [])
+              ]
+              const refUrls = await resolveRefUrls(ctx, refItems)
+              const refMeta = [
+                ...refs.map((ref) => ({
+                  source: 'character' as const,
+                  name: ref.name,
+                  ...(ref.imageRelativePath ? { relativePath: ref.imageRelativePath } : {})
+                })),
+                ...(prevKeyframe && prevShot
+                  ? [
+                      {
+                        source: 'character' as const,
+                        name: prevShot.id,
+                        ...(prevKeyframe.startsWith('data:') ? {} : { relativePath: prevKeyframe })
+                      }
+                    ]
+                  : [])
+              ].slice(0, refUrls.length)
+              let prompt = basePrompt
+              let attempt = 0
+              for (;;) {
+                checkAbort(ctx)
+                ctx.log?.(
+                  pickLogBi(
+                    ctx,
+                    `${progress} 拍摄关键帧${attempt ? `（重拍 ${attempt}）` : ''}`,
+                    `${progress} keyframe${attempt ? ` (retake ${attempt})` : ''}`
+                  )
+                )
+                const result = await generateImage({
+                  prompt,
+                  model: node.params.generateModel || undefined,
+                  providerInstanceId: node.params.generateProviderInstanceId || undefined,
+                  aspectRatio: aspect,
+                  resolution: node.params.generateResolution || undefined,
+                  quality: node.params.generateQuality || undefined,
+                  ...(imageSeed != null ? { seed: imageSeed } : {}),
+                  n: 1,
+                  inputReferences: refUrls.length ? refUrls : undefined,
+                  inputReferenceMeta: refMeta.length ? refMeta : undefined
+                })
+                checkAbort(ctx)
+                let dataUrl = result.images?.[0]?.trim() ?? ''
+                if (!dataUrl) throw fail(SHARED_ERRORS.noModelImage)
+                if (aspect && ctx.normalizeImageAspectRatio && dataUrl.startsWith('data:image/')) {
+                  try {
+                    dataUrl =
+                      (await ctx.normalizeImageAspectRatio({ dataUrl, aspectRatio: aspect })) ||
+                      dataUrl
+                  } catch {
+                    /* 裁正失败保留原图 */
+                  }
+                }
+                const saved = await materializeGeneratedBatch(
+                  ctx,
+                  [
+                    {
+                      id: `film:${shot.id}`,
+                      title: shot.id,
+                      dataUrl,
+                      createdAt: new Date().toISOString()
+                    }
+                  ],
+                  `film:${shot.id}`
+                )
+                const keyframe = saved[0]?.relativePath || dataUrl
+                entry.keyframe = keyframe
+                entry.keyframeHash = keyHash
+                delete entry.video
+                delete entry.videoHash
+                delete entry.qc
+
+                // ② 视觉质检：不合格带问题重拍
+                if (!qcOn || !generateText) break
+                const frameUrls = await resolveRefUrls(ctx, [mediaRefItem(keyframe)])
+                const qcResult = await generateText({
+                  prompt: shotSpecForQc(ctx, shot),
+                  system: pickFilmPrompt(FILM_FRAME_QC_SYSTEM, ctx.locale),
+                  model: node.params.filmQcModel || undefined,
+                  providerInstanceId: node.params.filmQcProviderInstanceId || undefined,
+                  images: [...frameUrls, ...refUrls.slice(0, 3)]
+                })
+                checkAbort(ctx)
+                const qc = parseQc(qcResult.text) ?? { pass: true, issues: '' }
+                entry.qc = qc
+                if (qc.pass || attempt >= maxRetries) {
+                  if (!qc.pass) {
+                    ctx.log?.(
+                      pickLogBi(
+                        ctx,
+                        `${progress} 质检仍未通过：${qc.issues}`,
+                        `${progress} QC still failing: ${qc.issues}`
+                      ),
+                      'warn'
+                    )
+                  }
+                  break
+                }
+                attempt += 1
+                prompt = `${basePrompt}\n${isEn(ctx) ? 'Reshoot fixes' : '重拍修正'}: ${qc.issues}`
+              }
+              rendered += 1
+            } else {
+              reused += 1
+            }
+
+            cache[shot.id] = entry
+            persist()
+
+            // ③ 图生视频（首帧 = 关键帧）：投入视频并发池，不阻塞同场下一镜关键帧生成
+            if (mode === 'video' && generateVideo && entry.keyframe) {
+              videoTasks.push(
+                videoLimiter(() => runShotVideo(shot, prevShot, entry, forceVideo, progress))
+              )
+            }
+          } catch (err) {
+            if ((err as Error)?.name === 'AbortError') throw err
+            const message = err instanceof Error ? err.message : String(err)
+            entry.error = message
+            failures.push(`${shot.id}: ${message}`)
+            ctx.log?.(`${progress} ${message}`, 'error')
+            cache[shot.id] = entry
+            persist()
+          }
+        }
+      })
+    )
+  )
+
+  if (videoTasks.length) {
+    await Promise.all(videoTasks)
   }
 
   // 产物回写进分镜文档（下游 / agent 读一份文档即可拿到每镜关键帧与视频）
@@ -1162,7 +1346,10 @@ export async function executeFilmRenderNode(
 function collectWorkbenchOutputs(ctx: NodeExecuteContext): Record<string, GraphValue> {
   const { node } = ctx
   const doc = parseFilmStoryboard(node.params.filmStoryboard ?? '')
-  const cast = parseFilmCast(node.params.filmCast ?? '')
+  const cast = mergeFilmCasts(
+    castFromInputs(ctx.inputs['in-cast']),
+    parseFilmCast(node.params.filmCast ?? '')
+  )
   const cache = parseFilmRenderCache(node.params.filmRenders)
   const shotIds = doc?.shots.map((shot) => shot.id) ?? Object.keys(cache)
   const images: GraphImageItem[] = []
@@ -1268,7 +1455,10 @@ export async function executeFilmWorkbenchNode(
       (runTarget === 'all' && (!!ctx.generateImage || !!ctx.generateVideo))) &&
     storyboard
   ) {
-    const cast = parseFilmCast(node.params.filmCast ?? '')
+    const cast = mergeFilmCasts(
+      castFromInputs(ctx.inputs['in-cast']),
+      parseFilmCast(node.params.filmCast ?? '')
+    )
     await executeFilmRenderNode({
       ...ctx,
       inputs: {
