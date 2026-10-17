@@ -1304,7 +1304,7 @@ export default {
       slashMenu: 'Commands',
       slashClearDesc: 'Clear context and start a fresh session',
       slashModelDesc: 'Open the model picker',
-      slashWorkflowDesc: 'Open the installed skills and workflows list',
+      slashSkillsDesc: 'Open the installed skills list',
       slashEmpty: 'No matching commands',
       // Note: vue-i18n parses a leading @ in a message as linked format; escape it with {'@'}
       // Button shows only @, full label lives in title (mentionTitle)

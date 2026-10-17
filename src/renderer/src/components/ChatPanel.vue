@@ -214,19 +214,20 @@ async function onClearCommand(): Promise<void> {
 }
 
 /** 本地斜杠指令（整行匹配，不发给模型） */
-function isLocalSlashCommand(text: string): 'clear' | 'model' | null {
+function isLocalSlashCommand(text: string): 'clear' | 'model' | 'skills' | null {
   const raw = text.trim().toLowerCase()
   if (raw === '/clear') return 'clear'
   if (raw === '/model') return 'model'
+  if (raw === '/skills') return 'skills'
   return null
 }
 
 /** 对话面板支持的斜杠指令（输入 `/` 时弹出） */
 type SlashCommandDef = {
-  id: 'clear' | 'model' | 'workflow'
+  id: 'clear' | 'model' | 'skills'
   name: string
   /** i18n 描述键（相对 studio.chat） */
-  descKey: 'slashClearDesc' | 'slashModelDesc' | 'slashWorkflowDesc'
+  descKey: 'slashClearDesc' | 'slashModelDesc' | 'slashSkillsDesc'
 }
 
 type SlashSkillItem = {
@@ -243,7 +244,7 @@ type SlashMenuItem = SlashCommandDef | SlashSkillItem
 const SLASH_COMMANDS: readonly SlashCommandDef[] = [
   { id: 'clear', name: '/clear', descKey: 'slashClearDesc' },
   { id: 'model', name: '/model', descKey: 'slashModelDesc' },
-  { id: 'workflow', name: '/workflow', descKey: 'slashWorkflowDesc' }
+  { id: 'skills', name: '/skills', descKey: 'slashSkillsDesc' }
 ]
 
 const slashOpen = ref(false)
@@ -344,18 +345,18 @@ async function applySlashCommand(cmd: SlashMenuItem): Promise<void> {
     await onModelCommand()
     return
   }
-  if (cmd.id === 'workflow') {
-    await onWorkflowCommand()
+  if (cmd.id === 'skills') {
+    await onSkillsCommand()
   }
 }
 
 /**
- * `/workflow`：打开统一的「已安装技能与工作流」列表（与工具栏技能按钮同一个面板）。
+ * `/skills`：打开统一的「已安装技能」列表（与工具栏技能按钮同一个面板）。
  *
  * 选中即把引用或 `/skill` 插入输入框 —— 与点击面板条目完全同一条路径，
  * 因此不会出现「从斜杠进和从按钮进行为不一样」的分叉。
  */
-async function onWorkflowCommand(): Promise<void> {
+async function onSkillsCommand(): Promise<void> {
   await Promise.all([refreshInstalledWorkflows(), refreshSessionSkills()])
   if (!installedWorkflows.value.length && !standaloneSessionSkills.value.length) {
     // 静默打开一个空面板会让人以为功能坏了，明确说清去哪儿装
@@ -1024,15 +1025,8 @@ const loadedSkillTotal = computed(() => {
 
 /** 过滤掉已由 installedWorkflows 承载的市场技能包（wf-<id>），避免同一市场条目在下拉列表里出现两次 */
 const standaloneSessionSkills = computed(() => {
-  const installedIds = new Set(installedWorkflows.value.map((w) => w.id))
-  const installedSkillNames = new Set(
-    installedWorkflows.value.flatMap((w) =>
-      w.skillName ? [w.skillName, `wf-${w.id}`] : [`wf-${w.id}`]
-    )
-  )
-  return sessionSkills.value.filter(
-    (s) => !(s.workflowId && installedIds.has(s.workflowId)) && !installedSkillNames.has(s.name)
-  )
+  const installedSkillNames = new Set(installedWorkflows.value.flatMap((w) => [w.id, `wf-${w.id}`]))
+  return sessionSkills.value.filter((s) => !installedSkillNames.has(s.name))
 })
 
 const unifiedSkillsCount = computed(
@@ -1040,10 +1034,9 @@ const unifiedSkillsCount = computed(
 )
 
 function workflowLoadedHits(workflow: InstalledWorkflowRecordView): number {
-  const bySkillName = workflow.skillName ? (loadedSkills[workflow.skillName] ?? 0) : 0
   const byWfPrefix = loadedSkills[`wf-${workflow.id}`] ?? 0
   const byId = loadedSkills[workflow.id] ?? 0
-  return bySkillName || byWfPrefix || byId
+  return byWfPrefix || byId
 }
 
 async function refreshSessionSkills(): Promise<void> {
@@ -2394,6 +2387,7 @@ async function onSend(): Promise<void> {
     resetEditor()
     if (slash === 'clear') await onClearCommand()
     else if (slash === 'model') await onModelCommand()
+    else if (slash === 'skills') await onSkillsCommand()
     return
   }
   // 正在执行：不丢弃输入，转入发送队列，等本轮结束后按序发出
