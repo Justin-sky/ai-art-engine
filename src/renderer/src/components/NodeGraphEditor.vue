@@ -3382,14 +3382,7 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
   },
   {
     id: 'video',
-    typeIds: [
-      'asset.video',
-      'video.lipSync',
-      'video.select',
-      'video.framePull',
-      'video.reshoot',
-      'output.timeline'
-    ]
+    typeIds: ['asset.video', 'video.lipSync', 'video.select', 'video.framePull', 'output.timeline']
   },
   {
     id: 'videoSemantic',

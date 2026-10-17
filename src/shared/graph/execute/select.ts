@@ -201,7 +201,8 @@ export function executeSelectVideoNode(ctx: NodeExecuteContext): Record<string, 
 }
 
 /**
- * 逐帧拉片：交互取帧存于 `params.generatedImages`，执行时把图库透出为图片输出。
+ * 逐帧拉片：交互取帧存于 `params.generatedImages`，执行时把图库透出为图片输出；
+ * 若已做过区间重生成并替换回原视频（`framePullActiveVideoPath`）或连接了上游视频，同步从 `out-video` 输出当前视频。
  * 无已取帧时输出空图（不报错，节点本身以交互为主）。
  */
 export function executeFramePullNode(ctx: NodeExecuteContext): Record<string, GraphValue> {
@@ -210,10 +211,44 @@ export function executeFramePullNode(ctx: NodeExecuteContext): Record<string, Gr
       (typeof item.dataUrl === 'string' && item.dataUrl.length > 0) ||
       (typeof item.relativePath === 'string' && item.relativePath.length > 0)
   )
+  const activeVideoRel = ctx.node.params.framePullActiveVideoPath?.trim()
+  const upstreamVideos = flattenVideosValues(collectIncomingValues(ctx.inputs)).filter(
+    (item) =>
+      (typeof item.dataUrl === 'string' && item.dataUrl.length > 0) ||
+      (typeof item.relativePath === 'string' && item.relativePath.length > 0)
+  )
+  const upstreamVideo = upstreamVideos[0]
+  const outVideo: GraphValue | undefined = activeVideoRel
+    ? {
+        kind: 'video',
+        id: `framepull:${activeVideoRel}`,
+        relativePath: activeVideoRel
+      }
+    : upstreamVideo
+      ? {
+          kind: 'video',
+          ...(upstreamVideo.id ? { id: upstreamVideo.id } : {}),
+          ...(upstreamVideo.dataUrl ? { dataUrl: upstreamVideo.dataUrl } : {}),
+          ...(upstreamVideo.relativePath ? { relativePath: upstreamVideo.relativePath } : {}),
+          ...(upstreamVideo.createdAt ? { createdAt: upstreamVideo.createdAt } : {})
+        }
+      : undefined
+
   if (!frames.length) {
-    return { out: { kind: 'image', dataUrl: '' } }
+    return {
+      out: { kind: 'image', dataUrl: '' },
+      ...(outVideo ? { 'out-video': outVideo } : {})
+    }
   }
-  return commitGeneratedImages(ctx, frames, frames[frames.length - 1]?.relativePath?.trim())
+  const imageOut = commitGeneratedImages(
+    ctx,
+    frames,
+    frames[frames.length - 1]?.relativePath?.trim()
+  )
+  return {
+    ...imageOut,
+    ...(outVideo ? { 'out-video': outVideo } : {})
+  }
 }
 
 /** 选取声音：从声音数组中选出一条，输出为单个 voice */

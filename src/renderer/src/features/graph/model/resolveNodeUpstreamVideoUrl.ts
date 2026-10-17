@@ -65,8 +65,18 @@ export async function resolveNodeUpstreamVideoUrl(input: {
     const source = nodes.find((n) => n.id === edge.source)
     if (!source) continue
 
-    const fromRun = await pickFromRunOut(runStates[source.id]?.outputs?.out, assets)
+    const sourcePort = edge.sourcePort ?? 'out'
+    const fromRun = await pickFromRunOut(
+      runStates[source.id]?.outputs?.[sourcePort] ?? runStates[source.id]?.outputs?.out,
+      assets
+    )
     if (fromRun.url) return fromRun
+
+    if (source.params.framePullActiveVideoPath?.trim()) {
+      const activeRel = source.params.framePullActiveVideoPath.trim()
+      const url = await resolveRel(activeRel)
+      if (url) return { url, relativePath: activeRel }
+    }
 
     for (const item of source.params.generatedVideos ?? []) {
       if (item.relativePath?.trim()) {

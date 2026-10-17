@@ -19,6 +19,41 @@
 
     <div class="captured-summary">
       <span>{{ t('graph.inspector.framePull.captured', { n: frames.length }) }}</span>
+      <span v-if="rangeInfo.valid" class="range-pill">
+        {{
+          t('graph.inspector.framePull.rangeBadge', {
+            inFrame: rangeInfo.inFrame,
+            outFrame: rangeInfo.outFrame,
+            count: rangeInfo.frameCount,
+            duration: rangeInfo.segmentDurationSec.toFixed(2)
+          })
+        }}
+      </span>
+    </div>
+
+    <div v-if="spliceHistory.length > 0 || activeVideoPath" class="splice-card">
+      <div class="splice-head">
+        <span class="splice-status">
+          {{ t('graph.inspector.framePull.splicedBanner', { n: spliceHistory.length || 1 }) }}
+        </span>
+        <button type="button" class="restore-btn" @click="restoreOriginal">
+          {{ t('graph.inspector.framePull.restoreOriginal') }}
+        </button>
+      </div>
+      <div v-if="spliceHistory.length > 0" class="splice-list">
+        <div v-for="rec in spliceHistory" :key="rec.id" class="splice-row">
+          <span class="splice-tag">
+            {{
+              t('graph.inspector.framePull.historyItemLabel', {
+                inFrame: rec.inFrame,
+                outFrame: rec.outFrame,
+                duration: Math.max(0.1, rec.outSec - rec.inSec).toFixed(2)
+              })
+            }}
+          </span>
+          <span class="splice-desc">{{ rec.instruction || '—' }}</span>
+        </div>
+      </div>
     </div>
   </div>
   <div v-else class="node-inspector empty">
@@ -28,7 +63,11 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { GraphImageItem } from '@shared/graph'
+import {
+  normalizeFramePullRange,
+  type FramePullSpliceRecord,
+  type GraphImageItem
+} from '@shared/graph'
 import GraphNodeRunControl from './GraphNodeRunControl.vue'
 import GraphNodeOutputPreview from './GraphNodeOutputPreview.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
@@ -57,6 +96,28 @@ const hostId = computed(() => {
 const typeLabel = computed(() => graphTypeLabel('video.framePull'))
 const displayTitle = useNodeDisplayTitle(node, typeLabel)
 const frames = computed<GraphImageItem[]>(() => node.value?.params.generatedImages ?? [])
+const spliceHistory = computed<FramePullSpliceRecord[]>(
+  () => node.value?.params.framePullSpliceHistory ?? []
+)
+const activeVideoPath = computed(() => node.value?.params.framePullActiveVideoPath ?? '')
+
+const rangeInfo = computed(() =>
+  normalizeFramePullRange({
+    inFrame: node.value?.params.framePullInFrame,
+    outFrame: node.value?.params.framePullOutFrame,
+    totalFrames: node.value?.params.frameFilmstripTotalFrames,
+    fps: node.value?.params.frameFilmstripFps
+  })
+)
+
+function restoreOriginal(): void {
+  if (!node.value || !hostId.value) return
+  graphEditorHosts.updateNode(hostId.value, node.value.id, {
+    framePullActiveVideoPath: undefined,
+    framePullSpliceHistory: [],
+    frameFilmstripKey: ''
+  })
+}
 
 const { hasInPort, runStatus, isGraphRunning, blocked, toggleRun } = useGraphNodeRun(node)
 </script>
@@ -90,7 +151,80 @@ const { hasInPort, runStatus, isGraphRunning, blocked, toggleRun } = useGraphNod
 }
 
 .captured-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   font-size: 12px;
   color: var(--text-muted);
+}
+
+.range-pill {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, #f59e0b 14%, transparent);
+  color: #f59e0b;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.splice-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.splice-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.splice-status {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.restore-btn {
+  padding: 3px 8px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.splice-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.splice-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.splice-tag {
+  font-weight: 600;
+  color: #f59e0b;
+  white-space: nowrap;
+}
+
+.splice-desc {
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

@@ -921,10 +921,12 @@ function inPortTypeLabel(port: GraphPortDef): string {
     port.id === 'in-image' &&
     (props.node.typeId === 'asset.video' ||
       props.node.typeId === 'video.lipSync' ||
-      props.node.typeId === 'video.reshoot') &&
+      props.node.typeId === 'video.reshoot' ||
+      props.node.typeId === 'video.framePull') &&
     (isProcessingAssetNode(props.node) ||
       props.node.typeId === 'video.lipSync' ||
-      props.node.typeId === 'video.reshoot')
+      props.node.typeId === 'video.reshoot' ||
+      props.node.typeId === 'video.framePull')
   ) {
     return t('graph.port.referenceImage')
   }

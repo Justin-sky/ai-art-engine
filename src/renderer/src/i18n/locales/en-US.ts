@@ -5946,23 +5946,82 @@ export default {
         previewEmpty: 'No upscaled images yet. Connect an input and run the node.'
       },
       framePull: {
-        hint: 'Double-click the node to open the frame puller: < and > step frames, Space toggles playback. Capture frames and add notes there.',
-        openHint: 'Double-click to open the frame puller',
+        hint: 'Double-click to open the Frame Pull & Segment Reshoot workbench: < and > step frames, [ and ] mark In/Out, drag on the filmstrip to select a frame range to regenerate with a video model and splice back into the source video.',
+        openHint: 'Double-click to open Frame Pull & Reshoot',
         noSource:
           'Connect an upstream video (a video generation node after running, or a video asset)',
         capture: 'Capture frame',
+        captureRangeBatch: 'Capture 4 in range',
         clear: 'Clear frames',
         captured: '{n} captured',
         keyframeStrip: 'Keyframe strip',
+        hybridStrip: 'Smart keyframe + uniform strip',
+        uniformStrip: 'Adaptive uniform strip',
         frameStripFallback: 'ffprobe not found — fell back to a per-frame strip',
-        framesEmpty: 'No frames captured yet. Use “Capture frame” in the frame puller.',
-        prevFrame: 'Previous frame',
-        nextFrame: 'Next frame',
+        framesEmpty:
+          'No frames captured yet. Click “Capture frame” or select a range to batch capture.',
+        prevFrame: 'Previous frame (,)',
+        nextFrame: 'Next frame (.)',
         frameLabel: 'Frame {frame}/{total}',
         frameShort: 'F',
         remove: 'Remove frame',
         note: 'Frame note',
-        notePlaceholder: 'Note shot, composition or performance observations for this frame…'
+        notePlaceholder:
+          'Note shot, composition, artifact or reshoot instructions for this frame (auto-merged when reshooting range)…',
+        markIn: 'Mark In [',
+        markOut: 'Mark Out ]',
+        clearRange: 'Clear range',
+        loopRange: 'Loop range',
+        rangeBadge: 'Range F{inFrame}–F{outFrame} · {count}f · {duration}s',
+        rangeHint:
+          'Drag across the filmstrip, Shift+click, or press [ / ] to select a frame range for AI regeneration & replacement',
+        tabReshoot: 'Segment AI Reshoot',
+        tabFrames: 'Captured Frames ({n})',
+        anchorInTitle: 'In-Frame Anchor',
+        anchorOutTitle: 'Out-Frame Anchor',
+        anchorAutoFrame: 'Auto video frame F{frame}',
+        anchorJump: 'Seek',
+        conditioningLabel: 'Conditioning',
+        conditioningFirstLast: 'First + Last Frame (Seamless splice)',
+        conditioningFirstOnly: 'First Frame Only (Free ending)',
+        conditioningVideoRef: 'Reference Video Segment (Timestamp edit)',
+        fitModeLabel: 'Timing Fit',
+        fitModeStretch: 'Smooth speed-fit to range duration',
+        fitModeTrim: 'Trim / freeze-pad to range duration',
+        keepAudioLabel: 'Keep original video audio track',
+        modelLabel: 'Video model',
+        instructionLabel: 'Segment reshoot prompt',
+        instructionPlaceholder:
+          'Describe how to regenerate this frame range, e.g., fix hand artifacts, smooth the turn toward the camera, keep lighting consistent…',
+        notesMergedBadge: 'Auto-merging {n} frame notes in range',
+        presetFixArtifact: 'Fix artifacts',
+        presetFixArtifactPrompt:
+          'Fix anatomical distortion, clipping, and flickering artifacts while keeping character identity and motion natural',
+        presetSmoothMotion: 'Smooth transition',
+        presetSmoothMotionPrompt:
+          'Create a smooth, natural motion transition between the first and last boundary frames without abrupt jumps',
+        presetEnhanceActing: 'Enhance acting',
+        presetEnhanceActingPrompt:
+          'Enhance subtle facial expressions and expressive performance while preserving lighting continuity',
+        presetStabilizeCam: 'Stabilize camera',
+        presetStabilizeCamPrompt:
+          'Stabilize camera trajectory and perspective continuity between the In-frame and Out-frame',
+        runReshootBtn: 'Regenerate Segment & Splice Into Video',
+        runningStepCapture: '1/3 Capturing high-res boundary anchor frames…',
+        runningStepGenerate: '2/3 Regenerating video segment with AI model…',
+        runningStepSplice: '3/3 Splicing segment back into source video via FFmpeg…',
+        splicedBanner: '{n} segment(s) replaced (Viewing: Spliced Video)',
+        splicedBannerOriginal: 'Comparing Original Source Video (Unmodified)',
+        compareOriginal: 'Compare Original',
+        viewSpliced: 'View Spliced',
+        undoLastSplice: 'Undo Last Splice',
+        restoreOriginal: 'Restore Original',
+        historyTitle: 'Splice History ({n})',
+        historyItemLabel: 'F{inFrame}–F{outFrame} ({duration}s)',
+        errorNoRange:
+          'Select at least 2 frames on the filmstrip (or press [ and ]) before reshooting',
+        errorNoSourceFile:
+          'Cannot locate source video file in project. Run the upstream node or save the video asset first.'
       },
       semantic: {
         analyzeHint:

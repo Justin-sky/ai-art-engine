@@ -1089,8 +1089,28 @@ export interface GraphNodeParams {
   frameFilmstripTotalFrames?: number
   /** 生成胶片条时快照的帧率；复用缓存时锁定该帧率换算当前帧号 */
   frameFilmstripFps?: number
-  /** 胶片条模式：keyframe=仅关键帧；frame=逐帧回退；空=未生成 */
-  frameFilmstripMode?: 'keyframe' | 'frame' | ''
+  /** 胶片条模式：keyframe=关键帧；hybrid=关键帧+均匀混合；uniform=均匀抽样；frame=逐帧回退；空=未生成 */
+  frameFilmstripMode?: import('./framePull').FramePullFilmstripMode
+  /** 逐帧拉片：框选区间入点帧号（含） */
+  framePullInFrame?: number
+  /** 逐帧拉片：框选区间出点帧号（含） */
+  framePullOutFrame?: number
+  /** 逐帧拉片：区间重生成锚定模式（first_last=首尾帧锚定 / first_only=仅首帧 / video_ref=原片参考） */
+  framePullConditioningMode?: import('./framePull').FramePullConditioningMode
+  /** 逐帧拉片：重生成片段替换回原视频时的时长对齐策略（stretch=双向变速对齐 / trim=裁切补帧对齐） */
+  framePullFitMode?: import('./framePull').FramePullFitMode
+  /** 逐帧拉片：替换回原视频时是否保留原片音轨（默认 true） */
+  framePullKeepAudio?: boolean
+  /** 逐帧拉片：可选指定某张已抽取帧作为区间重拍首帧（留空自动抓取 inFrame） */
+  framePullFirstFrameId?: string
+  /** 逐帧拉片：可选指定某张已抽取帧作为区间重拍尾帧（留空自动抓取 outFrame） */
+  framePullLastFrameId?: string
+  /** 逐帧拉片：当前已替换成片的工程相对路径（为空则使用上游原视频） */
+  framePullActiveVideoPath?: string
+  /** 逐帧拉片：原始上游视频工程相对路径快照（用于对比/还原原片） */
+  framePullSourceVideoPath?: string
+  /** 逐帧拉片：区间重生成并替换回原视频的历史记录栈（支持多段连续修补与撤销） */
+  framePullSpliceHistory?: import('./framePull').FramePullSpliceRecord[]
   /** 图像处理综合节点（image.process）：当前激活子工具 */
   imageProcessTool?: import('./nodeRole').ImageProcessToolId
   /** 扩图参数 */

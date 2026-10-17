@@ -286,7 +286,19 @@ export async function rebuildVideoFromSegments(
       const clipAbs = toAbs(root, seg.relativePath!)
       const clipSec = await probeDurationSec(clipAbs)
       args.push('-i', clipAbs)
-      if (clipSec > 0 && clipSec < dur - 0.02) {
+      if (seg.fitMode === 'stretch' && clipSec > 0 && Math.abs(clipSec - dur) > 0.02) {
+        const ratio = dur / clipSec
+        // 首尾帧重拍片段：双向平滑变速贴合 [inSec, outSec]，避免生成 5s 片段被直接截断在 2.5s 而丢失尾帧衔接
+        if (ratio >= 0.25 && ratio <= 2.5) {
+          vFilter = `setpts=${ratio.toFixed(4)}*PTS,${vNorm}`
+        } else if (clipSec < dur - 0.02) {
+          vFilter = `${vNorm},tpad=stop_mode=clone:stop_duration=${(dur - clipSec).toFixed(3)}`
+        }
+      } else if (seg.fitMode === 'trim') {
+        if (clipSec > 0 && clipSec < dur - 0.02) {
+          vFilter = `${vNorm},tpad=stop_mode=clone:stop_duration=${(dur - clipSec).toFixed(3)}`
+        }
+      } else if (clipSec > 0 && clipSec < dur - 0.02) {
         const ratio = dur / clipSec
         // 差得不多就放慢对齐；差太多放慢会很假，改为冻结最后一帧补齐
         vFilter =

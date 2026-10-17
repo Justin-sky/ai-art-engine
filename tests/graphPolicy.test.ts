@@ -117,7 +117,6 @@ describe('graph policy', () => {
         'voice.select',
         'video.lipSync',
         'video.framePull',
-        'video.reshoot',
         'semantic.analyze',
         'semantic.compile',
         'semantic.rebuild',

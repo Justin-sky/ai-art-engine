@@ -58,9 +58,26 @@ export type BundleExpandedIncoming = {
   sourcePort: string
 }
 
+/**
+ * 判断入边端口是否不参与指令 `@n` 编号：
+ * - 视频生成节点的 `in-first-frame` / `in-last-frame` 首尾帧口独立展示，不占 `@n`
+ * - 逐帧拉片节点的 `in` 口是待拉片/拼接的源视频，仅 `in-image` 参考图口参与指令 `@n` 引用
+ */
+export function isNonMentionIncomingPort(
+  nodeTypeId: string | undefined,
+  targetPort: string | undefined
+): boolean {
+  const port = targetPort ?? 'in'
+  if (isVideoFramePortId(port)) return true
+  if (nodeTypeId === 'video.framePull' && port !== 'in-image') return true
+  return false
+}
+
 function incomingNonFrameEdges(graph: GraphDocument, nodeId: string): GraphEdge[] {
+  const targetNode = graph.nodes.find((node) => node.id === nodeId)
   return graph.edges.filter(
-    (edge) => edge.target === nodeId && !isVideoFramePortId(edge.targetPort ?? 'in')
+    (edge) =>
+      edge.target === nodeId && !isNonMentionIncomingPort(targetNode?.typeId, edge.targetPort)
   )
 }
 

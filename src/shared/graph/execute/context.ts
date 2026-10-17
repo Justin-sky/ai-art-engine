@@ -102,7 +102,8 @@ export function resolveInstructionFinalPreviewKind(
     return 'frameAnimGen'
   }
   if (typeId === 'svg.gen' || presetKind === 'svgGen') return 'svgGen'
-  if (typeId === 'video.reshoot' || presetKind === 'reshoot') return 'reshoot'
+  if (typeId === 'video.reshoot' || typeId === 'video.framePull' || presetKind === 'reshoot')
+    return 'reshoot'
 
   const assetType = node?.assetType
   if (

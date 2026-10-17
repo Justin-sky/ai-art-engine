@@ -272,6 +272,7 @@ import {
   isImageBundle,
   expandIncomingThroughBundles,
   isBundleNode,
+  isNonMentionIncomingPort,
   type GraphNode,
   type GraphValue,
   type InstructionMentionSource,
@@ -870,9 +871,10 @@ const mentionChips = computed((): RefChip[] => {
   const doc = graphEditorHosts.getDocument(props.hostId)
   const reserve = styleMentionReserve.value
   if (!doc) {
+    const currentNode = graphEditorHosts.getNode(props.hostId, props.nodeId)
     const edges = graphEditorHosts
       .listIncomingEdges(props.hostId, props.nodeId)
-      .filter((edge) => !isVideoFramePortId(edge.targetPort))
+      .filter((edge) => !isNonMentionIncomingPort(currentNode?.typeId, edge.targetPort))
     return decorateModel3dImageChips(
       edges.map((edge, i) => {
         const source = graphEditorHosts.getNode(props.hostId, edge.sourceNodeId)
@@ -1111,10 +1113,11 @@ function applyChipReorder(fromId: string, toId: string): void {
   const nextText = remapInstructionMentions(props.modelValue ?? '', indexMap)
 
   if (ownerId === props.nodeId) {
+    const currentNode = graphEditorHosts.getNode(props.hostId, props.nodeId)
     const allEdges = graphEditorHosts.listIncomingEdges(props.hostId, props.nodeId)
     const queue = [...nextOwnerIds]
     const nextFullIds = allEdges.map((edge) => {
-      if (isVideoFramePortId(edge.targetPort)) return edge.edgeId
+      if (isNonMentionIncomingPort(currentNode?.typeId, edge.targetPort)) return edge.edgeId
       const source = graphEditorHosts.getNode(props.hostId, edge.sourceNodeId)
       // 束桥边位置不变；仅重排直连入边
       if (source && isBundleNode(source)) return edge.edgeId
@@ -1415,7 +1418,10 @@ function openPromptPreview(): void {
           }
         : undefined
   })
-  previewImages.value = kind === 'image' || kind === 'video' ? buildPreviewImages(styleImages) : []
+  previewImages.value =
+    kind === 'image' || kind === 'video' || kind === 'reshoot'
+      ? buildPreviewImages(styleImages)
+      : []
   previewOpen.value = true
 }
 

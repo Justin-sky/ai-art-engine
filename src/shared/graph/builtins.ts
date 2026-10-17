@@ -1116,7 +1116,21 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
       { id: 'in', direction: 'in', dataType: GraphPortType.video, multiple: false, label: 'In' },
-      ...galleryOutPorts(GraphPortType.image)
+      {
+        id: 'in-image',
+        direction: 'in',
+        dataType: GraphPortType.image,
+        multiple: true,
+        label: 'Reference'
+      },
+      ...galleryOutPorts(GraphPortType.image),
+      {
+        id: 'out-video',
+        direction: 'out',
+        dataType: GraphPortType.video,
+        multiple: true,
+        label: 'Video'
+      }
     ],
     defaultParams: () => ({
       frameNotes: {},
@@ -1125,6 +1139,9 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
       frameFilmstripTotalFrames: 0,
       frameFilmstripFps: 0,
       frameFilmstripMode: '',
+      framePullConditioningMode: 'first_last',
+      framePullFitMode: 'stretch',
+      framePullKeepAudio: true,
       selectedImageId: '',
       generateModel: '',
       generateProviderInstanceId: '',
@@ -1624,7 +1641,8 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
       reshootStartSec: 0,
       reshootEndSec: 0
     }),
-    addable: true,
+    // 已合并收敛至 video.framePull（逐帧拉片与重拍台）；仅保留老工程存档兼容
+    addable: false,
     deletable: true,
     inspector: 'none',
     inspectorId: 'studio.graph.reshoot',

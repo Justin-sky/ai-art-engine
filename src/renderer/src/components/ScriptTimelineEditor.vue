@@ -4622,9 +4622,17 @@ function revealClipNodeInGraph(nodeId: string): void {
 }
 
 /**
- * 重拍编辑器只在 dive 的 node.reshoot 视图里渲染：
- * 先让宿主节点图进入打开态，再切到该视图。
+ * 重拍编辑器：新节点统一走 `video.framePull`（逐帧拉片与重拍台，支持胶片条框选 + 首尾帧双锚定 + FFmpeg 无缝替换）；
+ * 老工程已有的 `video.reshoot` 节点仍兼容打开 `node.reshoot`。
  */
+async function openFramePullEditor(nodeId: string): Promise<boolean> {
+  if (!diveContext) return false
+  const opened = await graphEditorNodeTools.open(hostId.value, 'node.framePull', nodeId)
+  if (!opened) return false
+  await diveContext.diveView({ viewId: 'node.framePull', hostId: hostId.value, nodeId })
+  return true
+}
+
 async function openReshootEditor(nodeId: string): Promise<boolean> {
   if (!diveContext) return false
   const opened = await graphEditorNodeTools.open(hostId.value, 'node.reshoot', nodeId)
@@ -4633,40 +4641,54 @@ async function openReshootEditor(nodeId: string): Promise<boolean> {
   return true
 }
 
-/** 找到来源节点下游已有的重拍节点（复用，避免每次重拍都新建一个） */
-function findDownstreamReshootNode(nodeId: string): string | null {
+/** 找到来源节点下游已有的拉片重拍节点（复用，避免每次重拍都新建一个） */
+function findDownstreamReshootNode(nodeId: string): { id: string; typeId: string } | null {
   const doc = graphEditorHosts.getDocument(hostId.value)
   if (!doc) return null
   const typeById = new Map(doc.nodes.map((node) => [node.id, node.typeId]))
-  const hit = doc.edges.find(
-    (edge) => edge.source === nodeId && typeById.get(edge.target) === 'video.reshoot'
-  )
-  return hit?.target ?? null
+  const hit = doc.edges.find((edge) => {
+    if (edge.source !== nodeId) return false
+    const t = typeById.get(edge.target)
+    return t === 'video.framePull' || t === 'video.reshoot'
+  })
+  if (!hit) return null
+  return { id: hit.target, typeId: typeById.get(hit.target) ?? 'video.framePull' }
 }
 
 /**
  * 时间线「重拍此镜头」：
- * - 来源节点本身是重拍节点 → 直接打开重拍编辑器
- * - 其它来源 → 复用下游已有的重拍节点，没有则一键新建并接好上游，再打开重拍编辑器
+ * - 来源节点本身是拉片重拍节点 → 直接打开拉片与重拍台
+ * - 其它来源 → 复用下游已有的 `video.framePull`（或旧 `video.reshoot`），没有则一键新建 `video.framePull` 并接好上游
  * - 宿主不支持建节点时退回节点图并选中来源节点
  */
 async function reshootSelectedClip(): Promise<void> {
   const nodeId = selectedClip.value?.nodeId
   if (!nodeId) return
+  if (selectedClipNode.value?.typeId === 'video.framePull') {
+    await openFramePullEditor(nodeId)
+    return
+  }
   if (selectedClipNode.value?.typeId === 'video.reshoot') {
     await openReshootEditor(nodeId)
     return
   }
   if (diveContext) {
-    const reshootNodeId =
-      findDownstreamReshootNode(nodeId) ??
-      graphEditorHosts.addNode(hostId.value, {
-        typeId: 'video.reshoot',
-        title: t('script.timeline.reshootNodeTitle', { shot: selectedClip.value?.title ?? '' }),
-        linkFrom: [{ nodeId }]
-      })
-    if (reshootNodeId) {
-      await openReshootEditor(reshootNodeId)
+    const existing = findDownstreamReshootNode(nodeId)
+    if (existing) {
+      if (existing.typeId === 'video.reshoot') {
+        await openReshootEditor(existing.id)
+      } else {
+        await openFramePullEditor(existing.id)
+      }
+      return
+    }
+    const framePullNodeId = graphEditorHosts.addNode(hostId.value, {
+      typeId: 'video.framePull',
+      title: t('script.timeline.reshootNodeTitle', { shot: selectedClip.value?.title ?? '' }),
+      linkFrom: [{ nodeId }]
+    })
+    if (framePullNodeId) {
+      await openFramePullEditor(framePullNodeId)
       return
     }
   }

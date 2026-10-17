@@ -70,6 +70,8 @@ export interface SemanticRebuildSegment {
   relativePath?: string
   sourceStartSec?: number
   sourceEndSec?: number
+  /** 时长对齐策略：stretch=双向变速对齐（首尾帧重拍不截断尾帧）；trim=超长截断/不足冻结尾帧；缺省=auto */
+  fitMode?: 'auto' | 'stretch' | 'trim'
 }
 
 /** 重新配音的台词：合成好的音频 + 它替换的原片时间段 */

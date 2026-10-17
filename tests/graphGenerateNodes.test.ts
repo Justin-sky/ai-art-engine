@@ -43,7 +43,6 @@ const CANVAS_ADDABLE_NODE_TYPES = [
   'voice.select',
   'video.lipSync',
   'video.framePull',
-  'video.reshoot',
   // 视频语义分组
   'semantic.analyze',
   'semantic.compile',
