@@ -6,7 +6,7 @@ import {
   BLENDER_HUMANOID_RIG_CODE
 } from '../src/shared/blenderHumanoidRig'
 import {
-  BLENDER_DSH_SKILL_ID,
+  BLENDER_DSH_NODE_TYPE_ID,
   BLENDER_DSH_TIMEOUT_MS,
   BLENDER_JOB_READBACK_CODE,
   blenderDshError,
@@ -22,10 +22,10 @@ import {
 } from '../src/shared/blenderDshJob'
 
 describe('blenderDshJob', () => {
-  it('maps kinds to skill ids, timeouts, and error prefixes', () => {
-    expect(BLENDER_DSH_SKILL_ID.rig).toBe('blender.rigSkin')
-    expect(BLENDER_DSH_SKILL_ID.pose).toBe('blender.pose')
-    expect(BLENDER_DSH_SKILL_ID.anim).toBe('blender.animation')
+  it('maps kinds to node type ids, timeouts, and error prefixes', () => {
+    expect(BLENDER_DSH_NODE_TYPE_ID.rig).toBe('model.rigSkin')
+    expect(BLENDER_DSH_NODE_TYPE_ID.pose).toBe('model.pose')
+    expect(BLENDER_DSH_NODE_TYPE_ID.anim).toBe('model.animation')
     expect(BLENDER_DSH_TIMEOUT_MS.rig).toBe(6_000_000)
     expect(BLENDER_DSH_TIMEOUT_MS.pose).toBe(3_600_000)
     expect(BLENDER_DSH_TIMEOUT_MS.anim).toBe(7_200_000)
@@ -132,21 +132,20 @@ describe('blenderDshJob', () => {
       locale: 'zh-CN',
       inputAbs: 'F:/job/input.glb',
       outputAbs: 'F:/job/output.glb',
-      resultAbs: 'F:/job/result.json',
-      skillId: 'blender.pose'
+      resultAbs: 'F:/job/result.json'
     }
     const brief = buildBlenderJobBrief(input)
-    expect(brief).toContain('Skill: blender.pose')
+    expect(brief).toContain('Node: model.pose')
     expect(brief).toContain('F:/job/output.glb')
     expect(brief).toContain('Never invent Euler angles')
 
     const task = buildBlenderJobTask(input)
-    expect(task).toContain('Use skill "blender.pose"')
+    expect(task).toContain('Execute Blender node "model.pose".')
     expect(task).toContain('export_scene')
     expect(task).toContain('idle stand')
     expect(task).toContain('Do not guess joint angles')
 
-    const rigTask = buildBlenderJobTask({ ...input, kind: 'rig', skillId: 'blender.rigSkin' })
+    const rigTask = buildBlenderJobTask({ ...input, kind: 'rig' })
     expect(rigTask).toContain('Attempt 1/3')
     expect(rigTask).toContain('AIAE_HUMANOID_LANDMARKS')
     expect(rigTask).toContain('AIAE_HUMANOID_BIND_FROM_LANDMARKS')
@@ -164,8 +163,7 @@ describe('blenderDshJob', () => {
         instruction: '人形骨架',
         inputAbs: 'a',
         outputAbs: 'b',
-        resultAbs: 'c',
-        skillId: 'blender.rigSkin'
+        resultAbs: 'c'
       })
     ).toContain('L_UpperArm')
   })

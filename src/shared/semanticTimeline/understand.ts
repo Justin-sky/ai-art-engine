@@ -1,6 +1,6 @@
 /**
  * 镜头描述 / 事件抽取 / 节拍归类 / 意图推断 — 纯解析与规则兜底。
- * 提示词与 GraphSkill 在 graphSkills / 节点侧；这里保证无证据事件被丢弃。
+ * 提示词内聚在本模块 SEMANTIC_ENRICH_PROMPTS；这里保证无证据事件被丢弃。
  */
 import { beatId, eventId, intentId, makeTimeRange, matchStableEventId } from './ids'
 import { assignBeatsByTimeFraction, findVocabulary, COMMERCE_VOCABULARY } from './vocabulary'
@@ -219,4 +219,41 @@ export function parseEventDrafts(text: string): RawEventDraft[] {
   return parseJsonArray<RawEventDraft>(text).filter(
     (d) => typeof d.label === 'string' && Array.isArray(d.evidence)
   )
+}
+
+export type SemanticEnrichStepId =
+  'semantic.shotDescribe' | 'semantic.eventExtract' | 'semantic.directorInfer'
+
+export interface SemanticStepPromptDef {
+  systemPromptZh: string
+  systemPromptEn: string
+  instructionZh: string
+  instructionEn: string
+}
+
+export const SEMANTIC_ENRICH_PROMPTS: Record<SemanticEnrichStepId, SemanticStepPromptDef> = {
+  'semantic.shotDescribe': {
+    systemPromptZh:
+      '你是电影摄影分析师。根据镜头关键帧宫格图，输出 JSON 数组，每项含 shotId,subject,action,emotion,shotSize,angle,cameraMotion,focalLengthHint。只输出 JSON。', // cjk-ok
+    systemPromptEn:
+      'You are a cinematography analyst. Given a keyframe grid, output a JSON array with shotId,subject,action,emotion,shotSize,angle,cameraMotion,focalLengthHint. JSON only.',
+    instructionZh: '描述每个镜头的主体、动作、情绪与镜头语言。', // cjk-ok
+    instructionEn: 'Describe subject, action, emotion and camera language for each shot.'
+  },
+  'semantic.eventExtract': {
+    systemPromptZh:
+      '你是导演助理。根据镜头描述、转写与 OCR，抽取语义事件。输出 JSON 数组，每项必须含 label,description,start,end,evidence（证据 ID 数组，不可为空）,type?,importance?。无证据的事件不要输出。只输出 JSON。', // cjk-ok
+    systemPromptEn:
+      'You are a director assistant. Extract semantic events from shot descriptions, transcript and OCR. JSON array items must include label,description,start,end,evidence (non-empty id list). Drop events without evidence. JSON only.',
+    instructionZh: '抽取剧情/产品/镜头/情绪事件，并强制引用证据 ID。', // cjk-ok
+    instructionEn: 'Extract story/product/camera/emotion events with mandatory evidence ids.'
+  },
+  'semantic.directorInfer': {
+    systemPromptZh:
+      '你是电影导演。根据语义事件与镜头描述，推断导演意图。输出 JSON 数组：trigger(事件id或label),goal,techniques[{track,action,params}],reason。', // cjk-ok
+    systemPromptEn:
+      'You are a film director. Infer director intents from events and shot descriptions. JSON array: trigger,goal,techniques[{track,action,params}],reason.',
+    instructionZh: '为每个重要事件给出可执行的镜头/声音/字幕手法。', // cjk-ok
+    instructionEn: 'Propose executable camera/audio/text techniques for key events.'
+  }
 }

@@ -19,7 +19,7 @@
  *   node scripts/build-index.mjs && node scripts/validate.mjs
  *
  * 用法：
- *   --dir <path>   市场仓库根目录（默认 ../ai-art-engine-workflow，可用 AAE_WORKFLOW_MARKET_DIR）
+ *   --dir <path>   市场仓库根目录（默认 ../ai-art-engine-skills，可用 AAE_WORKFLOW_MARKET_DIR）
  *   --check        只检查不写盘；存在差异时退出码 1
  *   --only <id>    只处理一条（预设 id `anim2dGif` 或市场 id `anim2d-gif`）
  */
@@ -142,7 +142,7 @@ function rewrite(raw, plan, nodeTypes) {
 
 function parseArgs(argv) {
   const opts = {
-    dir: process.env.AAE_WORKFLOW_MARKET_DIR ?? resolve(ROOT, '..', 'ai-art-engine-workflow'),
+    dir: process.env.AAE_WORKFLOW_MARKET_DIR ?? resolve(ROOT, '..', 'ai-art-engine-skills'),
     check: false,
     only: null
   }

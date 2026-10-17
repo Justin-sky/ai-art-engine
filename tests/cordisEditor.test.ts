@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   executePassthrough,
   getExecutor,
-  getGraphSkill,
+  getNodeCapability,
   getNodeType,
   GraphPortType,
   listGraphScopes
@@ -102,22 +102,22 @@ describe('Cordis editor runtime', () => {
     expect(getExecutor(overlayType)).toBeUndefined()
   })
 
-  it('registers a GraphSkill through ctx.editor.skill and rolls it back', async () => {
+  it('registers a NodeCapabilityDef through ctx.editor.nodeCapability and rolls it back', async () => {
     ctx = await boot()
-    const skillId = 'plugin.test.cordis.skill'
-    function skillPlugin(pluginCtx: Context): void {
-      pluginCtx.editor.skill({
-        id: skillId,
-        kind: 'system',
-        titleZh: 'Cordis Skill',
-        titleEn: 'Cordis Skill',
+    const typeId = 'plugin.test.cordis.cap'
+    function capPlugin(pluginCtx: Context): void {
+      pluginCtx.editor.nodeCapability({
+        id: typeId,
+        kind: 'node',
+        titleZh: 'Cordis Node Cap',
+        titleEn: 'Cordis Node Cap',
         instructionZh: 'from-plugin'
       })
     }
-    skillPlugin.inject = ['editor']
-    const fork = ctx.plugin(skillPlugin)
-    expect(getGraphSkill(skillId)?.instructionZh).toBe('from-plugin')
+    capPlugin.inject = ['editor']
+    const fork = ctx.plugin(capPlugin)
+    expect(getNodeCapability(typeId)?.instructionZh).toBe('from-plugin')
     fork.dispose()
-    expect(getGraphSkill(skillId)).toBeUndefined()
+    expect(getNodeCapability(typeId)).toBeUndefined()
   })
 })

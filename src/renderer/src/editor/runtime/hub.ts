@@ -5,13 +5,13 @@ import {
   registerExecutor,
   registerGraphScope,
   registerGraphScopeHost,
-  registerGraphSkill,
+  registerNodeCapability,
   registerNodeType,
   unregisterNodeType,
   type GraphPolicyPartial,
   type GraphScopeDefinition,
   type GraphScopeHostBinding,
-  type GraphSkill,
+  type NodeCapabilityDef,
   type NodeExecuteFn,
   type NodeTypeDefinition
 } from '@shared/graph'
@@ -83,9 +83,9 @@ export class EditorHub extends Service {
     return bind(this.ctx, () => registerExecutor(typeId, execute))
   }
 
-  /** 登记 / 覆盖 GraphSkill；卸载插件时回落到内置目录。 */
-  skill(definition: GraphSkill): () => void {
-    return bind(this.ctx, () => registerGraphSkill(definition))
+  /** 登记 / 覆盖节点能力与预设定义；卸载插件时回落到内置目录。 */
+  nodeCapability(definition: NodeCapabilityDef): () => void {
+    return bind(this.ctx, () => registerNodeCapability(definition))
   }
 
   graphScope(definition: GraphScopeDefinition): () => void {

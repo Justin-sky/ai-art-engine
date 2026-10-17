@@ -2,7 +2,7 @@
  * 三个 3D 加工节点共用：读上游模型 / 指令，跑 dsh→Blender 作业，输出新 GLB + overlay。
  */
 import {
-  BLENDER_DSH_SKILL_ID,
+  BLENDER_DSH_NODE_TYPE_ID,
   BLENDER_DSH_TIMEOUT_MS,
   blenderDshError,
   type BlenderDshJobKind,
@@ -51,7 +51,7 @@ export async function runModelBlenderDshJob(
     instruction,
     locale: ctx.locale,
     timeoutMs: BLENDER_DSH_TIMEOUT_MS[kind],
-    skillId: BLENDER_DSH_SKILL_ID[kind],
+    nodeTypeId: BLENDER_DSH_NODE_TYPE_ID[kind],
     model: ctx.node.params.generateModel?.trim() || undefined,
     providerInstanceId: ctx.node.params.generateProviderInstanceId?.trim() || undefined,
     signal: ctx.signal

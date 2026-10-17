@@ -57,16 +57,16 @@ export interface BlenderJobBriefInput {
   inputAbs: string
   outputAbs: string
   resultAbs: string
-  skillId: string
+  nodeTypeId?: string
   briefAbs?: string
   attempt?: number
   repairHint?: string
 }
 
-export const BLENDER_DSH_SKILL_ID: Record<BlenderDshJobKind, string> = {
-  rig: 'blender.rigSkin',
-  pose: 'blender.pose',
-  anim: 'blender.animation'
+export const BLENDER_DSH_NODE_TYPE_ID: Record<BlenderDshJobKind, string> = {
+  rig: 'model.rigSkin',
+  pose: 'model.pose',
+  anim: 'model.animation'
 }
 
 export const BLENDER_DSH_TIMEOUT_MS: Record<BlenderDshJobKind, number> = {
@@ -429,10 +429,11 @@ export function expandBlenderJobInstruction(kind: BlenderDshJobKind, instruction
 
 export function buildBlenderJobBrief(input: BlenderJobBriefInput): string {
   const locale = input.locale?.trim() || 'zh-CN'
+  const nodeTypeId = input.nodeTypeId || BLENDER_DSH_NODE_TYPE_ID[input.kind]
   return [
     `# Blender job (${input.kind})`,
     '',
-    `Skill: ${input.skillId}`,
+    `Node: ${nodeTypeId}`,
     `Locale: ${locale}`,
     `Input GLB (absolute): ${input.inputAbs}`,
     `Export GLB (absolute): ${input.outputAbs}`,
@@ -443,7 +444,7 @@ export function buildBlenderJobBrief(input: BlenderJobBriefInput): string {
     expandBlenderJobInstruction(input.kind, input.instruction),
     '',
     '## Hard rules',
-    '- Load the named skill first. Inspect the real scene at most once per attempt, then change it.',
+    '- Inspect the real scene at most once per attempt, then change it.',
     '- Never invent Euler angles or bone names. Read pose_bones / armature from Blender.',
     '- Import only the input GLB. Do not call generate_model3d or create a new character.',
     '- Do not loop execute_blender_code just to list objects without editing.',
@@ -465,13 +466,13 @@ export function buildBlenderJobBrief(input: BlenderJobBriefInput): string {
 export function buildBlenderJobTask(
   input: BlenderJobBriefInput & { attempt?: number; repairHint?: string }
 ): string {
-  const skill = input.skillId
+  const nodeTypeId = input.nodeTypeId || BLENDER_DSH_NODE_TYPE_ID[input.kind]
   const attempt = input.attempt ?? 1
   if (input.kind === 'rig') {
     const repair = input.repairHint?.trim()
     if (repair && attempt > 1) {
       return [
-        `Use skill "${skill}".`,
+        `Execute Blender node "${nodeTypeId}".`,
         `Repair attempt ${attempt}/3 for humanoid skinning.`,
         `Brief file: ${input.briefAbs ?? '(see prepare paths)'}.`,
         repair,
@@ -479,7 +480,7 @@ export function buildBlenderJobTask(
       ].join('\n')
     }
     return [
-      `Use skill "${skill}".`,
+      `Execute Blender node "${nodeTypeId}".`,
       `Attempt ${attempt}/3: iterative humanoid skinning.`,
       `Import "${input.inputAbs}" once.`,
       'Follow the brief: run AIAE_HUMANOID_LANDMARKS verbatim, optionally adjust AIAE_LM_* empties after screenshots, then run AIAE_HUMANOID_BIND_FROM_LANDMARKS verbatim.',
@@ -494,7 +495,7 @@ export function buildBlenderJobTask(
       ? 'Pose the existing armature with IK/constraints. Keep rest/bind. Export GLB plus bonePose readback.'
       : 'Create a keyframed action on the existing armature, bake it, export GLB with AnimationClip plus clip overlay.'
   return [
-    `Use skill "${skill}".`,
+    `Execute Blender node "${nodeTypeId}".`,
     goal,
     `Import "${input.inputAbs}".`,
     `When done, export_scene to "${input.outputAbs}" (glb, include armature/weights/animations as required).`,

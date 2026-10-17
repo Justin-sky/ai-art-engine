@@ -61,8 +61,6 @@ export interface GraphRunLogApiCall {
     | 'postProcessModel3d'
     | 'blenderMcp'
   nodeId: string
-  /** 节点 params.skillId；无则省略 */
-  skillId?: string
   /** 进模型文本的短哈希（仅日志，不参与跳过已完成） */
   promptHash?: string
   request: {

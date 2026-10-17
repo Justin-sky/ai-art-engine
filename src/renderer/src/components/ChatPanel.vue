@@ -229,6 +229,17 @@ type SlashCommandDef = {
   descKey: 'slashClearDesc' | 'slashModelDesc' | 'slashWorkflowDesc'
 }
 
+type SlashSkillItem = {
+  id: `skill:${string}`
+  name: string
+  skillName: string
+  descText: string
+  argumentHint?: string
+  skillContext?: 'inline' | 'fork'
+}
+
+type SlashMenuItem = SlashCommandDef | SlashSkillItem
+
 const SLASH_COMMANDS: readonly SlashCommandDef[] = [
   { id: 'clear', name: '/clear', descKey: 'slashClearDesc' },
   { id: 'model', name: '/model', descKey: 'slashModelDesc' },
@@ -239,12 +250,31 @@ const slashOpen = ref(false)
 const slashIndex = ref(0)
 const slashFilter = ref('')
 
-const slashItems = computed(() => {
+const slashItems = computed<SlashMenuItem[]>(() => {
   const q = slashFilter.value.trim().toLowerCase()
-  if (!q) return [...SLASH_COMMANDS]
-  return SLASH_COMMANDS.filter(
-    (c) => c.name.toLowerCase().includes(q) || c.id.toLowerCase().includes(q)
-  )
+  const builtins = !q
+    ? [...SLASH_COMMANDS]
+    : SLASH_COMMANDS.filter(
+        (c) => c.name.toLowerCase().includes(q) || c.id.toLowerCase().includes(q)
+      )
+  const skillItems: SlashSkillItem[] = sessionSkills.value
+    .filter((s) => s.userInvocable !== false)
+    .filter(
+      (s) =>
+        !q ||
+        s.name.toLowerCase().includes(q) ||
+        (s.titleZh?.toLowerCase().includes(q) ?? false) ||
+        s.description.toLowerCase().includes(q)
+    )
+    .map((s) => ({
+      id: `skill:${s.name}` as const,
+      name: `/${s.name}`,
+      skillName: s.name,
+      descText: s.titleZh ? `${s.titleZh} · ${s.description}` : s.description,
+      ...(s.argumentHint ? { argumentHint: s.argumentHint } : {}),
+      ...(s.context ? { skillContext: s.context } : {})
+    }))
+  return [...builtins, ...skillItems]
 })
 
 function closeSlashMenu(): void {
@@ -274,13 +304,37 @@ function updateSlashMenuFromCursor(): void {
   if (!slashOpen.value) {
     slashOpen.value = true
     slashIndex.value = 0
+    void refreshSessionSkills()
   } else if (slashIndex.value >= slashItems.value.length) {
     slashIndex.value = Math.max(0, slashItems.value.length - 1)
   }
 }
 
-async function applySlashCommand(cmd: SlashCommandDef): Promise<void> {
+/** 把光标前触发斜杠菜单的 `/xxx` 替换为 `/skill-name `，方便继续填写 `$ARGUMENTS` 或直接回车发送 */
+function applySlashSkillToEditor(skillName: string): void {
+  const el = inputRef.value
+  if (!el) return
+  el.focus()
+  const before = textBeforeCursor()
+  const sel = window.getSelection()
+  const m = before.match(/\/[a-zA-Z0-9_-]*$/)
+  if (sel && sel.rangeCount > 0 && m) {
+    const r = sel.getRangeAt(0)
+    if (r.endOffset >= m[0].length) {
+      const cut = r.cloneRange()
+      cut.setStart(r.endContainer, r.endOffset - m[0].length)
+      cut.deleteContents()
+    }
+  }
+  insertPlainText(`/${skillName} `)
+}
+
+async function applySlashCommand(cmd: SlashMenuItem): Promise<void> {
   closeSlashMenu()
+  if ('skillName' in cmd) {
+    applySlashSkillToEditor(cmd.skillName)
+    return
+  }
   resetEditor()
   if (cmd.id === 'clear') {
     await onClearCommand()
@@ -972,6 +1026,17 @@ async function refreshSessionSkills(): Promise<void> {
   } catch {
     // 技能清单拉取失败不阻塞对话，保持上次快照
   }
+}
+
+function toggleSkills(): void {
+  skillsOpen.value = !skillsOpen.value
+  if (skillsOpen.value) void refreshSessionSkills()
+}
+
+function insertSkillSlashCommand(skill: SessionSkill): void {
+  if (skill.userInvocable === false) return
+  insertPlainText(`/${skill.name} `)
+  skillsOpen.value = false
 }
 
 /**
@@ -2276,6 +2341,8 @@ async function runTask(text: string, options: { sourceIndex?: number } = {}): Pr
     return
   }
   const task = buildTask(text)
+  const slashSkillMatch = /^\/([a-zA-Z0-9._-]+)(?:\s|$)/.exec(task.trim())
+  if (slashSkillMatch?.[1]) markSkillLoaded(slashSkillMatch[1])
   referenced.value = []
   pendingReasoning = ''
   // 发送前记录 git 变更基线：运行结束后据此对比出「这一轮改了什么」
@@ -2947,7 +3014,7 @@ onBeforeUnmount(() => {
             :class="{ active: skillsOpen }"
             :title="t('studio.chat.skillsTitle')"
             :aria-label="t('studio.chat.skills')"
-            @click.stop="skillsOpen = !skillsOpen"
+            @click.stop="toggleSkills()"
           >
             <svg
               class="skills-icon"
@@ -2987,7 +3054,11 @@ onBeforeUnmount(() => {
                 v-for="skill in sessionSkills"
                 :key="skill.name"
                 class="skill-item"
-                :class="{ loaded: (loadedSkills[skill.name] ?? 0) > 0 }"
+                :class="{
+                  loaded: (loadedSkills[skill.name] ?? 0) > 0,
+                  invocable: skill.userInvocable !== false
+                }"
+                @click="insertSkillSlashCommand(skill)"
               >
                 <span class="skill-check">
                   {{ (loadedSkills[skill.name] ?? 0) > 0 ? '✓' : '' }}
@@ -2995,7 +3066,13 @@ onBeforeUnmount(() => {
                 <span class="skill-item-main">
                   <span class="skill-item-name">
                     {{ skill.titleZh || skill.name }}
-                    <code v-if="!skill.titleZh || skill.kind === 'custom'">{{ skill.name }}</code>
+                    <code v-if="skill.userInvocable !== false"
+                      >/{{ skill.name
+                      }}{{ skill.argumentHint ? ` ${skill.argumentHint}` : '' }}</code
+                    >
+                    <code v-else>{{ skill.name }}</code>
+                    <code v-if="skill.context === 'fork'">fork</code>
+                    <code v-if="skill.model">{{ skill.model }}</code>
                   </span>
                   <span class="skill-item-desc">{{ skill.description }}</span>
                 </span>
@@ -3295,8 +3372,18 @@ onBeforeUnmount(() => {
             @mousedown.prevent="applySlashCommand(cmd)"
             @mouseenter="slashIndex = i"
           >
-            <span class="slash-name">{{ cmd.name }}</span>
-            <span class="slash-desc">{{ t(`studio.chat.${cmd.descKey}`) }}</span>
+            <span class="slash-name">
+              {{ cmd.name }}
+              <code v-if="'argumentHint' in cmd && cmd.argumentHint" class="slash-hint">{{
+                cmd.argumentHint
+              }}</code>
+              <code v-if="'skillContext' in cmd && cmd.skillContext === 'fork'" class="slash-hint"
+                >fork</code
+              >
+            </span>
+            <span class="slash-desc">{{
+              'descKey' in cmd ? t(`studio.chat.${cmd.descKey}`) : cmd.descText
+            }}</span>
           </button>
           <div v-if="!slashItems.length" class="slash-empty">{{ t('studio.chat.slashEmpty') }}</div>
         </div>
@@ -5360,9 +5447,26 @@ onBeforeUnmount(() => {
 }
 
 .slash-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 13px;
   font-weight: 600;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.slash-hint {
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.skill-item.invocable {
+  cursor: pointer;
 }
 
 .slash-desc {

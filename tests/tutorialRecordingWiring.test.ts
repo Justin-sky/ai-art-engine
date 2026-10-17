@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { getGraphSkill } from '../src/shared/graph'
+import { getNodeCapability } from '../src/shared/graph'
 import { toolAccessOf } from '../src/shared/mcpModeAccess'
 import { TUTORIAL_UI_IDS } from '../src/shared/tutorialUi'
 
@@ -37,9 +37,9 @@ const DIVE_BAR = read('src/renderer/src/components/EditorDiveBar.vue')
 const NOTEPAD = read('src/renderer/src/components/GraphTextNotepadDialog.vue')
 const SFW = read('src/renderer/src/components/StudioFloatingWindow.vue')
 
-describe('教学视频：GraphSkill tutorial.recording', () => {
-  it('内置技能存在且 usage 写全链路', () => {
-    const skill = getGraphSkill('tutorial.recording')
+describe('教学视频：NodeCapabilityDef tutorial.recording', () => {
+  it('内置节点能力存在且 usage 写全链路', () => {
+    const skill = getNodeCapability('tutorial.recording')
     expect(skill?.kind).toBe('tutorial')
     for (const token of [
       'screen_record_start',
@@ -148,7 +148,7 @@ describe('教学视频：旁白 / HUD / 字幕不叠字', () => {
   })
 
   it('skill 要求可见改参 / 等结果 / 禁止静默冒充', () => {
-    const skill = getGraphSkill('tutorial.recording')
+    const skill = getNodeCapability('tutorial.recording')
     expect(skill?.usageZh).toContain('task_run')
     expect(skill?.usageZh).toContain('doDblClick')
     expect(skill?.usageZh).toContain('screen_record_wait')

@@ -82,7 +82,6 @@ describe('executeModelRigSkinNode', () => {
     expect(value.relativePath).toBe('Cache/Models/rig-1.glb')
     expect(ctx.node.params.rigModelRelativePath).toBe('Cache/Models/rig-1.glb')
     expect(ctx.node.params.rigQa).toBeUndefined()
-    expect(ctx.node.params.skillId).toBeUndefined()
     expect(ctx.node.params.generatedModels?.map((item) => item.relativePath)).toEqual([
       'Cache/Models/rig-1.glb'
     ])
@@ -96,7 +95,6 @@ describe('executeModelRigSkinNode', () => {
     }))
     const ctx = {
       node: rigSkinNode({
-        skillId: 'blender.rigSkin',
         generateModel: 'deepseek-flash',
         generateProviderInstanceId: '53b0e301-19ae-4562-8d14-8366fbabc420',
         generateInstruction:
@@ -118,7 +116,6 @@ describe('executeModelRigSkinNode', () => {
     })
     expect(rigModel3d.mock.calls[0]![0].model).toBeUndefined()
     expect(rigModel3d.mock.calls[0]![0].providerInstanceId).toBeUndefined()
-    expect(ctx.node.params.skillId).toBeUndefined()
     expect(ctx.node.params.rigQa).toBeUndefined()
     expect(ctx.node.params.generateRigType).toBe('humanoid')
     expect(ctx.node.params.generateInstruction).toBe('humanoid')

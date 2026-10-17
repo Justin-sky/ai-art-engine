@@ -216,7 +216,7 @@ export const useGraphRunLogsStore = defineStore('graphRunLogs', () => {
       for (const call of apiCalls) {
         lines.push(
           '',
-          `### ${call.kind} node=${call.nodeId}${call.skillId ? ` skill=${call.skillId}` : ''}${call.promptHash ? ` hash=${call.promptHash}` : ''}${call.durationMs != null ? ` ${call.durationMs}ms` : ''}`,
+          `### ${call.kind} node=${call.nodeId}${call.promptHash ? ` hash=${call.promptHash}` : ''}${call.durationMs != null ? ` ${call.durationMs}ms` : ''}`,
           'request:',
           JSON.stringify(call.request, null, 2)
         )

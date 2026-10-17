@@ -42,6 +42,102 @@
         <span class="mp-hint">{{ t('marketplace.ext.addHint') }}</span>
       </div>
 
+      <!-- 从 GitHub 直接添加 Claude Code 技能：在技能与技能市场页签展示 -->
+      <div v-if="category === 'skills' || category === 'workflows'" class="mp-github-box">
+        <div class="mp-github-bar">
+          <input
+            v-model="githubUrl"
+            type="url"
+            autocomplete="off"
+            :placeholder="t('marketplace.github.placeholder')"
+            :aria-label="t('marketplace.github.placeholder')"
+            @keydown.enter.prevent="inspectGitHubSkills()"
+          />
+          <button
+            type="button"
+            class="mp-btn primary"
+            :disabled="githubInspecting || !githubUrl.trim()"
+            @click="inspectGitHubSkills()"
+          >
+            {{
+              githubInspecting
+                ? t('marketplace.github.inspecting')
+                : t('marketplace.github.inspect')
+            }}
+          </button>
+          <button
+            v-if="githubDiscovered.length > 0 || githubError"
+            type="button"
+            class="mp-link"
+            @click="clearGitHubInspect()"
+          >
+            {{ t('marketplace.clearSearch') }}
+          </button>
+        </div>
+        <span class="mp-hint">{{ t('marketplace.github.hint') }}</span>
+        <p v-if="githubError" class="mp-hint error">{{ githubError }}</p>
+
+        <div v-if="githubDiscovered.length > 0" class="mp-github-results">
+          <div class="mp-github-head">
+            <span class="mp-github-repo">
+              <code>{{ githubOwnerRepo }}</code>
+              <span v-if="githubRef" class="mp-card-kind">{{ githubRef }}</span>
+              <span class="mp-hint">
+                {{ t('marketplace.github.foundCount', { count: githubDiscovered.length }) }}
+              </span>
+            </span>
+            <div class="mp-card-actions">
+              <button
+                type="button"
+                class="mp-btn primary"
+                :disabled="githubInstalling || selectedGitHubSkills.length === 0"
+                @click="installSelectedGitHubSkills()"
+              >
+                {{
+                  githubInstalling
+                    ? t('marketplace.workflows.installing')
+                    : t('marketplace.github.installSelected', {
+                        count: selectedGitHubSkills.length
+                      })
+                }}
+              </button>
+            </div>
+          </div>
+          <ul class="mp-github-list">
+            <li v-for="item in githubDiscovered" :key="item.name" class="mp-github-item">
+              <label class="mp-github-check">
+                <input
+                  type="checkbox"
+                  :checked="selectedGitHubSkillNames.includes(item.name)"
+                  @change="toggleGitHubSkillSelection(item.name)"
+                />
+                <div class="mp-github-item-main">
+                  <div class="mp-github-item-title">
+                    <strong>{{ item.name }}</strong>
+                    <code>/{{ item.name }}</code>
+                    <code v-if="item.argumentHint" class="mp-badge-code">{{
+                      item.argumentHint
+                    }}</code>
+                    <span v-if="item.context === 'fork'" class="mp-card-kind">context: fork</span>
+                    <span v-if="item.model" class="mp-card-kind">{{ item.model }}</span>
+                    <span v-if="item.allowedTools?.length" class="mp-card-kind">
+                      allowed-tools ({{ item.allowedTools.length }})
+                    </span>
+                    <span v-if="item.hasScripts" class="mp-card-state warn">
+                      {{ t('marketplace.workflows.skillWithScripts') }}
+                    </span>
+                    <span v-if="item.installed" class="mp-card-state on">
+                      {{ t('marketplace.workflows.installedTag') }}
+                    </span>
+                  </div>
+                  <p v-if="item.description" class="mp-card-sub">{{ item.description }}</p>
+                </div>
+              </label>
+            </li>
+          </ul>
+        </div>
+      </div>
+
       <!-- 工作流页签：远端市场来源行（含手动刷新与离线提示） -->
       <div v-if="category === 'workflows'" class="mp-add-row">
         <button
@@ -141,6 +237,10 @@
               <span class="mp-dot" aria-hidden="true" />
               {{ t(card.sourceKey) }}
             </span>
+            <span v-if="card.githubRepo" class="mp-card-byline" :title="card.githubRepo">
+              {{ card.githubRepo }}
+            </span>
+            <span v-if="card.skillContext === 'fork'" class="mp-card-kind">fork</span>
             <!-- 工作流卡：作者 · 节点数（作者是署名，必须能看出来源） -->
             <span v-if="card.marketId" class="mp-card-byline">
               {{ card.author }}
@@ -209,11 +309,23 @@
                 {{ t('marketplace.workflows.uninstall') }}
               </button>
             </template>
+            <button
+              v-if="card.category === 'skills' && canUninstallSkillCard(card)"
+              type="button"
+              class="mp-btn danger"
+              :disabled="busy"
+              @click="uninstallLocalSkill(card)"
+            >
+              {{ t('marketplace.workflows.uninstall') }}
+            </button>
             <!-- 详情是次要动作：往右推，与安装 / 卸载分开，避免误点 -->
             <button
               type="button"
               class="mp-btn"
-              :class="{ 'mp-btn-push-end': !!card.marketId }"
+              :class="{
+                'mp-btn-push-end':
+                  !!card.marketId || (card.category === 'skills' && canUninstallSkillCard(card))
+              }"
               @click="toggle(card.key)"
             >
               {{ openKey === card.key ? t('marketplace.collapse') : t('marketplace.detail') }}
@@ -238,8 +350,7 @@
               @remove="removeServer(card.serverId!)"
             />
             <!--
-              技能详情：按该技能自己的信息渲染。
-              早先这里对所有技能都是同一句通用提示 —— 展开哪张都一样，等于没有详情。
+              技能详情：展示 Claude Code SKILL.md 完整规范字段。
             -->
             <template v-else-if="card.category === 'skills'">
               <dl class="mp-facts">
@@ -249,21 +360,53 @@
                     <code>{{ card.identifier }}</code>
                   </dd>
                 </div>
+                <div v-if="card.userInvocable !== false" class="mp-fact">
+                  <dt>{{ t('marketplace.skill.slash') }}</dt>
+                  <dd>
+                    <code
+                      >/{{ card.identifier.replace(/\.md$/i, '')
+                      }}{{ card.argumentHint ? ` ${card.argumentHint}` : '' }}</code
+                    >
+                  </dd>
+                </div>
                 <div v-if="card.subtitle" class="mp-fact">
                   <dt>{{ t('marketplace.skill.purpose') }}</dt>
                   <dd>{{ card.subtitle }}</dd>
                 </div>
+                <div v-if="card.whenToUse" class="mp-fact">
+                  <dt>{{ t('marketplace.skill.whenToUse') }}</dt>
+                  <dd>{{ card.whenToUse }}</dd>
+                </div>
                 <div v-if="card.sourceKey" class="mp-fact">
                   <dt>{{ t('marketplace.skill.source') }}</dt>
-                  <dd>{{ t(card.sourceKey) }}</dd>
+                  <dd>
+                    {{ t(card.sourceKey) }}
+                    <code v-if="card.githubRepo">
+                      ({{ card.githubRepo }}{{ card.githubRef ? `@${card.githubRef}` : '' }})
+                    </code>
+                  </dd>
+                </div>
+                <div v-if="card.skillContext" class="mp-fact">
+                  <dt>{{ t('marketplace.skill.context') }}</dt>
+                  <dd>
+                    <code>{{ card.skillContext }}</code>
+                    <span v-if="card.skillAgent"> · {{ card.skillAgent }}</span>
+                  </dd>
+                </div>
+                <div v-if="card.skillModel" class="mp-fact">
+                  <dt>{{ t('marketplace.skill.model') }}</dt>
+                  <dd>
+                    <code>{{ card.skillModel }}</code>
+                  </dd>
+                </div>
+                <div v-if="card.allowedTools?.length" class="mp-fact">
+                  <dt>{{ t('marketplace.skill.allowedTools') }}</dt>
+                  <dd>
+                    <code>{{ card.allowedTools.join(', ') }}</code>
+                  </dd>
                 </div>
               </dl>
               <p class="mp-hint">{{ t('marketplace.skill.hint') }}</p>
-              <div class="mp-card-actions">
-                <button type="button" class="mp-btn" :disabled="busy" @click="runSkillAction(card)">
-                  {{ t('marketplace.exportSkill') }}
-                </button>
-              </div>
             </template>
             <!--
               工作流详情：作者 / 许可 / 节点数 + **依赖缺失清单**。
@@ -325,14 +468,6 @@
                   })
                 }}
               </p>
-              <!--
-                安装 / 卸载在卡片上（见 `.mp-card-actions`）。
-                这里只保留**说明性内容**：事实、依赖缺失、版本过低、以及「去哪儿用」——
-                详情是「看清楚」的地方，不是「唯一能操作」的地方。
-
-                「使用」按钮已移除：落盘动作放在 AI 对话里（工具栏的工作流入口），
-                那里才有「要做哪条、还要补什么要求」的上下文。
-              -->
             </template>
             <template v-else>
               <p class="mp-hint">{{ t('marketplace.readOnlyHint') }}</p>
@@ -346,10 +481,7 @@
       </p>
 
       <!--
-        目录级操作与模板库都是**技能专属**，只在该页签下出现。
-        放在页签判断之外会让它们在每个分类下都冒出来 —— 与当前页签无关的内容
-        比没有更糟（用户会以为它属于 MCP 或扩展）。
-        这两个段落也**不放在搜索的 empty 分支里**：搜不到技能时它们通常仍然可用。
+        目录级操作只在该页签下出现。
       -->
       <section v-if="category === 'skills'" class="mp-section">
         <h3 class="mp-section-title">{{ t('marketplace.skillsTools') }}</h3>
@@ -361,39 +493,10 @@
           <button type="button" class="mp-btn" :disabled="busy" @click="writeSkillTemplate">
             {{ t('settings.skills.writeTemplate') }}
           </button>
-          <button type="button" class="mp-btn" :disabled="busy" @click="importCustomSkills">
-            {{ t('settings.skills.importToGraph') }}
-          </button>
         </div>
         <p class="mp-hint">
-          {{ t('settings.skills.builtinCount', { count: skills?.builtinCount ?? 0 }) }}
+          {{ t('settings.skills.hint') }}
         </p>
-
-        <h3 class="mp-section-title">{{ t('settings.skills.templateLibrary') }}</h3>
-        <div class="mp-dir-row">
-          <button
-            type="button"
-            class="mp-btn"
-            :aria-expanded="templatesOpen"
-            @click="templatesOpen = !templatesOpen"
-          >
-            {{ templatesOpen ? '▾' : '▸' }} {{ t('marketplace.toggleTemplates') }}
-            <span class="mp-tab-count">{{ templates.length }}</span>
-          </button>
-        </div>
-        <ul v-if="templatesOpen && templates.length" class="mp-template-list">
-          <li v-for="tpl in templates" :key="tpl.id" class="mp-template">
-            <div class="mp-template-info">
-              <code class="mp-card-id">{{ tpl.name }}</code>
-              <span class="mp-template-title">{{ tpl.titleZh }} / {{ tpl.titleEn }}</span>
-              <span class="mp-card-sub">{{ tpl.description }}</span>
-            </div>
-            <button type="button" class="mp-btn" :disabled="busy" @click="exportTemplate(tpl.id)">
-              {{ t('settings.skills.exportTemplate') }}
-            </button>
-          </li>
-        </ul>
-        <p v-else-if="templatesOpen" class="mp-hint">{{ t('settings.skills.templateEmpty') }}</p>
       </section>
 
       <p v-if="message" class="mp-msg" :class="{ error: isError }">{{ message }}</p>
@@ -414,9 +517,9 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import type {
   DshSkillsInfo,
+  GitHubDiscoveredSkillView,
   McpBlenderBridgeInfo,
   McpServerInfo,
-  SkillTemplate,
   WorkflowMarketEntryView
 } from '@shared/ipc'
 import type { AppSettings } from '@shared/domain'
@@ -449,7 +552,7 @@ import {
  * 插件市场（独立窗口）。
  *
  * 四个页签：MCP / 技能 / 工作流，以及跨类的「全部」。其中**工作流来自远端市场**
- *（`ai-art-engine-workflow`），其余是本地信息。
+ *（`ai-art-engine-skills`），其余是本地信息。
  *
  * 窗口本身是**应用级**（不依赖工程）；只有「使用工作流」会落到当前工程上，
  * 因此那一处会检查工程是否打开。
@@ -477,9 +580,22 @@ const SAVE_DEBOUNCE_MS = 500
 
 const mcp = ref<McpServerInfo | null>(null)
 const skills = ref<DshSkillsInfo | null>(null)
-const templates = ref<SkillTemplate[]>([])
 
-/** 远端工作流市场（`ai-art-engine-workflow`） */
+/** GitHub 直接安装 Claude Code 技能状态 */
+const githubUrl = ref('')
+const githubInspecting = ref(false)
+const githubInstalling = ref(false)
+const githubError = ref('')
+const githubOwnerRepo = ref('')
+const githubRef = ref('')
+const githubDiscovered = ref<GitHubDiscoveredSkillView[]>([])
+const selectedGitHubSkillNames = ref<string[]>([])
+
+const selectedGitHubSkills = computed(() =>
+  githubDiscovered.value.filter((item) => selectedGitHubSkillNames.value.includes(item.name))
+)
+
+/** 远端工作流市场（`ai-art-engine-skills`） */
 const workflowEntries = ref<WorkflowMarketEntryView[]>([])
 /** 目录来自磁盘缓存且本次刷新失败 → 界面提示「离线，数据可能过期」 */
 const workflowStale = ref(false)
@@ -509,7 +625,6 @@ const installingId = ref<string | null>(null)
 const category = ref<MarketplaceFilter>('all')
 const query = ref('')
 const openKey = ref('')
-const templatesOpen = ref(false)
 const loading = ref(true)
 const loadError = ref('')
 const busy = ref(false)
@@ -748,63 +863,148 @@ async function writeSkillTemplate(): Promise<void> {
   }
 }
 
-async function importCustomSkills(): Promise<void> {
+function canUninstallSkillCard(card: MarketplaceCard): boolean {
+  return (
+    card.sourceKey === 'marketplace.source.skill.github' ||
+    card.sourceKey === 'marketplace.source.skill.custom' ||
+    card.sourceKey === 'marketplace.source.skill.template'
+  )
+}
+
+async function uninstallLocalSkill(card: MarketplaceCard): Promise<void> {
+  let ok = false
+  try {
+    ok = await promptConfirm({
+      title: t('marketplace.workflows.uninstall'),
+      message: t('marketplace.workflows.uninstallConfirm', {
+        title: card.title ?? card.identifier
+      }),
+      confirmLabel: t('marketplace.workflows.uninstall')
+    })
+  } catch (e) {
+    isError.value = true
+    message.value = e instanceof Error ? e.message : String(e)
+    return
+  }
+  if (!ok) return
   busy.value = true
   isError.value = false
-  message.value = ''
   try {
-    const result = await window.studio.importCustomSkillsToGraph()
-    if (result.imported.length > 0) {
-      message.value = t('settings.skills.imported', {
-        count: result.imported.length,
-        names: result.imported.join(', ')
-      })
-    } else if (result.skipped.length > 0) {
+    const res = await window.studio.uninstallSkill(card.identifier)
+    if (!res.ok) {
       isError.value = true
-      message.value = t('settings.skills.importSkipped', {
-        names: result.skipped.map((item) => item.name).join(', ')
+      message.value = res.error ?? t('marketplace.workflows.reason.removeFailed')
+      return
+    }
+    message.value = t('marketplace.workflows.uninstalled', {
+      title: card.title ?? card.identifier
+    })
+    if (openKey.value === card.key) openKey.value = ''
+    await refreshSkills()
+  } catch (e) {
+    isError.value = true
+    message.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    busy.value = false
+  }
+}
+
+function clearGitHubInspect(): void {
+  githubDiscovered.value = []
+  selectedGitHubSkillNames.value = []
+  githubOwnerRepo.value = ''
+  githubRef.value = ''
+  githubError.value = ''
+}
+
+function toggleGitHubSkillSelection(name: string): void {
+  if (selectedGitHubSkillNames.value.includes(name)) {
+    selectedGitHubSkillNames.value = selectedGitHubSkillNames.value.filter((n) => n !== name)
+  } else {
+    selectedGitHubSkillNames.value = [...selectedGitHubSkillNames.value, name]
+  }
+}
+
+async function inspectGitHubSkills(): Promise<void> {
+  const url = githubUrl.value.trim()
+  if (!url || githubInspecting.value) return
+  githubInspecting.value = true
+  githubError.value = ''
+  githubDiscovered.value = []
+  selectedGitHubSkillNames.value = []
+  try {
+    const res = await window.studio.inspectGitHubSkills({ url })
+    if (!res.ok || !res.skills?.length) {
+      githubError.value = t(`marketplace.github.reason.${res.reasonKey ?? 'noSkillsFound'}`)
+      return
+    }
+    githubOwnerRepo.value = res.source ? `${res.source.owner}/${res.source.repo}` : url
+    githubRef.value = res.source?.resolvedRef ?? ''
+    githubDiscovered.value = res.skills
+    selectedGitHubSkillNames.value = res.skills.map((s) => s.name)
+  } catch (e) {
+    githubError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    githubInspecting.value = false
+  }
+}
+
+async function installSelectedGitHubSkills(): Promise<void> {
+  const url = githubUrl.value.trim()
+  const chosen = selectedGitHubSkills.value
+  if (!url || !chosen.length || githubInstalling.value) return
+
+  let skillScriptsConsent = false
+  try {
+    const allScripts: string[] = []
+    for (const item of chosen) {
+      for (const f of item.files) {
+        if (f.path.startsWith('scripts/')) allScripts.push(`${item.name}/${f.path}`)
+      }
+    }
+    if (allScripts.length > 0 || chosen.some((s) => s.hasScripts)) {
+      skillScriptsConsent = await promptConfirm({
+        title: t('marketplace.workflows.skillWithScripts'),
+        message: t('marketplace.workflows.scriptsConfirm', {
+          count: allScripts.length,
+          files: allScripts.join('\n')
+        }),
+        confirmLabel: t('marketplace.workflows.install')
       })
-    } else {
-      message.value = t('settings.skills.importEmpty')
     }
   } catch (e) {
     isError.value = true
     message.value = e instanceof Error ? e.message : String(e)
-  } finally {
-    busy.value = false
-    await refreshSkills()
+    return
   }
-}
 
-/** 导出某个内置技能模板 */
-async function exportTemplate(id: string): Promise<void> {
-  busy.value = true
+  githubInstalling.value = true
   isError.value = false
-  message.value = ''
   try {
-    const result = await window.studio.exportSkillTemplate(id)
-    message.value = result.skipped
-      ? t('settings.skills.templateExportedSkipped', { file: result.filePath })
-      : t('settings.skills.templateExported', { file: result.filePath })
+    const res = await window.studio.installGitHubSkills({
+      url,
+      skillNames: chosen.map((s) => s.name),
+      skillScriptsConsent
+    })
+    if (!res.ok) {
+      isError.value = true
+      message.value = t(`marketplace.github.reason.${res.reasonKey ?? 'unknown'}`)
+      return
+    }
+    const installedNames = (res.installed ?? []).join(', ')
+    message.value = t('marketplace.github.installedOk', {
+      count: res.installed?.length ?? chosen.length,
+      names: installedNames
+    })
+    clearGitHubInspect()
+    githubUrl.value = ''
+    await refreshSkills()
   } catch (e) {
     isError.value = true
     message.value = e instanceof Error ? e.message : String(e)
   } finally {
-    busy.value = false
-    await refreshSkills()
+    githubInstalling.value = false
   }
-}
-
-/** 技能卡片上的动作：按文件名反查模板后导出；没有对应模板时明确告知 */
-function runSkillAction(card: MarketplaceCard): void {
-  const stem = card.identifier.replace(/\.md$/i, '')
-  const tpl = templates.value.find((item) => item.name === stem)
-  if (!tpl) {
-    isError.value = true
-    message.value = t('marketplace.skillNoTemplate')
-    return
-  }
-  void exportTemplate(tpl.id)
 }
 
 async function refreshSkills(): Promise<void> {
@@ -1047,6 +1247,7 @@ async function installMarketWorkflow(card: MarketplaceCard): Promise<void> {
       // 刚装上的那条会把新的 cover.png 落到本地，缓存里的旧封面必须丢掉才会重取
       invalidateCovers([id])
       await loadWorkflowCatalog(true, { silent: true })
+      await refreshSkills()
     } catch {
       // 列表刷新失败不该把「已安装」翻成报错：主进程确实装好了，失败的只是刷新
     }
@@ -1092,6 +1293,7 @@ async function uninstallMarketWorkflow(card: MarketplaceCard): Promise<void> {
   invalidateCovers([id])
   // 后台刷新，同样不点亮「刷新目录」按钮（理由见 installMarketWorkflow）
   await loadWorkflowCatalog(true, { silent: true })
+  await refreshSkills()
 }
 
 /**
@@ -1102,15 +1304,13 @@ async function uninstallMarketWorkflow(card: MarketplaceCard): Promise<void> {
 
 onMounted(async () => {
   try {
-    const [mcpInfo, skillsData, templateList, settings] = await Promise.all([
+    const [mcpInfo, skillsData, settings] = await Promise.all([
       window.studio.getMcpInfo(),
       window.studio.getDshSkillsInfo(),
-      window.studio.listSkillTemplates(),
       window.studio.getSettings()
     ])
     mcp.value = mcpInfo
     skills.value = skillsData
-    templates.value = templateList
     Object.assign(blenderMcp, settings.blenderMcp)
     externalMcp.value = settings.externalMcp ?? []
   } catch (e) {
@@ -1578,5 +1778,100 @@ onMounted(async () => {
 
 .mp-msg.error {
   color: var(--danger-muted);
+}
+
+.mp-github-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.mp-github-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mp-github-bar input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  color: var(--text);
+  font-size: 12px;
+  font-family: var(--mono);
+}
+
+.mp-github-results {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.mp-github-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.mp-github-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.mp-github-item {
+  padding: 6px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+
+.mp-github-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.mp-github-item-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+
+.mp-github-item-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.mp-badge-code {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  background: var(--bg-hover);
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-muted);
 }
 </style>

@@ -1,291 +1,245 @@
 import { describe, expect, it } from 'vitest'
-import { existsSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import {
-  builtinSkillDisplayMap,
-  dshSkillNameOf,
-  firstSkillParagraph,
-  humanizeSkillStem,
-  parseSkillFrontmatter,
-  skillDisplayInfo,
-  skillFileStem
-} from '../src/shared/skillDisplay'
-import { listGraphSkills } from '../src/shared/graph/graphSkills'
+  extractDynamicContextCommands,
+  interpolateClaudeSkillPrompt,
+  isValidClaudeSkillName,
+  matchesAllowedTool,
+  normalizeClaudeSkillMarkdown,
+  parseClaudeSkillMarkdown,
+  parseGitHubSkillSourceUrl,
+  parseSlashSkillCommand,
+  replaceDynamicContextCommands,
+  sanitizeClaudeSkillName
+} from '../src/shared/claudeSkill'
+import { getNodeCapability, listNodeCapabilities } from '../src/shared/graph/nodeCapabilities'
+import { isAllowedClaudeSkillBundleRelPath } from '../src/main/services/githubSkillInstaller'
 
-/**
- * 技能展示元数据的推导（纯函数）。
- *
- * 起因是一个真实缺陷：界面只拿到 `fileName` + `kind`，于是卡片标题只能是
- * `system-image` 这种 id 风格的主干、展开详情对所有技能都是同一句通用提示
- *（用户原话「内置技能的详情都一样」）。而技能文件其实**各不相同** ——
- * 每个都有 frontmatter description 与正文。
- *
- * 这里覆盖「文件名 → 可展示标题与描述」的全部取值路径。
- */
-
-const BUILTIN = builtinSkillDisplayMap([
-  { id: 'system.image', titleZh: '图片生成', titleEn: 'Image' },
-  { id: 'episode.image.grid9', titleZh: '9宫格拼图·锚点画布', titleEn: '9-grid collage canvas' },
-  { id: 'blender.rigSkin', titleZh: '骨骼装配', titleEn: 'Rig & skin' }
-])
-
-describe('dshSkillNameOf：与主进程同一口径', () => {
-  it('GraphSkill id → kebab-case 文件名主干', () => {
-    expect(dshSkillNameOf('system.image')).toBe('system-image')
-    expect(dshSkillNameOf('episode.image.grid9')).toBe('episode-image-grid9')
-    expect(dshSkillNameOf('blender.rigSkin')).toBe('blender-rigskin')
-    expect(dshSkillNameOf('anim2d.frames')).toBe('anim2d-frames')
-  })
-
-  it('首尾多余分隔符被剥掉，重复分隔符合并', () => {
-    expect(dshSkillNameOf('..weird__id..')).toBe('weird-id')
-    expect(dshSkillNameOf('  A.B  ')).toBe('a-b')
-  })
-
-  it('产出的名字符合 dsh 的 skill 名规则', () => {
-    for (const skill of listGraphSkills()) {
-      const name = dshSkillNameOf(skill.id)
-      expect(name, `技能 ${skill.id} 的名字不合法`).toMatch(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+describe('NodeCapability 注册表（原内置技能彻底转为内置节点能力）', () => {
+  it('内置节点能力数量充足且全部具备中英文标题与提示词', () => {
+    const caps = listNodeCapabilities()
+    expect(caps.length).toBeGreaterThan(25)
+    for (const cap of caps) {
+      expect(cap.id.trim()).not.toBe('')
+      expect(cap.titleZh.trim()).not.toBe('')
+      expect(cap.titleEn.trim()).not.toBe('')
     }
   })
-})
 
-describe('skillFileStem / humanizeSkillStem', () => {
-  it('去掉最后一个扩展名', () => {
-    expect(skillFileStem('system-image.md')).toBe('system-image')
-    expect(skillFileStem('my-skill.example')).toBe('my-skill')
-    expect(skillFileStem('noext')).toBe('noext')
-  })
-
-  it('整名就是扩展名时保留原名（剥成空串会让卡片没有名字）', () => {
-    expect(skillFileStem('.md')).toBe('.md')
-  })
-
-  it('把 kebab-case 还原成可读短语（回落标题不该还是连字符）', () => {
-    expect(humanizeSkillStem('my-cool-skill')).toBe('my cool skill')
-    expect(humanizeSkillStem('snake_case')).toBe('snake case')
-    // 全是分隔符时不能产出空标题
-    expect(humanizeSkillStem('---')).toBe('---')
+  it('按节点 typeId 查询关键节点能力', () => {
+    expect(getNodeCapability('asset.image')?.titleZh).toBe('图片生成')
+    expect(getNodeCapability('episode.image.grid9')?.titleZh).toContain('9宫格')
+    expect(getNodeCapability('model.rigSkin')?.titleZh).toBe('3D 骨骼蒙皮')
   })
 })
 
-describe('builtinSkillDisplayMap：内置项反查', () => {
-  it('按 dsh 技能名建索引，标题取中文名', () => {
-    expect(BUILTIN.get('system-image')?.title).toBe('图片生成')
-    expect(BUILTIN.get('episode-image-grid9')?.title).toBe('9宫格拼图·锚点画布')
+describe('Claude Code 技能名称规整与校验', () => {
+  it('sanitizeClaudeSkillName 将任意标识转为合法 kebab-case', () => {
+    expect(sanitizeClaudeSkillName('My_Cool.Skill')).toBe('my-cool-skill')
+    expect(sanitizeClaudeSkillName('  --weird__name--  ')).toBe('weird-name')
+    expect(sanitizeClaudeSkillName('---', 'fallback-skill')).toBe('fallback-skill')
   })
 
-  it('描述口径与技能文件 frontmatter 一致：`English — 中文`', () => {
-    expect(BUILTIN.get('system-image')?.description).toBe('Image — 图片生成')
+  it('isValidClaudeSkillName 严格遵守小写字母数字与连字符规则', () => {
+    expect(isValidClaudeSkillName('explain-code')).toBe(true)
+    expect(isValidClaudeSkillName('wf-world-model-2')).toBe(true)
+    expect(isValidClaudeSkillName('Invalid_Name')).toBe(false)
+    expect(isValidClaudeSkillName('-leading')).toBe(false)
   })
+})
 
-  it('缺英文名时只用中文，不产出 `undefined — x` 这类脏文案', () => {
-    const map = builtinSkillDisplayMap([{ id: 'a.b', titleZh: '甲', titleEn: '' }])
-    expect(map.get('a-b')?.description).toBe('甲')
-  })
+describe('parseClaudeSkillMarkdown：完整支持 Claude Code 全部 frontmatter 特性', () => {
+  it('解析完整的 Claude Code frontmatter 字段与 Hooks', () => {
+    const raw = `---
+name: pr-reviewer
+description: "Review pull requests and check security"
+argument-hint: "[pr-number] [focus]"
+disable-model-invocation: true
+user-invocable: true
+allowed-tools: Read, Grep, Bash(git *), mcp__github__*
+model: deepseek-reasoner
+context: fork
+agent: Explore
+when_to_use: "Use when user asks for PR review"
+version: "1.2.0"
+license: MIT
+author: anthropics
+hooks:
+  PreToolUse:
+    - matcher: "Bash"
+      hooks:
+        - type: command
+          command: "echo checking bash"
+          timeout: 15
+  Stop:
+    - hooks:
+        - type: command
+          command: "echo done"
+---
 
-  it('标题全空时回落到技能名（不出现空标题）', () => {
-    const map = builtinSkillDisplayMap([{ id: 'a.b', titleZh: '', titleEn: '' }])
-    expect(map.get('a-b')?.title).toBe('a b')
-  })
+# PR Reviewer
 
-  it('同名重复注册时首个生效（避免注册顺序变化让界面文字跳动）', () => {
-    const map = builtinSkillDisplayMap([
-      { id: 'dup.id', titleZh: '先', titleEn: 'First' },
-      { id: 'dup.id', titleZh: '后', titleEn: 'Second' }
+Check PR #$0 focusing on $1.
+Diff summary:
+!\`git diff --stat\`
+`
+    const parsed = parseClaudeSkillMarkdown(raw, 'fallback-name')
+    expect(parsed.frontmatter.name).toBe('pr-reviewer')
+    expect(parsed.frontmatter.description).toBe('Review pull requests and check security')
+    expect(parsed.frontmatter.argumentHint).toBe('[pr-number] [focus]')
+    expect(parsed.frontmatter.disableModelInvocation).toBe(true)
+    expect(parsed.frontmatter.userInvocable).toBe(true)
+    expect(parsed.frontmatter.allowedTools).toEqual([
+      'Read',
+      'Grep',
+      'Bash(git *)',
+      'mcp__github__*'
     ])
-    expect(map.get('dup-id')?.title).toBe('先')
+    expect(parsed.frontmatter.model).toBe('deepseek-reasoner')
+    expect(parsed.frontmatter.context).toBe('fork')
+    expect(parsed.frontmatter.agent).toBe('Explore')
+    expect(parsed.frontmatter.whenToUse).toBe('Use when user asks for PR review')
+    expect(parsed.frontmatter.version).toBe('1.2.0')
+    expect(parsed.frontmatter.license).toBe('MIT')
+    expect(parsed.frontmatter.author).toBe('anthropics')
+    expect(parsed.frontmatter.hooks?.PreToolUse?.[0]?.matcher).toBe('Bash')
+    expect(parsed.frontmatter.hooks?.PreToolUse?.[0]?.hooks[0]?.command).toBe('echo checking bash')
+    expect(parsed.frontmatter.hooks?.Stop?.[0]?.hooks[0]?.command).toBe('echo done')
+    expect(parsed.dynamicCommands).toEqual(['git diff --stat'])
   })
 
-  it('真实内置技能全部能反查到名字，且没有空标题', () => {
-    const map = builtinSkillDisplayMap(listGraphSkills())
-    expect(map.size).toBeGreaterThan(20)
-    for (const [name, info] of map) {
-      expect(info.title.trim(), `${name} 标题为空`).not.toBe('')
-    }
+  it('省略 name 与 description 时自动用目录名与正文首段补齐（Claude Code 官方约定）', () => {
+    const raw = `# 漫画分镜助手
+
+根据剧本自动拆解分镜与景别提示词。
+
+## 步骤
+1. 阅读大纲
+`
+    const parsed = parseClaudeSkillMarkdown(raw, 'comic-storyboard')
+    expect(parsed.frontmatter.name).toBe('comic-storyboard')
+    expect(parsed.frontmatter.description).toBe('根据剧本自动拆解分镜与景别提示词。')
+    expect(parsed.frontmatter.userInvocable).toBe(true)
+    expect(parsed.frontmatter.disableModelInvocation).toBe(false)
+    expect(parsed.frontmatter.context).toBe('inline')
   })
 
-  /**
-   * 拿**应用真实生成的技能快照目录**核对一遍反查链路。
-   *
-   * 其余用例都用自造数据，只有这条能证明「用户机器上那 42 个文件名确实能对上标题」——
-   * 也就是反查规则（kebab-case 口径）与主进程写文件时用的是同一套。
-   * 目录不存在（没跑过应用 / 非本机）时跳过，不让测试依赖运行环境。
-   */
-  it('应用自己生成的技能快照文件都能反查到标题', () => {
-    /*
-      只核对**应用自己生成的那批文件**（manifest 里记着的），不再扫整个目录。
-      目录里现在还会有：
-      - 市场技能包（目录形态 `<name>/SKILL.md`，如 `wf-anim2d-gif`）—— 它们本来就不该
-        反查到内置 GraphSkill 标题，扫目录会把它们当成"反查失败"；
-      - 用户自己放进去的 .md / .example。
-      扫描整目录在这两类出现后必然误报，而这条用例真正要证明的是
-      「主进程写文件用的 kebab-case 口径与反查口径是同一套」—— 那只需要看它自己写的那些。
-    */
-    const dir = join(process.env['APPDATA'] ?? '', 'aiartengine', 'dsh-harness', 'skills')
-    if (!dir || !existsSync(dir)) return
-    const manifestPath = join(dir, '.aiart-skill-manifest.json')
-    if (!existsSync(manifestPath)) return
-    let manifest: unknown
-    try {
-      manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
-    } catch {
-      return
-    }
-    // manifest 有两种历史形态：早期是 string[]，现在是 { files, signature }
-    const files = Array.isArray(manifest)
-      ? (manifest as string[])
-      : ((manifest as { files?: string[] }).files ?? [])
-    expect(files.length).toBeGreaterThan(0)
+  it('normalizeClaudeSkillMarkdown 生成与 dsh-skill-filesystem 100% 兼容的 SKILL.md', () => {
+    const raw = `---
+disableModelInvocation: true
+---
+自动总结代码变更。
+`
+    const normalized = normalizeClaudeSkillMarkdown(raw, 'summarize-diff')
+    expect(normalized).toContain('name: summarize-diff')
+    expect(normalized).toContain('description: "自动总结代码变更。"')
+    expect(normalized).toContain('disable-model-invocation: true')
+  })
+})
 
-    const currentFiles = new Set(
-      listGraphSkills()
-        .map((skill) => dshSkillNameOf(skill.id))
-        .filter(Boolean)
-        .map((name) => `${name}.md`)
+describe('Claude Code 变量替换与动态上下文注入', () => {
+  it('支持 $ARGUMENTS、$ARGUMENTS[n]、$n 与环境变量插值', () => {
+    const body =
+      'Migrate $0 from $ARGUMENTS[1] to $2. All: $ARGUMENTS. Dir: ${CLAUDE_SKILL_DIR}, Session: ${CLAUDE_SESSION_ID}, Root: ${WORKSPACE_ROOT}'
+    const rendered = interpolateClaudeSkillPrompt(body, {
+      rawArgs: 'SearchBar React Vue',
+      skillDir: '/skills/migrator',
+      sessionId: 'sess-42',
+      workspaceRoot: '/workspace/app'
+    })
+    expect(rendered).toBe(
+      'Migrate SearchBar from React to Vue. All: SearchBar React Vue. Dir: /skills/migrator, Session: sess-42, Root: /workspace/app'
     )
-    const map = builtinSkillDisplayMap(listGraphSkills())
-    // 先校验当前代码的全部内置技能生成文件名都能 100% 反查
-    const unresolvedCurrent = [...currentFiles].filter((name) => !map.has(skillFileStem(name)))
+  })
+
+  it('正文中未出现参数占位符但用户传了参数时，自动在末尾追加 ARGUMENTS:（Claude Code 规范）', () => {
+    const rendered = interpolateClaudeSkillPrompt('Follow the coding guide.', {
+      rawArgs: 'fix login bug'
+    })
+    expect(rendered).toBe('Follow the coding guide.\n\nARGUMENTS: fix login bug')
+  })
+
+  it('提取并替换 !`command` 动态上下文占位符', () => {
+    const text = 'Branch: !`git branch --show-current`\nFiles:\n!`ls -1`'
+    expect(extractDynamicContextCommands(text)).toEqual(['git branch --show-current', 'ls -1'])
+    const replaced = replaceDynamicContextCommands(text, (cmd) =>
+      cmd.startsWith('git') ? 'main' : 'a.ts\nb.ts'
+    )
+    expect(replaced).toBe('Branch: main\nFiles:\na.ts\nb.ts')
+  })
+})
+
+describe('allowed-tools 模式匹配与斜杠命令解析', () => {
+  it('matchesAllowedTool 支持精确工具名、通配符与 Bash(cmd *) 细粒度匹配', () => {
+    const allowed = ['Read', 'Grep', 'Bash(git *)', 'mcp__github__*']
+    expect(matchesAllowedTool(allowed, 'Read')).toBe(true)
+    expect(matchesAllowedTool(allowed, 'Write')).toBe(false)
+    expect(matchesAllowedTool(allowed, 'mcp__github__create_pr')).toBe(true)
+    expect(matchesAllowedTool(allowed, 'Bash', 'git status -s')).toBe(true)
+    expect(matchesAllowedTool(allowed, 'Bash', 'rm -rf /')).toBe(false)
+  })
+
+  it('parseSlashSkillCommand 解析 /skill-name 与引号参数', () => {
+    expect(parseSlashSkillCommand('/pr-reviewer 123 "security check"')).toEqual({
+      skillName: 'pr-reviewer',
+      rawArgs: '123 "security check"',
+      argv: ['123', 'security check']
+    })
+    expect(parseSlashSkillCommand('普通对话消息')).toBeNull()
+  })
+})
+
+describe('GitHub 技能源 URL 解析与路径安全守卫', () => {
+  it('支持 owner/repo、owner/repo/subpath、tree URL、blob SKILL.md URL 四种输入格式', () => {
+    expect(parseGitHubSkillSourceUrl('anthropics/skills')).toEqual({
+      owner: 'anthropics',
+      repo: 'skills',
+      subpath: '',
+      canonicalUrl: 'https://github.com/anthropics/skills'
+    })
+
+    expect(parseGitHubSkillSourceUrl('anthropics/skills/skills/pdf')).toEqual({
+      owner: 'anthropics',
+      repo: 'skills',
+      subpath: 'skills/pdf',
+      canonicalUrl: 'https://github.com/anthropics/skills/tree/main/skills/pdf'
+    })
+
     expect(
-      unresolvedCurrent,
-      `当前内置技能无法反查到标题：${unresolvedCurrent.join(', ')}`
-    ).toEqual([])
-
-    // 再核对本机真实落盘的 manifest（跳过代码已删除但尚未重启应用重刷盘的历史残留项）
-    const activeManifestFiles = files.filter((name) => currentFiles.has(name))
-    const unresolved = activeManifestFiles.filter((name) => !map.has(skillFileStem(name)))
-    expect(unresolved, `这些文件没能反查到标题：${unresolved.join(', ')}`).toEqual([])
-  })
-})
-
-describe('parseSkillFrontmatter：只认需要的那两个字段', () => {
-  it('双引号写法（应用自己生成的就是这种）', () => {
-    const parsed = parseSkillFrontmatter(
-      '---\nname: system-image\ndescription: "Image — 图片生成"\n---\n\n# Image\n'
-    )
-    expect(parsed.name).toBe('system-image')
-    expect(parsed.description).toBe('Image — 图片生成')
-  })
-
-  it('裸值与单引号写法都能读（用户手写常见）', () => {
-    expect(parseSkillFrontmatter('---\ndescription: 手写技能\n---\n')).toEqual({
-      description: '手写技能'
+      parseGitHubSkillSourceUrl('https://github.com/anthropics/skills/tree/main/skills/xlsx')
+    ).toEqual({
+      owner: 'anthropics',
+      repo: 'skills',
+      ref: 'main',
+      subpath: 'skills/xlsx',
+      canonicalUrl: 'https://github.com/anthropics/skills/tree/main/skills/xlsx'
     })
-    expect(parseSkillFrontmatter("---\ndescription: '单引号'\n---\n")).toEqual({
-      description: '单引号'
-    })
-  })
 
-  it('不成对的引号原样保留（手写不完整时不吞内容）', () => {
-    expect(parseSkillFrontmatter('---\ndescription: "没闭合\n---\n')?.description).toBe('"没闭合')
-  })
-
-  it('没有 frontmatter / 不是从文件开头起 → 空结果', () => {
-    expect(parseSkillFrontmatter('# 只有正文\n')).toEqual({})
-    expect(parseSkillFrontmatter('前言\n---\ndescription: x\n---\n')).toEqual({})
-  })
-
-  it('忽略无关字段与空值', () => {
-    const parsed = parseSkillFrontmatter('---\nname: x\nversion: 3\ntags: a,b\ndescription:\n---\n')
-    expect(parsed.name).toBe('x')
-    expect(parsed.description).toBeUndefined()
-  })
-
-  it('CRLF 换行也能解析（用户在 Windows 上编辑过）', () => {
     expect(
-      parseSkillFrontmatter('---\r\nname: x\r\ndescription: "y"\r\n---\r\n')?.description
-    ).toBe('y')
-  })
-})
-
-describe('firstSkillParagraph：正文首段兜底', () => {
-  it('跳过 frontmatter、标题与小节标题', () => {
-    const text = firstSkillParagraph(
-      '---\nname: x\n---\n\n# 标题\n\n### 系统提示（中文）\n\n你是一名专业图像创作者。\n'
-    )
-    expect(text).toBe('你是一名专业图像创作者。')
-  })
-
-  it('多行连成一段', () => {
-    const text = firstSkillParagraph('# T\n\n第一行\n第二行\n\n后面不要\n')
-    expect(text).toBe('第一行 第二行')
-  })
-
-  it('跳过代码块内容', () => {
-    const text = firstSkillParagraph('# T\n\n```\ncode\n```\n\n真正的说明\n')
-    expect(text).toBe('真正的说明')
-  })
-
-  it('正文为空 / 只有标题 → undefined（不产出空描述）', () => {
-    expect(firstSkillParagraph('---\nname: x\n---\n')).toBeUndefined()
-    expect(firstSkillParagraph('# 只有标题\n')).toBeUndefined()
-  })
-})
-
-describe('skillDisplayInfo：取值优先级', () => {
-  const base = {
-    builtin: BUILTIN,
-    kind: 'builtin' as const
-  }
-
-  it('内置项用 GraphSkill 的标题（比解析生成的 md 更准）', () => {
-    const info = skillDisplayInfo({ ...base, fileName: 'system-image.md' })
-    expect(info.title).toBe('图片生成')
-    expect(info.description).toBe('Image — 图片生成')
-  })
-
-  it('内置项即使给了文件内容也以 GraphSkill 为准', () => {
-    const info = skillDisplayInfo({
-      ...base,
-      fileName: 'system-image.md',
-      content: '---\ndescription: "别的"\n---\n'
+      parseGitHubSkillSourceUrl(
+        'https://github.com/anthropics/skills/blob/main/skills/docx/SKILL.md'
+      )
+    ).toEqual({
+      owner: 'anthropics',
+      repo: 'skills',
+      ref: 'main',
+      subpath: 'skills/docx',
+      canonicalUrl: 'https://github.com/anthropics/skills/tree/main/skills/docx'
     })
-    expect(info.description).toBe('Image — 图片生成')
   })
 
-  it('内置项在映射里查不到时回落文件名主干（快照与注册表不同步也不崩）', () => {
-    const info = skillDisplayInfo({ ...base, fileName: 'ghost-skill.md' })
-    expect(info.title).toBe('ghost skill')
-    expect(info.description).toBeUndefined()
+  it('拒绝非法或非 GitHub 地址', () => {
+    expect(parseGitHubSkillSourceUrl('')).toBeNull()
+    expect(parseGitHubSkillSourceUrl('https://evil.example.com/a/b')).toBeNull()
+    expect(parseGitHubSkillSourceUrl('owner/../etc')).toBeNull()
   })
 
-  it('自定义 .md 用 frontmatter 的 description', () => {
-    const info = skillDisplayInfo({
-      builtin: BUILTIN,
-      kind: 'custom',
-      fileName: 'my-skill.md',
-      content: '---\ndescription: "我的技能"\n---\n\n正文\n'
-    })
-    expect(info.title).toBe('my skill')
-    expect(info.description).toBe('我的技能')
-  })
-
-  it('自定义 .md 没写 description 时用正文首段兜底', () => {
-    const info = skillDisplayInfo({
-      builtin: BUILTIN,
-      kind: 'custom',
-      fileName: 'my-skill.md',
-      content: '# 我的技能\n\n这是它干的事情。\n'
-    })
-    expect(info.title).toBe('my skill')
-    expect(info.description).toBe('这是它干的事情。')
-  })
-
-  it('读不到文件内容时只给标题（不为此报错、也不编描述）', () => {
-    const info = skillDisplayInfo({ builtin: BUILTIN, kind: 'custom', fileName: 'x.md' })
-    expect(info).toEqual({ title: 'x' })
-  })
-
-  it('任何输入都产出非空标题', () => {
-    for (const input of [
-      { fileName: 'system-image.md', kind: 'builtin' as const },
-      { fileName: 'a.b.c.md', kind: 'custom' as const },
-      { fileName: 'my-skill.example', kind: 'template' as const },
-      { fileName: '.md', kind: 'custom' as const }
-    ]) {
-      const info = skillDisplayInfo({ ...input, builtin: BUILTIN })
-      expect(info.title.trim(), `${input.fileName} 标题为空`).not.toBe('')
-    }
+  it('isAllowedClaudeSkillBundleRelPath 允许标准 Claude Code 多级目录并拦截越界路径', () => {
+    expect(isAllowedClaudeSkillBundleRelPath('SKILL.md')).toBe(true)
+    expect(isAllowedClaudeSkillBundleRelPath('workflow.json')).toBe(true)
+    expect(isAllowedClaudeSkillBundleRelPath('references/api/spec.md')).toBe(true)
+    expect(isAllowedClaudeSkillBundleRelPath('scripts/helper.py')).toBe(true)
+    expect(isAllowedClaudeSkillBundleRelPath('assets/template.html')).toBe(true)
+    expect(isAllowedClaudeSkillBundleRelPath('../outside.md')).toBe(false)
+    expect(isAllowedClaudeSkillBundleRelPath('/abs/path.md')).toBe(false)
   })
 })

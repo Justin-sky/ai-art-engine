@@ -16,7 +16,7 @@
             <button
               type="button"
               class="ghost-btn"
-              :disabled="!videoSources.length"
+              :disabled="!sources.length"
               @click="autoPlaceAll"
             >
               {{ t('script.timeline.autoPlace') }}
@@ -322,6 +322,61 @@
                   @pointerdown.stop="onOverlayPointerDown($event, selectedOverlayClip)"
                 />
               </div>
+              <div
+                v-if="cropMode && selectedCroppableClip"
+                class="crop-box-overlay"
+                :style="cropBoxOverlayStyle"
+                @pointerdown.stop="onCropPointerDown($event, selectedCroppableClip)"
+              >
+                <span class="crop-grid-line h1" />
+                <span class="crop-grid-line h2" />
+                <span class="crop-grid-line v1" />
+                <span class="crop-grid-line v2" />
+                <span class="crop-size-badge">
+                  {{ Math.round(activeCropRect.width * 100) }}% ×
+                  {{ Math.round(activeCropRect.height * 100) }}%
+                </span>
+                <span
+                  class="crop-handle corner-tl"
+                  data-corner="tl"
+                  @pointerdown.stop="onCropPointerDown($event, selectedCroppableClip)"
+                />
+                <span
+                  class="crop-handle corner-tr"
+                  data-corner="tr"
+                  @pointerdown.stop="onCropPointerDown($event, selectedCroppableClip)"
+                />
+                <span
+                  class="crop-handle corner-bl"
+                  data-corner="bl"
+                  @pointerdown.stop="onCropPointerDown($event, selectedCroppableClip)"
+                />
+                <span
+                  class="crop-handle corner-br"
+                  data-corner="br"
+                  @pointerdown.stop="onCropPointerDown($event, selectedCroppableClip)"
+                />
+                <span
+                  class="crop-handle n"
+                  data-corner="t"
+                  @pointerdown.stop="onCropPointerDown($event, selectedCroppableClip)"
+                />
+                <span
+                  class="crop-handle s"
+                  data-corner="b"
+                  @pointerdown.stop="onCropPointerDown($event, selectedCroppableClip)"
+                />
+                <span
+                  class="crop-handle w"
+                  data-corner="l"
+                  @pointerdown.stop="onCropPointerDown($event, selectedCroppableClip)"
+                />
+                <span
+                  class="crop-handle e"
+                  data-corner="r"
+                  @pointerdown.stop="onCropPointerDown($event, selectedCroppableClip)"
+                />
+              </div>
             </div>
           </div>
           <select
@@ -507,39 +562,212 @@
             <div v-else class="inspector-hint">
               {{ t('script.timeline.reshootUnavailable') }}
             </div>
-            <div class="inspector-section-title">
-              {{ t('script.timeline.transition') }}
-            </div>
-            <label class="inspector-field">
-              <span>{{ t('script.timeline.transitionEffect') }}</span>
-              <select
-                :value="selectedClip.transitionType ?? 'none'"
-                @change="onVideoTransitionTypeChange(($event.target as HTMLSelectElement).value)"
-              >
-                <option value="none">{{ t('script.timeline.transitionNone') }}</option>
-                <option value="dissolve">{{ t('script.timeline.transitionDissolve') }}</option>
-                <option value="fadeout">{{ t('script.timeline.transitionFadeOut') }}</option>
-                <option value="fadein">{{ t('script.timeline.transitionFadeIn') }}</option>
-                <option value="flash">{{ t('script.timeline.transitionFlash') }}</option>
-                <option value="slideleft">{{ t('script.timeline.transitionSlideLeft') }}</option>
-                <option value="slideright">{{ t('script.timeline.transitionSlideRight') }}</option>
-                <option value="slideup">{{ t('script.timeline.transitionSlideUp') }}</option>
-                <option value="slidedown">{{ t('script.timeline.transitionSlideDown') }}</option>
-                <option value="wipeleft">{{ t('script.timeline.transitionWipeLeft') }}</option>
-                <option value="wiperight">{{ t('script.timeline.transitionWipeRight') }}</option>
-                <option value="wipeup">{{ t('script.timeline.transitionWipeUp') }}</option>
-                <option value="wipedown">{{ t('script.timeline.transitionWipeDown') }}</option>
-                <option value="circleopen">{{ t('script.timeline.transitionCircleOpen') }}</option>
-                <option value="circleclose">
-                  {{ t('script.timeline.transitionCircleClose') }}
-                </option>
-              </select>
-            </label>
-            <div class="inspector-hint">
-              {{ t('script.timeline.transitionDragHint') }}
-            </div>
+            <template v-if="selectedTransitionPair">
+              <div class="inspector-section-title">
+                {{ t('script.timeline.transition') }}
+              </div>
+              <div class="transition-pair-banner">
+                {{
+                  t('script.timeline.transitionPairLabel', {
+                    left: selectedTransitionPair.left.title,
+                    right: selectedTransitionPair.right.title
+                  })
+                }}
+              </div>
+              <div class="transition-cat-tabs">
+                <button
+                  v-for="cat in TRANSITION_CATEGORIES"
+                  :key="cat.id"
+                  type="button"
+                  class="transition-cat-tab"
+                  :class="{ active: activeTransitionCategory === cat.id }"
+                  @click="activeTransitionCategory = cat.id"
+                >
+                  {{ t(cat.labelKey) }}
+                </button>
+              </div>
+              <div class="transition-card-grid">
+                <button
+                  v-for="item in filteredTransitionCatalog"
+                  :key="item.type"
+                  type="button"
+                  class="transition-effect-card"
+                  :class="{
+                    active: selectedTransitionPair.transitionType === item.type
+                  }"
+                  @click="onSelectPairTransitionType(selectedTransitionPair, item.type)"
+                >
+                  <span
+                    :class="['trans-preview-box', `effect-${item.type}`]"
+                    :data-effect="item.type"
+                  >
+                    <span class="trans-preview-a">A</span>
+                    <span class="trans-preview-b">B</span>
+                  </span>
+                  <span class="trans-card-label">{{ t(item.labelKey) }}</span>
+                </button>
+              </div>
+              <template v-if="selectedTransitionPair.transitionType !== 'none'">
+                <label class="inspector-field">
+                  <span>
+                    {{ t('script.timeline.transitionDuration') }}
+                    ({{ selectedTransitionPair.durationSec.toFixed(2) }}s)
+                  </span>
+                  <input
+                    type="range"
+                    min="0.1"
+                    :max="selectedTransitionPair.maxDurationSec"
+                    step="0.05"
+                    :value="selectedTransitionPair.durationSec"
+                    @input="
+                      onSelectPairTransitionDuration(
+                        selectedTransitionPair,
+                        Number(($event.target as HTMLInputElement).value)
+                      )
+                    "
+                    @change="
+                      onSelectPairTransitionDuration(
+                        selectedTransitionPair,
+                        Number(($event.target as HTMLInputElement).value)
+                      )
+                    "
+                  />
+                </label>
+                <div class="transition-preset-pills">
+                  <button
+                    v-for="presetSec in TRANSITION_DURATION_PRESETS"
+                    :key="presetSec"
+                    type="button"
+                    class="transition-preset-pill"
+                    :class="{
+                      active: Math.abs(selectedTransitionPair.durationSec - presetSec) < 0.04
+                    }"
+                    :disabled="presetSec > selectedTransitionPair.maxDurationSec + 0.01"
+                    @click="onSelectPairTransitionDuration(selectedTransitionPair, presetSec)"
+                  >
+                    {{ presetSec.toFixed(1) }}s
+                  </button>
+                </div>
+              </template>
+              <div class="transition-inspector-actions">
+                <button
+                  type="button"
+                  class="ghost-btn"
+                  :disabled="selectedTransitionPair.transitionType === 'none'"
+                  @click="applyCurrentTransitionToAllCuts(selectedTransitionPair)"
+                >
+                  {{ t('script.timeline.transitionApplyAll') }}
+                </button>
+                <button
+                  v-if="selectedTransitionPair.transitionType !== 'none'"
+                  type="button"
+                  class="ghost-btn"
+                  @click="onSelectPairTransitionType(selectedTransitionPair, 'none')"
+                >
+                  {{ t('script.timeline.transitionRemove') }}
+                </button>
+              </div>
+            </template>
           </template>
           <template v-if="selectedClip.track === 'video' || selectedClip.track === 'overlay'">
+            <div class="inspector-section-title inspector-section-row">
+              <span>{{ t('script.timeline.cropSection') }}</span>
+              <button
+                type="button"
+                class="ghost-btn crop-toggle-inline"
+                :class="{ active: cropMode }"
+                @click="toggleCropMode"
+              >
+                ⬒ {{ t('script.timeline.cropTool') }}
+              </button>
+            </div>
+            <div class="crop-preset-pills">
+              <button
+                v-for="preset in CROP_ASPECT_PRESETS"
+                :key="preset.key"
+                type="button"
+                class="transition-preset-pill"
+                @click="applyClipCropPreset(preset.key)"
+              >
+                {{ preset.key === 'free' ? t('script.timeline.cropPresetFree') : preset.label }}
+              </button>
+            </div>
+            <div class="inspector-grid">
+              <label class="inspector-field">
+                <span>{{ t('script.timeline.cropX') }}</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="95"
+                  step="1"
+                  :value="Math.round(activeCropRect.x * 100)"
+                  @change="
+                    onClipCropFieldChange(
+                      'cropX',
+                      Number(($event.target as HTMLInputElement).value) / 100
+                    )
+                  "
+                />
+              </label>
+              <label class="inspector-field">
+                <span>{{ t('script.timeline.cropY') }}</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="95"
+                  step="1"
+                  :value="Math.round(activeCropRect.y * 100)"
+                  @change="
+                    onClipCropFieldChange(
+                      'cropY',
+                      Number(($event.target as HTMLInputElement).value) / 100
+                    )
+                  "
+                />
+              </label>
+            </div>
+            <div class="inspector-grid">
+              <label class="inspector-field">
+                <span>{{ t('script.timeline.cropWidth') }}</span>
+                <input
+                  type="number"
+                  min="5"
+                  max="100"
+                  step="1"
+                  :value="Math.round(activeCropRect.width * 100)"
+                  @change="
+                    onClipCropFieldChange(
+                      'cropWidth',
+                      Number(($event.target as HTMLInputElement).value) / 100
+                    )
+                  "
+                />
+              </label>
+              <label class="inspector-field">
+                <span>{{ t('script.timeline.cropHeight') }}</span>
+                <input
+                  type="number"
+                  min="5"
+                  max="100"
+                  step="1"
+                  :value="Math.round(activeCropRect.height * 100)"
+                  @change="
+                    onClipCropFieldChange(
+                      'cropHeight',
+                      Number(($event.target as HTMLInputElement).value) / 100
+                    )
+                  "
+                />
+              </label>
+            </div>
+            <button
+              type="button"
+              class="ghost-btn inspector-reset"
+              :disabled="!activeCropRect.isCropped"
+              @click="resetClipCrop"
+            >
+              {{ t('script.timeline.cropReset') }}
+            </button>
             <div class="inspector-section-title">
               {{ t('script.timeline.colorGradeTitle') }}
             </div>
@@ -1052,11 +1280,48 @@
           <button
             type="button"
             class="ghost-btn"
+            :class="{ active: razorMode }"
+            :title="t('script.timeline.razorToolHint')"
+            @click="toggleRazorMode"
+          >
+            🗡 {{ t('script.timeline.razorTool') }}
+          </button>
+          <button
+            type="button"
+            class="ghost-btn"
             :disabled="!canSplitActiveClip"
             :title="t('script.timeline.splitClip')"
             @click="splitSelectedClipAtPlayhead"
           >
             ✂
+          </button>
+          <button
+            type="button"
+            class="ghost-btn"
+            :disabled="!canTrimInAtPlayhead"
+            :title="t('script.timeline.trimInToPlayheadHint')"
+            @click="trimActiveClipAtPlayhead('in')"
+          >
+            {{ t('script.timeline.trimInToPlayhead') }}
+          </button>
+          <button
+            type="button"
+            class="ghost-btn"
+            :disabled="!canTrimOutAtPlayhead"
+            :title="t('script.timeline.trimOutToPlayheadHint')"
+            @click="trimActiveClipAtPlayhead('out')"
+          >
+            {{ t('script.timeline.trimOutToPlayhead') }}
+          </button>
+          <button
+            type="button"
+            class="ghost-btn"
+            :class="{ active: cropMode }"
+            :disabled="!canCropSelectedClip"
+            :title="t('script.timeline.cropToolHint')"
+            @click="toggleCropMode"
+          >
+            ⬒ {{ t('script.timeline.cropTool') }}
           </button>
           <button
             type="button"
@@ -1093,24 +1358,6 @@
             @click="pasteClips"
           >
             ▣
-          </button>
-          <button
-            type="button"
-            class="ghost-btn"
-            :disabled="!canUndo"
-            :title="t('script.timeline.undo')"
-            @click="undo"
-          >
-            ↶
-          </button>
-          <button
-            type="button"
-            class="ghost-btn"
-            :disabled="!canRedo"
-            :title="t('script.timeline.redo')"
-            @click="redo"
-          >
-            ↷
           </button>
           <span class="zoom-readout">{{ Math.round(zoomFactor * 100) }}%</span>
           <button
@@ -1197,7 +1444,7 @@
         v-show="!timelineCollapsed"
         ref="timelineBoardEl"
         class="timeline-board"
-        :class="{ scrollable: needsHScroll }"
+        :class="{ scrollable: needsHScroll, 'razor-mode': razorMode }"
         @wheel.prevent="onTimelineWheel"
         @pointerdown="onTimelineBlankPointerDown"
       >
@@ -1357,9 +1604,18 @@
                 }"
                 :style="clipVisualStyle(clip)"
                 @pointerdown.stop="onClipPointerDown($event, clip)"
+                @pointermove="onClipPointerHover($event, clip)"
+                @pointerleave="onClipPointerLeave(clip)"
                 @dblclick.stop="onClipDblClick(clip)"
               >
                 <span v-if="isAudioClip(clip)" class="clip-wave" :style="clipWaveStyle(clip)" />
+                <span
+                  v-if="razorMode && razorHover?.clipId === clip.id"
+                  class="razor-cut-line"
+                  :style="{ left: `${razorHover.localX}px` }"
+                >
+                  <span class="razor-cut-time">{{ formatSubsecond(razorHover.timeSec) }}</span>
+                </span>
                 <span
                   class="clip-handle left"
                   @pointerdown.stop="onClipResizeStart($event, clip, 'left')"
@@ -1370,6 +1626,13 @@
                   :class="{ 'on-media': clipHasVisual(clip) }"
                   >{{ clipDisplayTitle(clip) }}</span
                 >
+                <span
+                  v-if="isClipCropped(clip)"
+                  class="clip-cropped-badge"
+                  :title="t('script.timeline.cropActiveBadge')"
+                >
+                  ⬒
+                </span>
                 <button
                   v-if="clip.nodeId"
                   type="button"
@@ -1408,10 +1671,31 @@
                   :key="`transition:${handle.left.id}:${handle.right.id}`"
                   type="button"
                   class="transition-handle"
-                  :class="{ active: handle.durationSec > 0 }"
+                  :class="{
+                    active: handle.durationSec > 0,
+                    selected:
+                      transitionPopover?.leftId === handle.left.id &&
+                      transitionPopover?.rightId === handle.right.id
+                  }"
+                  :title="
+                    handle.durationSec > 0
+                      ? t('script.timeline.transitionJunctionHint')
+                      : t('script.timeline.transitionCutAddHint')
+                  "
                   :style="transitionHandleStyle(handle)"
                   @pointerdown.stop="onTransitionHandlePointerDown($event, handle)"
-                />
+                >
+                  <span v-if="handle.durationSec > 0" class="transition-overlap-pattern" />
+                  <span v-if="handle.durationSec > 0" class="transition-zone-edge left" />
+                  <span class="transition-junction-pill">
+                    <span class="transition-bowtie">⋈</span>
+                    <span v-if="handle.durationSec > 0" class="transition-junction-label">
+                      {{ transitionShortLabel(handle.transitionType) }}
+                      {{ handle.durationSec.toFixed(1) }}s
+                    </span>
+                  </span>
+                  <span v-if="handle.durationSec > 0" class="transition-zone-edge right" />
+                </button>
               </template>
             </div>
           </div>
@@ -1946,6 +2230,110 @@
         </div>
       </div>
     </div>
+
+    <div
+      v-if="transitionPopover && activePopoverTransitionPair"
+      class="transition-popover"
+      :style="transitionPopoverStyle"
+      @pointerdown.stop
+    >
+      <div class="transition-popover-head">
+        <div class="transition-popover-title">
+          <span class="transition-bowtie">⋈</span>
+          <span>{{ t('script.timeline.transitionPopoverTitle') }}</span>
+        </div>
+        <span class="transition-popover-pair">
+          {{ activePopoverTransitionPair.left.title }} →
+          {{ activePopoverTransitionPair.right.title }}
+        </span>
+        <button
+          type="button"
+          class="ghost-btn transition-popover-close"
+          @click="transitionPopover = null"
+        >
+          ×
+        </button>
+      </div>
+      <div class="transition-cat-tabs">
+        <button
+          v-for="cat in TRANSITION_CATEGORIES"
+          :key="cat.id"
+          type="button"
+          class="transition-cat-tab"
+          :class="{ active: activeTransitionCategory === cat.id }"
+          @click="activeTransitionCategory = cat.id"
+        >
+          {{ t(cat.labelKey) }}
+        </button>
+      </div>
+      <div class="transition-card-grid popover-grid">
+        <button
+          v-for="effect in filteredTransitionCatalog"
+          :key="effect.type"
+          type="button"
+          class="transition-effect-card"
+          :class="{
+            active: (activePopoverTransitionPair.right.transitionType ?? 'none') === effect.type
+          }"
+          @click="onSelectPairTransitionType(activePopoverTransitionPair, effect.type)"
+        >
+          <span :class="['trans-preview-box', `effect-${effect.type}`]" :data-effect="effect.type">
+            <span class="trans-preview-a">A</span>
+            <span class="trans-preview-b">B</span>
+          </span>
+          <span class="trans-card-label">{{ t(effect.labelKey) }}</span>
+        </button>
+      </div>
+      <div
+        v-if="
+          activePopoverTransitionPair.right.transitionType &&
+          activePopoverTransitionPair.right.transitionType !== 'none'
+        "
+        class="transition-popover-footer"
+      >
+        <div class="transition-duration-row">
+          <span class="transition-duration-label">{{
+            t('script.timeline.transitionDuration')
+          }}</span>
+          <div class="transition-preset-pills">
+            <button
+              v-for="sec in TRANSITION_DURATION_PRESETS"
+              :key="sec"
+              type="button"
+              class="ghost-btn preset-pill"
+              :class="{
+                active:
+                  Math.abs((activePopoverTransitionPair.right.transitionInSec ?? 0.5) - sec) < 0.04
+              }"
+              @click="onSelectPairTransitionDuration(activePopoverTransitionPair, sec)"
+            >
+              {{ sec.toFixed(1) }}s
+            </button>
+          </div>
+          <input
+            class="inspector-input compact-num"
+            type="number"
+            min="0.1"
+            :max="activePopoverTransitionPair.maxSec"
+            step="0.1"
+            :value="Number((activePopoverTransitionPair.right.transitionInSec ?? 0.5).toFixed(2))"
+            @change="
+              onSelectPairTransitionDuration(
+                activePopoverTransitionPair,
+                Number(($event.target as HTMLInputElement).value)
+              )
+            "
+          />
+        </div>
+        <button
+          type="button"
+          class="ghost-btn transition-apply-all-btn"
+          @click="applyCurrentTransitionToAllCuts(activePopoverTransitionPair)"
+        >
+          {{ t('script.timeline.transitionApplyAll') }}
+        </button>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -1954,8 +2342,13 @@ import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, toRaw, wat
 import { ASSET_TYPE_ICONS, isDraftAssetId, type AssetInfo } from '@shared/domain'
 import type { VideoBeatTags } from '@shared/videoBeats'
 import {
+  applySmartCutPlan,
+  applyVideoTransitionBetweenClips,
+  applyVideoTransitionToAllCuts,
+  beatCutWindowForDuration,
   buildCapCutDraftContent,
   buildFcpxmlDocument,
+  buildSmartCutPrompt,
   clampClipFreezeTailSec,
   clampClipSpeed,
   clampMixDuckingRatio,
@@ -1968,11 +2361,16 @@ import {
   exportPlatformSubtitleOffset,
   isExportDurationOverLimit,
   isSubtitleWithinSafeArea,
+  normalizeClipCropRect,
   normalizePlaybackRate,
   normalizeScriptTimelineSource,
   normalizeScriptTimelineSourceGroup,
+  parseSmartCutPlan,
   readScriptTimelineFromGenParams,
+  SMART_CUT_DEFAULT_TRANSITION_SEC,
+  SMART_CUT_TRANSITIONS,
   splitTimelineClipAtTime,
+  trimTimelineClipToTime,
   withScriptTimeline,
   type ScriptTimelineClip,
   type ScriptTimelineDocument,
@@ -1981,15 +2379,10 @@ import {
   type ScriptTimelineSourceGroup,
   type ScriptTimelineSourceMediaKind,
   type ScriptTimelineTrackKind,
+  type ScriptTimelineTransitionType,
+  type SmartCutEdit,
   type TimelineExportClip,
-  type TimelineMixGains,
-  applySmartCutPlan,
-  beatCutWindowForDuration,
-  buildSmartCutPrompt,
-  parseSmartCutPlan,
-  SMART_CUT_DEFAULT_TRANSITION_SEC,
-  SMART_CUT_TRANSITIONS,
-  type SmartCutEdit
+  type TimelineMixGains
 } from '@shared/graph'
 import { planRippleCut } from '@shared/graph/timelineCut'
 import { buildSubtitleClipsFromTranscription } from '@shared/graph/timelineSubtitle'
@@ -2019,6 +2412,7 @@ import {
 } from '../features/graph/model/generateModelOptions'
 import { editorDiveKey } from '../features/graph/model/editorDive'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
+import { diveEditorHistory } from '../features/graph/ui/diveEditorHistory'
 import { graphEditorNodeTools } from '../features/graph/ui/graphEditorNodeTools'
 import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
 import { useDraftStore } from '../stores/drafts'
@@ -2277,6 +2671,7 @@ const clipDrag = ref<{
   grabOffsetSec: number
   lastStartSec: number
   moved: boolean
+  beforeClips: ScriptTimelineClip[]
   groupInitialStarts?: Map<string, number>
 } | null>(null)
 
@@ -2293,6 +2688,7 @@ const clipResize = ref<{
   pointerId: number
   edge: 'left' | 'right'
   moved: boolean
+  beforeClips: ScriptTimelineClip[]
 } | null>(null)
 
 const transitionDrag = ref<{
@@ -2303,6 +2699,7 @@ const transitionDrag = ref<{
   startTransitionSec: number
   startRightStart: number
   moved: boolean
+  beforeClips: ScriptTimelineClip[]
 } | null>(null)
 
 const overlayDrag = ref<{
@@ -2316,6 +2713,193 @@ const overlayDrag = ref<{
   startTop: number
   startWidth: number
   startHeight: number
+  moved: boolean
+  beforeClips: ScriptTimelineClip[]
+} | null>(null)
+
+/** ── 剃刀分割工具 & 画面裁剪工具 & 专业转场状态 ── */
+const razorMode = ref(false)
+const razorHover = ref<{ clipId: string; localX: number; timeSec: number } | null>(null)
+const cropMode = ref(false)
+type CropHandleKind = 'move' | 'tl' | 'tr' | 'bl' | 'br' | 't' | 'b' | 'l' | 'r'
+const cropDrag = ref<{
+  clipId: string
+  pointerId: number
+  handle: CropHandleKind
+  startX: number
+  startY: number
+  startCropX: number
+  startCropY: number
+  startCropW: number
+  startCropH: number
+  moved: boolean
+  beforeClips: ScriptTimelineClip[]
+} | null>(null)
+
+type TransitionCategoryId = 'all' | 'basic' | 'slide' | 'wipe' | 'cinematic'
+interface TransitionCatalogItem {
+  type: ScriptTimelineTransitionType
+  category: Exclude<TransitionCategoryId, 'all'>
+  labelKey: string
+  shortKey: string
+}
+
+const TRANSITION_CATEGORIES: ReadonlyArray<{ id: TransitionCategoryId; labelKey: string }> = [
+  { id: 'all', labelKey: 'script.timeline.transitionCatAll' },
+  { id: 'basic', labelKey: 'script.timeline.transitionCatBasic' },
+  { id: 'slide', labelKey: 'script.timeline.transitionCatSlide' },
+  { id: 'wipe', labelKey: 'script.timeline.transitionCatWipe' },
+  { id: 'cinematic', labelKey: 'script.timeline.transitionCatCinematic' }
+]
+
+const TRANSITION_CATALOG: ReadonlyArray<TransitionCatalogItem> = [
+  {
+    type: 'none',
+    category: 'basic',
+    labelKey: 'script.timeline.transitionNone',
+    shortKey: 'script.timeline.transitionNone'
+  },
+  {
+    type: 'dissolve',
+    category: 'basic',
+    labelKey: 'script.timeline.transitionDissolve',
+    shortKey: 'script.timeline.transitionDissolve'
+  },
+  {
+    type: 'fade',
+    category: 'basic',
+    labelKey: 'script.timeline.transitionFade',
+    shortKey: 'script.timeline.transitionFade'
+  },
+  {
+    type: 'flash',
+    category: 'basic',
+    labelKey: 'script.timeline.transitionFlash',
+    shortKey: 'script.timeline.transitionFlash'
+  },
+  {
+    type: 'smoothleft',
+    category: 'basic',
+    labelKey: 'script.timeline.transitionSmoothLeft',
+    shortKey: 'script.timeline.transitionSmoothLeft'
+  },
+  {
+    type: 'smoothright',
+    category: 'basic',
+    labelKey: 'script.timeline.transitionSmoothRight',
+    shortKey: 'script.timeline.transitionSmoothRight'
+  },
+  {
+    type: 'slideleft',
+    category: 'slide',
+    labelKey: 'script.timeline.transitionSlideLeft',
+    shortKey: 'script.timeline.transitionSlideLeft'
+  },
+  {
+    type: 'slideright',
+    category: 'slide',
+    labelKey: 'script.timeline.transitionSlideRight',
+    shortKey: 'script.timeline.transitionSlideRight'
+  },
+  {
+    type: 'slideup',
+    category: 'slide',
+    labelKey: 'script.timeline.transitionSlideUp',
+    shortKey: 'script.timeline.transitionSlideUp'
+  },
+  {
+    type: 'slidedown',
+    category: 'slide',
+    labelKey: 'script.timeline.transitionSlideDown',
+    shortKey: 'script.timeline.transitionSlideDown'
+  },
+  {
+    type: 'wipeleft',
+    category: 'wipe',
+    labelKey: 'script.timeline.transitionWipeLeft',
+    shortKey: 'script.timeline.transitionWipeLeft'
+  },
+  {
+    type: 'wiperight',
+    category: 'wipe',
+    labelKey: 'script.timeline.transitionWipeRight',
+    shortKey: 'script.timeline.transitionWipeRight'
+  },
+  {
+    type: 'wipeup',
+    category: 'wipe',
+    labelKey: 'script.timeline.transitionWipeUp',
+    shortKey: 'script.timeline.transitionWipeUp'
+  },
+  {
+    type: 'wipedown',
+    category: 'wipe',
+    labelKey: 'script.timeline.transitionWipeDown',
+    shortKey: 'script.timeline.transitionWipeDown'
+  },
+  {
+    type: 'circleopen',
+    category: 'wipe',
+    labelKey: 'script.timeline.transitionCircleOpen',
+    shortKey: 'script.timeline.transitionCircleOpen'
+  },
+  {
+    type: 'circleclose',
+    category: 'wipe',
+    labelKey: 'script.timeline.transitionCircleClose',
+    shortKey: 'script.timeline.transitionCircleClose'
+  },
+  {
+    type: 'radial',
+    category: 'wipe',
+    labelKey: 'script.timeline.transitionRadial',
+    shortKey: 'script.timeline.transitionRadial'
+  },
+  {
+    type: 'zoomin',
+    category: 'cinematic',
+    labelKey: 'script.timeline.transitionZoomIn',
+    shortKey: 'script.timeline.transitionZoomIn'
+  },
+  {
+    type: 'pixelize',
+    category: 'cinematic',
+    labelKey: 'script.timeline.transitionPixelize',
+    shortKey: 'script.timeline.transitionPixelize'
+  },
+  {
+    type: 'horzopen',
+    category: 'cinematic',
+    labelKey: 'script.timeline.transitionHorzOpen',
+    shortKey: 'script.timeline.transitionHorzOpen'
+  },
+  {
+    type: 'vertopen',
+    category: 'cinematic',
+    labelKey: 'script.timeline.transitionVertOpen',
+    shortKey: 'script.timeline.transitionVertOpen'
+  }
+]
+
+const TRANSITION_DURATION_PRESETS = [0.3, 0.5, 0.8, 1.0, 1.5]
+const CROP_ASPECT_PRESETS: ReadonlyArray<{
+  key: 'free' | '16:9' | '9:16' | '1:1' | '4:3'
+  label: string
+  ratio: number | null
+}> = [
+  { key: 'free', label: '', ratio: null },
+  { key: '16:9', label: '16:9', ratio: 16 / 9 },
+  { key: '9:16', label: '9:16', ratio: 9 / 16 },
+  { key: '1:1', label: '1:1', ratio: 1 },
+  { key: '4:3', label: '4:3', ratio: 4 / 3 }
+]
+
+const activeTransitionCategory = ref<TransitionCategoryId>('all')
+const transitionPopover = ref<{
+  leftId: string
+  rightId: string
+  anchorX: number
+  anchorY: number
 } | null>(null)
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
@@ -2470,32 +3054,73 @@ const activeTransitionPreviewEntry = computed(() => {
   return transitionPreviewCache.get(transitionPreviewKeyFor(transition)) ?? null
 })
 
+function smoothstep01(tVal: number): number {
+  const x = clamp01(tVal)
+  return x * x * (3 - 2 * x)
+}
+
+function isClipCropped(clip: ScriptTimelineClip | null | undefined): boolean {
+  if (!clip) return false
+  const rect = normalizeClipCropRect(clip)
+  return (
+    rect.cropX > 0.001 || rect.cropY > 0.001 || rect.cropWidth < 0.999 || rect.cropHeight < 0.999
+  )
+}
+
+function buildCssCropClipPath(clip: ScriptTimelineClip | null | undefined): string {
+  if (!isClipCropped(clip)) return ''
+  const rect = normalizeClipCropRect(clip)
+  const top = (rect.cropY * 100).toFixed(2)
+  const right = ((1 - rect.cropX - rect.cropWidth) * 100).toFixed(2)
+  const bottom = ((1 - rect.cropY - rect.cropHeight) * 100).toFixed(2)
+  const left = (rect.cropX * 100).toFixed(2)
+  return `inset(${top}% ${right}% ${bottom}% ${left}%)`
+}
+
 const mainTransitionVideoStyle = computed(() => {
   const transition = activeMainTransition.value
   if (!transition) return { display: 'none' }
   const duration = Math.max(0.05, transition.to.transitionInSec ?? 0.5)
-  const progress = clamp01((playheadSec.value - transition.to.startSec) / duration)
+  const rawProgress = clamp01((playheadSec.value - transition.to.startSec) / duration)
+  const progress = smoothstep01(rawProgress)
   const type = transition.to.transitionType ?? 'dissolve'
   const style: Record<string, string> = {
     display: 'block',
     opacity: '1'
   }
-  // ffmpeg 微渲染就绪：整个窗口已由渲染片段覆盖（含 pad 画幅），不再需要 CSS 模拟；
+  const colorFilter = buildCssColorFilter(transition.to)
+  if (colorFilter) style.filter = colorFilter
+  // ffmpeg 微渲染就绪：整个窗口已由渲染片段覆盖（含 pad 画幅与裁剪），不再需要 CSS 模拟；
   // object-fit 用 fill 抹平偶数化宽高带来的亚像素缝隙，比例误差 <0.1% 无感
   if (activeTransitionPreviewEntry.value) {
     style.transform = 'none'
     style.clipPath = 'none'
     style.objectFit = 'fill'
+    style.filter = 'none'
     return style
   }
-  if (
-    type === 'dissolve' ||
-    type === 'fade' ||
-    type === 'fadeout' ||
-    type === 'fadein' ||
-    type === 'flash'
-  ) {
+  if (type === 'dissolve') {
     style.opacity = `${progress}`
+  } else if (type === 'fade' || type === 'fadeout' || type === 'fadein') {
+    // Dip to black: 前半程旧画面暗入黑，后半程新画面从黑亮出
+    const phaseIn = rawProgress < 0.5 ? 0 : smoothstep01((rawProgress - 0.5) * 2)
+    style.opacity = `${phaseIn}`
+    const br = (0.25 + 0.75 * phaseIn).toFixed(3)
+    style.filter = colorFilter ? `${colorFilter} brightness(${br})` : `brightness(${br})`
+  } else if (type === 'flash') {
+    // Dip to white: 中点白闪爆光过场
+    const phaseIn = rawProgress < 0.45 ? 0 : smoothstep01((rawProgress - 0.45) / 0.55)
+    const flashBoost = 1 + Math.max(0, 1 - Math.abs(rawProgress - 0.5) * 3.2) * 2.2
+    style.opacity = `${phaseIn}`
+    style.filter = colorFilter
+      ? `${colorFilter} brightness(${flashBoost.toFixed(3)})`
+      : `brightness(${flashBoost.toFixed(3)})`
+  } else if (type === 'smoothleft') {
+    style.opacity = `${clamp01(rawProgress * 1.25)}`
+    style.transform = `translateX(${(1 - progress) * 42}%) scale(${(1.04 - 0.04 * progress).toFixed(3)})`
+  } else if (type === 'smoothright') {
+    style.opacity = `${clamp01(rawProgress * 1.25)}`
+    style.transform = `translateX(${-(1 - progress) * 42}%) scale(${(1.04 - 0.04 * progress).toFixed(3)})`
   } else if (type === 'slideleft') {
     style.transform = `translateX(${(1 - progress) * 100}%)`
   } else if (type === 'slideright') {
@@ -2512,10 +3137,27 @@ const mainTransitionVideoStyle = computed(() => {
     style.clipPath = `inset(${(1 - progress) * 100}% 0 0 0)`
   } else if (type === 'wipedown') {
     style.clipPath = `inset(0 0 ${(1 - progress) * 100}% 0)`
-  } else if (type === 'circleopen') {
+  } else if (type === 'circleopen' || type === 'radial') {
     style.clipPath = `circle(${progress * 75}% at 50% 50%)`
   } else if (type === 'circleclose') {
     style.clipPath = `circle(${(1 - progress) * 75}% at 50% 50%)`
+  } else if (type === 'horzopen') {
+    const side = ((1 - progress) * 50).toFixed(2)
+    style.clipPath = `inset(0 ${side}% 0 ${side}%)`
+  } else if (type === 'vertopen') {
+    const side = ((1 - progress) * 50).toFixed(2)
+    style.clipPath = `inset(${side}% 0 ${side}% 0)`
+  } else if (type === 'zoomin') {
+    style.opacity = `${progress}`
+    style.transform = `scale(${(0.72 + 0.28 * progress).toFixed(3)})`
+  } else if (type === 'pixelize') {
+    style.opacity = `${progress}`
+    const blurPx = ((1 - Math.abs(rawProgress - 0.5) * 2) * 6).toFixed(2)
+    style.filter = colorFilter ? `${colorFilter} blur(${blurPx}px)` : `blur(${blurPx}px)`
+  }
+  if (!style.clipPath) {
+    const cropClip = buildCssCropClipPath(transition.to)
+    if (cropClip) style.clipPath = cropClip
   }
   return style
 })
@@ -2539,12 +3181,51 @@ function buildCssColorFilter(clip: ScriptTimelineClip | null | undefined): strin
 const previewVideoTransitionStyle = computed<Record<string, string> | null>(() => {
   const rect = previewFrameRect.value
   const activeClip = clips.value.find((c) => c.id === activeClipId.value)
-  const filter = buildCssColorFilter(activeClip)
+  let filter = buildCssColorFilter(activeClip)
+  const cropClip =
+    !cropMode.value && activeClip?.track === 'video' ? buildCssCropClipPath(activeClip) : ''
+  let outgoingTransform = ''
+
+  const transition = activeMainTransition.value
+  if (transition && !activeTransitionPreviewEntry.value) {
+    const duration = Math.max(0.05, transition.to.transitionInSec ?? 0.5)
+    const rawProgress = clamp01((playheadSec.value - transition.to.startSec) / duration)
+    const progress = smoothstep01(rawProgress)
+    const type = transition.to.transitionType ?? 'dissolve'
+    if (type === 'fade' || type === 'fadeout' || type === 'fadein') {
+      const fadeOutBr = Math.max(0, 1 - smoothstep01(rawProgress * 1.85)).toFixed(3)
+      filter = filter ? `${filter} brightness(${fadeOutBr})` : `brightness(${fadeOutBr})`
+    } else if (type === 'flash') {
+      const flashBoost = (1 + Math.max(0, 1 - Math.abs(rawProgress - 0.45) * 3) * 2.2).toFixed(3)
+      filter = filter ? `${filter} brightness(${flashBoost})` : `brightness(${flashBoost})`
+    } else if (type === 'slideleft') {
+      outgoingTransform = `translateX(${-progress * 100}%)`
+    } else if (type === 'slideright') {
+      outgoingTransform = `translateX(${progress * 100}%)`
+    } else if (type === 'slideup') {
+      outgoingTransform = `translateY(${-progress * 100}%)`
+    } else if (type === 'slidedown') {
+      outgoingTransform = `translateY(${progress * 100}%)`
+    } else if (type === 'smoothleft') {
+      outgoingTransform = `translateX(${-progress * 36}%) scale(${(1 - 0.04 * progress).toFixed(3)})`
+    } else if (type === 'smoothright') {
+      outgoingTransform = `translateX(${progress * 36}%) scale(${(1 - 0.04 * progress).toFixed(3)})`
+    } else if (type === 'zoomin') {
+      outgoingTransform = `scale(${(1 + 0.24 * progress).toFixed(3)})`
+    }
+  }
+
+  const extras: Record<string, string> = {
+    ...(filter ? { filter } : {}),
+    ...(cropClip ? { clipPath: cropClip } : {}),
+    ...(outgoingTransform ? { transform: outgoingTransform } : {})
+  }
+
   if (!(rect.width > 1) || !(rect.height > 1)) {
-    return filter ? { filter } : null
+    return Object.keys(extras).length ? extras : null
   }
   if (previewFrameRatioKey.value !== 'export' && !activeMainTransition.value) {
-    return filter ? { filter } : null
+    return Object.keys(extras).length ? extras : null
   }
   return {
     position: 'absolute',
@@ -2553,33 +3234,48 @@ const previewVideoTransitionStyle = computed<Record<string, string> | null>(() =
     width: `${rect.width}px`,
     height: `${rect.height}px`,
     objectFit: scaleMode.value === 'cover' ? 'cover' : 'contain',
-    ...(filter ? { filter } : {})
+    ...extras
   }
 })
 
-const videoTransitionHandles = computed(() => {
+interface VideoTransitionHandle {
+  left: ScriptTimelineClip
+  right: ScriptTimelineClip
+  startSec: number
+  durationSec: number
+  maxSec: number
+  maxDurationSec: number
+  transitionType: ScriptTimelineTransitionType
+}
+
+const videoTransitionHandles = computed<VideoTransitionHandle[]>(() => {
   const list = clipsOn('video')
-  const handles: Array<{
-    left: ScriptTimelineClip
-    right: ScriptTimelineClip
-    startSec: number
-    durationSec: number
-  }> = []
+  const handles: VideoTransitionHandle[] = []
   for (let i = 0; i < list.length - 1; i++) {
     const left = list[i]!
     const right = list[i + 1]!
     const rightStart = right.startSec
     const leftEnd = left.startSec + left.durationSec
-    if (rightStart >= leftEnd) {
-      handles.push({ left, right, startSec: leftEnd, durationSec: 0 })
-    } else {
-      handles.push({
-        left,
-        right,
-        startSec: rightStart,
-        durationSec: Math.max(0, leftEnd - rightStart)
-      })
-    }
+    const maxSec = Math.max(
+      0.1,
+      Math.floor((Math.min(left.durationSec, right.durationSec) - 0.1) * 10) / 10
+    )
+    const durationSec = rightStart >= leftEnd ? 0 : Math.max(0, leftEnd - rightStart)
+    const transitionType: ScriptTimelineTransitionType =
+      durationSec > 0
+        ? right.transitionType && right.transitionType !== 'none'
+          ? right.transitionType
+          : 'dissolve'
+        : 'none'
+    handles.push({
+      left,
+      right,
+      startSec: rightStart >= leftEnd ? leftEnd : rightStart,
+      durationSec,
+      maxSec,
+      maxDurationSec: maxSec,
+      transitionType
+    })
   }
   return handles
 })
@@ -2643,10 +3339,406 @@ const clipDragPreviewStyle = computed(() => {
 
 const canSplitActiveClip = computed(() => {
   const clip = clips.value.find((c) => c.id === activeClipId.value)
-  if (!clip) return false
-  const t = playheadSec.value
-  return t > clip.startSec + MIN_CLIP_SEC && t < clip.startSec + clip.durationSec - MIN_CLIP_SEC
+  if (!clip || lockedTracks.value.has(clip.track)) return false
+  const tSec = playheadSec.value
+  return (
+    tSec > clip.startSec + MIN_CLIP_SEC && tSec < clip.startSec + clip.durationSec - MIN_CLIP_SEC
+  )
 })
+
+const canTrimInAtPlayhead = computed(() => {
+  const clip = selectedClip.value ?? clipAtPlayhead()
+  if (!clip || lockedTracks.value.has(clip.track)) return false
+  return !!trimTimelineClipToTime(clip, playheadSec.value, 'in', MIN_CLIP_SEC)
+})
+
+const canTrimOutAtPlayhead = computed(() => {
+  const clip = selectedClip.value ?? clipAtPlayhead()
+  if (!clip || lockedTracks.value.has(clip.track)) return false
+  return !!trimTimelineClipToTime(clip, playheadSec.value, 'out', MIN_CLIP_SEC)
+})
+
+function trimActiveClipAtPlayhead(edge: 'in' | 'out'): void {
+  const clip = selectedClip.value ?? clipAtPlayhead()
+  if (!clip || lockedTracks.value.has(clip.track)) return
+  const trimmed = trimTimelineClipToTime(clip, playheadSec.value, edge, MIN_CLIP_SEC)
+  if (!trimmed) return
+  commitClips(clips.value.map((c) => (c.id === clip.id ? trimmed : c)))
+  activeClipId.value = trimmed.id
+  selectedClipIds.value = new Set([trimmed.id])
+  void syncPreviewToPlayhead()
+  scheduleSave()
+}
+
+function toggleRazorMode(): void {
+  razorMode.value = !razorMode.value
+  if (!razorMode.value) razorHover.value = null
+}
+
+function formatSubsecond(sec: number): string {
+  const s = Math.max(0, sec)
+  const m = Math.floor(s / 60)
+  const r = (s - m * 60).toFixed(1).padStart(4, '0')
+  return `${m}:${r}`
+}
+
+function onClipPointerHover(e: PointerEvent, clip: ScriptTimelineClip): void {
+  if (!razorMode.value || lockedTracks.value.has(clip.track)) {
+    if (razorHover.value) razorHover.value = null
+    return
+  }
+  const lane = laneRectForTrack(clip.track)
+  if (!lane) return
+  const rawSec = xToTime(e.clientX - lane.left)
+  if (
+    rawSec <= clip.startSec + MIN_CLIP_SEC ||
+    rawSec >= clip.startSec + clip.durationSec - MIN_CLIP_SEC
+  ) {
+    razorHover.value = null
+    return
+  }
+  razorHover.value = {
+    clipId: clip.id,
+    localX: Math.max(2, timeToX(rawSec - clip.startSec)),
+    timeSec: Math.round(rawSec * 100) / 100
+  }
+}
+
+function onClipPointerLeave(clip: ScriptTimelineClip): void {
+  if (razorHover.value?.clipId === clip.id) {
+    razorHover.value = null
+  }
+}
+
+function splitClipAtTime(clip: ScriptTimelineClip, cutSec: number): boolean {
+  if (lockedTracks.value.has(clip.track)) return false
+  const split = splitTimelineClipAtTime(clip, cutSec, newClipId(), MIN_CLIP_SEC)
+  if (!split) return false
+  const [first, second] = split
+  commitClips(
+    clips.value.flatMap((c) => {
+      if (c.id !== clip.id) return [c]
+      return [first, second]
+    })
+  )
+  activeClipId.value = second.id
+  selectedClipIds.value = new Set([second.id])
+  playheadSec.value = second.startSec
+  razorHover.value = null
+  scheduleSave()
+  return true
+}
+
+/** ── 画面裁剪（Frame Crop）状态与交互 ── */
+const selectedCroppableClip = computed(() => {
+  const clip = selectedClip.value ?? clipAtPlayhead()
+  if (!clip) return null
+  return clip.track === 'video' || clip.track === 'overlay' ? clip : null
+})
+
+const canCropSelectedClip = computed(() => {
+  const clip = selectedCroppableClip.value
+  return !!clip && !lockedTracks.value.has(clip.track)
+})
+
+const activeCropRect = computed(() => normalizeClipCropRect(selectedCroppableClip.value))
+
+const cropBoxOverlayStyle = computed<Record<string, string>>(() => {
+  const rect = activeCropRect.value
+  return {
+    left: `${(rect.cropX * 100).toFixed(2)}%`,
+    top: `${(rect.cropY * 100).toFixed(2)}%`,
+    width: `${(rect.cropWidth * 100).toFixed(2)}%`,
+    height: `${(rect.cropHeight * 100).toFixed(2)}%`
+  }
+})
+
+function toggleCropMode(): void {
+  if (!cropMode.value && !selectedCroppableClip.value) {
+    const first = clipAtPlayhead() ?? visibleClipsOn('video')[0]
+    if (first) selectClip(first)
+  }
+  cropMode.value = !cropMode.value
+}
+
+function applyClipCropPreset(presetKey: 'free' | '16:9' | '9:16' | '1:1' | '4:3'): void {
+  const clip = selectedCroppableClip.value
+  if (!clip || lockedTracks.value.has(clip.track)) return
+  cropMode.value = true
+  if (presetKey === 'free') return
+  const preset = CROP_ASPECT_PRESETS.find((item) => item.key === presetKey)
+  if (!preset?.ratio) return
+  const sourceW = previewVideoMeta.value.width || exportWidth.value || 1280
+  const sourceH = previewVideoMeta.value.height || exportHeight.value || 720
+  const sourceAspect = sourceW / Math.max(1, sourceH)
+  const targetRatio = preset.ratio
+  let cropWidth = 1
+  let cropHeight = 1
+  if (targetRatio > sourceAspect) {
+    cropWidth = 1
+    cropHeight = Math.min(1, Math.max(0.05, sourceAspect / targetRatio))
+  } else {
+    cropHeight = 1
+    cropWidth = Math.min(1, Math.max(0.05, targetRatio / sourceAspect))
+  }
+  const normalized = normalizeClipCropRect({
+    cropX: (1 - cropWidth) / 2,
+    cropY: (1 - cropHeight) / 2,
+    cropWidth,
+    cropHeight
+  })
+  commitClips(
+    clips.value.map((c) =>
+      c.id === clip.id
+        ? {
+            ...c,
+            cropX: normalized.cropX,
+            cropY: normalized.cropY,
+            cropWidth: normalized.cropWidth,
+            cropHeight: normalized.cropHeight
+          }
+        : c
+    )
+  )
+  scheduleSave()
+}
+
+function onClipCropFieldChange(
+  field: 'cropX' | 'cropY' | 'cropWidth' | 'cropHeight',
+  value: number
+): void {
+  const clip = selectedCroppableClip.value
+  if (!clip || lockedTracks.value.has(clip.track)) return
+  const current = normalizeClipCropRect(clip)
+  const next = normalizeClipCropRect({
+    ...current,
+    [field]: Number.isFinite(value) ? value : current[field]
+  })
+  commitClips(
+    clips.value.map((c) =>
+      c.id === clip.id
+        ? {
+            ...c,
+            cropX: next.cropX,
+            cropY: next.cropY,
+            cropWidth: next.cropWidth,
+            cropHeight: next.cropHeight
+          }
+        : c
+    )
+  )
+  scheduleSave()
+}
+
+function resetClipCrop(): void {
+  const clip = selectedCroppableClip.value
+  if (!clip || lockedTracks.value.has(clip.track)) return
+  commitClips(
+    clips.value.map((c) =>
+      c.id === clip.id
+        ? {
+            ...c,
+            cropX: undefined,
+            cropY: undefined,
+            cropWidth: undefined,
+            cropHeight: undefined
+          }
+        : c
+    )
+  )
+  scheduleSave()
+}
+
+function bindCropDragListeners(): void {
+  window.addEventListener('pointermove', onCropPointerMove)
+  window.addEventListener('pointerup', onCropPointerUp)
+  window.addEventListener('pointercancel', onCropPointerUp)
+}
+
+function unbindCropDragListeners(): void {
+  window.removeEventListener('pointermove', onCropPointerMove)
+  window.removeEventListener('pointerup', onCropPointerUp)
+  window.removeEventListener('pointercancel', onCropPointerUp)
+}
+
+function onCropPointerDown(e: PointerEvent, _clip?: ScriptTimelineClip | null): void {
+  if (e.button !== 0) return
+  const clip = _clip ?? selectedCroppableClip.value
+  if (!clip || lockedTracks.value.has(clip.track)) return
+  const target = e.target as HTMLElement | null
+  const handleEl = target?.closest('.crop-handle') as HTMLElement | null
+  const rawHandle = handleEl?.dataset.handle ?? handleEl?.dataset.corner
+  const handle = (rawHandle as CropHandleKind | undefined) ?? 'move'
+  const rect = normalizeClipCropRect(clip)
+  unbindCropDragListeners()
+  cropDrag.value = {
+    clipId: clip.id,
+    pointerId: e.pointerId,
+    handle,
+    startX: e.clientX,
+    startY: e.clientY,
+    startCropX: rect.cropX,
+    startCropY: rect.cropY,
+    startCropW: rect.cropWidth,
+    startCropH: rect.cropHeight,
+    moved: false,
+    beforeClips: snapshotClips()
+  }
+  bindCropDragListeners()
+  e.preventDefault()
+}
+
+function onCropPointerMove(e: PointerEvent): void {
+  const session = cropDrag.value
+  if (!session || e.pointerId !== session.pointerId) return
+  const canvas = previewCanvasEl.value
+  if (!canvas) return
+  const rect = canvas.getBoundingClientRect()
+  if (rect.width <= 0 || rect.height <= 0) return
+  const dx = (e.clientX - session.startX) / rect.width
+  const dy = (e.clientY - session.startY) / rect.height
+  const minSize = 0.05
+
+  let cropX = session.startCropX
+  let cropY = session.startCropY
+  let cropWidth = session.startCropW
+  let cropHeight = session.startCropH
+
+  if (session.handle === 'move') {
+    cropX = Math.min(Math.max(0, session.startCropX + dx), 1 - cropWidth)
+    cropY = Math.min(Math.max(0, session.startCropY + dy), 1 - cropHeight)
+  } else {
+    const right = session.startCropX + session.startCropW
+    const bottom = session.startCropY + session.startCropH
+    if (session.handle.includes('l')) {
+      cropX = Math.min(Math.max(0, session.startCropX + dx), right - minSize)
+      cropWidth = right - cropX
+    } else if (session.handle.includes('r')) {
+      const nextRight = Math.max(session.startCropX + minSize, Math.min(1, right + dx))
+      cropWidth = nextRight - session.startCropX
+    }
+    if (session.handle.includes('t')) {
+      cropY = Math.min(Math.max(0, session.startCropY + dy), bottom - minSize)
+      cropHeight = bottom - cropY
+    } else if (session.handle.includes('b')) {
+      const nextBottom = Math.max(session.startCropY + minSize, Math.min(1, bottom + dy))
+      cropHeight = nextBottom - session.startCropY
+    }
+  }
+
+  const normalized = normalizeClipCropRect({ cropX, cropY, cropWidth, cropHeight })
+  session.moved = true
+  clips.value = clips.value.map((c) =>
+    c.id === session.clipId
+      ? {
+          ...c,
+          cropX: normalized.cropX,
+          cropY: normalized.cropY,
+          cropWidth: normalized.cropWidth,
+          cropHeight: normalized.cropHeight
+        }
+      : c
+  )
+}
+
+function onCropPointerUp(e: PointerEvent): void {
+  const session = cropDrag.value
+  if (!session || e.pointerId !== session.pointerId) return
+  cropDrag.value = null
+  unbindCropDragListeners()
+  if (session.moved) {
+    pushHistorySnapshot(session.beforeClips)
+    scheduleSave()
+  }
+}
+
+/** ── 专业视频转场选择器与状态 ── */
+function transitionShortLabel(type: string | undefined): string {
+  const item = TRANSITION_CATALOG.find((entry) => entry.type === (type || 'none'))
+  return item ? t(item.shortKey) : t('script.timeline.transitionDissolve')
+}
+
+const filteredTransitionCatalog = computed(() =>
+  activeTransitionCategory.value === 'all'
+    ? TRANSITION_CATALOG
+    : TRANSITION_CATALOG.filter((item) => item.category === activeTransitionCategory.value)
+)
+
+const selectedTransitionPair = computed<VideoTransitionHandle | null>(() => {
+  const clip = selectedClip.value
+  if (!clip || clip.track !== 'video') return null
+  const handles = videoTransitionHandles.value
+  const asRight = handles.find((h) => h.right.id === clip.id)
+  if (asRight) return asRight
+  return handles.find((h) => h.left.id === clip.id) ?? null
+})
+
+const activePopoverTransitionPair = computed<VideoTransitionHandle | null>(() => {
+  const pop = transitionPopover.value
+  if (!pop) return null
+  return (
+    videoTransitionHandles.value.find(
+      (h) => h.left.id === pop.leftId && h.right.id === pop.rightId
+    ) ?? null
+  )
+})
+
+const transitionPopoverStyle = computed<Record<string, string>>(() => {
+  const pop = transitionPopover.value
+  const emptyStyle: Record<string, string> = { display: 'none' }
+  if (!pop) return emptyStyle
+  const rootRect = rootEl.value?.getBoundingClientRect()
+  const relX = rootRect ? pop.anchorX - rootRect.left : pop.anchorX
+  const relY = rootRect ? pop.anchorY - rootRect.top : pop.anchorY
+  const maxLeft = Math.max(16, (rootRect?.width ?? 900) - 356)
+  const left = Math.min(maxLeft, Math.max(12, relX - 168))
+  const bottom = Math.max(48, (rootRect?.height ?? 640) - relY + 14)
+  const style: Record<string, string> = {
+    left: `${Math.round(left)}px`,
+    bottom: `${Math.round(bottom)}px`
+  }
+  return style
+})
+
+function onSelectPairTransitionType(
+  pair: VideoTransitionHandle,
+  type: ScriptTimelineTransitionType
+): void {
+  if (lockedTracks.value.has('video')) return
+  const currentSec =
+    pair.right.transitionInSec && pair.right.transitionInSec > 0 ? pair.right.transitionInSec : 0.6
+  const updated = applyVideoTransitionBetweenClips(clips.value, pair.left.id, pair.right.id, {
+    transitionType: type,
+    durationSec: type === 'none' ? 0 : currentSec
+  })
+  commitClips(updated)
+  activeClipId.value = pair.right.id
+  selectedClipIds.value = new Set([pair.right.id])
+  scheduleSave()
+}
+
+function onSelectPairTransitionDuration(pair: VideoTransitionHandle, durationSec: number): void {
+  if (lockedTracks.value.has('video')) return
+  const type =
+    pair.right.transitionType && pair.right.transitionType !== 'none'
+      ? pair.right.transitionType
+      : 'dissolve'
+  const updated = applyVideoTransitionBetweenClips(clips.value, pair.left.id, pair.right.id, {
+    transitionType: type,
+    durationSec
+  })
+  commitClips(updated)
+  scheduleSave()
+}
+
+function applyCurrentTransitionToAllCuts(pair: VideoTransitionHandle): void {
+  if (lockedTracks.value.has('video')) return
+  const type = pair.right.transitionType ?? 'none'
+  const durationSec = pair.right.transitionInSec ?? 0.6
+  const updated = applyVideoTransitionToAllCuts(clips.value, type, durationSec)
+  commitClips(updated)
+  scheduleSave()
+}
 
 function sourcesInGroup(groupId: string): ScriptTimelineSource[] {
   return importedSources.value.filter((s) => s.groupId === groupId)
@@ -3136,14 +4228,19 @@ function snapshotClips(): ScriptTimelineClip[] {
   return clips.value.map((clip) => ({ ...clip }))
 }
 
+function pushHistorySnapshot(prevSnapshot: ScriptTimelineClip[]): void {
+  if (!historyReady) return
+  undoStack.value.push(prevSnapshot.map((clip) => ({ ...clip })))
+  if (undoStack.value.length > HISTORY_LIMIT) undoStack.value.shift()
+  redoStack.value = []
+}
+
 function commitClips(next: ScriptTimelineClip[]): void {
   if (!historyReady) {
     clips.value = next
     return
   }
-  undoStack.value.push(snapshotClips())
-  if (undoStack.value.length > HISTORY_LIMIT) undoStack.value.shift()
-  redoStack.value = []
+  pushHistorySnapshot(snapshotClips())
   clips.value = next
 }
 
@@ -3458,10 +4555,16 @@ function transitionHandleStyle(handle: {
   durationSec: number
 }): Record<string, string> {
   const x = timeToX(handle.startSec)
-  const width = handle.durationSec > 0 ? Math.max(12, timeToX(handle.durationSec)) : 12
+  if (handle.durationSec > 0) {
+    const width = Math.max(24, timeToX(handle.durationSec))
+    return {
+      left: `${x}px`,
+      width: `${width}px`
+    }
+  }
   return {
-    left: `${x - width / 2}px`,
-    width: `${width}px`
+    left: `${x - 12}px`,
+    width: '24px'
   }
 }
 
@@ -3997,13 +5100,17 @@ function overlayRect(clip: ScriptTimelineClip): {
 function overlayVideoStyle(clip: ScriptTimelineClip): Record<string, string> {
   const rect = overlayRect(clip)
   const filter = buildCssColorFilter(clip)
+  const cropClip = !(cropMode.value && selectedCroppableClip.value?.id === clip.id)
+    ? buildCssCropClipPath(clip)
+    : ''
   return {
     left: `${rect.left * 100}%`,
     top: `${rect.top * 100}%`,
     width: `${rect.width * 100}%`,
     height: `${rect.height * 100}%`,
     opacity: `${clamp01(clip.opacity ?? 1)}`,
-    ...(filter ? { filter } : {})
+    ...(filter ? { filter } : {}),
+    ...(cropClip ? { clipPath: cropClip } : {})
   }
 }
 
@@ -4649,12 +5756,60 @@ async function onGenerateBgm(): Promise<void> {
   }
 }
 
+async function autoPlaceSourcesOnTracks(toPlace: ScriptTimelineSource[]): Promise<void> {
+  if (!toPlace.length) return
+  const nextClips = clips.value.map((c) => ({ ...c }))
+  let videoCursor = nextStartOnTrack('video')
+  let voiceCursor = nextStartOnTrack('voice')
+  let addedAny = false
+  for (const src of toPlace) {
+    const isVoice = sourceMediaKind(src) === 'voice'
+    const track: ScriptTimelineTrackKind = isVoice ? 'voice' : 'video'
+    if (lockedTracks.value.has(track)) continue
+    const url = await resolveSrc(src)
+    const durationSec =
+      src.durationSec && src.durationSec > 0
+        ? src.durationSec
+        : await probeDuration(url, isVoice ? 'audio' : 'video')
+    const startSec = isVoice ? voiceCursor : videoCursor
+    nextClips.push({
+      id: newClipId(),
+      track,
+      sourceId: src.id,
+      title: src.title,
+      relativePath: src.relativePath,
+      assetId: src.assetId,
+      ...(src.nodeId?.trim() ? { nodeId: src.nodeId.trim() } : {}),
+      ...(src.nodeTitle?.trim() ? { nodeTitle: src.nodeTitle.trim() } : {}),
+      startSec,
+      durationSec
+    })
+    patchSourceDuration(src.id, durationSec)
+    if (isVoice) voiceCursor = startSec + durationSec
+    else videoCursor = startSec + durationSec
+    addedAny = true
+  }
+  if (!addedAny) return
+  commitClips(nextClips)
+  const firstVideo = visibleClipsOn('video')[0]
+  if (firstVideo && !activeClipId.value) {
+    activeClipId.value = firstVideo.id
+    void showClipPreview(firstVideo)
+  }
+}
+
 async function reloadSources(): Promise<void> {
   sourcesBusy.value = true
   try {
+    const prevKnownInputKeys = new Set(
+      sources.value
+        .filter((s) => (s.origin ?? 'input') === 'input')
+        .map((s) => sourceIdentityKey(s))
+    )
     const collected = await collectScriptTimelineSources({
       scriptAssetId: props.scriptAssetId,
-      hostId: hostId.value
+      hostId: hostId.value,
+      timelineNodeId: props.timelineNodeId
     })
     const inputNext = collected
       .map((s) =>
@@ -4683,6 +5838,30 @@ async function reloadSources(): Promise<void> {
       )
       .filter(Boolean)
     sources.value = [...inputNext, ...preservedImported]
+
+    const existingClipKeys = new Set(
+      clips.value.map((c) =>
+        sourceIdentityKey({
+          id: c.sourceId,
+          assetId: c.assetId,
+          relativePath: c.relativePath
+        })
+      )
+    )
+    const hasVideoClips = clips.value.some((c) => c.track === 'video')
+    const hasVoiceClips = clips.value.some((c) => c.track === 'voice')
+    const toAutoPlace = inputNext.filter((src) => {
+      const key = sourceIdentityKey(src)
+      if (existingClipKeys.has(key)) return false
+      const isVoice = sourceMediaKind(src) === 'voice'
+      if (isVoice && !hasVoiceClips) return true
+      if (!isVoice && !hasVideoClips) return true
+      return !prevKnownInputKeys.has(key)
+    })
+    if (toAutoPlace.length) {
+      await autoPlaceSourcesOnTracks(toAutoPlace)
+    }
+
     scheduleSave()
   } finally {
     sourcesBusy.value = false
@@ -4984,7 +6163,9 @@ function onOverlayPointerDown(e: PointerEvent, clip: ScriptTimelineClip): void {
     startLeft: rect.left,
     startTop: rect.top,
     startWidth: rect.width,
-    startHeight: rect.height
+    startHeight: rect.height,
+    moved: false,
+    beforeClips: snapshotClips()
   }
   bindOverlayDragListeners()
   e.preventDefault()
@@ -5006,6 +6187,7 @@ function onOverlayPointerMove(e: PointerEvent): void {
     const top = clamp01(session.startTop + dy)
     const x = Math.min(left, Math.max(0, 1 - session.startWidth))
     const y = Math.min(top, Math.max(0, 1 - session.startHeight))
+    session.moved = true
     clips.value = clips.value.map((c) =>
       c.id === session.clipId ? { ...c, overlayX: x, overlayY: y } : c
     )
@@ -5039,6 +6221,7 @@ function onOverlayPointerMove(e: PointerEvent): void {
   top = clamp01(top)
   width = clamp01(width)
   height = clamp01(height)
+  session.moved = true
   clips.value = clips.value.map((c) =>
     c.id === session.clipId
       ? {
@@ -5057,7 +6240,10 @@ function onOverlayPointerUp(e: PointerEvent): void {
   if (!session || e.pointerId !== session.pointerId) return
   overlayDrag.value = null
   unbindOverlayDragListeners()
-  scheduleSave()
+  if (session.moved) {
+    pushHistorySnapshot(session.beforeClips)
+    scheduleSave()
+  }
 }
 
 function onClipStartChange(value: number): void {
@@ -5200,40 +6386,6 @@ function onClipSubtitleStyleChange(patch: { fontSize?: number; textColor?: strin
   scheduleSave()
 }
 
-function onVideoTransitionTypeChange(value: string): void {
-  const clip = selectedClip.value
-  if (!clip || clip.track !== 'video' || lockedTracks.value.has(clip.track)) return
-  const type = [
-    'none',
-    'dissolve',
-    'fade',
-    'fadeout',
-    'fadein',
-    'flash',
-    'slideleft',
-    'slideright',
-    'slideup',
-    'slidedown',
-    'wipeleft',
-    'wiperight',
-    'wipeup',
-    'wipedown',
-    'circleopen',
-    'circleclose'
-  ].includes(value)
-    ? (value as ScriptTimelineClip['transitionType'])
-    : 'none'
-  const list = clipsOn('video')
-  const index = list.findIndex((item) => item.id === clip.id)
-  const previous = index > 0 ? list[index - 1] : null
-  const next = index >= 0 && index < list.length - 1 ? list[index + 1] : null
-  const ids = new Set([clip.id])
-  if (clip.transitionInSec && previous) ids.add(previous.id)
-  if (clip.transitionOutSec && next) ids.add(next.id)
-  commitClips(clips.value.map((c) => (ids.has(c.id) ? { ...c, transitionType: type } : c)))
-  scheduleSave()
-}
-
 /** 选中片段的来源节点（宿主图内）；导入素材或来源节点已删除时为空 */
 const selectedClipNode = computed(() => {
   const nodeId = selectedClip.value?.nodeId
@@ -5355,11 +6507,16 @@ function onSubtitleTextChange(value: string): void {
 }
 
 async function autoPlaceAll(): Promise<void> {
-  if (!videoSources.value.length) await reloadSources()
+  if (!sources.value.length) await reloadSources()
   const videos = videoSources.value
-  if (!videos.length) return
-  const nextClips = clips.value.filter((c) => c.track !== 'video')
-  let cursor = 0
+  const voices = sources.value.filter((s) => sourceMediaKind(s) === 'voice')
+  if (!videos.length && !voices.length) return
+  const placeVoice =
+    voices.length > 0 && (!videos.length || !clips.value.some((c) => c.track === 'voice'))
+  const nextClips = clips.value.filter(
+    (c) => (videos.length ? c.track !== 'video' : true) && (placeVoice ? c.track !== 'voice' : true)
+  )
+  let videoCursor = 0
   for (const src of videos) {
     const url = await resolveSrc(src)
     const durationSec =
@@ -5372,11 +6529,34 @@ async function autoPlaceAll(): Promise<void> {
       relativePath: src.relativePath,
       assetId: src.assetId,
       ...(src.nodeId ? { nodeId: src.nodeId } : {}),
-      startSec: cursor,
+      ...(src.nodeTitle ? { nodeTitle: src.nodeTitle } : {}),
+      startSec: videoCursor,
       durationSec
     })
     patchSourceDuration(src.id, durationSec)
-    cursor += durationSec
+    videoCursor += durationSec
+  }
+  if (placeVoice) {
+    let voiceCursor = 0
+    for (const src of voices) {
+      const url = await resolveSrc(src)
+      const durationSec =
+        src.durationSec && src.durationSec > 0 ? src.durationSec : await probeDuration(url, 'audio')
+      nextClips.push({
+        id: newClipId(),
+        track: 'voice',
+        sourceId: src.id,
+        title: src.title,
+        relativePath: src.relativePath,
+        assetId: src.assetId,
+        ...(src.nodeId ? { nodeId: src.nodeId } : {}),
+        ...(src.nodeTitle ? { nodeTitle: src.nodeTitle } : {}),
+        startSec: voiceCursor,
+        durationSec
+      })
+      patchSourceDuration(src.id, durationSec)
+      voiceCursor += durationSec
+    }
   }
   commitClips(nextClips)
   scheduleSave()
@@ -5388,18 +6568,8 @@ async function autoPlaceAll(): Promise<void> {
 }
 
 function smartCutTransitionLabelKey(tr: string): string {
-  const map: Record<string, string> = {
-    none: 'None',
-    dissolve: 'Dissolve',
-    fade: 'Fade',
-    flash: 'Flash',
-    slideleft: 'SlideLeft',
-    slideright: 'SlideRight',
-    wipeleft: 'WipeLeft',
-    wiperight: 'WipeRight',
-    circleopen: 'CircleOpen'
-  }
-  return `script.timeline.transition${map[tr] ?? 'None'}`
+  const item = TRANSITION_CATALOG.find((entry) => entry.type === tr)
+  return item ? item.labelKey : 'script.timeline.transitionNone'
 }
 
 async function onSmartCut(): Promise<void> {
@@ -5670,6 +6840,15 @@ function onClipPointerDown(e: PointerEvent, clip: ScriptTimelineClip): void {
   const target = e.target as HTMLElement | null
   if (target?.closest('.clip-remove')) return
   if (lockedTracks.value.has(clip.track)) return
+  transitionPopover.value = null
+  const rect = laneRectForTrack(clip.track)
+  const timeAtPointer = rect ? xToTime(e.clientX - rect.left) : clip.startSec
+  if (razorMode.value) {
+    if (splitClipAtTime(clip, timeAtPointer)) {
+      e.preventDefault()
+      return
+    }
+  }
   if (e.shiftKey || e.ctrlKey || e.metaKey) {
     toggleClipSelection(clip.id)
     activeClipId.value = clip.id
@@ -5678,8 +6857,6 @@ function onClipPointerDown(e: PointerEvent, clip: ScriptTimelineClip): void {
   } else {
     activeClipId.value = clip.id
   }
-  const rect = laneRectForTrack(clip.track)
-  const timeAtPointer = rect ? xToTime(e.clientX - rect.left) : clip.startSec
   const groupInitialStarts = new Map<string, number>()
   if (selectedClipIds.value.has(clip.id) && selectedClipIds.value.size > 1) {
     for (const c of clips.value) {
@@ -5696,6 +6873,7 @@ function onClipPointerDown(e: PointerEvent, clip: ScriptTimelineClip): void {
     grabOffsetSec: timeAtPointer - clip.startSec,
     lastStartSec: clip.startSec,
     moved: false,
+    beforeClips: snapshotClips(),
     ...(groupInitialStarts.size > 1 ? { groupInitialStarts } : {})
   }
   clipDragPreview.value = {
@@ -5793,7 +6971,10 @@ function onClipPointerUp(e: PointerEvent): void {
   clipDrag.value = null
   clipDragPreview.value = null
   unbindClipDragListeners()
-  if (session.moved) scheduleSave()
+  if (session.moved) {
+    pushHistorySnapshot(session.beforeClips)
+    scheduleSave()
+  }
 }
 
 function bindTransitionDragListeners(): void {
@@ -5823,7 +7004,8 @@ function onTransitionHandlePointerDown(
     startClientX: e.clientX,
     startTransitionSec: current,
     startRightStart: handle.right.startSec,
-    moved: false
+    moved: false,
+    beforeClips: snapshotClips()
   }
   bindTransitionDragListeners()
   e.preventDefault()
@@ -5832,33 +7014,26 @@ function onTransitionHandlePointerDown(
 function onTransitionPointerMove(e: PointerEvent): void {
   const session = transitionDrag.value
   if (!session || e.pointerId !== session.pointerId) return
-  const left = clips.value.find((c) => c.id === session.leftId)
-  const right = clips.value.find((c) => c.id === session.rightId)
+  if (!session.moved && Math.abs(e.clientX - session.startClientX) < 4) return
+  const left = session.beforeClips.find((c) => c.id === session.leftId)
+  const right = session.beforeClips.find((c) => c.id === session.rightId)
   if (!left || !right) return
   const deltaSec = (e.clientX - session.startClientX) / Math.max(1, pxPerSec.value)
-  const maxTransition = Math.min(left.durationSec, right.durationSec)
-  const duration = Math.min(maxTransition, Math.max(0, session.startTransitionSec - deltaSec))
-  const transitionType = duration > 0 ? (right.transitionType ?? 'dissolve') : 'none'
-  const originalRightStart = left.startSec + left.durationSec
-  const nextStart = originalRightStart - duration
+  const maxTransition = Math.max(0, Math.min(left.durationSec, right.durationSec) - 0.1)
+  const duration =
+    Math.round(Math.min(maxTransition, Math.max(0, session.startTransitionSec - deltaSec)) * 100) /
+    100
+  const transitionType: ScriptTimelineTransitionType =
+    duration > 0.04
+      ? right.transitionType && right.transitionType !== 'none'
+        ? right.transitionType
+        : 'dissolve'
+      : 'none'
   session.moved = true
-  clips.value = clips.value.map((c) => {
-    if (c.id === right.id) {
-      return {
-        ...c,
-        startSec: nextStart,
-        transitionInSec: duration,
-        transitionType
-      }
-    }
-    if (c.id === left.id) {
-      return {
-        ...c,
-        transitionOutSec: duration,
-        transitionType
-      }
-    }
-    return c
+  transitionPopover.value = null
+  clips.value = applyVideoTransitionBetweenClips(session.beforeClips, left.id, right.id, {
+    transitionType,
+    durationSec: duration
   })
 }
 
@@ -5867,7 +7042,26 @@ function onTransitionPointerUp(e: PointerEvent): void {
   if (!session || e.pointerId !== session.pointerId) return
   transitionDrag.value = null
   unbindTransitionDragListeners()
-  if (session.moved) scheduleSave()
+  if (session.moved) {
+    pushHistorySnapshot(session.beforeClips)
+    scheduleSave()
+    return
+  }
+  // 单击转场胶囊（未拖拽）：弹出可视化转场效果浮层
+  if (
+    transitionPopover.value &&
+    transitionPopover.value.leftId === session.leftId &&
+    transitionPopover.value.rightId === session.rightId
+  ) {
+    transitionPopover.value = null
+  } else {
+    transitionPopover.value = {
+      leftId: session.leftId,
+      rightId: session.rightId,
+      anchorX: e.clientX,
+      anchorY: e.clientY
+    }
+  }
 }
 
 function bindClipResizeListeners(): void {
@@ -5891,7 +7085,13 @@ function onClipResizeStart(
   if (lockedTracks.value.has(clip.track)) return
   selectClip(clip)
   unbindClipResizeListeners()
-  clipResize.value = { clipId: clip.id, pointerId: e.pointerId, edge, moved: false }
+  clipResize.value = {
+    clipId: clip.id,
+    pointerId: e.pointerId,
+    edge,
+    moved: false,
+    beforeClips: snapshotClips()
+  }
   bindClipResizeListeners()
   e.preventDefault()
 }
@@ -5962,7 +7162,10 @@ function onClipResizeUp(e: PointerEvent): void {
   if (!session || e.pointerId !== session.pointerId) return
   clipResize.value = null
   unbindClipResizeListeners()
-  if (session.moved) scheduleSave()
+  if (session.moved) {
+    pushHistorySnapshot(session.beforeClips)
+    scheduleSave()
+  }
 }
 
 function isStudioAssetDrag(e: DragEvent): boolean {
@@ -6328,7 +7531,12 @@ function onPlayheadPointerUp(e: PointerEvent): void {
 
 function onTimelineBlankPointerDown(e: PointerEvent): void {
   const target = e.target as HTMLElement | null
-  if (target?.closest('.clip, .track-label, .ruler, .playhead, .track-state-btn')) return
+  if (
+    target?.closest('.clip, .track-label, .ruler, .playhead, .track-state-btn, .transition-handle')
+  ) {
+    return
+  }
+  transitionPopover.value = null
   activeClipId.value = null
   selectedClipIds.value = new Set()
 }
@@ -6832,11 +8040,19 @@ function transitionPreviewKeyFor(transition: {
     from.sourceOffsetSec ?? 0,
     from.startSec,
     from.durationSec,
+    from.cropX ?? 0,
+    from.cropY ?? 0,
+    from.cropWidth ?? 1,
+    from.cropHeight ?? 1,
     to.id,
     resolveClipRelativePath(to) ?? '',
     to.sourceOffsetSec ?? 0,
     to.startSec,
     to.durationSec,
+    to.cropX ?? 0,
+    to.cropY ?? 0,
+    to.cropWidth ?? 1,
+    to.cropHeight ?? 1,
     to.transitionType ?? 'none',
     to.transitionInSec ?? 0,
     exportWidth.value,
@@ -6866,6 +8082,10 @@ function toTransitionPreviewClip(clip: ScriptTimelineClip): TimelineExportClip {
     startSec: clip.startSec,
     durationSec: clip.durationSec,
     ...(offset > 0 ? { sourceOffsetSec: offset } : {}),
+    cropX: clip.cropX,
+    cropY: clip.cropY,
+    cropWidth: clip.cropWidth,
+    cropHeight: clip.cropHeight,
     transitionInSec: clip.transitionInSec,
     transitionOutSec: clip.transitionOutSec,
     transitionType: clip.transitionType
@@ -7438,6 +8658,10 @@ async function exportTimeline(): Promise<void> {
         overlayY: c.overlayY,
         overlayWidth: c.overlayWidth,
         overlayHeight: c.overlayHeight,
+        cropX: c.cropX,
+        cropY: c.cropY,
+        cropWidth: c.cropWidth,
+        cropHeight: c.cropHeight,
         opacity: c.opacity,
         transitionInSec: c.transitionInSec,
         transitionOutSec: c.transitionOutSec,
@@ -7888,14 +9112,40 @@ function onPanelSplitterUp(e: PointerEvent): void {
 
 function onDocPointerDownForSourceCtx(e: PointerEvent): void {
   const target = e.target as HTMLElement | null
-  if (target?.closest('.source-ctx-menu')) return
-  closeSourceCtx()
+  if (!target?.closest('.source-ctx-menu')) {
+    closeSourceCtx()
+  }
+  if (
+    transitionPopover.value &&
+    !target?.closest('.transition-popover') &&
+    !target?.closest('.transition-handle')
+  ) {
+    transitionPopover.value = null
+  }
 }
 
 function onTimelineKeydown(e: KeyboardEvent): void {
   if (e.defaultPrevented) return
   const target = e.target as HTMLElement | null
   if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+  if (e.key === 'Escape') {
+    if (transitionPopover.value) {
+      e.preventDefault()
+      transitionPopover.value = null
+      return
+    }
+    if (razorMode.value) {
+      e.preventDefault()
+      razorMode.value = false
+      razorHover.value = null
+      return
+    }
+    if (cropMode.value) {
+      e.preventDefault()
+      cropMode.value = false
+      return
+    }
+  }
   if (e.key === ' ') {
     e.preventDefault()
     void toggleTimelinePlay()
@@ -7915,6 +9165,25 @@ function onTimelineKeydown(e: KeyboardEvent): void {
       if (canSplitActiveClip.value) {
         e.preventDefault()
         splitSelectedClipAtPlayhead()
+      }
+      return
+    }
+    if (e.key === 'c' || e.key === 'C') {
+      e.preventDefault()
+      toggleRazorMode()
+      return
+    }
+    if (e.key === '[') {
+      if (canTrimInAtPlayhead.value) {
+        e.preventDefault()
+        trimActiveClipAtPlayhead('in')
+      }
+      return
+    }
+    if (e.key === ']') {
+      if (canTrimOutAtPlayhead.value) {
+        e.preventDefault()
+        trimActiveClipAtPlayhead('out')
       }
       return
     }
@@ -7964,9 +9233,17 @@ function onTimelineKeydown(e: KeyboardEvent): void {
   }
 }
 
+let unregisterDiveHistory: (() => void) | null = null
+
 onMounted(async () => {
   // 登记「时间线正被界面编辑」：Agent 改时间线前会据此拒绝写入，避免与自动保存互相覆盖
   if (!isDraftAssetId(props.scriptAssetId)) registerOpenTimelineEditor(props.scriptAssetId)
+  unregisterDiveHistory = diveEditorHistory.register({
+    canUndo: () => canUndo.value,
+    canRedo: () => canRedo.value,
+    undo,
+    redo
+  })
   loadPersisted()
   await reloadSources()
   const first = visibleClipsOn('video')[0]
@@ -7978,25 +9255,24 @@ onMounted(async () => {
   window.addEventListener('keydown', onTimelineKeydown)
 })
 
-watch(
-  () => props.scriptAssetId,
-  async (next, prev) => {
-    // 换剧本资产：占用登记要跟着搬，否则旧资产会一直被判定为「编辑器打开」
+watch([() => props.scriptAssetId, () => props.timelineNodeId], async ([next], [prev]) => {
+  // 换剧本资产：占用登记要跟着搬，否则旧资产会一直被判定为「编辑器打开」
+  if (prev !== next) {
     if (prev && !isDraftAssetId(prev)) unregisterOpenTimelineEditor(prev)
     if (next && !isDraftAssetId(next)) registerOpenTimelineEditor(next)
-    stopPlayback()
-    disposeAudioPool()
-    disposeOverlayVideos()
-    sourceThumbUrls.value = {}
-    sourceThumbPathById.clear()
-    // 换工程：波形绘制图与解码包络都作废，避免跨工程串用
-    clipWaveformUrls.value = {}
-    audioPeaksCache.clear()
-    loadPersisted()
-    await reloadSources()
-    void refreshClipVisuals()
   }
-)
+  stopPlayback()
+  disposeAudioPool()
+  disposeOverlayVideos()
+  sourceThumbUrls.value = {}
+  sourceThumbPathById.clear()
+  // 换工程：波形绘制图与解码包络都作废，避免跨工程串用
+  clipWaveformUrls.value = {}
+  audioPeaksCache.clear()
+  loadPersisted()
+  await reloadSources()
+  void refreshClipVisuals()
+})
 
 // 视频轨原声走预览区 video 元素，静音切换后立即生效（声音轨由 syncClipPreviewGain 实时读取）
 watch(mutedTracks, () => {
@@ -8067,6 +9343,8 @@ function bindPreviewStage(): void {
 }
 
 onBeforeUnmount(() => {
+  unregisterDiveHistory?.()
+  unregisterDiveHistory = null
   unregisterOpenTimelineEditor(props.scriptAssetId)
   stopPlayback()
   disposeAudioPool()
@@ -8079,6 +9357,7 @@ onBeforeUnmount(() => {
   unbindClipResizeListeners()
   unbindSubtitleDragListeners()
   unbindOverlayDragListeners()
+  unbindCropDragListeners()
   unbindTransitionDragListeners()
   window.removeEventListener('pointermove', onVerticalSplitterMove)
   window.removeEventListener('pointerup', onVerticalSplitterUp)
@@ -8086,6 +9365,7 @@ onBeforeUnmount(() => {
   clipDrag.value = null
   clipDragPreview.value = null
   clipResize.value = null
+  cropDrag.value = null
   transitionDrag.value = null
   window.removeEventListener('pointerdown', onDocPointerDownForSourceCtx, true)
   window.removeEventListener('keydown', onTimelineKeydown)
@@ -9943,25 +11223,790 @@ defineExpose({ flushSave: persist, reloadSources })
   background: color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
-.transition-handle {
+.ghost-btn.active {
+  background: color-mix(in srgb, var(--accent) 22%, var(--panel-2));
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.timeline-board.razor-mode,
+.timeline-board.razor-mode .clip,
+.timeline-board.razor-mode .track-lane {
+  cursor: crosshair !important;
+}
+
+.razor-cut-line {
   position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  background: #ff4d4f;
+  box-shadow: 0 0 6px rgba(255, 77, 79, 0.85);
+  pointer-events: none;
+  z-index: 6;
+}
+
+.razor-cut-time {
+  position: absolute;
+  top: 2px;
+  left: 4px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: #ff4d4f;
+  color: #fff;
+  font-size: 9px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+.clip-cropped-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 3px;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: rgba(76, 154, 255, 0.28);
+  color: #bde0ff;
+  font-size: 9px;
+  line-height: 1.2;
+}
+
+/* ── Video Frame Crop Overlay ── */
+.crop-box-overlay {
+  position: absolute;
+  z-index: 5;
+  border: 1.5px solid #4c9aff;
+  box-shadow:
+    0 0 0 9999px rgba(0, 0, 0, 0.56),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+  cursor: move;
+  user-select: none;
+  touch-action: none;
+}
+
+.crop-grid-line {
+  position: absolute;
+  pointer-events: none;
+  background: rgba(255, 255, 255, 0.32);
+}
+
+.crop-grid-line.v1 {
   top: 0;
   bottom: 0;
-  z-index: 4;
-  min-width: 8px;
-  padding: 0;
-  border: none;
-  border-left: 1px solid rgba(255, 255, 255, 0.7);
-  border-right: 1px solid rgba(255, 255, 255, 0.7);
-  border-radius: 4px;
-  background: rgba(76, 154, 255, 0.28);
+  left: 33.3333%;
+  width: 1px;
+}
+
+.crop-grid-line.v2 {
+  top: 0;
+  bottom: 0;
+  left: 66.6667%;
+  width: 1px;
+}
+
+.crop-grid-line.h1 {
+  left: 0;
+  right: 0;
+  top: 33.3333%;
+  height: 1px;
+}
+
+.crop-grid-line.h2 {
+  left: 0;
+  right: 0;
+  top: 66.6667%;
+  height: 1px;
+}
+
+.crop-handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: #fff;
+  border: 1.5px solid #4c9aff;
+  border-radius: 2px;
+  z-index: 2;
+}
+
+.crop-handle.nw,
+.crop-handle.corner-tl {
+  top: -5px;
+  left: -5px;
+  cursor: nwse-resize;
+}
+
+.crop-handle.ne,
+.crop-handle.corner-tr {
+  top: -5px;
+  right: -5px;
+  cursor: nesw-resize;
+}
+
+.crop-handle.sw,
+.crop-handle.corner-bl {
+  bottom: -5px;
+  left: -5px;
+  cursor: nesw-resize;
+}
+
+.crop-handle.se,
+.crop-handle.corner-br {
+  bottom: -5px;
+  right: -5px;
+  cursor: nwse-resize;
+}
+
+.crop-handle.n {
+  top: -5px;
+  left: calc(50% - 5px);
+  cursor: ns-resize;
+}
+
+.crop-handle.s {
+  bottom: -5px;
+  left: calc(50% - 5px);
+  cursor: ns-resize;
+}
+
+.crop-handle.w {
+  left: -5px;
+  top: calc(50% - 5px);
   cursor: ew-resize;
 }
 
+.crop-handle.e {
+  right: -5px;
+  top: calc(50% - 5px);
+  cursor: ew-resize;
+}
+
+.crop-size-badge {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(12, 16, 24, 0.82);
+  color: #e6f0ff;
+  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* ── Inspector Crop & Transition Sections ── */
+.inspector-crop-section,
+.inspector-transition-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel-2) 65%, transparent);
+  border: 1px solid var(--border);
+}
+
+.inspector-section-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.crop-toggle-inline {
+  padding: 2px 6px;
+  font-size: 10px;
+}
+
+.transition-pair-banner {
+  padding: 4px 6px;
+  border-radius: 5px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.transition-inspector-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.crop-preset-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.inspector-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.inspector-section-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.inspector-badge {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.crop-preset-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.crop-preset-btn {
+  flex: 1 1 auto;
+  min-width: 40px;
+  padding: 3px 6px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.crop-preset-btn:hover {
+  border-color: var(--accent);
+}
+
+.crop-preset-btn.active {
+  background: color-mix(in srgb, var(--accent) 22%, var(--panel));
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.crop-num-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.crop-num-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.crop-num-input {
+  width: 100%;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-align: right;
+  outline: none;
+}
+
+.crop-num-unit {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+/* ── Redesigned NLE Transition Junction Pill & Overlap Zone ── */
+.transition-handle {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  z-index: 5;
+  min-width: 24px;
+  padding: 0;
+  border: 1px solid rgba(115, 179, 255, 0.55);
+  border-radius: 6px;
+  background: rgba(24, 42, 68, 0.42);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  overflow: visible;
+  transition:
+    background-color 0.14s ease,
+    border-color 0.14s ease,
+    box-shadow 0.14s ease;
+}
+
+.transition-handle:hover {
+  background: rgba(52, 118, 210, 0.48);
+  border-color: #8cc4ff;
+  box-shadow: 0 0 10px rgba(76, 154, 255, 0.45);
+}
+
+.transition-handle.has-effect,
 .transition-handle.active {
-  background: rgba(76, 154, 255, 0.58);
+  background: linear-gradient(135deg, rgba(64, 140, 255, 0.36) 0%, rgba(138, 92, 246, 0.38) 100%);
+  border-color: rgba(154, 196, 255, 0.85);
+}
+
+.transition-handle.selected {
+  background: linear-gradient(135deg, rgba(76, 154, 255, 0.62) 0%, rgba(148, 102, 255, 0.62) 100%);
   border-color: #fff;
-  box-shadow: 0 0 8px rgba(76, 154, 255, 0.6);
+  box-shadow: 0 0 12px rgba(76, 154, 255, 0.78);
+}
+
+.transition-overlap-pattern {
+  position: absolute;
+  inset: 0;
+  border-radius: 5px;
+  pointer-events: none;
+  background-image:
+    linear-gradient(
+      to top right,
+      transparent calc(50% - 1px),
+      rgba(255, 255, 255, 0.32) 50%,
+      transparent calc(50% + 1px)
+    ),
+    linear-gradient(
+      to bottom right,
+      transparent calc(50% - 1px),
+      rgba(255, 255, 255, 0.22) 50%,
+      transparent calc(50% + 1px)
+    );
+  opacity: 0.75;
+}
+
+.transition-junction-pill {
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  max-width: calc(100% - 4px);
+  padding: 2px 5px;
+  border-radius: 999px;
+  background: rgba(12, 18, 28, 0.88);
+  border: 1px solid rgba(150, 198, 255, 0.65);
+  color: #eef5ff;
+  font-size: 10px;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+
+.transition-bowtie {
+  font-size: 11px;
+  color: #7cc0ff;
+}
+
+.transition-pill-label,
+.transition-junction-label {
+  font-weight: 600;
+  max-width: 72px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.transition-pill-dur {
+  color: #a8d1ff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+}
+
+.transition-edge-grip,
+.transition-zone-edge {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  z-index: 3;
+  cursor: ew-resize;
+}
+
+.transition-edge-grip.left,
+.transition-zone-edge.left {
+  left: -2px;
+}
+
+.transition-edge-grip.right,
+.transition-zone-edge.right {
+  right: -2px;
+}
+
+.transition-edge-grip:hover,
+.transition-zone-edge:hover {
+  background: rgba(255, 255, 255, 0.45);
+}
+
+/* ── Floating Transition Picker Popover & Shared Card Grid ── */
+.transition-popover {
+  position: absolute;
+  z-index: 60;
+  width: 320px;
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.52);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.transition-popover-header,
+.transition-popover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.transition-popover-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.transition-popover-close {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.transition-popover-close:hover {
+  color: var(--text);
+}
+
+.transition-popover-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.transition-duration-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.transition-duration-label {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.preset-pill {
+  padding: 2px 5px;
+  font-size: 10px;
+}
+
+.compact-num {
+  width: 52px;
+  padding: 2px 4px;
+  font-size: 11px;
+}
+
+.transition-cat-tabs {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.transition-cat-tab {
+  flex: 1 0 auto;
+  padding: 3px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.transition-cat-tab:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.transition-cat-tab.active {
+  background: color-mix(in srgb, var(--accent) 22%, var(--panel-2));
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.transition-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  max-height: 196px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.transition-card-grid.compact {
+  max-height: 168px;
+}
+
+.transition-effect-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 4px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.transition-effect-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.transition-effect-card.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 20%, var(--panel-2));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.trans-card-label {
+  font-size: 10px;
+  line-height: 1.15;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* Animated mini preview inside each transition card */
+.trans-preview-box {
+  position: relative;
+  width: 100%;
+  height: 30px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #141923;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.trans-preview-a,
+.trans-preview-b {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.trans-preview-a {
+  background: linear-gradient(135deg, #2b4c7e 0%, #1d3557 100%);
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.trans-preview-b {
+  background: linear-gradient(135deg, #6b4c9a 0%, #3b82f6 100%);
+  color: #fff;
+  opacity: 0;
+  transition: all 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.transition-effect-card .trans-preview-box.effect-none .trans-preview-a {
+  clip-path: inset(0 50% 0 0);
+}
+
+.transition-effect-card .trans-preview-box.effect-none .trans-preview-b {
+  clip-path: inset(0 0 0 50%);
+  opacity: 1;
+}
+
+.transition-effect-card:hover .trans-preview-b,
+.transition-effect-card.active .trans-preview-b {
+  opacity: 1;
+}
+
+.trans-preview-box.effect-slideleft .trans-preview-b,
+.trans-preview-box.effect-smoothleft .trans-preview-b {
+  transform: translateX(100%);
+  opacity: 1;
+}
+.transition-effect-card:hover .trans-preview-box.effect-slideleft .trans-preview-b,
+.transition-effect-card.active .trans-preview-box.effect-slideleft .trans-preview-b,
+.transition-effect-card:hover .trans-preview-box.effect-smoothleft .trans-preview-b,
+.transition-effect-card.active .trans-preview-box.effect-smoothleft .trans-preview-b {
+  transform: translateX(0);
+}
+
+.trans-preview-box.effect-slideright .trans-preview-b,
+.trans-preview-box.effect-smoothright .trans-preview-b {
+  transform: translateX(-100%);
+  opacity: 1;
+}
+.transition-effect-card:hover .trans-preview-box.effect-slideright .trans-preview-b,
+.transition-effect-card.active .trans-preview-box.effect-slideright .trans-preview-b,
+.transition-effect-card:hover .trans-preview-box.effect-smoothright .trans-preview-b,
+.transition-effect-card.active .trans-preview-box.effect-smoothright .trans-preview-b {
+  transform: translateX(0);
+}
+
+.trans-preview-box.effect-slideup .trans-preview-b {
+  transform: translateY(100%);
+  opacity: 1;
+}
+.transition-effect-card:hover .trans-preview-box.effect-slideup .trans-preview-b,
+.transition-effect-card.active .trans-preview-box.effect-slideup .trans-preview-b {
+  transform: translateY(0);
+}
+
+.trans-preview-box.effect-slidedown .trans-preview-b {
+  transform: translateY(-100%);
+  opacity: 1;
+}
+.transition-effect-card:hover .trans-preview-box.effect-slidedown .trans-preview-b,
+.transition-effect-card.active .trans-preview-box.effect-slidedown .trans-preview-b {
+  transform: translateY(0);
+}
+
+.trans-preview-box.effect-wipeleft .trans-preview-b {
+  clip-path: inset(0 0 0 100%);
+  opacity: 1;
+}
+.transition-effect-card:hover .trans-preview-box.effect-wipeleft .trans-preview-b,
+.transition-effect-card.active .trans-preview-box.effect-wipeleft .trans-preview-b {
+  clip-path: inset(0 0 0 0);
+}
+
+.trans-preview-box.effect-wiperight .trans-preview-b {
+  clip-path: inset(0 100% 0 0);
+  opacity: 1;
+}
+.transition-effect-card:hover .trans-preview-box.effect-wiperight .trans-preview-b,
+.transition-effect-card.active .trans-preview-box.effect-wiperight .trans-preview-b {
+  clip-path: inset(0 0 0 0);
+}
+
+.trans-preview-box.effect-wipeup .trans-preview-b {
+  clip-path: inset(100% 0 0 0);
+  opacity: 1;
+}
+.transition-effect-card:hover .trans-preview-box.effect-wipeup .trans-preview-b,
+.transition-effect-card.active .trans-preview-box.effect-wipeup .trans-preview-b {
+  clip-path: inset(0 0 0 0);
+}
+
+.trans-preview-box.effect-wipedown .trans-preview-b {
+  clip-path: inset(0 0 100% 0);
+  opacity: 1;
+}
+.transition-effect-card:hover .trans-preview-box.effect-wipedown .trans-preview-b,
+.transition-effect-card.active .trans-preview-box.effect-wipedown .trans-preview-b {
+  clip-path: inset(0 0 0 0);
+}
+
+.trans-preview-box.effect-circleopen .trans-preview-b,
+.trans-preview-box.effect-radial .trans-preview-b {
+  clip-path: circle(0% at 50% 50%);
+  opacity: 1;
+}
+.transition-effect-card:hover .trans-preview-box.effect-circleopen .trans-preview-b,
+.transition-effect-card.active .trans-preview-box.effect-circleopen .trans-preview-b,
+.transition-effect-card:hover .trans-preview-box.effect-radial .trans-preview-b,
+.transition-effect-card.active .trans-preview-box.effect-radial .trans-preview-b {
+  clip-path: circle(75% at 50% 50%);
+}
+
+.trans-preview-box.effect-zoomin .trans-preview-b {
+  transform: scale(1.35);
+}
+.transition-effect-card:hover .trans-preview-box.effect-zoomin .trans-preview-b,
+.transition-effect-card.active .trans-preview-box.effect-zoomin .trans-preview-b {
+  transform: scale(1);
+}
+
+.transition-dur-row {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.transition-dur-slider-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.transition-dur-readout {
+  min-width: 40px;
+  text-align: right;
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--accent);
+}
+
+.transition-preset-pills {
+  display: flex;
+  gap: 4px;
+}
+
+.transition-preset-pill {
+  flex: 1 1 0;
+  padding: 3px 4px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  cursor: pointer;
+}
+
+.transition-preset-pill:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.transition-preset-pill.active {
+  background: color-mix(in srgb, var(--accent) 22%, var(--panel-2));
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.transition-apply-all-btn {
+  width: 100%;
+  justify-content: center;
+  margin-top: 2px;
 }
 
 .playhead {

@@ -90,10 +90,9 @@ export async function executeModelRigSkinNode(
   const rigOutFormat = resolveRigOutFormat(ctx)
   const selection = sanitizeCloudRigSelection(ctx)
 
-  // 一进 Cook 就清掉旧 Blender QA / skill，避免失败时 Inspector 仍显示过期 QA
+  // 一进 Cook 就清掉旧 Blender QA，避免失败时 Inspector 仍显示过期 QA
   ctx.patchNode?.({
     params: {
-      skillId: undefined,
       generateRigType: rigType,
       rigQa: undefined
     }
@@ -113,7 +112,7 @@ export async function executeModelRigSkinNode(
     }
   })
 
-  // 清理旧 Blender 残留（skillId / QA / 长指令），避免 Inspector 误导
+  // 清理旧 Blender 残留（QA / 长指令），避免 Inspector 误导
   const cleanedInstruction = RIG_TYPE_KEYS.has(
     (ctx.node.params.generateInstruction ?? '').trim().toLowerCase()
   )
@@ -122,7 +121,6 @@ export async function executeModelRigSkinNode(
 
   ctx.node.params = {
     ...ctx.node.params,
-    skillId: undefined,
     generateRigType: rigType,
     generateInstruction: cleanedInstruction,
     generateModel: selection.model ?? '',
@@ -137,7 +135,6 @@ export async function executeModelRigSkinNode(
   }
   ctx.patchNode?.({
     params: {
-      skillId: undefined,
       generateRigType: rigType,
       generateInstruction: cleanedInstruction,
       generateModel: selection.model ?? '',

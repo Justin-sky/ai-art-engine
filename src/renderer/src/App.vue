@@ -83,6 +83,7 @@ import { useEditorKernel } from './editor/kernel'
 import { executeEditorCommand } from './editor/extensions'
 import { applyEditorPreferences } from './editor/preferences'
 import { invalidateGenerateModelSettingsCache } from './features/graph/model/generateModelOptions'
+import { diveEditorHistory } from './features/graph/ui/diveEditorHistory'
 
 const { t } = useStudioI18n()
 const router = useRouter()
@@ -138,15 +139,29 @@ function openMarketplace(): void {
 }
 
 function onEditorShortcut(event: KeyboardEvent): void {
+  if (event.defaultPrevented) return
   if (!(event.ctrlKey || event.metaKey)) return
   const target = event.target as HTMLElement | null
   if (target?.closest('input, textarea, select, [contenteditable=\"true\"]')) return
   const key = event.key.toLowerCase()
+  const activeDive = diveEditorHistory.active.value
   if (key === 'z' && !event.shiftKey) {
+    if (activeDive) {
+      if (!activeDive.canUndo) return
+      event.preventDefault()
+      activeDive.undo()
+      return
+    }
     if (!editor.commands.canUndo.value) return
     event.preventDefault()
     void executeEditorCommand('editor.undo', editor)
   } else if (key === 'y' || (key === 'z' && event.shiftKey)) {
+    if (activeDive) {
+      if (!activeDive.canRedo) return
+      event.preventDefault()
+      activeDive.redo()
+      return
+    }
     if (!editor.commands.canRedo.value) return
     event.preventDefault()
     void executeEditorCommand('editor.redo', editor)

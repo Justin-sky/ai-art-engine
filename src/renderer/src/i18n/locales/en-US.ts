@@ -896,7 +896,7 @@ export default {
       commit:
         'Once it looks right, commit workflows/{id}/ (never change the content of an existing version — bump it instead)',
       uploadPr:
-        'Standalone workflow pack exported to {dir}; upload it to workflows/{id}/ in ai-art-engine-workflow via PR (CI builds and validates the index automatically)',
+        'Standalone workflow pack exported to {dir}; upload it to workflows/{id}/ in ai-art-engine-skills via PR (CI builds and validates the index automatically)',
       editSkill:
         'Generated skill scaffold workflows/{id}/skill/SKILL.md ({skillName}); refine domain prompt guidelines as needed',
       installedLocal:
@@ -912,9 +912,9 @@ export default {
     }
   },
   marketplace: {
-    title: 'Plugin marketplace',
-    eyebrow: 'Capabilities & plugins',
-    open: 'Marketplace',
+    title: 'Skill Marketplace',
+    eyebrow: 'Capabilities & skills',
+    open: 'Skill Market',
     loading: 'Reading installed content…',
     devDocs: 'Developer docs',
     readOnlyHint:
@@ -922,8 +922,8 @@ export default {
     searchPlaceholder: {
       all: 'Search MCP, skills or workflows',
       mcp: 'Search MCP server name or URL',
-      skills: 'Search skill file name',
-      workflows: 'Search workflow title or author'
+      skills: 'Search skill name, /command or description',
+      workflows: 'Search skill & workflow title or author'
     },
     searchAria: 'Search the current tab',
     clearSearch: 'Clear',
@@ -939,13 +939,41 @@ export default {
       file: 'File',
       purpose: 'Purpose',
       source: 'Source',
-      hint: 'The app snapshots this skill into the skills folder so the agent can load it during chat; this view is for inspection and export only.'
+      slash: 'Command',
+      whenToUse: 'When to use',
+      context: 'Context',
+      model: 'Model',
+      allowedTools: 'Allowed tools',
+      hint: 'This skill follows the Claude Code SKILL.md specification and can be invoked via /command or automatically by the agent in AI chat.'
+    },
+    github: {
+      addTitle: 'Install Claude Code skills from GitHub',
+      placeholder:
+        'Enter a GitHub repo or subdirectory URL, e.g. anthropics/skills or https://github.com/owner/repo/tree/main/skills/my-skill',
+      inspect: 'Inspect repo',
+      inspecting: 'Inspecting…',
+      foundCount: '{count} skill(s) found',
+      installSelected: 'Install selected ({count})',
+      installing: 'Installing…',
+      installedOk: 'Installed {count} skill(s) from GitHub: {names}',
+      scriptsConfirm:
+        'The selected GitHub skill(s) contain {count} executable script file(s):\n\n{files}\n\nClick OK to install scripts as well, or Cancel to install only SKILL.md and reference docs.',
+      reason: {
+        invalidUrl:
+          'Enter a valid GitHub repository URL (e.g. owner/repo or https://github.com/owner/repo)',
+        notFound: 'GitHub repository or branch path not found',
+        rateLimited: 'GitHub API rate limit exceeded — please try again later',
+        noSkillsFound: 'No SKILL.md skill bundles were found at that GitHub path',
+        network: 'Failed to connect to GitHub — check your network',
+        invalidSkill: 'Skill bundle SKILL.md is malformed',
+        unknown: 'GitHub skill operation failed'
+      }
     },
     category: {
       all: 'All',
       mcp: 'MCP',
       skills: 'Skills',
-      workflows: 'Workflows'
+      workflows: 'Skills & Workflows'
     },
     workflows: {
       refresh: 'Refresh catalog',
@@ -1136,7 +1164,9 @@ export default {
         builtin: 'Built-in',
         custom: 'Custom',
         template: 'Template',
-        bundle: 'Skill bundle'
+        bundle: 'Skill bundle',
+        github: 'GitHub',
+        project: 'Project skill'
       }
     }
   },
@@ -2385,7 +2415,44 @@ export default {
       exportCapCutHint: 'Export JianyingPro / CapCut compatible draft (draft_content.json)',
       exportCapCutDone: 'CapCut draft exported:\n{path}',
       exportNleDone: 'Project file exported:\n{path}',
-      exportNleFailed: 'Project export failed: {error}'
+      exportNleFailed: 'Project export failed: {error}',
+      razorTool: 'Razor',
+      razorToolHint:
+        'Razor blade tool (C): hover any clip to preview the cut line and click to split',
+      trimInToPlayhead: 'Trim in [',
+      trimInToPlayheadHint: 'Trim the selected or active clip in-point to the playhead ([)',
+      trimOutToPlayhead: 'Trim out ]',
+      trimOutToPlayheadHint: 'Trim the selected or active clip out-point to the playhead (])',
+      cropTool: 'Frame crop',
+      cropToolHint: 'Toggle interactive 9-grid frame crop box on the preview canvas',
+      cropSection: 'Frame crop',
+      cropPresetFree: 'Free',
+      cropX: 'Left %',
+      cropY: 'Top %',
+      cropWidth: 'Width %',
+      cropHeight: 'Height %',
+      cropReset: 'Reset crop',
+      cropActiveBadge: 'Cropped',
+      transitionSmoothLeft: 'Smooth left',
+      transitionSmoothRight: 'Smooth right',
+      transitionRadial: 'Radial wipe',
+      transitionZoomIn: 'Zoom in',
+      transitionPixelize: 'Pixelize',
+      transitionHorzOpen: 'Horiz open',
+      transitionVertOpen: 'Vert open',
+      transitionCatBasic: 'Basic & Soft',
+      transitionCatSlide: 'Slide & Push',
+      transitionCatWipe: 'Geometric Wipe',
+      transitionCatCinematic: 'Cinematic FX',
+      transitionDuration: 'Duration',
+      transitionApplyAll: 'Apply to all cuts',
+      transitionRemove: 'Remove transition',
+      transitionJunctionTitle: 'Clip transition',
+      transitionJunctionHint:
+        'Click to open transition picker & duration, or drag horizontally to adjust overlap',
+      transitionCutAddHint:
+        'Click to add a clip transition, or drag horizontally to create an overlap',
+      transitionPairLabel: '{left} → {right}'
     },
     pane: {
       resizeSplit: 'Drag to resize the upper/lower canvases'

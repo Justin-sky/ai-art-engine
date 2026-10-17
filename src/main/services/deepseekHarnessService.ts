@@ -1,7 +1,7 @@
 import { app, shell } from 'electron'
 import { createHash } from 'node:crypto'
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { readdir, rm } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -18,11 +18,9 @@ import {
   type HarnessRunInput,
   type HarnessRunResult,
   type HarnessStatus,
-  type SessionSkill,
-  type SkillImportResult,
-  type SkillTemplate
+  type SessionSkill
 } from '@shared/ipc'
-import { listGraphSkills, registerGraphSkill, type GraphSkill } from '@shared/graph/graphSkills'
+import { parseClaudeSkillMarkdown } from '@shared/claudeSkill'
 import { accessHeaders, isCancelAnswer, normalizeChatMode } from '@shared/mcpModeAccess'
 import {
   isCustomProvider,
@@ -33,6 +31,14 @@ import {
 import { resolveDshChatInputModalitiesForProvider } from '@shared/dshChatModelModalities'
 import { PROJECT_MEMORY_INJECT_LIMIT, PROJECT_MEMORY_RELATIVE_PATH } from '@shared/projectMemory'
 import { broadcastToAllWindows } from '../broadcast'
+import {
+  cleanupLegacyDshSkills,
+  discoverInstalledClaudeSkills,
+  preprocessSkillInvocation,
+  runSkillLifecycleHooks,
+  shouldAutoApproveSkillTool,
+  type ActiveSkillTurnContext
+} from './claudeSkillRuntime'
 import { isDshQuotaError } from './deepseekHarnessFailure'
 import {
   appendNodeRequireOption,
@@ -58,7 +64,6 @@ import {
   externalMcpUnusableReason,
   normalizeExternalMcpServer
 } from '@shared/externalMcp'
-import { builtinSkillDisplayMap, dshSkillNameOf, skillDisplayInfo } from '@shared/skillDisplay'
 import {
   approvalAnswerForDecision,
   approvalViewOf,
@@ -620,177 +625,99 @@ function writeDshSettings(provider: {
   writeFileSync(join(home, 'settings.yaml'), content, 'utf8')
 }
 
-/** dsh 的 skill 快照清单文件：记录上次生成的文件，下次写入前清理，避免残留失效技能 */
-const DSH_SKILLS_MANIFEST = '.aiart-skill-manifest.json'
-
-/**
- * GraphSkill id → dsh 合法 skill 名（kebab-case）。
- *
- * 规则本体在 `@shared/skillDisplay`：界面侧要靠同一条规则把文件名反查回标题，
- * 两处各写一份就会「文件在目录里却显示成 id 风格的名字」。
- */
-function toDshSkillName(id: string): string {
-  return dshSkillNameOf(id)
-}
-
-/** 把一条 GraphSkill 渲染为 dsh 的 SKILL.md（frontmatter + 用法 + 中英双语正文） */
-function renderDshSkillMd(skill: GraphSkill): string {
-  const name = toDshSkillName(skill.id)
-  const zhTitle = skill.titleZh || skill.id
-  const enTitle = skill.titleEn || skill.id
-  const description = `${enTitle} — ${zhTitle}`
-  const sections: string[] = []
-  // 用法置顶：Agent 加载技能后先看到「怎么用、产物是什么」，再看提示词正文
-  if (skill.usageZh) sections.push(`### 用法（中文）\n\n${skill.usageZh}`)
-  if (skill.usageEn) sections.push(`### Usage (English)\n\n${skill.usageEn}`)
-  if (skill.systemPromptZh) sections.push(`### 系统提示（中文）\n\n${skill.systemPromptZh}`)
-  if (skill.systemPromptEn) sections.push(`### System prompt (English)\n\n${skill.systemPromptEn}`)
-  if (skill.instructionZh) sections.push(`### 生成指令（中文）\n\n${skill.instructionZh}`)
-  if (skill.instructionEn) sections.push(`### Instruction (English)\n\n${skill.instructionEn}`)
-  const body = sections.length ? sections.join('\n\n') : `> 技能 ${name}：${description}`
-  return [
-    '---',
-    `name: ${name}`,
-    `description: ${JSON.stringify(description.replace(/[\r\n]+/g, ' '))}`,
-    '---',
-    '',
-    `# ${enTitle}`,
-    '',
-    body,
-    ''
-  ].join('\n')
-}
-
-/**
- * 把应用内置 GraphSkill 目录快照成 dsh 的 SKILL.md 文件（`$DSH_HOME/skills`）。
- *
- * dsh 的 `skill-filesystem` 插件默认挂载且 `includeDefaultRoots: true`，会扫描
- * `$DSH_HOME/skills` 目录下的 `*.md`（rank 400），并由 `tool-skill` 把技能清单
- * 注入模型可见的 `<available_skills>` 目录、提供 `skill` 加载工具——即 AI 对话里
- * 的 agent 能感知并加载应用内置技能（分镜拆解、9宫格、动态提示词等）。
- *
- * 带签名指纹：覆盖栈可能被插件 `registerGraphSkill` 动态增删，但多数对话之间
- * 技能并无变化。先算当前清单的 SHA-1 签名，与 manifest 记录的签名一致且上次
- * 生成的文件都在时直接跳过，避免每次对话都做无谓的删写；变化才按 manifest
- * 清理上次生成的文件再全量重写，避免残留失效技能。
- */
-function writeDshSkills(): void {
-  try {
-    const home = dshHome()
-    mkdirSync(home, { recursive: true })
-    const skillsDir = dshSkillsDir()
-    mkdirSync(skillsDir, { recursive: true })
-    const manifestPath = join(skillsDir, DSH_SKILLS_MANIFEST)
-    const { previous, signature: lastSignature } = readDshSkillsManifest()
-    const signature = dshSkillsSignature()
-    // 技能没变且上次生成的文件都还在 → 跳过写盘，复用现有快照
-    if (
-      lastSignature === signature &&
-      previous.every((file) => existsSync(join(skillsDir, file)))
-    ) {
-      return
-    }
-    // 只清理上次由本函数生成的文件，用户自行放入的自定义技能不受影响
-    for (const file of previous) {
-      const target = join(skillsDir, file)
-      if (existsSync(target)) rmSync(target, { force: true })
-    }
-    const generated: string[] = []
-    for (const skill of listGraphSkills()) {
-      const name = toDshSkillName(skill.id)
-      if (!name) continue
-      const file = `${name}.md`
-      generated.push(file)
-      writeFileSync(join(skillsDir, file), renderDshSkillMd(skill), 'utf8')
-    }
-    writeFileSync(manifestPath, JSON.stringify({ files: generated, signature }), 'utf8')
-  } catch (error) {
-    // 技能快照失败不阻塞主流程（dsh 无技能也能对话）
-    console.warn('[aiart] writeDshSkills failed:', error)
-  }
-}
-
-/** 当前技能清单的指纹：任何技能 id / 渲染内容变化都会改变，用于跳过无谓写盘 */
-function dshSkillsSignature(): string {
-  const hash = createHash('sha1')
-  for (const skill of listGraphSkills()) {
-    hash.update(`${skill.id}\u0000${renderDshSkillMd(skill)}\u0000`)
-  }
-  return hash.digest('hex')
-}
-
-/** 读 dsh 技能 manifest（旧格式 string[] / 新格式 { files, signature } 均兼容） */
-function readDshSkillsManifest(): { previous: string[]; signature: string } {
-  try {
-    const raw = JSON.parse(
-      readFileSync(join(dshHome(), 'skills', DSH_SKILLS_MANIFEST), 'utf8') || '[]'
-    ) as string[] | { files?: unknown; signature?: unknown }
-    if (Array.isArray(raw)) return { previous: raw, signature: '' }
-    return {
-      previous: Array.isArray(raw.files) ? (raw.files as string[]) : [],
-      signature: typeof raw.signature === 'string' ? raw.signature : ''
-    }
-  } catch {
-    return { previous: [], signature: '' }
-  }
-}
+/** 当前正在执行的斜杠技能运行时上下文（用于 allowed-tools 自动放行与生命周期 Hooks） */
+let activeSkillTurn: ActiveSkillTurnContext | null = null
 
 /** dsh 示例技能模板文件名：不带 .md 后缀，避免被 dsh 的 skill-filesystem 扫描成真技能 */
 const DSH_SKILLS_TEMPLATE_FILE = 'my-skill.example'
 
-/** 查询 dsh 技能目录信息（插件市场展示用） */
 /**
- * dsh 技能目录（`$DSH_HOME/skills`）。
- *
- * 实现是 `./dshPaths` 里的：市场安装工作流附带的技能包也落在这里，必须与快照/列举/清理
- * 用同一个路径，但市场服务**不能**反向 import 本文件（本文件有 `virtual:` 构建期依赖，
- * 被测试引用会整个模块加载失败）。所以路径抽到独立小文件共享。
+ * 查询 dsh / Claude Code 技能目录信息（技能市场与设置页展示用）。
+ * 自动清理旧版生成的 `.aiart-skill-manifest.json` 节点快照，并扫描个人级与工程级技能。
  */
 export function getDshSkillsInfo(): DshSkillsInfo {
-  writeDshSkills()
+  cleanupLegacyDshSkills()
   const skillsDir = dshSkillsDir()
-  const files: DshSkillsFile[] = []
-  // 内置项的文件名是 GraphSkill id 的 kebab-case 化，反查回标题与描述给界面用
-  const builtinDisplay = builtinSkillDisplayMap(listGraphSkills())
-  if (existsSync(skillsDir)) {
-    const builtin = new Set(readDshSkillsManifest().previous)
-    for (const entry of readdirSync(skillsDir, { withFileTypes: true })) {
-      if (entry.name === DSH_SKILLS_MANIFEST) continue
-      /**
-       * 目录型技能包（`<name>/SKILL.md`）。
-       *
-       * dsh 本身**认这种布局**（`skill-filesystem` 遇到目录就找 `<dir>/SKILL.md`，深度 1），
-       * 所以它一直对 agent 生效 —— 但早先这里只认文件，于是「agent 看得见、界面看不见」。
-       * 市场工作流附带的技能包正是这种形态，不认它就会让用户装了却找不到任何痕迹。
-       */
-      if (entry.isDirectory()) {
-        const bundle = readSkillBundleInfo(skillsDir, entry.name)
-        if (bundle) files.push(bundle)
-        continue
+  const discovered = discoverInstalledClaudeSkills({
+    personalSkillsDir: skillsDir,
+    workspaceRoot: resolveWorkspace()
+  })
+  const files: DshSkillsFile[] = discovered.map((item) => {
+    let githubRepo: string | undefined
+    let githubRef: string | undefined
+    if (item.layout === 'bundle') {
+      try {
+        const metaPath = join(dirname(item.skillFilePath), '.aiart-github-skill.json')
+        if (existsSync(metaPath)) {
+          const meta = JSON.parse(readFileSync(metaPath, 'utf8')) as {
+            owner?: string
+            repo?: string
+            resolvedRef?: string
+          }
+          if (meta.owner && meta.repo) githubRepo = `${meta.owner}/${meta.repo}`
+          if (meta.resolvedRef) githubRef = meta.resolvedRef
+        }
+      } catch {
+        // ignore
       }
-      if (!entry.isFile()) continue
-      const kind: DshSkillsFile['kind'] = builtin.has(entry.name)
-        ? 'builtin'
-        : entry.name.endsWith('.md')
-          ? 'custom'
-          : 'template'
-      files.push({
-        fileName: entry.name,
-        kind,
-        // 只对非内置项读文件：内置项的信息在 GraphSkill 里，比解析生成的 md 更准
-        ...skillDisplayInfo({
+    }
+    return {
+      fileName: item.layout === 'bundle' ? item.name : basename(item.skillFilePath),
+      kind:
+        item.scope === 'project'
+          ? 'project'
+          : githubRepo
+            ? 'github'
+            : item.layout === 'bundle'
+              ? 'bundle'
+              : 'custom',
+      title: item.frontmatter.name,
+      description: item.frontmatter.description,
+      hasScripts: item.hasScripts,
+      hasWorkflow: item.hasWorkflow,
+      extraFileCount: item.extraFileCount,
+      scope: item.scope,
+      argumentHint: item.frontmatter.argumentHint,
+      userInvocable: item.frontmatter.userInvocable,
+      disableModelInvocation: item.frontmatter.disableModelInvocation,
+      allowedTools: item.frontmatter.allowedTools,
+      model: item.frontmatter.model,
+      context: item.frontmatter.context,
+      agent: item.frontmatter.agent,
+      whenToUse: item.frontmatter.whenToUse,
+      ...(githubRepo ? { githubRepo } : {}),
+      ...(githubRef ? { githubRef } : {}),
+      version: item.frontmatter.version,
+      author: item.frontmatter.author,
+      license: item.frontmatter.license
+    }
+  })
+
+  // 补充示例模板文件（如 my-skill.example）
+  if (existsSync(skillsDir)) {
+    try {
+      for (const entry of readdirSync(skillsDir, { withFileTypes: true })) {
+        if (!entry.isFile() || entry.name.startsWith('.') || entry.name.endsWith('.md')) continue
+        const content = readSkillFileSafe(join(skillsDir, entry.name))
+        const parsed = content ? parseClaudeSkillMarkdown(content, entry.name) : null
+        files.push({
           fileName: entry.name,
-          kind,
-          builtin: builtinDisplay,
-          ...(kind === 'builtin' ? {} : { content: readSkillFileSafe(join(skillsDir, entry.name)) })
+          kind: 'template',
+          title: parsed?.frontmatter.name ?? entry.name,
+          ...(parsed?.frontmatter.description
+            ? { description: parsed.frontmatter.description }
+            : {})
         })
-      })
+      }
+    } catch {
+      // ignore
     }
   }
+
   files.sort((a, b) => a.fileName.localeCompare(b.fileName))
   return {
     dirPath: skillsDir,
-    builtinCount: listGraphSkills().filter((skill) => !!toDshSkillName(skill.id)).length,
+    builtinCount: 0,
     files
   }
 }
@@ -801,40 +728,6 @@ function readSkillFileSafe(filePath: string): string | undefined {
     return readFileSync(filePath, 'utf8')
   } catch {
     return undefined
-  }
-}
-
-/**
- * 把一个目录型技能包读成界面条目；不是合法技能包时返回 null。
- *
- * 判据与 dsh 一致：目录下必须有 `SKILL.md`（只认深度 1，不做递归 —— dsh 也只扫一层，
- * 递归会让界面显示出 dsh 根本不会加载的东西）。
- */
-function readSkillBundleInfo(skillsDir: string, name: string): DshSkillsFile | null {
-  const content = readSkillFileSafe(join(skillsDir, name, 'SKILL.md'))
-  if (content === undefined) return null
-  let hasScripts = false
-  let extraFileCount = 0
-  try {
-    for (const entry of readdirSync(join(skillsDir, name), { withFileTypes: true })) {
-      if (entry.name === 'SKILL.md') continue
-      if (entry.isDirectory()) {
-        if (entry.name === 'scripts') hasScripts = true
-        continue
-      }
-      extraFileCount += 1
-    }
-  } catch {
-    // 读不到内部结构不影响「这是一个技能包」这个结论
-  }
-  const front = parseDshSkillFrontmatter(content)
-  return {
-    fileName: name,
-    kind: 'bundle',
-    title: front.name ?? name,
-    ...(front.description ? { description: front.description } : {}),
-    hasScripts,
-    extraFileCount
   }
 }
 
@@ -856,226 +749,54 @@ export function writeDshSkillsTemplate(): DshSkillsTemplateResult {
   return { filePath, skipped: false }
 }
 
-/** 查询内置技能模板库：应用内置 GraphSkill 提炼为可复用 SKILL.md 模板 */
-export function listSkillTemplates(): SkillTemplate[] {
-  return listGraphSkills()
-    .map((skill) => {
-      const name = toDshSkillName(skill.id)
-      if (!name) return null
-      return {
-        id: skill.id,
-        name,
-        titleZh: skill.titleZh,
-        titleEn: skill.titleEn,
-        description: `${skill.titleEn} — ${skill.titleZh}`,
-        content: renderDshSkillMd(skill)
-      }
-    })
-    .filter((template): template is SkillTemplate => template !== null)
-}
-
-/** 把内置技能模板导出为技能目录中的 .example 模板文件（同名跳过，不覆盖用户内容） */
-export function exportSkillTemplate(id: string): DshSkillsTemplateResult {
-  const template = listSkillTemplates().find((item) => item.id === id)
-  if (!template) throw new Error(`Unknown skill template: ${id}`)
-  const skillsDir = dshSkillsDir()
-  mkdirSync(skillsDir, { recursive: true })
-  const filePath = join(skillsDir, `${template.name}.example`)
-  if (existsSync(filePath)) return { filePath, skipped: true }
-  writeFileSync(filePath, template.content, 'utf8')
-  return { filePath, skipped: false }
-}
-
-/** 解析 SKILL.md frontmatter（name / description），供会话技能清单与反向导入复用 */
-function parseDshSkillFrontmatter(content: string): { name?: string; description?: string } {
-  const match = content.match(/^---\s*\n([\s\S]*?)\n---\s*\n/)
-  if (!match) return {}
-  const result: Record<string, string> = {}
-  for (const line of match[1].split('\n')) {
-    const kv = line.match(/^([\w-]+):\s*(.*)$/)
-    if (kv) result[kv[1]] = kv[2].trim()
-  }
-  return { name: result.name, description: result.description }
-}
-
-/** 解析 SKILL.md 正文分节（### 用法（中文）/ ### 系统提示（中文）等），供反向导入 GraphSkill 复用 */
-function parseDshSkillSections(content: string): {
-  usageZh?: string
-  usageEn?: string
-  systemPromptZh?: string
-  systemPromptEn?: string
-  instructionZh?: string
-  instructionEn?: string
-} {
-  const section = (heading: string): string | undefined => {
-    const start = content.indexOf(heading)
-    if (start < 0) return undefined
-    const bodyStart = start + heading.length
-    const next = content.indexOf('\n### ', bodyStart)
-    const raw = (next < 0 ? content.slice(bodyStart) : content.slice(bodyStart, next)).trim()
-    return raw || undefined
-  }
-  return {
-    usageZh: section('### 用法（中文）'),
-    usageEn: section('### Usage (English)'),
-    systemPromptZh: section('### 系统提示（中文）'),
-    systemPromptEn: section('### System prompt (English)'),
-    instructionZh: section('### 生成指令（中文）'),
-    instructionEn: section('### Instruction (English)')
-  }
-}
-
-/** 查询本次会话可用的技能清单（内置快照 + 用户自定义 .md），供对话技能调试视图展示 */
+/** 查询本次会话可用的技能清单（含完整 Claude Code 元数据，供对话 `/` 斜杠菜单与技能调试视图展示） */
 export function getSessionSkills(): SessionSkill[] {
-  const skills: SessionSkill[] = []
-  const builtinNames = new Set<string>()
-  for (const skill of listGraphSkills()) {
-    const name = toDshSkillName(skill.id)
-    if (!name) continue
-    builtinNames.add(name)
-    skills.push({
-      name,
-      kind: 'builtin',
-      titleZh: skill.titleZh,
-      titleEn: skill.titleEn,
-      description: `${skill.titleEn} — ${skill.titleZh}`
-    })
-  }
-  const skillsDir = dshSkillsDir()
-  const builtinFiles = new Set(readDshSkillsManifest().previous)
-  if (existsSync(skillsDir)) {
-    for (const entry of readdirSync(skillsDir, { withFileTypes: true })) {
-      /**
-       * 目录型技能包同样要进会话技能清单 —— 它**对 agent 是生效的**（dsh 认这种布局）。
-       * 不列出来的话，用户在对话里看不到自己刚随工作流装上的技能，会以为没装上。
-       */
-      if (entry.isDirectory()) {
-        try {
-          const content = readFileSync(join(skillsDir, entry.name, 'SKILL.md'), 'utf8')
-          const frontmatter = parseDshSkillFrontmatter(content)
-          const name = frontmatter.name || entry.name
-          if (builtinNames.has(name)) continue
-          skills.push({
-            name,
-            kind: 'custom',
-            description: frontmatter.description || name
-          })
-        } catch {
-          // 没有 SKILL.md 就不是技能包（普通目录不该出现在清单里）
-        }
-        continue
-      }
-      if (!entry.isFile() || !entry.name.endsWith('.md') || builtinFiles.has(entry.name)) continue
-      try {
-        const content = readFileSync(join(skillsDir, entry.name), 'utf8')
-        const frontmatter = parseDshSkillFrontmatter(content)
-        const name = frontmatter.name || entry.name.replace(/\.md$/, '')
-        if (builtinNames.has(name)) continue
-        skills.push({
-          name,
-          kind: 'custom',
-          description: frontmatter.description || name
-        })
-      } catch {
-        // 单个文件解析失败不阻塞清单
-      }
-    }
-  }
-  return skills
+  const discovered = discoverInstalledClaudeSkills({
+    personalSkillsDir: dshSkillsDir(),
+    workspaceRoot: resolveWorkspace()
+  })
+  return discovered.map((item) => ({
+    name: item.name,
+    kind: 'custom',
+    description: item.frontmatter.description,
+    argumentHint: item.frontmatter.argumentHint,
+    userInvocable: item.frontmatter.userInvocable,
+    disableModelInvocation: item.frontmatter.disableModelInvocation,
+    allowedTools: item.frontmatter.allowedTools,
+    model: item.frontmatter.model,
+    context: item.frontmatter.context,
+    agent: item.frontmatter.agent,
+    hasScripts: item.hasScripts,
+    hasWorkflow: item.hasWorkflow,
+    scope: item.scope
+  }))
 }
 
-/** 反向同步：把用户自定义 .md 技能导入为应用 GraphSkill（保存 dispose，重复导入先清理） */
-const importedSkillDisposes = new Set<() => void>()
-export function importCustomSkillsToGraph(): SkillImportResult {
-  const imported: string[] = []
-  const skipped: { name: string; reason: string }[] = []
-  // 先清理上次导入的 GraphSkill（后注册优先，重复导入需先 dispose 才能回落到内置）
-  for (const dispose of importedSkillDisposes) {
-    try {
-      dispose()
-    } catch {
-      // 忽略清理失败
-    }
-  }
-  importedSkillDisposes.clear()
-  const skillsDir = dshSkillsDir()
-  const builtinFiles = new Set(readDshSkillsManifest().previous)
-  if (existsSync(skillsDir)) {
-    for (const entry of readdirSync(skillsDir, { withFileTypes: true })) {
-      /**
-       * 目录型技能包（`<name>/SKILL.md`）**不参与反向导入**，且刻意**不记入 `skipped`**。
-       *
-       * 不导入：这是"本来就不该导入"，不是"读不懂"。反向导入是把技能正文变成 GraphSkill
-       * 的提示词段（给节点用 `skillId` 绑定），而技能包是给 agent 的操作手册、还带
-       * references 与可能的脚本，绑到节点的系统提示词上是错的。
-       *
-       * 不记 skipped：`skipped` 在界面上是**失败**通道（无导入项时会以红色报错列出这些名字）。
-       * 把技能包塞进去，会在用户只装了市场技能时弹出一个假的失败提示。
-       * 技能包的可见性由技能清单负责（见 getDshSkillsInfo / getSessionSkills），那里才是它该出现的地方。
-       */
-      if (entry.isDirectory()) continue
-      if (!entry.isFile() || !entry.name.endsWith('.md') || builtinFiles.has(entry.name)) continue
-      try {
-        const content = readFileSync(join(skillsDir, entry.name), 'utf8')
-        const frontmatter = parseDshSkillFrontmatter(content)
-        const name = frontmatter.name || entry.name.replace(/\.md$/, '')
-        const id = `dsh.${toDshSkillName(name)}`
-        if (!id || id === 'dsh.') {
-          skipped.push({ name: entry.name, reason: 'invalid skill name' })
-          continue
-        }
-        const sections = parseDshSkillSections(content)
-        const title = frontmatter.description || name
-        importedSkillDisposes.add(
-          registerGraphSkill({
-            id,
-            kind: 'system',
-            titleZh: title,
-            titleEn: name,
-            usageZh: sections.usageZh,
-            usageEn: sections.usageEn,
-            systemPromptZh: sections.systemPromptZh,
-            systemPromptEn: sections.systemPromptEn,
-            instructionZh: sections.instructionZh,
-            instructionEn: sections.instructionEn
-          })
-        )
-        imported.push(name)
-      } catch (error) {
-        skipped.push({
-          name: entry.name,
-          reason: error instanceof Error ? error.message : String(error)
-        })
-      }
-    }
-  }
-  return { imported, skipped }
-}
-
-/** 示例 SKILL.md 模板：dsh 格式（frontmatter name/description + 正文），复制重命名为 .md 即生效 */
+/** 示例 SKILL.md 模板：完整展示 Claude Code 技能规范（frontmatter + 变量插值 + 动态上下文） */
 function renderDshSkillsTemplate(): string {
   return [
     '---',
     'name: my-skill',
-    'description: 示例技能：演示 dsh 技能的写法。请根据实际用途改写技能名与描述。',
+    'description: 示例 Claude Code 技能：说明本技能的作用以及何时应当调用它。',
+    'argument-hint: "[subject] [style]"',
+    'user-invocable: true',
+    'disable-model-invocation: false',
+    'allowed-tools: Read, Grep, Glob',
+    'context: inline',
     '---',
     '',
-    '# 技能正文',
+    '# 技能执行指南',
     '',
-    '在这里编写技能的执行说明。模型调用本技能时，本文件会作为指令注入上下文。',
+    '当用户通过 `/my-skill $ARGUMENTS` 调用或模型自动匹配本技能时，按以下步骤执行：',
+    '',
+    '- 首个参数（主体）：`$0`',
+    '- 第二个参数（风格）：`$1`',
+    '- 技能目录路径：`${CLAUDE_SKILL_DIR}`',
     '',
     '## 步骤',
-    '1. 明确技能目标',
-    '2. 列出执行步骤',
-    '3. 说明输出要求',
-    '',
-    '## 注意事项',
-    '- 描述要具体，避免模糊指令',
-    '- 需要遵守的约束写在这里',
-    '',
-    '---',
-    '提示：把本文件复制并重命名为「你的技能名.md」（小写字母 + 连字符）即生效；',
-    'frontmatter 的 name / description（文件开头两行）用于模型判断何时调用本技能。',
+    '1. 明确创作或开发目标',
+    '2. 调用合适的工具完成任务',
+    '3. 检查产出并向用户汇报结果',
     ''
   ].join('\n')
 }
@@ -1591,6 +1312,13 @@ function attachWorkerIo(opts: {
     } catch {
       /* ignore */
     }
+    if (activeSkillTurn) {
+      runSkillLifecycleHooks(activeSkillTurn, state === 'start' ? 'PreToolUse' : 'PostToolUse', {
+        toolName: name,
+        toolArgs: args || detail,
+        workspaceRoot: resolveWorkspace()
+      })
+    }
     emit({
       type: 'tool',
       ...(id ? { id } : {}),
@@ -1629,7 +1357,7 @@ function attachWorkerIo(opts: {
   }
 
   /**
-   * 审批请求标记 → 待决定表 + 广播给界面。
+   * 审批请求标记 → 待决定表 + 广播给界面（若命中当前激活 Claude Code 技能的 `allowed-tools` 则自动放行一次）。
    *
    * 解析失败**什么都不做**（既不登记也不广播）：dsh 侧等不到回答文件，5 分钟后收敛到
    * `unavailable` —— 工具调用失败。这条路径上不存在「解析不出来就当同意」的可能。
@@ -1638,6 +1366,19 @@ function attachWorkerIo(opts: {
     if (!turnActive) return
     const payload = parseApprovalMarker(line)
     if (!payload) return
+    if (
+      payload.answerFile &&
+      shouldAutoApproveSkillTool(activeSkillTurn, payload.toolName, payload.reason)
+    ) {
+      try {
+        mkdirSync(dirname(payload.answerFile), { recursive: true })
+        writeFileSync(payload.answerFile, approvalAnswerForDecision('allow-once'), 'utf8')
+        sawOutput = true
+        return
+      } catch {
+        // 自动写盘失败时回落到人工审批弹窗
+      }
+    }
     harnessApprovalRequests.set(payload.requestId, {
       runId: currentRunId,
       answerFile: payload.answerFile,
@@ -1723,6 +1464,10 @@ function attachWorkerIo(opts: {
     if (turnFinalized) return
     turnFinalized = true
     turnActive = false
+    if (activeSkillTurn) {
+      runSkillLifecycleHooks(activeSkillTurn, 'Stop', { workspaceRoot: resolveWorkspace() })
+      activeSkillTurn = null
+    }
     clearActiveHarnessRun()
     releaseHarnessRunAccess(runIdForRelease)
     for (const [id, entry] of harnessAskUserRequests) {
@@ -2074,7 +1819,7 @@ async function ensurePersistentWorkerUnlocked(opts: {
     modelName,
     inputModalities
   })
-  writeDshSkills()
+  cleanupLegacyDshSkills()
 
   let projectMemory: string | null = null
   if (projectService.isOpen()) {
@@ -2149,8 +1894,8 @@ async function ensurePersistentWorkerUnlocked(opts: {
 }
 
 async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult> {
-  const rawTask = String(input?.task ?? '').trim()
-  if (!rawTask) return { started: false, message: '任务内容为空' }
+  const rawInputTask = String(input?.task ?? '').trim()
+  if (!rawInputTask) return { started: false, message: '任务内容为空' }
   if (turnActive) return { started: false, message: '已有任务正在运行' }
 
   const mcp = getMcpServerInfo()
@@ -2162,9 +1907,21 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
     return { started: false, message: '未配置可用文本模型，请先在模型设置中添加' }
   }
 
+  const workspace = resolveWorkspace()
+  const skillPreprocessed = preprocessSkillInvocation({
+    taskText: rawInputTask,
+    sessionId: input.sessionId,
+    workspaceRoot: workspace
+  })
+  const rawTask = skillPreprocessed.taskText
+  activeSkillTurn = skillPreprocessed.activeSkill ?? null
+  const effectiveSessionId =
+    skillPreprocessed.activeSkill?.isolatedSessionId ?? (input.sessionId?.trim() || '')
+
   const runId = String(++runSeq)
   const mode = normalizeChatMode(input.mode)
-  const modelId = input.model?.trim() || provider.modelId
+  const modelId =
+    skillPreprocessed.activeSkill?.modelOverride?.trim() || input.model?.trim() || provider.modelId
   const textCatalog = modalityConfig(provider.provider, 'text').catalog?.[modelId]
   const inputModalities = resolveDshChatInputModalitiesForProvider(provider.provider, modelId)
   const modelName = textCatalog?.name?.trim() || modelId
@@ -2191,8 +1948,7 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
       modelName,
       inputModalities
     })
-    writeDshSkills()
-    const workspace = resolveWorkspace()
+    cleanupLegacyDshSkills()
     emitStatus(
       dshEntry
         ? '正在启动 DeepSeek Harness…'
@@ -2236,7 +1992,7 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
         DSH_MODEL: modelId,
         ...(provider.baseUrl ? { DEEPSEEK_BASE_URL: provider.baseUrl } : {}),
         STUDIO_MCP_TOKEN: mcp.token,
-        ...(input.sessionId?.trim() ? { AIART_SESSION_ID: input.sessionId.trim() } : {}),
+        ...(effectiveSessionId ? { AIART_SESSION_ID: effectiveSessionId } : {}),
         AIART_ASK_DIR: join(app.getPath('temp'), 'aiart-harness-ask'),
         AIART_RUN_ID: runId,
         AIART_MODE: mode
@@ -2257,6 +2013,7 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
       mode
     })
   } catch (error) {
+    activeSkillTurn = null
     return {
       started: false,
       message: error instanceof Error ? error.message : String(error)
@@ -2298,7 +2055,7 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
   const ok = sendWorkerCommand({
     op: 'prompt',
     task: rawTask,
-    sessionId: input.sessionId?.trim() || '',
+    sessionId: effectiveSessionId,
     mode,
     runId
   })

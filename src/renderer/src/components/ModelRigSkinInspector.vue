@@ -273,7 +273,7 @@ watch(
   () => [node.value?.id, hostId.value, !!node.value?.params.rigQa] as const,
   ([id, hid, hasQa]) => {
     if (!id || !hid || !hasQa) return
-    graphEditorHosts.updateNode(hid, id, { rigQa: undefined, skillId: undefined })
+    graphEditorHosts.updateNode(hid, id, { rigQa: undefined })
   },
   { immediate: true }
 )

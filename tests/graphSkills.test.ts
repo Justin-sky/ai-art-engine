@@ -1,33 +1,33 @@
 import { describe, expect, it } from 'vitest'
 import {
-  applyGraphSkill,
-  getGraphSkill,
+  applyNodePreset,
+  getNodeCapability,
   hashPromptForLog,
-  listGraphSkills,
-  registerGraphSkill
+  listNodeCapabilities,
+  registerNodeCapability
 } from '../src/shared/graph'
 
-describe('graphSkills', () => {
-  it('lists episode and system skills', () => {
-    const ids = listGraphSkills().map((skill) => skill.id)
+describe('nodeCapabilities', () => {
+  it('lists episode and builtin node capabilities', () => {
+    const ids = listNodeCapabilities().map((cap) => cap.id)
     expect(ids).toContain('episode.breakdown')
     expect(ids).toContain('episode.beatboard')
     expect(ids).toContain('episode.review.motion')
-    expect(ids).toContain('system.image')
+    expect(ids).toContain('asset.image')
     expect(ids).not.toContain('screenplay.create')
   })
 
-  it('applies episode skill into node params', () => {
-    const params = applyGraphSkill('episode.breakdown')
-    expect(params.skillId).toBe('episode.breakdown')
+  it('applies episode node preset into node params without legacy skillId', () => {
+    const params = applyNodePreset('episode.breakdown')
+    expect('skillId' in params).toBe(false)
     expect(params.generateSystemPrompt).toContain('分镜师')
     expect(params.generateInstruction).toContain('节拍拆解表')
-    expect(getGraphSkill('episode.breakdown')?.parse).toBe('beatBreakdown')
+    expect(getNodeCapability('episode.breakdown')?.parse).toBe('beatBreakdown')
   })
 
   it('interpolates grid vars without touching typeId', () => {
-    const params = applyGraphSkill('episode.image.grid4', { vars: { group: 3 } })
-    expect(params.skillId).toBe('episode.image.grid4')
+    const params = applyNodePreset('episode.image.grid4', { vars: { group: 3 } })
+    expect('skillId' in params).toBe(false)
     expect(params.generateInstruction).toContain('第 3 组')
     expect(params.generateSystemPrompt).toBeUndefined()
   })
@@ -37,63 +37,54 @@ describe('graphSkills', () => {
     expect(hashPromptForLog('hello')).not.toBe(hashPromptForLog('hello!'))
   })
 
-  it('overlays a skill and restores the builtin on dispose', () => {
-    const builtin = getGraphSkill('episode.breakdown')
+  it('overlays a node capability and restores the builtin on dispose', () => {
+    const builtin = getNodeCapability('episode.breakdown')
     expect(builtin).toBeTruthy()
     const overlay = { ...builtin!, titleZh: '插件覆盖' }
-    const dispose = registerGraphSkill(overlay)
-    expect(getGraphSkill('episode.breakdown')?.titleZh).toBe('插件覆盖')
+    const dispose = registerNodeCapability(overlay)
+    expect(getNodeCapability('episode.breakdown')?.titleZh).toBe('插件覆盖')
     dispose()
-    expect(getGraphSkill('episode.breakdown')).toBe(builtin)
+    expect(getNodeCapability('episode.breakdown')).toBe(builtin)
   })
 
-  it('exposes blender dsh skills for the three 3D cook nodes', () => {
-    for (const id of ['blender.rigSkin', 'blender.pose', 'blender.animation'] as const) {
-      const skill = getGraphSkill(id)
-      expect(skill?.kind).toBe('blender')
-      expect(skill?.usageEn).toContain('input.glb')
-      expect(skill?.usageEn).toContain('result.json')
-      expect(skill?.systemPromptEn).toContain('Never invent Euler JSON')
+  it('exposes blender node capabilities for the three 3D cook nodes', () => {
+    for (const id of ['model.rigSkin', 'model.pose', 'model.animation'] as const) {
+      const cap = getNodeCapability(id)
+      expect(cap?.kind).toBe('blender')
+      expect(cap?.usageEn).toContain('input.glb')
+      expect(cap?.usageEn).toContain('result.json')
+      expect(cap?.systemPromptEn).toContain('Never invent Euler JSON')
     }
-    expect(applyGraphSkill('blender.pose').generateInstruction).toContain('IK')
+    expect(applyNodePreset('model.pose').generateInstruction).toContain('IK')
   })
 
-  it('exposes the svg vector skill for the chat agent', () => {
-    const skill = getGraphSkill('svg.motion')
-    expect(skill?.kind).toBe('svg')
-    expect(skill?.titleEn).toContain('SVG')
-    // dsh 靠 usage 里的 3 步 MCP 流程执行，改技能文案时保持这两个 typeId 可查
-    expect(skill?.usageZh).toContain('svg.gen')
-    expect(skill?.usageZh).toContain('svg.anim')
-    expect(applyGraphSkill('svg.motion').generateInstruction).toContain('SVG')
+  it('exposes the svg vector node capability for the chat agent', () => {
+    const cap = getNodeCapability('svg.gen')
+    expect(cap?.kind).toBe('svg')
+    expect(cap?.titleEn).toContain('SVG')
+    expect(cap?.usageZh).toContain('svg.gen')
+    expect(cap?.usageZh).toContain('svg.anim')
+    expect(applyNodePreset('svg.gen').generateInstruction).toContain('SVG')
   })
 
-  it('exposes the tutorial-recording skill for chat how-to videos', () => {
-    const skill = getGraphSkill('tutorial.recording')
-    expect(skill?.kind).toBe('tutorial')
-    expect(skill?.usageZh).toContain('tutorial_compose')
-    expect(skill?.usageEn).toContain('screen_record_stop')
-    // 只服务对话编排，不进任何节点 params
-    expect(skill?.systemPromptZh).toBeUndefined()
-    expect(skill?.instructionZh).toBeUndefined()
-    /**
-     * 这三条是审查发现「照着技能做会失败/会叠字」之后补的，必须留在技能正文里：
-     * - 影视类右键是**三层**菜单（只写两层时 type 项根本不在 DOM 里）；
-     * - 动作必须带 tutorialId（旧实现静默跳过，成片里什么都没发生）；
-     * - 默认不要再加字幕轨（HUD 已把 title/caption 烧进画面）。
-     */
-    expect(skill?.usageZh).toContain('graph-ctx-group-filmPre')
-    expect(skill?.usageZh).toContain('必须带 tutorialId')
-    expect(skill?.usageZh).toContain('别再加字幕轨')
-    expect(skill?.usageEn).toContain('graph-ctx-group-filmPre')
-    expect(skill?.usageEn).toContain('tutorialId is REQUIRED')
+  it('exposes the tutorial-recording capability for chat how-to videos', () => {
+    const cap = getNodeCapability('tutorial.recording')
+    expect(cap?.kind).toBe('tutorial')
+    expect(cap?.usageZh).toContain('tutorial_compose')
+    expect(cap?.usageEn).toContain('screen_record_stop')
+    expect(cap?.systemPromptZh).toBeUndefined()
+    expect(cap?.instructionZh).toBeUndefined()
+    expect(cap?.usageZh).toContain('graph-ctx-group-filmPre')
+    expect(cap?.usageZh).toContain('必须带 tutorialId')
+    expect(cap?.usageZh).toContain('别再加字幕轨')
+    expect(cap?.usageEn).toContain('graph-ctx-group-filmPre')
+    expect(cap?.usageEn).toContain('tutorialId is REQUIRED')
   })
 
-  it('exposes the procedural-assets skill for the chat game flow', () => {
-    const skill = getGraphSkill('gameplay.proc-assets')
-    expect(skill?.kind).toBe('gameplay')
-    expect(skill?.titleEn).toContain('procedural')
-    // 技能是对话里唯一的约定来源：资产层结构、硬规则、工具流程三者都必须写在 usage 里
+  it('exposes the procedural-assets capability for the chat game flow', () => {
+    const cap = getNodeCapability('game.htmlGen')
+    expect(cap?.kind).toBe('gameplay')
+    expect(cap?.titleEn).toContain('procedural')
     for (const token of [
       'defineAsset',
       'createRng',
@@ -102,67 +93,66 @@ describe('graphSkills', () => {
       'gameplay_job_status',
       'src/assets/'
     ]) {
-      expect(skill?.usageZh, `技能缺 ${token}`).toContain(token)
-      expect(skill?.usageEn, `技能缺 ${token}`).toContain(token)
+      expect(cap?.usageZh, `能力缺 ${token}`).toContain(token)
+      expect(cap?.usageEn, `能力缺 ${token}`).toContain(token)
     }
-    expect(skill?.usageZh).toMatch(/禁止 Math\.random/)
-    expect(skill?.usageEn).toMatch(/never run npm yourself/)
-    // 这条技能只服务对话，不进任何节点 params
-    expect(skill?.systemPromptZh).toBeUndefined()
-    expect(skill?.instructionZh).toBeUndefined()
+    expect(cap?.usageZh).toMatch(/禁止 Math\.random/)
+    expect(cap?.usageEn).toMatch(/never run npm yourself/)
+    expect(cap?.systemPromptZh).toBeUndefined()
+    expect(cap?.instructionZh).toBeUndefined()
   })
 
-  it('exposes updated film.pipeline skill with Series Bible, variant inheritance, and concurrency', () => {
-    const skill = getGraphSkill('film.pipeline')
-    expect(skill?.kind).toBe('film')
-    expect(skill?.usageZh).toContain('film.workbench')
-    expect(skill?.usageZh).toContain('in-cast')
-    expect(skill?.usageZh).toContain('角色名#造型')
-    expect(skill?.usageZh).toContain('filmRenderConcurrency')
-    expect(skill?.usageEn).toContain('film.workbench')
-    expect(skill?.usageEn).toContain('in-cast')
-    expect(skill?.usageEn).toContain('BaseName#Variant')
-    expect(skill?.usageEn).toContain('filmRenderConcurrency')
+  it('exposes updated film.workbench capability with Series Bible, variant inheritance, and concurrency', () => {
+    const cap = getNodeCapability('film.workbench')
+    expect(cap?.kind).toBe('film')
+    expect(cap?.usageZh).toContain('film.workbench')
+    expect(cap?.usageZh).toContain('in-cast')
+    expect(cap?.usageZh).toContain('角色名#造型')
+    expect(cap?.usageZh).toContain('filmRenderConcurrency')
+    expect(cap?.usageEn).toContain('film.workbench')
+    expect(cap?.usageEn).toContain('in-cast')
+    expect(cap?.usageEn).toContain('BaseName#Variant')
+    expect(cap?.usageEn).toContain('filmRenderConcurrency')
   })
 
-  it('exposes latest consolidated node skills (image.process, image.adVariants, stage2d.director, voice.audio, world.spatial)', () => {
-    const imgProc = getGraphSkill('image.process')
+  it('exposes latest consolidated node capabilities (image.process, image.adVariants, stage.2d, voice.tts, world.splatView)', () => {
+    const imgProc = getNodeCapability('image.process')
     expect(imgProc?.usageZh).toContain('imageProcessTool')
     expect(imgProc?.usageEn).toContain('imageProcessTool')
 
     for (const id of [
-      'system.upscale',
-      'system.expand',
-      'system.redraw',
-      'system.erase',
-      'system.matte'
+      'image.upscale',
+      'image.expand',
+      'image.redraw',
+      'image.erase',
+      'image.matte'
     ] as const) {
-      const s = getGraphSkill(id)
+      const s = getNodeCapability(id)
       expect(s?.usageZh, `${id} usageZh should reference image.process`).toContain('image.process')
       expect(s?.usageEn, `${id} usageEn should reference image.process`).toContain('image.process')
     }
 
-    expect(getGraphSkill('image.adVariants')?.usageZh).toContain('adVariantMatrix')
-    expect(getGraphSkill('stage2d.director')?.usageZh).toContain('stage.2d')
-    expect(getGraphSkill('stage2d.director')?.usageZh).toContain('image.align')
-    expect(getGraphSkill('voice.audio')?.usageZh).toContain('voice.tts')
-    expect(getGraphSkill('voice.audio')?.usageZh).toContain('audio.separate')
-    expect(getGraphSkill('world.spatial')?.usageZh).toContain('world.splatView')
-    expect(getGraphSkill('semantic.shotDescribe')?.usageZh).toContain('semantic.analyze')
-    expect(getGraphSkill('semantic.shotDescribe')?.usageZh).toContain('semantic.rebuild')
+    expect(getNodeCapability('image.adVariants')?.usageZh).toContain('adVariantMatrix')
+    expect(getNodeCapability('stage.2d')?.usageZh).toContain('stage.2d')
+    expect(getNodeCapability('stage.2d')?.usageZh).toContain('image.align')
+    expect(getNodeCapability('voice.tts')?.usageZh).toContain('voice.tts')
+    expect(getNodeCapability('voice.tts')?.usageZh).toContain('audio.separate')
+    expect(getNodeCapability('world.splatView')?.usageZh).toContain('world.splatView')
+    expect(getNodeCapability('semantic.analyze')?.usageZh).toContain('semantic.analyze')
+    expect(getNodeCapability('semantic.rebuild')?.usageZh).toContain('semantic.rebuild')
   })
 
-  it('registers a new skill and removes it on dispose', () => {
-    const dispose = registerGraphSkill({
-      id: 'plugin.test.skill',
-      kind: 'system',
-      titleZh: '测试技能',
-      titleEn: 'Test skill'
+  it('registers a new node capability and removes it on dispose', () => {
+    const dispose = registerNodeCapability({
+      id: 'plugin.test.cap',
+      kind: 'node',
+      titleZh: '测试节点能力',
+      titleEn: 'Test node capability'
     })
-    expect(getGraphSkill('plugin.test.skill')?.titleZh).toBe('测试技能')
-    expect(listGraphSkills().some((skill) => skill.id === 'plugin.test.skill')).toBe(true)
+    expect(getNodeCapability('plugin.test.cap')?.titleZh).toBe('测试节点能力')
+    expect(listNodeCapabilities().some((cap) => cap.id === 'plugin.test.cap')).toBe(true)
     dispose()
-    expect(getGraphSkill('plugin.test.skill')).toBeUndefined()
-    expect(listGraphSkills().some((skill) => skill.id === 'plugin.test.skill')).toBe(false)
+    expect(getNodeCapability('plugin.test.cap')).toBeUndefined()
+    expect(listNodeCapabilities().some((cap) => cap.id === 'plugin.test.cap')).toBe(false)
   })
 })

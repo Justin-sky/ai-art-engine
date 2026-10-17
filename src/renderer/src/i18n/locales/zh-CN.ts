@@ -878,7 +878,7 @@ export default {
         '在仓库 {dir} 里执行：node scripts/build-index.mjs && node scripts/validate.mjs',
       commit: '确认无误后提交 workflows/{id}/（同一个 version 的内容不得再改，改了请升版本）',
       uploadPr:
-        '已导出独立工作流包 {dir}，可直接上传至 ai-art-engine-workflow 仓库的 workflows/{id}/ 发起 PR（CI 会自动生成并校验索引）',
+        '已导出独立工作流包 {dir}，可直接上传至 ai-art-engine-skills 仓库的 workflows/{id}/ 发起 PR（CI 会自动生成并校验索引）',
       editSkill:
         '已自动生成技能脚手架 workflows/{id}/skill/SKILL.md（技能名 {skillName}），可按需补充领域提示词规范',
       installedLocal:
@@ -894,9 +894,9 @@ export default {
     }
   },
   marketplace: {
-    title: '插件市场',
-    eyebrow: '能力与插件',
-    open: '插件市场',
+    title: '技能市场',
+    eyebrow: '能力与技能',
+    open: '技能市场',
     loading: '正在读取已安装内容…',
     devDocs: '开发者文档',
     readOnlyHint:
@@ -904,8 +904,8 @@ export default {
     searchPlaceholder: {
       all: '搜索 MCP、技能或工作流',
       mcp: '搜索 MCP 服务名或地址',
-      skills: '搜索技能文件名',
-      workflows: '搜索工作流标题或作者'
+      skills: '搜索技能名称、/指令或描述',
+      workflows: '搜索技能与工作流标题或作者'
     },
     searchAria: '搜索当前页签内容',
     clearSearch: '清除',
@@ -921,13 +921,41 @@ export default {
       file: '文件',
       purpose: '用途',
       source: '来源',
-      hint: '该技能由应用快照到技能目录，AI 对话时 Agent 可自行加载使用；这里只做查看与导出。'
+      slash: '指令',
+      whenToUse: '触发',
+      context: '上下文',
+      model: '模型',
+      allowedTools: '白名单',
+      hint: '该技能遵循 Claude Code 技能规范（SKILL.md），可在 AI 对话中通过 /指令 或由 Agent 自动触发。'
+    },
+    github: {
+      addTitle: '从 GitHub 安装 Claude Code 技能',
+      placeholder:
+        '输入 GitHub 仓库或子目录地址，如 anthropics/skills 或 https://github.com/owner/repo/tree/main/skills/my-skill',
+      inspect: '解析仓库',
+      inspecting: '解析中…',
+      foundCount: '发现 {count} 个技能',
+      installSelected: '安装所选 ({count})',
+      installing: '安装中…',
+      installedOk: '已从 GitHub 安装 {count} 个技能：{names}',
+      scriptsConfirm:
+        '所选 GitHub 技能包含 {count} 个可执行脚本文件：\n\n{files}\n\n点「确定」连同脚本一起安装；点「取消」仅安装 SKILL.md 与参考文档。',
+      reason: {
+        invalidUrl:
+          '请输入合法的 GitHub 仓库地址（如 owner/repo 或 https://github.com/owner/repo）',
+        notFound: '未找到对应的 GitHub 仓库或分支路径',
+        rateLimited: 'GitHub API 请求受限，请稍后再试',
+        noSkillsFound: '在该 GitHub 仓库路径下未找到任何 SKILL.md 技能包',
+        network: '连接 GitHub 失败，请检查网络',
+        invalidSkill: '技能包 SKILL.md 格式不合法',
+        unknown: 'GitHub 技能操作失败'
+      }
     },
     category: {
       all: '全部',
       mcp: 'MCP',
       skills: '技能',
-      workflows: '工作流'
+      workflows: '技能与工作流'
     },
     workflows: {
       refresh: '刷新目录',
@@ -1111,7 +1139,9 @@ export default {
         builtin: '内置',
         custom: '自定义',
         template: '模板',
-        bundle: '技能包'
+        bundle: '技能包',
+        github: 'GitHub',
+        project: '工程技能'
       }
     }
   },
@@ -2323,7 +2353,41 @@ export default {
       exportCapCutHint: '导出剪映专业版 / CapCut 兼容草稿文件（draft_content.json）',
       exportCapCutDone: '剪映草稿已导出：\n{path}',
       exportNleDone: '工程文件已导出：\n{path}',
-      exportNleFailed: '工程文件导出失败：{error}'
+      exportNleFailed: '工程文件导出失败：{error}',
+      razorTool: '剃刀',
+      razorToolHint: '剃刀分割工具 (C)：悬停片段显示切点线，点击直接切开片段',
+      trimInToPlayhead: '裁入 [',
+      trimInToPlayheadHint: '将当前片段入点裁剪至播放头位置 ([)',
+      trimOutToPlayhead: '裁出 ]',
+      trimOutToPlayheadHint: '将当前片段出点裁剪至播放头位置 (])',
+      cropTool: '画面裁剪',
+      cropToolHint: '在预览画布上拖拽九宫格裁剪框裁切视频画面构图',
+      cropSection: '画面构图裁剪',
+      cropPresetFree: '自由',
+      cropX: '左边界 %',
+      cropY: '上边界 %',
+      cropWidth: '裁剪宽 %',
+      cropHeight: '裁剪高 %',
+      cropReset: '重置裁剪',
+      cropActiveBadge: '已裁剪',
+      transitionSmoothLeft: '柔和左滑',
+      transitionSmoothRight: '柔和右滑',
+      transitionRadial: '径向扫描',
+      transitionZoomIn: '变焦推进',
+      transitionPixelize: '像素溶解',
+      transitionHorzOpen: '水平开幕',
+      transitionVertOpen: '垂直开幕',
+      transitionCatBasic: '基础柔和',
+      transitionCatSlide: '动感推拉',
+      transitionCatWipe: '几何擦除',
+      transitionCatCinematic: '电影特效',
+      transitionDuration: '过场时长',
+      transitionApplyAll: '应用到全部切点',
+      transitionRemove: '移除过场',
+      transitionJunctionTitle: '片段过场设置',
+      transitionJunctionHint: '点击打开过场面板选择效果与时长，或左右拖拽调节重叠时长',
+      transitionCutAddHint: '点击添加片段过场，或左右拖拽拉出转场重叠区',
+      transitionPairLabel: '{left} → {right}'
     },
     pane: {
       resizeSplit: '拖动调整上下画布高度'

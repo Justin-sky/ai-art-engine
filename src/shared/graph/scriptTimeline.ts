@@ -81,6 +81,31 @@ export function clampClipFreezeTailSec(value: unknown): number {
   return Math.min(CLIP_FREEZE_TAIL_MAX_SEC, Math.max(0, Math.round(n * 100) / 100))
 }
 
+export type ScriptTimelineTransitionType =
+  | 'none'
+  | 'dissolve'
+  | 'fade'
+  | 'fadeout'
+  | 'fadein'
+  | 'flash'
+  | 'smoothleft'
+  | 'smoothright'
+  | 'slideleft'
+  | 'slideright'
+  | 'slideup'
+  | 'slidedown'
+  | 'wipeleft'
+  | 'wiperight'
+  | 'wipeup'
+  | 'wipedown'
+  | 'circleopen'
+  | 'circleclose'
+  | 'radial'
+  | 'zoomin'
+  | 'pixelize'
+  | 'horzopen'
+  | 'vertopen'
+
 export type ScriptTimelineClip = {
   id: string
   track: ScriptTimelineTrackKind
@@ -109,6 +134,14 @@ export type ScriptTimelineClip = {
   contrast?: number
   /** 片段级饱和度微调（0~3，缺省 1） */
   saturation?: number
+  /** 画面裁剪左边界（相对源画面宽度，0~1，缺省 0） */
+  cropX?: number
+  /** 画面裁剪上边界（相对源画面高度，0~1，缺省 0） */
+  cropY?: number
+  /** 画面裁剪宽度（相对源画面宽度，0.05~1，缺省 1） */
+  cropWidth?: number
+  /** 画面裁剪高度（相对源画面高度，0.05~1，缺省 1） */
+  cropHeight?: number
   /** 字幕片段独立字色覆盖（#RRGGBB） */
   textColor?: string
   /** 字幕片段独立字号覆盖（像素） */
@@ -133,24 +166,8 @@ export type ScriptTimelineClip = {
   transitionInSec?: number
   /** 出场淡出转场时长（秒，视频轨） */
   transitionOutSec?: number
-  /** 转场效果：none/dissolve/fade/flash */
-  transitionType?:
-    | 'none'
-    | 'dissolve'
-    | 'fade'
-    | 'fadeout'
-    | 'fadein'
-    | 'flash'
-    | 'slideleft'
-    | 'slideright'
-    | 'slideup'
-    | 'slidedown'
-    | 'wipeleft'
-    | 'wiperight'
-    | 'wipeup'
-    | 'wipedown'
-    | 'circleopen'
-    | 'circleclose'
+  /** 转场效果 */
+  transitionType?: ScriptTimelineTransitionType
 }
 
 export type ScriptTimelineSettings = {
@@ -257,6 +274,10 @@ export type TimelineExportClip = {
   brightness?: number
   contrast?: number
   saturation?: number
+  cropX?: number
+  cropY?: number
+  cropWidth?: number
+  cropHeight?: number
   textColor?: string
   fontSize?: number
   volume?: number
@@ -269,23 +290,7 @@ export type TimelineExportClip = {
   opacity?: number
   transitionInSec?: number
   transitionOutSec?: number
-  transitionType?:
-    | 'none'
-    | 'dissolve'
-    | 'fade'
-    | 'fadeout'
-    | 'fadein'
-    | 'flash'
-    | 'slideleft'
-    | 'slideright'
-    | 'slideup'
-    | 'slidedown'
-    | 'wipeleft'
-    | 'wiperight'
-    | 'wipeup'
-    | 'wipedown'
-    | 'circleopen'
-    | 'circleclose'
+  transitionType?: ScriptTimelineTransitionType
 }
 
 export type TimelineExportInput = {
@@ -730,6 +735,212 @@ export function closeTimelineTrackGaps(
     return { ...clip, startSec: nextStart }
   })
   return { clips: nextClips, closedCount, savedSec }
+}
+
+/**
+ * 归一化画面裁剪框（0~1），并判断是否启用了有效裁剪。
+ */
+export function normalizeClipCropRect(
+  clip?: {
+    cropX?: number
+    cropY?: number
+    cropWidth?: number
+    cropHeight?: number
+  } | null
+): {
+  x: number
+  y: number
+  width: number
+  height: number
+  cropX: number
+  cropY: number
+  cropWidth: number
+  cropHeight: number
+  isCropped: boolean
+} {
+  const rawW = Number.isFinite(clip?.cropWidth) ? Number(clip?.cropWidth) : 1
+  const rawH = Number.isFinite(clip?.cropHeight) ? Number(clip?.cropHeight) : 1
+  const width = Math.min(1, Math.max(0.05, Math.round(rawW * 10000) / 10000))
+  const height = Math.min(1, Math.max(0.05, Math.round(rawH * 10000) / 10000))
+  const rawX = Number.isFinite(clip?.cropX) ? Number(clip?.cropX) : 0
+  const rawY = Number.isFinite(clip?.cropY) ? Number(clip?.cropY) : 0
+  const x = Math.min(1 - width, Math.max(0, Math.round(rawX * 10000) / 10000))
+  const y = Math.min(1 - height, Math.max(0, Math.round(rawY * 10000) / 10000))
+  const isCropped = x > 0.001 || y > 0.001 || width < 0.999 || height < 0.999
+  return {
+    x,
+    y,
+    width,
+    height,
+    cropX: x,
+    cropY: y,
+    cropWidth: width,
+    cropHeight: height,
+    isCropped
+  }
+}
+
+/**
+ * 将片段入点（`in`）或出点（`out`）快速裁剪到时间点 `atSec`：
+ * - `side === 'in'`：起点移到 `atSec`，时长缩短，非字幕片段同步推进 `sourceOffsetSec += delta * speed`；
+ * - `side === 'out'`：终点收拢到 `atSec`，时长缩短为 `atSec - startSec`。
+ */
+export function trimTimelineClipToTime(
+  clip: ScriptTimelineClip,
+  atSec: number,
+  side: 'in' | 'out',
+  minDurationSec = 0.2
+): ScriptTimelineClip | null {
+  if (!Number.isFinite(atSec)) return null
+  const clipEnd = clip.startSec + clip.durationSec
+  if (side === 'in') {
+    const delta = atSec - clip.startSec
+    const nextDuration = clipEnd - atSec
+    if (delta <= 0.005 || nextDuration < minDurationSec) return null
+    const speed = clampClipSpeed(clip.speed)
+    const srcOff = Math.max(
+      0,
+      Number.isFinite(clip.sourceOffsetSec) ? Number(clip.sourceOffsetSec) : 0
+    )
+    const next: ScriptTimelineClip = {
+      ...clip,
+      startSec: Number(atSec.toFixed(3)),
+      durationSec: Number(nextDuration.toFixed(3))
+    }
+    if (clip.track !== 'subtitle') {
+      next.sourceOffsetSec = Number((srcOff + delta * speed).toFixed(3))
+    }
+    return next
+  }
+  const nextDuration = atSec - clip.startSec
+  const trimmedTail = clipEnd - atSec
+  if (trimmedTail <= 0.005 || nextDuration < minDurationSec) return null
+  return {
+    ...clip,
+    durationSec: Number(nextDuration.toFixed(3))
+  }
+}
+
+/**
+ * 在视频轨相邻片段 `left` 与 `right` 之间设置或移除转场，并自动涟漪平移 `right` 及其后续视频轨片段：
+ * - 当启用非 `none` 转场且 `durationSec > 0` 时，自动令 `right.startSec = leftEnd - durationSec`，
+ *   并将 `shiftDelta` 同步作用到 `right` 之后的所有主视频轨片段，保证切点重叠且不产生尾部断层；
+ * - 当移除转场（`transitionType === 'none'` 或 `durationSec <= 0`）时，若 `right` 与 `left` 重叠则还原为紧贴切点。
+ */
+export function applyVideoTransitionBetweenClips(
+  clips: ScriptTimelineClip[],
+  leftId: string,
+  rightId: string,
+  options: {
+    transitionType?: ScriptTimelineTransitionType
+    durationSec?: number
+  }
+): ScriptTimelineClip[] {
+  const vClips = clips
+    .filter((c) => c.track === 'video')
+    .slice()
+    .sort((a, b) => a.startSec - b.startSec || a.id.localeCompare(b.id))
+  const rightIdx = vClips.findIndex((c) => c.id === rightId)
+  const leftIdx = vClips.findIndex((c) => c.id === leftId)
+  if (leftIdx < 0 || rightIdx < 0 || rightIdx <= leftIdx) {
+    return clips.map((c) => ({ ...c }))
+  }
+  const left = vClips[leftIdx]
+  const right = vClips[rightIdx]
+  const leftEnd = left.startSec + left.durationSec
+  const currentOverlap = Math.max(0, leftEnd - right.startSec)
+  const currentDur = Math.max(
+    currentOverlap,
+    left.transitionOutSec ?? 0,
+    right.transitionInSec ?? 0
+  )
+  let nextType: ScriptTimelineTransitionType =
+    options.transitionType ??
+    (right.transitionType && right.transitionType !== 'none' ? right.transitionType : 'dissolve')
+  const maxDur = Math.max(0, Math.min(3, Math.min(left.durationSec, right.durationSec) - 0.15))
+  let nextDur = 0
+  if (nextType === 'none' || (options.durationSec !== undefined && options.durationSec <= 0.02)) {
+    nextType = 'none'
+    nextDur = 0
+  } else if (maxDur >= 0.1) {
+    const rawDur =
+      options.durationSec !== undefined
+        ? options.durationSec
+        : currentDur > 0.04
+          ? currentDur
+          : Math.min(0.6, Math.min(left.durationSec, right.durationSec) * 0.35)
+    nextDur = Number(Math.min(maxDur, Math.max(0.1, rawDur)).toFixed(2))
+  } else {
+    nextType = 'none'
+    nextDur = 0
+  }
+
+  const targetRightStart =
+    nextDur > 0
+      ? Math.max(left.startSec + 0.1, Number((leftEnd - nextDur).toFixed(3)))
+      : right.startSec < leftEnd
+        ? Number(leftEnd.toFixed(3))
+        : right.startSec
+  const shiftDelta = Number((targetRightStart - right.startSec).toFixed(3))
+  const shiftedIds = new Set<string>()
+  for (let i = rightIdx; i < vClips.length; i += 1) {
+    shiftedIds.add(vClips[i].id)
+  }
+
+  return clips.map((clip) => {
+    if (clip.id === left.id) {
+      const nextLeft: ScriptTimelineClip = { ...clip }
+      if (nextDur > 0) {
+        nextLeft.transitionOutSec = nextDur
+      } else {
+        delete nextLeft.transitionOutSec
+      }
+      return nextLeft
+    }
+    if (clip.id === right.id) {
+      const nextRight: ScriptTimelineClip = {
+        ...clip,
+        startSec: Math.max(0, Number((clip.startSec + shiftDelta).toFixed(3))),
+        transitionType: nextDur > 0 ? nextType : 'none'
+      }
+      if (nextDur > 0) {
+        nextRight.transitionInSec = nextDur
+      } else {
+        delete nextRight.transitionInSec
+      }
+      return nextRight
+    }
+    if (shiftedIds.has(clip.id)) {
+      return {
+        ...clip,
+        startSec: Math.max(0, Number((clip.startSec + shiftDelta).toFixed(3)))
+      }
+    }
+    return { ...clip }
+  })
+}
+
+/**
+ * 将指定转场效果与时长批量应用到视频轨所有相邻切点。
+ */
+export function applyVideoTransitionToAllCuts(
+  clips: ScriptTimelineClip[],
+  transitionType: ScriptTimelineTransitionType,
+  durationSec: number
+): ScriptTimelineClip[] {
+  const vClips = clips
+    .filter((c) => c.track === 'video')
+    .slice()
+    .sort((a, b) => a.startSec - b.startSec || a.id.localeCompare(b.id))
+  if (vClips.length < 2) return clips.map((c) => ({ ...c }))
+  let current = clips.map((c) => ({ ...c }))
+  for (let i = 1; i < vClips.length; i += 1) {
+    current = applyVideoTransitionBetweenClips(current, vClips[i - 1].id, vClips[i].id, {
+      transitionType,
+      durationSec
+    })
+  }
+  return current
 }
 
 function isTrackKind(value: unknown): value is ScriptTimelineTrackKind {

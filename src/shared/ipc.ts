@@ -417,20 +417,20 @@ export const IpcChannels = {
   GIT_FILE_DIFF: 'git:file-diff',
   /** 工程：扫描本轮直接落盘的产物（`Output/` / `Cache/` 下的媒体，对话产物卡用；只读） */
   PROJECT_SCAN_OUTPUTS: 'project:scan-outputs',
-  /** Harness：查询 dsh 自定义技能目录信息（路径 / 文件清单 / 内置技能数） */
+  /** Harness：查询 dsh 自定义技能目录信息（路径 / 文件清单） */
   SKILLS_GET_INFO: 'skills:get-info',
   /** Harness：在系统文件管理器中打开 dsh 自定义技能目录 */
   SKILLS_OPEN_DIR: 'skills:open-dir',
   /** Harness：写入一个示例 SKILL.md 模板（同名已存在则跳过） */
   SKILLS_WRITE_TEMPLATE: 'skills:write-template',
-  /** Skills：查询内置技能模板库（应用内置 GraphSkill 提炼的可复用模板清单） */
-  SKILLS_LIST_TEMPLATES: 'skills:list-templates',
-  /** Skills：把内置技能模板导出为技能目录中的 .example 模板文件（同名跳过） */
-  SKILLS_EXPORT_TEMPLATE: 'skills:export-template',
-  /** Skills：查询本次会话可用的技能清单（内置快照 + 用户自定义，供对话技能调试视图） */
+  /** Skills：查询本次会话可用的技能清单（含完整 Claude Code 元数据） */
   SKILLS_GET_SESSION: 'skills:get-session',
-  /** Skills：把用户自定义 .md 技能反向导入为应用 GraphSkill（双向同步工具） */
-  SKILLS_IMPORT_TO_GRAPH: 'skills:import-to-graph',
+  /** Skills：探测 GitHub 仓库或子目录中的 Claude Code 技能清单 */
+  SKILLS_INSPECT_GITHUB: 'skills:inspect-github',
+  /** Skills：从 GitHub 仓库直接下载并安装 Claude Code 技能 */
+  SKILLS_INSTALL_GITHUB: 'skills:install-github',
+  /** Skills：卸载已安装的技能（目录型或单文件） */
+  SKILLS_UNINSTALL: 'skills:uninstall',
   /** Harness：任务事件流（main → 渲染层，assistant / status / tool / done / error） */
   HARNESS_EVENT: 'harness:event'
 } as const
@@ -1041,7 +1041,7 @@ export interface PrepareBlenderDshJobInput {
   sourceRelativePath: string
   instruction: string
   locale?: string
-  skillId: string
+  nodeTypeId?: string
 }
 
 export interface PrepareBlenderDshJobResult {
@@ -1083,32 +1083,50 @@ export interface BuildGamePlayProjectResult {
   logs: string[]
 }
 
-/** Skills：dsh 技能目录中的一个文件 */
+/** Skills：dsh / Claude Code 技能目录中的一个条目 */
 export interface DshSkillsFile {
   fileName: string
   /**
-   * builtin=应用内置技能快照生成；custom=用户自定义技能(.md)；
-   * template=示例模板；bundle=目录型技能包（`<name>/SKILL.md`，通常随市场工作流安装）
+   * custom=用户自定义技能(.md)；template=示例模板；
+   * bundle=目录型技能包（`<name>/SKILL.md`，来自技能市场或 GitHub 安装）；
+   * github=从 GitHub 直接安装的技能包；project=工程级 `.claude/skills` 技能
    */
-  kind: 'builtin' | 'custom' | 'template' | 'bundle'
-  /**
-   * 展示标题（内置项取 GraphSkill 的中文标题，如「图片生成」）。
-   *
-   * 早先界面只拿到 `fileName`，于是卡片标题只能是 `system-image` 这种 id 风格的主干 ——
-   * 看着像节点、也分不清是干什么的。取不到时回落为文件名主干。
-   */
+  kind: 'builtin' | 'custom' | 'template' | 'bundle' | 'github' | 'project'
+  /** 展示标题 */
   title: string
-  /** 展示描述；取不到时省略（调用方不渲染这一行） */
+  /** 展示描述；取不到时省略 */
   description?: string
-  /**
-   * 技能包内是否含 `scripts/`。
-   *
-   * dsh 的技能层**没有脚本沙箱也没有同意流**，脚本能否执行取决于通用 shell；
-   * 应用当前也还没实现审批应答。所以界面必须让用户看见这一点，而不是装作无事发生。
-   */
+  /** 技能包内是否含 `scripts/` */
   hasScripts?: boolean
+  /** 技能包内是否附带 `workflow.json` 画布工作流 */
+  hasWorkflow?: boolean
   /** 技能包内的文件数（不含 SKILL.md 自身） */
   extraFileCount?: number
+  /** 技能来源作用域：personal ($DSH_HOME/skills) 或 project (.claude/skills) */
+  scope?: 'personal' | 'project'
+  /** Claude Code 参数提示（如 "[issue-number]"） */
+  argumentHint?: string
+  /** 是否允许用户通过 /name 调用 */
+  userInvocable?: boolean
+  /** 是否禁止模型自动调用 */
+  disableModelInvocation?: boolean
+  /** 技能激活期间免确认工具列表 */
+  allowedTools?: string[]
+  /** 技能指定模型覆盖 */
+  model?: string
+  /** 技能执行上下文（inline | fork） */
+  context?: 'inline' | 'fork'
+  /** fork 模式下的子代理类型 */
+  agent?: string
+  /** Claude Code 适用场景提示 */
+  whenToUse?: string
+  /** GitHub 仓库来源（如 owner/repo） */
+  githubRepo?: string
+  /** GitHub 引用分支或 SHA */
+  githubRef?: string
+  version?: string
+  author?: string
+  license?: string
 }
 
 /**
@@ -1144,7 +1162,7 @@ export interface DshSkillsInfo {
 }
 
 // ─────────────────────────────────────────────────────────────
-// 工作流市场（远端 `ai-art-engine-workflow`）
+// 技能市场（远端 `ai-art-engine-skills`）
 // ─────────────────────────────────────────────────────────────
 
 /**
@@ -1307,34 +1325,74 @@ export interface DshSkillsTemplateResult {
   skipped: boolean
 }
 
-/** Skills：内置技能模板库条目（应用内置 GraphSkill 提炼的可复用模板） */
-export interface SkillTemplate {
-  /** GraphSkill id */
-  id: string
-  /** 建议的 dsh 技能文件名（kebab-case，不含 .md） */
-  name: string
-  titleZh: string
-  titleEn: string
-  description: string
-  /** 渲染后的 SKILL.md 完整内容 */
-  content: string
-}
-
-/** Skills：会话中一个可用技能（对话技能调试视图展示） */
+/** Skills：会话中一个可用技能（供对话 `/` 斜杠自动补全菜单与技能调试视图展示） */
 export interface SessionSkill {
-  /** dsh 技能名（文件名去 .md） */
+  /** 技能唯一名（kebab-case） */
   name: string
-  /** builtin=应用内置技能快照；custom=用户自定义 .md 技能 */
   kind: 'builtin' | 'custom'
   titleZh?: string
   titleEn?: string
   description: string
+  argumentHint?: string
+  userInvocable?: boolean
+  disableModelInvocation?: boolean
+  allowedTools?: string[]
+  model?: string
+  context?: 'inline' | 'fork'
+  agent?: string
+  hasScripts?: boolean
+  hasWorkflow?: boolean
+  scope?: 'personal' | 'project'
 }
 
-/** Skills：自定义 .md 技能反向导入 GraphSkill 的结果 */
-export interface SkillImportResult {
-  imported: string[]
-  skipped: { name: string; reason: string }[]
+/** GitHub 技能探测条目 */
+export interface GitHubDiscoveredSkillView {
+  name: string
+  description: string
+  repoSubpath: string
+  version?: string
+  author?: string
+  license?: string
+  argumentHint?: string
+  userInvocable: boolean
+  disableModelInvocation: boolean
+  allowedTools: string[]
+  model?: string
+  context: 'inline' | 'fork'
+  agent?: string
+  hasScripts: boolean
+  hasWorkflow: boolean
+  files: Array<{ path: string; sizeBytes?: number }>
+  scriptFiles: Array<{ path: string; sizeBytes?: number }>
+  installed: boolean
+}
+
+export interface GitHubSkillInspectResult {
+  ok: boolean
+  source?: {
+    owner: string
+    repo: string
+    ref?: string
+    subpath: string
+    canonicalUrl: string
+    resolvedRef: string
+  }
+  skills?: GitHubDiscoveredSkillView[]
+  reasonKey?: string
+  error?: string
+}
+
+export interface InstallGitHubSkillsInput {
+  url: string
+  skillNames?: string[]
+  skillScriptsConsent?: boolean
+}
+
+export interface InstallGitHubSkillsResult {
+  ok: boolean
+  installed: string[]
+  reasonKey?: string
+  error?: string
 }
 
 /** Harness：任务事件流（main → 渲染层） */
@@ -2077,7 +2135,7 @@ export interface StudioApi {
   /** Harness：闲时预热常驻 dsh worker */
   prewarmHarness: () => Promise<{ ok: boolean; message?: string }>
 
-  /** Skills：查询 dsh 自定义技能目录信息 */
+  /** Skills：查询 dsh / Claude Code 技能目录信息 */
   getDshSkillsInfo: () => Promise<DshSkillsInfo>
 
   /** Skills：在系统文件管理器中打开 dsh 技能目录（不存在则先创建） */
@@ -2086,17 +2144,17 @@ export interface StudioApi {
   /** Skills：写入一个示例 SKILL.md 模板（同名已存在则跳过） */
   writeDshSkillsTemplate: () => Promise<DshSkillsTemplateResult>
 
-  /** Skills：查询内置技能模板库（应用内置 GraphSkill 提炼的可复用模板） */
-  listSkillTemplates: () => Promise<SkillTemplate[]>
-
-  /** Skills：把内置技能模板导出为技能目录中的 .example 模板文件（同名跳过） */
-  exportSkillTemplate: (id: string) => Promise<DshSkillsTemplateResult>
-
-  /** Skills：查询本次会话可用技能清单（内置快照 + 用户自定义，供对话技能调试视图） */
+  /** Skills：查询本次会话可用技能清单（含完整 Claude Code 元数据，供 `/` 斜杠菜单与技能调试视图使用） */
   getSessionSkills: () => Promise<SessionSkill[]>
 
-  /** Skills：把用户自定义 .md 技能反向导入为应用 GraphSkill（双向同步工具） */
-  importCustomSkillsToGraph: () => Promise<SkillImportResult>
+  /** Skills：探测 GitHub 仓库或子目录中的 Claude Code 技能清单 */
+  inspectGitHubSkills: (input: { url: string }) => Promise<GitHubSkillInspectResult>
+
+  /** Skills：从 GitHub 仓库直接下载并安装 Claude Code 技能 */
+  installGitHubSkills: (input: InstallGitHubSkillsInput) => Promise<InstallGitHubSkillsResult>
+
+  /** Skills：卸载已安装技能 */
+  uninstallSkill: (name: string) => Promise<{ ok: boolean; error?: string }>
 
   /** Harness：删除会话在磁盘上的持久化记录（对应前端 ChatSession.id，删完不可恢复） */
   deleteHarnessSession: (sessionId: string) => Promise<void>

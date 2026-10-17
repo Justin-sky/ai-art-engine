@@ -49,6 +49,7 @@ import {
   AI_WORKFLOW_PRESET_IDS,
   MCP_GRAPH_EDIT_SCOPE,
   getAiWorkflowPresetPlan,
+  getNodeCapability,
   getNodeType,
   listAddableNodeTypes,
   summarizeMediaUrlForLog,
@@ -2308,21 +2309,26 @@ const TOOL_DEFS: McpToolDef[] = [
       const includeParams = args.includeParams === true
       const defs = listAddableNodeTypes(MCP_GRAPH_EDIT_SCOPE)
       const matched = typeId ? defs.filter((def) => def.typeId === typeId) : defs
-      const types = matched.map((def) => ({
-        typeId: def.typeId,
-        label: def.label,
-        category: def.category,
-        ...(def.assetType ? { assetType: def.assetType } : {}),
-        ...(def.description ? { description: def.description } : {}),
-        ports: def.ports.map((port) => ({
-          id: port.id,
-          direction: port.direction,
-          dataType: port.dataType,
-          multiple: port.multiple === true,
-          ...(port.label ? { label: port.label } : {})
-        })),
-        ...(includeParams ? { params: def.defaultParams() } : {})
-      }))
+      const types = matched.map((def) => {
+        const cap = getNodeCapability(def.typeId)
+        const usage = cap?.usageZh || cap?.usageEn || undefined
+        return {
+          typeId: def.typeId,
+          label: def.label,
+          category: def.category,
+          ...(def.assetType ? { assetType: def.assetType } : {}),
+          ...(def.description ? { description: def.description } : {}),
+          ...(usage ? { usage } : {}),
+          ports: def.ports.map((port) => ({
+            id: port.id,
+            direction: port.direction,
+            dataType: port.dataType,
+            multiple: port.multiple === true,
+            ...(port.label ? { label: port.label } : {})
+          })),
+          ...(includeParams ? { params: def.defaultParams() } : {})
+        }
+      })
       if (typeId && !types.length) {
         return {
           scope: MCP_GRAPH_EDIT_SCOPE,

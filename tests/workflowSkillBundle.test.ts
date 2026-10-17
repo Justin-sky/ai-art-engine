@@ -246,6 +246,7 @@ function stripComments(source: string): string {
 const SERVICE = read('src/main/services/workflowMarketService.ts')
 const SERVICE_CODE = stripComments(SERVICE)
 const HARNESS = read('src/main/services/deepseekHarnessService.ts')
+const RUNTIME = read('src/main/services/claudeSkillRuntime.ts')
 const VIEW = read('src/renderer/src/views/MarketplaceView.vue')
 
 describe('安装流程的主进程守卫', () => {
@@ -331,27 +332,16 @@ describe('技能可见性守卫', () => {
     expect(SERVICE_CODE).toContain("from './dshPaths'")
   })
 
-  it('技能清单认目录型技能包（否则 agent 看得见、界面看不见）', () => {
-    expect(HARNESS).toMatch(/if \(entry\.isDirectory\(\)\) \{[\s\S]{0,200}readSkillBundleInfo/)
+  it('技能清单与会话技能均通过 discoverInstalledClaudeSkills 认目录型技能包', () => {
+    expect(HARNESS).toContain('discoverInstalledClaudeSkills')
+    expect(RUNTIME).toMatch(/if \(entry\.isDirectory\(\)\) \{[\s\S]{0,200}SKILL\.md/)
+    expect(RUNTIME).toContain('scanSkillBundleExtraFiles')
   })
 
-  it('会话技能清单同样认技能包', () => {
-    const body = HARNESS.slice(HARNESS.indexOf('function getSessionSkills'))
-    expect(body).toMatch(/entry\.isDirectory\(\)/)
-    expect(body).toContain("join(skillsDir, entry.name, 'SKILL.md')")
-  })
-
-  it('技能包不参与反向导入，也不进 skipped（skipped 在界面上是失败通道）', () => {
-    const body = HARNESS.slice(HARNESS.indexOf('function importCustomSkillsToGraph'))
-    expect(body).toMatch(/if \(entry\.isDirectory\(\)\) continue/)
-    const bundleSkip = body.slice(0, body.indexOf('if (!entry.isFile()'))
-    expect(bundleSkip).not.toContain('skipped.push')
-  })
-
-  it('**回归**：技能快照的清理永远不删目录', () => {
-    const body = HARNESS.slice(
-      HARNESS.indexOf('function writeDshSkills'),
-      HARNESS.indexOf('function readDshSkillsManifest')
+  it('**回归**：旧版内置节点技能快照的清理永远只删清单记录的 .md 文件，不删目录', () => {
+    const body = RUNTIME.slice(
+      RUNTIME.indexOf('export function cleanupLegacyDshSkills'),
+      RUNTIME.indexOf('function scanSkillBundleExtraFiles')
     )
     // 只 rmSync 自己 manifest 里记着的文件，且没有 recursive 选项
     expect(body).toContain('rmSync(target, { force: true })')

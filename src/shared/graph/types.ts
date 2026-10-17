@@ -299,12 +299,6 @@ export interface GraphNodeParams {
   decisionModelUsed?: string
   /** 决策节点：上游 provider 名（如 TypeSafe） */
   decisionProvider?: string
-  /**
-   * GraphSkill id（快照绑定，非运行时引用）。
-   * 套预设时写入，并同时烤入 generateInstruction / generateSystemPrompt；执行只读这两份文案。
-   * 不按 typeId 设 defaultSkillKind：同一类型可扮演多种角色。
-   */
-  skillId?: string
   /** Semantic Timeline：源视频资产 id */
   sourceAssetId?: string
   /** Semantic Timeline：节拍词表 id */

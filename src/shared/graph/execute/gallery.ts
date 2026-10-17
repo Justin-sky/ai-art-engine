@@ -123,7 +123,23 @@ export function flattenVideosValues(values: GraphValue[]): GraphVideoItem[] {
         createdAt: v.createdAt,
         relativePath: v.relativePath
       })
-    } else if (v.kind === 'output' && v.videos?.length) out.push(...v.videos)
+    } else if (v.kind === 'asset' && v.assetType === 'video') {
+      out.push({
+        id: v.assetId,
+        ...(v.relativePath?.trim() ? { relativePath: v.relativePath.trim() } : {})
+      })
+    } else if (v.kind === 'output') {
+      if (v.videos?.length) out.push(...v.videos)
+      else {
+        for (const item of v.items) {
+          if (item.assetType !== 'video') continue
+          out.push({
+            id: item.assetId,
+            ...(item.relativePath?.trim() ? { relativePath: item.relativePath.trim() } : {})
+          })
+        }
+      }
+    }
   }
   return out
 }

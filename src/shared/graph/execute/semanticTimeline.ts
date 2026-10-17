@@ -53,11 +53,13 @@ import {
   parseJsonArray,
   parseShotDescriptions,
   rebuildTracks,
+  SEMANTIC_ENRICH_PROMPTS,
   singleShot,
   type BeatVocabulary,
   type DirectorIntent,
   type IntentTechnique,
   type RawEventDraft,
+  type SemanticEnrichStepId,
   type SemanticPack,
   type SemanticShot,
   type SemanticTimeline,
@@ -150,26 +152,24 @@ function resolveUpstreamVideo(ctx: NodeExecuteContext): UpstreamVideo {
   return {}
 }
 
-// ─── LLM enrichment (GraphSkill) ────────────────────────────────────────────
+// ─── LLM enrichment (native semantic step prompts) ──────────────────────────
 
 async function runSkill(
   ctx: NodeExecuteContext,
-  skillId: string,
+  stepId: SemanticEnrichStepId,
   prompt: string,
   images?: string[],
   onError?: (reason: string) => void
 ): Promise<string | null> {
-  // 动态导入：graphSkills → anim2d 等会经 builtins 回到本模块，静态导入会触发循环初始化
-  const { getGraphSkill } = await import('../graphSkills')
-  const skill = getGraphSkill(skillId)
-  if (!skill || !ctx.generateText) return null
+  const stepPrompt = SEMANTIC_ENRICH_PROMPTS[stepId]
+  if (!stepPrompt || !ctx.generateText) return null
   const en = isEn(ctx)
   const system = en
-    ? skill.systemPromptEn || skill.systemPromptZh
-    : skill.systemPromptZh || skill.systemPromptEn
+    ? stepPrompt.systemPromptEn || stepPrompt.systemPromptZh
+    : stepPrompt.systemPromptZh || stepPrompt.systemPromptEn
   const instruction = en
-    ? skill.instructionEn || skill.instructionZh
-    : skill.instructionZh || skill.instructionEn
+    ? stepPrompt.instructionEn || stepPrompt.instructionZh
+    : stepPrompt.instructionZh || stepPrompt.instructionEn
   try {
     const res = await ctx.generateText({
       prompt: instruction ? `${instruction}\n\n${prompt}` : prompt,
@@ -181,7 +181,7 @@ async function runSkill(
     return res.text
   } catch (e) {
     const reason = errorText(e)
-    say(ctx, `${skillId} 调用失败：${reason}`, `${skillId} failed: ${reason}`, 'warn') // cjk-ok
+    say(ctx, `${stepId} 调用失败：${reason}`, `${stepId} failed: ${reason}`, 'warn') // cjk-ok
     onError?.(reason)
     return null
   }

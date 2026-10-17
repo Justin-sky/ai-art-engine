@@ -16,10 +16,11 @@ import { spawn } from 'child_process'
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import type {
-  TimelineExportClip,
-  TimelineTransitionPreviewInput,
-  TimelineTransitionPreviewResult
+import {
+  normalizeClipCropRect,
+  type TimelineExportClip,
+  type TimelineTransitionPreviewInput,
+  type TimelineTransitionPreviewResult
 } from '@shared/graph'
 import { projectService } from './projectService'
 import { findFfmpegBin } from './videoFrameService'
@@ -31,6 +32,8 @@ const XFADE_MAP: Record<string, string> = {
   fadeout: 'fadeblack',
   fadein: 'fadeblack',
   flash: 'fadewhite',
+  smoothleft: 'smoothleft',
+  smoothright: 'smoothright',
   slideleft: 'slideleft',
   slideright: 'slideright',
   slideup: 'slideup',
@@ -40,7 +43,18 @@ const XFADE_MAP: Record<string, string> = {
   wipeup: 'wipeup',
   wipedown: 'wipedown',
   circleopen: 'circleopen',
-  circleclose: 'circleclose'
+  circleclose: 'circleclose',
+  radial: 'radial',
+  zoomin: 'zoomin',
+  pixelize: 'pixelize',
+  horzopen: 'horzopen',
+  vertopen: 'vertopen'
+}
+
+function buildClipCropFilter(clip: TimelineExportClip): string {
+  const rect = normalizeClipCropRect(clip)
+  if (!rect.isCropped) return ''
+  return `,crop=iw*${rect.width.toFixed(4)}:ih*${rect.height.toFixed(4)}:iw*${rect.x.toFixed(4)}:ih*${rect.y.toFixed(4)}`
 }
 
 /** 片段在源文件内的取段起点（秒），与导出的 clipSourceOffsetSec 一致 */
@@ -202,15 +216,19 @@ export async function renderTimelineTransitionPreview(
     const width = Math.min(3840, Math.max(160, Math.round(input.width ?? 1280)))
     const height = Math.min(2160, Math.max(90, Math.round(input.height ?? 720)))
     const fps = Math.min(60, Math.max(1, Math.round(input.fps ?? 30)))
+    const leftCrop = buildClipCropFilter(left)
+    const rightCrop = buildClipCropFilter(right)
     const key = JSON.stringify([
       resolveMediaPath(left),
       sourceOffsetSec(left),
       left.startSec,
       left.durationSec,
+      leftCrop,
       resolveMediaPath(right),
       sourceOffsetSec(right),
       right.startSec,
       right.durationSec,
+      rightCrop,
       right.transitionType,
       right.transitionInSec,
       width,
@@ -243,14 +261,14 @@ export async function renderTimelineTransitionPreview(
       const aStart = sourceOffsetSec(left) + tailStart
       const bStart = sourceOffsetSec(right)
 
-      const branch = (port: string, srcStart: number, segDur: number): string =>
+      const branch = (port: string, srcStart: number, segDur: number, cropOpt: string): string =>
         `[${port}]trim=${srcStart.toFixed(3)}:${(srcStart + segDur).toFixed(3)},` +
-        `setpts=PTS-STARTPTS,scale=${width}:${height}:force_original_aspect_ratio=decrease,` +
+        `setpts=PTS-STARTPTS${cropOpt},scale=${width}:${height}:force_original_aspect_ratio=decrease,` +
         `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${fps},format=yuv420p`
       const outDur = Math.max(aSegDur, bSegDur)
       const filter =
-        `${branch('0:v', aStart, aSegDur)}[a];` +
-        `${branch('1:v', bStart, bSegDur)}[b];` +
+        `${branch('0:v', aStart, aSegDur, leftCrop)}[a];` +
+        `${branch('1:v', bStart, bSegDur, rightCrop)}[b];` +
         `[a][b]xfade=transition=${xfadeName}:duration=${d.toFixed(3)}:offset=0,format=yuv420p[vout]`
 
       initPreviewDir()

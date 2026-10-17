@@ -181,8 +181,6 @@ export function createGraphRunLogBridge(options: GraphRunLogBridgeOptions): Grap
   ): void {
     const nodeId = call.nodeId ?? currentRunningNodeId ?? options.targetNodeId
     if (!nodeId) return
-    const node = byId.get(nodeId)
-    const skillId = node?.params?.skillId?.trim() || undefined
     const promptHash = hashPromptForLog(
       call.request?.prompt,
       call.request?.system,
@@ -191,7 +189,6 @@ export function createGraphRunLogBridge(options: GraphRunLogBridgeOptions): Grap
     store.appendApiCall(options.runId, {
       ...call,
       nodeId,
-      ...(skillId ? { skillId } : {}),
       promptHash
     })
   }

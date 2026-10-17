@@ -44,7 +44,17 @@ export function useEditorDiveHost(options: {
 
   async function flushTop(): Promise<void> {
     const top = diveTop.value
-    if (!top) return
+    if (!top) {
+      const rootAssetId = toValue(options.assetId)?.trim()
+      if (rootAssetId) {
+        try {
+          await graphEditorHosts.flush(`asset:${rootAssetId}`)
+        } catch (err) {
+          console.error('[EditorDive] root asset flush failed', err)
+        }
+      }
+      return
+    }
     await editorDiveFlush.flush(top.key)
     if (isEditorDiveAssetFrame(top)) {
       try {

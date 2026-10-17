@@ -10,17 +10,16 @@ import {
   type ExternalMcpServer,
   type ExternalMcpTransport
 } from '@shared/externalMcp'
-import { skillFileStem } from '@shared/skillDisplay'
+export function skillFileStem(fileName: string): string {
+  return fileName.replace(/\.md$/i, '')
+}
 
 /**
- * 插件市场的**统一卡片模型**与筛选规则（纯函数，可测）。
+ * 插件与技能市场的**统一卡片模型**与筛选规则（纯函数，可测）。
  *
- * 市场的三类内容来源完全不同（MCP 是运行中的本地端点、技能是磁盘文件、扩展是声明式
- * manifest），卡片形状也各异。把它们归一成一种卡片模型，视图层就只需要一套网格 + 筛选，
+ * 市场的三类内容来源完全不同（MCP 是运行中的本地端点、技能是本机/GitHub/工程 Claude Code 技能、
+ * 技能市场来自远端仓库），卡片形状也各异。把它们归一成一种卡片模型，视图层就只需要一套网格 + 筛选，
  * 不必为每类各写一遍列表与搜索。
- *
- * 注意这里**没有「安装」语义**：MCP 是本地端点、扩展来自用户数据目录、技能靠目录与模板，
- * 都不存在"从远端下载并安装"这一步。卡片的动作是配置 / 打开 / 导入 / 导出。
  *
  * **模块内不放任何展示文案**（连中文标签都没有）：副标题与来源一律输出 **i18n 键**，
  * 由视图层 `t()` 解析。否则这里会变成第二份文案来源，与 locale 文件各说各话。
@@ -97,6 +96,17 @@ export interface MarketplaceCard {
   scripts?: ScriptNodeSummary[]
   /** Semantic Pack 清单（安装时传回主进程） */
   semanticPacks?: WorkflowMarketEntryView['semanticPacks']
+  /** Claude Code 技能扩展元数据（仅 category === 'skills' 可选携带） */
+  argumentHint?: string
+  userInvocable?: boolean
+  disableModelInvocation?: boolean
+  allowedTools?: string[]
+  skillModel?: string
+  skillContext?: 'inline' | 'fork'
+  skillAgent?: string
+  whenToUse?: string
+  githubRepo?: string
+  githubRef?: string
 }
 
 export interface MarketplaceSources {
@@ -131,9 +141,16 @@ export function marketplaceCardHeading(
 
 /** 技能文件 kind → 来源标签的 i18n 键 */
 export function skillSourceKey(kind: string): string {
-  // 未知 kind 当作自定义；bundle 是目录型技能包（通常随市场工作流安装），要单独标出来，
-  // 否则会被显示成「自定义」——那是用户自己放进 .md 的东西，来源完全不同
-  const known = kind === 'builtin' || kind === 'template' || kind === 'bundle' ? kind : 'custom'
+  // 未知 kind 当作自定义；bundle 是目录型技能包（通常随市场工作流安装），
+  // github 是直接从 GitHub 仓库安装的 Claude Code 技能，project 是工程内 .claude/skills 技能
+  const known =
+    kind === 'builtin' ||
+    kind === 'template' ||
+    kind === 'bundle' ||
+    kind === 'github' ||
+    kind === 'project'
+      ? kind
+      : 'custom'
   return `marketplace.source.skill.${known}`
 }
 
@@ -286,34 +303,39 @@ export function buildMarketplaceCards(sources: MarketplaceSources): MarketplaceC
     })
   }
 
-  // ── 技能：目录里每个文件一张卡（内置项由应用自动管理，不铺成卡片）
+  // ── 技能：目录里每个文件/技能包一张卡
   const skills = sources.skills
   if (skills) {
     for (const file of skills.files) {
+      const bundleMeta =
+        file.kind === 'bundle' || file.kind === 'github' || file.kind === 'project'
+          ? skillBundleMeta(file)
+          : ''
       cards.push({
         key: `skills:${file.fileName}`,
         category: 'skills',
-        /**
-         * 用主进程给的可读标题（内置项是 GraphSkill 的中文名，如「图片生成」）。
-         *
-         * 早先这里用文件名主干，于是卡片标题是 `system-image` 这种 id 风格 ——
-         * 既分不清用途，看着还像节点。
-         */
         title: file.title || skillFileStem(file.fileName),
         identifier: file.fileName,
         ...(file.description ? { subtitle: file.description } : {}),
         sourceKey: skillSourceKey(file.kind),
-        /**
-         * 技能包额外信息：含脚本必须显眼 —— 脚本只有在用户逐次明示同意后才会落盘，
-         * 文件数则让用户知道包里有什么。技能包**没有卸载按钮** ——
-         * 它跟着所属工作流走，卸载入口在那张卡片上，否则会留下孤儿技能。
-         */
-        ...(file.kind === 'bundle' ? { meta: skillBundleMeta(file) } : {})
+        ...(bundleMeta ? { meta: bundleMeta } : {}),
+        ...(file.argumentHint ? { argumentHint: file.argumentHint } : {}),
+        ...(typeof file.userInvocable === 'boolean' ? { userInvocable: file.userInvocable } : {}),
+        ...(typeof file.disableModelInvocation === 'boolean'
+          ? { disableModelInvocation: file.disableModelInvocation }
+          : {}),
+        ...(file.allowedTools?.length ? { allowedTools: file.allowedTools } : {}),
+        ...(file.model ? { skillModel: file.model } : {}),
+        ...(file.context ? { skillContext: file.context } : {}),
+        ...(file.agent ? { skillAgent: file.agent } : {}),
+        ...(file.whenToUse ? { whenToUse: file.whenToUse } : {}),
+        ...(file.githubRepo ? { githubRepo: file.githubRepo } : {}),
+        ...(file.githubRef ? { githubRef: file.githubRef } : {})
       })
     }
   }
 
-  // ── 工作流：来自远端市场（`ai-art-engine-workflow`），每条一张卡
+  // ── 市场技能包（可附带画布工作流模板）：来自远端市场（`ai-art-engine-skills`），每条一张卡
   for (const entry of sources.workflows) {
     cards.push({
       key: `workflows:${entry.id}`,

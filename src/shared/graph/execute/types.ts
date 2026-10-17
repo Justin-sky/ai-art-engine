@@ -1187,7 +1187,7 @@ export interface NodeExecuteContext {
     instruction: string
     locale?: string
     timeoutMs?: number
-    skillId: string
+    nodeTypeId?: string
     model?: string
     providerInstanceId?: string
     signal?: AbortSignal

@@ -57,7 +57,7 @@ async function runPoseOrAnimJob(
     inputAbs: prepared.inputAbs,
     outputAbs: prepared.outputAbs,
     resultAbs: prepared.resultAbs,
-    skillId: input.skillId,
+    nodeTypeId: input.nodeTypeId,
     briefAbs: prepared.briefAbs
   })
 
@@ -159,7 +159,7 @@ async function runRigIterativeJob(
         inputAbs: prepared.inputAbs,
         outputAbs: prepared.outputAbs,
         resultAbs: prepared.resultAbs,
-        skillId: input.skillId,
+        nodeTypeId: input.nodeTypeId,
         briefAbs: prepared.briefAbs,
         attempt,
         repairHint
@@ -310,7 +310,7 @@ export async function runBlenderDshJob(
       sourceRelativePath: input.sourceRelativePath,
       instruction: input.instruction,
       locale: input.locale,
-      skillId: input.skillId
+      nodeTypeId: input.nodeTypeId
     })
   } catch (error) {
     live.clear(input.node.id)

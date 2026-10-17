@@ -28,7 +28,7 @@ describe('市场 plan 平价守卫的接线', () => {
   it('CI 真的会跑它，并且拉得到市场仓库', () => {
     const ci = read('.github/workflows/ci.yml')
     expect(ci, 'CI 必须跑平价校验').toContain('export-market-workflows.mjs --check')
-    expect(ci, 'CI 必须把市场仓库拉下来（脚本只读本地目录）').toContain('ai-art-engine-workflow')
+    expect(ci, 'CI 必须把市场仓库拉下来（脚本只读本地目录）').toContain('ai-art-engine-skills')
     // 网络步骤要有重试，否则会把偶发抖动当成漂移
     expect(ci).toMatch(/for attempt in 1 2 3/)
   })

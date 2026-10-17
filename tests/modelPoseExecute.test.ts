@@ -67,7 +67,7 @@ describe('executeModelPoseNode', () => {
     expect(runBlenderDshJob).toHaveBeenCalledTimes(1)
     const call = runBlenderDshJob.mock.calls[0]![0]
     expect(call.kind).toBe('pose')
-    expect(call.skillId).toBe('blender.pose')
+    expect(call.nodeTypeId).toBe('model.pose')
     expect(call.sourceRelativePath).toBe('Cache/Models/hero.glb')
 
     const value = out.out

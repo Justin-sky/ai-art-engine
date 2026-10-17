@@ -17,6 +17,7 @@ import { join, basename, dirname, extname } from 'path'
 import {
   clampClipFreezeTailSec,
   clampClipSpeed,
+  normalizeClipCropRect,
   type ScriptTimelineScaleMode,
   type ScriptTimelineTrackKind,
   type TimelineExportClip,
@@ -138,6 +139,13 @@ function buildClipColorEqFilter(clip: TimelineExportClip): string {
     return ''
   }
   return `eq=brightness=${b.toFixed(3)}:contrast=${c.toFixed(3)}:saturation=${s.toFixed(3)}`
+}
+
+/** 片段级画面裁剪（归一化 0~1）滤镜片段 */
+function buildClipCropFilter(clip: TimelineExportClip): string {
+  const rect = normalizeClipCropRect(clip)
+  if (!rect.isCropped) return ''
+  return `crop=iw*${rect.width.toFixed(4)}:ih*${rect.height.toFixed(4)}:iw*${rect.x.toFixed(4)}:ih*${rect.y.toFixed(4)}`
 }
 
 /** 缓存媒体文件是否含音频轨（按路径+修改时间缓存，避免重复起进程探测） */
@@ -278,6 +286,8 @@ export function buildFilterGraph(
       fadeout: 'fadeblack',
       fadein: 'fadeblack',
       flash: 'fadewhite',
+      smoothleft: 'smoothleft',
+      smoothright: 'smoothright',
       slideleft: 'slideleft',
       slideright: 'slideright',
       slideup: 'slideup',
@@ -287,7 +297,12 @@ export function buildFilterGraph(
       wipeup: 'wipeup',
       wipedown: 'wipedown',
       circleopen: 'circleopen',
-      circleclose: 'circleclose'
+      circleclose: 'circleclose',
+      radial: 'radial',
+      zoomin: 'zoomin',
+      pixelize: 'pixelize',
+      horzopen: 'horzopen',
+      vertopen: 'vertopen'
     }
     const xfadeTransitionName = (type: string | undefined): string | null =>
       xfadeMap[type ?? ''] ?? null
@@ -410,6 +425,8 @@ export function buildFilterGraph(
       const freezePadDur = winMovingDur > 0.001 ? winFreezeDur : Math.max(0, winDurSec - 0.05)
       const tpadOpt =
         freezePadDur > 0.001 ? `,tpad=stop_mode=clone:stop_duration=${freezePadDur.toFixed(3)}` : ''
+      const cropExpr = buildClipCropFilter(clip)
+      const cropOpt = cropExpr ? `,${cropExpr}` : ''
       const colorEq = buildClipColorEqFilter(clip)
       const eqOpt = colorEq ? `,${colorEq}` : ''
 
@@ -420,7 +437,7 @@ export function buildFilterGraph(
         const bgBlurLabel = `${label}bgb`
         const fgFitLabel = `${label}fgf`
         filterParts.push(
-          `[${srcPort}]trim=${srcStart.toFixed(3)}:${(srcStart + srcTrimDur).toFixed(3)},${ptsExpr}${tpadOpt}${eqOpt},split=2[${bgLabel}][${fgLabel}]`
+          `[${srcPort}]trim=${srcStart.toFixed(3)}:${(srcStart + srcTrimDur).toFixed(3)},${ptsExpr}${tpadOpt}${cropOpt}${eqOpt},split=2[${bgLabel}][${fgLabel}]`
         )
         filterParts.push(
           `[${bgLabel}]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},boxblur=24:2[${bgBlurLabel}]`
@@ -441,7 +458,7 @@ export function buildFilterGraph(
           : `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2`
 
       filterParts.push(
-        `[${srcPort}]trim=${srcStart.toFixed(3)}:${(srcStart + srcTrimDur).toFixed(3)},${ptsExpr}${tpadOpt}${eqOpt},${scaleExpr},setsar=1,fps=${fps},format=yuv420p[${label}]`
+        `[${srcPort}]trim=${srcStart.toFixed(3)}:${(srcStart + srcTrimDur).toFixed(3)},${ptsExpr}${tpadOpt}${cropOpt}${eqOpt},${scaleExpr},setsar=1,fps=${fps},format=yuv420p[${label}]`
       )
     }
 
@@ -540,6 +557,8 @@ export function buildFilterGraph(
         : 'setpts=PTS-STARTPTS'
     const tpadOpt =
       freezeTail > 0.001 ? `,tpad=stop_mode=clone:stop_duration=${freezeTail.toFixed(3)}` : ''
+    const cropExpr = buildClipCropFilter(clip)
+    const cropOpt = cropExpr ? `,${cropExpr}` : ''
     const colorEq = buildClipColorEqFilter(clip)
     const eqOpt = colorEq ? `,${colorEq}` : ''
 
@@ -561,7 +580,7 @@ export function buildFilterGraph(
     const prev = lastVideo
     const srcStart = clipSourceOffsetSec(clip)
     filterParts.push(
-      `[${clip.inputIndex}:v]trim=${srcStart > 0 ? `${srcStart}:${(srcStart + srcTrimDur).toFixed(3)}` : `0:${srcTrimDur.toFixed(3)}`},${ptsExpr}${tpadOpt}${eqOpt},scale=${ow}:${oh}:force_original_aspect_ratio=decrease,pad=${ow}:${oh}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${fps},format=rgba,colorchannelmixer=aa=${opacity.toFixed(3)}[${vLabel}]`
+      `[${clip.inputIndex}:v]trim=${srcStart > 0 ? `${srcStart}:${(srcStart + srcTrimDur).toFixed(3)}` : `0:${srcTrimDur.toFixed(3)}`},${ptsExpr}${tpadOpt}${cropOpt}${eqOpt},scale=${ow}:${oh}:force_original_aspect_ratio=decrease,pad=${ow}:${oh}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${fps},format=rgba,colorchannelmixer=aa=${opacity.toFixed(3)}[${vLabel}]`
     )
     filterParts.push(
       `[${prev}][${vLabel}]overlay=${x}:${y}:enable='between(t\\,${start.toFixed(3)}\\,${(start + dur).toFixed(3)})'[${ovLabel}]`

@@ -2604,7 +2604,6 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
       })
     ],
     defaultParams: () => ({
-      skillId: 'blender.pose',
       generateInstruction: '',
       generateModel: '',
       generateProviderInstanceId: ''
@@ -3046,7 +3045,6 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
       })
     ],
     defaultParams: () => ({
-      skillId: 'blender.animation',
       generateInstruction: '',
       generateModel: '',
       generateProviderInstanceId: ''

@@ -57,11 +57,11 @@ jobs:
       - name: Check workflow market plan parity
         shell: bash
         run: |
-          MARKET_DIR="$RUNNER_TEMP/ai-art-engine-workflow"
+          MARKET_DIR="$RUNNER_TEMP/ai-art-engine-skills"
           for attempt in 1 2 3; do
-            if git clone --depth 1 https://github.com/Justin-sky/ai-art-engine-workflow "$MARKET_DIR"; then break; fi
+            if git clone --depth 1 https://github.com/Justin-sky/ai-art-engine-skills "$MARKET_DIR"; then break; fi
             if [ "$attempt" = 3 ]; then
-              echo '::error::cloning ai-art-engine-workflow failed after 3 attempts'
+              echo '::error::cloning ai-art-engine-skills failed after 3 attempts'
               exit 1
             fi
             rm -rf "$MARKET_DIR"

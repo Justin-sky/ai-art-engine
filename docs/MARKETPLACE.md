@@ -34,8 +34,8 @@
 
 ### 内容仓库
 
-- 主源：`https://github.com/Justin-sky/ai-art-engine-workflow`（raw 路径 `/main`）
-- 镜像：`https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine-workflow`（raw 路径 `/main`）
+- 主源：`https://github.com/Justin-sky/ai-art-engine-skills`（raw 路径 `/main`）
+- 镜像：`https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine-skills`（raw 路径 `/main`）
 
 两个仓库的**内容必须逐字节一致**——不一致会造成「同一版本号、不同内容」，
 这是最难排查的一类状态。同步方式见仓库 README。
@@ -76,7 +76,7 @@ npm run check:market-plans   # 只校验，不一致退出码 1（CI 就在跑�
 
 - 只写 `plan` 与 `requires.nodeTypes` 两个字段（前者是内容，后者是它的派生值 —— 市场校验器
   要求两者一致）。元数据、封面、`skill/` 全部保持手写，一个字节都不碰。
-- 市场仓库在 `../ai-art-engine-workflow`，可用 `--dir <path>` 或 `AAE_WORKFLOW_MARKET_DIR` 指定；
+- 市场仓库在 `../ai-art-engine-skills`，可用 `--dir <path>` 或 `AAE_WORKFLOW_MARKET_DIR` 指定；
   CI 里是临时 clone 一份再 `--check`。
 - 因此**改官方工作流的图要改应用预设**，再导出；直接改市场那侧的 `plan` 会被判为漂移。
   第三方工作流没有内置预设：在画布上右键**「导出为市场工作流」**，填好元数据与封面，

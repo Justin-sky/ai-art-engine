@@ -1,5 +1,5 @@
 /**
- * 远端工作流市场（`ai-art-engine-workflow`）的契约与纯校验逻辑。
+ * 远端工作流市场（`ai-art-engine-skills`）的契约与纯校验逻辑。
  *
  * ## 与技能市场的结构关系
  *
@@ -486,12 +486,17 @@ export function parseWorkflowMarketIndex(
     // 新版本索引可能含本应用读不懂的字段：宁可明确报「需要更新应用」
     return { ok: false, reasonKey: 'schemaTooNew' }
   }
-  if (!Array.isArray(obj.workflows)) return { ok: false, reasonKey: 'noWorkflows' }
+  const rawEntries = Array.isArray(obj.skills)
+    ? obj.skills
+    : Array.isArray(obj.workflows)
+      ? obj.workflows
+      : null
+  if (!rawEntries) return { ok: false, reasonKey: 'noWorkflows' }
 
   const seen = new Set<string>()
   const workflows: WorkflowMarketEntry[] = []
   let dropped = 0
-  for (const item of obj.workflows) {
+  for (const item of rawEntries) {
     const entry = parseWorkflowMarketEntry(item)
     // 重复 id 视为非法：会让安装目录与卡片互相覆盖
     if (!entry || seen.has(entry.id)) {
@@ -769,8 +774,8 @@ export function workflowMarketUrls(source: string): {
  * 这是最难排查的一类状态。同步方式见仓库 README。
  */
 export const WORKFLOW_MARKET_SOURCES: readonly string[] = [
-  'https://raw.githubusercontent.com/Justin-sky/ai-art-engine-workflow/main',
-  'https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine-workflow/raw/main'
+  'https://raw.githubusercontent.com/Justin-sky/ai-art-engine-skills/main',
+  'https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine-skills/raw/main'
 ]
 
 /** 默认数据源（未配置时用主源） */
@@ -786,10 +791,29 @@ export const DEFAULT_WORKFLOW_MARKET_SOURCE = WORKFLOW_MARKET_SOURCES[0]!
  * 显式配置时**只**用配置的地址，不偷偷混入官方源：用户写死了一个源，就应该只打那一个，
  * 否则排查「为什么内容不对」时会被意料之外的回退误导。
  */
+/**
+ * 将用户输入的 GitHub 仓库地址（如 `https://github.com/owner/repo` 或 `.../tree/branch`）
+ * 自动转换为 raw 基础地址，方便直接填入 GitHub 仓库地址作为技能市场源。
+ */
+export function normalizeMarketSourceUrl(raw: string): string {
+  const trimmed = raw.trim().replace(/\/+$/, '')
+  const ghMatch =
+    /^https?:\/\/(?:www\.)?github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?(?:\/tree\/([^/#?]+))?$/i.exec(
+      trimmed
+    )
+  if (ghMatch) {
+    const owner = ghMatch[1]
+    const repo = ghMatch[2]
+    const ref = ghMatch[3] || 'main'
+    return `https://raw.githubusercontent.com/${owner}/${repo}/${ref}`
+  }
+  return trimmed
+}
+
 export function resolveWorkflowMarketSources(configured: string): string[] {
   const parts = configured
     .split(/[\s,]+/)
-    .map((item) => item.trim())
+    .map((item) => normalizeMarketSourceUrl(item))
     .filter(Boolean)
   return parts.length > 0 ? parts : [...WORKFLOW_MARKET_SOURCES]
 }

@@ -153,8 +153,14 @@ const keepAssetFrame = computed<EditorDiveAssetFrame | null>(() => {
   const top = frames[frames.length - 1]
   if (!top || top.type !== 'view') return null
   const meta = top.meta
-  if (!('hostId' in meta) || !meta.hostId) return null
-  const hostId = meta.hostId.trim()
+  const hostId =
+    'hostId' in meta && typeof meta.hostId === 'string'
+      ? meta.hostId.trim()
+      : meta.viewId === 'script.timeline' && meta.scriptAssetId
+        ? `asset:${meta.scriptAssetId.trim()}`
+        : meta.viewId === 'director.stage' && meta.directorAssetId
+          ? `asset:${meta.directorAssetId.trim()}`
+          : ''
   if (!hostId.startsWith('asset:')) return null
   for (let i = frames.length - 2; i >= 0; i--) {
     const frame = frames[i]

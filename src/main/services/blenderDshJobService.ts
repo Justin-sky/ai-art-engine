@@ -80,7 +80,7 @@ export function prepareBlenderDshJob(input: PrepareBlenderDshJobInput): PrepareB
       inputAbs,
       outputAbs,
       resultAbs,
-      skillId: input.skillId,
+      nodeTypeId: input.nodeTypeId,
       briefAbs
     }),
     'utf8'

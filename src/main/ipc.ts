@@ -58,20 +58,22 @@ import { getFfmpegRuntimeStatus, installFfmpeg } from './services/ffmpegInstallS
 import {
   abortHarnessTask,
   deleteHarnessSession,
-  exportSkillTemplate,
   getDshSkillsInfo,
   getHarnessStatus,
   getSessionSkills,
   handleApprovalResponse,
   handleAskUserResponse,
-  importCustomSkillsToGraph,
-  listSkillTemplates,
   openDshSkillsDir,
   prewarmHarness,
   runHarnessJobWait,
   runHarnessTask,
   writeDshSkillsTemplate
 } from './services/deepseekHarnessService'
+import {
+  inspectGitHubSkillSource,
+  installGitHubSkills,
+  uninstallSkillByName
+} from './services/githubSkillInstaller'
 import {
   cleanupBlenderDshJob,
   evaluateBlenderDshJob,
@@ -579,7 +581,7 @@ export function registerIpcHandlers(): void {
     return saved
   })
 
-  // 工作流市场（远端 ai-art-engine-workflow）
+  // 技能市场（远端 ai-art-engine-skills）
   handle(IpcChannels.WORKFLOW_MARKET_FETCH, (input?: { force?: boolean }) =>
     fetchWorkflowCatalog(input)
   )
@@ -728,10 +730,15 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.SKILLS_GET_INFO, () => getDshSkillsInfo())
   handle(IpcChannels.SKILLS_OPEN_DIR, () => openDshSkillsDir())
   handle(IpcChannels.SKILLS_WRITE_TEMPLATE, () => writeDshSkillsTemplate())
-  handle(IpcChannels.SKILLS_LIST_TEMPLATES, () => listSkillTemplates())
-  handle(IpcChannels.SKILLS_EXPORT_TEMPLATE, (id: string) => exportSkillTemplate(id))
   handle(IpcChannels.SKILLS_GET_SESSION, () => getSessionSkills())
-  handle(IpcChannels.SKILLS_IMPORT_TO_GRAPH, () => importCustomSkillsToGraph())
+  handle(IpcChannels.SKILLS_INSPECT_GITHUB, (input: { url: string }) =>
+    inspectGitHubSkillSource(input)
+  )
+  handle(
+    IpcChannels.SKILLS_INSTALL_GITHUB,
+    (input: import('@shared/ipc').InstallGitHubSkillsInput) => installGitHubSkills(input)
+  )
+  handle(IpcChannels.SKILLS_UNINSTALL, (name: string) => uninstallSkillByName(name))
 
   // ask_user 用户选择回传：按 requestId 前缀分流。
   // - harness:  → dsh 原生 ask_user_question（runner 经 answerFile 等待）

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  applyVideoTransitionBetweenClips,
+  applyVideoTransitionToAllCuts,
   clampClipFreezeTailSec,
   clampClipSpeed,
   clampMixDuckingRatio,
@@ -7,9 +9,11 @@ import {
   clampTrackGain,
   closeTimelineTrackGaps,
   contentEndSecOfTimeline,
+  normalizeClipCropRect,
   normalizeScriptTimelineSource,
   readScriptTimelineFromGenParams,
   splitTimelineClipAtTime,
+  trimTimelineClipToTime,
   withScriptTimeline,
   type ScriptTimelineClip
 } from '../src/shared/graph/scriptTimeline'
@@ -485,5 +489,132 @@ describe('Stage 3 · NLE 工程互通导出 & 节点图执行自动合成', () =
     if (out.out?.kind === 'videos') {
       expect(out.out.items[0]?.relativePath).toBe('Exports/tl-1-composed.mp4')
     }
+  })
+})
+
+describe('Stage 4 · 裁剪工具（Trim In/Out + Frame Crop）与专业片段转场', () => {
+  it('normalizeClipCropRect：归一化画面裁剪框并识别 isCropped', () => {
+    const uncropped = normalizeClipCropRect(null)
+    expect(uncropped.isCropped).toBe(false)
+    expect(uncropped.cropWidth).toBe(1)
+    expect(uncropped.cropHeight).toBe(1)
+
+    const cropped = normalizeClipCropRect({
+      cropX: 0.15,
+      cropY: 0.2,
+      cropWidth: 0.5,
+      cropHeight: 0.6
+    })
+    expect(cropped.isCropped).toBe(true)
+    expect(cropped.x).toBe(0.15)
+    expect(cropped.y).toBe(0.2)
+    expect(cropped.width).toBe(0.5)
+    expect(cropped.height).toBe(0.6)
+  })
+
+  it('trimTimelineClipToTime：支持入点 [ 与出点 ] 快速裁剪并同步推进 sourceOffsetSec', () => {
+    const clip: ScriptTimelineClip = {
+      id: 'v1',
+      track: 'video',
+      sourceId: 's1',
+      title: '镜头1',
+      startSec: 2,
+      durationSec: 6,
+      sourceOffsetSec: 1,
+      speed: 1.5
+    }
+    const trimmedIn = trimTimelineClipToTime(clip, 4, 'in')
+    expect(trimmedIn).not.toBeNull()
+    expect(trimmedIn?.startSec).toBe(4)
+    expect(trimmedIn?.durationSec).toBe(4)
+    // 1 + (4 - 2) * 1.5 = 4
+    expect(trimmedIn?.sourceOffsetSec).toBe(4)
+
+    const trimmedOut = trimTimelineClipToTime(clip, 5.5, 'out')
+    expect(trimmedOut).not.toBeNull()
+    expect(trimmedOut?.startSec).toBe(2)
+    expect(trimmedOut?.durationSec).toBe(3.5)
+    expect(trimmedOut?.sourceOffsetSec).toBe(1)
+  })
+
+  it('applyVideoTransitionBetweenClips & applyVideoTransitionToAllCuts：自动涟漪重叠并在移除转场时恢复紧贴切点', () => {
+    const initial: ScriptTimelineClip[] = [
+      { id: 'c1', track: 'video', sourceId: 's1', title: 'A', startSec: 0, durationSec: 4 },
+      { id: 'c2', track: 'video', sourceId: 's2', title: 'B', startSec: 4, durationSec: 4 },
+      { id: 'c3', track: 'video', sourceId: 's3', title: 'C', startSec: 8, durationSec: 4 }
+    ]
+    const withTrans = applyVideoTransitionBetweenClips(initial, 'c1', 'c2', {
+      transitionType: 'circleopen',
+      durationSec: 0.8
+    })
+    const c1 = withTrans.find((c) => c.id === 'c1')!
+    const c2 = withTrans.find((c) => c.id === 'c2')!
+    const c3 = withTrans.find((c) => c.id === 'c3')!
+    expect(c1.transitionOutSec).toBe(0.8)
+    expect(c2.transitionType).toBe('circleopen')
+    expect(c2.transitionInSec).toBe(0.8)
+    expect(c2.startSec).toBe(3.2)
+    // 后续片段同步左移 0.8s，不留空隙
+    expect(c3.startSec).toBe(7.2)
+
+    // 移除转场时恢复无重叠紧贴切点
+    const cleared = applyVideoTransitionBetweenClips(withTrans, 'c1', 'c2', {
+      transitionType: 'none',
+      durationSec: 0
+    })
+    expect(cleared.find((c) => c.id === 'c2')?.startSec).toBe(4)
+    expect(cleared.find((c) => c.id === 'c3')?.startSec).toBe(8)
+    expect(cleared.find((c) => c.id === 'c2')?.transitionInSec).toBeUndefined()
+
+    // 一键应用到全部切点
+    const allApplied = applyVideoTransitionToAllCuts(initial, 'zoomin', 0.5)
+    expect(allApplied.find((c) => c.id === 'c2')?.startSec).toBe(3.5)
+    expect(allApplied.find((c) => c.id === 'c2')?.transitionType).toBe('zoomin')
+    expect(allApplied.find((c) => c.id === 'c3')?.startSec).toBe(7)
+    expect(allApplied.find((c) => c.id === 'c3')?.transitionType).toBe('zoomin')
+  })
+
+  it('buildFilterGraph 注入 FFmpeg crop 滤镜与新增 xfade 转场类型', () => {
+    const graph = buildFilterGraph(
+      [
+        {
+          track: 'video',
+          title: 'V1',
+          path: 'v1.mp4',
+          startSec: 0,
+          durationSec: 3,
+          cropX: 0.1,
+          cropY: 0.2,
+          cropWidth: 0.8,
+          cropHeight: 0.6,
+          transitionOutSec: 0.5,
+          inputIndex: 0
+        },
+        {
+          track: 'video',
+          title: 'V2',
+          path: 'v2.mp4',
+          startSec: 2.5,
+          durationSec: 3,
+          transitionInSec: 0.5,
+          transitionType: 'zoomin',
+          inputIndex: 1
+        }
+      ],
+      [],
+      [],
+      [],
+      2,
+      5.5,
+      1,
+      1280,
+      720,
+      30,
+      36,
+      80,
+      '#ffffff'
+    )
+    expect(graph.filter).toContain('crop=iw*0.8000:ih*0.6000:iw*0.1000:ih*0.2000')
+    expect(graph.filter).toContain('xfade=transition=zoomin:duration=0.500')
   })
 })

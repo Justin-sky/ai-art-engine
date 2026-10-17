@@ -70,7 +70,7 @@ describe('executeModelAnimationNode', () => {
     const out = await executeModelAnimationNode(ctx)
     expect(runBlenderDshJob).toHaveBeenCalledTimes(1)
     expect(runBlenderDshJob.mock.calls[0]![0].kind).toBe('anim')
-    expect(runBlenderDshJob.mock.calls[0]![0].skillId).toBe('blender.animation')
+    expect(runBlenderDshJob.mock.calls[0]![0].nodeTypeId).toBe('model.animation')
 
     const value = out.out
     expect(value.kind).toBe('asset')

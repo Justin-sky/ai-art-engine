@@ -3,7 +3,7 @@
  *
  * ## 为什么要有这一层
  *
- * 工作流市场（`ai-art-engine-workflow`）的官方那 15 条由 `npm run export:market` 从内置预设
+ * 工作流市场（`ai-art-engine-skills`）的官方那 15 条由 `npm run export:market` 从内置预设
  * 生成，而**第三方工作流只能手写 `plan`** —— 市场仓库的 CONTRIBUTING 把这条记成了已知门槛。
  * 本模块把「画布 → plan」这一步做成纯函数：没有 Electron、没有文件系统，
  * 于是它既能被主进程调用，也能被单测直接跑。
@@ -57,7 +57,7 @@ import {
 export const WORKFLOW_EXPORT_COVER_FILE_NAME = 'cover.png'
 
 /**
- * 市场校验器的上限（与 `ai-art-engine-workflow/scripts/validate.mjs` 的 `LIMITS` 对齐）。
+ * 市场校验器的上限（与 `ai-art-engine-skills/scripts/validate.mjs` 的 `LIMITS` 对齐）。
  * 抄在这里是为了**导出前**就给出 warning，而不是等用户推到市场被 CI 拒。
  */
 export const WORKFLOW_EXPORT_LIMITS = {

@@ -19,11 +19,11 @@ function bundledPacksDir(): string {
       // 开发态：与引擎并列的官方工作流仓库
       join(
         process.cwd(),
-        '../ai-art-engine-workflow/workflows/commerce-semantic-variants/semanticPacks'
+        '../ai-art-engine-skills/workflows/commerce-semantic-variants/semanticPacks'
       ),
       join(
         here,
-        '../../../../ai-art-engine-workflow/workflows/commerce-semantic-variants/semanticPacks'
+        '../../../../ai-art-engine-skills/workflows/commerce-semantic-variants/semanticPacks'
       ),
       // 兼容旧路径（若仍有本地副本）
       join(here, '../../../shared/semanticTimeline/marketPacks'),
@@ -119,16 +119,16 @@ export function loadSemanticPacksFromWorkflowDir(workflowInstallDir: string): Se
   return packs
 }
 
-/** 官方工作流清单（优先读并列的 ai-art-engine-workflow 仓库） */
+/** 官方工作流清单（优先读并列的 ai-art-engine-skills 仓库） */
 export function loadBuiltinCommerceWorkflowManifest(): unknown | null {
   const candidates = [
     join(
       process.cwd(),
-      '../ai-art-engine-workflow/workflows/commerce-semantic-variants/workflow.json'
+      '../ai-art-engine-skills/workflows/commerce-semantic-variants/workflow.json'
     ),
     join(
       process.cwd(),
-      '../../ai-art-engine-workflow/workflows/commerce-semantic-variants/workflow.json'
+      '../../ai-art-engine-skills/workflows/commerce-semantic-variants/workflow.json'
     )
   ]
   for (const c of candidates) {

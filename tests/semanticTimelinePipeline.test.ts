@@ -121,7 +121,7 @@ describe('semanticTimeline pipeline pure', () => {
   it('loads official market packs from workflow repo (or empty if absent)', () => {
     const packs = loadBundledSemanticPacks()
     /**
-     * **跨仓耦合**：这三个包来自兄弟仓库 ai-art-engine-workflow 的
+     * **跨仓耦合**：这三个包来自兄弟仓库 ai-art-engine-skills 的
      * `workflows/commerce-semantic-variants/semanticPacks`（路径见
      * `packLoader.bundledPacksDir()`）。CI 不检出兄弟仓库，所以这里对空目录放行。
      *
