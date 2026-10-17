@@ -21,22 +21,22 @@
     </script>
     <meta
       name="description"
-      content="AIArtEngine 插件市场开发者文档：市场里有什么、工作流与技能包的交付链路、客户端安装契约、脚本同意流、可执行代码节点、兼容性与版本、本地调试与常见退回原因。"
+      content="AIArtEngine 技能市场开发者文档：市场里有什么、Claude Code 技能规范支持与 GitHub 直装、工作流与技能包的交付链路、客户端安装契约、脚本同意流、可执行代码节点、兼容性与版本、本地调试与常见退回原因。"
     />
-    <title>插件市场开发者文档 — AIArtEngine</title>
+    <title>技能市场开发者文档 — AIArtEngine</title>
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/developers.html" />
     <meta property="og:site_name" content="AIArtEngine" />
     <meta property="og:type" content="website" />
     <meta property="og:locale" content="zh_CN" />
-    <meta property="og:title" content="插件市场开发者文档 — AIArtEngine" />
-    <meta property="og:description" content="AIArtEngine 插件市场开发者文档：市场里有什么、工作流与技能包的交付链路、客户端安装契约、脚本同意流、可执行代码节点、兼容性与版本、本地调试与常见退回原因。" />
+    <meta property="og:title" content="技能市场开发者文档 — AIArtEngine" />
+    <meta property="og:description" content="AIArtEngine 技能市场开发者文档：市场里有什么、Claude Code 技能规范支持与 GitHub 直装、工作流与技能包的交付链路、客户端安装契约、脚本同意流、可执行代码节点、兼容性与版本、本地调试与常见退回原因。" />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/developers.html" />
     <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="插件市场开发者文档 — AIArtEngine" />
-    <meta name="twitter:description" content="AIArtEngine 插件市场开发者文档：市场里有什么、工作流与技能包的交付链路、客户端安装契约、脚本同意流、可执行代码节点、兼容性与版本、本地调试与常见退回原因。" />
+    <meta name="twitter:title" content="技能市场开发者文档 — AIArtEngine" />
+    <meta name="twitter:description" content="AIArtEngine 技能市场开发者文档：市场里有什么、Claude Code 技能规范支持与 GitHub 直装、工作流与技能包的交付链路、客户端安装契约、脚本同意流、可执行代码节点、兼容性与版本、本地调试与常见退回原因。" />
     <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/developers.html" />
     <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/developers.en.html" />
@@ -148,17 +148,21 @@
       <article class="manual" id="manual">
         <header class="manual-hero">
           <p class="eyebrow">Developers · Marketplace</p>
-          <h1>插件市场开发者文档</h1>
+          <h1>技能市场开发者文档</h1>
           <p class="lede">
-            面向<strong>往插件市场发布内容</strong>的开发者：市场里有什么、内容长什么样、怎么被校验与分发、
+            面向<strong>往技能市场发布内容或接入 Claude Code 技能</strong>的开发者：市场里有什么、内容长什么样、怎么被校验与分发、
             客户端拿到之后会做什么。作者侧的逐字段写作规范在内容仓库里（见下方「内容仓库」），
-            这里讲的是<strong>客户端契约</strong>与<strong>交付链路</strong>——那部分只有在应用侧才能看到。
+            这里讲的是<strong>客户端契约</strong>、<strong>Claude Code 技能规范支持</strong>与<strong>交付链路</strong>——那部分只有在应用侧才能看到。
           </p>
           <p class="lede">
-            用户视角怎么用市场，见<a href="manual-workspace.html#marketplace">使用手册 §5.7 插件市场</a>。
+            用户视角怎么用市场，见<a href="manual-workspace.html#marketplace">使用手册 §5.7 技能市场</a>。
           </p>
           <div class="tip">
-            <strong>相关的客户端实现：</strong><code>src/shared/workflowMarket.ts</code>（契约与解析）、
+            <strong>相关的客户端实现：</strong><code>src/shared/claudeSkill.ts</code>（Claude Code 技能规范与 frontmatter 解析）、
+            <code>src/main/services/claudeSkillRuntime.ts</code>（变量展开、<code>!`cmd`</code> 预处理、hooks / fork 子代理 / allowed-tools 治理）、
+            <code>src/main/services/githubSkillInstaller.ts</code>（GitHub 技能直装）、
+            <code>src/shared/graph/nodeCapabilities.ts</code>（画布节点原生能力定义）、
+            <code>src/shared/workflowMarket.ts</code>（契约与解析）、
             <code>src/main/services/marketPipeline.ts</code>（下载 / 缓存 / 原子安装）、
             <code>src/main/services/workflowMarketService.ts</code>（目录、兼容性、安装记账）、
             <code>src/renderer/src/views/MarketplaceView.vue</code>（界面）。
@@ -168,7 +172,7 @@
         <section id="contents">
           <h2>1. 市场里有什么</h2>
           <p>
-            市场是一个<strong>独立窗口</strong>（顶栏「插件市场」按钮打开，紧挨「设置」左边），分四个页签：
+            技能市场是一个<strong>独立窗口</strong>（顶栏「技能市场」按钮打开，紧挨「设置」左边），分三个页签：
           </p>
           <table>
             <thead>
@@ -180,6 +184,11 @@
             </thead>
             <tbody>
               <tr>
+                <td><strong>全部</strong></td>
+                <td>MCP 服务与全部技能混排展示，支持搜索与顶部 GitHub 技能直装</td>
+                <td>—</td>
+              </tr>
+              <tr>
                 <td><strong>MCP</strong></td>
                 <td>
                   内置 <code>aiartengine</code> 工具服务、Blender 工具面，以及用户自己添加的第三方 MCP
@@ -190,27 +199,22 @@
               <tr>
                 <td><strong>技能</strong></td>
                 <td>
-                  应用内置技能快照、用户放进技能目录的自定义技能、<strong>随工作流安装的技能包</strong>
+                  <strong>官方/社区市场技能</strong>（可附带 <code>workflow.json</code> 画布模板）、<strong>GitHub 直装技能</strong>、<strong>项目级技能</strong>（<code>.claude/skills</code> / <code>.agents/skills</code>）、<strong>自定义技能</strong>
                 </td>
-                <td><code>$DSH_HOME/skills</code></td>
-              </tr>
-              <tr>
-                <td><strong>工作流</strong></td>
-                <td>远端工作流仓库里的条目（可随包附带技能包）</td>
-                <td><strong>内容仓库</strong>（见下）</td>
-              </tr>
-              <tr>
-                <td>全部</td>
-                <td>以上三类混排，带搜索框</td>
-                <td>—</td>
+                <td>内容仓库 + GitHub 任意仓库 + 工作区 + <code>$DSH_HOME/skills</code></td>
               </tr>
             </tbody>
           </table>
-          <p>
-            只有<strong>工作流</strong>这一类是从远端仓库分发的；MCP 与技能是本地 / 内置来源。
-            工作流条目本身<strong>可以附带一个技能包</strong>，这是本市场区别于「一个下载站」的地方：
-            装工作流时把「给 Agent 看的操作手册」一起装上。
-          </p>
+          <p>为什么只有三个页签、且不再有「内置节点技能」？</p>
+          <ul>
+            <li>
+              <strong>内置技能已重构为画布节点原生能力</strong>：旧版曾把 40+ 个画布节点的默认系统提示词与用法写成 <code>.md</code> 文件铺在
+              <code>$DSH_HOME/skills/</code> 下。重构后，节点的生成能力（<code>defaultSystemPrompt</code>、<code>usage</code>、<code>inputBindings</code> 等）全部收归为节点自身定义（<code>src/shared/graph/nodeCapabilities.ts</code>），由 MCP <code>graph_node_types</code> 直接向 Agent 暴露，不再混入技能目录。
+            </li>
+            <li>
+              <strong>工作流与技能合流为「技能」页签</strong>：远端市场仓库里的条目本质上是「给 Agent 看的操作手册（<code>SKILL.md</code>）+ 可选的一键工作流画布模板（<code>workflow.json</code>）」。安装后，条目既能在画布「新建 → 一键工作流」里复现节点图，也会把技能包落盘到 <code>$DSH_HOME/skills/&lt;skill.name&gt;/</code>，在「技能」页签中统一管理（不重复渲染两张卡片）。
+            </li>
+          </ul>
 
           <h3>内容仓库</h3>
           <ul>
@@ -243,11 +247,11 @@
    ↓  用户点「安装」
 下载 workflow.json + cover.png（+ 技能文件）
    ↓  原子安装（staging → rename，失败不留半成品）
-&lt;userData&gt;/workflows/&lt;id&gt;/            工作流本体
+&lt;userData&gt;/workflows/&lt;id&gt;/            画布模板本体
    ↓  同一次安装内
-$DSH_HOME/skills/&lt;skill.name&gt;/        技能包（随工作流一起）
+$DSH_HOME/skills/&lt;skill.name&gt;/        技能包（随条目一起落盘）
    ↓
-dsh 下次对话扫到该技能 → 注入 &lt;available_skills&gt; → Agent 按需加载</code></pre>
+Agent 下次对话扫到该技能 → 注入 &lt;available_skills&gt; → 按需加载 / 斜杠调用</code></pre>
 
           <h3>2.0 官方那 15 条的 <code>plan</code> 是<strong>导出</strong>的，不是手写的</h3>
           <p>
@@ -304,12 +308,11 @@ npm run check:market-plans   # 只校验，不一致退出码 1（CI 就在跑�
             是否存在」这一事实作为声明。CI 会比对索引与磁盘派生结果，手改索引会被拒。
           </p>
 
-          <h3>2.2 技能包为什么要带 <code>wf-</code> 前缀</h3>
+          <h3>2.2 市场附带画布模板的技能包为什么要带 <code>wf-</code> 前缀</h3>
           <p>
-            技能包落地目录是 <code>$DSH_HOME/skills/&lt;name&gt;</code>，而<strong>应用内置技能也在同一个目录</strong>
-            （扁平 <code>&lt;kebab-id&gt;.md</code>），两者 dsh 扫描的 rank 也相同。所以市场技能包的
-            <code>name</code> 强制为 <strong><code>wf-&lt;工作流 id&gt;</code></strong>，从源头避免与内置技能重名。
-            仓库校验器逐条拦这件事。
+            技能包落地目录是 <code>$DSH_HOME/skills/&lt;name&gt;</code>，与用户从 GitHub 直装的 Claude Code 技能、本地自定义技能共享同一个目录。
+            因此，<code>ai-art-engine-skills</code> 仓库里随画布模板分发的技能包强制将 <code>name</code> 命名为
+            <strong><code>wf-&lt;工作流 id&gt;</code></strong>，从源头避免与通用 Claude Code 技能重名。仓库校验器逐条拦这件事。
           </p>
 
           <h3>2.3 技能包文件布局</h3>
@@ -317,12 +320,14 @@ npm run check:market-plans   # 只校验，不一致退出码 1（CI 就在跑�
   SKILL.md          必需。frontmatter: name(wf-&lt;id&gt;) / description / workflow: &lt;id&gt;
   references/       可选。端口与参数速查、长契约、示例
   scripts/          可选。见 §4
-  assets/           可选</code></pre>
+  assets/           可选
+  examples/         可选（GitHub 直装 Claude Code 技能同样支持）
+  templates/        可选（GitHub 直装 Claude Code 技能同样支持）</code></pre>
           <ul>
-            <li>只允许上面三个子目录；不允许符号链接。</li>
+            <li>只允许上面列出的标准子目录；不允许符号链接。</li>
             <li>单文件 ≤ 128KB，整包 ≤ 512KB，文件数 ≤ 40（客户端<strong>逐个下载</strong>，不能没有天花板）。</li>
             <li>
-              <code>description</code> ≤ 500 字符：dsh 的技能目录会截断它，而<strong>它是 Agent
+              <code>description</code> ≤ 500 字符：技能目录会截断它，而<strong>它是 Agent
               决定是否加载这份技能之前唯一能看到的东西</strong>——请写成「什么时候该加载它」，而不是功能罗列。
             </li>
           </ul>
@@ -346,6 +351,28 @@ npm run check:market-plans   # 只校验，不一致退出码 1（CI 就在跑�
             参数名请<strong>单独</strong>用反引号写（如 <code>generateAspectRatio</code>），不要写成
             <code>type.param</code> 的点号形式。
           </p>
+
+          <h3>2.5 Claude Code 技能规范支持与 GitHub 直装</h3>
+          <p>
+            除了从官方 <code>ai-art-engine-skills</code> 市场安装外，客户端完整支持 <strong>Claude Code Skill (<code>SKILL.md</code>) 规范</strong>，并允许直接输入任意 GitHub 地址安装：
+          </p>
+          <ul>
+            <li>
+              <strong>GitHub 地址直装（<code>githubSkillInstaller.ts</code>）</strong>：在技能市场顶部的 GitHub 安装栏可直接输入
+              <code>owner/repo</code>、<code>https://github.com/owner/repo</code>、<code>https://github.com/owner/repo/tree/&lt;branch&gt;/&lt;subpath&gt;</code>
+              或 <code>.../blob/&lt;branch&gt;/&lt;subpath&gt;/SKILL.md</code>。安装器通过 GitHub Tree API 获取文件清单，校验单文件/总包体积与子目录白名单，若含
+              <code>scripts/</code> 则复用 §4 的脚本同意流；落盘后写入 <code>.source.json</code> 记录源仓库、分支、子路径与 commit SHA，支持在技能卡片上一键<strong>从 GitHub 更新</strong>或<strong>卸载</strong>。
+            </li>
+            <li>
+              <strong>多级技能发现作用域</strong>：项目级（<code>&lt;workspace&gt;/.claude/skills/&lt;name&gt;/SKILL.md</code>、<code>&lt;workspace&gt;/.agents/skills/&lt;name&gt;/SKILL.md</code>，优先级最高）&gt; 个人/市场级（<code>$DSH_HOME/skills/&lt;name&gt;/SKILL.md</code>）。
+            </li>
+            <li>
+              <strong>Frontmatter 全字段支持（<code>claudeSkill.ts</code>）</strong>：支持 <code>name</code>、<code>description</code>、<code>argument-hint</code>、<code>disable-model-invocation</code>、<code>user-invocable</code>、<code>allowed-tools</code>（支持 <code>Bash(git *)</code> 等通配模式）、<code>model</code>、<code>context: inline | fork</code>（<code>fork</code> 在独立子代理上下文中运行技能）、<code>agent</code>、<code>hooks</code>（<code>PreToolUse</code> / <code>PostToolUse</code> / <code>Stop</code>）、<code>when_to_use</code>、<code>version</code>、<code>license</code>、<code>author</code>、<code>workflow</code>。
+            </li>
+            <li>
+              <strong>参数替换与动态上下文注入（<code>claudeSkillRuntime.ts</code>）</strong>：支持 <code>$ARGUMENTS</code>、<code>$ARGUMENTS[n]</code>、<code>$0</code>..<code>$9</code> 位置参数，以及 <code>${CLAUDE_SKILL_DIR}</code>、<code>${CLAUDE_SESSION_ID}</code>、<code>${WORKSPACE_ROOT}</code>；正文中形如 <code>!`command`</code> 的标记会在技能加载前执行预处理命令（受用户审批约束）并内联替换输出。
+            </li>
+          </ul>
         </section>
 
         <section id="install-contract">
@@ -353,14 +380,13 @@ npm run check:market-plans   # 只校验，不一致退出码 1（CI 就在跑�
 
           <h3>3.1 卡片与动作</h3>
           <p>
-            工作流卡片上直接有 安装 / 更新 / 重新安装 / 卸载 与 详情，不必先进详情页。
+            在市场的<strong>技能</strong>（及<strong>全部</strong>）页签中，顶部提供 <strong>GitHub 技能直装栏</strong>与本地技能管理动作（打开目录 / 生成示例模板 / 导入自定义技能）。
+            远端市场条目卡片上直接有 安装 / 更新 / 重新安装 / 卸载 与 详情，不必先进详情页。
             卡片徽标会显示 <strong>含技能</strong> 或 <strong>含技能 · 含脚本</strong>——<strong>装之前</strong>就让用户知道
             Agent 那边会多拿到一份手册（含脚本时更要说清）。
           </p>
           <p>
-            装好的技能包出现在市场的<strong>技能</strong>页签里（来源标为「技能包」）。技能的管理动作
-            （打开目录 / 生成示例模板 / 导入自定义技能）<strong>也在市场窗口里</strong>——市场改版时它们从设置页
-            搬了过来，设置页不再有独立的技能区块。
+            已安装的市场条目直接在原卡片上展示「已安装」状态与管理按钮（不会在技能列表中重复出现第二张卡片）；GitHub 直装技能、项目级技能（<code>.claude/skills</code>）与个人自定义技能则以独立技能卡片列出，支持查看详情、更新或移除。
           </p>
 
           <h3>3.2 原子性与回滚</h3>
@@ -374,15 +400,14 @@ npm run check:market-plans   # 只校验，不一致退出码 1（CI 就在跑�
           <h3>3.3 安装前校验（否则「装上了却看不见」）</h3>
           <p>
             dsh 对<strong>不合法</strong>的技能是<strong>静默忽略</strong>（只写一行日志然后跳过）。所以客户端在 staging
-            阶段就校验 <code>SKILL.md</code>：frontmatter 是否存在、<code>name</code> 是否等于清单里的名字、
-            <code>description</code> 是否非空、是否用了 dsh 会直接抛错的 camelCase 旧键（<code>disableModelInvocation</code>
-            等）。不通过就<strong>安装失败并给出具体原因</strong>，绝不会留下一个装了却不生效的技能包。
+            阶段就校验 <code>SKILL.md</code>：frontmatter 是否存在、<code>name</code> 是否合法、
+            <code>description</code> 是否非空、字段类型是否符合 Claude Code 技能规范。不通过就<strong>安装失败并给出具体原因</strong>，绝不会留下一个装了却不生效的技能包。
           </p>
 
           <h3>3.4 卸装</h3>
           <p>
-            卸载工作流会连带删除<strong>它装上的那个技能包</strong>——只按记账里记着的那一个目录名删，
-            绝不按前缀批量删（用户可能自建了同名技能）。技能包不是独立可卸载的产物。
+            卸载市场工作流条目会连带删除<strong>它装上的那个技能包</strong>——只按记账里记着的那一个目录名删，
+            绝不按前缀批量删（用户可能自建了同名技能）。通过 GitHub 直装或本地导入的独立技能，可在卡片上直接点「卸载」移除对应技能目录。
           </p>
 
           <h3>3.5 目录刷新</h3>
@@ -408,7 +433,7 @@ npm run check:market-plans   # 只校验，不一致退出码 1（CI 就在跑�
             </li>
             <li>
               <strong>确定</strong> = 写入脚本；<strong>取消</strong> = 只装 <code>SKILL.md</code> 与
-              <code>references/</code>（工作流照常可用）。
+              <code>references/</code>（技能与工作流照常可用）。
             </li>
             <li>
               <strong>每次安装 / 重新安装都会再问一次</strong>，不记住同意——同意是每次安装的独立决定，
@@ -552,7 +577,7 @@ node --test scripts/validate.test.mjs  # 校验器自身的单测</code></pre>
             <li>
               想验证「Agent 到底有没有真的加载技能」，最可靠的证据是 dsh 的会话日志
               （<code>$DSH_HOME/sessions/&lt;workspace&gt;/&lt;session&gt;/session.v3.jsonl.zstd</code>）：
-              里面能查到 <code>tool/call</code>，<code>name: "skill"</code>、<code>arguments: {"name": "wf-&lt;id&gt;"}</code>，
+              里面能查到 <code>tool/call</code>，<code>name: "skill"</code>、<code>arguments: {"name": "&lt;skill-name&gt;"}</code>，
               以及紧随其后的 <code>&lt;skill_content&gt;</code> 结果。<strong>别只看界面</strong>——技能是否被加载，
               界面是看不出来的。
             </li>
@@ -580,8 +605,8 @@ node --test scripts/validate.test.mjs  # 校验器自身的单测</code></pre>
                 </td>
               </tr>
               <tr>
-                <td>技能名与内置技能冲突</td>
-                <td><code>name</code> 没带 <code>wf-</code> 前缀</td>
+                <td>市场工作流技能包校验被拒</td>
+                <td>附带画布模板的仓库技能包 <code>name</code> 没带 <code>wf-</code> 前缀</td>
               </tr>
               <tr>
                 <td>描述在 Agent 那里被截断</td>

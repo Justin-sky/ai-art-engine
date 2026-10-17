@@ -23,7 +23,7 @@ npm run site
 | `guide-video.html` | 自由画布 · 视频与参考视频 |
 | `guide-comfyui.html` | ComfyUI 接入教程（API 2、本机安装 comfy-api-proxy、API 格式 workflow） |
 | `guide-newapi.html` | NewAPI 接入教程（内置 NewAPI 提供商、按网关端点元数据区分文本 / 图片模型、令牌分组注意事项） |
-| `developers.html` | 插件市场开发者文档：发布工作流与技能包、脚本同意流与运行时审批、索引派生规则、交付链路 |
+| `developers.html` | 技能市场开发者文档：发布工作流与技能包、Claude Code 技能规范支持与 GitHub 直装、脚本同意流与运行时审批、索引派生规则、交付链路 |
 | `*.en.html` | 以上 8 个页面各有英文版（统一 `.en.html` 后缀） |
 | `manual.css` | 手册与教程页样式（中英文共用） |
 | `styles.css` | 首页样式（中英文共用） |
@@ -42,7 +42,7 @@ npm run site
 | Reference 参考 | `manual*.html` | 这个界面 / 组件是什么 |
 | Explanation 解释 | 手册 §2 核心概念 | 这些术语到底指什么 |
 
-面向**插件市场发布者**的 `developers.html` 不在这四层里 —— 它换了一个读者（写工作流与技能包的
+面向**技能市场发布者**的 `developers.html` 不在这四层里 —— 它换了一个读者（写工作流与技能包的
 作者，而不是用应用的创作者），所以单列。其正文源头是仓库 [`docs/MARKETPLACE.md`](../docs/MARKETPLACE.md)：
 **改内容时两边都要改**（站点是手写静态页，没有 md → html 的构建步骤，这一点与中英两版同理）；
 仓库那份是给贡献者就近查阅与随代码走查的，站点这份是给外部发布者看的。

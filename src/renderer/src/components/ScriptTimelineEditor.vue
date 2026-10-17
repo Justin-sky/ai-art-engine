@@ -11280,7 +11280,7 @@ defineExpose({ flushSave: persist, reloadSources })
   border: 1.5px solid #4c9aff;
   box-shadow:
     0 0 0 9999px rgba(0, 0, 0, 0.56),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+    inset 0 0 0 1px rgba(76, 154, 255, 0.45);
   cursor: move;
   user-select: none;
   touch-action: none;
@@ -11289,7 +11289,7 @@ defineExpose({ flushSave: persist, reloadSources })
 .crop-grid-line {
   position: absolute;
   pointer-events: none;
-  background: rgba(255, 255, 255, 0.32);
+  background: rgba(76, 154, 255, 0.42);
 }
 
 .crop-grid-line.v1 {
@@ -11580,13 +11580,13 @@ defineExpose({ flushSave: persist, reloadSources })
     linear-gradient(
       to top right,
       transparent calc(50% - 1px),
-      rgba(255, 255, 255, 0.32) 50%,
+      rgba(115, 179, 255, 0.42) 50%,
       transparent calc(50% + 1px)
     ),
     linear-gradient(
       to bottom right,
       transparent calc(50% - 1px),
-      rgba(255, 255, 255, 0.22) 50%,
+      rgba(115, 179, 255, 0.3) 50%,
       transparent calc(50% + 1px)
     );
   opacity: 0.75;
@@ -11652,7 +11652,7 @@ defineExpose({ flushSave: persist, reloadSources })
 
 .transition-edge-grip:hover,
 .transition-zone-edge:hover {
-  background: rgba(255, 255, 255, 0.45);
+  background: rgba(115, 179, 255, 0.55);
 }
 
 /* ── Floating Transition Picker Popover & Shared Card Grid ── */
@@ -11815,7 +11815,7 @@ defineExpose({ flushSave: persist, reloadSources })
   border-radius: 4px;
   overflow: hidden;
   background: #141923;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border);
 }
 
 .trans-preview-a,

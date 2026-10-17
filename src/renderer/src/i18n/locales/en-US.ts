@@ -2224,6 +2224,7 @@ export default {
       transitionIn: 'Transition in',
       transitionOut: 'Transition out',
       transitionEffect: 'Transition effect',
+      transitionPopoverTitle: 'Clip Junction Transition',
       transitionNone: 'None',
       transitionDissolve: 'Dissolve',
       transitionFade: 'Fade',

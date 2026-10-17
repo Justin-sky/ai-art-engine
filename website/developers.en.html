@@ -21,22 +21,22 @@
     </script>
     <meta
       name="description"
-      content="AIArtEngine plugin marketplace developer docs: what the marketplace contains, the delivery pipeline for workflows and skill bundles, the client install contract, script consent, executable-code nodes, compatibility and versions, local debugging, and common rejection reasons."
+      content="AIArtEngine skill marketplace developer docs: what the marketplace contains, Claude Code skill specification support and direct GitHub install, the delivery pipeline for workflows and skill bundles, the client install contract, script consent, executable-code nodes, compatibility and versions, local debugging, and common rejection reasons."
     />
-    <title>Plugin Marketplace Developer Docs — AIArtEngine</title>
+    <title>Skill Marketplace Developer Docs — AIArtEngine</title>
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/developers.en.html" />
     <meta property="og:site_name" content="AIArtEngine" />
     <meta property="og:type" content="website" />
     <meta property="og:locale" content="zh_CN" />
-    <meta property="og:title" content="Plugin Marketplace Developer Docs — AIArtEngine" />
-    <meta property="og:description" content="AIArtEngine plugin marketplace developer docs: what the marketplace contains, the delivery pipeline for workflows and skill bundles, the client install contract, script consent, executable-code nodes, compatibility and versions, local debugging, and common rejection reasons." />
+    <meta property="og:title" content="Skill Marketplace Developer Docs — AIArtEngine" />
+    <meta property="og:description" content="AIArtEngine skill marketplace developer docs: what the marketplace contains, Claude Code skill specification support and direct GitHub install, the delivery pipeline for workflows and skill bundles, the client install contract, script consent, executable-code nodes, compatibility and versions, local debugging, and common rejection reasons." />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/developers.en.html" />
     <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Plugin Marketplace Developer Docs — AIArtEngine" />
-    <meta name="twitter:description" content="AIArtEngine plugin marketplace developer docs: what the marketplace contains, the delivery pipeline for workflows and skill bundles, the client install contract, script consent, executable-code nodes, compatibility and versions, local debugging, and common rejection reasons." />
+    <meta name="twitter:title" content="Skill Marketplace Developer Docs — AIArtEngine" />
+    <meta name="twitter:description" content="AIArtEngine skill marketplace developer docs: what the marketplace contains, Claude Code skill specification support and direct GitHub install, the delivery pipeline for workflows and skill bundles, the client install contract, script consent, executable-code nodes, compatibility and versions, local debugging, and common rejection reasons." />
     <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/developers.html" />
     <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/developers.en.html" />
@@ -148,21 +148,25 @@
       <article class="manual" id="manual">
         <header class="manual-hero">
           <p class="eyebrow">Developers · Marketplace</p>
-          <h1>Plugin Marketplace Developer Docs</h1>
+          <h1>Skill Marketplace Developer Docs</h1>
           <p class="lede">
-            For developers <strong>publishing content to the plugin marketplace</strong>: what the
+            For developers <strong>publishing content to the skill marketplace or integrating Claude Code skills</strong>: what the
             marketplace contains, what the content looks like, how it is validated and distributed, and
             what the client does with it after install. The author-side, field-by-field writing rules
             live in the content repository (see “Content repository” below); what follows is the
-            <strong>client contract</strong> and the <strong>delivery pipeline</strong> — the part you can
+            <strong>client contract</strong>, <strong>Claude Code skill specification support</strong>, and the <strong>delivery pipeline</strong> — the part you can
             only see on the app side.
           </p>
           <p class="lede">
             For the user-facing side of the marketplace, see
-            <a href="manual-workspace.en.html#marketplace">the manual §5.7 Plugin marketplace</a>.
+            <a href="manual-workspace.en.html#marketplace">the manual §5.7 Skill marketplace</a>.
           </p>
           <div class="tip">
             <strong>Related client implementations:</strong>
+            <code>src/shared/claudeSkill.ts</code> (Claude Code skill specification &amp; frontmatter parser),
+            <code>src/main/services/claudeSkillRuntime.ts</code> (variable substitution, <code>!`cmd`</code> preprocessing, hooks / fork subagent / allowed-tools governance),
+            <code>src/main/services/githubSkillInstaller.ts</code> (direct GitHub skill installer),
+            <code>src/shared/graph/nodeCapabilities.ts</code> (native canvas node capabilities),
             <code>src/shared/workflowMarket.ts</code> (contract and parsing),
             <code>src/main/services/marketPipeline.ts</code> (download / cache / atomic install),
             <code>src/main/services/workflowMarketService.ts</code> (catalog, compatibility, install
@@ -173,8 +177,8 @@
         <section id="contents">
           <h2>1. What the marketplace contains</h2>
           <p>
-            The marketplace is a <strong>separate window</strong> (opened by the “Marketplace” button in
-            the top bar, immediately to the left of “Settings”) with four tabs:
+            The skill marketplace is a <strong>separate window</strong> (opened by the “Skill Marketplace” button in
+            the top bar, immediately to the left of “Settings”) with three tabs:
           </p>
           <table>
             <thead>
@@ -186,6 +190,11 @@
             </thead>
             <tbody>
               <tr>
+                <td><strong>All</strong></td>
+                <td>MCP servers and all skills mixed together, with search and a direct GitHub skill install bar</td>
+                <td>—</td>
+              </tr>
+              <tr>
                 <td><strong>MCP</strong></td>
                 <td>
                   The built-in <code>aiartengine</code> tool service, the Blender tool surface, and
@@ -196,29 +205,23 @@
               <tr>
                 <td><strong>Skills</strong></td>
                 <td>
-                  Built-in skill snapshots, custom skills the user drops into the skills directory, and
-                  <strong>skill bundles installed together with a workflow</strong>
+                  <strong>Official / community market skills</strong> (may ship a <code>workflow.json</code> canvas template),
+                  <strong>GitHub-installed skills</strong>, <strong>project-scoped skills</strong> (<code>.claude/skills</code> / <code>.agents/skills</code>), and
+                  <strong>custom local skills</strong>
                 </td>
-                <td><code>$DSH_HOME/skills</code></td>
-              </tr>
-              <tr>
-                <td><strong>Workflows</strong></td>
-                <td>Entries from the remote workflow repository (may ship a skill bundle)</td>
-                <td><strong>Content repository</strong> (below)</td>
-              </tr>
-              <tr>
-                <td>All</td>
-                <td>The three kinds above mixed together, with a search box</td>
-                <td>—</td>
+                <td>Content repository + any GitHub repo + workspace + <code>$DSH_HOME/skills</code></td>
               </tr>
             </tbody>
           </table>
-          <p>
-            Only <strong>Workflows</strong> are distributed from a remote repository; MCP and Skills come
-            from local / built-in sources. A workflow entry itself <strong>may ship one skill bundle</strong>
-            — that is what sets this marketplace apart from “a download site”: installing a workflow also
-            installs the “operator’s manual for the Agent”.
-          </p>
+          <p>Why are there only three tabs, and why are “built-in node skills” no longer listed here?</p>
+          <ul>
+            <li>
+              <strong>Built-in node prompts are now native canvas node capabilities</strong>: earlier releases wrote 40+ canvas node default prompts as flat <code>.md</code> files into <code>$DSH_HOME/skills/</code>. After refactoring, node generation capabilities (<code>defaultSystemPrompt</code>, <code>usage</code>, <code>inputBindings</code>, etc.) live directly on the node capability registry (<code>src/shared/graph/nodeCapabilities.ts</code>) and are exposed to the Agent through MCP <code>graph_node_types</code> rather than polluting the skills directory.
+            </li>
+            <li>
+              <strong>Workflows and skills are unified under the “Skills” tab</strong>: entries in the remote repository are fundamentally “an operator’s manual for the Agent (<code>SKILL.md</code>) + an optional One-Click Workflow canvas template (<code>workflow.json</code>)”. Once installed, an entry can both materialise its node graph under “New → One-Click Workflow” and drop its skill bundle into <code>$DSH_HOME/skills/&lt;skill.name&gt;/</code>, managed as a single unified card in the Skills tab.
+            </li>
+          </ul>
 
           <h3>Content repository</h3>
           <ul>
@@ -254,11 +257,11 @@ Client fetches index.json (primary source first, falls back to the mirror on fai
    ↓  user clicks “Install”
 Downloads workflow.json + cover.png (+ skill files)
    ↓  atomic install (staging → rename; a failure leaves nothing half-installed)
-&lt;userData&gt;/workflows/&lt;id&gt;/            the workflow itself
+&lt;userData&gt;/workflows/&lt;id&gt;/            the canvas template itself
    ↓  within that same install
-$DSH_HOME/skills/&lt;skill.name&gt;/        skill bundle (installed together with the workflow)
+$DSH_HOME/skills/&lt;skill.name&gt;/        skill bundle (installed together with the entry)
    ↓
-the next dsh conversation picks up the skill → injects &lt;available_skills&gt; → the Agent loads it on demand</code></pre>
+the next Agent conversation picks up the skill → injects &lt;available_skills&gt; → loads on demand or via /slash</code></pre>
 
           <h3>2.0 The 15 official <code>plan</code>s are <strong>exported</strong>, not hand-written</h3>
           <p>
@@ -327,14 +330,13 @@ npm run check:market-plans   # verify only; exit code 1 on any mismatch (this is
             disk-derived result, and a hand-edited index is rejected.
           </p>
 
-          <h3>2.2 Why skill bundles carry the <code>wf-</code> prefix</h3>
+          <h3>2.2 Why workflow-bundled skills in the catalog carry the <code>wf-</code> prefix</h3>
           <p>
-            A skill bundle lands in <code>$DSH_HOME/skills/&lt;name&gt;</code>, and the
-            <strong>app’s built-in skills live in that same directory</strong> (flat
-            <code>&lt;kebab-id&gt;.md</code>), scanned at the same rank by dsh. So a marketplace skill
-            bundle’s <code>name</code> is forced to <strong><code>wf-&lt;workflow id&gt;</code></strong>,
-            ruling out a name clash with built-in skills at the source. The repository validator blocks this
-            item by item.
+            A skill bundle lands in <code>$DSH_HOME/skills/&lt;name&gt;</code>, sharing the same directory as
+            GitHub-installed Claude Code skills and custom user skills. Therefore, skill bundles distributed alongside
+            a canvas template in <code>ai-art-engine-skills</code> are required to use
+            <strong><code>wf-&lt;workflow id&gt;</code></strong> as their <code>name</code>, preventing collisions with
+            general-purpose Claude Code skills at the source. The repository validator enforces this rule.
           </p>
 
           <h3>2.3 Skill bundle file layout</h3>
@@ -342,15 +344,17 @@ npm run check:market-plans   # verify only; exit code 1 on any mismatch (this is
   SKILL.md          required. frontmatter: name(wf-&lt;id&gt;) / description / workflow: &lt;id&gt;
   references/       optional. port and parameter cheat sheets, long contracts, examples
   scripts/          optional. see §4
-  assets/           optional</code></pre>
+  assets/           optional
+  examples/         optional (also supported for direct GitHub Claude Code skills)
+  templates/        optional (also supported for direct GitHub Claude Code skills)</code></pre>
           <ul>
-            <li>Only the three subdirectories above are allowed; symbolic links are not.</li>
+            <li>Only the standard subdirectories above are allowed; symbolic links are not.</li>
             <li>
               Single file ≤ 128KB, whole bundle ≤ 512KB, file count ≤ 40 (the client
               <strong>downloads file by file</strong>, so there has to be a ceiling).
             </li>
             <li>
-              <code>description</code> ≤ 500 characters: dsh’s skill catalog truncates it, and
+              <code>description</code> ≤ 500 characters: the skill catalog truncates it, and
               <strong>it is the only thing the Agent can see before deciding whether to load this
               skill</strong> — write “when should this be loaded”, not a feature list.
             </li>
@@ -377,6 +381,40 @@ npm run check:market-plans   # verify only; exit code 1 on any mismatch (this is
             are not caught by mistake. Write parameter names in <strong>their own</strong> backticks (for
             example <code>generateAspectRatio</code>) rather than as the dotted form <code>type.param</code>.
           </p>
+
+          <h3>2.5 Claude Code skill specification support &amp; direct GitHub install</h3>
+          <p>
+            In addition to installing from the official <code>ai-art-engine-skills</code> catalog, the client natively supports the full
+            <strong>Claude Code Skill (<code>SKILL.md</code>) specification</strong> and direct installation from any GitHub URL:
+          </p>
+          <ul>
+            <li>
+              <strong>Direct GitHub install (<code>githubSkillInstaller.ts</code>)</strong>: paste <code>owner/repo</code>,
+              <code>https://github.com/owner/repo</code>, <code>https://github.com/owner/repo/tree/&lt;branch&gt;/&lt;subpath&gt;</code>, or
+              <code>.../blob/&lt;branch&gt;/&lt;subpath&gt;/SKILL.md</code> into the GitHub install bar at the top of the marketplace.
+              The installer resolves the file tree via the GitHub Tree API, enforces size and subdirectory limits, prompts for script consent (§4) when
+              <code>scripts/</code> is present, and writes <code>.source.json</code> with the repository, branch, subpath, and commit SHA so the skill can be
+              updated or uninstalled in one click.
+            </li>
+            <li>
+              <strong>Multi-scope discovery</strong>: project scope (<code>&lt;workspace&gt;/.claude/skills/&lt;name&gt;/SKILL.md</code> and
+              <code>&lt;workspace&gt;/.agents/skills/&lt;name&gt;/SKILL.md</code>, highest priority) &gt; personal/market scope
+              (<code>$DSH_HOME/skills/&lt;name&gt;/SKILL.md</code>).
+            </li>
+            <li>
+              <strong>Full Frontmatter support (<code>claudeSkill.ts</code>)</strong>: supports <code>name</code>, <code>description</code>,
+              <code>argument-hint</code>, <code>disable-model-invocation</code>, <code>user-invocable</code>, <code>allowed-tools</code> (including
+              <code>Bash(git *)</code> glob patterns), <code>model</code>, <code>context: inline | fork</code> (<code>fork</code> runs the skill in an isolated
+              subagent context), <code>agent</code>, <code>hooks</code> (<code>PreToolUse</code> / <code>PostToolUse</code> / <code>Stop</code>),
+              <code>when_to_use</code>, <code>version</code>, <code>license</code>, <code>author</code>, and <code>workflow</code>.
+            </li>
+            <li>
+              <strong>Argument interpolation &amp; dynamic context injection (<code>claudeSkillRuntime.ts</code>)</strong>: expands
+              <code>$ARGUMENTS</code>, <code>$ARGUMENTS[n]</code>, positional <code>$0</code>..<code>$9</code>, <code>${CLAUDE_SKILL_DIR}</code>,
+              <code>${CLAUDE_SESSION_ID}</code>, and <code>${WORKSPACE_ROOT}</code>; preprocesses inline <code>!`command`</code> expressions in the workspace
+              directory (governed by user command approval) before handing the rendered skill body to the model.
+            </li>
+          </ul>
         </section>
 
         <section id="install-contract">
@@ -384,18 +422,16 @@ npm run check:market-plans   # verify only; exit code 1 on any mismatch (this is
 
           <h3>3.1 Cards and actions</h3>
           <p>
-            Workflow cards carry Install / Update / Reinstall / Uninstall and Details directly, with no need
+            In the <strong>Skills</strong> (and <strong>All</strong>) tab, the top bar provides a <strong>direct GitHub skill install input</strong> alongside
+            local skill actions (open directory / generate an example template / import a custom skill).
+            Remote catalog cards carry Install / Update / Reinstall / Uninstall and Details directly, with no need
             to open the details page first. Card badges show <strong>Includes skill</strong> or
             <strong>Includes skill · Includes scripts</strong> — so the user knows <strong>before
             installing</strong> that the Agent side will receive an extra manual (and the same applies, more
             so, when scripts are involved).
           </p>
           <p>
-            An installed skill bundle appears in the marketplace’s <strong>Skills</strong> tab (its source is
-            labelled “Skill bundle”). Skill management actions (open directory / generate an example template
-            / import a custom skill) are <strong>also in the marketplace window</strong> — they moved there
-            from the settings page when the marketplace was redesigned, and the settings page no longer has a
-            separate skills section.
+            Installed catalog entries show their “Installed” badge and management buttons directly on the catalog card (without rendering a duplicate card in the list), while GitHub-installed skills, project-scoped skills (<code>.claude/skills</code>), and custom local skills appear as standalone skill cards that can be inspected, updated, or removed.
           </p>
 
           <h3>3.2 Atomicity and rollback</h3>
@@ -412,19 +448,17 @@ npm run check:market-plans   # verify only; exit code 1 on any mismatch (this is
           <p>
             dsh <strong>silently ignores</strong> an <strong>invalid</strong> skill (it writes one log line and
             skips it). So the client validates <code>SKILL.md</code> during the staging phase: does the
-            frontmatter exist, does <code>name</code> equal the name in the list, is
-            <code>description</code> non-empty, did it use one of the legacy camelCase keys that make dsh
-            throw outright (<code>disableModelInvocation</code> and friends). If it fails, the
+            frontmatter exist, is <code>name</code> valid, is
+            <code>description</code> non-empty, and do all fields conform to the Claude Code skill specification. If it fails, the
             <strong>install fails with a concrete reason</strong> and never leaves behind a skill bundle that
             is installed but does nothing.
           </p>
 
           <h3>3.4 Uninstall</h3>
           <p>
-            Uninstalling a workflow also deletes <strong>the skill bundle that workflow installed</strong> —
+            Uninstalling a catalog entry also deletes <strong>the skill bundle that entry installed</strong> —
             only the one directory name recorded in the bookkeeping, never a bulk delete by prefix (the user
-            may have created a skill with the same name). A skill bundle is not a separately uninstallable
-            artifact.
+            may have created a skill with the same name). Standalone skills installed from GitHub or imported locally can be uninstalled directly from their card.
           </p>
 
           <h3>3.5 Catalog refresh</h3>
@@ -454,7 +488,7 @@ npm run check:market-plans   # verify only; exit code 1 on any mismatch (this is
             </li>
             <li>
               <strong>Confirm</strong> = write the scripts; <strong>Cancel</strong> = install only
-              <code>SKILL.md</code> and <code>references/</code> (the workflow still works as usual).
+              <code>SKILL.md</code> and <code>references/</code> (the skill and workflow still work as usual).
             </li>
             <li>
               <strong>Every install / reinstall asks again</strong>; consent is never remembered — it is a
@@ -625,7 +659,7 @@ node --test scripts/validate.test.mjs  # unit tests for the validator itself</co
               To verify “did the Agent really load the skill”, the most reliable evidence is the dsh session log
               (<code>$DSH_HOME/sessions/&lt;workspace&gt;/&lt;session&gt;/session.v3.jsonl.zstd</code>): it shows
               the <code>tool/call</code> with <code>name: "skill"</code> and
-              <code>arguments: {"name": "wf-&lt;id&gt;"}</code>, followed immediately by the
+              <code>arguments: {"name": "&lt;skill-name&gt;"}</code>, followed immediately by the
               <code>&lt;skill_content&gt;</code> result. <strong>Don’t just look at the UI</strong> — the UI
               cannot tell you whether a skill was loaded.
             </li>
@@ -655,8 +689,8 @@ node --test scripts/validate.test.mjs  # unit tests for the validator itself</co
                 </td>
               </tr>
               <tr>
-                <td>The skill name clashes with a built-in skill</td>
-                <td><code>name</code> is missing the <code>wf-</code> prefix</td>
+                <td>A catalog workflow skill bundle is rejected by validation</td>
+                <td>A workflow-bundled skill in the catalog repository is missing the <code>wf-</code> prefix on <code>name</code></td>
               </tr>
               <tr>
                 <td>The description gets truncated on the Agent side</td>

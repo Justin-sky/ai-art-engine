@@ -2164,6 +2164,7 @@ export default {
       transitionIn: '入场转场',
       transitionOut: '出场转场',
       transitionEffect: '转场效果',
+      transitionPopoverTitle: '镜头交接转场',
       transitionNone: '无',
       transitionDissolve: '叠化',
       transitionFade: '淡入淡出',

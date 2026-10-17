@@ -1,13 +1,13 @@
 # 节点图插件开发指南
 
-本文说明如何为 AIArtEngine 内部扩展贡献**节点类型**、**画布作用域（Scope）**、**图策略（Policy）**、**卡片**、**检查器**与 **GraphSkill**。用户向连线规则见官网手册 [§8 节点图](https://justin-sky.github.io/ai-art-engine/manual-workflow.html#graph)。
+本文说明如何为 AIArtEngine 内部扩展贡献**节点类型**、**画布作用域（Scope）**、**图策略（Policy）**、**卡片**、**检查器**与**节点原生能力（`NodeCapabilityDef`）**。用户向连线规则见官网手册 [§8 节点图](https://justin-sky.github.io/ai-art-engine/manual-workflow.html#graph)。
 
 相关代码：
 
 | 模块                        | 路径                                                                 |
 | --------------------------- | -------------------------------------------------------------------- |
 | 节点类型注册                | `src/shared/graph/registry.ts`                                       |
-| GraphSkill 目录             | `src/shared/graph/graphSkills.ts`                                    |
+| 节点原生能力目录            | `src/shared/graph/nodeCapabilities.ts`                               |
 | 画布 Scope                  | `src/shared/graph/scopes.ts`                                         |
 | 图策略（可添加节点 + 连线） | `src/shared/graph/policy/`、`default.graph-policy.json`              |
 | 图规范化                    | `src/shared/graph/normalize.ts`                                      |
@@ -93,13 +93,12 @@ Scope 配置项（`GraphScopeDefinition`）：
 
 执行器可与类型定义分离：插件用 `ctx.editor.executor(typeId, fn)` 覆盖某 typeId 的实现，`fork.dispose()` 后回落到 `NodeTypeDefinition.execute`。引擎查找顺序：覆盖栈 → 类型定义 → `executePassthrough`。内置类型仍由 `ensureBuiltinNodeTypes()` 注册（主进程规范化 / 测试共用），不要把节点类型只挂在渲染进程 Cordis 上。
 
-角色提示词（系统提示 + 指令 + 可选解析指针）走 `GraphSkill`（`src/shared/graph/graphSkills.ts`），用节点 `params.skillId` 绑定，**不要**按 `typeId` 绑死（同一 `asset.image` 可扮演九宫格、四宫格、立绘）。检查器插入片段仍用 `instructionPresets`，与 Skill 目录分开。插件用 `ctx.editor.skill(skill)` 登记或覆盖 Skill（底层 `registerGraphSkill` 覆盖栈，后注册优先）；`fork.dispose()` 后回落到内置目录。内置 `BUILTIN_SKILLS` 在 shared 模块加载时入栈，不要只挂在渲染进程 Cordis 上。完整 manifest 字段后续再加。
+节点原生能力与提示词预设（系统提示 + 指令 + 用法说明 + 输入绑定说明）走 `NodeCapabilityDef`（`src/shared/graph/nodeCapabilities.ts`），供预设模板（`applyNodeCapability`）写入节点参数并由 MCP `graph_node_types` 直接向 Agent 暴露。插件用 `ctx.editor.nodeCapability(cap)` 登记或覆盖节点能力（底层 `registerNodeCapability` 覆盖栈，后注册优先）；`fork.dispose()` 后回落到内置目录。内置 `BUILTIN_NODE_CAPABILITIES` 在 shared 模块加载时入栈，不要只挂在渲染进程 Cordis 上。
 
 有意的现状（不是漏做）：
 
-- **没有 `NodeTypeDefinition.defaultSkillKind`**：已被 `params.skillId` 替代。`asset.image` 等多角色类型不能按 typeId 绑死默认 Skill。
-- **`applyGraphSkill` 是快照，不是引用**：写入当时的指令/系统提示；之后改 Skill 目录或改节点文案，互不自动跟随。执行层只读 `generateInstruction` / `generateSystemPrompt`。
-- **`system.*` 不在运行时兜底**：目录镜像 `systemPromptSchemes` 的默认文案，供套预设时烤入。未绑 `skillId` 的节点仍走 `resolve*`。若改成「空文案则按 skillId 引用 Skill」，等于另做引用语义，需单独拍板，P0 不做。
+- **`applyNodeCapability` 是快照，不是引用**：写入当时的 `generateInstruction` / `generateSystemPrompt`，节点自身不持久化任何 `skillId`；执行层只读节点上的 `generateInstruction` / `generateSystemPrompt`。
+- **画布节点能力不是 Claude Code 技能**：节点的默认系统提示词与连线说明属于画布节点原生能力，不再写成 `.md` 文件混入 `$DSH_HOME/skills`。
 
 ## 最小扩展示例
 
@@ -129,8 +128,8 @@ export function apply(ctx: Context): void {
     cardId: 'plugin.custom.card',
     execute: executePassthrough
   })
-  ctx.editor.skill({
-    id: 'plugin.custom.skill',
+  ctx.editor.nodeCapability({
+    id: 'plugin.custom.cap',
     kind: 'system',
     titleZh: '自定义',
     titleEn: 'Custom',
@@ -168,7 +167,7 @@ export function apply(ctx: Context): void {
 }
 ```
 
-启动时由 `startEditorRuntime()` 创建 Cordis `Context`，再 `ctx.plugin(yourPlugin)`。卸载 `fork.dispose()` 会回滚上述全部注册。覆盖已有节点的执行器用 `ctx.editor.executor(typeId, fn)`，不必替换整份 `nodeType`。额外或覆盖 Skill 用 `ctx.editor.skill(skill)`。
+启动时由 `startEditorRuntime()` 创建 Cordis `Context`，再 `ctx.plugin(yourPlugin)`。卸载 `fork.dispose()` 会回滚上述全部注册。覆盖已有节点的执行器用 `ctx.editor.executor(typeId, fn)`，不必替换整份 `nodeType`。额外或覆盖节点能力用 `ctx.editor.nodeCapability(cap)`。
 
 ## 节点类型字段
 
@@ -248,9 +247,9 @@ const scopeDef = getGraphScopeDefinition(graphScope.value)
 - `tests/graphPolicy.test.ts` — 图策略加载、通配、合并
 - `tests/graphCards.test.ts` — 卡片注册表解析（`cardId` / `card` 种类）
 - `tests/graphPorts.test.ts` — 连线
-- `tests/graphSkills.test.ts` — GraphSkill 目录、`params.skillId`、覆盖栈回滚
+- `tests/nodeCapabilities.test.ts` — `NodeCapabilityDef` 目录、`applyNodeCapability`、覆盖栈回滚
 - `tests/graphExecutorRegistry.test.ts` — 执行器覆盖栈
-- `tests/cordisEditor.test.ts` — Cordis `nodeType` / `executor` / `skill` 注册与回滚
+- `tests/cordisEditor.test.ts` — Cordis `nodeType` / `executor` / `nodeCapability` 注册与回滚
 - `tests/inspectorMatch.test.ts` / `inspectorDefaults.test.ts` — 检查器
 
 运行：`npm test`（`vitest.config.ts` 已配置 `@shared` 别名）
