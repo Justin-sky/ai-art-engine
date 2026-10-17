@@ -715,6 +715,10 @@ export type McpActivityTool =
   | 'screen_record_stop'
   /** 教学视频一键合成：旁白 + 字幕 + 导出 Cache/Videos */
   | 'tutorial_compose'
+  /** 在线技能检索与 GitHub / 技能市场安装管理 */
+  | 'skill_search'
+  | 'skill_install'
+  | 'skill_uninstall'
 
 export type McpActivityStatus = 'running' | 'done' | 'error'
 

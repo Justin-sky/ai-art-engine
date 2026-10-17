@@ -13,6 +13,8 @@ export interface ImageGenerateParams {
   seed?: number
   /** 是否跟随工程全局种子（默认 true；false 时用 seed） */
   seedUseGlobal?: boolean
+  /** 是否开启透明背景（自动附加纯色背景约束并在出图后键控抠图） */
+  transparentBg?: boolean
 }
 
 export interface ImageGenerateParamCapabilities {
@@ -279,6 +281,7 @@ export function readImageGenerateParamsFromNode(params: {
   generateCount?: number
   generateSeed?: number
   generateSeedUseGlobal?: boolean
+  generateTransparentBg?: boolean
 }): ImageGenerateParams {
   return {
     aspectRatio: params.generateAspectRatio?.trim() || undefined,
@@ -289,7 +292,8 @@ export function readImageGenerateParamsFromNode(params: {
         ? Math.floor(params.generateCount)
         : undefined,
     seed: clampSeed(params.generateSeed),
-    seedUseGlobal: params.generateSeedUseGlobal !== false
+    seedUseGlobal: params.generateSeedUseGlobal !== false,
+    transparentBg: params.generateTransparentBg === true
   }
 }
 
@@ -305,6 +309,7 @@ export function resolveImageGenerateParamsForApi(
     generateCount?: number
     generateSeed?: number
     generateSeedUseGlobal?: boolean
+    generateTransparentBg?: boolean
   },
   caps: ImageGenerateParamCapabilities = DEFAULT_IMAGE_GENERATE_CAPABILITIES
 ): ImageGenerateParams {
@@ -318,6 +323,7 @@ export function imageGenerateParamsToNodePatch(params: ImageGenerateParams): {
   generateCount?: number
   generateSeed?: number
   generateSeedUseGlobal?: boolean
+  generateTransparentBg: boolean
 } {
   return {
     generateAspectRatio: params.aspectRatio ?? '',
@@ -327,6 +333,7 @@ export function imageGenerateParamsToNodePatch(params: ImageGenerateParams): {
       ? { generateCount: Math.floor(params.count) }
       : {}),
     ...(clampSeed(params.seed) != null ? { generateSeed: clampSeed(params.seed) } : {}),
-    generateSeedUseGlobal: params.seedUseGlobal !== false
+    generateSeedUseGlobal: params.seedUseGlobal !== false,
+    generateTransparentBg: params.transparentBg === true
   }
 }

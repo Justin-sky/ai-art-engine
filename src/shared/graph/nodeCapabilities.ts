@@ -648,9 +648,9 @@ const BUILTIN_NODE_CAPABILITIES: NodeCapabilityDef[] = [
   ),
   fromNodeSystemDefault('asset.image', '图片生成', 'Image', defaultImageSystemPrompt, {
     usageZh:
-      '对应画布节点 `asset.image`（图片生成）：端口 `in`:text（提示词）、`in-image`:image（可多连参考图，提示词中可用 `@1`、`@2` 或 `[图1]` 按连接顺序引用）→ `out`:image（当前选中图）、`out-all`:images（单次并发或历次生成的全部图片，供 `image.select` 选图）。关键 params：`generateInstruction`、`generateAspectRatio`（如 `"1:1"`/`"16:9"`/`"9:16"`）、`generateResolution`（`"1K"`/`"2K"`/`"4K"`）、`generateCount`（并发张数 1~4）、`imageCamera`（可选 3D 虚拟摄影机视角控制）。',
+      '对应画布节点 `asset.image`（图片生成）：端口 `in`:text（提示词）、`in-image`:image（可多连参考图，提示词中可用 `@1`、`@2` 或 `[图1]` 按连接顺序引用）→ `out`:image（当前选中图）、`out-all`:images（单次并发或历次生成的全部图片，供 `image.select` 选图）。关键 params：`generateInstruction`、`generateAspectRatio`（如 `"1:1"`/`"16:9"`/`"9:16"`）、`generateResolution`（`"1K"`/`"2K"`/`"4K"`）、`generateCount`（并发张数 1~4）、`generateTransparentBg`（布尔值，开启后自动附加纯色干净背景提示词并在出图后键控抠除背景输出透明 PNG）、`imageCamera`（可选 3D 虚拟摄影机视角控制）。',
     usageEn:
-      'Maps to canvas node `asset.image`: ports `in`:text (prompt), `in-image`:image (multi-connect reference images, referenced in prompts as `@1`, `@2` or `[Image1]`) → `out`:image (selected), `out-all`:images (all generated images for `image.select`). Key params: `generateInstruction`, `generateAspectRatio`, `generateResolution`, `generateCount`, `imageCamera`.'
+      'Maps to canvas node `asset.image`: ports `in`:text (prompt), `in-image`:image (multi-connect reference images, referenced in prompts as `@1`, `@2` or `[Image1]`) → `out`:image (selected), `out-all`:images (all generated images for `image.select`). Key params: `generateInstruction`, `generateAspectRatio`, `generateResolution`, `generateCount`, `generateTransparentBg` (boolean, auto-appends solid-bg prompt and keys out background into a transparent PNG), `imageCamera`.'
   }),
   fromNodeSystemDefault('ui.gen', '界面图', 'UI image', defaultUiImageSystemPrompt, {
     usageZh:

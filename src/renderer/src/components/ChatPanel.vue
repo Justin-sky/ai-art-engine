@@ -21,6 +21,7 @@ import type {
   SessionSkill
 } from '@shared/ipc'
 import { modalityConfig, providerModelDisplayName } from '@shared/modelProvider'
+import { detectChatSkillInstallOrSearchIntent } from '@shared/claudeSkill'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useChatHistory, type ChatMsg } from '../composables/useChatHistory'
 import { attachAnimatedImagePlayback } from '../features/media/animatedImagePlayback'
@@ -814,7 +815,7 @@ function readFileAsDataUrl(file: File): Promise<string> {
  * 若该文本只是文件系统路径，则跳过，避免裸路径残留。
  */
 async function onComposerPaste(event: ClipboardEvent): Promise<void> {
-  if (running.value || composing.value) return
+  if (composing.value) return
   const clipboard = event.clipboardData
   if (!clipboard) return
   const images: File[] = []
@@ -854,7 +855,7 @@ async function onComposerPaste(event: ClipboardEvent): Promise<void> {
  * 统一落盘到工程资产库并以内联引用节点插入，避免浏览器默认插入裸路径文本。
  */
 async function onComposerDrop(event: DragEvent): Promise<void> {
-  if (running.value || composing.value) return
+  if (composing.value) return
   const files = event.dataTransfer?.files
   if (!files?.length) return
   const mediaFiles: File[] = []
@@ -1683,6 +1684,10 @@ function onHarnessEvent(event: HarnessEvent): void {
       }
       // 技能命中依据：skill 工具调用时在技能调试视图中标记「已加载」
       if (event.name === 'skill') markSkillLoaded(event.detail)
+      if (event.state === 'done' && /skill_(install|uninstall)$/i.test(event.name)) {
+        void refreshSessionSkills()
+        void refreshInstalledWorkflows()
+      }
       scrollToBottom()
       break
     }
@@ -1714,6 +1719,9 @@ function onHarnessEvent(event: HarnessEvent): void {
       void captureGitChanges()
       // 同时扫本轮直接落盘的产物（Output / Cache 下的媒体），逐条追加产物卡
       void captureRoundOutputs()
+      // 同步刷新已安装技能清单（本轮对话可能安装了 GitHub 或市场技能）
+      void refreshSessionSkills()
+      void refreshInstalledWorkflows()
       break
     case 'error':
       pushStatus(event.message, 'error')
@@ -1916,6 +1924,13 @@ function onMcpActivity(activity: McpActivity): void {
       ...(mediaPaths.length ? { relativePath: mediaPaths[0] } : {})
     })
     scrollToBottom()
+  }
+  if (activity.tool === 'skill_install' || activity.tool === 'skill_uninstall') {
+    if (state === 'done') {
+      void refreshSessionSkills()
+      void refreshInstalledWorkflows()
+    }
+    return
   }
   // 可玩 HTML：产物是单文件游戏，出的是一张「只有一个试玩按钮」的游戏卡，
   // 不走通用资产卡（那张卡带保存到资产库与同批次折叠，与约定冲突）
@@ -2430,6 +2445,154 @@ function buildActiveCanvasContext(): string | undefined {
 }
 
 /**
+ * 对话发送前的在线技能预处理器：
+ * 1. 当用户在对话中给出 GitHub 技能 URL 时，直接通过 `window.studio.inspectGitHubSkills` + `installGitHubSkills`
+ *    完成宿主侧安装（不受沙箱限制），立即刷新已安装技能列表并在消息流插入 `skill_install` 完成卡，
+ *    同时把发送给 harness 的任务改写为 `/<skill-name> ...`，由主进程 `preprocessSkillInvocation` 直接展开 `SKILL.md`。
+ * 2. 当用户要求联网搜索并安装某类技能时，自动检索匹配的官方/市场技能并完成预安装与激活。
+ */
+async function preprocessChatOnlineSkillIntent(rawTask: string): Promise<string> {
+  if (mode.value === 'ask') return rawTask
+  if (rawTask.trim().startsWith('/')) return rawTask
+
+  const intent = detectChatSkillInstallOrSearchIntent(rawTask)
+
+  if (intent.githubUrls.length > 0 && intent.mentionsSkillOrInstall && mode.value === 'craft') {
+    let primarySkillName = ''
+    let primarySourceTag = ''
+    for (const url of intent.githubUrls) {
+      const callId = `chat-skill-install:${Date.now()}`
+      onHarnessEvent({
+        type: 'tool',
+        id: callId,
+        name: 'skill_install',
+        state: 'start',
+        detail: `Installing GitHub skill from ${url}`
+      })
+      try {
+        const inspected = await window.studio.inspectGitHubSkills({ url })
+        const candidates = inspected.skills ?? []
+        if (!inspected.ok || !candidates.length) {
+          onHarnessEvent({
+            type: 'tool',
+            id: callId,
+            name: 'skill_install',
+            state: 'error',
+            detail: inspected.error ?? `No SKILL.md found at ${url}`
+          })
+          continue
+        }
+        const skillNames = candidates.map((c) => c.name)
+        const installedRes = await window.studio.installGitHubSkills({
+          url,
+          skillNames,
+          skillScriptsConsent: false
+        })
+        if (!installedRes.ok || !installedRes.installed.length) {
+          onHarnessEvent({
+            type: 'tool',
+            id: callId,
+            name: 'skill_install',
+            state: 'error',
+            detail: installedRes.error ?? `Failed to install skill from ${url}`
+          })
+          continue
+        }
+        await refreshSessionSkills()
+        for (const sName of installedRes.installed) {
+          markSkillLoaded(sName)
+        }
+        const srcTag = inspected.source
+          ? `${inspected.source.owner}/${inspected.source.repo}@${inspected.source.resolvedRef}`
+          : url
+        if (!primarySkillName && installedRes.installed[0]) {
+          primarySkillName = installedRes.installed[0]
+          primarySourceTag = srcTag
+        }
+        onHarnessEvent({
+          type: 'tool',
+          id: callId,
+          name: 'skill_install',
+          state: 'done',
+          detail: `${installedRes.installed.map((s) => `/${s}`).join(', ')} (${srcTag})`
+        })
+      } catch (err) {
+        onHarnessEvent({
+          type: 'tool',
+          id: callId,
+          name: 'skill_install',
+          state: 'error',
+          detail: err instanceof Error ? err.message : String(err)
+        })
+      }
+    }
+    commitMessages([...messages.value])
+    persistHistory()
+    if (primarySkillName) {
+      return `/${primarySkillName} [System Note: The requested GitHub skill /${primarySkillName} (${primarySourceTag}) has ALREADY been downloaded and installed to $DSH_HOME/skills/${primarySkillName}/SKILL.md by the host application, and its full SKILL.md instructions are active above. NEVER use web_fetch, pwsh, write, or edit to re-download or write SKILL.md into $DSH_HOME/skills. Confirm to the user that /${primarySkillName} is installed and ready, then fulfill the user's request below:] ${rawTask}`
+    }
+  }
+
+  if (intent.isOnlineSearchIntent && intent.matchedCurated.length > 0) {
+    const searchCallId = `chat-skill-search:${Date.now()}`
+    onHarnessEvent({
+      type: 'tool',
+      id: searchCallId,
+      name: 'skill_search',
+      state: 'done',
+      detail: intent.matchedCurated.map((c) => `${c.name} (${c.url})`).join(', ')
+    })
+    if (intent.wantsInstall && mode.value === 'craft') {
+      const top = intent.matchedCurated[0]
+      const installCallId = `chat-skill-install:${Date.now()}`
+      onHarnessEvent({
+        type: 'tool',
+        id: installCallId,
+        name: 'skill_install',
+        state: 'start',
+        detail: `Installing /${top.name} from ${top.url}`
+      })
+      try {
+        const inspected = await window.studio.inspectGitHubSkills({ url: top.url })
+        const candidates = inspected.skills ?? []
+        const res = await window.studio.installGitHubSkills({
+          url: top.url,
+          skillNames: candidates.length ? candidates.map((c) => c.name) : [top.name],
+          skillScriptsConsent: false
+        })
+        if (res.ok && res.installed.length > 0) {
+          await refreshSessionSkills()
+          for (const sName of res.installed) markSkillLoaded(sName)
+          const srcTag = inspected.source
+            ? `${inspected.source.owner}/${inspected.source.repo}@${inspected.source.resolvedRef}`
+            : top.url
+          onHarnessEvent({
+            type: 'tool',
+            id: installCallId,
+            name: 'skill_install',
+            state: 'done',
+            detail: `/${top.name} (${srcTag})`
+          })
+          commitMessages([...messages.value])
+          persistHistory()
+          return `/${top.name} [System Note: Online skill search matched and installed /${top.name} (${top.url}) into $DSH_HOME/skills/${top.name}/SKILL.md, and its full SKILL.md instructions are active above. NEVER use web_fetch, pwsh, write, or edit to write into $DSH_HOME/skills. Confirm to the user that /${top.name} is installed and fulfill their request below:] ${rawTask}`
+        }
+      } catch (err) {
+        onHarnessEvent({
+          type: 'tool',
+          id: installCallId,
+          name: 'skill_install',
+          state: 'error',
+          detail: err instanceof Error ? err.message : String(err)
+        })
+      }
+    }
+  }
+
+  return rawTask
+}
+
+/**
  * 真正起一轮：把 task 作为用户消息落盘并交给 harness。
  * 手输 / 重发 / 队列出队都走这里，保证三种入口的行为完全一致。
  */
@@ -2442,10 +2605,9 @@ async function runTask(text: string, options: { sourceIndex?: number } = {}): Pr
     pushStatus(status.value?.message ?? t('studio.chat.unavailable'), 'error')
     return
   }
-  const task = buildTask(text)
+  const task = text
   const slashSkillMatch = /^\/([a-zA-Z0-9._-]+)(?:\s|$)/.exec(task.trim())
   if (slashSkillMatch?.[1]) markSkillLoaded(slashSkillMatch[1])
-  referenced.value = []
   pendingReasoning = ''
   // 发送前记录 git 变更基线：运行结束后据此对比出「这一轮改了什么」
   void resetGitBaseline()
@@ -2465,10 +2627,11 @@ async function runTask(text: string, options: { sourceIndex?: number } = {}): Pr
       resendIndex.value = null
     }, 1500)
   }
+  const taskForHarness = await preprocessChatOnlineSkillIntent(task)
   const { providerId, modelId } = splitModelKey(selectedKey.value)
   const canvasContext = buildActiveCanvasContext()
   const result = await window.studio.runHarnessTask({
-    task,
+    task: taskForHarness,
     // 会话 id：dsh 据此恢复/创建持久化 session，模型通过原生会话历史记住之前的聊天内容
     sessionId: activeSession.value?.id,
     model: modelId.trim() || undefined,
@@ -2498,14 +2661,15 @@ async function onSend(): Promise<void> {
     else if (slash === 'skills') await onSkillsCommand()
     return
   }
+  const task = buildTask(raw)
+  referenced.value = []
+  resetEditor()
   // 正在执行：不丢弃输入，转入发送队列，等本轮结束后按序发出
   if (running.value) {
-    enqueueSend(raw)
-    resetEditor()
+    enqueueSend(task)
     return
   }
-  resetEditor()
-  await runTask(raw)
+  await runTask(task)
 }
 
 async function onAbort(): Promise<void> {
@@ -3400,7 +3564,6 @@ onBeforeUnmount(() => {
           <button
             class="tool-btn mention"
             :title="t('studio.chat.mentionTitle')"
-            :disabled="running"
             @click="mentionOpen = true"
           >
             {{ t('studio.chat.mentionButton') }}
@@ -3464,7 +3627,7 @@ onBeforeUnmount(() => {
           class="composer-editor"
           :class="{ composing }"
           :style="{ height: `${composerHeight}px` }"
-          :contenteditable="!running"
+          contenteditable="true"
           role="textbox"
           :aria-label="t('studio.chat.placeholder')"
           :data-placeholder="t('studio.chat.placeholder')"
@@ -3654,7 +3817,7 @@ onBeforeUnmount(() => {
           </svg>
         </button>
         <button
-          v-else
+          v-if="!running || draft.trim()"
           class="btn icon-btn send"
           :disabled="!draft.trim()"
           :title="t('studio.chat.send')"

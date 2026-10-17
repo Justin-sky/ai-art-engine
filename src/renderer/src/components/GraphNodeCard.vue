@@ -2167,7 +2167,8 @@ watch(
       props.node.params.generateAspectRatio,
       props.node.params.generateResolution,
       props.node.params.generateQuality,
-      props.node.params.generateCount
+      props.node.params.generateCount,
+      props.node.params.generateTransparentBg
     ] as const,
   () => {
     imageGenerateParams.value = readImageGenerateParamsFromNode(props.node.params)

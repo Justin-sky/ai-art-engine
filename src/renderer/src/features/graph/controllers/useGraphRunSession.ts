@@ -69,6 +69,7 @@ import { inspectModelSkeleton } from '../model/inspectModelSkeleton'
 import { runBlenderDshJob } from '../model/runBlenderDshJob'
 import { buildGamePlayProjectForNode } from '../model/runGamePlayBuild'
 import { normalizeImageAspectRatio } from '../model/normalizeImageAspectRatio'
+import { removeImageSolidBackground } from '../model/removeImageSolidBackground'
 import { composeTimelineVideoForNode } from '../model/composeTimelineVideo'
 import { enrichStyleImagesWithLibraryPrompts } from '../../stylePresets/defaultLibrary'
 import { resolveStyleImageUrls } from '../../stylePresets/resolveStyleImageUrls'
@@ -1676,6 +1677,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
             timeoutMs: input.timeoutMs
           }),
         normalizeImageAspectRatio,
+        removeImageSolidBackground,
         composeTimelineVideo: (input) =>
           composeTimelineVideoForNode({
             ...input,

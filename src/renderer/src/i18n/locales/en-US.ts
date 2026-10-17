@@ -6965,7 +6965,13 @@ export default {
           seedPlaceholder: 'Empty = random',
           seedRandom: 'Random',
           seedSummary: 'seed {n}',
-          seedUseGlobal: 'Use global seed'
+          seedUseGlobal: 'Use global seed',
+          transparentBg: 'Transparent background',
+          transparentBgOn: 'On',
+          transparentBgOff: 'Off',
+          transparentBgHint:
+            'Automatically appends a clean solid-background prompt and keys out the background into a transparent PNG after generation',
+          transparentBgSummary: 'Transparent'
         },
         videoParams: {
           title: 'Video generation params',

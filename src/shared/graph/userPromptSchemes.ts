@@ -76,6 +76,29 @@ export function buildImagePrompt(instruction: string, locale?: string): string {
   return buildOrDefault(instruction, locale, defaultImageUserPrompt)
 }
 
+export const IMAGE_TRANSPARENT_BG_PROMPT_EN =
+  'Isolated subject centered on a flat, uniform solid-color background with clean margins around the edges, no background clutter, no cast shadows, no ambient gradients, and strictly no checkerboard pattern.'
+
+export const IMAGE_TRANSPARENT_BG_PROMPT_ZH =
+  '主体独立居中，纯色均匀平涂背景，四周留出干净边缘，无背景杂物、无地面投影、无环境渐变、严禁绘制灰白棋盘格纹理。' // cjk-ok
+
+export function appendImageTransparentBgPrompt(prompt: string, locale?: string): string {
+  const suffix = pickByLocale(
+    locale,
+    IMAGE_TRANSPARENT_BG_PROMPT_EN,
+    IMAGE_TRANSPARENT_BG_PROMPT_ZH
+  )
+  const base = prompt.trim()
+  if (!base) return suffix
+  if (
+    base.includes(IMAGE_TRANSPARENT_BG_PROMPT_ZH) ||
+    base.includes(IMAGE_TRANSPARENT_BG_PROMPT_EN)
+  ) {
+    return base
+  }
+  return `${base}\n\n${suffix}`
+}
+
 // ——— 视频 ———
 
 export const DEFAULT_VIDEO_USER_PROMPT_EN =

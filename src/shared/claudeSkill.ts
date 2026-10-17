@@ -948,3 +948,154 @@ function buildCanonicalGitHubUrl(
   const branch = ref || 'main'
   return subpath ? `${base}/tree/${branch}/${subpath}` : `${base}/tree/${branch}`
 }
+
+export interface CuratedOnlineSkillItem {
+  name: string
+  description: string
+  url: string
+  keywords: readonly string[]
+}
+
+const CURATED_ONLINE_SKILLS_SHARED: ReadonlyArray<CuratedOnlineSkillItem> = [
+  {
+    name: 'frontend-design',
+    description:
+      'Create distinctive, production-grade frontend interfaces, dashboards, web components, and landing pages.',
+    url: 'https://github.com/anthropics/skills/tree/main/skills/frontend-design',
+    keywords: [
+      'frontend',
+      'ui',
+      'ux',
+      'web',
+      'css',
+      'html',
+      'react',
+      'vue',
+      'dashboard',
+      'cyberpunk',
+      '前端',
+      '界面',
+      '网页',
+      '面板',
+      '控制面板',
+      '设计'
+    ]
+  },
+  {
+    name: 'mcp-builder',
+    description: 'Guide for creating high-quality MCP (Model Context Protocol) servers and tools.',
+    url: 'https://github.com/anthropics/skills/tree/main/skills/mcp-builder',
+    keywords: ['mcp', 'model context protocol', 'tool', 'server', '插件', '工具服务']
+  },
+  {
+    name: 'canvas-design',
+    description: 'Create visual art, posters, and graphic layouts in PNG and PDF documents.',
+    url: 'https://github.com/anthropics/skills/tree/main/skills/canvas-design',
+    keywords: ['canvas', 'poster', 'graphic', 'art', 'layout', '海报', '平面设计', '排版', '画布']
+  },
+  {
+    name: 'algorithmic-art',
+    description:
+      'Creating algorithmic and generative art using p5.js with seeded randomness and particle systems.',
+    url: 'https://github.com/anthropics/skills/tree/main/skills/algorithmic-art',
+    keywords: [
+      'algorithmic',
+      'generative',
+      'p5js',
+      'shader',
+      'particle',
+      '生成艺术',
+      '算法艺术',
+      '粒子'
+    ]
+  },
+  {
+    name: 'webapp-testing',
+    description:
+      'Toolkit for interacting with and testing local web applications using Playwright.',
+    url: 'https://github.com/anthropics/skills/tree/main/skills/webapp-testing',
+    keywords: ['test', 'testing', 'playwright', 'e2e', 'webapp', '测试', '自动化测试']
+  },
+  {
+    name: 'pdf',
+    description:
+      'Comprehensive PDF manipulation toolkit for extracting text/tables and creating PDFs.',
+    url: 'https://github.com/anthropics/skills/tree/main/skills/pdf',
+    keywords: ['pdf', 'document', '文档']
+  },
+  {
+    name: 'docx',
+    description:
+      'Create, edit, and analyze Word (.docx) documents with formatting and tracked changes.',
+    url: 'https://github.com/anthropics/skills/tree/main/skills/docx',
+    keywords: ['docx', 'word', '文档', '报告']
+  },
+  {
+    name: 'pptx',
+    description: 'Create, edit, and analyze PowerPoint (.pptx) presentations and slide decks.',
+    url: 'https://github.com/anthropics/skills/tree/main/skills/pptx',
+    keywords: ['pptx', 'powerpoint', 'slides', 'presentation', '演示文稿', '幻灯片']
+  },
+  {
+    name: 'xlsx',
+    description: 'Create, edit, and analyze Excel (.xlsx, .csv) spreadsheets with formulas.',
+    url: 'https://github.com/anthropics/skills/tree/main/skills/xlsx',
+    keywords: ['xlsx', 'excel', 'csv', 'spreadsheet', '表格', '电子表格']
+  },
+  {
+    name: 'skill-creator',
+    description: 'Guide for creating effective Claude Code skills (SKILL.md) and workflows.',
+    url: 'https://github.com/anthropics/skills/tree/main/skills/skill-creator',
+    keywords: ['skill-creator', 'create skill', '编写技能', '制作技能', '创建技能']
+  }
+]
+
+export interface ChatOnlineSkillIntent {
+  githubUrls: string[]
+  mentionsSkillOrInstall: boolean
+  isOnlineSearchIntent: boolean
+  wantsInstall: boolean
+  matchedCurated: CuratedOnlineSkillItem[]
+}
+
+/**
+ * 解析用户对话消息中是否包含「给 GitHub URL 安装技能」或「联网搜索并安装技能」意图。
+ */
+export function detectChatSkillInstallOrSearchIntent(rawTask: string): ChatOnlineSkillIntent {
+  const urlMatches =
+    rawTask.match(
+      /https?:\/\/(?:github\.com|raw\.githubusercontent\.com)\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\/[^\s，。；！？\x22\x27,)>]*)?/gi
+    ) ?? []
+  const githubUrls = [
+    ...new Set(
+      urlMatches
+        .map((u) => u.replace(/[.,;:!?)\x22\x27`]+$/, ''))
+        .filter((u) => Boolean(parseGitHubSkillSourceUrl(u)))
+    )
+  ]
+  const mentionsSkillOrInstall =
+    /(?:技能|skill|安装|install|导入|添加|装上|装一下|装个|SKILL\.md)/i.test(rawTask) ||
+    githubUrls.some((u) => /\/skills?\b|SKILL\.md/i.test(u))
+  const isOnlineSearchIntent =
+    githubUrls.length === 0 &&
+    /(?:搜索|搜一下|找一下|查找|上网|联网|在线|github|安装|install|search|find)[^。！？\n]{0,30}(?:技能|skill)|(?:技能|skill)[^。！？\n]{0,30}(?:搜索|搜一下|找一下|查找|上网|联网|在线|github|安装|install|search|find)/i.test(
+      rawTask
+    )
+  const wantsInstall = /(?:安装|install|装上|装一下|装个|导入|添加)/i.test(rawTask)
+  const lower = rawTask.toLowerCase()
+  const matchedCurated = isOnlineSearchIntent
+    ? CURATED_ONLINE_SKILLS_SHARED.filter(
+        (item) =>
+          lower.includes(item.name.toLowerCase()) ||
+          item.keywords.some((kw) => lower.includes(kw.toLowerCase()))
+      )
+    : []
+
+  return {
+    githubUrls,
+    mentionsSkillOrInstall,
+    isOnlineSearchIntent,
+    wantsInstall,
+    matchedCurated
+  }
+}

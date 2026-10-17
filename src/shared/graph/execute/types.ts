@@ -1222,6 +1222,10 @@ export interface NodeExecuteContext {
   }) => Promise<{ result?: unknown; error?: string }>
   /** 图片生成后按目标宽高比居中裁正（宫格画布保证每格比例） */
   normalizeImageAspectRatio?: (input: { dataUrl: string; aspectRatio: string }) => Promise<string>
+  /** 图片生成开启透明背景时：四边泛洪键控 + 边缘去白边光晕，输出透明 PNG */
+  removeImageSolidBackground?: (input: {
+    dataUrl: string
+  }) => Promise<{ dataUrl: string; width: number; height: number; keyedRatio: number }>
   /**
    * 成片时间线输出节点执行时：自动把时间线片段（或新流入的上游视频/配音）合成为单条 MP4 成片。
    */
@@ -1439,6 +1443,7 @@ export interface GraphRunOptions {
   buildGamePlayProject?: NodeExecuteContext['buildGamePlayProject']
   runBlenderMcpTool?: NodeExecuteContext['runBlenderMcpTool']
   normalizeImageAspectRatio?: NodeExecuteContext['normalizeImageAspectRatio']
+  removeImageSolidBackground?: NodeExecuteContext['removeImageSolidBackground']
   composeTimelineVideo?: NodeExecuteContext['composeTimelineVideo']
   /** 世界元素四类图片组口：params 为空时从 element 子图 soft 收集（选取/快照用） */
   resolveWorldElementOutputs?: (node: GraphNode) => WorldElementGenResult[]

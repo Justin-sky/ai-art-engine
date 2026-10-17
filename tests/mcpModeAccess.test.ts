@@ -43,6 +43,11 @@ describe('对话模式的 MCP 工具授权分级（shared）', () => {
     expect(toolAccessOf('graph_edit')).toBe('write')
     expect(toolAccessOf('task_run')).toBe('write')
     expect(toolAccessOf('asset_delete')).toBe('write')
+    expect(toolAccessOf('skill_list')).toBe('read')
+    expect(toolAccessOf('skill_search')).toBe('read')
+    expect(toolAccessOf('skill_inspect_github')).toBe('read')
+    expect(toolAccessOf('skill_install')).toBe('write')
+    expect(toolAccessOf('skill_uninstall')).toBe('write')
     // 新增工具忘登记也不会变成越权口子：默认 write
     expect(toolAccessOf('brand_new_tool')).toBe('write')
   })

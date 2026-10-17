@@ -187,7 +187,25 @@ import type {
   SpatialWorldExportResolution
 } from '@shared/modelProvider'
 import { commitAiWorkflow, planAiWorkflow } from './graphPlanService'
-import { listInstalledWorkflowDetails, readInstalledWorkflowPlan } from './workflowMarketService'
+import {
+  fetchWorkflowCatalog,
+  installWorkflow,
+  listInstalledWorkflowDetails,
+  readInstalledWorkflowPlan,
+  uninstallWorkflow
+} from './workflowMarketService'
+import {
+  buildStudioNodeCapabilitiesBridge,
+  discoverInstalledClaudeSkills
+} from './claudeSkillRuntime'
+import {
+  inspectGitHubSkillSource,
+  installGitHubSkills,
+  listInstalledGitHubSkillRecords,
+  searchOnlineSkills,
+  uninstallSkillByName,
+  type OnlineSkillSearchItem
+} from './githubSkillInstaller'
 import { projectService } from './projectService'
 import { assetPackageService } from './assetPackageService'
 import { uploadProjectMedia } from './objectStorageUploadService'
@@ -4633,6 +4651,397 @@ const TOOL_DEFS: McpToolDef[] = [
           ...(r.relativePath ? { relativePaths: [r.relativePath] } : {})
         })
       )
+    }
+  },
+  // ── 技能发现、联网搜索与 GitHub 技能安装 ──────────────────────────────────────
+  {
+    name: 'skill_list',
+    title: '已安装技能列表',
+    description:
+      '列出当前已安装的全部技能（含 Claude Code / GitHub 技能、工程级 .claude/skills 与官方技能市场包）：返回技能名（可通过 `/技能名` 调用）、描述、来源地址、是否含可执行脚本或画布工作流模板及 SKILL.md 路径。只读操作，无需打开工程。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        includeInstructions: {
+          type: 'boolean',
+          description: '可选：是否一并返回每个技能 SKILL.md 的正文指令（默认 false）'
+        }
+      }
+    },
+    handler: async (args) => {
+      const includeInstructions = args.includeInstructions === true
+      const workspaceRoot = projectService.isOpen() ? projectService.getRoot() : undefined
+      const discovered = discoverInstalledClaudeSkills({
+        ...(workspaceRoot ? { workspaceRoot } : {})
+      })
+      const ghRecords = new Map(listInstalledGitHubSkillRecords().map((r) => [r.name, r]))
+      const marketRecords = new Map(
+        listInstalledWorkflowDetails()
+          .filter((w) => w.skillName)
+          .map((w) => [w.skillName as string, w])
+      )
+      const skills = discovered.map((entry) => {
+        const gh = ghRecords.get(entry.name)
+        const wf = marketRecords.get(entry.name)
+        return {
+          name: entry.name,
+          slashCommand: `/${entry.name}`,
+          description: entry.frontmatter.description,
+          scope: entry.scope,
+          source: gh ? 'github' : wf ? 'market' : entry.scope,
+          ...(gh ? { sourceUrl: gh.sourceUrl, repo: `${gh.owner}/${gh.repo}`, ref: gh.ref } : {}),
+          ...(wf ? { marketId: wf.id, workflowTitle: wf.title } : {}),
+          hasScripts: entry.hasScripts,
+          hasWorkflow: entry.hasWorkflow || Boolean(wf),
+          extraFiles: entry.extraFiles,
+          skillDir: entry.dirPath,
+          skillFilePath: entry.skillFilePath,
+          ...(includeInstructions ? { instructions: entry.body } : {})
+        }
+      })
+      return {
+        total: skills.length,
+        skills,
+        ...(includeInstructions
+          ? { studioNodeCapabilitiesBridge: buildStudioNodeCapabilitiesBridge() }
+          : {})
+      }
+    }
+  },
+  {
+    name: 'skill_search',
+    title: '在线搜索技能',
+    description:
+      '按关键词或主题联网搜索可安装的 AI 技能（同时检索：① Claude Code 官方精选技能库 anthropics/skills、② AIArtEngine 官方技能市场、③ GitHub 公开仓库并自动核验 SKILL.md）。' +
+      '当用户让你「上网搜一个某某技能并安装」或询问「有哪些技能可用」时调用。返回每个候选技能的 `name`、`description`、`url`（GitHub 地址）或 `marketId`（官方市场 ID）、`hasScripts` 与 `installed` 状态，接着可直接调 `skill_install` 安装。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description:
+            '搜索关键词（支持中文或英文，如 "mcp"、"pdf"、"frontend design"、"短剧"、"图标"、"blender"）'
+        },
+        limit: {
+          type: 'number',
+          description: '最大返回条数（默认 12，上限 25）'
+        }
+      },
+      required: ['query']
+    },
+    handler: async (args) => {
+      const query = readString(args, 'query')
+      const rawLimit = optionalNumber(args, 'limit')
+      const limit = Math.max(1, Math.min(rawLimit ?? 12, 25))
+      const activityId = mcpActivityService.begin({
+        tool: 'skill_search',
+        title: `搜索在线技能 · ${query}`,
+        detail: '正在检索 GitHub 技能仓库与官方技能市场…'
+      })
+      try {
+        const [onlineRes, catalogRes] = await Promise.all([
+          searchOnlineSkills({ query, limit }),
+          fetchWorkflowCatalog().catch(() => null)
+        ])
+        const merged: OnlineSkillSearchItem[] = []
+        const seenKeys = new Set<string>()
+
+        if (catalogRes && catalogRes.ok && Array.isArray(catalogRes.entries)) {
+          const qLower = query.toLowerCase().trim()
+          const tokens = qLower.split(/[\s,，、/|-]+/).filter(Boolean)
+          const isBroadQuery =
+            !tokens.length ||
+            ['all', 'market', 'skill', 'skills', '技能', '工作流', '推荐', '热门'].includes(qLower)
+          for (const entry of catalogRes.entries) {
+            const skillName = entry.skill?.name ?? `wf-${entry.id}`
+            const haystack = [
+              entry.id,
+              skillName,
+              entry.title,
+              entry.summary,
+              entry.skill?.description ?? '',
+              ...(entry.tags ?? [])
+            ]
+              .join(' ')
+              .toLowerCase()
+            const matched =
+              isBroadQuery ||
+              haystack.includes(qLower) ||
+              tokens.some((tok) => haystack.includes(tok))
+            if (!matched) continue
+            const key = `market:${entry.id}`
+            seenKeys.add(key)
+            seenKeys.add(`name:${skillName}`)
+            merged.push({
+              name: skillName,
+              title: entry.title,
+              description: entry.skill?.description || entry.summary,
+              source: 'market',
+              marketId: entry.id,
+              hasScripts: Boolean(entry.skill?.files?.some((f) => f.path.startsWith('scripts/'))),
+              hasWorkflow: true,
+              installed: Boolean(entry.installed)
+            })
+          }
+        }
+
+        for (const item of onlineRes.items) {
+          const key = item.url ? `url:${item.url.toLowerCase()}` : `name:${item.name}`
+          if (seenKeys.has(key) || seenKeys.has(`name:${item.name}`)) continue
+          seenKeys.add(key)
+          seenKeys.add(`name:${item.name}`)
+          merged.push(item)
+        }
+
+        const finalItems = merged.slice(0, limit)
+        mcpActivityService.end(activityId, { ok: true })
+        return {
+          ok: true,
+          query,
+          total: finalItems.length,
+          items: finalItems,
+          hint: '可使用 skill_install({ url }) 安装 GitHub 技能，或使用 skill_install({ marketId }) 安装官方市场技能。若目标技能 hasScripts 为 true 且需要安装可执行脚本，请先用 ask_user 征得用户同意后再传 allowScripts: true。'
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        mcpActivityService.end(activityId, { ok: false, error: message })
+        throw err
+      }
+    }
+  },
+  {
+    name: 'skill_inspect_github',
+    title: '预检 GitHub 技能地址',
+    description:
+      '解析并预检一个 GitHub 技能地址（支持仓库根地址 `https://github.com/owner/repo`、子目录 `https://github.com/owner/repo/tree/main/skills/xxx`、单文件 `.../blob/.../SKILL.md` 或 `raw.githubusercontent.com/...`），列出该地址下发现的全部 SKILL.md 技能包、描述、是否含 `scripts/` 可执行脚本及是否已安装。只读操作。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url: {
+          type: 'string',
+          description: 'GitHub 仓库 / 子目录 / SKILL.md URL'
+        }
+      },
+      required: ['url']
+    },
+    handler: async (args) => {
+      const url = readString(args, 'url')
+      const res = await inspectGitHubSkillSource({ url })
+      if (!res.ok || !res.skills) {
+        throw new Error(
+          res.error
+            ? `GitHub 技能预检失败（${res.reasonKey ?? 'error'}）：${res.error}`
+            : `未在该 GitHub 地址下发现合法的 SKILL.md 技能包（reason: ${res.reasonKey ?? 'noSkillsFound'}）`
+        )
+      }
+      return {
+        ok: true,
+        source: res.source,
+        total: res.skills.length,
+        skills: res.skills.map((s) => ({
+          name: s.name,
+          slashCommand: `/${s.name}`,
+          description: s.description,
+          repoSubpath: s.repoSubpath,
+          version: s.version,
+          author: s.author,
+          license: s.license,
+          hasScripts: s.hasScripts,
+          scriptFiles: s.scriptFiles,
+          hasWorkflow: s.hasWorkflow,
+          fileCount: s.files.length,
+          installed: s.installed
+        }))
+      }
+    }
+  },
+  {
+    name: 'skill_install',
+    title: '安装技能（GitHub URL 或官方市场）',
+    description:
+      '从 GitHub 技能 URL（`url`）或官方技能市场（`marketId`）安装技能到本机 `$DSH_HOME/skills/<name>/SKILL.md`。' +
+      '支持直接传入用户给出的 GitHub 仓库/子目录/SKILL.md 链接，或传入 `skill_search` 搜索到的 `url` / `marketId`。' +
+      '若一个 GitHub 仓库包含多个技能，可通过 `skillNames` 指定要安装的子集（省略则全部安装）。' +
+      '安全准则：默认不安装 `scripts/` 目录下的可执行脚本（仅安装 SKILL.md 与 references/ 文档）；若技能包含 `scripts/` 且确实需要执行随包脚本，请先询问用户确认后再传 `allowScripts: true`。' +
+      '安装成功后会在返回结果中直接附带已安装技能的完整 `instructions`（SKILL.md 正文）与 `skillDir`，你在当前对话轮次即可立即按该技能指南执行，无需重启会话！',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url: {
+          type: 'string',
+          description:
+            'GitHub 技能地址（仓库根 URL、/tree/<branch>/<subpath>、/blob/.../SKILL.md 或 raw.githubusercontent.com URL；与 marketId 二选一）'
+        },
+        marketId: {
+          type: 'string',
+          description: '官方技能市场条目 ID（来自 skill_search 返回的 marketId；与 url 二选一）'
+        },
+        skillNames: {
+          type: 'array',
+          items: { type: 'string' },
+          description:
+            '可选：当 GitHub 仓库内包含多个技能时，指定只安装这些技能名（省略则安装该 URL 下的全部技能）'
+        },
+        allowScripts: {
+          type: 'boolean',
+          description:
+            '可选：是否允许安装 scripts/ 目录下的可执行脚本（默认 false，需用户明示同意后方可设为 true）'
+        }
+      }
+    },
+    handler: async (args) => {
+      const url = optionalString(args, 'url')
+      const marketId = optionalString(args, 'marketId')
+      const skillNames = readStringList(args, 'skillNames')
+      const allowScripts = args.allowScripts === true
+
+      if (!url && !marketId) {
+        throw new Error('请提供 GitHub 技能地址 `url` 或官方市场 `marketId`')
+      }
+
+      const label = url || marketId || 'skill'
+      const activityId = mcpActivityService.begin({
+        tool: 'skill_install',
+        title: `安装技能 · ${skillNames.length ? skillNames.join(', ') : label}`,
+        detail: url ? `从 GitHub 安装：${url}` : `从官方技能市场安装：${marketId}`
+      })
+
+      try {
+        let installedNames: string[] = []
+        let skippedScriptsFor: string[] = []
+
+        if (marketId && !url) {
+          const catalog = await fetchWorkflowCatalog()
+          if (!catalog.ok || !catalog.entries) {
+            throw new Error(`获取官方技能市场目录失败：${catalog.reasonKey ?? 'network'}`)
+          }
+          const normalizedId = marketId.replace(/^\/+/, '').replace(/^wf-/, '')
+          const entry = catalog.entries.find(
+            (item) =>
+              item.id === marketId ||
+              item.id === normalizedId ||
+              item.skill?.name === marketId ||
+              item.skill?.name === `wf-${normalizedId}`
+          )
+          if (!entry) {
+            throw new Error(`未在官方技能市场找到条目：${marketId}`)
+          }
+          const res = await installWorkflow({
+            id: entry.id,
+            skill: entry.skill,
+            skillScriptsConsent: allowScripts,
+            scriptConsent: allowScripts,
+            semanticPacks: entry.semanticPacks
+          })
+          if (!res.ok) {
+            throw new Error(
+              `安装市场技能「${entry.id}」失败（${res.reasonKey ?? 'error'}）${res.error ? `：${res.error}` : ''}`
+            )
+          }
+          const installedSkillName = entry.skill?.name ?? `wf-${entry.id}`
+          installedNames = [installedSkillName]
+          const hasScriptsInManifest = Boolean(
+            entry.skill?.files?.some((f) => f.path.startsWith('scripts/'))
+          )
+          if (hasScriptsInManifest && !allowScripts) {
+            skippedScriptsFor = [installedSkillName]
+          }
+        } else if (url) {
+          const res = await installGitHubSkills({
+            url,
+            ...(skillNames.length ? { skillNames } : {}),
+            skillScriptsConsent: allowScripts
+          })
+          if (!res.ok) {
+            throw new Error(
+              `从 GitHub 安装技能失败（${res.reasonKey ?? 'error'}）${res.error ? `：${res.error}` : ''}`
+            )
+          }
+          installedNames = res.installed
+          skippedScriptsFor = res.skippedScriptsFor ?? []
+        }
+
+        const workspaceRoot = projectService.isOpen() ? projectService.getRoot() : undefined
+        const allInstalled = discoverInstalledClaudeSkills({
+          ...(workspaceRoot ? { workspaceRoot } : {})
+        })
+        const installedDetails = installedNames.map((name) => {
+          const found = allInstalled.find((item) => item.name === name)
+          return {
+            name,
+            slashCommand: `/${name}`,
+            description: found?.frontmatter.description ?? '',
+            skillDir: found?.dirPath ?? '',
+            skillFilePath: found?.skillFilePath ?? '',
+            hasScripts: found?.hasScripts ?? false,
+            hasWorkflow: found?.hasWorkflow ?? false,
+            extraFiles: found?.extraFiles ?? [],
+            instructions: found?.body ?? ''
+          }
+        })
+
+        mcpActivityService.end(activityId, { ok: true })
+
+        return {
+          ok: true,
+          installed: installedNames,
+          slashCommands: installedNames.map((n) => `/${n}`),
+          ...(skippedScriptsFor.length
+            ? {
+                skippedScriptsFor,
+                scriptsNote: `技能 ${skippedScriptsFor.join(', ')} 含有 scripts/ 可执行脚本，本次已默认跳过脚本仅安装 SKILL.md 与参考文档。若需要运行随包脚本，请用 ask_user 征得用户同意后以 allowScripts: true 重新调用 skill_install。`
+              }
+            : {}),
+          skills: installedDetails,
+          studioNodeCapabilitiesBridge: buildStudioNodeCapabilitiesBridge(),
+          hint: '技能已安装落盘，且上方 skills[].instructions 已包含完整的 SKILL.md 指南，同时 studioNodeCapabilitiesBridge 已提供本项目全部内置画布节点与工具能力，你可在本轮立即结合该技能规范与项目节点能力继续完成任务；用户也可在输入框通过 /技能名 随时调用。'
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        mcpActivityService.end(activityId, { ok: false, error: message })
+        throw err
+      }
+    }
+  },
+  {
+    name: 'skill_uninstall',
+    title: '卸载技能',
+    description: '按技能名卸载已安装的技能包（支持传入技能名如 `mcp-builder` 或 `/mcp-builder`）。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          description: '要卸载的技能名（如 "mcp-builder" 或 "/mcp-builder"）'
+        }
+      },
+      required: ['name']
+    },
+    handler: async (args) => {
+      const rawName = readString(args, 'name').trim().replace(/^\/+/, '')
+      if (!rawName) throw new Error('请提供要卸载的技能名称')
+      const marketMatch = listInstalledWorkflowDetails().find(
+        (w) => w.id === rawName || w.skillName === rawName
+      )
+      if (marketMatch) {
+        const wfRes = uninstallWorkflow({ id: marketMatch.id })
+        if (!wfRes.ok) {
+          throw new Error(`卸载市场技能失败：${wfRes.error ?? wfRes.reasonKey ?? 'removeFailed'}`)
+        }
+        return {
+          ok: true,
+          uninstalled: rawName,
+          marketId: marketMatch.id
+        }
+      }
+      const res = uninstallSkillByName(rawName)
+      if (!res.ok) {
+        throw new Error(`卸载技能「${rawName}」失败：${res.error ?? 'removeFailed'}`)
+      }
+      return {
+        ok: true,
+        uninstalled: rawName
+      }
     }
   }
 ]

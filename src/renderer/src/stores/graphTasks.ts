@@ -91,6 +91,7 @@ import { inspectModelSkeleton } from '../features/graph/model/inspectModelSkelet
 import { runBlenderDshJob } from '../features/graph/model/runBlenderDshJob'
 import { buildGamePlayProjectForNode } from '../features/graph/model/runGamePlayBuild'
 import { normalizeImageAspectRatio } from '../features/graph/model/normalizeImageAspectRatio'
+import { removeImageSolidBackground } from '../features/graph/model/removeImageSolidBackground'
 import { prepareGraphDocumentForPersist } from '../features/graph/persistGraphRunOutputs'
 import { saveGraphRunMediaForNode } from '../features/graph/saveGraphRunMediaForNode'
 import { saveGraphRunTextForNode } from '../features/graph/saveGraphRunTextForNode'
@@ -1640,6 +1641,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             timeoutMs: input.timeoutMs
           }),
         normalizeImageAspectRatio,
+        removeImageSolidBackground,
         resolveBeatCatalogJson: () => {
           if (task.target.kind !== 'asset') return null
           const beatId = task.target.assetId

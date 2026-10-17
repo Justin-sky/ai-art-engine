@@ -56,6 +56,7 @@ class McpActivityService {
       relativePaths?: string[]
       /** 与主产物同批、折叠进同一张卡的附件（如世界随包返回的泼溅 / 全景） */
       relatedPaths?: string[]
+      detail?: string
       error?: string
       apiCall?: Omit<GraphRunLogApiCall, 'id' | 'ts'>
     }
@@ -71,6 +72,7 @@ class McpActivityService {
       ...prev,
       status: input.ok ? 'done' : 'error',
       finishedAt,
+      detail: input.detail ?? prev.detail,
       assetId: input.assetId,
       relativePath: input.relativePath,
       relativePaths: relativePaths?.length ? [...relativePaths] : undefined,

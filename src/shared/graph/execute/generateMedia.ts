@@ -15,7 +15,13 @@ import {
   isValidReshootSegment,
   resolveReshootSystemPrompt
 } from '../reshoot'
-import { buildImagePrompt, buildVideoPrompt, buildVoicePrompt } from '../userPromptSchemes'
+import {
+  appendImageTransparentBgPrompt,
+  buildImagePrompt,
+  buildVideoPrompt,
+  buildVoicePrompt
+} from '../userPromptSchemes'
+import { normalizeImageCutout } from '../imageCutout'
 import {
   resolveImageGenerateParamsForApi,
   imageGenerateParamsToNodePatch,
@@ -1084,6 +1090,9 @@ export async function executeImageGenerateNode(
     locale: ctx.locale,
     subject: node.params.styleReferenceSubject
   })
+  if (node.params.generateTransparentBg === true) {
+    userPrompt = appendImageTransparentBgPrompt(userPrompt, ctx.locale)
+  }
   // 剧集流水线产物节点（如 9宫格拼图 / 4宫格拼图）：重跑时附加导演上次 FAIL 原因
   if (node.params.episodeStep && ctx.readEpisodeAgentState) {
     try {
@@ -1223,6 +1232,38 @@ export async function executeImageGenerateNode(
         if (normalized) item.dataUrl = normalized
       } catch {
         /* 裁正失败时保留原图 */
+      }
+    }
+  }
+
+  // 透明背景模式：优先做四边连通纯色背景键控 + 去光晕，纯色底不明显时回退本地 YOLO 实例抠图
+  if (genParams.transparentBg) {
+    for (const item of batch) {
+      if (!item.dataUrl?.startsWith('data:image/')) continue
+      let keyed = false
+      if (ctx.removeImageSolidBackground) {
+        try {
+          const solidRes = await ctx.removeImageSolidBackground({ dataUrl: item.dataUrl })
+          if (solidRes.keyedRatio >= 0.02 && solidRes.dataUrl) {
+            item.dataUrl = solidRes.dataUrl
+            keyed = true
+          }
+        } catch {
+          /* 纯色泛洪键控失败时尝试回退 YOLO 抠图 */
+        }
+      }
+      if (!keyed && ctx.composeImageCutoutCanvas) {
+        try {
+          const cutoutRes = await ctx.composeImageCutoutCanvas({
+            sourceDataUrl: item.dataUrl,
+            state: normalizeImageCutout({ personOnly: false, cropToSubject: false })
+          })
+          if (cutoutRes.dataUrl) {
+            item.dataUrl = cutoutRes.dataUrl
+          }
+        } catch {
+          /* 抠图失败时保留原图，避免中断整批生成 */
+        }
       }
     }
   }

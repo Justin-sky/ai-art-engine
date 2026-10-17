@@ -20,7 +20,7 @@ import {
   type HarnessStatus,
   type SessionSkill
 } from '@shared/ipc'
-import { parseClaudeSkillMarkdown } from '@shared/claudeSkill'
+import { parseClaudeSkillMarkdown, parseGitHubSkillSourceUrl } from '@shared/claudeSkill'
 import { accessHeaders, isCancelAnswer, normalizeChatMode } from '@shared/mcpModeAccess'
 import {
   isCustomProvider,
@@ -32,6 +32,7 @@ import { resolveDshChatInputModalitiesForProvider } from '@shared/dshChatModelMo
 import { PROJECT_MEMORY_INJECT_LIMIT, PROJECT_MEMORY_RELATIVE_PATH } from '@shared/projectMemory'
 import { broadcastToAllWindows } from '../broadcast'
 import {
+  buildStudioNodeCapabilitiesBridge,
   cleanupLegacyDshSkills,
   discoverInstalledClaudeSkills,
   preprocessSkillInvocation,
@@ -39,6 +40,11 @@ import {
   shouldAutoApproveSkillTool,
   type ActiveSkillTurnContext
 } from './claudeSkillRuntime'
+import {
+  inspectGitHubSkillSource,
+  installGitHubSkills,
+  searchOnlineSkills
+} from './githubSkillInstaller'
 import { isDshQuotaError } from './deepseekHarnessFailure'
 import {
   appendNodeRequireOption,
@@ -916,14 +922,21 @@ function buildPersona(mode: ChatMode, projectMemory?: string | null): string[] {
     'When the user message includes a [Workspace Canvas & Node Context] block or asks to inspect, modify, connect, or run nodes in the project, operate directly on that canvas asset using graph_read({ assetId }), graph_edit({ assetId, operations }), and task_run({ assetId, nodeId }) followed by task_status({ mcpTaskId }).',
     'When a request matches any specialized studio node capability or multi-step production pipeline below, prefer building or editing a canvas node graph (call graph_node_types({ typeId, includeParams: true }) for exact ports, params, and usage; then use graph_edit on the active canvas or workflow_commit({ plan, name }) for a new canvas, and execute via task_run + task_status) instead of plain one-shot generation.',
     'Film / Short Drama / Storyboard / Cast & Shoot pipeline uses play.script -> film.workbench (and optional film.shot for single-shot polish) for script breakdown, director review, character/location design sheets, Series Bible (in-cast/out-cast), and batch keyframe or shot video generation.',
-    'Image Editing 10-in-1 Workbench uses image.process (set params.imageProcessTool to cutout, matte, erase, redraw, expand, upscale, gridSplit, compose, crop, or transform) for background removal, AI matting, inpainting, outpainting, upscaling, grid slicing, and compositing.',
+    'Image Editing 10-in-1 Workbench uses image.process (set params.imageProcessTool to cutout, matte, erase, redraw, expand, upscale, gridSplit, compose, crop, or transform) for background removal, AI matting, inpainting, outpainting, upscaling, grid slicing, and compositing; for direct transparent PNG image generation on asset.image, set params.generateTransparentBg=true (auto-appends a clean solid-background constraint and keys out the background after generation).',
     'Portrait / Multi-Angle / Lighting / Character Consistency nodes use image.portrait (retouch & ID photos), image.multiAngle (turnaround sheets & 3D camera angles), image.lighting (3D studio relighting), and image.Consistent (emotion pad & locked identity).',
     'Ad Multi-Variant Matrix uses image.adVariants (params.adVariantMatrix) to batch-generate e-commerce or UA ad variants across audience, scene, tone, and copy dimensions.',
     '2D Frame Animation & 2D Stage Director use anim.2d (sprite sheet slicing/GIF baking, frame interpolation, 2D bones), image.align (sprite background keying, defringe, 9-slice, seamless tile), and stage.2d (multi-layer Z-depth stage, skeletal action baking, Spine export).',
     'SVG Vector & Animation use svg.gen -> svg.anim to generate pure vector SVG assets and bake SMIL animations into PNG frame sequences and GIFs.',
     'Semantic Video Analysis & Rebuild use semantic.analyze -> semantic.compile -> semantic.rebuild for shot-level video deconstruction, product/character replacement, and non-destructive video rebuild.',
     'Spatial World & 3D Rigging/Animation use world.graph -> world.panoramic -> world.extract -> world.splatView for 360 panoramas and 3DGS camera walkthroughs, and model.rigSkin -> model.pose -> model.animation for Blender 3D rigging, posing, and keyframe animation.',
-    'Game UI, Icons, Comic & Audio Compose use ui.split -> ui.gen (UI component slicing), image.iconPack (batch icons), comic.page (manga/comic page layout), voice.design / voice.tts / audio.music / audio.separate, and video.compose (multi-track timeline).'
+    'Game UI, Icons, Comic & Audio Compose use ui.split -> ui.gen (UI component slicing), image.iconPack (batch icons), comic.page (manga/comic page layout), voice.design / voice.tts / audio.music / audio.separate, and video.compose (multi-track timeline).',
+    '=== Online Skill Search & GitHub Skill Installation ===',
+    'When the user provides a GitHub skill URL (repo root, /tree/<branch>/<subpath>, /blob/.../SKILL.md, or raw.githubusercontent.com) or asks to search online and install a skill, ALWAYS use the studio skill MCP tools (`skill_search`, `skill_inspect_github`, `skill_install`, `skill_list`, `skill_uninstall`) or the `<skill>` block pre-installed by the host in the current turn:',
+    '0. NEVER use `web_fetch` + `pwsh` / `write` / `edit` to manually create files under `$DSH_HOME/skills` or `%APPDATA%\\aiartengine\\dsh-harness\\skills` — that directory is outside the project workspace and blocked by the Windows ACL sandbox (`PermissionDenied`). Only `skill_install` (which runs in the privileged Electron host process) can install skills and update `.installed-github-skills.json`.',
+    '1. Given a GitHub URL: if the host has already pre-installed and injected the `<skill>` block in your prompt, apply it directly; otherwise call `skill_install({ url, skillNames })` (or `skill_inspect_github({ url })` first to inspect a multi-skill repository).',
+    '2. Asked to search online for a skill by topic/keyword: call `skill_search({ query })` (which searches official Claude Code skills `anthropics/skills`, the AIArtEngine Skill Market, and live GitHub repositories with SKILL.md verification), then call `skill_install({ url })` or `skill_install({ marketId })` to install the best match.',
+    '3. Script safety: `skill_install` defaults to `allowScripts: false` (installing `SKILL.md` and `references/` while skipping `scripts/`). If a skill has `hasScripts: true` and running its bundled scripts is needed, ask the user via `ask_user_question` before calling `skill_install` with `allowScripts: true`.',
+    '4. Immediate use: `skill_install` returns `skills[].instructions` (the full `SKILL.md` body) and `skillDir`, so you can immediately apply the newly installed skill in the current turn and inform the user they can also invoke it anytime via `/<skill-name>`.'
   ]
   if (mode === 'ask') {
     return [
@@ -1194,8 +1207,8 @@ function sendWorkerCommand(payload: Record<string, unknown>): boolean {
   }
 }
 
-/** 常驻 worker 协议版本：改 runner 交互时递增，强制热进程重建 */
-const WORKER_PROTOCOL = '2'
+/** 常驻 worker 协议版本：改 runner 交互或 MCP 核心工具集时递增，强制热进程重建 */
+const WORKER_PROTOCOL = '3'
 
 function workerFingerprintOf(input: {
   workspace: string
@@ -1945,6 +1958,234 @@ function resolveProjectCanvasContext(explicitContext?: string): string {
   }
 }
 
+/**
+ * 宿主侧预处理用户的「给 GitHub 技能 URL 安装」或「主动联网搜索并安装技能」意图：
+ * 1. 当用户在消息中提供了 GitHub 技能链接（repo / tree / blob / raw）且处于 Craft 模式时，
+ *    直接由宿主主进程（不受 ACL 沙箱限制）预检并安装到 `$DSH_HOME/skills/<name>/SKILL.md`，
+ *    同步写入 `.aiart-github-skill.json` 与 `.installed-github-skills.json`，下发工具完成卡片，
+ *    并将已安装技能的完整 `SKILL.md` 指令直接注入本轮上下文，彻底杜绝模型用 `web_fetch + pwsh + write`
+ *    越界写盘触发沙箱拒绝或多次弹窗提权。
+ * 2. 当用户要求「上网搜索某个技能并安装」时，宿主主进程先执行 `searchOnlineSkills` 检索候选技能，
+ *    若用户明确要求安装且命中高置信候选，则在 Craft 模式下直接预装首条匹配技能并把完整候选列表与已装指令一并注入本轮提示词。
+ */
+async function preprocessOnlineSkillInstallIntent(input: {
+  taskText: string
+  mode: ChatMode
+  workspaceRoot: string
+}): Promise<string> {
+  const { taskText, mode, workspaceRoot } = input
+  if (mode === 'ask' || taskText.startsWith('[Claude Code Skill Active:')) return taskText
+
+  // 1. 提取消息中的 GitHub URL
+  const urlMatches =
+    taskText.match(
+      /https?:\/\/(?:github\.com|raw\.githubusercontent\.com)\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\/[^\s，。；！？"',)>]*)?/gi
+    ) ?? []
+  const validGhUrls = [
+    ...new Set(
+      urlMatches
+        .map((u) => u.replace(/[.,;:!?)'"`]+$/, ''))
+        .filter((u) => Boolean(parseGitHubSkillSourceUrl(u)))
+    )
+  ]
+
+  const mentionsSkillOrInstall =
+    /(?:技能|skill|安装|install|导入|添加|装上|装一下|装个|SKILL\.md)/i.test(taskText) ||
+    validGhUrls.some((u) => /\/skills?\b|SKILL\.md/i.test(u))
+
+  if (validGhUrls.length > 0 && mentionsSkillOrInstall && mode === 'craft') {
+    const installedBlocks: string[] = []
+    for (const url of validGhUrls) {
+      const toolCallId = `host-skill-install:${Date.now()}`
+      emit({
+        type: 'tool',
+        id: toolCallId,
+        name: 'skill_install',
+        state: 'start',
+        detail: `正在从 GitHub 安装技能：${url}`
+      })
+      try {
+        let skillNames: string[] | undefined
+        const inspected = await inspectGitHubSkillSource({ url })
+        if (inspected.ok && inspected.skills && inspected.skills.length > 1) {
+          const lowerTask = taskText.toLowerCase()
+          const matchedNames = inspected.skills
+            .filter((s) => lowerTask.includes(s.name.toLowerCase()))
+            .map((s) => s.name)
+          if (matchedNames.length > 0) {
+            skillNames = matchedNames
+          }
+        }
+        const res = await installGitHubSkills({
+          url,
+          ...(skillNames?.length ? { skillNames } : {}),
+          skillScriptsConsent: false
+        })
+        if (res.ok && res.installed.length > 0) {
+          emit({
+            type: 'tool',
+            id: toolCallId,
+            name: 'skill_install',
+            state: 'done',
+            detail: `已安装技能：${res.installed.map((n) => `/${n}`).join('、')}`
+          })
+          const allSkills = discoverInstalledClaudeSkills({ workspaceRoot })
+          for (const installedName of res.installed) {
+            const entry = allSkills.find((s) => s.name === installedName)
+            if (entry) {
+              installedBlocks.push(
+                [
+                  `Installed Skill: /${entry.name} (from ${url})`,
+                  `Skill Directory: ${entry.dirPath}`,
+                  `Skill File: ${entry.skillFilePath}`,
+                  ...(res.skippedScriptsFor?.includes(entry.name)
+                    ? [
+                        `Note: Bundled scripts/ were skipped by default for safety. If running bundled scripts is required, ask the user via ask_user_question and call skill_install({ url: "${url}", skillNames: ["${entry.name}"], allowScripts: true }).`
+                      ]
+                    : []),
+                  `<skill name="${entry.name}" dir="${entry.dirPath}">`,
+                  entry.body,
+                  `</skill>`
+                ].join('\n')
+              )
+            }
+          }
+        } else {
+          emit({
+            type: 'tool',
+            id: toolCallId,
+            name: 'skill_install',
+            state: 'done',
+            detail: res.error ?? res.reasonKey ?? '未发现可安装的 SKILL.md'
+          })
+        }
+      } catch (err) {
+        emit({
+          type: 'tool',
+          id: toolCallId,
+          name: 'skill_install',
+          state: 'done',
+          detail: err instanceof Error ? err.message : String(err)
+        })
+      }
+    }
+
+    if (installedBlocks.length > 0) {
+      return [
+        taskText,
+        '',
+        '[Studio Host Pre-Installed GitHub Skill(s)]',
+        'IMPORTANT: The studio host has ALREADY downloaded and installed the requested GitHub skill(s) into `$DSH_HOME/skills` before this turn started.',
+        'Do NOT call `web_fetch`, `pwsh`, `New-Item`, or `write` to download or write `SKILL.md` into `$DSH_HOME/skills` again (that path is outside the workspace sandbox and manual writes will fail).',
+        "Acknowledge that the skill is now installed (and available via `/<skill-name>`), and immediately follow the installed skill instructions below together with AIArtEngine's built-in node capabilities to complete the rest of the user request:",
+        '',
+        ...installedBlocks,
+        '',
+        buildStudioNodeCapabilitiesBridge()
+      ].join('\n')
+    }
+  }
+
+  // 2. 无直接 URL，但用户要求联网搜索/查找/安装技能
+  const asksOnlineSkillSearch =
+    validGhUrls.length === 0 &&
+    /(?:技能|skill|skills)/i.test(taskText) &&
+    /(?:搜索|搜一下|搜个|搜|上网|联网|在线|查找|找一个|找个|找|安装|install|装上|装一下|装个|导入|添加|search|github)/i.test(
+      taskText
+    )
+
+  if (asksOnlineSkillSearch) {
+    const searchCallId = `host-skill-search:${Date.now()}`
+    emit({
+      type: 'tool',
+      id: searchCallId,
+      name: 'skill_search',
+      state: 'start',
+      detail: '正在联网检索匹配的技能…'
+    })
+    try {
+      const searchRes = await searchOnlineSkills({ query: taskText, limit: 8 })
+      emit({
+        type: 'tool',
+        id: searchCallId,
+        name: 'skill_search',
+        state: 'done',
+        detail: `找到 ${searchRes.items.length} 个候选技能`
+      })
+      const wantsInstallNow = /(?:安装|install|装上|装一下|装个|导入|添加)/i.test(taskText)
+      let autoInstalledBlock = ''
+      if (wantsInstallNow && mode === 'craft' && searchRes.items.length > 0) {
+        const top = searchRes.items[0]!
+        if (top.url) {
+          const installCallId = `host-skill-install:${Date.now()}`
+          emit({
+            type: 'tool',
+            id: installCallId,
+            name: 'skill_install',
+            state: 'start',
+            detail: `正在安装技能 /${top.name}（${top.url}）`
+          })
+          const inst = await installGitHubSkills({
+            url: top.url,
+            skillNames: [top.name],
+            skillScriptsConsent: false
+          })
+          if (inst.ok && inst.installed.length > 0) {
+            emit({
+              type: 'tool',
+              id: installCallId,
+              name: 'skill_install',
+              state: 'done',
+              detail: `已安装技能：${inst.installed.map((n) => `/${n}`).join('、')}`
+            })
+            const allSkills = discoverInstalledClaudeSkills({ workspaceRoot })
+            const entry = allSkills.find((s) => s.name === inst.installed[0])
+            if (entry) {
+              autoInstalledBlock = [
+                '[Studio Host Auto-Installed Skill from Online Search]',
+                `The studio host searched online and automatically installed the best-matching skill: /${entry.name} (${top.url}).`,
+                'Do NOT use `pwsh` or `write` to write into `$DSH_HOME/skills`.',
+                `<skill name="${entry.name}" dir="${entry.dirPath}">`,
+                entry.body,
+                `</skill>`,
+                '',
+                buildStudioNodeCapabilitiesBridge()
+              ].join('\n')
+            }
+          }
+        }
+      }
+
+      if (searchRes.items.length > 0) {
+        const candidatesText = searchRes.items
+          .map(
+            (item, idx) =>
+              `${idx + 1}. /${item.name} — ${item.title}: ${item.description} (url: ${item.url ?? 'N/A'}, hasScripts: ${item.hasScripts}, installed: ${item.installed})`
+          )
+          .join('\n')
+        return [
+          taskText,
+          '',
+          ...(autoInstalledBlock ? [autoInstalledBlock, ''] : []),
+          '[Online Skill Search Results]',
+          candidatesText,
+          'Note: To install or manage any skill, ALWAYS use the studio MCP tools `skill_install({ url })`, `skill_search({ query })`, `skill_list()`, or `skill_uninstall({ name })`. NEVER use `pwsh`, `New-Item`, or `write` to write to `$DSH_HOME/skills`.'
+        ].join('\n')
+      }
+    } catch {
+      emit({
+        type: 'tool',
+        id: searchCallId,
+        name: 'skill_search',
+        state: 'done',
+        detail: '在线技能检索完成'
+      })
+    }
+  }
+
+  return taskText
+}
+
 async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult> {
   const rawInputTask = String(input?.task ?? '').trim()
   if (!rawInputTask) return { started: false, message: '任务内容为空' }
@@ -1960,21 +2201,26 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
   }
 
   const workspace = resolveWorkspace()
+  const mode = normalizeChatMode(input.mode)
   const skillPreprocessed = preprocessSkillInvocation({
     taskText: rawInputTask,
     sessionId: input.sessionId,
     workspaceRoot: workspace
   })
+  const taskAfterOnlineSkills = await preprocessOnlineSkillInstallIntent({
+    taskText: skillPreprocessed.taskText,
+    mode,
+    workspaceRoot: workspace
+  })
   const canvasContext = resolveProjectCanvasContext(input.canvasContext)
   const rawTask = canvasContext
-    ? `${skillPreprocessed.taskText}\n\n[Workspace Canvas & Node Context]\n${canvasContext}`
-    : skillPreprocessed.taskText
+    ? `${taskAfterOnlineSkills}\n\n[Workspace Canvas & Node Context]\n${canvasContext}`
+    : taskAfterOnlineSkills
   activeSkillTurn = skillPreprocessed.activeSkill ?? null
   const effectiveSessionId =
     skillPreprocessed.activeSkill?.isolatedSessionId ?? (input.sessionId?.trim() || '')
 
   const runId = String(++runSeq)
-  const mode = normalizeChatMode(input.mode)
   const modelId =
     skillPreprocessed.activeSkill?.modelOverride?.trim() || input.model?.trim() || provider.modelId
   const textCatalog = modalityConfig(provider.provider, 'text').catalog?.[modelId]

@@ -156,3 +156,92 @@ describe('nodeCapabilities', () => {
     expect(listNodeCapabilities().some((cap) => cap.id === 'plugin.test.cap')).toBe(false)
   })
 })
+
+describe('third-party GitHub skill node capabilities bridge', () => {
+  it('buildStudioNodeCapabilitiesBridge includes all core canvas node types and sub-tools', async () => {
+    const { buildStudioNodeCapabilitiesBridge } =
+      await import('../src/main/services/claudeSkillRuntime')
+    const bridge = buildStudioNodeCapabilitiesBridge()
+    expect(bridge).toContain('[AIArtEngine Project Built-in Node Capabilities Bridge]')
+    for (const typeId of [
+      'asset.image',
+      'asset.video',
+      'film.workbench',
+      'image.process',
+      'anim.2d',
+      'stage.2d',
+      'svg.gen',
+      'svg.anim',
+      'ui.split',
+      'ui.gen',
+      'image.iconPack',
+      'comic.page',
+      'semantic.analyze',
+      'semantic.rebuild'
+    ]) {
+      expect(bridge, `bridge should include ${typeId}`).toContain(`\`${typeId}\``)
+    }
+    expect(bridge).toContain('generateTransparentBg')
+  })
+
+  it('preprocessSkillInvocation injects node capabilities bridge for slash and natural-language skill calls and auto-approves studio MCP tools', async () => {
+    const { mkdtempSync, mkdirSync, rmSync, writeFileSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    const { preprocessSkillInvocation, shouldAutoApproveSkillTool } =
+      await import('../src/main/services/claudeSkillRuntime')
+
+    const tempSkillsDir = mkdtempSync(join(tmpdir(), 'aiart-gh-skill-test-'))
+    try {
+      const bundleDir = join(tempSkillsDir, 'frontend-design')
+      mkdirSync(bundleDir, { recursive: true })
+      writeFileSync(
+        join(bundleDir, 'SKILL.md'),
+        [
+          '---',
+          'name: frontend-design',
+          'description: Third-party GitHub design skill',
+          'allowed-tools: Read, Write, Bash',
+          '---',
+          'Follow bold typography and clean layout principles.'
+        ].join('\n'),
+        'utf8'
+      )
+
+      // 1. 行首 /frontend-design 调用
+      const resSlash = preprocessSkillInvocation({
+        taskText: '/frontend-design 设计一套RPG背包界面',
+        personalSkillsDir: tempSkillsDir,
+        enableDynamicCommands: false
+      })
+      expect(resSlash.matched).toBe(true)
+      expect(resSlash.taskText).toContain('[Claude Code Skill Active: /frontend-design]')
+      expect(resSlash.taskText).toContain('Follow bold typography and clean layout principles.')
+      expect(resSlash.taskText).toContain('[AIArtEngine Project Built-in Node Capabilities Bridge]')
+      expect(resSlash.taskText).toContain('`ui.split`')
+      expect(resSlash.taskText).toContain('`ui.gen`')
+
+      // 2. 自然语言点名已安装的第三方 GitHub 技能
+      const resNatural = preprocessSkillInvocation({
+        taskText: '请使用 frontend-design 技能帮我生成一套游戏图标和UI',
+        personalSkillsDir: tempSkillsDir,
+        enableDynamicCommands: false
+      })
+      expect(resNatural.matched).toBe(true)
+      expect(resNatural.taskText).toContain('请使用 frontend-design 技能帮我生成一套游戏图标和UI')
+      expect(resNatural.taskText).toContain(
+        '[AIArtEngine Project Built-in Node Capabilities Bridge]'
+      )
+
+      // 3. 即使第三方技能只声明了 Read/Write/Bash，也自动放行本项目 MCP 工具
+      expect(
+        shouldAutoApproveSkillTool(resSlash.activeSkill, 'mcp__ai-art-engine__graph_edit')
+      ).toBe(true)
+      expect(shouldAutoApproveSkillTool(resSlash.activeSkill, 'mcp__ai-art-engine__task_run')).toBe(
+        true
+      )
+    } finally {
+      rmSync(tempSkillsDir, { recursive: true, force: true })
+    }
+  })
+})

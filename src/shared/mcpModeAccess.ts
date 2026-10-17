@@ -84,6 +84,10 @@ const READ_TOOLS = new Set([
   'screen_record_status',
   // 教学高亮定位：只读 DOM 矩形，不改工程
   'ui_bounds',
+  // 技能查询、联网搜索与 GitHub 仓库预检均为只读操作；安装/卸载走默认 write
+  'skill_list',
+  'skill_search',
+  'skill_inspect_github',
   'ask_user'
 ])
 

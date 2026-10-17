@@ -11,6 +11,7 @@ import {
   type ClaudeSkillHookMatcher,
   type ClaudeSkillHooks
 } from '@shared/claudeSkill'
+import { getNodeCapability, listAddableNodeTypes, listNodeCapabilities } from '@shared/graph'
 import { dshSkillsDir } from './dshPaths'
 
 /** 历史版本生成的内置节点快照清单文件名（升级后自动清理） */
@@ -302,10 +303,122 @@ function executeDynamicContextCommands(
 }
 
 /**
- * 预处理用户输入的 `/skill-name [args...]` 调用：
+ * 构建本项目内置画布节点与专业工具能力的完整桥接摘要。
+ * 当激活任何第三方 GitHub 技能或本地技能时自动注入，使原本面向通用 CLI 编写的第三方 SKILL.md
+ * 能自动感知并调用 AIArtEngine 的全部画布节点（端口、关键参数、上下游连线）与 MCP 工具。
+ */
+export function buildStudioNodeCapabilitiesBridge(): string {
+  const defs = listAddableNodeTypes('canvasAsset')
+  const coveredIds = new Set<string>()
+  const seenUsages = new Set<string>()
+  const nodeLines: string[] = []
+
+  for (const def of defs) {
+    coveredIds.add(def.typeId)
+    const inPorts = def.ports
+      .filter((p) => p.direction === 'in')
+      .map((p) => `${p.id}:${p.dataType}${p.multiple ? '[]' : ''}`)
+      .join(', ')
+    const outPorts = def.ports
+      .filter((p) => p.direction === 'out')
+      .map((p) => `${p.id}:${p.dataType}`)
+      .join(', ')
+    const cap = getNodeCapability(def.typeId)
+    const usage = (cap?.usageZh || def.description || '').trim()
+    if (usage) seenUsages.add(usage)
+    const portSummary = `in=[${inPorts || 'none'}] -> out=[${outPorts || 'none'}]`
+    nodeLines.push(
+      `- \`${def.typeId}\`（${def.label}，${portSummary}）${usage ? `：${usage}` : ''}`
+    )
+  }
+
+  const presetLines: string[] = []
+  for (const cap of listNodeCapabilities()) {
+    if (coveredIds.has(cap.id)) continue
+    const usage = (cap.usageZh || cap.usageEn || '').trim()
+    if (!usage || seenUsages.has(usage)) continue
+    seenUsages.add(usage)
+    presetLines.push(`- \`${cap.id}\`（${cap.titleZh}）：${usage}`)
+  }
+
+  return [
+    '[AIArtEngine Project Built-in Node Capabilities Bridge]',
+    'When executing this skill (especially a third-party GitHub skill authored for generic CLI environments):',
+    "1. Combine the skill's domain methodology, aesthetic rules, and workflow steps with AIArtEngine's built-in canvas nodes and MCP tools below.",
+    '2. Whenever the skill requires generating, editing, slicing, animating, rigging, or composing images/videos/audio/3D/UI/comics/short-drama assets, prefer orchestrating AIArtEngine canvas nodes (`graph_read` + `graph_edit` on the active canvas, or `workflow_commit({ plan, name })` for a new canvas, then `task_run({ assetId, nodeId })` + `task_status({ mcpTaskId })`) or calling studio `generate_*` / `render_svg` MCP tools instead of writing ad-hoc local Python/Pillow/browser scripts.',
+    '3. Call `graph_node_types({ typeId, includeParams: true })` anytime you need the full default `params` schema of a specific node type.',
+    "4. Media generated via canvas nodes (`task_run`) or `generate_*` / `render_svg` MCP tools automatically appear as interactive preview cards in the chat stream. If you run a skill's bundled script (`bash` / `write_file`) that writes media files (images, SVG, video, audio, 3D) directly to disk, save them under `Output/` (or stage external files via `asset_import`) so they also render as preview cards in the chat stream.",
+    '',
+    '### Built-in Canvas Node Types (`typeId` / Ports / Capabilities)',
+    ...nodeLines,
+    ...(presetLines.length
+      ? ['', '### Specialized Node Sub-Tools & Preset Modes', ...presetLines]
+      : [])
+  ].join('\n')
+}
+
+/**
+ * 从用户输入中解析技能调用：
+ * 1. 标准行首 `/skill-name [args...]`
+ * 2. 句中内联 `/skill-name`（如 `请用 /frontend-design 帮我设计...`）
+ * 3. 自然语言点名已安装技能（如 `用 frontend-design 技能帮我...`，仅限 `disableModelInvocation !== true`）
+ */
+function matchSkillInvocationFromText(
+  taskText: string,
+  skills: InstalledClaudeSkillEntry[]
+): { skill: InstalledClaudeSkillEntry; rawArgs: string } | null {
+  const slash = parseSlashSkillCommand(taskText)
+  if (slash) {
+    const found = skills.find(
+      (s) =>
+        s.name.toLowerCase() === slash.skillName.toLowerCase() &&
+        s.frontmatter.userInvocable !== false
+    )
+    if (found) {
+      return { skill: found, rawArgs: slash.rawArgs }
+    }
+  }
+
+  // 句中内联 `/<skill-name>`
+  const inlineSlashRe =
+    /(?:^|[\s，。；！？(（\[])\/([a-z0-9][a-z0-9_-]{1,63})(?=$|[\s，。；！？)）\]])/gi
+  let match: RegExpExecArray | null
+  while ((match = inlineSlashRe.exec(taskText)) !== null) {
+    const candidate = match[1]!.toLowerCase()
+    const found = skills.find(
+      (s) => s.name.toLowerCase() === candidate && s.frontmatter.userInvocable !== false
+    )
+    if (found) {
+      return { skill: found, rawArgs: taskText.trim() }
+    }
+  }
+
+  // 自然语言点名已安装技能（需包含技能名且句子带有技能/使用语义，或技能名长度 >= 4 且精确作为独立词出现）
+  const lowerText = taskText.toLowerCase()
+  const sortedByLen = [...skills]
+    .filter(
+      (s) => s.frontmatter.userInvocable !== false && s.frontmatter.disableModelInvocation !== true
+    )
+    .sort((a, b) => b.name.length - a.name.length)
+  for (const skill of sortedByLen) {
+    const lowerName = skill.name.toLowerCase()
+    if (lowerName.length < 3 || !lowerText.includes(lowerName)) continue
+    const escaped = lowerName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const tokenRe = new RegExp(`(?:^|[^a-z0-9_-])${escaped}(?:$|[^a-z0-9_-])`, 'i')
+    if (tokenRe.test(taskText)) {
+      return { skill, rawArgs: taskText.trim() }
+    }
+  }
+
+  return null
+}
+
+/**
+ * 预处理用户输入的 `/skill-name [args...]` 或已安装技能调用：
  * - 查找已安装技能（支持个人级 `$DSH_HOME/skills` 与工程级 `.claude/skills`）
  * - 执行参数插值（`$ARGUMENTS`、`$ARGUMENTS[n]`、`$0..$9`、`${CLAUDE_SKILL_DIR}` 等）
  * - 执行动态上下文注入（`!`command``）
+ * - 自动注入本项目全部内置节点与工具能力桥接（`buildStudioNodeCapabilitiesBridge`）
  * - 构建 `context: fork` 子代理指令与独立会话 ID
  * - 返回 `allowedTools`、`modelOverride`、`hooks` 供本轮对话生命周期使用
  */
@@ -316,30 +429,22 @@ export function preprocessSkillInvocation(options: {
   personalSkillsDir?: string
   enableDynamicCommands?: boolean
 }): PreprocessSkillInvocationResult {
-  const slash = parseSlashSkillCommand(options.taskText)
-  if (!slash) {
-    return { matched: false, taskText: options.taskText }
-  }
-
   const skills = discoverInstalledClaudeSkills({
     personalSkillsDir: options.personalSkillsDir,
     workspaceRoot: options.workspaceRoot
   })
-  const matchedSkill = skills.find(
-    (s) =>
-      s.name.toLowerCase() === slash.skillName.toLowerCase() &&
-      s.frontmatter.userInvocable !== false
-  )
-  if (!matchedSkill) {
+  const matched = matchSkillInvocationFromText(options.taskText, skills)
+  if (!matched) {
     return { matched: false, taskText: options.taskText }
   }
+  const { skill: matchedSkill, rawArgs } = matched
 
   const sessionId = options.sessionId?.trim() || ''
   const workspaceRoot = options.workspaceRoot?.trim() || ''
 
   // 1. 变量与位置参数插值
   let expandedBody = interpolateClaudeSkillPrompt(matchedSkill.body, {
-    rawArgs: slash.rawArgs,
+    rawArgs,
     skillDir: matchedSkill.dirPath,
     sessionId,
     workspaceRoot
@@ -375,7 +480,15 @@ export function preprocessSkillInvocation(options: {
     )
   }
 
-  const finalTaskText = `${headerLines.join('\n')}\n\n${expandedBody.trim()}`
+  // 若用户是句中点名而非纯 `/skill-name` 开头，且技能自身未引用 `$ARGUMENTS`，保留用户原始诉求
+  const isLeadingSlash = Boolean(parseSlashSkillCommand(options.taskText))
+  const userRequestSection =
+    !isLeadingSlash && !expandedBody.includes(options.taskText.trim())
+      ? `[User Request]\n${options.taskText.trim()}\n\n`
+      : ''
+
+  const nodeBridge = buildStudioNodeCapabilitiesBridge()
+  const finalTaskText = `${userRequestSection}${headerLines.join('\n')}\n\n${expandedBody.trim()}\n\n${nodeBridge}`
   const isolatedSessionId =
     matchedSkill.frontmatter.context === 'fork'
       ? `fork-${matchedSkill.name}-${Date.now()}`
@@ -399,13 +512,19 @@ export function preprocessSkillInvocation(options: {
 
 /**
  * 检查当前激活技能的 `allowed-tools` 是否自动放行该工具调用。
+ * 激活任何技能时，默认同时放行 AIArtEngine 宿主 MCP 工具（`mcp__ai-art-engine__*`），
+ * 确保第三方 GitHub 技能（即使 frontmatter 只声明了 Read/Write/Bash）也能无阻碍调用本项目节点能力。
  */
 export function shouldAutoApproveSkillTool(
   activeSkill: ActiveSkillTurnContext | null | undefined,
   toolName: string,
   detail?: string
 ): boolean {
-  if (!activeSkill || !activeSkill.allowedTools.length) return false
+  if (!activeSkill) return false
+  if (/^mcp__ai[-_]art[-_]engine__/i.test(toolName.trim())) {
+    return true
+  }
+  if (!activeSkill.allowedTools.length) return false
   return matchesAllowedTool(activeSkill.allowedTools, toolName, detail)
 }
 

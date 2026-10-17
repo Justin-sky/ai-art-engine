@@ -29,7 +29,8 @@ describe('resolveImageGenerateParamsForApi', () => {
       resolution: '4K',
       quality: 'high',
       count: 2,
-      seedUseGlobal: true
+      seedUseGlobal: true,
+      transparentBg: false
     })
   })
 

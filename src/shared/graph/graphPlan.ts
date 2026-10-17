@@ -72,6 +72,7 @@ export const ALLOWED_PARAM_KEYS = new Set<keyof GraphNodeParams | string>([
   'generateQuality',
   'generateDuration',
   'generateCount',
+  'generateTransparentBg',
   'generateStyle',
   'generateSeed',
   'generateSeedUseGlobal',

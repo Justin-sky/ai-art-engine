@@ -6767,7 +6767,12 @@ export default {
           seedPlaceholder: '留空随机',
           seedRandom: '随机',
           seedSummary: 'seed {n}',
-          seedUseGlobal: '使用全局种子'
+          seedUseGlobal: '使用全局种子',
+          transparentBg: '透明背景',
+          transparentBgOn: '开',
+          transparentBgOff: '关',
+          transparentBgHint: '开启后自动附加纯色干净背景提示词，并在出图后键控抠除背景输出透明 PNG',
+          transparentBgSummary: '透明底'
         },
         videoParams: {
           title: '视频生成参数',

@@ -115,6 +115,31 @@
 
           <section class="section">
             <div class="section-title">
+              {{ t('graph.inspector.generate.imageParams.transparentBg') }}
+            </div>
+            <div class="chip-row">
+              <button
+                type="button"
+                class="chip"
+                :class="{ active: local.transparentBg !== true }"
+                @click="pickTransparentBg(false)"
+              >
+                {{ t('graph.inspector.generate.imageParams.transparentBgOff') }}
+              </button>
+              <button
+                type="button"
+                class="chip"
+                :class="{ active: local.transparentBg === true }"
+                :title="t('graph.inspector.generate.imageParams.transparentBgHint')"
+                @click="pickTransparentBg(true)"
+              >
+                {{ t('graph.inspector.generate.imageParams.transparentBgOn') }}
+              </button>
+            </div>
+          </section>
+
+          <section class="section">
+            <div class="section-title">
               {{ t('graph.inspector.generate.imageParams.seed') }}
             </div>
             <label class="seed-global-toggle">
@@ -214,6 +239,9 @@ const summaryText = computed(() => {
   if (caps.value.counts.length && local.value.count != null) {
     parts.push(t('graph.inspector.generate.imageParams.countOption', { n: local.value.count }))
   }
+  if (local.value.transparentBg) {
+    parts.push(t('graph.inspector.generate.imageParams.transparentBgSummary'))
+  }
   if (local.value.seedUseGlobal === false && local.value.seed != null) {
     parts.push(t('graph.inspector.generate.imageParams.seedSummary', { n: local.value.seed }))
   }
@@ -257,6 +285,11 @@ function pickAspectRatio(ratio: string): void {
 
 function pickCount(n: number): void {
   local.value = { ...local.value, count: n }
+  emitLocal()
+}
+
+function pickTransparentBg(on: boolean): void {
+  local.value = { ...local.value, transparentBg: on }
   emitLocal()
 }
 
