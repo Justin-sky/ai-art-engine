@@ -350,25 +350,24 @@ async function applySlashCommand(cmd: SlashMenuItem): Promise<void> {
 }
 
 /**
- * `/workflow`：打开「已安装工作流」列表（与工具栏那个按钮同一个面板）。
+ * `/workflow`：打开统一的「已安装技能与工作流」列表（与工具栏技能按钮同一个面板）。
  *
- * 选中即把引用插入输入框 —— 与点击面板条目完全同一条路径，
+ * 选中即把引用或 `/skill` 插入输入框 —— 与点击面板条目完全同一条路径，
  * 因此不会出现「从斜杠进和从按钮进行为不一样」的分叉。
  */
 async function onWorkflowCommand(): Promise<void> {
-  await refreshInstalledWorkflows()
-  if (!installedWorkflows.value.length) {
+  await Promise.all([refreshInstalledWorkflows(), refreshSessionSkills()])
+  if (!installedWorkflows.value.length && !standaloneSessionSkills.value.length) {
     // 静默打开一个空面板会让人以为功能坏了，明确说清去哪儿装
     pushStatus(t('studio.chat.workflowsEmpty'), 'error')
     return
   }
   modeOpen.value = false
   sessionOpen.value = false
-  skillsOpen.value = false
   modelOpen.value = false
-  workflowsOpen.value = true
+  skillsOpen.value = true
   void nextTick(() => {
-    const trigger = workflowsDropdownRef.value?.querySelector('button.skills-trigger')
+    const trigger = skillsDropdownRef.value?.querySelector('button.skills-trigger')
     if (trigger instanceof HTMLElement) trigger.focus()
   })
 }
@@ -1007,10 +1006,13 @@ function selectMode(value: ChatMode): void {
   mode.value = value
   modeOpen.value = false
 }
-/** 技能调试视图：会话可用技能清单（内置快照 + 用户自定义） */
+/** 技能面板：统一展示已安装的市场技能（含画布工作流模板）、GitHub 技能、项目技能与自定义技能 */
 const skillsOpen = ref(false)
 const skillsDropdownRef = ref<HTMLElement | null>(null)
 const sessionSkills = ref<SessionSkill[]>([])
+const installedWorkflows = ref<InstalledWorkflowRecordView[]>([])
+const workflowsLoading = ref(false)
+
 /** 已加载技能 → 命中次数：skill 工具调用时累加，作为「命中依据」可视化 */
 const loadedSkills = reactive<Record<string, number>>({})
 const loadedSkillCount = computed(() => Object.keys(loadedSkills).length)
@@ -1020,6 +1022,30 @@ const loadedSkillTotal = computed(() => {
   return total
 })
 
+/** 过滤掉已由 installedWorkflows 承载的市场技能包（wf-<id>），避免同一市场条目在下拉列表里出现两次 */
+const standaloneSessionSkills = computed(() => {
+  const installedIds = new Set(installedWorkflows.value.map((w) => w.id))
+  const installedSkillNames = new Set(
+    installedWorkflows.value.flatMap((w) =>
+      w.skillName ? [w.skillName, `wf-${w.id}`] : [`wf-${w.id}`]
+    )
+  )
+  return sessionSkills.value.filter(
+    (s) => !(s.workflowId && installedIds.has(s.workflowId)) && !installedSkillNames.has(s.name)
+  )
+})
+
+const unifiedSkillsCount = computed(
+  () => installedWorkflows.value.length + standaloneSessionSkills.value.length
+)
+
+function workflowLoadedHits(workflow: InstalledWorkflowRecordView): number {
+  const bySkillName = workflow.skillName ? (loadedSkills[workflow.skillName] ?? 0) : 0
+  const byWfPrefix = loadedSkills[`wf-${workflow.id}`] ?? 0
+  const byId = loadedSkills[workflow.id] ?? 0
+  return bySkillName || byWfPrefix || byId
+}
+
 async function refreshSessionSkills(): Promise<void> {
   try {
     sessionSkills.value = await window.studio.getSessionSkills()
@@ -1027,28 +1053,6 @@ async function refreshSessionSkills(): Promise<void> {
     // 技能清单拉取失败不阻塞对话，保持上次快照
   }
 }
-
-function toggleSkills(): void {
-  skillsOpen.value = !skillsOpen.value
-  if (skillsOpen.value) void refreshSessionSkills()
-}
-
-function insertSkillSlashCommand(skill: SessionSkill): void {
-  if (skill.userInvocable === false) return
-  insertPlainText(`/${skill.name} `)
-  skillsOpen.value = false
-}
-
-/**
- * 已安装工作流视图：把市场里装过的工作流作为「一键插入」入口。
- *
- * 与技能清单的区别：技能是 Agent 自己按需加载的，这里是**用户主动指定要做哪条工作流** ——
- * 因此点击是插入引用而不是纯展示。
- */
-const workflowsOpen = ref(false)
-const workflowsDropdownRef = ref<HTMLElement | null>(null)
-const installedWorkflows = ref<InstalledWorkflowRecordView[]>([])
-const workflowsLoading = ref(false)
 
 /** 拉已安装工作流（每次打开面板都拉：刚在市场装完就能立刻看到） */
 async function refreshInstalledWorkflows(): Promise<void> {
@@ -1062,13 +1066,22 @@ async function refreshInstalledWorkflows(): Promise<void> {
   }
 }
 
-function toggleWorkflows(): void {
-  workflowsOpen.value = !workflowsOpen.value
-  if (workflowsOpen.value) void refreshInstalledWorkflows()
+function toggleSkills(): void {
+  skillsOpen.value = !skillsOpen.value
+  if (skillsOpen.value) {
+    void refreshSessionSkills()
+    void refreshInstalledWorkflows()
+  }
+}
+
+function insertSkillSlashCommand(skill: SessionSkill): void {
+  if (skill.userInvocable === false) return
+  insertPlainText(`/${skill.name} `)
+  skillsOpen.value = false
 }
 
 /**
- * 选中工作流 → 把**引用块**插入输入框。
+ * 选中市场工作流技能 → 把**引用块**插入输入框。
  *
  * 刻意插入引用而不是直接执行：用户还要能补自己的要求再发送。
  * id 是关键 —— Agent 靠它调 `workflow_use_installed` 精确复现这条工作流，
@@ -1084,7 +1097,7 @@ function insertWorkflowReference(workflow: InstalledWorkflowRecordView): void {
    */
   if (workflow.broken) return
   insertWorkflowChip(workflow)
-  workflowsOpen.value = false
+  skillsOpen.value = false
 }
 
 /** skill 工具命中：detail 中带技能名（name / titleZh / titleEn）即标记为已加载 */
@@ -1103,13 +1116,7 @@ function markSkillLoaded(detail?: string): void {
 
 /** 点击下拉外部或按 ESC 收起菜单：注册在 document 上避免 trigger 内 stopPropagation 误关 */
 function onModeOutside(e: MouseEvent | KeyboardEvent): void {
-  if (
-    !modeOpen.value &&
-    !modelOpen.value &&
-    !sessionOpen.value &&
-    !skillsOpen.value &&
-    !workflowsOpen.value
-  ) {
+  if (!modeOpen.value && !modelOpen.value && !sessionOpen.value && !skillsOpen.value) {
     return
   }
   if (e instanceof KeyboardEvent) {
@@ -1118,7 +1125,6 @@ function onModeOutside(e: MouseEvent | KeyboardEvent): void {
       modelOpen.value = false
       sessionOpen.value = false
       skillsOpen.value = false
-      workflowsOpen.value = false
     }
     return
   }
@@ -1133,9 +1139,6 @@ function onModeOutside(e: MouseEvent | KeyboardEvent): void {
   }
   if (skillsDropdownRef.value && !skillsDropdownRef.value.contains(e.target as Node)) {
     skillsOpen.value = false
-  }
-  if (workflowsDropdownRef.value && !workflowsDropdownRef.value.contains(e.target as Node)) {
-    workflowsOpen.value = false
   }
 }
 const draft = ref('')
@@ -2499,6 +2502,7 @@ onMounted(async () => {
   loadHistory()
   loadActiveMessages()
   void refreshSessionSkills()
+  void refreshInstalledWorkflows()
   stopEvent = window.studio.onHarnessEvent(onHarnessEvent)
   stopActivity = window.studio.onMcpActivityUpdated(onMcpActivity)
   stopAskUser = window.studio.onAskUser(handleAskUser)
@@ -3006,8 +3010,12 @@ onBeforeUnmount(() => {
         </ul>
       </div>
       <div class="chat-toolbar">
-        <!-- 技能调试视图：展示会话可用技能清单与已加载命中次数 -->
-        <div ref="skillsDropdownRef" class="skills-dropdown" :class="{ open: skillsOpen }">
+        <!-- 统一技能面板：展示已安装的市场技能（含画布工作流模板）、GitHub 技能、项目技能与自定义技能 -->
+        <div
+          ref="skillsDropdownRef"
+          class="skills-dropdown workflows-dropdown"
+          :class="{ open: skillsOpen }"
+        >
           <button
             type="button"
             class="skills-trigger"
@@ -3032,139 +3040,101 @@ onBeforeUnmount(() => {
               <circle cx="19" cy="15" r="4" />
               <path d="M3 21l3-3" />
             </svg>
-            <span v-if="loadedSkillCount > 0" class="skills-badge">{{ loadedSkillTotal }}</span>
+            <span v-if="loadedSkillTotal > 0 || unifiedSkillsCount > 0" class="skills-badge">
+              {{ loadedSkillTotal > 0 ? loadedSkillTotal : unifiedSkillsCount }}
+            </span>
           </button>
-          <div v-show="skillsOpen" class="skills-menu">
+          <div v-show="skillsOpen" class="skills-menu workflows-menu">
             <div class="skills-menu-head">
               <span>{{ t('studio.chat.skillsTitle') }}</span>
-              <span v-if="sessionSkills.length" class="skills-menu-meta">
+              <span v-if="unifiedSkillsCount > 0" class="skills-menu-meta">
                 {{
                   t('studio.chat.skillsMeta', {
                     loaded: loadedSkillCount,
-                    total: sessionSkills.length
+                    total: unifiedSkillsCount
                   })
                 }}
               </span>
             </div>
-            <p v-if="sessionSkills.length === 0" class="skills-empty">
-              {{ t('studio.chat.skillsEmpty') }}
-            </p>
-            <ul v-else class="skills-list">
-              <li
-                v-for="skill in sessionSkills"
-                :key="skill.name"
-                class="skill-item"
-                :class="{
-                  loaded: (loadedSkills[skill.name] ?? 0) > 0,
-                  invocable: skill.userInvocable !== false
-                }"
-                @click="insertSkillSlashCommand(skill)"
-              >
-                <span class="skill-check">
-                  {{ (loadedSkills[skill.name] ?? 0) > 0 ? '✓' : '' }}
-                </span>
-                <span class="skill-item-main">
-                  <span class="skill-item-name">
-                    {{ skill.titleZh || skill.name }}
-                    <code v-if="skill.userInvocable !== false"
-                      >/{{ skill.name
-                      }}{{ skill.argumentHint ? ` ${skill.argumentHint}` : '' }}</code
-                    >
-                    <code v-else>{{ skill.name }}</code>
-                    <code v-if="skill.context === 'fork'">fork</code>
-                    <code v-if="skill.model">{{ skill.model }}</code>
-                  </span>
-                  <span class="skill-item-desc">{{ skill.description }}</span>
-                </span>
-                <span v-if="(loadedSkills[skill.name] ?? 0) > 0" class="skill-hit-count">
-                  ×{{ loadedSkills[skill.name] }}
-                </span>
-              </li>
-            </ul>
-          </div>
-        </div>
-        <!-- 已安装工作流：选中即把引用插入输入框，让 Agent 按 id 精确复现这条工作流 -->
-        <div
-          ref="workflowsDropdownRef"
-          class="skills-dropdown workflows-dropdown"
-          :class="{ open: workflowsOpen }"
-        >
-          <button
-            type="button"
-            class="skills-trigger"
-            :class="{ active: workflowsOpen }"
-            :title="t('studio.chat.workflowsTitle')"
-            :aria-label="t('studio.chat.workflows')"
-            @click.stop="toggleWorkflows()"
-          >
-            <svg
-              class="skills-icon"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <rect x="3" y="3" width="7" height="7" rx="1.5" />
-              <rect x="14" y="3" width="7" height="7" rx="1.5" />
-              <rect x="3" y="14" width="7" height="7" rx="1.5" />
-              <path d="M14 17.5h7" />
-              <path d="M17.5 14v7" />
-            </svg>
-            <span v-if="installedWorkflows.length" class="skills-badge">
-              {{ installedWorkflows.length }}
-            </span>
-          </button>
-          <div v-show="workflowsOpen" class="skills-menu workflows-menu">
-            <div class="skills-menu-head">
-              <span>{{ t('studio.chat.workflowsTitle') }}</span>
-              <span v-if="installedWorkflows.length" class="skills-menu-meta">
-                {{ t('studio.chat.workflowsMeta', { count: installedWorkflows.length }) }}
-              </span>
-            </div>
-            <p v-if="workflowsLoading" class="skills-empty">
+            <p v-if="workflowsLoading && unifiedSkillsCount === 0" class="skills-empty">
               {{ t('studio.chat.workflowsLoading') }}
             </p>
-            <p v-else-if="installedWorkflows.length === 0" class="skills-empty">
-              {{ t('studio.chat.workflowsEmpty') }}
+            <p v-else-if="unifiedSkillsCount === 0" class="skills-empty">
+              {{ t('studio.chat.skillsEmpty') }}
             </p>
-            <ul v-else class="workflow-cards">
-              <li
-                v-for="workflow in installedWorkflows"
-                :key="workflow.id"
-                class="workflow-card"
-                :class="{ broken: workflow.broken }"
-                :title="workflow.broken ? t('studio.chat.workflowBroken') : workflow.summary"
-                @click="insertWorkflowReference(workflow)"
-              >
-                <span class="workflow-card-main">
-                  <span class="workflow-card-title">
-                    {{ workflow.title }}
-                    <code>{{ workflow.id }}</code>
+            <template v-else>
+              <ul v-if="installedWorkflows.length" class="workflow-cards">
+                <li
+                  v-for="workflow in installedWorkflows"
+                  :key="workflow.id"
+                  class="workflow-card"
+                  :class="{ broken: workflow.broken, loaded: workflowLoadedHits(workflow) > 0 }"
+                  :title="workflow.broken ? t('studio.chat.workflowBroken') : workflow.summary"
+                  @click="insertWorkflowReference(workflow)"
+                >
+                  <span class="workflow-card-main">
+                    <span class="workflow-card-title">
+                      {{ workflow.title }}
+                      <code>{{ workflow.id }}</code>
+                      <span v-if="workflowLoadedHits(workflow) > 0" class="skill-hit-count">
+                        ×{{ workflowLoadedHits(workflow) }}
+                      </span>
+                    </span>
+                    <span class="workflow-card-summary">
+                      {{
+                        workflow.broken
+                          ? t('studio.chat.workflowBroken')
+                          : workflow.summary || t('studio.chat.workflowNoSummary')
+                      }}
+                    </span>
+                    <span class="workflow-card-meta">
+                      {{
+                        t('studio.chat.workflowNodes', {
+                          nodes: workflow.nodeCount,
+                          edges: workflow.edgeCount
+                        })
+                      }}
+                      · v{{ workflow.version }}
+                    </span>
                   </span>
-                  <span class="workflow-card-summary">
-                    {{
-                      workflow.broken
-                        ? t('studio.chat.workflowBroken')
-                        : workflow.summary || t('studio.chat.workflowNoSummary')
-                    }}
+                  <span class="workflow-card-insert">{{
+                    t('studio.chat.workflowInsertAction')
+                  }}</span>
+                </li>
+              </ul>
+              <ul v-if="standaloneSessionSkills.length" class="skills-list">
+                <li
+                  v-for="skill in standaloneSessionSkills"
+                  :key="skill.name"
+                  class="skill-item"
+                  :class="{
+                    loaded: (loadedSkills[skill.name] ?? 0) > 0,
+                    invocable: skill.userInvocable !== false
+                  }"
+                  @click="insertSkillSlashCommand(skill)"
+                >
+                  <span class="skill-check">
+                    {{ (loadedSkills[skill.name] ?? 0) > 0 ? '✓' : '' }}
                   </span>
-                  <span class="workflow-card-meta">
-                    {{
-                      t('studio.chat.workflowNodes', {
-                        nodes: workflow.nodeCount,
-                        edges: workflow.edgeCount
-                      })
-                    }}
-                    · v{{ workflow.version }}
+                  <span class="skill-item-main">
+                    <span class="skill-item-name">
+                      {{ skill.titleZh || skill.name }}
+                      <code v-if="skill.userInvocable !== false"
+                        >/{{ skill.name
+                        }}{{ skill.argumentHint ? ` ${skill.argumentHint}` : '' }}</code
+                      >
+                      <code v-else>{{ skill.name }}</code>
+                      <code v-if="skill.context === 'fork'">fork</code>
+                      <code v-if="skill.model">{{ skill.model }}</code>
+                    </span>
+                    <span class="skill-item-desc">{{ skill.description }}</span>
                   </span>
-                </span>
-                <span class="workflow-card-insert">{{
-                  t('studio.chat.workflowInsertAction')
-                }}</span>
-              </li>
-            </ul>
+                  <span v-if="(loadedSkills[skill.name] ?? 0) > 0" class="skill-hit-count">
+                    ×{{ loadedSkills[skill.name] }}
+                  </span>
+                </li>
+              </ul>
+            </template>
           </div>
         </div>
         <!-- 三模式选择：下拉式（Craft/Ask/Plan），触发按钮显示当前模式图标+名称+箭头 -->

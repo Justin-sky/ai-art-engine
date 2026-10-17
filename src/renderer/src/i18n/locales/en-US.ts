@@ -1243,16 +1243,19 @@ export default {
       modePlan: 'Plan',
       skills: 'Skills',
       skillsTitle:
-        'Skills available in this session (built-in snapshot + custom); marked as loaded when the model calls the skill tool',
+        'Installed skills: pick one to insert a /skill command or workflow reference; marked when loaded by the model',
       skillsMeta: 'Loaded {loaded}/{total}',
-      skillsEmpty: 'No skills available',
+      skillsEmpty:
+        'No skills installed yet — install from “Skill Marketplace” or import from GitHub',
       workflows: 'Workflows',
       workflowsTitle:
-        'Installed workflows: picking one inserts a reference, and the agent rebuilds that exact workflow by id',
+        'Installed skills: pick one to insert a /skill command or workflow reference for the agent to rebuild by id',
       workflowsMeta: '{count} total',
-      workflowsLoading: 'Reading installed workflows…',
-      workflowsEmpty: 'No workflows installed yet — add one in “Marketplace → Workflows”',
-      workflowBroken: 'This workflow file is damaged and unusable; reinstall it from the market',
+      workflowsLoading: 'Reading installed skills…',
+      workflowsEmpty:
+        'No skills installed yet — install from “Skill Marketplace” or import from GitHub',
+      workflowBroken:
+        'This skill workflow template file is damaged and unusable; reinstall it from the Skill Marketplace',
       workflowNoSummary: '(no summary)',
       workflowNodes: '{nodes} nodes / {edges} edges',
       workflowInsertAction: 'Insert',
@@ -1301,7 +1304,7 @@ export default {
       slashMenu: 'Commands',
       slashClearDesc: 'Clear context and start a fresh session',
       slashModelDesc: 'Open the model picker',
-      slashWorkflowDesc: 'Open the installed workflow list',
+      slashWorkflowDesc: 'Open the installed skills and workflows list',
       slashEmpty: 'No matching commands',
       // Note: vue-i18n parses a leading @ in a message as linked format; escape it with {'@'}
       // Button shows only @, full label lives in title (mentionTitle)

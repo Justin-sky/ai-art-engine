@@ -16,24 +16,28 @@ const MCP = read('src/main/services/mcpServerService.ts')
 const SERVICE = read('src/main/services/workflowMarketService.ts')
 const IPC = read('src/shared/ipc.ts')
 
-describe('对话面板：工作流入口', () => {
-  it('触发按钮在技能旁边（同一个工具栏区块内）', () => {
+describe('对话面板：技能与工作流统一入口', () => {
+  it('工作流与技能合流为同一个工具栏技能下拉按钮（不再拆成两个按钮）', () => {
     const toolbarAt = CHAT.indexOf('class="chat-toolbar"')
     const skillsAt = CHAT.indexOf('ref="skillsDropdownRef"')
-    const workflowsAt = CHAT.indexOf('ref="workflowsDropdownRef"')
     expect(toolbarAt).toBeGreaterThan(0)
     expect(skillsAt).toBeGreaterThan(toolbarAt)
-    expect(workflowsAt).toBeGreaterThan(skillsAt)
+    expect(CHAT).not.toContain('ref="workflowsDropdownRef"')
   })
 
-  it('面板列的是**已安装**工作流，不是内置预设', () => {
+  it('面板同时列本机已安装工作流与独立技能，不是远端目录或内置预设', () => {
     expect(CHAT).toContain('listInstalledWorkflows()')
+    expect(CHAT).toContain('getSessionSkills()')
     // 不该去拉远端目录：这是本机已装内容的入口
     expect(CHAT).not.toContain('fetchWorkflowMarket')
   })
 
-  it('每次打开面板都重新拉（刚在市场装完就能看到）', () => {
-    const toggle = CHAT.slice(CHAT.indexOf('function toggleWorkflows'))
+  it('每次打开面板都重新拉技能与已安装工作流（刚在市场装完就能看到）', () => {
+    const toggle = CHAT.slice(
+      CHAT.indexOf('function toggleSkills'),
+      CHAT.indexOf('function toggleSkills') + 300
+    )
+    expect(toggle).toMatch(/void refreshSessionSkills\(\)/)
     expect(toggle).toMatch(/void refreshInstalledWorkflows\(\)/)
   })
 
@@ -48,8 +52,8 @@ describe('对话面板：工作流入口', () => {
       插入仍然复用既有的光标插入逻辑（`insertWorkflowChip`，与 `insertMentionNode` 同源）。
     */
     expect(fn).toContain('insertWorkflowChip(workflow)')
-    // 插入后收起面板
-    expect(fn).toMatch(/workflowsOpen\.value = false/)
+    // 插入后收起统一面板
+    expect(fn).toMatch(/skillsOpen\.value = false/)
   })
 
   it('引用文本带 id（Agent 靠它精确复现，而不是拿描述重新规划）', () => {
@@ -82,8 +86,8 @@ describe('对话面板：工作流入口', () => {
 
   it('点击外部 / ESC 也能收起（与其余下拉一致）', () => {
     const outside = CHAT.slice(CHAT.indexOf('function onModeOutside'))
-    expect(outside).toMatch(/workflowsOpen\.value = false/)
-    expect(outside).toMatch(/workflowsDropdownRef\.value/)
+    expect(outside).toMatch(/skillsOpen\.value = false/)
+    expect(outside).toMatch(/skillsDropdownRef\.value/)
   })
 })
 
@@ -314,26 +318,22 @@ describe('会话管理与模型同一行', () => {
   })
 })
 
-describe('技能 / 工作流触发器只显示图标', () => {
-  it('两个触发器都不再渲染文字标签', () => {
+describe('技能触发器只显示图标', () => {
+  it('触发器不再渲染文字标签', () => {
     expect(CHAT).not.toContain('skills-label')
-    // 也不该用其它方式把可见文案塞进触发器
-    for (const key of ["t('studio.chat.skills')", "t('studio.chat.workflows')"]) {
-      const at = CHAT.indexOf(key)
-      expect(at, `${key} 仍应作为无障碍名称存在`).toBeGreaterThan(0)
-      // 只出现在 :aria-label 里，不出现在可见文本插值中
-      expect(CHAT.slice(at - 20, at), `${key} 不该出现在可见文本里（应改为 aria-label）`).toContain(
-        'aria-label'
-      )
-    }
+    const key = "t('studio.chat.skills')"
+    const at = CHAT.indexOf(key)
+    expect(at, `${key} 仍应作为无障碍名称存在`).toBeGreaterThan(0)
+    // 只出现在 :aria-label 里，不出现在可见文本插值中
+    expect(CHAT.slice(at - 20, at), `${key} 不该出现在可见文本里（应改为 aria-label）`).toContain(
+      'aria-label'
+    )
   })
 
   it('图标按钮必须有无障碍名称（否则读屏只会念「按钮」）', () => {
     expect(CHAT).toMatch(/:aria-label="t\('studio\.chat\.skills'\)"/)
-    expect(CHAT).toMatch(/:aria-label="t\('studio\.chat\.workflows'\)"/)
     // 悬浮说明也保留
     expect(CHAT).toContain('studio.chat.skillsTitle')
-    expect(CHAT).toContain('studio.chat.workflowsTitle')
   })
 
   it('`.skills-label` 样式规则已删除（不留死规则）', () => {
@@ -366,20 +366,23 @@ describe('/workflow 斜杠指令', () => {
     expect(fn).toContain('onWorkflowCommand()')
   })
 
-  it('**复用同一个已安装工作流面板**，不另造一份列表', () => {
+  it('**复用同一个统一技能面板**，不另造一份列表', () => {
     const at = CHAT.indexOf('async function onWorkflowCommand')
     expect(at, 'onWorkflowCommand 应当存在').toBeGreaterThan(0)
     const fn = CHAT.slice(at, at + 900)
     expect(fn).toContain('refreshInstalledWorkflows()')
-    expect(fn).toMatch(/workflowsOpen\.value = true/)
+    expect(fn).toContain('refreshSessionSkills()')
+    expect(fn).toMatch(/skillsOpen\.value = true/)
     // 不该出现第二套列表数据源
     expect(CHAT).not.toContain('slashWorkflows')
   })
 
-  it('没有已装工作流时给出提示，而不是静默打开空面板', () => {
+  it('没有已装技能或工作流时给出提示，而不是静默打开空面板', () => {
     const at = CHAT.indexOf('async function onWorkflowCommand')
     const fn = CHAT.slice(at, at + 900)
-    expect(fn).toMatch(/if \(!installedWorkflows\.value\.length\)/)
+    expect(fn).toMatch(
+      /if \(!installedWorkflows\.value\.length && !standaloneSessionSkills\.value\.length\)/
+    )
     expect(fn).toContain('pushStatus(')
     expect(fn).toContain('studio.chat.workflowsEmpty')
   })
@@ -387,7 +390,7 @@ describe('/workflow 斜杠指令', () => {
   it('打开前会收起其它下拉（避免两个面板叠着）', () => {
     const at = CHAT.indexOf('async function onWorkflowCommand')
     const fn = CHAT.slice(at, at + 900)
-    for (const menu of ['modeOpen', 'sessionOpen', 'skillsOpen', 'modelOpen']) {
+    for (const menu of ['modeOpen', 'sessionOpen', 'modelOpen']) {
       expect(fn, `应当收起 ${menu}`).toMatch(new RegExp(`${menu}\\.value = false`))
     }
   })
