@@ -196,7 +196,12 @@ describe('port type matching', () => {
     const timeline = createNodeFromType('output.timeline', { x: 0, y: 0 })
     const ports = getNodePorts(timeline)
     expect(ports.map((p) => `${p.id}:${p.dataType}:${p.direction}:${p.multiple ?? false}`)).toEqual(
-      ['in:video:in:true', 'in-videos:videos:in:true']
+      [
+        'in:video:in:true',
+        'in-videos:videos:in:true',
+        'in-voice:voice:in:true',
+        'in-voices:voices:in:true'
+      ]
     )
     // 批量 videos（导演台 out-actions）接方形口；单条 video 只能走默认 in
     const videoSelect = createNodeFromType('video.select', { x: 100, y: 0 })

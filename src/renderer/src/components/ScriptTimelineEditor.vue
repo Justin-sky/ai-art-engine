@@ -342,11 +342,7 @@
             v-if="activeSubtitleText"
             class="subtitle-overlay"
             :title="t('script.timeline.subtitleResizeHint')"
-            :style="{
-              fontSize: `${subtitleFontSize}px`,
-              bottom: `${Math.max(0, subtitleYOffset)}px`,
-              color: subtitleColor
-            }"
+            :style="activeSubtitleOverlayStyle"
             @pointerdown.stop="onSubtitleMoveDown"
             @wheel.prevent="onSubtitleWheel"
           >
@@ -425,14 +421,50 @@
               @change="onClipDurationChange(Number(($event.target as HTMLInputElement).value))"
             />
           </label>
-          <div
-            v-if="selectedClip.sourceOffsetSec"
-            class="inspector-field readonly"
+          <label
+            v-if="selectedClip.track !== 'subtitle'"
+            class="inspector-field"
             :title="t('script.timeline.sourceOffsetSecTip')"
           >
             <span>{{ t('script.timeline.sourceOffsetSec') }}</span>
-            <input type="text" :value="formatTime(selectedClip.sourceOffsetSec)" readonly />
-          </div>
+            <input
+              type="number"
+              min="0"
+              step="0.1"
+              :value="selectedClip.sourceOffsetSec ?? 0"
+              @change="onClipSourceOffsetChange(Number(($event.target as HTMLInputElement).value))"
+            />
+          </label>
+          <label
+            v-if="selectedClip.track !== 'subtitle'"
+            class="inspector-field"
+            :title="t('script.timeline.clipSpeedHint')"
+          >
+            <span>{{ t('script.timeline.clipSpeed') }}</span>
+            <input
+              type="number"
+              min="0.25"
+              max="4"
+              step="0.05"
+              :value="selectedClip.speed ?? 1"
+              @change="onClipSpeedChange(Number(($event.target as HTMLInputElement).value))"
+            />
+          </label>
+          <label
+            v-if="selectedClip.track === 'video' || selectedClip.track === 'overlay'"
+            class="inspector-field"
+            :title="t('script.timeline.clipFreezeTailHint')"
+          >
+            <span>{{ t('script.timeline.clipFreezeTail') }}</span>
+            <input
+              type="number"
+              min="0"
+              max="30"
+              step="0.1"
+              :value="selectedClip.freezeTailSec ?? 0"
+              @change="onClipFreezeTailChange(Number(($event.target as HTMLInputElement).value))"
+            />
+          </label>
           <template v-if="selectedClip.track === 'video'">
             <template v-if="selectedClip.nodeId">
               <div class="inspector-section-title">
@@ -507,6 +539,53 @@
               {{ t('script.timeline.transitionDragHint') }}
             </div>
           </template>
+          <template v-if="selectedClip.track === 'video' || selectedClip.track === 'overlay'">
+            <div class="inspector-section-title">
+              {{ t('script.timeline.colorGradeTitle') }}
+            </div>
+            <label class="inspector-field">
+              <span>{{ t('script.timeline.colorBrightness') }}</span>
+              <input
+                type="range"
+                min="-0.5"
+                max="0.5"
+                step="0.02"
+                :value="selectedClip.brightness ?? 0"
+                @input="
+                  onClipColorChange('brightness', Number(($event.target as HTMLInputElement).value))
+                "
+              />
+            </label>
+            <label class="inspector-field">
+              <span>{{ t('script.timeline.colorContrast') }}</span>
+              <input
+                type="range"
+                min="0.5"
+                max="2"
+                step="0.05"
+                :value="selectedClip.contrast ?? 1"
+                @input="
+                  onClipColorChange('contrast', Number(($event.target as HTMLInputElement).value))
+                "
+              />
+            </label>
+            <label class="inspector-field">
+              <span>{{ t('script.timeline.colorSaturation') }}</span>
+              <input
+                type="range"
+                min="0"
+                max="2.5"
+                step="0.05"
+                :value="selectedClip.saturation ?? 1"
+                @input="
+                  onClipColorChange('saturation', Number(($event.target as HTMLInputElement).value))
+                "
+              />
+            </label>
+            <button type="button" class="ghost-btn inspector-reset" @click="resetClipColorGrade">
+              {{ t('script.timeline.colorReset') }}
+            </button>
+          </template>
           <template v-if="selectedClip.track === 'subtitle'">
             <label class="inspector-field">
               <span>{{ t('script.timeline.subtitlePlaceholder') }}</span>
@@ -514,6 +593,34 @@
                 rows="2"
                 :value="selectedClip.text || selectedClip.title"
                 @change="onSubtitleTextChange(($event.target as HTMLTextAreaElement).value)"
+              />
+            </label>
+            <label class="inspector-field">
+              <span>{{ t('script.timeline.clipSubtitleFontSize') }}</span>
+              <input
+                type="number"
+                min="12"
+                max="200"
+                step="1"
+                :value="selectedClip.fontSize ?? subtitleFontSize"
+                @change="
+                  onClipSubtitleStyleChange({
+                    fontSize: Number(($event.target as HTMLInputElement).value)
+                  })
+                "
+              />
+            </label>
+            <label class="inspector-field">
+              <span>{{ t('script.timeline.clipSubtitleColor') }}</span>
+              <input
+                type="color"
+                class="color-input"
+                :value="selectedClip.textColor || subtitleColor"
+                @change="
+                  onClipSubtitleStyleChange({
+                    textColor: ($event.target as HTMLInputElement).value
+                  })
+                "
               />
             </label>
             <div class="inspector-section-title">
@@ -549,6 +656,59 @@
                 class="color-input"
                 @change="scheduleSave"
               />
+            </label>
+            <label class="inspector-field">
+              <span>{{ t('script.timeline.subtitleBorderColor') }}</span>
+              <input
+                v-model="subtitleBorderColor"
+                type="color"
+                class="color-input"
+                @change="scheduleSave"
+              />
+            </label>
+            <label class="inspector-field">
+              <span>{{ t('script.timeline.subtitleBorderWidth') }}</span>
+              <input
+                v-model.number="subtitleBorderWidth"
+                type="number"
+                min="0"
+                max="16"
+                step="1"
+                @change="scheduleSave"
+              />
+            </label>
+            <label class="inspector-field">
+              <span>{{ t('script.timeline.subtitleBoxEnabled') }}</span>
+              <input v-model="subtitleBoxEnabled" type="checkbox" @change="scheduleSave" />
+            </label>
+            <template v-if="subtitleBoxEnabled">
+              <label class="inspector-field">
+                <span>{{ t('script.timeline.subtitleBoxColor') }}</span>
+                <input
+                  v-model="subtitleBoxColor"
+                  type="color"
+                  class="color-input"
+                  @change="scheduleSave"
+                />
+              </label>
+              <label class="inspector-field">
+                <span>{{ t('script.timeline.subtitleBoxOpacity') }}</span>
+                <input
+                  v-model.number="subtitleBoxOpacity"
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  @change="scheduleSave"
+                />
+              </label>
+            </template>
+            <label class="inspector-field">
+              <span>{{ t('script.timeline.subtitleMotion') }}</span>
+              <select v-model="subtitleMotion" @change="scheduleSave">
+                <option value="none">{{ t('script.timeline.subtitleMotionNone') }}</option>
+                <option value="fade">{{ t('script.timeline.subtitleMotionFade') }}</option>
+              </select>
             </label>
           </template>
           <template v-if="selectedClip.track === 'overlay'">
@@ -655,6 +815,7 @@
           </template>
           <template
             v-if="
+              selectedClip.track === 'video' ||
               selectedClip.track === 'voice' ||
               selectedClip.track === 'music' ||
               selectedClip.track === 'sfx'
@@ -665,7 +826,7 @@
               <input
                 type="range"
                 min="0"
-                max="1"
+                max="2"
                 step="0.05"
                 :value="selectedClip.volume ?? 1"
                 @input="onAudioVolumeChange(Number(($event.target as HTMLInputElement).value))"
@@ -763,6 +924,14 @@
               @change="scheduleSave"
             />
           </label>
+          <label class="inspector-field">
+            <span>{{ t('script.timeline.scaleMode') }}</span>
+            <select v-model="scaleMode" @change="scheduleSave">
+              <option value="contain">{{ t('script.timeline.scaleModeContain') }}</option>
+              <option value="cover">{{ t('script.timeline.scaleModeCover') }}</option>
+              <option value="blur">{{ t('script.timeline.scaleModeBlur') }}</option>
+            </select>
+          </label>
         </div>
       </aside>
     </div>
@@ -831,6 +1000,22 @@
           <button
             type="button"
             class="ghost-btn"
+            :title="t('script.timeline.prevCut')"
+            @click="seekPrevCut"
+          >
+            |[
+          </button>
+          <button
+            type="button"
+            class="ghost-btn"
+            :title="t('script.timeline.stepFrameBack')"
+            @click="stepFrame(-1)"
+          >
+            ‹
+          </button>
+          <button
+            type="button"
+            class="ghost-btn"
             :title="
               playing && playMode === 'timeline'
                 ? t('script.timeline.pause')
@@ -839,6 +1024,22 @@
             @click="toggleTimelinePlay"
           >
             {{ playing && playMode === 'timeline' ? '⏸' : '▶' }}
+          </button>
+          <button
+            type="button"
+            class="ghost-btn"
+            :title="t('script.timeline.stepFrameForward')"
+            @click="stepFrame(1)"
+          >
+            ›
+          </button>
+          <button
+            type="button"
+            class="ghost-btn"
+            :title="t('script.timeline.nextCut')"
+            @click="seekNextCut"
+          >
+            ]|
           </button>
           <button
             type="button"
@@ -856,6 +1057,24 @@
             @click="splitSelectedClipAtPlayhead"
           >
             ✂
+          </button>
+          <button
+            type="button"
+            class="ghost-btn"
+            :disabled="!selectedClips.length"
+            :title="t('script.timeline.rippleDeleteHint')"
+            @click="rippleDeleteSelectedClips"
+          >
+            ⌫ {{ t('script.timeline.rippleDelete') }}
+          </button>
+          <button
+            type="button"
+            class="ghost-btn"
+            :disabled="!clips.length"
+            :title="t('script.timeline.closeGapsHint')"
+            @click="closeTrackGaps"
+          >
+            ⇄ {{ t('script.timeline.closeGaps') }}
           </button>
           <button
             type="button"
@@ -951,6 +1170,24 @@
             @click="exportSubtitles"
           >
             SRT
+          </button>
+          <button
+            type="button"
+            class="ghost-btn"
+            :disabled="!clips.length"
+            :title="t('script.timeline.exportFcpxmlHint')"
+            @click="exportFcpxml"
+          >
+            {{ t('script.timeline.exportFcpxml') }}
+          </button>
+          <button
+            type="button"
+            class="ghost-btn"
+            :disabled="!clips.length"
+            :title="t('script.timeline.exportCapCutHint')"
+            @click="exportCapCutDraft"
+          >
+            {{ t('script.timeline.exportCapCut') }}
           </button>
         </div>
         <GraphToolbarCollapseBtn v-model="timelineCollapsed" />
@@ -1319,6 +1556,14 @@
             step="500"
           />
         </label>
+        <label class="inspector-field">
+          <span>{{ t('script.timeline.scaleMode') }}</span>
+          <select v-model="scaleMode" @change="scheduleSave">
+            <option value="contain">{{ t('script.timeline.scaleModeContain') }}</option>
+            <option value="cover">{{ t('script.timeline.scaleModeCover') }}</option>
+            <option value="blur">{{ t('script.timeline.scaleModeBlur') }}</option>
+          </select>
+        </label>
         <div class="mixer-section-title">
           {{ t('script.timeline.watermark') }}
         </div>
@@ -1493,6 +1738,28 @@
             :checked="mixCompression"
             @change="onMixCompressionChange(($event.target as HTMLInputElement).checked)"
           />
+        </label>
+        <label class="inspector-field" :title="t('script.timeline.mixerAutoDuckingHint')">
+          <span>{{ t('script.timeline.mixerAutoDucking') }}</span>
+          <input v-model="mixAutoDucking" type="checkbox" @change="scheduleSave" />
+        </label>
+        <label v-if="mixAutoDucking" class="inspector-field">
+          <span>{{ t('script.timeline.mixerDuckingRatio') }}</span>
+          <span class="mixer-slider-row">
+            <input
+              v-model.number="mixDuckingRatio"
+              type="range"
+              min="0.05"
+              max="1"
+              step="0.05"
+              @change="scheduleSave"
+            />
+            <span class="mixer-value">{{ Math.round(mixDuckingRatio * 100) }}%</span>
+          </span>
+        </label>
+        <label class="inspector-field" :title="t('script.timeline.mixerLoudnormHint')">
+          <span>{{ t('script.timeline.mixerLoudnorm') }}</span>
+          <input v-model="mixLoudnorm" type="checkbox" @change="scheduleSave" />
         </label>
         <div class="export-settings-actions">
           <button type="button" class="ghost-btn" @click="closeMixer">
@@ -1687,8 +1954,14 @@ import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, toRaw, wat
 import { ASSET_TYPE_ICONS, isDraftAssetId, type AssetInfo } from '@shared/domain'
 import type { VideoBeatTags } from '@shared/videoBeats'
 import {
+  buildCapCutDraftContent,
+  buildFcpxmlDocument,
+  clampClipFreezeTailSec,
+  clampClipSpeed,
+  clampMixDuckingRatio,
   clampMixEqGainDb,
   clampTrackGain,
+  closeTimelineTrackGaps,
   EXPORT_PLATFORMS,
   exportPlatformById,
   exportPlatformSafeRect,
@@ -1699,9 +1972,11 @@ import {
   normalizeScriptTimelineSource,
   normalizeScriptTimelineSourceGroup,
   readScriptTimelineFromGenParams,
+  splitTimelineClipAtTime,
   withScriptTimeline,
   type ScriptTimelineClip,
   type ScriptTimelineDocument,
+  type ScriptTimelineScaleMode,
   type ScriptTimelineSource,
   type ScriptTimelineSourceGroup,
   type ScriptTimelineSourceMediaKind,
@@ -1716,6 +1991,7 @@ import {
   SMART_CUT_TRANSITIONS,
   type SmartCutEdit
 } from '@shared/graph'
+import { planRippleCut } from '@shared/graph/timelineCut'
 import { buildSubtitleClipsFromTranscription } from '@shared/graph/timelineSubtitle'
 import { detectImportAssetType, isImportablePath } from '@shared/import'
 import { useStudioI18n } from '../composables/useStudioI18n'
@@ -1966,9 +2242,16 @@ const exportSafeAreaStyle = computed(() => {
 })
 const exportFps = ref(30)
 const exportVideoBitrateKbps = ref(5000)
+const scaleMode = ref<ScriptTimelineScaleMode>('contain')
 const subtitleFontSize = ref(36)
 const subtitleYOffset = ref(80)
 const subtitleColor = ref('#ffffff')
+const subtitleBorderColor = ref('#000000')
+const subtitleBorderWidth = ref(2)
+const subtitleBoxEnabled = ref(false)
+const subtitleBoxColor = ref('#000000')
+const subtitleBoxOpacity = ref(0.55)
+const subtitleMotion = ref<'none' | 'fade'>('none')
 const previewFrameRatioKey = ref('export')
 const exporting = ref(false)
 const exportDialogOpen = ref(false)
@@ -1979,18 +2262,22 @@ const mixMasterGain = ref(1)
 const mixBassGainDb = ref(0)
 const mixTrebleGainDb = ref(0)
 const mixCompression = ref(false)
+const mixAutoDucking = ref(false)
+const mixDuckingRatio = ref(0.25)
+const mixLoudnorm = ref(false)
 const mixerOpen = ref(false)
 const subtitleEditor = ref<{ clipId: string | null; draft: string } | null>(null)
 const subtitleInputEl = ref<HTMLInputElement | null>(null)
 /** 当前可放置高亮的轨道 */
 const dragOverTrack = ref<ScriptTimelineTrackKind | null>(null)
-/** 轨道片段指针拖拽（自由挪动时间 / 换轨） */
+/** 轨道片段指针拖拽（自由挪动时间 / 换轨 / 同轨多选联动） */
 const clipDrag = ref<{
   clipId: string
   pointerId: number
   grabOffsetSec: number
   lastStartSec: number
   moved: boolean
+  groupInitialStarts?: Map<string, number>
 } | null>(null)
 
 const clipDragPreview = ref<{
@@ -2130,7 +2417,11 @@ const selectedClip = computed(
 
 const selectedAudioClip = computed(() => {
   const clip = selectedPlayableClip.value
-  return clip && (clip.track === 'voice' || clip.track === 'music' || clip.track === 'sfx')
+  return clip &&
+    (clip.track === 'video' ||
+      clip.track === 'voice' ||
+      clip.track === 'music' ||
+      clip.track === 'sfx')
     ? clip
     : null
 })
@@ -2229,6 +2520,15 @@ const mainTransitionVideoStyle = computed(() => {
   return style
 })
 
+function buildCssColorFilter(clip: ScriptTimelineClip | null | undefined): string {
+  if (!clip) return ''
+  const b = Number.isFinite(clip.brightness) ? clip.brightness! : 0
+  const c = Number.isFinite(clip.contrast) ? clip.contrast! : 1
+  const s = Number.isFinite(clip.saturation) ? clip.saturation! : 1
+  if (Math.abs(b) < 0.001 && Math.abs(c - 1) < 0.001 && Math.abs(s - 1) < 0.001) return ''
+  return `brightness(${(1 + b).toFixed(3)}) contrast(${c.toFixed(3)}) saturate(${s.toFixed(3)})`
+}
+
 /**
  * 转场期间把主视频（A）钳制到导出框画布内，与转场叠加层（B）共享同一几何，
  * 否则 A 铺满舞台而 B 只在导出框内，会出现“B 被缩放叠在小窗里”的假象。
@@ -2238,15 +2538,22 @@ const mainTransitionVideoStyle = computed(() => {
  */
 const previewVideoTransitionStyle = computed<Record<string, string> | null>(() => {
   const rect = previewFrameRect.value
-  if (!(rect.width > 1) || !(rect.height > 1)) return null
-  if (previewFrameRatioKey.value !== 'export' && !activeMainTransition.value) return null
+  const activeClip = clips.value.find((c) => c.id === activeClipId.value)
+  const filter = buildCssColorFilter(activeClip)
+  if (!(rect.width > 1) || !(rect.height > 1)) {
+    return filter ? { filter } : null
+  }
+  if (previewFrameRatioKey.value !== 'export' && !activeMainTransition.value) {
+    return filter ? { filter } : null
+  }
   return {
     position: 'absolute',
     left: `${rect.left}px`,
     top: `${rect.top}px`,
     width: `${rect.width}px`,
     height: `${rect.height}px`,
-    objectFit: 'contain'
+    objectFit: scaleMode.value === 'cover' ? 'cover' : 'contain',
+    ...(filter ? { filter } : {})
   }
 })
 
@@ -2664,16 +2971,65 @@ const laneWidth = computed(() =>
 
 const needsHScroll = computed(() => laneWidth.value > viewportLanePx.value + 1)
 
-const activeSubtitleText = computed(() => {
-  for (const clip of clipsOn('subtitle')) {
+const activeSubtitleClip = computed(() => {
+  for (const clip of visibleClipsOn('subtitle')) {
     if (
       playheadSec.value >= clip.startSec &&
       playheadSec.value < clip.startSec + clip.durationSec
     ) {
-      return (clip.text || clip.title).trim()
+      return clip
     }
   }
-  return ''
+  return null
+})
+
+const activeSubtitleText = computed(() => {
+  const clip = activeSubtitleClip.value
+  return clip ? (clip.text || clip.title).trim() : ''
+})
+
+function hexToRgba(hex: string, alpha: number): string {
+  const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex.trim())
+  if (!m) return `rgba(0, 0, 0, ${clamp01(alpha)})`
+  const raw = m[1]!
+  const full = raw.length === 3 ? `${raw[0]}${raw[0]}${raw[1]}${raw[1]}${raw[2]}${raw[2]}` : raw
+  const r = parseInt(full.slice(0, 2), 16)
+  const g = parseInt(full.slice(2, 4), 16)
+  const b = parseInt(full.slice(4, 6), 16)
+  return `rgba(${r}, ${g}, ${b}, ${clamp01(alpha).toFixed(2)})`
+}
+
+const activeSubtitleOverlayStyle = computed<Record<string, string>>(() => {
+  const clip = activeSubtitleClip.value
+  const size = clip?.fontSize ?? subtitleFontSize.value
+  const color = clip?.textColor || subtitleColor.value
+  const style: Record<string, string> = {
+    fontSize: `${size}px`,
+    bottom: `${Math.max(0, subtitleYOffset.value)}px`,
+    color
+  }
+  const bw = Math.max(0, subtitleBorderWidth.value)
+  if (bw > 0) {
+    const bc = subtitleBorderColor.value || '#000000'
+    style.webkitTextStroke = `${bw}px ${bc}`
+    style.textShadow = `0 1px ${Math.max(2, bw * 2)}px ${bc}`
+  }
+  if (subtitleBoxEnabled.value) {
+    style.backgroundColor = hexToRgba(subtitleBoxColor.value || '#000000', subtitleBoxOpacity.value)
+    style.padding = '4px 12px'
+    style.borderRadius = '6px'
+  }
+  if (subtitleMotion.value === 'fade' && clip) {
+    const local = Math.max(0, playheadSec.value - clip.startSec)
+    const fadeSec = Math.min(0.18, clip.durationSec / 2)
+    let alpha = 1
+    if (fadeSec > 0.01) {
+      if (local < fadeSec) alpha = local / fadeSec
+      else if (local > clip.durationSec - fadeSec) alpha = (clip.durationSec - local) / fadeSec
+    }
+    style.opacity = `${clamp01(alpha).toFixed(2)}`
+  }
+  return style
 })
 
 const rulerMarks = computed(() => {
@@ -2933,6 +3289,60 @@ function deleteSelectedClips(): void {
   scheduleSave()
 }
 
+/**
+ * 波纹删除：主视频轨走 planRippleCut（自动前移后续视频及关联配音/字幕/覆层）；
+ * 非视频轨移除后自动收紧该轨道在被删片段之后的间隙。
+ */
+function rippleDeleteSelectedClips(): void {
+  const ids = new Set(selectedClipIds.value)
+  if (!ids.size && activeClipId.value) ids.add(activeClipId.value)
+  if (!ids.size) return
+  const removable = clips.value
+    .filter((clip) => ids.has(clip.id) && !lockedTracks.value.has(clip.track))
+    .sort((a, b) => b.startSec - a.startSec)
+  if (!removable.length) return
+
+  let working = clips.value.map((c) => ({ ...c }))
+  for (const target of removable) {
+    if (target.track === 'video') {
+      const plan = planRippleCut(working, [
+        { startSec: target.startSec, endSec: target.startSec + target.durationSec }
+      ])
+      if (plan) {
+        working = plan.clips
+        continue
+      }
+    }
+    const delta = Math.max(0, target.durationSec)
+    const cutEnd = target.startSec + delta
+    working = working
+      .filter((c) => c.id !== target.id)
+      .map((c) =>
+        c.track === target.track && c.startSec >= cutEnd - 0.001
+          ? { ...c, startSec: Math.max(0, Math.round((c.startSec - delta) * 100) / 100) }
+          : c
+      )
+  }
+
+  commitClips(working)
+  if (activeClipId.value && !working.some((c) => c.id === activeClipId.value)) {
+    activeClipId.value = null
+    previewSrc.value = ''
+  }
+  selectedClipIds.value = new Set()
+  scheduleSave()
+}
+
+/** 一键磁吸闭合轨道空隙：若当前选中了某片段则只收紧其所在轨，否则收紧主视频轨 */
+function closeTrackGaps(): void {
+  const active = selectedClip.value
+  const targetTrack = active ? active.track : 'video'
+  if (lockedTracks.value.has(targetTrack)) return
+  const next = closeTimelineTrackGaps(clips.value, targetTrack)
+  commitClips(next.clips)
+  scheduleSave()
+}
+
 function snapCandidates(excludeClipId?: string): number[] {
   const points = [0, totalDuration.value, playheadSec.value]
   for (const clip of clips.value) {
@@ -3140,18 +3550,34 @@ function sourceOffsetOf(clip?: { sourceOffsetSec?: number } | null): number {
 
 /** 片段本地时间（相对轨上片段起点，0 = 取段窗口起点）→ 源文件 media currentTime */
 function mediaTimeForClip(
-  clip: { sourceOffsetSec?: number } | null | undefined,
+  clip:
+    | {
+        sourceOffsetSec?: number
+        speed?: number
+        freezeTailSec?: number
+        durationSec?: number
+      }
+    | null
+    | undefined,
   localSec: number
 ): number {
-  return Math.max(0, (Number(localSec) || 0) + sourceOffsetOf(clip))
+  const speed = clampClipSpeed(clip?.speed)
+  const freezeTail = clampClipFreezeTailSec(clip?.freezeTailSec)
+  const maxMovingLocal =
+    clip?.durationSec && clip.durationSec > 0
+      ? Math.max(0.05, clip.durationSec - freezeTail)
+      : Number.POSITIVE_INFINITY
+  const effectiveLocal = Math.min(Math.max(0, Number(localSec) || 0), maxMovingLocal)
+  return Math.max(0, sourceOffsetOf(clip) + effectiveLocal * speed)
 }
 
 /** 源文件 media currentTime → 片段本地时间（用于反推播放头 / 判定片段结束） */
 function localTimeForClip(
-  clip: { sourceOffsetSec?: number } | null | undefined,
+  clip: { sourceOffsetSec?: number; speed?: number } | null | undefined,
   mediaSec: number
 ): number {
-  return Math.max(0, (Number(mediaSec) || 0) - sourceOffsetOf(clip))
+  const speed = clampClipSpeed(clip?.speed)
+  return Math.max(0, ((Number(mediaSec) || 0) - sourceOffsetOf(clip)) / speed)
 }
 
 function seekVideoTo(video: HTMLVideoElement, time: number): Promise<void> {
@@ -3570,12 +3996,14 @@ function overlayRect(clip: ScriptTimelineClip): {
 
 function overlayVideoStyle(clip: ScriptTimelineClip): Record<string, string> {
   const rect = overlayRect(clip)
+  const filter = buildCssColorFilter(clip)
   return {
     left: `${rect.left * 100}%`,
     top: `${rect.top * 100}%`,
     width: `${rect.width * 100}%`,
     height: `${rect.height * 100}%`,
-    opacity: `${clamp01(clip.opacity ?? 1)}`
+    opacity: `${clamp01(clip.opacity ?? 1)}`,
+    ...(filter ? { filter } : {})
   }
 }
 
@@ -3652,9 +4080,17 @@ function loadPersisted(): void {
   )
   exportFps.value = settings?.exportFps ?? 30
   exportVideoBitrateKbps.value = settings?.exportVideoBitrateKbps ?? 5000
+  scaleMode.value = settings?.scaleMode ?? 'contain'
   subtitleFontSize.value = settings?.subtitleFontSize ?? 36
   subtitleYOffset.value = settings?.subtitleYOffset ?? 80
   subtitleColor.value = settings?.subtitleColor ?? '#ffffff'
+  subtitleBorderColor.value = settings?.subtitleBorderColor ?? '#000000'
+  subtitleBorderWidth.value = settings?.subtitleBorderWidth ?? 2
+  subtitleBoxEnabled.value = settings?.subtitleBoxEnabled === true
+  subtitleBoxColor.value = settings?.subtitleBoxColor ?? '#000000'
+  subtitleBoxOpacity.value = settings?.subtitleBoxOpacity ?? 0.55
+  subtitleMotion.value =
+    settings?.subtitleMotion === 'fade' || settings?.subtitleMotion === true ? 'fade' : 'none'
   previewFrameRatioKey.value = settings?.previewFrameRatio ?? 'export'
   exportPlatformId.value = settings?.exportPlatformId ?? 'custom'
   watermarkEnabled.value = settings?.watermarkEnabled === true
@@ -3673,6 +4109,9 @@ function loadPersisted(): void {
   mixBassGainDb.value = clampMixEqGainDb(settings?.mixBassGainDb ?? 0)
   mixTrebleGainDb.value = clampMixEqGainDb(settings?.mixTrebleGainDb ?? 0)
   mixCompression.value = settings?.mixCompression === true
+  mixAutoDucking.value = settings?.mixAutoDucking === true
+  mixDuckingRatio.value = clampMixDuckingRatio(settings?.mixDuckingRatio ?? 0.25)
+  mixLoudnorm.value = settings?.mixLoudnorm === true
   undoStack.value = []
   redoStack.value = []
   selectedClipIds.value = new Set()
@@ -3705,9 +4144,16 @@ async function persist(): Promise<void> {
       exportHeight: exportHeight.value,
       exportFps: exportFps.value,
       exportVideoBitrateKbps: exportVideoBitrateKbps.value,
+      scaleMode: scaleMode.value,
       subtitleFontSize: subtitleFontSize.value,
       subtitleYOffset: subtitleYOffset.value,
       subtitleColor: subtitleColor.value,
+      subtitleBorderColor: subtitleBorderColor.value,
+      subtitleBorderWidth: subtitleBorderWidth.value,
+      subtitleBoxEnabled: subtitleBoxEnabled.value,
+      subtitleBoxColor: subtitleBoxColor.value,
+      subtitleBoxOpacity: subtitleBoxOpacity.value,
+      subtitleMotion: subtitleMotion.value,
       previewFrameRatio: previewFrameRatioKey.value,
       exportPlatformId: exportPlatformId.value,
       watermarkEnabled: watermarkEnabled.value,
@@ -3720,7 +4166,10 @@ async function persist(): Promise<void> {
       mixMasterGain: mixMasterGain.value,
       mixBassGainDb: mixBassGainDb.value,
       mixTrebleGainDb: mixTrebleGainDb.value,
-      mixCompression: mixCompression.value
+      mixCompression: mixCompression.value,
+      mixAutoDucking: mixAutoDucking.value,
+      mixDuckingRatio: clampMixDuckingRatio(mixDuckingRatio.value),
+      mixLoudnorm: mixLoudnorm.value
     }
   }
   const next = withScriptTimeline(readGenParams(), doc, props.timelineNodeId)
@@ -3818,25 +4267,99 @@ function onWatermarkPositionChange(value: string): void {
 
 function applyPlaybackRate(): void {
   const el = previewEl.value
-  if (el) el.playbackRate = playbackRate.value
-  for (const audio of audioEls.values()) {
-    audio.playbackRate = playbackRate.value
+  const active = clips.value.find((c) => c.id === activeClipId.value)
+  const activeSpeed = clampClipSpeed(active?.speed)
+  if (el) el.playbackRate = Math.min(16, Math.max(0.1, playbackRate.value * activeSpeed))
+  for (const [id, audio] of audioEls.entries()) {
+    const clip = clips.value.find((c) => c.id === id)
+    audio.playbackRate = Math.min(
+      16,
+      Math.max(0.1, playbackRate.value * clampClipSpeed(clip?.speed))
+    )
   }
-  for (const overlay of overlayEls.values()) {
-    overlay.playbackRate = playbackRate.value
+  for (const [id, overlay] of overlayEls.entries()) {
+    const clip = clips.value.find((c) => c.id === id)
+    overlay.playbackRate = Math.min(
+      16,
+      Math.max(0.1, playbackRate.value * clampClipSpeed(clip?.speed))
+    )
   }
 }
 
-/** 预览区 video 元素的原声（video / overlay 轨），轨道静音用 muted 控制 */
-function applyPreviewMuted(track: ScriptTimelineTrackKind = 'video'): void {
+/** 预览区 video 元素的原声（video / overlay 轨），同步静音、音量、淡入淡出与轨道增益 */
+function syncMainVideoAudioGain(clip: ScriptTimelineClip | null | undefined, local: number): void {
   const el = previewEl.value
-  if (el) el.muted = mutedTracks.value.has(track)
+  if (!el) return
+  const track = clip?.track ?? 'video'
+  if (mutedTracks.value.has(track)) {
+    el.muted = true
+    return
+  }
+  el.muted = false
+  if (!clip) {
+    el.volume = 1
+    return
+  }
+  const vol = Number.isFinite(clip.volume) ? Math.min(2, Math.max(0, clip.volume!)) : 1
+  const trackGain = clampTrackGain(mixGains.value[track])
+  const fade = fadeFactorAt(clip, local)
+  el.volume = clamp01(vol * trackGain * fade * clampTrackGain(mixMasterGain.value))
+}
+
+function applyPreviewMuted(track: ScriptTimelineTrackKind = 'video'): void {
+  const active = clips.value.find((c) => c.id === activeClipId.value)
+  const local = active ? Math.max(0, playheadSec.value - active.startSec) : 0
+  syncMainVideoAudioGain(active ?? ({ track } as ScriptTimelineClip), local)
 }
 
 function seekToStart(): void {
   playheadSec.value = 0
   void syncPreviewToPlayhead()
   void syncAudioToPlayhead(playing.value)
+}
+
+/** 单帧步进（按导出帧率步进，默认 1/30s） */
+function stepFrame(deltaFrames: number): void {
+  stopPlayback()
+  const fps = Math.max(1, exportFps.value || 30)
+  const next = Math.min(totalDuration.value, Math.max(0, playheadSec.value + deltaFrames / fps))
+  playheadSec.value = Math.round(next * 1000) / 1000
+  void syncPreviewToPlayhead()
+  void syncAudioToPlayhead(false)
+}
+
+function collectCutPoints(): number[] {
+  const pts = new Set<number>([0, totalDuration.value])
+  for (const clip of clips.value) {
+    if (hiddenTracks.value.has(clip.track)) continue
+    pts.add(Math.round(clip.startSec * 1000) / 1000)
+    pts.add(Math.round((clip.startSec + clip.durationSec) * 1000) / 1000)
+  }
+  return [...pts].sort((a, b) => a - b)
+}
+
+function seekPrevCut(): void {
+  stopPlayback()
+  const pts = collectCutPoints()
+  const cur = playheadSec.value
+  let target = 0
+  for (const pt of pts) {
+    if (pt < cur - 0.02) target = pt
+    else break
+  }
+  playheadSec.value = target
+  void syncPreviewToPlayhead()
+  void syncAudioToPlayhead(false)
+}
+
+function seekNextCut(): void {
+  stopPlayback()
+  const pts = collectCutPoints()
+  const cur = playheadSec.value
+  const target = pts.find((pt) => pt > cur + 0.02) ?? totalDuration.value
+  playheadSec.value = target
+  void syncPreviewToPlayhead()
+  void syncAudioToPlayhead(false)
 }
 
 function zoomFit(): void {
@@ -4368,8 +4891,9 @@ function onSubtitleDragUp(e: PointerEvent): void {
 function onAudioVolumeChange(value: number): void {
   const clip = selectedAudioClip.value
   if (!clip) return
-  const volume = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 1
+  const volume = Number.isFinite(value) ? Math.min(2, Math.max(0, value)) : 1
   clips.value = clips.value.map((c) => (c.id === clip.id ? { ...c, volume } : c))
+  applyPreviewMuted(clip.track)
   scheduleSave()
 }
 
@@ -4437,7 +4961,7 @@ function bindOverlayDragListeners(): void {
 }
 
 function unbindOverlayDragListeners(): void {
-  window.removeEventListener('pointermove', onOverlayPointerMove)
+  window.addEventListener('pointermove', onOverlayPointerMove)
   window.removeEventListener('pointerup', onOverlayPointerUp)
   window.removeEventListener('pointercancel', onOverlayPointerUp)
 }
@@ -4555,6 +5079,124 @@ function onClipDurationChange(value: number): void {
     : clip.durationSec
   if (Math.abs(durationSec - clip.durationSec) < 0.001) return
   commitClips(clips.value.map((c) => (c.id === clip.id ? { ...c, durationSec } : c)))
+  scheduleSave()
+}
+
+function onClipSourceOffsetChange(value: number): void {
+  const clip = selectedClip.value
+  if (!clip || clip.track === 'subtitle' || lockedTracks.value.has(clip.track)) return
+  const nextOffset = Number.isFinite(value) ? Math.max(0, Math.round(value * 100) / 100) : 0
+  if (Math.abs(nextOffset - (clip.sourceOffsetSec ?? 0)) < 0.001) return
+  commitClips(
+    clips.value.map((c) =>
+      c.id === clip.id ? { ...c, sourceOffsetSec: nextOffset > 0 ? nextOffset : undefined } : c
+    )
+  )
+  void syncPreviewToPlayhead()
+  scheduleSave()
+}
+
+function onClipSpeedChange(value: number): void {
+  const clip = selectedClip.value
+  if (!clip || clip.track === 'subtitle' || lockedTracks.value.has(clip.track)) return
+  const prevSpeed = clampClipSpeed(clip.speed)
+  const nextSpeed = clampClipSpeed(value)
+  if (Math.abs(nextSpeed - prevSpeed) < 0.001) return
+  const freezeTail = clampClipFreezeTailSec(clip.freezeTailSec)
+  const movingDur = Math.max(MIN_CLIP_SEC, clip.durationSec - freezeTail)
+  const nextMovingDur = Math.max(
+    MIN_CLIP_SEC,
+    Math.round(movingDur * (prevSpeed / nextSpeed) * 100) / 100
+  )
+  const nextDuration = Math.round((nextMovingDur + freezeTail) * 100) / 100
+  commitClips(
+    clips.value.map((c) =>
+      c.id === clip.id
+        ? {
+            ...c,
+            speed: Math.abs(nextSpeed - 1) > 0.001 ? nextSpeed : undefined,
+            durationSec: nextDuration
+          }
+        : c
+    )
+  )
+  applyPlaybackRate()
+  scheduleSave()
+}
+
+function onClipFreezeTailChange(value: number): void {
+  const clip = selectedClip.value
+  if (
+    !clip ||
+    (clip.track !== 'video' && clip.track !== 'overlay') ||
+    lockedTracks.value.has(clip.track)
+  ) {
+    return
+  }
+  const prevFreeze = clampClipFreezeTailSec(clip.freezeTailSec)
+  const nextFreeze = clampClipFreezeTailSec(value)
+  if (Math.abs(nextFreeze - prevFreeze) < 0.001) return
+  const movingDur = Math.max(MIN_CLIP_SEC, clip.durationSec - prevFreeze)
+  const nextDuration = Math.round((movingDur + nextFreeze) * 100) / 100
+  commitClips(
+    clips.value.map((c) =>
+      c.id === clip.id
+        ? {
+            ...c,
+            freezeTailSec: nextFreeze > 0 ? nextFreeze : undefined,
+            durationSec: nextDuration
+          }
+        : c
+    )
+  )
+  scheduleSave()
+}
+
+function onClipColorChange(field: 'brightness' | 'contrast' | 'saturation', value: number): void {
+  const clip = selectedClip.value
+  if (
+    !clip ||
+    (clip.track !== 'video' && clip.track !== 'overlay') ||
+    lockedTracks.value.has(clip.track)
+  ) {
+    return
+  }
+  const nextVal =
+    field === 'brightness'
+      ? Math.min(1, Math.max(-1, Number(value) || 0))
+      : Math.min(3, Math.max(0, Number.isFinite(value) ? value : 1))
+  clips.value = clips.value.map((c) => (c.id === clip.id ? { ...c, [field]: nextVal } : c))
+  scheduleSave()
+}
+
+function resetClipColorGrade(): void {
+  const clip = selectedClip.value
+  if (!clip) return
+  commitClips(
+    clips.value.map((c) =>
+      c.id === clip.id
+        ? { ...c, brightness: undefined, contrast: undefined, saturation: undefined }
+        : c
+    )
+  )
+  scheduleSave()
+}
+
+function onClipSubtitleStyleChange(patch: { fontSize?: number; textColor?: string }): void {
+  const clip = selectedClip.value
+  if (!clip || clip.track !== 'subtitle' || lockedTracks.value.has(clip.track)) return
+  commitClips(
+    clips.value.map((c) => {
+      if (c.id !== clip.id) return c
+      return {
+        ...c,
+        ...(patch.fontSize !== undefined
+          ? { fontSize: Math.min(200, Math.max(12, Math.round(patch.fontSize))) }
+          : {}),
+        ...(patch.textColor !== undefined ? { textColor: patch.textColor } : {})
+      }
+    })
+  )
   scheduleSave()
 }
 
@@ -4933,20 +5575,9 @@ function splitSelectedClipAtPlayhead(): void {
   const clip = clips.value.find((c) => c.id === activeClipId.value)
   if (!clip) return
   if (lockedTracks.value.has(clip.track)) return
-  const t = playheadSec.value
-  if (t <= clip.startSec + MIN_CLIP_SEC || t >= clip.startSec + clip.durationSec - MIN_CLIP_SEC) {
-    return
-  }
-  const first: ScriptTimelineClip = {
-    ...clip,
-    durationSec: t - clip.startSec
-  }
-  const second: ScriptTimelineClip = {
-    ...clip,
-    id: newClipId(),
-    startSec: t,
-    durationSec: clip.startSec + clip.durationSec - t
-  }
+  const split = splitTimelineClipAtTime(clip, playheadSec.value, newClipId(), MIN_CLIP_SEC)
+  if (!split) return
+  const [first, second] = split
   commitClips(
     clips.value.flatMap((c) => {
       if (c.id !== clip.id) return [c]
@@ -4954,6 +5585,7 @@ function splitSelectedClipAtPlayhead(): void {
     })
   )
   activeClipId.value = second.id
+  selectedClipIds.value = new Set([second.id])
   scheduleSave()
 }
 
@@ -5041,11 +5673,21 @@ function onClipPointerDown(e: PointerEvent, clip: ScriptTimelineClip): void {
   if (e.shiftKey || e.ctrlKey || e.metaKey) {
     toggleClipSelection(clip.id)
     activeClipId.value = clip.id
-  } else {
+  } else if (!selectedClipIds.value.has(clip.id) || selectedClipIds.value.size <= 1) {
     selectClip(clip)
+  } else {
+    activeClipId.value = clip.id
   }
   const rect = laneRectForTrack(clip.track)
   const timeAtPointer = rect ? xToTime(e.clientX - rect.left) : clip.startSec
+  const groupInitialStarts = new Map<string, number>()
+  if (selectedClipIds.value.has(clip.id) && selectedClipIds.value.size > 1) {
+    for (const c of clips.value) {
+      if (selectedClipIds.value.has(c.id) && !lockedTracks.value.has(c.track)) {
+        groupInitialStarts.set(c.id, c.startSec)
+      }
+    }
+  }
   // 换轨会重挂载 DOM，监听挂在 window 上以免丢掉拖拽
   unbindClipDragListeners()
   clipDrag.value = {
@@ -5053,7 +5695,8 @@ function onClipPointerDown(e: PointerEvent, clip: ScriptTimelineClip): void {
     pointerId: e.pointerId,
     grabOffsetSec: timeAtPointer - clip.startSec,
     lastStartSec: clip.startSec,
-    moved: false
+    moved: false,
+    ...(groupInitialStarts.size > 1 ? { groupInitialStarts } : {})
   }
   clipDragPreview.value = {
     clipId: clip.id,
@@ -5085,6 +5728,28 @@ function onClipPointerMove(e: PointerEvent): void {
     pointerX: e.clientX,
     pointerY: e.clientY
   }
+
+  // 多选编组同轨平移：保持各选中片段相对时间间隔整体平移
+  if (session.groupInitialStarts && session.groupInitialStarts.size > 1 && kind === clip.track) {
+    const anchorInitial = session.groupInitialStarts.get(clip.id) ?? clip.startSec
+    let minInitial = anchorInitial
+    for (const s of session.groupInitialStarts.values()) {
+      if (s < minInitial) minInitial = s
+    }
+    const snapped = snapTime(desiredStart, clip.id)
+    const delta = Math.max(-minInitial, snapped - anchorInitial)
+    const nextAnchorStart = anchorInitial + delta
+    if (Math.abs(nextAnchorStart - clip.startSec) < 0.001) return
+    session.moved = true
+    session.lastStartSec = nextAnchorStart
+    clips.value = clips.value.map((c) => {
+      const init = session.groupInitialStarts?.get(c.id)
+      if (init === undefined) return c
+      return { ...c, startSec: Math.max(0, Math.round((init + delta) * 100) / 100) }
+    })
+    return
+  }
+
   const moveDir = desiredStart >= session.lastStartSec ? 1 : -1
   if (kind === clip.track) {
     const next = reorderClipsOnTrack(kind, clip.id, desiredStart, clip.durationSec)
@@ -5270,9 +5935,25 @@ function onClipResizeMove(e: PointerEvent): void {
   ) {
     return
   }
+  const deltaStart = startSec - clip.startSec
+  const prevOffset = clip.sourceOffsetSec ?? 0
+  const speed = clampClipSpeed(clip.speed)
+  const nextOffset =
+    clip.track !== 'subtitle'
+      ? Math.max(0, Math.round((prevOffset + deltaStart * speed) * 100) / 100)
+      : 0
   session.moved = true
   clips.value = clips.value.map((c) =>
-    c.id === clip.id ? { ...c, startSec, durationSec: nextDuration } : c
+    c.id === clip.id
+      ? {
+          ...c,
+          startSec,
+          durationSec: nextDuration,
+          ...(c.track !== 'subtitle'
+            ? { sourceOffsetSec: nextOffset > 0 ? nextOffset : undefined }
+            : {})
+        }
+      : c
   )
 }
 
@@ -5878,8 +6559,19 @@ function ensurePreviewClipGain(clip: ScriptTimelineClip, el: HTMLAudioElement): 
   return node
 }
 
-/** 同步片段音量：clip.volume × 轨道增益 × 淡入淡出（与导出对齐；走 Web Audio 时元素自身音量恒 1） */
+function isVoiceTrackActiveAt(timeSec: number): boolean {
+  if (mutedTracks.value.has('voice')) return false
+  return visibleClipsOn('voice').some(
+    (c) => timeSec >= c.startSec && timeSec < c.startSec + c.durationSec
+  )
+}
+
+/** 同步片段音量：clip.volume × 轨道增益 × 淡入淡出 × 自动闪避（与导出对齐；走 Web Audio 时元素自身音量恒 1） */
 function syncClipPreviewGain(clip: ScriptTimelineClip, el: HTMLAudioElement, local: number): void {
+  const duckFactor =
+    clip.track === 'music' && mixAutoDucking.value && isVoiceTrackActiveAt(playheadSec.value)
+      ? clampMixDuckingRatio(mixDuckingRatio.value)
+      : 1
   // 轨道静音优先级最高：直接压到 0，忽略片段音量与混音器增益
   const target = mutedTracks.value.has(clip.track)
     ? 0
@@ -5887,7 +6579,8 @@ function syncClipPreviewGain(clip: ScriptTimelineClip, el: HTMLAudioElement, loc
         2,
         (Number.isFinite(clip.volume) ? Math.min(2, Math.max(0, clip.volume!)) : 1) *
           clampTrackGain(mixGains.value[clip.track]) *
-          fadeFactorAt(clip, local)
+          fadeFactorAt(clip, local) *
+          duckFactor
       )
   const node = ensurePreviewClipGain(clip, el)
   if (node && previewAudioCtx) {
@@ -5984,15 +6677,17 @@ async function syncAudioToPlayhead(playingNow: boolean): Promise<void> {
     }
     const local = playheadSec.value - clip.startSec
     const inRange = local >= -0.05 && local < clip.durationSec
-    el.playbackRate = playbackRate.value
+    const clipSpeed = clampClipSpeed(clip.speed)
+    el.playbackRate = Math.min(16, Math.max(0.1, playbackRate.value * clipSpeed))
     syncClipPreviewGain(clip, el, Math.max(0, local))
     if (!inRange) {
       if (!el.paused) el.pause()
       continue
     }
+    const targetMedia = mediaTimeForClip(clip, Math.max(0, local))
     try {
-      if (Math.abs(el.currentTime - Math.max(0, local)) > 0.35) {
-        el.currentTime = Math.max(0, local)
+      if (Math.abs(el.currentTime - targetMedia) > 0.35) {
+        el.currentTime = targetMedia
       }
     } catch {
       /* ignore */
@@ -6036,7 +6731,7 @@ async function syncOverlayVideosToPlayhead(playingNow: boolean): Promise<void> {
     if (!el) continue
     const local = playheadSec.value - clip.startSec
     const inRange = local >= -0.05 && local < clip.durationSec
-    el.playbackRate = playbackRate.value
+    el.playbackRate = Math.min(16, Math.max(0.1, playbackRate.value * clampClipSpeed(clip.speed)))
     if (!inRange) {
       if (!el.paused) el.pause()
       continue
@@ -6318,7 +7013,7 @@ async function runSoloClip(clip: ScriptTimelineClip, seq: number): Promise<void>
       try {
         applyPlaybackRate()
         applyPreviewMuted(clip.track)
-        el.currentTime = 0
+        el.currentTime = mediaTimeForClip(clip, 0)
         await el.play()
       } catch {
         break
@@ -6334,10 +7029,11 @@ async function runSoloClip(clip: ScriptTimelineClip, seq: number): Promise<void>
         audioEls.set(clip.id, el)
       }
       el.src = await resolveSrc(clip)
-      el.playbackRate = playbackRate.value
+      const clipSpeed = clampClipSpeed(clip.speed)
+      el.playbackRate = Math.min(16, Math.max(0.1, playbackRate.value * clipSpeed))
       syncClipPreviewGain(clip, el, 0)
       try {
-        el.currentTime = 0
+        el.currentTime = mediaTimeForClip(clip, 0)
         await el.play()
       } catch {
         break
@@ -6369,11 +7065,12 @@ function waitUntilAudioClipEnd(
         resolve()
         return
       }
+      const local = localTimeForClip(clip, el.currentTime || 0)
       if (!playheadDrag.value) {
-        playheadSec.value = clip.startSec + (el.currentTime || 0)
+        playheadSec.value = clip.startSec + local
       }
-      syncClipPreviewGain(clip, el, el.currentTime || 0)
-      if (el.ended || el.currentTime >= clip.durationSec - 0.05) {
+      syncClipPreviewGain(clip, el, local)
+      if (el.ended || local >= clip.durationSec - 0.05) {
         cleanup()
         resolve()
       }
@@ -6538,6 +7235,10 @@ function waitUntilClipEnd(
   options?: { syncAudio?: boolean }
 ): Promise<void> {
   const syncAudio = options?.syncAudio !== false
+  const freezeTail = clampClipFreezeTailSec(clip.freezeTailSec)
+  const activePlayDur = Math.max(0.05, clip.durationSec - freezeTail)
+  let freezeStartedAt = 0
+  let freezeBaseLocal = activePlayDur
   return new Promise((resolve) => {
     let raf = 0
     const tick = () => {
@@ -6546,11 +7247,28 @@ function waitUntilClipEnd(
         resolve()
         return
       }
-      const ct = el.currentTime || 0
-      playheadSec.value = clip.startSec + ct
+      let local = localTimeForClip(clip, el.currentTime || 0)
+      if (freezeStartedAt > 0) {
+        const freezeElapsed = ((performance.now() - freezeStartedAt) / 1000) * playbackRate.value
+        local = Math.min(clip.durationSec, freezeBaseLocal + freezeElapsed)
+      } else if (el.ended || local >= activePlayDur - 0.05) {
+        if (freezeTail > 0) {
+          freezeStartedAt = performance.now()
+          freezeBaseLocal = Math.min(clip.durationSec, Math.max(activePlayDur, local))
+          if (!el.paused) el.pause()
+          local = freezeBaseLocal
+        } else {
+          playheadSec.value = clip.startSec + clip.durationSec
+          cleanup()
+          resolve()
+          return
+        }
+      }
+      playheadSec.value = clip.startSec + local
+      syncMainVideoAudioGain(clip, local)
       if (syncAudio) void syncAudioToPlayhead(true)
       if (syncAudio) void syncOverlayVideosToPlayhead(true)
-      if (el.ended || ct >= clip.durationSec - 0.05) {
+      if (local >= clip.durationSec - 0.02) {
         cleanup()
         resolve()
         return
@@ -6585,8 +7303,10 @@ function onPreviewTimeUpdate(): void {
   const clip = clips.value.find((c) => c.id === activeClipId.value)
   const el = previewEl.value
   if (!clip || !el) return
-  const ph = clip.startSec + localTimeForClip(clip, el.currentTime || 0)
+  const local = localTimeForClip(clip, el.currentTime || 0)
+  const ph = clip.startSec + local
   playheadSec.value = ph
+  syncMainVideoAudioGain(clip, local)
   void syncOverlayVideosToPlayhead(true)
 }
 
@@ -6704,6 +7424,13 @@ async function exportTimeline(): Promise<void> {
         startSec: c.startSec,
         durationSec: c.durationSec,
         ...(sourceOffsetOf(c) > 0 ? { sourceOffsetSec: sourceOffsetOf(c) } : {}),
+        speed: c.speed,
+        freezeTailSec: c.freezeTailSec,
+        brightness: c.brightness,
+        contrast: c.contrast,
+        saturation: c.saturation,
+        textColor: c.textColor,
+        fontSize: c.fontSize,
         volume: c.volume,
         fadeInSec: c.fadeInSec,
         fadeOutSec: c.fadeOutSec,
@@ -6725,14 +7452,24 @@ async function exportTimeline(): Promise<void> {
       height: exportHeight.value,
       fps: exportFps.value,
       videoBitrateKbps: exportVideoBitrateKbps.value,
+      scaleMode: scaleMode.value,
       subtitleFontSize: subtitleFontSize.value,
       subtitleYOffset: subtitleYOffset.value,
       subtitleColor: subtitleColor.value,
+      subtitleBorderColor: subtitleBorderColor.value,
+      subtitleBorderWidth: subtitleBorderWidth.value,
+      subtitleBoxEnabled: subtitleBoxEnabled.value,
+      subtitleBoxColor: subtitleBoxColor.value,
+      subtitleBoxOpacity: subtitleBoxOpacity.value,
+      subtitleMotion: subtitleMotion.value,
       mixGains: toRaw(mixGains.value),
       mixMasterGain: mixMasterGain.value,
       mixBassGainDb: mixBassGainDb.value,
       mixTrebleGainDb: mixTrebleGainDb.value,
       mixCompression: mixCompression.value,
+      mixAutoDucking: mixAutoDucking.value,
+      mixDuckingRatio: mixDuckingRatio.value,
+      mixLoudnorm: mixLoudnorm.value,
       mutedTracks: [...mutedTracks.value],
       watermarkSrc: watermarkEnabled.value && watermarkSrc.value ? watermarkSrc.value : undefined,
       watermarkOpacity: watermarkOpacity.value,
@@ -6984,6 +7721,94 @@ async function exportSubtitles(): Promise<void> {
   }
 }
 
+async function exportFcpxml(): Promise<void> {
+  if (!clips.value.length) return
+  try {
+    const doc: ScriptTimelineDocument = {
+      clips: clips.value
+        .filter((c) => !hiddenTracks.value.has(c.track))
+        .map((c) => ({ ...c, relativePath: resolveClipRelativePath(c) ?? c.relativePath })),
+      hiddenTracks: [...hiddenTracks.value],
+      mutedTracks: [...mutedTracks.value],
+      settings: {
+        durationSec: totalDuration.value,
+        exportWidth: exportWidth.value,
+        exportHeight: exportHeight.value,
+        exportFps: exportFps.value,
+        subtitleFontSize: subtitleFontSize.value,
+        subtitleColor: subtitleColor.value
+      }
+    }
+    const xml = buildFcpxmlDocument(doc, {
+      projectName: `Timeline-${Date.now()}`,
+      width: exportWidth.value,
+      height: exportHeight.value,
+      fps: exportFps.value
+    })
+    const path = await window.studio.saveTextFile({
+      content: xml,
+      defaultPath: `timeline-${Date.now()}.fcpxml`,
+      filters: [{ name: 'FCPXML 1.9', extensions: ['fcpxml', 'xml'] }]
+    })
+    if (!path) return
+    await promptAlert({
+      title: t('script.timeline.exportFcpxml'),
+      message: t('script.timeline.exportNleDone', { path })
+    })
+  } catch (err) {
+    await promptAlert({
+      title: t('script.timeline.exportFcpxml'),
+      message: t('script.timeline.exportNleFailed', {
+        error: err instanceof Error ? err.message : String(err)
+      })
+    })
+  }
+}
+
+async function exportCapCutDraft(): Promise<void> {
+  if (!clips.value.length) return
+  try {
+    const doc: ScriptTimelineDocument = {
+      clips: clips.value
+        .filter((c) => !hiddenTracks.value.has(c.track))
+        .map((c) => ({ ...c, relativePath: resolveClipRelativePath(c) ?? c.relativePath })),
+      hiddenTracks: [...hiddenTracks.value],
+      mutedTracks: [...mutedTracks.value],
+      settings: {
+        durationSec: totalDuration.value,
+        exportWidth: exportWidth.value,
+        exportHeight: exportHeight.value,
+        exportFps: exportFps.value,
+        subtitleFontSize: subtitleFontSize.value,
+        subtitleColor: subtitleColor.value
+      }
+    }
+    const json = buildCapCutDraftContent(doc, {
+      projectName: `Timeline-${Date.now()}`,
+      width: exportWidth.value,
+      height: exportHeight.value,
+      fps: exportFps.value
+    })
+    const path = await window.studio.saveTextFile({
+      content: json,
+      defaultPath: 'draft_content.json',
+      filters: [{ name: 'CapCut / JianyingPro Draft', extensions: ['json'] }]
+    })
+    if (!path) return
+    await promptAlert({
+      title: t('script.timeline.exportCapCut'),
+      message: t('script.timeline.exportNleDone', { path })
+    })
+  } catch (err) {
+    await promptAlert({
+      title: t('script.timeline.exportCapCut'),
+      message: t('script.timeline.exportNleFailed', {
+        error: err instanceof Error ? err.message : String(err)
+      })
+    })
+  }
+}
+
 function onVerticalSplitterDown(e: PointerEvent): void {
   if (e.button !== 0) return
   splitterDrag.value = {
@@ -7078,12 +7903,50 @@ function onTimelineKeydown(e: KeyboardEvent): void {
   }
   if (e.key === 'Delete' || e.key === 'Backspace') {
     e.preventDefault()
-    deleteSelectedClips()
+    if (e.shiftKey) {
+      rippleDeleteSelectedClips()
+    } else {
+      deleteSelectedClips()
+    }
     return
+  }
+  if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+    if (e.key === 'b' || e.key === 'B') {
+      if (canSplitActiveClip.value) {
+        e.preventDefault()
+        splitSelectedClipAtPlayhead()
+      }
+      return
+    }
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault()
+      stepFrame(-1)
+      return
+    }
+    if (e.key === 'ArrowRight') {
+      e.preventDefault()
+      stepFrame(1)
+      return
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      seekPrevCut()
+      return
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      seekNextCut()
+      return
+    }
   }
   if (!(e.ctrlKey || e.metaKey)) return
   const key = e.key.toLowerCase()
-  if (key === 'a') {
+  if (key === 'k') {
+    if (canSplitActiveClip.value) {
+      e.preventDefault()
+      splitSelectedClipAtPlayhead()
+    }
+  } else if (key === 'a') {
     e.preventDefault()
     selectAllClips()
   } else if (key === 'z' && !e.shiftKey) {

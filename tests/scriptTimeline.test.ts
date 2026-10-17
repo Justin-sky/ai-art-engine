@@ -1,13 +1,22 @@
 import { describe, expect, it } from 'vitest'
 import {
+  clampClipFreezeTailSec,
+  clampClipSpeed,
+  clampMixDuckingRatio,
   clampMixEqGainDb,
   clampTrackGain,
+  closeTimelineTrackGaps,
   contentEndSecOfTimeline,
   normalizeScriptTimelineSource,
   readScriptTimelineFromGenParams,
+  splitTimelineClipAtTime,
   withScriptTimeline,
   type ScriptTimelineClip
 } from '../src/shared/graph/scriptTimeline'
+import { buildCapCutDraftContent, buildFcpxmlDocument } from '../src/shared/graph/timelineNleExport'
+import { buildAtempoChain, buildFilterGraph } from '../src/main/services/timelineExportService'
+import { executeTimelineOutputNode } from '../src/shared/graph/execute/narrative'
+import { GraphPortType } from '../src/shared/graph/types'
 
 describe('normalizeScriptTimelineSource', () => {
   it('透传来源图节点 nodeId / nodeTitle', () => {
@@ -125,7 +134,7 @@ describe('sfx 轨 + 混音设置', () => {
     expect(read.clips[0].volume).toBe(0.8)
   })
 
-  it('混音设置（轨道增益 / 主增益 / EQ / 压缩）往返与越界收敛', () => {
+  it('混音设置（轨道增益 / 主增益 / EQ / 压缩 / 闪避 / 响度标准化）往返与越界收敛', () => {
     const written = withScriptTimeline(
       {},
       {
@@ -135,7 +144,17 @@ describe('sfx 轨 + 混音设置', () => {
           mixMasterGain: 1.2,
           mixBassGainDb: 8,
           mixTrebleGainDb: -99,
-          mixCompression: true
+          mixCompression: true,
+          mixAutoDucking: true,
+          mixDuckingRatio: 0.2,
+          mixLoudnorm: true,
+          scaleMode: 'blur',
+          subtitleBorderColor: '#112233',
+          subtitleBorderWidth: 4,
+          subtitleBoxEnabled: true,
+          subtitleBoxColor: '#000000',
+          subtitleBoxOpacity: 0.6,
+          subtitleMotion: 'fade'
         }
       }
     )
@@ -148,19 +167,323 @@ describe('sfx 轨 + 混音设置', () => {
     expect(s?.mixBassGainDb).toBe(8)
     expect(s?.mixTrebleGainDb).toBe(-12)
     expect(s?.mixCompression).toBe(true)
+    expect(s?.mixAutoDucking).toBe(true)
+    expect(s?.mixDuckingRatio).toBe(0.2)
+    expect(s?.mixLoudnorm).toBe(true)
+    expect(s?.scaleMode).toBe('blur')
+    expect(s?.subtitleBorderColor).toBe('#112233')
+    expect(s?.subtitleBorderWidth).toBe(4)
+    expect(s?.subtitleBoxEnabled).toBe(true)
+    expect(s?.subtitleMotion).toBe('fade')
   })
 
-  it('clampTrackGain / clampMixEqGainDb 边界', () => {
+  it('clampTrackGain / clampMixEqGainDb / clampClipSpeed / clampClipFreezeTailSec / clampMixDuckingRatio 边界', () => {
     expect(clampTrackGain(0)).toBe(0)
     expect(clampTrackGain(2.5)).toBe(2)
     expect(clampTrackGain('abc' as unknown as number)).toBe(1)
     expect(clampMixEqGainDb(-30)).toBe(-12)
     expect(clampMixEqGainDb(30)).toBe(12)
     expect(clampMixEqGainDb(undefined as unknown as number)).toBe(0)
+    expect(clampClipSpeed(0.1)).toBe(0.25)
+    expect(clampClipSpeed(8)).toBe(4)
+    expect(clampClipFreezeTailSec(-1)).toBe(0)
+    expect(clampClipFreezeTailSec(45)).toBe(30)
+    expect(clampMixDuckingRatio(0.01)).toBe(0.05)
+    expect(clampMixDuckingRatio(0.95)).toBe(0.8)
   })
 
   it('exportPlatformId 持久化', () => {
     const written = withScriptTimeline({}, { clips: [], settings: { exportPlatformId: 'douyin' } })
     expect(readScriptTimelineFromGenParams(written).settings?.exportPlatformId).toBe('douyin')
+  })
+})
+
+describe('Stage 1 · splitTimelineClipAtTime & closeTimelineTrackGaps', () => {
+  it('splitTimelineClipAtTime：后半段自动推进 sourceOffsetSec += delta * speed，并转移尾帧定格与淡出', () => {
+    const clip: ScriptTimelineClip = {
+      id: 'v1',
+      track: 'video',
+      sourceId: 's1',
+      title: '镜头1',
+      startSec: 2,
+      durationSec: 6,
+      sourceOffsetSec: 1.5,
+      speed: 1.5,
+      freezeTailSec: 1,
+      fadeInSec: 0.5,
+      fadeOutSec: 0.8
+    }
+    const split = splitTimelineClipAtTime(clip, 4, 'v1-b')
+    expect(split).not.toBeNull()
+    const [first, second] = split!
+    expect(first.startSec).toBe(2)
+    expect(first.durationSec).toBe(2)
+    expect(first.sourceOffsetSec).toBe(1.5)
+    expect(first.fadeInSec).toBe(0.5)
+    expect(first.fadeOutSec).toBeUndefined()
+    expect(first.freezeTailSec).toBeUndefined()
+
+    expect(second.id).toBe('v1-b')
+    expect(second.startSec).toBe(4)
+    expect(second.durationSec).toBe(4)
+    // 1.5 + (4 - 2) * 1.5 = 4.5
+    expect(second.sourceOffsetSec).toBe(4.5)
+    expect(second.fadeInSec).toBeUndefined()
+    expect(second.fadeOutSec).toBe(0.8)
+    expect(second.freezeTailSec).toBe(1)
+  })
+
+  it('closeTimelineTrackGaps：磁吸消除正间隙并保留转场负重叠', () => {
+    const clips: ScriptTimelineClip[] = [
+      { id: 'c1', track: 'video', sourceId: 's1', title: 'A', startSec: 1, durationSec: 3 },
+      { id: 'c2', track: 'video', sourceId: 's2', title: 'B', startSec: 6, durationSec: 4 },
+      // 与 c2 重叠 0.5s 做转场（原区间 [9.5, 12.5]）
+      {
+        id: 'c3',
+        track: 'video',
+        sourceId: 's3',
+        title: 'C',
+        startSec: 9.5,
+        durationSec: 3,
+        transitionInSec: 0.5,
+        transitionType: 'dissolve'
+      }
+    ]
+    const res = closeTimelineTrackGaps(clips, 'video')
+    expect(res.closedCount).toBe(2)
+    expect(res.savedSec).toBe(3)
+    expect(res.clips.map((c) => c.startSec)).toEqual([0, 3, 6.5])
+  })
+})
+
+describe('Stage 1 & Stage 2 · buildAtempoChain & buildFilterGraph', () => {
+  it('buildAtempoChain 将超出 [0.5, 2.0] 的倍速拆分为多级 atempo', () => {
+    expect(buildAtempoChain(1)).toBe('')
+    expect(buildAtempoChain(0.25)).toBe('atempo=0.500,atempo=0.500')
+    expect(buildAtempoChain(4)).toBe('atempo=2.000,atempo=2.000')
+  })
+
+  it('buildFilterGraph：支持音频入点偏移、视频原声混音、模糊背景填充、片段调色/定格与闪避/响度标准化', () => {
+    const mainVideos = [
+      {
+        track: 'video' as const,
+        title: 'V1',
+        path: 'v1.mp4',
+        startSec: 0,
+        durationSec: 4,
+        sourceOffsetSec: 1.2,
+        speed: 1.5,
+        freezeTailSec: 1,
+        brightness: 0.1,
+        contrast: 1.2,
+        saturation: 1.3,
+        volume: 0.8,
+        inputIndex: 0,
+        hasAudioStream: true
+      }
+    ]
+    const audios = [
+      {
+        track: 'video' as const,
+        title: 'V1',
+        path: 'v1.mp4',
+        startSec: 0,
+        durationSec: 4,
+        sourceOffsetSec: 1.2,
+        speed: 1.5,
+        volume: 0.8,
+        inputIndex: 0
+      },
+      {
+        track: 'voice' as const,
+        title: 'Voice',
+        path: 'voice.mp3',
+        startSec: 0.5,
+        durationSec: 2,
+        sourceOffsetSec: 2.5,
+        speed: 1,
+        inputIndex: 1
+      },
+      {
+        track: 'music' as const,
+        title: 'BGM',
+        path: 'bgm.mp3',
+        startSec: 0,
+        durationSec: 4,
+        sourceOffsetSec: 5,
+        speed: 1,
+        inputIndex: 2
+      }
+    ]
+    const subs = [
+      {
+        track: 'subtitle' as const,
+        title: 'Sub',
+        text: '测试字幕',
+        startSec: 0.5,
+        durationSec: 2,
+        fontSize: 48,
+        textColor: '#ffcc00'
+      }
+    ]
+    const graph = buildFilterGraph(
+      mainVideos,
+      [],
+      audios,
+      subs,
+      3,
+      4,
+      1,
+      1080,
+      1920,
+      30,
+      36,
+      80,
+      '#ffffff',
+      {
+        mixAutoDucking: true,
+        mixDuckingRatio: 0.25,
+        mixLoudnorm: true
+      },
+      undefined,
+      {
+        scaleMode: 'blur',
+        subtitleBorderColor: '#000000',
+        subtitleBorderWidth: 3,
+        subtitleBoxEnabled: true,
+        subtitleBoxColor: '#111111',
+        subtitleBoxOpacity: 0.6,
+        subtitleMotion: 'fade'
+      }
+    )
+    // 模糊背景填充
+    expect(graph.filter).toContain('boxblur=24:2')
+    // 片段尾帧定格 + 调色 eq
+    expect(graph.filter).toContain('tpad=stop_mode=clone:stop_duration=1.000')
+    expect(graph.filter).toContain('eq=brightness=0.100:contrast=1.200:saturation=1.300')
+    // 音频 sourceOffsetSec 生效（voice 从 2.5s 截到 4.500s）
+    expect(graph.filter).toContain('[1:a]atrim=2.5:4.500')
+    // 主视频原声纳入混音（[0:a]atrim=1.2:...）
+    expect(graph.filter).toContain('[0:a]atrim=1.2:')
+    // BGM 自动闪避音量表达式 + EBU R128 响度标准化
+    expect(graph.filter).toContain("volume=0.250:enable='between(t\\,0.42\\,2.62)'")
+    expect(graph.filter).toContain('loudnorm=I=-16:TP=-1.5:LRA=11')
+    // 字幕片段独立字号/字色 + 底框
+    expect(graph.filter).toContain(
+      'fontsize=48:fontcolor=#ffcc00:borderw=3:bordercolor=#000000:box=1:boxcolor=#111111@0.60'
+    )
+  })
+})
+
+describe('Stage 3 · NLE 工程互通导出 & 节点图执行自动合成', () => {
+  it('buildFcpxmlDocument 生成合法的 FCPXML 1.9 工程结构', () => {
+    const xml = buildFcpxmlDocument(
+      {
+        clips: [
+          {
+            id: 'v1',
+            track: 'video',
+            sourceId: 's1',
+            title: '镜头1',
+            relativePath: 'Assets/shot1.mp4',
+            startSec: 0,
+            durationSec: 3,
+            sourceOffsetSec: 1.5
+          },
+          {
+            id: 'sub1',
+            track: 'subtitle',
+            sourceId: 'sub',
+            title: '台词1',
+            text: '你好世界',
+            startSec: 0.5,
+            durationSec: 2
+          }
+        ]
+      },
+      { projectName: 'DemoCut', width: 1920, height: 1080, fps: 30 }
+    )
+    expect(xml).toContain('<!DOCTYPE fcpxml>')
+    expect(xml).toContain('<fcpxml version="1.9">')
+    expect(xml).toContain('<project name="DemoCut">')
+    expect(xml).toContain('<asset-clip name="镜头1"')
+    expect(xml).toContain('你好世界')
+  })
+
+  it('buildCapCutDraftContent 生成剪映 draft_content.json 结构', () => {
+    const raw = buildCapCutDraftContent(
+      {
+        clips: [
+          {
+            id: 'v1',
+            track: 'video',
+            sourceId: 's1',
+            title: '镜头1',
+            relativePath: 'Assets/shot1.mp4',
+            startSec: 0,
+            durationSec: 3,
+            sourceOffsetSec: 1
+          },
+          {
+            id: 'a1',
+            track: 'voice',
+            sourceId: 's2',
+            title: '旁白1',
+            relativePath: 'Assets/voice1.mp3',
+            startSec: 0.5,
+            durationSec: 2
+          }
+        ]
+      },
+      { projectName: 'JianyingDemo', width: 1080, height: 1920, fps: 30 }
+    )
+    const parsed = JSON.parse(raw)
+    expect(parsed.canvas_config.width).toBe(1080)
+    expect(parsed.canvas_config.height).toBe(1920)
+    expect(parsed.materials.videos).toHaveLength(1)
+    expect(parsed.materials.audios).toHaveLength(1)
+    expect(parsed.tracks.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('executeTimelineOutputNode 调用 composeTimelineVideo 自动合成成片并置顶输出', async () => {
+    let capturedArgs: unknown = null
+    const node = {
+      id: 'tl-1',
+      typeId: 'output.timeline',
+      title: '成片时间线',
+      x: 0,
+      y: 0,
+      inputs: [],
+      outputs: [{ id: 'out', name: 'out', type: GraphPortType.video }],
+      params: {}
+    }
+    const out = await executeTimelineOutputNode({
+      node,
+      inputs: {
+        'in-videos': [
+          {
+            kind: 'videos',
+            items: [{ id: 'v1', relativePath: 'Assets/shot1.mp4', createdAt: '01-01 12:00' }]
+          }
+        ],
+        'in-voices': [
+          {
+            kind: 'voices',
+            items: [{ id: 'a1', relativePath: 'Assets/voice1.mp3', createdAt: '01-01 12:00' }]
+          }
+        ]
+      },
+      composeTimelineVideo: async (args) => {
+        capturedArgs = args
+        return { relativePath: 'Exports/tl-1-composed.mp4', assetId: 'composed-asset-1' }
+      }
+    } as unknown as Parameters<typeof executeTimelineOutputNode>[0])
+    expect(capturedArgs).toBeTruthy()
+    expect(node.params.previewRelativePath).toBe('Exports/tl-1-composed.mp4')
+    expect(node.params.generatedVoices).toHaveLength(1)
+    expect(out.out?.kind).toBe('videos')
+    if (out.out?.kind === 'videos') {
+      expect(out.out.items[0]?.relativePath).toBe('Exports/tl-1-composed.mp4')
+    }
   })
 })

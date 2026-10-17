@@ -3,15 +3,26 @@
  */
 import { spawn } from 'child_process'
 import { dialog } from 'electron'
-import { existsSync, mkdtempSync, copyFileSync, mkdirSync, readFileSync, rmSync } from 'fs'
+import {
+  existsSync,
+  mkdtempSync,
+  copyFileSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  statSync
+} from 'fs'
 import { tmpdir } from 'os'
 import { join, basename, dirname, extname } from 'path'
-import type {
-  ScriptTimelineTrackKind,
-  TimelineExportClip,
-  TimelineExportInput,
-  TimelineExportResult,
-  TimelineMixGains
+import {
+  clampClipFreezeTailSec,
+  clampClipSpeed,
+  type ScriptTimelineScaleMode,
+  type ScriptTimelineTrackKind,
+  type TimelineExportClip,
+  type TimelineExportInput,
+  type TimelineExportResult,
+  type TimelineMixGains
 } from '@shared/graph'
 import { IpcChannels } from '@shared/ipc'
 import { fail, defErrSimple } from '@shared/errors/appError'
@@ -97,6 +108,101 @@ function clipSourceOffsetSec(clip: { sourceOffsetSec?: number }): number {
   return Math.round(Math.min(3600, n) * 100) / 100
 }
 
+/** 将变速倍率拆分为合法的 FFmpeg atempo 滤镜链（单级仅支持 0.5~2.0） */
+export function buildAtempoChain(speed: number): string {
+  let rem = clampClipSpeed(speed)
+  if (Math.abs(rem - 1) <= 0.005) return ''
+  const parts: string[] = []
+  while (rem > 2.0 + 1e-4) {
+    parts.push('atempo=2.000')
+    rem /= 2.0
+  }
+  while (rem < 0.5 - 1e-4) {
+    parts.push('atempo=0.500')
+    rem /= 0.5
+  }
+  if (Math.abs(rem - 1) > 0.005 || parts.length === 0) {
+    parts.push(`atempo=${Math.min(2, Math.max(0.5, rem)).toFixed(3)}`)
+  }
+  return parts.join(',')
+}
+
+/** 片段级调色（亮度/对比度/饱和度）滤镜片段 */
+function buildClipColorEqFilter(clip: TimelineExportClip): string {
+  const b = Number.isFinite(clip.brightness)
+    ? Math.min(0.5, Math.max(-0.5, Number(clip.brightness)))
+    : 0
+  const c = Number.isFinite(clip.contrast) ? Math.min(2, Math.max(0.5, Number(clip.contrast))) : 1
+  const s = Number.isFinite(clip.saturation) ? Math.min(3, Math.max(0, Number(clip.saturation))) : 1
+  if (Math.abs(b) <= 0.001 && Math.abs(c - 1) <= 0.001 && Math.abs(s - 1) <= 0.001) {
+    return ''
+  }
+  return `eq=brightness=${b.toFixed(3)}:contrast=${c.toFixed(3)}:saturation=${s.toFixed(3)}`
+}
+
+/** 缓存媒体文件是否含音频轨（按路径+修改时间缓存，避免重复起进程探测） */
+const audioStreamProbeCache = new Map<string, boolean>()
+
+export function probeHasAudioStream(bin: string, filePath: string): Promise<boolean> {
+  let cacheKey = filePath
+  try {
+    const st = statSync(filePath)
+    cacheKey = `${filePath}:${st.mtimeMs}`
+  } catch {
+    /* ignore */
+  }
+  const cached = audioStreamProbeCache.get(cacheKey)
+  if (cached !== undefined) return Promise.resolve(cached)
+
+  return new Promise((resolve) => {
+    const child = spawn(bin, ['-hide_banner', '-i', filePath], { windowsHide: true })
+    let stderr = ''
+    let settled = false
+    const done = (hasAudio: boolean) => {
+      if (settled) return
+      settled = true
+      audioStreamProbeCache.set(cacheKey, hasAudio)
+      resolve(hasAudio)
+    }
+    child.stderr?.on('data', (chunk) => {
+      stderr += String(chunk)
+    })
+    child.on('error', () => done(false))
+    child.on('close', () => {
+      done(/Stream #\d+:\d+.*:\s*Audio:/i.test(stderr))
+    })
+    setTimeout(() => {
+      try {
+        child.kill()
+      } catch {
+        /* ignore */
+      }
+      done(/Stream #\d+:\d+.*:\s*Audio:/i.test(stderr))
+    }, 3000)
+  })
+}
+
+async function probeAudioPathsForTimeline(
+  bin: string,
+  clips: TimelineExportClip[]
+): Promise<Set<string>> {
+  const uniquePaths = new Set<string>()
+  for (const clip of clips) {
+    if (clip.track === 'subtitle') continue
+    const path = resolveClipPath(clip)
+    if (path) uniquePaths.add(path)
+  }
+  const audioPaths = new Set<string>()
+  await Promise.all(
+    Array.from(uniquePaths).map(async (p) => {
+      if (await probeHasAudioStream(bin, p)) {
+        audioPaths.add(p)
+      }
+    })
+  )
+  return audioPaths
+}
+
 function resolveClipPath(clip: TimelineExportClip): string | null {
   if (clip.absPath && existsSync(clip.absPath)) return clip.absPath
   const rel = clip.relativePath?.trim()
@@ -109,7 +215,7 @@ function resolveClipPath(clip: TimelineExportClip): string | null {
   }
 }
 
-function buildFilterGraph(
+export function buildFilterGraph(
   mainVideos: Array<TimelineExportClip & { path: string; inputIndex: number }>,
   overlays: Array<TimelineExportClip & { path: string; inputIndex: number }>,
   audios: Array<TimelineExportClip & { path: string; inputIndex: number }>,
@@ -129,6 +235,9 @@ function buildFilterGraph(
     mixBassGainDb?: number
     mixTrebleGainDb?: number
     mixCompression?: boolean
+    mixAutoDucking?: boolean
+    mixDuckingRatio?: number
+    mixLoudnorm?: boolean
     /** 静音轨道：这些轨道的声音不混入成片 */
     mutedTracks?: ScriptTimelineTrackKind[]
   },
@@ -137,10 +246,20 @@ function buildFilterGraph(
     opacity: number
     scale: number
     position: 'br' | 'bl' | 'tr' | 'tl'
+  },
+  visualOptions?: {
+    scaleMode?: ScriptTimelineScaleMode
+    subtitleBorderColor?: string
+    subtitleBorderWidth?: number
+    subtitleBoxEnabled?: boolean
+    subtitleBoxColor?: string
+    subtitleBoxOpacity?: number
+    subtitleMotion?: boolean | 'none' | 'fade'
   }
 ): { filter: string; mapVideo: string; mapAudio: string } {
   const filterParts: string[] = []
   filterParts.push(`[${baseVideoIndex}:v]format=yuv420p[base]`)
+  const scaleMode: ScriptTimelineScaleMode = visualOptions?.scaleMode ?? 'contain'
 
   // ── 主视频轨：逐段拼接（每段独立裁剪，最后一次性 concat），杜绝链式 xfade 的累计漂移 ──
   // 片段时间线转场语义（与预览一致）：相邻片段 A(前) / B(后) 有重叠窗口
@@ -260,22 +379,78 @@ function buildFilterGraph(
       windowPlans[i]!.wins.find((w) => w.kind === kind)
 
     const normalizedVideo = (
+      clip: TimelineExportClip,
       srcPort: string,
-      srcStart: number,
-      segDur: number,
+      winStartSec: number,
+      winDurSec: number,
       label: string
     ): void => {
+      const clipDur = Math.max(0.05, clip.durationSec)
+      const speed = clampClipSpeed(clip.speed)
+      const freezeTail = Math.min(
+        Math.max(0, clipDur - 0.05),
+        clampClipFreezeTailSec(clip.freezeTailSec)
+      )
+      const movingDur = Math.max(0.05, clipDur - freezeTail)
+      const winMovingStart = Math.min(winStartSec, movingDur)
+      const winMovingEnd = Math.min(winStartSec + winDurSec, movingDur)
+      const winMovingDur = Math.max(0, winMovingEnd - winMovingStart)
+      const winFreezeDur = Math.max(0, winDurSec - winMovingDur)
+
+      const srcBase = clipSourceOffsetSec(clip)
+      const srcStart =
+        winMovingDur > 0.001
+          ? srcBase + winMovingStart * speed
+          : Math.max(0, srcBase + movingDur * speed - 0.05)
+      const srcTrimDur = winMovingDur > 0.001 ? winMovingDur * speed : 0.05
+      const ptsExpr =
+        winMovingDur > 0.001 && Math.abs(speed - 1) > 0.005
+          ? `setpts=(PTS-STARTPTS)/${speed.toFixed(3)}`
+          : 'setpts=PTS-STARTPTS'
+      const freezePadDur = winMovingDur > 0.001 ? winFreezeDur : Math.max(0, winDurSec - 0.05)
+      const tpadOpt =
+        freezePadDur > 0.001 ? `,tpad=stop_mode=clone:stop_duration=${freezePadDur.toFixed(3)}` : ''
+      const colorEq = buildClipColorEqFilter(clip)
+      const eqOpt = colorEq ? `,${colorEq}` : ''
+
+      if (scaleMode === 'blur') {
+        const preLabel = `${label}pre`
+        const bgLabel = `${label}bg`
+        const fgLabel = `${label}fg`
+        const bgBlurLabel = `${label}bgb`
+        const fgFitLabel = `${label}fgf`
+        filterParts.push(
+          `[${srcPort}]trim=${srcStart.toFixed(3)}:${(srcStart + srcTrimDur).toFixed(3)},${ptsExpr}${tpadOpt}${eqOpt},split=2[${bgLabel}][${fgLabel}]`
+        )
+        filterParts.push(
+          `[${bgLabel}]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},boxblur=24:2[${bgBlurLabel}]`
+        )
+        filterParts.push(
+          `[${fgLabel}]scale=${width}:${height}:force_original_aspect_ratio=decrease[${fgFitLabel}]`
+        )
+        filterParts.push(
+          `[${bgBlurLabel}][${fgFitLabel}]overlay=(W-w)/2:(H-h)/2,setsar=1,fps=${fps},format=yuv420p[${label}]`
+        )
+        void preLabel
+        return
+      }
+
+      const scaleExpr =
+        scaleMode === 'cover'
+          ? `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height}`
+          : `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2`
+
       filterParts.push(
-        `[${srcPort}]trim=${srcStart.toFixed(3)}:${(srcStart + segDur).toFixed(3)},setpts=PTS-STARTPTS,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${fps},format=yuv420p[${label}]`
+        `[${srcPort}]trim=${srcStart.toFixed(3)}:${(srcStart + srcTrimDur).toFixed(3)},${ptsExpr}${tpadOpt}${eqOpt},${scaleExpr},setsar=1,fps=${fps},format=yuv420p[${label}]`
       )
     }
 
-    /** 从规划窗口中裁一段：srcStart 为该片段在源文件内的绝对时间 */
+    /** 从规划窗口中裁一段 */
     const trimWindow = (i: number, kind: MainWindow['kind'], label: string): void => {
       const w = windowPlan(i, kind)
       if (!w) return
       const clip = orderedMainVideos[i]!
-      normalizedVideo(w.port, clipSourceOffsetSec(clip) + w.start, w.dur, label)
+      normalizedVideo(clip, w.port, w.start, w.dur, label)
     }
 
     /** 相邻两段的重叠转场段：A 的尾窗 + B 的头窗各裁 overlap 窗口后做一次独立 xfade */
@@ -355,6 +530,19 @@ function buildFilterGraph(
   for (const clip of overlays) {
     const start = Math.max(0, clip.startSec)
     const dur = Math.max(0.05, clip.durationSec)
+    const speed = clampClipSpeed(clip.speed)
+    const freezeTail = Math.min(Math.max(0, dur - 0.05), clampClipFreezeTailSec(clip.freezeTailSec))
+    const movingDur = Math.max(0.05, dur - freezeTail)
+    const srcTrimDur = movingDur * speed
+    const ptsExpr =
+      Math.abs(speed - 1) > 0.005
+        ? `setpts=(PTS-STARTPTS)/${speed.toFixed(3)}`
+        : 'setpts=PTS-STARTPTS'
+    const tpadOpt =
+      freezeTail > 0.001 ? `,tpad=stop_mode=clone:stop_duration=${freezeTail.toFixed(3)}` : ''
+    const colorEq = buildClipColorEqFilter(clip)
+    const eqOpt = colorEq ? `,${colorEq}` : ''
+
     const opacity = Number.isFinite(clip.opacity) ? Math.min(1, Math.max(0, clip.opacity!)) : 1
     const relX = Number.isFinite(clip.overlayX) ? Math.min(1, Math.max(0, clip.overlayX!)) : 0.12
     const relY = Number.isFinite(clip.overlayY) ? Math.min(1, Math.max(0, clip.overlayY!)) : 0.12
@@ -373,7 +561,7 @@ function buildFilterGraph(
     const prev = lastVideo
     const srcStart = clipSourceOffsetSec(clip)
     filterParts.push(
-      `[${clip.inputIndex}:v]trim=${srcStart > 0 ? `${srcStart}:${(srcStart + dur).toFixed(3)}` : `0:${dur}`},setpts=PTS-STARTPTS,scale=${ow}:${oh}:force_original_aspect_ratio=decrease,pad=${ow}:${oh}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${fps},format=rgba,colorchannelmixer=aa=${opacity.toFixed(3)}[${vLabel}]`
+      `[${clip.inputIndex}:v]trim=${srcStart > 0 ? `${srcStart}:${(srcStart + srcTrimDur).toFixed(3)}` : `0:${srcTrimDur.toFixed(3)}`},${ptsExpr}${tpadOpt}${eqOpt},scale=${ow}:${oh}:force_original_aspect_ratio=decrease,pad=${ow}:${oh}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${fps},format=rgba,colorchannelmixer=aa=${opacity.toFixed(3)}[${vLabel}]`
     )
     filterParts.push(
       `[${prev}][${vLabel}]overlay=${x}:${y}:enable='between(t\\,${start.toFixed(3)}\\,${(start + dur).toFixed(3)})'[${ovLabel}]`
@@ -384,30 +572,69 @@ function buildFilterGraph(
   const font = findDrawtextFont()
   const fontOpt = font ? `:fontfile='${font.replace(/\\/g, '/').replace(/:/g, '\\:')}'` : ''
 
-  const maxChars = subtitleMaxCharsForWidth(width, subtitleFontSize)
-  const lineHeight = Math.max(subtitleFontSize + 4, Math.round(subtitleFontSize * 1.28))
-  const risePx = Math.max(12, Math.round(subtitleFontSize * 0.55))
+  const borderW =
+    visualOptions?.subtitleBorderWidth != null && Number.isFinite(visualOptions.subtitleBorderWidth)
+      ? Math.min(16, Math.max(0, Math.round(visualOptions.subtitleBorderWidth)))
+      : 2
+  const borderColor =
+    visualOptions?.subtitleBorderColor &&
+    /^#[0-9a-fA-F]{6}$/.test(visualOptions.subtitleBorderColor.trim())
+      ? visualOptions.subtitleBorderColor.trim()
+      : 'black'
+  const boxEnabled = visualOptions?.subtitleBoxEnabled === true
+  const boxColor =
+    visualOptions?.subtitleBoxColor &&
+    /^#[0-9a-fA-F]{6}$/.test(visualOptions.subtitleBoxColor.trim())
+      ? visualOptions.subtitleBoxColor.trim()
+      : 'black'
+  const boxOpacity =
+    visualOptions?.subtitleBoxOpacity != null && Number.isFinite(visualOptions.subtitleBoxOpacity)
+      ? Math.min(1, Math.max(0.1, visualOptions.subtitleBoxOpacity))
+      : 0.55
+  const boxOpt = boxEnabled
+    ? `:box=1:boxcolor=${boxColor}@${boxOpacity.toFixed(2)}:boxborderw=8`
+    : ''
+  const motionEnabled =
+    visualOptions?.subtitleMotion !== false && visualOptions?.subtitleMotion !== 'none'
+
   for (const [i, sub] of subs.entries()) {
     const raw = (sub.text || sub.title).trim()
     if (!raw) continue
+    const clipFontSize =
+      sub.fontSize != null && Number.isFinite(sub.fontSize)
+        ? Math.min(200, Math.max(12, Math.round(sub.fontSize)))
+        : subtitleFontSize
+    const clipColor =
+      sub.textColor && /^#[0-9a-fA-F]{6}$/.test(sub.textColor.trim())
+        ? sub.textColor.trim()
+        : subtitleColor
+    const maxChars = subtitleMaxCharsForWidth(width, clipFontSize)
+    const lineHeight = Math.max(clipFontSize + 4, Math.round(clipFontSize * 1.28))
+    const risePx = Math.max(12, Math.round(clipFontSize * 0.55))
     const lines = wrapSubtitleLines(raw, maxChars)
     if (!lines.length) continue
     const start = Math.max(0, sub.startSec)
     const end = start + Math.max(0.05, sub.durationSec)
-    // 多行自下而上叠 + 淡入上滚 / 淡出（成片字幕动效）
+    // 多行自下而上叠 + 可选淡入上滚 / 淡出动效
     for (let li = 0; li < lines.length; li++) {
       const text = escapeDrawtext(lines[li]!)
       const fromBottom = subtitleYOffset + (lines.length - 1 - li) * lineHeight
-      const motion = buildSubtitleDrawtextMotion({
-        startSec: start,
-        endSec: end,
-        fromBottom,
-        risePx
-      })
       const next = `sub${i}l${li}`
-      filterParts.push(
-        `[${lastVideo}]drawtext=text='${text}'${fontOpt}:fontsize=${subtitleFontSize}:fontcolor=${subtitleColor}:borderw=2:bordercolor=black:x=(w-text_w)/2:${motion.y}:${motion.alpha}:${motion.enable}[${next}]`
-      )
+      if (motionEnabled) {
+        const motion = buildSubtitleDrawtextMotion({
+          startSec: start,
+          endSec: end,
+          fromBottom,
+          risePx
+        })
+        filterParts.push(
+          `[${lastVideo}]drawtext=text='${text}'${fontOpt}:fontsize=${clipFontSize}:fontcolor=${clipColor}:borderw=${borderW}:bordercolor=${borderColor}${boxOpt}:x=(w-text_w)/2:${motion.y}:${motion.alpha}:${motion.enable}[${next}]`
+        )
+      } else {
+        filterParts.push(
+          `[${lastVideo}]drawtext=text='${text}'${fontOpt}:fontsize=${clipFontSize}:fontcolor=${clipColor}:borderw=${borderW}:bordercolor=${borderColor}${boxOpt}:x=(w-text_w)/2:y=h-${fromBottom}-text_h:enable='between(t\\,${start.toFixed(3)}\\,${end.toFixed(3)})'[${next}]`
+        )
+      }
       lastVideo = next
     }
   }
@@ -433,30 +660,77 @@ function buildFilterGraph(
     lastVideo = wmOvLabel
   }
 
+  // 计算配音闪避区间：当启用 mixAutoDucking 且配音轨未静音时，收集所有配音活跃区间
+  const voiceIntervals: Array<[number, number]> = []
+  if (mix?.mixAutoDucking && !mix?.mutedTracks?.includes('voice')) {
+    const rawVoiceRanges = audios
+      .filter((c) => c.track === 'voice' && (c.volume ?? 1) > 0.01)
+      .map(
+        (c) =>
+          [Math.max(0, c.startSec - 0.08), c.startSec + Math.max(0.05, c.durationSec) + 0.12] as [
+            number,
+            number
+          ]
+      )
+      .sort((a, b) => a[0] - b[0])
+    for (const [s, e] of rawVoiceRanges) {
+      const last = voiceIntervals[voiceIntervals.length - 1]
+      if (last && s <= last[1] + 0.15) {
+        last[1] = Math.max(last[1], e)
+      } else {
+        voiceIntervals.push([s, e])
+      }
+    }
+  }
+  const duckRatio =
+    mix?.mixDuckingRatio != null && Number.isFinite(mix.mixDuckingRatio)
+      ? Math.min(0.8, Math.max(0.05, mix.mixDuckingRatio))
+      : 0.25
+  const duckEnableExpr =
+    voiceIntervals.length > 0
+      ? voiceIntervals.map(([s, e]) => `between(t\\,${s.toFixed(2)}\\,${e.toFixed(2)})`).join('+')
+      : ''
+
   const audioMixInputs: string[] = [`[${baseAudioIndex}:a]`]
   for (const clip of audios) {
     const startMs = Math.max(0, Math.round(clip.startSec * 1000))
     const dur = Math.max(0.05, clip.durationSec)
+    const freezeTail =
+      clip.track === 'video' || clip.track === 'overlay'
+        ? Math.min(Math.max(0, dur - 0.05), clampClipFreezeTailSec(clip.freezeTailSec))
+        : 0
+    const playDur = Math.max(0.05, dur - freezeTail)
+    const speed = clampClipSpeed(clip.speed)
+    const srcStart = clipSourceOffsetSec(clip)
+    const srcDur = Number((playDur * speed).toFixed(3))
+    const atempoChain = buildAtempoChain(speed)
+
     const clipVolume = Number.isFinite(clip.volume) ? Math.min(1, Math.max(0, clip.volume!)) : 1
     const trackGain = Number.isFinite(mix?.mixGains?.[clip.track])
       ? Math.min(2, Math.max(0, mix!.mixGains![clip.track]!))
       : 1
     // 轨道静音优先级最高：高于片段音量与混音器轨道增益
     const volume = mix?.mutedTracks?.includes(clip.track) ? 0 : Math.min(2, clipVolume * trackGain)
-    const fadeIn = Number.isFinite(clip.fadeInSec) ? Math.min(dur, Math.max(0, clip.fadeInSec!)) : 0
+    const fadeIn = Number.isFinite(clip.fadeInSec)
+      ? Math.min(playDur, Math.max(0, clip.fadeInSec!))
+      : 0
     const fadeOut = Number.isFinite(clip.fadeOutSec)
-      ? Math.min(dur, Math.max(0, clip.fadeOutSec!))
+      ? Math.min(playDur, Math.max(0, clip.fadeOutSec!))
       : 0
     const aLabel = `a${clip.inputIndex}`
     const chain = [
-      'atrim=0:' + dur,
+      `atrim=${srcStart > 0 ? `${srcStart}:${(srcStart + srcDur).toFixed(3)}` : `0:${srcDur}`}`,
       'asetpts=PTS-STARTPTS',
+      atempoChain,
       Math.abs(volume - 1) > 0.001 ? `volume=${volume.toFixed(3)}` : '',
       fadeIn > 0 ? `afade=t=in:st=0:d=${fadeIn.toFixed(3)}` : '',
       fadeOut > 0
-        ? `afade=t=out:st=${Math.max(0, dur - fadeOut).toFixed(3)}:d=${fadeOut.toFixed(3)}`
+        ? `afade=t=out:st=${Math.max(0, playDur - fadeOut).toFixed(3)}:d=${fadeOut.toFixed(3)}`
         : '',
-      `adelay=${startMs}|${startMs}`
+      `adelay=${startMs}|${startMs}`,
+      clip.track === 'music' && duckEnableExpr
+        ? `volume=${duckRatio.toFixed(3)}:enable='${duckEnableExpr}'`
+        : ''
     ]
       .filter(Boolean)
       .join(',')
@@ -468,7 +742,7 @@ function buildFilterGraph(
     `${audioMixInputs.join('')}amix=inputs=${audioMixInputs.length}:duration=longest:dropout_transition=0:normalize=0[amixout]`
   )
 
-  // 混音器后处理：主输出增益 → 基础 EQ（低频 / 高频）→ 可选动态压缩
+  // 混音器后处理：主输出增益 → 基础 EQ（低频 / 高频）→ 可选动态压缩 → 可选响度标准化
   const masterGain = Number.isFinite(mix?.mixMasterGain)
     ? Math.min(2, Math.max(0, mix!.mixMasterGain!))
     : 1
@@ -491,6 +765,9 @@ function buildFilterGraph(
   if (mix?.mixCompression) {
     postChain.push(`acompressor=threshold=0.2:ratio=2:attack=20:release=250:makeup=1`)
   }
+  if (mix?.mixLoudnorm) {
+    postChain.push(`loudnorm=I=-16:TP=-1.5:LRA=11`)
+  }
   if (postChain.length) {
     const postLabel = 'amixpost'
     filterParts.push(`[amixout]${postChain.join(',')}[${postLabel}]`)
@@ -500,9 +777,10 @@ function buildFilterGraph(
   }
 
   if (rate !== 1) {
-    const clamped = Math.min(2, Math.max(0.5, rate))
+    const clamped = clampClipSpeed(rate)
+    const rateAtempo = buildAtempoChain(clamped) || `atempo=${Math.min(2, Math.max(0.5, clamped))}`
     filterParts.push(`[${lastVideo}]setpts=PTS/${clamped}[vout]`)
-    filterParts.push(`[aout]atempo=${clamped}[aouts]`)
+    filterParts.push(`[aout]${rateAtempo}[aouts]`)
     return { filter: filterParts.join(';'), mapVideo: '[vout]', mapAudio: '[aouts]' }
   }
   return { filter: filterParts.join(';'), mapVideo: `[${lastVideo}]`, mapAudio: '[aout]' }
@@ -514,7 +792,10 @@ function buildFilterGraph(
  * 两条链路拿到同一份 filter：预览看到的画面与导出严格一致，
  * 不会出现「预览好看、导出难看」的口径差——转场预览微渲染遵循的也是这条约定。
  */
-function prepareTimelinePipeline(input: TimelineExportInput): {
+export function prepareTimelinePipeline(
+  input: TimelineExportInput,
+  options?: { audioPaths?: ReadonlySet<string> }
+): {
   args: string[]
   filter: string
   mapVideo: string
@@ -594,7 +875,18 @@ function prepareTimelinePipeline(input: TimelineExportInput): {
     throw fail(E_TIMELINE_NO_EXPORTABLE_CLIPS)
   }
 
-  const audios = [...audioOnlyInputs, ...overlays]
+  const hasAudioForPath = (path: string): boolean =>
+    options?.audioPaths ? options.audioPaths.has(path) : true
+
+  const mainVideoAudios = mainVideos.filter(
+    (c) => !input.mutedTracks?.includes('video') && (c.volume ?? 1) > 0 && hasAudioForPath(c.path)
+  )
+  const overlayAudios = overlays.filter(
+    (c) => !input.mutedTracks?.includes('overlay') && (c.volume ?? 1) > 0 && hasAudioForPath(c.path)
+  )
+  const validAudioOnly = audioOnlyInputs.filter((c) => hasAudioForPath(c.path))
+
+  const audios = [...mainVideoAudios, ...validAudioOnly, ...overlayAudios]
   const { filter, mapVideo, mapAudio } = buildFilterGraph(
     mainVideos,
     overlays,
@@ -615,6 +907,9 @@ function prepareTimelinePipeline(input: TimelineExportInput): {
       mixBassGainDb: input.mixBassGainDb,
       mixTrebleGainDb: input.mixTrebleGainDb,
       mixCompression: input.mixCompression,
+      mixAutoDucking: input.mixAutoDucking,
+      mixDuckingRatio: input.mixDuckingRatio,
+      mixLoudnorm: input.mixLoudnorm,
       mutedTracks: input.mutedTracks
     },
     watermarkInputIndex === undefined
@@ -629,7 +924,16 @@ function prepareTimelinePipeline(input: TimelineExportInput): {
             input.watermarkPosition === 'tl'
               ? input.watermarkPosition
               : 'br'
-        }
+        },
+    {
+      scaleMode: input.scaleMode,
+      subtitleBorderColor: input.subtitleBorderColor,
+      subtitleBorderWidth: input.subtitleBorderWidth,
+      subtitleBoxEnabled: input.subtitleBoxEnabled,
+      subtitleBoxColor: input.subtitleBoxColor,
+      subtitleBoxOpacity: input.subtitleBoxOpacity,
+      subtitleMotion: input.subtitleMotion
+    }
   )
 
   return { args, filter, mapVideo, mapAudio, duration, rate, width, height, fps, videoBitrateKbps }
@@ -641,7 +945,8 @@ async function encodeTimeline(
   outPath: string,
   onProgress?: (ratio: number) => void
 ): Promise<void> {
-  const pipeline = prepareTimelinePipeline(input)
+  const audioPaths = await probeAudioPathsForTimeline(bin, input.clips)
+  const pipeline = prepareTimelinePipeline(input, { audioPaths })
   pipeline.args.push(
     '-filter_complex',
     pipeline.filter,
@@ -726,7 +1031,8 @@ export async function renderTimelineFrames(
       return { ok: false, error: fail(E_TIMELINE_FFMPEG_MISSING).message }
     }
 
-    const pipeline = prepareTimelinePipeline(input)
+    const audioPaths = await probeAudioPathsForTimeline(bin, input.clips)
+    const pipeline = prepareTimelinePipeline(input, { audioPaths })
     const frameWidth = Math.min(
       1280,
       Math.max(160, Math.round(options?.width ?? PREVIEW_FRAME_WIDTH))

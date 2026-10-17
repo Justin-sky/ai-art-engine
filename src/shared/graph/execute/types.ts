@@ -1223,6 +1223,15 @@ export interface NodeExecuteContext {
   /** 图片生成后按目标宽高比居中裁正（宫格画布保证每格比例） */
   normalizeImageAspectRatio?: (input: { dataUrl: string; aspectRatio: string }) => Promise<string>
   /**
+   * 成片时间线输出节点执行时：自动把时间线片段（或新流入的上游视频/配音）合成为单条 MP4 成片。
+   */
+  composeTimelineVideo?: (input: {
+    nodeId: string
+    videos: GraphVideoItem[]
+    voices: GraphVoiceItem[]
+    signal?: AbortSignal
+  }) => Promise<{ relativePath?: string; assetId?: string } | null>
+  /**
    * 场表格节点：把当前目录序列化为拆解 JSON。
    */
   resolveBeatCatalogJson?: () => string | null
@@ -1430,6 +1439,7 @@ export interface GraphRunOptions {
   buildGamePlayProject?: NodeExecuteContext['buildGamePlayProject']
   runBlenderMcpTool?: NodeExecuteContext['runBlenderMcpTool']
   normalizeImageAspectRatio?: NodeExecuteContext['normalizeImageAspectRatio']
+  composeTimelineVideo?: NodeExecuteContext['composeTimelineVideo']
   /** 世界元素四类图片组口：params 为空时从 element 子图 soft 收集（选取/快照用） */
   resolveWorldElementOutputs?: (node: GraphNode) => WorldElementGenResult[]
   resolveBeatCatalogJson?: NodeExecuteContext['resolveBeatCatalogJson']

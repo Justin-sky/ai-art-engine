@@ -898,6 +898,20 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
         dataType: GraphPortType.videos,
         multiple: true,
         label: 'Videos'
+      },
+      {
+        id: 'in-voice',
+        direction: 'in',
+        dataType: GraphPortType.voice,
+        multiple: true,
+        label: 'Voice'
+      },
+      {
+        id: 'in-voices',
+        direction: 'in',
+        dataType: GraphPortType.voices,
+        multiple: true,
+        label: 'Voices'
       }
     ]
   ),

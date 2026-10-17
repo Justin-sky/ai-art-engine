@@ -573,6 +573,7 @@ async function executeOneNode(
     buildGamePlayProject: options.buildGamePlayProject,
     runBlenderMcpTool: options.runBlenderMcpTool,
     normalizeImageAspectRatio: options.normalizeImageAspectRatio,
+    composeTimelineVideo: options.composeTimelineVideo,
     resolveBeatCatalogJson: options.resolveBeatCatalogJson,
     importBeatCatalogJson: options.importBeatCatalogJson,
     runHostInnerGraph: options.runHostInnerGraph,

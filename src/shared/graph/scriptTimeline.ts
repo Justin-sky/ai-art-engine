@@ -23,6 +23,13 @@ export function clampMixEqGainDb(value: unknown): number {
   return Math.min(MIX_EQ_GAIN_MAX_DB, Math.max(MIX_EQ_GAIN_MIN_DB, n))
 }
 
+/** 人声闪避 BGM 保留比例 clamp 到 [0.05, 0.8]，缺省 0.25 */
+export function clampMixDuckingRatio(value: unknown): number {
+  const n = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(n)) return 0.25
+  return Math.min(0.8, Math.max(0.05, Math.round(n * 100) / 100))
+}
+
 /** 左侧素材来源：节点上游收集 vs 资产库/系统文件拖入 */
 export type ScriptTimelineSourceOrigin = 'input' | 'imported'
 
@@ -53,6 +60,27 @@ export type ScriptTimelineSource = {
   nodeTitle?: string
 }
 
+/** 成片时间线画幅适配模式：contain=黑边完整保留，cover=裁切铺满，blur=高斯模糊背景填充 */
+export type ScriptTimelineScaleMode = 'contain' | 'cover' | 'blur'
+
+export const CLIP_SPEED_MIN = 0.25
+export const CLIP_SPEED_MAX = 4
+export const CLIP_FREEZE_TAIL_MAX_SEC = 30
+
+/** 片段变速倍率 clamp 到 [0.25, 4]，缺省 1 */
+export function clampClipSpeed(value: unknown): number {
+  const n = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(n) || n <= 0) return 1
+  return Math.min(CLIP_SPEED_MAX, Math.max(CLIP_SPEED_MIN, Math.round(n * 100) / 100))
+}
+
+/** 片段尾帧定格秒数 clamp 到 [0, 30]，缺省 0 */
+export function clampClipFreezeTailSec(value: unknown): number {
+  const n = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(n) || n <= 0) return 0
+  return Math.min(CLIP_FREEZE_TAIL_MAX_SEC, Math.max(0, Math.round(n * 100) / 100))
+}
+
 export type ScriptTimelineClip = {
   id: string
   track: ScriptTimelineTrackKind
@@ -69,9 +97,23 @@ export type ScriptTimelineClip = {
   /** 轨道上的起始时间（秒） */
   startSec: number
   durationSec: number
-  /** 视频 / 叠加轨片段在源文件内的取段起点（秒）；缺省 0 = 从源文件开头（打点智能剪辑选段时写入） */
+  /** 视频 / 叠加 / 音频轨片段在源文件内的取段起点（秒）；缺省 0 = 从源文件开头 */
   sourceOffsetSec?: number
-  /** 声音/音乐轨片段音量（0~1） */
+  /** 片段播放变速倍率（0.25~4，缺省 1） */
+  speed?: number
+  /** 视频片段末尾定格延长时长（秒，0~30，缺省 0） */
+  freezeTailSec?: number
+  /** 片段级亮度微调（-0.5~0.5，缺省 0） */
+  brightness?: number
+  /** 片段级对比度微调（0.5~2，缺省 1） */
+  contrast?: number
+  /** 片段级饱和度微调（0~3，缺省 1） */
+  saturation?: number
+  /** 字幕片段独立字色覆盖（#RRGGBB） */
+  textColor?: string
+  /** 字幕片段独立字号覆盖（像素） */
+  fontSize?: number
+  /** 声音/音乐/视频轨片段音量（0~1） */
   volume?: number
   /** 淡入时长（秒） */
   fadeInSec?: number
@@ -126,12 +168,26 @@ export type ScriptTimelineSettings = {
   exportFps?: number
   /** 视频目标码率（kbps） */
   exportVideoBitrateKbps?: number
+  /** 画幅比例不一致时的填充方式：contain(黑边)/cover(裁切)/blur(模糊背景) */
+  scaleMode?: ScriptTimelineScaleMode
   /** 字幕字号（像素） */
   subtitleFontSize?: number
   /** 字幕距底部距离（像素） */
   subtitleYOffset?: number
   /** 字幕颜色（#RRGGBB） */
   subtitleColor?: string
+  /** 字幕描边颜色（#RRGGBB，默认 #000000） */
+  subtitleBorderColor?: string
+  /** 字幕描边宽度（像素，0~16，默认 3） */
+  subtitleBorderWidth?: number
+  /** 字幕底框开关 */
+  subtitleBoxEnabled?: boolean
+  /** 字幕底框颜色（#RRGGBB，默认 #000000） */
+  subtitleBoxColor?: string
+  /** 字幕底框不透明度（0.1~1，默认 0.55） */
+  subtitleBoxOpacity?: number
+  /** 字幕入场动效（默认 'none'；支持 'fade' / true） */
+  subtitleMotion?: boolean | 'none' | 'fade'
   /** 预览框比例：video/export/16:9/9:16/1:1/4:3/3:4 */
   previewFrameRatio?: string
   /** 时间线轨道高度（像素） */
@@ -146,6 +202,12 @@ export type ScriptTimelineSettings = {
   mixTrebleGainDb?: number
   /** 混音器：启用动态压缩 */
   mixCompression?: boolean
+  /** 混音器：人声闪避 BGM（配音出现时自动压低音乐轨音量） */
+  mixAutoDucking?: boolean
+  /** 混音器：人声闪避时 BGM 保留比例（0.05~0.8，默认 0.25） */
+  mixDuckingRatio?: number
+  /** 混音器：响度标准化（EBU R128 / -16 LUFS） */
+  mixLoudnorm?: boolean
   /** 导出目标平台预设（douyin/kuaishou/shipinhao/tiktok/youtube/custom） */
   exportPlatformId?: string
   /** 水印：是否启用 */
@@ -190,6 +252,13 @@ export type TimelineExportClip = {
   durationSec: number
   /** 源文件内的取段起点（秒），缺省 0；打点选段片段在导出按此偏移后截取 */
   sourceOffsetSec?: number
+  speed?: number
+  freezeTailSec?: number
+  brightness?: number
+  contrast?: number
+  saturation?: number
+  textColor?: string
+  fontSize?: number
   volume?: number
   fadeInSec?: number
   fadeOutSec?: number
@@ -227,9 +296,16 @@ export type TimelineExportInput = {
   height?: number
   fps?: number
   videoBitrateKbps?: number
+  scaleMode?: ScriptTimelineScaleMode
   subtitleFontSize?: number
   subtitleYOffset?: number
   subtitleColor?: string
+  subtitleBorderColor?: string
+  subtitleBorderWidth?: number
+  subtitleBoxEnabled?: boolean
+  subtitleBoxColor?: string
+  subtitleBoxOpacity?: number
+  subtitleMotion?: boolean | 'none' | 'fade'
   /** 混音器：轨道级增益（0~2） */
   mixGains?: TimelineMixGains
   /** 混音器：主输出增益（0~2） */
@@ -240,6 +316,12 @@ export type TimelineExportInput = {
   mixTrebleGainDb?: number
   /** 混音器：启用动态压缩 */
   mixCompression?: boolean
+  /** 混音器：人声闪避 BGM */
+  mixAutoDucking?: boolean
+  /** 混音器：人声闪避保留比例（0.05~0.8，默认 0.25） */
+  mixDuckingRatio?: number
+  /** 混音器：响度标准化（-16 LUFS） */
+  mixLoudnorm?: boolean
   /** 静音的轨道：这些轨道的声音不混入成片 */
   mutedTracks?: ScriptTimelineTrackKind[]
   /** 水印：图片文件绝对路径（启用时叠加到成片） */
@@ -408,6 +490,12 @@ function sanitizeSettings(raw: unknown): ScriptTimelineSettings | undefined {
       Math.max(500, Math.round(row.exportVideoBitrateKbps))
     )
   }
+  if (
+    typeof row.scaleMode === 'string' &&
+    (row.scaleMode === 'contain' || row.scaleMode === 'cover' || row.scaleMode === 'blur')
+  ) {
+    next.scaleMode = row.scaleMode
+  }
   if (typeof row.subtitleFontSize === 'number' && Number.isFinite(row.subtitleFontSize)) {
     next.subtitleFontSize = Math.min(200, Math.max(12, Math.round(row.subtitleFontSize)))
   }
@@ -416,6 +504,37 @@ function sanitizeSettings(raw: unknown): ScriptTimelineSettings | undefined {
   }
   if (typeof row.subtitleColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(row.subtitleColor.trim())) {
     next.subtitleColor = row.subtitleColor.trim()
+  }
+  if (
+    typeof row.subtitleBorderColor === 'string' &&
+    /^#[0-9a-fA-F]{6}$/.test(row.subtitleBorderColor.trim())
+  ) {
+    next.subtitleBorderColor = row.subtitleBorderColor.trim()
+  }
+  if (typeof row.subtitleBorderWidth === 'number' && Number.isFinite(row.subtitleBorderWidth)) {
+    next.subtitleBorderWidth = Math.min(16, Math.max(0, Math.round(row.subtitleBorderWidth)))
+  }
+  if (typeof row.subtitleBoxEnabled === 'boolean') {
+    next.subtitleBoxEnabled = row.subtitleBoxEnabled
+  }
+  if (
+    typeof row.subtitleBoxColor === 'string' &&
+    /^#[0-9a-fA-F]{6}$/.test(row.subtitleBoxColor.trim())
+  ) {
+    next.subtitleBoxColor = row.subtitleBoxColor.trim()
+  }
+  if (typeof row.subtitleBoxOpacity === 'number' && Number.isFinite(row.subtitleBoxOpacity)) {
+    next.subtitleBoxOpacity = Math.min(
+      1,
+      Math.max(0.1, Math.round(row.subtitleBoxOpacity * 100) / 100)
+    )
+  }
+  if (
+    typeof row.subtitleMotion === 'boolean' ||
+    row.subtitleMotion === 'none' ||
+    row.subtitleMotion === 'fade'
+  ) {
+    next.subtitleMotion = row.subtitleMotion
   }
   if (
     typeof row.previewFrameRatio === 'string' &&
@@ -446,6 +565,14 @@ function sanitizeSettings(raw: unknown): ScriptTimelineSettings | undefined {
     next.mixTrebleGainDb = clampMixEqGainDb(row.mixTrebleGainDb)
   }
   if (typeof row.mixCompression === 'boolean') next.mixCompression = row.mixCompression
+  if (typeof row.mixAutoDucking === 'boolean') next.mixAutoDucking = row.mixAutoDucking
+  if (typeof row.mixDuckingRatio === 'number' && Number.isFinite(row.mixDuckingRatio)) {
+    next.mixDuckingRatio = Math.min(
+      0.8,
+      Math.max(0.05, Math.round(row.mixDuckingRatio * 100) / 100)
+    )
+  }
+  if (typeof row.mixLoudnorm === 'boolean') next.mixLoudnorm = row.mixLoudnorm
   if (typeof row.exportPlatformId === 'string' && row.exportPlatformId.trim()) {
     next.exportPlatformId = row.exportPlatformId
   }
@@ -517,6 +644,92 @@ export function normalizeScriptTimelineSource(
     }
   }
   return next
+}
+
+/**
+ * 在时间点 `atSec` 处将片段一分为二：
+ * - 前半段保留原入点、入场淡入/转场，清除出场淡出/转场与尾帧定格；
+ * - 后半段起点为 `atSec`，媒体片段自动推进 `sourceOffsetSec += delta * speed`，
+ *   清除入场淡入/转场，保留原出场淡出/转场与尾帧定格。
+ */
+export function splitTimelineClipAtTime(
+  clip: ScriptTimelineClip,
+  atSec: number,
+  secondId: string,
+  minDurationSec = 0.2
+): [ScriptTimelineClip, ScriptTimelineClip] | null {
+  const delta = atSec - clip.startSec
+  const remain = clip.startSec + clip.durationSec - atSec
+  if (!Number.isFinite(delta) || !Number.isFinite(remain)) return null
+  if (delta < minDurationSec || remain < minDurationSec) return null
+  const speed = clampClipSpeed(clip.speed)
+  const srcOff = Math.max(
+    0,
+    Number.isFinite(clip.sourceOffsetSec) ? Number(clip.sourceOffsetSec) : 0
+  )
+  const first: ScriptTimelineClip = {
+    ...clip,
+    durationSec: Number(delta.toFixed(3))
+  }
+  delete first.fadeOutSec
+  delete first.transitionOutSec
+  delete first.freezeTailSec
+
+  const second: ScriptTimelineClip = {
+    ...clip,
+    id: secondId,
+    startSec: Number(atSec.toFixed(3)),
+    durationSec: Number(remain.toFixed(3))
+  }
+  if (clip.track !== 'subtitle') {
+    second.sourceOffsetSec = Number((srcOff + delta * speed).toFixed(3))
+  }
+  delete second.fadeInSec
+  delete second.transitionInSec
+
+  return [first, second]
+}
+
+/**
+ * 磁性消除指定轨道（缺省为 `video` 主视频轨）上的空白间隙：
+ * - 正向间隙（`clip.startSec > prevEnd`）全部收拢；
+ * - 负向重叠（相邻视频片段用于 xfade 的交叉转场重叠）原样保留。
+ */
+export function closeTimelineTrackGaps(
+  clips: ScriptTimelineClip[],
+  track: ScriptTimelineTrackKind = 'video'
+): { clips: ScriptTimelineClip[]; closedCount: number; savedSec: number } {
+  const targetClips = clips
+    .filter((c) => c.track === track)
+    .slice()
+    .sort((a, b) => a.startSec - b.startSec || a.id.localeCompare(b.id))
+  if (targetClips.length === 0) {
+    return { clips: clips.map((c) => ({ ...c })), closedCount: 0, savedSec: 0 }
+  }
+  let accumulatedShift = 0
+  let prevOriginalEnd = 0
+  let closedCount = 0
+  const shiftedStartById = new Map<string, number>()
+  for (const clip of targetClips) {
+    const gap = clip.startSec - prevOriginalEnd
+    if (gap > 1e-3) {
+      accumulatedShift += gap
+      closedCount += 1
+    }
+    const nextStart = Math.max(0, Math.round((clip.startSec - accumulatedShift) * 1000) / 1000)
+    shiftedStartById.set(clip.id, nextStart)
+    prevOriginalEnd = Math.max(prevOriginalEnd, clip.startSec + clip.durationSec)
+  }
+  const savedSec = Math.round(accumulatedShift * 1000) / 1000
+  if (closedCount === 0 || savedSec <= 0) {
+    return { clips: clips.map((c) => ({ ...c })), closedCount: 0, savedSec: 0 }
+  }
+  const nextClips = clips.map((clip) => {
+    const nextStart = shiftedStartById.get(clip.id)
+    if (nextStart === undefined) return { ...clip }
+    return { ...clip, startSec: nextStart }
+  })
+  return { clips: nextClips, closedCount, savedSec }
 }
 
 function isTrackKind(value: unknown): value is ScriptTimelineTrackKind {

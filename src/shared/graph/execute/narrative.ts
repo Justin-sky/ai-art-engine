@@ -48,8 +48,8 @@ import {
   UI_SPLIT_INNER_GRAPH_VERSION,
   type UiScreenPromptItem
 } from '../uiSplitParse'
-import type { GraphImageItem, GraphValue, NodeExecuteContext } from './types'
-import { flattenVideosValues, newestTextSelectedId } from './gallery'
+import type { GraphImageItem, GraphValue, GraphVideoItem, NodeExecuteContext } from './types'
+import { flattenVideosValues, flattenVoicesValues, newestTextSelectedId } from './gallery'
 import { autoIncomingTextForInstruction, selectIncomingValuesForInstruction } from './incoming'
 import {
   commitInMemoryTextGallery,
@@ -225,24 +225,62 @@ export function applyEpisodeReviewMarks(
   }
 }
 
-/** 成片时间线输出：透传上游视频（单视频 / 视频组），写回图库与预览路径 */
+/** 成片时间线输出：收集上游视频与配音，若具备合成能力则自动渲染 MP4 成片并写回图库与预览路径 */
 export async function executeTimelineOutputNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
-  // 合并全部输入口（单条 in 与方形 in-videos 视频组），按出现顺序排入时间线
+  // 合并全部输入口（单条 in、方形 in-videos 视频组、in-voice / in-voices 配音），按出现顺序排入时间线
   const incoming = Object.values(ctx.inputs).flat()
   const videos = flattenVideosValues(incoming)
-  const previewRelativePath = videos[0]?.relativePath?.trim() || undefined
-  const previewDataUrl = videos[0]?.dataUrl?.trim() || undefined
+  const voices = flattenVoicesValues(incoming)
+
+  let composed: { relativePath?: string; assetId?: string } | null = null
+  if (ctx.composeTimelineVideo) {
+    try {
+      composed = await ctx.composeTimelineVideo({
+        nodeId: ctx.node.id,
+        videos,
+        voices,
+        signal: ctx.signal
+      })
+    } catch {
+      composed = null
+    }
+  }
+
+  const composedItem: GraphVideoItem | null = composed?.relativePath?.trim()
+    ? {
+        id: composed.assetId?.trim() || 'timeline-composed',
+        relativePath: composed.relativePath.trim(),
+        createdAt: formatGeneratedMediaStamp()
+      }
+    : null
+
+  const outputVideos = composedItem
+    ? [composedItem, ...videos.filter((v) => v.relativePath?.trim() !== composedItem.relativePath)]
+    : videos
+
+  const previewRelativePath =
+    composedItem?.relativePath || videos[0]?.relativePath?.trim() || undefined
+  const previewDataUrl = composedItem ? undefined : videos[0]?.dataUrl?.trim() || undefined
   const paramsPatch = {
     resultText: '',
     text: '',
-    generatedVideos: videos.map((video) => ({
+    generatedVideos: outputVideos.map((video) => ({
       id: video.id,
       dataUrl: video.dataUrl,
       relativePath: video.relativePath,
       createdAt: video.createdAt
     })),
+    ...(voices.length
+      ? {
+          generatedVoices: voices.map((voice) => ({
+            id: voice.id,
+            relativePath: voice.relativePath,
+            createdAt: voice.createdAt
+          }))
+        }
+      : {}),
     cameraShots: [] as [],
     previewDataUrl: previewDataUrl || '',
     previewRelativePath: previewRelativePath || '',
@@ -251,7 +289,7 @@ export async function executeTimelineOutputNode(
   }
   ctx.node.params = { ...ctx.node.params, ...paramsPatch }
   ctx.patchNode?.({ params: paramsPatch })
-  return { out: { kind: 'videos', items: videos } }
+  return { out: { kind: 'videos', items: outputVideos } }
 }
 
 /** 收集上游剧本文本（含 texts.relativePath 落盘正文） */
