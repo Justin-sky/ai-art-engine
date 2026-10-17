@@ -35,8 +35,8 @@ describe('分类枚举：plugins 已换成 workflows', () => {
     expect(VIEW).not.toContain('plugins.value')
   })
 
-  it('页签顺序含 workflows 且不含 plugins', () => {
-    expect(VIEW).toMatch(/TABS: MarketplaceFilter\[\] = \['all', 'mcp', 'skills', 'workflows'\]/)
+  it('页签统一为 all / mcp / skills（远端技能市场与本地技能合并为单一「技能」页签）', () => {
+    expect(VIEW).toMatch(/TABS: MarketplaceFilter\[\] = \['all', 'mcp', 'skills'\]/)
   })
 
   it('编辑器插件系统仍在（同名但无关，不得被误删）', () => {
@@ -127,11 +127,9 @@ describe('IPC 与 preload 齐备', () => {
 })
 
 describe('渲染层：「使用」走既有落盘链路', () => {
-  it('workflowMarket 的 category 用于二级筛选，且只在该页签生效', () => {
+  it('workflowMarket 的 category 用于二级筛选，且只在技能页签生效', () => {
     expect(VIEW).toContain('workflowCategory')
-    expect(VIEW).toMatch(
-      /if \(category\.value !== 'workflows' \|\| !workflowCategory\.value\) return/
-    )
+    expect(VIEW).toMatch(/if \(category\.value !== 'skills' \|\| !workflowCategory\.value\) return/)
   })
 
   it('**市场不再负责「使用」**：落盘动作归 AI 对话（那里才有要做什么的上下文）', () => {

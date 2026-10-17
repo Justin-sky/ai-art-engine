@@ -932,6 +932,7 @@ export default {
       addTitle: '从 GitHub 安装 Claude Code 技能',
       placeholder:
         '输入 GitHub 仓库或子目录地址，如 anthropics/skills 或 https://github.com/owner/repo/tree/main/skills/my-skill',
+      hint: '支持 owner/repo、仓库地址或子目录链接，自动扫描 SKILL.md 并支持 Claude Code 全部特性（/指令、$ARGUMENTS、!`cmd`、context: fork、allowed-tools、hooks）',
       inspect: '解析仓库',
       inspecting: '解析中…',
       foundCount: '发现 {count} 个技能',
@@ -955,7 +956,7 @@ export default {
       all: '全部',
       mcp: 'MCP',
       skills: '技能',
-      workflows: '技能与工作流'
+      workflows: '技能'
     },
     workflows: {
       refresh: '刷新目录',
@@ -964,9 +965,9 @@ export default {
       loading: '正在读取远端目录…',
       /** 刷新失败但已有旧内容：软提示 */
       refreshFailed: '刷新失败，下面是上次读到的目录',
-      sourceHint: '远端市场共 {count} 个工作流',
+      sourceHint: '远端技能市场共 {count} 个技能',
       /** 主源不通、已自动降级到镜像：必须告诉用户，否则他会以为数据来自官方主源 */
-      viaMirror: '主源不可达，已切换到镜像 —— 共 {count} 个工作流',
+      viaMirror: '主源不可达，已切换到镜像 —— 共 {count} 个技能',
       offline: '离线：显示的是上次缓存的目录，数据可能过期',
       dropped: '有 {count} 条目录条目格式不合法，已忽略',
       categoryAll: '全部',

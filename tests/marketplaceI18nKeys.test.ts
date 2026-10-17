@@ -183,9 +183,10 @@ describe('动态拼出的 i18n 键也必须存在', () => {
 })
 
 describe('组件里拼出的 i18n 键都在 locale 里', () => {
-  it('两个 MCP 组件引用的 marketplace.* 键全部存在', () => {
+  it('市场主视图与两个 MCP 组件引用的静态 marketplace.* 键全部存在', () => {
+    const VIEW_SOURCE = readFileSync(resolve('src/renderer/src/views/MarketplaceView.vue'), 'utf8')
     const missing: string[] = []
-    for (const source of [CLIENT_SOURCE, DIALOG_SOURCE]) {
+    for (const source of [CLIENT_SOURCE, DIALOG_SOURCE, VIEW_SOURCE]) {
       // 只取静态字面量键；模板里拼出来的键由上面两组「从产出侧反查」的断言覆盖
       for (const match of source.matchAll(/t\(\s*'(marketplace\.[a-zA-Z0-9_.]+)'/g)) {
         const key = match[1]!

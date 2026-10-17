@@ -950,6 +950,7 @@ export default {
       addTitle: 'Install Claude Code skills from GitHub',
       placeholder:
         'Enter a GitHub repo or subdirectory URL, e.g. anthropics/skills or https://github.com/owner/repo/tree/main/skills/my-skill',
+      hint: 'Supports owner/repo, repository URLs, or subdirectory URLs; scans SKILL.md with full Claude Code support (/command, $ARGUMENTS, !`cmd`, context: fork, allowed-tools, hooks)',
       inspect: 'Inspect repo',
       inspecting: 'Inspecting…',
       foundCount: '{count} skill(s) found',
@@ -973,7 +974,7 @@ export default {
       all: 'All',
       mcp: 'MCP',
       skills: 'Skills',
-      workflows: 'Skills & Workflows'
+      workflows: 'Skills'
     },
     workflows: {
       refresh: 'Refresh catalog',
@@ -982,9 +983,9 @@ export default {
       loading: 'Reading the remote catalog…',
       /** 刷新失败但已有旧内容 */
       refreshFailed: 'Refresh failed — showing the last catalog we read',
-      sourceHint: '{count} workflows in the remote market',
+      sourceHint: '{count} skills in the remote skill market',
       /** 主源不通、已自动降级到镜像 */
-      viaMirror: 'Primary source unreachable — switched to the mirror: {count} workflows',
+      viaMirror: 'Primary source unreachable — switched to the mirror: {count} skills',
       offline: 'Offline: showing the last cached catalog, data may be stale',
       dropped: '{count} catalog entries were malformed and ignored',
       categoryAll: 'All',

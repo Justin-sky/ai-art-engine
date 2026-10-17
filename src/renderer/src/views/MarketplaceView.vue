@@ -42,8 +42,8 @@
         <span class="mp-hint">{{ t('marketplace.ext.addHint') }}</span>
       </div>
 
-      <!-- 从 GitHub 直接添加 Claude Code 技能：在技能与技能市场页签展示 -->
-      <div v-if="category === 'skills' || category === 'workflows'" class="mp-github-box">
+      <!-- 从 GitHub 直接添加 Claude Code 技能：在技能页签展示 -->
+      <div v-if="category === 'skills'" class="mp-github-box">
         <div class="mp-github-bar">
           <input
             v-model="githubUrl"
@@ -138,8 +138,8 @@
         </div>
       </div>
 
-      <!-- 工作流页签：远端市场来源行（含手动刷新与离线提示） -->
-      <div v-if="category === 'workflows'" class="mp-add-row">
+      <!-- 技能页签：远端技能市场来源行（含手动刷新与离线提示） -->
+      <div v-if="category === 'skills'" class="mp-add-row">
         <button
           type="button"
           class="mp-btn"
@@ -153,7 +153,7 @@
           }}
         </button>
         <span v-if="workflowError" class="mp-hint error">{{ workflowError }}</span>
-        <!-- 首次加载中：不要显示「共 0 个工作流」，那会被当成「市场是空的」 -->
+        <!-- 首次加载中：不要显示「共 0 个」，那会被当成「市场是空的」 -->
         <span v-else-if="workflowLoading" class="mp-hint">
           {{ t('marketplace.workflows.loading') }}
         </span>
@@ -170,8 +170,8 @@
         </span>
       </div>
 
-      <!-- 工作流二级分类：只列数据里真实出现过的分类 -->
-      <nav v-if="category === 'workflows'" class="mp-tabs mp-subtabs" role="tablist">
+      <!-- 技能二级分类：只列数据里真实出现过的分类 -->
+      <nav v-if="category === 'skills'" class="mp-tabs mp-subtabs" role="tablist">
         <button
           type="button"
           role="tab"
@@ -575,7 +575,7 @@ const { t } = useStudioI18n()
  * （这里没有「网页市场」：本仓库没有远端注册表，不做假入口。）
  */
 const DEV_DOCS_URL = 'https://justin-sky.github.io/ai-art-engine/developers.html'
-const TABS: MarketplaceFilter[] = ['all', 'mcp', 'skills', 'workflows']
+const TABS: MarketplaceFilter[] = ['all', 'mcp', 'skills']
 const SAVE_DEBOUNCE_MS = 500
 
 const mcp = ref<McpServerInfo | null>(null)
@@ -603,7 +603,7 @@ const workflowStale = ref(false)
 const workflowSource = ref('')
 const workflowUsedFallback = ref(false)
 const workflowError = ref('')
-/** 工作流页签内的二级分类（'' = 全部） */
+/** 技能页签内的二级分类（'' = 全部） */
 const workflowCategory = ref('')
 /** 封面 data URL（按 id 懒加载） */
 const workflowCovers = ref<Record<string, string>>({})
@@ -644,7 +644,7 @@ let saveTimer: ReturnType<typeof setTimeout> | null = null
 /** 「添加 MCP 服务」对话框的开关（表单状态在对话框内部，关掉即重置） */
 const addOpen = ref(false)
 
-/** 工作流页签下可选的二级分类：只列数据里真实出现过的（不摆空分类） */
+/** 技能页签下可选的二级分类：只列数据里真实出现过的（不摆空分类） */
 const workflowCategories = computed(() => {
   const seen = new Set<string>()
   for (const entry of workflowEntries.value) seen.add(entry.category)
@@ -656,22 +656,50 @@ function categoryOfMarketId(marketId: string): string {
   return workflowEntries.value.find((entry) => entry.id === marketId)?.category ?? ''
 }
 
-const allCards = computed<MarketplaceCard[]>(() =>
-  buildMarketplaceCards({
+const allCards = computed<MarketplaceCard[]>(() => {
+  // 已随远端市场条目附带的技能名集合：避免安装后在同一个「技能」页签下出现重复卡片
+  const bundledSkillNames = new Set(
+    workflowEntries.value
+      .map((entry) => entry.skill?.name)
+      .filter((name): name is string => typeof name === 'string' && name.length > 0)
+  )
+  const dedupedSkills = skills.value
+    ? {
+        ...skills.value,
+        files: skills.value.files.filter(
+          (file) => !(file.kind === 'bundle' && bundledSkillNames.has(file.fileName))
+        )
+      }
+    : null
+  return buildMarketplaceCards({
     mcp: mcp.value,
-    skills: skills.value,
+    skills: dedupedSkills,
     workflows: workflowEntries.value,
     external: externalMcp.value
   })
-)
-const counts = computed(() => countByCategory(allCards.value))
+})
+const counts = computed<Record<MarketplaceFilter, number>>(() => {
+  const raw = countByCategory(allCards.value)
+  return {
+    all: raw.all,
+    mcp: raw.mcp,
+    skills: raw.skills + raw.workflows,
+    workflows: raw.workflows
+  }
+})
 const cards = computed(() => {
-  const filtered = filterMarketplaceCards(allCards.value, {
-    category: category.value,
-    query: query.value
-  })
-  // 二级分类只在工作流页签生效；其余页签不受影响
-  if (category.value !== 'workflows' || !workflowCategory.value) return filtered
+  const filtered =
+    category.value === 'skills'
+      ? filterMarketplaceCards(allCards.value, {
+          category: 'all',
+          query: query.value
+        }).filter((card) => card.category === 'skills' || card.category === 'workflows')
+      : filterMarketplaceCards(allCards.value, {
+          category: category.value,
+          query: query.value
+        })
+  // 二级分类只在技能页签生效；其余页签不受影响
+  if (category.value !== 'skills' || !workflowCategory.value) return filtered
   return filtered.filter(
     (card) => card.marketId && categoryOfMarketId(card.marketId) === workflowCategory.value
   )
