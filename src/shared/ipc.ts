@@ -1017,6 +1017,8 @@ export interface HarnessRunInput {
   model?: string
   /** 可选：所选模型所属的 provider 实例 id（默认 DeepSeek 或首个可用文本 provider） */
   providerId?: string
+  /** 可选：当前工作区打开的画布与选中节点上下文摘要（不对用户气泡展示，仅注入给 Agent） */
+  canvasContext?: string
 }
 
 /** Harness：任务启动结果 */

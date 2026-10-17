@@ -90,3 +90,41 @@ describe('音效分流规则确实在系统提示里', () => {
     expect(joined).toMatch(/pass loop: true to generate_sound_effect/)
   })
 })
+
+describe('项目画布节点自动感知与内置节点能力路由', () => {
+  const body = personaBody()
+  const chatSrc = readFileSync(resolve('src/renderer/src/components/ChatPanel.vue'), 'utf8')
+
+  it('buildPersona 含画布节点操作与核心节点能力路由规则', () => {
+    expect(body).toContain('=== Project Canvas & Built-in Node Capabilities ===')
+    expect(body).toContain('[Workspace Canvas & Node Context]')
+    for (const token of [
+      'graph_read',
+      'graph_edit',
+      'graph_node_types',
+      'task_run',
+      'film.workbench',
+      'image.process',
+      'image.portrait',
+      'image.adVariants',
+      'anim.2d',
+      'stage.2d',
+      'semantic.analyze',
+      'world.splatView',
+      'model.rigSkin'
+    ]) {
+      expect(body, `buildPersona 应包含 ${token}`).toContain(token)
+    }
+  })
+
+  it('ChatPanel 采集当前打开画布与选中节点上下文并随 runHarnessTask 下发', () => {
+    expect(chatSrc).toContain('function buildActiveCanvasContext(): string | undefined')
+    expect(chatSrc).toContain('const canvasContext = buildActiveCanvasContext()')
+    expect(chatSrc).toContain('...(canvasContext ? { canvasContext } : {})')
+  })
+
+  it('主进程 resolveProjectCanvasContext 支持渲染层上报与工程画布兜底注入', () => {
+    expect(SRC).toContain('function resolveProjectCanvasContext(explicitContext?: string): string')
+    expect(SRC).toContain('[Workspace Canvas & Node Context]')
+  })
+})

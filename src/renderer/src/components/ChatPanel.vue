@@ -28,6 +28,8 @@ import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
 import { getChatAssetFingerprint } from '../features/media/chatAssetFingerprint'
 import { copyTextToClipboard } from '../utils/copyText'
 import { useProjectStore } from '../stores/project'
+import { useWorkspaceStore } from '../stores/workspace'
+import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import { promptConfirm } from '../composables/useStudioPrompt'
 import { estimateTokenCount } from '@shared/textTokens'
 import { isImageLikePath, renderChatMarkdown, renderInlineChatRefs } from '@shared/chatMarkdown'
@@ -2323,6 +2325,110 @@ function expirePendingApprovals(): void {
   }
 }
 
+const workspaceStore = useWorkspaceStore()
+
+function readAssetGraph(
+  asset: AssetInfo | undefined
+): import('@shared/graph').GraphDocument | null {
+  const graphJson = (asset?.genParams as Record<string, unknown> | undefined)?.graphJson as
+    import('@shared/graph').GraphDocument | undefined
+  return graphJson && Array.isArray(graphJson.nodes) ? graphJson : null
+}
+
+/**
+ * 采集当前工作区正在打开的画布、选中节点以及工程内已有画布资产的上下文摘要。
+ * 仅随 HarnessRunInput.canvasContext 下发给主进程 Agent，不污染用户的聊天输入气泡。
+ */
+function buildActiveCanvasContext(): string | undefined {
+  const lines: string[] = []
+  const hostFromSelection = workspaceStore.selectedGraphHostId?.startsWith('asset:')
+    ? workspaceStore.selectedGraphHostId.slice('asset:'.length)
+    : null
+  const lastOpenCanvas =
+    workspaceStore.openCanvasEditorIds[workspaceStore.openCanvasEditorIds.length - 1] ?? null
+  const lastOpenAsset =
+    workspaceStore.openAssetEditorIds[workspaceStore.openAssetEditorIds.length - 1] ?? null
+  const liveEntries = graphEditorHosts.listLiveEntries()
+  const lastLiveAssetId = (() => {
+    for (let i = liveEntries.length - 1; i >= 0; i--) {
+      const h = liveEntries[i]?.hostId ?? ''
+      if (h.startsWith('asset:')) return h.slice('asset:'.length)
+    }
+    return null
+  })()
+
+  const activeAssetId =
+    hostFromSelection ||
+    lastOpenCanvas ||
+    lastLiveAssetId ||
+    (workspaceStore.selectedAssetId &&
+    project.assets.some(
+      (a) =>
+        a.id === workspaceStore.selectedAssetId &&
+        (a.type === 'canvas' || (readAssetGraph(a)?.nodes?.length ?? 0) > 0)
+    )
+      ? workspaceStore.selectedAssetId
+      : null) ||
+    lastOpenAsset
+
+  if (activeAssetId) {
+    const asset = project.assets.find((a) => a.id === activeAssetId)
+    const liveDoc = graphEditorHosts.getLiveAssetDocument(activeAssetId) ?? readAssetGraph(asset)
+    if (asset || liveDoc) {
+      lines.push(
+        `Active canvas asset: "${asset?.name ?? activeAssetId}" (assetId: "${activeAssetId}", type: ${asset?.type ?? 'canvas'})`
+      )
+      const selectedNodeId = workspaceStore.selectedGraphNodeId
+      if (selectedNodeId && liveDoc?.nodes) {
+        const selNode = liveDoc.nodes.find((n) => n.id === selectedNodeId)
+        if (selNode) {
+          lines.push(
+            `Selected node on canvas: id="${selNode.id}", typeId="${selNode.typeId}", title="${selNode.title || selNode.typeId}"`
+          )
+        }
+      }
+      if (liveDoc?.nodes?.length) {
+        const visibleNodes = liveDoc.nodes.slice(0, 30).map((n) => {
+          const toolTag = n.params?.imageProcessTool
+            ? `, imageProcessTool="${n.params.imageProcessTool}"`
+            : n.params?.filmWorkbenchStage
+              ? `, stage="${n.params.filmWorkbenchStage}"`
+              : ''
+          return `  * ${n.id} [${n.typeId}] "${n.title || n.typeId}"${toolTag}`
+        })
+        lines.push(`Nodes on active canvas (${liveDoc.nodes.length}):`, ...visibleNodes)
+      }
+      if (liveDoc?.edges?.length) {
+        const edgeSummary = liveDoc.edges
+          .slice(0, 30)
+          .map((e) => `${e.source}(${e.sourcePort || 'out'})->${e.target}(${e.targetPort || 'in'})`)
+          .join(', ')
+        lines.push(`Edges on active canvas (${liveDoc.edges.length}): ${edgeSummary}`)
+      }
+    }
+  }
+
+  const otherCanvases = project.assets
+    .filter(
+      (a) =>
+        a.id !== activeAssetId &&
+        (a.type === 'canvas' || (readAssetGraph(a)?.nodes?.length ?? 0) > 0)
+    )
+    .slice(0, 10)
+  if (otherCanvases.length) {
+    lines.push(
+      `Other graph assets in project: ${otherCanvases
+        .map(
+          (a) =>
+            `"${a.name}" (assetId: "${a.id}", type: ${a.type}, nodes: ${readAssetGraph(a)?.nodes?.length ?? 0})`
+        )
+        .join('; ')}`
+    )
+  }
+
+  return lines.length ? lines.join('\n') : undefined
+}
+
 /**
  * 真正起一轮：把 task 作为用户消息落盘并交给 harness。
  * 手输 / 重发 / 队列出队都走这里，保证三种入口的行为完全一致。
@@ -2360,6 +2466,7 @@ async function runTask(text: string, options: { sourceIndex?: number } = {}): Pr
     }, 1500)
   }
   const { providerId, modelId } = splitModelKey(selectedKey.value)
+  const canvasContext = buildActiveCanvasContext()
   const result = await window.studio.runHarnessTask({
     task,
     // 会话 id：dsh 据此恢复/创建持久化 session，模型通过原生会话历史记住之前的聊天内容
@@ -2367,7 +2474,8 @@ async function runTask(text: string, options: { sourceIndex?: number } = {}): Pr
     model: modelId.trim() || undefined,
     ...(providerId ? { providerId } : {}),
     // 当前 agent 模式：main 进程按 craft/ask/plan 切换 dsh 的 system-prompt
-    mode: mode.value
+    mode: mode.value,
+    ...(canvasContext ? { canvasContext } : {})
   })
   if (!result.started) {
     pushStatus(result.message ?? 'failed to start', 'error')

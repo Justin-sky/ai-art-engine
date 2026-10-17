@@ -911,7 +911,19 @@ function buildPersona(mode: ChatMode, projectMemory?: string | null): string[] {
     'When the user asks to record a tutorial (e.g. “录制一个图片生成节点教程”), load tutorial-recording and shoot ONE continuous take.',
     'SAY=SHOW: caption actions must be real — right-click via doContextMenu + graph-ctx-*; select via node_select; doDblClick opens instruction panel / notepad / dive (graph-instruction-*, graph-notepad*, graph-dive / graph-dive-view-*); run via doClick graph-run then screen_record_wait(graph-idle); never silent create/params/run; never stop right after run click.',
     'Start from a blank free canvas (asset_create type=canvas + openEditor). No task_run/generate_* while recording; no self-restart spam.',
-    'From start through tutorial_compose stay in one tool chain. After stop, tutorial_compose with steps[{index,narration,caption}]. Library save is the chat-card button only.'
+    'From start through tutorial_compose stay in one tool chain. After stop, tutorial_compose with steps[{index,narration,caption}]. Library save is the chat-card button only.',
+    '=== Project Canvas & Built-in Node Capabilities ===',
+    'When the user message includes a [Workspace Canvas & Node Context] block or asks to inspect, modify, connect, or run nodes in the project, operate directly on that canvas asset using graph_read({ assetId }), graph_edit({ assetId, operations }), and task_run({ assetId, nodeId }) followed by task_status({ mcpTaskId }).',
+    'When a request matches any specialized studio node capability or multi-step production pipeline below, prefer building or editing a canvas node graph (call graph_node_types({ typeId, includeParams: true }) for exact ports, params, and usage; then use graph_edit on the active canvas or workflow_commit({ plan, name }) for a new canvas, and execute via task_run + task_status) instead of plain one-shot generation.',
+    'Film / Short Drama / Storyboard / Cast & Shoot pipeline uses play.script -> film.workbench (and optional film.shot for single-shot polish) for script breakdown, director review, character/location design sheets, Series Bible (in-cast/out-cast), and batch keyframe or shot video generation.',
+    'Image Editing 10-in-1 Workbench uses image.process (set params.imageProcessTool to cutout, matte, erase, redraw, expand, upscale, gridSplit, compose, crop, or transform) for background removal, AI matting, inpainting, outpainting, upscaling, grid slicing, and compositing.',
+    'Portrait / Multi-Angle / Lighting / Character Consistency nodes use image.portrait (retouch & ID photos), image.multiAngle (turnaround sheets & 3D camera angles), image.lighting (3D studio relighting), and image.Consistent (emotion pad & locked identity).',
+    'Ad Multi-Variant Matrix uses image.adVariants (params.adVariantMatrix) to batch-generate e-commerce or UA ad variants across audience, scene, tone, and copy dimensions.',
+    '2D Frame Animation & 2D Stage Director use anim.2d (sprite sheet slicing/GIF baking, frame interpolation, 2D bones), image.align (sprite background keying, defringe, 9-slice, seamless tile), and stage.2d (multi-layer Z-depth stage, skeletal action baking, Spine export).',
+    'SVG Vector & Animation use svg.gen -> svg.anim to generate pure vector SVG assets and bake SMIL animations into PNG frame sequences and GIFs.',
+    'Semantic Video Analysis & Rebuild use semantic.analyze -> semantic.compile -> semantic.rebuild for shot-level video deconstruction, product/character replacement, and non-destructive video rebuild.',
+    'Spatial World & 3D Rigging/Animation use world.graph -> world.panoramic -> world.extract -> world.splatView for 360 panoramas and 3DGS camera walkthroughs, and model.rigSkin -> model.pose -> model.animation for Blender 3D rigging, posing, and keyframe animation.',
+    'Game UI, Icons, Comic & Audio Compose use ui.split -> ui.gen (UI component slicing), image.iconPack (batch icons), comic.page (manga/comic page layout), voice.design / voice.tts / audio.music / audio.separate, and video.compose (multi-track timeline).'
   ]
   if (mode === 'ask') {
     return [
@@ -1893,6 +1905,46 @@ async function ensurePersistentWorkerUnlocked(opts: {
   }
 }
 
+/**
+ * 解析当前工程内画布与节点上下文摘要：
+ * - 优先使用渲染层上报的实时工作区画布与选中节点上下文（`input.canvasContext`）；
+ * - 若未传入但当前已打开工程，则从 `projectService.listAssets()` 汇总工程内已有画布资产及节点清单，
+ *   确保 Agent 能直接感知项目中的 `assetId` 与节点拓扑，主动调用 `graph_read` / `graph_edit` / `task_run`。
+ */
+function resolveProjectCanvasContext(explicitContext?: string): string {
+  const trimmed = explicitContext?.trim()
+  if (trimmed) return trimmed
+  if (!projectService.isOpen()) return ''
+  try {
+    const readGraph = (
+      a: import('@shared/domain').AssetInfo
+    ): import('@shared/graph').GraphDocument | null => {
+      const graphJson = (a.genParams as Record<string, unknown> | undefined)?.graphJson as
+        import('@shared/graph').GraphDocument | undefined
+      return graphJson && Array.isArray(graphJson.nodes) ? graphJson : null
+    }
+    const graphAssets = projectService
+      .listAssets()
+      .filter((a) => a.type === 'canvas' || (readGraph(a)?.nodes?.length ?? 0) > 0)
+      .slice(0, 10)
+    if (!graphAssets.length) return ''
+    const lines: string[] = []
+    for (const asset of graphAssets) {
+      const nodes = readGraph(asset)?.nodes ?? []
+      const nodeBrief = nodes
+        .slice(0, 20)
+        .map((n) => `${n.id}[${n.typeId}:"${n.title || n.typeId}"]`)
+        .join(', ')
+      lines.push(
+        `Project canvas asset: "${asset.name}" (assetId: "${asset.id}", type: ${asset.type}, nodes: ${nodes.length}${nodeBrief ? ` -> ${nodeBrief}` : ''})`
+      )
+    }
+    return lines.join('\n')
+  } catch {
+    return ''
+  }
+}
+
 async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult> {
   const rawInputTask = String(input?.task ?? '').trim()
   if (!rawInputTask) return { started: false, message: '任务内容为空' }
@@ -1913,7 +1965,10 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
     sessionId: input.sessionId,
     workspaceRoot: workspace
   })
-  const rawTask = skillPreprocessed.taskText
+  const canvasContext = resolveProjectCanvasContext(input.canvasContext)
+  const rawTask = canvasContext
+    ? `${skillPreprocessed.taskText}\n\n[Workspace Canvas & Node Context]\n${canvasContext}`
+    : skillPreprocessed.taskText
   activeSkillTurn = skillPreprocessed.activeSkill ?? null
   const effectiveSessionId =
     skillPreprocessed.activeSkill?.isolatedSessionId ?? (input.sessionId?.trim() || '')
