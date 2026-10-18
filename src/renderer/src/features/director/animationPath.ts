@@ -1,11 +1,12 @@
 import * as THREE from 'three'
-import type {
-  DirectorAnimKeyframe,
-  DirectorAnimPath,
-  DirectorAnimPathHandle,
-  DirectorAnimPathKind,
-  DirectorPathForwardAxis,
-  StageVec3
+import {
+  evaluateKeyframeEasing,
+  type DirectorAnimKeyframe,
+  type DirectorAnimPath,
+  type DirectorAnimPathHandle,
+  type DirectorAnimPathKind,
+  type DirectorPathForwardAxis,
+  type StageVec3
 } from '@shared/domain'
 
 const TMP = new THREE.Vector3()
@@ -285,6 +286,7 @@ export interface AnimKeyframeSample {
   rotation: StageVec3
   scale: StageVec3
   tangent: StageVec3
+  fov?: number
 }
 
 function lerpVec3(a: StageVec3, b: StageVec3, u: number): StageVec3 {
@@ -342,7 +344,7 @@ export function bakeKeyframesFromPath(
 export function sampleAnimKeyframes(
   keyframes: DirectorAnimKeyframe[],
   time: number,
-  fallback: { rotation: StageVec3; scale: StageVec3 } = {
+  fallback: { rotation: StageVec3; scale: StageVec3; fov?: number } = {
     rotation: { x: 0, y: 0, z: 0 },
     scale: { x: 1, y: 1, z: 1 }
   }
@@ -360,11 +362,13 @@ export function sampleAnimKeyframes(
           z: next.position.z - position.z
         })
       : { x: 0, y: 0, z: -1 }
+    const fov = typeof kf.fov === 'number' ? kf.fov : fallback.fov
     return {
       position,
       rotation: keyframeRotation(kf, fallback.rotation),
       scale: keyframeScale(kf, fallback.scale),
-      tangent
+      tangent,
+      ...(fov != null ? { fov } : {})
     }
   }
   const last = sorted[sorted.length - 1]
@@ -375,11 +379,18 @@ export function sampleAnimKeyframes(
       y: last.position.y - prev.position.y,
       z: last.position.z - prev.position.z
     })
+    const fov =
+      typeof last.fov === 'number'
+        ? last.fov
+        : typeof prev.fov === 'number'
+          ? prev.fov
+          : fallback.fov
     return {
       position: { ...last.position },
       rotation: keyframeRotation(last, keyframeRotation(prev, fallback.rotation)),
       scale: keyframeScale(last, keyframeScale(prev, fallback.scale)),
-      tangent
+      tangent,
+      ...(fov != null ? { fov } : {})
     }
   }
   for (let i = 0; i < sorted.length - 1; i++) {
@@ -387,7 +398,8 @@ export function sampleAnimKeyframes(
     const b = sorted[i + 1]
     if (time < a.time || time > b.time) continue
     const span = Math.max(1e-6, b.time - a.time)
-    const u = (time - a.time) / span
+    const rawU = (time - a.time) / span
+    const u = evaluateKeyframeEasing(rawU, a.easing ?? 'linear')
     const position = lerpVec3(a.position, b.position, u)
     const rotation = lerpVec3(
       keyframeRotation(a, fallback.rotation),
@@ -400,13 +412,24 @@ export function sampleAnimKeyframes(
       y: b.position.y - a.position.y,
       z: b.position.z - a.position.z
     })
-    return { position, rotation, scale, tangent }
+    const fovA = typeof a.fov === 'number' ? a.fov : fallback.fov
+    const fovB = typeof b.fov === 'number' ? b.fov : fovA
+    const fov =
+      fovA != null && fovB != null ? fovA + (fovB - fovA) * u : (fovB ?? fovA ?? undefined)
+    return {
+      position,
+      rotation,
+      scale,
+      tangent,
+      ...(fov != null ? { fov } : {})
+    }
   }
   return {
     position: { ...last.position },
     rotation: keyframeRotation(last, fallback.rotation),
     scale: keyframeScale(last, fallback.scale),
-    tangent: { x: 0, y: 0, z: -1 }
+    tangent: { x: 0, y: 0, z: -1 },
+    ...(typeof last.fov === 'number' ? { fov: last.fov } : {})
   }
 }
 

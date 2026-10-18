@@ -368,7 +368,7 @@ function voiceHostVariantDef(variant: (typeof VOICE_HOST_VARIANTS)[number]): Nod
   }
 }
 
-/** 导演台编辑：全景背景图（单图）与 3D 模型输入 + 站位（images）与动作（videos）输出 */
+/** 导演台编辑：全景背景图（单图）与 3D 模型输入 + 站位（images）、动作（videos）与运镜提示词（text）输出 */
 function motionProcessingPorts(): GraphPortDef[] {
   return [
     {
@@ -398,6 +398,13 @@ function motionProcessingPorts(): GraphPortDef[] {
       dataType: GraphPortType.videos,
       multiple: true,
       label: '动作'
+    },
+    {
+      id: 'out-prompt',
+      direction: 'out',
+      dataType: GraphPortType.text,
+      multiple: false,
+      label: '运镜词' // cjk-ok
     }
   ]
 }

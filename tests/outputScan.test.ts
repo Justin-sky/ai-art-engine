@@ -466,3 +466,30 @@ describe('splitPrimaryAndRelated：世界主产物与其附件', () => {
     expect(split.related).toEqual(['Cache/Models/world.pano.png'])
   })
 })
+
+describe('产物扫盘：第三方技能 HTML 交互产物与根目录归集', () => {
+  it('收录 Output / Cache 下的 .html / .htm，排除脚手架目录与模板文件', () => {
+    expect(isScannedOutputPath('Output/pin-lock.html')).toBe(true)
+    expect(isScannedOutputPath('Output/pin-lock-light.htm')).toBe(true)
+    expect(isScannedOutputPath('Cache/GamePlayJobs/job-1/dist/index.html')).toBe(false)
+    expect(isScannedOutputPath('Output/index.template.html')).toBe(false)
+  })
+
+  it('同批次同时产出 .svg 与 .html 时，优先取交互式 .html 作为主预览代表', () => {
+    const at = 1_700_000_000_000
+    const files: ProjectOutputFile[] = [
+      { relativePath: 'Output/pin-lock.svg', mtimeMs: at, size: 4_000 },
+      { relativePath: 'Output/pin-lock-light.svg', mtimeMs: at + 50, size: 4_000 },
+      { relativePath: 'Output/pin-lock.html', mtimeMs: at + 100, size: 12_000 },
+      { relativePath: 'Output/pin-lock-light.html', mtimeMs: at + 150, size: 12_000 }
+    ]
+    const { cards } = groupRoundOutputs(files)
+    expect(cards).toHaveLength(1)
+    expect(cards[0]!.primary.relativePath).toBe('Output/pin-lock.html')
+    expect(cards[0]!.related.map((f) => f.relativePath)).toEqual([
+      'Output/pin-lock.svg',
+      'Output/pin-lock-light.svg',
+      'Output/pin-lock-light.html'
+    ])
+  })
+})

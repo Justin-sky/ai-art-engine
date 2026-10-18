@@ -2254,6 +2254,16 @@ const TOOL_DEFS: McpToolDef[] = [
       const mcpTaskId = readString(args, 'mcpTaskId')
       const report = pendingMcpTaskReports.get(mcpTaskId)
       if (!report) throw new Error('未知任务 id（或尚未受理）')
+      if (
+        report.phase === 'finished' &&
+        Array.isArray(report.relativePaths) &&
+        report.relativePaths.length
+      ) {
+        const visualImages = readVisualCheckImagesForRelativePaths(report.relativePaths, 3)
+        if (visualImages.length) {
+          return { ...report, mcpImages: visualImages }
+        }
+      }
       return report
     }
   },
@@ -3163,7 +3173,13 @@ const TOOL_DEFS: McpToolDef[] = [
         })
       )
       broadcastAsset(result.assetId)
-      return { ...result, relativePath: liveAssetRelativePath(result) }
+      const relPath = liveAssetRelativePath(result)
+      const visualImages = readVisualCheckImagesForRelativePaths([relPath], 1)
+      return {
+        ...result,
+        relativePath: relPath,
+        ...(visualImages.length ? { mcpImages: visualImages } : {})
+      }
     }
   },
   {
@@ -5770,6 +5786,62 @@ function scheduleTaskReportCleanup(mcpTaskId: string): void {
   taskReportCleanups.set(mcpTaskId, timer)
 }
 
+/** 单张视觉自检图最大体积（4MB），避免超大原图撑爆 MCP 响应体 */
+const VISUAL_SELF_CRITIQUE_MAX_BYTES = 4 * 1024 * 1024
+
+/**
+ * 阶段二：视觉多模态自检闭环（Visual Self-Critique Loop）。
+ * 把工程内刚生成的图片（如 `generate_image` 或 `task_run` 产物）转成 data URL 放进 `mcpImages`，
+ * 由 `splitToolImages` 自动拆成 MCP `image` content block 回传给支持视觉输入的大模型，
+ * 让 Agent 真正「睁眼看画面」发现构图/穿模/文字崩坏并自主调参重绘。
+ */
+export function readVisualCheckImagesForRelativePaths(
+  relativePaths: ReadonlyArray<string | undefined | null>,
+  maxImages = 3
+): string[] {
+  if (!projectService.isOpen()) return []
+  let root: string
+  try {
+    root = projectService.getRoot()
+  } catch {
+    return []
+  }
+  const out: string[] = []
+  for (const raw of relativePaths) {
+    if (out.length >= maxImages) break
+    const rel = typeof raw === 'string' ? normalizeProjectRelativePath(raw) : null
+    if (!rel) continue
+    const lower = rel.toLowerCase()
+    const mime = lower.endsWith('.png')
+      ? 'image/png'
+      : lower.endsWith('.webp')
+        ? 'image/webp'
+        : lower.endsWith('.jpg') || lower.endsWith('.jpeg')
+          ? 'image/jpeg'
+          : null
+    if (!mime) continue
+    try {
+      const abs = join(root, rel)
+      if (!existsSync(abs)) continue
+      const stat = statSync(abs)
+      if (!stat.isFile() || stat.size <= 0 || stat.size > VISUAL_SELF_CRITIQUE_MAX_BYTES) continue
+      const b64 = readFileSync(abs).toString('base64')
+      out.push(`data:${mime};base64,${b64}`)
+    } catch {
+      /* 单张读取失败忽略，不影响主工具返回 */
+    }
+  }
+  return out
+}
+
+let canvasTaskSettledHook: ((report: McpTaskReportPayload) => void) | null = null
+
+export function setCanvasTaskSettledHook(
+  hook: ((report: McpTaskReportPayload) => void) | null
+): void {
+  canvasTaskSettledHook = hook
+}
+
 /**
  * task_run 终态收尾：把渲染层回报的本轮产物写进旁路活动
  * （relativePath 供单产物消费方，relativePaths 供对话流出多张预览卡）。
@@ -5777,17 +5849,25 @@ function scheduleTaskReportCleanup(mcpTaskId: string): void {
  */
 function settleMcpTaskActivity(report: McpTaskReportPayload): void {
   const activityId = pendingMcpTaskActivities.get(report.mcpTaskId)
-  if (!activityId) return
-  pendingMcpTaskActivities.delete(report.mcpTaskId)
-  const relativePaths = (report.relativePaths ?? []).filter(
-    (path): path is string => typeof path === 'string' && !!path.trim()
-  )
-  const ok = report.phase === 'finished' && report.status === 'done'
-  mcpActivityService.end(activityId, {
-    ok,
-    ...(relativePaths.length ? { relativePath: relativePaths[0], relativePaths } : {}),
-    ...(report.error ? { error: report.error } : {})
-  })
+  if (activityId) {
+    pendingMcpTaskActivities.delete(report.mcpTaskId)
+    const relativePaths = (report.relativePaths ?? []).filter(
+      (path): path is string => typeof path === 'string' && !!path.trim()
+    )
+    const ok = report.phase === 'finished' && report.status === 'done'
+    mcpActivityService.end(activityId, {
+      ok,
+      ...(relativePaths.length ? { relativePath: relativePaths[0], relativePaths } : {}),
+      ...(report.error ? { error: report.error } : {})
+    })
+  }
+  if (canvasTaskSettledHook) {
+    try {
+      canvasTaskSettledHook(report)
+    } catch {
+      /* ignore hook error */
+    }
+  }
 }
 
 /** MCP graph_edit 的渲染层回报（应用结果），graph_edit 等待并返回 */

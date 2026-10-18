@@ -12,6 +12,77 @@ import { type ExternalMcpServer } from './externalMcp'
 import type { ProjectStyleImage } from './stylePresets'
 import type { VideoBeatTags } from './videoBeats'
 import type { VisionAssetTags } from './visionTags'
+import {
+  normalizeDirectorCapturePass,
+  normalizeDirectorCinemachineConfig,
+  normalizeDirectorCompositionGuide,
+  normalizeDirectorHandheldShake,
+  normalizeDirectorKeyframeEasing,
+  type DirectorCapturePass,
+  type DirectorCinemachineConfig,
+  type DirectorCompositionGuide,
+  type DirectorHandheldShake,
+  type DirectorKeyframeEasing,
+  type DirectorLightingPresetId
+} from './directorCinematography'
+
+export type {
+  CinemachineBrainCutEvaluation,
+  CinemachineBrainSegmentInput,
+  CinemachineRuntimeMemory,
+  CinemachineSceneObjectInput,
+  DirectorCapturePass,
+  DirectorCinemachineAimMode,
+  DirectorCinemachineAimPart,
+  DirectorCinemachineBodyMode,
+  DirectorCinemachineConfig,
+  DirectorCinemachineFollowSpace,
+  DirectorCinemachineNoisePreset,
+  DirectorCompositionGuide,
+  DirectorExpressivePosePreset,
+  DirectorHandheldShake,
+  DirectorKeyframeEasing,
+  DirectorLightingPresetDef,
+  DirectorLightingPresetId
+} from './directorCinematography'
+export {
+  DIRECTOR_CAPTURE_PASSES,
+  DIRECTOR_CINEMACHINE_AIM_MODES,
+  DIRECTOR_CINEMACHINE_AIM_PARTS,
+  DIRECTOR_CINEMACHINE_BODY_MODES,
+  DIRECTOR_CINEMACHINE_NOISE_PRESETS,
+  DIRECTOR_COMPOSITION_GUIDES,
+  DIRECTOR_EXPRESSIVE_POSE_PRESETS,
+  DIRECTOR_FOCAL_LENGTH_PRESETS_MM,
+  DIRECTOR_KEYFRAME_EASINGS,
+  DIRECTOR_LIGHTING_PRESET_IDS,
+  DIRECTOR_LIGHTING_PRESETS,
+  DIRECTOR_PRIME_LENSES_MM,
+  blendDirectorViewerStates,
+  buildDirectorCinematographyPrompt,
+  buildLightingPresetObjects,
+  directorViewerHasActiveCinemachine,
+  evaluateHandheldCameraShake,
+  evaluateKeyframeEasing,
+  findDirectorExpressivePosePreset,
+  findDirectorLightingPreset,
+  focalLengthMmToFov,
+  focalLengthMmToFovDeg,
+  focalLengthToVerticalFov,
+  fovDegToFocalLengthMm,
+  fovToFocalLengthMm,
+  normalizeDirectorCapturePass,
+  normalizeDirectorCinemachineConfig,
+  normalizeDirectorCompositionGuide,
+  normalizeDirectorHandheldShake,
+  normalizeDirectorKeyframeEasing,
+  solveCinemachineBrainCutAtTime,
+  solveCinemachineVirtualCamera,
+  solveDollyZoomPosition,
+  solveDollyZoomViewer,
+  verticalFovToFocalLength,
+  verticalFovToFocalLengthMm
+} from './directorCinematography'
 
 export type { ProjectStyleImage, StylePresetCategory, StyleReferenceSubject } from './stylePresets'
 export type { VideoBeatTags } from './videoBeats'
@@ -1033,6 +1104,10 @@ export const STAGE_LIGHT_TYPE_VALUES = ['directional', 'point', 'spot'] as const
 export type StageLightType = (typeof STAGE_LIGHT_TYPE_VALUES)[number]
 const STAGE_LIGHT_TYPE_SET: ReadonlySet<string> = new Set(STAGE_LIGHT_TYPE_VALUES)
 
+export const STAGE_MANNEQUIN_PRESET_VALUES = ['humanoid', 'chibi', 'quadruped'] as const
+export type StageMannequinPreset = (typeof STAGE_MANNEQUIN_PRESET_VALUES)[number]
+const STAGE_MANNEQUIN_PRESET_SET: ReadonlySet<string> = new Set(STAGE_MANNEQUIN_PRESET_VALUES)
+
 export interface StageLightParams {
   type: StageLightType
   /** 光照强度，默认 1 */
@@ -1045,13 +1120,15 @@ export interface StageLightParams {
   angle?: number
   /** Spot 边缘软化 0–1，默认 0.25 */
   penumbra?: number
+  /** 是否投射实时阴影，默认 true */
+  castShadow?: boolean
 }
 
 export function createDefaultStageLightParams(
   type: StageLightType = 'directional'
 ): StageLightParams {
   if (type === 'point') {
-    return { type, intensity: 1.2, distance: 0, decay: 2 }
+    return { type, intensity: 1.2, distance: 0, decay: 2, castShadow: true }
   }
   if (type === 'spot') {
     return {
@@ -1060,10 +1137,11 @@ export function createDefaultStageLightParams(
       distance: 0,
       decay: 2,
       angle: Math.PI / 6,
-      penumbra: 0.25
+      penumbra: 0.25,
+      castShadow: true
     }
   }
-  return { type: 'directional', intensity: 1.15 }
+  return { type: 'directional', intensity: 1.15, castShadow: true }
 }
 
 export function normalizeStageLightParams(
@@ -1098,13 +1176,15 @@ export function normalizeStageLightParams(
     typeof o.penumbra === 'number' && Number.isFinite(o.penumbra)
       ? Math.min(1, Math.max(0, o.penumbra))
       : defaults.penumbra
+  const castShadow = o.castShadow === false ? false : true
   return {
     type,
     intensity,
     ...(distance !== undefined ? { distance } : {}),
     ...(decay !== undefined ? { decay } : {}),
     ...(angle !== undefined ? { angle } : {}),
-    ...(penumbra !== undefined ? { penumbra } : {})
+    ...(penumbra !== undefined ? { penumbra } : {}),
+    ...(castShadow === false ? { castShadow: false } : {})
   }
 }
 /** 导演台视口着色显示模式（对齐 Unity Scene View Shading Mode） */
@@ -1209,6 +1289,8 @@ export interface StageObjectState {
   name: string
   kind: StageObjectKind
   primitive?: StagePrimitive
+  /** 内置可摆姿人偶预设（无需外部 GLB 资产即可支持 FK / IK / YOLO 提姿 / 动作轨道） */
+  mannequinPreset?: StageMannequinPreset
   /** kind === 'light' 时的灯光参数 */
   light?: StageLightParams
   modelAssetId?: string
@@ -1263,6 +1345,14 @@ export interface DirectorCameraShot {
   createdAt: string
   /** 物化后的工程相对路径；有值时可清空 dataUrl */
   relativePath?: string
+  /** 截屏通道（RGB / 深度 / 法线 / 姿态骨架） */
+  pass?: DirectorCapturePass
+  /** 来源机位 id */
+  cameraId?: string
+  /** 来源机位名称 */
+  cameraName?: string
+  /** 首尾帧角色标记（用于首尾帧视频工作流） */
+  frameRole?: 'first' | 'last'
 }
 
 /** 导演台动画录制（动作） */
@@ -1273,6 +1363,8 @@ export interface DirectorCameraVideo {
   relativePath?: string
   /** 可选内嵌；有 relativePath 时可为空 */
   dataUrl?: string
+  /** 录制通道 */
+  pass?: DirectorCapturePass
 }
 
 /** 导演台机位（可多台） */
@@ -1320,6 +1412,22 @@ export interface DirectorStageState {
   cameraVideos?: DirectorCameraVideo[]
   /** 视口画幅比例；默认 auto（跟随视口） */
   aspectRatio?: DirectorAspectRatio
+  /** 取景器构图辅助线；默认 none */
+  compositionGuide?: DirectorCompositionGuide
+  /** 截屏 / 录制输出通道（rgb / depth / normal / pose）；默认 rgb */
+  capturePass?: DirectorCapturePass
+  /** 是否开启地面接触阴影捕手（Shadow Catcher）；默认 true */
+  shadowCatcherEnabled?: boolean
+  /** 地面阴影捕手不透明度（0 ~ 1）；默认 0.35 */
+  shadowCatcherOpacity?: number
+  /** 是否开启大气体积雾（FogExp2）；默认 false */
+  fogEnabled?: boolean
+  /** 大气雾浓度（0.001 ~ 0.15）；默认 0.018 */
+  fogDensity?: number
+  /** 大气雾颜色；缺省跟随天空色 */
+  fogColor?: string
+  /** 当前应用的布光预设 id */
+  lightingPreset?: DirectorLightingPresetId
   /** 全景内容根：缩放% / 平移 / 旋转 */
   world?: DirectorSceneWorld
   /** 无全景时的天空/清屏色 */
@@ -1505,6 +1613,10 @@ export interface DirectorAnimKeyframe {
   position: StageVec3
   rotation?: StageVec3
   scale?: StageVec3
+  /** 关键帧到下一关键帧的缓动曲线，默认 linear */
+  easing?: DirectorKeyframeEasing
+  /** 相机轨迹关键帧可选视场角（度），支持推拉变焦运镜 */
+  fov?: number
 }
 
 export const DIRECTOR_PATH_FORWARD_AXES = ['+x', '-x', '+y', '-y', '+z', '-z'] as const
@@ -1537,14 +1649,20 @@ export interface DirectorSkeletonClipSegment {
   speed?: number
   /** 片段窗口内循环，默认 true */
   loop?: boolean
+  /** 与前序相邻动作片段的交叉混合过渡时长（秒），默认 0.25 */
+  crossFadeSec?: number
 }
 
-/** 机位切换轨上的相机区间：播放到该区间时激活对应机位 */
+/** 机位切换轨上的相机区间：播放到该区间时激活对应机位（支持 Cinemachine Brain 过渡时长与曲线） */
 export interface DirectorCameraCutSegment {
   id: string
   cameraId: string
   start: number
   end: number
+  /** 与前一机位片段的平滑混合过渡时长（秒），0 或缺省表示硬切（Hard Cut） */
+  blendInSec?: number
+  /** 混合插值缓动曲线，默认 easeInOut */
+  blendCurve?: DirectorKeyframeEasing
 }
 
 export interface DirectorAnimTrack {
@@ -1641,12 +1759,20 @@ function normalizeDirectorAnimKeyframe(raw: unknown): DirectorAnimKeyframe | nul
   const o = raw as Record<string, unknown>
   if (typeof o.id !== 'string' || !o.id.trim()) return null
   if (typeof o.time !== 'number' || !Number.isFinite(o.time)) return null
+  const easing =
+    typeof o.easing === 'string' ? normalizeDirectorKeyframeEasing(o.easing) : undefined
+  const fov =
+    typeof o.fov === 'number' && Number.isFinite(o.fov)
+      ? Math.min(140, Math.max(5, o.fov))
+      : undefined
   return {
     id: o.id.trim(),
     time: Math.max(0, o.time),
     position: readVec3(o.position, { x: 0, y: 0, z: 0 }),
     rotation: o.rotation != null ? readVec3(o.rotation, { x: 0, y: 0, z: 0 }) : undefined,
-    scale: o.scale != null ? readVec3(o.scale, { x: 1, y: 1, z: 1 }) : undefined
+    scale: o.scale != null ? readVec3(o.scale, { x: 1, y: 1, z: 1 }) : undefined,
+    ...(easing && easing !== 'linear' ? { easing } : {}),
+    ...(fov != null ? { fov } : {})
   }
 }
 
@@ -1662,6 +1788,10 @@ function normalizeDirectorSkeletonClipSegment(raw: unknown): DirectorSkeletonCli
   const assetId = typeof o.assetId === 'string' ? o.assetId.trim() : ''
   const speed =
     typeof o.speed === 'number' && Number.isFinite(o.speed) && o.speed > 0 ? o.speed : undefined
+  const crossFadeSec =
+    typeof o.crossFadeSec === 'number' && Number.isFinite(o.crossFadeSec) && o.crossFadeSec >= 0
+      ? Math.min(2, o.crossFadeSec)
+      : undefined
   return {
     id: o.id.trim(),
     clip,
@@ -1669,7 +1799,8 @@ function normalizeDirectorSkeletonClipSegment(raw: unknown): DirectorSkeletonCli
     end,
     ...(assetId ? { assetId } : {}),
     ...(speed != null ? { speed } : {}),
-    ...(o.loop === false ? { loop: false } : {})
+    ...(o.loop === false ? { loop: false } : {}),
+    ...(crossFadeSec != null ? { crossFadeSec } : {})
   }
 }
 
@@ -1680,7 +1811,20 @@ function normalizeDirectorCameraCutSegment(raw: unknown): DirectorCameraCutSegme
   const start = typeof o.start === 'number' && Number.isFinite(o.start) ? Math.max(0, o.start) : 0
   const end =
     typeof o.end === 'number' && Number.isFinite(o.end) ? Math.max(start + 0.05, o.end) : start + 1
-  return { id: o.id.trim(), cameraId: o.cameraId, start, end }
+  const blendInSec =
+    typeof o.blendInSec === 'number' && Number.isFinite(o.blendInSec) && o.blendInSec > 0
+      ? Math.min(10, o.blendInSec)
+      : undefined
+  const blendCurve =
+    typeof o.blendCurve === 'string' ? normalizeDirectorKeyframeEasing(o.blendCurve) : undefined
+  return {
+    id: o.id.trim(),
+    cameraId: o.cameraId,
+    start,
+    end,
+    ...(blendInSec != null ? { blendInSec } : {}),
+    ...(blendCurve ? { blendCurve } : {})
+  }
 }
 
 function normalizeDirectorAnimTrack(raw: unknown): DirectorAnimTrack | null {
@@ -1831,6 +1975,18 @@ export interface DirectorViewerState {
   target: StageVec3
   /** 透视视场角（度） */
   fov?: number
+  /** 全画幅等效焦段（mm），与 fov 双向联动 */
+  focalLengthMm?: number
+  /** 希区柯克变焦锁定（Dolly Zoom）：调焦段/FOV 时自动反向推拉机身保持 target 取景大小 */
+  dollyZoomLock?: boolean
+  /** 景深对焦距离（米），缺省取 position 到 target 的距离 */
+  focusDistance?: number
+  /** 光圈 f-stop（1.4 ~ 16，越小虚化越强），缺省关闭景深虚化 */
+  aperture?: number
+  /** 手持呼吸感微抖动参数 */
+  handheldShake?: DirectorHandheldShake
+  /** Unity Cinemachine 虚拟相机参数（Body 跟拍 / Aim 构图锁定 / Group / 6DoF Noise / Impulse 震屏） */
+  cinemachine?: DirectorCinemachineConfig
 }
 
 export const DEFAULT_DIRECTOR_CAMERA_FOV = 50
@@ -1907,6 +2063,12 @@ export function createDefaultDirectorStage(): DirectorStageState {
     cameraShots: [],
     cameraVideos: [],
     aspectRatio: 'auto',
+    compositionGuide: 'none',
+    capturePass: 'rgb',
+    shadowCatcherEnabled: true,
+    shadowCatcherOpacity: 0.35,
+    fogEnabled: false,
+    fogDensity: 0.018,
     world: createDefaultDirectorSceneWorld(),
     skyColor: DEFAULT_DIRECTOR_SKY_COLOR,
     panoramaVisible: true,
@@ -2019,6 +2181,25 @@ export function readDirectorStage(gen?: Record<string, unknown>): DirectorStageS
           .filter((video): video is DirectorCameraVideo => !!video)
       : [],
     aspectRatio: normalizeDirectorAspectRatio(s.aspectRatio),
+    compositionGuide: normalizeDirectorCompositionGuide(s.compositionGuide),
+    capturePass: normalizeDirectorCapturePass(s.capturePass),
+    shadowCatcherEnabled: s.shadowCatcherEnabled === false ? false : true,
+    shadowCatcherOpacity:
+      typeof s.shadowCatcherOpacity === 'number' && Number.isFinite(s.shadowCatcherOpacity)
+        ? Math.min(1, Math.max(0, s.shadowCatcherOpacity))
+        : 0.35,
+    fogEnabled: s.fogEnabled === true,
+    fogDensity:
+      typeof s.fogDensity === 'number' && Number.isFinite(s.fogDensity)
+        ? Math.min(0.25, Math.max(0.001, s.fogDensity))
+        : 0.018,
+    ...(typeof s.fogColor === 'string' &&
+    /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(s.fogColor.trim())
+      ? { fogColor: s.fogColor.trim() }
+      : {}),
+    ...(typeof s.lightingPreset === 'string' && s.lightingPreset.trim()
+      ? { lightingPreset: s.lightingPreset.trim() as DirectorLightingPresetId }
+      : {}),
     world: readDirectorSceneWorld(s.world),
     skyColor: normalizeDirectorSkyColor(s.skyColor),
     panoramaVisible: s.panoramaVisible === false ? false : true,
@@ -2046,11 +2227,21 @@ function normalizeCameraShot(raw: unknown): DirectorCameraShot | null {
   const relativePath =
     typeof o.relativePath === 'string' && o.relativePath.trim() ? o.relativePath.trim() : undefined
   if (!dataUrl && !relativePath) return null
+  const pass = typeof o.pass === 'string' ? normalizeDirectorCapturePass(o.pass) : undefined
+  const cameraId =
+    typeof o.cameraId === 'string' && o.cameraId.trim() ? o.cameraId.trim() : undefined
+  const cameraName =
+    typeof o.cameraName === 'string' && o.cameraName.trim() ? o.cameraName.trim() : undefined
+  const frameRole = o.frameRole === 'first' || o.frameRole === 'last' ? o.frameRole : undefined
   return {
     id: o.id.trim(),
     dataUrl,
     createdAt: typeof o.createdAt === 'string' ? o.createdAt : new Date().toISOString(),
-    ...(relativePath ? { relativePath } : {})
+    ...(relativePath ? { relativePath } : {}),
+    ...(pass && pass !== 'rgb' ? { pass } : {}),
+    ...(cameraId ? { cameraId } : {}),
+    ...(cameraName ? { cameraName } : {}),
+    ...(frameRole ? { frameRole } : {})
   }
 }
 
@@ -2062,11 +2253,13 @@ function normalizeCameraVideo(raw: unknown): DirectorCameraVideo | null {
   const relativePath =
     typeof o.relativePath === 'string' && o.relativePath.trim() ? o.relativePath.trim() : undefined
   if (!dataUrl && !relativePath) return null
+  const pass = typeof o.pass === 'string' ? normalizeDirectorCapturePass(o.pass) : undefined
   return {
     id: o.id.trim(),
     createdAt: typeof o.createdAt === 'string' ? o.createdAt : new Date().toISOString(),
     ...(dataUrl ? { dataUrl } : {}),
-    ...(relativePath ? { relativePath } : {})
+    ...(relativePath ? { relativePath } : {}),
+    ...(pass && pass !== 'rgb' ? { pass } : {})
   }
 }
 
@@ -2080,12 +2273,33 @@ function readDirectorViewer(raw: unknown): DirectorViewerState {
   const rotation = hasRotation
     ? readVec3(v.rotation, base.rotation ?? { x: 0, y: 0, z: 0 })
     : directorViewerRotationFromLook(position, target)
+  const fov = typeof v.fov === 'number' && Number.isFinite(v.fov) ? v.fov : base.fov
+  const focalLengthMm =
+    typeof v.focalLengthMm === 'number' && Number.isFinite(v.focalLengthMm)
+      ? Math.min(300, Math.max(8, v.focalLengthMm))
+      : undefined
+  const focusDistance =
+    typeof v.focusDistance === 'number' && Number.isFinite(v.focusDistance) && v.focusDistance > 0
+      ? Math.min(500, Math.max(0.1, v.focusDistance))
+      : undefined
+  const aperture =
+    typeof v.aperture === 'number' && Number.isFinite(v.aperture) && v.aperture > 0
+      ? Math.min(32, Math.max(1.0, v.aperture))
+      : undefined
+  const handheldShake = normalizeDirectorHandheldShake(v.handheldShake)
+  const cinemachine = normalizeDirectorCinemachineConfig(v.cinemachine)
   return {
     position,
     rotation,
     scale: readVec3(v.scale, base.scale ?? { x: 1, y: 1, z: 1 }),
     target,
-    fov: typeof v.fov === 'number' ? v.fov : base.fov
+    fov,
+    ...(focalLengthMm != null ? { focalLengthMm } : {}),
+    ...(v.dollyZoomLock === true ? { dollyZoomLock: true } : {}),
+    ...(focusDistance != null ? { focusDistance } : {}),
+    ...(aperture != null ? { aperture } : {}),
+    ...(handheldShake ? { handheldShake } : {}),
+    ...(cinemachine ? { cinemachine } : {})
   }
 }
 
@@ -2115,6 +2329,10 @@ function normalizeStageObject(raw: unknown): StageObjectState | null {
     return null
   }
   const parentId = typeof o.parentId === 'string' && o.parentId.trim() ? o.parentId : null
+  const mannequinPreset =
+    typeof o.mannequinPreset === 'string' && STAGE_MANNEQUIN_PRESET_SET.has(o.mannequinPreset)
+      ? (o.mannequinPreset as StageMannequinPreset)
+      : undefined
   return {
     id: o.id,
     name: o.name,
@@ -2125,6 +2343,7 @@ function normalizeStageObject(raw: unknown): StageObjectState | null {
       typeof o.primitive === 'string' && STAGE_PRIMITIVE_SET.has(o.primitive)
         ? (o.primitive as StagePrimitive)
         : undefined,
+    ...(mannequinPreset ? { mannequinPreset } : {}),
     light: kind === 'light' ? normalizeStageLightParams(o.light) : undefined,
     modelAssetId: typeof o.modelAssetId === 'string' ? o.modelAssetId : undefined,
     // Cache 产物不入资产库，丢了这条路径就只能退化成占位方块

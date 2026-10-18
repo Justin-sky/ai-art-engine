@@ -18,7 +18,8 @@
       >
         <canvas ref="previewCanvas" />
         <span class="fov"
-          >FOV {{ Math.round(viewer.fov ?? DEFAULT_DIRECTOR_CAMERA_FOV) }}&deg;</span
+          >{{ t('director.stage.fovShort') }}
+          {{ Math.round(viewer.fov ?? DEFAULT_DIRECTOR_CAMERA_FOV) }}&deg;</span
         >
       </div>
 
@@ -151,10 +152,715 @@
               max="100"
               step="1"
               :disabled="cameraLocked"
-              @input="persistViewer"
+              @input="onFovSliderInput"
             />
             <span>{{ fov }}&deg;</span>
           </label>
+          <div class="section-label">
+            {{ t('director.stage.focalLengthMm') }}
+          </div>
+          <div class="lens-preset-row">
+            <button
+              v-for="mm in focalPresetsMm"
+              :key="mm"
+              type="button"
+              class="lens-pill"
+              :class="{ active: Math.round(focalLengthMm) === mm }"
+              :disabled="cameraLocked"
+              @click="onPickFocalPreset(mm)"
+            >
+              {{ mm }}mm
+            </button>
+            <input
+              v-model.number="focalLengthMm"
+              v-number-scrub
+              type="number"
+              class="lens-mm-input"
+              min="12"
+              max="200"
+              step="1"
+              :disabled="cameraLocked"
+              @input="onFocalLengthInput"
+            />
+          </div>
+          <div class="section-label ground-label">
+            <span>{{ t('director.stage.dollyZoomLock') }}</span>
+            <button
+              type="button"
+              class="ground-switch"
+              role="switch"
+              :aria-checked="dollyZoomLock"
+              :disabled="cameraLocked"
+              :title="t('director.stage.dollyZoomLockHint')"
+              @click="toggleDollyZoomLock"
+            >
+              <span class="ground-switch-thumb" />
+            </button>
+          </div>
+          <p v-if="dollyZoomLock" class="locked-hint">
+            {{ t('director.stage.dollyZoomLockHint') }}
+          </p>
+          <label class="uniform-row">
+            {{ t('director.stage.focusDistance') }}
+            <span class="uniform-control">
+              <input
+                v-model.number="focusDistance"
+                type="range"
+                min="0.5"
+                max="50"
+                step="0.1"
+                :disabled="cameraLocked"
+                @input="persistViewer"
+              />
+              <input
+                v-model.number="focusDistance"
+                v-number-scrub
+                type="number"
+                step="0.1"
+                min="0.5"
+                max="50"
+                :disabled="cameraLocked"
+                @input="persistViewer"
+              />
+            </span>
+          </label>
+          <label class="uniform-row">
+            {{ t('director.stage.aperture') }}
+            <span class="uniform-control">
+              <input
+                v-model.number="aperture"
+                type="range"
+                min="0"
+                max="16"
+                step="0.1"
+                :disabled="cameraLocked"
+                @input="persistViewer"
+              />
+              <input
+                v-model.number="aperture"
+                v-number-scrub
+                type="number"
+                step="0.1"
+                min="0"
+                max="16"
+                :disabled="cameraLocked"
+                @input="persistViewer"
+              />
+            </span>
+          </label>
+          <div class="section-label ground-label">
+            <span>{{ t('director.stage.handheldShake') }}</span>
+            <button
+              type="button"
+              class="ground-switch"
+              role="switch"
+              :aria-checked="shakeEnabled"
+              :disabled="cameraLocked"
+              @click="toggleShakeEnabled"
+            >
+              <span class="ground-switch-thumb" />
+            </button>
+          </div>
+          <template v-if="shakeEnabled">
+            <label class="uniform-row">
+              {{ t('director.stage.handheldShakeIntensity') }}
+              <span class="uniform-control">
+                <input
+                  v-model.number="shakeIntensity"
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  :disabled="cameraLocked"
+                  @input="persistViewer"
+                />
+                <input
+                  v-model.number="shakeIntensity"
+                  v-number-scrub
+                  type="number"
+                  step="0.05"
+                  min="0"
+                  max="1"
+                  :disabled="cameraLocked"
+                  @input="persistViewer"
+                />
+              </span>
+            </label>
+            <label class="uniform-row">
+              {{ t('director.stage.handheldShakeFrequency') }}
+              <span class="uniform-control">
+                <input
+                  v-model.number="shakeFrequency"
+                  type="range"
+                  min="0.1"
+                  max="5"
+                  step="0.1"
+                  :disabled="cameraLocked"
+                  @input="persistViewer"
+                />
+                <input
+                  v-model.number="shakeFrequency"
+                  v-number-scrub
+                  type="number"
+                  step="0.1"
+                  min="0.1"
+                  max="5"
+                  :disabled="cameraLocked"
+                  @input="persistViewer"
+                />
+              </span>
+            </label>
+          </template>
+
+          <div class="section-label ground-label">
+            <span>{{ t('director.stage.cinemachine.sectionTitle') }}</span>
+            <button
+              v-if="hasActiveCinemachine"
+              type="button"
+              class="lens-pill"
+              :disabled="cameraLocked"
+              @click="resetCinemachineConfig"
+            >
+              {{ t('director.stage.cinemachine.reset') }}
+            </button>
+          </div>
+          <label>
+            {{ t('director.stage.cinemachine.bodyMode') }}
+            <select
+              v-model="cmBodyMode"
+              :disabled="cameraLocked"
+              @change="onCinemachineBodyModeChange"
+            >
+              <option value="none">{{ t('director.stage.cinemachine.bodyNone') }}</option>
+              <option value="transposer">
+                {{ t('director.stage.cinemachine.bodyTransposer') }}
+              </option>
+              <option value="orbital">{{ t('director.stage.cinemachine.bodyOrbital') }}</option>
+              <option value="groupFraming">
+                {{ t('director.stage.cinemachine.bodyGroupFraming') }}
+              </option>
+            </select>
+          </label>
+          <template v-if="cmBodyMode === 'transposer' || cmBodyMode === 'orbital'">
+            <label>
+              {{ t('director.stage.cinemachine.followTarget') }}
+              <select v-model="cmFollowTargetId" :disabled="cameraLocked" @change="persistViewer">
+                <option value="">{{ t('director.stage.cinemachine.noTarget') }}</option>
+                <option v-for="sub in stageSubjectObjects" :key="sub.id" :value="sub.id">
+                  {{ sub.name }}
+                </option>
+              </select>
+            </label>
+          </template>
+          <template v-if="cmBodyMode === 'transposer'">
+            <div class="section-label ground-label">
+              <span>{{ t('director.stage.cinemachine.followOffset') }}</span>
+              <button
+                v-if="cmFollowTargetId"
+                type="button"
+                class="lens-pill"
+                :disabled="cameraLocked"
+                @click="captureCurrentFollowOffset"
+              >
+                {{ t('director.stage.cinemachine.captureOffset') }}
+              </button>
+            </div>
+            <label>
+              {{ t('director.stage.cinemachine.followSpace') }}
+              <select v-model="cmFollowSpace" :disabled="cameraLocked" @change="persistViewer">
+                <option value="targetLocal">
+                  {{ t('director.stage.cinemachine.spaceTargetLocal') }}
+                </option>
+                <option value="world">{{ t('director.stage.cinemachine.spaceWorld') }}</option>
+              </select>
+            </label>
+            <div class="vec-row" :class="{ disabled: cameraLocked }">
+              <label>
+                X
+                <input
+                  v-model.number="cmFollowOffsetX"
+                  v-number-scrub
+                  type="number"
+                  step="0.1"
+                  :disabled="cameraLocked"
+                  @input="persistViewer"
+                />
+              </label>
+              <label>
+                Y
+                <input
+                  v-model.number="cmFollowOffsetY"
+                  v-number-scrub
+                  type="number"
+                  step="0.1"
+                  :disabled="cameraLocked"
+                  @input="persistViewer"
+                />
+              </label>
+              <label>
+                Z
+                <input
+                  v-model.number="cmFollowOffsetZ"
+                  v-number-scrub
+                  type="number"
+                  step="0.1"
+                  :disabled="cameraLocked"
+                  @input="persistViewer"
+                />
+              </label>
+            </div>
+          </template>
+          <template v-if="cmBodyMode === 'orbital'">
+            <label class="uniform-row">
+              {{ t('director.stage.cinemachine.orbitRadius') }}
+              <span class="uniform-control">
+                <input
+                  v-model.number="cmOrbitRadius"
+                  type="range"
+                  min="0.5"
+                  max="30"
+                  step="0.1"
+                  :disabled="cameraLocked"
+                  @input="persistViewer"
+                />
+                <input
+                  v-model.number="cmOrbitRadius"
+                  v-number-scrub
+                  type="number"
+                  step="0.1"
+                  min="0.5"
+                  max="30"
+                  :disabled="cameraLocked"
+                  @input="persistViewer"
+                />
+              </span>
+            </label>
+            <label class="uniform-row">
+              {{ t('director.stage.cinemachine.orbitHeight') }}
+              <span class="uniform-control">
+                <input
+                  v-model.number="cmOrbitHeight"
+                  type="range"
+                  min="-5"
+                  max="15"
+                  step="0.1"
+                  :disabled="cameraLocked"
+                  @input="persistViewer"
+                />
+                <input
+                  v-model.number="cmOrbitHeight"
+                  v-number-scrub
+                  type="number"
+                  step="0.1"
+                  min="-5"
+                  max="15"
+                  :disabled="cameraLocked"
+                  @input="persistViewer"
+                />
+              </span>
+            </label>
+            <label class="uniform-row">
+              {{ t('director.stage.cinemachine.orbitSpeed') }}
+              <span class="uniform-control">
+                <input
+                  v-model.number="cmOrbitSpeed"
+                  type="range"
+                  min="-180"
+                  max="180"
+                  step="1"
+                  :disabled="cameraLocked"
+                  @input="persistViewer"
+                />
+                <input
+                  v-model.number="cmOrbitSpeed"
+                  v-number-scrub
+                  type="number"
+                  step="1"
+                  min="-180"
+                  max="180"
+                  :disabled="cameraLocked"
+                  @input="persistViewer"
+                />
+              </span>
+            </label>
+            <label class="uniform-row">
+              {{ t('director.stage.cinemachine.orbitStartAngle') }}
+              <span class="uniform-control">
+                <input
+                  v-model.number="cmOrbitStartAngle"
+                  type="range"
+                  min="-180"
+                  max="180"
+                  step="5"
+                  :disabled="cameraLocked"
+                  @input="persistViewer"
+                />
+                <input
+                  v-model.number="cmOrbitStartAngle"
+                  v-number-scrub
+                  type="number"
+                  step="5"
+                  min="-180"
+                  max="180"
+                  :disabled="cameraLocked"
+                  @input="persistViewer"
+                />
+              </span>
+            </label>
+          </template>
+          <template v-if="cmBodyMode === 'groupFraming'">
+            <label class="uniform-row">
+              {{ t('director.stage.cinemachine.groupFramingScale') }}
+              <span class="uniform-control">
+                <input
+                  v-model.number="cmGroupFramingScale"
+                  type="range"
+                  min="0.6"
+                  max="3"
+                  step="0.05"
+                  :disabled="cameraLocked"
+                  @input="persistViewer"
+                />
+                <input
+                  v-model.number="cmGroupFramingScale"
+                  v-number-scrub
+                  type="number"
+                  step="0.05"
+                  min="0.6"
+                  max="3"
+                  :disabled="cameraLocked"
+                  @input="persistViewer"
+                />
+              </span>
+            </label>
+          </template>
+          <label v-if="cmBodyMode !== 'none'" class="uniform-row">
+            {{ t('director.stage.cinemachine.positionDamping') }}
+            <span class="uniform-control">
+              <input
+                v-model.number="cmPositionDamping"
+                type="range"
+                min="0"
+                max="5"
+                step="0.05"
+                :disabled="cameraLocked"
+                @input="persistViewer"
+              />
+              <input
+                v-model.number="cmPositionDamping"
+                v-number-scrub
+                type="number"
+                step="0.05"
+                min="0"
+                max="5"
+                :disabled="cameraLocked"
+                @input="persistViewer"
+              />
+            </span>
+          </label>
+
+          <label>
+            {{ t('director.stage.cinemachine.aimMode') }}
+            <select
+              v-model="cmAimMode"
+              :disabled="cameraLocked"
+              @change="onCinemachineAimModeChange"
+            >
+              <option value="none">{{ t('director.stage.cinemachine.aimNone') }}</option>
+              <option value="composer">{{ t('director.stage.cinemachine.aimComposer') }}</option>
+              <option value="groupComposer">
+                {{ t('director.stage.cinemachine.aimGroupComposer') }}
+              </option>
+            </select>
+          </label>
+          <template v-if="cmAimMode === 'composer'">
+            <label>
+              {{ t('director.stage.cinemachine.lookAtTarget') }}
+              <select v-model="cmLookAtTargetId" :disabled="cameraLocked" @change="persistViewer">
+                <option value="">{{ t('director.stage.cinemachine.noTarget') }}</option>
+                <option v-for="sub in stageSubjectObjects" :key="sub.id" :value="sub.id">
+                  {{ sub.name }}
+                </option>
+              </select>
+            </label>
+            <label>
+              {{ t('director.stage.cinemachine.aimTargetPart') }}
+              <select v-model="cmAimTargetPart" :disabled="cameraLocked" @change="persistViewer">
+                <option value="head">{{ t('director.stage.cinemachine.partHead') }}</option>
+                <option value="chest">{{ t('director.stage.cinemachine.partChest') }}</option>
+                <option value="root">{{ t('director.stage.cinemachine.partRoot') }}</option>
+              </select>
+            </label>
+          </template>
+          <template v-if="cmAimMode === 'composer' || cmAimMode === 'groupComposer'">
+            <div class="section-label">
+              {{ t('director.stage.cinemachine.screenComposition') }}
+            </div>
+            <div class="lens-preset-row">
+              <button
+                type="button"
+                class="lens-pill"
+                :class="{
+                  active: Math.abs(cmScreenOffsetX) < 0.05 && Math.abs(cmScreenOffsetY) < 0.05
+                }"
+                :disabled="cameraLocked"
+                @click="applyScreenCompositionPreset(0, 0)"
+              >
+                {{ t('director.stage.cinemachine.presetCenter') }}
+              </button>
+              <button
+                type="button"
+                class="lens-pill"
+                :class="{
+                  active:
+                    Math.abs(cmScreenOffsetX + 0.33) < 0.06 &&
+                    Math.abs(cmScreenOffsetY - 0.12) < 0.08
+                }"
+                :disabled="cameraLocked"
+                @click="applyScreenCompositionPreset(-0.33, 0.12)"
+              >
+                {{ t('director.stage.cinemachine.presetLeftThird') }}
+              </button>
+              <button
+                type="button"
+                class="lens-pill"
+                :class="{
+                  active:
+                    Math.abs(cmScreenOffsetX - 0.33) < 0.06 &&
+                    Math.abs(cmScreenOffsetY - 0.12) < 0.08
+                }"
+                :disabled="cameraLocked"
+                @click="applyScreenCompositionPreset(0.33, 0.12)"
+              >
+                {{ t('director.stage.cinemachine.presetRightThird') }}
+              </button>
+              <button
+                type="button"
+                class="lens-pill"
+                :class="{
+                  active:
+                    Math.abs(cmScreenOffsetX) < 0.06 && Math.abs(cmScreenOffsetY + 0.22) < 0.08
+                }"
+                :disabled="cameraLocked"
+                @click="applyScreenCompositionPreset(0, -0.22)"
+              >
+                {{ t('director.stage.cinemachine.presetHeroLow') }}
+              </button>
+            </div>
+            <label class="uniform-row">
+              {{ t('director.stage.cinemachine.screenOffsetX') }}
+              <span class="uniform-control">
+                <input
+                  v-model.number="cmScreenOffsetX"
+                  type="range"
+                  min="-0.8"
+                  max="0.8"
+                  step="0.02"
+                  :disabled="cameraLocked"
+                  @input="persistViewer"
+                />
+                <input
+                  v-model.number="cmScreenOffsetX"
+                  v-number-scrub
+                  type="number"
+                  step="0.02"
+                  min="-0.8"
+                  max="0.8"
+                  :disabled="cameraLocked"
+                  @input="persistViewer"
+                />
+              </span>
+            </label>
+            <label class="uniform-row">
+              {{ t('director.stage.cinemachine.screenOffsetY') }}
+              <span class="uniform-control">
+                <input
+                  v-model.number="cmScreenOffsetY"
+                  type="range"
+                  min="-0.8"
+                  max="0.8"
+                  step="0.02"
+                  :disabled="cameraLocked"
+                  @input="persistViewer"
+                />
+                <input
+                  v-model.number="cmScreenOffsetY"
+                  v-number-scrub
+                  type="number"
+                  step="0.02"
+                  min="-0.8"
+                  max="0.8"
+                  :disabled="cameraLocked"
+                  @input="persistViewer"
+                />
+              </span>
+            </label>
+            <label class="uniform-row">
+              {{ t('director.stage.cinemachine.deadZoneWidth') }}
+              <span class="uniform-control">
+                <input
+                  v-model.number="cmDeadZoneWidth"
+                  type="range"
+                  min="0"
+                  max="0.8"
+                  step="0.02"
+                  :disabled="cameraLocked"
+                  @input="persistViewer"
+                />
+                <input
+                  v-model.number="cmDeadZoneWidth"
+                  v-number-scrub
+                  type="number"
+                  step="0.02"
+                  min="0"
+                  max="0.8"
+                  :disabled="cameraLocked"
+                  @input="persistViewer"
+                />
+              </span>
+            </label>
+            <label class="uniform-row">
+              {{ t('director.stage.cinemachine.deadZoneHeight') }}
+              <span class="uniform-control">
+                <input
+                  v-model.number="cmDeadZoneHeight"
+                  type="range"
+                  min="0"
+                  max="0.8"
+                  step="0.02"
+                  :disabled="cameraLocked"
+                  @input="persistViewer"
+                />
+                <input
+                  v-model.number="cmDeadZoneHeight"
+                  v-number-scrub
+                  type="number"
+                  step="0.02"
+                  min="0"
+                  max="0.8"
+                  :disabled="cameraLocked"
+                  @input="persistViewer"
+                />
+              </span>
+            </label>
+            <label class="uniform-row">
+              {{ t('director.stage.cinemachine.aimDamping') }}
+              <span class="uniform-control">
+                <input
+                  v-model.number="cmAimDamping"
+                  type="range"
+                  min="0"
+                  max="5"
+                  step="0.05"
+                  :disabled="cameraLocked"
+                  @input="persistViewer"
+                />
+                <input
+                  v-model.number="cmAimDamping"
+                  v-number-scrub
+                  type="number"
+                  step="0.05"
+                  min="0"
+                  max="5"
+                  :disabled="cameraLocked"
+                  @input="persistViewer"
+                />
+              </span>
+            </label>
+            <div class="section-label ground-label">
+              <span>{{ t('director.stage.cinemachine.autoFocusPull') }}</span>
+              <button
+                type="button"
+                class="ground-switch"
+                role="switch"
+                :aria-checked="cmAutoFocusPull"
+                :disabled="cameraLocked"
+                :title="t('director.stage.cinemachine.autoFocusPullHint')"
+                @click="toggleCmAutoFocusPull"
+              >
+                <span class="ground-switch-thumb" />
+              </button>
+            </div>
+          </template>
+
+          <label>
+            {{ t('director.stage.cinemachine.noisePreset') }}
+            <select v-model="cmNoisePreset" :disabled="cameraLocked" @change="persistViewer">
+              <option value="none">{{ t('director.stage.cinemachine.noiseNone') }}</option>
+              <option value="handheld">
+                {{ t('director.stage.cinemachine.noiseHandheld') }}
+              </option>
+              <option value="telephoto">
+                {{ t('director.stage.cinemachine.noiseTelephoto') }}
+              </option>
+              <option value="carMount">
+                {{ t('director.stage.cinemachine.noiseCarMount') }}
+              </option>
+              <option value="droneHover">
+                {{ t('director.stage.cinemachine.noiseDroneHover') }}
+              </option>
+            </select>
+          </label>
+          <label class="uniform-row">
+            {{ t('director.stage.cinemachine.impulseIntensity') }}
+            <span class="uniform-control">
+              <input
+                v-model.number="cmImpulseIntensity"
+                type="range"
+                min="0"
+                max="2"
+                step="0.05"
+                :disabled="cameraLocked"
+                @input="persistViewer"
+              />
+              <input
+                v-model.number="cmImpulseIntensity"
+                v-number-scrub
+                type="number"
+                step="0.05"
+                min="0"
+                max="2"
+                :disabled="cameraLocked"
+                @input="persistViewer"
+              />
+            </span>
+          </label>
+          <template v-if="cmImpulseIntensity > 0">
+            <div class="section-label ground-label">
+              <span>{{ t('director.stage.cinemachine.impulseTimeSec') }}</span>
+              <button
+                type="button"
+                class="lens-pill"
+                :disabled="cameraLocked"
+                @click="triggerImpulseAtPlayhead"
+              >
+                {{ t('director.stage.cinemachine.impulseAtPlayhead') }}
+              </button>
+            </div>
+            <label class="uniform-row">
+              {{ t('director.stage.cinemachine.impulseTimeSec') }}
+              <span class="uniform-control">
+                <input
+                  v-model.number="cmImpulseTimeSec"
+                  type="range"
+                  min="0"
+                  :max="scene.stage.value.animation?.duration ?? 10"
+                  step="0.05"
+                  :disabled="cameraLocked"
+                  @input="persistViewer"
+                />
+                <input
+                  v-model.number="cmImpulseTimeSec"
+                  v-number-scrub
+                  type="number"
+                  step="0.05"
+                  min="0"
+                  :disabled="cameraLocked"
+                  @input="persistViewer"
+                />
+              </span>
+            </label>
+          </template>
         </div>
       </template>
 
@@ -464,6 +1170,19 @@
                 </span>
               </label>
             </template>
+            <div class="section-label ground-label">
+              <span>{{ t('director.stage.lightCastShadow') }}</span>
+              <button
+                type="button"
+                class="ground-switch"
+                role="switch"
+                :aria-checked="lightCastShadow"
+                :disabled="obj.locked"
+                @click="toggleLightCastShadow"
+              >
+                <span class="ground-switch-thumb" />
+              </button>
+            </div>
             <p class="locked-hint">
               {{ t('director.stage.lightAimHint') }}
             </p>
@@ -474,7 +1193,7 @@
             </div>
             <div v-for="row in objectMaterialRows" :key="row.key" class="material-textures">
               <div class="material-name">
-                {{ row.label }}
+                {{ formatMaterialSlotLabel(row.label) }}
               </div>
               <div v-for="slotRow in row.slots" :key="slotRow.slot" class="texture-slot-row">
                 <span class="texture-slot-name">
@@ -598,6 +1317,22 @@
           </div>
 
           <div class="section-label">
+            {{ t('director.stage.expressivePoseTitle') }}
+          </div>
+          <div class="pose-preset-list">
+            <button
+              v-for="preset in expressivePosePresets"
+              :key="preset.id"
+              type="button"
+              class="pose-asset-chip"
+              :disabled="obj.locked || !poseBoneNames.length"
+              @click="onApplyExpressivePose(preset.id)"
+            >
+              <span class="pose-asset-name">{{ t(preset.labelKey) }}</span>
+            </button>
+          </div>
+
+          <div class="section-label">
             {{ t('director.stage.poseBones', { n: poseBoneNames.length }) }}
           </div>
           <div class="pose-mode-tabs" role="tablist">
@@ -652,12 +1387,14 @@
                   <option value="">
                     {{
                       slot.autoEffector
-                        ? t('director.stage.poseIkUseAuto', { name: slot.autoEffector })
+                        ? t('director.stage.poseIkUseAuto', {
+                            name: formatBoneLabel(slot.autoEffector)
+                          })
                         : t('director.stage.poseIkPickBone')
                     }}
                   </option>
                   <option v-for="bone in poseBoneNames" :key="bone" :value="bone">
-                    {{ bone }}
+                    {{ formatBoneLabel(bone) }}
                   </option>
                 </select>
               </div>
@@ -682,7 +1419,7 @@
                 @click="onPoseBoneSelect(bone)"
               >
                 <div class="pose-bone-name" :title="bone">
-                  {{ bone }}
+                  {{ formatBoneLabel(bone) }}
                 </div>
                 <div class="pose-bone-sliders" @click.stop>
                   <label v-for="axis in poseAxes" :key="axis" class="pose-axis">
@@ -751,7 +1488,7 @@
                 :title="t('director.stage.panoramaRemove')"
                 @click.stop="clearLinkedPanorama"
               >
-                ?
+                ×
               </button>
             </template>
             <span v-else class="panorama-drop-hint">{{
@@ -959,6 +1696,116 @@
               />
             </span>
           </label>
+
+          <div class="section-label ground-label">
+            <span>{{ t('director.stage.shadowCatcher') }}</span>
+            <button
+              type="button"
+              class="ground-switch"
+              role="switch"
+              :aria-checked="shadowCatcherEnabled"
+              @click="toggleShadowCatcherEnabled"
+            >
+              <span class="ground-switch-thumb" />
+            </button>
+          </div>
+          <label class="uniform-row" :class="{ disabled: !shadowCatcherEnabled }">
+            {{ t('director.stage.shadowCatcherOpacity') }}
+            <span class="uniform-control">
+              <input
+                v-model.number="shadowCatcherOpacity"
+                type="range"
+                min="0"
+                max="1"
+                step="0.02"
+                :disabled="!shadowCatcherEnabled"
+                @input="persistStageEnv"
+              />
+              <input
+                v-model.number="shadowCatcherOpacity"
+                v-number-scrub
+                type="number"
+                step="0.02"
+                min="0"
+                max="1"
+                :disabled="!shadowCatcherEnabled"
+                @input="persistStageEnv"
+              />
+            </span>
+          </label>
+
+          <div class="section-label ground-label">
+            <span>{{ t('director.stage.fog') }}</span>
+            <button
+              type="button"
+              class="ground-switch"
+              role="switch"
+              :aria-checked="fogEnabled"
+              @click="toggleFogEnabled"
+            >
+              <span class="ground-switch-thumb" />
+            </button>
+          </div>
+          <template v-if="fogEnabled">
+            <label class="uniform-row">
+              {{ t('director.stage.fogDensity') }}
+              <span class="uniform-control">
+                <input
+                  v-model.number="fogDensity"
+                  type="range"
+                  min="0"
+                  max="0.15"
+                  step="0.002"
+                  @input="persistStageEnv"
+                />
+                <input
+                  v-model.number="fogDensity"
+                  v-number-scrub
+                  type="number"
+                  step="0.002"
+                  min="0"
+                  max="0.15"
+                  @input="persistStageEnv"
+                />
+              </span>
+            </label>
+            <label class="color-row">
+              {{ t('director.stage.fogColor') }}
+              <span class="color-control">
+                <input v-model="fogColor" type="color" @input="persistStageEnv" />
+                <input v-model="fogColor" type="text" @input="persistStageEnv" />
+              </span>
+            </label>
+          </template>
+
+          <div class="section-label">
+            {{ t('director.stage.lightingPresetTitle') }}
+          </div>
+          <div class="pose-preset-list">
+            <button
+              v-for="preset in lightingPresets"
+              :key="preset.id"
+              type="button"
+              class="pose-asset-chip"
+              @click="onApplyLightingPreset(preset.id)"
+            >
+              <span class="pose-asset-name">{{ t(preset.labelKey) }}</span>
+            </button>
+          </div>
+
+          <div class="section-label ground-label">
+            <span>{{ t('director.stage.cinematographyPromptTitle') }}</span>
+            <button type="button" class="prompt-copy-btn" @click="onCopyCinematographyPrompt">
+              {{
+                promptCopied
+                  ? t('director.stage.cinematographyPromptCopied')
+                  : t('director.stage.cinematographyPromptCopy')
+              }}
+            </button>
+          </div>
+          <div class="prompt-preview-box">
+            {{ scene.cinematographyPrompt.value }}
+          </div>
         </div>
       </template>
 
@@ -999,7 +1846,7 @@
                 :title="t('director.stage.panoramaRemove')"
                 @click.stop="clearLinkedPanorama"
               >
-                ?
+                ×
               </button>
             </template>
             <span v-else class="panorama-drop-hint">{{
@@ -1091,17 +1938,29 @@ import {
   DEFAULT_DIRECTOR_CAMERA_FOV,
   DEFAULT_DIRECTOR_PANORAMA_RADIUS,
   DEFAULT_DIRECTOR_SKY_COLOR,
+  DIRECTOR_EXPRESSIVE_POSE_PRESETS,
+  DIRECTOR_FOCAL_LENGTH_PRESETS_MM,
+  DIRECTOR_LIGHTING_PRESETS,
+  focalLengthMmToFov,
+  fovToFocalLengthMm,
   isDirectorSkyFollowTheme,
   DEFAULT_GRID_OFFSET_Y,
   DEFAULT_GRID_OPACITY,
   DEFAULT_GRID_VISIBLE,
   directorAspectRatioValue,
+  directorViewerHasActiveCinemachine,
   directorViewerRotationFromLook,
   MODEL_POSE_ICON,
   normalizeDirectorSkyColor,
   readDirectorSceneWorld,
   readModelAssetColor,
   isPoseModelAsset,
+  type DirectorCinemachineAimMode,
+  type DirectorCinemachineAimPart,
+  type DirectorCinemachineBodyMode,
+  type DirectorCinemachineFollowSpace,
+  type DirectorCinemachineNoisePreset,
+  type DirectorLightingPresetId,
   type StageTextureSlot,
   createDefaultStageLightParams,
   normalizeStageLightParams
@@ -1133,7 +1992,7 @@ withDefaults(
   { embedded: false }
 )
 
-const { t } = useStudioI18n()
+const { t, te } = useStudioI18n()
 const injectedScene = inject(directorStageSceneKey, null)
 if (!resolveDirectorStageScene(injectedScene)) {
   throw new Error('DirectorStageInspector requires an active director stage scene')
@@ -1157,6 +2016,38 @@ const scaleX = ref(1)
 const scaleY = ref(1)
 const scaleZ = ref(1)
 const fov = ref(DEFAULT_DIRECTOR_CAMERA_FOV)
+const focalLengthMm = ref(fovToFocalLengthMm(DEFAULT_DIRECTOR_CAMERA_FOV))
+const dollyZoomLock = ref(false)
+const focusDistance = ref(3.5)
+const aperture = ref(0)
+const shakeEnabled = ref(false)
+const shakeIntensity = ref(0.25)
+const shakeFrequency = ref(1.2)
+const cmBodyMode = ref<DirectorCinemachineBodyMode>('none')
+const cmFollowTargetId = ref('')
+const cmFollowSpace = ref<DirectorCinemachineFollowSpace>('targetLocal')
+const cmFollowOffsetX = ref(0)
+const cmFollowOffsetY = ref(1.6)
+const cmFollowOffsetZ = ref(3.2)
+const cmPositionDamping = ref(0.35)
+const cmOrbitRadius = ref(3.2)
+const cmOrbitHeight = ref(1.5)
+const cmOrbitSpeed = ref(36)
+const cmOrbitStartAngle = ref(0)
+const cmGroupFramingScale = ref(1.35)
+const cmAimMode = ref<DirectorCinemachineAimMode>('none')
+const cmLookAtTargetId = ref('')
+const cmAimTargetPart = ref<DirectorCinemachineAimPart>('head')
+const cmScreenOffsetX = ref(0)
+const cmScreenOffsetY = ref(0)
+const cmDeadZoneWidth = ref(0)
+const cmDeadZoneHeight = ref(0)
+const cmAimDamping = ref(0.25)
+const cmAutoFocusPull = ref(false)
+const cmNoisePreset = ref<DirectorCinemachineNoisePreset>('none')
+const cmImpulseIntensity = ref(0)
+const cmImpulseTimeSec = ref(0)
+const focalPresetsMm = DIRECTOR_FOCAL_LENGTH_PRESETS_MM
 const cameraName = ref('')
 const isEditingViewer = ref(false)
 
@@ -1176,9 +2067,11 @@ const lightDistance = ref(0)
 const lightDecay = ref(2)
 const lightAngleDeg = ref(30)
 const lightPenumbra = ref(0.25)
+const lightCastShadow = ref(true)
 const objUniformScale = ref(1)
 const isEditingObject = ref(false)
 const objectInspectorTab = ref<'props' | 'pose'>('props')
+const expressivePosePresets = DIRECTOR_EXPRESSIVE_POSE_PRESETS
 
 function defaultObjectColor(o: { kind: string; color?: string; modelAssetId?: string }): string {
   if (o.color) return o.color
@@ -1204,6 +2097,17 @@ const panoramaRadius = ref(DEFAULT_DIRECTOR_PANORAMA_RADIUS)
 const gridVisible = ref(DEFAULT_GRID_VISIBLE)
 const gridOpacity = ref(DEFAULT_GRID_OPACITY)
 const gridOffsetY = ref(DEFAULT_GRID_OFFSET_Y)
+const shadowCatcherEnabled = ref(true)
+const shadowCatcherOpacity = ref(0.35)
+const fogEnabled = ref(false)
+const fogDensity = ref(0.025)
+const fogColor = ref('#0f141c')
+const promptCopied = ref(false)
+const lightingPresets: Array<{ id: DirectorLightingPresetId; labelKey: string }> =
+  DIRECTOR_LIGHTING_PRESETS.map((p) => ({
+    id: p.id,
+    labelKey: p.labelKey
+  }))
 const isEditingScene = ref(false)
 
 const obj = computed(() => scene.selectedObject.value)
@@ -1391,6 +2295,20 @@ function ikSlotLabel(id: (typeof ikTargetSlots.value)[number]['id']): string {
   return map[id]
 }
 
+function formatBoneLabel(bone: string): string {
+  const key = `director.stage.bones.${bone}`
+  return te(key) ? t(key) : bone
+}
+
+function formatMaterialSlotLabel(label: string): string {
+  if (label === 'MannequinBody') return t('director.stage.materialSlot.mannequinBody')
+  if (label === 'MannequinJoints') return t('director.stage.materialSlot.mannequinJoints')
+  if (label === 'MannequinVisor') return t('director.stage.materialSlot.mannequinVisor')
+  const m = label.match(/^material-(\d+)$/i)
+  if (m) return t('director.stage.materialSlot.defaultIndexed', { n: m[1] })
+  return label
+}
+
 const poseAxes = ['x', 'y', 'z'] as const
 
 function onPoseBoneAxis(bone: string, axis: 'x' | 'y' | 'z', event: Event): void {
@@ -1556,15 +2474,17 @@ const selectionTypeLabel = computed(() => {
 const selectionIcon = computed(() => {
   switch (scene.selectionKind.value) {
     case 'camera':
-      return 'CAM'
+      return t('director.stage.selectionBadge.camera')
     case 'object':
-      return obj.value?.kind === 'light' ? 'LIT' : 'OBJ'
+      return obj.value?.kind === 'light'
+        ? t('director.stage.selectionBadge.light')
+        : t('director.stage.selectionBadge.object')
     case 'panorama':
-      return 'PAN'
+      return t('director.stage.selectionBadge.panorama')
     case 'scene':
-      return 'SCN'
+      return t('director.stage.selectionBadge.scene')
     default:
-      return '--'
+      return t('director.stage.selectionBadge.none')
   }
 })
 const linkedPanoramaName = computed(() => {
@@ -1683,6 +2603,40 @@ function finiteInput(value: unknown, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
+const stageSubjectObjects = computed(() =>
+  scene.stage.value.objects.filter((o) => o.kind !== 'light' && o.visible !== false)
+)
+
+const hasActiveCinemachine = computed(() => directorViewerHasActiveCinemachine(viewer.value))
+
+function fillCinemachineLocals(v: typeof viewer.value): void {
+  const cm = v.cinemachine
+  cmBodyMode.value = cm?.bodyMode ?? 'none'
+  cmFollowTargetId.value = cm?.followTargetId ?? ''
+  cmFollowSpace.value = cm?.followSpace ?? 'targetLocal'
+  cmFollowOffsetX.value = cm?.followOffset?.x ?? 0
+  cmFollowOffsetY.value = cm?.followOffset?.y ?? 1.6
+  cmFollowOffsetZ.value = cm?.followOffset?.z ?? 3.2
+  cmPositionDamping.value = cm?.positionDamping ?? 0.35
+  cmOrbitRadius.value = cm?.orbitRadius ?? 3.2
+  cmOrbitHeight.value = cm?.orbitHeight ?? 1.5
+  cmOrbitSpeed.value = cm?.orbitSpeedDegPerSec ?? 36
+  cmOrbitStartAngle.value = cm?.orbitStartAngleDeg ?? 0
+  cmGroupFramingScale.value = cm?.groupFramingScale ?? 1.35
+  cmAimMode.value = cm?.aimMode ?? 'none'
+  cmLookAtTargetId.value = cm?.lookAtTargetId ?? ''
+  cmAimTargetPart.value = cm?.aimTargetPart ?? 'head'
+  cmScreenOffsetX.value = cm?.screenOffset?.x ?? 0
+  cmScreenOffsetY.value = cm?.screenOffset?.y ?? 0
+  cmDeadZoneWidth.value = cm?.deadZoneWidth ?? 0
+  cmDeadZoneHeight.value = cm?.deadZoneHeight ?? 0
+  cmAimDamping.value = cm?.aimDamping ?? 0.25
+  cmAutoFocusPull.value = cm?.autoFocusPull === true
+  cmNoisePreset.value = cm?.noisePreset ?? 'none'
+  cmImpulseIntensity.value = cm?.impulseIntensity ?? 0
+  cmImpulseTimeSec.value = cm?.impulseTimeSec ?? 0
+}
+
 function fillViewerLocals(): void {
   if (isEditingViewer.value) return
   const kfSel = scene.getSelectedAnimKeyframe()
@@ -1703,7 +2657,15 @@ function fillViewerLocals(): void {
     scaleX.value = kf.scale?.x ?? v.scale?.x ?? 1
     scaleY.value = kf.scale?.y ?? v.scale?.y ?? 1
     scaleZ.value = kf.scale?.z ?? v.scale?.z ?? 1
-    fov.value = v.fov ?? DEFAULT_DIRECTOR_CAMERA_FOV
+    fov.value = kf.fov ?? v.fov ?? DEFAULT_DIRECTOR_CAMERA_FOV
+    focalLengthMm.value = fovToFocalLengthMm(fov.value)
+    dollyZoomLock.value = v.dollyZoomLock === true
+    focusDistance.value = v.focusDistance ?? 3.5
+    aperture.value = v.aperture ?? 0
+    shakeEnabled.value = v.handheldShake?.enabled === true
+    shakeIntensity.value = v.handheldShake?.intensity ?? 0.25
+    shakeFrequency.value = v.handheldShake?.frequency ?? 1.2
+    fillCinemachineLocals(v)
     cameraName.value = cameraTitle.value
     return
   }
@@ -1719,6 +2681,14 @@ function fillViewerLocals(): void {
   scaleY.value = v.scale?.y ?? 1
   scaleZ.value = v.scale?.z ?? 1
   fov.value = v.fov ?? DEFAULT_DIRECTOR_CAMERA_FOV
+  focalLengthMm.value = v.focalLengthMm ?? fovToFocalLengthMm(fov.value)
+  dollyZoomLock.value = v.dollyZoomLock === true
+  focusDistance.value = v.focusDistance ?? 3.5
+  aperture.value = v.aperture ?? 0
+  shakeEnabled.value = v.handheldShake?.enabled === true
+  shakeIntensity.value = v.handheldShake?.intensity ?? 0.25
+  shakeFrequency.value = v.handheldShake?.frequency ?? 1.2
+  fillCinemachineLocals(v)
   cameraName.value = cameraTitle.value
 }
 
@@ -1778,6 +2748,7 @@ function fillLightLocals(o: NonNullable<typeof obj.value>): void {
   lightDecay.value = light.decay ?? 2
   lightAngleDeg.value = radToDeg(light.angle ?? Math.PI / 6)
   lightPenumbra.value = light.penumbra ?? 0.25
+  lightCastShadow.value = light.castShadow !== false
 }
 
 function persistLight(): void {
@@ -1792,11 +2763,142 @@ function persistLight(): void {
       distance: Math.max(0, finiteInput(lightDistance.value, base.distance ?? 0)),
       decay: Math.max(0, finiteInput(lightDecay.value, base.decay ?? 2)),
       angle: degToRad(Math.min(90, Math.max(1, finiteInput(lightAngleDeg.value, 30)))),
-      penumbra: Math.min(1, Math.max(0, finiteInput(lightPenumbra.value, base.penumbra ?? 0.25)))
+      penumbra: Math.min(1, Math.max(0, finiteInput(lightPenumbra.value, base.penumbra ?? 0.25))),
+      castShadow: lightCastShadow.value
     },
     base.type
   )
   scene.updateObjectTransform(o.id, { light: next })
+}
+
+function toggleLightCastShadow(): void {
+  lightCastShadow.value = !lightCastShadow.value
+  persistLight()
+}
+
+function onApplyExpressivePose(presetId: string): void {
+  const id = obj.value?.id
+  if (!id || obj.value?.locked) return
+  const res = scene.applyExpressivePosePreset(id, presetId)
+  if (!res) return
+  poseAssetApplyHint.value = t('director.stage.poseAssetApplyHint', {
+    matched: res.matched,
+    total: res.total
+  })
+  syncPoseDegCache()
+}
+
+function onFovSliderInput(): void {
+  focalLengthMm.value = fovToFocalLengthMm(fov.value)
+  persistViewer()
+}
+
+function onPickFocalPreset(mm: number): void {
+  if (cameraLocked.value) return
+  focalLengthMm.value = mm
+  fov.value = Math.round(focalLengthMmToFov(mm))
+  persistViewer()
+}
+
+function onFocalLengthInput(): void {
+  if (cameraLocked.value) return
+  const mm = Math.min(200, Math.max(12, finiteInput(focalLengthMm.value, 35)))
+  focalLengthMm.value = mm
+  fov.value = Math.round(focalLengthMmToFov(mm))
+  persistViewer()
+}
+
+function toggleDollyZoomLock(): void {
+  if (cameraLocked.value) return
+  dollyZoomLock.value = !dollyZoomLock.value
+  persistViewer()
+}
+
+function toggleShakeEnabled(): void {
+  if (cameraLocked.value) return
+  shakeEnabled.value = !shakeEnabled.value
+  persistViewer()
+}
+
+function onCinemachineBodyModeChange(): void {
+  if (cameraLocked.value) return
+  if (
+    (cmBodyMode.value === 'transposer' || cmBodyMode.value === 'orbital') &&
+    !cmFollowTargetId.value
+  ) {
+    const preferred =
+      stageSubjectObjects.value.find((o) => o.kind === 'character' || o.kind === 'model') ??
+      stageSubjectObjects.value[0]
+    if (preferred) cmFollowTargetId.value = preferred.id
+  }
+  persistViewer()
+}
+
+function onCinemachineAimModeChange(): void {
+  if (cameraLocked.value) return
+  if (cmAimMode.value === 'composer' && !cmLookAtTargetId.value) {
+    const preferred =
+      (cmFollowTargetId.value &&
+        stageSubjectObjects.value.find((o) => o.id === cmFollowTargetId.value)) ||
+      stageSubjectObjects.value.find((o) => o.kind === 'character' || o.kind === 'model') ||
+      stageSubjectObjects.value[0]
+    if (preferred) cmLookAtTargetId.value = preferred.id
+  }
+  persistViewer()
+}
+
+function captureCurrentFollowOffset(): void {
+  if (cameraLocked.value || !cmFollowTargetId.value) return
+  const target = scene.stage.value.objects.find((o) => o.id === cmFollowTargetId.value)
+  if (!target) return
+  const v = viewer.value
+  const dx = v.position.x - target.position.x
+  const dy = v.position.y - target.position.y
+  const dz = v.position.z - target.position.z
+  if (cmFollowSpace.value === 'targetLocal') {
+    const yaw = target.rotation.y || 0
+    const cosY = Math.cos(-yaw)
+    const sinY = Math.sin(-yaw)
+    cmFollowOffsetX.value = Number((dx * cosY + dz * sinY).toFixed(2))
+    cmFollowOffsetY.value = Number(dy.toFixed(2))
+    cmFollowOffsetZ.value = Number((-dx * sinY + dz * cosY).toFixed(2))
+  } else {
+    cmFollowOffsetX.value = Number(dx.toFixed(2))
+    cmFollowOffsetY.value = Number(dy.toFixed(2))
+    cmFollowOffsetZ.value = Number(dz.toFixed(2))
+  }
+  persistViewer()
+}
+
+function applyScreenCompositionPreset(x: number, y: number): void {
+  if (cameraLocked.value) return
+  cmScreenOffsetX.value = x
+  cmScreenOffsetY.value = y
+  persistViewer()
+}
+
+function toggleCmAutoFocusPull(): void {
+  if (cameraLocked.value) return
+  cmAutoFocusPull.value = !cmAutoFocusPull.value
+  persistViewer()
+}
+
+function triggerImpulseAtPlayhead(): void {
+  if (cameraLocked.value) return
+  cmImpulseTimeSec.value = Number(scene.animTime.value.toFixed(2))
+  if (cmImpulseIntensity.value <= 0) cmImpulseIntensity.value = 0.5
+  persistViewer()
+}
+
+function resetCinemachineConfig(): void {
+  if (cameraLocked.value) return
+  cmBodyMode.value = 'none'
+  cmAimMode.value = 'none'
+  cmNoisePreset.value = 'none'
+  cmImpulseIntensity.value = 0
+  cmImpulseTimeSec.value = 0
+  cmAutoFocusPull.value = false
+  persistViewer()
 }
 
 function persistViewer(): void {
@@ -1804,6 +2906,10 @@ function persistViewer(): void {
   const current = viewer.value
   const currentRotation =
     current.rotation ?? directorViewerRotationFromLook(current.position, current.target)
+  const nextFov = Math.min(
+    100,
+    Math.max(20, finiteInput(fov.value, current.fov ?? DEFAULT_DIRECTOR_CAMERA_FOV))
+  )
   const next = {
     position: {
       x: finiteInput(posX.value, current.position.x),
@@ -1821,12 +2927,54 @@ function persistViewer(): void {
       z: Math.max(0.001, finiteInput(scaleZ.value, current.scale?.z ?? 1))
     },
     target: current.target,
-    fov: Math.min(
-      100,
-      Math.max(20, finiteInput(fov.value, current.fov ?? DEFAULT_DIRECTOR_CAMERA_FOV))
-    )
+    fov: nextFov,
+    focalLengthMm: fovToFocalLengthMm(nextFov),
+    dollyZoomLock: dollyZoomLock.value,
+    focusDistance: Math.min(50, Math.max(0.5, finiteInput(focusDistance.value, 3.5))),
+    aperture: Math.min(16, Math.max(0, finiteInput(aperture.value, 0))),
+    handheldShake: {
+      enabled: shakeEnabled.value,
+      intensity: Math.min(1, Math.max(0, finiteInput(shakeIntensity.value, 0.25))),
+      frequency: Math.min(5, Math.max(0.1, finiteInput(shakeFrequency.value, 1.2)))
+    },
+    cinemachine: {
+      bodyMode: cmBodyMode.value,
+      followTargetId: cmFollowTargetId.value || null,
+      followOffset: {
+        x: finiteInput(cmFollowOffsetX.value, 0),
+        y: finiteInput(cmFollowOffsetY.value, 1.6),
+        z: finiteInput(cmFollowOffsetZ.value, 3.2)
+      },
+      followSpace: cmFollowSpace.value,
+      positionDamping: Math.min(5, Math.max(0, finiteInput(cmPositionDamping.value, 0.35))),
+      orbitRadius: Math.min(30, Math.max(0.5, finiteInput(cmOrbitRadius.value, 3.2))),
+      orbitHeight: Math.min(15, Math.max(-5, finiteInput(cmOrbitHeight.value, 1.5))),
+      orbitSpeedDegPerSec: Math.min(180, Math.max(-180, finiteInput(cmOrbitSpeed.value, 36))),
+      orbitStartAngleDeg: Math.min(180, Math.max(-180, finiteInput(cmOrbitStartAngle.value, 0))),
+      groupFramingScale: Math.min(3, Math.max(0.6, finiteInput(cmGroupFramingScale.value, 1.35))),
+      aimMode: cmAimMode.value,
+      lookAtTargetId: cmLookAtTargetId.value || null,
+      aimTargetPart: cmAimTargetPart.value,
+      screenOffset: {
+        x: Math.min(0.8, Math.max(-0.8, finiteInput(cmScreenOffsetX.value, 0))),
+        y: Math.min(0.8, Math.max(-0.8, finiteInput(cmScreenOffsetY.value, 0)))
+      },
+      deadZoneWidth: Math.min(0.8, Math.max(0, finiteInput(cmDeadZoneWidth.value, 0))),
+      deadZoneHeight: Math.min(0.8, Math.max(0, finiteInput(cmDeadZoneHeight.value, 0))),
+      aimDamping: Math.min(5, Math.max(0, finiteInput(cmAimDamping.value, 0.25))),
+      autoFocusPull: cmAutoFocusPull.value,
+      noisePreset: cmNoisePreset.value,
+      impulseTimeSec: Math.max(0, finiteInput(cmImpulseTimeSec.value, 0)),
+      impulseIntensity: Math.min(2, Math.max(0, finiteInput(cmImpulseIntensity.value, 0)))
+    }
   }
   scene.setViewer(next)
+  const updated = scene.getViewer()
+  if (dollyZoomLock.value && updated) {
+    posX.value = updated.position.x
+    posY.value = updated.position.y
+    posZ.value = updated.position.z
+  }
 }
 
 function onViewerFocusOut(event: FocusEvent): void {
@@ -1908,6 +3056,53 @@ function fillSceneLocals(): void {
     typeof scene.stage.value.gridOffsetY === 'number'
       ? scene.stage.value.gridOffsetY
       : DEFAULT_GRID_OFFSET_Y
+  shadowCatcherEnabled.value = scene.stage.value.shadowCatcherEnabled !== false
+  shadowCatcherOpacity.value =
+    typeof scene.stage.value.shadowCatcherOpacity === 'number'
+      ? scene.stage.value.shadowCatcherOpacity
+      : 0.35
+  fogEnabled.value = scene.stage.value.fogEnabled === true
+  fogDensity.value =
+    typeof scene.stage.value.fogDensity === 'number' ? scene.stage.value.fogDensity : 0.025
+  fogColor.value = scene.stage.value.fogColor ?? resolveSkyColorForUi(scene.stage.value.skyColor)
+}
+
+function persistStageEnv(): void {
+  scene.updateStageEnvironment({
+    shadowCatcherEnabled: shadowCatcherEnabled.value,
+    shadowCatcherOpacity: Math.min(1, Math.max(0, finiteInput(shadowCatcherOpacity.value, 0.35))),
+    fogEnabled: fogEnabled.value,
+    fogDensity: Math.min(0.15, Math.max(0, finiteInput(fogDensity.value, 0.025))),
+    fogColor: fogColor.value
+  })
+}
+
+function toggleShadowCatcherEnabled(): void {
+  shadowCatcherEnabled.value = !shadowCatcherEnabled.value
+  persistStageEnv()
+}
+
+function toggleFogEnabled(): void {
+  fogEnabled.value = !fogEnabled.value
+  persistStageEnv()
+}
+
+function onApplyLightingPreset(presetId: DirectorLightingPresetId): void {
+  scene.applyLightingPreset(presetId)
+}
+
+async function onCopyCinematographyPrompt(): Promise<void> {
+  const text = scene.cinematographyPrompt.value
+  if (!text) return
+  try {
+    await navigator.clipboard.writeText(text)
+    promptCopied.value = true
+    setTimeout(() => {
+      promptCopied.value = false
+    }, 1800)
+  } catch {
+    // ignore clipboard errors
+  }
 }
 
 function persistSceneWorld(): void {
@@ -2020,7 +3215,12 @@ watch(
     scene.stage.value.panoramaVisible,
     scene.stage.value.gridVisible,
     scene.stage.value.gridOpacity,
-    scene.stage.value.gridOffsetY
+    scene.stage.value.gridOffsetY,
+    scene.stage.value.shadowCatcherEnabled,
+    scene.stage.value.shadowCatcherOpacity,
+    scene.stage.value.fogEnabled,
+    scene.stage.value.fogDensity,
+    scene.stage.value.fogColor
   ],
   () => fillSceneLocals(),
   { deep: true, immediate: true }
@@ -2062,7 +3262,11 @@ function disposePreview(): void {
 function renderPreview(): void {
   const canvas = previewCanvas.value
   if (!canvas || !showCameraPreview.value) return
-  scene.renderCameraPreviewToCanvas(canvas, viewer.value, previewAspectValue.value)
+  const effectiveViewer = scene.resolveEffectiveCameraViewer(
+    selectedCamera.value?.id,
+    selectedCamera.value ? undefined : viewer.value
+  )
+  scene.renderCameraPreviewToCanvas(canvas, effectiveViewer, previewAspectValue.value)
 }
 
 function schedulePreviewRender(): void {
@@ -2898,5 +4102,68 @@ input:not([type]):focus {
   font-size: 12px;
   text-align: center;
   margin: 24px 0;
+}
+
+.lens-preset-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+
+.lens-pill {
+  padding: 4px 7px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.lens-pill:hover:not(:disabled) {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+
+.lens-pill.active {
+  background: color-mix(in srgb, var(--accent) 18%, var(--bg-input));
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  color: var(--text);
+}
+
+.lens-mm-input {
+  width: 58px !important;
+  height: 26px;
+  padding: 0 6px !important;
+  font-size: 11px;
+  text-align: center;
+}
+
+.prompt-copy-btn {
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg-input);
+  color: var(--text-muted);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.prompt-copy-btn:hover {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+
+.prompt-preview-box {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+  word-break: break-word;
+  user-select: text;
 }
 </style>

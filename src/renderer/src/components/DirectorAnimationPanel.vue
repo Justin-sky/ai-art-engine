@@ -253,6 +253,36 @@
                 </div>
               </div>
             </template>
+            <template v-if="track.cameraCut && selectedCameraCutSegment(track)">
+              <label
+                class="skel-speed cut-blend-field"
+                :title="t('director.stage.anim.cutBlendInHint')"
+                @click.stop
+              >
+                <span>{{ t('director.stage.anim.cutBlendIn') }}</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="10"
+                  step="0.1"
+                  :value="(selectedCameraCutSegment(track)?.blendInSec ?? 0).toFixed(1)"
+                  @change="onSelectedCutBlendInChange(track, $event)"
+                />
+              </label>
+              <select
+                v-if="(selectedCameraCutSegment(track)?.blendInSec ?? 0) > 0"
+                class="kf-easing-select"
+                :title="t('director.stage.anim.cutBlendCurve')"
+                :value="selectedCameraCutSegment(track)?.blendCurve ?? 'easeInOut'"
+                @click.stop
+                @change="onSelectedCutBlendCurveChange(track, $event)"
+              >
+                <option value="easeInOut">{{ t('director.stage.anim.easingEaseInOut') }}</option>
+                <option value="linear">{{ t('director.stage.anim.easingLinear') }}</option>
+                <option value="easeIn">{{ t('director.stage.anim.easingEaseIn') }}</option>
+                <option value="easeOut">{{ t('director.stage.anim.easingEaseOut') }}</option>
+              </select>
+            </template>
             <button
               v-if="track.cameraCut"
               type="button"
@@ -295,6 +325,36 @@
             >
               +
             </button>
+            <template v-if="selectedKeyframe(track)">
+              <select
+                class="kf-easing-select"
+                :title="t('director.stage.anim.easing')"
+                :value="selectedKeyframe(track)?.easing ?? 'linear'"
+                @click.stop
+                @change="onSelectedKeyframeEasingChange(track, $event)"
+              >
+                <option value="linear">{{ t('director.stage.anim.easingLinear') }}</option>
+                <option value="easeIn">{{ t('director.stage.anim.easingEaseIn') }}</option>
+                <option value="easeOut">{{ t('director.stage.anim.easingEaseOut') }}</option>
+                <option value="easeInOut">{{ t('director.stage.anim.easingEaseInOut') }}</option>
+              </select>
+              <label
+                v-if="track.targetKind === 'camera'"
+                class="skel-speed kf-fov"
+                :title="t('director.stage.anim.keyframeFov')"
+              >
+                <span>{{ t('director.stage.fovShort') }}</span>
+                <input
+                  type="number"
+                  min="10"
+                  max="120"
+                  step="1"
+                  :value="selectedKeyframeFovValue(track)"
+                  @click.stop
+                  @change="onSelectedKeyframeFovChange(track, $event)"
+                />
+              </label>
+            </template>
             <span class="pos">{{ formatKeyframeHint(track) }}</span>
           </div>
           <div
@@ -319,6 +379,18 @@
                   :value="selectedSkeletonSegment(track)?.speed ?? 1"
                   @click.stop
                   @change="onSelectedSegmentSpeedInput(track, $event)"
+                />
+              </label>
+              <label class="skel-speed" :title="t('director.stage.anim.crossFadeSec')">
+                <span>{{ t('director.stage.anim.crossFadeSec') }}</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="2"
+                  step="0.05"
+                  :value="selectedSkeletonSegment(track)?.crossFadeSec ?? 0.25"
+                  @click.stop
+                  @change="onSelectedSegmentCrossFadeInput(track, $event)"
                 />
               </label>
               <button
@@ -445,10 +517,20 @@
                 @click.stop="scene.selectCameraCutSegment(track.id, seg.id)"
               >
                 <span
+                  v-if="(seg.blendInSec ?? 0) > 0"
+                  class="cut-blend-ramp"
+                  :style="cameraCutBlendRampStyle(seg)"
+                />
+                <span
                   class="skel-handle left"
                   @pointerdown.stop="onCameraCutSegPointerDown($event, track.id, seg.id, 'left')"
                 />
-                <span class="cut-clip-label">{{ cameraName(seg.cameraId) }}</span>
+                <span class="cut-clip-label">
+                  {{ cameraName(seg.cameraId) }}
+                  <span v-if="(seg.blendInSec ?? 0) > 0" class="cut-blend-tag">
+                    ~{{ (seg.blendInSec ?? 0).toFixed(1) }}s
+                  </span>
+                </span>
                 <span
                   class="skel-handle right"
                   @pointerdown.stop="onCameraCutSegPointerDown($event, track.id, seg.id, 'right')"
@@ -476,9 +558,11 @@ import {
   directorTrackCameraCutSegments,
   directorTrackSkeletonClips,
   isAnimationModelAsset,
+  type DirectorAnimKeyframe,
   type DirectorAnimPathKind,
   type DirectorAnimTrack,
   type DirectorCameraCutSegment,
+  type DirectorKeyframeEasing,
   type DirectorPathForwardAxis,
   type DirectorSkeletonClipSegment
 } from '@shared/domain'
@@ -527,7 +611,7 @@ const pathIcons: Record<DirectorAnimPathKind, string> = {
   pen: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/></svg>'
 }
 
-const { t } = useStudioI18n()
+const { t, te } = useStudioI18n()
 const scene = inject(directorStageSceneKey)!
 const workspace = useWorkspaceStore()
 
@@ -672,7 +756,9 @@ function selectedSkeletonSegment(track: DirectorAnimTrack): DirectorSkeletonClip
 }
 
 function skeletonSegLabel(seg: DirectorSkeletonClipSegment): string {
-  return skeletonClipLabel(seg.clip, 0)
+  const raw = skeletonClipLabel(seg.clip, 0)
+  const key = `director.stage.anim.builtinClips.${raw}`
+  return te(key) ? t(key) : raw
 }
 
 function skeletonSegTitle(seg: DirectorSkeletonClipSegment): string {
@@ -707,7 +793,48 @@ function cameraCutSegStyle(seg: DirectorCameraCutSegment): Record<string, string
 }
 
 function cameraCutSegTitle(seg: DirectorCameraCutSegment): string {
-  return `${cameraName(seg.cameraId)} · ${seg.start.toFixed(2)}s – ${seg.end.toFixed(2)}s`
+  const base = `${cameraName(seg.cameraId)} · ${seg.start.toFixed(2)}s – ${seg.end.toFixed(2)}s`
+  if ((seg.blendInSec ?? 0) > 0) {
+    return `${base} · ${t('director.stage.anim.cutBlendIn')} ${(seg.blendInSec ?? 0).toFixed(2)}s`
+  }
+  return base
+}
+
+function selectedCameraCutSegment(track: DirectorAnimTrack): DirectorCameraCutSegment | null {
+  const id = scene.animSelectedCameraCutSegmentId.value
+  const list = cameraCutSegments(track)
+  if (!list.length) return null
+  if (id) {
+    const found = list.find((s) => s.id === id)
+    if (found) return found
+  }
+  return null
+}
+
+function cameraCutBlendRampStyle(seg: DirectorCameraCutSegment): Record<string, string> {
+  const span = Math.max(0.05, seg.end - seg.start)
+  const blend = Math.min(span, Math.max(0, seg.blendInSec ?? 0))
+  const pct = Math.min(100, (blend / span) * 100)
+  return {
+    width: `${pct}%`
+  }
+}
+
+function onSelectedCutBlendInChange(track: DirectorAnimTrack, event: Event): void {
+  const seg = selectedCameraCutSegment(track)
+  if (!seg) return
+  const val = Number((event.target as HTMLInputElement).value)
+  if (!Number.isFinite(val)) return
+  scene.setCameraCutSegmentBlend(track.id, seg.id, {
+    blendInSec: Math.max(0, Math.min(seg.end - seg.start, val))
+  })
+}
+
+function onSelectedCutBlendCurveChange(track: DirectorAnimTrack, event: Event): void {
+  const seg = selectedCameraCutSegment(track)
+  if (!seg) return
+  const curve = (event.target as HTMLSelectElement).value as DirectorKeyframeEasing
+  scene.setCameraCutSegmentBlend(track.id, seg.id, { blendCurve: curve })
 }
 
 /** 在播放头位置给当前激活相机添加一段机位区间 */
@@ -920,6 +1047,16 @@ function onSelectedSegmentSpeedInput(track: DirectorAnimTrack, event: Event): vo
   })
 }
 
+function onSelectedSegmentCrossFadeInput(track: DirectorAnimTrack, event: Event): void {
+  const seg = selectedSkeletonSegment(track)
+  if (!seg) return
+  const crossFadeSec = Number((event.target as HTMLInputElement).value)
+  if (!Number.isFinite(crossFadeSec)) return
+  scene.updateSkeletonClipSegment(track.id, seg.id, {
+    crossFadeSec: Math.min(2, Math.max(0, crossFadeSec))
+  })
+}
+
 function toggleSelectedSegmentLoop(track: DirectorAnimTrack): void {
   const seg = selectedSkeletonSegment(track)
   if (!seg) return
@@ -930,6 +1067,50 @@ function removeSelectedSegment(track: DirectorAnimTrack): void {
   const seg = selectedSkeletonSegment(track)
   if (!seg) return
   scene.removeSkeletonClipSegment(track.id, seg.id)
+}
+
+function selectedKeyframe(track: DirectorAnimTrack): DirectorAnimKeyframe | null {
+  const kfs = track.keyframes ?? []
+  if (!kfs.length) return null
+  if (track.id === selectedTrackId.value && selectedKeyframeId.value) {
+    const found = kfs.find((kf) => kf.id === selectedKeyframeId.value)
+    if (found) return found
+  }
+  return (
+    kfs.find((kf) => Math.abs(kf.time - currentTime.value) < 0.06) ??
+    kfs
+      .slice()
+      .sort(
+        (a, b) => Math.abs(a.time - currentTime.value) - Math.abs(b.time - currentTime.value)
+      )[0] ??
+    null
+  )
+}
+
+function selectedKeyframeFovValue(track: DirectorAnimTrack): number {
+  const kf = selectedKeyframe(track)
+  if (kf && typeof kf.fov === 'number' && Number.isFinite(kf.fov)) {
+    return Math.round(kf.fov)
+  }
+  const cam = scene.stage.value.cameras?.find((c) => c.id === track.targetId)
+  return Math.round(cam?.viewer.fov ?? 50)
+}
+
+function onSelectedKeyframeEasingChange(track: DirectorAnimTrack, event: Event): void {
+  const kf = selectedKeyframe(track)
+  if (!kf) return
+  const raw = (event.target as HTMLSelectElement).value as DirectorKeyframeEasing
+  scene.setAnimKeyframeTransform(track.id, kf.id, { easing: raw })
+}
+
+function onSelectedKeyframeFovChange(track: DirectorAnimTrack, event: Event): void {
+  const kf = selectedKeyframe(track)
+  if (!kf) return
+  const fov = Number((event.target as HTMLInputElement).value)
+  if (!Number.isFinite(fov)) return
+  scene.setAnimKeyframeTransform(track.id, kf.id, {
+    fov: Math.min(120, Math.max(10, fov))
+  })
 }
 
 function formatKeyframeHint(track: DirectorAnimTrack): string {
@@ -1752,6 +1933,21 @@ onBeforeUnmount(() => {
   background: rgba(91, 156, 245, 0.2);
 }
 
+.kf-easing-select {
+  height: 20px;
+  padding: 0 4px;
+  border: 1px solid var(--wash-12);
+  border-radius: 4px;
+  background: #15181c;
+  color: var(--text);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.kf-fov input {
+  width: 38px !important;
+}
+
 .skel-badge {
   margin-left: 6px;
   padding: 0 5px;
@@ -2075,6 +2271,8 @@ onBeforeUnmount(() => {
 }
 
 .cut-clip-label {
+  position: relative;
+  z-index: 1;
   flex: 1;
   min-width: 0;
   padding: 0 4px;
@@ -2084,6 +2282,28 @@ onBeforeUnmount(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   pointer-events: none;
+}
+
+.cut-blend-ramp {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, rgba(255, 214, 102, 0.55), rgba(255, 214, 102, 0.15));
+  clip-path: polygon(0 100%, 100% 0, 100% 100%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.cut-blend-tag {
+  margin-left: 3px;
+  color: #ffe08a;
+  font-size: 9px;
+  opacity: 0.92;
+}
+
+.cut-blend-field input {
+  width: 40px !important;
 }
 
 .skel-count {

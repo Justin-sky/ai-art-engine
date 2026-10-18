@@ -147,7 +147,8 @@
     >
       <template v-if="menuMode === 'item'">
         <button type="button" class="menu-item" role="menuitem" @click="copyContextItems">
-          {{ t('director.stage.copy') }}
+          <span class="menu-item-icon" aria-hidden="true" v-html="COPY_ICON" />
+          <span class="menu-item-label">{{ t('director.stage.copy') }}</span>
         </button>
         <button
           type="button"
@@ -156,7 +157,8 @@
           :disabled="!scene.canPasteStageClipboard()"
           @click="pasteContextItems"
         >
-          {{ t('director.stage.paste') }}
+          <span class="menu-item-icon" aria-hidden="true" v-html="PASTE_ICON" />
+          <span class="menu-item-label">{{ t('director.stage.paste') }}</span>
         </button>
         <div class="menu-sep" />
         <button
@@ -167,7 +169,8 @@
           :title="contextDeleteTitle"
           @click="deleteContextItem"
         >
-          {{ t('director.stage.deleteObject') }}
+          <span class="menu-item-icon" aria-hidden="true" v-html="DELETE_ICON" />
+          <span class="menu-item-label">{{ t('director.stage.deleteObject') }}</span>
         </button>
       </template>
       <template v-else>
@@ -178,14 +181,29 @@
           :disabled="!scene.canPasteStageClipboard()"
           @click="pasteContextItems"
         >
-          {{ t('director.stage.paste') }}
+          <span class="menu-item-icon" aria-hidden="true" v-html="PASTE_ICON" />
+          <span class="menu-item-label">{{ t('director.stage.paste') }}</span>
         </button>
         <div class="menu-sep" />
         <button type="button" class="menu-item" role="menuitem" @click="createCamera">
-          {{ t('director.stage.createCamera') }}
+          <span class="menu-item-icon" aria-hidden="true" v-html="CAMERA_ICON" />
+          <span class="menu-item-label">{{ t('director.stage.createCamera') }}</span>
         </button>
         <button type="button" class="menu-item" role="menuitem" @click="createEmpty">
-          {{ t('director.stage.createEmpty') }}
+          <span class="menu-item-icon" aria-hidden="true" v-html="EMPTY_OBJECT_ICON" />
+          <span class="menu-item-label">{{ t('director.stage.createEmpty') }}</span>
+        </button>
+        <div class="menu-sep" />
+        <button
+          v-for="item in mannequinItems"
+          :key="item.preset"
+          type="button"
+          class="menu-item"
+          role="menuitem"
+          @click="createMannequin(item.preset)"
+        >
+          <span class="menu-item-icon" aria-hidden="true" v-html="item.icon" />
+          <span class="menu-item-label">{{ t(item.labelKey) }}</span>
         </button>
         <div class="menu-sep" />
         <button
@@ -196,7 +214,8 @@
           role="menuitem"
           @click="createLight(item.type)"
         >
-          {{ t(item.labelKey) }}
+          <span class="menu-item-icon" aria-hidden="true" v-html="item.icon" />
+          <span class="menu-item-label">{{ t(item.labelKey) }}</span>
         </button>
         <div class="menu-sep" />
         <button
@@ -207,7 +226,8 @@
           role="menuitem"
           @click="createPrimitive(item.primitive)"
         >
-          {{ t(item.labelKey) }}
+          <span class="menu-item-icon" aria-hidden="true" v-html="item.icon" />
+          <span class="menu-item-label">{{ t(item.labelKey) }}</span>
         </button>
       </template>
     </div>
@@ -225,6 +245,7 @@ import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } fr
 import {
   DIRECTOR_PANORAMA_HIERARCHY_ID,
   type StageLightType,
+  type StageMannequinPreset,
   type StagePrimitive
 } from '@shared/domain'
 import { useStudioI18n } from '../composables/useStudioI18n'
@@ -317,34 +338,111 @@ let renameCommitted = false
 const RENAME_CLICK_DELAY_MS = 480
 let renameTimer: ReturnType<typeof setTimeout> | null = null
 
-const lightItems: { type: StageLightType; labelKey: string }[] = [
-  { type: 'directional', labelKey: 'director.stage.light.directional' },
-  { type: 'point', labelKey: 'director.stage.light.point' },
-  { type: 'spot', labelKey: 'director.stage.light.spot' }
+const COPY_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`
+const PASTE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>`
+const DELETE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>`
+const EMPTY_OBJECT_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2.2"/><path d="M12 3v6.8M12 14.2V21M3 12h6.8M14.2 12H21"/><path d="M6.2 6.2l4.2 4.2M13.6 13.6l4.2 4.2"/></svg>`
+
+const MANNEQUIN_HUMANOID_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="4.5" r="2.3"/><path d="M6.5 9.2h11"/><path d="M12 6.8v7.4"/><path d="M9.5 21l2.5-6.8 2.5 6.8"/></svg>`
+const MANNEQUIN_CHIBI_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="7.2" r="4.2"/><path d="M7.5 14h9"/><path d="M12 11.4v5.1"/><path d="M9.6 20.8l2.4-4.3 2.4 4.3"/></svg>`
+const MANNEQUIN_QUADRUPED_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16.5 9.5 19 7l2 1.5-1.2 3.2-3.3.3Z"/><path d="M6.5 11.5h10v3.2H6.5a2 2 0 0 1-2-2v-1.2Z"/><path d="M6.5 11.5 3.5 9.5"/><path d="M7.5 14.7v4.8M10.2 14.7v4.8M14.2 14.7v4.8M16.5 14.7v4.8"/></svg>`
+
+const LIGHT_DIRECTIONAL_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="3.2"/><path d="M13 13l7 7M16.5 10.5l4.5 4.5M10.5 16.5l4.5 4.5"/><path d="M17 20h3v-3"/></svg>`
+const LIGHT_POINT_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.5"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.2 5.2l1.6 1.6M17.2 17.2l1.6 1.6M5.2 18.8l1.6-1.6M17.2 6.8l1.6-1.6"/></svg>`
+const LIGHT_SPOT_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 3.5h5l1.5 3.5h-8l1.5-3.5Z"/><path d="M8 7l-4.5 12h17L16 7"/><ellipse cx="12" cy="19" rx="8.5" ry="2"/></svg>`
+
+const PRIM_BOX_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.8 20.5 7v10L12 21.2 3.5 17V7L12 2.8Z"/><path d="M3.7 7.2 12 11.8l8.3-4.6"/><path d="M12 11.8v9.2"/></svg>`
+const PRIM_SPHERE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><ellipse cx="12" cy="12" rx="8.5" ry="3.2"/><ellipse cx="12" cy="12" rx="3.2" ry="8.5"/></svg>`
+const PRIM_CAPSULE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="6.5" y="2.8" width="11" height="18.4" rx="5.5"/><path d="M6.5 12c0 1.4 2.5 2.5 5.5 2.5s5.5-1.1 5.5-2.5"/></svg>`
+const PRIM_CYLINDER_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="6" rx="7" ry="2.8"/><path d="M5 6v12c0 1.55 3.13 2.8 7 2.8s7-1.25 7-2.8V6"/></svg>`
+const PRIM_CONE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2 4.5 18"/><path d="M12 3.2 19.5 18"/><ellipse cx="12" cy="18" rx="7.5" ry="2.6"/></svg>`
+const PRIM_PYRAMID_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2 3.2 16.8 12 20.8l8.8-4L12 3.2Z"/><path d="M12 3.2v17.6"/></svg>`
+const PRIM_HEMISPHERE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 15.5a8.5 8.5 0 0 1 17 0"/><ellipse cx="12" cy="15.5" rx="8.5" ry="2.8"/></svg>`
+const PRIM_TORUS_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="12" rx="9" ry="5.5"/><ellipse cx="12" cy="11.5" rx="3.8" ry="1.8"/></svg>`
+const PRIM_ARCH_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V11a8 8 0 0 1 16 0v9h-4.5v-8a3.5 3.5 0 0 0-7 0v8H4Z"/></svg>`
+const PRIM_POINTED_ARCH_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20v-8c0-4.2 3.5-7.6 8-9.2 4.5 1.6 8 5 8 9.2v8h-4.5v-7.2c0-2.1-1.5-4-3.5-5-2 1-3.5 2.9-3.5 5V20H4Z"/></svg>`
+const PRIM_CROSS_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 3.5h5v6h6v5h-6v6h-5v-6h-6v-5h6v-6Z"/></svg>`
+const PRIM_TUBE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="6.2" rx="7.2" ry="2.8"/><ellipse cx="12" cy="6.2" rx="3.2" ry="1.2"/><path d="M4.8 6.2v11.6c0 1.55 3.22 2.8 7.2 2.8s7.2-1.25 7.2-2.8V6.2"/></svg>`
+const PRIM_PRISM_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12,2.8 19,5.8 19,18.2 12,21.2 5,18.2 5,5.8"/><path d="M5 5.8 12 8.8l7-3"/><path d="M12 8.8v12.4"/></svg>`
+const PRIM_TETRAHEDRON_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12,3 3.5,18.5 20.5,18.5"/><path d="M12 3v10.5M12 13.5 3.5 18.5M12 13.5l8.5 5"/></svg>`
+const PRIM_OCTAHEDRON_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12,2.5 20.5,12 12,21.5 3.5,12"/><path d="M3.5 12 12 14.5 20.5 12"/><path d="M12 2.5v19"/></svg>`
+const PRIM_ICOSPHERE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><polygon points="12,2.5 19.8,7 19.8,17 12,21.5 4.2,17 4.2,7"/><polygon points="12,6.5 16.8,14.8 7.2,14.8"/><path d="M12 2.5v4M19.8 7l-3 7.8M4.2 7l3 7.8M12 21.5l-4.8-6.7M12 21.5l4.8-6.7"/></svg>`
+const PRIM_WEDGE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 17.5 14.5 5.5l6 3v9l-11 3-6-3Z"/><path d="M14.5 5.5v9l-11 3"/><path d="M14.5 14.5l6 3"/></svg>`
+const PRIM_DISC_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="12" rx="8.8" ry="5.2"/><circle cx="12" cy="12" r="1.2"/><path d="M12 12l6.2-3.6"/></svg>`
+const PRIM_RING_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.2"/></svg>`
+const PRIM_PLANE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12,5 21,11.5 12,18 3,11.5"/><path d="M7.5 8.25 16.5 14.75M16.5 8.25 7.5 14.75"/></svg>`
+const PRIM_QUAD_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="4.5" width="15" height="15" rx="1.5"/><path d="M4.5 19.5 19.5 4.5"/></svg>`
+
+const mannequinItems: { preset: StageMannequinPreset; labelKey: string; icon: string }[] = [
+  {
+    preset: 'humanoid',
+    labelKey: 'director.stage.mannequin.humanoid',
+    icon: MANNEQUIN_HUMANOID_ICON
+  },
+  { preset: 'chibi', labelKey: 'director.stage.mannequin.chibi', icon: MANNEQUIN_CHIBI_ICON },
+  {
+    preset: 'quadruped',
+    labelKey: 'director.stage.mannequin.quadruped',
+    icon: MANNEQUIN_QUADRUPED_ICON
+  }
 ]
 
-const primitiveItems: { primitive: StagePrimitive; labelKey: string }[] = [
-  { primitive: 'box', labelKey: 'director.stage.primitive.cube' },
-  { primitive: 'sphere', labelKey: 'director.stage.primitive.sphere' },
-  { primitive: 'capsule', labelKey: 'director.stage.primitive.capsule' },
-  { primitive: 'cylinder', labelKey: 'director.stage.primitive.cylinder' },
-  { primitive: 'cone', labelKey: 'director.stage.primitive.cone' },
-  { primitive: 'pyramid', labelKey: 'director.stage.primitive.pyramid' },
-  { primitive: 'hemisphere', labelKey: 'director.stage.primitive.hemisphere' },
-  { primitive: 'torus', labelKey: 'director.stage.primitive.torus' },
-  { primitive: 'arch', labelKey: 'director.stage.primitive.arch' },
-  { primitive: 'pointedArch', labelKey: 'director.stage.primitive.pointedArch' },
-  { primitive: 'cross', labelKey: 'director.stage.primitive.cross' },
-  { primitive: 'tube', labelKey: 'director.stage.primitive.tube' },
-  { primitive: 'prism', labelKey: 'director.stage.primitive.prism' },
-  { primitive: 'tetrahedron', labelKey: 'director.stage.primitive.tetrahedron' },
-  { primitive: 'octahedron', labelKey: 'director.stage.primitive.octahedron' },
-  { primitive: 'icosphere', labelKey: 'director.stage.primitive.icosphere' },
-  { primitive: 'wedge', labelKey: 'director.stage.primitive.wedge' },
-  { primitive: 'disc', labelKey: 'director.stage.primitive.disc' },
-  { primitive: 'ring', labelKey: 'director.stage.primitive.ring' },
-  { primitive: 'plane', labelKey: 'director.stage.primitive.plane' },
-  { primitive: 'quad', labelKey: 'director.stage.primitive.quad' }
+const lightItems: { type: StageLightType; labelKey: string; icon: string }[] = [
+  {
+    type: 'directional',
+    labelKey: 'director.stage.light.directional',
+    icon: LIGHT_DIRECTIONAL_ICON
+  },
+  { type: 'point', labelKey: 'director.stage.light.point', icon: LIGHT_POINT_ICON },
+  { type: 'spot', labelKey: 'director.stage.light.spot', icon: LIGHT_SPOT_ICON }
+]
+
+const primitiveItems: { primitive: StagePrimitive; labelKey: string; icon: string }[] = [
+  { primitive: 'box', labelKey: 'director.stage.primitive.cube', icon: PRIM_BOX_ICON },
+  { primitive: 'sphere', labelKey: 'director.stage.primitive.sphere', icon: PRIM_SPHERE_ICON },
+  { primitive: 'capsule', labelKey: 'director.stage.primitive.capsule', icon: PRIM_CAPSULE_ICON },
+  {
+    primitive: 'cylinder',
+    labelKey: 'director.stage.primitive.cylinder',
+    icon: PRIM_CYLINDER_ICON
+  },
+  { primitive: 'cone', labelKey: 'director.stage.primitive.cone', icon: PRIM_CONE_ICON },
+  { primitive: 'pyramid', labelKey: 'director.stage.primitive.pyramid', icon: PRIM_PYRAMID_ICON },
+  {
+    primitive: 'hemisphere',
+    labelKey: 'director.stage.primitive.hemisphere',
+    icon: PRIM_HEMISPHERE_ICON
+  },
+  { primitive: 'torus', labelKey: 'director.stage.primitive.torus', icon: PRIM_TORUS_ICON },
+  { primitive: 'arch', labelKey: 'director.stage.primitive.arch', icon: PRIM_ARCH_ICON },
+  {
+    primitive: 'pointedArch',
+    labelKey: 'director.stage.primitive.pointedArch',
+    icon: PRIM_POINTED_ARCH_ICON
+  },
+  { primitive: 'cross', labelKey: 'director.stage.primitive.cross', icon: PRIM_CROSS_ICON },
+  { primitive: 'tube', labelKey: 'director.stage.primitive.tube', icon: PRIM_TUBE_ICON },
+  { primitive: 'prism', labelKey: 'director.stage.primitive.prism', icon: PRIM_PRISM_ICON },
+  {
+    primitive: 'tetrahedron',
+    labelKey: 'director.stage.primitive.tetrahedron',
+    icon: PRIM_TETRAHEDRON_ICON
+  },
+  {
+    primitive: 'octahedron',
+    labelKey: 'director.stage.primitive.octahedron',
+    icon: PRIM_OCTAHEDRON_ICON
+  },
+  {
+    primitive: 'icosphere',
+    labelKey: 'director.stage.primitive.icosphere',
+    icon: PRIM_ICOSPHERE_ICON
+  },
+  { primitive: 'wedge', labelKey: 'director.stage.primitive.wedge', icon: PRIM_WEDGE_ICON },
+  { primitive: 'disc', labelKey: 'director.stage.primitive.disc', icon: PRIM_DISC_ICON },
+  { primitive: 'ring', labelKey: 'director.stage.primitive.ring', icon: PRIM_RING_ICON },
+  { primitive: 'plane', labelKey: 'director.stage.primitive.plane', icon: PRIM_PLANE_ICON },
+  { primitive: 'quad', labelKey: 'director.stage.primitive.quad', icon: PRIM_QUAD_ICON }
 ]
 
 const filtered = computed(() => {
@@ -563,6 +661,11 @@ function createEmpty(): void {
 function createCamera(): void {
   closeMenu()
   scene.createCameraObject()
+}
+
+function createMannequin(preset: StageMannequinPreset): void {
+  closeMenu()
+  scene.createMannequinObject(preset, selectedParentId())
 }
 
 function createPrimitive(primitive: StagePrimitive): void {
@@ -1077,12 +1180,30 @@ const NAME_OFF_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor
 
 .create-menu {
   z-index: 30;
-  min-width: 140px;
+  min-width: 172px;
+  max-height: min(420px, calc(100% - 46px));
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   padding: 4px;
   border-radius: 6px;
   border: 1px solid var(--border);
   background: var(--bg-elevated);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.create-menu::-webkit-scrollbar {
+  width: 6px;
+}
+
+.create-menu::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb, rgba(255, 255, 255, 0.22));
+  border-radius: 3px;
+}
+
+.create-menu::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .create-menu.dropdown {
@@ -1093,10 +1214,13 @@ const NAME_OFF_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor
 
 .create-menu.context {
   position: absolute;
+  max-height: min(420px, calc(100% - 12px));
 }
 
 .menu-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   width: 100%;
   padding: 6px 10px;
   border: none;
@@ -1108,12 +1232,45 @@ const NAME_OFF_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor
   cursor: pointer;
 }
 
+.menu-item-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: color 0.12s ease;
+}
+
+.menu-item-icon :deep(svg) {
+  width: 15px;
+  height: 15px;
+  display: block;
+}
+
+.menu-item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .menu-item:hover {
   background: rgba(91, 156, 245, 0.2);
 }
 
+.menu-item:hover:not(:disabled) .menu-item-icon {
+  color: #7fb0f5;
+}
+
 .menu-item.danger {
   color: #f07178;
+}
+
+.menu-item.danger .menu-item-icon {
+  color: currentColor;
 }
 
 .menu-item.danger:hover:not(:disabled) {

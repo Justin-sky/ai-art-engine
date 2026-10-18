@@ -13,6 +13,7 @@ import {
   chatPreviewKind,
   type ChatPreviewKind
 } from '../features/media/chatPreviewKind'
+import { readGraphRunText } from '../features/graph/readGraphRunText'
 import { useStudioI18n } from '../composables/useStudioI18n'
 
 const props = defineProps<{ relativePath: string }>()
@@ -44,9 +45,18 @@ const typeBadge = computed(() => {
 
 const fileUrl = ref('')
 const previewUrl = ref('')
+const htmlDocUrl = ref('')
 /** 是否已完成 URL 解析尝试（无论成败），用于区分「解析中」与「解析失败」 */
 const resolved = ref(false)
 let disposed = false
+let loadSeq = 0
+
+function releaseHtmlDoc(): void {
+  const url = htmlDocUrl.value
+  htmlDocUrl.value = ''
+  if (!url || typeof window.studio?.releaseGameplayDocument !== 'function') return
+  void window.studio.releaseGameplayDocument(url).catch(() => {})
+}
 
 /** 动图（GIF）：缩略图只剩首帧，进入视口后才换原文件播动画 */
 const animated = computed(() => isAnimatedPlaybackPath(props.relativePath))
@@ -77,26 +87,63 @@ function observePlayback(el: HTMLElement | null | undefined): void {
 
 watch(imageRef, observePlayback, { flush: 'post' })
 
-onMounted(async () => {
+async function loadPreview(): Promise<void> {
+  const seq = ++loadSeq
+  resolved.value = false
+  releaseHtmlDoc()
   // 3D 模型由 ModelPreview 自行加载；未知类型不需要媒体 URL
-  if (kind.value === 'model' || kind.value === 'file') return
+  if (kind.value === 'model' || kind.value === 'file') {
+    resolved.value = true
+    return
+  }
+  if (kind.value === 'html') {
+    try {
+      const html = await readGraphRunText(props.relativePath)
+      if (disposed || seq !== loadSeq) return
+      if (html.trim() && typeof window.studio?.openGameplayDocument === 'function') {
+        const docUrl = await window.studio.openGameplayDocument(html)
+        if (disposed || seq !== loadSeq) {
+          void window.studio.releaseGameplayDocument?.(docUrl).catch(() => {})
+          return
+        }
+        htmlDocUrl.value = docUrl
+      }
+    } catch {
+      // 解析失败：htmlDocUrl 保持空串，模板降级为路径文本
+    } finally {
+      if (!disposed && seq === loadSeq) resolved.value = true
+    }
+    return
+  }
   try {
     fileUrl.value = await resolveAssetFileUrl(props.relativePath)
-    if (disposed) return
+    if (disposed || seq !== loadSeq) return
     if (kind.value === 'image' || kind.value === 'video') {
       previewUrl.value = await resolveAssetPreviewUrl(props.relativePath)
     }
   } catch {
     // 解析失败：fileUrl / previewUrl 保持空串，模板降级为路径文本
   } finally {
-    if (!disposed) resolved.value = true
+    if (!disposed && seq === loadSeq) resolved.value = true
   }
+}
+
+onMounted(() => {
+  void loadPreview()
 })
+
+watch(
+  () => props.relativePath,
+  () => {
+    void loadPreview()
+  }
+)
 
 onBeforeUnmount(() => {
   disposed = true
   stopObservingView?.()
   stopObservingView = null
+  releaseHtmlDoc()
 })
 
 /** 图片点击：复用资产全图预览弹窗 */
@@ -135,6 +182,16 @@ async function onImageClick(): Promise<void> {
     />
     <audio v-else-if="kind === 'audio'" class="chat-asset-audio" :src="fileUrl" controls />
     <ModelPreview v-else-if="kind === 'model'" :relative-path="props.relativePath" />
+    <template v-else-if="kind === 'html'">
+      <iframe
+        v-if="htmlDocUrl"
+        class="chat-asset-html"
+        :title="props.relativePath"
+        sandbox="allow-scripts allow-pointer-lock"
+        :src="htmlDocUrl"
+      />
+      <span v-else-if="resolved" class="chat-asset-file">{{ props.relativePath }}</span>
+    </template>
     <span v-else class="chat-asset-file">{{ props.relativePath }}</span>
   </div>
 </template>
@@ -145,6 +202,7 @@ async function onImageClick(): Promise<void> {
   flex-direction: column;
   align-items: flex-start;
   gap: 4px;
+  width: 100%;
   min-width: 0;
   /* 徽标要贴在预览图左上角，所以这里做定位上下文 */
   position: relative;
@@ -194,6 +252,15 @@ img.chat-asset-media {
 .chat-asset-audio {
   width: 100%;
   height: 32px;
+}
+
+.chat-asset-html {
+  display: block;
+  width: 100%;
+  height: 280px;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: 6px;
+  background: var(--graph-preview-bg);
 }
 
 .chat-asset-file {

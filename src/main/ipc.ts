@@ -57,16 +57,24 @@ import { mcpActivityService } from './services/mcpActivityService'
 import { getFfmpegRuntimeStatus, installFfmpeg } from './services/ffmpegInstallService'
 import {
   abortHarnessTask,
+  controlHarnessGoal,
+  deleteHarnessSchedule,
   deleteHarnessSession,
+  exportHarnessSession,
   getDshSkillsInfo,
   getHarnessStatus,
   getSessionSkills,
   handleApprovalResponse,
   handleAskUserResponse,
+  notifyHarnessCanvasEvent,
   openDshSkillsDir,
+  openHarnessFile,
   prewarmHarness,
+  rewindHarnessSession,
   runHarnessJobWait,
   runHarnessTask,
+  searchHarnessSessions,
+  steerHarnessTurn,
   writeDshSkillsTemplate
 } from './services/deepseekHarnessService'
 import {
@@ -727,6 +735,34 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.HARNESS_ABORT, () => abortHarnessTask())
   handle(IpcChannels.HARNESS_PREWARM, () => prewarmHarness())
   handle(IpcChannels.HARNESS_DELETE_SESSION, (sessionId: string) => deleteHarnessSession(sessionId))
+  handle(
+    IpcChannels.HARNESS_EXPORT_SESSION,
+    (input: import('@shared/ipc').ExportHarnessSessionInput) => exportHarnessSession(input)
+  )
+  handle(
+    IpcChannels.HARNESS_REWIND_SESSION,
+    (input: import('@shared/ipc').RewindHarnessSessionInput) => rewindHarnessSession(input)
+  )
+  handle(
+    IpcChannels.HARNESS_SEARCH_SESSIONS,
+    (input: import('@shared/ipc').SearchHarnessSessionsInput) => searchHarnessSessions(input)
+  )
+  handle(IpcChannels.HARNESS_CONTROL_GOAL, (input: import('@shared/ipc').ControlHarnessGoalInput) =>
+    controlHarnessGoal(input)
+  )
+  handle(
+    IpcChannels.HARNESS_DELETE_SCHEDULE,
+    (input: import('@shared/ipc').DeleteHarnessScheduleInput) => deleteHarnessSchedule(input)
+  )
+  handle(IpcChannels.HARNESS_OPEN_FILE, (input: import('@shared/ipc').OpenHarnessFileInput) =>
+    openHarnessFile(input)
+  )
+  handle(IpcChannels.HARNESS_STEER, (input: import('@shared/ipc').SteerHarnessTurnInput) =>
+    steerHarnessTurn(input)
+  )
+  handle(IpcChannels.HARNESS_CANVAS_EVENT, (input: import('@shared/ipc').HarnessCanvasEventInput) =>
+    notifyHarnessCanvasEvent(input)
+  )
   handle(IpcChannels.SKILLS_GET_INFO, () => getDshSkillsInfo())
   handle(IpcChannels.SKILLS_OPEN_DIR, () => openDshSkillsDir())
   handle(IpcChannels.SKILLS_WRITE_TEMPLATE, () => writeDshSkillsTemplate())

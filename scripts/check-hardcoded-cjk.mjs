@@ -39,6 +39,8 @@ const EXEMPT_FILES = new Set([
   'src/shared/graph/systemPromptSchemes.ts',
   'src/shared/graph/emotionPad.ts',
   'src/renderer/src/features/director/aiPosePresets.ts',
+  'src/shared/directorCinematography.ts',
+  'src/renderer/src/features/director/directorAiBlocking.ts',
   'src/shared/graph/smartCut.ts',
   'src/shared/graph/videoReview.ts',
   // YOLO COCO 标签双语数据字典（labelZh 写回资产 meta，非 UI 文案）

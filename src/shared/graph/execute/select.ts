@@ -1,4 +1,8 @@
-import { resolveMotionImageItems, resolveMotionVideoItems } from '../motionShots'
+import {
+  resolveMotionImageItems,
+  resolveMotionPromptText,
+  resolveMotionVideoItems
+} from '../motionShots'
 import type { GraphImageItem, GraphValue, GraphVideoItem, NodeExecuteContext } from './types'
 import {
   flattenImagesValues,
@@ -51,18 +55,21 @@ export function executeCamera3dNode(ctx: NodeExecuteContext): Record<string, Gra
       createdAt: video.createdAt,
       ...(video.relativePath ? { relativePath: video.relativePath } : {})
     }))
+  const promptText = resolveMotionPromptText(undefined, ctx.node.params, ctx.node.id)
   return {
     'out-shots': { kind: 'images', items },
-    'out-actions': { kind: 'videos', items: videoItems }
+    'out-actions': { kind: 'videos', items: videoItems },
+    'out-prompt': { kind: 'text', text: promptText }
   }
 }
 
-/** 画布上拖入的导演台资产引用：从资产 stage/graph 读取站位/动作 */
+/** 画布上拖入的导演台资产引用：从资产 stage/graph 读取站位/动作/运镜词 */
 export function executeMotionAssetRefNode(ctx: NodeExecuteContext): Record<string, GraphValue> {
   const genParams = ctx.node.assetId ? ctx.resolveAssetGenParams?.(ctx.node.assetId) : undefined
   const items = resolveMotionImageItems(genParams, ctx.node.params, ctx.node.id)
   const videoItems = resolveMotionVideoItems(genParams, ctx.node.params, ctx.node.id)
-  if (items.length || videoItems.length) {
+  const promptText = resolveMotionPromptText(genParams, ctx.node.params, ctx.node.id)
+  if (items.length || videoItems.length || promptText) {
     const cameraShots = items.map((image, index) => ({
       id: image.id ?? `shot:${index}`,
       dataUrl: image.dataUrl,
@@ -78,13 +85,15 @@ export function executeMotionAssetRefNode(ctx: NodeExecuteContext): Record<strin
     ctx.patchNode?.({
       params: {
         ...(cameraShots.length ? { cameraShots, previewDataUrl: cameraShots[0]?.dataUrl } : {}),
-        ...(cameraVideos.length ? { cameraVideos } : {})
+        ...(cameraVideos.length ? { cameraVideos } : {}),
+        ...(promptText ? { directorPrompt: promptText } : {})
       }
     })
   }
   return {
     'out-shots': { kind: 'images', items },
-    'out-actions': { kind: 'videos', items: videoItems }
+    'out-actions': { kind: 'videos', items: videoItems },
+    'out-prompt': { kind: 'text', text: promptText }
   }
 }
 

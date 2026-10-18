@@ -17,6 +17,7 @@
  */
 import {
   AUDIO_FILE_EXTENSIONS,
+  HTML_FILE_EXTENSIONS,
   IMAGE_FILE_EXTENSIONS,
   MODEL_FILE_EXTENSIONS,
   SPLAT_EXTENSIONS,
@@ -61,7 +62,9 @@ const SCANNED_MEDIA_EXTS = new Set<string>([
   ...VIDEO_FILE_EXTENSIONS,
   ...AUDIO_FILE_EXTENSIONS,
   // 3D：网格 + 高斯泼溅（泼溅登记为 model 资产，也能预览）
-  ...MODEL_FILE_EXTENSIONS
+  ...MODEL_FILE_EXTENSIONS,
+  // 自包含交互页面 / HTML（技能产出的交互图解等）
+  ...HTML_FILE_EXTENSIONS
 ])
 
 /** 扫盘命中的单个产物文件 */
@@ -120,9 +123,22 @@ export function cacheAssetStem(relativePath: string): string {
   return base.replace(/\.[^.]+$/, '') || 'asset'
 }
 
+/** 文件名本身是否为可预览产物（非元数据 / 非脚手架模板，且扩展名在预览白名单内） */
+export function isPreviewableOutputFileName(fileName: string): boolean {
+  const base = fileName.trim()
+  if (!base || base.startsWith('.')) return false
+  const lower = base.toLowerCase()
+  if (lower.endsWith('.asset.json')) return false
+  if (lower.endsWith('.thumbnail.webp')) return false
+  if (lower.endsWith('.template.html')) return false
+  const dot = lower.lastIndexOf('.')
+  if (dot < 0) return false
+  return SCANNED_MEDIA_EXTS.has(lower.slice(dot + 1))
+}
+
 /**
  * 是否属于可出卡的产物路径：位于 `Output/` 或 `Cache/` 下（至少「目录 / 文件」两段）、
- * 不含隐藏路径段、扩展名可预览，且不是元数据文件（`.asset.json` / 缩略图）。
+ * 不含隐藏路径段、非 `Cache/GamePlayJobs/` 脚手架目录、扩展名可预览，且不是元数据文件。
  */
 export function isScannedOutputPath(relativePath: string): boolean {
   const posix = normalizeOutputPathKey(relativePath)
@@ -131,13 +147,10 @@ export function isScannedOutputPath(relativePath: string): boolean {
   if (segments.length < 2) return false
   const top = segments[0]!.toLowerCase()
   if (!SCANNED_OUTPUT_DIRS.some((dir) => dir.toLowerCase() === top)) return false
+  if (top === 'cache' && segments[1]?.toLowerCase() === 'gameplayjobs') return false
   if (segments.some((segment) => segment.startsWith('.'))) return false
   const base = segments[segments.length - 1]!
-  if (base.endsWith('.asset.json')) return false
-  if (base.endsWith('.thumbnail.webp')) return false
-  const dot = base.lastIndexOf('.')
-  if (dot < 0) return false
-  return SCANNED_MEDIA_EXTS.has(base.slice(dot + 1).toLowerCase())
+  return isPreviewableOutputFileName(base)
 }
 
 /**
@@ -262,13 +275,21 @@ export function groupRoundOutputs(
 function pickGroupRepresentative(files: ProjectOutputFile[]): ProjectOutputFile {
   const first = files[0]!
   const splat = files.find((file) => isSplatMediaPath(file.relativePath))
-  return splat ?? first
+  if (splat) return splat
+  const html = files.find((file) => isHtmlMediaPath(file.relativePath))
+  return html ?? first
 }
 
 /** 是否高斯泼溅产物（扩展名大小写不敏感；带查询串也能判） */
 export function isSplatMediaPath(relativePath: string): boolean {
   const clean = normalizeOutputPathKey(relativePath).split(/[?#]/)[0]?.toLowerCase() ?? ''
   return SPLAT_EXTENSIONS.some((ext) => clean.endsWith(ext))
+}
+
+/** 是否 HTML 交互页面产物 */
+export function isHtmlMediaPath(relativePath: string): boolean {
+  const clean = normalizeOutputPathKey(relativePath).split(/[?#]/)[0]?.toLowerCase() ?? ''
+  return HTML_FILE_EXTENSIONS.some((ext) => clean.endsWith(`.${ext}`))
 }
 
 /**

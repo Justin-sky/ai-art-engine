@@ -78,6 +78,7 @@ import {
   STAGE_TEXTURE_SLOTS,
   type StageTextureSlot,
   type StageVec3,
+  type StageMannequinPreset,
   type TransformMode,
   type DirectorShadingMode,
   normalizeDirectorShadingMode,
@@ -86,6 +87,27 @@ import {
   type DirectorIkChainSlotId,
   type AssetInfo
 } from '@shared/domain'
+import {
+  focalLengthToVerticalFov,
+  verticalFovToFocalLength,
+  solveDollyZoomPosition,
+  evaluateHandheldCameraShake,
+  buildLightingPresetObjects,
+  findDirectorExpressivePosePreset,
+  buildDirectorCinematographyPrompt,
+  normalizeDirectorCompositionGuide,
+  normalizeDirectorCapturePass,
+  normalizeDirectorCinemachineConfig,
+  directorViewerHasActiveCinemachine,
+  solveCinemachineVirtualCamera,
+  solveCinemachineBrainCutAtTime,
+  type CinemachineRuntimeMemory,
+  type CinemachineSceneObjectInput,
+  type DirectorCompositionGuide,
+  type DirectorCapturePass,
+  type DirectorLightingPresetId,
+  type DirectorKeyframeEasing
+} from '@shared/directorCinematography'
 import {
   findDirectorComboCameraPreset,
   findDirectorShotCameraPreset,
@@ -108,13 +130,24 @@ import {
 } from './animationPath'
 import {
   clampSkeletonSegmentRange,
-  findActiveSkeletonSegment,
+  findActiveSkeletonSegmentsWithBlend,
   placeSkeletonSegmentRange,
   skeletonClipLabel,
   skeletonClipOption,
   skeletonSegmentLocalTime,
   type SkeletonClipOption
 } from './skeletonAnim'
+import { createBuiltinMannequin } from './builtinMannequin'
+import {
+  createShadowCatcherPlane,
+  syncShadowCatcherPlane,
+  syncStageAtmosphericFog,
+  applyPanoramaEnvironmentMap,
+  applyCapturePassState,
+  restoreCapturePassState,
+  applyCanvasDofBlurIfEnabled
+} from './directorRenderPasses'
+import { generateAiDirectorBlocking } from './directorAiBlocking'
 import {
   retargetClipToCharacter,
   collectPoseEditBoneNames,
@@ -188,7 +221,7 @@ export interface UseDirectorStageSceneOptions {
 export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   const project = useProjectStore()
   const editor = useEditorKernel()
-  const { t } = useStudioI18n()
+  const { t, locale } = useStudioI18n()
   const { asset } = useAssetRecord(options.directorAssetId)
   const graphHostId = computed(() => `asset:${options.directorAssetId}`)
 
@@ -245,6 +278,24 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       stage.value.aspectRatio = value
     }
   })
+  const compositionGuide = computed<DirectorCompositionGuide>(() =>
+    normalizeDirectorCompositionGuide(stage.value.compositionGuide)
+  )
+  const capturePass = computed<DirectorCapturePass>(() =>
+    normalizeDirectorCapturePass(stage.value.capturePass)
+  )
+
+  function setCompositionGuide(guide: DirectorCompositionGuide): void {
+    stage.value.compositionGuide = normalizeDirectorCompositionGuide(guide)
+    previewRevision.value += 1
+    schedulePersist()
+  }
+
+  function setCapturePass(pass: DirectorCapturePass): void {
+    stage.value.capturePass = normalizeDirectorCapturePass(pass)
+    previewRevision.value += 1
+    schedulePersist()
+  }
 
   function currentPanoramaRadius(): number {
     return clampDirectorPanoramaRadius(
@@ -294,6 +345,8 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   const bindPoseSnapshots = new Map<string, Map<string, BindPoseRecord>>()
   let panoramaSphere: THREE.Mesh | null = null
   let panoramaTexture: THREE.Texture | null = null
+  let envMapRenderTarget: THREE.WebGLRenderTarget | null = null
+  let shadowCatcherPlane: THREE.Mesh<THREE.PlaneGeometry, THREE.ShadowMaterial> | null = null
   let grid: THREE.GridHelper | null = null
   let resizeObserver: ResizeObserver | null = null
   let rafId = 0
@@ -320,6 +373,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   const gizmoSize = ref(1)
   const sceneLabelsVisible = ref(true)
   const cameraGizmosVisible = ref(true)
+  const lightGizmosVisible = ref(shadingMode.value !== 'shaded')
   const gridGizmoVisible = ref(true)
   /** 截屏 / 视频导出是否把场景文字标签画进输出画面 */
   const captureLabelsVisible = ref(false)
@@ -369,12 +423,16 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
 
   const animPlaying = ref(false)
   const animTime = ref(0)
-  /** ?????????????????????? */
+  /** 动画播放速率（倍速） */
   const animPlaybackRate = ref(1)
   const animExporting = ref(false)
   const animSelectedTrackId = ref<string | null>(null)
   const animSelectedKeyframeId = ref<string | null>(null)
   const animSelectedCameraCutSegmentId = ref<string | null>(null)
+  /** Cinemachine 虚拟相机阻尼记忆与当前帧解算缓存 */
+  const cinemachineMemories = new Map<string, CinemachineRuntimeMemory>()
+  const runtimeSolvedCameraViewers = new Map<string, DirectorViewerState>()
+  let runtimeBlendedCameraViewer: DirectorViewerState | null = null
   const pathDrawMode = ref<{ trackId: string; kind: DirectorAnimPathKind } | null>(null)
   const stageEditMode = ref<DirectorStageEditMode>('scene')
   const pathDrawDraft = ref<StageVec3[]>([])
@@ -479,7 +537,9 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     width: number,
     height: number,
     targetCanvas: HTMLCanvasElement = previewCanvas,
-    includeLabels = false
+    includeLabels = false,
+    capturePass: DirectorCapturePass = 'rgb',
+    viewerForDof?: DirectorViewerState
   ): boolean {
     if (!renderer || !scene || width <= 0 || height <= 0) return false
     const rt = ensureShotRenderTarget(width, height)
@@ -495,7 +555,16 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     renderer.getScissor(prevScissor)
     const prevScissorTest = renderer.getScissorTest()
     offscreenCaptureLock += 1
+    let passState: ReturnType<typeof applyCapturePassState> | null = null
     try {
+      passState = applyCapturePassState({
+        pass: capturePass,
+        scene,
+        camera: cam,
+        objectGroup: contentRoot ?? new THREE.Group(),
+        panoramaMesh: panoramaSphere,
+        shadowCatcher: shadowCatcherPlane
+      })
       runWithoutStageGizmos(() => {
         renderer!.setRenderTarget(rt)
         renderer!.setViewport(0, 0, width, height)
@@ -515,7 +584,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       gl.finish()
       const buffer = new Uint8Array(width * height * 4)
       renderer.readRenderTargetPixels(rt, 0, 0, width, height, buffer)
-      if (bufferLooksEmpty(buffer)) {
+      if (bufferLooksEmpty(buffer) && capturePass === 'rgb') {
         // ???????? RT ??????
         shotRenderTarget?.dispose()
         shotRenderTarget = null
@@ -545,11 +614,21 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       const imageData = new ImageData(width, height)
       imageData.data.set(pixels)
       ctx.putImageData(imageData, 0, 0)
-      if (includeLabels) {
+      if (capturePass === 'rgb' && viewerForDof) {
+        const blurred = applyCanvasDofBlurIfEnabled(targetCanvas, viewerForDof)
+        if (blurred !== targetCanvas) {
+          ctx.clearRect(0, 0, width, height)
+          ctx.drawImage(blurred, 0, 0)
+        }
+      }
+      if (includeLabels && capturePass === 'rgb') {
         drawCapturedLabels(ctx, cam, width, height)
       }
       return true
     } finally {
+      if (scene && passState) {
+        restoreCapturePassState(scene, cam, panoramaSphere, shadowCatcherPlane, passState)
+      }
       renderer.setRenderTarget(prevTarget, prevActiveCubeFace, prevActiveMipmapLevel)
       renderer.setViewport(prevViewport)
       renderer.setScissor(prevScissor)
@@ -608,18 +687,91 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     }
   }
 
-  function buildShotCamera(aspect: number): THREE.PerspectiveCamera {
-    const viewer = activeCameraState().viewer
+  function currentViewportAspect(): number {
+    const el = options.viewportEl.value
+    return directorAspectRatioValue(aspectRatio.value, el?.clientWidth ?? 16, el?.clientHeight ?? 9)
+  }
+
+  function resolveAnimatedSceneObjectsSnapshot(): CinemachineSceneObjectInput[] {
+    return stage.value.objects.map((o) => {
+      const mesh = objectMeshes.get(o.id)
+      if (!mesh) return o
+      return {
+        id: o.id,
+        kind: o.kind,
+        visible: o.visible,
+        position: { x: mesh.position.x, y: mesh.position.y, z: mesh.position.z },
+        rotation: { x: mesh.rotation.x, y: mesh.rotation.y, z: mesh.rotation.z },
+        scale: { x: mesh.scale.x, y: mesh.scale.y, z: mesh.scale.z }
+      }
+    })
+  }
+
+  function resolveEffectiveCameraViewer(
+    cameraId?: string,
+    viewerOverride?: DirectorViewerState
+  ): DirectorViewerState {
+    if (viewerOverride) {
+      if (directorViewerHasActiveCinemachine(viewerOverride)) {
+        return solveCinemachineVirtualCamera(
+          viewerOverride,
+          resolveAnimatedSceneObjectsSnapshot(),
+          animTime.value,
+          null,
+          currentViewportAspect()
+        ).viewer
+      }
+      return viewerOverride
+    }
+    if ((!cameraId || cameraId === stage.value.activeCameraId) && runtimeBlendedCameraViewer) {
+      return runtimeBlendedCameraViewer
+    }
+    const id = cameraId ?? activeCameraState().id
+    const cached = runtimeSolvedCameraViewers.get(id)
+    if (cached) return cached
+    const camState = getCameraState(id) ?? activeCameraState()
+    if (directorViewerHasActiveCinemachine(camState.viewer)) {
+      const solved = solveCinemachineVirtualCamera(
+        camState.viewer,
+        resolveAnimatedSceneObjectsSnapshot(),
+        animTime.value,
+        cinemachineMemories.get(camState.id) ?? null,
+        currentViewportAspect()
+      )
+      cinemachineMemories.set(camState.id, solved.memory)
+      return solved.viewer
+    }
+    return camState.viewer
+  }
+
+  function buildShotCamera(
+    aspect: number,
+    viewerOverride?: DirectorViewerState
+  ): THREE.PerspectiveCamera {
+    const viewer = resolveEffectiveCameraViewer(undefined, viewerOverride)
     const shotCam = new THREE.PerspectiveCamera(
       viewer.fov ?? DEFAULT_DIRECTOR_CAMERA_FOV,
       aspect,
       0.1,
       currentPanoramaRadius() * DIRECTOR_CAMERA_FAR_RADIUS_MULTIPLIER
     )
-    shotCam.position.set(viewer.position.x, viewer.position.y, viewer.position.z)
+    const shake =
+      (animPlaying.value || animExporting.value) && viewer.handheldShake?.enabled
+        ? evaluateHandheldCameraShake(animTime.value, viewer.handheldShake)
+        : null
+    shotCam.position.set(
+      viewer.position.x + (shake?.posOffset.x ?? 0),
+      viewer.position.y + (shake?.posOffset.y ?? 0),
+      viewer.position.z + (shake?.posOffset.z ?? 0)
+    )
     const rotation =
       viewer.rotation ?? directorViewerRotationFromLook(viewer.position, viewer.target)
-    shotCam.rotation.set(rotation.x, rotation.y, rotation.z, 'XYZ')
+    shotCam.rotation.set(
+      rotation.x + (shake?.rotOffset.x ?? 0),
+      rotation.y + (shake?.rotOffset.y ?? 0),
+      rotation.z + (shake?.rotOffset.z ?? 0),
+      'XYZ'
+    )
     const scale = viewer.scale ?? { x: 1, y: 1, z: 1 }
     shotCam.scale.set(scale.x, scale.y, scale.z)
     shotCam.updateProjectionMatrix()
@@ -661,6 +813,12 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       !stage.value.cameras.some((camera) => camera.id === stage.value.activeCameraId)
     ) {
       stage.value.activeCameraId = resolved.activeCameraId
+    }
+    const defaultLabel = t('director.stage.cameraItem')
+    for (const cam of stage.value.cameras) {
+      if (cam.name === 'Camera 1' && defaultLabel !== 'Camera 1') {
+        cam.name = defaultLabel
+      }
     }
     return stage.value.cameras
   }
@@ -859,12 +1017,17 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     return collectDescendantIds(childId).has(parentId)
   }
 
+  const cinematographyPrompt = computed(
+    () => buildDirectorCinematographyPrompt(stage.value, locale.value).prompt
+  )
+
   function updateDirectorProcessingNode(
     params: Partial<{
       viewer: DirectorViewerState
       cameraShots: DirectorCameraShot[]
       cameraVideos: DirectorCameraVideo[]
       previewDataUrl: string
+      directorPrompt: string
     }>
   ): void {
     const node = directorProcessingNode()
@@ -894,6 +1057,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       viewer: activeCameraState().viewer,
       cameraShots: shots,
       cameraVideos: videos,
+      directorPrompt: buildDirectorCinematographyPrompt(stage.value).prompt,
       ...(preview ? { previewDataUrl: preview } : {})
     })
   }
@@ -901,10 +1065,35 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   function setViewerFromInspector(viewer: DirectorViewerState): void {
     const selected = selectedCameraId.value ? getCameraState(selectedCameraId.value) : null
     if (!selected || isCameraLocked(selected.id)) return
-    const rotation =
-      viewer.rotation ?? directorViewerRotationFromLook(viewer.position, viewer.target)
+    const prev = selected.viewer
+    const prevFov = prev.fov ?? DEFAULT_DIRECTOR_CAMERA_FOV
+    let nextFov = viewer.fov ?? prevFov
+    let nextFocalLengthMm = viewer.focalLengthMm ?? prev.focalLengthMm
+    if (
+      viewer.focalLengthMm != null &&
+      viewer.focalLengthMm !== prev.focalLengthMm &&
+      (viewer.fov == null || viewer.fov === prev.fov)
+    ) {
+      nextFov = focalLengthToVerticalFov(viewer.focalLengthMm)
+    } else if (nextFov !== prevFov || nextFocalLengthMm == null) {
+      nextFocalLengthMm = verticalFovToFocalLength(nextFov)
+    }
+
+    const dollyZoomLock = viewer.dollyZoomLock ?? prev.dollyZoomLock
+    let nextPosition = { ...viewer.position }
+    if (
+      dollyZoomLock &&
+      Math.abs(nextFov - prevFov) > 0.05 &&
+      nextPosition.x === prev.position.x &&
+      nextPosition.y === prev.position.y &&
+      nextPosition.z === prev.position.z
+    ) {
+      nextPosition = solveDollyZoomPosition(prev.position, viewer.target, prevFov, nextFov)
+    }
+
+    const rotation = viewer.rotation ?? directorViewerRotationFromLook(nextPosition, viewer.target)
     const next: DirectorViewerState = {
-      position: { ...viewer.position },
+      position: nextPosition,
       rotation: { ...rotation },
       scale: viewer.scale
         ? {
@@ -914,19 +1103,41 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
           }
         : { x: 1, y: 1, z: 1 },
       target: { ...viewer.target },
-      fov: viewer.fov
+      fov: nextFov,
+      ...(nextFocalLengthMm != null ? { focalLengthMm: nextFocalLengthMm } : {}),
+      ...(dollyZoomLock !== undefined ? { dollyZoomLock } : {}),
+      ...(viewer.focusDistance !== undefined ? { focusDistance: viewer.focusDistance } : {}),
+      ...(viewer.aperture !== undefined ? { aperture: viewer.aperture } : {}),
+      ...(viewer.handheldShake !== undefined
+        ? { handheldShake: { ...viewer.handheldShake } }
+        : prev.handheldShake
+          ? { handheldShake: { ...prev.handheldShake } }
+          : {}),
+      ...(viewer.cinemachine !== undefined
+        ? { cinemachine: normalizeDirectorCinemachineConfig(viewer.cinemachine) }
+        : prev.cinemachine
+          ? { cinemachine: { ...prev.cinemachine } }
+          : {})
     }
+    cinemachineMemories.delete(selected.id)
+    runtimeSolvedCameraViewers.delete(selected.id)
+    runtimeBlendedCameraViewer = null
     if (isEditingAnimKeyframeFor('camera', selected.id)) {
       writeTransformToSelectedKeyframe('camera', selected.id, {
         position: next.position,
         rotation: next.rotation,
-        scale: next.scale
+        scale: next.scale,
+        fov: next.fov
       })
       const viz = shotVisuals.get(selected.id)
       if (viz) {
         viz.root.position.set(next.position.x, next.position.y, next.position.z)
         viz.root.rotation.set(rotation.x, rotation.y, rotation.z, 'XYZ')
         viz.root.scale.set(next.scale!.x, next.scale!.y, next.scale!.z)
+        if (next.fov != null) {
+          viz.camera.fov = next.fov
+          viz.camera.updateProjectionMatrix()
+        }
         viz.helper.update()
       }
       previewRevision.value += 1
@@ -949,7 +1160,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   }[] {
     const subjects: { id: string; pos: StageVec3; height: number }[] = []
     for (const obj of stage.value.objects) {
-      if (obj.parentId !== objectId || obj.kind !== 'model') continue
+      if (obj.parentId !== objectId || (obj.kind !== 'model' && obj.kind !== 'character')) continue
       const mesh = objectMeshes.get(obj.id)
       let pos: StageVec3 = { x: obj.position.x, y: 0.9, z: obj.position.z }
       let height = 1.8
@@ -1203,11 +1414,24 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
 
   function applyCameraView(): void {
     if (!camera || !orbit) return
-    const viewer = activeCameraState().viewer
-    camera.position.set(viewer.position.x, viewer.position.y, viewer.position.z)
+    const viewer = resolveEffectiveCameraViewer()
+    const shake =
+      animPlaying.value && viewer.handheldShake?.enabled
+        ? evaluateHandheldCameraShake(animTime.value, viewer.handheldShake)
+        : null
+    camera.position.set(
+      viewer.position.x + (shake?.posOffset.x ?? 0),
+      viewer.position.y + (shake?.posOffset.y ?? 0),
+      viewer.position.z + (shake?.posOffset.z ?? 0)
+    )
     const rotation =
       viewer.rotation ?? directorViewerRotationFromLook(viewer.position, viewer.target)
-    camera.rotation.set(rotation.x, rotation.y, rotation.z, 'XYZ')
+    camera.rotation.set(
+      rotation.x + (shake?.rotOffset.x ?? 0),
+      rotation.y + (shake?.rotOffset.y ?? 0),
+      rotation.z + (shake?.rotOffset.z ?? 0),
+      'XYZ'
+    )
     const scale = viewer.scale ?? { x: 1, y: 1, z: 1 }
     camera.scale.set(scale.x, scale.y, scale.z)
     if (viewer.fov != null) {
@@ -1248,6 +1472,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       if (prev === 'camera') frameShotCameraInDirectorView()
     }
     syncShotVisuals()
+    syncAllLightGizmoStates()
     applySelectionToScene()
     requestRender()
   }
@@ -1390,7 +1615,11 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
         selectionKind.value === 'camera' &&
         selectedCameraId.value === cameraState.id
       if (!draggingCamera) {
-        const viewer = cameraState.viewer
+        const viewer =
+          runtimeSolvedCameraViewers.get(cameraState.id) ??
+          (directorViewerHasActiveCinemachine(cameraState.viewer)
+            ? resolveEffectiveCameraViewer(cameraState.id)
+            : cameraState.viewer)
         const rotation =
           viewer.rotation ?? directorViewerRotationFromLook(viewer.position, viewer.target)
         viz.root.position.set(viewer.position.x, viewer.position.y, viewer.position.z)
@@ -1440,7 +1669,11 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     return url
   }
 
-  function takeCameraShot(): DirectorCameraShot | null {
+  function takeCameraShot(
+    passOverride?: DirectorCapturePass,
+    cameraStateOverride?: DirectorCameraState,
+    labelOverride?: string
+  ): DirectorCameraShot | null {
     if (!renderer || !scene) return null
     try {
       const el = options.viewportEl.value
@@ -1449,17 +1682,23 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
         el?.clientWidth ?? 16,
         el?.clientHeight ?? 9
       )
-      // ?????????????? data URL ?? DOM ???????????
+      const camState = cameraStateOverride ?? activeCameraState()
+      const effectiveViewer = cameraStateOverride
+        ? resolveEffectiveCameraViewer(camState.id)
+        : resolveEffectiveCameraViewer()
+      const pass = passOverride ?? stage.value.capturePass ?? 'rgb'
       const width = 720
       const height = Math.max(1, Math.round(width / ratio))
-      const shotCam = buildShotCamera(ratio)
+      const shotCam = buildShotCamera(ratio, effectiveViewer)
       if (
         !renderCameraToCanvas2D(
           shotCam,
           width,
           height,
           previewCanvas,
-          captureLabelsVisible.value || captureCameraLabelsVisible.value
+          captureLabelsVisible.value || captureCameraLabelsVisible.value,
+          pass,
+          effectiveViewer
         )
       ) {
         return null
@@ -1469,7 +1708,11 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       const shot: DirectorCameraShot = {
         id: crypto.randomUUID(),
         dataUrl,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        pass,
+        cameraId: camState.id,
+        cameraName: camState.name,
+        ...(labelOverride ? { label: labelOverride } : {})
       }
       const list = [...(stage.value.cameraShots ?? []), shot].slice(-24)
       stage.value.cameraShots = list
@@ -1481,6 +1724,50 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     } catch {
       return null
     }
+  }
+
+  /** P0.3: 拍摄时间线首帧 + 尾帧双帧对，供下游视频首尾帧驱动（first_last）无缝衔接 */
+  function takeFirstLastFramePair(): {
+    first: DirectorCameraShot
+    last: DirectorCameraShot
+  } | null {
+    if (!renderer || !scene) return null
+    const anim = ensureAnimation()
+    const prevTime = animTime.value
+    const prevPlaying = animPlaying.value
+    pauseAnimation()
+    try {
+      animTime.value = 0
+      applyAnimationAtTime(0, false)
+      const first = takeCameraShot(undefined, undefined, t('director.stage.shotFirstFrame'))
+      const endTime = Math.max(0.1, anim.duration)
+      animTime.value = endTime
+      applyAnimationAtTime(endTime, false)
+      const last = takeCameraShot(undefined, undefined, t('director.stage.shotLastFrame'))
+      if (!first || !last) return null
+      openMediaGallery('shots')
+      return { first, last }
+    } finally {
+      animTime.value = prevTime
+      applyAnimationAtTime(prevTime, false)
+      if (prevPlaying) playAnimation()
+      else requestRender()
+    }
+  }
+
+  /** P2.2: 一键拍全机位（遍历全部可用机位，按顺序拍摄并写入分镜图库） */
+  function captureAllCameras(): DirectorCameraShot[] {
+    if (!renderer || !scene) return []
+    const captured: DirectorCameraShot[] = []
+    for (const camState of listCameras()) {
+      if (camState.visible === false) continue
+      const shot = takeCameraShot(undefined, camState, camState.name)
+      if (shot) captured.push(shot)
+    }
+    if (captured.length > 0) {
+      openMediaGallery('shots')
+    }
+    return captured
   }
 
   /** ??????????????RT?????? WebGL ?????????????*/
@@ -1573,7 +1860,12 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       if (!state) continue
       const cw = canvas.clientWidth || canvas.width || 320
       const ch = canvas.clientHeight || canvas.height || 180
-      renderCameraPreviewToCanvas(canvas, state.viewer, Math.max(0.01, cw / Math.max(1, ch)), false)
+      renderCameraPreviewToCanvas(
+        canvas,
+        resolveEffectiveCameraViewer(state.id),
+        Math.max(0.01, cw / Math.max(1, ch)),
+        false
+      )
     }
   }
 
@@ -1702,10 +1994,12 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   }
 
   function applyGridVisuals(): void {
+    const offsetY = stage.value.gridOffsetY ?? DEFAULT_GRID_OFFSET_Y
+    syncShadowCatcherPlane(shadowCatcherPlane, stage.value, offsetY)
     if (!grid) return
     const opacity = clampGridOpacity(stage.value.gridOpacity ?? DEFAULT_GRID_OPACITY)
     grid.visible = stage.value.gridVisible !== false && gridGizmoVisible.value
-    grid.position.y = stage.value.gridOffsetY ?? DEFAULT_GRID_OFFSET_Y
+    grid.position.y = offsetY
     const materials = Array.isArray(grid.material) ? grid.material : [grid.material]
     for (const mat of materials) {
       if (!mat || !('opacity' in mat)) continue
@@ -1714,6 +2008,11 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       mat.depthWrite = opacity >= 1
       mat.needsUpdate = true
     }
+  }
+
+  function syncAtmosphereVisuals(): void {
+    if (!scene) return
+    syncStageAtmosphericFog(scene, stage.value, stage.value.skyColor ?? DEFAULT_DIRECTOR_SKY_COLOR)
   }
 
   function rebuildGrid(): void {
@@ -1731,7 +2030,13 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     contentRoot.add(grid)
   }
 
-  function updateGround(patch: { visible?: boolean; opacity?: number; offsetY?: number }): void {
+  function updateGround(patch: {
+    visible?: boolean
+    opacity?: number
+    offsetY?: number
+    shadowCatcherEnabled?: boolean
+    shadowCatcherOpacity?: number
+  }): void {
     if (patch.visible !== undefined) stage.value.gridVisible = patch.visible
     if (patch.opacity !== undefined) {
       stage.value.gridOpacity = clampGridOpacity(patch.opacity)
@@ -1739,7 +2044,50 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     if (patch.offsetY !== undefined && Number.isFinite(patch.offsetY)) {
       stage.value.gridOffsetY = patch.offsetY
     }
+    if (patch.shadowCatcherEnabled !== undefined) {
+      stage.value.shadowCatcherEnabled = !!patch.shadowCatcherEnabled
+    }
+    if (patch.shadowCatcherOpacity !== undefined && Number.isFinite(patch.shadowCatcherOpacity)) {
+      stage.value.shadowCatcherOpacity = Math.min(1, Math.max(0, patch.shadowCatcherOpacity))
+    }
     applyGridVisuals()
+    previewRevision.value += 1
+    requestRender()
+    schedulePersist()
+  }
+
+  function updateStageEnvironment(patch: {
+    shadowCatcherEnabled?: boolean
+    shadowCatcherOpacity?: number
+    fogEnabled?: boolean
+    fogDensity?: number
+    fogColor?: string
+    compositionGuide?: DirectorCompositionGuide
+    capturePass?: DirectorCapturePass
+  }): void {
+    if (patch.shadowCatcherEnabled !== undefined) {
+      stage.value.shadowCatcherEnabled = !!patch.shadowCatcherEnabled
+    }
+    if (patch.shadowCatcherOpacity !== undefined && Number.isFinite(patch.shadowCatcherOpacity)) {
+      stage.value.shadowCatcherOpacity = Math.min(1, Math.max(0, patch.shadowCatcherOpacity))
+    }
+    if (patch.fogEnabled !== undefined) {
+      stage.value.fogEnabled = !!patch.fogEnabled
+    }
+    if (patch.fogDensity !== undefined && Number.isFinite(patch.fogDensity)) {
+      stage.value.fogDensity = Math.min(0.15, Math.max(0.001, patch.fogDensity))
+    }
+    if (patch.fogColor !== undefined) {
+      stage.value.fogColor = patch.fogColor
+    }
+    if (patch.compositionGuide !== undefined) {
+      stage.value.compositionGuide = patch.compositionGuide
+    }
+    if (patch.capturePass !== undefined) {
+      stage.value.capturePass = patch.capturePass
+    }
+    applyGridVisuals()
+    syncAtmosphereVisuals()
     previewRevision.value += 1
     requestRender()
     schedulePersist()
@@ -2705,12 +3053,13 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     const animatedIds = new Set<string>()
     for (const [objectId, runtime] of skeletonRuntimes) {
       const track = trackByObject.get(objectId)
-      const segment = track ? findActiveSkeletonSegment(track, time) : null
-      if (!track || !segment) {
+      const blend = track ? findActiveSkeletonSegmentsWithBlend(track, time) : null
+      if (!track || !blend) {
         runtime.mixer.stopAllAction()
         runtime.mixer.update(0)
         continue
       }
+      const segment = blend.primary
       const clip = findSkeletonClip(clipsForSkeletonSegment(objectId, segment), segment.clip)
       if (!clip) {
         runtime.mixer.stopAllAction()
@@ -2728,7 +3077,28 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       action.enabled = true
       action.paused = true
       action.time = seek.time
+      action.setEffectiveWeight(blend.primaryWeight)
       action.play()
+
+      if (blend.previous && blend.primaryWeight < 0.999) {
+        const secClip = findSkeletonClip(
+          clipsForSkeletonSegment(objectId, blend.previous),
+          blend.previous.clip
+        )
+        if (secClip && secClip !== clip) {
+          const secTime = Math.min(blend.previous.end - 0.001, Math.max(blend.previous.start, time))
+          const secSeek = skeletonSegmentLocalTime(secTime, blend.previous, secClip.duration)
+          if (secSeek.active) {
+            const secAction = runtime.mixer.clipAction(secClip)
+            secAction.enabled = true
+            secAction.paused = true
+            secAction.time = secSeek.time
+            secAction.setEffectiveWeight(1 - blend.primaryWeight)
+            secAction.play()
+          }
+        }
+      }
+
       runtime.mixer.update(0)
       animatedIds.add(objectId)
     }
@@ -3566,6 +3936,25 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     return true
   }
 
+  /** P2.3: 应用内置表情/眼神/手势姿势预设（支持与现有全身姿势叠加 merge） */
+  function applyExpressivePosePreset(
+    objectId: string,
+    presetId: string
+  ): { matched: number; total: number } | null {
+    const obj = stage.value.objects.find((item) => item.id === objectId)
+    if (!obj || obj.locked) return null
+    const preset = findDirectorExpressivePosePreset(presetId)
+    if (!preset) return null
+    const targetBones = new Set(listObjectBones(objectId))
+    const keys = Object.keys(preset.bones)
+    let matched = 0
+    for (const k of keys) {
+      if (targetBones.has(k)) matched += 1
+    }
+    applyObjectBonePoseMap(objectId, preset.bones, 'merge')
+    return { matched: matched || keys.length, total: keys.length }
+  }
+
   function saveObjectPosePreset(objectId: string, name?: string): string | null {
     const idx = stage.value.objects.findIndex((item) => item.id === objectId)
     if (idx < 0) return null
@@ -3721,7 +4110,9 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   function updateSkeletonClipSegment(
     trackId: string,
     segmentId: string,
-    opts: Partial<Pick<DirectorSkeletonClipSegment, 'clip' | 'speed' | 'loop' | 'assetId'>>
+    opts: Partial<
+      Pick<DirectorSkeletonClipSegment, 'clip' | 'speed' | 'loop' | 'assetId' | 'crossFadeSec'>
+    >
   ): void {
     const track = ensureAnimation().tracks.find((t) => t.id === trackId)
     if (!track || track.targetKind !== 'object') return
@@ -3749,12 +4140,19 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
             : opts.assetId && opts.assetId.trim()
               ? opts.assetId.trim()
               : null
+        const nextCrossFade =
+          opts.crossFadeSec === undefined
+            ? item.crossFadeSec
+            : Number.isFinite(opts.crossFadeSec)
+              ? Math.max(0, Math.min(2, opts.crossFadeSec as number))
+              : item.crossFadeSec
         return {
           ...item,
           clip: nextClip,
           speed: nextSpeed,
           loop: nextLoop,
-          assetId: nextAssetId
+          assetId: nextAssetId,
+          ...(nextCrossFade !== undefined ? { crossFadeSec: nextCrossFade } : {})
         }
       })
     )
@@ -4043,7 +4441,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   function setAnimKeyframeTransform(
     trackId: string,
     keyframeId: string,
-    patch: Partial<Pick<DirectorAnimKeyframe, 'position' | 'rotation' | 'scale'>>
+    patch: Partial<Pick<DirectorAnimKeyframe, 'position' | 'rotation' | 'scale' | 'fov' | 'easing'>>
   ): void {
     const anim = ensureAnimation()
     const idx = anim.tracks.findIndex((t) => t.id === trackId)
@@ -4057,7 +4455,11 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
               ...kf,
               ...(patch.position ? { position: { ...patch.position } } : {}),
               ...(patch.rotation ? { rotation: { ...patch.rotation } } : {}),
-              ...(patch.scale ? { scale: { ...patch.scale } } : {})
+              ...(patch.scale ? { scale: { ...patch.scale } } : {}),
+              ...(typeof patch.fov === 'number' && Number.isFinite(patch.fov)
+                ? { fov: Math.min(120, Math.max(10, patch.fov)) }
+                : {}),
+              ...(patch.easing ? { easing: patch.easing } : {})
             }
           : kf
       )
@@ -4076,6 +4478,8 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       position?: StageVec3
       rotation?: StageVec3
       scale?: StageVec3
+      fov?: number
+      easing?: DirectorKeyframeEasing
     }
   ): void {
     const selected = getSelectedAnimKeyframe()
@@ -4119,8 +4523,14 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
         prev.target.z - prev.position.z
       )
     )
+    const sampledFov =
+      typeof sample.fov === 'number' && Number.isFinite(sample.fov)
+        ? Math.min(120, Math.max(10, sample.fov))
+        : prev.fov
     const viewer: DirectorViewerState = {
       ...prev,
+      fov: sampledFov,
+      focalLengthMm: verticalFovToFocalLength(sampledFov ?? DEFAULT_DIRECTOR_CAMERA_FOV),
       position: { ...sample.position },
       rotation: { ...sample.rotation },
       scale: { ...sample.scale },
@@ -4132,16 +4542,21 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     }
     if (persistState) updateCamera(track.targetId, { viewer })
     else {
+      runtimeSolvedCameraViewers.set(track.targetId, viewer)
       const viz = shotVisuals.get(track.targetId)
       if (viz) {
         viz.root.position.set(viewer.position.x, viewer.position.y, viewer.position.z)
         viz.root.rotation.set(sample.rotation.x, sample.rotation.y, sample.rotation.z, 'XYZ')
         viz.root.scale.set(sample.scale.x, sample.scale.y, sample.scale.z)
+        viz.camera.fov = sampledFov ?? DEFAULT_DIRECTOR_CAMERA_FOV
+        viz.camera.updateProjectionMatrix()
         viz.camera.position.copy(viz.root.position)
         viz.camera.quaternion.copy(viz.root.quaternion)
         viz.helper.update()
       }
       if (stage.value.activeCameraId === track.targetId && viewMode.value === 'camera' && camera) {
+        camera.fov = sampledFov ?? DEFAULT_DIRECTOR_CAMERA_FOV
+        camera.updateProjectionMatrix()
         camera.position.set(viewer.position.x, viewer.position.y, viewer.position.z)
         camera.rotation.set(sample.rotation.x, sample.rotation.y, sample.rotation.z, 'XYZ')
         camera.scale.set(sample.scale.x, sample.scale.y, sample.scale.z)
@@ -4150,48 +4565,99 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     }
   }
 
-  function applyAnimationAtTime(time: number, persistState = false): void {
+  function hasAnyPlayableMotion(): boolean {
     const anim = stage.value.animation
-    if (!anim) return
-    for (const track of anim.tracks) {
-      if (track.cameraCut) {
-        applyCameraCutAtTime(track, time, persistState)
-        continue
-      }
-      const keyframes = track.keyframes ?? []
-      let sample: AnimKeyframeSample | null = null
-      if (keyframes.length >= 1) {
-        if (time < track.start - 1e-6 || time > track.end + 1e-6) continue
-        sample = sampleAnimKeyframes(keyframes, time, targetAnimFallbackTransform(track))
-      } else if (track.path && track.path.points.length >= 2) {
-        const span = Math.max(0.001, track.end - track.start)
-        let u = (time - track.start) / span
-        if (u < 0 || u > 1) continue
-        u = Math.min(1, Math.max(0, u))
-        const pathSample = sampleAnimPath(track.path, u)
-        if (!pathSample) continue
-        const fallback = targetAnimFallbackTransform(track)
-        sample = {
-          position: pathSample.position,
-          rotation: fallback.rotation,
-          scale: fallback.scale,
-          tangent: pathSample.tangent
+    if (anim?.tracks.some((t) => directorAnimTrackHasContent(t))) return true
+    return listCameras().some((c) => directorViewerHasActiveCinemachine(c.viewer))
+  }
+
+  function applyAnimationAtTime(time: number, persistState = false): void {
+    runtimeSolvedCameraViewers.clear()
+    runtimeBlendedCameraViewer = null
+    const anim = stage.value.animation
+    if (anim) {
+      // 1. 先采样非切镜轨（优先保证物体位置/朝向更新，供后续 Cinemachine 相机追踪）
+      const nonCutTracks = anim.tracks
+        .filter((t) => !t.cameraCut)
+        .sort((a, b) => Number(a.targetKind === 'camera') - Number(b.targetKind === 'camera'))
+      for (const track of nonCutTracks) {
+        const keyframes = track.keyframes ?? []
+        let sample: AnimKeyframeSample | null = null
+        if (keyframes.length >= 1) {
+          if (time < track.start - 1e-6 || time > track.end + 1e-6) continue
+          sample = sampleAnimKeyframes(keyframes, time, targetAnimFallbackTransform(track))
+        } else if (track.path && track.path.points.length >= 2) {
+          const span = Math.max(0.001, track.end - track.start)
+          let u = (time - track.start) / span
+          if (u < 0 || u > 1) continue
+          u = Math.min(1, Math.max(0, u))
+          const pathSample = sampleAnimPath(track.path, u)
+          if (!pathSample) continue
+          const fallback = targetAnimFallbackTransform(track)
+          sample = {
+            position: pathSample.position,
+            rotation: fallback.rotation,
+            scale: fallback.scale,
+            tangent: pathSample.tangent
+          }
         }
-      }
-      if (!sample) continue
-      if (track.orientToPath) {
-        const fallback = targetAnimFallbackTransform(track)
-        const forwardAxis =
-          track.pathForwardAxis ??
-          (track.targetKind === 'camera' ? '-z' : DEFAULT_PATH_FORWARD_AXIS)
-        sample = {
-          ...sample,
-          rotation: rotationFromPathTangent(sample.tangent, fallback.rotation, forwardAxis)
+        if (!sample) continue
+        if (track.orientToPath) {
+          const fallback = targetAnimFallbackTransform(track)
+          const forwardAxis =
+            track.pathForwardAxis ??
+            (track.targetKind === 'camera' ? '-z' : DEFAULT_PATH_FORWARD_AXIS)
+          sample = {
+            ...sample,
+            rotation: rotationFromPathTangent(sample.tangent, fallback.rotation, forwardAxis)
+          }
         }
+        applyAnimSampleToTarget(track, sample, persistState)
       }
-      applyAnimSampleToTarget(track, sample, persistState)
+      applySkeletonAnimationsAtTime(time)
     }
-    applySkeletonAnimationsAtTime(time)
+
+    // 2. 解算所有启用了 Cinemachine (Body / Aim / Noise / Impulse) 的虚拟相机
+    const sceneObjects = resolveAnimatedSceneObjectsSnapshot()
+    const aspect = currentViewportAspect()
+    for (const cam of listCameras()) {
+      const baseViewer = runtimeSolvedCameraViewers.get(cam.id) ?? cam.viewer
+      if (!directorViewerHasActiveCinemachine(baseViewer)) continue
+      const { viewer: solved, memory } = solveCinemachineVirtualCamera(
+        baseViewer,
+        sceneObjects,
+        time,
+        cinemachineMemories.get(cam.id) ?? null,
+        aspect
+      )
+      cinemachineMemories.set(cam.id, memory)
+      runtimeSolvedCameraViewers.set(cam.id, solved)
+      const viz = shotVisuals.get(cam.id)
+      if (viz) {
+        const rot =
+          solved.rotation ?? directorViewerRotationFromLook(solved.position, solved.target)
+        viz.root.position.set(solved.position.x, solved.position.y, solved.position.z)
+        viz.root.rotation.set(rot.x, rot.y, rot.z, 'XYZ')
+        viz.body.position.copy(viz.root.position)
+        viz.camera.fov = solved.fov ?? DEFAULT_DIRECTOR_CAMERA_FOV
+        viz.camera.updateProjectionMatrix()
+        viz.camera.position.copy(viz.root.position)
+        viz.camera.quaternion.copy(viz.root.quaternion)
+        if (viz.helper.visible) viz.helper.update()
+      }
+      if (stage.value.activeCameraId === cam.id && viewMode.value === 'camera') {
+        applyCameraView()
+      }
+    }
+
+    // 3. 最后执行 Cinemachine Brain 机位轨切换与双机位平滑混合
+    if (anim) {
+      for (const track of anim.tracks) {
+        if (track.cameraCut) {
+          applyCameraCutAtTime(track, time, persistState)
+        }
+      }
+    }
   }
 
   /** ?????????????? bonePose ???????????? */
@@ -4222,8 +4688,11 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
 
   function playAnimation(): void {
     const anim = ensureAnimation()
-    if (!anim.tracks.some((t) => directorAnimTrackHasContent(t))) return
-    if (animTime.value >= anim.duration - 1e-4) animTime.value = 0
+    if (!hasAnyPlayableMotion()) return
+    if (animTime.value >= anim.duration - 1e-4) {
+      animTime.value = 0
+      cinemachineMemories.clear()
+    }
     cancelPathDraw()
     const poseCleared = resetAllBonePosesForPlayback()
     animPlaying.value = true
@@ -4245,6 +4714,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   function stopAnimation(): void {
     animPlaying.value = false
     animTime.value = 0
+    cinemachineMemories.clear()
     applyAnimationAtTime(0, false)
     requestRender()
   }
@@ -4295,8 +4765,9 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     }
     const name =
       targetKind === 'camera'
-        ? (getCameraState(targetId)?.name ?? 'Camera')
-        : (stage.value.objects.find((o) => o.id === targetId)?.name ?? 'Object')
+        ? (getCameraState(targetId)?.name ?? t('director.stage.selectionType.camera'))
+        : (stage.value.objects.find((o) => o.id === targetId)?.name ??
+          t('director.stage.selectionType.object'))
     const track: DirectorAnimTrack = {
       id: `anim:${crypto.randomUUID()}`,
       name,
@@ -4332,22 +4803,27 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     schedulePersist()
   }
 
-  /** 机位切换轨：按当前时间激活对应相机（只切 activeCameraId，不改选中） */
+  /** 机位切换轨（Cinemachine Brain）：按当前时间激活对应相机并处理双机位平滑过渡 */
   function applyCameraCutAtTime(
     track: DirectorAnimTrack,
     time: number,
     persistState = false
   ): void {
     const segments = track.cameraSegments ?? []
-    const seg = segments.find((s) => time >= s.start - 1e-6 && time < s.end)
-    if (!seg) return
-    if (stage.value.activeCameraId === seg.cameraId) return
-    if (!getCameraState(seg.cameraId)) return
-    stage.value.activeCameraId = seg.cameraId
-    if (persistState) schedulePersist()
+    const brain = solveCinemachineBrainCutAtTime(segments, time, (camId) => {
+      return runtimeSolvedCameraViewers.get(camId) ?? getCameraState(camId)?.viewer
+    })
+    if (!brain) return
+    if (!getCameraState(brain.activeCameraId)) return
+    const changedActive = stage.value.activeCameraId !== brain.activeCameraId
+    stage.value.activeCameraId = brain.activeCameraId
+    runtimeBlendedCameraViewer = brain.viewer
+    if (persistState && changedActive) schedulePersist()
     if (viewMode.value === 'camera') applyCameraView()
     syncShotVisuals()
-    previewRevision.value += 1
+    if (changedActive || brain.blendWeight < 1) {
+      previewRevision.value += 1
+    }
   }
 
   /** 添加机位切换轨（同一舞台只允许一条，重复调用回到已有轨） */
@@ -4445,6 +4921,37 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     next[segIdx] = { ...next[segIdx]!, start: s, end: e }
     next.sort((a, b) => a.start - b.start)
     anim.tracks[idx] = { ...track, cameraSegments: next }
+    applyAnimationAtTime(animTime.value, false)
+    schedulePersist()
+    requestRender()
+  }
+
+  function setCameraCutSegmentBlend(
+    trackId: string,
+    segmentId: string,
+    patch: { blendInSec?: number; blendCurve?: DirectorKeyframeEasing }
+  ): void {
+    const anim = ensureAnimation()
+    const idx = anim.tracks.findIndex((t) => t.id === trackId)
+    if (idx < 0) return
+    const track = anim.tracks[idx]
+    const segments = track.cameraSegments ?? []
+    const segIdx = segments.findIndex((seg) => seg.id === segmentId)
+    if (segIdx < 0) return
+    const current = segments[segIdx]!
+    const nextBlendIn =
+      patch.blendInSec !== undefined
+        ? Math.max(0, Math.min(10, Number(patch.blendInSec) || 0))
+        : current.blendInSec
+    const nextCurve = patch.blendCurve !== undefined ? patch.blendCurve : current.blendCurve
+    const next = segments.slice()
+    next[segIdx] = {
+      ...current,
+      ...(nextBlendIn && nextBlendIn > 0 ? { blendInSec: nextBlendIn } : { blendInSec: undefined }),
+      ...(nextCurve ? { blendCurve: nextCurve } : {})
+    }
+    anim.tracks[idx] = { ...track, cameraSegments: next }
+    applyAnimationAtTime(animTime.value, false)
     schedulePersist()
     requestRender()
   }
@@ -4519,6 +5026,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     let localPos: StageVec3
     let localRot: StageVec3
     let localScale: StageVec3
+    let localFov: number | undefined
     if (track.targetKind === 'object') {
       const obj = stage.value.objects.find((o) => o.id === track.targetId)
       localPos = obj ? { ...obj.position } : { x: 0, y: 0, z: 0 }
@@ -4534,6 +5042,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
           }
         : { x: 0, y: 0, z: 0 }
       localScale = cam?.viewer.scale ? { ...cam.viewer.scale } : { x: 1, y: 1, z: 1 }
+      localFov = cam?.viewer.fov ?? 45
     }
     const list = track.keyframes ?? []
     if (existing) {
@@ -4545,7 +5054,8 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
                 ...kf,
                 position: localPos,
                 rotation: localRot,
-                scale: localScale
+                scale: localScale,
+                ...(typeof localFov === 'number' ? { fov: localFov } : {})
               }
             : kf
         )
@@ -4557,7 +5067,9 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
         time: t,
         position: localPos,
         rotation: localRot,
-        scale: localScale
+        scale: localScale,
+        ...(typeof localFov === 'number' ? { fov: localFov } : {}),
+        easing: 'easeInOut'
       }
       anim.tracks[idx] = {
         ...track,
@@ -4686,14 +5198,15 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     return candidates.find((type) => MediaRecorder.isTypeSupported(type)) ?? ''
   }
 
-  async function exportAnimationVideo(): Promise<string | null> {
+  async function exportAnimationVideo(passOverride?: DirectorCapturePass): Promise<string | null> {
     if (animExporting.value) return null
     if (!renderer || !scene) throw new Error('Stage is not ready')
     const anim = ensureAnimation()
-    const hasContent = anim.tracks.some((track) => directorAnimTrackHasContent(track))
+    const hasContent = hasAnyPlayableMotion()
     if (!hasContent) throw new Error('No animation content to export')
     const mimeType = pickExportMimeType()
     if (!mimeType) throw new Error('WebM export is not supported')
+    const activePass = passOverride ?? stage.value.capturePass ?? 'rgb'
 
     const fps = 30
     const el = options.viewportEl.value
@@ -4755,7 +5268,10 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
             width,
             height,
             exportCanvas,
-            captureLabelsVisible.value || captureCameraLabelsVisible.value
+            (captureLabelsVisible.value || captureCameraLabelsVisible.value) &&
+              activePass === 'rgb',
+            activePass,
+            resolveEffectiveCameraViewer()
           )
         ) {
           throw new Error('Failed to render export frame')
@@ -4812,7 +5328,8 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     const video: DirectorCameraVideo = {
       id: crypto.randomUUID(),
       createdAt: new Date().toISOString(),
-      relativePath
+      relativePath,
+      pass: activePass
     }
     const list = [...(stage.value.cameraVideos ?? []), video].slice(-24)
     stage.value.cameraVideos = list
@@ -4984,6 +5501,14 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       cameraShots: stage.value.cameraShots ?? [],
       cameraVideos: stage.value.cameraVideos ?? [],
       aspectRatio: normalizeDirectorAspectRatio(stage.value.aspectRatio),
+      compositionGuide: stage.value.compositionGuide ?? 'none',
+      capturePass: stage.value.capturePass ?? 'rgb',
+      shadowCatcherEnabled: stage.value.shadowCatcherEnabled !== false,
+      shadowCatcherOpacity: stage.value.shadowCatcherOpacity ?? 0.36,
+      fogEnabled: !!stage.value.fogEnabled,
+      fogDensity: stage.value.fogDensity ?? 0.018,
+      fogColor: stage.value.fogColor ?? '#0f172a',
+      lightingPreset: stage.value.lightingPreset,
       world: readDirectorSceneWorld(stage.value.world),
       // 存跟随哨兵/自定义色，不要写主题解析后的颜色（否则浅色主题会锁死 #e8eaee）
       skyColor: isDirectorSkyFollowTheme(stage.value.skyColor)
@@ -5169,12 +5694,14 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     const next = normalizeDirectorShadingMode(mode)
     if (shadingMode.value === next) return
     shadingMode.value = next
+    lightGizmosVisible.value = next !== 'shaded'
     try {
       localStorage.setItem(SHADING_MODE_STORAGE_KEY, next)
     } catch {
       /* ignore */
     }
     applyShadingModeToAllObjects()
+    syncAllLightGizmoStates()
   }
 
   function clearSelectionHelper(): void {
@@ -5187,7 +5714,9 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
 
   function updateSelectionHelper(mesh: THREE.Object3D | null): void {
     clearSelectionHelper()
+    syncAllLightGizmoStates()
     if (!mesh || !scene || !selectionBoundsVisible.value) return
+    if (mesh.userData?.stageLight) return
     selectionHelper = new THREE.BoxHelper(mesh, 0x5b9cf5)
     selectionHelper.renderOrder = 10
     scene.add(selectionHelper)
@@ -5214,6 +5743,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     gizmoSize.value = Math.min(2, Math.max(0.1, Number.isFinite(size) ? size : 1))
     syncTransformGizmoScale()
     syncShotVisuals()
+    syncAllLightGizmoStates()
     requestRender()
   }
 
@@ -5230,6 +5760,12 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   function setCameraGizmosVisible(visible: boolean): void {
     cameraGizmosVisible.value = !!visible
     syncShotVisuals()
+    requestRender()
+  }
+
+  function setLightGizmosVisible(visible: boolean): void {
+    lightGizmosVisible.value = !!visible
+    syncAllLightGizmoStates()
     requestRender()
   }
 
@@ -5272,6 +5808,12 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     obj.position.set(state.position.x, state.position.y, state.position.z)
     obj.rotation.set(state.rotation.x, state.rotation.y, state.rotation.z)
     obj.scale.set(state.scale.x, state.scale.y, state.scale.z)
+    if (obj.userData?.stageLightGizmo) {
+      syncLightGizmoState(
+        obj,
+        selectionKind.value === 'object' && selectedObjectId.value === state.id
+      )
+    }
   }
 
   function syncSelectedFromTransform(): void {
@@ -5349,6 +5891,9 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     const position = { x: mesh.position.x, y: mesh.position.y, z: mesh.position.z }
     const rotation = { x: mesh.rotation.x, y: mesh.rotation.y, z: mesh.rotation.z }
     const scale = { x: mesh.scale.x, y: mesh.scale.y, z: mesh.scale.z }
+    if (mesh.userData?.stageLightGizmo) {
+      syncLightGizmoState(mesh, true)
+    }
     if (isEditingAnimKeyframeFor('object', id)) {
       writeTransformToSelectedKeyframe('object', id, { position, rotation, scale })
       if (selectionHelper) selectionHelper.update()
@@ -5363,6 +5908,13 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       scale
     }
     if (selectionHelper) selectionHelper.update()
+    if (listCameras().some((c) => directorViewerHasActiveCinemachine(c.viewer))) {
+      runtimeSolvedCameraViewers.clear()
+      runtimeBlendedCameraViewer = null
+      syncShotVisuals()
+      if (viewMode.value === 'camera') applyCameraView()
+      previewRevision.value += 1
+    }
   }
 
   function applyObjectColor(mesh: THREE.Object3D, color?: string): void {
@@ -5404,6 +5956,13 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     const hex = parseColor(obj.color ?? '#ffffff')
     if ('color' in light && light.color instanceof THREE.Color) light.color.setHex(hex)
     light.intensity = params.intensity
+    if (
+      light instanceof THREE.DirectionalLight ||
+      light instanceof THREE.PointLight ||
+      light instanceof THREE.SpotLight
+    ) {
+      light.castShadow = params.castShadow !== false
+    }
     if (light instanceof THREE.PointLight || light instanceof THREE.SpotLight) {
       light.distance = params.distance ?? 0
       light.decay = params.decay ?? 2
@@ -5435,7 +5994,14 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     root.userData.stageLightGizmo = undefined
   }
 
-  /** Unity Scene View 风格：平行光箭头 / 点光范围球 / 聚光锥 */
+  /**
+   * 现代 DCC 软件（Blender 4.x / Unreal Engine 5 / Cinema 4D）风格光源 Gizmo：
+   * 1. 双层核心灯珠（内层高亮发光核 + 外层柔和光晕 + 透明大拾取球），辅助线禁用 raycast 防止遮挡场景物体拾取；
+   * 2. 分级显示层级：
+   *    - 常驻紧凑图标层（`iconGroup`，随 `gizmoSize` 缩放）：一眼区分平行光（3D 太阳盘+平行光束）、点光源（全向三环星芒）、聚光灯（灯筒罩+近端指向锥）；
+   *    - 选中范围层（`volumeGroup`，选中时高亮展开）：点光源显示干净的三正交轴虚线衰减大圆（取代杂乱经纬网球），聚光灯显示四象限母线+远端底圆+Penumbra 柔化内环，平行光显示远端投射目标盘；
+   * 3. Blender 风格地面垂线落点（`groundGroup`）：世界垂直向下的虚线垂柱 + 地面十字圆环落点，实时抵消光源自身旋转，直观指示光源在舞台上方的空间高度与水平坐标。
+   */
   function buildUnityStyleLightGizmo(
     params: ReturnType<typeof normalizeStageLightParams>,
     colorHex: number
@@ -5443,50 +6009,137 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     const root = new THREE.Group()
     root.name = 'StageLightGizmo'
     root.userData.stageLightHelper = true
+    root.userData.stageLightType = params.type
 
-    const lineMat = new THREE.LineBasicMaterial({
+    const baseColor = new THREE.Color(colorHex)
+    const coreColor = baseColor.clone().lerp(new THREE.Color(0xffffff), 0.55)
+
+    const primaryLineMat = new THREE.LineBasicMaterial({
       color: colorHex,
       depthTest: true,
+      depthWrite: false,
+      transparent: true,
+      opacity: 0.94
+    })
+    const secondaryLineMat = new THREE.LineBasicMaterial({
+      color: colorHex,
+      depthTest: true,
+      depthWrite: false,
+      transparent: true,
+      opacity: 0.48
+    })
+    const selectLineMat = new THREE.LineBasicMaterial({
+      color: 0x68b5ff,
+      depthTest: false,
       depthWrite: false,
       transparent: true,
       opacity: 0.92
     })
-    const iconMat = new THREE.MeshBasicMaterial({
+    const groundLineMat = new THREE.LineBasicMaterial({
       color: colorHex,
       depthTest: true,
       depthWrite: false,
       transparent: true,
-      opacity: 0.7,
-      side: THREE.FrontSide
+      opacity: 0.36
+    })
+    const coreMat = new THREE.MeshBasicMaterial({
+      color: coreColor,
+      depthTest: true,
+      depthWrite: false,
+      transparent: true,
+      opacity: 0.95
+    })
+    const haloMat = new THREE.MeshBasicMaterial({
+      color: colorHex,
+      depthTest: true,
+      depthWrite: false,
+      transparent: true,
+      opacity: 0.26,
+      side: THREE.DoubleSide
+    })
+    const pickMat = new THREE.MeshBasicMaterial({
+      color: colorHex,
+      depthTest: true,
+      depthWrite: false,
+      transparent: true,
+      opacity: 0.001
     })
 
-    // 可拾取中心（对应 Unity 灯光图标落点）
-    const pick = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 10), iconMat.clone())
+    const iconGroup = new THREE.Group()
+    iconGroup.name = 'StageLightIconGroup'
+    root.add(iconGroup)
+
+    const volumeGroup = new THREE.Group()
+    volumeGroup.name = 'StageLightVolumeGroup'
+    root.add(volumeGroup)
+
+    const selectGroup = new THREE.Group()
+    selectGroup.name = 'StageLightSelectGroup'
+    selectGroup.visible = false
+    iconGroup.add(selectGroup)
+
+    const groundGroup = new THREE.Group()
+    groundGroup.name = 'StageLightGroundGroup'
+    root.add(groundGroup)
+
+    // 1. 中心发光核 + 光晕 + 透明拾取球
+    const coreMesh = new THREE.Mesh(new THREE.SphereGeometry(0.062, 16, 12), coreMat)
+    coreMesh.renderOrder = 13
+    coreMesh.raycast = () => {}
+    iconGroup.add(coreMesh)
+
+    const haloMesh = new THREE.Mesh(new THREE.SphereGeometry(0.115, 16, 12), haloMat)
+    haloMesh.renderOrder = 12
+    haloMesh.raycast = () => {}
+    iconGroup.add(haloMesh)
+
+    const pick = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 10), pickMat)
     pick.userData.stageLightHelper = true
     pick.userData.stageLightPick = true
-    pick.renderOrder = 12
-    root.add(pick)
+    pick.renderOrder = 14
+    iconGroup.add(pick)
 
+    // 选中态外框角标环（三维正交双环）
+    const selectPositions: number[] = []
+    appendCircleSegments(selectPositions, 0.28, 'xy', 36, false)
+    appendCircleSegments(selectPositions, 0.28, 'xz', 36, true)
+    selectGroup.add(makeLineFromPositions(selectPositions, selectLineMat))
+
+    // 2. 按光源类型构建常驻图标与衰减体积
     if (params.type === 'directional') {
-      root.add(makeDirectionalLightIcon(lineMat, iconMat))
-      root.add(makeDirectionalLightArrows(lineMat))
+      iconGroup.add(makeDirectionalLightIcon(primaryLineMat, secondaryLineMat))
+      volumeGroup.add(makeDirectionalLightVolume(secondaryLineMat))
     } else if (params.type === 'point') {
-      root.add(makePointLightIconRays(lineMat))
-      const range = params.distance && params.distance > 0 ? params.distance : 1.6
-      root.add(makePointLightRangeSphere(range, lineMat))
+      iconGroup.add(makePointLightIcon(primaryLineMat, secondaryLineMat))
+      const range = params.distance && params.distance > 0 ? params.distance : 3.5
+      volumeGroup.add(makePointLightRangeGizmo(range, primaryLineMat, secondaryLineMat))
     } else {
-      const length = params.distance && params.distance > 0 ? params.distance : 4
+      const length = params.distance && params.distance > 0 ? params.distance : 5
       const angle = params.angle ?? Math.PI / 6
-      root.add(makeSpotLightCone(length, angle, lineMat))
-      // 内锥（penumbra）示意，与 Unity 双锥接近
       const penumbra = params.penumbra ?? 0.25
-      if (penumbra > 0.02) {
-        const innerAngle = Math.max(0.02, angle * (1 - penumbra * 0.65))
-        const inner = makeSpotLightCone(length, innerAngle, lineMat.clone())
-        ;(inner.material as THREE.LineBasicMaterial).opacity = 0.45
-        root.add(inner)
-      }
+      iconGroup.add(makeSpotLightIcon(angle, primaryLineMat, secondaryLineMat))
+      volumeGroup.add(
+        makeSpotLightConeGizmo(length, angle, penumbra, primaryLineMat, secondaryLineMat)
+      )
     }
+
+    // 3. Blender 风格地面垂线 + 落点十字圆环（长度为 1 的基准垂线，由 syncLightGizmoState 动态缩放至 y=0）
+    const stalkLine = makeLineFromPositions([0, 0, 0, 0, -1, 0], groundLineMat)
+    groundGroup.add(stalkLine)
+    const groundMarkerPos: number[] = []
+    appendCircleSegments(groundMarkerPos, 0.13, 'xz', 24, false)
+    groundMarkerPos.push(-0.18, 0, 0, 0.18, 0, 0, 0, 0, -0.18, 0, 0, 0.18)
+    const groundMarker = makeLineFromPositions(groundMarkerPos, groundLineMat)
+    groundGroup.add(groundMarker)
+
+    root.userData.iconGroup = iconGroup
+    root.userData.volumeGroup = volumeGroup
+    root.userData.selectGroup = selectGroup
+    root.userData.groundGroup = groundGroup
+    root.userData.stalkLine = stalkLine
+    root.userData.groundMarker = groundMarker
+    root.userData.primaryLineMat = primaryLineMat
+    root.userData.secondaryLineMat = secondaryLineMat
 
     root.traverse((child) => {
       if (child !== root) child.userData.stageLightHelper = true
@@ -5503,157 +6156,447 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     const lines = new THREE.LineSegments(geo, material)
     lines.renderOrder = 11
     lines.frustumCulled = false
+    // 仅允许中心拾取球响应点击，防止范围圈/光锥线框遮挡对场景内人物或道具的点击选择
+    lines.raycast = () => {}
     return lines
   }
 
-  /** Unity 平行光：朝 -Z 的圆环 + 放射短线图标 */
+  function appendCircleSegments(
+    out: number[],
+    radius: number,
+    plane: 'xy' | 'xz' | 'yz',
+    segs = 48,
+    dashed = false,
+    offset = { x: 0, y: 0, z: 0 }
+  ): void {
+    const step = dashed ? 2 : 1
+    for (let i = 0; i < segs; i += step) {
+      const a0 = (i / segs) * Math.PI * 2
+      const a1 = ((i + 1) / segs) * Math.PI * 2
+      const c0 = Math.cos(a0) * radius
+      const s0 = Math.sin(a0) * radius
+      const c1 = Math.cos(a1) * radius
+      const s1 = Math.sin(a1) * radius
+      if (plane === 'xy') {
+        out.push(offset.x + c0, offset.y + s0, offset.z, offset.x + c1, offset.y + s1, offset.z)
+      } else if (plane === 'xz') {
+        out.push(offset.x + c0, offset.y, offset.z + s0, offset.x + c1, offset.y, offset.z + s1)
+      } else {
+        out.push(offset.x, offset.y + c0, offset.z + s0, offset.x, offset.y + c1, offset.z + s1)
+      }
+    }
+  }
+
+  function appendDashedSegment(
+    out: number[],
+    x0: number,
+    y0: number,
+    z0: number,
+    x1: number,
+    y1: number,
+    z1: number,
+    dashes = 8
+  ): void {
+    const total = dashes * 2 - 1
+    for (let i = 0; i < dashes; i++) {
+      const t0 = (i * 2) / total
+      const t1 = Math.min(1, (i * 2 + 1) / total)
+      out.push(
+        x0 + (x1 - x0) * t0,
+        y0 + (y1 - y0) * t0,
+        z0 + (z1 - z0) * t0,
+        x0 + (x1 - x0) * t1,
+        y0 + (y1 - y0) * t1,
+        z0 + (z1 - z0) * t1
+      )
+    }
+  }
+
+  function appendArrowHeadZ(out: number[], x: number, y: number, tipZ: number, size = 0.14): void {
+    const w = size * 0.42
+    out.push(
+      x,
+      y,
+      tipZ,
+      x + w,
+      y,
+      tipZ + size,
+      x,
+      y,
+      tipZ,
+      x - w,
+      y,
+      tipZ + size,
+      x,
+      y,
+      tipZ,
+      x,
+      y + w,
+      tipZ + size,
+      x,
+      y,
+      tipZ,
+      x,
+      y - w,
+      tipZ + size
+    )
+  }
+
+  /**
+   * 平行光（Sun / Directional Light）：
+   * - 3D 太阳双圆盘 + 正交经线环（任意视角不消失）+ 12 道长短交替日冕射线
+   * - 中轴主光束箭头 + 4 根环绕虚线平行光柱
+   */
   function makeDirectionalLightIcon(
-    lineMat: THREE.LineBasicMaterial,
-    fillMat: THREE.MeshBasicMaterial
+    primaryMat: THREE.LineBasicMaterial,
+    secondaryMat: THREE.LineBasicMaterial
   ): THREE.Group {
     const g = new THREE.Group()
-    // Ring 在 XY，法线 +Z；灯光朝 -Z，从前方看图标正对照射方向
-    const ring = new THREE.Mesh(new THREE.RingGeometry(0.1, 0.18, 24), fillMat.clone())
-    g.add(ring)
-    const rays: number[] = []
-    for (let i = 0; i < 8; i++) {
-      const a = (i / 8) * Math.PI * 2
+    const primary: number[] = []
+    const secondary: number[] = []
+
+    // 太阳盘双环 + 立体正交小环
+    appendCircleSegments(primary, 0.14, 'xy', 32, false)
+    appendCircleSegments(secondary, 0.2, 'xy', 32, true)
+    appendCircleSegments(secondary, 0.14, 'xz', 24, true)
+    appendCircleSegments(secondary, 0.14, 'yz', 24, true)
+
+    // 12 道长短交替太阳光芒
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2
       const c = Math.cos(a)
       const s = Math.sin(a)
-      rays.push(c * 0.22, s * 0.22, 0, c * 0.34, s * 0.34, 0)
+      const r0 = 0.22
+      const r1 = i % 2 === 0 ? 0.36 : 0.29
+      primary.push(c * r0, s * r0, 0, c * r1, s * r1, 0)
     }
-    g.add(makeLineFromPositions(rays, lineMat))
+
+    // 中轴主方向光束（沿本地 -Z）
+    primary.push(0, 0, -0.14, 0, 0, -1.35)
+    appendArrowHeadZ(primary, 0, 0, -1.35, 0.17)
+
+    // 4 根环绕平行虚线光束 + 束口环
+    appendCircleSegments(secondary, 0.2, 'xy', 28, false, { x: 0, y: 0, z: -0.22 })
+    const ringOffsets: Array<[number, number]> = [
+      [0.2, 0],
+      [-0.2, 0],
+      [0, 0.2],
+      [0, -0.2]
+    ]
+    for (const [ox, oy] of ringOffsets) {
+      appendDashedSegment(secondary, ox, oy, -0.22, ox, oy, -1.1, 5)
+      appendArrowHeadZ(secondary, ox, oy, -1.1, 0.1)
+    }
+
+    g.add(makeLineFromPositions(primary, primaryMat))
+    g.add(makeLineFromPositions(secondary, secondaryMat))
     return g
   }
 
-  /** Unity 平行光：若干平行箭头沿照射方向（本地 -Z） */
-  function makeDirectionalLightArrows(lineMat: THREE.LineBasicMaterial): THREE.LineSegments {
-    const positions: number[] = []
-    const offsets: Array<[number, number]> = [
-      [0, 0],
-      [0.22, 0.12],
-      [-0.22, 0.12],
-      [0.12, -0.2],
-      [-0.12, -0.2]
+  /** 平行光选中扩展：远端投射引导光束与目标靶环 */
+  function makeDirectionalLightVolume(secondaryMat: THREE.LineBasicMaterial): THREE.LineSegments {
+    const pos: number[] = []
+    appendDashedSegment(pos, 0, 0, -1.35, 0, 0, -3.2, 8)
+    appendCircleSegments(pos, 0.28, 'xy', 32, true, { x: 0, y: 0, z: -3.2 })
+    appendCircleSegments(pos, 0.12, 'xy', 20, false, { x: 0, y: 0, z: -3.2 })
+    return makeLineFromPositions(pos, secondaryMat)
+  }
+
+  /**
+   * 点光源（Point / Omni Light）：
+   * - 三正交微型星环 + 虚线光晕外环 + 14 向三维对称星芒（轴向 + 八卦象限角）
+   */
+  function makePointLightIcon(
+    primaryMat: THREE.LineBasicMaterial,
+    secondaryMat: THREE.LineBasicMaterial
+  ): THREE.Group {
+    const g = new THREE.Group()
+    const primary: number[] = []
+    const secondary: number[] = []
+
+    appendCircleSegments(primary, 0.15, 'xy', 28, false)
+    appendCircleSegments(secondary, 0.15, 'xz', 28, false)
+    appendCircleSegments(secondary, 0.15, 'yz', 28, false)
+    appendCircleSegments(secondary, 0.23, 'xy', 32, true)
+
+    // 6 个正交轴向长芒
+    const axisDirs: Array<[number, number, number]> = [
+      [1, 0, 0],
+      [-1, 0, 0],
+      [0, 1, 0],
+      [0, -1, 0],
+      [0, 0, 1],
+      [0, 0, -1]
     ]
-    const z0 = -0.35
-    const z1 = -1.55
-    const head = 0.18
-    for (const [x, y] of offsets) {
-      positions.push(x, y, z0, x, y, z1)
-      // 箭头分叉
-      positions.push(x, y, z1, x + head * 0.35, y + head * 0.2, z1 + head)
-      positions.push(x, y, z1, x - head * 0.35, y + head * 0.2, z1 + head)
-      positions.push(x, y, z1, x, y - head * 0.4, z1 + head)
+    for (const [dx, dy, dz] of axisDirs) {
+      primary.push(dx * 0.18, dy * 0.18, dz * 0.18, dx * 0.34, dy * 0.34, dz * 0.34)
     }
-    return makeLineFromPositions(positions, lineMat)
+    // 8 个三维对象限短芒
+    const inv = 1 / Math.sqrt(3)
+    for (const sx of [-1, 1]) {
+      for (const sy of [-1, 1]) {
+        for (const sz of [-1, 1]) {
+          const dx = sx * inv
+          const dy = sy * inv
+          const dz = sz * inv
+          secondary.push(dx * 0.18, dy * 0.18, dz * 0.18, dx * 0.29, dy * 0.29, dz * 0.29)
+        }
+      }
+    }
+
+    g.add(makeLineFromPositions(primary, primaryMat))
+    g.add(makeLineFromPositions(secondary, secondaryMat))
+    return g
   }
 
-  /** Unity 点光：中心放射短线（灯泡感） */
-  function makePointLightIconRays(lineMat: THREE.LineBasicMaterial): THREE.LineSegments {
-    const positions: number[] = []
-    for (let i = 0; i < 6; i++) {
-      const a = (i / 6) * Math.PI * 2
-      const c = Math.cos(a)
-      const s = Math.sin(a)
-      positions.push(c * 0.2, s * 0.2, 0, c * 0.38, s * 0.38, 0)
-      positions.push(c * 0.14, 0, s * 0.14, c * 0.28, 0, s * 0.28)
-    }
-    return makeLineFromPositions(positions, lineMat)
-  }
-
-  function makePointLightRangeSphere(
+  /**
+   * 点光源衰减范围（仅选中时显示）：
+   * 参考 Blender / Unreal / Unity，使用三正交虚线大圆 + 6 轴端刻度，清爽不遮挡画面
+   */
+  function makePointLightRangeGizmo(
     radius: number,
-    lineMat: THREE.LineBasicMaterial
-  ): THREE.LineSegments {
-    const r = Math.max(0.05, radius)
-    // 经纬线球，比满配 Wireframe 更接近 Unity 的干净范围球
-    const positions: number[] = []
-    const segs = 48
-    const rings = 6
-    for (let i = 0; i < rings; i++) {
-      const v = ((i + 1) / (rings + 1)) * Math.PI
-      const y = Math.cos(v) * r
-      const rr = Math.sin(v) * r
-      for (let j = 0; j < segs; j++) {
-        const a0 = (j / segs) * Math.PI * 2
-        const a1 = ((j + 1) / segs) * Math.PI * 2
-        positions.push(
-          Math.cos(a0) * rr,
-          y,
-          Math.sin(a0) * rr,
-          Math.cos(a1) * rr,
-          y,
-          Math.sin(a1) * rr
-        )
-      }
-    }
-    const meridians = 8
-    for (let i = 0; i < meridians; i++) {
-      const a = (i / meridians) * Math.PI * 2
-      const cx = Math.cos(a)
-      const cz = Math.sin(a)
-      for (let j = 0; j < segs; j++) {
-        const v0 = (j / segs) * Math.PI
-        const v1 = ((j + 1) / segs) * Math.PI
-        positions.push(
-          cx * Math.sin(v0) * r,
-          Math.cos(v0) * r,
-          cz * Math.sin(v0) * r,
-          cx * Math.sin(v1) * r,
-          Math.cos(v1) * r,
-          cz * Math.sin(v1) * r
-        )
-      }
-    }
-    return makeLineFromPositions(positions, lineMat)
+    primaryMat: THREE.LineBasicMaterial,
+    secondaryMat: THREE.LineBasicMaterial
+  ): THREE.Group {
+    const g = new THREE.Group()
+    const r = Math.max(0.15, radius)
+    const primary: number[] = []
+    const secondary: number[] = []
+
+    appendCircleSegments(secondary, r, 'xy', 64, true)
+    appendCircleSegments(secondary, r, 'xz', 64, true)
+    appendCircleSegments(secondary, r, 'yz', 64, true)
+
+    // 6 个轴向边界刻度标尺
+    const tick = Math.min(0.18, r * 0.08)
+    primary.push(
+      r - tick,
+      0,
+      0,
+      r + tick,
+      0,
+      0,
+      -r - tick,
+      0,
+      0,
+      -r + tick,
+      0,
+      0,
+      0,
+      r - tick,
+      0,
+      0,
+      r + tick,
+      0,
+      0,
+      -r - tick,
+      0,
+      0,
+      -r + tick,
+      0,
+      0,
+      0,
+      r - tick,
+      0,
+      0,
+      r + tick,
+      0,
+      0,
+      -r - tick,
+      0,
+      0,
+      -r + tick
+    )
+
+    g.add(makeLineFromPositions(primary, primaryMat))
+    g.add(makeLineFromPositions(secondary, secondaryMat))
+    return g
   }
 
-  /** Unity 聚光：沿 -Z 的圆锥线框（底面圆 + 母线） */
-  function makeSpotLightCone(
+  /**
+   * 聚光灯常驻图标（Spot Light）：
+   * - 3D 灯筒遮光罩（后盖环 + 前沿环 + 4 根灯筒棱线）+ 近端指向短箭头与预览小锥
+   */
+  function makeSpotLightIcon(
+    angle: number,
+    primaryMat: THREE.LineBasicMaterial,
+    secondaryMat: THREE.LineBasicMaterial
+  ): THREE.Group {
+    const g = new THREE.Group()
+    const primary: number[] = []
+    const secondary: number[] = []
+
+    const backZ = 0.08
+    const backR = 0.09
+    const frontZ = -0.22
+    const frontR = 0.19
+    appendCircleSegments(primary, backR, 'xy', 24, false, { x: 0, y: 0, z: backZ })
+    appendCircleSegments(primary, frontR, 'xy', 28, false, { x: 0, y: 0, z: frontZ })
+
+    const dirs: Array<[number, number]> = [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1]
+    ]
+    for (const [cx, cy] of dirs) {
+      primary.push(cx * backR, cy * backR, backZ, cx * frontR, cy * frontR, frontZ)
+    }
+
+    // 近端紧凑指向预览（未选中时也能看清照射方向与张角，不铺满全屏）
+    const previewLen = 0.72
+    const previewRad = Math.min(0.65, Math.max(0.12, Math.tan(angle) * previewLen))
+    appendCircleSegments(secondary, previewRad, 'xy', 32, true, { x: 0, y: 0, z: -previewLen })
+    for (const [cx, cy] of dirs) {
+      secondary.push(
+        cx * frontR,
+        cy * frontR,
+        frontZ,
+        cx * previewRad,
+        cy * previewRad,
+        -previewLen
+      )
+    }
+    primary.push(0, 0, -0.12, 0, 0, -previewLen)
+    appendArrowHeadZ(primary, 0, 0, -previewLen, 0.13)
+
+    g.add(makeLineFromPositions(primary, primaryMat))
+    g.add(makeLineFromPositions(secondary, secondaryMat))
+    return g
+  }
+
+  /**
+   * 聚光灯完整光锥与半影内锥（Spot Light Volume）：
+   * - 仅用 4 条干净象限母线（取代旧版 8 条密集辐射线）+ 远端底圆 + 中段衰减环 + Penumbra 虚线内圆 + 球面衰减弧
+   */
+  function makeSpotLightConeGizmo(
     length: number,
     angle: number,
-    lineMat: THREE.LineBasicMaterial
-  ): THREE.LineSegments {
-    const len = Math.max(0.2, length)
-    const rad = Math.max(0.02, Math.tan(angle) * len)
-    const positions: number[] = []
-    const segs = 48
-    // 底面圆（在 z = -len）
-    for (let i = 0; i < segs; i++) {
-      const a0 = (i / segs) * Math.PI * 2
-      const a1 = ((i + 1) / segs) * Math.PI * 2
-      positions.push(
-        Math.cos(a0) * rad,
-        Math.sin(a0) * rad,
-        -len,
-        Math.cos(a1) * rad,
-        Math.sin(a1) * rad,
-        -len
-      )
+    penumbra: number,
+    primaryMat: THREE.LineBasicMaterial,
+    secondaryMat: THREE.LineBasicMaterial
+  ): THREE.Group {
+    const g = new THREE.Group()
+    const len = Math.max(0.4, length)
+    const clampedAngle = Math.min(Math.PI * 0.48, Math.max(0.03, angle))
+    const rad = Math.max(0.04, Math.tan(clampedAngle) * len)
+    const primary: number[] = []
+    const secondary: number[] = []
+
+    // 远端主光束底圆
+    appendCircleSegments(primary, rad, 'xy', 56, false, { x: 0, y: 0, z: -len })
+
+    // 4 条正交主母线（±X, ±Y）
+    const cardinals: Array<[number, number]> = [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1]
+    ]
+    for (const [cx, cy] of cardinals) {
+      primary.push(0, 0, 0, cx * rad, cy * rad, -len)
     }
-    // 从原点到圆周的母线
-    const spokes = 8
-    for (let i = 0; i < spokes; i++) {
-      const a = (i / spokes) * Math.PI * 2
-      positions.push(0, 0, 0, Math.cos(a) * rad, Math.sin(a) * rad, -len)
+
+    // 中段 50% 距离衰减参考环
+    const midLen = len * 0.5
+    const midRad = rad * 0.5
+    appendCircleSegments(secondary, midRad, 'xy', 40, true, { x: 0, y: 0, z: -midLen })
+
+    // 中轴瞄准虚线 + 远端箭头
+    appendDashedSegment(secondary, 0, 0, -0.72, 0, 0, -len, 7)
+    appendArrowHeadZ(primary, 0, 0, -len, Math.min(0.22, len * 0.06))
+
+    // Penumbra 半影内锥底圆（Blender 风格同心双环）
+    const p = Math.min(1, Math.max(0, penumbra))
+    if (p > 0.02) {
+      const innerAngle = Math.max(0.015, clampedAngle * (1 - p * 0.65))
+      const innerRad = Math.max(0.02, Math.tan(innerAngle) * len)
+      appendCircleSegments(secondary, innerRad, 'xy', 48, true, { x: 0, y: 0, z: -len })
+      for (const [cx, cy] of cardinals) {
+        appendDashedSegment(secondary, 0, 0, 0, cx * innerRad, cy * innerRad, -len, 6)
+      }
     }
-    // 近处小截圆（Unity 锥体近端感）
-    const near = Math.min(0.45, len * 0.18)
-    const nearRad = rad * (near / len)
-    for (let i = 0; i < segs; i++) {
-      const a0 = (i / segs) * Math.PI * 2
-      const a1 = ((i + 1) / segs) * Math.PI * 2
-      positions.push(
-        Math.cos(a0) * nearRad,
-        Math.sin(a0) * nearRad,
-        -near,
-        Math.cos(a1) * nearRad,
-        Math.sin(a1) * nearRad,
-        -near
-      )
+
+    g.add(makeLineFromPositions(primary, primaryMat))
+    g.add(makeLineFromPositions(secondary, secondaryMat))
+    return g
+  }
+
+  /**
+   * 同步单个光源 Gizmo 的选中态、Gizmo 尺寸缩放以及 Blender 风格地面垂线（始终垂直落向世界 y=0）
+   */
+  function syncLightGizmoState(root: THREE.Object3D, isSelected: boolean): void {
+    const gizmo = root.userData?.stageLightGizmo as THREE.Group | undefined
+    if (!gizmo) return
+    const showGizmo = viewMode.value === 'director' && lightGizmosVisible.value
+    gizmo.visible = showGizmo
+    if (!showGizmo) return
+
+    const iconGroup = gizmo.userData.iconGroup as THREE.Group | undefined
+    const volumeGroup = gizmo.userData.volumeGroup as THREE.Group | undefined
+    const selectGroup = gizmo.userData.selectGroup as THREE.Group | undefined
+    const groundGroup = gizmo.userData.groundGroup as THREE.Group | undefined
+    const stalkLine = gizmo.userData.stalkLine as THREE.LineSegments | undefined
+    const groundMarker = gizmo.userData.groundMarker as THREE.LineSegments | undefined
+    const primaryLineMat = gizmo.userData.primaryLineMat as THREE.LineBasicMaterial | undefined
+    const secondaryLineMat = gizmo.userData.secondaryLineMat as THREE.LineBasicMaterial | undefined
+
+    const sx = Math.max(0.001, Math.abs(root.scale.x))
+    const sy = Math.max(0.001, Math.abs(root.scale.y))
+    const sz = Math.max(0.001, Math.abs(root.scale.z))
+    const gScale = gizmoSize.value
+
+    if (iconGroup) {
+      iconGroup.scale.set(gScale / sx, gScale / sy, gScale / sz)
     }
-    return makeLineFromPositions(positions, lineMat)
+    if (volumeGroup) {
+      volumeGroup.scale.set(1 / sx, 1 / sy, 1 / sz)
+      // 点光源衰减球、聚光灯远端长锥、平行光远端光束仅在选中该光源时展开，保持日常视口干净
+      volumeGroup.visible = isSelected
+    }
+    if (selectGroup) {
+      selectGroup.visible = isSelected
+    }
+    if (primaryLineMat) {
+      primaryLineMat.opacity = isSelected ? 1.0 : 0.82
+    }
+    if (secondaryLineMat) {
+      secondaryLineMat.opacity = isSelected ? 0.62 : 0.38
+    }
+
+    // 地面垂线：抵消光源自身旋转，使垂线始终沿世界 -Y 落到 y=0 地面
+    if (groundGroup && stalkLine && groundMarker) {
+      root.updateMatrixWorld(true)
+      const worldPos = new THREE.Vector3()
+      const worldQuat = new THREE.Quaternion()
+      root.getWorldPosition(worldPos)
+      root.getWorldQuaternion(worldQuat)
+      const heightToGround = worldPos.y
+      if (Math.abs(heightToGround) > 0.05) {
+        groundGroup.visible = true
+        groundGroup.quaternion.copy(worldQuat).invert()
+        groundGroup.scale.set(1 / sx, 1 / sy, 1 / sz)
+        stalkLine.scale.set(1, heightToGround, 1)
+        groundMarker.position.set(0, -heightToGround + 0.005, 0)
+        groundMarker.scale.set(gScale, gScale, gScale)
+      } else {
+        groundGroup.visible = false
+      }
+    }
+  }
+
+  function syncAllLightGizmoStates(): void {
+    const selId = selectionKind.value === 'object' ? selectedObjectId.value : null
+    for (const obj of stage.value.objects) {
+      const mesh = objectMeshes.get(obj.id)
+      if (!mesh) continue
+      if (mesh.userData?.stageLightGizmo) {
+        syncLightGizmoState(mesh, obj.id === selId)
+      }
+      if (obj.kind === 'light') {
+        syncObjectNameLabel(obj, mesh)
+      }
+    }
   }
 
   function attachStageLightGizmo(
@@ -5665,6 +6608,10 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     const gizmo = buildUnityStyleLightGizmo(params, colorHex)
     root.userData.stageLightGizmo = gizmo
     root.add(gizmo)
+    const stageId = root.userData?.stageId as string | undefined
+    const isSelected =
+      !!stageId && selectionKind.value === 'object' && selectedObjectId.value === stageId
+    syncLightGizmoState(root, isSelected)
   }
 
   /**
@@ -6253,7 +7200,10 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   }
 
   function syncObjectNameLabel(obj: StageObjectState, mesh: THREE.Object3D): void {
-    const show = sceneLabelsVisible.value && obj.visible !== false && isObjectNameVisible(obj)
+    const lightAllowed =
+      obj.kind !== 'light' || (viewMode.value === 'director' && lightGizmosVisible.value)
+    const show =
+      sceneLabelsVisible.value && lightAllowed && obj.visible !== false && isObjectNameVisible(obj)
     let label = objectLabels.get(obj.id)
     if (!show) {
       if (label) label.visible = false
@@ -6299,7 +7249,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   }
 
   function createEmptyObject(parentId: string | null = null): string {
-    const name = resolveUniqueObjectName('Empty')
+    const name = resolveUniqueObjectName(t('director.stage.emptyObject'))
     const id = `empty:${crypto.randomUUID()}`
     const obj: StageObjectState = {
       id,
@@ -6322,7 +7272,9 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     const id = `camera:${crypto.randomUUID()}`
     const viewer = createDefaultDirectorViewer()
     viewer.position.x += cameras.length * 2.5
-    const name = resolveUniqueCameraName(`Camera ${cameras.length + 1}`)
+    const name = resolveUniqueCameraName(
+      t('director.stage.cameraNumbered', { n: cameras.length + 1 })
+    )
     const camera = createDefaultDirectorCamera(id, name)
     camera.viewer = viewer
     stage.value.cameras = [...cameras, camera]
@@ -6338,27 +7290,27 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     parentId: string | null = null
   ): string {
     const labels: Record<StagePrimitive, string> = {
-      box: 'Cube',
-      sphere: 'Sphere',
-      capsule: 'Capsule',
-      cone: 'Cone',
-      cylinder: 'Cylinder',
-      pyramid: 'Pyramid',
-      hemisphere: 'Hemisphere',
-      torus: 'Torus',
-      arch: 'Arch',
-      pointedArch: 'Pointed Arch',
-      cross: 'Cross',
-      tube: 'Tube',
-      prism: 'Prism',
-      tetrahedron: 'Tetrahedron',
-      octahedron: 'Octahedron',
-      icosphere: 'Icosphere',
-      wedge: 'Wedge',
-      disc: 'Disc',
-      ring: 'Ring',
-      plane: 'Plane',
-      quad: 'Quad'
+      box: t('director.stage.primitive.cube'),
+      sphere: t('director.stage.primitive.sphere'),
+      capsule: t('director.stage.primitive.capsule'),
+      cone: t('director.stage.primitive.cone'),
+      cylinder: t('director.stage.primitive.cylinder'),
+      pyramid: t('director.stage.primitive.pyramid'),
+      hemisphere: t('director.stage.primitive.hemisphere'),
+      torus: t('director.stage.primitive.torus'),
+      arch: t('director.stage.primitive.arch'),
+      pointedArch: t('director.stage.primitive.pointedArch'),
+      cross: t('director.stage.primitive.cross'),
+      tube: t('director.stage.primitive.tube'),
+      prism: t('director.stage.primitive.prism'),
+      tetrahedron: t('director.stage.primitive.tetrahedron'),
+      octahedron: t('director.stage.primitive.octahedron'),
+      icosphere: t('director.stage.primitive.icosphere'),
+      wedge: t('director.stage.primitive.wedge'),
+      disc: t('director.stage.primitive.disc'),
+      ring: t('director.stage.primitive.ring'),
+      plane: t('director.stage.primitive.plane'),
+      quad: t('director.stage.primitive.quad')
     }
     const name = resolveUniqueObjectName(labels[primitive])
     const id = `primitive:${crypto.randomUUID()}`
@@ -6381,9 +7333,9 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
 
   function createLightObject(type: StageLightType, parentId: string | null = null): string {
     const labels: Record<StageLightType, string> = {
-      directional: 'Directional Light',
-      point: 'Point Light',
-      spot: 'Spot Light'
+      directional: t('director.stage.light.directional'),
+      point: t('director.stage.light.point'),
+      spot: t('director.stage.light.spot')
     }
     const light = createDefaultStageLightParams(type)
     const name = resolveUniqueObjectName(labels[type])
@@ -6405,6 +7357,120 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     }
     insertObjectMesh(obj, makeLightObject(obj))
     return id
+  }
+
+  function createMannequinObject(
+    preset: StageMannequinPreset = 'humanoid',
+    parentId: string | null = null
+  ): string {
+    const labels: Record<StageMannequinPreset, string> = {
+      humanoid: t('director.stage.mannequin.humanoid'),
+      chibi: t('director.stage.mannequin.chibi'),
+      quadruped: t('director.stage.mannequin.quadruped')
+    }
+    const colors: Record<StageMannequinPreset, string> = {
+      humanoid: '#64748b',
+      chibi: '#7c3aed',
+      quadruped: '#0ea5e9'
+    }
+    const name = resolveUniqueObjectName(labels[preset])
+    const id = `mannequin:${crypto.randomUUID()}`
+    const obj: StageObjectState = {
+      id,
+      name,
+      kind: 'character',
+      mannequinPreset: preset,
+      color: colors[preset],
+      parentId: resolveCreateParentId(parentId),
+      visible: true,
+      locked: false,
+      nameVisible: true,
+      position: { x: 0, y: 0, z: 0 },
+      rotation: { x: 0, y: 0, z: 0 },
+      scale: { x: 1, y: 1, z: 1 }
+    }
+    const built = createBuiltinMannequin(preset, obj.color)
+    built.root.name = name
+    insertObjectMesh(obj, built.root)
+    registerSkeletonRuntime(id, built.root, built.clips)
+    snapshotObjectBindPose(id, built.root)
+    return id
+  }
+
+  function applyLightingPreset(presetId: DirectorLightingPresetId): void {
+    const targetPivot = selectedObject.value?.position ?? { x: 0, y: 0, z: 0 }
+    // 移除此前由灯光预设创建的灯光（保留手动创建的其它对象）
+    const existingPresetLightIds = stage.value.objects
+      .filter((o) => o.kind === 'light' && o.id.startsWith('light:preset:'))
+      .map((o) => o.id)
+    for (const lid of existingPresetLightIds) {
+      detachObjectVisual(lid)
+    }
+    const remainingObjects = stage.value.objects.filter(
+      (o) => !(o.kind === 'light' && o.id.startsWith('light:preset:'))
+    )
+    const presetRes = buildLightingPresetObjects(presetId, targetPivot, 1.8, null, locale.value)
+    const presetLights = presetRes.lights.map((l) => ({
+      ...l,
+      id: `light:preset:${presetId}:${crypto.randomUUID()}`
+    }))
+    stage.value.lightingPreset = presetId
+    stage.value.objects = [...remainingObjects, ...presetLights]
+    for (const lightObj of presetLights) {
+      const lightMesh = makeLightObject(lightObj)
+      lightMesh.name = lightObj.name
+      lightMesh.userData.stageId = lightObj.id
+      applyTransform(lightMesh, lightObj)
+      lightMesh.visible = lightObj.visible !== false
+      attachObjectNameLabel(lightObj, lightMesh)
+      getStageRoot()?.add(lightMesh)
+      objectMeshes.set(lightObj.id, lightMesh)
+    }
+    previewRevision.value += 1
+    schedulePersist()
+    requestRender()
+  }
+
+  async function applyAiDirectorBlocking(prompt: string): Promise<{ summary: string }> {
+    const plan = generateAiDirectorBlocking(stage.value, prompt, locale.value)
+    for (const cam of listCameras()) {
+      disposeShotCameraVisual(cam.id)
+    }
+    for (const [id] of objectMeshes) {
+      detachObjectVisual(id)
+    }
+    stage.value.objects = plan.objects
+    stage.value.cameras = plan.cameras
+    stage.value.activeCameraId = plan.activeCameraId
+    stage.value.animation = plan.animation
+    stage.value.lightingPreset = plan.lightingPreset
+    stage.value.fogEnabled = plan.fogEnabled
+    stage.value.fogDensity = plan.fogDensity
+    stage.value.fogColor = plan.fogColor
+    stage.value.compositionGuide = plan.compositionGuide
+
+    if (scene) {
+      await rebuildObjects()
+      for (const cam of listCameras()) ensureShotCameraVisual(cam)
+      syncAtmosphereVisuals()
+      syncShotVisuals()
+      if (viewMode.value === 'camera') applyCameraView()
+      else frameShotCameraInDirectorView()
+    }
+    previewRevision.value += 1
+    syncCameraNodeFromStage()
+    schedulePersist()
+    requestRender()
+    const actorCount = plan.objects.filter((o) => o.kind === 'character').length
+    const camCount = (plan.cameras ?? []).length
+    const presetId = plan.lightingPreset ?? 'studio'
+    return {
+      summary: t('director.stage.aiDirector.summary', {
+        actors: actorCount,
+        cameras: camCount,
+        lighting: t(`director.stage.lightingPreset.${presetId}`)
+      })
+    }
   }
 
   /**
@@ -6548,7 +7614,10 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     const id = `camera:${crypto.randomUUID()}`
     const viewer = cloneStageState(src.viewer)
     viewer.position.x += 1.5
-    const camera = createDefaultDirectorCamera(id, resolveUniqueCameraName(`${src.name} Copy`))
+    const camera = createDefaultDirectorCamera(
+      id,
+      resolveUniqueCameraName(t('director.stage.copyName', { name: src.name }))
+    )
     camera.viewer = viewer
     if (src.visible !== undefined) camera.visible = src.visible
     if (src.locked !== undefined) camera.locked = src.locked
@@ -6568,7 +7637,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     const obj: StageObjectState = {
       ...cloneStageState(src),
       id,
-      name: resolveUniqueObjectName(`${src.name} Copy`),
+      name: resolveUniqueObjectName(t('director.stage.copyName', { name: src.name })),
       parentId: selectedParent ?? src.parentId,
       position: {
         x: src.position.x + 0.5,
@@ -7492,18 +8561,6 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     return Number.isFinite(n) ? n : 0x888888
   }
 
-  function makeCharacter(name: string, color: number): THREE.Group {
-    const g = new THREE.Group()
-    const bodyMat = new THREE.MeshStandardMaterial({ color })
-    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.35, 1.0, 8, 16), bodyMat)
-    body.position.y = 1.0
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.28, 16, 16), bodyMat)
-    head.position.y = 1.85
-    g.add(body, head)
-    g.name = name
-    return g
-  }
-
   function makeProp(name: string, color: number): THREE.Mesh {
     const mesh = new THREE.Mesh(
       new THREE.BoxGeometry(0.8, 0.8, 0.8),
@@ -7731,6 +8788,8 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
         break
     }
     mesh.name = name
+    mesh.castShadow = primitive !== 'plane' && primitive !== 'disc'
+    mesh.receiveShadow = true
     return mesh
   }
 
@@ -7743,7 +8802,16 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
 
     let light: THREE.Light
     if (params.type === 'point') {
-      light = new THREE.PointLight(color, params.intensity, params.distance ?? 0, params.decay ?? 2)
+      const point = new THREE.PointLight(
+        color,
+        params.intensity,
+        params.distance ?? 0,
+        params.decay ?? 2
+      )
+      point.castShadow = params.castShadow !== false
+      point.shadow.mapSize.set(1024, 1024)
+      point.shadow.bias = -0.0005
+      light = point
     } else if (params.type === 'spot') {
       const spot = new THREE.SpotLight(
         color,
@@ -7753,11 +8821,23 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
         params.penumbra ?? 0.25,
         params.decay ?? 2
       )
+      spot.castShadow = params.castShadow !== false
+      spot.shadow.mapSize.set(1024, 1024)
+      spot.shadow.bias = -0.0004
       spot.target.position.set(0, 0, -1)
       group.add(spot.target)
       light = spot
     } else {
       const dir = new THREE.DirectionalLight(color, params.intensity)
+      dir.castShadow = params.castShadow !== false
+      dir.shadow.mapSize.set(2048, 2048)
+      dir.shadow.camera.near = 0.5
+      dir.shadow.camera.far = 45
+      dir.shadow.camera.left = -12
+      dir.shadow.camera.right = 12
+      dir.shadow.camera.top = 12
+      dir.shadow.camera.bottom = -12
+      dir.shadow.bias = -0.0003
       dir.target.position.set(0, 0, -1)
       group.add(dir.target)
       light = dir
@@ -7786,6 +8866,12 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       return
     }
     instantiateObjectMaterials(root)
+    root.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        child.castShadow = true
+        child.receiveShadow = true
+      }
+    })
     if (obj.color && (!assetColor || obj.color.toLowerCase() !== assetColor.toLowerCase())) {
       applyObjectColor(root, obj.color)
     }
@@ -7832,7 +8918,11 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     if (obj.kind === 'primitive' && obj.primitive) {
       return { mesh: makePrimitive(obj.name, obj.primitive, color), clips: [] }
     }
-    if (obj.kind === 'character') return { mesh: makeCharacter(obj.name, color), clips: [] }
+    if (obj.mannequinPreset || obj.kind === 'character') {
+      const built = createBuiltinMannequin(obj.mannequinPreset ?? 'humanoid', obj.color)
+      built.root.name = obj.name
+      return { mesh: built.root, clips: built.clips }
+    }
     return { mesh: makeProp(obj.name, color), clips: [] }
   }
 
@@ -7959,6 +9049,9 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     }
     panoramaTexture?.dispose()
     panoramaTexture = null
+    if (scene && renderer) {
+      envMapRenderTarget = applyPanoramaEnvironmentMap(renderer, scene, null, envMapRenderTarget)
+    }
   }
 
   async function createPanoramaSphere(url: string): Promise<void> {
@@ -7967,6 +9060,14 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       new THREE.TextureLoader().load(url, resolve, undefined, reject)
     })
     panoramaTexture.colorSpace = THREE.SRGBColorSpace
+    if (scene && renderer) {
+      envMapRenderTarget = applyPanoramaEnvironmentMap(
+        renderer,
+        scene,
+        panoramaTexture,
+        envMapRenderTarget
+      )
+    }
     const geo = new THREE.SphereGeometry(currentPanoramaRadius(), 64, 40)
     geo.scale(-1, 1, 1)
     panoramaSphere = new THREE.Mesh(
@@ -8823,6 +9924,8 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
 
     renderer = new THREE.WebGLRenderer({ antialias: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5))
+    renderer.shadowMap.enabled = true
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap
     applyBorderlessStyle(false)
     renderer.outputColorSpace = THREE.SRGBColorSpace
     renderer.toneMapping = THREE.ACESFilmicToneMapping
@@ -8937,7 +10040,10 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     poseBoneTransformHelper = poseBoneTransform.getHelper()
     scene.add(poseBoneTransformHelper)
 
+    shadowCatcherPlane = createShadowCatcherPlane()
+    contentRoot.add(shadowCatcherPlane)
     rebuildGrid()
+    syncAtmosphereVisuals()
 
     syncShotVisuals()
     frameShotCameraInDirectorView()
@@ -8957,6 +10063,15 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     // DirectionalLight ?????? position ??target????????????????
     key.position.set(-lightDirection.x * 10, -lightDirection.y * 10, -lightDirection.z * 10)
     key.target.position.set(0, 0, 0)
+    key.castShadow = true
+    key.shadow.mapSize.set(2048, 2048)
+    key.shadow.camera.near = 0.5
+    key.shadow.camera.far = 45
+    key.shadow.camera.left = -12
+    key.shadow.camera.right = 12
+    key.shadow.camera.top = 12
+    key.shadow.camera.bottom = -12
+    key.shadow.bias = -0.0003
 
     const fill = new THREE.DirectionalLight(0xdde6ff, 0.45)
     fill.name = 'Default Fill Light'
@@ -8992,6 +10107,9 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       const deltaSeconds = lastFrameAt ? (now - lastFrameAt) / 1000 : 1 / 60
       lastFrameAt = now
       tickAnimation(deltaSeconds)
+      if (animPlaying.value && viewMode.value === 'camera') {
+        applyCameraView()
+      }
       const flyMoved = tickFlyNavigate(deltaSeconds)
       const controlsChanged =
         viewMode.value === 'director' && !flyNavigateActive ? (orbit?.update() ?? false) : false
@@ -9078,6 +10196,14 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     }
     panoramaTexture?.dispose()
     panoramaTexture = null
+    envMapRenderTarget?.dispose()
+    envMapRenderTarget = null
+    if (shadowCatcherPlane) {
+      contentRoot?.remove(shadowCatcherPlane)
+      shadowCatcherPlane.geometry.dispose()
+      ;(shadowCatcherPlane.material as THREE.Material).dispose()
+      shadowCatcherPlane = null
+    }
     shadingWireMaterial?.dispose()
     shadingWireMaterial = null
     shadingWireframeMaterial?.dispose()
@@ -9117,6 +10243,11 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       root: viz.root.visible,
       body: viz.body.visible
     }))
+    const lightGizmoVis: Array<{ gizmo: THREE.Object3D; visible: boolean }> = []
+    for (const mesh of objectMeshes.values()) {
+      const lg = mesh.userData?.stageLightGizmo as THREE.Object3D | undefined
+      if (lg) lightGizmoVis.push({ gizmo: lg, visible: lg.visible })
+    }
     const pathVis = [...pathVisuals.values()].map((line) => ({
       line,
       visible: line.visible
@@ -9143,6 +10274,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       viz.root.visible = false
       viz.body.visible = false
     }
+    for (const { gizmo } of lightGizmoVis) gizmo.visible = false
     for (const { line } of pathVis) line.visible = false
     for (const { obj } of pathEditVis) obj.visible = false
     if (pathDraftLine) pathDraftLine.visible = false
@@ -9159,6 +10291,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
         viz.root.visible = root
         viz.body.visible = body
       }
+      for (const { gizmo, visible } of lightGizmoVis) gizmo.visible = visible
       for (const { line, visible } of pathVis) line.visible = visible
       for (const { obj, visible } of pathEditVis) obj.visible = visible
       if (pathDraftLine) pathDraftLine.visible = prevDraft
@@ -9271,6 +10404,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       }
       syncShotVisuals()
       rebuildGrid()
+      syncAtmosphereVisuals()
       applySceneWorldTransform()
       syncCameraClipPlanes()
       syncAllPathVisuals()
@@ -9301,6 +10435,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     }
     syncShotVisuals()
     rebuildGrid()
+    syncAtmosphereVisuals()
     applySceneWorldTransform()
     void syncIncomingPanorama()
     void syncIncomingModel()
@@ -9327,6 +10462,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     error,
     incomingModelNotice,
     stage,
+    cinematographyPrompt,
     linkedPanoramaId,
     transformMode,
     selectedObjectId,
@@ -9335,6 +10471,8 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     selectedObject,
     viewMode,
     aspectRatio,
+    compositionGuide,
+    capturePass,
     previewRevision,
     isPanning,
     isOrbiting,
@@ -9357,17 +10495,23 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     updatePanoramaYaw,
     updatePanoramaRadius,
     updateGround,
+    updateStageEnvironment,
+    applyLightingPreset,
+    applyAiDirectorBlocking,
     moveSelectionToView,
     alignSelectionWithView,
     alignViewToSelected,
     setMode,
     setAspectRatio,
+    setCompositionGuide,
+    setCapturePass,
     setViewMode,
     setViewer: setViewerFromInspector,
     applyCameraPreset,
     canApplyComboPresets,
     canApplyComboPreset,
     getViewer,
+    resolveEffectiveCameraViewer,
     updateObjectTransform,
     listObjectMaterialSlots,
     setObjectMaterialTexture,
@@ -9379,6 +10523,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     createCameraObject,
     createPrimitiveObject,
     createLightObject,
+    createMannequinObject,
     createModelObject,
     canDeleteObject,
     removeObject,
@@ -9386,6 +10531,8 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     resetViewer,
     setViewOrientation,
     takeCameraShot,
+    takeFirstLastFramePair,
+    captureAllCameras,
     removeCameraShot,
     removeCameraVideo,
     mediaGallerySignal,
@@ -9418,12 +10565,14 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     gizmoSize,
     sceneLabelsVisible,
     cameraGizmosVisible,
+    lightGizmosVisible,
     gridGizmoVisible,
     captureLabelsVisible,
     captureCameraLabelsVisible,
     setGizmoSize,
     setSceneLabelsVisible,
     setCameraGizmosVisible,
+    setLightGizmosVisible,
     setGridGizmoVisible,
     setCaptureLabelsVisible,
     setCaptureCameraLabelsVisible,
@@ -9434,6 +10583,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     setObjectBonePoseDeg,
     patchObjectBonePose,
     applyObjectBonePoseMap,
+    applyExpressivePosePreset,
     listObjectPoseBindBones,
     readAppliedObjectBonePoseDeg,
     setObjectBonePoseWithUndo,
@@ -9470,8 +10620,10 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     addCameraCutSegment,
     removeCameraCutSegment,
     setCameraCutSegmentRange,
+    setCameraCutSegmentBlend,
     selectCameraCutSegment,
     animSelectedCameraCutSegmentId,
+    hasAnyPlayableMotion,
     selectAnimTrack,
     selectAnimKeyframe,
     addAnimKeyframe,

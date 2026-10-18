@@ -1,4 +1,9 @@
-import { readDirectorStage, type DirectorCameraShot, type DirectorCameraVideo } from '../domain'
+import {
+  buildDirectorCinematographyPrompt,
+  readDirectorStage,
+  type DirectorCameraShot,
+  type DirectorCameraVideo
+} from '../domain'
 import { isDirectorProcessingNode } from './nodeRole'
 import type { GraphImageItem, GraphVideoItem } from './execute/types'
 import type { GraphDocument, GraphNodeParams } from './types'
@@ -104,4 +109,37 @@ export function resolveMotionVideoItems(
   if (fromStage.length) return fromStage
 
   return videosToVideoItems(processing?.params.cameraVideos ?? [])
+}
+
+/** 解析或实时合成导演台运镜/打光结构化提示词 */
+export function resolveMotionPromptText(
+  genParams?: Record<string, unknown> | null,
+  nodeParams?:
+    (Pick<GraphNodeParams, 'directorPrompt' | 'viewer'> & { promptText?: string }) | null,
+  processingNodeId?: string | null
+): string {
+  if (typeof nodeParams?.directorPrompt === 'string' && nodeParams.directorPrompt.trim()) {
+    return nodeParams.directorPrompt.trim()
+  }
+  const processing = findMotionProcessingNode(genParams?.graphJson)
+  const nodeId = processingNodeId ?? processing?.id ?? null
+  const stageRaw = readStageRawForNode(genParams, nodeId) ?? genParams?.stage
+  if (stageRaw && typeof stageRaw === 'object') {
+    const stage = readDirectorStage({ stage: stageRaw })
+    return buildDirectorCinematographyPrompt(stage).prompt
+  }
+  if (
+    typeof processing?.params.directorPrompt === 'string' &&
+    processing.params.directorPrompt.trim()
+  ) {
+    return processing.params.directorPrompt.trim()
+  }
+  if (nodeParams?.viewer) {
+    const fallbackStage = readDirectorStage({})
+    if (fallbackStage.cameras?.[0]) {
+      fallbackStage.cameras[0].viewer = nodeParams.viewer
+    }
+    return buildDirectorCinematographyPrompt(fallbackStage).prompt
+  }
+  return typeof nodeParams?.promptText === 'string' ? nodeParams.promptText.trim() : ''
 }

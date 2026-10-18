@@ -32,6 +32,9 @@ export const VIDEO_FILE_EXTENSIONS = ['mp4', 'mov', 'webm', 'mkv', 'm4v'] as con
 /** 声音 */
 export const AUDIO_FILE_EXTENSIONS = ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac'] as const
 
+/** 自包含交互页面 / 可玩 HTML */
+export const HTML_FILE_EXTENSIONS = ['html', 'htm'] as const
+
 /**
  * 视频 / 动作资产的拣选扩展名。
  *

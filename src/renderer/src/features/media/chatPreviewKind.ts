@@ -1,5 +1,6 @@
 import {
   AUDIO_FILE_EXTENSIONS,
+  HTML_FILE_EXTENSIONS,
   IMAGE_FILE_EXTENSIONS,
   MODEL_FILE_EXTENSIONS,
   VIDEO_FILE_EXTENSIONS
@@ -16,12 +17,13 @@ import { SPLAT_EXTENSIONS } from '../director/splatMesh'
  *
  * 扩展名清单统一从 `@shared/mediaFileExtensions` 取（单一来源）。
  */
-export type ChatPreviewKind = 'image' | 'video' | 'audio' | 'model' | 'file'
+export type ChatPreviewKind = 'image' | 'video' | 'audio' | 'model' | 'html' | 'file'
 
 const IMAGE_EXTS = new Set<string>(IMAGE_FILE_EXTENSIONS)
 const VIDEO_EXTS = new Set<string>(VIDEO_FILE_EXTENSIONS)
 const AUDIO_EXTS = new Set<string>(AUDIO_FILE_EXTENSIONS)
 const MODEL_EXTS = new Set<string>(MODEL_FILE_EXTENSIONS)
+const HTML_EXTS = new Set<string>(HTML_FILE_EXTENSIONS)
 
 function extensionOf(relativePath: string): string {
   const name = (relativePath ?? '').split(/[?#]/)[0] ?? ''
@@ -42,6 +44,7 @@ export function chatPreviewKind(relativePath: string): ChatPreviewKind {
   if (VIDEO_EXTS.has(ext)) return 'video'
   if (AUDIO_EXTS.has(ext)) return 'audio'
   if (MODEL_EXTS.has(ext)) return 'model'
+  if (HTML_EXTS.has(ext)) return 'html'
   return 'file'
 }
 
@@ -60,5 +63,6 @@ export function chatPreviewAssetType(relativePath: string): string | null {
   if (kind === 'model' && isSplatPreviewPath(relativePath)) return 'splat'
   // 预览 kind 叫 audio，资产域类型是 voice（i18n：asset.type.voice =「声音」）
   if (kind === 'audio') return 'voice'
+  if (kind === 'html') return 'gamePlay'
   return kind
 }

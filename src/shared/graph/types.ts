@@ -835,6 +835,8 @@ export interface GraphNodeParams {
   cameraShots?: DirectorCameraShot[]
   /** 导演台关闭时回传的动作录制视频 */
   cameraVideos?: DirectorCameraVideo[]
+  /** 导演台自动合成的运镜与打光结构化提示词（out-prompt 端口直出） */
+  directorPrompt?: string
   /**
    * 图片生成节点：历次生成累计的图片（重新执行追加，可在 Inspector 删除）。
    * 大图应物化为 relativePath，dataUrl 可为空。

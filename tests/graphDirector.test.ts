@@ -15,7 +15,8 @@ describe('director asset graph', () => {
     const outPorts = getNodePorts(processing!).filter((p) => p.direction === 'out')
     expect(outPorts.map((p) => [p.id, p.dataType])).toEqual([
       ['out-shots', 'images'],
-      ['out-actions', 'videos']
+      ['out-actions', 'videos'],
+      ['out-prompt', 'text']
     ])
     const inPorts = getNodePorts(processing!).filter((p) => p.direction === 'in')
     expect(inPorts.map((p) => [p.id, p.dataType, p.multiple ?? false])).toEqual([

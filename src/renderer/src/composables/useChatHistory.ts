@@ -7,11 +7,19 @@
  */
 import { computed, ref } from 'vue'
 import type { GitChangeFile } from '@shared/git'
+import type { HarnessGoalView, HarnessPresentFile, HarnessTodoItem } from '@shared/ipc'
 
 export type ChatMsg =
-  | { kind: 'user'; text: string }
+  | { kind: 'user'; text: string; steered?: boolean }
   | { kind: 'assistant'; text: string; final?: boolean; reasoning?: string }
   | { kind: 'status'; text: string }
+  | {
+      kind: 'present'
+      key: string
+      callId: string
+      turn: number
+      files: HarnessPresentFile[]
+    }
   | {
       kind: 'changes'
       /** 会话内唯一标识：`changes:<时间戳>`（同一轮只插一条，刷新时原地更新） */
@@ -115,6 +123,10 @@ export interface ChatSession {
    * 而不是回退到只算消息文本的本地估算（进度看着像「没保存」）。缺省表示从未上报过。
    */
   contextUsed?: number
+  /** 会话内持久化的 Todo 进度看板 */
+  todos?: HarnessTodoItem[]
+  /** 会话内持久化的多轮 Goal 状态 */
+  goal?: HarnessGoalView | null
 }
 
 const SESSIONS_KEY = 'studio.chat.sessions.v1'
@@ -306,6 +318,37 @@ export function useChatHistory() {
     sessions.value[index] = { ...prev, contextUsed: used }
   }
 
+  function commitTodos(todos: HarnessTodoItem[] | undefined): void {
+    const index = sessions.value.findIndex((s) => s.id === activeId.value)
+    if (index < 0) return
+    const prev = sessions.value[index]!
+    sessions.value[index] = { ...prev, todos }
+  }
+
+  function commitGoal(goal: HarnessGoalView | null | undefined): void {
+    const index = sessions.value.findIndex((s) => s.id === activeId.value)
+    if (index < 0) return
+    const prev = sessions.value[index]!
+    sessions.value[index] = { ...prev, goal }
+  }
+
+  /** 从指定轮次分叉出一个带给定 id 与初始消息的新会话并激活 */
+  function forkSession(newId: string, messages: ChatMsg[], titleSuffix = ''): void {
+    const now = Date.now()
+    const baseTitle = titleFromMessages(messages)
+    const session: ChatSession = {
+      id: newId,
+      title: baseTitle ? `${baseTitle}${titleSuffix}` : '',
+      createdAt: now,
+      updatedAt: now,
+      messages: [...messages]
+    }
+    sessions.value = [session, ...sessions.value]
+    activeId.value = session.id
+    localStorage.setItem(ACTIVE_KEY, session.id)
+    persist()
+  }
+
   return {
     sessions,
     activeId,
@@ -317,6 +360,9 @@ export function useChatHistory() {
     remove,
     activate,
     commitMessages,
-    commitContextUsed
+    commitContextUsed,
+    commitTodos,
+    commitGoal,
+    forkSession
   }
 }

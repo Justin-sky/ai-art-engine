@@ -130,6 +130,58 @@
               </div>
             </div>
           </div>
+          <div class="ai-director-root">
+            <button
+              type="button"
+              :class="{ active: aiDirectorMenuOpen }"
+              :title="t('director.stage.aiDirector.title')"
+              :aria-expanded="aiDirectorMenuOpen"
+              @click.stop="toggleAiDirectorMenu"
+            >
+              ✦ {{ t('director.stage.aiDirector.title') }}
+            </button>
+            <div
+              v-if="aiDirectorMenuOpen"
+              ref="aiDirectorMenuEl"
+              class="ai-director-dropdown"
+              role="dialog"
+              :aria-label="t('director.stage.aiDirector.title')"
+            >
+              <div class="ai-director-head">
+                {{ t('director.stage.aiDirector.templates') }}
+              </div>
+              <div class="ai-director-templates">
+                <button
+                  v-for="tpl in aiBlockingTemplates"
+                  :key="tpl.id"
+                  type="button"
+                  class="ai-director-pill"
+                  @click="onPickAiTemplate(locale.startsWith('en') ? tpl.promptEn : tpl.promptZh)"
+                >
+                  {{ t(tpl.labelKey) }}
+                </button>
+              </div>
+              <textarea
+                v-model="aiDirectorPrompt"
+                class="ai-director-textarea"
+                rows="3"
+                :placeholder="t('director.stage.aiDirector.placeholder')"
+              />
+              <div class="ai-director-footer">
+                <span v-if="aiDirectorSummary" class="ai-director-summary">{{
+                  aiDirectorSummary
+                }}</span>
+                <button
+                  type="button"
+                  class="ai-director-apply"
+                  :disabled="!aiDirectorPrompt.trim()"
+                  @click="onApplyAiBlocking"
+                >
+                  {{ t('director.stage.aiDirector.apply') }}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
       <div class="title-actions no-drag">
@@ -220,6 +272,14 @@
             <label class="gizmos-row check">
               <input
                 type="checkbox"
+                :checked="scene.lightGizmosVisible.value"
+                @change="onGizmoToggle('lights', $event)"
+              />
+              <span>{{ t('director.stage.gizmos.lights') }}</span>
+            </label>
+            <label class="gizmos-row check">
+              <input
+                type="checkbox"
                 :checked="scene.gridGizmoVisible.value"
                 @change="onGizmoToggle('grid', $event)"
               />
@@ -303,18 +363,57 @@
           :aspect-ratio="scene.aspectRatio.value"
           :stage-edit-mode="scene.stageEditMode.value"
           :selection-bounds-visible="scene.selectionBoundsVisible.value"
+          :composition-guide="scene.compositionGuide.value"
+          :capture-pass="scene.capturePass.value"
           @set-mode="scene.setMode"
           @set-stage-edit-mode="scene.setStageEditMode"
-          @reset-view="scene.resetViewer"
           @capture="onCapture"
+          @capture-first-last="onCaptureFirstLast"
+          @capture-all-cameras="onCaptureAllCameras"
           @set-aspect-ratio="scene.setAspectRatio"
+          @set-composition-guide="scene.setCompositionGuide"
+          @set-capture-pass="scene.setCapturePass"
           @toggle-selection-bounds="scene.toggleSelectionBoundsVisible"
         />
         <div
-          v-if="scene.aspectRatio.value !== 'auto'"
+          v-if="scene.aspectRatio.value !== 'auto' || scene.compositionGuide.value !== 'none'"
           class="aspect-frame"
+          :class="{ 'guide-only': scene.aspectRatio.value === 'auto' }"
           :style="aspectFrameStyle"
-        />
+        >
+          <svg
+            v-if="scene.compositionGuide.value !== 'none'"
+            class="composition-guide-svg"
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+          >
+            <template v-if="scene.compositionGuide.value === 'thirds'">
+              <line x1="33.33" y1="0" x2="33.33" y2="100" />
+              <line x1="66.67" y1="0" x2="66.67" y2="100" />
+              <line x1="0" y1="33.33" x2="100" y2="33.33" />
+              <line x1="0" y1="66.67" x2="100" y2="66.67" />
+            </template>
+            <template v-else-if="scene.compositionGuide.value === 'golden'">
+              <line x1="38.2" y1="0" x2="38.2" y2="100" />
+              <line x1="61.8" y1="0" x2="61.8" y2="100" />
+              <line x1="0" y1="38.2" x2="100" y2="38.2" />
+              <line x1="0" y1="61.8" x2="100" y2="61.8" />
+            </template>
+            <template v-else-if="scene.compositionGuide.value === 'crosshair'">
+              <line x1="50" y1="38" x2="50" y2="62" />
+              <line x1="38" y1="50" x2="62" y2="50" />
+              <circle cx="50" cy="50" r="6" />
+            </template>
+            <template v-else-if="scene.compositionGuide.value === 'safeArea'">
+              <rect x="5" y="5" width="90" height="90" />
+              <rect x="10" y="10" width="80" height="80" stroke-dasharray="1.5 1.5" />
+            </template>
+            <template v-else-if="scene.compositionGuide.value === 'diagonal'">
+              <line x1="0" y1="0" x2="100" y2="100" />
+              <line x1="100" y1="0" x2="0" y2="100" />
+            </template>
+          </svg>
+        </div>
         <DirectorCameraPreviewPanel />
         <DirectorViewOrientationGizmo
           @set-orientation="scene.setViewOrientation"
@@ -352,6 +451,7 @@ import {
   DIRECTOR_COMBO_CAMERA_PRESETS,
   DIRECTOR_SHOT_CAMERA_PRESETS
 } from '@shared/directorCameraPresets'
+import { DIRECTOR_AI_BLOCKING_TEMPLATES } from '../features/director/directorAiBlocking'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { directorStageSceneKey } from '../features/director/stageSceneKey'
 import {
@@ -369,8 +469,8 @@ import DirectorAnimationPanel from './DirectorAnimationPanel.vue'
 import DirectorCameraPreviewPanel from './DirectorCameraPreviewPanel.vue'
 
 const CAMERA_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z"/><circle cx="12" cy="13" r="3.5"/></svg>`
-const GIZMOS_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7.6"/><ellipse cx="12" cy="12" rx="7.6" ry="3.1"/><ellipse cx="12" cy="12" rx="3.1" ry="7.6"/><path d="M4.4 12h15.2"/><path d="M12 4.4v15.2"/></svg>`
-const SHADING_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.4 20.2 8v8L12 20.6 3.8 16V8L12 3.4Z" fill="currentColor" fill-opacity="0.16"/><path d="M12 3.4 20.2 8v8L12 20.6 3.8 16V8L12 3.4Z"/><path d="M3.8 8 12 12.6 20.2 8"/><path d="M12 12.6V20.6"/><path d="M7.9 10.3v8.1"/><path d="M16.1 10.3v8.1"/><path d="M5.85 14.3h12.3"/></svg>`
+const GIZMOS_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7.6"/><path d="M4.4 12a7.6 3.1 0 0 0 15.2 0"/><path d="M12 4.4a3.1 7.6 0 0 1 0 15.2"/></svg>`
+const SHADING_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.4 20.2 8v8L12 20.6 3.8 16V8L12 3.4Z" fill="currentColor" fill-opacity="0.14"/><path d="M3.8 8 12 12.6 20.2 8"/><path d="M12 12.6V20.6"/></svg>`
 
 defineProps<{
   showClose?: boolean
@@ -383,7 +483,7 @@ const emit = defineEmits<{
   ready: [el: HTMLDivElement]
 }>()
 
-const { t } = useStudioI18n()
+const { t, locale } = useStudioI18n()
 const workspace = useWorkspaceStore()
 const scene = inject(directorStageSceneKey)!
 const viewportEl = inject<Ref<HTMLDivElement | null>>('directorViewportEl')!
@@ -413,6 +513,11 @@ const viewMenuEl = ref<HTMLElement | null>(null)
 const presetMenuOpen = ref(false)
 const presetMenuEl = ref<HTMLElement | null>(null)
 const presetSubmenu = ref<string | null>(null)
+const aiDirectorMenuOpen = ref(false)
+const aiDirectorMenuEl = ref<HTMLElement | null>(null)
+const aiDirectorPrompt = ref('')
+const aiDirectorSummary = ref('')
+const aiBlockingTemplates = DIRECTOR_AI_BLOCKING_TEMPLATES
 const shotsPanelOpen = ref(false)
 const shotsPanelTab = ref<DirectorMediaGalleryTab>('shots')
 const gizmosMenuOpen = ref(false)
@@ -476,6 +581,7 @@ function toggleViewMenu(): void {
     closeShotsPanel()
     closeShadingMenu()
     gizmosMenuOpen.value = false
+    aiDirectorMenuOpen.value = false
   }
 }
 
@@ -485,8 +591,32 @@ function togglePresetMenu(): void {
     closeShotsPanel()
     closeShadingMenu()
     gizmosMenuOpen.value = false
+    aiDirectorMenuOpen.value = false
   }
   if (!presetMenuOpen.value) presetSubmenu.value = null
+}
+
+function toggleAiDirectorMenu(): void {
+  aiDirectorMenuOpen.value = !aiDirectorMenuOpen.value
+  if (aiDirectorMenuOpen.value) {
+    closeShotsPanel()
+    closeShadingMenu()
+    gizmosMenuOpen.value = false
+    presetMenuOpen.value = false
+    presetSubmenu.value = null
+  }
+}
+
+function onPickAiTemplate(prompt: string): void {
+  aiDirectorPrompt.value = prompt
+  void onApplyAiBlocking()
+}
+
+async function onApplyAiBlocking(): Promise<void> {
+  const text = aiDirectorPrompt.value.trim()
+  if (!text) return
+  const res = await scene.applyAiDirectorBlocking(text)
+  aiDirectorSummary.value = res.summary
 }
 
 function onPickPreset(presetId: string): void {
@@ -505,6 +635,7 @@ function toggleShotsPanel(): void {
     closeViewMenu()
     closeShadingMenu()
     gizmosMenuOpen.value = false
+    aiDirectorMenuOpen.value = false
   }
 }
 
@@ -517,6 +648,7 @@ function toggleShadingMenu(): void {
   if (shadingMenuOpen.value) {
     closeShotsPanel()
     gizmosMenuOpen.value = false
+    aiDirectorMenuOpen.value = false
   }
 }
 
@@ -530,6 +662,7 @@ function toggleGizmosMenu(): void {
   if (gizmosMenuOpen.value) {
     closeShotsPanel()
     closeShadingMenu()
+    aiDirectorMenuOpen.value = false
   }
 }
 
@@ -539,12 +672,14 @@ function onGizmoSizeInput(event: Event): void {
 }
 
 function onGizmoToggle(
-  kind: 'labels' | 'cameras' | 'grid' | 'bounds' | 'captureLabels' | 'captureCameraLabels',
+  kind:
+    'labels' | 'cameras' | 'lights' | 'grid' | 'bounds' | 'captureLabels' | 'captureCameraLabels',
   event: Event
 ): void {
   const checked = (event.target as HTMLInputElement).checked
   if (kind === 'labels') scene.setSceneLabelsVisible(checked)
   else if (kind === 'cameras') scene.setCameraGizmosVisible(checked)
+  else if (kind === 'lights') scene.setLightGizmosVisible(checked)
   else if (kind === 'grid') scene.setGridGizmoVisible(checked)
   else if (kind === 'bounds') scene.setSelectionBoundsVisible(checked)
   else if (kind === 'captureLabels') scene.setCaptureLabelsVisible(checked)
@@ -596,6 +731,11 @@ function onDocumentPointerDown(event: PointerEvent): void {
     presetMenuOpen.value = false
     presetSubmenu.value = null
   }
+  if (aiDirectorMenuOpen.value) {
+    if (aiDirectorMenuEl.value?.contains(target)) return
+    if (target?.closest('.ai-director-root')) return
+    aiDirectorMenuOpen.value = false
+  }
   if (shotsPanelOpen.value) {
     if (target?.closest('.shots-root')) return
     closeShotsPanel()
@@ -636,6 +776,16 @@ onBeforeUnmount(() => {
 
 function onCapture(): void {
   scene.takeCameraShot()
+  openShotsPanel('shots')
+}
+
+function onCaptureFirstLast(): void {
+  scene.takeFirstLastFramePair()
+  openShotsPanel('shots')
+}
+
+function onCaptureAllCameras(): void {
+  scene.captureAllCameras()
   openShotsPanel('shots')
 }
 
@@ -1163,6 +1313,114 @@ async function onViewportDrop(event: DragEvent): Promise<void> {
   border-radius: 2px;
   box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
   box-sizing: border-box;
+  overflow: hidden;
+}
+
+.aspect-frame.guide-only {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.composition-guide-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.composition-guide-svg line,
+.composition-guide-svg rect,
+.composition-guide-svg circle {
+  fill: none;
+  stroke: var(--wash-42);
+  stroke-width: 0.35;
+  vector-effect: non-scaling-stroke;
+}
+
+.ai-director-root {
+  position: relative;
+}
+
+.ai-director-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 65;
+  width: 320px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  box-shadow: 0 12px 32px var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ai-director-head {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.ai-director-templates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ai-director-pill {
+  padding: 4px 8px !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 6px !important;
+  background: var(--bg-elevated) !important;
+  color: var(--text) !important;
+  font-size: 11px !important;
+  cursor: pointer;
+}
+
+.ai-director-pill:hover {
+  background: var(--bg-hover) !important;
+}
+
+.ai-director-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.4;
+  resize: vertical;
+}
+
+.ai-director-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ai-director-summary {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-director-apply {
+  margin-left: auto;
+  padding: 5px 12px !important;
+  border-radius: 6px !important;
+  background: var(--accent) !important;
+  color: #fff !important;
+  font-size: 12px !important;
+  font-weight: 500;
+  cursor: pointer;
 }
 
 .statusbar {

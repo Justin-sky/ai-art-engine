@@ -411,6 +411,22 @@ export const IpcChannels = {
   GAMEPLAY_BUILD: 'gameplay:build',
   /** Harness：删除会话在磁盘上的持久化记录（对应前端 ChatSession.id） */
   HARNESS_DELETE_SESSION: 'harness:delete-session',
+  /** Harness：将会话日志（含子代理日志与附件）打包导出为 ZIP */
+  HARNESS_EXPORT_SESSION: 'harness:export-session',
+  /** Harness：将会话历史回滚或分叉到前 N 轮检查点 */
+  HARNESS_REWIND_SESSION: 'harness:rewind-session',
+  /** Harness：跨持久化会话全文搜索消息与工具输出 */
+  HARNESS_SEARCH_SESSIONS: 'harness:search-sessions',
+  /** Harness：控制当前会话长程目标（暂停 / 恢复 / 清除） */
+  HARNESS_CONTROL_GOAL: 'harness:control-goal',
+  /** Harness：取消当前会话的一条定时提醒 */
+  HARNESS_DELETE_SCHEDULE: 'harness:delete-schedule',
+  /** Harness：打开或定位 present 交付产物文件 */
+  HARNESS_OPEN_FILE: 'harness:open-file',
+  /** Harness：盘中实时转向（向当前正在运行的 Turn / 子代理立即注入纠偏指令，无需打断重跑） */
+  HARNESS_STEER: 'harness:steer',
+  /** Harness：画布 / 异步作业响应式事件触发器（节点报错诊断、渲染完成接力） */
+  HARNESS_CANVAS_EVENT: 'harness:canvas-event',
   /** Git：采集工程当前变更（对话「变更预览」用；只读，不写仓库） */
   GIT_STATUS: 'git:status',
   /** Git：读取单文件统一 diff（未跟踪文件返回主进程合成的新增全文） */
@@ -995,6 +1011,8 @@ export interface HarnessStatus {
   message?: string
   /** dsh 工作区目录：当前打开的工程根目录；未打开工程时为 undefined（回退应用数据目录） */
   workspace?: string
+  /** 当前是否有 dsh 对话轮次正在执行 */
+  running?: boolean
 }
 
 /** Chat 面板的 agent 交互模式（类似 Cursor 的 Craft / Ask / Plan） */
@@ -1401,6 +1419,210 @@ export interface InstallGitHubSkillsResult {
   error?: string
 }
 
+export interface HarnessTodoItem {
+  id?: string
+  content: string
+  status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
+  priority?: 'high' | 'medium' | 'low'
+}
+
+export interface HarnessGoalView {
+  id?: string
+  goalId?: string
+  revision?: number
+  title?: string
+  objective: string
+  phase: 'active' | 'paused' | 'blocked' | 'complete' | 'completed' | 'ended'
+  activation: 'armed' | 'disarmed' | 'idle' | 'paused'
+  round?: number
+  roundsSinceUser?: number
+  roundsStarted?: number
+  maxRounds?: number
+  maxGoalRounds?: number
+  summary?: string
+  endedReason?: string
+  blockedReason?: {
+    code: string
+    message: string
+  }
+}
+
+export interface HarnessPresentFile {
+  path: string
+  title?: string
+  caption?: string
+  description?: string
+}
+
+export interface HarnessScheduleView {
+  id: string
+  prompt: string
+  scheduledAt: string
+  state: 'scheduled' | 'overdue'
+  kind: 'after' | 'at' | 'every'
+  afterSeconds?: number
+  everySeconds?: number
+  summary?: string
+  timing?: string
+  nextRunAt?: string
+  status?: 'active' | 'deleted' | 'pending'
+}
+
+export interface ExportHarnessSessionInput {
+  sessionId: string
+  /** 可选：指定导出绝对路径；省略时弹出另存为对话框 */
+  outputPath?: string
+}
+
+export interface ExportHarnessSessionResult {
+  ok: boolean
+  canceled?: boolean
+  path?: string
+  archivePath?: string
+  filePath?: string
+  sessionIds?: string[]
+  fileCount?: number
+  bytes?: number
+  error?: string
+}
+
+export interface RewindHarnessSessionInput {
+  sessionId: string
+  /** 保留前 N 个已完成轮次（0 = 清空所有轮次） */
+  keepTurns?: number
+  userTurnIndex?: number
+  fork?: boolean
+  /** 可选：若传入不同的新 sessionId，则保留原会话不动、分叉出一条新持久化会话 */
+  forkSessionId?: string
+  targetSessionId?: string
+}
+
+export interface RewindHarnessSessionResult {
+  ok: boolean
+  sessionId?: string
+  keptEvents?: number
+  error?: string
+}
+
+export interface HarnessSessionSearchHit {
+  sessionId: string
+  title?: string
+  snippet: string
+  seq?: number
+  timestamp?: string
+  updatedAt?: string
+  role?: 'user' | 'assistant'
+  cwd?: string
+  matchCount?: number
+}
+
+export interface SearchHarnessSessionsInput {
+  query: string
+  limit?: number
+}
+
+export interface SearchHarnessSessionsResult {
+  ok: boolean
+  hits: HarnessSessionSearchHit[]
+  error?: string
+}
+
+export interface ControlHarnessGoalInput {
+  sessionId?: string
+  action: 'pause' | 'resume' | 'complete' | 'end' | 'clear'
+  objective?: string
+  summary?: string
+}
+
+export interface DeleteHarnessScheduleInput {
+  sessionId?: string
+  scheduleId: string
+}
+
+export interface OpenHarnessFileInput {
+  path?: string
+  filePath?: string
+  revealInFolder?: boolean
+  reveal?: boolean
+  mode?: 'open' | 'reveal'
+}
+
+/** 盘中实时转向（Mid-Turn Live Steering）请求 */
+export interface SteerHarnessTurnInput {
+  /** 要立即注入当前运行轮次或目标子代理的纠偏指令文本 */
+  text?: string
+  /** 可选：指定向某个可续跑子代理（continuable subagent）注入指令 */
+  subagentSessionId?: string
+  /** 可选：当前主会话 ID */
+  sessionId?: string
+  /** 可选：面板模式 */
+  mode?: ChatMode
+}
+
+export interface SteerHarnessTurnResult {
+  ok: boolean
+  /** true = 已直接注入正在运行的 Turn / 子代理；false = 当前空闲，已降级为常规发送 */
+  steered?: boolean
+  started?: boolean
+  error?: string
+}
+
+/** 子代理并发实时树中的单个子代理状态视图 */
+export interface HarnessSubagentView {
+  sessionId: string
+  parentSessionId?: string
+  anchorCallId?: string
+  label: string
+  role?: string
+  agentType?: string
+  description?: string
+  status: 'running' | 'idle' | 'completed' | 'error'
+  activeTool?: string
+  activeToolDetail?: string
+  toolCount: number
+  updatedAt: number
+}
+
+/** 画布 / 异步作业响应式事件输入 */
+export interface HarnessCanvasEventInput {
+  kind: 'node_error' | 'workflow_finished' | 'video_job_done' | 'render_completed'
+  title?: string
+  summary?: string
+  detail?: string
+  workflowId?: string
+  assetId?: string
+  assetName?: string
+  nodeId?: string
+  nodeTitle?: string
+  nodeType?: string
+  nodeTypeId?: string
+  error?: string
+  errorMessage?: string
+  outputPaths?: string[]
+  relativePaths?: string[]
+  /** true = 立即唤醒当前会话 Agent 自动诊断或接力；false = 推送响应式横幅供用户一键触发 */
+  autoTrigger?: boolean
+  sessionId?: string
+  mode?: ChatMode
+}
+
+export interface HarnessCanvasEventView extends HarnessCanvasEventInput {
+  id: string
+  title: string
+  summary: string
+  timestamp: number
+  createdAt?: string
+  autoTriggered?: boolean
+}
+
+export interface HarnessCanvasEventResult {
+  ok: boolean
+  triggered?: boolean
+  steered?: boolean
+  event?: HarnessCanvasEventView
+  error?: string
+}
+
 /** Harness：任务事件流（main → 渲染层） */
 export type HarnessEvent =
   | { type: 'assistant'; text: string }
@@ -1438,6 +1660,44 @@ export type HarnessEvent =
       type: 'context'
       /** 当前上下文已用 token 数 */
       used: number
+    }
+  | {
+      /** dsh todo_write 工具写入的待办任务列表进度 */
+      type: 'todo'
+      todos: HarnessTodoItem[]
+    }
+  | {
+      /** dsh goal / /goal 输出的多轮长程目标状态（null 表示已清除） */
+      type: 'goal'
+      goal: HarnessGoalView | null
+    }
+  | {
+      /** dsh present 工具向用户交付的可直接打开/定位产物卡片 */
+      type: 'present'
+      callId: string
+      turn: number
+      files: HarnessPresentFile[]
+    }
+  | {
+      /** dsh schedule_create / schedule_delete 更新的当前会话定时提醒清单 */
+      type: 'schedule'
+      schedules: HarnessScheduleView[]
+    }
+  | {
+      /** 盘中实时转向已生效事件 */
+      type: 'steered'
+      text?: string
+      targetSessionId?: string
+    }
+  | {
+      /** 子代理并发树实时状态快照 */
+      type: 'subagent'
+      subagents: HarnessSubagentView[]
+    }
+  | {
+      /** 画布 / 异步作业响应式事件通知 */
+      type: 'canvas-event'
+      event: HarnessCanvasEventView
     }
 
 /** MCP：设置界面提交的配置修改（重启时应用） */
@@ -2164,6 +2424,34 @@ export interface StudioApi {
 
   /** Harness：删除会话在磁盘上的持久化记录（对应前端 ChatSession.id，删完不可恢复） */
   deleteHarnessSession: (sessionId: string) => Promise<void>
+
+  /** Harness：导出会话日志为 .zip 压缩包 */
+  exportHarnessSession: (input: ExportHarnessSessionInput) => Promise<ExportHarnessSessionResult>
+
+  /** Harness：在指定用户轮次处回退或分叉会话 */
+  rewindHarnessSession: (input: RewindHarnessSessionInput) => Promise<RewindHarnessSessionResult>
+
+  /** Harness：跨会话全文检索历史记录 */
+  searchHarnessSessions: (input: SearchHarnessSessionsInput) => Promise<SearchHarnessSessionsResult>
+
+  /** Harness：控制多轮目标执行器（/goal pause|resume|end） */
+  controlHarnessGoal: (
+    input: ControlHarnessGoalInput
+  ) => Promise<{ ok: boolean; goal?: HarnessGoalView | null; error?: string }>
+
+  /** Harness：取消会话内待触发的定时提醒 */
+  deleteHarnessSchedule: (
+    input: DeleteHarnessScheduleInput
+  ) => Promise<{ ok: boolean; schedules?: HarnessScheduleView[]; error?: string }>
+
+  /** Harness：打开或定位交付物文件 */
+  openHarnessFile: (input: OpenHarnessFileInput) => Promise<{ ok: boolean; error?: string }>
+
+  /** Harness：盘中实时转向（向正在运行的 Turn / 子代理立即注入纠偏指令） */
+  steerHarnessTurn: (input: SteerHarnessTurnInput) => Promise<SteerHarnessTurnResult>
+
+  /** Harness：画布 / 异步作业响应式事件触发器 */
+  notifyHarnessCanvasEvent: (input: HarnessCanvasEventInput) => Promise<HarnessCanvasEventResult>
 
   /** Harness：订阅任务事件流 */
   onHarnessEvent: (callback: (event: HarnessEvent) => void) => () => void

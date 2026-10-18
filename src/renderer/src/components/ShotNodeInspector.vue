@@ -63,13 +63,6 @@
       />
     </section>
 
-    <section v-if="isImage" class="character-refs-section">
-      <CharacterRefsEditor
-        :model-value="characterRefs"
-        @update:model-value="onCharacterRefsChange"
-      />
-    </section>
-
     <template v-if="isImage || isScreenplay || isVoice || isVideo || isGameSystem">
       <section class="gen-config">
         <!--
@@ -714,11 +707,9 @@ import {
   MAX_STYLE_IMAGES,
   createStyleImageId,
   normalizeProjectStyleImages,
-  type ProjectStyleImage,
-  type WorldEntityRef
+  type ProjectStyleImage
 } from '@shared/domain'
 import StyleImagePicker from './StyleImagePicker.vue'
-import CharacterRefsEditor from './CharacterRefsEditor.vue'
 
 type StoredGeneratedImage = {
   id?: string
@@ -2054,15 +2045,6 @@ function onStyleImagesChange(images: ProjectStyleImage[]): void {
   localStyleImages.value = normalizeProjectStyleImages(images)
   persistNodeStyleImages(false, localStyleImages.value)
 }
-
-const characterRefs = computed<WorldEntityRef[]>(() => node.value?.params.characterRefs ?? [])
-
-function onCharacterRefsChange(refs: WorldEntityRef[]): void {
-  const current = node.value
-  const hid = hostId.value
-  if (!current || !hid) return
-  graphEditorHosts.updateNode(hid, current.id, { characterRefs: refs })
-}
 </script>
 
 <style scoped>
@@ -2110,11 +2092,6 @@ function onCharacterRefsChange(refs: WorldEntityRef[]): void {
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg-elevated);
-}
-
-.character-refs-section {
-  display: flex;
-  flex-direction: column;
 }
 
 .style-toolbar-heading {

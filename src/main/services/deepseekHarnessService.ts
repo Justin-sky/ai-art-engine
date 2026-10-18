@@ -1,24 +1,45 @@
 import { app, shell } from 'electron'
 import { createHash } from 'node:crypto'
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { readdir, rm } from 'node:fs/promises'
-import { basename, dirname, join, resolve } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { constants as zlibConstants, zstdCompressSync, zstdDecompressSync } from 'node:zlib'
 import {
   IpcChannels,
   type AskUserAnswer,
   type ChatMode,
+  type ControlHarnessGoalInput,
+  type DeleteHarnessScheduleInput,
   type DshSkillsFile,
   type DshSkillsInfo,
   type DshSkillsTemplateResult,
+  type ExportHarnessSessionInput,
+  type ExportHarnessSessionResult,
+  type HarnessCanvasEventInput,
+  type HarnessCanvasEventResult,
+  type HarnessCanvasEventView,
   type HarnessEvent,
+  type HarnessGoalView,
   type HarnessJobWaitInput,
   type HarnessJobWaitResult,
+  type HarnessPresentFile,
   type HarnessRunInput,
   type HarnessRunResult,
+  type HarnessScheduleView,
+  type HarnessSessionSearchHit,
   type HarnessStatus,
-  type SessionSkill
+  type HarnessSubagentView,
+  type HarnessTodoItem,
+  type OpenHarnessFileInput,
+  type RewindHarnessSessionInput,
+  type RewindHarnessSessionResult,
+  type SearchHarnessSessionsInput,
+  type SearchHarnessSessionsResult,
+  type SessionSkill,
+  type SteerHarnessTurnInput,
+  type SteerHarnessTurnResult
 } from '@shared/ipc'
 import { parseClaudeSkillMarkdown, parseGitHubSkillSourceUrl } from '@shared/claudeSkill'
 import { accessHeaders, isCancelAnswer, normalizeChatMode } from '@shared/mcpModeAccess'
@@ -61,7 +82,8 @@ import {
   getMcpServerInfo,
   registerHarnessRunAccess,
   releaseHarnessRunAccess,
-  setActiveHarnessRun
+  setActiveHarnessRun,
+  setCanvasTaskSettledHook
 } from './mcpServerService'
 import { projectService } from './projectService'
 import { settingsService } from './settingsService'
@@ -130,7 +152,8 @@ let workerRunId = ''
 let idleTimer: ReturnType<typeof setTimeout> | null = null
 let lastSettingsWriteHash = ''
 let lastHarnessWriteHash = ''
-let readyWaiters: Array<() => void> = []
+let readyWaiters: Array<(ready: boolean) => void> = []
+let lastWorkerBootError = ''
 let runSeq = 0
 /** 串行化常驻 worker 拉起，避免 Chat 双挂载 / 连点预热并发出两个进程（终端打两次 ready） */
 let ensureWorkerChain: Promise<void> = Promise.resolve()
@@ -417,7 +440,8 @@ export async function getHarnessStatus(): Promise<HarnessStatus> {
     mcpEndpoint: mcp?.endpoint,
     hasDeepseekKey: !!provider,
     message: hints.join('；') || undefined,
-    workspace
+    workspace,
+    running: turnActive
   }
 }
 
@@ -755,13 +779,43 @@ export function writeDshSkillsTemplate(): DshSkillsTemplateResult {
   return { filePath, skipped: false }
 }
 
-/** 查询本次会话可用的技能清单（含完整 Claude Code 元数据，供对话 `/` 斜杠菜单与技能调试视图展示） */
+const BUILTIN_HARNESS_SLASH_COMMANDS: SessionSkill[] = [
+  {
+    name: 'compact',
+    kind: 'builtin',
+    description: '压缩当前会话上下文，释放 Token 空间并保留关键创作与执行摘要',
+    argumentHint: '[focus]',
+    userInvocable: true
+  },
+  {
+    name: 'goal',
+    kind: 'builtin',
+    description: '启动或管理多轮自主目标执行器（/goal <目标> | status | pause | resume | end）',
+    argumentHint: '<objective | status | pause | resume | end>',
+    userInvocable: true
+  },
+  {
+    name: 'feedback',
+    kind: 'builtin',
+    description: '记录对当前会话或 Agent 表现的反馈日志（正面/负面评价与说明）',
+    argumentHint: '[positive|negative] <comment>',
+    userInvocable: true
+  },
+  {
+    name: 'export',
+    kind: 'builtin',
+    description: '将当前会话完整日志导出为 .zip 压缩包并生成交付卡片',
+    userInvocable: true
+  }
+]
+
+/** 查询本次会话可用的技能清单（含内置斜杠指令与完整 Claude Code 元数据，供对话 `/` 斜杠菜单与技能调试视图展示） */
 export function getSessionSkills(): SessionSkill[] {
   const discovered = discoverInstalledClaudeSkills({
     personalSkillsDir: dshSkillsDir(),
     workspaceRoot: resolveWorkspace()
   })
-  return discovered.map((item) => ({
+  const customSkills: SessionSkill[] = discovered.map((item) => ({
     name: item.name,
     kind: 'custom',
     description: item.frontmatter.description,
@@ -776,6 +830,11 @@ export function getSessionSkills(): SessionSkill[] {
     hasWorkflow: item.hasWorkflow,
     scope: item.scope
   }))
+  const customNames = new Set(customSkills.map((s) => s.name))
+  return [
+    ...BUILTIN_HARNESS_SLASH_COMMANDS.filter((b) => !customNames.has(b.name)),
+    ...customSkills
+  ]
 }
 
 /** 示例 SKILL.md 模板：完整展示 Claude Code 技能规范（frontmatter + 变量插值 + 动态上下文） */
@@ -822,6 +881,103 @@ const ASK_USER_BEGIN = '===BEGIN_ASK_USER==='
 const APPROVAL_BEGIN = '===BEGIN_APPROVAL==='
 /** 上下文用量标记：runner 每轮 LLM 请求完成后输出（单行 JSON 载荷，provider usage） */
 const CONTEXT_BEGIN = '===BEGIN_CONTEXT==='
+/** Todo 进度看板标记：runner 监听 todo/write 事件后输出（单行 JSON 载荷） */
+const TODO_BEGIN = '===BEGIN_TODO==='
+/** 多轮目标状态标记：runner 监听 goal/change 与多轮续跑后输出（单行 JSON 载荷） */
+const GOAL_BEGIN = '===BEGIN_GOAL==='
+/** 交付物展示标记：runner 监听 deliverables/presented 事件后输出（单行 JSON 载荷） */
+const PRESENT_BEGIN = '===BEGIN_PRESENT==='
+/** 会话内定时提醒标记：runner 监听 schedule/change 事件后输出（单行 JSON 载荷） */
+const SCHEDULE_BEGIN = '===BEGIN_SCHEDULE==='
+/** 子代理并发实时树标记：runner 监听子代理创建/工具调用/完成状态后输出（单行 JSON 载荷） */
+const SUBAGENT_BEGIN = '===BEGIN_SUBAGENT==='
+/** 盘中实时转向生效标记：runner 在注入 steer 指令后输出（单行 JSON 载荷） */
+const STEER_BEGIN = '===BEGIN_STEER==='
+
+/**
+ * 影视 / 美术 / 3D / 剪辑四大领域专属子代理矩阵定义。
+ * 写入 `$DSH_HOME/agents/<id>.md` 并注入系统提示词，供 `subagent` / `subagent_fork` 并发调度。
+ */
+export const STUDIO_DOMAIN_SUBAGENTS = [
+  {
+    id: 'storyboard-director',
+    name: 'storyboard-director',
+    mode: 'craft',
+    title: '分镜与剧本导演 (Storyboard Director)',
+    description:
+      'Breaks down scripts into structured shot lists, character consistency sheets (Series Bible), camera angles, and play.script -> film.workbench canvas pipelines.',
+    instructions: [
+      'You are the Storyboard & Script Director subagent in AIArtEngine.',
+      'Focus on script analysis, scene/shot breakdown, character consistency (in-cast/out-cast), camera movement, and building or updating play.script -> film.workbench -> film.shot canvas nodes via graph_read and graph_edit.',
+      'Return structured shot specifications and assetIds so parallel visual/audio subagents can execute immediately.'
+    ]
+  },
+  {
+    id: 'visual-asset-artist',
+    name: 'visual-asset-artist',
+    mode: 'craft',
+    title: '美术与视觉资产师 (Visual Asset Artist)',
+    description:
+      'Generates and refines 2D keyframes, character turnarounds, lighting variants, 10-in-1 image edits (cutout/matte/inpaint/upscale), and SVG vector animations.',
+    instructions: [
+      'You are the Visual & 2D Asset Artist subagent in AIArtEngine.',
+      'Use generate_image, image.process (cutout, matte, redraw, upscale, gridSplit), image.multiAngle, image.lighting, image.Consistent, and svg.gen -> svg.anim + render_svg.',
+      'Always perform visual self-critique on attached preview images (composition, character consistency, anatomy, transparency) before reporting completion.'
+    ]
+  },
+  {
+    id: 'blender-3d-director',
+    name: 'blender-3d-director',
+    mode: 'craft',
+    title: '3D 场景与绑定导演 (Blender & 3D World Director)',
+    description:
+      'Creates 3D models (generate_model3d), 3DGS spatial worlds (generate_world), skeletal rigging/animation (rig_model3d), and operates Blender MCP scenes.',
+    instructions: [
+      'You are the Blender & 3D World Director subagent in AIArtEngine.',
+      'Use generate_model3d, rig_model3d, segment_model3d, post_process_model3d, generate_world, export_spatial_world, and Blender MCP tools to build, rig, pose, light, and render 3D assets.',
+      'Verify 3D viewport screenshots or exported GLB assets before finishing.'
+    ]
+  },
+  {
+    id: 'timeline-audio-editor',
+    name: 'timeline-audio-editor',
+    mode: 'craft',
+    title: '配音与成片剪辑师 (Timeline & Audio Editor)',
+    description:
+      'Produces multi-speaker dialogue (generate_dialogue), narration (generate_speech), SFX (generate_sound_effect), BGM (generate_music), subtitle alignment, rough cuts, and timeline previews.',
+    instructions: [
+      'You are the Timeline & Audio Editor subagent in AIArtEngine.',
+      'Use generate_dialogue, generate_speech, generate_sound_effect (loop: true for ambience), generate_music, transcribe_audio, timeline_edit, timeline_rough_cut, and timeline_preview.',
+      'After editing the timeline, call timeline_preview to visually inspect rendered frames (subtitles, overlays, transitions) before timeline_export.'
+    ]
+  }
+] as const
+
+function writeDomainSubagentProfiles(home: string): void {
+  try {
+    const agentsDir = join(home, 'agents')
+    mkdirSync(agentsDir, { recursive: true })
+    for (const profile of STUDIO_DOMAIN_SUBAGENTS) {
+      const filePath = join(agentsDir, `${profile.id}.md`)
+      const content = [
+        '---',
+        `name: ${profile.id}`,
+        `description: ${JSON.stringify(profile.description)}`,
+        '---',
+        '',
+        `# ${profile.title}`,
+        '',
+        ...profile.instructions,
+        ''
+      ].join('\n')
+      if (!existsSync(filePath) || readFileSync(filePath, 'utf8') !== content) {
+        writeFileSync(filePath, content, 'utf8')
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+}
 
 /**
  * 从 dsh 运行入口向上定位其 node_modules 根（依赖 @deepseek-ai/* 都在同一棵树下）。
@@ -875,18 +1031,8 @@ function buildPersona(mode: ChatMode, projectMemory?: string | null): string[] {
     'when the user provides two images, the first one is the first frame and the second one is the last frame',
     '(lastFrameImageUrl). The image order in your user message follows the order the user attached them.',
     'Pass the @path text of each image to the matching generate_video argument instead of inventing URLs.',
-    // 同一会话里模式可以逐轮切换（面板上换一下再发就行），而模型会顺手沿用上一轮的模式自述：
-    // 实测 Ask 轮说过「我在 Ask 模式」后，同一会话切到 Plan 的下一轮它仍照抄这句话（即使这一轮的
-    // system prompt 已是 Plan、工具面也已换成只读）。这里明确「以本轮说法为准」，并禁止复述旧结论。
     'The mode stated for the current turn is authoritative: the user may switch modes between turns of this same session.',
     "Never carry over a previous turn's mode name, and never repeat an earlier claim that tools are unavailable unless this turn says so.",
-    // 沙箱禁用本机浏览器：shell 命令跑在 Windows ACL 沙箱（受限令牌）里，Chromium 建不出自己的
-    // mojo IPC 命名管道会 CHECK 失败 → __debugbreak → 0x80000003，系统在应用之外弹「应用程序错误」
-    // 对话框（实测每次都会弹，而且工具调用还是失败）。光靠这段提示词压不住——实测模型会换写法继续
-    // 试（把路径存进变量、用调用运算符、--version 试探），所以另有硬拦截：运行体补丁在所有 shell
-    // 进程的必经点（LocalSubprocessRuntime.spawn / spawnTerminal）按 argv 拒绝这类命令并回同一条
-    // 原因（dshBrowserGuardPatch）。这里要讲清替代路径：视觉自查调 render_svg（应用自己的引擎出图，
-    // 不碰浏览器），批量出资产走 svg.gen → svg.anim；并且「换写法也没用」。详见 CHANGELOG。
     '=== Headless browser is unavailable ===',
     'Shell commands run inside the harness sandbox, where some host programs cannot start at all.',
     'Never launch a local browser from a shell command (msedge.exe / chrome.exe, including any --headless or --remote-debugging-port run):',
@@ -936,7 +1082,24 @@ function buildPersona(mode: ChatMode, projectMemory?: string | null): string[] {
     '1. Given a GitHub URL: if the host has already pre-installed and injected the `<skill>` block in your prompt, apply it directly; otherwise call `skill_install({ url, skillNames })` (or `skill_inspect_github({ url })` first to inspect a multi-skill repository).',
     '2. Asked to search online for a skill by topic/keyword: call `skill_search({ query })` (which searches official Claude Code skills `anthropics/skills`, the AIArtEngine Skill Market, and live GitHub repositories with SKILL.md verification), then call `skill_install({ url })` or `skill_install({ marketId })` to install the best match.',
     '3. Script safety: `skill_install` defaults to `allowScripts: false` (installing `SKILL.md` and `references/` while skipping `scripts/`). If a skill has `hasScripts: true` and running its bundled scripts is needed, ask the user via `ask_user_question` before calling `skill_install` with `allowScripts: true`.',
-    '4. Immediate use: `skill_install` returns `skills[].instructions` (the full `SKILL.md` body) and `skillDir`, so you can immediately apply the newly installed skill in the current turn and inform the user they can also invoke it anytime via `/<skill-name>`.'
+    '4. Immediate use: `skill_install` returns `skills[].instructions` (the full `SKILL.md` body) and `skillDir`, so you can immediately apply the newly installed skill in the current turn and inform the user they can also invoke it anytime via `/<skill-name>`.',
+    '=== Native Harness Capabilities (Todo, Goal, Present, Schedule, StrReplaceEditor, Continuable Subagents) ===',
+    'Use todo_write to maintain a structured task board (pending / in_progress / completed) for multi-step tasks so the user can track progress live in the chat panel.',
+    'Use goal (start / update / pause / complete) or respond to /goal commands for multi-round autonomous objectives with verification criteria.',
+    'Use present to showcase key deliverable files (images, videos, audio, code, documents, archives) with titles and descriptions as interactive deliverable cards in the chat panel.',
+    'Use schedule (create / list / delete) when the user asks for a delayed reminder or recurring follow-up within the session.',
+    'Both read/edit/write and str_replace_editor are available for file inspection and editing; subagent and subagent_fork support continuable background subagents via send_message.',
+    '=== Visual Self-Critique & Director Verification Loop ===',
+    'Studio tools (`generate_image`, `render_svg`, `timeline_preview`, and `task_status` upon workflow completion) automatically attach visual preview images to tool results so multimodal models can inspect the generated frames directly.',
+    'Whenever you receive attached visual preview images (especially during `/goal` verification or multi-step `craft` pipelines), perform a director visual critique: verify composition, subject anatomy, lighting, character consistency against reference images, and subtitle/UI legibility.',
+    'If a generated image, SVG frame, or timeline preview exhibits defects (broken anatomy, clipped subtitles, wrong aspect/style, or blank frame), adjust the prompt or node parameters and regenerate before calling `present` or completing the goal.',
+    'When you receive a `[Live User Steering]` message mid-turn or a `[Reactive Canvas Event]` notification (such as `node_error` or `workflow_finished`), immediately adapt your next tool calls to honor the user steering or diagnose/repair the reported canvas node.',
+    '=== Studio Domain Subagent Matrix (Parallel Production) ===',
+    'For complex multi-shot dramas, multi-asset packs, or full film production pipelines, use `subagent_fork` or `subagent` (with `send_message` to coordinate continuable subagents) across the 4 specialized studio roles:',
+    '1. `storyboard-director`: script breakdown (`play.script` -> `film.workbench`), character consistency sheets, and shot list planning.',
+    '2. `visual-asset-artist`: parallel keyframe generation (`generate_image`), 10-in-1 image processing (`image.process`), turnaround views (`image.multiAngle`), and vector animation (`svg.gen` -> `svg.anim`).',
+    '3. `blender-3d-director`: 3D asset generation (`generate_model3d`), 3DGS spatial worlds (`generate_world`), rigging (`rig_model3d`), and Blender MCP scene layout.',
+    '4. `timeline-audio-editor`: multi-speaker dialogue (`generate_dialogue`), narration (`generate_speech`), SFX/BGM (`generate_sound_effect` / `generate_music`), audio transcription (`transcribe_audio`), rough cut (`timeline_rough_cut`), and frame inspection (`timeline_preview`).'
   ]
   if (mode === 'ask') {
     return [
@@ -954,10 +1117,6 @@ function buildPersona(mode: ChatMode, projectMemory?: string | null): string[] {
       'offering self-contained options such as "Proceed", "Adjust", and "Cancel".',
       'Only after the user confirms may you call other MCP tools to execute the plan.',
       'Do NOT modify files or generate assets before the user confirms the plan.',
-      // dsh 自带的 plan-mode 插件同样把 exit_plan_mode 挂在工具面里（官方注释：工具目录不随模式变化，
-      // 为的是请求缓存稳定），但它要求 dsh 自己的 session 处于 plan 模式；面板这套 Plan 不走那条路，
-      // 调它必报「exit_plan_mode is only available in plan mode」。点名禁掉，免得模型在「提交计划」
-      // 这一步选错工具，然后回头怀疑当前模式。
       'The harness also exposes an exit_plan_mode tool: this panel does not run the harness plan mode, so never call it.',
       'Confirm the plan with ask_user_question only.'
     ]
@@ -971,7 +1130,7 @@ function buildPersona(mode: ChatMode, projectMemory?: string | null): string[] {
 
 /**
  * 写自定义 runner、审批应答插件与 overlay patch
- *（禁用原 headless-runner、注入 aiart-runner 与 aiart-approval）。
+ *（禁用原 headless-runner、注入 aiart-runner 与 aiart-approval，以及完整 dsh 插件集）。
  * 返回 patch 文件路径；任何一步失败返回 null（回退原 headless 行为，不影响主流程）。
  *
  * 审批应答器单独一个补丁行而不是并进 runner：它只做一件事（approval/request → 用户），
@@ -986,6 +1145,7 @@ function writeAiartHarness(
   try {
     const home = dshHome()
     mkdirSync(home, { recursive: true })
+    writeDomainSubagentProfiles(home)
     const runnerPath = join(home, 'aiart-headless-runner.mjs')
     const runnerSource = AIART_RUNNER_TEMPLATE.replace(
       '__DSH_NODE_MODULES_JSON__',
@@ -995,6 +1155,59 @@ function writeAiartHarness(
     const approvalPath = join(home, 'aiart-approval-answerer.mjs')
     const approvalSource = AIART_APPROVAL_ANSWERER_TEMPLATE
     const approvalUrl = pathToFileURL(approvalPath).href
+    const workspace = resolveWorkspace()
+    const hasPkg = (pkgName: string): boolean => existsSync(join(dshNodeModules, pkgName))
+    const hasClaudeHooksConfig =
+      existsSync(join(workspace, '.claude', 'hooks.json')) ||
+      existsSync(join(workspace, '.claude', 'settings.json')) ||
+      existsSync(join(home, '.claude', 'hooks.json'))
+    const hasCodexHooksConfig =
+      existsSync(join(workspace, '.codex', 'hooks.json')) ||
+      existsSync(join(home, '.codex', 'hooks.json'))
+    const extraInserts: string[] = []
+    if (hasPkg('@deepseek-ai/dsh-time-context')) {
+      extraInserts.push('    - id: time-context', "      name: '@deepseek-ai/dsh-time-context'")
+    }
+    if (hasPkg('@deepseek-ai/dsh-schedule')) {
+      extraInserts.push('    - id: schedule', "      name: '@deepseek-ai/dsh-schedule'")
+    }
+    if (hasPkg('@deepseek-ai/dsh-tool-present')) {
+      extraInserts.push(
+        '    - id: tool-present',
+        "      name: '@deepseek-ai/dsh-tool-present'",
+        '      config:',
+        '        maxFiles: 8'
+      )
+    }
+    if (hasPkg('@deepseek-ai/dsh-tool-str-replace-editor')) {
+      extraInserts.push(
+        '    - id: tool-str-replace-editor',
+        "      name: '@deepseek-ai/dsh-tool-str-replace-editor'",
+        '      config:',
+        '        maxOutputChars: 16000'
+      )
+    }
+    const hasSessionQuerySqlite = hasPkg('@deepseek-ai/dsh-session-query-sqlite')
+    const searchDbPath = join(home, 'session-search.sqlite').replace(/\\/g, '/')
+    if (hasPkg('@deepseek-ai/dsh-hooks-claude-code') && hasClaudeHooksConfig) {
+      extraInserts.push(
+        '    - id: hooks-claude-code',
+        "      name: '@deepseek-ai/dsh-hooks-claude-code'"
+      )
+    }
+    if (hasPkg('@deepseek-ai/dsh-hooks-codex') && hasCodexHooksConfig) {
+      extraInserts.push('    - id: hooks-codex', "      name: '@deepseek-ai/dsh-hooks-codex'")
+    }
+    if (hasPkg('@deepseek-ai/dsh-subagent-claude-code')) {
+      extraInserts.push(
+        '    - id: subagent-claude-code',
+        "      name: '@deepseek-ai/dsh-subagent-claude-code'"
+      )
+    }
+    if (hasPkg('@deepseek-ai/dsh-subagent-codex')) {
+      extraInserts.push('    - id: subagent-codex', "      name: '@deepseek-ai/dsh-subagent-codex'")
+    }
+
     const patch = [
       '# AIArtEngine 生成的 headless overlay：输出思考过程，请勿手改。',
       '- id: headless-runner',
@@ -1010,6 +1223,20 @@ function writeAiartHarness(
       // approval 插件都不影响这一行挂载；没有审批请求时它是一段静止的代码。
       '    - id: aiart-approval',
       `      name: '${approvalUrl}'`,
+      ...extraInserts,
+      ...(hasSessionQuerySqlite
+        ? [
+            '- id: session-query-sqlite',
+            '  config:',
+            `    path: '${searchDbPath}'`,
+            '    openAt: first-search'
+          ]
+        : []),
+      '- id: tool-subagent-fork',
+      '  config:',
+      '    provider: fork',
+      '    toolName: subagent_fork',
+      '    backgroundMode: continuable',
       '- id: system-prompt',
       '  config:',
       // dsh 0.1.5 起 system-prompt 的配置键由 persona 改名为 personaPrefix（旧键会被 schema 丢弃）
@@ -1136,12 +1363,24 @@ function clearIdleTimer(): void {
   }
 }
 
+let activeScheduleCount = 0
+let lastGoalSnapshot: HarnessGoalView | null = null
+let lastSchedulesSnapshot: HarnessScheduleView[] = []
+let sessionReleaseWaiters: Array<() => void> = []
+
+function notifySessionReleased(): void {
+  const list = sessionReleaseWaiters
+  sessionReleaseWaiters = []
+  for (const fn of list) fn()
+}
+
 function scheduleIdleShutdown(): void {
   clearIdleTimer()
-  if (!workerPersistent || !child || turnActive) return
+  // 有会话内定时提醒待触发时保持常驻进程存活，否则定时器随进程销毁而丢失
+  if (!workerPersistent || !child || turnActive || activeScheduleCount > 0) return
   idleTimer = setTimeout(() => {
     idleTimer = null
-    if (turnActive || !child) return
+    if (turnActive || !child || activeScheduleCount > 0) return
     emitStatus('dsh 空闲回收，已关闭常驻进程')
     sendWorkerCommand({ op: 'shutdown' })
     setTimeout(() => {
@@ -1160,7 +1399,11 @@ function resetWorkerState(): void {
   workerReady = false
   workerPersistent = false
   workerRunId = ''
+  activeScheduleCount = 0
+  const pendingReady = readyWaiters
   readyWaiters = []
+  for (const w of pendingReady) w(false)
+  notifySessionReleased()
   /**
    * 进程没了，等待中的审批也就无从回传（回答文件写下去也没人读）。
    * 清空待决定表，`handleApprovalResponse` 随后的调用会返回 false —— 界面据此知道
@@ -1172,28 +1415,38 @@ function resetWorkerState(): void {
 
 function notifyReady(): void {
   workerReady = true
+  lastWorkerBootError = ''
   const waiters = readyWaiters
   readyWaiters = []
-  for (const w of waiters) w()
+  for (const w of waiters) w(true)
 }
 
 function waitUntilReady(timeoutMs = 120_000): Promise<boolean> {
   if (workerReady) return Promise.resolve(true)
   return new Promise((resolve) => {
     const timer = setTimeout(() => {
-      readyWaiters = readyWaiters.filter((w) => w !== onReady)
+      readyWaiters = readyWaiters.filter((w) => w !== onSettled)
       resolve(false)
     }, timeoutMs)
-    const onReady = (): void => {
+    const onSettled = (ready: boolean): void => {
       clearTimeout(timer)
-      resolve(true)
+      resolve(ready)
     }
-    readyWaiters.push(onReady)
+    readyWaiters.push(onSettled)
   })
 }
 
 function sendWorkerCommand(payload: Record<string, unknown>): boolean {
-  if (!child?.stdin || child.killed) return false
+  if (!child || child.killed) return false
+  if (child.connected && typeof child.send === 'function') {
+    try {
+      child.send(payload)
+      return true
+    } catch {
+      // 回落到 stdin JSONL
+    }
+  }
+  if (!child.stdin) return false
   try {
     const line = `${JSON.stringify(payload)}\n`
     const ok = child.stdin.write(line, 'utf8')
@@ -1208,7 +1461,7 @@ function sendWorkerCommand(payload: Record<string, unknown>): boolean {
 }
 
 /** 常驻 worker 协议版本：改 runner 交互或 MCP 核心工具集时递增，强制热进程重建 */
-const WORKER_PROTOCOL = '3'
+const WORKER_PROTOCOL = '6'
 
 function workerFingerprintOf(input: {
   workspace: string
@@ -1309,7 +1562,13 @@ function attachWorkerIo(opts: {
       text.startsWith(TOOL_END) ||
       text.startsWith(ASK_USER_BEGIN) ||
       text.startsWith(APPROVAL_BEGIN) ||
-      text.startsWith(CONTEXT_BEGIN))
+      text.startsWith(CONTEXT_BEGIN) ||
+      text.startsWith(TODO_BEGIN) ||
+      text.startsWith(GOAL_BEGIN) ||
+      text.startsWith(PRESENT_BEGIN) ||
+      text.startsWith(SCHEDULE_BEGIN) ||
+      text.startsWith(SUBAGENT_BEGIN) ||
+      text.startsWith(STEER_BEGIN))
 
   const emitAssistantDelta = (delta: string): void => {
     if (!delta || !turnActive) return
@@ -1434,6 +1693,114 @@ function attachWorkerIo(opts: {
     }
   }
 
+  const emitTodoFromLine = (line: string): void => {
+    const payload = line.slice(TODO_BEGIN.length).trim()
+    try {
+      const parsed = JSON.parse(payload) as { todos?: HarnessTodoItem[] }
+      const todos = Array.isArray(parsed.todos) ? parsed.todos : []
+      emit({ type: 'todo', todos })
+      sawOutput = true
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const emitGoalFromLine = (line: string): void => {
+    const payload = line.slice(GOAL_BEGIN.length).trim()
+    try {
+      const parsed = JSON.parse(payload) as { goal?: HarnessGoalView | null }
+      const rawGoal = parsed.goal ?? null
+      lastGoalSnapshot = rawGoal
+        ? {
+            ...rawGoal,
+            roundsSinceUser: rawGoal.roundsSinceUser ?? rawGoal.round ?? rawGoal.roundsStarted ?? 0
+          }
+        : null
+      emit({ type: 'goal', goal: lastGoalSnapshot })
+      sawOutput = true
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const emitPresentFromLine = (line: string): void => {
+    const payload = line.slice(PRESENT_BEGIN.length).trim()
+    try {
+      const parsed = JSON.parse(payload) as {
+        callId?: string
+        turn?: number
+        files?: HarnessPresentFile[]
+      }
+      const rawFiles = Array.isArray(parsed.files) ? parsed.files : []
+      if (!rawFiles.length) return
+      const files = rawFiles.map((f) => ({
+        ...f,
+        caption: f.caption || f.description || f.title
+      }))
+      emit({
+        type: 'present',
+        callId: typeof parsed.callId === 'string' ? parsed.callId : '',
+        turn: typeof parsed.turn === 'number' ? parsed.turn : 0,
+        files
+      })
+      sawOutput = true
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const emitScheduleFromLine = (line: string): void => {
+    const payload = line.slice(SCHEDULE_BEGIN.length).trim()
+    try {
+      const parsed = JSON.parse(payload) as { schedules?: HarnessScheduleView[] }
+      const rawSchedules = Array.isArray(parsed.schedules) ? parsed.schedules : []
+      const schedules: HarnessScheduleView[] = rawSchedules.map((s) => ({
+        ...s,
+        summary: s.summary || s.prompt,
+        timing:
+          s.timing ||
+          (s.kind === 'every' && s.everySeconds
+            ? `every ${s.everySeconds}s`
+            : s.kind === 'after' && s.afterSeconds
+              ? `after ${s.afterSeconds}s`
+              : s.kind),
+        nextRunAt: s.nextRunAt || s.scheduledAt,
+        status: s.status || 'active'
+      }))
+      lastSchedulesSnapshot = schedules
+      activeScheduleCount = schedules.length
+      emit({ type: 'schedule', schedules })
+      sawOutput = true
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const emitSubagentFromLine = (line: string): void => {
+    const payload = line.slice(SUBAGENT_BEGIN.length).trim()
+    try {
+      const parsed = JSON.parse(payload) as { subagents?: HarnessSubagentView[] }
+      const subagents = Array.isArray(parsed.subagents) ? parsed.subagents : []
+      emit({ type: 'subagent', subagents })
+      sawOutput = true
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const emitSteerFromLine = (line: string): void => {
+    const payload = line.slice(STEER_BEGIN.length).trim()
+    try {
+      const parsed = JSON.parse(payload) as { ok?: boolean }
+      if (parsed.ok !== false) {
+        emit({ type: 'steered' })
+        sawOutput = true
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
   const parseStdout = (until: number): void => {
     let i = parsedLen
     let start = i
@@ -1462,6 +1829,18 @@ function attachWorkerIo(opts: {
             emitApprovalFromLine(line)
           } else if (line.startsWith(CONTEXT_BEGIN)) {
             emitContextFromLine(line)
+          } else if (line.startsWith(TODO_BEGIN)) {
+            emitTodoFromLine(line)
+          } else if (line.startsWith(GOAL_BEGIN)) {
+            emitGoalFromLine(line)
+          } else if (line.startsWith(PRESENT_BEGIN)) {
+            emitPresentFromLine(line)
+          } else if (line.startsWith(SCHEDULE_BEGIN)) {
+            emitScheduleFromLine(line)
+          } else if (line.startsWith(SUBAGENT_BEGIN)) {
+            emitSubagentFromLine(line)
+          } else if (line.startsWith(STEER_BEGIN)) {
+            emitSteerFromLine(line)
           } else {
             emitAssistantDelta(line + '\n')
           }
@@ -1505,8 +1884,8 @@ function attachWorkerIo(opts: {
     }
     emit({ type: 'tool', name: 'dsh-agent', state: 'done' })
     if (result.ok) {
-      emit({ type: 'done', runId: runIdForRelease })
       if (result.finalText) emit({ type: 'final', text: result.finalText })
+      emit({ type: 'done', runId: runIdForRelease })
     } else if (result.error) {
       emit({ type: 'error', message: result.error })
     }
@@ -1527,6 +1906,47 @@ function attachWorkerIo(opts: {
             // 预热 / 常驻就绪不刷进对话流，避免「dsh 就绪」占满聊天
             console.info('[aiart] dsh worker ready')
             notifyReady()
+            continue
+          }
+          if (line.startsWith('[aiart-runner] session_released')) {
+            notifySessionReleased()
+            continue
+          }
+          if (
+            line.startsWith('[aiart-runner] goal_control_ack') ||
+            line.startsWith('[aiart-runner] schedule_delete_ack') ||
+            line.startsWith('[aiart-runner] steer_ack')
+          ) {
+            continue
+          }
+          if (line.startsWith('[aiart-runner] schedule_turn_start ')) {
+            const payload = line.slice('[aiart-runner] schedule_turn_start '.length)
+            let schedRunId = `sched-${Date.now()}`
+            let schedMode: ChatMode = 'craft'
+            try {
+              const parsed = JSON.parse(payload) as { runId?: string; mode?: string }
+              if (parsed.runId) schedRunId = parsed.runId
+              if (parsed.mode) schedMode = normalizeChatMode(parsed.mode)
+            } catch {
+              /* ignore */
+            }
+            if (!turnActive) {
+              clearIdleTimer()
+              sawOutput = false
+              turnAccepted = true
+              finalText = ''
+              fullOut = ''
+              parsedLen = 0
+              inReasoning = false
+              reasoningBuf = ''
+              turnFinalized = false
+              setRunId(schedRunId)
+              registerHarnessRunAccess(schedRunId, schedMode)
+              setActiveHarnessRun(schedRunId, schedMode)
+              turnActive = true
+              emit({ type: 'tool', name: 'dsh-agent', state: 'start' })
+              emitStatus('定时提醒已触发，正在执行…')
+            }
             continue
           }
           if (line.startsWith('[aiart-runner] prompt_start')) {
@@ -1571,17 +1991,165 @@ function attachWorkerIo(opts: {
       }
       return
     }
-    if (!turnActive && persistent) {
-      // 常驻空闲时忽略 stdout 噪声
+    const textChunk = String(chunk)
+    if (
+      !turnActive &&
+      persistent &&
+      !textChunk.includes(GOAL_BEGIN) &&
+      !textChunk.includes(SCHEDULE_BEGIN) &&
+      !textChunk.includes(TODO_BEGIN) &&
+      !textChunk.includes(PRESENT_BEGIN) &&
+      !textChunk.includes(SUBAGENT_BEGIN) &&
+      !textChunk.includes(STEER_BEGIN)
+    ) {
+      // 常驻空闲时忽略普通 stdout 噪声，但放行带外状态快照
       return
     }
-    fullOut += String(chunk)
+    fullOut += textChunk
     parseStdout(fullOut.length)
   }
 
   proc.stdout?.on('data', (chunk) => onData(chunk, 'out'))
   proc.stderr?.on('data', (chunk) => onData(chunk, 'err'))
+  proc.on('message', (rawMsg: unknown) => {
+    if (!rawMsg || typeof rawMsg !== 'object') return
+    const msg = rawMsg as Record<string, unknown>
+    if (msg.__aiartEvent !== true || typeof msg.type !== 'string') return
+    switch (msg.type) {
+      case 'ready':
+        console.info('[aiart] dsh worker ready (ipc)')
+        notifyReady()
+        break
+      case 'session_released':
+        notifySessionReleased()
+        break
+      case 'prompt_start':
+        turnAccepted = true
+        emitStatus('已提交给模型，等待响应…')
+        break
+      case 'schedule_turn_start': {
+        const schedRunId =
+          typeof msg.runId === 'string' && msg.runId ? msg.runId : `sched-${Date.now()}`
+        const schedMode =
+          typeof msg.mode === 'string' && msg.mode ? normalizeChatMode(msg.mode) : 'craft'
+        if (!turnActive) {
+          clearIdleTimer()
+          sawOutput = false
+          turnAccepted = true
+          finalText = ''
+          fullOut = ''
+          parsedLen = 0
+          inReasoning = false
+          reasoningBuf = ''
+          turnFinalized = false
+          setRunId(schedRunId)
+          registerHarnessRunAccess(schedRunId, schedMode)
+          setActiveHarnessRun(schedRunId, schedMode)
+          turnActive = true
+          emit({ type: 'tool', name: 'dsh-agent', state: 'start' })
+          emitStatus('定时提醒已触发，正在执行…')
+        }
+        break
+      }
+      case 'reasoning_begin':
+        if (turnActive) {
+          inReasoning = true
+        }
+        break
+      case 'reasoning_delta':
+        if (turnActive && typeof msg.text === 'string' && msg.text) {
+          sawOutput = true
+          inReasoning = true
+          reasoningBuf += msg.text
+          emit({ type: 'reasoning', text: reasoningBuf })
+        }
+        break
+      case 'reasoning_end':
+        if (inReasoning) {
+          inReasoning = false
+          emit({ type: 'reasoning', text: reasoningBuf })
+        }
+        break
+      case 'assistant_delta':
+        if (typeof msg.text === 'string' && msg.text) {
+          if (inReasoning) {
+            inReasoning = false
+            emit({ type: 'reasoning', text: reasoningBuf })
+          }
+          emitAssistantDelta(msg.text)
+        }
+        break
+      case 'turn_done': {
+        if (parsedLen < fullOut.length) parseStdout(fullOut.length)
+        if (inReasoning) {
+          inReasoning = false
+          emit({ type: 'reasoning', text: reasoningBuf })
+        }
+        const ok = msg.ok !== false
+        const error = typeof msg.error === 'string' ? msg.error : undefined
+        if (ok) {
+          finishTurn({ ok: true, finalText }, currentRunId)
+        } else {
+          const message =
+            error?.trim() ||
+            (finalText
+              ? `本轮结束但 runner 报错：${error || 'unknown'}`
+              : `本轮失败：${error || 'unknown'}`)
+          finishTurn({ ok: false, error: message, finalText }, currentRunId)
+        }
+        break
+      }
+      case 'tool': {
+        const toolPayload = JSON.stringify(
+          msg.payload && typeof msg.payload === 'object' ? msg.payload : msg
+        )
+        emitToolFromLine(
+          `${msg.state === 'done' ? TOOL_END : TOOL_BEGIN} ${toolPayload}`,
+          msg.state === 'done' ? 'done' : 'start'
+        )
+        break
+      }
+      case 'ask_user':
+        emitAskUserFromLine(`${ASK_USER_BEGIN} ${JSON.stringify(msg)}`)
+        break
+      case 'approval':
+        emitApprovalFromLine(`${APPROVAL_BEGIN} ${JSON.stringify(msg)}`)
+        break
+      case 'context': {
+        const ctxPayload = JSON.stringify(
+          msg.usage && typeof msg.usage === 'object' ? msg.usage : msg
+        )
+        emitContextFromLine(`${CONTEXT_BEGIN} ${ctxPayload}`)
+        break
+      }
+      case 'todo':
+        emitTodoFromLine(`${TODO_BEGIN} ${JSON.stringify(msg)}`)
+        break
+      case 'goal':
+        emitGoalFromLine(`${GOAL_BEGIN} ${JSON.stringify(msg)}`)
+        break
+      case 'present':
+        emitPresentFromLine(`${PRESENT_BEGIN} ${JSON.stringify(msg)}`)
+        break
+      case 'schedule':
+        emitScheduleFromLine(`${SCHEDULE_BEGIN} ${JSON.stringify(msg)}`)
+        break
+      case 'subagent':
+        emitSubagentFromLine(`${SUBAGENT_BEGIN} ${JSON.stringify(msg)}`)
+        break
+      case 'steered':
+        emitSteerFromLine(`${STEER_BEGIN} ${JSON.stringify(msg)}`)
+        break
+    }
+  })
   proc.on('error', (err) => {
+    const wasPersistent = persistent
+    const wasReady = workerReady
+    if (wasPersistent && !wasReady) {
+      lastWorkerBootError = `dsh 启动失败：${err.message}`
+      if (child === proc) resetWorkerState()
+      return
+    }
     if (child === proc) resetWorkerState()
     if (turnActive) {
       clearActiveHarnessRun()
@@ -1593,8 +2161,20 @@ function attachWorkerIo(opts: {
   })
   proc.on('close', (code) => {
     const wasPersistent = persistent
+    const wasReady = workerReady
     const wasTurn = turnActive
     const rid = currentRunId
+    if (wasPersistent && !wasReady) {
+      const quotaHint = isDshQuotaError(fullOut + '\n' + errBuf)
+        ? 'DeepSeek 账户余额不足：到 platform.deepseek.com → 账户中心充值后再发，或在设置 → 模型接入切换到其它服务商'
+        : null
+      const hint =
+        quotaHint ??
+        (dshEntry ? '请重试或查看上方状态信息' : '若为首次运行，请等待包下载完成后重试')
+      lastWorkerBootError = `dsh 异常退出（code ${code}）。${hint}。`
+      if (child === proc) resetWorkerState()
+      return
+    }
     if (child === proc) resetWorkerState()
     if (parsedLen < fullOut.length) parseStdout(fullOut.length)
     if (inReasoning) emit({ type: 'reasoning', text: reasoningBuf })
@@ -1678,7 +2258,7 @@ function launchDsh(opts: {
     windowsHide: true,
     shell: false,
     env,
-    stdio: persistent ? ['pipe', 'pipe', 'pipe'] : undefined
+    stdio: persistent ? ['pipe', 'pipe', 'pipe', 'ipc'] : undefined
   })
   child = proc
   workerPersistent = persistent
@@ -1884,6 +2464,7 @@ async function ensurePersistentWorkerUnlocked(opts: {
   }
 
   const bootRunId = 'boot'
+  lastWorkerBootError = ''
   launchDsh({
     command,
     args,
@@ -1912,9 +2493,10 @@ async function ensurePersistentWorkerUnlocked(opts: {
   workerModelId = modelId
   const ready = await waitUntilReady(180_000)
   if (!ready) {
+    const bootError = lastWorkerBootError
     child?.kill()
     resetWorkerState()
-    throw new Error('dsh 常驻进程就绪超时')
+    throw new Error(bootError || 'dsh 常驻进程就绪超时')
   }
 }
 
@@ -2191,6 +2773,65 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
   if (!rawInputTask) return { started: false, message: '任务内容为空' }
   if (turnActive) return { started: false, message: '已有任务正在运行' }
 
+  // 原生 /export 斜杠命令：直接由宿主打包当前会话日志并推送交付卡片
+  if (/^\/export(?=$|\s)/i.test(rawInputTask)) {
+    const runId = String(++runSeq)
+    const targetSessionId = (input.sessionId ?? '').trim()
+    turnActive = true
+    emit({ type: 'tool', name: 'dsh-agent', state: 'start' })
+    const exportCallId = `session-export:${Date.now()}`
+    emit({
+      type: 'tool',
+      id: exportCallId,
+      name: 'session_export',
+      state: 'start',
+      detail: '正在导出当前会话日志 (.zip)…'
+    })
+    void (async () => {
+      try {
+        const res = await exportHarnessSession({ sessionId: targetSessionId })
+        emit({
+          type: 'tool',
+          id: exportCallId,
+          name: 'session_export',
+          state: 'done',
+          detail: res.ok ? `已导出到 ${res.archivePath}` : (res.error ?? '当前会话尚无持久化记录')
+        })
+        let finalText = ''
+        if (res.ok && res.archivePath) {
+          emit({
+            type: 'present',
+            callId: exportCallId,
+            turn: 0,
+            files: [
+              {
+                path: res.archivePath,
+                title: basename(res.archivePath),
+                description: `包含 ${res.fileCount ?? 1} 个会话日志文件（关联 ${res.sessionIds?.length ?? 1} 个主/子代理会话）`
+              }
+            ]
+          })
+          finalText = `已将当前会话日志导出为压缩包：\`${res.archivePath}\`（共 ${res.fileCount ?? 1} 个文件）。`
+        } else {
+          finalText = `导出会话失败：${res.error ?? '当前会话尚无持久化记录，请先发送一条消息后再导出。'}`
+        }
+        emit({ type: 'assistant', text: finalText })
+        turnActive = false
+        emit({ type: 'tool', name: 'dsh-agent', state: 'done' })
+        emit({ type: 'done', runId })
+        emit({ type: 'final', text: finalText })
+        completeActiveJob({ ok: res.ok, finalText, ...(res.ok ? {} : { error: finalText }) })
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        turnActive = false
+        emit({ type: 'tool', name: 'dsh-agent', state: 'done' })
+        emit({ type: 'error', message: msg })
+        completeActiveJob({ ok: false, error: msg })
+      }
+    })()
+    return { started: true }
+  }
+
   const mcp = getMcpServerInfo()
   if (!mcp?.running) {
     return { started: false, message: 'MCP 工具服务未运行，请先在设置中启动' }
@@ -2202,17 +2843,31 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
 
   const workspace = resolveWorkspace()
   const mode = normalizeChatMode(input.mode)
-  const skillPreprocessed = preprocessSkillInvocation({
-    taskText: rawInputTask,
-    sessionId: input.sessionId,
-    workspaceRoot: workspace
-  })
-  const taskAfterOnlineSkills = await preprocessOnlineSkillInstallIntent({
-    taskText: skillPreprocessed.taskText,
-    mode,
-    workspaceRoot: workspace
-  })
-  const canvasContext = resolveProjectCanvasContext(input.canvasContext)
+  const isNativeSlashCommand = /^\/(compact|goal|feedback)(?=$|\s)/i.test(rawInputTask)
+  const skillPreprocessed = isNativeSlashCommand
+    ? { taskText: rawInputTask, activeSkill: null }
+    : preprocessSkillInvocation({
+        taskText: rawInputTask,
+        sessionId: input.sessionId,
+        workspaceRoot: workspace
+      })
+
+  // 立即置 turnActive = true，封闭 preprocessOnlineSkillInstallIntent 与 ensurePersistentWorker
+  // 异步等待期间的并发窗口，保证期间到达的新消息稳定进入队列
+  turnActive = true
+  let taskAfterOnlineSkills = skillPreprocessed.taskText
+  if (!isNativeSlashCommand) {
+    try {
+      taskAfterOnlineSkills = await preprocessOnlineSkillInstallIntent({
+        taskText: skillPreprocessed.taskText,
+        mode,
+        workspaceRoot: workspace
+      })
+    } catch {
+      taskAfterOnlineSkills = skillPreprocessed.taskText
+    }
+  }
+  const canvasContext = isNativeSlashCommand ? '' : resolveProjectCanvasContext(input.canvasContext)
   const rawTask = canvasContext
     ? `${taskAfterOnlineSkills}\n\n[Workspace Canvas & Node Context]\n${canvasContext}`
     : taskAfterOnlineSkills
@@ -2264,7 +2919,6 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
       )
     }
     emit({ type: 'tool', name: 'dsh-agent', state: 'start' })
-    turnActive = true
     const nodeCmd = dshEntry ? resolveNodeCommand() : null
     const command = nodeCmd?.command ?? (process.platform === 'win32' ? 'npx.cmd' : 'npx')
     const hideWindowsHook = writeHideChildWindowsHook()
@@ -2314,10 +2968,13 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
       mode
     })
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    turnActive = false
     activeSkillTurn = null
+    completeActiveJob({ ok: false, error: message, finalText: '' })
     return {
       started: false,
-      message: error instanceof Error ? error.message : String(error)
+      message
     }
   }
 
@@ -2348,7 +3005,6 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
     runId
   )
 
-  turnActive = true
   emit({ type: 'tool', name: 'dsh-agent', state: 'start' })
   // 不在每轮刷「等待模型首包」：常驻热路径下会误导成「又在冷启动」；
   // 真卡住由下方 15s 心跳提示「仍在等待模型响应」。
@@ -2361,11 +3017,14 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
     runId
   })
   if (!ok) {
+    const message = '无法向常驻 dsh 写入任务'
     turnActive = false
+    activeSkillTurn = null
     clearActiveHarnessRun()
     releaseHarnessRunAccess(runId)
     resetWorkerState()
-    return { started: false, message: '无法向常驻 dsh 写入任务' }
+    completeActiveJob({ ok: false, error: message, finalText: '' })
+    return { started: false, message }
   }
 
   // 无输出心跳：仅提示、不自动中止。有模型/工具输出后停掉；稀疏里程碑避免刷屏。
@@ -2527,6 +3186,200 @@ export function handleApprovalResponse(payload: ApprovalAnswer): boolean {
   }
 }
 
+/** 请求常驻 worker 刷盘并释放指定会话的写锁，便于宿主直接读取/导出/截断会话文件 */
+async function requestWorkerReleaseSession(sessionId?: string): Promise<void> {
+  if (!child || !workerPersistent || !workerReady || turnActive) return
+  await new Promise<void>((resolve) => {
+    const timer = setTimeout(() => {
+      sessionReleaseWaiters = sessionReleaseWaiters.filter((w) => w !== onDone)
+      resolve()
+    }, 1500)
+    const onDone = (): void => {
+      clearTimeout(timer)
+      resolve()
+    }
+    sessionReleaseWaiters.push(onDone)
+    const ok = sendWorkerCommand({ op: 'release_session', ...(sessionId ? { sessionId } : {}) })
+    if (!ok) {
+      clearTimeout(timer)
+      sessionReleaseWaiters = sessionReleaseWaiters.filter((w) => w !== onDone)
+      resolve()
+    }
+  })
+}
+
+const ZSTD_MAGIC = 0xfd2fb528
+const SKIPPABLE_MASK = 0xfffffff0
+const SKIPPABLE_MAGIC = 0x184d2a50
+const FCS_SIZES = [0, 2, 4, 8]
+
+function scanZstdFrames(buf: Buffer): Array<{ start: number; end: number }> {
+  const frames: Array<{ start: number; end: number }> = []
+  let pos = 0
+  while (pos < buf.length) {
+    if (pos + 4 > buf.length) break
+    const magic = buf.readUInt32LE(pos)
+    if ((magic & SKIPPABLE_MASK) === SKIPPABLE_MAGIC) {
+      if (pos + 8 > buf.length) break
+      const size = buf.readUInt32LE(pos + 4)
+      if (pos + 8 + size > buf.length) break
+      pos += 8 + size
+      continue
+    }
+    if (magic !== ZSTD_MAGIC) break
+    const frameStart = pos
+    pos += 4
+    if (pos >= buf.length) break
+    const fhd = buf[pos++]!
+    const fcsFlag = fhd >>> 6
+    const singleSegment = (fhd & 0x20) !== 0
+    const hasChecksum = (fhd & 0x04) !== 0
+    const dictIdFlag = fhd & 0x03
+    if (!singleSegment) {
+      if (pos >= buf.length) break
+      pos += 1
+    }
+    const dictSize = dictIdFlag === 0 ? 0 : 1 << (dictIdFlag - 1)
+    pos += dictSize
+    const fcsSize = fcsFlag === 0 && singleSegment ? 1 : FCS_SIZES[fcsFlag]!
+    pos += fcsSize
+    if (pos > buf.length) break
+    let frameComplete = false
+    while (pos + 3 <= buf.length) {
+      const bh = buf[pos]! | (buf[pos + 1]! << 8) | (buf[pos + 2]! << 16)
+      pos += 3
+      const lastBlock = (bh & 1) !== 0
+      const blockType = (bh >>> 1) & 3
+      const blockSize = bh >>> 3
+      if (blockType === 3) break
+      const payloadBytes = blockType === 1 ? 1 : blockSize
+      if (pos + payloadBytes > buf.length) break
+      pos += payloadBytes
+      if (lastBlock) {
+        if (hasChecksum) {
+          if (pos + 4 > buf.length) break
+          pos += 4
+        }
+        frameComplete = true
+        break
+      }
+    }
+    if (!frameComplete) break
+    frames.push({ start: frameStart, end: pos })
+  }
+  return frames
+}
+
+interface DiskSessionData {
+  sessionDir: string
+  filePath: string
+  compressed: boolean
+  header: Record<string, unknown>
+  events: Array<{ seq: number; timestamp: string; type: string; data: Record<string, unknown> }>
+}
+
+function readDiskSession(sessionDir: string): DiskSessionData | null {
+  const zstdPath = join(sessionDir, 'session.v3.jsonl.zstd')
+  const plainPath = join(sessionDir, 'session.v3.jsonl')
+  let rawText = ''
+  let filePath = ''
+  let compressed = false
+  try {
+    if (existsSync(zstdPath)) {
+      filePath = zstdPath
+      compressed = true
+      const buf = readFileSync(zstdPath)
+      const frames = scanZstdFrames(buf)
+      const parts: string[] = []
+      for (const frame of frames) {
+        const decompressed = zstdDecompressSync(buf.subarray(frame.start, frame.end))
+        parts.push(decompressed.toString('utf8'))
+      }
+      rawText = parts.join('')
+    } else if (existsSync(plainPath)) {
+      filePath = plainPath
+      compressed = false
+      rawText = readFileSync(plainPath, 'utf8')
+    } else {
+      return null
+    }
+  } catch {
+    return null
+  }
+  const lines = rawText
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+  if (!lines.length) return null
+  try {
+    const header = JSON.parse(lines[0]!) as Record<string, unknown>
+    if (header.type !== 'session') return null
+    const events: DiskSessionData['events'] = []
+    for (let i = 1; i < lines.length; i++) {
+      try {
+        const ev = JSON.parse(lines[i]!)
+        if (ev && typeof ev.type === 'string') {
+          events.push(ev)
+        }
+      } catch {
+        /* ignore corrupted tail line */
+      }
+    }
+    return { sessionDir, filePath, compressed, header, events }
+  } catch {
+    return null
+  }
+}
+
+function writeDiskSession(
+  targetDir: string,
+  header: Record<string, unknown>,
+  events: DiskSessionData['events'],
+  compressed = true
+): void {
+  mkdirSync(targetDir, { recursive: true })
+  const headerLine = `${JSON.stringify(header)}\n`
+  const eventsBody = events.map((ev, idx) => JSON.stringify({ ...ev, seq: idx })).join('\n')
+  const eventsPayload = eventsBody ? `${eventsBody}\n` : ''
+  const checkpointPath = join(targetDir, 'session.v3.checkpoint.json')
+  if (existsSync(checkpointPath)) {
+    try {
+      rm(checkpointPath, { force: true }).catch(() => {})
+    } catch {
+      /* ignore */
+    }
+  }
+  if (compressed) {
+    const zstdParams = { params: { [zlibConstants.ZSTD_c_checksumFlag]: 1 } }
+    const frame0 = zstdCompressSync(Buffer.from(headerLine, 'utf8'), zstdParams)
+    const chunks = [frame0]
+    if (eventsPayload) {
+      chunks.push(zstdCompressSync(Buffer.from(eventsPayload, 'utf8'), zstdParams))
+    }
+    writeFileSync(join(targetDir, 'session.v3.jsonl.zstd'), Buffer.concat(chunks))
+  } else {
+    writeFileSync(join(targetDir, 'session.v3.jsonl'), headerLine + eventsPayload, 'utf8')
+  }
+}
+
+function findSessionDirectories(sessionId: string): string[] {
+  const id = String(sessionId ?? '').trim()
+  if (!id || !/^[A-Za-z0-9._-]+$/.test(id)) return []
+  const sessionsRoot = join(dshHome(), 'sessions')
+  if (!existsSync(sessionsRoot)) return []
+  const dirs: string[] = []
+  try {
+    for (const entry of readdirSync(sessionsRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue
+      const candidate = join(sessionsRoot, entry.name, id)
+      if (existsSync(candidate)) dirs.push(candidate)
+    }
+  } catch {
+    /* ignore */
+  }
+  return dirs
+}
+
 /**
  * 删除会话在磁盘上的持久化记录（`$DSH_HOME/sessions/<project>/<id>/`）。
  * 前端删除会话后调用：否则 localStorage 里的会话没了，但 dsh 的 JSONL 日志仍在，
@@ -2537,6 +3390,7 @@ export async function deleteHarnessSession(sessionId: string): Promise<void> {
   const id = String(sessionId ?? '').trim()
   // 只放行安全字符，防止把删除目标带出 sessions 目录
   if (!id || !/^[A-Za-z0-9._-]+$/.test(id)) return
+  await requestWorkerReleaseSession(id)
   const sessionsRoot = join(dshHome(), 'sessions')
   let entries
   try {
@@ -2556,6 +3410,453 @@ export async function deleteHarnessSession(sessionId: string): Promise<void> {
       })
   )
 }
+
+/**
+ * 导出指定会话日志为 .zip 压缩包（复用 @deepseek-ai/dsh-session-log-export，自动收集关联子代理会话与附件）。
+ */
+export async function exportHarnessSession(
+  input: ExportHarnessSessionInput
+): Promise<ExportHarnessSessionResult> {
+  const id = String(input?.sessionId ?? '').trim()
+  if (!id || !/^[A-Za-z0-9._-]+$/.test(id)) {
+    return { ok: false, error: '无效的会话 ID' }
+  }
+  await requestWorkerReleaseSession(id)
+  const dirs = findSessionDirectories(id)
+  if (!dirs.length) {
+    return { ok: false, error: '当前会话尚无持久化记录，请先发送一条消息后再导出' }
+  }
+  const workspace = resolveWorkspace()
+  const defaultOut = join(workspace, 'Output', 'Exports', `session-${id}-${Date.now()}.zip`)
+  const outputPath = input.outputPath?.trim()
+    ? resolve(workspace, input.outputPath.trim())
+    : defaultOut
+  mkdirSync(dirname(outputPath), { recursive: true })
+
+  const dshEntry = resolveDshEntry()
+  const dshModules = dshEntry ? locateNodeModules(dshEntry) : null
+  if (dshModules) {
+    try {
+      const exportPkgPath = join(
+        dshModules,
+        '@deepseek-ai',
+        'dsh-session-log-export',
+        'dist',
+        'index.mjs'
+      )
+      if (existsSync(exportPkgPath)) {
+        const mod = (await import(pathToFileURL(exportPkgPath).href)) as {
+          exportSessionLogBundle: (opts: {
+            rootSessionId: string
+            sessionsRoot: string
+            outputPath: string
+            now?: Date
+          }) => Promise<{
+            archivePath: string
+            rootSessionId: string
+            sessionIds: string[]
+            fileCount: number
+          }>
+        }
+        const res = await mod.exportSessionLogBundle({
+          rootSessionId: id,
+          sessionsRoot: join(dshHome(), 'sessions'),
+          outputPath,
+          now: new Date()
+        })
+        return {
+          ok: true,
+          path: res.archivePath,
+          archivePath: res.archivePath,
+          filePath: res.archivePath,
+          sessionIds: [...res.sessionIds],
+          fileCount: res.fileCount
+        }
+      }
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error)
+      }
+    }
+  }
+  return { ok: false, error: '未找到 @deepseek-ai/dsh-session-log-export 模块' }
+}
+
+/**
+ * 在指定用户轮次处回退（截断）或分叉（克隆到新会话 ID）持久化会话记录。
+ * `userTurnIndex` / `keepTurns` 为 0-based 的用户消息序号：保留前 N 轮用户消息及其回复。
+ */
+export async function rewindHarnessSession(
+  input: RewindHarnessSessionInput
+): Promise<RewindHarnessSessionResult> {
+  const id = String(input?.sessionId ?? '').trim()
+  if (!id || !/^[A-Za-z0-9._-]+$/.test(id)) {
+    return { ok: false, error: '无效的会话 ID' }
+  }
+  const userTurnIndex = Math.max(0, Math.floor(Number(input.keepTurns ?? input.userTurnIndex ?? 0)))
+  const explicitForkId = String(input.forkSessionId ?? input.targetSessionId ?? '').trim()
+  const fork = Boolean(input.fork || (explicitForkId && explicitForkId !== id))
+  const targetSessionId = fork
+    ? explicitForkId || `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    : id
+
+  await requestWorkerReleaseSession(id)
+  const dirs = findSessionDirectories(id)
+  if (!dirs.length) {
+    return { ok: true, sessionId: targetSessionId, keptEvents: 0 }
+  }
+
+  let totalKept = 0
+  for (const dir of dirs) {
+    const parsed = readDiskSession(dir)
+    if (!parsed) continue
+    let userMsgSeen = 0
+    let cutIndex = parsed.events.length
+    for (let i = 0; i < parsed.events.length; i++) {
+      const ev = parsed.events[i]!
+      const source = (ev.data?.message as { source?: { kind?: string } } | undefined)?.source
+      if (ev.type === 'user/message' && (!source || source.kind === 'user')) {
+        if (userMsgSeen === userTurnIndex) {
+          // 若紧邻上一条是 turn/start，一并截掉
+          cutIndex = i > 0 && parsed.events[i - 1]?.type === 'turn/start' ? i - 1 : i
+          break
+        }
+        userMsgSeen += 1
+      }
+    }
+    const keptEvents = parsed.events.slice(0, cutIndex)
+    totalKept = Math.max(totalKept, keptEvents.length)
+    const outDir = fork ? join(dirname(dir), targetSessionId) : dir
+    const outHeader = fork
+      ? {
+          ...parsed.header,
+          id: targetSessionId,
+          createdAt: new Date().toISOString(),
+          parentSession: id,
+          origin: 'fork'
+        }
+      : parsed.header
+    writeDiskSession(outDir, outHeader, keptEvents, parsed.compressed)
+  }
+
+  return {
+    ok: true,
+    sessionId: targetSessionId,
+    keptEvents: totalKept
+  }
+}
+
+/**
+ * 跨会话全文搜索历史记录（直接解码 `$DSH_HOME/sessions` 下所有项目的 v3 JSONL/zstd 会话日志）。
+ */
+export async function searchHarnessSessions(
+  input: SearchHarnessSessionsInput
+): Promise<SearchHarnessSessionsResult> {
+  const query = String(input?.query ?? '').trim()
+  if (!query) return { ok: true, hits: [] }
+  const limit = Math.min(Math.max(Number(input?.limit ?? 20), 1), 100)
+  const keywords = query.toLowerCase().split(/\s+/).filter(Boolean)
+  if (!keywords.length) return { ok: true, hits: [] }
+
+  const sessionsRoot = join(dshHome(), 'sessions')
+  if (!existsSync(sessionsRoot)) return { ok: true, hits: [] }
+
+  const hits: HarnessSessionSearchHit[] = []
+  try {
+    const projects = readdirSync(sessionsRoot, { withFileTypes: true }).filter((d) =>
+      d.isDirectory()
+    )
+    for (const proj of projects) {
+      const projDir = join(sessionsRoot, proj.name)
+      let sessionDirs: import('node:fs').Dirent[] = []
+      try {
+        sessionDirs = readdirSync(projDir, { withFileTypes: true }).filter((d) => d.isDirectory())
+      } catch {
+        continue
+      }
+      for (const sDir of sessionDirs) {
+        const parsed = readDiskSession(join(projDir, sDir.name))
+        if (!parsed) continue
+        // 跳过子代理内部会话，只检索主会话与分叉会话
+        if (parsed.header.origin === 'subagent') continue
+        const sessionId = String(parsed.header.id ?? sDir.name)
+        for (const ev of parsed.events) {
+          if (ev.type !== 'user/message' && ev.type !== 'assistant/message') continue
+          const role: 'user' | 'assistant' = ev.type === 'user/message' ? 'user' : 'assistant'
+          const msg = ev.data?.message as
+            | {
+                source?: { kind?: string }
+                content?: Array<{ type?: string; text?: string }>
+              }
+            | undefined
+          if (role === 'user' && msg?.source?.kind && msg.source.kind !== 'user') continue
+          const rawContent = Array.isArray(msg?.content)
+            ? msg!.content
+                .filter((b) => b?.type === 'text' && typeof b.text === 'string')
+                .map((b) => b.text!)
+                .join('\n')
+            : ''
+          if (!rawContent) continue
+          // 剥掉注入的 [AIArtEngine panel mode: ...] 与 [Workspace Canvas & Node Context]
+          const cleanText = rawContent
+            .replace(/^\[AIArtEngine panel mode:[^\]]*\]\s*/i, '')
+            .replace(/\n*\[Workspace Canvas & Node Context\][\s\S]*$/i, '')
+            .trim()
+          if (!cleanText) continue
+          const lower = cleanText.toLowerCase()
+          if (!keywords.every((kw) => lower.includes(kw))) continue
+          const firstIdx = lower.indexOf(keywords[0]!)
+          const snippetStart = Math.max(0, firstIdx - 36)
+          const snippetEnd = Math.min(cleanText.length, firstIdx + 120)
+          const snippet =
+            (snippetStart > 0 ? '…' : '') +
+            cleanText.slice(snippetStart, snippetEnd).replace(/\s+/g, ' ') +
+            (snippetEnd < cleanText.length ? '…' : '')
+          const ts = ev.timestamp || String(parsed.header.createdAt || '')
+          hits.push({
+            sessionId,
+            seq: ev.seq,
+            timestamp: ts,
+            updatedAt: ts,
+            role,
+            snippet,
+            ...(typeof parsed.header.cwd === 'string' ? { cwd: parsed.header.cwd } : {})
+          })
+        }
+      }
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      hits: [],
+      error: error instanceof Error ? error.message : String(error)
+    }
+  }
+
+  hits.sort((a, b) => (b.timestamp ?? '').localeCompare(a.timestamp ?? ''))
+  return { ok: true, hits: hits.slice(0, limit) }
+}
+
+/**
+ * 控制多轮目标执行器（暂停 / 恢复 / 结束）。
+ */
+export async function controlHarnessGoal(
+  input: ControlHarnessGoalInput
+): Promise<{ ok: boolean; goal?: HarnessGoalView | null; error?: string }> {
+  const rawAction = input?.action
+  const action = rawAction === 'complete' || rawAction === 'clear' ? 'end' : rawAction
+  if (action !== 'pause' && action !== 'resume' && action !== 'end') {
+    return { ok: false, error: '不支持的目标操作' }
+  }
+  if (action === 'resume' && !turnActive) {
+    const started = await runHarnessTask({
+      task: '/goal resume',
+      sessionId: input.sessionId,
+      mode: 'craft'
+    })
+    return { ok: started.started, goal: lastGoalSnapshot, error: started.message }
+  }
+  if (child && workerPersistent && workerReady) {
+    sendWorkerCommand({
+      op: 'goal_control',
+      action,
+      ...(input.summary ? { summary: input.summary } : {}),
+      ...(input.sessionId ? { sessionId: input.sessionId } : {})
+    })
+    if (lastGoalSnapshot) {
+      if (action === 'pause') {
+        lastGoalSnapshot = { ...lastGoalSnapshot, phase: 'paused', activation: 'paused' }
+      } else if (action === 'end') {
+        lastGoalSnapshot = { ...lastGoalSnapshot, phase: 'completed', activation: 'paused' }
+      }
+      emit({ type: 'goal', goal: lastGoalSnapshot })
+    }
+    return { ok: true, goal: lastGoalSnapshot }
+  }
+  return { ok: false, error: '当前无运行中的目标会话' }
+}
+
+/**
+ * 取消会话内待触发的定时提醒。
+ */
+export async function deleteHarnessSchedule(
+  input: DeleteHarnessScheduleInput
+): Promise<{ ok: boolean; schedules?: HarnessScheduleView[]; error?: string }> {
+  const scheduleId = String(input?.scheduleId ?? '').trim()
+  if (!scheduleId) return { ok: false, error: '缺少 scheduleId' }
+  if (child && workerPersistent && workerReady) {
+    sendWorkerCommand({
+      op: 'schedule_delete',
+      scheduleId,
+      ...(input.sessionId ? { sessionId: input.sessionId } : {})
+    })
+  }
+  lastSchedulesSnapshot = lastSchedulesSnapshot.filter((s) => s.id !== scheduleId)
+  activeScheduleCount = lastSchedulesSnapshot.length
+  emit({ type: 'schedule', schedules: lastSchedulesSnapshot })
+  return { ok: true, schedules: lastSchedulesSnapshot }
+}
+
+/**
+ * 打开或定位交付物文件（供 present 卡片与导出压缩包卡片直接调用）。
+ */
+export async function openHarnessFile(
+  input: OpenHarnessFileInput
+): Promise<{ ok: boolean; error?: string }> {
+  const rawPath = String(input?.path ?? input?.filePath ?? '').trim()
+  if (!rawPath) return { ok: false, error: '文件路径为空' }
+  const workspace = resolveWorkspace()
+  const absPath = isAbsolute(rawPath) ? resolve(rawPath) : resolve(workspace, rawPath)
+  const relToWorkspace = relative(workspace, absPath)
+  const relToHome = relative(dshHome(), absPath)
+  const insideAllowed =
+    (!relToWorkspace.startsWith('..') && !isAbsolute(relToWorkspace)) ||
+    (!relToHome.startsWith('..') && !isAbsolute(relToHome))
+  if (!insideAllowed) {
+    return { ok: false, error: '仅允许打开工作区或 Harness 目录下的文件' }
+  }
+  if (!existsSync(absPath)) {
+    return { ok: false, error: `文件不存在：${absPath}` }
+  }
+  try {
+    const shouldReveal = Boolean(input.revealInFolder || input.reveal || input.mode === 'reveal')
+    if (shouldReveal || statSync(absPath).isDirectory()) {
+      shell.showItemInFolder(absPath)
+      return { ok: true }
+    }
+    const err = await shell.openPath(absPath)
+    if (err) return { ok: false, error: err }
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) }
+  }
+}
+
+/**
+ * 阶段一：盘中实时转向（Mid-Turn Live Steering）。
+ * 在 Agent 运行过程中或向可续聊子代理注入即时导演/修正指令，无需中断重跑整轮。
+ */
+export async function steerHarnessTurn(
+  input: SteerHarnessTurnInput
+): Promise<SteerHarnessTurnResult> {
+  const text = String(input?.text ?? '').trim()
+  if (!text) return { ok: false, steered: false, error: '转向指令为空' }
+  if (!child || (!turnActive && !input?.subagentSessionId)) {
+    return { ok: false, steered: false, error: '当前无运行中的 Agent 轮次' }
+  }
+  const sent = sendWorkerCommand({
+    op: 'steer',
+    text,
+    ...(input.subagentSessionId ? { subagentSessionId: input.subagentSessionId } : {}),
+    ...(input.sessionId ? { sessionId: input.sessionId } : {})
+  })
+  if (!sent) {
+    return { ok: false, steered: false, error: '向 dsh worker 发送实时转向指令失败' }
+  }
+  emit({ type: 'steered' })
+  emitStatus(
+    input.subagentSessionId
+      ? `⚡ 已向子代理（${input.subagentSessionId.slice(0, 8)}）注入实时指令`
+      : '⚡ 已注入盘中实时转向指令（无需中断当前轮次）'
+  )
+  return { ok: true, steered: true }
+}
+
+/**
+ * 阶段二：画布异步事件触发器（Reactive Canvas Hooks）。
+ * 当画布工作流执行报错或整条管线跑完时，向对话面板推送可交互事件横幅，或按需自动触发 AI 诊断/审片。
+ */
+export async function notifyHarnessCanvasEvent(
+  input: HarnessCanvasEventInput
+): Promise<HarnessCanvasEventResult> {
+  const title = input?.title || input?.summary || ''
+  if (!input || !input.kind || !title) {
+    return { ok: false, error: '画布事件缺少必要字段' }
+  }
+  const summary =
+    input.summary ||
+    (input.detail
+      ? `${title} · ${input.detail}`
+      : input.errorMessage
+        ? `${title} · ${input.errorMessage}`
+        : title)
+  const outputPaths = input.outputPaths ?? input.relativePaths
+  const view: HarnessCanvasEventView = {
+    id: `canvas-ev-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    kind: input.kind,
+    title,
+    summary,
+    timestamp: Date.now(),
+    ...(input.detail ? { detail: input.detail } : {}),
+    ...(input.workflowId ? { workflowId: input.workflowId } : {}),
+    ...(input.nodeId ? { nodeId: input.nodeId } : {}),
+    ...(input.nodeTitle ? { nodeTitle: input.nodeTitle } : {}),
+    ...(input.nodeType ? { nodeType: input.nodeType } : {}),
+    ...(input.errorMessage ? { errorMessage: input.errorMessage } : {}),
+    ...(input.error || input.errorMessage ? { error: input.error || input.errorMessage } : {}),
+    ...(Array.isArray(outputPaths) && outputPaths.length ? { outputPaths } : {}),
+    createdAt: new Date().toISOString(),
+    autoTriggered: Boolean(input.autoTrigger)
+  }
+  emit({ type: 'canvas-event', event: view })
+  broadcastToAllWindows(IpcChannels.HARNESS_CANVAS_EVENT, view)
+
+  if (input.autoTrigger) {
+    const prompt =
+      input.kind === 'node_error'
+        ? `[Reactive Canvas Event: 节点执行报错]\n节点：${input.nodeTitle || input.nodeId || '未知节点'}${input.nodeType ? ` (${input.nodeType})` : ''}\n错误信息：${input.errorMessage || input.detail || input.title}\n请立即定位报错原因，检查节点参数或上游连线并给出修复方案（必要时直接调用画布工具修复）。`
+        : `[Reactive Canvas Event: 画布工作流执行完成]\n${input.title}${input.detail ? `\n详情：${input.detail}` : ''}${input.outputPaths?.length ? `\n产物路径：${input.outputPaths.join(', ')}` : ''}\n请审阅本次工作流产出，检查是否需要进一步合成、剪辑或调用 present_files 交付。`
+    if (turnActive) {
+      await steerHarnessTurn({
+        text: prompt,
+        sessionId: input.sessionId
+      })
+    } else {
+      await runHarnessTask({
+        task: prompt,
+        sessionId: input.sessionId,
+        mode: 'craft'
+      })
+    }
+  }
+  return { ok: true, event: view }
+}
+
+/**
+ * 阶段三：导出影视/美术领域专属子代理清单（供 UI 快捷派单与测试校验）。
+ */
+export function listStudioDomainSubagents(): ReadonlyArray<{
+  name: string
+  description: string
+  mode: string
+}> {
+  return STUDIO_DOMAIN_SUBAGENTS.map(({ name, description, mode }) => ({
+    name,
+    description,
+    mode
+  }))
+}
+
+setCanvasTaskSettledHook((report) => {
+  const ok = report.phase === 'finished' && report.status === 'done'
+  if (ok) {
+    void notifyHarnessCanvasEvent({
+      kind: 'workflow_finished',
+      title: '画布工作流执行完成',
+      detail: report.relativePaths?.length
+        ? `共生成 ${report.relativePaths.length} 个产物文件`
+        : undefined,
+      outputPaths: report.relativePaths
+    })
+  } else if (report.phase === 'failed' || report.status === 'error') {
+    void notifyHarnessCanvasEvent({
+      kind: 'node_error',
+      title: '画布工作流执行报错',
+      errorMessage: report.error || '节点执行异常'
+    })
+  }
+})
 
 /** 应用退出时清理子进程，避免残留 npx 拉起的 dsh */
 app.on('will-quit', () => {

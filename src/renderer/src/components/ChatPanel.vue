@@ -14,8 +14,14 @@ import type {
   ApprovalRequestView,
   AskUserQuestion,
   ChatMode,
+  HarnessCanvasEventView,
   HarnessEvent,
+  HarnessGoalView,
+  HarnessScheduleView,
+  HarnessSessionSearchHit,
   HarnessStatus,
+  HarnessSubagentView,
+  HarnessTodoItem,
   InstalledWorkflowRecordView,
   McpActivity,
   SessionSkill
@@ -38,6 +44,7 @@ import { fingerprintMap, selectChangedFiles } from '@shared/git'
 import {
   MAX_ROUND_OUTPUT_FILES,
   groupRoundOutputs,
+  isHtmlMediaPath,
   normalizeOutputPathKey,
   selectRoundOutputs
 } from '@shared/outputScan'
@@ -128,8 +135,74 @@ const {
   remove: removeSession,
   activate: activateSession,
   commitMessages,
-  commitContextUsed
+  commitContextUsed,
+  commitTodos,
+  commitGoal,
+  forkSession
 } = useChatHistory()
+
+/** 当前会话的 Todo 进度看板（由 dsh todo_write 工具实时推送） */
+const sessionTodos = ref<HarnessTodoItem[]>([])
+const todoBoardOpen = ref(false)
+const todoDoneCount = computed(
+  () => sessionTodos.value.filter((item) => item.status === 'completed').length
+)
+
+/** 当前会话的自主目标状态（由 dsh goal 工具或 /goal 指令实时推送） */
+const sessionGoal = ref<HarnessGoalView | null>(null)
+const goalDismissed = ref(false)
+
+/** 当前会话的定时提醒列表（由 dsh schedule 插件实时推送） */
+const sessionSchedules = ref<HarnessScheduleView[]>([])
+const scheduleMenuOpen = ref(false)
+const scheduleDropdownRef = ref<HTMLElement | null>(null)
+const activeSchedules = computed(() =>
+  sessionSchedules.value.filter((item) => item.status === 'active')
+)
+
+/** 跨会话全文搜索与会话导出状态 */
+const searchModalOpen = ref(false)
+const searchDropdownRef = ref<HTMLElement | null>(null)
+const searchQuery = ref('')
+const searchBusy = ref(false)
+const searchHits = ref<HarnessSessionSearchHit[]>([])
+const exportBusy = ref(false)
+
+/** Stage 2：画布异步事件触发器最新通知（工作流完成或节点报错时提示审片/诊断） */
+const latestCanvasEvent = ref<HarnessCanvasEventView | null>(null)
+
+/** Stage 3：子代理并发实时监控看板状态 */
+const sessionSubagents = ref<HarnessSubagentView[]>([])
+const subagentBoardOpen = ref(false)
+const subagentFollowupTarget = ref<string | null>(null)
+const subagentFollowupDraft = ref('')
+const runningSubagentsCount = computed(
+  () => sessionSubagents.value.filter((item) => item.status === 'running').length
+)
+
+/** Stage 3：影视/美术专属领域子代理快捷委派芯片 */
+const domainSubagentPresets = computed(() => [
+  {
+    id: 'storyboard-director',
+    label: t('studio.chat.domainSubagentStoryboard'),
+    promptPrefix: '[Dispatch @storyboard-director] '
+  },
+  {
+    id: 'visual-asset-artist',
+    label: t('studio.chat.domainSubagentVisualArtist'),
+    promptPrefix: '[Dispatch @visual-asset-artist] '
+  },
+  {
+    id: 'blender-3d-director',
+    label: t('studio.chat.domainSubagentBlenderDirector'),
+    promptPrefix: '[Dispatch @blender-3d-director] '
+  },
+  {
+    id: 'timeline-audio-editor',
+    label: t('studio.chat.domainSubagentTimelineEditor'),
+    promptPrefix: '[Dispatch @timeline-audio-editor] '
+  }
+])
 
 /** @ 资产引用弹窗与已引用资产（工程内相对路径） */
 const mentionOpen = ref(false)
@@ -151,6 +224,14 @@ function loadActiveMessages(): void {
   // 上下文用量随会话落盘：切回 / 重启后恢复上次 harness 上报的真实值，
   // 无记录（新会话或旧数据）时才回落本地估算，环形进度条不再重启即归零
   harnessContextUsed.value = activeSession.value?.contextUsed
+  sessionTodos.value = activeSession.value?.todos ? [...activeSession.value.todos] : []
+  sessionGoal.value = activeSession.value?.goal ?? null
+  goalDismissed.value = false
+  sessionSchedules.value = []
+  sessionSubagents.value = []
+  subagentFollowupTarget.value = null
+  subagentFollowupDraft.value = ''
+  latestCanvasEvent.value = null
 }
 
 /** 切换会话：先保存当前，再加载目标 */
@@ -159,6 +240,8 @@ function onSessionChange(id: string): void {
   commitMessages([...messages.value])
   // 真实上下文用量也归到切走前的会话：否则防抖窗口里那一次上报会跟着新会话一起丢掉
   commitContextUsed(harnessContextUsed.value)
+  commitTodos([...sessionTodos.value])
+  commitGoal(sessionGoal.value)
   activateSession(id)
   loadActiveMessages()
   // 队列属于「当前这段对话」：切走时清掉，避免排队中的消息发进另一个会话
@@ -171,6 +254,8 @@ function onSessionChange(id: string): void {
 function onNewSession(): void {
   commitMessages([...messages.value])
   commitContextUsed(harnessContextUsed.value)
+  commitTodos([...sessionTodos.value])
+  commitGoal(sessionGoal.value)
   createSession()
   loadActiveMessages()
   // 新会话不应继承上一段对话的排队消息
@@ -1026,10 +1111,10 @@ const loadedSkillTotal = computed(() => {
   return total
 })
 
-/** 过滤掉已由 installedWorkflows 承载的市场技能包（wf-<id>），避免同一市场条目在下拉列表里出现两次 */
+/** 过滤掉已由 installedWorkflows 承载的市场技能包（wf-<id>）与 dsh 内置斜杠指令，避免混淆已安装技能计数 */
 const standaloneSessionSkills = computed(() => {
   const installedSkillNames = new Set(installedWorkflows.value.flatMap((w) => [w.id, `wf-${w.id}`]))
-  return sessionSkills.value.filter((s) => !installedSkillNames.has(s.name))
+  return sessionSkills.value.filter((s) => s.kind !== 'builtin' && !installedSkillNames.has(s.name))
 })
 
 const unifiedSkillsCount = computed(
@@ -1112,7 +1197,14 @@ function markSkillLoaded(detail?: string): void {
 
 /** 点击下拉外部或按 ESC 收起菜单：注册在 document 上避免 trigger 内 stopPropagation 误关 */
 function onModeOutside(e: MouseEvent | KeyboardEvent): void {
-  if (!modeOpen.value && !modelOpen.value && !sessionOpen.value && !skillsOpen.value) {
+  if (
+    !modeOpen.value &&
+    !modelOpen.value &&
+    !sessionOpen.value &&
+    !skillsOpen.value &&
+    !scheduleMenuOpen.value &&
+    !searchModalOpen.value
+  ) {
     return
   }
   if (e instanceof KeyboardEvent) {
@@ -1121,6 +1213,8 @@ function onModeOutside(e: MouseEvent | KeyboardEvent): void {
       modelOpen.value = false
       sessionOpen.value = false
       skillsOpen.value = false
+      scheduleMenuOpen.value = false
+      searchModalOpen.value = false
     }
     return
   }
@@ -1135,6 +1229,12 @@ function onModeOutside(e: MouseEvent | KeyboardEvent): void {
   }
   if (skillsDropdownRef.value && !skillsDropdownRef.value.contains(e.target as Node)) {
     skillsOpen.value = false
+  }
+  if (scheduleDropdownRef.value && !scheduleDropdownRef.value.contains(e.target as Node)) {
+    scheduleMenuOpen.value = false
+  }
+  if (searchDropdownRef.value && !searchDropdownRef.value.contains(e.target as Node)) {
+    searchModalOpen.value = false
   }
 }
 const draft = ref('')
@@ -1280,6 +1380,8 @@ const sendQueue = ref<QueueItem[]>([])
 let queueSeq = 0
 /** 出队中标记：中断是异步的，避免重入时把同一条重复发出 */
 let draining = false
+/** 新一轮发送前置预检/技能展开进行中：防止期间到达的迟到 done/error 事件提前把 running 置回 false */
+let preparingTask = false
 /** 重发反馈：最近一条加入队列的消息索引 */
 const resendIndex = ref<number | null>(null)
 let resendTimer: number | null = null
@@ -1528,6 +1630,8 @@ function scheduleHistoryPersist(): void {
     commitMessages([...messages.value])
     // 上下文用量与消息同批落盘：重启后环形进度条仍显示上次上报的真实值
     commitContextUsed(harnessContextUsed.value)
+    commitTodos([...sessionTodos.value])
+    commitGoal(sessionGoal.value)
     persistHistory()
   }, 400)
 }
@@ -1641,6 +1745,9 @@ function pushStatus(text: string, phase: Exclude<ActivityPhase, 'idle'> = 'waiti
 async function refreshStatus(): Promise<void> {
   try {
     status.value = await window.studio.getHarnessStatus()
+    if (status.value?.running && !running.value) {
+      running.value = true
+    }
   } catch {
     // 状态刷新失败不影响会话本身：保留上一次状态
   }
@@ -1650,6 +1757,7 @@ function onHarnessEvent(event: HarnessEvent): void {
   if (ignoreHarnessEvents) return
   switch (event.type) {
     case 'assistant':
+      if (!running.value) running.value = true
       pushAssistant(event.text)
       break
     case 'status':
@@ -1657,6 +1765,7 @@ function onHarnessEvent(event: HarnessEvent): void {
       pushStatus(event.text, event.tone ?? 'waiting')
       break
     case 'tool': {
+      if (event.state === 'start' && !running.value) running.value = true
       // dsh-agent 等 harness 工具卡：同一会话内按 key 去重（优先 callId 实例，无则按名字回退），
       // 状态变更时原地更新，不要保留一张"执行中"的同时再新增一张"完成"
       // 子代理的 callId 只在它自己的会话内唯一，挂上父卡片 id 才能与主代理的卡片区分
@@ -1692,6 +1801,7 @@ function onHarnessEvent(event: HarnessEvent): void {
       break
     }
     case 'reasoning':
+      if (!running.value) running.value = true
       // 思考过程：先于回答到达，暂存到下一次 assistant 消息上
       pendingReasoning = event.text
       break
@@ -1701,18 +1811,79 @@ function onHarnessEvent(event: HarnessEvent): void {
       // 顺手落盘：重启 / 切走再切回时环形进度条恢复这次的真实用量，而不是回退到偏小的本地估算
       scheduleHistoryPersist()
       break
-    case 'final': {
-      // 流式期间文本已通过 assistant 事件实时显示，这里仅标记回答完成，避免覆盖丢失内容
-      const last = messages.value[messages.value.length - 1]
-      if (last?.kind === 'assistant') {
-        last.final = true
+    case 'todo':
+      sessionTodos.value = event.todos ?? []
+      scheduleHistoryPersist()
+      break
+    case 'goal':
+      sessionGoal.value = event.goal
+      if (event.goal?.phase === 'active') {
+        goalDismissed.value = false
+      }
+      scheduleHistoryPersist()
+      break
+    case 'present': {
+      const key = `present:${event.callId}`
+      const existing = messages.value.find(
+        (m): m is ChatMsg & { kind: 'present' } => m.kind === 'present' && m.key === key
+      )
+      if (existing) {
+        existing.files = event.files
+        existing.turn = event.turn
       } else {
+        messages.value.push({
+          kind: 'present',
+          key,
+          callId: event.callId,
+          turn: event.turn,
+          files: event.files
+        })
+      }
+      scrollToBottom()
+      scheduleHistoryPersist()
+      break
+    }
+    case 'schedule':
+      sessionSchedules.value = event.schedules ?? []
+      break
+    case 'steered':
+      pushStatus(t('studio.chat.steeredStatus'), 'waiting')
+      break
+    case 'subagent':
+      sessionSubagents.value = event.subagents ?? []
+      if (
+        sessionSubagents.value.some((s) => s.status === 'running') &&
+        sessionSubagents.value.length === 1
+      ) {
+        subagentBoardOpen.value = true
+      }
+      break
+    case 'canvas-event':
+      latestCanvasEvent.value = event.event
+      break
+    case 'final': {
+      // 流式期间文本已通过 assistant 事件实时显示，这里仅标记本轮回答完成，避免被末尾工具/交付卡错位覆盖
+      let targetAssistant: (ChatMsg & { kind: 'assistant' }) | undefined
+      for (let i = messages.value.length - 1; i >= sessionStart; i--) {
+        const m = messages.value[i]
+        if (m?.kind === 'user') break
+        if (m?.kind === 'assistant') {
+          targetAssistant = m
+          break
+        }
+      }
+      if (targetAssistant) {
+        if (!targetAssistant.text && event.text) {
+          targetAssistant.text = event.text
+        }
+        targetAssistant.final = true
+      } else if (event.text) {
         pushAssistant(event.text, true)
       }
       break
     }
     case 'done':
-      running.value = false
+      if (!preparingTask) running.value = false
       // 本轮结束：未决定的审批请求已随主进程丢弃，卡片标记失效（未放行）
       expirePendingApprovals()
       // 运行结束：采集本轮 git 变更（有改动才追加预览卡）
@@ -1725,11 +1896,179 @@ function onHarnessEvent(event: HarnessEvent): void {
       break
     case 'error':
       pushStatus(event.message, 'error')
-      running.value = false
+      if (!preparingTask) running.value = false
       expirePendingApprovals()
       // 失败前可能已经有产物落盘：同样扫一遍，别让「跑到一半报错」这一轮彻底没有卡
       void captureRoundOutputs()
       break
+  }
+}
+
+/** 控制当前会话的自主目标状态（暂停 / 恢复 / 结束） */
+async function onControlGoal(action: 'pause' | 'resume' | 'complete'): Promise<void> {
+  if (typeof window.studio?.controlHarnessGoal === 'function') {
+    await window.studio.controlHarnessGoal({ action }).catch(() => undefined)
+  }
+  if (sessionGoal.value) {
+    if (action === 'pause') {
+      sessionGoal.value = { ...sessionGoal.value, activation: 'paused' }
+    } else if (action === 'resume') {
+      sessionGoal.value = { ...sessionGoal.value, phase: 'active', activation: 'armed' }
+    } else if (action === 'complete') {
+      sessionGoal.value = { ...sessionGoal.value, phase: 'completed', activation: 'paused' }
+    }
+    scheduleHistoryPersist()
+  }
+}
+
+/** 取消会话定时提醒 */
+async function onCancelSchedule(scheduleId: string): Promise<void> {
+  if (typeof window.studio?.deleteHarnessSchedule === 'function') {
+    await window.studio.deleteHarnessSchedule({ scheduleId }).catch(() => undefined)
+  }
+  sessionSchedules.value = sessionSchedules.value.map((item) =>
+    item.id === scheduleId ? { ...item, status: 'deleted' } : item
+  )
+}
+
+/** 打开或定位 present 工具交付的文件 */
+async function onOpenPresentFile(filePath: string, revealInFolder = false): Promise<void> {
+  if (typeof window.studio?.openHarnessFile !== 'function') return
+  await window.studio.openHarnessFile({ path: filePath, revealInFolder }).catch(() => undefined)
+}
+
+/** 导出当前会话为 dsh .zip 归档包 */
+async function onExportCurrentSession(): Promise<void> {
+  const sid = activeSession.value?.id
+  if (!sid || exportBusy.value || typeof window.studio?.exportHarnessSession !== 'function') return
+  exportBusy.value = true
+  try {
+    const res = await window.studio.exportHarnessSession({ sessionId: sid })
+    if (res.canceled) return
+    if (res.ok && res.path) {
+      pushStatus(`${t('studio.chat.exportSuccess')}: ${res.path}`, 'waiting')
+    } else {
+      pushStatus(res.error ?? t('studio.chat.exportEmpty'), 'error')
+    }
+  } catch (err) {
+    pushStatus(err instanceof Error ? err.message : String(err), 'error')
+  } finally {
+    exportBusy.value = false
+  }
+}
+
+/**
+ * 会话回退或分叉（Rewind / Fork）：
+ * 计算该条用户消息属于第几个 user 轮次（keepTurns），
+ * 调用主进程对底层 dsh .jsonl.zstd 会话日志做截断或克隆分叉，并同步前端消息流。
+ */
+async function onRewindAtMessage(msgIndex: number, fork: boolean): Promise<void> {
+  const sid = activeSession.value?.id
+  if (!sid || running.value) return
+  let userTurnOrdinal = 0
+  for (let i = 0; i <= msgIndex; i++) {
+    if (messages.value[i]?.kind === 'user') userTurnOrdinal++
+  }
+  const keepTurns = Math.max(0, userTurnOrdinal - 1)
+  const targetMsg = messages.value[msgIndex]
+  const draftToRestore = targetMsg?.kind === 'user' ? targetMsg.text : ''
+
+  if (!fork) {
+    const ok = await promptConfirm({
+      title: t('studio.chat.rewindTitle'),
+      message: t('studio.chat.rewindConfirm'),
+      confirmLabel: t('studio.chat.rewindTitle')
+    })
+    if (!ok) return
+  }
+
+  const slicedMessages = messages.value.slice(0, msgIndex)
+  const targetSessionId = fork
+    ? `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
+    : sid
+  if (fork) {
+    forkSession(targetSessionId, slicedMessages, ' (Fork)')
+  }
+
+  if (typeof window.studio?.rewindHarnessSession === 'function') {
+    await window.studio
+      .rewindHarnessSession({
+        sessionId: sid,
+        keepTurns,
+        ...(fork ? { forkSessionId: targetSessionId } : {})
+      })
+      .catch(() => undefined)
+  }
+
+  if (fork) {
+    loadActiveMessages()
+    pushStatus(t('studio.chat.forkSuccess'), 'waiting')
+  } else {
+    messages.value = slicedMessages
+    commitMessages([...messages.value])
+    persistHistory()
+    pushStatus(t('studio.chat.rewindSuccess'), 'waiting')
+  }
+
+  if (draftToRestore) {
+    resetEditor()
+    insertPlainText(draftToRestore)
+  }
+}
+
+/** 跨会话全文检索（搜索本地前端会话 + 底层 dsh SQLite / .jsonl.zstd 归档） */
+async function onRunSessionSearch(): Promise<void> {
+  const q = searchQuery.value.trim()
+  if (!q) {
+    searchHits.value = []
+    return
+  }
+  searchBusy.value = true
+  try {
+    const hits: HarnessSessionSearchHit[] = []
+    const seen = new Set<string>()
+    const lower = q.toLowerCase()
+    for (const s of sessions.value) {
+      for (const m of s.messages) {
+        if ((m.kind === 'user' || m.kind === 'assistant') && m.text.toLowerCase().includes(lower)) {
+          const idx = m.text.toLowerCase().indexOf(lower)
+          const start = Math.max(0, idx - 30)
+          const snippet = m.text.slice(start, idx + q.length + 60).replace(/\s+/g, ' ')
+          hits.push({
+            sessionId: s.id,
+            title: s.title || t('studio.chat.newChat'),
+            snippet,
+            updatedAt: new Date(s.updatedAt).toISOString()
+          })
+          seen.add(s.id)
+          break
+        }
+      }
+    }
+    if (typeof window.studio?.searchHarnessSessions === 'function') {
+      const remote = await window.studio.searchHarnessSessions({ query: q, limit: 20 })
+      for (const h of remote.hits ?? []) {
+        if (seen.has(h.sessionId)) continue
+        const localMatch = sessions.value.find((s) => s.id === h.sessionId)
+        hits.push({
+          ...h,
+          title: localMatch?.title || h.title || h.sessionId.slice(0, 8)
+        })
+        seen.add(h.sessionId)
+      }
+    }
+    searchHits.value = hits
+  } catch {
+    searchHits.value = []
+  } finally {
+    searchBusy.value = false
+  }
+}
+
+function onSelectSearchHit(hit: HarnessSessionSearchHit): void {
+  searchModalOpen.value = false
+  if (sessions.value.some((s) => s.id === hit.sessionId)) {
+    onSessionChange(hit.sessionId)
   }
 }
 
@@ -1838,6 +2177,8 @@ function shownOutputPaths(): Set<string> {
     if (msg.kind === 'asset') {
       add(msg.relativePath)
       for (const related of msg.relatedPaths ?? []) add(related)
+    } else if (msg.kind === 'game') {
+      add(msg.htmlPath)
     } else if (msg.kind === 'tool' && msg.relativePath) {
       add(msg.relativePath)
     }
@@ -1986,7 +2327,17 @@ function upsertGameCard(activity: McpActivity, htmlPath: string): void {
  * 但 `file://` 对 `type="module"` 与相对引用会直接白屏（这两类在应用内沙盒里反而正常），
  * 所以开之前先自检；不可开或调起失败就退回应用内窗口，并把原因说清楚。
  */
-async function playGame(msg: ChatMsg & { kind: 'game' }): Promise<void> {
+function openHtmlSandbox(htmlPath: string, title?: string): void {
+  openGamePlaySandboxDialog({ htmlPath, title: title || assetFileName(htmlPath) })
+}
+
+async function openHtmlInBrowser(htmlPath: string, title?: string): Promise<void> {
+  await playGame({ htmlPath, title: title || assetFileName(htmlPath) })
+}
+
+async function playGame(
+  msg: Pick<ChatMsg & { kind: 'game' }, 'htmlPath' | 'title'>
+): Promise<void> {
   const fallback = (reasonKey?: string): void => {
     openGamePlaySandboxDialog({ htmlPath: msg.htmlPath, title: msg.title })
     if (reasonKey) pushStatus(t(reasonKey), 'warn')
@@ -2597,37 +2948,55 @@ async function preprocessChatOnlineSkillIntent(rawTask: string): Promise<string>
  * 手输 / 重发 / 队列出队都走这里，保证三种入口的行为完全一致。
  */
 async function runTask(text: string, options: { sourceIndex?: number } = {}): Promise<void> {
-  // 发送前重新预检一次（Node 版本 / dsh 运行体 / MCP 服务 / 模型），
-  // 不用挂载时的旧快照判断，避免按过期的“就绪”放行后才发现环境缺失
-  await refreshStatus()
-  // 环境未就绪时不静默丢弃：把原因作为状态消息告知用户
-  if (!ready.value) {
-    pushStatus(status.value?.message ?? t('studio.chat.unavailable'), 'error')
+  if (running.value || preparingTask) {
+    enqueueSend(text, options.sourceIndex ?? null)
     return
   }
-  const task = text
-  const slashSkillMatch = /^\/([a-zA-Z0-9._-]+)(?:\s|$)/.exec(task.trim())
-  if (slashSkillMatch?.[1]) markSkillLoaded(slashSkillMatch[1])
-  pendingReasoning = ''
-  // 发送前记录 git 变更基线：运行结束后据此对比出「这一轮改了什么」
-  void resetGitBaseline()
-  // 同一时刻记产物扫盘基线：运行结束后只收这之后落盘到 Output / Cache 的媒体
-  roundStartAt = Date.now()
-  sessionStart = messages.value.length
-  messages.value.push({ kind: 'user', text: task })
-  scrollToBottom()
+  // 立即置为 running 与 preparingTask，封闭 refreshStatus / 技能预处理等异步间隙内二次发送绕过队列的竞态窗口
   running.value = true
-  // 发送即落盘，避免依赖防抖窗口导致会话丢失
-  commitMessages([...messages.value])
-  persistHistory()
-  if (options.sourceIndex !== undefined) {
-    resendIndex.value = options.sourceIndex
-    if (resendTimer !== null) window.clearTimeout(resendTimer)
-    resendTimer = window.setTimeout(() => {
-      resendIndex.value = null
-    }, 1500)
+  preparingTask = true
+  let taskForHarness = text
+  try {
+    // 发送前重新预检一次（Node 版本 / dsh 运行体 / MCP 服务 / 模型），
+    // 不用挂载时的旧快照判断，避免按过期的“就绪”放行后才发现环境缺失
+    await refreshStatus()
+    // 若主进程此刻仍有上一轮任务在跑（如面板重挂载或后台定时轮次刚唤醒），直接转入发送队列等待
+    if (status.value?.running) {
+      running.value = true
+      enqueueSend(text, options.sourceIndex ?? null)
+      return
+    }
+    // 环境未就绪时不静默丢弃：把原因作为状态消息告知用户
+    if (!ready.value) {
+      running.value = false
+      pushStatus(status.value?.message ?? t('studio.chat.unavailable'), 'error')
+      return
+    }
+    const task = text
+    const slashSkillMatch = /^\/([a-zA-Z0-9._-]+)(?:\s|$)/.exec(task.trim())
+    if (slashSkillMatch?.[1]) markSkillLoaded(slashSkillMatch[1])
+    pendingReasoning = ''
+    // 发送前记录 git 变更基线：运行结束后据此对比出「这一轮改了什么」
+    void resetGitBaseline()
+    // 同一时刻记产物扫盘基线：运行结束后只收这之后落盘到 Output / Cache 的媒体
+    roundStartAt = Date.now()
+    sessionStart = messages.value.length
+    messages.value.push({ kind: 'user', text: task })
+    scrollToBottom()
+    // 发送即落盘，避免依赖防抖窗口导致会话丢失
+    commitMessages([...messages.value])
+    persistHistory()
+    if (options.sourceIndex !== undefined) {
+      resendIndex.value = options.sourceIndex
+      if (resendTimer !== null) window.clearTimeout(resendTimer)
+      resendTimer = window.setTimeout(() => {
+        resendIndex.value = null
+      }, 1500)
+    }
+    taskForHarness = await preprocessChatOnlineSkillIntent(task)
+  } finally {
+    preparingTask = false
   }
-  const taskForHarness = await preprocessChatOnlineSkillIntent(task)
   const { providerId, modelId } = splitModelKey(selectedKey.value)
   const canvasContext = buildActiveCanvasContext()
   const result = await window.studio.runHarnessTask({
@@ -2641,15 +3010,19 @@ async function runTask(text: string, options: { sourceIndex?: number } = {}): Pr
     ...(canvasContext ? { canvasContext } : {})
   })
   if (!result.started) {
+    await refreshStatus()
+    if (status.value?.running) {
+      running.value = true
+      return
+    }
     pushStatus(result.message ?? 'failed to start', 'error')
     running.value = false
-    // 启动被主进程预检查拒绝（如 MCP 已停、Node 不达标），同步状态栏
-    void refreshStatus()
   }
 }
 
 async function onSend(): Promise<void> {
   if (composing.value) return
+  if (!draft.value.trim()) syncDraftFromEditor()
   const raw = draft.value.trim()
   if (!raw) return
   // 本地指令：不消耗模型、不依赖 MCP 就绪
@@ -2665,7 +3038,7 @@ async function onSend(): Promise<void> {
   referenced.value = []
   resetEditor()
   // 正在执行：不丢弃输入，转入发送队列，等本轮结束后按序发出
-  if (running.value) {
+  if (running.value || preparingTask) {
     enqueueSend(task)
     return
   }
@@ -2674,6 +3047,7 @@ async function onSend(): Promise<void> {
 
 async function onAbort(): Promise<void> {
   // 先本地退出 running，避免主进程杀进程慢时按钮一直停在「停止」
+  preparingTask = false
   running.value = false
   await window.studio.abortHarnessTask()
 }
@@ -2685,7 +3059,7 @@ async function onAbort(): Promise<void> {
 async function onResend(index: number): Promise<void> {
   const msg = messages.value[index]
   if (!msg || msg.kind !== 'user' || !msg.text.trim()) return
-  if (running.value) {
+  if (running.value || preparingTask) {
     enqueueSend(msg.text, index)
     return
   }
@@ -2697,23 +3071,32 @@ async function onResend(index: number): Promise<void> {
  * 只能在本轮真正停止时调用（watch running / 中断流程），否则会打乱正在跑的一轮。
  */
 async function drainQueue(): Promise<void> {
-  if (draining || running.value) return
+  if (draining || running.value || preparingTask) return
   const item = sendQueue.value[0]
   if (!item) return
-  // 环境未就绪时把队首留在队列里并说明原因，避免静默丢弃整条队列
-  await refreshStatus()
-  if (!ready.value) {
-    pushStatus(status.value?.message ?? t('studio.chat.unavailable'), 'error')
-    return
-  }
-  sendQueue.value.shift()
-  // 出队即重置全部强制标记：forcing 只决定「出队时要不要中断」，用过即失效
-  for (const q of sendQueue.value) q.forcing = false
-  await runTask(item.text, item.sourceIndex === null ? {} : { sourceIndex: item.sourceIndex })
-  // runTask 可能提前返回（预检未就绪 / 主进程拒绝启动）：这一轮没跑起来就放回队首，
-  // 否则用户排队的那句话会凭空消失
-  if (!running.value && !sendQueue.value.some((q) => q.id === item.id)) {
-    sendQueue.value.unshift(item)
+  draining = true
+  try {
+    // 环境未就绪时把队首留在队列里并说明原因，避免静默丢弃整条队列
+    await refreshStatus()
+    if (!ready.value) {
+      pushStatus(status.value?.message ?? t('studio.chat.unavailable'), 'error')
+      return
+    }
+    if (status.value?.running) {
+      running.value = true
+      return
+    }
+    sendQueue.value.shift()
+    // 出队即重置全部强制标记：forcing 只决定「出队时要不要中断」，用过即失效
+    for (const q of sendQueue.value) q.forcing = false
+    await runTask(item.text, item.sourceIndex === null ? {} : { sourceIndex: item.sourceIndex })
+    // runTask 可能提前返回（预检未就绪 / 主进程拒绝启动）：这一轮没跑起来就放回队首，
+    // 否则用户排队的那句话会凭空消失
+    if (!running.value && !sendQueue.value.some((q) => q.id === item.id)) {
+      sendQueue.value.unshift(item)
+    }
+  } finally {
+    draining = false
   }
 }
 
@@ -2752,6 +3135,127 @@ function forceQueuedSend(id: number): void {
   const item = sendQueue.value.find((q) => q.id === id)
   if (!item) return
   void startQueuedSend(item, true)
+}
+
+/**
+ * Stage 1：盘中实时转向（Mid-Turn Live Steering）
+ * 在 Agent 运行期间，不中断当前轮次与已启动工具，将用户新指令直接通过 IPC 注入给正在运行的 Agent。
+ */
+async function onSteerNow(): Promise<void> {
+  if (composing.value || !running.value) return
+  const raw = draft.value.trim()
+  if (!raw) return
+  const task = buildTask(raw)
+  referenced.value = []
+  resetEditor()
+  if (typeof window.studio?.steerHarnessTurn === 'function') {
+    const res = await window.studio.steerHarnessTurn({ text: task }).catch(() => ({ ok: false }))
+    if (res?.ok) {
+      messages.value.push({ kind: 'user', text: task, steered: true })
+      scrollToBottom()
+      commitMessages([...messages.value])
+      persistHistory()
+      pushStatus(t('studio.chat.steeredStatus'), 'waiting')
+      return
+    }
+  }
+  enqueueSend(task)
+}
+
+/**
+ * 将发送队列中的一条消息立即提升为盘中实时转向（不中断当前轮次，直接注入）。
+ */
+async function onSteerQueued(id: number): Promise<void> {
+  const item = sendQueue.value.find((q) => q.id === id)
+  if (!item) return
+  if (running.value && typeof window.studio?.steerHarnessTurn === 'function') {
+    sendQueue.value = sendQueue.value.filter((q) => q.id !== id)
+    const res = await window.studio
+      .steerHarnessTurn({ text: item.text })
+      .catch(() => ({ ok: false }))
+    if (res?.ok) {
+      messages.value.push({ kind: 'user', text: item.text, steered: true })
+      scrollToBottom()
+      commitMessages([...messages.value])
+      persistHistory()
+      pushStatus(t('studio.chat.steeredStatus'), 'waiting')
+      return
+    }
+    sendQueue.value.unshift(item)
+  }
+  void startQueuedSend(item, true)
+}
+
+/**
+ * Stage 3：向指定子代理会话发送追问或盘中转向（支持运行中实时注入或已完成子代理的多轮续写）。
+ */
+async function onSteerSubagent(sub: HarnessSubagentView): Promise<void> {
+  const text = subagentFollowupDraft.value.trim()
+  if (!text) return
+  subagentFollowupDraft.value = ''
+  subagentFollowupTarget.value = null
+  if (running.value && typeof window.studio?.steerHarnessTurn === 'function') {
+    const res = await window.studio
+      .steerHarnessTurn({ text, subagentSessionId: sub.sessionId })
+      .catch(() => ({ ok: false }))
+    if (res?.ok) {
+      messages.value.push({
+        kind: 'user',
+        text: `[@${sub.agentType} (${sub.sessionId})] ${text}`,
+        steered: true
+      })
+      scrollToBottom()
+      commitMessages([...messages.value])
+      persistHistory()
+      pushStatus(t('studio.chat.steeredStatus'), 'waiting')
+      return
+    }
+  }
+  const dispatchPrompt = `[Continue subagent session_id="${sub.sessionId}" (@${sub.agentType})] ${text}`
+  if (running.value) {
+    enqueueSend(dispatchPrompt)
+  } else {
+    await runTask(dispatchPrompt)
+  }
+}
+
+/**
+ * Stage 2：响应画布异步事件触发器（节点报错一键诊断修复 / 工作流跑完一键审片接力）
+ */
+async function onHandleCanvasEvent(action: 'diagnose' | 'review'): Promise<void> {
+  const ev = latestCanvasEvent.value
+  if (!ev) return
+  latestCanvasEvent.value = null
+  const refs = (ev.outputPaths ?? []).map((p) => `@${p}`).join(' ')
+  const prompt =
+    action === 'diagnose'
+      ? `[Reactive Canvas Hook — Node Error Diagnosis] Canvas event: ${ev.summary}${
+          ev.error ? `\nError detail: ${ev.error}` : ''
+        }\nPlease inspect the active canvas node parameters/connections, diagnose the root cause, and fix or retry it.`
+      : `[Reactive Canvas Hook — Director Visual Review] Canvas workflow finished: ${ev.summary}${
+          refs ? `\nGenerated outputs: ${refs}` : ''
+        }\nPlease visually inspect the outputs for composition, character consistency, and quality, then advise or execute the next production step.`
+  if (running.value && typeof window.studio?.steerHarnessTurn === 'function') {
+    const res = await window.studio.steerHarnessTurn({ text: prompt }).catch(() => ({ ok: false }))
+    if (res?.ok) {
+      messages.value.push({ kind: 'user', text: prompt, steered: true })
+      scrollToBottom()
+      commitMessages([...messages.value])
+      persistHistory()
+      pushStatus(t('studio.chat.steeredStatus'), 'waiting')
+      return
+    }
+    enqueueSend(prompt)
+    return
+  }
+  await runTask(prompt)
+}
+
+/**
+ * Stage 3：点击领域专属子代理芯片，在输入框插入专属子代理委派指令前缀
+ */
+function onInsertDomainSubagent(prefix: string): void {
+  insertPlainText(prefix)
 }
 
 /**
@@ -2803,6 +3307,8 @@ onBeforeUnmount(() => {
   // 卸载前把当前消息与上下文用量落盘，避免切换面板丢失最后一段对话与真实用量
   commitMessages([...messages.value])
   commitContextUsed(harnessContextUsed.value)
+  commitTodos([...sessionTodos.value])
+  commitGoal(sessionGoal.value)
   persistHistory()
 })
 </script>
@@ -2836,6 +3342,225 @@ onBeforeUnmount(() => {
       <span v-if="workspace" class="chat-workspace" :title="workspace">{{ workspaceLabel }}</span>
     </div>
 
+    <!-- 自主目标状态条（dsh goal 工具或 /goal 激活时呈现，支持暂停 / 恢复 / 结束） -->
+    <div
+      v-if="sessionGoal && !goalDismissed"
+      class="harness-goal-bar"
+      :class="[sessionGoal.phase, sessionGoal.activation]"
+    >
+      <div class="goal-bar-main">
+        <span class="goal-badge">
+          {{
+            sessionGoal.phase === 'completed'
+              ? t('studio.chat.goalCompleted')
+              : sessionGoal.activation === 'paused'
+                ? t('studio.chat.goalPaused')
+                : t('studio.chat.goalActive')
+          }}
+        </span>
+        <span class="goal-objective" :title="sessionGoal.objective">
+          {{ sessionGoal.objective }}
+        </span>
+        <span v-if="(sessionGoal.roundsSinceUser ?? 0) > 0" class="goal-rounds">
+          {{ t('studio.chat.goalRound', { round: sessionGoal.roundsSinceUser ?? 0 }) }}
+        </span>
+      </div>
+      <div class="goal-bar-actions">
+        <button
+          v-if="sessionGoal.phase === 'active' && sessionGoal.activation === 'armed'"
+          type="button"
+          class="goal-btn"
+          @click="onControlGoal('pause')"
+        >
+          {{ t('studio.chat.goalPause') }}
+        </button>
+        <button
+          v-if="sessionGoal.phase === 'active' && sessionGoal.activation === 'paused'"
+          type="button"
+          class="goal-btn primary"
+          @click="onControlGoal('resume')"
+        >
+          {{ t('studio.chat.goalResume') }}
+        </button>
+        <button
+          v-if="sessionGoal.phase === 'active'"
+          type="button"
+          class="goal-btn"
+          @click="onControlGoal('complete')"
+        >
+          {{ t('studio.chat.goalComplete') }}
+        </button>
+        <button
+          v-if="sessionGoal.phase === 'completed'"
+          type="button"
+          class="goal-btn icon"
+          @click="goalDismissed = true"
+        >
+          ×
+        </button>
+      </div>
+    </div>
+
+    <!-- Todo 进度看板（dsh todo_write 工具实时驱动，可折叠） -->
+    <div v-if="sessionTodos.length" class="harness-todo-board">
+      <button type="button" class="todo-board-head" @click="todoBoardOpen = !todoBoardOpen">
+        <span class="todo-board-title">{{ t('studio.chat.todoBoardTitle') }}</span>
+        <span class="todo-board-progress">
+          {{
+            t('studio.chat.todoBoardProgress', {
+              done: todoDoneCount,
+              total: sessionTodos.length
+            })
+          }}
+        </span>
+        <span class="todo-board-chevron" :class="{ open: todoBoardOpen }">▾</span>
+      </button>
+      <ul v-if="todoBoardOpen" class="todo-board-list">
+        <li
+          v-for="item in sessionTodos"
+          :key="item.id"
+          class="todo-board-item"
+          :class="item.status"
+        >
+          <span class="todo-status-icon">
+            {{
+              item.status === 'completed'
+                ? '✓'
+                : item.status === 'in_progress'
+                  ? '●'
+                  : item.status === 'cancelled'
+                    ? '✕'
+                    : '○'
+            }}
+          </span>
+          <span class="todo-item-content">{{ item.content }}</span>
+          <span v-if="item.priority" class="todo-priority" :class="item.priority">
+            {{ item.priority }}
+          </span>
+        </li>
+      </ul>
+    </div>
+
+    <!-- Stage 3：子代理并发实时监控看板（Subagent Concurrency Board） -->
+    <div v-if="sessionSubagents.length" class="harness-subagent-board">
+      <button
+        type="button"
+        class="subagent-board-head"
+        @click="subagentBoardOpen = !subagentBoardOpen"
+      >
+        <span class="subagent-board-title">{{ t('studio.chat.subagentBoardTitle') }}</span>
+        <span class="subagent-board-summary">
+          {{
+            t('studio.chat.subagentBoardSummary', {
+              running: runningSubagentsCount,
+              total: sessionSubagents.length
+            })
+          }}
+        </span>
+        <span class="todo-board-chevron" :class="{ open: subagentBoardOpen }">▾</span>
+      </button>
+      <ul v-if="subagentBoardOpen" class="subagent-board-list">
+        <li
+          v-for="sub in sessionSubagents"
+          :key="sub.sessionId"
+          class="subagent-board-item"
+          :class="sub.status"
+        >
+          <div class="subagent-item-top">
+            <span class="subagent-status-badge" :class="sub.status">
+              {{
+                sub.status === 'running'
+                  ? t('studio.chat.subagentStatusRunning')
+                  : sub.status === 'idle'
+                    ? t('studio.chat.subagentStatusIdle')
+                    : sub.status === 'error'
+                      ? t('studio.chat.subagentStatusError')
+                      : t('studio.chat.subagentStatusCompleted')
+              }}
+            </span>
+            <code class="subagent-type-tag">@{{ sub.agentType }}</code>
+            <span class="subagent-desc" :title="sub.description">{{ sub.description }}</span>
+            <span class="subagent-calls">
+              {{ t('studio.chat.subagentCalls', { count: sub.toolCount }) }}
+            </span>
+            <button
+              type="button"
+              class="subagent-followup-toggle"
+              @click.stop="
+                subagentFollowupTarget =
+                  subagentFollowupTarget === sub.sessionId ? null : sub.sessionId
+              "
+            >
+              {{ t('studio.chat.subagentFollowupBtn') }}
+            </button>
+          </div>
+          <div v-if="sub.activeTool" class="subagent-active-tool">
+            {{ t('studio.chat.subagentActiveTool', { tool: sub.activeTool }) }}
+          </div>
+          <div
+            v-if="subagentFollowupTarget === sub.sessionId"
+            class="subagent-followup-row"
+            @click.stop
+          >
+            <input
+              v-model="subagentFollowupDraft"
+              type="text"
+              class="subagent-followup-input"
+              :placeholder="t('studio.chat.subagentFollowupPlaceholder')"
+              @keydown.stop
+              @keydown.enter.prevent="onSteerSubagent(sub)"
+            />
+            <button
+              type="button"
+              class="subagent-followup-send"
+              :disabled="!subagentFollowupDraft.trim()"
+              @click.stop="onSteerSubagent(sub)"
+            >
+              {{ t('studio.chat.steerNow') }}
+            </button>
+          </div>
+        </li>
+      </ul>
+    </div>
+
+    <!-- Stage 2：画布异步事件触发器横幅（Reactive Canvas Event Hook） -->
+    <div v-if="latestCanvasEvent" class="harness-canvas-event-bar" :class="latestCanvasEvent.kind">
+      <div class="canvas-event-main">
+        <span class="canvas-event-badge">
+          {{ t('studio.chat.canvasEventBannerTitle') }}
+        </span>
+        <span class="canvas-event-summary" :title="latestCanvasEvent.summary">
+          {{ latestCanvasEvent.summary }}
+        </span>
+      </div>
+      <div class="canvas-event-actions">
+        <button
+          v-if="latestCanvasEvent.kind === 'node_error'"
+          type="button"
+          class="canvas-event-btn danger"
+          @click="onHandleCanvasEvent('diagnose')"
+        >
+          {{ t('studio.chat.canvasEventDiagnoseBtn') }}
+        </button>
+        <button
+          v-else
+          type="button"
+          class="canvas-event-btn primary"
+          @click="onHandleCanvasEvent('review')"
+        >
+          {{ t('studio.chat.canvasEventReviewBtn') }}
+        </button>
+        <button
+          type="button"
+          class="canvas-event-dismiss"
+          :title="t('studio.chat.canvasEventDismiss')"
+          @click="latestCanvasEvent = null"
+        >
+          ×
+        </button>
+      </div>
+    </div>
+
     <div class="chat-messages-wrap">
       <div ref="listRef" class="chat-messages" @scroll="onChatScroll">
         <div v-if="!messages.length" class="chat-empty">
@@ -2847,7 +3572,7 @@ onBeforeUnmount(() => {
         <template v-for="(msg, i) in messages" :key="i">
           <template v-if="msg.kind === 'user'">
             <div class="msg-row user">
-              <!-- 操作条：常显在气泡上方，两个动作都用图标 -->
+              <!-- 操作条：常显在气泡上方，动作均用图标 -->
               <div class="bubble-actions">
                 <ChatCopyIcon :copied="copiedIndex === i" @copy="copyMessage(i, msg.text)" />
                 <!-- 重发本条：执行中入队（见 onResend），空闲时直接再发一轮 -->
@@ -2874,8 +3599,58 @@ onBeforeUnmount(() => {
                     <path d="M13 2.4 V5 H10.4" />
                   </svg>
                 </button>
+                <!-- 会话回退：截断此轮及之后的消息，并恢复本条到输入框 -->
+                <button
+                  class="bubble-action"
+                  :disabled="running"
+                  :title="t('studio.chat.rewindTitle')"
+                  @click.stop="onRewindAtMessage(i, false)"
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    width="13"
+                    height="13"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.6"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M6.5 4 L2.5 8 L6.5 12" />
+                    <path d="M3 8 H11 A2.5 2.5 0 0 1 13.5 10.5 V12" />
+                  </svg>
+                </button>
+                <!-- 会话分叉：从此处克隆出一个独立新会话分支 -->
+                <button
+                  class="bubble-action"
+                  :disabled="running"
+                  :title="t('studio.chat.forkTitle')"
+                  @click.stop="onRewindAtMessage(i, true)"
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    width="13"
+                    height="13"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.6"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <circle cx="5" cy="3.5" r="1.5" />
+                    <circle cx="11" cy="3.5" r="1.5" />
+                    <circle cx="8" cy="12.5" r="1.5" />
+                    <path d="M5 5 V7.5 C5 9 8 9 8 11" />
+                    <path d="M11 5 V7.5 C11 9 8 9 8 11" />
+                  </svg>
+                </button>
               </div>
-              <div class="bubble user">
+              <div class="bubble user" :class="{ steered: msg.steered }">
+                <span v-if="msg.steered" class="steered-badge">{{
+                  t('studio.chat.steeredBadge')
+                }}</span>
                 <div class="bubble-text" v-chat-img v-html="renderInlineChatRefs(msg.text)" />
               </div>
             </div>
@@ -2994,7 +3769,7 @@ onBeforeUnmount(() => {
               </button>
             </div>
           </div>
-          <!-- 独立资产预览卡：生成完成（图片/视频/音频/3D）时追加到对话末尾，与任务清单的状态卡分离 -->
+          <!-- 独立资产预览卡：生成完成（图片/视频/音频/3D/HTML）时追加到对话末尾，与任务清单的状态卡分离 -->
           <div v-else-if="msg.kind === 'asset'" class="msg-row asset">
             <div class="asset-card">
               <ChatAssetPreview :relative-path="msg.relativePath" />
@@ -3002,7 +3777,15 @@ onBeforeUnmount(() => {
               <ul v-if="isAssetGroupOpen(msg.key)" class="asset-card-group">
                 <li v-for="path in msg.relatedPaths ?? []" :key="path">
                   <span class="asset-group-name" :title="path">{{ assetFileName(path) }}</span>
-                  <span v-if="isLibraryRelativePath(path)" class="library-tag">
+                  <template v-if="isHtmlMediaPath(path)">
+                    <button type="button" class="save-btn" @click.stop="openHtmlSandbox(path)">
+                      {{ t('studio.chat.gamePlay.previewWindow') }}
+                    </button>
+                    <button type="button" class="save-btn" @click.stop="openHtmlInBrowser(path)">
+                      {{ t('studio.chat.gamePlay.openBrowser') }}
+                    </button>
+                  </template>
+                  <span v-else-if="isLibraryRelativePath(path)" class="library-tag">
                     {{ t('studio.chat.alreadyInLibrary') }}
                   </span>
                   <button
@@ -3023,7 +3806,7 @@ onBeforeUnmount(() => {
                   </button>
                 </li>
               </ul>
-              <!-- 生成产物默认落 Cache/ 不进资产库：提供手动保存登记入口 -->
+              <!-- 生成产物默认落 Cache/ 不进资产库：提供手动保存登记入口（HTML 提供浮窗预览与浏览器打开） -->
               <div class="asset-card-actions">
                 <button
                   v-if="msg.relatedPaths?.length"
@@ -3034,8 +3817,24 @@ onBeforeUnmount(() => {
                 >
                   {{ t('studio.chat.assetGroupCount', { count: assetGroupCount(msg) }) }}
                 </button>
+                <template v-if="isHtmlMediaPath(msg.relativePath)">
+                  <button
+                    type="button"
+                    class="save-btn"
+                    @click.stop="openHtmlSandbox(msg.relativePath)"
+                  >
+                    {{ t('studio.chat.gamePlay.previewWindow') }}
+                  </button>
+                  <button
+                    type="button"
+                    class="save-btn"
+                    @click.stop="openHtmlInBrowser(msg.relativePath)"
+                  >
+                    {{ t('studio.chat.gamePlay.openBrowser') }}
+                  </button>
+                </template>
                 <span
-                  v-if="isLibraryRelativePath(msg.relativePath)"
+                  v-else-if="isLibraryRelativePath(msg.relativePath)"
                   class="library-tag"
                   :title="t('studio.chat.alreadyInLibraryTitle')"
                 >
@@ -3068,6 +3867,41 @@ onBeforeUnmount(() => {
               :branch="msg.branch"
               @refresh="refreshGitChanges(msg)"
             />
+          </div>
+          <!-- present 交付物卡：dsh present 工具显式向用户交付的关键产物或文档 -->
+          <div v-else-if="msg.kind === 'present'" class="msg-row present">
+            <div class="present-card">
+              <div class="present-card-head">
+                <span class="present-card-icon" aria-hidden="true">📦</span>
+                <span class="present-card-title">{{ t('studio.chat.presentTitle') }}</span>
+                <span class="present-card-count">{{ msg.files.length }}</span>
+              </div>
+              <ul class="present-file-list">
+                <li v-for="file in msg.files" :key="file.path" class="present-file-item">
+                  <div class="present-file-info" :title="file.path">
+                    <span class="present-file-name">{{ assetFileName(file.path) }}</span>
+                    <span v-if="file.caption" class="present-file-caption">{{ file.caption }}</span>
+                    <span class="present-file-path">{{ file.path }}</span>
+                  </div>
+                  <div class="present-file-actions">
+                    <button
+                      type="button"
+                      class="present-btn"
+                      @click.stop="onOpenPresentFile(file.path, false)"
+                    >
+                      {{ t('studio.chat.presentOpenFile') }}
+                    </button>
+                    <button
+                      type="button"
+                      class="present-btn"
+                      @click.stop="onOpenPresentFile(file.path, true)"
+                    >
+                      {{ t('studio.chat.presentRevealFile') }}
+                    </button>
+                  </div>
+                </li>
+              </ul>
+            </div>
           </div>
           <div v-else-if="msg.kind === 'status'" class="msg-status">
             <ChatCopyIcon
@@ -3228,6 +4062,17 @@ onBeforeUnmount(() => {
               {{ t('studio.chat.queueForcing') }}
             </span>
             <span class="send-queue-actions">
+              <!-- Stage 1：盘中实时转向（不中断当前轮次，直接注入） -->
+              <button
+                v-if="running"
+                type="button"
+                class="queue-btn steer"
+                :disabled="item.forcing"
+                :title="t('studio.chat.queueSteerNowTitle')"
+                @click.stop="onSteerQueued(item.id)"
+              >
+                ⚡
+              </button>
               <!-- 立即发送：中断当前轮，马上发这条。向上箭头与输入框的发送按钮同一隐喻 -->
               <button
                 type="button"
@@ -3553,6 +4398,55 @@ onBeforeUnmount(() => {
           包成一个 flex 项后，要么都在第一行，要么整体折到下一行 —— 始终同行。
         -->
         <div class="toolbar-end">
+          <!-- 会话定时提醒：当 dsh schedule 插件创建了会话内提醒时展示，支持查看与取消 -->
+          <div
+            v-if="sessionSchedules.length > 0"
+            ref="scheduleDropdownRef"
+            class="schedule-dropdown"
+          >
+            <button
+              type="button"
+              class="tool-btn schedule-trigger"
+              :class="{ active: activeSchedules.length > 0 }"
+              :title="t('studio.chat.scheduleTitle')"
+              @click.stop="scheduleMenuOpen = !scheduleMenuOpen"
+            >
+              <span aria-hidden="true">⏰</span>
+              <span class="schedule-badge">{{ activeSchedules.length }}</span>
+            </button>
+            <div v-show="scheduleMenuOpen" class="schedule-menu">
+              <div class="schedule-menu-head">{{ t('studio.chat.scheduleTitle') }}</div>
+              <p v-if="!sessionSchedules.length" class="schedule-empty">
+                {{ t('studio.chat.scheduleEmpty') }}
+              </p>
+              <ul v-else class="schedule-list">
+                <li
+                  v-for="sch in sessionSchedules"
+                  :key="sch.id"
+                  class="schedule-item"
+                  :class="sch.status"
+                >
+                  <div class="schedule-item-main">
+                    <span class="schedule-item-summary">{{ sch.summary }}</span>
+                    <span class="schedule-item-meta">
+                      {{ sch.timing }}
+                      <template v-if="sch.nextRunAt">
+                        · {{ new Date(sch.nextRunAt).toLocaleTimeString() }}
+                      </template>
+                    </span>
+                  </div>
+                  <button
+                    v-if="sch.status === 'active'"
+                    type="button"
+                    class="schedule-cancel-btn"
+                    @click.stop="onCancelSchedule(sch.id)"
+                  >
+                    {{ t('studio.chat.scheduleCancel') }}
+                  </button>
+                </li>
+              </ul>
+            </div>
+          </div>
           <div
             v-if="contextUsageText"
             class="context-usage"
@@ -3587,6 +4481,19 @@ onBeforeUnmount(() => {
             ×
           </button>
         </span>
+      </div>
+      <!-- Stage 3：影视/美术专属领域子代理快捷委派条 -->
+      <div v-if="mode === 'craft'" class="domain-subagent-bar">
+        <button
+          v-for="preset in domainSubagentPresets"
+          :key="preset.id"
+          type="button"
+          class="domain-subagent-pill"
+          :title="t('studio.chat.domainSubagentInsertHint', { name: preset.id })"
+          @click="onInsertDomainSubagent(preset.promptPrefix)"
+        >
+          {{ preset.label }}
+        </button>
       </div>
       <div class="composer">
         <div
@@ -3742,6 +4649,93 @@ onBeforeUnmount(() => {
             <path d="M3.5 8 H12.5" />
           </svg>
         </button>
+        <!-- 跨会话搜索：检索前端历史与底层 dsh SQLite / .jsonl.zstd 会话日志 -->
+        <div ref="searchDropdownRef" class="search-dropdown">
+          <button
+            type="button"
+            class="tool-btn icon-only"
+            :title="t('studio.chat.searchSessionsTitle')"
+            :aria-label="t('studio.chat.searchSessionsTitle')"
+            @click.stop="searchModalOpen = !searchModalOpen"
+          >
+            <svg
+              viewBox="0 0 16 16"
+              width="12"
+              height="12"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="7" cy="7" r="4.2" />
+              <path d="M10.2 10.2 L13.5 13.5" />
+            </svg>
+          </button>
+          <div v-show="searchModalOpen" class="search-popover" @click.stop>
+            <div class="search-input-row">
+              <input
+                v-model="searchQuery"
+                type="text"
+                class="search-input"
+                :placeholder="t('studio.chat.searchSessionsPlaceholder')"
+                @keydown.stop
+                @keydown.enter.prevent="onRunSessionSearch"
+              />
+              <button
+                type="button"
+                class="search-go-btn"
+                :disabled="searchBusy"
+                @click="onRunSessionSearch"
+              >
+                {{ t('studio.chat.searchSessionsTitle') }}
+              </button>
+            </div>
+            <div
+              v-if="!searchHits.length && searchQuery.trim() && !searchBusy"
+              class="search-empty"
+            >
+              {{ t('studio.chat.searchSessionsEmpty') }}
+            </div>
+            <ul v-else-if="searchHits.length" class="search-hit-list">
+              <li
+                v-for="hit in searchHits"
+                :key="hit.sessionId"
+                class="search-hit-item"
+                @click="onSelectSearchHit(hit)"
+              >
+                <span class="search-hit-title">{{ hit.title || hit.sessionId }}</span>
+                <span class="search-hit-snippet">{{ hit.snippet }}</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+        <!-- 导出当前会话为 dsh .zip 归档包 -->
+        <button
+          type="button"
+          class="tool-btn icon-only"
+          :disabled="!messages.length || exportBusy"
+          :title="t('studio.chat.exportSession')"
+          :aria-label="t('studio.chat.exportSession')"
+          @click="onExportCurrentSession"
+        >
+          <svg
+            viewBox="0 0 16 16"
+            width="12"
+            height="12"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.7"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M8 2.5 V10.5" />
+            <path d="M5 7.5 L8 10.5 L11 7.5" />
+            <path d="M3 13 H13" />
+          </svg>
+        </button>
         <div class="model-select-wrap">
           <span class="model-label">{{ t('studio.chat.model') }}</span>
           <div
@@ -3815,6 +4809,15 @@ onBeforeUnmount(() => {
           <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor" aria-hidden="true">
             <rect x="4" y="4" width="8" height="8" rx="1.5" />
           </svg>
+        </button>
+        <button
+          v-if="running && draft.trim()"
+          type="button"
+          class="btn steer-btn"
+          :title="t('studio.chat.steerNowTitle')"
+          @click="onSteerNow"
+        >
+          ⚡ {{ t('studio.chat.steerNow') }}
         </button>
         <button
           v-if="!running || draft.trim()"
@@ -4418,6 +5421,7 @@ onBeforeUnmount(() => {
 }
 
 .asset-group-name {
+  margin-right: auto;
   min-width: 0;
   overflow: hidden;
   font-size: 11px;
@@ -5991,6 +6995,733 @@ onBeforeUnmount(() => {
   to {
     transform: rotate(360deg);
   }
+}
+
+/* 自主目标状态条（Goal Bar） */
+.harness-goal-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-panel));
+  font-size: 12px;
+}
+
+.harness-goal-bar.completed {
+  background: color-mix(in srgb, var(--success) 10%, var(--bg-panel));
+}
+
+.harness-goal-bar.paused {
+  background: color-mix(in srgb, var(--warning, #eab308) 10%, var(--bg-panel));
+}
+
+.goal-bar-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.goal-badge {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--accent-25);
+  color: var(--accent-fg);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.goal-objective {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.goal-rounds {
+  flex: none;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.goal-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+
+.goal-btn {
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg-input);
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.goal-btn:hover {
+  border-color: var(--accent);
+}
+
+.goal-btn.primary {
+  border-color: var(--accent);
+  background: var(--accent-20);
+  color: var(--accent-fg);
+}
+
+/* Todo 进度看板 */
+.harness-todo-board {
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated, var(--bg-panel));
+  font-size: 12px;
+}
+
+.todo-board-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.todo-board-title {
+  font-weight: 600;
+}
+
+.todo-board-progress {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.todo-board-chevron {
+  margin-left: auto;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+
+.todo-board-chevron.open {
+  transform: rotate(180deg);
+}
+
+.todo-board-list {
+  margin: 0;
+  padding: 2px 10px 8px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.todo-board-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.todo-board-item.completed {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.todo-board-item.in_progress {
+  color: var(--accent-fg);
+  font-weight: 500;
+}
+
+.todo-status-icon {
+  flex: none;
+  width: 14px;
+  text-align: center;
+}
+
+.todo-item-content {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.todo-priority {
+  flex: none;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--bg-input);
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+/* Present 交付物卡 */
+.present-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-input);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.present-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.present-card-count {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent-20);
+  color: var(--accent-fg);
+  font-size: 11px;
+}
+
+.present-file-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.present-file-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-panel);
+}
+
+.present-file-info {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.present-file-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.present-file-caption {
+  font-size: 11px;
+  color: var(--text);
+}
+
+.present-file-path {
+  font-size: 10px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.present-file-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+
+.present-btn {
+  padding: 3px 7px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg-input);
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.present-btn:hover {
+  border-color: var(--accent);
+}
+
+/* 会话定时提醒（Schedule Dropdown） */
+.schedule-dropdown,
+.search-dropdown {
+  position: relative;
+  display: inline-flex;
+}
+
+.schedule-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.schedule-badge {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.schedule-menu,
+.search-popover {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  z-index: 35;
+  width: 280px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-panel);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.search-popover {
+  left: 0;
+  right: auto;
+  width: 300px;
+}
+
+.schedule-menu-head {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.schedule-list,
+.search-hit-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.schedule-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 5px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 11px;
+}
+
+.schedule-item.deleted {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+
+.schedule-item-main {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.schedule-item-summary {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.schedule-item-meta {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.schedule-cancel-btn,
+.search-go-btn {
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-input);
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.search-input-row {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.search-input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg-input);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+
+.search-empty,
+.schedule-empty {
+  margin: 4px 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.search-hit-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 5px 6px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.search-hit-item:hover {
+  background: var(--bg-hover);
+}
+
+.search-hit-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.search-hit-snippet {
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Stage 1：盘中实时转向徽标与按钮 */
+.steered-badge {
+  display: inline-block;
+  margin-bottom: 4px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--accent-fg);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.steer-btn {
+  padding: 4px 8px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 18%, var(--bg-input));
+  color: var(--accent-fg);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.steer-btn:hover {
+  background: color-mix(in srgb, var(--accent) 28%, var(--bg-input));
+}
+
+.queue-btn.steer {
+  color: var(--accent-fg);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+
+/* Stage 2：画布异步事件触发器横幅 */
+.harness-canvas-event-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 10px 6px;
+  padding: 6px 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-panel));
+  font-size: 12px;
+}
+
+.harness-canvas-event-bar.node_error {
+  border-color: color-mix(in srgb, var(--danger, #e5534b) 55%, var(--border));
+  background: color-mix(in srgb, var(--danger, #e5534b) 12%, var(--bg-panel));
+}
+
+.canvas-event-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.canvas-event-badge {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--bg-input);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.canvas-event-summary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.canvas-event-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+
+.canvas-event-btn {
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg-input);
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.canvas-event-btn.primary {
+  border-color: var(--accent);
+  color: var(--accent-fg);
+}
+
+.canvas-event-btn.danger {
+  border-color: color-mix(in srgb, var(--danger, #e5534b) 65%, var(--border));
+  color: var(--danger, #e5534b);
+}
+
+.canvas-event-dismiss {
+  padding: 2px 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+}
+
+/* Stage 3：子代理并发实时监控看板 */
+.harness-subagent-board {
+  margin: 0 10px 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-panel);
+  overflow: hidden;
+}
+
+.subagent-board-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.subagent-board-title {
+  font-weight: 600;
+}
+
+.subagent-board-summary {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.subagent-board-list {
+  margin: 0;
+  padding: 0 10px 8px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.subagent-board-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-input);
+  font-size: 11px;
+}
+
+.subagent-item-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.subagent-status-badge {
+  flex: none;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  background: var(--bg-panel);
+  color: var(--text-muted);
+}
+
+.subagent-status-badge.running {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--accent-fg);
+}
+
+.subagent-status-badge.completed {
+  background: color-mix(in srgb, var(--success, #2da44e) 20%, transparent);
+  color: var(--success, #2da44e);
+}
+
+.subagent-status-badge.error {
+  background: color-mix(in srgb, var(--danger, #e5534b) 20%, transparent);
+  color: var(--danger, #e5534b);
+}
+
+.subagent-type-tag {
+  flex: none;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--bg-panel);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.subagent-desc {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.subagent-calls {
+  flex: none;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.subagent-followup-toggle {
+  flex: none;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.subagent-active-tool {
+  font-size: 10px;
+  color: var(--accent-fg);
+  font-family: var(--mono);
+}
+
+.subagent-followup-row {
+  display: flex;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.subagent-followup-input {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+}
+
+.subagent-followup-send {
+  padding: 3px 8px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 18%, var(--bg-panel));
+  color: var(--accent-fg);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+/* Stage 3：影视/美术专属领域子代理快捷委派条 */
+.domain-subagent-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  padding: 2px 10px 4px;
+}
+
+.domain-subagent-pill {
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-panel);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    color 0.15s;
+}
+
+.domain-subagent-pill:hover {
+  border-color: var(--accent);
+  color: var(--text);
 }
 </style>
 

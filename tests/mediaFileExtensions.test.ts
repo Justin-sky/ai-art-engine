@@ -127,7 +127,7 @@ describe('扫盘白名单与预览白名单不漂移', () => {
     }
   })
 
-  it('图片 / 视频 / 声音格式同样一一对应', () => {
+  it('图片 / 视频 / 声音 / HTML 格式同样一一对应', () => {
     for (const ext of IMAGE_FILE_EXTENSIONS) {
       expect(isScannedOutputPath(`Cache/Images/a.${ext}`), `.${ext}`).toBe(true)
     }
@@ -137,12 +137,16 @@ describe('扫盘白名单与预览白名单不漂移', () => {
     for (const ext of AUDIO_FILE_EXTENSIONS) {
       expect(isScannedOutputPath(`Cache/Voices/a.${ext}`), `.${ext}`).toBe(true)
     }
+    expect(isScannedOutputPath('Output/pin-lock.html')).toBe(true)
+    expect(isScannedOutputPath('Output/pin-lock.htm')).toBe(true)
+    expect(CHAT_PREVIEW).toContain('HTML_FILE_EXTENSIONS')
   })
 
   it('扫盘清单不再是手写数组（源码级防复发）', () => {
     const scan = readFileSync(resolve('src/shared/outputScan.ts'), 'utf8')
     expect(scan).toContain('...MODEL_FILE_EXTENSIONS')
     expect(scan).toContain('...IMAGE_FILE_EXTENSIONS')
+    expect(scan).toContain('...HTML_FILE_EXTENSIONS')
     expect(scan).not.toMatch(/const SCANNED_MEDIA_EXTS = new Set\(\[\s*\n\s*'png'/)
   })
 })

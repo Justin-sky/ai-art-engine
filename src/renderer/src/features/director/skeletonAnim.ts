@@ -46,6 +46,64 @@ export function findActiveSkeletonSegment(
   return hit
 }
 
+export interface SkeletonBlendSample {
+  primary: DirectorSkeletonClipSegment
+  /** 前序相邻片段（当处于交叉淡入窗口内时存在） */
+  previous?: DirectorSkeletonClipSegment
+  /** 主片段权重 ∈ (0, 1]；previous 的权重为 1 - primaryWeight */
+  primaryWeight: number
+}
+
+/**
+ * 查找当前激活的骨骼动作片段及与前序相邻片段的 Cross-Fade 混合权重。
+ * 若当前片段与前序片段紧邻（间距 ≤ 0.08s）且处于 `crossFadeSec`（默认 0.25s）过渡窗口内，
+ * 返回两个片段及平滑混合权重，消除动作切换时的硬切跳变。
+ */
+export function findActiveSkeletonSegmentsWithBlend(
+  trackOrSegments: DirectorAnimTrack | DirectorSkeletonClipSegment[],
+  globalTime: number
+): SkeletonBlendSample | null {
+  const clips = Array.isArray(trackOrSegments)
+    ? trackOrSegments
+    : directorTrackSkeletonClips(trackOrSegments)
+  let hitIndex = -1
+  for (let i = 0; i < clips.length; i++) {
+    const segment = clips[i]
+    if (globalTime >= segment.start - 1e-6 && globalTime <= segment.end + 1e-6) {
+      hitIndex = i
+    }
+  }
+  if (hitIndex < 0) return null
+  const primary = clips[hitIndex]
+  if (hitIndex === 0) {
+    return { primary, primaryWeight: 1 }
+  }
+  const prev = clips[hitIndex - 1]
+  const gap = Math.abs(primary.start - prev.end)
+  const fadeSec =
+    typeof primary.crossFadeSec === 'number' && Number.isFinite(primary.crossFadeSec)
+      ? Math.max(0, primary.crossFadeSec)
+      : 0.25
+  const elapsedInPrimary = globalTime - primary.start
+  if (
+    fadeSec > 1e-3 &&
+    gap <= 0.08 &&
+    elapsedInPrimary >= 0 &&
+    elapsedInPrimary < fadeSec &&
+    prev.clip !== primary.clip
+  ) {
+    const raw = Math.min(1, Math.max(0, elapsedInPrimary / fadeSec))
+    // Smoothstep S-curve for natural weight transition
+    const primaryWeight = raw * raw * (3 - 2 * raw)
+    return {
+      primary,
+      previous: prev,
+      primaryWeight
+    }
+  }
+  return { primary, primaryWeight: 1 }
+}
+
 /**
  * 为新片段找不重叠的放置区间。
  * 优先从 preferredStart 起放 duration 秒；若撞车则接到后续空隙。

@@ -16,6 +16,15 @@ const { installModelSelection } = await imp('@deepseek-ai/dsh-agent')
 const { createUserMessage } = await imp('@deepseek-ai/dsh-llm')
 const { SessionId, SessionSeq } = await imp('@deepseek-ai/dsh-session')
 const { defineTool } = await imp('@deepseek-ai/dsh-tools')
+let foldScheduleEvents
+let scheduleView
+try {
+  const schedMod = await imp('@deepseek-ai/dsh-schedule')
+  foldScheduleEvents = schedMod.foldScheduleEvents
+  scheduleView = schedMod.scheduleView
+} catch {
+  /* optional schedule module */
+}
 
 const name = 'aiart-headless-runner'
 const inject = ['agentDefaultModel', 'agents', 'sessions']
@@ -27,7 +36,30 @@ const TOOL_BEGIN = '===BEGIN_TOOL==='
 const TOOL_END = '===END_TOOL==='
 const ASK_USER_BEGIN = '===BEGIN_ASK_USER==='
 const CONTEXT_BEGIN = '===BEGIN_CONTEXT==='
+const TODO_BEGIN = '===BEGIN_TODO==='
+const GOAL_BEGIN = '===BEGIN_GOAL==='
+const PRESENT_BEGIN = '===BEGIN_PRESENT==='
+const SCHEDULE_BEGIN = '===BEGIN_SCHEDULE==='
+const SUBAGENT_BEGIN = '===BEGIN_SUBAGENT==='
+const STEER_BEGIN = '===BEGIN_STEER==='
 const PERSISTENT_TASK = '__AIART_PERSISTENT__'
+
+/**
+ * Dual-channel emitter: prefers Node.js native IPC channel (`stdio[3] = 'ipc'`) when connected,
+ * with automatic fallback to stdout/stderr markers for one-shot mode and unit tests.
+ */
+function sendIpc(event, fallbackFn) {
+  if (typeof process.send === 'function' && process.connected) {
+    try {
+      process.send({ __aiartEvent: true, ...event })
+      return true
+    } catch {
+      /* fallback to stdio markers */
+    }
+  }
+  if (typeof fallbackFn === 'function') fallbackFn()
+  return false
+}
 
 const SUMMARY_KEYS = [
   'path',
@@ -289,6 +321,12 @@ function createDelegationTracker(ctx, root, mode) {
       lastSeq: agent.session.seq,
       pendingTools: new Map(),
       anchorId: undefined,
+      label: '',
+      role: '',
+      toolCount: 0,
+      activeTool: '',
+      activeToolDetail: '',
+      updatedAt: Date.now(),
       resolved: false,
       adopted
     }
@@ -315,19 +353,34 @@ function createDelegationTracker(ctx, root, mode) {
   const offDisposed = ctx.on('agent/disposed', ({ agent }) => {
     const id = agent?.session?.header?.id
     const entry = id === undefined ? undefined : children.get(String(id))
-    if (entry) entry.disposed = true
+    if (entry) {
+      entry.disposed = true
+      entry.activeTool = ''
+      entry.activeToolDetail = ''
+      entry.updatedAt = Date.now()
+    }
   })
 
   /** Remember delegation and wake-up calls so the children they drive can be anchored to them. */
   const noteToolCall = (ownerSessionId, anchorId, callId, toolName, rawArgs) => {
     const args = parseToolArgs(rawArgs)
+    const ownerChild = children.get(ownerSessionId)
+    if (ownerChild) {
+      ownerChild.toolCount = (ownerChild.toolCount || 0) + 1
+      ownerChild.activeTool = toolName
+      ownerChild.activeToolDetail = summarizeToolArgs(rawArgs)
+      ownerChild.updatedAt = Date.now()
+    }
     if (toolName === 'send_message') {
       const target = typeof args?.agent_id === 'string' ? args.agent_id : ''
       if (!target) return
       const anchor = anchorId ?? callId
       wakeAnchors.set(target, anchor)
       const child = children.get(target)
-      if (child?.resolved) child.anchorId = anchor
+      if (child?.resolved) {
+        child.anchorId = anchor
+        child.updatedAt = Date.now()
+      }
       return
     }
     if (!DELEGATION_TOOLS.has(toolName)) return
@@ -336,6 +389,7 @@ function createDelegationTracker(ctx, root, mode) {
       callId,
       anchorId: anchorId ?? callId,
       label: typeof args?.description === 'string' ? args.description : '',
+      role: typeof args?.agent_type === 'string' ? args.agent_type : toolName,
       claimed: false
     })
   }
@@ -363,15 +417,50 @@ function createDelegationTracker(ctx, root, mode) {
       if (!force) return false
     }
     const label = descriptorLabel(child.agent.session, child.startSeq)
+    if (label) child.label = label
     const open = delegations.filter((d) => !d.claimed && d.ownerSessionId === child.ownerSessionId)
     const pick = (label ? open.find((d) => d.label === label) : undefined) ?? open[0]
     if (pick === undefined && !force) return false
     if (pick) {
       pick.claimed = true
       child.anchorId = pick.anchorId
+      if (!child.label && pick.label) child.label = pick.label
+      if (!child.role && pick.role) child.role = pick.role
     }
     child.resolved = true
     return true
+  }
+
+  const snapshotSubagents = () => {
+    const out = []
+    for (const child of children.values()) {
+      const desc =
+        child.label ||
+        descriptorLabel(child.agent?.session, child.startSeq) ||
+        child.sessionId.slice(0, 12)
+      const status = child.disposed
+        ? 'completed'
+        : child.agent?.status === 'running'
+          ? 'running'
+          : 'idle'
+      out.push({
+        sessionId: child.sessionId,
+        parentSessionId: child.ownerSessionId,
+        ...(child.anchorId ? { anchorCallId: child.anchorId } : {}),
+        label: desc,
+        description: desc,
+        agentType: child.role || 'subagent',
+        ...(child.role ? { role: child.role } : {}),
+        status,
+        ...(status === 'running' && child.activeTool ? { activeTool: child.activeTool } : {}),
+        ...(status === 'running' && child.activeToolDetail
+          ? { activeToolDetail: child.activeToolDetail }
+          : {}),
+        toolCount: child.toolCount || 0,
+        updatedAt: child.updatedAt || Date.now()
+      })
+    }
+    return out
   }
 
   const isBusy = () => {
@@ -394,7 +483,15 @@ function createDelegationTracker(ctx, root, mode) {
     offDisposed()
   }
 
-  return { children, noteToolCall, resolveAnchor, isBusy, whenChildrenIdle, dispose }
+  return {
+    children,
+    noteToolCall,
+    resolveAnchor,
+    snapshotSubagents,
+    isBusy,
+    whenChildrenIdle,
+    dispose
+  }
 }
 
 function registerAskUserTool(ctx, io, getMode, getRunId) {
@@ -412,18 +509,17 @@ function registerAskUserTool(ctx, io, getMode, getRunId) {
         process.env.AIART_ASK_DIR || '',
         'aiart-ask-' + requestId.replace(/[^a-zA-Z0-9_-]/g, '-') + '.json'
       )
-      io.stdout.write(
-        ASK_USER_BEGIN +
-          JSON.stringify({
-            requestId,
-            questionId: first.id,
-            question: first.question,
-            ...(first.header ? { hint: first.header } : {}),
-            options: (first.options ?? []).map((option) => option.label),
-            answerFile
-          }) +
-          '\n'
-      )
+      const askPayload = {
+        requestId,
+        questionId: first.id,
+        question: first.question,
+        ...(first.header ? { hint: first.header } : {}),
+        options: (first.options ?? []).map((option) => option.label),
+        answerFile
+      }
+      sendIpc({ type: 'ask_user', payload: askPayload }, () => {
+        io.stdout.write(ASK_USER_BEGIN + JSON.stringify(askPayload) + '\n')
+      })
       const deadline = Date.now() + 5 * 60 * 1000
       while (Date.now() < deadline) {
         if (request?.signal?.aborted) return { answers: [{ id: first.id, selected: [] }] }
@@ -704,10 +800,13 @@ async function runOneTurn(ctx, io, opts) {
 
   let inReasoning = false
   let streamedText = false
+  let lastSubagentJson = ''
   const closeReasoning = () => {
     if (inReasoning) {
       inReasoning = false
-      io.stdout.write('\n' + REASONING_END + '\n')
+      sendIpc({ type: 'reasoning_end' }, () => {
+        io.stdout.write('\n' + REASONING_END + '\n')
+      })
     }
   }
   const offStream = ctx.on('agent/assistant-stream', ({ agent: subject, frame }) => {
@@ -723,9 +822,13 @@ async function runOneTurn(ctx, io, opts) {
         if (chunk.text === '') return
         if (!inReasoning) {
           inReasoning = true
-          io.stdout.write(REASONING_BEGIN + '\n')
+          sendIpc({ type: 'reasoning_begin' }, () => {
+            io.stdout.write(REASONING_BEGIN + '\n')
+          })
         }
-        io.stdout.write(chunk.text)
+        sendIpc({ type: 'reasoning_delta', text: chunk.text }, () => {
+          io.stdout.write(chunk.text)
+        })
         return
       case 'block-start':
         if (chunk.blockType !== 'reasoning') closeReasoning()
@@ -737,7 +840,9 @@ async function runOneTurn(ctx, io, opts) {
         if (chunk.text === '') return
         streamedText = true
         closeReasoning()
-        io.stdout.write(chunk.text)
+        sendIpc({ type: 'assistant_delta', text: chunk.text }, () => {
+          io.stdout.write(chunk.text)
+        })
         return
       case 'usage':
         return
@@ -747,6 +852,98 @@ async function runOneTurn(ctx, io, opts) {
   })
   const tracker = createDelegationTracker(ctx, agent, mode)
   const rootSessionId = String(agent.session.header.id)
+
+  function extractGoalState(session, goalsService, agent) {
+    let base = null
+    try {
+      if (typeof goalsService?.get === 'function' && agent) {
+        base = goalsService.get(agent) || null
+      }
+    } catch {
+      /* ignore */
+    }
+    let startSeq = -1
+    let roundCount = 1
+    for (let seq = 0; seq < session.seq; seq++) {
+      const ev = session.eventAt(SessionSeq(seq))
+      if (!ev) continue
+      if (ev.type === 'goal/change') {
+        const d = ev.data || {}
+        if (d.action === 'start') {
+          startSeq = seq
+          roundCount = 1
+          if (!base) {
+            base = {
+              phase: 'active',
+              activation: 'armed',
+              goalId: d.goalId,
+              title: d.title,
+              objective: d.objective,
+              verification: d.verification,
+              doneWhen: d.doneWhen,
+              constraints: d.constraints,
+              maxRounds: d.maxRounds
+            }
+          }
+        } else if (base && d.action === 'update') {
+          if (d.title !== undefined) base = { ...base, title: d.title }
+          if (d.objective !== undefined) base = { ...base, objective: d.objective }
+          if (d.verification !== undefined) base = { ...base, verification: d.verification }
+          if (d.doneWhen !== undefined) base = { ...base, doneWhen: d.doneWhen }
+          if (d.constraints !== undefined) base = { ...base, constraints: d.constraints }
+          if (d.maxRounds !== undefined) base = { ...base, maxRounds: d.maxRounds }
+        } else if (base && d.action === 'pause') {
+          base = { ...base, phase: 'paused', activation: 'idle', summary: d.reason || base.summary }
+        } else if (base && d.action === 'resume') {
+          base = { ...base, phase: 'active', activation: 'armed' }
+        } else if (base && d.action === 'complete') {
+          base = {
+            ...base,
+            phase: 'completed',
+            activation: 'idle',
+            summary: d.summary || base.summary
+          }
+        } else if (base && d.action === 'end') {
+          base = {
+            ...base,
+            phase: 'ended',
+            activation: 'idle',
+            endedReason: d.reason,
+            summary: d.summary || base.summary
+          }
+        }
+      } else if (
+        startSeq >= 0 &&
+        ev.type === 'user/message' &&
+        ev.data?.message?.source?.kind === 'plugin' &&
+        ev.data?.message?.source?.plugin === 'goal-round-driver'
+      ) {
+        roundCount += 1
+      }
+    }
+    if (!base) return null
+    return {
+      ...base,
+      round: typeof base.round === 'number' ? base.round : roundCount
+    }
+  }
+
+  function extractScheduleList(session) {
+    if (typeof foldScheduleEvents !== 'function' || typeof scheduleView !== 'function') return []
+    try {
+      const state = foldScheduleEvents(session.events())
+      const nowMs = Date.now()
+      const list = []
+      for (const record of state.byId.values()) {
+        if (record.status === 'pending') {
+          list.push(scheduleView(record, nowMs))
+        }
+      }
+      return list
+    } catch {
+      return []
+    }
+  }
 
   /** Emit tool markers for one agent's new events; child cards carry the anchoring delegation call. */
   const flushAgent = (owner) => {
@@ -763,18 +960,16 @@ async function runOneTurn(ctx, io, opts) {
           tools.set(callId, { name: toolName, parentId })
           tracker.noteToolCall(owner.sessionId, parentId, callId, toolName, event.data?.arguments)
           closeReasoning()
-          io.stdout.write(
-            '\n' +
-              TOOL_BEGIN +
-              JSON.stringify({
-                name: toolName,
-                callId,
-                ...(parentId ? { parentId } : {}),
-                detail: summarizeToolArgs(event.data?.arguments),
-                args: clipToolArgs(event.data?.arguments)
-              }) +
-              '\n'
-          )
+          const toolStartPayload = {
+            name: toolName,
+            callId,
+            ...(parentId ? { parentId } : {}),
+            detail: summarizeToolArgs(event.data?.arguments),
+            args: clipToolArgs(event.data?.arguments)
+          }
+          sendIpc({ type: 'tool', state: 'start', payload: toolStartPayload }, () => {
+            io.stdout.write('\n' + TOOL_BEGIN + JSON.stringify(toolStartPayload) + '\n')
+          })
         }
         continue
       }
@@ -784,25 +979,73 @@ async function runOneTurn(ctx, io, opts) {
           // The card must close under the anchor it opened with, even if a later wake re-anchored the child.
           const pending = tools.get(callId)
           tools.delete(callId)
+          if (!owner.isRoot && tools.size === 0) {
+            owner.activeTool = ''
+            owner.activeToolDetail = ''
+            owner.updatedAt = Date.now()
+          }
           const parentId = pending ? pending.parentId : owner.anchorId
-          io.stdout.write(
-            '\n' +
-              TOOL_END +
-              JSON.stringify({
-                name: pending?.name || 'tool',
-                callId,
-                ...(parentId ? { parentId } : {})
-              }) +
-              '\n'
-          )
+          const toolEndPayload = {
+            name: pending?.name || 'tool',
+            callId,
+            ...(parentId ? { parentId } : {})
+          }
+          sendIpc({ type: 'tool', state: 'done', payload: toolEndPayload }, () => {
+            io.stdout.write('\n' + TOOL_END + JSON.stringify(toolEndPayload) + '\n')
+          })
         }
+        continue
+      }
+      if (owner.isRoot && event.type === 'todo/write') {
+        const todos = Array.isArray(event.data?.todos) ? event.data.todos : []
+        closeReasoning()
+        sendIpc({ type: 'todo', todos }, () => {
+          io.stdout.write('\n' + TODO_BEGIN + JSON.stringify({ todos }) + '\n')
+        })
+        continue
+      }
+      if (
+        owner.isRoot &&
+        (event.type === 'goal/change' ||
+          (event.type === 'user/message' &&
+            event.data?.message?.source?.kind === 'plugin' &&
+            event.data?.message?.source?.plugin === 'goal-round-driver'))
+      ) {
+        const goal = extractGoalState(session, ctx.get('goals'), owner.agent)
+        closeReasoning()
+        sendIpc({ type: 'goal', goal }, () => {
+          io.stdout.write('\n' + GOAL_BEGIN + JSON.stringify({ goal }) + '\n')
+        })
+        continue
+      }
+      if (owner.isRoot && event.type === 'deliverables/presented') {
+        const files = Array.isArray(event.data?.files) ? event.data.files : []
+        closeReasoning()
+        const presentPayload = {
+          callId: event.data?.callId || '',
+          turn: event.data?.turn ?? 0,
+          files
+        }
+        sendIpc({ type: 'present', ...presentPayload }, () => {
+          io.stdout.write('\n' + PRESENT_BEGIN + JSON.stringify(presentPayload) + '\n')
+        })
+        continue
+      }
+      if (owner.isRoot && event.type === 'schedule/change') {
+        const schedules = extractScheduleList(session)
+        closeReasoning()
+        sendIpc({ type: 'schedule', schedules }, () => {
+          io.stdout.write('\n' + SCHEDULE_BEGIN + JSON.stringify({ schedules }) + '\n')
+        })
         continue
       }
       if (owner.isRoot && event.type === 'assistant/message' && event.data?.usage) {
         const usage = event.data.usage
         if (typeof usage.inputTokens === 'number' && usage.inputTokens >= 0) {
           closeReasoning()
-          io.stdout.write('\n' + CONTEXT_BEGIN + JSON.stringify(usage) + '\n')
+          sendIpc({ type: 'context', usage }, () => {
+            io.stdout.write('\n' + CONTEXT_BEGIN + JSON.stringify(usage) + '\n')
+          })
         }
       }
     }
@@ -816,34 +1059,112 @@ async function runOneTurn(ctx, io, opts) {
     anchorId: undefined,
     isRoot: true
   }
+  const flushSubagentSnapshot = () => {
+    if (tracker.children.size === 0) return
+    const subagents = tracker.snapshotSubagents()
+    const nextJson = JSON.stringify(subagents)
+    if (nextJson === lastSubagentJson) return
+    lastSubagentJson = nextJson
+    closeReasoning()
+    sendIpc({ type: 'subagent', subagents }, () => {
+      io.stdout.write('\n' + SUBAGENT_BEGIN + JSON.stringify({ subagents }) + '\n')
+    })
+  }
   const flushEvents = (force = false) => {
     flushAgent(rootEntry)
     for (const child of tracker.children.values()) {
       if (tracker.resolveAnchor(child, force)) flushAgent(child)
     }
+    flushSubagentSnapshot()
+  }
+
+  const waitTreeIdle = async () => {
+    await agent.whenIdle()
+    while (
+      agent.status === 'running' ||
+      Boolean(agent.inbox?.hasPending) ||
+      tracker.children.size > 0
+    ) {
+      if (agent.status === 'running') {
+        await agent.whenIdle()
+        continue
+      }
+      if (agent.inbox?.hasPending) {
+        await new Promise((resolve) => setTimeout(resolve, 40))
+        if (agent.status === 'running') {
+          await agent.whenIdle()
+          continue
+        }
+        if (!agent.inbox?.hasPending && !tracker.isBusy()) break
+      }
+      if (tracker.children.size > 0) {
+        if (tracker.isBusy()) {
+          await tracker.whenChildrenIdle()
+        } else {
+          await new Promise((resolve) => setTimeout(resolve, 100))
+          if (!tracker.isBusy() && agent.status !== 'running' && !agent.inbox?.hasPending) break
+        }
+        await agent.whenIdle()
+      } else {
+        break
+      }
+    }
   }
 
   const timer = setInterval(flushEvents, 30)
   try {
-    const fullTask = modePreamble(mode) + task
-    const userContent = await buildUserContent(fullTask, ctx.get('attachments'), io)
-    agent.followup(
-      createUserMessage({
-        content: userContent,
-        source: { kind: 'user' }
-      })
-    )
-    await agent.whenIdle()
-    // Background children finish after the parent goes idle and then wake it with
-    // their result; keep the turn open until the whole delegation tree settles.
-    while (tracker.children.size > 0) {
-      if (tracker.isBusy()) {
-        await tracker.whenChildrenIdle()
+    if (opts.autonomousTurn) {
+      // Autonomous turn (e.g. schedule reminder already queued on agent)
+      await waitTreeIdle()
+    } else {
+      const trimmedTask = task.trim()
+      const slashMatch = /^\/(compact|goal|feedback)(?=$|\s)/i.exec(trimmedTask)
+      const commands = ctx.get('commands')
+      if (slashMatch && typeof commands?.execute === 'function') {
+        const settled = await commands.execute(agent, trimmedTask, [])
+        if (settled?.status === 'Complete' && settled.result?.text) {
+          streamedText = true
+          closeReasoning()
+          const cmdText = settled.result.text + '\n'
+          sendIpc({ type: 'assistant_delta', text: cmdText }, () => {
+            io.stdout.write(cmdText)
+          })
+        } else if (settled?.status === 'Failed') {
+          const errMsg =
+            settled.error instanceof Error ? settled.error.message : String(settled.error)
+          throw new Error(errMsg)
+        }
       } else {
-        await new Promise((resolve) => setTimeout(resolve, 100))
-        if (!tracker.isBusy() && agent.status !== 'running') break
+        const fullTask = modePreamble(mode) + task
+        const userContent = await buildUserContent(fullTask, ctx.get('attachments'), io)
+        agent.followup(
+          createUserMessage({
+            content: userContent,
+            source: { kind: 'user' }
+          })
+        )
       }
-      await agent.whenIdle()
+      await waitTreeIdle()
+    }
+
+    // Multi-round Goal Driver: if a goal is active & armed, goal-round-driver
+    // checkpoints the session after turn/end and queues the next round.
+    const goalsService = ctx.get('goals')
+    while (typeof goalsService?.get === 'function') {
+      const g = goalsService.get(agent)
+      if (!g || g.phase !== 'active' || g.activation !== 'armed') break
+      let restarted = false
+      for (let i = 0; i < 50; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 50))
+        if (agent.status === 'running' || tracker.isBusy()) {
+          restarted = true
+          break
+        }
+        const cur = goalsService.get(agent)
+        if (!cur || cur.phase !== 'active' || cur.activation !== 'armed') break
+      }
+      if (!restarted && agent.status !== 'running' && !tracker.isBusy()) break
+      await waitTreeIdle()
     }
   } finally {
     clearInterval(timer)
@@ -851,7 +1172,9 @@ async function runOneTurn(ctx, io, opts) {
     tracker.dispose()
   }
   flushEvents(true)
-  if (inReasoning) io.stdout.write('\n' + REASONING_END + '\n')
+  if (inReasoning) {
+    closeReasoning()
+  }
   try {
     await sessions.flush(agent.session)
   } catch (error) {
@@ -862,7 +1185,11 @@ async function runOneTurn(ctx, io, opts) {
     )
   }
   const outcome = summarize(agent.session, firstSeq)
-  if (!streamedText && outcome.text) io.stdout.write(outcome.text + '\n')
+  if (!streamedText && outcome.text) {
+    sendIpc({ type: 'assistant_delta', text: outcome.text + '\n' }, () => {
+      io.stdout.write(outcome.text + '\n')
+    })
+  }
   if (outcome.reason?.kind === 'error') {
     io.stderr.write(
       'dsh: ' + outcome.reason.error.code + ': ' + outcome.reason.error.message + '\n'
@@ -877,6 +1204,8 @@ async function runPersistent(ctx, io) {
   let currentRunId = process.env.AIART_RUN_ID || 'run'
   let forcedSelection = null
   const agentSlot = { handle: undefined, sessionId: '', model: '', provider: '' }
+  let turnBusy = false
+  let turnQueue = Promise.resolve()
 
   const answerAskUserQuestion = registerAskUserTool(
     ctx,
@@ -894,91 +1223,371 @@ async function runPersistent(ctx, io) {
     throw new Error('required services missing')
   }
 
-  io.stderr.write('[aiart-runner] ready\n')
+  const onAutonomousWake = (agent) => {
+    if (turnBusy || !agentSlot.handle || agentSlot.handle.agent !== agent) return
+    turnBusy = true
+    const schedRunId = 'sched-' + Date.now()
+    currentRunId = schedRunId
+    const selection = forcedSelection || defaultModel.currentSelection()
+    const schedStartPayload = {
+      runId: schedRunId,
+      sessionId: agentSlot.sessionId,
+      mode: currentMode,
+      model: selection?.model || ''
+    }
+    sendIpc({ type: 'schedule_turn_start', ...schedStartPayload }, () => {
+      io.stderr.write(
+        '[aiart-runner] schedule_turn_start ' + JSON.stringify(schedStartPayload) + '\n'
+      )
+    })
+    const schedules = extractScheduleList(agent.session)
+    sendIpc({ type: 'schedule', schedules }, () => {
+      io.stdout.write('\n' + SCHEDULE_BEGIN + JSON.stringify({ schedules }) + '\n')
+    })
+    turnQueue = turnQueue
+      .then(async () => {
+        try {
+          await runOneTurn(ctx, io, {
+            task: '',
+            autonomousTurn: true,
+            sessionId: agentSlot.sessionId,
+            mode: currentMode,
+            runId: schedRunId,
+            selection,
+            answerAskUserQuestion,
+            agentSlot
+          })
+          sendIpc({ type: 'turn_done', ok: true }, () => {
+            io.stderr.write('[aiart-runner] turn_done ' + JSON.stringify({ ok: true }) + '\n')
+          })
+        } catch (error) {
+          const errText = error instanceof Error ? error.message : String(error)
+          sendIpc({ type: 'turn_done', ok: false, error: errText }, () => {
+            io.stderr.write(
+              '[aiart-runner] turn_done ' + JSON.stringify({ ok: false, error: errText }) + '\n'
+            )
+          })
+        } finally {
+          turnBusy = false
+        }
+      })
+      .catch(() => {
+        turnBusy = false
+      })
+  }
+  ctx.on('agent/turn-start', ({ agent }) => onAutonomousWake(agent))
+  ctx.on('agent/status', ({ agent, status }) => {
+    if (status === 'running') onAutonomousWake(agent)
+  })
+
+  sendIpc({ type: 'ready' }, () => {
+    io.stderr.write('[aiart-runner] ready\n')
+  })
+
+  const enqueueOp = (fn) => {
+    turnQueue = turnQueue.then(fn).catch((err) => {
+      io.stderr.write(
+        '[aiart-runner] queue error: ' + (err instanceof Error ? err.message : String(err)) + '\n'
+      )
+    })
+  }
 
   const rl = createInterface({ input: process.stdin, crlfDelay: Infinity })
-  for await (const line of rl) {
+
+  const handleCommand = (msg) => {
+    const op = msg?.op
+    if (op === 'shutdown') {
+      const liveAgent = agentSlot.handle?.agent
+      try {
+        if (liveAgent && typeof liveAgent.cancel === 'function') {
+          liveAgent.cancel({ kind: 'disposed' })
+        }
+      } catch {
+        /* ignore */
+      }
+      releaseAgentSlot(agentSlot).finally(() => {
+        rl.close()
+        io.exit(0)
+      })
+      return
+    }
+    if (op === 'steer') {
+      const text = typeof msg.text === 'string' ? msg.text.trim() : ''
+      const subagentSessionId =
+        typeof msg.subagentSessionId === 'string' ? msg.subagentSessionId.trim() : ''
+      let targetAgent = agentSlot.handle?.agent
+      if (subagentSessionId && typeof agents?.get === 'function') {
+        try {
+          targetAgent = agents.get(SessionId(subagentSessionId)) || targetAgent
+        } catch {
+          /* ignore */
+        }
+      }
+      if (targetAgent && text) {
+        void (async () => {
+          try {
+            const steerPrompt =
+              '[Live User Steering — apply immediately from the next step]\n' + text
+            const userContent = await buildUserContent(steerPrompt, ctx.get('attachments'), io)
+            const userMsg = createUserMessage({
+              content: userContent,
+              source: { kind: 'user' }
+            })
+            if (targetAgent.status === 'running' && typeof targetAgent.inject === 'function') {
+              targetAgent.inject(userMsg)
+            } else if (typeof targetAgent.followup === 'function') {
+              targetAgent.followup(userMsg)
+            } else if (typeof targetAgent.inject === 'function') {
+              targetAgent.inject(userMsg)
+            }
+            const steerPayload = {
+              text,
+              targetSessionId: subagentSessionId || agentSlot.sessionId
+            }
+            sendIpc({ type: 'steered', ...steerPayload }, () => {
+              io.stdout.write('\n' + STEER_BEGIN + JSON.stringify(steerPayload) + '\n')
+            })
+          } catch (error) {
+            io.stderr.write(
+              '[aiart-runner] steer error: ' +
+                (error instanceof Error ? error.message : String(error)) +
+                '\n'
+            )
+          }
+        })()
+      }
+      return
+    }
+    if (op === 'goal_control') {
+      const action = typeof msg.action === 'string' ? msg.action : ''
+      const summary = typeof msg.summary === 'string' ? msg.summary : undefined
+      const liveAgent = agentSlot.handle?.agent
+      const goals = ctx.get('goals')
+      if (action === 'resume' && !turnBusy) {
+        enqueueOp(async () => {
+          turnBusy = true
+          try {
+            const selection = forcedSelection || defaultModel.currentSelection()
+            await runOneTurn(ctx, io, {
+              task: '/goal resume',
+              sessionId: typeof msg.sessionId === 'string' ? msg.sessionId : agentSlot.sessionId,
+              mode: currentMode,
+              runId: currentRunId,
+              selection,
+              answerAskUserQuestion,
+              agentSlot
+            })
+            sendIpc({ type: 'turn_done', ok: true }, () => {
+              io.stderr.write('[aiart-runner] turn_done ' + JSON.stringify({ ok: true }) + '\n')
+            })
+          } catch (error) {
+            const errText = error instanceof Error ? error.message : String(error)
+            sendIpc({ type: 'turn_done', ok: false, error: errText }, () => {
+              io.stderr.write(
+                '[aiart-runner] turn_done ' + JSON.stringify({ ok: false, error: errText }) + '\n'
+              )
+            })
+          } finally {
+            turnBusy = false
+          }
+        })
+        return
+      }
+      if (liveAgent && goals) {
+        try {
+          if (action === 'pause') {
+            goals.pause?.(liveAgent, summary || 'Paused by user')
+            if (liveAgent.status === 'running') liveAgent.cancel?.({ kind: 'user' })
+          } else if (action === 'end') {
+            goals.end?.(liveAgent, 'user', summary || 'Ended by user')
+            if (liveAgent.status === 'running') liveAgent.cancel?.({ kind: 'user' })
+          }
+          const goal = extractGoalState(liveAgent.session, goals, liveAgent)
+          sendIpc({ type: 'goal', goal }, () => {
+            io.stdout.write('\n' + GOAL_BEGIN + JSON.stringify({ goal }) + '\n')
+          })
+          io.stderr.write(
+            '[aiart-runner] goal_control_ack ' + JSON.stringify({ ok: true, goal }) + '\n'
+          )
+        } catch (error) {
+          io.stderr.write(
+            '[aiart-runner] goal_control_ack ' +
+              JSON.stringify({
+                ok: false,
+                error: error instanceof Error ? error.message : String(error)
+              }) +
+              '\n'
+          )
+        }
+      } else {
+        io.stderr.write(
+          '[aiart-runner] goal_control_ack ' +
+            JSON.stringify({ ok: false, error: 'no active agent' }) +
+            '\n'
+        )
+      }
+      return
+    }
+    if (op === 'schedule_delete') {
+      const scheduleId = typeof msg.scheduleId === 'string' ? msg.scheduleId.trim() : ''
+      const liveAgent = agentSlot.handle?.agent
+      if (liveAgent && scheduleId) {
+        try {
+          liveAgent.session.append('schedule/change', {
+            action: 'delete',
+            id: scheduleId,
+            reason: 'cancelled'
+          })
+          sessions.flush(liveAgent.session).catch(() => {})
+          const schedules = extractScheduleList(liveAgent.session)
+          sendIpc({ type: 'schedule', schedules }, () => {
+            io.stdout.write('\n' + SCHEDULE_BEGIN + JSON.stringify({ schedules }) + '\n')
+          })
+          io.stderr.write(
+            '[aiart-runner] schedule_delete_ack ' + JSON.stringify({ ok: true, schedules }) + '\n'
+          )
+        } catch (error) {
+          io.stderr.write(
+            '[aiart-runner] schedule_delete_ack ' +
+              JSON.stringify({
+                ok: false,
+                error: error instanceof Error ? error.message : String(error)
+              }) +
+              '\n'
+          )
+        }
+      } else {
+        io.stderr.write(
+          '[aiart-runner] schedule_delete_ack ' +
+            JSON.stringify({ ok: false, error: 'no active agent or scheduleId' }) +
+            '\n'
+        )
+      }
+      return
+    }
+    if (op === 'release_session') {
+      const targetSessionId = typeof msg.sessionId === 'string' ? msg.sessionId.trim() : ''
+      enqueueOp(async () => {
+        if (
+          agentSlot.handle?.agent &&
+          (!targetSessionId || agentSlot.sessionId === targetSessionId)
+        ) {
+          try {
+            await sessions.flush(agentSlot.handle.agent.session)
+          } catch {
+            /* ignore */
+          }
+          await releaseAgentSlot(agentSlot)
+        }
+        sendIpc({ type: 'session_released', sessionId: targetSessionId }, () => {
+          io.stderr.write(
+            '[aiart-runner] session_released ' +
+              JSON.stringify({ ok: true, sessionId: targetSessionId }) +
+              '\n'
+          )
+        })
+      })
+      return
+    }
+    if (op === 'set_model') {
+      enqueueOp(async () => {
+        const modelId = typeof msg.modelId === 'string' ? msg.modelId.trim() : ''
+        if (!modelId) {
+          io.stderr.write(
+            '[aiart-runner] model_set ' +
+              JSON.stringify({ ok: false, error: 'missing modelId' }) +
+              '\n'
+          )
+          return
+        }
+        const cur = defaultModel.currentSelection()
+        forcedSelection = {
+          provider: cur?.provider || 'deepseek-official',
+          model: modelId
+        }
+        // Must dispose so the session write lease is released before next resume
+        await releaseAgentSlot(agentSlot)
+        io.stderr.write('[aiart-runner] model_set ' + JSON.stringify({ ok: true, modelId }) + '\n')
+      })
+      return
+    }
+    if (op === 'prompt') {
+      enqueueOp(async () => {
+        const task = typeof msg.task === 'string' ? msg.task : ''
+        if (!task.trim()) {
+          sendIpc({ type: 'turn_done', ok: false, error: 'empty task' }, () => {
+            io.stderr.write(
+              '[aiart-runner] turn_done ' +
+                JSON.stringify({ ok: false, error: 'empty task' }) +
+                '\n'
+            )
+          })
+          return
+        }
+        turnBusy = true
+        currentMode = typeof msg.mode === 'string' && msg.mode ? msg.mode : currentMode
+        currentRunId = typeof msg.runId === 'string' && msg.runId ? msg.runId : currentRunId
+        const selection = forcedSelection || defaultModel.currentSelection()
+        const promptStartPayload = {
+          runId: currentRunId,
+          mode: currentMode,
+          model: selection?.model || ''
+        }
+        sendIpc({ type: 'prompt_start', ...promptStartPayload }, () => {
+          io.stderr.write(
+            '[aiart-runner] prompt_start ' + JSON.stringify(promptStartPayload) + '\n'
+          )
+        })
+        try {
+          await runOneTurn(ctx, io, {
+            task,
+            sessionId: typeof msg.sessionId === 'string' ? msg.sessionId : '',
+            mode: currentMode,
+            runId: currentRunId,
+            selection,
+            answerAskUserQuestion,
+            agentSlot
+          })
+          sendIpc({ type: 'turn_done', ok: true }, () => {
+            io.stderr.write('[aiart-runner] turn_done ' + JSON.stringify({ ok: true }) + '\n')
+          })
+        } catch (error) {
+          const errText = error instanceof Error ? error.message : String(error)
+          sendIpc({ type: 'turn_done', ok: false, error: errText }, () => {
+            io.stderr.write(
+              '[aiart-runner] turn_done ' + JSON.stringify({ ok: false, error: errText }) + '\n'
+            )
+          })
+        } finally {
+          turnBusy = false
+        }
+      })
+      return
+    }
+    io.stderr.write('[aiart-runner] unknown op: ' + String(op) + '\n')
+  }
+
+  if (typeof process.on === 'function') {
+    process.on('message', (msg) => {
+      if (msg && typeof msg === 'object' && typeof msg.op === 'string') {
+        handleCommand(msg)
+      }
+    })
+  }
+
+  rl.on('line', (line) => {
     const trimmed = line.trim()
-    if (!trimmed) continue
+    if (!trimmed) return
     let msg
     try {
       msg = JSON.parse(trimmed)
     } catch {
       io.stderr.write('[aiart-runner] ignore non-json stdin line\n')
-      continue
-    }
-    const op = msg?.op
-    if (op === 'shutdown') {
-      await releaseAgentSlot(agentSlot)
-      rl.close()
-      io.exit(0)
       return
     }
-    if (op === 'set_model') {
-      const modelId = typeof msg.modelId === 'string' ? msg.modelId.trim() : ''
-      if (!modelId) {
-        io.stderr.write(
-          '[aiart-runner] model_set ' +
-            JSON.stringify({ ok: false, error: 'missing modelId' }) +
-            '\n'
-        )
-        continue
-      }
-      const cur = defaultModel.currentSelection()
-      forcedSelection = {
-        provider: cur?.provider || 'deepseek-official',
-        model: modelId
-      }
-      // Must dispose so the session write lease is released before next resume
-      await releaseAgentSlot(agentSlot)
-      io.stderr.write('[aiart-runner] model_set ' + JSON.stringify({ ok: true, modelId }) + '\n')
-      continue
-    }
-    if (op === 'prompt') {
-      const task = typeof msg.task === 'string' ? msg.task : ''
-      if (!task.trim()) {
-        io.stderr.write(
-          '[aiart-runner] turn_done ' + JSON.stringify({ ok: false, error: 'empty task' }) + '\n'
-        )
-        continue
-      }
-      currentMode = typeof msg.mode === 'string' && msg.mode ? msg.mode : currentMode
-      currentRunId = typeof msg.runId === 'string' && msg.runId ? msg.runId : currentRunId
-      const selection = forcedSelection || defaultModel.currentSelection()
-      io.stderr.write(
-        '[aiart-runner] prompt_start ' +
-          JSON.stringify({
-            runId: currentRunId,
-            mode: currentMode,
-            model: selection?.model || ''
-          }) +
-          '\n'
-      )
-      try {
-        await runOneTurn(ctx, io, {
-          task,
-          sessionId: typeof msg.sessionId === 'string' ? msg.sessionId : '',
-          mode: currentMode,
-          runId: currentRunId,
-          selection,
-          answerAskUserQuestion,
-          agentSlot
-        })
-        io.stderr.write('[aiart-runner] turn_done ' + JSON.stringify({ ok: true }) + '\n')
-      } catch (error) {
-        io.stderr.write(
-          '[aiart-runner] turn_done ' +
-            JSON.stringify({
-              ok: false,
-              error: error instanceof Error ? error.message : String(error)
-            }) +
-            '\n'
-        )
-      }
-      continue
-    }
-    io.stderr.write('[aiart-runner] unknown op: ' + String(op) + '\n')
-  }
+    handleCommand(msg)
+  })
+  await new Promise((resolve) => rl.once('close', resolve))
   await releaseAgentSlot(agentSlot)
   io.exit(0)
 }

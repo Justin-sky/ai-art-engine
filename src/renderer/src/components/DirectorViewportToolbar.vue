@@ -23,6 +23,63 @@
           <span class="ratio-label">{{ ratioLabel(option.id) }}</span>
         </button>
       </div>
+      <div class="ratio-title comp-title">
+        {{ t('director.stage.compositionGuide') }}
+      </div>
+      <div class="comp-grid">
+        <button
+          v-for="guide in compositionGuides"
+          :key="guide.id"
+          type="button"
+          class="comp-pill"
+          :class="{ active: compositionGuide === guide.id }"
+          @click="onPickCompositionGuide(guide.id)"
+        >
+          {{ t(guide.labelKey) }}
+        </button>
+      </div>
+    </div>
+
+    <div
+      v-if="captureMenuOpen"
+      ref="captureMenuEl"
+      class="capture-menu"
+      role="dialog"
+      :aria-label="t('director.stage.capturePass')"
+    >
+      <div class="ratio-title">
+        {{ t('director.stage.capturePass') }}
+      </div>
+      <div class="comp-grid">
+        <button
+          v-for="pass in capturePasses"
+          :key="pass.id"
+          type="button"
+          class="comp-pill"
+          :class="{ active: capturePass === pass.id }"
+          @click="onPickCapturePass(pass.id)"
+        >
+          {{ t(pass.labelKey) }}
+        </button>
+      </div>
+      <div class="capture-actions">
+        <button
+          type="button"
+          class="capture-action-btn"
+          :title="t('director.stage.captureFirstLastPairHint')"
+          @click="onCaptureFirstLast"
+        >
+          {{ t('director.stage.captureFirstLastPair') }}
+        </button>
+        <button
+          type="button"
+          class="capture-action-btn"
+          :title="t('director.stage.captureAllCamerasHint')"
+          @click="onCaptureAllCameras"
+        >
+          {{ t('director.stage.captureAllCameras') }}
+        </button>
+      </div>
     </div>
 
     <div
@@ -103,14 +160,6 @@
       <button
         type="button"
         class="tool-btn"
-        :title="t('director.stage.resetView')"
-        @click="onReset"
-      >
-        ⟲
-      </button>
-      <button
-        type="button"
-        class="tool-btn"
         :class="{ active: sensMenuOpen }"
         :title="t('director.stage.sensitivity')"
         :aria-label="t('director.stage.sensitivity')"
@@ -132,6 +181,17 @@
       </button>
       <button
         type="button"
+        class="tool-btn pass-trigger-btn"
+        :class="{ active: captureMenuOpen || capturePass !== 'rgb' }"
+        :title="t('director.stage.capturePass')"
+        :aria-label="t('director.stage.capturePass')"
+        :aria-expanded="captureMenuOpen"
+        @click.stop="toggleCaptureMenu"
+      >
+        <span>{{ t(`director.stage.capturePassShort.${capturePass}`) }}</span>
+      </button>
+      <button
+        type="button"
         class="tool-btn"
         :title="t('director.stage.captureShot')"
         :aria-label="t('director.stage.captureShot')"
@@ -145,7 +205,13 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import type { DirectorAspectRatio, StageControlPreferences, TransformMode } from '@shared/domain'
+import type {
+  DirectorAspectRatio,
+  DirectorCapturePass,
+  DirectorCompositionGuide,
+  StageControlPreferences,
+  TransformMode
+} from '@shared/domain'
 import type { DirectorStageEditMode } from '../features/director/useDirectorStageScene'
 import { DIRECTOR_ASPECT_RATIO_OPTIONS } from '../features/director/aspectRatios'
 import { DIRECTOR_TRANSFORM_TOOLS } from '../features/director/transformTools'
@@ -158,19 +224,30 @@ import { persistStageControls } from '../features/director/persistStageControls'
 import { stageControls, setStageControls } from '../editor/preferences'
 import { useStudioI18n } from '../composables/useStudioI18n'
 
-const props = defineProps<{
-  transformMode: TransformMode
-  aspectRatio: DirectorAspectRatio
-  stageEditMode: DirectorStageEditMode
-  selectionBoundsVisible: boolean
-}>()
+const props = withDefaults(
+  defineProps<{
+    transformMode: TransformMode
+    aspectRatio: DirectorAspectRatio
+    stageEditMode: DirectorStageEditMode
+    selectionBoundsVisible: boolean
+    compositionGuide?: DirectorCompositionGuide
+    capturePass?: DirectorCapturePass
+  }>(),
+  {
+    compositionGuide: 'none',
+    capturePass: 'rgb'
+  }
+)
 
 const emit = defineEmits<{
   setMode: [mode: TransformMode]
   setStageEditMode: [mode: DirectorStageEditMode]
-  resetView: []
   capture: []
+  captureFirstLast: []
+  captureAllCameras: []
   setAspectRatio: [ratio: DirectorAspectRatio]
+  setCompositionGuide: [guide: DirectorCompositionGuide]
+  setCapturePass: [pass: DirectorCapturePass]
   toggleSelectionBounds: []
 }>()
 
@@ -179,6 +256,24 @@ const tools = DIRECTOR_TRANSFORM_TOOLS
 const ratioOptions = DIRECTOR_ASPECT_RATIO_OPTIONS
 const ratioMenuOpen = ref(false)
 const ratioMenuEl = ref<HTMLElement | null>(null)
+const captureMenuOpen = ref(false)
+const captureMenuEl = ref<HTMLElement | null>(null)
+
+const compositionGuides: Array<{ id: DirectorCompositionGuide; labelKey: string }> = [
+  { id: 'none', labelKey: 'director.stage.compositionGuideNone' },
+  { id: 'thirds', labelKey: 'director.stage.compositionGuideThirds' },
+  { id: 'golden', labelKey: 'director.stage.compositionGuideGolden' },
+  { id: 'crosshair', labelKey: 'director.stage.compositionGuideCrosshair' },
+  { id: 'safeArea', labelKey: 'director.stage.compositionGuideSafeArea' },
+  { id: 'diagonal', labelKey: 'director.stage.compositionGuideDiagonal' }
+]
+
+const capturePasses: Array<{ id: DirectorCapturePass; labelKey: string }> = [
+  { id: 'rgb', labelKey: 'director.stage.capturePassRgb' },
+  { id: 'depth', labelKey: 'director.stage.capturePassDepth' },
+  { id: 'normal', labelKey: 'director.stage.capturePassNormal' },
+  { id: 'pose', labelKey: 'director.stage.capturePassPose' }
+]
 
 /* ------------------------------------------------------------------ *
  * 操控灵敏度浮层
@@ -248,6 +343,7 @@ function ratioLabel(id: DirectorAspectRatio): string {
 function closeMenus(): void {
   ratioMenuOpen.value = false
   sensMenuOpen.value = false
+  captureMenuOpen.value = false
 }
 
 function onSetMode(mode: TransformMode): void {
@@ -258,13 +354,17 @@ function onSetStageMode(mode: DirectorStageEditMode): void {
   closeMenus()
   emit('setStageEditMode', mode)
 }
-function onReset(): void {
-  closeMenus()
-  emit('resetView')
-}
 function onCapture(): void {
   closeMenus()
   emit('capture')
+}
+function onCaptureFirstLast(): void {
+  closeMenus()
+  emit('captureFirstLast')
+}
+function onCaptureAllCameras(): void {
+  closeMenus()
+  emit('captureAllCameras')
 }
 function onToggleSelectionBounds(): void {
   closeMenus()
@@ -273,21 +373,35 @@ function onToggleSelectionBounds(): void {
 function toggleRatioMenu(): void {
   ratioMenuOpen.value = !ratioMenuOpen.value
   sensMenuOpen.value = false
+  captureMenuOpen.value = false
 }
 function toggleSensMenu(): void {
   sensMenuOpen.value = !sensMenuOpen.value
   ratioMenuOpen.value = false
+  captureMenuOpen.value = false
+}
+function toggleCaptureMenu(): void {
+  captureMenuOpen.value = !captureMenuOpen.value
+  ratioMenuOpen.value = false
+  sensMenuOpen.value = false
 }
 function onPickRatio(ratio: DirectorAspectRatio): void {
   emit('setAspectRatio', ratio)
   ratioMenuOpen.value = false
 }
+function onPickCompositionGuide(guide: DirectorCompositionGuide): void {
+  emit('setCompositionGuide', guide)
+}
+function onPickCapturePass(pass: DirectorCapturePass): void {
+  emit('setCapturePass', pass)
+}
 
 function onDocumentPointerDown(event: PointerEvent): void {
-  if (!ratioMenuOpen.value && !sensMenuOpen.value) return
+  if (!ratioMenuOpen.value && !sensMenuOpen.value && !captureMenuOpen.value) return
   const target = event.target as HTMLElement | null
   if (ratioMenuEl.value?.contains(target)) return
   if (sensMenuEl.value?.contains(target)) return
+  if (captureMenuEl.value?.contains(target)) return
   if (target?.closest('.toolbar-wrap')) return
   closeMenus()
 }
@@ -490,5 +604,79 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocumentPoin
   font-size: 11px;
   line-height: 1;
   color: var(--text-muted);
+}
+
+.comp-title {
+  margin-top: 10px;
+}
+
+.comp-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.comp-pill {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.comp-pill:hover {
+  background: var(--bg-hover);
+}
+
+.comp-pill.active {
+  background: color-mix(in srgb, var(--accent) 18%, var(--bg-elevated));
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+  color: var(--accent-fg, #fff);
+}
+
+.capture-menu {
+  width: 268px;
+  padding: 10px 12px 12px;
+  border-radius: 12px;
+  background: var(--panel-glass);
+  border: 1px solid var(--border);
+  box-shadow: 0 12px 32px var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.capture-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.capture-action-btn {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.capture-action-btn:hover {
+  background: var(--bg-hover);
+}
+
+.pass-trigger-btn {
+  width: auto;
+  min-width: 34px;
+  padding: 0 7px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
 }
 </style>
