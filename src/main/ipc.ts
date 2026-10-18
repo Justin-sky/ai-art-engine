@@ -27,7 +27,6 @@ import type {
   CommitAiWorkflowInput,
   ProjectScanOutputsInput,
   InstalledWorkflowRecordView,
-  ExportWorkflowToMarketInput,
   ScreenRecordStartInput
 } from '@shared/ipc'
 import type { GitFileDiffInput } from '@shared/git'
@@ -135,7 +134,6 @@ import {
   uninstallWorkflow
 } from './services/workflowMarketService'
 import type { WorkflowSkillManifest } from '@shared/workflowMarket'
-import { exportWorkflowToMarket } from './services/workflowExportService'
 import {
   screenRecordingStatus,
   startScreenRecording,
@@ -613,9 +611,6 @@ export function registerIpcHandlers(): void {
     listInstalledWorkflowDetails()
   )
   handle(IpcChannels.WORKFLOW_MARKET_BUNDLE, (id: string) => readInstalledWorkflowPlan(id))
-  handle(IpcChannels.WORKFLOW_EXPORT_TO_MARKET, (input: ExportWorkflowToMarketInput) =>
-    exportWorkflowToMarket(input)
-  )
 
   // 插件市场窗口（单例：已开着则聚焦）
   handle(IpcChannels.MARKETPLACE_OPEN_WINDOW, () => {

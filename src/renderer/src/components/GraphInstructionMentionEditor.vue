@@ -170,7 +170,12 @@
             :title="t(item.titleKey)"
             @click="applyPreset(item)"
           >
-            <PresetVisualGlyph class="preset-glyph" :visual="visualForPreset(item)" />
+            <PresetVisualGlyph
+              class="preset-glyph"
+              :visual="visualForPreset(item)"
+              :preset-id="item.id"
+              :preset-kind="presetKind"
+            />
             <span class="preset-card-title">{{ t(item.titleKey) }}</span>
           </button>
         </div>
@@ -1310,7 +1315,11 @@ function onPresetMenuReposition(): void {
 }
 
 function visualForPreset(item: InstructionPreset): PresetVisual {
-  return resolveInstructionVisual(item)
+  return resolveInstructionVisual({
+    id: item.id,
+    presetKind: props.presetKind,
+    visual: item.visual
+  })
 }
 
 async function applyPreset(item: InstructionPreset): Promise<void> {

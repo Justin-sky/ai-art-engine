@@ -46,18 +46,26 @@ const presetKind = computed((): InstructionPresetKind | null => {
       return 'optimize'
     case 'ui.split':
       return 'uiSplit'
+    case 'frame.animGen':
+      return 'frameAnimGen'
     case 'svg.gen':
       return 'svgGen'
     case 'asset.screenplay':
       return 'screenplay'
+    case 'asset.gameSystem':
+      return 'gameSystem'
     case 'asset.image':
+    case 'image.upscale':
       return 'image'
     case 'asset.video':
+    case 'semantic.rebuild':
       return 'video'
     case 'video.lipSync':
       return 'lipSync'
     case 'video.reshoot':
       return 'reshoot'
+    case 'semantic.compile':
+      return 'semanticCompile'
     case 'asset.voice':
       return 'voice'
     case 'asset.dialogue':
@@ -66,8 +74,22 @@ const presetKind = computed((): InstructionPresetKind | null => {
       return 'sfx'
     case 'asset.music':
       return 'music'
+    case 'asset.model3d':
+      return 'model3d'
+    case 'asset.spatialWorld':
+      return 'spatialWorld'
     case 'model.pose':
       return 'modelPose'
+    case 'model.rigSkin':
+      return 'modelRigSkin'
+    case 'model.segment':
+      return 'modelSegment'
+    case 'model.retarget':
+      return 'modelRetarget'
+    case 'model.texture':
+      return 'modelTexture'
+    case 'model.animation':
+      return 'modelAnimation'
     default:
       return null
   }
