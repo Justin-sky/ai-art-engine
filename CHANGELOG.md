@@ -2,6 +2,16 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [7.8.0] — 2026-10-18
+
+7.8.0 功能版：DeepSeek Harness（`@deepseek-ai/dsh`）迎来 **全能力深度接入**（盘中实时转向、视觉多模态自检闭环、画布异步事件触发器、影视/美术四领域专属子代理矩阵、Todo/Goal/Schedule/Present 与会话导出/回退/全文检索）；**3D 导演台（`stage.3d`）** 全面升级虚拟摄影机轨道与抖动、内置比例假人、多通道控制图导出（Canny/Depth/Normal/Seg）与 AI 一键布景；同时升级 **统一技能市场（Claude Code Skills + GitHub 直装）**、**时间线 NLE 非编工作台**、**抽帧补拍拼接（`video.framePull`）** 与 **游戏界面/多引擎图层拆解（`ui.gen` / `image.layerSplit`）**。
+
+- **新增 · DeepSeek Harness 全能力接入与多代理协同矩阵**：完整接入 `@deepseek-ai/dsh` 原生斜杠指令（`/compact`、`/goal`、`/feedback`、`/export`）、Todo 实时进度看板（`todo_write`）、自主多轮目标执行器（`goal`）、会话内定时提醒（`schedule`）、交付物卡片（`present`）及会话 `.zip` 导出、任意节点回退/分叉（Rewind/Fork）与 SQLite 跨会话全文检索。升级 Node.js 原生 IPC 双通道流式通信，支持盘中实时转向（Mid-Turn Live Steering）、视觉多模态自检闭环、画布异步事件触发器，以及分镜导演 / 视觉资产美术 / Blender 3D 导演 / 时间线音频剪辑四类专属子代理并发看板与续聊。同时自动感知当前打开画布上下文并路由内置节点能力，修复常驻进程冷启动与连续回车发送入队竞态。
+- **新增 · 3D 导演台（`stage.3d`）虚拟摄影机、多通道控制图与 AI 一键布景**：支持 Cinemachine 风格虚拟摄影机轨道（环绕 / 推轨 / 摇臂 / 飞越）、手持呼吸与冲击震屏、构图辅助线（三分法 / 黄金螺旋 / 安全框 / 十字准星）、内置标准比例假人（站姿 / T-Pose / 坐姿 / 打斗 / 奔跑）、骨骼动作与程序化行走循环，支持一键导出 RGB + Depth + Normal + Canny + Actor ID 语义分割五通道控制图及高确定性镜头语义提示词（`out-prompt`），并内置自然语言 AI 导演一键布景。场景层级与新建菜单全面补齐中英国际化、分类 SVG 图标与滚动条。
+- **新增 · 统一技能市场（Claude Code 技能生态 + GitHub URL 直装）與对话内直接装技能**：重构内置技能为节点能力直连，插件市场与聊天工具栏统一收口为「技能（Skills）」面板（指令统一为 `/skills`），支持一键检索与安装 Anthropic 官方 Claude Code 技能库、市场技能及任意 GitHub 仓库/子目录 `SKILL.md`；支持在 AI 对话中直接粘贴 GitHub 链接或自然语言指令联网搜装技能。
+- **新增 · 时间线非编工作台（`video.compose`）、视频抽帧分段补拍（`video.framePull`）与游戏 UI 图层拆解升级**：时间线编辑器升级 J/K/L 穿梭、波纹删除、转场时长调节、变速/调色/定格、自动闪避（Audio Ducking）与响度标准化（`-16 LUFS`），支持导出 FCPXML 与剪映草稿；`video.framePull` 支持标记入出点、AI 重生补拍片段并经 FFmpeg 无损拼回原视频；`ui.gen` 与 `image.layerSplit` 升级多引擎 PSD 分层拆解与背景修补；`asset.image` 支持透明通道 PNG 直出。
+- **说明（发版提示）**：本版涉及主进程、共享层与渲染进程多项能力升级，升级后请**重启应用**。
+
 ## [7.7.0] — 2026-10-16
 
 7.7.0 功能版：面向百集长篇短剧生产，影视工作台（`film.workbench`）补齐 **跨集「全剧角色表（Series Bible）」共享端口（`in-cast` / `out-cast`）**、**`角色名#造型` 换装/战损变体视觉继承** 与 **按场次并发渲染（`filmRenderConcurrency`）** 三大长剧能力；内置 Agent 技能全面对齐最新收口节点，开放工作流市场上架 **「21种手绘插画画风」（`hand-drawn-styles`）**。
