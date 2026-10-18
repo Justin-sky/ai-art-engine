@@ -3207,9 +3207,36 @@ export default {
       aiDirector: {
         button: 'AI Co-Director',
         title: 'AI Co-Director · Natural Language 3D Blocking',
+        previzPacksTitle: '🎬 1-Click Multi-Cam & Cinemachine Previz Packs',
+        previzPacksHint:
+          'Reuses stage characters (auto-spawns mannequins if needed), sets up 180° virtual camera rigs, cut timeline & lighting, and plays immediately',
+        packOtsTitle: 'Classic OTS Dialogue · 180° 4-Cam Rig',
+        packOtsDesc:
+          'Master Group 35mm → OTS A/B 50mm Rule-of-Thirds + Auto-Focus → 0.9s Blend 85mm CU',
+        packOtsBadge: '4 Cams · 8s',
+        packVertigoTitle: 'Vertigo Dolly-Zoom + 360° Hero Orbit',
+        packVertigoDesc:
+          '24→85mm Vertigo Dolly-Zoom lock → 0.75s smooth blend into 360° low-angle orbit',
+        packVertigoBadge: '2 Cams · 7s',
+        packImpactTitle: 'Action Impact + Impulse Shockwave',
+        packImpactDesc:
+          'High-speed dive follow → hard cut to 28mm low-angle Impulse shockwave → slow-mo orbit',
+        packImpactBadge: '3 Cams · 6s',
+        packTriangleTitle: '3-Way Standoff · Leone ECU Montage',
+        packTriangleDesc:
+          '28mm Group Framing wide → A/B/C 85mm telephoto breathing ECU accelerating cuts',
+        packTriangleBadge: '4 Cams · 8s',
+        packOnerTitle: 'Single-Take Oner · Steadicam Follow',
+        packOnerDesc:
+          'Transposer damped spring lead tracking + 1.2s seamless swing to side profile tracking',
+        packOnerBadge: '2 Cams · 8s',
+        bakeStoryboard: '📸 1-Click Bake Cut Storyboard',
+        bakeStoryboardHint:
+          'Steps through each cut segment on the timeline and captures every shot into the Storyboard gallery',
+        bakedCount: 'Captured {count} storyboard shots',
         placeholder:
           'Describe your scene & camera work (e.g. Two characters in a rainy cyberpunk street reverse-shot standoff, dolly zoom close-up)…',
-        templates: 'Quick Templates',
+        templates: 'Natural Language Templates',
         templateDuel: 'Standoff · OTS Shot-Reverse-Shot',
         templateReveal: 'Hero Reveal · Low-Angle Dolly Zoom',
         templateChase: 'Cyberpunk Run · Tracking Shot',

@@ -1998,8 +1998,8 @@ export function directorViewerForwardFromRotation(rotation: StageVec3): StageVec
   const cy = Math.cos(rotation.y)
   const sy = Math.sin(rotation.y)
   return {
-    x: -sy,
-    y: sx * cy,
+    x: -sy * cx,
+    y: sx,
     z: -cx * cy
   }
 }
@@ -2021,15 +2021,13 @@ export function directorViewerRotationFromLook(position: StageVec3, target: Stag
 }
 
 export function createDefaultDirectorViewer(): DirectorViewerState {
+  const position = { x: 0, y: 2.2, z: 10 }
+  const target = { x: 0, y: 1.2, z: 0 }
   return {
-    position: { x: 0, y: 2.2, z: 10 },
-    rotation: {
-      x: (5.71 * Math.PI) / 180,
-      y: Math.PI,
-      z: 0
-    },
+    position,
+    rotation: directorViewerRotationFromLook(position, target),
     scale: { x: 1, y: 1, z: 1 },
-    target: { x: 0, y: 1.2, z: 0 },
+    target,
     fov: DEFAULT_DIRECTOR_CAMERA_FOV
   }
 }

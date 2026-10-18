@@ -1,3 +1,4 @@
+import * as THREE from 'three'
 import { describe, expect, it } from 'vitest'
 import {
   blendDirectorViewerStates,
@@ -12,11 +13,20 @@ import {
   solveCinemachineVirtualCamera,
   solveDollyZoomPosition
 } from '../src/shared/directorCinematography'
-import { createDefaultDirectorStage } from '../src/shared/domain'
+import {
+  createDefaultDirectorStage,
+  directorViewerForwardFromRotation,
+  directorViewerRotationFromLook
+} from '../src/shared/domain'
+import { findDirectorShotCameraPreset } from '../src/shared/directorCameraPresets'
 import { resolveMotionPromptText } from '../src/shared/graph/motionShots'
 import { sampleAnimKeyframes } from '../src/renderer/src/features/director/animationPath'
 import { findActiveSkeletonSegmentsWithBlend } from '../src/renderer/src/features/director/skeletonAnim'
-import { generateAiDirectorBlocking } from '../src/renderer/src/features/director/directorAiBlocking'
+import {
+  DIRECTOR_CINEMACHINE_PREVIZ_PACKS,
+  generateAiDirectorBlocking,
+  generateCinemachinePrevizPack
+} from '../src/renderer/src/features/director/directorAiBlocking'
 import { createBuiltinMannequin } from '../src/renderer/src/features/director/builtinMannequin'
 
 describe('directorCinematography (P0 / P1 / P2)', () => {
@@ -160,10 +170,105 @@ describe('directorCinematography (P0 / P1 / P2)', () => {
     expect(blocking.animation?.tracks.length).toBeGreaterThanOrEqual(2)
   })
 
-  it('creates procedural posable 3D mannequin with bones and embedded animation clips', () => {
+  it('generates all 5 Cinemachine Previz Packs with smart actor reuse and shot breakdown prompts', () => {
+    expect(DIRECTOR_CINEMACHINE_PREVIZ_PACKS.length).toBe(5)
+
+    // Pre-populate stage with 1 user character model to verify smart actor reuse
+    const baseStage = createDefaultDirectorStage()
+    baseStage.objects.push({
+      id: 'user-hero-1',
+      name: 'Lin Xia',
+      kind: 'model',
+      assetId: 'asset-linxia',
+      visible: true,
+      position: { x: 5, y: 0, z: 5 },
+      rotation: { x: 0, y: 0, z: 0 },
+      scale: { x: 1, y: 1, z: 1 }
+    })
+
+    for (const packDef of DIRECTOR_CINEMACHINE_PREVIZ_PACKS) {
+      const staged = generateCinemachinePrevizPack(baseStage, packDef.id, 'zh-CN')
+      expect(staged.cameras?.length).toBe(packDef.cameraCount)
+      const actors = staged.objects.filter((o) => o.kind === 'character' || o.kind === 'model')
+      expect(actors.length).toBe(packDef.actorCount)
+      // First actor slot reuses user-hero-1
+      expect(actors[0].id).toBe('user-hero-1')
+      expect(actors[0].assetId).toBe('asset-linxia')
+
+      const cutTrack = staged.animation?.tracks.find((tr) => tr.cameraCut)
+      expect(cutTrack).toBeDefined()
+      expect(cutTrack!.cameraSegments?.length).toBe(packDef.cameraCount)
+
+      const promptZh = buildDirectorCinematographyPrompt(staged, 'zh-CN')
+      expect(promptZh.prompt).toContain('[分镜切镜表]')
+
+      const promptEn = buildDirectorCinematographyPrompt(staged, 'en-US')
+      expect(promptEn.prompt).toContain('[Shot Breakdown]')
+    }
+  })
+
+  it('creates procedural posable 3D mannequin with bones and embedded animation clips without torso/head clipping', () => {
     const built = createBuiltinMannequin('humanoid', '#5b9cf5')
     expect(built.bones.length).toBeGreaterThanOrEqual(15)
     expect(built.clips.map((a) => a.name)).toEqual(['Idle', 'Walk', 'Run', 'Wave', 'Action'])
+
+    const boneByName = new Map(built.bones.map((b) => [b.name, b]))
+    const leftForeArm = boneByName.get('LeftForeArm')!
+    const rightForeArm = boneByName.get('RightForeArm')!
+    const leftHand = boneByName.get('LeftHand')!
+    const rightHand = boneByName.get('RightHand')!
+
+    const pos = new THREE.Vector3()
+    const worldOf = (bone: THREE.Bone): THREE.Vector3 => {
+      built.root.updateMatrixWorld(true)
+      return bone.getWorldPosition(pos).clone()
+    }
+
+    // Verify all 5 built-in animation clips keep elbows and hands outside torso/head
+    for (const clip of built.clips) {
+      const mixer = new THREE.AnimationMixer(built.root)
+      const action = mixer.clipAction(clip)
+      action.play()
+      for (let step = 0; step <= 8; step++) {
+        const t = (clip.duration * step) / 8
+        mixer.setTime(t)
+        const lElbow = worldOf(leftForeArm)
+        const rElbow = worldOf(rightForeArm)
+        const lWrist = worldOf(leftHand)
+        const rWrist = worldOf(rightHand)
+
+        // Left elbow & wrist stay on the -X side (abducted outward) or in front of chest (+Z)
+        expect(lElbow.x).toBeLessThan(-0.18)
+        expect(rElbow.x).toBeGreaterThan(0.18)
+        if (clip.name === 'Wave') {
+          // Wave raises the right arm outward and up (+X, +Y), never crossing into head/neck
+          expect(rElbow.x).toBeGreaterThan(0.35)
+          expect(rWrist.x).toBeGreaterThan(0.35)
+          expect(rWrist.y).toBeGreaterThan(1.65)
+        } else {
+          expect(lWrist.x < -0.15 || lWrist.z > 0.12).toBe(true)
+          expect(rWrist.x > 0.15 || rWrist.z > 0.12).toBe(true)
+        }
+      }
+      mixer.stopAllAction()
+    }
+
+    // Verify expressive pose presets do not adduct elbows into the torso
+    for (const preset of DIRECTOR_EXPRESSIVE_POSE_PRESETS) {
+      for (const bone of built.bones) {
+        bone.rotation.set(0, 0, 0)
+      }
+      for (const [bName, rot] of Object.entries(preset.bones)) {
+        const bone = boneByName.get(bName)
+        if (bone) {
+          bone.rotation.set(rot.x, rot.y, rot.z, 'XYZ')
+        }
+      }
+      const lElbow = worldOf(leftForeArm)
+      const rElbow = worldOf(rightForeArm)
+      expect(lElbow.x).toBeLessThan(-0.18)
+      expect(rElbow.x).toBeGreaterThan(0.18)
+    }
   })
 
   it('solves Unity Cinemachine Virtual Camera Body (Transposer, Orbital, GroupFraming) and Aim Composer with Auto Focus Pull', () => {
@@ -291,5 +396,94 @@ describe('directorCinematography (P0 / P1 / P2)', () => {
     expect(blended.position.z).toBeCloseTo(4, 3)
     expect(blended.fov).toBeCloseTo(42, 3)
     expect(blended.focusDistance).toBeCloseTo(4, 3)
+  })
+
+  it('frames the character face (not the neck) in close-up presets and Cinemachine head-aim shots across all 360° camera angles', () => {
+    const built = createBuiltinMannequin('humanoid')
+    built.root.updateMatrixWorld(true)
+    const headMesh = built.root.getObjectByName('Head_Mesh') as THREE.Mesh
+    const neckMesh = built.root.getObjectByName('Neck_Mesh') as THREE.Mesh
+    expect(headMesh).toBeTruthy()
+    expect(neckMesh).toBeTruthy()
+
+    const headBox = new THREE.Box3().setFromObject(headMesh)
+    const neckBox = new THREE.Box3().setFromObject(neckMesh)
+    const fullBox = new THREE.Box3().setFromObject(built.root)
+    const headCenter = headBox.getCenter(new THREE.Vector3())
+    const neckCenter = neckBox.getCenter(new THREE.Vector3())
+    const subjectHeight = fullBox.max.y - fullBox.min.y
+
+    // Close-up and extreme-close-up preset frameBias must land inside the head/face bounds, above the neck
+    const cuPreset = findDirectorShotCameraPreset('shot.close-up')!
+    const ecuPreset = findDirectorShotCameraPreset('shot.extreme-close-up')!
+    const cuAimY = fullBox.min.y + (cuPreset.frameBias ?? 0.5) * subjectHeight
+    const ecuAimY = fullBox.min.y + (ecuPreset.frameBias ?? 0.5) * subjectHeight
+    expect(cuAimY).toBeGreaterThan(neckBox.max.y)
+    expect(cuAimY).toBeGreaterThanOrEqual(headBox.min.y)
+    expect(cuAimY).toBeLessThanOrEqual(headBox.max.y)
+    expect(ecuAimY).toBeGreaterThan(neckCenter.y + 0.1)
+    expect(Math.abs(ecuAimY - headCenter.y)).toBeLessThan(0.05)
+
+    // Cinemachine head-aim cameras in previz packs must project the entire head inside NDC [-1, 1]
+    const stage = createDefaultDirectorStage()
+    const otsStage = generateCinemachinePrevizPack(stage, 'ots_dialogue', 'zh-CN')
+    const cuCam = otsStage.cameras!.find((c) => c.id === 'cam:cm:ots_cu')!
+    const solved = solveCinemachineVirtualCamera(
+      cuCam.viewer,
+      otsStage.objects,
+      6.5,
+      null,
+      16 / 9
+    ).viewer
+
+    const cam = new THREE.PerspectiveCamera(solved.fov ?? 27, 16 / 9, 0.1, 100)
+    cam.rotation.order = 'YXZ'
+    cam.position.set(solved.position.x, solved.position.y, solved.position.z)
+    cam.rotation.set(solved.rotation!.x, solved.rotation!.y, solved.rotation!.z, 'YXZ')
+    cam.updateProjectionMatrix()
+    cam.updateMatrixWorld(true)
+
+    const actorA = otsStage.objects.find((o) => o.kind === 'character')!
+    const faceWorld = new THREE.Vector3(
+      actorA.position.x,
+      actorA.position.y + headCenter.y,
+      actorA.position.z
+    )
+    const crownWorld = new THREE.Vector3(
+      actorA.position.x,
+      actorA.position.y + headBox.max.y,
+      actorA.position.z
+    )
+    const chinWorld = new THREE.Vector3(
+      actorA.position.x,
+      actorA.position.y + headBox.min.y,
+      actorA.position.z
+    )
+    const faceNdc = faceWorld.clone().project(cam)
+    const crownNdc = crownWorld.clone().project(cam)
+    const chinNdc = chinWorld.clone().project(cam)
+
+    // Face center, chin, and crown must all stay well inside the vertical frame [-1, 1]
+    expect(Math.abs(faceNdc.y)).toBeLessThan(0.35)
+    expect(crownNdc.y).toBeLessThan(0.85)
+    expect(chinNdc.y).toBeGreaterThan(-0.85)
+
+    // YXZ forward vector and look rotation must be exact inverses at any 360° angle
+    const sampleTargets = [
+      { pos: { x: -1.5, y: 1.74, z: 0.7 }, target: { x: 1.15, y: 1.75, z: 0 } },
+      { pos: { x: 0, y: 1.74, z: -1.5 }, target: { x: 0, y: 1.9, z: 0 } },
+      { pos: { x: 2.0, y: 1.2, z: 0 }, target: { x: 0, y: 1.75, z: 0 } }
+    ]
+    for (const { pos, target } of sampleTargets) {
+      const rot = directorViewerRotationFromLook(pos, target)
+      const fwd = directorViewerForwardFromRotation(rot)
+      const dx = target.x - pos.x
+      const dy = target.y - pos.y
+      const dz = target.z - pos.z
+      const len = Math.hypot(dx, dy, dz)
+      expect(fwd.x).toBeCloseTo(dx / len, 5)
+      expect(fwd.y).toBeCloseTo(dy / len, 5)
+      expect(fwd.z).toBeCloseTo(dz / len, 5)
+    }
   })
 })

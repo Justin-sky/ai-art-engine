@@ -10,6 +10,7 @@ import {
   type DirectorStageState,
   type DirectorViewerState,
   type StageLightParams,
+  type StageMannequinPreset,
   type StageObjectState,
   type StageVec3
 } from './domain'
@@ -691,7 +692,7 @@ export const DIRECTOR_EXPRESSIVE_POSE_PRESETS: readonly DirectorExpressivePosePr
     category: 'hand',
     labelKey: 'director.stage.expressivePose.handPoint',
     bones: {
-      RightUpperArm: { x: -55 * DEG, y: 0, z: -15 * DEG },
+      RightUpperArm: { x: -55 * DEG, y: 0, z: 12 * DEG },
       RightForeArm: { x: -20 * DEG, y: 0, z: 0 },
       RightHand: { x: 0, y: 0, z: 0 },
       RightIndex: { x: 0, y: 0, z: 0 },
@@ -737,8 +738,8 @@ export const DIRECTOR_EXPRESSIVE_POSE_PRESETS: readonly DirectorExpressivePosePr
       Chest: { x: -12 * DEG, y: 0, z: 0 },
       Neck: { x: 4 * DEG, y: 0, z: 0 },
       Head: { x: -8 * DEG, y: 10 * DEG, z: 0 },
-      LeftUpperArm: { x: 8 * DEG, y: 0, z: 18 * DEG },
-      RightUpperArm: { x: 8 * DEG, y: 0, z: -18 * DEG },
+      LeftUpperArm: { x: 8 * DEG, y: 0, z: -18 * DEG },
+      RightUpperArm: { x: 8 * DEG, y: 0, z: 18 * DEG },
       LeftForeArm: { x: -35 * DEG, y: 0, z: 0 },
       RightForeArm: { x: -35 * DEG, y: 0, z: 0 }
     }
@@ -752,13 +753,13 @@ export const DIRECTOR_EXPRESSIVE_POSE_PRESETS: readonly DirectorExpressivePosePr
       Spine: { x: 12 * DEG, y: 10 * DEG, z: 0 },
       Chest: { x: 10 * DEG, y: 12 * DEG, z: 0 },
       Head: { x: -12 * DEG, y: 18 * DEG, z: 0 },
-      LeftUpperArm: { x: -45 * DEG, y: 20 * DEG, z: 25 * DEG },
+      LeftUpperArm: { x: -45 * DEG, y: 15 * DEG, z: -22 * DEG },
       LeftForeArm: { x: -85 * DEG, y: 0, z: 0 },
-      RightUpperArm: { x: -35 * DEG, y: -20 * DEG, z: -25 * DEG },
+      RightUpperArm: { x: -35 * DEG, y: -15 * DEG, z: 22 * DEG },
       RightForeArm: { x: -95 * DEG, y: 0, z: 0 },
-      LeftUpLeg: { x: -22 * DEG, y: 12 * DEG, z: 0 },
+      LeftUpLeg: { x: -22 * DEG, y: 12 * DEG, z: -5 * DEG },
       LeftLeg: { x: 38 * DEG, y: 0, z: 0 },
-      RightUpLeg: { x: 18 * DEG, y: -12 * DEG, z: 0 },
+      RightUpLeg: { x: 18 * DEG, y: -12 * DEG, z: 5 * DEG },
       RightLeg: { x: 24 * DEG, y: 0, z: 0 }
     }
   }
@@ -1070,26 +1071,87 @@ export function buildDirectorCinematographyPrompt(
   const subjectsZh = subjectDescsZh.length ? subjectDescsZh.join('、') : '舞台中心主体'
   const subjectsEn = subjectDescsEn.length ? subjectDescsEn.join(', ') : 'center stage subject'
 
+  // 7. 多机位切镜时间码脚本（Shot-by-Shot Storyboard Breakdown）
+  const cutSegments = cutTrack?.cameraSegments ?? []
+  const shotLinesZh: string[] = []
+  const shotLinesEn: string[] = []
+  if (cutSegments.length > 0) {
+    const sortedSegs = [...cutSegments].sort((a, b) => a.start - b.start)
+    for (let i = 0; i < sortedSegs.length; i++) {
+      const seg = sortedSegs[i]!
+      const segCam = cameras.find((c) => c.id === seg.cameraId) ?? activeCam
+      const segViewer = segCam.viewer ?? defaultViewer
+      const segFov = Math.round(segViewer.fov ?? DEFAULT_DIRECTOR_CAMERA_FOV)
+      const segMm = segViewer.focalLengthMm ?? fovDegToFocalLengthMm(segFov)
+      const segCm = segViewer.cinemachine
+      const cmTagZh =
+        segCm?.bodyMode === 'orbital'
+          ? '环绕运镜'
+          : segCm?.bodyMode === 'transposer'
+            ? '跟随运镜'
+            : segCm?.bodyMode === 'groupFraming'
+              ? '群像同框'
+              : segViewer.dollyZoomLock
+                ? '希区柯克变焦'
+                : '定机位'
+      const cmTagEn =
+        segCm?.bodyMode === 'orbital'
+          ? 'Orbital track'
+          : segCm?.bodyMode === 'transposer'
+            ? 'Transposer follow'
+            : segCm?.bodyMode === 'groupFraming'
+              ? 'Group framing'
+              : segViewer.dollyZoomLock
+                ? 'Dolly-zoom'
+                : 'Static/Keyframe'
+      const blendNoteZh =
+        i > 0 && (seg.blendInSec ?? 0) > 0.05
+          ? `（平滑过渡 ${seg.blendInSec?.toFixed(1)}s）`
+          : i > 0
+            ? '（硬切）'
+            : ''
+      const blendNoteEn =
+        i > 0 && (seg.blendInSec ?? 0) > 0.05
+          ? ` (smooth blend ${seg.blendInSec?.toFixed(1)}s)`
+          : i > 0
+            ? ' (hard cut)'
+            : ''
+      shotLinesZh.push(
+        `#${i + 1} [${seg.start.toFixed(1)}s-${seg.end.toFixed(1)}s] ${segCam.name}（${segMm}mm，${cmTagZh}）${blendNoteZh}`
+      )
+      shotLinesEn.push(
+        `#${i + 1} [${seg.start.toFixed(1)}s-${seg.end.toFixed(1)}s] ${segCam.name} (${segMm}mm, ${cmTagEn})${blendNoteEn}`
+      )
+    }
+  }
+
   const lowerLocale = typeof locale === 'string' ? locale.toLowerCase() : ''
   const prompt = lowerLocale.startsWith('zh')
     ? [
         `[摄影调度] ${shotSizeZh}，${cameraAngleZh}，${dofZh}。`,
         `[运镜方式] ${cameraMotionZh}。`,
         `[光影氛围] ${lightingMoodZh}。`,
-        `[场面调度] ${subjectsZh}。`
+        `[场面调度] ${subjectsZh}。`,
+        ...(shotLinesZh.length ? [`[分镜切镜表] ${shotLinesZh.join(' → ')}。`] : [])
       ].join('\n')
     : lowerLocale.startsWith('en')
       ? [
           `[Cinematography] ${shotSizeEn}, ${cameraAngleEn}, ${dofEn}.`,
           `[Camera Motion] ${cameraMotionEn}.`,
           `[Lighting & Mood] ${lightingMoodEn}.`,
-          `[Subject Blocking] ${subjectsEn}.`
+          `[Subject Blocking] ${subjectsEn}.`,
+          ...(shotLinesEn.length ? [`[Shot Breakdown] ${shotLinesEn.join(' -> ')}.`] : [])
         ].join('\n')
       : [
           `[摄影调度 / Cinematography] ${shotSizeZh}（${shotSizeEn}），${cameraAngleZh}（${cameraAngleEn}），${dofZh}（${dofEn}）。`,
           `[运镜方式 / Camera Motion] ${cameraMotionZh}（${cameraMotionEn}）。`,
           `[光影氛围 / Lighting & Mood] ${lightingMoodZh}（${lightingMoodEn}）。`,
-          `[场面调度 / Subject Blocking] ${subjectsZh}（${subjectsEn}）。`
+          `[场面调度 / Subject Blocking] ${subjectsZh}（${subjectsEn}）。`,
+          ...(shotLinesZh.length
+            ? [
+                `[分镜切镜表 / Shot Breakdown] ${shotLinesZh.join(' → ')} (${shotLinesEn.join(' -> ')})。`
+              ]
+            : [])
         ].join('\n')
 
   return {
@@ -1377,11 +1439,43 @@ function lerpEulerShortest(a: StageVec3, b: StageVec3, t: number): StageVec3 {
   }
 }
 
-function resolveAimPartHeightBias(part: DirectorCinemachineAimPart, scaleY = 1): number {
+function resolveAimPartHeightBias(
+  part: DirectorCinemachineAimPart,
+  scaleY = 1,
+  preset?: StageMannequinPreset
+): number {
   const sy = Number.isFinite(scaleY) && scaleY > 0 ? scaleY : 1
-  if (part === 'head') return 1.55 * sy
-  if (part === 'chest') return 1.15 * sy
+  if (preset === 'chibi') {
+    if (part === 'head') return 1.18 * sy
+    if (part === 'chest') return 0.8 * sy
+    return 0
+  }
+  if (preset === 'quadruped') {
+    if (part === 'head') return 0.86 * sy
+    if (part === 'chest') return 0.58 * sy
+    return 0
+  }
+  if (part === 'head') return 1.75 * sy
+  if (part === 'chest') return 1.38 * sy
   return 0
+}
+
+function resolveObjectAimPoint(
+  obj: CinemachineSceneObjectInput,
+  part: DirectorCinemachineAimPart
+): StageVec3 {
+  if (part === 'head' && obj.headWorldPosition) {
+    return { ...obj.headWorldPosition }
+  }
+  if (part === 'chest' && obj.chestWorldPosition) {
+    return { ...obj.chestWorldPosition }
+  }
+  const biasY = resolveAimPartHeightBias(part, obj.scale?.y ?? 1, obj.mannequinPreset)
+  return {
+    x: obj.position.x,
+    y: obj.position.y + biasY,
+    z: obj.position.z
+  }
 }
 
 export interface CinemachineRuntimeMemory {
@@ -1392,8 +1486,11 @@ export interface CinemachineRuntimeMemory {
 
 export type CinemachineSceneObjectInput = Pick<
   StageObjectState,
-  'id' | 'kind' | 'visible' | 'position' | 'rotation' | 'scale'
->
+  'id' | 'kind' | 'mannequinPreset' | 'visible' | 'position' | 'rotation' | 'scale'
+> & {
+  headWorldPosition?: StageVec3
+  chestWorldPosition?: StageVec3
+}
 
 /**
  * 求解单台 Cinemachine 虚拟相机在指定时刻 time 的完整 Viewer 状态：
@@ -1535,12 +1632,7 @@ export function solveCinemachineVirtualCamera(
     if (cm.aimMode === 'composer') {
       const lookObj = findObj(cm.lookAtTargetId) ?? followObj
       if (lookObj) {
-        const biasY = resolveAimPartHeightBias(cm.aimTargetPart ?? 'chest', lookObj.scale?.y ?? 1)
-        aimPoint = {
-          x: lookObj.position.x,
-          y: lookObj.position.y + biasY,
-          z: lookObj.position.z
-        }
+        aimPoint = resolveObjectAimPoint(lookObj, cm.aimTargetPart ?? 'chest')
       }
     } else if (cm.aimMode === 'groupComposer' || cm.bodyMode === 'groupFraming') {
       const group = resolveGroupObjects()
@@ -1549,9 +1641,10 @@ export function solveCinemachineVirtualCamera(
         let gy = 0
         let gz = 0
         for (const g of group) {
-          gx += g.position.x
-          gy += g.position.y + 1.15 * (g.scale?.y ?? 1)
-          gz += g.position.z
+          const chestPt = resolveObjectAimPoint(g, 'chest')
+          gx += chestPt.x
+          gy += chestPt.y
+          gz += chestPt.z
         }
         aimPoint = {
           x: gx / group.length,
@@ -1561,12 +1654,7 @@ export function solveCinemachineVirtualCamera(
       }
     } else if (cm.bodyMode === 'orbital') {
       if (followObj) {
-        const biasY = resolveAimPartHeightBias(cm.aimTargetPart ?? 'chest', followObj.scale?.y ?? 1)
-        aimPoint = {
-          x: followObj.position.x,
-          y: followObj.position.y + biasY,
-          z: followObj.position.z
-        }
+        aimPoint = resolveObjectAimPoint(followObj, cm.aimTargetPart ?? 'chest')
       } else {
         aimPoint = { ...target }
       }

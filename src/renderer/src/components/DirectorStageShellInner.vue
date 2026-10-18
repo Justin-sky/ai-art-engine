@@ -148,6 +148,37 @@
               :aria-label="t('director.stage.aiDirector.title')"
             >
               <div class="ai-director-head">
+                {{ t('director.stage.aiDirector.previzPacksTitle') }}
+              </div>
+              <div class="ai-director-subhint">
+                {{ t('director.stage.aiDirector.previzPacksHint') }}
+              </div>
+              <div class="ai-director-pack-list">
+                <button
+                  v-for="pack in cinemachinePrevizPacks"
+                  :key="pack.id"
+                  type="button"
+                  class="ai-director-pack-card"
+                  :class="{ active: activePrevizPackId === pack.id }"
+                  @click="onPickCinemachinePack(pack.id)"
+                >
+                  <div class="ai-director-pack-top">
+                    <span class="ai-director-pack-title">{{ t(pack.labelKey) }}</span>
+                    <span class="ai-director-pack-badge">{{ t(pack.badgeKey) }}</span>
+                  </div>
+                  <div class="ai-director-pack-desc">{{ t(pack.descKey) }}</div>
+                </button>
+              </div>
+              <button
+                type="button"
+                class="ai-director-bake-btn"
+                :title="t('director.stage.aiDirector.bakeStoryboardHint')"
+                @click="onBakeCutStoryboard"
+              >
+                {{ t('director.stage.aiDirector.bakeStoryboard') }}
+              </button>
+              <div class="ai-director-divider" />
+              <div class="ai-director-head">
                 {{ t('director.stage.aiDirector.templates') }}
               </div>
               <div class="ai-director-templates">
@@ -164,7 +195,7 @@
               <textarea
                 v-model="aiDirectorPrompt"
                 class="ai-director-textarea"
-                rows="3"
+                rows="2"
                 :placeholder="t('director.stage.aiDirector.placeholder')"
               />
               <div class="ai-director-footer">
@@ -451,7 +482,11 @@ import {
   DIRECTOR_COMBO_CAMERA_PRESETS,
   DIRECTOR_SHOT_CAMERA_PRESETS
 } from '@shared/directorCameraPresets'
-import { DIRECTOR_AI_BLOCKING_TEMPLATES } from '../features/director/directorAiBlocking'
+import {
+  DIRECTOR_AI_BLOCKING_TEMPLATES,
+  DIRECTOR_CINEMACHINE_PREVIZ_PACKS,
+  type DirectorCinemachinePrevizPackId
+} from '../features/director/directorAiBlocking'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { directorStageSceneKey } from '../features/director/stageSceneKey'
 import {
@@ -517,7 +552,9 @@ const aiDirectorMenuOpen = ref(false)
 const aiDirectorMenuEl = ref<HTMLElement | null>(null)
 const aiDirectorPrompt = ref('')
 const aiDirectorSummary = ref('')
+const activePrevizPackId = ref<DirectorCinemachinePrevizPackId | null>(null)
 const aiBlockingTemplates = DIRECTOR_AI_BLOCKING_TEMPLATES
+const cinemachinePrevizPacks = DIRECTOR_CINEMACHINE_PREVIZ_PACKS
 const shotsPanelOpen = ref(false)
 const shotsPanelTab = ref<DirectorMediaGalleryTab>('shots')
 const gizmosMenuOpen = ref(false)
@@ -615,8 +652,21 @@ function onPickAiTemplate(prompt: string): void {
 async function onApplyAiBlocking(): Promise<void> {
   const text = aiDirectorPrompt.value.trim()
   if (!text) return
+  activePrevizPackId.value = null
   const res = await scene.applyAiDirectorBlocking(text)
   aiDirectorSummary.value = res.summary
+}
+
+async function onPickCinemachinePack(packId: DirectorCinemachinePrevizPackId): Promise<void> {
+  activePrevizPackId.value = packId
+  const res = await scene.applyCinemachinePrevizPack(packId)
+  aiDirectorSummary.value = res.summary
+}
+
+function onBakeCutStoryboard(): void {
+  const shots = scene.captureCutTrackStoryboard()
+  aiDirectorSummary.value = t('director.stage.aiDirector.bakedCount', { count: shots.length })
+  aiDirectorMenuOpen.value = false
 }
 
 function onPickPreset(presetId: string): void {
@@ -1345,7 +1395,9 @@ async function onViewportDrop(event: DragEvent): Promise<void> {
   top: calc(100% + 6px);
   left: 0;
   z-index: 65;
-  width: 320px;
+  width: 368px;
+  max-height: min(76vh, 620px);
+  overflow-y: auto;
   padding: 10px 12px;
   border-radius: 10px;
   border: 1px solid var(--border);
@@ -1359,7 +1411,99 @@ async function onViewportDrop(event: DragEvent): Promise<void> {
 .ai-director-head {
   font-size: 11px;
   font-weight: 600;
+  color: var(--text);
+}
+
+.ai-director-subhint {
+  font-size: 10.5px;
+  line-height: 1.4;
   color: var(--text-muted);
+  margin-top: -4px;
+}
+
+.ai-director-pack-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ai-director-pack-card {
+  width: 100%;
+  text-align: left;
+  padding: 7px 9px !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 7px !important;
+  background: var(--bg-elevated) !important;
+  color: var(--text) !important;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  cursor: pointer;
+  transition:
+    border-color 0.14s ease,
+    background 0.14s ease;
+}
+
+.ai-director-pack-card:hover {
+  background: var(--bg-hover) !important;
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border)) !important;
+}
+
+.ai-director-pack-card.active {
+  border-color: var(--accent) !important;
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg-elevated)) !important;
+}
+
+.ai-director-pack-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ai-director-pack-title {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.ai-director-pack-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.ai-director-pack-desc {
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+
+.ai-director-bake-btn {
+  width: 100%;
+  padding: 6px 10px !important;
+  border-radius: 7px !important;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border)) !important;
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg-elevated)) !important;
+  color: var(--text) !important;
+  font-size: 11.5px !important;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+}
+
+.ai-director-bake-btn:hover {
+  background: color-mix(in srgb, var(--accent) 24%, var(--bg-elevated)) !important;
+}
+
+.ai-director-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 2px 0;
 }
 
 .ai-director-templates {

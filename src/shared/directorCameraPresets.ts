@@ -85,7 +85,7 @@ export const DIRECTOR_SHOT_CAMERA_PRESETS: readonly DirectorShotCameraPreset[] =
     labelKey: 'director.stage.cameraPreset.medium',
     group: 'shotSize',
     frameFactor: 1.4,
-    frameBias: 0.6,
+    frameBias: 0.65,
     azimuthDeg: 0
   },
   {
@@ -93,7 +93,7 @@ export const DIRECTOR_SHOT_CAMERA_PRESETS: readonly DirectorShotCameraPreset[] =
     labelKey: 'director.stage.cameraPreset.mediumClose',
     group: 'shotSize',
     frameFactor: 1.0,
-    frameBias: 0.65,
+    frameBias: 0.76,
     azimuthDeg: 0
   },
   {
@@ -101,7 +101,7 @@ export const DIRECTOR_SHOT_CAMERA_PRESETS: readonly DirectorShotCameraPreset[] =
     labelKey: 'director.stage.cameraPreset.close',
     group: 'shotSize',
     frameFactor: 0.7,
-    frameBias: 0.7,
+    frameBias: 0.85,
     azimuthDeg: 0
   },
   {
@@ -109,15 +109,15 @@ export const DIRECTOR_SHOT_CAMERA_PRESETS: readonly DirectorShotCameraPreset[] =
     labelKey: 'director.stage.cameraPreset.closeUp',
     group: 'shotSize',
     frameFactor: 0.4,
-    frameBias: 0.78,
+    frameBias: 0.91,
     azimuthDeg: 0
   },
   {
     id: 'shot.extreme-close-up',
     labelKey: 'director.stage.cameraPreset.extremeCloseUp',
     group: 'shotSize',
-    frameFactor: 0.22,
-    frameBias: 0.8,
+    frameFactor: 0.24,
+    frameBias: 0.92,
     azimuthDeg: 0
   },
   // 角度（默认中景取景，强调机位高度/方位）
@@ -126,7 +126,7 @@ export const DIRECTOR_SHOT_CAMERA_PRESETS: readonly DirectorShotCameraPreset[] =
     labelKey: 'director.stage.cameraPreset.eyeLevel',
     group: 'angle',
     frameFactor: 1.4,
-    frameBias: 0.6,
+    frameBias: 0.65,
     cameraHeightBias: 0,
     azimuthDeg: 0
   },
@@ -135,7 +135,7 @@ export const DIRECTOR_SHOT_CAMERA_PRESETS: readonly DirectorShotCameraPreset[] =
     labelKey: 'director.stage.cameraPreset.low',
     group: 'angle',
     frameFactor: 1.2,
-    frameBias: 0.6,
+    frameBias: 0.65,
     cameraHeightBias: -0.5,
     azimuthDeg: 0
   },
@@ -144,7 +144,7 @@ export const DIRECTOR_SHOT_CAMERA_PRESETS: readonly DirectorShotCameraPreset[] =
     labelKey: 'director.stage.cameraPreset.high',
     group: 'angle',
     frameFactor: 1.5,
-    frameBias: 0.6,
+    frameBias: 0.65,
     cameraHeightBias: 0.6,
     azimuthDeg: 0
   },
@@ -162,7 +162,7 @@ export const DIRECTOR_SHOT_CAMERA_PRESETS: readonly DirectorShotCameraPreset[] =
     labelKey: 'director.stage.cameraPreset.dutch',
     group: 'angle',
     frameFactor: 1.3,
-    frameBias: 0.6,
+    frameBias: 0.65,
     cameraHeightBias: 0,
     azimuthDeg: 0,
     rollDeg: 12
@@ -172,7 +172,7 @@ export const DIRECTOR_SHOT_CAMERA_PRESETS: readonly DirectorShotCameraPreset[] =
     labelKey: 'director.stage.cameraPreset.overShoulder',
     group: 'angle',
     frameFactor: 1.0,
-    frameBias: 0.65,
+    frameBias: 0.78,
     cameraHeightBias: 0,
     azimuthDeg: 25
   },
@@ -181,7 +181,7 @@ export const DIRECTOR_SHOT_CAMERA_PRESETS: readonly DirectorShotCameraPreset[] =
     labelKey: 'director.stage.cameraPreset.threeQuarter',
     group: 'angle',
     frameFactor: 1.3,
-    frameBias: 0.6,
+    frameBias: 0.65,
     cameraHeightBias: 0,
     azimuthDeg: 45
   },
@@ -190,7 +190,7 @@ export const DIRECTOR_SHOT_CAMERA_PRESETS: readonly DirectorShotCameraPreset[] =
     labelKey: 'director.stage.cameraPreset.profile',
     group: 'angle',
     frameFactor: 1.3,
-    frameBias: 0.6,
+    frameBias: 0.65,
     cameraHeightBias: 0,
     azimuthDeg: 90
   },
@@ -199,7 +199,7 @@ export const DIRECTOR_SHOT_CAMERA_PRESETS: readonly DirectorShotCameraPreset[] =
     labelKey: 'director.stage.cameraPreset.back',
     group: 'angle',
     frameFactor: 1.3,
-    frameBias: 0.6,
+    frameBias: 0.65,
     cameraHeightBias: 0,
     azimuthDeg: 180
   }
@@ -221,18 +221,18 @@ export const DIRECTOR_COMBO_CAMERA_PRESETS: readonly DirectorComboCameraPreset[]
         anchor: 'A',
         alongFactor: -0.55,
         sideFactor: 0.42,
-        heightFactor: 0.1,
+        heightFactor: 0.04,
         target: 'B',
-        targetBias: 0.7
+        targetBias: 0.84
       },
       {
         nameKey: 'director.stage.cameraPreset.comboOtsBA',
         anchor: 'B',
         alongFactor: 0.55,
         sideFactor: 0.42,
-        heightFactor: 0.1,
+        heightFactor: 0.04,
         target: 'A',
-        targetBias: 0.7
+        targetBias: 0.84
       }
     ]
   },
@@ -256,9 +256,9 @@ export const DIRECTOR_COMBO_CAMERA_PRESETS: readonly DirectorComboCameraPreset[]
         anchor: 'A',
         alongFactor: -0.55,
         sideFactor: 0.42,
-        heightFactor: 0.1,
+        heightFactor: 0.04,
         target: 'B',
-        targetBias: 0.7
+        targetBias: 0.84
       },
       {
         nameKey: 'director.stage.cameraPreset.comboCloseB',
@@ -267,7 +267,7 @@ export const DIRECTOR_COMBO_CAMERA_PRESETS: readonly DirectorComboCameraPreset[]
         sideFactor: 0.3,
         heightFactor: 0,
         target: 'B',
-        targetBias: 0.8
+        targetBias: 0.91
       }
     ]
   },
@@ -292,18 +292,18 @@ export const DIRECTOR_COMBO_CAMERA_PRESETS: readonly DirectorComboCameraPreset[]
         anchor: 'A',
         alongFactor: -0.55,
         sideFactor: 0.42,
-        heightFactor: 0.1,
+        heightFactor: 0.04,
         target: 'B',
-        targetBias: 0.7
+        targetBias: 0.84
       },
       {
         nameKey: 'director.stage.cameraPreset.comboOtsBA',
         anchor: 'B',
         alongFactor: 0.55,
         sideFactor: 0.42,
-        heightFactor: 0.1,
+        heightFactor: 0.04,
         target: 'A',
-        targetBias: 0.7
+        targetBias: 0.84
       },
       {
         nameKey: 'director.stage.cameraPreset.comboCloseA',
@@ -312,7 +312,7 @@ export const DIRECTOR_COMBO_CAMERA_PRESETS: readonly DirectorComboCameraPreset[]
         sideFactor: 0.3,
         heightFactor: 0,
         target: 'A',
-        targetBias: 0.8
+        targetBias: 0.91
       },
       {
         nameKey: 'director.stage.cameraPreset.comboCloseB',
@@ -321,7 +321,7 @@ export const DIRECTOR_COMBO_CAMERA_PRESETS: readonly DirectorComboCameraPreset[]
         sideFactor: 0.3,
         heightFactor: 0,
         target: 'B',
-        targetBias: 0.8
+        targetBias: 0.91
       }
     ]
   },
@@ -347,7 +347,7 @@ export const DIRECTOR_COMBO_CAMERA_PRESETS: readonly DirectorComboCameraPreset[]
         sideFactor: 0.3,
         heightFactor: 0,
         target: 'A',
-        targetBias: 0.8
+        targetBias: 0.91
       }
     ]
   },
@@ -364,7 +364,7 @@ export const DIRECTOR_COMBO_CAMERA_PRESETS: readonly DirectorComboCameraPreset[]
         sideFactor: 0.25,
         heightFactor: 0,
         target: 'A',
-        targetBias: 0.85
+        targetBias: 0.92
       },
       {
         nameKey: 'director.stage.cameraPreset.comboCloseB',
@@ -373,7 +373,7 @@ export const DIRECTOR_COMBO_CAMERA_PRESETS: readonly DirectorComboCameraPreset[]
         sideFactor: 0.25,
         heightFactor: 0,
         target: 'B',
-        targetBias: 0.85
+        targetBias: 0.92
       }
     ]
   },
@@ -432,27 +432,27 @@ export const DIRECTOR_COMBO_CAMERA_PRESETS: readonly DirectorComboCameraPreset[]
         anchor: 'A',
         alongFactor: -0.55,
         sideFactor: 0.42,
-        heightFactor: 0.1,
+        heightFactor: 0.04,
         target: 'B',
-        targetBias: 0.7
+        targetBias: 0.84
       },
       {
         nameKey: 'director.stage.cameraPreset.comboOtsBC',
         anchor: 'B',
         alongFactor: -0.55,
         sideFactor: 0.42,
-        heightFactor: 0.1,
+        heightFactor: 0.04,
         target: 'C',
-        targetBias: 0.7
+        targetBias: 0.84
       },
       {
         nameKey: 'director.stage.cameraPreset.comboOtsCA',
         anchor: 'C',
         alongFactor: -0.55,
         sideFactor: 0.42,
-        heightFactor: 0.1,
+        heightFactor: 0.04,
         target: 'A',
-        targetBias: 0.7
+        targetBias: 0.84
       }
     ]
   },
@@ -478,7 +478,7 @@ export const DIRECTOR_COMBO_CAMERA_PRESETS: readonly DirectorComboCameraPreset[]
         orbitDistanceFactor: 1.3,
         heightFactor: 0,
         target: 'mid',
-        targetBias: 0.75
+        targetBias: 0.82
       },
       {
         nameKey: 'director.stage.cameraPreset.comboStageRight',
@@ -487,7 +487,7 @@ export const DIRECTOR_COMBO_CAMERA_PRESETS: readonly DirectorComboCameraPreset[]
         orbitDistanceFactor: 1.3,
         heightFactor: 0,
         target: 'mid',
-        targetBias: 0.75
+        targetBias: 0.82
       }
     ]
   },
@@ -513,7 +513,7 @@ export const DIRECTOR_COMBO_CAMERA_PRESETS: readonly DirectorComboCameraPreset[]
         orbitDistanceFactor: 1.3,
         heightFactor: 0,
         target: 'mid',
-        targetBias: 0.75
+        targetBias: 0.82
       },
       {
         nameKey: 'director.stage.cameraPreset.comboStageRight',
@@ -522,7 +522,7 @@ export const DIRECTOR_COMBO_CAMERA_PRESETS: readonly DirectorComboCameraPreset[]
         orbitDistanceFactor: 1.3,
         heightFactor: 0,
         target: 'mid',
-        targetBias: 0.75
+        targetBias: 0.82
       },
       {
         nameKey: 'director.stage.cameraPreset.comboStageLow',

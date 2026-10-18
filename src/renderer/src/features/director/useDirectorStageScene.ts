@@ -147,7 +147,11 @@ import {
   restoreCapturePassState,
   applyCanvasDofBlurIfEnabled
 } from './directorRenderPasses'
-import { generateAiDirectorBlocking } from './directorAiBlocking'
+import {
+  generateAiDirectorBlocking,
+  generateCinemachinePrevizPack,
+  type DirectorCinemachinePrevizPackId
+} from './directorAiBlocking'
 import {
   retargetClipToCharacter,
   collectPoseEditBoneNames,
@@ -692,17 +696,69 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     return directorAspectRatioValue(aspectRatio.value, el?.clientWidth ?? 16, el?.clientHeight ?? 9)
   }
 
+  function resolveMeshSubpartWorldCenter(
+    mesh: THREE.Object3D,
+    part: 'head' | 'chest'
+  ): StageVec3 | undefined {
+    mesh.updateWorldMatrix(true, true)
+    const meshName = part === 'head' ? 'Head_Mesh' : 'Chest_Mesh'
+    const boneRegex =
+      part === 'head'
+        ? /^(head|mixamorig:?head|bip01_?head)$/i
+        : /^(chest|upperchest|spine2|mixamorig:?spine2|bip01_?spine2)$/i
+    let targetMesh: THREE.Mesh | null = null
+    let targetBone: THREE.Bone | null = null
+    mesh.traverse((child) => {
+      if (child instanceof THREE.Mesh && child.name === meshName) {
+        targetMesh = child
+      } else if (!targetBone && child instanceof THREE.Bone && boneRegex.test(child.name)) {
+        targetBone = child
+      }
+    })
+    if (targetMesh) {
+      const m = targetMesh as THREE.Mesh
+      if (!m.geometry.boundingBox) m.geometry.computeBoundingBox()
+      const localCenter = m.geometry.boundingBox
+        ? m.geometry.boundingBox.getCenter(new THREE.Vector3())
+        : new THREE.Vector3()
+      const worldCenter = localCenter.applyMatrix4(m.matrixWorld)
+      return { x: worldCenter.x, y: worldCenter.y, z: worldCenter.z }
+    }
+    if (targetBone) {
+      const b = targetBone as THREE.Bone
+      const worldPos = b.getWorldPosition(new THREE.Vector3())
+      const sy = Math.max(0.2, mesh.getWorldScale(new THREE.Vector3()).y)
+      return {
+        x: worldPos.x,
+        y: worldPos.y + (part === 'head' ? 0.11 * sy : 0.1 * sy),
+        z: worldPos.z
+      }
+    }
+    return undefined
+  }
+
   function resolveAnimatedSceneObjectsSnapshot(): CinemachineSceneObjectInput[] {
     return stage.value.objects.map((o) => {
       const mesh = objectMeshes.get(o.id)
       if (!mesh) return o
+      const headWorldPosition =
+        o.kind === 'character' || o.kind === 'model'
+          ? resolveMeshSubpartWorldCenter(mesh, 'head')
+          : undefined
+      const chestWorldPosition =
+        o.kind === 'character' || o.kind === 'model'
+          ? resolveMeshSubpartWorldCenter(mesh, 'chest')
+          : undefined
       return {
         id: o.id,
         kind: o.kind,
+        mannequinPreset: o.mannequinPreset,
         visible: o.visible,
         position: { x: mesh.position.x, y: mesh.position.y, z: mesh.position.z },
         rotation: { x: mesh.rotation.x, y: mesh.rotation.y, z: mesh.rotation.z },
-        scale: { x: mesh.scale.x, y: mesh.scale.y, z: mesh.scale.z }
+        scale: { x: mesh.scale.x, y: mesh.scale.y, z: mesh.scale.z },
+        ...(headWorldPosition ? { headWorldPosition } : {}),
+        ...(chestWorldPosition ? { chestWorldPosition } : {})
       }
     })
   }
@@ -748,13 +804,14 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     aspect: number,
     viewerOverride?: DirectorViewerState
   ): THREE.PerspectiveCamera {
-    const viewer = resolveEffectiveCameraViewer(undefined, viewerOverride)
+    const viewer = viewerOverride ?? resolveEffectiveCameraViewer()
     const shotCam = new THREE.PerspectiveCamera(
       viewer.fov ?? DEFAULT_DIRECTOR_CAMERA_FOV,
       aspect,
       0.1,
       currentPanoramaRadius() * DIRECTOR_CAMERA_FAR_RADIUS_MULTIPLIER
     )
+    shotCam.rotation.order = 'YXZ'
     const shake =
       (animPlaying.value || animExporting.value) && viewer.handheldShake?.enabled
         ? evaluateHandheldCameraShake(animTime.value, viewer.handheldShake)
@@ -770,7 +827,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       rotation.x + (shake?.rotOffset.x ?? 0),
       rotation.y + (shake?.rotOffset.y ?? 0),
       rotation.z + (shake?.rotOffset.z ?? 0),
-      'XYZ'
+      'YXZ'
     )
     const scale = viewer.scale ?? { x: 1, y: 1, z: 1 }
     shotCam.scale.set(scale.x, scale.y, scale.z)
@@ -1132,7 +1189,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       const viz = shotVisuals.get(selected.id)
       if (viz) {
         viz.root.position.set(next.position.x, next.position.y, next.position.z)
-        viz.root.rotation.set(rotation.x, rotation.y, rotation.z, 'XYZ')
+        viz.root.rotation.set(rotation.x, rotation.y, rotation.z, 'YXZ')
         viz.root.scale.set(next.scale!.x, next.scale!.y, next.scale!.z)
         if (next.fov != null) {
           viz.camera.fov = next.fov
@@ -1152,27 +1209,30 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     schedulePersist()
   }
 
-  /** 选中物体下的模型子物体（世界包围盒中心/身高），供组合机位使用 */
+  /** 选中物体下的模型子物体（世界包围盒中心/身高/头部世界位置），供组合机位使用 */
   function modelSubjectsUnder(objectId: string): {
     id: string
     pos: StageVec3
     height: number
+    headPos?: StageVec3
   }[] {
-    const subjects: { id: string; pos: StageVec3; height: number }[] = []
+    const subjects: { id: string; pos: StageVec3; height: number; headPos?: StageVec3 }[] = []
     for (const obj of stage.value.objects) {
       if (obj.parentId !== objectId || (obj.kind !== 'model' && obj.kind !== 'character')) continue
       const mesh = objectMeshes.get(obj.id)
       let pos: StageVec3 = { x: obj.position.x, y: 0.9, z: obj.position.z }
       let height = 1.8
+      let headPos: StageVec3 | undefined
       if (mesh) {
-        const box = new THREE.Box3().setFromObject(mesh)
+        const box = computeVisibleWorldBox(mesh) ?? new THREE.Box3().setFromObject(mesh)
         if (!box.isEmpty()) {
           const c = box.getCenter(new THREE.Vector3())
           pos = { x: c.x, y: c.y, z: c.z }
           height = Math.max(0.3, box.max.y - box.min.y)
         }
+        headPos = resolveMeshSubpartWorldCenter(mesh, 'head')
       }
-      subjects.push({ id: obj.id, pos, height })
+      subjects.push({ id: obj.id, pos, height, ...(headPos ? { headPos } : {}) })
     }
     return subjects
   }
@@ -1231,9 +1291,9 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   }
 
   function buildComboCameraViewer(
-    a: { pos: StageVec3; height: number },
-    b: { pos: StageVec3; height: number },
-    c: { pos: StageVec3; height: number },
+    a: { pos: StageVec3; height: number; headPos?: StageVec3 },
+    b: { pos: StageVec3; height: number; headPos?: StageVec3 },
+    c: { pos: StageVec3; height: number; headPos?: StageVec3 },
     def: DirectorComboCameraDef
   ): DirectorViewerState {
     const axisX = b.pos.x - a.pos.x
@@ -1259,16 +1319,13 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
             : def.anchor === 'abc'
               ? { x: abcX, y: abcY, z: abcZ }
               : { x: midX, y: midY, z: midZ }
-    const targetPos =
-      def.target === 'A'
-        ? a.pos
-        : def.target === 'B'
-          ? b.pos
-          : def.target === 'C'
-            ? c.pos
-            : def.target === 'abc'
-              ? { x: abcX, y: abcY, z: abcZ }
-              : { x: midX, y: midY, z: midZ }
+    const targetSub =
+      def.target === 'A' ? a : def.target === 'B' ? b : def.target === 'C' ? c : null
+    const targetPos = targetSub
+      ? targetSub.pos
+      : def.target === 'abc'
+        ? { x: abcX, y: abcY, z: abcZ }
+        : { x: midX, y: midY, z: midZ }
     const anchorHeight =
       def.anchor === 'A'
         ? a.height
@@ -1279,17 +1336,17 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
             : def.anchor === 'abc'
               ? (a.height + b.height + c.height) / 3
               : (a.height + b.height) / 2
-    const targetHeight =
-      def.target === 'A'
-        ? a.height
-        : def.target === 'B'
-          ? b.height
-          : def.target === 'C'
-            ? c.height
-            : def.target === 'abc'
-              ? (a.height + b.height + c.height) / 3
-              : (a.height + b.height) / 2
-    const aimY = targetPos.y + (def.targetBias - 0.5) * targetHeight
+    const targetHeight = targetSub
+      ? targetSub.height
+      : def.target === 'abc'
+        ? (a.height + b.height + c.height) / 3
+        : (a.height + b.height) / 2
+    const useHeadTarget = def.targetBias >= 0.84 && !!targetSub?.headPos
+    const aimY = useHeadTarget
+      ? targetSub!.headPos!.y
+      : targetPos.y + (def.targetBias - 0.5) * targetHeight
+    const targetX = useHeadTarget ? targetSub!.headPos!.x : targetPos.x
+    const targetZ = useHeadTarget ? targetSub!.headPos!.z : targetPos.z
     let position: StageVec3
     if (def.orbitAngleDeg != null) {
       const radius = Math.max(0.5, anchorHeight * (def.orbitDistanceFactor ?? 2))
@@ -1312,7 +1369,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
           sz * ((def.sideFactor ?? 0) * anchorHeight)
       }
     }
-    const target: StageVec3 = { x: targetPos.x, y: aimY, z: targetPos.z }
+    const target: StageVec3 = { x: targetX, y: aimY, z: targetZ }
     let rotation = directorViewerRotationFromLook(position, target)
     if (def.rollDeg) {
       rotation = {
@@ -1349,9 +1406,10 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     let centerZ = 0
     let subjectHeight = 1.8
     let facingYaw = 0
+    let headWorldPos: StageVec3 | undefined
     const mesh = objectMeshes.get(objectId)
     if (mesh) {
-      const box = new THREE.Box3().setFromObject(mesh)
+      const box = computeVisibleWorldBox(mesh) ?? new THREE.Box3().setFromObject(mesh)
       if (!box.isEmpty()) {
         const c = box.getCenter(new THREE.Vector3())
         centerX = c.x
@@ -1363,12 +1421,18 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
         const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(q)
         facingYaw = Math.atan2(fwd.x, fwd.z)
       }
+      headWorldPos = resolveMeshSubpartWorldCenter(mesh, 'head')
     }
 
     const fov = preset.fov ?? DEFAULT_DIRECTOR_CAMERA_FOV
     const frameBias = preset.frameBias ?? 0.5
-    const aimY = centerY + (frameBias - 0.5) * subjectHeight
-    const target: StageVec3 = { x: centerX, y: aimY, z: centerZ }
+    const useHeadCenter = frameBias >= 0.84 && !!headWorldPos
+    const aimY = useHeadCenter ? headWorldPos!.y : centerY + (frameBias - 0.5) * subjectHeight
+    const target: StageVec3 = {
+      x: useHeadCenter ? headWorldPos!.x : centerX,
+      y: aimY,
+      z: useHeadCenter ? headWorldPos!.z : centerZ
+    }
     const frameHeight = Math.max(0.1, subjectHeight * preset.frameFactor)
     const distance = Math.max(0.3, frameHeight / 2 / Math.tan(((fov / 2) * Math.PI) / 180))
 
@@ -1430,7 +1494,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       rotation.x + (shake?.rotOffset.x ?? 0),
       rotation.y + (shake?.rotOffset.y ?? 0),
       rotation.z + (shake?.rotOffset.z ?? 0),
-      'XYZ'
+      'YXZ'
     )
     const scale = viewer.scale ?? { x: 1, y: 1, z: 1 }
     camera.scale.set(scale.x, scale.y, scale.z)
@@ -1530,6 +1594,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     const existing = shotVisuals.get(cameraState.id)
     if (existing) return existing
     const root = new THREE.Group()
+    root.rotation.order = 'YXZ'
     root.name = `StageCameraViz:${cameraState.id}`
     root.userData.stageCameraId = cameraState.id
     const shotCamera = new THREE.PerspectiveCamera(
@@ -1538,6 +1603,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       SHOT_VIZ_NEAR,
       SHOT_VIZ_FAR
     )
+    shotCamera.rotation.order = 'YXZ'
     root.add(shotCamera)
     rootHost.add(root)
     const body = createShotCameraBody(cameraState.id)
@@ -1623,7 +1689,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
         const rotation =
           viewer.rotation ?? directorViewerRotationFromLook(viewer.position, viewer.target)
         viz.root.position.set(viewer.position.x, viewer.position.y, viewer.position.z)
-        viz.root.rotation.set(rotation.x, rotation.y, rotation.z, 'XYZ')
+        viz.root.rotation.set(rotation.x, rotation.y, rotation.z, 'YXZ')
         viz.camera.fov = viewer.fov ?? DEFAULT_DIRECTOR_CAMERA_FOV
       }
       viz.body.position.copy(viz.root.position)
@@ -1770,6 +1836,55 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     return captured
   }
 
+  /**
+   * 按 Cinemachine 切镜轨（cameraCut）各片段的代表帧顺序推进时间轴并抓拍全套正反打/运镜分镜图。
+   * 若当前未配置切镜轨，则回退为按全部可用机位顺序抓拍。
+   */
+  function captureCutTrackStoryboard(): DirectorCameraShot[] {
+    if (!renderer || !scene) return []
+    const anim = ensureAnimation()
+    const cutTrack = anim.tracks.find((tr) => tr.cameraCut && (tr.cameraSegments?.length ?? 0) > 0)
+    if (!cutTrack || !cutTrack.cameraSegments || cutTrack.cameraSegments.length === 0) {
+      return captureAllCameras()
+    }
+    const prevTime = animTime.value
+    const prevPlaying = animPlaying.value
+    const prevActiveCamId = stage.value.activeCameraId
+    pauseAnimation()
+    const captured: DirectorCameraShot[] = []
+    try {
+      const sorted = [...cutTrack.cameraSegments].sort((a, b) => a.start - b.start)
+      const camMap = new Map(listCameras().map((c) => [c.id, c]))
+      for (let i = 0; i < sorted.length; i++) {
+        const seg = sorted[i]
+        const camState = camMap.get(seg.cameraId) ?? activeCameraState()
+        const segDur = Math.max(0.1, seg.end - seg.start)
+        const blendOffset = Math.min(seg.blendInSec ?? 0, segDur * 0.45)
+        const sampleTime = Number(
+          (seg.start + blendOffset + (segDur - blendOffset) * 0.5).toFixed(2)
+        )
+        cinemachineMemories.clear()
+        animTime.value = seg.start
+        applyAnimationAtTime(seg.start, false)
+        animTime.value = sampleTime
+        applyAnimationAtTime(sampleTime, false)
+        const label = `#${i + 1} ${camState.name} (${seg.start.toFixed(1)}s-${seg.end.toFixed(1)}s)`
+        const shot = takeCameraShot(undefined, camState, label)
+        if (shot) captured.push(shot)
+      }
+      if (captured.length > 0) {
+        openMediaGallery('shots')
+      }
+      return captured
+    } finally {
+      stage.value.activeCameraId = prevActiveCamId
+      animTime.value = prevTime
+      applyAnimationAtTime(prevTime, false)
+      if (prevPlaying) playAnimation()
+      else requestRender()
+    }
+  }
+
   /** ??????????????RT?????? WebGL ?????????????*/
   function renderCameraPreviewToCanvas(
     targetCanvas: HTMLCanvasElement,
@@ -1787,10 +1902,11 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       0.1,
       currentPanoramaRadius() * DIRECTOR_CAMERA_FAR_RADIUS_MULTIPLIER
     )
+    previewCam.rotation.order = 'YXZ'
     previewCam.position.set(viewer.position.x, viewer.position.y, viewer.position.z)
     const rotation =
       viewer.rotation ?? directorViewerRotationFromLook(viewer.position, viewer.target)
-    previewCam.rotation.set(rotation.x, rotation.y, rotation.z, 'XYZ')
+    previewCam.rotation.set(rotation.x, rotation.y, rotation.z, 'YXZ')
     const scale = viewer.scale ?? { x: 1, y: 1, z: 1 }
     previewCam.scale.set(scale.x, scale.y, scale.z)
     previewCam.updateProjectionMatrix()
@@ -4546,7 +4662,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       const viz = shotVisuals.get(track.targetId)
       if (viz) {
         viz.root.position.set(viewer.position.x, viewer.position.y, viewer.position.z)
-        viz.root.rotation.set(sample.rotation.x, sample.rotation.y, sample.rotation.z, 'XYZ')
+        viz.root.rotation.set(sample.rotation.x, sample.rotation.y, sample.rotation.z, 'YXZ')
         viz.root.scale.set(sample.scale.x, sample.scale.y, sample.scale.z)
         viz.camera.fov = sampledFov ?? DEFAULT_DIRECTOR_CAMERA_FOV
         viz.camera.updateProjectionMatrix()
@@ -4558,9 +4674,8 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
         camera.fov = sampledFov ?? DEFAULT_DIRECTOR_CAMERA_FOV
         camera.updateProjectionMatrix()
         camera.position.set(viewer.position.x, viewer.position.y, viewer.position.z)
-        camera.rotation.set(sample.rotation.x, sample.rotation.y, sample.rotation.z, 'XYZ')
+        camera.rotation.set(sample.rotation.x, sample.rotation.y, sample.rotation.z, 'YXZ')
         camera.scale.set(sample.scale.x, sample.scale.y, sample.scale.z)
-        camera.lookAt(viewer.target.x, viewer.target.y, viewer.target.z)
       }
     }
   }
@@ -4637,7 +4752,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
         const rot =
           solved.rotation ?? directorViewerRotationFromLook(solved.position, solved.target)
         viz.root.position.set(solved.position.x, solved.position.y, solved.position.z)
-        viz.root.rotation.set(rot.x, rot.y, rot.z, 'XYZ')
+        viz.root.rotation.set(rot.x, rot.y, rot.z, 'YXZ')
         viz.body.position.copy(viz.root.position)
         viz.camera.fov = solved.fov ?? DEFAULT_DIRECTOR_CAMERA_FOV
         viz.camera.updateProjectionMatrix()
@@ -7180,6 +7295,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     root.traverse((child) => {
       if (child.visible === false) return
       if (!(child instanceof THREE.Mesh)) return
+      if (child.name === 'Mannequin_SkinnedCarrier') return
       const geometry = child.geometry
       if (!geometry) return
       const skinned = child as THREE.SkinnedMesh
@@ -7431,8 +7547,14 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     requestRender()
   }
 
-  async function applyAiDirectorBlocking(prompt: string): Promise<{ summary: string }> {
-    const plan = generateAiDirectorBlocking(stage.value, prompt, locale.value)
+  async function applyStageBlockingPlan(
+    plan: DirectorStageState,
+    autoPlay = true
+  ): Promise<{ summary: string }> {
+    pauseAnimation()
+    cinemachineMemories.clear()
+    runtimeSolvedCameraViewers.clear()
+    runtimeBlendedCameraViewer = null
     for (const cam of listCameras()) {
       disposeShotCameraVisual(cam.id)
     }
@@ -7444,6 +7566,8 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     stage.value.activeCameraId = plan.activeCameraId
     stage.value.animation = plan.animation
     stage.value.lightingPreset = plan.lightingPreset
+    stage.value.shadowCatcherEnabled = plan.shadowCatcherEnabled
+    stage.value.shadowCatcherOpacity = plan.shadowCatcherOpacity
     stage.value.fogEnabled = plan.fogEnabled
     stage.value.fogDensity = plan.fogDensity
     stage.value.fogColor = plan.fogColor
@@ -7457,11 +7581,30 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       if (viewMode.value === 'camera') applyCameraView()
       else frameShotCameraInDirectorView()
     }
+
+    const camIds = (plan.cameras ?? []).map((c) => c.id)
+    if (camIds.length > 0) {
+      setCameraPreviewSelection(camIds)
+      setCameraPreviewOpen(true)
+    }
+    const cutTrack = plan.animation?.tracks.find((tr) => tr.cameraCut)
+    if (cutTrack) {
+      stageEditMode.value = 'animation'
+      animSelectedTrackId.value = cutTrack.id
+    }
+    animTime.value = 0
+    applyAnimationAtTime(0, false)
+    if (autoPlay && scene) {
+      playAnimation()
+    }
+
     previewRevision.value += 1
     syncCameraNodeFromStage()
     schedulePersist()
     requestRender()
-    const actorCount = plan.objects.filter((o) => o.kind === 'character').length
+    const actorCount = plan.objects.filter(
+      (o) => o.kind === 'character' || o.kind === 'model'
+    ).length
     const camCount = (plan.cameras ?? []).length
     const presetId = plan.lightingPreset ?? 'studio'
     return {
@@ -7471,6 +7614,18 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
         lighting: t(`director.stage.lightingPreset.${presetId}`)
       })
     }
+  }
+
+  async function applyAiDirectorBlocking(prompt: string): Promise<{ summary: string }> {
+    const plan = generateAiDirectorBlocking(stage.value, prompt, locale.value)
+    return applyStageBlockingPlan(plan, true)
+  }
+
+  async function applyCinemachinePrevizPack(
+    packId: DirectorCinemachinePrevizPackId
+  ): Promise<{ summary: string }> {
+    const plan = generateCinemachinePrevizPack(stage.value, packId, locale.value)
+    return applyStageBlockingPlan(plan, true)
   }
 
   /**
@@ -8226,7 +8381,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     const mesh = objectMeshes.get(id)
     if (!mesh) return
 
-    const box = new THREE.Box3().setFromObject(mesh)
+    const box = computeVisibleWorldBox(mesh) ?? new THREE.Box3().setFromObject(mesh)
     const center = new THREE.Vector3()
     let distance = 4
     if (box.isEmpty()) {
@@ -8284,7 +8439,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       const rotation =
         viewer.rotation ?? directorViewerRotationFromLook(viewer.position, viewer.target)
       const quaternion = new THREE.Quaternion().setFromEuler(
-        new THREE.Euler(rotation.x, rotation.y, rotation.z, 'XYZ')
+        new THREE.Euler(rotation.x, rotation.y, rotation.z, 'YXZ')
       )
       return {
         position: new THREE.Vector3(viewer.position.x, viewer.position.y, viewer.position.z),
@@ -8295,7 +8450,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     }
     orbit.update()
     camera.updateMatrixWorld(true)
-    const euler = new THREE.Euler().setFromQuaternion(camera.quaternion, 'XYZ')
+    const euler = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ')
     return {
       position: camera.position.clone(),
       quaternion: camera.quaternion.clone(),
@@ -8371,7 +8526,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       : rotation
     const quat = options?.keepRotation
       ? new THREE.Quaternion().setFromEuler(
-          new THREE.Euler(nextRotation.x, nextRotation.y, nextRotation.z, 'XYZ')
+          new THREE.Euler(nextRotation.x, nextRotation.y, nextRotation.z, 'YXZ')
         )
       : quaternion
     const lookDist = Math.max(
@@ -8461,7 +8616,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       const rotation =
         viewer.rotation ?? directorViewerRotationFromLook(viewer.position, viewer.target)
       camera.position.set(viewer.position.x, viewer.position.y, viewer.position.z)
-      camera.rotation.set(rotation.x, rotation.y, rotation.z, 'XYZ')
+      camera.rotation.set(rotation.x, rotation.y, rotation.z, 'YXZ')
       orbit.target.set(viewer.target.x, viewer.target.y, viewer.target.z)
       orbit.update()
       syncShotVisuals()
@@ -9920,6 +10075,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       0.1,
       currentPanoramaRadius() * DIRECTOR_CAMERA_FAR_RADIUS_MULTIPLIER
     )
+    camera.rotation.order = 'YXZ'
     camera.position.set(viewer.position.x, viewer.position.y, viewer.position.z)
 
     renderer = new THREE.WebGLRenderer({ antialias: true })
@@ -10498,6 +10654,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     updateStageEnvironment,
     applyLightingPreset,
     applyAiDirectorBlocking,
+    applyCinemachinePrevizPack,
     moveSelectionToView,
     alignSelectionWithView,
     alignViewToSelected,
@@ -10533,6 +10690,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     takeCameraShot,
     takeFirstLastFramePair,
     captureAllCameras,
+    captureCutTrackStoryboard,
     removeCameraShot,
     removeCameraVideo,
     mediaGallerySignal,
