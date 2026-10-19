@@ -152,5 +152,10 @@ describe('DeepSeek Harness (@deepseek-ai/dsh) 全能力接入校验', () => {
     expect(CHAT_PANEL_SRC.replace(/\r\n/g, '\n')).toContain(
       'if (status.value?.running) {\n      running.value = true\n      enqueueSend(text'
     )
+    // 5) 中断与发送队列强制插队同步守卫：杜绝非队首项卡在「正在中断…」及旧进程异步退出误杀新轮次
+    expect(SERVICE_SRC).toContain('if (procAborted || child !== proc) return')
+    expect(SERVICE_SRC).toContain('if (abortSeq !== myAbortSeq || !turnActive)')
+    expect(CHAT_PANEL_SRC).toContain('async function abortCurrentRun(): Promise<void>')
+    expect(CHAT_PANEL_SRC).not.toContain('if (!isFirst) return')
   })
 })

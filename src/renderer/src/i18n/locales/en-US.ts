@@ -2908,6 +2908,7 @@ export default {
         size: 'Size',
         labels: 'Scene labels',
         cameras: 'Camera gizmos',
+        motionPaths: 'Motion path lines',
         lights: 'Light gizmos',
         grid: 'Grid',
         selectionBounds: 'Selection bounds',
@@ -3243,7 +3244,22 @@ export default {
         templateGroup: 'Trio Squad · Orbit Camera Blocking',
         apply: 'Stage 3D Blocking',
         applying: 'Staging…',
-        summary: '{actors} actors · {cameras} cameras · {lighting}'
+        summary: '{actors} actors · {cameras} cameras · {lighting}',
+        storyboardDefaultTitle: 'Film Storyboard',
+        storyboardEmpty: 'No storyboard shots found in current graph',
+        storyboardAppliedSummary:
+          'Compiled {shots} shots previz · {actors} actors · {props} props · {duration}s',
+        storyboardWritebackDone:
+          'Captured {count} 3D previz keyframes and wrote back to storyboard as references',
+        storyboardPrevizTitle: 'Storyboard · 3D White-Box Previz',
+        storyboardShotUnit: 'shots',
+        storyboardPrevizHint:
+          'Compile storyboard shots into 3D white-box mannequins, geometric props, 180° axis cameras, and cut track; capture & write back as AI reference images',
+        storyboardAllScenes: 'All Scenes',
+        storyboardApplyBtn: 'Build White-Box Stage',
+        storyboardWritebackBtn: 'Capture & Write Back to Storyboard',
+        storyboardWritebackHint:
+          "Capture each shot along the camera cut track and write back to storyboard shots as 3D previz reference ({'@'}N)"
       }
     }
   },
@@ -6077,7 +6093,17 @@ export default {
           action: 'Action',
           imagePrompt: 'Keyframe prompt',
           videoPrompt: 'Motion prompt'
-        }
+        },
+        openDirectorPreviz: '3D Director White-Box Previz',
+        openDirectorPrevizHint:
+          'Compile storyboard shots, characters (white-box mannequins) and props (geometric primitives) into the 3D Director Stage for camera & blocking previz',
+        openShotPreviz: '3D Previz',
+        openShotPrevizHint:
+          'Preview and fine-tune this shot in the 3D Director Stage with white-box mannequins and camera',
+        previzDirectorNodeTitle: '3D Storyboard Previz',
+        previzRefLabel: '3D Previz',
+        previzRefHint:
+          '3D white-box camera & blocking reference captured from the 3D Director Stage; keyframe and video generation will follow its framing and blocking'
       },
       episode: {
         anchorHint:

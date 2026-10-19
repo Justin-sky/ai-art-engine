@@ -4,41 +4,11 @@ import { describe, expect, it } from 'vitest'
 import { MODEL3D_RIG_PROVIDER_KINDS, supportsModel3dRig } from '@shared/modelProvider'
 
 /**
- * 生成节点不再内联蒙皮；独立蒙皮走 `model.rigSkin` → Meshy/Tripo Rigging API。
- * 本测试锁住：白名单、MCP 不再暴露 gen-side rig、节点卡片过滤供应商。
+ * 3D 生成与骨骼蒙皮均通过画布节点（`asset.model3d`、`model.rigSkin` / `model3d.rig`）+ `task_run` 实时执行。
  */
 const MCP_SRC = readFileSync(resolve('src/main/services/mcpServerService.ts'), 'utf8')
 const NODE_CARD_SRC = readFileSync(resolve('src/renderer/src/components/GraphNodeCard.vue'), 'utf8')
 const EXECUTE_SRC = readFileSync(resolve('src/shared/graph/execute/modelRigSkin.ts'), 'utf8')
-
-function extractInputSchemaBlock(source: string, toolName: string): string {
-  const marker = `name: '${toolName}',`
-  const toolStart = source.indexOf(marker)
-  expect(toolStart, `找不到工具 ${toolName} 的定义`).toBeGreaterThanOrEqual(0)
-  const inputStart = source.indexOf('inputSchema:', toolStart)
-  expect(inputStart).toBeGreaterThanOrEqual(0)
-  const braceStart = source.indexOf('{', inputStart)
-  let depth = 1
-  let i = braceStart + 1
-  for (; i < source.length; i++) {
-    const ch = source[i]
-    if (ch === '{') depth++
-    else if (ch === '}') {
-      depth--
-      if (depth === 0) break
-    }
-  }
-  return source.slice(braceStart, i + 1)
-}
-
-function extractToolBlock(source: string, toolName: string): string {
-  const marker = `name: '${toolName}',`
-  const start = source.indexOf(marker)
-  expect(start).toBeGreaterThanOrEqual(0)
-  const nextTool = source.indexOf('\n  {\n', start + marker.length)
-  const end = nextTool > 0 ? nextTool : source.length
-  return source.slice(start, end)
-}
 
 describe('独立骨骼蒙皮上游白名单', () => {
   it('只放行 Meshy / Tripo', () => {
@@ -53,25 +23,10 @@ describe('独立骨骼蒙皮上游白名单', () => {
   })
 })
 
-describe('MCP generate_model3d 不再暴露生成侧蒙皮', () => {
-  it('inputSchema 不含 rig / rigType / rigAnimation', () => {
-    const schema = extractInputSchemaBlock(MCP_SRC, 'generate_model3d')
-    expect(schema).not.toMatch(/rig:\s*{\s*type:\s*'boolean'/)
-    expect(schema).not.toMatch(/['"]?rigType['"]?\s*:\s*{/)
-    expect(schema).not.toMatch(/['"]?rigAnimation['"]?\s*:\s*{/)
-  })
-
-  it('描述把蒙皮引导到 MCP 专工具 rig_model3d', () => {
-    const block = extractToolBlock(MCP_SRC, 'generate_model3d')
-    // 蒙皮能力本身仍在（Rigging API），但入口从"图节点"变成了 MCP 专工具 rig_model3d：
-    // Agent 反复建图跑任务只为蒙皮一个模型，既绕又容易漏步骤
-    expect(block).toMatch(/骨骼蒙皮/)
-    expect(block).toMatch(/Rigging API/)
-    expect(block).toMatch(/rig_model3d/)
-    expect(block).not.toMatch(/applyModel3dRigArgs/)
-  })
-
-  it('已移除 apply/validate 辅助函数', () => {
+describe('MCP 已移除 generate_model3d / rig_model3d 直调工具，统一走画布节点', () => {
+  it('已移除旧直调工具与 apply/validate 辅助函数', () => {
+    expect(MCP_SRC).not.toContain("name: 'generate_model3d',")
+    expect(MCP_SRC).not.toContain("name: 'rig_model3d',")
     expect(MCP_SRC).not.toMatch(/function applyModel3dRigArgs\(/)
     expect(MCP_SRC).not.toMatch(/function validateModel3dRigArgs\(/)
   })
@@ -95,7 +50,6 @@ describe('节点卡片加工供应商过滤（能力矩阵驱动）', () => {
     expect(NODE_CARD_SRC).toMatch(/meshOpSupported\(/)
     expect(NODE_CARD_SRC).toMatch(/from '@shared\/meshOps'/)
     expect(NODE_CARD_SRC).toMatch(/meshOpForInstructionKind/)
-    // 不再在卡片里维护白名单数组 / Set
     expect(NODE_CARD_SRC).not.toMatch(/tripoOnly/)
     expect(NODE_CARD_SRC).not.toMatch(/supportsModel3d(?:Rig|Segment|PostProcess)\(/)
   })

@@ -15,8 +15,9 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, provide, ref, watch } from 'vue'
+import { inject, onMounted, provide, ref, watch } from 'vue'
 import type { WorldElementKind } from '@shared/graph'
+import { editorDiveKey } from '../../features/graph/model/editorDive'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { useEditorDiveFrameFlush } from '../../composables/useEditorDiveFrameFlush'
 import { applyWorldCatalog } from '../../features/world/applyWorldCatalogOnOpen'
@@ -32,6 +33,7 @@ const props = defineProps<{
 }>()
 
 const workspace = useWorkspaceStore()
+const editorDive = inject(editorDiveKey, null)
 const bodyRef = ref<InstanceType<typeof WorldEditorBody> | null>(null)
 const activeTab = ref<WorldElementKind>(props.tab ?? 'characters')
 // 等播种完成后再挂载四类子图编辑器，确保 NodeGraphEditor 加载时读到已同步的节点
@@ -50,6 +52,13 @@ watch(
     if (tab) activeTab.value = tab
   }
 )
+
+watch(activeTab, (tab) => {
+  const frame = editorDive?.frames.find((f) => f.key === props.frameKey)
+  if (frame && frame.type === 'view' && frame.meta.viewId === 'world.editor') {
+    frame.meta.tab = tab
+  }
+})
 
 onMounted(async () => {
   try {

@@ -224,17 +224,19 @@
             <li>布局菜单保存的是展开几何；侧栏收起偏好单独记忆，不会把收起态写成零宽灰洞。</li>
           </ul>
 
-          <h3 id="ai-chat">5.5 AI 对话面板</h3>
+          <h3 id="ai-chat">5.5 AI 对话面板（全工作区对话直控）</h3>
           <p>
             左侧窄栏底部的 <strong>◈ AI 对话</strong> 打开应用内 AI 助手。它运行 DeepSeek Harness（dsh）
-            agent 运行时，能像外部 Agent 一样调用应用自带的 <a href="guide-mcp.html">MCP 工具服务</a>——
-            相当于<strong>在聊天窗口里直接驱动生成与工程操作</strong>。
+            agent 运行时，实时感知左侧焦点编辑器（节点图、全部下钻 Dive 工作台、3D 导演台、成片时间线、剧本），并能调用应用自带的 <a href="guide-mcp.html">MCP 工具服务</a>——
+            <strong>所有手动可在画布、Dive 工作台或右侧 Inspector 参数面板中进行的操作，都可以直接在 AI 对话中用一句话完成</strong>。
           </p>
           <ul>
+            <li><strong>全工作区感知与直控</strong>：无需学习复杂的节点参数名——无论是 3D 导演台物体的显示/隐藏/移动/旋转/缩放/摆姿/打关键帧（如「隐藏林小满，把镜头推近」），还是美颜精修、多角度机位、打光工作台、影视工作台、漫画排版的深层参数与预设切换（如「套用甜美写真预设，瘦脸调到 55」「把主光调暖一点并加上丁达尔体积光」），AI 都能自动定位当前焦点并实时驱动 UI 刷新。</li>
             <li><strong>@ 引用资产</strong>：输入 <code>@</code> 弹出资产选择器，可把工程内图片 / 视频 / 声音 / 3D 模型
               内联引用进指令（输入区会显示缩略图预览）。dsh 直接解析文本里的 <code>@路径</code>。</li>
             <li><strong>调用生成工具</strong>：让助手「把 @bg.png 生成一张标题图存进工程」——它会调用
               <code>generate_image</code> 等 MCP 工具，工具执行过程以卡片形式实时显示（生成中 / 完成 / 失败）。</li>
+            <li><strong>Ask / Plan / Craft 三档模式</strong>：面板支持切换只读问答（Ask）、沙箱规划（Plan）与全权执行（Craft），在安全可控与高效自动化之间自由切换。</li>
             <li><strong>模型选择</strong>：面板底部可选用任一<strong>已配置密钥的文本模型</strong>（不限于 DeepSeek
               官方）；选择会记住，下次打开沿用。</li>
             <li><strong>多会话</strong>：输入框上方工具栏可新建 / 切换 / 删除会话，历史消息本地持久化。</li>

@@ -61,11 +61,45 @@ export function seedLiveCanvasRunStates(
   }
 }
 
-/** 实时同步到画布的轻量字段：禁止灌入大段 text，否则 Vue 重渲染会堵死滚轮缩放 rAF */
+export function clearLiveCanvasRunStates(hostId: string, nodeIds: string[]): void {
+  const host = graphRunHosts.get(hostId)
+  if (!host || host.isRunning.value) return
+  for (const nodeId of nodeIds) {
+    delete host.runStates[nodeId]
+  }
+}
+
+/** 实时同步到画布的轻量与预览字段：禁止灌入大段 text，否则 Vue 重渲染会堵死滚轮缩放 rAF */
 const LIVE_CANVAS_PARAM_KEYS = new Set([
   'episodeReviewStatus',
   'episodeReviewReason',
-  'episodeReviewPending'
+  'episodeReviewPending',
+  'previewRelativePath',
+  'previewDataUrl',
+  'generatedImages',
+  'selectedImageId',
+  'generatedVideos',
+  'selectedVideoId',
+  'generatedVoices',
+  'selectedVoiceId',
+  'generatedModels',
+  'selectedModelId',
+  'generatedTexts',
+  'selectedTextId',
+  'rigModelRelativePath',
+  'poseModelRelativePath',
+  'animationModelRelativePath',
+  'rigMeta',
+  'rigQa',
+  'spatialWorldExtras',
+  'generateAspectRatio',
+  'generateResolution',
+  'generateQuality',
+  'generateCount',
+  'generateDuration',
+  'generateAudio',
+  'generateFrameMode',
+  'notes'
 ])
 
 function slimLiveCanvasParams(params: Partial<GraphNodeParams>): Partial<GraphNodeParams> | null {
@@ -79,7 +113,7 @@ function slimLiveCanvasParams(params: Partial<GraphNodeParams>): Partial<GraphNo
   return hit ? slim : null
 }
 
-/** 后台任务 params 补丁 → 已打开画布节点（仅审核角标等轻量字段） */
+/** 后台任务 params 补丁 → 已打开画布节点（含生成预览图库与审核角标） */
 export function syncLiveCanvasNodeParams(
   hostId: string,
   nodeId: string,

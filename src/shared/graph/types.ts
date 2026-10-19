@@ -410,6 +410,8 @@ export interface GraphNodeParams {
    * 缺省 false：上游会自行 recaption，同一份输入两次结果可能不同。
    */
   spatialWorldDisableRecaption?: boolean
+  /** 空间世界生成：指定模型 ID（与 generateModel 同步兼容） */
+  spatialWorldModel?: string
   /**
    * 空间世界生成：随世界一起落盘的附加产物（高斯泼溅 SPZ / 360 全景图），
    * 相对路径与主产物同目录同名，仅后缀不同（`splats` → `.spz`、`pano` → `.pano.png`）。
@@ -1355,6 +1357,8 @@ export interface GraphNode {
   size?: { w: number; h: number }
   params: GraphNodeParams
   title?: string
+  /** 节点是否锁定 */
+  locked?: boolean
   /** 所属分组 id */
   groupId?: string
 }

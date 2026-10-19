@@ -1,5 +1,17 @@
 <template>
-  <div class="anim-panel" :class="{ collapsed }">
+  <div
+    class="anim-panel"
+    :class="{ collapsed, resizing: panelResizing }"
+    :style="{ '--anim-panel-height': `${collapsed ? 40 : panelHeight}px` }"
+  >
+    <div
+      class="panel-resize-handle"
+      :class="{ dragging: panelResizing }"
+      @pointerdown="onPanelResizePointerDown"
+      @dblclick="onPanelResizeDoubleClick"
+    >
+      <span class="panel-resize-grip" />
+    </div>
     <div class="anim-toolbar">
       <div class="toolbar-side">
         <div class="playback">
@@ -64,7 +76,7 @@
               class="menu-item"
               @click="addTrack(item.kind, item.id)"
             >
-              {{ item.name }}
+              <span class="menu-item-label">{{ item.name }}</span>
               <span class="menu-tag">{{
                 item.kind === 'camera'
                   ? t('director.stage.anim.cameraTag')
@@ -287,8 +299,9 @@
               v-if="track.cameraCut"
               type="button"
               class="cut-add-btn"
+              :class="{ active: cutMenuTrackId === track.id }"
               :title="t('director.stage.anim.cameraCutAddHint')"
-              @click.stop="addCameraCutAtPlayhead(track)"
+              @click.stop="onCutAddBtnClick(track, $event)"
             >
               +
             </button>
@@ -546,6 +559,27 @@
       </div>
     </div>
 
+    <div
+      v-if="cutMenuTrack && cutCameras.length"
+      class="menu cut-add-menu"
+      :style="cutMenuStyle"
+      @click.stop
+    >
+      <button
+        v-for="cam in cutCameras"
+        :key="cam.id"
+        type="button"
+        class="menu-item"
+        :class="{ active: cam.id === scene.stage.value.activeCameraId }"
+        @click="addCameraCutForCamera(cutMenuTrack, cam.id)"
+      >
+        <span class="menu-item-label">{{ cam.name }}</span>
+        <span class="menu-tag">{{
+          cam.id === scene.stage.value.activeCameraId ? '★' : t('director.stage.anim.cameraTag')
+        }}</span>
+      </button>
+    </div>
+
     <div v-if="pathDrawMode" class="draw-hint">
       {{ drawHint }}
     </div>
@@ -615,15 +649,36 @@ const { t, te } = useStudioI18n()
 const scene = inject(directorStageSceneKey)!
 const workspace = useWorkspaceStore()
 
+const PANEL_DEFAULT_HEIGHT = 176
+const PANEL_MIN_HEIGHT = 110
+const PANEL_COLLAPSE_THRESHOLD = 64
+const PANEL_HEIGHT_STORAGE_KEY = 'director.animPanelHeight'
+
+function loadInitialPanelHeight(): number {
+  try {
+    const raw = Number(window.localStorage.getItem(PANEL_HEIGHT_STORAGE_KEY))
+    if (Number.isFinite(raw) && raw >= PANEL_MIN_HEIGHT && raw <= 720) {
+      return Math.round(raw)
+    }
+  } catch {
+    /* ignore */
+  }
+  return PANEL_DEFAULT_HEIGHT
+}
+
 const addMenuOpen = ref(false)
 const drawMenuTrackId = ref<string | null>(null)
 const axisMenuTrackId = ref<string | null>(null)
+const cutMenuTrackId = ref<string | null>(null)
+const cutMenuPos = ref({ top: 72, left: 160 })
 const dropTrackId = ref<string | null>(null)
 const dropCutTrackId = ref<string | null>(null)
 const timelineEl = ref<HTMLElement | null>(null)
 const rulerWrapEl = ref<HTMLElement | null>(null)
 const pxPerSecond = ref(80)
 const collapsed = ref(false)
+const panelHeight = ref(loadInitialPanelHeight())
+const panelResizing = ref(false)
 const pathKinds = DIRECTOR_ANIM_PATH_KINDS
 const forwardAxes = DIRECTOR_PATH_FORWARD_AXES
 let syncingScroll = false
@@ -661,6 +716,15 @@ const exporting = computed(() => scene.animExporting.value)
 const selectedTrackId = computed(() => scene.animSelectedTrackId.value)
 const selectedKeyframeId = computed(() => scene.animSelectedKeyframeId.value)
 const pathDrawMode = computed(() => scene.pathDrawMode.value)
+
+const cutMenuTrack = computed(
+  () => tracks.value.find((tr) => tr.id === cutMenuTrackId.value && tr.cameraCut) ?? null
+)
+const cutCameras = computed(() => scene.stage.value.cameras ?? [])
+const cutMenuStyle = computed(() => ({
+  top: `${cutMenuPos.value.top}px`,
+  left: `${cutMenuPos.value.left}px`
+}))
 
 const addCandidates = computed(() => {
   const used = new Set(
@@ -837,13 +901,55 @@ function onSelectedCutBlendCurveChange(track: DirectorAnimTrack, event: Event): 
   scene.setCameraCutSegmentBlend(track.id, seg.id, { blendCurve: curve })
 }
 
-/** 在播放头位置给当前激活相机添加一段机位区间 */
-function addCameraCutAtPlayhead(track: DirectorAnimTrack): void {
-  const cameraId = scene.stage.value.activeCameraId
+/** 点击切镜轨右侧 +：多机位时弹出机位选择下拉，单机位直接插入并定位到新片段 */
+function onCutAddBtnClick(track: DirectorAnimTrack, event: MouseEvent): void {
+  const cameras = cutCameras.value
+  if (!cameras.length) return
+  if (cameras.length === 1) {
+    addCameraCutForCamera(track, cameras[0].id)
+    return
+  }
+  if (cutMenuTrackId.value === track.id) {
+    cutMenuTrackId.value = null
+    return
+  }
+  const btn = event.currentTarget as HTMLElement | null
+  const panel = btn?.closest('.anim-panel') as HTMLElement | null
+  if (btn && panel) {
+    const panelRect = panel.getBoundingClientRect()
+    const btnRect = btn.getBoundingClientRect()
+    cutMenuPos.value = {
+      top: Math.max(40, Math.round(btnRect.bottom - panelRect.top + 4)),
+      left: Math.max(8, Math.min(140, Math.round(btnRect.right - panelRect.left - 190)))
+    }
+  }
+  cutMenuTrackId.value = track.id
+  addMenuOpen.value = false
+  drawMenuTrackId.value = null
+  axisMenuTrackId.value = null
+}
+
+function addCameraCutForCamera(track: DirectorAnimTrack, cameraId: string): void {
+  cutMenuTrackId.value = null
   if (!cameraId || !scene.stage.value.cameras?.some((c) => c.id === cameraId)) return
-  const t = currentTime.value
-  const end = Math.min(duration.value, t + 1.5)
-  scene.addCameraCutSegment(track.id, cameraId, Math.max(0, t), Math.max(t + 0.1, end))
+  const segs = cameraCutSegments(track)
+  let start = Math.max(0, currentTime.value)
+  const sameAtStart = segs.find((s) => Math.abs(s.start - start) < 0.05 && s.cameraId === cameraId)
+  if (sameAtStart || start >= duration.value - 0.08) {
+    const lastEnd = segs.reduce((max, s) => Math.max(max, s.end), 0)
+    start = Math.max(start, lastEnd)
+  }
+  const end = start + 1.5
+  scene.addCameraCutSegment(track.id, cameraId, start, end)
+  scene.seekAnimation(start, { persist: false })
+  requestAnimationFrame(() => {
+    const el = timelineEl.value
+    if (!el) return
+    const targetX = timeToX(start)
+    if (targetX < el.scrollLeft || targetX > el.scrollLeft + el.clientWidth - 80) {
+      el.scrollLeft = Math.max(0, targetX - el.clientWidth * 0.4)
+    }
+  })
 }
 
 function removeSelectedCameraCutSegment(track: DirectorAnimTrack): void {
@@ -1158,6 +1264,7 @@ function toggleAddMenu(): void {
   addMenuOpen.value = !addMenuOpen.value
   drawMenuTrackId.value = null
   axisMenuTrackId.value = null
+  cutMenuTrackId.value = null
 }
 
 function addTrack(kind: 'camera' | 'object', id: string): void {
@@ -1169,12 +1276,14 @@ function toggleDrawMenu(trackId: string): void {
   drawMenuTrackId.value = drawMenuTrackId.value === trackId ? null : trackId
   axisMenuTrackId.value = null
   addMenuOpen.value = false
+  cutMenuTrackId.value = null
 }
 
 function toggleAxisMenu(trackId: string): void {
   axisMenuTrackId.value = axisMenuTrackId.value === trackId ? null : trackId
   drawMenuTrackId.value = null
   addMenuOpen.value = false
+  cutMenuTrackId.value = null
 }
 
 function toggleOrientToPath(track: DirectorAnimTrack): void {
@@ -1425,11 +1534,70 @@ function onKeyframePointerUp(): void {
   window.removeEventListener('pointerup', onKeyframePointerUp)
 }
 
+let panelResizeDrag: { startY: number; startHeight: number } | null = null
+
+function persistPanelHeight(height: number): void {
+  try {
+    window.localStorage.setItem(PANEL_HEIGHT_STORAGE_KEY, String(Math.round(height)))
+  } catch {
+    /* ignore */
+  }
+}
+
+function onPanelResizePointerDown(e: PointerEvent): void {
+  if (e.button !== 0) return
+  e.preventDefault()
+  panelResizing.value = true
+  panelResizeDrag = {
+    startY: e.clientY,
+    startHeight: collapsed.value ? 40 : panelHeight.value
+  }
+  ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+  window.addEventListener('pointermove', onPanelResizePointerMove)
+  window.addEventListener('pointerup', onPanelResizePointerUp)
+}
+
+function onPanelResizePointerMove(e: PointerEvent): void {
+  if (!panelResizeDrag) return
+  const dy = panelResizeDrag.startY - e.clientY
+  const rawHeight = panelResizeDrag.startHeight + dy
+  if (rawHeight < PANEL_COLLAPSE_THRESHOLD) {
+    collapsed.value = true
+    return
+  }
+  if (collapsed.value) collapsed.value = false
+  const maxH = Math.max(240, Math.min(640, Math.floor(window.innerHeight * 0.68)))
+  panelHeight.value = Math.max(PANEL_MIN_HEIGHT, Math.min(maxH, Math.round(rawHeight)))
+}
+
+function onPanelResizePointerUp(): void {
+  if (panelResizeDrag) {
+    persistPanelHeight(panelHeight.value)
+  }
+  panelResizeDrag = null
+  panelResizing.value = false
+  window.removeEventListener('pointermove', onPanelResizePointerMove)
+  window.removeEventListener('pointerup', onPanelResizePointerUp)
+}
+
+function onPanelResizeDoubleClick(): void {
+  if (collapsed.value) {
+    collapsed.value = false
+    return
+  }
+  const next = Math.abs(panelHeight.value - PANEL_DEFAULT_HEIGHT) < 8 ? 300 : PANEL_DEFAULT_HEIGHT
+  panelHeight.value = next
+  persistPanelHeight(next)
+}
+
 function onDocPointerDown(e: PointerEvent): void {
   const target = e.target as HTMLElement | null
   if (!target?.closest('.add-wrap')) addMenuOpen.value = false
   if (!target?.closest('.draw-wrap')) drawMenuTrackId.value = null
   if (!target?.closest('.axis-wrap')) axisMenuTrackId.value = null
+  if (!target?.closest('.cut-add-btn') && !target?.closest('.cut-add-menu')) {
+    cutMenuTrackId.value = null
+  }
 }
 
 onMounted(() => {
@@ -1444,14 +1612,17 @@ onBeforeUnmount(() => {
   window.removeEventListener('pointerup', onKeyframePointerUp)
   window.removeEventListener('pointermove', onPlayheadPointerMove)
   window.removeEventListener('pointerup', onPlayheadPointerUp)
+  window.removeEventListener('pointermove', onPanelResizePointerMove)
+  window.removeEventListener('pointerup', onPanelResizePointerUp)
 })
 </script>
 
 <style scoped>
 .anim-panel {
   position: relative;
+  z-index: 15;
   flex-shrink: 0;
-  height: 176px;
+  height: var(--anim-panel-height, 176px);
   display: flex;
   flex-direction: column;
   border-top: 1px solid var(--border);
@@ -1462,8 +1633,59 @@ onBeforeUnmount(() => {
   overflow: visible;
 }
 
+.anim-panel.resizing {
+  transition: none;
+}
+
 .anim-panel.collapsed {
   height: 40px;
+}
+
+.panel-resize-handle {
+  position: absolute;
+  top: -4px;
+  left: 0;
+  right: 0;
+  height: 7px;
+  cursor: ns-resize;
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.panel-resize-handle::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 3px;
+  height: 2px;
+  background: transparent;
+  transition: background 0.14s ease;
+}
+
+.panel-resize-grip {
+  position: relative;
+  z-index: 1;
+  width: 36px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--border-strong);
+  transition:
+    background 0.14s ease,
+    width 0.14s ease;
+}
+
+.panel-resize-handle:hover::before,
+.panel-resize-handle.dragging::before {
+  background: rgba(91, 156, 245, 0.7);
+}
+
+.panel-resize-handle:hover .panel-resize-grip,
+.panel-resize-handle.dragging .panel-resize-grip {
+  width: 48px;
+  background: #5b9cf5;
 }
 
 .anim-panel.collapsed .anim-toolbar {
@@ -2205,7 +2427,8 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
 }
 
-.cut-add-btn:hover {
+.cut-add-btn:hover,
+.cut-add-btn.active {
   border-color: rgba(91, 156, 245, 0.5);
   background: rgba(91, 156, 245, 0.16);
   color: var(--accent-fg);
@@ -2403,6 +2626,18 @@ onBeforeUnmount(() => {
 .add-menu {
   top: calc(100% + 4px);
   left: 0;
+  max-height: max(148px, calc(var(--anim-panel-height, 176px) - 28px));
+  max-width: 260px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.cut-add-menu {
+  max-height: max(124px, calc(var(--anim-panel-height, 176px) - 52px));
+  max-width: 260px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  z-index: 30;
 }
 
 .draw-menu {
@@ -2429,8 +2664,21 @@ onBeforeUnmount(() => {
   background: rgba(91, 156, 245, 0.2);
 }
 
+.menu-item.active {
+  color: var(--accent-fg);
+}
+
+.menu-item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .menu-tag {
   margin-left: auto;
+  flex-shrink: 0;
   color: var(--text-muted);
   font-size: 11px;
 }

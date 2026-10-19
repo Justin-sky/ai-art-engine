@@ -110,7 +110,7 @@ function pushAllItemPaths(value: GraphValue | undefined, push: (path?: string) =
 export function collectRunMediaPaths(
   graph: GraphDocument,
   runStates: Record<string, GraphNodeRunState>,
-  options: { limit?: number } = {}
+  options: { limit?: number; preferredNodeIds?: string[] } = {}
 ): string[] {
   const limit = Math.max(1, Math.trunc(options.limit ?? RUN_MEDIA_PATH_LIMIT))
   const paths: string[] = []
@@ -124,6 +124,37 @@ export function collectRunMediaPaths(
 
   const byId = new Map(graph.nodes.map((node) => [node.id, node]))
   const nodeIds = graph.nodes.map((node) => node.id)
+
+  const collectFromNode = (nodeId: string): void => {
+    const node = byId.get(nodeId)
+    if (node?.locked) return
+    const outputs = runStates[nodeId]?.outputs
+    if (!outputs) return
+    for (const portId of FEATURE_OUT_PORT_IDS) {
+      push(mediaPathOf(outputs[portId]))
+    }
+    if (node?.typeId && MULTI_SHOT_SOURCE_TYPE_IDS.has(node.typeId)) {
+      if (
+        pushAllItemPaths(outputs['out-videos'], push) ||
+        pushAllItemPaths(outputs['out-images'], push) ||
+        pushAllItemPaths(outputs['out-sheets'], push)
+      ) {
+        return
+      }
+    }
+    for (const [portId, value] of Object.entries(outputs)) {
+      if (FRAME_BATCH_OUT_PORT_IDS.has(portId)) continue
+      push(mediaPathOf(value))
+    }
+  }
+
+  // 0) 显式指定目标节点时，优先收集目标节点的产出（自由画布单跑新节点时不混入旧节点产物）
+  if (options.preferredNodeIds?.length) {
+    for (const nodeId of options.preferredNodeIds) {
+      collectFromNode(nodeId)
+    }
+    if (paths.length) return paths
+  }
 
   // 1) 作品级单件产出：2D 帧动画 GIF、2D 舞台拼版
   for (const portId of FEATURE_OUT_PORT_IDS) {
@@ -150,6 +181,7 @@ export function collectRunMediaPaths(
   if (!paths.length) {
     for (const nodeId of nodeIds) {
       const node = byId.get(nodeId)
+      if (node?.locked) continue
       const outputs = runStates[nodeId]?.outputs
       if (!outputs) continue
       if (node?.typeId && MULTI_SHOT_SOURCE_TYPE_IDS.has(node.typeId)) {

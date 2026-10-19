@@ -18,6 +18,7 @@ import {
   resolveOpenAiTtsVoice
 } from '@shared/modelProviders/openai/ttsModels'
 import { resolveOpenAiImageSize } from '@shared/modelProviders/openai/imageSize'
+import { b64JsonToImageDataUrl } from '@shared/media/imageMimeSniff'
 import axios from 'axios'
 import {
   authHeaders,
@@ -629,7 +630,7 @@ function parseGeneratedImages(
 ): GenerateImageResult {
   const images = (data.data ?? [])
     .map((row) => {
-      if (row.b64_json) return `data:image/png;base64,${row.b64_json}`
+      if (row.b64_json) return b64JsonToImageDataUrl(row.b64_json)
       if (row.url) return row.url
       return ''
     })

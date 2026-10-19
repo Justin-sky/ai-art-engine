@@ -242,20 +242,23 @@
             </li>
           </ul>
 
-          <h3 id="ai-chat">5.5 AI chat panel</h3>
+          <h3 id="ai-chat">5.5 AI chat panel (Universal Workspace Control)</h3>
           <p>
             The <strong>◈ AI chat</strong> button at the bottom of the left column opens the in-app AI
-            assistant. It runs the DeepSeek Harness (dsh) agent runtime and can call the app’s built-in
-            <a href="guide-mcp.en.html">MCP tool server</a> exactly like an external agent — in other words,
-            <strong>drive generation and project operations right from the chat window</strong>.
+            assistant. It runs the DeepSeek Harness (dsh) agent runtime, perceives your active left editor
+            (Node Graph, all Dive workbenches, 3D Director Stage, Timeline, Script), and calls the app’s built-in
+            <a href="guide-mcp.en.html">MCP tool server</a> —
+            <strong>every operation you can perform manually on the canvas, inside a Dive workbench, or in the right-hand Inspector can be executed conversationally in a single sentence</strong>.
           </p>
           <ul>
+            <li><strong>Conversational Everything</strong>: No need to memorize node parameter keys — whether you are showing/hiding, moving, rotating, posing, or keyframing actors in the 3D Director Stage (“hide Lin Xiaoman and dolly the camera closer”), or adjusting deep nested sliders and presets in Portrait Retouch, Multi-Angle Camera, Lighting Studio, Film Workbench, or Comic Page (“apply the sweet portrait preset and set face slimming to 55”), the agent automatically targets the active surface and updates the live UI immediately.</li>
             <li><strong>@-reference assets</strong>: type <code>@</code> to open an asset picker and inline
               project images / videos / audio / 3D models into your instruction (the composer shows thumbnail
               previews). dsh parses the <code>@path</code> references directly.</li>
             <li><strong>Call generation tools</strong>: ask “generate a title image from @bg.png into the
               project” — the assistant calls MCP tools like <code>generate_image</code>, and tool progress is
               shown as live cards (running / done / failed).</li>
+            <li><strong>Ask / Plan / Craft modes</strong>: switch freely between read-only Q&amp;A (Ask), sandboxed planning (Plan), and full execution (Craft).</li>
             <li><strong>Model picker</strong>: at the bottom of the panel you can pick any
               <strong>configured text model with a key</strong> (not limited to DeepSeek official); the choice
               is remembered.</li>

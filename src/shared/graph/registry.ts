@@ -1,6 +1,7 @@
 import type { AssetType } from '../domain'
 import type { NodeExecuteFn } from './execute/types'
 import { ensureBuiltinNodeTypes } from './builtinState'
+import type { NodeParamFieldSchema, NodePresetSchema } from './introspection'
 import { isNodeAddableInScope } from './policy/engine'
 import type { GraphAddScope } from './scopes'
 import type {
@@ -33,6 +34,10 @@ export interface NodeTypeDefinition {
   defaultParams: () => GraphNodeParams
   /** 能力说明：graph_node_types 会随节点类型返回给外部 Agent，用于解释端口与关键参数 */
   description?: string
+  /** 可选字段约束覆盖：在自动反射 defaultParams 基础上补充枚举、范围或说明 */
+  paramSchema?: Record<string, Partial<NodeParamFieldSchema>>
+  /** 可选预设列表：供 AI 与检查器一键应用预设 */
+  presets?: NodePresetSchema[]
   /** 右键菜单可添加（全局开关；scope 白名单见 graph-policy） */
   addable?: boolean
   /** 从该资产类型拖入/创建时使用 */

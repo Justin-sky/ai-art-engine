@@ -40,20 +40,13 @@ import {
   type McpToolImage
 } from '@shared/mcpProtocol'
 import {
-  buildDialogueInputs,
-  dialogueSpeakers,
-  normalizeDialogueVoiceMap,
-  parseDialogueScript
-} from '@shared/graph/dialogueScript'
-import {
   AI_WORKFLOW_PRESET_IDS,
   MCP_GRAPH_EDIT_SCOPE,
   getAiWorkflowPresetPlan,
   getNodeCapability,
   getNodeType,
+  introspectNodeType,
   listAddableNodeTypes,
-  summarizeMediaUrlForLog,
-  summarizeReferenceListForLog,
   type GraphDocument,
   contentEndSecOfTimeline,
   readScriptTimelineFromGenParams,
@@ -65,6 +58,7 @@ import {
   type TimelineExportInput
 } from '@shared/graph'
 import { planTimelineRoughCut, type TimelineRoughCutWarning } from '@shared/graph/timelineCut'
+import { sniffImageMimeFromBytes } from '@shared/media/imageMimeSniff'
 import {
   applyTimelineEdits,
   type TimelineClipDraft,
@@ -143,10 +137,6 @@ import {
 import {
   type DecisionEvidenceItem,
   type GenerateDecisionsInput,
-  type GenerateImageInput,
-  type GenerateModel3dInput,
-  type GenerateVideoInput,
-  type GenerateSpatialWorldInput,
   type TranscribeAudioSegment
 } from '@shared/modelProvider'
 import { parseDecisionQuestions } from '@shared/decisionQuestion'
@@ -173,19 +163,6 @@ import {
 } from './externalMcpClient'
 import { mcpActivityService } from './mcpActivityService'
 import { broadcastToAllWindows } from '../broadcast'
-import { SHARED_ERRORS } from '@shared/errors/catalog'
-import { fail } from '@shared/errors/appError'
-import { splitPrimaryAndRelated } from '@shared/outputScan'
-import type {
-  ExportWorldInput,
-  Model3dConvertFormat,
-  Model3dPostProcessInput,
-  Model3dPostProcessOp,
-  Model3dPostProcessResult,
-  SpatialWorldExportAssetType,
-  SpatialWorldExportMeshVariant,
-  SpatialWorldExportResolution
-} from '@shared/modelProvider'
 import { commitAiWorkflow, planAiWorkflow } from './graphPlanService'
 import {
   fetchWorkflowCatalog,
@@ -274,46 +251,7 @@ const MCP_GEN_LIMIT = Number(process.env.AIAE_MCP_GEN_LIMIT) || 3
 /** 审计日志单文件上限（超过滚动为 .1） */
 const MCP_AUDIT_MAX_BYTES = 5 * 1024 * 1024
 /** 纳入并发闸门的工具（同步等待的耗时生成/规划） */
-const GATED_TOOLS = new Set([
-  'generate_image',
-  'generate_speech',
-  'generate_dialogue',
-  'generate_sound_effect',
-  'generate_music',
-  'generate_world',
-  'export_spatial_world',
-  'rig_model3d',
-  'segment_model3d',
-  'post_process_model3d',
-  'decide',
-  'workflow_plan',
-  'tutorial_compose'
-])
-
-/**
- * 3D 加工的全部 op（与 `Model3dPostProcessOp` 同集合）。
- *
- * 这里显式列一份而不是从类型反推：`op` 是**必填字符串**，进来的是不可信的模型输出，
- * 不在白名单时给一条能读懂的错误（列出可选值），比让 facade 走到深处再报错好得多。
- */
-const POST_PROCESS_OPS: readonly Model3dPostProcessOp[] = [
-  'rigCheck',
-  'retopology',
-  'meshComplete',
-  'retarget',
-  'convert',
-  'texture'
-] as const
-
-/** 格式转换的目标格式（与 `Model3dConvertFormat` 同集合） */
-const MODEL3D_CONVERT_FORMATS: readonly Model3dConvertFormat[] = [
-  'GLTF',
-  'FBX',
-  'USDZ',
-  'OBJ',
-  'STL',
-  '3MF'
-] as const
+const GATED_TOOLS = new Set(['task_run', 'decide', 'workflow_plan', 'tutorial_compose'])
 
 /**
  * 一次最多回给客户端几张视频帧。
@@ -397,25 +335,6 @@ async function runGenActivity<T>(
     })
     throw err
   }
-}
-
-/** 活动展示标题：优先 name，否则截断 prompt 摘要 */
-function activityTitle(name: string | undefined, prompt: string): string {
-  const text = name?.trim() || prompt.trim()
-  return text.length > 60 ? `${text.slice(0, 60)}…` : text
-}
-
-/**
- * 取资产最新的相对路径：资产可能在生成后被搬移过（如用户在资产库改文件夹），
- * 活动终态 / 工具返回值都必须用最终路径，否则界面预览会指向失效文件。
- */
-function liveAssetRelativePath(result: {
-  assetId?: string
-  relativePath?: string
-}): string | undefined {
-  if (!result.assetId) return result.relativePath
-  const live = projectService.listAssets().find((item) => item.id === result.assetId)
-  return live?.relativePath || result.relativePath
 }
 
 /**
@@ -1599,7 +1518,11 @@ const TOOL_DEFS: McpToolDef[] = [
             required: ['op']
           }
         },
-        apply: { type: 'boolean', description: '是否写回时间线（默认 false，只回报告不落盘）' }
+        apply: {
+          type: 'boolean',
+          description:
+            '是否写回时间线（默认 true 直接生效并同步打开的时间线编辑器；传 false 仅预演不落盘）'
+        }
       },
       required: ['assetId', 'operations']
     },
@@ -1631,7 +1554,7 @@ const TOOL_DEFS: McpToolDef[] = [
         failures: result.failures.map(timelineEditFailureText)
       }
       const changed = result.added + result.updated + result.removed > 0
-      if (args.apply !== true || !changed) {
+      if (args.apply === false || !changed) {
         return { applied: false, ...summary }
       }
       await runRenderJob('timeline-document-apply', {
@@ -2186,28 +2109,58 @@ const TOOL_DEFS: McpToolDef[] = [
   },
   {
     name: 'task_run',
-    title: '运行工作流',
+    title: '运行画布节点 / 工作流',
     description:
-      '在应用中运行一个已落盘的宿主资产工作流（一键工作流产出的子图资产），整图按拓扑序执行生成，输出写回资产。返回 mcpTaskId，用 task_status 轮询；应用界面任务列表会同步显示。',
+      '在左侧画布上实时运行宿主画布或子图资产的节点（自动打开/聚焦画布，在画布节点上实时显示运行转圈、执行进度日志，生成完成后实时把预览画面/视频/音频/3D模型更新到节点上，同时在对话流弹出产物预览卡）。\n' +
+      '- `assetId` 可选：省略或传 `"current"` 时自动使用最近一次 `graph_edit` 编辑的画布或工程内当前画布（若工程尚无画布会自动新建默认自由画布）；\n' +
+      '- `nodeId` / `nodeIds` 可选：传入时只精准执行目标节点及其未就绪的上游依赖；省略时优先执行最近一次 `graph_edit` 创建/修改的节点（若无则执行整张图）；\n' +
+      '- `wait` 默认 `true`：阻塞等待画布节点执行完成，并直接返回生成的工程相对路径 `relativePaths` 与视觉预览图 `mcpImages`（无需再调 `task_status` 轮询）；仅在需要后台异步跑时传 `wait: false`。',
     inputSchema: {
       type: 'object',
       properties: {
         assetId: {
           type: 'string',
-          description: '宿主资产 id（asset_list 或 workflow_commit 返回）'
+          description: '可选：宿主画布/子图资产 id（省略或传 "current" 自动取最近编辑或当前画布）'
+        },
+        nodeId: {
+          type: 'string',
+          description: '可选：指定要执行的单个画布节点 id（及其未就绪上游依赖）'
+        },
+        nodeIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description:
+            '可选：指定要执行的画布节点 id 列表（省略时默认执行最近一次 graph_edit 修改的节点）'
+        },
+        wait: {
+          type: 'boolean',
+          description:
+            '可选：是否等待画布节点执行完成并直接返回产物与视觉自检图（默认 true；传 false 则受理后立即返回 mcpTaskId）'
         }
       },
-      required: ['assetId']
+      required: []
     },
-    handler: async (args) => {
+    handler: async (args, ctx) => {
       assertProjectOpen()
-      const assetId = readString(args, 'assetId')
-      const asset = projectService.listAssets().find((item) => item.id === assetId)
+      const asset = resolveOrEnsureCanvasAsset(optionalString(args, 'assetId'), {
+        autoCreateCanvas: false
+      })
       const graphJson = (asset?.genParams as Record<string, unknown> | undefined)?.graphJson as
         GraphDocument | undefined
       if (!asset || !graphJson || !Array.isArray(graphJson.nodes)) {
-        throw new Error('资产不存在或不含图文档（task_run 仅支持宿主资产子图）')
+        throw new Error('资产不存在或不含图文档（请先通过 graph_edit 在画布中创建或修改节点）')
       }
+      const assetId = asset.id
+      const explicitNodeIds = [
+        ...(optionalString(args, 'nodeId') ? [optionalString(args, 'nodeId')!.trim()] : []),
+        ...readStringList(args, 'nodeIds')
+      ].filter(Boolean)
+      const requestedNodeIds = explicitNodeIds.length
+        ? [...new Set(explicitNodeIds)]
+        : lastMcpGraphEditTarget?.assetId === assetId && lastMcpGraphEditTarget.nodeIds.length
+          ? [...lastMcpGraphEditTarget.nodeIds]
+          : []
+      const waitForCompletion = args.wait !== false
       const mcpTaskId = randomUUID()
       pendingMcpTaskReports.delete(mcpTaskId)
       // 登记为界面可见的旁路活动：终点由渲染层回报本轮产物相对路径后收尾，
@@ -2216,28 +2169,114 @@ const TOOL_DEFS: McpToolDef[] = [
         mcpTaskId,
         mcpActivityService.begin({
           tool: 'task_run',
-          title: `运行工作流 · ${asset.name}`,
-          detail: '按拓扑序执行整图，产物写回资产',
+          title: `画布执行 · ${asset.name}`,
+          detail: requestedNodeIds.length
+            ? `实时执行画布节点 (${requestedNodeIds.join(', ')})`
+            : '按拓扑序实时执行画布节点',
           assetId
         })
       )
-      broadcastToAllWindows(IpcChannels.MCP_TASK_RUN, { mcpTaskId, assetId })
-      // 等渲染层确认受理
-      for (let i = 0; i < 20; i++) {
+      broadcastToAllWindows(IpcChannels.MCP_TASK_RUN, {
+        mcpTaskId,
+        assetId,
+        ...(requestedNodeIds.length ? { nodeIds: requestedNodeIds } : {})
+      })
+
+      if (!waitForCompletion) {
+        for (let i = 0; i < 20; i++) {
+          await sleep(300)
+          const report = pendingMcpTaskReports.get(mcpTaskId)
+          if (report?.phase === 'accepted') {
+            return {
+              mcpTaskId,
+              taskId: report.taskId ?? null,
+              assetId,
+              nodeIds: requestedNodeIds,
+              state: 'running'
+            }
+          }
+          if (report?.phase === 'finished') {
+            if (report.status === 'error') {
+              throw new Error(report.error ?? '画布节点执行失败')
+            }
+            const relativePaths = report.relativePaths ?? []
+            const visualImages = readVisualCheckImagesForRelativePaths(relativePaths, 3)
+            return {
+              mcpTaskId,
+              taskId: report.taskId ?? null,
+              assetId,
+              nodeIds: requestedNodeIds,
+              phase: 'finished',
+              state: report.status ?? 'done',
+              status: report.status ?? 'done',
+              relativePath: relativePaths[0] ?? null,
+              relativePaths,
+              ...(visualImages.length ? { mcpImages: visualImages } : {})
+            }
+          }
+          if (report?.phase === 'failed') {
+            throw new Error(report.error ?? '任务受理失败')
+          }
+        }
+        return {
+          mcpTaskId,
+          assetId,
+          nodeIds: requestedNodeIds,
+          state: 'dispatched',
+          note: '界面未确认受理（可能界面非最新版本）；可稍后用 task_status 查询'
+        }
+      }
+
+      // 默认等待画布节点执行完成（最长 30 分钟，每 300ms 检查一次终态与取消信号）
+      const maxWaitMs = 30 * 60 * 1000
+      const startedWaitAt = Date.now()
+      let acceptedSeen = false
+      while (Date.now() - startedWaitAt < maxWaitMs) {
+        if (ctx?.signal?.aborted) {
+          throw new Error('调用已取消')
+        }
         await sleep(300)
         const report = pendingMcpTaskReports.get(mcpTaskId)
-        if (report?.phase === 'accepted') {
-          return { mcpTaskId, taskId: report.taskId ?? null, state: 'running' }
+        if (!report) {
+          if (!acceptedSeen && Date.now() - startedWaitAt > 10_000) {
+            return {
+              mcpTaskId,
+              assetId,
+              nodeIds: requestedNodeIds,
+              state: 'dispatched',
+              note: '界面未确认受理；可稍后用 task_status 查询'
+            }
+          }
+          continue
         }
-        if (report?.phase === 'failed') {
-          throw new Error(report.error ?? '任务受理失败')
+        if (report.phase === 'accepted') {
+          acceptedSeen = true
+          continue
+        }
+        if (report.phase === 'failed') {
+          throw new Error(report.error ?? '画布任务受理失败')
+        }
+        if (report.phase === 'finished') {
+          if (report.status === 'error') {
+            throw new Error(report.error ?? '画布节点执行失败')
+          }
+          const relativePaths = report.relativePaths ?? []
+          const visualImages = readVisualCheckImagesForRelativePaths(relativePaths, 3)
+          return {
+            mcpTaskId,
+            taskId: report.taskId ?? null,
+            assetId,
+            nodeIds: requestedNodeIds,
+            phase: 'finished',
+            state: report.status ?? 'done',
+            status: report.status ?? 'done',
+            relativePath: relativePaths[0] ?? null,
+            relativePaths,
+            ...(visualImages.length ? { mcpImages: visualImages } : {})
+          }
         }
       }
-      return {
-        mcpTaskId,
-        state: 'dispatched',
-        note: '界面未确认受理（可能界面非最新版本）；可稍后用 task_status 查询'
-      }
+      throw new Error('等待画布节点执行完成超时，可用 task_status 继续查询')
     }
   },
   {
@@ -2340,6 +2379,7 @@ const TOOL_DEFS: McpToolDef[] = [
       const types = matched.map((def) => {
         const cap = getNodeCapability(def.typeId)
         const usage = cap?.usageZh || cap?.usageEn || undefined
+        const schema = includeParams || Boolean(typeId) ? introspectNodeType(def.typeId) : undefined
         return {
           typeId: def.typeId,
           label: def.label,
@@ -2354,7 +2394,15 @@ const TOOL_DEFS: McpToolDef[] = [
             multiple: port.multiple === true,
             ...(port.label ? { label: port.label } : {})
           })),
-          ...(includeParams ? { params: def.defaultParams() } : {})
+          ...(includeParams ? { params: def.defaultParams() } : {}),
+          ...(schema
+            ? {
+                editablePaths: schema.flatPaths,
+                shorthandMap: schema.shorthandMap,
+                ...(schema.presets.length ? { presets: schema.presets } : {}),
+                ...(schema.diveKind ? { diveKind: schema.diveKind } : {})
+              }
+            : {})
         }
       })
       if (typeId && !types.length) {
@@ -2374,22 +2422,26 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'graph_read',
     title: '读取节点图',
     description:
-      '读取一个已落盘的宿主资产图的结构：节点（id / 类型 / 标题）与连线清单，供 graph_edit 前确认节点 id，或 task_run 前了解图内容。只读操作，图在编辑器中打开时也可调用。',
+      '读取一个已落盘的宿主资产图的结构：节点（id / 类型 / 标题）与连线清单，供 graph_edit 前确认节点 id，或 task_run 前了解图内容。只读操作，图在编辑器中打开时也可调用。省略 assetId 时自动读取当前画布资产。',
     inputSchema: {
       type: 'object',
       properties: {
-        assetId: { type: 'string', description: '宿主资产 id' },
+        assetId: {
+          type: 'string',
+          description: '可选：宿主资产 id（省略或传 "current" 自动读取当前画布）'
+        },
         includeParams: {
           type: 'boolean',
           description: 'true 时附带每个节点的完整参数（默认只返回结构摘要）'
         }
       },
-      required: ['assetId']
+      required: []
     },
     handler: (args) => {
       assertProjectOpen()
-      const assetId = readString(args, 'assetId')
-      const asset = projectService.listAssets().find((item) => item.id === assetId)
+      const asset = resolveOrEnsureCanvasAsset(optionalString(args, 'assetId'), {
+        autoCreateCanvas: false
+      })
       const graphJson = (asset?.genParams as Record<string, unknown> | undefined)?.graphJson as
         GraphDocument | undefined
       if (!asset || !graphJson || !Array.isArray(graphJson.nodes)) {
@@ -2397,7 +2449,7 @@ const TOOL_DEFS: McpToolDef[] = [
       }
       const includeParams = args.includeParams === true
       return {
-        assetId,
+        assetId: asset.id,
         assetName: asset.name,
         nodeCount: graphJson.nodes.length,
         edgeCount: graphJson.edges.length,
@@ -2418,18 +2470,43 @@ const TOOL_DEFS: McpToolDef[] = [
   },
   {
     name: 'graph_edit',
-    title: '编辑节点图',
+    title: '编辑画布节点图 / 3D 导演台 / 检查器',
     description:
-      '对一个已落盘的宿主资产图应用一批编辑操作（node_upsert / node_update / node_delete / edge_connect / edge_delete）。端口兼容性与类型合法性在应用内校验，未通过的操作跳过并记入 warnings。**图正在编辑器中打开时同样可用**：改动叠加在编辑器当前状态之上并即时同步到界面（因此不会覆盖用户尚未落盘的编辑），落盘完成才返回。修改立即持久化并同步应用界面。可借此搭建生成链路，如「剧本（play.script）→ 影视制作工作台（film.workbench，或再展开 film.shot → asset.image → asset.video）」或「图片节点出序列图 → 2D 帧动画（anim.2d，animGifFps > 0 时运行产出 GIF 动图）」；可建节点类型清单见 graph_node_types。也用于落 Agent 撰写的长文或分镜数据（如把 filmStoryboard / filmCast / filmRenderMode 写进 film.workbench，或把游戏策划案正文写入 asset.gameSystem 的 params.text）。' +
-      '教学录屏时请传 **openEditor: true**：先打开该资产编辑器再改图，保证 `screen_record_*` 拍到可见画布变化。' +
-      '创建 / 串联节点后**默认自动布局**（左→右分层）；仅在需要保留手动坐标时传 **autoLayout: false**。',
+      '对左侧打开或工程内的宿主画布、任意节点 Dive 视图、3D 导演台（director.stage）以及右侧检查器（Inspector）应用实时编辑操作（**所有图片/视频/配音/对话/音效/音乐/3D模型/空间世界生成与加工任务均须通过本工具创建或修改画布节点，再调用 `task_run` 在画布上实时执行**）：\n' +
+      '1. **画布节点创建、修改与连线操作**：`node_upsert` / `node_add` / `node_update`（或 `update_params`） / `apply_preset` / `node_delete` / `edge_connect` / `edge_delete` / `node_select` / `group_add` / `group_update` / `group_delete` / `auto_layout`。\n' +
+      '   - 常用生成节点 `typeId`：\n' +
+      '     * 图片生成：`asset.image`（`params: { prompt, aspectRatio, model, providerInstanceId, count, generateTransparentBg, referenceImageUrls }`）\n' +
+      '     * 视频生成：`asset.video`（`params: { prompt, aspectRatio, duration, generateAudio, model, providerInstanceId, firstFrameImageUrl, lastFrameImageUrl, referenceImageUrls }`）\n' +
+      '     * 语音/配音：`voice.tts` 或 `asset.voice`（`params: { prompt, voice, voiceProfile, model, providerInstanceId }`）\n' +
+      '     * 多说话人对话：`voice.dialogue`（`params: { script, voices, voice, voiceProfile, model, providerInstanceId }`）\n' +
+      '     * 音效生成：`audio.sfx`（`params: { prompt, loop, durationSeconds, promptInfluence, model, providerInstanceId }`）\n' +
+      '     * 音乐/BGM 生成：`audio.music`（`params: { prompt, lyrics, instrumental, model, providerInstanceId }`）\n' +
+      '     * 3D 模型生成与加工：`asset.model3d`（`params: { prompt, style, model, providerInstanceId, referenceImageUrls }`）、`model3d.rig`（骨骼蒙皮）、`model3d.segment`（部件拆分）、`model3d.postProcess`（重拓扑/补全/重定向/格式转换）\n' +
+      '     * 空间世界生成与导出：`spatialWorld.generate`（`params: { prompt, model, seed, panoMode, disableRecaption, referenceImageUrls, referenceVideoUrl }`）、`spatialWorld.export`（导出 HQ GLB 网格或 PLY 泼溅）\n' +
+      '   - 在 `params` 中传入 `referenceImageUrls` / `firstFrameImageUrl` / `lastFrameImageUrl` / `referenceVideoUrl` 时，系统会自动在画布上创建锁定的上游参考媒体节点并连线到对应端口；\n' +
+      '   - 省略 `assetId` 时自动作用于当前左侧打开的画布（若工程尚无画布会自动创建并打开默认自由画布）；返回值包含 `assetId` 与本次触达的 `nodeIds`，可直接传给 `task_run` 执行。\n' +
+      '2. **3D 导演台实时操作**：当左侧打开了 3D 导演台 / 3D 分镜预演时，可直接在 `ops` 中传入 3D 舞台操作：`object_update` / `hide_object` / `show_object` / `lock_object` / `unlock_object` / `object_add` / `object_delete` / `object_duplicate` / `object_copy` / `object_paste` / `object_select` / `camera_update` / `camera_add` / `camera_delete` / `lighting_preset` / `environment_update` / `viewport_update` / `ai_blocking` / `cinemachine_pack` / `storyboard_previz` / `capture_shot` / `anim_control`；\n' +
+      '3. **全局工程检查器 / 资产检查器 / 当前检查器通用操作**：`project_globals_update`、`asset_update`、`inspector_update`。',
     inputSchema: {
       type: 'object',
       properties: {
-        assetId: { type: 'string', description: '宿主资产 id' },
+        assetId: {
+          type: 'string',
+          description:
+            '可选：宿主资产 id（缺省自动取当前左侧活动窗口 / Dive 视图所在画布；工程无画布时自动创建）'
+        },
+        nodeId: {
+          type: 'string',
+          description: '可选：目标节点 id（缺省自动取当前 Dive 节点或画布选中节点）'
+        },
+        hostId: {
+          type: 'string',
+          description:
+            '可选：精确指定打开中的图宿主 hostId（如世界要素子图 `asset:<id>:element:characters`）'
+        },
         openEditor: {
           type: 'boolean',
-          description: 'true：先打开该资产的图编辑器再应用 ops（录屏 / 教学必开）'
+          description: '是否自动打开/聚焦该画布编辑器并实时展示变化（默认 true）'
         },
         autoLayout: {
           type: 'boolean',
@@ -2437,7 +2514,8 @@ const TOOL_DEFS: McpToolDef[] = [
         },
         ops: {
           type: 'array',
-          description: '编辑操作批，按顺序执行',
+          description:
+            '编辑操作批，按顺序执行（画布节点操作、Dive 节点深层参数修改、3D 导演台操作、Inspector 检查器操作均可混排）',
           items: {
             type: 'object',
             properties: {
@@ -2445,57 +2523,186 @@ const TOOL_DEFS: McpToolDef[] = [
                 type: 'string',
                 enum: [
                   'node_upsert',
+                  'node_add',
                   'node_update',
+                  'update_params',
+                  'apply_preset',
                   'node_delete',
                   'edge_connect',
+                  'edge_add',
                   'edge_delete',
-                  'node_select'
+                  'node_select',
+                  'group_add',
+                  'group_update',
+                  'group_delete',
+                  'auto_layout',
+                  'inspector_update',
+                  'project_globals_update',
+                  'asset_update',
+                  'semantic_timeline_edit',
+                  'object_update',
+                  'hide_object',
+                  'show_object',
+                  'lock_object',
+                  'unlock_object',
+                  'object_add',
+                  'object_delete',
+                  'object_duplicate',
+                  'object_copy',
+                  'object_paste',
+                  'object_select',
+                  'camera_update',
+                  'camera_add',
+                  'camera_delete',
+                  'lighting_preset',
+                  'environment_update',
+                  'viewport_update',
+                  'ai_blocking',
+                  'cinemachine_pack',
+                  'storyboard_previz',
+                  'capture_shot',
+                  'anim_control'
                 ]
               },
               nodeId: { type: 'string' },
               typeId: {
                 type: 'string',
-                description: 'node_upsert 必填，如 asset.image / play.script'
+                description:
+                  'node_upsert / node_add 必填，如 asset.image / asset.video / voice.tts / audio.sfx / audio.music / asset.model3d / spatialWorld.generate / play.script'
               },
               title: { type: 'string' },
+              preset: {
+                type: 'string',
+                description: '一键预设 ID 或名称（如 natural / studio / rembrandt / 4koma 等）'
+              },
+              locked: { type: 'boolean', description: '节点或 3D 对象锁定状态' },
               params: {
                 type: 'object',
                 description:
-                  '节点参数（与节点现有参数浅合并）。参考图参数会被校验：styleImages 条目须带 libraryId 或 data: 开头的 dataUrl，styleImagesUseGlobal=false 须同时给 styleImages，styleReferenceSubject 只能是 default / ui，characterRefs 条目须带 imageUrl（只写角色名解析不出参考图）；不可解析的值丢弃并记入 warnings'
+                  '节点参数（与节点现有参数深度智能合并）。支持简写属性（prompt / instruction / systemPrompt / model / providerInstanceId / aspectRatio / resolution / count / duration / seed / voice / voices / loop / lyrics / instrumental / style / referenceImageUrls / firstFrameImageUrl / lastFrameImageUrl / referenceVideoUrl）、深层点路径与 JSON 字符串透明合并'
               },
               fromNodeId: { type: 'string' },
               toNodeId: { type: 'string' },
               fromPort: { type: 'string' },
-              toPort: { type: 'string' }
+              toPort: { type: 'string' },
+              groupId: { type: 'string' },
+              nodeIds: { type: 'array', items: { type: 'string' } },
+              objectId: { type: 'string', description: '3D 舞台对象 id（也可传 name 按名称匹配）' },
+              cameraId: { type: 'string', description: '3D 舞台机位 id（也可传 name 按名称匹配）' },
+              name: { type: 'string', description: '3D 对象/机位名称（如 "林小满"）或资产新名称' },
+              newName: { type: 'string', description: '3D 对象/机位重命名后的新名称' },
+              visible: {
+                type: 'boolean',
+                description: '3D 对象/机位显隐（false=隐藏，true=显示）'
+              },
+              nameVisible: { type: 'boolean', description: '3D 头顶名称标签是否显示' },
+              color: {
+                type: 'string',
+                description: '颜色（支持 HEX 如 "#ef4444" 或中英文颜色名如 "红色"）'
+              },
+              position: { type: 'object' },
+              positionDelta: { type: 'object' },
+              rotationDeg: { type: 'object' },
+              rotationDeltaDeg: { type: 'object' },
+              scale: {},
+              uniformScale: { type: 'number' },
+              parentId: { type: ['string', 'null'] },
+              parentName: { type: 'string' },
+              posePreset: { type: 'string' },
+              poseEditMode: { type: 'string', enum: ['fk', 'ik'] },
+              bonePose: { type: 'object' },
+              ikEffectors: { type: 'object' },
+              resetPose: { type: 'boolean' },
+              textures: { type: 'object' },
+              light: { type: 'object' },
+              fov: { type: 'number' },
+              focalLengthMm: { type: 'number' },
+              aperture: { type: 'number' },
+              focusDistance: { type: 'number' },
+              dollyZoomLock: { type: 'boolean' },
+              handheldShake: { type: 'object' },
+              cinemachine: { type: 'object' },
+              skyColor: { type: 'string' },
+              lightingPreset: { type: 'string' },
+              ground: { type: 'object' },
+              environment: { type: 'object' },
+              sceneWorld: { type: 'object' },
+              viewMode: { type: 'string' },
+              shadingMode: { type: 'string' },
+              aspectRatio: { type: 'string' },
+              compositionGuide: { type: 'string' },
+              capturePass: { type: 'string' },
+              transformMode: { type: 'string' },
+              stageEditMode: { type: 'string' },
+              viewOrientation: { type: 'string' }
             },
             required: ['op']
           }
         }
       },
-      required: ['assetId', 'ops']
+      required: ['ops']
     },
     handler: async (args) => {
       assertProjectOpen()
-      const assetId = readString(args, 'assetId')
-      const openEditor = args.openEditor === true
+      const rawAssetIdArg = optionalString(args, 'assetId') ?? ''
+      const normalizedRawAssetId =
+        rawAssetIdArg === 'current' || rawAssetIdArg === 'active' ? '' : rawAssetIdArg
+      const hostId = optionalString(args, 'hostId')
+      const nodeId = optionalString(args, 'nodeId')
       const autoLayout =
         args.autoLayout === true ? true : args.autoLayout === false ? false : undefined
-      const asset = projectService.listAssets().find((item) => item.id === assetId)
-      const graphJson = (asset?.genParams as Record<string, unknown> | undefined)?.graphJson as
-        GraphDocument | undefined
-      if (!asset || !graphJson || !Array.isArray(graphJson.nodes)) {
-        throw new Error('资产不存在或不含图文档（graph_edit 仅支持宿主资产子图）')
-      }
-      if (!Array.isArray(args.ops) || !args.ops.length) {
+      const rawOps = Array.isArray(args.ops)
+        ? args.ops
+        : Array.isArray(args.operations)
+          ? args.operations
+          : []
+      if (!rawOps.length) {
         throw new Error('缺少编辑操作数组「ops」')
+      }
+      const hasGraphNodeOp = rawOps.some((item) => {
+        if (!item || typeof item !== 'object') return false
+        const op = String((item as Record<string, unknown>).op ?? '').trim()
+        return (
+          op === 'node_upsert' ||
+          op === 'node_add' ||
+          op === 'node_update' ||
+          op === 'update_params' ||
+          op === 'apply_preset' ||
+          op === 'node_delete' ||
+          op === 'edge_connect' ||
+          op === 'edge_add' ||
+          op === 'edge_delete' ||
+          op === 'node_select' ||
+          op === 'group_add' ||
+          op === 'group_update' ||
+          op === 'group_delete' ||
+          op === 'auto_layout'
+        )
+      })
+      const openEditor = args.openEditor !== undefined ? args.openEditor === true : hasGraphNodeOp
+      const asset = normalizedRawAssetId
+        ? projectService.listAssets().find((item) => item.id === normalizedRawAssetId)
+        : resolveOrEnsureCanvasAsset('', { autoCreateCanvas: hasGraphNodeOp })
+      const assetId = normalizedRawAssetId || asset?.id || ''
+      if (normalizedRawAssetId && hasGraphNodeOp) {
+        const genParams = asset?.genParams as Record<string, unknown> | undefined
+        const graphJson = genParams?.graphJson as GraphDocument | undefined
+        const hasElementGraphs = Boolean(
+          hostId || genParams?.elementGraphs || genParams?.elementGraphsByNodeId
+        )
+        if (!asset || ((!graphJson || !Array.isArray(graphJson.nodes)) && !hasElementGraphs)) {
+          throw new Error('资产不存在或不含图文档（graph_edit 节点操作需指向宿主画布资产）')
+        }
       }
       const requestId = randomUUID()
       pendingMcpGraphEditResults.delete(requestId)
       broadcastToAllWindows(IpcChannels.MCP_GRAPH_EDIT, {
         requestId,
         assetId,
-        ops: args.ops,
-        ...(openEditor ? { openEditor: true } : {}),
+        ...(nodeId ? { nodeId } : {}),
+        ...(hostId ? { hostId } : {}),
+        ops: rawOps,
+        ...(openEditor ? { openEditor: true } : { openEditor: false }),
         ...(autoLayout !== undefined ? { autoLayout } : {})
       })
       // openEditor 时渲染层要先挂编辑器，轮询预算放宽
@@ -2506,7 +2713,20 @@ const TOOL_DEFS: McpToolDef[] = [
           const report = pendingMcpGraphEditResults.get(requestId)
           if (!report) continue
           if (report.ok) {
-            return { applied: report.applied ?? [], warnings: report.warnings ?? [] }
+            const resolvedAssetId = report.assetId || assetId
+            const touchedNodeIds = report.nodeIds ?? []
+            if (resolvedAssetId) {
+              lastMcpGraphEditTarget = {
+                assetId: resolvedAssetId,
+                nodeIds: touchedNodeIds
+              }
+            }
+            return {
+              assetId: resolvedAssetId || null,
+              nodeIds: touchedNodeIds,
+              applied: report.applied ?? [],
+              warnings: report.warnings ?? []
+            }
           }
           throw new Error(report.error ?? '图编辑失败')
         }
@@ -2515,6 +2735,280 @@ const TOOL_DEFS: McpToolDef[] = [
         // 一次性请求信道：无论结果如何都释放，避免残留
         pendingMcpGraphEditResults.delete(requestId)
       }
+    }
+  },
+  {
+    name: 'director_stage_read',
+    title: '读取 3D 导演台 / 分镜白模预演舞台',
+    description:
+      '读取左侧当前打开（或指定资产+节点）的 3D 导演台 / 3D 分镜白模预演（director.stage）完整状态：包括所有 3D 对象（角色白模 character / 几何道具 primitive / 灯光 light / 模型 model / 空物体 empty 的 id、名称、显隐 visible、锁定 locked、坐标 position、角度制旋转 rotationDeg、缩放 scale、颜色 color、姿态与灯光参数）、所有机位（cameras 的 id、名称、显隐、position、target、fov、focalLengthMm、光圈 aperture、Cinemachine 配置）、环境与天光（skyColor、ground、lightingPreset、environment）、动画轨道（animation）及视口设置（viewMode、shadingMode、aspectRatio）。缺省自动读取当前左侧打开的 3D 导演台。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        assetId: {
+          type: 'string',
+          description: '可选：宿主资产 id（缺省自动取当前左侧打开的 3D 导演台或活动资产）'
+        },
+        nodeId: {
+          type: 'string',
+          description: '可选：director.stage 节点 id（缺省自动取当前活动导演台节点）'
+        }
+      }
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      return await runRenderJob('director-stage-read', {
+        ...(optionalString(args, 'assetId') ? { assetId: optionalString(args, 'assetId') } : {}),
+        ...(optionalString(args, 'nodeId') ? { nodeId: optionalString(args, 'nodeId') } : {})
+      })
+    }
+  },
+  {
+    name: 'director_stage_edit',
+    title: '实时修改 3D 导演台 / 分镜白模预演舞台',
+    description:
+      '对左侧当前打开（或指定资产+节点）的 3D 导演台 / 3D 分镜白模预演（director.stage）执行实时编辑，3D 画面、层级列表、检查器与持久化数据同步生效！支持通过对象的 `name`（如 `"林小满"`）或 `objectId`（如 `"sb-actor:林小满"`）精准定位，省略目标时默认作用于当前检查器选中的对象或活动机位。操作类型 `op` 包括：\n' +
+      '- `object_update`（或 `hide_object` / `show_object` / `lock_object` / `unlock_object`）：按 `name` 或 `objectId` 修改对象的显隐（`visible: false/true`）、锁定（`locked`）、名称标签显隐（`nameVisible`）、改名（`newName`）、父级挂载（`parentId` / `parentName`）、颜色（`color: "#rrggbb"` 或 `"红色"`/`"蓝色"` 等颜色名）、材质贴图（`textures`）、位置（`position: {x,y,z}` 或相对位移 `positionDelta: {x,y,z}`）、旋转角度（`rotationDeg: {x,y,z}` 或相对旋转 `rotationDeltaDeg: {x,y,z}`）、缩放（`scale: {x,y,z}` 或 `uniformScale`）、全身情绪姿态预设（`posePreset` 如 `"gaze.heroic"` / `"stand.relaxed"` / `"sit.chair"` / `"action.run"`，或 `resetPose: true`）、FK/IK 模式（`poseEditMode: "fk"|"ik"`）、骨骼局部角度（`bonePose`）、IK 末端坐标（`ikEffectors`）、灯光参数（`light: {type, intensity, distance, angle, penumbra, decay, shadowMapSize}`）；\n' +
+      '- `object_add` / `object_delete` / `object_duplicate` / `object_copy` / `object_paste` / `object_select`：新建、删除、复制粘贴或选中聚焦 3D 对象；\n' +
+      '- `camera_update` / `camera_add` / `camera_delete`：修改机位位置 `position`、目标 `target`、旋转 `rotationDeg`、视角 `fov`、焦距 `focalLengthMm`、光圈 `aperture`、对焦距离 `focusDistance`、希区柯克变焦锁 `dollyZoomLock`、手持晃动 `handheldShake`、智能跟拍 `cinemachine`（`bodyMode`, `followTargetName`, `aimMode`, `lookAtTargetName`, `aimTargetPart`, `screenCompositionPreset`, `noisePreset`, `triggerImpulse` 等）、机位预设 `presetId`、重置 `resetViewer`、显隐 `visible` 或激活 `setActive: true`；\n' +
+      '- `lighting_preset` / `environment_update`：切换布光预设、天空色 `skyColor`、全景图 `panoramaAssetId`/`panoramaName`/`panoramaVisible`/`panoramaYaw`/`panoramaRadius`、场景整体缩放平移旋转 `sceneWorld`、地面 `ground`、环境雾与暗影捕手 `environment`；\n' +
+      '- `viewport_update`：切换视角 `viewMode`、编辑模式 `stageEditMode`（`"scene"`/`"animation"`）、变换工具 `transformMode`（`"translate"`/`"rotate"`/`"scale"`）、着色模式 `shadingMode`、画幅比 `aspectRatio`、构图线 `compositionGuide`、抓拍通道 `capturePass`、对齐视图 `moveToView`/`alignWithView`/`alignViewToSelected`、正交方向 `viewOrientation`（`"front"`/`"back"`/`"left"`/`"right"`/`"top"`/`"bottom"`）、Gizmo 显隐与灵敏度 `stageControls`；\n' +
+      '- `ai_blocking` / `cinemachine_pack` / `storyboard_previz` / `capture_shot` / `anim_control`：AI 场面调度、机位包、分镜预演、抓拍快照与动画时间轴控制。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        assetId: {
+          type: 'string',
+          description: '可选：宿主资产 id（缺省自动取当前左侧打开的 3D 导演台）'
+        },
+        nodeId: {
+          type: 'string',
+          description: '可选：director.stage 节点 id（缺省自动取当前活动导演台节点）'
+        },
+        ops: {
+          type: 'array',
+          description: '按顺序执行的 3D 舞台修改操作列表',
+          items: {
+            type: 'object',
+            properties: {
+              op: {
+                type: 'string',
+                enum: [
+                  'object_update',
+                  'hide_object',
+                  'show_object',
+                  'lock_object',
+                  'unlock_object',
+                  'object_add',
+                  'object_delete',
+                  'object_duplicate',
+                  'object_copy',
+                  'object_paste',
+                  'object_select',
+                  'camera_update',
+                  'camera_add',
+                  'camera_delete',
+                  'lighting_preset',
+                  'environment_update',
+                  'viewport_update',
+                  'ai_blocking',
+                  'cinemachine_pack',
+                  'storyboard_previz',
+                  'capture_shot',
+                  'anim_control'
+                ]
+              },
+              objectId: { type: 'string', description: '目标对象 id（也可只传 name 按名称匹配）' },
+              cameraId: { type: 'string', description: '目标机位 id（也可只传 name 按名称匹配）' },
+              name: {
+                type: 'string',
+                description:
+                  '目标对象/机位名称（如 "林小满"），或在 object_add / camera_add 中作为新建名称'
+              },
+              newName: { type: 'string', description: '重命名后的新名称' },
+              kind: {
+                type: 'string',
+                description:
+                  'object_add 类型（character / primitive / light / camera / empty / model）或筛选类型'
+              },
+              visible: { type: 'boolean', description: '显隐状态（false=隐藏，true=显示）' },
+              locked: { type: 'boolean', description: '锁定状态' },
+              nameVisible: { type: 'boolean', description: '3D 头顶名称标签是否显示' },
+              color: {
+                type: 'string',
+                description: '颜色（支持 HEX 如 "#f97316" 或中英文名如 "红色"）'
+              },
+              parentId: { type: ['string', 'null'] },
+              parentName: { type: 'string' },
+              position: {
+                type: 'object',
+                description: '世界坐标 { x, y, z }（可只传部分轴）',
+                properties: {
+                  x: { type: 'number' },
+                  y: { type: 'number' },
+                  z: { type: 'number' }
+                }
+              },
+              positionDelta: {
+                type: 'object',
+                description: '相对位移增量 { x, y, z }',
+                properties: {
+                  x: { type: 'number' },
+                  y: { type: 'number' },
+                  z: { type: 'number' }
+                }
+              },
+              rotationDeg: {
+                type: 'object',
+                description: '角度制旋转 { x, y, z }（单位：度）',
+                properties: {
+                  x: { type: 'number' },
+                  y: { type: 'number' },
+                  z: { type: 'number' }
+                }
+              },
+              rotationDeltaDeg: {
+                type: 'object',
+                description: '相对旋转增量 { x, y, z }（单位：度）',
+                properties: {
+                  x: { type: 'number' },
+                  y: { type: 'number' },
+                  z: { type: 'number' }
+                }
+              },
+              scale: {
+                description: '缩放 { x, y, z } 或统一缩放数值',
+                oneOf: [
+                  { type: 'number' },
+                  {
+                    type: 'object',
+                    properties: {
+                      x: { type: 'number' },
+                      y: { type: 'number' },
+                      z: { type: 'number' }
+                    }
+                  }
+                ]
+              },
+              uniformScale: { type: 'number' },
+              mannequinPreset: {
+                type: 'string',
+                enum: ['humanoid', 'chibi', 'quadruped']
+              },
+              primitive: { type: 'string' },
+              lightType: {
+                type: 'string',
+                enum: ['directional', 'point', 'spot']
+              },
+              light: { type: 'object' },
+              textures: { type: 'object' },
+              posePreset: { type: 'string', description: '姿态预设 ID 或名称' },
+              poseEditMode: { type: 'string', enum: ['fk', 'ik'] },
+              selectedPoseBone: { type: ['string', 'null'] },
+              selectedIkChainId: { type: ['string', 'null'] },
+              ikEffectors: { type: 'object' },
+              poseAssetId: { type: 'string' },
+              poseAssetName: { type: 'string' },
+              savePoseAssetName: { type: 'string' },
+              resetPose: { type: 'boolean', description: '重置人偶骨骼姿态为默认 T/A-Pose' },
+              bonePose: {
+                type: 'object',
+                description: '按骨骼名设置旋转角度 { [boneName]: {x,y,z} }'
+              },
+              target: {
+                type: 'object',
+                description: '机位注视目标点 { x, y, z }',
+                properties: {
+                  x: { type: 'number' },
+                  y: { type: 'number' },
+                  z: { type: 'number' }
+                }
+              },
+              fov: { type: 'number', description: '机位垂直视角 FOV（度）' },
+              focalLengthMm: { type: 'number', description: '等效焦距（mm，如 24/35/50/85）' },
+              aperture: { type: 'number', description: '光圈 f 值（如 1.4 / 2.8 / 5.6）' },
+              focusDistance: { type: 'number', description: '对焦距离（米）' },
+              dollyZoomLock: { type: 'boolean' },
+              handheldShake: { type: 'object' },
+              cinemachine: { type: 'object' },
+              resetViewer: { type: 'boolean' },
+              setActive: { type: 'boolean', description: '设为当前活动机位' },
+              focus: { type: 'boolean', description: '选中同时将视口镜头聚焦到该对象' },
+              presetId: { type: 'string', description: '灯光预设 ID 或机位预设 ID' },
+              skyColor: { type: 'string', description: '天空背景色 HEX 或颜色名' },
+              panoramaAssetId: { type: ['string', 'null'] },
+              panoramaName: { type: 'string' },
+              clearPanorama: { type: 'boolean' },
+              panoramaVisible: { type: 'boolean' },
+              panoramaYaw: { type: 'number' },
+              panoramaRadius: { type: 'number' },
+              sceneWorld: { type: 'object' },
+              ground: { type: 'object', description: '地面与网格设置' },
+              environment: { type: 'object', description: '环境雾与暗影捕手设置' },
+              viewMode: { type: 'string', enum: ['director', 'camera'] },
+              stageEditMode: { type: 'string', enum: ['scene', 'animation'] },
+              transformMode: { type: 'string', enum: ['translate', 'rotate', 'scale'] },
+              cameraPreviewOpen: { type: 'boolean' },
+              shadingMode: {
+                type: 'string',
+                enum: ['lit', 'shaded', 'clay', 'unlit', 'wireframe', 'matcap', 'normal']
+              },
+              aspectRatio: {
+                type: 'string',
+                enum: ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9']
+              },
+              compositionGuide: { type: 'string' },
+              capturePass: { type: 'string' },
+              moveToView: { type: 'boolean' },
+              alignWithView: { type: 'boolean' },
+              alignViewToSelected: { type: 'boolean' },
+              viewOrientation: { type: 'string' },
+              gizmoSize: { type: 'number' },
+              sceneLabelsVisible: { type: 'boolean' },
+              cameraGizmosVisible: { type: 'boolean' },
+              pathGizmosVisible: { type: 'boolean' },
+              lightGizmosVisible: { type: 'boolean' },
+              gridGizmoVisible: { type: 'boolean' },
+              selectionBoundsVisible: { type: 'boolean' },
+              captureLabelsVisible: { type: 'boolean' },
+              captureCameraLabelsVisible: { type: 'boolean' },
+              stageControls: { type: 'object' },
+              prompt: { type: 'string', description: 'ai_blocking 自然语言场面调度描述' },
+              packId: { type: 'string' },
+              sceneId: { type: 'string' },
+              shotId: { type: 'string' },
+              captureAndWriteBack: { type: 'boolean' },
+              allCameras: { type: 'boolean' },
+              firstLastPair: { type: 'boolean' },
+              cutTrackStoryboard: { type: 'boolean' },
+              action: {
+                type: 'string',
+                enum: [
+                  'play',
+                  'pause',
+                  'stop',
+                  'seek',
+                  'add_track',
+                  'remove_track',
+                  'add_keyframe',
+                  'remove_keyframe',
+                  'add_cut_segment',
+                  'export_video'
+                ]
+              },
+              time: { type: 'number' },
+              duration: { type: 'number' },
+              loop: { type: 'boolean' },
+              playbackRate: { type: 'number' }
+            }
+          }
+        }
+      },
+      required: []
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      return await runRenderJob('director-stage-edit', args)
     }
   },
   {
@@ -2612,357 +3106,10 @@ const TOOL_DEFS: McpToolDef[] = [
     }
   },
   {
-    name: 'generate_speech',
-    title: '生成语音',
-    description:
-      '用音频模型（火山方舟 TTS / 声音设计等）把**台词 / 旁白**转成 MP3 并落盘到工程缓存目录 Cache/Voices（不自动进资产库，避免在对话流里出重复卡）；需要进资产库时由用户在对话产物卡上点「保存到资产库」按钮。返回工程内相对路径。' +
-      '**本工具只做人声（TTS）**：`input` 是要被「念出来」的文字。' +
-      '**雨声 / 风声 / 脚步 / 环境音 / 打击声 / 机械声这类非人声音效，以及任何「生成一段 XX 声」的请求，必须用 `generate_sound_effect`** —— 用本工具只会把描述当台词念出来（产出语音而不是音效，而且照样计费）。' +
-      '带说话人标记的整段对白用 `generate_dialogue`；音乐 / BGM 用 `generate_music`。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        input: { type: 'string', description: '台词 / 文本提示' },
-        name: { type: 'string', description: '资产显示名' },
-        model: { type: 'string', description: '音频模型 id（models_list 查询）' },
-        providerInstanceId: { type: 'string', description: '提供商实例 id' },
-        voice: { type: 'string', description: '音色（缺省用模型默认音色）' },
-        speed: { type: 'number', description: '语速' },
-        extraParams: {
-          type: 'object',
-          description: '低频参数透传（如 responseFormat / 参考图），合并进底层生成输入'
-        }
-      },
-      required: ['input']
-    },
-    handler: async (args) => {
-      assertProjectOpen()
-      const inputText = readString(args, 'input')
-      const input = {
-        ...cacheOnlyGenExtraParams(args),
-        input: inputText,
-        model: optionalString(args, 'model'),
-        providerInstanceId: optionalString(args, 'providerInstanceId'),
-        voice: optionalString(args, 'voice'),
-        speed:
-          typeof args.speed === 'number' && Number.isFinite(args.speed) ? args.speed : undefined,
-        name: optionalString(args, 'name')
-      }
-      // 对话生成的语音只落 Cache、不入资产库（避免在对话流里出现重复卡）；
-      // 想入库让用户点资产卡上的「保存到资产库」按钮。
-      const result = await runGenActivity(
-        'generate_speech',
-        activityTitle(input.name, inputText),
-        input.model,
-        () => modelProviderFacade.generateSpeechAsset(input),
-        (r) => ({ assetId: r.assetId, relativePath: liveAssetRelativePath(r) }),
-        undefined,
-        (r) => ({
-          kind: 'generateSpeech',
-          nodeId: 'mcp',
-          request: {
-            input: input.input,
-            model: input.model,
-            providerInstanceId: input.providerInstanceId,
-            voice: input.voice,
-            name: input.name
-          },
-          response: {
-            model: r.model,
-            voice: r.voice,
-            assetId: r.assetId,
-            relativePath: liveAssetRelativePath(r)
-          }
-        })
-      )
-      broadcastAsset(result.assetId)
-      return {
-        assetId: result.assetId,
-        relativePath: liveAssetRelativePath(result),
-        model: result.model,
-        voice: result.voice
-      }
-    }
-  },
-  {
-    name: 'generate_music',
-    title: '生成 BGM / 音乐',
-    description:
-      '用音乐模型（MiniMax Music / 百炼 Fun-Music 等）按情绪与时长描述生成配乐并落盘到工程缓存目录 Cache/Music（不自动进资产库，避免在对话流里出重复卡）；需要进资产库时由用户在对话产物卡上点「保存到资产库」按钮。返回工程内相对路径，可直接铺到时间线 music 轨。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        prompt: {
-          type: 'string',
-          description: '音乐描述：风格 / 情绪 / 场景（如「轻快明亮的电子配乐，适合 Vlog」）'
-        },
-        name: { type: 'string', description: '资产显示名' },
-        model: {
-          type: 'string',
-          description: '音乐模型 id（models_list 查询，如 music-3.0 / fun-music-v1）'
-        },
-        providerInstanceId: { type: 'string', description: '提供商实例 id' },
-        lyrics: {
-          type: 'string',
-          description:
-            '歌词（纯音乐时省略；多段用 \\n 分隔，支持 [Intro]/[Verse]/[Chorus] 结构标签）'
-        },
-        instrumental: { type: 'boolean', description: '是否纯音乐（无歌词 / 人声），缺省 true' },
-        extraParams: {
-          type: 'object',
-          description: '低频参数透传（如 audio_setting），合并进底层生成输入'
-        }
-      },
-      required: ['prompt']
-    },
-    handler: async (args) => {
-      assertProjectOpen()
-      const inputText = readString(args, 'prompt')
-      const input = {
-        ...cacheOnlyGenExtraParams(args),
-        prompt: inputText,
-        name: optionalString(args, 'name'),
-        model: optionalString(args, 'model'),
-        providerInstanceId: optionalString(args, 'providerInstanceId'),
-        lyrics: optionalString(args, 'lyrics'),
-        instrumental: typeof args.instrumental === 'boolean' ? args.instrumental : undefined
-      }
-      // 对话生成的 BGM 只落 Cache、不入资产库（避免在对话流里出现重复卡）；
-      // 想入库让用户点资产卡上的「保存到资产库」按钮。
-      const result = await runGenActivity(
-        'generate_music',
-        activityTitle(input.name, inputText),
-        input.model,
-        () => modelProviderFacade.generateMusicAsset(input),
-        (r) => ({ assetId: r.assetId, relativePath: liveAssetRelativePath(r) }),
-        undefined,
-        (r) => ({
-          kind: 'generateMusic',
-          nodeId: 'mcp',
-          request: {
-            prompt: input.prompt,
-            model: input.model,
-            providerInstanceId: input.providerInstanceId,
-            lyrics: input.lyrics,
-            instrumental: input.instrumental,
-            name: input.name
-          },
-          response: {
-            model: r.model,
-            assetId: r.assetId,
-            relativePath: liveAssetRelativePath(r),
-            durationMs: r.durationMs
-          }
-        })
-      )
-      broadcastAsset(result.assetId)
-      return {
-        assetId: result.assetId,
-        relativePath: liveAssetRelativePath(result),
-        model: result.model,
-        durationMs: result.durationMs
-      }
-    }
-  },
-  {
-    name: 'generate_dialogue',
-    title: '生成多说话人对话',
-    description:
-      '把一段多说话人对白一次合成为单个音频（ElevenLabs Text to Dialogue，`POST /v1/text-to-dialogue`）并落盘到工程缓存目录 Cache/Voices（不自动进资产库，避免在对话流里出重复卡）；需要进资产库时由用户在对话产物卡上点「保存到资产库」按钮。返回工程内相对路径。' +
-      '脚本按行写「说话人: 台词」，中英文冒号都认；不含冒号的行沿用上一段的说话人（旁白 / 连续独白）。每个说话人要绑定音色（`voices` 映射，或全局 `voice` 兜底），缺音色会报出是第几段、哪个说话人。' +
-      '**为什么要用这个工具而不是逐句调 generate_speech**：整段一次合成能保住语气连贯，逐句拼接会在句间丢情绪；而且它走的是专门的对话端点。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        script: {
-          type: 'string',
-          description: '对白脚本，按行写；多段用 \\n 分隔。例：「A: 你终于来了。\\nB: 路上堵车。」'
-        },
-        voices: {
-          type: 'object',
-          description:
-            '说话人 → 音色 id 的映射（如 {"A":"<voice_id>","B":"<voice_id>"}）；音色 id 见模型的 supported_voices，或先用 voice_profile_upsert 给角色建档'
-        },
-        voice: { type: 'string', description: '兜底音色（某段没匹配到说话人时用它）' },
-        voiceProfile: {
-          type: 'string',
-          description: '角色音色档案名：按档案解析音色，与显式 voice 二选一'
-        },
-        model: { type: 'string', description: '音频模型 id（models_list 查询）' },
-        providerInstanceId: { type: 'string', description: '提供商实例 id' },
-        name: { type: 'string', description: '资产显示名' },
-        extraParams: {
-          type: 'object',
-          description: '低频参数透传，合并进底层生成输入'
-        }
-      },
-      required: ['script']
-    },
-    handler: async (args) => {
-      assertProjectOpen()
-      const script = readString(args, 'script')
-      const lines = parseDialogueScript(script)
-      if (!lines.length) throw fail(SHARED_ERRORS.dialogueEmpty)
-
-      const fallbackVoice = optionalString(args, 'voice')
-      const voiceBySpeaker = normalizeDialogueVoiceMap(args.voices)
-      const { inputs, missingVoiceAt } = buildDialogueInputs(lines, voiceBySpeaker, fallbackVoice)
-      if (missingVoiceAt.length) {
-        // 与图节点同一条报错口径：点名第几段、哪个说话人 —— 对白一长只报「缺音色」没法定位
-        const speakers = [
-          ...new Set(missingVoiceAt.map((index) => lines[index]?.speaker).filter(Boolean))
-        ] as string[]
-        throw fail(SHARED_ERRORS.dialogueVoiceMissing, {
-          lines: missingVoiceAt.map((index) => index + 1).join('、'),
-          speakers: speakers.join('、')
-        })
-      }
-
-      const input = {
-        ...cacheOnlyGenExtraParams(args),
-        // input 只作为日志/兜底内容，真正发出去的是 dialogue
-        input: script,
-        dialogue: inputs,
-        model: optionalString(args, 'model'),
-        providerInstanceId: optionalString(args, 'providerInstanceId'),
-        voice: fallbackVoice,
-        voiceProfile: optionalString(args, 'voiceProfile'),
-        name: optionalString(args, 'name')
-      }
-      const result = await runGenActivity(
-        'generate_dialogue',
-        activityTitle(input.name, script),
-        input.model,
-        () => modelProviderFacade.generateSpeechAsset(input),
-        (r) => ({ assetId: r.assetId, relativePath: liveAssetRelativePath(r) }),
-        undefined,
-        // 对话走的是语音端点，日志类别沿用 generateSpeech（没有独立的 dialogue 类别）
-        (r) => ({
-          kind: 'generateSpeech',
-          nodeId: 'mcp',
-          request: {
-            input: input.input,
-            model: input.model,
-            providerInstanceId: input.providerInstanceId,
-            voice: input.voice,
-            name: input.name
-          },
-          response: {
-            model: r.model,
-            voice: r.voice,
-            assetId: r.assetId,
-            relativePath: liveAssetRelativePath(r)
-          }
-        })
-      )
-      broadcastAsset(result.assetId)
-      return {
-        assetId: result.assetId,
-        relativePath: liveAssetRelativePath(result),
-        model: result.model,
-        segments: inputs.length,
-        speakers: dialogueSpeakers(lines)
-      }
-    }
-  },
-  {
-    name: 'generate_sound_effect',
-    title: '生成音效',
-    description:
-      '按描述生成**音效本身**（ElevenLabs `POST /v1/sound-generation`）并落盘到工程缓存目录 Cache/Sfx（不自动进资产库，避免在对话流里出重复卡）；需要进资产库时由用户在对话产物卡上点「保存到资产库」按钮。返回工程内相对路径。' +
-      '**「生成一段雨声 / 风声 / 环境音 / 脚步声」这类请求归本工具**（非人声），不要用 `generate_speech` —— 那会把描述当台词念出来。' +
-      '描述尽量用**英文**写声音听起来是什么样（"rain on a tin roof" / "short crisp UI click"）；中文等非拉丁描述会自动译成英文再上送——上游对中文会念出文字而不是出音效。不要写「我要一个按钮音效」这类**用途**。' +
-      '环境音（雨 / 风 / 海浪 / 机器嗡鸣）请把 `loop` 设为 true：否则长循环时接缝处会有可听见的咔嗒声。' +
-      '需要**人声**（台词 / 旁白）请用 `generate_speech`；**对白**用 `generate_dialogue`；**音乐**用 `generate_music`。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        prompt: {
-          type: 'string',
-          description: '音效描述：音色质感 + 时间形态 + 空间感 + 排除项'
-        },
-        loop: {
-          type: 'boolean',
-          description: '生成可无缝循环的音频（环境音常用）；缺省 false'
-        },
-        durationSeconds: {
-          type: 'number',
-          description: '期望时长（秒），规范范围 0.5–30；超出会被夹到边界'
-        },
-        promptInfluence: {
-          type: 'number',
-          description: '提示词影响力 0–1（默认 0.3）：越高越贴合描述、随机性越低'
-        },
-        model: { type: 'string', description: '音效模型 id（通常留空，端点只有一个模型）' },
-        providerInstanceId: { type: 'string', description: '提供商实例 id' },
-        name: { type: 'string', description: '资产显示名' },
-        extraParams: {
-          type: 'object',
-          description: '低频参数透传，合并进底层生成输入'
-        }
-      },
-      required: ['prompt']
-    },
-    handler: async (args) => {
-      assertProjectOpen()
-      const prompt = readString(args, 'prompt')
-      const input = {
-        ...cacheOnlyGenExtraParams(args),
-        prompt,
-        // 越界值不用在这里夹：适配器 buildElevenSoundRequest 统一走 clampNumber，
-        // 这里是**上游唯一入口**，重复夹一次只会让两处规则有机会漂移
-        loop: typeof args.loop === 'boolean' ? args.loop : undefined,
-        durationSeconds:
-          typeof args.durationSeconds === 'number' && Number.isFinite(args.durationSeconds)
-            ? args.durationSeconds
-            : undefined,
-        promptInfluence:
-          typeof args.promptInfluence === 'number' && Number.isFinite(args.promptInfluence)
-            ? args.promptInfluence
-            : undefined,
-        model: optionalString(args, 'model'),
-        providerInstanceId: optionalString(args, 'providerInstanceId'),
-        name: optionalString(args, 'name')
-      }
-      const result = await runGenActivity(
-        'generate_sound_effect',
-        activityTitle(input.name, prompt),
-        input.model,
-        () => modelProviderFacade.generateSoundEffectAsset(input),
-        (r) => ({ assetId: r.assetId, relativePath: liveAssetRelativePath(r) }),
-        undefined,
-        (r) => ({
-          kind: 'generateSoundEffect',
-          nodeId: 'mcp',
-          request: {
-            prompt: input.prompt,
-            model: input.model,
-            providerInstanceId: input.providerInstanceId,
-            // duration 是日志里的既有字段（音效的"期望时长"语义最接近它）
-            duration: input.durationSeconds,
-            name: input.name
-          },
-          response: {
-            model: r.model,
-            assetId: r.assetId,
-            relativePath: liveAssetRelativePath(r),
-            ...(r.resolvedPrompt ? { resolvedPrompt: r.resolvedPrompt } : {})
-          }
-        })
-      )
-      broadcastAsset(result.assetId)
-      return {
-        assetId: result.assetId,
-        relativePath: liveAssetRelativePath(result),
-        model: result.model
-      }
-    }
-  },
-  {
     name: 'models_list',
     title: '可用模型列表',
     description:
-      '列出应用设置中已启用的模型提供商与各模态（text/image/video/audio/model3d/world/decisions）勾选的模型。generate_* 工具的 model / providerInstanceId 参数从这里取；world 是 World Labs Marble 空间世界（generate_world 工具用）；decisions 是 OpenRouter 决策模型（decide 工具用）。',
+      '列出应用设置中已启用的模型提供商与各模态（text/image/video/audio/model3d/world/decisions）勾选的模型。画布生成节点的 params.model / params.providerInstanceId 参数从这里取；world 是 World Labs Marble 空间世界（spatialWorld.generate 节点用）；decisions 是 OpenRouter 决策模型（decide 工具或 decisions.judge 节点用）。',
     inputSchema: { type: 'object', properties: {} },
     handler: () => ({
       providers: settingsService
@@ -2990,7 +3137,7 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'storage_status',
     title: '对象存储状态',
     description:
-      '查询对象存储配置状态：是否已配置、当前启用的提供商与桶、公网地址。generate_model3d / generate_video 传本地或相对路径参考图时需要对象存储转公网 URL，图片生成则不依赖；调用前可用本工具确认。',
+      '查询对象存储配置状态：是否已配置、当前启用的提供商与桶、公网地址。画布 3D 生成节点（asset.model3d）与视频生成节点（asset.video）连接本地参考图时需要对象存储转公网 URL，图片生成节点（asset.image）则不依赖；调用前可用本工具确认。',
     inputSchema: { type: 'object', properties: {} },
     handler: () => {
       const providers = settingsService.get().objectStorage.providers
@@ -3099,915 +3246,6 @@ const TOOL_DEFS: McpToolDef[] = [
           response: { model: r.model, text: r.summary, ok: true }
         })
       )
-    }
-  },
-  {
-    name: 'generate_image',
-    title: '生成图片',
-    description:
-      '用图片模型生成图片并落盘到工程缓存目录 Cache/Images（不自动进资产库）；需要进资产库时由用户在对话卡上点「保存到资产库」按钮。需要已打开工程；模型 / 提供商缺省时用应用当前选择。返回工程内相对路径。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        prompt: { type: 'string', description: '画面描述' },
-        name: { type: 'string', description: '文件显示名' },
-        model: { type: 'string', description: '图片模型 id（models_list 查询）' },
-        providerInstanceId: { type: 'string', description: '提供商实例 id（models_list 查询）' },
-        aspectRatio: { type: 'string', description: '如 1:1 / 16:9' },
-        n: { type: 'integer', description: '生成张数' },
-        referenceImageUrls: {
-          type: 'array',
-          items: { type: 'string' },
-          description:
-            '参考图（图生图）：支持 http(s) 地址、data URL、工程内相对路径（如 Assets/Generated/Images/x.png）或本地绝对路径。相对/本地路径会自动读取为 data URL 内联发送，无需对象存储'
-        },
-        extraParams: {
-          type: 'object',
-          description:
-            '低频参数透传（如 seed / quality / resolution），合并进底层生成输入；同名常用参数以显式传参为准'
-        }
-      },
-      required: ['prompt']
-    },
-    handler: async (args) => {
-      assertProjectOpen()
-      const input: GenerateImageInput & { name?: string } = {
-        ...cacheOnlyGenExtraParams(args),
-        prompt: readString(args, 'prompt'),
-        name: optionalString(args, 'name'),
-        model: optionalString(args, 'model'),
-        providerInstanceId: optionalString(args, 'providerInstanceId'),
-        aspectRatio: optionalString(args, 'aspectRatio'),
-        n: typeof args.n === 'number' && Number.isFinite(args.n) ? args.n : undefined,
-        inputReferences: Array.isArray(args.referenceImageUrls)
-          ? args.referenceImageUrls.filter((item): item is string => typeof item === 'string')
-          : undefined
-      }
-      // 对话生成的图片只落 Cache、不入资产库（避免在对话流里出现重复卡）；
-      // 想入库让用户点资产卡上的「保存到资产库」按钮。
-      const result = await runGenActivity(
-        'generate_image',
-        activityTitle(input.name, input.prompt),
-        input.model,
-        () => modelProviderFacade.generateImageAsset(input),
-        (r) => ({ assetId: r.assetId, relativePath: liveAssetRelativePath(r) }),
-        undefined,
-        (r) => ({
-          kind: 'generateImage',
-          nodeId: 'mcp',
-          request: {
-            prompt: input.prompt,
-            model: input.model,
-            providerInstanceId: input.providerInstanceId,
-            aspectRatio: input.aspectRatio,
-            n: input.n,
-            inputReferenceCount: input.inputReferences?.length || undefined,
-            inputReferenceUrls: summarizeReferenceListForLog(input.inputReferences)
-          },
-          response: {
-            model: r.model,
-            assetId: r.assetId,
-            relativePath: liveAssetRelativePath(r),
-            referenceNotes: r.referenceNotes
-          }
-        })
-      )
-      broadcastAsset(result.assetId)
-      const relPath = liveAssetRelativePath(result)
-      const visualImages = readVisualCheckImagesForRelativePaths([relPath], 1)
-      return {
-        ...result,
-        relativePath: relPath,
-        ...(visualImages.length ? { mcpImages: visualImages } : {})
-      }
-    }
-  },
-  {
-    name: 'generate_video',
-    title: '生成视频',
-    description:
-      '提交视频生成任务并落盘到工程缓存目录 Cache/Videos（不自动进资产库，避免在对话流里出现重复卡）；供应商异步任务由应用后台轮询，可用 video_job_list / video_job_get 跟踪进度。需要进资产库时由用户在对话卡上点「保存到资产库」按钮。返回工程内相对路径。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        prompt: { type: 'string', description: '画面与运镜描述' },
-        name: { type: 'string', description: '文件显示名' },
-        model: { type: 'string', description: '视频模型 id（models_list 查询）' },
-        providerInstanceId: { type: 'string', description: '提供商实例 id' },
-        duration: { type: 'integer', description: '时长（秒）' },
-        aspectRatio: { type: 'string', description: '如 9:16 / 16:9' },
-        generateAudio: { type: 'boolean', description: '是否同步生成音频（部分模型）' },
-        firstFrameImageUrl: {
-          type: 'string',
-          description:
-            '首帧图：支持 http(s) 地址、data URL、工程内相对路径或本地绝对路径；本地文件会经对象存储转远程 URL（未配置对象存储时报错，可用 storage_status 查询）。用户消息含多张参考图时，第一张为首帧'
-        },
-        lastFrameImageUrl: {
-          type: 'string',
-          description:
-            '尾帧图：支持 http(s) 地址、data URL、工程内相对路径或本地绝对路径；本地文件会经对象存储转远程 URL（未配置对象存储时报错，可用 storage_status 查询）。用户消息含两张参考图生成视频时，第二张为尾帧'
-        },
-        extraParams: {
-          type: 'object',
-          description: '低频参数透传（如 resolution / size / seed），合并进底层生成输入'
-        }
-      },
-      required: ['prompt']
-    },
-    handler: async (args) => {
-      assertProjectOpen()
-      const input: GenerateVideoInput & { name?: string } = {
-        ...cacheOnlyGenExtraParams(args),
-        prompt: readString(args, 'prompt'),
-        name: optionalString(args, 'name'),
-        model: optionalString(args, 'model'),
-        providerInstanceId: optionalString(args, 'providerInstanceId'),
-        duration:
-          typeof args.duration === 'number' && Number.isFinite(args.duration)
-            ? args.duration
-            : undefined,
-        aspectRatio: optionalString(args, 'aspectRatio'),
-        generateAudio: typeof args.generateAudio === 'boolean' ? args.generateAudio : undefined,
-        firstFrameImageUrl: optionalString(args, 'firstFrameImageUrl'),
-        lastFrameImageUrl: optionalString(args, 'lastFrameImageUrl')
-      }
-      // 对话生成的视频只落 Cache、不入资产库（避免在对话流里出现重复卡）；
-      // 想入库让用户点资产卡上的「保存到资产库」按钮。
-      const result = await runGenActivity(
-        'generate_video',
-        activityTitle(input.name, input.prompt),
-        input.model,
-        () => modelProviderFacade.generateVideo(input),
-        (r) => ({ assetId: r.assetId, relativePath: liveAssetRelativePath(r) }),
-        undefined,
-        (r) => ({
-          kind: 'generateVideo',
-          nodeId: 'mcp',
-          request: {
-            prompt: input.prompt,
-            model: input.model,
-            providerInstanceId: input.providerInstanceId,
-            duration: input.duration,
-            aspectRatio: input.aspectRatio,
-            generateAudio: input.generateAudio,
-            firstFrameImageUrl: input.firstFrameImageUrl?.trim()
-              ? summarizeMediaUrlForLog(input.firstFrameImageUrl)
-              : undefined,
-            lastFrameImageUrl: input.lastFrameImageUrl?.trim()
-              ? summarizeMediaUrlForLog(input.lastFrameImageUrl)
-              : undefined,
-            uploads: r.uploads?.map((item) => ({
-              sourceLabel: item.sourceLabel,
-              objectKey: item.objectKey,
-              bytes: item.bytes,
-              urlPreview: item.url.slice(0, 120)
-            }))
-          },
-          response: {
-            model: r.model,
-            assetId: r.assetId,
-            relativePath: liveAssetRelativePath(r)
-          }
-        })
-      )
-      broadcastAsset(result.assetId)
-      return { ...result, relativePath: liveAssetRelativePath(result) }
-    }
-  },
-  {
-    name: 'generate_model3d',
-    title: '生成 3D 模型',
-    description:
-      '文生 3D / 图生 3D（Meshy / Tripo / Rodin / Luma / Lux3D），产出 GLB 模型并落盘到工程缓存目录 Cache/Models（不自动进资产库）。需要进资产库时由用户在对话卡上点「保存到资产库」按钮。返回工程内相对路径。' +
-      '**本工具只负责生成，不要传 rig**：骨骼蒙皮（Meshy/Tripo Rigging API）用 `rig_model3d`、拆件用 `segment_model3d`、重拓扑 / 补全 / 重定向 / 转换格式 / 贴图用 `post_process_model3d` —— 它们都吃本工具返回的模型资产。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        prompt: { type: 'string', description: '外观描述' },
-        name: { type: 'string', description: '文件显示名' },
-        model: { type: 'string', description: '3D 模型 id（models_list 查询）' },
-        providerInstanceId: { type: 'string', description: '提供商实例 id' },
-        style: {
-          type: 'string',
-          description:
-            '风格：photorealistic / cartoon / anime / hand_painted / cyberpunk / fantasy / glass'
-        },
-        referenceImageUrls: {
-          type: 'array',
-          items: { type: 'string' },
-          description:
-            '参考图（图生 3D / 多图生 3D）：支持 http(s) 地址、data URL、工程内相对路径或本地绝对路径。3D 供应商仅接受 http(s) 图片，相对/本地路径会自动上传到已配置的对象存储转换为公网 URL（未配置对象存储时报错，可用 storage_status 查询）'
-        },
-        extraParams: {
-          type: 'object',
-          description:
-            '低频参数透传（模型特有字段），合并进底层生成输入；显式入参优先于这里的同名字段'
-        }
-      },
-      required: ['prompt']
-    },
-    handler: async (args) => {
-      assertProjectOpen()
-      const input: GenerateModel3dInput & { name?: string } = {
-        ...cacheOnlyGenExtraParams(args),
-        prompt: readString(args, 'prompt'),
-        name: optionalString(args, 'name'),
-        model: optionalString(args, 'model'),
-        providerInstanceId: optionalString(args, 'providerInstanceId'),
-        style: optionalString(args, 'style'),
-        inputReferences: Array.isArray(args.referenceImageUrls)
-          ? args.referenceImageUrls.filter((item): item is string => typeof item === 'string')
-          : undefined
-      }
-      // 对话生成的 3D 模型只落 Cache、不入资产库（避免在对话流里出现重复卡）；
-      // 想入库让用户点资产卡上的「保存到资产库」按钮。
-      const result = await runGenActivity(
-        'generate_model3d',
-        activityTitle(input.name, input.prompt),
-        input.model,
-        () => modelProviderFacade.generateModel3d(input),
-        (r) => ({ assetId: r.assetId, relativePath: liveAssetRelativePath(r) }),
-        undefined,
-        (r) => ({
-          kind: 'generateModel3d',
-          nodeId: 'mcp',
-          request: {
-            prompt: input.prompt,
-            model: input.model,
-            providerInstanceId: input.providerInstanceId,
-            style: input.style,
-            inputReferenceCount: input.inputReferences?.length || undefined,
-            inputReferenceUrls: summarizeReferenceListForLog(input.inputReferences),
-            uploads: r.uploads?.map((item) => ({
-              sourceLabel: item.sourceLabel,
-              objectKey: item.objectKey,
-              bytes: item.bytes,
-              urlPreview: item.url.slice(0, 120)
-            }))
-          },
-          response: {
-            model: r.model,
-            assetId: r.assetId,
-            relativePath: liveAssetRelativePath(r)
-          }
-        })
-      )
-      broadcastAsset(result.assetId)
-      return {
-        ...result,
-        relativePath: liveAssetRelativePath(result)
-      }
-    }
-  },
-  {
-    name: 'generate_world',
-    title: '生成空间世界',
-    description:
-      '文生世界 / 图生世界 / 多图生世界 / 视频生世界（World Labs Marble），产出可漫游 3D 世界的 GLB 网格并落盘到工程缓存目录 Cache/Models（不自动进资产库）。单次生成约 5 分钟，共 4 档模型：marble-1.1（标准）/ marble-1.1-plus（更大世界，更贵），以及上一代 marble-1.0 / marble-1.0-draft。参考输入四选一：文本、1 张图、2–4 张同场景多视角图、或 1 段参考视频（同时给了视频与图片时以视频为准；视频推荐 mp4 / webm / mov / avi，单条不超过 100MB）；相对 / 本地路径的参考**默认上传 World Labs 托管存储**（官方 media-asset，不占用对象存储配额；上传失败才回退到对象存储换成公网 URL，两条都失败时把两条原因一起写进报错）。需要 PLY 泼溅或 HQ 贴图网格时用图节点「空间世界导出」（spatialWorld.export）。需要进资产库时由用户在对话卡上点「保存到资产库」按钮。返回工程内相对路径。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        prompt: {
-          type: 'string',
-          description: '世界描述：空间格局、起始视角能看到的景物、光照与风格'
-        },
-        name: { type: 'string', description: '文件显示名' },
-        model: {
-          type: 'string',
-          description:
-            '空间世界 id：marble-1.1（标准）/ marble-1.1-plus（更大世界，更贵）/ marble-1.0 / marble-1.0-draft（上一代）'
-        },
-        providerInstanceId: { type: 'string', description: '提供商实例 id' },
-        displayName: {
-          type: 'string',
-          description: '世界展示名（上游 display_name，最长 64 字符）'
-        },
-        seed: {
-          type: 'number',
-          description: '随机种子 0–4294967295（同种子同描述可复现同一世界；省略则由上游随机）'
-        },
-        panoMode: {
-          type: 'string',
-          enum: ['auto', 'always', 'never'],
-          description:
-            '仅单图参考生效：auto（默认，自动识别 2:1 等距柱状全景）/ always 强制当全景 / never 当普通图片。全景能给出完整空间信息，通常比普通图更准'
-        },
-        disableRecaption: {
-          type: 'boolean',
-          description:
-            '关闭上游 recaption：true 时指令原文直送（配合 seed 更可复现）；缺省由上游自动补写画面描述'
-        },
-        tags: {
-          type: 'array',
-          items: { type: 'string' },
-          description: '世界标签（官方 tags，最多 10 个、每个 ≤32 字符；仅供 World Labs 侧检索）'
-        },
-        publicWorld: {
-          type: 'boolean',
-          description: '把生成的世界设为公开（官方 permission.public，默认 false 仅自己可见）'
-        },
-        referenceImageUrls: {
-          type: 'array',
-          items: { type: 'string' },
-          description:
-            '参考图（图生世界 / 多图生世界，最多 4 张）：支持 http(s) 地址、data URL、工程内相对路径或本地绝对路径。与 referenceVideoUrl 同时给出时以视频为准'
-        },
-        referenceVideoUrl: {
-          type: 'string',
-          description:
-            '参考视频（视频生世界，只取 1 条）：支持 http(s) 地址、工程内相对路径或本地绝对路径；相对/本地路径会自动上传对象存储换公网 URL。推荐 mp4 / webm / mov / avi，单条不超过 100MB（上游硬限制）'
-        },
-        extraParams: {
-          type: 'object',
-          description:
-            '低频参数透传（模型特有字段），合并进底层生成输入；显式入参优先于这里的同名字段'
-        }
-      },
-      required: ['prompt']
-    },
-    handler: async (args) => {
-      assertProjectOpen()
-      const referenceVideoUrl = optionalString(args, 'referenceVideoUrl')
-      const input: GenerateSpatialWorldInput & { name?: string } = {
-        ...cacheOnlyGenExtraParams(args),
-        prompt: readString(args, 'prompt'),
-        name: optionalString(args, 'name'),
-        model: optionalString(args, 'model'),
-        providerInstanceId: optionalString(args, 'providerInstanceId'),
-        displayName: optionalString(args, 'displayName'),
-        seed: typeof args.seed === 'number' && Number.isFinite(args.seed) ? args.seed : undefined,
-        panoMode:
-          args.panoMode === 'always' || args.panoMode === 'never' || args.panoMode === 'auto'
-            ? args.panoMode
-            : undefined,
-        disableRecaption: args.disableRecaption === true ? true : undefined,
-        tags: Array.isArray(args.tags)
-          ? args.tags.filter((tag): tag is string => typeof tag === 'string')
-          : undefined,
-        publicWorld: args.publicWorld === true ? true : undefined,
-        // 图片与视频都留在同一份引用列表里：适配器按 kind 决定 world_prompt 形态（视频优先）
-        inputReferences: [
-          ...(Array.isArray(args.referenceImageUrls)
-            ? args.referenceImageUrls
-                .filter((item): item is string => typeof item === 'string')
-                .map((url) => ({ kind: 'image_url' as const, url }))
-            : []),
-          ...(referenceVideoUrl ? [{ kind: 'video_url' as const, url: referenceVideoUrl }] : [])
-        ]
-      }
-      // 与 3D 模型同口径：对话生成的世界只落 Cache、不入资产库（避免重复卡）
-      const result = await runGenActivity(
-        'generate_world',
-        activityTitle(input.name, input.prompt),
-        input.model,
-        () => modelProviderFacade.generateSpatialWorld(input),
-        // 世界产物除主产物 GLB 外，还随包返回高斯泼溅（.spz）与 360 全景。
-        // 它们是**主产物的附件**而非独立作品，所以走 relatedPaths 折叠进同一张卡，
-        // 由 splitPrimaryAndRelated 决定谁当封面（有泼溅就用泼溅）。
-        (r) => {
-          const primary = liveAssetRelativePath(r) ?? r.relativePath
-          const extras = (r.extras ?? []).map((item) => item.relativePath)
-          const split = splitPrimaryAndRelated(primary, extras)
-          return {
-            assetId: r.assetId,
-            relativePath: split.primary,
-            ...(split.related.length ? { relatedPaths: split.related } : {})
-          }
-        },
-        undefined,
-        (r) => ({
-          kind: 'generateSpatialWorld',
-          nodeId: 'mcp',
-          request: {
-            prompt: input.prompt,
-            model: input.model,
-            providerInstanceId: input.providerInstanceId,
-            seed: input.seed,
-            inputReferenceCount: input.inputReferences?.length || undefined,
-            inputReferenceUrls: summarizeReferenceListForLog(input.inputReferences),
-            uploads: r.uploads?.map((item) => ({
-              sourceLabel: item.sourceLabel,
-              objectKey: item.objectKey,
-              bytes: item.bytes,
-              urlPreview: item.url.slice(0, 120)
-            }))
-          },
-          response: {
-            model: r.model,
-            assetId: r.assetId,
-            relativePath: liveAssetRelativePath(r)
-          }
-        })
-      )
-      broadcastAsset(result.assetId)
-      return {
-        ...result,
-        // 附加产物（高斯泼溅 SPZ / 360 全景图）随世界落盘在主产物旁边，路径一并回报
-        extras: result.extras?.filter((item) => item.relativePath?.trim()),
-        relativePath: liveAssetRelativePath(result)
-      }
-    }
-  },
-  {
-    name: 'export_spatial_world',
-    title: '导出空间世界',
-    description:
-      '把 `generate_world` 产出的**世界**导出成能继续编排的产物。**这是世界的唯一出口** —— 世界端口严格同类型（不隐式兼容模型），不导出就拿不到可用的网格。' +
-      '两种模式：`mesh`（默认）出 HQ 网格 GLB 并**登记为模型资产**，可接 3D 加工 / 导演台，`textured`（约 60 万面，带贴图）或 `vertex_colored`（约 100 万面）；' +
-      '`splats` 出 PLY 泼溅，**落在世界产物同目录同名文件里、不登记资产**（PLY 在应用内没有预览通道），可带分辨率 `full_res` / `500k` / `150k` / `100k`。' +
-      '**计费与耗时**：两者都单独计费；`mesh` 是上游异步服务，**最长约 1 小时**、限速 4 次/小时，所以这个调用会等很久。' +
-      '**只想进去看看就不必导出**：世界生成时随包免费返回的 `.spz` 泼溅已经能直接浏览。' +
-      '必须给 `spatialWorldId`（generate_world 的返回值里有）或 `spatialWorldAssetId`（世界 GLB 的资产 id，可反查）；`splats` 还需要能定位世界产物的路径。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        spatialWorldId: {
-          type: 'string',
-          description: 'World Labs 世界 id（generate_world 返回的 spatialWorldId）'
-        },
-        spatialWorldAssetId: {
-          type: 'string',
-          description:
-            '世界 GLB 的资产 id（generate_world 返回的 assetId）：没给 spatialWorldId 时用它反查，同时作为 splats 的落盘参照'
-        },
-        sourceRelativePath: {
-          type: 'string',
-          description:
-            '世界产物的工程内相对路径（splats 模式在自己的同目录同名落文件用）；缺省时从 spatialWorldAssetId 取'
-        },
-        assetType: {
-          type: 'string',
-          enum: ['mesh', 'splats'],
-          description: 'mesh（默认，HQ 网格 GLB、登记模型资产）或 splats（PLY、只落文件）'
-        },
-        meshVariant: {
-          type: 'string',
-          enum: ['textured', 'vertex_colored'],
-          description: '仅 mesh：带贴图（约 60 万面）或顶点色（约 100 万面），缺省 textured'
-        },
-        resolution: {
-          type: 'string',
-          enum: ['full_res', '500k', '150k', '100k'],
-          description: '仅 splats：PLY 分辨率档，缺省 full_res'
-        },
-        model: { type: 'string', description: '空间世界模型 id（models_list 查询）' },
-        providerInstanceId: { type: 'string', description: '提供商实例 id' },
-        name: { type: 'string', description: '产物显示名' },
-        extraParams: {
-          type: 'object',
-          description: '低频参数透传，合并进底层生成输入'
-        }
-      },
-      required: []
-    },
-    handler: async (args) => {
-      assertProjectOpen()
-      const assetId = optionalString(args, 'spatialWorldAssetId')
-      const asset = assetId ? findAssetOrThrow(assetId) : undefined
-
-      // 世界 id：显式给最好；否则用世界资产反查生成任务记录（生成本身已花过积分，不该逼用户重生成）
-      const explicitWorldId = optionalString(args, 'spatialWorldId')
-      const spatialWorldId =
-        explicitWorldId ??
-        (assetId
-          ? (await modelProviderFacade.recoverSpatialWorldId({ assetId }))?.trim() || undefined
-          : undefined)
-      if (!spatialWorldId) {
-        throw fail(SHARED_ERRORS.worldExportNoWorldId)
-      }
-
-      const assetType: SpatialWorldExportAssetType = args.assetType === 'splats' ? 'splats' : 'mesh'
-      const sourceRelativePath =
-        optionalString(args, 'sourceRelativePath') ?? asset?.relativePath?.trim() ?? undefined
-
-      const input: ExportWorldInput = {
-        ...cacheOnlyGenExtraParams(args),
-        spatialWorldId,
-        assetType,
-        format: assetType === 'splats' ? 'ply' : 'glb',
-        ...(assetType === 'mesh'
-          ? {
-              meshVariant: (args.meshVariant === 'vertex_colored'
-                ? 'vertex_colored'
-                : 'textured') satisfies SpatialWorldExportMeshVariant
-            }
-          : {}),
-        ...(assetType === 'splats' ? { resolution: readExportResolution(args) } : {}),
-        model: optionalString(args, 'model'),
-        providerInstanceId: optionalString(args, 'providerInstanceId'),
-        sourceRelativePath,
-        name: optionalString(args, 'name')
-      }
-      const result = await runGenActivity(
-        'export_spatial_world',
-        activityTitle(input.name, `导出世界（${assetType}）`),
-        input.model,
-        () => modelProviderFacade.exportWorld(input),
-        (r) => ({ assetId: r.assetId, relativePath: liveAssetRelativePath(r) }),
-        undefined,
-        (r) => ({
-          kind: 'exportWorld',
-          nodeId: 'mcp',
-          request: {
-            model: input.model,
-            providerInstanceId: input.providerInstanceId,
-            name: input.name,
-            // 世界导出没有 prompt；借 input 记录导出规格，便于运行日志复盘
-            input: `export:${assetType}${assetType === 'mesh' ? `:${input.meshVariant}` : ''}`
-          },
-          response: {
-            model: r.model,
-            assetId: r.assetId,
-            relativePath: liveAssetRelativePath(r)
-          }
-        })
-      )
-      // splats 不登记资产（没有可广播的卡），mesh 才有
-      if (result.assetId) broadcastAsset(result.assetId)
-      return {
-        assetId: result.assetId,
-        relativePath: liveAssetRelativePath(result),
-        model: result.model,
-        assetType: result.assetType,
-        format: result.format,
-        // splats 的 PLY 落在世界产物旁边；相对路径一并回报，否则 agent 不知道文件在哪
-        ...(result.assetId ? {} : { note: 'PLY 泼溅落在世界产物同目录同名的 .ply 文件里' })
-      }
-    }
-  },
-  {
-    name: 'rig_model3d',
-    title: '3D 骨骼蒙皮',
-    description:
-      '给现有 3D 模型绑骨架（云端 Rigging API），产物 GLB（或 FBX）落 `Cache/Models`（不自动进资产库）。**只有 Meshy 与 Tripo 提供该能力**，别的 3D 供应商会明确报错。' +
-      '输出会返回 `taskId` —— 做**动画重定向**（`post_process_model3d` 的 `op: retarget`）时要把它作为 `providerTaskId` 传回去。' +
-      '源模型给 `assetId`（工程内模型资产）或 `modelUrl`（公网直链）。**给工程内文件需要先配置对象存储**：模型要先换成公网 URL 才能提交给上游；`modelUrl` 则不需要。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        assetId: { type: 'string', description: '源 3D 模型资产 id（与 modelUrl 二选一）' },
-        modelUrl: { type: 'string', description: '公网可访问的模型直链（与 assetId 二选一）' },
-        rigType: {
-          type: 'string',
-          description: '骨架类型（humanoid / quadruped 等，缺省 humanoid）'
-        },
-        spec: {
-          type: 'string',
-          enum: ['tripo', 'mixamo'],
-          description:
-            '骨架命名规范：mixamo（默认，兼容 Mixamo 动作库）/ tripo（原生命名）；Meshy 忽略'
-        },
-        outFormat: {
-          type: 'string',
-          enum: ['glb', 'fbx'],
-          description: '输出格式：glb（默认，可直接预览）/ fbx（DCC / 游戏引擎）；Meshy 固定 glb'
-        },
-        model: { type: 'string', description: '3D 模型 id（models_list 查询）' },
-        providerInstanceId: { type: 'string', description: '提供商实例 id' },
-        name: { type: 'string', description: '产物显示名' },
-        extraParams: { type: 'object', description: '低频参数透传，合并进底层生成输入' }
-      },
-      required: []
-    },
-    handler: async (args) => {
-      assertProjectOpen()
-      const input = {
-        ...cacheOnlyGenExtraParams(args),
-        ...resolveModel3dSourceInput(args),
-        model: optionalString(args, 'model'),
-        providerInstanceId: optionalString(args, 'providerInstanceId'),
-        rigType: optionalString(args, 'rigType'),
-        spec: readEnumArg(args, 'spec', ['tripo', 'mixamo'] as const),
-        outFormat: readEnumArg(args, 'outFormat', ['glb', 'fbx'] as const),
-        name: optionalString(args, 'name')
-      }
-      const result = await runGenActivity(
-        'rig_model3d',
-        activityTitle(input.name, `3D 骨骼蒙皮（${input.rigType || 'humanoid'}）`),
-        input.model,
-        () => modelProviderFacade.rigModel3d(input),
-        (r) => ({ assetId: r.assetId, relativePath: liveAssetRelativePath(r) }),
-        undefined,
-        (r) => ({
-          kind: 'rigModel3d',
-          nodeId: 'mcp',
-          request: {
-            model: input.model,
-            providerInstanceId: input.providerInstanceId,
-            rigType: input.rigType,
-            name: input.name
-          },
-          response: {
-            model: r.model,
-            assetId: r.assetId,
-            relativePath: liveAssetRelativePath(r)
-          }
-        })
-      )
-      broadcastAsset(result.assetId)
-      return {
-        assetId: result.assetId,
-        relativePath: liveAssetRelativePath(result),
-        model: result.model,
-        // 下游重定向要用它，必须回给 agent
-        taskId: result.taskId
-      }
-    }
-  },
-  {
-    name: 'segment_model3d',
-    title: '3D 模型拆分',
-    description:
-      '把 3D 模型拆成部件，产物 GLB 落 `Cache/Models`（不自动进资产库），并返回**部件名清单**（拆分后 GLB 的各 node 名，可用于后续「部件补全」点名）。' +
-      '两种模式：`mesh`（网格分割，默认；可给 `granularity` 走语义 + 几何的 v2 算法）与 `smart`（智能分割，按语义拆，可用 `hint` 点名要拆哪些部件，如「带剑与盔甲的游戏角色」）。' +
-      '源模型给 `assetId` 或 `modelUrl`；**给工程内文件需要先配置对象存储**（要先换成公网 URL）。输出含 `taskId`，可作为「部件补全」的 `providerTaskId`。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        assetId: { type: 'string', description: '源 3D 模型资产 id（与 modelUrl 二选一）' },
-        modelUrl: { type: 'string', description: '公网可访问的模型直链（与 assetId 二选一）' },
-        mode: {
-          type: 'string',
-          enum: ['mesh', 'smart'],
-          description: '拆分模式：mesh（网格分割，默认）/ smart（智能分割，按语义）'
-        },
-        granularity: {
-          type: 'string',
-          description: 'mesh 模式的分割粒度（传入即用 v2.0 语义 + 几何算法）'
-        },
-        splitByConnectivity: {
-          type: 'boolean',
-          description: 'mesh v2：是否按连通域拆分（默认 true）'
-        },
-        smartGranularity: {
-          type: 'string',
-          description: 'smart 模式的粒度（缺省 medium）'
-        },
-        hint: { type: 'string', description: 'smart 模式：点名要拆哪些部件' },
-        model: { type: 'string', description: '3D 模型 id（models_list 查询）' },
-        providerInstanceId: { type: 'string', description: '提供商实例 id' },
-        name: { type: 'string', description: '产物显示名' },
-        extraParams: { type: 'object', description: '低频参数透传，合并进底层生成输入' }
-      },
-      required: []
-    },
-    handler: async (args) => {
-      assertProjectOpen()
-      const input = {
-        ...cacheOnlyGenExtraParams(args),
-        ...resolveModel3dSourceInput(args),
-        model: optionalString(args, 'model'),
-        providerInstanceId: optionalString(args, 'providerInstanceId'),
-        mode: readEnumArg(args, 'mode', ['mesh', 'smart'] as const),
-        granularity: readEnumArg(args, 'granularity', ['simple', 'balanced', 'detailed'] as const),
-        splitByConnectivity:
-          typeof args.splitByConnectivity === 'boolean' ? args.splitByConnectivity : undefined,
-        smartGranularity: readEnumArg(args, 'smartGranularity', [
-          'coarse',
-          'medium',
-          'fine'
-        ] as const),
-        hint: optionalString(args, 'hint'),
-        name: optionalString(args, 'name')
-      }
-      const result = await runGenActivity(
-        'segment_model3d',
-        activityTitle(input.name, `3D 模型拆分（${input.mode || 'mesh'}）`),
-        input.model,
-        () => modelProviderFacade.segmentModel3d(input),
-        (r) => ({ assetId: r.assetId, relativePath: liveAssetRelativePath(r) }),
-        undefined,
-        (r) => ({
-          kind: 'segmentModel3d',
-          nodeId: 'mcp',
-          request: {
-            model: input.model,
-            providerInstanceId: input.providerInstanceId,
-            name: input.name
-          },
-          response: {
-            model: r.model,
-            assetId: r.assetId,
-            relativePath: liveAssetRelativePath(r)
-          }
-        })
-      )
-      broadcastAsset(result.assetId)
-      return {
-        assetId: result.assetId,
-        relativePath: liveAssetRelativePath(result),
-        model: result.model,
-        taskId: result.taskId,
-        mode: result.mode,
-        parts: result.parts
-      }
-    }
-  },
-  {
-    name: 'post_process_model3d',
-    title: '3D 模型加工',
-    description:
-      '对 3D 模型做后续加工，产物落 `Cache/Models`（不自动进资产库）。按 `op` 分流：' +
-      '`rigCheck`（**免费**，检查能否绑骨 + 推荐骨架类型，**无产物**）、' +
-      '`retopology`（重拓扑：`smart` v2 智能 / `basic` v1 减面，可给 `faceLimit` 目标面数、`quad` 四边面、`bake` 烘焙贴图）、' +
-      '`meshComplete`（部件补全：`partNames` 点名要补的部件、省略=全部；`completionMode` 为 ai_completion / quick_cap）、' +
-      '`retarget`（动画重定向：给 `animation` 单个或 `animations` 多个预设动作 id，动作用 `list_model3d_animations` 查；**必须传上一个绑骨或拆件任务的 `providerTaskId`**）、' +
-      '`convert`（格式转换：`format` 必填 GLTF / FBX / USDZ / OBJ / STL / 3MF，另有贴图尺寸与格式、FBX 预设、pivot 归底、UV 打包、朝向、压平底部等）、' +
-      '`texture`（重绘贴图）。' +
-      '**能力按供应商矩阵过滤**：Tripo 支持 8 项、Meshy 支持 5 项，做不到的组合上游会明确报错。**部件补全只吃拆件任务 id、动画重定向只吃绑骨任务 id**，task id 属于别家时会退回「上传模型换公网 URL」。' +
-      '源模型给 `assetId` 或 `modelUrl`；**给工程内文件需要先配置对象存储**。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        op: {
-          type: 'string',
-          enum: ['rigCheck', 'retopology', 'meshComplete', 'retarget', 'convert', 'texture'],
-          description: '要做的加工类型'
-        },
-        assetId: { type: 'string', description: '源 3D 模型资产 id（与 modelUrl 二选一）' },
-        modelUrl: { type: 'string', description: '公网可访问的模型直链（与 assetId 二选一）' },
-        providerTaskId: {
-          type: 'string',
-          description:
-            '上游任务 id：meshComplete 用拆件任务的、retarget 用绑骨任务的（见 rig_model3d / segment_model3d 返回的 taskId）'
-        },
-        partNames: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'meshComplete：要补全的部件名（省略 = 全部）'
-        },
-        completionMode: {
-          type: 'string',
-          enum: ['ai_completion', 'quick_cap'],
-          description: 'meshComplete：补全模式（缺省 ai_completion）'
-        },
-        retopologyMode: {
-          type: 'string',
-          enum: ['smart', 'basic'],
-          description: 'retopology：算法档位（缺省 smart = v2.0 智能；basic = v1.0 基础减面）'
-        },
-        faceLimit: { type: 'number', description: 'retopology：目标面数' },
-        quad: { type: 'boolean', description: 'retopology：输出四边面' },
-        bake: { type: 'boolean', description: 'retopology：把贴图烘焙到低模（默认 true）' },
-        animation: {
-          type: 'string',
-          description: 'retarget：单个预设动作 id（与 animations 互斥）'
-        },
-        animations: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'retarget：多个预设动作 id（与 animation 互斥）'
-        },
-        actionIds: {
-          type: 'array',
-          items: { type: 'number' },
-          description: 'retarget：Meshy 动作库的 action id'
-        },
-        outFormat: {
-          type: 'string',
-          enum: ['glb', 'fbx'],
-          description: 'retarget：输出格式（缺省 glb）'
-        },
-        bakeAnimation: { type: 'boolean', description: 'retarget：把动画烘焙进模型（仅 glb）' },
-        exportWithGeometry: {
-          type: 'boolean',
-          description: 'retarget：是否带几何导出（默认 true）'
-        },
-        animateInPlace: { type: 'boolean', description: 'retarget：原地播放（默认 false）' },
-        format: {
-          type: 'string',
-          enum: ['GLTF', 'FBX', 'USDZ', 'OBJ', 'STL', '3MF'],
-          description: 'convert：目标格式（必填）'
-        },
-        textureSize: { type: 'number', description: 'convert：输出贴图尺寸（默认 4096）' },
-        textureFormat: { type: 'string', description: 'convert：贴图图片格式（默认 JPEG）' },
-        fbxPreset: {
-          type: 'string',
-          enum: ['blender', '3dsmax', 'mixamo', 'bake_scale'],
-          description: 'convert：FBX 兼容预设（默认 blender）'
-        },
-        pivotToCenterBottom: { type: 'boolean', description: 'convert：pivot 移到模型底部中心' },
-        packUv: { type: 'boolean', description: 'convert：统一打包 UV' },
-        exportVertexColors: {
-          type: 'boolean',
-          description: 'convert：导出顶点色（仅 OBJ / GLTF）'
-        },
-        exportOrientation: {
-          type: 'string',
-          enum: ['+x', '-x', '+y', '-y'],
-          description: 'convert：导出朝向（前向轴）'
-        },
-        flattenBottom: { type: 'boolean', description: 'convert：压平底部（打印件常用）' },
-        scaleFactor: { type: 'number', description: 'convert：导出缩放系数' },
-        withAnimation: { type: 'boolean', description: 'convert：保留骨骼与动画数据' },
-        model: { type: 'string', description: '3D 模型 id（models_list 查询）' },
-        providerInstanceId: { type: 'string', description: '提供商实例 id' },
-        name: { type: 'string', description: '产物显示名' },
-        extraParams: { type: 'object', description: '低频参数透传，合并进底层生成输入' }
-      },
-      required: ['op']
-    },
-    handler: async (args) => {
-      assertProjectOpen()
-      const op = readString(args, 'op')
-      if (!POST_PROCESS_OPS.includes(op as Model3dPostProcessOp)) {
-        throw new Error(`不支持的 op：「${op}」（可选 ${POST_PROCESS_OPS.join(' / ')}）`)
-      }
-      const input: Model3dPostProcessInput = {
-        ...cacheOnlyGenExtraParams(args),
-        ...resolveModel3dSourceInput(args),
-        op: op as Model3dPostProcessOp,
-        providerTaskId: optionalString(args, 'providerTaskId'),
-        model: optionalString(args, 'model'),
-        providerInstanceId: optionalString(args, 'providerInstanceId'),
-        partNames: readStringList(args, 'partNames'),
-        completionMode: readEnumArg(args, 'completionMode', [
-          'ai_completion',
-          'quick_cap'
-        ] as const),
-        retopologyMode: readEnumArg(args, 'retopologyMode', ['smart', 'basic'] as const),
-        faceLimit: optionalNumber(args, 'faceLimit'),
-        quad: typeof args.quad === 'boolean' ? args.quad : undefined,
-        bake: typeof args.bake === 'boolean' ? args.bake : undefined,
-        animation: optionalString(args, 'animation'),
-        animations: readStringList(args, 'animations'),
-        actionIds: readNumberList(args, 'actionIds'),
-        outFormat: readEnumArg(args, 'outFormat', ['glb', 'fbx'] as const),
-        bakeAnimation: typeof args.bakeAnimation === 'boolean' ? args.bakeAnimation : undefined,
-        exportWithGeometry:
-          typeof args.exportWithGeometry === 'boolean' ? args.exportWithGeometry : undefined,
-        animateInPlace: typeof args.animateInPlace === 'boolean' ? args.animateInPlace : undefined,
-        format: readEnumArg(args, 'format', MODEL3D_CONVERT_FORMATS),
-        textureSize: optionalNumber(args, 'textureSize'),
-        textureFormat: readEnumArg(args, 'textureFormat', [
-          'JPEG',
-          'PNG',
-          'WEBP',
-          'BMP',
-          'DPX',
-          'HDR',
-          'OPEN_EXR',
-          'TARGA',
-          'TIFF'
-        ] as const),
-        fbxPreset: readEnumArg(args, 'fbxPreset', [
-          'blender',
-          '3dsmax',
-          'mixamo',
-          'bake_scale'
-        ] as const),
-        pivotToCenterBottom:
-          typeof args.pivotToCenterBottom === 'boolean' ? args.pivotToCenterBottom : undefined,
-        packUv: typeof args.packUv === 'boolean' ? args.packUv : undefined,
-        exportVertexColors:
-          typeof args.exportVertexColors === 'boolean' ? args.exportVertexColors : undefined,
-        exportOrientation: readEnumArg(args, 'exportOrientation', [
-          '+x',
-          '-x',
-          '+y',
-          '-y'
-        ] as const),
-        flattenBottom: typeof args.flattenBottom === 'boolean' ? args.flattenBottom : undefined,
-        scaleFactor: optionalNumber(args, 'scaleFactor'),
-        withAnimation: typeof args.withAnimation === 'boolean' ? args.withAnimation : undefined,
-        name: optionalString(args, 'name')
-      }
-      const result = await runGenActivity(
-        'post_process_model3d',
-        activityTitle(input.name, `3D 加工（${op}）`),
-        input.model,
-        () => modelProviderFacade.postProcessModel3d(input),
-        // 绑骨检查没有产物，不报 assetId（否则活动卡会指向不存在的资产）
-        (r) =>
-          isProducingPostProcess(r)
-            ? { assetId: r.assetId, relativePath: liveAssetRelativePath(r) }
-            : {},
-        undefined,
-        (r) => ({
-          kind: 'postProcessModel3d',
-          nodeId: 'mcp',
-          request: {
-            model: input.model,
-            providerInstanceId: input.providerInstanceId,
-            name: input.name,
-            // 复用 input 字段记录 op，便于运行日志复盘（该调用没有 prompt）
-            input: op
-          },
-          response: isProducingPostProcess(r)
-            ? {
-                model: r.model,
-                assetId: r.assetId,
-                relativePath: liveAssetRelativePath(r)
-              }
-            : {}
-        })
-      )
-      // rigCheck 无产物，不广播
-      if (isProducingPostProcess(result)) {
-        broadcastAsset(result.assetId)
-        return { ...result, relativePath: liveAssetRelativePath(result) }
-      }
-      return result
     }
   },
   {
@@ -5236,58 +4474,50 @@ function readNumberList(args: Record<string, unknown>, key: string): number[] {
   return out
 }
 
-/**
- * 读取枚举参数；不在白名单内（含缺省）返回 undefined，让上游用自己的默认值。
- *
- * 不用 `readString` 那套"必填报错"：这些枚举几乎都有服务端默认值，
- * 传错时**回落到默认**比报错更符合生成工具的既有体验（数值仍由上游夹紧）。
- */
-function readEnumArg<T extends string>(
-  args: Record<string, unknown>,
-  key: string,
-  allowed: readonly T[]
-): T | undefined {
-  const value = args[key]
-  if (typeof value !== 'string') return undefined
-  const trimmed = value.trim()
-  return (allowed as readonly string[]).includes(trimmed) ? (trimmed as T) : undefined
-}
+/** 最近一次通过 graph_edit 操作的画布资产与触达节点列表：供紧接着的 task_run / graph_read 缺省复用 */
+let lastMcpGraphEditTarget: { assetId: string; nodeIds: string[] } | null = null
 
 /**
- * 读取 3D 加工类工具的源模型入参。
- *
- * 上游只认**公网 URL**：给 `assetId` 时取它的工程内相对路径，由 facade 走
- * `ensureRemoteMediaUrl` 上传对象存储（未配置会明确报错）；给 `modelUrl` 则直接用，
- * **不需要对象存储** —— 这条差别对用户是真金白银的配置成本，所以工具描述里都写明了。
+ * 解析或按需创建当前工程的宿主画布资产：
+ * - 若显式传入 assetId（且非 current / active），按 id 查找；
+ * - 若缺省，优先复用最近一次 graph_edit 触达的画布资产，其次选工程内已有的自由画布（canvas）或任意含 graphJson 的宿主资产；
+ * - 若工程内尚无任何画布资产且 autoCreateCanvas=true，自动新建并广播一个自由画布资产，确保无需预建即可直接在画布上建节点并实时执行。
  */
-function resolveModel3dSourceInput(args: Record<string, unknown>): {
-  modelUrl?: string
-  modelRelativePath?: string
-} {
-  const modelUrl = optionalString(args, 'modelUrl')
-  if (modelUrl) return { modelUrl }
-  const assetId = optionalString(args, 'assetId')
-  if (!assetId) return {}
-  const asset = findAssetOrThrow(assetId)
-  const relativePath = asset.relativePath?.trim()
-  if (!relativePath) throw new Error(`资产没有可用的文件路径：${assetId}`)
-  return { modelRelativePath: relativePath }
-}
+function resolveOrEnsureCanvasAsset(
+  rawAssetId: string | undefined,
+  options?: { autoCreateCanvas?: boolean }
+): AssetInfo | undefined {
+  const trimmed = rawAssetId?.trim() ?? ''
+  if (trimmed && trimmed !== 'current' && trimmed !== 'active') {
+    return findAssetOrThrow(trimmed)
+  }
+  const assets = projectService.listAssets()
+  const hasGraphDoc = (item: AssetInfo | undefined): item is AssetInfo => {
+    if (!item) return false
+    const graphJson = (item.genParams as Record<string, unknown> | undefined)?.graphJson as
+      GraphDocument | undefined
+    return Boolean(graphJson && Array.isArray(graphJson.nodes))
+  }
+  if (lastMcpGraphEditTarget?.assetId) {
+    const recent = assets.find((item) => item.id === lastMcpGraphEditTarget?.assetId)
+    if (hasGraphDoc(recent)) return recent
+  }
+  const canvasAssets = assets
+    .filter((item) => item.type === 'canvas' && hasGraphDoc(item))
+    .sort((a, b) => String(b.updatedAt ?? '').localeCompare(String(a.updatedAt ?? '')))
+  if (canvasAssets.length) return canvasAssets[0]
 
-/**
- * 判断一次 3D 加工是否产出了资产。
- *
- * `Model3dPostProcessResult` 是联合类型：`rigCheck` 只回检测结论（可绑骨？推荐骨架？），
- * **没有 assetId / relativePath / model**；其余 op 才有。
- *
- * 谓词不能写成 `Extract<..., { assetId: string }>` —— `op` 在产出分支里本身就是联合
- * （`meshComplete | retopology | ...`），`Extract` 会求成 `never`，于是守卫失效、
- * 后面的字段访问依旧报错（踩过）。写成"排除 rigCheck"才真正收窄。
- */
-function isProducingPostProcess(
-  result: Model3dPostProcessResult
-): result is Exclude<Model3dPostProcessResult, { op: 'rigCheck' }> {
-  return result.op !== 'rigCheck'
+  const anyGraphHost = assets
+    .filter((item) => hasGraphDoc(item))
+    .sort((a, b) => String(b.updatedAt ?? '').localeCompare(String(a.updatedAt ?? '')))
+  if (anyGraphHost.length) return anyGraphHost[0]
+
+  if (options?.autoCreateCanvas) {
+    const created = projectService.createAsset({ type: 'canvas' })
+    broadcastToAllWindows(IpcChannels.ASSET_UPDATED, created)
+    return created
+  }
+  return undefined
 }
 
 /**
@@ -5305,17 +4535,6 @@ function resolveVideoRelativePath(args: Record<string, unknown>): string {
   const resolved = asset.relativePath?.trim()
   if (!resolved) throw new Error(`资产没有可用的文件路径：${assetId}`)
   return resolved
-}
-
-/**
- * 读取 PLY 泼溅的分辨率档。
- *
- * 与图节点 `spatialWorldExportResolution` 同一组取值；非法值一律回落 `full_res`
- * （与执行器里那段判断同口径，见 shared/graph/execute/spatialWorldExport.ts）。
- */
-function readExportResolution(args: Record<string, unknown>): SpatialWorldExportResolution {
-  const raw = args.resolution
-  return raw === '500k' || raw === '150k' || raw === '100k' ? raw : 'full_res'
 }
 
 /**
@@ -5695,36 +4914,6 @@ function resolveProjectRelativePath(
   return { relativePath: resolved, assetId: null }
 }
 
-/** 读取 extraParams 透传对象：剥离内部回写绑定字段，避免外部注入节点级回写 */
-function extraParamsOf(args: Record<string, unknown>): Record<string, unknown> {
-  const extra =
-    args.extraParams && typeof args.extraParams === 'object'
-      ? { ...(args.extraParams as Record<string, unknown>) }
-      : {}
-  delete extra.graphBinding
-  return extra
-}
-
-/**
- * `generate_*` 工具的低频透传参数：在 `extraParamsOf` 之上再剥掉 `outputDir` / `folderId`。
- *
- * 对话生成的产物一律只落缓存目录（Cache/Images、Videos、Voices、Music、Models），
- * 是否入库由用户在产物卡上点「保存到资产库」按钮决定。`inputSchema` 已不再暴露这两个字段，
- * 但 `extraParams` 是自由对象，能把它们夹带进来——展开后恰好命中
- * `attachExternalGeneratedFile` 的「落 Assets/ 即登记资产」分支，所以这里必须再兜一道。
- */
-function cacheOnlyGenExtraParams(args: Record<string, unknown>): Record<string, unknown> {
-  const extra = extraParamsOf(args)
-  delete extra.outputDir
-  delete extra.folderId
-  // 防御 harness 缓存旧 schema 仍传 outputDir/folderId 顶层字段：input 字面量构造
-  // 时虽然不展开这两个键，但 `GenerateImageInput` / `GenerateMusicInput` 等类型允许
-  // 它们存在——这里直接 mutate args 抹掉，杜绝一切泄露。
-  delete args.outputDir
-  delete args.folderId
-  return extra
-}
-
 function assertProjectOpen(): void {
   if (!projectService.isOpen()) {
     throw new Error('请先在应用中打开工程（或调用 project_open）')
@@ -5812,21 +5001,24 @@ export function readVisualCheckImagesForRelativePaths(
     const rel = typeof raw === 'string' ? normalizeProjectRelativePath(raw) : null
     if (!rel) continue
     const lower = rel.toLowerCase()
-    const mime = lower.endsWith('.png')
+    const extMime = lower.endsWith('.png')
       ? 'image/png'
       : lower.endsWith('.webp')
         ? 'image/webp'
         : lower.endsWith('.jpg') || lower.endsWith('.jpeg')
           ? 'image/jpeg'
-          : null
-    if (!mime) continue
+          : lower.endsWith('.gif')
+            ? 'image/gif'
+            : null
+    if (!extMime) continue
     try {
       const abs = join(root, rel)
       if (!existsSync(abs)) continue
       const stat = statSync(abs)
       if (!stat.isFile() || stat.size <= 0 || stat.size > VISUAL_SELF_CRITIQUE_MAX_BYTES) continue
-      const b64 = readFileSync(abs).toString('base64')
-      out.push(`data:${mime};base64,${b64}`)
+      const buf = readFileSync(abs)
+      const mime = sniffImageMimeFromBytes(buf) ?? extMime
+      out.push(`data:${mime};base64,${buf.toString('base64')}`)
     } catch {
       /* 单张读取失败忽略，不影响主工具返回 */
     }
@@ -5956,13 +5148,6 @@ async function runRenderJob<T = unknown>(
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
-
-/** 生成落盘后同步刷新应用界面中的资产卡片 */
-function broadcastAsset(assetId: string | undefined): void {
-  if (!assetId) return
-  const asset = projectService.listAssets().find((item) => item.id === assetId)
-  if (asset) broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
-}
 
 let server: Server | null = null
 let mcpToken = ''

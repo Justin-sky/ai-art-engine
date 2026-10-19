@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { fail, defErr, defErrSimple } from '@shared/errors/appError'
+import { sniffImageMimeFromBytes } from '@shared/media/imageMimeSniff'
 
 // ── 媒体字节解析个性错误（axios / HTTP 原生报错作为 detail 透传）──
 const E_MEDIA_EMPTY_URL = defErrSimple('media.emptyUrl', '空的媒体 URL', 'Media URL is empty')
@@ -37,19 +38,21 @@ function extHintMime(url: string): string {
   return 'application/octet-stream'
 }
 
-/** 解析 data URL，或在主进程下载 http(s)（避免渲染进程 CORS） */
+/** 解析 data URL，或在主进程下载 http(s)（避免渲染进程 CORS）；对光栅图优先按 Magic Bytes 校准真实 MIME */
 export async function resolveMediaBytesFromUrl(rawInput: string): Promise<ResolvedMediaBytes> {
   const raw = rawInput.trim()
   if (!raw) throw fail(E_MEDIA_EMPTY_URL)
 
   const dataMatch = /^data:([^;,]+)?(;base64)?,([\s\S]+)$/i.exec(raw)
   if (dataMatch) {
-    const mime = (dataMatch[1] || 'application/octet-stream').toLowerCase()
+    const declaredMime = (dataMatch[1] || 'application/octet-stream').toLowerCase()
     const isBase64 = !!dataMatch[2]
     const payload = dataMatch[3] || ''
+    const buf = Buffer.from(payload, isBase64 ? 'base64' : 'utf8')
+    const mime = sniffImageMimeFromBytes(buf) ?? declaredMime
     return {
       mime,
-      buf: Buffer.from(payload, isBase64 ? 'base64' : 'utf8')
+      buf
     }
   }
 
@@ -64,13 +67,15 @@ export async function resolveMediaBytesFromUrl(rawInput: string): Promise<Resolv
       maxContentLength: 80 * 1024 * 1024,
       maxBodyLength: 80 * 1024 * 1024
     })
-    const mime = mimeFromContentType(
+    const buf = Buffer.from(response.data)
+    const headerMime = mimeFromContentType(
       typeof response.headers['content-type'] === 'string'
         ? response.headers['content-type']
         : undefined,
       extHintMime(raw)
     )
-    return { buf: Buffer.from(response.data), mime }
+    const mime = sniffImageMimeFromBytes(buf) ?? headerMime
+    return { buf, mime }
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err)
     // axios 原生错误保留 cause，消息作为 detail 嵌入

@@ -9235,9 +9235,20 @@ function onTimelineKeydown(e: KeyboardEvent): void {
 
 let unregisterDiveHistory: (() => void) | null = null
 
+function applyExternalTimelineUpdate(): void {
+  if (saveTimer) {
+    clearTimeout(saveTimer)
+    saveTimer = null
+  }
+  loadPersisted()
+  void reloadSources()
+  void refreshClipVisuals()
+}
+
 onMounted(async () => {
-  // 登记「时间线正被界面编辑」：Agent 改时间线前会据此拒绝写入，避免与自动保存互相覆盖
-  if (!isDraftAssetId(props.scriptAssetId)) registerOpenTimelineEditor(props.scriptAssetId)
+  if (!isDraftAssetId(props.scriptAssetId)) {
+    registerOpenTimelineEditor(props.scriptAssetId, applyExternalTimelineUpdate)
+  }
   unregisterDiveHistory = diveEditorHistory.register({
     canUndo: () => canUndo.value,
     canRedo: () => canRedo.value,
@@ -9259,7 +9270,9 @@ watch([() => props.scriptAssetId, () => props.timelineNodeId], async ([next], [p
   // 换剧本资产：占用登记要跟着搬，否则旧资产会一直被判定为「编辑器打开」
   if (prev !== next) {
     if (prev && !isDraftAssetId(prev)) unregisterOpenTimelineEditor(prev)
-    if (next && !isDraftAssetId(next)) registerOpenTimelineEditor(next)
+    if (next && !isDraftAssetId(next)) {
+      registerOpenTimelineEditor(next, applyExternalTimelineUpdate)
+    }
   }
   stopPlayback()
   disposeAudioPool()

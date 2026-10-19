@@ -660,10 +660,12 @@ export interface SaveModelThumbnailInput {
   dataUrl: string
 }
 
-/** MCP：主进程 → 渲染层，请求运行宿主资产工作流 */
+/** MCP：主进程 → 渲染层，请求运行宿主资产工作流或画布指定节点 */
 export interface McpTaskRunPayload {
   mcpTaskId: string
   assetId: string
+  /** 可选：指定要运行的画布节点 id 列表（缺省自动运行最近编辑节点或全图汇点） */
+  nodeIds?: string[]
 }
 
 /** MCP：主进程 → 渲染层，workflow_commit 后打开工作流资产 */
@@ -791,6 +793,8 @@ export type McpGraphEditOp =
 export interface McpGraphEditPayload {
   requestId: string
   assetId: string
+  /** 可选：精确指定打开中的图宿主 hostId（如世界要素子图 `asset:<id>:element:characters`） */
+  hostId?: string
   ops: McpGraphEditOp[]
   /** true：先打开该资产编辑器再改图，保证录屏/教学时画面可见 */
   openEditor?: boolean
@@ -802,6 +806,8 @@ export interface McpGraphEditPayload {
 export interface McpGraphEditResultPayload {
   requestId: string
   ok: boolean
+  assetId?: string
+  nodeIds?: string[]
   applied?: string[]
   warnings?: string[]
   error?: string
@@ -845,7 +851,9 @@ export const MCP_RENDER_JOB_KINDS = [
   'stage2d-spine-export',
   'asset-qc',
   'svg-raster',
-  'timeline-document-apply'
+  'timeline-document-apply',
+  'director-stage-read',
+  'director-stage-edit'
 ] as const
 
 /** 渲染层能力作业类型 */

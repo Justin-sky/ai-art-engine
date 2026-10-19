@@ -1,4 +1,5 @@
 import type { GenerateImageLayer } from '../../modelProvider'
+import { b64JsonToImageDataUrl } from '../../media/imageMimeSniff'
 
 function tuple4(raw: unknown): [number, number, number, number] | undefined {
   if (!Array.isArray(raw) || raw.length < 4) return undefined
@@ -22,7 +23,12 @@ export interface VolcengineArkImageRow {
 }
 
 export function rowImageUrl(row: VolcengineArkImageRow): string {
-  if (row.b64_json) return `data:image/png;base64,${row.b64_json}`
+  if (row.b64_json) {
+    const fmt = row.output_format?.toLowerCase()
+    const fallbackMime =
+      fmt === 'jpeg' || fmt === 'jpg' ? 'image/jpeg' : fmt === 'webp' ? 'image/webp' : 'image/png'
+    return b64JsonToImageDataUrl(row.b64_json, fallbackMime)
+  }
   if (row.url?.trim()) return row.url.trim()
   return ''
 }

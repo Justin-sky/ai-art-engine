@@ -171,17 +171,29 @@ export function apply(ctx: Context): void {
 
 ## 节点类型字段
 
-| 字段                        | 说明                                                                          |
-| --------------------------- | ----------------------------------------------------------------------------- |
-| `typeId`                    | 唯一 id，建议 `plugin.*` 前缀                                                 |
-| `addable`                   | 全局是否可添加；具体出现在哪些画布由 `graphPolicy.addableNodeTypes` 决定      |
-| `inspector` / `inspectorId` | 检查器种类或显式绑定                                                          |
-| `card` / `cardId`           | **勿与 `category` 混用**：工具节点用 `media`；仅真正记事本用 `note`（见上文） |
-| `presentation`              | 备注类卡片 i18n 键（`badgeKey` 等）                                           |
-| `execute`                   | 节点执行器；缺省透传。可另用 `ctx.editor.executor(typeId, fn)` 覆盖           |
+| 字段                        | 说明                                                                                                          |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `typeId`                    | 唯一 id，建议 `plugin.*` 前缀                                                                                 |
+| `addable`                   | 全局是否可添加；具体出现在哪些画布由 `graphPolicy.addableNodeTypes` 决定                                      |
+| `inspector` / `inspectorId` | 检查器种类或显式绑定                                                                                          |
+| `card` / `cardId`           | **勿与 `category` 混用**：工具节点用 `media`；仅真正记事本用 `note`（见上文）                                 |
+| `presentation`              | 备注类卡片 i18n 键（`badgeKey` 等）                                                                           |
+| `execute`                   | 节点执行器；缺省透传。可另用 `ctx.editor.executor(typeId, fn)` 覆盖                                           |
+| `paramSchema`               | 可选：对特定参数路径补充枚举值、数值范围或说明（缺省由 `introspection.ts` 自动从 `defaultParams()` 反射）     |
+| `presets`                   | 可选：声明该节点支持的一键预设列表（`{ id, label, description? }`），自动注入 `graph_node_types` 与焦点上下文 |
 
 默认检查器解析见 `src/renderer/src/inspector/defaults.ts`。  
 默认卡片 id：`studio.graph.note` / `studio.graph.media`。
+
+## 零配置 AI 对话自省与深层智能补丁（Introspection & SmartPatch）
+
+所有通过 `registerNodeType`（或 `ctx.editor.nodeType`）注册的节点，**无需编写任何额外的 MCP 工具胶水代码**，即可自动接入全工作区 AI 对话直控体系：
+
+1. **自动参数树与简写发现（`src/shared/graph/introspection.ts`）**：
+   - 运行时调用 `defaultParams()` 自动反射出完整字段树 `fields`、扁平点路径列表 `flatPaths`（如 `myConfig.intensity`）以及无歧义顶层简写映射 `shorthandMap`（如 `intensity -> myConfig.intensity`）。
+   - 当用户在画布上选中或双击下钻（Dive）进你的节点时，`surfaceRegistry.ts` 会自动将该节点的实时可编辑 Schema 注入 AI 上下文窗口；外部 Agent 也可通过 `graph_node_types` 直接查询。
+2. **深层点路径与模糊别名自动路由（`src/shared/graph/smartPatch.ts`）**：
+   - AI 在 `graph_edit` 中无论是传点路径（`"myConfig.scanlineDensity": 80`）、顶层简写（`"scanlineDensity": 80`）还是 `snake_case`（`"scanline_density": 80`），`mergeSmartNodeParams` 都会自动路由到嵌套对象并保留同级未修改字段。
 
 ## 拖入资产规则
 
@@ -251,5 +263,6 @@ const scopeDef = getGraphScopeDefinition(graphScope.value)
 - `tests/graphExecutorRegistry.test.ts` — 执行器覆盖栈
 - `tests/cordisEditor.test.ts` — Cordis `nodeType` / `executor` / `nodeCapability` 注册与回滚
 - `tests/inspectorMatch.test.ts` / `inspectorDefaults.test.ts` — 检查器
+- `tests/universalWorkspaceControl.test.ts` — 新注册节点零配置自省、深层点路径/简写补丁与焦点上下文注入
 
 运行：`npm test`（`vitest.config.ts` 已配置 `@shared` 别名）

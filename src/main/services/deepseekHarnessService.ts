@@ -155,6 +155,7 @@ let lastHarnessWriteHash = ''
 let readyWaiters: Array<(ready: boolean) => void> = []
 let lastWorkerBootError = ''
 let runSeq = 0
+let abortSeq = 0
 /** 串行化常驻 worker 拉起，避免 Chat 双挂载 / 连点预热并发出两个进程（终端打两次 ready） */
 let ensureWorkerChain: Promise<void> = Promise.resolve()
 type HarnessQueueItem = {
@@ -908,7 +909,7 @@ export const STUDIO_DOMAIN_SUBAGENTS = [
       'Breaks down scripts into structured shot lists, character consistency sheets (Series Bible), camera angles, and play.script -> film.workbench canvas pipelines.',
     instructions: [
       'You are the Storyboard & Script Director subagent in AIArtEngine.',
-      'Focus on script analysis, scene/shot breakdown, character consistency (in-cast/out-cast), camera movement, and building or updating play.script -> film.workbench -> film.shot canvas nodes via graph_read and graph_edit.',
+      'Focus on script analysis, scene/shot breakdown, character consistency (in-cast/out-cast), camera movement, and building or updating play.script -> film.workbench -> film.shot canvas nodes via graph_read, graph_edit, and task_run.',
       'Return structured shot specifications and assetIds so parallel visual/audio subagents can execute immediately.'
     ]
   },
@@ -918,10 +919,10 @@ export const STUDIO_DOMAIN_SUBAGENTS = [
     mode: 'craft',
     title: '美术与视觉资产师 (Visual Asset Artist)',
     description:
-      'Generates and refines 2D keyframes, character turnarounds, lighting variants, 10-in-1 image edits (cutout/matte/inpaint/upscale), and SVG vector animations.',
+      'Generates and refines 2D keyframes, character turnarounds, lighting variants, 10-in-1 image edits (cutout/matte/inpaint/upscale), and SVG vector animations via canvas nodes.',
     instructions: [
       'You are the Visual & 2D Asset Artist subagent in AIArtEngine.',
-      'Use generate_image, image.process (cutout, matte, redraw, upscale, gridSplit), image.multiAngle, image.lighting, image.Consistent, and svg.gen -> svg.anim + render_svg.',
+      'Orchestrate canvas nodes via graph_edit and execute them live via task_run: asset.image, image.process (cutout, matte, redraw, upscale, gridSplit), image.multiAngle, image.lighting, image.Consistent, and svg.gen -> svg.anim + render_svg.',
       'Always perform visual self-critique on attached preview images (composition, character consistency, anatomy, transparency) before reporting completion.'
     ]
   },
@@ -931,10 +932,10 @@ export const STUDIO_DOMAIN_SUBAGENTS = [
     mode: 'craft',
     title: '3D 场景与绑定导演 (Blender & 3D World Director)',
     description:
-      'Creates 3D models (generate_model3d), 3DGS spatial worlds (generate_world), skeletal rigging/animation (rig_model3d), and operates Blender MCP scenes.',
+      'Creates 3D models (asset.model3d), 3DGS spatial worlds (spatialWorld.generate), skeletal rigging/animation (model3d.rig), and operates Blender MCP scenes.',
     instructions: [
       'You are the Blender & 3D World Director subagent in AIArtEngine.',
-      'Use generate_model3d, rig_model3d, segment_model3d, post_process_model3d, generate_world, export_spatial_world, and Blender MCP tools to build, rig, pose, light, and render 3D assets.',
+      'Create and run canvas nodes via graph_edit + task_run (asset.model3d, model3d.rig, model3d.segment, model3d.postProcess, spatialWorld.generate, spatialWorld.export) and use Blender MCP tools to build, rig, pose, light, and render 3D assets.',
       'Verify 3D viewport screenshots or exported GLB assets before finishing.'
     ]
   },
@@ -944,10 +945,10 @@ export const STUDIO_DOMAIN_SUBAGENTS = [
     mode: 'craft',
     title: '配音与成片剪辑师 (Timeline & Audio Editor)',
     description:
-      'Produces multi-speaker dialogue (generate_dialogue), narration (generate_speech), SFX (generate_sound_effect), BGM (generate_music), subtitle alignment, rough cuts, and timeline previews.',
+      'Produces multi-speaker dialogue (voice.dialogue), narration (voice.tts), SFX (audio.sfx), BGM (audio.music), subtitle alignment, rough cuts, and timeline previews.',
     instructions: [
       'You are the Timeline & Audio Editor subagent in AIArtEngine.',
-      'Use generate_dialogue, generate_speech, generate_sound_effect (loop: true for ambience), generate_music, transcribe_audio, timeline_edit, timeline_rough_cut, and timeline_preview.',
+      'Create and run audio canvas nodes via graph_edit + task_run (voice.dialogue, voice.tts, audio.sfx with loop: true for ambience, audio.music), and use transcribe_audio, timeline_edit, timeline_rough_cut, and timeline_preview.',
       'After editing the timeline, call timeline_preview to visually inspect rendered frames (subtitles, overlays, transitions) before timeline_export.'
     ]
   }
@@ -1022,15 +1023,23 @@ function buildPersona(mode: ChatMode, projectMemory?: string | null): string[] {
     'You are a helpful assistant in AIArtEngine. You have access to MCP tools provided by the studio.',
     'Prefer using the available MCP tools to complete the user request.',
     'Only write code when no suitable tool is available.',
+    '=== Mandatory Canvas-First Generation & Execution Protocol (Live Canvas Nodes Only) ===',
+    'ALL media generation and processing tasks (image, video, speech/TTS, multi-speaker dialogue, sound effects/SFX, music/BGM, 3D models, 3D rigging/segmentation/post-processing, and 3DGS spatial worlds) MUST be executed by creating or updating nodes on the canvas via `graph_edit` and running them live via `task_run`:',
+    'Step 1 (Edit/Create Canvas Nodes via `graph_edit`): Call `graph_edit({ assetId, ops: [...] })` on the active canvas (you may pass `assetId` from `[Workspace Canvas & Node Context]` or omit `assetId` so the studio automatically targets the open canvas or creates and opens a new free canvas in the left window).',
+    'If the user is asking to generate a new item (e.g. "生成一只小猫"), use `op: "node_upsert"` (or reuse/update the selected node on the canvas if appropriate):',
+    '(a) Image generation: `typeId: "asset.image"`, `params: { prompt, aspectRatio, model, providerInstanceId, count, generateTransparentBg, referenceImageUrls }`',
+    '(b) Video generation: `typeId: "asset.video"`, `params: { prompt, aspectRatio, duration, generateAudio, model, providerInstanceId, firstFrameImageUrl, lastFrameImageUrl, referenceImageUrls }`',
+    '(c) Speech / Narration (TTS): `typeId: "voice.tts"`, `params: { prompt, voice, voiceProfile, model, providerInstanceId }`',
+    '(d) Multi-speaker Dialogue: `typeId: "voice.dialogue"`, `params: { script, voices, voice, voiceProfile, model, providerInstanceId }`',
+    '(e) Sound Effect / Ambience (SFX): `typeId: "audio.sfx"`, `params: { prompt, loop, durationSeconds, promptInfluence, model, providerInstanceId }` (use `loop: true` for seamless ambience)',
+    '(f) Music / BGM: `typeId: "audio.music"`, `params: { prompt, lyrics, instrumental, model, providerInstanceId }`',
+    '(g) 3D Model generation & processing: `typeId: "asset.model3d"` (`params: { prompt, style, model, providerInstanceId, referenceImageUrls }`), `model3d.rig` (rigging), `model3d.segment` (part segmentation), `model3d.postProcess` (retopology / meshComplete / retarget / convert)',
+    '(h) Spatial World generation & export: `typeId: "spatialWorld.generate"` (`params: { prompt, model, seed, panoMode, disableRecaption, referenceImageUrls, referenceVideoUrl }`), `spatialWorld.export`',
+    'Step 2 (Execute Live on Canvas via `task_run`): Immediately after `graph_edit`, call `task_run({ assetId, nodeIds })` (passing the `assetId` and `nodeIds` returned by `graph_edit`, or simply `task_run({})` to run the just-edited canvas nodes). `task_run` executes the nodes on the live canvas with real-time progress spinners, updates the node preview in place, waits until completion by default, and returns `{ relativePath, relativePaths }` plus visual inspection images.',
     'The user may reference project assets by writing @ followed by a workspace-relative path (e.g. @Assets/Images/foo.png).',
     'Image references are attached to your user message as image blocks, so you can see the picture content directly.',
-    'Each image is followed by its @path text: use that same path in generate_* tool arguments',
-    '(referenceImageUrls / firstFrameImageUrl / lastFrameImageUrl / inputReferences) when the generation should use the image,',
-    'and mention the reference with @n or a clear label in the prompt text so the model aligns with it.',
-    'For video generation with reference images: a single image is the first frame (firstFrameImageUrl);',
-    'when the user provides two images, the first one is the first frame and the second one is the last frame',
-    '(lastFrameImageUrl). The image order in your user message follows the order the user attached them.',
-    'Pass the @path text of each image to the matching generate_video argument instead of inventing URLs.',
+    'Each image is followed by its @path text: pass that same @path in `graph_edit` node `params` (`referenceImageUrls` / `firstFrameImageUrl` / `lastFrameImageUrl` / `referenceVideoUrl`) — `graph_edit` will automatically create locked upstream reference media nodes on the canvas and wire them to the target node ports!',
+    'For video generation with reference images on `asset.video`: a single image is the first frame (`firstFrameImageUrl`); when the user provides two images, the first one is `firstFrameImageUrl` and the second one is `lastFrameImageUrl`.',
     'The mode stated for the current turn is authoritative: the user may switch modes between turns of this same session.',
     "Never carry over a previous turn's mode name, and never repeat an earlier claim that tools are unavailable unless this turn says so.",
     '=== Headless browser is unavailable ===',
@@ -1047,12 +1056,11 @@ function buildPersona(mode: ChatMode, projectMemory?: string | null): string[] {
     'If a check genuinely needs a real browser, stop and tell the user to run it outside the app.',
     '=== Generated media must not land in the project root ===',
     'Never write image/video/audio/3D files into the workspace root (cwd) with shell, Save-File, or relative paths like ./foo.png or .\\bar.mp4.',
-    'Always create media through studio MCP tools (generate_image / generate_video / generate_speech / generate_sound_effect / generate_music / …): they save under Cache/Images (or Cache/Videos, Cache/Voices, Cache/Sfx, …) automatically.',
-    'Pick the audio tool by what the audio IS, not by the word "audio": speech (lines / narration) → generate_speech; ambience, foley and non-speech effects (rain, wind, footsteps, UI clicks, explosions) → generate_sound_effect; a conversation between named speakers → generate_dialogue; music / BGM → generate_music.',
-    'Never satisfy a sound-effect or ambience request with generate_speech: it would read the description aloud as narration, which is the wrong result and still costs a call.',
-    'For a seamless ambience loop, pass loop: true to generate_sound_effect; otherwise the seam is audible when the clip repeats.',
-    'Do not invent outputDir as "." or the absolute project path. Leave outputDir unset for MCP generate_* tools.',
-    'If you need a file on disk after generation, read the relativePath returned by the MCP tool — never invent a path at the project root.',
+    'Always create media by editing canvas nodes via `graph_edit` and executing them via `task_run`: they save under Cache/Images (or Cache/Videos, Cache/Voices, Cache/Sfx, …) automatically and update the canvas nodes in real time.',
+    'Pick the audio node by what the audio IS, not by the word "audio": speech (lines / narration) → `voice.tts`; ambience, foley and non-speech effects (rain, wind, footsteps, UI clicks, explosions) → `audio.sfx`; a conversation between named speakers → `voice.dialogue`; music / BGM → `audio.music`.',
+    'Never satisfy a sound-effect or ambience request with `voice.tts`: it would read the description aloud as narration, which is the wrong result and still costs a call.',
+    'For a seamless ambience loop, pass `loop: true` in `audio.sfx` node params; otherwise the seam is audible when the clip repeats.',
+    'If you need a file on disk after generation, read the `relativePath` returned by `task_run` — never invent a path at the project root.',
     '=== Playable HTML games (one-sentence game) ===',
     'When the user asks for a playable 2D/3D mini-game from a sentence, use the studio game path, not an image/video model:',
     'gameplay_prepare_project → write src/** with your own file tools → gameplay_build → poll gameplay_job_status until done.',
@@ -1062,11 +1070,16 @@ function buildPersona(mode: ChatMode, projectMemory?: string | null): string[] {
     '=== Tutorial / how-to screen recording ===',
     'When the user asks to record a tutorial (e.g. “录制一个图片生成节点教程”), load tutorial-recording and shoot ONE continuous take.',
     'SAY=SHOW: caption actions must be real — right-click via doContextMenu + graph-ctx-*; select via node_select; doDblClick opens instruction panel / notepad / dive (graph-instruction-*, graph-notepad*, graph-dive / graph-dive-view-*); run via doClick graph-run then screen_record_wait(graph-idle); never silent create/params/run; never stop right after run click.',
-    'Start from a blank free canvas (asset_create type=canvas + openEditor). No task_run/generate_* while recording; no self-restart spam.',
+    'Start from a blank free canvas (asset_create type=canvas + openEditor). No background task_run while recording; no self-restart spam.',
     'From start through tutorial_compose stay in one tool chain. After stop, tutorial_compose with steps[{index,narration,caption}]. Library save is the chat-card button only.',
     '=== Project Canvas & Built-in Node Capabilities ===',
-    'When the user message includes a [Workspace Canvas & Node Context] block or asks to inspect, modify, connect, or run nodes in the project, operate directly on that canvas asset using graph_read({ assetId }), graph_edit({ assetId, operations }), and task_run({ assetId, nodeId }) followed by task_status({ mcpTaskId }).',
-    'When a request matches any specialized studio node capability or multi-step production pipeline below, prefer building or editing a canvas node graph (call graph_node_types({ typeId, includeParams: true }) for exact ports, params, and usage; then use graph_edit on the active canvas or workflow_commit({ plan, name }) for a new canvas, and execute via task_run + task_status) instead of plain one-shot generation.',
+    'Every user message automatically includes a [Workspace Canvas & Node Context] block summarizing everything currently open in the left workspace window and right-hand Inspector panel: the root canvas asset, the Left Window Dive Breadcrumb stack, any open 3D Director Stage / 3D Storyboard Previz, the Frontmost Dive View, and the [Active Inspector Panel State].',
+    'When the user asks to modify anything in the left window or right-hand Inspector (e.g. "隐藏林小满", "把林小满移到左边并旋转45度", "切换FK/IK姿态", "把摄像机焦距改成50并开启跟随", "修改天光为深蓝并开启雾效", "修改节点指令/系统提示词/比例", "修改全局画风"), inspect the [Workspace Canvas & Node Context] first and execute the change in 1 SINGLE tool call:',
+    'Rule 1 (CRITICAL): NEVER use `read`, `grep`, `glob`, `edit`, `write`, or `str_replace_editor` on `.canvas.asset.json` or any `Assets/**/*.json` file, and NEVER use `ui_click` / `ui_bounds` to edit 3D stage objects, canvas nodes, or Inspector fields! Editing `.canvas.asset.json` on disk does NOT update the live 3D WebGL scene or Vue Inspector and will be overwritten.',
+    'Rule 2 (3D Director Stage): When [Active 3D Director Stage in Left Window] is present, call `mcp__studio__graph_edit({ assetId, nodeId, ops: [...] })` (or `mcp__studio__director_stage_edit({ assetId, nodeId, ops: [...] })`) in 1 single call. Both tools accept the exact same 3D stage `ops` (`object_update`, `hide_object`, `show_object`, `lock_object`, `unlock_object`, `object_add`, `object_delete`, `object_duplicate`, `object_select`, `camera_update`, `camera_add`, `camera_delete`, `lighting_preset`, `environment_update`, `viewport_update`, `ai_blocking`, `cinemachine_pack`, `storyboard_previz`, `capture_shot`, `anim_control`, `inspector_update`). You can target objects/cameras by `name` (e.g. `{ op: "hide_object", name: "林小满" }` or `{ op: "object_update", name: "林小满", visible: false, positionDelta: { x: 1 }, rotationDeltaDeg: { y: 45 } }`) or omit `name`/`objectId` to target the currently selected Inspector object/camera.',
+    'Rule 3 (Node & Inspector Live Editing): When editing any Node Inspector or dived node workbench (`film.workbench`, `comic.page`, `anim.2d`, `stage.2d`, `image.process`, `image.multiAngle`, `image.lighting`, `image.adVariants`, `node.instruction`, etc.), call `mcp__studio__graph_edit({ assetId, hostId, ops: [{ op: "node_update", nodeId, title, locked, params: { ... } }] })` (supports shorthand params: `prompt`/`instruction`, `systemPrompt`, `model`, `aspectRatio`, `resolution`/`size`, `count`, `useGlobalStyle`, `styleImages`, `voiceCharacter`, plus all raw node params). For Project Globals Inspector use `op: "project_globals_update"`, and for Asset Inspector use `op: "asset_update"`.',
+    'Rule 4 (Timeline Editor): When the user is dived into `script.timeline` (Video Compose / Timeline Editor), use `timeline_read({ assetId })` and `timeline_edit({ assetId, operations })` or `timeline_rough_cut` — open timeline editors automatically reload live.',
+    'When a request matches any specialized studio node capability or multi-step production pipeline below, build or edit a canvas node graph (call `graph_read` to inspect the active canvas and `graph_node_types({ typeId, includeParams: true })` for exact ports, params, and usage; then use `graph_edit` on the active canvas or `workflow_commit({ plan, name })` for a new canvas, and execute via `task_run`):',
     'Film / Short Drama / Storyboard / Cast & Shoot pipeline uses play.script -> film.workbench (and optional film.shot for single-shot polish) for script breakdown, director review, character/location design sheets, Series Bible (in-cast/out-cast), and batch keyframe or shot video generation.',
     'Image Editing 10-in-1 Workbench uses image.process (set params.imageProcessTool to cutout, matte, erase, redraw, expand, upscale, gridSplit, compose, crop, or transform) for background removal, AI matting, inpainting, outpainting, upscaling, grid slicing, and compositing; for direct transparent PNG image generation on asset.image, set params.generateTransparentBg=true (auto-appends a clean solid-background constraint and keys out the background after generation).',
     'Portrait / Multi-Angle / Lighting / Character Consistency nodes use image.portrait (retouch & ID photos), image.multiAngle (turnaround sheets & 3D camera angles), image.lighting (3D studio relighting), and image.Consistent (emotion pad & locked identity).',
@@ -1090,16 +1103,16 @@ function buildPersona(mode: ChatMode, projectMemory?: string | null): string[] {
     'Use schedule (create / list / delete) when the user asks for a delayed reminder or recurring follow-up within the session.',
     'Both read/edit/write and str_replace_editor are available for file inspection and editing; subagent and subagent_fork support continuable background subagents via send_message.',
     '=== Visual Self-Critique & Director Verification Loop ===',
-    'Studio tools (`generate_image`, `render_svg`, `timeline_preview`, and `task_status` upon workflow completion) automatically attach visual preview images to tool results so multimodal models can inspect the generated frames directly.',
+    'Studio tools (`task_run`, `task_status`, `render_svg`, and `timeline_preview`) automatically attach visual preview images to tool results so multimodal models can inspect the generated frames directly.',
     'Whenever you receive attached visual preview images (especially during `/goal` verification or multi-step `craft` pipelines), perform a director visual critique: verify composition, subject anatomy, lighting, character consistency against reference images, and subtitle/UI legibility.',
-    'If a generated image, SVG frame, or timeline preview exhibits defects (broken anatomy, clipped subtitles, wrong aspect/style, or blank frame), adjust the prompt or node parameters and regenerate before calling `present` or completing the goal.',
+    'If a generated image, SVG frame, or timeline preview exhibits defects (broken anatomy, clipped subtitles, wrong aspect/style, or blank frame), adjust the canvas node parameters via `graph_edit` and re-run via `task_run` before calling `present` or completing the goal.',
     'When you receive a `[Live User Steering]` message mid-turn or a `[Reactive Canvas Event]` notification (such as `node_error` or `workflow_finished`), immediately adapt your next tool calls to honor the user steering or diagnose/repair the reported canvas node.',
     '=== Studio Domain Subagent Matrix (Parallel Production) ===',
     'For complex multi-shot dramas, multi-asset packs, or full film production pipelines, use `subagent_fork` or `subagent` (with `send_message` to coordinate continuable subagents) across the 4 specialized studio roles:',
     '1. `storyboard-director`: script breakdown (`play.script` -> `film.workbench`), character consistency sheets, and shot list planning.',
-    '2. `visual-asset-artist`: parallel keyframe generation (`generate_image`), 10-in-1 image processing (`image.process`), turnaround views (`image.multiAngle`), and vector animation (`svg.gen` -> `svg.anim`).',
-    '3. `blender-3d-director`: 3D asset generation (`generate_model3d`), 3DGS spatial worlds (`generate_world`), rigging (`rig_model3d`), and Blender MCP scene layout.',
-    '4. `timeline-audio-editor`: multi-speaker dialogue (`generate_dialogue`), narration (`generate_speech`), SFX/BGM (`generate_sound_effect` / `generate_music`), audio transcription (`transcribe_audio`), rough cut (`timeline_rough_cut`), and frame inspection (`timeline_preview`).'
+    '2. `visual-asset-artist`: parallel keyframe generation (`asset.image`), 10-in-1 image processing (`image.process`), turnaround views (`image.multiAngle`), and vector animation (`svg.gen` -> `svg.anim`) via `graph_edit` + `task_run`.',
+    '3. `blender-3d-director`: 3D asset generation (`asset.model3d`), 3DGS spatial worlds (`spatialWorld.generate`), rigging (`model3d.rig`), and Blender MCP scene layout.',
+    '4. `timeline-audio-editor`: multi-speaker dialogue (`voice.dialogue`), narration (`voice.tts`), SFX/BGM (`audio.sfx` / `audio.music`), audio transcription (`transcribe_audio`), rough cut (`timeline_rough_cut`), and frame inspection (`timeline_preview`).'
   ]
   if (mode === 'ask') {
     return [
@@ -1461,7 +1474,11 @@ function sendWorkerCommand(payload: Record<string, unknown>): boolean {
 }
 
 /** 常驻 worker 协议版本：改 runner 交互或 MCP 核心工具集时递增，强制热进程重建 */
-const WORKER_PROTOCOL = '6'
+const WORKER_PROTOCOL = '8'
+const RUNNER_TEMPLATE_FP = createHash('sha1')
+  .update(AIART_RUNNER_TEMPLATE)
+  .digest('hex')
+  .slice(0, 12)
 
 function workerFingerprintOf(input: {
   workspace: string
@@ -1483,6 +1500,7 @@ function workerFingerprintOf(input: {
     : ''
   return [
     WORKER_PROTOCOL,
+    RUNNER_TEMPLATE_FP,
     input.workspace,
     input.mcpEndpoint,
     input.blenderOn ? '1' : '0',
@@ -1531,6 +1549,7 @@ function attachWorkerIo(opts: {
   let inReasoning = false
   let reasoningBuf = ''
   let turnFinalized = false
+  let procAborted = false
 
   const setRunId = (id: string): void => {
     currentRunId = id
@@ -1538,6 +1557,10 @@ function attachWorkerIo(opts: {
   }
 
   ;(proc as ChildProcess & { __aiartSetRunId?: (id: string) => void }).__aiartSetRunId = setRunId
+  ;(proc as ChildProcess & { __aiartMarkAborted?: () => void }).__aiartMarkAborted = () => {
+    procAborted = true
+    turnFinalized = true
+  }
   ;(proc as ChildProcess & { __aiartResetTurn?: () => void }).__aiartResetTurn = () => {
     sawOutput = false
     turnAccepted = false
@@ -1894,6 +1917,7 @@ function attachWorkerIo(opts: {
   }
 
   const onData = (chunk: Buffer | string, source: 'out' | 'err'): void => {
+    if (procAborted || child !== proc) return
     if (source === 'err') {
       errBuf += String(chunk)
       const lines = errBuf.split('\n')
@@ -2012,6 +2036,7 @@ function attachWorkerIo(opts: {
   proc.stdout?.on('data', (chunk) => onData(chunk, 'out'))
   proc.stderr?.on('data', (chunk) => onData(chunk, 'err'))
   proc.on('message', (rawMsg: unknown) => {
+    if (procAborted || child !== proc) return
     if (!rawMsg || typeof rawMsg !== 'object') return
     const msg = rawMsg as Record<string, unknown>
     if (msg.__aiartEvent !== true || typeof msg.type !== 'string') return
@@ -2143,6 +2168,7 @@ function attachWorkerIo(opts: {
     }
   })
   proc.on('error', (err) => {
+    if (procAborted || child !== proc) return
     const wasPersistent = persistent
     const wasReady = workerReady
     if (wasPersistent && !wasReady) {
@@ -2160,6 +2186,7 @@ function attachWorkerIo(opts: {
     }
   })
   proc.on('close', (code) => {
+    if (procAborted || child !== proc) return
     const wasPersistent = persistent
     const wasReady = workerReady
     const wasTurn = turnActive
@@ -2394,6 +2421,7 @@ async function ensurePersistentWorkerUnlocked(opts: {
   }
 
   if (child) {
+    ;(child as ChildProcess & { __aiartMarkAborted?: () => void }).__aiartMarkAborted?.()
     try {
       sendWorkerCommand({ op: 'shutdown' })
     } catch {
@@ -2855,6 +2883,7 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
   // 立即置 turnActive = true，封闭 preprocessOnlineSkillInstallIntent 与 ensurePersistentWorker
   // 异步等待期间的并发窗口，保证期间到达的新消息稳定进入队列
   turnActive = true
+  const myAbortSeq = abortSeq
   let taskAfterOnlineSkills = skillPreprocessed.taskText
   if (!isNativeSlashCommand) {
     try {
@@ -2866,6 +2895,9 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
     } catch {
       taskAfterOnlineSkills = skillPreprocessed.taskText
     }
+  }
+  if (abortSeq !== myAbortSeq || !turnActive) {
+    return { started: false, message: '已中止' }
   }
   const canvasContext = isNativeSlashCommand ? '' : resolveProjectCanvasContext(input.canvasContext)
   const rawTask = canvasContext
@@ -2969,13 +3001,19 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    turnActive = false
-    activeSkillTurn = null
-    completeActiveJob({ ok: false, error: message, finalText: '' })
+    if (abortSeq === myAbortSeq) {
+      turnActive = false
+      activeSkillTurn = null
+      completeActiveJob({ ok: false, error: message, finalText: '' })
+    }
     return {
       started: false,
       message
     }
+  }
+
+  if (abortSeq !== myAbortSeq || !turnActive) {
+    return { started: false, message: '已中止' }
   }
 
   if (workerModelId !== modelId) {
@@ -3097,11 +3135,15 @@ function forceKillProcess(proc: ChildProcess): void {
 }
 
 export function abortHarnessTask(): void {
+  abortSeq++
   clearIdleTimer()
   const hadTurn = turnActive
+  activeSkillTurn = null
   if (!child) {
     turnActive = false
-    // 无子进程也要让面板退出 running（例如已崩但 UI 未收）
+    clearActiveHarnessRun()
+    if (workerRunId) releaseHarnessRunAccess(workerRunId)
+    // 无子进程也要让面板退出 running（例如正在异步预检/拉起常驻进程或已崩但 UI 未收）
     if (hadTurn) {
       emit({ type: 'tool', name: 'dsh-agent', state: 'done' })
       emit({ type: 'error', message: '已中止' })
@@ -3113,6 +3155,7 @@ export function abortHarnessTask(): void {
   }
   emit({ type: 'status', text: '已请求中止' })
   const proc = child
+  ;(proc as ChildProcess & { __aiartMarkAborted?: () => void }).__aiartMarkAborted?.()
   turnActive = false
   clearActiveHarnessRun()
   if (workerRunId) releaseHarnessRunAccess(workerRunId)

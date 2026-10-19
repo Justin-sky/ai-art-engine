@@ -15,7 +15,10 @@
       </button>
     </div>
 
-    <div class="dive-node-tool-body">
+    <div
+      :key="`${activeViewId}:${graphEditorHosts.externalRevision.value}`"
+      class="dive-node-tool-body"
+    >
       <GraphTextNotepadDialog
         v-if="viewId === 'node.notepad' && api.notepad.open"
         :open="true"
@@ -612,6 +615,14 @@ onMounted(async () => {
   }
   ready.value = true
 })
+
+watch(
+  () => graphEditorHosts.externalRevision.value,
+  () => {
+    if (!ready.value || closing || switchingTool) return
+    void graphEditorNodeTools.open(props.hostId, activeViewId.value, props.nodeId, props.mode)
+  }
+)
 
 watch(toolOpen, (open) => {
   if (!ready.value || open || closing || switchingTool) return

@@ -153,6 +153,16 @@ import {
   type DirectorCinemachinePrevizPackId
 } from './directorAiBlocking'
 import {
+  compileStoryboardToDirectorStageWithLlm,
+  extractStoryboardShotIdFromDirectorId
+} from './directorStoryboardPreviz'
+import {
+  parseFilmStoryboard,
+  replaceFilmShots,
+  stringifyFilmStoryboard,
+  type FilmStoryboard
+} from '@shared/graph/film/storyboard'
+import {
   retargetClipToCharacter,
   collectPoseEditBoneNames,
   collectPoseEditBones,
@@ -377,6 +387,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   const gizmoSize = ref(1)
   const sceneLabelsVisible = ref(true)
   const cameraGizmosVisible = ref(true)
+  const pathGizmosVisible = ref(true)
   const lightGizmosVisible = ref(shadingMode.value !== 'shaded')
   const gridGizmoVisible = ref(true)
   /** 截屏 / 视频导出是否把场景文字标签画进输出画面 */
@@ -838,15 +849,22 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
 
   function directorProcessingNode() {
     const preferred = options.processingNodeId
+    const graphJson = asset.value?.genParams?.graphJson
     if (preferred) {
       return (
         graphEditorHosts.findNode(
           graphHostId.value,
           (node) => node.id === preferred && isDirectorProcessingNode(node)
-        ) ?? null
+        ) ??
+        findDirectorProcessingNode(graphJson, preferred) ??
+        null
       )
     }
-    return graphEditorHosts.findNode(graphHostId.value, isDirectorProcessingNode)
+    return (
+      graphEditorHosts.findNode(graphHostId.value, isDirectorProcessingNode) ??
+      findDirectorProcessingNode(graphJson, null) ??
+      null
+    )
   }
 
   function boundProcessingNodeId(): string | null {
@@ -1536,6 +1554,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       if (prev === 'camera') frameShotCameraInDirectorView()
     }
     syncShotVisuals()
+    syncAllPathVisuals()
     syncAllLightGizmoStates()
     applySelectionToScene()
     requestRender()
@@ -1660,14 +1679,28 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     for (const id of shotVisuals.keys()) {
       if (!cameraIds.has(id)) disposeShotCameraVisual(id)
     }
+    const currentCamId =
+      (selectionKind.value === 'camera' && selectedCameraId.value
+        ? selectedCameraId.value
+        : stage.value.activeCameraId) ?? null
+    const hasMultiShotCutTrack =
+      stageEditMode.value === 'animation' &&
+      !!stage.value.animation?.tracks.some(
+        (tr) => tr.cameraCut && (tr.cameraSegments?.length ?? 0) > 1
+      )
     for (const cameraState of listCameras()) {
       const viz = ensureShotCameraVisual(cameraState)
       if (!viz) continue
+      const isCurrentCamera = currentCamId === cameraState.id
+      const onlyShowCurrentShotCamera = cameraState.id.startsWith('cam:sb:') || hasMultiShotCutTrack
       const visible =
-        cameraState.visible !== false && viewMode.value === 'director' && cameraGizmosVisible.value
+        cameraState.visible !== false &&
+        viewMode.value === 'director' &&
+        cameraGizmosVisible.value &&
+        (!onlyShowCurrentShotCamera || isCurrentCamera)
       const selected = selectionKind.value === 'camera' && selectedCameraId.value === cameraState.id
       viz.root.visible = visible
-      viz.helper.visible = visible && selected
+      viz.helper.visible = visible && (selected || (onlyShowCurrentShotCamera && isCurrentCamera))
       viz.body.visible = visible
       viz.root.scale.set(gizmoSize.value, gizmoSize.value, gizmoSize.value)
       viz.body.scale.set(gizmoSize.value, gizmoSize.value, gizmoSize.value)
@@ -2345,11 +2378,16 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     const material = new LineMaterial({
       color,
       linewidth,
+      dashed: true,
+      dashSize: 0.14,
+      gapSize: 0.1,
+      dashScale: 1,
       transparent: true,
-      opacity: 0.95,
+      opacity: 0.92,
       depthTest: true,
       worldUnits: false
     })
+    material.defines.USE_DASH = ''
     pathLineMaterials.add(material)
     syncPathLineResolution()
     const line = new Line2(geometry, material)
@@ -2363,6 +2401,45 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
 
   function flattenWorldPathPositions(points: StageVec3[]): number[] {
     return flattenStagePositions(points.map((p) => worldToContentLocal(p)))
+  }
+
+  /**
+   * 仅显示当前镜头的运镜轨迹（或当前显式选中的物体运动轨迹），
+   * 避免多分镜预演时几十条相机轨迹同时堆叠在画布中。
+   */
+  function shouldShowTrackPathVisual(trackId: string): boolean {
+    if (stageEditMode.value !== 'animation' || !pathGizmosVisible.value) return false
+    if (viewMode.value !== 'director' && !pathDrawMode.value) return false
+    if (pathDrawMode.value?.trackId === trackId) return true
+    const tracks = stage.value.animation?.tracks ?? []
+    const track = tracks.find((t) => t.id === trackId)
+    if (!track || track.cameraCut) return false
+
+    const selectedTrack = animSelectedTrackId.value
+      ? tracks.find((t) => t.id === animSelectedTrackId.value)
+      : null
+    if (selectedTrack && !selectedTrack.cameraCut) {
+      return track.id === selectedTrack.id
+    }
+
+    if (selectionKind.value === 'object' && selectedObjectId.value) {
+      const objHasPathTrack = tracks.some(
+        (t) =>
+          !t.cameraCut &&
+          t.targetKind === 'object' &&
+          t.targetId === selectedObjectId.value &&
+          (t.path?.points.length ?? 0) >= 2
+      )
+      if (objHasPathTrack) {
+        return track.targetKind === 'object' && track.targetId === selectedObjectId.value
+      }
+    }
+
+    const currentCameraId =
+      (selectionKind.value === 'camera' && selectedCameraId.value
+        ? selectedCameraId.value
+        : stage.value.activeCameraId) ?? null
+    return track.targetKind === 'camera' && !!currentCameraId && track.targetId === currentCameraId
   }
 
   function pathLineStyle(trackId: string): { color: number; linewidth: number } {
@@ -2384,7 +2461,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       disposePathLine(prev)
       pathVisuals.delete(trackId)
     }
-    if (stageEditMode.value !== 'animation') return
+    if (!shouldShowTrackPathVisual(trackId)) return
     if (!path || path.points.length < 2 || !getStageRoot()) return
     const style = pathLineStyle(trackId)
     const line = makePathLine(flattenPathPositions(path), style.color, style.linewidth, trackId)
@@ -2392,7 +2469,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   }
 
   function syncAllPathVisuals(): void {
-    if (stageEditMode.value !== 'animation') {
+    if (stageEditMode.value !== 'animation' || !pathGizmosVisible.value) {
       for (const id of [...pathVisuals.keys()]) {
         disposePathLine(pathVisuals.get(id) ?? null)
         pathVisuals.delete(id)
@@ -2664,9 +2741,9 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   }
 
   function getSelectedPenPathTrack(): DirectorAnimTrack | null {
-    if (stageEditMode.value !== 'animation') return null
+    if (stageEditMode.value !== 'animation' || !pathGizmosVisible.value) return null
     const trackId = animSelectedTrackId.value
-    if (!trackId) return null
+    if (!trackId || !shouldShowTrackPathVisual(trackId)) return null
     const track = stage.value.animation?.tracks.find((t) => t.id === trackId) ?? null
     if (!track?.path || track.path.kind !== 'pen') return null
     return track
@@ -4932,10 +5009,14 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     if (!getCameraState(brain.activeCameraId)) return
     const changedActive = stage.value.activeCameraId !== brain.activeCameraId
     stage.value.activeCameraId = brain.activeCameraId
+    if (changedActive && selectionKind.value === 'camera') {
+      selectedCameraId.value = brain.activeCameraId
+    }
     runtimeBlendedCameraViewer = brain.viewer
     if (persistState && changedActive) schedulePersist()
     if (viewMode.value === 'camera') applyCameraView()
     syncShotVisuals()
+    if (changedActive) syncAllPathVisuals()
     if (changedActive || brain.blendWeight < 1) {
       previewRevision.value += 1
     }
@@ -4978,13 +5059,17 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     cameraId: string,
     start: number,
     end: number
-  ): void {
+  ): string | null {
     const anim = ensureAnimation()
     const idx = anim.tracks.findIndex((t) => t.id === trackId && t.cameraCut)
-    if (idx < 0) return
-    if (!getCameraState(cameraId)) return
-    const s = Math.max(0, Math.min(start, end - 0.05))
-    const e = Math.min(anim.duration, Math.max(s + 0.05, end))
+    if (idx < 0) return null
+    if (!getCameraState(cameraId)) return null
+    const desiredSpan = Math.max(0.2, end - start)
+    const s = Math.max(0, Number(start.toFixed(2)))
+    const e = Number((s + desiredSpan).toFixed(2))
+    if (e > anim.duration) {
+      anim.duration = e
+    }
     const track = anim.tracks[idx]
     const existing = track.cameraSegments ?? []
     const next: DirectorCameraCutSegment[] = []
@@ -4996,11 +5081,21 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       if (seg.start < s) next.push({ ...seg, end: s })
       if (seg.end > e) next.push({ ...seg, start: e })
     }
-    next.push({ id: `cut:${crypto.randomUUID()}`, cameraId, start: s, end: e })
+    const segId = `cut:${crypto.randomUUID()}`
+    next.push({ id: segId, cameraId, start: s, end: e })
     next.sort((a, b) => a.start - b.start)
-    anim.tracks[idx] = { ...track, cameraSegments: next }
+    anim.tracks[idx] = {
+      ...track,
+      end: Math.max(track.end, anim.duration),
+      cameraSegments: next
+    }
+    animSelectedTrackId.value = trackId
+    animSelectedCameraCutSegmentId.value = segId
+    selectCamera(cameraId)
+    applyAnimationAtTime(animTime.value, false)
     schedulePersist()
     requestRender()
+    return segId
   }
 
   function removeCameraCutSegment(trackId: string, segmentId: string): void {
@@ -5100,6 +5195,16 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   function selectCameraCutSegment(trackId: string, segmentId: string | null): void {
     animSelectedTrackId.value = trackId
     animSelectedCameraCutSegmentId.value = segmentId
+    if (segmentId) {
+      const track = ensureAnimation().tracks.find((t) => t.id === trackId)
+      const seg = track?.cameraSegments?.find((s) => s.id === segmentId)
+      if (seg && getCameraState(seg.cameraId)) {
+        selectCamera(seg.cameraId)
+        return
+      }
+    }
+    syncAllPathVisuals()
+    requestRender()
   }
 
   function selectAnimKeyframe(trackId: string, keyframeId: string | null): void {
@@ -5318,7 +5423,9 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     if (!renderer || !scene) throw new Error('Stage is not ready')
     const anim = ensureAnimation()
     const hasContent = hasAnyPlayableMotion()
-    if (!hasContent) throw new Error('No animation content to export')
+    const exportDuration = hasContent
+      ? Math.max(0.2, anim.duration)
+      : Math.min(Math.max(1, anim.duration), 3)
     const mimeType = pickExportMimeType()
     if (!mimeType) throw new Error('WebM export is not supported')
     const activePass = passOverride ?? stage.value.capturePass ?? 'rgb'
@@ -5332,20 +5439,21 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     )
     const width = 1280
     const height = Math.max(1, Math.round(width / Math.max(0.01, ratio)))
+    // Chromium 的 CanvasCaptureHandler 需要先获取 2d context 并通过 drawImage 触发 Skia 帧提交；
+    // 直接 putImageData 不会唤醒 captureStream(0) 的帧推送，会导致录制出 0 字节空 Blob。
     const exportCanvas = document.createElement('canvas')
     exportCanvas.width = width
     exportCanvas.height = height
+    const exportCtx = exportCanvas.getContext('2d')
+    if (!exportCtx) throw new Error('Canvas 2D context is not available')
+    exportCtx.fillStyle = '#000000'
+    exportCtx.fillRect(0, 0, width, height)
 
-    const stream = exportCanvas.captureStream(0)
-    const videoTrack = stream.getVideoTracks()[0] as MediaStreamTrack & {
-      requestFrame?: () => void
-    }
-    const canRequestFrame = typeof videoTrack.requestFrame === 'function'
-    if (!canRequestFrame) {
-      // ??requestFrame ????????
-      stream.getTracks().forEach((track) => track.stop())
-    }
-    const recordStream = canRequestFrame ? stream : exportCanvas.captureStream(fps)
+    const stagingCanvas = document.createElement('canvas')
+    stagingCanvas.width = width
+    stagingCanvas.height = height
+
+    const recordStream = exportCanvas.captureStream(fps)
     const recordTrack = recordStream.getVideoTracks()[0] as MediaStreamTrack & {
       requestFrame?: () => void
     }
@@ -5355,7 +5463,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       videoBitsPerSecond: 8_000_000
     })
     recorder.ondataavailable = (event) => {
-      if (event.data.size > 0) chunks.push(event.data)
+      if (event.data && event.data.size > 0) chunks.push(event.data)
     }
 
     const prevPlaying = animPlaying.value
@@ -5363,17 +5471,18 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     pauseAnimation()
     animExporting.value = true
 
-    const frameCount = Math.max(1, Math.round(anim.duration * fps))
-    const frameDelayMs = Math.max(1, Math.round(1000 / fps))
+    const frameCount = Math.max(1, Math.round(exportDuration * fps))
+    const frameDelayMs = Math.max(8, Math.round(1000 / fps))
     const stopPromise = new Promise<void>((resolve, reject) => {
       recorder.onstop = () => resolve()
-      recorder.onerror = () => reject(new Error('??????'))
+      recorder.onerror = () => reject(new Error('Video recording failed'))
     })
 
     try {
+      cinemachineMemories.clear()
       recorder.start(100)
       for (let i = 0; i <= frameCount; i++) {
-        const t = Math.min(anim.duration, i / fps)
+        const t = Math.min(exportDuration, i / fps)
         animTime.value = t
         applyAnimationAtTime(t, false)
         const shotCam = buildShotCamera(width / Math.max(1, height))
@@ -5382,7 +5491,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
             shotCam,
             width,
             height,
-            exportCanvas,
+            stagingCanvas,
             (captureLabelsVisible.value || captureCameraLabelsVisible.value) &&
               activePass === 'rgb',
             activePass,
@@ -5391,14 +5500,17 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
         ) {
           throw new Error('Failed to render export frame')
         }
-        recordTrack.requestFrame?.()
+        exportCtx.drawImage(stagingCanvas, 0, 0)
+        recordTrack?.requestFrame?.()
         await new Promise<void>((resolve) => {
-          requestAnimationFrame(() => resolve())
+          window.setTimeout(resolve, frameDelayMs)
         })
-        if (!canRequestFrame) {
-          await new Promise<void>((resolve) => {
-            window.setTimeout(resolve, frameDelayMs)
-          })
+      }
+      if (recorder.state === 'recording') {
+        try {
+          recorder.requestData()
+        } catch {
+          /* ignore */
         }
       }
       if (recorder.state !== 'inactive') recorder.stop()
@@ -5421,22 +5533,30 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       else requestRender()
     }
 
-    const blob = new Blob(chunks, { type: mimeType.includes('webm') ? 'video/webm' : 'video/webm' })
+    const blob = new Blob(chunks, { type: 'video/webm' })
     if (!blob.size) throw new Error('Empty recording')
     const dataUrl = await blobToDataUrl(blob)
     const node = directorProcessingNode()
-    if (!node) throw new Error('Director processing node not found')
+    const fallbackNode =
+      node ??
+      ({
+        id: options.processingNodeId ?? 'director-motion',
+        typeId: 'process.motion',
+        title: 'director-action',
+        position: { x: 0, y: 0 },
+        params: {}
+      } as unknown as NonNullable<ReturnType<typeof directorProcessingNode>>)
     const hostAsset = asset.value
     const key = buildGeneratedMediaFileKey({
       hostAssetName: hostAsset?.name,
-      nodeTitle: node.title || 'director-action',
+      nodeTitle: fallbackNode.title || 'director-action',
       stamp: new Date().toISOString().replace(/[:.]/g, '-')
     })
     const { saveGraphRunMediaForNode } = await import('../graph/saveGraphRunMediaForNode')
     const relativePath = await saveGraphRunMediaForNode({
       dataUrl,
       key,
-      node,
+      node: fallbackNode,
       hostAssetId: options.directorAssetId,
       kind: 'video'
     })
@@ -5682,10 +5802,9 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   })
 
   async function saveNow(): Promise<void> {
-    if (savedBeforeUnmount) return
-    savedBeforeUnmount = true
     try {
       await directorDocument.save()
+      savedBeforeUnmount = !directorDocument.isDirty()
     } catch (error) {
       savedBeforeUnmount = false
       throw error
@@ -5875,6 +5994,12 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   function setCameraGizmosVisible(visible: boolean): void {
     cameraGizmosVisible.value = !!visible
     syncShotVisuals()
+    requestRender()
+  }
+
+  function setPathGizmosVisible(visible: boolean): void {
+    pathGizmosVisible.value = !!visible
+    syncAllPathVisuals()
     requestRender()
   }
 
@@ -7629,6 +7754,158 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   }
 
   /**
+   * 自动检测当前所属节点图中的影视分镜台（`film.workbench` / `film.*`）分镜数据。
+   * 当存在已拆分的分镜（`shots.length > 0`）时，允许一键编译为 3D 白模预演舞台，并支持拍图回写。
+   */
+  const graphStoryboardSource = computed<{
+    nodeId: string
+    nodeTitle: string
+    storyboard: FilmStoryboard
+  } | null>(() => {
+    void previewRevision.value
+    const doc = graphEditorHosts.getDocument(graphHostId.value)
+    const rawGraphJson = asset.value?.genParams?.graphJson as
+      { nodes?: NonNullable<typeof doc>['nodes'] } | undefined
+    const nodes = doc?.nodes ?? (Array.isArray(rawGraphJson?.nodes) ? rawGraphJson.nodes : [])
+    for (const node of nodes) {
+      if (!node?.typeId?.startsWith('film.')) continue
+      const sb = parseFilmStoryboard(node.params?.filmStoryboard)
+      if (sb && sb.shots.length > 0) {
+        return {
+          nodeId: node.id ?? '',
+          nodeTitle: node.title || t('director.stage.aiDirector.storyboardDefaultTitle'),
+          storyboard: sb
+        }
+      }
+    }
+    return null
+  })
+
+  async function applyStoryboardPreviz(optionsOverride?: {
+    sceneId?: string | null
+    shotId?: string | null
+  }): Promise<{ summary: string }> {
+    const src = graphStoryboardSource.value
+    if (!src || src.storyboard.shots.length === 0) {
+      return { summary: t('director.stage.aiDirector.storyboardEmpty') }
+    }
+    const compiled = await compileStoryboardToDirectorStageWithLlm(stage.value, src.storyboard, {
+      sceneId: optionsOverride?.sceneId ?? null,
+      shotId: optionsOverride?.shotId ?? null,
+      locale: locale.value
+    })
+    await applyStageBlockingPlan(compiled.stage, true)
+    return {
+      summary: t('director.stage.aiDirector.storyboardAppliedSummary', {
+        shots: compiled.shots.length,
+        actors: compiled.actorCount,
+        props: compiled.propCount,
+        duration: compiled.totalDurationSec.toFixed(1)
+      })
+    }
+  }
+
+  async function captureStoryboardPrevizAndWriteBack(): Promise<{
+    count: number
+    summary: string
+  }> {
+    if (!renderer || !scene) {
+      return { count: 0, summary: '' }
+    }
+    const src = graphStoryboardSource.value
+    const prevLabels = captureLabelsVisible.value
+    const prevCamLabels = captureCameraLabelsVisible.value
+    // 抓拍用于下游 AI 绘图参考的白模图时默认关闭文字标签，避免将 3D 名字烧录进生成画面
+    captureLabelsVisible.value = false
+    captureCameraLabelsVisible.value = false
+    let captured: DirectorCameraShot[] = []
+    try {
+      captured = captureCutTrackStoryboard()
+    } finally {
+      captureLabelsVisible.value = prevLabels
+      captureCameraLabelsVisible.value = prevCamLabels
+    }
+    if (!src || captured.length === 0) {
+      return {
+        count: captured.length,
+        summary: t('director.stage.aiDirector.storyboardWritebackDone', {
+          count: captured.length
+        })
+      }
+    }
+
+    const shotKeyframes = new Map<string, string>()
+    const node = directorProcessingNode()
+    const fallbackNode =
+      node ??
+      ({
+        id: options.processingNodeId ?? 'director-motion',
+        typeId: 'process.motion',
+        title: 'director-previz',
+        position: { x: 0, y: 0 },
+        params: {}
+      } as unknown as NonNullable<ReturnType<typeof directorProcessingNode>>)
+    const hostAsset = asset.value
+    const { saveGraphRunMediaForNode } = await import('../graph/saveGraphRunMediaForNode')
+
+    for (let i = 0; i < captured.length; i++) {
+      const cap = captured[i]
+      const shotId =
+        extractStoryboardShotIdFromDirectorId(cap.cameraId) ?? src.storyboard.shots[i]?.id ?? null
+      if (!shotId || !cap.dataUrl) continue
+      let mediaRef = cap.dataUrl
+      try {
+        const key = buildGeneratedMediaFileKey({
+          hostAssetName: hostAsset?.name,
+          nodeTitle: `previz-${shotId}`,
+          index: i + 1,
+          stamp: new Date().toISOString().replace(/[:.]/g, '-')
+        })
+        mediaRef = await saveGraphRunMediaForNode({
+          dataUrl: cap.dataUrl,
+          key,
+          node: fallbackNode,
+          hostAssetId: options.directorAssetId,
+          kind: 'image'
+        })
+      } catch {
+        mediaRef = cap.dataUrl
+      }
+      shotKeyframes.set(shotId, mediaRef)
+    }
+
+    if (shotKeyframes.size > 0) {
+      const updatedShots = src.storyboard.shots.map((s) => {
+        const previzKeyframe = shotKeyframes.get(s.id)
+        if (!previzKeyframe) return s
+        return {
+          ...s,
+          media: {
+            ...s.media,
+            previzKeyframe
+          }
+        }
+      })
+      const nextStoryboard = replaceFilmShots(src.storyboard, updatedShots)
+      const existingNode = graphEditorHosts.findNode(graphHostId.value, (n) => n.id === src.nodeId)
+      if (existingNode) {
+        graphEditorHosts.updateNode(graphHostId.value, src.nodeId, {
+          filmStoryboard: stringifyFilmStoryboard(nextStoryboard)
+        })
+        await graphEditorHosts.flush(graphHostId.value)
+      }
+    }
+
+    const writeCount = shotKeyframes.size || captured.length
+    return {
+      count: writeCount,
+      summary: t('director.stage.aiDirector.storyboardWritebackDone', {
+        count: writeCount
+      })
+    }
+  }
+
+  /**
    * ???????????transform / ?????? GLTF ????????? genParams?
    */
   async function createModelObject(
@@ -8303,8 +8580,23 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     selectedObjectId.value = id
     selectedCameraId.value = null
     selectionKind.value = 'object'
+    if (stageEditMode.value === 'animation') {
+      const tracks = stage.value.animation?.tracks ?? []
+      const curTrack = animSelectedTrackId.value
+        ? tracks.find((t) => t.id === animSelectedTrackId.value)
+        : null
+      if (curTrack && !curTrack.cameraCut && curTrack.targetId !== id) {
+        const match = tracks.find(
+          (t) => !t.cameraCut && t.targetKind === 'object' && t.targetId === id
+        )
+        animSelectedTrackId.value = match?.id ?? null
+        animSelectedKeyframeId.value = null
+        clearPathEditOverlays()
+      }
+    }
     applySelectionToScene()
     syncShotVisuals()
+    if (stageEditMode.value === 'animation') syncAllPathVisuals()
     syncEditorStageSelection()
   }
 
@@ -8315,9 +8607,24 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     selectedCameraId.value = id
     selectionKind.value = 'camera'
     stage.value.activeCameraId = id
+    if (stageEditMode.value === 'animation') {
+      const tracks = stage.value.animation?.tracks ?? []
+      const curTrack = animSelectedTrackId.value
+        ? tracks.find((t) => t.id === animSelectedTrackId.value)
+        : null
+      if (curTrack && !curTrack.cameraCut && curTrack.targetId !== id) {
+        const match = tracks.find(
+          (t) => !t.cameraCut && t.targetKind === 'camera' && t.targetId === id
+        )
+        animSelectedTrackId.value = match?.id ?? null
+        animSelectedKeyframeId.value = null
+        clearPathEditOverlays()
+      }
+    }
     if (viewMode.value === 'camera') applyCameraView()
     applySelectionToScene()
     syncShotVisuals()
+    if (stageEditMode.value === 'animation') syncAllPathVisuals()
     previewRevision.value += 1
     requestRender()
     schedulePersist()
@@ -9118,6 +9425,10 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       const host = parentMesh ?? root
       if (mesh.parent !== host) host.add(mesh)
       mesh.visible = obj.visible !== false
+    }
+    for (const obj of objects) {
+      const mesh = objectMeshes.get(obj.id)
+      if (!mesh) continue
       syncObjectNameLabel(obj, mesh)
     }
   }
@@ -9898,10 +10209,10 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     renderer.setSize(w, h, false)
     labelRenderer?.setSize(w, h)
     syncPathLineResolution()
-    // ??????????????????+ ?????????????????
     camera.aspect = w / h
     camera.updateProjectionMatrix()
     syncShotVisuals()
+    requestRender()
   }
 
   /** ????????????????TransformControls ????*/
@@ -10008,7 +10319,21 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
         syncPathVisual(track.id, track.path)
       }
     }
-    selectObject(typeof obj?.userData.stageId === 'string' ? obj.userData.stageId : null)
+    let pickedId = typeof obj?.userData.stageId === 'string' ? obj.userData.stageId : null
+    if (pickedId) {
+      const pickedObj = stage.value.objects.find((item) => item.id === pickedId)
+      if (pickedObj?.parentId) {
+        const parentObj = stage.value.objects.find((item) => item.id === pickedObj.parentId)
+        if (
+          parentObj?.kind === 'empty' &&
+          stage.value.selectedObjectId !== parentObj.id &&
+          stage.value.selectedObjectId !== pickedObj.id
+        ) {
+          pickedId = parentObj.id
+        }
+      }
+    }
+    selectObject(pickedId)
   }
 
   function onPointerMove(e: PointerEvent): void {
@@ -10602,9 +10927,9 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   function unmount(): void {
     // ??/?????????????????????
     flushPreview()
-    if (!savedBeforeUnmount) {
+    if (!savedBeforeUnmount || directorDocument.isDirty()) {
       void persistStageNow().catch(() => {
-        // persistStageNow ????error??????????????
+        // persistStageNow 已设 error；卸载阶段不抛未捕获拒绝
       })
     }
     disposeThree()
@@ -10617,6 +10942,8 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   return {
     error,
     incomingModelNotice,
+    directorAssetId: options.directorAssetId,
+    processingNodeId: options.processingNodeId ?? null,
     stage,
     cinematographyPrompt,
     linkedPanoramaId,
@@ -10655,6 +10982,9 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     applyLightingPreset,
     applyAiDirectorBlocking,
     applyCinemachinePrevizPack,
+    graphStoryboardSource,
+    applyStoryboardPreviz,
+    captureStoryboardPrevizAndWriteBack,
     moveSelectionToView,
     alignSelectionWithView,
     alignViewToSelected,
@@ -10723,6 +11053,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     gizmoSize,
     sceneLabelsVisible,
     cameraGizmosVisible,
+    pathGizmosVisible,
     lightGizmosVisible,
     gridGizmoVisible,
     captureLabelsVisible,
@@ -10730,6 +11061,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     setGizmoSize,
     setSceneLabelsVisible,
     setCameraGizmosVisible,
+    setPathGizmosVisible,
     setLightGizmosVisible,
     setGridGizmoVisible,
     setCaptureLabelsVisible,

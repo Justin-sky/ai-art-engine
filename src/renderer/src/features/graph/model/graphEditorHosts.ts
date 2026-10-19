@@ -201,6 +201,8 @@ class GraphEditorHostRegistry {
   private readonly hosts = new Map<string, GraphEditorHostApi>()
   /** 边 / 节点结构变化时递增，供 Inspector 订阅刷新 */
   readonly revision = ref(0)
+  /** 外部（如 AI 对话 graph_edit）整图写回时递增，供 Dive 节点工具宿主实时刷新 */
+  readonly externalRevision = ref(0)
 
   bumpRevision(): void {
     this.revision.value += 1
@@ -327,6 +329,7 @@ class GraphEditorHostRegistry {
   ): void {
     if (!hostId) return
     this.hosts.get(hostId)?.applyExternalGraph?.(document, options)
+    this.externalRevision.value += 1
     this.bumpRevision()
   }
 

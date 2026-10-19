@@ -410,9 +410,13 @@
                 </td>
               </tr>
               <tr>
-                <td rowspan="4">Editing &amp; queries</td>
+                <td rowspan="5">Editing &amp; queries</td>
                 <td><code>graph_edit</code></td>
-                <td>Apply node / edge edit batches to a host asset graph (validated in-app)</td>
+                <td>Apply node / edge edit batches to a host asset graph (supports arbitrarily deep dot-path <code>params</code>, named <code>preset</code>s, node <code>dive_open</code> / <code>dive_close</code>, and <code>run_node</code>)</td>
+              </tr>
+              <tr>
+                <td><code>director_stage_edit</code></td>
+                <td>Full 3D Director Stage control (show/hide, lock, translate/rotate/scale, poses, materials, keyframes, whitebox building, and live sync with <code>stage.3d</code> node parameters)</td>
               </tr>
               <tr>
                 <td><code>graph_icon_refine</code></td>
@@ -432,13 +436,16 @@
 
         <section id="examples">
           <h2>4. Example conversations</h2>
-          <p>Once connected, just give natural-language instructions — the agent combines the tools:</p>
+          <p>Once connected, just give natural-language instructions — the agent perceives your active editor and combines the tools:</p>
           <ul>
             <li>"List my recent projects and open the first one" → <code>project_list</code> + <code>project_open</code></li>
+            <li>"Hide Lin Xiaoman, move her 2m left, rotate 45°, and set her pose to sitting" → <code>director_stage_edit</code> (works in both standalone <code>.dstage</code> and <code>stage.3d</code> Dive)</li>
+            <li>"Apply the sweet portrait preset on the portrait node, set face slimming to 55, and remove glasses" → <code>graph_edit</code> (<code>preset</code> + deep dot-path <code>params</code>)</li>
+            <li>"Set the lighting node to cyberpunk neon, make the key light blue-violet, and enable volumetric fog" → <code>graph_edit</code> (semantic <code>node_params</code>)</li>
             <li>"Plan a workflow from the shortDrama template and save it" → <code>workflow_plan</code> (presetId=shortDrama) + <code>workflow_commit</code></li>
             <li>"Run the workflow I just created and report back" → <code>task_run</code> + <code>task_status</code> polling</li>
             <li>"Add a voice node under this image node and wire it" → <code>graph_edit</code> (node_upsert + edge_connect)</li>
-            <li>"What nodes can this graph take? Which type packs icons?" → <code>graph_node_types</code> (typeId + ports + default params)</li>
+            <li>"What nodes can this graph take? Which type packs icons?" → <code>graph_node_types</code> (typeId + ports + default params + param schema + presets)</li>
             <li>"Icon #3 in the pack looks blurry — redraw just that one" → <code>graph_icon_refine</code> (cellKey + hint; writes back and re-packs)</li>
             <li>"Generate a 9:16 poster with my configured model" → <code>models_list</code> + <code>generate_image</code></li>
           </ul>

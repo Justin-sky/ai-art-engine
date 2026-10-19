@@ -503,6 +503,13 @@ export async function executeVideoGenerateNode(
   }
 
   const genParams = resolveVideoGenerateParamsForApi(node.params, capsParams)
+  if (!node.params.generateFrameMode || node.params.generateFrameMode === 'none') {
+    if (firstFrameImageUrl && lastFrameImageUrl) {
+      genParams.frameMode = 'first_last'
+    } else if (firstFrameImageUrl) {
+      genParams.frameMode = 'first'
+    }
+  }
   const paramsPatch = videoGenerateParamsToNodePatch(genParams)
   node.params = { ...node.params, ...paramsPatch }
   ctx.patchNode?.({ params: paramsPatch })

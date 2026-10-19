@@ -402,9 +402,13 @@
                 </td>
               </tr>
               <tr>
-                <td rowspan="4">编辑与查询</td>
+                <td rowspan="5">编辑与查询</td>
                 <td><code>graph_edit</code></td>
-                <td>对宿主资产图应用节点 / 连线编辑操作批（端口兼容性在应用内校验）</td>
+                <td>对宿主资产图应用节点 / 连线编辑操作批（支持任意深层点路径 <code>params</code>、预设 <code>preset</code>、节点 <code>dive_open</code> / <code>dive_close</code> 与 <code>run_node</code>）</td>
+              </tr>
+              <tr>
+                <td><code>director_stage_edit</code></td>
+                <td>3D 导演台全功能直控（角色 / 道具 / 白模 / 相机机位的显示隐藏、锁定、平移旋转缩放、姿势、材质颜色、关键帧打点、白模搭建及 <code>stage.3d</code> 节点参数实时同步）</td>
               </tr>
               <tr>
                 <td><code>graph_icon_refine</code></td>
@@ -443,13 +447,16 @@
 
         <section id="examples">
           <h2>4. 场景示例</h2>
-          <p>接入后直接用自然语言下指令，Agent 会自动组合工具：</p>
+          <p>接入后直接用自然语言下指令，Agent 会自动感知当前焦点窗口并组合工具：</p>
           <ul>
             <li>「列出我的最近工程，打开第一个」→ <code>project_list</code> + <code>project_open</code></li>
+            <li>「隐藏林小满，把她往左移 2 米并转 45 度，设成坐姿」→ <code>director_stage_edit</code>（支持独立 <code>.dstage</code> 与节点图 <code>stage.3d</code> Dive）</li>
+            <li>「把美颜节点改成甜美写真预设，瘦脸调到 55，去掉眼镜」→ <code>graph_edit</code>（<code>preset</code> + 深层点路径 <code>params</code>）</li>
+            <li>「把打光节点设成赛博朋克霓虹风格，主光偏蓝紫，加上体积雾」→ <code>graph_edit</code>（<code>node_params</code> 语义化更新）</li>
             <li>「用 shortDrama 模板规划一条工作流并落盘」→ <code>workflow_plan</code>（presetId=shortDrama）+ <code>workflow_commit</code></li>
             <li>「运行刚才创建的工作流，完成后告诉我结果」→ <code>task_run</code> + <code>task_status</code> 轮询</li>
             <li>「给这张图节点下面加一个配音节点并连上」→ <code>graph_edit</code>（node_upsert + edge_connect）</li>
-            <li>「这张图还能加哪些节点？图标包打包用哪个类型？」→ <code>graph_node_types</code>（typeId + 端口 + 默认参数）</li>
+            <li>「这张图还能加哪些节点？图标包打包用哪个类型？」→ <code>graph_node_types</code>（typeId + 端口 + 默认参数 + 参数 Schema + 预设清单）</li>
             <li>「图标包第 3 枚的剑画糊了，重画这一枚」→ <code>graph_icon_refine</code>（cellKey + hint，自动写回并重跑打包）</li>
             <li>「用已配置的模型生成一张 9:16 的海报」→ <code>models_list</code> + <code>generate_image</code></li>
             <li>

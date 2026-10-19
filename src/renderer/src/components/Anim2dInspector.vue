@@ -23,7 +23,7 @@
     <!-- 0. 上游视频直抽转帧动画（当 in-video 接入视频时显示） -->
     <section v-if="upstreamVideoUrl" class="panel-card video-extract-card">
       <div class="section-header">
-        <span class="section-title">🎬 {{ t('graph.anim2d.genModeVideoSheet') }}</span>
+        <span class="section-title">{{ t('graph.anim2d.genModeVideoSheet') }}</span>
       </div>
       <video
         :src="upstreamVideoUrl"

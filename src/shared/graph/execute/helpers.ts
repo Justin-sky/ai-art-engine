@@ -139,6 +139,58 @@ export function resolveGalleryOutputsFromNodeParams(
     return dualImageGalleryOutputs(items, selectedId)
   }
 
+  const previewRelativePath =
+    typeof params.previewRelativePath === 'string' ? params.previewRelativePath.trim() : ''
+  const previewDataUrl =
+    typeof params.previewDataUrl === 'string' ? params.previewDataUrl.trim() : ''
+  if (previewRelativePath || previewDataUrl) {
+    const typeId = options?.typeId ?? ''
+    if (typeId === 'asset.image') {
+      const items: GraphImageItem[] = [
+        {
+          id: 'preview:0',
+          dataUrl: previewDataUrl,
+          ...(previewRelativePath ? { relativePath: previewRelativePath } : {})
+        }
+      ]
+      return dualImageGalleryOutputs(items, 'preview:0')
+    }
+    if (typeId === 'asset.video') {
+      const items: GraphVideoItem[] = [
+        {
+          id: 'preview:0',
+          dataUrl: previewDataUrl,
+          ...(previewRelativePath ? { relativePath: previewRelativePath } : {})
+        }
+      ]
+      return dualVideoGalleryOutputs(items, 'preview:0')
+    }
+    if ((typeId === 'asset.model3d' || typeId === 'asset.spatialWorld') && previewRelativePath) {
+      const items = [
+        {
+          id: 'preview:0',
+          relativePath: previewRelativePath
+        }
+      ]
+      return dualModelGalleryOutputs(items, 'preview:0')
+    }
+    if (
+      (typeId === 'asset.voice' ||
+        typeId === 'asset.sfx' ||
+        typeId === 'asset.music' ||
+        typeId === 'asset.dialogue') &&
+      previewRelativePath
+    ) {
+      const items: GraphVoiceItem[] = [
+        {
+          id: 'preview:0',
+          relativePath: previewRelativePath
+        }
+      ]
+      return dualVoiceGalleryOutputs(items, 'preview:0')
+    }
+  }
+
   return null
 }
 

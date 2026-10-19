@@ -2332,6 +2332,16 @@ watch(
   { immediate: true }
 )
 
+watch(
+  () => [props.setup, props.setupRig, props.setupPose, props.setupAction] as const,
+  () => {
+    if (!props.open) return
+    applySetup()
+    void resolveThumbs()
+    void render()
+  }
+)
+
 watch(scene, () => {
   if (!props.open) return
   void resolveThumbs()

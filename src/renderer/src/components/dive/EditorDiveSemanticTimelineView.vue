@@ -290,7 +290,13 @@ const referenceCandidates = computed(() => {
   return mergeCandidates(fromPort)
 })
 watch(
-  () => [props.timelineId, props.timelineJson, props.sourceRelativePath, props.resultRelativePath],
+  () => [
+    props.timelineId,
+    props.timelineJson,
+    props.sourceRelativePath,
+    props.resultRelativePath,
+    graphEditorHosts.revision.value
+  ],
   () => {
     void load()
   }

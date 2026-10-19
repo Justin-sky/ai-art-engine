@@ -41,6 +41,9 @@ const EXEMPT_FILES = new Set([
   'src/renderer/src/features/director/aiPosePresets.ts',
   'src/shared/directorCinematography.ts',
   'src/renderer/src/features/director/directorAiBlocking.ts',
+  'src/renderer/src/features/director/directorStoryboardPreviz.ts',
+  'src/renderer/src/features/director/directorWhiteModelBuilder.ts',
+  'src/renderer/src/features/director/mcpDirectorStageOps.ts',
   'src/shared/graph/smartCut.ts',
   'src/shared/graph/videoReview.ts',
   // YOLO COCO 标签双语数据字典（labelZh 写回资产 meta，非 UI 文案）
@@ -54,9 +57,13 @@ const EXEMPT_FILES = new Set([
   'src/shared/blenderMcp.ts',
   'src/main/services/blenderMcpService.ts',
   'src/renderer/src/features/mcp/mcpTaskRunner.ts',
+  'src/renderer/src/features/mcp/buildActiveWorkspaceContext.ts',
+  'src/renderer/src/editor/control/surfaceRegistry.ts',
   'src/renderer/src/features/mcp/renderJobHandlers.ts',
   'src/shared/asyncSemaphore.ts',
   'src/shared/graph/mcpGraphEdit.ts',
+  'src/shared/graph/introspection.ts',
+  'src/shared/graph/smartPatch.ts',
   // 对话路径的可玩 HTML 作业契约：smoke 报告文案随 MCP 工具返回给模型（Agent 域，非 UI i18n）
   'src/shared/gamePlayJob.ts',
   'src/main/services/gamePlaySmokeService.ts',

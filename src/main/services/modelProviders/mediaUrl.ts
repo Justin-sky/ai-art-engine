@@ -1,10 +1,11 @@
 import { readFileSync } from 'fs'
 import { join } from 'path'
+import { sniffImageMimeFromBytes } from '@shared/media/imageMimeSniff'
 
 function toDataUrlFromFile(absPath: string): string {
   const buf = readFileSync(absPath)
   const ext = absPath.toLowerCase().split('.').pop() ?? ''
-  const mime =
+  const fallbackMime =
     ext === 'jpg' || ext === 'jpeg'
       ? 'image/jpeg'
       : ext === 'webp'
@@ -28,6 +29,7 @@ function toDataUrlFromFile(absPath: string): string {
                         : ext === 'm4a'
                           ? 'audio/mp4'
                           : 'application/octet-stream'
+  const mime = sniffImageMimeFromBytes(buf) ?? fallbackMime
   return `data:${mime};base64,${buf.toString('base64')}`
 }
 

@@ -190,7 +190,19 @@ function resolveTaskTargets(graph: GraphDocument, targetNodeIds?: string[]): Gra
     targetNodeIds
       ?.map((id) => graph.nodes.find((node) => node.id === id))
       .filter((node): node is GraphNode => !!node) ?? []
-  return explicit.length ? explicit : findAllOutputNodes(graph)
+  if (explicit.length) return explicit
+  const outputs = findAllOutputNodes(graph)
+  if (outputs.length) return outputs
+  // 自由画布无 output.* / boundary.output 节点时，以所有无出边的可执行终端节点为汇点
+  const hasOutgoing = new Set(graph.edges.filter((e) => e.source !== e.target).map((e) => e.source))
+  const sinks = graph.nodes.filter(
+    (node) =>
+      node.typeId !== 'graph.boundary.input' &&
+      node.typeId !== 'note.text' &&
+      !node.locked &&
+      !hasOutgoing.has(node.id)
+  )
+  return sinks.length ? sinks : graph.nodes.filter((n) => n.typeId !== 'graph.boundary.input')
 }
 
 function buildOrder(graph: GraphDocument, targetNodeIds?: string[]): string[] {

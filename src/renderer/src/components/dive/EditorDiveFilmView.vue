@@ -439,13 +439,28 @@
                   </h3>
                   <p class="hint">{{ t('graph.inspector.film.workbenchShotsHint') }}</p>
                 </div>
-                <div v-if="storyboard?.shots?.length" class="batch-actions">
-                  <button type="button" class="ghost-btn" @click="setAllShotsLock(true)">
-                    🔒 {{ t('graph.inspector.film.lockAll') }}
+                <div
+                  v-if="storyboard?.shots?.length || displayStoryboard?.shots?.length"
+                  class="batch-actions"
+                >
+                  <button
+                    type="button"
+                    class="ghost-btn previz-stage-btn"
+                    :disabled="previzOpeningKey !== null"
+                    :title="t('graph.inspector.film.openDirectorPrevizHint')"
+                    @click="openInDirectorPreviz()"
+                  >
+                    {{ previzOpeningKey === '__all__' ? '⏳' : '🧊' }}
+                    {{ t('graph.inspector.film.openDirectorPreviz') }}
                   </button>
-                  <button type="button" class="ghost-btn" @click="setAllShotsLock(false)">
-                    🔓 {{ t('graph.inspector.film.unlockAll') }}
-                  </button>
+                  <template v-if="storyboard?.shots?.length">
+                    <button type="button" class="ghost-btn" @click="setAllShotsLock(true)">
+                      🔒 {{ t('graph.inspector.film.lockAll') }}
+                    </button>
+                    <button type="button" class="ghost-btn" @click="setAllShotsLock(false)">
+                      🔓 {{ t('graph.inspector.film.unlockAll') }}
+                    </button>
+                  </template>
                 </div>
               </div>
 
@@ -464,6 +479,16 @@
                       · {{ shot.durationSec }}s
                     </span>
                     <span class="spacer" />
+                    <button
+                      type="button"
+                      class="ghost-btn compact-btn"
+                      :disabled="previzOpeningKey !== null"
+                      :title="t('graph.inspector.film.openShotPrevizHint')"
+                      @click="openInDirectorPreviz({ shotId: shot.id })"
+                    >
+                      {{ previzOpeningKey === shot.id ? '⏳' : '🧊' }}
+                      {{ t('graph.inspector.film.openShotPreviz') }}
+                    </button>
                     <button
                       v-if="storyboard?.shots?.length"
                       type="button"
@@ -546,6 +571,38 @@
                             })
                           }}
                         </span>
+                      </div>
+                      <div
+                        v-if="shotRawPrevizKeyframe(shot)"
+                        class="binding-chip previz ready"
+                        :title="t('graph.inspector.film.previzRefHint')"
+                      >
+                        <img
+                          v-if="shotPrevizThumbUrl(shot)"
+                          :src="shotPrevizThumbUrl(shot)"
+                          :alt="shot.id"
+                          class="binding-thumb"
+                          @click.stop="previewMedia(shotPrevizThumbUrl(shot), `${shot.id} Previz`)"
+                        />
+                        <span class="badge">🧊</span>
+                        <strong class="binding-name">
+                          {{ t('graph.inspector.film.previzRefLabel') }}
+                        </strong>
+                        <span v-if="shotPrevizRefIndex(shot, true) > 0" class="ref-badge ready">
+                          {{
+                            t('graph.inspector.film.refSheetReady', {
+                              n: shotPrevizRefIndex(shot, true)
+                            })
+                          }}
+                        </span>
+                        <button
+                          v-if="storyboard?.shots?.length"
+                          type="button"
+                          class="binding-remove"
+                          @click="clearShotPreviz(shot.id)"
+                        >
+                          ×
+                        </button>
                       </div>
                     </div>
 
@@ -807,11 +864,24 @@
                   }}
                   · {{ selectedShot.durationSec }}s
                 </span>
+                <span class="spacer" />
+                <button
+                  type="button"
+                  class="ghost-btn compact-btn"
+                  :title="t('graph.inspector.film.openShotPrevizHint')"
+                  @click="openInDirectorPreviz({ shotId: selectedShot.id })"
+                >
+                  🧊 {{ t('graph.inspector.film.openShotPreviz') }}
+                </button>
               </div>
 
               <!-- 单镜角色与场景参考图绑定展示 -->
               <div
-                v-if="shotBindingItems(selectedShot).length || prevSameSceneShot(selectedShot)"
+                v-if="
+                  shotBindingItems(selectedShot).length ||
+                  prevSameSceneShot(selectedShot) ||
+                  shotRawPrevizKeyframe(selectedShot)
+                "
                 class="shot-binding-panel"
               >
                 <div class="binding-chips">
@@ -875,6 +945,32 @@
                       }}
                     </span>
                   </div>
+                  <div
+                    v-if="shotRawPrevizKeyframe(selectedShot)"
+                    class="binding-chip previz ready"
+                    :title="t('graph.inspector.film.previzRefHint')"
+                  >
+                    <img
+                      v-if="shotPrevizThumbUrl(selectedShot)"
+                      :src="shotPrevizThumbUrl(selectedShot)"
+                      :alt="selectedShot.id"
+                      class="binding-thumb"
+                      @click.stop="
+                        previewMedia(shotPrevizThumbUrl(selectedShot), `${selectedShot.id} Previz`)
+                      "
+                    />
+                    <span class="badge">🧊</span>
+                    <strong class="binding-name">
+                      {{ t('graph.inspector.film.previzRefLabel') }}
+                    </strong>
+                    <span v-if="shotPrevizRefIndex(selectedShot, true) > 0" class="ref-badge ready">
+                      {{
+                        t('graph.inspector.film.refSheetReady', {
+                          n: shotPrevizRefIndex(selectedShot, true)
+                        })
+                      }}
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -914,6 +1010,16 @@
                 {{ t('graph.inspector.film.shots', { n: effectiveStoryboard.shots.length }) }}
               </h3>
               <div class="batch-actions">
+                <button
+                  type="button"
+                  class="ghost-btn previz-stage-btn"
+                  :disabled="previzOpeningKey !== null"
+                  :title="t('graph.inspector.film.openDirectorPrevizHint')"
+                  @click="openInDirectorPreviz()"
+                >
+                  {{ previzOpeningKey === '__all__' ? '⏳' : '🧊' }}
+                  {{ t('graph.inspector.film.openDirectorPreviz') }}
+                </button>
                 <button type="button" class="ghost-btn" @click="toggleAllRenderPrompts">
                   {{
                     allRenderPromptsExpanded
@@ -960,6 +1066,16 @@
                         : t('graph.inspector.film.qcFail')
                     }}
                   </span>
+                  <button
+                    type="button"
+                    class="ghost-btn compact-btn"
+                    :disabled="previzOpeningKey !== null"
+                    :title="t('graph.inspector.film.openShotPrevizHint')"
+                    @click="openInDirectorPreviz({ shotId: shot.id })"
+                  >
+                    {{ previzOpeningKey === shot.id ? '⏳' : '🧊' }}
+                    {{ t('graph.inspector.film.openShotPreviz') }}
+                  </button>
                   <button
                     type="button"
                     class="ghost-btn compact-btn"
@@ -1023,7 +1139,8 @@
                 <div
                   v-if="
                     shotBindingItems(shot).length ||
-                    (params.filmRenderContinuity !== false && prevSameSceneShot(shot))
+                    (params.filmRenderContinuity !== false && prevSameSceneShot(shot)) ||
+                    shotRawPrevizKeyframe(shot)
                   "
                   class="shot-binding-panel compact"
                 >
@@ -1088,6 +1205,41 @@
                         }}
                       </span>
                     </div>
+                    <div
+                      v-if="shotRawPrevizKeyframe(shot)"
+                      class="binding-chip previz ready"
+                      :title="t('graph.inspector.film.previzRefHint')"
+                    >
+                      <img
+                        v-if="shotPrevizThumbUrl(shot)"
+                        :src="shotPrevizThumbUrl(shot)"
+                        :alt="shot.id"
+                        class="binding-thumb"
+                        @click.stop="previewMedia(shotPrevizThumbUrl(shot), `${shot.id} Previz`)"
+                      />
+                      <span class="badge">🧊</span>
+                      <strong class="binding-name">
+                        {{ t('graph.inspector.film.previzRefLabel') }}
+                      </strong>
+                      <span
+                        v-if="shotPrevizRefIndex(shot, params.filmRenderContinuity !== false) > 0"
+                        class="ref-badge ready"
+                      >
+                        {{
+                          t('graph.inspector.film.refSheetReady', {
+                            n: shotPrevizRefIndex(shot, params.filmRenderContinuity !== false)
+                          })
+                        }}
+                      </span>
+                      <button
+                        v-if="storyboard?.shots?.length"
+                        type="button"
+                        class="binding-remove"
+                        @click="clearShotPreviz(shot.id)"
+                      >
+                        ×
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -1150,7 +1302,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, inject, ref, watch } from 'vue'
 import {
   composeFilmShotImagePrompt,
   composeFilmShotVideoPrompt,
@@ -1161,6 +1313,7 @@ import {
   filmVideoParamsToNodePatch,
   findPrevSameSceneShot,
   imageGenerateParamsToNodePatch,
+  isDirectorProcessingNode,
   isFilmNodeTypeId,
   isFilmShotLocked,
   matchFilmCastForShot,
@@ -1193,6 +1346,13 @@ import VideoGenerateParamsSelect from '../VideoGenerateParamsSelect.vue'
 import WorkspaceItemIcon from '../WorkspaceItemIcon.vue'
 import { useStudioI18n } from '../../composables/useStudioI18n'
 import { useGraphNodeRun } from '../../composables/useGraphNodeRun'
+import { persistAssetRecord, useAssetRecord } from '../../composables/useAssetRecord'
+import { compileStoryboardToDirectorStageWithLlm } from '../../features/director/directorStoryboardPreviz'
+import {
+  patchGenParamsWithNodeStage,
+  resolveDirectorStageForNode
+} from '../../features/director/directorStageBinding'
+import { editorDiveKey } from '../../features/graph/model/editorDive'
 import { graphEditorHosts } from '../../features/graph/model/graphEditorHosts'
 import { openFullImagePreview } from '../../features/media/openFullImagePreview'
 import {
@@ -1220,6 +1380,13 @@ const props = defineProps<{
 }>()
 
 const { t, locale, graphTypeLabel } = useStudioI18n()
+const diveCtx = inject(editorDiveKey, null)
+const hostAssetId = computed(() =>
+  props.hostId.startsWith('asset:')
+    ? props.hostId.slice('asset:'.length).trim()
+    : props.hostId.trim()
+)
+const { asset: hostAsset } = useAssetRecord(hostAssetId.value)
 
 const activeNodeId = ref(props.nodeId)
 watch(
@@ -1527,7 +1694,8 @@ watch(
   node,
   (current) => {
     if (!current) return
-    const key = `${props.hostId}:${current.id}`
+    const p = current.params
+    const key = `${props.hostId}:${current.id}:${p.filmWorkbenchStage ?? ''}:${p.generateModel ?? ''}:${p.filmTextModel ?? ''}:${p.filmVideoModel ?? ''}:${p.filmQcModel ?? ''}`
     if (key === loadedKey.value) return
     loadedKey.value = key
     void loadModels(current)
@@ -1889,21 +2057,137 @@ function prevShotKeyframeRefIndex(shot: FilmShot | null | undefined): number {
   return refs.length + 1
 }
 
+function shotRawPrevizKeyframe(shot: FilmShot | null | undefined): string {
+  if (!shot) return ''
+  return (shot.media?.previzKeyframe ?? '').trim()
+}
+
+function shotPrevizThumbUrl(shot: FilmShot | null | undefined): string {
+  return mediaThumbUrl(shotRawPrevizKeyframe(shot))
+}
+
+function shotPrevizRefIndex(shot: FilmShot | null | undefined, includeContinuity = true): number {
+  if (!shot || !shotRawPrevizKeyframe(shot)) return 0
+  const refs = matchFilmCastForShot(graphCast.value, shot)
+  const hasPrev = includeContinuity && prevShotKeyframeRefIndex(shot) > 0
+  return refs.length + (hasPrev ? 1 : 0) + 1
+}
+
+function clearShotPreviz(shotId: string): void {
+  writeStoryboard((shots) =>
+    shots.map((shot) => {
+      if (shot.id !== shotId || !shot.media?.previzKeyframe) return shot
+      const nextMedia = { ...shot.media }
+      delete nextMedia.previzKeyframe
+      return {
+        ...shot,
+        media: Object.keys(nextMedia).length > 0 ? nextMedia : undefined
+      }
+    })
+  )
+}
+
+const previzOpeningKey = ref<string | null>(null)
+
+async function openInDirectorPreviz(options?: {
+  sceneId?: string | null
+  shotId?: string | null
+}): Promise<void> {
+  if (previzOpeningKey.value !== null) return
+  const sb = displayStoryboard.value ?? effectiveStoryboard.value
+  if (!sb || !sb.shots.length) return
+  const directorAssetId = hostAssetId.value
+  if (!directorAssetId) return
+
+  previzOpeningKey.value = options?.shotId ?? '__all__'
+  try {
+    const doc = graphEditorHosts.getDocument(props.hostId)
+    const edges = doc?.edges ?? []
+    const previzTitle = t('graph.inspector.film.previzDirectorNodeTitle')
+    const directorNodes = (doc?.nodes ?? []).filter((n) => isDirectorProcessingNode(n))
+    const hasIncomingModelEdge = (nodeId: string): boolean =>
+      edges.some(
+        (e) => e.target === nodeId && (e.targetPort === 'in-model' || e.targetPort === 'model')
+      )
+
+    let motionNode =
+      directorNodes.find((n) =>
+        edges.some((e) => e.source === props.nodeId && e.target === n.id)
+      ) ??
+      directorNodes.find((n) => n.title === previzTitle && !hasIncomingModelEdge(n.id)) ??
+      directorNodes.find((n) => !hasIncomingModelEdge(n.id)) ??
+      null
+    let motionNodeId = motionNode?.id ?? null
+
+    if (!motionNodeId) {
+      motionNodeId = graphEditorHosts.addNode(props.hostId, {
+        typeId: 'asset.motion',
+        title: previzTitle,
+        position: {
+          x: node.value?.position.x ?? 0,
+          y: (node.value?.position.y ?? 0) - 240
+        }
+      })
+    }
+    if (!motionNodeId) return
+
+    const currentDoc = graphEditorHosts.getDocument(props.hostId) ?? doc
+    const currentStage = resolveDirectorStageForNode(
+      hostAsset.value?.genParams,
+      currentDoc,
+      motionNodeId
+    )
+    const compiled = await compileStoryboardToDirectorStageWithLlm(currentStage, sb, {
+      sceneId: options?.sceneId ?? null,
+      shotId: options?.shotId ?? null,
+      locale: String(locale.value),
+      model: params.value.filmTextModel || undefined,
+      providerInstanceId: params.value.filmTextProviderInstanceId || undefined
+    })
+    compiled.stage.ownerProcessingNodeId = motionNodeId
+
+    const nextGenParams = patchGenParamsWithNodeStage(
+      hostAsset.value?.genParams,
+      motionNodeId,
+      compiled.stage
+    )
+    await persistAssetRecord(directorAssetId, { genParams: nextGenParams })
+    await graphEditorHosts.flush(props.hostId)
+
+    await diveCtx?.diveView(
+      {
+        viewId: 'director.stage',
+        directorAssetId,
+        processingNodeId: motionNodeId
+      },
+      previzTitle
+    )
+  } finally {
+    previzOpeningKey.value = null
+  }
+}
+
 const composedSelectedImagePrompt = computed(() => {
   const doc = effectiveStoryboard.value
   const shot = selectedShot.value
   if (!doc || !shot) return ''
   const prevShot = findPrevSameSceneShot(doc, shot)
   const prevRefIdx = prevShotKeyframeRefIndex(shot)
+  const previzRefIdx = shotPrevizRefIndex(shot, true)
   return composeFilmShotImagePrompt(
     doc,
     shot,
     matchedShotCastRefs.value,
     String(locale.value),
-    prevShot
+    prevShot || previzRefIdx > 0
       ? {
-          prevShot,
-          prevKeyframeRefIndex: prevRefIdx > 0 ? prevRefIdx : undefined
+          ...(prevShot
+            ? {
+                prevShot,
+                prevKeyframeRefIndex: prevRefIdx > 0 ? prevRefIdx : undefined
+              }
+            : {}),
+          ...(previzRefIdx > 0 ? { previzRefIndex: previzRefIdx } : {})
         }
       : undefined
   )
@@ -1958,15 +2242,21 @@ function composeRenderFinalImagePrompt(shot: FilmShot): string {
   const continuityOn = params.value.filmRenderContinuity !== false
   const prevShot = continuityOn ? findPrevSameSceneShot(doc, shot) : null
   const prevRefIdx = continuityOn ? prevShotKeyframeRefIndex(shot) : 0
+  const previzRefIdx = shotPrevizRefIndex(shot, continuityOn)
   const composed = composeFilmShotImagePrompt(
     doc,
     shot,
     refs,
     String(locale.value),
-    prevShot
+    prevShot || previzRefIdx > 0
       ? {
-          prevShot,
-          prevKeyframeRefIndex: prevRefIdx > 0 ? prevRefIdx : undefined
+          ...(prevShot
+            ? {
+                prevShot,
+                prevKeyframeRefIndex: prevRefIdx > 0 ? prevRefIdx : undefined
+              }
+            : {}),
+          ...(previzRefIdx > 0 ? { previzRefIndex: previzRefIdx } : {})
         }
       : undefined
   )
@@ -1995,10 +2285,12 @@ const allMediaRelativePaths = computed((): string[] => {
   for (const shot of displayStoryboard.value?.shots ?? []) {
     push(shot.media?.keyframe)
     push(shot.media?.video)
+    push(shot.media?.previzKeyframe)
   }
   for (const shot of effectiveStoryboard.value?.shots ?? []) {
     push(shot.media?.keyframe)
     push(shot.media?.video)
+    push(shot.media?.previzKeyframe)
   }
   for (const entry of Object.values(renderCache.value)) {
     push(entry?.keyframe)
@@ -2965,5 +3257,20 @@ textarea {
   border-radius: 6px;
   background: var(--bg);
   border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+}
+
+.previz-stage-btn {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg));
+  font-weight: 600;
+}
+
+.previz-stage-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 24%, var(--bg));
+}
+
+.binding-chip.previz {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-elevated, var(--bg)));
 }
 </style>

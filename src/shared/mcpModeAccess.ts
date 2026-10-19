@@ -76,6 +76,7 @@ const READ_TOOLS = new Set([
   'workflow_list_presets',
   'graph_node_types',
   'graph_read',
+  'director_stage_read',
   'task_status',
   'video_job_list',
   'video_job_get',
@@ -97,11 +98,6 @@ const READ_TOOLS = new Set([
  * （Plan 模式确认前不可用，Ask 模式不可见）。
  */
 const GENERATE_TOOLS = new Set([
-  'generate_image',
-  'generate_video',
-  'generate_model3d',
-  'generate_speech',
-  'generate_music',
   'decide',
   'workflow_plan',
   'transcribe_audio',

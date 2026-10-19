@@ -88,6 +88,7 @@ import { projectService } from '../projectService'
 import { siblingOutputPath, videoJobService } from '../videoJobService'
 import { videoJobRepository } from '../../repositories/videoJobRepository'
 import { resolveMediaOutputDir } from '@shared/domain'
+import { imageExtFromMime, sniffImageMimeFromBytes } from '@shared/media/imageMimeSniff'
 import { pollCloudModel3dRig, submitCloudModel3dRig } from './model3dRig'
 import {
   fetchCloudModel3dSegmentExtras,
@@ -1498,14 +1499,23 @@ class ModelProviderFacade {
     if (first.startsWith('data:')) {
       const m = first.match(/^data:([^;]+);base64,(.+)$/)
       if (!m) throw fail(E_BAD_IMAGE_DATA_URL)
-      const ext = m[1].includes('jpeg') || m[1].includes('jpg') ? 'jpg' : 'png'
+      const buf = Buffer.from(m[2], 'base64')
+      const sniffedMime = sniffImageMimeFromBytes(buf) ?? m[1]
+      const ext = imageExtFromMime(sniffedMime)
       absPath = join(dir, `img-${stamp}.${ext}`)
-      writeFileSync(absPath, Buffer.from(m[2], 'base64'))
+      writeFileSync(absPath, buf)
     } else {
-      absPath = join(dir, `img-${stamp}.png`)
       const client = axios.create({ timeout: 120_000, responseType: 'arraybuffer' })
-      const { data } = await client.get(first)
-      writeFileSync(absPath, Buffer.from(data))
+      const response = await client.get(first)
+      const buf = Buffer.from(response.data)
+      const headerMime =
+        typeof response.headers?.['content-type'] === 'string'
+          ? response.headers['content-type']
+          : ''
+      const sniffedMime = sniffImageMimeFromBytes(buf) ?? headerMime
+      const ext = imageExtFromMime(sniffedMime)
+      absPath = join(dir, `img-${stamp}.${ext}`)
+      writeFileSync(absPath, buf)
     }
 
     const asset = projectService.attachExternalGeneratedFile({

@@ -1,6 +1,7 @@
 import { readFileSync, existsSync } from 'fs'
 import { fileURLToPath } from 'url'
 import { fail, defErr, defErrSimple } from '@shared/errors/appError'
+import { normalizeImageDataUrlMime, sniffImageMimeFromBytes } from '@shared/media/imageMimeSniff'
 import { toMediaUrl } from './mediaUrl'
 import { projectService } from '../projectService'
 import { shrinkReferenceImageDataUrl } from '../referenceImageService'
@@ -39,7 +40,8 @@ function mimeFromPath(filePath: string): string {
 function dataUrlFromAbsPath(absPath: string): string {
   if (!existsSync(absPath)) throw fail(E_IMAGE_FILE_NOT_FOUND, { path: absPath })
   const buf = readFileSync(absPath)
-  return `data:${mimeFromPath(absPath)};base64,${buf.toString('base64')}`
+  const mime = sniffImageMimeFromBytes(buf) ?? mimeFromPath(absPath)
+  return `data:${mime};base64,${buf.toString('base64')}`
 }
 
 /**
@@ -50,7 +52,10 @@ function resolveApiImageUrl(pathOrUrl: string): string {
   const trimmed = pathOrUrl.trim()
   if (!trimmed) throw fail(E_EMPTY_REFERENCE)
 
-  if (trimmed.startsWith('data:') || /^https?:\/\//i.test(trimmed)) {
+  if (trimmed.startsWith('data:')) {
+    return normalizeImageDataUrlMime(trimmed)
+  }
+  if (/^https?:\/\//i.test(trimmed)) {
     return trimmed
   }
 

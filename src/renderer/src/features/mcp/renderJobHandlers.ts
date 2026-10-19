@@ -42,8 +42,9 @@ import { useProjectStore } from '../../stores/project'
 import { composeStage2dSpineExport } from '../graph/model/composeStage2dSpineExport'
 import { renderSvgFrames } from '../graph/model/renderSvgFrames'
 import { resolveAssetPreviewUrl } from '../media/assetUrlCache'
+import { executeDirectorStageEdit, executeDirectorStageRead } from '../director/mcpDirectorStageOps'
 import { isGraphEditorOpen } from './openGraphEditors'
-import { isTimelineEditorOpen } from './openTimelineEditors'
+import { notifyOpenTimelineEditorUpdated } from './openTimelineEditors'
 
 function readString(value: unknown): string {
   return typeof value === 'string' ? value : ''
@@ -361,11 +362,6 @@ async function handleTimelineDocumentApply(args: Record<string, unknown>): Promi
   }
   const asset = project.assets.find((item) => item.id === assetId)
   if (!asset) throw new Error(`资产不存在：${assetId}`)
-  if (isTimelineEditorOpen(assetId)) {
-    throw new Error(
-      '该剧本的时间线编辑器正在界面中打开：编辑器里可能有未落盘的剪辑，请先关闭时间线再让 Agent 重排'
-    )
-  }
   const nodeId = readString(args.nodeId).trim()
   const genParams = withScriptTimeline(
     asset.genParams as Record<string, unknown> | undefined,
@@ -374,6 +370,7 @@ async function handleTimelineDocumentApply(args: Record<string, unknown>): Promi
   )
   await persistAssetRecord(assetId, { genParams })
   await project.scheduleRefreshLibrary()
+  notifyOpenTimelineEditorUpdated(assetId)
   return {
     assetId,
     clipCount: document.clips.length,
@@ -456,7 +453,9 @@ const RENDER_JOB_HANDLERS: Record<
   'stage2d-spine-export': handleStage2dSpineExport,
   'asset-qc': handleAssetQc,
   'svg-raster': handleSvgRaster,
-  'timeline-document-apply': handleTimelineDocumentApply
+  'timeline-document-apply': handleTimelineDocumentApply,
+  'director-stage-read': executeDirectorStageRead,
+  'director-stage-edit': executeDirectorStageEdit
 }
 
 async function handleRenderJob(payload: McpRenderJobPayload): Promise<void> {

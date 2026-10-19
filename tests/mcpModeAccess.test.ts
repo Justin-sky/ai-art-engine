@@ -34,8 +34,7 @@ describe('对话模式的 MCP 工具授权分级（shared）', () => {
     // Plan 模式要靠它拿确认，必须可见
     expect(toolAccessOf('ask_user')).toBe('read')
 
-    expect(toolAccessOf('generate_image')).toBe('generate')
-    expect(toolAccessOf('generate_video')).toBe('generate')
+    expect(toolAccessOf('decide')).toBe('generate')
     expect(toolAccessOf('workflow_plan')).toBe('generate')
     // 转写走 ASR 模型、消耗额度，与生成同类
     expect(toolAccessOf('transcribe_audio')).toBe('generate')

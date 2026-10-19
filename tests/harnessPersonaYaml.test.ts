@@ -68,26 +68,31 @@ describe('buildPersona 的单行提示不会破坏 YAML 折叠块', () => {
   })
 })
 
-describe('音效分流规则确实在系统提示里', () => {
-  const joined = SRC.slice(SRC.indexOf('function buildPersona(')).slice(0, 6000)
+describe('画布节点生成与音效分流规则确实在系统提示里', () => {
+  const joined = personaBody()
 
-  it('生成工具枚举里含 generate_sound_effect', () => {
+  it('明确规定所有媒体生成通过 graph_edit + task_run 在画布节点上完成', () => {
     expect(joined).toMatch(
-      /generate_image \/ generate_video \/ generate_speech \/ generate_sound_effect \/ generate_music/
+      /Always create media by editing canvas nodes via `graph_edit` and executing them via `task_run`/
     )
+    expect(joined).toContain('asset.image')
+    expect(joined).toContain('asset.video')
+    expect(joined).toContain('voice.tts')
+    expect(joined).toContain('audio.sfx')
+    expect(joined).toContain('audio.music')
   })
 
-  it('含"按音频是什么分流"的规则行', () => {
-    expect(joined).toMatch(/Pick the audio tool by what the audio IS/)
+  it('含"按音频是什么分流到对应画布节点"的规则行', () => {
+    expect(joined).toMatch(/Pick the audio node by what the audio IS/)
   })
 
-  it('明确禁止用 TTS 顶替音效请求', () => {
-    expect(joined).toMatch(/Never satisfy a sound-effect or ambience request with generate_speech/)
+  it('明确禁止用 voice.tts 顶替音效请求', () => {
+    expect(joined).toMatch(/Never satisfy a sound-effect or ambience request with `voice\.tts`/)
     expect(joined).toMatch(/which is the wrong result and still costs a call/)
   })
 
-  it('提醒无缝循环要传 loop', () => {
-    expect(joined).toMatch(/pass loop: true to generate_sound_effect/)
+  it('提醒无缝循环要传 loop: true', () => {
+    expect(joined).toMatch(/pass `loop: true` in `audio\.sfx` node params/)
   })
 })
 

@@ -1777,6 +1777,14 @@ watch(
 )
 
 watch(
+  () => node.value?.params.generateSystemPrompt,
+  (value) => {
+    if (!hasGenerateConfig.value || typeof value !== 'string') return
+    if (value !== systemPrompt.value) systemPrompt.value = value
+  }
+)
+
+watch(
   () => node.value?.params.styleImages,
   (value) => {
     if (!(isImage.value || isVideo.value) || useGlobalStyle.value) return

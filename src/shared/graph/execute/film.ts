@@ -812,9 +812,13 @@ export async function executeFilmShotNode(
   const refs = matchFilmCastForShot(cast, shot)
   const prevShot = findPrevSameSceneShot(storyboard, shot)
   const prevKeyframe = prevShot?.media?.keyframe?.trim() || ''
+  const previzKeyframe = shot.media?.previzKeyframe?.trim() || ''
+  const prevKeyframeRefIndex = prevKeyframe ? refs.length + 1 : undefined
+  const previzRefIndex = previzKeyframe ? refs.length + (prevKeyframe ? 2 : 1) : undefined
   const imagePrompt = composeFilmShotImagePrompt(storyboard, shot, refs, ctx.locale, {
     prevShot,
-    prevKeyframeRefIndex: prevKeyframe ? refs.length + 1 : undefined
+    prevKeyframeRefIndex,
+    previzRefIndex
   })
   const videoPrompt = composeFilmShotVideoPrompt(shot, ctx.locale, { prevShot })
   const refItems: GraphImageItem[] = [
@@ -831,6 +835,16 @@ export async function executeFilmShotNode(
             title: prevShot.id,
             dataUrl: prevKeyframe.startsWith('data:') ? prevKeyframe : '',
             ...(prevKeyframe.startsWith('data:') ? {} : { relativePath: prevKeyframe })
+          }
+        ]
+      : []),
+    ...(previzKeyframe
+      ? [
+          {
+            id: `previz:${shot.id}`,
+            title: `3D Previz ${shot.id}`,
+            dataUrl: previzKeyframe.startsWith('data:') ? previzKeyframe : '',
+            ...(previzKeyframe.startsWith('data:') ? {} : { relativePath: previzKeyframe })
           }
         ]
       : [])
@@ -1126,16 +1140,19 @@ export async function executeFilmRenderNode(
           const prevKeyframe = prevShot
             ? (cache[prevShot.id]?.keyframe || prevShot.media?.keyframe || '').trim()
             : ''
+          const previzKeyframe = shot.media?.previzKeyframe?.trim() || ''
+          const prevKeyframeRefIndex = prevKeyframe ? refs.length + 1 : undefined
+          const previzRefIndex = previzKeyframe ? refs.length + (prevKeyframe ? 2 : 1) : undefined
           const extra = node.params.generateInstruction?.trim()
           const composed = composeFilmShotImagePrompt(
             input,
             shot,
             refs,
             ctx.locale,
-            prevShot
+            prevShot || previzRefIndex
               ? {
-                  prevShot,
-                  prevKeyframeRefIndex: prevKeyframe ? refs.length + 1 : undefined
+                  ...(prevShot ? { prevShot, prevKeyframeRefIndex } : {}),
+                  ...(previzRefIndex ? { previzRefIndex } : {})
                 }
               : undefined
           )
@@ -1143,7 +1160,7 @@ export async function executeFilmRenderNode(
           const imageSeed =
             node.params.generateSeedUseGlobal === false ? node.params.generateSeed : undefined
           const keyHash = filmHash(
-            `${basePrompt}|${refs.map(filmCastEntryImage).join(',')}|${prevKeyframe}|${node.params.generateModel ?? ''}|${aspect ?? ''}|${node.params.generateResolution ?? ''}|${node.params.generateQuality ?? ''}|${imageSeed ?? ''}`
+            `${basePrompt}|${refs.map(filmCastEntryImage).join(',')}|${prevKeyframe}|${previzKeyframe}|${node.params.generateModel ?? ''}|${aspect ?? ''}|${node.params.generateResolution ?? ''}|${node.params.generateQuality ?? ''}|${imageSeed ?? ''}`
           )
           const hasValidKeyframe = !!entry.keyframe && entry.keyframeHash === keyHash
           // 单镜执行且处于「关键帧 + 视频」模式：若关键帧已就绪且尚未生成视频，直接复用关键帧补拍视频
@@ -1157,7 +1174,8 @@ export async function executeFilmRenderNode(
             if (forceKeyframe || !hasValidKeyframe) {
               const refItems = [
                 ...refs.map(entryRefItem),
-                ...(prevKeyframe ? [mediaRefItem(prevKeyframe)] : [])
+                ...(prevKeyframe ? [mediaRefItem(prevKeyframe)] : []),
+                ...(previzKeyframe ? [mediaRefItem(previzKeyframe)] : [])
               ]
               const refUrls = await resolveRefUrls(ctx, refItems)
               const refMeta = [
@@ -1172,6 +1190,17 @@ export async function executeFilmRenderNode(
                         source: 'character' as const,
                         name: prevShot.id,
                         ...(prevKeyframe.startsWith('data:') ? {} : { relativePath: prevKeyframe })
+                      }
+                    ]
+                  : []),
+                ...(previzKeyframe
+                  ? [
+                      {
+                        source: 'character' as const,
+                        name: `3D Previz ${shot.id}`,
+                        ...(previzKeyframe.startsWith('data:')
+                          ? {}
+                          : { relativePath: previzKeyframe })
                       }
                     ]
                   : [])
@@ -1296,6 +1325,7 @@ export async function executeFilmRenderNode(
     const entry = cache[shot.id]
     if (!entry?.keyframe && !entry?.video) continue
     shot.media = {
+      ...shot.media,
       ...(entry.keyframe ? { keyframe: entry.keyframe } : {}),
       ...(entry.video ? { video: entry.video } : {})
     }

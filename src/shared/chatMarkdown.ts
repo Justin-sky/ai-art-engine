@@ -173,15 +173,57 @@ function parserFor(labels: ChatMarkdownLabels): Marked {
   return parser
 }
 
+/**
+ * 过滤 DeepSeek / OpenAI 兼容网关偶发漏入文本流的原始 DSML 工具调用标签
+ *（含全角 `｜` 与半角 `|`、带空格的 `< | DSML | calls>` / `<｜DSML｜function_calls>` 及未闭合流式尾部）。
+ */
+const CHAT_DSML_BLOCK_RE =
+  /<\s*[\uff5c|]\s*DSML\s*[\uff5c|]\s*(?:function_calls|calls)\b[^>]*>[\s\S]*?<\s*\/\s*[\uff5c|]\s*DSML\s*[\uff5c|]\s*(?:function_calls|calls)\s*>/gi
+const CHAT_DSML_TAIL_RE =
+  /<\s*[\uff5c|]\s*DSML\s*[\uff5c|]\s*(?:function_calls|calls|invoke|parameter)\b[\s\S]*$/i
+const CHAT_DSML_TAG_RE = /<\s*\/?\s*[\uff5c|]\s*DSML\s*[\uff5c|][^>]*>/gi
+const CHAT_DSML_PARTIAL_END_RE =
+  /<\s*(?:[\uff5c|]\s*(?:D(?:S(?:M(?:L(?:\s*[\uff5c|]\s*[a-z_]*)?)?)?)?)?)?$/i
+
+export function stripChatDsmlMarkup(text: string): string {
+  if (!text) return ''
+  if (!/DSML/i.test(text) && !CHAT_DSML_PARTIAL_END_RE.test(text)) return text
+  const cleaned = text
+    .replace(CHAT_DSML_BLOCK_RE, '')
+    .replace(CHAT_DSML_TAIL_RE, '')
+    .replace(CHAT_DSML_TAG_RE, '')
+    .replace(CHAT_DSML_PARTIAL_END_RE, '')
+    .trimEnd()
+  if (cleaned.trim() !== '') return cleaned
+  // 若历史旧消息整条只有 DSML 工具调用（无前置正文），折叠为简洁内联工具标签，避免露出原始 XML 或空泡
+  const invokeNames: string[] = []
+  const invokeNameRe =
+    /<\s*[\uff5c|]\s*DSML\s*[\uff5c|]\s*invoke\b[^>]*?\bname\s*=\s*(?:\x22([^\x22]+)\x22|\x27([^\x27]+)\x27|([^\s>]+))/gi
+  for (let m = invokeNameRe.exec(text); m; m = invokeNameRe.exec(text)) {
+    const raw = (m[1] ?? m[2] ?? m[3] ?? '').trim()
+    if (!raw) continue
+    const shortName = raw.replace(/^mcp__(?:studio|blender|ext-[^_]+)__/, '')
+    if (!invokeNames.includes(shortName)) invokeNames.push(shortName)
+  }
+  if (invokeNames.length > 0) {
+    return invokeNames.map((n) => `\`⚡ ${n}\``).join(' ')
+  }
+  return ''
+}
+
 /** 结果缓存：同一段文本会被多次渲染（状态变化、切会话重挂载），流式期间每帧文本都不同，不做长时间留存 */
 let cachedHtml: { key: string; html: string } | null = null
 
-/** 助手气泡：完整 Markdown 渲染 */
-export function renderChatMarkdown(text: string, labels: ChatMarkdownLabels): string {
-  if (!text) return ''
-  const key = `${labels.copyCode}\u0000${text}`
+/** 助手气泡：完整 Markdown 渲染（自动剥离原始 DSML 工具标记） */
+export function renderChatMarkdown(
+  text: string,
+  labels: ChatMarkdownLabels = { copyCode: 'Copy' }
+): string {
+  const sanitized = stripChatDsmlMarkup(text)
+  if (!sanitized) return ''
+  const key = `${labels.copyCode}\u0000${sanitized}`
   if (cachedHtml?.key === key) return cachedHtml.html
-  const html = parserFor(labels).parse(text) as string
+  const html = parserFor(labels).parse(sanitized) as string
   cachedHtml = { key, html }
   return html
 }

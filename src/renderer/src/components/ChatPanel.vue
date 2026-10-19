@@ -35,8 +35,7 @@ import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
 import { getChatAssetFingerprint } from '../features/media/chatAssetFingerprint'
 import { copyTextToClipboard } from '../utils/copyText'
 import { useProjectStore } from '../stores/project'
-import { useWorkspaceStore } from '../stores/workspace'
-import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
+import { buildActiveWorkspaceContext } from '../features/mcp/buildActiveWorkspaceContext'
 import { promptConfirm } from '../composables/useStudioPrompt'
 import { estimateTokenCount } from '@shared/textTokens'
 import { isImageLikePath, renderChatMarkdown, renderInlineChatRefs } from '@shared/chatMarkdown'
@@ -1382,12 +1381,13 @@ let queueSeq = 0
 let draining = false
 /** 新一轮发送前置预检/技能展开进行中：防止期间到达的迟到 done/error 事件提前把 running 置回 false */
 let preparingTask = false
+/** 客户端中断序号：用于在异步预检/启动期间识别用户已触发的新一轮中断 */
+let clientAbortSeq = 0
+/** 中断后短暂屏蔽旧进程残余流式事件自动拉起 running 的截止时间戳 */
+let abortIgnoreUntil = 0
 /** 重发反馈：最近一条加入队列的消息索引 */
 const resendIndex = ref<number | null>(null)
 let resendTimer: number | null = null
-
-/** 队首：要发出的下一条 */
-const firstQueued = computed(() => sendQueue.value[0] ?? null)
 
 function queuePreview(text: string): string {
   const oneLine = text.replace(/\s+/g, ' ').trim()
@@ -1745,7 +1745,7 @@ function pushStatus(text: string, phase: Exclude<ActivityPhase, 'idle'> = 'waiti
 async function refreshStatus(): Promise<void> {
   try {
     status.value = await window.studio.getHarnessStatus()
-    if (status.value?.running && !running.value) {
+    if (status.value?.running && !running.value && Date.now() >= abortIgnoreUntil) {
       running.value = true
     }
   } catch {
@@ -1755,8 +1755,10 @@ async function refreshStatus(): Promise<void> {
 
 function onHarnessEvent(event: HarnessEvent): void {
   if (ignoreHarnessEvents) return
+  const inAbortCooldown = !running.value && !preparingTask && Date.now() < abortIgnoreUntil
   switch (event.type) {
     case 'assistant':
+      if (inAbortCooldown) return
       if (!running.value) running.value = true
       pushAssistant(event.text)
       break
@@ -1765,6 +1767,7 @@ function onHarnessEvent(event: HarnessEvent): void {
       pushStatus(event.text, event.tone ?? 'waiting')
       break
     case 'tool': {
+      if (event.state === 'start' && inAbortCooldown) return
       if (event.state === 'start' && !running.value) running.value = true
       // dsh-agent 等 harness 工具卡：同一会话内按 key 去重（优先 callId 实例，无则按名字回退），
       // 状态变更时原地更新，不要保留一张"执行中"的同时再新增一张"完成"
@@ -1801,6 +1804,7 @@ function onHarnessEvent(event: HarnessEvent): void {
       break
     }
     case 'reasoning':
+      if (inAbortCooldown) return
       if (!running.value) running.value = true
       // 思考过程：先于回答到达，暂存到下一次 assistant 消息上
       pendingReasoning = event.text
@@ -2691,108 +2695,12 @@ function expirePendingApprovals(): void {
   }
 }
 
-const workspaceStore = useWorkspaceStore()
-
-function readAssetGraph(
-  asset: AssetInfo | undefined
-): import('@shared/graph').GraphDocument | null {
-  const graphJson = (asset?.genParams as Record<string, unknown> | undefined)?.graphJson as
-    import('@shared/graph').GraphDocument | undefined
-  return graphJson && Array.isArray(graphJson.nodes) ? graphJson : null
-}
-
 /**
- * 采集当前工作区正在打开的画布、选中节点以及工程内已有画布资产的上下文摘要。
+ * 采集当前左侧窗口打开的画布、Dive 面包屑栈、3D 导演台、分镜台、时间线、节点工具及工程内画布资产的完整上下文摘要。
  * 仅随 HarnessRunInput.canvasContext 下发给主进程 Agent，不污染用户的聊天输入气泡。
  */
 function buildActiveCanvasContext(): string | undefined {
-  const lines: string[] = []
-  const hostFromSelection = workspaceStore.selectedGraphHostId?.startsWith('asset:')
-    ? workspaceStore.selectedGraphHostId.slice('asset:'.length)
-    : null
-  const lastOpenCanvas =
-    workspaceStore.openCanvasEditorIds[workspaceStore.openCanvasEditorIds.length - 1] ?? null
-  const lastOpenAsset =
-    workspaceStore.openAssetEditorIds[workspaceStore.openAssetEditorIds.length - 1] ?? null
-  const liveEntries = graphEditorHosts.listLiveEntries()
-  const lastLiveAssetId = (() => {
-    for (let i = liveEntries.length - 1; i >= 0; i--) {
-      const h = liveEntries[i]?.hostId ?? ''
-      if (h.startsWith('asset:')) return h.slice('asset:'.length)
-    }
-    return null
-  })()
-
-  const activeAssetId =
-    hostFromSelection ||
-    lastOpenCanvas ||
-    lastLiveAssetId ||
-    (workspaceStore.selectedAssetId &&
-    project.assets.some(
-      (a) =>
-        a.id === workspaceStore.selectedAssetId &&
-        (a.type === 'canvas' || (readAssetGraph(a)?.nodes?.length ?? 0) > 0)
-    )
-      ? workspaceStore.selectedAssetId
-      : null) ||
-    lastOpenAsset
-
-  if (activeAssetId) {
-    const asset = project.assets.find((a) => a.id === activeAssetId)
-    const liveDoc = graphEditorHosts.getLiveAssetDocument(activeAssetId) ?? readAssetGraph(asset)
-    if (asset || liveDoc) {
-      lines.push(
-        `Active canvas asset: "${asset?.name ?? activeAssetId}" (assetId: "${activeAssetId}", type: ${asset?.type ?? 'canvas'})`
-      )
-      const selectedNodeId = workspaceStore.selectedGraphNodeId
-      if (selectedNodeId && liveDoc?.nodes) {
-        const selNode = liveDoc.nodes.find((n) => n.id === selectedNodeId)
-        if (selNode) {
-          lines.push(
-            `Selected node on canvas: id="${selNode.id}", typeId="${selNode.typeId}", title="${selNode.title || selNode.typeId}"`
-          )
-        }
-      }
-      if (liveDoc?.nodes?.length) {
-        const visibleNodes = liveDoc.nodes.slice(0, 30).map((n) => {
-          const toolTag = n.params?.imageProcessTool
-            ? `, imageProcessTool="${n.params.imageProcessTool}"`
-            : n.params?.filmWorkbenchStage
-              ? `, stage="${n.params.filmWorkbenchStage}"`
-              : ''
-          return `  * ${n.id} [${n.typeId}] "${n.title || n.typeId}"${toolTag}`
-        })
-        lines.push(`Nodes on active canvas (${liveDoc.nodes.length}):`, ...visibleNodes)
-      }
-      if (liveDoc?.edges?.length) {
-        const edgeSummary = liveDoc.edges
-          .slice(0, 30)
-          .map((e) => `${e.source}(${e.sourcePort || 'out'})->${e.target}(${e.targetPort || 'in'})`)
-          .join(', ')
-        lines.push(`Edges on active canvas (${liveDoc.edges.length}): ${edgeSummary}`)
-      }
-    }
-  }
-
-  const otherCanvases = project.assets
-    .filter(
-      (a) =>
-        a.id !== activeAssetId &&
-        (a.type === 'canvas' || (readAssetGraph(a)?.nodes?.length ?? 0) > 0)
-    )
-    .slice(0, 10)
-  if (otherCanvases.length) {
-    lines.push(
-      `Other graph assets in project: ${otherCanvases
-        .map(
-          (a) =>
-            `"${a.name}" (assetId: "${a.id}", type: ${a.type}, nodes: ${readAssetGraph(a)?.nodes?.length ?? 0})`
-        )
-        .join('; ')}`
-    )
-  }
-
-  return lines.length ? lines.join('\n') : undefined
+  return buildActiveWorkspaceContext()
 }
 
 /**
@@ -2953,6 +2861,8 @@ async function runTask(text: string, options: { sourceIndex?: number } = {}): Pr
     return
   }
   // 立即置为 running 与 preparingTask，封闭 refreshStatus / 技能预处理等异步间隙内二次发送绕过队列的竞态窗口
+  const myAbortSeq = clientAbortSeq
+  abortIgnoreUntil = 0
   running.value = true
   preparingTask = true
   let taskForHarness = text
@@ -2960,6 +2870,10 @@ async function runTask(text: string, options: { sourceIndex?: number } = {}): Pr
     // 发送前重新预检一次（Node 版本 / dsh 运行体 / MCP 服务 / 模型），
     // 不用挂载时的旧快照判断，避免按过期的“就绪”放行后才发现环境缺失
     await refreshStatus()
+    if (clientAbortSeq !== myAbortSeq) {
+      running.value = false
+      return
+    }
     // 若主进程此刻仍有上一轮任务在跑（如面板重挂载或后台定时轮次刚唤醒），直接转入发送队列等待
     if (status.value?.running) {
       running.value = true
@@ -2995,7 +2909,12 @@ async function runTask(text: string, options: { sourceIndex?: number } = {}): Pr
     }
     taskForHarness = await preprocessChatOnlineSkillIntent(task)
   } finally {
-    preparingTask = false
+    if (clientAbortSeq === myAbortSeq) {
+      preparingTask = false
+    }
+  }
+  if (clientAbortSeq !== myAbortSeq) {
+    return
   }
   const { providerId, modelId } = splitModelKey(selectedKey.value)
   const canvasContext = buildActiveCanvasContext()
@@ -3009,8 +2928,12 @@ async function runTask(text: string, options: { sourceIndex?: number } = {}): Pr
     mode: mode.value,
     ...(canvasContext ? { canvasContext } : {})
   })
+  if (clientAbortSeq !== myAbortSeq) {
+    return
+  }
   if (!result.started) {
     await refreshStatus()
+    if (clientAbortSeq !== myAbortSeq) return
     if (status.value?.running) {
       running.value = true
       return
@@ -3045,11 +2968,40 @@ async function onSend(): Promise<void> {
   await runTask(task)
 }
 
+async function abortCurrentRun(): Promise<void> {
+  clientAbortSeq++
+  abortIgnoreUntil = Date.now() + 600
+  preparingTask = false
+  for (let i = messages.value.length - 1; i >= sessionStart; i--) {
+    const m = messages.value[i]
+    if (m?.kind === 'tool' && m.state === 'start') {
+      m.state = 'done'
+    }
+  }
+  try {
+    await window.studio.abortHarnessTask()
+  } finally {
+    preparingTask = false
+    running.value = false
+  }
+}
+
 async function onAbort(): Promise<void> {
+  const prevDraining = draining
+  // 阻塞 watch(running) 在主进程真正完成 abortHarnessTask 前抢跑 drainQueue
+  draining = true
+  for (const q of sendQueue.value) q.forcing = false
   // 先本地退出 running，避免主进程杀进程慢时按钮一直停在「停止」
   preparingTask = false
   running.value = false
-  await window.studio.abortHarnessTask()
+  try {
+    await abortCurrentRun()
+  } finally {
+    draining = prevDraining
+  }
+  if (!draining && sendQueue.value.length > 0) {
+    void drainQueue()
+  }
 }
 
 /**
@@ -3075,9 +3027,11 @@ async function drainQueue(): Promise<void> {
   const item = sendQueue.value[0]
   if (!item) return
   draining = true
+  let dequeued: QueueItem | undefined
   try {
     // 环境未就绪时把队首留在队列里并说明原因，避免静默丢弃整条队列
     await refreshStatus()
+    if (running.value || preparingTask) return
     if (!ready.value) {
       pushStatus(status.value?.message ?? t('studio.chat.unavailable'), 'error')
       return
@@ -3086,17 +3040,26 @@ async function drainQueue(): Promise<void> {
       running.value = true
       return
     }
-    sendQueue.value.shift()
+    dequeued = sendQueue.value.shift()
+    if (!dequeued) return
+    dequeued.forcing = false
     // 出队即重置全部强制标记：forcing 只决定「出队时要不要中断」，用过即失效
     for (const q of sendQueue.value) q.forcing = false
-    await runTask(item.text, item.sourceIndex === null ? {} : { sourceIndex: item.sourceIndex })
-    // runTask 可能提前返回（预检未就绪 / 主进程拒绝启动）：这一轮没跑起来就放回队首，
-    // 否则用户排队的那句话会凭空消失
-    if (!running.value && !sendQueue.value.some((q) => q.id === item.id)) {
-      sendQueue.value.unshift(item)
-    }
   } finally {
+    // 在 await runTask 之前释放 draining：runTask 入口同步置 running = true / preparingTask = true，
+    // 提前释放 draining 可确保常驻进程冷启动等待期间用户仍能对队列后续项点「立即发送」中断
     draining = false
+  }
+  if (!dequeued) return
+  await runTask(
+    dequeued.text,
+    dequeued.sourceIndex === null ? {} : { sourceIndex: dequeued.sourceIndex }
+  )
+  // runTask 可能提前返回（预检未就绪 / 主进程拒绝启动）：这一轮没跑起来就放回队首，
+  // 否则用户排队的那句话会凭空消失
+  if (!running.value && !preparingTask && !sendQueue.value.some((q) => q.id === dequeued!.id)) {
+    dequeued.forcing = false
+    sendQueue.value.unshift(dequeued)
   }
 }
 
@@ -3104,29 +3067,50 @@ async function startQueuedSend(item: QueueItem, force: boolean): Promise<void> {
   if (draining) return
   // 这条已经被前面的流程排掉了
   if (!sendQueue.value.some((q) => q.id === item.id)) return
-  item.forcing = force
-  const isFirst = firstQueued.value?.id === item.id
-  // 非队首：只标记强制，等前面几条发完自然轮到它
-  if (!isFirst) return
-  // 队首且此刻空闲：直接发，无需中断
-  if (!running.value) {
-    await drainQueue()
+  // 此刻已空闲且不在预检：直接取出该条发出，无需中断
+  if (!running.value && !preparingTask) {
+    draining = true
+    try {
+      sendQueue.value = sendQueue.value.filter((q) => q.id !== item.id)
+      item.forcing = false
+      for (const q of sendQueue.value) q.forcing = false
+    } finally {
+      draining = false
+    }
+    await runTask(item.text, item.sourceIndex === null ? {} : { sourceIndex: item.sourceIndex })
+    if (!running.value && !preparingTask && !sendQueue.value.some((q) => q.id === item.id)) {
+      item.forcing = false
+      sendQueue.value.unshift(item)
+    }
     return
   }
   if (!force) return
+  // 支持队列中任意位置（含第 2、第 N 条）点「立即发送」：
+  // 立即中断当前执行轮次并插队发出该条，其余排队项保持在队列中等待本轮结束
   draining = true
+  item.forcing = true
+  let shouldSend = false
   try {
-    // 先让出队首位置再中断：running 会在 await 期间变 false，
-    // 因此必须在 await 之前就把该条从队列里摘掉，避免被 watch 再取一次
-    sendQueue.value = sendQueue.value.filter((q) => q.id !== item.id)
-    await onAbort()
-    await runTask(item.text, item.sourceIndex === null ? {} : { sourceIndex: item.sourceIndex })
-    // 同上：中断后若这一轮没跑起来，把消息放回队首而不是丢掉
-    if (!running.value && !sendQueue.value.some((q) => q.id === item.id)) {
-      sendQueue.value.unshift(item)
+    await abortCurrentRun()
+    if (sendQueue.value.some((q) => q.id === item.id)) {
+      sendQueue.value = sendQueue.value.filter((q) => q.id !== item.id)
+      shouldSend = true
     }
+    item.forcing = false
+    for (const q of sendQueue.value) q.forcing = false
   } finally {
+    item.forcing = false
     draining = false
+  }
+  if (!shouldSend) {
+    if (sendQueue.value.length > 0) void drainQueue()
+    return
+  }
+  await runTask(item.text, item.sourceIndex === null ? {} : { sourceIndex: item.sourceIndex })
+  // 同上：中断后若这一轮没跑起来，重置 forcing 后把消息放回队首而不是丢掉或卡在「正在中断…」
+  if (!running.value && !preparingTask && !sendQueue.value.some((q) => q.id === item.id)) {
+    item.forcing = false
+    sendQueue.value.unshift(item)
   }
 }
 
@@ -3169,11 +3153,11 @@ async function onSteerQueued(id: number): Promise<void> {
   const item = sendQueue.value.find((q) => q.id === id)
   if (!item) return
   if (running.value && typeof window.studio?.steerHarnessTurn === 'function') {
-    sendQueue.value = sendQueue.value.filter((q) => q.id !== id)
     const res = await window.studio
       .steerHarnessTurn({ text: item.text })
       .catch(() => ({ ok: false }))
     if (res?.ok) {
+      sendQueue.value = sendQueue.value.filter((q) => q.id !== id)
       messages.value.push({ kind: 'user', text: item.text, steered: true })
       scrollToBottom()
       commitMessages([...messages.value])
@@ -3181,7 +3165,6 @@ async function onSteerQueued(id: number): Promise<void> {
       pushStatus(t('studio.chat.steeredStatus'), 'waiting')
       return
     }
-    sendQueue.value.unshift(item)
   }
   void startQueuedSend(item, true)
 }
@@ -4817,7 +4800,7 @@ onBeforeUnmount(() => {
           :title="t('studio.chat.steerNowTitle')"
           @click="onSteerNow"
         >
-          ⚡ {{ t('studio.chat.steerNow') }}
+          {{ t('studio.chat.steerNow') }}
         </button>
         <button
           v-if="!running || draft.trim()"
@@ -6758,12 +6741,13 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 6px;
 }
 
 .model-select-wrap {
-  flex: 1;
-  min-width: 0;
+  flex: 1 1 120px;
+  min-width: 110px;
   display: flex;
   align-items: center;
   gap: 6px;

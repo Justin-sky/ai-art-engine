@@ -7,9 +7,20 @@ import { readFileSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { createInterface } from 'node:readline'
 
-const PKG_ROOT = __DSH_NODE_MODULES_JSON__
+let PKG_ROOT = ''
+try {
+  PKG_ROOT = __DSH_NODE_MODULES_JSON__
+} catch {
+  PKG_ROOT = process.cwd()
+}
 const require = createRequire(pathToFileURL(join(PKG_ROOT, 'aiart-anchor.js')).href)
-const imp = (id) => import(pathToFileURL(require.resolve(id)).href)
+const imp = async (id) => {
+  try {
+    return await import(pathToFileURL(require.resolve(id)).href)
+  } catch {
+    return {}
+  }
+}
 
 const { default: z } = await imp('@deepseek-ai/schemastery')
 const { installModelSelection } = await imp('@deepseek-ai/dsh-agent')
@@ -28,7 +39,7 @@ try {
 
 const name = 'aiart-headless-runner'
 const inject = ['agentDefaultModel', 'agents', 'sessions']
-const Config = z.object({ task: z.string().required() })
+const Config = z?.object ? z.object({ task: z.string().required() }) : null
 
 const REASONING_BEGIN = '===BEGIN_REASONING==='
 const REASONING_END = '===END_REASONING==='
@@ -107,6 +118,387 @@ function clipToolArgs(raw) {
   return text.length > 4000 ? text.slice(0, 4000) + '…' : text
 }
 
+const DSML_OPEN_RE = /<\s*[｜|]\s*DSML\s*[｜|]\s*(?:function_calls|calls|invoke)\b/i
+const DSML_PARTIAL_SUFFIX_RE = /<\s*(?:[｜|]\s*(?:D(?:S(?:M(?:L(?:\s*[｜|]\s*[a-z_]*)?)?)?)?)?)?$/i
+
+let dsmlCallSeq = 0
+
+function stripDsmlFromText(text) {
+  if (typeof text !== 'string' || text === '') return ''
+  const m = DSML_OPEN_RE.exec(text)
+  if (!m) return text
+  return text.slice(0, m.index).replace(/\s+$/, '')
+}
+
+function parseDsmlToolCalls(dsmlText, availableTools) {
+  if (typeof dsmlText !== 'string' || !dsmlText.trim()) return []
+  const toolList = Array.isArray(availableTools) ? availableTools : []
+  const toolByName = new Map()
+  for (const t of toolList) {
+    if (t && typeof t.name === 'string') toolByName.set(t.name, t)
+  }
+  const resolveTool = (rawName) => {
+    if (toolByName.has(rawName)) return { name: rawName, schema: toolByName.get(rawName) }
+    if (!rawName.startsWith('mcp__studio__') && toolByName.has('mcp__studio__' + rawName)) {
+      const full = 'mcp__studio__' + rawName
+      return { name: full, schema: toolByName.get(full) }
+    }
+    if (rawName.startsWith('mcp__studio__')) {
+      const short = rawName.slice('mcp__studio__'.length)
+      if (toolByName.has(short)) return { name: short, schema: toolByName.get(short) }
+    }
+    return { name: rawName, schema: undefined }
+  }
+
+  const ARRAY_OR_OBJECT_PARAM_NAMES = new Set([
+    'ops',
+    'operations',
+    'edits',
+    'params',
+    'data',
+    'patch',
+    'plan',
+    'steps',
+    'questions',
+    'todos',
+    'files',
+    'position',
+    'positionDelta',
+    'rotation',
+    'rotationDeg',
+    'rotationDeltaDeg',
+    'scale',
+    'target',
+    'cinemachine',
+    'handheldShake',
+    'environment',
+    'sceneWorld',
+    'ground',
+    'light',
+    'bonePose',
+    'styleImages',
+    'referenceImageUrls',
+    'inputReferences'
+  ])
+
+  const calls = []
+  const invokeRe =
+    /<\s*[｜|]\s*DSML\s*[｜|]\s*invoke\b([^>]*)>([\s\S]*?)(?:<\s*\/\s*[｜|]\s*DSML\s*[｜|]\s*invoke\s*>|(?=<\s*[｜|]\s*DSML\s*[｜|]\s*invoke\b)|<\s*\/\s*[｜|]\s*DSML\s*[｜|]\s*(?:function_calls|calls)\s*>|$)/gi
+  let m
+  while ((m = invokeRe.exec(dsmlText)) !== null) {
+    const attrText = m[1] || ''
+    const bodyText = m[2] || ''
+    const nameMatch = /\bname\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/i.exec(attrText)
+    const rawName = (nameMatch?.[1] ?? nameMatch?.[2] ?? nameMatch?.[3] ?? '').trim()
+    if (!rawName) continue
+    const { name: resolvedName, schema } = resolveTool(rawName)
+    const propSchemas =
+      schema?.parameters?.properties && typeof schema.parameters.properties === 'object'
+        ? schema.parameters.properties
+        : {}
+
+    const argsObj = {}
+    let paramCount = 0
+    const paramRe =
+      /<\s*[｜|]\s*DSML\s*[｜|]\s*parameter\b([^>]*)>([\s\S]*?)(?:<\s*\/\s*[｜|]\s*DSML\s*[｜|]\s*parameter\s*>|(?=<\s*[｜|]\s*DSML\s*[｜|]\s*parameter\b)|<\s*\/\s*[｜|]\s*DSML\s*[｜|]\s*(?:invoke|function_calls|calls)\s*>|$)/gi
+    let pm
+    while ((pm = paramRe.exec(bodyText)) !== null) {
+      const pAttr = pm[1] || ''
+      const rawVal = pm[2] ?? ''
+      const pNameMatch = /\bname\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/i.exec(pAttr)
+      const paramName = (pNameMatch?.[1] ?? pNameMatch?.[2] ?? pNameMatch?.[3] ?? '').trim()
+      if (!paramName) continue
+      paramCount += 1
+      const pStrMatch = /\bstring\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/i.exec(pAttr)
+      const stringFlag = (pStrMatch?.[1] ?? pStrMatch?.[2] ?? pStrMatch?.[3] ?? '')
+        .trim()
+        .toLowerCase()
+      const propType = propSchemas?.[paramName]?.type
+      const trimmedVal = rawVal.trim()
+      const shouldParseJson =
+        stringFlag === 'false' ||
+        propType === 'array' ||
+        propType === 'object' ||
+        propType === 'number' ||
+        propType === 'integer' ||
+        propType === 'boolean' ||
+        ARRAY_OR_OBJECT_PARAM_NAMES.has(paramName) ||
+        (stringFlag === '' &&
+          propType !== 'string' &&
+          (/^[\[{]/.test(trimmedVal) || /^(?:true|false|null|-?\d+(?:\.\d+)?)$/.test(trimmedVal)))
+
+      if (shouldParseJson) {
+        try {
+          argsObj[paramName] = JSON.parse(trimmedVal)
+          continue
+        } catch {
+          /* fallback to string */
+        }
+      }
+      argsObj[paramName] = rawVal.replace(/^\r?\n/, '').replace(/\r?\n$/, '')
+    }
+
+    if (paramCount === 0) {
+      const cleanBody = bodyText.replace(/<\s*\/?\s*[｜|]\s*DSML\s*[｜|][^>]*>/gi, '').trim()
+      if (cleanBody.startsWith('{')) {
+        try {
+          const parsedBody = JSON.parse(cleanBody)
+          if (parsedBody && typeof parsedBody === 'object' && !Array.isArray(parsedBody)) {
+            Object.assign(argsObj, parsedBody)
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+
+    calls.push({
+      id: 'call_dsml_' + Date.now().toString(36) + '_' + ++dsmlCallSeq,
+      name: resolvedName,
+      arguments: JSON.stringify(argsObj)
+    })
+  }
+  return calls
+}
+
+async function* wrapDsmlStream(source, options, getMode) {
+  const textBlocks = new Map()
+  const pendingToolCalls = []
+  let nativeToolCallCount = 0
+  let nonTextBlocksOpened = 0
+  let anyTextBlockOpened = false
+  let maxBlockIndex = -1
+  let flushedToolCalls = false
+  let synthesizedToolCallCount = 0
+
+  const flushSynthesizedToolCalls = function* () {
+    if (flushedToolCalls) return
+    flushedToolCalls = true
+    if (
+      pendingToolCalls.length === 0 ||
+      nativeToolCallCount > 0 ||
+      (typeof getMode === 'function' && getMode() === 'ask')
+    ) {
+      return
+    }
+    for (const call of pendingToolCalls) {
+      const idx = ++maxBlockIndex
+      synthesizedToolCallCount += 1
+      yield {
+        type: 'block-start',
+        index: idx,
+        blockType: 'tool-call'
+      }
+      yield {
+        type: 'tool-call-delta',
+        index: idx,
+        id: call.id,
+        name: call.name,
+        argumentsDelta: call.arguments
+      }
+      yield {
+        type: 'block-end',
+        index: idx,
+        block: {
+          type: 'tool-call',
+          id: call.id,
+          name: call.name,
+          arguments: call.arguments
+        }
+      }
+    }
+  }
+
+  for await (const chunk of source) {
+    if (typeof chunk?.index === 'number' && chunk.index > maxBlockIndex) {
+      maxBlockIndex = chunk.index
+    }
+
+    if (chunk.type === 'block-start') {
+      if (chunk.blockType === 'text') {
+        textBlocks.set(chunk.index, {
+          rawText: '',
+          emittedLen: 0,
+          opened: false,
+          dsmlStartIdx: -1
+        })
+        continue
+      }
+      if (chunk.blockType === 'tool-call') {
+        nativeToolCallCount += 1
+      }
+      nonTextBlocksOpened += 1
+      yield chunk
+      continue
+    }
+
+    if (chunk.type === 'text-delta') {
+      let state = textBlocks.get(chunk.index)
+      if (!state) {
+        state = { rawText: '', emittedLen: 0, opened: false, dsmlStartIdx: -1 }
+        textBlocks.set(chunk.index, state)
+      }
+      state.rawText += chunk.text ?? ''
+      if (state.dsmlStartIdx < 0) {
+        const m = DSML_OPEN_RE.exec(state.rawText)
+        if (m) {
+          state.dsmlStartIdx = m.index
+        }
+      }
+      if (state.dsmlStartIdx >= 0) {
+        const safeSlice = state.rawText
+          .slice(state.emittedLen, state.dsmlStartIdx)
+          .replace(/\s+$/, '')
+        if (safeSlice.length > 0 && (state.opened || safeSlice.trim() !== '')) {
+          if (!state.opened) {
+            state.opened = true
+            anyTextBlockOpened = true
+            yield { type: 'block-start', index: chunk.index, blockType: 'text' }
+          }
+          yield { type: 'text-delta', index: chunk.index, text: safeSlice }
+        }
+        state.emittedLen = state.dsmlStartIdx
+        continue
+      }
+
+      const unemitted = state.rawText.slice(state.emittedLen)
+      const partialMatch = DSML_PARTIAL_SUFFIX_RE.exec(unemitted)
+      const safeEnd = partialMatch ? state.emittedLen + partialMatch.index : state.rawText.length
+      const toEmit = state.rawText.slice(state.emittedLen, safeEnd)
+      if (toEmit.length > 0 && (state.opened || toEmit.trim() !== '')) {
+        if (!state.opened) {
+          state.opened = true
+          anyTextBlockOpened = true
+          yield { type: 'block-start', index: chunk.index, blockType: 'text' }
+        }
+        state.emittedLen = safeEnd
+        yield { type: 'text-delta', index: chunk.index, text: toEmit }
+      }
+      continue
+    }
+
+    if (
+      chunk.type === 'block-end' &&
+      (chunk.block?.type === 'text' || textBlocks.has(chunk.index))
+    ) {
+      const state = textBlocks.get(chunk.index)
+      textBlocks.delete(chunk.index)
+      if (!state) {
+        yield chunk
+        continue
+      }
+      if (state.dsmlStartIdx < 0) {
+        const m = DSML_OPEN_RE.exec(state.rawText)
+        if (m) state.dsmlStartIdx = m.index
+      }
+      if (state.dsmlStartIdx >= 0) {
+        const visibleText = state.rawText.slice(0, state.dsmlStartIdx).replace(/\s+$/, '')
+        const dsmlPayload = state.rawText.slice(state.dsmlStartIdx)
+        const parsedCalls = parseDsmlToolCalls(dsmlPayload, options?.tools)
+        pendingToolCalls.push(...parsedCalls)
+
+        if (visibleText.length > state.emittedLen) {
+          const rem = visibleText.slice(state.emittedLen)
+          if (rem.length > 0 && (state.opened || rem.trim() !== '')) {
+            if (!state.opened) {
+              state.opened = true
+              anyTextBlockOpened = true
+              yield { type: 'block-start', index: chunk.index, blockType: 'text' }
+            }
+            yield { type: 'text-delta', index: chunk.index, text: rem }
+          }
+        }
+        if (state.opened) {
+          yield {
+            type: 'block-end',
+            index: chunk.index,
+            block: { type: 'text', text: visibleText }
+          }
+        } else if (
+          parsedCalls.length === 0 &&
+          pendingToolCalls.length === 0 &&
+          nonTextBlocksOpened === 0 &&
+          !anyTextBlockOpened
+        ) {
+          state.opened = true
+          anyTextBlockOpened = true
+          yield { type: 'block-start', index: chunk.index, blockType: 'text' }
+          yield {
+            type: 'block-end',
+            index: chunk.index,
+            block: { type: 'text', text: visibleText }
+          }
+        }
+        continue
+      }
+
+      const rem = state.rawText.slice(state.emittedLen)
+      if (!state.opened) {
+        state.opened = true
+        anyTextBlockOpened = true
+        yield { type: 'block-start', index: chunk.index, blockType: 'text' }
+      }
+      if (rem.length > 0) {
+        yield { type: 'text-delta', index: chunk.index, text: rem }
+      }
+      yield {
+        type: 'block-end',
+        index: chunk.index,
+        block: { type: 'text', text: state.rawText }
+      }
+      continue
+    }
+
+    if (chunk.type === 'usage') {
+      yield* flushSynthesizedToolCalls()
+      yield chunk
+      continue
+    }
+
+    if (chunk.type === 'finish') {
+      if (
+        textBlocks.size > 0 &&
+        chunk.reason?.kind !== 'error' &&
+        chunk.reason?.kind !== 'aborted'
+      ) {
+        for (const [idx, state] of textBlocks.entries()) {
+          if (state.opened) {
+            const visibleText =
+              state.dsmlStartIdx >= 0
+                ? state.rawText.slice(0, state.dsmlStartIdx).replace(/\s+$/, '')
+                : state.rawText
+            yield {
+              type: 'block-end',
+              index: idx,
+              block: { type: 'text', text: visibleText }
+            }
+          }
+        }
+        textBlocks.clear()
+      }
+      yield* flushSynthesizedToolCalls()
+      if (synthesizedToolCallCount > 0 && chunk.reason?.kind === 'stop') {
+        yield {
+          ...chunk,
+          reason: { kind: 'tool-calls' }
+        }
+      } else {
+        yield chunk
+      }
+      continue
+    }
+
+    yield chunk
+  }
+}
+
+function registerDsmlStreamTranspiler(ctx, getMode) {
+  if (typeof ctx?.on !== 'function') return
+  ctx.on('llm/stream', (options, next) => wrapDsmlStream(next(), options, getMode), {
+    global: true
+  })
+}
+
 function summarize(session, firstSeq) {
   let started = false
   let text = ''
@@ -123,7 +515,7 @@ function summarize(session, firstSeq) {
       const content = event.data?.message?.content ?? []
       const joined = content
         .filter((block) => block.type === 'text')
-        .map((block) => block.text)
+        .map((block) => stripDsmlFromText(block.text))
         .join('')
       if (joined !== '') text = joined
     }
@@ -139,6 +531,49 @@ function imageMediaType(path) {
   if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg'
   if (ext === 'webp') return 'image/webp'
   if (ext === 'gif') return 'image/gif'
+  return null
+}
+
+function sniffBufferImageMediaType(buf) {
+  if (!buf || buf.length < 3) return null
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg'
+  if (
+    buf.length >= 8 &&
+    buf[0] === 0x89 &&
+    buf[1] === 0x50 &&
+    buf[2] === 0x4e &&
+    buf[3] === 0x47 &&
+    buf[4] === 0x0d &&
+    buf[5] === 0x0a &&
+    buf[6] === 0x1a &&
+    buf[7] === 0x0a
+  ) {
+    return 'image/png'
+  }
+  if (
+    buf.length >= 6 &&
+    buf[0] === 0x47 &&
+    buf[1] === 0x49 &&
+    buf[2] === 0x46 &&
+    buf[3] === 0x38 &&
+    (buf[4] === 0x37 || buf[4] === 0x39) &&
+    buf[5] === 0x61
+  ) {
+    return 'image/gif'
+  }
+  if (
+    buf.length >= 12 &&
+    buf[0] === 0x52 &&
+    buf[1] === 0x49 &&
+    buf[2] === 0x46 &&
+    buf[3] === 0x46 &&
+    buf[8] === 0x57 &&
+    buf[9] === 0x45 &&
+    buf[10] === 0x42 &&
+    buf[11] === 0x50
+  ) {
+    return 'image/webp'
+  }
   return null
 }
 
@@ -170,9 +605,10 @@ async function buildUserContent(task, attachments, io) {
       const abs = resolve(cwd, path)
       if (!abs.startsWith(cwd + sep)) throw new Error('path escapes workspace')
       const buf = readFileSync(abs)
+      const actualMediaType = sniffBufferImageMediaType(buf) || mediaType
       const attachment = await attachments.saveImage({
         data: buf,
-        mediaType,
+        mediaType: actualMediaType,
         name: path.split('/').pop()
       })
       blocks.push({ type: 'image', attachment })
@@ -1214,6 +1650,7 @@ async function runPersistent(ctx, io) {
     () => currentRunId
   )
   registerDelegationGuard(ctx, () => currentMode)
+  registerDsmlStreamTranspiler(ctx, () => currentMode)
 
   await ctx.get('loader')?.await()
   const defaultModel = ctx.get('agentDefaultModel')
@@ -1607,6 +2044,7 @@ async function runOnce(ctx, task, io) {
           () => runId
         )
   registerDelegationGuard(ctx, () => mode)
+  registerDsmlStreamTranspiler(ctx, () => mode)
   await ctx.get('loader')?.await()
   const defaultModel = ctx.get('agentDefaultModel')
   if (defaultModel === void 0) return
@@ -1642,4 +2080,15 @@ function apply(ctx, config) {
   })
 }
 
-export { Config, apply, createDelegationTracker, inject, name, registerDelegationGuard }
+export {
+  Config,
+  apply,
+  createDelegationTracker,
+  inject,
+  name,
+  parseDsmlToolCalls,
+  registerDelegationGuard,
+  registerDsmlStreamTranspiler,
+  stripDsmlFromText,
+  wrapDsmlStream
+}

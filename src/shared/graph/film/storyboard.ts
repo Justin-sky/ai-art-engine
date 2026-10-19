@@ -56,6 +56,10 @@ export interface FilmShotReview {
 export interface FilmShotMedia {
   keyframe?: string
   video?: string
+  /** 3D 导演台白模预演抓拍的构图参考图 */
+  previzKeyframe?: string
+  /** 3D 导演台白模预演录制的动作/运镜视频 */
+  previzVideo?: string
 }
 
 export interface FilmShot {
@@ -423,11 +427,14 @@ function normalizeShot(item: unknown, index: number): FilmShot | null {
     ...(review && (verdict === 'pass' || verdict === 'fail')
       ? { review: { verdict, notes: str(review.notes) } }
       : {}),
-    ...(media && (str(media.keyframe) || str(media.video))
+    ...(media &&
+    (str(media.keyframe) || str(media.video) || str(media.previzKeyframe) || str(media.previzVideo))
       ? {
           media: {
             ...(str(media.keyframe) ? { keyframe: str(media.keyframe) } : {}),
-            ...(str(media.video) ? { video: str(media.video) } : {})
+            ...(str(media.video) ? { video: str(media.video) } : {}),
+            ...(str(media.previzKeyframe) ? { previzKeyframe: str(media.previzKeyframe) } : {}),
+            ...(str(media.previzVideo) ? { previzVideo: str(media.previzVideo) } : {})
           }
         }
       : {})
@@ -597,7 +604,18 @@ export function mergeFilmStoryboards(
     if (isFilmShotLocked(prev)) return { ...prev }
     const samePrompt =
       prev.imagePrompt === shot.imagePrompt && prev.videoPrompt === shot.videoPrompt
-    return samePrompt && prev.media ? { ...shot, media: prev.media } : shot
+    if (samePrompt && prev.media) return { ...shot, media: { ...prev.media, ...shot.media } }
+    if (prev.media?.previzKeyframe || prev.media?.previzVideo) {
+      return {
+        ...shot,
+        media: {
+          ...(prev.media.previzKeyframe ? { previzKeyframe: prev.media.previzKeyframe } : {}),
+          ...(prev.media.previzVideo ? { previzVideo: prev.media.previzVideo } : {}),
+          ...shot.media
+        }
+      }
+    }
+    return shot
   })
   for (const prev of previous.shots) {
     if (used.has(prev.id) || !isFilmShotLocked(prev)) continue
@@ -819,6 +837,8 @@ export interface FilmShotContinuity {
   prevShot?: FilmShot | null
   /** 若上一镜头已产出关键帧并作为参考图传入，其 1-based 参考图编号（如 @3） */
   prevKeyframeRefIndex?: number
+  /** 若当前镜头包含 3D 导演台白模预演图作为构图/机位/走位参考图传入，其 1-based 参考图编号（如 @4） */
+  previzRefIndex?: number
 }
 
 /**
@@ -952,6 +972,14 @@ export function composeFilmShotImagePrompt(
           : `镜头衔接：紧接同场上一镜 ${prev.id}${prevCam ? `（${prevCam}）` : ''}${prevDesc ? `「${prevDesc}」` : ''}，保持同场主光方向、色温、空间方位与 180° 轴线连贯，人物动作自然承接。`
       )
     }
+  }
+  const previzIdx = continuity?.previzRefIndex
+  if (previzIdx && previzIdx > 0) {
+    lines.push(
+      en
+        ? `3D Previz & Blocking Reference: reference @${previzIdx} is the 3D Director Stage white-box mannequin previz for this shot — strictly follow its camera angle, focal-length perspective, left/right 180-degree character blocking, spatial depth and body pose, while rendering realistic faces, outfits and environment details according to the design sheets (do NOT render white-box mannequins).`
+        : `3D 导演台预演构图参考：参考图@${previzIdx} 为本镜 3D 白模预演画面，请严格遵循其机位角度、透视景别、人物左右站位（180° 轴线）、空间景深层次与身体姿态动作，同时将白模人偶替换为对应角色设定图的真实五官、服装与场景细节（切勿把白模原样画进成片）。`
+    )
   }
   lines.push(
     en
@@ -1144,7 +1172,8 @@ export function replaceFilmShots(
       id: shot.id,
       order: shot.order,
       sceneId: next.sceneId || shot.sceneId,
-      status: 'draft' as const
+      status: 'draft' as const,
+      ...(next.media || shot.media ? { media: { ...shot.media, ...next.media } } : {})
     }
   })
   return finalizeFilmStoryboard({ ...storyboard, shots })

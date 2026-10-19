@@ -2833,6 +2833,7 @@ export default {
         size: '大小',
         labels: '场景文字',
         cameras: '相机辅助线',
+        motionPaths: '运镜轨迹线',
         lights: '光源辅助线',
         grid: '网格',
         selectionBounds: '选中包围盒',
@@ -3158,7 +3159,21 @@ export default {
         templateGroup: '三人小队 · 环绕运镜调度',
         apply: '一键排布 3D 舞台',
         applying: '正在排布…',
-        summary: '已排布 {actors} 个角色 · {cameras} 个机位 · {lighting}'
+        summary: '已排布 {actors} 个角色 · {cameras} 个机位 · {lighting}',
+        storyboardDefaultTitle: '影视分镜台',
+        storyboardEmpty: '当前节点图暂无已拆分的分镜镜头',
+        storyboardAppliedSummary:
+          '已生成 {shots} 镜白模预演 · {actors} 名演员 · {props} 件道具 · 总长 {duration}s',
+        storyboardWritebackDone: '已抓拍 {count} 镜 3D 白模预演图并回写至分镜台作为参考图',
+        storyboardPrevizTitle: '分镜联动 · 3D 白模预演',
+        storyboardShotUnit: '镜',
+        storyboardPrevizHint:
+          '将分镜台拆出的镜头自动摆放到 3D 舞台（白模角色 + 几何体道具 + 180° 轴线机位 + 切镜轨），微调后可一键抓拍回写为分镜生图参考',
+        storyboardAllScenes: '全部场次',
+        storyboardApplyBtn: '从分镜生成白模舞台',
+        storyboardWritebackBtn: '拍全镜并回写分镜参考',
+        storyboardWritebackHint:
+          "按切镜轨抓拍每一镜的 3D 白模画面，自动写入分镜台对应镜头的 3D 预演参考图（{'@'}N）"
       }
     }
   },
@@ -5929,7 +5944,16 @@ export default {
           action: '画面动作',
           imagePrompt: '关键帧提示词',
           videoPrompt: '动态提示词'
-        }
+        },
+        openDirectorPreviz: '3D 导演台白模预演',
+        openDirectorPrevizHint:
+          '将分镜镜头、出场角色（标准人形白模）与道具（几何体白模）一键编译进 3D 导演台进行机位走位预演',
+        openShotPreviz: '3D预演',
+        openShotPrevizHint: '在 3D 导演台中单独预演并微调该镜头的白模站位与机位',
+        previzDirectorNodeTitle: '3D 分镜白模预演',
+        previzRefLabel: '3D白模预演',
+        previzRefHint:
+          '来自 3D 导演台抓拍回写的白模机位构图参考图，生图与生视频时将严格遵循其机位透视与人物站位'
       },
       episode: {
         anchorHint: '从上游 9宫格分镜表选择要提取的宫格（1~9）；运行后输出该格提示词。',

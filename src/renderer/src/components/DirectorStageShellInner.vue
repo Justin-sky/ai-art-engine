@@ -147,6 +147,58 @@
               role="dialog"
               :aria-label="t('director.stage.aiDirector.title')"
             >
+              <template v-if="scene.graphStoryboardSource.value">
+                <div class="ai-director-head ai-director-sb-head">
+                  <span>🧊 {{ t('director.stage.aiDirector.storyboardPrevizTitle') }}</span>
+                  <span class="ai-director-pack-badge">
+                    {{ scene.graphStoryboardSource.value.storyboard.shots.length }}
+                    {{ t('director.stage.aiDirector.storyboardShotUnit') }}
+                  </span>
+                </div>
+                <div class="ai-director-subhint">
+                  {{ t('director.stage.aiDirector.storyboardPrevizHint') }}
+                </div>
+                <div class="ai-director-sb-controls">
+                  <select
+                    v-if="scene.graphStoryboardSource.value.storyboard.scenes.length > 0"
+                    v-model="selectedStoryboardSceneId"
+                    class="ai-director-sb-select"
+                  >
+                    <option value="">
+                      {{ t('director.stage.aiDirector.storyboardAllScenes') }} ({{
+                        scene.graphStoryboardSource.value.storyboard.shots.length
+                      }})
+                    </option>
+                    <option
+                      v-for="sc in scene.graphStoryboardSource.value.storyboard.scenes"
+                      :key="sc.id"
+                      :value="sc.id"
+                    >
+                      #{{ sc.order }} {{ sc.heading || sc.location }}
+                    </option>
+                  </select>
+                  <div class="ai-director-sb-actions">
+                    <button
+                      type="button"
+                      class="ai-director-sb-btn primary"
+                      :disabled="storyboardPrevizBusy"
+                      @click="onApplyStoryboardPreviz"
+                    >
+                      🧊 {{ t('director.stage.aiDirector.storyboardApplyBtn') }}
+                    </button>
+                    <button
+                      type="button"
+                      class="ai-director-sb-btn"
+                      :disabled="storyboardPrevizBusy"
+                      :title="t('director.stage.aiDirector.storyboardWritebackHint')"
+                      @click="onCaptureAndWriteBackStoryboardPreviz"
+                    >
+                      📸 {{ t('director.stage.aiDirector.storyboardWritebackBtn') }}
+                    </button>
+                  </div>
+                </div>
+                <div class="ai-director-divider" />
+              </template>
               <div class="ai-director-head">
                 {{ t('director.stage.aiDirector.previzPacksTitle') }}
               </div>
@@ -299,6 +351,14 @@
                 @change="onGizmoToggle('cameras', $event)"
               />
               <span>{{ t('director.stage.gizmos.cameras') }}</span>
+            </label>
+            <label class="gizmos-row check">
+              <input
+                type="checkbox"
+                :checked="scene.pathGizmosVisible.value"
+                @change="onGizmoToggle('paths', $event)"
+              />
+              <span>{{ t('director.stage.gizmos.motionPaths') }}</span>
             </label>
             <label class="gizmos-row check">
               <input
@@ -553,6 +613,8 @@ const aiDirectorMenuEl = ref<HTMLElement | null>(null)
 const aiDirectorPrompt = ref('')
 const aiDirectorSummary = ref('')
 const activePrevizPackId = ref<DirectorCinemachinePrevizPackId | null>(null)
+const selectedStoryboardSceneId = ref('')
+const storyboardPrevizBusy = ref(false)
 const aiBlockingTemplates = DIRECTOR_AI_BLOCKING_TEMPLATES
 const cinemachinePrevizPacks = DIRECTOR_CINEMACHINE_PREVIZ_PACKS
 const shotsPanelOpen = ref(false)
@@ -669,6 +731,31 @@ function onBakeCutStoryboard(): void {
   aiDirectorMenuOpen.value = false
 }
 
+async function onApplyStoryboardPreviz(): Promise<void> {
+  if (storyboardPrevizBusy.value) return
+  storyboardPrevizBusy.value = true
+  try {
+    activePrevizPackId.value = null
+    const res = await scene.applyStoryboardPreviz({
+      sceneId: selectedStoryboardSceneId.value || null
+    })
+    aiDirectorSummary.value = res.summary
+  } finally {
+    storyboardPrevizBusy.value = false
+  }
+}
+
+async function onCaptureAndWriteBackStoryboardPreviz(): Promise<void> {
+  if (storyboardPrevizBusy.value) return
+  storyboardPrevizBusy.value = true
+  try {
+    const res = await scene.captureStoryboardPrevizAndWriteBack()
+    aiDirectorSummary.value = res.summary
+  } finally {
+    storyboardPrevizBusy.value = false
+  }
+}
+
 function onPickPreset(presetId: string): void {
   scene.applyCameraPreset(presetId)
   presetMenuOpen.value = false
@@ -723,12 +810,20 @@ function onGizmoSizeInput(event: Event): void {
 
 function onGizmoToggle(
   kind:
-    'labels' | 'cameras' | 'lights' | 'grid' | 'bounds' | 'captureLabels' | 'captureCameraLabels',
+    | 'labels'
+    | 'cameras'
+    | 'paths'
+    | 'lights'
+    | 'grid'
+    | 'bounds'
+    | 'captureLabels'
+    | 'captureCameraLabels',
   event: Event
 ): void {
   const checked = (event.target as HTMLInputElement).checked
   if (kind === 'labels') scene.setSceneLabelsVisible(checked)
   else if (kind === 'cameras') scene.setCameraGizmosVisible(checked)
+  else if (kind === 'paths') scene.setPathGizmosVisible(checked)
   else if (kind === 'lights') scene.setLightGizmosVisible(checked)
   else if (kind === 'grid') scene.setGridGizmoVisible(checked)
   else if (kind === 'bounds') scene.setSelectionBoundsVisible(checked)
@@ -1412,6 +1507,61 @@ async function onViewportDrop(event: DragEvent): Promise<void> {
   font-size: 11px;
   font-weight: 600;
   color: var(--text);
+}
+
+.ai-director-sb-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ai-director-sb-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ai-director-sb-select {
+  width: 100%;
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 11.5px;
+}
+
+.ai-director-sb-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.ai-director-sb-btn {
+  flex: 1;
+  padding: 6px 8px !important;
+  border-radius: 7px !important;
+  border: 1px solid var(--border) !important;
+  background: var(--bg-elevated) !important;
+  color: var(--text) !important;
+  font-size: 11px !important;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+}
+
+.ai-director-sb-btn.primary {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border)) !important;
+  background: color-mix(in srgb, var(--accent) 18%, var(--bg-elevated)) !important;
+}
+
+.ai-director-sb-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 28%, var(--bg-elevated)) !important;
+}
+
+.ai-director-sb-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .ai-director-subhint {
