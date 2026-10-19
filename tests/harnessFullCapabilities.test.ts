@@ -118,7 +118,6 @@ describe('DeepSeek Harness (@deepseek-ai/dsh) 全能力接入校验', () => {
     expect(RUNNER_SRC).toContain("const SUBAGENT_BEGIN = '===BEGIN_SUBAGENT==='")
     expect(RUNNER_SRC).toContain('flushSubagentSnapshot')
     expect(CHAT_PANEL_SRC).toContain('class="harness-subagent-board"')
-    expect(CHAT_PANEL_SRC).toContain('class="domain-subagent-bar"')
     expect(CHAT_PANEL_SRC).toContain('onSteerSubagent')
   })
 

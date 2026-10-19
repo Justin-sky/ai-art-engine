@@ -1371,23 +1371,6 @@ export default {
       subagentToolsCount: '{count} 步工具',
       subagentCalls: '{count} 次调用',
       subagentActiveTool: '正在执行：{tool}',
-      domainSubagentsLabel: '专属子代理',
-      domainSubagentInsertHint: "点击插入 {'@'}{name} 专属子代理委派指令",
-      domainSubagentStoryboard: '🎬 分镜导演',
-      domainSubagentStoryboardPrompt:
-        '请委派 storyboard-director 子代理：拆解剧本节拍、设计机位景别与运镜提示词。任务：',
-      domainSubagentVisual: '🎨 视觉美术',
-      domainSubagentVisualArtist: '🎨 视觉美术',
-      domainSubagentVisualPrompt:
-        '请委派 visual-asset-artist 子代理：生成角色三视图/场景概念图并进行多模态视觉自检。任务：',
-      domainSubagentBlender: '🧊 3D 导演',
-      domainSubagentBlenderDirector: '🧊 3D 导演',
-      domainSubagentBlenderPrompt:
-        '请委派 blender-3d-director 子代理：构建 3D 模型、Blender 骨骼蒙皮或导演台布光机位。任务：',
-      domainSubagentTimeline: '🎞️ 音画剪辑',
-      domainSubagentTimelineEditor: '🎞️ 音画剪辑',
-      domainSubagentTimelinePrompt:
-        '请委派 timeline-audio-editor 子代理：生成角色配音、音效配乐并铺入成片时间线。任务：',
       exportSuccess: '会话已导出',
       exportEmpty: '当前会话无内容可导出'
     },

@@ -1402,23 +1402,6 @@ export default {
       subagentToolsCount: '{count} tools',
       subagentCalls: '{count} calls',
       subagentActiveTool: 'Running: {tool}',
-      domainSubagentsLabel: 'Domain Agents',
-      domainSubagentInsertHint: "Click to insert {'@'}{name} domain subagent dispatch prefix",
-      domainSubagentStoryboard: '🎬 Storyboard Director',
-      domainSubagentStoryboardPrompt:
-        'Please delegate to the storyboard-director subagent to break down script beats, camera angles, and motion prompts. Task: ',
-      domainSubagentVisual: '🎨 Visual Artist',
-      domainSubagentVisualArtist: '🎨 Visual Artist',
-      domainSubagentVisualPrompt:
-        'Please delegate to the visual-asset-artist subagent to generate character/scene art with visual self-critique. Task: ',
-      domainSubagentBlender: '🧊 3D Director',
-      domainSubagentBlenderDirector: '🧊 3D Director',
-      domainSubagentBlenderPrompt:
-        'Please delegate to the blender-3d-director subagent for 3D asset generation, Blender rigging, or stage layout. Task: ',
-      domainSubagentTimeline: '🎞️ Timeline Editor',
-      domainSubagentTimelineEditor: '🎞️ Timeline Editor',
-      domainSubagentTimelinePrompt:
-        'Please delegate to the timeline-audio-editor subagent for voiceover, BGM/SFX, and timeline assembly. Task: ',
       exportSuccess: 'Session exported',
       exportEmpty: 'Current session has nothing to export'
     },

@@ -179,30 +179,6 @@ const runningSubagentsCount = computed(
   () => sessionSubagents.value.filter((item) => item.status === 'running').length
 )
 
-/** Stage 3：影视/美术专属领域子代理快捷委派芯片 */
-const domainSubagentPresets = computed(() => [
-  {
-    id: 'storyboard-director',
-    label: t('studio.chat.domainSubagentStoryboard'),
-    promptPrefix: '[Dispatch @storyboard-director] '
-  },
-  {
-    id: 'visual-asset-artist',
-    label: t('studio.chat.domainSubagentVisualArtist'),
-    promptPrefix: '[Dispatch @visual-asset-artist] '
-  },
-  {
-    id: 'blender-3d-director',
-    label: t('studio.chat.domainSubagentBlenderDirector'),
-    promptPrefix: '[Dispatch @blender-3d-director] '
-  },
-  {
-    id: 'timeline-audio-editor',
-    label: t('studio.chat.domainSubagentTimelineEditor'),
-    promptPrefix: '[Dispatch @timeline-audio-editor] '
-  }
-])
-
 /** @ 资产引用弹窗与已引用资产（工程内相对路径） */
 const mentionOpen = ref(false)
 
@@ -3235,13 +3211,6 @@ async function onHandleCanvasEvent(action: 'diagnose' | 'review'): Promise<void>
 }
 
 /**
- * Stage 3：点击领域专属子代理芯片，在输入框插入专属子代理委派指令前缀
- */
-function onInsertDomainSubagent(prefix: string): void {
-  insertPlainText(prefix)
-}
-
-/**
  * 本轮结束（正常 done / 报错 / 用户中断）后自动发出队首。
  * running 的每个 false 落点都会触发一次，队列空时是空操作；
  * 只有用户点了「立即发送」才会在运行中中断当前轮去插队。
@@ -4464,19 +4433,6 @@ onBeforeUnmount(() => {
             ×
           </button>
         </span>
-      </div>
-      <!-- Stage 3：影视/美术专属领域子代理快捷委派条 -->
-      <div v-if="mode === 'craft'" class="domain-subagent-bar">
-        <button
-          v-for="preset in domainSubagentPresets"
-          :key="preset.id"
-          type="button"
-          class="domain-subagent-pill"
-          :title="t('studio.chat.domainSubagentInsertHint', { name: preset.id })"
-          @click="onInsertDomainSubagent(preset.promptPrefix)"
-        >
-          {{ preset.label }}
-        </button>
       </div>
       <div class="composer">
         <div
@@ -7678,34 +7634,6 @@ onBeforeUnmount(() => {
   font: inherit;
   font-size: 11px;
   cursor: pointer;
-}
-
-/* Stage 3：影视/美术专属领域子代理快捷委派条 */
-.domain-subagent-bar {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-wrap: wrap;
-  padding: 2px 10px 4px;
-}
-
-.domain-subagent-pill {
-  padding: 2px 7px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--bg-panel);
-  color: var(--text-muted);
-  font: inherit;
-  font-size: 11px;
-  cursor: pointer;
-  transition:
-    border-color 0.15s,
-    color 0.15s;
-}
-
-.domain-subagent-pill:hover {
-  border-color: var(--accent);
-  color: var(--text);
 }
 </style>
 
