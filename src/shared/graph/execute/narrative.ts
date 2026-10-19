@@ -290,8 +290,10 @@ export async function executeTimelineOutputNode(
   const extractShotNum = (title?: string): number | null => {
     if (!title) return null
     const m =
-      title.match(/(?:分镜|镜头|片段|章节|幕|步骤|Shot|Scene|Step|Part|Clip)\s*#?(\d+)/i) ??
-      title.match(/^#?(\d+)[\s._-]/i) ??
+      title.match(
+        /(?:\u5206\u955c|\u955c\u5934|\u7247\u6bb5|\u7ae0\u8282|\u5e55|\u6b65\u9aa4|Shot|Scene|Step|Part|Clip)\s*#?(\d+)/i
+      ) ??
+      title.match(/^#?(\d+)[\s._:\uff1a-]/i) ??
       title.match(/(\d+)/)
     return m ? Number(m[1]) : null
   }

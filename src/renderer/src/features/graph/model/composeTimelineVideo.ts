@@ -197,13 +197,33 @@ export async function composeTimelineVideoForNode(input: {
     }))
     .filter((m): m is typeof m & { rel: string } => Boolean(m.rel))
 
+  const extractShotNum = (title?: string): number | null => {
+    if (!title) return null
+    const m =
+      title.match(
+        /(?:\u5206\u955c|\u955c\u5934|\u7247\u6bb5|\u7ae0\u8282|\u5e55|\u6b65\u9aa4|Shot|Scene|Step|Part|Clip)\s*#?(\d+)/i
+      ) ??
+      title.match(/^#?(\d+)[\s._:\uff1a-]/i) ??
+      title.match(/(\d+)/)
+    return m ? Number(m[1]) : null
+  }
+
+  const isAutoOrInputClip = (c: ScriptTimelineClip): boolean => {
+    if (c.id.startsWith('clip:auto:')) return true
+    if (
+      c.nodeId &&
+      !c.sourceOffsetSec &&
+      !c.speed &&
+      (!c.transitionType || c.transitionType === 'none')
+    ) {
+      return true
+    }
+    return false
+  }
+
   // 仅当轨道上不存在用户手动精编的非 auto 片段时，用最新上游产物重建自动时间线
-  const hasManualVideoClips = clips.some(
-    (c) => c.track === 'video' && !c.id.startsWith('clip:auto:')
-  )
-  const hasManualVoiceClips = clips.some(
-    (c) => c.track === 'voice' && !c.id.startsWith('clip:auto:')
-  )
+  const hasManualVideoClips = clips.some((c) => c.track === 'video' && !isAutoOrInputClip(c))
+  const hasManualVoiceClips = clips.some((c) => c.track === 'voice' && !isAutoOrInputClip(c))
   const hasManualSubtitleClips = clips.some(
     (c) => c.track === 'subtitle' && !c.id.startsWith('clip:auto:')
   )
@@ -215,9 +235,12 @@ export async function composeTimelineVideoForNode(input: {
   const canAutoBuildVoice = !hasManualVoiceClips && resolvedVoices.length > 0
 
   if (canAutoBuildVideo || canAutoBuildVoice) {
-    // 清理将被重建的旧 auto 片段
+    // 清理将被重建的旧 auto / 节点输入片段（含误拖入 overlay 的 clip:auto:v: 片段）
     clips = clips.filter((c) => {
-      if (!c.id.startsWith('clip:auto:')) return true
+      if (canAutoBuildVideo && c.track === 'overlay' && c.id.startsWith('clip:auto:v:')) {
+        return false
+      }
+      if (!isAutoOrInputClip(c)) return true
       if (canAutoBuildVideo && c.track === 'video') return false
       if (canAutoBuildVoice && c.track === 'voice') return false
       if (!hasManualSubtitleClips && c.track === 'subtitle') return false
@@ -240,17 +263,55 @@ export async function composeTimelineVideoForNode(input: {
     )
 
     const stamp = Date.now().toString(36)
-    const shotCount = Math.max(
-      canAutoBuildVideo ? resolvedVisuals.length : 0,
-      canAutoBuildVoice ? resolvedVoices.length : 0
-    )
+
+    // 构建分镜配对槽位：若画面与旁白标题均带分镜序号（如 分镜1..分镜5），按分镜号精确配对，避免中间某段旁白缺失导致后续错位
+    const shotSlots: Array<{ visIdx?: number; voiceIdx?: number }> = []
+    const hasVisShotNums =
+      canAutoBuildVideo && resolvedVisuals.some((v) => extractShotNum(v.title) !== null)
+    const hasVoiceShotNums =
+      canAutoBuildVoice && resolvedVoices.some((v) => extractShotNum(v.title) !== null)
+
+    if (hasVisShotNums && hasVoiceShotNums) {
+      const usedVoices = new Set<number>()
+      for (let vi = 0; vi < resolvedVisuals.length; vi++) {
+        const vShot = extractShotNum(resolvedVisuals[vi]!.title)
+        let matchedVoiceIdx: number | undefined
+        if (vShot !== null) {
+          const found = resolvedVoices.findIndex(
+            (vo, idx) => !usedVoices.has(idx) && extractShotNum(vo.title) === vShot
+          )
+          if (found >= 0) {
+            matchedVoiceIdx = found
+            usedVoices.add(found)
+          }
+        }
+        shotSlots.push({ visIdx: vi, voiceIdx: matchedVoiceIdx })
+      }
+      for (let ai = 0; ai < resolvedVoices.length; ai++) {
+        if (!usedVoices.has(ai)) {
+          shotSlots.push({ voiceIdx: ai })
+        }
+      }
+    } else {
+      const shotCount = Math.max(
+        canAutoBuildVideo ? resolvedVisuals.length : 0,
+        canAutoBuildVoice ? resolvedVoices.length : 0
+      )
+      for (let i = 0; i < shotCount; i++) {
+        shotSlots.push({
+          visIdx: canAutoBuildVideo && i < resolvedVisuals.length ? i : undefined,
+          voiceIdx: canAutoBuildVoice && i < resolvedVoices.length ? i : undefined
+        })
+      }
+    }
 
     let cursor = 0
-    for (let i = 0; i < shotCount; i++) {
-      const vis = canAutoBuildVideo ? resolvedVisuals[i] : undefined
-      const voice = canAutoBuildVoice ? resolvedVoices[i] : undefined
-      const voiceDur = voice ? voiceDurations[i]! : null
-      const nativeVisDur = vis ? visualDurations[i]! : null
+    for (let i = 0; i < shotSlots.length; i++) {
+      const slot = shotSlots[i]!
+      const vis = slot.visIdx !== undefined ? resolvedVisuals[slot.visIdx] : undefined
+      const voice = slot.voiceIdx !== undefined ? resolvedVoices[slot.voiceIdx] : undefined
+      const voiceDur = slot.voiceIdx !== undefined ? voiceDurations[slot.voiceIdx]! : null
+      const nativeVisDur = slot.visIdx !== undefined ? visualDurations[slot.visIdx]! : null
 
       // Audio-First：有对应配音时镜头时长严格对齐配音；否则采用视频原生时长或默认 4 秒
       const shotDur = Math.max(0.5, Math.round((voiceDur ?? nativeVisDur ?? 4) * 100) / 100)
@@ -264,7 +325,7 @@ export async function composeTimelineVideoForNode(input: {
         clips.push({
           id: `clip:auto:v:${i}:${stamp}`,
           track: 'video',
-          sourceId: vis.id || vis.rel,
+          sourceId: vis.rel || vis.id || `shot:${i}`,
           title: vis.title?.trim() || `Shot ${i + 1}`,
           relativePath: vis.rel,
           startSec: cursor,

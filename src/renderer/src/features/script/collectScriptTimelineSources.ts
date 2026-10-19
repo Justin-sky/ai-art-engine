@@ -6,10 +6,12 @@
 import { isDraftAssetId } from '@shared/domain'
 import {
   GRAPH_OUTPUT_NODE_IDS,
+  flattenImagesValues,
   flattenVoicesValues,
   flattenVideosValues,
   parseFilmRenderCache,
   parseFilmStoryboard,
+  pickImageItem,
   pickVideoItem,
   pickVoiceItem,
   type GraphDocument,
@@ -65,11 +67,22 @@ function isVoiceNodeType(typeId: string | undefined): boolean {
 }
 
 function isVoiceEdge(sourceNode: GraphNode, targetPort: string): boolean {
-  if (targetPort === 'in-voice' || targetPort === 'in-voices') return true
+  if (targetPort === 'in-voice' || targetPort === 'in-voices' || targetPort === 'in-music') {
+    return true
+  }
   if (targetPort === 'in' || targetPort === 'in-videos') {
     return sourceNode.assetType === 'voice' || isVoiceNodeType(sourceNode.typeId)
   }
   return sourceNode.assetType === 'voice' || isVoiceNodeType(sourceNode.typeId)
+}
+
+function extractShotNum(title?: string): number | null {
+  if (!title) return null
+  const m =
+    title.match(
+      /(?:\u5206\u955c|\u955c\u5934|\u7247\u6bb5|\u7ae0\u8282|\u5e55|\u6b65\u9aa4|Shot|Scene|Step|Part|Clip)\s*#?(\d+)/i
+    ) ?? title.match(/^#?(\d+)[\s._:\uff1a-]/i)
+  return m ? Number(m[1]) : null
 }
 
 function readNodeRunOutputs(
@@ -96,7 +109,7 @@ function videoItemToSource(
     : relativePath
       ? project.assets.find(
           (a) =>
-            a.type === 'video' &&
+            (a.type === 'video' || a.type === 'image') &&
             a.relativePath?.replace(/\\/g, '/') === relativePath.replace(/\\/g, '/')
         )
       : undefined
@@ -186,14 +199,29 @@ function resolveNodeVideos(
   if (visited.has(node.id)) return []
   visited.add(node.id)
 
+  // svg.anim / anim.2d 若已产出烘焙 GIF，优先返回 GIF 路径（与 executeTimelineOutputNode 严格对齐）
+  const gifRel =
+    (typeof node.params?.svgGifRelativePath === 'string' &&
+      node.params.svgGifRelativePath.trim()) ||
+    (typeof node.params?.animGifRelativePath === 'string' &&
+      node.params.animGifRelativePath.trim()) ||
+    ''
+  if (gifRel && !isTimelineComposedItem({ relativePath: gifRel })) {
+    return [{ id: node.params?.selectedImageId?.trim() || gifRel, relativePath: gifRel }]
+  }
+
   const wantMultiple =
-    targetPort === 'in-videos' || sourcePort === 'out-all' || sourcePort === 'out-videos'
+    targetPort === 'in-videos' ||
+    targetPort === 'in-images' ||
+    sourcePort === 'out-all' ||
+    sourcePort === 'out-videos'
   const outputs = readNodeRunOutputs(doc, hostId, node.id)
   if (outputs) {
     const rawOut = wantMultiple
       ? (outputs[sourcePort] ?? outputs['out-videos'] ?? outputs['out-all'] ?? outputs.out)
       : (outputs[sourcePort] ??
         outputs['out-video'] ??
+        outputs['out-gif'] ??
         outputs.out ??
         outputs['out-videos'] ??
         outputs['out-all'])
@@ -203,6 +231,22 @@ function resolveNodeVideos(
         if (wantMultiple) return fromRun
         const picked = pickVideoItem(fromRun, node.params?.selectedVideoId) ?? fromRun[0]
         return picked ? [picked] : []
+      }
+      const fromImgRun = flattenImagesValues([rawOut]).filter(
+        (item) => !isTimelineComposedItem(item)
+      )
+      if (fromImgRun.length) {
+        if (wantMultiple) {
+          return fromImgRun.map((img) => ({
+            id: img.id,
+            relativePath: img.relativePath,
+            createdAt: img.createdAt
+          }))
+        }
+        const picked = pickImageItem(fromImgRun, node.params?.selectedImageId) ?? fromImgRun[0]
+        return picked
+          ? [{ id: picked.id, relativePath: picked.relativePath, createdAt: picked.createdAt }]
+          : []
       }
     }
   }
@@ -288,6 +332,18 @@ function resolveNodeVideos(
     return picked ? [picked] : []
   }
 
+  const generatedImgs = (
+    Array.isArray(node.params?.generatedImages) ? node.params.generatedImages : []
+  )
+    .filter((item) => item && !isTimelineComposedItem(item))
+    .filter((item) => Boolean(item.relativePath?.trim() || item.id?.trim()))
+  if (generatedImgs.length) {
+    const picked = pickImageItem(generatedImgs, node.params?.selectedImageId) ?? generatedImgs[0]
+    return picked
+      ? [{ id: picked.id, relativePath: picked.relativePath, createdAt: picked.createdAt }]
+      : []
+  }
+
   const previewRel = node.params?.previewRelativePath?.trim()
   if (previewRel && !isTimelineComposedItem({ relativePath: previewRel })) {
     return [{ relativePath: previewRel }]
@@ -299,7 +355,12 @@ function resolveNodeVideos(
     const asset = project.assets.find((a) => a.id === refAssetId)
     if (
       asset?.relativePath?.trim() &&
-      (asset.type === 'video' || node.assetType === 'video' || node.typeId === 'asset.video')
+      (asset.type === 'video' ||
+        asset.type === 'image' ||
+        node.assetType === 'video' ||
+        node.assetType === 'image' ||
+        node.typeId === 'asset.video' ||
+        node.typeId === 'asset.image')
     ) {
       return [{ id: asset.id, relativePath: asset.relativePath.trim() }]
     }
@@ -522,6 +583,7 @@ function collectFromTargetOutputNode(
 
   for (const edge of incomingEdges) {
     const { sourceNode, sourcePort, targetPort } = edge
+    if (targetPort === 'in-text') continue
 
     if (isVoiceEdge(sourceNode, targetPort)) {
       hasVoiceEdges = true
@@ -554,6 +616,24 @@ function collectFromTargetOutputNode(
         videos.push(src)
       }
     }
+  }
+
+  const sortByShotNum = (list: ScriptTimelineSource[]): void => {
+    const withOrder = list.map((src, idx) => {
+      const shotNum = extractShotNum(src.nodeTitle || src.title)
+      return {
+        src,
+        order: shotNum !== null ? shotNum * 1000 + idx : 100000 + idx
+      }
+    })
+    withOrder.sort((a, b) => a.order - b.order)
+    list.splice(0, list.length, ...withOrder.map((x) => x.src))
+  }
+  if (videos.some((s) => extractShotNum(s.nodeTitle || s.title) !== null)) {
+    sortByShotNum(videos)
+  }
+  if (voices.some((s) => extractShotNum(s.nodeTitle || s.title) !== null)) {
+    sortByShotNum(voices)
   }
 
   if (!videos.length) {

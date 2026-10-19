@@ -249,8 +249,16 @@
 
       <section class="panel preview-panel">
         <div ref="previewStageEl" class="preview-stage">
+          <img
+            v-if="previewSrc && isImageOrGifUrl(previewSrc)"
+            class="preview-video"
+            :src="previewSrc"
+            :style="previewVideoTransitionStyle ?? undefined"
+            alt=""
+            @load="onPreviewImageLoaded"
+          />
           <video
-            v-if="previewSrc"
+            v-else-if="previewSrc"
             ref="previewEl"
             class="preview-video"
             :src="previewSrc"
@@ -377,6 +385,37 @@
                   @pointerdown.stop="onCropPointerDown($event, selectedCroppableClip)"
                 />
               </div>
+              <div
+                v-if="activeSubtitleText"
+                class="subtitle-overlay"
+                :class="{ 'is-selected': isActiveSubtitleSelected }"
+                :title="t('script.timeline.subtitleResizeHint')"
+                :style="activeSubtitleOverlayStyle"
+                @pointerdown.stop="onSubtitleMoveDown"
+                @wheel.prevent="onSubtitleWheel"
+              >
+                {{ activeSubtitleText }}
+                <span
+                  class="subtitle-handle corner-tl"
+                  :title="t('script.timeline.subtitleScaleHint')"
+                  @pointerdown.stop="onSubtitleScaleDown"
+                />
+                <span
+                  class="subtitle-handle corner-tr"
+                  :title="t('script.timeline.subtitleScaleHint')"
+                  @pointerdown.stop="onSubtitleScaleDown"
+                />
+                <span
+                  class="subtitle-handle corner-bl"
+                  :title="t('script.timeline.subtitleScaleHint')"
+                  @pointerdown.stop="onSubtitleScaleDown"
+                />
+                <span
+                  class="subtitle-handle corner-br"
+                  :title="t('script.timeline.subtitleScaleHint')"
+                  @pointerdown.stop="onSubtitleScaleDown"
+                />
+              </div>
             </div>
           </div>
           <select
@@ -393,36 +432,6 @@
               {{ option.label }}
             </option>
           </select>
-          <div
-            v-if="activeSubtitleText"
-            class="subtitle-overlay"
-            :title="t('script.timeline.subtitleResizeHint')"
-            :style="activeSubtitleOverlayStyle"
-            @pointerdown.stop="onSubtitleMoveDown"
-            @wheel.prevent="onSubtitleWheel"
-          >
-            {{ activeSubtitleText }}
-            <span
-              class="subtitle-handle corner-tl"
-              :title="t('script.timeline.subtitleScaleHint')"
-              @pointerdown.stop="onSubtitleScaleDown"
-            />
-            <span
-              class="subtitle-handle corner-tr"
-              :title="t('script.timeline.subtitleScaleHint')"
-              @pointerdown.stop="onSubtitleScaleDown"
-            />
-            <span
-              class="subtitle-handle corner-bl"
-              :title="t('script.timeline.subtitleScaleHint')"
-              @pointerdown.stop="onSubtitleScaleDown"
-            />
-            <span
-              class="subtitle-handle corner-br"
-              :title="t('script.timeline.subtitleScaleHint')"
-              @pointerdown.stop="onSubtitleScaleDown"
-            />
-          </div>
           <div class="preview-transport">
             <button
               type="button"
@@ -1620,12 +1629,9 @@
                   class="clip-handle left"
                   @pointerdown.stop="onClipResizeStart($event, clip, 'left')"
                 />
-                <span
-                  v-if="clip.track !== 'video' && clip.track !== 'overlay'"
-                  class="clip-title"
-                  :class="{ 'on-media': clipHasVisual(clip) }"
-                  >{{ clipDisplayTitle(clip) }}</span
-                >
+                <span class="clip-title" :class="{ 'on-media': clipHasVisual(clip) }">{{
+                  clipDisplayTitle(clip)
+                }}</span>
                 <span
                   v-if="isClipCropped(clip)"
                   class="clip-cropped-badge"
@@ -4091,25 +4097,55 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${clamp01(alpha).toFixed(2)})`
 }
 
+const subtitlePreviewScale = computed(() => {
+  const frameH = previewFrameRect.value.height
+  const expH = Math.max(180, exportHeight.value || 720)
+  if (frameH > 20) return Math.min(2, Math.max(0.18, frameH / expH))
+  return 0.5
+})
+
+const isActiveSubtitleSelected = computed(() => {
+  const clip = activeSubtitleClip.value
+  if (!clip || playing.value) return false
+  return activeClipId.value === clip.id || selectedClipIds.value.has(clip.id)
+})
+
 const activeSubtitleOverlayStyle = computed<Record<string, string>>(() => {
   const clip = activeSubtitleClip.value
+  const scale = subtitlePreviewScale.value
   const size = clip?.fontSize ?? subtitleFontSize.value
+  const scaledFontPx = Math.max(11, Math.round(size * scale * 10) / 10)
+  const scaledBottomPx = Math.max(
+    4,
+    Math.round(Math.max(0, subtitleYOffset.value) * scale * 10) / 10
+  )
   const color = clip?.textColor || subtitleColor.value
   const style: Record<string, string> = {
-    fontSize: `${size}px`,
-    bottom: `${Math.max(0, subtitleYOffset.value)}px`,
-    color
+    fontSize: `${scaledFontPx}px`,
+    bottom: `${scaledBottomPx}px`,
+    color,
+    paintOrder: 'stroke fill'
   }
   const bw = Math.max(0, subtitleBorderWidth.value)
   if (bw > 0) {
     const bc = subtitleBorderColor.value || '#000000'
-    style.webkitTextStroke = `${bw}px ${bc}`
-    style.textShadow = `0 1px ${Math.max(2, bw * 2)}px ${bc}`
+    // paint-order: stroke fill 下，描边内侧被填充覆盖，外侧可见宽度为 stroke 的一半
+    const scaledStrokePx = Math.max(1, Math.round(bw * scale * 2 * 10) / 10)
+    style.webkitTextStroke = `${scaledStrokePx}px ${bc}`
+    style.textShadow = `0 1px ${Math.max(2, Math.round(bw * scale * 2))}px ${bc}`
+  } else {
+    style.webkitTextStroke = '0px transparent'
+    style.textShadow = 'none'
   }
   if (subtitleBoxEnabled.value) {
     style.backgroundColor = hexToRgba(subtitleBoxColor.value || '#000000', subtitleBoxOpacity.value)
-    style.padding = '4px 12px'
-    style.borderRadius = '6px'
+    const padV = Math.max(2, Math.round(6 * scale))
+    const padH = Math.max(6, Math.round(14 * scale))
+    style.padding = `${padV}px ${padH}px`
+    style.borderRadius = `${Math.max(3, Math.round(6 * scale))}px`
+  } else {
+    style.backgroundColor = 'transparent'
+    style.padding = '2px 6px'
   }
   if (subtitleMotion.value === 'fade' && clip) {
     const local = Math.max(0, playheadSec.value - clip.startSec)
@@ -4720,9 +4756,76 @@ function waitForVideoLoad(el: HTMLVideoElement, timeoutMs = 2000): Promise<void>
   })
 }
 
+function isImageOrGifUrl(url?: string | null): boolean {
+  const s = (url ?? '').trim()
+  if (!s) return false
+  if (s.startsWith('data:image/')) return true
+  if (s.includes('?')) {
+    try {
+      const u = new URL(s)
+      const pathParam = u.searchParams.get('path')?.trim() ?? ''
+      if (pathParam && /\.(png|jpe?g|webp|bmp|gif|svg)$/i.test(pathParam)) {
+        return true
+      }
+    } catch {
+      /* ignore invalid URL */
+    }
+  }
+  const clean = s.split(/[?#]/)[0] ?? ''
+  return /\.(png|jpe?g|webp|bmp|gif|svg)$/i.test(clean)
+}
+
+function isImageOrGifClip(clip?: { relativePath?: string; assetId?: string } | null): boolean {
+  if (!clip) return false
+  const rel = sourceRelativePath(clip)
+  return isImageOrGifUrl(rel)
+}
+
 async function generateVideoStrip(clip: ScriptTimelineClip): Promise<string | null> {
   const url = await resolveSrc(clip)
   if (!url) return null
+
+  if (isImageOrGifClip(clip) || isImageOrGifUrl(url)) {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const timer = window.setTimeout(() => {
+          img.onload = null
+          img.onerror = null
+          reject(new Error('image load timeout'))
+        }, 6000)
+        img.onload = () => {
+          window.clearTimeout(timer)
+          resolve()
+        }
+        img.onerror = () => {
+          window.clearTimeout(timer)
+          reject(new Error('image load failed'))
+        }
+        img.src = url
+      })
+      const w = img.naturalWidth || img.width || 112
+      const h = img.naturalHeight || img.height || 62
+      const frameWidth = 112
+      const frameHeight = 62
+      const canvas = document.createElement('canvas')
+      canvas.width = frameWidth
+      canvas.height = frameHeight
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return null
+      const scale = Math.max(frameWidth / w, frameHeight / h)
+      const dw = w * scale
+      const dh = h * scale
+      ctx.drawImage(img, (frameWidth - dw) / 2, (frameHeight - dh) / 2, dw, dh)
+      return canvas.toDataURL('image/jpeg', 0.78)
+    } catch {
+      return null
+    } finally {
+      img.removeAttribute('src')
+    }
+  }
+
   const video = document.createElement('video')
   video.preload = 'auto'
   video.muted = true
@@ -5773,7 +5876,7 @@ async function autoPlaceSourcesOnTracks(toPlace: ScriptTimelineSource[]): Promis
         : await probeDuration(url, isVoice ? 'audio' : 'video')
     const startSec = isVoice ? voiceCursor : videoCursor
     nextClips.push({
-      id: newClipId(),
+      id: `clip:auto:${isVoice ? 'a' : 'v'}:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 7)}`,
       track,
       sourceId: src.id,
       title: src.title,
@@ -6051,7 +6154,8 @@ function onSubtitleScaleDown(e: PointerEvent): void {
 function onSubtitleDragMove(e: PointerEvent): void {
   const session = subtitleDrag.value
   if (!session || e.pointerId !== session.pointerId) return
-  const delta = session.startY - e.clientY
+  const scale = Math.max(0.2, subtitlePreviewScale.value)
+  const delta = (session.startY - e.clientY) / scale
   if (session.type === 'scale') {
     subtitleFontSize.value = Math.min(200, Math.max(12, Math.round(session.startFont + delta / 2)))
   } else {
@@ -7920,14 +8024,15 @@ async function syncPreviewToPlayhead(): Promise<void> {
   if (previewSrc.value !== url) previewSrc.value = url
   await Promise.resolve()
   const el = previewEl.value
-  if (!el) return
-  applyPlaybackRate()
-  const local = Math.max(0, playheadSec.value - clip.startSec)
-  const media = mediaTimeForClip(clip, local)
-  try {
-    if (Math.abs(el.currentTime - media) > 0.2) el.currentTime = media
-  } catch {
-    /* ignore */
+  if (el) {
+    applyPlaybackRate()
+    const local = Math.max(0, playheadSec.value - clip.startSec)
+    const media = mediaTimeForClip(clip, local)
+    try {
+      if (Math.abs(el.currentTime - media) > 0.2) el.currentTime = media
+    } catch {
+      /* ignore */
+    }
   }
   await syncOverlayVideosToPlayhead(false)
 }
@@ -8226,19 +8331,24 @@ async function runSoloClip(clip: ScriptTimelineClip, seq: number): Promise<void>
     stopAllAudio()
 
     if (clip.track === 'video' || clip.track === 'overlay') {
-      previewSrc.value = await resolveSrc(clip)
+      const nextUrl = await resolveSrc(clip)
+      previewSrc.value = nextUrl
       await Promise.resolve()
-      const el = previewEl.value
-      if (!el) break
-      try {
-        applyPlaybackRate()
-        applyPreviewMuted(clip.track)
-        el.currentTime = mediaTimeForClip(clip, 0)
-        await el.play()
-      } catch {
-        break
+      if (isImageOrGifClip(clip) || isImageOrGifUrl(nextUrl)) {
+        await waitUntilStillClipEnd(clip, 0, seq, { syncAudio: false })
+      } else {
+        const el = previewEl.value
+        if (!el) break
+        try {
+          applyPlaybackRate()
+          applyPreviewMuted(clip.track)
+          el.currentTime = mediaTimeForClip(clip, 0)
+          await el.play()
+        } catch {
+          break
+        }
+        await waitUntilClipEnd(el, clip, seq, { syncAudio: false })
       }
-      await waitUntilClipEnd(el, clip, seq, { syncAudio: false })
     } else {
       // 声音：用独立 audio，不带动其他轨
       previewSrc.value = ''
@@ -8362,6 +8472,17 @@ async function runSequence(seq: number): Promise<void> {
         void syncOverlayVideosToPlayhead(true)
       }
       const nextUrl = await resolveSrc(clip)
+      if (!nextUrl) {
+        clipSwitchPending = false
+        continue
+      }
+      if (isImageOrGifClip(clip) || isImageOrGifUrl(nextUrl)) {
+        previewSrc.value = nextUrl
+        await nextTick()
+        clipSwitchPending = false
+        await waitUntilStillClipEnd(clip, startLocal, seq, { syncAudio: true })
+        continue
+      }
       if (i > startIndex) {
         const preloader = document.createElement('video')
         preloader.preload = 'auto'
@@ -8391,7 +8512,6 @@ async function runSequence(seq: number): Promise<void> {
       await nextTick()
       const el = previewEl.value
       if (!el) continue
-      if (!nextUrl) continue
       // 换源瞬间旧帧已被释放；若新源在解码完成前就 play()，会先呈现 B 首帧再跳
       // 到入点，表现成“切第二个片段闪一下”。改为：暂停住 → 等元数据 → 精确
       // seek 到入点 → 再播放。解码间隙由仍在显示的 overlay 转场画面遮挡，
@@ -8446,6 +8566,45 @@ async function runSequence(seq: number): Promise<void> {
     stopAllAudio()
     pauseOverlayVideos()
   }
+}
+
+function waitUntilStillClipEnd(
+  clip: ScriptTimelineClip,
+  startLocal: number,
+  seq: number,
+  options?: { syncAudio?: boolean }
+): Promise<void> {
+  const syncAudio = options?.syncAudio !== false
+  const startedAt = performance.now()
+  return new Promise((resolve) => {
+    let raf = 0
+    const tick = () => {
+      if (seq !== playSeq || !playing.value) {
+        cleanup()
+        resolve()
+        return
+      }
+      const elapsed = ((performance.now() - startedAt) / 1000) * playbackRate.value
+      const local = Math.min(clip.durationSec, startLocal + elapsed)
+      if (!playheadDrag.value) {
+        playheadSec.value = clip.startSec + local
+      }
+      if (syncAudio) void syncAudioToPlayhead(true)
+      if (syncAudio) void syncOverlayVideosToPlayhead(true)
+      if (local >= clip.durationSec - 0.02) {
+        playheadSec.value = clip.startSec + clip.durationSec
+        cleanup()
+        resolve()
+        return
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    const cleanup = () => {
+      if (raf) cancelAnimationFrame(raf)
+      raf = 0
+    }
+    raf = requestAnimationFrame(tick)
+  })
 }
 
 function waitUntilClipEnd(
@@ -8596,6 +8755,15 @@ function onPreviewLoaded(): void {
   previewVideoMeta.value = {
     width: video?.videoWidth ?? 0,
     height: video?.videoHeight ?? 0
+  }
+  updatePreviewFrameRect()
+}
+
+function onPreviewImageLoaded(e: Event): void {
+  const img = e.target as HTMLImageElement | null
+  previewVideoMeta.value = {
+    width: img?.naturalWidth || img?.width || 0,
+    height: img?.naturalHeight || img?.height || 0
   }
   updatePreviewFrameRect()
 }
@@ -9241,7 +9409,10 @@ function applyExternalTimelineUpdate(): void {
     saveTimer = null
   }
   loadPersisted()
-  void reloadSources()
+  void reloadSources().then(() => {
+    const first = clipAtPlayhead() ?? visibleClipsOn('video')[0]
+    if (first && !playing.value) void showClipPreview(first)
+  })
   void refreshClipVisuals()
 }
 
@@ -9284,6 +9455,8 @@ watch([() => props.scriptAssetId, () => props.timelineNodeId], async ([next], [p
   audioPeaksCache.clear()
   loadPersisted()
   await reloadSources()
+  const first = clipAtPlayhead() ?? visibleClipsOn('video')[0]
+  if (first) void showClipPreview(first)
   void refreshClipVisuals()
 })
 
@@ -10074,55 +10247,73 @@ defineExpose({ flushSave: persist, reloadSources })
 .subtitle-overlay {
   position: absolute;
   left: 50%;
-  bottom: 52px;
+  bottom: 24px;
   transform: translateX(-50%);
-  max-width: min(90%, 640px);
-  padding: 6px 12px;
+  width: max-content;
+  max-width: 88%;
+  padding: 4px 10px;
   border-radius: 6px;
-  /* 叠在预览画面上：固定暗底白字，不受亮色主题影响 */
-  background: rgba(0, 0, 0, 0.55);
+  background: transparent;
   color: #fff;
-  font-size: 18px;
-  line-height: 1.35;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 0.02em;
   text-align: center;
-  text-shadow: 0 1px 2px var(--on-media-line-shadow);
+  word-break: break-word;
+  paint-order: stroke fill;
   pointer-events: auto;
   cursor: pointer;
-  z-index: 2;
-  border: 1px dashed rgba(255, 255, 255, 0.75);
+  z-index: 4;
+  border: 1px dashed transparent;
+  transition: border-color 0.14s ease;
+}
+
+.subtitle-overlay:hover,
+.subtitle-overlay.is-selected {
+  border-color: rgba(255, 255, 255, 0.72);
 }
 
 .subtitle-handle {
   position: absolute;
-  width: 14px;
-  height: 14px;
-  border: 2px solid #fff;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid #fff;
   border-radius: 50%;
   background: var(--accent);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.14s ease;
+}
+
+.subtitle-overlay:hover .subtitle-handle,
+.subtitle-overlay.is-selected .subtitle-handle {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .subtitle-handle.corner-tl {
-  left: -7px;
-  top: -7px;
+  left: -5px;
+  top: -5px;
   cursor: nwse-resize;
 }
 
 .subtitle-handle.corner-tr {
-  right: -7px;
-  top: -7px;
+  right: -5px;
+  top: -5px;
   cursor: nesw-resize;
 }
 
 .subtitle-handle.corner-bl {
-  left: -7px;
-  bottom: -7px;
+  left: -5px;
+  bottom: -5px;
   cursor: nesw-resize;
 }
 
 .subtitle-handle.corner-br {
-  right: -7px;
-  bottom: -7px;
+  right: -5px;
+  bottom: -5px;
   cursor: nwse-resize;
 }
 
