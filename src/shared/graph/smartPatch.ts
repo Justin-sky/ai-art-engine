@@ -1193,6 +1193,101 @@ export function mergeSmartNodeParams(
   ) {
     merged.spatialWorldDisableRecaption = incoming.disableRecaption
   }
+  if (node.typeId === 'svg.gen') {
+    if (
+      typeof incoming.width === 'number' &&
+      Number.isFinite(incoming.width) &&
+      incoming.svgGenWidth === undefined
+    ) {
+      merged.svgGenWidth = Math.round(incoming.width)
+    }
+    if (
+      typeof incoming.height === 'number' &&
+      Number.isFinite(incoming.height) &&
+      incoming.svgGenHeight === undefined
+    ) {
+      merged.svgGenHeight = Math.round(incoming.height)
+    }
+    if (typeof incoming.background === 'string' && incoming.svgGenBackground === undefined) {
+      if (
+        incoming.background === 'white' ||
+        incoming.background === 'black' ||
+        incoming.background === ''
+      ) {
+        merged.svgGenBackground = incoming.background
+      }
+    }
+    const ar = incomingAspectRatio ?? merged.generateAspectRatio
+    if (
+      incoming.svgGenWidth === undefined &&
+      incoming.svgGenHeight === undefined &&
+      incoming.width === undefined &&
+      incoming.height === undefined
+    ) {
+      if (ar === '16:9') {
+        merged.svgGenWidth = 1280
+        merged.svgGenHeight = 720
+      } else if (ar === '9:16') {
+        merged.svgGenWidth = 720
+        merged.svgGenHeight = 1280
+      }
+    }
+  }
+  if (node.typeId === 'svg.anim') {
+    if (
+      typeof incoming.frames === 'number' &&
+      Number.isFinite(incoming.frames) &&
+      incoming.svgFrames === undefined
+    ) {
+      merged.svgFrames = Math.round(incoming.frames)
+    }
+    if (
+      typeof rawDuration === 'number' &&
+      Number.isFinite(rawDuration) &&
+      rawDuration >= 0 &&
+      incoming.svgDurationSec === undefined
+    ) {
+      merged.svgDurationSec = rawDuration
+    }
+    if (
+      typeof incoming.width === 'number' &&
+      Number.isFinite(incoming.width) &&
+      incoming.svgWidth === undefined
+    ) {
+      merged.svgWidth = Math.round(incoming.width)
+    }
+    if (
+      typeof incoming.height === 'number' &&
+      Number.isFinite(incoming.height) &&
+      incoming.svgHeight === undefined
+    ) {
+      merged.svgHeight = Math.round(incoming.height)
+    }
+    if (typeof incoming.background === 'string' && incoming.svgBackground === undefined) {
+      if (
+        incoming.background === 'white' ||
+        incoming.background === 'black' ||
+        incoming.background === ''
+      ) {
+        merged.svgBackground = incoming.background
+      }
+    }
+    const ar = incomingAspectRatio ?? merged.generateAspectRatio
+    if (
+      incoming.svgWidth === undefined &&
+      incoming.svgHeight === undefined &&
+      incoming.width === undefined &&
+      incoming.height === undefined
+    ) {
+      if (ar === '16:9') {
+        merged.svgWidth = 1280
+        merged.svgHeight = 720
+      } else if (ar === '9:16') {
+        merged.svgWidth = 720
+        merged.svgHeight = 1280
+      }
+    }
+  }
 
   return merged
 }

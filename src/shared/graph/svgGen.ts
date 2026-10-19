@@ -71,14 +71,15 @@ export function svgGenToNodePatch(state: SvgGenState): {
 }
 
 const SVG_GEN_SYSTEM_PROMPT_ZH =
-  '你是 AIArtEngine 的 SVG 矢量图生成专家。请把描述绘制成一份可直接渲染的独立 SVG 源码：只输出一个根节点 <svg>…</svg>，不要 markdown 代码围栏、不要任何解释文字；必须带 xmlns="http://www.w3.org/2000/svg" 并用 viewBox 定义坐标系；图形用矢量元素表达（path/rect/circle/ellipse/polygon/line/g/text，配合 defs/gradient/clipPath），禁止引用外部图片、字体文件、脚本或网络资源，禁止内嵌 <image> 位图；需要动效时只用 SMIL 动画（<animate>/<animateTransform>/<set>）并把动效做成可无缝循环的完整周期，不要用 CSS @keyframes，也不要用 <animateMotion>（逐帧烘焙只求值 SMIL 的那几种属性动画，其余会被当作静态图）；配色、风格、构图与描述保持一致，形状边缘干净，不得出现 NaN、空 path 等无效数据。' // cjk-ok（LLM 系统提示词：随生成请求发给模型，不进入 UI）
+  '你是 AIArtEngine 的 SVG 矢量图生成专家（兼科普动效演示专家）。请把描述绘制成一份可直接渲染的独立 SVG 源码：只输出一个根节点 <svg>…</svg>，不要 markdown 代码围栏、不要任何解释文字；必须带 xmlns="http://www.w3.org/2000/svg" 并用 viewBox 定义坐标系；图形用矢量元素表达（path/rect/circle/ellipse/polygon/line/g/text，配合 defs/gradient/clipPath），禁止引用外部图片、字体文件、脚本或网络资源，禁止内嵌 <image> 位图；当用于科普/知识解说图卡、流程图、架构图、对比图或数据图表时，请采用深色或高对比度现代演示排版（圆角卡片、清晰主标题与核心数字指标、结构化连接箭头、留出充足边距避免文字重叠或贴边裁切）；需要动效时只用 SMIL 动画（<animate>/<animateTransform>/<set>）并把动效做成可无缝循环的完整周期（如能量脉冲流动、进度柱增长、节点高亮闪烁、指针/粒子旋转移动），不要用 CSS @keyframes，也不要用 <animateMotion>（逐帧烘焙只求值 SMIL 的那几种属性动画，其余会被当作静态图）；配色、风格、构图与描述保持一致，形状边缘干净，不得出现 NaN、空 path 等无效数据。' // cjk-ok（LLM 系统提示词：随生成请求发给模型，不进入 UI）
 
-const SVG_GEN_SYSTEM_PROMPT_EN = `You are an expert in SVG vector art for AIArtEngine.
+const SVG_GEN_SYSTEM_PROMPT_EN = `You are an expert in SVG vector art and animated explainer graphics for AIArtEngine.
 Render the description as a standalone, directly renderable SVG source:
 - Output only one root <svg>…</svg> element: no markdown fences, no explanations;
 - Always include xmlns="http://www.w3.org/2000/svg" and define the coordinate system with viewBox;
 - Express the artwork with vector elements (path/rect/circle/ellipse/polygon/line/g/text plus defs/gradient/clipPath); never reference external images, fonts, scripts or network resources, and never embed <image> bitmaps;
-- For motion use SMIL only (<animate>/<animateTransform>/<set>) shaped as one seamless loop; never CSS @keyframes or <animateMotion>, since frame baking evaluates only those SMIL attribute animations and treats anything else as static;
+- For explainer diagrams, flowcharts, architecture maps, comparison cards or data charts, use a clean high-contrast presentation layout (rounded cards, clear hierarchy, readable metrics, structured connectors, and generous padding so labels never overlap or clip);
+- For motion use SMIL only (<animate>/<animateTransform>/<set>) shaped as one seamless loop (e.g. pulsing nodes, flowing signal paths, growing bars, rotating indicators); never CSS @keyframes or <animateMotion>, since frame baking evaluates only those SMIL attribute animations and treats anything else as static;
 - Keep palette, style and composition consistent with the description, with clean edges and no invalid data such as NaN or empty paths.`
 
 export function resolveSvgGenSystemPrompt(override?: string | null, locale?: string): string {

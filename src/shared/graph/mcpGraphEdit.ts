@@ -57,12 +57,26 @@ export type McpGraphEditOp =
   | { op: 'node_delete' | 'delete_node'; nodeId: string }
   | {
       op: 'edge_connect' | 'edge_add' | 'add_edge'
-      fromNodeId: string
-      toNodeId: string
+      fromNodeId?: string
+      toNodeId?: string
+      from?: string
+      to?: string
+      source?: string
+      target?: string
       fromPort?: string
       toPort?: string
+      sourcePort?: string
+      targetPort?: string
     }
-  | { op: 'edge_delete' | 'delete_edge'; fromNodeId: string; toNodeId: string }
+  | {
+      op: 'edge_delete' | 'delete_edge'
+      fromNodeId?: string
+      toNodeId?: string
+      from?: string
+      to?: string
+      source?: string
+      target?: string
+    }
   /** 教学录屏：在打开的编辑器里选中节点（可见高亮；不改图结构） */
   | { op: 'node_select' | 'select_node'; nodeId: string }
   | {
@@ -106,6 +120,37 @@ export interface McpGraphEditResult {
  */
 export const MCP_GRAPH_EDIT_SCOPE: GraphAddScope = 'subgraphAsset'
 
+const TYPE_ID_ALIASES: Record<string, GraphNodeTypeId> = {
+  'voice.tts': 'asset.voice',
+  voice: 'asset.voice',
+  tts: 'asset.voice',
+  'voice.dialogue': 'asset.dialogue',
+  dialogue: 'asset.dialogue',
+  'audio.music': 'asset.music',
+  music: 'asset.music',
+  bgm: 'asset.music',
+  'audio.sfx': 'asset.sfx',
+  sfx: 'asset.sfx',
+  'video.timeline': 'output.timeline',
+  'video.compose': 'output.timeline',
+  'script.timeline': 'output.timeline',
+  timeline: 'output.timeline',
+  'image.gen': 'asset.image',
+  image: 'asset.image',
+  'video.gen': 'asset.video',
+  video: 'asset.video',
+  'model3d.rig': 'model.rigSkin',
+  'model3d.segment': 'model.segment',
+  'spatialWorld.generate': 'asset.spatialWorld',
+  text: 'note.text',
+  note: 'note.text'
+}
+
+function normalizeMcpNodeTypeId(rawTypeId: string): string {
+  const trimmed = rawTypeId?.trim() ?? ''
+  return TYPE_ID_ALIASES[trimmed] ?? trimmed
+}
+
 /** 输出与边界节点承载宿主接口，远端删除会破坏资产契约 */
 function isProtectedNode(node: GraphNode): boolean {
   const typeId = node.typeId ?? ''
@@ -139,12 +184,39 @@ function resolveEdgePorts(
       target.params = { ...target.params, generateFrameMode: 'none' }
     }
   }
+  if (target.typeId === 'output.timeline' && !toPort) {
+    if (source.typeId === 'asset.music') {
+      const musicPort = fromPort || 'out'
+      if (canConnectNodes(source, target, { sourcePort: musicPort, targetPort: 'in-music' })) {
+        return { sourcePort: musicPort, targetPort: 'in-music' }
+      }
+    }
+  }
   if (fromPort || toPort) {
     const sourcePort = fromPort || 'out'
     const targetPort = toPort || 'in'
-    return canConnectNodes(source, target, { sourcePort, targetPort })
-      ? { sourcePort, targetPort }
-      : null
+    if (canConnectNodes(source, target, { sourcePort, targetPort })) {
+      return { sourcePort, targetPort }
+    }
+    // 若仅指定了 fromPort（如 svg.anim 的 out-gif）而未指定 toPort，自动匹配目标兼容入端口
+    if (fromPort && !toPort) {
+      const ins = getNodePorts(target).filter((port) => port.direction === 'in')
+      for (const inPort of ins) {
+        if (canConnectNodes(source, target, { sourcePort: fromPort, targetPort: inPort.id })) {
+          return { sourcePort: fromPort, targetPort: inPort.id }
+        }
+      }
+    }
+    // 若仅指定了 toPort 而未指定 fromPort，自动匹配源兼容出端口
+    if (!fromPort && toPort) {
+      const outs = getNodePorts(source).filter((port) => port.direction === 'out')
+      for (const out of outs) {
+        if (canConnectNodes(source, target, { sourcePort: out.id, targetPort: toPort })) {
+          return { sourcePort: out.id, targetPort: toPort }
+        }
+      }
+    }
+    return null
   }
   const outs = getNodePorts(source).filter((port) => port.direction === 'out')
   const ins = getNodePorts(target).filter((port) => port.direction === 'in')
@@ -552,17 +624,22 @@ function applyOp(
     case 'node_upsert':
     case 'node_add':
     case 'add_node': {
-      if (!addable.has(op.typeId)) {
+      const canonicalTypeId = normalizeMcpNodeTypeId(op.typeId)
+      if (!addable.has(canonicalTypeId)) {
         warnings.push(`未知或不可添加的节点类型「${op.typeId}」，已跳过`)
         return null
       }
       const existing = op.nodeId
         ? findNode(graph, op.nodeId)
-        : op.op === 'node_upsert'
-          ? graph.nodes.find(
-              (n) => n.typeId === op.typeId && isUnexecutedStandaloneNode(graph, n, touchedNodeIds)
-            )
-          : undefined
+        : canonicalTypeId === 'output.timeline'
+          ? graph.nodes.find((n) => n.typeId === 'output.timeline')
+          : op.op === 'node_upsert'
+            ? graph.nodes.find(
+                (n) =>
+                  n.typeId === canonicalTypeId &&
+                  isUnexecutedStandaloneNode(graph, n, touchedNodeIds)
+              )
+            : undefined
       const combinedParams = extractInlineNodeParams(op as unknown as Record<string, unknown>)
       if (existing) {
         if (typeof op.title === 'string' && op.title.trim()) existing.title = op.title.trim()
@@ -575,7 +652,7 @@ function applyOp(
         return `更新节点 ${existing.id}`
       }
       const node = createNodeFromType(
-        op.typeId as GraphNodeTypeId,
+        canonicalTypeId as GraphNodeTypeId,
         {
           x: op.x ?? 0,
           y: op.y ?? 0
@@ -594,7 +671,7 @@ function applyOp(
         mergeNodeParams(node, combinedParams, warnings)
       }
       touchedNodeIds.push(node.id)
-      return `新建节点 ${node.id}（${op.typeId}）`
+      return `新建节点 ${node.id}（${canonicalTypeId}）`
     }
     case 'node_update':
     case 'update_node': {
@@ -648,15 +725,19 @@ function applyOp(
     case 'edge_connect':
     case 'edge_add':
     case 'add_edge': {
-      const source = findNode(graph, op.fromNodeId)
-      const target = findNode(graph, op.toNodeId)
+      const fromId = op.fromNodeId ?? op.from ?? op.source ?? ''
+      const toId = op.toNodeId ?? op.to ?? op.target ?? ''
+      const fromPort = op.fromPort ?? op.sourcePort
+      const toPort = op.toPort ?? op.targetPort
+      const source = findNode(graph, fromId)
+      const target = findNode(graph, toId)
       if (!source || !target) {
-        warnings.push(`连线端点不存在（${op.fromNodeId} → ${op.toNodeId}），已跳过`)
+        warnings.push(`连线端点不存在（${fromId} → ${toId}），已跳过`)
         return null
       }
-      const ports = resolveEdgePorts(source, target, op.fromPort, op.toPort)
+      const ports = resolveEdgePorts(source, target, fromPort, toPort)
       if (!ports) {
-        warnings.push(`连线不兼容（${op.fromNodeId} → ${op.toNodeId}），已跳过`)
+        warnings.push(`连线不兼容（${fromId} → ${toId}），已跳过`)
         return null
       }
       const duplicate = graph.edges.some(
@@ -666,7 +747,7 @@ function applyOp(
           edge.sourcePort === ports.sourcePort &&
           edge.targetPort === ports.targetPort
       )
-      if (duplicate) return `连线已存在（${op.fromNodeId} → ${op.toNodeId}）`
+      if (duplicate) return `连线已存在（${fromId} → ${toId}）`
       const edge: GraphEdge = {
         id: `edge-mcp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
         source: source.id,
@@ -676,18 +757,18 @@ function applyOp(
       }
       graph.edges.push(edge)
       touchedNodeIds.push(target.id)
-      return `连线 ${op.fromNodeId} → ${op.toNodeId}`
+      return `连线 ${fromId} → ${toId}`
     }
     case 'edge_delete':
     case 'delete_edge': {
+      const fromId = op.fromNodeId ?? op.from ?? op.source ?? ''
+      const toId = op.toNodeId ?? op.to ?? op.target ?? ''
       const before = graph.edges.length
-      graph.edges = graph.edges.filter(
-        (edge) => !(edge.source === op.fromNodeId && edge.target === op.toNodeId)
-      )
+      graph.edges = graph.edges.filter((edge) => !(edge.source === fromId && edge.target === toId))
       const removed = before - graph.edges.length
-      if (!removed) warnings.push(`连线不存在（${op.fromNodeId} → ${op.toNodeId}），已跳过`)
-      else touchedNodeIds.push(op.toNodeId)
-      return `删除连线 ${op.fromNodeId} → ${op.toNodeId}`
+      if (!removed) warnings.push(`连线不存在（${fromId} → ${toId}），已跳过`)
+      else touchedNodeIds.push(toId)
+      return `删除连线 ${fromId} → ${toId}`
     }
     case 'node_select':
     case 'select_node': {

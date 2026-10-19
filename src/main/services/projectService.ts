@@ -1893,6 +1893,7 @@ class ProjectService {
     if (mime.includes('png')) ext = '.png'
     // SVG 生成节点落盘：image/svg+xml → .svg（assetTypeFromMime 归 image 家族，缩略图链路同图库 SVG 资产）
     else if (mime.includes('svg')) ext = '.svg'
+    else if (mime.includes('psd') || mime.includes('photoshop')) ext = '.psd'
     else if (mime.includes('jpeg') || mime.includes('jpg')) ext = '.jpg'
     else if (mime.includes('webp')) ext = '.webp'
     else if (mime.includes('gif')) ext = '.gif'

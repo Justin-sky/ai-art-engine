@@ -69,7 +69,10 @@ describe('graph policy', () => {
         listAddableNodeTypes(scope).some(
           (definition) =>
             definition.typeId.startsWith('output.') &&
-            !(scope === 'canvasAsset' && definition.typeId === 'output.timeline')
+            !(
+              (scope === 'canvasAsset' || scope === 'subgraphAsset') &&
+              definition.typeId === 'output.timeline'
+            )
         ),
         scope
       ).toBe(false)

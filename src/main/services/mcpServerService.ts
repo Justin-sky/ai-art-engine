@@ -40,9 +40,7 @@ import {
   type McpToolImage
 } from '@shared/mcpProtocol'
 import {
-  AI_WORKFLOW_PRESET_IDS,
   MCP_GRAPH_EDIT_SCOPE,
-  getAiWorkflowPresetPlan,
   getNodeCapability,
   getNodeType,
   introspectNodeType,
@@ -85,7 +83,6 @@ import {
   IpcChannels,
   type AskUserAnswer,
   type ChatMode,
-  type CommitAiWorkflowInput,
   type CreateFolderInput,
   type CreateProjectInput,
   type McpGraphEditResultPayload,
@@ -98,7 +95,6 @@ import {
   type McpRestartInput,
   type McpServerInfo,
   type McpTaskReportPayload,
-  type PlanAiWorkflowInput,
   type WriteAssetTextInput
 } from '@shared/ipc'
 import {
@@ -163,12 +159,10 @@ import {
 } from './externalMcpClient'
 import { mcpActivityService } from './mcpActivityService'
 import { broadcastToAllWindows } from '../broadcast'
-import { commitAiWorkflow, planAiWorkflow } from './graphPlanService'
 import {
   fetchWorkflowCatalog,
   installWorkflow,
   listInstalledWorkflowDetails,
-  readInstalledWorkflowPlan,
   uninstallWorkflow
 } from './workflowMarketService'
 import {
@@ -250,8 +244,8 @@ const MCP_BODY_LIMIT = 8 * 1024 * 1024
 const MCP_GEN_LIMIT = Number(process.env.AIAE_MCP_GEN_LIMIT) || 3
 /** 审计日志单文件上限（超过滚动为 .1） */
 const MCP_AUDIT_MAX_BYTES = 5 * 1024 * 1024
-/** 纳入并发闸门的工具（同步等待的耗时生成/规划） */
-const GATED_TOOLS = new Set(['task_run', 'decide', 'workflow_plan', 'tutorial_compose'])
+/** 纳入并发闸门的工具（同步等待的耗时生成） */
+const GATED_TOOLS = new Set(['task_run', 'decide', 'tutorial_compose'])
 
 /**
  * 一次最多回给客户端几张视频帧。
@@ -1689,7 +1683,7 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'folder_list',
     title: '资产库文件夹',
     description:
-      '列出当前工程的资产库文件夹（id / 名称 / 父级），generate_* 与 workflow_commit 的 folderId 参数从这里取。',
+      '列出当前工程的资产库文件夹（id / 名称 / 父级），asset_create / asset_import 等工具的 folderId 参数从这里取。',
     inputSchema: { type: 'object', properties: {} },
     handler: () => {
       assertProjectOpen()
@@ -1699,276 +1693,6 @@ const TOOL_DEFS: McpToolDef[] = [
           name: folder.name,
           parentId: folder.parentId ?? null
         }))
-      }
-    }
-  },
-  {
-    name: 'workflow_list_presets',
-    title: '行业模板列表',
-    description: '列出一键工作流的行业模板（id 与标题），可作为 workflow_plan 的 presetId。',
-    inputSchema: { type: 'object', properties: {} },
-    handler: () => ({
-      presets: AI_WORKFLOW_PRESET_IDS.map((id) => ({
-        id,
-        title: getAiWorkflowPresetPlan(id)?.title ?? id
-      }))
-    })
-  },
-  {
-    name: 'workflow_plan',
-    title: '规划工作流',
-    description:
-      '用文本模型把自然语言描述规划成一张节点图（GraphPlan 预览）。可用 workflow_list_presets 返回的 presetId 作为种子模板；useSeedOnly=true 时跳过模型直接用固化模板。返回的 plan 原样传给 workflow_commit 落盘。依赖应用已配置文本模型，调用可能耗时数十秒。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        prompt: { type: 'string', description: '工作流描述（presetId 缺省时必填）' },
-        presetId: { type: 'string', description: '行业模板 id，可选' },
-        useSeedOnly: { type: 'boolean', description: 'true 时只用预设固化拓扑，不调用文本模型' },
-        model: {
-          type: 'string',
-          description:
-            '规划用文本模型 id，可选（未指定 textModel 时同时注入 film.workbench 的 filmTextModel）'
-        },
-        providerInstanceId: {
-          type: 'string',
-          description: '规划用文本模型所属提供商实例 id，可选'
-        },
-        textModel: {
-          type: 'string',
-          description: '默认文本模型 id，可选（注入 film.workbench 的 filmTextModel）'
-        },
-        textProviderInstanceId: {
-          type: 'string',
-          description: '默认文本模型所属提供商实例 id，可选'
-        },
-        imageModel: {
-          type: 'string',
-          description: '默认图片模型 id，可选（注入图片生成与 film.workbench 节点）'
-        },
-        imageProviderInstanceId: {
-          type: 'string',
-          description: '图片模型所属提供商实例 id，可选'
-        },
-        videoModel: {
-          type: 'string',
-          description: '默认视频模型 id，可选（注入视频生成与 film.workbench 节点）'
-        },
-        videoProviderInstanceId: {
-          type: 'string',
-          description: '视频模型所属提供商实例 id，可选'
-        },
-        generateAspectRatio: { type: 'string', description: '统一宽高比，如 9:16' }
-      },
-      required: []
-    },
-    handler: async (args, ctx) => {
-      assertProjectOpen()
-      const input: PlanAiWorkflowInput = {
-        prompt: optionalString(args, 'prompt') ?? '',
-        presetId: optionalString(args, 'presetId'),
-        useSeedOnly: args.useSeedOnly === true,
-        model: optionalString(args, 'model'),
-        providerInstanceId: optionalString(args, 'providerInstanceId'),
-        textModel: optionalString(args, 'textModel'),
-        textProviderInstanceId: optionalString(args, 'textProviderInstanceId'),
-        imageModel: optionalString(args, 'imageModel'),
-        imageProviderInstanceId: optionalString(args, 'imageProviderInstanceId'),
-        videoModel: optionalString(args, 'videoModel'),
-        videoProviderInstanceId: optionalString(args, 'videoProviderInstanceId'),
-        generateAspectRatio: optionalString(args, 'generateAspectRatio')
-      }
-      return planAiWorkflow(input, { signal: ctx?.signal })
-    }
-  },
-  {
-    name: 'workflow_commit',
-    title: '落盘工作流',
-    description:
-      '把一张 GraphPlan 落盘为工程内的宿主资产（应用界面会同步出现该资产）。plan 可来自 workflow_plan，也可直接手写（跳过规划，少一次调用）；节点 params 会按目标节点类型声明的键校验，未声明的键被忽略并出现在返回的 warnings 里，不会静默丢弃。返回资产 id 与 warnings。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        plan: {
-          type: 'object',
-          description:
-            'GraphPlan：{ title?, nodes: [{ key, typeId, title?, params? }], edges: [{ from, to, fromPort?, toPort? }] }'
-        },
-        name: { type: 'string', description: '资产显示名，缺省用计划标题' },
-        generateAspectRatio: { type: 'string', description: '统一宽高比，如 9:16' },
-        textModel: {
-          type: 'string',
-          description: '文本模型 id：写入计划中未指定 filmTextModel 的 film.workbench 节点'
-        },
-        textProviderInstanceId: {
-          type: 'string',
-          description: '文本模型所属提供商实例 id，可选（自定义提供商模型需要）'
-        },
-        imageModel: {
-          type: 'string',
-          description:
-            '图片模型 id：写入计划中未指定 generateModel 的图片生成 / 高清放大 / film.workbench 节点'
-        },
-        imageProviderInstanceId: {
-          type: 'string',
-          description: '图片模型所属提供商实例 id，可选（自定义提供商模型需要）'
-        },
-        videoModel: {
-          type: 'string',
-          description:
-            '视频模型 id：写入计划中未指定 generateModel / filmVideoModel 的视频生成 / film.workbench 节点'
-        },
-        videoProviderInstanceId: {
-          type: 'string',
-          description: '视频模型所属提供商实例 id，可选（自定义提供商模型需要）'
-        },
-        folderId: { type: 'string', description: '资产库文件夹 id（folder_list 查询）' }
-      },
-      required: ['plan']
-    },
-    handler: async (args) => {
-      assertProjectOpen()
-      const plan = args.plan
-      if (!plan || typeof plan !== 'object') throw new Error('缺少必填对象参数「plan」')
-      const input: CommitAiWorkflowInput = {
-        plan: plan as CommitAiWorkflowInput['plan'],
-        name: optionalString(args, 'name'),
-        generateAspectRatio: optionalString(args, 'generateAspectRatio'),
-        textModel: optionalString(args, 'textModel'),
-        textProviderInstanceId: optionalString(args, 'textProviderInstanceId'),
-        imageModel: optionalString(args, 'imageModel'),
-        imageProviderInstanceId: optionalString(args, 'imageProviderInstanceId'),
-        videoModel: optionalString(args, 'videoModel'),
-        videoProviderInstanceId: optionalString(args, 'videoProviderInstanceId'),
-        folderId: optionalString(args, 'folderId')
-      }
-      const result = await commitAiWorkflow(input)
-      if (!result.ok || !result.assetId) {
-        throw new Error(result.error ?? '无法落盘工作流')
-      }
-      const asset = projectService.listAssets().find((item) => item.id === result.assetId)
-      if (asset) {
-        broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
-        broadcastToAllWindows(IpcChannels.MCP_WORKFLOW_FOCUS, { assetId: result.assetId })
-      }
-      return {
-        assetId: result.assetId,
-        name: asset?.name ?? input.name ?? null,
-        warnings: result.warnings
-      }
-    }
-  },
-  {
-    name: 'workflow_list_installed',
-    title: '已安装工作流列表',
-    description:
-      '列出用户从市场安装到本机的工作流（id 与标题、简介、节点数），可作为 workflow_use_installed 的 id。与 workflow_list_presets 的区别：presets 是应用内置的行业模板，这里是用户自己装的内容。',
-    inputSchema: { type: 'object', properties: {} },
-    handler: () =>
-      listInstalledWorkflowDetails().map((item) => ({
-        id: item.id,
-        title: item.title,
-        summary: item.summary,
-        version: item.version,
-        nodeCount: item.nodeCount,
-        edgeCount: item.edgeCount,
-        /** 包损坏时明确标出，调用方不该把它当成可用内容 */
-        broken: item.broken
-      }))
-  },
-  {
-    name: 'workflow_use_installed',
-    title: '使用已安装工作流',
-    description:
-      '把一条**已安装的工作流**按它自带的节点图原样落盘为工程内的宿主资产。id 来自 workflow_list_installed。这条路径不调用文本模型（拓扑已固化），因此快且结果确定 —— 想复现用户装的那条工作流就用它，而不是用 workflow_plan 重新规划。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        id: { type: 'string', description: '已安装工作流的 id（workflow_list_installed 返回）' },
-        name: { type: 'string', description: '资产显示名，缺省用工作流标题' },
-        generateAspectRatio: { type: 'string', description: '统一宽高比，如 9:16' },
-        textModel: {
-          type: 'string',
-          description: '文本模型 id（写入未指定 filmTextModel 的 film.workbench 节点）'
-        },
-        textProviderInstanceId: {
-          type: 'string',
-          description: '文本模型所属提供商实例 id，可选'
-        },
-        imageModel: {
-          type: 'string',
-          description: '图片模型 id（覆盖计划中未指定的图片节点与 film.workbench）'
-        },
-        imageProviderInstanceId: {
-          type: 'string',
-          description: '图片模型所属提供商实例 id，可选'
-        },
-        videoModel: {
-          type: 'string',
-          description: '视频模型 id（覆盖计划中未指定的视频节点与 film.workbench）'
-        },
-        videoProviderInstanceId: {
-          type: 'string',
-          description: '视频模型所属提供商实例 id，可选'
-        },
-        folderId: { type: 'string', description: '资产库文件夹 id（folder_list 查询）' }
-      },
-      required: ['id']
-    },
-    handler: async (args, ctx) => {
-      assertProjectOpen()
-      const id = readString(args, 'id')
-      const installed = readInstalledWorkflowPlan(id)
-      if (!installed.ok || !installed.bundle) {
-        throw new Error(`无法读取已安装工作流「${id}」：${installed.reasonKey ?? 'unknown'}`)
-      }
-      /**
-       * 用 `useSeedOnly` + `seedPlan` 走既有落盘链路：与市场窗口的「使用」是同一条路径，
-       * 因此参数白名单、warnings 语义完全一致 —— 不另造一套物化逻辑。
-       */
-      const planned = await planAiWorkflow(
-        {
-          prompt: installed.bundle.summary,
-          seedPlan: installed.bundle.plan as PlanAiWorkflowInput['seedPlan'],
-          useSeedOnly: true,
-          generateAspectRatio: optionalString(args, 'generateAspectRatio'),
-          textModel: optionalString(args, 'textModel'),
-          textProviderInstanceId: optionalString(args, 'textProviderInstanceId'),
-          imageModel: optionalString(args, 'imageModel'),
-          imageProviderInstanceId: optionalString(args, 'imageProviderInstanceId'),
-          videoModel: optionalString(args, 'videoModel'),
-          videoProviderInstanceId: optionalString(args, 'videoProviderInstanceId')
-        },
-        { signal: ctx?.signal }
-      )
-      if (!planned.ok || !planned.plan) {
-        throw new Error(planned.error ?? '无法生成工作流计划')
-      }
-      const result = await commitAiWorkflow({
-        plan: planned.plan,
-        name: optionalString(args, 'name') ?? installed.bundle.title,
-        generateAspectRatio: optionalString(args, 'generateAspectRatio'),
-        textModel: optionalString(args, 'textModel'),
-        textProviderInstanceId: optionalString(args, 'textProviderInstanceId'),
-        imageModel: optionalString(args, 'imageModel'),
-        imageProviderInstanceId: optionalString(args, 'imageProviderInstanceId'),
-        videoModel: optionalString(args, 'videoModel'),
-        videoProviderInstanceId: optionalString(args, 'videoProviderInstanceId'),
-        folderId: optionalString(args, 'folderId')
-      })
-      if (!result.ok || !result.assetId) {
-        throw new Error(result.error ?? '无法落盘工作流')
-      }
-      const asset = projectService.listAssets().find((item) => item.id === result.assetId)
-      if (asset) {
-        broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
-        broadcastToAllWindows(IpcChannels.MCP_WORKFLOW_FOCUS, { assetId: result.assetId })
-      }
-      return {
-        assetId: result.assetId,
-        name: asset?.name ?? installed.bundle.title,
-        sourceWorkflowId: installed.bundle.id,
-        warnings: result.warnings
       }
     }
   },

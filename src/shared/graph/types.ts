@@ -1173,6 +1173,8 @@ export interface GraphNodeParams {
   iconPackCellRefines?: import('./iconPack').IconPackCellRefines
   /** 图层分离（Seedream layer_decomposition） */
   imageLayerSplit?: Partial<ImageLayerSplitState>
+  /** 图层分离：最近一次运行自动导出的分层 PSD 工程相对路径（out-psd） */
+  layerSplitPsdRelativePath?: string
   /** 剧集 Agent 流水线：分镜师/动画师生成步骤（breakdown/beatboard/sequence/motion） */
   episodeStep?: 'breakdown' | 'beatboard' | 'sequence' | 'motion'
   /** 剧集 Agent 流水线：导演审核目标步骤（与 episodeStep 互斥） */

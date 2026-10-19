@@ -309,3 +309,210 @@ describe('applyGraphEditOps 参考图参数校验', () => {
     expect(failed.warnings.some((warning) => warning.includes('已保留原值'))).toBe(true)
   })
 })
+
+describe('知识科普文档转视频流水线 (graph_edit + output.timeline)', () => {
+  it('支持通过 graph_edit 创建并连入 output.timeline（含 16:9 SVG 动效、画外音、配图与背景乐）', async () => {
+    const emptyGraph: GraphDocument = {
+      version: 1,
+      nodes: [],
+      edges: [],
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+    const result = applyGraphEditOps(emptyGraph, [
+      {
+        op: 'node_add',
+        nodeId: 'voice-1',
+        typeId: 'voice.tts',
+        title: '旁白 01',
+        params: {
+          prompt: '光合作用是植物利用阳光将二氧化碳和水转化为能量的过程。',
+          voice: 'female'
+        }
+      },
+      {
+        op: 'node_add',
+        nodeId: 'svg-1',
+        typeId: 'svg.gen',
+        title: 'SVG 原理图 01',
+        params: {
+          prompt: '光合作用能量转化流程图，深色科技风格',
+          aspectRatio: '16:9'
+        }
+      },
+      {
+        op: 'node_add',
+        nodeId: 'svganim-1',
+        typeId: 'svg.anim',
+        title: 'SVG 动效 01',
+        params: {
+          prompt: '箭头流动与光粒子闪烁动画',
+          aspectRatio: '16:9',
+          frames: 16,
+          fps: 8,
+          svgGifRelativePath: 'Assets/Outputs/svganim-1/anim.gif'
+        }
+      },
+      {
+        op: 'node_add',
+        nodeId: 'voice-2',
+        typeId: 'asset.voice',
+        title: '旁白 02',
+        params: {
+          prompt: '叶绿体就像植物细胞内的微型太阳能发电站。'
+        }
+      },
+      {
+        op: 'node_add',
+        nodeId: 'img-2',
+        typeId: 'asset.image',
+        title: '分镜图 02',
+        params: {
+          prompt: '显微视角下的叶绿体结构科普插画，16:9'
+        }
+      },
+      {
+        op: 'node_add',
+        nodeId: 'bgm-1',
+        typeId: 'audio.music',
+        title: '科普背景音乐',
+        params: {
+          prompt: '轻快温暖的科普背景纯音乐'
+        }
+      },
+      {
+        op: 'node_add',
+        nodeId: 'timeline-1',
+        typeId: 'video.timeline',
+        title: '科普成片时间线'
+      },
+      { op: 'edge_add', from: 'svg-1', to: 'svganim-1' },
+      { op: 'edge_add', from: 'svganim-1', to: 'timeline-1' },
+      { op: 'edge_add', from: 'img-2', to: 'timeline-1' },
+      { op: 'edge_add', from: 'voice-1', to: 'timeline-1' },
+      { op: 'edge_add', from: 'voice-2', to: 'timeline-1' },
+      { op: 'edge_add', from: 'bgm-1', to: 'timeline-1' }
+    ])
+
+    expect(result.warnings).toEqual([])
+    const svgGenNode = result.graph.nodes.find((n) => n.id === 'svg-1')!
+    expect(svgGenNode.params.svgGenWidth).toBe(1280)
+    expect(svgGenNode.params.svgGenHeight).toBe(720)
+
+    const svgAnimNode = result.graph.nodes.find((n) => n.id === 'svganim-1')!
+    expect(svgAnimNode.params.svgWidth).toBe(1280)
+    expect(svgAnimNode.params.svgHeight).toBe(720)
+    expect(svgAnimNode.params.svgFrames).toBe(16)
+
+    const timelineNode = result.graph.nodes.find((n) => n.id === 'timeline-1')!
+    expect(timelineNode.typeId).toBe('output.timeline')
+
+    const toTimelineEdges = result.graph.edges.filter((e) => e.target === 'timeline-1')
+    expect(toTimelineEdges.map((e) => `${e.source}:${e.sourcePort}->${e.targetPort}`)).toEqual([
+      'svganim-1:out->in-image',
+      'img-2:out->in-image',
+      'voice-1:out->in-voice',
+      'voice-2:out->in-voice',
+      'bgm-1:out->in-music'
+    ])
+
+    const { executeTimelineOutputNode } = await import('../src/shared/graph/execute/narrative')
+    let capturedInput: Record<string, unknown> | null = null
+    const execResult = await executeTimelineOutputNode({
+      node: timelineNode,
+      document: result.graph,
+      inputs: {
+        'in-image': [
+          {
+            kind: 'images',
+            items: [{ id: 'img-1', relativePath: 'Assets/Outputs/svganim-1/sheet.png' }]
+          },
+          {
+            kind: 'images',
+            items: [{ id: 'img-2', relativePath: 'Assets/Outputs/img-2/leaf.png' }]
+          }
+        ],
+        'in-voice': [
+          {
+            kind: 'voices',
+            items: [{ id: 'v-1', relativePath: 'Assets/Outputs/voice-1/v1.mp3' }]
+          },
+          {
+            kind: 'voices',
+            items: [{ id: 'v-2', relativePath: 'Assets/Outputs/voice-2/v2.mp3' }]
+          }
+        ],
+        'in-music': [
+          {
+            kind: 'voices',
+            items: [{ id: 'm-1', relativePath: 'Assets/Outputs/bgm-1/bgm.mp3' }]
+          }
+        ]
+      },
+      composeTimelineVideo: async (input) => {
+        capturedInput = input as unknown as Record<string, unknown>
+        return { relativePath: 'Assets/Outputs/timeline-1/final.mp4', assetId: 'composed-1' }
+      }
+    })
+
+    expect(execResult.out).toMatchObject({
+      kind: 'videos',
+      items: [
+        expect.objectContaining({
+          id: 'composed-1',
+          relativePath: 'Assets/Outputs/timeline-1/final.mp4'
+        })
+      ]
+    })
+    expect(capturedInput).toBeTruthy()
+    expect(capturedInput!.visuals).toEqual([
+      {
+        id: 'img-1',
+        kind: 'image',
+        dataUrl: undefined,
+        relativePath: 'Assets/Outputs/svganim-1/anim.gif',
+        createdAt: undefined,
+        title: 'SVG 动效 01'
+      },
+      {
+        id: 'img-2',
+        kind: 'image',
+        dataUrl: undefined,
+        relativePath: 'Assets/Outputs/img-2/leaf.png',
+        createdAt: undefined,
+        title: '分镜图 02'
+      }
+    ])
+    expect(capturedInput!.voices).toEqual([
+      {
+        id: 'v-1',
+        relativePath: 'Assets/Outputs/voice-1/v1.mp3',
+        title: '旁白 01',
+        text: '光合作用是植物利用阳光将二氧化碳和水转化为能量的过程。'
+      },
+      {
+        id: 'v-2',
+        relativePath: 'Assets/Outputs/voice-2/v2.mp3',
+        title: '旁白 02',
+        text: '叶绿体就像植物细胞内的微型太阳能发电站。'
+      }
+    ])
+    expect(capturedInput!.music).toEqual([
+      {
+        id: 'm-1',
+        relativePath: 'Assets/Outputs/bgm-1/bgm.mp3'
+      }
+    ])
+
+    const { splitNarrationIntoSubtitleSegments } =
+      await import('../src/renderer/src/features/graph/model/composeTimelineVideo')
+    expect(
+      splitNarrationIntoSubtitleSegments(
+        '光合作用是植物利用阳光转化能量的过程。叶绿体就像植物细胞内的微型太阳能发电站，源源不断地输送能量！'
+      )
+    ).toEqual([
+      '光合作用是植物利用阳光转化能量的过程',
+      '叶绿体就像植物细胞内的微型太阳能发电站',
+      '源源不断地输送能量'
+    ])
+  })
+})

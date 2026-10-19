@@ -485,42 +485,14 @@ describe('当前会话标题显示在面板最上方', () => {
   })
 })
 
-describe('Agent 工具：能精确使用已安装工作流', () => {
-  it('两个工具都注册了', () => {
-    expect(MCP).toContain("name: 'workflow_list_installed'")
-    expect(MCP).toContain("name: 'workflow_use_installed'")
-  })
-
-  it('列表工具来自已安装详情（含 broken 标记）', () => {
-    expect(MCP).toContain('listInstalledWorkflowDetails()')
-    expect(MCP).toMatch(/broken: item\.broken/)
-  })
-
-  it('使用工具按 id 读回**已装的那份**，而不是重新规划', () => {
-    expect(MCP).toContain('readInstalledWorkflowPlan(id)')
-    // 关键：useSeedOnly + seedPlan 走既有落盘链路，拓扑原样
-    expect(MCP).toMatch(/useSeedOnly: true/)
-    expect(MCP).toMatch(/seedPlan: installed\.bundle\.plan/)
-    expect(MCP).toContain('commitAiWorkflow')
-  })
-
-  it('读取失败时给出明确错误（含 id 与原因键），不静默返回空', () => {
-    const handler = MCP.slice(
-      MCP.indexOf("name: 'workflow_use_installed'"),
-      MCP.indexOf("name: 'video_job_list'")
-    )
-    expect(handler).toMatch(/throw new Error\(/)
-    expect(handler).toContain('installed.reasonKey')
-    expect(handler).toMatch(/assertProjectOpen\(\)/)
-  })
-
-  it('落盘后通知界面聚焦新资产（与 workflow_commit 一致）', () => {
-    const handler = MCP.slice(
-      MCP.indexOf("name: 'workflow_use_installed'"),
-      MCP.indexOf("name: 'video_job_list'")
-    )
-    expect(handler).toContain('MCP_WORKFLOW_FOCUS')
-    expect(handler).toContain('ASSET_UPDATED')
+describe('Agent 工具：一键工作流已从 MCP 下线，统一由 graph_edit 在当前画布搭图', () => {
+  it('不再向 Agent 暴露 workflow_* 工具，避免绕开当前画布另建 subgraph 包', () => {
+    expect(MCP).not.toContain("name: 'workflow_list_presets'")
+    expect(MCP).not.toContain("name: 'workflow_plan'")
+    expect(MCP).not.toContain("name: 'workflow_commit'")
+    expect(MCP).not.toContain("name: 'workflow_list_installed'")
+    expect(MCP).not.toContain("name: 'workflow_use_installed'")
+    expect(MCP).toContain("name: 'graph_edit'")
   })
 })
 

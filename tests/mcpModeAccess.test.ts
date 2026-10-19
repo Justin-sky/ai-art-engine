@@ -35,7 +35,6 @@ describe('对话模式的 MCP 工具授权分级（shared）', () => {
     expect(toolAccessOf('ask_user')).toBe('read')
 
     expect(toolAccessOf('decide')).toBe('generate')
-    expect(toolAccessOf('workflow_plan')).toBe('generate')
     // 转写走 ASR 模型、消耗额度，与生成同类
     expect(toolAccessOf('transcribe_audio')).toBe('generate')
 

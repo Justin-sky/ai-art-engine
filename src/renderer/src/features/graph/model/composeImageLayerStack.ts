@@ -11,6 +11,17 @@ import {
 } from '@shared/graph'
 import { SHARED_ERRORS } from '@shared/errors/catalog'
 import { fail } from '@shared/errors/appError'
+import { layerSplitToPsdUint8Array } from './layerSplitPsd'
+
+function uint8ArrayToDataUrl(bytes: Uint8Array, mime: string): string {
+  const chunkSize = 0x8000
+  const chunks: string[] = []
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const sub = bytes.subarray(i, i + chunkSize)
+    chunks.push(String.fromCharCode(...sub))
+  }
+  return `data:${mime};base64,${btoa(chunks.join(''))}`
+}
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   const url = src.trim()
@@ -28,7 +39,7 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 export async function composeImageLayerStack(input: {
   state: ImageLayerSplitState
   layerUrls: Record<string, string>
-}): Promise<{ dataUrl: string; width: number; height: number }> {
+}): Promise<{ dataUrl: string; width: number; height: number; psdDataUrl?: string }> {
   const layers = sortLayersForCompose(input.state.layers).filter((layer) =>
     isLayerSplitLayerDrawable(input.state, layer)
   )
@@ -64,10 +75,22 @@ export async function composeImageLayerStack(input: {
     ctx.drawImage(img, layer.left, layer.top, Math.max(1, layer.width), Math.max(1, layer.height))
   }
 
+  let psdDataUrl: string | undefined
+  try {
+    const psdBytes = await layerSplitToPsdUint8Array({
+      state: input.state,
+      layerUrls: input.layerUrls
+    })
+    psdDataUrl = uint8ArrayToDataUrl(psdBytes, 'image/vnd.adobe.photoshop')
+  } catch {
+    psdDataUrl = undefined
+  }
+
   return {
     dataUrl: canvas.toDataURL('image/png'),
     width: canvasWidth,
-    height: canvasHeight
+    height: canvasHeight,
+    ...(psdDataUrl ? { psdDataUrl } : {})
   }
 }
 

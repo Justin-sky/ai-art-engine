@@ -889,39 +889,71 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     'image',
     GraphPortType.image
   ),
-  specializedOutputDef(
-    'output.timeline',
-    'Cut timeline',
-    '🎥',
-    ASSET_TIMELINE_OUTPUT_TITLE,
-    'video',
-    GraphPortType.video,
-    executeTimelineOutputNode,
-    undefined,
-    [
-      {
-        id: 'in-videos',
-        direction: 'in',
-        dataType: GraphPortType.videos,
-        multiple: true,
-        label: 'Videos'
-      },
-      {
-        id: 'in-voice',
-        direction: 'in',
-        dataType: GraphPortType.voice,
-        multiple: true,
-        label: 'Voice'
-      },
-      {
-        id: 'in-voices',
-        direction: 'in',
-        dataType: GraphPortType.voices,
-        multiple: true,
-        label: 'Voices'
-      }
-    ]
-  ),
+  {
+    ...specializedOutputDef(
+      'output.timeline',
+      'Cut timeline',
+      '🎥',
+      ASSET_TIMELINE_OUTPUT_TITLE,
+      'video',
+      GraphPortType.video,
+      executeTimelineOutputNode,
+      undefined,
+      [
+        {
+          id: 'in-videos',
+          direction: 'in',
+          dataType: GraphPortType.videos,
+          multiple: true,
+          label: 'Videos'
+        },
+        {
+          id: 'in-image',
+          direction: 'in',
+          dataType: GraphPortType.image,
+          multiple: true,
+          label: 'Image'
+        },
+        {
+          id: 'in-images',
+          direction: 'in',
+          dataType: GraphPortType.images,
+          multiple: true,
+          label: 'Images'
+        },
+        {
+          id: 'in-voice',
+          direction: 'in',
+          dataType: GraphPortType.voice,
+          multiple: true,
+          label: 'Voice'
+        },
+        {
+          id: 'in-voices',
+          direction: 'in',
+          dataType: GraphPortType.voices,
+          multiple: true,
+          label: 'Voices'
+        },
+        {
+          id: 'in-music',
+          direction: 'in',
+          dataType: GraphPortType.voice,
+          multiple: true,
+          label: 'Music'
+        },
+        {
+          id: 'in-text',
+          direction: 'in',
+          dataType: GraphPortType.text,
+          multiple: true,
+          label: 'Subtitle'
+        }
+      ]
+    ),
+    description:
+      '成片时间线合成节点：自动汇聚上游视频（in / in-videos）、静态图或 SVG/2D 烘焙动图（in-image / in-images）、旁白配音（in-voice / in-voices）、背景音乐（in-music）与字幕文本（in-text），按每段旁白真实时长自动对齐各镜头画面时长（Audio-First）、生成同步字幕并开启 BGM 闪避混音，通过 FFmpeg 渲染输出完整 MP4 成片。' // cjk-ok
+  },
   {
     typeId: 'note.text',
     category: 'note',

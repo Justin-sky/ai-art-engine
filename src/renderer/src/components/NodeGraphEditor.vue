@@ -17,14 +17,14 @@
       />
       <span v-else class="hint">{{ t('graph.toolbar.hint') }}</span>
       <div class="tools">
-        <template v-if="isRunning">
+        <template v-if="isGraphOrTaskRunning">
           <button
             type="button"
             class="play-control playing"
             data-tutorial-id="graph-run"
             :title="t('graph.play.stop')"
             :aria-label="t('graph.play.stopAria')"
-            @click="stopWorkflow"
+            @click="stopAllWorkflows"
           >
             <span class="play-glyph" aria-hidden="true">
               <MediaRunIcon kind="stop" />
@@ -368,7 +368,7 @@
           :run-status="runStates[node.id]?.status"
           :run-error="runStates[node.id]?.error"
           :run-state="runStates[node.id]"
-          :is-graph-running="isRunning"
+          :is-graph-running="isGraphOrTaskRunning"
           :run-blocked="blockedNodeIds.has(node.id)"
           :host-id="graphHostId"
           @drag-start="onNodeDragStart"
@@ -1924,6 +1924,15 @@ runStateBridge.importFromDocument = (doc) => {
       inFlight[id] = { ...state }
     }
   }
+  const target = currentGraphTaskTarget()
+  const activeTaskStates = target ? taskStore.getActiveTaskRunStatesForTarget(target) : null
+  if (activeTaskStates) {
+    for (const [id, state] of Object.entries(activeTaskStates)) {
+      if (state?.status === 'pending' || state?.status === 'running') {
+        inFlight[id] = { ...state }
+      }
+    }
+  }
   importRunStatesSnapshot(
     doc.runStates,
     doc.nodes.map((n) => n.id)
@@ -2003,6 +2012,23 @@ function currentGraphTaskTarget(): GraphTaskTarget | null {
   }
 }
 
+const hasActiveTaskForCurrentGraph = computed(() => {
+  const target = currentGraphTaskTarget()
+  return target ? taskStore.hasActiveTaskForTarget(target) : false
+})
+
+const isGraphOrTaskRunning = computed(() => isRunning.value || hasActiveTaskForCurrentGraph.value)
+
+function stopAllWorkflows(): void {
+  if (isRunning.value) {
+    stopWorkflow()
+  }
+  const target = currentGraphTaskTarget()
+  if (target && taskStore.hasActiveTaskForTarget(target)) {
+    taskStore.stopActiveTasksForTarget(target)
+  }
+}
+
 function blockNodeRunForActiveTask(): boolean {
   const target = currentGraphTaskTarget()
   if (!target || !taskStore.hasActiveTaskForTarget(target)) return false
@@ -2014,6 +2040,16 @@ function blockNodeRunForActiveTask(): boolean {
 }
 
 function onNodeRunToggle(nodeId: string): void {
+  const target = currentGraphTaskTarget()
+  const state = runStates[nodeId]
+  if (
+    target &&
+    taskStore.hasActiveTaskForTarget(target) &&
+    (state?.status === 'pending' || state?.status === 'running')
+  ) {
+    taskStore.stopActiveTasksForTarget(target)
+    return
+  }
   if (!isRunning.value && blockNodeRunForActiveTask()) return
   const node = graph.nodes.find((n) => n.id === nodeId)
   if (
@@ -2169,7 +2205,7 @@ const radialMenu = ref<{ x: number; y: number } | null>(null)
 const radialHoveredId = ref<string | null>(null)
 
 const radialMenuItems = computed((): RadialMenuItem[] => {
-  if (isRunning.value) {
+  if (isGraphOrTaskRunning.value) {
     return [
       {
         id: 'stop',
@@ -2243,7 +2279,7 @@ const radialAnchor = computed(() => {
 
 function canOpenRadialMenu(): boolean {
   if (!pointerOverViewport.value) return false
-  if (isRunning.value) return true
+  if (isGraphOrTaskRunning.value) return true
   return !!toolbarSelectedNode.value
 }
 
@@ -2264,7 +2300,7 @@ function closeRadialMenu(): void {
 function onRadialPick(id: string): void {
   closeRadialMenu()
   if (id === 'stop') {
-    stopWorkflow()
+    stopAllWorkflows()
     return
   }
   if (id === 'enqueue') {
@@ -9400,6 +9436,13 @@ onMounted(() => {
   registerNodeToolHost()
   try {
     loadGraphFromAsset()
+    const target = currentGraphTaskTarget()
+    const activeTaskStates = target ? taskStore.getActiveTaskRunStatesForTarget(target) : null
+    if (activeTaskStates) {
+      for (const [id, state] of Object.entries(activeTaskStates)) {
+        if (state) runStates[id] = { ...state }
+      }
+    }
   } catch (err) {
     console.error('[NodeGraphEditor] loadGraphFromAsset failed', err)
   }

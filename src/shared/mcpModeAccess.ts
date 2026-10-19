@@ -73,7 +73,6 @@ const READ_TOOLS = new Set([
   'models_list',
   'storage_status',
   'folder_list',
-  'workflow_list_presets',
   'graph_node_types',
   'graph_read',
   'director_stage_read',
@@ -99,7 +98,6 @@ const READ_TOOLS = new Set([
  */
 const GENERATE_TOOLS = new Set([
   'decide',
-  'workflow_plan',
   'transcribe_audio',
   'gameplay_build',
   // 教学成片合成：内含 TTS + ffmpeg 导出，产物不可逆

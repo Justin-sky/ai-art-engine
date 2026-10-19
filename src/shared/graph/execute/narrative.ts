@@ -48,8 +48,21 @@ import {
   UI_SPLIT_INNER_GRAPH_VERSION,
   type UiScreenPromptItem
 } from '../uiSplitParse'
-import type { GraphImageItem, GraphValue, GraphVideoItem, NodeExecuteContext } from './types'
-import { flattenVideosValues, flattenVoicesValues, newestTextSelectedId } from './gallery'
+import type {
+  GraphImageItem,
+  GraphTimelineVisualItem,
+  GraphValue,
+  GraphVideoItem,
+  GraphVoiceItem,
+  NodeExecuteContext
+} from './types'
+import {
+  flattenImagesValues,
+  flattenTextsValues,
+  flattenVideosValues,
+  flattenVoicesValues,
+  newestTextSelectedId
+} from './gallery'
 import { autoIncomingTextForInstruction, selectIncomingValuesForInstruction } from './incoming'
 import {
   commitInMemoryTextGallery,
@@ -225,14 +238,233 @@ export function applyEpisodeReviewMarks(
   }
 }
 
-/** 成片时间线输出：收集上游视频与配音，若具备合成能力则自动渲染 MP4 成片并写回图库与预览路径 */
+/** 成片时间线输出：收集上游视频、图片/动图（含 SVG 烘焙 GIF）、配音、背景音乐与字幕，自动渲染 MP4 成片并写回图库与预览路径 */
 export async function executeTimelineOutputNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
-  // 合并全部输入口（单条 in、方形 in-videos 视频组、in-voice / in-voices 配音），按出现顺序排入时间线
-  const incoming = Object.values(ctx.inputs).flat()
-  const videos = flattenVideosValues(incoming)
-  const voices = flattenVoicesValues(incoming)
+  const knownPorts = new Set([
+    'in',
+    'in-videos',
+    'in-image',
+    'in-images',
+    'in-voice',
+    'in-voices',
+    'in-music',
+    'in-text'
+  ])
+  const extraIncoming = Object.entries(ctx.inputs)
+    .filter(([k]) => !knownPorts.has(k))
+    .flatMap(([, v]) => v)
+
+  const videoValues = [
+    ...(ctx.inputs.in ?? []),
+    ...(ctx.inputs['in-videos'] ?? []),
+    ...extraIncoming
+  ]
+  const imageValues = [
+    ...(ctx.inputs['in-image'] ?? []),
+    ...(ctx.inputs['in-images'] ?? []),
+    ...extraIncoming
+  ]
+  const voiceValues = [
+    ...(ctx.inputs['in-voice'] ?? []),
+    ...(ctx.inputs['in-voices'] ?? []),
+    ...extraIncoming
+  ]
+  const musicValues = [...(ctx.inputs['in-music'] ?? [])]
+  const textValues = [...(ctx.inputs['in-text'] ?? [])]
+
+  const videos = flattenVideosValues(videoValues)
+  let images = flattenImagesValues(imageValues)
+  const rawVoices = flattenVoicesValues(voiceValues)
+  const music = flattenVoicesValues(musicValues)
+  const subtitles = flattenTextsValues(textValues)
+    .map((t) => t.text?.trim() ?? '')
+    .filter(Boolean)
+
+  // 利用图拓扑元信息：
+  // 1) 若上游为 svg.anim / anim.2d 且已产出 GIF，自动将单帧 PNG 升级为动图 GIF；
+  // 2) 若上游为 asset.voice / asset.dialogue，提取其旁白台词作为自动同步字幕；
+  // 3) 若 asset.music 误连到 in-voice，自动归入 music 轨；
+  // 4) 混合接入视频与图片/SVG 动图时，按连线顺序及节点标题镜头序号对齐镜头与旁白。
+  const extractShotNum = (title?: string): number | null => {
+    if (!title) return null
+    const m =
+      title.match(/(?:分镜|镜头|片段|章节|幕|步骤|Shot|Scene|Step|Part|Clip)\s*#?(\d+)/i) ??
+      title.match(/^#?(\d+)[\s._-]/i) ??
+      title.match(/(\d+)/)
+    return m ? Number(m[1]) : null
+  }
+
+  const doc = ctx.document
+  const voices: Array<GraphVoiceItem & { text?: string; title?: string; _order?: number }> = []
+  const orderedVisuals: Array<GraphTimelineVisualItem & { _order: number }> = []
+
+  if (doc) {
+    const incomingEdges = doc.edges.filter((e) => e.target === ctx.node.id)
+    const nodeById = new Map(doc.nodes.map((n) => [n.id, n]))
+
+    const imageSourceEdges = incomingEdges
+      .map((e, edgeIdx) => ({ edge: e, node: nodeById.get(e.source), edgeIdx }))
+      .filter(
+        (item): item is { edge: typeof item.edge; node: GraphNode; edgeIdx: number } =>
+          Boolean(item.node) &&
+          (!item.edge.targetPort ||
+            item.edge.targetPort === 'in-image' ||
+            item.edge.targetPort === 'in-images')
+      )
+
+    const videoSourceEdges = incomingEdges
+      .map((e, edgeIdx) => ({ edge: e, node: nodeById.get(e.source), edgeIdx }))
+      .filter(
+        (item): item is { edge: typeof item.edge; node: GraphNode; edgeIdx: number } =>
+          Boolean(item.node) &&
+          (!item.edge.targetPort ||
+            item.edge.targetPort === 'in' ||
+            item.edge.targetPort === 'in-videos')
+      )
+
+    images = images.map((img, idx) => {
+      const matched =
+        imageSourceEdges.find(({ node: n }) =>
+          n.params?.generatedImages?.some(
+            (g) =>
+              (g.id && g.id === img.id) || (g.relativePath && g.relativePath === img.relativePath)
+          )
+        ) ?? imageSourceEdges[idx]
+      const matchedNode = matched?.node
+      if (!matchedNode) {
+        orderedVisuals.push({
+          id: img.id,
+          kind: 'image',
+          dataUrl: img.dataUrl,
+          relativePath: img.relativePath,
+          createdAt: img.createdAt,
+          title: img.title,
+          _order: 1000 + idx
+        })
+        return img
+      }
+      const gifRel =
+        (typeof matchedNode.params?.svgGifRelativePath === 'string' &&
+          matchedNode.params.svgGifRelativePath.trim()) ||
+        (typeof matchedNode.params?.animGifRelativePath === 'string' &&
+          matchedNode.params.animGifRelativePath.trim()) ||
+        ''
+      const title = matchedNode.title?.trim() || img.title
+      const shotNum = extractShotNum(title)
+      const upgraded: GraphImageItem = {
+        ...img,
+        ...(gifRel ? { relativePath: gifRel } : {}),
+        ...(title ? { title } : {})
+      }
+      orderedVisuals.push({
+        id: upgraded.id,
+        kind: 'image',
+        dataUrl: upgraded.dataUrl,
+        relativePath: upgraded.relativePath,
+        createdAt: upgraded.createdAt,
+        title: upgraded.title,
+        _order: shotNum !== null ? shotNum * 100 + matched.edgeIdx : 1000 + matched.edgeIdx
+      })
+      return upgraded
+    })
+
+    videos.forEach((v, idx) => {
+      const matched =
+        videoSourceEdges.find(({ node: n }) =>
+          n.params?.generatedVideos?.some(
+            (g) => (g.id && g.id === v.id) || (g.relativePath && g.relativePath === v.relativePath)
+          )
+        ) ?? videoSourceEdges[idx]
+      const title = matched?.node.title?.trim()
+      const shotNum = extractShotNum(title)
+      orderedVisuals.push({
+        id: v.id,
+        kind: 'video',
+        dataUrl: v.dataUrl,
+        relativePath: v.relativePath,
+        createdAt: v.createdAt,
+        ...(title ? { title } : {}),
+        _order:
+          shotNum !== null
+            ? shotNum * 100 + (matched?.edgeIdx ?? idx)
+            : 1000 + (matched?.edgeIdx ?? idx)
+      })
+    })
+    orderedVisuals.sort((a, b) => a._order - b._order)
+
+    const voiceSourceEdges = incomingEdges
+      .map((e, edgeIdx) => ({ edge: e, node: nodeById.get(e.source), edgeIdx }))
+      .filter(
+        (item): item is { edge: typeof item.edge; node: GraphNode; edgeIdx: number } =>
+          Boolean(item.node) &&
+          (item.edge.targetPort === 'in-voice' || item.edge.targetPort === 'in-voices')
+      )
+
+    rawVoices.forEach((v, idx) => {
+      const matched =
+        voiceSourceEdges.find(
+          ({ node: n }) =>
+            n.params?.generatedVoices?.some(
+              (g) =>
+                (g.id && g.id === v.id) || (g.relativePath && g.relativePath === v.relativePath)
+            ) ||
+            (n.params?.previewRelativePath && n.params.previewRelativePath === v.relativePath)
+        ) ?? voiceSourceEdges[idx]
+      const matchedNode = matched?.node
+      if (matchedNode?.typeId === 'asset.music') {
+        music.push(v)
+        return
+      }
+      const spokenText = (
+        matchedNode?.params?.notes?.trim() ||
+        matchedNode?.params?.generateInstruction?.trim() ||
+        matchedNode?.params?.text?.trim() ||
+        ''
+      )
+        .replace(/@\d+/g, '')
+        .trim()
+      const title = matchedNode?.title?.trim()
+      const shotNum = extractShotNum(title)
+      voices.push({
+        ...v,
+        ...(spokenText ? { text: spokenText } : {}),
+        ...(title ? { title } : {}),
+        _order:
+          shotNum !== null
+            ? shotNum * 100 + (matched?.edgeIdx ?? idx)
+            : 1000 + (matched?.edgeIdx ?? idx)
+      })
+    })
+    voices.sort((a, b) => (a._order ?? 0) - (b._order ?? 0))
+  } else {
+    voices.push(...rawVoices)
+    videos.forEach((v, idx) => {
+      orderedVisuals.push({
+        id: v.id,
+        kind: 'video',
+        dataUrl: v.dataUrl,
+        relativePath: v.relativePath,
+        createdAt: v.createdAt,
+        _order: idx
+      })
+    })
+    images.forEach((img, idx) => {
+      orderedVisuals.push({
+        id: img.id,
+        kind: 'image',
+        dataUrl: img.dataUrl,
+        relativePath: img.relativePath,
+        createdAt: img.createdAt,
+        title: img.title,
+        _order: videos.length + idx
+      })
+    })
+  }
+
+  const visuals: GraphTimelineVisualItem[] = orderedVisuals.map(({ _order: _, ...rest }) => rest)
+  const cleanVoices = voices.map(({ _order: _, ...rest }) => rest)
 
   let composed: { relativePath?: string; assetId?: string } | null = null
   if (ctx.composeTimelineVideo) {
@@ -240,7 +472,11 @@ export async function executeTimelineOutputNode(
       composed = await ctx.composeTimelineVideo({
         nodeId: ctx.node.id,
         videos,
-        voices,
+        ...(images.length ? { images } : {}),
+        ...(visuals.length ? { visuals } : {}),
+        voices: cleanVoices,
+        ...(music.length ? { music } : {}),
+        ...(subtitles.length ? { subtitles } : {}),
         signal: ctx.signal
       })
     } catch {
@@ -261,8 +497,13 @@ export async function executeTimelineOutputNode(
     : videos
 
   const previewRelativePath =
-    composedItem?.relativePath || videos[0]?.relativePath?.trim() || undefined
-  const previewDataUrl = composedItem ? undefined : videos[0]?.dataUrl?.trim() || undefined
+    composedItem?.relativePath ||
+    videos[0]?.relativePath?.trim() ||
+    images[0]?.relativePath?.trim() ||
+    undefined
+  const previewDataUrl = composedItem
+    ? undefined
+    : videos[0]?.dataUrl?.trim() || images[0]?.dataUrl?.trim() || undefined
   const paramsPatch = {
     resultText: '',
     text: '',

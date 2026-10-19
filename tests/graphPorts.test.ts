@@ -199,8 +199,12 @@ describe('port type matching', () => {
       [
         'in:video:in:true',
         'in-videos:videos:in:true',
+        'in-image:image:in:true',
+        'in-images:images:in:true',
         'in-voice:voice:in:true',
-        'in-voices:voices:in:true'
+        'in-voices:voices:in:true',
+        'in-music:voice:in:true',
+        'in-text:text:in:true'
       ]
     )
     // 批量 videos（导演台 out-actions）接方形口；单条 video 只能走默认 in

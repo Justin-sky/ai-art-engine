@@ -61,7 +61,18 @@ export function resolveGalleryOutputsFromNodeParams(
       createdAt: item.createdAt
     }))
     const selectedId = params.selectedImageId?.trim() || newestImageSelectedId(items)
-    return dualImageGalleryOutputs(items, selectedId)
+    const base = dualImageGalleryOutputs(items, selectedId)
+    const gifRel =
+      (typeof params.svgGifRelativePath === 'string' && params.svgGifRelativePath.trim()) ||
+      (typeof params.animGifRelativePath === 'string' && params.animGifRelativePath.trim()) ||
+      ''
+    if (gifRel) {
+      return {
+        ...base,
+        'out-gif': { kind: 'image', dataUrl: '', relativePath: gifRel }
+      }
+    }
+    return base
   }
 
   const generatedModels = params.generatedModels

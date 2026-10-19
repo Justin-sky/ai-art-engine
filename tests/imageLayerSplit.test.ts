@@ -760,11 +760,31 @@ describe('imageLayerSplit', () => {
             dataUrl: 'data:image/png;base64,W2'
           }
         ]
-      })
+      }),
+      composeImageLayerStack: async () => ({
+        dataUrl: 'data:image/png;base64,COMPOSITE',
+        width: 1080,
+        height: 1920,
+        psdDataUrl: 'data:image/vnd.adobe.photoshop;base64,UFNE'
+      }),
+      saveRunMedia: async (req: { dataUrl: string; key: string }) => {
+        if (req.dataUrl.includes('photoshop')) {
+          return `Cache/Images/${req.key}.psd`
+        }
+        return `Cache/Images/${req.key}.png`
+      }
     }
 
     // 1) 选择非 Seedream-5 通用模型（如 gemini-2.5-flash-image），splitMode='auto' 自动走 ai-inpaint-slice
-    const nodeAi = {
+    const nodeAi: {
+      id: string
+      typeId: string
+      title: string
+      position: { x: number; y: number }
+      params: Record<string, unknown> & {
+        imageLayerSplit: ReturnType<typeof normalizeImageLayerSplit>
+      }
+    } = {
       id: 'split-node-1',
       typeId: 'image.layerSplit',
       title: 'UI 图层分离',
@@ -774,15 +794,20 @@ describe('imageLayerSplit', () => {
         imageLayerSplit: normalizeImageLayerSplit({ splitMode: 'auto', resolution: '2K' })
       }
     }
-    await executeLayerSplitNode({
+    const aiOut = await executeLayerSplitNode({
       ...(baseCtx as unknown as Parameters<typeof executeLayerSplitNode>[0]),
-      node: nodeAi
+      node: nodeAi as unknown as Parameters<typeof executeLayerSplitNode>[0]['node']
     })
     expect(generateCalled).toBe(1)
     expect(lastLayerDecompFlag).toBeUndefined()
     const savedStateAi = nodeAi.params.imageLayerSplit
     expect(savedStateAi.layers).toHaveLength(3)
     expect(savedStateAi.groups.map((g) => g.name)).toEqual(['02_交互控件与按钮', '01_顶栏与装饰'])
+    expect(String(nodeAi.params.layerSplitPsdRelativePath ?? '')).toMatch(/\.psd$/)
+    expect(aiOut['out-psd']).toMatchObject({
+      kind: 'text',
+      text: expect.stringMatching(/\.psd$/)
+    })
 
     // 2) 选择 local-slice 模式：零 API 调用直接完成拆层与 PSD 分组
     generateCalled = 0

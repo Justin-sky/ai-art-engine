@@ -58,6 +58,7 @@ import {
 } from '../imageLayerSplit'
 import type { GraphImageItem, GraphValue, NodeExecuteContext } from './types'
 import type { GenerateImageLayer } from '../../modelProvider'
+import { buildGeneratedMediaFileKey, formatGeneratedMediaStamp } from '../../domain'
 import { collectIncomingValues } from './incoming'
 import {
   commitGeneratedImages,
@@ -1183,7 +1184,7 @@ async function composeLayerSplitOutput(
   ctx: NodeExecuteContext,
   state: ImageLayerSplitState,
   layerBatch: GraphImageItem[]
-): Promise<GraphImageItem | null> {
+): Promise<{ composite: GraphImageItem; psdDataUrl?: string } | null> {
   if (!ctx.composeImageLayerStack) return null
   const layerUrls: Record<string, string> = {}
   const pending: GraphImageItem[] = []
@@ -1214,11 +1215,15 @@ async function composeLayerSplitOutput(
   const composed = await ctx.composeImageLayerStack({ state, layerUrls })
   const dataUrl = composed.dataUrl?.trim()
   if (!dataUrl) return null
+  const psdDataUrl = composed.psdDataUrl?.trim() || undefined
   return {
-    id: layerSplitCompositeImageId(ctx.node.id),
-    title: 'Composite',
-    dataUrl,
-    createdAt: new Date().toISOString()
+    composite: {
+      id: layerSplitCompositeImageId(ctx.node.id),
+      title: 'Composite',
+      dataUrl,
+      createdAt: new Date().toISOString()
+    },
+    ...(psdDataUrl ? { psdDataUrl } : {})
   }
 }
 
@@ -1509,8 +1514,11 @@ export async function executeLayerSplitNode(
   }
 
   let composite: GraphImageItem | null = null
+  let psdDataUrl: string | undefined
   try {
-    composite = await composeLayerSplitOutput(ctx, state, materializedLayers)
+    const composedOut = await composeLayerSplitOutput(ctx, state, materializedLayers)
+    composite = composedOut?.composite ?? null
+    psdDataUrl = composedOut?.psdDataUrl
   } catch (err) {
     console.warn('[graph] layer split compose failed', err)
   }
@@ -1524,9 +1532,42 @@ export async function executeLayerSplitNode(
     if (materializedComposite) extra.push(materializedComposite)
   }
 
+  let psdRelativePath: string | undefined
+  if (psdDataUrl && ctx.saveRunMedia) {
+    try {
+      const psdKey = buildGeneratedMediaFileKey({
+        hostAssetName: ctx.resolveHostAssetName?.(),
+        nodeTitle: `${ctx.node.title || ctx.node.typeId || 'layerSplit'}_layers`,
+        stamp: formatGeneratedMediaStamp(),
+        index: null
+      })
+      psdRelativePath = (
+        await ctx.saveRunMedia({
+          dataUrl: psdDataUrl,
+          key: psdKey,
+          outputDir: ctx.node.params.mediaOutputDir?.trim() || undefined,
+          node: ctx.node
+        })
+      )?.trim()
+    } catch (err) {
+      console.warn('[graph] layer split psd persist failed', err)
+    }
+  }
+
   const generatedImages = [...materializedLayers, ...extra]
   const previewPath = extra[0]?.relativePath?.trim() || materializedLayers[0]?.relativePath?.trim()
-  return commitGeneratedImages(ctx, generatedImages, previewPath, imageLayerSplitToNodePatch(state))
+  const outputs = commitGeneratedImages(ctx, generatedImages, previewPath, {
+    ...imageLayerSplitToNodePatch(state),
+    ...(psdRelativePath ? { layerSplitPsdRelativePath: psdRelativePath } : {})
+  })
+  if (psdRelativePath) {
+    outputs['out-psd'] = {
+      kind: 'text',
+      text: psdRelativePath,
+      relativePath: psdRelativePath
+    }
+  }
+  return outputs
 }
 
 /**

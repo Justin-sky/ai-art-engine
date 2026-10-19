@@ -92,6 +92,7 @@ import { runBlenderDshJob } from '../features/graph/model/runBlenderDshJob'
 import { buildGamePlayProjectForNode } from '../features/graph/model/runGamePlayBuild'
 import { normalizeImageAspectRatio } from '../features/graph/model/normalizeImageAspectRatio'
 import { removeImageSolidBackground } from '../features/graph/model/removeImageSolidBackground'
+import { composeTimelineVideoForNode } from '../features/graph/model/composeTimelineVideo'
 import { prepareGraphDocumentForPersist } from '../features/graph/persistGraphRunOutputs'
 import { saveGraphRunMediaForNode } from '../features/graph/saveGraphRunMediaForNode'
 import { saveGraphRunTextForNode } from '../features/graph/saveGraphRunTextForNode'
@@ -453,6 +454,28 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
     )
   }
 
+  function getActiveTaskRunStatesForTarget(
+    target: GraphTaskTarget
+  ): Record<string, GraphNodeRunState> | null {
+    const key = taskTargetKey(target)
+    const active = activeTasks.value.find(
+      (t) => isActiveStatus(t.status) && taskTargetKey(t.target) === key
+    )
+    return active ? { ...active.runStates } : null
+  }
+
+  function stopActiveTasksForTarget(target: GraphTaskTarget): boolean {
+    const key = taskTargetKey(target)
+    const matching = activeTasks.value.filter(
+      (t) => isActiveStatus(t.status) && taskTargetKey(t.target) === key
+    )
+    if (!matching.length) return false
+    for (const task of matching) {
+      void stopAndRemove(task.id)
+    }
+    return true
+  }
+
   async function runWriteBackExclusive(
     targetKey: string,
     work: () => Promise<void>
@@ -520,7 +543,11 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         if (node.status === 'pending' || node.status === 'running') {
           node.status = 'error'
           node.error = 'GRAPH_CANCELLED'
-          task.runStates[node.nodeId] = { status: 'error', error: 'GRAPH_CANCELLED' }
+          const cancelledState: GraphNodeRunState = { status: 'error', error: 'GRAPH_CANCELLED' }
+          task.runStates[node.nodeId] = cancelledState
+          if (task.liveCanvasSync) {
+            syncLiveCanvasRunState(task.target.hostId, node.nodeId, cancelledState)
+          }
         }
       }
       bump()
@@ -1654,6 +1681,11 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           }),
         normalizeImageAspectRatio,
         removeImageSolidBackground,
+        composeTimelineVideo: (input) =>
+          composeTimelineVideoForNode({
+            ...input,
+            hostAssetId: taskHostAssetId(task.target)
+          }),
         resolveBeatCatalogJson: () => {
           if (task.target.kind !== 'asset') return null
           const beatId = task.target.assetId
@@ -1687,6 +1719,15 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
       if (task.abort.signal.aborted || result.error === 'GRAPH_CANCELLED') {
         task.status = 'stopped'
         task.message = 'GRAPH_CANCELLED'
+        for (const [id, st] of Object.entries(task.runStates)) {
+          if (st?.status === 'pending' || st?.status === 'running') {
+            const cancelledState: GraphNodeRunState = { status: 'error', error: 'GRAPH_CANCELLED' }
+            task.runStates[id] = cancelledState
+            if (task.liveCanvasSync) {
+              syncLiveCanvasRunState(task.target.hostId, id, cancelledState)
+            }
+          }
+        }
         applyRunStateToNodes(task.nodes, task.runStates)
         logBridge.endFromResult(result, { aborted: true })
         bump()
@@ -1738,6 +1779,18 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         task.message = error instanceof Error ? error.message : String(error)
         logBridge.endFromResult(null, { message: task.message })
       }
+      for (const [id, st] of Object.entries(task.runStates)) {
+        if (st?.status === 'pending' || st?.status === 'running') {
+          const fallbackState: GraphNodeRunState = {
+            status: 'error',
+            error: task.message || 'GRAPH_CANCELLED'
+          }
+          task.runStates[id] = fallbackState
+          if (task.liveCanvasSync) {
+            syncLiveCanvasRunState(task.target.hostId, id, fallbackState)
+          }
+        }
+      }
       applyRunStateToNodes(task.nodes, task.runStates)
       bump()
       await writeBack(task)
@@ -1768,6 +1821,8 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
     dialogAnchor,
     runningCount,
     hasActiveTaskForTarget,
+    getActiveTaskRunStatesForTarget,
+    stopActiveTasksForTarget,
     openDialog,
     closeDialog,
     enqueueWorkflow,

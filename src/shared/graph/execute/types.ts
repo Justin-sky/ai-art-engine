@@ -343,8 +343,19 @@ export type GraphValue =
   | GraphImageValue
   | GraphVideoValue
 
+export interface GraphTimelineVisualItem {
+  id?: string
+  kind: 'video' | 'image'
+  dataUrl?: string
+  relativePath?: string
+  createdAt?: string
+  title?: string
+}
+
 export interface NodeExecuteContext {
   node: GraphNode
+  /** 当前执行的完整图文档（供时间线输出等节点感知上游连线顺序与源节点元信息） */
+  document?: import('../types').GraphDocument
   /** portId → 该端口收到的上游值 */
   inputs: Record<string, GraphValue[]>
   /**
@@ -1046,11 +1057,11 @@ export interface NodeExecuteContext {
     /** 实际键控背景色（keyColor='none' 时为 null） */
     background: { r: number; g: number; b: number } | null
   }>
-  /** 图层分离：按 z_index 与 bounding box 把底图+透明层合成一张 PNG。 */
+  /** 图层分离：按 z_index 与 bounding box 把底图+透明层合成一张 PNG（并可选一并生成分层 PSD）。 */
   composeImageLayerStack?: (input: {
     state: import('../imageLayerSplit').ImageLayerSplitState
     layerUrls: Record<string, string>
-  }) => Promise<{ dataUrl: string; width: number; height: number }>
+  }) => Promise<{ dataUrl: string; width: number; height: number; psdDataUrl?: string }>
   /**
    * UI 图层分离（通用图片模型回抹差分拆层 / 本地连通域拆层）：
    * 从 UI 源图与可选干净底图中提取去字去控件底图 + 独立透明 UI 控件切片。
@@ -1227,12 +1238,16 @@ export interface NodeExecuteContext {
     dataUrl: string
   }) => Promise<{ dataUrl: string; width: number; height: number; keyedRatio: number }>
   /**
-   * 成片时间线输出节点执行时：自动把时间线片段（或新流入的上游视频/配音）合成为单条 MP4 成片。
+   * 成片时间线输出节点执行时：自动把时间线片段（或新流入的上游视频/图片/GIF/配音/音乐/字幕）合成为单条 MP4 成片。
    */
   composeTimelineVideo?: (input: {
     nodeId: string
     videos: GraphVideoItem[]
-    voices: GraphVoiceItem[]
+    images?: GraphImageItem[]
+    visuals?: GraphTimelineVisualItem[]
+    voices: Array<GraphVoiceItem & { text?: string; title?: string }>
+    music?: GraphVoiceItem[]
+    subtitles?: string[]
     signal?: AbortSignal
   }) => Promise<{ relativePath?: string; assetId?: string } | null>
   /**

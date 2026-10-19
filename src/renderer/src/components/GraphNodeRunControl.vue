@@ -47,9 +47,7 @@ const emit = defineEmits<{
 
 const { t } = useStudioI18n()
 
-const activelyRunning = computed(
-  () => props.isRunning && (props.status === 'pending' || props.status === 'running')
-)
+const activelyRunning = computed(() => props.status === 'pending' || props.status === 'running')
 
 const mode = computed<'run' | 'rerun' | 'stop'>(() => {
   if (activelyRunning.value) return 'stop'

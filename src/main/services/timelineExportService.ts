@@ -151,7 +151,22 @@ function buildClipCropFilter(clip: TimelineExportClip): string {
 /** 缓存媒体文件是否含音频轨（按路径+修改时间缓存，避免重复起进程探测） */
 const audioStreamProbeCache = new Map<string, boolean>()
 
+function isStillImagePath(filePath: string): boolean {
+  return /\.(png|jpe?g|webp|bmp)$/i.test(filePath.trim())
+}
+
+function isAnimatedGifPath(filePath: string): boolean {
+  return /\.gif$/i.test(filePath.trim())
+}
+
+function isImageOrGifPath(filePath: string): boolean {
+  return (
+    isStillImagePath(filePath) || isAnimatedGifPath(filePath) || /\.svg$/i.test(filePath.trim())
+  )
+}
+
 export function probeHasAudioStream(bin: string, filePath: string): Promise<boolean> {
+  if (isImageOrGifPath(filePath)) return Promise.resolve(false)
   let cacheKey = filePath
   try {
     const st = statSync(filePath)
@@ -859,11 +874,29 @@ export function prepareTimelinePipeline(
   args.push('-f', 'lavfi', '-i', `anullsrc=channel_layout=stereo:sample_rate=44100:d=${duration}`)
   const baseAudioIndex = inputIndex++
 
+  const pushVisualInputArgs = (clip: TimelineExportClip, path: string): void => {
+    const clipInputDur = Math.max(
+      1,
+      Math.ceil(
+        clipSourceOffsetSec(clip) +
+          Math.max(0.05, clip.durationSec) * clampClipSpeed(clip.speed ?? 1) +
+          1
+      )
+    )
+    if (isStillImagePath(path)) {
+      args.push('-loop', '1', '-t', String(clipInputDur), '-i', path)
+    } else if (isAnimatedGifPath(path)) {
+      args.push('-ignore_loop', '0', '-t', String(clipInputDur), '-i', path)
+    } else {
+      args.push('-i', path)
+    }
+  }
+
   const mainVideos: Array<TimelineExportClip & { path: string; inputIndex: number }> = []
   for (const clip of mainVideoClips) {
     const path = resolveClipPath(clip)
     if (!path) continue
-    args.push('-i', path)
+    pushVisualInputArgs(clip, path)
     mainVideos.push({ ...clip, path, inputIndex: inputIndex++ })
   }
 
@@ -879,7 +912,7 @@ export function prepareTimelinePipeline(
   for (const clip of overlayClips) {
     const path = resolveClipPath(clip)
     if (!path) continue
-    args.push('-i', path)
+    pushVisualInputArgs(clip, path)
     overlays.push({ ...clip, path, inputIndex: inputIndex++ })
   }
 
@@ -894,8 +927,10 @@ export function prepareTimelinePipeline(
     throw fail(E_TIMELINE_NO_EXPORTABLE_CLIPS)
   }
 
-  const hasAudioForPath = (path: string): boolean =>
-    options?.audioPaths ? options.audioPaths.has(path) : true
+  const hasAudioForPath = (path: string): boolean => {
+    if (isImageOrGifPath(path)) return false
+    return options?.audioPaths ? options.audioPaths.has(path) : true
+  }
 
   const mainVideoAudios = mainVideos.filter(
     (c) => !input.mutedTracks?.includes('video') && (c.volume ?? 1) > 0 && hasAudioForPath(c.path)

@@ -498,6 +498,7 @@ async function executeOneNode(
   })
   const ctx: NodeExecuteContext = {
     node,
+    document: graph,
     inputs,
     mentionSources,
     incomingByIndex,

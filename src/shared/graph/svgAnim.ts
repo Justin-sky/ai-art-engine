@@ -14,8 +14,8 @@ export const SVG_ANIM_GIF_OUT_PORT_ID = 'out-gif'
 export const SVG_ANIM_FRAMES_DEFAULT = 12
 export const SVG_ANIM_FRAMES_MIN = 2
 export const SVG_ANIM_FRAMES_MAX = 60
-/** 单帧尺寸上限（GIF 合成时还会按 TARGET_FRAME_MAX 再缩放） */
-export const SVG_ANIM_SIZE_MAX = 1024
+/** 单帧尺寸上限（支持 1280×720 / 1920×1080 横竖屏科普演示图） */
+export const SVG_ANIM_SIZE_MAX = 1920
 /** 目标时长上限（秒）：防止把超长动画采成上千帧 */
 export const SVG_ANIM_DURATION_MAX = 30
 
